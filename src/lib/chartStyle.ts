@@ -27,13 +27,45 @@ export const CHART = {
   ring: 2,
   /** Сонгоогүй/hover-оос гадуурх элементийн тунгалаг — БҮХ төрөлд нэг утга */
   dim: 0.35,
-  /** Ганц цувааны талбайн градиент — дээд/доод тунгалаг. Олон цуваанд дүүргэлтгүй. */
-  areaTop: 0.24,
-  areaBottom: 0.02,
+  /**
+   * Ганц цувааны талбайн градиент — дээд/доод тунгалаг.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): 0.24→0.02 байсныг 0.32→0 — шугамын
+   *    дор өтгөн, суурь дээр бүрэн уусна (лавлах «area chart»-ын хэл).
+   */
+  areaTop: 0.32,
+  areaBottom: 0,
+  /**
+   * ОЛОН цувааны талбай — цуваа БҮР өөрийн тунгалаг давхаргатай (0.16 → 0).
+   * ⚠️ 2026-10-09 (лавлах CRM загвар): урьд нь олон цуваанд дүүргэлтгүй байв. Бага
+   *    тунгалагтай тул давхцсан хэсэг нь «давхарласан» мэт уншигдана, холилдож
+   *    нэг өнгө болохгүй.
+   */
+  areaMultiTop: 0.16,
   /** Төлөвлөгөө ↔ бодит хоорондох зөрүүний дүүргэлт (ногоон/улаан) */
   gapFill: 0.12,
-  /** Төлөвлөгөөний тасархай шугам (`stroke-dasharray`) */
-  planDash: '5 4',
+  /**
+   * Төлөвлөгөөний ЦЭГЭН шугам (`stroke-dasharray`) — round cap-тай 2px шугамд
+   * «1 5» нь бөөрөнхий цэгүүдийн цуваа болно.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): '5 4' тасархай → цэгэн.
+   *    Шугам нь ЗААВАЛ `stroke-linecap: round` байна — эс бөгөөс 1px зураас болно.
+   */
+  planDash: '1 5',
+  /** Шугамын зөөлөн гэрэлтэлт (drop-shadow blur, px) — `glow()` */
+  glowBlur: 4,
+  /**
+   * HOVER/ФОКУСЫН ТЭМДЭГ — r 4.5 дүүргэлт + 2px гадаргуун цагираг + r 9 гало (25%).
+   * ⚠️ 2026-10-09 (лавлах CRM загвар): шугаман графикт цэг АНХДАГЧААР НУУГДАНА —
+   *    зөвхөн заасан цэг дээр гарна (ганц цэгтэй хэсэг, босго давсан цэг үргэлж харагдана).
+   */
+  hoverR: 4.5,
+  haloR: 9,
+  haloA: 0.25,
+  /** Босоо баганын өргөн — слотын хувь (`Series`) ба оройн радиус (px) */
+  colW: 0.45,
+  colRadius: 4,
+  /** Donut-ын зүсмэг хоорондын зай (px, нумын дагуу) ба дотор хувь бичих доод хязгаар */
+  donutGap: 3,
+  donutLabelMin: 0.08,
   /** S-муруйн хэвтээ тор (%) */
   grid: [0, 25, 50, 75, 100] as readonly number[],
   /** Хэвтээ баганын зузаан (px) — `Bars` */
@@ -51,11 +83,13 @@ export const CHART = {
 /**
  * Дугуй диаграмын (Donut) 3 хэмжээ — [диаметр, цагирагийн зузаан].
  * ⚠️ 2026-10-09: урьд нь 110/120/128/132/… гэж дуудагч бүр өөрийн тоотой байв.
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): зузаан ~15% → ~20% (14/20/24 → 19/26/30) —
+ *    бөөрөнхий үзүүртэй зүсмэг ба дотор нь бичих хувь (10px) багтана.
  */
 export const DONUT_SIZES = {
-  sm: [96, 14],
-  md: [132, 20],
-  lg: [150, 24],
+  sm: [96, 19],
+  md: [132, 26],
+  lg: [150, 30],
 } as const satisfies Record<string, readonly [number, number]>;
 export type DonutSize = keyof typeof DONUT_SIZES;
 
@@ -72,6 +106,85 @@ export type RingSize = keyof typeof RING_SIZES;
 
 /** Цагирагийн зузаан — диаметрийн 10% (бүхэл px) */
 export const ringStroke = (size: number): number => Math.max(1, Math.round(size * 0.1));
+
+/* ══════════════════════ Лавлах CRM загвар (2026-10-09) ══════════════════════ */
+
+/**
+ * ЗӨӨЛӨН ГЭРЭЛТЭЛТ — CSS `filter` утга (шугам, цагираг, онцолсон зүсмэг).
+ *
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): өнгө нь ЦУВААНЫ ӨӨРИЙН токен
+ *    (`var(--c2)`, `var(--chart-plan)` …) — шинэ өнгө нэмэхгүй. Хүч нь
+ *    `--chart-glow` (globals.css): харанхуйд 55%, цайварт бага, хэвлэхэд 0.
+ * ⚠️ `style={{ filter }}`-ээр өгнө (SVG presentation шинжид `var()` задардаггүй) —
+ *    элемент нь `chartGlow` глобал класстай байх ёстой: `@media print` үүгээр унтраана.
+ */
+export const glow = (color: string, blur: number = CHART.glowBlur): string =>
+  `drop-shadow(0 0 ${blur}px color-mix(in srgb, ${color} var(--chart-glow, 40%), transparent))`;
+
+/** Тоог 12 оронтой нарийвчлалд буулгана — 0.1+0.2 маягийн хөвөгч хог арилна */
+const clean = (v: number) => Number(v.toPrecision(12));
+
+/**
+ * «ГОЁ» ТЭНХЛЭГИЙН ХУВААРЬ — 1 · 2 · 2.5 · 5 × 10ⁿ алхамтай, [lo, hi]-г БҮРЭН хамарна.
+ *
+ * ⚠️ 2026-10-09 (лавлах CRM загвар): `Trend`/`Series`-д зүүн талын жижиг тэнхлэг
+ *    ба хэвтээ тор нэмэгдсэн — шугам нь «68 / 100» гэх мэт санамсаргүй дээд
+ *    хязгаартай байвал торны тоо «13.6 · 27.2 …» болж уншигдахгүй.
+ * ⚠️ Эхний ба сүүлийн утга нь тэнхлэгийн ДООД/ДЭЭД хязгаар болно (дуудагч өгөгдлөө
+ *    тэдгээрээр масштаблана) — тор ба өгөгдөл НЭГ хуваарьт.
+ * ⚠️ `lo === hi` (хавтгай/хоосон цуваа) үед ч хоёроос доошгүй утга буцаана.
+ */
+export function niceTicks(lo: number, hi: number, count = 5): number[] {
+  let a = Number.isFinite(lo) ? lo : 0;
+  let b = Number.isFinite(hi) ? hi : 0;
+  if (b < a) [a, b] = [b, a];
+  if (b === a) {
+    if (a === 0) b = 1;
+    else if (a > 0) a = 0;
+    else b = 0;
+  }
+  const raw = (b - a) / Math.max(1, count - 1);
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  /* Хамгийн НЯГТ алхам — шугамын тоо `count + 1`-ээс хэтрэхгүй (жиш. −15…28 → −20…30 ×10,
+     ×20 биш: дээд хязгаар өгөгдлөөс хэт хол болж муруй шахагдана) */
+  const fits = (st: number) => Math.ceil(clean(b / st)) - Math.floor(clean(a / st)) + 1 <= count + 1;
+  const step = clean([1, 2, 2.5, 5, 10, 20].map((k) => k * mag).find(fits) ?? 20 * mag);
+  const start = Math.floor(clean(a / step)) * step;
+  const end = Math.ceil(clean(b / step)) * step;
+  const out: number[] = [];
+  for (let k = 0; k < 60; k += 1) {
+    const v = clean(start + k * step);
+    out.push(v);
+    if (v >= end - step * 1e-9) break;
+  }
+  return out.length >= 2 ? out : [clean(start), clean(start + step)];
+}
+
+/** Тэнхлэгийн алхмын аравтын орны тоо — 0.25 → 2, 2.5 → 1, 20 → 0 */
+export function stepDecimals(ticks: readonly number[]): number {
+  if (ticks.length < 2) return 0;
+  const step = Math.abs(ticks[1] - ticks[0]);
+  if (!(step > 0)) return 0;
+  for (let d = 0; d <= 6; d += 1) {
+    if (Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) < 1e-6) return d;
+  }
+  return 6;
+}
+
+/**
+ * ЦАГИРГАН НУМЫН ЗАМ — 12 цагаас цагийн зүүний дагуу, `a0 → a1` (радиан).
+ * ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын зүсмэг нь ДҮҮРГЭЛТТЭЙ сектор биш,
+ *    `stroke-linecap: round` бүхий ЗУЗААН НУМ — бөөрөнхий үзүүр + зүсмэг хоорондын зай.
+ *    Бүтэн тойрог (≈2π) нэг нумаар хаагддаггүй тул хоёр хагасаар зурна.
+ */
+export function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): string {
+  const pt = (a: number) => `${r2(cx + r * Math.sin(a))},${r2(cy - r * Math.cos(a))}`;
+  if (a1 - a0 >= Math.PI * 2 - 1e-6) {
+    return `M${pt(0)} A${r},${r} 0 1 1 ${pt(Math.PI)} A${r},${r} 0 1 1 ${pt(Math.PI * 2 - 1e-4)}`;
+  }
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${pt(a0)} A${r},${r} 0 ${large} 1 ${pt(a1)}`;
+}
 
 /* ══════════════════════ Муруйн зам ══════════════════════ */
 

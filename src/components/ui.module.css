@@ -346,7 +346,8 @@
   display: block;
   height: 2px;
   width: 100%;
-  border-radius: 1px;
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий үзүүр — зузаан 2px хэвээр (хэрэглэгчийн сонголт) */
+  border-radius: 99px;
   background: var(--chart-track);
   /* ⚠️ `overflow: hidden` БАЙХГҮЙ БОЛОВ: нэмэлт хэмжигдэхүүний тэмдэг
      (`.barMark`) 2px зурвасаас дээш доош СУНАХ ёстой — эс бөгөөс
@@ -362,7 +363,11 @@
 .barFill {
   display: block;
   height: 100%;
+  border-radius: inherit;
   background: var(--tone, var(--data));
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цувааны өнгөөр зөөлөн гэрэлтэлт;
+     хүч нь `--chart-glow` (цайварт бага, хэвлэхэд 0) */
+  box-shadow: 0 0 6px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
   transition: width 0.6s var(--ease), opacity 0.12s;
 }
 
@@ -376,11 +381,12 @@
   display: block;
   width: 100%;
   height: 2px;
-  border-radius: 1px;
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий үзүүр */
+  border-radius: 99px;
   background: var(--chart-track);
 }
 /* Тайлангийн толгойн том хэмжигч — `CHART.meterWideH` */
-.meterWide { height: 8px; border-radius: 4px; }
+.meterWide { height: 8px; border-radius: 99px; }
 .meterFill {
   position: absolute;
   left: 0;
@@ -388,6 +394,7 @@
   bottom: 0;
   border-radius: inherit;
   background: var(--tone, var(--data));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
   transition: width 0.6s var(--ease);
 }
 .meterPlan {
@@ -417,16 +424,25 @@
    хэсэг бүр нь өөрөө хэтэрхий нарийсч байв.
    ⚠️ 2026-10-09 (графикийн жигдрэл): 8px, радиус 4px, сегмент хооронд 2px зай
    (`CHART.stackH`/`stackGap`) — CEO StatusPanel/DimBar ижил хэмжээстэй болно. */
-.stack { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): `overflow: hidden` ХАСАГДАВ — тэр нь сегментийн
+   гэрэлтэлтийг тайрдаг байв; бөөрөнхий үзүүрийг эхний/сүүлийн сегмент өөрөө авна. */
+.stack { display: flex; height: 8px; border-radius: 99px; background: var(--chart-track); }
 /* Зэргэлдээ хэсгүүдийн хооронд ГАДАРГУУН өнгөт 2px зай (2026-10-09: 1.5 → 2) — ойролцоо өнгөтэй
    хоёр хэсэг нийлж НЭГ болж харагдахаас сэргийлнэ (`box-shadow` нь өргөнийг
    өөрчлөхгүй тул хувь хэмжээ ЯГ хэвээр). */
 .stackSeg {
   height: 100%;
   transition: width 0.6s var(--ease), opacity 0.12s var(--ease);
-  box-shadow: inset -2px 0 0 var(--surface);
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): 2px зай (inset) + сегментийн ӨӨРИЙН өнгөөр (`color`
+     inline, currentColor) зөөлөн гэрэлтэлт */
+  box-shadow: inset -2px 0 0 var(--surface), 0 0 6px color-mix(in srgb, currentColor var(--chart-glow, 40%), transparent);
 }
-.stackSeg:last-child { box-shadow: none; }
+.stackSeg:first-child { border-radius: 99px 0 0 99px; }
+.stackSeg:last-child {
+  border-radius: 0 99px 99px 0;
+  box-shadow: 0 0 6px color-mix(in srgb, currentColor var(--chart-glow, 40%), transparent);
+}
+.stackSeg:only-child { border-radius: 99px; }
 .stackSegDim { opacity: 0.35; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
 .legendItem {
@@ -442,6 +458,16 @@
 /* envhub: 8px, 1px радиустай дөрвөлжин — donut-д зүсмэгийн багасгасан хувь
    (тунгалаг дэвсгэр + өнгөт хүрээ, inline style-аас), stack-д цул. */
 .legendDot { width: 8px; height: 8px; border-radius: 1px; flex: none; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын тайлбарын тэмдэг — 12px ХӨНДИЙ цагираг,
+   3px өнгөт хүрээ (`border-color` inline), голд нь тунгалаг. */
+.legendRing {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 3px solid var(--tone, var(--data));
+  background: transparent;
+}
 /* envhub: чартын дотор 500-аас дээш жин байхгүй */
 .legendVal { color: var(--ink); font-weight: 500; }
 /* Хувь — үнэмлэхүй тооны ХАЖУУД. Хоёулаа хэрэгтэй: тоо нь хэмжээг, хувь нь
@@ -450,7 +476,8 @@
 
 /* ── Цагираг ── */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
-.ringSvg { transform: rotate(-90deg); }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): `overflow: visible` — нумын гэрэлтэлт svg-ийн хүрээнд тайрагдахгүй */
+.ringSvg { transform: rotate(-90deg); overflow: visible; }
 .ringTrack { fill: none; stroke: var(--chart-track); }
 .ringArc { fill: none; stroke: var(--tone, var(--hue)); stroke-linecap: round; transition: stroke-dashoffset 0.7s var(--ease); }
 .ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
@@ -635,11 +662,26 @@
 .donutStack .donutName { white-space: normal; overflow: visible; }
 .donutRow .donutItem { gap: 5px; font-size: 0.68rem; align-items: flex-start; }
 .donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
-.donutRow .legendDot { margin-top: 2px; }
+.donutRow .legendDot,
+.donutRow .legendRing { margin-top: 2px; }
 .donut { position: relative; flex: none; }
 /* envhub: гадна захын 1px чиглүүлэгч тойрог.
    ⚠️ 2026-10-09: `--line-strong` → `--chart-track` — Ring/Bars-ийн замтай НЭГ өнгө */
-.donutTrack { fill: none; stroke: var(--chart-track); }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): НҮХНИЙ ДОТОРХ 1px чимэглэлийн цагираг (`--chart-grid`) */
+.donutTrack { fill: none; stroke: var(--chart-grid); pointer-events: none; }
+/* Зурвас ДОТОРХ хувь (≥8%) — 10px/600, өнгөт дүүргэлт дээрх бэх (`--hue-ink`) + цайварт
+   бараан хүрээ (`--chart-on-fill-halo`) — --c6 шар дээр ч уншигдана. */
+.donutPctIn {
+  font-size: 10px;
+  font-weight: 600;
+  fill: var(--hue-ink);
+  paint-order: stroke;
+  stroke: var(--chart-on-fill-halo);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
 .donutCenter {
   position: absolute;
   inset: 0;
@@ -652,11 +694,12 @@
 }
 /* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
 /* ⚠️ 2026-10-09: 500 → 600 (Ring-тэй ижил төвийн жин) */
-.donutValue { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.1; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): 13 → 15px, шошгоны ДООР */
+.donutValue { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.1; }
 /* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
    таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
 .donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
-.donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; }
+.donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; line-height: 1.2; max-width: 90%; }
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
 .donutItem { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
@@ -678,19 +721,23 @@
   background: var(--surface-2);
   box-shadow: inset 2px 0 0 var(--tone, var(--hue));
 }
-.donutSlice { transition: fill-opacity 0.12s var(--ease), stroke-width 0.12s var(--ease); }
+.donutSlice { transition: opacity 0.12s var(--ease), filter 0.12s var(--ease); }
 
 /* ── Босоо цуваа (series) ──
    ⚠️ 2026-08-17: envhub-ийн BarChart хэл — 3px завсар, зөвхөн ДЭЭД буланд 1px
    радиус, торгүй/тэнхлэггүй, доор нь 10px цифрийн мөр. Багана бүр бүтэн
    өндрийн дарагдах талбар; hover нь 12% өнгөн угаалт. */
 .series { display: flex; flex-direction: column; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): `gap` 3px → 0 — багана нь слотынхоо 45% (төвд) тул
+   зай нь өөрөө үүснэ, слотын ТӨВ нь яг `(i+0.5)/n` (муруйн цэг, босоо тор, шошготой давхцана). */
 .seriesPlot {
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 3px;
+  gap: 0;
 }
+/* Муруйн горим — дээд цэгийн «Дээд: X» pill-ийн зай */
+.seriesPlotLine { margin-top: 24px; }
 .seriesCol {
   flex: 1;
   min-width: 0;
@@ -698,14 +745,26 @@
   flex-direction: column;
   justify-content: flex-end;
   position: relative;
+  align-items: center;
   border-radius: 1px;
   transition: background 0.12s;
 }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): НАРИЙН (слотын 45%, `CHART.colW`), дээд
+   булан 4px бөөрөнхий (`CHART.colRadius`), БОСОО ГРАДИЕНТ: дээд = цувааны өнгө → доод 35%. */
 .seriesBar {
-  width: 100%;
-  border-radius: 1px 1px 0 0;
-  background: var(--tone, var(--data));
-  transition: height 0.4s var(--ease), opacity 0.12s;
+  position: relative;
+  z-index: 1;
+  width: 45%;
+  max-width: 34px;
+  min-width: 2px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(to bottom, var(--tone, var(--data)), color-mix(in srgb, var(--tone, var(--data)) 35%, transparent));
+  transition: height 0.4s var(--ease), opacity 0.12s, filter 0.12s, box-shadow 0.12s;
+}
+/* Заасан багана — ТОДРОНО + цувааны өнгөөр гэрэлтэнэ */
+.colHot {
+  filter: brightness(1.15);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
 }
 /* ── Тоймтой хувилбар (`outline`) — ЗАХ нь бүтэн өнгө, дотор нь бүдэг ──
    Багана дээр байнга тоо бичихэд бүтэн дүүргэлт дээр цифр уншигдахгүй болдог.
@@ -715,6 +774,8 @@
   border: 1px solid var(--tone, var(--data));
   border-bottom: 0;
 }
+/* ⚠️ `.seriesVal` нь багана нарийссан ч бүтэн өргөнөөр (тоо тасрахгүй) */
+.seriesCol > .seriesVal { align-self: stretch; }
 /* Баганын ОРОЙД суух утга. Багана намхан үед ч уншигдахын тулд баганын ГАДНА
    талд (дээр нь) байрлана — дотор нь байрлуулбал намхан багананд багтахгүй. */
 .seriesVal {
@@ -749,7 +810,9 @@
      зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
   vector-effect: non-scaling-stroke;
 }
-/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг (`CHART.markerR`/`ring`) — Trend-тэй ижил */
+/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг (`CHART.markerR`/`ring`) — Trend-тэй ижил.
+   ⚠️ 2026-10-09 (лавлах CRM загвар): ЗӨВХӨН ганц цэгтэй хэсэгт (хоёр талдаа цоорхой) —
+   бусад цэг нуугдмал, заасан цэгт `.hmark`. */
 .seriesLineDot {
   position: absolute;
   width: 6px;
@@ -791,7 +854,7 @@
 .seriesColLine:hover::before,
 .seriesColLine:focus-visible::before { opacity: 0.7; }
 .seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
-.seriesTicks { display: flex; gap: 3px; margin-top: 6px; }
+.seriesTicks { display: flex; gap: 0; margin-top: 6px; }
 .seriesLabel {
   flex: 1;
   min-width: 0;
@@ -841,7 +904,33 @@
 .trendMeta { font-size: 10.5px; color: var(--ink-3); }
 
 /* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
-.trendPlot { position: relative; margin: 6px 9px 0; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): дээд зай 6 → 22px (`TREND_PLOT_TOP` — ui.tsx-тэй ИЖИЛ) —
+   «Дээд: X» pill-ийн байр. */
+.trendPlot { position: relative; margin: 22px 9px 0; }
+/* Зүүн тэнхлэгийн багана — гүйгчийн ГАДНА (`padding-left` inline) */
+.trendBody { position: relative; }
+.trendYAxis {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.trendYAxis span {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* Бүдэг тор — `preserveAspectRatio="none"` тул зузааныг бэхэлнэ */
+.trendGrid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
 .trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 /* `preserveAspectRatio="none"` нь зурсан зайг сунгадаг тул шугамын зузааныг
    `non-scaling-stroke`-оор бэхэлнэ — эс бөгөөс өргөн самбарт нимгэрч харагдана. */
@@ -891,10 +980,19 @@
   background: var(--tone, var(--data));
   /* envhub ring-2: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */
   box-shadow: 0 0 0 2px var(--surface);
-  opacity: 0.5;
-  transition: transform 0.12s, opacity 0.12s;
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): анхдагчаар НУУГДМАЛ (0.5 байв) */
+  opacity: 0;
+  transition: transform 0.12s, opacity 0.12s, box-shadow 0.12s;
 }
-.trendHitOn .trendDot { transform: scale(1.4); opacity: 1; }
+/* Ганц цэгтэй хэсэг — шугамгүй тул цэг нь ЦОРЫН ГАНЦ дүрс, үргэлж харагдана */
+.trendDotSolo { opacity: 1; }
+/* Заасан цэг — r 4.5 (6px × 1.5) + 2px гадаргуун цагираг + r 9 гало (25%) — `CHART.hoverR/haloR/haloA`.
+   ⚠️ `scale(1.5)` нь сүүдрийг ч томруулна — 1.33px × 1.5 ≈ 2px, 3px × 1.5 = 4.5px. */
+.trendHitOn .trendDot {
+  transform: scale(1.5);
+  opacity: 1;
+  box-shadow: 0 0 0 1.33px var(--surface), 0 0 0 3px color-mix(in srgb, var(--tone, var(--data)) 25%, transparent);
+}
 /* Тэнхлэг — цэг БҮРИЙН бүртгэлийн огноо, цэгийнхээ ЯГ доор. Урьд нь зөвхөн
    эхлэл/сүүл байсан тул завсрын хэмжилт хэзээ болсныг зөвхөн hover-оор мэдэх
    байлаа. Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ (Trend-д хураана) — 9-12 шошго
@@ -1046,3 +1144,98 @@
   opacity: 0.85;
 }
 .statIcon svg { width: 15px; height: 15px; }
+
+/* ══════════ Лавлах CRM загвар (2026-10-09) — өнгө хэвээр, зөвхөн хэв маяг ══════════ */
+
+/* ── Утгын pill (`PointCallout`) ──
+   Дэвсгэр = цувааны өнгө (`--cc` inline), цайварт `--chart-callout-shade`-ээр харлуулна;
+   бичиг `--hue-ink`. Сум нь `--pl` байрлалд (ирмэгийн цэгт зах руу шилжинэ). */
+.callout {
+  position: absolute;
+  z-index: 4;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
+  color: var(--hue-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--cc, var(--data)) var(--chart-glow, 40%), transparent);
+}
+.callout::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: var(--pl, 50%);
+  margin-left: -4px;
+  border: 4px solid transparent;
+  border-bottom-width: 0;
+  border-top-color: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
+}
+.calloutBelow::after {
+  top: auto;
+  bottom: 100%;
+  border-bottom-width: 4px;
+  border-top-width: 0;
+  border-top-color: transparent;
+  border-bottom-color: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
+}
+
+/* ── Hover/фокусын тэмдэг (`HoverMarker`) — r 4.5 + 2px гадаргуу + r 9 гало 25% ── */
+.hmark {
+  position: absolute;
+  z-index: 3;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--cc, var(--data));
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4.5px color-mix(in srgb, var(--cc, var(--data)) 25%, transparent);
+  pointer-events: none;
+}
+
+/* ── Бүдэг тор + зүүн тэнхлэг (`SeriesGrid`) ──
+   Талбайн ард (DOM-д эхэнд). Тэнхлэгийн тоо нь талбайн ГАДНА (`right: 100%`). */
+.chartGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.gridH {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--chart-grid);
+}
+.gridV {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--chart-grid);
+}
+.axisYLbl {
+  position: absolute;
+  right: 100%;
+  padding-right: 5px;
+  transform: translateY(50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ── Хэвлэлт: гэрэлтэлт, градиент багана бүдэг саарал толбо болж хэвлэгддэг ── */
+@media print {
+  .barFill,
+  .meterFill,
+  .callout,
+  .colHot { box-shadow: none; }
+  .stackSeg { box-shadow: inset -2px 0 0 var(--surface); }
+  .stackSeg:last-child { box-shadow: none; }
+  .seriesBar { background: var(--tone, var(--data)); filter: none; }
+}

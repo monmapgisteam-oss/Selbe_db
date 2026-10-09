@@ -365,7 +365,9 @@
 .progSvg { width: 100%; height: 250px; display: block; cursor: crosshair; }
 
 /* Тор — өгөгдлөөс илүү анхаарал татахгүй */
-.progGrid { stroke: var(--chart-grid); stroke-width: 1; opacity: 0.6; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): хэвтээ + БОСОО тор, бүрэн `--chart-grid` (0.6 бүдгэрүүлэлтгүй —
+   токен өөрөө hairline тунгалаг) */
+.progGrid { stroke: var(--chart-grid); stroke-width: 1; }
 .progCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
 .progAxisY { fill: var(--ink-3); font-size: 10px; opacity: 0.75; font-variant-numeric: tabular-nums; }
 .progAxisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -381,10 +383,11 @@
    ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёулаа 2px (`CHART.stroke`; урьд 1.6 / 2.8),
       тасархай `CHART.planDash` — бүх S-муруйд нэг дүрэм. Зузаан/тасархайг tsx-ээс
       inline давхар өгдөг; энд өөрчилбөл `chartStyle.ts`-д ч өөрчил. */
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): төлөвлөгөө ЦЭГЭН `1 5` (round cap) — `CHART.planDash` */
 .progPlan {
   fill: none;
   stroke-width: 2;
-  stroke-dasharray: 5 4;
+  stroke-dasharray: 1 5;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
@@ -439,7 +442,8 @@
 /* Легендийн тэмдэг — ШУГАМЫН хэлбэрийг давтана */
 /* ⚠️ 2026-10-09: тэмдэг нь шугамтай ИЖИЛ 2px (урьд бодит 3px, тасархай 0.85 бүдэг) */
 .progSolid { width: 18px; height: 2px; border-radius: 1px; display: inline-block; flex: none; }
-.progDash { width: 18px; height: 0; border-top: 2px dashed; display: inline-block; flex: none; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): домгийн тэмдэг шугамтай ИЖИЛ — ЦЭГЭН */
+.progDash { width: 18px; height: 0; border-top: 2px dotted; display: inline-block; flex: none; }
 .progAreaBad,
 .progAreaGood { width: 18px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
 .progAreaBad { background: color-mix(in srgb, var(--bad) 22%, transparent); }

@@ -18,7 +18,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty, Note, userError } from '@/components/ui';
+import { Data, Empty, Note, userError, PointCallout, SvgHoverMarker, calloutAlign } from '@/components/ui';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, ArcGISError } from '@/lib/query';
@@ -91,7 +91,7 @@ import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
 import { mnt, num, pct, text, cat, date, monthKey, dayKey } from '@/lib/format';
 import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
-import { CHART, lineSegments } from '@/lib/chartStyle';
+import { CHART, lineSegments, glow } from '@/lib/chartStyle';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { collidedIds, renumberPlan } from '@/lib/idUnique';
@@ -561,6 +561,11 @@ export function ComboChart({
             бичигдэх болсноор муруйн эхлэлийг халхалдаг тул ТУСДАА багана
             (`padL`) гаргаж, баруун зэрэгцүүлэв. Мөн 5 биш 4 шугам — нягт тор
             нь өгөгдлөөс илүү анхаарал татдаг. */}
+        {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — он·сарын шошготой сар бүрд
+            1px `--chart-grid`; хэвтээ 4 шугам (тэнхлэгийн тоо) хэвээр. */}
+        {rows.map((r, i) => (axisLbl.has(i) ? (
+          <line key={`vg-${r.label}`} x1={xFor(i)} x2={xFor(i)} y1={padT} y2={padT + plotH} className={f.curveGrid} />
+        ) : null))}
         {[0, 1 / 3, 2 / 3, 1].map((t) => {
           const gy = yFor(t * yMax);
           return (
@@ -606,12 +611,14 @@ export function ComboChart({
         })()}
 
         {/* ── МУРУЙНУУД — олгосон санхүүжилт (зузаан, бүтэн) ба биет гүйцэтгэл ── */}
-        {/* ⚠️ 2026-10-09: хоёр шугам 2px (`CHART.stroke`; урьд олголт 2.8) */}
+        {/* ⚠️ 2026-10-09: хоёр шугам 2px (`CHART.stroke`; урьд олголт 2.8).
+            ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`;
+            хэвлэхэд `chartGlow` унтраана). Дээрх «градиентгүй, glow-гүй» envhub-ийн хэлийг ОРЛОНО. */}
         {givenSegs.map((seg) => (seg.single ? null : (
-          <path key={`gs-${seg.from}`} d={seg.d} className={f.actLine} style={{ stroke: ACT, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
+          <path key={`gs-${seg.from}`} d={seg.d} className={`${f.actLine} chartGlow`} style={{ stroke: ACT, strokeWidth: CHART.stroke, filter: glow(ACT) }} vectorEffect="non-scaling-stroke" />
         )))}
         {physSegs.map((seg) => (!seg.single ? (
-          <path key={`ps-${seg.from}`} d={seg.d} className={f.physLine} style={{ stroke: PHYS, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
+          <path key={`ps-${seg.from}`} d={seg.d} className={`${f.physLine} chartGlow`} style={{ stroke: PHYS, strokeWidth: CHART.stroke, filter: glow(PHYS) }} vectorEffect="non-scaling-stroke" />
         ) : (
           /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул цэгээр */
           <circle key={`ps-${seg.from}`} cx={seg.pts[0].x} cy={seg.pts[0].y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
@@ -623,13 +630,14 @@ export function ComboChart({
                утга нүдэнд харагдах ёстой.
             ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: олголт нь муруйнхаа ДООР, биет нь
                түүнээс илүү доор бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй. */}
+        {/* ⚠️ 2026-10-09 (лавлах CRM загвар): шошготой цэгийн ТЭМДЭГ нуугдсан (бичиг хэвээр);
+            тэмдэг нь зөвхөн заасан сард (`SvgHoverMarker`), тэр сарын бичиг pill-д шилжинэ. */}
         {rows.map((r, i) => {
-          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i)) return null;
+          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i) || i === hi) return null;
           const x = xFor(i);
           const y = yFor(r.givenCum);
           return (
             <g key={`gv-${i}`}>
-              <circle cx={x} cy={y} r={CHART.markerR} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
                 {num(r.givenCum)}
               </text>
@@ -638,12 +646,11 @@ export function ComboChart({
         })}
         {rows.map((r, i) => {
           // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
-          if (i > lastPhys || r.physPct == null || !physLbl.has(i)) return null;
+          if (i > lastPhys || r.physPct == null || !physLbl.has(i) || i === hi) return null;
           const x = xFor(i);
           const y = yPhys(r);
           return (
             <g key={`ph-${i}`}>
-              <circle cx={x} cy={y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
                 {pct(r.physPct, 1)}
               </text>
@@ -655,12 +662,9 @@ export function ComboChart({
         {hi != null && (
           <g>
             <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
-            {hi <= lastGiven && (
-              <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={CHART.markerR + 1} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
-            )}
-            {hi <= lastPhys && rows[hi].physPct != null && (
-              <circle cx={xFor(hi)} cy={yPhys(rows[hi])} r={CHART.markerR + 1} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
-            )}
+            {/* ⚠️ 2026-10-09 (лавлах CRM загвар): r 4.5 + гало (`SvgHoverMarker`) */}
+            {hi <= lastGiven && <SvgHoverMarker cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} color={ACT} />}
+            {hi <= lastPhys && rows[hi].physPct != null && <SvgHoverMarker cx={xFor(hi)} cy={yPhys(rows[hi])} color={PHYS} />}
           </g>
         )}
 
@@ -674,13 +678,41 @@ export function ComboChart({
         ) : null))}
       </svg>
 
+      {/* ⚠️ 2026-10-09 (лавлах CRM загвар): заасан сарын УТГЫН PILL — олголт цэгийнхээ ДЭЭР, биет
+          ДООР (хоёр цуваа ойртсон ч давхцахгүй). `viewBox` = бодит px тул SVG-ийн цэгтэй ЯГ
+          давхцана. Задаргаа (бүтэн ₮) нь доорх tooltip-д хэвээр. */}
+      {pt && hi != null && (
+        <>
+          {hi <= lastGiven && pt.givenCum > 0 && (
+            <PointCallout
+              x={xFor(hi)}
+              y={yFor(pt.givenCum)}
+              text={num(pt.givenCum)}
+              color={ACT}
+              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
+            />
+          )}
+          {hi <= lastPhys && pt.physPct != null && (
+            <PointCallout
+              x={xFor(hi)}
+              y={yPhys(pt)}
+              text={pct(pt.physPct, 1)}
+              color={PHYS}
+              below
+              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
+            />
+          )}
+        </>
+      )}
+
       {/* ── TOOLTIP — задаргаа бүхэлдээ энд ── */}
       {pt && (
         <div
           className={f.tip}
           /* ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
-             муруйн цэгтэй яг давхцана; урьд нь wrap-ийн %-оор тул `padL`-ийн хэрээр зүүн тийш зөрдөг байв. */
-          style={{ left: xFor(hi!), transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
+             муруйн цэгтэй яг давхцана; урьд нь wrap-ийн %-оор тул `padL`-ийн хэрээр зүүн тийш зөрдөг байв.
+             ⚠️ 2026-10-09 (лавлах CRM загвар): 10 → 34px — утгын pill-тэй давхцахгүй. */
+          style={{ left: xFor(hi!), transform: `translateX(${hi! < N / 2 ? '34px' : 'calc(-100% - 34px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>

@@ -11,7 +11,7 @@ import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
-import { CHART, lineSegments } from '@/lib/chartStyle';
+import { CHART, lineSegments, glow } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
    төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
@@ -790,8 +790,8 @@ export function GeneralDash({
                 */}
               {cfMode === 'chart' && (
                 <span className={g.tlKey}>
-                  {/* ⚠️ 2026-10-09: домгийн тэмдэг муруйтай ИЖИЛ — төлөвлөгөө ТАСАРХАЙ (5 4) */}
-                  <b style={{ background: 'repeating-linear-gradient(90deg, var(--chart-plan) 0 5px, transparent 5px 9px)' }} />{tr('Төлөвлөсөн')}
+                  {/* ⚠️ 2026-10-09: домгийн тэмдэг муруйтай ИЖИЛ — төлөвлөгөө ЦЭГЭН (лавлах CRM загвар, '1 5') */}
+                  <b style={{ height: 0, background: 'none', borderTop: '2px dotted var(--chart-plan)' }} />{tr('Төлөвлөсөн')}
                   <b style={{ background: 'var(--chart-actual)' }} />{tr('Олгосон')}
                   {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
                       хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
@@ -2323,25 +2323,44 @@ function Timeline({
               style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
             />
           ))}
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — нүдний ТӨВД (цэгтэй нэг
+              байрлал); олон үед (>12) тэнцүү алхмаар ~12 шугам л — 66 сарын шугам нь тор биш
+              «зурвас» болж муруйг дарна. */}
+          {pts.map((p, i) => ((n - 1 - i) % Math.max(1, Math.ceil(n / 12)) === 0 ? (
+            <line
+              key={`vg-${p.key}`}
+              x1={xOf(i)}
+              x2={xOf(i)}
+              y1={0}
+              y2={100}
+              vectorEffect="non-scaling-stroke"
+              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
+            />
+          ) : null))}
           {/* ⚠️ 2026-10-09: төлөвлөгөө `--chart-plan` 2px ТАСАРХАЙ (`CHART.planDash`) —
-              «таамаг/төлөвлөгөө» гэж уншигдана; бодит IPC нь бүтэн. */}
+              «таамаг/төлөвлөгөө» гэж уншигдана; бодит IPC нь бүтэн.
+              ⚠️ 2026-10-09 (лавлах CRM загвар): тасархай → ЦЭГЭН ('1 5', round cap), хоёр шугам
+              цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана). */}
           <path
-            className={g.tlLine}
+            className={`${g.tlLine} chartGlow`}
             d={path}
             fill="none"
             vectorEffect="non-scaling-stroke"
-            style={{ stroke: 'var(--chart-plan)', strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash }}
+            style={{
+              stroke: 'var(--chart-plan)', strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash,
+              strokeLinecap: 'round', filter: glow('var(--chart-plan)'),
+            }}
           />
           {/* ⚠️ IPC нь ТӨЛӨВЛӨГӨӨНИЙ ДАРАА зурагдана — давхцсан хэсэгт
               бодит олголт дээр гарч, «төлөвлөснөөс хэр хоцорч байна»
               гэдэг нь нэг харцаар уншигдана. */}
           {ipcPath && (
             <path
-              className={g.tlLineIpc}
+              className={`${g.tlLineIpc} chartGlow`}
               d={ipcPath}
               fill="none"
               vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke }}
+              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke, filter: glow('var(--chart-actual)') }}
             />
           )}
           {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
