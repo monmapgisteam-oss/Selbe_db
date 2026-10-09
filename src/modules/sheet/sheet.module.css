@@ -1661,3 +1661,60 @@
 .calTypeIn:focus { outline: 2px solid var(--data); outline-offset: -1px; }
 .calTypeBad { border-color: var(--bad-ink); color: var(--bad-ink); }
 .calTypeErr { margin: -2px 0 6px; font-size: 0.72rem; color: var(--bad-ink); }
+
+/* ── БУЦААГДСАН НҮДНИЙ ЖАГСААЛТ (гүйцэтгэгч, 2026-10-09) — `FillNew.backList` ──
+   Хянагчийн «Өөрчлөгдсөн нүд» (`guitsetgel.module.css` `.chList`)-тэй ижил хэлбэр. Улаан = засах,
+   ногоон ✓ = зөвшөөрсөн — хүснэгтийн `td.chg` / `td.chgOk`-той ИЖИЛ өнгө (хоёр өөр өнгө эргэлзээ төрүүлнэ).
+   ⚠️ Дээд өндөр — олон нүдтэй бол жагсаалт хүснэгтийг дэлгэцээс түлхэхгүй. */
+.backList { margin: 6px 0 8px; }
+.backHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.backBadN, .backOkN {
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.backBadN { background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.backOkN { background: color-mix(in srgb, var(--good) 18%, transparent); }
+.backWrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow: auto; }
+.backItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  padding: 4px 10px;
+  border: 1px solid var(--bad);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.backItem:hover { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); color: var(--ink); }
+.backItem:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.backBlk {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bad) 18%, transparent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.backWork { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backItemOk { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
+.backItemOk:hover { background: color-mix(in srgb, var(--good) 20%, var(--surface)); }
+.backItemOk .backBlk { background: color-mix(in srgb, var(--good) 26%, transparent); }
+.backItemOk::after { content: "✓"; color: var(--good); font-weight: 700; }
