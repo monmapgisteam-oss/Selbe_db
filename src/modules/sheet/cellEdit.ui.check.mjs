@@ -323,8 +323,9 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   /* (а)(б)(в) блокгүй — бүх 16 багана */
   const scB = resolveSchema(blokgui, { fill: true });
   const exB = extraCols(scB);
-  ok(exB.map((x) => x.key).join(',') === 'des,ham,gun,hun,mashin,gS,gE,aS,aE,fill,L,M,cre,creBy,ed,edBy',
-    `9a: блокгүй — 16 багана, заасан дарааллаар (${exB.map((x) => x.key)})`);
+  /* ⚠️ 2026-10-08: 14 шаардлагагүй багана хасагдав (`extraCols.DEFS`-ийн ⚠️) */
+  ok(exB.map((x) => x.key).join(',') === 'aS,aE',
+    `9a: блокгүй — зөвхөн Бодит эхэлсэн/дууссан (${exB.map((x) => x.key)})`);
   ok(!exB.some((x) => /^(ObjectID|GlobalID)$/i.test(x.field)), '9a: ObjectID/GlobalID харуулахгүй');
   const rawB = {
     Des_dugaar: 17, Hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
@@ -333,22 +334,23 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     CreationDate: Date.UTC(2026, 9, 8, 3, 0), Creator: 'monmap_admin', EditDate: null, Editor: 'tumenjargal.g',
   };
   const B = render(scB, [mk(scB, 1, rawB), mk(scB, 2, {})], exB);
-  ok(B.trs.length === 4 && B.trs.every((t) => /<th/.test(t)), `9b: блокгүй толгой 4 мөр, ХООСОН <tr> алга (${B.trs.map((t) => (t.match(/<th/g) ?? []).length)})`);
+  /* ⚠️ 2026-10-08: синтетик толгой 2 мөр (бүлэг → баганын нэр + Эхлэх/Дуусах) — хоосон зурвасгүй */
+  ok(B.trs.length === 2 && B.trs.every((t) => /<th/.test(t)), `9b: блокгүй толгой 2 мөр, ХООСОН <tr> алга (${B.trs.map((t) => (t.match(/<th/g) ?? []).length)})`);
+  ok(!/aria-hidden="true"/.test(B.head), '9b: синтетик толгойд хоосон (aria-hidden) нүд алга');
+  ok(/Эхлэх/.test(B.trs[1]) && /Дуусах/.test(B.trs[1]), '9b: Эхлэх/Дуусах 2-р мөрөнд');
   const wantB = 14 + B.nBld * 4 + exB.length;
   ok(B.widths.every((w) => w === wantB) && B.tds === wantB, `9b: толгой ${B.widths} == бие ${B.tds} == 14 + n×4 + ${exB.length} (${wantB})`);
   ok(/Бусад талбар/.test(B.head) && /rowSpan="3"/i.test(B.head), '9b: «Бусад талбар» бүлгийн гарчиг + баганын нэр 3 мөр хамарна');
   const cellsB = B.rowCells(0).slice(-exB.length);
-  ok(cellsB.join('|') === `17|18FS3,22SS-5|2|0||2026-03-01|2026-09-30|2026-03-05||2026-10-08|25.3%|0%|${cellsB[12]}|monmap_admin||tumenjargal.g`,
-    `9c: утга/хэлбэр (null хоосон, 0 нь «0», огноо YYYY-MM-DD, хувь 0–1 → %): ${cellsB.join('|')}`);
-  ok(/^2026-10-0[89]$/.test(cellsB[12]), `9c: Үүсгэсэн — локал өдөр (${cellsB[12]})`);
+  ok(cellsB.join('|') === '2026-03-05|',
+    `9c: утга/хэлбэр (огноо YYYY-MM-DD, null хоосон): ${cellsB.join('|')}`);
   ok(B.rowCells(1).slice(-exB.length).every((t) => t === ''), '9c: хадгалсан утгагүй мөр — бүгд хоосон (0 БИШ)');
-  ok(/title="18FS3,22SS-5"/.test(B.body), '9c: Хамаарал — tooltip-тэй (тайрагдана)');
 
   /* (б)(в) барилгын — мөрийн түвшний талбар л (geree/bodit/L/M алга), блокийн нэр ОРОХГҮЙ */
   const scK = resolveSchema(bld, { fill: true });
   const exK = extraCols(scK);
-  ok(exK.map((x) => x.key).join(',') === 'des,ham,gun,hun,mashin,fill,cre,creBy,ed,edBy',
-    `9d: барилгын — байгаа мөрийн талбар л (${exK.map((x) => x.key)})`);
+  /* ⚠️ 2026-10-08: барилгын багцад мөрийн түвшний bodit_* талбар алга → «Бусад талбар» хоосон */
+  ok(exK.length === 0, `9d: барилгын — мөрийн бодит огноогүй тул багана алга (${exK.map((x) => x.key)})`);
   ok(!exK.some((x) => /^F\d/.test(x.field)), '9d: блокийн F…_geree/bodit «Бусад талбар»-т ОРОХГҮЙ');
   const K = render(scK, [mk(scK, 1, { Des_dugaar: 3 })], exK);
   const wantK = 14 + K.nBld * 4 + exK.length;

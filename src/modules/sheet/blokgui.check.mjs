@@ -456,9 +456,8 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual([sc.f.rowGS, sc.f.rowGE, sc.f.rowAS, sc.f.rowAE], ['geree_ehleh', 'geree_duusah', 'bodit_ehleh', 'bodit_duusah']);
   assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['CreationDate', 'Creator', 'EditDate', 'Editor']);
   const cols = extraCols(sc);
-  assert.deepEqual(cols.map((c) => c.field), ['des_dugaar', 'hamaaral', 'gun', 'hun_huch', 'mashin_mehanizm', 'geree_ehleh',
-    'geree_duusah', 'bodit_ehleh', 'bodit_duusah', 'buglusun_ognoo', 'Ажил_гүйцэтгэл', 'Төлөвлөгөөт_гүйцэтгэл1',
-    'CreationDate', 'Creator', 'EditDate', 'Editor'], 'заасан дараалал, ObjectID/GlobalID-гүй');
+  /* ⚠️ 2026-10-08: 14 шаардлагагүй багана хасагдав (`extraCols.DEFS`-ийн ⚠️) — зөвхөн бодит огноо */
+  assert.deepEqual(cols.map((c) => c.field), ['bodit_ehleh', 'bodit_duusah'], 'зөвхөн Бодит эхэлсэн/дууссан, ObjectID/GlobalID-гүй');
   assert.ok(cols.every((c) => typeof c.label() === 'string' && c.label().length > 0), 'шошго бүр tr()-ээр');
 
   /* (а)(б) барилгын: блокийн нэр ТААРАХГҮЙ, мөрийн түвшний талбаргүй бол багана алга */
@@ -469,7 +468,10 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual(extraCols(null), []);
 
   /* (в) утга — `raw`-аас, null ≠ 0 */
-  const col = (k) => cols.find((c) => c.key === k);
+  /* ⚠️ 2026-10-08: хасагдсан баганын хэлбэржүүлэлтийг (`extraVal`-ийн төрөл бүр) шууд баганаар шалгана */
+  const KIND = { hun: ['hun_huch', 'int'], des: ['des_dugaar', 'int'], L: ['Ажил_гүйцэтгэл', 'pct'], M: ['Төлөвлөгөөт_гүйцэтгэл1', 'pct'],
+    gS: ['geree_ehleh', 'day'], fill: ['buglusun_ognoo', 'day'], ham: ['hamaaral', 'text'], edBy: ['Editor', 'user'], cre: ['CreationDate', 'stamp'] };
+  const col = (k) => cols.find((c) => c.key === k) ?? { key: k, field: KIND[k][0], kind: KIND[k][1], label: () => k };
   const r = (raw) => ({ raw });
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: 0 })), { text: '0' }, 'хэмжсэн тэг «0»');
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: null })), { text: '' }, 'null хоосон (0 БИШ)');

@@ -127,7 +127,8 @@
 
 /* ⚠️ Бүлэг дотор нэг багана — талбарууд ДЭЭРЭЭС ДООШ уншигдана */
 .dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.dItem { display: flex; gap: 8px; align-items: start; min-width: 0; }
+/* ⚠️ 2026-10-09: flex-д `flex-start` — `start` нь autoprefixer-ийн «mixed support» анхааруулга өгдөг байв */
+.dItem { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
 .dt {
   /* ⚠️ ТОГТМОЛ өргөн — утгууд нэг босоо шугамаас эхэлж, нүд доош
      гүйлгэхэд мөр бүрд шинэ байрлал хайхгүй. */

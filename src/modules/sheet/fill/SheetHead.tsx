@@ -17,6 +17,14 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
 }) {
   /* ⚠️ 2026-10-09: блокгүй багцын синтетик блок — 2-р/3-р мөрийн блокийн нүд алга (1-р мөрөөс хамарсан) */
   const syn = sc.synthetic && nBld === 1;
+  /* ⚠️ 2026-10-08 (хэрэглэгч: «хүснэгтийн эвдрэлийг зас»): 4 мөрт бүтэц ЗӨВХӨН блоктой багцад (`tall`).
+     Синтетик блокт 2-р мөр (барилгын төрөл) ба 3-р мөрийн Эхлэх/Дуусахын дээрх нүд утгагүй ХООСОН
+     зурвас болж харагддаг байв. Одоо: синтетик → 2 мөр (бүлэг → баганын нэр + Эхлэх/Дуусах);
+     блокгүй, синтетик ч биш → 1 мөр (+ «Бусад талбар» байвал 2-р мөр). Байхгүй мөрийг ОГТ зурахгүй
+     тул хоосон <tr> үүсэхгүй (2026-10-09-ний sticky эвдрэлийн шалтгаан); № г.м. `rowSpan=4` нь
+     толгойн бүлгийн төгсгөлд хөтөч өөрөө хумина, `th[rowspan="4"] { top: 0 }` хэвээр үйлчилнэ. */
+  const tall = nBld > 0 && !syn;
+  const row2 = tall || syn || extra.length > 0;
   return (
     <>
             {/* ТОЛГОЙ нь `*_final_system` хуудасны бүтэц: 4 мөрт бүлэглэсэн.
@@ -87,58 +95,57 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                   <th colSpan={extra.length} className={cls("band xFirst")}>{tr('Бусад талбар')}</th>
                 )}
               </tr>
-              {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
-              <tr>
-                {syn && (
-                  <>
-                    <th className={cls("band2")} aria-hidden="true" />
-                    <th className={cls("band2")} aria-hidden="true" />
-                    <th colSpan={2} className={cls("band2")} aria-hidden="true" />
-                  </>
-                )}
-                {!syn && bands.map((g, gi) => (
-                  <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
-                ))}
-                {!syn && bands.map((g, gi) => (
-                  <th key={`bp${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
-                ))}
-                {!syn && bands.map((g, gi) => (
-                  <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
-                ))}
-                {extra.map((x, xi) => (
-                  <th key={`x${x.key}`} rowSpan={3} className={cls(`xh ${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)} title={x.field}>
-                    {x.label()}<i {...grip(extraCls(x.kind).slice(2))} />
-                  </th>
-                ))}
-
-              </tr>
-              {/* 3-р мөр — блокийн код */}
-              <tr>
-                {syn && (
-                  <>
-                    <th rowSpan={2} className={cls("bld")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
-                    <th rowSpan={2} className={cls("bld")} title={RO.blockPlan}>%<i {...grip("bld")} /></th>
-                    <th colSpan={2} className={cls("c-date2")} aria-hidden="true" />
-                  </>
-                )}
-                {!syn && sc.bld.map((b) => (
-                  <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
-                ))}
-                {!syn && sc.bld.map((b) => (
-                  <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
-                ))}
-                {!syn && sc.bld.map((b) => (
-                  <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
-                ))}
-
-              </tr>
-              {/* 4-р мөр — хуваарийн Эхлэх/Дуусах */}
-              <tr>
-                {sc.bld.map((b) => [
-                  <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
-                  <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
-                ])}
-              </tr>
+              {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар); синтетикт баганын нэр + Эхлэх/Дуусах */}
+              {row2 && (
+                <tr>
+                  {/* ⚠️ 2026-10-08: синтетик — бүлгийн гарчгийн ШУУД доор баганын нэр (`synH` — өндөр 40px) */}
+                  {syn && (
+                    <>
+                      <th className={cls("bld synH")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
+                      <th className={cls("bld synH")} title={RO.blockPlan}>%<i {...grip("bld")} /></th>
+                      <th className={cls("c-date synH")}>{tr('Эхлэх')}<i {...grip("date")} /></th>
+                      <th className={cls("c-date synH")}>{tr('Дуусах')}<i {...grip("date")} /></th>
+                    </>
+                  )}
+                  {tall && bands.map((g, gi) => (
+                    <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                  ))}
+                  {tall && bands.map((g, gi) => (
+                    <th key={`bp${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                  ))}
+                  {tall && bands.map((g, gi) => (
+                    <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
+                  ))}
+                  {extra.map((x, xi) => (
+                    <th key={`x${x.key}`} rowSpan={3} className={cls(`xh ${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)} title={x.field}>
+                      {x.label()}<i {...grip(extraCls(x.kind).slice(2))} />
+                    </th>
+                  ))}
+                </tr>
+              )}
+              {/* 3-р мөр — блокийн код (зөвхөн блоктой багц) */}
+              {tall && (
+                <tr>
+                  {sc.bld.map((b) => (
+                    <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
+                  ))}
+                  {sc.bld.map((b) => (
+                    <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
+                  ))}
+                  {sc.bld.map((b) => (
+                    <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
+                  ))}
+                </tr>
+              )}
+              {/* 4-р мөр — хуваарийн Эхлэх/Дуусах (зөвхөн блоктой багц) */}
+              {tall && (
+                <tr>
+                  {sc.bld.map((b) => [
+                    <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
+                    <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
+                  ])}
+                </tr>
+              )}
             </thead>
     </>
   );

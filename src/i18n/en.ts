@@ -6731,15 +6731,6 @@ const en: Record<string, string> = {
   "Энэ ажлын мөрд «Обьём» бөглөгдөөгүй (эсвэл 0) тул гүйцэтгэлийн хувь бодогдохгүй — бөглөх боломжгүй. Эх хүснэгтэд мөрийн Обьёмыг оруулна уу.": "This work row has no «Volume» (or it is 0), so progress cannot be calculated and the cell cannot be filled. Enter the row's Volume in the source sheet.",
   "Өмнөх бөглөлтөөс хойш хийсэн обьёмоо бичнэ — «Обьёмын нийлбэр»-т нэмэгдэж, гүйцэтгэл = нийлбэр ÷ Обьём.": "Enter the volume done since the previous fill — it is added to «Volume total», and progress = total ÷ Volume.",
   "Ажил гүйцэтгэл": "Work progress",
-  "Дэс дугаар": "Sequence No.",
-  "Гэрээний эхлэх": "Contract start",
-  "Гэрээний дуусах": "Contract end",
-  "Бөглөсөн огноо": "Fill date",
-  "Ажил гүйцэтгэл (хадгалсан)": "Work progress (stored)",
-  "Төлөвлөгөөт гүйцэтгэл1 (хадгалсан)": "Planned progress 1 (stored)",
-  "Үүсгэсэн": "Created",
-  "Үүсгэгч": "Created by",
-  "Засварласан": "Edited",
   "Бусад талбар": "Other fields",
   "Хүснэгтийн төгсгөлд үйлчилгээний бусад талбарыг (дэс дугаар, хамаарал, нөөц, огноо, засварласан хүн…) зөвхөн унших баганаар харуулна/нууна.": "Show/hide the service's other fields (sequence no., dependency, resources, dates, editor…) as read-only columns at the end of the table.",
   "«Бусад талбар» нь үйлчилгээнд хадгалагдсан утгыг ЗӨВХӨН харуулна — энэ хуудаснаас засагдахгүй.": "«Other fields» only display values stored in the service — they cannot be edited on this page.",
@@ -6767,7 +6758,7 @@ const en: Record<string, string> = {
   "{0}-р долоо хоног · оноо — багцаар": "Week {0} · score by package",
   "Бүх огноо": "All dates",
   "{0}-ээс хойш": "From {0}",
-  "{0} хүртэл": "Until {0}",
+  "{0} хүртэл": "Until {0}"
 };
 
 export default en;
