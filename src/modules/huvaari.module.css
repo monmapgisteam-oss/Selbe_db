@@ -1935,3 +1935,90 @@ span.blkChip { cursor: default; }
 }
 .howtoList { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; color: var(--ink-2); }
 .howtoPop .tlZoomB { align-self: flex-end; }
+
+/* ══════════ 2026-10-09: ТӨЛӨВЛӨЛТИЙН ХАРИЛЦААНЫ ЗАСВАРУУД ══════════ */
+
+/* ⚠️ НҮДНИЙ ТАТГАЛЗСАН ШАЛТГААН (`TaskRow.DateCell/DaysCell/HamCell`) — оролтыг ороох `cellWrap` нь зөвхөн
+   абсолют шалтгааны агуулах блок; өргөнийг оролт өөрөө (`.rowDate`/`.rowDays`) барина, мөрийн өндөр хөдлөхгүй.
+   Шалтгаан нь `.cellHelp`-ийн ижил байрлалд, улаан. */
+.cellWrap { position: relative; flex: none; display: flex; }
+.cellErr {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  padding: 1px 6px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--bad-ink);
+  background: var(--surface);
+  border: 1px solid var(--bad-ink);
+  border-radius: var(--r-sm);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--ink) 12%, transparent);
+  pointer-events: none;
+}
+
+/* ⚠️ ИДЭВХТЭЙ ТАБЫН ЭХЛЭХ/ДУУСАХ НҮД ҮРГЭЛЖ ИЛ (`gSideEdP` — төлөвлөгөө, `gSideEdG` — гэрээ). Нарийн дэлгэц
+   (≤1180px) ба хураасан самбар (`gSideNarrow`) бусад огноо · хоног · нөөцийг нуусаар; зөвхөн засагдах хоёр нүд
+   үлдэнэ — урьд нь тэнд бичих зам огт алга болдог байв. Сонгогч (0,3,0) нь нуух дүрмүүдээс давамгайлна. */
+.gSideEdP .gHeadDate.cPs, .gSideEdP .gHeadDate.cPe,
+.gSideEdG .gHeadDate.cGs, .gSideEdG .gHeadDate.cGe { display: flex; }
+.gSideEdP .rowDate.cPs, .gSideEdP .rowDate.cPe,
+.gSideEdG .rowDate.cGs, .gSideEdG .rowDate.cGe { display: block; }
+.gSideNarrow.gSideEdP, .gSideNarrow.gSideEdG {
+  flex-basis: calc(clamp(360px, 30%, 480px) + 150px + var(--side-extra, 0px) + var(--col-extra, 0px));
+}
+@media (max-width: 1180px) {
+  .gSide.gSideEdP, .gSide.gSideEdG { flex-basis: calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)); }
+}
+
+/* ⚠️ ОЛОН БЛОКТ БИЧИХ тэмдэг — засагдах эхлэх нүдний толгойд «→ N блок» (`Huvaari` `gBlks`) */
+.multiTag {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--data);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ⚠️ ЧИРЭЛТИЙН ШОШГО — чирж буй зурвасын дээр «эхлэх → дуусах · Nх» (эхний мөрд доор). Чирэлтэд саад болохгүй. */
+.dragTip {
+  position: absolute;
+  top: -19px;
+  z-index: 5;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--surface);
+  background: var(--ink);
+  border-radius: var(--r-sm);
+  pointer-events: none;
+}
+.dragTipBelow { top: calc(100% + 2px); }
+
+/* ⚠️ ТҮР МЭДЭГДЭЛ (алдаа · тэмдэглэл · гинж · шүүлт) — урсгалд биш, дэлгэцийн доод төвд ДАВХАРГА: урьд нь
+   баннер гарч/алга болох бүрд хүснэгт доош/дээш үсэрч, чирж байсан зурвас заагчаас холддог байв.
+   z 55 — бүтэн дэлгэц (50)-ээс дээш, popup (60)-оос доош. Баннерууд өөрсдийн хэлбэрээ (`.err`/`.note`) хадгална. */
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  max-width: min(720px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toasts > * { pointer-events: auto; box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent); }
+.toasts .note { background: var(--surface); }
+
+/* ⚠️ «Үсрэх» тааралтын тоолуур «2/7» ба ‹ › */
+.jumpN { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }

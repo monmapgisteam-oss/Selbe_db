@@ -211,6 +211,18 @@ type PlanModalProps = {
   resFields: { hun: boolean | null; mashin: boolean | null };
   onClose: () => void;
   /**
+   * ⚠️ 2026-10-09: ЦОНХ ЧИРЭЛТЭЭР НЭЭГДСЭН (`useDragPlan.dragOpen`) — хаахад чирэлт буцдаг (2026-09-08-ны шийдвэр
+   *    ХЭВЭЭР) гэдгийг ил бичиж, «Огноог үлдээх» (`onKeep`) товч гаргана: сарын задаргаа шаардалгүй огноог үлдээнэ.
+   */
+  dragged?: boolean;
+  onKeep?: () => void;
+  /**
+   * ⚠️ 2026-10-09: БҮЛГИЙГ ШИЛЖҮҮЛЭХ — бүлгийн мөрд л; доторх навч ажил бүрийн мужийг сонгосон блокуудад
+   *    N хоногоор зөөнө (`Huvaari.shiftGroup` — нэг `applyChanges`, буцаагдана). Бүлгийн огноо өөрөө
+   *    гараар засагдахгүй дүрэм (2026-09-06) ХЭВЭЭР — хүүхдүүд хөдөлж, бүлэг дагана.
+   */
+  onShiftGroup?: (days: number, blks: number[]) => void;
+  /**
    * ⚠️ 2026-10-07: хаахад фокус буцаах элемент (`useFocusTrap`-ийн нөөц зам) — нүднээс
    *    (`DateCell`-д Enter) нээгдэхэд оролт аль хэдийн салсан тул «өмнөх фокус» `<body>`
    *    байдаг байв. Хаах агшинд дуудагдана (виртуал мөр дахин зурагдсан байж болно).
@@ -272,13 +284,24 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock,
+  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
      цонхноос гарч ард байгаа 1,400 мөрт төөрдөг байв. */
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef, true, returnFocus);
+  /* ⚠️ 2026-10-09: НЭЭХЭД ФОКУС «Тавих» (идэвхтэй бол), эс бөгөөс эхний огнооны талбарт — урхи эхний элемент «×»-ийг
+     фокусладаг тул чирэлтийн дараа Enter дарахад цонх хаагдаж чирэлт БУЦДАГ байв. Урхийн эффектийн ДАРАА
+     (эффектүүд зарласан дарааллаар) ажиллана. */
+  const applyBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const b = applyBtn.current;
+    if (b && !b.disabled) { b.focus(); return; }
+    mdRef.current?.querySelector<HTMLElement>('[data-md-dates] input:not([disabled])')?.focus();
+  }, []);
+  /** ⚠️ 2026-10-09: бүлгийг шилжүүлэх хоногийн текст (`onShiftGroup`) */
+  const [shiftTxt, setShiftTxt] = useState('');
 
   /* ⚠️ ТАЛБАР ТАВИХ ЭФФЕКТҮҮД `r.oid`/`blk`-ЭЭР (2026-09-24): хуваалцсан ноорогийн
      3 с мөчлөг `setDraft(new Map)` хийхэд `r` объект дахин үүсч, бичиж байх
@@ -660,14 +683,16 @@ function PlanModalBody({
    */
   const dlOut = useMemo((): Dep[] => {
     if (r.group || selB.size <= 1 || blocks.length <= 1) return dl;
-    const mine = dl.filter((d) => d.blk === blk);
+    /* ⚠️ 2026-10-09: блок хоорондын (`src`) уялдаа ХУУЛАГДАХГҮЙ — эх блок нь тодорхой нэг блок тул бусад блокт
+       ижил утгаар тавих нь хэрэглэгчийн санаа биш байж болно; тус бүрд нь гараар тавина. */
+    const mine = dl.filter((d) => d.blk === blk && d.src == null);
     if (!mine.length) return dl;
     const allSel = [...Array(blocks.length).keys()].every((b) => selB.has(b));
     let out = [...dl];
     for (const d of mine) {
       const base = { code: d.code, type: d.type, lag: d.lag };
       if (allSel) {
-        out = out.filter((x) => !(x.code === d.code && x.blk != null));
+        out = out.filter((x) => !(x.code === d.code && x.blk != null && x.src == null));
         const i = out.findIndex((x) => x.code === d.code && x.blk == null);
         if (i >= 0) out[i] = base; else out.push(base);
         continue;
@@ -826,6 +851,8 @@ function PlanModalBody({
   };
 
   const clear = () => {
+    /* ⚠️ 2026-10-09: ОЛОН блок сонгосон үед нэг товшилтоор олон блокийн огноо · задаргаа устдаг байв — баталгаажуулна */
+    if (selB.size > 1 && !window.confirm(tr('{0} блокийн огноо ба сарын задаргаа арилна. Үргэлжлүүлэх үү?', num(selB.size)))) return;
     const next = r.spans.slice();
     for (const b of selB) next[b] = null;
     /* ⚠️ Зөвхөн ОГНООГ арилгана — уялдаа нь хэвээр: хуваариа дахин тавихад
@@ -947,7 +974,23 @@ function PlanModalBody({
             үргэлжлэх — бодогдоно). Бодит нь БҮРТГЭЛ: гинж, бүлгийн муж, сарын
             задаргаанд нөлөөлөхгүй; хагас (эхэлсэн, дуусаагүй) хэвийн; бүлэгт зөвхөн
             харагдана (хүүхдийн MIN/MAX); талбаргүй үйлчилгээнд багана гарахгүй. */}
-        <div className={h.mdCols}>
+        {/* ⚠️ 2026-10-09: ЧИРЭЛТЭЭР нээгдсэн — хаахад буцна гэдгийг ил (`dragged`-ийн ⚠️) */}
+        {dragged && canEdit && (
+          <p className={h.mdWarn} role="status">
+            {tr('Хаавал чирэлт буцна')}
+            {onKeep && (
+              <>
+                {' · '}
+                <button type="button" className={h.mdSnap} onClick={onKeep}
+                  title={tr('Чирсэн огноог сарын задаргаа шаардалгүй үлдээж цонхыг хаана')}>
+                  {tr('Огноог үлдээх')}
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {/* ⚠️ 2026-10-09: `data-md-dates` — нээхэд фокус авах эхний огнооны талбарыг олно */}
+        <div className={h.mdCols} data-md-dates="">
           <div className={h.mdCol}>
             <div className={h.mdColHead}>{tr('Төлөвлөгөөт')}</div>
             <label className={h.mdField}>
@@ -1020,6 +1063,29 @@ function PlanModalBody({
             {tr('Бүлгийн хугацаа нь доторх ажлуудынхаа хамгийн эрт эхлэх — хамгийн сүүл дуусахаар ӨӨРӨӨ бодогдоно. Гараар засахгүй: ажлуудаа зөөвөл бүлэг дагана.')}
           </p>
         )}
+        {/* ⚠️ 2026-10-09: БҮЛГИЙГ ШИЛЖҮҮЛЭХ (`onShiftGroup`-ийн ⚠️) — сөрөг = урагш; бүхэл, ±3650 */}
+        {r.group && canEdit && onShiftGroup && (() => {
+          const nv = Number(shiftTxt);
+          const ok = /^[+-]?\d{1,4}$/.test(shiftTxt.trim()) && nv !== 0 && Math.abs(nv) <= MAX_DAYS;
+          return (
+            <p className={h.mdPar}>
+              <label className={h.mdField}>
+                {tr('Бүлгийг шилжүүлэх')}
+                <input type="number" step={1} min={-MAX_DAYS} max={MAX_DAYS} className={h.numIn} value={shiftTxt}
+                  aria-label={tr('Бүлгийг шилжүүлэх хоног')}
+                  title={tr('Доторх бүх ажлын огноог сонгосон блокуудад N хоногоор зөөнө (сөрөг = урагш)')}
+                  onChange={(e) => setShiftTxt(e.target.value)} />
+                {' '}{tr('хоног')}
+              </label>
+              {' '}
+              <button type="button" className={h.tlZoomB} disabled={!ok}
+                onClick={() => { if (!ok) return; onShiftGroup(Math.trunc(nv), [...selB]); onClose(); }}>
+                {tr('Шилжүүлэх')}
+              </button>
+              {selB.size > 1 && <span className={h.mdParWork}> {tr('{0} блокт', num(selB.size))}</span>}
+            </p>
+          );
+        })()}
         {/* ⚠️ 2026-09-30: обьёмтой бүлэгт сарын хэсэг яагаад алга болохыг хэлнэ (`total`-ийн ⚠️) */}
         {r.group && obyem && r.vol != null && r.vol > 0 && (
           <p className={h.mdPar}>
@@ -1243,8 +1309,11 @@ function PlanModalBody({
                     title={tr('Аль блокт үйлчлэх — хоосон бол бүх блокт')}
                     onChange={(e) => setDl((v) => v.map((x, k) => {
                       if (k !== j) return x;
-                      const { blk: _b, ...rest } = x;
-                      return e.target.value === '' ? rest : { ...rest, blk: Number(e.target.value) };
+                      /* ⚠️ 2026-10-09: «бүх блок» болгоход эх блок (`src`) ч арилна — блокгүй уялдаанд утгагүй */
+                      const { blk: _b, src: _s, ...rest } = x;
+                      if (e.target.value === '') return rest;
+                      const nb = Number(e.target.value);
+                      return x.src != null && x.src !== nb ? { ...rest, blk: nb, src: x.src } : { ...rest, blk: nb };
                     }))}>
                     <option value="">{tr('бүх блок')}</option>
                     {blocks.map((name, b) => <option key={name} value={b}>{name}</option>)}
@@ -1252,6 +1321,21 @@ function PlanModalBody({
                     {d.blk != null && d.blk >= blocks.length && (
                       <option value={d.blk}>{tr('{0}-р блок алга', String(d.blk + 1))}</option>
                     )}
+                  </select>
+                )}
+                {/* ⚠️ 2026-10-09: БЛОК ХООРОНДЫН уялдаа (`Dep.src`, «@A>B») — блоктой уялдаанд л; хоосон = ижил блокоос */}
+                {blocks.length > 1 && d.blk != null && (
+                  <select className={h.select} value={d.src ?? ''} disabled={!canEdit}
+                    aria-label={tr('Урд ажлын блок')}
+                    title={tr('Урд ажлын аль блокийн огноогоор — хоосон бол ижил блок')}
+                    onChange={(e) => setDl((v) => v.map((x, k) => {
+                      if (k !== j) return x;
+                      const { src: _s, ...rest } = x;
+                      const sb = e.target.value === '' ? null : Number(e.target.value);
+                      return sb == null || sb === x.blk ? rest : { ...rest, src: sb };
+                    }))}>
+                    <option value="">{tr('ижил блокоос')}</option>
+                    {blocks.map((name, b) => <option key={name} value={b}>{tr('{0}-аас', name)}</option>)}
                   </select>
                 )}
                 {canEdit && (
@@ -1322,7 +1406,7 @@ function PlanModalBody({
           <span className={h.spacer} />
           <button type="button" className={h.tlZoomB} onClick={tryClose}>{tr('Хаах')}</button>
           {canEdit && (
-            <button type="button" className={h.save} onClick={apply}
+            <button type="button" className={h.save} onClick={apply} ref={applyBtn}
               disabled={applyOff}
               title={applyWhy}>
               {tr('Тавих')}

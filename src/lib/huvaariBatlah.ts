@@ -1962,3 +1962,53 @@ export async function countPlanReturned(username: string | null | undefined): Pr
     return null;
   }
 }
+
+/**
+ * ЗОХИОГЧИД САЯХАН БАТЛАГДСАН, ХАРААГҮЙ ИЛГЭЭЛТ — «Хуваарь» цэсний тэмдэгт (2026-10-09).
+ *
+ * ⚠️ ЯАГААД: буцаалт тэмдэгтэй (`countPlanReturned`) атлаа батлагдсан тухай зохиогч «Хуваарь» хуудсаа нээж
+ *    сүүлийн шийдвэрийг харах хүртэл мэддэггүй байв. Богино настай: батлагдсанаас хойш `PLAN_APPROVED_TTL`
+ *    (3 хоног) дотор, зохиогч «Хуваарь» хуудсанд тэр илгээлтийг хараагүй (`markPlanApprovedSeen`) бол л.
+ * ⚠️ «Харсан» нь ЭНЭ ХӨТЧИЙН localStorage — өөр төхөөрөмжид дахин тоологдож болно (3 хоногоор хязгаарлагдана).
+ * ⚠️ Дүрэм `countPlanReturned`-тэй ижил: (багц · төрөл)-ийн СҮҮЛИЙН илгээлт · зохиогч нь би · зохиогчийн хүрээнд.
+ */
+export const PLAN_APPROVED_TTL = 3 * 86_400_000;
+const APPROVED_SEEN_KEY = 'selbe-huvaari-approved-seen';
+function approvedSeen(): Set<number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(APPROVED_SEEN_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : []);
+  } catch { return new Set(); }
+}
+/** Зохиогч батлагдсан илгээлтийг «Хуваарь» хуудсанд харсныг тэмдэглэнэ (сүүлийн 200 л хадгална) */
+export function markPlanApprovedSeen(oid: number): void {
+  try {
+    const s = approvedSeen();
+    if (s.has(oid)) return;
+    s.add(oid);
+    localStorage.setItem(APPROVED_SEEN_KEY, JSON.stringify([...s].slice(-200)));
+  } catch { /* хаалттай орчин — тэмдэг 3 хоногийн дараа өөрөө алга болно */ }
+}
+export async function countPlanApproved(username: string | null | undefined): Promise<number | null> {
+  try {
+    const me = (username ?? '').trim().toLowerCase();
+    if (!me) return AUTH.appId ? null : 0;
+    if (AUTH.appId) {
+      if (!capsRemoteReady() || !huvaariAclReady()) return null;
+      if (!hasCap(me, 'plan')) return 0;
+    }
+    if (!(await planTableState(false)).ok) return null;
+    const sc = AUTH.appId ? huvaariScope(me, 'author') : null;
+    if (Array.isArray(sc) && sc.length === 0) return 0;
+    const rows = await loadBadgeLast();
+    const seen = approvedSeen();
+    const now = Date.now();
+    return rows.filter((x) => x.status === PLAN_STATUS.approved
+      && x.author.trim().toLowerCase() === me
+      && x.approverAt != null && now - x.approverAt < PLAN_APPROVED_TTL
+      && !seen.has(x.oid)
+      && (sc == null || sc.includes(x.pkgGroup))).length;
+  } catch {
+    return null;
+  }
+}

@@ -295,8 +295,11 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
   /* 2026-09-29 аудит: хяналтын горимоос ГАДУУРХ «Шийдвэрлэх → Буцаах» ч тэмдэг дамжуулна */
-  assert.ok(/onReject=\{\(txt\) => void decide\(false, txt, previewing \? reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)/.test(H),
-    'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна');
+  /* ⚠️ 2026-10-09: урьдчилан хараагүй бол `[]` (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) — тэмдэглэгээгүй буцаалт алга */
+  assert.ok(/onReject=\{\(txt\) => void \(previewing\s*\? decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\)\s*: decide\(false, [\s\S]{0,200}, \[\]\)\)/.test(H),
+    'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна (эсвэл хараагүй үед [] биш)');
+  assert.ok(/reason: `\$\{why\}\\n\$\{blindNote\(\)\}`\.slice\(0, REASON_MAX\), okRows: \[\]/.test(V),
+    'HuvaariBatlah: дарааллаас буцаахад okRows: [] (бүгд улаан) дамжихгүй');
   /* 2026-09-29 аудит: буцаалт · илгээлт солигдох · батлалтын дараа `okRows` цэвэрлэгдэнэ */
   assert.ok((H.match(/setOkRows\(new Set\(\)\)/g) ?? []).length >= 7,
     'Huvaari: `okRows` буцаалт/илгээлт солигдолт/батлалтын дараа цэвэрлэгдэхгүй — өмнөх ногоон дараагийн илгээлтэд үлдэнэ');

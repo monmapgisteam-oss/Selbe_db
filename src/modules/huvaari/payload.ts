@@ -1,6 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
-import { normDayMs, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { msToDay, normDayMs, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { PlanRow, Span } from '@/lib/plan';
 import { formatDeps, parseDeps, rollUpGroups } from '@/lib/deps';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
@@ -155,10 +155,37 @@ kind: PlanKind; base: PlanRow[]; rows: SheetRow[]; obPlan: PkgPlan; obRes: PkgRe
     keys,
   };
 }
+/**
+ * ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТИЙН НЭГ НҮД (2026-10-09) — урьд нь зөвхөн ТОО (`conflicts`) буцдаг тул батлагч/зохиогч
+ * «12 нүд» гэснээс аль мөр, аль блок, юу зөрснийг олох аргагүй байв.
+ * `blk` — мужийн блокийн индекс (дуудагч нэрлэнэ); `blok` — сарын обьём/нөөцийн блокийн нэр.
+ */
+export type PayConflict = {
+  oid: number | null; no: string; work: string;
+  what: 'span' | 'deps' | 'obyem' | 'actual' | 'res' | 'obres';
+  blk: number | null; blok: string | null;
+  /** Серверийн ОДООГИЙН утга ба саналын утга — харуулах текст */
+  srv: string; mine: string;
+};
 /** `payloadToDrafts`-ийн үр дүн — амжилттай бол буулгах 6 Map хамт (дуудагч state-д тавина) */
 export type PayloadApply =
-| { ok: true; conflicts: number; unknown: number; maps: { draft: Draft; ham: Map<number, string>; obDraft: Map<string, Map<string, number>>; obResDraft: Map<string, Map<string, MonthRes>>; aDraft: ADraft; resDraft: ResDraft } }
-| { ok: false; why: 'kind' | 'conflict' | 'unknown'; conflicts: number; unknown: number };
+| { ok: true; conflicts: number; unknown: number; conflictList: PayConflict[]; maps: { draft: Draft; ham: Map<number, string>; obDraft: Map<string, Map<string, number>>; obResDraft: Map<string, Map<string, MonthRes>>; aDraft: ADraft; resDraft: ResDraft } }
+| { ok: false; why: 'kind' | 'conflict' | 'unknown'; conflicts: number; unknown: number; conflictList: PayConflict[] };
+
+/* Зөрчлийн утгын товч текст (2026-10-09) — `null` = «—» (0 биш) */
+const fSpan = (s: Span | null | undefined): string => (s ? `${msToDay(s.start)}–${msToDay(s.end)}` : '—');
+const fDay = (v: number | null | undefined): string => (v == null ? '—' : msToDay(v));
+const fNum = (v: number | null | undefined): string => (v == null ? '—' : num(v));
+const fMonths = (m: ReadonlyMap<string, number> | null | undefined): string => {
+  if (!m || !m.size) return '—';
+  const s = [...m].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([k, v]) => `${k}:${num(v)}`).join(' ');
+  return s.length > 60 ? `${s.slice(0, 57)}…` : s;
+};
+const fRes = (m: ReadonlyMap<string, MonthRes> | null | undefined): string => {
+  if (!m || !m.size) return '—';
+  const s = [...m].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([k, v]) => `${k}:${fNum(v.hun)}/${fNum(v.mashin)}`).join(' ');
+  return s.length > 60 ? `${s.slice(0, 57)}…` : s;
+};
 
 /**
  * Илгээлтийн агуулгыг ноорогийн Map-ууд болгоно — БАТЛАХЫН ӨМНӨХ алхам
@@ -173,7 +200,7 @@ curPlan: PkgPlan,
 curRes: PkgRes,
 { kind, n }: { kind: PlanKind; n: number },
 ): PayloadApply {
-  if (p0.kind !== kind) return { ok: false, why: 'kind', conflicts: 0, unknown: 0 };
+  if (p0.kind !== kind) return { ok: false, why: 'kind', conflicts: 0, unknown: 0, conflictList: [] };
   /* ⚠️ 2026-09-29: илгээснээс хойш жааз солигдсон бол саналын `oid`-ыг ажлын кодоор
      одоогийн мөр рүү зөөнө — эс бөгөөс бүх мөр «олдсонгүй» болж, буцаагдсан хуваарь
      ноорогт буухгүй, хүлээгдэж буй нь батлагдахгүй байв. `keys`-гүй хуучин илгээлт хэвээр. */
@@ -182,6 +209,22 @@ curRes: PkgRes,
   const cur = new Map(curPlanRows.map((r) => [r.oid, r]));
   const curSheet = new Map(curRows.map((r) => [r.oid, r]));
   let conflicts = 0;
+  /* ⚠️ 2026-10-09: зөрчил бүрийг ЖАГСААНА (`PayConflict`-ийн ⚠️) — тоо `conflicts`-тэй ҮРГЭЛЖ тэнцүү */
+  const cl: PayConflict[] = [];
+  const byDes = new Map<number, SheetRow>();
+  for (const r of curRows) if (r.des != null && !byDes.has(r.des)) byDes.set(r.des, r);
+  const hit = (oid: number | null, what: PayConflict['what'], blk: number | null, blok: string | null, srv: string, mine: string) => {
+    conflicts += 1;
+    const r = oid != null ? curSheet.get(oid) : undefined;
+    cl.push({ oid, no: r?.no ?? '', work: r?.work ?? '', what, blk, blok, srv, mine });
+  };
+  /** `des|блок` түлхүүрийн мөр (сарын обьём/нөөц) */
+  const hitOb = (k: string, what: 'obyem' | 'obres', srv: string, mine: string) => {
+    const cut = k.indexOf('|');
+    const r = byDes.get(Number(k.slice(0, cut)));
+    conflicts += 1;
+    cl.push({ oid: r?.oid ?? null, no: r?.no ?? '', work: r?.work ?? k.slice(0, cut), what, blk: null, blok: k.slice(cut + 1), srv, mine });
+  };
   /*
    * ⚠️ МЭДЭГДЭХГҮЙ OID-ыг НООРОГТ ОРУУЛАХГҮЙ (2026-09-25 аудит). Илгээлт нь
    *    ИЛГЭЭСЭН ҮЕИЙН жаазын oid-оор түлхүүрлэгддэг; хооронд нь шинэ жааз
@@ -222,7 +265,7 @@ curRes: PkgRes,
       /* ⚠️ Сервер аль хэдийн САНАЛТАЙ ИЖИЛ бол зөрчил БИШ (2026-09-24 аудит):
          хагас бичилт (огноо бичигдээд задаргаа унасан) дараа нь мөнхөд
          «зэрэгцээ өөрчлөлт» гэж зогсдог байв. Доорх бүх тулгалтад ижил. */
-      if (!sameSpan(b0, now.spans[b] ?? null) && !sameSpan(v0, now.spans[b] ?? null)) conflicts += 1;
+      if (!sameSpan(b0, now.spans[b] ?? null) && !sameSpan(v0, now.spans[b] ?? null)) hit(oid, 'span', b, null, fSpan(now.spans[b]), fSpan(v0));
       return v0;
     });
     d.set(oid, v);
@@ -260,7 +303,7 @@ curRes: PkgRes,
         const b0 = nSpan(bs[b]);
         /* Зохиогч хөндөөгүй → серверийн одоогийнх */
         if (sameSpan(v0, b0)) return;
-        if (!sameSpan(b0, nb) && !sameSpan(v0, nb)) conflicts += 1;
+        if (!sameSpan(b0, nb) && !sameSpan(v0, nb)) hit(oid, 'span', b, null, fSpan(nb), fSpan(v0));
       }
       if (sameSpan(v0, nb)) return;
       next[b] = v0;
@@ -280,7 +323,7 @@ curRes: PkgRes,
     hm.set(Number(k), v);
     if (bd && k in bd) {
       const now = curSheet.get(Number(k));
-      if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== v) conflicts += 1;
+      if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== v) hit(Number(k), 'deps', null, null, now.ham || '—', v || '—');
     }
   }
   const ob = new Map<string, Map<string, number>>();
@@ -293,7 +336,7 @@ curRes: PkgRes,
       if (sameMonths(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      if (!sameMonths(now, was) && !sameMonths(now, mine)) conflicts += 1;
+      if (!sameMonths(now, was) && !sameMonths(now, mine)) hitOb(k, 'obyem', fMonths(now), fMonths(mine));
     }
     ob.set(k, mine);
   }
@@ -316,7 +359,7 @@ curRes: PkgRes,
         const b0 = nDay(baseArr[b]);
         const n0 = nowArr[b] ?? null;
         if (v0 === b0) return n0;
-        if (b0 !== n0 && v0 !== n0) conflicts += 1;
+        if (b0 !== n0 && v0 !== n0) hit(oid, 'actual', b, null, fDay(n0), fDay(v0));
         return v0;
       });
     ad.set(oid, { start: pick(v.start, bs?.start, now?.aStart), end: pick(v.end, bs?.end, now?.aEnd) });
@@ -330,7 +373,7 @@ curRes: PkgRes,
     const pick = (v0: number | null, b0: number | null | undefined, n0: number | null | undefined) => {
       if (!bs || !now) return v0;
       if (v0 === (b0 ?? null)) return n0 ?? null;
-      if ((b0 ?? null) !== (n0 ?? null) && v0 !== (n0 ?? null)) conflicts += 1;
+      if ((b0 ?? null) !== (n0 ?? null) && v0 !== (n0 ?? null)) hit(oid, 'res', null, null, fNum(n0), fNum(v0));
       return v0;
     };
     rd.set(oid, { hun: pick(v.hun, bs?.hun, now?.hun), mashin: pick(v.mashin, bs?.mashin, now?.mashin) });
@@ -346,16 +389,28 @@ curRes: PkgRes,
       if (sameRes(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      if (!sameRes(now, was) && !sameRes(now, mine)) conflicts += 1;
+      if (!sameRes(now, was) && !sameRes(now, mine)) hitOb(k, 'obres', fRes(now), fRes(mine));
     }
     or.set(k, mine);
   }
   const unknown = unk.size;
-  if (strict && conflicts) return { ok: false, why: 'conflict', conflicts, unknown };
+  if (strict && conflicts) return { ok: false, why: 'conflict', conflicts, unknown, conflictList: cl };
   /* ⚠️ Батлах/харах (`strict`) замд мэдэгдэхгүй мөртэй саналыг БУУЛГАХГҮЙ —
      хагас санал харагдаж/батлагдах ёсгүй. Дуудагч `unknown`-оор алдаа хэлнэ. */
-  if (strict && unknown) return { ok: false, why: 'unknown', conflicts, unknown };
-  return { ok: true, conflicts, unknown, maps: { draft: d, ham: hm, obDraft: ob, obResDraft: or, aDraft: ad, resDraft: rd } };
+  if (strict && unknown) return { ok: false, why: 'unknown', conflicts, unknown, conflictList: cl };
+  return { ok: true, conflicts, unknown, conflictList: cl, maps: { draft: d, ham: hm, obDraft: ob, obResDraft: or, aDraft: ad, resDraft: rd } };
+}
+
+/**
+ * Зөрчлийн НЭГ мөрийн текст (2026-10-09) — «№ ажил · блок · юу: сервер X → санал Y».
+ * @param bld блокийн нэрс (`sc.bld`) — мужийн/бодит огнооны блокийн индексийг нэрлэнэ
+ */
+export function conflictText(c: PayConflict, bld: readonly string[]): string {
+  const what = c.what === 'span' ? tr('огноо') : c.what === 'deps' ? tr('уялдаа') : c.what === 'obyem' ? tr('сарын обьём')
+    : c.what === 'actual' ? tr('бодит огноо') : c.what === 'res' ? tr('нөөц') : tr('сарын нөөц');
+  const blk = c.blok ?? (c.blk != null && bld.length > 1 ? (bld[c.blk] ?? String(c.blk + 1)) : '');
+  const row = `${c.no} ${c.work}`.trim() || (c.oid != null ? String(c.oid) : '—');
+  return `${row}${blk ? ` · ${blk}` : ''} · ${what}: ${tr('сервер')} ${c.srv} → ${tr('санал')} ${c.mine}`;
 }
 
 /** Зэрэгцээ өөрчлөлтийн алдааны текст — preview ба decide хоёуланд нэг */

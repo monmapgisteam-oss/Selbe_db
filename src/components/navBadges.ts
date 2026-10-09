@@ -46,6 +46,9 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
   /* ✅ 2026-10-08: `countPlanReturned` — ЗОХИОГЧИД буцаагдсан, дахин илгээгээгүй илгээлт
      («Хуваарь» харагдац; `ViewRail.BADGE_LABEL` нь «буцаагдсан N» гэж уншина). */
   { view: 'huvaari', load: () => probe(import('@/lib/huvaariBatlah'), ['countPlanReturned']) },
+  /* ✅ 2026-10-09: `countPlanApproved` — ЗОХИОГЧИД саяхан (3 хоног) батлагдсан, «Хуваарь» хуудсанд хараагүй
+     илгээлт; буцаагдсантай НИЙЛБЭР («Хуваарь» харагдац — `ViewRail.badgeLabel` «шинэ шийдвэр» гэж уншина). */
+  { view: 'huvaari', load: () => probe(import('@/lib/huvaariBatlah'), ['countPlanApproved']) },
   /* ✅ `countObyemPending(username)` — `src/lib/obyemBatlah.ts`.
      Обьёмыг «Гүйцэтгэл» (бөглөх хуудас) дотор батладаг тул тэр харагдацад. */
   { view: 'guitsetgel', load: () => probe(import('@/lib/obyemBatlah'), ['countObyemPending']) },

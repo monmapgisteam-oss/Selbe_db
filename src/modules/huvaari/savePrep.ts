@@ -5,7 +5,50 @@ import {
   balanced, buildEdits, obyemResFields, sumRes, type MonthRes, type PkgPlan, type PkgRes, type PlanEdits, type WorkMeta,
 } from '@/lib/huvaariObyem';
 import type { ADraft, Draft, PlanKind, ResDraft } from './types';
-import { obKey } from './util';
+import { obKey, remapOids } from './util';
+
+/**
+ * ХУУЧИН ЖААЗ → ШИНЭ ЖААЗЫН OID ЗУРАГЛАЛ — бүрэн (2026-10-09). Эхлээд `remapOids` (эцэг бүлгийн зам ›
+ * № ¦ нэр), олоогүй мөрийг ажлын КОДООР (`des`), код байхгүй бол № + нэрээр — ЗӨВХӨН хоёр талдаа ГАНЦ
+ * таарал байвал. `save`-ийн нөөц зураглал (2026-10-09) эндээс — хадгалах · хуваалцсан ноорогийн жааз
+ * солигдох үеийн зөөлт (`useSharedDraft`) · нэмэлт ажлын «Шинэчлэх» (`useAjil`) НЭГ дүрэм.
+ * ⚠️ Нэг шинэ мөр рүү хоёр хуучин мөр зөөгдөхгүй (давхардсан бол нөөц таарал алгасна).
+ * @returns `map` хуучин→шинэ oid; `lost` — шинэ жаазад олдоогүй хуучин мөрүүд
+ */
+export function remapRowsFull(
+  oldRows: readonly SheetRow[], newRows: readonly SheetRow[],
+): { map: Map<number, number>; lost: SheetRow[] } {
+  const map = remapOids(oldRows, newRows);
+  const used = new Set(map.values());
+  const uniq = <K,>(list: readonly SheetRow[], key: (r: SheetRow) => K | null) => {
+    const m = new Map<K, SheetRow | null>();
+    for (const r of list) {
+      const k = key(r);
+      if (k == null) continue;
+      m.set(k, m.has(k) ? null : r);
+    }
+    return m;
+  };
+  const desKey = (r: SheetRow) => (r.des != null ? r.des : null);
+  const nwKey = (r: SheetRow) => (r.no || r.work ? `${(r.no ?? '').trim()}¦${(r.work ?? '').trim()}` : null);
+  const oldByDes = uniq(oldRows, desKey);
+  const newByDes = uniq(newRows, desKey);
+  const oldByNw = uniq(oldRows, nwKey);
+  const newByNw = uniq(newRows, nwKey);
+  const lost: SheetRow[] = [];
+  for (const r0 of oldRows) {
+    if (map.has(r0.oid)) continue;
+    let to: number | undefined;
+    const dk = desKey(r0);
+    if (dk != null && oldByDes.get(dk) === r0) to = newByDes.get(dk)?.oid;
+    if (to == null) {
+      const nk = nwKey(r0);
+      if (nk != null && oldByNw.get(nk) === r0) to = newByNw.get(nk)?.oid;
+    }
+    if (to != null && !used.has(to)) { map.set(r0.oid, to); used.add(to); } else lost.push(r0);
+  }
+  return { map, lost };
+}
 
 /**
  * ХАДГАЛАЛТЫН БЭЛТГЭЛ — ноорогоос `applyUpdates`-ийн мөрүүд (`upd`) ба сарын

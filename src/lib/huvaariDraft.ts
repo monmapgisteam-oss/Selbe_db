@@ -57,7 +57,17 @@ export type HDDraft = {
    *    энгийн буцаалтаар хоосорсон ноорог ТАВИХГҮЙ.
    */
   cleared?: number;
+  /**
+   * МӨРИЙН ТАНИХ ТҮЛХҮҮР (2026-10-09) — `oid` → {ажлын код · № · нэр}. Нүдний `oid` нь жаазынх тул
+   * «Гүйцэтгэл бөглөх» нийтлэл/нэмэлт ажил шинэ жааз бичихэд бүх oid солигдож ноорог «мөр алга»
+   * болдог байв. Үүгээр сэргээх/нийлүүлэхэд шинэ мөр рүү зөөнө (`identityRemap`).
+   * ⚠️ `sig`-д ОРОХГҮЙ (нүдний агуулга биш) — хэт том үед бичигдэхгүй байж болно (`serialize`-ийн `max`).
+   */
+  rk?: Map<number, HDRowKey>;
 };
+
+/** Мөрийн таних түлхүүр — жааз солигдоход хадгалагддаг талбарууд (2026-10-09) */
+export type HDRowKey = { des: number | null; no: string; work: string };
 
 export const HD_VERSION = 1;
 /** Tombstone-ийн амьдрах хугацаа */
@@ -175,6 +185,10 @@ export type HDRowBase = {
   aEnd: readonly (number | null)[];
   hun: number | null;
   mashin: number | null;
+  /** ⚠️ 2026-10-09: мөрийн танихуун (`HDRowKey`) — шинэ жаазад зөөхөд; байхгүй бол зөөлт алгасна */
+  des?: number | null;
+  no?: string;
+  work?: string;
 };
 export type HDCtx = {
   n: number;
@@ -384,7 +398,11 @@ type Wire = {
   mres?: unknown[];
   del: unknown[]; base: { at: number; n: number };
   cleared?: number;
+  /** Мөрийн танихуун (2026-10-09) — `[oid, код|null, №, нэр]`; хуучин ноорогт байхгүй */
+  rk?: unknown[];
 };
+/** Танихуун нэрийн дээд урт — ачааллыг хязгаарлана (зөөлт кодоор, нэр нь нөөц/мэдэгдэлд) */
+const RK_NAME_MAX = 40;
 
 /**
  * ⚠️ 2026-10-08: НЯГТ БИЧИГЛЭЛ — `REMOTE_MAX` (80 000) нь 1,266 мөр × 22 блокийн багцад ~600
@@ -412,8 +430,19 @@ const spanOfWire = (x: unknown): HDSpan => {
   return x && typeof x === 'object' ? spanVal(x as HDSpan) : null;
 };
 
-/** HDDraft → JSON мөр (алсын `payload`). Нүд бүр `[…, at, user, bv]` */
-export function serialize(d: HDDraft): string {
+/**
+ * HDDraft → JSON мөр (алсын `payload`). Нүд бүр `[…, at, user, bv]`.
+ * ⚠️ 2026-10-09: `max` өгвөл танихуун (`rk`) нь хэмжээг ХЭТРҮҮЛЭХ үед эхлээд нэргүй (`[oid, код]`),
+ *    дараа нь бүрмөсөн хасагдана — нүд хэзээ ч танихууны төлөө алсаас хоцрохгүй.
+ */
+export function serialize(d: HDDraft, max?: number): string {
+  const full = serializeRk(d, 2);
+  if (max == null || full.length <= max || !d.rk?.size) return full;
+  const lite = serializeRk(d, 1);
+  return lite.length <= max ? lite : serializeRk(d, 0);
+}
+/** `lvl`: 2 = бүтэн танихуун, 1 = зөвхөн код, 0 = танихуунгүй */
+function serializeRk(d: HDDraft, lvl: 0 | 1 | 2): string {
   const spans: unknown[] = [];
   const ham: unknown[] = [];
   const actual: unknown[] = [];
@@ -429,12 +458,15 @@ export function serialize(d: HDDraft): string {
      тул ижил агуулга өөр мөр болж, `sig` зөрж, хоёр клиент ээлжлэн дахин
      бичээд мөнхийн тойрог үүсгэх байв. */
   const keys = [...d.entries.keys()].sort();
+  /** Нүдтэй мөрийн oid — танихуунд (2026-10-09) */
+  const rowOids = new Set<number>();
   for (const k of keys) {
     const e = d.entries.get(k)!;
     const p = parseKey(k);
     if (!p) continue;
     /* ⚠️ 2026-10-08: серверийнхтэй ижил нүд бичигдэхгүй (дээрх ⚠️) */
     if (e.bv !== undefined && sameVal(e.val, e.bv)) continue;
+    if (p.type !== 'm' && p.type !== 'n') rowOids.add(p.oid);
     if (p.type === 's') {
       const sbv = e.bv === undefined ? [] : [spanWire(spanVal(e.bv as HDSpan))];
       spans.push([p.oid, p.blk, spanWire(spanVal(e.val as HDSpan)), e.at, usr(e), ...sbv]);
@@ -448,6 +480,15 @@ export function serialize(d: HDDraft): string {
     } else if (p.type === 'm') months.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
     else if (p.type === 'n') mres.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
   }
+  /* ⚠️ 2026-10-09: танихуун — oid-оор эрэмбэлсэн (детерминист), зөвхөн нүдтэй мөрд */
+  const rk: unknown[] = [];
+  if (lvl > 0 && d.rk) {
+    for (const o of [...rowOids].sort((x, y) => x - y)) {
+      const id = d.rk.get(o);
+      if (!id) continue;
+      rk.push(lvl === 2 ? [o, id.des, id.no.slice(0, RK_NAME_MAX), id.work.slice(0, RK_NAME_MAX)] : [o, id.des]);
+    }
+  }
   const w: Wire = {
     v: HD_VERSION, t: d.t, kind: d.kind, pkg: d.pkg, by: d.by,
     ...(u.length ? { u } : {}),
@@ -456,6 +497,7 @@ export function serialize(d: HDDraft): string {
     del: [...d.del].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
     base: d.base,
     ...(d.cleared ? { cleared: d.cleared } : {}),
+    ...(rk.length ? { rk } : {}),
   };
   return JSON.stringify(w);
 }
@@ -467,8 +509,10 @@ export function serialize(d: HDDraft): string {
  * ⚠️ `by` ОРОХГҮЙ: Б нь А-гийн бичсэнийг нийлүүлээд дахин бичихэд `by` нь
  *    Б болно; А түүнийг уншаад «өөр» гэж дахин бичвэл тойрог үүснэ.
  */
+/* ⚠️ 2026-10-09: `rk` ОРОХГҮЙ — хэт том үед танихуунгүй бичигдсэн алсын мөртэй тулгахад гарын үсэг
+   зөрж мөчлөг бүрд дахин бичих тойрог үүсэх байв. */
 export const sig = (d: HDDraft): string =>
-  serialize({ ...d, t: 0, by: { user: '', at: 0 }, base: { at: 0, n: d.base.n }, cleared: undefined });
+  serialize({ ...d, t: 0, by: { user: '', at: 0 }, base: { at: 0, n: d.base.n }, cleared: undefined, rk: undefined });
 
 const ms = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
 const str = (x: unknown): string => (typeof x === 'string' ? x : '');
@@ -533,7 +577,14 @@ export function parse(s: string | null | undefined): HDDraft | null {
     ? { at: ms(w.base.at) ?? 0, n: Number.isInteger(w.base.n) ? (w.base.n as number) : 0 }
     : { at: 0, n: 0 };
   const cleared = ms(w.cleared);
-  return { t, kind, pkg: str(w.pkg), by, entries, del, base, ...(cleared ? { cleared } : {}) };
+  /* ⚠️ 2026-10-09: танихуун — эвдэрсэн мөрийг л орхино; хуучин ноорогт байхгүй */
+  const rk = new Map<number, HDRowKey>();
+  for (const x of Array.isArray(w.rk) ? w.rk : []) {
+    if (!Array.isArray(x) || !Number.isInteger(x[0])) continue;
+    const des = typeof x[1] === 'number' && Number.isFinite(x[1]) ? x[1] : null;
+    rk.set(x[0] as number, { des, no: str(x[2]), work: str(x[3]) });
+  }
+  return { t, kind, pkg: str(w.pkg), by, entries, del, base, ...(cleared ? { cleared } : {}), ...(rk.size ? { rk } : {}) };
 }
 
 /* ══════════════ Нийлүүлэлт ══════════════ */
@@ -567,10 +618,14 @@ export function merge(a: HDDraft | null, b: HDDraft | null, now = Date.now()): H
   }
   const newer = b.t > a.t ? b : a;
   const cleared = Math.max(a.cleared ?? 0, b.cleared ?? 0);
+  /* ⚠️ 2026-10-09: танихуун — хоёулангийнх нийлнэ, ШИНЭ ноорогийнх давамгайлна */
+  const older = newer === a ? b : a;
+  const rk = new Map<number, HDRowKey>([...(older.rk ?? []), ...(newer.rk ?? [])]);
   return {
     t: Math.max(a.t, b.t), kind: newer.kind, pkg: newer.pkg, by: newer.by,
     entries, del, base: newer.base,
     ...(cleared ? { cleared } : {}),
+    ...(rk.size ? { rk } : {}),
   };
 }
 
@@ -597,7 +652,16 @@ function prune(d: HDDraft, now: number): HDDraft {
  * хуучныг хуулсан тул суурь утга ижил. Зураглалд БАЙХГҮЙ oid-той нүд хэвээр
  * (дараа нь `cellsToMaps` «мөр алга» гэж шийднэ). Оролтыг өөрчлөхгүй.
  */
-export function remapDraft(d: HDDraft, map: ReadonlyMap<number, number>, now = Date.now()): HDDraft {
+/*
+ * ⚠️ 2026-10-09 (`keep`): ӨӨР жааз нь шинэчлэгдээгүй хамтрагчийн нүдийг (`keep` → true) хуучин түлхүүрт
+ *    tombstone-ГҮЙ ҮЛДЭЭНЭ — 2026-09-25-ны «мөр алга нүдийг бусдынх бол tombstone хийхгүй» дүрэм; шинэ
+ *    түлхүүрт хуулбар л үүснэ. Шинэ түлхүүрт аль хэдийн ШИНЭ (`at` их) нүд эсвэл ШИНЭ tombstone (буцаасан)
+ *    байвал зөөхгүй — урьд нь зөөлт шинэ түлхүүрийн tombstone-ыг арилгаж буцаасан нүдийг амилуулдаг байв.
+ *    Хуучин түлхүүрийн tombstone ҮЛДЭНЭ (хуучин жаазтай клиентийн хуулбар амилахгүй), шинэд MAX-аар.
+ */
+export function remapDraft(
+  d: HDDraft, map: ReadonlyMap<number, number>, now = Date.now(), keep?: (k: string, e: HDEntry) => boolean,
+): HDDraft {
   if (!map.size) return d;
   const mv = (k: string): string | null => {
     const p = parseKey(k);
@@ -608,15 +672,74 @@ export function remapDraft(d: HDDraft, map: ReadonlyMap<number, number>, now = D
   };
   const entries: HDEntries = new Map();
   const del = new Map<string, number>();
-  for (const [k, at] of d.del) del.set(mv(k) ?? k, at);
+  for (const [k, at] of d.del) {
+    const nk = mv(k);
+    if (nk == null) { if ((del.get(k) ?? -1) < at) del.set(k, at); continue; }
+    if ((del.get(k) ?? -1) < at) del.set(k, at);
+    if ((del.get(nk) ?? -1) < at) del.set(nk, at);
+  }
+  const moved: [string, string, HDEntry][] = [];
   for (const [k, e] of d.entries) {
     const nk = mv(k);
     if (nk == null) { entries.set(k, e); continue; }
-    entries.set(nk, e);
-    del.set(k, now);
-    del.delete(nk);
+    moved.push([k, nk, e]);
   }
-  return { ...d, entries, del };
+  for (const [k, nk, e] of moved) {
+    const ex = entries.get(nk);
+    const td = del.get(nk);
+    if (!(ex && ex.at >= e.at) && !(td != null && td > e.at)) {
+      entries.set(nk, e);
+      del.delete(nk);
+    }
+    if (keep?.(k, e)) { entries.set(k, e); del.delete(k); } else if ((del.get(k) ?? -1) < now) del.set(k, now);
+  }
+  /* Танихуун шинэ oid-д ч (зөөгдсөн мөр ижил ажил) */
+  let rk = d.rk;
+  if (rk?.size) {
+    rk = new Map(rk);
+    for (const [from, to] of map) { const id = d.rk!.get(from); if (id && !rk.has(to)) rk.set(to, id); }
+  }
+  return { ...d, entries, del, ...(rk ? { rk } : {}) };
+}
+
+/**
+ * ТАНИХУУНААР ШИНЭ ЖААЗ РУУ ЗӨӨХ ЗУРАГЛАЛ (2026-10-09) — ноорогийн `s/h/a/r` нүдний oid нь одоогийн
+ * мөрөнд (`ctx.rows`) байхгүй бол `rk`-ийн ажлын КОДООР (`des`, жааз солигдоход хадгалагддаг), код
+ * байхгүй/давхардсан бол № + нэрээр — ЗӨВХӨН одоогийн мөрүүдэд ГАНЦ таарал байвал (`save`-ийн нөөц
+ * зураглалын ижил дүрэм, `savePrep.remapRowsFull`).
+ * @returns `map` хуучин→шинэ oid; `lost` — танихуунтай ч олдоогүй мөрийн «№ нэр»; `unknown` — танихуунгүй мөрийн тоо
+ */
+export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number>; lost: string[]; unknown: number } {
+  const map = new Map<number, number>();
+  const lost: string[] = [];
+  let unknown = 0;
+  const want = new Set<number>();
+  for (const k of d.entries.keys()) {
+    const p = parseKey(k);
+    if (p && p.type !== 'm' && p.type !== 'n' && !ctx.rows.has(p.oid)) want.add(p.oid);
+  }
+  if (!want.size) return { map, lost, unknown };
+  const nw = (no: string | undefined, work: string | undefined): string | null => {
+    const a = (no ?? '').trim();
+    const b = (work ?? '').trim();
+    return a || b ? `${a}¦${b}` : null;
+  };
+  const byDes = new Map<number, number | null>();
+  const byNw = new Map<string, number | null>();
+  for (const [oid, r] of ctx.rows) {
+    if (r.des != null) byDes.set(r.des, byDes.has(r.des) ? null : oid);
+    const k = nw(r.no, r.work);
+    if (k) byNw.set(k, byNw.has(k) ? null : oid);
+  }
+  for (const oid of [...want].sort((x, y) => x - y)) {
+    const id = d.rk?.get(oid);
+    if (!id) { unknown += 1; continue; }
+    let to: number | null | undefined = id.des != null ? byDes.get(id.des) : undefined;
+    if (to == null) { const k = nw(id.no, id.work); to = k ? byNw.get(k) : undefined; }
+    if (to != null) map.set(oid, to);
+    else lost.push(`${id.no} ${id.work}`.trim() || (id.des != null ? String(id.des) : String(oid)));
+  }
+  return { map, lost, unknown };
 }
 
 /* ══════════════ Гибрид логик цаг · хэсэгчилсэн цэвэрлэлт (2026-10-04 аудит) ══════════════ */

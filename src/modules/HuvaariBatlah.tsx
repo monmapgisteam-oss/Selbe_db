@@ -68,6 +68,12 @@ const ALL = '';
 const known = (x: PlanSubmission) => PKG_BY_KEY.has(x.pkgKey);
 /** Илгээсэн агшин — эрэмбэнд; огноогүй нь СҮҮЛД (null ≠ 0) */
 const sentOf = (x: PlanSubmission) => x.authorSent ?? Number.MAX_SAFE_INTEGER;
+/**
+ * ⚠️ 2026-10-09: ДАРААЛЛААС (хуанли дээр нээлгүй) БУЦААХ — мөр бүрийг тэмдэглээгүй тул `reject` нь `okRows: []`
+ *    (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) илгээж, шалтгаанд энэ тайлбарыг залгана. Урьд нь тэмдэглэгээгүй
+ *    (`undefined`) буцдаг тул зохиогчид улаан мөр огт гардаггүй, юуг засахаа хайдаг байв. Функц — `tr()` зурагдалтын үед.
+ */
+const blindNote = () => tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)');
 
 /**
  * Татах төлөв.
@@ -358,7 +364,7 @@ export function HuvaariBatlah({
            батлахыг таслах). Жинхэнэ дүрэм нь СЕРВЕРИЙН мөрөөс уншигдана —
            UI-ийн утгыг хэзээ ч дүрэм гэж авч болохгүй. */
         author: x.author,
-        reason: why,
+        reason: `${why}\n${blindNote()}`.slice(0, REASON_MAX), okRows: [],
       });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));
@@ -737,8 +743,11 @@ function Row({
                 Хуанлийн огноо (`fig.from/to`) нь UTC шөнө дундаар түлхүүрлэгдсэн
                 ЦАГГҮЙ өдөр тул тэнд `msToDay` зөв хэвээр. */}
             {sub.authorSent == null ? '—' : dayKey(sub.authorSent)}
+            {/* ⚠️ 2026-10-09: 3-аас ДЭЭШ хоног хүлээсэн нь УЛААН ⚠ — илгээлт хүлээгдэж байхад зохиогчийн таб түгжээтэй */}
             {waitDays != null && waitDays >= 1 && (
-              <>{' · '}<b>{tr('{0} хоног хүлээж байна', num(waitDays))}</b></>
+              <>{' · '}<b style={waitDays > 3 ? { color: 'var(--bad-ink)' } : undefined}>
+                {waitDays > 3 ? '⚠ ' : ''}{tr('{0} хоног хүлээж байна', num(waitDays))}
+              </b></>
             )}
             {' · '}
             {tr('{0} мөр', num(sub.rowCount))}
