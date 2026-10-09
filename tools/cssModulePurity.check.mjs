@@ -119,3 +119,33 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(`✅ ${files.length} *.module.css бүгд pure горимд цэвэр`);
+
+/* ── 3) БҮХ `src/**\/*.css` (globals.css орно) — СИНТАКС задрах эсэх ──
+   ⚠️ 2026-10-09: globals.css-ийн тайлбар дотор «--c*\/--good» гэж бичигдсэн «*» ба «/» зэрэгцээд
+      тайлбарыг эрт хааж, dev «Unknown word» гэж бүх хуудсыг 500 болгосон. tsc/eslint/тест үүнийг
+      БАРЬДАГГҮЙ байв (pure шалгалт зөвхөн *.module.css). Одоо бүх CSS-ийг postcss-ээр задална. */
+{
+  const all = [];
+  const walkAll = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.next')) continue;
+      const p = join(d, e.name);
+      if (e.isDirectory()) walkAll(p);
+      else if (e.name.endsWith('.css')) all.push(p);
+    }
+  };
+  walkAll(join(ROOT, 'src'));
+  /* Сөрөг тест: тайлбарыг эрт хаасан CSS-ийг барина */
+  assert.throws(() => postcss.parse(':root {\n  /* a (--c*/--good) b\n     c. */\n  --x: 1;\n}'), 'эрт хаагдсан тайлбарыг барьсангүй');
+  const bad = [];
+  for (const f of all.sort()) {
+    try { postcss.parse(readFileSync(f, 'utf8'), { from: f }); } catch (e) {
+      bad.push(`${relative(ROOT, f).split(sep).join('/')}:${e.line ?? 0}:${e.column ?? 0} — ${e.reason ?? e.message}`);
+    }
+  }
+  if (bad.length) {
+    console.error(`❌ ${bad.length} CSS файл задрахгүй (dev/build унана):\n  ${bad.join('\n  ')}`);
+    process.exit(1);
+  }
+  console.log(`✅ ${all.length} *.css бүгд синтаксаар зөв задарна (globals.css орно)`);
+}
