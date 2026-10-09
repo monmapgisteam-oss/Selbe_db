@@ -100,3 +100,14 @@ export const huvaariScope = (user: string | null | undefined, role: PlanRole) =>
 
 /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
 export const hasPlanRole = acl.hasRole;
+
+/**
+ * БАГЦЫН БАТЛАГЧИД (2026-10-09) — хуваарилалтаар «Батлагч» үүрэгтэй, тэр багц (эсвэл бүх багц) заасан
+ * аккаунтууд, эрэмбэлсэн. ⚠️ Зөвхөн МЭДЭЭЛЭЛ («хүлээгдэж буй илгээлтийг хэн батлах вэ») — эрхийн шалгалт
+ * биш (`huvaariScope`/`decidePlan`); super (хуваарилалтаас үл хамаарна) жагсаалтад орохгүй.
+ */
+export const planApproversOf = (group: string): string[] =>
+  listHuvaariAssigns()
+    .filter((a) => a.grants.some((g) => g.role === 'approver' && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(group))))
+    .map((a) => a.user)
+    .sort();

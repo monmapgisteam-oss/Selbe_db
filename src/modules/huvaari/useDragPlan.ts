@@ -1,4 +1,5 @@
-import { type PointerEvent as PEvt, useCallback, useRef } from 'react';
+import { type PointerEvent as PEvt, useCallback, useEffect, useRef, useState } from 'react';
+import { useLatest } from './useLatest';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { propagate } from '@/lib/deps';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
@@ -20,8 +21,10 @@ const TAP_PX = 8;
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
-  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain,
+  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl,
 }: {
+  /** ⚠️ 2026-10-09: хуанлийн гүйлгэгч (`useCalendar.scrollRef`) — чирэлтийн үед ирмэгт ойртоход өөрөө гүйлгэнэ (`autoTick`) */
+  scrollEl?: () => HTMLDivElement | null;
   plan: PlanRow[];
   blk: number;
   n: number;
@@ -110,6 +113,26 @@ export function useDragPlan({
    */
   const dragTouched = useRef(new Set<number>());
   /**
+   * ⚠️ 2026-10-09: ЧИРЭЛТЭЭР НЭЭГДСЭН ЦОНХНЫ мөр (oid) — `undoRef`-ийн ХАРАГДАХ хос (ref-ийг зурагдалтад
+   *    уншихгүй, react-hooks/refs). Цонх «Хаавал чирэлт буцна» гэж ил хэлж, «Огноог үлдээх» товч гаргана
+   *    (`PlanModal.dragged`). Цуцлах-буцаах шийдвэр (2026-09-08) ХЭВЭЭР — зөвхөн ил болгож, гарц нэмэв.
+   */
+  const [dragOpen, setDragOpen] = useState<number | null>(null);
+  /**
+   * ⚠️ 2026-10-09: ИРМЭГИЙН АВТОМАТ ГҮЙЛГЭЭ — чирэлтийн үед заагч хуанлийн зүүн/баруун ирмэгээс 40px дотор
+   *    бол `requestAnimationFrame`-ээр хэвтээ гүйлгэж, заагчийн доорх хоногийг дахин бодно (`moveTo`).
+   *    Урьд нь хуанлиас гадна чирэх боломжгүй — гараа тавьж, гүйлгээд, дахин чирэх шаардлагатай байв.
+   */
+  const auto = useRef<{ raf: number; x: number }>({ raf: 0, x: 0 });
+  const stopAuto = () => {
+    if (auto.current.raf) cancelAnimationFrame(auto.current.raf);
+    auto.current.raf = 0;
+  };
+  useEffect(() => {
+    const a = auto.current; // объект нь солигдохгүй (талбар нь л) — цэвэрлэгээнд ижил
+    return () => { if (a.raf) cancelAnimationFrame(a.raf); };
+  }, []);
+  /**
    * Мужийг мөрд бичнэ. Дээд бүлэгт муж байвал хүүхдийг ТҮҮН РҮҮ ХАВЧУУЛНА —
    * «бүлгийн цонхны дотор» гэсэн дүрмийг чирэлтийн үедээ шууд сахина.
    */
@@ -180,6 +203,11 @@ export function useDragPlan({
        серверийн oid-тай ирж ердийн мөр болно. */
     if (r.oid < 0) return;
     if (r.group) { setSel(r.oid); openBar(); return; }
+    /* ⚠️ 2026-10-09: ХУВААРЬТАЙ мөрийн ХООСОН хэсгээс (`mode === 'new'`) чирэхэд бүх муж ДАХИН ЗУРАГДАЖ
+       (хуучин 137 хоногийн хуваарь шинэ мужаар) чимээгүй солигддог байв. Одоо зөвхөн Alt дарсан үед; Alt-гүй
+       бол зөвхөн сонголт — `preventDefault` хийхгүй тул мэдрэгч дэлгэцэд хуанли ердийнхөөр гүйнэ.
+       Хуваарьгүй мөрд чирж зурах хуучнаараа. Зурвас дээрх чирэлт (`move`/`l`/`r`) хөндөгдөхгүй. */
+    if (mode === 'new' && r.spans[blk] && !e.altKey) { setSel(r.oid); return; }
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -205,17 +233,23 @@ export function useDragPlan({
     setSel(r.oid);
   };
 
-  const onMove = (e: PEvt<HTMLElement>) => {
+  /** Хэвтээ ирмэгийн хурд (px/кадр) — хуанлийн харагдах хэсгийн зүүн (наалдмал самбарын ард) / баруун ирмэгээс 40px дотор */
+  const edgeV = (x: number): number => {
+    const el = scrollEl?.();
+    if (!el) return 0;
+    const b = el.getBoundingClientRect();
+    /* ⚠️ Зүүн самбар (`gSide`) наалдмал — хуанлийн харагдах зүүн ирмэг нь түүний баруун зах */
+    const side = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0;
+    const lo = b.left + side;
+    const EDGE = 40;
+    if (x < lo + EDGE) return -Math.ceil(((lo + EDGE - x) / EDGE) * 16);
+    if (x > b.right - EDGE) return Math.ceil(((x - (b.right - EDGE)) / EDGE) * 16);
+    return 0;
+  };
+  /** Заагчийн X → хоног → муж (2026-10-09: `onMove`-оос салгав — автомат гүйлгээ ч дуудна; логик ХЭВЭЭР) */
+  function moveTo(clientX: number) {
     if (!drag) return;
-    /* ⚠️ Мэдрэгчийн гүйлгээ (дээрх `down`-ийн ⚠️) — илэрсэн бол чирэлт ҮГҮЙ */
-    if (scroll.current) return;
-    if (down.current.touch && !moved.current) {
-      const dx = Math.abs(e.clientX - down.current.x);
-      const dy = Math.abs(e.clientY - down.current.y);
-      if (Math.max(dx, dy) > TAP_PX) far.current = true;
-      if (dy > TAP_PX && dy > dx) { scroll.current = true; return; }
-    }
-    const k = dayAt(e.clientX);
+    const k = dayAt(clientX);
     /* ⚠️ ХОНОГ СОЛИГДООГҮЙ бол ЮУ Ч ХИЙХГҮЙ (2026-09-21). Урьд нь
        `&& moved.current` нөхцөлтэй байсан тул ЭХНИЙ `pointermove` (1px
        гулсалт, `k === anchor`) ч `commit`-д хүрч, ижил утгыг ноорогт бичээд
@@ -237,14 +271,45 @@ export function useDragPlan({
       else if (drag.mode === 'l') commit(drag.oid, { start: Math.min(o.start + d, o.end), end: o.end }, 'start');
       else commit(drag.oid, { start: o.start, end: Math.max(o.end + d, o.start) }, 'end');
     }
+  }
+  /* ⚠️ Хамгийн сүүлийн `moveTo` (шинэ `plan`/`drag`-тай) — rAF давталт хуучин closure ашиглахгүй */
+  const moveRef = useLatest((x: number) => moveTo(x));
+  function autoTick() {
+    auto.current.raf = 0;
+    const el = scrollEl?.();
+    const v = edgeV(auto.current.x);
+    if (!el || !v) return;
+    const before = el.scrollLeft;
+    el.scrollLeft += v;
+    if (el.scrollLeft === before) return; // хуанлийн зах — цааш гүйхгүй
+    moveRef.current(auto.current.x);
+    auto.current.raf = requestAnimationFrame(autoTick);
+  }
+
+  const onMove = (e: PEvt<HTMLElement>) => {
+    if (!drag) return;
+    /* ⚠️ Мэдрэгчийн гүйлгээ (дээрх `down`-ийн ⚠️) — илэрсэн бол чирэлт ҮГҮЙ */
+    if (scroll.current) return;
+    if (down.current.touch && !moved.current) {
+      const dx = Math.abs(e.clientX - down.current.x);
+      const dy = Math.abs(e.clientY - down.current.y);
+      if (Math.max(dx, dy) > TAP_PX) far.current = true;
+      if (dy > TAP_PX && dy > dx) { scroll.current = true; return; }
+    }
+    moveTo(e.clientX);
+    /* ⚠️ 2026-10-09: ирмэгт ойртвол автомат гүйлгээ (`auto`-гийн ⚠️) */
+    auto.current.x = e.clientX;
+    if (!auto.current.raf && edgeV(e.clientX)) auto.current.raf = requestAnimationFrame(autoTick);
   };
 
   const onUp = (e?: PEvt<HTMLElement>) => {
+    stopAuto();
     /* ⚠️ Чирэхгүй зурвасын ТОВШИЛТ → цонх (2026-10-06, `press`-ийн ⚠️) */
     const p = press.current;
     press.current = null;
     if (p && e && Math.max(Math.abs(e.clientX - p.x), Math.abs(e.clientY - p.y)) <= TAP_PX) {
       undoRef.current = null;
+      setDragOpen(null);
       setSel(p.oid);
       setModal(p.oid);
     }
@@ -261,6 +326,7 @@ export function useDragPlan({
     const barTap = !!drag && !moved.current && !far.current && !scroll.current && drag.mode !== 'new';
     if (drag && barTap) {
       undoRef.current = null;
+      setDragOpen(null);
       setModal(drag.oid);
     }
     /**
@@ -303,6 +369,7 @@ export function useDragPlan({
           obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
           snapAll: snapAll.current,
         };
+        setDragOpen(r.oid);
       }
     }
     setDrag(null);
@@ -316,6 +383,7 @@ export function useDragPlan({
    * popup НЭЭХГҮЙ, «Хаах»-тай ижил агшнаар (`rollback`) буцаана.
    */
   const onCancel = () => {
+    stopAuto();
     press.current = null; // ⚠️ гүйлгээ эхэлсэн — зурвасын цонх нээхгүй (2026-10-06)
     if (drag && moved.current && !busy && !locked) {
       rollback({
@@ -339,8 +407,24 @@ export function useDragPlan({
   const undoDragOnClose = () => {
     const u = undoRef.current;
     undoRef.current = null;
+    setDragOpen(null);
     setModal(null);
     if (u && !busy && !locked) rollback(u);
+  };
+  /**
+   * ⚠️ 2026-10-09: «ОГНООГ ҮЛДЭЭХ» — чирсэн огноог сарын задаргаа шаардалгүй ҮЛДЭЭЖ цонхыг хаана. Огноо
+   *    чирэлтээр ноорогт аль хэдийн бичигдсэн (нүдэнд бичсэн огноотой ижил байдал — `applyModal(…, null, null)`);
+   *    зөвхөн буцаах агшинг (`undoRef`) хаяна. Сарын задаргаа нь `applyChanges`-ийн `keepMonths`-оор үлдэнэ.
+   */
+  const keepDrag = () => {
+    undoRef.current = null;
+    setDragOpen(null);
+    setModal(null);
+  };
+  /** ⚠️ 2026-10-09: «Тавих» г.м. зөвшөөрөгдсөн өөрчлөлтийн дараа — буцаах агшин ба «чирэлтийн цонх» тэмдэг арилна */
+  const forgetDrag = () => {
+    undoRef.current = null;
+    setDragOpen(null);
   };
 
   /**
@@ -466,5 +550,5 @@ export function useDragPlan({
     }
   }
 
-  return { undoRef, onDown, onMove, onUp, onCancel, undoDragOnClose };
+  return { undoRef, onDown, onMove, onUp, onCancel, undoDragOnClose, dragOpen, keepDrag, forgetDrag };
 }

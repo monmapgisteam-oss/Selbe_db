@@ -20,9 +20,16 @@ import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
   const body = L.slice(L.indexOf('export async function countPlanReturned('));
   assert.ok(body.includes("x.status === PLAN_STATUS.returned") && body.includes("huvaariScope(me, 'author')") && L.includes("cached(loadLastPerPkg, BADGE_TTL, ['HUVAARI_BATLAH'])"),
     'countPlanReturned: буцаагдсан · зохиогчийн хүрээ · HUVAARI_BATLAH кэш');
+  /* ⚠️ 2026-10-09: «Хуваарь» тэмдэг = буцаагдсан + саяхан батлагдсан (`countPlanApproved`, 3 хоног, хараагүй) */
+  assert.ok(/export async function countPlanApproved\(username: string \| null \| undefined\): Promise<number \| null>/.test(L), 'countPlanApproved алга');
+  const ab = L.slice(L.indexOf('export async function countPlanApproved('));
+  assert.ok(ab.includes('x.status === PLAN_STATUS.approved') && ab.includes('PLAN_APPROVED_TTL') && ab.includes('!seen.has(x.oid)'),
+    'countPlanApproved: батлагдсан · 3 хоног · хараагүй');
+  const N = fs.readFileSync('src/components/navBadges.ts', 'utf8');
+  assert.ok(N.includes("['countPlanApproved']"), 'navBadges: countPlanApproved холбогдоогүй');
   const V = fs.readFileSync('src/components/ViewRail.tsx', 'utf8');
-  assert.ok(V.includes("k === 'huvaari' ? tr('буцаагдсан {0}', num(n))"), 'ViewRail: «Хуваарь» тэмдгийн утга «буцаагдсан N» биш');
-  console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан');
+  assert.ok(V.includes("k === 'huvaari' ? tr('шинэ шийдвэр {0} (буцаагдсан · батлагдсан)', num(n))"), 'ViewRail: «Хуваарь» тэмдгийн утга «шинэ шийдвэр N» биш');
+  console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан/батлагдсан');
 }
 
 /** Гараар шийдэх Promise — хариуны дарааллыг тест удирдана */

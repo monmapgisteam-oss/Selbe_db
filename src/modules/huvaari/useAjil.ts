@@ -18,7 +18,7 @@ import {
   type AddForm, type AjEdit,
 } from './adds';
 import type { ADraft, Draft, ResDraft } from './types';
-import { remapOids } from './util';
+import { remapRowsFull } from './savePrep';
 import { normCell } from '@/modules/sheet/paste';
 
 /**
@@ -28,11 +28,12 @@ import { normCell } from '@/modules/sheet/paste';
  * ⚠️ Хуваарийн батлах урсгалаас ТУСДАА 2 шатат урсгал (`ajilBatlah.ts`-ийн ⚠️) —
  *    энд хуваарийн ноорог (draft · ham · aDraft · resDraft) зөвхөн шинэ жааз
  *    ирэхэд шинэ oid руу зөөх зорилгоор л хөндөгдөнө (`refreshAfterApplied`).
+ *    ⚠️ 2026-10-09: тэр зөөлт `useSharedDraft`-д шилжсэн (мөр шинэ жааз болох бүрд) — энд ХӨНДӨХГҮЙ.
  */
 export function useAjil({
   pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
   adds, setAdds, setAddsSt, addsStRef,
-  hdResetRestore, hdMapsRef, setDraft, setHam, setADraft, setResDraft,
+  hdResetRestore, hdMapsRef,
   setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef, setOkRows, setCellEdit,
 }: {
   pkg: Pkg;
@@ -53,10 +54,11 @@ export function useAjil({
   addsStRef: React.RefObject<{ key: string; list: NewRow[] }>;
   hdResetRestore: () => void;
   hdMapsRef: React.RefObject<{ draft: Draft; ham: Map<number, string>; aDraft: ADraft; resDraft: ResDraft }>;
-  setDraft: (v: Draft) => void;
-  setHam: (v: Map<number, string>) => void;
-  setADraft: (v: ADraft) => void;
-  setResDraft: (v: ResDraft) => void;
+  /* ⚠️ 2026-10-09: ноорогийн Map-ыг энд ЗӨӨХӨӨ БОЛИВ (`refreshAfterApplied`-ийн ⚠️) — дуудагчийн нийцэлд сонголттой */
+  setDraft?: (v: Draft) => void;
+  setHam?: (v: Map<number, string>) => void;
+  setADraft?: (v: ADraft) => void;
+  setResDraft?: (v: ResDraft) => void;
   setSel: React.Dispatch<React.SetStateAction<number | null>>;
   setFGrp: React.Dispatch<React.SetStateAction<'all' | number>>;
   setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>>;
@@ -229,27 +231,27 @@ export function useAjil({
     setBusy(true); setErr('');
     try {
       const oldRows = rows;
+      /* ⚠️ Татахаас ӨМНӨ ноорогтой мөрийн oid — `refetch`-ийн завсарт `useSharedDraft` Map-уудыг зөөдөг */
+      const cur0 = hdMapsRef.current;
+      const dirtyOids = new Set<number>([...cur0.draft.keys(), ...cur0.ham.keys(), ...cur0.aDraft.keys(), ...cur0.resDraft.keys()]);
       hdResetRestore();
       const srv = await refetchRef.current();
-      const map = remapOids(oldRows, srv.rows);
-      /* ⚠️ СИНХРОН БОДНО (2026-09-25 аудит): урьд нь `lost`-ыг функц-шинэчлэгч
-         дотор тоолж, дараалалд оруулсны ДАРАА шууд уншдаг байв — React тэдгээрийг
-         хожим ажиллуулдаг тул тоо 0 хэвээр, ноорог хаягдсан атлаа «зөөгдөв» гэж
-         мэдэгддэг байлаа. Одоогийн Map-уудыг (`hdMapsRef`) шууд хөрвүүлнэ; тоо нь
-         давхардалгүй МӨР (oid). */
-      const lostOids = new Set<number>();
-      const mv = <V,>(m: ReadonlyMap<number, V>): Map<number, V> => {
-        const o = new Map<number, V>();
-        for (const [k, v] of m) {
-          const nk = map.get(k);
-          if (nk == null) { lostOids.add(k); continue; }
-          o.set(nk, v);
-        }
-        return o;
-      };
-      const cur = hdMapsRef.current;
-      setDraft(mv(cur.draft)); setHam(mv(cur.ham)); setADraft(mv(cur.aDraft)); setResDraft(mv(cur.resDraft));
-      const lost = lostOids.size;
+      /*
+       * ⚠️ 2026-10-09: ЗУРАГЛАЛ — `savePrep.remapRowsFull` (хадгалахтай НЭГ дүрэм: эцэг бүлгийн зам › № ¦ нэр →
+       *    ажлын код → № + нэр). Урьд нь зөвхөн `remapOids` тул бүлэг шилжсэн/нэр засагдсан мөрийн ноорог хаягддаг байв.
+       * ⚠️ Map-уудыг ЭНД ЗӨӨХГҮЙ — `useSharedDraft` мөр шинэ жааз болмогц ИЖИЛ зураглалаар зөөнө (мета · дифф
+       *    суурьтай хамт). Энд давхар зөөвөл аль хэдийн шинэ түлхүүртэй Map-ыг «олдсонгүй» гэж хаях байв.
+       *    Энд зөвхөн oid-оор түлхүүрлэгдсэн БУСАД төлөв (сонголт · шүүлт · эвхэлт) ба мэдэгдэл.
+       */
+      const { map } = remapRowsFull(oldRows, srv.rows);
+      const byOld = new Map(oldRows.map((r) => [r.oid, r]));
+      const lostNames: string[] = [];
+      for (const o of dirtyOids) {
+        if (o < 0 || map.has(o)) continue;
+        const r = byOld.get(o);
+        lostNames.push(r ? `${r.no ?? '—'} · ${r.work ?? ''}` : String(o));
+      }
+      const lost = lostNames.length;
       /* ⚠️ Сонголт · бүлгийн шүүлт oid-оор (2026-09-25) — шинэ oid руу зөөнө; нээлттэй
          цонхыг хаана (буцаах мэдээлэл нь хуучин oid-той). */
       setSel((o) => (o == null ? null : map.get(o) ?? null));
@@ -270,15 +272,17 @@ export function useAjil({
       setCellEdit?.((o) => (o == null ? null : map.get(o) ?? null));
       setModal(null); setLinkAsk(null); undoRef.current = null;
       setAjApplied(false);
+      /* ⚠️ 2026-10-09: олдоогүй мөрийг НЭРЭЭР — ноорог нь «өнчин» болж үлдэнэ (эцгийн мэдэгдэл · устгах товч) */
       setAjNote(lost
-        ? tr('Хуудас шинэчлэгдлээ — {0} мөрийн хадгалаагүй ноорог шинэ мөрөнд олдсонгүй тул хаягдав.', num(lost))
+        ? tr('Хуудас шинэчлэгдлээ — {0} мөрийн хадгалаагүй ноорог шинэ мөрөнд олдсонгүй: {1}', num(lost),
+          lostNames.slice(0, 5).join('; ') + (lost > 5 ? ` (+${num(lost - 5)})` : ''))
         : tr('Хуудас шинэчлэгдлээ — хадгалаагүй ноорог шинэ мөрүүд рүү зөөгдөв.'));
     } catch (e) {
       setErr(userError(e));
     } finally {
       setBusy(false);
     }
-  }, [busy, rows, hdMapsRef, hdResetRestore, refetchRef, setADraft, setBusy, setCollapsed, setDraft, setErr, setFGrp, setHam, setLinkAsk, setModal, setResDraft, setSel, undoRef, setOkRows, setCellEdit]);
+  }, [busy, rows, hdMapsRef, hdResetRestore, refetchRef, setBusy, setCollapsed, setErr, setFGrp, setLinkAsk, setModal, setSel, undoRef, setOkRows, setCellEdit]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshAjil` нь ArcGIS-ээс хүлээгдэж буй илгээлтийг уншиж төлөвт тавьдаг — гадаад эх сурвалжтай синк
   useEffect(() => { void refreshAjil(null); }, [refreshAjil]);
   /* ⚠️ Хүлээгдэж байхад 30 сек тутам — шийдвэр гарахад зохиогчийн нээлттэй

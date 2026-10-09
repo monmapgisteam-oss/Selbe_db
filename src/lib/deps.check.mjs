@@ -441,4 +441,42 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   console.log('✅ ромбо, монотон биш — сүүлд бодсон шаардлагатай тулгана, хэтэрсэн навч буцна');
 }
 
+/* ── ⚠️ 2026-10-09: БЛОК ХООРОНДЫН уялдаа «@A>B» — B блокт энэ мөр A блокийн урд ажлаас хамаарна ── */
+{
+  /* Бичиглэл: эргэх хөрвүүлэлт, хуучин «@N» хэвээр, A === B бол энгийн @N болж хэвшинэ */
+  assert.deepEqual(parseDeps('11FS3@1>2'), [{ code: 11, type: 'FS', lag: 3, blk: 1, src: 0 }]);
+  assert.deepEqual(parseDeps('11fs @ 2 > 3'), [{ code: 11, type: 'FS', lag: 0, blk: 2, src: 1 }]);
+  assert.deepEqual(parseDeps('11FS@2>2'), [{ code: 11, type: 'FS', lag: 0, blk: 1 }], 'A === B → @N');
+  assert.deepEqual(parseDeps('11FS@0>2'), [], '@0>… эвдэрсэн');
+  assert.deepEqual(parseDeps('11FS@1>0'), [], '…>0 эвдэрсэн');
+  assert.equal(formatDeps(parseDeps('11FS3@1>2,22SS-5@3,7FS')), '11FS3@1>2,22SS-5@3,7FS', 'эргэх хөрвүүлэлт');
+  assert.equal(formatDeps([{ code: 5, type: 'FS', lag: 0, src: 0 }]), '5FS', 'блокгүй бол src бичигдэхгүй');
+  assert.deepEqual(residualDeps('11FS@1>2,5FF2'), ['5FF2'], '@A>B танигдана');
+  /* Ялгах тэмдэг: src нь тусдаа уялдаа */
+  assert.equal(depId({ code: 11, blk: 1, src: 0 }), '11@1<0');
+  assert.ok(!sameDep({ code: 11, blk: 1, src: 0 }, { code: 11, blk: 1 }), 'src-тэй ≠ src-гүй');
+  assert.ok(sameDep({ code: 11, blk: 1, src: 0 }, { code: 11, blk: 1, src: 0 }));
+  assert.deepEqual(depsInBlock(parseDeps('11FS@1>2'), 1).map(depId), ['11@1<0'], 'B блокт үйлчилнэ');
+  assert.deepEqual(depsInBlock(parseDeps('11FS@1>2'), 0), [], 'A блокт үйлчлэхгүй');
+
+  /* requiredStart: B блокийн шаардлага A блокийн урд ажлын мужаас */
+  const rows = [
+    row(0, 1, [], [sp(10, 20), sp(50, 60)]),
+    row(1, 2, parseDeps('1FS@1>2'), [sp(0, 5), sp(30, 35)]),
+  ];
+  const bc = codeIndex(rows);
+  assert.equal(requiredStart(rows, bc, 1, 1), d(21), 'блок 1 нь блок 0-ийн 1-р ажлын дуусахаас');
+  assert.equal(requiredStart(rows, bc, 1, 0), null, 'блок 0-д шаардлага алга');
+  /* propagate: урд ажил блок 0-д хөдлөхөд хамаарагчийн блок 1 дагана, блок 0 хөндөгдөхгүй */
+  const ch = propagate(rows, 2, new Map([[0, [sp(15, 25), sp(50, 60)]]]));
+  assert.deepEqual(ch.get(1), [sp(0, 5), sp(26, 31)], 'блок 1 шилжив, блок 0 хэвээр');
+  /* урд ажил зөвхөн блок 1-д хөдлөхөд хамаарагч хөдлөхгүй (шаардлага нь блок 0-оос) */
+  const ch2 = propagate(rows, 2, new Map([[0, [sp(10, 20), sp(55, 65)]]]));
+  assert.equal(ch2.has(1), false, 'эх блок хөдлөөгүй — хамаарагч хэвээр');
+  /* хуучин «@N» зан ХЭВЭЭР */
+  const old = [row(0, 1, [], [sp(10, 20), sp(50, 60)]), row(1, 2, parseDeps('1FS@2'), [sp(0, 5), sp(30, 35)])];
+  assert.equal(requiredStart(old, codeIndex(old), 1, 1), d(61), '@2 — урд ажил ижил блокоос');
+  console.log('✅ блок хоорондын уялдаа — @A>B бичиглэл, эх блокийн мужаар шаардлага, тархалт');
+}
+
 console.log('\ndeps.check: ok');

@@ -16,10 +16,21 @@ import h from '../huvaari.module.css';
  *    нэг хуудсанд танигдахгүй болно.
  */
 export function FlowBox({
-  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject, summary,
+  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject, summary, progress, okDisabled,
 }: {
   title: string; desc: string; label: string; okText: string;
   rejectText?: string; busy: boolean;
+  /**
+   * ⚠️ 2026-10-09: УРТ БИЧИЛТИЙН ЯВЦ («Шалгаж байна…», «Илгээж байна…») — урьд нь цонх `busy` үед ямар ч
+   *    дохиогүй хөлддөг тул хүн дахин дарах/хаахыг оролддог байв. Эцэг (`Huvaari.progress`) тавина.
+   */
+  progress?: string;
+  /**
+   * ⚠️ 2026-10-09: ҮНДСЭН ТОВЧ (`okText`) ХААЛТТАЙ ШАЛТГААН — өгвөл товч идэвхгүй, шалтгаан ИЛ мөрөөр
+   *    (мэдрэгч дэлгэцэд `title` гарахгүй). «Шийдвэрлэх»-ийн «Батлах» урьдчилан хараагүй/улаан мөртэй үед
+   *    дарагдаад дараа нь л унадаг байв.
+   */
+  okDisabled?: string;
   /**
    * ⚠️ 2026-10-08: ИЛГЭЭХИЙН ӨМНӨХ ХУРААНГУЙ — юу илгээгдэх вэ (мөр · блок · хуучин→шинэ) тайлбарын
    *    доор, гүйлгэгддэг жагсаалт. Эцэг (`Huvaari`) бүрдүүлнэ; байхгүй бол юу ч зурагдахгүй.
@@ -76,6 +87,8 @@ export function FlowBox({
       if (txt.trim()) onReject(txt);
       return;
     }
+    /* ⚠️ 2026-10-09: хаалттай үндсэн товчийг Ctrl+Enter-ээр тойрохгүй (`okDisabled`) */
+    if (okDisabled) return;
     onOk(txt);
   };
   /* ⚠️ 2026-10-07: Дотор дараад (текст сонголт) АРД суллахад `click` нь дэвсгэр дээр буудаг
@@ -98,7 +111,9 @@ export function FlowBox({
         </header>
         <p className={h.note}>{desc}</p>
         {summary}
+        {progress && busy && <p className={h.note} role="status" aria-live="polite">⏳ {progress}</p>}
         {err && <p className={h.err} role="alert">{err}</p>}
+        {okDisabled && !busy && <p className={h.muted} role="status">{okDisabled}</p>}
         <label className={h.mdField}>
           {label}
           <textarea
@@ -129,7 +144,8 @@ export function FlowBox({
               {rejectText}
             </button>
           )}
-          <button type="button" className={h.save} disabled={busy} onClick={() => onOk(txt)}>
+          <button type="button" className={h.save} disabled={busy || !!okDisabled} title={okDisabled}
+            onClick={() => onOk(txt)}>
             {okText}
           </button>
         </div>

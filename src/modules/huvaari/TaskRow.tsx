@@ -72,10 +72,11 @@ export function TaskRow({
    */
   geree: Span | null;
   tolov: Span | null;
-  /** Огноо бичих (`YYYY-MM-DD`) — `undefined` бол уншина (бүлэг · нэмэлт мөр · эрхгүй) */
-  onDate?: (which: 'start' | 'end', day: string, via: CellVia) => void;
-  /** ⚠️ 2026-10-06: үргэлжлэх ХОНОГИЙГ бичиж төлөвлөх — эхлэх хэвээр, дуусах = эхлэх + N − 1 */
-  onDays?: (days: number, via: CellVia) => void;
+  /** Огноо бичих (`YYYY-MM-DD`) — `undefined` бол уншина (бүлэг · нэмэлт мөр · эрхгүй).
+      ⚠️ 2026-10-09: татгалзсан бол ШАЛТГААН (мөр) буцаана — нүд засварын горимд үлдэж улаанаар харуулна */
+  onDate?: (which: 'start' | 'end', day: string, via: CellVia) => string | void;
+  /** ⚠️ 2026-10-06: үргэлжлэх ХОНОГИЙГ бичиж төлөвлөх — эхлэх хэвээр, дуусах = эхлэх + N − 1 (2026-10-09: шалтгаан буцаана) */
+  onDays?: (days: number, via: CellVia) => string | void;
   /** Аль төрлийн огноо засагдах вэ — идэвхтэй таб */
   edKind?: PlanKind;
   /**
@@ -86,8 +87,8 @@ export function TaskRow({
   onEditing?: (on: boolean) => void;
   /** Уялдааны нүд ЗАСАГДАХ уу — эрхгүй бол зөвхөн уншина */
   canEdit: boolean;
-  /** Нүдэнд бичсэн текстийг хадгална () */
-  onHamText: (oid: number, text: string) => void;
+  /** Нүдэнд бичсэн текстийг хадгална. ⚠️ 2026-10-09: хэсэгчлэн/бүхэлд татгалзсан бол ШАЛТГААН буцаана */
+  onHamText: (oid: number, text: string) => string | void;
   /**
    * ⚠️ 2026-10-08: `Hamaaral`-ийн ТАНИГДААГҮЙ токенууд (`residualDeps`) — нүдэнд харагддаггүй
    *    ч хадгалахад хэвээр угтагддаг; title-д ил харуулна. Дуудагч өгөхгүй бол нуугдана.
@@ -418,8 +419,8 @@ function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip 
   c: string;
   v: number | null;
   tip: string;
-  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
-  onSet?: (day: string, via: CellVia) => void;
+  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`); татгалзвал шалтгаан буцаана */
+  onSet?: (day: string, via: CellVia) => string | void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
   /** ⚠️ 2026-10-08: `data-col` — дуудагч `[data-oid] [data-col]`-оор фокуслоно (зөвхөн засагдах нүдэнд) */
@@ -436,6 +437,10 @@ function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip 
   const navRef = useRef<1 | -1 | 0>(0);
   /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
   const enterRef = useRef(false);
+  /** ⚠️ 2026-10-09: товчлуурын (Enter/Tab/↓↑) замд аль хэдийн хадгалсан — `blur` дахин хадгалахгүй */
+  const doneRef = useRef(false);
+  /** ⚠️ 2026-10-09: Enter/Tab/↓↑-д ТАТГАЛЗСАН шалтгаан — нүд засварт үлдэж, доор нь улаанаар */
+  const [why, setWhy] = useState<string | null>(null);
   const shown = v != null ? msToDay(v) : '—';
 
   if (!onSet) {
@@ -462,43 +467,68 @@ function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip 
   }
 
   const bad = parseDayInput(txt) == null;
+  /**
+   * ⚠️ 2026-10-09: Enter/Tab/↓↑-д ХАДГАЛАЛТЫГ ТОВЧЛУУР ДЭЭР — буруу текст эсвэл дуудагч татгалзвал (`onSet` шалтгаан
+   *    буцаана) нүд засварт ҮЛДЭЖ шалтгаан улаанаар гарна. Урьд нь `blur`-д л хадгалдаг тул буруу огноо ЧИМЭЭГҮЙ
+   *    хаягдаж хуучин утга руу буцдаг байв. Хоосон текст = цуцлах (хуучин зан). Гадна дарах (`blur`) хуучнаараа.
+   */
+  const commitKey = (via: CellVia): string | null => {
+    if (!txt.trim()) return null;
+    const p = parseDayInput(txt);
+    if (!p) return tr('Огноо буруу — жишээ: 2026-10-04');
+    if (p === (v != null ? msToDay(v) : '')) return null;
+    return onSet(p, via) || null;
+  };
   return (
-    <input
-      className={`${h.rowDate} ${c} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
-      data-col={col}
-      value={txt}
-      autoFocus
-      /* ⚠️ 2026-10-06 аудит: "text" — DateField-ийн ижил; iOS-ийн тоон гарт «-»/«.» байхгүй тул огноо бичих боломжгүй */
-      inputMode="text"
-      aria-label={tip}
-      aria-invalid={bad}
-      title={bad ? tr('Огноо буруу — жишээ: 2026-10-04') : tip}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setTxt(e.target.value)}
-      onBlur={() => {
-        setEdit(false);
-        onEditing?.(false);
-        const cancel = cancelRef.current;
-        cancelRef.current = false;
-        const nav = navRef.current;
-        navRef.current = 0;
-        const ent = enterRef.current;
-        enterRef.current = false;
-        if (!cancel) {
-          const p = parseDayInput(txt);
-          if (p && p !== (v != null ? msToDay(v) : '')) onSet(p, nav ? 'nav' : ent ? 'enter' : 'blur');
-        }
-        /* ⚠️ 2026-10-08: хадгалалтын ДАРАА мөр шилжинэ — огноо өөрчлөгдсөн бол дуудагч цонх нээж
-           болно (`openAfterDate`); тэр үед фокус цонхонд үлдэх нь дуудагчийн шийдвэр. */
-        if (nav && onNext) onNext(nav);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { enterRef.current = true; e.currentTarget.blur(); return; }
-        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
-        const d = navDir(e.key);
-        if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
-      }}
-    />
+    <span className={h.cellWrap}>
+      <input
+        className={`${h.rowDate} ${c} ${h.rowDateIn}${bad || why ? ` ${h.rowDateBad}` : ''}`}
+        data-col={col}
+        value={txt}
+        autoFocus
+        /* ⚠️ 2026-10-06 аудит: "text" — DateField-ийн ижил; iOS-ийн тоон гарт «-»/«.» байхгүй тул огноо бичих боломжгүй */
+        inputMode="text"
+        aria-label={tip}
+        aria-invalid={bad || !!why}
+        title={why ?? (bad ? tr('Огноо буруу — жишээ: 2026-10-04') : tip)}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => { setTxt(e.target.value); setWhy(null); }}
+        onBlur={() => {
+          setEdit(false);
+          setWhy(null);
+          onEditing?.(false);
+          const cancel = cancelRef.current;
+          cancelRef.current = false;
+          const nav = navRef.current;
+          navRef.current = 0;
+          const ent = enterRef.current;
+          enterRef.current = false;
+          const done = doneRef.current;
+          doneRef.current = false;
+          if (!cancel && !done) {
+            const p = parseDayInput(txt);
+            if (p && p !== (v != null ? msToDay(v) : '')) onSet(p, nav ? 'nav' : ent ? 'enter' : 'blur');
+          }
+          /* ⚠️ 2026-10-08: хадгалалтын ДАРАА мөр шилжинэ — огноо өөрчлөгдсөн бол дуудагч цонх нээж
+             болно (`openAfterDate`); тэр үед фокус цонхонд үлдэх нь дуудагчийн шийдвэр. */
+          if (nav && onNext) onNext(nav);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
+          const d = navDir(e.key);
+          const via: CellVia | null = e.key === 'Enter' ? 'enter' : e.key === 'Tab' ? 'blur' : d && onNext ? 'nav' : null;
+          if (!via) return;
+          const w = commitKey(via);
+          if (w) { e.preventDefault(); setWhy(w); return; }
+          doneRef.current = true;
+          if (e.key === 'Tab') return; // хөтөч фокусыг өөрөө шилжүүлнэ
+          e.preventDefault();
+          if (via === 'nav') navRef.current = d;
+          e.currentTarget.blur();
+        }}
+      />
+      {why && <span className={h.cellErr} role="alert">{why}</span>}
+    </span>
   );
 }
 
@@ -517,8 +547,8 @@ function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   c: string;
   v: Span | null;
   tip: string;
-  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
-  onSet?: (days: number, via: CellVia) => void;
+  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`); татгалзвал шалтгаан буцаана */
+  onSet?: (days: number, via: CellVia) => string | void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
   /** ⚠️ 2026-10-08: ↓/↑ — мөр шилжих (`TaskRow.onNextRow`, `data-col="days"`) */
@@ -533,6 +563,9 @@ function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   const navRef = useRef<1 | -1 | 0>(0);
   /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
   const enterRef = useRef(false);
+  /** ⚠️ 2026-10-09: `DateCell`-ийн ижил — товчлуурын замд хадгалсан туг ба татгалзсан шалтгаан */
+  const doneRef = useRef(false);
+  const [why, setWhy] = useState<string | null>(null);
   const cur = v ? spanDays(v) : null;
   const shown = cur != null ? String(cur) : '—';
 
@@ -564,38 +597,58 @@ function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
      хүртэл зөвшөөрч зурвасыг хуанлиас хол гаргадаг байв.
      ⚠️ 2026-10-09: нэг тогтмол `MAX_DAYS` (`types.ts`) — мессежид тоо орлуулгаар. */
   const bad = !(n >= 1 && n <= MAX_DAYS);
+  /* ⚠️ 2026-10-09: Enter/Tab/↓↑-д буруу хоног эсвэл татгалзсан бол засварт үлдэнэ (`DateCell.commitKey`-ийн ⚠️) */
+  const commitKey = (via: CellVia): string | null => {
+    if (!txt.trim()) return null;
+    if (bad) return tr('Хоног буруу — 1-ээс {0} хүртэлх бүхэл тоо', num(MAX_DAYS));
+    if (n === cur) return null;
+    return onSet(n, via) || null;
+  };
   return (
-    <input
-      className={`${h.rowDays} ${c} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
-      data-col="days"
-      value={txt}
-      autoFocus
-      inputMode="numeric"
-      aria-label={tip}
-      aria-invalid={bad}
-      title={bad ? tr('Хоног буруу — 1-ээс {0} хүртэлх бүхэл тоо', num(MAX_DAYS)) : tip}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setTxt(e.target.value)}
-      onBlur={() => {
-        setEdit(false);
-        onEditing?.(false);
-        const cancel = cancelRef.current;
-        cancelRef.current = false;
-        const nav = navRef.current;
-        navRef.current = 0;
-        const ent = enterRef.current;
-        enterRef.current = false;
-        if (!cancel && !bad && n !== cur) onSet(n, nav ? 'nav' : ent ? 'enter' : 'blur');
-        /* ⚠️ 2026-10-08: хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
-        if (nav && onNext) onNext(nav);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { enterRef.current = true; e.currentTarget.blur(); return; }
-        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
-        const d = navDir(e.key);
-        if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
-      }}
-    />
+    <span className={h.cellWrap}>
+      <input
+        className={`${h.rowDays} ${c} ${h.rowDateIn}${bad || why ? ` ${h.rowDateBad}` : ''}`}
+        data-col="days"
+        value={txt}
+        autoFocus
+        inputMode="numeric"
+        aria-label={tip}
+        aria-invalid={bad || !!why}
+        title={why ?? (bad ? tr('Хоног буруу — 1-ээс {0} хүртэлх бүхэл тоо', num(MAX_DAYS)) : tip)}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => { setTxt(e.target.value); setWhy(null); }}
+        onBlur={() => {
+          setEdit(false);
+          setWhy(null);
+          onEditing?.(false);
+          const cancel = cancelRef.current;
+          cancelRef.current = false;
+          const nav = navRef.current;
+          navRef.current = 0;
+          const ent = enterRef.current;
+          enterRef.current = false;
+          const done = doneRef.current;
+          doneRef.current = false;
+          if (!cancel && !done && !bad && n !== cur) onSet(n, nav ? 'nav' : ent ? 'enter' : 'blur');
+          /* ⚠️ 2026-10-08: хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
+          if (nav && onNext) onNext(nav);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
+          const d = navDir(e.key);
+          const via: CellVia | null = e.key === 'Enter' ? 'enter' : e.key === 'Tab' ? 'blur' : d && onNext ? 'nav' : null;
+          if (!via) return;
+          const w = commitKey(via);
+          if (w) { e.preventDefault(); setWhy(w); return; }
+          doneRef.current = true;
+          if (e.key === 'Tab') return;
+          e.preventDefault();
+          if (via === 'nav') navRef.current = d;
+          e.currentTarget.blur();
+        }}
+      />
+      {why && <span className={h.cellErr} role="alert">{why}</span>}
+    </span>
   );
 }
 
@@ -622,7 +675,7 @@ function HamCell({
 }: {
   r: PlanRow;
   canEdit: boolean;
-  onText: (oid: number, text: string) => void;
+  onText: (oid: number, text: string) => string | void;
   /** `undefined` = popup нээгдэхгүй (батлагдаагүй нэмэлт мөр) */
   onPick?: () => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
@@ -640,6 +693,14 @@ function HamCell({
   const cancelRef = useRef(false);
   const navRef = useRef<1 | -1 | 0>(0);
   const [edit, setEdit] = useState(false);
+  /**
+   * ⚠️ 2026-10-09: ТАТГАЛЗСАН ШАЛТГААН (танигдаагүй токен · алга код · дугуй · блок алга · хадгалж байна). Урьд нь
+   *    нүд чимээгүй хадгалсан утга руу буцаж, бичсэн текст алга болдог байв. Одоо БИЧСЭН текст үлдэж (`edit`
+   *    хэвээр), доор нь шалтгаан улаанаар; Esc нь хадгалсан утга руу буцаана. Enter-д татгалзвал фокус үлдэнэ.
+   */
+  const [hamWhy, setHamWhy] = useState<string | null>(null);
+  /** Enter-ээр аль хэдийн хадгалсан — `blur` дахин хадгалахгүй (2026-10-09) */
+  const doneRef = useRef(false);
 
   /* ⚠️ Гаднаас өөрчлөгдвөл (popup, чирэлтийн гинж, ноорог сэргээх) оролтыг
      дагуулна — ЗӨВХӨН засаж БАЙХГҮЙ үед, эс бөгөөс бичиж байхад нь дарна.
@@ -674,32 +735,52 @@ function HamCell({
            болчихлоо — энэ жишээ шүү дээ»). Хоосон нүд бүрд жишээ бичиглэл
            харагдвал бодит утга мэт уншигдаж, 1,400 мөр «11FS14»-ээр дүүрсэн
            дүр зураг гарна. Жишээг ЗӨВХӨН `title` (hover) ба толгойн зааварт. */
-        title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5. @2 = зөвхөн 2-р блок (@-гүй = бүх блок)') + keepTip}
-        onChange={(e) => { setEdit(true); setTxt(e.target.value); }}
-        onFocus={() => { setEdit(true); setTxt(saved); onEditing?.(true); }}
+        /* ⚠️ 2026-10-09: «@1>2» (блок хоорондын уялдаа) тайлбарыг НЭМЖ залгана — хуучин мөр хэвээр */
+        title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5. @2 = зөвхөн 2-р блок (@-гүй = бүх блок)')
+          + ` · ${tr('@1>2 = 2-р блокт 1-р блокийн урд ажлаас')}` + keepTip + (hamWhy ? `\n${hamWhy}` : '')}
+        aria-invalid={!!hamWhy}
+        onChange={(e) => { setEdit(true); setTxt(e.target.value); setHamWhy(null); }}
+        /* ⚠️ 2026-10-09: татгалзсан текст (`hamWhy`) байвал фокус авахад ДАРАХГҮЙ — засаад дахин оролдоно */
+        onFocus={() => { setEdit(true); if (!hamWhy) setTxt(saved); onEditing?.(true); }}
         onBlur={() => {
-          setEdit(false); onEditing?.(false);
-          if (!cancelRef.current) onText(r.oid, txt);
+          onEditing?.(false);
+          const cancel = cancelRef.current;
           cancelRef.current = false;
+          const done = doneRef.current;
+          doneRef.current = false;
+          const w = cancel || done ? null : onText(r.oid, txt) || null;
+          /* ⚠️ 2026-10-09: татгалзвал бичсэн текст ҮЛДЭНЭ (`edit` хэвээр), шалтгаан доор */
+          if (w) setHamWhy(w);
+          else { setEdit(false); setHamWhy(null); }
           /* ⚠️ 2026-10-08: ↓/↑ — хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
           const nav = navRef.current;
           navRef.current = 0;
           if (nav && onNext) onNext(nav);
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+          if (e.key === 'Enter') {
+            /* ⚠️ 2026-10-09: Enter-д хадгална; татгалзвал фокус ҮЛДЭЖ шалтгаан гарна */
+            const w = onText(r.oid, txt) || null;
+            if (w) { e.preventDefault(); setHamWhy(w); return; }
+            doneRef.current = true;
+            setHamWhy(null);
+            e.currentTarget.blur();
+            return;
+          }
           /* ⚠️ Escape = ЦУЦЛАХ: `blur()` синхрон тул `onBlur` хуучин `txt`-ээр хадгалдаг
              байв (2026-09-17). Тугаар хаана.
              ⚠️ 2026-10-06: `stopPropagation` — `DateCell`-ийн адил; урьд нь Esc өргөн горимоос
              ч зэрэг гаргадаг байв. */
-          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); return; }
+          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; setTxt(saved); setEdit(false); setHamWhy(null); e.currentTarget.blur(); return; }
           const d = navDir(e.key);
           if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
         }}
       />
       {/* ⚠️ 2026-10-08: БИЧИЖ БАЙХАД Л нэг мөр жишээ — мөрийн ДОТОР абсолют (өндөр хөдлөхгүй).
           `placeholder` БИШ (дээрх 2026-09-15-ны ⚠️): фокустай ганц нүдэнд л гарна, 1,400 мөрт биш. */}
-      {edit && <span className={h.cellHelp} aria-hidden>11FS14 · 22SS-5 · @2</span>}
+      {/* ⚠️ 2026-10-09: татгалзсан шалтгаан (`hamWhy`) жишээний оронд улаанаар */}
+      {hamWhy ? <span className={h.cellErr} role="alert">{hamWhy}</span>
+        : edit && <span className={h.cellHelp} aria-hidden>11FS14 · 22SS-5 · @2 · @1&gt;2</span>}
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}
       {onPick && (
         <button type="button" className={h.hamMore} onClick={onPick}

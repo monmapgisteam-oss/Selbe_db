@@ -111,6 +111,26 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     if (old === from || !el) return;
     el.scrollLeft = Math.max(0, el.scrollLeft + Math.round(((old - from) / DAY) * px));
   }, [from, px]);
+  /* ⚠️ 2026-10-09: ТОМРУУЛАЛТАД ТӨВИЙН ОГНОО ХАДГАЛАГДАНА. Урьд нь `px` солигдоход `scrollLeft` хуучнаараа
+     үлдэж (эсвэл хөтөч хавчиж) харж байсан сар өөр газар руу «үсэрдэг» байв. Харагдах хуанлийн ТӨВИЙН огноог
+     (мс) гүйлгээ бүрд (`onScroll`) тэмдэглэж, `px` солигдмогц тэр огноог дахин төвд тавина. Дээрх `from`-ийн
+     нөхөлт (`px`-д нөхөхгүй) ХЭВЭЭР — энэ нь зөвхөн `px`-ийн шилжилт. */
+  const centerMs = useRef<number | null>(null);
+  const pxRef = useRef(px);
+  const noteCenter = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    centerMs.current = fromRef.current + ((el.scrollLeft + calView(el) / 2) / pxRef.current) * DAY;
+  }, []);
+  useLayoutEffect(() => {
+    const old = pxRef.current;
+    pxRef.current = px;
+    const el = scrollRef.current;
+    if (old === px || !el) return;
+    /* Гүйлгээ хараахан бүртгэгдээгүй бол хуучин `px`-ээр одоогийн байрлалаас (хавчигдсан байж болох ч ойролцоо) */
+    const c = centerMs.current ?? from + ((el.scrollLeft + calView(el) / 2) / old) * DAY;
+    el.scrollLeft = Math.max(0, Math.round(((c - from) / DAY) * px - calView(el) / 2));
+  }, [px, from]);
   const total = Math.round((to - from) / DAY) + 1;
   const W = Math.round(total * px);
   const xOf = useCallback((ms: number) => Math.round(((ms - from) / DAY) * px), [from, px]);
@@ -149,8 +169,15 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     winTick.current = requestAnimationFrame(() => {
       winTick.current = 0;
       recalcWin();
+      noteCenter(); // ⚠️ 2026-10-09: томруулалтад төв хадгалах (`centerMs`)
     });
-  }, [recalcWin]);
+  }, [recalcWin, noteCenter]);
+  /** ⚠️ 2026-10-09: «Өнөөдөр» товч — өнөөдрийг хуанлийн харагдах хэсгийн төвд гүйлгэнэ */
+  const goToday = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = Math.max(0, Math.round(((now - from) / DAY) * px - calView(el) / 2));
+  }, [now, from, px]);
   useEffect(() => () => { if (winTick.current) cancelAnimationFrame(winTick.current); }, []);
   /* Мөр/шүүлт/эвхэлт солигдоход цонхыг шинэчилнэ */
   useEffect(() => { recalcWin(); }, [visible.length, recalcWin]);
@@ -181,8 +208,13 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
 
   return {
     now, from, to, px, total, W, xOf, dayAt, msAt,
-    trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
+    trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months, goToday,
   };
+}
+
+/** ⚠️ 2026-10-09: хуанлийн ХАРАГДАХ өргөн — наалдмал зүүн самбар (`gSide`, гүйлгэгчийн эхний хүүхэд) хасагдана */
+function calView(el: HTMLDivElement): number {
+  return el.clientWidth - ((el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0);
 }
 
 /** Хуанлийн толгойн сар · хоногийн шошго — `useCalendar`-аас (2026-10-04, memo-д зориулж салгав; логик ХЭВЭЭР) */

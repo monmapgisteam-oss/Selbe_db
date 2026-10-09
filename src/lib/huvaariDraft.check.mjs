@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import {
   hdKey, kS, kH, kA, kR, kM, kN, parseKey, mapsToCells, cellsToMaps, resOfVal,
-  serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL, remapDraft,
+  serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL, remapDraft, identityRemap,
   hlcNext, maxStamp, dropCleared, applyClear, hdClearMarkKey, serializeMark, parseMark, mergeMark, coversMark,
 } from './huvaariDraft.ts';
 
@@ -417,5 +417,49 @@ console.log('✅ HLC · нүд тус бүрийн cleared · хэсэгчилс
   console.log(`   нэг мужийн нүд ≈ ${per} тэмдэгт (хуучин ≈ 130), нэрсийн хүснэгт нэг удаа`);
 }
 console.log('✅ нягт бичиглэл · хуучин хэлбэр уншигдана');
+
+/* ── 9. Шинэ жааз: танихуун (`rk`) · `identityRemap` · `remapDraft(keep)` (2026-10-09) ── */
+{
+  const sp = { start: 86_400_000, end: 2 * 86_400_000 };
+  const d0 = {
+    ...mk([[kS(10, 0), cell(sp, 50, 'me')], [kH(11), cell('5FS', 60, 'bat')], [kS(12, 0), cell(sp, 70, 'me')]], [[kS(110, 1), 40]]),
+    rk: new Map([[10, { des: 5, no: '1.1', work: 'Бетон' }], [11, { des: null, no: '1.2', work: 'Арматур' }], [12, { des: 9, no: '9', work: 'Алга' }]]),
+  };
+  /* Сериал → задлах: танихуун эргэж ирнэ; `sig`-д ОРОХГҮЙ */
+  const back = parse(serialize(d0));
+  assert.deepEqual(back.rk.get(10), { des: 5, no: '1.1', work: 'Бетон' });
+  assert.equal(sig(d0), sig({ ...d0, rk: undefined }), 'sig танихуунаас хамаарна — тойрог үүснэ');
+  /* `max` — хэт том бол эхлээд нэргүй, дараа нь танихуунгүй (нүд хэзээ ч хасагдахгүй) */
+  const full = serialize(d0);
+  const lite = serialize(d0, full.length - 1);
+  assert.ok(lite.length < full.length && parse(lite).rk.get(10).des === 5 && parse(lite).rk.get(10).work === '', 'нэргүй танихуун');
+  assert.equal(parse(serialize(d0, 10)).entries.size, 3, 'хэт бага max — нүд хэвээр');
+  /* Одоогийн мөрүүд: код 5 → 210, «1.2 Арматур» → 211; код 9 алга */
+  const ctx = {
+    n: 2,
+    rows: new Map([
+      [210, { spans: [null, null], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: 5, no: '1.1x', work: 'Нэр өөрчлөгдсөн' }],
+      [211, { spans: [null, null], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: null, no: '1.2', work: 'Арматур' }],
+    ]),
+    months: () => undefined, monthsRes: () => undefined,
+  };
+  const im = identityRemap(d0, ctx);
+  assert.deepEqual([...im.map], [[10, 210], [11, 211]], 'кодоор · № + нэрээр зөөнө');
+  assert.deepEqual(im.lost, ['9 Алга'], 'олдоогүй мөр нэрээр');
+  /* `keep` — бусдын хуучин нүд tombstone-гүй үлдэнэ, миний хуучин нүд tombstone */
+  const r = remapDraft(d0, im.map, 999, (_k, e) => e.user !== 'me');
+  assert.ok(r.entries.has(kS(210, 0)) && r.entries.has(kH(211)), 'шинэ түлхүүрт хуулбар');
+  assert.ok(r.entries.has(kH(11)) && !r.del.has(kH(11)), 'бусдын хуучин нүд хэвээр');
+  assert.equal(r.del.get(kS(10, 0)), 999, 'миний хуучин нүдэнд tombstone');
+  /* Шинэ түлхүүрт ШИНЭ tombstone (буцаасан) байвал амилуулахгүй */
+  const rev = { ...d0, del: new Map([[kS(210, 0), 80]]) };
+  assert.equal(remapDraft(rev, new Map([[10, 210]]), 999).entries.has(kS(210, 0)), false, 'буцаасан нүд амилав');
+  /* Шинэ түлхүүрт ШИНЭ нүд байвал дарахгүй */
+  const newer = { ...d0, entries: new Map([...d0.entries, [kS(210, 0), cell(sp, 90, 'bat')]]) };
+  assert.equal(remapDraft(newer, new Map([[10, 210]]), 999).entries.get(kS(210, 0)).at, 90, 'шинэ нүдийг хуучин дарав');
+  /* Танихуунгүй (хуучин) ноорог — зөөхгүй, тоолно */
+  assert.equal(identityRemap({ ...d0, rk: undefined }, ctx).unknown, 3);
+}
+console.log('✅ шинэ жааз — танихуунаар зөөнө');
 
 console.log('✅ huvaariDraft: бүх шалгуур давлаа');

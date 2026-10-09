@@ -10,13 +10,14 @@ import {
   readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
 } from '@/lib/draftRemote';
 import {
-  applyClear, cellsToMaps, coversMark, dropCleared, hdClearMarkKey, hdKey, hdLocalKey, hlcNext, isEmpty as hdIsEmpty,
-  mapsToCells, maxStamp, merge as hdMerge, mergeMark, parse as hdParse, parseMark, remapDraft as hdRemapDraft, sameVal,
+  applyClear, cellsToMaps, coversMark, dropCleared, hdClearMarkKey, hdKey, hdLocalKey, hlcNext, identityRemap, isEmpty as hdIsEmpty,
+  mapsToCells, maxStamp, merge as hdMerge, mergeMark, parse as hdParse, parseKey, parseMark, remapDraft as hdRemapDraft, sameVal,
   serialize as hdSerialize, serializeMark, sig as hdSig, users as hdUsersOf,
-  type HDApply, type HDCell, type HDClearMark, type HDCtx, type HDDraft, type HDEntries, type HDEntry, type HDRowBase,
+  type HDApply, type HDCell, type HDClearMark, type HDCtx, type HDDraft, type HDEntries, type HDEntry, type HDRowBase, type HDRowKey,
 } from '@/lib/huvaariDraft';
 import type { ADraft, Draft, PlanKind, ResDraft } from './types';
 import { useLatest } from './useLatest';
+import { remapRowsFull } from './savePrep';
 
 /** «Саяхан» — хамтрагчийн нүдийг дарсан мэдэгдлийн цонх (мс, 2026-10-08) */
 const HD_RECENT = 10 * 60_000;
@@ -213,7 +214,8 @@ export function useSharedDraft({
     for (const r of base) {
       const sr = byOid.get(r.oid);
       if (!sr) continue;
-      m.set(r.oid, { spans: r.spans, ham: sr.ham, aStart: sr.aStart, aEnd: sr.aEnd, hun: sr.hun, mashin: sr.mashin });
+      /* ⚠️ 2026-10-09: танихуун (`des` · № · нэр) — шинэ жаазад зөөхөд (`identityRemap`) */
+      m.set(r.oid, { spans: r.spans, ham: sr.ham, aStart: sr.aStart, aEnd: sr.aEnd, hun: sr.hun, mashin: sr.mashin, des: sr.des, no: sr.no, work: sr.work });
     }
     const known = obState === 'ok';
     return {
@@ -305,6 +307,20 @@ export function useSharedDraft({
   const hdLocalSeen = useRef(0);
   /** «Ноорог хэт том» мэдэгдлийг нэг удаа л (2026-10-08) */
   const hdBigNoted = useRef(false);
+  /**
+   * ⚠️ 2026-10-09: ЖААЗ СОЛИГДОХОД НООРОГ АЛДАГДАХГҮЙ (хэрэглэгч: «шинэ жааз ирэхэд ноорог алга болж байна»).
+   *    · `hdRk` — сүүлд нийлүүлсэн ноорогийн мөрийн танихуун (`HDDraft.rk`): энэ клиентийн мөрөнд
+   *      ОЛДОХГҮЙ (хуучирсан) нүдний танихууныг дараагийн бичилтэд АЛДАХГҮЙ дамжуулна.
+   *    · `hdLostRef` — сүүлийн нийлүүлэлтэд (`hdApply`) танихуунаар ч зөөгдөөгүй мөрүүд (сэргээлтийн мэдэгдэлд).
+   *    · `hdRemapHold` — `rows` шинэ жааз болж Map-уудыг шинэ oid руу зөөх зуур (дараагийн зурагдалт хүртэл)
+   *      дифф ХИЙХГҮЙ: эс бөгөөс хуучин түлхүүртэй Map шинэ суурьтай тулгагдаж бүх нүд tombstone авдаг байв.
+   *    · `hdOrphan` — зөөгдөөгүй мөрийн oid → «№ нэр» (эцгийн «өнчин ноорог» мэдэгдэлд нэрээр).
+   */
+  const hdRk = useRef(new Map<number, HDRowKey>());
+  const hdLostRef = useRef<{ lost: string[]; unknown: number; moved: number }>({ lost: [], unknown: 0, moved: 0 });
+  const hdRemapHold = useRef<{ draft: Draft } | null>(null);
+  const hdRowsPrev = useRef<{ key: string; rows: SheetRow[] }>({ key: '', rows: [] });
+  const [hdOrphan, setHdOrphan] = useState<Map<number, string>>(() => new Map());
   const draggingRef = useLatest(dragging);
   const statusRef = useLatest(status);
   /** Хүлээгдэж буй цэвэрлэлтийн дахин оролдлого (2026-10-04)
@@ -430,6 +446,8 @@ export function useSharedDraft({
   const hdDiff = useCallback((): boolean => {
     if (hdReady.current !== hdKeyRef.current || obStateRef.current === 'loading') return false;
     if (!hdWritableRef.current || !hdPrevW.current || hdExpectEmpty.current) return false;
+    /* ⚠️ 2026-10-09: жааз солигдож Map-ууд шинэ oid руу зөөгдөж байна (`hdRemapHold`-ийн ⚠️) */
+    if (hdRemapHold.current) return false;
     const cur = mapsToCells(hdMapsRef.current, hdCtxRef.current);
     const prev = hdPrev.current;
     let changed = false;
@@ -485,12 +503,23 @@ export function useSharedDraft({
       if (!m) { m = { at: now, user: meRef.current }; hdMeta.current.set(k, m); }
       entries.set(k, { val: c.val, bv: c.bv, at: m.at, user: m.user });
     }
+    /* ⚠️ 2026-10-09: мөрийн танихуун — одоогийн мөрөөс, олдохгүй (хуучирсан) бол өмнө нийлүүлсэн ноорогийнхоор */
+    const rk = new Map<number, HDRowKey>();
+    const ctxRows = hdCtxRef.current.rows;
+    for (const k of entries.keys()) {
+      const p = parseKey(k);
+      if (!p || p.type === 'm' || p.type === 'n' || rk.has(p.oid)) continue;
+      const r = ctxRows.get(p.oid);
+      const id = r ? { des: r.des ?? null, no: r.no ?? '', work: r.work ?? '' } : hdRk.current.get(p.oid);
+      if (id) rk.set(p.oid, id);
+    }
     return {
       t: now, kind: kindRef.current, pkg: pkgKeyRef.current, by: { user: meRef.current, at: now },
       entries, del: new Map(hdDel.current), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
       /* ⚠️ 2026-10-01: `cleared`-ийг ҮРГЭЛЖ дамжуулна (`hdCleared`-ийн ⚠️) — `sig`-д
          ордоггүй тул нэмэлт бичилт үүсгэхгүй, зөвхөн дараагийн бичилтэд үлдэнэ. */
       ...(hdCleared.current ? { cleared: hdCleared.current } : {}),
+      ...(rk.size ? { rk } : {}),
     };
   }, [hdCtxRef, kindRef, meRef, pkgKeyRef, hdDiff, hdSchedule, hdStamp]);
 
@@ -502,8 +531,38 @@ export function useSharedDraft({
    *    хүчинтэй нүдийг бүгдэд нь устгадаг байв. Хуучирсан нүд зөвхөн энд
    *    орохгүй — алсад хэвээр, мөрөө шинэчилсэн клиент шийднэ.
    */
-  const hdApply = useCallback((d: HDDraft): HDApply => {
-    hdSee(d);
+  const hdApply = useCallback((d0: HDDraft): HDApply => {
+    hdSee(d0);
+    /*
+     * ⚠️ 2026-10-09: ШИНЭ ЖААЗ РУУ ЗӨӨНӨ (`identityRemap`) — нүдний oid энэ клиентийн мөрөнд байхгүй бол
+     *    танихуунаар (код → № + нэр) одоогийн мөр рүү. Урьд нь «мөр алга» нүд хуучирсан гэж хасагдаж,
+     *    МИНИЙ нүд 10 мин-ийн дараа tombstone авч ноорог ор мөргүй устдаг байв. Зөөгдсөн МИНИЙ хуучин
+     *    түлхүүр tombstone авна (давхардахгүй); БУСДЫН хуучин түлхүүр ҮЛДЭНЭ — хуучин жаазтай хамтрагчид
+     *    хүчинтэй (2026-09-25-ны дүрэм, `remapDraft`-ийн `keep`). Мөр ачаалагдаагүй үед зөөхгүй.
+     */
+    let d = d0;
+    const ctx0 = hdCtxRef.current;
+    let movedN = 0;
+    if (ctx0.rows.size) {
+      const im = identityRemap(d0, ctx0);
+      hdLostRef.current = { lost: im.lost, unknown: im.unknown, moved: im.map.size };
+      if (im.map.size) {
+        d = hdRemapDraft(d0, im.map, hdStamp(), (_k, e) => e.user !== meRef.current);
+        /* ⚠️ Зөвхөн ШИНЭЭР үүссэн түлхүүр/tombstone тоологдоно — үлдээсэн хамтрагчийн хуучин нүд нийлүүлэлт
+           бүрд дахин зураглагдах тул бүгдийг тоолбол 1.5 с тутам бичилт товлогдох тойрог үүснэ. */
+        const newRows = new Set<number>();
+        for (const k of d.entries.keys()) {
+          if (d0.entries.has(k)) continue;
+          movedN += 1;
+          const p = parseKey(k);
+          if (p && p.type !== 'm' && p.type !== 'n') newRows.add(p.oid);
+        }
+        for (const k of d.del.keys()) if (!d0.del.has(k)) movedN += 1;
+        /* Мэдэгдэлд — ШИНЭЭР зөөгдсөн мөр л (урьд зөөгдсөн хуулбар дахин тоологдохгүй) */
+        hdLostRef.current = { ...hdLostRef.current, moved: newRows.size };
+      }
+    }
+    hdRk.current = new Map(d.rk ?? []);
     const ap = cellsToMaps(d.entries, hdCtxRef.current);
     /* ⚠️ 2026-10-04: HLC — харсан бүх нүднээс ХОЖУУ tombstone (`hdStamp`-ийн ⚠️) */
     const now = hdStamp();
@@ -620,7 +679,8 @@ export function useSharedDraft({
     setResDraft(ap.maps.resDraft); setObDraft(ap.maps.obDraft); setObResDraft(ap.maps.obRes);
     setHdUsers(hdUsersOf(d).filter((u) => u !== meRef.current));
     /* Устгасан хуучирсан нүдийг алсад хүргэнэ — дуудагчийн товлолтоос үл хамааран */
-    if (tomb) hdSchedule(1500);
+    /* ⚠️ 2026-10-09: шинэ жаазад зөөгдсөн нүд (`movedN`) ч — шинэ түлхүүр · хуучны tombstone алсад хүрнэ */
+    if (tomb || movedN) hdSchedule(1500);
     return ap;
   }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft, hdSoftNote, onRemoteRef]);
 
@@ -688,7 +748,8 @@ export function useSharedDraft({
           entries: new Map(), del: new Map(), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
         };
         const d: HDDraft = { ...applyClear(base0, mk.keys, mk.ts), t, by: { user: meRef.current, at: t } };
-        const body = hdSerialize(d);
+        /* ⚠️ 2026-10-09: `REMOTE_MAX` — танихуун хэмжээг хэтрүүлбэл хасагдана (`serialize`-ийн ⚠️) */
+        const body = hdSerialize(d, REMOTE_MAX);
         if (body.length > REMOTE_MAX) {
           err = tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(body.length), String(REMOTE_MAX));
           break;
@@ -830,7 +891,7 @@ export function useSharedDraft({
         hdLastSeenAt.current = at0 ?? 0;
       }
       const local = hdLocal();
-      const body = hdSerialize(local);
+      const body = hdSerialize(local, REMOTE_MAX);
       const s = hdSig(local);
       /* ⚠️ Локал хуулбар БҮХ оролдлогод — алс унасан ч энэ компьютерт үлдэнэ */
       hdWriteLocal(key, local);
@@ -1004,6 +1065,16 @@ export function useSharedDraft({
       const ap = hdApply(merged);
       const parts: string[] = [];
       if (ap.applied) parts.push(tr('Ноорог сэргээв: {0} мөр', num(ap.rows)));
+      /* ⚠️ 2026-10-09: шинэ жаазад зөөгдсөн / олдоогүй мөрийг НЭРЭЭР (`hdLostRef`-ийн ⚠️) */
+      {
+        const lr = hdLostRef.current;
+        if (lr.moved) parts.push(tr('{0} мөрийн ноорог шинэчлэгдсэн хуудасны мөр рүү зөөгдөв', num(lr.moved)));
+        if (lr.lost.length) {
+          parts.push(tr('{0} мөрийн ноорог одоогийн хуудаснаас олдсонгүй: {1}', num(lr.lost.length),
+            lr.lost.slice(0, 5).join('; ') + (lr.lost.length > 5 ? ` (+${num(lr.lost.length - 5)})` : '')));
+        }
+        if (lr.unknown) parts.push(tr('{0} мөрийн ноорог танигдсангүй (хуучин ноорог)', num(lr.unknown)));
+      }
       if (ap.stale) parts.push(tr('{0} мөр хуучирсан тул хасав', num(ap.stale)));
       if (fromLocal && readErr) parts.push(tr('алсын ноорог уншигдсангүй — энэ компьютерийн хуулбар'));
       if (parts.length) setNote(parts.join(' · '));
@@ -1017,6 +1088,66 @@ export function useSharedDraft({
   }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, hdBlocked, hdPending, status]);
 
   /**
+   * МӨРҮҮД ШИНЭ ЖААЗ БОЛОХОД НООРОГИЙГ ЗӨӨНӨ (2026-10-09, хэрэглэгч: «жааз солигдоход ноорог алга болж байна»).
+   * ⚠️ ЯАГААД: «Гүйцэтгэл бөглөх» нийтлэл · нэмэлт ажил · «Улсын комисс» бүх oid-ыг солино. `refetchServer`/
+   *    хадгалалтын дараа `rows` шинэ жааз болмогц доорх дифф хуучин oid-той Map-ыг шинэ суурьтай тулгаж БҮХ
+   *    нүдийг tombstone болгож (алсаас ч устана), Map нь «өнчин ноорог» болж үлддэг байв.
+   * ⚠️ Зураглал `savePrep.remapRowsFull` (хадгалахтай НЭГ дүрэм: эцэг бүлгийн зам › № ¦ нэр → код → № + нэр).
+   *    Map · дифф суурь (`hdPrev`) · мета · tombstone · ажиглалтыг ЗЭРЭГ зөөж, Map шинэ түлхүүртэй ирэх хүртэл
+   *    дифф зогсоно (`hdRemapHold`). Зөөгдөөгүй мөр «өнчин» хэвээр — нэрийг нь эцэгт (`hdOrphan`).
+   * ⚠️ Энэ эффект ДИФФ-ЭЭС ӨМНӨ зарлагдах ёстой (нэг commit-д эффект зарласан дарааллаар).
+   * ⚠️ Багц солигдоход (`rows` эхлээд `[]`) зөөхгүй — өөр багцын мөр.
+   */
+  useEffect(() => {
+    const prev = hdRowsPrev.current;
+    hdRowsPrev.current = { key: pkgKey, rows };
+    /* ⚠️ 2026-10-09: багц солигдоход өмнөх багцын «өнчин» нэрс арилна */
+    if (prev.key !== pkgKey) { setHdOrphan((o0) => (o0.size ? new Map() : o0)); return; }
+    if (!prev.rows.length || !rows.length || prev.rows === rows) return;
+    const have = new Set(rows.map((r) => r.oid));
+    if (prev.rows.every((r) => have.has(r.oid))) return;
+    const { map } = remapRowsFull(prev.rows, rows);
+    const cur = hdMapsRef.current;
+    const keyOf = (o: number) => map.get(o) ?? o;
+    const touched = [cur.draft, cur.ham, cur.aDraft, cur.resDraft].some((m) => [...m.keys()].some((o) => map.has(o) && map.get(o) !== o));
+    /* Зөөгдөөгүй ноорогтой мөрийн нэр — «өнчин» мэдэгдэлд */
+    const names = new Map<number, string>();
+    const prevBy = new Map(prev.rows.map((r) => [r.oid, r]));
+    for (const m of [cur.draft, cur.ham, cur.aDraft, cur.resDraft] as ReadonlyMap<number, unknown>[]) {
+      for (const o of m.keys()) {
+        if (o < 0 || have.has(o) || map.has(o)) continue;
+        const r = prevBy.get(o);
+        if (r) names.set(o, `${r.no ?? '—'} · ${r.work ?? ''}`);
+      }
+    }
+    setHdOrphan((o0) => (names.size || o0.size ? new Map([...o0, ...names]) : o0));
+    if (!touched) return;
+    const mv = <V,>(m: ReadonlyMap<number, V>): Map<number, V> => {
+      const o = new Map<number, V>();
+      for (const [k, v] of m) {
+        const nk = keyOf(k);
+        /* Шинэ түлхүүрт аль хэдийн байвал (жааз хоёулаа агуулсан) — тэр нь шинэ, хэвээр */
+        if (nk !== k && m.has(nk)) continue;
+        o.set(nk, v);
+      }
+      return o;
+    };
+    const mvKey = (k: string): string => {
+      const p = parseKey(k);
+      if (!p || p.type === 'm' || p.type === 'n') return k;
+      const to = map.get(p.oid);
+      if (to == null || to === p.oid) return k;
+      return p.type === 's' || p.type === 'a' ? `${p.type}:${to}:${p.blk}` : `${p.type}:${to}`;
+    };
+    const mvRef = <V,>(m: Map<string, V>): Map<string, V> => new Map([...m].map(([k, v]) => [mvKey(k), v]));
+    hdPrev.current = mvRef(hdPrev.current);
+    hdMeta.current = mvRef(hdMeta.current);
+    hdSeen.current = mvRef(hdSeen.current);
+    hdRemapHold.current = { draft: cur.draft };
+    setDraft(mv(cur.draft)); setHam(mv(cur.ham)); setADraft(mv(cur.aDraft)); setResDraft(mv(cur.resDraft));
+  }, [rows, pkgKey, hdMapsRef, setDraft, setHam, setADraft, setResDraft]);
+
+  /**
    * ДИФФ — 5 Map өөрчлөгдөх бүрд мета/tombstone хөтөлж, 1.5 с дараа бичнэ.
    * ⚠️ Задаргаа ачаалагдаж байхад (`obState === 'loading'` — багц солих,
    *    `refetchServer`-ийн завсрын зурагдалт) ОГТ ажиллахгүй: суурь дутуу тул
@@ -1026,6 +1157,11 @@ export function useSharedDraft({
   useEffect(() => {
     const key = hdKeyCur;
     if (hdReady.current !== key || obState === 'loading') return;
+    /* ⚠️ 2026-10-09: жааз солигдож Map зөөгдөж байна — шинэ түлхүүртэй Map ирэх хүртэл диффгүй (`hdRemapHold`) */
+    if (hdRemapHold.current) {
+      if (draft === hdRemapHold.current.draft) return;
+      hdRemapHold.current = null;
+    }
     const cur = mapsToCells({ draft, ham, aDraft, resDraft, obDraft, obRes: obResDraft }, hdCtx);
     const wasW = hdPrevW.current;
     hdPrevW.current = hdWritable;
@@ -1152,7 +1288,7 @@ export function useSharedDraft({
       }
       if (hdHold.current) { hdHeldAgain.current = true; return; }
       if (hdBusy.current) { hdAgain.current = true; return; }
-      const body = hdSerialize(local);
+      const body = hdSerialize(local, REMOTE_MAX);
       if (body.length > REMOTE_MAX) return;
       if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
       const gen = hdGen.current;
@@ -1299,6 +1435,8 @@ export function useSharedDraft({
     /* ⚠️ `*Ref` нэрээр — React Compiler ref-ийг нэрээр нь таньж, эцэгт `.current` бичихийг зөвшөөрнө */
     hdTimerRef: hdTimer, hdSkipUnlockOnceRef: hdSkipUnlockOnce, hdMapsRef, hdMeta, meRef, hdKeyRef, hdWritableRef, canEditRef,
     askSwitch, hdClear, hdResetRestore,
+    /* ⚠️ 2026-10-09: шинэ жаазад зөөгдөөгүй ноорогтой мөрийн нэр (`hdOrphan`-ийн ⚠️) */
+    hdOrphan,
     /* 2026-10-04 аудит: илгээх · хаях · хадгалагдаагүй төлөв */
     hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced,
   };

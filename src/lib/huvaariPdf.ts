@@ -108,6 +108,12 @@ export type HvPdfInput = {
    *    «Блок · …», блок бүр шинэ хуудаснаас. Хоосон/байхгүй бол ганц блокийн хуучин зам.
    */
   blocks?: { block: string; rows: HvPdfRow[] }[];
+  /**
+   * ⚠️ 2026-10-09: НООРОГ/САНАЛЫН ШОШГО — хадгалаагүй ноорог эсвэл урьдчилан харж буй санал PDF-д ОРДОГ
+   *    («дэлгэц дээрх л хэвлэгдэнэ») атлаа баримт нь батлагдсан хуваарь мэт харагдаж байв. Өгвөл толгойд
+   *    гарчгийн хажууд улаанаар («НООРОГ — батлагдаагүй N мөр» / «САНАЛ (урьдчилан харалт)»).
+   */
+  draftLabel?: string;
 };
 
 /* ── Гэрэлтэй сэдвийн өнгө (`globals.css :root`) ── */
@@ -840,6 +846,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
         {
           columns: [
             { text: `${tr('Хуваарь')} — ${x.pkg}`, bold: true, fontSize: 13, width: 'auto' },
+            /* ⚠️ 2026-10-09: ноорог/саналын шошго (`draftLabel`-ийн ⚠️) */
+            ...(x.draftLabel ? [{ text: x.draftLabel, bold: true, fontSize: 10, color: C.bad, margin: [12, 2, 0, 0], width: 'auto' } as Content] : []),
             { text: sub, fontSize: 9, color: C.ink3, margin: [12, 3, 0, 0], width: '*' },
           ],
         },

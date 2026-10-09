@@ -18,6 +18,18 @@ const nextConfig = {
   // dev дээр зураг анивчина. Effect-үүд цэвэр destroy() хийдэг ч давхар үүсгэлт нь
   // ArcGIS-ийн хувьд үнэтэй тул унтраав.
   reactStrictMode: false,
+
+  // ⚠️ DEV-ийн webpack кэшийг САНАХ ОЙД (2026-10-09) — ЗӨВХӨН `NEXT_DEV_MEMORY_CACHE=1`
+  //    үед (жиш. тухайн worktree-ийн `.env.development.local`). Нэг машин дээр
+  //    `.next/cache/webpack/client-development/1.pack.gz` (~1.2 GB) «crc error»-той
+  //    бичигдэж, дараагийн асаалт түүнийг уншихдаа ГАЦАЖ хүсэлтэд хариу өгөхгүй байв
+  //    (`incorrect data check`). Санах ойн кэш дискэнд юу ч бичихгүй тул эвдрэх зүйлгүй;
+  //    зардал нь — дахин асаахад эхний эмхэтгэл кэшгүй. Env-гүй бол бусад worktree ба
+  //    build ӨМНӨХ ШИГЭЭ (дискэн кэш).
+  webpack: (config, { dev }) => {
+    if (dev && process.env.NEXT_DEV_MEMORY_CACHE === '1') config.cache = { type: 'memory' };
+    return config;
+  },
 };
 
 export default nextConfig;

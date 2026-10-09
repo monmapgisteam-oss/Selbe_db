@@ -40,13 +40,20 @@ export type DepType = 'FS' | 'SS';
  *    ҮЛ ТООНО — аль ч блокт эргэлт байвал хориглоно (консерватив). Бүлгийн
  *    гишүүнчлэлээр дамжих эргэлтийг ч барина (2026-09-25, `affectedCodes`).
  */
-export type Dep = { code: number; type: DepType; lag: number; blk?: number };
+/**
+ * ⚠️ 2026-10-09: `src` — БЛОК ХООРОНДЫН уялдаа: урд ажлын мужийг ӨӨР блокоос (0-ээс) авна.
+ *    Бичиглэл «11FS3@1>2» = 2-р блокт энэ ажил 1-р блокийн 11-р ажлаас хамаарна (`src: 0`, `blk: 1`).
+ *    `src` нь ЗӨВХӨН `blk`-тэй хамт утгатай (блокгүй уялдаанд эх блок заах утгагүй). `src === blk` бол
+ *    энгийн `@N` болно (хэвшүүлнэ). Хуучин «@N» (src-гүй) утга, зан ХЭВЭЭР — урд ажил ижил блокоос.
+ */
+export type Dep = { code: number; type: DepType; lag: number; blk?: number; src?: number };
 
-/** Уялдааны ЯЛГАХ ТЭМДЭГ — (код, блок). Блокгүй = `'11@'` */
-export const depId = (d: Pick<Dep, 'code' | 'blk'>): string => `${d.code}@${d.blk ?? ''}`;
-/** Хоёр уялдаа нэг зүйлийг заана уу (код + блок) */
-export const sameDep = (a: Pick<Dep, 'code' | 'blk'>, b: Pick<Dep, 'code' | 'blk'>): boolean =>
-  a.code === b.code && (a.blk ?? null) === (b.blk ?? null);
+/** Уялдааны ЯЛГАХ ТЭМДЭГ — (код, блок[, эх блок]). Блокгүй = `'11@'`; блок хоорондын = `'11@1<0'` (2026-10-09) */
+export const depId = (d: Pick<Dep, 'code' | 'blk'> & { src?: number }): string =>
+  `${d.code}@${d.blk ?? ''}${d.src != null ? `<${d.src}` : ''}`;
+/** Хоёр уялдаа нэг зүйлийг заана уу (код + блок + эх блок, 2026-10-09: `src` нэмэгдэв — өгөөгүй = ижил блок) */
+export const sameDep = (a: Pick<Dep, 'code' | 'blk'> & { src?: number }, b: Pick<Dep, 'code' | 'blk'> & { src?: number }): boolean =>
+  a.code === b.code && (a.blk ?? null) === (b.blk ?? null) && (a.src ?? null) === (b.src ?? null);
 /** `b` блокт ҮЙЛЧЛЭХ уялдаанууд — блокгүй + яг энэ блокийнх */
 export const depsInBlock = (deps: readonly Dep[], b: number): Dep[] =>
   deps.filter((d) => d.blk == null || d.blk === b);
@@ -57,7 +64,8 @@ export const depsInBlock = (deps: readonly Dep[], b: number): Dep[] =>
 /* ⚠️ 2026-10-06: хоцролт `+` тэмдэгтэй байж болно («11FS+2» = MS Project-ийн бичиглэл).
    Урьд нь `-?` л зөвшөөрдөг тул «11FS+2» танигдахгүй, хүснэгтээс бичихэд хуучин уялдаа
    ЧИМЭЭГҮЙ устдаг байв. `formatDeps` тэмдэггүй (`11FS2`) бичсээр. */
-const TOKEN = /^(\d+)\s*(FS|SS)\s*([+-]?\d+)?\s*(?:@\s*(\d+))?$/;
+/* ⚠️ 2026-10-09: «@A>B» — блок хоорондын уялдаа (`Dep.src`-ийн ⚠️): A = урд ажлын блок, B = энэ мөрийн блок */
+const TOKEN = /^(\d+)\s*(FS|SS)\s*([+-]?\d+)?\s*(?:@\s*(\d+)(?:\s*>\s*(\d+))?)?$/;
 
 /**
  * «18FS3,22SS-5» → Dep[]. Эвдэрсэн токеныг АЛГАСНА, унагахгүй — талбарыг
@@ -87,14 +95,26 @@ function tokenDep(tok: string): Dep | null {
     const bn = Number(m[4]);
     /* ⚠️ `@0` утгагүй (1-ээс тоолно) — эвдэрсэн токен гэж алгасна, «бүх блок» болгохгүй */
     if (!(bn >= 1)) return null;
-    dep.blk = bn - 1;
+    if (m[5] != null) {
+      /* ⚠️ 2026-10-09: «@A>B» — A эх блок, B зорилтот блок; аль нэг нь 0 бол эвдэрсэн токен (алгасна) */
+      const tb = Number(m[5]);
+      if (!(tb >= 1)) return null;
+      dep.blk = tb - 1;
+      if (bn !== tb) dep.src = bn - 1;
+    } else dep.blk = bn - 1;
   }
   return dep;
 }
 
 /** Dep[] → «18FS3,22SS-5». Хоосон бол `''` — хадгалахдаа `null` болгоно. */
+/* ⚠️ 2026-10-09: `src` (блок хоорондын) → «@A>B»; блокгүй (`blk == null`) бол `src` бичигдэхгүй (утгагүй) */
 export function formatDeps(deps: Dep[]): string {
-  return deps.map((d) => `${d.code}${d.type}${d.lag ? d.lag : ''}${d.blk != null ? `@${d.blk + 1}` : ''}`).join(',');
+  return deps.map((d) => {
+    const at = d.blk == null ? ''
+      : d.src != null && d.src !== d.blk ? `@${d.src + 1}>${d.blk + 1}`
+      : `@${d.blk + 1}`;
+    return `${d.code}${d.type}${d.lag ? d.lag : ''}${at}`;
+  }).join(',');
 }
 
 /**
@@ -274,7 +294,8 @@ export function requiredStart(
     const pi = byCode.get(d.code);
     /* ⚠️ Өвөг/удам хамаатныг АЛГАСНА — гинжин эргэлтийн эсрэг (hierRelated) */
     if (pi == null || hierRelated(rows, i, pi)) continue;
-    const ps = effSpan(rows, pi, b, spansOf);
+    /* ⚠️ 2026-10-09: блок хоорондын уялдаа (`src`) — урд ажлын мужийг ЭХ блокоос; бусад нь ижил блокоос (хуучин зан) */
+    const ps = effSpan(rows, pi, d.blk != null && d.src != null ? d.src : b, spansOf);
     if (!ps) continue;
     const t = d.type === 'FS' ? ps.end + (1 + d.lag) * DAY : ps.start + d.lag * DAY;
     if (req == null || t > req) req = t;

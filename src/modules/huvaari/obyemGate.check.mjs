@@ -258,6 +258,9 @@ console.log('✓ obyemGate 2026-10-01: бүлгийн задаргаа алга�
   const e = payloadToDrafts(edited, rows, true, srvPlan, new Map(), { kind: 'plan', n: 2 });
   assert.equal(e.ok, false, 'зассан + сервер өөрчлөгдсөн → зөрчил');
   assert.equal(e.why, 'conflict');
+  /* ⚠️ 2026-10-09: зөрчил бүр ЖАГСААЛТАД (тоо = жагсаалтын урт), мөр · сервер → санал */
+  assert.equal(e.conflictList.length, e.conflicts, 'зөрчлийн жагсаалт тоотой зөрөв');
+  assert.ok(e.conflictList.some((c) => c.what === 'deps' && c.oid === 7 && c.srv === '9SS' && c.mine === '6FS'), JSON.stringify(e.conflictList));
   /* Сервер өөрчлөгдөөгүй бол зассан нь ноорогт буунa */
   const same = payloadToDrafts(edited, [sheet('5FS')], true, new Map([[11, new Map([['B1', M({ '2026-10': 900 })]])]]), new Map(), { kind: 'plan', n: 2 });
   assert.equal(same.ok, true);
