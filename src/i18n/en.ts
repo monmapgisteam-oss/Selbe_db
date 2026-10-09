@@ -6939,6 +6939,11 @@ const en: Record<string, string> = {
   "{0} их наяд": "{0}T",
   "{0} тэрбум": "{0}B",
   "{0} сая": "{0}M",
+  "Буцаагдсан нүд": "Returned cells",
+  "засах {0}": "to fix {0}",
+  "зөвшөөрсөн {0}": "approved {0}",
+  "Зөвшөөрсөн — засахгүй": "Approved — not editable",
+  "Засах шаардлагатай": "Needs fixing",
 };
 
 export default en;

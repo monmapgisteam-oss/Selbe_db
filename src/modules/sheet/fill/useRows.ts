@@ -274,7 +274,13 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
 }
 
 /** Виртуаль гүйлгээний цонх ба «өөрчлөгдсөн нүд рүү үсрэх». */
-export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i: number } | null; view?: SheetView }) {
+export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
+  vis: number[]; edit: { i: number } | null; view?: SheetView;
+  /** ⚠️ 2026-10-09: ГҮЙЦЭТГЭГЧИЙН үсрэлт (буцаагдсан нүдний жагсаалт, `FillNew.backList`) — `view.jump`-тай ижил хэлбэр */
+  jump?: SheetView['jump'];
+}) {
+  /* ⚠️ 2026-10-09: хянагчийнх (`view.jump`) эсвэл гүйцэтгэгчийнх — нэг үед нэг л эх (`view` байвал жагсаалт гардаггүй) */
+  const jumpReq = view?.jump ?? ownJump ?? null;
   /* ── ВИРТУАЛЬ ГҮЙЛГЭЭ ──────────────────────────────────────────────────
    * 1,400 мөр × 60–100 багана = 137 мянган нүд. Бүгдийг DOM-д барьвал төлөв
    * өөрчлөгдөх бүрд (нүд нээх, бөглөх) React тэр бүхнийг харьцуулж, хөтөч
@@ -343,7 +349,7 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
    *    ИНДЕКСЭЭР байрлалыг тооцож гүйлгэнэ.
    */
   const [hitKey, setHitKey] = useState<string | null>(null);
-  const jumpN = view?.jump?.n ?? -1;
+  const jumpN = jumpReq?.n ?? -1;
   /**
    * СҮҮЛД БИЕЛСЭН үсрэлтийн дугаар.
    *
@@ -359,7 +365,7 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
   /** ⚠️ 2026-10-07: үсрэлтийн БОСОО зорилт — хөндлөн гүйлгэхэд хамт дамжуулна (доорх эффектийн ⚠️) */
   const jumpTopRef = useRef<number | null>(null);
   useEffect(() => {
-    const j = view?.jump;
+    const j = jumpReq;
     const el = scrollRef.current;
     const tb = tbodyRef.current;
     if (!j || !el || !tb || !vis.length) return;

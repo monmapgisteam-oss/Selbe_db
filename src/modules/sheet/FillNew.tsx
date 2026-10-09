@@ -1415,7 +1415,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis } = useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan,
     /* ⚠️ 2026-10-09: `computeAll`-д өгсөн ЯГ тэр тайлангийн огноо — `null` (алга) бол хуваарийн шүүлт унтарна */
     asOf });
-  const { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo } = useVirtualWindow({ vis, edit, view });
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «гүйцэтгэгч мөн адил улаан/ногоон нүд рүү zoom to хийж чаддаг байх ёстой»):
+   *    ГҮЙЦЭТГЭГЧИЙН ҮСРЭЛТ — буцаагдсан илгээлтийн нүдний жагсаалтаас (`backList`). Хянагчийн
+   *    `view.jump`-тай ЯГ ижил механизм (`useVirtualWindow` · доорх шүүлт тайлах эффект).
+   */
+  const [ownJump, setOwnJump] = useState<{ row: number; block: string; n: number } | null>(null);
+  const jumpReq = view?.jump ?? ownJump;
+  const { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo } = useVirtualWindow({ vis, edit, view, jump: ownJump });
+  /**
+   * БУЦААГДСАН НҮДНИЙ ЖАГСААЛТ (гүйцэтгэгч) — `backChg` (тэр илгээлтэд өөрчлөгдсөн) ба `backOk`
+   * (хянагч зөвшөөрсөн). Засах ёстой (улаан) нь ЭХЭНД, зөвшөөрсөн (ногоон ✓) нь араас; дотроо
+   * хүснэгтийн дарааллаар. ⚠️ Түлхүүр `${oid}:${шошго}` — `FillRows`-ийн `bk`-тэй ижил.
+   * ⚠️ Хянагчийн харагдацад (`view`) гарахгүй — тэнд `Guitsetgel`-ийн «Өөрчлөгдсөн нүд» жагсаалт.
+   */
+  const backList = useMemo(() => {
+    if (view || !sc || backChg.size === 0) return [];
+    const out: { row: number; block: string; no: string; work: string; ok: boolean }[] = [];
+    rowsAll.forEach((r, i) => {
+      for (const b of sc.bld) {
+        const k = `${r.oid}:${b}`;
+        if (backChg.has(k)) out.push({ row: i, block: b, no: r.no, work: r.work || r.no, ok: backOk.has(k) });
+      }
+    });
+    return [...out.filter((x) => !x.ok), ...out.filter((x) => x.ok)];
+  }, [view, sc, rowsAll, backChg, backOk]);
+  const backBad = backList.filter((x) => !x.ok).length;
 
   const toggle = (oid: number) =>
     setCollapsed((s) => {
@@ -1433,10 +1458,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    тайлж, эцэг бүлгүүдийг дэлгэмэгц `vis` шинэчлэгдэж тэр эффект өөрөө биелнэ.
    *    Нэг хүсэлтэд нэг л удаа (`jumpN`); харагдаж байгаа мөрд юу ч хөндөхгүй.
    */
-  const jumpN = view?.jump?.n ?? -1;
+  const jumpN = jumpReq?.n ?? -1;
   const unhideJumpRef = useRef(-1);
   useEffect(() => {
-    const j = view?.jump;
+    const j = jumpReq;
     if (!j || unhideJumpRef.current === jumpN) return;
     unhideJumpRef.current = jumpN;
     if (!hidden[j.row] || !rowsAll[j.row]) return;
@@ -2992,6 +3017,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             </button>
           )}
         </p>
+      )}
+      {/* ⚠️ 2026-10-09: БУЦААГДСАН НҮДНИЙ ЖАГСААЛТ — дарж тэр нүд рүү үсэрнэ (хянагчийн «Өөрчлөгдсөн нүд»-тэй
+          ижил: хүснэгт гүйлгэгдэж нүд анивчина, нуугдсан бол шүүлт/эвхэлт тайлагдана — `ownJump`). */}
+      {backList.length > 0 && (
+        <div className={st.backList}>
+          <div className={st.backHead}>
+            {tr('Буцаагдсан нүд')}
+            <span className={st.backBadN}>{tr('засах {0}', backBad)}</span>
+            <span className={st.backOkN}>{tr('зөвшөөрсөн {0}', backList.length - backBad)}</span>
+          </div>
+          <div className={st.backWrap}>
+            {backList.map((c) => (
+              <button
+                key={`${c.row}:${c.block}`}
+                type="button"
+                className={`${st.backItem}${c.ok ? ` ${st.backItemOk}` : ""}`}
+                title={`${c.no} · ${c.work}\n${c.ok ? tr('Зөвшөөрсөн — засахгүй') : tr('Засах шаардлагатай')}`}
+                onClick={() => setOwnJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))}
+              >
+                <span className={st.backBlk}>{c.block}</span>
+                <span className={st.backWork}>{c.work}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хянагчийн зөвшөөрлийг мөртэй тулгаж
           чадаагүй (хуучин индексийн хэлбэр · жааз солигдсон) — БУРУУ нүдийг ногоон
