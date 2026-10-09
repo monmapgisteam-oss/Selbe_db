@@ -135,31 +135,46 @@ export type WasteRow = { metric: string; byPkg: Record<string, number> };
  *    Багц_* · FID; CreationDate/editFieldsInfo ч алга) — карт бүх мөрийг нийлүүлж, ХАМРАХ
  *    долоо хоногуудыг (`weeks`) ил шошголно. Он ялгах талбар нэмэх нь схемийн өөрчлөлт.
  */
-export type WasteData = { rows: WasteRow[]; weeks: number[] };
+/**
+ * ⚠️ 2026-10-09 (хэрэглэгч: «бусад шиг сүүлийн 7 хоног харагддаг»): `rows` нь ЗӨВХӨН өмнөх
+ *    бүтэн долоо хоногийн (`prevWeek().no` — «Бусад үзүүлэлт»-тэй НЭГ дүрэм) мөрүүдийн нийлбэр.
+ *    `weekNo` — тэр долоо хоног; `weeks` — хүснэгтэд байгаа бүх долоо хоног.
+ */
+export type WasteData = { rows: WasteRow[]; weeks: number[]; weekNo: number };
 
-async function fetchWaste(): Promise<WasteData> {
+type WasteRaw = { wk: number | null; metric: string; cols: Record<string, number | null> };
+
+async function fetchWaste(): Promise<WasteRaw[]> {
   const W = HABEA.waste;
   const list = await queryAll(W.url, '1=1', W.fields.oid);
-  const by = new Map<string, Record<string, number>>();
-  const weeks = new Set<number>();
-  for (const a of list) {
-    const m = String(a[W.fields.metric] ?? '');
+  return list.map((a) => ({
     /* ⚠️ 2026-10-09: хоосон Week → `null` (урьд нь `Number(null)` = 0 → «0-р долоо хоног») */
-    const wk = numOrNull(a[W.fields.week]);
-    if (isWeekNo(wk)) weeks.add(wk);
-    const cur = by.get(m) ?? {};
-    for (const [col, name] of W.pkgCols) {
-      const v = numOrNull(a[col]);
-      if (v != null) cur[name] = (cur[name] ?? 0) + v;
-    }
-    by.set(m, cur);
-  }
-  return { rows: [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg })), weeks: [...weeks].sort((x, y) => x - y) };
+    wk: numOrNull(a[W.fields.week]),
+    metric: String(a[W.fields.metric] ?? ''),
+    cols: Object.fromEntries(W.pkgCols.map(([col]) => [col, numOrNull(a[col])])),
+  }));
 }
 
 const cachedWaste = cached(fetchWaste, 5 * 60_000, ['HABEA']);
-/** Хог хаягдлын карт ачаалагч */
-export const loadHabeaWaste = (): Promise<WasteData> => cachedWaste();
+/** Хог хаягдлын карт ачаалагч. ⚠️ Дуудагч `now`-оо өгнө (render-ийн `Date.now()` биш). */
+export async function loadHabeaWaste(now = new Date()): Promise<WasteData> {
+  const W = HABEA.waste;
+  const weekNo = prevWeek(now).no;
+  const list = await cachedWaste();
+  const by = new Map<string, Record<string, number>>();
+  const weeks = new Set<number>();
+  for (const r of list) {
+    if (isWeekNo(r.wk)) weeks.add(r.wk);
+    if (r.wk !== weekNo) continue;
+    const cur = by.get(r.metric) ?? {};
+    for (const [col, name] of W.pkgCols) {
+      const v = r.cols[col];
+      if (v != null) cur[name] = (cur[name] ?? 0) + v;
+    }
+    by.set(r.metric, cur);
+  }
+  return { rows: [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg })), weeks: [...weeks].sort((x, y) => x - y), weekNo };
+}
 
 /* ═════════════════ БИЧИЛТ — «habeaData» эрхтэй хэрэглэгч (2026-10-08) ═════════════════ */
 /*

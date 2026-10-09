@@ -78,15 +78,17 @@ try {
       }
       return { features: [{ attributes: { FID: 3, Week: 41, Metric: 'Ахуйн хог (рейс)', Багц_1: null } }] };
     };
-    const d = await R.loadHabeaWaste();
+    const d = await R.loadHabeaWaste(new Date('2026-10-09T12:00:00+08:00'));
     assert.equal(calls.length, 2, 'хоёр хуудас');
     assert.equal(calls[0].p.orderByFields, 'FID', 'хуудаслалт OID-ээр эрэмбэлнэ');
     assert.equal(calls[1].p.resultOffset, '2');
     assert.deepEqual(d.weeks, [40, 41], 'хоосон Week → 0-р долоо хоног БИШ');
+    /* ⚠️ 2026-10-09: карт ЗӨВХӨН өмнөх бүтэн долоо хоногийг (40) нийлүүлнэ */
+    assert.equal(d.weekNo, 40, 'өмнөх бүтэн долоо хоног');
     const beton = d.rows.find((r) => r.metric === 'Бетон (рейс)').byPkg;
-    assert.equal(beton['Багц 1'], 2, 'хоосон нүд 0 болж нэмэгдэхгүй');
-    assert.equal(beton['Багц 2'], 0, 'жинхэнэ 0 хэвээр');
-    assert.deepEqual(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)').byPkg, {}, 'хэмжилтгүй — хоосон (null ≠ 0)');
+    assert.equal(beton['Багц 1'], 2, '40-р долоо хоногийн мөр');
+    assert.equal('Багц 2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
+    assert.equal(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)'), undefined, '41-р долоо хоног орохгүй');
   }
 
   /* ══════════ 5–6. Бүртгэл нэмэх — GlobalID ══════════ */

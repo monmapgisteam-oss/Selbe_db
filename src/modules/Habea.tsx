@@ -1022,7 +1022,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const canEnter = useMemo(() => hasCap(user?.username, 'habeaData'), [user, capN]);
   const [entry, setEntry] = useState<null | 'reg' | 'waste'>(null);
   /* «Хог хаягдал» (2026-10-08) — рейстэй төрлүүд, хуудасны «Багц» шүүлтийг дагана */
-  const waste = useAsync(loadHabeaWaste, [tick], { keepOn: [tick] });
+  /* ⚠️ 2026-10-09: ЗӨВХӨН өмнөх бүтэн долоо хоног («Бусад үзүүлэлт»-тэй ижил) — долоо хоног солигдоход шинээр */
+  const waste = useAsync(() => loadHabeaWaste(new Date(now)), [weekKey, tick], { keepOn: [tick] });
   /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
   const curYm = ubDayKey(now).slice(0, 7);
 
@@ -2173,9 +2174,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           note={(
             <>
               {/* ⚠️ 2026-10-08 (хэрэглэгч): «нийт N рейс» тэмдэглэл ХАСАГДАВ — нийт нь донатын төвд бий */}
-              {/* ⚠️ 2026-10-09: хүснэгтэд ОН талбар алга — нийлбэрийн ХАМРАХ долоо хоногийг ил шошголно */}
-              {waste.state === 'ready' && waste.data.weeks.length > 0
-                && tr('{0}-р долоо хоногийн нийлбэр', waste.data.weeks.join(', '))}
+              {/* ⚠️ 2026-10-09 (хэрэглэгч): «N-р долоо хоногийн нийлбэр» шошго ХАСАГДАВ; оронд нь
+                  «Бусад үзүүлэлт»-тэй ИЖИЛ «N-р долоо хоног» */}
+              {waste.state === 'ready' && tr('{0}-р долоо хоног', num(waste.data.weekNo))}
               {canEnter && <> <AddButton onClick={() => setEntry('waste')} /></>}
             </>
           )}
@@ -2187,7 +2188,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             /* ⚠️ Бүгд 0 үед донат зурахгүй (хоосон цагираг «алдаа» мэт) — гэхдээ «өгөгдөл алга» биш,
                бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). Хэмжилтгүй бол «Бүртгэл алга». */
             : wasteMeasured
-              ? <Empty label={tr('Бүртгэгдсэн рейс {0} — {1}-р долоо хоног', num(0), waste.data.weeks.join(', ') || '—')} />
+              ? <Empty label={tr('Бүртгэгдсэн рейс {0} — {1}-р долоо хоног', num(0), num(waste.data.weekNo))} />
               : <Empty label={tr('Бүртгэл алга')} />)}
         </Section>
         )}
