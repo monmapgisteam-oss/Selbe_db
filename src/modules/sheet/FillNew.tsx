@@ -1552,6 +1552,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ 2026-10-01: ноорог сэргэж дуустал буулгалт хаалттай */
     restoring: restoringUi,
     pastePrev, setPastePrev,
+    /* ⚠️ 2026-10-09: буцаагдсан илгээлтийн ЗӨВШӨӨРӨГДСӨН нүд түгжээтэй (`useCellEdit.okLock`-ийн ⚠️);
+       түлхүүр `${oid}:${шошго}` — `FillRows`-ийн `bk`-тэй ижил */
+    okLock: (oid, b) => {
+      const k = `${oid}:${sc?.bld[b] ?? b}`;
+      return backChg.has(k) && backOk.has(k);
+    },
   });
 
   /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */

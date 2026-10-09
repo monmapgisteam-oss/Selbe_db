@@ -250,6 +250,10 @@ export function FillRows({
                       const remLine = canVol && !view && remainHint ? remainHint(r, bi, ovBase.get(r.oid)) : '';
                       const changed = !!view?.changed?.has(ck) || backChg.has(bk);
                       const okd = !!view?.ok?.has(ck) || (backChg.has(bk) && backOk.has(bk));
+                      /* ⚠️ 2026-10-09 (хэрэглэгч: «ногоонг дахин засах эрхгүй, зөвхөн улааныг засна»):
+                         ГҮЙЦЭТГЭГЧИЙН талд зөвшөөрөгдсөн нүд түгжээтэй — хайрцаггүй (`view`), нээгдэхгүй.
+                         Хянагчийн харагдацад (`view`) хамаарахгүй — тэнд товшилт зөвшөөрлийг сэлгэнэ. */
+                      const okLock = !view && backChg.has(bk) && backOk.has(bk);
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
                         if (locked) return changed && view?.onCell?.(i, b);
@@ -262,6 +266,7 @@ export function FillRows({
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say(RO.noPerf);
+                        if (okLock) return say(RO.okLocked);
                         /* ⚠️ «БӨГЛӨХ» ДАРААГҮЙ бол нүд НЭЭГДЭХГҮЙ
                            (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
                            САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
@@ -308,7 +313,7 @@ export function FillRows({
                              хэрэггүй, зөвхөн чимээ болсон. */
                           className={cls(
                             "num bld" +
-                              (canVol ? (noPerf ? " view" : " editable") : " calc") +
+                              (canVol ? (noPerf || okLock ? " view" : " editable") : " calc") +
                               (dirty ? " dirty" : "") +
                               (byOther ? " byOther" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
@@ -354,7 +359,9 @@ export function FillRows({
                             (remLine ? remLine + '\n' : '') +
                             /* ⚠️ 2026-09-25: нэмэлтийн мөр — илгээгээгүй ба өөрчлөгдсөн нүдэнд */
                             (incLine && (dirty || changed) ? incLine + '\n' : '') +
-                            (changed
+                            (okLock
+                              ? RO.okLocked
+                              : changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
                                 : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')

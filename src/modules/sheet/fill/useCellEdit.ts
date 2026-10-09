@@ -59,11 +59,18 @@ export function useCellEdit(p: {
    */
   pastePrev?: PastePrev | null;
   setPastePrev?: (v: PastePrev | null) => void;
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «ногоонг дахин засах эрхгүй болго, зөвхөн улааныг засна»):
+   *    буцаагдсан илгээлтэд хянагчийн ЗӨВШӨӨРСӨН нүд (`backChg ∩ backOk`) — блокийн ИНДЕКСЭЭР.
+   *    Нээх · буулгах · Enter/Tab шилжилт бүгд түүнийг БИЧИГДЭХГҮЙ гэж үзнэ (`writable`).
+   *    Өгөөгүй бол түгжээгүй (хянагчийн харагдац, тест).
+   */
+  okLock?: (oid: number, b: number) => boolean;
 }) {
   const {
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
     locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld, restoring,
-    pastePrev = null, setPastePrev,
+    pastePrev = null, setPastePrev, okLock,
   } = p;
   /**
    * БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ (2026-10-01, хэрэглэгч: бүгдийг зас).
@@ -114,6 +121,10 @@ export function useCellEdit(p: {
      (барилгын блокт нөлөөгүй). `vol` нь сонголттой: дуудагч бүр `SheetRow` өгдөг. */
   const volMode = (r: { group: boolean; vol?: number | null }, b: number) =>
     !r.group && (fillMode === "pct" || !!sc?.obyem[b]) && !synNoVol(sc, r);
+  /** ⚠️ 2026-10-09: бичиж болох нүд — `volMode` + зөвшөөрөгдсөн нүдний түгжээ (`okLock`-ийн ⚠️).
+      `volMode` өөрөө ХЭВЭЭР: нүдний дүрслэл (хайрцаг/хувь) түүнээс хамаардаг. */
+  const isOkLocked = (r: { oid: number }, b: number) => !!okLock?.(r.oid, b);
+  const writable = (r: SheetRow, b: number) => volMode(r, b) && !isOkLocked(r, b);
 
   /**
    * ХУВЬ ГОРИМД БИЧИХ БОЛОМЖТОЙ ЮУ.
@@ -409,6 +420,8 @@ export function useCellEdit(p: {
      хаагдаж бичсэн текст алдагддаг байв — одоо оролт текстээрээ нээлттэй үлдэж засна. Бүлгийн мөр
      (засагдахгүй) урьдын адил хаагдана. */
   const commit = (r: SheetRow, b: number, raw: string): boolean => {
+    /* ⚠️ 2026-10-09: зөвшөөрөгдсөн нүд — ямар ч замаар (нээлттэй оролт, буулгалт) бичихгүй */
+    if (isOkLocked(r, b)) { warn(RO.okLocked); setEdit(null); return false; }
     const ok = commitInner(r, b, raw);
     if (ok || r.group) setEdit(null);
     return ok;
@@ -464,6 +477,8 @@ export function useCellEdit(p: {
       if (edit || one === '') return false;
       const r0 = rowsAll[startI];
       if (!r0 || !volMode(r0, startB)) return false;
+      /* ⚠️ 2026-10-09: зөвшөөрөгдсөн нүд — шалтгааныг хэлээд буулгалтыг зогсооно */
+      if (isOkLocked(r0, startB)) { warn(RO.okLocked); return true; }
       commit(r0, startB, one);
       return true;
     }
@@ -494,21 +509,23 @@ export function useCellEdit(p: {
        тестээр (`paste.check.mjs`) барина. */
     const { hits: raw, skipped, bad, badAt, rejAt } = planPaste(
       grid, vis, sc.bld.length, from, startB,
-      (row, b) => volMode(rowsAll[row], b),
+      (row, b) => writable(rowsAll[row], b),
     );
     /* ⚠️ 2026-10-01: ТАТГАЛЗАХ нүд байвал ЭХЛЭЭД урьдчилан харуулна (`pastePrev`-ийн ⚠️) */
     if (!confirmed && setPastePrev && rejAt.length > 0 && raw.length > 0) {
-      const why = (w: 'bad' | 'neg' | 'noWrite', row: number) =>
+      const why = (w: 'bad' | 'neg' | 'noWrite', row: number, b: number) =>
         w === 'neg'
           ? tr('сөрөг утга — буулгалтаар бууруулахгүй (нүд тус бүрээр залруулна)')
           : w === 'noWrite'
             /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөрийн шалтгаан (`synNoVol`) */
-            ? (rowsAll[row]?.group ? RO.groupAct : rowsAll[row] && synNoVol(sc, rowsAll[row]) ? RO.synNoVol : RO.noObyemField)
+            ? (rowsAll[row]?.group ? RO.groupAct : rowsAll[row] && synNoVol(sc, rowsAll[row]) ? RO.synNoVol
+              /* ⚠️ 2026-10-09: зөвшөөрөгдсөн (ногоон ✓) нүд */
+              : rowsAll[row] && isOkLocked(rowsAll[row], b) ? RO.okLocked : RO.noObyemField)
             : tr('тоо гэж уншиж чадсангүй (тодорхойгүй таслал «1,250» эсвэл тоо биш)');
       setPastePrev({
         startI, startB, grid, rows: rowsAll,
         ok: new Set(raw.map((x) => cellKey(rowsAll[x.row].oid, x.b))),
-        rej: new Map(rejAt.map((x) => [cellKey(rowsAll[x.row].oid, x.b), `«${x.raw}» — ${why(x.why, x.row)}`] as const)),
+        rej: new Map(rejAt.map((x) => [cellKey(rowsAll[x.row].oid, x.b), `«${x.raw}» — ${why(x.why, x.row, x.b)}`] as const)),
       });
       warn(tr('Буулгалт: {0} нүд бичигдэнэ, {1} нүд татгалзагдана (улаан ✕). Хүснэгтийн дээрх «Бичих» эсвэл «Болих»-ийг сонгоно уу.', String(raw.length), String(rejAt.length)));
       return true;
@@ -632,7 +649,7 @@ export function useCellEdit(p: {
   };
 
   const nextEditable = (i: number, b: number, step: number, col: EditCol) => {
-    const ok = (r: SheetRow) => volMode(r, b);
+    const ok = (r: SheetRow) => writable(r, b);
     for (let k = i + step; k >= 0 && k < rowsAll.length; k += step)
       if (!hidden[k] && ok(rowsAll[k])) return { i: k, b, col };
     return null;
@@ -647,7 +664,7 @@ export function useCellEdit(p: {
     while (k >= 0 && k < rowsAll.length) {
       if (!hidden[k]) {
         for (; bb >= 0 && bb < nBld; bb += step)
-          if (volMode(rowsAll[k], bb)) return { i: k, b: bb, col: "obyem" as EditCol };
+          if (writable(rowsAll[k], bb)) return { i: k, b: bb, col: "obyem" as EditCol };
       }
       k += step;
       bb = step > 0 ? 0 : nBld - 1;

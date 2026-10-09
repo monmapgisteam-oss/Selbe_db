@@ -36,7 +36,7 @@ const row = (oid, vol, obyem, act) => ({
   start: [null, null], end: [null, null],
 });
 
-function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview = false, restoring = false } = {}) {
+function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview = false, restoring = false, okLock } = {}) {
   const st = { pending: {}, warns: [], dones: [], errs: [], prev: null };
   const api = () => makeCellEdit({
     sc,
@@ -63,6 +63,8 @@ function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview =
     nBld: sc.bld.length,
     /* 2026-10-01: буулгалтын урьдчилсан харагдац (FillNew эзэмшинэ) · сэргээлтийн түгжээ */
     restoring,
+    /* 2026-10-09: зөвшөөрөгдсөн нүдний түгжээ */
+    ...(okLock ? { okLock } : {}),
     ...(preview ? { pastePrev: st.prev, setPastePrev: (v) => { st.prev = v; } } : {}),
   });
   return { st, api };
@@ -239,6 +241,24 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const hint = h5.api().remainHint(r5, 0, undefined);
   ok(/100 − 40 − 0 − 10 = 50/.test(hint), `8f: үлдэгдэл = 100 − 40 − 0 − 10 = 50 (${hint})`);
   ok(h5.api().remainHint(row(6, null, [0, 0], [0, 0]), 0) === '', '8f: Обьёмгүй мөрд тайлбаргүй (null ≠ 0)');
+}
+
+/* ── 8z. ЗӨВШӨӨРӨГДСӨН (ногоон ✓) НҮД ТҮГЖЭЭТЭЙ (2026-10-09, хэрэглэгч: «ногоонг дахин засах
+ *        эрхгүй болго, зөвхөн улааныг засна») — гараар · буулгалт · Enter/Tab шилжилт бүгд алгасна. ── */
+{
+  reset(false);
+  const rs = [row(1, 100, [10, null], [0.1, null]), row(2, 100, [20, null], [0.2, null]), row(3, 100, [30, null], [0.3, null])];
+  const okLock = (oid, b) => oid === 2 && b === 0;
+  const { st, api } = harness(rs, { okLock });
+  ok(api().commit(rs[1], 0, '5') === false && !('2:0' in st.pending), '8z: зөвшөөрөгдсөн нүдэнд гараар бичихгүй');
+  ok(st.warns.some((w) => /ЗӨВШӨӨРСӨН/.test(w)), '8z: шалтгааныг хэлнэ');
+  ok(api().commit(rs[1], 1, '5') === true, '8z: тэр мөрийн ӨӨР (улаан) блок засагдана');
+  ok(api().pasteBlock(1, 0, '7') === true && !('2:0' in st.pending), '8z: ганц нүдний буулгалт ч бичихгүй');
+  api().pasteBlock(0, 0, '1\n2\n3');
+  ok(st.pending['1:0'] === '1' && st.pending['3:0'] === '3' && !('2:0' in st.pending),
+    `8z: олон нүдний буулгалт зөвшөөрөгдсөнийг алгасна (${JSON.stringify(st.pending)})`);
+  const nx = api().nextEditable(0, 0, 1, 'obyem');
+  ok(nx && nx.i === 2, '8z: Enter шилжилт зөвшөөрөгдсөн нүдийг алгасна');
 }
 
 /* ── 9. «БУСАД ТАЛБАР» ба ТОЛГОЙН БҮТЭЦ (2026-10-09, хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх
