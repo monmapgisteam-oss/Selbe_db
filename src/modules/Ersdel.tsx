@@ -50,7 +50,8 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { Icon } from '@/components/Icon';
-import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend } from '@/components/ui';
+import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip } from '@/components/ui';
+import { CHART, lineSegments } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
@@ -251,26 +252,59 @@ type Info = {
  * бөгөөд 300px-ийн мэдээллийн хайрцагт багтахгүй. Энд зөвхөн «өссөн үү,
  * буурсан уу, одоо хаана байна» гэсэн ГУРВАН зүйл л хэрэгтэй.
  */
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»):
+   · шугам 1.6 → 2px (`CHART.stroke`), монотон `lineSegments` (хугарсан polyline биш);
+   · өнгө `style`-аар — SVG шинж (`stroke=`) дотор var() задрахгүй (`format.ts`-ийн дүрэм);
+   · `null`/NaN алхам = ХЭМЖИГДЭЭГҮЙ → шугам ТАСАРНА (0 гэж зурахгүй, CLAUDE.md null ≠ 0);
+   · цэг нь тэг урттай зураас (round cap + non-scaling) — `preserveAspectRatio="none"`
+     `<circle>`-ийг ЗУУВАН болгодог байв;
+   · `<title>`-ийн оронд порталын `useTip`. */
 function Spark({
-  vals, at, color, unit,
-}: { vals: number[]; at: number; color: string; unit: string }) {
+  vals, at, color, unit, label,
+}: { vals: readonly (number | null)[]; at: number; color: string; unit: string; label: string }) {
+  const tip = useTip();
   const W = 250;
   const H = 34;
-  const peak = Math.max(...vals, 0.0001);
+  const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
+  const peak = Math.max(...vals.filter(ok), 0.0001);
   const n = vals.length;
-  const xy = (v: number, i: number) => `${((i / (n - 1)) * W).toFixed(1)},${(H - (v / peak) * H).toFixed(1)}`;
-  const pts = vals.map(xy).join(' ');
-  const cx = ((at / (n - 1)) * W).toFixed(1);
-  const cy = (H - (vals[at] / peak) * H).toFixed(1);
+  const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2);
+  const y = (v: number) => H - (v / peak) * H;
+  const segs = lineSegments(vals.map((v, i) => (ok(v) ? { x: x(i), y: y(v) } : null)));
+  const cur = vals[at];
+  const cx = x(at);
+  const cy = ok(cur) ? y(cur) : null;
   return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.6}
-        strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      <line x1={cx} y1={0} x2={cx} y2={H} stroke="var(--ink-3)" strokeWidth={1}
-        strokeDasharray="3,2" vectorEffect="non-scaling-stroke" />
-      <circle cx={cx} cy={cy} r={3} fill={color} />
-      <title>{`${num(vals[at], 2)} ${unit} · ${tr('дээд')} ${num(peak, 2)} ${unit}`}</title>
-    </svg>
+    <>
+      <svg
+        width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden
+        {...tip.bind({
+          label,
+          value: ok(cur) ? `${num(cur, 2)} ${unit}` : '—',
+          color,
+          hint: `${tr('дээд')} ${num(peak, 2)} ${unit}`,
+        })}
+      >
+        {segs.map((sg) => (
+          <path key={sg.from} d={sg.d} vectorEffect="non-scaling-stroke"
+            style={{
+              fill: 'none', stroke: color, strokeWidth: sg.single ? CHART.markerR * 2 : CHART.stroke,
+              strokeLinejoin: 'round', strokeLinecap: 'round',
+            }} />
+        ))}
+        <line x1={cx} y1={0} x2={cx} y2={H} vectorEffect="non-scaling-stroke"
+          style={{ stroke: 'var(--ink-3)', strokeWidth: 1, strokeDasharray: '3 2' }} />
+        {cy != null && (
+          <>
+            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
+              style={{ stroke: 'var(--surface)', strokeWidth: (CHART.markerR + CHART.ring) * 2, strokeLinecap: 'round' }} />
+            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
+              style={{ stroke: color, strokeWidth: CHART.markerR * 2, strokeLinecap: 'round' }} />
+          </>
+        )}
+      </svg>
+      {tip.node}
+    </>
   );
 }
 
@@ -1980,7 +2014,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                             ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): CSS-ийн `--aqi-text`
                             заль (`::after`) ХАСАГДАВ — `Ring`-ийн шинэ `text` пропоор АЧИ-ийн
                             тоог шууд бичнэ; дэлгэц уншигч ч «АЧИ 60» гэж уншина (урьд нь нуусан). */}
-                        <Ring value={Math.min(100, (aqi / 500) * 100)} size={124} width={13}
+                        <Ring value={Math.min(100, (aqi / 500) * 100)} size="md"
                           color={band.color} label={tr('АЧИ')} decimals={0} text={num(aqi)} />
                         <p className={e.ringNote}>
                           <b className="num">{num(aqi)}</b> <span>{band.label}</span>
@@ -2406,7 +2440,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                             </span>
                           </div>
                           <Spark vals={flood.meta.hydroQ} at={slice}
-                            color="var(--data)" unit={tr('м³/с')} />
+                            color="var(--data)" unit={tr('м³/с')} label={tr('Оролтын урсац (гидрограф)')} />
                         </div>
                       )}
 
@@ -2807,12 +2841,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   <span>{tr('Гүний хувьсал')}</span>
                   <b className="num">{tr('дээд {0} м', num(Math.max(...info.spark.depth), 2))}</b>
                 </div>
-                <Spark vals={info.spark.depth} at={info.sparkAt} color="var(--data)" unit={tr('м')} />
+                <Spark vals={info.spark.depth} at={info.sparkAt} color="var(--data)" unit={tr('м')} label={tr('Гүний хувьсал')} />
                 <div className={e.sparkHd}>
                   <span>{tr('Хурдны хувьсал')}</span>
                   <b className="num">{tr('дээд {0} м/с', num(Math.max(...info.spark.speed), 2))}</b>
                 </div>
-                <Spark vals={info.spark.speed} at={info.sparkAt} color="var(--warn-ink)" unit={tr('м/с')} />
+                <Spark vals={info.spark.speed} at={info.sparkAt} color="var(--warn-ink)" unit={tr('м/с')} label={tr('Хурдны хувьсал')} />
               </div>
             )}
             {/* ⚠️ ШАЛТГААН — тоонуудын ДЭЭР, ялгарсан хайрцагт */}

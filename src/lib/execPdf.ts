@@ -16,7 +16,7 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { num, pct, PRINT_COLORS } from '@/lib/format';
 import {
   execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP,
   type ExecFinding, type ExecReport, type ExecAppendix,
@@ -42,9 +42,15 @@ const MUTED = '#898781';   // тайлбар, толгойн шошго
 const RULE = '#e1e0d9';    // хүснэгтийн зураас
 const RULE2 = '#c3c2b7';   // тод зааг
 const SURF = '#f0efec';    // хөнгөн дүүргэлт
-const BLUE = '#2a78d6';    // акцент
-const RED = '#d03b3b';
-const AMBER = '#fab219';
+/* ⚠️ 2026-10-09 (хэрэглэгчийн сонголт «PDF-д зөвхөн өнгийг тааруулна»):
+   ТӨЛВИЙН ба АКЦЕНТЫН өнгө лавлагааных биш, вэбийн цайвар токен
+   (`PRINT_COLORS`) — дэлгэц дээр улаан/шар/teal байсан зүйл цаасан дээр өөр
+   улаан/шар/цэнхэр болж байв. Цаас, бэх, зураас (дээрх) лавлагаагаар ХЭВЭЭР.
+   Хуучин: акцент #2a78d6 · улаан #d03b3b · шар #fab219 (цагаан дээр бичвэр
+   болоход бараг уншигддаггүй байв). */
+const ACCENT = PRINT_COLORS.data;   // акцент · баганын үндсэн өнгө (--data)
+const RED = PRINT_COLORS.bad;       // --bad
+const AMBER = PRINT_COLORS.warn;    // --warn
 
 /** Roboto-д байхгүй тэмдэгтийг PDF-д орлуулна */
 const T = (s: string) => s.replace(/₮/g, tr('төг'));
@@ -154,7 +160,7 @@ function barChart(
           canvas: [
             { type: 'rect', x: 0, y: 2, w: trackW, h: 9, r: 2, color: SURF },
             ...(r.value == null ? [] : [
-              { type: 'rect' as const, x: 0, y: 2, w: Math.max(1, (trackW * Math.min(Math.max(r.value, 0), top)) / top), h: 9, r: 2, color: o.color ?? BLUE },
+              { type: 'rect' as const, x: 0, y: 2, w: Math.max(1, (trackW * Math.min(Math.max(r.value, 0), top)) / top), h: 9, r: 2, color: o.color ?? ACCENT },
             ]),
           ],
         },
@@ -389,7 +395,7 @@ export async function buildExecDoc(
               /* ⚠️ 2026-10-06: `execSections` — бүлгийн гарчиг ба дэлгэцийн агуулгатай ГАНЦ эх */
               ...execSections().map((sec): Content => ({
                 columns: [
-                  { width: 14, text: String(sec.no), fontSize: 9, color: BLUE, bold: true },
+                  { width: 14, text: String(sec.no), fontSize: 9, color: ACCENT, bold: true },
                   { width: '*', text: T(sec.title), style: 'tocItem' },
                 ],
               })),

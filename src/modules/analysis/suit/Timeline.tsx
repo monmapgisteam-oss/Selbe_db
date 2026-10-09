@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
+import { cat } from '@/lib/format';
 import { DIURNAL, diurnalAt, clockText, wrapMin } from './traffic';
 import c from './simulation.module.css';
 
@@ -97,7 +99,7 @@ export function Timeline({
   speed,
   setSpeed,
   seek,
-  hue = '#f59e0b',
+  hue = cat(5),
 }: {
   minute: number;
   playing: boolean;
@@ -105,43 +107,31 @@ export function Timeline({
   speed: number;
   setSpeed: (v: number) => void;
   seek: (m: number) => void;
-  /** Симуляцын акцент өнгө (`SimDef.hue`) */
+  /** Симуляцын акцент өнгө (`SimDef.hue`) — CSS токен; SVG-д ЗӨВХӨН `style`-аар */
   hue?: string;
 }) {
   const load = diurnalAt(minute);
+  // ⚠️ Градиентийн id баримт даяар НЭГДМЭЛ байх ёстой (ui.Series-ийн дүрэм)
+  const gid = `simCurve${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const W = 244;
   const H = 40;
-  /* ── Эрэлтийн муруй — ГӨЛГӨР (Catmull-Rom сплайн → кубик Безье) ──
+  /* ── Эрэлтийн муруй — ГӨЛГӨР ──
      ⚠️ Урьд нь цэгүүдийг шулуунаар холбосон polyline байсан тул муруй өнцөг
-     өнцгөөрөө хуга харагдаж байв. Catmull-Rom нь ЦЭГ БҮРЭЭ ЯГ ДАЙРДАГ тул
-     эрэлтийн утга өөрчлөгдөхгүй, зөвхөн хооронд нь гөлгөр татна. Захын цэгт
-     тойргоор (24 цаг эргэдэг) хөршөө авна — 00:00 дээр залгаас гөлгөр. */
-  const pts = [...DIURNAL, DIURNAL[0]].map((v, i): [number, number] => [
-    (i / 24) * W,
-    H - v * (H - 4) - 2,
-  ]);
-  const at = (i: number): [number, number] => {
-    // Тойрог хөрш: эхлэлээс өмнөх = 23 цаг, төгсгөлийн дараах = 01 цаг (x-г гулсуулна)
-    if (i < 0) return [pts[0][0] - (W / 24), H - DIURNAL[23] * (H - 4) - 2];
-    if (i >= pts.length) return [pts[pts.length - 1][0] + (W / 24), H - DIURNAL[1] * (H - 4) - 2];
-    return pts[i];
-  };
-  let path = `M ${pts[0][0]},${pts[0][1]}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = at(i - 1);
-    const p1 = at(i);
-    const p2 = at(i + 1);
-    const p3 = at(i + 2);
-    // Catmull-Rom → Безьегийн жолоодлогын цэгүүд (τ = 1/6)
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-    path += ` C ${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
-  }
-  // Муруйн доорх дүүргэлт — ижил замыг доод ирмэгээр хаана
-  const area = `${path} L ${W},${H} L 0,${H} Z`;
+     өнцгөөрөө хуга харагдаж байв.
+     ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): өөрийн Catmull-Rom хуулбарыг
+     порталын ГАНЦ `lineSegments` (монотон, `chartStyle.ts`) орлов — Catmull-Rom нь
+     цэг хооронд ХЭТЭРДЭГ (overshoot) тул шөнийн 0-д ойр утгууд 0-ээс доош «унаж»
+     зурагддаг байв. Монотон муруй ЦЭГ БҮРЭЭ ЯГ ДАЙРНА, хөршийн мужаас гарахгүй.
+     Талбай нь шугамын ЯГ ижил замаар хаагдана (`areaPath`). */
+  const pts = [...DIURNAL, DIURNAL[0]].map((v, i) => ({
+    x: (i / 24) * W,
+    y: H - v * (H - 4) - 2,
+  }));
+  const seg = lineSegments(pts)[0];
+  const path = seg?.d ?? '';
+  const area = seg ? areaPath(seg, H) : '';
   const markX = (wrapMin(minute) / 1440) * W;
+  const markY = H - load * (H - 4) - 2;
 
   return (
     <div className={c.console}>
@@ -160,24 +150,45 @@ export function Timeline({
       >
         {/* ⚠️ `vectorEffect` ЗААВАЛ: `preserveAspectRatio="none"` нь зургийг
             хэвтээ тийш сунгадаг тул түүнгүйгээр зураасны өргөн гажина. */}
+        {/* ⚠️ 2026-10-09: өнгө БҮГД `style`-аар — SVG шинж (`stroke=`) дотор var() задрахгүй
+            (`format.ts`-ийн дүрэм). `var(--text)` гэсэн токен БАЙХГҮЙ байсан → `--ink-3`. */}
         {HOUR_TICKS.map((h) => (
           <line
             key={h}
             x1={(h / 24) * W} y1="0" x2={(h / 24) * W} y2={H}
-            stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke"
+            style={{ stroke: 'var(--line)', strokeWidth: 1 }} vectorEffect="non-scaling-stroke"
           />
         ))}
-        <path d={area} fill={hue} opacity="0.14" />
+        {/* Ганц цуваа — градиент `CHART.areaTop` → `areaBottom` (порталын нэг дүрэм) */}
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style={{ stopColor: hue, stopOpacity: CHART.areaTop }} />
+            <stop offset="1" style={{ stopColor: hue, stopOpacity: CHART.areaBottom }} />
+          </linearGradient>
+        </defs>
+        <path d={area} style={{ fill: `url(#${gid})` }} />
         <path
           d={path}
-          fill="none" stroke={hue} strokeWidth="1.6"
-          strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+          style={{ fill: 'none', stroke: hue, strokeWidth: CHART.stroke, strokeLinejoin: 'round' }}
+          vectorEffect="non-scaling-stroke"
         />
         <line
           x1={markX} y1="0" x2={markX} y2={H}
-          stroke="var(--text)" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke"
+          style={{ stroke: 'var(--ink-3)', strokeWidth: 1, strokeDasharray: '3 3' }} vectorEffect="non-scaling-stroke"
         />
-        <circle cx={markX} cy={H - load * (H - 4) - 2} r="3.2" fill={hue} stroke="var(--sunken)" strokeWidth="1.2" />
+        {/* ⚠️ Цэгийг `<circle>` БИШ тэг урттай зураасаар (round cap + non-scaling-stroke):
+            `preserveAspectRatio="none"` нь тойргийг ЗУУВАН болгож сунгадаг байв. Гадна нь
+            гадаргуун цагираг (`CHART.ring`), дотор нь цэг (`CHART.markerR`). */}
+        <path
+          d={`M${markX},${markY} h0`}
+          style={{ stroke: 'var(--sunken)', strokeWidth: (CHART.markerR + CHART.ring) * 2, strokeLinecap: 'round' }}
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d={`M${markX},${markY} h0`}
+          style={{ stroke: hue, strokeWidth: CHART.markerR * 2, strokeLinecap: 'round' }}
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
 
       {/* Цаг товшуур (гулсуур) */}

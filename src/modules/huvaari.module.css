@@ -641,10 +641,12 @@
 
 /* ⚠️ ГҮЙЦЭТГЭЛийн төлөв. «Хэмжигдээгүй» нь «эхлээгүй»-ээс ЗУРААСААР ялгарна —
    өнгө сохор хүнд ч ялгагдана, мөн «мэдэхгүй»-г «тэг» гэж уншуулахгүй. */
-.tlDone { background: var(--good); }
-.tlRun { background: var(--data); }
-.tlLate { background: var(--bad); }
-.tlTodo { background: color-mix(in srgb, var(--ink-3) 45%, transparent); }
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): өнгө нь globals.css-ийн `--gantt-*`
+   токеноос — ТУХ-ийн гант (`tuh.module.css`) ижил эхийг авна; урьд нь хоёр гар хуулбар байв. */
+.tlDone { background: var(--gantt-done); }
+.tlRun { background: var(--gantt-run); }
+.tlLate { background: var(--gantt-late); }
+.tlTodo { background: var(--gantt-todo); }
 .tlNone {
   background: repeating-linear-gradient(
     45deg,

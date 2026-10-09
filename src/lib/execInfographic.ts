@@ -23,31 +23,35 @@
  *
  * ⚠️ Өнгө ХАТУУ бичигдсэн: экспортлогдсон зураг нь аппын харанхуй/цайвар
  *    горимоос үл хамааран ЦАГААН цаасан дээр уншигдах ёстой. Утгууд нь
- *    `globals.css`-ийн цайвар палитраас (ink #1e293b · data #2e7f8b ·
- *    good #16a34a · warn #ca8a04 · bad #dc2626).
+ *    `globals.css`-ийн цайвар палитраас.
+ * ⚠️ 2026-10-09: hex-ийг ЭНД бичихгүй — `PRINT_COLORS` (format.ts) ГАНЦ эх.
+ *    Урьдах хуулбар хуучирсан байв (warn #ca8a04 — вэбийн --warn #9a5d07,
+ *    тайлбарт good #16a34a — вэбийн --good #147c3b).
  */
 
 import { LATE_GAP, type ExecReport } from '@/lib/execReport';
 import { progressSub } from '@/lib/gdash';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { num, pct, PRINT_COLORS } from '@/lib/format';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { TOLOV } from '@/lib/zovshoorol';
 
 export const INFO_W = 1240;
 export const INFO_H = 1754;
 
-const INK = '#1e293b';
-const INK2 = '#475569';
-const INK3 = '#5a6a80';
+const INK = PRINT_COLORS.ink;
+const INK2 = PRINT_COLORS.ink2;
+const INK3 = PRINT_COLORS.ink3;
 const LINE = '#d5dbe3';
 const SURF = '#f4f6f9';
-const DATA = '#2e7f8b';
+const DATA = PRINT_COLORS.data;
+/* ⚠️ DATA-гийн цайвар хэлбэр (төлөвлөгөө/төсвийн «ард» багана) — DATA-аас
+   үүсмэл тул токен биш; DATA солигдвол энэ ч дагаж харагдах ёстой. */
 const DATA_SOFT = '#bfe0e5';
 /* ⚠️ НОГООН ХАСАГДСАН (2026-09-17): хэвийн байдлыг өнгөөр тэмдэглэхээ
    болив — зөвхөн АСУУДАЛ өнгөтэй (хэрэглэгчийн шүүмж). */
-const WARN = '#ca8a04';
-const BAD = '#dc2626';
+const WARN = PRINT_COLORS.warn;
+const BAD = PRINT_COLORS.bad;
 const FONT = "'Segoe UI', 'Noto Sans', Arial, sans-serif";
 
 /* ═══════════════ Зурах үйлдлүүд ═══════════════ */

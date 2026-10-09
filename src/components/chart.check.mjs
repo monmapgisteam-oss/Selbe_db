@@ -33,8 +33,23 @@ ok('мянгатын таслал арилав',
   parseChart('{"type":"column","data":[{"label":"a","value":"1,788"},{"label":"b","value":2}]}').data[0].value === 1788);
 ok('нэг цэгтэй график татгалзав',
   parseChart('{"type":"bar","data":[{"label":"a","value":1}]}') === null);
-ok('утгагүй тоотой мөр хасагдав (үлдсэн 2)',
-  parseChart('{"type":"bar","data":[{"label":"a","value":"тодорхойгүй"},{"label":"b","value":2},{"label":"c","value":3}]}').data.length === 2);
+/* ⚠️ 2026-10-09: тэнхлэгтэй төрөлд утгагүй мөр ХАЯГДАХГҮЙ — null (цоорхой) болно
+   (CLAUDE.md: null ≠ 0, цоорхой үлдээнэ). Урьд нь хасагддаг байсан тул хугацааны
+   цуваанд тайлангүй сар алга болж хөрш сарууд шууд холбогддог байв. */
+{
+  const c = parseChart('{"type":"bar","data":[{"label":"a","value":"тодорхойгүй"},{"label":"b","value":2},{"label":"c","value":3}]}');
+  ok('bar: утгагүй тоотой мөр null болж ҮЛДЭВ (3 мөр)', c.data.length === 3 && c.data[0].value === null);
+  const l = parseChart('{"type":"line","data":[{"label":"1-р сар","value":5},{"label":"2-р сар","value":null},{"label":"3-р сар","value":7}]}');
+  ok('line: дундах null цоорхой хэвээр (0 БИШ)', l.data.length === 3 && l.data[1].value === null);
+  const m = parseChart('{"type":"column","data":[{"label":"a"},{"label":"b","value":2},{"label":"c","value":3}]}');
+  ok('column: value талбаргүй мөр null', m.data.length === 3 && m.data[0].value === null);
+  ok('pie: null зүсмэг ХАСАГДАНА (эзлэх хувьд цоорхой утгагүй)',
+    parseChart('{"type":"pie","data":[{"label":"a","value":null},{"label":"b","value":2},{"label":"c","value":3}]}').data.length === 2);
+  ok('бүгд null бол татгалзана',
+    parseChart('{"type":"line","data":[{"label":"a","value":null},{"label":"b","value":null},{"label":"c","value":4}]}') === null);
+  ok('gauge-ийн null ТАТГАЛЗАНА',
+    parseChart('{"type":"gauge","data":[{"label":"x","value":null}]}') === null);
+}
 ok('шошгогүй мөр хасагдав',
   parseChart('{"type":"bar","data":[{"label":"","value":5},{"label":"b","value":2},{"label":"c","value":3}]}').data.length === 2);
 ok('12-оос олон бол таслав',

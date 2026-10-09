@@ -24,64 +24,19 @@
 }
 .cap span { font-weight: 400; color: var(--ink-2); }
 
-/* ══════════ Хэвтээ багана ══════════ */
-.bars { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(80px, 2fr) minmax(4.5rem, auto); gap: 10px 14px; }
-.barRow {
-  display: grid;
-  /* ⚠️ Нэрийн багана ТОГТМОЛ өргөнтэй — эс тэгвээс мөр бүрийн зурвас өөр
-     цэгээс эхэлж, урт нь нүдээр харьцуулагдахаа болино. */
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  align-items: center;
-  font-size: 0.74rem;
-}
-.barName {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-.barTrack {
-  position: relative;
-  height: 12px;
-  border-radius: 3px;
-  /* Суурь нь МАШ намуухан — зурвас өөрөө гол дүр (ТУХ-ын хэмжигчийн зам) */
-  background: var(--chart-track);
-  overflow: hidden;
-}
-.bar {
-  display: block;
-  height: 100%;
-  min-width: 0;
-  /* ⚠️ ЗӨВХӨН баруун үзүүр нь бөөрөнхий — зүүн тал нь тэнхлэгт наалдана.
-     Хоёр талыг бөөрөнхийлвөл богино зурвас «капсул» болж, урт нь худал
-     нэмэгдэж харагдана. */
-  border-radius: 0 4px 4px 0;
-  /* ⚠️ Нэг цуваа = НЭГ өнгө. Аппын өгөгдлийн өнгө (`--data`) намуухан
-     хувилбараар; эмфазистай багана нь бүтэн тодоор ялгарна. */
-  background: var(--data);
-  opacity: 0.7;
-}
-/* ЭМФАЗИС — «энэ нэг нь гол» гэсэн түүх. Бусад нь намуухан хэвээр. */
-.barHot { opacity: 1; }
-.barVal {
-  min-width: 4.5rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  /* ⚠️ ТЕКСТ нь ЦУВААНЫ ӨНГӨ ЗҮҮХГҮЙ — бэхний токеноор. Өнгөт зурвас нь
-     хажуудаа таних тэмдгийг аль хэдийн үүрсэн. */
-  color: var(--ink);
-}
-.na { font-style: italic; color: var(--ink-3); font-size: 10.5px; }
+/* ══════════ Хэвтээ багана ══════════
+   ⚠️ 2026-10-09 («графикийн жигдрэл»): `RankBars` нь `ui.Bars`-ийг ШУУД зурна (нэр + утга дээр,
+   2px зам доор) — өөрийн 12px `.bars/.barRow/.barTrack/.bar/.barHot/.barVal/.na` хасагдсан.
+   Хэвлэлтийн өнгө доорх `@media print`-д `chartTrack`/`chartFill` глобал нэрээр. */
 
 /* ⚠️ ДАВХАРЛАСАН ЗУРВАСЫН (`.stack`/`.seg`/`.legend`…) дүрмүүд 2026-09-03-нд
    БҮРМӨСӨН УСТСАН — хэрэглэгч тэр хэлбэрийг хассан. Хэсэг-бүтэн харьцааг ч
    `.bars` (хэвтээ багана) харуулна: бүгд нэг суурьтай тул урт нь шууд
    харьцуулагдана. Домог хэрэггүй — нэр нь мөр бүрийнхээ зүүн талд бий. */
 
-/* ⚠️ СТАТУСЫН ӨНГӨ — зөвхөн төлөв заана. `Meter`-ийн хоцрогдлын дохиод л
-   үлдэв: хуваарьтайгаа харьцуулахад ард хоцорсныг ӨНГӨӨР анхааруулна. */
-.t_warn { background: var(--warn); }
+/* ⚠️ СТАТУСЫН ӨНГӨ — зөвхөн төлөв заана. `PlanMeter`-ийн хоцрогдлын дохиод л
+   үлдэв (2026-10-09-нөөс `ui.Meter tone="warn"`): хуваарьтайгаа харьцуулахад ард
+   хоцорсныг ӨНГӨӨР анхааруулна. */
 
 /* ══════════ Хугацааны цуваа ══════════ */
 .spark { display: block; width: 100%; height: 64px; }
@@ -111,27 +66,8 @@
 .note { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
 .note b { color: var(--ink-2); }
 
-/* ══════════ Хэмжүүр ══════════ */
-.meter { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
-/* ТУХ-ын хэмжигч: дүүргэлт = бодит, хар зураас = төлөвлөгөө */
-.meterTrack {
-  position: relative;
-  flex: 1;
-  height: 8px;
-  border-radius: 3px;
-  background: var(--chart-track);
-}
-.meterFill { display: block; height: 100%; border-radius: 3px 0 0 3px; background: var(--data); }
-/* Төлөвлөгөөт хувийн лавлах зураас */
-.meterPlan {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--ink);
-}
-.meterVal { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+/* ══════════ Хэмжүүр ══════════
+   ⚠️ 2026-10-09: `ui.Meter` (`PlanMeter`) — өөрийн 8px `.meter*` хасагдсан. */
 
 /* ══════════ Үзүүлэлтийн эгнээ ══════════ */
 /* ⚠️ 210px нь МӨНГӨН ДҮНгээр тодорхойлогдсон: «2,541,545,386,714 ₮» нь
@@ -179,30 +115,27 @@
 /* ⚠️ ХЭВЛЭХ: график нь хүснэгтийн ДАВХАРДАЛ биш НЭМЭЛТ тул хэвлэлтэд ч
    үлдэнэ. Зөвхөн дэвсгэрийг цайруулж бэх хэмнэнэ. */
 .meterBlock { margin: 10px 0 12px; }
-.meterLegend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 0.74rem; color: var(--ink-2); }
 @media (max-width: 720px) {
   .fig { padding: 12px; }
-  .bars { grid-template-columns: minmax(0, 1fr) minmax(4.5rem, auto); }
-  .barName { grid-column: 1 / -1; }
-  .barVal { overflow-wrap: anywhere; }
 }
 @media print {
   .fig, .kpis { break-inside: avoid; }
-  .meterLegend { color: #333; }
   .kpis, .fig { background: none; }
-  .barTrack, .meterTrack { background: #e5e7eb; }
+  /* ⚠️ 2026-10-09: `ui.Bars`/`ui.Meter` — бэх ба замын ТОКЕНЫГ энэ хүрээнд цаасны утгаар
+     дарна (харанхуй горимд хэвлэхэд --ink нь бараг цагаан — доорх 2026-09-08-ны ⚠️). */
+  .fig, .meterBlock { --ink: #000; --ink-2: #222; --ink-3: #555; --chart-track: #e5e7eb; }
+  .fig :global(.chartTrack), .meterBlock :global(.chartTrack) { background: #e5e7eb; }
   /* ⚠️ 2026-09-08 — БЭХИЙГ ч хатуу нөхнө. Өмнө нь зөвхөн дэвсгэр сэргээгддэг
      байсан тул ХАРАНХУЙ горимд хэвлэхэд --ink (#f1f5f9) / --ink-2 / --ink-3
      нь бараг цагаан хэвээр үлдэж, хөтөч дэвсгэрийг хэвлэдэггүй ЦАГААН цаасан
      дээр тоо, нэр, тэнхлэг, тайлбар БҮГД үл үзэгдэх болдог байв. Хажуугийн
      report.module.css яг үүнийг өөрийн элементүүддээ аль хэдийн хийсэн. */
-  .barVal, .meterVal, .kpiVal, .note b, .axHot { color: #000; }
-  .barName, .cap { color: #222; }
-  .axis, .note, .na, .kpiSub, .kpiLabel, .cap span { color: #555; }
-  /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр (эмфазис нь тодоор) */
-  .bar { background: #767676; opacity: 1; }
-  .barHot, .meterFill { background: #333; }
-  .meterPlan { background: #000; }
+  .kpiVal, .note b, .axHot { color: #000; }
+  .cap { color: #222; }
+  .axis, .note, .kpiSub, .kpiLabel, .cap span { color: #555; }
+  /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр */
+  .fig :global(.chartFill) { background: #767676; }
+  .meterBlock :global(.chartFill) { background: #333; }
   .line { stroke: #333; }
   .area { fill: #d9d9d9; }
 }

@@ -372,22 +372,25 @@
 
 /* ── ЗӨРҮҮГИЙН ТАЛБАЙ ──
    Байрлалаараа утгатай: бодит нь төлөвлөгөөнөөс ДООГУУР бол улаан. */
-.progGapBad { fill: var(--bad); opacity: 0.13; stroke: none; }
-.progGapGood { fill: var(--good); opacity: 0.13; stroke: none; }
+/* ⚠️ 2026-10-09: тунгалаг = `CHART.gapFill` (0.12) — tsx-ээс inline давхар өгдөг */
+.progGapBad { fill: var(--bad); opacity: 0.12; stroke: none; }
+.progGapGood { fill: var(--good); opacity: 0.12; stroke: none; }
 
-/* ── ШУГАМУУД — зузаан нь ҮҮРГИЙГ хэлнэ ──
-   төлөвлөгөө = ЛАВЛАГАА (нимгэн, тасархай) · бодит = БАРИМТ (зузаан, бүтэн) */
+/* ── ШУГАМУУД — ХЭЛБЭР нь ҮҮРГИЙГ хэлнэ ──
+   төлөвлөгөө = ЛАВЛАГАА (тасархай) · бодит = БАРИМТ (бүтэн)
+   ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёулаа 2px (`CHART.stroke`; урьд 1.6 / 2.8),
+      тасархай `CHART.planDash` — бүх S-муруйд нэг дүрэм. Зузаан/тасархайг tsx-ээс
+      inline давхар өгдөг; энд өөрчилбөл `chartStyle.ts`-д ч өөрчил. */
 .progPlan {
   fill: none;
-  stroke-width: 1.6;
+  stroke-width: 2;
   stroke-dasharray: 5 4;
   stroke-linejoin: round;
   stroke-linecap: round;
-  opacity: 0.85;
 }
 .progAct {
   fill: none;
-  stroke-width: 2.8;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
@@ -434,8 +437,9 @@
 }
 .progLegend span { display: inline-flex; align-items: center; gap: 6px; }
 /* Легендийн тэмдэг — ШУГАМЫН хэлбэрийг давтана */
-.progSolid { width: 18px; height: 3px; border-radius: 2px; display: inline-block; flex: none; }
-.progDash { width: 18px; height: 0; border-top: 2px dashed; display: inline-block; flex: none; opacity: 0.85; }
+/* ⚠️ 2026-10-09: тэмдэг нь шугамтай ИЖИЛ 2px (урьд бодит 3px, тасархай 0.85 бүдэг) */
+.progSolid { width: 18px; height: 2px; border-radius: 1px; display: inline-block; flex: none; }
+.progDash { width: 18px; height: 0; border-top: 2px dashed; display: inline-block; flex: none; }
 .progAreaBad,
 .progAreaGood { width: 18px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
 .progAreaBad { background: color-mix(in srgb, var(--bad) 22%, transparent); }
@@ -457,12 +461,13 @@
   color: var(--ink-3);
 }
 
-/* Tooltip — хөвөгч тул сүүдэр зөвшөөрөгдөнө */
+/* Tooltip — хөвөгч тул сүүдэр зөвшөөрөгдөнө
+   ⚠️ 2026-10-09: ComboChart-ын `.tip` (finance.module.css)-тэй ЯГ ижил загвар (min-width 160) */
 .progTip {
   position: absolute;
   top: 8px;
   z-index: 4;
-  min-width: 150px;
+  min-width: 160px;
   padding: 9px 11px;
   border-radius: var(--r-sm);
   background: var(--surface);

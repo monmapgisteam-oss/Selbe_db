@@ -268,7 +268,7 @@ const en: Record<string, string> = {
   "{0}-р хянуулалт": "Review {0}",
   "{0}-р ээлж баригдав: {1} кодын гэрэл ногоон, бусад нь улаан.": "Phase {0} is held: signals with code {1} are green, all others red.",
   "{0}–{1} оноо": "{0}–{1} points",
-  "{0}: {1} оноо": "{0}: {1} points",
+  "Зорилт": "Target",
   "{0}: төлөвлөсөн {1}% · бодит {2}%": "{0}: planned {1}% · actual {2}%",
   "{0}{1}": "{0}{1}",
   "{0}/{1} бүртгэлтэй": "{0}/{1} recorded",

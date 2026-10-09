@@ -294,17 +294,9 @@
 .cardPct { font-size: 1.5rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .cardWeek { font-size: 0.72rem; color: var(--ink-2); white-space: nowrap; }
 .cardGap { font-size: 0.78rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* Хугацаа ба гүйцэтгэлийн хоёр зурвас — шошго | зурвас | утга */
+/* Хугацаа ба гүйцэтгэлийн хоёр зурвас — ⚠️ 2026-10-09: хоёр `ui.Meter` мөр (нэр + утга дээр,
+   2px зам доор). Урьд нь 8px өөрийн зурвас (`duoRow/duoTrack/duo_*`) байв. */
 .duo { display: flex; flex-direction: column; gap: 6px; }
-.duoRow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 0.72rem; }
-.duoLbl { color: var(--ink-3); }
-.duoVal { min-width: 72px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.duoTrack { position: relative; height: 8px; border-radius: 2px; background: var(--chart-track); overflow: hidden; }
-.duoTrack i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width 0.6s var(--ease); }
-.duoTime { background: color-mix(in srgb, var(--ink-3) 70%, transparent); }
-.duo_good { background: var(--good); }
-.duo_bad { background: var(--bad); }
-.duo_data { background: var(--data); }
 .cardWeek b { font-variant-numeric: tabular-nums; }
 /* Картын баримт — шошго ДЭЭР, утга ДООР: урт нэр/бүтэн мөнгөн дүн хуваагдаж эвдрэхгүй */
 .cardFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; font-size: 0.74rem; }
@@ -328,32 +320,10 @@
 }
 .ghostBtn:hover, .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
 
-/* ── Хэмжигч — `ui.Bars`-ийн зурвас (`ui.module.css` `.barTrack`/`.barFill`) ──
-   ⚠️ 2px нимгэн зурвас + төлөвлөгөөний босоо зураас. Бүдүүн бөөрөнхий хэмжигч
-      системд байхгүй (2026-10-01, «үндсэн системээс зөрж байна»). */
-.meter {
-  position: relative;
-  display: block;
-  width: 100%;
-  min-width: 60px;
-  height: 2px;
-  margin: 5px 0;
-  border-radius: 1px;
-  background: var(--chart-track);
-}
-.meterFill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--tone, var(--data));
-  transition: width 0.6s var(--ease);
-}
-.meter[data-tone='good'] { --tone: var(--good); }
-.meter[data-tone='warn'] { --tone: var(--warn); }
-.meter[data-tone='bad'] { --tone: var(--bad); }
-.meter[data-tone='mute'] { --tone: var(--ink-3); }
-.meterPlan { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+/* ── Хэмжигч — `ui.Meter` (2026-10-09; локал `.meter*` хуулбар хасагдсан) ──
+   ⚠️ Зөвхөн ГАДНА зай: төлөвлөгөөний зураас замаас ±4px сунадаг тул дээд/доод
+      бичвэртэй мөргөлдөхгүйн тулд урьдын `margin: 5px 0`-г бүрхүүл дээр үлдээв. */
+.meterGap { display: block; margin: 5px 0; }
 
 /* ── Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.module.css` `.progLegend`) ── */
 .legend {
@@ -443,11 +413,12 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
   border-radius: 3px;
   overflow: hidden;
 }
-/* «Хуваарь»-ийн төлөвийн өнгө — `huvaari.module.css` `.tlDone/.tlRun/.tlLate/.tlTodo/.tlNone` */
-.st_done { background: var(--good); }
-.st_run { background: var(--data); }
-.st_late { background: var(--bad); }
-.st_todo { background: color-mix(in srgb, var(--ink-3) 45%, transparent); }
+/* «Хуваарь»-ийн төлөвийн өнгө — ⚠️ 2026-10-09: `globals.css`-ийн `--gantt-*` токен (НЭГ эх, dark-тай);
+   урьд нь `huvaari.module.css`-ийн `.tl*`-ээс гараар хуулсан өнгө байв. */
+.st_done { background: var(--gantt-done); }
+.st_run { background: var(--gantt-run); }
+.st_late { background: var(--gantt-late); }
+.st_todo { background: var(--gantt-todo); }
 .st_none {
   background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink-3) 28%, transparent) 0 3px, transparent 3px 6px);
   border-color: color-mix(in srgb, var(--ink-3) 40%, transparent);
@@ -467,8 +438,10 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
 .ganttMark { position: absolute; z-index: 3; top: 5px; transform: translateX(-50%); font-size: 12px; line-height: 1; color: var(--ink); }
 .ganttMark[data-kind='heat'] { color: var(--bad); }
 .ganttMark[data-kind='milestone'] { color: var(--ink-2); }
-/* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил улаан */
-.ganttNow { position: absolute; top: 0; bottom: 0; z-index: 2; width: 2px; margin-left: -1px; background: var(--bad); opacity: 0.85; }
+/* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил.
+   ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёр гантад НЭГ дүрэм — 1.5px ТАСАРХАЙ `--bad`
+      (урьд нь 2px бүтэн, 0.85). Тасархай нь зурвастай давхцахдаа доорх өнгийг харуулна. */
+.ganttNow { position: absolute; top: 0; bottom: 0; z-index: 2; width: 0; margin-left: -0.75px; border-left: 1.5px dashed var(--bad); }
 
 /* ── Жижиг олон график / IPC карт ── */
 /* ⚠️ НЭГ БАГАНА — системийн «Гүйцэтгэлийн явц» график бүтэн өргөнд зориулагдсан;
@@ -605,5 +578,4 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
   .content { scroll-behavior: auto; }
 }
 
-/* ⚠️ 2026-10-05 (merge): Тайлангийн толгойн том хэмжигч — `Meter wide` */
-.meterWide { height: 8px; }
+/* ⚠️ 2026-10-05 (merge) `.meterWide` → 2026-10-09: `ui.Meter wide` (CHART.meterWideH) */

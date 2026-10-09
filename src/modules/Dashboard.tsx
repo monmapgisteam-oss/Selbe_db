@@ -38,7 +38,7 @@ import {
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mnt, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
+import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
@@ -1471,7 +1471,7 @@ function EnvRight({ d }: { d: DashData }) {
                 .map((r) => ({
                   key: r.key,
                   label: r.label,
-                  value: r.progress ?? 0,
+                  value: r.progress ?? null, // ⚠️ 2026-10-09: `?? 0` → null (Bars дүүргэлтгүй)
                   /* ⚠️ 2026-09-25: хэмжигдээгүй багц саарал (`NO_DATA`) — өгөгдлийн
                      өнгөөр 0% зурвал «эхэлсэн ч юу ч хийгээгүй» гэсэн худал уншилт */
                   color: r.progress == null ? NO_DATA : 'var(--data)',
@@ -1764,8 +1764,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
                  холбосон шугамаар (`leaders`) — доод жагсаалт БИШ. Зүсмэг цөөн
                  (2–4) тул шошго хоорондоо мөргөлдөхгүй. */
               <Donut
-                size={140}
-                width={22}
+                size="lg"
                 leaders={list.length <= 4}
                 stack={list.length > 4}
                 center={num(list.reduce((a, x) => a + x[1], 0))}
@@ -1774,7 +1773,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
                   key: label,
                   label: tr(label),
                   value: n,
-                  color: shade(ACCENT, i, Math.max(2, list.length)),
+                  color: cat(i), // ⚠️ 2026-10-09: shade(ACCENT) hex → зэрэглэлийн слот (dark-тай)
                   display: tr('{0} багц', num(n)),
                 }))}
               />
@@ -2292,8 +2291,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                 items={heatBars(rows, (x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  // Багана 0 урттай ч ШОШГО нь үнэнийг хэлнэ
-                  value: x.pct ?? 0,
+                  // ⚠️ 2026-10-09: `?? 0` → null — Bars дүүргэлтгүй, heatBars саарал (null ≠ 0)
+                  value: x.pct ?? null,
                   display: x.pct == null
                     ? tr('{0} · {1} / {2}', tr('мэдээлэлгүй'), num(x.v), num(x.p))
                     : tr('{0} · {1} / {2}', pct(x.pct, 1), num(x.v), num(x.p)),
@@ -2353,9 +2352,20 @@ const HUE = shades(CAT_LIGHT[0], 8);
  * уусгалтаар өнгөтэй (хэрэглэгчийн хүсэлт: солонго биш нэг өнгө). Их утга тод,
  * бага утга бүдэг. `heat(v, max)` нь энэ дүрмийг чартад хэрэглэнэ.
  */
-const ACCENT = CAT_LIGHT[0];
-/** Утга → нэг өнгөний сүүдэр (их=тод). max≤0 бол суурь өнгө. */
-const heat = (v: number, max: number) => tint(ACCENT, max > 0 ? v / max : 1);
+/* ⚠️ 2026-10-09 (графикийн жигдрэл): `CAT_LIGHT[0]` hex → `var(--c1)` токен — dark
+   горимд гэрэлтэй горимын слот үлддэг байв. Утга ижил (#0b8ba0 = --c1 light). */
+const ACCENT = 'var(--c1)';
+/**
+ * Утга → нэг өнгөний сүүдэр (их=тод). max≤0 бол суурь өнгө.
+ *
+ * ⚠️ 2026-10-09: `tint(hex)` нь ЦАГААН руу уусгадаг (hex шаарддаг) тул dark-д цайвар
+ *    толбо болдог байв. Одоо `color-mix(… var(--surface))` — гадаргуу руу уусна;
+ *    хувь нь `tint`-ийн томьёотой ижил (бүдэгрэлт ≤72%).
+ */
+const heat = (v: number, max: number) => {
+  const f = max > 0 ? Math.max(0, Math.min(1, v / max)) : 1;
+  return `color-mix(in srgb, var(--c1) ${Math.round(28 + 72 * f)}%, var(--surface))`;
+};
 // ⚠️ `maxOf` нь `@/lib/agg`-аас импортлогдоно (энд байсан хуулбарыг хасав) —
 //    live.ts ч мөн хэрэглэдэг тул нэг газар байх ёстой.
 
@@ -2382,7 +2392,8 @@ function RingCard({ value, label, color = ACCENT, decimals }: {
 }) {
   return (
     <div className={o.ringCard}>
-      <Ring value={value} size={132} width={20} color={color} label={label} decimals={decimals} />
+      {/* ⚠️ 2026-10-09: 132/20 (15%) → стандарт 'md' (120, зузаан 10%) */}
+      <Ring value={value} size="md" color={color} label={label} decimals={decimals} />
     </div>
   );
 }
@@ -2644,7 +2655,8 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           items={rows.map((r) => ({
             key: r.key,
             label: r.label,
-            value: r.progress ?? 0,
+            /* ⚠️ 2026-10-09: `?? 0` → null — Bars нь null-д дүүргэлт зурахгүй (null ≠ 0) */
+            value: r.progress ?? null,
             display: pct(r.progress, 1),
             /* ⚠️ null → саарал (`NO_DATA`), 0% гэж будахгүй — дэд үе шатын
                зурвастай ижил дүрэм. */
@@ -2669,7 +2681,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
             // Эх excel өөрөө дэд үе шатын жингээр бодсон тул ЭНД дахин жигнэхгүй
             const v = hit.length ? sumBy(hit, (x) => x.pct as number) / hit.length : null;
             return {
-              nm, key: no, label: `${no} · ${nm}`, value: v ?? 0,
+              nm, key: no, label: `${no} · ${nm}`, value: v, // ⚠️ 2026-10-09: null хэвээр (null ≠ 0)
               display: v == null ? tr('бөглөгдөөгүй') : tr('{0} · {1} блок', pct(v, 1), num(hit.length)),
               color: v == null ? NO_DATA : heat(v, 100),
             };
@@ -2711,7 +2723,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
         <Data q={hist} loading={tr('Бүртгэлийн түүхийг уншиж байна…')}>
           {(h) => (
             <Trend
-              color={ACCENT}
+              color="var(--c1)" // ⚠️ 2026-10-09: ACCENT hex → токен (dark-тай)
               points={progressSeries(
                 h,
                 // ⚠️ Бөгж (`latestMean`) ч ЭНЭ жагсаалтаар тоолдог — хоёр тал
@@ -2824,8 +2836,8 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
                 items={withVol.map((x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  // Багана 0 урттай ч ШОШГО нь үнэнийг хэлнэ
-                  value: x.vp ?? 0,
+                  // ⚠️ 2026-10-09: `?? 0` → null — Bars дүүргэлтгүй (null ≠ 0)
+                  value: x.vp ?? null,
                   /* ⚠️ 2026-09-25: бодит `null` = «мэдээлэлгүй», «0 / N» БИШ —
                      урьд нь бөглөөгүй багц «0 хийсэн» мэт уншигддаг байв. */
                   display: (x.volumePlan ?? 0) > 0
@@ -3310,8 +3322,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             const tot = list.reduce((a2, x) => a2 + x[1], 0);
             return list.length <= 3 ? (
               <Donut
-                size={140}
-                width={22}
+                size="lg"
                 leaders
                 center={num(tot)}
                 centerLabel={tr('талбар')}
@@ -3319,7 +3330,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   key: label,
                   label,
                   value: n,
-                  color: shade(ACCENT, i, list.length),
+                  color: cat(i),
                   display: tr('{0} талбар', num(n)),
                 }))}
               />
@@ -3684,8 +3695,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
               /* ≤3 бол донат, эс бөгөөс хэвтээ бар (4+ дүрэм) */
               heatRows.length <= 3 ? (
                 <Donut
-                  size={140}
-                  width={22}
+                  size="lg"
                   leaders
                   center={num(sumBy(heatRows, (r) => srcNum(r[F.total])), 1)}
                   centerLabel={tr('МВт')}
@@ -3693,7 +3703,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
                     key: srcStr(r[F.name]) || String(i),
                     label: srcStr(r[F.name]) || tr('Нэргүй'),
                     value: srcNum(r[F.total]),
-                    color: shade(ACCENT, i, heatRows.length),
+                    color: cat(i),
                     display: tr('{0} МВт', num(srcNum(r[F.total]), 1)),
                   }))}
                 />
@@ -3724,8 +3734,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             return (
               waterRows.length <= 3 ? (
                 <Donut
-                  size={140}
-                  width={22}
+                  size="lg"
                   leaders
                   center={num(sumBy(waterRows, (r) => srcNum(r[F.total])))}
                   centerLabel={tr('м³/хон')}
@@ -3733,7 +3742,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
                     key: srcStr(r[F.name]) || String(i),
                     label: srcStr(r[F.name]) || tr('Нэргүй'),
                     value: srcNum(r[F.total]),
-                    color: shade(ACCENT, i, waterRows.length),
+                    color: cat(i),
                     display: tr('{0} м³/хон', num(srcNum(r[F.total]))),
                   }))}
                 />
@@ -3804,8 +3813,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             if (!groups.length) return <Empty label={tr('Уртын бүртгэл алга.')} />;
             return (
               <Donut
-                size={140}
-                width={22}
+                size="lg"
                 leaders
                 center={km(groups.reduce((a2, g) => a2 + g.len, 0), 1)}
                 centerLabel={tr('км')}
@@ -3813,7 +3821,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
                   key: g.key,
                   label: g.label,
                   value: g.len,
-                  color: shade(ACCENT, i, groups.length),
+                  color: cat(i),
                   display: tr('{0} км · {1} багц · {2} ш', km(g.len, 1), num(g.packs), num(g.n)),
                 }))}
               />
@@ -4215,8 +4223,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
             if (!groups.length) return <Empty label={tr('Багцын давхарга алга.')} />;
             return (
               <Donut
-                size={140}
-                width={22}
+                size="lg"
                 leaders
                 center={num(groups.reduce((a2, g) => a2 + g.n, 0))}
                 centerLabel={tr('ш')}
@@ -4224,7 +4231,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                   key: g.key,
                   label: g.label,
                   value: g.n,
-                  color: shade(ACCENT, i, groups.length),
+                  color: cat(i),
                   display: tr('{0} ш · {1} км · {2} багц', num(g.n), km(g.len, 1), num(g.packs)),
                 }))}
               />
@@ -4498,8 +4505,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
           <Panel key={type} title={type}>
             {facs.length <= 3 ? (
               <Donut
-                size={130}
-                width={22}
+                size="md"
                 leaders
                 selected={sel}
                 onSelect={pick}
@@ -4510,7 +4516,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                   label: srcStr(f[F.name]),
                   value: valOf(f),
                   display: srcStr(f[metric]),
-                  color: shade(ACCENT, i, facs.length),
+                  color: cat(i),
                 })).filter((x): x is typeof x & { value: number } => x.value != null)}
               />
             ) : (
@@ -4820,10 +4826,10 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
             { key: 'total', label: tr('Төсөвт өртөг'), value: bg.total },
             { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
             { key: 'contract', label: tr('Гэрээгээр'), value: bg.contract },
-          ].map((x, i, a) => ({
+          ].map((x, i) => ({
             ...x,
             display: `${tug(x.value)} · ${bg.total ? pct((x.value / bg.total) * 100, 1) : '—'}`,
-            color: shade(ACCENT, i, a.length),
+            color: cat(i),
           }))}
         />
         <p className={o.note}>
@@ -4836,13 +4842,12 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           <Donut
             items={bg.sources.map((s, i) => ({
               key: s.key, label: s.label, value: s.value,
-              color: shade(ACCENT, i, bg.sources.length),
+              color: cat(i),
               display: mnt(s.value),
             }))}
             center={num(bg.orderTotal)}
             centerLabel={tr('₮')}
-            size={150}
-            width={24}
+            size="lg"
             leaders
           />
         ) : (
@@ -4946,8 +4951,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           ].filter((x) => x.v > 0);
           return (
             <Donut
-              size={140}
-              width={22}
+              size="lg"
               leaders
               center={num(sorted.length)}
               centerLabel={tr('багц')}
@@ -4955,7 +4959,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
                 key: x.key,
                 label: x.label,
                 value: x.v,
-                color: shade(ACCENT, i, list.length),
+                color: cat(i),
                 display: tr('{0} · {1} · {2} мөр', pct((x.v / tot) * 100, 1), tug(x.v), num(x.n)),
               }))}
             />
@@ -5129,7 +5133,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               display: r.capacity != null
                 ? `${tr('{0} ш · {1} хүчин чадал', num(r.n), num(r.capacity))}${r.capPartial ? ` (${tr('дутуу')})` : ''}`
                 : tr('{0} ш', num(r.n)),
-              color: HUE[i % HUE.length],
+              color: cat(i), // ⚠️ 2026-10-09: HUE (hex сүүдэр) → `cat(i)`, dark-тай
             }))}
           />
         )}
@@ -5195,7 +5199,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                 items={heatBars(rows2, (x) => ({
                   key: x.id,
                   label: x.label,
-                  value: x.m2 ?? 0,
+                  value: x.m2 ?? null, // ⚠️ 2026-10-09: `?? 0` → null (null ≠ 0)
                   /* ⚠️ `num(null)` → «—» (мэдээлэлгүй), 0 м² биш */
                   display: x.n > 1
                     ? tr('{0} м² · {1} барилга', num(x.m2), num(x.n))
@@ -5368,8 +5372,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             ].filter((x) => x.v > 0);
             return (
               <Donut
-                size={140}
-                width={22}
+                size="lg"
                 leaders
                 center={pct((socSum / base) * 100, 1)}
                 centerLabel={tr('нийгэм')}
@@ -5377,7 +5380,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                   key: x.key,
                   label: x.label,
                   value: x.v,
-                  color: shade(ACCENT, i, list.length),
+                  color: cat(i),
                   display: tr('{0} · {1}', tug(x.v), pct((x.v / base) * 100, 1)),
                 }))}
               />

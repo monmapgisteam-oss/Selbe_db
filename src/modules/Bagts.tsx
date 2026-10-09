@@ -705,7 +705,10 @@ export function ContractCard({ p }: { p: Pack }) {
     <Section tone="primary" title={tr('{0} — гүйцэтгэл', p.name)}>
       <Col gap="sm">
         <div className={o.packRing} data-ui="pack-ring">
-          <Ring value={p.progress} size={86} color={levelColor(p.progress)} label={tr('гүйцэтгэл')} />
+          {/* ⚠️ 2026-10-09 (графикийн жигдрэл): 86px → стандарт 'sm' (88, зузаан 10%); өнгө
+              `levelColor` (tint(HUE) hex — dark-д цайвар, бага утгад бараг үл үзэгдэх) → `--data`
+              токен. Газрын зургийн блокийн сүүдэр (`levelColor`) жагсаалт/тайлбарт хэвээр. */}
+          <Ring value={p.progress} size="sm" color="var(--data)" label={tr('гүйцэтгэл')} />
           <Stats cols={2}>
             <Stat value={num(blockCount(p))} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
             <Stat value={num(p.households)} unit={tr('айл')} label={tr('Айл')} color={HUE} accent />
@@ -928,7 +931,7 @@ export function BlocksCard({
           //    давхардаж, React мөр орхигдуулж болно. OID нь үргэлж өвөрмөц.
           key: String(b.oid),
           label: b.blok || '—',
-          value: b.progress ?? 0,
+          value: b.progress ?? null, // ⚠️ 2026-10-09: `?? 0` → null — Bars дүүргэлтгүй (null ≠ 0)
           color: levelColor(b.progress),
           display: b.progress == null
             ? tr('мэдээлэлгүй')

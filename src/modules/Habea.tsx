@@ -56,7 +56,7 @@ import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
-import { num, date, text, pct } from '@/lib/format';
+import { num, date, text, pct, cat } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -607,14 +607,17 @@ function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
  * ⚠️ Жишээ зурагт байсан жижиг муруй/багана нь ЧИМЭГЛЭЛ байсан — бодит өгөгдөлгүй
  * «хандлага» зурвал худал мэдээлэл болно.
  */
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex (#3b82f6/#14b8a6/#0ea5e9/#8b5cf6/
+   #22c55e) → зэрэглэлийн слот `cat(i)` ба статус токен — dark горимд дагана. Оноо нь
+   «сайн» утгатай тул слот биш `--good` (оноотой үед `scoreColor` дарна). */
 type KpiLook = { tone: string };
 const KPI_LOOK: Record<'people' | 'hours' | 'tech' | 'crane' | 'inc' | 'score', KpiLook> = {
-  people: { tone: '#3b82f6' },
-  hours: { tone: '#14b8a6' },
-  tech: { tone: '#0ea5e9' },
+  people: { tone: cat(2) },
+  hours: { tone: cat(1) },
+  tech: { tone: cat(4) },
   crane: { tone: 'var(--data)' },
-  inc: { tone: '#8b5cf6' },
-  score: { tone: '#22c55e' },
+  inc: { tone: cat(6) },
+  score: { tone: 'var(--good)' },
 };
 
 const kpiTile = (
@@ -2150,17 +2153,22 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {regs.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(regs.error))} onRetry={regs.retry} />}
           {regs.state === 'ready' && (() => {
             const max = Math.max(1, ...regs.data.rows.map((r) => r.week ?? 0));
+            /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): гар хийцийн мөр → порталын
+               `Bars` (2px, `--chart-track`, hover `useTip`). Эх сурвалжгүй мөр (`week` null)
+               дүүргэлтгүй + «—»; тайлбар нь `title`-ийн оронд hover-ийн мөрөнд. */
             return (
               <div className={h.regs}>
                 <div className={h.regHead}><span /><span>{tr('{0} хоног', num(7))}</span></div>
-                {regs.data.rows.map((r) => (
-                  <div key={r.key} className={h.regRow} title={r.week == null ? tr('Эх сурвалж холбогдоогүй') : undefined}>
-                    <span className={h.regLabel}>{r.label}</span>
-                    <b className="num">{r.week == null ? '—' : num(r.week)}</b>
-                    {/* Долоо хоногийн тооны харьцаа — хамгийн ихтэй нь бүтэн */}
-                    <i className={h.regBar} style={{ width: `${r.week ? (r.week / max) * 100 : 0}%` }} aria-hidden />
-                  </div>
-                ))}
+                <Bars
+                  max={max}
+                  items={regs.data.rows.map((r) => ({
+                    key: r.key,
+                    label: r.label,
+                    value: r.week,
+                    display: r.week == null ? '—' : num(r.week),
+                    hint: r.week == null ? tr('Эх сурвалж холбогдоогүй') : undefined,
+                  }))}
+                />
               </div>
             );
           })()}
@@ -2184,7 +2192,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {waste.state === 'loading' && <Loading />}
           {waste.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(waste.error))} onRetry={waste.retry} />}
           {waste.state === 'ready' && (wasteTotal > 0
-            ? <Donut items={wasteSlices} stack size={120} center={num(wasteTotal)} centerLabel={tr('нийт')} />
+            ? <Donut items={wasteSlices} stack size="md" center={num(wasteTotal)} centerLabel={tr('нийт')} />
             /* ⚠️ Бүгд 0 үед донат зурахгүй (хоосон цагираг «алдаа» мэт) — гэхдээ «өгөгдөл алга» биш,
                бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). Хэмжилтгүй бол «Бүртгэл алга». */
             : wasteMeasured
@@ -2250,7 +2258,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {focus === null && (
         <Section title={tr('Цамхагт кран — төлөв')}>
           {craneByStatus.length
-            ? <Donut items={craneByStatus} stack size={110} center={num(craneStatusBase.length)} centerLabel={tr('кран')}
+            ? <Donut items={craneByStatus} stack size="md" center={num(craneStatusBase.length)} centerLabel={tr('кран')}
                 selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
@@ -2281,13 +2289,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           tone="primary"
         >
           {incByType.length
-            ? <Donut items={incByType} stack size={110} center={num(incTypeBase.length)} centerLabel={tr('нийт')}
+            ? <Donut items={incByType} stack size="md" center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
         <Section title={tr('Шалтгааны төрөл')} note={tr('{0} бүртгэл', num(causeTotal))}>
           {causeSlices.length
-            ? <Donut items={causeSlices} stack size={110} center={num(causeTotal)} centerLabel={tr('нийт')}
+            ? <Donut items={causeSlices} stack size="md" center={num(causeTotal)} centerLabel={tr('нийт')}
                 selected={sel.cause} onSelect={(k) => toggleDim('cause', k)} />
             : <Empty label={tr('Шалтгаан тэмдэглэгдээгүй')} />}
         </Section>

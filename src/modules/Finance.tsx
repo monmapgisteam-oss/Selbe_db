@@ -91,6 +91,7 @@ import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
 import { mnt, num, pct, text, cat, date, monthKey, dayKey } from '@/lib/format';
 import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
+import { CHART, lineSegments } from '@/lib/chartStyle';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { collidedIds, renumberPlan } from '@/lib/idUnique';
@@ -450,15 +451,13 @@ export function ComboChart({
    *    ЦООРХОЙ үлдэнэ (null ≠ 0). Урьд нь бүх сар нэг замд орж, null сар 0
    *    өндөрт буугаад муруй дундаа тэг рүү унадаг байв.
    */
-  const physSegs: { x: number; y: number; i: number }[][] = [];
-  {
-    let cur: { x: number; y: number; i: number }[] = [];
-    rows.slice(0, lastPhys + 1).forEach((r, i) => {
-      if (r.physPct == null) { if (cur.length) physSegs.push(cur); cur = []; return; }
-      cur.push({ x: xFor(i), y: yPhys(r), i });
-    });
-    if (cur.length) physSegs.push(cur);
-  }
+  /* ⚠️ 2026-10-09 («графикийн жигдрэл»): тасалгааг `chartStyle.lineSegments` хийнэ (null =
+     цоорхой) — локал Catmull-Rom `smoothPath` ХАСАГДСАН: тэр нь хуримтлагдсан муруйд
+     ХЭТЭРЧ (overshoot) «олголт буурсан» мэт унжилт гаргадаг байв. Одоо МОНОТОН. */
+  const physSegs = lineSegments(rows.slice(0, lastPhys + 1).map((r, i) => (
+    r.physPct == null ? null : { x: xFor(i), y: yPhys(r) }
+  )));
+  const givenSegs = lineSegments(givenPts);
 
   /* ⚠️ ЗӨРҮҮГИЙН ТАЛБАЙ (төлөвлөгөө ↔ олголт) 2026-09-06-нд ХАСАГДСАН —
      төлөвлөгөөний муруй байхгүй болсон тул будах зай ч байхгүй. */
@@ -496,14 +495,48 @@ export function ComboChart({
     }))),
   );
   const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
-  const physLbl = fitFor(lastPhys, (r) => `${r.physPct?.toFixed(0) ?? ''}%`);
+  /* ⚠️ 2026-10-09: `pct(v, 1)` — диаграм ба tooltip НЭГ формат (урьд нь toFixed(0) vs toFixed(1)) */
+  const physLbl = fitFor(lastPhys, (r) => pct(r.physPct, 1));
   /* X тэнхлэгийн он·сар — «2026-09» тогтмол 7 тэмдэгт */
   const axisLbl = new Set(fitLabels(rows.map((r, i) => ({
     i, x: xFor(i), w: textW(r.label, 11), anchor: anchorFor(i),
   })), 14));
 
+  /** Гарын удирдлагын анхдагч цэг — сүүлийн утгатай сар (эсвэл сүүлийн сар) */
+  const homeIdx = Math.max(lastGiven, lastPhys) >= 0 ? Math.max(lastGiven, lastPhys) : N - 1;
+
   return (
-    <div className={f.chartWrap} ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+    <div
+      className={f.chartWrap}
+      ref={wrapRef}
+      onMouseMove={onMove}
+      onMouseLeave={() => setHi(null)}
+      /* ⚠️ 2026-10-09 («графикийн жигдрэл»): ГАРААР ч уншигдана — ProgChart-ын 2026-10-06-ны
+         дүрэмтэй ижил. Tab-аар фокуслоход сүүлийн утгатай сар дээр зогсож, ←/→ сараар,
+         Home/End эхлэл/төгсгөл рүү; уншилт нь доорх `aria-live` мөрөнд. */
+      tabIndex={N > 0 ? 0 : undefined}
+      role="group"
+      aria-label={tr('{0} — сар сонгохдоо ← → товч', tr('Санхүүжилтийн явц'))}
+      onFocus={() => setHi((h) => h ?? homeIdx)}
+      onBlur={() => setHi(null)}
+      onKeyDown={(e) => {
+        if (!N) return;
+        const cur = hi ?? homeIdx;
+        const next = e.key === 'ArrowLeft' ? cur - 1 : e.key === 'ArrowRight' ? cur + 1
+          : e.key === 'Home' ? 0 : e.key === 'End' ? N - 1 : null;
+        if (next == null) return;
+        e.preventDefault();
+        setHi(Math.max(0, Math.min(N - 1, next)));
+      }}
+    >
+      {/* Дэлгэц уншигчийн уншилт — tooltip-тэй ИЖИЛ тоо */}
+      <span aria-live="polite" className={f.srOnly}>
+        {pt ? [
+          pt.label,
+          `${tr('Олгосон санхүүжилт')}: ${pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}`,
+          ...(hidePhys ? [] : [`${tr('Биет гүйцэтгэл')}: ${pct(pt.physPct, 1)}`]),
+        ].join(', ') : ''}
+      </span>
       <svg
         className={f.comboSvg}
         style={{ height: H }}
@@ -531,7 +564,7 @@ export function ComboChart({
                   талд %-ийн шошго — ₮ шошгоор биет муруйг уншуулахгүй. */}
               {ownAxis && !hidePhys && (
                 <text x={W - padR + 6} y={gy + 3} className={f.sAxisY} textAnchor="start" style={{ fill: PHYS }}>
-                  {Math.round(t * 100)}%
+                  {pct(t * 100, 0)}
                 </text>
               )}
             </g>
@@ -546,13 +579,15 @@ export function ComboChart({
           const cx = xFor(li);
           return (
             <g>
+              {/* ⚠️ 2026-10-09: өнгө `style`-аар — SVG presentation ШИНЖ (`stroke=`/`fill=`)
+                  дотор `var()` задардаггүй (format.ts-ийн дүрэм); урьд нь attribute байв. */}
               <line
                 x1={cx} x2={cx} y1={padT} y2={padT + plotH}
-                stroke={color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.45}
+                style={{ stroke: color, strokeWidth: 1.5, strokeDasharray: '4 4', opacity: 0.45 }}
               />
               {rows[li].physPct != null && (
                 <circle
-                  cx={cx} cy={yPhys(rows[li])} r={5} fill={color}
+                  cx={cx} cy={yPhys(rows[li])} r={5} style={{ fill: color }}
                   className={lagLvl === 'red' ? f.barBlinkRed : f.barBlinkYellow}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -562,14 +597,15 @@ export function ComboChart({
         })()}
 
         {/* ── МУРУЙНУУД — олгосон санхүүжилт (зузаан, бүтэн) ба биет гүйцэтгэл ── */}
-        {givenPts.length > 1 && (
-          <path d={smoothPath(givenPts)} className={f.actLine} style={{ stroke: ACT }} vectorEffect="non-scaling-stroke" />
-        )}
-        {physSegs.map((seg) => (seg.length > 1 ? (
-          <path key={`ps-${seg[0].i}`} d={smoothPath(seg)} className={f.physLine} style={{ stroke: PHYS }} vectorEffect="non-scaling-stroke" />
+        {/* ⚠️ 2026-10-09: хоёр шугам 2px (`CHART.stroke`; урьд олголт 2.8) */}
+        {givenSegs.map((seg) => (seg.single ? null : (
+          <path key={`gs-${seg.from}`} d={seg.d} className={f.actLine} style={{ stroke: ACT, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
+        )))}
+        {physSegs.map((seg) => (!seg.single ? (
+          <path key={`ps-${seg.from}`} d={seg.d} className={f.physLine} style={{ stroke: PHYS, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
         ) : (
           /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул цэгээр */
-          <circle key={`ps-${seg[0].i}`} cx={seg[0].x} cy={seg[0].y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+          <circle key={`ps-${seg.from}`} cx={seg.pts[0].x} cy={seg.pts[0].y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
         )))}
 
         {/* ── ЦЭГ БҮР ДЭЭР УТГА ──
@@ -584,7 +620,7 @@ export function ComboChart({
           const y = yFor(r.givenCum);
           return (
             <g key={`gv-${i}`}>
-              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
+              <circle cx={x} cy={y} r={CHART.markerR} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
                 {num(r.givenCum)}
               </text>
@@ -598,9 +634,9 @@ export function ComboChart({
           const y = yPhys(r);
           return (
             <g key={`ph-${i}`}>
-              <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+              <circle cx={x} cy={y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
               <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
-                {r.physPct?.toFixed(0)}%
+                {pct(r.physPct, 1)}
               </text>
             </g>
           );
@@ -611,10 +647,10 @@ export function ComboChart({
           <g>
             <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
             {hi <= lastGiven && (
-              <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={4} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
+              <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={CHART.markerR + 1} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
             )}
             {hi <= lastPhys && rows[hi].physPct != null && (
-              <circle cx={xFor(hi)} cy={yPhys(rows[hi])} r={4} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+              <circle cx={xFor(hi)} cy={yPhys(rows[hi])} r={CHART.markerR + 1} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
             )}
           </g>
         )}
@@ -640,30 +676,11 @@ export function ComboChart({
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>
           {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
-            {tr('Биет гүйцэтгэл')}<b className="num">{pt.physPct == null ? '—' : `${pt.physPct.toFixed(1)}%`}</b></p>}
+            {tr('Биет гүйцэтгэл')}<b className="num">{pct(pt.physPct, 1)}</b></p>}
         </div>
       )}
     </div>
   );
-}
-
-/** Catmull-Rom → куб Безье гөлгөрүүлэлт — S-муруй жигд, эвдрэлгүй харагдана */
-function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length === 0) return '';
-  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
 }
 
 // ═══════════════════════════════════════════════════════════

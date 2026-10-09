@@ -13,6 +13,7 @@
 
 import type { Zone } from '@/lib/analysis/data';
 import { t as tr } from '@/lib/i18nCore';
+import { cat } from '@/lib/format';
 
 export type SimKind = 'density' | 'transit' | 'road';
 
@@ -50,7 +51,9 @@ export const SIM_KINDS: SimDef[] = [
     get label() { return tr('Хүн амын төвлөрөл'); },
     get short() { return tr('Төвлөрөл'); },
     get unit() { return tr('хүн/га'); },
-    hue: '#a78bfa',
+    // ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex → слот токен (dark-тай).
+    //    `hue` нь ЗӨВХӨН CSS-д (`--sim`, Timeline-ийн `style`) — газрын зурагт ОРОХГҮЙ.
+    hue: cat(6),
     icon: 'flame',
     ready: true,
     heatable: true,
@@ -60,7 +63,7 @@ export const SIM_KINDS: SimDef[] = [
     get label() { return tr('Тээврийн хүртээмж'); },
     get short() { return tr('Хүртээмж'); },
     get unit() { return tr('м'); },
-    hue: '#38bdf8',
+    hue: cat(2),
     icon: 'bus',
     ready: true,
     heatable: false,
@@ -72,7 +75,7 @@ export const SIM_KINDS: SimDef[] = [
     // ⚠️ Нэгж ЗОРИУДААР хоосон: «Ачаалал» нь амьд симуляц — гарчгийн хажууд
     //    «аялал/ц» гэх бүсийн нэгж төөрөгдүүлж байсан (уншилт нь машин/хурд/урсгал).
     unit: '',
-    hue: '#f59e0b',
+    hue: cat(5),
     icon: 'road',
     ready: true,
     heatable: false,

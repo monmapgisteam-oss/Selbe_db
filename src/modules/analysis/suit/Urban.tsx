@@ -7,9 +7,9 @@ import {
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
   type GreenOpt, type GreenSource,
 } from '@/lib/analysis/config';
-import { scoreColor, clamp, passesNorm, patchNorm } from '@/lib/analysis/score';
-import { Donut } from '@/components/ui';
-import { shade, CAT_LIGHT } from '@/lib/format';
+import { scoreTone, clamp, passesNorm, patchNorm } from '@/lib/analysis/score';
+import { Donut, useTip } from '@/components/ui';
+import { pct as fmtPct } from '@/lib/format';
 import { nf, normLine } from './format';
 import type { LocationPt } from '@/lib/analysis/data';
 import type { Row } from './model';
@@ -25,6 +25,25 @@ import s from '../suitability.module.css';
  * хатуу бичсэн цэнхэр #4f83cc байв). Зөвхөн inline style-д ордог тул var() болно.
  */
 const CHART = 'var(--data)';
+
+/**
+ * ХАНГАЛТЫН ЗУРВАС — 100% нь нормын түвшин (Зогсоол · Ногоон байгууламж).
+ *
+ * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 5px → порталын 2px зам
+ *    (`--chart-track`), `title`-ийн оронд `useTip`. `pct` null (хэрэгцээ тодорхойгүй)
+ *    бол ДҮҮРГЭЛТГҮЙ — 0% гэж зурахгүй (null ≠ 0).
+ */
+function FillBar({ pct, label, hint }: { pct: number | null; label: string; hint: string }) {
+  const tip = useTip();
+  return (
+    <>
+      <div className={s.parkBar} {...tip.bind({ label, value: fmtPct(pct, 0), color: CHART, hint })}>
+        {pct != null && <span style={{ width: `${clamp(pct, 0, 100)}%`, background: CHART }} />}
+      </div>
+      {tip.node}
+    </>
+  );
+}
 
 /**
  * ТООЦООНЫ ТОМЬЁО — хураадаг блок.
@@ -102,18 +121,19 @@ export function CategoryPie({
    */
   return (
     <Donut
-      size={116}
-      width={20}
-      items={cats.map((c, i) => ({
+      size="md"
+      items={cats.map((c) => ({
         key: c.key,
         label: c.short,
         value: c.weight,
-        // НЭГ ӨНГӨ (accent) тодоос бүдгэр — зүсмэгийн өнгө нь ангиллын «утга» биш,
-        // зөвхөн ялгах зорилготой. Онооны утгыг тайлбарын тоо (scoreColor) хэлнэ.
-        color: shade(CAT_LIGHT[0], i, cats.length),
+        // Зүсмэгийн өнгө нь ангиллын «утга» биш, зөвхөн ялгах зорилготой. Онооны
+        // утгыг тайлбарын тоо (scoreTone) хэлнэ.
+        // ⚠️ 2026-10-09: `shade(CAT_LIGHT[0])` (dark-д дагадаггүй hex) → `CATEGORIES`-ийн
+        //    слот `cat(i)` — доорх бүлгийн гарчигтай ИЖИЛ өнгө.
+        color: c.color,
         display: (
           <>
-            <b style={{ color: scoreColor(c.score) }}>
+            <b style={{ color: scoreTone(c.score) }}>
               {c.score == null ? '—' : Math.round(c.score)}
             </b>
             {' · '}
@@ -186,7 +206,8 @@ export function IndicatorPicker({
                   <span className="nm">{i.byType ? i.short : i.name}</span>
                   <span className="wt">{((i.weight / totalW) * 100).toFixed(0)}%</span>
                   <span className="cnt">{total ? `${pass}/${total}` : '—'}</span>
-                  <span className="bar"><i style={{ width: `${pct}%`, background: scoreColor(pct) }} /></span>
+                  {/* ⚠️ 2026-10-09: 2px зам; өнгө токен (`scoreTone`). Хэмжигдсэн бүсгүй (total 0) бол дүүргэлтгүй. */}
+                  <span className="bar">{total > 0 && <i style={{ width: `${pct}%`, background: scoreTone(pct) }} />}</span>
                 </button>
               );
             })}
@@ -431,9 +452,11 @@ export function Parking({
         </div>
       </div>
 
-      <div className={s.parkBar} title={tr('Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}>
-        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
-      </div>
+      <FillBar
+        pct={pct}
+        label={tr('Хэрэгцээ хангасан хувь')}
+        hint={tr('Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}
+      />
       <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
       {/* ⚠️ БҮТЭН гинж: хэрэгцээ → байгаа → хангалт. Урьд нь зөвхөн хэрэгцээний
@@ -615,11 +638,13 @@ export function Green({
         </div>
       </div>
 
-      <div className={s.parkBar} title={buffer
-        ? tr('Ногоон байгууламжийн нөлөөллийн бүсэд хамрагдсан оршин суугчийн эзлэх хувь')
-        : tr('Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}>
-        <span style={{ width: `${pct == null ? 0 : clamp(pct, 0, 100)}%`, background: CHART }} />
-      </div>
+      <FillBar
+        pct={pct}
+        label={buffer ? tr('Ногоон байгууламжийн хүртээмж') : tr('Хэрэгцээ хангасан хувь')}
+        hint={buffer
+          ? tr('Ногоон байгууламжийн нөлөөллийн бүсэд хамрагдсан оршин суугчийн эзлэх хувь')
+          : tr('Байгаа ногоон байгууламж нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}
+      />
       <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
       {/* ⚠️ БҮТЭН гинж — дээрх хувь хаанаас гарсныг мөр мөрөөр нь харуулна */}

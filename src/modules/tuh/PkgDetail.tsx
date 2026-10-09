@@ -27,9 +27,10 @@ import {
 import { payRows } from '@/lib/ipcTable';
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
-import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
-/* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`) */
-import { Section as Card, Series, type SeriesLineDef } from '@/components/ui';
+import { Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
+/* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`).
+   ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
+import { Section as Card, Series, Meter, type SeriesLineDef } from '@/components/ui';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
@@ -227,7 +228,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Нийт гүйцэтгэл')}</span>
           <span className={s.statValue}>{pct(r.progress, 2)}</span>
-          <Meter value={r.progress} plan={r.planContract} />
+          <span className={s.meterGap}><Meter value={r.progress} plan={r.planContract} /></span>
           <span className={s.statNote}>{tr('Гэрээний төлөвлөгөө {0}', lz(m, 'cfPlan')(pct(r.planContract)))}</span>
         </div>
         <div className={s.stat}>
@@ -292,7 +293,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                     ))}
                   </ol>
                 ) : <p className={s.note}>—</p>}
-            <div className={s.elapsed}><span>{tr('Гэрээт хугацаа')}</span><Meter value={elapsed} tone="mute" /><span className={s.num}>{pct(elapsed, 0)}</span></div>
+            <div className={s.elapsed}><span>{tr('Гэрээт хугацаа')}</span><Meter value={elapsed} tone="mute" /><span className={s.num}>{pct(elapsed)}</span></div>
             <div className={s.elapsed}><span>{tr('Нийт гүйцэтгэл')}</span><Meter value={r.progress} /><span className={s.num}>{pct(r.progress)}</span></div>
           </div>
           <div className={s.panel}>
@@ -561,7 +562,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           <div className={s.stat}>
             <span className={s.statLabel}>{tr('Олгосон санхүүжилт')}</span>
             <span className={s.statValue}>{mnt(r.ipc?.paid ?? null)}</span>
-            <Meter value={r.ipc?.paidPct ?? null} plan={r.progress} />
+            <span className={s.meterGap}><Meter value={r.ipc?.paidPct ?? null} plan={r.progress} /></span>
             <span className={s.statNote}>
               {tr('{0} гэрээний · биет гүйцэтгэл {1}', pct(r.ipc?.paidPct ?? null), pct(r.progress))}
               {/* ⚠️ 2026-10-01: хувьд ороогүй олголт тусад нь («IPC» хуудастай ижил) */}

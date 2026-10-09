@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Fig, KpiRow, RankBars, Meter } from '@/modules/tailanChart';
+import { Fig, KpiRow, RankBars, PlanMeter } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
@@ -470,7 +470,7 @@ export function ExecReport() {
                     { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1), sub: x.prog.planFailed > 0 ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed) : undefined },
                     { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
-                  <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
+                  <PlanMeter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
                   <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
                   <RankBars
                     title={tr('Багц тус бүрийн биет гүйцэтгэл')}

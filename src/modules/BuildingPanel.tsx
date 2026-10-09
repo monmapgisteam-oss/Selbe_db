@@ -582,7 +582,7 @@ export function MonitorBagts({ bagts }: { bagts: string }) {
                 items={d.works.map((w) => ({
                   key: `${w.no}|${w.name}`,
                   label: w.name,
-                  value: w.pct ?? 0,
+                  value: w.pct ?? null, // ⚠️ 2026-10-09: `?? 0` → null — Bars дүүргэлтгүй (null ≠ 0)
                   display: w.pct == null ? tr('мэдээлэлгүй') : tr('{0} · {1} блок', pct(w.pct, 1), num(w.blocks)),
                 }))}
               />
@@ -800,7 +800,9 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
               <Col gap="sm">
                 {/* ⚠️ `null` ШУУД (2026-09-25 аудит) — `?? 0` нь бөглөгдөөгүйг «0%» цагираг
                     болгож null ≠ 0 дүрмийг зөрчиж байв; `Ring` өөрөө «—» зурна. */}
-                <Ring value={d.overall} color={HUE} size={104} width={11} label={tr('угсралт')} />
+                {/* ⚠️ 2026-10-09: 104/11 → стандарт 'md' (120, зузаан 10%). HUE — газрын зургийн
+                    давхаргын identity өнгө тул хэвээр. */}
+                <Ring value={d.overall} color={HUE} size="md" label={tr('угсралт')} />
                 <Note>
                   {d.overall == null
                     ? tr('Барилга угсралтын ажлын гүйцэтгэл хараахан бөглөгдөөгүй.')
@@ -852,7 +854,7 @@ export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<Tas
                   items={d.headers.map((h, i) => ({
                     key: `${i}:${h.name}`,
                     label: h.name,
-                    value: h.progress ?? 0,
+                    value: h.progress ?? null, // ⚠️ 2026-10-09: `?? 0` → null (null ≠ 0)
                     display: h.progress == null ? tr('мэдээлэлгүй') : pct(h.progress, 0),
                   }))}
                 />

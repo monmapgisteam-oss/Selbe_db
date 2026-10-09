@@ -29,7 +29,8 @@ import { fetchAttachment } from '@/lib/uzlegReport';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
-import { Section, Bars, Donut, Series, Loading, Empty, friendlyError } from '@/components/ui';
+import { Section, Bars, Donut, Series, Loading, Empty, friendlyError, useTip } from '@/components/ui';
+import { CHART } from '@/lib/chartStyle';
 import { num, date, text, pct } from '@/lib/format';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
@@ -655,7 +656,8 @@ export function weekNcByPkg(rows: readonly ScoreRow[], cos: readonly string[]) {
     acc.set(r.pkgK, cur);
   }
   return [...acc.entries()]
-    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: '#dc2626' }))
+    /* ⚠️ 2026-10-09: hex #dc2626 → `var(--bad)` (dark горимд дагана) */
+    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: 'var(--bad)' }))
     .sort((x, y) => y.value - x.value);
 }
 
@@ -1016,10 +1018,12 @@ function severity(rows: UzlegRow[]) {
      ОРОХГҮЙ (0 биш мэдэгдэхгүй), гэхдээ бусад зэргийн бодит тоог хаяхгүй. */
   const sum = (k: SevKey) => rows.reduce((s, x) => (x.sevHas[k] ? s + x[k] : s), 0);
   return [
-    { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum('major'), color: '#dc2626' },
-    { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum('minor'), color: '#f97316' },
-    { key: 'obs', label: tr('Ажиглалт'), value: sum('obs'), color: '#eab308' },
-    { key: 'conf', label: tr('Нийцсэн'), value: sum('conf'), color: '#16a34a' },
+    /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex → ДАРААЛСАН шатлалын токен
+       `--score-1..5` (globals.css, dark-тай) — хүндрэлийн дараалал (улаан → ногоон) хэвээр. */
+    { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum('major'), color: 'var(--score-1)' },
+    { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum('minor'), color: 'var(--score-2)' },
+    { key: 'obs', label: tr('Ажиглалт'), value: sum('obs'), color: 'var(--score-3)' },
+    { key: 'conf', label: tr('Нийцсэн'), value: sum('conf'), color: 'var(--score-5)' },
     { key: 'na', label: tr('Хамааралгүй'), value: sum('na'), color: 'var(--ink-3)' },
   ]
     .filter((x) => x.value > 0)
@@ -1368,7 +1372,8 @@ function byPkgNc(rows: UzlegRow[]) {
     m.set(r.bagtsK, cur);
   }
   return [...m.entries()]
-    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: '#dc2626' }))
+    /* ⚠️ 2026-10-09: hex #dc2626 → `var(--bad)` (dark горимд дагана) */
+    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: 'var(--bad)' }))
     .sort((a, b) => b.value - a.value);
 }
 
@@ -1394,12 +1399,17 @@ function byPkgScore(rows: UzlegRow[]) {
 }
 
 /* ⚠️ 2026-10-08 (хэрэглэгч: «чартыг хөндлөн болго, хэвтээ»): БОСОО багана → ХЭВТЭЭ зурвас.
-   Мөр бүр: нэр · зурвас (90%-д тасархай тэмдэг) · хувь. Өнгө `scoreColor` хэвээр. */
+   Өнгө `scoreColor` хэвээр.
+   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Bars`-ийн КАНОН мөр — дээр
+   нэр + утга (`--ink-2`, `.num`), доор 2px зам (`--chart-track`). Урьд нь 12px, 50%
+   дүүргэлт + хүрээтэй, нэр|зурвас|утга нэг эгнээ байв. 90%-ийн тасархай зорилт ба ✓▲!
+   тэмдэг ХЭВЭЭР; `title`-ийн оронд `useTip`; бүдгэрэлт `CHART.dim`. */
 export function ScoreColumns({ items, selected, onSelect }: {
   items: { key: string; label: string; value: number }[];
   selected: string[];
   onSelect?: (key: string) => void;
 }) {
+  const tip = useTip();
   return (
     <div className={h.scoreCols}>
       {items.map((it) => {
@@ -1409,24 +1419,32 @@ export function ScoreColumns({ items, selected, onSelect }: {
         return (
           <button
             key={it.key} type="button" aria-pressed={on}
-            className={h.scoreCol} style={{ opacity: dim ? 0.35 : 1 }}
+            className={h.scoreCol} style={{ opacity: dim ? CHART.dim : 1 }}
             onClick={onSelect ? () => onSelect(it.key) : undefined}
-            title={`${it.label}: ${pct(it.value, 0)} · ${levelLabel(lv)}`}
+            {...tip.bind({
+              label: it.label,
+              value: pct(it.value, 0),
+              color: LEVEL_TONE[lv],
+              hint: [levelLabel(lv), `${tr('Зорилт')}: ${pct(UZLEG_SCORE_GOOD, 0)}`],
+            })}
           >
-            <span className={h.scoreName}>{it.label}</span>
+            <span className={h.scoreTop}>
+              <span className={h.scoreName}>{it.label}</span>
+              {/* ⚠️ 2026-10-09: өнгөний хажууд тэмдэг (✓ ▲ !) — өнгө ганцаараа утга дамжуулахгүй */}
+              <b className={`${h.scoreVal} num`}>
+                <span className={h.scoreMark} style={{ color: LEVEL_TONE[lv] }}>{LEVEL_MARK[lv]}</span>
+                {pct(it.value, 0)}
+              </b>
+            </span>
             <span className={h.scoreTrack}>
               <span className={h.scoreBar} style={{ width: `${Math.max(0, Math.min(100, it.value))}%`, ["--c" as string]: LEVEL_TONE[lv] } as React.CSSProperties} />
               {/* Зорилтот 90% — тасархай тэмдэг */}
               <i className={h.scoreTarget} style={{ left: `${UZLEG_SCORE_GOOD}%` }} aria-hidden />
             </span>
-            {/* ⚠️ 2026-10-09: өнгөний хажууд тэмдэг (✓ ▲ !) — өнгө ганцаараа утга дамжуулахгүй */}
-            <b className={`${h.scoreVal} num`}>
-              <span className={h.scoreMark} style={{ color: LEVEL_TONE[lv] }}>{LEVEL_MARK[lv]}</span>
-              {pct(it.value, 0)}
-            </b>
           </button>
         );
       })}
+      {tip.node}
     </div>
   );
 }
@@ -1511,7 +1529,7 @@ export function UzlegLeft({
           ? (
             <Donut
               items={sev.map(({ display: _d, ...x }) => x)}
-              stack size={120} center={num(total)} centerLabel={tr('заалт')}
+              stack size="md" center={num(total)} centerLabel={tr('заалт')}
               selected={sel.sev} onSelect={(k) => onPick('sev', k)}
             />
           )
@@ -1719,7 +1737,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
               <div style={{ minWidth: `${Math.max(100, (wk.items.length / SERIES_VISIBLE) * 100)}%` }}>
                 <Series
                   items={wk.items} height={110} line showValues
-                  color={wk.score ? '#16a34a' : undefined}
+                  color={wk.score ? 'var(--good)' : undefined}
                   selected={sel.week} onSelect={(k) => onPick('week', k)}
                 />
               </div>

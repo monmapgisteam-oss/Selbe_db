@@ -1,4 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
+import { cat } from '@/lib/format';
 /**
  * АНАЛИЗ — тохиромжтой байдлын загварын тохиргоо.
  *
@@ -210,18 +211,27 @@ export const NORM_FAIL_MAX = 44;
    тэмдэг `color: var(--bg)` (цайвар горимд ЦАГААН) байсан тул шар (#facc15, 1.5:1), цайвар
    ногоон (1.7:1), улбар шар (2.2:1), ногоон (3.3:1) дээрх тоо уншигдахгүй байв. Хар-хүрэн
    #1a1205 нь эхний дөрөвт 5.6–12:1; зөвхөн улаан (#b91c1c) дээр цагаан 6.5:1 үлдэнэ. */
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): `tone` — DOM/SVG графикт (`style`)
+   хэрэглэх CSS токен `var(--score-1..5)` (globals.css, dark хувилбартай). `color` (hex)
+   нь ХЭВЭЭР: газрын зураг (`SuitMap` → `hexToRgba`, ArcGIS символ) ба PDF (`execData`)
+   CSS хувьсагч задалдаггүй. Самбар/диаграмд `scoreTone()` (score.ts), газрын зурагт
+   `scoreColor()` — хоёуланг нь нэг түвшний индексээр авдаг тул шатлал зөрөхгүй. */
 export const SCORE_LEVELS = [
-  { min: 85, max: 101, get label() { return tr('Маш сайн'); }, color: '#16a34a', ink: '#1a1205' },
-  { min: 65, max: 85, get label() { return tr('Сайн'); }, color: '#a3d84a', ink: '#1a1205' },
+  { min: 85, max: 101, get label() { return tr('Маш сайн'); }, color: '#16a34a', tone: 'var(--score-5)', ink: '#1a1205' },
+  { min: 65, max: 85, get label() { return tr('Сайн'); }, color: '#a3d84a', tone: 'var(--score-4)', ink: '#1a1205' },
   // ⚠️ Доод хоёр түвшний өнгө ЗӨӨЛРҮҮЛСЭН: улбар шар → ШАР, улаан → УЛБАР ШАР.
   //    Оноо багатай бүс «анхаарал шаардсан» гэж уншигдах ёстой болохоос
   //    «муу/аюултай» гэсэн сэтгэгдэл төрүүлэх ёсгүй.
-  { min: 45, max: 65, get label() { return tr('Дунд'); }, color: '#facc15', ink: '#1a1205' },
-  { min: 25, max: 45, get label() { return tr('Муу'); }, color: '#f59e0b', ink: '#1a1205' },
-  { min: 0, max: 25, get label() { return tr('Маш муу'); }, color: '#b91c1c', ink: '#ffffff' },
+  { min: 45, max: 65, get label() { return tr('Дунд'); }, color: '#facc15', tone: 'var(--score-3)', ink: '#1a1205' },
+  { min: 25, max: 45, get label() { return tr('Муу'); }, color: '#f59e0b', tone: 'var(--score-2)', ink: '#1a1205' },
+  { min: 0, max: 25, get label() { return tr('Маш муу'); }, color: '#b91c1c', tone: 'var(--score-1)', ink: '#ffffff' },
 ] as const;
 
+/* ⚠️ 2026-10-09: hex ХЭВЭЭР — `SuitMap` нь `colorOf(r) === NO_DATA_COLOR`-оор «өгөгдөлгүй»
+   бүсийг танина (идентификатор), газрын зургийн символ var() задалдаггүй. DOM-д `NO_DATA_TONE`. */
 export const NO_DATA_COLOR = '#94a3b8';
+/** «Өгөгдөлгүй» — DOM/SVG графикийн токен (dark-тай). ⚠️ 2026-10-09 */
+export const NO_DATA_TONE = 'var(--ink-3)';
 /** ⚠️ 2026-10-09: `NO_DATA_COLOR` дээрх бичиг — цагаан 2.6:1, хар-хүрэн 7.2:1 */
 export const NO_DATA_INK = '#1a1205';
 
@@ -325,10 +335,13 @@ export type IndicatorMode = 'band' | 'higher' | 'lower';
  */
 export type CategoryKey = 'urban' | 'social' | 'engineering';
 
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex (#60a5fa/#4ade80/#fbbf24) →
+   зэрэглэлийн слот `cat(i)` (dark-тай). Зөвхөн DOM-д (Urban-ий дугуй диаграм ба бүлгийн
+   гарчиг — ХОЁУЛАА энэ өнгийг авна, тул зүсмэг ↔ гарчиг таарна). Газрын зурагт ОРОХГҮЙ. */
 export const CATEGORIES: { key: CategoryKey; label: string; short: string; color: string }[] = [
-  { key: 'urban', get label() { return tr('Хот төлөвлөлтийн үзүүлэлт'); }, get short() { return tr('Хот төлөвлөлт'); }, color: '#60a5fa' },
-  { key: 'social', get label() { return tr('Нийгмийн дэд бүтэц'); }, get short() { return tr('Нийгмийн'); }, color: '#4ade80' },
-  { key: 'engineering', get label() { return tr('Инженерийн дэд бүтэц'); }, get short() { return tr('Инженер'); }, color: '#fbbf24' },
+  { key: 'urban', get label() { return tr('Хот төлөвлөлтийн үзүүлэлт'); }, get short() { return tr('Хот төлөвлөлт'); }, color: cat(0) },
+  { key: 'social', get label() { return tr('Нийгмийн дэд бүтэц'); }, get short() { return tr('Нийгмийн'); }, color: cat(1) },
+  { key: 'engineering', get label() { return tr('Инженерийн дэд бүтэц'); }, get short() { return tr('Инженер'); }, color: cat(2) },
 ];
 
 export type Indicator = {

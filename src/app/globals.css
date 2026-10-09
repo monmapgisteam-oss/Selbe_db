@@ -95,6 +95,26 @@
   --chart-axis-ink: var(--ink-3);
   --chart-track: #e3eaf1; /* envhub paper-hi (light) */
 
+  /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): S-муруй, санхүүжилт,
+     гантын өнгө — модуль бүр өөрийн hex/хуулбартай байв (Хуваарь + ТУХ гант,
+     GeneralDash `--tl-*`, ProgChart). Одоо НЭГ эх. `var()` тул ДООРХ dark
+     блокт ч ЗААВАЛ давтана (тэнд --c*/--good нь өөр утгатай). Тоо, хэмжээс
+     нь `src/lib/chartStyle.ts`. */
+  --chart-plan: var(--c3); /* төлөвлөгөө — тасархай */
+  --chart-actual: var(--c2); /* бодит — бүтэн */
+  --gantt-done: var(--good);
+  --gantt-run: var(--data);
+  --gantt-late: var(--bad);
+  --gantt-todo: color-mix(in oklab, var(--ink-3) 45%, transparent);
+  /* ДАРААЛСАН 5 шат (муу → сайн) — шинжилгээний `SCORE_LEVELS`, ХАБЭА-гийн оноо.
+     ⚠️ Дунд шат нь ЦАЙВАР шар: light-ийн `--warn` (#9a5d07) нь текстэд зориулж
+     бараан болсон тул дүүргэлтэд хэт харанхуй — шатлал «муу→сайн» гэж уншигдахгүй. */
+  --score-1: var(--bad);
+  --score-2: color-mix(in oklab, var(--bad) 30%, #f59e0b);
+  --score-3: #facc15;
+  --score-4: color-mix(in oklab, #facc15 35%, var(--good));
+  --score-5: var(--good);
+
   /* Сүүдэр — ЗӨВХӨН хөвөгч зүйлст (tooltip, цэс). Картад хэрэглэхгүй. */
   --shadow-sm: 0 1px 2px rgb(41 76 96 / 0.08);
   --shadow: 0 8px 24px rgb(41 76 96 / 0.12);
@@ -153,6 +173,19 @@
   --chart-axis-ink: var(--ink-3);
   /* envhub paper-hi (dark) — харанхуйд track нь картаас ЦАЙВАР байдаг */
   --chart-track: #2c3b48;
+
+  /* ⚠️ 2026-10-09: ЦАЙВАР блокийн тайлбарыг үз — ижил нэр, энэ горимын суурь токеноор */
+  --chart-plan: var(--c3);
+  --chart-actual: var(--c2);
+  --gantt-done: var(--good);
+  --gantt-run: var(--data);
+  --gantt-late: var(--bad);
+  --gantt-todo: color-mix(in oklab, var(--ink-3) 45%, transparent);
+  --score-1: var(--bad);
+  --score-2: color-mix(in oklab, var(--bad) 40%, var(--warn));
+  --score-3: var(--warn);
+  --score-4: color-mix(in oklab, var(--warn) 35%, var(--good));
+  --score-5: var(--good);
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow: 0 8px 24px rgb(0 0 0 / 0.4);

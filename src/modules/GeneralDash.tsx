@@ -10,7 +10,8 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, monotonePath, TIP_RULE, friendlyError } from '@/components/ui';
+import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
+import { CHART, lineSegments } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
    төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
@@ -789,8 +790,9 @@ export function GeneralDash({
                 */}
               {cfMode === 'chart' && (
                 <span className={g.tlKey}>
-                  <b style={{ background: 'var(--tl-curve)' }} />{tr('Төлөвлөсөн')}
-                  <b style={{ background: 'var(--tl-ipc)' }} />{tr('Олгосон')}
+                  {/* ⚠️ 2026-10-09: домгийн тэмдэг муруйтай ИЖИЛ — төлөвлөгөө ТАСАРХАЙ (5 4) */}
+                  <b style={{ background: 'repeating-linear-gradient(90deg, var(--chart-plan) 0 5px, transparent 5px 9px)' }} />{tr('Төлөвлөсөн')}
+                  <b style={{ background: 'var(--chart-actual)' }} />{tr('Олгосон')}
                   {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
                       хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
                       бодогдоно; буцаахад энд, толгойн таг ба SVG замд
@@ -2149,14 +2151,20 @@ function Timeline({
    *    сүүлийн олголтоос хойшхи саруудад муруй ТАСАРНА. Хэвтээ шугам
    *    сунгавал «олголт зогссон» гэсэн худал уншилт төрнө (`null ≠ 0`).
    * ⚠️ Хоёроос цөөн цэгтэй бол ОГТ зурахгүй: ганц цэг нь муруй биш.
+   * ⚠️ 2026-10-09 (графикийн жигдрэл): урьд нь null-ыг ШҮҮЖ хаядаг тул ДОТООД
+   *    цоорхойн хоёр талыг монотон муруйгаар ГҮҮРЭЭР холбодог байв (null ≠ 0
+   *    дүрмийн зөрчил — «тэр саруудад хэмжилт байсан» мэт уншигдана). Одоо
+   *    `chartStyle.lineSegments` — null дээр ТАСАРЧ, хэсэг бүр тусдаа дэд зам
+   *    (нэг `d`-д олон `M`). Ганц цэгтэй хэсэг `M x,y h0` — round cap-аар цэг.
    */
   const curveOf = (pick: (p: typeof pts[number]) => number | null): string => {
-    const q = pts
-      .map((p, i) => ({ i, v: pick(p) }))
-      .filter((x): x is { i: number; v: number } => x.v != null);
-    return q.length > 1
-      ? monotonePath(q.map((x) => ({ x: xOf(x.i), y: 100 - Math.max(0, Math.min(100, x.v)) })))
-      : '';
+    const vals = pts.map(pick);
+    if (vals.filter((v) => v != null && Number.isFinite(v)).length < 2) return '';
+    return lineSegments(vals.map((v, i) => (v == null || !Number.isFinite(v)
+      ? null
+      : { x: xOf(i), y: 100 - Math.max(0, Math.min(100, v)) })))
+      .map((s) => s.d)
+      .join(' ');
   };
   /**
    * ТӨЛӨВЛӨСӨН МУРУЙ — одоо ЭНЭ Ч `curveOf`-оор (2026-09-11).
@@ -2217,7 +2225,7 @@ function Timeline({
           */}
         {cur.ipcPct != null && (
           <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
-            <i style={{ background: 'var(--tl-ipc)' }} />
+            <i style={{ background: 'var(--chart-actual)' }} />
             {pct(cur.ipcPct)}
             {cur.ipcMoney != null && <> · {tr('олгосон {0}', mnt(cur.ipcMoney))}</>}
           </span>
@@ -2301,12 +2309,40 @@ function Timeline({
         </div>
 
         <svg className={g.tlSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          <path className={g.tlLine} d={path} fill="none" vectorEffect="non-scaling-stroke" />
+          {/* ⚠️ 2026-10-09 (хэрэглэгчийн сонголт): S-муруйн бүдэг ХЭВТЭЭ ТОР 0/25/50/75/100%
+              (`CHART.grid`) — муруйн ӨМНӨ зурагдана, тиймээс ард үлдэнэ. Өнгө `style`-аар
+              (SVG шинж дотор `var()` бичихгүй — format.ts-ийн дүрэм). */}
+          {CHART.grid.map((v) => (
+            <line
+              key={v}
+              x1={0}
+              x2={100}
+              y1={100 - v}
+              y2={100 - v}
+              vectorEffect="non-scaling-stroke"
+              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
+            />
+          ))}
+          {/* ⚠️ 2026-10-09: төлөвлөгөө `--chart-plan` 2px ТАСАРХАЙ (`CHART.planDash`) —
+              «таамаг/төлөвлөгөө» гэж уншигдана; бодит IPC нь бүтэн. */}
+          <path
+            className={g.tlLine}
+            d={path}
+            fill="none"
+            vectorEffect="non-scaling-stroke"
+            style={{ stroke: 'var(--chart-plan)', strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash }}
+          />
           {/* ⚠️ IPC нь ТӨЛӨВЛӨГӨӨНИЙ ДАРАА зурагдана — давхцсан хэсэгт
               бодит олголт дээр гарч, «төлөвлөснөөс хэр хоцорч байна»
               гэдэг нь нэг харцаар уншигдана. */}
           {ipcPath && (
-            <path className={g.tlLineIpc} d={ipcPath} fill="none" vectorEffect="non-scaling-stroke" />
+            <path
+              className={g.tlLineIpc}
+              d={ipcPath}
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke }}
+            />
           )}
           {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
               тайлбарыг үз. Буцаахад: `curveOf((p) => p.physPct)` + `.tlLinePhys`. */}

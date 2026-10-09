@@ -4,7 +4,7 @@ import { t as tr } from '@/lib/i18nCore';
  */
 
 import {
-  SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_INK, STRICT_NORM, NORM_FAIL_MAX,
+  SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_TONE, NO_DATA_INK, STRICT_NORM, NORM_FAIL_MAX,
   densityNormOf, type Indicator,
 } from './config';
 
@@ -153,6 +153,19 @@ export function urbanScore(
 export function scoreColor(score: number | null | undefined): string {
   const i = levelOf(score);
   return i < 0 ? NO_DATA_COLOR : SCORE_LEVELS[i].color;
+}
+
+/**
+ * Оноо → CSS ТОКЕН (`var(--score-1..5)`, өгөгдөлгүйд `var(--ink-3)`) — самбар, диаграм, тэмдэгт.
+ *
+ * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): DOM/SVG-д hex биш токен — dark
+ *    горимд дагана. `scoreColor` (hex) нь ЗӨВХӨН газрын зураг/PDF-д (var() задалдаггүй).
+ *    Хоёулаа `levelOf`-оор нэг түвшинг авна — шатлал зөрөхгүй.
+ * ⚠️ SVG-д `fill=`/`stroke=` шинжид бүү өг — `style={{ fill }}`-ээр.
+ */
+export function scoreTone(score: number | null | undefined): string {
+  const i = levelOf(score);
+  return i < 0 ? NO_DATA_TONE : SCORE_LEVELS[i].tone;
 }
 
 /**

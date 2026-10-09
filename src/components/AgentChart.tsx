@@ -28,33 +28,37 @@ export function AgentChart({ raw }: { raw: string }) {
   }
 
   const { type, title, unit, note, data } = spec;
-  const items = data.map((d, i) => ({
-    key: `${i}-${d.label}`,
-    label: d.label,
-    value: d.value,
-    // ⚠️ Энэ бол ЖИНХЭНЭ зэрэглэлийн тохиолдол: цувааг туслах өөрөө үүсгэдэг
-    //    тул «утга»гүй, зөвхөн ЯЛГАХ хэрэгтэй. Слотууд нь тогтмол дараалалтай
-    //    бөгөөд хоёр горимд CVD-ээр баталгаажсан (`globals.css`).
-    color: cat(i),
-  }));
+  /** Тэнхлэгтэй (bar/column/line) мөрүүд — `null` = цоорхой, ХАДГАЛАГДАНА */
+  const items = data.map((d, i) => ({ key: `${i}-${d.label}`, label: d.label, value: d.value }));
+  /**
+   * Эзлэх хувийн (pie/stack) зүсмэгүүд — `parseChart` null-ыг аль хэдийн хассан.
+   * ⚠️ Энэ бол ЖИНХЭНЭ зэрэглэлийн тохиолдол: цувааг туслах өөрөө үүсгэдэг
+   *    тул «утга»гүй, зөвхөн ЯЛГАХ хэрэгтэй. Слотууд нь тогтмол дараалалтай
+   *    бөгөөд хоёр горимд CVD-ээр баталгаажсан (`globals.css`).
+   * ⚠️ 2026-10-09: өнгө нь ЗҮСМЭГ БҮРД дамжина (`cat(i)`), ганц цуваат
+   *    bar/column/line нь бүгд НЭГ өнгө `--data` — ангиллын өнгө утга илэрхийлэхгүй.
+   */
+  const slices = data.flatMap((d, i) => (d.value == null
+    ? []
+    : [{ key: `${i}-${d.label}`, label: d.label, value: d.value, color: cat(i) }]));
+  const gauge = data[0].value;
 
   return (
     <figure className={s.chart}>
       {title && <p className={s.chartTitle}>{title}</p>}
 
       {type === 'pie' ? (
-        <Donut items={items} stack size={128} />
+        <Donut items={slices} stack size="md" />
       ) : type === 'stack' ? (
-        <Stack items={items} />
+        <Stack items={slices} />
       ) : type === 'gauge' ? (
-        <Ring value={data[0].value} label={data[0].label} size={104} />
+        <Ring value={gauge} label={data[0].label} size="sm" color="var(--data)" />
       ) : type === 'line' ? (
-        <Trend points={data.map((d) => ({ label: d.label, value: d.value }))} unit={unit ?? ''} />
+        <Trend points={data.map((d) => ({ label: d.label, value: d.value }))} unit={unit ?? ''} color="var(--data)" />
       ) : type === 'column' ? (
-        <Series items={items} unit={unit} />
+        <Series items={items} unit={unit} color="var(--data)" />
       ) : (
-        // `Bars` нь нэг өнгөөр илүү цэвэрхэн — ангиллын өнгө утга илэрхийлэхгүй
-        <Bars items={items.map(({ color: _c, ...b }) => b)} color={cat(0)} />
+        <Bars items={items} color="var(--data)" />
       )}
 
       {/* ⚠️ Тайлбарыг ГРАФИКИЙН ДООР, хүрээн ДОТОР — тусдаа догол мөр болгож

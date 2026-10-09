@@ -30,8 +30,18 @@ export type ChartSpec = {
   unit?: string;
   /** Графикийн ДООД талд гарах тайлбар — юуг харуулж байгаа, гол дүгнэлт */
   note?: string;
-  data: { label: string; value: number }[];
+  /**
+   * ⚠️ 2026-10-09 (графикийн жигдрэл): `value: null` = МЭДЭЭЛЭЛГҮЙ — bar/column/line-д
+   *    мөр ХАДГАЛАГДАНА (цоорхой: багана зурагдахгүй, шугам тасарна). Урьд нь
+   *    тийм мөрийг ХАЯДАГ байсан тул тайлангүй сар тэнхлэгээс алга болж, хоёр
+   *    хөрш сар шууд холбогддог байв (CLAUDE.md: null ≠ 0, цоорхой үлдээнэ).
+   *    pie/stack/gauge-д null хасагдана — эзлэх хувь/ганц заалтад цоорхой утгагүй.
+   */
+  data: { label: string; value: number | null }[];
 };
+
+/** Цоорхой (null) зөвшөөрөх төрлүүд — тэнхлэгтэй (ангилал/хугацаа) графикууд */
+const GAP_OK: readonly ChartType[] = ['bar', 'column', 'line'];
 
 /**
  * ⚠️ Хэт олон багана нарийн чат цонхонд шошгогүй зураас болно. 12-оор
@@ -63,23 +73,27 @@ export function parseChart(raw: string): ChartSpec | null {
   if (!CHART_TYPES.includes(type)) return null;
 
   if (!Array.isArray(o.data)) return null;
+  const gaps = GAP_OK.includes(type);
   const data = o.data
     .map((d) => {
       if (!d || typeof d !== 'object') return null;
       const r = d as Record<string, unknown>;
-      const value = num(r.value);
+      const value = r.value == null ? null : num(r.value);
       const label = String(r.label ?? '').trim();
-      return label && value != null ? { label, value } : null;
+      if (!label) return null;
+      // ⚠️ 2026-10-09: тоо биш/хоосон утга → null (цоорхой); тэнхлэгтэй төрөлд мөрийг ХАЯХГҮЙ
+      return value != null || gaps ? { label, value } : null;
     })
-    .filter((d): d is { label: string; value: number } => !!d)
+    .filter((d): d is { label: string; value: number | null } => !!d)
     .slice(0, MAX_POINTS);
 
   /*
    * ⚠️ `gauge` нь ГАНЦ утгын заалт тул нэг цэгээр хангалттай — бусад төрөлд
    * нэг цэгээр график зурах утгагүй (тоог нь өгүүлбэрт бичих нь дээр).
+   * ⚠️ 2026-10-09: ЗӨВХӨН хэмжигдсэн (null биш) цэгийг тоолно — бүгд null бол татгалзана.
    */
   const need = type === 'gauge' ? 1 : 2;
-  if (data.length < need) return null;
+  if (data.filter((d) => d.value != null).length < need) return null;
 
   /**
    * ⚠️ АВТОМАТ ×100 ХӨРВҮҮЛЭЛТ ХАСАГДСАН (2026-09-03-ны аудит).
@@ -94,7 +108,8 @@ export function parseChart(raw: string): ChartSpec | null {
    * ТАТГАЛЗАНА — тоо нь өгүүлбэрт хэвээр гарна, зөвхөн худал зурагдахаас
    * сэргийлнэ. Зөв хуваарийг `registry.ts`-ийн зааварт ил бичсэн.
    */
-  if (type === 'gauge' && (data[0].value < 0 || data[0].value > 100)) return null;
+  const g = data[0].value;
+  if (type === 'gauge' && (g == null || g < 0 || g > 100)) return null;
 
   return {
     type,

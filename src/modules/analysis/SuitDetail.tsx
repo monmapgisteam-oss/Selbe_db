@@ -6,8 +6,10 @@ import {
   PARKING_SOURCES,
   type Indicator, type ParkingOpt,
 } from '@/lib/analysis/config';
-import { scoreColor, scoreInk, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
-import { Donut } from '@/components/ui';
+import { scoreTone, scoreInk, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
+import { Bars, Donut, useTip } from '@/components/ui';
+import { cat, NO_DATA } from '@/lib/format';
+import { CHART } from '@/lib/chartStyle';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
 import { nf } from './suit/format';
@@ -29,11 +31,10 @@ import s from './suitability.module.css';
  * давхцахгүй: диаграмын зүсмэгийн өнгийг «үнэлгээ» гэж уншиж болохгүй.
  * Жагсаалт өөрчлөгдөхөд өнгө нь ШИЛЖИХГҮЙ — байр нь утга агуулна.
  */
-const C1 = '#4f83cc';   // 1-р: гол хэмжигдэхүүн (ил зогсоол · дэд бүтцийн зардал · хүн ам)
-const C2 = '#4f9d72';   // 2-р: хоёрдогч (далд зогсоол · барилгын зардал · хэрэгцээ)
-
-/** Хувь болгох — 0..100 хооронд хашина */
-const pctOf = (v: number, max: number) => (max > 0 ? clamp((v / max) * 100, 0, 100) : 0);
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex (#4f83cc / #4f9d72) → зэрэглэлийн
+   слот `cat(0)`/`cat(1)` — dark горимд дагана. Байрны утга (1-р, 2-р) хэвээр. */
+const C1 = cat(0);   // 1-р: гол хэмжигдэхүүн (ил зогсоол · дэд бүтцийн зардал · хүн ам)
+const C2 = cat(1);   // 2-р: хоёрдогч (далд зогсоол · барилгын зардал · хэрэгцээ)
 
 /**
  * Үзүүлэлт харьцуулах БОСГОТОЙ юу.
@@ -50,7 +51,9 @@ const hasNorm = (ind: Indicator) =>
  * (нэр · утга, доор нь зурвас). Нийтлэг тэнхлэгтэй (`max`) хоёр мөр нь хоёр
  * хэмжигдэхүүнийг харьцуулна.
  */
-/* ⚠️ 2026-10-09: `v = null` — мэдээлэлгүй: зурвас ЗУРАГДАХГҮЙ (0 урттай «тэг» биш, null ≠ 0) */
+/* ⚠️ 2026-10-09: `v = null` — мэдээлэлгүй: зурвас ЗУРАГДАХГҮЙ (0 урттай «тэг» биш, null ≠ 0)
+   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): гар хийцийн 5px зурвас → порталын
+   `Bars` (2px зам, утга `--ink-2`, hover `useTip`). Утгын бичиг цувааны өнгөөр БИШ — бэхээр. */
 function IndRow({ label, text, v, max, color }: {
   label: string;
   text: string;
@@ -60,13 +63,7 @@ function IndRow({ label, text, v, max, color }: {
 }) {
   return (
     <div className={s.mRow}>
-      <div className={s.mTop}>
-        <span className="nm">{label}</span>
-        <span className="v" style={{ color }}>{text}</span>
-      </div>
-      <div className={s.mBar}>
-        {v != null && <i style={{ width: `${pctOf(v, max)}%`, background: color }} />}
-      </div>
+      <Bars items={[{ key: label, label, value: v, display: text }]} max={max > 0 ? max : undefined} color={color} />
     </div>
   );
 }
@@ -84,6 +81,7 @@ function Radar({ items, center, size = 300 }: {
   center: ReactNode;
   size?: number;
 }) {
+  const tip = useTip();
   const n = items.length;
   const PAD = 56;                    // шошгонд үлдээх зай
   const R = size / 2 - PAD;
@@ -93,9 +91,19 @@ function Radar({ items, center, size = 300 }: {
     return { x: c + Math.cos(a) * R * f, y: c + Math.sin(a) * R * f, cos: Math.cos(a), sin: Math.sin(a) };
   };
   const ring = (f: number) => items.map((_, i) => { const p = at(i, f); return `${p.x},${p.y}`; }).join(' ');
-  const shape = items
-    .map((it, i) => (it.score == null ? null : at(i, clamp(it.score, 0, 100) / 100)))
-    .filter((p): p is NonNullable<typeof p> => p != null);
+  const pts = items.map((it, i) => (it.score == null ? null : at(i, clamp(it.score, 0, 100) / 100)));
+  /**
+   * ⚠️ 2026-10-09 (null ≠ 0, цоорхой үлдээнэ): урьд нь өгөгдөлгүй тэнхлэгийг АЛГАСААД
+   *    үлдсэн оройнуудыг НЭГ олон өнцөгтөөр холбодог байв — хоёр хөрш бус тэнхлэгийн
+   *    хооронд ГҮҮР татагдаж, алга болсон тэнхлэг дээр «дунд зэрэг» оноо байгаа мэт
+   *    уншигддаг. Одоо: бүх тэнхлэг хэмжигдсэн үед л дүүргэсэн олон өнцөгт; эс бөгөөс
+   *    ЗӨВХӨН хоёр талдаа хэмжигдсэн ХӨРШ тэнхлэгийн ирмэг (дүүргэлтгүй).
+   */
+  const full = n >= 3 && pts.every((p) => p != null);
+  const edges = full || n < 2 ? [] : pts.flatMap((p, i) => {
+    const q = pts[(i + 1) % n];
+    return p && q && (n > 2 || i === 0) ? [{ k: i, p, q }] : [];
+  });
 
   /** Урт шошгыг эхний зайгаар нь хоёр мөр болгоно — тэнхлэгүүд давхацахгүй */
   const wrap = (t: string) => {
@@ -105,6 +113,7 @@ function Radar({ items, center, size = 300 }: {
   };
 
   return (
+    <>
     <svg
       className={s.radar} width={size} height={size} viewBox={`0 0 ${size} ${size}`}
       role="img" aria-label={tr('Үзүүлэлтүүдийн онооны профайл')}
@@ -120,9 +129,12 @@ function Radar({ items, center, size = 300 }: {
       <text className={s.radarTick} x={c + 4} y={c - R + 3}>100</text>
 
       {/* Бүсийн профайл */}
-      {shape.length >= 3 && (
-        <polygon className={s.radarArea} points={shape.map((p) => `${p.x},${p.y}`).join(' ')} />
+      {full && (
+        <polygon className={s.radarArea} points={pts.map((p) => `${p!.x},${p!.y}`).join(' ')} />
       )}
+      {edges.map((e) => (
+        <line key={e.k} className={s.radarEdge} x1={e.p.x} y1={e.p.y} x2={e.q.x} y2={e.q.y} />
+      ))}
       {items.map((it, i) => {
         if (it.score == null) return null;
         const p = at(i, clamp(it.score, 0, 100) / 100);
@@ -130,13 +142,15 @@ function Radar({ items, center, size = 300 }: {
         //    алдаатай: (1) `--panel` бол ӨРГӨН (360px), өнгө биш; (2) SVG-ийн
         //    presentation ШИНЖ дотор `var()` задардаггүй. Тиймээс цэгийг олон
         //    өнцөгтөөс тусгаарлах гэрэлт хүрээ огт зурагддаггүй байлаа.
+        /* ⚠️ 2026-10-09: цэг нь `CHART` (r=3 + 2px гадаргуун цагираг), өнгө токен
+           (`scoreTone`, dark-тай), `<title>`-ийн оронд порталын `useTip`. */
+        const c0 = scoreTone(it.score);
         return (
           <circle
-            key={it.key} cx={p.x} cy={p.y} r={3.2}
-            fill={scoreColor(it.score)} style={{ stroke: 'var(--surface)' }} strokeWidth={2}
-          >
-            <title>{tr('{0}: {1} оноо', it.label, Math.round(it.score))}</title>
-          </circle>
+            key={it.key} cx={p.x} cy={p.y} r={CHART.markerR}
+            style={{ fill: c0, stroke: 'var(--surface)', strokeWidth: CHART.ring }}
+            {...tip.bind({ label: it.label, value: String(Math.round(it.score)), color: c0, hint: scoreLabel(it.score) })}
+          />
         );
       })}
 
@@ -163,6 +177,8 @@ function Radar({ items, center, size = 300 }: {
       <text className={s.radarCtr} x={c} y={c + 3} textAnchor="middle">{center}</text>
       <text className={s.radarCtrLbl} x={c} y={c + 15} textAnchor="middle">{tr('нийлмэл оноо')}</text>
     </svg>
+    {tip.node}
+    </>
   );
 }
 
@@ -262,7 +278,7 @@ export function SuitDetail({
     <div ref={box} className={s.detail}>
       <div className={s.dHead} onPointerDown={startDrag}>
         {/* ⚠️ `.gauge` нь `:global` — `.dHead .gauge` гэсэн үр удмын сонгогч тул */}
-        <div className="gauge" style={{ background: scoreColor(tot), color: scoreInk(tot) }}>
+        <div className="gauge" style={{ background: scoreTone(tot), color: scoreInk(tot) }}>
           {tot == null ? '—' : Math.round(tot)}
         </div>
         <div>
@@ -281,12 +297,11 @@ export function SuitDetail({
               <h4>{tr('Үндсэн үзүүлэлт')}</h4>
               <div className={`${s.chart} ${s.donutSide}`}>
                 <Donut
-                  size={88}
-                  width={15}
+                  size="sm"
                   items={[
                     { key: 'bld', label: tr('Барилга'), value: builtM2, color: C1, display: landPct(builtM2) },
                     { key: 'grn', label: tr('Ногоон байгууламж'), value: greenM2, color: C2, display: landPct(greenM2) },
-                    { key: 'oth', label: tr('Бусад'), value: otherM2, color: '#64748b', display: landPct(otherM2) },
+                    { key: 'oth', label: tr('Бусад'), value: otherM2, color: NO_DATA, display: landPct(otherM2) },
                   ]}
                   center={<span style={{ fontSize: 12 }}>{nf(r.polyHa, 1)} {tr('га')}</span>}
                 />
@@ -324,7 +339,7 @@ export function SuitDetail({
                 <div key={ind.id} className={`${s.mRow} ${on ? s.mOn : ''}`}>
                   <div className={s.mTop}>
                     <span className="nm">{ind.name}</span>
-                    <span className="v" style={{ color: scoreColor(p?.score) }}>
+                    <span className="v" style={{ color: scoreTone(p?.score) }}>
                       {p?.value == null ? '—' : `${nf(p.value, ind.decimals)}${ind.unit ? ` ${ind.unit}` : ''}`}
                     </span>
                     <span className="w">{((ind.weight / totalW) * 100).toFixed(0)}%</span>
@@ -387,8 +402,7 @@ export function SuitDetail({
             {splitOk && (r.etIl > 0 || r.etDald > 0) && (
               <div className={`${s.chart} ${s.donutSide}`}>
                 <Donut
-                  size={88}
-                  width={15}
+                  size="sm"
                   items={[
                     { key: 'il', label: tr('Ил зогсоол'), value: r.etIl, color: C1, display: nf(r.etIl) },
                     { key: 'dald', label: tr('Далд зогсоол'), value: r.etDald, color: C2, display: nf(r.etDald) },
@@ -407,7 +421,7 @@ export function SuitDetail({
                 v={r.parkingNeed} max={r.parkingNeed == null ? supply : Math.max(supply, r.parkingNeed)} color={C2}
               />
               <div className={s.chCap}>
-                {tr('Хангалт')} <b style={{ color: scoreColor(r.parts.parking?.score) }}>
+                {tr('Хангалт')} <b style={{ color: scoreTone(r.parts.parking?.score) }}>
                   {r.raw.parking == null ? '—' : `${nf(r.raw.parking)}%`}
                 </b> ·{' '}
                 {r.parkingGap == null ? '—' : (

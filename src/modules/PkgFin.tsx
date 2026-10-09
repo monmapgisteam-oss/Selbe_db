@@ -28,7 +28,7 @@ import {
 /* ⚠️ 2026-09-09: `ipcCode`/`ipcNet`/`ipcDue`/`ipcPaid` ба `finCard.dedOrNull`
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
-import { cat, shade, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
+import { cat, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 import { hoTotals } from '@/lib/ipc';
 import { paidShareOf, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
@@ -1510,16 +1510,18 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
               гэдэг нь гол асуулт. Багана нь урттай харьцуулдаг, цагираг нь
               БҮХЭЛД ЭЗЛЭХ ХУВЬ-ийг шууд харуулна.
               `stack` — нарийн баганад тайлбар нь доогуураа бүтэн өргөнөөр. */}
+          {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): өнгө `cat(i)` — i нь `CASHFLOW_NEW.sources` дахь
+              БАЙРЛАЛ (шүүсний дараах индекс БИШ): эх үүсвэр бүр багц солиход ч ИЖИЛ өнгөтэй.
+              Урьд нь `fields.ts`-ийн hex (dark-д дагадаггүй). Хэмжээ — стандарт `lg` (150/24). */}
           <Donut
             items={src.map((x) => ({
               key: x.field,
               label: x.label,
               value: x.v,
-              color: x.color,
+              color: cat(CASHFLOW_NEW.sources.findIndex((s) => s.field === x.field)),
               display: mnt(x.v),
             }))}
-            size={140}
-            width={22}
+            size="lg"
             /*
              * ⚠️ ЗУРААСТАЙ ШОШГО (`leaders`) ЭНД ТОХИРОХГҮЙ. Тэр байрлал нь
              *    цагирагийн хоёр талд 106px өргөн шошгын багана нэмдэг — нийт
@@ -1679,10 +1681,10 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
              тэмдэглэл ба дүрс хоёр зөрнө (дээрх ⚠️). */
           note={tr('нийт {0}', mnt(shownTotal))}
         >
+          {/* ⚠️ 2026-10-09: стандарт хэмжээ `lg` (150/24) — урьд 140/22 */}
           <Donut
             items={shown.map((x) => ({ ...x, display: mnt(x.value) }))}
-            size={140}
-            width={22}
+            size="lg"
             stack
             center={mnt(paidTotal)}
             centerLabel={tr('олгосон')}
@@ -1780,15 +1782,17 @@ function PkgFinList({
       title={tr('Багц бүрийн санхүүжилт')}
       note={tr('{0} багц · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
     >
+      {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): багц бүр НЭР — эрэмбэгүй ангилал тул НЭГ өнгө
+          (`--data`, `Bars`-ийн анхдагч); урьд нь `shade(HUE, i)` hex шатлал нь уртаар аль хэдийн
+          харагдах эрэмбийг өнгөөр давхардуулдаг байв. `null` → зурвасгүй («0%» биш). */}
       <Bars
-        color={HUE}
         max={100}
-        items={rows.map((r, i) => ({
+        items={rows.map((r) => ({
           key: r.key,
           label: r.label,
-          value: r.pct ?? 0,
+          value: r.pct,
           /* ⚠️ `pct == null` (төлөвлөгөөгүй) → саарал, өнгөт зурвас биш (null ≠ 0) */
-          color: r.pct == null ? NO_DATA : shade(HUE, i, rows.length),
+          color: r.pct == null ? NO_DATA : undefined,
           // ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсон тул энэ мөр ~37
           //    тэмдэгт. `Bars` нь нэр/утгыг БҮТЭН өргөний хоёр захад тавьдаг тул
           //    багтана; `.barVal` нь мөр таслахгүй (`ui.module.css`).
@@ -1871,15 +1875,16 @@ function CatChart({
       title={tr('Төслийн төрөл')}
       note={finOnly ? tr('{0} багц · {1}', num(packs.length), tr('олгосон · гэрээний дүнгийн %')) : tr('{0} багц ажил', num(packs.length))}
     >
+      {/* ⚠️ 2026-10-09: ангилал бүр `cat(i)` (dark-тай токен; «Гүйцэтгэл»-ийн «Төслийн төрөл»-тэй
+          ижил) — урьд нь `shade(HUE)` hex. `null` → зурвасгүй. */}
       <Bars
-        color={HUE}
         max={100}
         items={rows.map((r, i) => ({
           key: r.c.key,
           label: `${r.c.name()} · ${num(r.n)}`,
-          value: r.mean ?? 0,
+          value: r.mean,
           /* ⚠️ `mean == null` → саарал (`NO_DATA`), 0% зурвас биш */
-          color: r.mean == null ? NO_DATA : shade(HUE, i, rows.length),
+          color: r.mean == null ? NO_DATA : cat(i),
           display: r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
         }))}
       />
@@ -2025,7 +2030,8 @@ function FinCard({
   const givenShare = paidPctOf(givenContracted, contractAmt);
   // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
   const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
-  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
+  /* ⚠️ 2026-10-09: `pct()` (урьд `toFixed(1)` + «%») — бусад хувьтай нэг формат */
+  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${pct(Math.abs(progGap), 1)}`;
 
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
   const title = (
@@ -2037,7 +2043,7 @@ function FinCard({
           className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
           title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
         >
-          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{lag.gap.toFixed(1)}%
+          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{pct(lag.gap, 1)}
         </span>
       )}
       {/* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН ХОЦРОГДЛЫН тэмдэг ХАСАГДСАН — «хугацаа
