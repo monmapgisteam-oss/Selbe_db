@@ -119,3 +119,33 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(`✅ ${files.length} *.module.css бүгд pure горимд цэвэр`);
+
+/* ── 3) ГЛОБАЛ (модуль биш) CSS-ийн СИНТАКС — 2026-10-09 ──
+   ⚠️ ЯАГААД: `globals.css`-ийн тайлбарт «--c* /--good» (зайгүй) гэж бичигдсэн нь тайлбар хаагчаар ЭРТ хааж,
+   үлдсэн текст CSS болж `next build` «Unknown word (102:9)»-ээр унав (графикийн жигдлэлтийн merge).
+   Дээрх 2-р алхам зөвхөн `*.module.css`-ийг хардаг тул бусад CSS-ийг postcss-ээр parse хийнэ. */
+{
+  const neg = (() => { try { postcss.parse(':root { /* a --c*/--good нь b */ --x: 1; }'); return false; } catch { return true; } })();
+  assert.ok(neg, 'сөрөг тест: тайлбар доторх «*/» алдааг барьсангүй');
+  const plain = [];
+  const walk2 = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.next')) continue;
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk2(p);
+      else if (e.name.endsWith('.css') && !e.name.endsWith('.module.css')) plain.push(p);
+    }
+  };
+  walk2(join(ROOT, 'src'));
+  const synErr = [];
+  for (const f of plain.sort()) {
+    try { postcss.parse(readFileSync(f, 'utf8'), { from: f }); } catch (e) {
+      synErr.push(`${relative(ROOT, f).split(sep).join('/')}:${e.line ?? 0}:${e.column ?? 0} — ${String(e.reason || e.message).split('\n')[0]}`);
+    }
+  }
+  if (synErr.length) {
+    console.error(`❌ ${synErr.length} глобал CSS-ийн синтакс алдаа (\`next build\` унана):\n  ${synErr.join('\n  ')}`);
+    process.exit(1);
+  }
+  console.log(`✅ ${plain.length} глобал *.css синтакс цэвэр`);
+}
