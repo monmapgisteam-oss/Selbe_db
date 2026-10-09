@@ -9,6 +9,8 @@ import { t as tr } from "@/lib/i18nCore";
 import { normCell } from "../paste";
 import { RO, qty } from "./util";
 import st from "../sheet.module.css";
+/* ⚠️ 2026-10-09: «Инж. төлөвлөсөн обьём»-ын өргөн — толгойн `grip("pvol")`-тэй ИЖИЛ түлхүүр (`colWidths.cw`) */
+import { cw } from "../colWidths";
 
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН НҮД.
@@ -57,7 +59,7 @@ export function PvCell({
 
   if (open && canEdit) {
     return (
-      <td className={cls("right c-vol editable")}>
+      <td className={cls("right c-vol editable")} style={cw("pvol", "vol")}>
         <input
           autoFocus
           type="text"
@@ -112,6 +114,7 @@ export function PvCell({
 
   return (
     <td
+      style={cw("pvol", "vol")}
       className={cls("right c-vol" + (canEdit ? " editable" : "")
         + (dirty ? " dirty" : "") + (pendingDiff ? " chg" : ""))}
       tabIndex={canEdit ? 0 : undefined}

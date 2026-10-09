@@ -11,6 +11,11 @@
 // ⚠️ Хувьсагч нь БАГАНЫ АНГИЛАЛ-д харьяалагдана: давтагдах барилга/блокийн
 // багана бүгд нэг ангилалтай тул НЭГ дор өөрчлөгдөнө (нэгийг нь чирэхэд бүгд).
 // Тэдгээр нь ижил төрлийн утга агуулдаг тул үүнийг санаатай ингэв.
+// ⚠️ 2026-10-09 (хэрэглэгч: «багана бүрээр тусдаа хийгдэхгүй байна»): ГҮЙЦЭТГЭЛ БӨГЛӨХ хүснэгтэд
+// (`SheetHead` · `FillRows`) багана БҮР өөрийн түлхүүртэй (`grip("a3")` г.м.) — нүд бүр
+// `cw(түлхүүр, ангилал)` inline өргөнтэй: `var(--w-<түлхүүр>, var(--w-<ангилал>))` («Бусад талбар»-ын
+// `ExtraCol.wStyle`-тэй ижил арга). Ангиллын хадгалсан өргөн (`vol`, `bld`…) АНХДАГЧ болж үлдэнэ.
+// Бусад хүснэгт (Finance · Qaqc) ангиллаараа хэвээр.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Бариулын tooltip/aria — 3 файлд давхардаж байсныг нэг эхээс (i18n-тэй).
@@ -22,6 +27,25 @@ const MIN_W = 28;
 const LS = "selbe.colw.";
 
 type Widths = Record<string, number>;
+
+/* ⚠️ 2026-10-09: нүд бүрт ОРЖ ирдэг тул объектыг түлхүүрээр кэшлэнэ — зурагдалт бүрд шинэ
+   style объект үүсгэвэл React нүд бүрийн style-ыг дахин тулгана (~80k нүд). */
+const CW = new Map<string, React.CSSProperties>();
+/**
+ * Нэг баганын өргөн — `<td style={cw("a3", "bld")}>`; толгойн `grip("a3")`-тэй ИЖИЛ түлхүүр.
+ * ⚠️ inline нь ангиллын дүрмийг (`.b32 .c-vol` г.м.) ДАРНА — тэр багана чирэгдээгүй бол
+ *    `--w-<түлхүүр>` тодорхойгүй тул ангиллын хувьсагч (анхдагч эсвэл хуучин хадгалсан) үйлчилнэ.
+ */
+export function cw(col: string, base: string): React.CSSProperties {
+  const k = `${col}|${base}`;
+  let s = CW.get(k);
+  if (!s) {
+    const v = `var(--w-${col}, var(--w-${base}))`;
+    s = { width: v, minWidth: v, maxWidth: v };
+    CW.set(k, s);
+  }
+  return s;
+}
 
 export function useColWidths(key: string) {
   const [w, setW] = useState<Widths>({});

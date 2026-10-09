@@ -5,7 +5,7 @@
  */
 import type { Schema } from "../bagts.pkg";
 import type { seriesBands } from "../bagts.bands";
-import type { useColWidths } from "../colWidths";
+import { cw, type useColWidths } from "../colWidths";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cls } from "./util";
 import { extraCls, type ExtraCol } from "./extraCols";
@@ -38,24 +38,31 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                     ⚠️ Энд `c-w` өргөний ангилал ТАВИХГҮЙ: 72px нь хоёр баганын
                     НИЙЛБЭР болж уншигдаж, хоёуланг нь шахна. Өргөнийг мөрийн
                     нүднүүд өөрсдөө заана. */}
-                <th rowSpan={4} colSpan={2} className={cls("c-wspan")}>{tr('Хувийн жин')}<i {...grip("w")} /></th>
-                <th rowSpan={4} className={cls("c-now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьём')}<i {...grip("vol")} /></th>
+                {/* ⚠️ 2026-10-09 (хэрэглэгч: «багана бүрээр тусдаа хийгдэхгүй байна»): ХОЁР гарчигт салгав — нэг
+                    гарчиг нэг л бариултай тул C ба D-г тусад нь тохируулах аргагүй байв. D нь нийт төсөлд
+                    эзлэх жин (`RO.wD`).
+                    ⚠️ Багана БҮР өөрийн түлхүүртэй (`grip(k)` + `cw(k, ангилал)`) — `FillRows`-ийн нүдтэй
+                    ИЖИЛ түлхүүр (`colWidths.cw`-ийн ⚠️); урьд нь ангиллаар (`vol` ×4 · `calc` ×3 · бүх
+                    блок · бүх огноо) нэгийг чирэхэд бүгд хамт өргөсдөг байв. */}
+                <th rowSpan={4} className={cls("c-w")} style={cw("wc", "w")}>{tr('Хувийн жин')}<i {...grip("wc")} /></th>
+                <th rowSpan={4} className={cls("c-w")} style={cw("wd", "w")}>{tr('Хувийн жин (нийт)')}<i {...grip("wd")} /></th>
+                <th rowSpan={4} className={cls("c-now")} style={cw("now", "now")}>{tr('Одоо байгаа хувийн жин')}<i {...grip("now")} /></th>
+                <th rowSpan={4} className={cls("c-vol")} style={cw("ob", "vol")}>{tr('Обьём')}<i {...grip("ob")} /></th>
                 {/* ⚠️ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — гэрээний «Обьём»-ын ХАЖУУД
                     зориуд байрлуулав: хоёрын ЗӨРҮҮ нь өөрөө мэдээлэл
                     (төсөв ба талбайн бодит тооцоо). Засвар нь батлагдаж
                     байж бичигдэнэ (`obyemBatlah`). */}
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Инж. төлөвлөсөн обьём')}<i {...grip("vol")} /></th>
+                <th rowSpan={4} className={cls("c-vol")} style={cw("pvol", "vol")}>{tr('Инж. төлөвлөсөн обьём')}<i {...grip("pvol")} /></th>
                 {/* ⚠️ «Нэгж өртөг» ба «Мөнгөн дүн» нь ӨГӨГДӨЛД БАЙСАН ч
                     хүснэгтэд огт зурагддаггүй байв. Хувийн жин бүхэлдээ
                     Мөнгөн дүнгээс бодогддог тул түүнийг харуулахгүй бол
                     жин хаанаас гарсныг шалгах арга үгүй болно. */}
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Обьёмын нийлбэр')}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-vol")}>{tr('Нэгж өртөг')}<i {...grip("vol")} /></th>
-                <th rowSpan={4} className={cls("c-money")}>{tr('Мөнгөн дүн')}<i {...grip("money")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Бодит гүйцэтгэл')}<i {...grip("calc")} /></th>
-                <th rowSpan={4} className={cls("c-calc")}>{tr('Төлөвлөгөө биелэлт')}<i {...grip("calc")} /></th>
+                <th rowSpan={4} className={cls("c-vol")} style={cw("vsum", "vol")}>{tr('Обьёмын нийлбэр')}<i {...grip("vsum")} /></th>
+                <th rowSpan={4} className={cls("c-vol")} style={cw("unit", "vol")}>{tr('Нэгж өртөг')}<i {...grip("unit")} /></th>
+                <th rowSpan={4} className={cls("c-money")} style={cw("money", "money")}>{tr('Мөнгөн дүн')}<i {...grip("money")} /></th>
+                <th rowSpan={4} className={cls("c-calc")} style={cw("ci", "calc")}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("ci")} /></th>
+                <th rowSpan={4} className={cls("c-calc")} style={cw("cj", "calc")}>{tr('Бодит гүйцэтгэл')}<i {...grip("cj")} /></th>
+                <th rowSpan={4} className={cls("c-calc")} style={cw("ck", "calc")}>{tr('Төлөвлөгөө биелэлт')}<i {...grip("ck")} /></th>
                 {/* Обьём (бөглөгддөг) ба түүнээс бодогдсон хувь — ТУСДАА хоёр
                     бүлэг. Нэг нүдэнд хамт байрлуулж байсныг болив: аль тоо нь
                     бичигддэг, аль нь бодогддог нь ялгарахгүй байв. */}
@@ -85,7 +92,7 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                     <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
                   </>
                 )}
-                <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
+                <th rowSpan={4} className={cls("c-date")} style={cw("asof", "date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("asof")} /></th>
                 {/* ⚠️ Inspection Test Plan-ийн 9 багана ЭНД БАЙХГҮЙ
                     (2026-09-03) — «Чанар (QAQC)» тусдаа харагдацад. */}
                 {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — 1-р мөрөнд бүлгийн гарчиг, 2-р мөрөөс баганын нэр
@@ -103,12 +110,12 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                     <>
                       {/* ⚠️ 2026-10-09: «Обьём (энэ удаа)» гэж нэрлэгдсэн байсан нь төөрөгдүүлдэг — нүдний ТОМ
                           тоо нь ХУРИМТЛАГДСАН нийт (`obyem_sum`), энэ удаагийн нэмэлт нь жижиг «+N». */}
-                      <th className={cls("bld synH")}
+                      <th className={cls("bld synH")} style={cw("a0", "bld")}
                         title={tr('Нүдний том тоо — ХУРИМТЛАГДСАН нийт обьём; жижиг «+N» — энэ удаа нэмж буй обьём. Өмнөх бөглөлтөөс хойш хийсэн обьёмоо бичнэ — нийтэд нэмэгдэж, гүйцэтгэл = нийт ÷ Обьём.')}>
-                        {tr('Обьём (нийт · +энэ удаа)')}<i {...grip("bld")} /></th>
-                      <th className={cls("bld synH")} title={RO.blockPlan}>%<i {...grip("bld")} /></th>
-                      <th className={cls("c-date synH")}>{tr('Эхлэх')}<i {...grip("date")} /></th>
-                      <th className={cls("c-date synH")}>{tr('Дуусах')}<i {...grip("date")} /></th>
+                        {tr('Обьём (нийт · +энэ удаа)')}<i {...grip("a0")} /></th>
+                      <th className={cls("bld synH")} style={cw("p0", "bld")} title={RO.blockPlan}>%<i {...grip("p0")} /></th>
+                      <th className={cls("c-date synH")} style={cw("s0", "date")}>{tr('Эхлэх')}<i {...grip("s0")} /></th>
+                      <th className={cls("c-date synH")} style={cw("e0", "date")}>{tr('Дуусах')}<i {...grip("e0")} /></th>
                     </>
                   )}
                   {tall && bands.map((g, gi) => (
@@ -134,11 +141,11 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
               {/* 3-р мөр — блокийн код (зөвхөн блоктой багц) */}
               {tall && (
                 <tr>
-                  {sc.bld.map((b) => (
-                    <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
+                  {sc.bld.map((b, bi) => (
+                    <th key={`a${b}`} rowSpan={2} className={cls("bld")} style={cw(`a${bi}`, "bld")}>{b}<i {...grip(`a${bi}`)} /></th>
                   ))}
-                  {sc.bld.map((b) => (
-                    <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
+                  {sc.bld.map((b, bi) => (
+                    <th key={`p${b}`} rowSpan={2} className={cls("bld")} style={cw(`p${bi}`, "bld")}>{b} {tr('барилга')}<i {...grip(`p${bi}`)} /></th>
                   ))}
                   {sc.bld.map((b) => (
                     <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
@@ -148,9 +155,9 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
               {/* 4-р мөр — хуваарийн Эхлэх/Дуусах (зөвхөн блоктой багц) */}
               {tall && (
                 <tr>
-                  {sc.bld.map((b) => [
-                    <th key={`s${b}`} className={cls("c-date")}>{tr('Эхлэх')}<i {...grip("date")} /></th>,
-                    <th key={`e${b}`} className={cls("c-date")}>{tr('Дуусах')}<i {...grip("date")} /></th>,
+                  {sc.bld.map((b, bi) => [
+                    <th key={`s${b}`} className={cls("c-date")} style={cw(`s${bi}`, "date")}>{tr('Эхлэх')}<i {...grip(`s${bi}`)} /></th>,
+                    <th key={`e${b}`} className={cls("c-date")} style={cw(`e${bi}`, "date")}>{tr('Дуусах')}<i {...grip(`e${bi}`)} /></th>,
                   ])}
                 </tr>
               )}

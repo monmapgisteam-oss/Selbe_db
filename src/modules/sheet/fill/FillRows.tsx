@@ -14,6 +14,8 @@ import type { useCellEdit, PastePrev } from "./useCellEdit";
 import { RO, cellKey, cls, dt, full, pc, qty, synNoVol, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
 import st from "../sheet.module.css";
 import { extraCls, extraVal, type ExtraCol } from "./extraCols";
+/* ⚠️ 2026-10-09: багана бүрийн өргөн — `SheetHead`-ийн бариултай ИЖИЛ түлхүүр (`colWidths.cw`-ийн ⚠️) */
+import { cw } from "../colWidths";
 
 type ObyemT = ReturnType<typeof useObyem>;
 type CellT = ReturnType<typeof useCellEdit>;
@@ -98,13 +100,15 @@ export function FillRows({
                       {workTxt}
                       {/* ⚠️ Бүлгийн «+» ба шинэ мөрийн «×» ХАСАГДАВ (2026-09-24) — «Хуваарь»-д. */}
                     </td>
-                    <td className={cls("right c-w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
-                    <td className={cls("right c-w")} {...ro(RO.wD)} title={full(c.D)}>{wt(c.D)}</td>
+                    <td className={cls("right c-w")} style={cw("wc", "w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
+                    <td className={cls("right c-w")} style={cw("wd", "w")} {...ro(RO.wD)} title={full(c.D)}>{wt(c.D)}</td>
                     {/* Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл — гүйцэтгэл
                         бөглөхөд хамт хөдөлдөг тул бодогдох өнгөтэй. Дээд
                         бүлгүүдэд өөрчлөлт нь бөөрөнхийлөлтөөс нуугдах тул
                         бүтэн нарийвчлалыг tooltip-оор өгнө. */}
-                    <td className={cls("right c-w calc")} {...ro(RO.wE)} title={full(c.E)}>
+                    {/* ⚠️ 2026-10-09: өргөн нь толгойн «Одоо байгаа» (`now`)-оос — урьд нь толгой `c-now` (104),
+                        бие `c-w` (72) хоёр өөр хувьсагчтай тул бариул биеийн нүдийг хөдөлгөдөггүй байв. */}
+                    <td className={cls("right c-w calc")} style={cw("now", "now")} {...ro(RO.wE)} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
                     {/* ОБЬЁМ — ЭХ ӨГӨГДЛИЙН тоо хэмжээ. Эх хүснэгтэд
@@ -117,7 +121,7 @@ export function FillRows({
                         ажлуудыг агуулдаг тул нэг нэгж оноох нь худал болно.
                         ⚠️ Нэгж нь `negj.ts`-ийн дүрмээр ажлын нэрнээс гарна
                         (хамралт 95.5%); тодорхойлогдоогүй бол зөвхөн тоо. */}
-                    <td className={cls("right c-vol")} {...ro(RO.vol)}>
+                    <td className={cls("right c-vol")} style={cw("ob", "vol")} {...ro(RO.vol)}>
                       {qty(r.vol)}
                       {!r.group && r.vol != null && negjOf(r.work) && (
                         <span className={st.negj}>{negjOf(r.work)}</span>
@@ -149,17 +153,17 @@ export function FillRows({
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
-                    <td className={cls("right c-vol calc")} {...ro(RO.obyemSum)}>
+                    <td className={cls("right c-vol calc")} style={cw("vsum", "vol")} {...ro(RO.obyemSum)}>
                       {qty(c.obyemSum)}
                       {!r.group && c.obyemSum != null && negjOf(r.work) && (
                         <span className={st.negj}>{negjOf(r.work)}</span>
                       )}
                     </td>
-                    <td className={cls("right c-vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
-                    <td className={cls("right c-money")} {...ro(RO.money)}>{qty(r.money)}</td>
-                    <td className={cls("num c-calc calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
-                    <td className={cls("num c-calc calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
-                    <td className={cls("num c-calc calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
+                    <td className={cls("right c-vol")} style={cw("unit", "vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
+                    <td className={cls("right c-money")} style={cw("money", "money")} {...ro(RO.money)}>{qty(r.money)}</td>
+                    <td className={cls("num c-calc calc")} style={cw("ci", "calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
+                    <td className={cls("num c-calc calc")} style={cw("cj", "calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
+                    <td className={cls("num c-calc calc")} style={cw("ck", "calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
 
                     {/* ГҮЙЦЭТГЭЛИЙН НҮД — обьём ба хувь НЭГ нүдэнд.
                           дээд мөр (том тоо) = бөглөсөн ОБЬЁМ — ЭНЭ Л бичигдэнэ
@@ -288,6 +292,7 @@ export function FillRows({
                         <td
                           key={`a${b}`}
                           data-bi={bi}
+                          style={cw(`a${bi}`, "bld")}
                           /* ⚠️ `view` нь `editable`-ийн ЗАСАГДАХГҮЙ хувилбар:
                              хайрцаг, курсор алга — гэхдээ обьём ба хувь
                              ХОЁУЛАА харагдана (бөглөгчийн харж буй тоо). */
@@ -495,6 +500,7 @@ export function FillRows({
                       <td
                         key={`p${b}`}
                         className={cls("num bld calc")}
+                        style={cw(`p${bi}`, "bld")}
                         {...ro(RO.blockPlan)}
                       >
                         {pc(c.plan[bi], 1)}
@@ -544,6 +550,7 @@ export function FillRows({
                         return (
                           <td
                             key={`${k}${b}`}
+                            style={cw(`${k}${bi}`, "date")}
                             className={cls(
                               "num c-date" +
                                 (editable ? " cursor-cell" : "") +
@@ -567,6 +574,7 @@ export function FillRows({
                         Хэрэгслийн мөрний сонгогчтой нэг утга. */}
                     {
                       <td
+                        style={cw("asof", "date")}
                         className={cls(
                           "num c-date" +
                             (i === 0 && !noPerf ? " cursor-cell" : "") +
