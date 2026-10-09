@@ -6842,6 +6842,7 @@ const en: Record<string, string> = {
   "Зөвхөн PDF файл оруулна.": "Only PDF files can be uploaded.",
   "PDF item үүссэнгүй.": "The PDF item was not created.",
   "PDF татагдсангүй.": "The PDF could not be downloaded.",
+  "Хувийн жин (нийт)": "Weight (whole project)"
 };
 
 export default en;
