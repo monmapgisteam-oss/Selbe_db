@@ -5,6 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { Icon } from './Icon';
+import { ENT_KEY, EntDocFrame, EntDocsSide } from './EntDocs';
 import s from './docviewer.module.css';
 
 /**
@@ -65,6 +66,8 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   if (!open) return null;
 
   const doc = active == null ? null : (DOCS.find((d) => d.key === active) ?? null);
+  /* ⚠️ 2026-10-08 (туршилт): `ent:<id>` = Enterprise геопорталын PDF item (`EntDocs.tsx`) */
+  const entId = active?.startsWith(ENT_KEY) ? active.slice(ENT_KEY.length) : null;
 
   return (
     <div className={s.overlay} onClick={onClose} role="presentation">
@@ -104,6 +107,8 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               );
             })}
 
+            <EntDocsSide active={active} onPick={setActive} />
+
             {doc && (
               <a
                 className={s.openNew}
@@ -125,7 +130,9 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               * хаадаг тул хоосон цагаан талбай л гарна. Оронд нь шинэ таб-д
               * нээх ТОВЧ — юу болсныг ил хэлж, нэг товшилтоор нээгдэнэ.
               */}
-            {!doc ? (
+            {entId ? (
+              <EntDocFrame id={entId} narrow={narrow} />
+            ) : !doc ? (
               <div className={s.ext}>
                 <p className={s.pick}>{tr('Үзэх баримтаа жагсаалтаас сонгоно уу.')}</p>
               </div>
