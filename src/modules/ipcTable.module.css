@@ -82,17 +82,19 @@
 }
 .gSumLbl { font-size: 10.5px; color: var(--ink-3); }
 
-/* Хувийн тууз */
-.gPct { display: inline-flex; align-items: center; gap: 7px; width: 118px; flex-shrink: 0; }
+/* Хувийн тууз
+   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Bars` мөр — хувь ДЭЭР
+   (`--ink-2`), доор 2px зам (`--chart-track`, радиус 1px). Урьд нь 6px тууз | хувь. */
+.gPct { display: inline-flex; flex-direction: column; align-items: stretch; gap: 3px; width: 118px; flex-shrink: 0; }
 .bar {
-  flex: 1 1 auto; height: 6px; border-radius: 3px;
-  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  display: block; width: 100%; height: 2px; border-radius: 1px;
+  background: var(--chart-track);
   overflow: hidden;
 }
-.barIn { display: block; height: 100%; background: var(--data); border-radius: 3px; }
+.barIn { display: block; height: 100%; background: var(--data); border-radius: 1px; }
 .gPctNum {
-  font-size: 11.5px; font-variant-numeric: tabular-nums;
-  width: 42px; text-align: right; flex-shrink: 0;
+  font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-2);
+  text-align: right;
 }
 /* ⚠️ Хэмжигдээгүй — тууз ОГТ зурагдахгүй, зөвхөн зураас */
 .gPctNone { width: 100%; text-align: right; color: var(--ink-3); }

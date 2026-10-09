@@ -32,6 +32,7 @@
 
 import { num, pct } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
+import { Bars, Meter } from '@/components/ui';
 import c from './tailanChart.module.css';
 
 /* ══════════════════ Туслах ══════════════════ */
@@ -75,6 +76,13 @@ export function Fig({ no, children }: { no: string; children: React.ReactNode })
  *
  * ⚠️ Шошго нь багана БҮРД гарна — 10-аас цөөн зүйлд «сонгомол шошго» гэсэн
  * дүрэм үйлчлэхгүй, харин хүснэгт рүү харах шаардлагыг арилгана.
+ *
+ * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): өөрийн 12px зурвас (нэр | зурвас | утга
+ *    нэг эгнээ) БИШ — `ui.Bars` ШУУД: дээр нэр + утга, доор 2px зам, hover = `useTip`.
+ *    Хэвлэлтийн өнгө `tailanChart.module.css`-ийн `@media print`-д (`.fig` дотор
+ *    `chartTrack`/`chartFill` глобал нэрээр). «Эмфазис» (`hot`) нь `selected` БИШ —
+ *    тэр нь бусад мөрийн НЭРИЙГ ч 0.35 болгож тайлангийн уншигдахыг бууруулна; өнгөний
+ *    нягтаар ялгана (бусад нь `--data`-ийн 60%).
  */
 export function RankBars({
   items,
@@ -95,33 +103,29 @@ export function RankBars({
   // Keep a common baseline, including measured zeroes and values above 100%.
   const top = Math.max(max ?? 0, ...valid, 1);
 
+  const anyHot = items.some((it) => it.hot);
   return (
     <figure className={c.fig} aria-label={title}>
-      <div className={c.bars}>
-        {/* ⚠️ ТЭНХЛЭГИЙН ШОШГО ХАСАГДСАН (2026-09-17, хэрэглэгчийн шүүмж:
-            «энэ илүү тоо юу вэ»). Дээд утга нь хамгийн урт зурвасын
-            ХАЖУУД аль хэдийн бүтнээр бичигдсэн байдаг тул тэнхлэг дээр
-            давтагдаад, уншигч хоёр өөр тоо байна гэж эргэлздэг байв.
-            Зурвасын урт нь өөрөө харьцааг хэлнэ. */}
-        {items.map((it, i) => (
-          <div key={`${it.label}-${i}`} className={c.barRow}>
-            <span className={c.barName} title={it.label}>{it.label}</span>
-            <span className={c.barTrack}>
-              {/* ⚠️ Хэмжигдээгүйг (`null`) 0 гэж ЗУРАХГҮЙ — «мэдээлэлгүй» ба
-                  «тэг гүйцэтгэл» хоёр огт өөр утгатай. */}
-              {it.value == null || !Number.isFinite(it.value) ? null : (
-                <span
-                  className={`${c.bar} ${it.hot ? c.barHot : ''}`}
-                  style={{ width: `${frac(it.value, top) * 100}%` }}
-                />
-              )}
-            </span>
-            <span className={c.barVal}>
-              {it.value == null || !Number.isFinite(it.value) ? <i className={c.na}>{tr('мэдээлэлгүй')}</i> : (it.text ?? fmt(it.value))}
-            </span>
-          </div>
-        ))}
-      </div>
+      {/* ⚠️ ТЭНХЛЭГИЙН ШОШГО ХАСАГДСАН (2026-09-17, хэрэглэгчийн шүүмж:
+          «энэ илүү тоо юу вэ»). Дээд утга нь хамгийн урт зурвасын
+          ХАЖУУД аль хэдийн бүтнээр бичигдсэн байдаг тул тэнхлэг дээр
+          давтагдаад, уншигч хоёр өөр тоо байна гэж эргэлздэг байв.
+          Зурвасын урт нь өөрөө харьцааг хэлнэ. */}
+      <Bars
+        max={top}
+        items={items.map((it, i) => {
+          /* ⚠️ Хэмжигдээгүйг (`null`) 0 гэж ЗУРАХГҮЙ — «мэдээлэлгүй» ба
+             «тэг гүйцэтгэл» хоёр огт өөр утгатай (`Bars` null үед дүүргэлтгүй). */
+          const has = it.value != null && Number.isFinite(it.value);
+          return {
+            key: `${it.label}-${i}`,
+            label: it.label,
+            value: has ? it.value : null,
+            display: has ? (it.text ?? fmt(it.value as number)) : tr('мэдээлэлгүй'),
+            color: !anyHot || it.hot ? 'var(--data)' : 'color-mix(in oklab, var(--data) 60%, transparent)',
+          };
+        })}
+      />
     </figure>
   );
 }
@@ -221,7 +225,13 @@ export function TrendArea({
 import { LATE_GAP } from '@/lib/execReport';
 export { LATE_GAP };
 
-export function Meter({
+/**
+ * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): ӨӨРИЙН 8px хэмжүүр ХАСАГДСАН — `ui.Meter`
+ *    ШУУД (2px зам, төлөвлөгөөний зураас ±4px, hover = `useTip`). Энд зөвхөн тайлангийн
+ *    ДҮРЭМ үлдэв: хоцрогдлын өнгө (`LATE_GAP`) ба 2 оронтой «Бодит · Төлөвлөгөө» бичвэр.
+ *    Хэвлэлтийн өнгө `.meterBlock`-ийн `@media print`-д.
+ */
+export function PlanMeter({
   value,
   plan,
   label,
@@ -236,26 +246,20 @@ export function Meter({
   /* ⚠️ Хоцрогдлыг ӨНГӨӨР заана — статусын өнгө яг энэ зориулалттай.
      ⚠️ 2026-09-23: босго `LATE_GAP` — урьд нь `value < plan` (0.1 ч хоцрол
      шар) байсан тул KPI «хуваарийн дагуу» гэж бичихэд хэмжүүр шар болдог байв. */
-  const late = plan != null && Number.isFinite(plan) && plan - value >= LATE_GAP;
+  const hasP = plan != null && Number.isFinite(plan);
+  const late = hasP && plan - value >= LATE_GAP;
   return (
     <div className={c.meterBlock}>
-      <div className={c.meterLegend}>
-        <span>{label} · {tr('Бодит')}: <b>{pct(value, 2)}</b></span>
-        {plan != null && Number.isFinite(plan) && <span>{tr('Төлөвлөгөө')}: <b>{pct(plan, 2)}</b></span>}
-      </div>
-    <div className={c.meter} aria-hidden="true">
-      <span className={c.meterTrack}>
-        <span
-          className={`${c.meterFill} ${late ? c.t_warn : ''}`}
-          style={{ width: `${frac(value, 100) * 100}%` }}
-        />
-        {plan != null && Number.isFinite(plan) && (
-          <i className={c.meterPlan} style={{ left: `${frac(plan, 100) * 100}%` }}
-            title={`${tr('Төлөвлөгөө')} ${pct(plan, 2)}`} />
-        )}
-      </span>
-      <span className={c.meterVal}>{pct(value, 2)}</span>
-    </div>
+      <Meter
+        label={label}
+        value={value}
+        plan={hasP ? plan : null}
+        decimals={2}
+        tone={late ? 'warn' : 'data'}
+        display={hasP
+          ? `${tr('Бодит')}: ${pct(value, 2)} · ${tr('Төлөвлөгөө')}: ${pct(plan, 2)}`
+          : `${tr('Бодит')}: ${pct(value, 2)}`}
+      />
     </div>
   );
 }

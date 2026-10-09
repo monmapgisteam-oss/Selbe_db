@@ -270,6 +270,32 @@ export const CAT_LIGHT = [
   '#0b8ba0', '#e2683a', '#3b5fd9', '#3f9142',
   '#e07ba8', '#d69b1a', '#8a3fd0', '#d8413f',
 ] as const;
+/**
+ * ХЭВЛЭЛ / PDF / ИНФОГРАФИКИЙН ӨНГӨ — `globals.css`-ийн ЦАЙВАР сэдвийн
+ * (`:root, [data-theme='light']`) токены hex хуулбар.
+ *
+ * ⚠️ 2026-10-09: canvas, pdfmake, SVG шинж нь `var(--x)` задалдаггүй тул hex
+ *    заавал. Урьд нь файл бүр (`execInfographic`, `huvaariPdf`, `execPdf`)
+ *    өөрийн хуулбартай байж, токен солигдоход ХУУЧИРСАН (good #16a34a,
+ *    warn #ca8a04) — вэб ба цаас өөр өнгөтэй болсон. Одоо ГАНЦ эх; токентой
+ *    тэнцүү эсэхийг `printColors.check.mjs` CSS-ийг задлан шалгана —
+ *    токен солибол ЭНДЭЭ солихгүй бол тест унана.
+ * ⚠️ Зөвхөн ӨНГӨ. Цаасны дэвсгэр, бэх (`execPdf`-ийн дулаан цаас,
+ *    `huvaariPdf`-ийн #14181c) нь цаасны санаатай шийдвэр — энд оруулаагүй.
+ */
+export const PRINT_COLORS = {
+  /** --ink */ ink: '#1e293b',
+  /** --ink-2 */ ink2: '#475569',
+  /** --ink-3 */ ink3: '#5a6a80',
+  /** --data — ганц цувааны үндсэн өнгө */ data: '#2e7f8b',
+  /** --good */ good: '#147c3b',
+  /** --warn */ warn: '#9a5d07',
+  /** --bad */ bad: '#dc2626',
+  /** --chart-track */ track: '#e3eaf1',
+  /** --chart-plan (= --c3) */ plan: CAT_LIGHT[2],
+  /** --chart-actual (= --c2) */ actual: CAT_LIGHT[1],
+} as const;
+
 /** Харанхуй горимын слотууд (гадаргуу #102330 дээр баталгаажсан) */
 export const CAT_DARK = [
   '#17a2b8', '#d96a35', '#6f86ee', '#3fae52',

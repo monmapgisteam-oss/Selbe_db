@@ -241,7 +241,9 @@
   font-size: 11.5px;
 }
 
-/* ── Баганан жагсаалт: мөр нягт, зам зузаан (уншигдана) ── */
+/* ── Баганан жагсаалт: мөр нягт ──
+   ⚠️ 2026-10-09: зөвхөн мөр хоорондын ЗАЙ — замын зузааныг энд ДАРАХГҮЙ
+   (стандарт 2px нь `ui.module.css`/`CHART.barH`-д). */
 .shell[data-detail='1'] :global(.barsList) { gap: 2px; }
 
 .shell[data-detail='1'] :global(.barsList) > * { gap: 2px; }

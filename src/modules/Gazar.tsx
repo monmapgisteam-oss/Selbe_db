@@ -29,7 +29,7 @@ import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/
 import { statusKey, isClearedStatus, parcelAltAreaWhere, statusRawsWhere } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
-import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
+import { num, text, cat, NO_DATA } from '@/lib/format';
 import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { setNavDirty } from '@/lib/navGuard';
@@ -351,8 +351,11 @@ const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map(
  * (CAT_LIGHT[0]) руу шилжүүлэв — Dashboard-ын `shade(ACCENT…)`-тэй ижил хэв.
  * Зүсмэгүүд утга ялгаагүй тул нэг өнгөний сүүдрээр (зөвхөн Donut-д) зааглагдана;
  * Bars нь бүр ганц var(--data)-гаар зурагдана.
+ * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): нэг hex-ийн сүүдэр (`shades(CAT_LIGHT[0])`)
+ *    dark горимд дагадаггүй, 10 сүүдэр нь хоорондоо ялгагдахгүй байв → зэрэглэлийн слот
+ *    `cat(i)` (порталын Donut-ийн НЭГ дүрэм, CVD-ээр баталгаажсан, dark-тай).
  */
-const PALETTE = shades(CAT_LIGHT[0], 10);
+const PALETTE = Array.from({ length: 8 }, (_, i) => cat(i));
 
 /** м² → га */
 const ha = (m2: number) => num(m2 / 10_000, 2);
@@ -1134,7 +1137,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 </Stats>
                 <div className={g.ringBox}>
                   {/* «Чөлөөлсөн» — жинхэнэ САЙН төлөв тул var(--good) (нүүрний ижил цагирагтай нэг өнгө) */}
-                  <Ring value={pct} size={148} width={14} color="var(--good)" label={tr('чөлөөлсөн')} />
+                  <Ring value={pct} size="lg" color="var(--good)" label={tr('чөлөөлсөн')} />
                   <p className={g.ringNote}>
                     <b className="num">{d ? num(d.left.resolved) : ''}</b> /{' '}
                     <span className="num">{d ? num(d.left.n) : ''}</span> {tr('талбар')}
@@ -1505,7 +1508,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 </Stats>
                 {d.bType.length > 0 && (
                   <Donut
-                    items={d.bType} size={112} width={17} center={num(d.b.n)} centerLabel={tr('барилга')} stack
+                    items={d.bType} size="md" center={num(d.b.n)} centerLabel={tr('барилга')} stack
                     selected={flt?.grp === 'bType' ? flt.key : null}
                     onSelect={(k) => pickFlt({
                       grp: 'bType', key: k, label: tr('Барилга: {0}', k),
@@ -1546,7 +1549,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 </Stats>
                 {d.pRight.length > 0 && (
                   <Donut
-                    items={d.pRight} size={112} width={17} center={num(d.p.n)} centerLabel={tr('нэгж')} stack
+                    items={d.pRight} size="md" center={num(d.p.n)} centerLabel={tr('нэгж')} stack
                     selected={flt?.grp === 'pRight' ? flt.key : null}
                     onSelect={(k) => pickFlt({
                       grp: 'pRight', key: k, label: tr('Эрх: {0}', k),

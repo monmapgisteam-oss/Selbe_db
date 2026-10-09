@@ -5,7 +5,7 @@
  *
  * ⚠️ ЗАГВАР НЬ ҮНДСЭН СИСТЕМИЙНХ (2026-10-01, хэрэглэгч: «ТУХ хэсгийн бүх
  *    чартуудын дизайныг зас, үндсэн системээс зөрж байна»):
- *      · Хэмжигч — `ui.Bars`-ийн 2px зурвас (`barTrack`/`barFill`) + төлөвлөгөөний зураас;
+ *      · Хэмжигч — 2026-10-09-нөөс `ui.Meter` ШУУД (энэ файлын хуулбар хасагдсан);
  *      · Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.progLegend`): 11px, 18px шугам;
  *      · Гантт — «Хуваарь»-ийн зурвас (`huvaari.plBar` · `tlDone/Run/Late/Todo/None`):
  *        төлвөөр БҮРЭН будагдсан 3px булантай зурвас, дотроо цагаан шошго,
@@ -17,28 +17,13 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey } from '@/lib/format';
+import { dayKey, pct } from '@/lib/format';
+import { useTip } from '@/components/ui';
 import s from '../tuh.module.css';
 
-/* ══════════════════════ Хэмжигч ══════════════════════ */
-
-/** Хэвтээ хэмжигч (`ui.Bars`-ийн зурвас) — дүүргэлт 0–100, `plan` нь төлөвлөгөөний зураас */
-export function Meter({ value, plan, tone = 'data', wide }: {
-  value: number | null;
-  plan?: number | null;
-  tone?: 'data' | 'good' | 'warn' | 'bad' | 'mute';
-  /** ⚠️ 2026-10-05 (merge): Тайлангийн толгойн том хэмжигч (`ReportContents`, tezu-bonu) — өндөр 8px */
-  wide?: boolean;
-}) {
-  const v = value == null ? null : Math.max(0, Math.min(100, value));
-  const p = plan == null ? null : Math.max(0, Math.min(100, plan));
-  return (
-    <span className={`${s.meter} chartTrack${wide ? ` ${s.meterWide}` : ''}`} data-tone={tone}>
-      {v != null && <span className={`${s.meterFill} chartFill`} style={{ width: `${v}%` } as CSSProperties} />}
-      {p != null && <span className={s.meterPlan} style={{ left: `${p}%` } as CSSProperties} />}
-    </span>
-  );
-}
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): ЛОКАЛ `Meter` ХАСАГДСАН — `tailanChart.Meter`-тэй
+   хамт `components/ui.Meter` болж нэгдэв (2px зам, төлөвлөгөөний 2px `--ink` зураас ±4px,
+   null → хоосон зам). Дуудагчид `@/components/ui`-аас шууд импортлоно. */
 
 /* ══════════════════════ Тайлбар ══════════════════════ */
 
@@ -87,12 +72,16 @@ const MS_DAY = 86_400_000;
    хүснэгтийн `date()`-ээс нэг өдрөөр зөрдөг байв. */
 const ymd = (ms: number) => dayKey(ms);
 
-/** Гантт-ын тайлбар — «Хуваарь»-ийн өнгөөр */
+/**
+ * Гантт-ын тайлбар — «Хуваарь»-ийн өнгөөр.
+ * ⚠️ 2026-10-09: `globals.css`-ийн `--gantt-*` токен (Хуваарь ба ТУХ НЭГ эх) — урьд нь
+ *    энд ба `tuh.module.css`-д гараар хуулсан өнгө байв.
+ */
 export const GANTT_LEGEND = () => [
-  { key: 'done', label: tr('Дууссан'), color: 'var(--good)', kind: 'box' as const },
-  { key: 'run', label: tr('Хийгдэж байна'), color: 'var(--data)', kind: 'box' as const },
-  { key: 'late', label: tr('Хоцорсон'), color: 'var(--bad)', kind: 'box' as const },
-  { key: 'todo', label: tr('Эхлээгүй'), color: 'color-mix(in srgb, var(--ink-3) 45%, transparent)', kind: 'box' as const },
+  { key: 'done', label: tr('Дууссан'), color: 'var(--gantt-done)', kind: 'box' as const },
+  { key: 'run', label: tr('Хийгдэж байна'), color: 'var(--gantt-run)', kind: 'box' as const },
+  { key: 'late', label: tr('Хоцорсон'), color: 'var(--gantt-late)', kind: 'box' as const },
+  { key: 'todo', label: tr('Эхлээгүй'), color: 'var(--gantt-todo)', kind: 'box' as const },
   { key: 'none', label: tr('Гэрээлээгүй / мэдээлэлгүй'), color: 'var(--ink-3)', kind: 'hatch' as const },
 ];
 
@@ -101,6 +90,7 @@ export const GANTT_LEGEND = () => [
  * ⚠️ Огноогүй мөр ЗУРВАС ЗУРАХГҮЙ — «огноогүй» гэж бичнэ (өнөөдөр гэж таамаглахгүй).
  */
 export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number; to: number; now: number }) {
+  const tip = useTip();
   const span = Math.max(MS_DAY, to - from);
   const pos = (ms: number) => Math.max(0, Math.min(100, ((ms - from) / span) * 100));
   /* Сарын толгой — «Хуваарь»-ийн `plMonth`; 1-р сард оныг тодоор */
@@ -155,18 +145,24 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
                 <span
                   className={`${s.ganttBar} ${s[`st_${r.st ?? 'run'}`]}`}
                   style={{ left: `${pos(r.start!)}%`, width: `${w}%` } as CSSProperties}
-                  title={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${r.progress.toFixed(1)}%` : ''}`}
+                  /* ⚠️ 2026-10-09: `title`-ийн оронд дундын tooltip (графикийн загварыг жигдлэх) */
+                  {...tip.bind({
+                    label: typeof r.label === 'string' ? r.label : '',
+                    value: `${ymd(r.start!)} – ${ymd(r.end!)}`,
+                    hint: r.progress != null ? `${tr('Гүйцэтгэл')}: ${pct(r.progress, 1)}` : undefined,
+                    color: `var(--gantt-${r.st === 'done' ? 'done' : r.st === 'late' ? 'late' : r.st === 'todo' || r.st === 'none' ? 'todo' : 'run'})`,
+                  })}
                   /* ⚠️ 2026-10-06 (аудит): огноо нь ЗӨВХӨН `title`-д байсан тул гараар /
                      дэлгэц уншигчаар хүрэх аргагүй байв — `role="img"` + `aria-label`. */
                   role="img"
-                  aria-label={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${r.progress.toFixed(1)}%` : ''}`}
+                  aria-label={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${pct(r.progress, 1)}` : ''}`}
                 >
-                  {r.progress != null && w > 4 && <span className={s.ganttBarLab}>{`${r.progress.toFixed(r.progress < 10 ? 1 : 0)}%`}</span>}
+                  {r.progress != null && w > 4 && <span className={s.ganttBarLab}>{pct(r.progress, r.progress < 10 ? 1 : 0)}</span>}
                 </span>
               )}
               {!r.heading && has && r.progress != null && w <= 4 && (
                 <em className={s.ganttPct} style={{ left: `calc(${pos(r.end!)}% + 4px)` } as CSSProperties}>
-                  {`${r.progress.toFixed(r.progress < 10 ? 1 : 0)}%`}
+                  {pct(r.progress, r.progress < 10 ? 1 : 0)}
                 </em>
               )}
               {!r.heading && r.thin && r.thin.start != null && r.thin.end != null && (
@@ -176,7 +172,8 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
               {!r.heading && !has && !(r.marks?.length) && <em className={s.ganttNoDate}>{tr('огноогүй')}</em>}
               {r.marks?.map((m) => (
                 <span key={`${m.kind}${m.at}`} className={s.ganttMark} data-kind={m.kind}
-                  style={{ left: `${pos(m.at)}%` } as CSSProperties} title={`${m.label} · ${ymd(m.at)}`}
+                  style={{ left: `${pos(m.at)}%` } as CSSProperties}
+                  {...tip.bind({ label: m.label, value: ymd(m.at) })}
                   role="img" aria-label={`${m.label} · ${ymd(m.at)}`}>◆</span>
               ))}
               {now >= from && now <= to && <i className={s.ganttNow} style={{ left: `${pos(now)}%` } as CSSProperties} />}
@@ -184,6 +181,7 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
           </Tag>
         );
       })}
+      {tip.node}
     </div>
   );
 }

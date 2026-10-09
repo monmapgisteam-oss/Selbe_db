@@ -327,12 +327,15 @@
 .parkHeadTxt > span { font-size: 11px; color: var(--ink-3) }
 .parkHeadTxt > span b { color: var(--ink); font-variant-numeric: tabular-nums }
 
-/* Хангалтын зурвас — 100% нь нормын түвшин. Зам = порталын chart-track токен */
+/* Хангалтын зурвас — 100% нь нормын түвшин. Зам = порталын chart-track токен
+   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 5px → 2px (`CHART.barH`), радиус 1px.
+   `::before` — 2px зурвасыг hover-доход хэцүү тул ±6px үл үзэгдэх онох талбай. */
 .parkBar {
-  position: relative; height: 5px; margin-top: 9px;
-  background: var(--chart-track); border-radius: 99px; overflow: hidden;
+  position: relative; height: 2px; margin-top: 11px;
+  background: var(--chart-track); border-radius: 1px;
 }
-.parkBar span { display: block; height: 100%; border-radius: 99px; transition: width 0.6s var(--ease) }
+.parkBar::before { content: ''; position: absolute; inset: -6px 0 }
+.parkBar span { display: block; height: 100%; border-radius: 1px; transition: width 0.6s var(--ease) }
 .parkScale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--ink-3); letter-spacing: .3px }
 .parkFormula {
   margin-top: 9px; padding: 7px 9px; background: var(--surface-2); border-radius: var(--r-sm);
@@ -465,10 +468,8 @@
    эсэхийг ✓/✗ тэмдэг ба дээрх утгын өнгө (оноо) хэлнэ. Өгөгдөлгүй бол бүдэг. */
 .mNorm :global(.ok) { color: var(--good-ink) }
 .mNorm span { color: var(--ink-3) }
-/* ⚠️ Барын зам — порталын chart-track токен (бүх дашбоардын диаграм нэг загвар) */
-.mBar { height: 5px; background: var(--chart-track); border-radius: 99px; overflow: hidden; position: relative }
-.mBar i { display: block; height: 100%; border-radius: 99px; transition: width 0.6s var(--ease) }
-.mBar u { position: absolute; top: -2px; width: 1.5px; height: 9px; background: var(--ink); opacity: .55 }
+/* ⚠️ 2026-10-09: `.mBar` (5px гар хийцийн зурвас) УСТГАВ — `IndRow` нь порталын `Bars`
+   (2px, `--chart-track`) болсон («бүх графикийн загварыг жигдлэх»). */
 
 .dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
 .dGrid > div { background: var(--surface-2); border-radius: var(--r-sm); padding: 7px 9px }
@@ -503,6 +504,8 @@
 .radarGrid { fill: none; stroke: var(--line); stroke-width: 1 }
 .radarSpoke { stroke: var(--line); stroke-width: 1 }
 .radarArea { fill: var(--data); fill-opacity: .16; stroke: var(--data); stroke-width: 2; stroke-linejoin: round }
+/* ⚠️ 2026-10-09: өгөгдөлгүй тэнхлэгтэй үед ДҮҮРГЭЛТГҮЙ хөрш-ирмэгүүд — гүүр татахгүй (null ≠ 0) */
+.radarEdge { stroke: var(--data); stroke-width: 2; stroke-linecap: round }
 /* Радарын бичиг — үндсэн бэх (хоёр горимд токеноороо тохирно) */
 .radarLbl { fill: var(--ink); font-size: 8.5px }
 .radarTick { fill: var(--ink); font-size: 7px; opacity: .75 }
@@ -533,8 +536,9 @@
 .ind :global(.nm) { color: var(--ink-2); overflow-wrap: anywhere; text-align: left }
 .ind :global(.wt) { text-align: right; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums }
 .ind :global(.cnt) { text-align: right; font-size: 10.5px; color: var(--ink); font-variant-numeric: tabular-nums }
-.ind :global(.bar) { height: 5px; background: var(--chart-track); border-radius: 99px; overflow: hidden }
-.ind :global(.bar) i { display: block; height: 100%; border-radius: 99px; transition: width 0.6s var(--ease) }
+/* ⚠️ 2026-10-09: 5px → 2px зам, радиус 1px («бүх графикийн загварыг жигдлэх») */
+.ind :global(.bar) { height: 2px; background: var(--chart-track); border-radius: 1px; overflow: hidden }
+.ind :global(.bar) i { display: block; height: 100%; border-radius: 1px; transition: width 0.6s var(--ease) }
 
 /* Сонгосон үзүүлэлтийн норм + эх сурвалж */
 .indNote { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line) }

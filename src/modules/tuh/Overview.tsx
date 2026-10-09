@@ -19,9 +19,10 @@ import {
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
-import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
+import { Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
 /* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
-import { Section as Card } from '@/components/ui';
+/* ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
+import { Section as Card, Meter } from '@/components/ui';
 /* ⚠️ Системийн «Гүйцэтгэлийн явц» график — ТУХ өөрийн график зурахгүй (2026-09-30,
    хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
@@ -95,21 +96,20 @@ export function ReportAge({ r }: { r: Pick<TuhRow, 'lastReport' | 'reportAge'> }
  *   · Гүйцэтгэл — биет гүйцэтгэл; хугацаанаас доогуур бол улаан, эс бөгөөс ногоон.
  * ⚠️ Аль нэг нь `null` бол тэр мөр «—» (0 гэж зурахгүй); өнгө зөвхөн хоёулаа байхад.
  */
+/* ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёр `ui.Meter` мөр — нэр + утга дээр, 2px зам доор
+   (`Bars`-ийн мөр). Урьд нь 8px өөрийн зурвас, хугацаа нь бүхэл хувь (`pct(.., 0)`) байв —
+   одоо хоёулаа 1 оронтой (`pct()`; 2026-09-09-ний «бутархайгаар» дүрэм). */
 export function DuoBars({ elapsed, progress }: { elapsed: number | null; progress: number | null }) {
   const tone = elapsed != null && progress != null ? (progress < elapsed ? 'bad' : 'good') : 'data';
-  const row = (label: string, v: number | null, cls: string, txt: string) => (
-    <div className={s.duoRow}>
-      <span className={s.duoLbl}>{label}</span>
-      <span className={s.duoTrack}>
-        {v != null && <i className={cls} style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />}
-      </span>
-      <span className={s.duoVal}>{txt}</span>
-    </div>
-  );
   return (
     <div className={s.duo}>
-      {row(tr('Хугацаа'), elapsed, s.duoTime, elapsed == null ? '—' : tr('{0} өнгөрсөн', pct(elapsed, 0)))}
-      {row(tr('Гүйцэтгэл'), progress, s[`duo_${tone}`], pct(progress))}
+      <Meter
+        label={tr('Хугацаа')}
+        value={elapsed}
+        tone="mute"
+        display={elapsed == null ? undefined : tr('{0} өнгөрсөн', pct(elapsed, 1))}
+      />
+      <Meter label={tr('Гүйцэтгэл')} value={progress} tone={tone} />
     </div>
   );
 }
@@ -274,7 +274,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.heroFig}>
           <span className={s.eyebrow}>{tr('Орон сууцны гүйцэтгэл')}</span>
           <span className={s.heroNum}>{pct(m.hero.actual)}</span>
-          <Meter value={m.hero.actual} plan={m.hero.planContract} />
+          <span className={s.meterGap}><Meter value={m.hero.actual} plan={m.hero.planContract} /></span>
           <span className={s.heroNote}>
             {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
             {/* ⚠️ 2026-10-09 (аудит №2): гүйцэтгэгчийн төлөвлөгөө хуваарьтай багцаар — хасагдсаныг нэрлэнэ */}
@@ -436,7 +436,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                     <td>{ipc.contracts.length > 1 ? tr('{0} гэрээ', num(ipc.contracts.length)) : (ipc.contracts[0]?.contractor || '—')}</td>
                     <td className={s.num}>{mnt(ipc.contractTotal)}</td>
                     <td style={{ minWidth: 180 }}>
-                      <Meter value={ipc.paidPct} plan={r.progress} />
+                      <span className={s.meterGap}><Meter value={ipc.paidPct} plan={r.progress} /></span>
                       <small>{mnt(ipc.paid)} · {pct(ipc.paidPct)}</small>
                       {ipc.paidOther != null && ipc.paidOther !== 0 && (
                         <small>{tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(ipc.paidOther))}</small>

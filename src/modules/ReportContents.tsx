@@ -3,8 +3,9 @@
 import type { ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
-/* ⚠️ 2026-10-04: ТУХ-ын хэмжигч (дүүргэлт = бодит, зураас = төлөвлөгөө) — шинээр зурахгүй */
-import { Meter as HeroMeter } from '@/modules/tuh/charts';
+/* ⚠️ 2026-10-04: ТУХ-ын хэмжигч (дүүргэлт = бодит, зураас = төлөвлөгөө) — шинээр зурахгүй.
+   ⚠️ 2026-10-09: `ui.Meter wide` (8px, `CHART.meterWideH`) — ТУХ ба тайлангийн хуулбарууд нэгдэв. */
+import { Meter } from '@/components/ui';
 import r from './report.module.css';
 
 /**
@@ -26,7 +27,7 @@ export function ReportHero({ meta, title, sub, figLabel, value, plan, loading, n
       <div className={r.heroFig}>
         <span className={r.eyebrow}>{figLabel}</span>
         <span className={r.heroNum}>{loading ? '…' : pct(value, 1)}</span>
-        <HeroMeter value={loading ? null : value} plan={loading ? null : plan} wide />
+        <Meter value={loading ? null : value} plan={loading ? null : plan} wide />
         {note && <span className={r.heroNote}>{note}</span>}
       </div>
     </header>

@@ -62,6 +62,7 @@ import {
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { cat, shade, num, pct, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
+import { CHART, lineSegments, monotonePath } from '@/lib/chartStyle';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgProgOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -1277,14 +1278,15 @@ function CatChart({ packs, housing }: {
       title={tr('Төслийн төрөл')}
       note={tr('{0} багц ажил', num(packs.length))}
     >
+      {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): ангилал бүр `cat(i)` (dark-тай токен) —
+          урьд нь `shade(HUE)` hex. Мэдээлэлгүй ангилал `null` (зурвасгүй) — 0 БИШ. */}
       <Bars
-        color={HUE}
         max={100}
         items={rows.map((r, i) => ({
           key: r.c.key,
           label: `${r.c.name()} · ${num(r.n)}`,
-          value: r.mean ?? 0,
-          color: shade(HUE, i, rows.length),
+          value: r.mean,
+          color: cat(i),
           display: r.wait ? '…' : r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
         }))}
       />
@@ -1321,6 +1323,9 @@ function LevelsCard({
   all.forEach((k) => { const v = pm.get(k)?.overall; if (v == null || !Number.isFinite(v)) noData++; });
   return (
     <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', total, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
+      {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): `shade(HUE)` САНААТАЙ үлдэв — газрын зургийн
+          блокийн давхарга ба түүний тайлбар (`packLegend`) ЯГ эдгээр өнгөөр будагддаг;
+          зурагтай ижил байх нь токеноос чухал (төлөвлөгөөний «HUE identity» дүрэм). */}
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({
@@ -1475,19 +1480,30 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(100, v)) / 100) * plotH;
 
   const planPts = rows.map((r, i) => ({ x: xFor(i), y: yFor(r.plan) }));
-  /* ⚠️ Зөвхөн ХЭМЖИГДСЭН цэг — дундах цоорхойг 0 гэж дүүргэхгүй */
-  const actPts = measured.map((i) => ({ x: xFor(i), y: yFor(rows[i].act as number) }));
+  /* ⚠️ 2026-10-09 («графикийн жигдрэл»): `null` = ЦООРХОЙ. Урьд нь зөвхөн хэмжигдсэн
+     цэгүүдийг (`measured`) нэг замд оруулж, ДУНДАХ хэмжилтгүй сарыг ГҮҮРЭЭР холбодог
+     байв — «тэр сард X% байсан» гэсэн худал уншилт (CLAUDE.md: null ≠ 0, цоорхой
+     үлдээнэ). Одоо `chartStyle.lineSegments` нь null дээр муруйг ТАСАЛНА. */
+  const actPts = rows.map((r, i) => (r.act == null ? null : { x: xFor(i), y: yFor(r.act) }));
+  /* ⚠️ Нэг МОНОТОН муруй (`chartStyle`) — локал Catmull-Rom (`curve`) хасагдсан:
+     хашилттай ч гэсэн тэр нь хуримтлагдсан муруйд бага зэрэг хэтэрдэг байв. */
+  const planSegs = lineSegments(planPts);
+  const actSegs = lineSegments(actPts);
 
   /*
    * ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөөний муруйгаас бодит муруй хүртэл.
    * ⚠️ Хоёр шугам ойрхон явахад ялгаа нь нүдэнд баригддаггүй; будсанаар
    *    зөрүү нь ХЭМЖЭЭ болж харагдана.
+   * ⚠️ 2026-10-09: бодит муруйн ХЭСЭГ БҮРД тусдаа талбай — цоорхой сард зөрүү
+   *    будагдахгүй (хэмжилтгүй сарын зөрүү ТОДОРХОЙГҮЙ). Буцах ирмэг нь бодит
+   *    муруйн ЯГ ижил монотон зам (урвуу чиглэлд) — урьд нь шулуун хугарал
+   *    байсан тул талбайн ирмэг муруйгаас зөрж харагддаг байв.
    */
-  const gapArea = actPts.length > 1
-    ? curve(measured.map((i) => planPts[i]))
-      + ' L ' + [...actPts].reverse().map((q) => q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' L ')
-      + ' Z'
-    : '';
+  const gapAreas = actSegs.filter((sg) => !sg.single).map((sg) => {
+    const top = monotonePath(planPts.slice(sg.from, sg.to + 1));
+    const back = monotonePath([...sg.pts].reverse()).replace(/^M/, 'L');
+    return `${top} ${back} Z`;
+  });
 
   /* ⚠️ 2026-09-25: ХУУЧИРСАН `hi` — багц солиход `months` богиносож, өмнөх
      hover-ийн индекс мужаас гарч `rows[hi].plan` дээр УНАДАГ байв. */
@@ -1499,6 +1515,14 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
      сард `planM` = null тул сарын эцсийн цэг хэвээр. */
   const ptPlan = pt ? (pt.act != null ? (pt.planM ?? pt.plan) : pt.plan) : 0;
   const anchor =(i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
+  /* ⚠️ 2026-10-09: S-муруйн НЭГ эх — `globals.css`-ийн `--chart-plan`/`--chart-actual`
+     (= `--c3`/`--c2`, урьдын `cat(2)`/`cat(1)`-тэй ижил утга, dark-тай). */
+  const PLAN_C = 'var(--chart-plan)';
+  const ACT_C = 'var(--chart-actual)';
+  /* Цэгийн тэмдэг — r = `CHART.markerR`, эргэн тойронд гадаргуун цагираг (`CHART.ring`) */
+  const dot = (cx: number, cy: number, fill: string, r: number = CHART.markerR) => (
+    <circle cx={cx} cy={cy} r={r} className={ts.progDot} style={{ fill, strokeWidth: CHART.ring }} />
+  );
 
   /*
    * ⚠️ ЦЭГ БҮР ДЭЭР УТГА — «Санхүүжилтийн явц» (ComboChart)-ийн ЯГ тэр дүрэм.
@@ -1523,13 +1547,13 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   );
   const planLbl = fitPct(
     rows.map((_, i) => i).filter((i) => i !== N - 1),
-    (i) => `${rows[i].plan.toFixed(1)}%`,
+    (i) => pct(rows[i].plan, 1),
   );
   /* ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
      бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана. */
   const actLbl = fitPct(
     measured.filter((i) => i !== N - 1 && i !== lastAct),
-    (i) => `${(rows[i].act as number).toFixed(1)}%`,
+    (i) => pct(rows[i].act, 1),
   );
   /* X тэнхлэгийн он·сар — «2026-09» */
   const axisLbl = new Set(fitLabels(
@@ -1557,10 +1581,10 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
         *    ойлгодог байв. Одоо дата байхгүйг ИЛ хэлнэ.
         */}
       <div className={ts.progLegend}>
-        <span><i className={ts.progDash} style={{ borderTopColor: cat(2) }} />{tr('Төлөвлөсөн')}</span>
+        <span><i className={ts.progDash} style={{ borderTopColor: PLAN_C }} />{tr('Төлөвлөсөн')}</span>
         {measured.length > 0 && (
           <>
-            <span><i className={ts.progSolid} style={{ background: cat(1) }} />{tr('Бодит гүйцэтгэл')}</span>
+            <span><i className={ts.progSolid} style={{ background: ACT_C }} />{tr('Бодит гүйцэтгэл')}</span>
             <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
           </>
         )}
@@ -1612,7 +1636,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             пикселтэй тэнцүү тул үсэг гажихаа болив. */}
         <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
           {/* Тор — 0/25/50/75/100%, шошго торны ДЭЭР (зүүн ирмэгт) */}
-          {[0, 25, 50, 75, 100].map((t) => {
+          {CHART.grid.map((t) => {
             const gy = yFor(t);
             return (
               <g key={t}>
@@ -1625,19 +1649,38 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           })}
 
           {/* ЗӨРҮҮ — байрлалаараа өнгөтэй: бодит нь доогуур бол улаан */}
-          {gapArea && <path d={gapArea} className={behind ? ts.progGapBad : ts.progGapGood} />}
+          {gapAreas.map((d, k) => (
+            <path key={`gap-${k}`} d={d} className={behind ? ts.progGapBad : ts.progGapGood} style={{ opacity: CHART.gapFill }} />
+          ))}
 
-          {planPts.length > 1 && (
-            <path d={curve(planPts)} className={ts.progPlan} style={{ stroke: cat(2) }} vectorEffect="non-scaling-stroke" />
-          )}
-          {actPts.length > 1 && (
-            <path d={curve(actPts)} className={ts.progAct} style={{ stroke: cat(1) }} vectorEffect="non-scaling-stroke" />
-          )}
+          {/* ⚠️ 2026-10-09: төлөвлөгөө 2px ТАСАРХАЙ (`CHART.planDash`), бодит 2px БҮТЭН (урьд 1.6 / 2.8).
+              Зузаан биш ХЭЛБЭР нь үүргийг хэлнэ — бүх S-муруйд нэг дүрэм. */}
+          {planSegs.map((sg) => (sg.single ? null : (
+            <path
+              key={`pl-${sg.from}`}
+              d={sg.d}
+              className={ts.progPlan}
+              style={{ stroke: PLAN_C, strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash }}
+              vectorEffect="non-scaling-stroke"
+            />
+          )))}
+          {actSegs.map((sg) => (sg.single
+            /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул ЦЭГ */
+            ? <g key={`as-${sg.from}`}>{dot(sg.pts[0].x, sg.pts[0].y, ACT_C)}</g>
+            : (
+              <path
+                key={`as-${sg.from}`}
+                d={sg.d}
+                className={ts.progAct}
+                style={{ stroke: ACT_C, strokeWidth: CHART.stroke }}
+                vectorEffect="non-scaling-stroke"
+              />
+            )))}
 
           {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд */}
           {rows.map((r, i) => (planLbl.has(i) ? (
             <g key={`pl-${i}`}>
-              <circle cx={xFor(i)} cy={yFor(r.plan)} r={2.5} className={ts.progDot} style={{ fill: cat(2) }} />
+              {dot(xFor(i), yFor(r.plan), PLAN_C)}
               {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
                   SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
               {/* ⚠️ ОБЬЁМ нь хувийн ХАЖУУД (2026-09-09, хэрэглэгчийн
@@ -1648,10 +1691,10 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
                 x={xFor(i)}
                 y={Math.max(12, yFor(r.plan) - 9)}
                 className={ts.progVal}
-                style={{ fill: cat(2) }}
+                style={{ fill: PLAN_C }}
                 textAnchor={anchor(i)}
               >
-                {r.plan.toFixed(1)}%
+                {pct(r.plan, 1)}
                 {r.vol != null && (
                   <tspan className={ts.progVol}>{` · ${num(r.vol, 0)}`}</tspan>
                 )}
@@ -1665,31 +1708,31 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
                  (2026-08 дээр «0%» хоёр удаа гарч байсан). */}
           {rows.map((r, i) => (actLbl.has(i) && r.act != null ? (
             <g key={`ac-${i}`}>
-              <circle cx={xFor(i)} cy={yFor(r.act)} r={2.5} className={ts.progDot} style={{ fill: cat(1) }} />
+              {dot(xFor(i), yFor(r.act), ACT_C)}
               <text
                 x={xFor(i)}
                 y={Math.min(padT + plotH - 4, yFor(r.act) + 16)}
                 className={ts.progVal}
-                style={{ fill: cat(1) }}
+                style={{ fill: ACT_C }}
                 textAnchor={anchor(i)}
               >
-                {r.act.toFixed(1)}%
+                {pct(r.act, 1)}
               </text>
             </g>
           ) : null))}
 
           {/* Сүүлийн цэгүүд — томоор, тодоор */}
           <g>
-            <circle cx={xFor(N - 1)} cy={yFor(rows[N - 1].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
-            <text x={xFor(N - 1) + 9} y={yFor(rows[N - 1].plan) + 4} className={ts.progEnd} style={{ fill: cat(2) }}>
-              {rows[N - 1].plan.toFixed(1)}%
+            {dot(xFor(N - 1), yFor(rows[N - 1].plan), PLAN_C, CHART.markerR + 1)}
+            <text x={xFor(N - 1) + 9} y={yFor(rows[N - 1].plan) + 4} className={ts.progEnd} style={{ fill: PLAN_C }}>
+              {pct(rows[N - 1].plan, 1)}
             </text>
           </g>
           {curAct != null && (
             <g>
-              <circle cx={xFor(lastAct)} cy={yFor(curAct)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
-              <text x={xFor(lastAct) + 9} y={yFor(curAct) + 4} className={ts.progEnd} style={{ fill: cat(1) }}>
-                {curAct.toFixed(1)}%
+              {dot(xFor(lastAct), yFor(curAct), ACT_C, CHART.markerR + 1)}
+              <text x={xFor(lastAct) + 9} y={yFor(curAct) + 4} className={ts.progEnd} style={{ fill: ACT_C }}>
+                {pct(curAct, 1)}
               </text>
             </g>
           )}
@@ -1698,10 +1741,8 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           {hv != null && (
             <g>
               <line x1={xFor(hv)} x2={xFor(hv)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
-              <circle cx={xFor(hv)} cy={yFor(rows[hv].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
-              {rows[hv].act != null && (
-                <circle cx={xFor(hv)} cy={yFor(rows[hv].act as number)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
-              )}
+              {dot(xFor(hv), yFor(rows[hv].plan), PLAN_C, CHART.markerR + 1)}
+              {rows[hv].act != null && dot(xFor(hv), yFor(rows[hv].act as number), ACT_C, CHART.markerR + 1)}
             </g>
           )}
 
@@ -1716,20 +1757,24 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
         {pt && (
           <div
             className={ts.progTip}
+            /* ⚠️ 2026-10-09: `xFor(hv)` ПИКСЕЛЭЭР — `viewBox` = бодит өргөн (`W`) тул
+               муруйн цэгтэй яг давхцана. Урьд нь `hv/(N-1)`%-аар (wrap-ийн бүтэн өргөн)
+               тул `padL`/`padR`-ийн хэрээр цэгээс зөрдөг байв — ComboChart-ын
+               2026-10-07-ны засвартай ижил. */
             style={{
-              left: `${(hv! / Math.max(1, N - 1)) * 100}%`,
+              left: xFor(hv!),
               transform: `translateX(${hv! < N / 2 ? '10px' : 'calc(-100% - 10px)'})`,
             }}
           >
             <p className={`num ${ts.progTipHd}`}>{pt.label}</p>
             <p className={ts.progTipRow}>
-              <i style={{ background: cat(2) }} />
-              {tr('Төлөвлөсөн')}<b className="num">{ptPlan.toFixed(1)}%</b>
+              <i style={{ background: PLAN_C }} />
+              {tr('Төлөвлөсөн')}<b className="num">{pct(ptPlan, 1)}</b>
             </p>
             <p className={ts.progTipRow}>
-              <i style={{ background: cat(1) }} />
+              <i style={{ background: ACT_C }} />
               {/* ⚠️ «—» нь ХЭМЖИГДЭЭГҮЙ гэсэн үг; жинхэнэ 0% нь «0.0%» гэж гарна */}
-              {tr('Бодит')}<b className="num">{pt.act == null ? '—' : `${pt.act.toFixed(1)}%`}</b>
+              {tr('Бодит')}<b className="num">{pct(pt.act, 1)}</b>
             </p>
             <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
               {tr('Зөрүү')}
@@ -1743,37 +1788,4 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
       </div>
     </Section>
   );
-}
-
-/** Catmull-Rom → куб Безье: муруй жигд, эвдрэлгүй */
-function curve(pts: { x: number; y: number }[]): string {
-  if (!pts.length) return '';
-  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? p2;
-    /*
-     * ⚠️ ХЯНАЛТЫН ЦЭГИЙГ СЕГМЕНТИЙН ХҮРЭЭНД ХАШНА (2026-08-27).
-     *
-     * Catmull-Rom нь хөрш цэгүүдийн ХАЗАЙЛТААР хяналтын цэгээ тавьдаг тул
-     * «тэгш → огцом өсөх» шилжилт дээр муруй хүрээнээсээ ГАРЧ, доошоо
-     * унжина. Гүйцэтгэл/санхүүжилт нь ӨССӨН дүн — буурч харагдах нь
-     * «ажил ухарсан» гэсэн ХУДАЛ уншилт өгнө (Багц 2-ын төлөвлөгөө
-     * 2026-05..06-д 33%-иас доош унжиж байлаа).
-     *
-     * Хашилт нь гөлгөрийг хадгална: зөвхөн ХЭТЭРСЭН тохиолдолд л
-     * сегментийн ирмэг рүү татна.
-     */
-    const clamp = (v: number, a: number, b: number) =>
-      Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
-    const c1y = clamp(p1.y + (p2.y - p0.y) / 6, p1.y, p2.y);
-    const c2y = clamp(p2.y - (p3.y - p1.y) / 6, p1.y, p2.y);
-    d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(1)} ${c1y.toFixed(1)}`
-      + ` ${(p2.x - (p3.x - p1.x) / 6).toFixed(1)} ${c2y.toFixed(1)}`
-      + ` ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
 }

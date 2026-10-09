@@ -42,6 +42,7 @@ import { AUTO_PREFIX } from '@/lib/ipcAuto';
 import { IpcDocDialog, hasIpcDoc } from '@/components/IpcDocDialog';
 import { loadSheetStarts, sheetsOf } from '@/lib/ipcDocLoad';
 import { lateSheetsOf, type IpcSheetStart } from '@/lib/ipcDoc';
+import { useTip } from '@/components/ui';
 import s from './ipcTable.module.css';
 
 /**
@@ -113,7 +114,9 @@ function Head({
   /* ⚠️ Хувь нь 0–100 — `pct()` 100-аар үржүүлдэггүй. Мөн `null` үед
      туузыг ОГТ зурахгүй (0% гэж зурвал «олгоогүй» гэж худлаа уншигдана). */
   const p = b.paidPct;
+  const tip = useTip();
   return (
+    <>
     <button
       type="button"
       className={s.gBtn}
@@ -136,24 +139,36 @@ function Head({
             <span className={s.gSumLbl}>{tr('олгосон')}</span>
             {money(b.paidTotal)}
           </span>
-          <span className={s.gPct}>
+          {/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын хэвтээ баганын КАНОН —
+              утга ДЭЭР (`--ink-2`, `.num`), доор 2px зам (`--chart-track`); hover `useTip`.
+              Урьд нь 6px тууз | хувь нэг эгнээ байв. */}
+          <span
+            className={s.gPct}
+            {...tip.bind({
+              label: b.title,
+              value: pct(p),
+              hint: `${tr('олгосон')} ${money(b.paidTotal)} / ${tr('гэрээт')} ${money(b.contractTotal)}`,
+            })}
+          >
             {/* ⚠️ Тууз нь ЗӨВХӨН хэмжигдсэн үед. Өргөнийг 100-д таслав —
                 хэтэрсэн гэрээ (>100%) туузыг нүднээс гаргахгүй. */}
             {p == null ? (
               <span className={s.gPctNone}>—</span>
             ) : (
               <>
+                <span className={`${s.gPctNum} num`}>{pct(p)}</span>
                 <span className={s.bar} aria-hidden="true">
                   <span
                     className={s.barIn}
                     style={{ width: `${Math.min(100, Math.max(0, p))}%` }}
                   />
                 </span>
-                <span className={s.gPctNum}>{pct(p)}</span>
               </>
             )}
           </span>
     </button>
+    {tip.node}
+    </>
   );
 }
 

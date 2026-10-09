@@ -293,13 +293,15 @@
   color: var(--ink-3);
   white-space: nowrap;
 }
-/* Харьцааны зурвас — нүдний өнгөөр, ард нь бүдэг зам (утга 0 ч ЗАМ харагдана) */
+/* Харьцааны зурвас — нүдний өнгөөр, ард нь зам (утга 0 ч ЗАМ харагдана)
+   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 5px → 2px, зам нь нүдний өнгөний
+   20% холимог БИШ порталын `--chart-track` (бүх хэвтээ баганатай нэг). */
 .ktBar {
   width: 100%;
-  height: 5px;
-  border-radius: 3px;
+  height: 2px;
+  border-radius: 1px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--t) 20%, transparent);
+  background: var(--chart-track);
 }
 .ktBar span {
   display: block;
@@ -408,7 +410,7 @@
    утгыг нэг мөрөнд зурж чаддаггүй тул энд түүнийг хэрэглээгүй). */
 /* «Бусад үзүүлэлт» — ХАБ-ын бүртгэлүүд (2026-10-08): нэр · 7 хоног, доор нь долоо хоногийн харьцаа */
 .regs { display: flex; flex-direction: column; gap: 2px; }
-.regHead, .regRow {
+.regHead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px;
   align-items: baseline;
@@ -416,12 +418,8 @@
 }
 .regHead { padding-bottom: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .regHead span:not(:first-child) { text-align: right; }
-.regRow { position: relative; padding: 8px 0 9px; font-size: 12.5px; }
-.regRow b { text-align: right; font-weight: 700; color: var(--ink); }
-.regLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-/* Доод зураас — саарал суурь, дээр нь нийтийн харьцааны өнгөт хэсэг */
-.regRow::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--line); }
-.regBar { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--data); z-index: 1; }
+/* ⚠️ 2026-10-09: `.regRow`/`.regLabel`/`.regBar` УСТГАВ — мөрүүд порталын `Bars` болсон
+   (зам нь `--line` биш `--chart-track`, hover `useTip`). */
 
 /* «Компаниар — монгол, гадаад»-ын тайлбар (2026-10-07) */
 .mixLegend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); }
@@ -1186,12 +1184,13 @@
   min-height: 0;
   padding: 2px 0;
 }
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): нэр|зурвас|утга нэг эгнээний grid →
+   порталын `Bars` мөр: дээр нэр + утга, доор 2px зам (ui.module.css `.barRow`-тэй ижил тоо). */
 .scoreCol {
-  display: grid;
-  /* ⚠️ 2026-10-09: 38→50px — хувийн өмнө түвшний тэмдэг (✓ ▲ !) */
-  grid-template-columns: minmax(56px, auto) minmax(0, 1fr) 50px;
-  align-items: center;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
   padding: 2px 0;
   font: inherit;
   color: inherit;
@@ -1201,41 +1200,49 @@
   cursor: pointer;
 }
 .scoreCol:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
+.scoreTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
 .scoreName {
-  font-size: 11.5px;
-  font-weight: 600;
+  min-width: 0;
+  font-size: 12px;
   color: var(--ink-2);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* ⚠️ 2026-10-09: 12px → 2px зам (`--chart-track`), радиус 1px */
 .scoreTrack {
   position: relative;
-  height: 12px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--ink-3) 14%, transparent);
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--chart-track);
 }
-/* ⚠️ 2026-10-08 (хэрэглэгч): дүүргэлт 50%, хүрээ нь бүтэн өнгө */
+/* ⚠️ 2026-10-09: 2026-10-08-ны «дүүргэлт 50% + хүрээ» нь 12px зурвасных байв — 2px-д
+   хүрээ утгагүй тул бүтэн өнгө (`--c` = `scoreColor`) */
 .scoreBar {
   display: block;
-  box-sizing: border-box;
   height: 100%;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 50%, transparent);
-  border: 1.5px solid var(--c);
+  border-radius: 1px;
+  background: var(--c);
   transition: width 0.25s;
 }
+/* Зорилтот 90% — зурвасаас ±4px сунана (`CHART.planTickOut`) */
 .scoreTarget {
   position: absolute;
-  top: -3px;
-  bottom: -3px;
+  top: -4px;
+  bottom: -4px;
   width: 0;
   border-left: 1.5px dashed var(--ink-2);
   opacity: 0.8;
   pointer-events: none;
 }
 .scoreVal {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
+  flex: none;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-2);
   text-align: right;
 }
 .scoreMark { display: inline-block; min-width: 1em; margin-right: 2px; text-align: center; }

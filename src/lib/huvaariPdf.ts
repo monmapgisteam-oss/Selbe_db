@@ -40,7 +40,7 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CanvasElement, Column } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey, num } from '@/lib/format';
+import { dayKey, num, PRINT_COLORS } from '@/lib/format';
 import { spanDays, type Span, type Status } from '@/lib/plan';
 import { stText } from '@/modules/huvaari/util';
 import { renderPdfBase64, download } from '@/lib/emailReport';
@@ -126,9 +126,12 @@ const C = {
   gridBig: '#c3cad4',
   head: '#eef1f5',
   group: '#f3f5f8',
-  good: '#16a34a',
-  data: '#2e7f8b',
-  bad: '#dc2626',
+  /* ⚠️ 2026-10-09: төлвийн өнгө = дэлгэцийн `--gantt-done/run/late`
+     (= --good/--data/--bad), `PRINT_COLORS`-оос. Урьд good #16a34a хуучирсан
+     хуулбар байв. Бэх (ink/ink2) нь цаасны #14181c хэвээр (`reportPdf`-тэй ижил). */
+  good: PRINT_COLORS.good,
+  data: PRINT_COLORS.data,
+  bad: PRINT_COLORS.bad,
   overlap: '#a21caf',
   /* ⚠️ ТӨЛӨВЛӨСӨН (эхлээгүй · гүйцэтгэл хэмжигдээгүй) — ЦЭНХЭР, саарал БИШ
      (2026-09-30, хэрэглэгч: «хуваарьгүй ажил юу саарал вэ»). Цайвар саарал

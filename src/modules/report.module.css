@@ -279,6 +279,9 @@
   .sub, .note, .eyebrow { color: #555; }
   /* Тэргүү хэсэг — цаасан дээр цагаан дэвсгэр, хар зааг (өнгө хэвлэгдэхгүй) */
   .lead { background: #fff; border-color: #999; border-left-color: #000; color: #000; }
+  /* ⚠️ 2026-10-09: толгойн `ui.Meter wide` — зам/төлөвлөгөөний зураасны ТОКЕНЫГ цаасны утгаар
+     (харанхуй горимд --ink бараг цагаан тул цагаан цаасан дээр зураас алга болно). */
+  .heroFig { --ink: #000; --chart-track: #e5e7eb; }
   .table th, .table td { border-color: #999; }
   .table th { position: static; background: #eee; color: #000; }
   .total td { background: #f6f6f6; }

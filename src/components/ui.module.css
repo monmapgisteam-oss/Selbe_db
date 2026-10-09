@@ -317,7 +317,8 @@
    ТЕКСТИЙН жингээр (нэр medium + ink болно), бусад нь бүдгэрнэ. */
 .bars { display: flex; flex-direction: column; gap: 4px; }
 .barRow { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; }
-.barRowDim .barName, .barRowDim .barVal { opacity: 0.4; }
+/* ⚠️ 2026-10-09 (графикийн жигдрэл): бүдгэрэлт БҮХ төрөлд 0.35 (`CHART.dim`) */
+.barRowDim .barName, .barRowDim .barVal { opacity: 0.35; }
 .barClick { border-radius: var(--r-sm); padding: 3px 4px; margin: -3px -4px; transition: background 0.12s; }
 .barClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 8%, transparent); }
 .barOn { background: transparent; }
@@ -338,7 +339,8 @@
 }
 .barNameOn { font-weight: 500; color: var(--ink); }
 /* `flex: none` + `nowrap` — бүтэн мөнгөн дүн шахагдаж мөр таслахгүй (2026-09-01) */
-.barVal { flex: none; white-space: nowrap; font-size: 11.5px; color: var(--ink-3); transition: color 0.12s; }
+/* ⚠️ 2026-10-09: утга `--ink-2` (урьд нь --ink-3) — нэр ба утга ижил жинтэй уншигдана */
+.barVal { flex: none; white-space: nowrap; font-size: 11.5px; color: var(--ink-2); transition: color 0.12s; }
 .barValOn { color: var(--ink); }
 .barTrack {
   display: block;
@@ -364,6 +366,39 @@
   transition: width 0.6s var(--ease), opacity 0.12s;
 }
 
+/* ── Хэмжигч (`Meter`) ──
+   ⚠️ 2026-10-09: `tailanChart` (8px бөөрөнхий) ба `tuh/charts` (2px) хоёр хувилбарыг
+   нэгтгэв — `Bars`-ийн мөр: дээр нэр + утга (`.barTop`), доор 2px зам. Төлөвлөгөө нь
+   2px `--ink` зураас, замаас ±4px сунана (тиймээс замд `overflow: hidden` БАЙХГҮЙ). */
+.meterRow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 60px; }
+.meterTrack {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--chart-track);
+}
+/* Тайлангийн толгойн том хэмжигч — `CHART.meterWideH` */
+.meterWide { height: 8px; border-radius: 4px; }
+.meterFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: var(--tone, var(--data));
+  transition: width 0.6s var(--ease);
+}
+.meterPlan {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+
 /* Урт жагсаалтыг задлах / хумих */
 .more {
   align-self: flex-start;
@@ -379,18 +414,20 @@
 
 /* ── Хэсэгчилсэн мөр (stacked) ── */
 /* ⚠️ 8px → 10px: хэсгүүд нь одоо тусгаарлагч зайтай тул нимгэн зурвасанд
-   хэсэг бүр нь өөрөө хэтэрхий нарийсч байв. */
-.stack { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--chart-track); }
-/* Зэргэлдээ хэсгүүдийн хооронд ГАДАРГУУН өнгөт 1.5px зай — ойролцоо өнгөтэй
+   хэсэг бүр нь өөрөө хэтэрхий нарийсч байв.
+   ⚠️ 2026-10-09 (графикийн жигдрэл): 8px, радиус 4px, сегмент хооронд 2px зай
+   (`CHART.stackH`/`stackGap`) — CEO StatusPanel/DimBar ижил хэмжээстэй болно. */
+.stack { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
+/* Зэргэлдээ хэсгүүдийн хооронд ГАДАРГУУН өнгөт 2px зай (2026-10-09: 1.5 → 2) — ойролцоо өнгөтэй
    хоёр хэсэг нийлж НЭГ болж харагдахаас сэргийлнэ (`box-shadow` нь өргөнийг
    өөрчлөхгүй тул хувь хэмжээ ЯГ хэвээр). */
 .stackSeg {
   height: 100%;
   transition: width 0.6s var(--ease), opacity 0.12s var(--ease);
-  box-shadow: inset -1.5px 0 0 var(--surface);
+  box-shadow: inset -2px 0 0 var(--surface);
 }
 .stackSeg:last-child { box-shadow: none; }
-.stackSegDim { opacity: 0.32; }
+.stackSegDim { opacity: 0.35; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
 .legendItem {
   display: flex;
@@ -401,7 +438,7 @@
   transition: opacity 0.12s var(--ease);
 }
 .legendItemOn { color: var(--ink); }
-.legendItemDim { opacity: 0.45; }
+.legendItemDim { opacity: 0.35; }
 /* envhub: 8px, 1px радиустай дөрвөлжин — donut-д зүсмэгийн багасгасан хувь
    (тунгалаг дэвсгэр + өнгөт хүрээ, inline style-аас), stack-д цул. */
 .legendDot { width: 8px; height: 8px; border-radius: 1px; flex: none; }
@@ -417,7 +454,8 @@
 .ringTrack { fill: none; stroke: var(--chart-track); }
 .ringArc { fill: none; stroke: var(--tone, var(--hue)); stroke-linecap: round; transition: stroke-dashoffset 0.7s var(--ease); }
 .ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-.ringValue { font-weight: 700; color: var(--ink); }
+/* ⚠️ 2026-10-09: төвийн утга 600 — Donut-тай ижил */
+.ringValue { font-weight: 600; color: var(--ink); }
 .ringLabel { font-size: 0.62rem; color: var(--ink-3); margin-top: 2px; }
 
 /* ── Түлхүүр → утга ── */
@@ -571,7 +609,7 @@
 /* ── Leader-line пай — зүсмэгээс зураас татсан гадна шошго ── */
 .donutLead { display: flex; justify-content: center; }
 .donutLead svg { max-width: 100%; height: auto; overflow: hidden; }
-.donutLeadCtr { font-size: 15px; font-weight: 700; fill: var(--ink); }
+.donutLeadCtr { font-size: 15px; font-weight: 600; fill: var(--ink); }
 .donutLeadCtrLbl { font-size: 8px; fill: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 /* foreignObject доторх HTML шошго — мөр даруулж БҮТЭН нэрийг харуулна */
 .donutLeadBox {
@@ -599,8 +637,9 @@
 .donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
 .donutRow .legendDot { margin-top: 2px; }
 .donut { position: relative; flex: none; }
-/* envhub: гадна захын 1px чиглүүлэгч тойрог */
-.donutTrack { fill: none; stroke: var(--line-strong); }
+/* envhub: гадна захын 1px чиглүүлэгч тойрог.
+   ⚠️ 2026-10-09: `--line-strong` → `--chart-track` — Ring/Bars-ийн замтай НЭГ өнгө */
+.donutTrack { fill: none; stroke: var(--chart-track); }
 .donutCenter {
   position: absolute;
   inset: 0;
@@ -612,7 +651,8 @@
   pointer-events: none;
 }
 /* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
-.donutValue { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.1; }
+/* ⚠️ 2026-10-09: 500 → 600 (Ring-тэй ижил төвийн жин) */
+.donutValue { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.1; }
 /* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
    таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
 .donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
@@ -709,13 +749,14 @@
      зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
   vector-effect: non-scaling-stroke;
 }
+/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг (`CHART.markerR`/`ring`) — Trend-тэй ижил */
 .seriesLineDot {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--tone, var(--data));
-  border: 1.5px solid var(--surface);
+  box-shadow: 0 0 0 2px var(--surface);
   transform: translate(-50%, -50%);
   pointer-events: none;
   transition: opacity 0.12s;
@@ -737,6 +778,18 @@
 }
 
 .seriesClick { cursor: pointer; }
+/* ── Муруйн горимын багана — hover/фокусын ТАСАРХАЙ crosshair (`Trend`-ийн `.trendHit`-тэй ижил) ── */
+.seriesColLine { padding: 0; border: 0; background: none; font: inherit; color: inherit; }
+.seriesColLine::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(50% - 0.5px);
+  background: repeating-linear-gradient(to bottom, var(--tone, var(--data)) 0 2px, transparent 2px 4px);
+  opacity: 0;
+  pointer-events: none;
+}
+.seriesColLine:hover::before,
+.seriesColLine:focus-visible::before { opacity: 0.7; }
 .seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
 .seriesTicks { display: flex; gap: 3px; margin-top: 6px; }
 .seriesLabel {
@@ -792,10 +845,11 @@
 .trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 /* `preserveAspectRatio="none"` нь зурсан зайг сунгадаг тул шугамын зузааныг
    `non-scaling-stroke`-оор бэхэлнэ — эс бөгөөс өргөн самбарт нимгэрч харагдана. */
+/* ⚠️ 2026-10-09: 1.5 → 2px (`CHART.stroke`) — бүх шугам нэг зузаантай */
 .trendLine {
   fill: none;
   stroke: var(--tone, var(--data));
-  stroke-width: 1.5;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
@@ -826,12 +880,13 @@
   opacity: 0;
 }
 .trendHitOn::before { opacity: 0.7; }
+/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг — `CHART.markerR`/`ring` */
 .trendDot {
   position: absolute;
   left: 50%;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px 0 0 -2.5px;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
   border-radius: 50%;
   background: var(--tone, var(--data));
   /* envhub ring-2: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */

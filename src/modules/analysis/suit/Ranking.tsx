@@ -2,8 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { SCORE_LEVELS, levelOf, NO_DATA_COLOR, type Indicator } from '@/lib/analysis/config';
-import { scoreColor, scoreInk } from '@/lib/analysis/score';
+import { SCORE_LEVELS, levelOf, NO_DATA_TONE, type Indicator } from '@/lib/analysis/config';
+import { scoreTone, scoreInk } from '@/lib/analysis/score';
 import { nf } from './format';
 import { valueOf, type Mode, type Row } from './model';
 import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
@@ -77,7 +77,7 @@ export function Ranking({
           {/* ⚠️ Бүлгийн нэр нь ҮНЭЛГЭЭНИЙ ҮГГҮЙ («сайн»/«муу» гэхгүй): эрэмбэ нь
               оноог харуулах ёстой болохоос дүгнэлт өгөх ёсгүй. Түвшинг ӨНГӨ ба
               ОНООНЫ ЗУРВАС хоёр л заана. */}
-          <i style={{ background: L ? L.color : NO_DATA_COLOR }} />
+          <i style={{ background: L ? L.tone : NO_DATA_TONE }} />
           <span>{L ? tr('{0}–{1} оноо', L.min, Math.min(100, L.max)) : tr('Өгөгдөлгүй')}</span>
           <em />
 
@@ -98,7 +98,7 @@ export function Ranking({
         <span className="rk">{ranks[i] ?? '—'}</span>
         <span className="nm">{r.id}<i>{r.type}</i></span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
-        <span className="tot" style={{ background: scoreColor(tot), color: scoreInk(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
+        <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,
     );
   });

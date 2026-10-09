@@ -181,8 +181,10 @@
 .dimOn { box-shadow: inset 0 0 0 1px var(--data); }
 .dimHead { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; }
 .dimHead b { flex: 1; font-weight: 650; }
-.bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink-3) 18%, transparent); overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--h); }
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 4px → порталын хэвтээ баганын 2px,
+   зам `--chart-track` (ui.module.css `.barTrack`-тэй ижил тоо). */
+.bar { display: block; height: 2px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 1px; background: var(--h); }
 .facts { font-size: 0.66rem; line-height: 1.35; color: var(--ink-3); }
 .measure { font-size: 0.64rem; line-height: 1.35; color: var(--ink-3); font-style: italic; }
 .dimPending { border-left-style: dashed; }
@@ -261,11 +263,15 @@
 .statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .statusHead b { font-size: 0.84rem; color: var(--ink); }
 .statusHead span { font-size: 0.68rem; color: var(--ink-3); }
+/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Stack` (ui.module.css .stack) —
+   8px, радиус 4px, суурь `--chart-track`, хэсэг хооронд 2px ГАДАРГУУН зай (`box-shadow` —
+   өргөнийг өөрчлөхгүй тул харьцаа ЯГ хэвээр). Урьд нь 1px `gap` байв. */
 .statusMini {
-  display: flex !important; flex: 1 1 160px; max-width: 360px; height: 8px; gap: 1px;
-  margin-left: auto; border-radius: 4px; overflow: hidden;
+  display: flex !important; flex: 1 1 160px; max-width: 360px; height: 8px;
+  margin-left: auto; border-radius: 4px; overflow: hidden; background: var(--chart-track);
 }
-.statusMini i { flex-basis: 0; background: var(--h); transition: opacity 0.15s; }
+.statusMini i { flex-basis: 0; background: var(--h); transition: opacity 0.15s; box-shadow: inset -2px 0 0 var(--surface); }
+.statusMini i:last-child { box-shadow: none; }
 .segDim { opacity: 0.35; }
 
 .statusCards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -298,17 +304,22 @@
 /* «Багц ажил» жагсаалтын «Төлөв» багана */
 .thStatus { min-width: 150px; width: 22%; text-align: left !important; }
 .statusCell { text-align: left; }
-.gBar { display: flex; height: 18px; min-width: 120px; gap: 1px; border-radius: 5px; overflow: hidden; }
+/* ⚠️ 2026-10-09: 18px өндөр ХЭВЭЭР (шүүлтийн товч, тоо дотроо) — бусад нь `Stack`-тай ижил:
+   радиус 4px, 2px гадаргуун зай, суурь `--chart-track`; бичиг `#fff` → `--hue-ink`
+   (dark горимд бараан — цайвар дүүргэлт дээр цагаан уншигдахгүй). */
+.gBar { display: flex; height: 18px; min-width: 120px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
 .gSeg {
   flex-basis: 0; min-width: 16px;
   border: 0; padding: 0; cursor: pointer;
-  background: var(--h); color: #fff;
+  box-shadow: inset -2px 0 0 var(--surface);
+  background: var(--h); color: var(--hue-ink);
   font: inherit; font-size: 0.64rem; font-weight: 700;
   transition: opacity 0.15s;
 }
 .gSeg:hover { filter: brightness(1.1); }
 .gSeg:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
-.gSegOn { box-shadow: inset 0 0 0 2px var(--ink); }
+.gSeg:last-child { box-shadow: none; }
+.gSegOn, .gSegOn:last-child { box-shadow: inset 0 0 0 2px var(--ink); }
 .stPill {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 1px 8px; border-radius: 999px;
@@ -318,8 +329,10 @@
 }
 
 /* Бүлгийн хавтан доторх тархалт */
-.dimBar { display: flex; width: 100%; height: 6px; gap: 1px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--ink-3) 12%, transparent); }
-.dimBar i { flex-basis: 0; background: var(--h); }
+/* ⚠️ 2026-10-09: 6px → `Stack`-ийн 8px, радиус 4px, 2px гадаргуун зай, суурь `--chart-track` */
+.dimBar { display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
+.dimBar i { flex-basis: 0; background: var(--h); box-shadow: inset -2px 0 0 var(--surface); }
+.dimBar i:last-child { box-shadow: none; }
 .dimBar i.segPending { background: repeating-linear-gradient(90deg, var(--ink-3) 0 3px, transparent 3px 5px); }
 .sumProblem { font-size: 0.66rem; color: var(--ink-3); }
 .sumProblem b { color: var(--bad-ink, var(--bad)); }

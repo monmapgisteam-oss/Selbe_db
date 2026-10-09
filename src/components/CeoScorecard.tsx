@@ -20,6 +20,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, t
 import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
+import { useTip } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { num, mnt } from '@/lib/format';
 import { LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
@@ -135,7 +136,12 @@ function GroupStatusBar({
   onCell: (type: string, st: WorkStatus) => void;
 }) {
   const typeOn = filter.types.includes(type);
+  /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): `title` (≈1 с хүлээлттэй, мэдрэгч
+     дэлгэцэд гардаггүй) → порталын `useTip`. Өндөр 18px ХЭВЭЭР — энэ бол шүүлтийн товч
+     (тоо нь дотроо бичигдэнэ); зай/радиус/өнгө нь `Stack`-тай ижил (ceoScorecard.module.css). */
+  const tip = useTip();
   return (
+    <>
     <span className={s.gBar}>
       {STATUSES.filter((st) => counts[st] > 0).map((st) => {
         const on = typeOn && filter.status.includes(st);
@@ -148,13 +154,16 @@ function GroupStatusBar({
             style={{ flexGrow: counts[st], ['--h']: STATUS_TONE[st] } as CSSProperties}
             aria-pressed={on}
             onClick={(e) => { e.stopPropagation(); onCell(type, st); }}
-            title={`${type} · ${STATUS_LABEL(st)}: ${num(counts[st])}`}
+            aria-label={`${type} · ${STATUS_LABEL(st)}: ${num(counts[st])}`}
+            {...tip.bind({ label: `${type} · ${STATUS_LABEL(st)}`, value: num(counts[st]), color: STATUS_TONE[st] })}
           >
-            {counts[st]}
+            {num(counts[st])}
           </button>
         );
       })}
     </span>
+    {tip.node}
+    </>
   );
 }
 

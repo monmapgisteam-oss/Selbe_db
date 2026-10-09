@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Fig, KpiRow, RankBars, Meter } from '@/modules/tailanChart';
+import { Fig, KpiRow, RankBars, PlanMeter } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
@@ -477,7 +477,7 @@ export function ExecReport() {
                     },
                     { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
-                  <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
+                  <PlanMeter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
                   {/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүүнээс хасагдсан хуваарьгүй багцыг нэрлэнэ */}
                   {x.prog.planExcluded.length > 0 && <p className={r.note}>{planScopeNote(x.prog.planExcluded)}</p>}
                   <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
