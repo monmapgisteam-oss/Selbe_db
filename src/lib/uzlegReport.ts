@@ -60,7 +60,9 @@ export function loadUzFields(url: string): Promise<UzField[]> {
       .filter((f) => f.name)
       .map((f) => ({
         name: String(f.name),
-        alias: String(f.alias || f.name),
+        /* ⚠️ 2026-10-09 (хэрэглэгч): Survey123 асуултын нэр HTML-тэй («<b>9.</b> Барилгын …») —
+           PDF/Excel-д тэмдэгт нь үсгээр гардаг байв. Тагийг хасна, дугаар/текст үлдэнэ. */
+        alias: String(f.alias || f.name).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() || String(f.name),
         type: String(f.type ?? ''),
         dom: f.domain?.type === 'codedValue' && f.domain.codedValues?.length
           ? new Map(f.domain.codedValues.map((c) => [String(c.code), String(c.name ?? c.code)]))

@@ -6799,7 +6799,6 @@ const en: Record<string, string> = {
   "Өөр хянагч": "Another reviewer",
   "«Архивлаж байна» тэмдэг өөр цонхных — арилгасангүй": "The «archiving» marker belongs to another window — not cleared",
   "Серверийн хариу алдагдсан: {0}-д {1}-р дараалалд таны мөр бичигдсэн боловч давхардал илэрлээ ({2}). Юуг ч устгаагүй — жагсаалтаас шалгаж илүүдлийг гараар устгана уу.": "The server response was lost: your row was written to {0}, sequence {1}, but a duplicate was found ({2}). Nothing was deleted — check the list and delete the extra row manually.",
-  "{0}-р долоо хоногийн нийлбэр": "Total for week(s) {0}",
   "Бүртгэгдсэн рейс {0} — {1}-р долоо хоног": "{0} trips recorded — week {1}",
   "Тоо нь 0 ба түүнээс их бүхэл тоо байна.": "Counts must be whole numbers 0 or greater.",
   "Ядаж нэг багцын тоог оруулна уу.": "Enter a count for at least one package.",
