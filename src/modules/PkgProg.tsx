@@ -9,7 +9,9 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
-import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
+import {
+  Section, Note, Data, Empty, Rows, Bars, List, ListItem, PointCallout, SvgHoverMarker, calloutAlign,
+} from '@/components/ui';
 import { PackLayers } from '@/components/PackLayers';
 import {
   buildPacks, PackKpi, BlocksCard, LayersCard, levelColor, blockCount, BLOCK_LAYER, type Pack,
@@ -62,7 +64,7 @@ import {
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { cat, shade, num, pct, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
-import { CHART, lineSegments, monotonePath } from '@/lib/chartStyle';
+import { CHART, lineSegments, monotonePath, glow } from '@/lib/chartStyle';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgProgOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -1635,6 +1637,11 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
         {/* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН — `viewBox` нь бодит
             пикселтэй тэнцүү тул үсэг гажихаа болив. */}
         <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — тэнхлэгийн он·сарын
+              шошготой сар бүрд 1px `--chart-grid` (хэвтээ 0–100% тортой нэг хэл). */}
+          {rows.map((r, i) => (axisLbl.has(i) ? (
+            <line key={`vg-${r.label}`} x1={xFor(i)} x2={xFor(i)} y1={padT} y2={padT + plotH} className={ts.progGrid} />
+          ) : null))}
           {/* Тор — 0/25/50/75/100%, шошго торны ДЭЭР (зүүн ирмэгт) */}
           {CHART.grid.map((t) => {
             const gy = yFor(t);
@@ -1654,13 +1661,18 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           ))}
 
           {/* ⚠️ 2026-10-09: төлөвлөгөө 2px ТАСАРХАЙ (`CHART.planDash`), бодит 2px БҮТЭН (урьд 1.6 / 2.8).
-              Зузаан биш ХЭЛБЭР нь үүргийг хэлнэ — бүх S-муруйд нэг дүрэм. */}
+              Зузаан биш ХЭЛБЭР нь үүргийг хэлнэ — бүх S-муруйд нэг дүрэм.
+              ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): төлөвлөгөө ЦЭГЭН ('1 5', round cap),
+              хоёр шугам цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана).
+              ⚠️ S-муруйд ТАЛБАЙН градиент НЭМЭЭГҮЙ — улаан/ногоон ЗӨРҮҮГИЙН талбай (2026-08-25-ны
+              хэрэглэгчийн шийдвэр) нь энд ГОЛ өгүүлэмж; доогуур нь цувааны талбай давхарлавал
+              зөрүүний өнгө бохирдож уншигдахаа болино. */}
           {planSegs.map((sg) => (sg.single ? null : (
             <path
               key={`pl-${sg.from}`}
               d={sg.d}
-              className={ts.progPlan}
-              style={{ stroke: PLAN_C, strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash }}
+              className={`${ts.progPlan} chartGlow`}
+              style={{ stroke: PLAN_C, strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash, filter: glow(PLAN_C) }}
               vectorEffect="non-scaling-stroke"
             />
           )))}
@@ -1671,16 +1683,17 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
               <path
                 key={`as-${sg.from}`}
                 d={sg.d}
-                className={ts.progAct}
-                style={{ stroke: ACT_C, strokeWidth: CHART.stroke }}
+                className={`${ts.progAct} chartGlow`}
+                style={{ stroke: ACT_C, strokeWidth: CHART.stroke, filter: glow(ACT_C) }}
                 vectorEffect="non-scaling-stroke"
               />
             )))}
 
-          {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд */}
-          {rows.map((r, i) => (planLbl.has(i) ? (
+          {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд.
+              ⚠️ 2026-10-09 (лавлах CRM загвар): цэг НУУГДСАН (утгын бичиг хэвээр) — тэмдэг нь
+              зөвхөн заасан сард (`SvgHoverMarker`). Заасан сарын бичиг pill-д шилжинэ (давхардахгүй). */}
+          {rows.map((r, i) => (planLbl.has(i) && i !== hv ? (
             <g key={`pl-${i}`}>
-              {dot(xFor(i), yFor(r.plan), PLAN_C)}
               {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
                   SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
               {/* ⚠️ ОБЬЁМ нь хувийн ХАЖУУД (2026-09-09, хэрэглэгчийн
@@ -1706,9 +1719,8 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
               ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
                  бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана
                  (2026-08 дээр «0%» хоёр удаа гарч байсан). */}
-          {rows.map((r, i) => (actLbl.has(i) && r.act != null ? (
+          {rows.map((r, i) => (actLbl.has(i) && r.act != null && i !== hv ? (
             <g key={`ac-${i}`}>
-              {dot(xFor(i), yFor(r.act), ACT_C)}
               <text
                 x={xFor(i)}
                 y={Math.min(padT + plotH - 4, yFor(r.act) + 16)}
@@ -1737,12 +1749,12 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             </g>
           )}
 
-          {/* Hover — босоо шугам + цуваа бүрийн цэг */}
+          {/* Hover — босоо шугам + цуваа бүрийн тэмдэг (2026-10-09: r 4.5 + гало, `SvgHoverMarker`) */}
           {hv != null && (
             <g>
               <line x1={xFor(hv)} x2={xFor(hv)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
-              {dot(xFor(hv), yFor(rows[hv].plan), PLAN_C, CHART.markerR + 1)}
-              {rows[hv].act != null && dot(xFor(hv), yFor(rows[hv].act as number), ACT_C, CHART.markerR + 1)}
+              <SvgHoverMarker cx={xFor(hv)} cy={yFor(rows[hv].plan)} color={PLAN_C} />
+              {rows[hv].act != null && <SvgHoverMarker cx={xFor(hv)} cy={yFor(rows[hv].act as number)} color={ACT_C} />}
             </g>
           )}
 
@@ -1754,6 +1766,34 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           ) : null))}
         </svg>
 
+        {/* ⚠️ 2026-10-09 (лавлах CRM загвар): заасан сарын УТГЫН PILL — төлөвлөгөө цэгийнхээ
+            ДЭЭР, бодит ДООР (цэг бүрийн бичгийн дүрэмтэй ижил — хоёр цуваа ойртсон ч давхцахгүй).
+            `viewBox` = бодит px тул `xFor`/`yFor` нь HTML-ийн px-тэй ЯГ давхцана. Задаргаа нь
+            доорх `progTip`-д хэвээр. */}
+        {hv != null && pt && (
+          <>
+            {/* ⚠️ Муруйн ЦЭГИЙН утга (сарын эцэс, `plan`) — тэмдэгтэй нэг байрлал, тэр цэгийн
+                бичигтэй нэг тоо. Хэмжилтийн өдрийн төлөвлөгөө (`planM`) нь `progTip`-д. */}
+            <PointCallout
+              x={xFor(hv)}
+              y={yFor(rows[hv].plan)}
+              text={pct(rows[hv].plan, 1)}
+              color={PLAN_C}
+              align={calloutAlign(((xFor(hv) - padL) / Math.max(1, plotW)) * 100)}
+            />
+            {pt.act != null && (
+              <PointCallout
+                x={xFor(hv)}
+                y={yFor(pt.act)}
+                text={pct(pt.act, 1)}
+                color={ACT_C}
+                below
+                align={calloutAlign(((xFor(hv) - padL) / Math.max(1, plotW)) * 100)}
+              />
+            )}
+          </>
+        )}
+
         {pt && (
           <div
             className={ts.progTip}
@@ -1763,7 +1803,8 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
                2026-10-07-ны засвартай ижил. */
             style={{
               left: xFor(hv!),
-              transform: `translateX(${hv! < N / 2 ? '10px' : 'calc(-100% - 10px)'})`,
+              /* ⚠️ 2026-10-09 (лавлах CRM загвар): 10 → 34px — цэгийн утгын pill-тэй давхцахгүй */
+              transform: `translateX(${hv! < N / 2 ? '34px' : 'calc(-100% - 34px)'})`,
             }}
           >
             <p className={`num ${ts.progTipHd}`}>{pt.label}</p>

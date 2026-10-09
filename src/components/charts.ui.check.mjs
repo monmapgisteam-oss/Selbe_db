@@ -51,4 +51,23 @@ const rg = renderToStaticMarkup(h(Ring, { value: 50, size: 'md' }));
 assert.match(rg, /width="120"/);
 assert.match(rg, /stroke-width="12"/, 'зузаан = 10%');
 
-console.log('✅ ui графикууд: Meter · Bars · Series · Donut · Ring — нэгдсэн стандарт');
+/* ── 2026-10-09 (лавлах CRM загвар — өнгө хэвээр) ── */
+/* Series: бүдэг тор + зүүн тэнхлэгийн тоо; багана 0..niceTop хуваарьт (5 → тэнхлэг 0..6) */
+assert.ok(sr.includes('gridH') && sr.includes('axisYLbl'), 'Series: тор + тэнхлэг');
+assert.ok(/height:83\.3+\d*%/.test(sr), 'Series: 5 / 6 (niceTicks-ийн дээд) ≈ 83.3%');
+/* Series line: цэг анхдагчаар нуугдмал, ДЭЭД цэгт «Дээд: X» pill; null → цоорхой хэвээр */
+const sl = renderToStaticMarkup(h(Series, { line: true, items: [
+  { key: 'a', label: 'a', value: 3 }, { key: 'b', label: 'b', value: 68 }, { key: 'c', label: 'c', value: null }, { key: 'd', label: 'd', value: 10 },
+] }));
+assert.match(sl, /Дээд: 68/, 'showMax → «Дээд: 68»');
+assert.ok(sl.includes('chartGlow'), 'шугам гэрэлтэлттэй (хэвлэхэд унтрах класс)');
+assert.ok(sl.includes('seriesLineDot'), 'ганц цэгтэй хэсэг (d) цэгээр харагдана');
+assert.ok(!renderToStaticMarkup(h(Series, { line: true, showMax: false, items: [{ key: 'a', label: 'a', value: 3 }, { key: 'b', label: 'b', value: 5 }] })).includes('Дээд'), 'showMax=false');
+/* Donut: хөндий цагираган тэмдэг + ≥8% зүсмэгт дотор хувь (их үлдэгдлийн арга — 75/25) */
+assert.ok(dn.includes('legendRing'), 'тайлбарын тэмдэг цагираг');
+assert.ok(dn.includes('donutPctIn') && dn.includes('>75%<') && dn.includes('>25%<'), 'зурвас дотор хувь');
+assert.ok(dn.includes('stroke-linecap:round'), 'бөөрөнхий үзүүр');
+/* Ring: зам нь нимгэн 2px */
+assert.match(rg, /ringTrack[^>]*stroke-width="2"/, 'Ring-ийн зам 2px');
+
+console.log('✅ ui графикууд: Meter · Bars · Series · Donut · Ring — нэгдсэн стандарт + лавлах CRM загвар');

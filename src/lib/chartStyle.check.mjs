@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import {
   CHART, DONUT_SIZES, RING_SIZES, ringStroke, linePath, lineSegments, areaPath, monotonePath,
+  glow, niceTicks, stepDecimals, arcPath,
 } from '@/lib/chartStyle';
 
 /* ── Тогтмолууд ── */
@@ -23,8 +24,12 @@ assert.equal(CHART.markerR, 3);
 assert.equal(CHART.dim, 0.35);
 assert.equal(CHART.barH, 2, 'хэвтээ багана нимгэн 2px (хэрэглэгчийн сонголт)');
 assert.deepEqual([...CHART.grid], [0, 25, 50, 75, 100]);
-assert.equal(CHART.planDash, '5 4');
-assert.deepEqual(DONUT_SIZES, { sm: [96, 14], md: [132, 20], lg: [150, 24] });
+/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): төлөвлөгөө ЦЭГЭН, талбай 0.32 → 0, donut ~20% */
+assert.equal(CHART.planDash, '1 5');
+assert.equal(CHART.areaTop, 0.32);
+assert.equal(CHART.areaBottom, 0);
+assert.equal(CHART.areaMultiTop, 0.16);
+assert.deepEqual(DONUT_SIZES, { sm: [96, 19], md: [132, 26], lg: [150, 30] });
 assert.deepEqual(RING_SIZES, { sm: 88, md: 120, lg: 148 });
 assert.equal(ringStroke(120), 12);
 assert.equal(ringStroke(88), 9);
@@ -74,4 +79,26 @@ ctrlYs(monotonePath(uneven)).forEach(([c1, c2], i) => {
 /* smooth:false — зөвхөн шулуун хэрчим */
 assert.ok(!linePath([P(0, 0), P(1, 1), P(2, 0)], { smooth: false })[0].includes('C'));
 
-console.log('✅ chartStyle: тогтмол · null дээр тасрах · NaN-гүй · монотон хэтрэхгүй');
+/* ── Гэрэлтэлт: цувааны ӨӨРИЙН токен, хүч нь --chart-glow ── */
+assert.ok(glow('var(--c2)').startsWith('drop-shadow(0 0 4px color-mix(in srgb, var(--c2) var(--chart-glow'));
+
+/* ── niceTicks: 1·2·2.5·5 алхам, мужийг бүрэн хамарна, хавтгай/хоосон цуваанд ч ≥2 утга ── */
+assert.deepEqual(niceTicks(0, 68, 5), [0, 20, 40, 60, 80]);
+assert.deepEqual(niceTicks(0, 100, 5), [0, 20, 40, 60, 80, 100]);
+assert.deepEqual(niceTicks(0, 0, 5), [0, 0.2, 0.4, 0.6, 0.8, 1]);
+assert.deepEqual(niceTicks(-15, 28, 5), [-20, -10, 0, 10, 20, 30]);
+assert.deepEqual(niceTicks(0, 0.3, 4), [0, 0.1, 0.2, 0.3]);
+for (const [lo, hi, n] of [[0, 7, 3], [0, 20162536361, 5], [3, 3, 4], [-5, -5, 4], [0, 1e-7, 5]]) {
+  const t = niceTicks(lo, hi, n);
+  assert.ok(t.length >= 2 && t[0] <= lo && t[t.length - 1] >= hi, `niceTicks(${lo}, ${hi}) хамрахгүй: ${t}`);
+  assert.ok(t.every(Number.isFinite));
+}
+assert.equal(stepDecimals([0, 0.25, 0.5]), 2);
+assert.equal(stepDecimals([0, 2.5, 5]), 1);
+assert.equal(stepDecimals([0, 20, 40]), 0);
+
+/* ── arcPath: NaN-гүй, бүтэн тойрог хоёр нумаар ── */
+assert.ok(!/NaN/.test(arcPath(50, 50, 40, 0, Math.PI / 2)));
+assert.equal((arcPath(50, 50, 40, 0, Math.PI * 2).match(/A/g) || []).length, 2);
+
+console.log('✅ chartStyle: тогтмол · null дээр тасрах · NaN-гүй · монотон хэтрэхгүй · niceTicks · glow · arcPath');

@@ -147,7 +147,8 @@
 .comboSvg { width: 100%; display: block; cursor: crosshair; }
 /* ⚠️ Тор нь ЗАДГАЙ БАРИМЖАА: өгөгдлөөс илүү анхаарал татах ёсгүй тул маш
    бүдэг, 4 шугам. Урьд нь 5 шугам, тод өнгөтэй байв. */
-.curveGrid { stroke: var(--chart-grid); stroke-width: 1; opacity: 0.6; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): хэвтээ + БОСОО тор, бүрэн `--chart-grid` (токен өөрөө hairline) */
+.curveGrid { stroke: var(--chart-grid); stroke-width: 1; }
 .curveCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
 
 /* Он сар — доод ГАНЦ мөр (хувиуд tooltip руу шилжсэн) */
@@ -172,10 +173,11 @@
    төлөвлөгөө = ЛАВЛАГАА (нимгэн, тасархай) · олгосон = БОДИТ ХАРИУЛТ (зузаан)
    ⚠️ Урьд нь хоёулаа ижил зузаантай байсан тул аль нь зорилт, аль нь баримт
    болох нь ялгардаггүй байв. */
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): төлөвлөгөө ЦЭГЭН `1 5` (round cap) — `CHART.planDash` */
 .planLine {
   fill: none;
   stroke-width: 1.6;
-  stroke-dasharray: 5 4;
+  stroke-dasharray: 1 5;
   stroke-linejoin: round;
   stroke-linecap: round;
   opacity: 0.85;

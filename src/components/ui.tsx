@@ -5,6 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, cat } from '@/lib/format';
 import {
   CHART, DONUT_SIZES, RING_SIZES, ringStroke, lineSegments, areaPath, monotonePath,
+  glow, niceTicks, stepDecimals, arcPath,
   type DonutSize, type RingSize,
 } from '@/lib/chartStyle';
 import type { Async } from '@/lib/useAsync';
@@ -230,6 +231,105 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
     </div>
   );
 }
+
+/* ══════════════ Лавлах CRM загварын жижиг хэсгүүд (2026-10-09) ══════════════
+   ⚠️ 2026-10-09 («лавлах CRM загвар — өнгө хэвээр»): хэрэглэгч бүх графикийг бараан
+   «CRM Dashboard» загварын ХЭВ МАЯГААР (тор + жижиг тэнхлэг, гэрэлтсэн гөлгөр шугам,
+   цэгэн төлөвлөгөө, hover-оор гарах тэмдэг + утгын pill) харуулахыг хүссэн. ӨНГӨ нь
+   хуучин токен хэвээр (--data, --c1…--c8, --chart-plan/actual, төлвийн) — шинэ өнгө
+   нэмээгүй; зөвхөн `--chart-glow`/`--chart-callout-shade` гэсэн ХЭВ МАЯГИЙН токен.
+   Эдгээр нь `ui.tsx`-ийн бүх график ба модулийн S-муруйд (PkgProg · GeneralDash ·
+   Finance) НЭГ хэлбэрээр хэрэглэгдэнэ. */
+
+/** Байрлал: тоо → px, мөр → шууд (жиш. «34%») */
+const posOf = (v: number | string): string => (typeof v === 'number' ? `${v}px` : v);
+
+/**
+ * УТГЫН PILL («Дээд: 68») — цэгийн ДЭЭР (эсвэл `below` үед доор) сууна, жижиг сумтай.
+ *
+ * ⚠️ Дэвсгэр нь ЦУВААНЫ өнгө, бичиг нь `--hue-ink`. Цайвар горимд дэвсгэрийг
+ *    `--chart-callout-shade` (18%) харлуулна — эс бөгөөс --c2/--c5/--c6 дээр цагаан
+ *    бичиг 3:1-ээс доош унана. Харанхуйд бичиг бараан тул харлуулахгүй.
+ * ⚠️ Эцэг нь `position: relative` байх ёстой. `pointer-events: none` — доорх цэгийн
+ *    hover-ыг хулгайлахгүй.
+ * ⚠️ `align` — ирмэгт ойрхон цэгт pill хайрцгаас гарч тайрагдахгүйн тулд сумыг
+ *    захад нь тавьж pill-ийг дотогш эргүүлнэ (`calloutAlign`).
+ * ⚠️ Дэлгэрэнгүй (нэр, тайлбар, `hint`) нь `useTip`/уншилтын мөрөнд хэвээр — pill
+ *    нь зөвхөн ТОО.
+ */
+export function PointCallout({
+  x, y, text, color, below = false, align = 'center',
+}: {
+  x: number | string;
+  y: number | string;
+  text: string;
+  color?: string;
+  below?: boolean;
+  align?: 'start' | 'center' | 'end';
+}) {
+  const tx = align === 'start' ? '-12px' : align === 'end' ? 'calc(-100% + 12px)' : '-50%';
+  const ty = below ? '9px' : 'calc(-100% - 9px)';
+  const st = {
+    left: posOf(x),
+    top: posOf(y),
+    transform: `translate(${tx}, ${ty})`,
+    '--cc': color ?? 'var(--data)',
+    '--pl': align === 'start' ? '12px' : align === 'end' ? 'calc(100% - 12px)' : '50%',
+  } as CSSProperties;
+  return (
+    <span className={`${s.callout} ${below ? s.calloutBelow : ''} num`} style={st} aria-hidden>
+      {text}
+    </span>
+  );
+}
+
+/** Хувийн байрлалаас pill-ийн тэгшилгээ — 8%-иас ойр ирмэгт сумыг зах руу */
+export const calloutAlign = (xPct: number): 'start' | 'center' | 'end' =>
+  (xPct < 8 ? 'start' : xPct > 92 ? 'end' : 'center');
+
+/**
+ * HOVER/ФОКУСЫН ТЭМДЭГ (HTML) — r 4.5 дүүргэлт + 2px гадаргуун цагираг + r 9 гало (25%).
+ * ⚠️ Шугаман графикт цэг АНХДАГЧААР нуугдана (`CHART.hoverR` тайлбар); энэ нь зөвхөн
+ *    заасан цэг дээр зурагдана. Эцэг нь `position: relative`.
+ */
+export function HoverMarker({ x, y, color }: { x: number | string; y: number | string; color?: string }) {
+  return (
+    <span
+      className={s.hmark}
+      style={{ left: posOf(x), top: posOf(y), '--cc': color ?? 'var(--data)' } as CSSProperties}
+      aria-hidden
+    />
+  );
+}
+
+/** HOVER/ФОКУСЫН ТЭМДЭГ (SVG, бодит пикселийн viewBox-д) — `HoverMarker`-тай ижил хэмжээ */
+export function SvgHoverMarker({ cx, cy, color }: { cx: number; cy: number; color: string }) {
+  return (
+    <g aria-hidden style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={CHART.haloR} style={{ fill: color, opacity: CHART.haloA }} />
+      <circle cx={cx} cy={cy} r={CHART.hoverR} style={{ fill: color, stroke: 'var(--surface)', strokeWidth: CHART.ring }} />
+    </g>
+  );
+}
+
+/**
+ * ТЭНХЛЭГИЙН ТОО — жижиг, товч: их наяд / тэрбум / сая (бүтэн үгээр — 2026-09-04-ний
+ * GeneralDash `mntShort`-ийн дүрэм: товчилсон «их н.»-ийг хэрэглэгч буцаасан).
+ * ⚠️ Бага утгад алхмын аравтын орноор (0.25 → «0.25», 20 → «20»).
+ */
+function tickText(v: number, dec: number, suffix = ''): string {
+  const a = Math.abs(v);
+  if (a >= 1e12) return tr('{0} их наяд', num(v / 1e12, a % 1e12 === 0 ? 0 : 1));
+  if (a >= 1e9) return tr('{0} тэрбум', num(v / 1e9, a % 1e9 === 0 ? 0 : 1));
+  if (a >= 1e6) return tr('{0} сая', num(v / 1e6, a % 1e6 === 0 ? 0 : 1));
+  return `${num(v, dec)}${suffix}`;
+}
+
+/** Тэнхлэгийн баганын өргөн (px) — хамгийн урт шошгоор (10px tabular ≈ 5.6px/тэмдэгт) */
+const axisWidth = (labels: string[]): number => Math.ceil(Math.max(1, ...labels.map((l) => l.length)) * 5.8 + 6);
+
+/** Тэнхлэгийн тооны хувьд тор нь хэдэн шугамтай байх — графикийн өндрөөр */
+const tickCount = (h: number): number => (h >= 120 ? 5 : h >= 72 ? 4 : 3);
 
 /* ── Хэсэг ── */
 
@@ -827,7 +927,9 @@ export function Stack({
           <span
             key={i.key}
             className={`${s.stackSeg} ${isDim(i.key) ? s.stackSegDim : ''}`}
-            style={{ width: `${(fin(i.value) / sum) * 100}%`, background: colorOf(idx) }}
+            /* ⚠️ 2026-10-09 (лавлах CRM загвар): `color` — `.stackSeg`-ийн гэрэлтэлт
+               (`currentColor`) сегментийн ӨӨРИЙН өнгөөр гарна */
+            style={{ width: `${(fin(i.value) / sum) * 100}%`, background: colorOf(idx), color: colorOf(idx) }}
             {...hoverProps(i.key)}
             {...tip.bind({ label: i.label, value: `${valText(i)} · ${share(i.value)}`, color: colorOf(idx) })}
           />
@@ -860,26 +962,30 @@ export function Stack({
 /* ── Дугуй диаграм (pie / donut) ── */
 
 /**
- * Цагирган ЗҮСМЭГИЙН зам (annular sector) — 12 цагаас цагийн зүүний дагуу.
+ * ЗҮСМЭГИЙН НУМ — `stroke-linecap: round` бүхий зузаан нум, хөрштэйгөө `CHART.donutGap` зайтай.
  *
- * ⚠️ Урьд нь зүсмэгийг `stroke-dasharray`-аар (ганц шугам) зурдаг байсныг
- * ДҮҮРГЭЛТ + ЗАХЫН ШУГАМ тусад нь удирдахын тулд бүтэн замаар сольсон: дотор
- * талыг тунгалаг дүүргэж, зах (дотор/гадна нум + радиал зааг) нь тод бүтэн
- * шугамтай болно. `f0`,`f1` — эхлэх/дуусах бутархай (0..1).
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): урьд нь annular-sector `<path>`
+ *    (тунгалаг дүүргэлт + 1px зах, envhub) байв. Одоо лавлах загварын бөөрөнхий
+ *    үзүүртэй цул нум. Бөөрөнхий үзүүр нь нумын төгсгөлөөс `width/2`-оор ЦААШ
+ *    сунадаг тул нум бүрийг тал бүрээсээ `width/2 + gap/2`-оор богиносгоно —
+ *    харагдах урт нь ЯГ эзлэх хувьтайгаа тэнцүү хэвээр.
+ * ⚠️ БОГИНО зүсмэг (нумын урт ≤ зузаан + зай) бөөрөнхий үзүүр авбал диаметр нь
+ *    (жиш. 19px = sm-ийн 8%) бодит хувиасаа ХЭД ДАХИН том харагдана — ХУДАЛ
+ *    уншилт. Тиймд тэд `butt` үзүүртэй, зөвхөн зайгаа хасна (≥0.5px үлдэнэ).
+ * ⚠️ Ганц ангилал (бүтэн тойрог) — зайгүй, үзүүргүй.
  */
-function sectorPath(cx: number, cy: number, ri: number, ro: number, f0: number, f1: number): string {
-  // Бүтэн тойрог (ганц ангилал) — нэг нумаар хаагдахгүй тул мэдрэгдэхгүй зайг үлдээнэ
-  const full = f1 - f0 >= 0.99999;
-  const a0 = f0 * 2 * Math.PI;
-  const a1 = (full ? f1 - 0.0001 : f1) * 2 * Math.PI;
-  const pt = (rr: number, a: number): [number, number] => [cx + rr * Math.sin(a), cy - rr * Math.cos(a)];
-  const [ox0, oy0] = pt(ro, a0);
-  const [ox1, oy1] = pt(ro, a1);
-  const [ix1, iy1] = pt(ri, a1);
-  const [ix0, iy0] = pt(ri, a0);
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  return `M${ox0},${oy0} A${ro},${ro} 0 ${large} 1 ${ox1},${oy1} `
-    + `L${ix1},${iy1} A${ri},${ri} 0 ${large} 0 ${ix0},${iy0} Z`;
+function donutArc(
+  cx: number, cy: number, r: number, width: number, f0: number, f1: number, full: boolean,
+): { d: string; cap: 'round' | 'butt' } {
+  const TAU = Math.PI * 2;
+  if (full) return { d: arcPath(cx, cy, r, 0, TAU), cap: 'butt' };
+  const len = (f1 - f0) * TAU * r;
+  const gap = CHART.donutGap;
+  const round = len > width + gap + 1;
+  const trim = round ? width / 2 + gap / 2 : Math.min(gap / 2, Math.max(0, (len - 0.5) / 2));
+  const a0 = f0 * TAU + trim / r;
+  const a1 = f1 * TAU - trim / r;
+  return { d: arcPath(cx, cy, r, a0, Math.max(a0 + 0.5 / r, a1)), cap: round ? 'round' : 'butt' };
 }
 
 /**
@@ -912,7 +1018,6 @@ export function Donut({
   nowrap = false,
   stack = false,
   leaders = false,
-  edge = 1,
 }: {
   /** ⚠️ 2026-10-09: `color` заавал биш — өгөөгүй бол `cat(i)` (зэрэглэлийн слот, dark-тай) */
   items: { key: string; label: string; value: number; color?: string; display?: ReactNode }[];
@@ -935,11 +1040,15 @@ export function Donut({
   stack?: boolean;
   /** Тайлбарыг доор жагсаахын оронд зүсмэг бүрээс ЗУРААС татаж гадна бичнэ */
   leaders?: boolean;
-  /** Захын шугамын зузааны үржүүлэгч (1 = анхдагч, 0.5 = хагас нарийн) */
+  /**
+   * Захын шугамын зузааны үржүүлэгч — ⚠️ 2026-10-09-нөөс ҮЙЛЧЛЭХГҮЙ (зүсмэг нь захгүй
+   * цул нум болсон); хуучин дуудагчид эвдрэхгүйн тулд төрөлд үлдэв.
+   */
   edge?: number;
 }) {
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): тоон хэмжээнд зузаан 15% → 20% (`DONUT_SIZES`-тэй ижил харьцаа) */
   const [size, width] = typeof sizeIn === 'number'
-    ? [sizeIn, widthIn ?? Math.round(sizeIn * 0.15)]
+    ? [sizeIn, widthIn ?? Math.round(sizeIn * 0.2)]
     : [DONUT_SIZES[sizeIn][0], widthIn ?? DONUT_SIZES[sizeIn][1]];
   const items = rawItems.map((it, i) => ({ ...it, color: it.color ?? cat(i) }));
   const sel = selected == null ? [] : Array.isArray(selected) ? selected : [selected];
@@ -972,21 +1081,26 @@ export function Donut({
   const isEmph = (key: string) => (hovOn ? hovOn === key : sel.includes(key));
   const isDim = (key: string) => (hovOn ? hovOn !== key : hasSel && !sel.includes(key));
   /**
-   * ⚠️ 2026-08-17: envhub-ийн зүсмэгийн хэл — ТУНГАЛАГ дүүргэлт (0.42) + ИЖИЛ
-   * өнгийн ЦУЛ 1px зах. Онцолсон нь дүүргэлтээ өтгөрүүлнэ (0.62), бүдгэрсэн нь
-   * бараг алга болно (0.06 / зах 0.15) — envhub-д сонголт ЯГ ингэж уншигддаг.
+   * ⚠️ 2026-08-17: envhub-ийн зүсмэгийн хэл — ТУНГАЛАГ дүүргэлт (0.42) + 1px зах байв.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): ЦУЛ бөөрөнхий нум (`donutArc`).
+   *    Онцолсон (hover/сонголт) нь цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`), бүдгэрсэн нь
+   *    `CHART.dim`. `edge` prop нь урьдын захын шугамын үржүүлэгч — одоо зах байхгүй тул
+   *    үл тоомсорлогдоно (дуудагчид эвдрэхгүйн тулд төрөлд үлдэв).
    */
-  const sliceStyle = (key: string, color: string): CSSProperties => ({
-    fill: color,
-    fillOpacity: isDim(key) ? 0.06 : isEmph(key) ? 0.62 : 0.42,
+  const arcStyle = (key: string, color: string, cap: 'round' | 'butt'): CSSProperties => ({
+    fill: 'none',
     stroke: color,
-    strokeOpacity: isDim(key) ? 0.15 : 0.9,
-    strokeWidth: 1 * edge,
+    strokeWidth: width,
+    strokeLinecap: cap,
+    opacity: isDim(key) ? CHART.dim : 1,
+    filter: isEmph(key) ? glow(color) : undefined,
+    transition: 'opacity 0.12s, filter 0.12s',
     ...(onSelect ? { cursor: 'pointer' } : null),
   });
-  // Зүсмэгийн дотор/гадна радиус — band-ийн зузаан нь `width`
+  // Зүсмэгийн ДОТОР радиус — band-ийн зузаан нь `width` (нүхний чимэглэлийн цагираг үүнээс дотогш)
   const ri = r - width / 2;
-  const ro = r + width / 2;
+  /** Ганц ангилал (бусад нь 0) — бүтэн тойрог, зай/үзүүргүй */
+  const fullOne = items.filter((it) => fin(it.value) > 0).length === 1;
 
   // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
   const slices = items.reduce<((typeof items)[number] & { frac: number; offset: number })[]>((a, it) => {
@@ -1059,6 +1173,61 @@ export function Donut({
     (items.length > 3 ? tr(', бусад {0} ангилал.', items.length - 3) : '.');
 
   /**
+   * ЗҮСМЭГҮҮД + НҮХНИЙ ЧИМЭГЛЭЛИЙН ЦАГИРАГ — энгийн ба leader горим ХОЁУЛАА энийг зурна.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар): гадна захын 1px чиглүүлэгч тойрог (envhub) →
+   *    НҮХНИЙ ДОТОР 1px `--chart-grid` цагираг (лавлах загварын дотоод чимэглэл).
+   * ⚠️ `inside` — зүсмэгийн хувийг ЗУРВАС ДОТОР (≥ `CHART.donutLabelMin`, 8%) бичнэ;
+   *    тайлбарын хувьтай ЯГ ижил тоо (`legendPct`, их үлдэгдлийн арга). Leader горимд
+   *    шошго гадна байгаа тул бичихгүй.
+   */
+  const arcs = (cx: number, cy: number, inside: boolean) => {
+    const decoR = ri - 5;
+    return (
+      <>
+        {decoR > 6 && <circle className={s.donutTrack} cx={cx} cy={cy} r={decoR} strokeWidth={1} />}
+        {slices.map((sl) => {
+          if (!(sl.frac > 0)) return null;
+          const { d, cap } = donutArc(cx, cy, r, width, sl.offset, sl.offset + sl.frac, fullOne);
+          return (
+            <path
+              key={sl.key}
+              className={s.donutSlice}
+              d={d}
+              style={arcStyle(sl.key, sl.color, cap)}
+              onClick={onSelect ? () => onSelect(sl.key) : undefined}
+              {...hoverProps(sl.key)}
+              {...tip.bind({
+                label: sl.label,
+                value: tipValue(sl),
+                color: sl.color,
+                hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
+              })}
+            />
+          );
+        })}
+        {inside && slices.map((sl) => {
+          if (sl.frac < CHART.donutLabelMin) return null;
+          const mid = (sl.offset + sl.frac / 2) * Math.PI * 2;
+          return (
+            <text
+              key={`p-${sl.key}`}
+              x={cx + r * Math.sin(mid)}
+              y={cy - r * Math.cos(mid)}
+              textAnchor="middle"
+              dominantBaseline="central"
+              className={`${s.donutPctIn} num`}
+              style={{ opacity: isDim(sl.key) ? CHART.dim : 1 }}
+              aria-hidden
+            >
+              {legendPct(sl.key)}
+            </text>
+          );
+        })}
+      </>
+    );
+  };
+
+  /**
    * LEADER горим — тайлбарыг доор жагсаахын оронд зүсмэг бүрээс зураас татаж
    * пайн диаграмын гадна шошгыг бичнэ. Цөөн зүсмэгтэй (2–4) диаграмд тохиромжтой.
    */
@@ -1124,29 +1293,12 @@ export function Donut({
           role={onSelect ? 'group' : 'img'}
           aria-label={ariaSummary}
         >
-          {/* envhub: гадна захын 1px чиглүүлэгч тойрог (бүтэн band биш) */}
-          <g>
-            <circle className={s.donutTrack} cx={cx} cy={cy} r={Ro} strokeWidth={1} />
-            {slices.map((sl) => (
-              <path
-                key={sl.key}
-                d={sectorPath(cx, cy, ri, ro, sl.offset, sl.offset + sl.frac)}
-                strokeLinejoin="round"
-                style={sliceStyle(sl.key, sl.color)}
-                onClick={onSelect ? () => onSelect(sl.key) : undefined}
-                {...hoverProps(sl.key)}
-                {...tip.bind({
-                  label: sl.label,
-                  value: tipValue(sl),
-                  color: sl.color,
-                  hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
-                })}
-              />
-            ))}
-          </g>
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий нум + нүхний чимэглэлийн цагираг (`arcs`) */}
+          <g>{arcs(cx, cy, false)}</g>
           {/* Голын утга */}
-          <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{centerText}</text>
-          {centerLabel && <text x={cx} y={cy + 12} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар): шошго ДЭЭР, утга ДООР */}
+          {centerLabel && <text x={cx} y={cy - 7} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
+          <text x={cx} y={centerLabel ? cy + 10 : cy + 5} textAnchor="middle" className={s.donutLeadCtr}>{centerText}</text>
           {/* Зураас + гадна БҮТЭН шошго (foreignObject — HTML мөр даруулна) */}
           {laid.map(({ sl, sx, sy, ex, ey, right, lx }) => {
             // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
@@ -1231,47 +1383,32 @@ export function Donut({
           viewBox={`${-EDGE_PAD} ${-EDGE_PAD} ${size + EDGE_PAD * 2} ${size + EDGE_PAD * 2}`}
           role="img"
           aria-label={ariaSummary}
+          /* ⚠️ 2026-10-09: онцолсон зүсмэгийн гэрэлтэлт viewBox-оос гарч тайрагдахгүй */
+          style={{ overflow: 'visible' }}
         >
-          {/* envhub: гадна захын 1px чиглүүлэгч тойрог (бүтэн band биш) */}
-          <g>
-            <circle className={s.donutTrack} cx={size / 2} cy={size / 2} r={ro} strokeWidth={1} />
-            {slices.map((sl) => (
-              <path
-                key={sl.key}
-                className={s.donutSlice}
-                d={sectorPath(size / 2, size / 2, ri, ro, sl.offset, sl.offset + sl.frac)}
-                strokeLinejoin="round"
-                style={sliceStyle(sl.key, sl.color)}
-                onClick={onSelect ? () => onSelect(sl.key) : undefined}
-                {...hoverProps(sl.key)}
-                {...tip.bind({
-                  label: sl.label,
-                  value: tipValue(sl),
-                  color: sl.color,
-                  hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
-                })}
-              />
-            ))}
-          </g>
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий нум + дотор хувь + нүхний цагираг */}
+          <g>{arcs(size / 2, size / 2, true)}</g>
         </svg>
         {/**
           * ⚠️ Хулгана зүсмэг дээр очиход ГОЛД нь тэр зүсмэгийн утга гарна —
           * тайлбар руу нүд шилжүүлэхгүйгээр шууд уншина. Хулгана буухад
           * анхны нийт утга руугаа эргэнэ.
           */}
+        {/* ⚠️ 2026-10-09 (лавлах CRM загвар): ДЭЭР нь жижиг шошго (--ink-3), ДООР нь том
+            утга (600) — урьд нь утга дээр, шошго доор байв. */}
         <div className={s.donutCenter}>
           {(() => {
             const h = hovOn ? slices.find((x) => x.key === hovOn) : null;
             const hv = h ? hovText(h) : '';
             return h ? (
               <>
-                <span className={`${s.donutValue} ${hv.length >= 10 ? s.donutValueLong : ''} num`}>{hv}</span>
                 <span className={s.donutLabel} title={tr(h.label)}>{tr(h.label)}</span>
+                <span className={`${s.donutValue} ${hv.length >= 10 ? s.donutValueLong : ''} num`}>{hv}</span>
               </>
             ) : (
               <>
-                <span className={`${s.donutValue} ${String(center ?? autoNum(total)).length >= 10 ? s.donutValueLong : ''} num`}>{center ?? autoNum(total)}</span>
                 {centerLabel && <span className={s.donutLabel}>{centerLabel}</span>}
+                <span className={`${s.donutValue} ${String(center ?? autoNum(total)).length >= 10 ? s.donutValueLong : ''} num`}>{center ?? autoNum(total)}</span>
               </>
             );
           })()}
@@ -1283,15 +1420,10 @@ export function Donut({
           const on = sel.includes(sl.key);
           const body = (
             <>
-              {/* envhub: тэмдэг нь зүсмэгийн ЯГ багасгасан хувь — ижил дүүргэлт
-                  (42%) + ижил өнгийн зах. */}
-              <span
-                className={s.legendDot}
-                style={{
-                  background: `color-mix(in oklab, ${sl.color} 42%, transparent)`,
-                  border: `1px solid ${sl.color}`,
-                }}
-              />
+              {/* envhub: тэмдэг нь зүсмэгийн багасгасан хувь байв (42% дүүргэлт + зах).
+                  ⚠️ 2026-10-09 (лавлах CRM загвар): ХӨНДИЙ ЦАГИРАГ — 12px, 3px өнгөт хүрээ,
+                  голд нь тунгалаг (`.legendRing`). */}
+              <span className={s.legendRing} style={{ borderColor: sl.color }} />
               <span className={s.donutName} data-ui="donut-name">{tr(sl.label)}</span>
               {/**
                 * ⚠️ `toFixed(0)` ганцаараа ХУДАЛ уншигдана: 3,947-гийн 14 нь
@@ -1368,55 +1500,70 @@ const selHas = (sel: string | readonly string[] | null | undefined, key: string)
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
 
 /**
- * Ганц цувааны талбайн градиент — `CHART.areaTop → areaBottom`.
+ * Талбайн градиент — `top → CHART.areaBottom` (анхдагч `CHART.areaTop`, ганц цуваа).
  * ⚠️ Өнгө нь `style`-аар: SVG presentation ШИНЖ (`stopColor="var(…)"`) дотор
  *    `var()` найдвартай задардаггүй (format.ts-ийн `cat()` тайлбар).
  * ⚠️ `gradientUnits="userSpaceOnUse"` — `preserveAspectRatio="none"` сунгалттай
  *    хослоход градиентийн тэнхлэг гажихгүй.
+ * ⚠️ 2026-10-09 (лавлах CRM загвар): ганц цуваа 0.32 → 0, олон цуваа цуваа БҮР
+ *    `CHART.areaMultiTop` (0.16) → 0 — давхарласан тунгалаг талбай.
  */
-function AreaGrad({ id }: { id: string }) {
+function AreaGrad({ id, top = CHART.areaTop }: { id: string; top?: number }) {
   return (
     <defs>
       <linearGradient id={id} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" style={{ stopColor: 'var(--tone, var(--data))', stopOpacity: CHART.areaTop }} />
+        <stop offset="0%" style={{ stopColor: 'var(--tone, var(--data))', stopOpacity: top }} />
         <stop offset="100%" style={{ stopColor: 'var(--tone, var(--data))', stopOpacity: CHART.areaBottom }} />
       </linearGradient>
     </defs>
   );
 }
 
+/** Цувааны шугамын хэв маяг — 2px, round, ГЭРЭЛТЭЛТТЭЙ (`glow`); хэвлэхэд `chartGlow` унтраана */
+const LINE_GLOW: CSSProperties = { filter: glow('var(--tone, var(--data))') };
+
 /**
- * `Series`-ийн МУРУЙН давхарга — талбайн градиент, зөөлөн шугам, цэгүүд.
+ * `Series`-ийн МУРУЙН давхарга — талбайн градиент, зөөлөн гэрэлтсэн шугам.
  *
  * Баганын түвшинд (`.seriesPlot`) БҮТЭН талбайг эзэлж хөвнө; hover/дарах нь
  * доорх баганууд дээр хэвээр ажиллана (энэ давхарга нь `pointer-events: none`).
  * ⚠️ 2026-10-09: `null` нь ЦООРХОЙ — муруй тасарна, цэг зурагдахгүй (урьд нь
  *    `fin()`-ээр 0 болж тэнхлэгийн ёроол руу унадаг байв).
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цэг АНХДАГЧААР НУУГДАНА — зөвхөн
+ *    заасан (`hov`: hover/фокус) цэгт `HoverMarker` + утгын pill. Заагаагүй үед
+ *    `showMax` бол ДЭЭД цэгт «Дээд: X» pill байнга. Ганц цэгтэй хэсэг (хоёр талдаа
+ *    цоорхой) нь шугамгүй тул жижиг цэгээр ҮРГЭЛЖ харагдана — эс бөгөөс алга болно.
  */
 function SeriesLine({
-  items, max, selected, showValues,
+  items, top, pad, selected, showValues, hov, showMax, valText,
 }: {
   items: { key: string; label: string; value: number | null; display?: string }[];
-  max: number;
+  /** Тэнхлэгийн дээд утга (`niceTicks`-ийн сүүлийнх) */
+  top: number;
+  /** Дээд зай (%) — `showValues` үед 20 */
+  pad: number;
   selected?: string | readonly string[] | null;
   showValues?: boolean;
+  hov: number | null;
+  showMax: boolean;
+  valText: (i: number) => string;
 }) {
   // ⚠️ Нэг хуудсанд хэд хэдэн муруй байж болно — градиентийн id ДАВТАГДВАЛ
   //    сүүлийнх нь бусдыгаа дардаг (SVG-ийн id баримт даяар нэгдмэл).
   const gid = `seriesArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const n = items.length;
   if (n < 1) return null;
-  /**
-   * ⚠️ ДЭЭД ЗАЙ: утгыг цэгийн ДЭЭР бичихэд хамгийн өндөр цэгийн шошго зургийн
-   * гадна гарч, `dayScroll`-ын `overflow-y: hidden`-д ТАСАРНА. Тиймээс утга
-   * харуулах үед муруйг 20%-иар доош шахаж толгойн зай гаргана.
-   */
-  const pad = showValues ? 20 : 0;
   // х нь баганын ТӨВД — доорх огнооны шошготой нэг тэнхлэгт байх ёстой
   const pts = items.map((it, i) => (isNum(it.value)
-    ? { x: ((i + 0.5) / n) * 100, y: pad + (100 - pad) * (1 - it.value / max) }
+    ? { x: ((i + 0.5) / n) * 100, y: pad + (100 - pad) * (1 - it.value / top) }
     : null));
   const segs = lineSegments(pts);
+  const solo = new Set(segs.filter((sg) => sg.single).map((sg) => sg.from));
+  /* Дээд цэг — ижил утгатай бол ЭХНИЙХ */
+  let maxI = -1;
+  items.forEach((it, i) => { if (isNum(it.value) && (maxI < 0 || it.value > (items[maxI].value as number))) maxI = i; });
+  const hp = hov != null ? pts[hov] : null;
+  const mp = hov == null && showMax && !showValues && maxI >= 0 ? pts[maxI] : null;
 
   return (
     <>
@@ -1427,31 +1574,46 @@ function SeriesLine({
         {segs.filter((sg) => !sg.single).map((sg) => (
           <Fragment key={sg.from}>
             <path d={areaPath(sg, 100)} style={{ fill: `url(#${gid})` }} />
-            <path className={s.seriesLinePath} d={sg.d} />
+            <path className={`${s.seriesLinePath} chartGlow`} d={sg.d} style={LINE_GLOW} />
           </Fragment>
         ))}
       </svg>
       {pts.map((p, i) => {
         if (!p) return null;
         const dim = selAny(selected) && !selHas(selected, items[i].key) ? CHART.dim : 1;
-        const v = items[i].value;
         return (
           <Fragment key={items[i].key}>
-            <span
-              className={s.seriesLineDot}
-              style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
-            />
+            {solo.has(i) && (
+              <span className={s.seriesLineDot} style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }} />
+            )}
             {showValues && (
               <span
                 className={s.seriesLineVal}
                 style={{ left: `${p.x}%`, top: `${p.y}%`, opacity: dim }}
               >
-                {items[i].display ?? autoNum(v)}
+                {items[i].display ?? autoNum(items[i].value)}
               </span>
             )}
           </Fragment>
         );
       })}
+      {hp && (
+        <>
+          <HoverMarker x={`${hp.x}%`} y={`${hp.y}%`} color="var(--tone, var(--data))" />
+          {!showValues && (
+            <PointCallout x={`${hp.x}%`} y={`${hp.y}%`} text={valText(hov!)} color="var(--tone, var(--data))" align={calloutAlign(hp.x)} />
+          )}
+        </>
+      )}
+      {mp && (
+        <PointCallout
+          x={`${mp.x}%`}
+          y={`${mp.y}%`}
+          text={tr('Дээд: {0}', valText(maxI))}
+          color="var(--tone, var(--data))"
+          align={calloutAlign(mp.x)}
+        />
+      )}
     </>
   );
 }
@@ -1471,53 +1633,117 @@ export type SeriesLineDef = {
  *
  * ⚠️ `null` нь ЦООРХОЙ — 0 гэж зурахгүй. Муруй нь тасралтгүй хэсэг бүрээр
  *    тусдаа зурагдана (нэг цэгтэй хэсэг нь зөвхөн цэг).
- * ⚠️ 2026-10-09 (графикийн жигдрэл): ОЛОН цуваанд талбайн ДҮҮРГЭЛТГҮЙ — давхцсан
- *    градиентууд холилдож аль цуваа аль нь вэ гэдгийг бүдгэрүүлдэг. Ганц цувааны
- *    (`SeriesLine`) талбай хэвээр. (2026-10-06-ны «доод талын fill»-ийг орлоно.)
+ * ⚠️ 2026-10-09 (графикийн жигдрэл): олон цуваанд талбайн дүүргэлтгүй байв.
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цуваа БҮР өөрийн тунгалаг
+ *    давхаргатай (`CHART.areaMultiTop` 0.16 → 0) — бага тунгалаг тул давхцсан хэсэг
+ *    «давхарга» мэт уншигдана, нэг өнгө болж холилдохгүй. Цэг нь зөвхөн заасан үед;
+ *    pill нь ДЭЭД муруйнх дээр, бусдынх цэгийнхээ ДООР (хоорондоо давхцахгүй).
  */
 function SeriesLines({
-  lines, n, max, selected, keys, showValues,
+  lines, n, top, pad, selected, keys, showValues, hov,
 }: {
   lines: SeriesLineDef[];
   n: number;
-  max: number;
+  top: number;
+  pad: number;
   selected?: string | readonly string[] | null;
   keys: string[];
   showValues?: boolean;
+  hov: number | null;
 }) {
+  const gid = `seriesAreas${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (n < 1) return null;
-  const pad = showValues ? 20 : 0;
   const px = (i: number) => ((i + 0.5) / n) * 100;
-  const py = (v: number) => pad + (100 - pad) * (1 - fin(v) / max);
+  const py = (v: number) => pad + (100 - pad) * (1 - fin(v) / top);
+  /* Заасан цэг дээрх утгууд — ДЭЭРЭЭС доош эрэмбэлсэн (хамгийн өндөр нь pill-ээ дээр) */
+  const hovVals = hov == null ? [] : lines
+    .map((ln) => ({ ln, v: ln.values[hov] }))
+    .filter((x): x is { ln: SeriesLineDef; v: number } => isNum(x.v))
+    .sort((a, b) => b.v - a.v);
   return (
     <>
-      {lines.map((ln) => {
+      {lines.map((ln, li) => {
         const segs = lineSegments(ln.values.map((v, i) => (isNum(v) ? { x: px(i), y: py(v) } : null)));
         return (
           <div key={ln.key} style={{ display: 'contents', ...tone(ln.color) }}>
             <svg className={s.seriesLineSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              <AreaGrad id={`${gid}${li}`} top={CHART.areaMultiTop} />
               {segs.filter((sg) => !sg.single).map((sg) => (
-                <path key={sg.from} className={s.seriesLinePath} d={sg.d} />
+                <Fragment key={sg.from}>
+                  <path d={areaPath(sg, 100)} style={{ fill: `url(#${gid}${li})` }} />
+                  <path className={`${s.seriesLinePath} chartGlow`} d={sg.d} style={LINE_GLOW} />
+                </Fragment>
               ))}
             </svg>
-            {ln.values.map((v, i) => {
+            {segs.filter((sg) => sg.single).map((sg) => {
+              const dim = selAny(selected) && !selHas(selected, keys[sg.from]) ? CHART.dim : 1;
+              return (
+                <span
+                  key={keys[sg.from]}
+                  className={s.seriesLineDot}
+                  style={{ left: `${sg.pts[0].x}%`, top: `${sg.pts[0].y}%`, opacity: dim }}
+                />
+              );
+            })}
+            {showValues && ln.values.map((v, i) => {
               if (!isNum(v)) return null;
               const dim = selAny(selected) && !selHas(selected, keys[i]) ? CHART.dim : 1;
               return (
-                <Fragment key={keys[i]}>
-                  <span className={s.seriesLineDot} style={{ left: `${px(i)}%`, top: `${py(v)}%`, opacity: dim }} />
-                  {showValues && (
-                    <span className={s.seriesLineVal} style={{ left: `${px(i)}%`, top: `${py(v)}%`, opacity: dim }}>
-                      {autoNum(v)}
-                    </span>
-                  )}
-                </Fragment>
+                <span key={keys[i]} className={s.seriesLineVal} style={{ left: `${px(i)}%`, top: `${py(v)}%`, opacity: dim }}>
+                  {autoNum(v)}
+                </span>
               );
             })}
           </div>
         );
       })}
+      {hov != null && hovVals.map(({ ln, v }, k) => (
+        <Fragment key={ln.key}>
+          <HoverMarker x={`${px(hov)}%`} y={`${py(v)}%`} color={ln.color} />
+          {!showValues && (
+            <PointCallout
+              x={`${px(hov)}%`}
+              y={`${py(v)}%`}
+              text={autoNum(v)}
+              color={ln.color}
+              below={k > 0}
+              align={calloutAlign(px(hov))}
+            />
+          )}
+        </Fragment>
+      ))}
     </>
+  );
+}
+
+/**
+ * ТОР + ЗҮҮН ТЭНХЛЭГ (HTML) — `Series`-ийн талбайн доор.
+ * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): envhub-ийн «торгүй, тэнхлэггүй»
+ *    хэлийг ОРЛОВ — бүдэг 1px `--chart-grid` хэвтээ (niceTicks) + босоо (шошготой
+ *    нүд бүрд) шугам, зүүн талд 10px `--ink-3` tabular тоо. Шошгууд нь талбайн
+ *    ГАДНА (`right: 100%`) — дуудагч талбайд `margin-left: axW` өгнө.
+ */
+function SeriesGrid({
+  ticks, labels, top, pad, xs,
+}: {
+  ticks: number[];
+  labels: string[];
+  top: number;
+  pad: number;
+  /** Босоо шугамын байрлал (%) */
+  xs: number[];
+}) {
+  const yb = (v: number) => (v / top) * (100 - pad);
+  return (
+    <div className={s.chartGrid} aria-hidden>
+      {ticks.map((v, k) => (
+        <Fragment key={v}>
+          <i className={s.gridH} style={{ bottom: `${yb(v)}%` }} />
+          <span className={`${s.axisYLbl} num`} style={{ bottom: `${yb(v)}%` }}>{labels[k]}</span>
+        </Fragment>
+      ))}
+      {xs.map((x) => <i key={x} className={s.gridV} style={{ left: `${x}%` }} />)}
+    </div>
   );
 }
 
@@ -1533,6 +1759,7 @@ export function Series({
   outline = false,
   line = false,
   lines,
+  showMax = true,
 }: {
   /**
    * ⚠️ 2026-10-09: `value: null` = МЭДЭЭЛЭЛГҮЙ — багана ЗУРАГДАХГҮЙ (цоорхой), муруй
@@ -1578,12 +1805,33 @@ export function Series({
    * дарах талбай хэвээр. Хоосон/өгөөгүй бол ердийн нэг муруй.
    */
   lines?: SeriesLineDef[] | null;
+  /**
+   * ГАНЦ муруйн (`line`, `lines`-гүй) ДЭЭД цэгт «Дээд: X» pill-ийг байнга харуулах
+   * (hover-гүй үед). ⚠️ 2026-10-09 (лавлах CRM загвар) — анхдагч ТИЙМ; `showValues`
+   * үед гарахгүй (утга аль хэдийн бичигдсэн).
+   */
+  showMax?: boolean;
 }) {
   const multi = line && !!lines && lines.length > 0;
   const max = multi
     ? Math.max(1, ...lines!.flatMap((l) => l.values.map((v) => (v == null ? 0 : fin(v)))))
     : Math.max(1, ...items.map((i) => fin(i.value)));
+  /**
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): тэнхлэгийн дээд нь «гоё» алхмын
+   *    сүүлийн утга (`niceTicks`) — багана/муруй ТОРТОЙ нэг хуваарьт. Урьд нь өгөгдлийн
+   *    дээд (`max`) байсан тул хамгийн өндөр багана үргэлж 100% хүрдэг байв.
+   */
+  const ticks = niceTicks(0, max, tickCount(height));
+  const top = ticks[ticks.length - 1] || 1;
+  const tickDec = stepDecimals(ticks);
+  const tickLbls = ticks.map((v) => tickText(v, tickDec));
+  const axW = axisWidth(tickLbls);
+  /* Муруйн дээд зай (%) — `showValues` үед хамгийн өндөр цэгийн бичиг багтана */
+  const pad = line && showValues ? 20 : 0;
   const tip = useTip();
+  /** Заасан (hover/фокус) багана — pill ба тэмдэг энд гарна */
+  const [hov, setHov] = useState<number | null>(null);
+  const hovIdx = hov != null && hov < items.length ? hov : null;
   const [ticksRef, ticksW] = useWidth<HTMLDivElement>();
   /**
    * ⚠️ 2026-10-09: МУРУЙН горимд ROVING TABINDEX — `Trend`-тэй ижил: график НЭГ
@@ -1622,9 +1870,33 @@ export function Series({
   const stride = perCol > 0 ? Math.max(1, Math.ceil(need / perCol)) : 1;
 
   /**
+   * Tooltip/pill-ийн УТГЫН бичвэр — нэгжийг `display` өөрөө агуулаагүй үед л залгана.
+   * ⚠️ 2026-09-25: «61.1% / төл. 70.0% %», «5 багц багц» гэж давхардаж байв. Habea-ийн
+   *    `display: num(v)` (нэгжгүй) нь «25 ажилтан» хэвээр.
+   * ⚠️ Олон муруйд tooltip нь шугам бүрийн утгыг жагсаана («Монгол 1,200 · Гадаад 180»).
+   */
+  const valueOf = (idx: number): string => {
+    const it = items[idx];
+    const disp = multi
+      ? lines!.map((l) => `${l.label} ${autoNum(l.values[idx])}`).join(' · ')
+      : it.display ?? autoNum(it.value);
+    return unit && !multi && isNum(it.value) && !disp.includes(unit) ? `${disp} ${unit}` : disp;
+  };
+  const n = items.length;
+  /* Босоо торны шугам — шошготой нүд бүрийн ТӨВД (`stride`-тай ижил дүрэм) */
+  const gridXs = items.map((_, i) => i).filter((i) => (n - 1 - i) % stride === 0).map((i) => ((i + 0.5) / n) * 100);
+  /** Заасан баганын өндөр (%) — баганын горимд pill-ийн байрлал */
+  const hovBar = !line && hovIdx != null && isNum(items[hovIdx].value)
+    ? Math.max(1.5, (fin(items[hovIdx].value) / top) * 100)
+    : null;
+
+  /**
    * ⚠️ 2026-08-17: envhub-ийн BarChart хэл — ТОРГҮЙ, ТЭНХЛЭГГҮЙ, баганан дээр
-   * байнгын утгагүй. Утга нь hover tooltip-д; доор нь зөвхөн 10px цифр/шошгын
-   * мөр. Сонгогдоогүй багана `CHART.dim` (0.35) хүртэл бүдгэрнэ (2026-10-09: 0.22 байв).
+   * байнгын утгагүй байв. Сонгогдоогүй багана `CHART.dim` (0.35) хүртэл бүдгэрнэ.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): бүдэг тор + зүүн жижиг тэнхлэг
+   *    (`SeriesGrid`), НАРИЙН (слотын 45%) дээд булан нь 4px бөөрөнхий, босоо градиент
+   *    (дээд = цувааны өнгө → доод 35%) багана; hover/фокус нь баганыг ТОДРУУЛЖ, дээр нь
+   *    утгын pill гаргана. Дэлгэрэнгүй (нэр, «Дарж шүүнэ») нь `useTip`-д хэвээр.
    */
   return (
     <div className={`${s.series} seriesChart`} style={tone(color)}>
@@ -1645,19 +1917,35 @@ export function Series({
         </div>
       )}
       <div
-        className={s.seriesPlot}
-        style={grow ? { flex: 1, minHeight: height } : { height }}
+        /* ⚠️ Муруйн горимд дээд талд pill-ийн зай (`seriesPlotLine`) — «Дээд: X» нь
+           нэгжийн мөр/гарчиг дээр гарахгүй */
+        className={`${s.seriesPlot} ${line ? s.seriesPlotLine : ''}`}
+        style={{ ...(grow ? { flex: 1, minHeight: height } : { height }), marginLeft: axW }}
         onKeyDown={line ? nav : undefined}
       >
-        {line && !multi && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
+        <SeriesGrid ticks={ticks} labels={tickLbls} top={top} pad={pad} xs={gridXs} />
+        {line && !multi && (
+          <SeriesLine
+            items={items}
+            top={top}
+            pad={pad}
+            selected={selected}
+            showValues={showValues}
+            hov={hovIdx}
+            showMax={showMax}
+            valText={valueOf}
+          />
+        )}
         {multi && (
           <SeriesLines
             lines={lines!}
-            n={items.length}
-            max={max}
+            n={n}
+            top={top}
+            pad={pad}
             selected={selected}
             keys={items.map((it) => it.key)}
             showValues={showValues}
+            hov={hovIdx}
           />
         )}
         {items.map((it, idx) => {
@@ -1667,23 +1955,19 @@ export function Series({
           // ⚠️ Баганын хамгийн бага өндөр 1.5%: утга 0 байсан ч багана нь БАЙГАА
           //    гэдэг нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
           //    ⚠️ 2026-10-09: харин `null` (өгөгдөлгүй) бол багана ОГТ зурахгүй.
-          const barH = `${Math.max(1.5, (fin(it.value) / max) * 100)}%`;
-          /* ⚠️ 2026-09-25: нэгжийг `display` өөрөө агуулаагүй үед л залгана —
-             «61.1% / төл. 70.0% %», «5 багц багц» гэж давхардаж байв. Habea-ийн
-             `display: num(v)` (нэгжгүй) нь «25 ажилтан» хэвээр. */
-          /* ⚠️ Олон муруйд tooltip нь шугам бүрийн утгыг жагсаана («Монгол 1,200 · Гадаад 180») */
-          const disp = multi
-            ? lines!.map((l) => {
-              const v = l.values[idx];
-              return `${l.label} ${autoNum(v)}`;
-            }).join(' · ')
-            : it.display ?? autoNum(it.value);
+          const barH = `${Math.max(1.5, (fin(it.value) / top) * 100)}%`;
           const colColor = it.color ?? color;
           const tipData = {
             label: it.label,
-            value: unit && !multi && has && !disp.includes(unit) ? `${disp} ${unit}` : disp,
+            value: valueOf(idx),
             color: colColor,
             hint: onSelect ? tr('Дарж шүүнэ') : undefined,
+          };
+          const tb = tip.bind(tipData);
+          /* ⚠️ 2026-10-09: hover/фокус → `hov` (pill ба тэмдэг). Tooltip-ийн үйлдлүүд хэвээр. */
+          const hovProps = {
+            onMouseEnter: () => setHov(idx),
+            onMouseLeave: () => setHov((h) => (h === idx ? null : h)),
           };
           // Муруйн горимд багана нь ЗӨВХӨН hover/дарах талбай — зурагдахгүй
           const inner = line || !has ? null : (
@@ -1694,7 +1978,7 @@ export function Series({
                 </span>
               )}
               <span
-                className={outline ? `${s.seriesBar} ${s.seriesBarOutline}` : s.seriesBar}
+                className={`${outline ? `${s.seriesBar} ${s.seriesBarOutline}` : s.seriesBar} ${hovIdx === idx ? s.colHot : ''}`}
                 style={{ height: barH, opacity: dim ? CHART.dim : 1 }}
               />
             </>
@@ -1717,19 +2001,30 @@ export function Series({
               className={`${s.seriesCol} ${onSelect ? s.seriesClick : ''} ${line ? s.seriesColLine : ''}`}
               style={colStyle}
               onClick={onSelect ? () => onSelect(it.key) : undefined}
-              {...tip.bind(tipData)}
-              onFocus={(e) => { setAct(idx); tip.bind(tipData).onFocus(e); }}
+              {...tb}
+              {...hovProps}
+              onFocus={(e) => { setAct(idx); setHov(idx); tb.onFocus(e); }}
+              onBlur={() => { tb.onBlur(); setHov((h) => (h === idx ? null : h)); }}
             >
               {inner}
             </button>
           ) : (
-            <div key={it.key} className={s.seriesCol} style={colStyle} {...tip.bind(tipData)}>
+            <div key={it.key} className={s.seriesCol} style={colStyle} {...tb} {...hovProps}>
               {inner}
             </div>
           );
         })}
+        {hovBar != null && !showValues && (
+          <PointCallout
+            x={`${((hovIdx! + 0.5) / n) * 100}%`}
+            y={`${100 - hovBar}%`}
+            text={valueOf(hovIdx!)}
+            color={items[hovIdx!].color ?? 'var(--tone, var(--data))'}
+            align={calloutAlign(((hovIdx! + 0.5) / n) * 100)}
+          />
+        )}
       </div>
-      <div className={s.seriesTicks} aria-hidden ref={ticksRef}>
+      <div className={s.seriesTicks} aria-hidden ref={ticksRef} style={{ marginLeft: axW }}>
         {items.map((it, i) => {
           const on = selHas(selected, it.key);
           // Сүүлчийнхээс хойш тоолсон алхам — хамгийн шинэ үе ҮРГЭЛЖ бичигдэнэ.
@@ -1833,6 +2128,13 @@ export type TrendPoint = {
  * ингэснээр дугуйруулалт зайг богиносгох боломжгүй.
  */
 const MAX_TICKS = 6;
+/**
+ * `.trendPlot`-ийн ДЭЭД зай (px) — ui.module.css-тэй ИЖИЛ тоо (тэнд өөрчилбөл энд ч).
+ * ⚠️ 2026-10-09 (лавлах CRM загвар): 6 → 22 — хамгийн өндөр цэгийн «Дээд: X» pill
+ *    уншилтын мөр (`trendHead`) дээр давхарлахгүй, гүйлтийн `overflow-y`-д тайрагдахгүй.
+ *    Зүүн тэнхлэгийн тоо ч энэ зайгаар доош шилжинэ.
+ */
+const TREND_PLOT_TOP = 22;
 /** 10px Inter — тоо/зураас/цэгийн дундаж өргөн (px). Шошго нь `.num` (tabular). */
 const LBL_CH = 5.6;
 function axisTicks(points: TrendPoint[], width: number): string[] {
@@ -1903,6 +2205,7 @@ export function Trend({
   showValues = false,
   alert,
   smooth = true,
+  showMax = true,
 }: {
   points: TrendPoint[];
   color?: string;
@@ -1939,6 +2242,11 @@ export function Trend({
    *    холбогдохгүй). Хугарсан шугам хэрэгтэй газар `smooth={false}`.
    */
   smooth?: boolean;
+  /**
+   * Hover-гүй үед ДЭЭД цэгт «Дээд: X» pill-ийг байнга харуулах.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар) — анхдагч ТИЙМ; `showValues` үед гарахгүй.
+   */
+  showMax?: boolean;
 }) {
   const [hov, setHov] = useState<number | null>(null);
   const tip = useTip();
@@ -1991,7 +2299,6 @@ export function Trend({
      `-Infinity` өгнө. Тиймээс шүүж аваад хоосон бол 0-ээс эхэлнэ. */
   const meas = points.map((p) => p.value).filter((v): v is number => v != null && Number.isFinite(v));
   const peak = Math.max(...meas, alert ? alert.value : 0, 0);
-  const top = Math.max(10, Math.ceil(peak / 10) * 10);
   /**
    * ⚠️ СӨРӨГ утгын ЁРООЛ (2026-09-25). Урьд нь тэнхлэг ҮРГЭЛЖ 0-ээс эхэлдэг
    * байсан тул −15°C (IoT «Гадна орчны температур», 28°C босготой) нь y≈142%
@@ -2001,7 +2308,18 @@ export function Trend({
    * бүгд ≥ 0 бол хуучин зан (0) хэвээр.
    */
   const low = Math.min(...meas, alert ? alert.value : 0, 0);
-  const bot = low < 0 ? Math.floor(low / 10) * 10 : 0;
+  /**
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): тэнхлэг нь «гоё» алхмын хуваарь
+   *    (`niceTicks`) — зүүн талын жижиг тоо ба хэвтээ тор НЭГ хуваарьт. Урьд нь бүтэн
+   *    аравт (`ceil(peak/10)*10`, доод нь 10) байв; ёроол нь сөрөг утгад доошилдог
+   *    дүрэм хэвээр (бүгд ≥ 0 бол 0).
+   */
+  const yTicks = niceTicks(low < 0 ? low : 0, peak, tickCount(height));
+  const bot = yTicks[0];
+  const top = yTicks[yTicks.length - 1];
+  const yDec = stepDecimals(yTicks);
+  const yLbls = yTicks.map((v) => tickText(v, yDec, unit === '%' ? '%' : ''));
+  const yAxW = axisWidth(yLbls);
   /**
    * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
    * бичиг талбайгаас гарч, дээрх уншилтын мөртэй давхарладаг. 1.18 дахин
@@ -2056,6 +2374,22 @@ export function Trend({
   const curIdx = hov != null && hov < points.length ? hov : points.length - 1;
   const cur = points[curIdx];
 
+  /* ── 2026-10-09 (лавлах CRM загвар — өнгө хэвээр) ──
+     · босоо тор нь тэнхлэгийн ШОШГОТОЙ цэгүүд дээр (perPoint бол бүгд);
+     · цэг АНХДАГЧААР нуугдана — ганц цэгтэй хэсэг (`solo`) ба босго давсан цэг үргэлж
+       харагдана (тэдгээр нь мэдээлэл);
+     · заасан цэгт утгын pill, заагаагүй үед ДЭЭД цэгт «Дээд: X» (`showMax`). */
+  const xLbls = perPoint ? null : axisTicks(points, axisW);
+  const gridX = points.map((_, i) => i).filter((i) => (xLbls ? !!xLbls[i] : true));
+  const solo = new Set(segs.filter((sg) => sg.single).map((sg) => sg.from));
+  let maxI = -1;
+  points.forEach((p, i) => {
+    if (p.value != null && Number.isFinite(p.value) && (maxI < 0 || p.value > (points[maxI].value as number))) maxI = i;
+  });
+  const hp = hov != null && hov < points.length && points[hov].value != null ? hov : null;
+  const callIdx = hp ?? (showMax && !showValues ? (maxI >= 0 ? maxI : null) : null);
+  const callV = callIdx != null ? (points[callIdx].value as number) : null;
+
   /**
    * ⚠️ 2026-08-18: ROVING TABINDEX. Урьд нь цэг бүр Tab-стоп байв — 12 цэгтэй
    * цуваанд зүгээр ч, IoT-ийн 90 цэгтэй 9 графикт ~800 Tab-стоп болж, гараар
@@ -2104,12 +2438,29 @@ export function Trend({
         </span>
       </div>
 
+      {/* ⚠️ 2026-10-09 (лавлах CRM загвар): зүүн талын жижиг ТЭНХЛЭГ нь гүйгчийн ГАДНА
+          (`trendBody`-ийн padding-д) — хэвтээ гүйлтэд тоо нь хамт гүйж алга болохгүй.
+          Босоо байрлал нь px: `TREND_PLOT_TOP` (CSS `.trendPlot` margin-top) + y% × өндөр. */}
+      <div className={s.trendBody} style={{ paddingLeft: yAxW }}>
+      <div className={s.trendYAxis} style={{ width: yAxW }} aria-hidden>
+        {yTicks.map((v, k) => (
+          <span key={v} className="num" style={{ top: TREND_PLOT_TOP + (y(v) / 100) * height }}>{yLbls[k]}</span>
+        ))}
+      </div>
       {/* ⚠️ Гүйдэг үед `trendPlot`/`trendAxis` НЭГ дотоод блокод сууна —
           тусад нь гүйлгэвэл шошго нь цэгээсээ салж, өөр өөр байрлалд зогсоно. */}
       <div ref={scRef} className={scroll ? s.trendScroll : undefined}>
         <div style={scroll ? { width: `${innerW}%` } : undefined}>
           <div className={s.trendPlot} style={{ height }} onKeyDown={nav}>
             <svg className={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              {/* ⚠️ 2026-10-09 (лавлах CRM загвар): БҮДЭГ ТОР — хэвтээ (тэнхлэгийн тоо бүрд) +
+                  босоо (шошготой цэг бүрд), 1px `--chart-grid`; муруйн ӨМНӨ тул ард үлдэнэ. */}
+              {yTicks.map((v) => (
+                <line key={`h${v}`} className={s.trendGrid} x1="0" x2="100" y1={y(v)} y2={y(v)} />
+              ))}
+              {gridX.map((i) => (
+                <line key={`v${i}`} className={s.trendGrid} x1={x(i)} x2={x(i)} y1="0" y2="100" />
+              ))}
               {/**
                 * ⚠️ Талбайн бүрхүүл нь ХАВТГАЙ 0.1 тунгалаг байсныг ГРАДИЕНТ болгов:
                 * шугамын дор өтгөн, суурь тэнхлэг дээр уусна. Хавтгай бүрхүүл нь
@@ -2118,9 +2469,9 @@ export function Trend({
                 * ⚠️ `gradientUnits="userSpaceOnUse"` — эс бөгөөс `preserveAspectRatio
                 * ="none"` сунгалттай хослоод градиентийн тэнхлэг гажина.
                 */}
-              {/* envhub-ийн AreaChart: ТОРГҮЙ, y-тэнхлэггүй — утгын лавлагаа нь
-                  дээрх readout мөр ба hover tooltip.
-                  ⚠️ 2026-10-09: градиент 0.34 → `CHART.areaTop` (0.24) — бүх ганц цуваанд нэг. */}
+              {/* envhub-ийн AreaChart: ТОРГҮЙ, y-тэнхлэггүй байв.
+                  ⚠️ 2026-10-09: градиент 0.34 → `CHART.areaTop` — бүх ганц цуваанд нэг
+                  (лавлах CRM загвараар 0.32 → 0). */}
               <AreaGrad id={gradId} />
               {/* ⚠️ ХЭСЭГ БҮРИЙГ ТУСАД НЬ (2026-09-15): хэмжигдээгүй цэг дээр
                   муруй тасарна. Ганц цэгтэй хэсэгт шугам зурахгүй — цэгийн
@@ -2131,7 +2482,7 @@ export function Trend({
               {segs.filter((sg) => !sg.single).map((sg) => (
                 <g key={`r${sg.from}`}>
                   <path d={areaPath(sg, 100)} style={{ fill: `url(#${gradId})` }} />
-                  <path className={s.trendLine} d={sg.d} />
+                  <path className={`${s.trendLine} chartGlow`} d={sg.d} style={LINE_GLOW} />
                 </g>
               ))}
               {/* Босгын шугам — муруйн ДЭЭГҮҮР зурагдана (эс бөгөөс градиент дарна) */}
@@ -2192,9 +2543,12 @@ export function Trend({
                     нь 100% буюу тэнхлэгийн ёроол — «тэг хэмжигдсэн» гэж
                     худал уншигдана. Товч нь хэвээр үлдэнэ (hover/фокусаар
                     «—» гэж уншигдана), зөвхөн цэг алга болно. */}
+                {/* ⚠️ 2026-10-09 (лавлах CRM загвар): цэг анхдагчаар НУУГДМАЛ — `trendDotSolo`
+                    (ганц цэгтэй хэсэг) ба `trendDotAlert` л үргэлж харагдана; заасан цэг
+                    `.trendHitOn`-оор r 4.5 + цагираг + гало болно. */}
                 {p.value != null && (
                   <span
-                    className={`${s.trendDot} ${over(p.value) ? s.trendDotAlert : ''}`}
+                    className={`${s.trendDot} ${solo.has(i) ? s.trendDotSolo : ''} ${over(p.value) ? s.trendDotAlert : ''}`}
                     style={{ top: `${y(p.value)}%` }}
                   />
                 )}
@@ -2211,6 +2565,16 @@ export function Trend({
               </button>
               );
             })}
+            {/* Утгын pill — заасан цэг, эсвэл заагаагүй үед ДЭЭД цэг («Дээд: X») */}
+            {callIdx != null && callV != null && (
+              <PointCallout
+                x={`${x(callIdx)}%`}
+                y={`${y(callV)}%`}
+                text={hp != null ? `${fmtV(callV)}${unit}` : tr('Дээд: {0}', `${fmtV(callV)}${unit}`)}
+                color={over(callV) ? 'var(--bad)' : 'var(--tone, var(--data))'}
+                align={calloutAlign(x(callIdx))}
+              />
+            )}
           </div>
 
           <div className={`${s.trendAxis} ${perPoint ? s.trendAxisTwoLine : ''}`} ref={axisRef}>
@@ -2229,13 +2593,14 @@ export function Trend({
                     </span>
                   );
                 })
-              : axisTicks(points, axisW).map((t, i) => (t ? (
+              : (xLbls ?? []).map((t, i) => (t ? (
                   <span key={i} className={s.trendAxisTick} style={{ left: `${x(i)}%` }}>
                     {t}
                   </span>
                 ) : null))}
           </div>
         </div>
+      </div>
       </div>
       {tip.node}
     </div>
@@ -2306,13 +2671,17 @@ export function Ring({
       {...(has ? { 'aria-valuenow': v, 'aria-valuetext': shown } : { 'aria-valuetext': tr('өгөгдөлгүй') })}
     >
       <svg className={s.ringSvg} width={size} height={size} aria-hidden>
-        <circle className={s.ringTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
+        {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): зам нь бүтэн зузаан цагираг биш,
+            нумын ТӨВ шугамаар явах НИМГЭН 2px цагираг («New vs Returned»-ийн хэл); нум нь
+            бөөрөнхий үзүүртэй, цувааныхаа өнгөөр гэрэлтэнэ (`glow`, хэвлэхэд `chartGlow` унтраана). */}
+        <circle className={s.ringTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={2} />
         {/* ⚠️ ЯГ 0 үед нум зурахгүй: `stroke-linecap: round` нь тэг урттай зурааст
             ч бөөрөнхий үзүүр буулгадаг тул «0%» дээр цэг гарч, бага зэрэг
             гүйцэтгэлтэй мэт хуурамч уншилт өгдөг. */}
         {has && v > 0 && (
           <circle
-            className={s.ringArc}
+            className={`${s.ringArc} chartGlow`}
+            style={{ filter: glow('var(--tone, var(--hue))', 5) }}
             cx={size / 2}
             cy={size / 2}
             r={r}

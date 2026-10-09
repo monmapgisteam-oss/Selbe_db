@@ -104,6 +104,16 @@
      задлахгүй болгодог (2026-10-09: dev «Unknown word» алдаа, tsc/eslint/тест барьдаггүй). */
   --chart-plan: var(--c3); /* төлөвлөгөө — тасархай */
   --chart-actual: var(--c2); /* бодит — бүтэн */
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): ЗӨВХӨН хэв маягийн токен, шинэ өнгө БИШ.
+     --chart-glow — шугам/цагирагийн гэрэлтэлтийн хүч (цувааны өөрийн өнгөний хувь);
+       цайвар дэвсгэрт гэрэлтэлт «бохир сүүдэр» мэт харагддаг тул бага.
+     --chart-callout-shade — утгын pill-ийн дэвсгэрийг хэдэн хувь харлуулах: цайварт
+       цагаан бичиг (--hue-ink) улбар шар/ягаан слот дээр 3:1-ээс доош унадаг тул 18%
+       харлуулж ≥4.5:1 болгоно; харанхуйд бараан бичиг тул харлуулахгүй.
+     --chart-on-fill-halo — өнгөт дүүргэлт ДЭЭРХ жижиг бичгийн (donut-ын хувь) хүрээ. */
+  --chart-glow: 30%;
+  --chart-callout-shade: 18%;
+  --chart-on-fill-halo: rgb(0 0 0 / 0.3);
   --gantt-done: var(--good);
   --gantt-run: var(--data);
   --gantt-late: var(--bad);
@@ -179,6 +189,11 @@
   /* ⚠️ 2026-10-09: ЦАЙВАР блокийн тайлбарыг үз — ижил нэр, энэ горимын суурь токеноор */
   --chart-plan: var(--c3);
   --chart-actual: var(--c2);
+  /* ⚠️ 2026-10-09 (лавлах CRM загвар): ЦАЙВАР блокийн тайлбарыг үз — харанхуйд гэрэлтэлт
+     илүү тод, pill харлуулахгүй (бичиг нь бараан --hue-ink), дүүргэлт дээрх бичигт хүрээгүй. */
+  --chart-glow: 55%;
+  --chart-callout-shade: 0%;
+  --chart-on-fill-halo: transparent;
   --gantt-done: var(--good);
   --gantt-run: var(--data);
   --gantt-late: var(--bad);
@@ -536,4 +551,17 @@ ul, ol { list-style: none; }
   z-index: 2500;
   border-radius: 0;
   background: var(--sunken);
+}
+
+/* ── ГРАФИКИЙН ХЭВЛЭЛТ (2026-10-09, лавлах CRM загвар — өнгө хэвээр) ──
+   Гэрэлтэлт (drop-shadow / box-shadow) цаасан дээр бохир саарал толбо болж хэвлэгддэг тул
+   хэвлэхэд бүрэн унтарна. SVG шугамууд inline `filter`-тэй тул `chartGlow` глобал классаар
+   `!important`-аар дарна; HTML зурвасын гэрэлтэлт `--chart-glow` токеноос уншдаг тул 0%. */
+@media print {
+  :root,
+  [data-theme='light'],
+  [data-theme='dark'] {
+    --chart-glow: 0%;
+  }
+  .chartGlow { filter: none !important; }
 }

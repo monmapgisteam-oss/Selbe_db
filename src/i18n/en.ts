@@ -6935,6 +6935,10 @@ const en: Record<string, string> = {
   "Батлах ажил": "To approve",
   "Батлагчийн харагдац — хүснэгтийг зөвхөн харна, засвар хийх боломжгүй. Батлах нь «Батлах ажил» табаас.": "Approver view — the table is read-only; no edits. Approve from the «To approve» tab.",
   "Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — дахин засахгүй. Зөвхөн улаан хүрээтэй нүдийг засна.": "The reviewer APPROVED this cell (green ✓) — it can no longer be edited. Only cells with a red border can be edited.",
+  "Дээд: {0}": "Max: {0}",
+  "{0} их наяд": "{0}T",
+  "{0} тэрбум": "{0}B",
+  "{0} сая": "{0}M",
 };
 
 export default en;
