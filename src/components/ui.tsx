@@ -2204,7 +2204,7 @@ export function Trend({
   visible,
   showValues = false,
   alert,
-  smooth = true,
+  smooth = false,
   showMax = true,
 }: {
   points: TrendPoint[];

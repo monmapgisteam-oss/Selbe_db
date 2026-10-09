@@ -878,10 +878,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ 2026-09-30: устгагдсан тул алгассаныг ИЛ хэлнэ (ноорог нь дээр арилсан) */
     if (gone.length) setAddErr(tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', gone.join(', ')));
   };
-  // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-09-30: `if (!open) return null`-ийн ДАРАА тул хук (useSyncRef) дуудах боломжгүй; `saveAll` нь тэр салбарын дараах төлөвүүдээс хамаардаг — render дунд оноох нь санаатай
   /* ⚠️ 2026-10-07: Ctrl+S өөр хуудсанд (тойм · эрхийн хуудас) дарахад хадгалалтын үр дүн/алдаа
      зөвхөн «Хэрэглэгчид» салбарт зурагддаг тул чимээгүй байв — ноорогтой бол тийш шилжинэ.
      «Эрхийн төрөл»-д тэндхийн ноорог байвал шилжихгүй (ErhTypes-ийн өөрийн хадгалах). */
+  // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-09-30: `if (!open) return null`-ийн ДАРАА тул хук (useSyncRef) дуудах боломжгүй; `saveAll` нь тэр салбарын дараах төлөвүүдээс хамаардаг — render дунд оноох нь санаатай
   saveRef.current = () => {
     if (pane !== 'users' && draftsRef.current.size > 0 && !typesDirtyRef.current) { setPane('users'); setCard(null); }
     void saveAll();

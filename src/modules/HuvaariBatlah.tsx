@@ -340,7 +340,7 @@ export function HuvaariBatlah({
     const oid = todo[0].oid;
     if (autoOpened.current === oid) return;
     autoOpened.current = oid;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-08: дарааллын (гадаад) төлөв ганц мөртэй болсон агшинд нэг удаа дэлгэнэ — дериваци биш, хэрэглэгчийн хумилтыг хүндэтгэнэ
+    // ⚠️ 2026-10-08: дарааллын (гадаад) төлөв ганц мөртэй болсон агшинд нэг удаа дэлгэнэ — дериваци биш, хэрэглэгчийн хумилтыг хүндэтгэнэ
     setOpen((cur) => cur ?? oid);
     ensureDetail(oid);
   }, [st.k, todo, review, ensureDetail]);
