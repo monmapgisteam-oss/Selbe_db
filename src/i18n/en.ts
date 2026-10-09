@@ -6933,7 +6933,8 @@ const en: Record<string, string> = {
   "Нийгмийн үйлчилгээ (одоо {0} + шинэ {1})": "Social services (existing {0} + new {1})",
   "«Шинээр» — сургууль, цэцэрлэгийнх газрын зургийн давхаргаас (амьд), бусад нь илтгэлээс; «Одоо байгаа» — илтгэлээс.": "«New» — schools and kindergartens from the map layers (live), others from the report; «Existing» — from the report.",
   "Батлах ажил": "To approve",
-  "Батлагчийн харагдац — хүснэгтийг зөвхөн харна, засвар хийх боломжгүй. Батлах нь «Батлах ажил» табаас.": "Approver view — the table is read-only; no edits. Approve from the «To approve» tab."
+  "Батлагчийн харагдац — хүснэгтийг зөвхөн харна, засвар хийх боломжгүй. Батлах нь «Батлах ажил» табаас.": "Approver view — the table is read-only; no edits. Approve from the «To approve» tab.",
+  "Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — дахин засахгүй. Зөвхөн улаан хүрээтэй нүдийг засна.": "The reviewer APPROVED this cell (green ✓) — it can no longer be edited. Only cells with a red border can be edited.",
 };
 
 export default en;
