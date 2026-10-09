@@ -1,0 +1,272 @@
+/* ══════════════════════════════════════════════════════════
+   «MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ» — зөвхөн энэ харагдацын хэв маяг (2026-10-09).
+   ⚠️ «Багцын хамаарал»-ын (ТУХ) хэв маягийн ХУУЛБАР — импортлохгүй (харагдацууд стайл
+      хуваалцахгүй). Өнгө бүгд глобал токен. Сонгогч БҮР локал класс агуулна (pure).
+   ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620.
+   ══════════════════════════════════════════════════════════ */
+
+.wrap {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 32px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* ── Hero ── */
+.hero { padding: 4px 4px 14px; }
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hero h1 { margin: 0; font-size: 1.45rem; line-height: 1.2; font-weight: 600; }
+.total { margin-left: 6px; font-size: 0.85rem; font-weight: 600; color: var(--ink-3); }
+.heroSub { margin: 6px 0 0; color: var(--ink-2); font-size: 0.85rem; max-width: 900px; }
+
+/* ── Шүүлтүүр ── */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 10px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.segBtn {
+  all: unset;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.segBtn[aria-pressed='true'] { background: var(--data); color: #fff; }
+.segBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.search,
+.select,
+.input {
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+}
+.search { flex: 1 1 220px; }
+.select { flex: 0 1 200px; }
+.input { flex: 1 1 160px; }
+
+/* ── Жагсаалт ── */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.table th {
+  position: sticky;
+  top: 0;
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.row:hover td { background: var(--surface-2); }
+.rowOn td { background: color-mix(in srgb, var(--data) 6%, var(--surface)); }
+.rowBtn { all: unset; cursor: pointer; font-weight: 600; white-space: nowrap; }
+.rowBtn:hover, .rowBtn:focus-visible { color: var(--data); text-decoration: underline; }
+.caret { display: inline-block; width: 14px; color: var(--ink-3); }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.emptyRow td { color: var(--ink-3); text-align: center; padding: 14px 8px; }
+.detailRow td { background: var(--surface-2); padding: 0; }
+
+/* Шийдвэрийн чип */
+.vchip { display: inline-block; min-width: 26px; padding: 1px 8px; border-radius: 999px; text-align: center; font-size: 0.7rem; font-weight: 700; }
+.vA { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good-ink, var(--ink)); }
+.vAN { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-ink, var(--ink)); }
+.vR { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad-ink, var(--ink)); }
+.vNone { background: var(--sunken); color: var(--ink-3); }
+
+/* ── Дэлгэрэнгүй ── */
+.detail { display: grid; gap: 12px; padding: 12px 14px 16px 30px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 0.78rem; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; }
+.pre { white-space: pre-line; }
+.block { display: grid; gap: 6px; }
+.h3 { margin: 0; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Хавсралт */
+.attList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.att {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 0.76rem;
+}
+.attOpen { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; flex: 1 1 260px; min-width: 0; }
+.attOpen:hover span, .attOpen:focus-visible span { color: var(--data); text-decoration: underline; }
+.attOpen span { overflow-wrap: anywhere; }
+.attMeta { display: inline-flex; flex-wrap: wrap; gap: 6px; color: var(--ink-3); font-size: 0.72rem; }
+.valid { color: var(--good-ink, var(--ink-2)); font-weight: 600; }
+.expired { color: var(--bad-ink, #c0392b); font-weight: 700; }
+.chipX { all: unset; cursor: pointer; padding: 0 6px; border-radius: 999px; color: var(--ink-3); font-size: 0.72rem; }
+.chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.chipX:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.addForm { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-top: 4px; }
+.dateLbl { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--ink-3); }
+.file { flex: 1 1 220px; font-size: 0.74rem; }
+.signBox { display: grid; gap: 6px; }
+.ghostBtn {
+  all: unset;
+  cursor: pointer;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
+.ghostBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.note { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
+.errNote { margin: 0; white-space: pre-line; font-size: 0.74rem; color: var(--bad-ink, #c0392b); }
+.failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--warn-ink); }
+.retryBtn {
+  margin-left: 6px; padding: 3px 12px; font-size: 0.72rem; font-weight: 600;
+  color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer;
+}
+.retryBtn:hover { border-color: var(--line-strong); }
+.loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
+
+@media (max-width: 620px) {
+  .wrap { padding: 10px 10px 24px; }
+  .detail { padding: 10px; }
+  .kv { grid-template-columns: 1fr; }
+  .select { flex: 1 1 100%; }
+}
+
+/* ── 2026-10-09: КАРТ — MA бүр бүтэн харагдана (шүүлтүүргүй, хураалтгүй) ── */
+.cards { display: grid; gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; }
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.cardTitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.cardTitle b { font-size: 0.95rem; }
+.cardNo { font-size: 0.74rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.emptyNote { margin: 12px 0; color: var(--ink-3); font-size: 0.85rem; }
+.card .detail { padding: 12px 14px 14px; }
+
+/* ── 2026-10-09: ШАТЛАЛЫН УЯЛДАА — MA → MIR → FIC → М-акт → IPC ── */
+.chain { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 10px 14px; list-style: none; border-bottom: 1px solid var(--line); }
+.stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.stage + .stage::before { content: '→'; position: absolute; left: -11px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 0.8rem; }
+.stageNo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 999px; font-size: 0.7rem; font-weight: 700; background: var(--sunken); color: var(--ink-3); }
+.stageText { display: flex; flex-direction: column; min-width: 0; }
+.stageText b { font-size: 0.76rem; }
+.stageText small { font-size: 0.68rem; color: var(--ink-3); }
+.st_done { border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--surface)); }
+.st_done .stageNo { background: var(--good); color: #fff; }
+.st_rejected { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 8%, var(--surface)); }
+.st_rejected .stageNo { background: var(--bad); color: #fff; }
+.st_pending { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.st_pending .stageNo { background: var(--warn); color: #fff; }
+.st_next { border-style: dashed; border-color: var(--data); }
+.st_next .stageNo { background: color-mix(in srgb, var(--data) 18%, transparent); color: var(--data); }
+.st_locked { opacity: 0.55; }
+
+/* works.csv татах мөр */
+.toolRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+
+/* ── 2026-10-09: MIR жагсаалт (MA картын доор) ── */
+.mirBox { display: grid; gap: 8px; padding: 0 14px 14px; }
+.mir { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+.mirHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.chk { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.chk th { text-align: left; font-size: 0.64rem; font-weight: 600; color: var(--ink-3); padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.chk td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.chk td + td { width: 90px; font-weight: 600; text-align: center; }
+
+/* ── 2026-10-09: НЭГ ПРОЦЕСС = НЭГ МӨР — MA → MIR → FIC → М-акт → IPC (дээр төлөв, доор агуулга) ── */
+.flowWrap { overflow-x: auto; }
+.flow {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.5fr) minmax(300px, 1.5fr) minmax(190px, 1fr) minmax(190px, 1fr) minmax(160px, 0.8fr);
+  gap: 0 14px;
+  padding: 12px 14px 14px;
+  min-width: 1180px;
+}
+.flow .stage { margin-bottom: 10px; }
+.col { display: grid; align-content: start; gap: 8px; min-width: 0; padding-top: 2px; }
+.colHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.colHead b { font-size: 0.95rem; }
+.col .detail { padding: 0; }
+.col .mirBox { padding: 0; }
+.col .kv { grid-template-columns: max-content 1fr; font-size: 0.74rem; }
+
+/* ── 2026-10-09: ШАТНЫ МӨР (зөвхөн товчлуур) + ЦОНХ (popup) + цаасан баримт ── */
+.strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; padding: 10px 14px; }
+.stageBtn { all: unset; box-sizing: border-box; cursor: pointer; }
+.strip .stageBtn { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
+.strip .stageBtn:hover, .strip .stageBtn:focus-visible { border-color: var(--data); box-shadow: 0 0 0 2px color-mix(in srgb, var(--data) 25%, transparent); }
+.stageSum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgb(0 0 0 / 0.5); }
+.modal { display: flex; flex-direction: column; width: min(1100px, 96vw); max-height: 92vh; max-height: 92dvh; border: 1px solid var(--line); border-radius: var(--r-lg, 10px); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); overflow: hidden; }
+.modalHead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.modalTitle { flex: 1; min-width: 0; margin: 0; font-size: 0.95rem; font-weight: 700; }
+.closeBtn { all: unset; cursor: pointer; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-sm); color: var(--ink-3); }
+.closeBtn:hover, .closeBtn:focus-visible { background: var(--sunken); color: var(--ink); }
+.modalBody { overflow-y: auto; padding: 14px; display: grid; gap: 12px; }
+.modalBody .detail { padding: 0; }
+.modalBody .mirBox { padding: 0; }
+.sheet { width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: var(--r-sm); background: #e9e9e9; }
+
+@media (max-width: 900px) {
+  .strip { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .strip { grid-template-columns: 1fr; }
+  .overlay { padding: 0; }
+  .modal { width: 100vw; max-height: 100dvh; height: 100dvh; border-radius: 0; }
+}
+
+.stageDate { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }

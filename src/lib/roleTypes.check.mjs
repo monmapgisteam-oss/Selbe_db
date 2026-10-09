@@ -36,8 +36,9 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
   const bad = ids.filter((id) => /^(cap|chanar|flow):/.test(id));
   assert.deepEqual(bad, [], `засах эрхийн мөр загварт буцаж ирэв: ${bad.join(', ')}`);
   /* ⚠️ 2026-09-30: урсгалтай 6 харагдац загварт ОРОХГҮЙ — урсгалын хуваарилалтаар нээгдэнэ */
-  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'chanar', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'qaqc'],
-    'WORKFLOW_VIEWS ≠ урсгалтай 6 харагдац');
+  /* ⚠️ 2026-10-09: + «ma» (MA — чанарын эрхийн гэр харагдац, «chanar»-тай адил урсгалтай) */
+  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'chanar', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma', 'qaqc'],
+    'WORKFLOW_VIEWS ≠ урсгалтай 7 харагдац');
   /* ⚠️ 2026-09-30 (merge irgediin-hurteemj): «ТУХ» нэмэгдэж 24 болсон — тоог хатуу бичихгүй.
      Шалгуурын утга: урсгалтай харагдац VIEWS-ээс ХАСАГДААГҮЙ (зөвхөн унтраалгаас шүүгдэнэ). */
   for (const k of WORKFLOW_VIEWS) assert.ok(VIEWS.some((v) => v.key === k), `VIEWS-ээс урсгалтай харагдац хасагдсан: ${k}`);

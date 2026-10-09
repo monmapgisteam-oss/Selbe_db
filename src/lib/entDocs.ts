@@ -85,16 +85,15 @@ export function entSignOut(): void {
   emit();
 }
 
-/**
- * ⚠️ 2026-10-09 (аудит): `pending` — item ҮҮССЭН ч дэлгэрэнгүйг (`content/items/{id}`) татаж
- *    чадаагүй; утгууд нь оруулсан файлаас угсрагдсан түр утга (дуудагч тэмдэглэл харуулна).
- */
-export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; pending?: boolean };
+/** `access`: порталын хуваалцалт ('private' · 'shared' · 'org' · 'public'); `null` = тодорхойгүй.
+ * ⚠️ 2026-10-09 (аудит): `pending` — item ҮҮССЭН ч дэлгэрэнгүйг татаж чадаагүй (одоо `warn`-аар мэдэгддэг; хуучин дуудагчид). */
+export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; access: string | null; pending?: boolean };
 
-type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number };
+type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string };
 const toPdf = (x: ItemJson): EntPdf => ({
   id: x.id, title: x.title || x.id, owner: x.owner ?? '', modified: x.modified ?? 0,
   size: typeof x.size === 'number' && x.size >= 0 ? x.size : null,
+  access: x.access ?? null,
 });
 
 /** Хайлтын нэг хуудас (порталын `num`-ийн дээд хязгаар 100) */
@@ -126,14 +125,18 @@ export async function entListPdfs(): Promise<EntPdf[]> {
 }
 
 /**
- * PDF-ийг шинэ item болгон оруулна. Буцаах: шинэ item.
+ * PDF-ийг шинэ item болгон оруулж БАЙГУУЛЛАГАД хуваалцана. Буцаах: шинэ item +
+ * (хуваалцаж чадаагүй бол) анхааруулга.
  * ⚠️ Хайлтын индекс шинэ item-ийг хэдэн секундын дараа л олдог тул дуудагч
  *    буцаасан item-ийг жагсаалтын эхэнд өөрөө нэмнэ.
- * ⚠️ 2026-10-09 (аудит): `addItem` АМЖИЛТТАЙ болсны дараах `content/items/{id}` унавал ШИДЭХГҮЙ —
- *    урьд нь «амжилтгүй» гэж мэдээлдэг тул хэрэглэгч дахин оруулж ДАВХАР item үүсгэдэг байв.
- *    Item-ийг `j.id` ба файлын мэдээллээр угсарч `pending: true`-тэй буцаана.
+ * ⚠️ 2026-10-09 (хэрэглэгч: «organization тохиргоотой item болох»): `addItem` нь item-ийг
+ *    ЗӨВХӨН эзэнд (private) үүсгэдэг тул дараа нь `share` (org=true, everyone=false) —
+ *    байгууллагын бүх хэрэглэгч харна, нийтэд (public) БИШ.
+ * ⚠️ `addItem` АМЖИЛТТАЙ болсны дараах алхмууд (хуваалцах · мэдээлэл унших) унавал
+ *    АЛДАА ШИДЭХГҮЙ — item аль хэдийн үүссэн тул хэрэглэгч «болсонгүй» гэж бодоод дахин
+ *    оруулбал ижил PDF хоёр item болно. Оронд нь анхааруулга буцаана.
  */
-export async function entUploadPdf(file: File, title?: string): Promise<EntPdf> {
+export async function entUploadPdf(file: File, title?: string): Promise<{ item: EntPdf; warn?: string }> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
   const ttl = (title ?? '').trim() || file.name.replace(/\.pdf$/i, '');
@@ -148,11 +151,24 @@ export async function entUploadPdf(file: File, title?: string): Promise<EntPdf> 
   const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(s.user)}/addItem`, fd);
   if (!j.success || !j.id) throw new Error(tr('PDF item үүссэнгүй.'));
   const id = j.id;
+  const user = encodeURIComponent(s.user);
+  let warn: string | undefined;
+  try {
+    const sh = await post<{ notSharedWith?: string[] }>(`content/users/${user}/items/${encodeURIComponent(id)}/share`,
+      new URLSearchParams({ everyone: 'false', org: 'true', groups: '', f: 'json', token: s.token }));
+    if (sh.notSharedWith?.length) warn = tr('«{0}» байгууллагад хуваалцагдсангүй — геопорталаас гараар хуваалцана уу.', file.name);
+  } catch (e) {
+    warn = tr('«{0}» байгууллагад хуваалцагдсангүй ({1}) — геопорталаас гараар хуваалцана уу.', file.name, (e as Error).message);
+  }
   try {
     const it = await post<ItemJson>(`content/items/${encodeURIComponent(id)}`, new URLSearchParams({ f: 'json', token: s.token }));
-    return toPdf({ ...it, id });
+    return { item: toPdf({ ...it, id }), warn };
   } catch {
-    return { ...toPdf({ id, title: ttl, owner: s.user, modified: Date.now(), size: file.size }), pending: true };
+    /* ⚠️ Item бий — мэдээллийг файлаас бүрдүүлнэ (дээрх «алдаа шидэхгүй» ⚠️) */
+    return {
+      item: { id, title: (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''), owner: s.user, modified: Date.now(), size: file.size, access: warn ? null : 'org' },
+      warn,
+    };
   }
 }
 

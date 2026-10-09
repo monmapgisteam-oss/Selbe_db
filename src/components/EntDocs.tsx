@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import {
-  ENT_PORTAL, entItemPage, entListPdfs, entPdfBlob, entSession, entSignIn, entSignOut, entUploadPdf,
-  subscribeEnt, type EntPdf,
-} from '@/lib/entDocs';
+import { ENT_PORTAL, entItemPage, entListPdfs, entPdfBlob, entUploadPdf, type EntPdf } from '@/lib/entDocs';
+import { EntSignIn, useEntSession } from './EntSignIn';
 import { userError } from './ui';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
@@ -21,13 +19,15 @@ import s from './docviewer.module.css';
  */
 export const ENT_KEY = 'ent:';
 
+/** ⚠️ 2026-10-09: хуваалцалтын төлөв — байгууллагад хуваалцагдсан эсэхийг жагсаалтаас шууд харна */
+const accessLabel = (a: string | null): string =>
+  a === 'org' ? tr('байгууллага') : a === 'public' ? tr('нийтэд') : a === 'shared' ? tr('бүлэгт') : a === 'private' ? tr('зөвхөн өөрт') : '';
+
 const kb = (n: number | null) =>
   n == null ? '' : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 export function EntDocsSide({ active, onPick }: { active: string | null; onPick: (key: string) => void }) {
-  const sess = useSyncExternalStore(subscribeEnt, entSession, () => null);
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
+  const sess = useEntSession();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   /** ⚠️ 2026-10-09 (аудит): алдаа биш тэмдэглэл (жиш. item үүссэн ч дэлгэрэнгүй хоцорсон) */
@@ -47,13 +47,6 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
 
   if (!ENT_PORTAL) return null;
 
-  const signIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user.trim() || !pass) return;
-    setBusy(true); setErr('');
-    try { await entSignIn(user, pass); setPass(''); } catch (x) { setErr(userError(x)); } finally { setBusy(false); }
-  };
-
   const refresh = async () => {
     setBusy(true); setErr(''); setNote('');
     try { setItems(await entListPdfs()); } catch (x) { setErr(userError(x)); } finally { setBusy(false); }
@@ -67,12 +60,13 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
     const notes: string[] = [];
     for (const f of list) {
       try {
-        const it = await entUploadPdf(f);
+        const { item: it, warn } = await entUploadPdf(f);
         /* ⚠️ Хайлтын индекс хоцордог — шинэ item-ийг өөрөө эхэнд нэмнэ */
         setItems((prev) => [it, ...(prev ?? []).filter((x) => x.id !== it.id)]);
         onPick(ENT_KEY + it.id);
-        /* ⚠️ 2026-10-09 (аудит): item ҮҮССЭН — дэлгэрэнгүй л хоцорсон. Алдаа БИШ (дахин оруулбал давхардана) */
-        if (it.pending) notes.push(tr('{0}: хадгалагдсан — дэлгэрэнгүй мэдээлэл хараахан ирээгүй, дараа «Шинэчлэх» дарна уу.', f.name));
+        /* ⚠️ Хуваалцалт унасан ч item БИЙ — алдаа биш анхааруулга (дахин оруулбал давхардана).
+           ⚠️ 2026-10-09 (merge): улаан алдаа (`errs`) биш тэмдэглэл (`notes`) — аудитын «амжилттай, анхааруулгатай» дүрэм */
+        if (warn) notes.push(warn);
       } catch (x) {
         errs.push(`${f.name}: ${userError(x)}`);
       }
@@ -87,26 +81,12 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
     <section className={s.entBox} aria-label={tr('Enterprise PDF')}>
       <div className={s.entHead}>
         <span>{tr('Enterprise PDF')}</span>
-        {sess && (
-          <button type="button" className={s.entLink} onClick={() => { entSignOut(); setItems(null); }}>
-            {tr('Гарах')}
-          </button>
-        )}
       </div>
 
-      {!sess ? (
-        <form className={s.entForm} onSubmit={signIn}>
-          <input className={s.entInput} value={user} onChange={(e) => setUser(e.target.value)}
-            placeholder={tr('Enterprise хэрэглэгчийн нэр')} autoComplete="username" disabled={busy} />
-          <input className={s.entInput} type="password" value={pass} onChange={(e) => setPass(e.target.value)}
-            placeholder={tr('Нууц үг')} autoComplete="current-password" disabled={busy} />
-          <button type="submit" className={s.entBtn} disabled={busy || !user.trim() || !pass}>
-            {busy ? tr('Нэвтэрч байна…') : tr('Enterprise-д нэвтрэх')}
-          </button>
-        </form>
-      ) : (
+      {/* ⚠️ 2026-10-09: нэвтрэлтийн маягт `EntSignIn`-д (MA харагдацтай хуваалцана) */}
+      <EntSignIn onSignedOut={() => setItems(null)} />
+      {sess && (
         <>
-          <div className={s.entSub}>{sess.user}</div>
           <div className={s.entRow}>
             <button type="button" className={s.entBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
               {busy ? tr('Түр хүлээнэ үү…') : tr('PDF оруулах')}
@@ -131,7 +111,7 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
                 <span className={s.itemText}>
                   <span className={s.itemTitle}>{d.title}</span>
                   <span className={s.itemSub}>
-                    {[d.owner, d.modified ? new Date(d.modified).toLocaleDateString('sv-SE') : '', kb(d.size)].filter(Boolean).join(' · ')}
+                    {[d.owner, d.modified ? new Date(d.modified).toLocaleDateString('sv-SE') : '', kb(d.size), accessLabel(d.access)].filter(Boolean).join(' · ')}
                   </span>
                 </span>
               </button>

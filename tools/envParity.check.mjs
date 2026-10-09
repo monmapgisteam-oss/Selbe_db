@@ -29,6 +29,11 @@ const OPTIONAL_LOCAL = new Map([
   /* ⚠️ 2026-10-08: Enterprise геопорталын PDF item — ТУРШИЛТ (tezu-bonu), deploy-д хараахан үгүй */
   ['NEXT_PUBLIC_ENT_PORTAL_URL',
     'Enterprise геопортал (`…/geoportal`) — PDF-ийг item болгон хадгалах туршилт (lib/entDocs.ts); хоосон бол нуугдана.'],
+  /* ⚠️ 2026-10-09: Чанар · MA Survey123 (Enterprise) — ТУРШИЛТ, deploy-д хараахан үгүй */
+  ['NEXT_PUBLIC_CHANAR_MA_SVC',
+    'MA (материал баталгаажуулалт) Survey123 feature service — Enterprise (lib/ma.ts); хоосон бол «MA» харагдац тохируулаагүй гэнэ.'],
+  ['NEXT_PUBLIC_CHANAR_MIR_SVC',
+    'MIR (материалын үзлэг) Survey123 feature service — Enterprise (lib/mir.ts); хоосон бол MA картад MIR гарахгүй.'],
 ]);
 
 const SELF = 'tools/envParity.check.mjs';

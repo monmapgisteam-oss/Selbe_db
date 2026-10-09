@@ -1,0 +1,28 @@
+/* ENTERPRISE НЭВТРЭЛТИЙН МАЯГТ (2026-10-09) — `EntSignIn.tsx`. Өнгө бүгд глобал токен. */
+
+.form { display: flex; flex-direction: column; gap: 6px; }
+.form.compact { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.row { display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--ink-2); }
+.row.compact { gap: 6px; }
+.user { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+.form.compact .input { width: auto; min-width: 150px; }
+.btn {
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--hue, var(--data));
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.btn:disabled { opacity: 0.55; cursor: default; }
+.link { font-size: 0.72rem; font-weight: 600; color: var(--ink-2); text-decoration: underline; }
+.err { width: 100%; white-space: pre-line; font-size: 0.72rem; color: var(--bad, #c0392b); overflow-wrap: anywhere; }
