@@ -31,9 +31,6 @@ import { t as tr } from './i18nCore';
  */
 export type Level = 'good' | 'warn' | 'bad' | 'neutral' | 'unknown' | 'loading';
 
-/** Гэрлэн дохионд тооцогдох гурав — ангиллын толгойн тоолуур зөвхөн эднийг тоолно */
-export const SIGNAL_LEVELS: readonly Level[] = ['bad', 'warn', 'good'] as const;
-
 /**
  * ⚠️ Hex ШУУД бичихгүй — CSS хувьсагч. Тогтмол hex нь гэрэл/харанхуй горимд
  * дагадаггүй тул нэг горимд уншигдахаа болино.
@@ -88,18 +85,6 @@ export function worstOf(levels: readonly Level[]): Level {
   if (levels.includes('good')) return 'good';
   return 'neutral';
 }
-
-/**
- * Ангиллын дотор эрэмбэ: улаан → шар → ногоон → хэмжээ → өгөгдөлгүй.
- * CEO эхлээд улааныг харах ёстой.
- */
-/* ⚠️ `loading` нь ХАМГИЙН СҮҮЛД — ачаалж дуусмагц мөр өөрөө дээшээ
-   зөв байрандаа үсэрнэ. Дунд нь тавьвал жагсаалт ачаалалтын явцад
-   тасралтгүй үсэрч, нүд байрлалаа алдана. */
-const ORDER: Record<Level, number> = {
-  bad: 0, warn: 1, good: 2, neutral: 3, unknown: 4, loading: 5,
-};
-export const levelRank = (l: Level): number => ORDER[l];
 
 /* ══════════════ БОСГО ══════════════ */
 

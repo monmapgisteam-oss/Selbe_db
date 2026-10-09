@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Split, Tabs, Trend, Select } from '@/components/ui';
-import { useFilter } from '@/lib/filter';
+import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Tabs, Trend } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
@@ -148,11 +147,6 @@ function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
   });
 }
 
-/** FID жагсаалтаар шүүх — гүйцэтгэл нь давхаргын талбарт БАЙХГҮЙ тул SQL-ээр
- *  шууд харьцуулах боломжгүй; блокуудыг нэрлэн заана (113 блок — урт биш). */
-const oidWhere = (oids: number[]) =>
-  oids.length ? `${BUILDING.oid} IN (${oids.join(',')})` : '1=0';
-
 /**
  * Барилгын блокуудын нэгдсэн гүйцэтгэл — нэгтгэсэн хүснэгтийн as-of утгаар.
  * `loadBlockProgress` нь cache-тэй тул газрын зургийн өнгө, tooltip, баруун самбартай
@@ -164,7 +158,6 @@ const oidWhere = (oids: number[]) =>
  * (`src/lib/execReport.ts`) React-гүй орчинд (PDF/инфографик угсрах) ЯГ
  * ИЖИЛ багцын тоог хэрэглэнэ. Hook нь урьдын адил ажиллана.
  */
-export type BuildingsData = Awaited<ReturnType<typeof loadBuildings>>;
 
 /**
  * ГАЗРЫН ЗУРГИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ → console (ЗӨВХӨН хөгжүүлэлтийн горим, сешнд нэг удаа).
@@ -332,73 +325,6 @@ const GRAINS = [
   { key: 'day', get label() { return tr('Огноогоор'); } },
 ];
 
-/**
- * «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ»-ын гүйцэтгэл цаг хугацаагаар.
- *
- * ⚠️ Хүснэгтэд ӨДӨР ТУТМЫН бичлэг БАЙХГҮЙ — тайлан ирэх бүрд (одоогоор ~9 удаа)
- * л мөр нэмэгддэг. Тиймээс «огноогоор» гэдэг нь БҮРТГЭЛИЙН огноонууд, «сараар»
- * нь сар бүрийн эцсийн байдал (бүртгэлгүй сар өмнөх утгаа хадгална). Хиймэл
- * өдөр үүсгэж муруйг «жигдрүүлэх» нь байхгүй хэмжилтийг байгаа мэт харуулна.
- */
-function ProgressTrend({
-  hist, all, bagts,
-}: {
-  hist: BlockHistory;
-  /** Бүх блокийн түлхүүр — «Нийт төсөл» */
-  all: string[];
-  bagts: Agg[];
-}) {
-  const [grain, setGrain] = useState('month');
-  const { active, toggle, clear } = useFilter();
-
-  /**
-   * ⚠️ Хамрах хүрээ нь ТУСДАА төлөв БИШ, ШҮҮЛТЭЭС уншигдана: зүүн баганын «Багц
-   * тус бүрээр» мөрөнд дарахад газрын зураг, баруун самбар, энэ муруй ГУРВУУЛАА
-   * тэр багц дээр шилжинэ. Хоёр төлөв байлгавал зураг «Багц 2», муруй «Багц 1»
-   * гэж зөрж, аль нь ялсныг хэрэглэгч мэдэхгүй.
-   */
-  const scope = active?.key.startsWith(BAGTS_FILTER) ? active.key.slice(BAGTS_FILTER.length) : '*';
-  const pickScope = (k: string) => {
-    if (k === '*') return clear();
-    const g = bagts.find((b) => b.key === k);
-    if (g) {
-      toggle({
-        key: `${BAGTS_FILTER}${k}`, label: k, group: tr('Багц'),
-        where: oidWhere(g.oids), view: 'pkgProg', layerIds: 'mon:building', color: HUE,
-      });
-    }
-  };
-
-  const keys = bagts.find((b) => b.key === scope)?.keys ?? all;
-  const pts = progressSeries(hist, keys, grain === 'day' ? 'day' : 'month');
-
-  return (
-    <Section
-      title={tr('Барилга угсралтын явц')}
-      note={<Select
-        label={tr('Хамрах хүрээ')}
-        value={scope}
-        onChange={pickScope}
-        options={[{ key: '*', label: tr('Нийт төсөл') }, ...bagts.map((b) => ({ key: b.key, label: b.key }))]}
-      />}
-    >
-      {/* ⚠️ Алхмын товч нь диаграмын ХАЖУУД (дээр БИШ), тайлбар бичвэр
-          хасагдсан — зурвас нь газрын зургийн доор тул өндөр нь хамгийн хортой. */}
-      <Split asideEnd aside={<Tabs plain value={grain} onChange={setGrain} items={GRAINS} />}>
-        <Trend
-          color={HUE}
-          points={pts.map((p) => ({
-            label: p.label,
-            value: p.overall,
-            // Сарын шошго нь бодит хэмжилтийн огноог нуудаг — уншилтын мөрөнд буцааж гаргана
-            note: p.label === p.date ? undefined : p.date,
-          }))}
-        />
-      </Split>
-    </Section>
-  );
-}
-
 /** Нэг барилгын явц — баруун самбарт, блок сонгосон үед */
 function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }) {
   const [grain, setGrain] = useState('month');
@@ -421,27 +347,6 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
     </Section>
   );
 }
-
-/* ═════════════ ЗҮҮН багана — бүх блокийн нэгдсэн үзүүлэлт ═════════════ */
-
-/** Барилгын нэгдсэн өгөгдөл — `useBuildings()`-ын үр дүн (Portal нэг л удаа татна) */
-type Buildings = ReturnType<typeof useBuildings>;
-
-/**
- * Явцын муруй — ГАЗРЫН ЗУРГИЙН ДООР (зүүн баганад БИШ).
- * ⚠️ Өгөгдлийг Portal-аас дамжуулна: зүүн багана ба муруй хоёр НЭГ хүсэлтийн
- * багцаар ажиллана, хоёр удаа 113 блокоо татахгүй.
- */
-export function MonitorTrend({ q }: { q: Buildings }) {
-  return (
-    <Data q={q}>
-      {(d) => <ProgressTrend hist={d.hist} all={d.keys} bagts={d.bagts} />}
-    </Data>
-  );
-}
-
-/** Багцын шүүлтийн түлхүүрийн угтвар — самбар нь ямар багц сонгогдсоныг эндээс уншина */
-export const BAGTS_FILTER = 'building:bagts:';
 
 /* ═════════════ БАГЦЫН дашбоард — ажлын төрлөөр ═════════════ */
 

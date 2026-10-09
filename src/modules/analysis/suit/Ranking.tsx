@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { SCORE_LEVELS, levelOf, NO_DATA_TONE, type Indicator } from '@/lib/analysis/config';
 import { scoreTone, scoreInk } from '@/lib/analysis/score';
+import { useTheme } from '@/lib/theme';
 import { nf } from './format';
 import { valueOf, type Mode, type Row } from './model';
 import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
@@ -23,6 +24,9 @@ export function Ranking({
   selected: string | null;
   onSelect: (id: string | null) => void;
 }) {
+  /* ⚠️ 2026-10-09 (аудит №3): `.tot`-ийн бичиг горимоос хамаарна (`scoreInk(_, dark)`) —
+     дэвсгэр нь `--score-N` токен; цайвар «Маш сайн» 3.5:1, dark «Маш муу» 2.8:1 байсныг засав. */
+  const dark = useTheme().theme === 'dark';
   /**
    * ⚠️ Анхнаасаа зөвхөн 25–45 онооны бүлэг нээлттэй — анхаарал шаардсан бүсийг
    * шууд харуулж, өндөр оноотой бүсүүд жагсаалтыг дүүргэхгүй.
@@ -98,7 +102,7 @@ export function Ranking({
         <span className="rk">{ranks[i] ?? '—'}</span>
         <span className="nm">{r.id}<i>{r.type}</i></span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
-        <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
+        <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,
     );
   });

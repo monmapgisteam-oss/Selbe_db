@@ -392,14 +392,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [view, fixingReturned, reviewLockSt],
   );
   const reviewLock = reviewLockDays.length > 0;
-  const canPerf = useMemo(() => {
-    if (reviewLock) return false;
+  /* ⚠️ 2026-10-09 (аудит №3): БАЙНГЫН эрх (`permPerf` — томилгоо) ба ТҮР хориг (`reviewLock`) ТУСДАА. Урьд нь
+     `canPerf` хоригийг ЭХЛЭЭД шалгадаг тул томилгоогүй/«зөвхөн харна» хүнд ч «хяналтад явж буй илгээлт…» гэсэн
+     ХУДАЛ шалтгаан гардаг байв (хориг дуусахад ч бөглөж чадахгүй). Шалтгааны дараалал — `noPerfWhy`-ийн ⚠️. */
+  const permPerf = useMemo(() => {
     if (unrestricted) return true;
     if (viewOnlyAcl) return false;
     const cb = bagtsFor(user?.username, "company");
     return cb === null || cb.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, unrestricted, viewOnlyAcl, aclN, pkg.group, reviewLock]);
+  }, [user, unrestricted, viewOnlyAcl, aclN, pkg.group]);
+  const canPerf = permPerf && !reviewLock;
   /**
    * ⚠️ 2026-10-09 (хэрэглэгч: «бүх батлагчид засвар хийх эрхгүйгээр орж харах»): хянагчийн шатны
    *    (company биш) томилгоотой хүн энэ хүснэгтийг ЗӨВХӨН ХАРНА (`Guitsetgel.reviewerView`). Бичих эрх
@@ -411,9 +414,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return st != null && st !== "company";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, aclN]);
-  /** Бөглөх эрхгүй шалтгаан — батлагч › хориг (`reviewLock`) › «зөвхөн харна» › томилгоогүй */
+  /** Бөглөх эрхгүй шалтгаан — батлагч › «зөвхөн харна» › томилгоогүй (мөр нэмэх эрхтэй ч) › хориг (`reviewLock`) */
+  /* ⚠️ 2026-10-09 (аудит №3): БАЙНГЫН шалтгаан ТҮР хоригоос ӨМНӨ — хориг дуусахад ч бөглөж чадахгүй хүнд «6-р шат
+     батлаж архивласны дараа шинээр бөглөнө» гэж хэлэх нь худал. Томилгоогүй бол `null` — дуудагчийн ерөнхий
+     мессеж (`RO.noPerf` · «Танд энэ багцыг бөглөх эрхгүй»). */
   const noPerfWhy = reviewerOnly ? RO.reviewerView
-    : reviewLock ? RO.reviewLock(reviewLockDays.join(', ')) : viewOnlyAcl ? RO.perfViewOnly : null;
+    : viewOnlyAcl ? RO.perfViewOnly
+    : !permPerf ? null
+    : reviewLock ? RO.reviewLock(reviewLockDays.join(', ')) : null;
   /**
    * Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй, гүйцэтгэгч биш, ЭСВЭЛ
    * ЗАСВАРЫН горим нээгдээгүй.
@@ -518,6 +526,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const registeredRef = useRef<Set<number>>(new Set());
   const resend = async () => {
     if (resending || stagedOid == null || stagedFillMs == null) return;
+    /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн үйлдэл — батлагчийн харагдацаас (`reviewerOnly`) хяналтын тойрог нээхгүй
+       (`submitForReview` нь газрын даргад `companyDeny(…, allowChief)`-аар зөвшөөрдөг тул UI-д ч хаана). */
+    if (reviewerOnly || !permPerf) { setErr(noPerfWhy ?? RO.noPerf); return; }
     setResending(true);
     /*
      * ⚠️ ДАХИН ИЛГЭЭХИЙН ӨМНӨ ШИНЭЭР БАТАЛГААЖУУЛНА (2026-09-04-ний аудит):
@@ -1572,6 +1583,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const refreshStagedRef = useRef<(at: number) => void>(() => {});
   const onReceipts = useCallback((at: number) => refreshStagedRef.current(at), []);
+  /**
+   * ⚠️ 2026-10-09: буцаагдсан илгээлтийн ЗӨВШӨӨРӨГДСӨН (ногоон ✓) нүд (`useCellEdit.okLock`-ийн ⚠️); түлхүүр
+   *    `${oid}:${шошго}` — `FillRows`-ийн `bk`-тэй ижил. `b` = блокийн индекс.
+   * ⚠️ 2026-10-09 (аудит №3): НЭГ функц — UI (`useCellEdit`), ноорогийн буулгалт (`useDraftSync.okLock`) ба «Илгээх»
+   *    (`publish`) гурвуулаа үүгээр. Урьд нь зөвхөн UI-д байсан тул ноорог/хамтран бөглөгчийн утга илгээгддэг байв.
+   */
+  const okLockAt = useCallback((oid: number, b: number) => {
+    const k = `${oid}:${sc?.bld[b] ?? b}`;
+    return backChg.has(k) && backOk.has(k);
+  }, [sc, backChg, backOk]);
   /* ══════════ НООРОГИЙН СИНК (`fill/useDraftSync`) — эффектүүд нь энд, өмнөх байрлалдаа ══════════ */
   const draftSync = useDraftSync({
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
@@ -1582,6 +1603,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     show, say,
     /* ⚠️ 2026-10-09: хоёр хүн зэрэг бөглөх — салаа мэдэгдэл · шинэ баримт · тодруулга · харагдаж буй нүд */
     soft, onReceipts, flashCells, visibleKeys,
+    /* ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдийг ноорогоос буулгахгүй (`okLockAt`-ийн ⚠️) */
+    okLock: okLockAt,
   });
   /* ⚠️ 2026-10-01: ачаалах эффектийн толь (`draftSyncRef`-ийн ⚠️) */
   useSyncRef(draftSyncRef, draftSync);
@@ -1602,6 +1625,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     pushReceipts,
     /* 2026-10-09 — «Илгээх»-ийн өмнөх алсын ноорогийн шалгалт */
     pullNow,
+    /* 2026-10-09 (аудит №3) — буцаагдсан илгээлтийн засварт зөвхөн тэр илгээлтийн нүд */
+    offTgtKeys, storedMine, dropMine,
   } = draftSync;
   /**
    * ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): хүснэгт сэргээлт дуустал
@@ -1649,7 +1674,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [pastePrev, setPastePrev] = useState<PastePrev | null>(null);
   const {
     volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable,
-    remainHint, confirmPaste, cancelPaste,
+    remainHint, confirmPaste, cancelPaste, clearLocked,
   } = useCellEdit({
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
     locked, noEdit, canPerf, perfWhy: noPerfWhy, busy, editing, rowsAll, vis, hidden, nBld,
@@ -1658,10 +1683,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     pastePrev, setPastePrev,
     /* ⚠️ 2026-10-09: буцаагдсан илгээлтийн ЗӨВШӨӨРӨГДСӨН нүд түгжээтэй (`useCellEdit.okLock`-ийн ⚠️);
        түлхүүр `${oid}:${шошго}` — `FillRows`-ийн `bk`-тэй ижил */
-    okLock: (oid, b) => {
-      const k = `${oid}:${sc?.bld[b] ?? b}`;
-      return backChg.has(k) && backOk.has(k);
-    },
+    okLock: okLockAt,
   });
 
   /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */
@@ -1748,12 +1770,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const resumeReturned = useCallback(async (soid: number) => {
     if (busy || !sc || view) return;
-    /* Нүд/огноо/шинэчлэгдсэн огноо илгээгээгүй бол саад — нэмэлт мөр энд байхгүй (2026-09-24). */
-    const blocking = Object.keys(pending).length + Object.keys(pendDate).length
-      + (asOf !== asOfOrig ? 1 : 0);
+    /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн үйлдэл — батлагчийн харагдац/томилгоогүй хүн (`noPerfWhy`) сонгохгүй */
+    if (reviewerOnly || !permPerf) { say(noPerfWhy ?? RO.noPerf); return; }
     /* ⚠️ 2026-10-04 (#6): ноорог ЯГ ЭНЭ илгээлтийн засвар (`Draft.tgt`) бол саад биш — тэр нь
        F5/багц солихоос өмнө сонгогдсон зорилтоо сэргээж байна (засвар өөр өдөртэй холилдохгүй). */
-    if (blocking > 0 && draftTgt?.[0] !== soid) { say(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
+    if (draftTgt?.[0] !== soid) {
+      /* «Шинэчлэгдсэн огноо» нь хуваалцсан — өөрчлөгдсөн бол урьдын адил саад (2026-09-24). */
+      if (asOf !== asOfOrig) { say(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
+      /*
+       * ⚠️ 2026-10-09 (аудит №3, HIGH): ХАДГАЛСАН НООРОГ ч шалгана (локал + алс) — урьд нь зөвхөн санах ойн `pending`-ийг
+       *    хардаг байв. Хориг идэвхтэй үед сэргээлт явдаггүй тул `pending` хоосон; сонгосны дараа сэргээлт өнөөдрийн
+       *    ажлыг энэ засварт буулгаж илгээдэг байв. Одоо ӨӨРИЙН өөр ажлын нүд байвал ИЛ зөвшөөрлөөр ноорогоос хаяна
+       *    (`dropMine` — бусдынх хөндөгдөхгүй); хамтран бөглөгчийн нүд `useDraftSync.pickDraft`-д ХОЙШЛОГДОНО ('tgt').
+       *    Зорилт нь ХҮН ТУС БҮРЭЭР (`Draft.tgt`) тул өөрийн нүдийг «хойшлуулах» боломжгүй — зорилт солигдмогц тэр нүд
+       *    энэ засварынх мэт уншигдана. Хаалт: ноорог уншигдахгүй бол ЗОГСОНО (тодорхойгүй).
+       */
+      const ownerOf = (k: string) => (mineRef.current.has(k) ? meKey : byMap.get(k));
+      const memMine = [...Object.keys(pending), ...Object.keys(pendDate)].filter((k) => !!meKey && ownerOf(k) === meKey);
+      setBusy(true);
+      let stored: string[] | null = null;
+      try { stored = await storedMine(pkg.key, soid); } finally { setBusy(false); }
+      if (stored === null) { say(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаагдсан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
+      const mine = [...new Set([...memMine, ...stored])];
+      if (mine.length) {
+        if (!window.confirm(tr('Таны илгээгээгүй {0} нүд ноорогт байна (өнөөдрийн эсвэл өөр өдрийн ажил). Буцаагдсан илгээлтийн засвартай холилдохгүйн тулд эхлээд тэдгээрийг ноорогоос устгана — бусдын нүд хөндөгдөхгүй. Устгаад үргэлжлүүлэх үү?', mine.length))) return;
+        dropMine(pkg.key, mine);
+      }
+    }
     setBusy(true);
     try {
       const rr = await readSubmissionByOid(soid);
@@ -1790,7 +1833,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, sc, view, pending, pendDate, asOf, asOfOrig, pkg, nBld, draftTgt]);
+  }, [busy, sc, view, pending, pendDate, asOf, asOfOrig, pkg, nBld, draftTgt, reviewerOnly, permPerf, noPerfWhy, meKey, byMap, storedMine, dropMine]);
 
   /*
    * ⚠️ 2026-09-30: «ЗАСААД ДАХИН ИЛГЭЭХ»-ЭЭР ИРСЭН бол (`fixReq`) хуудас
@@ -1961,6 +2004,35 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» томилгоонд тусгай тайлбар (`RO.perfViewOnly`) */
       setErr(noPerfWhy ?? RO.noPerf);
       return;
+    }
+    /* ⚠️ 2026-10-09 (аудит №3): НООРОГ СЭРГЭЖ ДУУСТАЛ илгээхгүй — Ctrl+S товчийг тойрдог; сэргээлт дуусаагүй `pending`
+       нь хагас (локал буусан, алсынх хараахан ирээгүй) бөгөөд `publish`-ийн төгсгөлийн цэвэрлэгээ сэргээлттэй уралдана. */
+    if (restoringUi) { say(RO.restoring); return; }
+    /* ⚠️ 2026-10-09 (аудит №3): ЗӨВШӨӨРӨГДСӨН (ногоон ✓) нүдний утга ИЛГЭЭГДЭХГҮЙ — түгжээ урьд нь зөвхөн UI-д байсан тул
+       ноорог/хамтран бөглөгчийн нийлүүлэлтээр орсон утга илгээгддэг байв. Тэдгээрийг буцааж (tombstone) ЗОГСОНО —
+       хэрэглэгч үлдсэнийг шалгаад дахин дарна. */
+    {
+      const okBad = Object.keys(pending).filter((k) => {
+        const c = k.indexOf(':');
+        return c > 0 && okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)));
+      });
+      if (okBad.length) {
+        const bad = new Set(okBad);
+        setPending((p) => Object.fromEntries(Object.entries(p).filter(([k]) => !bad.has(k))));
+        for (const k of okBad) revert(k, true);
+        warn(tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд илгээгээгүй утга байсныг буцаав — тэр нүд дахин засагдахгүй. Шалгаад «Илгээх»-ийг дахин дарна уу.', okBad.length));
+        return;
+      }
+    }
+    /* ⚠️ 2026-10-09 (аудит №3, HIGH): БУЦААГДСАН ИЛГЭЭЛТИЙН ЗАСВАР (`curTgt`) — ЗӨВХӨН тэр илгээлтийн нүд. Эзний зорилт
+       зөрсөн (өнөөдрийн/өөр өдрийн) нүд `pending`-д байвал (засвар сонгосны дараах татах мөчлөгийн завсар) ИЛГЭЭХГҮЙ —
+       тэр нь засварын өдрөөр (`fillMs`) явж хоригийг тойрох байв (`useDraftSync.offTgtKeys`-ийн ⚠️). */
+    {
+      const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
+      if (off.length) {
+        say(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаагдсан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
+        return;
+      }
     }
     /* ⚠️ Нэмэлт мөрийн шалгуур (`canAddRow`, батлуулаагүй `adds`) ЭНД БАЙХГҮЙ
        (2026-09-24): энэ хуудас мөр нэмэхгүй, payload-ийн `adds` үргэлж `[]`. */
@@ -2731,7 +2803,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
-    pullNow, noPerfWhy]);
+    pullNow, noPerfWhy,
+    /* 2026-10-09 (аудит №3) */
+    restoringUi, okLockAt, offTgtKeys, revert]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -2745,6 +2819,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const resendAsIs = useCallback(async () => {
     if (busy || !sc || !staged || staged.done || !curTgtOn || dirtyCount > 0 || locked) return;
     if (noEdit) { setErr(RO.viewOnly); return; }
+    /* ⚠️ 2026-10-09 (аудит №3): батлагчийн харагдац/эрхгүй хүн тойрог нээхгүй (`resend`-ийн ⚠️) */
+    if (reviewerOnly || !canPerf) { setErr(noPerfWhy ?? RO.noPerf); return; }
     if (!window.confirm(tr('Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)))) return;
     setBusy(true);
     setErr("");
@@ -2795,7 +2871,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done]);
+  }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done, reviewerOnly, canPerf, noPerfWhy]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -2931,12 +3007,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
           extraN={extraAll.length} showExtra={showExtra} toggleExtra={toggleExtra}
+          restoring={restoringUi}
         />
         {/* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүнд «Илгээх»/«Дуусгасан» ОГТ гарахгүй —
             урьд нь «Дуусгасан» дарж оролцогч болж бусдын «Илгээх»-ийг түгждэг байв. Шалтгааныг ил хэлнэ. */}
         {canPerf ? (
           <SubmitControls
-            locked={locked} canSubmitNow={canSubmitNow} publish={publish} busy={busy} noEdit={noEdit}
+            /* ⚠️ 2026-10-09 (аудит №3): ноорог сэргэж дуустал «Илгээх» ч түгжээтэй (`publish`-ийн `restoringUi` шалгалт) */
+            locked={locked} canSubmitNow={canSubmitNow} publish={publish} busy={busy || restoringUi} noEdit={noEdit}
             dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
             waitingLast={waitingLast}
             resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
@@ -2975,7 +3053,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         )}
         <PkgPctBadge pkgPct={pkgPct} pkg={pkg} dirtyCount={dirtyCount} otherPct={otherPct} />
         <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
-          restoring={restoringUi} offline={offline} localFail={localFail} />
+          restoring={restoringUi} offline={offline} localFail={localFail}
+          /* ⚠️ 2026-10-09 (аудит №3): хориг (`reviewLock`) нь ТҮР — томилогдсон гүйцэтгэгч ноорогоо устгаж чадна */
+          canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit} />
       </div>
       {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ — татгалзах
           нүдтэй буулгалт ШУУД бичигдэхгүй, хэрэглэгч хүснэгтэд харж шийднэ (`useCellEdit.pastePrev`). */}
@@ -2994,6 +3074,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         subReadErr={subReadErr} inReview={inReview} reviewStage={reviewStage} otherDaysInReview={otherDaysInReview}
         otherDaysReturned={otherDaysReturned} noEdit={noEdit} busy={busy} resumedOid={resumedOid}
         resumeReturned={resumeReturned} returned={returned}
+        /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн товч (хяналтад бүртгэх · буцаалтыг сонгох) — томилогдсон гүйцэтгэгчид л.
+           `canPerf` БИШ: хориг (`reviewLock`) идэвхтэй үед буцаагдсан илгээлтийг сонгох нь хоригоос гарах ЦОРЫН ГАНЦ зам. */
+        canAct={permPerf && !reviewerOnly} reviewLockDays={reviewLockDays}
       />
       {/* ⚠️ 2026-10-04 аудит (#6): ноорог нь ӨӨР (буцаагдсан) илгээлтийн засвар — сонгох хүртэл «Илгээх» түгжээтэй */}
       {tgtMismatch && draftTgt && (
@@ -3150,7 +3233,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}
                 nextBlockEditable={nextBlockEditable} pendDate={pendDate} setPick={setPick} asOf={asOf} asOfOrig={asOfOrig}
                 warn={warn}
-                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra}
+                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra} clearLocked={clearLocked}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (

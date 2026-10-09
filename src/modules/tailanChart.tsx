@@ -122,7 +122,15 @@ export function RankBars({
             label: it.label,
             value: has ? it.value : null,
             display: has ? (it.text ?? fmt(it.value as number)) : tr('мэдээлэлгүй'),
-            color: !anyHot || it.hot ? 'var(--data)' : 'color-mix(in oklab, var(--data) 60%, transparent)',
+            /* ⚠️ 2026-10-09 (аудит №3): `--rank-hot`/`--rank-dim` — ЗӨВХӨН хэвлэлтэд
+               (`tailanChart.module.css` `@media print` → #333 / #767676) тавигдана. Урьд нь
+               хэвлэлт `.chartFill`-ийг БҮГДИЙГ #767676 болгож эмфазис (хуучин `.barHot` #333)
+               алга болсон. Дэлгэцэд тавигдаагүй тул нөөц утга (`--data`) хэвээр. */
+            color: it.hot
+              ? 'var(--rank-hot, var(--data))'
+              : anyHot
+                ? 'var(--rank-dim, color-mix(in oklab, var(--data) 60%, transparent))'
+                : 'var(--rank-dim, var(--data))',
           };
         })}
       />

@@ -83,15 +83,12 @@ const BANNED = [
 const noComments = (src) => src
   .replace(new RegExp("/\\*[^]*?\\*/", "g"), " ")
   .replace(new RegExp("(^|[^:])//[^\\n]*", "g"), "$1");
-/* ⚠️ `lib/sysDocs.ts` (2026-09-16) нь КОД БИШ — `docs/`-ийн markdown-ыг
-   автоматаар шингээсэн БИЧВЭР (`npm run docs:build`). Тэнд «2,090.20 тэрбум ₮»
-   гэсэн амьд хэмжилт нь ТАЙЛБАРЫН тоо, UI-ийн форматлагч БИШ. Энэ шалгуур нь
-   дэлгэц дээрх дүнг бүтэн харуулахыг хамгаалдаг тул баримтын бичвэрт
-   хамаарахгүй. Эх сурвалж нь `docs/` тул тэнд засна. */
+/* ⚠️ 2026-10-09 (аудит №3): `lib/sysDocs.ts`-ийн чөлөөлөлтийг ХАСАВ — тэр файл
+   (`docs/`-ийн markdown-ыг шингээсэн бичвэр, импортлогчгүй) `docs:build`-тэй хамт устгагдсан. */
 const SKIP = [
   'lib/agent/format.ts', 'lib/datasets.ts', 'i18n/en.ts',
   'lib/agent/agent.check.mjs', 'lib/format.check.mjs',
-  'modules/GeneralDash.tsx', 'lib/sysDocs.ts',
+  'modules/GeneralDash.tsx',
 ];
 const hits = [];
 (function walk(dir) {

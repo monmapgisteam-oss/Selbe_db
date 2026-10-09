@@ -299,16 +299,6 @@ export async function readQaqcDraft(pkgKey: string): Promise<QaqcRemoteDraftRead
 }
 
 /**
- * АЛСЫН НООРОГ — байхгүй/алдаа бол `null`.
- * ⚠️ Алдаа ХЭЗЭЭ Ч шидэхгүй: энэ нь нэмэлт тав тух, бөглөлтийн зам биш.
- * ⚠️ Уншилт УНАСНЫГ ялгах шаардлагатай бол `readQaqcDraft`-ийг хэрэглэ.
- */
-export async function loadQaqcDraft(pkgKey: string): Promise<QaqcRemoteDraft | null> {
-  const r = await readQaqcDraft(pkgKey);
-  return r.ok ? r.draft : null;
-}
-
-/**
  * ЭНЭ ТАБЫН АЛСЫН БИЧИЛТИЙН ДАРААЛАЛ — толгойн ⚠️ 2026-10-01.
  * Өмнөх бичилт (амжилттай ч, унасан ч) дууссаны ДАРАА л дараагийнх нь уншина.
  */

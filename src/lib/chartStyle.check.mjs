@@ -10,9 +10,11 @@
  *    (`ui.tsx`-ийн markup — `src/components/charts.ui.check.mjs`)
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CHART, DONUT_SIZES, RING_SIZES, ringStroke, linePath, lineSegments, areaPath, monotonePath,
   glow, niceTicks, stepDecimals, arcPath,
+  SCORE_HEX, SCORE_INK, SCORE_NODATA_INK,
 } from '@/lib/chartStyle';
 
 /* ── Тогтмолууд ── */
@@ -76,6 +78,17 @@ ctrlYs(monotonePath(uneven)).forEach(([c1, c2], i) => {
   const hi = Math.max(uneven[i].y, uneven[i + 1].y) + 1e-6;
   assert.ok(c1 >= lo && c1 <= hi && c2 >= lo && c2 <= hi, `тэгш бус ${i}: (${c1}, ${c2})`);
 });
+/* ⚠️ 2026-10-09 (аудит №3): monotonePath(pts, from, to) = БҮТЭН муруйн яг тэр хэсэг
+   (slice-лаад дахин бодвол захын налуу өөрчлөгдөж PkgProg-ийн зөрүүний ирмэг зөрдөг байв) */
+{
+  const full = monotonePath(cum);
+  const cs = full.split(' C').slice(1);
+  const sub = monotonePath(cum, 2, 5);
+  assert.equal(sub, `M${cum[2].x},${cum[2].y} C${cs.slice(2, 5).join(' C')}`, 'хэсэг = бүтэн муруйн C-хэрчмүүд');
+  assert.notEqual(sub, monotonePath(cum.slice(2, 6)), 'slice-ийн дахин тооцоо өөр (захын налуу) — тиймээс range');
+  assert.equal(monotonePath(cum, 0, cum.length - 1), full);
+}
+
 /* smooth:false — зөвхөн шулуун хэрчим */
 assert.ok(!linePath([P(0, 0), P(1, 1), P(2, 0)], { smooth: false })[0].includes('C'));
 
@@ -102,3 +115,61 @@ assert.ok(!/NaN/.test(arcPath(50, 50, 40, 0, Math.PI / 2)));
 assert.equal((arcPath(50, 50, 40, 0, Math.PI * 2).match(/A/g) || []).length, 2);
 
 console.log('✅ chartStyle: тогтмол · null дээр тасрах · NaN-гүй · монотон хэтрэхгүй · niceTicks · glow · arcPath');
+/* ── ⚠️ 2026-10-09 (аудит №3): SCORE_HEX = globals.css-ийн --score-1..5 (хоёр горим) ──
+   Газрын зураг hex, самбар токен ашигладаг тул ТЭНЦҮҮ байх ёстой. color-mix(in oklab)-ийг
+   энд бодно (Björn Ottosson-ийн OKLab); хөтчийн бүхэлчлэлд ±2/255 зөвшөөрнө. */
+{
+  const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const block = (re) => {
+    const m = css.match(re);
+    assert.ok(m, `globals.css: блок олдсонгүй ${re}`);
+    return new Map([...m[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((d) => [d[1], d[2].trim()]));
+  };
+  const LIGHT = block(/:root\s*,\s*\[data-theme=['"]light['"]\]\s*\{([^}]*)\}/);
+  const DARK = new Map([...LIGHT, ...block(/\[data-theme=['"]dark['"]\]\s*\{([^}]*)\}/)]);
+  const h2r = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+  const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const gam = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+  const toLab = (h) => {
+    const [r, g, b] = h2r(h).map(lin);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  };
+  const fromLab = ([L, A, B]) => {
+    const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+    const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+    const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s]
+      .map((c) => Math.round(Math.min(1, Math.max(0, gam(c))) * 255));
+  };
+  const resolve = (map, v) => {
+    v = v.trim();
+    const a = v.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+    if (a) { assert.ok(map.has(a[1]), `${a[1]} алга`); return resolve(map, map.get(a[1])); }
+    const mx = v.match(/^color-mix\(\s*in\s+oklab\s*,\s*(.+?)\s+(\d+(?:\.\d+)?)%\s*,\s*(.+?)\s*\)$/);
+    if (mx) {
+      const p = Number(mx[2]) / 100;
+      const A = toLab(resolve(map, mx[1])), B = toLab(resolve(map, mx[3]));
+      return '#' + fromLab(A.map((x, i) => x * p + B[i] * (1 - p))).map((c) => c.toString(16).padStart(2, '0')).join('');
+    }
+    assert.match(v, /^#[0-9a-f]{6}$/i, `задрахгүй утга: ${v}`);
+    return v.toLowerCase();
+  };
+  const lum = (h) => { const [r, g, b] = h2r(h).map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const cr = (x, y) => { const a = lum(x), b = lum(y); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+  for (const [mode, map] of [['light', LIGHT], ['dark', DARK]]) {
+    for (let n = 1; n <= 5; n++) {
+      const want = h2r(resolve(map, map.get(`--score-${n}`)));
+      const got = h2r(SCORE_HEX[mode][n - 1]);
+      want.forEach((c, i) => assert.ok(Math.abs(c - got[i]) * 255 <= 2, `SCORE_HEX.${mode}[${n - 1}] ${SCORE_HEX[mode][n - 1]} ≠ --score-${n}`));
+      const r = cr(SCORE_HEX[mode][n - 1], SCORE_INK[mode][n - 1]);
+      assert.ok(r >= 4.5, `${mode} --score-${n}: бичгийн харьцаа ${r.toFixed(2)} < 4.5`);
+    }
+    const nd = cr(resolve(map, map.get('--ink-3')), SCORE_NODATA_INK[mode]);
+    assert.ok(nd >= 4.5, `${mode} өгөгдөлгүй: ${nd.toFixed(2)} < 4.5`);
+  }
+}
+
+console.log('✅ chartStyle: тогтмол · null дээр тасрах · NaN-гүй · монотон хэтрэхгүй · онооны hex = токен, бичиг ≥4.5:1');

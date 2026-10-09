@@ -219,11 +219,17 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
  *
  * ⚠️ 2026-10-09: `ui.tsx`-ээс ЗӨӨВ (тэнд дахин экспортлогдсон хэвээр —
  *    GeneralDash импортлодог).
+ * ⚠️ 2026-10-09 (аудит №3): `from`/`to` — БҮТЭН цувааны налуугаар бодсон муруйн ЗӨВХӨН
+ *    [from, to] хэсэг. Хэсгийг `slice`-лаад дахин бодвол захын налуу өөрчлөгдөж (хөрш цэг
+ *    алга) муруй бүтэн шугамаасаа ЗӨРНӨ — PkgProg-ийн зөрүүний талбайн дээд ирмэг
+ *    төлөвлөгөөний шугамаас салж байв. Анхдагч нь бүтэн муж (хуучин зан).
  */
-export function monotonePath(pts: Pt[]): string {
+export function monotonePath(pts: Pt[], from = 0, to = pts.length - 1): string {
   const n = pts.length;
   if (n === 0) return '';
   if (n === 1) return `M${r2(pts[0].x)},${r2(pts[0].y)}`;
+  const a = Math.max(0, Math.min(n - 1, Math.floor(from)));
+  const b = Math.max(a, Math.min(n - 1, Math.floor(to)));
 
   const dx: number[] = [];
   const m: number[] = [];
@@ -246,8 +252,8 @@ export function monotonePath(pts: Pt[]): string {
      α,β ≤ 3 нөхцөлийг өөрөө хангадаг тул тусад нь хязгаарлах шаардлагагүй;
      захын налуу нь хөршийн налуутай тэнцүү (α = 1). */
 
-  let d = `M${r2(pts[0].x)},${r2(pts[0].y)}`;
-  for (let i = 0; i < n - 1; i += 1) {
+  let d = `M${r2(pts[a].x)},${r2(pts[a].y)}`;
+  for (let i = a; i < b; i += 1) {
     const h = dx[i] / 3;
     d += ` C${r2(pts[i].x + h)},${r2(pts[i].y + t[i] * h)}`
       + ` ${r2(pts[i + 1].x - h)},${r2(pts[i + 1].y - t[i + 1] * h)}`
@@ -315,3 +321,47 @@ export function areaPath(seg: LineSeg | Pt[], baselineY: number, opts: LineOpts 
   const b = s.pts[s.pts.length - 1];
   return `${s.d} L${r2(b.x)},${r2(baselineY)} L${r2(a.x)},${r2(baselineY)} Z`;
 }
+
+/* ══════════════════════ Онооны 5 шат — hex ══════════════════════ */
+
+/**
+ * `--score-1..5` токены (globals.css) ЗАДАРСАН hex — горим тус бүрд. Индекс 0 = `--score-1` (муу).
+ *
+ * ⚠️ 2026-10-09 (аудит №3): газрын зураг (ArcGIS символ) `var()`/`color-mix()` задалдаггүй тул
+ *    hex хэрэгтэй. Урьд нь газрын зураг/hover нь `SCORE_LEVELS.color` (хуучин #16a34a/#a3d84a/…)
+ *    -аар, эрэмбийн тэмдэг/хэмжүүр/радар нь `--score-N` токеноор будагдаж ХОЁР ӨӨР өнгө
+ *    харуулдаг байв (цайвар «Маш муу»: зураг #b91c1c ↔ самбар #dc2626; dark-д бүр өөр).
+ *    Одоо газрын зураг ЭНЭ хүснэгтээс горимоор нь авна; токентой ТЭНЦҮҮ эсэхийг
+ *    `chartStyle.check.mjs` globals.css-ийг задлан `color-mix(in oklab)`-ийг өөрөө бодож
+ *    (±2/255) шалгана — токен солибол ЭНДЭЭ солихгүй бол тест унана.
+ */
+export const SCORE_HEX = {
+  light: ['#dc2626', '#ef801b', '#facc15', '#769939', '#147c3b'],
+  dark: ['#f87171', '#fba252', '#fbbf24', '#97cf7d', '#34d399'],
+} as const satisfies Record<'light' | 'dark', readonly string[]>;
+
+/** Хар-хүрэн бичиг — цайвар дэвсгэр дээр */
+const INK_DARK = '#1a1205';
+const INK_LIGHT = '#ffffff';
+
+/**
+ * `--score-N` ДЭВСГЭР дээрх бичгийн өнгө (эрэмбийн `.tot`, дэлгэрэнгүйн `.gauge`, hover-ийн `.st`).
+ *
+ * ⚠️ 2026-10-09 (аудит №3): урьд нь `SCORE_LEVELS.ink` нь ХУУЧИН hex-д тааруулсан, горимгүй
+ *    байсан тул токен дэвсгэр дээр цайвар «Маш сайн» (#147c3b + хар-хүрэн) 3.5:1, dark
+ *    «Маш муу» (#f87171 + цагаан) 2.8:1 болж WCAG AA (4.5:1) унав. Одоо горим × шат бүрд
+ *    БОДИТ токен дэвсгэр дээр сонгосон (WCAG 2 харьцаа):
+ *      light — 1 #dc2626 цагаан 4.83 · 2 #ef801b хар-хүрэн 6.86 · 3 #facc15 хар-хүрэн 12.11 ·
+ *              4 #769939 хар-хүрэн 5.64 · 5 #147c3b цагаан 5.28
+ *      dark  — 1 #f87171 хар-хүрэн 6.70 · 2 #fba252 9.17 · 3 #fbbf24 11.11 · 4 #97cf7d 10.19 ·
+ *              5 #34d399 9.64
+ *      өгөгдөлгүй (`var(--ink-3)`) — light #5a6a80 цагаан 5.51 · dark #94a3b8 хар-хүрэн 7.23
+ *    `chartStyle.check.mjs` харьцаа ≥ 4.5 гэдгийг бүгдэд нь бодож шалгана.
+ */
+export const SCORE_INK = {
+  light: [INK_LIGHT, INK_DARK, INK_DARK, INK_DARK, INK_LIGHT],
+  dark: [INK_DARK, INK_DARK, INK_DARK, INK_DARK, INK_DARK],
+} as const satisfies Record<'light' | 'dark', readonly string[]>;
+
+/** «Өгөгдөлгүй» (`var(--ink-3)`) дэвсгэр дээрх бичиг — дээрх тайлбарыг үз */
+export const SCORE_NODATA_INK = { light: INK_LIGHT, dark: INK_DARK } as const;

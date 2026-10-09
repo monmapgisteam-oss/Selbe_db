@@ -578,8 +578,10 @@ console.log('\naclParity.check: ok');
     'src/modules/sheet/FillNew.tsx',
     'src/lib/hyanaltStore.ts',
   ];
+  /* ⚠️ 2026-10-09 (аудит №3): нэр солигдсон/устгагдсан хэрэглэгчийг ЧИМЭЭГҮЙ алгасдаг байв
+     (`continue`) — шинэ нэртэй файл хамгаалалтгүй үлддэг. Одоо ЧАНГА унана: жагсаалтыг шинэчил. */
   for (const p of consumers) {
-    if (!fs.existsSync(p)) continue;
+    assert.ok(fs.existsSync(p), p + ': хүрээний хэрэглэгч олдсонгүй (нэр солигдсон/устгагдсан?) — `consumers` жагсаалтыг шинэчил');
     const code = readCode(p);
     for (const fn of SCOPE_FNS) {
       const re = new RegExp(fn + BAD_SCOPE);

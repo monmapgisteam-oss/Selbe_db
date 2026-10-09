@@ -168,7 +168,6 @@ const CASES = [
     props: { dim: '2d', setDim: S, zone: null, setZone: S }, expect: ['Төслийн цар хүрээ', 'Татаж байна…'] },
   { name: 'GeneralDash', load: () => import('@/modules/GeneralDash'), pick: (m) => m.GeneralDash,
     props: { dim: '2d', setDim: S, zone: null, setZone: S } },
-  { name: 'Bagts', load: () => import('@/modules/Bagts'), pick: (m) => m.Bagts, props: { dim: '2d', setDim: S } },
   { name: 'PkgFin', load: () => import('@/modules/PkgFin'), pick: (m) => m.PkgFin, props: { dim: '2d', setDim: S } },
   { name: 'PkgProg', load: () => import('@/modules/PkgProg'), pick: (m) => m.PkgProg, props: { dim: '2d', setDim: S } },
   { name: 'Gazar', load: () => import('@/modules/Gazar'), pick: (m) => m.Gazar, props: { dim: '2d', setDim: S }, expect: ['Газар чөлөөлөлт'] },

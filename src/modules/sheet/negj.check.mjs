@@ -76,4 +76,10 @@ console.log(`үнийн нийцэл нийт: ${fit}/${checked} = ${acc.toFixed
 
 assert.ok(cov >= 90, `хамралт ${cov.toFixed(1)}% — 90%-иас доош унав`);
 assert.ok(acc >= 93, `үнийн нийцэл ${acc.toFixed(1)}% — 93%-иас доош унав`);
+/* ⚠️ 2026-10-09 (аудит №3): дэлгэцийн нэгж орчуулгатай (`unitLabel`) — таван нэгж бүгд хоосон биш, `null` → '' */
+{
+  const { unitLabel } = await import('@/modules/sheet/negj.ts');
+  for (const u of ['м³', 'м²', 'м', 'тн', 'ш']) assert.ok(unitLabel(u), `нэгж «${u}» шошгогүй`);
+  assert.equal(unitLabel(null), '');
+}
 console.log('\nnegj.check: ok');

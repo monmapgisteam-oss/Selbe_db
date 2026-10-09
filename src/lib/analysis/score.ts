@@ -4,9 +4,15 @@ import { t as tr } from '@/lib/i18nCore';
  */
 
 import {
-  SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_TONE, NO_DATA_INK, STRICT_NORM, NORM_FAIL_MAX,
+  SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_TONE, STRICT_NORM, NORM_FAIL_MAX,
   densityNormOf, type Indicator,
 } from './config';
+import { SCORE_HEX, SCORE_INK, SCORE_NODATA_INK } from '@/lib/chartStyle';
+
+/** `SCORE_LEVELS[i].tone` (`var(--score-N)`) → `SCORE_HEX`/`SCORE_INK`-ийн индекс (N-1).
+ *  ⚠️ 2026-10-09 (аудит №3): индексийг токены НЭРЭЭС уншина — шатны дараалал (сайн→муу)
+ *  ба токены дугаар (муу→сайн) урвуу тул `4 - i` гэж таамаглахгүй. */
+const TOKEN_IX: readonly number[] = SCORE_LEVELS.map((L) => Number(/--score-(\d)/.exec(L.tone)?.[1] ?? 0) - 1);
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 /**
@@ -149,10 +155,15 @@ export function urbanScore(
 /**
  * Оноо → HEX өнгө. ТАСРАЛТГҮЙ градиент БИШ, 5 түвшний дискрет өнгө —
  * газрын зураг, эрэмбэ, дэлгэрэнгүй гурав үргэлж нэг л шатлалыг харуулна.
+ *
+ * ⚠️ 2026-10-09 (аудит №3): `dark` — порталын горим (`useTheme`). Утга нь `--score-N`
+ *    токены ЗАДАРСАН hex (`chartStyle.SCORE_HEX`) тул газрын зураг ба самбар (`scoreTone`)
+ *    хоёр горимд ИЖИЛ өнгөтэй. Урьд нь `SCORE_LEVELS.color` (хуучин палитр) — зөрдөг байв.
+ *    Өгөгдөлгүйд `NO_DATA_COLOR` хэвээр (`SuitMap` түүгээр «өгөгдөлгүй»-г танина).
  */
-export function scoreColor(score: number | null | undefined): string {
+export function scoreColor(score: number | null | undefined, dark = false): string {
   const i = levelOf(score);
-  return i < 0 ? NO_DATA_COLOR : SCORE_LEVELS[i].color;
+  return i < 0 ? NO_DATA_COLOR : SCORE_HEX[dark ? 'dark' : 'light'][TOKEN_IX[i]];
 }
 
 /**
@@ -169,12 +180,17 @@ export function scoreTone(score: number | null | undefined): string {
 }
 
 /**
- * `scoreColor` ДЭВСГЭР дээрх бичгийн өнгө (WCAG ≥ 4.5:1) — 2026-10-09.
+ * `scoreTone` (= `scoreColor(_, dark)`) ДЭВСГЭР дээрх бичгийн өнгө (WCAG ≥ 4.5:1) — 2026-10-09.
  * ⚠️ Тэмдэг/хэмжүүрийн тоог `color: var(--bg)`-оор бичихгүй: цайвар түвшинд цагаан уншигдахгүй.
+ * ⚠️ 2026-10-09 (аудит №3): горимоос ХАМААРНА (`dark`) — дэвсгэр нь токен болсон тул хуучин
+ *    `SCORE_LEVELS.ink` (горимгүй, хуучин hex-д тааруулсан) цайвар «Маш сайн»-д 3.5:1, dark
+ *    «Маш муу»-д 2.8:1 өгч байв. Харьцаанууд `chartStyle.SCORE_INK`-ийн тайлбарт.
+ *    Өгөгдөлгүйн дэвсгэр нь `var(--ink-3)` (`NO_DATA_TONE`).
  */
-export function scoreInk(score: number | null | undefined): string {
+export function scoreInk(score: number | null | undefined, dark = false): string {
   const i = levelOf(score);
-  return i < 0 ? NO_DATA_INK : SCORE_LEVELS[i].ink;
+  const m = dark ? 'dark' : 'light';
+  return i < 0 ? SCORE_NODATA_INK[m] : SCORE_INK[m][TOKEN_IX[i]];
 }
 
 /** Оноог үгээр */

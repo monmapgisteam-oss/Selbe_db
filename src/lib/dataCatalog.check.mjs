@@ -67,7 +67,7 @@ for (const e of cat) {
 for (const svc of CLOSED_SERVICES) {
   const hit = cat.filter((e) => e.service === svc || (e.url ?? '').includes(`/${svc}/`));
   assert.ok(hit.length > 0, `хаалттай үйлчилгээ каталогт алга: ${svc}`);
-  for (const e of hit) assert.equal(e.closed, true, `${e.id}: ${svc} хаалттай (499) тугагүй`);
+  for (const e of hit) assert.equal(e.closed, true, `${e.id}: ${svc} устгагдсан (400) тугагүй`);
 }
 for (const e of cat.filter((x) => x.closed)) {
   assert.ok(

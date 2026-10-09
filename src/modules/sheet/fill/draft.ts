@@ -969,6 +969,25 @@ export const claimMine = (mineAt: number | undefined, at: number | undefined, by
 export const editStamp = (clock: number, seen: number | undefined): number =>
   Math.max(clock, seen != null && Number.isFinite(seen) ? seen + 1 : 0);
 /**
+ * ⚠️ 2026-10-09 (аудит №3, HIGH): НҮД ОДООГИЙН ЗОРИЛТООС (буцаагдсан илгээлтийн засвар) ГАДУУРХ УУ — ЦЭВЭР.
+ *    `tgtNow` = одоогийн зорилтын OBJECTID (0 = өнөөдрийн шинэ бөглөлт — шүүлтгүй, `false`). Нүдний эзний зорилт нь
+ *    `tgts` (`Draft.tgt`, хүн тус бүр) — байхгүй/0 бол «өнөөдөр». Эзэнгүй (хуучин) нүд — «өнөөдөр». ӨӨРИЙН зорилтгүй
+ *    бол хадгалах эффектийн `want`-тай ИЖИЛ одоогийн зорилт (шинээр бичсэн нүд энэ засварынх).
+ *    `useDraftSync.pickDraft` (буулгахгүй, 'tgt' тэмдэглэнэ) ба `offTgtKeys` («Илгээх» татгалзана) хоёулаа үүгээр.
+ */
+export function offTarget(
+  tgtNow: number,
+  owner: string | undefined,
+  me: string,
+  tgts: ReadonlyMap<string, readonly [string, number, number, number]>,
+): boolean {
+  if (!(tgtNow > 0)) return false;
+  const e = owner ? tgts.get(owner) : undefined;
+  const o = e && e[1] > 0 ? e[1] : 0;
+  const own = owner && owner === me && !o ? tgtNow : o;
+  return own !== tgtNow;
+}
+/**
  * ⚠️ 2026-10-09: ЭНЭ ХЭРЭГЛЭГЧИЙН СҮҮЛД БИЧСЭН НҮДИЙГ НИЙЛҮҮЛЭЛТ ӨӨРЧИЛСӨН ҮҮ — `'over'` (өөр хүн ХОЖУУ
  *    дарж бичсэн) · `'del'` (өөр хүн ХОЖУУ буцаасан — tombstone) · `null`. LWW-ийг ӨӨРЧЛӨХГҮЙ, зөвхөн ИЛ
  *    хэлэхэд (урьд нь чимээгүй солигддог байв). Илгээлтийн баримтаар (`rcptA ≥ del`) хасагдсан нь энд

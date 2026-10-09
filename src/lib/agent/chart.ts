@@ -49,9 +49,19 @@ const GAP_OK: readonly ChartType[] = ['bar', 'column', 'line'];
  */
 export const MAX_POINTS = 12;
 
+/**
+ * ⚠️ 2026-10-09 (аудит №3): ЗӨВХӨН тоо эсвэл тоон мөр. Урьд нь `Number(v)` тул `""` → 0,
+ *    `true` → 1, `[]` → 0 болж «мэдээлэлгүй» нь тэг/нэг багана болон зурагддаг байв
+ *    (доорх parseChart: тоо биш/хоосон утга → null цоорхой). `Number("")`-ийн 0-ээс
+ *    сэргийлж хоосон мөрийг тусад нь шүүнэ.
+ */
 const num = (v: unknown): number | null => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string') return null;
   // «1,788» ба «19.7 » зэрэг загварын түгээмэл бичиглэлийг залруулна
-  const x = typeof v === 'string' ? Number(v.replace(/[\s,]/g, '')) : Number(v);
+  const s = v.replace(/[\s,]/g, '');
+  if (!s) return null;
+  const x = Number(s);
   return Number.isFinite(x) ? x : null;
 };
 

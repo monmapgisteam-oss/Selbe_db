@@ -973,7 +973,8 @@ console.log('✅ #6 ижил утгын хасалт — дүрэм хэвээр
 /* ── #7 — тэмдэглэсэн нүд хугацаатай, ноорогт ТОГТВОРТОЙ, зөвхөн тэднийг хаях товчтой ── */
 {
   const FN = readSrc('src/modules/sheet/FillNew.tsx');
-  assert.ok(FN.includes('if (holdNow - since > DEL_TTL_MS) { heldExpired.push(k); return; }'), 'тэмдэглэсэн нүд хугацаагүй');
+  /* ⚠️ 2026-10-09 (аудит №3): зорилтоор хойшлуулсан ('tgt') нүд л хугацаагүй */
+  assert.ok(FN.includes("if (why !== 'tgt' && holdNow - since > DEL_TTL_MS) { heldExpired.push(k); return; }"), 'тэмдэглэсэн нүд хугацаагүй');
   assert.ok(FN.includes('const dropHeld = useCallback(() => {') && FN.includes('onClick={dropHeld}'), '«Тэмдэглэсэн нүдийг хаях» товч алга');
   assert.ok(FN.includes('&& !heldRef.current.size'), 'тэмдэглэсэн нүд хадгалах эффектэд агуулга гэж тооцогдохгүй байна');
   /* нийлүүлэлт: нүд алга бол тэмдэг арилна */
@@ -1070,3 +1071,31 @@ import { newReceipts, claimMine, editStamp, lostMine } from './fill/draft.ts';
   }
 }
 console.log('✅ 2026-10-09 хоёр клиент — шинэ баримт · эзэмшил · өөрийн нүд өөрчлөгдсөн · HLC · эх кодын гэрээ');
+
+/* ══════════ 2026-10-09 (аудит №3, HIGH) — БУЦААГДСАН ИЛГЭЭЛТИЙН ЗАСВАРТ ЗӨВХӨН ТЭР ИЛГЭЭЛТИЙН НҮД (`offTarget`) ══════════
+ * Хориг идэвхтэй үед D2-ыг сонгоход өнөөдрийн (зорилтгүй) эсвэл хамтран бөглөгчийн нүд тэр засварт нийлж, D2-ын
+ * `fillMs`-ээр илгээгддэг байв. Нүдний эзний зорилт (`Draft.tgt`) одоогийн засвартай таарахгүй бол ГАДУУРХ. */
+import { offTarget } from './fill/draft.ts';
+{
+  const D2 = 501;
+  const D3 = 777;
+  const tg = new Map([
+    ['b', ['b', 0, 0, 10]],          // Б — зорилтоо цэвэрлэсэн (өнөөдөр)
+    ['c', ['c', D2, 1000, 20]],      // В — D2-ын засвар
+    ['d', ['d', D3, 2000, 30]],      // Г — өөр өдрийн засвар
+  ]);
+  /* өнөөдрийн шинэ бөглөлт (зорилт 0) — шүүлтгүй */
+  assert.equal(offTarget(0, 'b', 'a', tg), false);
+  assert.equal(offTarget(0, 'd', 'a', tg), false);
+  assert.equal(offTarget(0, undefined, 'a', tg), false);
+  /* D2-ын засвар: Б (өнөөдөр) · Г (D3) · эзэнгүй — ГАДУУРХ; В (D2) — дотор */
+  assert.equal(offTarget(D2, 'b', 'a', tg), true, 'өнөөдрийн (зорилт цэвэрлэсэн) хамтран бөглөгчийн нүд засварт нийлж байна');
+  assert.equal(offTarget(D2, 'd', 'a', tg), true, 'өөр өдрийн засварын нүд D2-т нийлж байна');
+  assert.equal(offTarget(D2, undefined, 'a', tg), true, 'эзэнгүй (хуучин) нүд засварт нийлж байна');
+  assert.equal(offTarget(D2, 'x', 'a', tg), true, 'зорилтгүй хамтран бөглөгчийн нүд засварт нийлж байна');
+  assert.equal(offTarget(D2, 'c', 'a', tg), false, 'тэр засварын нүд хойшлогдож байна');
+  /* өөрийн нүд: зорилтгүй бол хадгалах эффектийн `want` (одоогийн) — дотор; өөр зорилттой бол гадуур */
+  assert.equal(offTarget(D2, 'a', 'a', tg), false, 'өөрийн шинэ нүд засварт орохгүй байна');
+  assert.equal(offTarget(D2, 'd', 'd', tg), true, 'өөрийн өөр өдрийн засвар D2-т нийлж байна');
+}
+console.log('✅ аудит №3 — буцаалтын засварт зөвхөн тэр илгээлтийн нүд (зорилтгүй · өөр өдөр · эзэнгүй — гадуур)');

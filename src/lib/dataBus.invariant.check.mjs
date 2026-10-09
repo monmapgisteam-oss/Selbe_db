@@ -15,7 +15,7 @@
  *   Дэлгэц дээр ямар ч алдаа гарахгүй тул нүдээр илрэхгүй төрлийн согог.
  */
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = 'src';
@@ -371,9 +371,9 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
   ['src/lib/draftRemote.ts',
     'FeatureLayer ОБЬЕКТУУДЫН кэш (`layerCache`) — SDK-ийн инстанц, өгөгдөл БИШ. '
     + 'Нооргийн хүснэгт өөрөө автобусад ордоггүй (BICHEED_DUUDAGCH_HUCHINGUI-г үз).'],
-  ['src/lib/totals.ts',
-    'Төлөвлөгөөт нийлбэрийн кэш — эх нь `wbs.data.ts`-ийн СТАТИК мод (код дотор '
-    + 'бичигдсэн тоо), ArcGIS хүснэгт БИШ.'],
+  /* ⚠️ 2026-10-09 (аудит №3): `src/lib/totals.ts`-ийн чөлөөлөлт ХАСАГДАВ — шалтгаан нь устгагдсан
+     `wbs.data.ts` (статик мод) байсан; одоо файл ArcGIS-аас уншиж `register(` дууддаг тул
+     ердийн дүрмээр давна. */
   ['src/modules/Bagts.tsx',
     '`pkgTotalCache` — давхаргын ГАРЧИГ ба тоо ширхэг; эх нь каталогийн '
     + 'давхаргууд (`loadSocial`-тай ижил шалтгаан).'],
@@ -591,6 +591,22 @@ if (bichigchgui.length) {
     `ℹ литералаар хүчингүй болгогддоггүй түлхүүр: ${bichigchgui.join(', ')}`
     + (huvisagchaar ? '  (зарим нь ХУВЬСАГЧААР хүчингүй болдог — жагсаалт бүрэн бус)' : ''),
   );
+}
+
+/* ⚠️ 2026-10-09 (аудит №3): ЗӨВШӨӨРЛИЙН ЖАГСААЛТЫН ФАЙЛ БҮР БАЙХ ЁСТОЙ — нэр солигдсон/устгагдсан
+   файл жагсаалтад үлдвэл чөлөөлөлт чимээгүй хэнд ч хамаарахгүй болж, шинэ нэртэй файл
+   хамгаалалтгүй үлддэг. (`TAGGUI_…`-ийн түлхүүр нь `файл:функц`.) */
+{
+  const lists = {
+    TAGGUI_ZOVSHOOROGDSON: [...TAGGUI_ZOVSHOOROGDSON.keys()].map((k) => k.split(':')[0]),
+    BICHEED_DUUDAGCH_HUCHINGUI: [...BICHEED_DUUDAGCH_HUCHINGUI.keys()],
+    GARAAR_ZOVSHOOROGDSON: [...GARAAR_ZOVSHOOROGDSON.keys()],
+    STORE_KEYS: [...STORE_KEYS.keys()],
+  };
+  const missing = Object.entries(lists)
+    .flatMap(([nm, ps]) => ps.filter((p) => !existsSync(p)).map((p) => `${nm}: ${p}`));
+  assert.deepEqual(missing, [], `зөвшөөрлийн жагсаалтад БАЙХГҮЙ файл:\n  ${missing.join('\n  ')}`);
+  console.log('✅ зөвшөөрлийн жагсаалтын файл бүр байна');
 }
 
 console.log('\ndataBus.invariant: ok');

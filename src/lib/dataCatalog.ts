@@ -89,7 +89,7 @@ export type CatEntry = {
   editors: () => Editor[];
   rows?: () => RowKind[];
   note?: () => string;
-  /** Үйлчилгээ ХААЛТТАЙ (499) */
+  /** Үйлчилгээ УСТГАГДСАН (400) — `CLOSED_SERVICES` */
   closed?: true;
 };
 
@@ -115,9 +115,16 @@ export const kindLabel = (k: CatKind): string =>
         : tr('зураг');
 
 /**
- * ХААЛТТАЙ (499) ҮЙЛЧИЛГЭЭНҮҮД — CLAUDE.md-ийн «ArcGIS REST-ийн занга».
+ * УСТГАГДСАН (400) ҮЙЛЧИЛГЭЭНҮҮД — CLAUDE.md-ийн «ArcGIS REST-ийн занга».
  * ⚠️ Шалгуур (`dataCatalog.check.mjs`) эдгээрийг агуулсан мөр БҮР `closed`
  *    тугтай эсэхийг барина.
+ * ⚠️ 2026-10-09: урьд «хаалттай (499)» гэж бичигдэж байсан — одоо monmap-аас УСТГАГДСАН,
+ *    `{ error: { code: 400, "Invalid URL" } }` буцаана (HTTP 200-аар). Мөн устгагдсан:
+ *    `Selbe_ET_20260725` · `Бусад_мэдээлэл_20260724` · `dugui_zam_20260731` ·
+ *    `busiin_medeelel_final` · `Tuluvlult_talbai` · `Selbe_barilga_last` · `A` — гэхдээ тэд
+ *    каталогт ӨӨРИЙН мөргүй, зөвхөн газрын зургийн загварын түлхүүр (`styleUrl` → `styleSrc`)
+ *    болж үлдсэн (өгөгдөл нь `TD`-ийн хуулбараас) тул энд ОРОХГҮЙ — шалгуур нь жагсаалтын
+ *    үйлчилгээ бүрд каталогийн мөр шаарддаг.
  */
 export const CLOSED_SERVICES = ['Selbe_guitsetgel_consolidated', 'Selbe_ET_20260721'] as const;
 
@@ -553,7 +560,7 @@ function guitsEntries(): CatEntry[] {
       styleSrc: [],
       views: [],
       purpose: () => tr('2026-08-27-нд Bagts_* хуудас руу шилжсэн хуучин эх — порталд идэвхтэй уншигч байхгүй.'),
-      chain: () => [S(tr('Хаагдсан (499)')), S(tr('Bagts_* хуудас руу шилжсэн'), 'bagts:b1_9f')],
+      chain: () => [S(tr('Устгагдсан (400)')), S(tr('Bagts_* хуудас руу шилжсэн'), 'bagts:b1_9f')],
       editors: NONE,
       closed: true,
     },
@@ -876,7 +883,7 @@ function otherEntries(): CatEntry[] {
       styleSrc: [],
       views: [],
       purpose: () => tr('Одоо зөвхөн газрын зургийн загварын (webmap-style) түлхүүр — өгөгдөл SELBE_ALL_DATA_last_0917-оос уншигдана.'),
-      chain: () => [S(tr('Хаагдсан (499)')), S(tr('SELBE_ALL_DATA_last_0917 руу шилжсэн'), 'lyr:et:24')],
+      chain: () => [S(tr('Устгагдсан (400)')), S(tr('SELBE_ALL_DATA_last_0917 руу шилжсэн'), 'lyr:et:24')],
       editors: NONE,
       closed: true,
     },

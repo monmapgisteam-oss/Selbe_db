@@ -30,7 +30,7 @@
  *   доор бичив.
  */
 
-import { arcgisPost, queryFeatures } from '@/lib/query';
+import { arcgisPost } from '@/lib/query';
 import { TD } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -116,20 +116,6 @@ export async function loadStations(): Promise<Station[]> {
     })
     .sort((a, b) => (a.kind === b.kind ? a.oid - b.oid : a.kind === 'water' ? -1 : 1));
 }
-
-/**
- * `queryFeatures`-ийг ХЭРЭГЛЭХГҮЙ шалтгаан дээр дурдсан (геометр). Гэхдээ
- * төрлийн задаргааг тоолоход л хэрэгтэй бол энэ хөнгөн хувилбар хангалттай.
- */
-export const countByTorol = async (): Promise<Record<string, number>> => {
-  const rows = await queryFeatures(ERSDEL_FS.url, { outFields: [ERSDEL_FS.typeField] });
-  const out: Record<string, number> = {};
-  for (const r of rows) {
-    const k = String(r[ERSDEL_FS.typeField] ?? '').trim() || '—';
-    out[k] = (out[k] ?? 0) + 1;
-  }
-  return out;
-};
 
 /* ══════════════════════ Детерминист санамсаргүй ══════════════════════ */
 

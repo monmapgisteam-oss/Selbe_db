@@ -10,7 +10,7 @@
  *
  * ⚠️ Зөвхөн хуучин-биш, сүлжээгүй, React-гүй логик — hook/JSX энд орохгүй.
  */
-import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS, PROGRESS_LEVELS } from '@/lib/services';
+import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS } from '@/lib/services';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
 import type { ProgPt } from '@/modules/PkgProg';
 import { planPctAt, measureDayOf, type PlanPoint } from '@/lib/planProgress';
@@ -89,30 +89,6 @@ export const pp = (v: number | null | undefined): string =>
 /** Тэмдэггүй зөрүү («5.0 pp») — «хоцрогдол / түрүүлсэн» гэсэн үгтэй хамт */
 export const ppAbs = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : `${num(Math.abs(v), 1)} pp`;
-
-/**
- * БЛОКИЙН ГҮЙЦЭТГЭЛИЙН 4 ТҮВШНИЙ ТАРХАЛТ (`PROGRESS_LEVELS`) — ГАНЦ дүрэм.
- *
- * ⚠️ 2026-10-06 (аудит): «Гүйцэтгэл»-ийн «Блокийн төлөв» (PkgProg `LevelsCard`) ба удирдлагын
- *    тайлан (`execReport.prog.levels`) хоёр өөр дүрэмтэй байв — PkgProg нь тайлагнаагүй блокийг
- *    0–25%-д тоолдог (2026-10-04, 2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр), тайлан нь
- *    зөвхөн утгатай блокийг. Нэг 113 блок хоёр дэлгэцэд өөр тархалттай гардаг байв. Одоо хоёулаа
- *    ЭНЭ функцээр: тайлагнаагүй (`progress == null`) блок 0%-иар ТООЛОГДОНО, тоо нь `noData`-д ил.
- * ⚠️ Давхардсан полигоныг дуудагч `uniqueBlocks`-оор аль хэдийн нэгтгэсэн байх ёстой.
- * ⚠️ Муж: `min ≤ v < max` (сүүлийнх нь 101 — 100% орно); мужаас гадуурх утга ирмэгт хавчигдана.
- */
-export function blockLevelCounts(blocks: readonly { progress: number | null | undefined }[]): { counts: number[]; noData: number } {
-  const counts: number[] = PROGRESS_LEVELS.map(() => 0);
-  let noData = 0;
-  for (const b of blocks) {
-    if (b.progress == null) noData += 1;
-    const v = b.progress ?? 0;
-    let i = PROGRESS_LEVELS.findIndex((l) => v >= l.min && v < l.max);
-    if (i < 0) i = v < PROGRESS_LEVELS[0].min ? 0 : PROGRESS_LEVELS.length - 1;
-    counts[i] += 1;
-  }
-  return { counts, noData };
-}
 
 /**
  * Дэлгэц уншигчид л харагдах (нүдэнд нуугдсан) хэв — графикийн `aria-live` уншилтад.

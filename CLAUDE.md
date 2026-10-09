@@ -121,9 +121,13 @@ CSS-модулийн pure шалгалт (`tools/cssModulePurity.check.mjs`) `np
 - **2000 мөрийн хуудаслалт.** `resultOffset`/`resultRecordCount`-ыг
   `orderByFields`-гүй хэрэглэвэл давхардсан/алдагдсан мөр гарна.
 - Огноо: `timestamp 'YYYY-MM-DD HH:MM:SS'`. Юникод мөр: `N'…'` угтвар.
-- **Хоёр үйлчилгээ ХААЛТТАЙ (499)**: `Selbe_guitsetgel_consolidated` ба
-  `Selbe_ET_20260721`. 127 давхарга бүр ил `url`-тай тул ET рүү унах
-  fallback хэзээ ч ажиллахгүй.
+- **Хуучин үйлчилгээнүүд УСТГАГДСАН (400 «Invalid URL»)**:
+  `Selbe_ET_20260721` · `Selbe_ET_20260725` · `Selbe_guitsetgel_consolidated` ·
+  `Бусад_мэдээлэл_20260724` · `dugui_zam_20260731` · `busiin_medeelel_final` ·
+  `Tuluvlult_talbai` · `Selbe_barilga_last` · `A`. Газрын зураг нь
+  `SELBE_ALL_DATA_last_0917` (`TD`)-ийн хуулбараас уншина; `ET`/`ET_PKG` нь
+  зөвхөн загварын (`styleUrl`) түлхүүр. Давхарга бүр ил `url`-тай тул ET рүү
+  унах fallback хэзээ ч ажиллахгүй.
 - `applyEdits` нь 500 мөрийн багцаар явна; `rollbackOnFailure` нь ЗӨВХӨН нэг
   багц дотор үйлчилнэ (`bagtsSheet.applyUpdates`).
 

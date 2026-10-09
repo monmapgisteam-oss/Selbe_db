@@ -436,8 +436,9 @@ assert.ok(restore.includes('d.rowKeys'), 'зөөлт нь ноорогийн т�
 assert.ok(restore.includes('fixKey'), 'зөөлт түлхүүрт хэрэглэгдэхгүй байна');
 /* Чимээгүй устгал — ЗӨВХӨН ноорог үнэхээр хоосон (`!dropped`) үед */
 assert.ok(
-  /* ⚠️ 2026-10-04: `kept` = хуучирсан + хоёрдмол (#2) + серверт өөрчлөгдсөн (#8) — бүгд «хадгалж, анхааруулна» */
-  SRC.includes('const kept = dropped + ambig + srvChanged;') && SRC.includes('if (!kept) {') && SRC.includes('clearDraftLS(pkg.key);'),
+  /* ⚠️ 2026-10-04: `kept` = хуучирсан + хоёрдмол (#2) + серверт өөрчлөгдсөн (#8) — бүгд «хадгалж, анхааруулна»
+     ⚠️ 2026-10-09 (аудит №3): + зорилтоор хойшлуулсан ('tgt') нүд */
+  SRC.includes('const kept = dropped + ambig + srvChanged + tgtHeld;') && SRC.includes('if (!kept) {') && SRC.includes('clearDraftLS(pkg.key);'),
   'хоосон бус ноорог чимээгүй устаж байна',
 );
 console.log('✅ агшин солигдоход ноорог зөөгдөнө, чимээгүй устахгүй');
@@ -546,3 +547,52 @@ assert.ok(
   'өнчин илгээлтийг өгөгдлөөс таних шалгуур алга',
 );
 console.log('✅ өнчин илгээлт хуудас дахин нээхэд ч илэрнэ');
+
+/* ── 12. 2026-10-09 (аудит №3) — ХОРИГ · БУЦААЛТЫН ЗАСВАР · ЗӨВШӨӨРӨГДСӨН НҮД (эх кодын гэрээ) ──
+   ⚠️ (1) хориг идэвхтэй үед буцаагдсан өдрийг сонгоход ӨНӨӨДРИЙН/бусдын ноорог тэр засварт нийлж хоригийг
+   тойрдог байв; (3) ногоон ✓ нүдний түгжээ зөвхөн UI-д; (5) шалтгааны дараалал; (6) батлагчид гүйцэтгэгчийн
+   товч; (7) сэргээлтийн хаалт Ctrl+S/«Огноо»-д хүрдэггүй байв. */
+{
+  /* (1) pickDraft — эзний зорилт зөрсөн нүд/огноо хойшлогдоно ('tgt'), ноорог устахгүй */
+  const pick = between('const pickDraft = useCallback(', 'const pickDraftRef = useRef(pickDraft);');
+  assert.ok(pick.includes('const offTgt = (k0: string) => offTarget(tgtNow, dBy.get(k0), meTgt, tgtsRef.current);'), 'pickDraft-д зорилтын шүүлт алга');
+  assert.equal((pick.match(/if \(offTgt\(key0\)\) \{ tgtHeld\+\+; holdIt\(key, v, 'tgt', key0\); continue; \}/g) ?? []).length, 2, 'нүд ба огноо хоёуланд зорилтын шүүлт байх ёстой');
+  assert.ok(pick.indexOf('for (const e of d.tgt ?? [])') < pick.indexOf('const offTgt'), 'зорилтын нийлүүлэлт шүүлтээс ӨМНӨ байх ёстой');
+  assert.ok(pick.includes("for (const [k, h] of heldNext) if (h.why === 'tgt') nextBy.delete(k);"), 'хойшлуулсан нүдний эзэн оролцогч болж байна');
+  /* (3) зөвшөөрөгдсөн нүд — буулгахгүй, tombstone */
+  assert.ok(pick.includes('if (cbRef.current.okLock?.(oid, b)) { if (key === key0) okDrop.push(key0); continue; }'), 'pickDraft зөвшөөрөгдсөн нүдийг буулгаж байна');
+  assert.ok(pick.includes('const tombs = [...rekeyed, ...noop, ...heldExpired, ...okDrop];'), 'зөвшөөрөгдсөн нүдний tombstone алга');
+  /* зорилт солигдоход локал ноорог ДАХИН буулгагдана */
+  assert.ok(SRC.includes("if (d) pickDraftRef.current(d, 'local', { poll: true });"), 'зорилт солигдоход дахин буулгалт алга');
+  /* resumeReturned — хадгалсан ноорог (локал + алс) шалгана, өөрийн нүдийг ИЛ зөвшөөрлөөр хаяна */
+  const res = between('const resumeReturned = useCallback(async (soid: number) => {', 'const rr = await readSubmissionByOid(soid);');
+  assert.ok(res.includes('await storedMine(pkg.key, soid)'), 'resumeReturned хадгалсан ноорогийг шалгахгүй байна');
+  assert.ok(res.includes('if (stored === null)') && res.includes('return; }'), 'ноорог уншигдахгүй үед зогсохгүй байна');
+  assert.ok(res.includes('window.confirm(') && res.includes('dropMine(pkg.key, mine);'), 'өөрийн нүдийг зөвшөөрлөөр хаях зам алга');
+  assert.ok(res.includes('if (reviewerOnly || !permPerf)'), 'батлагч буцаалтыг сонгож чадаж байна');
+  /* publish — сэргээлт · зөвшөөрөгдсөн нүд · зорилт зөрсөн нүд */
+  const pub = between('const publish = useCallback(async () => {', '/* ⚠️ Нэмэлт мөрийн шалгуур');
+  assert.ok(pub.includes('if (restoringUi) { say(RO.restoring); return; }'), 'Ctrl+S сэргээлтийн хаалтыг тойрч байна');
+  assert.ok(pub.includes('okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)))') && pub.includes('revert(k, true)'), 'publish зөвшөөрөгдсөн нүдийг илгээж байна');
+  assert.ok(pub.includes('offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)])'), 'publish өөр ажлын нүдийг засвартай илгээж байна');
+  /* зөвшөөрөгдсөн нүдний илгээгээгүй утгыг буцаах зам */
+  assert.ok(SRC.includes('const clearLocked = (r: SheetRow, b: number): boolean => {') && SRC.includes('clearLocked(r, bi);'), 'ногоон нүдний утгыг буцаах зам алга');
+  /* (2) хориг идэвхтэй ч «ноорог устгах» */
+  assert.ok(SRC.includes('{(!noPerf || canDrop) && (') && SRC.includes('canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit}'), 'хоригтой үед ноорог устгах боломжгүй');
+  /* (5) байнгын шалтгаан хоригоос ӨМНӨ */
+  const why = between('const noPerfWhy = reviewerOnly ? RO.reviewerView', ';');
+  assert.ok(why.indexOf('RO.perfViewOnly') < why.indexOf('!permPerf') && why.indexOf('!permPerf') < why.indexOf('RO.reviewLock'), 'шалтгааны дараалал буруу');
+  assert.ok(SRC.includes('const canPerf = permPerf && !reviewLock;'), 'canPerf байнгын эрхийг хоригоос салгаагүй');
+  /* (6) гүйцэтгэгчийн товч батлагчид харагдахгүй, батлагч тойрог нээхгүй */
+  assert.ok(SRC.includes('canAct={permPerf && !reviewerOnly}'), 'мэдэгдлийн товчны эрх дамжихгүй байна');
+  assert.ok(SRC.includes('{canAct && (') && SRC.includes('{!noEdit && canAct && otherDaysReturned'), 'батлагчид гүйцэтгэгчийн товч харагдаж байна');
+  const rs = between('const resend = async () => {', 'const rv = await submitForReview(');
+  assert.ok(rs.includes('if (reviewerOnly || !permPerf)'), 'батлагчийн харагдацаас хяналтын тойрог нээгдэж байна');
+  /* (4) хоригтой зөрдөг текст арилсан */
+  assert.ok(!SRC.includes('өнөөдрийн илгээлтэд саад болохгүй') && !SRC.includes('тэр илгээлт шинэчлэгдэнэ (хянагчийн харж буй агуулга солигдоно)'), 'хоригтой зөрдөг мэдэгдэл хэвээр');
+  /* (7) «Огноо» ба «Илгээх» сэргээлтийн үед түгжээтэй */
+  assert.ok(SRC.includes('disabled={busy || noPerf || restoring}') && /restoring=\{restoringUi\}\r?\n\s*\/>/.test(SRC), '«Огноо» сэргээлтийн үед түгжигдэхгүй');
+  /* (8) нэгж орчуулгатай */
+  assert.ok(!/<span className=\{st\.negj\}>\{negjOf\(/.test(SRC) && SRC.includes('negj={unitLabel(negjOf(r.work)) || null}'), 'нэгж түүхий монголоор гарч байна');
+}
+console.log('✅ аудит №3 — зорилтын шүүлт · хадгалсан ноорогийн шалгалт · ногоон нүд · шалтгаан · батлагчийн товч · сэргээлтийн хаалт · нэгж');

@@ -49,6 +49,10 @@ ok('нэг цэгтэй график татгалзав',
     parseChart('{"type":"line","data":[{"label":"a","value":null},{"label":"b","value":null},{"label":"c","value":4}]}') === null);
   ok('gauge-ийн null ТАТГАЛЗАНА',
     parseChart('{"type":"gauge","data":[{"label":"x","value":null}]}') === null);
+  /* ⚠️ 2026-10-09 (аудит №3): хоосон мөр / boolean / массив → null (урьд нь 0 / 1 / 0) */
+  const e = parseChart('{"type":"line","data":[{"label":"a","value":""},{"label":"b","value":true},{"label":"c","value":"  "},{"label":"d","value":[]},{"label":"e","value":4},{"label":"f","value":"0"}]}');
+  ok('хоосон/тоо биш утга цоорхой (0 БИШ), "0" нь жинхэнэ 0',
+    e.data.length === 6 && e.data.slice(0, 4).every((d) => d.value === null) && e.data[4].value === 4 && e.data[5].value === 0);
 }
 ok('шошгогүй мөр хасагдав',
   parseChart('{"type":"bar","data":[{"label":"","value":5},{"label":"b","value":2},{"label":"c","value":3}]}').data.length === 2);

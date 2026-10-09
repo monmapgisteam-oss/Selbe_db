@@ -184,17 +184,22 @@ class Painter {
   }
   /** Хэвтээ багана — нэр · зурвас · утга */
   hbar(
-    x: number, y: number, w: number, label: string, frac: number, val: string,
+    x: number, y: number, w: number, label: string, frac: number | null, val: string,
     o: { color?: string; hot?: boolean; nameW?: number; valW?: number } = {},
   ) {
     const nameW = o.nameW ?? 170;
     const valW = o.valW ?? 150;
     const trackX = x + nameW;
     const trackW = w - nameW - valW - 8;
-    const f = Math.max(0, Math.min(1, frac));
     this.text(x, y + 11, clip(label, nameW - 10), { size: 12, fill: INK2 });
     this.rect(trackX, y, trackW, 14, SURF, 3);
-    this.rect(trackX, y, trackW * f, 14, o.color ?? (o.hot ? DATA : DATA_SOFT), 3);
+    /* ⚠️ 2026-10-09 (аудит №3): `null` (хэмжигдээгүй) үед ДҮҮРГЭЛТ зурахгүй — зөвхөн зам, текст «—».
+       Урьд нь дуудагч `?? 0` дамжуулж 0 урттай зурвас (тэг гүйцэтгэл мэт) зурдаг байв
+       (CLAUDE.md: null ≠ 0; `ui.Bars`-тай нэг дүрэм). */
+    if (frac != null && Number.isFinite(frac)) {
+      const f = Math.max(0, Math.min(1, frac));
+      this.rect(trackX, y, trackW * f, 14, o.color ?? (o.hot ? DATA : DATA_SOFT), 3);
+    }
     this.text(x + w, y + 11, val, { size: 12, weight: 600, anchor: 'end' });
   }
   /** KPI хавтан */
@@ -288,9 +293,9 @@ export function buildInfographic(
   P.text(L, yl, tr('Орон сууцны барилга угсралт (төлөвлөгөө ба бодит)'), { size: 12, fill: INK2 });
   yl += 10;
   const late = p.gap != null && p.gap >= LATE_GAP;
-  P.hbar(L, yl, colW, tr('Төлөвлөгөө'), (p.planned ?? 0) / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
+  P.hbar(L, yl, colW, tr('Төлөвлөгөө'), p.planned == null ? null : p.planned / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
   yl += 20;
-  P.hbar(L, yl, colW, tr('Бодит'), (p.actual ?? 0) / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
+  P.hbar(L, yl, colW, tr('Бодит'), p.actual == null ? null : p.actual / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
   yl += 20;
   if (p.gap != null) {
     /* ⚠️ 2026-09-29 (аудит 10): `LATE_GAP`-аас доош зөрүүг «Хоцрогдол 0.0» гэж
@@ -309,7 +314,7 @@ export function buildInfographic(
   const best = buildPk.reduce((m, k) => Math.max(m, k.progress ?? 0), 0);
   for (const k of buildPk.slice(0, 8)) {
     const v = k.progress;
-    P.hbar(L, yl, colW, k.name, v == null ? 0 : v / 100, v == null ? tr('мэдээлэлгүй') : pct(v, 1), { hot: v != null && v === best && v > 0, nameW: 120, valW: 80 });
+    P.hbar(L, yl, colW, k.name, v == null ? null : v / 100, v == null ? tr('мэдээлэлгүй') : pct(v, 1), { hot: v != null && v === best && v > 0, nameW: 120, valW: 80 });
     yl += 20;
   }
   yl += 14;
@@ -327,14 +332,14 @@ export function buildInfographic(
   yr += 20;
   /* ⚠️ Зурвасын харьцаа `givenContracted ÷ planTotal` — `f.share`-тай (текст) ИЖИЛ;
      `given` нь багцад холбогдоогүй олголтыг ч агуулдаг тул зурвас текстээс зөрдөг байв. */
-  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.givenContracted / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
+  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.givenContracted / f.planTotal : null, money(f.given), { color: DATA, nameW: 100, valW: 140 });
   yr += 20;
   if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
   yr += 26;
   P.text(R, yr, [tr('Багц тус бүр (олгосон / гэрээ)'), firstOf(10, f.rows.length)].filter(Boolean).join(' · '), { size: 12, fill: INK2 });
   yr += 10;
   for (const r of f.rows.slice(0, 10)) {
-    P.hbar(R, yr, colW, r.label, (r.pct ?? 0) / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 110, valW: 200 });
+    P.hbar(R, yr, colW, r.label, r.pct == null ? null : r.pct / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 110, valW: 200 });
     yr += 20;
   }
   y = Math.max(yl, yr) + 30;

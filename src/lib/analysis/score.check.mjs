@@ -60,12 +60,24 @@ const lower = { ...band, id: 'l', mode: 'lower', best: 5, hardMax: 15 };
   assert.equal(patchNorm(loose, 'optMin', -50).ind.optMin, -50);
 }
 
-/* 6. Бичгийн өнгө — цайвар түвшинд хар-хүрэн, улаан (маш муу) дээр цагаан, өгөгдөлгүйд хар-хүрэн */
+/* 6. Бичгийн өнгө — ⚠️ 2026-10-09 (аудит №3): горимоос хамаарна (дэвсгэр нь --score-N токен).
+      Цайвар: улаан (маш муу) ба бараан ногоон (маш сайн) дээр цагаан, бусад хар-хүрэн,
+      өгөгдөлгүй (--ink-3 #5a6a80) дээр цагаан. Dark: бүх шат цайвар тул хар-хүрэн. */
 {
   assert.notEqual(scoreColor(90), scoreInk(90));
   assert.equal(scoreInk(55), '#1a1205');
   assert.equal(scoreInk(10), '#ffffff');
-  assert.equal(scoreInk(null), '#1a1205');
+  assert.equal(scoreInk(90), '#ffffff', 'цайвар «Маш сайн» #147c3b дээр хар-хүрэн 3.5:1 байсан');
+  assert.equal(scoreInk(null), '#ffffff');
+  assert.equal(scoreInk(10, true), '#1a1205', 'dark «Маш муу» #f87171 дээр цагаан 2.8:1 байсан');
+  assert.equal(scoreInk(90, true), '#1a1205');
+  assert.equal(scoreInk(null, true), '#1a1205');
+  /* Газрын зургийн hex = самбарын токен (chartStyle.check токентой тулгана) */
+  assert.equal(scoreColor(90), '#147c3b');
+  assert.equal(scoreColor(90, true), '#34d399');
+  assert.equal(scoreColor(10), '#dc2626');
+  assert.equal(scoreColor(10, true), '#f87171');
+  assert.equal(scoreColor(55, true), '#fbbf24');
 }
 
 console.log('score.check: OK');

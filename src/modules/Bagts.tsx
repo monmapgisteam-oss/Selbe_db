@@ -1,45 +1,36 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
-import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
-import { MapTools } from '@/components/MapTools';
-import { LayerCatalog } from '@/components/LayerCatalog';
-import { OpacityPanel } from '@/components/OpacityPanel';
-import { useLayerPicks } from '@/lib/useLayerPicks';
-import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
-import { useBuildings, MonitorBagts, uniqueBlocks, type Block } from '@/modules/BuildingPanel';
-import { loadFinData, pkgMonthsMap, physLatest, physNow, type FinData } from '@/modules/Finance';
+import { useMap } from '@/components/MapCanvas';
+import { Section, Note, Bars, Rows, Data } from '@/components/ui';
+import { uniqueBlocks, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
+import { layerTotals, qtyText } from '@/lib/totals';
 import {
-  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, zoneWhere,
-  parcelOidsWhere,
+  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere,
 } from '@/lib/services';
-import { mnt, num, pct, shade, tint, NO_DATA } from '@/lib/format';
-import { readParam, writeParams } from '@/lib/urlState';
-import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
+import { mnt, num, pct, tint, NO_DATA } from '@/lib/format';
+import type { Overlap } from '@/lib/parcelOverlap';
 import { commonName } from '@/lib/butetsPacks';
 import o from './bagtsOv.module.css';
 
 /**
- * БАГЦЫН МЭДЭЭЛЭЛ — төслийн БҮХ багц нэг хуудсанд.
+ * БАГЦЫН ХУВААЛЦСАН ХЭСГҮҮД — багцын загвар (`Pack`, `buildPacks`) ба
+ * «Багцын гүйцэтгэл» (PkgProg) · «Багцын санхүү» (PkgFin) харагдацын картууд.
  *
- * Зүүн талд багцын жагсаалт, төвд газрын зураг, баруун талд сонгосон багцын
- * дэлгэрэнгүй. Багц дарахад зураг тэр багцын объект руу нисч, бусад нь
- * шүүгдэн алга болно.
+ * ⚠️ 2026-10-09 (аудит №3): «Багцын мэдээлэл» харагдац (`Bagts`, `PackList`,
+ *    `ContractCard`) 2026-08-27-нд цэснээс хасагдсан (views.ts) бөгөөд импортлогчгүй
+ *    үлдсэн тул УСТГАВ. Энд зөвхөн бусад модулийн импортлодог туслахууд үлдсэн.
  *
  * ⚠️ ХОЁР ТӨРЛИЙН багц бөгөөд өгөгдлийн эх нь бүрмөсөн өөр:
  *   · `build` — барилга угсралтын 7 багц (Багц 1…4.2). Геометр нь
- *     `building_GOL_barigdaj_ehelsen`-ий 113 блок, мөнгө нь `BUS_cashflow`,
- *     гүйцэтгэл нь `Selbe_guitsetgel_consolidated`.
+ *     `building_GOL_barigdaj_ehelsen`-ий блокууд; гүйцэтгэл нь
+ *     `loadBuildings().pkgPct` (`buildPacks`-ийн `pkgPct`).
  *   · `infra` — дэд бүтцийн багц (Багц 5…21, Холбоо). Геометр нь
- *     `Selbe_ET_20260725`-ын давхаргууд. (Хөрөнгө оруулалтын дүн 2026-08-14-нд
+ *     `PKG_BY_BAGTS`-ийн давхаргууд. (Хөрөнгө оруулалтын дүн 2026-08-14-нд
  *     түр хасагдсан — «Хөрөнгө оруулалт өртөг /249» тодруулагдаж дахин холбоно.)
- * Барилгын багцад блокийн гүйцэтгэл, дэд бүтцийн багцад зөвхөн газрын зургийн
- * давхарга. Карт бүр өөрт хамаарахгүй бол зурагдахгүй.
  *
  * ⚠️ Гурван эх сурвалж багцын нэрийг гурван янз бичдэг («Багц 4.1» / «Багц-4.1»
  * / «Багц 4-1»), дэд бүтцийнх нь бүр «БАГЦ - 19.1», «БАГЦ -21» гэж зайтай. БҮХ
@@ -48,10 +39,6 @@ import o from './bagtsOv.module.css';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
 
-/* ⚠️ 2026-10-06: `noopPick` ХАССАН — `onPick` өгөгдсөн бол MapCanvas товшилтын
-   атрибутын хайрцгийг (tipOnly) унтраадаг тул мэдрэгчтэй дэлгэцэд атрибут
-   уншигдахгүй байв. Даралт хэрэглэдэггүй тул prop-ыг ОГТ дамжуулахгүй
-   (inline () => {} ч бүү бич — memo(MapCanvas)-ыг эвдэнэ). */
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
@@ -175,373 +162,12 @@ export function buildPacks(
   return [...build, ...infra];
 }
 
-export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  const q = useBuildings();
-  /**
-   * БАГЦ БҮРИЙН БОДИТ ГҮЙЦЭТГЭЛ — жагсаалтын утга (2026-09-30, хэрэглэгч:
-   * «бодит гүйцэтгэлийн хувь руу шилжүүл»). «Гүйцэтгэл» харагдацтай НЭГ эх
-   * (`Finance.pkgMonthsMap` → `physLatest`). ⚠️ `loadFinData` кэштэй —
-   * хоёр харагдац давхар татахгүй.
-   */
-  const finQ = useAsync<FinData>(loadFinData, []);
-  const actual = useMemo(() => {
-    if (finQ.state !== 'ready') return null;
-    const out = new Map<string, number | null>();
-    pkgMonthsMap(finQ.data).forEach((months, k) => out.set(k, physLatest(months)));
-    return out;
-  }, [finQ]);
-  /* Ачаалж байхад «…», алдаа эсвэл хэмжилтгүй бол «—» */
-  const actualLoading = finQ.state === 'loading';
-  /* ⚠️ 2026-10-01 (ШИЙДВЭР): сонголтгүй үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны
-     тоо (`physNow`) — «Гүйцэтгэл»-ийн толгойтой нэг (`PackKpi.project`-ийн ⚠️) */
-  const project = useMemo(() => ({
-    pct: finQ.state === 'ready' ? physNow(finQ.data) : null,
-    loading: finQ.state === 'loading',
-  }), [finQ]);
-  const { zoomToWhere, setHighlight } = useMap();
-  /**
-   * Сонгосон багц URL-ийн `pkg` параметрээс сэргэнэ — «Багц-3.1-ийн хуудсыг үз»
-   * гэсэн холбоос шууд ажиллана. Түлхүүр нь `bagtsKey()` хэлбэр; таарах багц
-   * олдохгүй бол (`active` null) энгийн сонголтгүй байдал — URL-аар эвдэхгүй.
-   */
-  const [sel, setSel] = useState<string | null>(() => readParam('pkg'));
-
-  // Порталын нэгдсэн тодруулгыг энэ харагдац ашиглахгүй — `layerWhere`-ээр шүүнэ
-  useEffect(() => { setHighlight(null); }, [setHighlight]);
-
-  /* Сонголтыг URL-д тусгана (replace — түүх урсгахгүй) */
-  useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
-
-  /* ⚠️ 2026-09-30: `pkgPct` — багцын KPI хавтан ба бөгж жагсаалттай НЭГ эхээс
-     (`buildPacks`-ийн ⚠️). `q`-гийн өөрийн өгөгдөл тул `packs` нь `q`-ээс өөр
-     шалтгаанаар шинэчлэгдэхгүй (давхцлын эффектүүд дахин ажиллахгүй). */
-  const packs = useMemo<Pack[]>(
-    () => (q.state === 'ready' ? buildPacks(q.data.rows, q.data.pkgPct) : buildPacks(null)),
-    [q],
-  );
-
-  const active = packs.find((p) => p.key === sel) ?? null;
-
-  /**
-   * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
-   * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
-   * газрын зурагт зурж, тоог нь KPI-д гаргана.
-   *
-   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
-   *    (хэрэглэгч хурдан дараалан сонгоход).
-   */
-  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
-     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
-     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
-  const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
-  useEffect(() => {
-    let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
-    setOverlap(null);
-    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
-       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
-       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
-       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
-    /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
-       барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
-       тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
-    const srcs = active
-      ? active.layerIds.map((id) => ({ layerId: id, where: active.where }))
-      : [
-          { layerId: BLOCK_LAYER, where: null },
-          ...packs.flatMap((pk) =>
-            pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
-          ),
-        ];
-    /* ⚠️ ХАГАС үр дүн (`failed` хоосон биш) = «тоолж чадсангүй» (2026-09-25 аудит,
-       PkgProg · pkgSaad-тай ижил): татагдаагүй давхаргатай тоо нь бүрэн тоо мэт
-       харагдаж саадыг дутуу хэлдэг байв. */
-    overlapLeftParcels(srcs)
-      .then((r) => alive && setOverlap(r.failed?.length ? 'error' : r))
-      .catch(() => alive && setOverlap('error'));
-    return () => {
-      alive = false;
-    };
-    /* ⚠️ `packs` ЗААВАЛ — багц сонгоогүй үед эх сурвалжийг `packs`-аас бүрдүүлдэг;
-       урьд нь өгөгдөл ачаалагдахаас өмнөх хоосон `packs`-аар тоолоод дахин
-       тоолдоггүй тул дэд бүтцийн багцын саад нийт тоонд ордоггүй байв. */
-  }, [active, packs]);
-
-  /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
-  const ovOk = overlap !== 'error' ? overlap : null;
-
-  /**
-   * Сонгосон багц л зурагдана; сонголтгүй бол барилгын бүх блок.
-   * ⚠️ 2026-08-20: дээр нь давхаргын каталогийн сонголт нэмэгдэнэ
-   * (`useLayerPicks`) — урьд нь энэ цонхонд каталог огт байхгүй байв.
-   */
-  const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
-  const [catOpen, setCatOpen] = useState(false);
-  const [opOpen, setOpOpen] = useState(false);
-  const [opacity, setOpacity] = useState<Record<string, number>>({});
-  const [layerSel, setLayerSel] = useState<string | null>(null);
-  const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
-  // ⚠️ Багц сонгоход нисэх нь доорх ТУСДАА эффект (өөр гох) — энэ нь БҮСЭД
-  useZoomToFilter({ zone });
-
-  /**
-   * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт (`visible`) дээр давхцсан
-   * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМНЭ: инженер
-   * аль блок дээр саад байгааг зурган дээр шууд харна.
-   *
-   * ⚠️ `visible`-д БИЧИХГҮЙ (setVisible дуудаж болохгүй) — тэр нь хэрэглэгчийн
-   * каталогийн сонголт тул overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр
-   * давхарлана.
-   */
-  const mapVisible = useMemo(
-    () => (ovOk?.oids.length ? [...new Set([...visible, PARCEL_LAYER])] : visible),
-    [visible, ovOk],
-  );
-  /**
-   * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — барилгын блокоос ЯЛГАРАХ ёстой.
-   *
-   * ⚠️ Анхны загвар нь улаавтар (`#e11d48`) бөгөөд блокууд ч улбар шар
-   *    (`#ea580c`) тул ортофото дээр хоёулаа ижил төстэй харагдаж, аль нь
-   *    барилга, аль нь газар болох нь ялгагдахаа больдог. Тод ягаан + зузаан
-   *    хүрээ нь хоёуланг нь эрс тасалж өгнө.
-   */
-  /**
-   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
-   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
-   * нүдээр уншиж болохгүй болно. Ялгааг өнгө ба зузаан хүрээ барина.
-   */
-
-  const parcelStyle = useMemo(
-    () =>
-      ovOk?.oids.length
-        ? { [PARCEL_LAYER]: { hue: '#d946ef', fill: 0.22, width: 1.7 } }
-        : undefined,
-    [ovOk],
-  );
-
-  const layerWhere = useMemo<Record<string, string | null>>(
-    () => {
-      /* ⚠️ `layerWhere` өгөгдмөгц MapCanvas бүсийн (zone) fallback-ийг БҮХ
-         давхаргад алгасдаг (жагсаалтад БАЙХГҮЙ давхарга ч `?? null`-аар
-         шүүлтгүй болдог) тул каталогоос асаасан бүсчлэлтэй давхаргууд «Бүс»
-         сонгоход шүүгдэлгүй, каталогийн тоотойгоо зөрдөг байв. Тиймээс бүсийн
-         шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
-         `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
-         хэвээр үйлчилнэ). */
-      const w: Record<string, string | null> = {};
-      if (zone) {
-        for (const id of mapVisible) {
-          const d = LAYER_BY_ID[id];
-          if (d) w[id] = zoneWhere(d, zone);
-        }
-      }
-      w[BLOCK_LAYER] = active?.where ?? null;
-      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
-      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      w[PARCEL_LAYER] = ovOk?.oids.length ? parcelOidsWhere(ovOk.oids) : null;
-      return w;
-    },
-    [active, ovOk, zone, mapVisible],
-  );
-
-  // Багц сонгоход түүний объект руу ниснэ; цуцлахад бүх блок руу холдоно
-  useEffect(() => {
-    const id = active?.layerIds[0] ?? BLOCK_LAYER;
-    zoomToWhere(id, active?.where ?? '1=1');
-  }, [active, zoomToWhere]);
-
-  const loading = q.state === 'loading';
-  /** Барилгын хүсэлт алдаатай бол `Data`-гийн алдааны UI (текст + «Дахин оролдох») */
-  const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
-
-  return (
-    <div className={o.pack}>
-      <div className={o.kpi}>
-        {/* ⚠️ Алдаатай үед KPI гаргахгүй — мөнгөн дүн нь худал 0 болно */}
-        {!errQ && <PackKpi active={active} packs={packs} overlap={overlap} project={project} />}
-      </div>
-
-      {/* ЗҮҮН — багцын сонголт */}
-      <aside className={`${o.side} ${o.left}`}>
-        <h2 className={o.colHead}>{tr('Багц')}</h2>
-        {errQ ? (
-          <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
-        ) : loading ? (
-          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
-        ) : (
-          <>
-            <PackList
-              title={tr('Барилга угсралт')}
-              note={tr('бодит гүйцэтгэл')}
-              packs={packs.filter((p) => p.kind === 'build')}
-              sel={sel}
-              onSel={setSel}
-              actual={actual}
-              actualLoading={actualLoading}
-            />
-            <PackList
-              title={tr('Дэд бүтэц ба нийгмийн барилга')}
-              note={tr('газрын зургийн давхарга')}
-              packs={packs.filter((p) => p.kind === 'infra')}
-              sel={sel}
-              onSel={setSel}
-            />
-            <Note>
-              {tr('Багц дарахад зураг тэр багцын объект руу нисч, баруун талд дэлгэрэнгүй нь гарна. Дахин дарвал бүх багц буцаж харагдана.')}
-            </Note>
-          </>
-        )}
-      </aside>
-
-      <div className={o.map}>
-        <MapCanvas
-          dim={dim}
-          visible={mapVisible}
-          opacity={opacity}
-          zone={zone}
-          layerWhere={layerWhere}
-          layerStyle={parcelStyle}
-        />
-
-        <MapTools
-          dim={dim}
-          setDim={setDim}
-          layersOpen={catOpen}
-          onLayers={() => setCatOpen((v) => !v)}
-          opacityOpen={opOpen}
-          onOpacity={() => setOpOpen((v) => !v)}
-          zone={zone}
-          setZone={setZone}
-        />
-
-        {catOpen && (
-          <div className={o.catPanel}>
-            <LayerCatalog
-              view="monitor"
-              totals={catTotals}
-              visible={visible}
-              setVisible={setVisible}
-              selected={layerSel}
-              onSelect={setLayerSel}
-              onClose={() => setCatOpen(false)}
-              zone={zone}
-              embedded
-            />
-          </div>
-        )}
-
-        {opOpen && (
-          <OpacityPanel
-            visible={visible}
-            opacity={opacity}
-            setOpacity={setOpacity}
-            onClose={() => setOpOpen(false)}
-          />
-        )}
-
-        {/* ⚠️ Тайлбар нь ЗУРАГТ ЮУ БАЙГААГААС хамаарна: барилгын блок нь
-            гүйцэтгэлийн 4 түвшнээр өнгөтэй, дэд бүтцийн давхарга нь өөрийн
-            нэг өнгөөр. Хоёуланг нь зэрэг үзүүлбэл аль нь алины тайлбар болох
-            нь ойлгогдохгүй. */}
-        <div className={o.packLegend}>
-          {active?.kind === 'infra'
-            ? active.layerIds.map((id) => (
-              <span key={id} className={o.packLegendItem}>
-                <i style={{ background: LAYER_BY_ID[id].hue } as CSSProperties} />
-                {LAYER_BY_ID[id].title}
-              </span>
-            ))
-            : PROGRESS_LEVELS.map((l, i) => (
-              <span key={l.key} className={o.packLegendItem}>
-                {/* Легендийн өнгө нь `levelColor`-той нэг өнгөний сүүдэр */}
-                <i style={{ background: shade(HUE, PROGRESS_LEVELS.length - 1 - i, PROGRESS_LEVELS.length) } as CSSProperties} />
-                {l.label} <b>{l.range}</b>
-              </span>
-            ))}
-        </div>
-      </div>
-
-      {/* БАРУУН — сонгосон багцын дэлгэрэнгүй */}
-      <aside className={`${o.side} ${o.right}`}>
-        <h2 className={o.colHead}>{tr('Дэлгэрэнгүй')}</h2>
-        {errQ ? (
-          <Data q={errQ}>{() => null}</Data>
-        ) : !active ? (
-          <Empty label={tr('Багц сонгоогүй байна.')} />
-        ) : active.kind === 'build' ? (
-          <>
-            <ContractCard p={active} />
-            <BlocksCard p={active} />
-            <MonitorBagts bagts={active.name} />
-          </>
-        ) : (
-          <>
-            <InvestCard p={active} />
-            <LayersCard p={active} />
-          </>
-        )}
-      </aside>
-    </div>
-  );
-}
-
 /**
  * Гүйцэтгэлийн хувь → НЭГ ӨНГӨНИЙ сүүдэр (улаан→ногоон солонго биш). Өндөр
  * гүйцэтгэл тод, бага нь бүдэг — барилгын hue дээр (хэрэглэгчийн хүсэлт).
  */
 export function levelColor(v: number | null): string {
   return v == null ? BLANK_HUE : tint(HUE, v / 100);
-}
-
-/* ══════════════════ Багцын жагсаалт ══════════════════ */
-
-export function PackList({
-  title, note, packs, sel, onSel, actual = null, actualLoading = false,
-}: {
-  title: string;
-  note: string;
-  packs: Pack[];
-  sel: string | null;
-  onSel: (k: string | null) => void;
-  /**
-   * Багцын БОДИТ гүйцэтгэл (0–100) түлхүүрээр — `Finance.physLatest`.
-   * ⚠️ Барилгын багцын утга нь ЗӨВХӨН үүнээс; блокийн дундаж (`p.progress`)
-   *    руу БУЦАЖ УНАХГҮЙ — хэмжилтгүй бол «—» (`PkgProg.TsPackList`-ийн ⚠️).
-   */
-  actual?: Map<string, number | null> | null;
-  actualLoading?: boolean;
-}) {
-  if (!packs.length) return null;
-  return (
-    <Section title={title} note={tr('{0} багц · {1}', num(packs.length), note)}>
-      <List>
-        {packs.map((p) => (
-          <ListItem
-            key={p.key}
-            title={tr(p.name)}
-            sub={p.kind === 'build'
-              ? tr('{0} блок · {1} айл', num(blockCount(p)), num(p.households))
-              : subInfra(p)}
-            value={p.kind === 'build'
-              ? (() => {
-                const v = actual?.get(p.key) ?? null;
-                return v != null ? pct(v, 1) : actualLoading ? '…' : '—';
-              })()
-              : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : '—')}
-            color={p.kind === 'build' ? levelColor(actual?.get(p.key) ?? null) : INFRA_HUE}
-            active={p.key === sel}
-            onClick={() => onSel(p.key === sel ? null : p.key)}
-          />
-        ))}
-      </List>
-    </Section>
-  );
-}
-
-/** Дэд бүтцийн багцын дэд мөр — газрын зургийн давхаргын тоо */
-function subInfra(p: Pack): string {
-  return p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй');
 }
 
 /* ══════════════════ Толгойн үзүүлэлт ══════════════════ */
@@ -692,33 +318,6 @@ export function PackKpi({
 }
 
 /* ══════════════════ Барилгын багц — гүйцэтгэл ══════════════════ */
-
-/**
- * Багцын үндсэн карт — гүйцэтгэл, блок/айл, гүйцэтгэгч. (Гэрээ/төсөв/эх
- * үүсвэр/сарын олголтын BUS_cashflow картууд 2026-08-13-нд хасагдсан;
- * санхүүгийн бодит дүн «Цогц хяналт»-ын графикт CASHFLOW_NEW+IPC-ээс гарна.)
- */
-export function ContractCard({ p }: { p: Pack }) {
-  // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
-  const contractor = p.blocks.map((b) => b.contractor).find((c) => c) ?? '—';
-  return (
-    <Section tone="primary" title={tr('{0} — гүйцэтгэл', p.name)}>
-      <Col gap="sm">
-        <div className={o.packRing} data-ui="pack-ring">
-          {/* ⚠️ 2026-10-09 (графикийн жигдрэл): 86px → стандарт 'sm' (88, зузаан 10%); өнгө
-              `levelColor` (tint(HUE) hex — dark-д цайвар, бага утгад бараг үл үзэгдэх) → `--data`
-              токен. Газрын зургийн блокийн сүүдэр (`levelColor`) жагсаалт/тайлбарт хэвээр. */}
-          <Ring value={p.progress} size="sm" color="var(--data)" label={tr('гүйцэтгэл')} />
-          <Stats cols={2}>
-            <Stat value={num(blockCount(p))} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
-            <Stat value={num(p.households)} unit={tr('айл')} label={tr('Айл')} color={HUE} accent />
-          </Stats>
-        </div>
-        <Rows items={[{ key: tr('Гүйцэтгэгч'), value: contractor }]} />
-      </Col>
-    </Section>
-  );
-}
 
 /**
  * ⚠️ Бөглөгдөөгүй блокийг ХАСАХГҮЙ, 0 гэж ч зурахгүй: «мэдээлэлгүй» гэж бичнэ.

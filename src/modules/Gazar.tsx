@@ -379,8 +379,21 @@ const money = (v: number): { v: string; unit: string } => ({ v: num(v), unit: '�
  *    алга болдог байлаа. `groupWhere` нь ТҮҮХИЙ утгуудаар (`raws`) шүүдэг тул
  *    орчуулгаас бүрэн хамааралгүй, мөн зайтай хувилбарыг ч зөв хамарна.
  */
-function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш')) {
-  return groups(rows, field, tr('Тодорхойгүй'), [valueKey]).map((grp, i) => ({
+/**
+ * ⚠️ 2026-10-09 (аудит №3): `groups()` хязгааргүй, палитр 8 слот (`PALETTE[i % 8]`) тул 9 дэх
+ *    зүсмэг 1 дэхтэйгээ ИЖИЛ өнгөтэй болж (Donut-д хоёр өөр ангилал нэг өнгө) байв. Одоо
+ *    эхний 8 бүлэг өөрийн слоттой, үлдсэн нь НЭГ «Бусад» зүсмэг (саарал `NO_DATA` — format.ts:
+ *    «бусад» нь ангилал биш) болж нэгдэнэ. Түүнийг дарахад үлдсэн бүх бүлгийн WHERE-ийн OR —
+ *    тоологдсонтой ЯГ ижил олонлог. Түлхүүр нь `__other__` — өгөгдөлд «Бусад» нэртэй жинхэнэ
+ *    бүлэг байсан ч давхцахгүй.
+ * ⚠️ `cap` — ЗӨВХӨН слотын өнгөтэй Donut-д (bType, pRight). Bars (bMat, pUse) нь ганц
+ *    `--data` өнгөтэй, «бүгдийг харах»-тай тул бүх бүлгийг задгай үлдээнэ.
+ */
+function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш'), cap = false) {
+  const all = groups(rows, field, tr('Тодорхойгүй'), [valueKey]);
+  const head = cap && all.length > PALETTE.length ? all.slice(0, PALETTE.length) : all;
+  const tail = all.slice(head.length);
+  const items = head.map((grp, i) => ({
     key: grp.label || `#${i}`,
     label: grp.label,
     value: grp.values[valueKey] ?? 0,
@@ -388,6 +401,18 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш')) 
     color: PALETTE[i % PALETTE.length],
     where: groupWhere(field, grp),
   }));
+  if (tail.length) {
+    const v = tail.reduce((acc, grp) => acc + (grp.values[valueKey] ?? 0), 0);
+    items.push({
+      key: '__other__',
+      label: tr('Бусад'),
+      value: v,
+      display: `${num(v)} ${unit}`,
+      color: NO_DATA,
+      where: tail.map((grp) => `(${groupWhere(field, grp)})`).join(' OR '),
+    });
+  }
+  return items;
 }
 
 /**
@@ -399,6 +424,11 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш')) 
  */
 const whereOf = (items: { key: string; where: string }[], k: string): string =>
   items.find((x) => x.key === k)?.where ?? '1=0';
+
+/** Зүсмэгийн түлхүүр → харагдах нэр. ⚠️ 2026-10-09 (аудит №3): «Бусад»-ын түлхүүр `__other__` тул
+ *  шүүлтийн шошгонд түлхүүрийг шууд бичихгүй. */
+const labelOf = (items: { key: string; label: string }[], k: string): string =>
+  items.find((x) => x.key === k)?.label ?? k;
 
 type StatusBars = { key: string; label: string; value: number; color: string; where: string }[];
 type ReasonItems = {
@@ -1078,10 +1108,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         value: bStat.val == null ? null : Number(bStat.val), floors: Number(bStat.fl ?? 0),
         unitPrice: Number(bStat.up ?? 0),
       },
-      bType: toItems(bType, B.fields.type, 'n', tr('барилга')),
+      bType: toItems(bType, B.fields.type, 'n', tr('барилга'), true),
       bMat: toItems(bMat, B.fields.material, 'n', tr('барилга')),
       p: { n: Number(pStat.n ?? 0), area: Number(pStat.area ?? 0) },
-      pRight: toItems(pRight, P.fields.right, 'n', tr('нэгж')),
+      pRight: toItems(pRight, P.fields.right, 'n', tr('нэгж'), true),
       pUse: toItems(pUse, P.fields.landuse, 'n', tr('нэгж')),
     };
   }, [aoiKey]);
@@ -1511,7 +1541,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     items={d.bType} size="md" center={num(d.b.n)} centerLabel={tr('барилга')} stack
                     selected={flt?.grp === 'bType' ? flt.key : null}
                     onSelect={(k) => pickFlt({
-                      grp: 'bType', key: k, label: tr('Барилга: {0}', k),
+                      grp: 'bType', key: k, label: tr('Барилга: {0}', labelOf(d.bType, k)),
                       where: whereOf(d.bType, k), only: ['gazar:building'],
                     })}
                   />
@@ -1552,7 +1582,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     items={d.pRight} size="md" center={num(d.p.n)} centerLabel={tr('нэгж')} stack
                     selected={flt?.grp === 'pRight' ? flt.key : null}
                     onSelect={(k) => pickFlt({
-                      grp: 'pRight', key: k, label: tr('Эрх: {0}', k),
+                      grp: 'pRight', key: k, label: tr('Эрх: {0}', labelOf(d.pRight, k)),
                       where: whereOf(d.pRight, k), only: ['gazar:parcel'],
                     })}
                   />

@@ -421,6 +421,23 @@ export function useCellEdit(p: {
      шалгалтаас ӨМНӨ дуудагдаж, татгалзсан оролт («1,250» · тоо биш · асуултад «Цуцлах») дээр нүд
      хаагдаж бичсэн текст алдагддаг байв — одоо оролт текстээрээ нээлттэй үлдэж засна. Бүлгийн мөр
      (засагдахгүй) урьдын адил хаагдана. */
+  /**
+   * ⚠️ 2026-10-09 (аудит №3): ЗӨВШӨӨРӨГДСӨН (ногоон ✓) нүдэнд ИЛГЭЭГЭЭГҮЙ утга үлдсэн бол (хуучин ноорог · хамтран
+   *    бөглөгч) БУЦААХ зам — урьд нь нүд нээгдэхгүй тул тэр утгыг арилгах аргагүй, «Илгээх» бүрд татгалзагдана.
+   *    Зөвхөн буцаана (шинэ утга бичихгүй); `revert`-ийн tombstone-оор бусад хуулбараас сэргэхгүй.
+   */
+  const clearLocked = (r: SheetRow, b: number): boolean => {
+    const key = cellKey(r.oid, b);
+    if (!isOkLocked(r, b) || !(key in pending)) return false;
+    setPending((pv) => {
+      if (!(key in pv)) return pv;
+      const n = { ...pv };
+      delete n[key];
+      return n;
+    });
+    revert(key, true);
+    return true;
+  };
   const commit = (r: SheetRow, b: number, raw: string): boolean => {
     /* ⚠️ 2026-10-09: зөвшөөрөгдсөн нүд — ямар ч замаар (нээлттэй оролт, буулгалт) бичихгүй */
     if (isOkLocked(r, b)) { warn(RO.okLocked); setEdit(null); return false; }
@@ -677,5 +694,7 @@ export function useCellEdit(p: {
     volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable,
     /* 2026-10-01 */
     remainHint, confirmPaste, cancelPaste,
+    /* 2026-10-09 (аудит №3) */
+    clearLocked,
   };
 }

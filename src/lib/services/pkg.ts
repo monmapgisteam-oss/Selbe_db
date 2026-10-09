@@ -405,6 +405,9 @@ export const PKG_LAYERS: LayerDef[] = PKG_ROWS.map((r) => {
   return {
     id,
     n,
+    /* ⚠️ 2026-10-09 (аудит №3): `pkg:*`-д энэ нь ХААГДСАН `ET_PKG` — `layers.ts`-ийн TD_LAYER давталт
+       л `${TD}/…` болгож дарна. TD_LAYER-т бүртгэлгүй шинэ `pkg:*` мөрийг
+       `services/layerUrls.check.mjs` унагана. */
     url: `${svc}/${n}`,
     get title() { return r.title; },
     topic: "plan" as const,

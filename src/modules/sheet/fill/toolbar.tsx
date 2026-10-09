@@ -24,7 +24,7 @@ type RowsT = ReturnType<typeof useRowFilter> & ReturnType<typeof usePkgPct>;
 export function FilterBar({
   locked, busy, noPerf, fillMode, toggleFill, pkg, setPkg, confirmSwitch, groupOpts, floorOpts,
   asOf, setAsOf, dateOpts, grpA, setGrpA, grpAOpts, grpBEff, setGrpB, grpBOpts, byPlan, setByPlan,
-  today, planCount, resized, resetAll, extraN = 0, showExtra = true, toggleExtra,
+  today, planCount, resized, resetAll, extraN = 0, showExtra = true, toggleExtra, restoring = false,
 }: {
   locked: boolean; busy: boolean; noPerf: boolean;
   fillMode: "obyem" | "pct"; toggleFill: () => void;
@@ -38,6 +38,8 @@ export function FilterBar({
   resized: boolean; resetAll: () => void;
   /** ⚠️ 2026-10-09: «Бусад талбар» — энэ үйлчилгээнд байгаа баганын тоо · харагдах эсэх · солих (`extraCols.ts`) */
   extraN?: number; showExtra?: boolean; toggleExtra?: () => void;
+  /** ⚠️ 2026-10-09 (аудит №3): ноорог сэргэж дуустал «Огноо» түгжээтэй (`restoringUi`) — сэргээлтийн `asOf`-той уралдахгүй */
+  restoring?: boolean;
 }) {
   return (
     <>
@@ -105,7 +107,7 @@ export function FilterBar({
           <select
             className={st.select}
             value={dt(asOf)}
-            disabled={busy || noPerf}
+            disabled={busy || noPerf || restoring}
             onChange={(e) => {
               /* ⚠️ Хоосон утга нь «тохируулаагүй» хэсгийг сонгосон гэсэн үг —
                  огноог БУЦААЖ null болгохгүй (санамсаргүй товшилтоор бүх
@@ -584,8 +586,14 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
 }
 
 /** Нооргийн байдал — ногоон тоолуур · устгах · хадгалсан агшин · ArcGIS */
-export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false }: {
+export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false, canDrop = false }: {
   locked: boolean; dirtyCount: number; noPerf: boolean; dropDraft: () => void; savedAt: number | null; remoteState: RemoteState;
+  /**
+   * ⚠️ 2026-10-09 (аудит №3): бөглөх нь ТҮР хоригтой (`FillNew.reviewLock`) ч «ноорог устгах» НЭЭЛТТЭЙ — урьд нь хориг
+   *    асах агшинд `pending` дүүрэн байсан гүйцэтгэгч «Илгээх» ч, «ноорог устгах» ч үгүй, `resumeReturned` нь «эхлээд
+   *    илгээ/устга» гэдэг тул ГАЦДАГ байв.
+   */
+  canDrop?: boolean;
   /** ⚠️ 2026-10-01: ноорог сэргээж байна — нүд түгжээтэй (`useDraftSync.restoringUi`) */
   restoring?: boolean;
   /** ⚠️ 2026-10-01: хөтөч сүлжээгүй — ноорог зөвхөн энэ төхөөрөмжид */
@@ -620,7 +628,7 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             {/* ⚠️ «БОЛИХ» ЦОРЫН ГАНЦ ЗАМ (2026-09-06). Сэргээх цонх хасагдаж
                 ноорог ШУУД буудаг болсон тул түүний «Устгах» гарц ч алга
                 болов. Энэ товчгүй бол хэрэглэгч 40 нүдийг ГАРААР цэвэрлэнэ. */}
-            {!noPerf && (
+            {(!noPerf || canDrop) && (
               <>
                 {' · '}
                 <button type="button" className={st.linkBtn} onClick={dropDraft}

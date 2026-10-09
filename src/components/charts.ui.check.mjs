@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { monotonePath } from '@/lib/chartStyle';
-import { Meter, Bars, Series, Donut, Ring, monotonePath as uiMonotone } from '@/components/ui';
+import { Meter, Bars, Series, Donut, Ring, Trend, monotonePath as uiMonotone } from '@/components/ui';
 
 assert.equal(uiMonotone, monotonePath, 'ui.tsx-ийн monotonePath нь chartStyle-ийн дахин экспорт');
 
@@ -42,6 +42,26 @@ const sr = renderToStaticMarkup(h(Series, { items: [
 assert.equal((sr.match(/height:1\.5%/g) || []).length, 1, '0 → 1.5% багана');
 assert.equal((sr.match(/seriesBar/g) || []).length, 2, 'null → баганагүй');
 assert.ok(sr.includes('--tone:var(--c2)'), 'items[].color хүндэтгэнэ');
+
+/* ── ⚠️ 2026-10-09 (аудит №3): олон цувааны муруй — шугам БҮР өөрийн талбайтай
+   (2026-10-06 хэрэглэгчийн «доод талын fill»; жигдрэл хассан байсныг сэргээв) ── */
+const ml = renderToStaticMarkup(h(Series, {
+  line: true,
+  items: [1, 2, 3, 4].map((k) => ({ key: String(k), label: String(k), value: k })),
+  lines: [
+    { key: 'a', label: 'A', color: 'var(--c1)', values: [1, 2, null, 4] },
+    { key: 'b', label: 'B', color: 'var(--c2)', values: [3, 1, 2, 2] },
+  ],
+}));
+const areas = ml.match(/fill:url\(#seriesAreas[^)]*\)/g) || [];
+assert.equal(areas.length, 2, `шугам бүрд талбай (ганц цэгтэй хэсэгт биш): ${areas.length}`);
+assert.equal(new Set(areas).size, 2, 'шугам бүр өөрийн градиенттай');
+
+/* ── ⚠️ 2026-10-09 (аудит №3): Trend анхдагч smooth=false (хэмжилтийн цуваа — хугарсан шугам) ── */
+const tp = [{ label: '1', value: 1 }, { label: '2', value: 5 }, { label: '3', value: 2 }];
+const pathDs = (html) => [...html.matchAll(/<path[^>]* d="([^"]+)"/g)].map((m) => m[1]);
+assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp }))).every((d) => !d.includes('C')), 'анхдагч Trend зөөлрүүлэхгүй');
+assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp, smooth: true }))).some((d) => d.includes('C')), 'smooth ил дамжуулбал муруй');
 
 /* ── ui.tsx: Donut / Ring — хэмжээний стандарт, өнгө cat(i) ── */
 const dn = renderToStaticMarkup(h(Donut, { items: [{ key: 'x', label: 'X', value: 3 }, { key: 'y', label: 'Y', value: 1 }], size: 'sm' }));

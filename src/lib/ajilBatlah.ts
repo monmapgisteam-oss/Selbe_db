@@ -322,11 +322,6 @@ export async function ajilTableState(): Promise<AjilTableState> {
   }
 }
 
-/** Хүснэгт бэлэн эсэх — нимгэн бүрхүүл */
-export async function ajilTableReady(): Promise<boolean> {
-  return (await ajilTableState()).ok;
-}
-
 type Attrs = Record<string, unknown>;
 
 const s = (v: unknown): string | null => {

@@ -87,9 +87,6 @@
   flex-direction: column;
   gap: 8px;
 }
-/* Гүйцэтгэлийн Ring — дээд KPI зурвастай ДАВХАРДДАГ тул нуана */
-.r [data-ui='pack-ring'] { display: none; }
-
 /* ── Төв: зураг — hairline хүрээтэй үүр ── */
 .map {
   grid-area: map;

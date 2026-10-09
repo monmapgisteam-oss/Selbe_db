@@ -690,18 +690,6 @@ export const execAppendixNo = (app: readonly ExecAppendix[], f: ExecFinding): nu
   app.find((a) => a.finding === f)?.no ?? null;
 
 /**
- * ДҮГНЭЛТИЙГ ЭНГИЙН МӨР БОЛГОНО — PDF ба инфографикт.
- *
- * ⚠️ Тэр хоёр нь энгийн текстийн урсгал тул жагсаалтыг өгүүлбэрт нийлүүлнэ.
- * Дэлгэц нь ЭСРЭГЭЭР бүтцээ хадгалж, жагсаалтыг тусад нь зурна.
- */
-export function execFindingLines(x: ExecReport): string[] {
-  return execFindings(x).map((f) => (
-    f.items?.length ? `${f.text} ${f.items.join(', ')}.` : f.text
-  ));
-}
-
-/**
  * ЗӨВХӨН МЭДЭГДЭЛ — нэрсийн жагсаалтгүй (2026-09-17).
  *
  * ⚠️ ИНФОГРАФИКТ зориулав. Тэр нь НЭГ ХУУДСАНД багтах ёстой график бөгөөд

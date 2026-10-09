@@ -6,7 +6,7 @@
 import { Fragment, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
 import { parseInc, type SheetRow } from "../bagtsSheet";
-import { negjOf } from "../negj";
+import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
@@ -25,7 +25,7 @@ export function FillRows({
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null, extra = [],
+  restoring = false, remainHint, pastePrev = null, extra = [], clearLocked,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -54,6 +54,8 @@ export function FillRows({
   pastePrev?: PastePrev | null;
   /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн баганууд (`extraCols.ts`); `SheetHead`-тэй ИЖИЛ массив */
   extra?: ExtraCol[];
+  /** ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдний илгээгээгүй утгыг буцаах (`useCellEdit.clearLocked`) */
+  clearLocked?: CellT['clearLocked'];
 }) {
   return (
     <>
@@ -126,7 +128,7 @@ export function FillRows({
                     <td className={cls("right c-vol")} style={cw("ob", "vol")} {...ro(RO.vol)}>
                       {qty(r.vol)}
                       {!r.group && r.vol != null && negjOf(r.work) && (
-                        <span className={st.negj}>{negjOf(r.work)}</span>
+                        <span className={st.negj}>{unitLabel(negjOf(r.work))}</span>
                       )}
                     </td>
                     {/* ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — засагдах цорын ганц
@@ -148,7 +150,8 @@ export function FillRows({
                       })}
                       cls={cls}
                       ro={ro}
-                      negj={negjOf(r.work)}
+                      /* ⚠️ 2026-10-09 (аудит №3): орчуулгатай нэгж (`unitLabel`) — англи хувилбарт түүхий «тн/ш» гардаг байв */
+                      negj={unitLabel(negjOf(r.work)) || null}
                       onBad={warn}
                       /* ⚠️ 2026-10-07: засах эрхтэй ч «Бөглөх» дараагүй — PvCell шалтгааныг нэрлэнэ */
                       notEditing={!locked && canObyemEdit && !editing}
@@ -158,7 +161,7 @@ export function FillRows({
                     <td className={cls("right c-vol calc")} style={cw("vsum", "vol")} {...ro(RO.obyemSum)}>
                       {qty(c.obyemSum)}
                       {!r.group && c.obyemSum != null && negjOf(r.work) && (
-                        <span className={st.negj}>{negjOf(r.work)}</span>
+                        <span className={st.negj}>{unitLabel(negjOf(r.work))}</span>
                       )}
                     </td>
                     <td className={cls("right c-vol")} style={cw("unit", "vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
@@ -268,7 +271,15 @@ export function FillRows({
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
-                        if (okLock) return say(RO.okLocked);
+                        /* ⚠️ 2026-10-09 (аудит №3): ногоон нүдэнд илгээгээгүй утга үлдсэн бол БУЦААХ л боломжтой (`clearLocked`) */
+                        if (okLock) {
+                          if (dirty && clearLocked && editing && !busy && !restoring
+                            && window.confirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'))) {
+                            clearLocked(r, bi);
+                            return;
+                          }
+                          return say(RO.okLocked);
+                        }
                         /* ⚠️ «БӨГЛӨХ» ДАРААГҮЙ бол нүд НЭЭГДЭХГҮЙ
                            (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
                            САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
@@ -462,7 +473,7 @@ export function FillRows({
                                   нүдэнд ганцаар «м³» гарвал «бөглөсөн» мэт
                                   харагдаж, бөглөх ёстой нүд нүднээс мултарна. */}
                               {fillMode === "obyem" && c.obyem[bi] != null && negjOf(r.work) && (
-                                <span className={st.negj}>{negjOf(r.work)}</span>
+                                <span className={st.negj}>{unitLabel(negjOf(r.work))}</span>
                               )}
                               {/* ⚠️ ЭНЭ УДААГИЙН НЭМЭЛТ — жижиг «+15» (2026-09-25). Нүдний
                                   том тоо нь НИЙТ (суурь + нэмэлт); нэмэлт нь ил харагдахгүй

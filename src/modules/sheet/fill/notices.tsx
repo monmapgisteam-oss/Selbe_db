@@ -14,11 +14,20 @@ type FlowT = ReturnType<typeof useFlow>;
 export function FillNotices({
   locked, submitFailed, resend, resending, unmovedWarn, subReadErr, inReview, reviewStage,
   otherDaysInReview, otherDaysReturned, noEdit, busy, resumedOid, resumeReturned, returned,
+  canAct = true, reviewLockDays = [],
 }: {
   locked: boolean; submitFailed: boolean; resend: () => Promise<void>; resending: boolean;
   unmovedWarn: string[]; subReadErr: string | null; inReview: boolean; reviewStage: FlowT['reviewStage'];
   otherDaysInReview: string[]; otherDaysReturned: FlowT['otherDaysReturned']; noEdit: boolean; busy: boolean;
   resumedOid: number | null; resumeReturned: (soid: number) => Promise<void>; returned: boolean;
+  /**
+   * ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн товч («Хяналтад илгээх» · «засаж дахин илгээх») гарах эсэх — томилогдсон
+   *    гүйцэтгэгч, батлагчийн харагдац БИШ (`FillNew.permPerf && !reviewerOnly`). Урьд нь зөвхөн `!locked`/`!noEdit`-ээр
+   *    шүүгддэг тул батлагчид харагдаж, газрын дарга хяналтын тойрог нээж чаддаг байв.
+   */
+  canAct?: boolean;
+  /** ⚠️ 2026-10-09 (аудит №3): ИДЭВХТЭЙ хоригийн өдрүүд (`FillNew.reviewLockDays`) — буцаалтын засвар хийж байхад хоосон */
+  reviewLockDays?: string[];
 }) {
   return (
     <>
@@ -33,9 +42,12 @@ export function FillNotices({
       {!locked && submitFailed && (
         <p className={st.lockNote}>
           {tr('Илгээлт хадгалагдсан ч хяналтын бүртгэл ҮҮССЭНГҮЙ — хянагч үүнийг харахгүй.')}
-          <button type="button" className={st.resend} onClick={resend} disabled={resending}>
-            {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
-          </button>
+          {/* ⚠️ 2026-10-09 (аудит №3): зөвхөн гүйцэтгэгчид (`canAct`-ийн ⚠️) */}
+          {canAct && (
+            <button type="button" className={st.resend} onClick={resend} disabled={resending}>
+              {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
+            </button>
+          )}
         </p>
       )}
       {/* ⚠️ ТУЛГАГДААГҮЙ НҮД — батлах шатанд багц гацахаас ӨМНӨ хэлнэ
@@ -59,7 +71,12 @@ export function FillNotices({
           {tr('Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.', subReadErr)}
         </p>
       )}
-      {/* ⚠️ ХОЁР ӨӨР МЭДЭГДЭЛ (2026-09-07) — ХОЁУЛАА САНУУЛГА, ХОРИГ БИШ:
+      {/* ⚠️ 2026-10-09 (аудит №3): ДООРХ 2026-09-07-НЫ ТАЙЛБАР ХУУЧИРСАН — хянагдаж буй илгээлт байхад шинэ бөглөлт/илгээлт
+          ХААЛТТАЙ (`FillNew.reviewLock` · домэйн `reviewLockDeny`): дахин илгээх нь хянагдаж буй мөрийг шинэчлэхгүй, өөр
+          өдрийнх ч өнөөдрийнхөд саад болно. Хоёр мэдэгдлийн текст хоригийн дүрмээр солигдов (урьд нь «саад болохгүй»,
+          «тэр илгээлт шинэчлэгдэнэ» гэж хоригтой зөрдөг байв). Буцаагдсан илгээлтийн засвар хийж байхад (`reviewLockDays`
+          хоосон) өөр өдрийн хянагдаж буйг саад гэж хэлэхгүй.
+          ⚠️ ХОЁР ӨӨР МЭДЭГДЭЛ (2026-09-07) — ХОЁУЛАА САНУУЛГА, ХОРИГ БИШ:
           · ЭНЭ ӨДРИЙН илгээлт хянагдаж байна → дахин илгээвэл ТЭР мөр
             ШИНЭЧЛЭГДЭНЭ (шинэ тойрог үүсэхгүй), хянагч доор нь солигдсоныг
             мэдэхгүй байж болзошгүй — тиймээс гүйцэтгэгчид ил хэлнэ;
@@ -69,12 +86,14 @@ export function FillNotices({
           ХАСАГДСАН — тэр нь одоо ХУДАЛ (хүлээх шаардлагагүй). */}
       {!locked && !submitFailed && inReview && (
         <p className={st.lockNote}>
-          {tr('Энэ өдрийн илгээлт хяналтад байна — {0}. Дахин илгээвэл ШИНЭ тойрог үүсэхгүй, тэр илгээлт шинэчлэгдэнэ (хянагчийн харж буй агуулга солигдоно).', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+          {tr('Энэ өдрийн илгээлт хяналтад байна — {0}. 6 шат бүрэн батлагдаж архивлагдтал шинээр бөглөх, дахин илгээх боломжгүй; хянагч буцаавал засаж дахин илгээнэ.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
         </p>
       )}
       {!locked && otherDaysInReview.length > 0 && (
         <p className={st.lockNote}>
-          {tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — өнөөдрийн илгээлтэд саад болохгүй, тус тусдаа хянагдана.', otherDaysInReview.join(', '))}
+          {reviewLockDays.length > 0
+            ? tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — 6 шат бүрэн батлагдаж архивлагдтал өнөөдрийн шинэ бөглөлт, илгээлт хаалттай. Буцаагдсан илгээлтийг засаж дахин илгээх боломжтой.', otherDaysInReview.join(', '))
+            : tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — одоо зөвхөн буцаагдсан илгээлтийн засварыг илгээнэ; шинэ бөглөлт тэр илгээлт батлагдаж архивлагдсаны дараа.', otherDaysInReview.join(', '))}
         </p>
       )}
       {/* 2026-09-21 (дахин аудит): өнөөдрийн мөр байхад өмнөх өдрийн буцаалт
@@ -83,7 +102,8 @@ export function FillNotices({
         <p className={st.backNote}>
           {tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))}
           {/* ⚠️ Буцаагдсан илгээлтийг сонгож давхарлана — `resumedOid`-ийн ⚠️ (2026-09-24) */}
-          {!noEdit && otherDaysReturned.filter((x) => Number.isInteger(x.soid) && x.soid > 0).map((x) => (
+          {/* ⚠️ 2026-10-09 (аудит №3): зөвхөн гүйцэтгэгчид (`canAct`-ийн ⚠️) */}
+          {!noEdit && canAct && otherDaysReturned.filter((x) => Number.isInteger(x.soid) && x.soid > 0).map((x) => (
             <button key={x.soid} type="button" className={st.linkBtn} disabled={busy || resumedOid === x.soid}
               onClick={() => void resumeReturned(x.soid)}>
               {tr('{0}: энэ илгээлтийг засаж дахин илгээх', x.day)}

@@ -1500,9 +1500,12 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
    *    будагдахгүй (хэмжилтгүй сарын зөрүү ТОДОРХОЙГҮЙ). Буцах ирмэг нь бодит
    *    муруйн ЯГ ижил монотон зам (урвуу чиглэлд) — урьд нь шулуун хугарал
    *    байсан тул талбайн ирмэг муруйгаас зөрж харагддаг байв.
+   * ⚠️ 2026-10-09 (аудит №3): дээд ирмэг нь төлөвлөгөөний шугамын ЯГ ижил (БҮТЭН цувааны)
+   *    муруйн [from, to] хэсэг — урьд нь `planPts.slice()`-ийг дахин гөлгөршүүлж захын
+   *    налуу өөр болсон тул ирмэг тасархай шугамаас салж харагддаг байв.
    */
   const gapAreas = actSegs.filter((sg) => !sg.single).map((sg) => {
-    const top = monotonePath(planPts.slice(sg.from, sg.to + 1));
+    const top = monotonePath(planPts, sg.from, sg.to);
     const back = monotonePath([...sg.pts].reverse()).replace(/^M/, 'L');
     return `${top} ${back} Z`;
   });

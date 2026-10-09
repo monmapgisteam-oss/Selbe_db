@@ -7,8 +7,10 @@
  *    схем (`SysSchemView`)-ийн ОРОНД порталын БҮХ эх сурвалжийг давхарга/хүснэгт
  *    тус бүрээр жагсаана: зориулалт, ШИНЭЧЛЭГДЭХ ШАТЛАЛ (хэн бөглөж, хэн
  *    батлаад, хаашаа урсдаг), уншдаг харагдац, засах эрх, хаалттай эсэх.
- *    Өгөгдөл нь `lib/dataCatalog.ts`-д — энд зөвхөн харуулна. Хуучин файлууд
- *    устгагдаагүй (`docs:build` ба `docs.invariant.check.mjs` хэвээр).
+ *    Өгөгдөл нь `lib/dataCatalog.ts`-д — энд зөвхөн харуулна.
+ * ⚠️ 2026-10-09 (аудит №3): импортлогчгүй үлдсэн хуучин файлууд (`sysDocs.ts`,
+ *    `tools/sysdocs-build.mjs` · `docs:build`, `SysSchemView.tsx`, `sysSchem.ts`,
+ *    `sysSchem.module.css`) УСТГАГДСАН. `docs/docs.invariant.check.mjs` хэвээр.
  *
  * ⚠️ СҮЛЖЭЭНД ОГТ ХАНДАХГҮЙ — каталог нь кодын регистрээс бүтээх үед гарна.
  *
@@ -66,7 +68,7 @@ function Entry({ e, domId, on, onJump, nameOf, go, canOpen }: {
       <div className={s.head}>
         <h3 id={`${domId}-n`} className={s.name}>{e.name}</h3>
         <span className={s.kind}>{kindLabel(e.kind)}</span>
-        {e.closed && <span className={s.closed}>{tr('хаалттай (499)')}</span>}
+        {e.closed && <span className={s.closed}>{tr('устгагдсан (400)')}</span>}
       </div>
       <div className={s.refLine}>
         <code className={s.mono}>{shortRef(e)}</code>

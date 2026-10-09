@@ -2050,7 +2050,9 @@ function FinCard({
           className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
           title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
         >
-          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} −{pct(lag.gap, 1)}
+          {/* ⚠️ 2026-10-09 (аудит №3): «−5.0%» (`pct`) биш «−5.0 н.х» (`gapPts`) — доорх `gapText`-тэй
+              НЭГ нэгж; «%» нь «төлөвлөгөөний 5%» гэж буруу уншигдана (gdash.pts-ийн ⚠️). */}
+          {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} {gapPts(lag.gap)}
         </span>
       )}
       {/* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН ХОЦРОГДЛЫН тэмдэг ХАСАГДСАН — «хугацаа

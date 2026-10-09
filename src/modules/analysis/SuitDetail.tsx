@@ -7,6 +7,7 @@ import {
   type Indicator, type ParkingOpt,
 } from '@/lib/analysis/config';
 import { scoreTone, scoreInk, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
+import { useTheme } from '@/lib/theme';
 import { Bars, Donut, useTip } from '@/components/ui';
 import { cat, NO_DATA } from '@/lib/format';
 import { CHART } from '@/lib/chartStyle';
@@ -206,6 +207,9 @@ export function SuitDetail({
   parking: ParkingOpt;
   onClose: () => void;
 }) {
+  /* ⚠️ 2026-10-09 (аудит №3): `.gauge`-ийн бичиг горимоос хамаарна (`scoreInk(_, dark)`) —
+     дэвсгэр нь `--score-N` токен тул хоёр горимд өөр өнгөтэй. */
+  const dark = useTheme().theme === 'dark';
   const box = useRef<HTMLDivElement>(null);
   /** Хаагаад дахин нээхэд буланд буцаах — нээгдэх агшинд л байрлалыг тэглэнэ */
   useEffect(() => {
@@ -278,7 +282,7 @@ export function SuitDetail({
     <div ref={box} className={s.detail}>
       <div className={s.dHead} onPointerDown={startDrag}>
         {/* ⚠️ `.gauge` нь `:global` — `.dHead .gauge` гэсэн үр удмын сонгогч тул */}
-        <div className="gauge" style={{ background: scoreTone(tot), color: scoreInk(tot) }}>
+        <div className="gauge" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>
           {tot == null ? '—' : Math.round(tot)}
         </div>
         <div>

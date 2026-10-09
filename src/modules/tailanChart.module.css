@@ -133,8 +133,11 @@
   .kpiVal, .note b, .axHot { color: #000; }
   .cap { color: #222; }
   .axis, .note, .kpiSub, .kpiLabel, .cap span { color: #555; }
-  /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр */
-  .fig :global(.chartFill) { background: #767676; }
+  /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр.
+     ⚠️ 2026-10-09 (аудит №3): `.fig :global(.chartFill) { background: #767676 }` БҮХ дүүргэлтийг
+     нэг саарал болгож эмфазисыг (хуучин `.barHot` #333) устгасан. Одоо `RankBars`-ийн өнгө
+     `var(--rank-hot/--rank-dim, …)` тул энд хоёр түвшний бэхийг л тавина. */
+  .fig { --rank-hot: #333; --rank-dim: #767676; }
   .meterBlock :global(.chartFill) { background: #333; }
   .line { stroke: #333; }
   .area { fill: #d9d9d9; }
