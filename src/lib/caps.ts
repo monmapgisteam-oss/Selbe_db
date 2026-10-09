@@ -264,8 +264,8 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   butets: ['dedButets'],
   /* ⚠️ Чанарын баримт (irgediin-hurteemj, 2026-09-16) — массив хэлбэрт
      (tezu-bonu-гийн шинэ төрөл) нийцүүлэв. */
-  chanarAuthor: ['chanar'],
-  chanarReview: ['chanar'],
+  chanarAuthor: ['chanar', 'ma'],
+  chanarReview: ['chanar', 'ma'],
   hamaaral: ['bagtsHamaaral'],
   habeaData: ['habea'],
 };

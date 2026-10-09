@@ -47,6 +47,7 @@ export type ViewKey =
   | "guitsetgel"
   | "qaqc"
   | "chanar"
+  | "ma"
   | "schem"
   | "sysdoc";
 
@@ -522,6 +523,21 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
+  /**
+   * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Чанарын 4 шатны (MA → MIR → FIC → М-акт)
+   * эхний шат — «Чанарын баримт»-аас ТУСДАА шинэ сэдэв (хэрэглэгчийн шийдвэр). Survey123 →
+   * Enterprise feature service (`lib/ma.ts`); портал уншиж, хавсралт нэмнэ. Газрын зураггүй.
+   */
+  {
+    key: "ma",
+    get title() { return tr('Материал баталгаажуулалт'); },
+    get desc() { return tr('MA — Survey123-аар бөглөсөн материал баталгаажуулалт, хамаарах ажлууд, A/AN/R шийдвэр ба гэрчилгээ, лабораторийн дүнгийн хавсралт'); },
+    icon: "shield",
+    hue: "#b45309",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
   {
     key: "schem",
     get title() { return tr('Үйл ажиллагааны схем'); },
@@ -615,7 +631,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "analysis", "irged"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -635,7 +651,7 @@ export const HOME_SECTIONS: {
 export type NavGroupId = "work" | "approve" | "monitor" | "money" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
   { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "qaqc"] },
-  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "chanar"] },
+  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },

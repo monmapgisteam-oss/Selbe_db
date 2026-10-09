@@ -36,6 +36,20 @@ const svcRoot = (name: string, v: string | undefined): string => {
   const raw = req(name, v).replace(/\/FeatureServer$/i, "");
   return raw.includes("://") ? raw : `${HJ}/${raw}`;
 };
+/**
+ * ЧАНАР · MA (материал баталгаажуулалт) — Survey123 маягт, ENTERPRISE hosted feature service
+ * (2026-10-09, туршилт — tezu-bonu). Бүтэн URL (`…/FeatureServer`) эсвэл HJ доторх нэр.
+ * ⚠️ ХООСОН БАЙЖ БОЛНО (`req` биш): deploy-д хараахан тохируулаагүй — «MA» харагдац
+ *    «үйлчилгээ тохируулаагүй» гэж хэлнэ (`lib/ma.ts`). `tools/envParity.check.mjs`-ийн OPTIONAL_LOCAL.
+ */
+const optSvc = (v: string | undefined): string => {
+  const raw = (v ?? "").trim().replace(/\/+$/, "").replace(/\/FeatureServer$/i, "");
+  return !raw ? "" : raw.includes("://") ? raw : `${HJ}/${raw}`;
+};
+export const CHANAR_MA_SVC = optSvc(process.env.NEXT_PUBLIC_CHANAR_MA_SVC);
+/** ЧАНАР · MIR (материалын үзлэг) — Survey123, Enterprise hosted: `/0` form (MIR) · `/1` photos (зураг). Хоосон байж болно. */
+export const CHANAR_MIR_SVC = optSvc(process.env.NEXT_PUBLIC_CHANAR_MIR_SVC);
+
 export const HABEA_SVC = {
   labor: svcRoot("NEXT_PUBLIC_HABEA_LABOR_SVC", process.env.NEXT_PUBLIC_HABEA_LABOR_SVC),
   incident: svcRoot("NEXT_PUBLIC_HABEA_INCIDENT_SVC", process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC),

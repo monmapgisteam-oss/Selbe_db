@@ -98,6 +98,8 @@ const LOAD = {
   /* ⚠️ Системийн баримт — 54 КБ бичвэр агуулдаг тул ЗААВАЛ dynamic: нээгээгүй
      хэрэглэгч тэр жинг ачаалахгүй. */
   sysdoc: () => import('@/modules/SysDoc').then((m) => m.default),
+  /* ⚠️ 2026-10-09: MA (материал баталгаажуулалт) — Survey123 · Enterprise; нээгдэх үедээ л */
+  ma: () => import('@/modules/Ma').then((m) => m.Ma),
 };
 /* Шинэ харагдацын ачаалагчийг мартвал энд `tsc` унана (`satisfies` БИШ — тэр нь `.then`-ий төрлийн дүгнэлтийг эвддэг) */
 const LOAD_ALL: Record<Exclude<ViewKey, MapOnlyViewKey>, Loader> = LOAD;
@@ -147,6 +149,7 @@ const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading:
 const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false, loading: ViewLoading });
 const Schem = dynamic(() => LOAD.schem(), { ssr: false, loading: ViewLoading });
 const SysDoc = dynamic(() => LOAD.sysdoc(), { ssr: false, loading: ViewLoading });
+const Ma = dynamic(() => LOAD.ma(), { ssr: false, loading: ViewLoading });
 
 /**
  * Харагдацын chunk-ийг ДЭВСГЭРТ урьдчилан татах (⚠️ 2026-10-04) — `Root` нүүр
@@ -229,6 +232,7 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   guitsetgel: () => <Guitsetgel />,
   qaqc: () => <Qaqc />,
   chanar: () => <Chanar />,
+  ma: () => <Ma />,
   /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд хэрэгтэй. URL-аар тойрч
      болохгүй — энэ функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
   schem: ({ setView, navScope }) => <Schem setView={setView} navScope={navScope} />,

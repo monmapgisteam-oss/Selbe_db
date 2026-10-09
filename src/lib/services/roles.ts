@@ -126,7 +126,7 @@ export const ROLE_ACCESS: Record<
    *    бодит харагдац нь админы тохируулсан загвараас (`roleTypes.roleAccess`).
    */
   taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
-  chanar: { views: ["qaqc", "chanar"], docs: false, home: "chanar" },
+  chanar: { views: ["qaqc", "chanar", "ma"], docs: false, home: "chanar" },
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
 };
 
