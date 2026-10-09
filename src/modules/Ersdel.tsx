@@ -218,11 +218,17 @@ const ASSESS_IDS: string[] = [
  */
 const RAMP_MAX_M = 1.5;
 
-/** Хугацааны тэнхлэгийн богино шошго — «08-24 18:00» */
+/**
+ * Хугацааны тэнхлэгийн богино шошго — «08-24 18:00».
+ * ⚠️ 2026-10-09 (аудит): УЛААНБААТАРЫН цагаар (`+8ц` + UTC getter — `Iot.axisLabel`, `hhmmUB`-тэй
+ *    ижил). Урьд нь `getMonth/getDate/getHours` (хөтчийн бүс) тул УБ-аас гадуурх машинд тэнхлэг
+ *    `hhmmUB`-ээр хэвлэгддэг «N цагийн заалт»-аас зөрдөг байв.
+ */
+const AXIS_UB_OFFSET_MS = 8 * 3_600_000;
 const axisLabel = (t: number): string => {
-  const d = new Date(t);
+  const d = new Date(t + AXIS_UB_OFFSET_MS);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:00`;
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:00`;
 };
 
 /** Зурган дээрх мэдээллийн хайрцгийн агуулга */

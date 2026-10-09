@@ -25,6 +25,7 @@ import { Section as Card } from '@/components/ui';
 /* ⚠️ Системийн «Гүйцэтгэлийн явц» график — ТУХ өөрийн график зурахгүй (2026-09-30,
    хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
+import { planScopeNote } from '@/modules/Finance';
 /* ⚠️ 2026-10-06 (аудит): pp-ийн хэлбэр нь «Гүйцэтгэл» (PkgProg)-тэй НЭГ функц — `pkgShared.pp` */
 import { pp } from '@/modules/pkgShared';
 import s from '../tuh.module.css';
@@ -276,6 +277,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <Meter value={m.hero.actual} plan={m.hero.planContract} />
           <span className={s.heroNote}>
             {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
+            {/* ⚠️ 2026-10-09 (аудит №2): гүйцэтгэгчийн төлөвлөгөө хуваарьтай багцаар — хасагдсаныг нэрлэнэ */}
+            {m.hero.planExcluded.length ? ` · ${planScopeNote(m.hero.planExcluded)}` : ''}
           </span>
         </div>
       </section>

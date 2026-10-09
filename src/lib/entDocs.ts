@@ -85,7 +85,11 @@ export function entSignOut(): void {
   emit();
 }
 
-export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null };
+/**
+ * ⚠️ 2026-10-09 (аудит): `pending` — item ҮҮССЭН ч дэлгэрэнгүйг (`content/items/{id}`) татаж
+ *    чадаагүй; утгууд нь оруулсан файлаас угсрагдсан түр утга (дуудагч тэмдэглэл харуулна).
+ */
+export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; pending?: boolean };
 
 type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number };
 const toPdf = (x: ItemJson): EntPdf => ({
@@ -93,35 +97,63 @@ const toPdf = (x: ItemJson): EntPdf => ({
   size: typeof x.size === 'number' && x.size >= 0 ? x.size : null,
 });
 
-/** Энэ системийн тагтай, хэрэглэгчид харагдах бүх PDF item (сүүлд өөрчлөгдсөн нь эхэнд) */
+/** Хайлтын нэг хуудас (порталын `num`-ийн дээд хязгаар 100) */
+const SEARCH_NUM = 100;
+/** Жагсаалтын дээд хязгаар — эвдэрсэн `nextStart` мөнхийн давталт үүсгэхгүй */
+export const ENT_LIST_MAX = 2000;
+
+/**
+ * Энэ системийн тагтай, хэрэглэгчид харагдах бүх PDF item (сүүлд өөрчлөгдсөн нь эхэнд).
+ * ⚠️ 2026-10-09 (аудит): `nextStart`-аар ХУУДАСЛАНА — урьд нь ганц `num: 100` хүсэлт тул 100-аас
+ *    олон PDF-тэй үед хуучнууд нь чимээгүй алга болдог байв. `nextStart` ≤ 0 (−1 = төгсгөл),
+ *    хоосон хуудас эсвэл `ENT_LIST_MAX` хүрвэл зогсоно.
+ */
 export async function entListPdfs(): Promise<EntPdf[]> {
   const s = need();
-  const j = await post<{ results?: ItemJson[] }>('search', new URLSearchParams({
-    q: `type:"PDF" AND tags:"${ENT_TAG}"`, sortField: 'modified', sortOrder: 'desc', num: '100', f: 'json', token: s.token,
-  }));
-  return (j.results ?? []).map(toPdf);
+  const out: EntPdf[] = [];
+  for (let start = 1; out.length < ENT_LIST_MAX;) {
+    const j = await post<{ results?: ItemJson[]; nextStart?: number }>('search', new URLSearchParams({
+      q: `type:"PDF" AND tags:"${ENT_TAG}"`, sortField: 'modified', sortOrder: 'desc',
+      start: String(start), num: String(SEARCH_NUM), f: 'json', token: s.token,
+    }));
+    const page = j.results ?? [];
+    out.push(...page.map(toPdf));
+    const next = Number(j.nextStart);
+    if (!page.length || !Number.isFinite(next) || next <= start) break;
+    start = next;
+  }
+  return out.slice(0, ENT_LIST_MAX);
 }
 
 /**
  * PDF-ийг шинэ item болгон оруулна. Буцаах: шинэ item.
  * ⚠️ Хайлтын индекс шинэ item-ийг хэдэн секундын дараа л олдог тул дуудагч
  *    буцаасан item-ийг жагсаалтын эхэнд өөрөө нэмнэ.
+ * ⚠️ 2026-10-09 (аудит): `addItem` АМЖИЛТТАЙ болсны дараах `content/items/{id}` унавал ШИДЭХГҮЙ —
+ *    урьд нь «амжилтгүй» гэж мэдээлдэг тул хэрэглэгч дахин оруулж ДАВХАР item үүсгэдэг байв.
+ *    Item-ийг `j.id` ба файлын мэдээллээр угсарч `pending: true`-тэй буцаана.
  */
 export async function entUploadPdf(file: File, title?: string): Promise<EntPdf> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
+  const ttl = (title ?? '').trim() || file.name.replace(/\.pdf$/i, '');
   const fd = new FormData();
   fd.append('f', 'json');
   fd.append('token', s.token);
   fd.append('type', 'PDF');
-  fd.append('title', (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''));
+  fd.append('title', ttl);
   fd.append('tags', ENT_TAG);
   fd.append('typeKeywords', ENT_TAG);
   fd.append('file', file, file.name);
   const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(s.user)}/addItem`, fd);
   if (!j.success || !j.id) throw new Error(tr('PDF item үүссэнгүй.'));
-  const it = await post<ItemJson>(`content/items/${encodeURIComponent(j.id)}`, new URLSearchParams({ f: 'json', token: s.token }));
-  return toPdf({ ...it, id: j.id });
+  const id = j.id;
+  try {
+    const it = await post<ItemJson>(`content/items/${encodeURIComponent(id)}`, new URLSearchParams({ f: 'json', token: s.token }));
+    return toPdf({ ...it, id });
+  } catch {
+    return { ...toPdf({ id, title: ttl, owner: s.user, modified: Date.now(), size: file.size }), pending: true };
+  }
 }
 
 /** Item-ийн PDF файлыг токентой (POST) татаж Blob болгоно — `<iframe>`-д objectURL-ээр харуулна */

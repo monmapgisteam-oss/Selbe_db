@@ -25,7 +25,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
-import { fetchAttachment } from '@/lib/uzlegReport';
+import { attachmentFileName, fetchAttachment, rasterTypeOfBlob } from '@/lib/uzlegReport';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
@@ -1108,7 +1108,8 @@ function byMonth(rows: UzlegRow[], curYm = '') {
  *    Урьд нь ачаалах агшны токен хаягт «шатаж» үлддэг тул хуудас удаан нээлттэй
  *    байж токен шинэчлэгдсэний дараа ‹ › дарахад зураг 498-аар эвдэрдэг байв.
  */
-type UzPhoto = { src: string; cap: string; tip: string };
+/* ⚠️ 2026-10-09 (аудит №2): `name`/`type` — attachmentInfos-оос, зөвхөн татах файлын нэрэнд (`openAttachment`) */
+type UzPhoto = { src: string; cap: string; tip: string; name?: string; type?: string };
 
 /**
  * ХАВСРАЛТЫН ЗУРАГ — BLOB URL (2026-10-09, аюулгүй байдал).
@@ -1139,16 +1140,32 @@ function attBlob(url: string): Promise<Blob | null> {
   return p;
 }
 
-/** Хавсралтын blob URL — `null` = ачаалж буй, `''` = татагдсангүй */
+/**
+ * ⚠️ 2026-10-09 (аудит): растер зургийг ЗӨВШӨӨРӨГДСӨН төрлөөр ДАХИН төрөлжүүлсэн Blob; растер биш
+ *    (svg · html · heic …) бол `null`. Серверийн `content-type`-тай Blob-ийг `<a href>`/шинэ табад
+ *    өгвөл SVG доторх скрипт порталын origin-д ажиллана (blob URL origin-оо өвлөдөг).
+ */
+/* ⚠️ 2026-10-09 (аудит №2): `blob.type` хоосон / `application/octet-stream` бол байтын гарын үсгээр
+   (`rasterTypeOfBlob` → `sniffRasterType`) — AGOL зургийг төрөлгүй өгөхөд «Зураг татагдсангүй» гардаг байв.
+   svg/html ХЭЗЭЭ Ч растер болохгүй (тэдгээрт байтыг ч үзэхгүй). */
+const rasterBlob = async (b: Blob): Promise<Blob | null> => {
+  const t = await rasterTypeOfBlob(b);
+  if (!t) return null;
+  return b.type === t ? b : new Blob([b], { type: t });
+};
+
+/** Хавсралтын blob URL — `null` = ачаалж буй, `''` = татагдсангүй (эсвэл растер биш) */
 function useAttachmentUrl(url: string): string | null {
   const [st, setSt] = useState<{ url: string; obj: string }>({ url: '', obj: '' });
   useEffect(() => {
     let alive = true;
     let obj = '';
-    attBlob(url).then(
-      (b) => {
+    attBlob(url).then((b) => (b ? rasterBlob(b) : null)).then(
+      (safe) => {
         if (!alive) return;
-        obj = b ? URL.createObjectURL(b) : '';
+        /* ⚠️ 2026-10-09 (аудит): ЗӨВХӨН растер, дахин төрөлжүүлсэн Blob — `<a href>`-ийг дунд товч/
+           «шинэ табад нээх»-ээр нээсэн ч SVG/HTML скрипт ажиллахгүй */
+        obj = safe ? URL.createObjectURL(safe) : '';
         setSt({ url, obj });
       },
       () => { if (alive) setSt({ url, obj: '' }); },
@@ -1161,20 +1178,44 @@ function useAttachmentUrl(url: string): string | null {
   return st.url === url ? st.obj : null;
 }
 
-/** Хавсралтыг шинэ табад — токенгүй, blob URL-аар (60с-ийн дараа revoke) */
-export async function openAttachment(url: string): Promise<void> {
+/**
+ * Хавсралтыг шинэ табад — токенгүй, blob URL-аар (60с-ийн дараа revoke).
+ * ⚠️ 2026-10-09 (аудит): ЗӨВХӨН растерыг (jpeg · png · gif · webp · bmp) ДАХИН төрөлжүүлж табад
+ *    нээнэ. Бусад (svg · html …) нь `application/octet-stream`-ээр ТАТАГДАНА — урьд нь серверийн
+ *    `content-type`-тайгаар нээдэг тул хорлонтой SVG хавсралтын скрипт порталын origin-д ажиллана.
+ */
+/* ⚠️ 2026-10-09 (аудит №2): `name`/`type` — attachmentInfos-ийн нэр ба зарласан төрөл (заавал биш).
+   Урьд нь татах файл үргэлж `attachment-<id>` (өргөтгөлгүй) байв — одоо `attachmentFileName`:
+   хавсралтын нэр, өргөтгөлгүй бол зарласан/хариуны төрлөөс. Харуулах шийдвэрт `type`-д ИТГЭХГҮЙ. */
+export async function openAttachment(url: string, name?: string, type?: string): Promise<void> {
   const b = await attBlob(url).catch(() => null);
   if (!b) return;
-  const obj = URL.createObjectURL(b);
-  window.open(obj, '_blank', 'noopener');
+  const safe = await rasterBlob(b);
+  const obj = URL.createObjectURL(safe ?? new Blob([b], { type: 'application/octet-stream' }));
+  if (safe) window.open(obj, '_blank', 'noopener');
+  else {
+    const link = document.createElement('a');
+    link.href = obj;
+    link.download = attachmentFileName(url.split('/').pop() ?? '', name, type || b.type);
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
   setTimeout(() => URL.revokeObjectURL(obj), 60_000);
 }
 
 /**
  * ХАВСРАЛТЫН ЗУРАГ + ХОЛБООС — `<a><img/></a>` бүтэц (CSS хэвээр), хаяг нь blob URL.
  * ⚠️ `url` нь ТОКЕНГҮЙ ArcGIS хавсралтын хаяг (`…/attachments/<id>`).
+ * ⚠️ 2026-10-09 (аудит №2): «Зураг татагдсангүй» (`src === ''` — растер биш эсвэл унасан) үед ч дарахад
+ *    `openAttachment` → растер биш бол нэр/өргөтгөлтэй ТАТАГДАНА (heic г.м. алдагдахгүй); унасан бол юу ч болохгүй.
  */
-export function AttPhoto({ url, alt, title, className }: { url: string; alt: string; title?: string; className?: string }) {
+export function AttPhoto({ url, alt, title, className, name, type }: {
+  url: string; alt: string; title?: string; className?: string;
+  /** ⚠️ 2026-10-09 (аудит №2): attachmentInfos-ийн нэр/төрөл — зөвхөн татах файлын нэрэнд */
+  name?: string; type?: string;
+}) {
   const src = useAttachmentUrl(url);
   return (
     <a
@@ -1183,7 +1224,7 @@ export function AttPhoto({ url, alt, title, className }: { url: string; alt: str
       rel="noreferrer"
       title={title}
       className={className}
-      onClick={(e) => { e.preventDefault(); if (src) void openAttachment(url); }}
+      onClick={(e) => { e.preventDefault(); if (src != null) void openAttachment(url, name, type); }}
     >
       {/* ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — слайдер доод зурваст, lazy-loader асахгүй үлддэг */}
       {src
@@ -1272,10 +1313,12 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> 
         src: `${url}/${g.parentObjectId}/attachments/${a.id}`,
         cap: `${r.d > 0 ? date(r.d) : '—'} · ${r.site}`,
         tip: r.company,
+        name: a.name,
+        type: a.contentType,
       });
     }
   }
-  return { items: out.sort((a, b) => b.d - a.d).map(({ src, cap, tip }) => ({ src, cap, tip })), failed };
+  return { items: out.sort((a, b) => b.d - a.d).map(({ src, cap, tip, name, type }) => ({ src, cap, tip, name, type })), failed };
 }
 
 /**
@@ -1322,7 +1365,7 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
           ‹
         </button>
         {/* ⚠️ 2026-10-09: blob URL (`AttPhoto`) — токен URL-д ОРОХГҮЙ */}
-        <AttPhoto url={p.src} alt={`${p.cap} · ${p.tip}`} title={p.tip} className={h.slideImg} />
+        <AttPhoto url={p.src} alt={`${p.cap} · ${p.tip}`} title={p.tip} className={h.slideImg} name={p.name} type={p.type} />
         <button
           type="button"
           className={h.slideNav}

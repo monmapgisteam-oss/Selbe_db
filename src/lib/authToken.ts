@@ -37,6 +37,7 @@ export function registerIdentity(mgr: Esri, sharingUrl: string): void {
   seenToken = false;
   ending = false;
   lastFail = null;
+  quietUntil = 0;
   setDead(false);
 }
 
@@ -81,8 +82,23 @@ function setDead(v: boolean): void {
   dead = v;
   for (const fn of [...deadSubs]) { try { fn(); } catch { /* захиалагчийн алдаа бусдыг зогсоохгүй */ } }
 }
+/**
+ * ⚠️ 2026-10-09 (аудит №2): «Түр хаах»-ын дараах ЧИМЭЭГҮЙ ЦОНХ (мс-ийн цагийн тэмдэг).
+ *    Урьд нь хаасны дараа ард явдаг шалгалтууд (`AuthGate`-ийн эрхийн шалгалт →
+ *    `ensureFreshToken`, Portal-ын тэмдгийн poll, IoT poll → `query.ts` →
+ *    `refreshAfterTokenError`) 15 с – 3 мин дотор `markDead` дуудаж цонхыг БУЦААЖ гаргадаг
+ *    тул хэрэглэгч ажлаа хуулж амждаггүй байв. Одоо хаасан агшнаас `DISMISS_QUIET_MS` хүртэл
+ *    `markDead` цонх ГАРГАХГҮЙ. Хэрэглэгчийн өөрийн хүсэлт (хадгалах г.м.) энэ хугацаанд ч
+ *    алдаагаа ИЛ хэлнэ — `query.ts` `lastRefreshFail() === 'dead'`-ээр «нэвтрэлт дууссан»
+ *    мессеж өгдөг; эрх нэмэгдэхгүй (сервер токеныг татгалзсан хэвээр). Хугацаа дуусмагц
+ *    дараагийн татгалзал цонхыг дахин гаргана. «Дахин шалгах» амжилттай (`retrySession`) /
+ *    шинэ сешн (`registerIdentity`) үед тэглэгдэнэ.
+ */
+const DISMISS_QUIET_MS = 10 * 60_000;
+let quietUntil = 0;
 function markDead(): void {
   if (ending || !seenToken) return;
+  if (Date.now() < quietUntil) return;
   setDead(true);
 }
 
@@ -100,10 +116,16 @@ export function subscribeSessionDead(fn: () => void): () => void {
   return () => { deadSubs.delete(fn); };
 }
 /**
- * Цонхыг ТҮР хаах — хэрэглэгч хадгалаагүй ажлаа хуулж авна. ⚠️ Дараагийн токены
- * алдаа (`refreshAfterTokenError` · `ensureFreshToken`) цонхыг ДАХИН гаргана.
+ * Цонхыг ТҮР хаах — хэрэглэгч хадгалаагүй ажлаа хуулж авна.
+ * ⚠️ 2026-10-09 (аудит №2): хаасны дараа `DISMISS_QUIET_MS` (10 мин) хүртэл токены алдаа
+ *    (`refreshAfterTokenError` · `ensureFreshToken`) цонхыг ДАХИН ГАРГАХГҮЙ (`markDead`-ийн
+ *    ⚠️); түүнээс хойшхи анхны татгалзал цонхыг дахин гаргана. Хүсэлтүүд өөрсдөө алдаагаа
+ *    хэлсээр байна.
  */
-export function dismissSessionDead(): void { setDead(false); }
+export function dismissSessionDead(): void {
+  quietUntil = Date.now() + DISMISS_QUIET_MS;
+  setDead(false);
+}
 /** Хэрэглэгч гарах / дахин нэвтрэх гэж байна — итгэмжлэл устахыг «дууссан» гэж тэмдэглэхгүй */
 export function noteSignOut(): void {
   ending = true;
@@ -154,6 +176,7 @@ export async function retrySession(): Promise<boolean> {
     await c.refreshToken();
     lastFail = null;
     lastForced = null;
+    quietUntil = 0;
     setDead(false);
     return true;
   } catch (e) {
@@ -233,8 +256,17 @@ export function ensureFreshToken(force = false): Promise<void> {
  *      · шинэчлэлт явж байвал ТҮҮНИЙГ хүлээнэ (хуваалцсан Promise);
  *      · ижил токеноос шинэчлэлт сая (30с дотор) оролдоод токен өөрчлөгдөөгүй бол
  *        (шинэчлэлт бүтээгүй) дахин оролдохгүй — хуучин токеноор давтах нь утгагүй.
+ *
+ * ⚠️ 2026-10-09 (аудит №2): хүлээлтийг ЦАГААР түлхүүрлэнэ, ЯВСАН ТОКЕНООР БИШ. Урьд нь
+ *    `lastForced.from === sent` байсан тул шинэчлэлт БҮТМЭГЦ токен солигдож, ҮРГЭЛЖ 499
+ *    хэлдэг үйлчилгээ (хаалттай `Selbe_guitsetgel_consolidated` · `Selbe_ET_20260721`,
+ *    CLAUDE.md) шинэ токеноор дахин 499 өгөхөд хүлээлт ТААРАХГҮЙ болж, тэсрэлт бүр
+ *    дахин нэг хүчээр шинэчлэлт эхлүүлдэг байв — дээрх шуурганы ЯГ өөр хэлбэр. Одоо
+ *    хүчээр шинэчлэлтээс хойш 30с дотор ОДООГИЙН токеноор ирсэн 498/499 (ямар ч URL)
+ *    дахин шинэчлэлт эхлүүлэхгүй: шинэ токен ч татгалзагдсан бол тэр нь эрхийн асуудал.
+ *    (Хуучин токеноор ирсэн алдаа — `sent !== cur` — урьдын адил шууд дахин илгээнэ.)
  */
-let lastForced: { from: string; at: number } | null = null;
+let lastForced: { at: number } | null = null;
 const FORCED_COOLDOWN_MS = 30_000;
 export async function refreshAfterTokenError(sent: string | null): Promise<boolean> {
   const cur = authToken();
@@ -245,8 +277,8 @@ export async function refreshAfterTokenError(sent: string | null): Promise<boole
     await refreshing;
     return authToken() !== sent;
   }
-  if (lastForced && lastForced.from === sent && Date.now() - lastForced.at < FORCED_COOLDOWN_MS) return false;
-  lastForced = { from: sent, at: Date.now() };
+  if (lastForced && Date.now() - lastForced.at < FORCED_COOLDOWN_MS) return false;
+  lastForced = { at: Date.now() };
   await ensureFreshToken(true);
   const changed = authToken() !== sent;
   /* ⚠️ 2026-10-05: сервер токеныг ТАТГАЛЗСАН (498/499) БА шинэчлэлт сүлжээнийх БИШ

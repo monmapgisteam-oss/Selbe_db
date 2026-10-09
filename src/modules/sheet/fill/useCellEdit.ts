@@ -44,6 +44,8 @@ export function useCellEdit(p: {
   locked: boolean;
   noEdit: boolean;
   canPerf: boolean;
+  /** ⚠️ 2026-10-09: бөглөх эрхгүй ШАЛТГААН (`FillRows.perfWhy`-тэй ижил) */
+  perfWhy?: string | null;
   busy: boolean;
   editing: boolean;
   rowsAll: SheetRow[];
@@ -62,7 +64,7 @@ export function useCellEdit(p: {
 }) {
   const {
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
-    locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld, restoring,
+    locked, noEdit, canPerf, perfWhy, busy, editing, rowsAll, vis, hidden, nBld, restoring,
     pastePrev = null, setPastePrev,
   } = p;
   /**
@@ -443,7 +445,7 @@ export function useCellEdit(p: {
        ээс 40 нүд буулгасан хүн юу ч болоогүйг хараад «хуулагдсангүй» гэж
        эргэлзэнэ. Шалтгааныг нь хэлээд буулгалтыг зогсооно. */
     if (locked || noEdit || !canPerf) {
-      warn(locked ? RO.viewOnly : RO.noPerf);
+      warn(locked ? RO.viewOnly : (perfWhy ?? RO.noPerf));
       return true;
     }
     /* ⚠️ «БӨГЛӨХ» ХААЛТ ба ИЛГЭЭЛТ ЯВЖ БАЙХ ҮЕ (2026-09-25-ны аудит): нүд нээх

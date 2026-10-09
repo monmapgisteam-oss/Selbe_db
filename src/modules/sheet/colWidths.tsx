@@ -47,19 +47,37 @@ export function cw(col: string, base: string): React.CSSProperties {
   return s;
 }
 
-export function useColWidths(key: string) {
+/**
+ * ⚠️ 2026-10-09 (аудит): `fallback` — `key`-д хадгалалт АЛГА үед уншигдах ХУУЧИН түлхүүр (`keep`-ээр
+ *    шүүгдэнэ). FillNew өргөнөө багц бүрээр (`fillnew.<pkg.key>`) хадгалах болсон тул урьдын нэгдсэн
+ *    `fillnew`-ийн багцаас үл хамаарах баганууд (№ · Ажил · Обьём …) алдагдахгүй.
+ * `fallback`-ийн `keep` нь тогтвортой (модулийн түвшний) функц байх ёстой — эффектийн хамаарал.
+ */
+export function useColWidths(key: string, fallback?: { key: string; keep?: (col: string) => boolean }) {
   const [w, setW] = useState<Widths>({});
+  const fbKey = fallback?.key;
+  const fbKeep = fallback?.keep;
   // ⚠️ localStorage-ийг ЭФФЕКТЭД уншина — эхний зурагт серверийнхтэй ижил
   // байхгүй бол hydration зөрнө.
   useEffect(() => {
+    /* ⚠️ 2026-10-09 (аудит): `key` СОЛИГДОХОД (FillNew-д багц солих) хадгалалтгүй бол өмнөх түлхүүрийн
+       өргөн `w`-д ҮЛДДЭГ байв (`if (raw) setW` л) — одоо хоосон (эсвэл `fallback`) болгож солино. */
+    let next: Widths = {};
     try {
       const raw = localStorage.getItem(LS + key);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: localStorage (гадны сан) зөвхөн эффектэд уншигдана — дээрх hydration-ийн ⚠️; useState-ийн эхний утгад шилжүүлбэл серверийн зурагтай зөрнө
-      if (raw) setW(JSON.parse(raw) as Widths);
+      if (raw) next = JSON.parse(raw) as Widths;
+      else if (fbKey) {
+        const old = localStorage.getItem(LS + fbKey);
+        if (old) next = Object.fromEntries(
+          Object.entries(JSON.parse(old) as Widths).filter(([c]) => !fbKeep || fbKeep(c)),
+        );
+      }
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
     }
-  }, [key]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: localStorage (гадны сан) зөвхөн эффектэд уншигдана — дээрх hydration-ийн ⚠️; useState-ийн эхний утгад шилжүүлбэл серверийн зурагтай зөрнө
+    setW((p) => (Object.keys(p).length === 0 && Object.keys(next).length === 0 ? p : next));
+  }, [key, fbKey, fbKeep]);
 
   const save = useCallback(
     (next: Widths) => {

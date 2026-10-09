@@ -19,8 +19,8 @@
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/query';
 import { cached } from '@/lib/live';
-import { HABEA } from '@/lib/services';
-import { requireCap } from '@/lib/who';
+import { AUTH, HABEA } from '@/lib/services';
+import { currentUser, requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
 import { prevWeek } from '@/modules/habeaUzleg';
@@ -132,15 +132,32 @@ export const isWeekNo = (n: number | null): n is number => n != null && Number.i
 export type WasteRow = { metric: string; byPkg: Record<string, number> };
 /**
  * ⚠️ 2026-10-09: хүснэгтэд ОН/ОГНОО талбар БАЙХГҮЙ (амьд метадата: Week · Category · Metric ·
- *    Багц_* · FID; CreationDate/editFieldsInfo ч алга) — карт бүх мөрийг нийлүүлж, ХАМРАХ
- *    долоо хоногуудыг (`weeks`) ил шошголно. Он ялгах талбар нэмэх нь схемийн өөрчлөлт.
+ *    Багц_* · FID; CreationDate/editFieldsInfo ч алга). Он ялгах талбар нэмэх нь схемийн өөрчлөлт.
+ * ⚠️ 2026-10-09 (аудит): урьд нь энд «ХАМРАХ долоо хоногуудыг (`weeks`) ил шошголно» гэж байсан ч
+ *    тэр шошгыг ea2fd95 (хэрэглэгчийн хүсэлтээр) ХАССАН — дахин нэмэхгүй. Оронд нь `multiYear`:
+ *    хүснэгтэд зорилтот долоо хоногоос ЛАВ хойших дугаар байвал (жиш. 2027-ийн 5-р
+ *    долоо хоногт 2026-ийн 22…52) мөрүүд ӨӨР ОНЫХ гэсэн үг — ижил дугаартай өнгөрсөн оны мөр
+ *    нийлбэрт холилдож болзошгүйг карт ИЛ хэлнэ. Босго — `isMultiYear` (аудит №2: ≥ 8 долоо хоног).
  */
 /**
  * ⚠️ 2026-10-09 (хэрэглэгч: «бусад шиг сүүлийн 7 хоног харагддаг»): `rows` нь ЗӨВХӨН өмнөх
  *    бүтэн долоо хоногийн (`prevWeek().no` — «Бусад үзүүлэлт»-тэй НЭГ дүрэм) мөрүүдийн нийлбэр.
  *    `weekNo` — тэр долоо хоног; `weeks` — хүснэгтэд байгаа бүх долоо хоног.
  */
-export type WasteData = { rows: WasteRow[]; weeks: number[]; weekNo: number };
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ОЛОН ОНЫ ӨГӨГДЛИЙН ДҮРЭМ — хүснэгтэд зорилтот долоо хоногоос (`weekNo`)
+ *    `MULTI_YEAR_GAP` (8)-аас ДООШГҮЙ долоо хоногоор хойших дугаар байвал л «өнгөрсөн оных».
+ *    Урьд нь `n > weekNo + 1` байсан тул ганц алдаатай/урьдчилан оруулсан ирээдүйн долоо хоног (жиш.
+ *    40-р долоо хоногт 44) «он ялгагдаагүй» гэж ХУДАЛ анхааруулдаг байв. 8 долоо хоног (~2 сар) урагш
+ *    оруулах/шивэх нь бодитой биш; өнгөрсөн оны мөр (жиш. 2027-ийн 1-д 2026-ийн 40…52) үүнийг амархан давна.
+ *    ⚠️ Хязгаар: `weekNo` ≥ 45 (оны сүүл) үед өнгөрсөн оны 52/53-ыг ялгаж чадахгүй — он талбаргүй тул
+ *    хуурамч анхааруулгаас дутуу анхааруулга нь бага хор хөнөөлтэй гэж сонгосон.
+ */
+export const MULTI_YEAR_GAP = 8;
+export const isMultiYear = (weeks: readonly number[], weekNo: number): boolean =>
+  weeks.some((n) => n - weekNo >= MULTI_YEAR_GAP);
+
+export type WasteData = { rows: WasteRow[]; weeks: number[]; weekNo: number; multiYear: boolean };
 
 type WasteRaw = { wk: number | null; metric: string; cols: Record<string, number | null> };
 
@@ -173,7 +190,12 @@ export async function loadHabeaWaste(now = new Date()): Promise<WasteData> {
     }
     by.set(r.metric, cur);
   }
-  return { rows: [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg })), weeks: [...weeks].sort((x, y) => x - y), weekNo };
+  const wk = [...weeks].sort((x, y) => x - y);
+  return {
+    rows: [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg })), weeks: wk, weekNo,
+    /* ⚠️ 2026-10-09 (аудит): он ялгах талбаргүй тул ОЛОН ОНЫ өгөгдлийг илрүүлнэ (`WasteData`-ийн ⚠️) */
+    multiYear: isMultiYear(wk, weekNo),
+  };
 }
 
 /* ═════════════════ БИЧИЛТ — «habeaData» эрхтэй хэрэглэгч (2026-10-08) ═════════════════ */
@@ -330,14 +352,58 @@ export async function addRegister(
   }
 }
 
+type WasteMeta = {
+  capabilities?: string;
+  fields?: { name?: string; domain?: { codedValues?: { code?: unknown }[] } | null }[];
+};
+const wasteMeta = () => arcgisPost<WasteMeta>(HABEA.waste.url, { f: 'json' });
+
 /** «Хог хаягдал»-ын маягтын төрлүүд — домэйны кодууд (метадатаас) */
 export async function loadWasteMetrics(): Promise<string[]> {
   const W = HABEA.waste;
-  const meta = await arcgisPost<{ fields?: { name?: string; domain?: { codedValues?: { code?: unknown }[] } | null }[] }>(
-    W.url, { f: 'json' },
-  );
+  const meta = await wasteMeta();
   const dom = meta.fields?.find((f) => f.name === W.fields.metric)?.domain?.codedValues ?? [];
   return dom.map((c) => String(c.code));
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит): давхарга МӨР НЭМЭХИЙГ зөвшөөрдөг эсэх — метадатын `capabilities`-д `Create`.
+ *    Амьд метадата: `Хог_хаягдал/FeatureServer/0` → `"capabilities": "Query"` — эзэмшигч/админаас
+ *    бусдын `applyEdits` унадаг атал «+ Нэмэх» харагдаж, хэрэглэгч маягт бөглөөд л алдаа авдаг байв.
+ *    `null` = метадата татагдсангүй (тодорхойгүй — товчийг ХААХГҮЙ, бичилт өөрөө алдаагаа хэлнэ).
+ */
+export const parseCanCreate = (capabilities: unknown): boolean | null =>
+  typeof capabilities === 'string' ? /(^|,)\s*create\s*(,|$)/i.test(capabilities) : null;
+export const loadWasteCanCreate = cached(
+  () => wasteMeta().then((m) => parseCanCreate(m.capabilities), () => null),
+  5 * 60_000, ['HABEA'], (v) => v != null,
+);
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): НЭВТЭРСЭН ХЭРЭГЛЭГЧ AGOL-ИЙН БАЙГУУЛЛАГЫН АДМИН МӨН ҮҮ (`community/self` → `role`).
+ *    AGOL дээр «Enable editing» унтраалттай ч эзэмшигч ба байгууллагын админ бичиж чаддаг. Урьд нь
+ *    «+ Нэмэх» товч зөвхөн порталын super-д идэвхтэй үлддэг тул habeaData эрхтэй AGOL админ товч
+ *    хаалттай авдаг байв. ⚠️ Эзэмшигчийг ШАЛГАХГҮЙ: давхаргын метадата `owner` өгдөггүй (зөвхөн
+ *    `serviceItemId`) — нэмэлт `content/items/<id>` хүсэлт шаардах тул зөвхөн админ эрх.
+ *    ⚠️ `username` нэвтэрсэн хэрэглэгчтэй тулгана (`hyanaltStore.loginFullName`-ийн загвар); хэрэглэгчээр
+ *    кэшлэнэ, уналтыг кэшлэхгүй → `false` (товч хаалттай хэвээр — бичилт өөрөө алдаагаа хэлнэ).
+ *    Нэвтрэлт унтраалттай (дев) / Node (тест) → `false`.
+ */
+export const isOrgAdminRole = (role: unknown): boolean => String(role ?? '').trim().toLowerCase() === 'org_admin';
+const orgAdminByUser = new Map<string, Promise<boolean>>();
+export function loadIsOrgAdmin(): Promise<boolean> {
+  if (typeof window === 'undefined' || !AUTH.appId) return Promise.resolve(false);
+  const u = (currentUser() ?? '').trim().toLowerCase();
+  if (!u) return Promise.resolve(false);
+  let p = orgAdminByUser.get(u);
+  if (!p) {
+    p = arcgisPost<{ username?: string; role?: string }>(
+      `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest/community/self`, { f: 'json' },
+    ).then((j) => String(j?.username ?? '').trim().toLowerCase() === u && isOrgAdminRole(j?.role));
+    p.catch(() => orgAdminByUser.delete(u));
+    orgAdminByUser.set(u, p);
+  }
+  return p.catch(() => false);
 }
 
 /** Хог хаягдлын мөрийн ЯГ утгын WHERE — хариу алдагдсан бичилтийг тоолж шалгахад */

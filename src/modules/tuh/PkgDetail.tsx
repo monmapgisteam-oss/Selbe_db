@@ -52,6 +52,10 @@ const gapTone = (gap: number | null): string => {
   return lv === 'red' ? s.bad : lv === 'yellow' ? s.warn : s.good;
 };
 
+/** ⚠️ 2026-10-09 (аудит №2): мөнгөн дүн — 0 нь «0 ₮» (хэмжилт), «—» ЗӨВХӨН `null`-д (`mnt()` 0-ийг «—» болгодог) */
+const mnt0 = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+
 const numOf = (v: unknown): number | null => {
   if (v == null || v === '') return null;
   const x = Number(v);
@@ -420,10 +424,12 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <h3>{tr('EV ба PV')}</h3>
         <div className={s.stats}>
           {([
-            ['EV', mnt(r.ev.ev)],
+            /* ⚠️ 2026-10-09 (аудит №2): EV/SV-д `mnt0` — `mnt()` 0-ийг «—» болгодог тул «эхлээгүй (0 ₮)»
+               ба «мэдээлэлгүй» нийлдэг байв (null ≠ 0); «—» ЗӨВХӨН `null`-д */
+            ['EV', mnt0(r.ev.ev)],
             [tr('PV (гэрээ)'), lz(m, 'cfPlan')(mnt(r.ev.pvContract))],
             [tr('PV (гүйцэтгэгч)'), lz(m, 'plan')(mnt(r.ev.pvContractor))],
-            [tr('SV (гэрээ)'), lz(m, 'cfPlan')(r.ev.svContract == null ? '—' : `${r.ev.svContract < 0 ? '−' : ''}${mnt(Math.abs(r.ev.svContract))}`)],
+            [tr('SV (гэрээ)'), lz(m, 'cfPlan')(r.ev.svContract == null ? '—' : `${r.ev.svContract < 0 ? '−' : ''}${mnt0(Math.abs(r.ev.svContract))}`)],
             [tr('SPI (гэрээ)'), lz(m, 'cfPlan')(r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2))],
             [tr('SPI (гүйцэтгэгч)'), lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2))],
           ] as [string, string][]).map(([k, v]) => (

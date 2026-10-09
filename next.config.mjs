@@ -4,7 +4,9 @@ import { dirname } from 'node:path';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // GitHub Pages (smart.selbecity.mn, 2026-09-09-өөс; өмнө selbe.monmap.mn) —
-  // бүрэн статик экспорт, сервер шаардлагагүй. Домэйн нь `public/CNAME`-ээс.
+  // бүрэн статик экспорт, сервер шаардлагагүй.
+  // ⚠️ 2026-10-09 (аудит): домэйн нь repo → Settings → Pages → Custom domain-оос (`actions/deploy-pages`
+  //    `public/CNAME`-ийг үл тоомсорлоно; файл хэвээр). `next start` ажиллахгүй — `out/`-ыг статикаар үйлчил.
   output: 'export',
   distDir: process.env.NEXT_DIST_DIR || '.next',
   trailingSlash: true,
@@ -26,8 +28,12 @@ const nextConfig = {
   //    (`incorrect data check`). Санах ойн кэш дискэнд юу ч бичихгүй тул эвдрэх зүйлгүй;
   //    зардал нь — дахин асаахад эхний эмхэтгэл кэшгүй. Env-гүй бол бусад worktree ба
   //    build ӨМНӨХ ШИГЭЭ (дискэн кэш).
+  // ⚠️ 2026-10-09 (аудит): `maxGenerations: 1` — webpack-ийн санах ойн кэшийн анхдагч нь
+  //    `Infinity` тул урт dev сешнд хэзээ ч чөлөөлөгдөхгүй, санах ой тасралтгүй өсдөг байв.
+  //    1 = сүүлийн эмхэтгэлд ашиглагдаагүй зүйлийг дараагийн эмхэтгэлд хаяна; дахин эмхэтгэлийн
+  //    хурдны ашиг хэвээр, дискэнд юу ч бичихгүй (дээрх зорилго хэвээр).
   webpack: (config, { dev }) => {
-    if (dev && process.env.NEXT_DEV_MEMORY_CACHE === '1') config.cache = { type: 'memory' };
+    if (dev && process.env.NEXT_DEV_MEMORY_CACHE === '1') config.cache = { type: 'memory', maxGenerations: 1 };
     return config;
   },
 };

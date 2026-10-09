@@ -58,7 +58,7 @@
 
 import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, dayKey } from '@/lib/format';
+import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
@@ -70,7 +70,7 @@ import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { paidShareOf, paidPctOf } from '@/lib/paidShare';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
-import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
+import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { isClearedStatus, statusKey } from '@/lib/land';
 import {
@@ -332,8 +332,11 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  * утга нь мөнгө болохоос барилгын ширхэг биш. Мөн блокоор жигнэсэн дүн нь
  * 6-р хэсгийн энгийн дундажтай ЯГ давхцаж, хоёр хэсэг нэг тоог давтана.
  *
- * ⚠️ Төсөвгүй багцад блокийн тоог нөөц жин болгоно — эс бөгөөс тэр багц
- * нийт дүнд ОГТ оролцохгүй, гүйцэтгэл нь чимээгүй өндөрсөнө.
+ * ⚠️ 2026-10-09 (аудит): ТӨСӨВГҮЙ багц — аль нэг багц төсөвтэй бол жин 0 (нийт дүнд
+ * оролцохгүй, «Эзлэх жин» 0%); блокийн тоонд ЗӨВХӨН нэг ч багц төсөвгүй үед БҮРЭН
+ * шилжинэ (`useMoney`, `gdash.housingPct`-ийн «хагас хагасаар холихгүй» дүрэм).
+ * Урьдын «төсөвгүй багцад блокийн тоо нөөц жин болно» гэсэн тайлбар кодтой зөрдөг байв —
+ * багц тус бүрээр холивол ₮ ба блокийн нэгж нэг хуваарьт орж жин утгагүй болно.
  */
 /**
  * ⚠️ ЭКСПОРТЛОГДСОН БА ТУСДАА КЭШТЭЙ (2026-08-31).
@@ -387,7 +390,8 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const raw = [...byPkg.entries()].map(([pkg, m]) => ({
     label: labels.get(pkg) ?? pkg,
     rows: m.total,
-    /* Төсөв байхгүй бол блокийн тоо — нэгж нь өөр ч доор нормчлогдоно */
+    /* ⚠️ 2026-10-09 (аудит): төсөвгүй бол 0 — блокийн тоо (`rows`) ЗӨВХӨН бүх багц төсөвгүй
+       үед жин болно (`useMoney`); багц тус бүрээр холихгүй */
     money: budget.get(pkg) ?? 0,
     // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
     actual: m.pct,
@@ -979,7 +983,10 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
        (`dayKey`). `toISOString()` нь +08 бүсэд шөнийн бүртгэлийг өмнөх өдөр
        болгодог тул тайлангийн «хамгийн сүүлийн бүртгэлийн огноо» нь дэлгэц
        дээрх өдрөөс нэг хоногоор зөрдөг байв. */
-    date: ts ? dayKey(ts) : '',
+    /* ⚠️ 2026-10-09 (аудит №2): УБ-ЫН (+08) өдөр (`ceo/workforce.ubDayKey`) — CEO-ийн хүн хүчний
+       карт · `gdash`-тай НЭГ дүрэм. `dayKey` нь ХӨТӨЧИЙН цагийн бүсээр тул УБ-аас гадна нээхэд
+       бүртгэлийн өдөр нэг хоногоор зөрдөг байв. */
+    date: ts ? ubDayKey(ts) : '',
     workers: byCompany.reduce((a, c) => a + c.workers, 0),
     /* ⚠️ 2026-10-06: бөглөгдсөн утгуудын нийлбэр; нэг ч компанид алга бол `null` */
     mongol: sumOrNull(byCompany.map((c) => c.mongol)),
@@ -1237,7 +1244,9 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   if (x.progress.blocks > 0) {
     /* ⚠️ 2026-09-30: `buildActual` нь ХО дүнгээр жигнэсэн болсон тул «блокийн дундаж»
        гэсэн хаалтын тайлбар солигдов (тоо ба нэр нэг хэмжүүрийг хэлнэ). */
-    f.push(tr('Барилга угсралтын ажлын гүйцэтгэл {0} байна ({1} блокийн хэмжилтийг багцаар нь ХО дүнгийн жингээр нэгтгэсэн). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.overall.rows), pct(buildWeight, 1)));
+    /* ⚠️ 2026-10-09 (аудит №2): нэр нь аргаа хэлнэ — «ХО-оор жигнэсэн»; §1-ийн «Барилга угсралтын
+       гүйцэтгэл (блокийн энгийн дундаж)» (`progress.overall`) өөр тоо. */
+    f.push(tr('Барилга угсралтын ажлын ХО-оор жигнэсэн гүйцэтгэл {0} байна ({1} блокийн хэмжилтийг багцаар нь ХО дүнгийн жингээр нэгтгэсэн). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.overall.rows), pct(buildWeight, 1)));
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {

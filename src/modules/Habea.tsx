@@ -29,8 +29,9 @@ import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import {
   HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
-  laborCompanyFields,
+  laborCompanyFields, roleForUser,
 } from '@/lib/services';
+import { rasterTypeOf } from '@/lib/uzlegReport';
 import { usePlanTotals } from '@/lib/totals';
 /* ⚠️ 2026-10-09: ӨДРИЙН ТҮЛХҮҮР — Улаанбаатарын хуанли (`ubDayKey`), хөтчийн локал `dayKey` БИШ.
    CEO самбарын хүн хүч (`ceo/workforce`) UB-ээр огтолдог тул гадаад цагийн бүсэд нээхэд
@@ -51,7 +52,7 @@ import { MultiSelect } from '@/components/MultiSelect';
 import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
-import { loadHabeaRegisters, loadHabeaWaste } from '@/lib/habeaRegisters';
+import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
 import { hasCap, subscribeCaps } from '@/lib/caps';
@@ -641,7 +642,8 @@ const kpiTile = (
 
 /* ─────────── Ослын хавсаргасан зураг (attachment) ─────────── */
 
-type Photo = { id: number; name: string };
+/* ⚠️ 2026-10-09 (аудит №2): `type` — attachmentInfos-ийн зарласан төрөл, ЗӨВХӨН татах файлын нэр/өргөтгөлд */
+type Photo = { id: number; name: string; type?: string };
 
 /** Бүртгэл бүрийн хавсралтын жагсаалт — нэг удаа татаад кэшлэнэ (задлах бүрд дахин татахгүй) */
 const photoCache = new Map<number, Promise<Photo[]>>();
@@ -657,9 +659,11 @@ const loadPhotos = (oid: number): Promise<Photo[]> => {
       attachmentInfos?: { id: number; contentType?: string; name?: string }[];
     }>(`${HABEA.incident.url}/${oid}/attachments`, { f: 'json' })
       .then((j) => {
+        /* ⚠️ 2026-10-09 (аудит): `image/*` БИШ — зөвхөн растер (`rasterTypeOf`: jpeg · png · gif ·
+           webp · bmp). `image/svg+xml` хавсралт скрипт агуулж болох тул хана/табад орохгүй. */
         return (j.attachmentInfos ?? [])
-          .filter((a) => String(a.contentType ?? '').startsWith('image/'))
-          .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id) }));
+          .filter((a) => rasterTypeOf(a.contentType) != null)
+          .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id), type: a.contentType }));
       });
     // ⚠️ АМЖИЛТГҮЙ амлалтыг кэшлэхгүй — үлдээвэл «дахин оролдох» хэзээ ч сэргэхгүй
     p.catch(() => photoCache.delete(oid));
@@ -720,7 +724,7 @@ function IncPhotos({ oid }: { oid: number }) {
           (`habeaUzleg.AttPhoto`: POST, токен БИЕЭР, зөвхөн байгууллагын хост). Урьд нь токен
           access log, хөтчийн түүх, Referer-ээр алдагддаг байв (CWE-598). */}
       {q.data.map((p) => (
-        <AttPhoto key={p.id} url={`${HABEA.incident.url}/${oid}/attachments/${p.id}`} alt={p.name} title={p.name} />
+        <AttPhoto key={p.id} url={`${HABEA.incident.url}/${oid}/attachments/${p.id}`} alt={p.name} title={p.name} name={p.name} type={p.type} />
       ))}
     </div>
   );
@@ -737,7 +741,7 @@ function IncPhotos({ oid }: { oid: number }) {
 function PhotoWall({ list }: { list: Inc[] }) {
   const ids = list.map((x) => x.oid).join(',');
   const [idx, setIdx] = useState(0);
-  const q = useAsync<{ items: { src: string; cap: string; tip: string }[]; failed: number }>(
+  const q = useAsync<{ items: { src: string; cap: string; tip: string; name: string; type?: string }[]; failed: number }>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
         /* ⚠️ 2026-09-30: ТОКЕНГҮЙ хаяг. ⚠️ 2026-10-09: токен URL-д ОГТ орохгүй — `AttPhoto`
@@ -745,6 +749,8 @@ function PhotoWall({ list }: { list: Inc[] }) {
         src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
         cap: `${incDate(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
+        name: p.name,
+        type: p.type,
       })),
     [ids],
   );
@@ -782,7 +788,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
         </button>
         {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй.
             ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — карт нь доод зурваст (`AttPhoto`-д ч хэрэглээгүй). */}
-        <AttPhoto url={p.src} alt={p.tip} title={p.tip} className={h.slideImg} />
+        <AttPhoto url={p.src} alt={p.tip} title={p.tip} className={h.slideImg} name={p.name} type={p.type} />
         <button
           type="button"
           className={h.slideNav}
@@ -1024,6 +1030,15 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* «Хог хаягдал» (2026-10-08) — рейстэй төрлүүд, хуудасны «Багц» шүүлтийг дагана */
   /* ⚠️ 2026-10-09: ЗӨВХӨН өмнөх бүтэн долоо хоног («Бусад үзүүлэлт»-тэй ижил) — долоо хоног солигдоход шинээр */
   const waste = useAsync(() => loadHabeaWaste(new Date(now)), [weekKey, tick], { keepOn: [tick] });
+  /* ⚠️ 2026-10-09 (аудит): «Хог хаягдал» давхарга мөр нэмэхийг зөвшөөрдөг эсэх (метадатын `Create`) */
+  const isSuperUser = roleForUser(user?.username) === 'super';
+  /* ⚠️ 2026-10-09 (аудит №2): `Create`-гүй үед л (super биш) AGOL-ийн байгууллагын админ эсэхийг асууна
+     (`loadIsOrgAdmin` — `community/self`.role) — админ «Enable editing» унтраалттай ч бичдэг тул товч идэвхтэй */
+  const wasteCan = useAsync<{ create: boolean | null; admin: boolean }>(async () => {
+    if (!canEnter) return { create: null, admin: false };
+    const create = await loadWasteCanCreate();
+    return { create, admin: create === false && !isSuperUser ? await loadIsOrgAdmin() : false };
+  }, [canEnter, isSuperUser, tick], { keepOn: [tick] });
   /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
   const curYm = ubDayKey(now).slice(0, 7);
 
@@ -2176,8 +2191,25 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               {/* ⚠️ 2026-10-08 (хэрэглэгч): «нийт N рейс» тэмдэглэл ХАСАГДАВ — нийт нь донатын төвд бий */}
               {/* ⚠️ 2026-10-09 (хэрэглэгч): «N-р долоо хоногийн нийлбэр» шошго ХАСАГДАВ; оронд нь
                   «Бусад үзүүлэлт»-тэй ИЖИЛ «N-р долоо хоног» */}
-              {waste.state === 'ready' && tr('{0}-р долоо хоног', num(waste.data.weekNo))}
-              {canEnter && <> <AddButton onClick={() => setEntry('waste')} /></>}
+              {/* ⚠️ 2026-10-09 (аудит): хүснэгтэд ОН талбар алга — олон оны мөр илэрвэл (`multiYear`)
+                  долоо хоногийн дугаар он ялгахгүйг ИЛ хэлнэ («…нийлбэр» шошгыг дахин нэмэхгүй) */}
+              {waste.state === 'ready' && (waste.data.multiYear
+                ? (
+                  <span title={tr('Хүснэгтэд он, огноо талбар байхгүй — өмнөх оны ижил дугаартай долоо хоногийн мөр нийлбэрт холилдож болзошгүй.')}>
+                    {tr('{0}-р долоо хоног (он ялгагдаагүй)', num(waste.data.weekNo))}
+                  </span>
+                )
+                : tr('{0}-р долоо хоног', num(waste.data.weekNo)))}
+              {/* ⚠️ 2026-10-09 (аудит): давхарга `Create`-гүй (`capabilities: "Query"`) бол эрхтэй
+                  хэрэглэгчийн бичилт ч унана — товчийг хааж шалтгааныг хэлнэ. Super (ихэвчлэн
+                  AGOL-ийн эзэмшигч/админ) товчтой хэвээр, анхааруулгатай.
+                  ⚠️ 2026-10-09 (аудит №2): super биш ч AGOL-ийн байгууллагын админ (`wasteCan.data.admin`)
+                  мөн адил — урьд нь тэдэнд товч хаалттай гардаг байв. Эзэмшигчийг шалгахгүй (нэмэлт хүсэлт). */}
+              {canEnter && (wasteCan.state !== 'ready' || wasteCan.data.create !== false
+                ? <> <AddButton onClick={() => setEntry('waste')} /></>
+                : isSuperUser || wasteCan.data.admin
+                  ? <> <AddButton onClick={() => setEntry('waste')} note={tr('Үйлчилгээнд засварлах (Create) эрх хаалттай — зөвхөн AGOL-ийн эзэмшигч/админы эрхээр бичигдэнэ.')} /></>
+                  : <> <AddButton disabled note={tr('Нэмэх боломжгүй: «Хог хаягдал» үйлчилгээнд засварлах эрх хаалттай. AGOL дээр үйлчилгээний тохиргооноос «Enable editing»-ийг асаах шаардлагатай.')} /></>)}
             </>
           )}
         >

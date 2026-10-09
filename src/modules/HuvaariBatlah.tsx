@@ -355,6 +355,10 @@ export function HuvaariBatlah({
        баталгаажуулна; буцаасны дараа гүйцэтгэгч дахин илгээх хэрэгтэй болно. */
     if (!window.confirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'))) return;
     setBusy(true); setErr(''); setNote('');
+    /* ⚠️ 2026-10-09 (аудит): урьд нь `${why}\n${тайлбар}`-ыг бүхэлд нь `REASON_MAX`-аар тасалдаг тул урт шалтгаанд
+       «нээлгүй буцаасан» тайлбар ТАСАРДАГ байв. Одоо тайлбар үргэлж багтахаар ХЭРЭГЛЭГЧИЙН текстийг (`why`) тайрна.
+       Хоосон шалтгаан дээрх `!why`-аар аль хэдийн татгалзана. */
+    const blind = blindNote();
     try {
       const r = await decidePlan({
         oid: x.oid,
@@ -364,7 +368,7 @@ export function HuvaariBatlah({
            батлахыг таслах). Жинхэнэ дүрэм нь СЕРВЕРИЙН мөрөөс уншигдана —
            UI-ийн утгыг хэзээ ч дүрэм гэж авч болохгүй. */
         author: x.author,
-        reason: `${why}\n${blindNote()}`.slice(0, REASON_MAX), okRows: [],
+        reason: `${why.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, okRows: [],
       });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));

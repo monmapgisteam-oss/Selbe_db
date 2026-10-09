@@ -57,10 +57,11 @@ export const tolovLabel = (t: Tolov): string => {
   }
 };
 
-/** Мөрийн эрэмбэ: төлөв (муу нь эхэнд) → багц → шат */
+/** Мөрийн эрэмбэ: төлөв (муу нь эхэнд) → багц → шат
+ *  ⚠️ 2026-10-09 (аудит №2): `numeric` — «Багц 10» нь «Багц 2»-оос ӨМНӨ эрэмбэлэгддэг байв */
 export const compareZov = (a: Zov, b: Zov): number => (
   TOLOV_RANK[a.tolov] - TOLOV_RANK[b.tolov]
-  || a.bagts.localeCompare(b.bagts, 'mn')
+  || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true })
   || a.shat - b.shat
 );
 
@@ -135,7 +136,8 @@ export function computePermits(rows: Zov[] | null): KpiResult {
     .map(([bagts, list]) => ({ bagts, ...summarize(list) }))
     .sort((a, b) => (
       b.no - a.no || b.unknown - a.unknown || b.wait - a.wait
-      || a.bagts.localeCompare(b.bagts, 'mn')
+      /* ⚠️ 2026-10-09 (аудит №2): `numeric` — «Багц 2» < «Багц 10» */
+      || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true })
     ));
   tables.push(table(
     tr('Багцаар'),

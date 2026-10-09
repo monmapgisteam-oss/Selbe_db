@@ -52,6 +52,29 @@ type RawMeta = {
 
 const metaCache = new Map<string, Promise<UzField[]>>();
 
+/** HTML-ийн түгээмэл нэрт entity — `cleanLabel` */
+const NAMED_ENT: Readonly<Record<string, string>> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+};
+/**
+ * ⚠️ 2026-10-09 (аудит): Survey123-ын шошгыг ЦЭВЭРЛЭНЭ — таг хасаад ENTITY-г задлана
+ *    (`&nbsp; &amp; &lt; &gt; &quot; &apos; &#39; &#x27;`). Урьд нь зөвхөн таг хасдаг тул
+ *    «Хашаа&nbsp;хамгаалалт», «A &amp; B» PDF/Excel-д үсгээр гардаг байв. Тагийг ЭХЛЭЭД хасна —
+ *    `&lt;b&gt;` нь задласны дараа текст хэвээр (дахин таг гэж хасагдахгүй).
+ *    Талбарын alias ба coded-value домэйны НЭР хоёуланд ижил дүрэм.
+ */
+export const cleanLabel = (s: string): string => s
+  .replace(/<[^>]*>/g, '')
+  .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    }
+    return NAMED_ENT[e.toLowerCase()] ?? m;
+  })
+  .replace(/\s+/g, ' ')
+  .trim();
+
 /** Давхаргын талбарууд (alias, домэйнтэй). ⚠️ Алдаа кэшлэгдэхгүй. */
 export function loadUzFields(url: string): Promise<UzField[]> {
   let p = metaCache.get(url);
@@ -62,10 +85,12 @@ export function loadUzFields(url: string): Promise<UzField[]> {
         name: String(f.name),
         /* ⚠️ 2026-10-09 (хэрэглэгч): Survey123 асуултын нэр HTML-тэй («<b>9.</b> Барилгын …») —
            PDF/Excel-д тэмдэгт нь үсгээр гардаг байв. Тагийг хасна, дугаар/текст үлдэнэ. */
-        alias: String(f.alias || f.name).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() || String(f.name),
+        /* ⚠️ 2026-10-09 (аудит): entity ч задлагдана (`cleanLabel`) */
+        alias: cleanLabel(String(f.alias || f.name)) || String(f.name),
         type: String(f.type ?? ''),
+        /* ⚠️ 2026-10-09 (аудит): домэйны НЭР ч ижил цэвэрлэгээтэй (хоосорвол код) */
         dom: f.domain?.type === 'codedValue' && f.domain.codedValues?.length
-          ? new Map(f.domain.codedValues.map((c) => [String(c.code), String(c.name ?? c.code)]))
+          ? new Map(f.domain.codedValues.map((c) => [String(c.code), cleanLabel(String(c.name ?? c.code)) || String(c.code)]))
           : null,
       })));
     p.catch(() => metaCache.delete(url));
@@ -429,6 +454,86 @@ const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`) ? ORG_BASE.match(/^https?:\
 export const isOrgUrl = (url: string): boolean =>
   (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
   || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+
+/**
+ * ⚠️ 2026-10-09 (аудит): ХАВСРАЛТЫГ ДЭЛГЭЦЭД/ТАБАД ХАРУУЛАХ ЗӨВШӨӨРӨГДСӨН ТӨРӨЛ — зөвхөн растер.
+ *    Blob URL нь порталын origin-ийг өвлөдөг тул `image/svg+xml` (мөн text/html — `fetchAttachment`
+ *    текстээс Blob сэргээдэг) хавсралтыг серверийн `content-type`-тайгаар нээвэл доторх скрипт
+ *    порталын эрхээр ажиллана. `Chanar.INLINE_TYPES`-тэй ижил зарчим: растерыг ЭНЭ төрлөөр
+ *    ДАХИН ТӨРӨЛЖҮҮЛЖ нээнэ, бусдыг (svg · html · heic …) зөвхөн татна.
+ */
+const RASTER_TYPES: Readonly<Record<string, string>> = {
+  'image/jpeg': 'image/jpeg', 'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg',
+  'image/png': 'image/png', 'image/gif': 'image/gif', 'image/webp': 'image/webp',
+  'image/bmp': 'image/bmp', 'image/x-ms-bmp': 'image/bmp',
+};
+/** `content-type` → аюулгүй растер төрөл (параметр, том үсэг хамаарахгүй); бусад бол `null` */
+export const rasterTypeOf = (contentType: string | null | undefined): string | null =>
+  RASTER_TYPES[String(contentType ?? '').split(';')[0].trim().toLowerCase()] ?? null;
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): БАЙТЫН ГАРЫН ҮСГЭЭР растер төрөл (magic bytes) — `head` нь файлын эхний ≥12 байт.
+ *    JPEG `FF D8 FF` · PNG `89 50 4E 47` · GIF `47 49 46 38` · WEBP `RIFF....WEBP` · BMP `42 4D`.
+ *    SVG/HTML нь текст (`<`, `<?xml`, BOM …) тул ЭНД ХЭЗЭЭ Ч таарахгүй — растер биш бол `null`.
+ */
+export function sniffRasterType(head: ArrayLike<number>): string | null {
+  const b = (i: number) => (i < head.length ? head[i] : -1);
+  if (b(0) === 0xff && b(1) === 0xd8 && b(2) === 0xff) return 'image/jpeg';
+  if (b(0) === 0x89 && b(1) === 0x50 && b(2) === 0x4e && b(3) === 0x47) return 'image/png';
+  if (b(0) === 0x47 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x38) return 'image/gif';
+  if (b(0) === 0x52 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x46
+    && b(8) === 0x57 && b(9) === 0x45 && b(10) === 0x42 && b(11) === 0x50) return 'image/webp';
+  if (b(0) === 0x42 && b(1) === 0x4d) return 'image/bmp';
+  return null;
+}
+
+/** Серверийн «төрөлгүй» хариу — эдгээрт л байтаар шийднэ (svg · html · text … БИШ) */
+const GENERIC_TYPES = new Set([
+  '', 'application/octet-stream', 'binary/octet-stream', 'application/x-octet-stream',
+  'application/binary', 'application/unknown', 'application/x-download', 'application/force-download',
+]);
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ТАТСАН Blob-ийн аюулгүй растер төрөл. Урьд нь ЗӨВХӨН HTTP хариуны
+ *    `content-type` (`blob.type`)-аар шийддэг тул AGOL зургийг `application/octet-stream` эсвэл
+ *    хоосон төрлөөр өгвөл `<img>` «Зураг татагдсангүй» гарч, табад нээхэд өргөтгөлгүй файл татагддаг байв.
+ *    Дүрэм: (1) `blob.type` растер → тэр; (2) `blob.type` «төрөлгүй» (`GENERIC_TYPES`) → эхний 16 байтыг
+ *    `sniffRasterType`; (3) бусад (svg · html · xml · text · heic …) → `null` — байтыг ч ҮЗЭХГҮЙ.
+ *    ⚠️ attachmentInfos-ийн `contentType`-ийг харуулах шийдвэрт ИТГЭХГҮЙ — тэр нь байршуулагчийн
+ *    зарласан утга; байт л батална (растер формат бүр гарын үсэгтэй тул алдагдах зураг үгүй).
+ *    Зарласан төрлийг зөвхөн татах файлын нэр/өргөтгөлд (`attachmentFileName`) ашиглана.
+ */
+export async function rasterTypeOfBlob(blob: Blob): Promise<string | null> {
+  const declared = rasterTypeOf(blob.type);
+  if (declared) return declared;
+  if (!GENERIC_TYPES.has(String(blob.type ?? '').split(';')[0].trim().toLowerCase())) return null;
+  try {
+    return sniffRasterType(new Uint8Array(await blob.slice(0, 16).arrayBuffer()));
+  } catch {
+    return null;
+  }
+}
+
+const EXT_BY_TYPE: Readonly<Record<string, string>> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp',
+  'image/heic': 'heic', 'image/heif': 'heif', 'application/pdf': 'pdf', 'text/plain': 'txt',
+  'application/json': 'json', 'text/csv': 'csv', 'application/zip': 'zip', 'video/mp4': 'mp4',
+};
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ТАТАХ ФАЙЛЫН НЭР. Урьд нь үргэлж `attachment-<id>` (өргөтгөлгүй) тул
+ *    татсан файл нээгддэггүй байв. Хавсралтын `name` (attachmentInfos) байвал тэр — зам/хориотой
+ *    тэмдэгтийг `_` болгоно; өргөтгөлгүй бол төрлөөс нэмнэ. Нэргүй бол `attachment-<id>.<ext>`,
+ *    төрөл үл мэдэгдэх бол `.bin`. ⚠️ svg/html-д өргөтгөл АВТОМАТААР нэмэхгүй (хоёр товшилтоор
+ *    хөтчид нээгдэх файл болгохгүй) — нэр нь өөрөө агуулсан бол л хэвээр.
+ */
+export function attachmentFileName(id: string | number, name?: string | null, type?: string | null): string {
+  const ext = EXT_BY_TYPE[rasterTypeOf(type) ?? String(type ?? '').split(';')[0].trim().toLowerCase()];
+  /* файлын нэрэнд удирдах тэмдэгт (\u0000–\u001f) хориотой */
+  const clean = String(name ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 120);
+  if (clean) return /\.[a-z0-9]{1,5}$/i.test(clean) || !ext ? clean : `${clean}.${ext}`;
+  return `attachment-${String(id).replace(/[^\w-]+/g, '') || 'file'}.${ext ?? 'bin'}`;
+}
 
 /** Нэг хавсралтын хугацааны дээд хязгаар — гацсан хүсэлт тайланг мөнхөд түгжихгүй */
 export const ATT_TIMEOUT_MS = 30_000;

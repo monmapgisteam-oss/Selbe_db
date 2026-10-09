@@ -295,10 +295,15 @@ function PlanModalBody({
      фокусладаг тул чирэлтийн дараа Enter дарахад цонх хаагдаж чирэлт БУЦДАГ байв. Урхийн эффектийн ДАРАА
      (эффектүүд зарласан дарааллаар) ажиллана. */
   const applyBtn = useRef<HTMLButtonElement>(null);
+  /* ⚠️ 2026-10-09 (аудит): урьд нь «Тавих»-ыг НЭЭЛТ БҮРД (нэр/зурвас дээр дарж нээсэн ч) фокусладаг байв —
+     «Олон блок» идэвхтэй үед ганц Enter `apply`-г ажиллуулж СОНГОСОН БҮХ блокийн огноог дарж бичдэг байв.
+     Одоо ЗӨВХӨН чирэлтийн дараа (`dragged`); бусад үед урхийн өгсөн фокус («×») хэвээр. */
   useEffect(() => {
+    if (!dragged) return;
     const b = applyBtn.current;
     if (b && !b.disabled) { b.focus(); return; }
     mdRef.current?.querySelector<HTMLElement>('[data-md-dates] input:not([disabled])')?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ЗӨВХӨН нээлтийн агшинд (`dragged` нь нээлтийн шинж)
   }, []);
   /** ⚠️ 2026-10-09: бүлгийг шилжүүлэх хоногийн текст (`onShiftGroup`) */
   const [shiftTxt, setShiftTxt] = useState('');

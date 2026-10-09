@@ -392,9 +392,24 @@ export type Attrs = Record<string, unknown>;
 
 /** Алдааг үргэлж БҮТЭН мессежтэйгээр шиднэ — чимээгүй амжилт хэзээ ч болохгүй */
 export class HyanaltError extends Error {
-  constructor(message: string) {
+  /**
+   * ⚠️ 2026-10-09 (аудит): эх `ArcGISError`-ийн `code`/`status` ба өөрөө (`cause`). Урьд нь `post` тэдгээрийг
+   *    ХАЯДАГ тул `lostWrite.isLostWrite` «хариу алдагдсан» (timeout-ын дараах 5xx, JSON биш хариу) ба
+   *    «серверийн тодорхой татгалзал»-ыг ялгаж чаддаггүй байв — `hyanaltStore` дунд шатанд үр дүн
+   *    тодорхойгүйг энгийн алдаа гэж харуулдаг байлаа. Дуудагч `isLostWrite(e.cause)`-ээр ангилна.
+   */
+  readonly code?: number;
+  readonly status?: number;
+  /* `cause` — ES2022 `Error.cause` (дахин зарлахгүй: `useDefineForClassFields` түүнийг дарна) */
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = 'HyanaltError';
+    if (cause !== undefined) {
+      this.cause = cause;
+      const c = cause as { code?: unknown; status?: unknown };
+      if (typeof c?.code === 'number') this.code = c.code;
+      if (typeof c?.status === 'number') this.status = c.status;
+    }
   }
 }
 
@@ -416,7 +431,8 @@ async function post(path: string, body: Record<string, string>): Promise<Record<
   } catch (e) {
     if (e instanceof ArcGISError) {
       const d = e.details?.length ? ` · ${e.details.join('; ')}` : '';
-      throw new HyanaltError(e.message + d);
+      /* ⚠️ 2026-10-09 (аудит): эх алдааг `cause`-д үлдээнэ (`HyanaltError`-ийн ⚠️) */
+      throw new HyanaltError(e.message + d, e);
     }
     throw e;
   }

@@ -54,7 +54,7 @@ import {
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
-  approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS,
+  approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS, REASON_MAX,
   clearPlanPartial, markPlanApprovedSeen, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
@@ -210,6 +210,8 @@ function fullMonths<V>(snap: Map<string, V> | undefined, cur: Map<string, V>): M
 }
 /** ⚠️ 2026-10-09: буцаалтын стекийн дээд хэмжээ — хуучин агшин хасагдана (санах ой: чирэлтийн агшин бүтэн хуулбар) */
 const UNDO_MAX = 30;
+/** ⚠️ 2026-10-09: ноорог сэргээлт ИНГЭЭС удвал (сүлжээ гацсан) хаалттай хүснэгтийн оронд дахин ачаалах товч гарна */
+const RESTORE_SLOW_MS = 45_000;
 /** ⚠️ 2026-10-09: буцаах (`u`) · дахин хийх (`r`) стек */
 type UndoStk = { u: UndoSnap[]; r: UndoSnap[] };
 const UNDO_EMPTY: UndoStk = { u: [], r: [] };
@@ -562,7 +564,19 @@ export function Huvaari({
 
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyRaw] = useState(false);
+  /* ⚠️ 2026-10-09 (аудит): `busy`-ийн СИНХРОН тусгал + үеийн тоолуур — хадгалах/илгээх/батлах эхлэх БА дуусах бүрд
+     тоолуур нэмэгдэнэ. Арын (30 с мөчлөгийн) `refetchServer` эхэндээ үеийг барьж, хариу ирэхэд үе солигдсон бол
+     ҮР ДҮНГ ХАЯНА (`refetchBg`). Урьд нь мөчлөгийн татлага хадгалалттай давхцаж ХУУЧИН `obOids`/`obPlan`-ыг
+     сэргээдэг тул дараагийн хадгалалт `dkey` давхар мөр үүсгэдэг байв. `useState`-ийн `busy` нь зурагдалтаар
+     хоцордог тул ref. */
+  const busyNowRef = useRef(false);
+  const busyGenRef = useRef(0);
+  const setBusy = useCallback((v: boolean) => {
+    busyNowRef.current = v;
+    busyGenRef.current++;
+    setBusyRaw(v);
+  }, []);
 
   /* ── НЭМЭЛТ АЖИЛ (2026-09-24; `huvaari/adds.ts`-ийн `tmpOid`-ийн ⚠️) ── */
   /**
@@ -2109,6 +2123,19 @@ export function Huvaari({
   const onRemoteDraft = useCallback((keys: ReadonlySet<string>) => {
     setUndoSnap((s) => ([...s.u, ...s.r].some((u) => undoTouched(u, keys)) ? UNDO_EMPTY : s));
   }, [setUndoSnap]);
+  /* ⚠️ 2026-10-09 (аудит): ЖААЗ СОЛИГДОХОД (oid зөөлт — `useSharedDraft`-ийн мөр зөөх эффект) стекүүд ХУУЧИН oid-той
+     агшнуудыг хадгалсаар үлддэг байв — Ctrl+Z өнчин oid-д ноорог тавьж, `prepareSave` бүх хадгалалтыг (`staleN`)
+     татгалздаг байв. Одоо агшин аль нэг нь одоогийн `rows`-д байхгүй oid заавал хоёр стекийг бүхэлд нь цэвэрлэнэ
+     (дунд нь хасвал дараалсан агшнууд зөрнө — `onRemoteDraft`-тай ижил консерватив дүрэм). */
+  useEffect(() => {
+    if (!rows.length) return;
+    setUndoSnap((s) => {
+      if (!s.u.length && !s.r.length) return s;
+      const live = new Set(rows.map((r) => r.oid));
+      const dead = (m: ReadonlyMap<number, unknown>) => { for (const o of m.keys()) if (!live.has(o)) return true; return false; };
+      return [...s.u, ...s.r].some((u) => dead(u.spans) || dead(u.ham) || dead(u.aD) || dead(u.rD)) ? UNDO_EMPTY : s;
+    });
+  }, [rows, setUndoSnap]);
 
   /**
    * СҮҮЛИЙН ӨӨРЧЛӨЛТИЙГ БУЦААХ (2026-10-08, Ctrl+Z · толгойн «Буцаах») — `undoSnap`-ийн агшнаар.
@@ -2147,6 +2174,10 @@ export function Huvaari({
   /** Агшныг ноорогт хэрэглэнэ (2026-10-09: `undoLast`-ийн биеэс салгав — логик ХЭВЭЭР) */
   const applySnap = useCallback((u: UndoSnap) => {
     const other = hdOtherRef.current;
+    /* ⚠️ 2026-10-09 (аудит): одоогийн `rows`-д БАЙХГҮЙ oid (жааз солигдсон) алгасна — урьд нь уялдаа · нөөц · бодит
+       огнооны агшин өнчин oid-д ноорог тавьж, `prepareSave` бүх хадгалалтыг татгалздаг байв (`spans` нь `idx`-ээр
+       аль хэдийн алгасдаг). Стекийн цэвэрлэгээ — дээрх `rows`-ийн эффект; энэ нь хамгаалалтын давхарга. */
+    const live = new Set(rows.map((r) => r.oid));
     undoSkipRef.current = true;
     try {
       const idx = new Map(plan.map((r, i) => [r.oid, i]));
@@ -2178,18 +2209,19 @@ export function Huvaari({
       fix(setObResDraft, u.obRes, kN);
       if (u.ham.size) setHam((m0) => {
         const m = new Map(m0);
-        for (const [o, v] of u.ham) { if (other(kH(o))) continue; if (v === undefined) m.delete(o); else m.set(o, v); }
+        for (const [o, v] of u.ham) { if (!live.has(o) || other(kH(o))) continue; if (v === undefined) m.delete(o); else m.set(o, v); }
         return m;
       });
       if (u.rD.size) setResDraft((m0) => {
         const m = new Map(m0);
-        for (const [o, v] of u.rD) { if (other(kR(o))) continue; if (v === undefined) m.delete(o); else m.set(o, v); }
+        for (const [o, v] of u.rD) { if (!live.has(o) || other(kR(o))) continue; if (v === undefined) m.delete(o); else m.set(o, v); }
         return m;
       });
       /* Бодит огноо — блок бүрийн нүд (`kA`): хамтрагчийн блок үлдэж, бусад нь агшнаар (агшинд байхгүй = сервер) */
       if (u.aD.size) setADraft((m0) => {
         const m = new Map(m0);
         for (const [o, v] of u.aD) {
+          if (!live.has(o)) continue;
           const row = rows.find((x) => x.oid === o);
           const nb = Math.max(n, v?.start.length ?? 0);
           const theirs = Array.from({ length: nb }, (_, b) => other(kA(o, b)));
@@ -2827,7 +2859,7 @@ export function Huvaari({
         энэ hook-ийн ref/функцүүдийг уншдаг. */
   const {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdTimerRef, hdFlushRef, hdClearRef, hdSkipUnlockOnceRef,
-    hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
+    hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdRetryRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
   } = useSharedDraft({
     kind, pkgKey: pkg.key, user, status, canEdit, locked, previewing, approving, pending,
     sc, rows, base, n, obPlan, obRes, obState, flowReady, dirtyN, dragging: drag != null,
@@ -2836,6 +2868,22 @@ export function Huvaari({
     /* ⚠️ 2026-10-09: хамтрагчийн нийлүүлэлт → буцаалтын агшин (`onRemoteDraft`) */
     onRemote: onRemoteDraft,
   });
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): засах эрхтэй хүнд хуваалцсан
+   *    ноорог сэргэж дуустал (`hdReadyKey` энэ түлхүүр биш) хүснэгт хаалттай. Батлах · урьдчилан харах ·
+   *    илгээлт хүлээгдэж буй үед сэргээлт ЗОРИУД эхэлдэггүй (`useSharedDraft`-ийн `hdBlocked`) тул хаахгүй.
+   *    Гацвал `RESTORE_SLOW_MS`-ийн дараа зөвхөн дахин ачаалах товч (түлхүүртэй төлөв — эффектэд синхрон setState-гүй).
+   */
+  const hdRestoringUi = canEdit && !previewing && approving == null && pending == null && rows.length > 0
+    && hdReadyKey !== hdKey(kind, pkg.key);
+  const hdRestKey = hdRestoringUi ? hdKey(kind, pkg.key) : '';
+  const [hdSlowKey, setHdSlowKey] = useState('');
+  useEffect(() => {
+    if (!hdRestKey) return undefined;
+    const t = window.setTimeout(() => setHdSlowKey(hdRestKey), RESTORE_SLOW_MS);
+    return () => window.clearTimeout(t);
+  }, [hdRestKey]);
+  const hdRestoreSlow = !!hdRestKey && hdSlowKey === hdRestKey;
   /* ⚠️ 2026-10-09: `hdOtherRef`-ийн жинхэнэ утга — `hdMeta`/`meRef` энэ hook-ийн гаралт тул энд (ref-ийн ⚠️) */
   useEffect(() => {
     hdOtherRef.current = (k: string) => {
@@ -3313,9 +3361,24 @@ export function Huvaari({
      ӨМНӨ зарлав — `refreshFlow` ч уншдаг; жинхэнэ утга нь `refetchServer`-ийн доорх
      эффектээр тавигдана. Анхны утга нь зөвхөн mount-ын эффект ажиллах хүртэлх орлуулагч —
      `refetchRef.current()` ямар ч зам дээр `await`-ийн ДАРАА л дуудагддаг.) */
-  const refetchRef = useRef<() => Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }>>(
+  const refetchRef = useRef<(guard?: () => boolean) => Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }>>(
     async () => ({ rows: [], plan: new Map(), res: new Map() }),
   );
+  /**
+   * ⚠️ 2026-10-09 (аудит): АРЫН татлага (30 с мөчлөг · `refreshFlow`-ийн «илгээлт алга болов»). Хадгалах/илгээх
+   *    явж байвал (`busyNowRef`) ЭХЛЭХГҮЙ; эхэлсний дараа `busy` эхэлсэн/дууссан бол (`busyGenRef` солигдсон) үр
+   *    дүнг ХАЯНА — хадгалалтын шинэ `obOids`/`obPlan`-ыг хуучнаар дарахгүй (`busyGenRef`-ийн ⚠️).
+   */
+  /* ⚠️ 2026-10-09 (аудит №2): `true` — татлага БҮРЭН хийгдсэн (мөр + задаргаа state-д). `false` — эхлээгүй (`busy`)
+     эсвэл задаргааны шатанд хаягдсан (`refetchServer`-ийн `guard`). `STALE_REFETCH` шидэгдэж болно. Мөчлөг үүгээр
+     `pendingOther`-ийг ЗӨВХӨН амжилттай үед шинэчилнэ — эс бөгөөс дараагийн мөчлөг дахин оролдоно. */
+  const refetchBg = useCallback(async (): Promise<boolean> => {
+    if (busyNowRef.current) return false;
+    const g = busyGenRef.current;
+    const ok = () => g === busyGenRef.current && !busyNowRef.current;
+    await refetchRef.current(ok);
+    return ok();
+  }, []);
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
   /* ⚠️ `noRefetch` — дуудагч мөрийг дөнгөж серверээс татсан/татах бол (батлах гинж,
      татах) давхар ачаалахгүй (2026-09-25). */
@@ -3380,7 +3443,11 @@ export function Huvaari({
           /* ⚠️ 2026-09-29 аудит: ӨМНӨХ илгээлтийн ногоон/улаан тэмдэг ШИНЭ илгээлтэд
              үлдэхгүй — `markOf` шууд ногоон болгож, хараагүй мөр батлагдах байв. */
           setOkRows(new Set());
-          if (!opt?.noRefetch) void refetchRef.current().catch(() => { /* дараагийн ачаалалтаар */ });
+          /* ⚠️ 2026-10-09 (аудит): `busy` бус үед (мөчлөг · нээлт) арын хамгаалалттай татлага (`refetchBg`) — хадгалалттай
+             давхцахгүй; `busy` урсгалын дотроос (илгээх → `refreshFlow`) бол хуучнаараа шууд. */
+          if (!opt?.noRefetch) {
+            void (busyNowRef.current ? refetchRef.current() : refetchBg()).catch(() => { /* дараагийн ачаалалтаар */ });
+          }
         }
       }
       /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
@@ -3402,7 +3469,7 @@ export function Huvaari({
       setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null));
       setLastDecision(null);
     }
-  }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows]);
+  }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, refetchBg]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshFlow` нь ArcGIS-ээс уншихын өмнө `flowReady=null` (ачаалж байна) тавьдаг — гадаад эх сурвалжтай синк, санаатай
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
@@ -3439,6 +3506,8 @@ export function Huvaari({
     const other: PlanKind = k0 === 'plan' ? 'geree' : 'plan';
     /* ⚠️ 2026-10-09: нөгөө табын илгээлт шийдэгдэхэд дахин татах боломжтой юу (`dragOnRef`-ийн ⚠️) */
     const refetchOk = () => !!pendRef.current.other && !dragOnRef.current && !uiOpenRef.current;
+    /* ⚠️ 2026-10-09 (аудит №2): арын татлага явж байна — дараагийн мөчлөг давхар эхлүүлэхгүй */
+    let bgOn = false;
     const id = window.setInterval(() => {
       if (document.hidden || !pollOkRef.current || pkgKeyRef.current !== key || kindRef.current !== k0) return;
       const was = flowPendRef.current.oid;
@@ -3453,13 +3522,31 @@ export function Huvaari({
         }
         const pO = both[other];
         if ((pO?.oid ?? null) !== (pendRef.current.other?.oid ?? null)) {
-          if (!pO && refetchOk()) void refetchRef.current().catch(() => {});
+          /* ⚠️ 2026-10-09 (аудит): хадгалалттай давхцахгүй арын татлага (`refetchBg`-ийн ⚠️)
+             ⚠️ 2026-10-09 (аудит №2): нөгөө табын илгээлт ШИЙДЭГДСЭН (байсан → алга) бол `pendingOther`-ийг ЗӨВХӨН татлага
+             АМЖИЛТТАЙ дууссаны дараа шинэчилнэ. Урьд нь `refetchBg` эхлээгүй (`busy`) · `STALE_REFETCH` · сүлжээний алдаа ·
+             чирэлт/цонх нээлттэй (`refetchOk`) үед ч `setPendingOther(null)` хийдэг тул дараагийн мөчлөг «өөрчлөлтгүй»
+             гэж үзэж, хуучирсан мөр/задаргаа хэзээ ч дахин татагддаггүй байв. Одоо дараагийн мөчлөг дахин оролдоно
+             (тэр зуур `xLock` түгжээтэй хэвээр — аюулгүй тал). */
+          const gone = pendRef.current.other;
+          if (!pO && gone) {
+            if (bgOn || !refetchOk()) return;
+            bgOn = true;
+            const goneOid = gone.oid;
+            void refetchBg().then((done) => {
+              /* Татлагын завсарт шинэ илгээлт ирсэн бол (`pendingOther` өөр) дарахгүй */
+              if (done && pkgKeyRef.current === key && kindRef.current === k0) {
+                setPendingOther((cur) => (cur?.oid === goneOid ? null : cur));
+              }
+            }).catch(() => { /* дараагийн мөчлөгт */ }).finally(() => { bgOn = false; });
+            return;
+          }
           setPendingOther(pO);
         }
       }).catch(() => { /* дараагийн мөчлөгт */ });
     }, 30_000);
     return () => window.clearInterval(id);
-  }, [pkg.key, kind, status, refreshFlow, pkgKeyRef, kindRef, pollOkRef, pendRef, dragOnRef]);
+  }, [pkg.key, kind, status, refreshFlow, refetchBg, pkgKeyRef, kindRef, pollOkRef, pendRef, dragOnRef]);
 
   /**
    * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
@@ -3697,14 +3784,19 @@ export function Huvaari({
    *    батлах хүртэлх завсрын зэрэгцээ өөрчлөлт чимээгүй дарагддаг байв.
    * ⚠️ Задаргаа татагдахгүй бол state-ийнхаар үргэлжилнэ (мөр нь заавал).
    */
-  const refetchServer = useCallback(async (): Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }> => {
+  /* ⚠️ 2026-10-09 (аудит): `guard` — арын татлага (`refetchBg`); `await` бүрийн дараа `false` бол state-д ЮУ Ч
+     тавихгүй (`STALE_REFETCH` шиднэ). Задаргааны шатанд хаявал `loading`-ийг л `ok` болгоно (доорх `catch`-ийн
+     хуучин задаргаатай үргэлжлэх дүрэмтэй ижил) — эс бөгөөс хуваалцсан ноорогийн дифф үүрд зогсоно. */
+  const refetchServer = useCallback(async (guard?: () => boolean): Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }> => {
     const freshRows = sc ? (await loadRows(pkg, sc)).rows : rows;
+    if (guard && !guard()) throw new Error('STALE_REFETCH');
     /* ⚠️ `loading`-ийг мөртэй НЭГ багцад тавина (2026-09-24): шинэ мөр + хуучин
        задаргаа гэсэн завсрын зурагдалтад хуваалцсан ноорогийн дифф ажиллаж
        сарын нүдийг tombstone болгож байв. Задаргаа ирмэгц `ok`. */
     if (sc) { setObState('loading'); setRows(freshRows); }
     try {
       const fp = await loadPkgPlan(pkg.key);
+      if (guard && !guard()) { setObState('ok'); return { rows: freshRows, plan: obPlan, res: obRes }; }
       setObPlan(fp.plan); setObRes(fp.res); setObOids(fp.oids); setObDups(fp.dups); setObState('ok');
       return { rows: freshRows, plan: fp.plan, res: fp.res };
     } catch {
@@ -3761,7 +3853,7 @@ export function Huvaari({
   } = useAjil({
     pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
     adds, setAdds, setAddsSt, addsStRef,
-    hdResetRestore, hdMapsRef, setDraft, setHam, setADraft, setResDraft,
+    hdResetRestore, hdRetryRestore, hdMapsRef, setDraft, setHam, setADraft, setResDraft,
     setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef,
     /* ⚠️ 2026-10-08: OID зөөлтийн дараа зөвшөөрсөн мөр ба засаж буй нүдийг ч зөөнө (`refreshAfterApplied`) */
     setOkRows, setCellEdit,
@@ -4163,7 +4255,7 @@ export function Huvaari({
       setBusy(false);
       setProgress('');
     }
-  }, [pending, busy, pkg, kind, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows, previewing, obOut, obOutMsg, setProgress]);
+  }, [pending, busy, pkg, kind, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows, previewing, obOut, obOutMsg, setProgress, setBusy]);
 
   /**
    * БАТЛАХЫГ ГҮЙЦЭЭХ — агуулга ноорогт буусны ДАРААХ зурагдалт.
@@ -6478,10 +6570,33 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           )}
 
           {/* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн мод + баруун хуанли ── */}
+          {/* ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): хуваалцсан ноорог сэргэж
+              дуустал (`hdRestoringUi`) хүснэгт/хуанли ХАРАГДАХГҮЙ — сэргээгдээгүй хуваарь дээр чирэх, засах
+              боломжгүй. Гацвал (`RESTORE_SLOW_MS`) л дахин ачаалах товч; хүснэгт өөрөө нээгдэхгүй. */}
+          {/* ⚠️ 2026-10-09 (аудит №2): хаалт нь хүснэгтийг САЛГАХГҮЙ (unmount биш) — урьд нь `scrollRef` null үед
+              `useCalendar`-ийн «өнөөдөр рүү» гүйлгэлт ажиллаад дахин ажилладаггүй тул хуанли хүрээний эхэнд нээгдэж,
+              plan↔geree солих · `pending`→null · `clearPreview` · `hdResetRestore` бүрд дахин mount болж гүйлгээ 0 руу
+              буцаж, `recalcWin`-ийн хуучин цонхоор дээд мөрүүд хоосон зурагддаг байв. Одоо хүснэгт ЗУРАГДСАН хэвээр,
+              зөвхөн НУУГДАЖ (`gWrapGated`: visibility hidden) · `inert` · `aria-hidden` — сэргээгдээгүй өгөгдлийг харах,
+              засах боломжгүй хэвээр; гүйлгээ ба «өнөөдөр» рүү гүйлгэлт хаалт нээгдэхэд байрандаа. */}
+          {hdRestoringUi && (
+            <div className={h.plHint} role="status" aria-busy="true">
+              {tr('Таны ноорог сэргээгдэж байна — бүрэн сэргэсний дараа хүснэгт нээгдэнэ…')}
+              {hdRestoreSlow && (
+                <>
+                  {' '}{tr('Сэргээлт удаж байна (сүлжээ).')}{' '}
+                  <button type="button" className={h.noteBtn} onClick={() => window.location.reload()}>
+                    {tr('↻ Хуудас дахин ачаалах')}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           {visible.length === 0 ? (
-            <Empty label={tr('Мөр алга.')} />
+            !hdRestoringUi && <Empty label={tr('Мөр алга.')} />
           ) : (
-            <div className={h.gWrap} ref={scrollRef} onScroll={onScroll}>
+            <div className={`${h.gWrap}${hdRestoringUi ? ` ${h.gWrapGated}` : ''}`} ref={scrollRef} onScroll={onScroll}
+              aria-hidden={hdRestoringUi || undefined} inert={hdRestoringUi}>
               <div ref={sideAndColRef} style={{ ...sideStyle, ...colW.style }} className={`${h.gSide} ${cols ? '' : h.gSideNarrow} ${canEdit && !locked && !allOn ? (kind === 'plan' ? h.gSideEdP : h.gSideEdG) : ''}`}>
                 {/* ⚠️ 2026-10-09: `gSideEdP/G` — засагдах эхлэх/дуусах нүд нарийн дэлгэц ба хураасан самбарт ч ил (CSS-ийн ⚠️) */}
                 {/* ⚠️ 2026-10-04: баруун ирмэгийг чирж жагсаалтыг томруулна (`useSideExtra`) */}
@@ -7199,9 +7314,17 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
              ИЖИЛ дамжина — урьд нь хаягдаж гүйцэтгэгч тэмдэггүй хардаг байв.
              ⚠️ 2026-10-09: УРЬДЧИЛАН ХАРАЛГҮЙ буцаавал `[]` (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) + шалтгаанд тайлбар —
              урьд нь тэмдэглэгээгүй (`undefined`) буцаж зохиогчид улаан мөр огт гардаггүй байв. */
-          onReject={(txt) => void (previewing
-            ? decide(false, txt, reviewOids.filter((o) => okRows.has(o)))
-            : decide(false, `${txt.trim()}\n${tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)')}`.slice(0, 2000), []))}
+          /* ⚠️ 2026-10-09 (аудит): урьд нь `${txt}\n${тайлбар}`-ыг 2000-аар (хатуу тоо) тасалдаг тул урт шалтгаанд
+             «нээлгүй буцаасан» тайлбар ТАСАРЧ алга болдог байв, мөн хоосон шалтгаанд тайлбар ганцаараа шалтгаан
+             болж буцаалт ДАВДАГ байв. Одоо `REASON_MAX` — тайлбар үргэлж багтахаар ХЭРЭГЛЭГЧИЙН текстийг тайрна;
+             өөрийн шалтгаангүй буцаалт татгалзана (`FlowBox` товч ч хаалттай — энэ нь хамгаалалтын давхарга). */
+          onReject={(txt) => {
+            const own = txt.trim();
+            if (!own) return;
+            if (previewing) { void decide(false, txt, reviewOids.filter((o) => okRows.has(o))); return; }
+            const blind = tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)');
+            void decide(false, `${own.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, []);
+          }}
         />
       )}
       {flowBox === 'reject' && pending && (

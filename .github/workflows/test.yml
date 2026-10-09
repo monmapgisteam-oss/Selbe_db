@@ -31,6 +31,9 @@ jobs:
     #    салбар) — `pull_request` дээр давхар ажиллуулахгүй. Fork-оос ирсэн PR ба бусад үйл явдал хэвээр.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    # ⚠️ 2026-10-09 (аудит): өлгөөтэй алхам (npm ci, амьд тест, next build) 6 цагийн анхдагч
+    #    хязгаар хүртэл minute идэхгүй — deploy.yml-ийн build job-той ижил 30 мин.
+    timeout-minutes: 30
     # ⚠️ 2026-10-09: env нь JOB түвшинд — `npm test` ба `npm run build` ХОЁУЛАА хэрэглэнэ
     #    (deploy.yml-тэй ИЖИЛ жагсаалт; `tools/envParity.check.mjs` зөрөхийг барина).
     env:

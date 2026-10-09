@@ -15,6 +15,7 @@ import type { Pkg, Schema } from "./bagts.pkg";
 import { t as tr } from "@/lib/i18nCore";
 import { invalidate } from "@/lib/dataBus";
 import { isLostWrite } from "@/lib/lostWrite";
+import { ArcGISError } from "@/lib/query";
 import { DAY, spanFrac } from "@/lib/plan";
 
 export type SheetRow = {
@@ -2365,8 +2366,13 @@ export async function applyUpdates(
         throw new Error(bad.error?.description || tr('Шинэчлэх амжилтгүй'));
       /* ⚠️ ХАРИУНЫ ТООГ ТУЛГАНА (2026-09-25-ны аудит) — `applyAdds`-ийн ижил
          ⚠️: хоосон/дутуу `updateResults` нь «хадгалагдлаа» гэж худал мэдээлдэг байв. */
+      /* ⚠️ 2026-10-09 (аудит): дутуу/хоосон `updateResults` = ҮР ДҮН ТОДОРХОЙГҮЙ (сервер chunk-ийг бичсэн
+         байж болно; `applyAdds`-ийн `ie.lost`-той ижил). Урьд нь энгийн `Error` шиддэг тул `isLostWrite` ХУДАЛ
+         болж, `written === 0 && !isLostWrite(e)` дуудагчид (`useObyem.clearObyemPartial` · `Huvaari.clearPlanPartial`)
+         «тодорхой татгалзал» гэж хагас бичилтийн тэмдгийг арилгадаг байв. Одоо кодгүй/статусгүй `ArcGISError` —
+         `isLostWrite` үүнийг «хариу алдагдсан» гэж ангилна, тэмдэг ҮЛДЭНЭ. */
       if (ups.length !== chunk.length)
-        throw new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length));
+        throw new ArcGISError(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length), `${pkg.url}/applyEdits`);
       written += chunk.length;
     } catch (e) {
       /* ⚠️ 2026-10-09 (R6): хариу алдагдсан chunk бичигдсэн байж магадгүй — `applyAdds`-ийн ижил ⚠️ */

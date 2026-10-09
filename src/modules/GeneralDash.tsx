@@ -2902,6 +2902,10 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
              нийлбэрт орохгүй — тоо БАГА гарна, ХУДАЛ гарахгүй. */
           const netIds = [...new Set(NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []))];
           const netM = netIds.reduce((s, id) => s + (t.get(id)?.q ?? 0), 0);
+          /* ⚠️ 2026-10-09 (аудит №2): дээрх санаатай шийдвэр («тоо БАГА, худал биш») ХЭВЭЭР — гэхдээ
+             дутуу нийлбэрийг ЧИМЭЭГҮЙ гаргахгүй: утгагүй давхаргын тоог «(дутуу: N давхарга)» гэж
+             хэлнэ (Дашбоард · Тайлан §8 дутуу өгөгдөлд «—» харуулдаг тул тэдэнтэй зөрөхгүй). */
+          const netMissing = netIds.filter((id) => t.get(id)?.q == null).length;
 
           const lines: { key: string; label: string; text: string }[] = [];
           for (const p of PLAN_QTY) {
@@ -2912,7 +2916,8 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
             lines.push({
               key: 'net',
               label: tr('Инженерийн шугам сүлжээ'),
-              text: tr('{0} км', num(netM / 1000, 1)),
+              text: tr('{0} км', num(netM / 1000, 1))
+                + (netMissing ? ` ${tr('(дутуу: {0} давхарга)', num(netMissing))}` : ''),
             });
           }
           const zones = cnt('zone');

@@ -89,6 +89,43 @@ try {
     assert.equal(beton['Багц 1'], 2, '40-р долоо хоногийн мөр');
     assert.equal('Багц 2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
     assert.equal(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)'), undefined, '41-р долоо хоног орохгүй');
+    /* ⚠️ 2026-10-09 (аудит): 41 = явагдаж буй долоо хоног — олон он БИШ */
+    assert.equal(d.multiYear, false, 'нэг оны өгөгдөл');
+    /* 2027-ийн 2-р долоо хоногт (өмнөх = 1) 40, 41 нь өнгөрсөн оных → он ялгагдаагүйг ил хэлнэ */
+    const d2 = await R.loadHabeaWaste(new Date('2027-01-13T12:00:00+08:00'));
+    assert.equal(d2.weekNo, 1);
+    assert.equal(d2.multiYear, true, 'олон оны өгөгдөл илэрнэ');
+    /* ⚠️ 2026-10-09 (аудит №2): ганц алдаатай/урьдчилан оруулсан ирээдүйн долоо хоног олон он БИШ —
+       зөвхөн `weekNo`-оос ≥ 8 долоо хоногоор хойших дугаар л өнгөрсөн оных */
+    assert.equal(R.MULTI_YEAR_GAP, 8);
+    assert.equal(R.isMultiYear([38, 39, 40, 44], 40), false, '40-р долоо хоногт 44 — шивэх алдаа / урьдчилсан оруулга');
+    assert.equal(R.isMultiYear([40, 41, 47], 40), false, '+7 — босгоос доош');
+    assert.equal(R.isMultiYear([40, 48], 40), true, '+8 — өнгөрсөн оных');
+    assert.equal(R.isMultiYear([1, 2, 40, 41, 52], 1), true, 'оны эхэнд өнгөрсөн оны 40…52');
+    assert.equal(R.isMultiYear([10, 11, 40], 12), true, 'weekNo ≤ 12 үед ≥ 40');
+    assert.equal(R.isMultiYear([], 5), false);
+    handler = (path) => (path.endsWith('/query')
+      ? { features: [{ attributes: { FID: 1, Week: 40, Metric: 'Бетон (рейс)', Багц_1: 1 } }, { attributes: { FID: 2, Week: 44, Metric: 'Бетон (рейс)', Багц_1: 1 } }] }
+      : {});
+    const { invalidate } = await import('./dataBus.ts');
+    invalidate('HABEA');
+    const d3 = await R.loadHabeaWaste(new Date('2026-10-09T12:00:00+08:00'));
+    assert.deepEqual(d3.weeks, [40, 44]);
+    assert.equal(d3.multiYear, false, 'ирээдүйн ганц долоо хоног (44) — «он ялгагдаагүй» БИШ');
+  }
+
+  /* ══════════ Хог хаягдал — давхаргын `Create` эрх (2026-10-09 аудит) ══════════ */
+  {
+    assert.equal(R.parseCanCreate('Query'), false, 'зөвхөн Query → нэмэх боломжгүй');
+    assert.equal(R.parseCanCreate('Create,Delete,Query,Update,Editing'), true);
+    assert.equal(R.parseCanCreate('Query, Create'), true);
+    assert.equal(R.parseCanCreate(undefined), null, 'метадатагүй → тодорхойгүй');
+    handler = () => ({ capabilities: 'Query' });
+    assert.equal(await R.loadWasteCanCreate(), false);
+    /* ⚠️ 2026-10-09 (аудит №2): AGOL байгууллагын админ — `community/self`.role === 'org_admin' */
+    assert.equal(R.isOrgAdminRole('org_admin'), true);
+    for (const r of ['org_publisher', 'org_user', 'account_admin', '', null, undefined]) assert.equal(R.isOrgAdminRole(r), false, String(r));
+    assert.equal(await R.loadIsOrgAdmin(), false, 'Node / нэвтрэлтгүй → false (хүсэлт явахгүй)');
   }
 
   /* ══════════ 5–6. Бүртгэл нэмэх — GlobalID ══════════ */

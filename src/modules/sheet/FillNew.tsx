@@ -63,7 +63,7 @@ import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
 import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { parseOkCells, resolveOk, rowSids } from "@/lib/hyanaltOkCells";
 import { useAuth } from "@/components/AuthGate";
-import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
+import { bagtsFor, bagtsScope, isViewOnly, stageOfUser, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
 import { hasCap, subscribeCaps } from "@/lib/caps";
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
@@ -130,6 +130,8 @@ export type { SheetView } from "./fill/util";
  */
 const myNonces = new Set<string>();
 const INFLIGHT_STALE_MS = 2 * 60_000;
+/** ⚠️ 2026-10-09: ноорог сэргээлт ИНГЭЭС удвал (сүлжээ гацсан) хаалттай хүснэгтийн дээр дахин ачаалах товч гарна */
+const RESTORE_SLOW_MS = 45_000;
 const mayClearInflight = (inf: Inflight): boolean =>
   myNonces.has(inf.nonce) || Date.now() - inf.at > INFLIGHT_STALE_MS;
 
@@ -193,6 +195,12 @@ function pkgOfReq(r: FillOpenRequest): Pkg | null {
   const cand = PKGS.filter((p) => p.group === r.bagts);
   return cand.find((p) => r.ajil.includes(p.name)) ?? cand[0] ?? null;
 }
+
+/* ⚠️ 2026-10-09 (аудит): баганын өргөний ХУУЧИН нэгдсэн `fillnew` хадгалалтаас зөвхөн багцаас үл хамаарах
+   баганыг авна — блокийн индексийн түлхүүр (`a3` · `p3` · `s3` · `e3`) өөр багцынх байж болзошгүй тул
+   хаягдана. Модулийн түвшинд (тогтвортой — `useColWidths`-ийн эффектийн хамаарал). */
+const fillWidthKeep = (col: string) => !/^[apse]\d+$/.test(col);
+const FILL_W_FALLBACK = { key: "fillnew", keep: fillWidthKeep };
 
 /** Хуваарийн задаргаа хараахан уншигдаагүй/өөр багцынх бол — ХООСОН (`useAddedOids`-тай ижил хэв маяг) */
 const NO_PLAN: PkgPlan = new Map();
@@ -314,7 +322,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   const {
     hyRows, hyLoading, hyErr, reloadHy,
-    todayFillMs, setTodayFillMs, flow, otherDaysInReview, otherDaysReturned,
+    todayFillMs, setTodayFillMs, flow, otherDaysInReview, otherDaysReturned, reviewLock: reviewLockSt,
     resumedOid, setResumedOid, returned, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   } = useFlow({ pkg, view });
   /**
@@ -355,12 +363,57 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    нээгддэг байв. Мөр нэмэх эрх (`addRow` cap) одоо «Хуваарь»-д; чанарын баримтын
    *    эрх (`qaqc`) нь одоо «Чанар (QAQC)» тусдаа харагдацад амьдарна.
    */
+  /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» (хөндлөнгийн хяналт, `isViewOnly`) томилгоо — ХАРНА, БӨГЛӨХГҮЙ.
+     Урьд нь `canPerf` зөвхөн `bagtsFor(…, 'company')`-г шалгадаг тул company шатанд «зөвхөн харна» тугтай
+     аккаунт гүйцэтгэл бөглөж, нийтэлж чаддаг байв. Хатуу super / нэвтрэлт унтраалттай (`unrestricted`) хамаарахгүй. */
+  const viewOnlyAcl = useMemo(
+    () => !unrestricted && isViewOnly(user?.username),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, unrestricted, aclN],
+  );
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «гүйцэтгэл бөглөлтийг нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин
+   *    бөглөх боломжтой болго»): энэ хуудсанд хянагчийн гар дээр байгаа илгээлт (өнөөдрийн `inReview`
+   *    эсвэл өөр өдрийн `otherDaysInReview`) байвал БӨГЛӨХ, ИЛГЭЭХ хаалттай — 6-р шат батлаж архивлатал.
+   *    2026-09-07-ны «хэдэн ч удаа илгээнэ» (`useFlow.inReview`-ийн ⚠️) шийдвэрийг хэрэглэгч ӨӨРЧИЛСӨН.
+   *    Буцаагдсан илгээлт (`returned`) хориг БИШ — засаад дахин илгээнэ. Хяналтын харагдац (`view`)
+   *    хамаарахгүй. Домэйн хориг нь `saveSubmission` → `hyanaltSubmit.reviewLockDeny` (Ctrl+S, консол).
+   */
+  /* ⚠️ 2026-10-09 (аудит №2): өдрүүд нь `useFlow.reviewLock` (`hyanaltSubmit.reviewLockState`) — домэйн
+     хоригтой (`reviewLockDeny`) НЭГ дүрэм, хянагчийн дараалалтай ижил бүлэглэлт. Урьдын `inReview` +
+     `otherDaysInReview` нь сүүлийн тойргийн дүрэмгүй байсан тул хуучин мөр хуудсыг үүрд түгждэг байв.
+     ⚠️ БУЦААГДСАН илгээлтийн ЗАСВАР (`fixingReturned`: `flow` буцаагдсан, эсвэл гараар сонгосон буцаалт
+     `resumedOid`) хориг БИШ — өөр өдөр хянагдаж байсан ч засаж дахин илгээнэ (`publish` тэр илгээлтийн
+     өдрөөр явдаг; домэйн `reviewLockBlocks` ч ижил үл хамаарах дүрэмтэй). Хориг ШИНЭ бөглөлтийг л хаана. */
+  const fixingReturned = !view && (returned
+    || (resumedOid != null && otherDaysReturned.some((x) => x.soid === resumedOid)));
+  const reviewLockDays = useMemo(
+    () => (view || fixingReturned ? [] : reviewLockSt.days),
+    [view, fixingReturned, reviewLockSt],
+  );
+  const reviewLock = reviewLockDays.length > 0;
   const canPerf = useMemo(() => {
+    if (reviewLock) return false;
     if (unrestricted) return true;
+    if (viewOnlyAcl) return false;
     const cb = bagtsFor(user?.username, "company");
     return cb === null || cb.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, unrestricted, aclN, pkg.group]);
+  }, [user, unrestricted, viewOnlyAcl, aclN, pkg.group, reviewLock]);
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «бүх батлагчид засвар хийх эрхгүйгээр орж харах»): хянагчийн шатны
+   *    (company биш) томилгоотой хүн энэ хүснэгтийг ЗӨВХӨН ХАРНА (`Guitsetgel.reviewerView`). Бичих эрх
+   *    нь `canPerf` (company томилгоо) дээр хэвээр — энд зөвхөн шалтгааныг ил хэлнэ.
+   */
+  const reviewerOnly = useMemo(() => {
+    if (unrestricted) return false;
+    const st = stageOfUser(user?.username);
+    return st != null && st !== "company";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, unrestricted, aclN]);
+  /** Бөглөх эрхгүй шалтгаан — батлагч › хориг (`reviewLock`) › «зөвхөн харна» › томилгоогүй */
+  const noPerfWhy = reviewerOnly ? RO.reviewerView
+    : reviewLock ? RO.reviewLock(reviewLockDays.join(', ')) : viewOnlyAcl ? RO.perfViewOnly : null;
   /**
    * Гүйцэтгэлийн нүд засагдахгүй: хуудас түгжээтэй, гүйцэтгэгч биш, ЭСВЭЛ
    * ЗАСВАРЫН горим нээгдээгүй.
@@ -586,7 +639,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * уншигдана.
    */
   const [byPlan, setByPlan] = useState(true);
-  const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
+  /* ⚠️ 2026-10-09 (аудит): өргөн БАГЦ БҮРЭЭР (`fillnew.<pkg.key>`). Урьд нь бүх багц нэг `fillnew` түлхүүртэй,
+     блокийн багана индексээр (`a3` · `p3` · `s3` · `e3`) тул нэг багцад 3-р блокийг өргөсгөхөд БҮХ багцын
+     3-р блок өргөсдөг, синтетик `a0` нь барилгатай багцын 0-р блоктой өргөнөө хуваалцдаг байв. Хуучин
+     `fillnew` нь хадгалалтгүй багцад анхдагч — зөвхөн багцаас үл хамаарах баганууд (`fillWidthKeep`). */
+  const { style: colStyle, grip, resetAll, resized } = useColWidths(`fillnew.${pkg.key}`, FILL_W_FALLBACK);
   /**
    * «БУСАД ТАЛБАР» (2026-10-09, хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга») —
    * урьд нь зурагддаггүй мөрийн түвшний талбарууд ЗӨВХӨН УНШИХ төгсгөлийн бүлгээр (`fill/extraCols.ts`).
@@ -1522,6 +1579,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     pullNow,
   } = draftSync;
   /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): хүснэгт сэргээлт дуустал
+   *    хаалттай. Сүлжээ гацвал хэрэглэгч түгжигдэхгүйн тулд `RESTORE_SLOW_MS`-ийн дараа ЗӨВХӨН дахин ачаалах
+   *    товч гарна (хуудас нээгдэхгүй). Түлхүүртэй төлөв — эффект доторх синхрон setState-гүй (2026-09-30 загвар).
+   */
+  const [slowKey, setSlowKey] = useState('');
+  /* ⚠️ 2026-10-09 (аудит №2): СЭРГЭЭЛТ БҮРД шинэ түлхүүр. Урьд нь түлхүүр нь зөвхөн `pkg.key` тул
+     `slowKey` хэзээ ч тэглэгддэггүй: A (удаан) → B → A буцахад шинэ сэргээлт эхлэнгүүт «дахин ачаалах»
+     товч ШУУД гардаг байв. `restoringUi`-ийн суурь (`pkg.key` | '') солигдох бүрд тоолуур нэмэгдэнэ —
+     render үеийн нөхцөлт setState (өмнөх render-ийн мэдээлэл хадгалах загвар), эффект доторх синхрон
+     setState биш. Тоолуурыг тэр render-д шууд урьдчилан бодно (дахин render-ийг хүлээхгүй). */
+  const restoreBase = restoringUi ? pkg.key : '';
+  const [rstEp, setRstEp] = useState({ base: '', n: 0 });
+  const rstEpN = rstEp.base === restoreBase ? rstEp.n : rstEp.n + 1;
+  if (rstEp.base !== restoreBase) setRstEp({ base: restoreBase, n: rstEpN });
+  const restoreKey = restoreBase ? `${restoreBase}#${rstEpN}` : '';
+  useEffect(() => {
+    if (!restoreKey) return undefined;
+    const t = window.setTimeout(() => setSlowKey(restoreKey), RESTORE_SLOW_MS);
+    return () => window.clearTimeout(t);
+  }, [restoreKey]);
+  const restoreSlow = !!restoreKey && slowKey === restoreKey;
+  /**
    * НООРОГИЙН ЗОРИЛТ ОДООГИЙНХООС ӨӨР (2026-10-04 аудит, #6) — ноорог нь буцаагдсан илгээлтийн
    * засвар атлаа тэр илгээлт сонгогдоогүй (F5/багц солисон). «Илгээх» ТҮГЖИГДЭНЭ: эс бөгөөс
    * засвар ӨНӨӨДРИЙН илгээлтэд нийлж буруу өдрөөр явна. Хэрэглэгч тэр илгээлтийг сонгоно
@@ -1548,7 +1627,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     remainHint, confirmPaste, cancelPaste,
   } = useCellEdit({
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
-    locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld,
+    locked, noEdit, canPerf, perfWhy: noPerfWhy, busy, editing, rowsAll, vis, hidden, nBld,
     /* ⚠️ 2026-10-01: ноорог сэргэж дуустал буулгалт хаалттай */
     restoring: restoringUi,
     pastePrev, setPastePrev,
@@ -1848,7 +1927,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // ⚠️ Гүйцэтгэлийн өөрчлөлт (обьём/огноо/шинэчлэгдсэн огноо) зөвхөн томилогдсон
     //    гүйцэтгэгчээс — товчны disabled-аас биш, ЭНД шалгана (Ctrl+S ч энд ирдэг).
     if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) {
-      setErr(RO.noPerf);
+      /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» томилгоонд тусгай тайлбар (`RO.perfViewOnly`) */
+      setErr(noPerfWhy ?? RO.noPerf);
       return;
     }
     /* ⚠️ Нэмэлт мөрийн шалгуур (`canAddRow`, батлуулаагүй `adds`) ЭНД БАЙХГҮЙ
@@ -2620,7 +2700,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
-    pullNow]);
+    pullNow, noPerfWhy]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -2831,7 +2911,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
           />
         ) : !locked && (
-          <span className={st.muted} role="status">{tr('Танд энэ багцыг бөглөх эрхгүй')}</span>
+          /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» томилгоо — шалтгааныг ил хэлнэ (`RO.perfViewOnly`) */
+          <span className={st.muted} role="status">{noPerfWhy ?? tr('Танд энэ багцыг бөглөх эрхгүй')}</span>
         )}
         <Participants participants={participants} byCount={byCount} doneBy={doneBy} />
         <ObyemToolbar
@@ -2938,8 +3019,45 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         </p>
       )}
 
+      {/* ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): сэргээлт (`restoringUi`)
+          дуустал хэрэглэгч хүснэгтийг ХАРАХГҮЙ, ХӨНДӨХГҮЙ — сэргээгдээгүй (хуучин) утга дээр ажиллахгүй.
+          Гацвал (`RESTORE_SLOW_MS`) л дахин ачаалах гарц гарна; хуудас өөрөө нээгдэхгүй.
+          ⚠️ 2026-10-09 (аудит №2): хүснэгтийг UNMOUNT ХИЙХГҮЙ — урьд нь хаалт нь хүснэгтийг огт зурдаггүй тул
+          `useRows`-ийн `[vis, recalcWin]` эффект `scrollRef` хоосон үед ажиллаад (ResizeObserver холбогдохгүй)
+          сэргээлтийн дараа дахин ажилладаггүй, виртуал цонх буруу үлддэг байв. Одоо хүснэгт ҮРГЭЛЖ mount
+          (`restoreHost` бүрхүүл тогтвортой — React дахин үүсгэхгүй), сэргээлтийн үед `visibility: hidden` +
+          `inert` + `aria-hidden`, дээрээс нь тунгалаг биш хаалт (`restoreGate`) давхарлана. */}
       {rows.length > 0 && sc && calc.length > 0 && (
-        <div className={st.scroll} ref={scrollRef} onScroll={onScroll}>
+        <div className={st.restoreHost}>
+        {restoringUi && (
+          <div className={st.restoreGate} role="status" aria-busy="true">
+            <p className={st.muted}>
+              {tr('Таны ноорог сэргээгдэж байна — бүрэн сэргэсний дараа хүснэгт нээгдэнэ…')}
+              {restoreSlow && (
+                <>
+                  {' '}{tr('Сэргээлт удаж байна (сүлжээ).')}{' '}
+                  <button type="button" className={st.linkBtn} onClick={() => window.location.reload()}>
+                    {tr('↻ Хуудас дахин ачаалах')}
+                  </button>
+                </>
+              )}
+            </p>
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className={st.skeletonRow}>
+                <div className={st.skeletonCell} style={{ width: 40 }} />
+                <div className={st.skeletonCell} style={{ width: 280 }} />
+                <div className={st.skeletonCell} style={{ flex: 1 }} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div
+          className={restoringUi ? `${st.scroll} ${st.restoreHidden}` : st.scroll}
+          ref={scrollRef}
+          onScroll={onScroll}
+          aria-hidden={restoringUi || undefined}
+          inert={restoringUi}
+        >
           <div className={st.tableWrap}>
           <div ref={colHlRef} className={st.colHl} aria-hidden="true" />
           <table
@@ -2971,7 +3089,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 collapsed={collapsed} toggle={toggle} ro={ro} editing={editing} canObyemEdit={canObyemEdit} pvSub={pvSub} sc={sc}
                 pvPend={pvPend} pvPreview={pvPreview} setPvPend={setPvPend} pending={pending} byMap={byMap} fillMode={fillMode}
                 ovBase={ovBase} meKey={meKey} volMode={volMode} edit={edit} view={view} backChg={backChg} backOk={backOk}
-                locked={locked} noEdit={noEdit} say={say} canPerf={canPerf} busy={busy} pctOnly={pctOnly} pctHintRef={pctHintRef}
+                locked={locked} noEdit={noEdit} say={say} canPerf={canPerf} perfWhy={noPerfWhy} busy={busy} pctOnly={pctOnly} pctHintRef={pctHintRef}
                 setVal={setVal} cellSeed={cellSeed} setEdit={setEdit} hitKey={hitKey} noPerf={noPerf} pasteBlock={pasteBlock}
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}
                 nextBlockEditable={nextBlockEditable} pendDate={pendDate} setPick={setPick} asOf={asOf} asOfOrig={asOfOrig}
@@ -2990,6 +3108,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             </tbody>
           </table>
           </div>
+        </div>
         </div>
       )}
 

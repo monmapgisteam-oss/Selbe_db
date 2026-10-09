@@ -42,13 +42,20 @@ assert.match(rail, /f == null \? dots\(d\.fin\)/, 'санхүү ачаалж б�
 const fin = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
 assert.match(fin, /const series = key \? pc\.byBagts\.get\(key\) : \(planProjectCache \?\? pc\.months\);/,
   'Finance.lagOf-ийн төслийн зам ХО-оор жигнэсэн төлөвлөгөө уншихгүй байна');
-assert.match(fin, /planProjectCache = planCurveCache \? projectPlanOf\(\{ contracts \}, planCurveCache\) : null;/,
+assert.match(fin, /planProjectCache = planCurveCache \? projectPlanOf\(\{ contracts, phys, physN \}, planCurveCache\) : null;/,
   'planProjectCache loadFinDataRaw-д бөглөгдөхгүй байна');
 const prog = readFileSync(new URL('./PkgProg.tsx', import.meta.url), 'utf8');
 assert.match(prog, /fin \? projectPlanOf\(fin, planQ\.data\) : planQ\.data\.months/, 'PkgProg.TsKpi-ийн төлөвлөгөө блокоор жигнэсэн хэвээр');
 assert.match(prog, /finQ\.state === 'ready' \? projectPlanOf\(finQ\.data, pc\) : pc\.months/, 'PkgProg-ийн төслийн графикийн төлөвлөгөө блокоор жигнэсэн хэвээр');
 const exec = readFileSync(new URL('../lib/execReport.ts', import.meta.url), 'utf8');
-assert.match(exec, /const projPlan = projectPlanOf\(fin, plan\);/, 'удирдлагын тайлангийн төлөвлөгөө блокоор жигнэсэн хэвээр');
+/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө ба зөрүү НЭГ (хуваарьтай) багцын олонлогоор — `projectLagNow`
+   (дотроо `projectPlanOf`); зөрүүний бодит тал `physNow` биш */
+assert.match(exec, /const lagNow = projectLagNow\(fin, plan, nowYm, dayKey\(Date\.now\(\)\)\);/, 'удирдлагын тайлангийн төлөвлөгөө/зөрүү projectLagNow-оор биш');
+assert.match(fin, /const plan = pc\?\.months\.length \? projectPlanOf\(fin, pc\) : \[\];/, 'projectLagNow projectPlanOf-оор биш');
+assert.match(prog, /const ln = projectLagNow\(fin, planQ\.data, nowYm, todayDayKey\(\)\);/, 'PkgProg.TsKpi-ийн зөрүү projectLagNow-оор биш');
+assert.ok(!/gapLabel\(planned, actual\)/.test(src), 'Дашбоардын «Гүйцэтгэлийн зөрүү» planned − physNow (өөр олонлог) руу буцав');
+const pkgFin = readFileSync(new URL('./PkgFin.tsx', import.meta.url), 'utf8');
+assert.match(pkgFin, /const gap = lag \? lag\.gap : null;/, 'PkgFin-ийн зөрүү planned − (бүх багцын) actual руу буцав');
 assert.ok(!/planPctAt\(plan\.months/.test(exec), 'удирдлагын тайлан PlanCurve.months-ыг шууд уншиж байна');
 
 console.log('dashboardNumbers.check.mjs — БҮГД ТЭНЦЛЭЭ');

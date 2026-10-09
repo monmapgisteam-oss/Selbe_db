@@ -27,6 +27,7 @@
 
 import { AUTH, ROLE_BY_USER } from './services';
 import { arcgisPost } from '@/lib/query';
+import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 
 const TITLE = 'Selbe_Guitsetgel_Draft';
@@ -50,6 +51,12 @@ let ownerMismatch = false;
 /** IdentityManager-аас идэвхтэй token + нэвтэрсэн хэрэглэгч */
 export async function getAuth(): Promise<{ token: string; user: string } | null> {
   try {
+    /* ⚠️ 2026-10-09 (аудит №2): токеноо АВАХААС ӨМНӨ шинэчилнэ (`permsRemote.getToken`-ий
+       2026-10-05 ⚠️-тэй ижил). `tableUrl` → `findTableUrl`/`createTable` нь энэ токеныг
+       `params`-д ИЛ өгдөг тул `query.arcgisPost`-ын «498 → шинэчлээд дахин» зам тэдэнд
+       АЖИЛЛАХГҮЙ — компьютер унтсаны дараа эхний хайлт 498 авч, ноорог зөвхөн локалд үлддэг
+       байв. Хугацаа ихтэй үед шууд буцна (хямд); Node (тест) орчинд шууд буцна. */
+    await ensureFreshToken();
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
     if (!cred?.token) return null;

@@ -27,8 +27,10 @@ import {
   type ReviewStage, type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
 import { useAuth } from '@/components/AuthGate';
-import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { flowAclReady, isViewOnly, resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
+import { initRemote } from '@/lib/permissions';
+import { roleForUser } from '@/lib/services';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
@@ -1484,7 +1486,7 @@ export function Guitsetgel() {
    *    бүх урсгалыг турших шаардлагатай тул. Панелийн «Супер» preset энд
    *    хамаарахгүй: хянах эрх зөвхөн томилгооноос.
    */
-  const { role, user, status: authStatus } = useAuth();
+  const { role, user, status: authStatus, recheckPerms } = useAuth();
   /**
    * Хяналтын бүртгэлд бичигдэх НЭР — нэвтэрсэн хэрэглэгчээс.
    *
@@ -1531,7 +1533,21 @@ export function Guitsetgel() {
    * ⚠️ Бөглөх ХУУДАС нь өөрөө багцаар шүүгддэг (`FillNew` дэх `bagtsScope`)
    * тул энэ нь «аль багц» гэдгийг нээхгүй — зөвхөн «энэ таб байна уу».
    */
-  const canFill = stage === 'company' || hasCap(user?.username, 'addRow');
+  /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» (`viewOnly`) тугтай ГҮЙЦЭТГЭГЧ урьд нь бөглөх табтай
+     байж, илгээж ч чаддаг байв (`companyDeny` тугийг шалгадаггүй байсан — одоо lib-д хаагдсан).
+     Туг нь эрхийг ХАСДАГ тул company шатны бөглөх орцыг нууна; «Мөр нэмэх» (`addRow`) эрх нь
+     тусдаа олголт тул хэвээр. `aclN`-ээр дахин зурагдана (томилгоо өөрчлөгдөхөд). */
+  const companyViewOnly = stage === 'company' && !flow.canPick && authStatus !== 'off' && isViewOnly(user?.username);
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «гүйцэтгэл батлах хэсгийн бүх батлагчид гүйцэтгэлийн хүснэгт рүү засвар
+   *    хийх эрхгүйгээр орж харах боломжтой болго, гэхдээ батлах шатлал хэвээр»): хянагчийн шатанд
+   *    томилогдсон (эсвэл админ шат сонгосон) хүнд «Гүйцэтгэл бөглөх» таб ЗӨВХӨН ХАРАХ горимоор нээгдэнэ.
+   *    Бичих эрх нь `FillNew.canPerf` (company шатны томилгоо) дээр хэвээр тул хянагч нүд засаж, илгээж
+   *    чадахгүй; багцын хүрээ нь `bagtsScope` (өөрийн хариуцсан багцууд). Батлах урсгал огт хөндөгдөхгүй —
+   *    анхдагч таб нь хяналтын жагсаалт хэвээр.
+   */
+  const reviewerView = stage !== 'company' && (flow.stage != null || flow.canPick);
+  const canFill = (stage === 'company' && !companyViewOnly) || hasCap(user?.username, 'addRow') || reviewerView;
   /** Гүйцэтгэгчийн хуудас хоёр талтай: бөглөх ба илгээснээ хянах. */
   /**
    * ⚠️ АНХНЫ ТАБ нь «Илгээсэн ажил» — бөглөх нь БИШ. Хуудсанд ороход эхлээд
@@ -1553,6 +1569,20 @@ export function Guitsetgel() {
     }
     setTab(t);
   };
+  /* ⚠️ 2026-10-09 (аудит №2): бөглөх таб дээр байхад эрх буурвал (томилгоо «зөвхөн харах» болсон —
+     `companyViewOnly`, эсвэл `addRow` хасагдсан) `canFill` false болж `Sheet` ШУУД unmount болдог тул
+     `goTab`-ийн «хадгалаагүй засвар» асуулт алгасагдаж засвар чимээгүй устдаг байв. Одоо тэр агшинд
+     бөглөх табыг БАРЬЖ (`fillHeld`) mount хэвээр үлдээнэ — бичих эрхийг `FillNew` дотор `canPerf`
+     (`viewOnlyAcl`) хаадаг. Табаас `goTab`-аар (асуулттай) гармагц барилт суларч, таб нуугдана.
+     Рендерийн үеийн засвар (React «adjusting state» — доорх `negtgel`-ийн загвар). */
+  const [fillHeld, setFillHeld] = useState(false);
+  const [prevCanFill, setPrevCanFill] = useState(canFill);
+  if (prevCanFill !== canFill) {
+    setPrevCanFill(canFill);
+    setFillHeld(!canFill && tab === 'fill');
+  }
+  if (fillHeld && tab !== 'fill') setFillHeld(false);
+  const showFill = canFill || fillHeld;
   /** «Нэгтгэл гүйцэтгэл» таб — зөвхөн super (доорх табын тайлбарыг үз) */
   const isSuperRole = role === 'super';
   /* ⚠️ 2026-09-25: эрх буурсан (эрх дахин ачаалагдсан, хэрэглэгч солигдсон)
@@ -1618,6 +1648,41 @@ export function Guitsetgel() {
 
   /** Нэг ч багц хуваарилагдаагүй — жагсаалт хоосон байгаагийн ШАЛТГААН. */
   const noScope = Array.isArray(myBagts) && myBagts.length === 0;
+  /* ⚠️ 2026-10-09 (аудит): урсгалын томилгоо (remote) УНШИГДААГҮЙ үед (`flowAclReady()` false —
+     ачаалж байгаа эсвэл уншилт унасан) `resolveFlowStage` нь fail-closed `scope: []` өгдөг тул
+     доор «Танд нэг ч багц хуваарилагдаагүй» гэж ХУДАЛ хэлдэг байв — хүн админ руу залгадаг.
+     Одоо ялгаж: уншиж байхад «ачаалж байна», эс бөгөөс алдаа + «Дахин оролдох»
+     (`recheckPerms` → `initRemote` → `subscribeAcl`-аар дахин зурна). Супер/дев (`canPick`,
+     нэвтрэлт унтраалттай) томилгооноос үл хамаарна. */
+  const aclPending = !flowAclReady() && !flow.canPick && authStatus !== 'off';
+  const [aclRetrying, setAclRetrying] = useState(false);
+  /* ⚠️ 2026-10-09 (аудит №2): `recheckPerms` нь AuthGate-ийн `checkRef` хоосон үед (байгууллага таарахгүй,
+     статус signed-in/denied биш, эффект дахин холбогдож буй агшин) эсвэл `check` дотроо чимээгүй унавал
+     ЮУ Ч ХИЙХГҮЙ — «Дахин оролдох» зөвхөн ачаалж анивчаад алдаа буцаж гардаг байв. Одоо томилгоо
+     уншигдаагүй хэвээр бол `initRemote`-ийг ШУУД дуудна (AuthGate-ийн `check`-тэй ижил аргумент:
+     canCreate=false, trusted=хатуу super); тэр ч бүтэхгүй бол ШАЛТГААНЫГ хэлнэ (`aclRetryNote`). */
+  const [aclRetryNote, setAclRetryNote] = useState<string | null>(null);
+  const retryAcl = () => {
+    setAclRetrying(true);
+    setAclRetryNote(null);
+    void (async () => {
+      try {
+        await recheckPerms();
+        if (flowAclReady()) return;
+        const u = user?.username;
+        if (!u) { setAclRetryNote(tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.')); return; }
+        const ok = await initRemote(false, roleForUser(u) === 'super');
+        if (!ok || !flowAclReady()) {
+          setAclRetryNote(tr('Эрхийн хүснэгтийг дахин уншиж чадсангүй — сүлжээгээ шалгаад хэсэг хүлээгээд дахин оролдоно уу, давтагдвал админд мэдэгдэнэ үү.'));
+        }
+      } catch (e) {
+        setAclRetryNote(userError(e));
+      } finally {
+        setAclRetrying(false);
+        setAclN((n) => n + 1);
+      }
+    })();
+  };
 
   const bagtsList = useMemo(() => optionsOf(works, (w) => w.bagts), [works]);
   const companyList = useMemo(() => optionsOf(works, (w) => w.company), [works]);
@@ -1721,22 +1786,23 @@ export function Guitsetgel() {
           ХОЁР ТУСДАА харагдац байсан тул компани хуудас хооронд үсэрч,
           «би юу илгээснээ» хаанаас харахаа мэддэггүй байв. */}
       <div className={s.tabs}>
-        {canFill && (
+        {showFill && (
           <>
             <button
               type="button"
               className={`${s.tab} ${tab === 'fill' ? s.tabOn : ''}`}
               onClick={() => setTab('fill')}
             >
-              {tr('Гүйцэтгэл бөглөх')}
+              {stage === 'company' ? tr('Гүйцэтгэл бөглөх') : tr('Гүйцэтгэлийн хүснэгт')}
             </button>
+            {/* ⚠️ 2026-10-09: хянагчид энэ таб нь ӨӨРИЙН хяналтын жагсаалт («Батлах ажил», өөрийн шатны тоо) */}
             <button
               type="button"
               className={`${s.tab} ${tab === 'sent' ? s.tabOn : ''}`}
               onClick={() => goTab('sent')}
             >
-              {tr('Илгээсэн ажил')}
-              {countFor('company') > 0 && <span className={s.count}>{countFor('company')}</span>}
+              {stage === 'company' ? tr('Илгээсэн ажил') : tr('Батлах ажил')}
+              {countFor(stage) > 0 && <span className={s.count}>{countFor(stage)}</span>}
             </button>
           </>
         )}
@@ -1767,7 +1833,7 @@ export function Guitsetgel() {
         <div className={s.fill}>
           <TusulNegtgel />
         </div>
-      ) : canFill && tab === 'fill' ? (
+      ) : showFill && tab === 'fill' ? (
         <div className={s.fill}>
           <Sheet />
         </div>
@@ -1851,12 +1917,32 @@ export function Guitsetgel() {
                   {tr('Танд «{0}» шатанд зөвхөн ХАРАХ эрх байна — батлах/буцаах товч гарахгүй. Шийдвэр гаргах бол админаар «Гүйцэтгэлийн урсгал» хэсэгт энэ шатанд (зөвхөн харах тэмдэггүй) томилуулна уу.', STAGE_LABEL[stage])}
                 </div>
               )}
+              {/* ⚠️ 2026-10-09 (аудит): гүйцэтгэгчийн шатанд ч «Зөвхөн харна» тайлбар — урьд нь
+                  `stage !== 'company'`-оор алгасдаг тул бөглөх таб алга болсны шалтгаан харагддаггүй.
+                  Бөглөх таб байхгүй тул `mine.length`-ээс үл хамааран үргэлж. */}
+              {companyViewOnly && (
+                <div className={s.blockedWhy} role="note">
+                  {tr('Танд «{0}» шатанд зөвхөн ХАРАХ эрх байна — гүйцэтгэл бөглөх, илгээх, засах боломжгүй. Илгээх бол админаар «Гүйцэтгэлийн урсгал» хэсэгт энэ шатанд (зөвхөн харах тэмдэггүй) томилуулна уу.', STAGE_LABEL[stage])}
+                </div>
+              )}
               {mine.length === 0 ? (
                 <div className={s.empty}>
                   {/* ⚠️ Томилгоогүй бол жагсаалт ХООСОН байх нь ХЭВИЙН биш —
                       шалтгааныг нь ялгаж хэлнэ, эс бөгөөс «ажил алга» гэж
                       ойлгоод хүлээсээр байна. */}
-                  {noScope
+                  {/* ⚠️ 2026-10-09 (аудит): томилгоо уншигдаагүй ≠ хуваарилагдаагүй (`aclPending`-ийн ⚠️) */}
+                  {aclPending
+                    ? (aclRetrying
+                      ? tr('Урсгалын томилгоог ачаалж байна…')
+                      : (
+                        <span role="alert">
+                          {tr('Урсгалын томилгоо (багцын хуваарилалт) уншигдаагүй байна — сүлжээ эсвэл эрхийн хүснэгтийн уншилт унасан байж магадгүй.')}
+                          {aclRetryNote && <>{' '}{aclRetryNote}</>}
+                          {' '}
+                          <button className={s.clear} onClick={retryAcl}>{tr('Дахин оролдох')}</button>
+                        </span>
+                      ))
+                    : noScope
                     ? tr('Танд нэг ч багц хуваарилагдаагүй байна. Админ «Гүйцэтгэлийн урсгал» хэсэгт багц зааж өгсний дараа ажлууд харагдана.')
                     : stage === 'company'
                       ? tr('Буцаагдсан ажил алга — бүх илгээлт хэвийн явж байна.')

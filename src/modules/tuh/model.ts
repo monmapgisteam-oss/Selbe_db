@@ -15,8 +15,8 @@ import { planPctAt, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
 import { MS_STATUS, latest as latestRev, type MsDoc } from '@/lib/chanarMs';
-import { lagOf, pkgMonthsMap, physLatest, projectPlanOf, type FinData, type MonthPt } from '@/modules/Finance';
-import { aggregateMonths, physNow, progMonthsOf } from '@/modules/pkgShared';
+import { lagOf, pkgMonthsMap, physLatest, projectLagNow, type FinData, type MonthPt } from '@/modules/Finance';
+import { physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
 import { upstreamOf, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
@@ -125,6 +125,8 @@ export type TuhModel = {
     actual: number | null;
     planContract: number | null;
     planContractor: number | null;
+    /** ⚠️ 2026-10-09 (аудит №2): `planContractor`-оос хасагдсан хуваарьгүй багцууд (нэрээр) */
+    planExcluded: string[];
   };
   /**
    * `pct` — `paidShare.paidShareOf` (порталын нэг тодорхойлолт, 2026-10-01).
@@ -396,8 +398,6 @@ export function buildModel(input: {
   const tot = ipcTotals(contractBlocks(fin.contractsHo));
   const share = paidShareOf(fin.contracts, fin.pays);
   const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays).length, 0);
-  /* Төслийн хэмжилтийн өдөр — «Гүйцэтгэл» (`PkgProg.TsKpi`) · удирдлагын тайлантай ИЖИЛ */
-  const measAll = measDayOf(aggregateMonths(fin), nowYm, `${nowYm}-31`);
 
   /* Hero-гийн төлөвлөгөөний жин ба багцын олонлог — `physNow`-тэй нэг (доорх ⚠️ 2026-10-06) */
   const costW = pkgCostWeight(fin.contracts.map(cfWeightRow));
@@ -427,7 +427,12 @@ export function buildModel(input: {
       /* ⚠️ 2026-09-30 (төслийн аудит): төлөвлөгөө ч ХО-оор жигнэсэн (`Finance.projectPlanOf`) —
          бодит нь (`physNow`) ХО-жинтэй тул блокоор жигнэсэн `plan.months`-тэй харьцуулбал зөрүү
          хоёр өөр жинг холино («Гүйцэтгэл» · удирдлагын тайлан · Dashboard ижил дүрэмтэй). */
-      planContractor: plan?.months.length ? planPctAt(projectPlanOf(fin, plan), measAll) : null,
+      /* ⚠️ 2026-10-09 (аудит №2): `projectLagNow` — хуваарьтай багцаар (хуваарьгүй багц шугамыг
+         арилгахгүй), хэмжилтийн өдөр нь ТЭР олонлогийн; хасагдсан багцыг `planExcluded` нэрлэнэ. */
+      ...(() => {
+        const ln = plan?.months.length ? projectLagNow(fin, plan, nowYm) : null;
+        return { planContractor: ln ? ln.planned : null, planExcluded: ln ? ln.excluded : [] };
+      })(),
     },
     /* ⚠️ 2026-10-01: `other` — «IPC» хуудастай ижил хувьд ороогүй олголтыг тусад нь нэрлэнэ */
     paid: { total: tot.paid, pct: share.pct, ipcCount, pays: tot.pays, other: fin.pays.length ? share.paidOther : null },

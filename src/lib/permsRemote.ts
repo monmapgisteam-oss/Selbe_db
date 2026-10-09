@@ -786,7 +786,12 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
     if (!oids.length) return true;
     const del = { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0];
     const r = await fl.applyEdits(del);
-    const good = editOk(r.deleteFeatureResults);
+    /* ⚠️ 2026-10-09 (аудит): `editOk` нь `every()` тул ХООСОН/алга `deleteFeatureResults` «амжилт» гэж
+       давдаг байв — сервер юу ч устгаагүй хариу өгсөн ч эрх «хасагдсан» гэж тайлагнагдана. Устгал бол
+       ЗОРИУЛСАН үр дүн тул мөр БҮРД нэг үр дүн шаардана (`upsertByKey`-ийн `ok.length > 0`-той ижил санаа).
+       `editOk`-ийг ӨӨРЧЛӨХГҮЙ — `upsertByKey`-д давхардалгүй үед устгалын үр дүн хоосон байх нь хэвийн. */
+    const dr = r.deleteFeatureResults ?? [];
+    const good = dr.length === oids.length && editOk(dr);
     if (!good) noteWriteError(editErr(r.deleteFeatureResults) || tr('ArcGIS бичилтийг хүлээж авсангүй.'));
     return good;
   } catch (e) {

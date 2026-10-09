@@ -27,19 +27,19 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, isContracted,
-  type ProgressSrc,
+  planScopeNote, type ProgressSrc,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadNegtgelPct } from '@/lib/negtgel';
-import { loadPlanCurveCached, planPctAt, measureDayOf } from '@/lib/planProgress';
+import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
-import { loadFinData, projectPlanOf } from '@/modules/Finance';
+import { loadFinData, projectLagNow } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
@@ -106,6 +106,13 @@ export type ExecReport = {
     planned: number | null;
     /** төлөвлөгөө − бодит; эерэг = хоцрогдол */
     gap: number | null;
+    /**
+     * ⚠️ 2026-10-09 (аудит №2): `gap`-ийн БОДИТ тал — хуваарьтай багцаар (`Finance.projectLagNow`),
+     * `planned`-тэй НЭГ олонлог. `planExcluded` хоосон бол `actual`-тай ижил.
+     */
+    actualLag: number | null;
+    /** ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/хоцрогдлоос хасагдсан хуваарьгүй багцууд (нэрээр) */
+    planExcluded: string[];
     /**
      * ⚠️ 2026-09-25: УНШИГДААГҮЙ бөглөх хуудасны тоо (`PlanCurve.failed`). 0-ээс их
      *    бол `planned` нь `null` (төслийн муруй хоосон) — урьд нь тайлан «—» гэж
@@ -235,8 +242,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   let lastM: { label: string; physAt?: string | null } | null = null;
   for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
   /* ⚠️ 2026-10-08: `measureDayOf` — `Finance.lagOf` · `PkgProg` · ТУХ-тай НЭГ дүрэм (`planProgress`-ийн
-     «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш. */
-  const measAt = lastM ? measureDayOf(lastM.label, lastM.physAt, dayKey(Date.now())) : `${nowYm}-31`;
+     «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш.
+     ⚠️ 2026-10-09 (аудит №2): одоо `Finance.projectLagNow` дотор (доор). */
   /* ⚠️ 2026-09-30: «Бодит»-ын ХЭМЖИЛТИЙН ОГНОО — `actual` гарсан цэгийнх
      (`physAt`, байхгүй бол тэр сар). Урьд нь `prog.asOf` = `bld.asOf` (барилгын
      давхаргын ХАМГИЙН СҮҮЛИЙН огноо) байсан тул «хэмжилт {огноо}» шошго нь тоо
@@ -245,9 +252,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ⚠️ 2026-09-30: ТӨЛӨВЛӨГӨӨ = `projectPlanOf` — `actual` (`physNow`, ХО дүнгээр)-тай НЭГ
      жин. Урьд нь `plan.months` (БЛОКИЙН тоогоор) тул «хуваариас N нэгж хувиар хоцорч
      байна» өгүүлбэр хоёр өөр жинг хасдаг байв (`gdash.housingPlanSeries`-ийн ⚠️). */
-  const projPlan = projectPlanOf(fin, plan);
-  const planned: number | null = projPlan.length ? planPctAt(projPlan, measAt) : null;
-  const gap = planned != null && actual != null ? planned - actual : null;
+  /* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө ба зөрүүний бодит тал НЭГ багцын олонлогоор (хуваарьтай) —
+     хуваарьгүй багц шугамыг арилгахгүй, хоцрогдлыг ч хэтрүүлэхгүй (`gdash.housingPlanSeries`-ийн ⚠️). */
+  const lagNow = projectLagNow(fin, plan, nowYm, dayKey(Date.now()));
+  const planned: number | null = lagNow.planned;
+  const gap = lagNow.gap;
 
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ──
      ⚠️ Хугацааны шүүлт ба чартын сонголтгүй (бүх мөр) — тайлан нь дашбоардын
@@ -358,10 +367,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   if (zovRows) {
     const s = summarize(zovRows);
     const groups = [...byBagts(zovRows)].map(([bagts, list]) => ({ bagts, ...summarize(list) }))
-      .sort((a, b) => a.bagts.localeCompare(b.bagts, 'mn'));
+      /* ⚠️ 2026-10-09 (аудит №2): `numeric` — «Багц 10» нь «Багц 2»-оос ӨМНӨ эрэмбэлэгддэг байв */
+      .sort((a, b) => a.bagts.localeCompare(b.bagts, 'mn', { numeric: true }));
     const issues = zovRows
       .filter((r) => r.tolov !== TOLOV.ok)
-      .sort((a, b) => (a.tolov === TOLOV.no ? -1 : 1) - (b.tolov === TOLOV.no ? -1 : 1) || a.bagts.localeCompare(b.bagts, 'mn') || a.shat - b.shat)
+      .sort((a, b) => (a.tolov === TOLOV.no ? -1 : 1) - (b.tolov === TOLOV.no ? -1 : 1) || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true }) || a.shat - b.shat)
       .map((r) => ({
         bagts: r.bagts, ner: r.ner, baiguullaga: r.baiguullaga, shat: r.shat,
         tolov: r.tolov === 'unknown' ? tr('Танигдаагүй төлөв') : r.tolov,
@@ -394,6 +404,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     prog: {
       blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: physAsOf,
       actual, planned, gap,
+      actualLag: lagNow.actual, planExcluded: lagNow.excluded,
       planFailed: plan.failed.length,
       packs: packs.map((p) => ({
         key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
@@ -568,7 +579,10 @@ export function execFindings(x: ExecReport): ExecFinding[] {
     out.push({
       sev: 'warn',
       area: A_PROG,
-      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(x.prog.gap, 1), pct(x.prog.planned, 1), pct(x.prog.actual, 1)),
+      /* ⚠️ 2026-10-09 (аудит №2): бодит нь ЗӨРҮҮНИЙ тал (`actualLag`, хуваарьтай багцаар) —
+         төлөвлөгөө − бодит = зөрүү гэж уншигдах ёстой */
+      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(x.prog.gap, 1), pct(x.prog.planned, 1), pct(x.prog.actualLag, 1))
+        + (x.prog.planExcluded.length ? ` ${planScopeNote(x.prog.planExcluded)}.` : ''),
       advice: tr('Хоцрогдолтой блокуудад хүн хүч, техник хэрэгслийн нэмэлт хуваарилалт хийж, сар бүрийн биет хэмжилтээр явцыг хянах.'),
     });
   } else if (x.prog.gap != null && x.prog.gap < 0) {
@@ -725,6 +739,10 @@ export function execFacts(x: ExecReport): string {
   L.push(`## 05. Багцын гүйцэтгэл (орон сууцны барилга угсралт)`);
   L.push(`Блок: ${x.prog.blocks}; өрх: ${x.prog.households}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
   L.push(`Бодит: ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
+  /* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүү хуваарьтай багцаар бол AI-д ил хэлнэ */
+  if (x.prog.planExcluded.length) {
+    L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);
+  }
   for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${p.households} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);

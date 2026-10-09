@@ -14,6 +14,7 @@ globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: 
 
 const {
   buildUzReport, buildUzXlsx, buildUzPdf, ansCls, companyShort, attUrl, reportTitle, fmtDateTime, countReportImages,
+  cleanLabel, rasterTypeOf, sniffRasterType, rasterTypeOfBlob, attachmentFileName,
 } = await import('@/lib/uzlegReport.ts');
 
 const ANS = new Map([
@@ -189,4 +190,55 @@ console.log('✅ UB огноо · файлын нэрийн нөөц · огно
   }
 }
 console.log('✅ fetchAttachment: текст/JSON/HTML хавсралт нээгдэнэ, зөвхөн {error} JSON алдаа');
+/* ⚠️ 2026-10-09 (аудит): шошгын цэвэрлэгээ — таг + HTML entity */
+{
+  assert.equal(cleanLabel('<b>9.</b>&nbsp;Хашаа &amp; хамгаалалт'), '9. Хашаа & хамгаалалт');
+  assert.equal(cleanLabel('a &lt;b&gt; &quot;c&quot; &#39;d&#39; &#x27;e&#x27; &apos;f&apos;'), `a <b> "c" 'd' 'e' 'f'`, 'задласан &lt;b&gt; таг гэж хасагдахгүй');
+  assert.equal(cleanLabel('&unknown; &#0;'), '&unknown; &#0;', 'танихгүй entity хэвээр');
+}
+/* ⚠️ 2026-10-09 (аудит): зөвхөн растерыг inline — svg/html татагдана */
+{
+  assert.equal(rasterTypeOf('image/PNG; charset=binary'), 'image/png');
+  assert.equal(rasterTypeOf('image/jpg'), 'image/jpeg');
+  for (const t of ['image/svg+xml', 'text/html', 'image/heic', '', null, undefined]) assert.equal(rasterTypeOf(t), null, String(t));
+}
+/* ⚠️ 2026-10-09 (аудит №2): төрөлгүй (octet-stream / хоосон) хариуны растерыг байтаар таних; svg/html ХЭЗЭЭ Ч растер биш */
+{
+  const enc = (t) => [...new TextEncoder().encode(t)];
+  const bytes = (a) => new Uint8Array(a);
+  const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1];
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d];
+  const GIF = enc('GIF89a');
+  const WEBP = [...enc('RIFF'), 0x24, 0, 0, 0, ...enc('WEBPVP8 ')];
+  const BMP = [0x42, 0x4d, 0x36, 0, 0, 0];
+  assert.equal(sniffRasterType(JPEG), 'image/jpeg');
+  assert.equal(sniffRasterType(bytes(PNG)), 'image/png');
+  assert.equal(sniffRasterType(GIF), 'image/gif');
+  assert.equal(sniffRasterType(WEBP), 'image/webp');
+  assert.equal(sniffRasterType(BMP), 'image/bmp');
+  assert.equal(sniffRasterType([...enc('RIFF'), 0, 0, 0, 0, ...enc('WAVE')]), null, 'RIFF боловч WEBP биш (WAV)');
+  for (const t of ['<svg xmlns="http://www.w3.org/2000/svg">', '<?xml version="1.0"?><svg>', '﻿<html>', '<!DOCTYPE html>', '{"error":{}}', '']) {
+    assert.equal(sniffRasterType(enc(t)), null, `svg/html/json растер БИШ: ${t}`);
+  }
+  assert.equal(sniffRasterType([0xff, 0xd8]), null, 'богино толгой');
+
+  /* Blob: зарласан растер → тэр; төрөлгүй → байтаар; svg/html гэж зарласан бол байтыг ҮЗЭХГҮЙ */
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(PNG)], { type: 'image/png' })), 'image/png');
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(JPEG)], { type: 'application/octet-stream' })), 'image/jpeg', 'octet-stream → байтаар');
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(PNG)])), 'image/png', 'хоосон төрөл → байтаар');
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(JPEG)], { type: 'image/svg+xml' })), null, 'svg гэж зарласан бол JPEG байттай ч БИШ');
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(PNG)], { type: 'text/html' })), null, 'html гэж зарласан бол БИШ');
+  assert.equal(await rasterTypeOfBlob(new Blob([bytes(enc('<svg onload=alert(1)>'))], { type: 'application/octet-stream' })), null, 'octet-stream SVG');
+  assert.equal(await rasterTypeOfBlob(new Blob([])), null, 'хоосон Blob');
+
+  /* Татах файлын нэр — урьд нь үргэлж `attachment-<id>` (өргөтгөлгүй) */
+  assert.equal(attachmentFileName(7, 'IMG_01.JPG', 'application/octet-stream'), 'IMG_01.JPG');
+  assert.equal(attachmentFileName(7, 'photo', 'image/jpeg'), 'photo.jpg', 'өргөтгөлгүй нэр → төрлөөс');
+  assert.equal(attachmentFileName(7, '../a/b:c?.png', ''), '_a_b_c_.png', 'зам/хориотой тэмдэгт');
+  assert.equal(attachmentFileName('7', '', 'image/heic'), 'attachment-7.heic');
+  assert.equal(attachmentFileName(7, null, 'application/octet-stream'), 'attachment-7.bin', 'үл мэдэгдэх → .bin');
+  assert.equal(attachmentFileName(7, undefined, 'image/svg+xml'), 'attachment-7.bin', 'svg-д .svg автоматаар нэмэхгүй');
+  assert.equal(attachmentFileName(7, 'x', 'text/html; charset=utf-8'), 'x', 'html-д өргөтгөл нэмэхгүй');
+}
+console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) · sniffRasterType · attachmentFileName');
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

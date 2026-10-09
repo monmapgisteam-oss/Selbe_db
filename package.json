@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "next dev -p 8123",
     "build": "next build",
-    "start": "next start",
     "lint": "eslint src tools",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.mjs",

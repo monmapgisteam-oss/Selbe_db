@@ -15,14 +15,24 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# ⚠️ 2026-10-09 (аудит): эрхийг JOB тус бүрд хамгийн бага хэмжээгээр. Урьд `pages: write` ба
+#    `id-token: write` нь БҮХ workflow-д (build-д ч) олгогдож, гуравдагчийн `npm ci` postinstall
+#    скрипт, lint, тест, `next build` Pages-д бичих ба OIDC токен авах боломжтой байв. Одоо
+#    build нь зөвхөн уншина (`pages: read` — configure-pages-ийн GET-д), бичих эрх нь ЗӨВХӨН
+#    `deploy` job-д (deploy-pages: `pages: write` + `id-token: write`). upload-pages-artifact нь
+#    runner-ийн artifact токеноор явдаг тул нэмэлт эрх шаардахгүй.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # ⚠️ 2026-10-09 (аудит): өлгөөтэй алхам (npm ci, амьд тест, next build) 6 цагийн анхдагч
+    #    хязгаар хүртэл minute идэхгүй. Ердийн ажиллагаа ~10 мин-аас доош.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: read
     # ⚠️ 2026-09-29: env нь JOB түвшинд — доорх `test` ба `build` ХОЁУЛАА хэрэглэнэ.
     #    Код дотор үйлчилгээний линк/fallback ОГТ БАЙХГҮЙ (2026-09-17) — доорх бүх
     #    хувьсагч Variables-д ЗААВАЛ байна (нэр кодынхтой ИЖИЛ). Аль нэг нь дутуу
@@ -98,14 +108,14 @@ jobs:
       # next.config.mjs дахь output:'export' → out/ хавтас үүснэ (CNAME, .nojekyll нь public/-оос)
       - run: npm run build
 
-      # ⚠️ `enablement: true` — Pages УНТРААЛТТАЙ байвал workflow ӨӨРӨӨ асаана
-      #    (дээрх `pages: write` эрхээр API дуудна). Ингэснээр Settings → Pages
-      #    рүү гараар орох шаардлагагүй бөгөөд repo дахин үүсгэсэн ч сэргэнэ.
+      # ⚠️ 2026-10-09 (аудит): `enablement: true` ХАСАВ. Урьдын тайлбар «Pages унтраалттай бол
+      #    workflow өөрөө асаана» гэж байсан нь БУРУУ — бэхэлсэн SHA-гийн action.yml-д
+      #    `enablement` нь GITHUB_TOKEN-оос ӨӨР токен (PAT / GitHub App) шаарддаг гэж заасан;
+      #    бид PAT дамжуулдаггүй тул хэзээ ч ажиллахгүй байв. Pages-ийг Settings → Pages →
+      #    Source: «GitHub Actions» гэж ГАРААР асаасан байх ёстой (repo дахин үүсгэвэл дахин асаана).
       #    ⚠️ PRIVATE repo дээр Pages нь төлбөртэй төлөвлөгөө шаардана —
       #    үнэгүй төлөвлөгөөнд энэ алхам «Resource not accessible» гэж унана.
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: out
@@ -113,6 +123,12 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # ⚠️ 2026-10-09 (аудит): нэг deploy-pages алхам — ердөө 1–2 мин; өлгөөтэй бол 10 мин-д тасална.
+    timeout-minutes: 10
+    # ⚠️ 2026-10-09 (аудит): Pages-д бичих ба OIDC эрх ЗӨВХӨН энд (deploy-pages-д заавал).
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

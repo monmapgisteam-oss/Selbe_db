@@ -56,7 +56,7 @@ import {
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
 import { plan2dStyleOf, loadPlan2dStyle, PLAN2D_ALIASED } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
-import { getAuth } from '@/lib/draftRemote';
+import { authToken } from '@/lib/authToken';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
@@ -904,6 +904,49 @@ const INITIAL_CAMERA_3D = () => ({
  * бүрд шинэ хэвээр — handler-ууд props-той нь холбоотой.
  */
 const mapCache: Record<string, Map> = {};
+
+/** ⚠️ 2026-10-09 (аудит №2): IdentityManager-ийн итгэмжлэлээр нэг удаа `refresh()` хийсэн `auth` давхаргууд (инстанцаар — дахин үүсгэсэн нь шинээр) */
+const authedLayers = new WeakSet<FeatureLayer>();
+
+/**
+ * УНАСАН ДАВХАРГЫГ ДАХИН ҮҮСГЭНЭ — `true` = ядаж нэгийг сольсон.
+ *
+ * ⚠️ 2026-10-09 (аудит №2): Map нь `mapCache`-д сешнийн турш амьдардаг тул `load()` нь
+ *    НЭГ удаа унасан давхарга (`loadStatus: 'failed'`, жиш. сүлжээ түр тасарсан, таб
+ *    унтсаны дараах 498) сешний турш унасан хэвээр үлддэг байв — ArcGIS-ийн давхарга
+ *    уналтын дараа ДАХИН ачаалагддаггүй, «Дахин оролдох» (`initToken`) зөвхөн View-г
+ *    шинэчилдэг. Одоо унасан инстанцыг ИЖИЛ тохиргоотой (`clone()` — renderer · шүүлт ·
+ *    `visible` хэвээр) ШИНЭ инстанцаар ИЖИЛ байранд нь (эцэг дотрх индекс) сольно.
+ * ⚠️ Зөвхөн `buildLayers`-ийн энгийн төрлүүд. 3D меш (`scene:*`) / BIM нь өөрийн кэш ба
+ *    нэмэх/хасах эффекттэй (`bimCache`, `meshError`) — тэднийг энд СОЛИВОЛ кэш зөрнө.
+ *    Basemap-ийн давхарга (эцэг нь `Basemap`, `layers` цуглуулгагүй) мөн алгасна.
+ */
+const RECREATE_TYPES = new Set(['feature', 'map-image', 'imagery', 'vector-tile']);
+function recreateFailedLayers(map: Map | null | undefined): boolean {
+  if (!map || map.destroyed) return false;
+  const failed = map.allLayers.filter((l) =>
+    l.loadStatus === 'failed'
+    && RECREATE_TYPES.has(l.type)
+    && !String(l.id).startsWith('scene:')
+    && typeof (l as unknown as { clone?: unknown }).clone === 'function').toArray();
+  let n = 0;
+  for (const old of failed) {
+    const parent = (old as unknown as { parent?: { layers?: __esri.Collection<Layer> } }).parent;
+    const coll = parent?.layers;
+    if (!coll || typeof coll.indexOf !== 'function') continue;
+    const at = coll.indexOf(old);
+    if (at < 0) continue;
+    let fresh: Layer;
+    try { fresh = (old as unknown as { clone: () => Layer }).clone(); } catch { continue; }
+    fresh.id = old.id; // ⚠️ `findLayerById`-аар хайдаг бүх эффект ижил id-гаар олно
+    coll.remove(old);
+    coll.add(fresh, at);
+    /* ⚠️ Хуучныг `destroy()` ХИЙХГҮЙ — харагдацын түр дарлагын нөөц (`styleBackup` г.м.)
+       түүнийг барьж байж болно; унасан инстанц нөөц бараг эзэлдэггүй, GC цэвэрлэнэ. */
+    n += 1;
+  }
+  return n > 0;
+}
 
 /**
  * View-г КЭШИЙН Map-аас салгаж устгана.
@@ -2258,6 +2301,10 @@ export const MapCanvas = memo(function MapCanvas({
       });
     }
     mapRef.current = mapCache[mapKey];
+    /* ⚠️ 2026-10-09 (аудит №2): кэшийн Map-д өмнө нь УНАСАН давхаргыг шинээр үүсгэнэ — View
+       дахин үүсэх бүрд («Дахин оролдох» · 2D/3D · өөр харагдац руу шилжих) нэг удаа дахин
+       оролдоно (`recreateFailedLayers`-ийн ⚠️). */
+    recreateFailedLayers(mapCache[mapKey]);
 
     const map = mapRef.current;
     if (typeof window !== 'undefined') (window as unknown as { __dbgmap: Map }).__dbgmap = map;
@@ -3326,35 +3373,57 @@ export const MapCanvas = memo(function MapCanvas({
   }, [dim, ready]);
 
   /**
-   * НЭВТРЭЛТ ШААРДЛАГАТАЙ ДАВХАРГАД ТОКЕН (2026-09-15, `LayerDef.auth`).
+   * НЭВТРЭЛТ ШААРДЛАГАТАЙ ДАВХАРГАД ИТГЭМЖЛЭЛ (2026-09-15, `LayerDef.auth`).
    *
-   * ⚠️ `buildLayers` СИНХРОН, токен АСИНХРОН тул давхарга үүссэний дараа
-   * `customParameters`-ээр залгаж `refresh()` хийнэ. SDK нь `customParameters`-ийг
-   * асуулга БҮРД уншдаг тул дараагийн татах бүр токентой явна.
+   * ⚠️ `IdentityManager` ӨӨРӨӨ ОЛОХГҮЙ: үйлчилгээ нийтэд нээлттэй ч асуулгыг нэргүй
+   * хэрэглэгчид хаасан тул нэвтрэлтийн шаардлага (499) БИШ, хоосон хариу ирдэг — SDK
+   * `getCredential` дуудах шалтгаан олохгүй.
    *
-   * ⚠️ `IdentityManager`-т найдаж болохгүй: үйлчилгээ нийтэд нээлттэй ч
-   * асуулгыг нэргүй хэрэглэгчид хаасан тул нэвтрэлтийн шаардлага БИШ, хоосон
-   * хариу ирдэг — SDK токен залгах шалтгаан олохгүй.
+   * ⚠️ 2026-10-09 (аудит №2): `customParameters = { token }` ПИН ХАСАВ. Хоёр гэм байв:
+   *    (1) токеныг `getAuth()`-аас НЭГ удаа уншаад хэзээ ч шинэчилдэггүй — хугацаа
+   *        дуусах/компьютер унтсаны дараа давхаргын хүсэлт бүр хуучин токеноор 498 авна;
+   *    (2) `customParameters` нь токеныг GET query string-д залгадаг (`authToken.ts`-ийн
+   *        2026-09-30 ⚠️ — CWE-598). 2026-10-06-ны аудит `zoomToWhere` · `pickByQuery`-гээс
+   *        ижил пинийг аль хэдийн хассан.
+   *    Одоо давхаргын СЕРВЕРТ IdentityManager-т итгэмжлэл БҮРТГЭНЭ
+   *    (`getCredential(url, { prompt: false })` — порталын итгэмжлэлээс үүснэ, цонх
+   *    гаргахгүй). Тэгээд SDK хүсэлт бүрт `findCredential`-аар ОДООГИЙН токеныг өөрөө
+   *    залгаж, JS API өөрөө шинэчилнэ — бусад байгууллагын давхаргуудтай ИЖИЛ зам.
+   *    Бүртгэлийн дараа НЭГ удаа `refresh()` — өмнө нь нэргүй татсан хоосон хариуг солино.
    *
-   * ⚠️ Нэвтрээгүй бол юу ч хийхгүй — давхарга хоосон үлдэнэ (хуудас өөрөө
-   * «зөвхөн нэвтэрсэн хэрэглэгч харна» гэж ил хэлдэг).
+   * ⚠️ Нэвтрээгүй (эсвэл нэвтрэлт унтраалттай — `authToken()` хоосон) бол юу ч хийхгүй —
+   * давхарга хоосон үлдэнэ (хуудас өөрөө «зөвхөн нэвтэрсэн хэрэглэгч харна» гэж ил хэлдэг).
    */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const ids = LAYERS.filter((d) => d.auth).map((d) => d.id);
-    if (!ids.length) return;
+    const defs = LAYERS.filter((d) => d.auth);
+    if (!defs.length || !authToken()) return;
     let alive = true;
-    void getAuth().then((a) => {
-      if (!alive || !a) return;
-      for (const id of ids) {
-        const fl = map.findLayerById(id) as FeatureLayer | null;
-        if (!fl || !('customParameters' in fl)) continue;
-        if (fl.customParameters?.token === a.token) continue;
-        fl.customParameters = { ...(fl.customParameters ?? {}), token: a.token };
+    void (async () => {
+      const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+      for (const d of defs) {
+        if (!alive) return;
+        const fl = map.findLayerById(d.id) as FeatureLayer | null;
+        if (!fl || authedLayers.has(fl)) continue;
+        /* ⚠️ Хуучин пин (HMR/кэшийн Map) үлдсэн бол арилгана — эс бөгөөс хуучин токен давамгайлна */
+        if (fl.customParameters?.token) {
+          const rest = { ...fl.customParameters };
+          delete rest.token;
+          fl.customParameters = rest;
+        }
+        const url = layerUrl(d);
+        if (!esriId.findCredential(url)) {
+          /* ⚠️ `prompt` нь ажиллах үед дэмжигддэг (`IdentityManagerBase.getCredential`: `o = !1 !== t.prompt`)
+             ч 4.34-ийн төрлийн тодорхойлолтод алга — тиймээс өргөтгөсөн төрлөөр дамжуулна. */
+          const noPrompt: __esri.IdentityManagerGetCredentialOptions & { prompt: boolean } = { prompt: false };
+          try { await esriId.getCredential(url, noPrompt); } catch { continue; }
+        }
+        if (!alive || fl.destroyed) return;
+        authedLayers.add(fl);
         fl.refresh();
       }
-    });
+    })();
     return () => { alive = false; };
   }, [ready]);
 
@@ -5023,6 +5092,21 @@ export const MapCanvas = memo(function MapCanvas({
             {' — '}
             {tr('Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.')}
           </span>
+          {/* ⚠️ 2026-10-09 (аудит №2): унасан давхаргыг ШИНЭ инстанцаар сольж дахин ачаална
+              (`recreateFailedLayers`). Ажиглагч (`layerFail`) `map.allLayers`-ийг дагадаг тул
+              шинэ инстанц амжилттай бол тэмдэг өөрөө арилна, дахин унавал буцаж гарна. */}
+          <button
+            type="button"
+            onClick={() => { recreateFailedLayers(mapRef.current); }}
+            style={{
+              alignSelf: 'flex-start', padding: '3px 10px', cursor: 'pointer',
+              font: 'inherit', fontWeight: 600, color: 'var(--ink)',
+              background: 'var(--surface)', border: '1px solid var(--line)',
+              borderRadius: 6,
+            }}
+          >
+            {tr('Дахин оролдох')}
+          </button>
         </div>
       )}
 

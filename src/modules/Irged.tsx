@@ -64,6 +64,7 @@ import { useBagtsTable } from '@/lib/execData';
 import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
 import { SOCIAL } from '@/lib/brief';
+import { loadSocial } from '@/lib/live';
 import { loadGerBuilt } from '@/lib/irged';
 /* ⚠️ 2026-10-09: тайлбар мөрийн коэффициентүүд (5 тн, 650 мг/МЖ, 16 МЖ/кг, 3.6 хүн, 0.05 м³, 4.5 кг N)
    ЭНДЭЭС интерполяцлагдана — урьд нь `tr()` текстэд хатуу бичигдсэн тул `bohirdol.ts`-ийн тогтмол
@@ -277,6 +278,26 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ 2026-10-09: ул мөрийн талбай ХАСАГДСАН — энд хэзээ ч уншигдаагүй (`irged.loadGerBuilt`-ийн ⚠️).
    */
   const qBuilt = useAsync(loadGerBuilt, []);
+  /**
+   * ⚠️ 2026-10-09 (хэрэглэгч: «шинэг амьдаар»): нийгмийн байгууламжийн «шинээр» — газрын зургийн давхаргаас
+   *    (`loadSocial`, Дашбоардтай НЭГ эх). `SOCIAL_ROWS.live`-тэй мөрд амьд тоо (+ хүчин чадал), нийт = одоо + амьд.
+   *    Ачаалж байхад «…», унавал «—» — илтгэлийн хуучин тоог амьд мэт харуулахгүй (null ≠ 0).
+   */
+  const qSocial = useAsync(loadSocial, []);
+  const socRows = useMemo(() => SOCIAL.rows.map((r) => {
+    if (!r.live) return { ...r, pending: false };
+    if (qSocial.state !== 'ready') {
+      return { ...r, add: qSocial.state === 'loading' ? '…' : '—', total: headCount(r.now), pending: true };
+    }
+    const g = qSocial.data.rows.find((x) => x.key === r.live);
+    const n = g?.n ?? 0;
+    const add = !n ? '—' : g?.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
+    return { ...r, add, total: headCount(r.now) + n, pending: false };
+  }), [qSocial]);
+  const socTotals = {
+    now: socRows.reduce((s, r) => s + headCount(r.now), 0),
+    add: socRows.some((r) => r.pending) ? null : socRows.reduce((s, r) => s + headCount(r.add), 0),
+  };
 
 
   /** Толгойн үзүүлэлтэд — дашбоардтай ижил эх сурвалж */
@@ -674,12 +695,18 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           */}
         {/* ⚠️ 2026-09-22: нэрээр ил ялгав — ЭНЭ нь ИЛТГЭЛИЙН мета (одоо 9 + шинэ 12 = 21),
             Дашбоардын «Шинэ нийгмийн байгууламж (зурагт)» (амьд давхарга, 10) БИШ. */}
+        {/* ⚠️ 2026-10-09 (хэрэглэгч: «шинэг амьдаар»): `live` түлхүүртэй мөрийн «шинээр» нь газрын зургийн
+            давхаргаас (`loadSocial` — Дашбоардын «Шинэ нийгмийн байгууламж»-тай НЭГ эх), нийт = одоо + амьд.
+            Ачаалагдтал/унавал «…»/«—» (илтгэлийн хуучин тоог амьд мэт харуулахгүй); `live`-гүй мөр илтгэлээс. */}
         <Panel
-          title={tr('Нийгмийн үйлчилгээ (илтгэл: одоо {0} + шинэ {1})', SOCIAL.totals.now, SOCIAL.totals.add)}
-          note={tr('{0} → {1}', SOCIAL.totals.now, String(SOCIAL.totals.total))}
+          title={tr('Нийгмийн үйлчилгээ (одоо {0} + шинэ {1})', String(socTotals.now), socTotals.add == null ? '…' : String(socTotals.add))}
+          note={socTotals.add == null ? undefined : tr('{0} → {1}', String(socTotals.now), String(socTotals.now + socTotals.add))}
         >
+          <p className={i.socSrc}>
+            {tr('«Шинээр» — сургууль, цэцэрлэгийнх газрын зургийн давхаргаас (амьд), бусад нь илтгэлээс; «Одоо байгаа» — илтгэлээс.')}
+          </p>
           <div className={i.socList}>
-            {SOCIAL.rows.map((r) => {
+            {socRows.map((r) => {
               const now = headCount(r.now);
               const add = headCount(r.add);
               /* «2 (1,440)» → «1,440». Хаалт доторх багтаамж байхгүй мөр бий. */
@@ -690,7 +717,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               return (
                 <div key={r.label} className={i.socBlock}>
                   <div className={i.socHead}>
-                    <b className={i.socTotal}>{r.total}</b>
+                    <b className={i.socTotal}>{r.pending ? '…' : r.total}</b>
                     <span className={i.socName}>{r.label}</span>
                   </div>
                   <div className={i.socLine}>

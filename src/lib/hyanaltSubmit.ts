@@ -25,11 +25,14 @@
  */
 
 import { BUILDING } from './services';
+import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ `arcgisPost` (2026-09-30): урьд нь шууд `fetch` байв — токеныг хүсэлтийн өмнө
    шинэчилж 498-д нэг удаа дахин оролдоно; HTTP 200-аар ирсэн `error`-ыг шидэж
    доорх `catch`-д орно (урьдын адил кэшлэхгүй, `''` буцаана). */
 import { arcgisPost } from '@/lib/authToken';
-import { addRows, addedOid, deleteRow, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
+import { addRows, addedOid, deleteRow, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Row, type Status } from './hyanalt';
+/* ⚠️ 2026-10-09 (аудит №2): хяналтын хориг хянагчийн дараалалтай (`Guitsetgel`) ИЖИЛ бүлэглэлтээр */
+import { groupWorks } from './hyanaltGroup';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -233,6 +236,125 @@ function currentRows(
     if (de > 0 || (de === 0 && doid >= 0)) best.set(k, r);
   }
   return [...best.values()];
+}
+
+/**
+ * ХЯНАЛТАД ЯВАА ИЛГЭЭЛТ — энэ хуудсанд шинээр илгээх ХОРИГ (2026-10-09, цэвэр — `hyanaltSubmit.check.mjs`).
+ *
+ * ⚠️ 2026-10-09 (хэрэглэгч: «гүйцэтгэл бөглөлтийг нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин
+ *    бөглөх боломжтой болго»): 2026-09-07-ны «хэдэн ч удаа илгээж болно» (`FillNew.inReview` зөвхөн
+ *    сануулга) шийдвэрийг ХЭРЭГЛЭГЧ ӨӨРЧИЛСӨН. Хуудсанд хянагчийн гар дээр (`OWNER !== 'company'`,
+ *    `Шилжүүлсэн` биш) байгаа АЛЬ Ч өдрийн илгээлт байвал шинэ илгээлт ч, тэр илгээлтийг доор нь солих
+ *    (`reused`) ч ХОРИГЛОНО — 6-р шат батлаж архивлатал (`Шилжүүлсэн`) хүлээнэ.
+ * ⚠️ БУЦААГДСАН (гүйцэтгэгчийн гар дээрх) илгээлт хориг БИШ — засаад дахин илгээх ЁСТОЙ.
+ * ⚠️ 2026-10-09 (аудит №2): ажил бүрийн (`groupWorks`) зөвхөн ОДООГИЙН тойргийг харна — доорх
+ *    `reviewLockState`-ийн ⚠️ (урьдын `Эх_мөрийн_дугаар`-ын «сүүлийн тойрог» дүрэм хянагчийн харж буйгаас зөрдөг).
+ * ⚠️ Хуудсаар: `Ажлын_нэр`-д ӨӨР хуудсын нэр бичигдсэн мөрийг алгасна; хуудсын нэргүй хуучин мөр нь
+ *    багцын БҮХ хуудсанд хамаарна (`useFlow`-ийн ⚠️).
+ * @returns хоригтой өдрүүдийн шошго («2026.10.04»), хоосон бол хориггүй
+ */
+/* ⚠️ 2026-10-09 (аудит №2): гүйцэтгэлийн илгээлтийн мөр (`submitForReview`-ийн `Ажлын_нэр` = `dayTagOf(…)…`).
+   Огноогүй мөр нь бөглөх хуудасны илгээлт БИШ — хориг ч, буцаалт ч биш (урьд домэйн «?» гэж хаадаг, UI
+   алгасдаг байв — хоёр тал зөрдөг). */
+const FILL_DAY = /^Гүйцэтгэл · (\d{4}\.\d{2}\.\d{2})/;
+
+/* ⚠️ 2026-10-09 (аудит №2): `Attrs` (`queryAll`, OBJECTID) ба `hyanaltStore.Row` (`__oid`) хоёулаа ирнэ —
+   `groupWorks`-ийн уншдаг талбарыг `hyanaltStore.toRow`-тэй ИЖИЛ хөрвүүлнэ (`str`/`num`), эс бөгөөс
+   ажлын түлхүүр (`багц|ажил|компани`) ба «одоогийн» тойрог хянагчийн харж буйгаас зөрнө. */
+const str0 = (v: unknown): string => (v == null ? '' : String(v));
+const asRow = (r: Attrs): Row => ({
+  ...r,
+  __oid: num0(r.__oid ?? r[HYANALT.oid]),
+  [F.ergelt]: num0(r[F.ergelt]),
+  [F.bagts]: str0(r[F.bagts]),
+  [F.ajil]: str0(r[F.ajil]),
+  [F.company]: str0(r[F.company]),
+  [F.status]: str0(r[F.status]),
+}) as unknown as Row;
+
+export type ReviewLockState = {
+  /** Хянагчийн гар дээр (хориг) байгаа өдрүүд («2026.10.04») */
+  days: string[];
+  /** Гүйцэтгэгч рүү БУЦААГДСАН (засах ёстой) өдрүүд */
+  returned: string[];
+};
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2, HIGH): ХОРИГИЙН ГАНЦ ДҮРЭМ — UI (`useFlow` → `FillNew.reviewLock`) ба домэйн
+ *    (`reviewLockDeny` → `saveSubmission`) ХОЁУЛАА энэ функцээс уншина.
+ *    Урьд нь UI-ийн `otherDaysInReview` нь БҮХ мөрийг сүүлийн тойргийн дүрэмгүй шүүдэг байв:
+ *    `hyanaltStore.recheck('ok')` хуучин мөрийг «Менежер буцаасан» (OWNER = инженер) хэвээр үлдээж шинэ
+ *    тойрог нэмдэг тул шинэ тойрог «Шилжүүлсэн» болсны дараа ч хуучин мөр хуудсыг ҮҮРД түгждэг байв.
+ *    Мөн хянагчид ХАРАГДДАГГҮЙ хуучирсан мөрүүд (OID 61·62·63·64·70 — `hasOpenLegacy`-ийн ⚠️, нэг нэрээр
+ *    нийлж зөвхөн сүүлийнх нь харагддаг) «Инженер хянаж байна» хэвээр тул багцыг түгждэг байв.
+ *    Одоо хянагчийн дараалалтай (`Guitsetgel` · `countReviewPending`) ЯГ ИЖИЛ `groupWorks` бүлэглэлт:
+ *    ажил бүрийн ОДООГИЙН тойрог (`current`) л тооцогдоно. Хориг ⇔ энэ хуудасны одоогийн ажил хянагчийн
+ *    шатанд (`owner !== 'company'`) ба `Шилжүүлсэн` биш.
+ */
+export function reviewLockState(
+  rows: readonly Attrs[],
+  bagts: string,
+  sheet: string,
+  otherSheets: readonly string[],
+): ReviewLockState {
+  const days = new Set<string>();
+  const ret = new Set<string>();
+  for (const w of groupWorks(rows.map(asRow))) {
+    if (w.bagts !== bagts) continue;
+    const m = FILL_DAY.exec(w.ajil);
+    if (!m) continue;
+    if (sheet && !w.ajil.includes(sheet) && otherSheets.some((n) => n && w.ajil.includes(n))) continue;
+    if (w.status === STATUS.transferred) continue;
+    (w.owner === 'company' ? ret : days).add(m[1]);
+  }
+  return { days: [...days].sort(), returned: [...ret].sort() };
+}
+
+export function reviewLockDays(
+  rows: readonly Attrs[],
+  bagts: string,
+  sheet: string,
+  otherSheets: readonly string[],
+): string[] {
+  return reviewLockState(rows, bagts, sheet, otherSheets).days;
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ЭНЭ илгээлт (`fillMs`-ийн өдөр) хоригт өртөх үү.
+ *    Хориг нь ШИНЭ бөглөлт/илгээлтийг хаана — аль хэдийн БУЦААГДСАН илгээлтийн засварыг БИШ (өөр өдөр
+ *    хянагдаж байсан ч). Тэр өдөр өөрөө хянагчийн гар дээр байвал (`days`) засвар биш, хянагдаж буй
+ *    агуулгыг доор нь солих (`reused`) тул хориглоно.
+ */
+export function reviewLockBlocks(st: ReviewLockState, fillMs: number): boolean {
+  if (!st.days.length) return false;
+  const d = dayLabel(fillMs);
+  return !(st.returned.includes(d) && !st.days.includes(d));
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): хоригийн мессеж — UI (`RO.reviewLock`) ба домэйн НЭГ бичвэр.
+ *    Урьд нь «Өмнөх илгээлт … Буцаагдвал засаад илгээх боломжтой» гэдэг байсан нь худал: өнөөдрийн
+ *    илгээлт ч байж болно, буцаагдсан засвар ч өөр өдрийн хоригт хаагддаг байв.
+ */
+export const reviewLockMsg = (days: string) =>
+  tr('Хяналтад явж буй илгээлт ({0}) 6 шатаа бүрэн дуусаагүй байна — 6-р шат батлаж архивласны дараа шинээр бөглөж илгээнэ. Буцаагдсан илгээлтийг засаж дахин илгээх боломжтой.', days);
+
+/**
+ * Шинэ илгээлтийн ДОМЭЙН хориг (`reviewLockState`-ийн ⚠️) — `saveSubmission` бичихээс ӨМНӨ дууддаг.
+ * ⚠️ FAIL-CLOSED: хяналтын хүснэгт уншигдахгүй бол илгээхгүй (хориг тодорхойгүй).
+ * ⚠️ 2026-10-09 (аудит №2): `fillMs` — илгээлтийн өдөр; буцаагдсан илгээлтийн засвар бол хориггүй
+ *    (`reviewLockBlocks`).
+ */
+export async function reviewLockDeny(bagts: string, sheet: string, otherSheets: readonly string[], fillMs: number): Promise<string | null> {
+  let rows: Attrs[];
+  try {
+    rows = await queryAll();
+  } catch (e) {
+    return tr('Хяналтын бүртгэлийг уншиж чадсангүй — өмнөх илгээлт хянагдаж байгаа эсэх тодорхойгүй тул илгээсэнгүй, дахин оролдоно уу. ({0})', e instanceof Error ? e.message : String(e));
+  }
+  const st = reviewLockState(rows, bagts, sheet, otherSheets);
+  if (!reviewLockBlocks(st, fillMs)) return null;
+  return reviewLockMsg(st.days.join(', '));
 }
 
 /** Өдрийн шошго — `Ажлын_нэр`-ийн угтвар («Гүйцэтгэл · 2026.09.07») */

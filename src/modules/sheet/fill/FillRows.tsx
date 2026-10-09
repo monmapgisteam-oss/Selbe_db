@@ -23,7 +23,7 @@ type CellT = ReturnType<typeof useCellEdit>;
 export function FillRows({
   vis, winFrom, winTo, rowsAll, calc, addedOids, collapsed, toggle, ro, editing, canObyemEdit, pvSub, sc,
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
-  locked, noEdit, say, canPerf, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
+  locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
   restoring = false, remainHint, pastePrev = null, extra = [],
 }: {
@@ -35,7 +35,9 @@ export function FillRows({
   pending: Record<string, string>; byMap: Map<string, string>; fillMode: "obyem" | "pct";
   ovBase: Map<number, SheetRow>; meKey: string;
   volMode: CellT['volMode']; edit: EditCell | null; view?: SheetView; backChg: Set<string>; backOk: Set<string>;
-  locked: boolean; noEdit: boolean; say: (msg: string) => void; canPerf: boolean; busy: boolean;
+  locked: boolean; noEdit: boolean; say: (msg: string) => void; canPerf: boolean;
+  /** ⚠️ 2026-10-09: бөглөх эрхгүй ШАЛТГААН (хяналтын хориг · «зөвхөн харна») — байхгүй бол ерөнхий `(perfWhy ?? RO.noPerf)` */
+  perfWhy?: string | null; busy: boolean;
   pctOnly: CellT['pctOnly']; pctHintRef: RefObject<boolean>; setVal: Dispatch<SetStateAction<string>>;
   cellSeed: CellT['cellSeed']; setEdit: Dispatch<SetStateAction<EditCell | null>>; hitKey: string | null; noPerf: boolean;
   pasteBlock: CellT['pasteBlock']; inputRef: RefObject<HTMLInputElement | null>; prevHint: CellT['prevHint']; val: string;
@@ -261,7 +263,7 @@ export function FillRows({
                                нь одоо ЗӨВХӨН `locked` (хяналтын харагдац). */
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
-                        if (!canPerf) return say(RO.noPerf);
+                        if (!canPerf) return say((perfWhy ?? RO.noPerf));
                         /* ⚠️ «БӨГЛӨХ» ДАРААГҮЙ бол нүд НЭЭГДЭХГҮЙ
                            (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
                            САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
@@ -529,7 +531,7 @@ export function FillRows({
                           : noEdit
                             ? RO.viewOnly
                             : !canPerf
-                              ? RO.noPerf
+                              ? (perfWhy ?? RO.noPerf)
                               : !editing
                                 ? RO.notEditing
                                 : src === "agg"
@@ -586,9 +588,9 @@ export function FillRows({
                           ? RO.asOfRow
                           : !noPerf
                             ? tr('Дарж календараар сонгоно')
-                            : noEdit ? RO.viewOnly : !canPerf ? RO.noPerf : RO.notEditing}
+                            : noEdit ? RO.viewOnly : !canPerf ? (perfWhy ?? RO.noPerf) : RO.notEditing}
                         onClick={(e) => {
-                          if (noPerf) return i === 0 ? say(noEdit ? RO.viewOnly : !canPerf ? RO.noPerf : RO.notEditing) : undefined;
+                          if (noPerf) return i === 0 ? say(noEdit ? RO.viewOnly : !canPerf ? (perfWhy ?? RO.noPerf) : RO.notEditing) : undefined;
                           if (i !== 0) return say(RO.asOfRow);
                           if (busy) return say(RO.busy);
                           setPick({

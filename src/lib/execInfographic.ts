@@ -37,6 +37,14 @@ import { TOLOV } from '@/lib/zovshoorol';
 export const INFO_W = 1240;
 export const INFO_H = 1754;
 
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ТАСАЛСАН ЖАГСААЛТЫН ТЭМДЭГЛЭЛ — «эхний N (+M бусад)»; бүгд багтсан бол ''.
+ * Багц (10) · шалтгаан (5) · зөвшөөрлийн асуудал (7) тайлбаргүй тасардаг байсан тул «бүгд энэ» гэж
+ * уншигддаг байв. Хуудасны өндөр тогтмол (`INFO_H`) тул шинэ мөр биш, гарчигт залгана.
+ */
+const firstOf = (shown: number, total: number): string =>
+  total > shown ? tr('эхний {0} (+{1} бусад)', num(shown), num(total - shown)) : '';
+
 const INK = '#1e293b';
 const INK2 = '#475569';
 const INK3 = '#5a6a80';
@@ -319,7 +327,7 @@ export function buildInfographic(
   yr += 20;
   if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
   yr += 26;
-  P.text(R, yr, tr('Багц тус бүр (олгосон / гэрээ)'), { size: 12, fill: INK2 });
+  P.text(R, yr, [tr('Багц тус бүр (олгосон / гэрээ)'), firstOf(10, f.rows.length)].filter(Boolean).join(' · '), { size: 12, fill: INK2 });
   yr += 10;
   for (const r of f.rows.slice(0, 10)) {
     P.hbar(R, yr, colW, r.label, (r.pct ?? 0) / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 110, valW: 200 });
@@ -347,7 +355,7 @@ export function buildInfographic(
   ]);
   if (stSegs.length) yl = P.segments(L, yl, colW, stSegs, 18);
   yl += 4;
-  P.text(L, yl, tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining)), { size: 12, fill: INK2 });
+  P.text(L, yl, [tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining)), firstOf(5, g.land.reasons.length)].filter(Boolean).join(' · '), { size: 12, fill: INK2 });
   yl += 10;
   const topReason = g.land.reasons[0]?.n ?? 0;
   if (!g.land.reasons.length) { P.text(L, yl + 11, tr('Шалтгаан бүртгэгдээгүй'), { size: 11.5, fill: INK3 }); yl += 20; }
@@ -380,7 +388,11 @@ export function buildInfographic(
   /* ═══ 3-р эгнээ: Зөвшөөрөл | 01 ажлын төрөл ═══ */
   const y3 = y;
   yl = y3;
-  P.head(L, yl, colW, '', tr('Зөвшөөрөл'), x.zov ? tr('Нийт {0} зөвшөөрөл · {1} багц', num(x.zov.total), num(x.zov.byBagts.length)) : undefined);
+  /* ⚠️ 2026-10-09 (аудит №2): доорх асуудлын жагсаалт 7-оор тасардаг — гарчигт «эхний 7 (+N бусад)» */
+  P.head(L, yl, colW, '', tr('Зөвшөөрөл'), x.zov
+    ? [tr('Нийт {0} зөвшөөрөл · {1} багц', num(x.zov.total), num(x.zov.byBagts.length)),
+      x.zov.issues.length > 7 ? tr('асуудал: {0}', firstOf(7, x.zov.issues.length)) : ''].filter(Boolean).join(' · ')
+    : undefined);
   yl += 32;
   if (!x.zov) {
     P.text(L, yl + 4, tr('Зөвшөөрлийн бүртгэл холбогдоогүй, мэдээлэлгүй.'), { size: 12, fill: INK3 });

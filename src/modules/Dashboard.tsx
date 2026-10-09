@@ -30,7 +30,10 @@ import {
 /* ⚠️ Модулиас модуль руу импорт: `loadFinData` нь Finance-д, `aggregateMonths`
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
-import { loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, type FinData, type MonthPt } from '@/modules/Finance';
+import {
+  loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
+  type FinData, type MonthPt,
+} from '@/modules/Finance';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
@@ -217,7 +220,7 @@ const PL = PARCEL_LEFT.fields;
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
 import { useBagtsTable, buildProgressOf, ailTotal, type BagtsRow } from '@/lib/execData';
-import { pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
+import { pkgCostWeight, cfWeightRow, contractedScope, gapPtsWord, pts as ptsFmt } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -1890,6 +1893,9 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   const months = useMemo(() => (f ? aggregateMonths(f) : null), [f]);
   const lagSeries = useMemo(() => (months ? lagSeriesOf(months) : []), [months]);
   const scope = useMemo(() => (f ? contractedScope(f.contracts) : null), [f]);
+  /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц төлөвлөгөө/хоцрогдлоос хасагдсан бол нэрлэнэ
+     (`Finance.projectPlanScope` — хоцрогдлын хоёр тал хуваарьтай багцаар) */
+  const scopeNote = useMemo(() => (f ? planScopeNote(projectPlanScope(f)?.excluded) : null), [f]);
 
   /**
    * «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет.
@@ -1914,12 +1920,15 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
         <Stats cols={2}>
           {/* ⚠️ 2026-10-04: 1 оронтой — толгойн KPI/rail-тай нэг бичлэг */}
           <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, 1))} unit="%" label={tr('Биет гүйцэтгэл')} />
-          <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, 1))} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
+          <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, 1))} unit="%" label={scopeNote ? tr('Төлөвлөсөн гүйцэтгэл (хуваарьтай багцаар)') : tr('Төлөвлөсөн гүйцэтгэл')} />
           <Stat
             accent
             color={HUE[2]}
-            value={planned != null && actual != null ? gapLabel(planned, actual) : wait ? '…' : '—'}
-            label={tr('Гүйцэтгэлийн зөрүү')}
+            /* ⚠️ 2026-10-09 (аудит №2): `lag.gap` — төлөвлөгөөтэй НЭГ багцын олонлогийн бодит
+               (`physLag`); урьд нь `planned − physNow` (хуваарьгүй багцыг бодит талд л тоолж
+               хоцрогдлыг хэтрүүлдэг) байв. Хасагдсан багц байвал шошгонд тэмдэглэнэ. */
+            value={lag ? gapPtsWord(lag.gap) : wait ? '…' : '—'}
+            label={scopeNote ? tr('Гүйцэтгэлийн зөрүү (хуваарьтай багцаар)') : tr('Гүйцэтгэлийн зөрүү')}
           />
           <Stat
             accent
@@ -2042,7 +2051,10 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — САРААР. Нэг муруй: сар бүрийн ТӨСЛИЙН биет % (ХО жинтэй,
           `aggregateMonths`). Төлөвлөгөө нь hover-ийн `display`-д хамт гарна — хоёр өнгийн
           муруй давхарлавал хэрэглэгч аль нь аль болохыг өнгөөр л таамаглана. */}
-      <Panel title={tr('Төлөвлөгөө vs бодит — сараар')} note={srcNote(tr('төслийн биет % (ХО жинтэй)'), SRC_SHEET)}>
+      <Panel
+        title={tr('Төлөвлөгөө vs бодит — сараар')}
+        note={srcNote(tr('төслийн биет % (ХО жинтэй)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
+      >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const ms = (months ?? []).filter((m) => m.label <= nowYm && m.phys != null);
@@ -2115,7 +2127,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                   key: x.key,
                   label: tr(x.label),
                   value: Math.max(0, x.d),
-                  display: `${x.d >= 0 ? '+' : '−'}${Math.abs(x.d).toFixed(1)}%`,
+                  /* ⚠️ 2026-10-09 (аудит №2): нэгж н.х (`gdash.pts`) — «−0.0%» гарахгүй */
+                  display: ptsFmt(x.d),
                 }))}
               />
             ) : <Empty label={tr('Харьцуулах хоёр дахь бүртгэл алга')} />;
@@ -2244,7 +2257,10 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       {/* ⚠️ 2026-10-04: ТӨСЛИЙН (ХО жинтэй) хоцрогдол сар бүрийн хэмжилтийн өдрөөр —
           `Finance.lagSeriesOf` (`lagOf`-ийн дүрэм, сүүлийн цэг == 02-ын «Гүйцэтгэлийн зөрүү»).
           Урьд нь туршилтын нэгтгэлийн мөрүүдийн (багцын энгийн дундаж) зөрүү байв. */}
-      <Panel title={tr('Хоцрогдлын өөрчлөлт — сараар')} note={srcNote(tr('төл. − бодит, төслийн % (ХО жинтэй)'), SRC_SHEET)}>
+      <Panel
+        title={tr('Хоцрогдлын өөрчлөлт — сараар')}
+        note={srcNote(tr('төл. − бодит, төслийн % (ХО жинтэй)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
+      >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const pts = lagSeries.map((x) => ({
@@ -2523,12 +2539,8 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
  *    нэг картад, «+» = өсөлт нөгөөд), тэг нь «−0.0%» гарч байв. Одоо тэмдэг
  *    биш ҮГ: «хоцролт» / «түрүүлсэн»; тэг бол зүгээр «0.0%».
  */
-const gapLabel = (planned: number, actual: number, d = 1): string => {
-  const g = planned - actual;
-  const s = num(Math.abs(g), d);
-  if (Number(Math.abs(g).toFixed(d)) === 0) return `${num(0, d)}%`;
-  return g > 0 ? tr('{0}% хоцролт', s) : tr('{0}% түрүүлсэн', s);
-};
+/* ⚠️ 2026-10-09 (аудит №2): нэгж «%» → «н.х» — порталын нэг хэлбэр `gdash.gapPtsWord` */
+const gapLabel = (planned: number, actual: number, d = 1): string => gapPtsWord(planned - actual, d);
 
 /* ⚠️ 2026-10-09: `value: null` (мэдээлэлгүй) — өнгө нь `NO_DATA` (саарал), зурвас 0 урттай, хамгийн
    ихийг тооцоход ОРОХГҮЙ. Урьд нь дуудагчид `?? 0` гэж өгдөг тул «мэдээлэлгүй» нь «0» шиг

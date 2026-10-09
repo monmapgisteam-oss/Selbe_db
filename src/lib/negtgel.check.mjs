@@ -226,6 +226,33 @@ assert.ok(Math.abs(A.projectTotal(out) - (0.01 * 0.795 + 0.01 * 0.3)) < 1e-12);
 assert.deepEqual(A.rollKids([0, 1, 2, 3], [0.8069, 0.037, 0.1561, 0.074]), [0, 1, 2], '5.2: 5.2.4 гадуур');
 assert.deepEqual(A.rollKids([0, 1], [0.5, 0.5]), [0, 1], 'ердийн бүлэг бүтнээрээ');
 
+/* ⚠️ 2026-10-09 (аудит): `budgetWeights` — төсвөөс жин ЗӨВХӨН Σхүүхэд ≈ эцэг (±0.5%) эсвэл
+   «5.2.4»-ийн хэв маяг (угтвар = эцэг, ард нь илүү хүүхэд) үед; бусад үед хадгалсан жин. */
+{
+  const bw = (parentBudget, kidBudgets) => {
+    const rows = [
+      { depth: 1, w: null, p: 0.79, budget: parentBudget },
+      ...kidBudgets.map((b) => ({ depth: 2, w: 0.25, p: null, budget: b })),
+    ];
+    const { parent, kids } = A.treeOf(rows.map((r) => r.depth));
+    const res = A.budgetWeights(rows, parent, kids);
+    return { w: res.w.slice(1), use: A.rollKids(kids[0], res.w) };
+  };
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+  /* яг таарсан */
+  const ex = bw(100, [60, 30, 10]);
+  assert.ok(near(ex.w, [0.6, 0.3, 0.1]), 'Σхүүхэд = эцэг → төсвөөс');
+  assert.deepEqual(ex.use, [1, 2, 3]);
+  /* 5.2.4: угтвар (80.69 + 3.70 + 15.61) = эцэг, ард нь 7.40 */
+  const p524 = bw(100, [80.69, 3.7, 15.61, 7.4]);
+  assert.ok(near(p524.w, [0.8069, 0.037, 0.1561, 0.074]), '5.2.4 хэв маяг → төсвөөс');
+  assert.deepEqual(p524.use, [1, 2, 3], '5.2.4 нийлбэрээс хасагдана');
+  /* дутуу задаргаа */
+  assert.deepEqual(bw(100, [40, 30]).w, [0.25, 0.25], 'Σхүүхэд < эцэг → хадгалсан жин');
+  /* илүүдэл, угтвар таарахгүй (эцгийн төсөв 2% зөрсөн) — 5.2.4 нийлбэрт орох байсан */
+  assert.deepEqual(bw(98, [80.69, 3.7, 15.61, 7.4]).w, [0.25, 0.25, 0.25, 0.25], 'Σ > эцэг, угтвар таарахгүй → хадгалсан жин');
+}
+
 const ups = A.negDiff(tree, out);
 for (const u of ups) {
   assert.ok(!('HESEGT_EZLEH' in u) && !('TOSOLD_EZLEH_HUVI' in u), 'жин бичигдэхгүй');

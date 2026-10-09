@@ -25,7 +25,7 @@ import {
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
-  isContracted,
+  isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote,
 } from './gdash.ts';
 
 /* ⚠️ 2026-10-09: «гэрээтэй» — порталын НЭГ предикат: түүхий мөр (`ho_dungiin_tailbar`) ба `CfRow` (`note`) */
@@ -618,6 +618,59 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   /* ХО жин огт алга → base хэвээр (блокийн нөөц); хоосон base → хоосон (дутуу муруй гаргахгүй) */
   assert.deepEqual(housingPlanSeries(byBagts, new Map(), base), base);
   assert.deepEqual(housingPlanSeries(byBagts, cost, []), []);
+
+  /* ⚠️ 2026-10-09 (аудит): багцын олонлог бодит талтай НЭГ (`pkgs` = phys ∪ physN) */
+  assert.deepEqual(housingPlanSeries(byBagts, cost, base, ['БАГЦ1', 'БАГЦ2']).map((p) => p.pct), [4, 38, 48, 72, 72],
+    'олонлог таарсан → өөрчлөлтгүй');
+  const cost3 = new Map([...cost, ['БАГЦ3', 1000]]);
+  /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй ХО жинтэй багц (БАГЦ3) шугамыг АРИЛГАХГҮЙ — төлөвлөгөө
+     хуваарьтай багцаар (Б1+Б2, БАГЦ3-ыг 0% гэж ТААМАГЛАХГҮЙ); хоцрогдлын бодит тал ч ТЭР олонлогоор */
+  assert.deepEqual(housingPlanSeries(byBagts, cost3, base, ['БАГЦ1', 'БАГЦ2', 'БАГЦ3']).map((p) => p.pct), [4, 38, 48, 72, 72],
+    'ХО жинтэй хуваарьгүй багц → шугам хуваарьтай багцаар (хоосон биш)');
+  const sc3 = planScope(byBagts, cost3, ['БАГЦ1', 'БАГЦ2', 'БАГЦ3', 'БАГЦ8']);
+  assert.deepEqual([...sc3.keys].sort(), ['БАГЦ1', 'БАГЦ2'], 'хуваарьтай олонлог');
+  assert.deepEqual(sc3.excluded, ['БАГЦ3'], 'ХО жинтэй хуваарьгүй нь хасагдсан; ХО жингүй БАГЦ8 бодит талд ч жингүй — нэрлэхгүй');
+  assert.deepEqual(planScope(byBagts, new Map(), ['БАГЦ1', 'БАГЦ8']).excluded, ['БАГЦ8'], 'ХО огт алга (блокийн нөөц) → хуваарьгүй бүгд хасагдсан');
+  assert.deepEqual(planScope(byBagts, cost, ['БАГЦ1', 'БАГЦ2']).excluded, [], 'бүгд хуваарьтай → хасагдсангүй');
+  /* Хоцрогдлын бодит тал (`housingSeries(…, only)`): хуваарийн дагуу ЯГ явж буй Б1+Б2 ба хуваарьгүй
+     БАГЦ3 (0% тайлагнасан) — бүх багцаар бол бодит хагасаар унаж «хоцрогдол» хиймлээр гарна; ижил
+     олонлогоор бол зөрүү 0. */
+  const phys3 = new Map([...phys, ['БАГЦ3', new Map([['2026-06', 0]])]]);
+  const lbl = base.map((p) => p.label);
+  const all3 = housingSeries(phys3, new Map(), undefined, cost3, lbl);
+  const lag3 = housingSeries(phys3, new Map(), undefined, cost3, lbl, undefined, sc3.keys);
+  const plan3 = housingPlanSeries(byBagts, cost3, base, ['БАГЦ1', 'БАГЦ2', 'БАГЦ3']);
+  assert.ok(plan3[2].pct - all3[2].phys > 20, 'бүх багцын бодиттой харьцуулбал хоцрогдол хэтэрнэ (хуучин согог)');
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(lag3[i].phys, plan3[i].pct, `${lbl[i]}: ижил олонлог → «төлөвлөсөн − бодит» = 0`);
+  }
+  /* physN-ээр орсон (огт тайлагнаагүй) хуваарьгүй багц ч `only`-оор хасагдана */
+  const lagN = housingSeries(phys, new Map(), undefined, cost3, lbl, new Map([['БАГЦ3', 4]]), sc3.keys);
+  assert.deepEqual(lagN.map((x) => x.phys), act.map((x) => x.phys), 'physN-ийн хуваарьгүй багц `only`-оор хасагдав');
+  assert.equal(planScopeNote([]), null);
+  assert.equal(planScopeNote(['Багц 3', 'Багц 9']), 'Төлөвлөгөө ба хоцрогдол — хуваарьтай багцаар (хасагдсан: Багц 3, Багц 9)');
+  assert.deepEqual(housingPlanSeries(byBagts, cost3, base, ['БАГЦ1', 'БАГЦ2', 'БАГЦ8', 'БАГЦ9']).map((p) => p.pct), [4, 38, 48, 72, 72],
+    'ХО жингүй багц (хуваарьгүй БАГЦ8 ч) бодит талд ч жингүй → нөлөөгүй');
+  assert.deepEqual(housingPlanSeries(byBagts, cost, base, ['БАГЦ1']).map((p) => p.pct), [10, 20, 30, 30, 30],
+    'бодит талд ороогүй багцын хуваарь тооцоонд орохгүй');
+}
+
+/* ⚠️ 2026-10-09 (аудит №2): хуваарийн зөрүүний НЭГ хэлбэр — н.х, «−0.0» гарахгүй, null → «—» */
+{
+  assert.equal(pts(1.25), '+1.3 н.х');
+  assert.equal(pts(-2), '−2.0 н.х');
+  assert.equal(pts(-0.04), '0.0 н.х', 'тойруулсны дараа 0 → тэмдэггүй');
+  assert.equal(pts(0), '0.0 н.х');
+  assert.equal(pts(null), '—', 'null ≠ 0');
+  assert.equal(gapPts(5), '−5.0 н.х', 'gap = төл. − бодит > 0 → хоцорсон (хасах)');
+  assert.equal(gapPts(-2), '+2.0 н.х', 'түрүүлсэн');
+  assert.equal(gapPts(0), '0.0 н.х', 'хуваарийн дагуу — «−0.0%» биш');
+  assert.equal(gapPts(0.03), '0.0 н.х');
+  assert.equal(gapPts(undefined), '—');
+  assert.equal(gapPtsWord(5), '5.0 н.х хоцролт');
+  assert.equal(gapPtsWord(-2), '2.0 н.х түрүүлсэн');
+  assert.equal(gapPtsWord(-0.01), '0.0 н.х');
+  assert.equal(gapPtsWord(null), '—');
 }
 
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `cashflowCurve` сарыг ОРОН НУТГИЙН цагаар

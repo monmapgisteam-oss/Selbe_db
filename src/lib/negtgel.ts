@@ -562,8 +562,16 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
     /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
     failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
   }
-  const use = calcRows ?? stored.map((r) => ({
-    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэлийн хүснэгтээс (Negtgel_guitsetgel)'),
+  /* ⚠️ 2026-10-09 (аудит): эх унасан үед ч жинг ТӨСВӨӨС (`budgetWeights`) — урьд нь
+     энд хадгалсан HESEGT_EZLEH/TOSOLD_EZLEH_HUVI гарч, ердийн уншилтын (төсвийн) жингээс
+     зөрдөг байв. Утга (гүйцэтгэл/төлөвлөгөө) нь хадгалсан хэвээр. */
+  const fb = calcRows ? null : (() => {
+    const { parent, kids } = A.treeOf(stored.map((r) => r.depth));
+    return A.budgetWeights(stored, parent, kids);
+  })();
+  const use = calcRows ?? stored.map((r, i) => ({
+    ...r, w: fb ? fb.w[i] : r.w, p: fb ? fb.p[i] : r.p,
+    auto: false, how: tr('Нэгтгэл гүйцэтгэлийн хүснэгтээс (Negtgel_guitsetgel)'),
   }));
   const pc = (v: number | null) => (v == null ? null : v * 100);
   const rows: NegtgelRow[] = [];

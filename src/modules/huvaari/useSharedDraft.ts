@@ -945,6 +945,16 @@ export function useSharedDraft({
   const hdResetRestore = useCallback(() => {
     hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
   }, []);
+  /**
+   * ⚠️ 2026-10-09 (аудит №2): СЭРГЭЭЛТИЙГ ДАХИН АЖИЛЛУУЛАХ — `hdResetRestore()`-ийн дараах `refetchServer` мөр/задаргааг
+   *    тавихаас ӨМНӨ (`loadRows`) унавал доорх эффектийн deps (`rows.length > 0` · `obState` …) ЮУ Ч өөрчлөгдөхгүй тул
+   *    сэргээлт дахин эхэлдэггүй — `hdReadyKey` null хэвээр, хүснэгтийн хаалт (`Huvaari`-ийн `hdRestoringUi`) мөнхөд
+   *    хаалттай үлддэг байв. Дуудагч татлага унасан үед үүнийг дуудна: тоолуур deps-д тул эффект одоогийн мөрөөр
+   *    дахин ажиллана. Сэргээлт аль хэдийн дууссан (`hdReady === key`) бол эффект шууд буцна — хор хөнөөлгүй.
+   *    ⚠️ `hdResetRestore` дотор БҮҮ нэм — тэр нь татлагаас ӨМНӨ дуудагддаг; шууд дахин ажиллавал хуучин мөрөнд сэргээнэ.
+   */
+  const [hdRetryN, setHdRetryN] = useState(0);
+  const hdRetryRestore = useCallback(() => { setHdRetryN((x) => x + 1); }, []);
 
   /**
    * СЭРГЭЭЛТ — багц/төрөл солигдоход (мөр · задаргаа ачаалагдаж, урсгал
@@ -1084,8 +1094,9 @@ export function useSharedDraft({
       if ((fromLocal || localD || mk || ap.dropped.length > ap.staleKeys.length) && hdWritableRef.current) hdSchedule(1500);
     })();
     return () => { alive = false; };
+    /* ⚠️ 2026-10-09 (аудит №2): `hdRetryN` — татлага унасны дараах дахин сэргээлт (`hdRetryRestore`-ийн ⚠️) */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, hdBlocked, hdPending, status]);
+  }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, hdBlocked, hdPending, status, hdRetryN]);
 
   /**
    * МӨРҮҮД ШИНЭ ЖААЗ БОЛОХОД НООРОГИЙГ ЗӨӨНӨ (2026-10-09, хэрэглэгч: «жааз солигдоход ноорог алга болж байна»).
@@ -1434,7 +1445,7 @@ export function useSharedDraft({
     hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef,
     /* ⚠️ `*Ref` нэрээр — React Compiler ref-ийг нэрээр нь таньж, эцэгт `.current` бичихийг зөвшөөрнө */
     hdTimerRef: hdTimer, hdSkipUnlockOnceRef: hdSkipUnlockOnce, hdMapsRef, hdMeta, meRef, hdKeyRef, hdWritableRef, canEditRef,
-    askSwitch, hdClear, hdResetRestore,
+    askSwitch, hdClear, hdResetRestore, hdRetryRestore,
     /* ⚠️ 2026-10-09: шинэ жаазад зөөгдөөгүй ноорогтой мөрийн нэр (`hdOrphan`-ийн ⚠️) */
     hdOrphan,
     /* 2026-10-04 аудит: илгээх · хаях · хадгалагдаагүй төлөв */

@@ -29,7 +29,7 @@ import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendi
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
-import { progressSub } from '@/lib/gdash';
+import { progressSub, planScopeNote } from '@/lib/gdash';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
@@ -467,10 +467,19 @@ export function ExecReport() {
                        (`execReport` — `aggregateMonths().physAt`), барилгын сүүлийн огноо биш */
                     { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
                     /* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — «—»-ийн шалтгаан (`PkgProg.TsKpi`-тай ижил) */
-                    { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1), sub: x.prog.planFailed > 0 ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed) : undefined },
+                    /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «хуваарьтай багцаар» (`execReport.prog.planExcluded`) */
+                    {
+                      label: tr('Төлөвлөсөн'),
+                      value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1),
+                      sub: x.prog.planFailed > 0
+                        ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed)
+                        : x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : undefined,
+                    },
                     { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
+                  {/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүүнээс хасагдсан хуваарьгүй багцыг нэрлэнэ */}
+                  {x.prog.planExcluded.length > 0 && <p className={r.note}>{planScopeNote(x.prog.planExcluded)}</p>}
                   <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
                   <RankBars
                     title={tr('Багц тус бүрийн биет гүйцэтгэл')}

@@ -118,6 +118,15 @@ export type SubmissionPayload = {
   pkgKey: string;
   /** Илгээсэн (компанийн) хэрэглэгч, жижиг үсгээр */
   user: string;
+  /**
+   * ⚠️ 2026-10-09 (аудит): ЭНЭ илгээлтэд ХЭЗЭЭ НЭГЭН ЦАГТ илгээсэн БҮХ данс (жижиг үсгээр, `mergeSubmission`
+   *    хуримтлуулна; `saveSubmission` хөтөчид нэвтэрсэн хэрэглэгчийг нэмнэ). Урьд нь зөвхөн СҮҮЛИЙН илгээгч
+   *    (`user`) үлддэг тул хамтран бөглөгч А компаниас инженер шат руу шилжүүлэгдвэл Б-ийн дахин илгээсэн
+   *    илгээлтэд орсон ӨӨРИЙН нүдээ өөрөө батлах боломжтой байв (`hyanaltStore.authz` — инженер шатанд
+   *    хянагч ∈ `users ∪ {user}` бол татгалзана). Шинэ ҮЙЛЧИЛГЭЭНИЙ талбар биш — payload JSON дотор.
+   *    Хуучин мөрд алга → зөвхөн `user`-аар.
+   */
+  users?: string[];
   /** Илгээсэн агшин (ms) */
   at: number;
   /** Бөглөсөн өдөр — Date.UTC(y,m,d); архивын жаазны buglusun_ognoo болно */
@@ -491,6 +500,22 @@ const isOcc = (x: unknown): x is [number, number, number] =>
  *    тэмдэгт ≈ 5KB — `SUBMISSION_MAX`-д багтана.
  */
 const NONCE_KEEP = 200;
+/** ⚠️ 2026-10-09 (аудит): `SubmissionPayload.users`-ийн дээд тоо — хэмжээ (`SUBMISSION_MAX`) хамгаална */
+const USERS_KEEP = 50;
+/** Илгээгчдийн нэгдэл (жижиг үсгээр, давхардалгүй, сүүлийн `USERS_KEEP`) — `mergeSubmission`/`saveSubmission` */
+function mergeUsers(...lists: (readonly (string | undefined)[] | undefined)[]): string[] {
+  const out = new Set<string>();
+  for (const l of lists) for (const x of l ?? []) {
+    const v = String(x ?? '').trim().toLowerCase();
+    if (v) out.add(v);
+  }
+  return [...out].slice(-USERS_KEEP);
+}
+/**
+ * Илгээлтийг илгээсэн БҮХ данс (`users` ∪ `user`) — `hyanaltStore.authz` инженерийн шатны «өөрийн
+ * илгээлтийг өөрөө хянах»-ын шалгуурт (2026-10-09, аудит). Хуучин мөр → зөвхөн `user` (хоосон бол `[]`).
+ */
+export const submittersOf = (p: Pick<SubmissionPayload, 'user' | 'users'>): string[] => mergeUsers(p.users, [p.user]);
 
 /**
  * `fillMs`-ИЙН БОДИТ МУЖ — 2020-01-01-ээс өнөөдөр + 2 хоног.
@@ -590,6 +615,12 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (occ.length) out.rowOcc = occ;
     const nonces = Array.isArray(d.nonces) ? (d.nonces as unknown[]).filter((x): x is string => isStr(x) && x.length > 0 && x.length <= 64) : [];
     if (nonces.length) out.nonces = nonces.slice(-NONCE_KEEP);
+    /* ⚠️ 2026-10-09 (аудит): илгээгчдийн жагсаалт (`SubmissionPayload.users`) — эвдэрсэн элементийг л хаяна */
+    const users = Array.isArray(d.users)
+      ? [...new Set((d.users as unknown[]).filter((x): x is string => isStr(x) && x.trim().length > 0 && x.length <= 128)
+        .map((x) => x.trim().toLowerCase()))].slice(-USERS_KEEP)
+      : [];
+    if (users.length) out.users = users;
     if (d.regPending === true) out.regPending = true;
     if (d.residual === true) out.residual = true;
     /* ⚠️ 2026-10-09 (R2): «архивлаж байна» тэмдэг — бүх талбар бодит тоо байж л хүлээн авна */
@@ -773,6 +804,11 @@ export function mergeSubmission(
     ...(occ.size ? { rowOcc: [...occ.values()].filter(([o]) => rowKeys.has(o)).sort((a, b) => a[0] - b[0]) } : {}),
     ...(nonces.length ? { nonces } : {}),
     ...(archiving ? { archiving } : {}),
+    /* ⚠️ 2026-10-09 (аудит): илгээгчид ХУРИМТЛАГДАНА (`SubmissionPayload.users`) — хуучин `user` ч орно */
+    ...(() => {
+      const users = mergeUsers(prev?.users, [prev?.user], next.users, [next.user]);
+      return users.length ? { users } : {};
+    })(),
   };
 }
 
@@ -1158,13 +1194,18 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
  */
 export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor }] = await Promise.all([
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
     import('./services'), import('./who'), import('./guitsetgelAcl'),
   ]);
   if (!AUTH.appId) return null;
   const me = currentUser();
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
   if (roleForUser(me) === 'super') return null;
+  /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» (`viewOnly`) тугтай company-шатны данс урьд нь
+     илгээж ЧАДДАГ байв — энэ функц `isViewOnly`-г огт дууддаггүй тул туг зөвхөн хянагчийн
+     шийдвэрт (`hyanaltStore.authz`) үйлчилдэг байв. Туг нь эрхийг ХАСДАГ (утгыг өөрчлөхгүй) тул
+     энд ч мөн хориглоно. `super` ба нэвтрэлт унтраалттай (`!AUTH.appId`) — дээр аль хэдийн чөлөөлөгдсөн. */
+  if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
   const cb = bagtsFor(me, 'company');
   if (cb === null || cb.includes(group)) return null;
   if (allowChief) {
@@ -1230,7 +1271,25 @@ export async function saveSubmission(
   }
   /* ⚠️ Хувилбар нь ГОРИМООС (2026-09-25, `SubmissionPayload.v`-ийн ⚠️) — дуудагчийн
      `v`-д итгэхгүй: нэмэлтийг `v: 1`-ээр бичвэл хуучин таб түүнийг НИЙТ гэж уншина. */
-  const raw = JSON.stringify(payload.mode === 'inc' ? { ...payload, v: 2, mode: 'inc' } : { ...payload, v: 1 });
+  /*
+   * ⚠️ 2026-10-09 (аудит): ИЛГЭЭГЧИЙГ БҮРТГЭНЭ (`SubmissionPayload.users`-ийн ⚠️). Хөтөчид, нэвтрэлттэй
+   *    горимд: `payload.user` нь нэвтэрсэн хэрэглэгч байх ёстой (зөрвөл татгалзана — `ajilBatlah.sameAsLogin`-ийн
+   *    загвар; урьд нь дуудагчийн өгсөн нэр шалгалтгүй бичигддэг байв) бөгөөд түүнийг `users`-д нэмнэ.
+   * ⚠️ Үлдэгдэл (`residual`) мөрийг газрын дарга бичдэг ч агуулга нь ГҮЙЦЭТГЭГЧИЙНХ — `user`/`users`-ийг
+   *    хэвээр үлдээнэ (даргыг илгээгч гэж бүртгэвэл инженерийн шалгуур буруу хүнийг барина).
+   */
+  let body: SubmissionPayload = payload;
+  if (typeof window !== 'undefined' && payload.residual !== true) {
+    const [{ AUTH }, { currentUser }] = await Promise.all([import('./services'), import('./who')]);
+    if (AUTH.appId) {
+      const me = (currentUser() ?? '').trim().toLowerCase();
+      if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+      if (String(payload.user ?? '').trim().toLowerCase() !== me)
+        return { ok: false, error: tr('Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.') };
+      body = { ...payload, user: me, users: mergeUsers(payload.users, [me]) };
+    }
+  }
+  const raw = JSON.stringify(body.mode === 'inc' ? { ...body, v: 2, mode: 'inc' } : { ...body, v: 1 });
   if (raw.length > SUBMISSION_MAX) {
     /*
      * ⚠️ ЗААВАР ҮНЭН БАЙХ ЁСТОЙ (2026-09-04-ний аудит). Урьд нь «хэсэгчлэн
@@ -1253,6 +1312,19 @@ export async function saveSubmission(
     if (!grp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
     const deny = await companyDeny(grp, payload.residual === true);
     if (deny) return { ok: false, error: deny };
+    /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): хуудсанд
+       хяналтад явж буй илгээлт байвал шинэ илгээлт ч, тэрийг доор нь солих ч ХОРИГЛОНО
+       (`hyanaltSubmit.reviewLockDays`-ийн ⚠️). Үлдэгдэл (`residual`) — газрын даргын архивын дараах
+       ШИНЭ тойрог, хориг БИШ. ⚠️ Бичихээс ӨМНӨ — `submitForReview` агуулга бичигдсэний ДАРАА дуудагддаг. */
+    if (payload.residual !== true) {
+      const pk = PKGS.find((p) => p.key === pkgKey);
+      const others = PKGS.filter((p) => p.group === grp && p.key !== pkgKey).map((p) => p.name);
+      const { reviewLockDeny } = await import('./hyanaltSubmit');
+      /* ⚠️ 2026-10-09 (аудит №2): `payload.fillMs` — буцаагдсан илгээлтийн засвар (тэр өдрийн одоогийн ажил
+         гүйцэтгэгчийн гар дээр) бол өөр өдөр хянагдаж байсан ч хориггүй (`hyanaltSubmit.reviewLockBlocks`). */
+      const lock = await reviewLockDeny(grp, pk?.name ?? '', others, payload.fillMs);
+      if (lock) return { ok: false, error: lock };
+    }
   }
   try {
     const auth = await getAuth();

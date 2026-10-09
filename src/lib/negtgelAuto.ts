@@ -621,9 +621,24 @@ export function budgetWeights(
     /* ⚠️ Хүүхдүүдийн төсвийн нийлбэр эцгийнхээс БАГА бол задаргаа ДУТУУ (5.1.3 Талбайн
        бэлтгэлийн дэд бүлгүүд — зөвхөн зарим ажлын төсөв бий; Excel тэнд барилга угсралтын
        F-ийг холбоосоор авдаг) — төсвөөс бодвол жингийн нийлбэр 0.63–0.97 болно → хадгалсан жин. */
+    const E = r.budget as number;
     const sum = ks.reduce((a, k) => a + Math.max(0, rows[k].budget as number), 0);
-    if (sum < (r.budget as number) * 0.995) return;
-    for (const k of ks) w[k] = r6(Math.max(0, rows[k].budget as number) / (r.budget as number));
+    if (sum < E * 0.995) return;
+    /* ⚠️ 2026-10-09 (аудит): нийлбэр эцгийнхээс ИХ бол ЗӨВХӨН «5.2.4»-ийн хэв маяг
+       (урд талын хүүхдүүдийн угтвар нийлбэр = эцэг ±0.5%, ард нь илүү хүүхэд) үед
+       төсвөөс — тэгвэл `rollKids` (±0.005) яг тэр угтварыг авч илүүг хасна. Өөр ямар ч
+       ИЛҮҮДЭЛ (эцгийн төсөв 0.5%-иас их зөрсөн) бол `rollKids` угтвар олохгүй тул
+       5.2.4 нийлбэрт орж 5.2 (төслийн 79%) ~8% хүртэл ХЭТРЭНЭ → хадгалсан жин. */
+    if (sum > E * 1.005) {
+      let acc = 0;
+      let prefixOk = false;
+      for (let j = 0; j < ks.length - 1; j += 1) {
+        acc += Math.max(0, rows[ks[j]].budget as number);
+        if (Math.abs(acc - E) <= E * 0.005) { prefixOk = true; break; }
+      }
+      if (!prefixOk) return;
+    }
+    for (const k of ks) w[k] = r6(Math.max(0, rows[k].budget as number) / E);
   });
   /* G = F × G_эцэг — мод нь outline дараалалтай тул эцэг үргэлж өмнө нь бодогдсон */
   const p = rows.map((r) => r.p);

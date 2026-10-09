@@ -33,7 +33,7 @@ import { normCell } from '@/modules/sheet/paste';
 export function useAjil({
   pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
   adds, setAdds, setAddsSt, addsStRef,
-  hdResetRestore, hdMapsRef,
+  hdResetRestore, hdRetryRestore, hdMapsRef,
   setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef, setOkRows, setCellEdit,
 }: {
   pkg: Pkg;
@@ -53,6 +53,8 @@ export function useAjil({
   setAddsSt: React.Dispatch<React.SetStateAction<{ key: string; list: NewRow[] }>>;
   addsStRef: React.RefObject<{ key: string; list: NewRow[] }>;
   hdResetRestore: () => void;
+  /** ⚠️ 2026-10-09 (аудит №2): `hdResetRestore`-ийн дараах татлага унавал сэргээлтийг дахин эхлүүлнэ (`useSharedDraft`-ийн ⚠️) */
+  hdRetryRestore: () => void;
   hdMapsRef: React.RefObject<{ draft: Draft; ham: Map<number, string>; aDraft: ADraft; resDraft: ResDraft }>;
   /* ⚠️ 2026-10-09: ноорогийн Map-ыг энд ЗӨӨХӨӨ БОЛИВ (`refreshAfterApplied`-ийн ⚠️) — дуудагчийн нийцэлд сонголттой */
   setDraft?: (v: Draft) => void;
@@ -211,7 +213,18 @@ export function useAjil({
           setAjApplied(true);
         } else {
           hdResetRestore();
-          await refetchRef.current();
+          /* ⚠️ 2026-10-09 (аудит №2): татлага унавал (`loadRows` — state хөдлөхөөс ӨМНӨ) сэргээлтийн эффектийн deps
+             өөрчлөгдөхгүй тул хүснэгтийн хаалт мөнхөд хаалттай үлдэж, алдаа чимээгүй залгигддаг байв (доорх `catch`).
+             Одоо сэргээлтийг ДАХИН эхлүүлж (`hdRetryRestore`), алдааг хэлж, «Шинэчлэх» товчоор (`ajApplied`) дахин оролдуулна. */
+          try {
+            await refetchRef.current();
+          } catch (e) {
+            hdRetryRestore();
+            if (!live()) return;
+            setAjApplied(true);
+            setAjErr(tr('Нэмэлт ажил батлагдсан ч шинэ мөрүүдийг серверээс татаж чадсангүй: {0}', userError(e)));
+            return;
+          }
           if (!live()) return;
           setAjNote(tr('Нэмэлт ажил батлагдаж хуудсанд орлоо — мөрүүд серверээс шинэчлэгдэв.'));
         }
@@ -219,7 +232,7 @@ export function useAjil({
     } catch {
       /* ⚠️ Уншиж чадсангүй ≠ илгээлт алга — хуучин төлөвийг ХЭВЭЭР үлдээнэ */
     }
-  }, [pkg.key, user, status, canAddRow, addsStRef, dirtyNRef, hdResetRestore, pkgKeyRef, refetchRef, setAddsSt, uiOpenRef]);
+  }, [pkg.key, user, status, canAddRow, addsStRef, dirtyNRef, hdResetRestore, hdRetryRestore, pkgKeyRef, refetchRef, setAddsSt, uiOpenRef]);
   /**
    * «ШИНЭЧЛЭХ» — батлагдсан нэмэлт ажлын шинэ жаазыг татахдаа хадгалаагүй
    * ноорогийг ШИНЭ oid руу зөөнө (`remapOids`, № ¦ нэр). `obDraft`/`obResDraft`
@@ -235,7 +248,15 @@ export function useAjil({
       const cur0 = hdMapsRef.current;
       const dirtyOids = new Set<number>([...cur0.draft.keys(), ...cur0.ham.keys(), ...cur0.aDraft.keys(), ...cur0.resDraft.keys()]);
       hdResetRestore();
-      const srv = await refetchRef.current();
+      /* ⚠️ 2026-10-09 (аудит №2): татлага унавал сэргээлтийг ДАХИН эхлүүлнэ (`hdRetryRestore`) — эс бөгөөс хүснэгтийн
+         хаалт мөнхөд хаалттай; алдааг доорх `catch` (`setErr`) хэлнэ, «Шинэчлэх» товч үлдэнэ (`ajApplied`). */
+      let srv: Awaited<ReturnType<typeof refetchRef.current>>;
+      try {
+        srv = await refetchRef.current();
+      } catch (e) {
+        hdRetryRestore();
+        throw e;
+      }
       /*
        * ⚠️ 2026-10-09: ЗУРАГЛАЛ — `savePrep.remapRowsFull` (хадгалахтай НЭГ дүрэм: эцэг бүлгийн зам › № ¦ нэр →
        *    ажлын код → № + нэр). Урьд нь зөвхөн `remapOids` тул бүлэг шилжсэн/нэр засагдсан мөрийн ноорог хаягддаг байв.
@@ -282,7 +303,7 @@ export function useAjil({
     } finally {
       setBusy(false);
     }
-  }, [busy, rows, hdMapsRef, hdResetRestore, refetchRef, setBusy, setCollapsed, setErr, setFGrp, setLinkAsk, setModal, setSel, undoRef, setOkRows, setCellEdit]);
+  }, [busy, rows, hdMapsRef, hdResetRestore, hdRetryRestore, refetchRef, setBusy, setCollapsed, setErr, setFGrp, setLinkAsk, setModal, setSel, undoRef, setOkRows, setCellEdit]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshAjil` нь ArcGIS-ээс хүлээгдэж буй илгээлтийг уншиж төлөвт тавьдаг — гадаад эх сурвалжтай синк
   useEffect(() => { void refreshAjil(null); }, [refreshAjil]);
   /* ⚠️ Хүлээгдэж байхад 30 сек тутам — шийдвэр гарахад зохиогчийн нээлттэй

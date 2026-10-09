@@ -299,7 +299,13 @@ export function useDragPlan({
     moveTo(e.clientX);
     /* ⚠️ 2026-10-09: ирмэгт ойртвол автомат гүйлгээ (`auto`-гийн ⚠️) */
     auto.current.x = e.clientX;
-    if (!auto.current.raf && edgeV(e.clientX)) auto.current.raf = requestAnimationFrame(autoTick);
+    /* ⚠️ 2026-10-09 (аудит): урьд нь гүйлгээ ирмэгээс 40px дотор ЭХНИЙ `pointermove`-оор (TAP_PX-ээс өмнө)
+       эхэлж, `autoTick` → `moveTo` нь зурвасыг (ба хамаарлын гинжийг) ЗӨӨДӨГ байв — ирмэгт тасарсан зурвас
+       дээр зүгээр ТОВШИХОД хуваарь хөдөлдөг байв («Товшилт ≠ чирэлт»). Одоо зөвхөн бодит чирэлт эхэлсний
+       дараа: хоног солигдсон (`moved`), хуруу босго давсан (`far`) эсвэл заагч `TAP_PX`-ээс цааш хөдөлсөн. */
+    const real = moved.current || far.current
+      || Math.max(Math.abs(e.clientX - down.current.x), Math.abs(e.clientY - down.current.y)) > TAP_PX;
+    if (real && !auto.current.raf && edgeV(e.clientX)) auto.current.raf = requestAnimationFrame(autoTick);
   };
 
   const onUp = (e?: PEvt<HTMLElement>) => {

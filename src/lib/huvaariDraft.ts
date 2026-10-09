@@ -731,13 +731,24 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
     const k = nw(r.no, r.work);
     if (k) byNw.set(k, byNw.has(k) ? null : oid);
   }
+  /* ⚠️ 2026-10-09 (аудит): НЭГ-НЭГЭЭР ТАСАЛБАРЛАЛТ. Урьд нь `remapRowsFull`-ийн `used`-тэй адил шалгалтгүй тул
+     хоёр хуучин oid (жиш. давхардсан код/№ + нэртэй хуучин мөрүүд) НЭГ одоогийн мөр рүү зөөгдөж, ноорог нь
+     хоорондоо дарагддаг байв. Одоо нэг зорилтот мөр рүү 2+ хуучин oid таарвал ТОДОРХОЙГҮЙ — бүгд зөөгдөхгүй (`lost`). */
+  const cand = new Map<number, number>();
+  const label = new Map<number, string>();
+  const hits = new Map<number, number>();
   for (const oid of [...want].sort((x, y) => x - y)) {
     const id = d.rk?.get(oid);
     if (!id) { unknown += 1; continue; }
+    label.set(oid, `${id.no} ${id.work}`.trim() || (id.des != null ? String(id.des) : String(oid)));
     let to: number | null | undefined = id.des != null ? byDes.get(id.des) : undefined;
     if (to == null) { const k = nw(id.no, id.work); to = k ? byNw.get(k) : undefined; }
-    if (to != null) map.set(oid, to);
-    else lost.push(`${id.no} ${id.work}`.trim() || (id.des != null ? String(id.des) : String(oid)));
+    if (to != null) { cand.set(oid, to); hits.set(to, (hits.get(to) ?? 0) + 1); }
+  }
+  for (const [oid, lb] of label) {
+    const to = cand.get(oid);
+    if (to != null && hits.get(to) === 1) map.set(oid, to);
+    else lost.push(lb);
   }
   return { map, lost, unknown };
 }

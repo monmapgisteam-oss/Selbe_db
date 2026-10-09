@@ -54,7 +54,7 @@ import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanCurve, type Plan
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 /* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
    Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
-import { housingPlanSeries, housingSeries, pkgCostWeight, cfWeightRow, cfStartKeyOf } from '@/lib/gdash';
+import { housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, cfStartKeyOf } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
   CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
@@ -226,6 +226,15 @@ export type MonthPt = {
    *    эзэмшил тул тэднийг хөндөхгүйгээр зөв зан төлөв гарна.
    */
   pkg?: string;
+  /**
+   * ⚠️ 2026-10-09 (аудит №2): ХОЦРОГДЛЫН «бодит» тал — ЗӨВХӨН хуваарьтай багцаар
+   * (`gdash.planScope`), төлөвлөгөө (`projectPlanOf`)-тэй НЭГ олонлог. Зөвхөн
+   * `aggregateMonths` (төслийн зам) бөглөнө; `undefined` бол `lagOf` `phys`-ийг авна.
+   * Толгойн «Биет гүйцэтгэл» (`physNow`) `phys`-ээс — бүх багцаар, ХӨНДӨГДӨХГҮЙ.
+   */
+  physLag?: number | null;
+  /** `physLag`-ийн хэмжилтийн огноо — `physAt`-тай ижил утгатай */
+  physLagAt?: string | null;
 };
 
 /** Багц бүрийн IPC: сар → олгосон нийлбэр */
@@ -785,9 +794,66 @@ export function planCurveMissing(key?: string | null): boolean {
  * ЯГ НЭГ жин (`gdash.pkgCostWeight` ← ижил `contracts`). PkgProg `TsKpi` + графикийн
  * төслийн муруй · удирдлагын тайлан · `lagOf` (Дашбоард, PkgFin) бүгд ЭНЭ функцээр.
  */
-export function projectPlanOf(fin: Pick<FinData, 'contracts'>, pc: PlanCurve): PlanPoint[] {
-  return housingPlanSeries(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), pc.months);
+export function projectPlanOf(fin: Pick<FinData, 'contracts' | 'phys' | 'physN'>, pc: PlanCurve): PlanPoint[] {
+  /* ⚠️ 2026-10-09 (аудит): багцын олонлог бодит талтай (`phys` ∪ `physN`) НЭГ —
+     `gdash.housingPlanSeries`-ийн `pkgs` ⚠️ (хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй)
+     ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц байвал ХООСОН буцаахаа БОЛИВ — шугам
+     ХУВААРЬТАЙ багцаар; хоцрогдлын бодит тал ч ТЭР олонлогоор (`physLag`, `projectLagNow`). */
+  const pkgs = [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])];
+  return housingPlanSeries(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), pc.months, pkgs);
 }
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ХОЦРОГДЛЫН БАГЦЫН ОЛОНЛОГ (`gdash.planScope`) — `keys` = хуваарьтай
+ * (түлхүүрээр), `excluded` = бодит талд жинтэй боловч хуваарьгүй (БАГЦЫН НЭРЭЭР, `PKGS.group`).
+ * Муруй алга бол `null` (хоцрогдол аль хэдийн «тодорхойгүй»).
+ */
+export function projectPlanScope(
+  fin: Pick<FinData, 'contracts' | 'phys' | 'physN'>,
+  pc: PlanCurve | null = planCurveCache,
+): { keys: Set<string>; excluded: string[] } | null {
+  if (!pc) return null;
+  const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)),
+    [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])]);
+  /* PKGS-д алга (дэд бүтэц г.м.) бол «БАГЦ14» → «Багц 14» */
+  const name = (k: string) => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k.replace(/^БАГЦ/, 'Багц ');
+  return { keys: sc.keys, excluded: sc.excluded.map(name) };
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): ТӨСЛИЙН ХОЦРОГДОЛ «ОДОО» — төлөвлөгөө (`projectPlanOf`) ба бодит
+ * (`physLag`) ХОЁУЛАА хуваарьтай багцаар (нэг олонлог). PkgProg `TsKpi` · удирдлагын тайлан ·
+ * ТУХ-ийн нэг дүрэм. `actual` нь ХАРЬЦУУЛАЛТЫН тал — толгойн тоо (`physNow`) биш;
+ * `excluded` хоосон бол хоёр ЯГ ижил. Хэмжилтийн өдөр — `measureDayOf` (`lagOf`-той нэг).
+ */
+export function projectLagNow(
+  fin: FinData,
+  pc: PlanCurve | null,
+  nowYm: string = monthKey(),
+  today: string = dayKey(Date.now()),
+): { planned: number | null; actual: number | null; gap: number | null; measAt: string; physAsOf: string; excluded: string[] } {
+  const sc = projectPlanScope(fin, pc);
+  let last: { label: string; phys: number; physAt: string | null | undefined } | null = null;
+  for (const m of aggregateMonths(fin, pc)) {
+    if (m.label > nowYm) continue;
+    const v = m.physLag !== undefined ? m.physLag : m.phys;
+    if (v != null) last = { label: m.label, phys: v, physAt: m.physLagAt !== undefined ? m.physLagAt : m.physAt };
+  }
+  const measAt = last ? measureDayOf(last.label, last.physAt, today) : `${nowYm}-31`;
+  const plan = pc?.months.length ? projectPlanOf(fin, pc) : [];
+  const planned = plan.length ? planPctAt(plan, measAt) : null;
+  const actual = last ? last.phys : null;
+  return {
+    planned, actual,
+    gap: planned != null && actual != null ? planned - actual : null,
+    measAt,
+    physAsOf: last ? (last.physAt ?? last.label) : '',
+    excluded: sc?.excluded ?? [],
+  };
+}
+
+/* ⚠️ 2026-10-09 (аудит №2): тэмдэглэл нь цэвэр `gdash`-д (ExecReport/PDF Finance-гүй ашиглана) */
+export { planScopeNote } from '@/lib/gdash';
 
 /**
  * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд — IPC олголт + ХО дүнгээр жигнэсэн биет гүйцэтгэл.
@@ -799,7 +865,10 @@ export function projectPlanOf(fin: Pick<FinData, 'contracts'>, pc: PlanCurve): P
  *    модулийн мөчлөг (TDZ) үүсгэнэ. `Finance` нь хоёулангаас нь юу ч авдаггүй.
  * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ (`amount`/`amountCum`/`cumPct`) ХАСАГДСАН.
  */
-export function aggregateMonths(d: FinData): { label: string; given: number; phys: number | null; physAt: string | null }[] {
+export function aggregateMonths(
+  d: FinData,
+  pc: PlanCurve | null = planCurveCache,
+): { label: string; given: number; phys: number | null; physAt: string | null; physLag?: number | null; physLagAt?: string | null }[] {
   /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
      (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */
   const labels = cfMonthAxis();
@@ -813,11 +882,21 @@ export function aggregateMonths(d: FinData): { label: string; given: number; phy
    */
   const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
   const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN);
-  return series.map((s) => {
+  /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй (ХО жинтэй) багц байвал хоцрогдлын бодит талыг
+     ХУВААРЬТАЙ багцаар тусад нь (`physLag`) — төлөвлөгөө (`projectPlanOf`)-тэй нэг олонлог.
+     `phys` (толгойн тоо) ХӨНДӨГДӨХГҮЙ. Хасагдсан багц алга бол `physLag` огт тавигдахгүй. */
+  const sc = pc ? projectPlanScope(d, pc) : null;
+  const lagS = sc?.excluded.length
+    ? housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN, sc.keys)
+    : null;
+  return series.map((s, i) => {
     let given = 0;
     d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
     /* ⚠️ Хэмжилтгүй сар `phys: null` (0 биш); `physAt` — `lagOf`-ийн завсар */
-    return { label: s.label, given, phys: s.phys, physAt: s.physAt };
+    const out: { label: string; given: number; phys: number | null; physAt: string | null; physLag?: number | null; physLagAt?: string | null } =
+      { label: s.label, given, phys: s.phys, physAt: s.physAt };
+    if (lagS) { out.physLag = lagS[i].phys; out.physLagAt = lagS[i].physAt; }
+    return out;
   });
 }
 
@@ -887,8 +966,6 @@ async function loadFinDataRaw(): Promise<FinData> {
         .then((pc) => { planCurveCache = pc; })
         .catch(() => { planCurveCache = null; }),
     ]);
-    /* ⚠️ 2026-09-30: төслийн төлөвлөгөө — бодит талтай НЭГ (ХО) жин (`planProjectCache`) */
-    planProjectCache = planCurveCache ? projectPlanOf({ contracts }, planCurveCache) : null;
 
     /*
      * HO төлбөр → багц бүрд: сар → олгосон дүн.
@@ -980,6 +1057,9 @@ async function loadFinDataRaw(): Promise<FinData> {
      */
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     const { phys, physCnt, physAt, physN } = buildPhys(hist, axis, nowYm, universe);
+    /* ⚠️ 2026-09-30: төслийн төлөвлөгөө — бодит талтай НЭГ (ХО) жин (`planProjectCache`).
+       ⚠️ 2026-10-09 (аудит): `phys`/`physN` бэлэн болсны ДАРАА — багцын олонлог ч НЭГ (`projectPlanOf`). */
+    planProjectCache = planCurveCache ? projectPlanOf({ contracts, phys, physN }, planCurveCache) : null;
     return {
       contracts, planTotal, given, givenTotal, phys, physCnt, physAt, physN,
       pays: ipc,
@@ -1239,7 +1319,8 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
   let mi = -1;
   months.forEach((m, i) => {
     // ⚠️ `!= null`: 0% нь бодит хэмжилт — хоцрогдлын тооцооноос хасахгүй
-    if (m.label <= nowYm && m.phys != null) mi = i;
+    // ⚠️ 2026-10-09 (аудит №2): `lagPhys` — төслийн замд хуваарьтай багцын бодит (`physLag`)
+    if (m.label <= nowYm && lagPhys(m) != null) mi = i;
   });
   if (mi < 0) return null;
   const series = lagSeriesCurve(months);
@@ -1274,10 +1355,21 @@ function lagSeriesCurve(months: readonly MonthPt[]): PlanPoint[] | null {
  * ⚠️ `planned <= 0` → `null` нь ХУУЧИН гэрээ (дуудагчид `lag &&`-ээр шалгадаг): хуваарь тэр
  *    өдөр хараахан эхлээгүй бол «хоцрогдол» гэж ярих утгагүй.
  */
+/**
+ * ⚠️ 2026-10-09 (аудит №2): хоцрогдлын БОДИТ тал — `physLag` (төлөвлөгөөтэй нэг багцын олонлог,
+ * `aggregateMonths`) байвал тэр, үгүй бол `phys`. Огноо ч мөн адил.
+ */
+function lagPhys(m: MonthPt): number | null {
+  return m.physLag !== undefined ? m.physLag : m.phys;
+}
+function lagPhysAt(m: MonthPt): string | null | undefined {
+  return m.physLagAt !== undefined ? m.physLagAt : m.physAt;
+}
+
 function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; planned: number; actual: number; gap: number } | null {
-  const planned = planPctAt(series, measureDayOf(m.label, m.physAt, dayKey(Date.now())));
+  const planned = planPctAt(series, measureDayOf(m.label, lagPhysAt(m), dayKey(Date.now())));
   if (planned == null || planned <= 0) return null;
-  const actual = m.phys ?? 0;
+  const actual = lagPhys(m) ?? 0;
   return { month: m.label, planned, actual, gap: planned - actual };
 }
 
@@ -1294,7 +1386,7 @@ export function lagSeriesOf(months: MonthPt[]): { month: string; planned: number
   const nowYm = monthKey();
   const out: { month: string; planned: number; actual: number; gap: number }[] = [];
   for (const m of months) {
-    if (m.label > nowYm || m.phys == null) continue;
+    if (m.label > nowYm || lagPhys(m) == null) continue;
     const p = lagPointAt(m, series);
     if (p) out.push(p);
   }

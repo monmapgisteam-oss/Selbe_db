@@ -175,6 +175,9 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   };
   assert.deepEqual(await arcgisPost(ORG, {}), { ok: 1 });
   assert.deepEqual(seen, ['a', 'r1'], 'шинэчилсэн токеноор дахин оролдоогүй');
+  /* ⚠️ 2026-10-09 (аудит №2): хүчээр шинэчлэлтийн 30с хүлээлт ЦАГААР (явсан токеноор биш) —
+     шинэ сешн бүртгэж хүлээлтийг тэглээд «ЯГ нэг удаа дахин»-г тусад нь шалгана. */
+  A.registerIdentity({ findCredential: () => cred }, 'https://www.arcgis.com/sharing');
   seen.length = 0;
   globalThis.fetch = async (_u, init) => {
     seen.push(new URLSearchParams(String(init.body)).get('token'));
@@ -183,6 +186,26 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   const e = await arcgisPost(ORG, {}).catch((x) => x);
   assert.equal(e.code, 498);
   assert.equal(seen.length, 2, 'ЯГ нэг удаа дахин оролдох ёстой');
+  /* ⚠️ 2026-10-09 (аудит №2): шинэчлэлт САЯ бүтсэн (токен солигдсон) атал ШИНЭ токеноор
+     дахин 498/499 (ҮРГЭЛЖ татгалздаг хаалттай үйлчилгээ) → 30с дотор ДАХИН хүчээр
+     шинэчлэхгүй, давтахгүй. Урьд нь хүлээлт явсан токеноор түлхүүрлэгдсэн тул тэсрэлт бүр
+     шинэ шинэчлэлт эхлүүлдэг байв. */
+  const nBefore = n;
+  seen.length = 0;
+  for (let k = 0; k < 3; k++) {
+    globalThis.fetch = async (_u, init) => {
+      seen.push(new URLSearchParams(String(init.body)).get('token'));
+      return ok({ error: { code: 499, message: 'Token Required' } });
+    };
+    const e499 = await arcgisPost(ORG, {}).catch((x) => x);
+    assert.equal(e499.code, 499);
+  }
+  assert.equal(n, nBefore, `хүлээлтийн дотор дахин хүчээр шинэчлэв: ${n - nBefore}`);
+  assert.equal(seen.length, 3, 'хүлээлтийн дотор ижил токеноор давтах утгагүй');
+  globalThis.fetch = async (_u, init) => {
+    seen.push(new URLSearchParams(String(init.body)).get('token'));
+    return ok({ error: { code: 498, message: 'Invalid token.' } });
+  };
   /* `org` горимд дуудагч өөрөө токен өгсөн бол дахин оролдохгүй (тэр токен хэвээр явна) */
   seen.length = 0;
   await arcgisPost(URL_, { token: 'мине' }, { token: 'org' }).catch(() => {});
@@ -193,7 +216,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   assert.equal(w.code, 498);
   assert.match(w.message, /Invalid token\. \[A\/FeatureServer\/0\/query 498\]/);
   A.registerIdentity(null, '');
-  console.log('✅ 498 → refresh → нэг удаа дахин · org+дуудагчийн токен → дахин үгүй · authToken бүрхүүл');
+  console.log('✅ 498 → refresh → нэг удаа дахин · 30с хүлээлт цагаар (шинэ токеноор 499 → дахин шинэчлэлгүй) · org+дуудагчийн токен → дахин үгүй · authToken бүрхүүл');
 }
 
 /* ── 429 → backoff → дахин; rate-limit мессеж 200-аар ч мөн ── */
@@ -370,6 +393,29 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   await arcgisPost(Q, { where: 'e' }).catch(() => {});
   assert.equal(calls, 2, 'алдааны дараа дахин оролдлого шинэ хүсэлт');
   console.log('✅ ижил уншилтын нэгтгэл: /query · мета · бичилт/signal/slot:false/горим нэгтгэгдэхгүй · алдаа хуваалцана');
+}
+
+/* ── ⚠️ 2026-10-09 (аудит №2): «Түр хаах»-ын дараа ард явдаг шалгалт цонхыг 10 мин БУЦААЖ ГАРГАХГҮЙ ── */
+{
+  const dead = { token: 'd1', expires: Date.now() + 10_000, refreshToken: async () => { throw Object.assign(new Error('invalid_grant'), { details: { httpStatus: 400 } }); } };
+  A.registerIdentity({ findCredential: () => dead }, 'https://www.arcgis.com/sharing');
+  A.authToken(); // сешнд токен харагдсан
+  await A.ensureFreshToken(true);
+  assert.equal(A.sessionDead(), true, 'эцсийн уналт → цонх');
+  A.dismissSessionDead();
+  assert.equal(A.sessionDead(), false);
+  await A.ensureFreshToken(true); // AuthGate-ийн poll
+  assert.equal(A.sessionDead(), false, 'хаасны дараа poll цонхыг дахин гаргав');
+  globalThis.fetch = async () => ok({ error: { code: 498, message: 'Invalid token.' } });
+  await arcgisPost(`${ORG}/query`, {}, { slot: false }).catch(() => {}); // тэмдэг/IoT poll
+  assert.equal(A.sessionDead(), false, 'хаасны дараа query-ийн 498 цонхыг дахин гаргав');
+  /* шинэ сешн чимээгүй цонхыг тэглэнэ */
+  A.registerIdentity({ findCredential: () => dead }, 'https://www.arcgis.com/sharing');
+  A.authToken();
+  await A.ensureFreshToken(true);
+  assert.equal(A.sessionDead(), true, 'шинэ сешнд чимээгүй цонх үлдэв');
+  A.registerIdentity(null, '');
+  console.log('✅ «Түр хаах» → 10 мин poll-оор цонх буцаж гарахгүй · шинэ сешн тэглэнэ');
 }
 
 globalThis.fetch = realFetch;

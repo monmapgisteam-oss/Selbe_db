@@ -296,9 +296,11 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
   /* 2026-09-29 аудит: хяналтын горимоос ГАДУУРХ «Шийдвэрлэх → Буцаах» ч тэмдэг дамжуулна */
   /* ⚠️ 2026-10-09: урьдчилан хараагүй бол `[]` (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) — тэмдэглэгээгүй буцаалт алга */
-  assert.ok(/onReject=\{\(txt\) => void \(previewing\s*\? decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\)\s*: decide\(false, [\s\S]{0,200}, \[\]\)\)/.test(H),
+  /* ⚠️ 2026-10-09 (аудит): өөрийн шалтгаангүй буцаалт татгалзана; тэмдэглэл `REASON_MAX`-д заавал багтана */
+  assert.ok(/onReject=\{\(txt\) => \{[\s\S]{0,120}if \(!own\) return;[\s\S]{0,40}if \(previewing\) \{ void decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\); return; \}[\s\S]{0,300}void decide\(false, [\s\S]{0,200}REASON_MAX[\s\S]{0,80}, \[\]\);/.test(H),
     'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна (эсвэл хараагүй үед [] биш)');
-  assert.ok(/reason: `\$\{why\}\\n\$\{blindNote\(\)\}`\.slice\(0, REASON_MAX\), okRows: \[\]/.test(V),
+  /* ⚠️ 2026-10-09 (аудит): тайлбар заавал багтахаар ХЭРЭГЛЭГЧИЙН текстийг тайрна */
+  assert.ok(/reason: `\$\{why\.slice\(0, Math\.max\(0, REASON_MAX - blind\.length - 1\)\)\}\\n\$\{blind\}`, okRows: \[\]/.test(V),
     'HuvaariBatlah: дарааллаас буцаахад okRows: [] (бүгд улаан) дамжихгүй');
   /* 2026-09-29 аудит: буцаалт · илгээлт солигдох · батлалтын дараа `okRows` цэвэрлэгдэнэ */
   assert.ok((H.match(/setOkRows\(new Set\(\)\)/g) ?? []).length >= 7,
@@ -408,8 +410,13 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
   /* ⚠️ 2026-10-09: ХОЁР төрлийг шалгана (`loadPendingBoth`) — идэвхтэйнх өөрчлөгдвөл `refreshFlow`, нөгөөх нь `setPendingOther`;
      идэвхтэй табын илгээлт байхгүй үед ч мөчлөг ажиллана (`pending != null` нөхцөлгүй) */
-  assert.ok(/void loadPendingBoth\(key\)\.then\(\(both\) => \{[\s\S]{0,900}both\[k0\][\s\S]{0,400}void refreshFlow\(\);[\s\S]{0,300}setPendingOther\(pO\)/.test(H),
+  /* ⚠️ 2026-10-09 (аудит №2): `setPendingOther(pO)`-ийн өмнө татлагын хүлээлтийн тайлбар нэмэгдсэн тул зай {0,500} → {0,2500} */
+  assert.ok(/void loadPendingBoth\(key\)\.then\(\(both\) => \{[\s\S]{0,900}both\[k0\][\s\S]{0,400}void refreshFlow\(\);[\s\S]{0,2500}setPendingOther\(pO\)/.test(H),
     'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй (эсвэл нөгөө табынхыг шинэчлэхгүй)');
+  /* ⚠️ 2026-10-09 (аудит №2): нөгөө табын илгээлт шийдэгдэхэд `pendingOther`-ийг ЗӨВХӨН татлага амжилттай үед арилгана */
+  assert.ok(/refetchBg = useCallback\(async \(\): Promise<boolean>/.test(H)
+    && /void refetchBg\(\)\.then\(\(done\) => \{[\s\S]{0,400}if \(done &&[\s\S]{0,200}setPendingOther\(\(cur\) => \(cur\?\.oid === goneOid \? null : cur\)\)/.test(H),
+    'Huvaari: мөчлөг татлага хийгдээгүй/унасан ч `pendingOther`-ийг шинэчилж — хуучирсан мөр дахин татагдахгүй');
   assert.ok(!/pollOkRef = useLatest\([^)]*pending != null/.test(H), 'Huvaari: мөчлөг идэвхтэй табын илгээлтгүй үед зогссоор — нөгөө табын түгжээ хоцорно');
   /* ⚠️ 2026-10-09: бодит огноо · нөөцийн түгжээ ба архивлалтын хаалт — UI биш, БИЧИХИЙН ӨМНӨ серверээс (fail-closed) */
   {

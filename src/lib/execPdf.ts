@@ -16,7 +16,7 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { num, pct, dateTime } from '@/lib/format';
 import {
   execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP,
   type ExecFinding, type ExecReport, type ExecAppendix,
@@ -24,7 +24,7 @@ import {
 import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
-import { progressSub } from '@/lib/gdash';
+import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
 
@@ -235,7 +235,14 @@ export async function buildExecDoc(
   /** Захирамжийн эх үүсвэрүүдийн нийлбэр — хувийн СУУРЬ (нийт төсөв БИШ) */
   const srcSum = g.bySource.reduce((a, s) => a + s.amount, 0);
 
-  const gapText = p.gap == null ? '—' : `${p.gap > 0 ? '−' : p.gap < 0 ? '+' : ''}${num(Math.abs(p.gap), 1)}`;
+  /* ⚠️ 2026-10-09 (аудит №2): өгүүлбэрт («{2} нэгж хувийн зөрүүтэй») нэгжгүй тоо — тойруулсны
+     дараа 0 бол тэмдэггүй («−0.0»/«+0.0» гарахгүй, `gdash.pts`-ийн дүрэм). KPI нүд `gapPts`-аар. */
+  const gapText = p.gap == null ? '—'
+    : Number(Math.abs(p.gap).toFixed(1)) === 0 ? num(0, 1)
+      : `${p.gap > 0 ? '−' : '+'}${num(Math.abs(p.gap), 1)}`;
+  /* ⚠️ 2026-10-09 (аудит №2): ӨГӨГДЛИЙН агшин — дэлгэцийн «· Өгөгдөл:»-тэй ижил (`x.fetchedAt`,
+     5 мин кэш). Урьд нь PDF зөвхөн ҮҮСГЭСЭН огноог хэвлэдэг байв. */
+  const dataAt = tr('Өгөгдөл: {0}', dateTime(x.fetchedAt));
   const buildPk = p.packs.filter((k) => k.kind === 'build');
   const topType = g.byType[0];
   const topReason = g.land.reasons[0];
@@ -328,7 +335,12 @@ export async function buildExecDoc(
       {
         margin: [0, 14, 0, 0],
         columns: [
-          { stack: [{ text: T(dateStr), style: 'coverFactV' }, { text: tr('Тайлан үүсгэсэн огноо').toUpperCase(), style: 'coverFactL' }] },
+          { stack: [
+            { text: T(dateStr), style: 'coverFactV' },
+            { text: tr('Тайлан үүсгэсэн огноо').toUpperCase(), style: 'coverFactL' },
+            /* ⚠️ 2026-10-09 (аудит №2): өгөгдлийн агшин (`dataAt`) */
+            { text: T(dataAt), style: 'coverFactL' },
+          ] },
           { stack: [{ text: tr('{0} ажлын багц', num(g.packages)), style: 'coverFactV' }, { text: tr('{0} төрөл', num(g.types)).toUpperCase(), style: 'coverFactL' }] },
           /* ⚠️ 2026-09-25: хэмжилтийн эх `progressSrc`-ээр — нэгтгэлээс уншсан бол
              «6 үе шат» гэж бичих нь худал (KPI-ийн шошготой ижил дүрэм). */
@@ -360,7 +372,7 @@ export async function buildExecDoc(
 
       /* ══════════ 2. ГҮЙЦЭТГЭЛИЙН ХУРААНГУЙ ══════════ */
       { text: tr('Гүйцэтгэлийн хураангуй'), style: 'h1', pageBreak: 'before' },
-      { text: tr('{0} байдлаарх нэгдсэн үзүүлэлт', dateStr), style: 'h2sub' },
+      { text: `${tr('{0} байдлаарх нэгдсэн үзүүлэлт', dateStr)} · ${dataAt}`, style: 'h2sub' },
       kpiRow([
         { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
@@ -505,9 +517,12 @@ export async function buildExecDoc(
           : '')),
       kpiRow([
         { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
-        { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: tr('хуваариас') },
-        { label: tr('Зөрүү'), value: tr('{0} н.х', gapText), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
+        /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «(хуваарьтай багцаар)» */
+        { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: p.planExcluded.length ? tr('(хуваарьтай багцаар)') : tr('хуваариас') },
+        /* ⚠️ 2026-10-09 (аудит №2): `gdash.gapPts` — порталын нэг хэлбэр */
+        { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
       ]),
+      ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
       barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [

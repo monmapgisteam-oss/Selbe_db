@@ -146,6 +146,79 @@ import { encodeOkCells } from './hyanaltOkCells';
 import type { ArchivingMark, StagedSubmission, SubmissionPayload } from './submission';
 import { AUTH, roleForUser } from './services';
 import { currentUser } from './who';
+import { arcgisPost } from './query';
+import { isLostWrite } from './lostWrite';
+
+/**
+ * ⚠️ 2026-10-09 (аудит): ХАДГАЛАГДАХ ДЭЛГЭЦИЙН НЭР (`who`) — нэвтэрсэн хэрэглэгчийнх мөн эсэх.
+ *    Урьд нь `apply`/`recheck` нь дуудагчийн өгсөн `who`-г ШАЛГАЛТГҮЙ `SF[шат].who` ба логт бичдэг,
+ *    R5 нөөц шалгалт (`authz` → `same`) ч ЯГ ТЭР `who`-тэй харьцуулдаг байв — консолоос өөр нэр
+ *    дамжуулж хүний нэрээр шийдвэр бичих, дараалсан хоёр шатны хоригийг тойрох боломжтой.
+ *    `ajilBatlah`/`obyemBatlah`/`huvaariBatlah`-ийн `sameAsLogin`-ийн загвар: зөрвөл ТАТГАЛЗАНА.
+ *    Ялгаа: энд `who` нь портал хэрэглэгчийн БҮТЭН НЭР (`Guitsetgel` — `fullName || username`) тул
+ *    нэвтэрсэн хэрэглэгчийн нэр (username) ЭСВЭЛ порталын `community/self`-ийн `fullName`-тэй тулгана.
+ *    Node (тест) ба нэвтрэлт унтраалттай (дев) үед шалгахгүй (`sameAsLogin`-тэй ижил).
+ */
+const selfFullName = new Map<string, string>();
+/**
+ * ⚠️ 2026-10-09 (аудит №2): `EXPIRED` = `community/self` нэвтрэлтийн хугацаа дууссанаас (токен шинэчлэгдээгүй
+ *    `sessionExpired` эсвэл 498) унасан. Урьд нь бүх уналт `null` → «баталгаажуулж чадсангүй — дахин оролдоно уу»
+ *    гардаг тул хэрэглэгч дахин дарсаар байв (дахин оролдлого хэзээ ч бүтэхгүй). Одоо `friendlyError`/
+ *    `huvaariBatlah.errText`-тэй ИЖИЛ «дахин нэвтэрнэ үү» мессеж (`whoDeny`).
+ */
+const EXPIRED = Symbol('expired');
+async function loginFullName(u: string): Promise<string | null | typeof EXPIRED> {
+  const hit = selfFullName.get(u);
+  if (hit != null) return hit;
+  try {
+    const j = await arcgisPost<{ username?: string; fullName?: string }>(
+      `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest/community/self`, {},
+    );
+    if (String(j?.username ?? '').trim().toLowerCase() !== u) return null;
+    const n = String(j?.fullName || j?.username || '').trim();
+    selfFullName.set(u, n);
+    return n;
+  } catch (e) {
+    const x = e as { sessionExpired?: boolean; code?: number; cause?: { sessionExpired?: boolean; code?: number } } | null;
+    if (x?.sessionExpired === true || x?.code === 498 || x?.cause?.sessionExpired === true || x?.cause?.code === 498) return EXPIRED;
+    return null;
+  }
+}
+async function whoDeny(who: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !AUTH.appId) return null;
+  const u = (currentUser() ?? '').trim().toLowerCase();
+  if (!u) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  const w = who.trim().toLowerCase();
+  if (w === u) return null;
+  const full = await loginFullName(u);
+  /* ⚠️ 2026-10-09 (аудит №2): нэвтрэлт дууссан — ерөнхий «баталгаажуулж чадсангүй» биш (`EXPIRED`-ийн ⚠️) */
+  if (full === EXPIRED) return tr('Нэвтрэлтийн хугацаа дууссан байна. Хуудсыг дахин ачаалж нэвтэрнэ үү.');
+  if (full != null && full.toLowerCase() === w) return null;
+  return full == null
+    ? tr('Нэвтэрсэн хэрэглэгчийн нэрийг порталаас баталгаажуулж чадсангүй — шийдвэр бүртгэгдсэнгүй, дахин оролдоно уу.')
+    : tr('Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.');
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит): ДУНД ШАТНЫ БИЧИЛТИЙН ХАРИУ АЛДАГДСАН (timeout · сүлжээ · 5xx — `isLostWrite`).
+ *    Урьд нь `apply` (`if (!registerNow) throw e` → `fail`) ба `recheck` (`addRows`/`updateRows`-ийн
+ *    `catch` → `fail`) энгийн улаан алдаа буцааж, жагсаалтыг ШИНЭЧЛЭХГҮЙ байв — бичилт серверт суусан
+ *    байж болох тул хянагч «болсонгүй» гэж ойлгоод дахин дарж STALE/давхар тойрог авдаг байлаа.
+ *    `hyanalt.post` нь `ArcGISError`-ийг `HyanaltError` болгодог тул `cause`-ыг ч шалгана.
+ *    Одоо «үр дүн тодорхойгүй — дахин ачаалж байна» + `refreshQuiet` (дэлгэц бодит төлөвийг харуулна).
+ */
+/* ⚠️ 2026-10-09 (аудит №2): ЭКСПОРТ — зөвхөн Node шалгуурт (`hyanaltAuthz.check.mjs`); дүрэм өөрчлөгдөөгүй */
+export const lostWrite = (e: unknown): boolean =>
+  isLostWrite(e) || isLostWrite((e as { cause?: unknown } | null)?.cause);
+async function lostResult(e: unknown): Promise<Result> {
+  console.warn('[selbe] хяналтын бичилтийн хариу алдагдсан:', e);
+  await refreshQuiet();
+  emit();
+  return {
+    ok: false,
+    error: tr('Хариу алдагдсан — шийдвэр хадгалагдсан эсэх тодорхойгүй. Жагсаалтыг дахин ачааллаа: төлөвийг шалгаад, өөрчлөгдөөгүй бол дахин оролдоно уу. ({0})', String((e as Error)?.message ?? e)),
+  };
+}
 
 /**
  * ДОМЭЙН ТҮВШНИЙ ЭРХИЙН ХАМГААЛАЛТ (2026-09-16-ны аудит).
@@ -204,6 +277,12 @@ function authz(
   hist?: unknown,
   /** R5 нөөц — хяналтын мөр ба энэ шийдвэрийн дэлгэцийн нэр (`hist`-тэй хамт л) */
   same?: { row: Row; who: string },
+  /**
+   * ⚠️ 2026-10-09 (аудит): илгээлтийг илгээсэн данснууд (`submission.submittersOf`) — ЗӨВХӨН инженер шатанд.
+   *    Урьд нь илгээгчийн данс бүртгэгддэггүй тул компаниас инженер шат руу шилжүүлсэн данс ӨӨРИЙН
+   *    илгээлтийг батлах боломжтой байв. `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй.
+   */
+  submitters?: readonly string[],
 ): string | null {
   const u = meOf(me);
   let by = bypass;
@@ -224,6 +303,9 @@ function authz(
   if (sc !== null && !sc.includes(bagts)) {
     return tr('Энэ багц танд хуваарилагдаагүй байна.');
   }
+  /* ⚠️ 2026-10-09 (аудит): өөрийн илгээсэн гүйцэтгэлийг өөрөө хянахгүй (`submitters`-ийн ⚠️) */
+  const sd = submitterDeny(stage, u, submitters);
+  if (sd) return sd;
   if (hist !== undefined) {
     const pv = prevReview(stage);
     const la = pv ? lastApprover(hist, pv) : '';
@@ -240,6 +322,36 @@ function authz(
     }
   }
   return null;
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): `authz`-ийн илгээгчийн дүрмийг ЦЭВЭР функц болгон гаргав (Node шалгуур —
+ *    `hyanaltAuthz.check.mjs`). Утга ӨӨРЧЛӨГДӨӨГҮЙ: зөвхөн инженер шатанд, `u` илгээгчдийн дунд бол татгалзана;
+ *    `submitters` `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй. `u` нь жижиг үсгээр (`meOf`).
+ */
+export function submitterDeny(stage: ReviewStage, u: string, submitters?: readonly string[]): string | null {
+  if (stage === 'engineer' && submitters?.includes(u)) {
+    return tr('Энэ гүйцэтгэлийг та өөрөө илгээсэн — өөрийн илгээлтийг хянах боломжгүй.');
+  }
+  return null;
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит): инженер шатны ЗӨВШӨӨРЛИЙН өмнө илгээлтийн илгээгчдийг уншина (`authz.submitters`).
+ *    Зөвхөн хөтөчид (Node-д `companyDeny`-тэй ижил — шалгахгүй) ба `bypass` үйлчлэхгүй үед (super/дев).
+ *    Уншиж чадахгүй бол ТАТГАЛЗАНА (fail-closed, `subAt`-ийн уншилттай ижил); илгээлт алга (legacy) → шалгахгүй.
+ */
+async function submittersFor(
+  stage: ReviewStage, row: Row, me: string | undefined, bypass: boolean,
+): Promise<{ ok: true; list?: string[] } | { ok: false; error: string }> {
+  if (stage !== 'engineer' || typeof window === 'undefined') return { ok: true };
+  if (bypass && (!AUTH.appId || roleForUser(meOf(me)) === 'super')) return { ok: true };
+  const so = Number(row[F.sheetOid]);
+  if (!Number.isInteger(so) || so <= 0) return { ok: true };
+  const { readSubmissionByOid, submittersOf } = await import('./submission');
+  const sr = await readSubmissionByOid(so);
+  if (!sr.ok) return { ok: false, error: sr.error };
+  return { ok: true, ...(sr.sub ? { list: submittersOf(sr.sub.payload) } : {}) };
 }
 
 /* ── ArcGIS ↔ програмын хэлбэр ── */
@@ -1237,7 +1349,11 @@ async function archiveSubmission(
     const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
     const mr = await markArchiving(staged.oid, staged.at, {
       at: staged.at, startedAt: Date.now(), maxOid0, fillMs, n: frame.length,
-      ...(rootNo ? { rootNo: rootNo.slice(0, 64) } : {}),
+      /* ⚠️ 2026-10-09 (аудит): 64-өөс УРТ бол ОГТ бичихгүй (урьд нь `slice(0, 64)` — таслагдсан утга
+         `matchArchivedFrame`-ийн ЯГ тулгалтад хэзээ ч таарахгүй тул бичигдсэн жаазыг «олдсонгүй» гэж
+         үзэж нэмэлтийг ДАВХАР тоолох эрсдэлтэй байв). `parseSubmission` урт утгыг аль хэдийн хаядаг;
+         тэмдэггүй үед `noOf(rows[0])` нөөц ажиллана. */
+      ...(rootNo && rootNo.length <= 64 ? { rootNo } : {}),
       ...(probe.length ? { probe } : {}),
     });
     if (!mr.ok)
@@ -1619,7 +1735,23 @@ export async function apply(a: {
       /* ⚠️ 2026-10-06 (аудит #6): зөвхөн ЗӨВШӨӨРӨХ чиглэлд өмнөх шатны хүнийг тулгана —
          буцаалт ажлыг батлалтаас ХОЛДУУЛДАГ тул давхар үүргийн эрсдэлгүй. */
       /* ⚠️ 2026-10-09 (R5): лог талбар алга бол `''` — `authz` нэрээр нөөц шалгалт хийнэ */
-      const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true, returning ? undefined : (cur[F.history] ?? ''), { row: cur, who: a.who });
+      /* ⚠️ 2026-10-09 (аудит): `who` нь нэвтэрсэн хэрэглэгчийнх байх ёстой (`whoDeny`-ийн ⚠️) — R5 нөөц
+         шалгалт ба `SF[шат].who` хоёулаа энэ утгад тулгуурладаг тул `authz`-ээс ӨМНӨ. Супер/дев ч шалгагдана:
+         `bypass` нь шат/багцын хүрээг чөлөөлдөг, хүний нэрийг биш. */
+      /* ⚠️ 2026-10-09 (аудит №2): ДАРААЛАЛ — эхлээд ЛОКАЛ `authz` (томилгоо · шат · зөвхөн харах · хүрээ),
+         ДАРАА НЬ сүлжээний хоёр уншилт (`whoDeny` → `community/self`, `submittersFor` → илгээлт). Урьд нь
+         томилогдоогүй/зөвхөн харах хэрэглэгч хоёр дэмий хүсэлт илгээж, уншилт унавал «эрхгүй»-н оронд
+         төөрөгдүүлэх уншилтын алдаа авдаг байв. Эцсийн шийдвэр fail-closed хэвээр: сүлжээний шалгалтын
+         дараа `authz`-ийг илгээгчдийн жагсаалттай БҮТЭН дахин дуудна (локал хэсэг нь хямд, идемпотент). */
+      const pre = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true, returning ? undefined : (cur[F.history] ?? ''), { row: cur, who: a.who });
+      if (pre) { emit(); return { ok: false, error: pre }; }
+      const wd = await whoDeny(a.who);
+      if (wd) { emit(); return { ok: false, error: wd }; }
+      /* ⚠️ 2026-10-09 (аудит): инженер шатанд ЗӨВШӨӨРӨХ үед илгээгчийг тулгана (`authz.submitters`) —
+         буцаалтад биш (аудит #6-ийн дүрэмтэй ижил: буцаалт ажлыг батлалтаас холдуулдаг). */
+      const subr: Awaited<ReturnType<typeof submittersFor>> = returning ? { ok: true } : await submittersFor(a.stage, cur, a.me, a.bypass === true);
+      if (!subr.ok) return { ok: false, error: subr.error };
+      const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true, returning ? undefined : (cur[F.history] ?? ''), { row: cur, who: a.who }, subr.list);
       if (deny) { emit(); return { ok: false, error: deny }; }
     }
     /*
@@ -1767,7 +1899,12 @@ export async function apply(a: {
        *    үлдэж, `retryPendingRegistrations` дараа нь нэгтгэл/IPC-г нөхнө
        *    (2026-09-25).
        */
-      if (!registerNow) throw e;
+      /* ⚠️ 2026-10-09 (аудит): дунд шатанд хариу АЛДАГДСАН бол энгийн алдаа биш — үр дүн тодорхойгүй,
+         жагсаалтыг дахин ачаална (`lostResult`-ийн ⚠️). Тодорхой татгалзал бол урьдын адил. */
+      if (!registerNow) {
+        if (lostWrite(e)) return await lostResult(e);
+        throw e;
+      }
       let landed = false;
       try { landed = (await liveRow(a.oid))?.[F.status] === STATUS.transferred; } catch { landed = false; }
       /* ⚠️ 2026-10-06 (аудит #1): архив бичигдсэн тул ерөнхий алдаа БИШ — «дахин Батлах,
@@ -2061,7 +2198,17 @@ export async function recheck(
   {
     /* ⚠️ 2026-10-06 (аудит #6): «ok» (дээш илгээх) үед л өмнөх шатны хүнийг тулгана — `apply`-тай ижил */
     /* ⚠️ 2026-10-09 (R5): лог талбар алга бол `''` — `authz` нэрээр нөөц шалгалт хийнэ */
-    const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true, verdict === 'ok' ? (prev[F.history] ?? '') : undefined, { row: prev, who });
+    /* ⚠️ 2026-10-09 (аудит): `apply`-тай ИЖИЛ — `who` нэвтэрсэн хэрэглэгчийнх (`whoDeny`-ийн ⚠️) */
+    /* ⚠️ 2026-10-09 (аудит №2): `apply`-тай ИЖИЛ дараалал — локал `authz` эхэлж, сүлжээний уншилт дараа нь,
+       эцэст нь илгээгчидтэй БҮТЭН `authz` (fail-closed) */
+    const pre = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true, verdict === 'ok' ? (prev[F.history] ?? '') : undefined, { row: prev, who });
+    if (pre) { emit(); return { ok: false, error: pre }; }
+    const wd = await whoDeny(who);
+    if (wd) { emit(); return { ok: false, error: wd }; }
+    /* ⚠️ 2026-10-09 (аудит): «ok» үед инженер шатанд илгээгчийг тулгана — `apply`-тай ижил */
+    const subr: Awaited<ReturnType<typeof submittersFor>> = verdict === 'ok' ? await submittersFor(by, prev, me, bypass === true) : { ok: true };
+    if (!subr.ok) return { ok: false, error: subr.error };
+    const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true, verdict === 'ok' ? (prev[F.history] ?? '') : undefined, { row: prev, who }, subr.list);
     if (deny) { emit(); return { ok: false, error: deny }; }
   }
   /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ — `apply`-тай ИЖИЛ (дээрх `subAt`) */
@@ -2166,7 +2313,11 @@ export async function recheck(
       const res = await addRows([fresh]);
       /* ⚠️ 2026-10-04: `nextId` max+1 уралдаан — бичсэний дараа давхардлыг засна (алдаа нь чимээгүй) */
       await ensureUniqueId(addedOid(res), String(fresh[F.id]));
-    } catch (e) { return fail(e); }
+    } catch (e) {
+      /* ⚠️ 2026-10-09 (аудит): хариу алдагдсан бол шинэ тойрог суусан байж болно — тодорхойгүй + дахин ачаална */
+      if (lostWrite(e)) return lostResult(e);
+      return fail(e);
+    }
     /* ⚠️ 2026-09-30: бичилт БҮТСЭНИЙ ДАРААХ дахин ачаалалтын алдаа шийдвэрийг
        унагахгүй — `apply`-ийн 2026-09-29-ний (аудит 10) ижил засвар. Урьд нь энд
        `{ok:false}` буцаж, хянагч улаан алдаа хараад дахин дарахад STALE авдаг
@@ -2213,7 +2364,11 @@ export async function recheck(
 
   try {
     await updateRows([back]);
-  } catch (e) { return fail(e); }
+  } catch (e) {
+    /* ⚠️ 2026-10-09 (аудит): хариу алдагдсан бол буцаалт суусан байж болно — тодорхойгүй + дахин ачаална */
+    if (lostWrite(e)) return lostResult(e);
+    return fail(e);
+  }
   /* ⚠️ 2026-09-30: дахин ачаалалтын алдаа бүтсэн буцаалтыг «амжилтгүй» болгохгүй (дээрх «ok»-ийн ⚠️) */
   await refreshQuiet();
   return okp.warn ? { ok: true, warn: okp.warn } : { ok: true };

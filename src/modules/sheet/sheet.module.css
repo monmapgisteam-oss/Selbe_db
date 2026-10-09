@@ -476,6 +476,33 @@
   background: var(--surface);
 }
 
+/* ⚠️ 2026-10-09 (аудит №2): нооргийн сэргээлтийн хаалт — хүснэгт UNMOUNT ХИЙГДЭХГҮЙ (`useRows`-ийн
+   ResizeObserver/виртуал цонх `scrollRef`-тэй үлдэнэ), зөвхөн нуугдаж (`restoreHidden`), дээрээс нь
+   тунгалаг биш хаалт (`restoreGate`) давхарлана. `restoreHost` нь `.scroll`-ын flex байрлалыг
+   (`.wrap` → `.scroll` өндрийн гинж) хадгалж дамжуулна. */
+.restoreHost {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 240px;
+  min-width: 0;
+  max-width: 100%;
+}
+.scroll.restoreHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+.restoreGate {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
 /* ══════════════════════════════════════════════════════════
    Excel маягийн pivot хүснэгт.
    border-collapse:separate — sticky/царцаасан нүд өөрийн хүрээгээ

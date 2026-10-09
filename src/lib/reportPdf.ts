@@ -20,7 +20,7 @@ import type {
 import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
 import { buildFindings, type ReportExtra } from '@/lib/reportData';
-import { num, pct } from '@/lib/format';
+import { num, pct, dateTime } from '@/lib/format';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
 const bn = (v: number | null) => num(v);
@@ -117,10 +117,13 @@ export function buildReportDoc(
      дэлгэцтэй (`Tailan.tsx`) ижил. Уншигдаагүй бол орон сууцны тоог төслийн нэрээр
      орлуулахгүй — «уншигдсангүй» өгүүлбэр. */
   const lag = d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '';
+  /* ⚠️ 2026-10-09 (аудит №2): `buildActual` = `overall.pct` (багцын хувийг ХО дүнгээр жигнэсэн) —
+     §1-ийн «Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)» (`progress.overall`)-аас ӨӨР тоо
+     тул «барилга угсралтын ажил» гэсэн нэг нэрийг хоёр тоонд хэрэглэхгүй: аргыг нь нэрлэнэ. */
   const lead = [
     extra.projectPct != null
-      ? tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн төсвийн {1}-ийг эзэлдэг барилга угсралтын ажил {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(extra.projectPct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), lag, ` ${pct(land.pct, 1)}`, num(d.landLeft))
-      : tr('Төслийн нийт гүйцэтгэл (нэгтгэл гүйцэтгэл) уншигдсангүй. Төслийн төсвийн {0}-ийг эзэлдэг барилга угсралтын ажил {1}-ийн гүйцэтгэлтэй{2}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{3} байгаа ч {4} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(d.buildWeight, 1), pct(d.buildActual, 2), lag, ` ${pct(land.pct, 1)}`, num(d.landLeft)),
+      ? tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн төсвийн {1}-ийг эзэлдэг барилга угсралтын ажил (ХО-оор жигнэсэн) {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(extra.projectPct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), lag, ` ${pct(land.pct, 1)}`, num(d.landLeft))
+      : tr('Төслийн нийт гүйцэтгэл (нэгтгэл гүйцэтгэл) уншигдсангүй. Төслийн төсвийн {0}-ийг эзэлдэг барилга угсралтын ажил (ХО-оор жигнэсэн) {1}-ийн гүйцэтгэлтэй{2}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{3} байгаа ч {4} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(d.buildWeight, 1), pct(d.buildActual, 2), lag, ` ${pct(land.pct, 1)}`, num(d.landLeft)),
     /* ⚠️ 2026-10-09: олголт уншигдаагүй (`finance.paid == null`) бол «— ₮ нь бодитоор олгогдсон» гэж
        бичихгүй — олголтын хэсэггүй тусдаа өгүүлбэр (дэлгэц `Tailan.tsx`-тэй нэг түлхүүр). */
     finance.paid == null
@@ -155,7 +158,9 @@ export function buildReportDoc(
     }),
     content: [
       { text: tr('Сэлбэ 20 минутын хотын ерөнхий тайлан'), style: 'h1' },
-      { text: tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт · Огноо: {0}', dateStr), style: 'sub' },
+      /* ⚠️ 2026-10-09 (аудит №2): ӨГӨГДЛИЙН агшин (`extra.fetchedAt`, 5 мин кэш) — дэлгэцийн
+         «· Өгөгдөл:»-тэй ижил. Урьд нь зөвхөн ҮҮСГЭСЭН огноо хэвлэгддэг байв. */
+      { text: `${tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт · Огноо: {0}', dateStr)} · ${tr('Өгөгдөл: {0}', dateTime(extra.fetchedAt))}`, style: 'sub' },
       { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 1.2, lineColor: '#14181c' }] },
 
       /* ── Товч танилцуулга ── */
@@ -182,7 +187,8 @@ export function buildReportDoc(
         [td(tr('Орон сууцны блок')), td(num(blocks), true)],
         [td(tr('Өрхийн орон сууц')), td(num(ail), true)],
         [td(tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)')), td(pct(overall.pct, 2), true)],
-        [td(tr('Барилга угсралтын гүйцэтгэл (блокийн дундаж)')), td(pct(progress.overall, 2), true)],
+        /* ⚠️ 2026-10-09 (аудит №2): «энгийн» — товч танилцуулгын ХО-оор жигнэсэн тооноос ялгана */
+        [td(tr('Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)')), td(pct(progress.overall, 2), true)],
         [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} ₮', bn(finance.orderTotal)), true)],
         [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} ₮', bn(finance.contractAmount)), true)],
         /* ⚠️ 2026-10-09: HO_IPC хоосон → `paid` null → «—» («0 ₮» биш) */
@@ -216,7 +222,10 @@ export function buildReportDoc(
         [td(tr('Нийт'), false, TOTAL), td(num(overall.rows), true, TOTAL), td(pct(overall.weightSum, 2), true, TOTAL),
           td(pct(overall.pct, 2), true, TOTAL), td('—', true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Эзлэх жингийн нийлбэр {0} — гүйцэтгэл хараахан бүртгэгдээгүй багц байгаа тул нийт дүнг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
+      /* ⚠️ 2026-10-09 (аудит): хуучирсан шалтгаан («гүйцэтгэл бүртгэгдээгүй багц») засагдав —
+         2026-10-01-ээс тайлагнаагүй багц 0%-иар ордог; нийлбэр < 100% нь орон сууцны бус багц
+         хүснэгтэд ороогүйгээс (жин = төслийн нийт төсөвт эзлэх хувь). Дэлгэцтэй (`Tailan`) нэг текст. */
+      note(tr('Эзлэх жингийн нийлбэр {0} — жин нь багц бүрийн төслийн нийт төсөвт эзлэх хувь бөгөөд орон сууцны бус (бөглөх хуудасгүй) багцууд энэ хүснэгтэд ороогүй тул нийлбэр 100%-иас бага; нийт гүйцэтгэлийг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
 
       /* ⚠️ 2026-09-25: `land.parcels == null` = кадастр УНШИГДААГҮЙ (`reportData`
          давхаргын url алга). Урьд нь «нийт — нэгж талбар … шийдвэрлэгдээгүй: 0»,
@@ -255,8 +264,14 @@ export function buildReportDoc(
         [td(tr('Нийт'), false, TOTAL), td(num(social.n), true, TOTAL), td(num(social.areaM2), true, TOTAL)],
       ] }, layout: tableLayout },
 
+      /* ⚠️ 2026-10-09 (аудит №2): тоо нь `progress.overall` = БҮХ блокийн нийт гүйцэтгэлийн энгийн
+         дундаж (`latestMean`, тайлагнаагүй блок 0%), «үе шат тус бүрийн гүйцэтгэлээс тооцсон» БИШ;
+         6.2-ын үе шатын дундаж нь ЗӨВХӨН тайлагнасан блокоор — хоёрын ялгааг ил хэлнэ. */
       ...section('6', tr('Барилга угсралтын гүйцэтгэл'),
-        tr('Хяналтын {0} блокийн ажлын үе шат тус бүрийн гүйцэтгэлээс тооцсон дундаж {1} байна{2}.{3}{4}.', num(progress.blocks), pct(progress.overall, 2), progress.date ? tr(' (сүүлийн тайлагнал {0})', progress.date) : '', d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.join('», «')) : '', d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : '')),
+        tr('Хяналтын {0} блокийн нийт гүйцэтгэлийн энгийн дундаж {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.', num(progress.blocks), pct(progress.overall, 2), progress.date ? tr(' (сүүлийн тайлагнал {0})', progress.date) : '', progress.blocks > progress.reported ? tr('; тайлагнаагүй {0} блок 0%-иар тооцогдсон', num(progress.blocks - progress.reported)) : '', num(progress.reported))
+        + (d.startedPhases.length || d.notStartedPhases.length
+          ? `${d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.join('», «')) : ''}${d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : ''}.`
+          : '')),
       cap('6.1', tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 60, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Гүйцэтгэл'), true)],
@@ -289,7 +304,8 @@ export function buildReportDoc(
         ...finance.sources.map((s): TableCell[] => [
           td(tr(s.label)), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(bn(srcTotal), true, TOTAL), td('100%', true, TOTAL)],
+        /* ⚠️ 2026-10-09 (аудит №2): дүн 0 бол мөрүүд «—» тул нийт ч «—» (`Tailan.tsx` · `execPdf`-тэй ижил) */
+        [td(tr('Нийт'), false, TOTAL), td(bn(srcTotal), true, TOTAL), td(srcTotal ? pct(100, 1) : '—', true, TOTAL)],
       ] }, layout: tableLayout },
 
       /* ⚠️ 2026-09-06: «Сар бүрийн санхүүжилтийн хуваарь» (7.2) ХАСАГДСАН —

@@ -10,6 +10,7 @@ import { needsFrameOcc, overlaySubmission, withFrameOcc } from "../sheetFrame";
 import { readSubmissionByOid } from "@/lib/submission";
 import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
+import { reviewLockState } from "@/lib/hyanaltSubmit";
 import { nowFillMs, type SheetView } from "./util";
 
 /** Хяналтын урсгалын мөрүүд — энэ хуудасны өнөөдрийн/буцаагдсан мөр, өөр өдрүүдийн байдал. */
@@ -126,26 +127,19 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
    *    харах ёстой — эс бөгөөс хариу ирээгүй өдрөө мартаж, тэр өдрийн
    *    буцаалт хариугүй үлдэнэ.
    */
+  /* ⚠️ 2026-10-09 (аудит №2, HIGH): хоригийн ГАНЦ дүрэм — `hyanaltSubmit.reviewLockState` (домэйн
+     `reviewLockDeny`-тэй ИЖИЛ). Урьд нь энд БҮХ мөрийг сүүлийн тойргийн дүрэмгүй шүүдэг байсан тул
+     `recheck('ok')`-ийн үлдээсэн хуучин «Менежер буцаасан» мөр, хянагчид харагддаггүй хуучирсан мөр
+     (OID 61·62·63·64·70) хуудсыг үүрд түгждэг байв. Одоо хянагчийн дараалалтай ижил `groupWorks`
+     (ажил бүрийн одоогийн тойрог). ⚠️ `name` (эх нэр) — `label` орчуулагддаг (2026-09-21, `flow`-ийн ⚠️). */
+  const reviewLock = useMemo(() => {
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key).map((p) => p.name);
+    return reviewLockState(hyRows, pkg.group, pkg.name, others);
+  }, [hyRows, pkg.group, pkg.key, pkg.name]);
   const otherDaysInReview = useMemo(() => {
-    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
-    const days = new Set<string>();
-    for (const r of hyRows) {
-      if (r[HF.bagts] !== pkg.group) continue;
-      const ajil = String(r[HF.ajil] ?? '');
-      /* ⚠️ `name` (эх нэр) — `label` орчуулагддаг (2026-09-21, `flow`-ийн ⚠️). */
-      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
-      if (ajil.startsWith(todayAjilTag)) continue;
-      if (r[HF.status] === STATUS.transferred) continue;
-      /* Гүйцэтгэгчийн гар дээр буцаж ирсэн нь «хянагдаж байгаа» БИШ.
-         ⚠️ `OWNER` нь `Record<Status, Stage>` тул түүхий `string`-ээр
-         индекслэхгүй — мөрийн талбарыг ШУУД дамжуулна (`flow`-ийн
-         `OWNER[flow[HF.status]]`-тэй ижил хэв маяг). */
-      if (OWNER[r[HF.status]] === 'company') continue;
-      const m = /(\d{4}\.\d{2}\.\d{2})/.exec(ajil);
-      if (m) days.add(m[1]);
-    }
-    return [...days].sort();
-  }, [hyRows, pkg.group, pkg.key, pkg.name, todayAjilTag]);
+    const m = /(\d{4}\.\d{2}\.\d{2})/.exec(todayAjilTag);
+    return reviewLock.days.filter((d) => d !== m?.[1]);
+  }, [reviewLock, todayAjilTag]);
   /**
    * ӨӨР ӨДРИЙН БУЦААГДСАН урсгалууд — зөвхөн МЭДЭЭЛЭЛ (2026-09-21-ний дахин аудит).
    *
@@ -285,7 +279,7 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
   const reviewSoidsKey = reviewSoids.join(',');
   return {
     hyRows, hyLoading, hyErr, reloadHy,
-    todayFillMs, setTodayFillMs, todayAjilTag, flow, otherDaysInReview, otherDaysReturned,
+    todayFillMs, setTodayFillMs, todayAjilTag, flow, otherDaysInReview, otherDaysReturned, reviewLock,
     resumedOid, setResumedOid, returned, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   };
 }

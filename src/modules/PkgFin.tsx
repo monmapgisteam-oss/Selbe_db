@@ -15,11 +15,11 @@ import {
 } from '@/modules/Bagts';
 import { useBuildings, pickedBuilding } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, type FinData,
+  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, projectPlanScope, planScopeNote, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
-import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
+import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
 import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
 import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
@@ -1148,7 +1148,10 @@ function TsKpi({ packs, fin, share }: {
       if (m.label > nowYm) continue;
       if (m.phys != null) actual = m.phys;
     }
-    const gap = planned != null && actual != null ? planned - actual : null;
+    /* ⚠️ 2026-10-09 (аудит №2): зөрүү = `lag.gap` — төлөвлөгөөтэй НЭГ (хуваарьтай) багцын олонлогийн
+       бодит (`physLag`). Урьд нь `planned − actual` (бүх багцын бодит) тул хуваарьгүй багц бодит
+       талд л тоологдож хоцрогдлыг хэтрүүлдэг байв. `actual` (харуулах тоо) хэвээр. */
+    const gap = lag ? lag.gap : null;
     /* ⚠️ 2026-10-04: `planTotal`/`givenPkg` (төлөвлөгөө − багцын олголт) ХАСАГДАВ — «Олгогдоогүй
        үлдэгдэл» ч гэрээлсэн хүрээгээр (доорх `remain`). `givenTotal` нь огноогүй актыг агуулдаг
        (сарын цуваанд ордоггүй) тул тоологч эндээс хэвээр. */
@@ -1959,6 +1962,8 @@ function FinCard({
      боддог тул нэг багцад хавтан ба карт өөр хувь, өөр үлдэгдэл харуулдаг байв. */
   let contractAmt = 0;
   let givenContracted = 0;
+  /** ⚠️ 2026-10-09 (аудит №2): төслийн горимд төлөвлөгөө/хоцрогдлоос хасагдсан хуваарьгүй багцууд */
+  let projExcl: string[] = [];
   if (d) {
     if (p) {
       /* ⚠️ 2026-09-04 (аудит, HIGH): `find` → `filter`. Хуучин код нь багцын
@@ -1991,6 +1996,7 @@ function FinCard({
       givenShown = givenTotal;
     } else {
       months = aggregateMonths(d);
+      projExcl = projectPlanScope(d)?.excluded ?? [];
       d.planTotal.forEach((v) => { total += v; });
       d.givenTotal.forEach((v) => { givenTotal += v; });
       givenShown = hoTotals(d.pays).paid;
@@ -2025,7 +2031,8 @@ function FinCard({
   const givenShare = paidPctOf(givenContracted, contractAmt);
   // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
   const progGap = plannedPct != null && actualPct != null ? plannedPct - actualPct : null;
-  const gapText = progGap == null ? '—' : `${progGap >= 0 ? '−' : '+'}${Math.abs(progGap).toFixed(1)}%`;
+  /* ⚠️ 2026-10-09 (аудит №2): `>= 0` нь тэг дээр «−0.0%» гаргадаг байв; нэгж нь н.х (`gdash.gapPts`) */
+  const gapText = gapPts(progGap);
 
   // ГАРЧИГ — нэр + (хоцрогдол бол) нэрний ХАЖУУД alert badge
   const title = (
@@ -2146,7 +2153,13 @@ function FinCard({
                  харагдацад биет явц огт харагдахгүй (2026-08-21). */
               ...(finOnly ? [] : [
                 { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
-                { v: actualPct == null ? '—' : pct(actualPct, 1), l: tr('Бодит гүйцэтгэл'), c: 'var(--ink)' },
+                /* ⚠️ 2026-10-09 (аудит №2): `actualPct` = `lag.actual` — хуваарьгүй багц хасагдсан бол
+                   хуваарьтай багцаар (зөрүүтэй нэг олонлог); шошго үүнийг хэлнэ */
+                {
+                  v: actualPct == null ? '—' : pct(actualPct, 1),
+                  l: projExcl.length ? tr('Бодит гүйцэтгэл (хуваарьтай багцаар)') : tr('Бодит гүйцэтгэл'),
+                  c: 'var(--ink)',
+                },
                 { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
               ]),
               /* ⚠️ «Давхцсан үлдсэн нэгж талбар» индикатор ЭНДЭЭС ХАСАГДАВ
@@ -2169,6 +2182,8 @@ function FinCard({
                 биш үү» гэсэн эргэлзээ төрүүлнэ. */}
             <span><i className={ts.legSolid} style={{ background: cat(0) }} />{tr('Олгосон санхүүжилт')}</span>
             {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл')}</span>}
+            {/* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хоцрогдлоос хасагдсаныг нэрлэнэ */}
+            {!finOnly && projExcl.length > 0 && <span>{planScopeNote(projExcl)}</span>}
           </div>
           <ComboChart
             items={months}

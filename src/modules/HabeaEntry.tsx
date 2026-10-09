@@ -22,6 +22,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
 import { friendlyError } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+import { ubDayKey } from '@/lib/ceo/workforce';
 import {
   addRegister, addWaste, entryFieldLabel, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
   loadWasteMetrics, newGlobalId, nextNumber, type EntryField,
@@ -29,10 +30,9 @@ import {
 import x from './uzlegExport.module.css';
 import e from './habeaEntry.module.css';
 
-const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+/* ⚠️ 2026-10-09 (аудит): ӨНӨӨДӨР = Улаанбаатарын хуанли (`ubDayKey`) — урьд нь хөтчийн ЛОКАЛ огноо
+   тул гадаадаас/UTC машинаас 00:00–08:00 (UB)-д өчигдрийн огноо санал болгодог байв. */
+const todayStr = () => ubDayKey(Date.now());
 /** «YYYY-MM-DD» → UTC шөнө дунд (хүснэгтийн байгаа хэвтэй ижил) */
 const utcDay = (v: string) => {
   const [y, m, d] = v.split('-').map(Number);
@@ -45,13 +45,20 @@ const errText = (ex: unknown) => (ex instanceof HabeaLostWrite ? ex.message : fr
 /** «Багц 3.1» (шүүлтийн түлхүүр) → дэлгэцийн нэр */
 export const pkgColLabel = (name: string) => tr('Багц {0}', name.replace(/^Багц\s*/, ''));
 
-/** Картын гарчгийн жижиг «+ Нэмэх» товч — ЗӨВХӨН эрхтэйд зурагдана (дуудагч шийднэ) */
-export function AddButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" className={e.add} onClick={onClick} title={tr('Бүртгэл нэмэх')}>
+/**
+ * Картын гарчгийн жижиг «+ Нэмэх» товч — ЗӨВХӨН эрхтэйд зурагдана (дуудагч шийднэ).
+ * ⚠️ 2026-10-09 (аудит): `disabled` + `note` — үйлчилгээ мөр нэмэхийг зөвшөөрөхгүй (`Create`-гүй)
+ *    үед товчийг хааж ШАЛТГААНЫГ хэлнэ. Хаалттай товч хулганы үйл явдал авдаггүй тул тайлбарыг
+ *    гаднах `span`-ий `title`-д, дэлгэц уншигчид `aria-label`-д.
+ */
+export function AddButton({ onClick, disabled = false, note }: { onClick?: () => void; disabled?: boolean; note?: string }) {
+  const btn = (
+    <button type="button" className={e.add} onClick={onClick} disabled={disabled}
+      title={note ?? tr('Бүртгэл нэмэх')} aria-label={note ? `${tr('Нэмэх')} — ${note}` : undefined}>
       + {tr('Нэмэх')}
     </button>
   );
+  return disabled && note ? <span title={note}>{btn}</span> : btn;
 }
 
 /**

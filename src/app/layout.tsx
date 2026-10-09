@@ -76,9 +76,12 @@ export const metadata: Metadata = {
   description:
     'Сэлбэ дэд төвийн орон зайн мэдээллийн портал. Багцын хил, бүсчлэл, барилгын явц, газар чөлөөлөлт, инженерийн шугам сүлжээ, талбайн хяналтын үзүүлэлт — ArcGIS үйлчилгээнээс шууд.',
   /* ⚠️ 2026-09-09: selbe.monmap.mn → smart.selbecity.mn (домэйн солигдов).
-     `CNAME` (үндэс + public/) ба энэ хоёр мөр ЗААВАЛ ХАМТ солигдоно — эс бөгөөс
-     deploy бүр GitHub Pages-ийн custom domain тохиргоог хуучин домэйноор дарж
-     бичиж, шинэ хаяг 404 болдог (яг тэр эвдрэл 2026-09-09-нд гарсан). */
+     ⚠️ 2026-10-09 (аудит): урьдын «`CNAME` файл custom domain-ийг удирддаг, deploy бүр
+     дарж бичдэг» гэсэн тайлбар БУРУУ байв — `actions/deploy-pages`-ээр deploy хийхэд
+     GitHub `CNAME` файлыг ҮЛ ТООМСОРЛОНО; домэйн нь зөвхөн repo → Settings → Pages →
+     Custom domain-оос ирнэ. Домэйн солихдоо: (1) Settings → Pages-д шинэ домэйн,
+     (2) энэ `metadataBase`, (3) `CNAME` файлуудыг (үндэс + public/, баримт/өөр хэрэгслийн
+     тулд үлдээв) ХАМТ солино. */
   metadataBase: new URL('https://smart.selbecity.mn'),
   // favicon.ico байхгүйгээс 404 гарч байсан — SVG лого нь бүх орчин үеийн browser-т favicon болно
   icons: { icon: '/logo.svg' },

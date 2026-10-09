@@ -16,6 +16,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
+import { num } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
   BUILDING, laborCompanyFields,
@@ -961,6 +962,9 @@ export function pkgCostWeight(
  * @param physCnt багц → сар → блокийн тоо (нөөц жин — хамгийн их утга)
  * @param cost    багц → ХО дүн (`pkgCostWeight`)
  * @param physN   багц → блокийн хуваарь (`finPhys.PhysBuild.physN`) — тайлагнаагүй багцыг 0%-иар нэмнэ
+ * @param only    ⚠️ 2026-10-09 (аудит №2): өгөгдвөл ЗӨВХӨН энэ багцуудаар (хуваарьтай багцын
+ *                олонлог — `planScope`). ЗӨВХӨН хоцрогдлын харьцуулалтад (`Finance.aggregateMonths`
+ *                → `physLag`); толгойн «Биет гүйцэтгэл» (`physNow`) үүнгүйгээр — бүх багцаар.
  */
 export function housingSeries(
   phys: Map<string, Map<string, number>>,
@@ -969,8 +973,9 @@ export function housingSeries(
   cost: Map<string, number>,
   labels: readonly string[],
   physN?: ReadonlyMap<string, number>,
+  only?: ReadonlySet<string>,
 ): { label: string; phys: number | null; physAt: string | null }[] {
-  const pk = [...phys].map(([k, byMon]) => {
+  const pk = [...phys].filter(([k]) => !only || only.has(k)).map(([k, byMon]) => {
     let w = physN?.get(k) ?? 1;
     physCnt.get(k)?.forEach((v) => { if (v > w) w = v; });
     return {
@@ -983,6 +988,7 @@ export function housingSeries(
   /* ⚠️ 2026-10-01: огт тайлагнаагүй багц — цэггүй, үргэлж 0% */
   physN?.forEach((n, k) => {
     if (phys.get(k)?.size) return;
+    if (only && !only.has(k)) return;
     pk.push({ pts: [], at: undefined, w: n > 0 ? n : 1, cost: cost.get(k) ?? 0 });
   });
   return labels.map((label) => {
@@ -1012,6 +1018,74 @@ export function housingSeries(
 }
 
 /**
+ * ХУВИЙН НЭГЖИЙН ЗӨРҮҮ (нэгж хувь, «н.х») — тэмдэгтэй утга `v` (эерэг = өсөлт/түрүүлсэн).
+ *
+ * ⚠️ 2026-10-09 (аудит №2): хуваарийн зөрүүг PkgFin «−0.0%» (тэг дээр `>= 0` хасах тэмдэг авдаг),
+ *    Дашбоард «5.0% хоцролт» / «+1.2%», PkgProg «-5.0 pp», удирдлагын PDF «−5.0 н.х», CEO
+ *    «−5.0 пп» гэж ТАВАН өөр хэлбэрээр бичдэг байв. «%» нь «төлөвлөгөөний 5%» гэж буруу
+ *    уншигдана — нэгж нь н.х. Одоо бүгд ЭНЭ функцээр: тэг (тойруулсны дараа) бол тэмдэггүй
+ *    «0.0 н.х» («−0.0» гарахгүй); `null` → «—» (0 биш).
+ */
+export function pts(v: number | null | undefined, d = 1): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (Number(a.toFixed(d)) === 0) return tr('{0} н.х', num(0, d));
+  return tr('{0} н.х', `${v > 0 ? '+' : '−'}${num(a, d)}`);
+}
+
+/**
+ * ХУВААРИЙН ЗӨРҮҮ — `gap` = төлөвлөгөө − бодит (эерэг = ХОЦОРСОН) → «−5.0 н.х» (хоцорсон),
+ * «+2.0 н.х» (түрүүлсэн), «0.0 н.х». ⚠️ 2026-10-09 (аудит №2): `pts`-ийн ⚠️.
+ */
+export const gapPts = (gap: number | null | undefined, d = 1): string =>
+  pts(gap == null ? gap : -gap, d);
+
+/**
+ * ХУВААРИЙН ЗӨРҮҮ ҮГЭЭР — «5.0 н.х хоцролт» / «2.0 н.х түрүүлсэн» / «0.0 н.х».
+ * ⚠️ 2026-10-09 (аудит №2): Дашбоардын `gapLabel` (2026-09-23-нд тэмдэг биш ҮГ болгосон
+ *    шийдвэр ХЭВЭЭР) — зөвхөн нэгж нь «%» → «н.х».
+ */
+export function gapPtsWord(gap: number | null | undefined, d = 1): string {
+  if (gap == null || !Number.isFinite(gap)) return '—';
+  const a = Math.abs(gap);
+  if (Number(a.toFixed(d)) === 0) return tr('{0} н.х', num(0, d));
+  return gap > 0 ? tr('{0} н.х хоцролт', num(a, d)) : tr('{0} н.х түрүүлсэн', num(a, d));
+}
+
+/**
+ * ⚠️ 2026-10-09 (аудит №2): төслийн төлөвлөгөөт шугам/хоцрогдлоос ХАСАГДСАН (хуваарьгүй)
+ * багц байвал дэлгэцэнд нэмэх тэмдэглэл (`planScope.excluded`, нэрээр), үгүй бол `null`.
+ */
+export function planScopeNote(excluded: readonly string[] | null | undefined): string | null {
+  if (!excluded?.length) return null;
+  return tr('Төлөвлөгөө ба хоцрогдол — хуваарьтай багцаар (хасагдсан: {0})', excluded.join(', '));
+}
+
+/**
+ * ХОЦРОГДЛЫН ХАРЬЦУУЛАЛТЫН БАГЦЫН ОЛОНЛОГ — бодит талын олонлог (`pkgs` = `phys` ∪ `physN`)-оос
+ * ХУВААРЬТАЙ (`byBagts`-д цэгтэй) нь `keys`; бодит талд ЖИНТЭЙ (ХО дүн > 0; ХО огт алга бол
+ * бүгд) боловч хуваарьгүй нь `excluded` (эрэмбэлсэн).
+ * ⚠️ 2026-10-09 (аудит №2): `housingPlanSeries`-ийн ⚠️ — төлөвлөгөө ба хоцрогдлын «бодит» тал
+ *    ХОЁУЛАА `keys`-ээр; `excluded` хоосон бол толгойн бодит хувьтай ЯГ ижил.
+ */
+export function planScope(
+  byBagts: ReadonlyMap<string, readonly unknown[]>,
+  cost: ReadonlyMap<string, number>,
+  pkgs: Iterable<string>,
+): { keys: Set<string>; excluded: string[] } {
+  const all = [...new Set(pkgs)];
+  const byCost = all.some((k) => (cost.get(k) ?? 0) > 0);
+  const keys = new Set<string>();
+  const excluded: string[] = [];
+  for (const k of all) {
+    if (byBagts.get(k)?.length) keys.add(k);
+    else if (!byCost || (cost.get(k) ?? 0) > 0) excluded.push(k);
+  }
+  excluded.sort((a, b) => a.localeCompare(b, 'mn', { numeric: true }));
+  return { keys, excluded };
+}
+
+/**
  * ОРОН СУУЦНЫ ТӨЛӨВЛӨГӨӨТ ХУВЬ — ТӨСЛИЙН түвшинд ХО дүнгээр жигнэсэн (`housingPct`).
  *
  * ⚠️ 2026-09-30: БОДИТ тал (`pkgShared.physNow`/`aggregateMonths` → `housingSeries`)
@@ -1028,13 +1102,31 @@ export function housingSeries(
  *    хуудас унасан бол `base` хоосон → энэ ч хоосон (дутуу муруй гаргахгүй).
  * ⚠️ ХО жинтэй багц НЭГ Ч алга бол `base`-ийг ХЭВЭЭР буцаана (блокийн тооны
  *    нөөц — `housingPct`-ийн дүрэмтэй ижил санаа).
+ * ⚠️ 2026-10-09 (аудит): БАГЦЫН ОЛОНЛОГ ч бодит талтай НЭГ байх ёстой. Хуваарьгүй
+ *    (огноо хоосон/эвдэрсэн — `planProgress.loadPlanCurve` `from == null`-оор чимээгүй
+ *    алгасдаг) багц `byBagts`-д ОРДОГГҮЙ тул энд хасагддаг, харин бодит тал
+ *    (`housingSeries` → `physN`) түүнийг 0%-иар (эсвэл бодит хувиар) ХУВААГЧИД оруулдаг →
+ *    «төлөвлөсөн − бодит» хоёр өөр олонлогийг хасч хоцрогдлыг ХЭТРҮҮЛДЭГ байв.
+ *    `pkgs` (бодит талын олонлог = `phys` ∪ `physN`) өгөгдвөл олонлогт ороогүй багцын
+ *    хуваарь тооцоонд ОРОХГҮЙ.
+ * ⚠️ 2026-10-09 (аудит №2): өмнөх хувилбар олонлогт ХО жинтэй хуваарьгүй багц НЭГ Ч байвал
+ *    ХООСОН буцаадаг байв — нэг хуудасны түр зуурын уншилтын алдаа ч Дашбоард · PkgProg ·
+ *    ExecReport · ТУХ-ийн ТӨСЛИЙН төлөвлөгөөт шугам, хоцрогдлыг бүхэлд нь арилгадаг байв.
+ *    Одоо: төлөвлөгөө = ХУВААРЬТАЙ багцуудаар (хуучин шиг); хоцрогдлын «бодит» тал ЯГ ТЭР
+ *    олонлогоор тусдаа (`planScope` → `housingSeries(…, only)` → `Finance`-ийн `physLag`) —
+ *    хоёр тал нэг олонлог тул хоцрогдол хэтрэхгүй; толгойн `physNow` ХӨНДӨГДӨХГҮЙ.
+ *    Хасагдсан багцыг (`planScope.excluded`) дэлгэц «(хуваарьтай багцаар)» тэмдэглэлээр хэлнэ.
+ *    Хуваарьгүйг 0% гэж ТААМАГЛАХГҮЙ (null ≠ 0).
  */
 export function housingPlanSeries<P extends { label: string; pct: number }>(
   byBagts: ReadonlyMap<string, readonly { label: string; pct: number }[]>,
   cost: ReadonlyMap<string, number>,
   base: readonly P[],
+  pkgs?: Iterable<string>,
 ): P[] {
+  const only = pkgs ? new Set(pkgs) : null;
   const pk = [...byBagts]
+    .filter(([k]) => !only || only.has(k))
     .map(([k, pts]) => ({
       pts: [...pts].sort((a, b) => a.label.localeCompare(b.label)),
       w: cost.get(k) ?? 0,

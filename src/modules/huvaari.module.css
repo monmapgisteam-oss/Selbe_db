@@ -166,6 +166,14 @@
   scrollbar-gutter: stable;
   scrollbar-color: var(--ink-3) transparent;
 }
+/* ⚠️ 2026-10-09 (аудит №2): хуваалцсан ноорог сэргэж дуустал хүснэгт ЗУРАГДСАН хэвээр НУУГДАНА (`Huvaari`-ийн
+   `hdRestoringUi`-ийн ⚠️). `display: none` БИШ — layout үлдэх ёстой: «өнөөдөр» рүү гүйлгэлт (`scrollLeft`) ба
+   цонхлолт (`clientHeight`) нуугдсан үед ч зөв бодогдоно. `visibility` нь pointer-ийг ч хаана; `inert` нь
+   гарын фокусыг (Tab) хаана. ⚠️ Доторх элемент `visibility: visible` тавибал ил гарна — тавихгүй. */
+.gWrap.gWrapGated {
+  visibility: hidden;
+  pointer-events: none;
+}
 .gWrap::-webkit-scrollbar { height: 14px; width: 10px; }
 .gWrap::-webkit-scrollbar-thumb { background: var(--ink-3); border: 3px solid var(--surface); border-radius: 99px; }
 .gWrap::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }

@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dayTagOf, hasOpenLegacy, needsRegistration, openReviewRow } from './hyanaltSubmit.ts';
+import { dayTagOf, hasOpenLegacy, needsRegistration, openReviewRow, reviewLockBlocks, reviewLockDays, reviewLockState } from './hyanaltSubmit.ts';
 import { F, STATUS } from './hyanalt.ts';
 
 const DAY = Date.UTC(2026, 8, 7);      /* 2026-09-07 */
@@ -216,6 +216,63 @@ assert.equal(openReviewRow([], 500, TAG), null);
   assert.ok(!/fresh\?\.some\(\(r\) => Number\(r\[HF\.sheetOid\]\) === stagedOid\)/.test(fill), 'FillNew.resend: хуучин «ижил sheetOid» шалгуур үлдсэн');
   assert.ok(fill.includes('needsRegistration('), 'FillNew: өнчин илгээлтийн шалгуур `needsRegistration`-ээр');
   console.log('✅ needsRegistration — одоогийн тойрог · буцаалтын дараах засвар');
+}
+
+/* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): `reviewLockDays` */
+{
+  const r = (oid, so, status, ajil) => ({ OBJECTID: oid, [F.sheetOid]: so, [F.status]: status, [F.bagts]: 'Багц 1', [F.ajil]: ajil });
+  const A = 'Гүйцэтгэл · 2026.10.04 · Багц 1 · 9 давхар';
+  const B = 'Гүйцэтгэл · 2026.10.05 · Багц 1 · 12 давхар';
+  const L = 'Гүйцэтгэл · 2026.09.01';
+  const other = ['Багц 1 · 12 давхар'];
+  const lock = (rows) => reviewLockDays(rows, 'Багц 1', 'Багц 1 · 9 давхар', other);
+  assert.deepEqual(lock([r(1, 10, STATUS.engineerReview, A)]), ['2026.10.04'], 'хянагчийн гар дээр — хориг');
+  assert.deepEqual(lock([r(1, 10, STATUS.managerReview, A)]), ['2026.10.04'], 'дунд шат — хориг');
+  assert.deepEqual(lock([r(1, 10, STATUS.transferred, A)]), [], '6-р шат батлаж архивласан — хориггүй');
+  assert.deepEqual(lock([r(1, 10, STATUS.engineerReturned, A)]), [], 'буцаагдсан (гүйцэтгэгчийн гар дээр) — хориггүй, засаад илгээнэ');
+  assert.deepEqual(lock([r(1, 10, STATUS.engineerReturned, A), r(2, 10, STATUS.engineerReview, A)]), ['2026.10.04'],
+    'буцаасны дараах дахин илгээлт хянагдаж байна — СҮҮЛИЙН тойрог хориг');
+  assert.deepEqual(lock([r(1, 10, STATUS.engineerReview, A), r(2, 10, STATUS.engineerReturned, A)]), [],
+    'сүүлийн тойрог буцаагдсан — хуучин тойрог хориг үүсгэхгүй');
+  assert.deepEqual(lock([r(1, 20, STATUS.engineerReview, B)]), [], 'ӨӨР хуудас (12 давхар) — энэ хуудсыг хаахгүй');
+  assert.deepEqual(lock([r(1, 30, STATUS.directorReview ?? STATUS.managerReview, L)]), ['2026.09.01'], 'хуудсын нэргүй хуучин мөр — багцын бүх хуудсанд');
+  assert.deepEqual(lock([{ ...r(1, 10, STATUS.engineerReview, A), [F.bagts]: 'Багц 2' }]), [], 'өөр багц — хориггүй');
+  console.log('✅ reviewLockDays — хяналтад явж буй илгээлт · буцаалт · архивласан · өөр хуудас');
+
+  /* ⚠️ 2026-10-09 (аудит №2): хянагчийн дараалалтай ИЖИЛ `groupWorks` (ажлын одоогийн тойрог) */
+  const cyc = (oid, ergelt, status, ajil = A, so = 10) => ({ ...r(oid, so, status, ajil), [F.ergelt]: ergelt, [F.company]: 'ХХК' });
+  /* recheck('ok'): хуучин A «Менежер буцаасан» (OWNER = инженер) хэвээр, шинэ тойрог «Шилжүүлсэн» */
+  assert.deepEqual(lock([cyc(10, 1, STATUS.managerReturned), cyc(11, 2, STATUS.transferred)]), [],
+    'recheck-ийн үлдээсэн хуучин тойрог — шинэ тойрог архивлагдсан бол хориггүй');
+  assert.deepEqual(lock([cyc(10, 1, STATUS.managerReturned), cyc(11, 2, STATUS.managerReview)]), ['2026.10.04'],
+    'recheck-ийн шинэ тойрог менежерийн гар дээр — хориг');
+  /* Хянагчид ХАРАГДДАГГҮЙ хуучирсан мөрүүд (OID 61·62·63·64·70 — нэг нэрээр нийлсэн, sheetOid өөр) */
+  const LEG = 'Гүйцэтгэл · 2026.09.02';
+  assert.deepEqual(lock([
+    cyc(61, 1, STATUS.engineerReview, LEG, 61), cyc(62, 1, STATUS.engineerReview, LEG, 62),
+    cyc(63, 1, STATUS.engineerReview, LEG, 63), cyc(64, 1, STATUS.engineerReview, LEG, 64),
+    cyc(70, 1, STATUS.transferred, LEG, 70),
+  ]), [], 'хянагчид харагддаггүй хуучирсан мөр — хориггүй');
+  /* Огноогүй (бөглөх хуудасны бус) мөр — UI ба домэйн хоёулаа алгасна (урьд домэйн «?» гэж хаадаг) */
+  assert.deepEqual(lock([r(1, 40, STATUS.engineerReview, 'Өөр ажил')]), [], 'огноогүй мөр — хориггүй');
+
+  /* Буцаагдсан илгээлтийн засвар — өөр өдөр хянагдаж байсан ч хориггүй */
+  const BACK = 'Гүйцэтгэл · 2026.10.03 · Багц 1 · 9 давхар';
+  const st = reviewLockState([r(1, 10, STATUS.engineerReview, A), r(2, 11, STATUS.engineerReturned, BACK)],
+    'Багц 1', 'Багц 1 · 9 давхар', other);
+  assert.deepEqual(st, { days: ['2026.10.04'], returned: ['2026.10.03'] });
+  const ms = (y, m, d) => new Date(y, m - 1, d).getTime();
+  assert.equal(reviewLockBlocks(st, ms(2026, 10, 3)), false, 'буцаагдсан өдрийн засвар — хориггүй');
+  assert.equal(reviewLockBlocks(st, ms(2026, 10, 4)), true, 'хянагдаж буй өдрийг доор нь солих — хориг');
+  assert.equal(reviewLockBlocks(st, ms(2026, 10, 9)), true, 'шинэ өдрийн бөглөлт — хориг');
+  assert.equal(reviewLockBlocks({ days: [], returned: [] }, ms(2026, 10, 9)), false, 'хориггүй');
+
+  /* UI ба домэйн НЭГ дүрэм — эх кодын шалгуур */
+  const flowSrc = readFileSync(new URL('../modules/sheet/fill/useFlow.ts', import.meta.url), 'utf8');
+  assert.ok(flowSrc.includes('reviewLockState(hyRows'), 'useFlow: хориг `reviewLockState`-ээр биш');
+  const subSrc = readFileSync(new URL('./submission.ts', import.meta.url), 'utf8');
+  assert.ok(/reviewLockDeny\([^)]*payload\.fillMs\)/.test(subSrc), 'saveSubmission: буцаалтын засварын үл хамаарал (`fillMs`) алга');
+  console.log('✅ reviewLockState — groupWorks · recheck · харагддаггүй мөр · буцаалтын засвар');
 }
 
 console.log('hyanaltSubmit.check.mjs — БҮГД ТЭНЦЛЭЭ');

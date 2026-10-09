@@ -105,9 +105,15 @@ export const BAGTS_ORIGIN: Record<string, "Гадаад" | "Үндэсний"> =
  * ⚠️ `now`/`add` нь ТООН талбар БИШ: «2 (1,440)» гэж байгууламжийн тоо ба
  *    хүчин чадлыг хамт агуулна (`Irged.tsx` эх текстийг бүтнээр нь харуулна).
  */
-const SOCIAL_ROWS: { label: string; now: string; add: string; total: number }[] = [
-  { get label() { return tr('Сургууль'); }, now: "2 (1,440)", add: "3 (3,780)", total: 5 },
-  { get label() { return tr('Цэцэрлэг'); }, now: "3 (640)", add: "5 (1,200)", total: 8 },
+/**
+ * ⚠️ 2026-10-09 (хэрэглэгч: «шинэг амьдаар»): `live` — «шинээр» баганыг газрын зургийн нийгмийн
+ *    давхаргаас (`live.loadSocial`-ийн бүлгийн `key`: тоо + `Huchin_chadal`) АМЬДААР уншина; доорх `add`
+ *    нь зөвхөн амьд утга ачаалагдаагүй/унасан үеийн илтгэлийн утга. `live`-гүй мөрөнд давхарга БАЙХГҮЙ
+ *    тул илтгэлийн утга хэвээр. «Одоо байгаа» багана — амьд эх сурвалжгүй, илтгэлээс.
+ */
+const SOCIAL_ROWS: { label: string; now: string; add: string; total: number; live?: string }[] = [
+  { get label() { return tr('Сургууль'); }, now: "2 (1,440)", add: "3 (3,780)", total: 5, live: 'school' },
+  { get label() { return tr('Цэцэрлэг'); }, now: "3 (640)", add: "5 (1,200)", total: 8, live: 'kinder' },
   { get label() { return tr('Өрхийн эмнэлэг, хороо, цагдаа'); }, now: "3", add: "1", total: 4 },
   { get label() { return tr('Соёлын цогцолбор'); }, now: "—", add: "1", total: 1 },
   { get label() { return tr('Спортын цогцолбор'); }, now: "—", add: "1", total: 1 },

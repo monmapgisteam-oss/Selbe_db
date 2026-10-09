@@ -144,11 +144,14 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
 
   /* ⚠️ Эхэнд ӨНӨӨДӨР рүү гүйлгэнэ — 365 хоногийн эхэнд тултал өнгөрсөн
      жилийн сарууд харагдаж, «хоосон хуанли» гэж уншигдана. */
+  /* ⚠️ 2026-10-09 (аудит №2): deps-ГҮЙ — commit бүрд шалгана (гүйлгээ хийгдмэгц `jumpedRef`-ээр шууд буцна).
+     Урьд нь `[now, xOf, visible.length]` тул гүйлгэгч (`gWrap`) мөр ирснээс ХОЙШ mount болбол (сэргээлтийн хаалт
+     гэх мэт) `scrollRef` null үед нэг удаа ажиллаад дахин ажилладаггүй — хуанли хүрээний эхэнд нээгддэг байв. */
   useEffect(() => {
     if (jumpedRef.current || !scrollRef.current || !visible.length) return;
     jumpedRef.current = true;
     scrollRef.current.scrollLeft = Math.max(0, xOf(now) - 120);
-  }, [now, xOf, visible.length, jumpedRef]);
+  });
 
   /* ── ЦОНХЛОЛТ (виртуалчлал) ── */
   const [win, setWin] = useState({ from: 0, to: 60 });

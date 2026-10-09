@@ -61,7 +61,7 @@ const { pkgProgressOf } = await import('@/lib/blockProgress.ts');
 const { buildPhys } = await import('@/lib/finPhys.ts');
 const { buildingKey } = await import('@/lib/services.ts');
 const { monthKey } = await import('@/lib/format.ts');
-const { physLatest, projectPlanOf, physNow, contractMonths } = await import('@/modules/Finance.tsx');
+const { physLatest, projectPlanOf, physNow, contractMonths, projectLagNow, projectPlanScope, aggregateMonths } = await import('@/modules/Finance.tsx');
 const { buildPacks, PackKpi, blockCount } = await import('@/modules/Bagts.tsx');
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
@@ -178,6 +178,8 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
       хоёр өөр жинг хасдаг байв. Жин нь ИЖИЛ `contracts`-оос (`pkgCostWeight`). */
 {
   const fin = {
+    /* ⚠️ 2026-10-09 (аудит): бодит талын багцын олонлог — `projectPlanOf`-ийн `pkgs` */
+    phys: new Map([['БАГЦ1', new Map()], ['БАГЦ2', new Map()]]),
     contracts: [
       { bagts: 'Багц 1', ho_dun_geree: 400, bagts_tuvshin1: '1' },
       { bagts: 'Багц 2', ho_dun_geree: 600, bagts_tuvshin1: '1' },
@@ -199,6 +201,36 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.deepEqual(s.map((p) => p.pct), [4, 38], 'projectPlanOf ХО дүнгээр жигнэсэнгүй');
   assert.equal(s[0].vol, 5, 'vol нь PlanCurve.months-оос');
   assert.deepEqual(projectPlanOf(fin, { ...pc, months: [] }), [], 'хуудас унасан (months хоосон) → хоосон');
+
+  /* ⚠️ 2026-10-09 (аудит №2): ХО жинтэй ХУВААРЬГҮЙ багц (Багц 3, 0% тайлагнасан) — төслийн
+     төлөвлөгөөт шугам ХООСОН болохгүй (хуваарьтай Б1+Б2-оор), хоцрогдлын бодит тал ч ТЭР
+     олонлогоор (`physLag`); толгойн бодит (`phys` → `physNow`) бүх багцаар хэвээр. */
+  const fin3 = {
+    phys: new Map([
+      ['БАГЦ1', new Map([[m1, 20]])],
+      ['БАГЦ2', new Map([[m1, 50]])],
+      ['БАГЦ3', new Map([[m1, 0]])],
+    ]),
+    physCnt: new Map(), physAt: new Map(), given: new Map(),
+    contracts: [
+      { bagts: 'Багц 1', ho_dun_geree: 400, bagts_tuvshin1: '1' },
+      { bagts: 'Багц 2', ho_dun_geree: 600, bagts_tuvshin1: '1' },
+      { bagts: 'Багц 3', ho_dun_geree: 1000, bagts_tuvshin1: '1' },
+    ],
+  };
+  assert.deepEqual(projectPlanOf(fin3, pc).map((p) => p.pct), [4, 38], 'хуваарьгүй багц төслийн шугамыг арилгав');
+  assert.deepEqual(projectPlanScope(fin3, pc).excluded, ['Багц 3'], 'хасагдсан багц нэрээр');
+  const am = aggregateMonths(fin3, pc).find((m) => m.label === m1);
+  assert.equal(am.phys, 19, 'толгойн бодит — бүх багцаар (400·20+600·50+1000·0)/2000');
+  assert.equal(am.physLag, 38, 'хоцрогдлын бодит — хуваарьтай Б1+Б2-оор');
+  const ln = projectLagNow(fin3, pc, now, `${now}-15`);
+  assert.equal(ln.actual, 38);
+  assert.equal(ln.planned, 38, `${m1}-ийн эцсийн төлөвлөгөө`);
+  assert.equal(ln.gap, 0, 'хуваарийн дагуу явж буй багцууд — хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй (хуучнаар 19)');
+  assert.deepEqual(ln.excluded, ['Багц 3']);
+  /* Хасагдсан багц алга бол `physLag` огт тавигдахгүй (lagOf → `phys`) */
+  assert.equal(aggregateMonths({ ...fin, physCnt: new Map(), physAt: new Map(), given: new Map() }, pc)
+    .find((m) => m.label === m1)?.physLag, undefined);
 }
 
 /* ── 5. ⚠️ 2026-10-01 (ШИЙДВЭР): «Багцын санхүү»-гийн «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН

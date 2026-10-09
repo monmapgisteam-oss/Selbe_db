@@ -30,6 +30,8 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** ⚠️ 2026-10-09 (аудит): алдаа биш тэмдэглэл (жиш. item үүссэн ч дэлгэрэнгүй хоцорсон) */
+  const [note, setNote] = useState('');
   const [items, setItems] = useState<EntPdf[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -53,26 +55,30 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
   };
 
   const refresh = async () => {
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setNote('');
     try { setItems(await entListPdfs()); } catch (x) { setErr(userError(x)); } finally { setBusy(false); }
   };
 
   const upload = async (files: FileList | null) => {
     const list = files ? Array.from(files) : [];
     if (!list.length) return;
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setNote('');
     const errs: string[] = [];
+    const notes: string[] = [];
     for (const f of list) {
       try {
         const it = await entUploadPdf(f);
         /* ⚠️ Хайлтын индекс хоцордог — шинэ item-ийг өөрөө эхэнд нэмнэ */
         setItems((prev) => [it, ...(prev ?? []).filter((x) => x.id !== it.id)]);
         onPick(ENT_KEY + it.id);
+        /* ⚠️ 2026-10-09 (аудит): item ҮҮССЭН — дэлгэрэнгүй л хоцорсон. Алдаа БИШ (дахин оруулбал давхардана) */
+        if (it.pending) notes.push(tr('{0}: хадгалагдсан — дэлгэрэнгүй мэдээлэл хараахан ирээгүй, дараа «Шинэчлэх» дарна уу.', f.name));
       } catch (x) {
         errs.push(`${f.name}: ${userError(x)}`);
       }
     }
     if (errs.length) setErr(errs.join('\n'));
+    if (notes.length) setNote(notes.join('\n'));
     setBusy(false);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -133,6 +139,7 @@ export function EntDocsSide({ active, onPick }: { active: string | null; onPick:
           })}
         </>
       )}
+      {note && <div className={s.entSub} role="status" style={{ whiteSpace: 'pre-line' }}>{note}</div>}
       {err && <div className={s.entErr} role="alert">{err}</div>}
     </section>
   );

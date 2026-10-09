@@ -19,7 +19,8 @@ import {
   pickedBuilding, uniqueBlocks, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf, type FinData,
+  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf,
+  projectPlanScope, projectLagNow, planScopeNote, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
@@ -28,6 +29,7 @@ import {
 } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
+import { gapPts } from '@/lib/gdash';
 import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
@@ -370,10 +372,17 @@ export function PkgProg({ dim, setDim }: {
    *    зан төлөв хэвээр: тэнд хуваарийн эх сурвалж огт байхгүй.
    */
   const progMonths = useMemo<ProgPt[] | null>(() => {
+    const pc = planQ.state === 'ready' ? planQ.data : null;
+    /* ⚠️ 2026-10-09 (аудит №2): ТӨСЛИЙН графикт хуваарьгүй багц байвал БОДИТ шугам ч
+       хуваарьтай багцаар (`physLag`) — төлөвлөгөөт шугамтай нэг олонлог, зөрүү хэтрэхгүй.
+       Гарчиг «(хуваарьтай багцаар)» гэж хэлнэ; толгойн «бодит гүйцэтгэл» (`physNow`) бүх багцаар. */
     const base = active
       ? (finMap?.get(active.key) ?? null)
-      : (finQ.state === 'ready' ? aggregateMonths(finQ.data) : null);
-    const pc = planQ.state === 'ready' ? planQ.data : null;
+      : (finQ.state === 'ready'
+        ? aggregateMonths(finQ.data, pc).map((m) => (m.physLag !== undefined
+          ? { ...m, phys: m.physLag, physAt: m.physLagAt ?? null }
+          : m))
+        : null);
     /* ⚠️ Хуваарь ирээгүй бол ГРАФИК ЗУРАХГҮЙ — cashflow руу буцаж унах зам
        2026-09-06-нд хаагдсан (тэр үйлчилгээ байхгүй). Хоосон график нь
        буруу муруйгаас ДЭЭР.
@@ -391,6 +400,10 @@ export function PkgProg({ dim, setDim }: {
        хэрэглэдэг (хэмжилтгүй сар `null`, `planM` нь хэмжилтийн өдрөөр). */
     return progMonthsOf(base, series);
   }, [active, finMap, finQ, planQ]);
+  /** ⚠️ 2026-10-09 (аудит №2): төслийн төлөвлөгөө/хоцрогдлоос хасагдсан хуваарьгүй багцууд */
+  const planExcl = useMemo<string[]>(() => (finQ.state === 'ready' && planQ.state === 'ready'
+    ? projectPlanScope(finQ.data, planQ.data)?.excluded ?? []
+    : []), [finQ, planQ]);
 
 
   /**
@@ -906,7 +919,9 @@ export function PkgProg({ dim, setDim }: {
           /* ⚠️ 2026-09-29 (аудит 10): ачаалж байх үед `progMonths` = null тул график
              «Гүйцэтгэлийн дата алга» гэж ХАРИУЛТ мэт бичдэг байв — ачаалал ≠ хоосон. */
           loading={planQ.state === 'loading' || finQ.state === 'loading'}
-          title={active ? tr('{0} — гүйцэтгэлийн явц', tr(active.name)) : tr('Төсөл нийт — гүйцэтгэлийн явц')}
+          title={active
+            ? tr('{0} — гүйцэтгэлийн явц', tr(active.name))
+            : tr('Төсөл нийт — гүйцэтгэлийн явц') + (planExcl.length ? ` ${tr('(хуваарьтай багцаар)')}` : '')}
         />
       </div>
 
@@ -976,7 +991,17 @@ function TsKpi(
        «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш. */
     const at = lastM ? measureDayOf(lastM.label, lastM.physAt, todayDayKey()) : `${nowYm}-31`;
     if (plan?.length) planned = planPctAt(plan, at);
-    const gap = planned != null && actual != null ? planned - actual : null;
+    let gap = planned != null && actual != null ? planned - actual : null;
+    /* ⚠️ 2026-10-09 (аудит №2): хуудас уншигдсан бол төлөвлөгөө ба зөрүүг `projectLagNow`-оор —
+       хоёр тал НЭГ (хуваарьтай) багцын олонлог. Хуваарьгүй багц бодит талд л тоологдож хоцрогдлыг
+       хэтрүүлэхгүй; `actual` (толгойн тоо) нь `physNow` хэвээр. */
+    let excluded: string[] = [];
+    if (planQ.state === 'ready') {
+      const ln = projectLagNow(fin, planQ.data, nowYm, todayDayKey());
+      planned = ln.planned;
+      gap = ln.gap;
+      excluded = ln.excluded;
+    }
     /* ⚠️ 2026-09-06: НИЙТ ТӨЛӨВЛӨГӨӨ = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
        (`FinData.planTotal`). Урьд нь «өмнөх онд шилжүүлсэн + 12 сарын
        цонхны хуваарь» байсан — «ӨМНӨХ ШИЛЖҮҮЛСЭН» мөрийн төрөл ба сарын
@@ -988,12 +1013,12 @@ function TsKpi(
     let given = 0;
     fin.givenTotal.forEach((v) => { given += v; });
     return {
-      planned, actual, gap, given,
+      planned, actual, gap, given, excluded,
       share: planTotal > 0 ? (given / planTotal) * 100 : null,
       /** Төлөвлөгөөт нийтээс олгогдоогүй үлдэгдэл ₮ */
       remain: Math.max(0, planTotal - given),
     };
-  }, [fin, plan]);
+  }, [fin, plan, planQ]);
   /**
    * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
    * контекст (хэдэн багцын тухай ярьж байна) бөгөөд аль ч асуултад хэрэгтэй.
@@ -1012,8 +1037,9 @@ function TsKpi(
       { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
       {
         /* ⚠️ 2026-10-06 (аудит): нэгж pp, `num()` — ТУХ-тай нэг хэлбэр (`pkgShared.pp`).
-           `gap` = төлөвлөгөө − бодит (эерэг = хоцорсон) тул тэмдгийг эргүүлнэ: хоцорсон → «-5.0 pp». */
-        v: t?.gap == null ? none : pp(-t.gap),
+           `gap` = төлөвлөгөө − бодит (эерэг = хоцорсон) тул тэмдгийг эргүүлнэ: хоцорсон → «-5.0 pp».
+           ⚠️ 2026-10-09 (аудит №2): порталын нэг хэлбэр `gdash.gapPts` — «−5.0 н.х», тэг «0.0 н.х». */
+        v: t?.gap == null ? none : gapPts(t.gap),
         l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
     },
   ];
@@ -1030,6 +1056,12 @@ function TsKpi(
           <span className={o.tileLabel}>{tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)}</span>
         </div>
       )}
+      {/* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц төлөвлөгөө/зөрүүнээс хасагдсаныг нэрлэнэ */}
+      {!errQ && t?.excluded.length ? (
+        <div className={o.tile} style={{ '--tone': 'var(--warn)' } as CSSProperties}>
+          <span className={o.tileLabel}>{planScopeNote(t.excluded)}</span>
+        </div>
+      ) : null}
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>

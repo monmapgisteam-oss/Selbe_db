@@ -79,6 +79,8 @@ import type { PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
 import type { MonthPt } from '@/modules/Finance';
 import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult } from './kpi';
+/* ⚠️ 2026-10-09 (аудит №2): хуваарийн зөрүүний НЭГ хэлбэр (н.х) — `gdash.gapPts` */
+import { gapPts } from '@/lib/gdash';
 
 /* ══════════════ Төрөл ══════════════ */
 
@@ -157,11 +159,8 @@ export function prevYm(label: string): string | null {
  */
 const r1 = (v: number): number => (Math.round(v * 10) / 10) || 0;
 
-/** Тэмдэгтэй пункт: −12.3 · +2.0 · 0.0 (U+2212 хасах тэмдэг) */
-const pp = (v: number): string => {
-  const x = r1(v);
-  return x < 0 ? `−${num(-x, 1)}` : x > 0 ? `+${num(x, 1)}` : num(0, 1);
-};
+/* ⚠️ 2026-10-09 (аудит №2): локал `pp` («−12.3 пп») ХАСАГДСАН — порталын нэг хэлбэр `gdash.gapPts`
+   («−12.3 н.х», тэг «0.0 н.х», U+2212) */
 
 /**
  * САРЫН ХОЦРОГДОЛ — бодит гүйцэтгэлийн хувьд хуваариар ХЭЗЭЭ хүрэх ёстой
@@ -390,8 +389,8 @@ export function computeSchedule(
   const facts: string[] = [];
   if (measured.length) {
     facts.push(tr('{0} яаралтай · {1} анхаарах', num(red), num(yellow)));
-    if (worstGap != null) facts.push(tr('хамгийн муу {0} пп', pp(-worstGap)));
-    if (avgGap != null && measured.length > 1) facts.push(tr('дундаж {0} пп', pp(-avgGap)));
+    if (worstGap != null) facts.push(tr('хамгийн муу {0}', gapPts(worstGap)));
+    if (avgGap != null && measured.length > 1) facts.push(tr('дундаж {0}', gapPts(avgGap)));
   }
   if (noData.length) facts.push(tr('{0} багц хэмжилтгүй', num(noData.length)));
 
@@ -436,7 +435,8 @@ export function computeSchedule(
   const issues: KpiIssue[] = measured
     .filter((m) => m.tone === 'red')
     .map((m) => ({
-      text: tr('{0} — төл. {1}% / бодит {2}% · −{3} пп', m.label, num(m.planned, 1), num(m.actual, 1), num(m.gap, 1)),
+      /* ⚠️ 2026-10-09 (аудит №2): «−{3} пп» тогтмол тэмдэг → `gapPts` (н.х, тэмдэг зөв) */
+      text: tr('{0} — төл. {1}% / бодит {2}% · {3}', m.label, num(m.planned, 1), num(m.actual, 1), gapPts(m.gap)),
       tone: 'bad' as const,
     }));
 

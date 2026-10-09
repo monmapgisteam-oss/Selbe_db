@@ -514,7 +514,10 @@ export async function sheetDates(): Promise<string[]> {
     ).catch(() => []);
     for (const a of rows) {
       const ms = a[sc.f.fillDate as string];
-      if (typeof ms === 'number') days.add(msToDay(ms));
+      /* ⚠️ 2026-10-09 (аудит): `loadSheetRows`-ийн `msToDay(normDayMs(ms))`-тэй НЭГ дүрэм. Урьд нь энд
+         `msToDay(ms)` шууд байсан тул локал шөнө дундаар (16:00Z) тамгалагдсан хуучин жааз огноо сонгогчид
+         ӨМНӨХ өдөр (D-1) болж харагдаж, сонгоход `loadSheetRows`-ийн огноотой таарахгүй байв. */
+      if (typeof ms === 'number') days.add(msToDay(normDayMs(ms)));
     }
   }));
   return [...days].sort();

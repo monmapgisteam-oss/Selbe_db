@@ -446,6 +446,8 @@
 /* ══════════ НИЙГМИЙН БАЙГУУЛАМЖ — төслийн инфографикийн бүтэц ══════════ */
 
 .socList { display: flex; flex-direction: column; }
+/* ⚠️ 2026-10-09: «шинээр»/«одоо»-гийн эх сурвалжийн тэмдэглэл (амьд ↔ илтгэл) */
+.socSrc { margin: 0 0 8px; font-size: 11px; line-height: 1.45; color: var(--ink-3); }
 
 /* Төрөл бүр тусдаа блок — дээд хүрээгээр тусгаарлагдана */
 .socBlock { padding: 10px 0; border-top: 1px solid var(--line); }

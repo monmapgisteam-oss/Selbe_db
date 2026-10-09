@@ -542,6 +542,11 @@ export function useDraftSync(p: {
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
   const promptedPkgRef = useRef("");
+  /* ⚠️ 2026-10-09 (аудит №2): сэргээлтийн ҮЕИЙН тоолуур — эхэлсэн сэргээлт бүр нэмнэ. Тасалдсан (`!alive`)
+     сэргээлт ЗӨВХӨН хамгийн сүүлийнх нь бол `restoring`/`promptedPkgRef`-ийг буцааж `remoteRetry` цохино.
+     Урьд нь хуучин тасалдсан сэргээлт ШИНЭ (амьд) сэргээлтийн тавьсан `promptedPkgRef === pkg.key`-г харж
+     хоослоод `remoteRetry` цохидог тул амьд нь тасарч, түүний хариу дараагийнхыг тасалдаг — гогцоо. */
+  const restoreGenRef = useRef(0);
   /**
    * `flush`-ийн СҮҮЛИЙН хувилбарыг ref-д — unmount-ийн эффект (`[]` хамаарал)
    * түүнийг дуудна. Доорх эффект `remoteTick` бүрд `flush`-ыг дахин үүсгэдэг
@@ -1536,6 +1541,8 @@ export function useDraftSync(p: {
     if (promptedPkgRef.current === pkg.key) return;
     // Сэргээх шат өнгөрснийг ноорог байсан эсэхээс үл хамааран тэмдэглэнэ.
     promptedPkgRef.current = pkg.key;
+    /* ⚠️ 2026-10-09 (аудит №2): энэ сэргээлтийн үе (`restoreGenRef`-ийн ⚠️) */
+    const gen = ++restoreGenRef.current;
     /* ⚠️ Хадгалах эффектийн «хоосон → устга» замыг сэргээлт дуустал хаана —
        `restoring`-ийн тайлбарыг үз. */
     restoring.current = true;
@@ -1579,6 +1586,9 @@ export function useDraftSync(p: {
            орхивол юу ч түүнийг дахин асаахгүй, локал ноорог ХЭЗЭЭ Ч буухгүй,
            дараагийн засвар түүнийг дарж бичнэ. Багц солигдсон бол
            `promptedPkgRef` аль хэдийн "" тул энэ салаа ажиллахгүй. */
+        /* ⚠️ 2026-10-09 (аудит №2): ШИНЭ сэргээлт аль хэдийн эхэлсэн бол юу ч хөндөхгүй (`restoreGenRef`-ийн ⚠️) —
+           түүний `restoring`/`promptedPkgRef`-ийг буцааж, `remoteRetry`-ээр тасалж гогцоо үүсгэхгүй. */
+        if (restoreGenRef.current !== gen) return;
         restoring.current = false;
         restoreSinceRef.current = 0;
         if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
@@ -1644,6 +1654,9 @@ export function useDraftSync(p: {
       }
       /* ⚠️ Дээрх тасалдалтай ИЖИЛ — дахин оролдох замыг нээнэ (2026-09-25) */
       if (!alive) {
+        /* ⚠️ 2026-10-09 (аудит №2): ШИНЭ сэргээлт аль хэдийн эхэлсэн бол юу ч хөндөхгүй (`restoreGenRef`-ийн ⚠️) —
+           түүний `restoring`/`promptedPkgRef`-ийг буцааж, `remoteRetry`-ээр тасалж гогцоо үүсгэхгүй. */
+        if (restoreGenRef.current !== gen) return;
         restoring.current = false;
         restoreSinceRef.current = 0;
         if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
