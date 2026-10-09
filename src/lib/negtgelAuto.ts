@@ -33,6 +33,9 @@
  *   мэдээлэл чимээгүй устана.
  * ⚠️ ЖИН (`HESEGT_EZLEH`, `TOSOLD_EZLEH_HUVI`) нь ТӨЛӨВЛӨЛТИЙН ШИЙДВЭР —
  *   ХЭЗЭЭ Ч бичихгүй, зөвхөн уншина.
+ * ⚠️ 2026-10-09: «Хэсэгт эзлэх» нь төсөвтэй бүлэгт `URID_TOSOVT_ORTOG`-оос
+ *   БОДОГДОНО (Excel V3: F = E ÷ E_эцэг) — хадгалсан жин зөвхөн төсөвгүй бүлэгт
+ *   (`budgetWeights`-ийн ⚠️).
  * ⚠️ Бүх утга ҮЙЛЧИЛГЭЭНИЙ нэгжээр: 0–1 бутархай.
  */
 import { t as tr } from '@/lib/i18nCore';
@@ -590,6 +593,50 @@ export function rollKids(kids: number[], w: Array<number | null>): number[] {
 const r6 = (v: number | null): number | null => (v == null ? null : Math.round(v * 1e6) / 1e6);
 
 /**
+ * ЖИНГ ТӨСВӨӨС БОДНО — Excel master format (V3, 2026-10-07)-ийн аргачлал:
+ * «Хэсэгт эзлэх» F = E_хүүхэд ÷ E_эцэг, «Төсөлд эзлэх» G = F × G_эцэг.
+ *
+ * ⚠️ 2026-10-09 (хэрэглэгч: «Excel-ийн аргачлалтай тулга, зас»): урьд нь хүснэгтэд
+ *    ХАДГАЛСАН `HESEGT_EZLEH`-ийг шууд уншдаг байсан тул төсөв шинэчлэгдэхэд жин
+ *    хуучирч үлддэг байв (жиш. «Инженерийн бэлтгэл» хадгалсан 19.4% ↔ V3-ийн төсвөөр 30.8%).
+ * ⚠️ Бүлгийн ЭЦЭГ ба БҮХ хүүхэд төсөвтэй (`budget != null`, эцэг > 0) үед л төсвөөс;
+ *    нэг ч хүүхэд төсөвгүй бол ТЭР БҮЛЭГ бүхэлдээ хадгалсан жингээ хэрэглэнэ — холивол
+ *    жингийн нийлбэр 1-ээс зөрнө (ТЭЗҮ · зураг · зөвшөөрөл · 5.1 · 6 · 7 төсөвгүй).
+ * ⚠️ Хуваагч нь эцгийн ӨӨРИЙН төсөв (Σ хүүхэд БИШ) — Excel E718 = SUM(E719,E842,E858)
+ *    нь «5.2.4 Нийгмийн дэд бүтэц»-ийг ХАСДАГ тул түүний жин 1-ээс давж `rollKids`-ээр
+ *    хасагдана (өмнөх дүрэм хэвээр). Төсөв 0 хүүхэд жин 0.
+ * ⚠️ 1-р түвшний «Төсөлд эзлэх» (5/10/3/1/1/79/1/0) нь ТОГТМОЛ шийдвэр — хөндөхгүй.
+ * ⚠️ Зөвхөн ТООЦООНД — хүснэгт рүү жин ХЭЗЭЭ Ч бичихгүй (`negDiff`).
+ */
+export function budgetWeights(
+  rows: Array<{ depth: number; w: number | null; p: number | null; budget: number | null }>,
+  parent: number[],
+  kids: number[][],
+): { w: Array<number | null>; p: Array<number | null> } {
+  const w = rows.map((r) => r.w);
+  rows.forEach((r, i) => {
+    const ks = kids[i];
+    if (!ks.length || r.budget == null || !(r.budget > 0)) return;
+    if (ks.some((k) => rows[k].budget == null)) return;
+    /* ⚠️ Хүүхдүүдийн төсвийн нийлбэр эцгийнхээс БАГА бол задаргаа ДУТУУ (5.1.3 Талбайн
+       бэлтгэлийн дэд бүлгүүд — зөвхөн зарим ажлын төсөв бий; Excel тэнд барилга угсралтын
+       F-ийг холбоосоор авдаг) — төсвөөс бодвол жингийн нийлбэр 0.63–0.97 болно → хадгалсан жин. */
+    const sum = ks.reduce((a, k) => a + Math.max(0, rows[k].budget as number), 0);
+    if (sum < (r.budget as number) * 0.995) return;
+    for (const k of ks) w[k] = r6(Math.max(0, rows[k].budget as number) / (r.budget as number));
+  });
+  /* G = F × G_эцэг — мод нь outline дараалалтай тул эцэг үргэлж өмнө нь бодогдсон */
+  const p = rows.map((r) => r.p);
+  rows.forEach((r, i) => {
+    const pp = parent[i];
+    if (r.depth <= 1 || pp < 0) return;
+    if (w[i] == null || p[pp] == null) return;
+    p[i] = r6((w[i] as number) * (p[pp] as number));
+  });
+  return { w, p };
+}
+
+/**
  * БҮХ МӨРИЙГ БОДНО — цэвэр функц (тест: `negtgel.check.mjs`).
  *
  * ⚠️ Хадгалсан утга нь АНХДАГЧ: системд эх сурвалжгүй навч (ба
@@ -597,7 +644,9 @@ const r6 = (v: number | null): number | null => (v == null ? null : Math.round(v
  */
 export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
   const { parent, kids } = treeOf(rows.map((r) => r.depth));
-  const out: NegCalcRow[] = rows.map((r) => ({ ...r, auto: false, how: tr('Хүснэгтийн утга') }));
+  /* ⚠️ 2026-10-09: жин төсвөөс (`budgetWeights`-ийн ⚠️) — дэлгэц ч бодсон жинг харуулна */
+  const bw = budgetWeights(rows, parent, kids);
+  const out: NegCalcRow[] = rows.map((r, i) => ({ ...r, w: bw.w[i], p: bw.p[i], auto: false, how: tr('Хүснэгтийн утга') }));
 
   rows.forEach((_, i) => {
     if (kids[i].length) return;
@@ -611,7 +660,7 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
   /* ЭЦЭГ — SUMPRODUCT. Мод нь outline дараалалтай (хүүхэд нь эцгийн ДАРАА)
      тул ард талаас нэг удаа гүйхэд хүүхдүүд үргэлж өмнө нь бодогдсон байна. */
   const SUM: (keyof NegVals)[] = ['act', 'planG', 'planGch', 'planGu'];
-  const w = rows.map((r) => r.w);
+  const w = bw.w;
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     if (!kids[i].length) continue;
     const o = out[i];

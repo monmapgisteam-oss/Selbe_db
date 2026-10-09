@@ -6906,6 +6906,7 @@ const en: Record<string, string> = {
   "Эхлээд «Урьдчилан харах» дарж саналыг хуанли дээр шалгаад, өөрчлөгдсөн мөр бүрийг ногоон болгоно.": "First click “Preview” to check the proposal on the calendar and mark every changed row green.",
   "Бичсэн тайлбар батлахад хадгалагдахгүй. Үргэлжлүүлэх үү?": "The text you typed is not saved when approving. Continue?",
   "(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)": "(The approver returned it without opening the calendar — please check all changed rows.)",
+  "Танд «{0}» шатанд зөвхөн ХАРАХ эрх байна — батлах/буцаах товч гарахгүй. Шийдвэр гаргах бол админаар «Гүйцэтгэлийн урсгал» хэсэгт энэ шатанд (зөвхөн харах тэмдэггүй) томилуулна уу.": "You have VIEW-ONLY access at the «{0}» stage — the approve/return buttons will not appear. To make decisions, ask an admin to assign you to this stage (without the view-only flag) in «Performance flow»."
 };
 
 export default en;

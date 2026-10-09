@@ -1386,16 +1386,19 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             sentAt={cur[F.companySent]}
             /* ⚠️ 2026-10-05: сүүлийн зөвшөөрлийн агшин — дахин илгээлтийн анхааруулгад (`Submitted.approvedAt`) */
             approvedAt={Math.max(0, ...REVIEW_STAGES.map((rs) => Date.parse(String((cur as Record<string, unknown>)[SF[rs].sent] ?? ''))).filter(Number.isFinite)) || null}
-            /* ⚠️ Дахин шалгалтад ч нүд тэмдэглэнэ (2026-09-24, дээрх `recheckSeed`-ийн ⚠️) */
-            ok={reviewing || rechecking ? okKeys : undefined}
-            onCell={reviewing || rechecking ? toggleOk : undefined}
+            /* ⚠️ Дахин шалгалтад ч нүд тэмдэглэнэ (2026-09-24, дээрх `recheckSeed`-ийн ⚠️)
+               ⚠️ 2026-10-09: ЗӨВХӨН шийдвэрийн эрхтэй (`mine`) үед — урьд нь зөвхөн харах эрхтэй
+               хүн нүд бүрийг ногоон болгож чаддаг атлаа батлах товч нь `mine`-аар нуугддаг тул
+               «бүгдийг ногоон болгосон ч батлах хэсэг алга» гэж гацдаг байв. */
+            ok={mine && (reviewing || rechecking) ? okKeys : undefined}
+            onCell={mine && (reviewing || rechecking) ? toggleOk : undefined}
             onChanges={setChanges}
             onSubAt={setSubAt}
             onRemapped={setRemapped}
             reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
-            onOkAll={isSuper && reviewing
+            onOkAll={isSuper && mine && reviewing
               ? () => setOkKeys(new Set((changes ?? []).map((c) => `${c.row}:${c.block}`)))
               : undefined}
           />
@@ -1840,6 +1843,14 @@ export function Guitsetgel() {
                   {tr('хүлээгдэж буй {0}', String(mine.length))}
                 </span>
               </div>
+              {/* ⚠️ 2026-10-09 (хэрэглэгч: «бүгдийг ногоон болгосон ч батлах хэсэг алга»): шийдвэрийн
+                  эрхгүй (`canReview: false` — `viewOnly` томилгоо г.м.) үед батлах/буцаах товч
+                  `Item.mine`-аар НУУГДДАГ ч ямар ч тайлбаргүй байв. Шат бүрд ижил тул энд нэг удаа. */}
+              {!canReview && stage !== 'company' && mine.length > 0 && (
+                <div className={s.blockedWhy} role="note">
+                  {tr('Танд «{0}» шатанд зөвхөн ХАРАХ эрх байна — батлах/буцаах товч гарахгүй. Шийдвэр гаргах бол админаар «Гүйцэтгэлийн урсгал» хэсэгт энэ шатанд (зөвхөн харах тэмдэггүй) томилуулна уу.', STAGE_LABEL[stage])}
+                </div>
+              )}
               {mine.length === 0 ? (
                 <div className={s.empty}>
                   {/* ⚠️ Томилгоогүй бол жагсаалт ХООСОН байх нь ХЭВИЙН биш —
