@@ -346,7 +346,7 @@ export const flowFailed = flowFailedUsers;
 /* ══════════════════════ Текстүүд ══════════════════════ */
 
 /** Мөрийг БҮХЭЛД нь хасахыг баталгаажуулах — панелуудын ЯГ ижил текст */
-export function removeAllMsg(sys: ScopedSys, user: string): string {
+function removeAllMsg(sys: ScopedSys, user: string): string {
   if (sys === 'huvaari') {
     return tr('«{0}»-г хуваарийн хуваарилалтаас бүрэн хасах уу? «Хуваарь төлөвлөх» ба «Хуваарь батлах» эрх нь мөн буцаагдана.', user);
   }
@@ -361,10 +361,6 @@ export function removeAllMsg(sys: ScopedSys, user: string): string {
   }
   return tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user);
 }
-
-/** «Бүх багц»-тай grant-ыг нэг багцаас салгах боломжгүй */
-const allRoleMsg = (user: string): string =>
-  tr('«{0}» нь энэ үүргээр БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Энэ үүргийг нь БҮХЭЛД НЬ хасах уу?', user);
 
 const norm = (user: string): string => user.trim().toLowerCase();
 
@@ -386,6 +382,15 @@ const isKnown = (u: string): boolean => listUsers().some((x) => x.username.toLow
 const isCleanup = (u: string): boolean => !isKnown(u) || roleForUser(u) === 'super';
 
 /* ══════════════ Үүрэгтэй таван систем (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц) ══════════════ */
+
+/*
+ * ⚠️ 2026-10-09 (аудит №6): ҮХМЭЛ OP-УУД УСТГАГДСАН — `removePkgOp` · `qaqcAddOp` · `qaqcRemoveOp` ·
+ *    `flowAddOp` · `flowRemoveOp` · `flowAllOp` · `flowChipOp` (хуучин карт/хөзөр/матрицын op-ууд,
+ *    2026-09-30-аас UI-аас дуудагдахгүй) ба тэдний `allRoleMsg`. Хүснэгтийн нүд бүр `scopedCellOp` ·
+ *    `qaqcCellOp` · `flowCellOp`-оор бичнэ; `aclParity`-ийн гэрээ тэдгээр рүү шилжсэн. `removeAllMsg`
+ *    зөвхөн энд (экспортгүй). `setRoleAllOp` · `dropRoleOp` · `flowStageOp` нь UI-д мөн үхмэл ч
+ *    `aclE2E` · `aclE2E.ui` шалгуурууд бэлтгэлдээ дууддаг тул ҮЛДСЭН (тус бүрийн ⚠️).
+ */
 
 /**
  * БАГЦАД ҮҮРЭГ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
@@ -410,51 +415,10 @@ export function addPkgOp(sys: ScopedSys, user: string, role: string, pkg: string
 }
 
 /**
- * БАГЦААС ҮҮРЭГ ХАСАХ — тэр ҮҮРГИЙН grant-аас энэ багцыг л хасна.
- * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
- *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
- *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
- *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
- *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
- *
- * ⚠️ «Бүх багц»-тай grant-ыг нэг багцаас САЛГАЖ хасах боломжгүй — тэр үүргийг
- *    БҮХЭЛД нь хасахыг асууна. ⚠️ ДЭД БҮТЭЦ ТУСГАЙ (2026-09-23, `DedButetsAcl`):
- *    ALL → бусад багцын ИЛ жагсаалт болж, зөвхөн энэ багц хасагдана (асуухгүй).
- * ⚠️ Багцгүй үлдсэн grant өөрөө унана; нэг ч grant үлдэхгүй бол мөрийг бүхэлд
- *    нь хасна (`revoke=false` + алга болсон үүргийн эрх л буцна).
- */
-export function removePkgOp(sys: ScopedSys, user: string, role: string, pkg: string): AclOp {
-  const spec = SCOPED_SYS[sys];
-  const u = user.trim().toLowerCase();
-  const cur = spec.list().find((a) => a.user === u);
-  if (!cur) return null;
-  const mine = cur.grants.find((g) => g.role === role);
-  if (!mine) return null;
-
-  const confirm: string[] = [];
-  let left: string[];
-  if (mine.bagts.includes(ALL_BAGTS)) {
-    if (sys === 'butets') left = spec.universe().filter((k) => k !== pkg);
-    else { confirm.push(allRoleMsg(u)); left = []; }
-  } else {
-    if (!mine.bagts.includes(pkg)) return null;
-    left = mine.bagts.filter((b) => b !== pkg);
-  }
-
-  /* Энэ багцыг хасаад — багцгүй үлдсэн grant өөрөө унана */
-  const grants = cur.grants
-    .map((g) => (g.role === role ? { ...g, bagts: left } : g))
-    .filter((g) => g.bagts.length > 0);
-
-  if (!grants.length) {
-    confirm.push(removeAllMsg(sys, u));
-    return { user: u, confirm, after: afterGrants(sys, u, null), run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps) };
-  }
-  return { user: u, confirm, after: afterGrants(sys, u, grants), run: () => setGrantsRevokingRoles(u, grants, spec.list, spec.setGrants, spec.roleCaps) };
-}
-
-/**
- * ҮҮРГИЙГ «БҮХ БАГЦ» БОЛГОХ — картын «Бүх багц» чип.
+ * ҮҮРГИЙГ «БҮХ БАГЦ» БОЛГОХ — картын хуучин «Бүх багц» чип.
+ * ⚠️ 2026-10-09 (аудит №6): UI-аас дуудагдахгүй — ЗӨВХӨН `aclE2E` · `aclE2E.ui` шалгуурын бэлтгэл
+ *    («бүх багц»-тай мөр үүсгэх товчлол) тул үлдээв; `dropRoleOp` · `flowStageOp` мөн адил.
+ *    Шинэ UI-д хэрэглэхгүй — `scopedCellOp(…, ALL_BAGTS, true)`.
  * ⚠️ Хүрээг ИЛ тэлэх админы шийдвэр — өөр замаар (унтраалга г.м.) чимээгүй
  *    `[ALL]` бичигдэхгүй (2026-09-25).
  */
@@ -471,7 +435,10 @@ export function setRoleAllOp(sys: ScopedSys, user: string, role: string): AclOp 
   return { user: u, run: () => spec.setGrants(u, grants) };
 }
 
-/** ҮҮРГИЙГ БҮХ БАГЦААС ХАСАХ — бусад үүрэг хэвээр; сүүлийнх бол мөр бүхэлдээ */
+/**
+ * ҮҮРГИЙГ БҮХ БАГЦААС ХАСАХ — бусад үүрэг хэвээр; сүүлийнх бол мөр бүхэлдээ.
+ * ⚠️ 2026-10-09 (аудит №6): зөвхөн `aclE2E` шалгуурт (`setRoleAllOp`-ийн ⚠️) — UI-аас дуудагдахгүй.
+ */
 export function dropRoleOp(sys: ScopedSys, user: string, role: string): AclOp {
   const spec = SCOPED_SYS[sys];
   const u = user.trim().toLowerCase();
@@ -565,43 +532,6 @@ export function qaqcDropOp(user: string): AclOp {
 }
 
 /**
- * БАГЦ НЭМЭХ. ⚠️ ШИНЭ мөр → эрх олгоно (`grant=true`); байгаа мөрийн багц солих →
- *    `grant=false` (эрх аль хэдийн олгогдсон).
- * ⚠️ 2026-09-30: `qaqcAllOp` · `qaqcChipOp` (хуучин QAQC хөзрийн «Бүх багц» ба багцын
- *    чипүүд) УСТСАН — панел нь хүснэгт болж `qaqcCellOp`-оор бичдэг.
- */
-export function qaqcAddOp(user: string, pkg: string): AclOp {
-  const u = norm(user);
-  if (!u) return null;
-  const cur = qaqcRow(u);
-  if (!cur) return { user: u, run: () => setQaqcAssign(u, [pkg]) };
-  if (cur.bagts.includes(ALL_BAGTS) || cur.bagts.includes(pkg)) return null;
-  return { user: u, run: () => setQaqcAssign(u, [...cur.bagts, pkg], false) };
-}
-
-/**
- * БАГЦААС ХАСАХ (хуучин матрицын нүд). ⚠️ «Бүх багц»-тай бол нэг багцаас салгахгүй —
- * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
- *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
- *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
- *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
- *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
- *    бүхэлд нь хасахыг асууна; сүүлийн багц бол ✕-ийн зам (асууж, эрх буцаана).
- */
-export function qaqcRemoveOp(user: string, pkg: string): AclOp {
-  const u = norm(user);
-  const cur = qaqcRow(u);
-  if (!cur) return null;
-  const all = cur.bagts.includes(ALL_BAGTS);
-  if (!all && !cur.bagts.includes(pkg)) return null;
-  const left = all ? [] : cur.bagts.filter((b) => b !== pkg);
-  if (left.length) return { user: u, run: () => setQaqcAssign(u, left, false) };
-  const drop = qaqcDropOp(u);
-  if (!drop || 'error' in drop || !all) return drop;
-  return { user: u, confirm: [allRoleMsg(u), ...(drop.confirm ?? [])], run: drop.run };
-}
-
-/**
  * QAQC ХҮСНЭГТИЙН НҮД (`QaqcAcl`, 2026-09-30) — мөр = багц, ганц багана.
  * ⚠️ Шийдвэр `aclGrid.planList*`-д. Шинэ мөр → эрх олгоно (`qaqcAddOp`-той ижил);
  *    багц солих → `grant=false`; сүүлийн багц → `qaqcDropOp` (асууж эрх буцаана,
@@ -658,8 +588,10 @@ export function flowDropOp(user: string): AclOp {
 }
 
 /**
- * ШАТ СОНГОХ (карт). `null` = томилгооноос хасах. Шинэ томилгоо нь панелийн
- * анхдагчаар «бүх багц»; өөр шатанд байвал шилжүүлэхийг асууна.
+ * ШАТ СОНГОХ (хуучин карт). `null` = томилгооноос хасах. Шинэ томилгоо «бүх багц»;
+ * өөр шатанд байвал шилжүүлэхийг асууна.
+ * ⚠️ 2026-10-09 (аудит №6): зөвхөн `aclE2E` · `aclE2E.ui` шалгуурын бэлтгэлд (`setRoleAllOp`-ийн ⚠️) —
+ *    UI-аас дуудагдахгүй; хүснэгт `flowCellOp(…, ALL_BAGTS, true)`-оор бичнэ.
  */
 export function flowStageOp(user: string, stage: Stage | null): AclOp {
   const u = norm(user);
@@ -673,70 +605,6 @@ export function flowStageOp(user: string, stage: Stage | null): AclOp {
     after: afterFlow(u, { stage, bagts: [ALL_BAGTS] }),
     run: () => setAssign(u, stage, [ALL_BAGTS]),
   };
-}
-
-/**
- * ШАТНЫ БАГЦАД НЭМЭХ (матрицын нүд). Томилгоогүй бол ЗӨВХӨН энэ багцаар
- * томилно; өөр шатанд байвал шилжүүлэхийг асууна.
- */
-export function flowAddOp(user: string, stage: Stage, pkg: string): AclOp {
-  const u = norm(user);
-  if (!u) return null;
-  const cur = flowRow(u);
-  if (!cur) return { user: u, run: () => setAssign(u, stage, [pkg]) };
-  if (cur.stage !== stage) {
-    return {
-      user: u, confirm: [moveMsg(u, cur.stage, stage, pkg)],
-      after: afterFlow(u, { stage, bagts: [pkg] }),
-      run: () => setAssign(u, stage, [pkg]),
-    };
-  }
-  if (cur.bagts.includes(ALL_BAGTS) || cur.bagts.includes(pkg)) return null;
-  return { user: u, run: () => setAssign(u, stage, [...cur.bagts, pkg], false) };
-}
-
-/**
- * ШАТНЫ БАГЦААС ХАСАХ (хуучин матрицын нүд) — `qaqcRemoveOp`-ийн ижил дүрэм.
- * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
- *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
- *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
- *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
- *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
- */
-export function flowRemoveOp(user: string, pkg: string): AclOp {
-  const u = norm(user);
-  const cur = flowRow(u);
-  if (!cur) return null;
-  const all = cur.bagts.includes(ALL_BAGTS);
-  if (!all && !cur.bagts.includes(pkg)) return null;
-  const left = all ? [] : cur.bagts.filter((b) => b !== pkg);
-  if (left.length) return { user: u, run: () => setAssign(u, cur.stage, left, false) };
-  const drop = flowDropOp(u);
-  if (!drop || 'error' in drop || !all) return drop;
-  return { user: u, confirm: [allRoleMsg(u), ...(drop.confirm ?? [])], after: drop.after, run: drop.run };
-}
-
-/** «Бүх багц» (карт) — багц солих тул `grant=false` */
-export function flowAllOp(user: string): AclOp {
-  const u = norm(user);
-  const cur = flowRow(u);
-  if (!cur || cur.bagts.includes(ALL_BAGTS)) return null;
-  return { user: u, run: () => setAssign(u, cur.stage, [ALL_BAGTS], false) };
-}
-
-/**
- * КАРТЫН БАГЦЫН ЧИП — хуучин `GuitsetgelAcl` панелийн дүрэм.
- * ⚠️ Сүүлийн багц → ✕-ийн зам (асууж, эрх буцаана), «бүх багц» руу БУЦАХГҮЙ.
- */
-export function flowChipOp(user: string, pkg: string): AclOp {
-  const u = norm(user);
-  const cur = flowRow(u);
-  if (!cur) return null;
-  const on = cur.bagts.includes(pkg);
-  const rest = cur.bagts.filter((x) => x !== ALL_BAGTS);
-  if (on && rest.length === 1) return flowDropOp(u);
-  const next = on ? rest.filter((x) => x !== pkg) : [...rest, pkg];
-  return { user: u, run: () => setAssign(u, cur.stage, next, false) };
 }
 
 /** «Зөвхөн харна» туг — эрх хөндөхгүй (`setViewOnly`-ийн ⚠️) */

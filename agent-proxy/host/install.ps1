@@ -43,8 +43,10 @@ function Find-Exe([string]$name, [string[]]$paths) {
 
 # ── Урьдчилсан шалгалт ──
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js суугаагүй байна.' }
+# ⚠️ 2026-10-09 (аудит №6): `npm ci` — lock файлын ЯГ хувилбарууд (хост дээр `npm install` lock-ийг
+#    өөрчилж, репод зөрүү үүсгэж болзошгүй байв).
 if (-not (Test-Path (Join-Path $root 'node_modules'))) {
-  Push-Location $root; npm install; Pop-Location
+  Push-Location $root; npm ci; Pop-Location
 }
 if (-not (Test-Path "$env:USERPROFILE\.claude\.credentials.json")) {
   Write-Warning 'Claude Code нэвтрээгүй бололтой — терминалд `claude` ажиллуулаад /login хийнэ үү.'

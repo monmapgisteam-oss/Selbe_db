@@ -115,8 +115,23 @@ function load(): Assign[] {
   if (cache) return cache;
   if (typeof window === 'undefined') return [];
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || '[]') as Assign[];
-    cache = Array.isArray(raw) ? raw : [];
+    const raw = JSON.parse(localStorage.getItem(KEY) || '[]') as unknown;
+    /* ⚠️ 2026-10-09 (аудит №6): МӨР БҮРИЙГ ШҮҮНЭ — `_syncRemoteAssigns`-ийн ижил дүрэм (`STAGES` ·
+       массив `bagts` · мөр `user`). Урьд нь localStorage-ийн массивыг шүүлгүй авдаг тул гараар
+       эвдэрсэн мөр (`stage` танигдахгүй, `bagts` мөр биш) `resolveFlowStage` · `bagtsFor`-д
+       хүрч шиддэг/буруу хүрээ өгдөг байв (05-erh-batlah §2 «мөр эвдэрсэн → эрхгүй»). */
+    cache = Array.isArray(raw) ? raw.flatMap((a): Assign[] => {
+      if (!a || typeof a !== 'object') return [];
+      const r = a as { user?: unknown; stage?: unknown; bagts?: unknown; viewOnly?: unknown };
+      if (typeof r.user !== 'string' || !r.user.trim() || typeof r.stage !== 'string' || !STAGES.has(r.stage)) return [];
+      if (!Array.isArray(r.bagts)) return [];
+      return [{
+        user: r.user.trim().toLowerCase(),
+        stage: r.stage as Stage,
+        bagts: r.bagts.filter((b): b is string => typeof b === 'string'),
+        ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
+      }];
+    }) : [];
   } catch {
     cache = [];
   }

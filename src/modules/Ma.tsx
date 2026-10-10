@@ -324,7 +324,9 @@ function MaPop({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
 /**
  * FIC / М-АКТ БАГАНА — баримтын жагсаалт (PDF нээх · батлах/буцаах) + PDF оруулах.
  * ⚠️ Өмнөх шат батлагдаагүй (`locked`) бол оруулах ХААЛТТАЙ — хатуу дараалал (хэрэглэгчийн шийдвэр).
- * ⚠️ Оруулах — `chanarAuthor`; батлах — `chanarReview`, өөрийн оруулсныг БИШ (`decideFm` дахин шалгана).
+ * ⚠️ Оруулах — `chanarAuthor`; батлах — `chanarReview`, өөрийн оруулсныг БИШ.
+ * ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ТОВЧ нуух — эрх · багцын хүрээ · `locked` гинж · `pending` төлөвийг
+ *    `ficMakt.addFm`/`decideFm` СЕРВЕРИЙН өгөгдлөөр дахин шалгаж, `tr()`-тэй алдаа шиднэ (`userError`-оор гарна).
  */
 function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged }: {
   kind: FmKind; maNo: string; state: string; rows: FmRow[] | null;

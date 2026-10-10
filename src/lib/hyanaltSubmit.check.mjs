@@ -187,6 +187,23 @@ assert.equal(openReviewRow([], 500, TAG), null);
   assert.equal(hit?.[F.id], 'G-000021', 'хянагчийн гар дээрх ОДООГИЙН тойргийг л буцаана');
 }
 
+/* ── ⚠️ 2026-10-09 (аудит №6): `Row` (`hyanaltStore.toRow` — `__oid`, `OBJECTID` талбаргүй) оролт ──
+ * Урьд нь `currentRows` зөвхөн `r[OBJECTID]` уншдаг тул `Row`-д хоёулаа 0 болж, ижил `Хэддэх_удаа`-тай
+ * мөрүүдээс жагсаалтын СҮҮЛИЙНХ ялдаг байв — `__oid` их нь ялах ёстой. */
+{
+  const rw = (oid, st, id) => ({ ...row(500, st, TAG, id), __oid: oid, [F.ergelt]: 1 });
+  assert.equal(
+    openReviewRow([rw(11, STATUS.engineerReturned, 'G-000031'), rw(10, STATUS.managerReview, 'G-000030')], 500, TAG), null,
+    '`Row` оролт: `__oid` их (буцаагдсан) мөр одоогийнх — жагсаалтын сүүлийнх ялж байна',
+  );
+  const hit = openReviewRow([rw(10, STATUS.engineerReturned, 'G-000030'), rw(11, STATUS.managerReview, 'G-000031')], 500, TAG);
+  assert.equal(hit?.[F.id], 'G-000031', '`Row` оролт: `__oid` их (хянагчийн гар дээрх) мөр одоогийнх');
+  /* `OBJECTID` ба `__oid` холимог — хоёулаа уншигдана */
+  const hit2 = openReviewRow([{ ...row(500, STATUS.engineerReturned, TAG, 'G-000040'), OBJECTID: 10, [F.ergelt]: 1 }, rw(11, STATUS.managerReview, 'G-000041')], 500, TAG);
+  assert.equal(hit2?.[F.id], 'G-000041', 'OBJECTID ба __oid холимог оролт');
+  console.log('✅ currentRows — `Row` (`__oid`) оролт');
+}
+
 /* ── 2026-10-04: `needsRegistration` — ижил sheetOid-тай ЯМАР Ч мөр «бүртгэгдсэн» БИШ ── */
 {
   const RET = Date.UTC(2026, 8, 7, 10);
@@ -261,7 +278,8 @@ assert.equal(openReviewRow([], 500, TAG), null);
   const st = reviewLockState([r(1, 10, STATUS.engineerReview, A), r(2, 11, STATUS.engineerReturned, BACK)],
     'Багц 1', 'Багц 1 · 9 давхар', other);
   assert.deepEqual(st, { days: ['2026.10.04'], returned: ['2026.10.03'] });
-  const ms = (y, m, d) => new Date(y, m - 1, d).getTime();
+  /* ⚠️ 2026-10-09 (аудит №6): `fillMs` нь UTC шөнө дунд (`nowFillMs`) — `dayLabel` ч `getUTC*`-ээр задалдаг болов */
+  const ms = (y, m, d) => Date.UTC(y, m - 1, d);
   assert.equal(reviewLockBlocks(st, ms(2026, 10, 3)), false, 'буцаагдсан өдрийн засвар — хориггүй');
   assert.equal(reviewLockBlocks(st, ms(2026, 10, 4)), true, 'хянагдаж буй өдрийг доор нь солих — хориг');
   assert.equal(reviewLockBlocks(st, ms(2026, 10, 9)), true, 'шинэ өдрийн бөглөлт — хориг');

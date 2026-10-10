@@ -29,6 +29,7 @@
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { chanarUpsert, chanarRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
+import { t as tr } from './i18nCore';
 
 export { ALL_BAGTS };
 
@@ -66,11 +67,14 @@ const acl = makeAcl<ChanarRole>({
   remove: chanarRemove,
   /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
   read: (user) => scopedRead('chanar', user),
+  /* ⚠️ 2026-10-09 (аудит №6): GETTER — `qaqcAcl`-ийн 2026-09-25-ны загвар. Урьд нь энгийн мөр байсан тул
+     `tr()`-гүй, англи хэлээр ч монголоор гарч, i18n гаргагчид ч ороогүй байв. `tr()`-ийг мессеж
+     уншигдах агшинд дуудна (модуль ачаалахад биш) — хэл солиход зөв хувилбар. */
   msg: {
-    noUser: 'Аккаунтын нэрээ бичнэ үү',
-    superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',
-    noRole: 'Дор хаяж нэг үүрэг сонгоно уу',
-    noBagts: 'Багц сонгоно уу',
+    get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
+    get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
+    get noRole() { return tr('Дор хаяж нэг үүрэг сонгоно уу'); },
+    get noBagts() { return tr('Багц сонгоно уу'); },
   },
 });
 
@@ -85,17 +89,14 @@ export const _syncRemoteChanar = (
   rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
 ): void => acl.syncRemote(rows);
 
-/** Аккаунтад үүрэг ба багц олгох (бүх үүрэгт ижил багц) */
-export const setChanarAssign = (
-  user: string, roles: ChanarRole[], bagts: string[], grant = true,
-) => acl.set(user, roles, bagts, grant);
+/* ⚠️ 2026-10-09 (аудит №6): `setChanarAssign` (бүх үүрэгт ижил багц) · `chanarGrantsOf` · `hasChanarRole`
+   ҮХМЭЛ байсан (src/tools/docs-д дуудагчгүй) — устгав. Панел `setChanarGrants`-ыг л хэрэглэнэ;
+   `chanarScope` parity тестэд хэрэгтэй тул ҮЛДЭНЭ. */
 
 /** ҮҮРЭГ БҮРД ӨӨР БАГЦ — панел үүнийг хэрэглэнэ */
 export const setChanarGrants = (
   user: string, grants: Grant<ChanarRole>[], grant = true,
 ) => acl.setGrants(user, grants, grant);
-
-export const chanarGrantsOf = acl.grantsOf;
 
 /** Хуваарилалтаас хасах — `revoke: false` бол эрхийг үлдээнэ */
 export const removeChanarAssign = (user: string, revoke = true) => acl.remove(user, revoke);
@@ -109,9 +110,6 @@ export const retryChanarAssign = acl.retry;
 /** Тухайн хэрэглэгчийн багцууд — ТУХАЙН ҮҮРГЭЭР. `null` = хязгааргүй */
 export const chanarScope = (user: string | null | undefined, role: ChanarRole) =>
   acl.scope(user, role);
-
-/** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
-export const hasChanarRole = acl.hasRole;
 
 /**
  * Тухайн БАГЦАД хэрэглэгч ЯМАР ХЯНАГЧ вэ — `chanarMs.canAct`-д өгөх жагсаалт.

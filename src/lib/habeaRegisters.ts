@@ -71,6 +71,9 @@ async function fetchRegisters(w: { start: Date; end: Date; no: number }): Promis
  * ⚠️ 2026-10-09: кэшийн ТҮЛХҮҮР нь долоо хоногийн эхлэл (UB). Урьд нь ганц кэш байсан тул
  *    Даваа гараг дамжихад `weekKey` солигдож дахин дуудсан ч TTL (5 мин) дотор ӨМНӨХ долоо
  *    хоногийн тоо буцдаг байв. Зөвхөн сүүлийн долоо хоногийнхыг барина.
+ * ⚠️ 2026-10-09 (аудит №6): ганц слот — хуучин долоо хоногийн `cached` ЭНД үлдэхгүй; харин `live.cached`
+ *    dataBus-д бүртгэсэн хаалтаа (`register`) хасах API байхгүй тул долоо хоног тутам нэг хөнгөн
+ *    хаалт (`p = null`) үлдэнэ — unregister нэмэх нь dataBus-ийн өөрчлөлт (`habeaUzleg.loadWeekScores`-тэй ижил).
  */
 let regCache: { k: number; load: () => Promise<RegisterData> } | null = null;
 
@@ -316,7 +319,15 @@ export async function nextNumber(table: number, field: string): Promise<number> 
  *    бичилт ба дахин илгээлт уралдвал давхар GlobalID-ийг сервер өөрөө татгалзана → дахин асууна.
  * ⚠️ `autoSeq` — санал болгосон дугаарыг (№ · д/д) хэрэглэгч өөрчлөөгүй бол бичихийн ЯГ ӨМНӨ
  *    дахин бодно (маягт нээлттэй байх хооронд өөр хүн нэмсэн бол давхардахгүй).
+ * ⚠️ 2026-10-09 (аудит №6): `retry` нь ЗӨВХӨН ИЖИЛ УТГАТАЙ дахин илгээлтэд хүчинтэй — `addWaste`-ийн
+ *    `sig` загвар. Урьд нь хариу алдагдсаны дараа хэрэглэгч талбараа ЗАСААД дахин дарахад ижил `gid`
+ *    олдвол юу ч бичилгүй «амжилттай» хаагддаг — засвар алга болдог байв. Одоо `HabeaLostWrite.sig` =
+ *    `registerSig(attrs)`; дуудагч утга өөрчлөгдвөл ШИНЭ `gid`-ээр, `retry`-гүй илгээнэ (`HabeaEntry`).
  */
+/** Бүртгэлийн утгын гарын үсэг — дахин илгээлт ижил утгатай эсэхийг тулгахад (`addWaste`-ийн `sig`) */
+export const registerSig = (attrs: Record<string, unknown>): string =>
+  JSON.stringify(Object.keys(attrs).sort().map((k) => [k, attrs[k]]));
+
 export async function addRegister(
   table: number, attrs: Record<string, unknown>, gid: string, opts: { autoSeq?: string; retry?: boolean } = {},
 ): Promise<void> {
@@ -340,7 +351,7 @@ export async function addRegister(
       /* Хариу алдагдсан — ЗӨВХӨН уншина. Шалгалт өөрөө унавал «тодорхойгүй». */
       const found = await gidExists(url, R.gidField, gid).catch(() => null);
       if (found) return;
-      throw new HabeaLostWrite(e);
+      throw new HabeaLostWrite(e, undefined, registerSig(attrs));
     }
     if (res.success === false) {
       /* Давхар GlobalID (хоцорч суусан анхны бичилт) — мөр аль хэдийн байвал амжилт */

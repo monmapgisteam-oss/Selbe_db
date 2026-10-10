@@ -1056,11 +1056,16 @@ export function SuitMap({
    *
    * ⚠️ Хүрээг СЕРВЭРЭЭС асууна (`queryExtent`): давхарга нь `definitionExpression`
    * -тэй тул хөтөч дээр ачаалагдсан хэсэг нь бүрэн биш байж болно.
+   *
+   * ⚠️ 2026-10-09 (аудит №6): `bldWhere` null (шүүлт ЦЭВЭРЛЭСЭН) үед асуухгүй.
+   *    Тоолуур шүүлт цэвэрлэхэд ч өсдөг тул `queryExtent()` `where`-гүй явж, энэ
+   *    FeatureServer 400 «No where clause specified» буцаадаг (`MapCanvas.extentOf`-ийн
+   *    ⚠️). Хамаарлын жагсаалтад `bldWhere`-ийг САНААТАЙ оруулахгүй — дээрх ⚠️.
    */
   useEffect(() => {
     const view = viewRef.current;
     const lyr = bldRef.current;
-    if (!view || view.destroyed || !lyr || !ready || !bldFocus) return;
+    if (!view || view.destroyed || !lyr || !ready || !bldFocus || !bldWhere) return;
     let alive = true;
     lyr.queryExtent()
       .then((res) => {
@@ -1070,6 +1075,7 @@ export function SuitMap({
       })
       .catch(() => {});
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bldFocus, ready]);
 
   /**

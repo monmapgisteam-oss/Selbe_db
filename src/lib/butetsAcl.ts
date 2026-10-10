@@ -29,6 +29,7 @@
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { butetsUpsert, butetsRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
+import { t as tr } from './i18nCore';
 import { PACK_OF_LAYER } from './butetsPacks';
 import { AUTH } from './services';
 
@@ -48,11 +49,14 @@ const acl = makeAcl<ButetsRole>({
   remove: butetsRemove,
   /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
   read: (user) => scopedRead('butets', user),
+  /* ⚠️ 2026-10-09 (аудит №6): GETTER — `qaqcAcl`-ийн 2026-09-25-ны загвар. Урьд нь энгийн мөр байсан тул
+     `tr()`-гүй, англи хэлээр ч монголоор гарч, i18n гаргагчид ч ороогүй байв. `tr()`-ийг мессеж
+     уншигдах агшинд дуудна (модуль ачаалахад биш) — хэл солиход зөв хувилбар. */
   msg: {
-    noUser: 'Аккаунтын нэрээ бичнэ үү',
-    superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',
-    noRole: 'Дор хаяж нэг үүрэг сонгоно уу',
-    noBagts: 'Багц сонгоно уу',
+    get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
+    get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
+    get noRole() { return tr('Дор хаяж нэг үүрэг сонгоно уу'); },
+    get noBagts() { return tr('Багц сонгоно уу'); },
   },
 });
 

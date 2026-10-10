@@ -79,7 +79,7 @@ const ANCHOR = { lat: 47.9664, lon: 106.9214 };
  */
 const ANCHOR_R = 1.2;
 
-/** Зангилааны тоо: 18 багана × 7 мөр = 126 цэг */
+/** Зангилааны тоо: 19 багана × 8 мөр = 152 цэг (⚠️ 2026-10-09 аудит №6: урьд нь «18 × 7 = 126» гэж буруу бичсэн) */
 export const NX = Math.round((LON_MAX - LON_MIN) / STEP) + 1;
 export const NY = Math.round((LAT_MAX - LAT_MIN) / STEP) + 1;
 

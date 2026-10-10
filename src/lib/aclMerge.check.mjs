@@ -85,5 +85,45 @@ await w2.sync; await settle();
 eq(sorted(fake.json('__huvaari__:', U).grants[0].bagts), sorted([P0, P1, P2]), 'ArcGIS: P1 (нөгөө админ) хадгалагдав');
 eq(sorted(HV.listHuvaariAssigns().find((a) => a.user === U).grants[0].bagts), sorted([P0, P1, P2]), 'локал нэгтгэгдэв');
 
+/* ── Dirty → tombstone (⚠️ 2026-10-09, аудит №6) ──
+   А админ сүлжээгүй үед X-ийг засав (dirty) → Б админ X-ийг устгав → А-гийн дараагийн poll
+   (`retryDirtyOnce`) ба dirty салаатай `setUser` хоёулаа tombstone-ыг ДАРАХ ЁСГҮЙ. */
+{
+  const T1 = 'merge_t1';
+  const T2 = 'merge_t2';
+  fake.seed([
+    { username: T1, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 },
+    { username: T2, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 },
+  ]);
+  assert.ok(await P.initRemote(false, true), 'initRemote (tombstone)');
+  await settle();
+  eq(P.hasAccess(T1), true, 'T1 нэвтэрнэ');
+  fake.failWrites = true;
+  eq(await P.setUser(T1, { views: ['gdash', 'plan'], docs: false }, 'taniltsah'), false, 'T1: бичилт унана → dirty');
+  eq(await P.setUser(T2, { views: ['gdash', 'plan'], docs: false }, 'taniltsah'), false, 'T2: бичилт унана → dirty');
+  await settle();
+  fake.failWrites = false;
+  eq(P.dirtyKeys().includes(T1) && P.dirtyKeys().includes(T2), true, 'хоёулаа dirty');
+  /* Нөгөө админ T1-ийг устгав (tombstone = `views: 'removed'`) */
+  const tomb = (t) => Object.assign(fake.find(t)[0], { views: 'removed', role: null, docs: 0 });
+  tomb(T1);
+  /* (а) poll → retryDirtyOnce: T1 tombstone хэвээр, dirty хаягдана, локалд устгагдсан.
+     Бичилт унасаар (`failWrites`) тул T2 dirty ХЭВЭЭР — (б)-д dirty салааг шалгахад */
+  fake.failWrites = true;
+  assert.ok(await P.initRemote(false, true), 'initRemote (poll)');
+  await settle();
+  fake.failWrites = false;
+  eq(fake.find(T1)[0].views, 'removed', 'T1: retry tombstone-ыг дараагүй');
+  eq(P.dirtyKeys().includes(T1), false, 'T1: dirty хаягдав');
+  eq(P.hasAccess(T1), false, 'T1: локалд tombstone — нэвтрэхгүй');
+  eq(P.dirtyKeys().includes(T2), true, 'T2: dirty хэвээр');
+  /* (б) dirty салаатай `setUser`: нөгөө админ T2-ийг устгасан бол бүтэн upsert явуулахгүй */
+  tomb(T2);
+  eq(await P.setUser(T2, { views: ['gdash', 'iot'], docs: false }, 'taniltsah'), false, 'T2: dirty салаа tombstone дээр бичихгүй');
+  eq(fake.find(T2)[0].views, 'removed', 'T2: ArcGIS tombstone хэвээр');
+  eq(P.dirtyKeys().includes(T2), false, 'T2: хуучин dirty хаягдав');
+  eq(P.hasAccess(T2), false, 'T2: нэвтрэхгүй');
+}
+
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явсангүй');
-console.log(`✅ aclMerge: ${checks} шалгалт — хоёр админы зэрэг засвар алдагдалгүй`);
+console.log(`✅ aclMerge: ${checks} шалгалт — хоёр админы зэрэг засвар алдагдалгүй · dirty → tombstone дарахгүй`);

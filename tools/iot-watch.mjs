@@ -15,7 +15,16 @@
  */
 
 import fs from 'node:fs';
-import { loadSensors, outOfRange } from '../src/lib/sensors.ts';
+import { loadSensors, outOfRange, UB_OFFSET_MS } from '../src/lib/sensors.ts';
+
+/**
+ * Мэдэгдлийн цагийн тамга — Улаанбаатарын цагаар (+08:00, зуны цаггүй).
+ * ⚠️ 2026-10-09 (аудит №6): урьд `new Date().toLocaleString('mn-MN')` — ХОСТЫН бүсээр
+ *    (GitHub Actions = UTC) тул Telegram-д 8 цагаар хоцорсон цаг гарч байв. Одоо
+ *    `sensors.ts`-ийн `UB_OFFSET_MS`-тэй нэг тогтмолоор `YYYY-MM-DD HH:mm (УБ)`.
+ */
+const ubNow = () =>
+  `${new Date(Date.now() + UB_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} (УБ)`;
 /* ⚠️ 2026-10-09: «их нь сайн» жагсаалтыг CEO самбараас ИМПОРТЛОНО — хуулбарлавал хоёр тал салж,
    самбар «хуурай» гэж шар байхад Telegram «хэвийн» гэж хэлнэ. */
 import { IOT_HIGHER_IS_GOOD } from '../src/lib/ceo/iot.ts';
@@ -156,7 +165,7 @@ async function check() {
     return;
   }
 
-  const text = `<b>Сэлбэ · IoT мэдрэгч</b>\n${new Date().toLocaleString('mn-MN')}\n\n${lines.join('\n')}`;
+  const text = `<b>Сэлбэ · IoT мэдрэгч</b>\n${ubNow()}\n\n${lines.join('\n')}`;
   for (const chat of TO) {
     try {
       await tg('sendMessage', { chat_id: chat, text, parse_mode: 'HTML' });

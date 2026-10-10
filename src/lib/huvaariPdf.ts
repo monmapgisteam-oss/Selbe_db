@@ -96,8 +96,7 @@ export type HvPdfInput = {
   refLabel: string | null;
   /** Идэвхтэй блокийн нэр (`sc.bld[blk]`), нэг блоктой бол '' */
   block: string;
-  from: number;
-  to: number;
+  /* ⚠️ 2026-10-09 (аудит №6): `from`/`to` (дэлгэцийн цонх) хасав — хаана ч уншигддаггүй үхмэл талбар байв */
   now: number;
   rows: HvPdfRow[];
   hasActual: boolean;
@@ -144,10 +143,8 @@ const C = {
 const ST_FILL: Record<Status, string> = {
   done: C.good, run: C.data, late: C.bad, todo: C.todo, none: C.none,
 };
-/** Цагаан бичвэр харагдах бараан дүүргэлт */
-const ST_DARK: Record<Status, boolean> = {
-  done: true, run: true, late: true, todo: true, none: true,
-};
+/* ⚠️ 2026-10-09 (аудит №6): `ST_DARK` хасав — бүх төлөв `true` (бүх дүүргэлт бараан) тул үхмэл; бичвэрийн өнгө
+   доор `!r.group && !partial`-аар шууд. */
 
 
 /* ── Хэмжээс (pt) — цаасаас үл хамаарах ── */
@@ -355,8 +352,10 @@ type Part = { path: string[]; rows: HvPdfRow[] };
 
 /**
  * Бүлгүүдэд задлах: `Geo.split`-ээс том бүлэг дэд бүлгүүдэд хуваагдана.
- * ⚠️ Задарсан бүлгийн ӨӨРИЙН мөр PDF-ийн хэсэгт ОРОХГҮЙ — нэр нь зам (`path`)
- *    болж гарчигт, зурвас нь хураангуй хуудсанд гарна.
+ * ⚠️ Задарсан бүлгийн нэр зам (`path`) болж гарчигт орно.
+ * ⚠️ 2026-10-09 (аудит №6): задарсан бүлгийн ӨӨРИЙН мөр (зурвас) ЭХНИЙ дэд хэсгийн эхний мөр болж ҮЛДЭНЭ — урьд нь
+ *    хэсэгт огт ордоггүй («зурвас нь хураангуйд гарна» гэж найдсан) атлаа хураангуй зөвхөн `d0 + 1` хүртэл тул гүн
+ *    ≥ d0+2 бүлгийн зурвас PDF-ийн ХААНА Ч гардаггүй байв.
  * ⚠️ Дангаар байгаа ажлын мөрүүд (бүлэггүй) нэг хэсэгт цугларна — мөр бүр
  *    тусдаа хуудас болохгүй.
  */
@@ -368,7 +367,11 @@ function split(rows: HvPdfRow[], path: string[], out: Part[], max: number): void
     if (t.length === 1 && !root.group) { loose.push(root); continue; }
     flush();
     if (t.length <= max || !root.group) out.push({ path: [...path, rowLabel(root)], rows: t });
-    else split(t.slice(1), [...path, rowLabel(root)], out, max);
+    else {
+      const at = out.length;
+      split(t.slice(1), [...path, rowLabel(root)], out, max);
+      if (out.length > at) out[at] = { path: out[at].path, rows: [root, ...out[at].rows] };
+    }
   }
   flush();
 }
@@ -404,7 +407,9 @@ function select(rows: HvPdfRow[], keep: (r: HvPdfRow) => boolean, dated: (r: HvP
     if (!kids.length) { if (keep(root)) out.push(root); continue; }
     const inner = select(kids, keep, dated);
     if (inner.length) out.push(root, ...inner);
-    else if (!kids.some(dated) && keep(root)) out.push(root);
+    /* ⚠️ 2026-10-09 (аудит №6): ӨӨРИЙН зурвастай (`bar`) бүлэг огноотой хүүхдүүд нь бүгд цонх/шүүлтээс унасан ч
+       `keep`-д тэнцвэл өөрөө үлдэнэ — урьд нь «хүүхэд үлдсэнгүй» гээд хасагддаг байв. */
+    else if ((!kids.some(dated) || !!root.bar) && keep(root)) out.push(root);
   }
   return out;
 }
@@ -618,8 +623,10 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     /* ⚠️ Тунгалаг тэгш өнцөгт — хоосон мөрөнд ч canvas өндрийг барина.
        ⚠️ 2026-10-01: СҮЛЖЭЭ мөр бүрд БИШ — хүснэгтийн толгойд нэг удаа (`gridOf`-ийн ⚠️). */
     const cv: CanvasElement[] = [{ type: 'rect', x: 0, y: 0, w: 0.01, h: ROW_H, color: '#ffffff', fillOpacity: 0 }];
-    const half = !!r.ref;
+    /* ⚠️ 2026-10-09 (аудит №6): `half` нь ЗУРАГДСАН лавлагаа (`refC`)-аар — `r.ref` тэнхлэгээс гадуур бол `clip` null
+       буцааж, урьд нь зурвас дэмий хагас өндөртэй, шошго нь дээш шилжсэн байв. */
     const refC = r.ref ? clip(ax, r.ref) : null;
+    const half = !!refC;
     if (refC) {
       cv.push({
         type: 'rect', x: xOf(ax, refC.start), y: ROW_H * 0.58, w: wOf(ax, refC), h: ROW_H * 0.26, r: 0.8,
@@ -681,7 +688,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       let txt = full;
       let lx = bx + 3;
       /* ⚠️ Хэсэгчилсэн дүүргэлттэй бол бичвэр цайвар хэсэгт ч орно — бараан */
-      let color = !r.group && !partial && ST_DARK[r.st] ? '#ffffff' : C.ink;
+      let color = !r.group && !partial ? '#ffffff' : C.ink;
       if (!half && bw > fullW + 8) {
         if (bw > fullW + 80) txt = `${fit(norm(r.work || r.no), bw - fullW - 18, LAB_FS)}   ${full}`;
       } else {

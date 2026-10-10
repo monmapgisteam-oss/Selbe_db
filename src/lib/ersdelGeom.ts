@@ -281,7 +281,8 @@ export type WindNow = { dirDeg: number; speed: number };
  * ⚠️ ХЯЗГААРЛАСАН (0.4…2.5): Open-Meteo-гийн ганц цагийн онцгой заалт
  * (шуурга эсвэл бүрэн намдалт) загварыг утгагүй хэлбэрт оруулахаас сэргийлнэ.
  */
-const windFactor = (real: number, assumed: number): number => {
+/* ⚠️ 2026-10-09 (аудит №6): export — `Ersdel`-ийн «сэвсгэрийн урт N дахин» тайлбар урьд нь томьёог давтдаг байв */
+export const windFactor = (real: number, assumed: number): number => {
   if (!Number.isFinite(real) || real <= 0 || assumed <= 0) return 1;
   return Math.max(0.4, Math.min(2.5, real / assumed));
 };

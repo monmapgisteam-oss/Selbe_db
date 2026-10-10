@@ -24,7 +24,7 @@ process.env.TZ = 'Asia/Ulaanbaatar';
 import assert from 'node:assert/strict';
 const {
   groupOf, statusOf, buildTuhPkgs, progressOf, cfPlanPctAt, weekDelta, earned,
-  rowSpan, commissionOf, milestonesOf, resourcesOf, daysBetween, elapsedPct,
+  rowSpan, commissionOf, milestonesOf, resourcesOf, daysBetween, calDaysBetween, elapsedPct,
   ipcOf, keyOwners, assignHo, isDesignHo, mergeCommission, measDayOf, firstFilled,
   searchNorm, matchesSearch, lateFirst, designPctOf, rowProgress, pendingAutoOf,
   pickCommission, keyedCache, lastReportOf, reportAge, heatWinterYear, TUH_STATUS,
@@ -222,6 +222,18 @@ const sheet = [
 ok('бүлгийн муж = дэд ажлуудын MIN/MAX (өөрийн огноо биш)', () => assert.deepEqual(rowSpan(sheet, 0), { start: d(10), end: d(90) }));
 ok('улсын комисс = хамгийн хожуу блок', () => assert.equal(commissionOf(sheet), d(130)));
 ok('комиссын мөргүй → null', () => assert.equal(commissionOf(sheet.slice(0, 3)), null));
+/* ⚠️ 2026-10-09 (аудит №6): `calDaysBetween` — хуанлийн өдөр; 8 цагийн зөрүүтэй агшнууд ч бүхэл хоног */
+ok('calDaysBetween — хуанлийн өдрөөр, цагийг үл тооно', () => {
+  const ub = Date.parse('2026-10-01T00:00:00+08:00');
+  /* 23 цагийн дараа — хуанлиар 0 хоног (`daysBetween` нь 1 гэж дугуйлна) */
+  assert.equal(calDaysBetween(ub, ub + 23 * 3_600_000), 0);
+  assert.equal(daysBetween(ub, ub + 23 * 3_600_000), 1);
+  /* маргааш 01:00 — 1 хоног; UTC шөнө дунд (08:00 UB) ч мөн 1 */
+  assert.equal(calDaysBetween(ub, ub + 25 * 3_600_000), 1);
+  assert.equal(calDaysBetween(ub, Date.parse('2026-10-02T00:00:00Z')), 1);
+  assert.equal(calDaysBetween(ub + 25 * 3_600_000, ub), -1);
+  assert.equal(calDaysBetween(null, ub), null);
+});
 ok('гол үе шат = дээд түвшний мөрүүд', () => assert.deepEqual(milestonesOf(sheet).map((x) => x.name), ['Барилга угсралт', 'Улсын комисс']));
 ok('хүн/техник — навч мөрүүдийн нийлбэр; бүгд хоосон бол null', () => {
   assert.deepEqual(resourcesOf(sheet), { hun: 14, mashin: 3 });

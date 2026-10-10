@@ -291,7 +291,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     }
     const g = qSocial.data.rows.find((x) => x.key === r.live);
     const n = g?.n ?? 0;
-    const add = !n ? '—' : g?.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
+    /* ⚠️ 2026-10-09 (аудит №6): давхарга ирсэн ч 0 объект бол «0» — «—» нь зөвхөн давхарга алга үед (null ≠ 0) */
+    const add = !g ? '—' : !n ? '0' : g.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
     return { ...r, add, total: headCount(r.now) + n, pending: false };
   }), [qSocial]);
   const socTotals = {

@@ -15,7 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { dataCatalog, CAT_GROUPS, CLOSED_SERVICES, searchText } from './dataCatalog.ts';
+import { dataCatalog, CAT_GROUPS, CLOSED_SERVICES, CLOSED_WITH_ROWS, searchText } from './dataCatalog.ts';
 import { LAYERS, VIEWS } from './services.ts';
 import { PKGS } from '../modules/sheet/bagts.pkg.ts';
 import { QAQC_TABLE } from './qaqc.ts';
@@ -63,10 +63,14 @@ for (const e of cat) {
   assert.equal(typeof searchText(e), 'string');
 }
 
-/* ── 4. хаалттай үйлчилгээ ── */
+/* ── 4. хаалттай үйлчилгээ ──
+   ⚠️ 2026-10-09 (аудит №6): `CLOSED_SERVICES` одоо CLAUDE.md-ийн 9 устгагдсан үйлчилгээ
+   БҮГД; каталогийн мөр зөвхөн `CLOSED_WITH_ROWS`-д шаардана, бусдад «агуулсан мөр бүр
+   `closed` тугтай» дүрэм л үйлчилнэ. `styleSrc` (загварын түлхүүр) ШАЛГАХГҮЙ. */
+for (const svc of CLOSED_WITH_ROWS) assert.ok(CLOSED_SERVICES.includes(svc), `CLOSED_WITH_ROWS ⊄ CLOSED_SERVICES: ${svc}`);
 for (const svc of CLOSED_SERVICES) {
   const hit = cat.filter((e) => e.service === svc || (e.url ?? '').includes(`/${svc}/`));
-  assert.ok(hit.length > 0, `хаалттай үйлчилгээ каталогт алга: ${svc}`);
+  if (CLOSED_WITH_ROWS.includes(svc)) assert.ok(hit.length > 0, `хаалттай үйлчилгээ каталогт алга: ${svc}`);
   for (const e of hit) assert.equal(e.closed, true, `${e.id}: ${svc} устгагдсан (400) тугагүй`);
 }
 for (const e of cat.filter((x) => x.closed)) {

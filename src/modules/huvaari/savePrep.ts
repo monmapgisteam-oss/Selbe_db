@@ -83,6 +83,13 @@ export type SavePrep = {
  */
 export const HAM_MAX = 255;
 
+/** ⚠️ 2026-10-09 (аудит №6): `des` → мөр, давхардсан кодонд ЭХНИЙХ ялна (`payload.ts`-ийн `byDes`-тэй нэг дүрэм) */
+function firstByDes(base: PlanRow[]): Map<number | null, PlanRow> {
+  const m = new Map<number | null, PlanRow>();
+  for (const r of base) if (!m.has(r.des)) m.set(r.des, r);
+  return m;
+}
+
 export async function prepareSave({
   sc, kind, pkg, rows, base, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids,
 }: {
@@ -260,7 +267,9 @@ export async function prepareSave({
   const fields = { hun: false, mashin: false };
   let obEdits: PlanEdits | null = null;
   if (obDraft.size || obResDraft.size) {
-    const byDes = new Map(base.map((r) => [r.des, r]));
+    /* ⚠️ 2026-10-09 (аудит №6): ДАВХАРДСАН `des`-д ЭХНИЙХ ялна — `payload.ts`-ийн `byDes` (`!byDes.has`)-тэй НЭГ дүрэм;
+       урьд нь энд `new Map(base.map(…))` (сүүлийнх ялна) тул батлахад тулгасан мөр ба бичсэн мөр зөрж болох байв. */
+    const byDes = firstByDes(base);
     const all: PlanEdits = { adds: [], updates: [], deletes: [] };
     /* ⚠️ Талбарын шалгалт: `null` (мэдэхгүй) бол НЭГ удаа дахин оролдоно; мөн л
        мэдэхгүй бол БАЙХГҮЙ гэж үзнэ (2026-09-24 аудит) — урьд нь `null`-д
@@ -360,7 +369,8 @@ export async function prepareSave({
    *    (арилгах санаатай) — урьд нь алгасаж хуучин нийлбэр үлддэг байв.
    */
   if (obResDraft.size) {
-    const byDes = new Map(base.map((r) => [r.des, r]));
+    /* ⚠️ 2026-10-09 (аудит №6): эхнийх ялна (дээрх `firstByDes`-ийн ⚠️) */
+    const byDes = firstByDes(base);
     const desSet = new Set<number>();
     for (const k of obResDraft.keys()) desSet.add(Number(k.slice(0, k.indexOf('|'))));
     for (const des of desSet) {

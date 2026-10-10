@@ -435,8 +435,7 @@ function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip 
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
   const navRef = useRef<1 | -1 | 0>(0);
-  /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
-  const enterRef = useRef(false);
+  /* ⚠️ 2026-10-09 (аудит №6): `enterRef` хасав — хэзээ ч `true` болдоггүй байв (Enter-ийн зам `doneRef`-ээр хадгалдаг) */
   /** ⚠️ 2026-10-09: товчлуурын (Enter/Tab/↓↑) замд аль хэдийн хадгалсан — `blur` дахин хадгалахгүй */
   const doneRef = useRef(false);
   /** ⚠️ 2026-10-09: Enter/Tab/↓↑-д ТАТГАЛЗСАН шалтгаан — нүд засварт үлдэж, доор нь улаанаар */
@@ -501,13 +500,11 @@ function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip 
           cancelRef.current = false;
           const nav = navRef.current;
           navRef.current = 0;
-          const ent = enterRef.current;
-          enterRef.current = false;
           const done = doneRef.current;
           doneRef.current = false;
           if (!cancel && !done) {
             const p = parseDayInput(txt);
-            if (p && p !== (v != null ? msToDay(v) : '')) onSet(p, nav ? 'nav' : ent ? 'enter' : 'blur');
+            if (p && p !== (v != null ? msToDay(v) : '')) onSet(p, nav ? 'nav' : 'blur');
           }
           /* ⚠️ 2026-10-08: хадгалалтын ДАРАА мөр шилжинэ — огноо өөрчлөгдсөн бол дуудагч цонх нээж
              болно (`openAfterDate`); тэр үед фокус цонхонд үлдэх нь дуудагчийн шийдвэр. */
@@ -561,8 +558,7 @@ function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
   const navRef = useRef<1 | -1 | 0>(0);
-  /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
-  const enterRef = useRef(false);
+  /* ⚠️ 2026-10-09 (аудит №6): `enterRef` хасав (`DateCell`-ийн ижил — хэзээ ч `true` болдоггүй байв) */
   /** ⚠️ 2026-10-09: `DateCell`-ийн ижил — товчлуурын замд хадгалсан туг ба татгалзсан шалтгаан */
   const doneRef = useRef(false);
   const [why, setWhy] = useState<string | null>(null);
@@ -625,11 +621,9 @@ function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
           cancelRef.current = false;
           const nav = navRef.current;
           navRef.current = 0;
-          const ent = enterRef.current;
-          enterRef.current = false;
           const done = doneRef.current;
           doneRef.current = false;
-          if (!cancel && !done && !bad && n !== cur) onSet(n, nav ? 'nav' : ent ? 'enter' : 'blur');
+          if (!cancel && !done && !bad && n !== cur) onSet(n, nav ? 'nav' : 'blur');
           /* ⚠️ 2026-10-08: хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
           if (nav && onNext) onNext(nav);
         }}

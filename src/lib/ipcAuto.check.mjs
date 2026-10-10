@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import {
   dayOf, isAuto, autoDay, autoId, findAutoRow,
   autoInsert, autoUpdate, planAuto, contractCodeOf, AUTO_PREFIX, contractFor, pickContract,
+  sheetsVerdict,
 } from './ipcAuto.ts';
 import { LINK_FIELDS } from './ipcLink.ts';
 import { HO_IPC, pkgKeyOf } from './services.ts';
@@ -298,12 +299,47 @@ const P = HO_IPC.payFields;
   const W = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
   assert.ok(W.includes("const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
   assert.ok(W.includes("if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };"), 'блокгүй багц — no-data (F2)');
-  assert.ok(W.includes('if (!cols.length) { noObyem += 1; continue; }'), 'обьёмгүй хуудас «дутуу» биш (F2)');
+  assert.ok(W.includes("if (!cols.length) { reads.push('no-obyem'); continue; }"), 'обьёмгүй хуудас «дутуу» биш (F2)');
+  /* ⚠️ 2026-10-09 (аудит №6): огт нийтлэгдээгүй хуудас `missing` биш `unpublished`; шийдвэр `sheetsVerdict`-ээр */
+  assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
+  assert.ok(W.includes('const verdict = sheetsVerdict(reads);') && W.includes('if (!verdict.go) return verdict.result;'), 'шийдвэр sheetsVerdict-ээр (аудит №6)');
+  assert.ok(W.includes('const warns = [cw, verdict.warn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
   assert.ok(/\} finally \{\s*\/\*[^]*?\*\/\s*if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
   const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
   assert.ok(L.includes('const cf = autoContractFor(hoRows, packKey);') && L.includes('cands.find((c) => c.code === cf.code)'), 'ipcDocLoad AUTO-той ижил гэрээ сонгоно (F6)');
   assert.ok(L.includes('msToDay(normDayMs(v))'), 'ipcDocLoad өдрийг normDayMs-ээр (8)');
   console.log('✅ ipcAuto 2026-10-09: AUTO гэрээ · warn · блокгүй · finally');
+}
+
+/* ══ 2026-10-09 (аудит №6): sheetsVerdict — огт нийтлэгдээгүй хуудас 0 оролцоотой ══
+ * Хоёр хуудастай багцад нөгөө хуудас ХЭЗЭЭ Ч нийтлэгдээгүй бол урьд нь `missing` → `ok:false`
+ * → `markRegistered` дуудагдахгүй → `regPending` мөнхөд. Нэгтгэл (`summaryOf`) тэр хуудсыг 0% гэж
+ * бичдэг — IPC ч нэг дүрмээр үргэлжилнэ (нийлбэрт 0), харин анхааруулга буцаана. */
+{
+  /* бүх хуудас уншигдсан — үргэлжилнэ, анхааруулгагүй */
+  let v = sheetsVerdict(['read', 'read']);
+  assert.ok(v.go && v.warn == null, 'бүгд уншигдсан → go, warn-гүй');
+  /* нэг нь огт нийтлэгдээгүй — ҮРГЭЛЖИЛНЭ (0 оролцоотой), анхааруулгатай */
+  v = sheetsVerdict(['read', 'unpublished']);
+  assert.ok(v.go, '⚠️ огт нийтлэгдээгүй хуудас — missing БИШ, бичилт үргэлжилнэ (аудит №6)');
+  assert.ok(v.go && v.warn && v.warn.includes('огт нийтлэгдээгүй'), 'анхааруулга «огт нийтлэгдээгүй» гэж тодруулна');
+  /* тэр өдөр бөглөгдөөгүй / уншигдаагүй (`missing`) — хэвээр татгалзана (09-15-ны дүрэм) */
+  v = sheetsVerdict(['read', 'missing']);
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('бөглөгдөөгүй'), 'дутуу хуудас → ok:false хэвээр');
+  /* бүгд обьёмын баганагүй — no-data (F2 хэвээр) */
+  v = sheetsVerdict(['no-obyem', 'no-obyem']);
+  assert.ok(!v.go && v.result.ok && v.result.op === 'skip' && v.result.why === 'no-data', 'бүгд обьёмгүй → no-data');
+  /* юу ч уншигдаагүй — батлагдсан хуудасны өөрийн жааз байх ёстой тул АЛДАА (fail-closed), no-data биш */
+  v = sheetsVerdict(['unpublished', 'unpublished']);
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт нийтлэгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');
+  v = sheetsVerdict(['no-obyem', 'unpublished']);
+  assert.ok(!v.go && !v.result.ok, 'обьёмгүй + нийтлэгдээгүй → уншигдсан зүйлгүй → ok:false');
+  /* нэг хуудастай багц */
+  v = sheetsVerdict(['read']);
+  assert.ok(v.go && v.warn == null, 'нэг хуудас уншигдсан → go');
+  v = sheetsVerdict(['missing']);
+  assert.ok(!v.go && !v.result.ok, 'нэг хуудас уншигдаагүй → ok:false');
+  console.log('✅ ipcAuto 2026-10-09 (аудит №6): sheetsVerdict — огт нийтлэгдээгүй хуудас 0 оролцоотой');
 }
 
 console.log('ipcAuto.check ✓');

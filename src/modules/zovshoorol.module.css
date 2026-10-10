@@ -276,6 +276,24 @@
 .danger:hover { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .btn:disabled, .primary:disabled, .danger:disabled { opacity: 0.5; cursor: default; }
 
+/* МАЯГТ ДОТОРХ АСУУЛТ — `window.confirm`-ийн оронд (`ZovshoorolEdit.confirmQ`).
+   ⚠️ 2026-10-09 (аудит №6): хөтөч «энэ хуудас дахин харилцах цонх гаргахгүй»
+   гэж хаасан үед `confirm` үргэлж `false` буцааж хаах/устгах/хадгалах бүгд
+   чимээгүй зогсдог байв — `dedButets.module.css`-ийн `.askRow`-той ижил дүрэм. */
+.askRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 10px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line));
+  border-radius: var(--r-sm);
+}
+.askMsg { flex: 1; min-width: 0; }
+
 /* ── Толгойн мөр ба хоосон багц ── */
 .headRow { display: flex; align-items: center; gap: 12px; }
 

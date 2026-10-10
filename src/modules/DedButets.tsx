@@ -76,32 +76,17 @@ import d from './dedButets.module.css';
  * ⚠️ Урьд нь энд 16 `et:*` id ГАРААР жагсаагдсан байсан бөгөөд `services.ts`-д
  * `DED_BUTETS_LAYER_IDS` гэсэн ХУУЛБАР нь бас байв. Хоёр нь зөрөхөөс
  * сэргийлэх dev-шалгуур доор бичигдсэн байсан нь яг тэр давхардлын шинж.
- * 2026-09-11-нд `INFRA_TABLE` (73 давхарга) руу шилжихэд хоёуланг нь НЭГ
- * эх сурвалж болгов — шалгуур нь одоо утгагүй ч хэвээр (хоосон зөрүү).
+ * 2026-09-11-нд `INFRA_TABLE` (74 давхарга) руу шилжихэд хоёуланг нь НЭГ
+ * эх сурвалж болгов; утгагүй болсон dev-шалгуурыг 2026-10-09 (аудит №6) устгав.
  */
 const SYSTEMS = INFRA_SYSTEMS;
 
 /**
  * Зүүн баганын БҮХ давхарга — нийлбэрийн хүсэлт ба зургийн суурьт.
- *
- * ⚠️ `services.ts`-ийн `DED_BUTETS_LAYER_IDS` нь `VIEWS.dedButets`-ийн
- * `layers`/`initial`-ыг тэжээдэг ЭХ СУРВАЛЖ; дээрх `SYSTEMS` нь түүнийг
- * ЗӨВХӨН БҮЛЭГЛЭНЭ. Хоёулаа тааруулж байгаа эсэхийг dev-д шалгана — шугам
- * нэмээд бүлэгт нь оруулахаа мартвал зурагт гарах ч жагсаалтад орохгүй байна.
+ * `services.ts`-ийн `DED_BUTETS_LAYER_IDS` (`VIEWS.dedButets`-ийн эх) ба энэ
+ * хоёр нэг `INFRA_TABLE`-аас гардаг тул зөрөх боломжгүй.
  */
 const NET_IDS = SYSTEMS.flatMap((s) => s.ids);
-
-if (process.env.NODE_ENV !== "production") {
-  const miss = DED_BUTETS_LAYER_IDS.filter((id) => !NET_IDS.includes(id));
-  const extra = NET_IDS.filter((id) => !DED_BUTETS_LAYER_IDS.includes(id));
-  if (miss.length || extra.length) {
-    console.warn(
-      "[selbe] DedButets: SYSTEMS ба DED_BUTETS_LAYER_IDS зөрж байна —"
-      + ` бүлэгт ороогүй: ${miss.join(", ") || "—"};`
-      + ` жагсаалтад алга: ${extra.join(", ") || "—"}`,
-    );
-  }
-}
 
 /**
  * ДАВХАРГЫН ГЕОМЕТР → `SketchViewModel`-ийн хэрэгсэл.
@@ -1381,7 +1366,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       /* ⚠️ ЗӨВХӨН самбарын жагсаалтад сонгосон давхаргаас (хэрэглэгчийн шийдвэр,
          2026-09-16): бүх давхаргаас хайж «алийг нь?» гэж асуудаг хувилбарыг
          туршаад хаясан — давхаргаа аль хэдийн сонгосон хүнд нэмэлт алхам болж,
-         73 давхаргын асуулга нь удаан байв. Давхаргаа эхлээд жагсаалтаас
+         74 давхаргын асуулга нь удаан байв. Давхаргаа эхлээд жагсаалтаас
          (эсвэл объект товшиж) сонгоно. */
       const layerId = msel.layerId;
       setMselBusy(true);
@@ -2181,7 +2166,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           {layerOpen && (
             <div className={`${o.catPanel} ${d.catPanel}`}>
               {/* ⚠️ `view="dedButets"` нь каталогийн «Инженерийн дэд бүтэц»
-                  (`infra`, Test0911S-ийн 73 давхарга) бүлгийг ХАМГИЙН ДЭЭР
+                  (`infra`, Test0911S-ийн 74 давхарга) бүлгийг ХАМГИЙН ДЭЭР
                   гаргана (`services.ts` §catalogGroups). */}
               <LayerCatalog
                 view="dedButets"

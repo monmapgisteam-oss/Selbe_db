@@ -182,9 +182,5 @@ export function negjOf(work: string | null | undefined): Negj | null {
   return out;
 }
 
-/** Яагаад тэр нэгж гарсныг тайлбарлана — дэлгэцийн тултипт. */
-export function negjWhy(work: string | null | undefined): string | null {
-  if (!work) return null;
-  const w = norm(work);
-  return NEGJ_RULES.find((r) => r.re.test(w))?.why ?? null;
-}
+/* ⚠️ 2026-10-09 (аудит №6): `negjWhy` (дүрмийн `why`-г тултипт гаргах) дуудагчгүй үхмэл код тул ХАСАГДСАН;
+   `NEGJ_RULES`-ийн `why` талбар нь дүрмийн баримт болж үлдэнэ. */

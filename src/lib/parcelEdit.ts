@@ -87,9 +87,11 @@ export type ParcelPatch = Pick<Parcel, 'owner' | 'status' | 'progress' | 'addres
 /* ══════════════════ Уншилт ══════════════════ */
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
+/* ⚠️ 2026-10-09 (аудит №6): `''` → `Number('')` = 0 тул хоосон текст талбай «0 м²» болдог байв — null. */
 const numOrNull = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
   const x = Number(v);
-  return v != null && Number.isFinite(x) ? x : null;
+  return Number.isFinite(x) ? x : null;
 };
 /** ⚠️ 0/сөрөг тамга нь «огноо алга» — 1970 он гэж харуулахгүй */
 const stampOrNull = (v: unknown): number | null => {

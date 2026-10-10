@@ -126,7 +126,9 @@ export const LayerCatalog = memo(function LayerCatalog({
    */
   allow?: (id: string) => boolean;
 }) {
-  const groups = allow
+  /* ⚠️ 2026-10-09 (аудит №6): `catGroups` — урьд `groups` гэж нэрлэж `@/lib/query`-ийн
+     импорт `groups`-ийг ДАРДАГ байв (`FacetRows` тэр импортыг хэрэглэдэг). */
+  const catGroups = allow
     ? catalogGroups(view)
       .map((g) => ({ ...g, ids: g.ids.filter(allow) }))
       .filter((g) => g.ids.length > 0)
@@ -144,7 +146,7 @@ export const LayerCatalog = memo(function LayerCatalog({
    * вэ» гэдэг нь эхний хормын дотор мэдэгдэнэ; багцын нэр дарахад асч задарна.
    */
   const [shut, setShut] = useState<Set<string>>(
-    () => new Set(groups.map((g) => g.key)),
+    () => new Set(catGroups.map((g) => g.key)),
   );
 
   /**
@@ -185,7 +187,7 @@ export const LayerCatalog = memo(function LayerCatalog({
       return next;
     });
 
-  const all = groups.flatMap((g) => g.ids);
+  const all = catGroups.flatMap((g) => g.ids);
   /* ⚠️ Үргэлж асаалттай давхаргыг ч тоолно — жагсаалтад асаасан гэж
      харагдаж байгаа тул тоолуур түүнийг алгасвал зөрөлдөнө. */
   const forcedIds = [...(ALWAYS_ON_IDS as readonly string[]), ...(forced ?? [])];
@@ -221,7 +223,7 @@ export const LayerCatalog = memo(function LayerCatalog({
    *    АЛГА болсон хэрнээ тоолуурт үлдэж, «3 асаалттай» гэж уншаад ганц мөр
    *    харагддаг байлаа — тоолуур ба жагсаалт зөрөлдөнө.
    */
-  const shown = groups.flatMap((g) => g.ids.filter((id) => hit(id, g.title)));
+  const shown = catGroups.flatMap((g) => g.ids.filter((id) => hit(id, g.title)));
   const onCount = new Set([
     ...visible.filter((id) => shown.includes(id)),
     ...forcedAll.filter((id) => shown.includes(id)),
@@ -298,7 +300,7 @@ export const LayerCatalog = memo(function LayerCatalog({
         <button
           type="button"
           className={s.close}
-          onClick={() => setShut(shut.size ? new Set() : new Set(groups.map((g) => g.key)))}
+          onClick={() => setShut(shut.size ? new Set() : new Set(catGroups.map((g) => g.key)))}
           title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
           aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
@@ -375,7 +377,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                   {tr('Олдсонгүй')}
                 </p>
               )}
-              {groups.map((g) => {
+              {catGroups.map((g) => {
                 /* ⚠️ Хайлт идэвхтэй бол ЗӨВХӨН таарсан давхарга үлдэнэ; нэг ч
                    таарахгүй бүлэг бүхэлдээ ХАРАГДАХГҮЙ (хоосон гарчиг нь
                    чимээ). Хайлтгүй үед бүх зан төлөв ХУУЧНААРАА. */

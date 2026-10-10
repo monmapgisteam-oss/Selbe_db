@@ -344,6 +344,20 @@ function saveStore(s: Store): void {
 const isHardSuper = (username: string): boolean => roleForUser(username) === 'super';
 
 /**
+ * Dirty тэмдгийг арилгана — ЗӨВХӨН утга нь хэвээр (`want`) бол (хооронд нь шинэ бичилт орсон бол
+ * тэр нь өөрөө тэмдэглэгдэнэ). ⚠️ 2026-10-09 (аудит №6): remote-д tombstone олдоход retry ба
+ * `setUser` хоёулаа энэ замаар хаяна — `mine`-ээс ч хасна, эс бөгөөс `mineDirty()` давхарлана.
+ */
+function dropDirty(key: string, want: string): void {
+  const now = loadDirty();
+  if (now[key] && ser(now[key].e) === want) {
+    delete now[key];
+    saveDirty(now);
+  }
+  if (mine.get(key) === want) mine.delete(key);
+}
+
+/**
  * DIRTY мөрүүдийг remote руу ДАХИН бичиж үзнэ.
  * Буцаана: энэ удаад АМЖИЛТТАЙ бичигдсэн түлхүүр → утга (cache-д тусгахад).
  *
@@ -377,6 +391,27 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
       const want = ser(item.e);
       if (onlyMine && mine.get(key) !== want) return;
       const e = item.e;
+      /*
+       * ⚠️ 2026-10-09 (аудит №6): TOMBSTONE-ЫГ ДАРЖ БИЧИХГҮЙ — `setUser`-ийн 2026-10-05-ны
+       *    хамгаалалт энд ХУУЛАГДААГҮЙ байв. А админ сүлжээгүй үед X-ийг засав (dirty) → Б админ
+       *    X-ийг устгав (remote-д `removed`) → А-гийн дараагийн poll энэ retry-ээр dirty мөрийг
+       *    бүтнээр бичиж tombstone-ыг арчдаг — устгагдсан хүн ДАХИН нэвтэрнэ. Одоо бичихийн
+       *    өмнө мөрийг шинээр уншина: remote-д tombstone, зорьсон нь tombstone биш бол БИЧИХГҮЙ,
+       *    dirty-г арилгаж (retry дахин оролдохгүй), локалд tombstone-ыг тусгана (`done`-оор
+       *    кэшид). Уншиж чадаагүй бол dirty хэвээр (fail-closed). Хатуу super-т tombstone
+       *    үйлчилдэггүй (`hasAccess`) тул уншилт алгасна.
+       */
+      if (!e?.removed && !isHardSuper(key)) {
+        let fresh: Awaited<ReturnType<typeof m.userRead>> = null;
+        try { fresh = await m.userRead(key); } catch { fresh = null; }
+        if (!fresh) return; // уншиж чадсангүй — dirty хэвээр, дараагийн retry
+        if (fresh.row?.removed) {
+          dropDirty(key, want);
+          done[key] = sanitizeEntry({ views: [], docs: false, role: null, removed: true });
+          console.warn(`[selbe] «${key}» remote-д устгагдсан — хүлээгдэж буй локал засварыг хаяв (tombstone хэвээр)`);
+          return;
+        }
+      }
       let ok = false;
       try {
         ok = e === null
@@ -874,7 +909,13 @@ export function setUser(
        * ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
        *    БИШ; тэр үед урьдын адил бүтнээр нь (`retryDirtyOnce` ч бүтнээр бичдэг).
        */
-      if (!(key in loadDirty())) {
+      /* ⚠️ 2026-10-09 (аудит №6): dirty салаа ч ШИНЭЭР УНШИНА — зөвхөн tombstone-ын шалгалтад
+         (нэгтгэл нь урьдын адил алгасагдана, доорх ⚠️). Урьд нь `key in loadDirty()` бол бүтэн
+         `upsert` явж, нөгөө админы ДӨНГӨЖ тавьсан tombstone-ыг дарж устгагдсан хүнийг амилуулдаг
+         байв — `retryDirtyOnce`-ийн ижил цоорхой. Хатуу super-т tombstone үйлчилдэггүй. */
+      const wasDirty = key in loadDirty();
+      const hard = isHardSuper(username);
+      if (!wasDirty || !hard) {
         const fresh = await m.userRead(username);
         if (!fresh) { trackWrite(key, entry, false); return false; }
         const fr = fresh.row
@@ -890,14 +931,19 @@ export function setUser(
          *    тулгуурласан хамгаалалтын remote хувилбар. Локалд tombstone-ыг тусгаж `false`
          *    буцаана (dirty-д ТЭМДЭГЛЭХГҮЙ — retry tombstone-ыг дарна). Сэргээх зам = «Буцаах».
          *    Хатуу super-т tombstone үйлчилдэггүй (`hasAccess`) тул хамаарахгүй.
+         * ⚠️ 2026-10-09 (аудит №6): өмнөх унасан бичилтийн dirty тэмдгийг ч хаяна (`dropDirty`) —
+         *    эс бөгөөс `retryDirtyOnce`/`mineDirty` тэр хуучин зорилгыг tombstone дээр давхарлана.
          */
-        if (fr?.removed && !base?.removed && !isHardSuper(username)) {
+        if (fr?.removed && !base?.removed && !hard) {
+          dropDirty(key, ser(loadDirty()[key]?.e ?? null));
           const s = { ...loadStore() };
           s[key] = fr;
           saveStore(s);
           return false;
         }
-        out = mergeUserDelta(base, entry, fr);
+        /* ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
+           БИШ; тэр үед урьдын адил бүтнээр нь (`retryDirtyOnce` ч бүтнээр бичдэг). */
+        if (!wasDirty) out = mergeUserDelta(base, entry, fr);
         /* Нөгөө админы өөрчлөлтийг локал кэшид ч тусгана — дараагийн засвар түүн дээрээс */
         if (ser(out) !== ser(entry)) {
           const s = { ...loadStore() };
@@ -971,7 +1017,15 @@ function narrowOnly(cur: Store, loc: Store): Store {
   for (const [k, l] of Object.entries(loc)) {
     const c = cur[k];
     if (!c) continue; // шинэ мөр — нэмэхгүй (remote-оос л)
-    if (l.removed) { out[k] = l; continue; } // tombstone — зөвхөн хумина
+    /* ⚠️ 2026-10-09 (аудит №6): өөр табын tombstone-ыг ЗӨВХӨН нэвтэрсэн хэрэглэгчийн ӨӨРИЙН мөрөнд
+       авна (өөрийгөө шууд хаах — хор хөнөөлгүй). Бусад нэрийн tombstone-ыг localStorage-оос
+       авбал devtools-оор тарьсан `removed:true` мөр энэ табын админ панелд тэр аккаунтыг
+       «устгагдсан» мэт харуулж, `saveAll`-ийн `gone` шалгалт түүний ноорогийг алгасна —
+       бодит устгал `scheduleRemoteRefresh`-ийн remote уншилтаар ирнэ. */
+    if (l.removed) {
+      if (k === (currentUser() ?? '').toLowerCase()) out[k] = l;
+      continue;
+    }
     if (c.removed) continue; // локал нь tombstone-ыг арилгах гэсэн — үл тооцно
     const views: Entry['views'] = l.views === 'all'
       ? c.views

@@ -497,7 +497,7 @@ export type WeekScores = { no: number; rows: ScoreRow[] };
  * «Багц»/«Компани» сонгоход KPI «—» болж, компаниар чарт огт өөрчлөгддөггүй
  * байв (хэрэглэгч «бүх юм динамик шүүлтүүртэй юу» гэж шалгуулсан). Одоо
  * сервер (талбай, компани)-аар бүлэглэж өгнө — хэдхэн арван мөр — харин
- * шүүлт нь ЭНД, санах ойд (`weekScoreOf` · `weekScoreByCo`). Шүүлт солиход сүлжээ
+ * шүүлт нь ЭНД, санах ойд (`weekScoreOf` · `weekScoreByPkg`). Шүүлт солиход сүлжээ
  * хөндөхгүй.
  *
  * ⚠️ Талбайн кодыг домэйноор НЭРЛЭЖ, `habeaPkgKey`-ээр багцын түлхүүр болгоно —
@@ -526,6 +526,13 @@ export type WeekScores = { no: number; rows: ScoreRow[] };
  * ⚠️ КЭШ ДОЛОО ХОНОГООР (`prevWeek().start`) — Даваа гараг дамжихад шинэ түлхүүр тул
  *    хуучин долоо хоногийн дүн 5 минут ч үлдэхгүй (`Habea`-ийн цаг/visibility дэгээ).
  */
+/*
+ * ⚠️ 2026-10-09 (аудит №6): Map-ийг СҮҮЛИЙН 2 долоо хоногоор хязгаарлана — урьд нь долоо хоног бүрд
+ *    шинэ `cached` үүсч хэзээ ч хасагддаггүй (урт сешнд өсдөг) байв. `live.cached` нь dataBus-д
+ *    сонсогч бүртгэдэг (`register`), бүртгэлээ хасах функц dataBus-д БАЙХГҮЙ — тэр нэг хаалт/долоо
+ *    хоног хэвээр (`p = null` л хийдэг, хөнгөн); unregister нэмэх нь dataBus-ийн өөрчлөлт.
+ */
+const WEEK_LOADERS_MAX = 2;
 const weekScoreLoaders = new Map<number, () => Promise<WeekScores>>();
 export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   const w = prevWeek(now);
@@ -534,6 +541,11 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   if (!f) {
     f = cached(() => fetchWeekScores(w), 5 * 60_000, ['HABEA']);
     weekScoreLoaders.set(k, f);
+    while (weekScoreLoaders.size > WEEK_LOADERS_MAX) {
+      const oldest = weekScoreLoaders.keys().next().value;
+      if (oldest == null) break;
+      weekScoreLoaders.delete(oldest);
+    }
   }
   return f();
 }
@@ -700,23 +712,8 @@ export function weekScoreByPkg(rows: readonly ScoreRow[], cos: readonly string[]
     .sort((x, y) => y.value - x.value);
 }
 
-export function weekScoreByCo(rows: readonly ScoreRow[], pkgs: readonly string[]) {
-  const acc = new Map<string, { e: number; a: number; label: string; sfx: string }>();
-  for (const r of rows) {
-    if (!r.coCode || !passScore(r, pkgs, [])) continue;
-    const cur = acc.get(r.coCode) ?? { e: 0, a: 0, label: r.coLabel, sfx: r.coSfx };
-    cur.e += r.e;
-    cur.a += r.a;
-    acc.set(r.coCode, cur);
-  }
-  return [...acc.entries()]
-    .flatMap(([code, v]) => {
-      if (v.a <= 0) return [];
-      const p = (v.e / v.a) * 100;
-      return [{ key: v.sfx || `co:${code}`, label: v.label, value: p, display: pct(p, 0), color: scoreColor(p) }];
-    })
-    .sort((x, y) => y.value - x.value);
-}
+/* ⚠️ 2026-10-09 (аудит №6): `weekScoreByCo` (оноо — компаниар) ХАСАГДСАН — 2026-10-08-нд «Үзлэгийн оноо —
+   компаниар» картыг `weekScoreByPkg`-ээр сольсноос хойш дуудагчгүй үхмэл код байв. */
 
 type State =
   | { state: 'idle' }
@@ -1158,28 +1155,33 @@ const rasterBlob = async (b: Blob): Promise<Blob | null> => {
   return b.type === t ? b : new Blob([b], { type: t });
 };
 
-/** Хавсралтын blob URL — `null` = ачаалж буй, `''` = татагдсангүй (эсвэл растер биш) */
-function useAttachmentUrl(url: string): string | null {
-  const [st, setSt] = useState<{ url: string; obj: string }>({ url: '', obj: '' });
+/**
+ * Хавсралтын blob URL — `src: null` = ачаалж буй, `''` = татагдсангүй.
+ * ⚠️ 2026-10-09 (аудит №6): `unsupported` — татагдсан ч РАСТЕР БИШ (heic/heif г.м.: `queryAttachments`
+ *    `image/heic` асуудаг). Урьд нь унасантай нэг «Зураг татагдсангүй» гэж гардаг тул хэрэглэгч
+ *    хавсралт байгааг, дарж татаж болохыг мэддэггүй байв (`uzlegReport.toImg`-ийн HEIC ялгалттай ижил).
+ */
+function useAttachmentUrl(url: string): { src: string | null; unsupported: boolean } {
+  const [st, setSt] = useState<{ url: string; obj: string; unsupported: boolean }>({ url: '', obj: '', unsupported: false });
   useEffect(() => {
     let alive = true;
     let obj = '';
-    attBlob(url).then((b) => (b ? rasterBlob(b) : null)).then(
-      (safe) => {
+    attBlob(url).then(async (b) => (b ? { b, safe: await rasterBlob(b) } : null)).then(
+      (r) => {
         if (!alive) return;
         /* ⚠️ 2026-10-09 (аудит): ЗӨВХӨН растер, дахин төрөлжүүлсэн Blob — `<a href>`-ийг дунд товч/
            «шинэ табад нээх»-ээр нээсэн ч SVG/HTML скрипт ажиллахгүй */
-        obj = safe ? URL.createObjectURL(safe) : '';
-        setSt({ url, obj });
+        obj = r?.safe ? URL.createObjectURL(r.safe) : '';
+        setSt({ url, obj, unsupported: !!r && !r.safe });
       },
-      () => { if (alive) setSt({ url, obj: '' }); },
+      () => { if (alive) setSt({ url, obj: '', unsupported: false }); },
     );
     return () => {
       alive = false;
       if (obj) URL.revokeObjectURL(obj);
     };
   }, [url]);
-  return st.url === url ? st.obj : null;
+  return st.url === url ? { src: st.obj, unsupported: st.unsupported } : { src: null, unsupported: false };
 }
 
 /**
@@ -1220,7 +1222,7 @@ export function AttPhoto({ url, alt, title, className, name, type }: {
   /** ⚠️ 2026-10-09 (аудит №2): attachmentInfos-ийн нэр/төрөл — зөвхөн татах файлын нэрэнд */
   name?: string; type?: string;
 }) {
-  const src = useAttachmentUrl(url);
+  const { src, unsupported } = useAttachmentUrl(url);
   return (
     <a
       href={src || undefined}
@@ -1233,7 +1235,13 @@ export function AttPhoto({ url, alt, title, className, name, type }: {
       {/* ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — слайдер доод зурваст, lazy-loader асахгүй үлддэг */}
       {src
         ? <img src={src} alt={alt} />
-        : <span className={h.photoNote}>{src === '' ? tr('Зураг татагдсангүй') : tr('Зураг ачаалж байна…')}</span>}
+        : (
+          <span className={h.photoNote}>
+            {src === ''
+              ? (unsupported ? tr('Хөтөч энэ форматыг харуулахгүй — дарж татна') : tr('Зураг татагдсангүй'))
+              : tr('Зураг ачаалж байна…')}
+          </span>
+        )}
     </a>
   );
 }

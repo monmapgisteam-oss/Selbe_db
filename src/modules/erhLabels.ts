@@ -76,6 +76,10 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'chanarReview') return tr('Чанарын баримт хянах');
   if (k === 'gazar') return tr('Газар');
   if (k === 'butets') return tr('Дэд бүтэц');
+  /* ⚠️ 2026-10-09 (аудит №6): дутуу байсан хоёр эрх — түлхүүр нь ил (`hamaaral`) харагдаж байв.
+     `aclParity` одоо CapKey бүр энд ба `capText.capLabel`-д байгааг тулгана. */
+  if (k === 'hamaaral') return tr('Багцын хамаарал');
+  if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
   return k;
 };
 

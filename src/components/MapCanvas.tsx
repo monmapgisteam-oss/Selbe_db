@@ -1119,6 +1119,18 @@ const FLIGHTS: MeshVer[] = ['old', 'new'];
 const MESH_VER_IDS = Object.values(MESH_VERSIONS).flatMap((v) =>
   v.layers.flatMap((l) => [`scene:${l.key}`, `${MESH_CMP_PREFIX}${l.key}`]));
 
+/**
+ * Алдааны мэдээнд харуулах ХОСТ — бодит давхаргын URL-ээс.
+ * ⚠️ 2026-10-09 (аудит №6): урьд нь `tiles.arcgis.com` (BIM) ба `arcgis.ubhub.mn:6443`
+ *    (3D) гэж ХАТУУ бичигдсэн байв — BIM нь 2026-10-04-өөс `services/scene.ts`-ийн
+ *    `UBHUB_SCENE` руу шилжсэн тул хэрэглэгчид буруу хост заадаг байлаа. Одоо
+ *    `BIM`/`MESH_VERSIONS`-ийн url-ээс гаргана — env солиход мэдээ өөрөө дагана.
+ */
+const hostOf = (u: string | undefined): string => {
+  if (!u) return '—';
+  try { return new URL(u).host; } catch { return u; }
+};
+
 /** Дарж сонгогдохгүй давхаргууд (popup, hit-test, тайлбарт орохгүй) */
 const PASSIVE = new Set<string>([
   'sketch',
@@ -3468,56 +3480,13 @@ export const MapCanvas = memo(function MapCanvas({
     }
   }, [dim, ready]);
 
-  /**
-   * НҮХЭН ЖОРЛОН — 2D-д КЛАСТЕР асаах.
-   *
-   * ⚠️ Кластер ↔ ганц цэг солилтыг `featureReduction.maxScale` ӨӨРӨӨ хийнэ —
-   * `view.scale` сонсох шаардлагагүй. Гэрэлтүүлгийг мөн адил `TOILET_EFFECT`-ийн
-   * масштабын зогсолтууд хариуцна. Тиймээс энд ажиллах явцад юу ч бодогдохгүй,
-   * зөвхөн НЭГ УДААГИЙН оноолт.
-   *
-   * ⚠️ ЗӨВХӨН 2D: SceneView кластер дэмжихгүй. Горим солигдоход энэ эффект
-   * дахин ажиллаж (`dim` хамаарал) кластерыг цэвэрлэнэ.
-   *
-   * ⚠️ Cleanup-д ЗААВАЛ цэвэрлэнэ: Map кэшлэгддэг тул кластер нь өөр харагдацад
-   * үлдэж болзошгүй.
+  /*
+   * НҮХЭН ЖОРЛОНГИЙН КЛАСТЕР — 2026-09-17-нд БҮРМӨСӨН УНТРААСАН (хэрэглэгчийн шийдвэр,
+   * дээрх модулийн ⚠️-г үз: тодорхойлолт зөвхөн git түүхэнд).
+   * ⚠️ 2026-10-09 (аудит №6): энд `featureReduction = null` тавьж, cleanup-д дахин null
+   *    тавьдаг ҮХМЭЛ эффект (`toiletOn`/`toiletFiltered` хамааралтай) үлдсэн байсныг
+   *    устгав — давхарга хэзээ ч кластертай үүсдэггүй тул юу ч өөрчилдөггүй байв.
    */
-  const toiletOn = visibleKey.split(',').includes(IRGED_TOILET.id);
-  /**
-   * ⚠️ 2026-09-06: ШҮҮЛТ ИДЭВХТЭЙ ҮЕД КЛАСТЕР УНТАРНА. Кластер нь цэгүүдийг
-   * СЕРВЕРТ БИШ, харагдацад нэгтгэдэг бөгөөд нэгтгэлийн тоо `featureEffect`-ийн
-   * шүүлтийг тооцдоггүй: «Бохирдол: Маш их» гэж шүүхэд бүлгийн бөмбөлөг дээр
-   * 1,675-ын тоо хэвээр үлдэж, бүдгэрсэн эсэх нь ялгагдахгүй байв. Кластергүй
-   * үед цэг бүр өөрөө бүдгэрэх тул шүүлт үнэн харагдана.
-   *
-   * ⚠️ ЯМАР Ч шүүлт идэвхтэй бол унтраана — жорлон нь шүүлтийн ЗОРИЛТ мөн
-   * эсэхийг ялгахгүй. Учир нь өөр давхарга шүүсэн ч (жиш. «Гэр») жорлонгийн
-   * давхарга `dimOther`-оор бүдгэрэх ёстой бөгөөд кластерын бөмбөлөг тэр
-   * бүдгэрэлтийг мөн адил үл тоомсорлодог — 1,675 улбар шар бөмбөлөг бүрэн тод
-   * үлдэж, «шүүсэн давхарга л харагдах» гэсэн хүлээлтийг эвддэг байв.
-   */
-  const toiletFiltered = !!(hl.where || hl.geometry);
-  useEffect(() => {
-    const view = viewRef.current;
-    const map = mapRef.current;
-    if (!view || !map || !ready || !toiletOn || view.type !== '2d') return;
-    const layer = map.findLayerById(IRGED_TOILET.id) as FeatureLayer | null;
-    if (!layer) return;
-
-    /**
-     * ⚠️ 2026-09-17: КЛАСТЕР БҮРМӨСӨН УНТРААВ (хэрэглэгчийн шийдвэр).
-     *
-     * Бөмбөлгүүд нь хамрах хүрээний буферийн тойрог, тэдгээрийн шошготой
-     * давхарлаж зураг холилдож байв. Одоо жорлон бүр ӨӨРИЙН цэгээрээ
-     * зурагдана — `minScale`-ийн улмаас холоос давхарга нь өөрөө хаагдах тул
-     * 1,675 цэг нэг дор гарах эрсдэлгүй.
-     *
-     * ⚠️ `toiletCluster` тодорхойлолтыг УСТГААГҮЙ — буцаах бол энэ мөрийг
-     * сэргээхэд хангалттай.
-     */
-    layer.featureReduction = null;
-    return () => { layer.featureReduction = null; };
-  }, [dim, ready, toiletOn, toiletFiltered]);
 
   /**
    * BuildingExplorer виджет — ЗӨВХӨН BIM горимд.
@@ -5040,7 +5009,7 @@ export const MapCanvas = memo(function MapCanvas({
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
           <b className={s.warnTitle}>{tr('Барилгын загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
-            <code>tiles.arcgis.com</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
+            <code>{hostOf(BIM.layers[0]?.url)}</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
           </span>
         </div>
       )}
@@ -5073,7 +5042,7 @@ export const MapCanvas = memo(function MapCanvas({
         <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
           <b className={s.warnTitle}>{tr('3D бодит загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
-            <code>arcgis.ubhub.mn:6443</code> {tr('руу хандаж чадсангүй. Сервер ажиллаж байгаа эсэх, CORS-ын')} <b>allowedOrigins</b>{tr('-д энэ хаяг байгаа эсэхийг шалгана уу.')}
+            <code>{hostOf(MESH_VERSIONS[meshVer].layers[0].url)}</code> {tr('руу хандаж чадсангүй. Сервер ажиллаж байгаа эсэх, CORS-ын')} <b>allowedOrigins</b>{tr('-д энэ хаяг байгаа эсэхийг шалгана уу.')}
           </span>
         </div>
       )}

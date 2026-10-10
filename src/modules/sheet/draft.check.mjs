@@ -187,7 +187,11 @@ console.log('✅ таб хаах/refresh — хадгалагдаж амжааг
   /* (б) publish нь буцаагдсан илгээлтийг ӨӨРИЙНХ НЬ өдрөөр update хийнэ —
      өнөөдрийн шинэ мөр үүсгэвэл буцаагдсан мөр мөнхөд нээлттэй үлдэнэ */
   const pub = between("const fillMs = staged && !staged.done", 'const actR = await readActiveSubmission(pkg.key, fillMs);');
-  assert.ok(pub.includes("OWNER[flow[HF.status]] === 'company'"), 'publish буцаагдсан төлөвийг ялгахгүй');
+  /* ⚠️ 2026-10-09 (аудит №6): `returnedStaged` = `flow` буцаагдсан БӨГӨӨД яг `staged` илгээлтийнх (`useFlow.flowIsStaged`) —
+     урьдын `OWNER[flow[HF.status]] === 'company'` нь өөр өдрийн буцаалтаар өнөөдрийн `staged`-ыг зорилт болгодог байв */
+  assert.ok(pub.includes('returnedStaged ||'), 'publish буцаагдсан төлөвийг ялгахгүй');
+  assert.ok(SRC.includes('const returnedStaged = returned && flowIsStaged;'), 'useFlow: `returnedStaged` нь `flow`-г `staged.oid`-той тулгахгүй');
+  assert.ok(SRC.includes('const curTgtOn = !!staged && !staged.done && (returnedStaged || resumedOid === staged.oid);'), 'curTgtOn нь publish-ийн fillMs нөхцөлтэй зөрж байна');
   assert.ok(pub.includes('staged.payload.fillMs'), 'publish буцаагдсан илгээлтийг өөрийнх нь өдрөөр бичихгүй');
   assert.ok(pub.includes(': todayFillMs'), 'ердийн зам todayFillMs хэвээр байх ёстой');
   assert.ok(!SRC.includes('const fillMs = todayFillMs;'), 'хуучин «үргэлж өнөөдөр» зам буцаж орсон');
@@ -237,8 +241,10 @@ console.log('✅ mergeDrafts — нүд бүрд шинэ утга, нэг та�
 
 /* ── 5. ЭРХИЙН ХААЛТ сэргээлтэд ХЭВЭЭР ──
    Эрх хооронд нь хасагдсан бол ноорог дахь өгөгдөл дэлгэцэд гарах ёсгүй. */
-assert.ok(restore.includes('canPerf ? d.cells'), 'гүйцэтгэлийн нүд canPerf-гүй сэргээгдэж байна');
-assert.ok(restore.includes('canPerf ? (d.dates'), 'огноо canPerf-гүй сэргээгдэж байна');
+/* ⚠️ 2026-10-09 (аудит №6): хаалт нь `pickDraft`-ийн ЭХЭНД (`if (!sc || !canPerf) return res;`, 2026-09-25-ны аудит) —
+   урьдын `canPerf ? d.cells : []` · `canPerf ? (d.dates ?? []) : []` нь тэр хаалтын дараа үхмэл нөхцөл байсан тул хасагдав. */
+assert.ok(restore.includes('if (!sc || !canPerf) return res;'), 'гүйцэтгэлийн нүд/огноо canPerf-гүй сэргээгдэж байна');
+assert.ok(!/of \(canPerf \? /.test(restore), 'үхмэл `canPerf ?` нөхцөл буцаж ирэв (хаалт `pickDraft`-ийн эхэнд)');
 
 /* 2026-09-24: нэмсэн мөр (`d.adds`) энэ хуудсанд ОГТ сэргээгдэхгүй — мөр нэмэх Хуваарь руу шилжсэн */
 assert.ok(!restore.includes('d.adds'), 'ноорогийн adds сэргээгдэж байна (2026-09-24: Хуваарь руу шилжсэн)');

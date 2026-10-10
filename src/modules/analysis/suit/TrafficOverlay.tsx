@@ -11,6 +11,7 @@ import {
   signalPhase, VEHICLE_TYPES, DEFAULT_SIGNAL_PLAN, CAR_LEN, MIN_GAP_M, V_MAX,
   type Car, type Network, type SignalPlan,
 } from './traffic';
+import { DEMAND_SCALE } from './simulation';
 /** Симуляцаас UI рүү буцах хураангуй — «Ачаалал» панелийн үзүүлэлт. */
 export type TrafficStats = {
   /** Идэвхтэй машины тоо */
@@ -24,10 +25,14 @@ export type TrafficStats = {
 /**
  * ГҮЙЦЭТГЭЛИЙН ТАГ — эрэлтийн загвар үүнээс их машин шаардвал таслана.
  * ⚠️ Хэмжилт (бодит сүлжээ, 3,957 ирмэг): 1,200 машин = 0.11 мс/фрейм тул энэ
- * хязгаар нь гүйцэтгэлээс биш, аюулгүйн дээд шал. `DEMAND_SCALE=5`-ийн дараах
- * оргил ~5,355 машиныг багтаана.
+ * хязгаар нь гүйцэтгэлээс биш, аюулгүйн дээд шал.
+ * ⚠️ 2026-10-09 (аудит №6): урьд «`DEMAND_SCALE=5` … оргил ~5,355» гэж ХУУЧИРСАН
+ *    тайлбартай хатуу 8000 байв (бодит `simulation.ts` DEMAND_SCALE = 2.8, оргил
+ *    ≈3,000). Одоо үржүүлэгчээс гаргана: нэг нэгж DEMAND_SCALE-д ≈2,857 машин
+ *    (8,000 ÷ 2.8 — өмнөх утга хэвээр), үржүүлэгч өөрчлөгдвөл таг дагаж өснө.
  */
-const CAR_CAP = 8000;
+const CAP_PER_UNIT_SCALE = 2857;
+const CAR_CAP = Math.round(CAP_PER_UNIT_SCALE * DEMAND_SCALE);
 
 /** Нэг фреймд зөвшөөрөх ДЭЭД алхам (сек) — таб идэвхгүй байгаад буцахад «үсрэхээс» хамгаална. */
 const MAX_DT = 0.12;

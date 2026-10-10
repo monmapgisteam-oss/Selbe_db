@@ -24,7 +24,7 @@
 
 /* ⚠️ 2026-10-01: хурдны хязгаар `server.mjs`-тэй ХУВААЛЦСАН модуль — wrangler багцлахдаа оруулна */
 import {
-  createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, BUDGET_MSG, upstreamErrorText,
+  createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
 } from './rateLimit.mjs';
@@ -300,7 +300,8 @@ async function checkArcGIS(token, env, key) {
   return { ok: true, username: data.username };
 }
 
-export default {
+/* ⚠️ 2026-10-09 (аудит №6): нэртэй объект — `tools/agentWorker.check.mjs` `fetch`-ийг шууд дуудна (lint: нэргүй default export биш) */
+const handler = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin');
     const cors = corsHeaders(origin, env);
@@ -400,7 +401,10 @@ export default {
 
     // ⚠️ Дуудагч тус бүрд хурдны хязгаар — түлхүүр барих реле рүү үер хийхээс сэргийлнэ
     /* ⚠️ 2026-10-09: + KV (isolate хооронд) — санах ойнх эхэлж, хэтэрвэл KV руу явахгүй */
-    if (limiter.hit(caller, LIMITS.user) || await kvHit(env, ctx, caller, LIMITS.user)) {
+    /* ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ШАЛГАНА (`full`/`kvFull`, тоолохгүй) — тоолол (`hit`) доор, төсөв ба
+       зэрэг хүсэлтийн слот АВСНЫ ДАРАА (`server.mjs`-тэй толин). Урьд төсөв/слотоор татгалзсан 429 ч минутын
+       тоог иддэг байв. */
+    if (limiter.full(caller, LIMITS.user) || await kvFull(env, caller, LIMITS.user)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
     /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — нийтлэг `bot` түлхүүр (хуучин, `x-bot-user`-гүй бот) ЧӨЛӨӨТ
@@ -427,6 +431,9 @@ export default {
     if (!release) {
       return json(429, { error: CONCURRENT_MSG, code: 'concurrent', retryable: true }, cors);
     }
+    /* ⚠️ 2026-10-09 (аудит №6): минутын тоололд ЗӨВХӨН дээд үйлчилгээ рүү явах хүсэлт орно (дээрх `full` ⚠️) */
+    limiter.hit(caller, LIMITS.user);
+    await kvHit(env, ctx, caller, LIMITS.user);
     try {
       return await relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MODEL, EFFORT, withEffort });
     } finally {
@@ -434,6 +441,7 @@ export default {
     }
   },
 };
+export default handler;
 
 /**
  * ⚠️ 2026-10-09: биеийг УРСГАЛААР уншиж байт тоолно — `MAX_BODY` давмагц уншихаа зогсооно.
@@ -571,11 +579,15 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
       /* ⚠️ 2026-10-09 (аудит №7): API-ийн түүхий мессеж (`msg`) зөвхөн логт — клиентэд
          статусаас ЕРӨНХИЙ мөр (`server.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
       console.error('[agent] AI үйлчилгээний алдаа:', caller, res.status, msg);
-      const authErr = res.status === 401 || res.status === 403;
+      /* ⚠️ 2026-10-09 (аудит №6): Anthropic-ийн 401/403 (түлхүүр буруу/хүчингүй) → 502 `upstream_auth`
+         (`rateLimit.UPSTREAM_AUTH`, `server.mjs`-тэй толин). Урьд статусыг хэвээр дамжуулдаг тул клиент
+         (`callRelay`) ArcGIS токеноо хуучирсан гэж үзэж шинэчлээд дахин илгээж, «дахин нэвтэрнэ үү» гэдэг байв. */
+      if (res.status === 401 || res.status === 403) {
+        console.error('[agent] ⛔ ANTHROPIC_API_KEY буруу эсвэл хүчингүй — `npm run deploy:secret`');
+        return json(502, UPSTREAM_AUTH, cors);
+      }
       return json(res.status, {
-        error: authErr
-          ? 'AI үйлчилгээний түлхүүр буруу эсвэл хүчингүй байна. Системийн администраторт хандана уу.'
-          : upstreamErrorText(res.status),
+        error: upstreamErrorText(res.status),
         // 429 (хэт олон хүсэлт) ба 5xx — дахин оролдоход утгатай
         retryable: res.status === 429 || res.status >= 500,
       }, cors);

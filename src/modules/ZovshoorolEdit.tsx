@@ -89,6 +89,9 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
      ТОДОРХОЙГҮЙ. Хэрэглэгч шалгаж баталгаажуулах хүртэл «Хадгалах» хаалттай; эс бөгөөс
      дахин дарахад ДАВХАРДСАН зөвшөөрөл үүсдэг байв (`DedButetsEdit`-ийн `unsure` загвар). */
   const [unsure, setUnsure] = useState(false);
+  /* ⚠️ 2026-10-09 (аудит №6): давхардлын дараа манай мөр серверт ҮЛДСЭН — мессежийг
+     маягтад харуулж, «Хадгалах» хаалттай; «Хаах» нь `onDone` (`doSave`-ийн тайлбар). */
+  const [kept, setKept] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const editing = init.oid != null;
   /* ⚠️ 2026-10-09: текст талбарын дээд урт — метадатагаас (`zovshoorol.loadZovFieldLens`);
@@ -101,12 +104,24 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   }, []);
 
   useEffect(() => { firstRef.current?.focus(); }, []);
+  /**
+   * МАЯГТ ДОТОРХ АСУУЛТ — `window.confirm`-ийн оронд (хаах · ирээдүйн огноо · устгах).
+   *
+   * ⚠️ 2026-10-09 (аудит №6): хөтөч «энэ хуудас дахин харилцах цонх гаргахгүй» гэж
+   * хаасан үед `confirm` ҮРГЭЛЖ `false` буцаадаг тул бөглөсөн маягт хаагдахгүй,
+   * устгах/хадгалах чимээгүй зогсдог байв (`DedButets.confirmQ`-ийн ижил сургамж).
+   * Асуулт маягтын дотор мөр болж гарна; «Тийм» дарахад `onYes`. `danger` — устгал.
+   */
+  const [confirmQ, setConfirmQ] = useState<{ msg: string; onYes: () => void; danger?: boolean } | null>(null);
   /** Хаахыг оролдох — өөрчлөлт байвал асууна. */
   const tryClose = useCallback(() => {
     if (busy) return;
-    if (dirty.current && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?'))) return;
+    if (dirty.current) {
+      setConfirmQ({ msg: tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?'), onYes: () => onCancel() });
+      return;
+    }
     onCancel();
-  }, [busy, onCancel]);
+  }, [busy, onCancel, setConfirmQ]); // ⚠️ 2026-10-09 (аудит №6): `setConfirmQ`-г ил бичнэ — React Compiler эс бөгөөс memo-г хаядаг (preserve-manual-memoization)
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') tryClose(); };
@@ -167,6 +182,8 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setD((p) => ({ ...p, [k]: v }) as ZovDraft);
     setErr((p) => ({ ...p, [k]: undefined }));
     setFail('');
+    /* ⚠️ 2026-10-09 (аудит №6): талбар засвал хүлээж буй асуулт хуучирна */
+    setConfirmQ(null);
   };
 
   /** Огнооны талбарт бичсэн текст огноо болж задрахгүй байна (`DateField.onBad`) */
@@ -224,9 +241,20 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     if (d.ognoo != null) {
       const now = new Date();
       const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-      if (d.ognoo > today
-        && !window.confirm(tr('Шийдвэрлэсэн огноо ({0}) өнөөдрөөс ХОЙШ байна. Зөв үү?', toInput(d.ognoo)))) return;
+      /* ⚠️ 2026-10-09 (аудит №6): `window.confirm` → самбарын асуулт; «Тийм» бол хадгалалт үргэлжилнэ */
+      if (d.ognoo > today) {
+        setConfirmQ({
+          msg: tr('Шийдвэрлэсэн огноо ({0}) өнөөдрөөс ХОЙШ байна. Зөв үү?', toInput(d.ognoo)),
+          onYes: () => { void doSave(); },
+        });
+        return;
+      }
     }
+    await doSave();
+  };
+
+  /** Хадгалалтын өөрөө — шалгалт давсны (ба ирээдүйн огнооны асуултын) дараа */
+  const doSave = async () => {
     setBusy(true);
     setFail('');
     try {
@@ -238,8 +266,12 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
          мөртэй нь давхацна; мессежийг заавал харуулна. Устгагдсан бол маягт нээлттэй (шат солих). */
       if (x instanceof ZovClashError) {
         if (x.kept) {
-          window.alert(x.message);
-          onDone();
+          /* ⚠️ 2026-10-09 (аудит №6): `window.alert` → маягтын алдааны мөр. Хөтөч харилцах
+             цонхыг хаасан бол мессеж огт харагдахгүй байв. «Хадгалах» хаалттай (`kept`),
+             хэрэглэгч мессежийг уншаад «Хаах» дарахад `onDone` (жагсаалт шинэчлэгдэнэ). */
+          setFail(x.message);
+          setKept(true);
+          dirty.current = false;
           return;
         }
         setFail(x.message);
@@ -273,11 +305,22 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       setFail(tr('Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.'));
       return;
     }
-    if (!window.confirm(tr('«{0}» зөвшөөрлийг бүрмөсөн устгах уу? Буцаах боломжгүй.', d.ner))) return;
+    /* ⚠️ 2026-10-09 (аудит №6): `window.confirm` → самбарын асуулт (`danger` — «Тийм» улаан).
+       `oid`-ыг ЭНД барина — callback дотор `d.oid`-ийн нарийсгал алдагдана. */
+    const oid = d.oid;
+    setConfirmQ({
+      msg: tr('«{0}» зөвшөөрлийг бүрмөсөн устгах уу? Буцаах боломжгүй.', d.ner),
+      danger: true,
+      onYes: () => { void doRemove(oid); },
+    });
+  };
+
+  /** Устгалын өөрөө — самбарын асуултад «Тийм» дарсны дараа */
+  const doRemove = async (oid: number) => {
     setBusy(true);
     setFail('');
     try {
-      await deleteZov(d.oid);
+      await deleteZov(oid);
       onDone();
     } catch (x) {
       /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН устгалт (timeout/сүлжээ) — сервер устгасан эсэх
@@ -286,7 +329,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
          устгал амжилттай; байгаа бол анхны алдаа; асуулт ч унавал «тодорхойгүй». */
       if (isLostResponse(x)) {
         let still: Zov | null | undefined;
-        try { still = await loadOneZov(d.oid); } catch { still = undefined; }
+        try { still = await loadOneZov(oid); } catch { still = undefined; }
         if (still === null) {
           invalidate('ZOVSHOOROL');
           onDone();
@@ -472,17 +515,36 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           )}
         </div>
 
+        {/* МАЯГТ ДОТОРХ АСУУЛТ — `confirmQ`-ийн тайлбар (2026-10-09, аудит №6) */}
+        {confirmQ && (
+          <div className={s.askRow} role="group" aria-live="assertive" aria-label={confirmQ.msg}>
+            <span className={s.askMsg}>{confirmQ.msg}</span>
+            <button
+              type="button"
+              className={confirmQ.danger ? s.danger : s.primary}
+              disabled={busy}
+              onClick={() => { const q = confirmQ; setConfirmQ(null); q.onYes(); }}
+            >
+              {tr('Тийм')}
+            </button>
+            <button type="button" className={s.btn} onClick={() => setConfirmQ(null)} disabled={busy}>
+              {tr('Үгүй')}
+            </button>
+          </div>
+        )}
+
         <div className={s.actions}>
-          {editing && (
+          {editing && !kept && (
             <button type="button" className={s.danger} onClick={remove} disabled={busy}>
               {tr('Устгах')}
             </button>
           )}
           <span className={s.spacer} />
-          <button type="button" className={s.btn} onClick={tryClose} disabled={busy}>
-            {tr('Болих')}
+          {/* ⚠️ 2026-10-09 (аудит №6): `kept` — мөр серверт үлдсэн, «Хаах» нь жагсаалтыг шинэчилнэ */}
+          <button type="button" className={s.btn} onClick={kept ? onDone : tryClose} disabled={busy}>
+            {kept ? tr('Хаах') : tr('Болих')}
           </button>
-          <button type="button" className={s.primary} onClick={submit} disabled={busy || unsure}>
+          <button type="button" className={s.primary} onClick={submit} disabled={busy || unsure || kept}>
             {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
           </button>
         </div>

@@ -18,7 +18,8 @@
  * ⚠️ ЭНЭ МОДУЛЬ (`archiveSubmission`) нь `Bagts_*` АРХИВТ (ҮНДСЭН ДАТА) жааз
  * бичдэг ЦОРЫН ГАНЦ ГАЗАР болов (2026-09-04). Хэрэглэгчийн шаардлага:
  * «ноорог ҮНДСЭН ДАТАНД хадгалагдаж болохгүй — 4 шат дамжсаны дараа л дата
- * хүснэгт буюу үндсэн сервис рүү орно». Урьд нь «Нийтлэх» дармагц
+ * хүснэгт буюу үндсэн сервис рүү орно» (хэрэглэгчийн тухайн үеийн үг; одоо 6 шат —
+ * `REVIEW_STAGES`, 2026-10-09 аудит №6). Урьд нь «Нийтлэх» дармагц
  * `FillNew.publish` өөрөө `applyAdds` дуудаж бүтэн жаазыг архивт бичдэг байв:
  * хянагч буцаасан ч, огт хараагүй ч тоо нь үндсэн өгөгдөлд аль хэдийн сууж
  * байлаа. Одоо «Нийтлэх» нь зөвхөн ИЛГЭЭЛТ (`Selbe_Guitsetgel_Draft`-ийн
@@ -144,7 +145,8 @@ import { appendHistory, type HistEntry } from './hyanaltHistory';
 import { encodeOkCells } from './hyanaltOkCells';
 /* ⚠️ 2026-10-09: ЗӨВХӨН төрөл — `submission` модуль динамикаар (`archiveSubmission`-ийн ⚠️) */
 import type { ArchivingMark, StagedSubmission, SubmissionPayload } from './submission';
-import { AUTH, roleForUser } from './services';
+/* ⚠️ 2026-10-09 (аудит №6): `bagtsKey` — багцын нэрийг нормчилж жишнэ (`negtgelWrite.summaryOf`-той нэг дүрэм) */
+import { AUTH, bagtsKey, roleForUser } from './services';
 import { currentUser } from './who';
 import { arcgisPost } from './query';
 import { isLostWrite } from './lostWrite';
@@ -911,7 +913,8 @@ async function archiveSubmission(
       const { PKGS } = await import('@/modules/sheet/bagts.pkg');
       const dp = PKGS.find((p) => p.key === staged.payload.pkgKey);
       if (!dp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', staged.payload.pkgKey) };
-      if (dp.group !== cur[F.bagts])
+      /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр — «Багц 4.1» / «Багц 4-1» нэг багц (урьд ЯГ тэнцүү) */
+      if (bagtsKey(dp.group) !== bagtsKey(cur[F.bagts]))
         return {
           ok: false,
           error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', dp.group, cur[F.bagts]),
@@ -993,8 +996,9 @@ async function archiveSubmission(
    *    талбарт хадгалдаг тул хуучин (архивын дугаартай) бүртгэлийн дугаар
    *    санамсаргүйгээр өөр багцын `sub|` мөр рүү таарч болно. Тэгвэл огт өөр
    *    багцын гүйцэтгэл ЭНЭ хяналтын мөрөөр архивт бичигдэнэ. Ил зогсооно.
+   * ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр — «Багц 4.1» / «Багц 4-1» нэг багц (урьд ЯГ тэнцүү).
    */
-  if (pkg.group !== cur[F.bagts])
+  if (bagtsKey(pkg.group) !== bagtsKey(cur[F.bagts]))
     return {
       ok: false,
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
@@ -1971,7 +1975,8 @@ export async function apply(a: {
       /*
        * ── ГҮЙЦЭТГЭЛЭЭС IPC МӨР ──────────────────────────────────────────
        * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): «ho гүйцэтгэлийн дата
-       * гүйцэтгэл бөглөгдөхөд нэмэгдэх ёстой». ЗӨВХӨН энд — 4 шатын
+       * гүйцэтгэл бөглөгдөхөд нэмэгдэх ёстой». ЗӨВХӨН энд — 6 шатын
+       * (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шат» гэж бичигдсэн байв)
        * хяналт дуусаж архивт бичигдсэний ДАРАА. Батлагдаагүй бөглөлтөөс
        * IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
        *

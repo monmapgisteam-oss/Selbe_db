@@ -96,6 +96,12 @@ export type ExecReport = {
   prog: {
     blocks: number;
     households: number;
+    /**
+     * ⚠️ 2026-10-09 (аудит №6): `AIL_TOO` ХООСОН блокийн тоо (`loadBuildings().householdsMissing`).
+     * > 0 бол `households` ДУТУУ нийлбэр; `=== blocks` бол өрхийн мэдээлэл огт алга («—»).
+     * Урьд нь дутуу нийлбэр бүрэн мэт тайланд ордог байв (null ≠ 0).
+     */
+    householdsMissing: number;
     /** Бөглөгдөөгүй блок */
     noData: number;
     /** ⚠️ 2026-09-30: `actual`-ийн ХЭМЖИЛТИЙН огноо («YYYY-MM-DD», эсвэл «YYYY-MM»); барилгын давхаргын сүүлийн огноо БИШ. Хэмжилтгүй бол '' */
@@ -402,7 +408,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       bySource,
     },
     prog: {
-      blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: physAsOf,
+      blocks: bld.blocks, households: bld.households, householdsMissing: bld.householdsMissing,
+      noData: bld.noData, asOf: physAsOf,
       actual, planned, gap,
       actualLag: lagNow.actual, planExcluded: lagNow.excluded,
       planFailed: plan.failed.length,
@@ -708,6 +715,15 @@ export function execFindingBrief(x: ExecReport): string[] {
  * ⚠️ Загвар ӨӨРӨӨ ТОО ЗОХИОХ ёсгүй тул зөвхөн энд байгаа тоог хэрэглэхийг
  *    системийн зааварт хатуу заана.
  */
+/**
+ * ӨРХИЙН ТОО — дэлгэц/PDF/инфографикт НЭГ хэлбэр (Dashboard · Tailan-ы `ailTotal`-тай ижил).
+ * ⚠️ 2026-10-09 (аудит №6): null ≠ 0 — бүх блок өрхгүй бол «—», заримд нь бол «N (дутуу)»; урьд нь
+ *    `num(households)` дутуу нийлбэрийг бүрэн мэт хэвлэдэг байв.
+ */
+export const householdsLabel = (p: { blocks: number; households: number; householdsMissing: number }): string =>
+  p.blocks > 0 && p.householdsMissing >= p.blocks ? '—'
+    : p.householdsMissing > 0 ? `${num(p.households)} (${tr('дутуу')})` : num(p.households);
+
 export function execFacts(x: ExecReport): string {
   const L: string[] = [];
   L.push(`## 01. Ерөнхий дашбоард`);
@@ -725,7 +741,13 @@ export function execFacts(x: ExecReport): string {
   const cl = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/^\s*#+\s*/, '').trim();
   for (const t of x.gdash.byType) L.push(`- ${cl(t.label)}: ${num(t.cost)} / ${num(t.contract)} / ${t.perf == null ? '—' : pct(t.perf, 1)} (${t.n} ажил, ${t.contracted} гэрээлсэн)`);
   L.push(`## 05. Багцын гүйцэтгэл (орон сууцны барилга угсралт)`);
-  L.push(`Блок: ${x.prog.blocks}; өрх: ${x.prog.households}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
+  /* ⚠️ 2026-10-09 (аудит №6): null ≠ 0 — өрх бүгд хоосон бол «мэдээлэлгүй», заримд нь бол «(дутуу — N блок өрхгүй)» */
+  const hh = x.prog.blocks > 0 && x.prog.householdsMissing >= x.prog.blocks
+    ? 'мэдээлэлгүй'
+    : x.prog.householdsMissing > 0
+      ? `${x.prog.households} (дутуу — ${x.prog.householdsMissing} блок өрхгүй)`
+      : String(x.prog.households);
+  L.push(`Блок: ${x.prog.blocks}; өрх: ${hh}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
   L.push(`Бодит: ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
   /* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүү хуваарьтай багцаар бол AI-д ил хэлнэ */
   if (x.prog.planExcluded.length) {

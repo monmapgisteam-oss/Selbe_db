@@ -33,7 +33,7 @@ import {
   buildUzPdf, buildUzXlsx, companyShort, countReportImages, fmtDate, reportTitle, UZ_IMG_WARN,
   type UzImg, type UzReport,
 } from '@/lib/uzlegReport';
-import { loadUzlegBoth, type UzlegKind, type UzlegRow } from './habeaUzleg';
+import { loadUzlegBoth, uzScoreLevel, type UzlegKind, type UzlegRow } from './habeaUzleg';
 import type { Row } from '@/lib/query';
 import x from './uzlegExport.module.css';
 
@@ -69,8 +69,17 @@ const presetFrom = (p: Preset, today: Date): string => {
 };
 const presetLabel = (p: Preset) => (p === 'day' ? tr('Өдрөөр') : p === 'w' ? tr('7 хоног') : p === 'm30' ? tr('30 хоног') : p === 'month' ? tr('Энэ сар') : tr('Бүгд'));
 
-/** Онооны өнгө — ≥90 сайн, ≥75 анхаар, бусад муу (оноогүй бол саарал) */
-const scoreTone = (p: number | null) => (p == null ? '' : p >= 90 ? x.good : p >= 75 ? x.warn : x.bad);
+/**
+ * Онооны өнгө — оноогүй бол саарал.
+ * ⚠️ 2026-10-09 (аудит №6): босго `habeaUzleg.uzScoreLevel` (90 · 70, дүгнэсэн)-ээс — урьд нь энд
+ *    ≥90/≥75 ХАТУУ бичигдсэн тул 70–74 оноо самбарт улбар шар, экспортод улаан гарч зөрдөг байв
+ *    (docs 04: «<70 улаан · 70–90 улбар шар»).
+ */
+const scoreTone = (p: number | null) => {
+  if (p == null) return '';
+  const lv = uzScoreLevel(p);
+  return lv === 'good' ? x.good : lv === 'warn' ? x.warn : x.bad;
+};
 
 /** `domFail` — 2026-10-09: кодын тайлбар (domain) уншигдсангүй (`loadUzlegBoth`) */
 type Loaded = { kind: UzlegKind; raw: Row[]; rows: UzlegRow[]; domFail?: boolean };

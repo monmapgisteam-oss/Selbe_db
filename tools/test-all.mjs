@@ -1,7 +1,7 @@
 /**
  * БҮХ `*.check.mjs` ШАЛГУУРЫГ ОЛЖ, ЗЭРЭГ АЖИЛЛУУЛНА.
  *   node tools/test-all.mjs            — нэгж шалгуурууд (npm test)
- *   node tools/test-all.mjs --live     — амьд ArcGIS/реле шаарддаг 6-г ч хамт
+ *   node tools/test-all.mjs --live     — амьд ArcGIS/реле шаарддаг 7-г (`LIVE`) ч хамт
  *   node tools/test-all.mjs huvaari    — нэрэнд «huvaari» орсон файлууд л
  *   node tools/test-all.mjs -j 2       — зэрэг ажиллах тоо (анхдагч 4)
  *   node tools/test-all.mjs --verbose  — давсан шалгуурын гаралтыг ч хэвлэнэ

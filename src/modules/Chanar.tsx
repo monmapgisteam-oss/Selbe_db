@@ -47,7 +47,7 @@ import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, NOTE_MAX, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, emptyKeySections, history, kindLabel, latest, myActionLabel, orgCode, parseBodyOf, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
+  delayDays, emptyBodyOf, emptyKeySections, history, kindLabel, latest, latestApproved, myActionLabel, orgCode, parseBodyOf, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
   statusLabel, verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
   type MsStatus, type NcrBody, type NcrCorrection, type Review, type Reviewer, type VerdictCode,
@@ -315,11 +315,15 @@ export function Chanar() {
       .filter((d) => matchesSearch(d, search))
       .sort((a, b) => b.seq - a.seq)), [mineOnly, actionable, kindDocs, filter, search]);
   const allHeads = useMemo(() => latest(kindDocs), [kindDocs]);
-  /* Иш татах баримтууд — батлагдсан MA (MIR-д), батлагдсан MIR/FIC (NCR-д), батлагдсан MA/MS/QMP/PRC (MA-ийн refs) */
-  const approvedMa = useMemo(() => latest(inPkg.filter((d) => d.kind === 'MA')).filter((d) => d.status === MS_STATUS.approved), [inPkg]);
-  const approvedInsp = useMemo(() => latest(inPkg.filter((d) => d.kind === 'MIR' || d.kind === 'FIC')).filter((d) => d.status === MS_STATUS.approved), [inPkg]);
-  const refOptions = useMemo(() => latest(inPkg.filter((d) => d.kind === 'MA' || isMsLike(d.kind)))
-    .filter((d) => d.status === MS_STATUS.approved).map((d) => ({ no: d.docNo, title: d.title })), [inPkg]);
+  /* Иш татах баримтууд — батлагдсан MA (MIR-д), батлагдсан MIR/FIC (NCR-д), батлагдсан MA/MS/QMP/PRC (MA-ийн refs)
+     ⚠️ 2026-10-09 (аудит №6): `latestApproved` — «Шинэ хувилбар» (rev+1 ноорог) үүсмэгц батлагдсан rev N иш
+        татагдахаа больдог байв (`latest` → approved шүүлт); шинэ rev батлагдтал хуучин нь хүчинтэй. */
+  const approvedMa = useMemo(() => latestApproved(inPkg.filter((d) => d.kind === 'MA')), [inPkg]);
+  const approvedInsp = useMemo(() => latestApproved(inPkg.filter((d) => d.kind === 'MIR' || d.kind === 'FIC')), [inPkg]);
+  const refOptions = useMemo(() => latestApproved(inPkg.filter((d) => d.kind === 'MA' || isMsLike(d.kind)))
+    .map((d) => ({ no: d.docNo, title: d.title })), [inPkg]);
+  /* ⚠️ 2026-10-09 (аудит №6): хураангуйн «батлагдсан» тоо — мөн сүүлийн БАТЛАГДСАН хувилбараар */
+  const nApproved = useMemo(() => latestApproved(kindDocs).length, [kindDocs]);
 
   const doc = useMemo(() => kindDocs.find((d) => d.oid === sel) ?? null, [kindDocs, sel]);
   const hist = useMemo(() => (doc ? history(kindDocs, doc.bagts, doc.seq, doc.kind) : []), [kindDocs, doc]);
@@ -958,7 +962,7 @@ export function Chanar() {
     : tr('биеийн хураангуй ачаалж байна…');
   const summary = (): string[] => {
     if (isMsLike(kind)) {
-      const ap = allHeads.filter((d) => d.status === MS_STATUS.approved).length;
+      const ap = nApproved;
       if (kind !== 'MS') return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
       if (bodiesLoading) return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap), LOADING];
       const p = msRequiredProgress(allHeads.map((d) => ({ status: d.status, workType: metaOf(bodies.get(d.oid))?.workType ?? null })), MS_STATUS.approved, MS_STATUS.draft);
@@ -986,7 +990,7 @@ export function Chanar() {
       const reopened = allHeads.filter((d) => ((bodies.get(d.oid) as NcrBody | undefined)?.reopened ?? 0) > 0).length;
       return [tr('Нээлттэй {0} · хаагдсан {1} · дахин нээсэн {2}', n.open, n.closed, reopened)];
     }
-    const ap = allHeads.filter((d) => d.status === MS_STATUS.approved).length;
+    const ap = nApproved;
     return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
   };
 

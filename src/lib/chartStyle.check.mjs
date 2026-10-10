@@ -13,9 +13,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   CHART, DONUT_SIZES, RING_SIZES, ringStroke, linePath, lineSegments, areaPath, monotonePath,
-  glow, niceTicks, stepDecimals, arcPath,
+  glow, niceTicks, stepDecimals, arcPath, roundPctsTo100,
   SCORE_HEX, SCORE_INK, SCORE_NODATA_INK,
 } from '@/lib/chartStyle';
+
+/* ── ⚠️ 2026-10-09 (аудит №6): roundPctsTo100 — бүхэл хувиуд нийлээд ЯГ 100 ── */
+assert.deepEqual(roundPctsTo100([1, 1, 1]), [34, 33, 33], '33.3×3 → 99% биш 100%');
+assert.deepEqual(roundPctsTo100([16.5, 16.5, 67]), [17, 16, 67], '17+17+67 = 101% биш');
+assert.deepEqual(roundPctsTo100([75, 25]), [75, 25]);
+assert.deepEqual(roundPctsTo100([999, 1]), [100, 0], 'жижиг хэсэг 0 (дуудагч «<1%» бичнэ)');
+assert.deepEqual(roundPctsTo100([25, 25], 100), [25, 25], '`total` өгвөл 100 болгож хиймлээр сунгахгүй');
+assert.deepEqual(roundPctsTo100([0, 0]), [0, 0], 'нийлбэр 0 → бүгд 0');
+assert.deepEqual(roundPctsTo100([NaN, -5, 10]), [0, 0, 100], 'NaN/сөрөг → 0');
+assert.deepEqual(roundPctsTo100([]), []);
+for (const vs of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [3, 3, 3, 1]]) {
+  assert.equal(roundPctsTo100(vs).reduce((a, b) => a + b, 0), 100, `нийлбэр 100: ${vs}`);
+}
 
 /* ── Тогтмолууд ── */
 for (const k of ['stroke', 'markerR', 'ring', 'dim', 'areaTop', 'areaBottom', 'gapFill', 'planDash', 'grid', 'barH', 'stackH', 'meterH']) {

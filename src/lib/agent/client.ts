@@ -286,16 +286,21 @@ async function callRelay(
   });
   const token = await arcgisToken();
   let res = await post(token);
-  /* ⚠️ 2026-10-06 (аудит): реле 401 — токен хуучирсан байж болно: ХҮЧЭЭР шинэчилж, токен
-     СОЛИГДСОН бол НЭГ удаа дахин илгээнэ (`query.ts`-ийн 498-ийн давталттай ижил зарчим).
-     Токен өөрчлөгдөөгүй бол давтах нь утгагүй — доорх алдаа хэвээр. */
-  if (res.status === 401 && token && !signal?.aborted) {
-    const fresh = await arcgisToken(true);
-    if (fresh && fresh !== token) res = await post(fresh);
-  }
   /* ⚠️ 2026-10-06: JSON биш хариу `null` болно (урьд нь `{}`) — 200 атал уншигдахгүй бол
      хоосон хариу мэт түүхэд `{content: []}` орж дараагийн хүсэлт 400 болдог байв. */
-  const reply = (await res.json().catch(() => null)) as RelayReply | null;
+  let reply = (await res.json().catch(() => null)) as RelayReply | null;
+  /* ⚠️ 2026-10-06 (аудит): реле 401 — токен хуучирсан байж болно: ХҮЧЭЭР шинэчилж, токен
+     СОЛИГДСОН бол НЭГ удаа дахин илгээнэ (`query.ts`-ийн 498-ийн давталттай ижил зарчим).
+     Токен өөрчлөгдөөгүй бол давтах нь утгагүй — доорх алдаа хэвээр.
+     ⚠️ 2026-10-09 (аудит №6): ЗӨВХӨН биед `code` АЛГА үед — `code`-той 401/502 (`upstream_auth`:
+        релейн өөрийн түлхүүрийн алдаа) нь ArcGIS токентой хамаагүй тул шинэчлэх/давтах нь дэмий. */
+  if (res.status === 401 && !reply?.code && token && !signal?.aborted) {
+    const fresh = await arcgisToken(true);
+    if (fresh && fresh !== token) {
+      res = await post(fresh);
+      reply = (await res.json().catch(() => null)) as RelayReply | null;
+    }
+  }
   if (!res.ok) {
     /* ⚠️ 2026-10-06: релейн `error` (хатуу монгол, серверийн) зөвхөн ДЭЛГЭРЭНГҮЙ — гол
        мөр нь статусаас `tr()`-ээр (`RelayError`). Урьд нь `reply.error ?? …` байсан тул
@@ -334,6 +339,11 @@ function relayStatusText(status: number, code?: string): string {
   /* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг (реле `LIMITS.concurrent`) — өөр таб/цонхонд асуулт явж байна */
   if (status === 429 && code === 'concurrent') {
     return tr('Өөр цонхонд асуусан асуултын хариу хүлээгдэж байна — дуусахыг хүлээгээд дахин оролдоно уу.');
+  }
+  /* ⚠️ 2026-10-09 (аудит №6): релейн ӨӨРИЙН дээд үйлчилгээний түлхүүр буруу (502 `upstream_auth`) —
+     хэрэглэгчийн нэвтрэлттэй хамаагүй; «дахин нэвтэрнэ үү» / «түр ажиллахгүй» гэхгүй, админд хандуулна. */
+  if (code === 'upstream_auth') {
+    return tr('AI туслахын серверийн тохиргоонд алдаа гарлаа — системийн администраторт хандана уу.');
   }
   if (status === 401) return tr('AI туслахын нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж нэвтэрнэ үү.');
   if (status === 403) return tr('AI туслах руу хандах зөвшөөрөл алга.');

@@ -1099,3 +1099,25 @@ import { offTarget } from './fill/draft.ts';
   assert.equal(offTarget(D2, 'd', 'd', tg), true, 'өөрийн өөр өдрийн засвар D2-т нийлж байна');
 }
 console.log('✅ аудит №3 — буцаалтын засварт зөвхөн тэр илгээлтийн нүд (зорилтгүй · өөр өдөр · эзэнгүй — гадуур)');
+
+/* ══════════ 2026-10-09 (аудит №6) — СЕРВЕРИЙН ИЛГЭЭЛТЭЭС ГАРГАСАН БАРИМТ (`subReceipts`): ил хасалт · харсан агшин ══════════
+ * Баримт `[k, at, '', at]` нь илгээлтээс ӨМНӨХ хуулбарыг зөрүү бодолгүй хасдаг — урьд нь ⚠️ «ил, засагдана» гэдэг ч
+ * код ЧИМЭЭГҮЙ байв; мөн `at` өөр машины цаг тул энэ табын дараагийн засвар `w ≤ at` болж дахин хасагдах эрсдэлтэй. */
+/* (`useDraftSync.ts`-ийг import хийх боломжгүй — `./util` → `sheet.module.css`; `subReceipts`-ийн гаргадаг баримтын
+   хэлбэрийг (`[k, at, '', at]`) `rcptApply`-аар, кодыг эх кодын гэрээгээр шалгана.) */
+{
+  const AT = Date.now() - 1000;
+  const sub = ['1:0', AT, '', AT];
+  assert.equal(rcptApply('8', AT - 1, 0, sub, false), null, 'илгээлтээс өмнөх хуулбар хасагдах ёстой');
+  assert.equal(rcptApply('8', AT + 1, 0, sub, false), '8', 'илгээлтээс хойших хуулбар хэвээр (зөрүү бодохгүй)');
+  assert.equal(rcptApply('8', AT - 1, AT, sub, false), '8', 'баримтыг харсан (`bt ≥ a`) хуулбар хөндөгдөхгүй');
+  /* Эх кодын гэрээ */
+  const DS = readOne('src/modules/sheet/fill/useDraftSync.ts');
+  assert.ok(/out\.push\(\[k, p\.at, '', p\.at\]\);/.test(DS) && DS.includes('if (c && c[1] >= p.at) continue;'), 'subReceipts: баримтын хэлбэр / жинхэнэ хожуу баримтыг дарахгүй дүрэм өөрчлөгдөв');
+  assert.ok(DS.includes("if (rc && rc[2] === '') rcSub.push("), 'серверийн баримтаар хасагдсан нүд тусад нь тоологдохгүй');
+  assert.ok(/for \(const id of rcSub\) if \(!seen\(id\)\) nSub \+= 1;/.test(DS) && DS.includes('if (nSub) {'), 'серверийн баримтын хасалт `warns`-д ил биш');
+  assert.ok(/const noteSubReceipts = useCallback[\s\S]*?seenAtRef\.current\.set\(rc\[0\], rc\[1\]\)/.test(DS), '`noteSubReceipts` харсан агшныг (`seenAtRef`) тэмдэглэхгүй');
+  const FNo = readOne('src/modules/sheet/FillNew.tsx');
+  assert.ok(!/\bsubReceipts\(/.test(FNo) && (FNo.match(/noteSubReceipts\(/g) ?? []).length >= 2, 'FillNew серверийн баримтыг `noteSubReceipts`-ээр биш шууд `subReceipts`-ээр тавьж байна');
+}
+console.log('✅ аудит №6 — серверийн илгээлтийн баримт: ил хасалт · харсан агшин');

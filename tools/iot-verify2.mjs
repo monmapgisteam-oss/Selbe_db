@@ -28,6 +28,17 @@ for (const def of SENSORS) {
       fields.get(m.field)?.type?.replace('esriFieldType', '') ?? 'АЛГА');
   }
 
+  /* 1б. `device_id` — газрын зургийн давхаргын шүүлт (`layers.ts` IOT_LAYERS `where:
+     "device_id IS NULL"`, `layerDef.ts`-ийн ⚠️): суурилуулалтын ГАНЦ мөр `device_id`-гүй,
+     телеметрийн бүх мөр `device_id`-тэй — тэгж л зурагт мэдрэгч бүр НЭГ цэг болно.
+     ⚠️ 2026-10-09 (аудит №6): талбар нь толь бичигт алга, урьд нь шалгагддаггүй байв —
+        үйлчилгээнээс арилбал/нэрээ солибол давхарга ЧИМЭЭГҮЙ хоосорно (400 нь 200-аар ирнэ). */
+  chk('талбар «device_id»', fields.has('device_id'), fields.get('device_id')?.type?.replace('esriFieldType', '') ?? 'АЛГА');
+  if (fields.has('device_id')) {
+    const c = await post(def.url, { where: 'device_id IS NULL', returnCountOnly: 'true' });
+    chk('`device_id IS NULL` = ЯГ 1 мөр (суурилуулалт)', c.count === 1, `${c.count} мөр`);
+  }
+
   /* 2. DevEUI — бүртгэлтэй таарах уу */
   const euiField = [...fields.keys()].find((k) => /dev_?eui/i.test(k));
   if (euiField) {

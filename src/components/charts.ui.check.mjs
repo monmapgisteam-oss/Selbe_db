@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { monotonePath } from '@/lib/chartStyle';
-import { Meter, Bars, Series, Donut, Ring, Trend, monotonePath as uiMonotone } from '@/components/ui';
+import { Meter, Bars, Series, Donut, Ring, Trend, Stack, monotonePath as uiMonotone } from '@/components/ui';
 
 assert.equal(uiMonotone, monotonePath, 'ui.tsx-ийн monotonePath нь chartStyle-ийн дахин экспорт');
 
@@ -89,5 +89,23 @@ assert.ok(dn.includes('donutPctIn') && dn.includes('>75%<') && dn.includes('>25%
 assert.ok(dn.includes('stroke-linecap:round'), 'бөөрөнхий үзүүр');
 /* Ring: зам нь нимгэн 2px */
 assert.match(rg, /ringTrack[^>]*stroke-width="2"/, 'Ring-ийн зам 2px');
+
+/* ── ⚠️ 2026-10-09 (аудит №6): хувийн нийлбэр ЯГ 100 — Stack · Donut (тайлбар + aria) нэг арга ── */
+const three = [{ key: 'a', label: 'A', value: 1 }, { key: 'b', label: 'B', value: 1 }, { key: 'c', label: 'C', value: 1 }];
+const stk = renderToStaticMarkup(h(Stack, { items: three, legend: true }));
+const stkPcts = [...stk.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => Number(m[1]));
+assert.deepEqual(stkPcts, [34, 33, 33], `Stack тайлбар 100% (их үлдэгдэл): ${stkPcts}`);
+const dn3 = renderToStaticMarkup(h(Donut, { items: three, size: 'sm' }));
+assert.match(dn3, /A 34%, B 33%, C 33%/, 'Donut aria тойм тайлбартай ижил тоо (99% биш)');
+const stkT = renderToStaticMarkup(h(Stack, { items: [{ key: 'a', label: 'A', value: 25 }, { key: 'b', label: 'B', value: 25 }], total: 100, legend: true }));
+assert.deepEqual([...stkT.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => m[1]), ['25', '25'], '`total` өгвөл 100 болгож сунгахгүй');
+
+/* ── ⚠️ 2026-10-09 (аудит №6): Trend анхдагч fmt = autoNum — мянгатын таслал, хувь «26.3» хэвээр ── */
+const tMoney = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 2660000000000 }, { label: '2', value: 1500000000000 }], unit: ' ₮', alert: { value: 2000000000000 } }));
+assert.ok(tMoney.includes('2,660,000,000,000 ₮'), 'мөнгөн цуваа таслалтай (урьд «2660000000000.0 ₮»)');
+assert.ok(!tMoney.includes('2660000000000'), 'түүхий тоо үлдэхгүй');
+assert.ok(tMoney.includes('2,000,000,000,000 ₮'), 'босгын шошго ч форматлагдана');
+const tPct = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 26.3 }, { label: '2', value: 20 }], unit: '%' }));
+assert.ok(tPct.includes('26.3%'), 'хувийн дуудагч «26.3%» хэвээр');
 
 console.log('✅ ui графикууд: Meter · Bars · Series · Donut · Ring — нэгдсэн стандарт + лавлах CRM загвар');

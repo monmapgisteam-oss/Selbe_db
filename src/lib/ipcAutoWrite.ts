@@ -1,7 +1,8 @@
 /**
  * ГҮЙЦЭТГЭЛЭЭС IPC МӨР БИЧИХ — сүлжээний тал. Цэвэр логик нь `ipcAuto.ts`-д.
  *
- * ⚠️ ДУУДАГДАХ ЦОРЫН ГАНЦ ГАЗАР: `hyanaltStore`-ийн батлах зам, 4 шатын
+ * ⚠️ ДУУДАГДАХ ЦОРЫН ГАНЦ ГАЗАР: `hyanaltStore`-ийн батлах зам, 6 шатын
+ * (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шат» гэж бичигдсэн байв)
  * хяналт дуусаж архивт бичигдсэний ДАРАА (`registerApproved`-ийн хажууд).
  * Батлагдаагүй бөглөлтөөс IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
  *
@@ -17,7 +18,7 @@ import { agsFetch } from '@/modules/sheet/ags';
 import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { snapshotOf, LINK_FIELDS } from '@/lib/ipcLink';
-import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, type AutoPlan } from '@/lib/ipcAuto';
+import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { isBlocklessBagts } from '@/lib/negtgelWrite';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -64,17 +65,17 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 
     let obyem: number | null = null;
     let une: number | null = null;
-    let read = 0;
-    /* ⚠️ ХУУДАС ДУТУУ эсэхийг ТУСАД НЬ тоолно (2026-09-15-ны аудит) */
-    let missing = 0;
-    /* ⚠️ 2026-10-09 (F2): обьёмын баганагүй хуудас — «дутуу» биш, IPC-д оролцох тоо байхгүй */
-    let noObyem = 0;
+    /* ⚠️ ХУУДАС ДУТУУ эсэхийг ТУСАД НЬ тоолно (2026-09-15-ны аудит) — `missing`.
+       ⚠️ 2026-10-09 (F2): обьёмын баганагүй хуудас — «дутуу» биш, IPC-д оролцох тоо байхгүй — `no-obyem`.
+       ⚠️ 2026-10-09 (аудит №6): хуудас бүрийн төлвийг цуглуулж шийдвэрийг цэвэр `sheetsVerdict`-д
+       (`ipcAuto.ts`) өгнө — огт нийтлэгдээгүй хуудас (`unpublished`) тусдаа төлөв, дэлгэрэнгүй тэнд. */
+    const reads: SheetRead[] = [];
 
     for (const pkg of wanted) {
       const sc: Schema | null = await loadSchema(pkg).catch(() => null);
-      if (!sc?.f.fillDate) { missing += 1; continue; }
+      if (!sc?.f.fillDate) { reads.push('missing'); continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
-      if (!cols.length) { noObyem += 1; continue; }
+      if (!cols.length) { reads.push('no-obyem'); continue; }
       /*
        * ⚠️ `work` ба `gun` ЗААВАЛ (2026-09-25-ны аудит). Урьд нь орхигдсон тул
        *    `loadRows` дотор мөр бүрийн түлхүүр «№ ¦ » болж суурь агшны «№ ¦ Ажил»-тай
@@ -95,18 +96,24 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        *    тул доорх `missing` салбар үхсэн код байв: хоёр хуудастай багцын
        *    (1 · 2 · 4-2) 9F-ийг D өдөр батлахад 12F-д D огноотой жааз байхгүй
        *    бол батлалт бүрд алдаа гарч, хоёр хуудсыг өөр өдөр батлавал IPC
-       *    AUTO мөр ХЭЗЭЭ Ч үүсдэггүй байв. Хэзээ ч нийтлэгдээгүй хуудас
-       *    `missing` хэвээр (09-15-ны дүрэм — дутуу дүнгээр бичихгүй).
+       *    AUTO мөр ХЭЗЭЭ Ч үүсдэггүй байв.
+       * ⚠️ 2026-10-09 (аудит №6): ХЭЗЭЭ Ч НИЙТЛЭГДЭЭГҮЙ хуудас (`upTo == null` — жааз огт байхгүй)
+       *    урьд нь `missing` (09-15-ны «дутуу дүнгээр бичихгүй») байсан тул нөгөө хуудас нь хэзээ ч
+       *    нийтлэгдээгүй багцад `ok:false` → `markRegistered` дуудагдахгүй → `regPending` мөнхөд,
+       *    `retryPendingRegistrations` сешн бүрд унадаг байв. Нэгтгэл (`negtgelWrite.summaryOf`)
+       *    яг энэ тохиолдлыг «тайлагнаагүй хуудас 0%» гэж амжилттай бичдэг тул НЭГ дүрэм: 0 оролцоотой
+       *    (`unpublished` — нийлбэрт юу ч нэмэхгүй), дуудагчид анхааруулга. `agsFetch` алдаанд ШИДДЭГ тул
+       *    `null` нь зөвхөн «жааз байхгүй» гэсэн үг — уншилтын алдаа энд нуугдахгүй.
        */
       const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
-      if (!upTo) { missing += 1; continue; }
+      if (!upTo) { reads.push('unpublished'); continue; }
       /* ⚠️ 2026-10-09: `strict` — ЭНЭ ЗАМ IPC-д МӨНГӨН ДҮН БИЧДЭГ. Анхдагч (уншдаг самбарын) горимд жаазны
          бүтэн эсэхийг шалгаж чадаагүй (лавлах татагдаагүй) үед ДУТУУ жааз хүлээн авагдаж, тасарсан мөрийн
          обьёмгүй `guits_une` бичигддэг байв — шалгаж чадахгүй бол THROW → `ok:false` (батлалт `regPending`-ээр
          дахин оролдоно). */
       const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
-      if (!rows.length) { missing += 1; continue; }
-      read += 1;
+      if (!rows.length) { reads.push('missing'); continue; }
+      reads.push('read');
       const s = snapshotOf(rows, day);
       if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
       if (s.une != null) une = (une ?? 0) + s.une;
@@ -115,8 +122,6 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ⚠️ НЭГ Ч ХУУДАС УНШИГДААГҮЙ бол «гүйцэтгэл 0» ГЭЖ БҮҮ БИЧ — энэ нь
        сүлжээний/бүдүүвчийн асуудал байж болно. Алдаа буцаана. */
     /* ⚠️ 2026-10-09 (F2): БҮХ хуудас обьёмын баганагүй (уншигдах ч зүйлгүй) — бичих тоо байхгүй, алдаа биш */
-    if (!read && !missing && noObyem === wanted.length) return { ok: true, op: 'skip', why: 'no-data' };
-    if (!read) return { ok: false, error: tr('Бөглөх хуудаснаас агшин уншигдсангүй') };
     /*
      * ⚠️ БАГЦЫН ХУУДАС ДУТУУ бол ч БИЧИХГҮЙ (2026-09-15-ны аудит). Урьд нь
      *    `read >= 1` хангалттай гэж үздэг байсан тул хоёр хуудастай багцын
@@ -124,13 +129,11 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
      *    нөгөөгийнх болж, `guits_zoruu` тэр багцад тогтмол эерэг («илүү
      *    олгосон») гардаг байв. Тэр зөрүү ArcGIS руу БУЦААЖ БИЧИГДДЭГ тул
      *    худал тоо эх өгөгдөлд үлдэнэ.
+     * ⚠️ 2026-10-09 (аудит №6): дээрх гурван дүрэм + «огт нийтлэгдээгүй хуудас 0 оролцоотой»
+     *    бүгд `sheetsVerdict`-д (цэвэр, шалгууртай); анхааруулгыг `warn`-д нэгтгэж буцаана.
      */
-    if (missing) {
-      return {
-        ok: false,
-        error: tr('Багцын {0} хуудаснаас {1} нь тэр өдөр бөглөгдөөгүй — дутуу дүнгээр гүйцэтгэл бичихгүй.', wanted.length, missing),
-      };
-    }
+    const verdict = sheetsVerdict(reads);
+    if (!verdict.go) return verdict.result;
 
     /* ── 2. HO-гийн одоогийн мөрүүд ── */
     const rows = (await queryFeatures(HO_IPC.url, {
@@ -144,7 +147,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ⚠️ 2026-10-09 (F6): `autoContractFor` — өмнөх AUTO мөрийн гэрээг хадгалж (түүх хуваагдахгүй),
        олон гэрээний анхааруулгыг (`warn`) ХАЯХГҮЙ буцаана. `ipcDocLoad` ЯГ энэ функцээр сонгоно. */
     const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
-    const wx = cw ? { warn: cw } : {};
+    /* ⚠️ 2026-10-09 (аудит №6): гэрээний ба «огт нийтлэгдээгүй хуудас» анхааруулгыг нэг `warn`-д */
+    const warns = [cw, verdict.warn].filter((x): x is string => !!x);
+    const wx = warns.length ? { warn: warns.join(' · ') } : {};
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
     /* ⚠️ 2026-09-25: ЗӨВХӨН `no-data` (хэмжилтгүй бөглөлт — хэвийн) нь амжилт.
        Бусад шалтгаан (гэрээний код олдоогүй, багц/огноо танигдаагүй) нь IPC мөр

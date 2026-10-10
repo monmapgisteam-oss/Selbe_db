@@ -41,9 +41,11 @@ import c from './tailanChart.module.css';
 const frac = (v: number, top: number) =>
   top > 0 && Number.isFinite(v) ? Math.max(0, Math.min(1, v / top)) : 0;
 
-/** График зурах утга байна уу — ⚠️ хоосон дээр «0» зурвал ХУДАЛ мэдээлэл */
+/** График зурах утга байна уу — ⚠️ хоосон дээр «0» зурвал ХУДАЛ мэдээлэл
+    ⚠️ 2026-10-09 (аудит №6): `v !== 0` ХАСАГДАВ — бүх сар ХЭМЖСЭН 0 цуваа (хавтгай тэг шугам)
+    огт зурагдахгүй байв; хэмжсэн тэг ≠ хоосон (null). Хоосон = бүгд `null`. */
 const hasData = (vals: (number | null | undefined)[]) =>
-  vals.some((v) => v != null && Number.isFinite(v) && v !== 0);
+  vals.some((v) => v != null && Number.isFinite(v));
 
 export type BarItem = {
   label: string;
@@ -157,8 +159,9 @@ export function TrendArea({
 }) {
   const vals = points.map((p) => p.value);
   if (points.length < 2 || !hasData(vals)) return null;
+  /* ⚠️ 2026-10-09 (аудит №6): дээд нь 0 (бүгд хэмжсэн тэг) бол `return null` биш — `frac` 0 өгч
+     шугам ёроолд хавтгай зурагдана. */
   const top = Math.max(...vals.map((v) => v ?? 0), 0);
-  if (!(top > 0)) return null;
 
   const W = 100;
   const H = 34;

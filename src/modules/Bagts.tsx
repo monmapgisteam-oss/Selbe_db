@@ -146,7 +146,8 @@ export function buildPacks(
    */
   const infra: Pack[] = Object.keys(PKG_BY_BAGTS).map((key) => {
     const layerIds = PKG_BY_BAGTS[key] ?? [];
-    const titles = layerIds.map((id) => LAYER_BY_ID[id].title);
+    /* ⚠️ 2026-10-09 (аудит №6): `?.` — бүртгэлгүй id нь модуль ачаалах үед шидэж харагдацыг бүхэлд нь унагадаг байв. */
+    const titles = layerIds.map((id) => LAYER_BY_ID[id]?.title ?? id);
     return {
       key,
       name: titles.length ? commonName(titles) : key,

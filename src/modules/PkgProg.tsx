@@ -27,11 +27,14 @@ import {
 import { useAsync, type Async } from '@/lib/useAsync';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
 import {
-  HUE, catOf, aggregateMonths, physNow, progMonthsOf, pp, ppAbs, SR_ONLY, type PackCat,
+  HUE, catOf, aggregateMonths, physNow, progMonthsOf, SR_ONLY, type PackCat,
 } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
-import { gapPts } from '@/lib/gdash';
+/* ⚠️ 2026-10-09 (аудит №6): хуваарийн зөрүүний БҮХ хэлбэр `gdash.gapPts`/`gapPtsWord` («н.х») —
+   урьд нь энэ дэлгэцэнд KPI «−5.0 н.х», жагсаалт/график «-5.0 pp» (`pkgShared.pp`) гэж ХОЁР
+   нэгжээр бичдэг байв; `pp(-gap)` нь тэг дээр «-0.0 pp» гаргадаг. */
+import { gapPts, gapPtsWord } from '@/lib/gdash';
 import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
@@ -1005,22 +1008,10 @@ function TsKpi(
       gap = ln.gap;
       excluded = ln.excluded;
     }
-    /* ⚠️ 2026-09-06: НИЙТ ТӨЛӨВЛӨГӨӨ = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
-       (`FinData.planTotal`). Урьд нь «өмнөх онд шилжүүлсэн + 12 сарын
-       цонхны хуваарь» байсан — «ӨМНӨХ ШИЛЖҮҮЛСЭН» мөрийн төрөл ба сарын
-       хуваарь хоёул `cashflow_0813`-тайгаа хамт хаягдсан. */
-    let planTotal = 0;
-    fin.planTotal.forEach((v) => { planTotal += v; });
-    /* ⚠️ 2026-09-25: `givenTotal` — сарын цуваа огноогүй/тэнхлэгээс гадуурх
-       төлбөрийг ОРУУЛДАГГҮЙ (Finance-ийн ⚠️); нийт дүн нь PkgFin-тэй ижил. */
-    let given = 0;
-    fin.givenTotal.forEach((v) => { given += v; });
-    return {
-      planned, actual, gap, given, excluded,
-      share: planTotal > 0 ? (given / planTotal) * 100 : null,
-      /** Төлөвлөгөөт нийтээс олгогдоогүй үлдэгдэл ₮ */
-      remain: Math.max(0, planTotal - given),
-    };
+    /* ⚠️ 2026-10-09 (аудит №6): `planTotal · given · share · remain` ХАСАГДАВ — бодогдоод
+       `items`-д хэзээ ч ордоггүй үхмэл код байсан; `share` нь `paidShareOf`-оос зөрдөг хуучин
+       томьёо (төлөвлөгөө = гэрээ ЭСВЭЛ төсөв). Санхүүгийн тоонууд PkgFin-ийн `TsKpi`-д. */
+    return { planned, actual, gap, excluded };
   }, [fin, plan, planQ]);
   /**
    * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
@@ -1176,8 +1167,9 @@ function TsPackList({
                       title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      {/* ⚠️ 2026-10-06 (аудит): pp — `pkgShared.pp` (ТУХ-тай нэг хэлбэр) */}
-                      <span className="num">{pp(-lag.gap)}</span>
+                      {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPts` («−5.0 н.х») — дээрх KPI-тай нэг хэлбэр;
+                          урьд `pp(-lag.gap)` («-5.0 pp», тэг дээр «-0.0 pp») */}
+                      <span className="num">{gapPts(lag.gap)}</span>
                       <small className="num">
                         {lag.planned.toFixed(1)}/{lag.actual.toFixed(1)}
                       </small>
@@ -1572,8 +1564,9 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
       note={
         curGap == null ? undefined : (
           <span className={behind ? ts.progBad : ts.progGood}>
-            {/* ⚠️ 2026-10-06 (аудит): «5.0 pp» — `pkgShared.ppAbs` (хувь биш, хувийн нэгж) */}
-            {behind ? tr('хоцрогдол') : tr('түрүүлсэн')} {ppAbs(curGap)}
+            {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPtsWord` — «5.0 н.х хоцролт» / «2.0 н.х түрүүлсэн»,
+                тэг «0.0 н.х» (Дашбоардын `gapLabel`-тай нэг); урьд `ppAbs` («5.0 pp») */}
+            {gapPtsWord(curGap)}
           </span>
         )
       }
@@ -1635,7 +1628,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
         <span aria-live="polite" style={SR_ONLY}>
           {pt ? tr('{0}: төлөвлөсөн {1}, бодит {2}, зөрүү {3}',
             pt.label, pct(ptPlan, 1), pt.act == null ? '—' : pct(pt.act, 1),
-            pt.act == null ? '—' : pp(pt.act - ptPlan)) : ''}
+            pt.act == null ? '—' : gapPts(ptPlan - pt.act)) : ''}
         </span>
         {/* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН — `viewBox` нь бодит
             пикселтэй тэнцүү тул үсэг гажихаа болив. */}
@@ -1823,8 +1816,9 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
               {tr('Зөрүү')}
               <b className="num">
-                {/* ⚠️ 2026-10-06 (аудит): pp — `pkgShared.pp` (бодит − төлөвлөгөө) */}
-                {pt.act == null ? '—' : pp(pt.act - ptPlan)}
+                {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPts(төл − бодит)` («−5.0 н.х» = хоцорсон) —
+                    дэлгэц уншигчийн мөр, KPI, жагсаалттай нэг хэлбэр; урьд `pp(бодит − төл)` */}
+                {pt.act == null ? '—' : gapPts(ptPlan - pt.act)}
               </b>
             </p>
           </div>

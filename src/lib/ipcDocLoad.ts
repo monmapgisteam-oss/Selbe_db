@@ -74,8 +74,11 @@ async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
   const days = new Set<string>();
   const exact = new Set<string>();
   const shifted = new Map<string, string>();
-  /* ⚠️ Хуудаслалт + `orderByFields` (CLAUDE.md-ийн ArcGIS занга) */
-  for (let off = 0; ; off += 2000) {
+  /* ⚠️ Хуудаслалт + `orderByFields` (CLAUDE.md-ийн ArcGIS занга)
+     ⚠️ 2026-10-09 (аудит №6): `exceededTransferLimit`-ээр таслана, `fs.length < 2000`-оор БИШ
+     (`hyanalt.queryAll`-ийн загвар) — үйлчилгээний `maxRecordCount` 2000-аас бага (1000) бол эхний
+     хуудсаар зогсож, сүүлийн өдрүүд чимээгүй алга болдог байв; offset-ийг ирсэн мөрийн тоогоор нэмнэ. */
+  for (let off = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
       where: `${f} IS NOT NULL`, outFields: f, returnDistinctValues: 'true', returnGeometry: 'false',
       orderByFields: `${f} ASC`, resultOffset: String(off), resultRecordCount: '2000',
@@ -92,7 +95,8 @@ async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
       if (raw === d) exact.add(d);
       else if (!shifted.has(d)) shifted.set(d, raw);
     }
-    if (fs.length < 2000) break;
+    if (!j.exceededTransferLimit || !fs.length) break;
+    off += fs.length;
   }
   for (const [d, raw] of shifted) {
     if (exact.has(d)) rawDay.delete(`${pkg.key}|${d}`);

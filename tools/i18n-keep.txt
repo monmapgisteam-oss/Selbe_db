@@ -176,6 +176,7 @@
 @dyn modules/Tailan.tsx  tr(p.name)
 @dyn modules/Tailan.tsx  tr(p.no)
 @dyn modules/Tailan.tsx  tr(x)
+@dyn lib/reportPdf.ts  tr(x)
 
 # [data] блокийн нэр (Б1 … Б5, Хоосон блок) — enData.ts
 @dyn modules/Tailan.tsx  tr(b.block)
@@ -219,7 +220,6 @@
 @dyn modules/Irged.tsx  tr(t)
 
 # [const] PKG_GROUPS (Багц 1 … Багц 10) — en.ts / enData.ts (2026-10-04, багцын сонгогч англиар)
-@dyn modules/AjilBatlah.tsx  tr(g)
 @dyn modules/Chanar.tsx  tr(g)
 @dyn modules/Huvaari.tsx  tr(g)
 @dyn modules/Huvaari.tsx  tr(pkg.group)

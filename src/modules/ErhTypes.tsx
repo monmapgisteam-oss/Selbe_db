@@ -101,7 +101,11 @@ export function ErhTypes({ remote, onDirty }: {
     const t = cur(r);
     put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) });
   };
-  const allowed = (r: Role, id: string): boolean => id !== 'admin' || r === 'super';
+  /* ⚠️ 2026-10-09 (аудит №6): `admin` мөр БҮХ төрөлд идэвхгүй — загварын `admin` тохиргоог систем
+     уншдаггүй (`Root.hardSuper = roleForUser(...) === 'super'`, зөвхөн код). Урьд нь super баганад
+     чеклэгддэг тул «загвараас админ самбар олгоно» гэсэн ХУДАЛ дүр зурдаг байв. Хадгалагдсан
+     утга (`on`) хэвээр харагдана, өөрчлөгдөхгүй. */
+  const allowed = (_r: Role, id: string): boolean => id !== 'admin';
 
   const usersOf = (r: Role): string[] => listUsers()
     .filter((u) => roleOf(u.username) === r)
@@ -202,7 +206,7 @@ export function ErhTypes({ remote, onDirty }: {
                       </button>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('арилгах')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: [] })}>
+                        onClick={() => put(r, { ...cur(r), on: cur(r).on.filter((id) => !allowed(r, id)) })}>
                         {tr('арилгах')}
                       </button>
                     </div>

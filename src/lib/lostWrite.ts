@@ -16,6 +16,9 @@ import { ArcGISError } from './query';
 const DEFINITE_HTTP = new Set([400, 401, 403, 404]);
 export function isLostWrite(e: unknown): boolean {
   if (e instanceof TypeError) return true;
+  /* ⚠️ 2026-10-09 (аудит №6): ороосон алдаа (`bagtsSheet.applyUpdates`-ийн «{0}/{1} мөр хадгалагдав» — энгийн
+     `Error`) эх алдааны ангиллыг `lost: true`-гээр дамжуулна — эс бөгөөс хариу алдагдсан chunk «тодорхой татгалзал» болно */
+  if ((e as { lost?: unknown } | null)?.lost === true) return true;
   const name = (e as { name?: string } | null)?.name ?? '';
   if (name === 'TimeoutError' || name === 'AbortError') return true;
   if (!(e instanceof ArcGISError) || e.code != null || e.sessionExpired) return false;

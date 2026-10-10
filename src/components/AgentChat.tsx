@@ -135,6 +135,34 @@ export function AgentChat({
   const abort = useRef<AbortController | null>(null);
 
   /**
+   * ⚠️ 2026-10-09 (аудит №6): ЭРХ (`scope`) ӨӨРЧЛӨГДӨХӨД ЯРИАГ ШИНЭЭР ЭХЛҮҮЛНЭ. Урьд нь
+   *    `history.current` хэвээр үлддэг тул эрх ХАСАГДСАН хойно ч өмнөх `tool_result`
+   *    (хасагдсан харагдацын өгөгдөл) түүхээр загварт очсоор, загвар түүнээс хариулж
+   *    чаддаг байв. `tools/telegram-bot.mjs`-ийн `scopeKey` загвар: эрэмбэлсэн түлхүүр
+   *    зөрвөл түүх · дэлгэц · алдаа тэглэгдэж, «яриа шинээр эхэллээ» мэдэгдэл гарна.
+   *    Эхний mount-д алгасна (`useRef(scopeKey)` · `useState(scopeKey)`).
+   *  · Дэлгэцийн төлөв — «өмнөх prop» render-дундын хэв маяг (эффект дотор setState БИШ,
+   *    `react-hooks/set-state-in-effect`-д баригдахгүй);
+   *  · ref (түүх, явж буй хүсэлтийн цуцлалт) — эффектэд (render үед ref бичихгүй).
+   */
+  const scopeKey = scope === 'all' ? 'all' : [...scope].sort().join(',');
+  const [seenScopeKey, setSeenScopeKey] = useState(scopeKey);
+  const [scopeNotice, setScopeNotice] = useState(false);
+  if (scopeKey !== seenScopeKey) {
+    setSeenScopeKey(scopeKey);
+    setLog([]);
+    setError(null);
+    setScopeNotice(true);
+  }
+  const historyScope = useRef(scopeKey);
+  useEffect(() => {
+    if (historyScope.current === scopeKey) return;
+    historyScope.current = scopeKey;
+    abort.current?.abort();
+    history.current = [];
+  }, [scopeKey]);
+
+  /**
    * «Дахин шалгах» товчны тоолуур — өөрчлөгдөхөд доорх эффект `/health`-ийг ДАХИН шалгана.
    * ⚠️ 2026-10-06 (аудит): урьд нь `alive === false` үед ч эхлэх асуултууд ба «Илгээх»
    *    идэвхтэй байж, асуулт бүр реле хүлээгээд унадаг байв; дахин шалгах цорын ганц зам нь
@@ -192,6 +220,7 @@ export function AgentChat({
 
       setInput('');
       setError(null);
+      setScopeNotice(false);
       setLog((l) => [...l, { role: 'user', text: q }]);
       setBusy(true);
       setProgress(tr('Бодож байна…'));
@@ -254,6 +283,7 @@ export function AgentChat({
     history.current = [];
     setLog([]);
     setError(null);
+    setScopeNotice(false);
   };
 
   /*
@@ -345,6 +375,12 @@ export function AgentChat({
 
       {/* ⚠️ 2026-09-30: `aria-live` — хариу ирэхэд дэлгэц уншигч зарлана */}
       <div className={s.log} ref={logRef} aria-live="polite">
+        {/* ⚠️ 2026-10-09 (аудит №6): эрх өөрчлөгдөж яриа тэглэгдсэнийг хэлнэ (дээрх `scopeKey` ⚠️) */}
+        {scopeNotice && (
+          <div className={s.progress} role="status">
+            {tr('Эрх өөрчлөгдсөн тул яриа шинээр эхэллээ.')}
+          </div>
+        )}
         {/* ⚠️ Тайлбар бичиг ЗОРИУДААР байхгүй — зөвхөн дарж болох жишээ асуултууд.
             Хэрэглэгч уншихаас илүү дарж эхэлдэг. */}
         {!log.length && (

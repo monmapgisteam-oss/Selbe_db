@@ -5,7 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, cat } from '@/lib/format';
 import {
   CHART, DONUT_SIZES, RING_SIZES, ringStroke, lineSegments, areaPath, monotonePath,
-  glow, niceTicks, stepDecimals, arcPath,
+  glow, niceTicks, stepDecimals, arcPath, roundPctsTo100,
   type DonutSize, type RingSize,
 } from '@/lib/chartStyle';
 import type { Async } from '@/lib/useAsync';
@@ -914,10 +914,13 @@ export function Stack({
     onMouseLeave: () => setHov((h) => (h === key ? null : h)),
   });
   const isDim = (key: string) => hov != null && hov !== key;
-  const share = (v: number) => {
-    const f = fin(v) / sum;
+  /* ⚠️ 2026-10-09 (аудит №6): хэсэг бүрийг тусад нь `toFixed(0)` → их үлдэгдлийн арга
+     (`chartStyle.roundPctsTo100`, Donut-тай нэг) — тайлбарын хувиуд нийлээд ЯГ 100 (урьд 99/101%).
+     `total` өгсөн бол түүгээр — хэсгүүд бүхлийг бүрхээгүй бол < 100 хэвээр. */
+  const shares = roundPctsTo100(items.map((it) => fin(it.value)), total == null ? undefined : fin(total));
+  const share = (idx: number) => {
     // «0%» худал уншилтаас сэргийлнэ — Donut-ынхтой ижил дүрэм
-    return f > 0 && f < 0.005 ? '<1%' : `${(f * 100).toFixed(0)}%`;
+    return fin(items[idx].value) > 0 && shares[idx] === 0 ? '<1%' : `${shares[idx]}%`;
   };
 
   return (
@@ -931,7 +934,7 @@ export function Stack({
                (`currentColor`) сегментийн ӨӨРИЙН өнгөөр гарна */
             style={{ width: `${(fin(i.value) / sum) * 100}%`, background: colorOf(idx), color: colorOf(idx) }}
             {...hoverProps(i.key)}
-            {...tip.bind({ label: i.label, value: `${valText(i)} · ${share(i.value)}`, color: colorOf(idx) })}
+            {...tip.bind({ label: i.label, value: `${valText(i)} · ${share(idx)}`, color: colorOf(idx) })}
           />
         ))}
       </div>
@@ -949,7 +952,7 @@ export function Stack({
                   доогуур тул өнгө нь дангаараа мэдээлэл дамжуулж болохгүй
                   (globals.css дахь «relief» дүрэм). */}
               <b className={`${s.legendVal} num`}>{valText(i)}</b>
-              <span className={s.legendPct}>{share(i.value)}</span>
+              <span className={s.legendPct}>{share(idx)}</span>
             </li>
           ))}
         </ul>
@@ -1125,15 +1128,9 @@ export function Donut({
    *    16.5·16.5·67 нь «17+17+67 = 101%» гэж уншигддаг байв. 0 биш боловч 0 болсон зүсмэг «<1%».
    */
   const legendPct = (() => {
-    const raw = slices.map((sl) => sl.frac * 100);
-    const base = raw.map((v) => Math.floor(v));
-    let left = total > 0 ? 100 - base.reduce((a, b) => a + b, 0) : 0;
-    const order = raw.map((v, i) => [v - base[i], i] as const).sort((p, q) => q[0] - p[0]);
-    for (const [, i] of order) {
-      if (left <= 0) break;
-      base[i] += 1;
-      left -= 1;
-    }
+    /* ⚠️ 2026-10-09 (аудит №6): арга нь `chartStyle.roundPctsTo100` болж НЭГ эх — Stack · CEO
+       scorecard · доорх aria тойм ч үүгээр. */
+    const base = roundPctsTo100(slices.map((sl) => fin(sl.value)), total);
     return (key: string) => {
       const i = slices.findIndex((sl) => sl.key === key);
       if (i < 0) return '';
@@ -1168,7 +1165,8 @@ export function Donut({
     tr('Дугуй диаграм. Нийт {0}{1}. ', centerText, centerLabel ? ` ${centerLabel}` : '') +
     slices
       .slice(0, 3)
-      .map((sl) => `${tr(sl.label)} ${(sl.frac * 100).toFixed(0)}%`)
+      /* ⚠️ 2026-10-09 (аудит №6): тайлбартай ЯГ ижил тоо (`legendPct`) — тусдаа `toFixed(0)` биш */
+      .map((sl) => `${tr(sl.label)} ${legendPct(sl.key)}`)
       .join(', ') +
     (items.length > 3 ? tr(', бусад {0} ангилал.', items.length - 3) : '.');
 
@@ -2258,8 +2256,11 @@ export function Trend({
   //    React 19-ийн `useId` нь CSS/`url(#…)`-д хүчинтэй тэмдэгт л гаргана.
   const gradId = `trendArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
-  /** Утга бичих дүрэм — өгөөгүй бол хувийн анхдагч (нэг аравтын орон) */
-  const fmtV = fmt ?? ((v: number) => v.toFixed(1));
+  /** Утга бичих дүрэм — өгөөгүй бол `autoNum` (мянгатын таслал; бүхэл «26», бутархай «26.3»).
+      ⚠️ 2026-10-09 (аудит №6): урьд `toFixed(1)` — AgentChart-ын `line` (fmt-гүй) мөнгөн цуваанд
+      «2660000000000.0 ₮» гарч байв; хувийн дуудагчид «26.3%» хэвээр, бүхэл нь цэгийн шошготой
+      («98», доорх ⚠️) нэг хэлбэр. */
+  const fmtV = fmt ?? autoNum;
 
   // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
@@ -2505,7 +2506,8 @@ export function Trend({
                 style={{ top: `${alertY}%` }}
                 title={alert.note ?? ''}
               >
-                {alert.value}{unit}
+                {/* ⚠️ 2026-10-09 (аудит №6): түүхий `{alert.value}` → `fmtV` — цэг/уншилттай нэг формат */}
+                {fmtV(alert.value)}{unit}
               </span>
             ) : null}
 
@@ -2560,7 +2562,8 @@ export function Trend({
                     className={`${s.trendVal} ${over(p.value) ? s.trendValAlert : ''}`}
                     style={{ top: `${y(p.value)}%` }}
                   >
-                    {fmt ? fmt(p.value) : (Number.isInteger(p.value) ? p.value : p.value.toFixed(1))}
+                    {/* ⚠️ 2026-10-09 (аудит №6): `fmtV` (anхдагч `autoNum`) — бүхэл «.0»-гүй хэвээр, мянгатын таслалтай */}
+                    {fmtV(p.value)}
                   </span>
                 ) : null}
               </button>

@@ -29,6 +29,8 @@ import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
+/* ⚠️ 2026-10-09 (аудит №6): багцын нэрийг `bagtsKey`-ээр жишнэ (`negtgelWrite.summaryOf`-той нэг дүрэм) */
+import { bagtsKey } from '@/lib/services';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
@@ -285,8 +287,10 @@ async function loadStaged(
   /*
    * ⚠️ Багц зөрвөл ЗОГСОНО — өөр багцын гүйцэтгэлийг энэ хяналтын мөрөнд
    *    харуулбал хянагч огт өөр ажлыг батлана.
+   * ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр — хяналтын бүртгэлийн нэр «Багц 4.1» / «Багц 4-1» аль
+   *    бичлэгээр ирсэн ч нэг багц (`negtgelWrite.summaryOf`-той нэг дүрэм; урьд ЯГ тэнцүү тул зөрдөг байв).
    */
-  if (pkg.group !== bagts)
+  if (bagtsKey(pkg.group) !== bagtsKey(bagts))
     throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
 
   /* ⚠️ 2026-10-09: `fillSchema` — бөглөгчийн (FillNew) ба архивлагчийн (hyanaltStore) бүдүүвчтэй НЭГ:
@@ -514,7 +518,8 @@ async function loadStaged(
  */
 async function loadArchived(bagts: string, sheetOid: number): Promise<Submission | null> {
   // Нэг багцад 9 ба 12 давхрын ХОЁР үйлчилгээ байж болно — аль нь болохыг эх мөрөөр нь тогтооно
-  const cands = PKGS.filter((p) => p.group === bagts);
+  /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр (`loadStaged`-ийн ⚠️-тэй ижил) */
+  const cands = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
   if (!cands.length || !sheetOid) return null;
   let last = '';
 

@@ -98,7 +98,10 @@ export function settingGroups(): SettingGroup[] {
     },
     {
       title: tr('Удирдлага'),
-      rows: [{ id: 'admin', label: tr('Хэрэглэгчийн эрх удирдах (админ самбар)'), hint: tr('Зөвхөн Super төрөлд'), superOnly: true }],
+      /* ⚠️ 2026-10-09 (аудит №6): ҮХМЭЛ ТОХИРГОО — `on.includes('admin')`-ыг хэн ч уншдаггүй; админ самбар
+         зөвхөн кодын хатуу super-т (`Root.hardSuper`). Мөрийг хадгалагдсан загвартай нийцтэй үлдээж
+         (`KNOWN` · `DEFAULT_TPL.super` · `cleanTpl`), `ErhTypes` чекбоксыг бүх төрөлд идэвхгүй болгов. */
+      rows: [{ id: 'admin', label: tr('Хэрэглэгчийн эрх удирдах (админ самбар)'), hint: tr('Зөвхөн кодонд бүртгэлтэй админд — загвараас тохируулагдахгүй'), superOnly: true }],
     },
   ];
 }
@@ -163,6 +166,7 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
     on: V('gazar', 'gdash', 'plan', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
     home: 'gazar',
   },
+  /* ⚠️ 2026-10-09 (аудит №6): `'admin'` нь зөвхөн хадгалагдсан өгөгдөлтэй нийцтэй — уншигддаггүй (`settingGroups`-ийн ⚠️) */
   super: { on: [...ALL_VIEWS, 'docs', 'admin'], home: 'gdash' },
 };
 

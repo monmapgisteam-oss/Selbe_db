@@ -2,6 +2,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MA_SVC } from '@/lib/services/env';
 import { entSession } from '@/lib/entDocs';
+import { requireCap } from '@/lib/who';
 
 /**
  * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Survey123 маягт → Enterprise hosted
@@ -274,7 +275,21 @@ export async function listMaAtts(oid: number): Promise<MaAtt[]> {
   }));
 }
 
+/**
+ * ⚠️ 2026-10-09 (аудит №6): ХАВСРАЛТ НЭМЭХ/УСТГАХ ЭРХ LIB-Д — UI-ийн `canAttach`-тай ИЖИЛ дүрэм
+ *    (`chanarAuthor` ЭСВЭЛ `chanarReview`). Урьд нь зөвхөн Enterprise токен шалгадаг тул эрхгүй аккаунт
+ *    консолоос MA-гийн гэрчилгээг устгаж чаддаг байв. Хөтөчид л хаана (`who.requireCap`).
+ */
+function requireAttachCap(): void {
+  try { requireCap('chanarAuthor'); } catch {
+    try { requireCap('chanarReview'); } catch {
+      throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «chanarAuthor» эсвэл «chanarReview» эрх авна уу.'));
+    }
+  }
+}
+
 export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<void> {
+  requireAttachCap();
   const okType = /^(application\/pdf|image\/(jpeg|png))$/.test(file.type) || /\.(pdf|jpe?g|png)$/i.test(file.name);
   if (!okType) throw new Error(tr('Зөвхөн PDF, JPG, PNG файл хавсаргана.'));
   const fd = new FormData();
@@ -287,6 +302,7 @@ export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<
 }
 
 export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
+  requireAttachCap();
   const j = await arc<{ deleteAttachmentResults?: { success?: boolean; error?: { description?: string } }[] }>(
     `${MA_URL}/${oid}/deleteAttachments`, new URLSearchParams({ f: 'json', token: tok(), attachmentIds: String(attId) }));
   const r = j.deleteAttachmentResults?.[0];

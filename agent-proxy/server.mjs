@@ -20,7 +20,7 @@ import { timingSafeEqual, createHash, createHmac } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
 import {
-  createLimiter, LIMITS, createBudget, budgetFromEnv, BUDGET_MSG, upstreamErrorText,
+  createLimiter, LIMITS, createBudget, budgetFromEnv, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
 } from "./rateLimit.mjs";
@@ -434,7 +434,10 @@ const server = createServer(async (req, res) => {
       caller = `user:${auth.username}`;
     }
   }
-  if (limiter.hit(caller, LIMITS.user)) {
+  /* ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ШАЛГАНА (`full`, тоолохгүй) — тоолол (`hit`) доор, төсөв ба
+     зэрэг хүсэлтийн слот АВСНЫ ДАРАА. Урьд нь төсөв/слотоор татгалзсан 429 ч минутын тоог иддэг
+     тул зэрэг хүсэлтийн тагт буцсан хэрэглэгч хэдхэн оролдлогоор минутын хязгаартаа ч хүрдэг байв. */
+  if (limiter.full(caller, LIMITS.user)) {
     json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
     return;
   }
@@ -454,6 +457,8 @@ const server = createServer(async (req, res) => {
     json(res, 429, { error: CONCURRENT_MSG, code: "concurrent", retryable: true });
     return;
   }
+  /* ⚠️ 2026-10-09 (аудит №6): минутын тоололд ЗӨВХӨН дээд үйлчилгээ рүү явах хүсэлт орно (дээрх `full` ⚠️) */
+  limiter.hit(caller, LIMITS.user);
   try {
     await relayChat(req, res, { caller, isBot, budgeted });
   } finally {
@@ -566,7 +571,14 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
         ? err
         : new ClaudeCodeError("AI туслах хариу өгч чадсангүй — дахин оролдоно уу.", { status: 500, detail: err?.message });
       console.error("[agent-proxy:claude-code]", caller, e.message, e.detail ? `— ${e.detail}` : "");
-      if (e.status === 401) ready = { ok: false, reason: e.message };
+      /* ⚠️ 2026-10-09 (аудит №6): Claude Code нэвтрээгүй (401) — ХОСТЫН тохиргооны алдаа, хэрэглэгчийн
+         ArcGIS токеных биш. 401-ээр буцаавал клиент токеноо шинэчлээд дахин илгээж, «дахин нэвтэрнэ үү»
+         гэж худал хэлдэг байв → 502 `upstream_auth` (`rateLimit.UPSTREAM_AUTH`); шалтгаан нь логт. */
+      if (e.status === 401) {
+        ready = { ok: false, reason: e.message };
+        json(res, 502, UPSTREAM_AUTH);
+        return;
+      }
       json(res, e.status, { error: e.message, retryable: e.retryable });
     }
     return;
@@ -626,17 +638,18 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
     //
     // ⚠️ Урьдчилж `ANTHROPIC_API_KEY`-г шалгах ЁСГҮЙ: `ant auth login`-оор
     //    нэвтэрсэн бол орчны хувьсагч хоосон ч SDK диск дээрх профайлаас уншина.
+    //
+    // ⚠️ 2026-10-09 (аудит №6): 401 БИШ, 502 + `code: 'upstream_auth'` (`rateLimit.UPSTREAM_AUTH`,
+    //    `worker.mjs`-тэй толин). Урьд 401 буцаадаг тул клиент (`callRelay`) ArcGIS токеноо хуучирсан
+    //    гэж үзэж шинэчлээд дахин илгээж, хэрэглэгчид «дахин нэвтэрнэ үү» гэдэг байв. Хостын заавар
+    //    (`.env.local`-д `ANTHROPIC_API_KEY`) зөвхөн логт.
     if (
       err instanceof Anthropic.AuthenticationError ||
       /could not resolve authentication|api key|authentication/i.test(msg)
     ) {
       setCharge(0);
-      json(res, 401, {
-        error:
-          "AI үйлчилгээний түлхүүр тохируулагдаагүй эсвэл буруу байна. " +
-          "`agent-proxy/.env.local` файлд `ANTHROPIC_API_KEY=…` бичээд `npm start` ажиллуулна уу.",
-        retryable: false,
-      });
+      console.error("[agent-proxy] ⛔ AI үйлчилгээний түлхүүр тохируулагдаагүй эсвэл буруу — `agent-proxy/.env.local`-д `ANTHROPIC_API_KEY=…` бичээд `npm start`.");
+      json(res, 502, UPSTREAM_AUTH);
       return;
     }
 

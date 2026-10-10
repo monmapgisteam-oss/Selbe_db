@@ -40,6 +40,7 @@ import { latestRowPerDay, companyReported, laborStaleness, ubDayKey } from '@/li
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours } from './habeaRate';
 import { cached } from '@/lib/live';
+import { register } from '@/lib/dataBus';
 import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
@@ -277,14 +278,15 @@ type LaborRow = {
  * ⚠️ Шинэ маягт (2026-08) техникийг ЗӨВХӨН гүйцэтгэгчийн нийт тоогоор хөтөлдөг
  * (`Tehnik_<SFX>`) — цамхагт кран/экскаватор гэх ТӨРЛИЙН задаргаа БАЙХГҮЙ.
  */
+/* ⚠️ 2026-10-09 (аудит №6): `hunTsag` · `cum.hunTsag` ХАСАГДСАН — хаана ч уншигддаггүй үхмэл талбар
+   (хүн-цаг нь `habeaRate.hoursByDay` · `ltiFreeHours`-оос). */
 function laborState(rows: Row[]): {
   rows: LaborRow[];
   asOf: number | null;
-  hunTsag: number;
-  cum: { ajiltan: number; hunTsag: number; tehnik: number };
+  cum: { ajiltan: number; tehnik: number };
 } {
-  const ZERO = { ajiltan: 0, hunTsag: 0, tehnik: 0 };
-  if (!rows.length) return { rows: [], asOf: null, hunTsag: 0, cum: ZERO };
+  const ZERO = { ajiltan: 0, tehnik: 0 };
+  if (!rows.length) return { rows: [], asOf: null, cum: ZERO };
   const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['CreationDate']);
   /**
    * ⚠️ «Хамгийн сүүлийн тайлан»-г ЗӨВХӨН огноо БҮХИЙ мөрөөс сонгоно.
@@ -331,16 +333,15 @@ function laborState(rows: Row[]): {
    */
   // ⚠️ Хуримтлагчийн төрлийг ЗААВАЛ бичнэ — эс бөгөөс TS нь массивын элементийн
   //    төрөл (`Row`) гэж таамаглаад `a.ajiltan` нь `string | number | null` болно.
-  const cum = rows.reduce<{ ajiltan: number; hunTsag: number; tehnik: number }>(
+  const cum = rows.reduce<{ ajiltan: number; tehnik: number }>(
     (a, r) => ({
       ajiltan: a.ajiltan + nn(r[L.niitAjiltan]),
-      hunTsag: a.hunTsag + nn(r[L.hunTsag]),
       tehnik: a.tehnik + nn(r[L.niitTehnik]),
     }),
-    { ajiltan: 0, hunTsag: 0, tehnik: 0 },
+    { ajiltan: 0, tehnik: 0 },
   );
 
-  return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]), cum };
+  return { rows: comp, asOf, cum };
 }
 
 
@@ -650,6 +651,10 @@ type Photo = { id: number; name: string; type?: string };
 
 /** Бүртгэл бүрийн хавсралтын жагсаалт — нэг удаа татаад кэшлэнэ (задлах бүрд дахин татахгүй) */
 const photoCache = new Map<number, Promise<Photo[]>>();
+/* ⚠️ 2026-10-09 (аудит №6): `invalidate('HABEA')` (бүртгэл нэмэх · «Шинэчлэх» · таб буцаж ирэх)-д
+   хаягдана — урьд нь модулийн кэш өгөгдлийн автобусад бүртгэлгүй тул шинэ хавсралт сешн дуустал
+   харагдахгүй байв (`live.cached`-тэй ижил `register`). */
+register(() => photoCache.clear(), ['HABEA']);
 const loadPhotos = (oid: number): Promise<Photo[]> => {
   let p = photoCache.get(oid);
   if (!p) {
@@ -1388,7 +1393,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ⚠️ 2026-10-09 (аудит): «…осолгүй ажилласан цаг» — СҮҮЛИЙН LTI-ээс хойших хүн-цаг
      (`habeaRate.ltiFreeHours`). Урьд нь Σ `Hun_tsag` (LTI-д тэглэгддэггүй). Ослын БҮХ
      бүртгэлээс (шүүлтгүй) — KPI нь төслийн түвшний, шүүлт идэвхтэй үед «—». */
-  const ltiFree = useMemo(() => ltiFreeHours(laborRows, inc, ubDayKey), [laborRows, inc]);
+  /* ⚠️ 2026-10-09 (аудит №6): `now` төлвөөс — урьд нь 4 дэх аргумент өгөөгүй тул useMemo дотор
+     `Date.now()` (react-hooks/purity; ирээдүйн LTI-ийн шалгалт минут тутмын цагтай уялдахгүй) */
+  const ltiFree = useMemo(() => ltiFreeHours(laborRows, inc, ubDayKey, now), [laborRows, inc, now]);
   /**
    * ОГНООНЫ ШҮҮЛТТЭЙ хүн хүчний мөрүүд — өдөр/сарын цувааг ЭС тооцвол бүх
    * хүн хүчний дүрслэл (монгол/гадаад, компаниар) эндээс.
@@ -2709,7 +2716,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           *
           * ⚠️ Дарахад хуудасны «Компани» шүүлт тавигдана — зөвхөн хүн хүчний
           * бүртгэлтэй холбогдсон компани (`co:` угтвартай түлхүүр дарахад юу ч
-          * болохгүй). ⚠️ 2026-09-17: «Багц» шүүлтийг ДАГАНА (`weekScoreByCo`).
+          * болохгүй). ⚠️ 2026-09-17: «Багц» шүүлтийг ДАГАНА (`weekScoreByCo` — 2026-10-09 хасагдсан).
           */}
         {/* ⚠️ 2026-10-08 (хэрэглэгч): «Үзлэгийн оноо — компаниар» (хэвтээ, компаниар) ОРОНД
             «Ажлын байрны үзлэг» — ижил босоо багана (`ScoreColumns`), өмнөх долоо хоногийн

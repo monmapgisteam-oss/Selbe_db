@@ -278,17 +278,20 @@ export function HuvaariBatlah({
   useEffect(() => () => { alive.current = false; }, []);
 
   /* ⚠️ 2026-10-08: түгжээний цагийн тик + чимээгүй дахин татах (`now`-ийн ⚠️) — `alive`-ийн ДАРАА */
+  /* ⚠️ 2026-10-09 (аудит №6): ХОЦОРСОН хариу `reject`/`withdraw`/`reload`-ын ДАРААХ шинэ төлөвийг дарахгүй — эффект
+     дахин ажиллахад (`busy` солигдох) өмнөх тикийн гүйж буй `loadAllPending()` `live = false` болж хаягдана. */
   useEffect(() => {
     if (st.k !== 'ready') return;
+    let live = true;
     const id = window.setInterval(() => {
       if (document.hidden) return;
       setNow(Date.now());
       if (busy) return;
       void loadAllPending().then((rows) => {
-        if (alive.current) setSt((cur) => (cur.k === 'ready' ? { k: 'ready', rows } : cur));
+        if (live && alive.current) setSt((cur) => (cur.k === 'ready' ? { k: 'ready', rows } : cur));
       }).catch(() => { /* дараагийн тикт */ });
     }, 45_000);
-    return () => window.clearInterval(id);
+    return () => { live = false; window.clearInterval(id); };
   }, [st.k, busy]);
 
 
@@ -645,6 +648,10 @@ export function HuvaariBatlah({
                        боломжгүй тул зохиогчид гацлаас гарах өөр зам байгаагүй. */
                     onWithdraw={isOwn(x) ? () => void withdraw(x) : undefined}
                     ownWhy={tr('Энэ багцын түлхүүр бүртгэлд алга — «Хуваарь» хуудас руу шилжих боломжгүй. Буцаавал гүйцэтгэгч зөв багцаар дахин илгээнэ.')}
+                    /* ⚠️ 2026-10-09 (аудит №6): ХАГАС бичигдсэн (`PARTIAL_MARK`) бүртгэлгүй мөрд ч «Гацсаныг буцаах» —
+                       урьд нь зөвхөн дараалалд (`todo`) өгөгддөг тул жирийн «Буцаах» хаалттай orphan мөр гацлаас гарах
+                       замгүй байв (дээрх «БУЦААХ нээлттэй» ⚠️-тэй зөрж). Өөрийн илгээлтэд үгүй (`returnStuckPlan` татгалзана). */
+                    onReturnStuck={!isOwn(x) && partialBy(x.status, x.reason) != null ? () => void returnStuck(x) : undefined}
                   />
                 ))}
               </div>

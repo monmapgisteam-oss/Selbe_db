@@ -124,16 +124,37 @@ export function GazarEdit({
     setD((p) => (p ? { ...p, [k]: v } : p));
     setErr((p) => ({ ...p, [k]: undefined }));
     setFail('');
+    setAskClose(false);
   };
 
-  const tryClose = useCallback(() => {
-    if (busy) return;
-    if (dirty.current && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?'))) return;
-    /* ⚠️ Хаяхаар шийдсэн тул тугийг унтраана — эцэг дахин асуух ёсгүй */
+  /**
+   * ХААХЫН ӨМНӨХ АСУУЛТ — маягт дотор мөр («Тийм»/«Үгүй»).
+   *
+   * ⚠️ 2026-10-09 (аудит №6): `window.confirm` хөтчид хаагдсан үед үргэлж `false`
+   * буцаан бөглөсөн маягт ХААГДАХГҮЙ гацдаг байв (`DedButetsEdit.askClose`-ийн
+   * ижил сургамж). Асуулт самбарт гарна; талбар засвал арилна.
+   * ⚠️ Объект (`oid`) солигдоход тэглэнэ («өмнөх prop» хэв — эцэг `key={editOid}`-ээр
+   * дахин mount хийдэг ч давхар хамгаалалт; эффект доторх синхрон setState-ийг lint хориглодог).
+   */
+  const [askClose, setAskClose] = useState(false);
+  const [askFor, setAskFor] = useState(oid);
+  if (askFor !== oid) {
+    setAskFor(oid);
+    setAskClose(false);
+  }
+
+  /** Хаяхаар шийдсэн — тугийг унтраана (эцэг дахин асуух ёсгүй), хаана */
+  const dropClose = useCallback(() => {
     dirty.current = false;
     onDirty?.(false);
     onCancel();
-  }, [busy, onCancel, onDirty]);
+  }, [onCancel, onDirty]);
+
+  const tryClose = useCallback(() => {
+    if (busy) return;
+    if (dirty.current) { setAskClose(true); return; }
+    dropClose();
+  }, [busy, dropClose]);
 
   /* Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй */
   useEffect(() => {
@@ -292,6 +313,19 @@ export function GazarEdit({
 
               {fail && <div className={g.formErr} role="alert">{fail}</div>}
             </div>
+
+            {/* Самбарын асуулт — `askClose`-ийн тайлбар (2026-10-09, аудит №6) */}
+            {askClose && (
+              <div className={g.askRow} role="group" aria-live="assertive">
+                <span className={g.askMsg}>{tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?')}</span>
+                <button type="button" className={g.primary} onClick={dropClose} disabled={busy}>
+                  {tr('Тийм')}
+                </button>
+                <button type="button" className={g.btn} onClick={() => setAskClose(false)} disabled={busy}>
+                  {tr('Үгүй')}
+                </button>
+              </div>
+            )}
 
             <div className={g.actions}>
               <span className={g.spacer} />

@@ -1,6 +1,12 @@
 import { t as tr } from '@/lib/i18nCore';
 import { ENT_PORTAL, entSession, entUploadPdf } from '@/lib/entDocs';
-import type { Verdict } from '@/lib/ma';
+import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
+import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
+import { isAuthorFor, reviewerRolesFor } from '@/lib/chanarAcl';
+import { currentUser, requireCap } from '@/lib/who';
+import { AUTH } from '@/lib/services';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { fromDateInput } from '@/modules/chanar/chanarUi';
 
 /**
  * FIC · М-АКТ — Чанарын 3 ба 4-р шат (2026-10-09). Хэрэглэгчийн шийдвэр (`memory/chanar-redesign`):
@@ -168,28 +174,92 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   return urlCache;
 }
 
+/** Хүснэгтийн мөрүүд — `where`-ээр, хуудаслалттай (`fmRowOf`) */
+async function queryFm(url: string, where: string): Promise<FmRow[]> {
+  const out: FmRow[] = [];
+  /* ⚠️ 2026-10-09 (аудит №6): ХУУДАСЛАЛТ — урьд нь `resultRecordCount: 2000` НЭГ хүсэлт байв: 2000-аас дээш
+     баримт (эсвэл үйлчилгээний `maxRecordCount` бага бол түүнээс дээш) чимээгүй алга болж, FIC/М-акт шат
+     «хүлээгдэж буй» гэж худал гардаг. `chanarStore.query`-ийн загвар: `resultOffset` давталт, `orderByFields`
+     ЗААВАЛ, `exceededTransferLimit`-ээр таслана (`fs.length`-ээр БИШ). */
+  for (let off = 0; ; ) {
+    const j = await post<{ features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean }>(`${url}/query`, {
+      where, outFields: '*', orderByFields: 'OBJECTID DESC', resultOffset: String(off), resultRecordCount: '1000',
+    });
+    const fs = j.features ?? [];
+    out.push(...fs.map((f) => fmRowOf(f.attributes)));
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    off += fs.length;
+  }
+  return out;
+}
+
 /** Бүх FIC · М-акт. Хүснэгт хараахан үүсээгүй бол хоосон. Enterprise нэвтрэлт шаардана. */
 export async function loadFm(): Promise<FmRow[]> {
   const url = await tableUrl(false);
   if (!url) return [];
-  const j = await post<{ features?: { attributes: Record<string, unknown> }[] }>(`${url}/query`, {
-    where: '1=1', outFields: '*', orderByFields: 'OBJECTID DESC', resultRecordCount: '2000',
-  });
-  return (j.features ?? []).map((f) => fmRowOf(f.attributes));
+  return queryFm(url, '1=1');
+}
+
+/* ═══════════════ ЭРХ · ХҮРЭЭ · ГИНЖ (серверийн өгөгдлөөр) ═══════════════ */
+
+/**
+ * ⚠️ 2026-10-09 (аудит №6): БИЧИХ ЗАМЫН ЭРХ LIB-Д. Урьд нь `addFm` · `decideFm` зөвхөн `entSession()` ба
+ *    «өөрийн оруулсныг биш»-ийг шалгадаг, `chanarAuthor`/`chanarReview` эрх, багцын хүрээ, өмнөх шатны
+ *    батлагдсан эсэх (`locked`) ба `pending` төлөв нь ЗӨВХӨН UI (`Ma.tsx` → `FmColumn`) байв — консолоос
+ *    хэн ч батлагдсан мөрийг R болгож, хаалттай шатанд PDF оруулж чаддаг. `chanarStore.actor`/`authorDeny`
+ *    ба `attachDeny`-ийн загвар: эрх `requireCap`, хүрээ `chanarAcl` (нэвтрэлт асаалттай хөтөчид л — `strict`),
+ *    төлөв/гинж СЕРВЕРИЙН мөрөөс.
+ * ⚠️ MA мөрийн `pkg` нь хуудасны түлхүүр («b1_9f»), чанарын ACL нь багцын бүлэг («Багц 1») — `PKGS`-ээр хөрвүүлнэ;
+ *    танигдахгүй бол FAIL-CLOSED.
+ */
+const strict = (): boolean => typeof window !== 'undefined' && !!AUTH.appId;
+
+async function maOf(maNo: string): Promise<{ ma: MaRow; bagts: string }> {
+  const ma = latestPerRespNo(await loadMa()).find((r) => r.respNo === maNo);
+  if (!ma) throw new Error(tr('«{0}» дугаартай MA олдсонгүй — баримт холбох боломжгүй.', maNo));
+  const bagts = PKGS.find((p) => p.key === ma.pkg)?.group ?? '';
+  if (!bagts) throw new Error(tr('MA-гийн багц ({0}) танигдсангүй — багцын хүрээг шалгах боломжгүй.', ma.pkg || '—'));
+  return { ma, bagts };
+}
+
+function scopeDeny(role: 'author' | 'review', bagts: string): void {
+  if (!strict()) return;
+  const me = currentUser();
+  if (role === 'author' ? !isAuthorFor(me, bagts) : reviewerRolesFor(me, bagts).length === 0) {
+    throw new Error(role === 'author'
+      ? tr('«{0}» багцад гүйцэтгэгчийн эрхгүй — FIC · М-акт оруулах боломжгүй.', bagts)
+      : tr('«{0}» багцад хянагчийн эрхгүй — FIC · М-акт батлах боломжгүй.', bagts));
+  }
 }
 
 /**
  * PDF оруулж баримт нэмнэ: 1) PDF → Enterprise item (байгууллагад хуваалцсан) 2) хүснэгтэд мөр (төлөв pending).
  * ⚠️ 2-р алхам унавал item үүссэн хэвээр — алдааны мессежид item-ийн ID-г хэлнэ (дахин оруулбал давхардана).
+ * ⚠️ 2026-10-09 (аудит №6): `chanarAuthor` + багцын хүрээ + ӨМНӨХ ШАТ (MA → MIR → FIC) серверийн өгөгдлөөр —
+ *    `chainOf` тухайн шатыг `locked` гэвэл татгалзана (UI-ийн `locked`-той ИЖИЛ дүрэм, PDF item үүсэхээс ӨМНӨ).
  */
 export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docDate: string; file: File }): Promise<{ warn?: string }> {
   const s = sess();
+  requireCap('chanarAuthor');
   if (!a.maNo) throw new Error(tr('MA дугааргүй — баримт холбох боломжгүй.'));
+  const { ma, bagts } = await maOf(a.maNo);
+  scopeDeny('author', bagts);
   const url = await tableUrl(true);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
+  const [mirs, fm] = await Promise.all([loadMir(), queryFm(url, `${F.maNo} = N'${a.maNo.replace(/'/g, "''")}'`)]);
+  const stage = chainOf(ma.verdict, {
+    MIR: mirVerdictFor(mirsByMa(mirs).get(a.maNo)),
+    FIC: fmVerdictFor(fm.filter((r) => r.kind === 'FIC')),
+    MAKT: fmVerdictFor(fm.filter((r) => r.kind === 'MAKT')),
+  }).find((st) => st.key === a.kind);
+  if (!stage || stage.state === 'locked') {
+    throw new Error(tr('Өмнөх шат батлагдаагүй — {0} оруулах боломжгүй.', a.kind === 'FIC' ? 'FIC' : tr('М-акт')));
+  }
   const title = `${a.kind === 'FIC' ? 'FIC' : 'М-акт'} · ${a.docNo || a.file.name.replace(/\.pdf$/i, '')} · ${a.maNo}`;
   const { item, warn } = await entUploadPdf(a.file, title);
-  const dd = /^\d{4}-\d{2}-\d{2}$/.test(a.docDate) ? Date.parse(`${a.docDate}T00:00:00Z`) : null;
+  /* ⚠️ 2026-10-09 (аудит №6): ОРОН НУТГИЙН шөнө дунд (`fromDateInput`) — урьд нь `T00:00:00Z` (UTC) тул
+     бусад чанарын огноотой (`chanarUi`) 8 цагаар зөрж, өдөр хойшилж харагддаг байв. */
+  const dd = fromDateInput(a.docDate);
   try {
     const j = await post<{ addResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: {
@@ -206,16 +276,27 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
   return { warn };
 }
 
-/** Батлах / буцаах. ⚠️ Өөрийн оруулсныг батлахгүй; R бол шалтгаан заавал. */
+/**
+ * Батлах / буцаах. ⚠️ Өөрийн оруулсныг батлахгүй; R бол шалтгаан заавал.
+ * ⚠️ 2026-10-09 (аудит №6): `chanarReview` + багцын хүрээ; мөрийг СЕРВЕРЭЭС дахин уншиж `pending` биш бол
+ *    татгалзана — урьд нь батлагдсан (A) мөрийг дуудагчийн хуучин `row`-оор R болгож дахин бичих боломжтой байв.
+ *    «Өөрийн оруулсныг биш»-ийг ч серверийн `uploaded_by`-оор шалгана.
+ */
 export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Promise<void> {
   const s = sess();
-  if (row.uploadedBy && row.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
+  requireCap('chanarReview');
   if (verdict === 'R' && !reason.trim()) throw new Error(tr('Буцаах шалтгаанаа бичнэ үү.'));
   const url = await tableUrl(false);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
+  const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
+  if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
+  if (fresh.uploadedBy && fresh.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
+  if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
+  const { bagts } = await maOf(fresh.maNo);
+  scopeDeny('review', bagts);
   const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
     updates: JSON.stringify([{ attributes: {
-      OBJECTID: row.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
+      OBJECTID: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
       [F.decidedBy]: s.user, [F.decidedAt]: Date.now(),
     } }]),
   });

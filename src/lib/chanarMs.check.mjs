@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import {
   REVIEWERS, ALL_REVIEWERS, REVIEWERS_OF, KINDS, MS_STATUS, VERDICT, ORG_CODE,
   pkgCode, orgCode, docNo, parseDocNo, nextSeq, repNo, nextRepNo, repFrom,
-  emptyReviews, resolve, progress, review, submit, canAct, history, latest,
+  emptyReviews, resolve, progress, review, submit, canAct, history, latest, latestApproved,
   submitCorrection, reopen, ncrClosure, statusLabel, verdictCode, verdictLabel, kindLabel,
   parseBodyOf, parseMeta, emptyBodyOf, inspResult, delayDays, EMPTY_NCR, EMPTY_INSP, EMPTY_MA, EMPTY_META,
   repSeqFor, requiredReviewers, newRevision, nextRevisionBody, applyRepToMaterials, bounce, ackRep, closeAn, closeNcr,
@@ -570,6 +570,19 @@ const base = () => ({
   assert.equal(l.length, 3, '3 өөр баримт');
   const b1s1 = l.find((d) => d.bagts === 'Багц 1' && d.seq === 1);
   assert.equal(b1s1.rev, 2, '⚠️ сүүлийн хувилбар л жагсаалтад');
+
+  /* ⚠️ 2026-10-09 (аудит №6): `latestApproved` — батлагдсан rev N дээр rev+1 ноорог үүссэн ч (иш татах ·
+     QAQC холбоос · батлагдсан тоонд) rev N хүчинтэй хэвээр; шинэ rev батлагдвал тэр нь орлоно. */
+  const withDraft = [...docs, mk('Багц 1', 1, 3, MS_STATUS.draft), mk('Багц 2', 1, 1, MS_STATUS.review), mk('Багц 1', 3, 0, MS_STATUS.returned)];
+  assert.equal(latest(withDraft).find((d) => d.bagts === 'Багц 1' && d.seq === 1).rev, 3, 'latest — ноорог rev 3');
+  const la = latestApproved(withDraft);
+  assert.equal(la.find((d) => d.bagts === 'Багц 1' && d.seq === 1).rev, 2, 'батлагдсан rev 2 ноорог гарсан ч хүчинтэй');
+  assert.equal(la.find((d) => d.bagts === 'Багц 2' && d.seq === 1).rev, 0, 'хянагдаж буй rev 1 биш, батлагдсан rev 0');
+  assert.equal(la.some((d) => d.bagts === 'Багц 1' && d.seq === 3), false, 'нэг ч батлагдсан хувилбаргүй баримт ОРОХГҮЙ');
+  assert.equal(la.length, 3);
+  assert.equal(latestApproved(withDraft.map((d) => ({ ...d, status: MS_STATUS.draft }))).length, 0);
+  const newer = [...withDraft, mk('Багц 1', 1, 3, MS_STATUS.approved)];
+  assert.equal(latestApproved(newer).find((d) => d.bagts === 'Багц 1' && d.seq === 1).rev, 3, 'шинэ rev батлагдвал орлоно');
 }
 
 

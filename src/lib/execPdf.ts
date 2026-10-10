@@ -18,7 +18,7 @@ import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, dateTime, PRINT_COLORS } from '@/lib/format';
 import {
-  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP,
+  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel,
   type ExecFinding, type ExecReport, type ExecAppendix,
 } from '@/lib/execReport';
 import { TOLOV } from '@/lib/zovshoorol';
@@ -510,7 +510,7 @@ export async function buildExecDoc(
       /* ══════════ 3. БИЕТ ГҮЙЦЭТГЭЛ ══════════ */
       { text: '', pageBreak: 'before' },
       ...h2('prog',
-        tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), num(p.households))),
+        tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))), // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
       lead(tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
         p.actual == null ? '—' : pct(p.actual, 1),
         p.planned == null ? '—' : pct(p.planned, 1),
@@ -538,7 +538,7 @@ export async function buildExecDoc(
           td(k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1), true,
             k.progress != null && k.progress < 5 ? RED : undefined),
         ]),
-        [tdBold(tr('Нийт')), tdBold(num(p.blocks), true), tdBold(num(p.households), true),
+        [tdBold(tr('Нийт')), tdBold(num(p.blocks), true), tdBold(householdsLabel(p), true),
           tdBold(p.actual == null ? '—' : pct(p.actual, 1), true)],
       ] }, layout: tableLayout },
       cap(tr('Блокийн гүйцэтгэлийн түвшингийн тархалт ({0} блок)', num(p.blocks))),

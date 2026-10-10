@@ -2382,6 +2382,9 @@ export async function applyUpdates(
       /* ⚠️ 2026-10-01: бичигдсэн мөрийн тоог алдаанд хавсаргана — батлагч тал (`Huvaari.save`)
          нэг ч мөр бичигдээгүй бол хагас бичилтийн тэмдгийг арилгана. */
       if (e && typeof e === 'object') (e as { written?: number }).written = i;
+      /* ⚠️ 2026-10-09 (аудит №6): ороосон шинэ `Error` нь `ArcGISError`/`TypeError` биш тул `isLostWrite` ХУДАЛ
+         болж, дуудагч (`useObyem.clearObyemPartial` · `Huvaari.clearPlanPartial`) хариу алдагдсан chunk-ийг
+         «тодорхой татгалзал» гэж үзэх байв — `lost: isLostWrite(e)` ба `cause` хавсаргана (`lostWrite.ts` `lost`-ыг тооцно). */
       if (i > 0)
         throw Object.assign(new Error(
           tr(
@@ -2392,7 +2395,7 @@ export async function applyUpdates(
             updates.length,
             String((e as Error).message || e),
           ),
-        ), { written: i });
+        ), { written: i, lost: isLostWrite(e), cause: e });
       throw e;
     }
   }

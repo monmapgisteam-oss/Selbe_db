@@ -119,14 +119,28 @@ export const kindLabel = (k: CatKind): string =>
  * ⚠️ Шалгуур (`dataCatalog.check.mjs`) эдгээрийг агуулсан мөр БҮР `closed`
  *    тугтай эсэхийг барина.
  * ⚠️ 2026-10-09: урьд «хаалттай (499)» гэж бичигдэж байсан — одоо monmap-аас УСТГАГДСАН,
- *    `{ error: { code: 400, "Invalid URL" } }` буцаана (HTTP 200-аар). Мөн устгагдсан:
- *    `Selbe_ET_20260725` · `Бусад_мэдээлэл_20260724` · `dugui_zam_20260731` ·
- *    `busiin_medeelel_final` · `Tuluvlult_talbai` · `Selbe_barilga_last` · `A` — гэхдээ тэд
- *    каталогт ӨӨРИЙН мөргүй, зөвхөн газрын зургийн загварын түлхүүр (`styleUrl` → `styleSrc`)
- *    болж үлдсэн (өгөгдөл нь `TD`-ийн хуулбараас) тул энд ОРОХГҮЙ — шалгуур нь жагсаалтын
- *    үйлчилгээ бүрд каталогийн мөр шаарддаг.
+ *    `{ error: { code: 400, "Invalid URL" } }` буцаана (HTTP 200-аар).
+ * ⚠️ 2026-10-09 (аудит №6): CLAUDE.md-ийн 9 устгагдсан үйлчилгээг БҮГДИЙГ жагсаав — урьд
+ *    зөвхөн каталогт мөртэй 2 нь байсан тул бусад 7 (зөвхөн `styleUrl`/`styleSrc` түлхүүр,
+ *    өгөгдөл `TD`-ийн хуулбараас) «амьд» мэт үлддэг байв. Каталогийн мөр ЗӨВХӨН эхний 2-т
+ *    бий (`CLOSED_WITH_ROWS`); шалгуур (`dataCatalog.check.mjs`) бусдад мөр шаардахгүй,
+ *    харин эдгээрийн алийг ч `service`/`url`-даа агуулсан мөр `closed` тугтай байхыг барина.
+ *    `url` талбар нь `SysDoc`-д зөвхөн ХАРУУЛАХ зориулалттай — хаалттай хаяг руу хүсэлт
+ *    ХЭЗЭЭ Ч явахгүй.
  */
-export const CLOSED_SERVICES = ['Selbe_guitsetgel_consolidated', 'Selbe_ET_20260721'] as const;
+export const CLOSED_SERVICES = [
+  'Selbe_guitsetgel_consolidated',
+  'Selbe_ET_20260721',
+  'Selbe_ET_20260725',
+  'Бусад_мэдээлэл_20260724',
+  'dugui_zam_20260731',
+  'busiin_medeelel_final',
+  'Tuluvlult_talbai',
+  'Selbe_barilga_last',
+  'A',
+] as const;
+/** Устгагдсан үйлчилгээнүүдээс каталогт ӨӨРИЙН мөртэй нь (түүхийн баримт болгон) */
+export const CLOSED_WITH_ROWS = ['Selbe_guitsetgel_consolidated', 'Selbe_ET_20260721'] as const;
 
 /* ══════════════════ URL задлах ══════════════════ */
 
@@ -426,6 +440,8 @@ function guitsEntries(): CatEntry[] {
   const hy = parseUrl(HYANALT.url);
   const ng = parseUrl(BAGTS_NEGTGEL.url);
   const tn = parseUrl(TUSUL_NEGTGEL.url);
+  /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `SysDoc`-ийн мөрөнд
+     ХАРУУЛАХ (`closed: true`, «устгагдсан (400)» тэмдэг); энэ хаягаар хүсэлт явдаггүй. */
   const cons = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
   return [
     {
@@ -798,6 +814,8 @@ function chanarEntries(): CatEntry[] {
 function otherEntries(): CatEntry[] {
   const zv = parseUrl(ZOV_URL);
   const lb = parseUrl(HABEA.labor.url);
+  /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `et-closed` мөрөнд
+     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. Загварын түлхүүр нь `env.ts`-ийн `ET`. */
   const et = `${HJ}/Selbe_ET_20260721/FeatureServer`;
   return [
     {

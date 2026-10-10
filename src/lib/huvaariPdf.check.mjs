@@ -29,7 +29,7 @@ const grp = (s, e) => ({
   bar: { start: D(s), end: D(e) }, st: 'todo', viol: false, ref: null, act: null,
 });
 const input = (rows, now, opts) => ({
-  pkg: 'Багц 1', kindLabel: 'Төлөвлөгөө', refLabel: null, block: '', from: now, to: now, now, rows, hasActual: false, opts,
+  pkg: 'Багц 1', kindLabel: 'Төлөвлөгөө', refLabel: null, block: '', now, rows, hasActual: false, opts,
 });
 const tables = (doc) => doc.content.filter((c) => c.table);
 const titles = (doc) => doc.content.filter((c) => c.columns).map((c) => c.columns[1].text);
@@ -190,3 +190,32 @@ console.log('✓ huvaariPdf: сүлжээ хүснэгт бүрд нэг уда�
   assert.ok(JSON.stringify(multi.content).includes('Ажил 3'), 'хоёр дахь блокийн мөр алга');
 }
 console.log('✓ huvaariPdf: «Бүх блок» — блок бүр тусдаа хэсэг · ганц блок хэвээр');
+
+/* ── 7. (2026-10-09, аудит №6) ЗАДАРСАН ГҮН БҮЛГИЙН ЗУРВАС ҮЛДЭНЭ · ӨӨРИЙН ОГНООТОЙ БҮЛЭГ ЦОНХОНД ҮЛДЭНЭ ──
+ * (a) `Geo.split`-ээс том, гүн ≥ d0+2 бүлэг дэд хэсгүүдэд задрахад урьд нь өөрийн мөр нь хураангуйд ч
+ *     (зөвхөн d0+1 хүртэл), хэсэгт ч ордоггүй байв — одоо эхний дэд хэсгийн эхний мөр.
+ * (b) Хүүхдүүд нь огноотой атлаа бүгд цонхноос унасан, өөрөө цонхонд байгаа бүлэг хасагддаг байв. */
+{
+  const now = D('2026-10-01');
+  const g = (des, no, work, depth, s, e) => ({ ...grp(s, e), des, no, work, depth });
+  const rows = [
+    g(100, '1', 'Бүлэг', 0, '2026-10-01', '2027-06-30'),
+    g(101, '1.1', 'Дэд бүлэг', 1, '2026-10-01', '2027-06-30'),
+    g(102, '1.1.1', 'Гүн бүлэг', 2, '2026-10-01', '2027-06-30'),
+  ];
+  for (let i = 1; i <= 400; i++) {
+    const s = new Date(D('2026-10-01') + (i % 200) * 86_400_000).toISOString().slice(0, 10);
+    const e = new Date(D('2026-10-01') + ((i % 200) + 5) * 86_400_000).toISOString().slice(0, 10);
+    rows.push({ ...task(i, s, e), depth: 3 });
+  }
+  const doc = buildHuvaariDoc(input(rows, now, { months: 0, active: false, paper: 'A3' }));
+  const bodyHas = (d, name) => tables(d).some((t) => t.table.body.slice(1).some((row) => String(row[1]?.text ?? '').includes(name)));
+  assert.ok(bodyHas(doc, 'Гүн бүлэг'), 'задарсан гүн бүлгийн өөрийн мөр PDF-ийн хаана ч алга');
+  assert.ok(bodyHas(doc, 'Дэд бүлэг'), 'd0+1 бүлэг хураангуйд байх ёстой');
+  /* (b) */
+  const win = [g(100, '1', 'Өөрийн огноотой бүлэг', 0, '2026-10-05', '2026-10-20'), { ...task(1, '2027-05-01', '2027-05-10'), depth: 1 }];
+  const wdoc = buildHuvaariDoc(input(win, now, { months: 1, active: false, paper: 'A4' }));
+  assert.ok(bodyHas(wdoc, 'Өөрийн огноотой бүлэг'), 'өөрийн огноотой бүлэг цонхноос хасагдав (хүүхдүүд нь цонхны гадна)');
+  assert.ok(!JSON.stringify(wdoc.content).includes('Ажил 1'), 'цонхны гаднах хүүхэд орж ирэв');
+}
+console.log('✓ huvaariPdf: задарсан гүн бүлгийн зурвас · өөрийн огноотой бүлэг цонхонд үлдэнэ');

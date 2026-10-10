@@ -46,6 +46,7 @@ import { Icon } from '@/components/Icon';
 import { num, pct, dateTime, mnt } from '@/lib/format';
 import { invalidateAll } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
+import { ailTotal } from '@/lib/execData';
 import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } from '@/lib/emailReport';
 import {
   useReportExtra, buildFindings, type ReportExtra,
@@ -506,7 +507,15 @@ function TailanFull() {
             <Data q={ex} loading={tr('Гүйцэтгэл, санхүү, газар, дэд бүтэц, ХАБЭА-гийн өгөгдөл нэгтгэж байна…')}>
               {(x) => {
                 const blocks = rows.reduce((a, b) => a + b.blocks, 0);
-                const ail = rows.reduce((a, b) => a + b.ail, 0);
+                /* ⚠️ 2026-10-09 (аудит №6): null ≠ 0 — `AIL_TOO` бүгд хоосон → «—», заримд нь хоосон →
+                   «N (дутуу)» (`ailTotal`, Dashboard-ын ижил хэлбэр). Урьд нь `reduce` дутуу нийлбэрийг
+                   бүрэн мэт хэвлэдэг байв. Багцын мөр бүрт ч ижил дүрэм (`ailCell`). */
+                const ailOf = (rs: readonly BagtsRow[]) => {
+                  const t = ailTotal(rs);
+                  return t.ail == null ? '—' : t.partial ? `${num(t.ail)} (${tr('дутуу')})` : num(t.ail);
+                };
+                const ail = ailOf(rows);
+                const ailCell = (b: BagtsRow) => ailOf([b]);
                 /* ⚠️ Багцын төсөв нь `BagtsRow`-оос БИШ, `x.finance.byBagts`-аас.
                    Хуучин `BagtsRow.budget` нь BUS_cashflow-оос ирдэг байсныг
                    2026-08-13-нд хассан (`reportData.ts`-ийн тайлбарыг үз). */
@@ -585,7 +594,7 @@ function TailanFull() {
                         {/* ⚠️ 2026-10-09 (i18n): НЭГ өгүүлбэр, орлуулагчтай — PDF-ийн (`reportPdf` lead) ЯГ тэр түлхүүр.
                             Урьд нь хэсэгчилсэн түлхүүрүүд («ажилтан» нэгжийн шошгыг өгүүлбэрт) нийлүүлдэг тул англиар
                             «… N workers and,» гэж эвдэрдэг байв. */}
-                        {tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(x.habea.workers), num(x.habea.tehnik), num(blocks), num(ail))}
+                        {tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(x.habea.workers), num(x.habea.tehnik), num(blocks), ail)}
                       </p>
                     </div>
 
@@ -600,7 +609,7 @@ function TailanFull() {
                           «график» — тиймээс үзүүлэлтийн эгнээ. */}
                       <KpiRow items={[
                         { label: tr('Орон сууцны блок'), value: num(blocks) },
-                        { label: tr('Өрхийн орон сууц'), value: num(ail) },
+                        { label: tr('Өрхийн орон сууц'), value: ail },
                         /* ⚠️ 2026-09-21: ШОШГО ялгав, ТОО ӨӨРЧЛӨГДӨӨГҮЙ. «Төслийн нийт
                            гүйцэтгэл» нэрээр порталд гурван өөр тодорхойлолт (энд —
                            орон сууцны багцын төсвийн жинтэй блок дундаж; удирдлагын
@@ -633,7 +642,7 @@ function TailanFull() {
                         <thead><tr><th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Утга')}</th></tr></thead>
                         <tbody>
                           <tr><td>{tr('Орон сууцны блок')}</td><td className={r.num}>{num(blocks)}</td></tr>
-                          <tr><td>{tr('Өрхийн орон сууц')}</td><td className={r.num}>{num(ail)}</td></tr>
+                          <tr><td>{tr('Өрхийн орон сууц')}</td><td className={r.num}>{ail}</td></tr>
                           <tr>
                             <td title={tr('Орон сууцны багц бүрийн блокийн дундаж гүйцэтгэлийг багцын төсвийн жингээр нэгтгэсэн (3-р хэсэг)')}>{tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)')}</td>
                             <td className={r.num}>{pct(x.overall.pct, 2)}</td>
@@ -668,7 +677,7 @@ function TailanFull() {
                         {/* ⚠️ Багцын ТОО нь өгөгдлөөс (`sorted.length`) — урьд
                             нь «долоон» гэж бичигдсэн байсан тул багц нэмэгдэх
                             эсвэл нэгдэхэд тайлан чимээгүй худал болно. */}
-                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '—')}
+                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {ail} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '—')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '—')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
@@ -718,7 +727,7 @@ function TailanFull() {
                             <tr key={b.key}>
                               <td>{tr(b.label)}</td>
                               <td className={r.num}>{num(b.blocks)}</td>
-                              <td className={r.num}>{num(b.ail)}</td>
+                              <td className={r.num}>{ailCell(b)}</td>
                               <td className={r.num}>{budgetOf(b.key) > 0 ? bn(budgetOf(b.key)) : '—'}</td>
                               <td className={r.num}>{pct(b.progress, 2)}</td>
                             </tr>
@@ -726,7 +735,7 @@ function TailanFull() {
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{num(blocks)}</td>
-                            <td className={r.num}>{num(ail)}</td>
+                            <td className={r.num}>{ail}</td>
                             <td className={r.num}>{bn(budget)}</td>
                             <td className={r.num}>{pct(bagtsAvg, 2)}</td>
                           </tr>

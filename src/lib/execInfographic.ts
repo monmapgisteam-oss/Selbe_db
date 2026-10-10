@@ -29,7 +29,7 @@
  *    тайлбарт good #16a34a — вэбийн --good #147c3b).
  */
 
-import { LATE_GAP, type ExecReport } from '@/lib/execReport';
+import { LATE_GAP, householdsLabel, type ExecReport } from '@/lib/execReport';
 import { progressSub } from '@/lib/gdash';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, PRINT_COLORS } from '@/lib/format';
@@ -271,7 +271,7 @@ export function buildInfographic(
     /* ⚠️ 2026-10-06: хувийн тоологч = ГЭРЭЭЛСЭН багцын олголт (`givenContracted`), `given` БИШ — нэрлэнэ */
     [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1))],
     [tr('Газар чөлөөлөлт'), g.landPct == null ? '—' : pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
-    [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), num(x.prog.households))],
+    [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), householdsLabel(x.prog))], // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
   ];
   const tw = (W - 14 * 2) / 3;
   const th = 84;

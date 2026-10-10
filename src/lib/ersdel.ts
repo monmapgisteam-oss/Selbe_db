@@ -190,6 +190,8 @@ export const SPAN_H = 72;
  * бүх цуваа дахин үүсч, график чичирнэ.
  */
 export const hourOf = (now: number) => Math.floor(now / 3_600_000) * 3_600_000;
+/** УБ-ын цагийн бүс (+8, DST-гүй) — жишээ цувааны өдрийн хэмнэл (`buildMetrics`) энэ цагаар */
+const UB_OFFSET_MS = 8 * 3_600_000;
 
 /** Утгын үнэлгээ — «хэвийн / анхаарах / хэтэрсэн» */
 export type Grade = 'ok' | 'warn' | 'bad';
@@ -392,7 +394,9 @@ export function buildMetrics(st: Station, now: number): Metric[] {
     const points: Point[] = [];
     for (let i = 0; i < SPAN_H; i++) {
       const t = t0 + i * 3_600_000;
-      const hour = new Date(t).getHours();
+      /* ⚠️ 2026-10-09 (аудит №6): УБ-ын цаг (+8, `Ersdel.axisLabel`-тэй ижил) — урьд нь хөтчийн бүс тул
+         УБ-аас гадуурх машинд өглөө/оройн оргил тэнхлэгийн цагаас зөрж зурагддаг байв */
+      const hour = new Date(t + UB_OFFSET_MS).getUTCHours();
       points.push({ t, v: Math.max(0, fn(i, hour)) });
     }
     const vals = points.map((p) => p.v);

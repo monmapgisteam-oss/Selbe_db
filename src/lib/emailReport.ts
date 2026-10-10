@@ -147,7 +147,7 @@ export async function emailViaMailto(rows: BagtsRow[], dateStr: string, extra: R
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
   const url = `mailto:${REPORT_RECIPIENTS.join(',')}`
     + `?subject=${encodeURIComponent(subjectOf(dateStr))}`
-    + tr('&body={0}', encodeURIComponent(tr('{0}\n\n(Татсан {1}-ийг энэ мэйлд чирж хавсаргана уу.)', bodyText(), PDF_NAME)));
+    + '&body=' + (encodeURIComponent(tr('{0}\n\n(Татсан {1}-ийг энэ мэйлд чирж хавсаргана уу.)', bodyText(), PDF_NAME)));
   window.location.href = url;
 }
 

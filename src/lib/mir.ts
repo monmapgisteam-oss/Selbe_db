@@ -2,7 +2,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MIR_SVC } from '@/lib/services/env';
 import { entSession } from '@/lib/entDocs';
-import type { StageState, Verdict } from '@/lib/ma';
+import { splitMulti, type StageState, type Verdict } from '@/lib/ma';
 
 /**
  * MIR — МАТЕРИАЛЫН ҮЗЛЭГ ШАЛГАЛТ (2026-10-09). Чанарын 2-р шат. Survey123 → Enterprise hosted:
@@ -77,7 +77,9 @@ export function mirRowOf(a: Record<string, unknown>): MirRow {
     cliSupPos: str(a.cli_sup_pos),
     cliQ: str(a.cli_q_name),
     cliQPos: str(a.cli_q_pos),
-    attFlags: str(a.att_flags).split(/[s,]+/).filter(Boolean),
+    /* ⚠️ 2026-10-09 (аудит №6): `splitMulti` (ma.ts) — урьд нь `/[s,]+/` (`\s` биш `s` үсэг) тул «lab cert photo»
+       нэг туг болж, «s» үсэгтэй утга («photos») тасардаг байв. Тест: `mir.check.mjs`. */
+    attFlags: splitMulti(a.att_flags),
     attOther: str(a.att_other),
   };
 }

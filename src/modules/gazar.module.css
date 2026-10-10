@@ -475,6 +475,47 @@
 }
 .btn:disabled, .primary:disabled { opacity: 0.5; cursor: default; }
 
+/* МАЯГТ ДОТОРХ АСУУЛТ — `window.confirm`-ийн оронд (`GazarEdit.askClose`).
+   ⚠️ 2026-10-09 (аудит №6): хөтөч «энэ хуудас дахин харилцах цонх гаргахгүй»
+   гэж хаасан үед `confirm` үргэлж `false` буцааж маягт хаагдахгүй гацдаг байв —
+   `dedButets.module.css`-ийн `.askRow`-той ижил дүрэм. Сэрэмжийн өнгө: алдаа биш, шийдвэр. */
+.askRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 10px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line));
+  border-radius: var(--r-sm);
+}
+.askMsg { flex: 1; min-width: 0; }
+
+/* САМБАРЫН БАТАЛГААЖУУЛАЛТ — `window.confirm`-ийн оронд (`Gazar.confirmQ`).
+   ⚠️ 2026-10-09 (аудит №6): зургийн зүүн доод буланд, `.saved`-ийн дээр;
+   `dedButets.module.css`-ийн `.confirm`-той ижил. z-index нь модалын
+   `.backdrop` (60)-оос ДЭЭР — маягт нээлттэй байхад ч асуулт харагдана. */
+.confirm {
+  position: absolute;
+  left: 10px;
+  bottom: 44px;
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100% - 20px));
+  padding: 8px 10px 8px 12px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+}
+.confirmMsg { flex: 1; min-width: 0; }
+
 /* Ачаалж буй / олдоогүй үеийн модалын бие */
 .modalMsg { padding: 28px 16px; text-align: center; font-size: 12px; color: var(--ink-3); }
 

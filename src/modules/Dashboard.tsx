@@ -2162,7 +2162,9 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                 items={heatBars(rows, (x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  value: x.all ? (x.n / x.all) * 100 : 0,
+                  /* ⚠️ 2026-10-09 (аудит №6): блокгүй багц `0` биш `null` — Bars дүүргэлтгүй,
+                     `heatBars` саарал (null ≠ 0; `:2298`-тай нэг дүрэм) */
+                  value: x.all ? (x.n / x.all) * 100 : null,
                   display: tr('{0} / {1} блок', num(x.n), num(x.all)),
                 }))}
               />

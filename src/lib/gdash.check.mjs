@@ -141,12 +141,11 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   assert.equal(Math.round(k.progress * 100) / 100, 15.01);
   assert.notEqual(Math.round(k.progress), 19, 'бүтэн 19% гэж хэлэхгүй — жин 79%');
 
-  /* Хэмжигдээгүй 1000 нь шатны хуваарьт ч, хүртвэрт ч ОРООГҮЙ */
+  /* Хэмжигдээгүй 1000 нь шатны хуваарьт ОРООГҮЙ ч төсөвт ОРНО
+     ⚠️ 2026-10-09 (аудит №6): `progressCovered`/`progressAmount` ХАСАГДСАН (`Kpi`-ийн ⚠️) —
+     тэдгээрийн шалгуур ч хамт. */
   assert.equal(k.budget, 2000);
-  assert.equal(Math.round(k.progressCovered), 50, 'хамралт = 1000/2000');
-
-  /* ⚠️ МӨНГӨ нь ХУВЬТАЙГАА таарна: 2000 × 15.01% = 300.2 */
-  assert.ok(Math.abs(k.progressAmount - (2000 * k.progress) / 100) < 1e-9);
+  assert.ok(!('progressCovered' in k) && !('progressAmount' in k), 'үхмэл талбар буцаж ирэхгүй');
 
   /* ⚠️ `0` ба `null` ХОЁР ӨӨР: тэг гүйцэтгэл нь ХЭМЖИГДСЭН тул хуваарьт орно */
   const z = kpisOf([buildRow({ cost: 100, progress: 0 }), buildRow({ cost: 100, progress: 100 })], 0);
@@ -181,7 +180,6 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   ], 0);
   assert.equal(k2.packages, 1, 'ажлын бус мөр «Багц ажлын тоо»-нд тоологдов');
   assert.equal(k2.budget, 200, 'ажлын бус мөр МӨНГӨН нийлбэрээс буруу хасагдав');
-  assert.equal(Math.round(k.progressCovered), 100, 'хамралтын хуваарь ч тэр хүрээнд');
 }
 
 /* ── 4б. Нэг ч шат хэмжигдээгүй бол хувь нь `null` (0 БИШ) ── */

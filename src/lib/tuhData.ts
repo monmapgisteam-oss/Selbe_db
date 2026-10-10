@@ -969,6 +969,18 @@ export const daysBetween = (a: number | null, b: number | null): number | null =
   a != null && b != null ? Math.round((b - a) / DAY_MS) : null;
 
 /**
+ * ХУАНЛИЙН ӨДРИЙН ЗӨРҮҮ (b − a) — хоёр агшны ЛОКАЛ огноогоор (цагийг үл тооно); аль нэг нь `null` бол `null`.
+ * ⚠️ 2026-10-09 (аудит №6): урьд `tuh/Overview.tsx`-д байсныг ЭНД шилжүүлэв (Overview дахин экспортолно) —
+ *    `tuh/model.ts` (Node-ын `model.ui.check`) компонентын файлаас (CSS-модуль) импортолж чадахгүй. `p.end` (UB шөнө дунд) ба комисс
+ *    (UTC) 8 цагийн зөрүүг `Math.round` «0 хоног» болгодог — `delay`-д хуанлийн өдөр.
+ */
+export const calDaysBetween = (a: number | null, b: number | null): number | null => {
+  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const day = (ms: number) => { const d = new Date(ms); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+  return Math.round((day(b) - day(a)) / DAY_MS);
+};
+
+/**
  * БИЕТ ГҮЙЦЭТГЭЛИЙН ХЭМЖИЛТИЙН ӨДӨР «YYYY-MM-DD» — `Finance.lagOf`-ийн `at`-тай ИЖИЛ
  * дүрэм: `nowYm` хүртэлх СҮҮЛИЙН хэмжигдсэн сарын `physAt` (тэр сарынх бол), эс
  * бөгөөс тэр сарын эцэс; хэмжилт огт алга бол `fallback`.

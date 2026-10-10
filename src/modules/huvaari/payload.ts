@@ -323,7 +323,10 @@ curRes: PkgRes,
     hm.set(Number(k), v);
     if (bd && k in bd) {
       const now = curSheet.get(Number(k));
-      if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== v) hit(Number(k), 'deps', null, null, now.ham || '—', v || '—');
+      /* ⚠️ 2026-10-09 (аудит №6): `''` ↔ `null` тулгалт — сервер хоосон уялдааг `null`-аар хадгалдаг (`savePrep`:
+         `text.trim() || null`), санал `''` өгч болно; шууд `!== v` бол хоосон = хоосон атлаа «зэрэгцээ өөрчлөлт» болдог байв. */
+      const vn = (v ?? '').trim() || null;
+      if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== vn) hit(Number(k), 'deps', null, null, now.ham || '—', v || '—');
     }
   }
   const ob = new Map<string, Map<string, number>>();

@@ -25,7 +25,7 @@ import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import {
   addRegister, addWaste, entryFieldLabel, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
-  loadWasteMetrics, newGlobalId, nextNumber, type EntryField,
+  loadWasteMetrics, newGlobalId, nextNumber, registerSig, type EntryField,
 } from '@/lib/habeaRegisters';
 import x from './uzlegExport.module.css';
 import e from './habeaEntry.module.css';
@@ -117,14 +117,20 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
    *    «Хадгалах» дарахад ИЖИЛ id-аар эхлээд серверээс асууна (`addRegister`) — давхардахгүй.
    */
   const [gid, setGid] = useState(newGlobalId);
-  const [tried, setTried] = useState(false);
+  /**
+   * ⚠️ 2026-10-09 (аудит №6): унасан илгээлтийн утгын гарын үсэг (`registerSig`) — `addWaste`-ийн
+   *    `prior.sig` загвар. Дахин дарахад утга ИЖИЛ бол л ижил `gid` + `retry` (серверээс эхлээд асууна);
+   *    хэрэглэгч талбараа ЗАССАН бол ШИНЭ `gid`-ээр шинэ мөр — урьд нь `tried` туг л байсан тул
+   *    анхны (алдагдсан гэж бодсон) бичилт суусан байвал засвар ХАЯГДДАГ байв.
+   */
+  const [prior, setPrior] = useState<{ sig: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   const pickKind = useCallback((k: string) => {
     setKind(k);
     setGid(newGlobalId());
-    setTried(false);
+    setPrior(null);
   }, []);
 
   useEffect(() => {
@@ -158,19 +164,25 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
     if (!fields || item?.table == null) return;
     setBusy(true);
     setErr('');
+    const attrs: Record<string, unknown> = {};
+    for (const f of fields) {
+      const v = (vals[f.name] ?? '').trim();
+      if (!v) continue;
+      attrs[f.name] = f.type === 'date' ? utcDay(v) : f.type === 'number' ? Number(v) : v;
+    }
+    const sig = registerSig(attrs);
+    const retry = prior != null && prior.sig === sig;
     try {
-      const attrs: Record<string, unknown> = {};
-      for (const f of fields) {
-        const v = (vals[f.name] ?? '').trim();
-        if (!v) continue;
-        attrs[f.name] = f.type === 'date' ? utcDay(v) : f.type === 'number' ? Number(v) : v;
-      }
       /* ⚠️ 2026-10-09: санал болгосон дугаарыг өөрчлөөгүй бол бичихийн ӨМНӨ дахин бодно */
       const autoSeq = seqHint && (vals[seqHint.name] ?? '').trim() === seqHint.value ? seqHint.name : undefined;
-      await addRegister(item.table, attrs, gid, { autoSeq, retry: tried });
+      /* ⚠️ 2026-10-09 (аудит №6): утга өөрчлөгдсөн дахин илгээлт — шинэ GlobalID (давхар id-аар
+         «аль хэдийн байна» гэж ХУДАЛ амжилт авахгүй) */
+      const g = prior != null && !retry ? newGlobalId() : gid;
+      if (g !== gid) setGid(g);
+      await addRegister(item.table, attrs, g, { autoSeq, retry });
       onClose();
     } catch (ex) {
-      setTried(true);
+      setPrior({ sig });
       setErr(errText(ex));
     } finally {
       setBusy(false);

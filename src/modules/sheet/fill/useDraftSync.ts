@@ -55,7 +55,12 @@ type PickRes = { changed: boolean; rcpt: number };
  * ⚠️ Нүд бүрийн ЯГ илгээсэн утга payload-д алга (`cells` нь өдрийн НИЙЛБЭР), тиймээс баримт нь
  *    `[түлхүүр, at, '', at]`: `rcptApply` илгээлтээс ӨМНӨ (`w ≤ at`) бичигдсэн хуулбарыг ХАСНА, ХОЙШ бичигдсэнийг
  *    ХЭВЭЭР үлдээнэ (хоосон `sv` — зөрүү бодохгүй). Илгээлтийн агшинд хараахан нийлүүлэгдээгүй байсан хуулбар
- *    ч хасагдаж болно (дутуу тоолол — ил, засагдана) — давхар тоололоос аюулгүй.
+ *    ч хасагдаж болно (дутуу тоолол) — давхар тоололоос аюулгүй.
+ * ⚠️ 2026-10-09 (аудит №6): тэр дутуу тоололыг ИЛ хэлнэ — `landMoved` хоосон `sv`-тэй баримтаар хасагдсан
+ *    түлхүүрийг тусад нь тоолж (`rcSub`) `warns`-д гаргана; урьд нь тайлбар «ил» гэдэг ч код чимээгүй байв.
+ *    Мөн `p.at` нь ӨӨР машины цаг, `w` нь энэ табын HLC тул `noteSubReceipts` тэдгээр түлхүүрт `p.at`-ийг
+ *    «харсан» (`seenAtRef`) гэж тэмдэглэнэ — дараагийн гар засвар `stampKey`-ээр `at`-аас ХОЖУУ тамгалагдаж,
+ *    баримтанд дахин хасагдахгүй.
  * ⚠️ ЖИНХЭНЭ баримт (агшин нь `at`-аас хойш — илгээгчийн `stamp()`) байвал ГАРГАХГҮЙ — тэр нь нарийн (зөрүү бодно).
  */
 export function subReceipts(
@@ -320,6 +325,19 @@ export function useDraftSync(p: {
    *    мөчрийн утга «шинэ нэмэлт» болж ДАВХАР тоологдоно.
    */
   const rcptRef = useRef<Map<string, Rcpt>>(new Map());
+  /**
+   * ⚠️ 2026-10-09 (аудит №6): серверийн илгээлтээс баримт гаргаж (`subReceipts`) `rcptRef`-д тавихын зэрэгцээ
+   *    тэр түлхүүрүүдэд илгээлтийн `at`-ийг «харсан» гэж тэмдэглэнэ (`seenAtRef` → `stampKey`): `at` өөр
+   *    машины цаг тул энэ табын цаг хоцорсон бол дараагийн гар засвар `w ≤ at` болж баримтанд ЧИМЭЭГҮЙ
+   *    хасагдах байв. FillNew-ийн ачаалах эффект ба `refreshStaged` ҮҮГЭЭР (шууд `subReceipts` биш).
+   *    (`rcptRef`-ийн ДАРАА зарлана — өмнө нь зарлавал react-hooks/immutability `rcptRef`-ийг ref гэж танихгүй.)
+   */
+  const noteSubReceipts = useCallback((p: Parameters<typeof subReceipts>[0]) => {
+    for (const rc of subReceipts(p, rcptRef.current)) {
+      rcptRef.current.set(rc[0], rc);
+      if ((seenAtRef.current.get(rc[0]) ?? 0) < rc[1]) seenAtRef.current.set(rc[0], rc[1]);
+    }
+  }, []);
   /** Нүд бүрийн СУУРЬ БАРИМТ (`Draft.bt`) — бичих агшинд мэдэгдэж байсан баримтын агшин */
   const btRef = useRef<Map<string, number>>(new Map());
   /** Энэ сешнд АНХААРУУЛСАН зөрүүтэй нүд (`Draft.conv`) — `${түлхүүр}@${a}` (давтан хэлэхгүй) */
@@ -928,6 +946,8 @@ export function useDraftSync(p: {
     const noop: string[] = [];
     /** Баримтаар ИЖИЛ утга хасагдсан (`rcptSilentDrop`) нүд `${түлхүүр}@${a}` (#6) */
     const rcDrop: string[] = [];
+    /** ⚠️ 2026-10-09 (аудит №6): СЕРВЕРИЙН илгээлтээс гаргасан (хоосон `sv`) баримтаар хасагдсан нүд `${түлхүүр}@${a}` */
+    const rcSub: string[] = [];
     /** Шинэ түлхүүрт аль хэдийн буусан хуулбарын агшин — давхцвал ХОЖУУ нь ялна */
     const landedAt = new Map<string, number>();
     /** Зөөсөн ХУУЧИН түлхүүрүүд — бүтэн буулгалтад tombstone тавина (#1) */
@@ -967,7 +987,10 @@ export function useDraftSync(p: {
       const v2 = rc ? rcptApply(v, w, bt0, rc, isD) : v;
       if (v2 == null) {
         /* ⚠️ 2026-10-04 дахин аудит (#6): ИЖИЛ утга, баримт хараагүй хожуу бичилт — хасна, гэвч ИЛ хэлнэ */
-        if (rc && rcptSilentDrop(v, w, bt0, rc)) rcDrop.push(`${key}@${rc[1]}`);
+        /* ⚠️ 2026-10-09 (аудит №6): серверийн илгээлтээс гаргасан баримт (`sv === ''`, `subReceipts`) — илгээсэн утга
+           мэдэгдэхгүй тул зөрүү бодолгүй ХАСНА; тэр нь хараахан нийлүүлэгдээгүй байсан хуулбар байж болох тул ИЛ хэлнэ */
+        if (rc && rc[2] === '') rcSub.push(`${key}@${rc[1]}`);
+        else if (rc && rcptSilentDrop(v, w, bt0, rc)) rcDrop.push(`${key}@${rc[1]}`);
         return null;
       }
       if (rc) rcLanded.push([key, rc[1]]);
@@ -1014,8 +1037,9 @@ export function useDraftSync(p: {
     let dropped = 0;
     /** Хадгалагдсантайгаа ИЖИЛ тул сэргээгээгүй нүд/огноо (хуучирсан БИШ) */
     let sameN = 0;
-    // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ (`canPerf`)
-    for (const [key0, vRaw] of (canPerf ? d.cells : [])) {
+    // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ — дээрх `if (!sc || !canPerf) return res;`
+    //    (2026-10-09 аудит №6: урьдын `canPerf ? d.cells : []` нь тэр хаалтын дараа үхмэл нөхцөл байв)
+    for (const [key0, vRaw] of d.cells) {
       /* ⚠️ 2026-10-04 дахин аудит (#3): АЛБАДАН тэмдэгтэй (7 хоногоос хуучин, алсад хуулагдаагүй) — сэргээхгүй */
       if (forced(key0)) { holdIt(key0, vRaw, 'old'); continue; }
       /* ⚠️ 2026-10-04 (#2): аль мөр болох нь ТОДОРХОЙГҮЙ — буруу мөрөнд буулгахгүй, ноорогт үлдэнэ */
@@ -1100,7 +1124,8 @@ export function useDraftSync(p: {
     /* ⚠️ 2026-10-04 (#8): огнооны СУУРЬ — ноорог бичигдэх үеийн серверийн утга */
     const dBase = new Map<string, string>(d.datesB ?? []);
     const nextDatesB = new Map<string, string>();
-    for (const [key0, vRaw] of (canPerf ? (d.dates ?? []) : [])) {
+    /* (эрхийн хаалт — дээрх `if (!sc || !canPerf) return res;`, 2026-10-09 аудит №6) */
+    for (const [key0, vRaw] of (d.dates ?? [])) {
       /* ⚠️ 2026-10-04 дахин аудит (#3 · #7): албадан тэмдэг · хоёрдмол — тэмдэглэж хадгална */
       if (forced(key0)) { holdIt(key0, vRaw, 'old'); continue; }
       if (ambigOids.has(Number(key0.slice(0, key0.indexOf(":"))))) { ambig++; holdIt(key0, vRaw, 'ambig'); continue; }
@@ -1372,6 +1397,12 @@ export function useDraftSync(p: {
       }
       for (const id of rcConv) if (!seen(id)) nConv += 1;
       for (const id of rcDrop) if (!seen(id)) nDrop += 1;
+      /* ⚠️ 2026-10-09 (аудит №6): серверийн илгээлтийн баримтаар хасагдсан нүд — нэг удаа, ил */
+      let nSub = 0;
+      for (const id of rcSub) if (!seen(id)) nSub += 1;
+      if (nSub) {
+        warns.push(tr('{0} нүдний ноорог утга серверт хадгалагдсан илгээлтээс ӨМНӨ бичигдсэн тул илгээгдсэн гэж үзэж хасав (яг илгээсэн утга мэдэгдэхгүй — зөрүү бодоогүй). Тэр нүд илгээлтэд ороогүй байсан бол дахин бөглөнө үү.', nSub));
+      }
       if (nConv) {
         warns.push(tr('{0} нүд илгээгдсэний ДАРАА засагдсан байсан — давхар тоологдохгүйн тулд илгээгдсэн хэсгийг хасаж ЗӨРҮҮГ нь үлдээв. Ногоон нүдийг шалгаад дахин илгээнэ үү.', nConv));
       }
@@ -2839,6 +2870,8 @@ export function useDraftSync(p: {
     rcptRef, btRef, datesBRef, asOfBRef, draftTgt, setDraftTgt, localFail,
     /* 2026-10-04 дахин аудит — тэмдэглэсэн нүд (#7) · хүн бүрийн зорилт (#4) */
     heldN, dropHeld, resetHeldTgt, clearMyTgt,
+    /* 2026-10-09 аудит №6 — серверийн илгээлтийн баримт + харсан агшин */
+    noteSubReceipts,
   };
 }
 /** ⚠️ 2026-10-01: FillNew-ийн ачаалах эффектийн толь (`draftSyncRef`) — тэр эффект энэ hook-оос ДЭЭР */

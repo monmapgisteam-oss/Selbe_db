@@ -99,7 +99,7 @@ import { useFlow, useReviewInc } from "./fill/useFlow";
 import { useObyem, useObyemState } from "./fill/useObyem";
 import { useAddedOids, usePkgPct, useRowFilter, useVirtualWindow } from "./fill/useRows";
 import { useCellEdit, type PastePrev } from "./fill/useCellEdit";
-import { useDraftSync, subReceipts, type DraftSync } from "./fill/useDraftSync";
+import { useDraftSync, type DraftSync } from "./fill/useDraftSync";
 import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, SubmitControls } from "./fill/toolbar";
 import { FillNotices, NoticeToast } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
@@ -320,11 +320,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (first) setPkg(first);
   }
 
+  /**
+   * ЭНЭ БАГЦЫН ИДЭВХТЭЙ ИЛГЭЭЛТ (`sub|<pkgKey>`) — ачаалахад уншигдана.
+   *
+   * ⚠️ Хоёр зорилготой: (1) хуудсанд илгээсэн тоог давхарлаж харуулах
+   *    (илгээсэн ажил дэлгэцээс алга болох ЁСГҮЙ); (2) дахин илгээхэд ХУУЧИН
+   *    payload дээр НЭГТГЭХ (`mergeSubmission`) — эс бөгөөс өмнөх илгээлтийн
+   *    нүднүүд чимээгүй унтарна.
+   * ⚠️ 2026-10-09 (аудит №6): `useFlow`-оос ДЭЭР зарлана — `flow` нь өөр өдрийн буцаагдсан мөр байж болох тул
+   *    `useFlow` түүнийг `staged.oid`-тай тулгаж (`flowIsStaged` · `returnedStaged`) өгнө.
+   */
+  const [staged, setStaged] = useState<StagedSubmission | null>(null);
   const {
     hyRows, hyLoading, hyErr, reloadHy,
     todayFillMs, setTodayFillMs, flow, otherDaysInReview, otherDaysReturned, reviewLock: reviewLockSt,
-    resumedOid, setResumedOid, returned, reviewStage, inReview, flowRef, today, reviewSoidsKey,
-  } = useFlow({ pkg, view });
+    resumedOid, setResumedOid, returnedStaged, reviewStage, inReview, flowRef, today, reviewSoidsKey,
+  } = useFlow({ pkg, view, stagedOid: staged?.oid ?? null });
   /**
    * Өнөөдөр архивт жааз үүссэн үү — ЗӨВХӨН дэлгэцийн мэдээлэл.
    *
@@ -384,8 +395,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      `otherDaysInReview` нь сүүлийн тойргийн дүрэмгүй байсан тул хуучин мөр хуудсыг үүрд түгждэг байв.
      ⚠️ БУЦААГДСАН илгээлтийн ЗАСВАР (`fixingReturned`: `flow` буцаагдсан, эсвэл гараар сонгосон буцаалт
      `resumedOid`) хориг БИШ — өөр өдөр хянагдаж байсан ч засаж дахин илгээнэ (`publish` тэр илгээлтийн
-     өдрөөр явдаг; домэйн `reviewLockBlocks` ч ижил үл хамаарах дүрэмтэй). Хориг ШИНЭ бөглөлтийг л хаана. */
-  const fixingReturned = !view && (returned
+     өдрөөр явдаг; домэйн `reviewLockBlocks` ч ижил үл хамаарах дүрэмтэй). Хориг ШИНЭ бөглөлтийг л хаана.
+     ⚠️ 2026-10-09 (аудит №6): `returnedStaged` (`flow` буцаагдсан БӨГӨӨД яг `staged` илгээлтийнх) — `flow` өөр
+     өдрийн буцаалт атал `staged` өнөөдрийн илгээлт бол засвар БИШ (тэр буцаалт `otherDaysReturned`-д товчтой). */
+  const fixingReturned = !view && (returnedStaged
     || (resumedOid != null && otherDaysReturned.some((x) => x.soid === resumedOid)));
   const reviewLockDays = useMemo(
     () => (view || fixingReturned ? [] : reviewLockSt.days),
@@ -484,15 +497,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [submitFailed, setSubmitFailed] = useState(false);
   const [resending, setResending] = useState(false);
-  /**
-   * ЭНЭ БАГЦЫН ИДЭВХТЭЙ ИЛГЭЭЛТ (`sub|<pkgKey>`) — ачаалахад уншигдана.
-   *
-   * ⚠️ Хоёр зорилготой: (1) хуудсанд илгээсэн тоог давхарлаж харуулах
-   *    (илгээсэн ажил дэлгэцээс алга болох ЁСГҮЙ); (2) дахин илгээхэд ХУУЧИН
-   *    payload дээр НЭГТГЭХ (`mergeSubmission`) — эс бөгөөс өмнөх илгээлтийн
-   *    нүднүүд чимээгүй унтарна.
-   */
-  const [staged, setStaged] = useState<StagedSubmission | null>(null);
+  /* (`staged` — `useFlow`-оос дээр зарлагдсан, 2026-10-09 аудит №6) */
   /**
    * ХАДГАЛАГДСАН ч ХЯНАЛТЫН БҮРТГЭЛ ҮҮСЭЭГҮЙ илгээлтийн мөрийн дугаар ба өдөр.
    *
@@ -1105,9 +1110,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         /* ⚠️ 2026-10-09: СЕРВЕРИЙН ИЛГЭЭЛТЭЭС БАРИМТ (`useDraftSync.subReceipts`-ийн ⚠️) — сэргээлтээс ӨМНӨ. Илгээгчийн
            таб баримтаа ноорогт хуулж чадаагүй ч илгээгдсэн нүд энэ хуудасны сэргээлтэд «илгээгээгүй» болж буцахгүй. */
-        if (!view && useSub && sub) {
-          for (const rc of subReceipts(sub.payload, ds.rcptRef.current)) ds.rcptRef.current.set(rc[0], rc);
-        }
+        /* ⚠️ 2026-10-09 (аудит №6): `noteSubReceipts` — баримт + тэр түлхүүрт `at`-ийг «харсан» (`stampKey` хожуу тамгална) */
+        if (!view && useSub && sub) ds.noteSubReceipts(sub.payload);
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
            `ov.asOf` нь `null` — тэр үед архивынхыг АВНА, 0 болгохгүй. */
@@ -1538,7 +1542,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   /* ⚠️ 2026-10-04 дахин аудит (#10): ТООГООР тогтворжуулна — урьд нь `flow`/`staged` объект шинэчлэгдэх бүрд
      шинэ массив болж хадгалах эффектийг (хамаарал) дэмий дахин ажиллуулдаг байв. */
-  const curTgtOn = !!staged && !staged.done && ((!!flow && OWNER[flow[HF.status]] === 'company') || resumedOid === staged.oid);
+  /* ⚠️ 2026-10-09 (аудит №6): `returnedStaged` — `flow` буцаагдсан ч ӨӨР илгээлтийнх бол `staged` зорилт биш */
+  const curTgtOn = !!staged && !staged.done && (returnedStaged || resumedOid === staged.oid);
   const curTgtOid = curTgtOn && staged ? staged.oid : 0;
   const curTgtMs = curTgtOn && staged ? staged.payload.fillMs : 0;
   const curTgt = useMemo<[number, number] | null>(
@@ -1621,6 +1626,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     rcptRef, btRef, datesBRef, asOfBRef, draftTgt, localFail, stamp,
     /* 2026-10-04 дахин аудит — тэмдэглэсэн нүд (#7) · өөрийн зорилт (#4) */
     heldN, dropHeld, clearMyTgt,
+    /* 2026-10-09 аудит №6 — серверийн илгээлтийн баримт */
+    noteSubReceipts,
     /* 2026-10-05 — илгээлтийн баримтыг шууд бичих */
     pushReceipts,
     /* 2026-10-09 — «Илгээх»-ийн өмнөх алсын ноорогийн шалгалт */
@@ -1940,8 +1947,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (!live()) return;
         if (p2 !== act.payload) act = { ...act, payload: p2 };
       }
-      /* ⚠️ 2026-10-09: серверийн илгээлтээс баримт (`subReceipts`-ийн ⚠️) — дараагийн сэргээлт/хадгалалт түүгээр */
-      if (act) for (const rc of subReceipts(act.payload, rcptRef.current)) rcptRef.current.set(rc[0], rc);
+      /* ⚠️ 2026-10-09: серверийн илгээлтээс баримт (`subReceipts`-ийн ⚠️) — дараагийн сэргээлт/хадгалалт түүгээр
+         (аудит №6: `noteSubReceipts` — харсан агшин ч тэмдэглэгдэнэ) */
+      if (act) noteSubReceipts(act.payload);
       const ov = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
       setUnmovedWarn(ov && ov.unmoved > 0 && act ? describeUnmoved(ov.unmovedKeys, act.payload.rowKeys, sc.bld) : []);
       /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
@@ -1965,7 +1973,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         refreshStagedRef.current(a);
       }
     }
-  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, rcptRef]);
+  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, noteSubReceipts]);
   useSyncRef(refreshStagedRef, (a: number) => { void refreshStaged(a); });
 
   /**
@@ -2204,8 +2212,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    урьдын адил `todayFillMs`.
        */
       /* ⚠️ ГАРААР СОНГОСОН буцаагдсан илгээлт ч ӨӨРИЙН өдрөөр (`resumedOid`-ийн ⚠️, 2026-09-24) */
+      /* ⚠️ 2026-10-09 (аудит №6): `returnedStaged` — `curTgtOn`-той ЯГ ижил нөхцөл; `flow` өөр өдрийн буцаалт
+         атал `staged` өнөөдрийнх бол өнөөдрийн түлхүүрээр (`todayFillMs`) явна. */
       const fillMs = staged && !staged.done
-        && ((flow && OWNER[flow[HF.status]] === 'company') || resumedOid === staged.oid)
+        && (returnedStaged || resumedOid === staged.oid)
         ? staged.payload.fillMs
         : todayFillMs;
       const actR = await readActiveSubmission(pkg.key, fillMs);
@@ -2385,7 +2395,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          илгээлтэд наалдаж, батлах шатанд «тулгагдсангүй» гэж бүхэл илгээлтийг
          зогсооно. */
       /* ⚠️ ЗӨВХӨН ТУХАЙН ӨДРИЙН ИЛГЭЭЛТ ДЭЭР НЭГТГЭНЭ (2026-09-07). `staged`
-         нь одоо `loadActiveSubmission(pkg.key, todayFillMs)`-аас ирдэг тул
+         нь одоо `readActiveSubmission(pkg.key, todayFillMs)`-аас ирдэг тул
          аль хэдийн өнөөдрийнх, гэхдээ ЭНД ДАХИН тулгана: шөнө дунд өнгөрөх,
          хуучин (дагаваргүй) мөр өөр өдрөөр орж ирэх, эсвэл ирээдүйд өөр зам
          `staged`-ыг тавих зэрэг тохиолдолд ӨӨР ӨДРИЙН нүднүүд өнөөдрийн
@@ -2799,7 +2809,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
@@ -3073,7 +3083,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         locked={locked} submitFailed={submitFailed} resend={resend} resending={resending} unmovedWarn={unmovedWarn}
         subReadErr={subReadErr} inReview={inReview} reviewStage={reviewStage} otherDaysInReview={otherDaysInReview}
         otherDaysReturned={otherDaysReturned} noEdit={noEdit} busy={busy} resumedOid={resumedOid}
-        resumeReturned={resumeReturned} returned={returned}
+        /* ⚠️ 2026-10-09 (аудит №6): баннер зөвхөн `staged` илгээлт буцаагдсан үед; өөр өдрийнх — дээрх товчоор */
+        resumeReturned={resumeReturned} returned={returnedStaged}
         /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн товч (хяналтад бүртгэх · буцаалтыг сонгох) — томилогдсон гүйцэтгэгчид л.
            `canPerf` БИШ: хориг (`reviewLock`) идэвхтэй үед буцаагдсан илгээлтийг сонгох нь хоригоос гарах ЦОРЫН ГАНЦ зам. */
         canAct={permPerf && !reviewerOnly} reviewLockDays={reviewLockDays}

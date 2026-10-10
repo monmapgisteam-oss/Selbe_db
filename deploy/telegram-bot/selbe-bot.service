@@ -1,7 +1,7 @@
 # Сэлбэ AI туслах — Telegram бот (systemd, Docker-ГҮЙ хувилбар).
 #
 # Урьдчилсан нөхцөл:
-#   • Node 24+ суулгасан            (node -v)
+#   • Node 22 суулгасан             (node -v; package.json `engines` >=22 <23)
 #   • Репог /opt/selbe-db-д clone   (git clone … /opt/selbe-db)
 #   • Хараат сан суулгасан          (cd /opt/selbe-db && npm ci --omit=dev)
 #   • Тохиргоо бэлэн                 (deploy/telegram-bot/.env бөглөсөн)

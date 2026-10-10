@@ -2,7 +2,8 @@
  * ГҮЙЦЭТГЭЛЭЭС IPC МӨР ҮҮСГЭХ — цэвэр логик.
  *
  * ЗАРЧИМ (хэрэглэгчийн шийдвэр 2026-09-09): «ho гүйцэтгэлийн дата гүйцэтгэл
- * бөглөгдөхөд нэмэгдэх ёстой». Гүйцэтгэл 4 шатын хяналт дамжиж архивт
+ * бөглөгдөхөд нэмэгдэх ёстой». Гүйцэтгэл 6 шатын (`REVIEW_STAGES`; 2026-10-09
+ * аудит №6 — урьд «4 шат» гэж бичигдсэн байв) хяналт дамжиж архивт
  * ормогц `HO_guitsetgel` үйлчилгээнд IPC мөр АВТОМАТААР нэмэгдэнэ.
  *
  * ⚠️ ШИНЭ МӨРД БИЧИГДЭХ: `guits_obyem` (бөглөсөн обьём), `guits_une`
@@ -374,4 +375,67 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
   return cur
     ? { op: 'update', attrs: autoUpdate(cur, a, rows) }
     : { op: 'insert', attrs: autoInsert(a) };
+}
+
+/**
+ * `syncIpcFromFill`-ийн хуудас бүрийн уншилтын төлөв:
+ *   · `read`        — жааз уншигдаж обьём/үнэ нийлбэрт орсон
+ *   · `missing`     — бүдүүвч уншигдаагүй / жааз олдсон ч мөргүй (түр алдаа байж болно → дахин оролдоно)
+ *   · `no-obyem`    — обьёмын баганагүй хуудас (IPC-д оролцох тоо байхгүй)
+ *   · `unpublished` — тэр өдөр хүртэл ОГТ нийтлэгдээгүй хуудас (жааз байхгүй)
+ */
+export type SheetRead = 'read' | 'missing' | 'no-obyem' | 'unpublished';
+
+export type SheetsVerdict =
+  | { go: true; warn: string | null }
+  | { go: false; result: { ok: true; op: 'skip'; why: 'no-data' } | { ok: false; error: string } };
+
+/**
+ * Хуудсуудын төлвөөс IPC бичих эсэхийг шийднэ — цэвэр функц (`ipcAuto.check.mjs`).
+ *
+ * ⚠️ 2026-10-09 (аудит №6): ОГТ НИЙТЛЭГДЭЭГҮЙ хуудас «дутуу» (`missing`) БИШ — нэгтгэлтэй
+ *    (`negtgelWrite.summaryOf`: тайлагнаагүй хуудасны блокууд 0%) НЭГ дүрмээр 0 оролцоотой.
+ *    IPC-ийн обьём/үнэ нь хуудсуудын НИЙЛБЭР тул 0% × жин = юу ч нэмэхгүй. Урьд нь `missing`
+ *    тоологдож `ok:false` буцдаг байсан тул хоёр хуудастай багцын нөгөө хуудас хэзээ ч
+ *    нийтлэгдээгүй бол `markRegistered` дуудагдахгүй, `regPending` мөнхөд үлдэж
+ *    `retryPendingRegistrations` сешн бүрд унадаг байв — харин нэгтгэл яг тэр тохиолдлыг
+ *    амжилттай бичдэг байлаа. Дуудагч анхааруулгыг (`warn`) ил харуулна.
+ * ⚠️ Ямар ч хуудас УНШИГДААГҮЙ бол хэвээр алдаа — батлагдсан хуудасны өөрийн жааз ЗААВАЛ
+ *    байх ёстой тул «бүгд нийтлэгдээгүй» нь өгөгдлийн/уншилтын асуудал (fail-closed).
+ *    Бүх хуудас обьёмын баганагүй бол л `no-data` (F2-ийн дүрэм хэвээр).
+ */
+export function sheetsVerdict(xs: readonly SheetRead[]): SheetsVerdict {
+  const n = xs.length;
+  const cnt = (k: SheetRead): number => xs.filter((x) => x === k).length;
+  const read = cnt('read');
+  const missing = cnt('missing');
+  const noObyem = cnt('no-obyem');
+  const unpub = cnt('unpublished');
+  if (!read && !missing && noObyem === n) return { go: false, result: { ok: true, op: 'skip', why: 'no-data' } };
+  if (!read) {
+    return {
+      go: false,
+      result: {
+        ok: false,
+        error: unpub
+          ? tr('Бөглөх хуудаснаас агшин уншигдсангүй — {0} хуудаснаас {1} нь энэ өдөр хүртэл огт нийтлэгдээгүй.', n, unpub)
+          : tr('Бөглөх хуудаснаас агшин уншигдсангүй'),
+      },
+    };
+  }
+  if (missing) {
+    return {
+      go: false,
+      result: {
+        ok: false,
+        error: tr('Багцын {0} хуудаснаас {1} нь тэр өдөр бөглөгдөөгүй — дутуу дүнгээр гүйцэтгэл бичихгүй.', n, missing),
+      },
+    };
+  }
+  return {
+    go: true,
+    warn: unpub
+      ? tr('Багцын {0} хуудаснаас {1} нь энэ өдөр хүртэл огт нийтлэгдээгүй — нэгтгэлтэй нэг дүрмээр 0 оролцоотой (IPC-ийн обьём/үнэ зөвхөн нийтлэгдсэн хуудаснаас).', n, unpub)
+      : null,
+  };
 }

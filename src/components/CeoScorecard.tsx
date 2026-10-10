@@ -23,6 +23,7 @@ import { Icon } from '@/components/Icon';
 import { useTip } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { num, mnt } from '@/lib/format';
+import { roundPctsTo100 } from '@/lib/chartStyle';
 import { LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
 import type { ViewKey } from '@/lib/services';
 import { CEO_KPIS } from '@/lib/ceo/registry';
@@ -81,6 +82,14 @@ function StatusPanel({
   onStatus: (st: WorkStatus) => void;
 }) {
   const total = STATUSES.reduce((acc, st) => acc + counts[st], 0);
+  /* ⚠️ 2026-10-09 (аудит №6): төлөв бүрийг тусад нь `num()` тойруулахад 4 хувь нийлээд 99/101%
+     гардаг байв → их үлдэгдлийн арга (`chartStyle.roundPctsTo100`, Donut/Stack-тай нэг). */
+  const pcts = roundPctsTo100(STATUSES.map((st) => counts[st]), total);
+  const pctOf = (st: WorkStatus): string => {
+    if (!total) return '—';
+    const p = pcts[STATUSES.indexOf(st)];
+    return counts[st] > 0 && p === 0 ? '<1%' : `${num(p)}%`;
+  };
   const stOn = (st: WorkStatus) => selected.includes(st);
   const faded = (st: WorkStatus) => selected.length > 0 && !stOn(st);
   return (
@@ -113,7 +122,7 @@ function StatusPanel({
             </span>
             <span className={s.stNums}>
               <b className={`${s.stNum} num`}>{num(counts[st])}</b>
-              <span className={`${s.stPct} num`}>{total ? `${num((counts[st] / total) * 100)}%` : '—'}</span>
+              <span className={`${s.stPct} num`}>{pctOf(st)}</span>
             </span>
           </button>
         ))}

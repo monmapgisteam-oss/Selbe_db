@@ -64,7 +64,7 @@ import {
   type HazardKey, type LevelKey, type Metric, type Station, type StationLive,
 } from '@/lib/ersdel';
 import {
-  airBands, bandsExtent, damageOf, floodBands, floodExtent,
+  airBands, bandsExtent, damageOf, floodBands, floodExtent, windFactor,
   type Band, type DamageRow,
 } from '@/lib/ersdelGeom';
 import {
@@ -82,7 +82,7 @@ import { abortError } from '@/lib/uyrSimCore';
 import { flowPath, whyFlood } from '@/lib/uyrTailbar';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
-import { floodFootprint, simplifyRings } from '@/lib/uyrSurface';
+import { floodFootprint, FOOTPRINT_MIN_M, simplifyRings } from '@/lib/uyrSurface';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
@@ -148,7 +148,7 @@ const WM_SR = SpatialReference.WebMercator;
 
 /**
  * ЗАГВАРЧЛАЛААС ХОХИРЛЫН МУЖ — мөр → төсөвт багтаасан → `simplify` (топологи засна).
- * Хуурай (0.15 м-ээс гүн ус алга) бол `null`.
+ * Хуурай (`FOOTPRINT_MIN_M` м-ээс гүн ус алга) бол `null`.
  */
 /**
  * Нэг нүдний хэмжээ ТОРНЫ (WM) координатаар — 2026-10-09.
@@ -2297,7 +2297,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                             {tr('Бохирдол {0} зүг рүү сунана. Хувилбарын {1} м/с-тэй харьцуулахад сэвсгэрийн урт {2} дахин.',
                               dirName((windNow.dirDeg + 180) % 360),
                               num(AIR_LEVELS[level].wind, 1),
-                              num(Math.max(0.4, Math.min(2.5, windNow.speed / AIR_LEVELS[level].wind)), 1))}
+                              /* ⚠️ 2026-10-09 (аудит №6): `ersdelGeom.windFactor` — геометртэй НЭГ томьёо/хязгаар */
+                              num(windFactor(windNow.speed, AIR_LEVELS[level].wind), 1))}
                           </Note>
                         </>
                       )}
@@ -2582,7 +2583,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   )}
                   {cmpLive && (
                     <p className={e.hint}>
-                      {tr('Хохирлын муж нь загварчлалын {0} м-ээс гүн усны мөр. Хохирол нь ангиллын нэгж үнийн ТААМАГ; «*» — өртөг тодорхойгүй давхарга нийтэд ороогүй.', num(0.15, 2))}
+                      {tr('Хохирлын муж нь загварчлалын {0} м-ээс гүн усны мөр. Хохирол нь ангиллын нэгж үнийн ТААМАГ; «*» — өртөг тодорхойгүй давхарга нийтэд ороогүй.', num(FOOTPRINT_MIN_M, 2))}
                     </p>
                   )}
                 </div>
@@ -3047,12 +3048,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                       <Note>
                         {result.simFootprint
                           ? tr('Хохирол нь ЗАГВАРЧЛАЛЫН бодит үерийн мөрөөр бодогдов — бүх {0} минутын дээд гүн {1} м-ээс дээш газар. Зурган дээр урсаж буй ус ба улаанаар тэмдэглэсэн хохирол НЭГ эх сурвалжтай.',
-                            num(flood?.meta.simMin ?? 60), num(0.15, 2))
+                            num(flood?.meta.simMin ?? 60), num(FOOTPRINT_MIN_M, 2))
                           /* ⚠️ 2026-09-29 (аудит 10): шалтгаан бүрд ӨӨР өгүүлбэр —
                              «дахин ажиллуулбал…» нь зөвхөн бэлэн биш үед үнэн. */
                           : result.simWhy === 'dry'
                             ? tr('Загварчлал дууссан боловч {0} м-ээс гүн усанд автсан талбай гараагүй тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {1} м) тооцов.',
-                              num(0.15, 2), num(FLOOD_LEVELS[result.level].reach))
+                              num(FOOTPRINT_MIN_M, 2), num(FLOOD_LEVELS[result.level].reach))
                             : result.simWhy === 'failed'
                               ? tr('Загварчлал алдаагаар зогссон тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Дахин ажиллуулахад бодит мөрөөр бодогдохгүй.',
                                 num(FLOOD_LEVELS[result.level].reach))

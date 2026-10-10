@@ -512,12 +512,19 @@ async function handleCallback(cb) {
   }
 
   await tg('answerCallbackQuery', { callback_query_id: cb.id, text: note });
-  await tg('editMessageText', {
-    ...NO_PREVIEW,
-    chat_id: cb.message.chat.id,
-    message_id: cb.message.message_id,
-    text: `${cb.message.text}\n\n➡️ ${note} (${adminId})`,
-  }).catch(() => {});
+  /* ⚠️ 2026-10-09 (аудит №6): `cb.message` АЛГА байж болно — Telegram хэт хуучин мессежийн
+     товшилтод `message`-гүй (зөвхөн `inline_message_id`) callback өгдөг; урьд `cb.message.chat.id`
+     TypeError шидэж, шийдвэр хадгалагдсан ч `handleCallback` алдаагаар дуусдаг байв. */
+  const chatId = cb.message?.chat?.id;
+  const messageId = cb.message?.message_id;
+  if (chatId != null && messageId != null) {
+    await tg('editMessageText', {
+      ...NO_PREVIEW,
+      chat_id: chatId,
+      message_id: messageId,
+      text: `${cb.message.text ?? ''}\n\n➡️ ${note} (${adminId})`,
+    }).catch(() => {});
+  }
   console.log(`[bot] ${adminId} → ${targetId}: ${note}`);
 }
 

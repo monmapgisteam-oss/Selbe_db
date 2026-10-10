@@ -172,6 +172,35 @@ export function stepDecimals(ticks: readonly number[]): number {
 }
 
 /**
+ * БҮХЭЛ ХУВИУД НИЙЛЭЭД ЯГ 100 — их үлдэгдлийн арга (largest remainder).
+ *
+ * ⚠️ 2026-10-09 (аудит №6): Donut-ын тайлбарт л байсан аргыг НЭГ туслах болгов — Stack-ийн
+ *    `share`, Donut-ын aria тойм, CEO scorecard-ын төлөвийн хувь хэсэг БҮРИЙГ тусад нь
+ *    `toFixed(0)`/`num()` тойруулж «33+33+33 = 99%», «17+17+67 = 101%» гаргадаг байв.
+ *    · `total` өгвөл түүгээр хуваана — хэсгүүд бүхлийг бүрхээгүй бол нийлбэр < 100 хэвээр
+ *      (хиймлээр 100 болгохгүй); өгөөгүй бол утгуудын нийлбэр.
+ *    · сөрөг/NaN утга 0; нийлбэр 0 бол бүгд 0.
+ *    · утга > 0 атал бүхэл нь 0 бол дуудагч «<1%» бичнэ (Donut/Stack-ийн урьдын дүрэм).
+ */
+export function roundPctsTo100(values: readonly number[], total?: number): number[] {
+  const vals = values.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+  const sum = total != null && Number.isFinite(total) && total > 0
+    ? total
+    : vals.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return vals.map(() => 0);
+  const raw = vals.map((v) => (v / sum) * 100);
+  const base = raw.map((v) => Math.floor(v));
+  let left = Math.round(raw.reduce((a, b) => a + b, 0)) - base.reduce((a, b) => a + b, 0);
+  const order = raw.map((v, i) => [v - base[i], i] as const).sort((p, q) => q[0] - p[0]);
+  for (const [, i] of order) {
+    if (left <= 0) break;
+    base[i] += 1;
+    left -= 1;
+  }
+  return base;
+}
+
+/**
  * ЦАГИРГАН НУМЫН ЗАМ — 12 цагаас цагийн зүүний дагуу, `a0 → a1` (радиан).
  * ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын зүсмэг нь ДҮҮРГЭЛТТЭЙ сектор биш,
  *    `stroke-linecap: round` бүхий ЗУЗААН НУМ — бөөрөнхий үзүүр + зүсмэг хоорондын зай.

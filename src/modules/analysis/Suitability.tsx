@@ -8,7 +8,7 @@ import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 
 import {
-  INDICATORS, PARKING, MAP_LAYERS,
+  INDICATORS, PARKING, MAP_LAYERS, BUILDING_STATUS_COLORS,
   ACTIVATABLE_ZONE_TYPES, NO_DATA_COLOR, BF, BUILDING_PURPOSE_OTHER,
   GREEN, GREEN_LAYER_KEY, LOCATION_RADII, LOCATION_ZONE_TYPES, LOCATION_EXCLUDE_OIDS,
   type Indicator, type ParkingOpt, type CategoryKey, type GreenOpt,
@@ -833,11 +833,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.Barilga_ty ?? '').trim();
     const purpose = String(a['Зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
-    const colors: Record<string, string> = {
-      'Төлөвлөсөн': 'rgb(96,165,250)',
-      'Баригдаж байгаа': 'rgb(251,146,60)',
-      'Одоо байгаа': 'rgb(134,139,150)',
-    };
+    /* ⚠️ 2026-10-09 (аудит №6): өнгийг `BUILDING_STATUS_COLORS`-оос угсарна — урьд энд
+       `rgb(...)` ДАВХАР бичигдэж, зураг/legend-тэй зөрөх эрсдэлтэй байв. */
+    const colors: Record<string, string> = Object.fromEntries(
+      Object.entries(BUILDING_STATUS_COLORS).map(([k, c]) => [k, `rgb(${c.join(',')})`]),
+    );
     const pop = Number(a.Total_population ?? 0);
     const isRes = /орон сууц|house/i.test(purpose);
     const dt = (k: string, v: string | number | null) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');

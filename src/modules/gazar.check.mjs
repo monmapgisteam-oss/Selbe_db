@@ -103,7 +103,8 @@ console.log('✅ «N нэгж талбар хадгалагдлаа»');
   const m = /const openParcel = useCallback\(\(oid: number\) => \{([\s\S]*?)\}, \[/.exec(src);
   assert.ok(m, '`openParcel` олдсонгүй');
   for (const [re, why] of [
-    [/askDrop\(\)/, 'хадгалаагүй маягтыг асуухгүйгээр солих ёсгүй'],
+    /* ⚠️ 2026-10-09 (аудит №6): `askDrop(run)` callback хэлбэр — самбарын асуулт (`window.confirm` хаагдсан хөтчид гацдаг байв) */
+    [/askDrop\(\(\) => \{/, 'хадгалаагүй маягтыг асуухгүйгээр солих ёсгүй'],
     [/setEditOid\(oid\)/, 'маягт нээгдэх ёстой'],
     [/setHighlight\(parcelWhere\(oid\)/, 'талбар тодрох ёстой'],
     [/zoomToWhere\(PARCEL_LAYER_ID, parcelWhere\(oid\)/, 'зураг тэр талбар руу очих ёстой'],

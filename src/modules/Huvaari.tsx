@@ -2132,7 +2132,9 @@ export function Huvaari({
     setUndoSnap((s) => {
       if (!s.u.length && !s.r.length) return s;
       const live = new Set(rows.map((r) => r.oid));
-      const dead = (m: ReadonlyMap<number, unknown>) => { for (const o of m.keys()) if (!live.has(o)) return true; return false; };
+      /* ⚠️ 2026-10-09 (аудит №6): СӨРӨГ oid (батлагдаагүй нэмэлт мөр) `rows`-д байдаггүй — «алга болсон» гэж үзэж
+         стекийг дэмий цэвэрлэдэг байв; зөвхөн серверийн (≥ 0) oid-ыг шалгана. */
+      const dead = (m: ReadonlyMap<number, unknown>) => { for (const o of m.keys()) if (o >= 0 && !live.has(o)) return true; return false; };
       return [...s.u, ...s.r].some((u) => dead(u.spans) || dead(u.ham) || dead(u.aD) || dead(u.rD)) ? UNDO_EMPTY : s;
     });
   }, [rows, setUndoSnap]);
@@ -2978,6 +2980,12 @@ export function Huvaari({
     const tookH = [...ham.keys()];
     const tookA = [...aDraft.keys()];
     const tookR = [...resDraft.keys()];
+    /* ⚠️ 2026-10-09 (аудит №6): САРЫН ОБЬЁМ · НӨӨЦИЙН ноорог ч мөн адил — урьд нь төгсгөлд `setObDraft(new Map())`
+       бүхэлд нь хоосолдог байв; `useSharedDraft`-ийн 3 с мөчлөг `busy`-гаар хаагддаггүй тул `save()`-ийн async завсарт
+       орсон ХАМТРАГЧИЙН `m:`/`n:` нүд дараагийн диффд tombstone болж алсаас устдаг байв. Зөвхөн бэлтгэлд орсон түлхүүр
+       цэвэрлэгдэнэ (тэнцээгүй/алгассаныг үлдээх дүрэм хэвээр). */
+    const tookOb = new Set(obDraft.keys());
+    const tookObR = new Set(obResDraft.keys());
     try {
       /* ⚠️ 2026-10-08: `approvalMode` бэлтгэлийн мессежүүдэд ч хэрэгтэй тул дээр зарлана (дүрэм нь доорх ⚠️-д) */
       const approvalMode = approving != null;
@@ -3060,12 +3068,12 @@ export function Huvaari({
         }
       }
       /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээ — СЕРВЕРЭЭС дахин (`xLockCheck`-ийн ⚠️) */
-      {
+      /* ⚠️ 2026-10-09 (аудит №6): БАТЛАХ горимд ШАЛГАХГҮЙ — хоёр төрлийн (гэрээ/төлөвлөгөө) илгээлт ижил мөрийн
+         бодит огноо/нөөц агуулбал хоёулаа бие биеэ түгжиж МӨНХӨД батлагдахгүй байв. Илгээх үеийн хаалт
+         (`sendForApproval`) ба `payloadToDrafts`-ийн `base` ↔ сервер тулгалт хангалттай. */
+      if (!approvalMode) {
         const why = await xLockCheck();
-        if (why) {
-          setErr(approvalMode ? tr('Батлах боломжгүй — {0} Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр.', why) : why);
-          return false;
-        }
+        if (why) { setErr(why); return false; }
       }
       const fresh = await loadRows(pkg, sc);
       let remapped = 0;
@@ -3243,25 +3251,25 @@ export function Huvaari({
          бичилтийн дараа ObjectID шинээр үүссэн тул хуучин `obOids` хуучирсан.
          ⚠️ ТЭНЦЭЭГҮЙ задаргааг ҮЛДЭЭНЭ (2026-09-08): бичигдээгүй атлаа
             ноорогоос устгавал хүн юуг дахин бөглөхөө мэдэхгүй үлдэнэ. */
-      if (unbal) {
-        setObDraft((m0) => {
-          const m = new Map<string, Map<string, number>>();
-          const byDes = new Map(base.map((r) => [r.des, r]));
-          for (const [k, months] of m0) {
-            const des = Number(k.slice(0, k.indexOf('|')));
-            const v = byDes.get(des)?.vol;
-            if (months.size && v != null && v > 0 && !balanced(months, v)) m.set(k, months);
-          }
-          return m;
-        });
-      } else {
-        setObDraft(new Map());
-      }
+      /* ⚠️ 2026-10-09 (аудит №6): зөвхөн `tookOb`-д орсон (бэлтгэлд өгсөн) түлхүүр цэвэрлэгдэнэ — async завсарт орсон
+         хамтрагчийн/өөрийн шинэ нүд ҮЛДЭНЭ (`tookD/tookH`-ийн хэв маяг, дээрх ⚠️). */
+      setObDraft((m0) => {
+        const m = new Map<string, Map<string, number>>();
+        const byDes = unbal ? new Map(base.map((r) => [r.des, r])) : null;
+        for (const [k, months] of m0) {
+          if (!tookOb.has(k)) { m.set(k, months); continue; }
+          if (!byDes) continue;
+          const des = Number(k.slice(0, k.indexOf('|')));
+          const v = byDes.get(des)?.vol;
+          if (months.size && v != null && v > 0 && !balanced(months, v)) m.set(k, months);
+        }
+        return m;
+      });
       /* Сарын нөөцийн ноорог — тэнцээгүй (бичигдээгүй) ба талбаргүй тул алгассан
          блокийнхыг үлдээнэ (2026-09-24) — батлалт `dirtyN > 0`-д зогсоно. */
       setObResDraft((m0) => {
         const m = new Map<string, Map<string, MonthRes>>();
-        for (const [k, v] of m0) if (unbalKeys.has(k) || resSkippedKeys.has(k)) m.set(k, v);
+        for (const [k, v] of m0) if (!tookObR.has(k) || unbalKeys.has(k) || resSkippedKeys.has(k)) m.set(k, v);
         return m;
       });
       try {
@@ -5155,7 +5163,8 @@ export function Huvaari({
         kindLabel,
         refLabel: showRef ? (kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')) : null,
         block: n > 1 ? (sc.bld[blk] ?? '') : '',
-        from, to, now,
+        /* ⚠️ 2026-10-09 (аудит №6): `from`/`to` (дэлгэцийн цонх) PDF-д хэрэглэгддэггүй байсан — `HvPdfInput`-аас хасав */
+        now,
         rows: out,
         blocks,
         hasActual,
@@ -5173,7 +5182,7 @@ export function Huvaari({
       setPdfBusy(false);
     }
   }, [sc, pdfBusy, visible, visibleAt, effRow, rowSpanAt, refSpanAt, refSpanOf, multiBlk, kind, plan, byCode, blk, now, showRef,
-    pkg, n, from, to, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows]);
+    pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */
   const linkRows = useMemo(() => {
@@ -7149,7 +7158,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           takt={takt}
           /* ⚠️ `locked` — хүлээгдэж буй илгээлт байхад popup-аас ч засахгүй.
              Зөвхөн `onDown`-г түгжвэл хуанлийн цонх нээлттэй хэвээр үлдэнэ. */
-          canEdit={canEdit && !locked}
+          /* ⚠️ 2026-10-09 (аудит №6): `busy` (хадгалалт явж байхад) ч ЗАСАХГҮЙ — `useDragPlan.onDown` busy үед зурвас
+             дээр цонх нээдэг ч `applyModal`/`applyExtra` нь `if (busy) return` тул «Тавих» чимээгүй хаягддаг байв.
+             Одоо тэр үед цонх зөвхөн харах горимтой (`locked`-тай ижил). */
+          canEdit={canEdit && !locked && !busy}
           onBlk={setBlk}
           onTakt={setTakt}
           cands={depCands}

@@ -81,14 +81,12 @@ export { aggregateMonths, physNow } from '@/modules/Finance';
  *    5.0%» (`toFixed`), ТУХ «-5.0 pp» (`num`) гэж ӨӨР хэлбэрээр бичдэг байв. Хувь (%) нь
  *    «төлөвлөгөөний 5%» гэж буруу уншигдах тул нэгж нь pp; тоо нь `num()` (хэлний формат).
  *    ТУХ (`tuh/Overview.pp`) ба PkgProg ХОЁУЛАА ЭНЭ функцээр.
+ * ⚠️ 2026-10-09 (аудит №6): PkgProg одоо `gdash.gapPts`/`gapPtsWord` («н.х», порталын нэг хэлбэр,
+ *    `gdash.ts`-ийн ⚠️ аудит №2) — энэ `pp` зөвхөн ТУХ-д үлдэв; `ppAbs` хэрэглээгүй болж ХАСАГДАВ.
  * @param v бодит − төлөвлөгөө, нэгж хувь (0–100 хуваарьтай); `null` → «—» (0 биш)
  */
 export const pp = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)} pp`;
-
-/** Тэмдэггүй зөрүү («5.0 pp») — «хоцрогдол / түрүүлсэн» гэсэн үгтэй хамт */
-export const ppAbs = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : `${num(Math.abs(v), 1)} pp`;
 
 /**
  * Дэлгэц уншигчид л харагдах (нүдэнд нуугдсан) хэв — графикийн `aria-live` уншилтад.

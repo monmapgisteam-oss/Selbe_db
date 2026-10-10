@@ -99,10 +99,13 @@ const nextId = (rows: Attrs[]) => {
   return `G-${String(max + 1).padStart(6, '0')}`;
 };
 
+/* ⚠️ 2026-10-09 (аудит №6): `fillMs` нь UTC шөнө дунд (`nowFillMs` = `Date.UTC(локал он, сар, өдөр)`) тул
+   `getUTC*`-ээр задална — локал `getFullYear/getDate` нь сөрөг офсеттой бүсэд өчигдрийг өгдөг байв.
+   `useFlow.todayAjilTag`-тай ЗААВАЛ ижил (тэндхийн ⚠️). */
 const dayLabel = (ms: number) => {
   const d = new Date(ms);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+  return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
 };
 
 /**
@@ -232,7 +235,10 @@ function currentRows(
     const b = best.get(k);
     if (!b) { best.set(k, r); continue; }
     const de = num0(r[F.ergelt]) - num0(b[F.ergelt]);
-    const doid = num0(r[HYANALT.oid]) - num0(b[HYANALT.oid]);
+    /* ⚠️ 2026-10-09 (аудит №6): `Row` (`hyanaltStore.toRow` — `__oid`, `OBJECTID` талбаргүй) оролтод урьд нь
+       `r[OBJECTID]` үргэлж 0 болж, ижил `Хэддэх_удаа`-тай мөрүүдээс жагсаалтын сүүлийнх ялдаг байв. */
+    const oidOf = (x: Attrs) => num0(x.__oid ?? x[HYANALT.oid]);
+    const doid = oidOf(r) - oidOf(b);
     if (de > 0 || (de === 0 && doid >= 0)) best.set(k, r);
   }
   return [...best.values()];

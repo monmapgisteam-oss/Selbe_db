@@ -38,9 +38,9 @@ import {
   correctionChanged,
   review as reviewPure, submit as submitPure, submitCorrection as correctionPure, reopen as reopenPure,
   bounce as bouncePure, ackRep as ackPure, closeAn as closeAnPure, newRevision as newRevisionPure, closeNcr as closeNcrPure,
-  type MsDoc, type MsBody, type Reviewer, type Review, type Reviews, type Rep, type Verdict, type VerdictCode,
+  type MsDoc, type Reviewer, type Review, type Reviews, type Rep, type Verdict, type VerdictCode,
   type DocKind, type AnyBody, type NcrCorrection, type InspBody, type InspCheck, type Meta, type Bounce, type BounceReason,
-  type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult, type NcrProposed, EMPTY_BODY,
+  type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult, type NcrProposed,
   type MaBody, type NcrBody, EMPTY_COMMON, DISCIPLINES, isInspCheck, sameMaterialContent, closeAnMaterials,
 } from './chanarMs';
 import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from './chanarAcl';
@@ -188,7 +188,10 @@ async function createTable(token: string, user: string): Promise<string | null> 
 async function serviceNameTaken(token: string): Promise<boolean | null> {
   try {
     const j = await arcgisPost(`${restBase()}/portals/self/isServiceNameAvailable`, {
-      name: TITLE, serviceType: 'Feature Service', token,
+      /* ⚠️ 2026-10-09 (аудит №6): параметрийн нэр `type` — ArcGIS REST баримт (check-service-name);
+         урьд `serviceType` байсан тул сервер алдаа → `serviceNameTaken` null → «Хүснэгт үүсгэх» хэзээ ч
+         ажиллахгүй (fail-closed). `ficMakt.ts`-тэй нэг. */
+      name: TITLE, type: 'Feature Service', token,
     });
     return j.available === false ? true : j.available === true ? false : null;
   } catch {
@@ -513,19 +516,8 @@ function toDoc(a: Attrs): MsDoc | null {
   };
 }
 
-export function parseBody(raw: unknown): MsBody {
-  try {
-    const j = JSON.parse(String(raw ?? '{}')) as Partial<MsBody>;
-    if (!j || typeof j !== 'object') return { ...EMPTY_BODY };
-    const g = (k: keyof MsBody) => (typeof j[k] === 'string' ? j[k] : '');
-    return {
-      general: g('general'), scope: g('scope'), materials: g('materials'),
-      sequence: g('sequence'), quality: g('quality'), safety: g('safety'),
-    };
-  } catch {
-    return { ...EMPTY_BODY };
-  }
-}
+/* ⚠️ 2026-10-09 (аудит №6): `parseBody` · `loadBody` · `loadMeta` ҮХМЭЛ байсан (src/tools/docs-д дуудагчгүй;
+   `loadBodyOf` · `loadBodiesOf` → `parseBodyOf` нь төрөл бүрийн бүрэн задлал) — устгав. */
 
 async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl(false);
@@ -646,6 +638,10 @@ async function attachDeny(oid: number, op: 'add' | 'delete' = 'add'): Promise<st
   }
   /* ⚠️ 2026-09-25: хавсралт ч зохиогчийн бичилт — `actor`-ийн ижил эрх. */
   try { requireCap('chanarAuthor'); } catch (e) { return String((e as Error).message || e); }
+  /* ⚠️ 2026-10-09 (аудит №6): БАГЦЫН ХҮРЭЭ ч (`authorDeny`, `createDraft`/`saveDraft`-ийн ижил) — урьд нь зөвхөн
+     эрх шалгадаг тул багцын эрх хасагдсан/өөр багцын гүйцэтгэгч консолоос энэ багцын ноорогт хавсралт
+     нэмж, устгаж чаддаг байв. NCR салбар дээр `isAuthorFor` аль хэдийн шалгагддаг. */
+  if (strict) { const scope = authorDeny(doc.kind, me ?? '', doc.bagts); if (scope) return scope; }
   /* ⚠️ 2026-10-06: ЗӨВХӨН НООРОГ — буцаагдсан мөр нь хянагчдын ТАТГАЛЗСАН агуулга (`saveDraft`-ийн
      2026-09-16 ⚠️). Урьд нь буцаагдсан мөрд хавсралт нэмэх/устгах боломжтой тул татгалзсан
      хувилбарын нотолгоо чимээгүй өөрчлөгдөж, «Дахин илгээх»-ийн rev+1 мөрд тэр файл
@@ -811,13 +807,6 @@ export async function countChanarActionable(user: string | null | undefined): Pr
   }
 }
 
-/** Нэг баримтын БИЕ (MS-ийн 6 хэсэг) — засах/харахад л татна */
-export async function loadBody(oid: number): Promise<MsBody | null> {
-  const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.body}`);
-  if (!rows.length) return null;
-  return parseBody(rows[0][F.body]);
-}
-
 /**
  * Нэг баримтын БИЕ — ТӨРЛӨӨР (`MaBody` · `InspBody` · `NcrBody`, MS бол
  * `MsBody & {meta}`). Мөрийн `turul` баганаас төрлийг авна.
@@ -852,13 +841,6 @@ export async function loadBodiesOf(oids: readonly number[]): Promise<Map<number,
     }
   }
   return out;
-}
-
-/** Аль ч баримтын `meta` — жагсаалтын карт (хариуцсан ажилтан, ангилал) */
-export async function loadMeta(oid: number): Promise<Meta | null> {
-  const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.body}`);
-  if (!rows.length) return null;
-  try { return normalizeMeta((JSON.parse(String(rows[0][F.body] ?? '{}')) as { meta?: unknown }).meta); } catch { return normalizeMeta(null); }
 }
 
 /** Төрөл бүрийн бичих эрх: NCR-ийг ЗАХИАЛАГЧ (хянагч) нээнэ, бусдыг гүйцэтгэгч */
@@ -1163,6 +1145,11 @@ export async function saveDraft(args: {
   try {
     if (doc.status === MS_STATUS.draft) {
       /* Ноорог — ижил мөрийг шинэчилнэ */
+      /* ⚠️ 2026-10-09 (аудит №6): БИЧИХИЙН ӨМНӨ ДАХИН УНШИНА (`unchanged`, бусад бичих замын ижил) — биеийг
+         БҮХЭЛД нь бичдэг тул уншсанаас хойш хянагчийн `saveMeta` (хариуцсан ажилтан · ангилал) эсвэл
+         төлөв өөрчлөгдсөн бол чимээгүй дарагддаг байв. Клиентийн бие серверээс дахин бодогдохгүй тул
+         ДАХИН ОРОЛДОХГҮЙ — `RACE_MSG` (хэрэглэгч шинэчлээд дахин хадгална). */
+      if (!(await unchanged(args.oid, cur[0], [F.status, F.reviews, F.body]))) return { ok: false, error: RACE_MSG() };
       const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: {
           [F.oid]: args.oid, [F.title]: args.title.trim(), [F.body]: JSON.stringify(body),
@@ -1521,33 +1508,42 @@ async function fixRepDuplicate(
   url: string, kind: DocKind, oid: number, bagts: string, seq: number, rep: Rep,
 ): Promise<void> {
   try {
-    const all = await loadDocs(kind);
-    const twins = all.filter((d) => d.rep?.no === rep.no && d.oid !== oid);
-    if (twins.length > 0 && Math.min(...twins.map((d) => d.oid)) < oid) {
+    /* ⚠️ 2026-10-09 (аудит №6): ГУРАВ+ баримт зэрэг шийдвэрлэгдвэл шинэ дугаар ДАХИН давхцдаг байв (нэг тойрог) —
+       `createDraft`-ийн 3 тойргийн загвар: шинэ дугаар дээр тулгалтыг дахин ажиллуулна (тойрог бүрд хамгийн
+       бага OBJECTID үлдэж, бусад нь цааш шилжинэ). */
+    let curNo = rep.no;
+    for (let round = 0; round < 3; round += 1) {
+      const all = await loadDocs(kind);
+      const twins = all.filter((d) => d.rep?.no === curNo && d.oid !== oid);
+      if (!(twins.length > 0 && Math.min(...twins.map((d) => d.oid)) < oid)) return;
       /* ⚠️ Өөрийн мөрийг хасаад lineage-ээр дахин бодно (ижил lineage бол RR, өөр бол NNNN шинэ) */
       const { n, rr } = repSeqFor(all.filter((d) => d.oid !== oid), kind, bagts, seq);
       const no2 = repNo(kind, bagts, n, rr);
-      if (!no2 || no2 === rep.no) return;
+      if (!no2 || no2 === curNo) return;
       /* ⚠️ 2026-10-09: ДАХИН УНШИЖ НИЙЛҮҮЛНЭ (`unchanged`) — тогтох хүлээлтийн хооронд өөр хүн
          (хүлээн авалт `receivedAt`, AN хаалт …) `hyanalt`-ыг бичсэн бол урьд нь манай ХУУЧИН
          хянагчид + хариугаар сохроор дардаг байв. Одоо шинэ мөрийн хянагчид/хариу/тэмдэг дээр
          зөвхөн дугаарыг солино; дугаар аль хэдийн өөрчлөгдсөн бол хөндөхгүй. */
+      let written = false;
       for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
         const ld = await loadRow(oid);
         if ('ok' in ld) { console.warn('[selbe] chanar: REP дугаарын засварт мөр уншиж чадсангүй', oid, ld.error); return; }
         const fresh = ld.doc.rep;
-        if (!fresh || fresh.no !== rep.no) return;
+        if (!fresh || fresh.no !== curNo) return;
         if (!(await unchanged(oid, ld.row, [F.status, F.reviews]))) continue;
         const j = await arcgisPost(`${url}/applyEdits`, {
           updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reviews]: reviewsJson(ld.doc.reviews, { ...fresh, no: no2 }, ld.doc.bounce ?? null) } }]),
           rollbackOnFailure: 'true',
         });
-        if (!editOk(j.updateResults)) console.warn('[selbe] chanar: давхардсан REP дугаарыг засаж чадсангүй', oid);
-        else invalidate('CHANAR_BARIMT');
-        return;
+        if (!editOk(j.updateResults)) { console.warn('[selbe] chanar: давхардсан REP дугаарыг засаж чадсангүй', oid); return; }
+        invalidate('CHANAR_BARIMT');
+        written = true;
+        break;
       }
-      console.warn('[selbe] chanar: давхардсан REP дугаар — мөр зэрэг өөрчлөгдөж байна, засаж амжсангүй', oid);
+      if (!written) { console.warn('[selbe] chanar: давхардсан REP дугаар — мөр зэрэг өөрчлөгдөж байна, засаж амжсангүй', oid); return; }
+      curNo = no2;
     }
+    console.warn('[selbe] chanar: давхардсан REP дугаар 3 тойрогт тогтсонгүй', oid);
   } catch (e) {
     console.warn('[selbe] chanar: REP дугаарын тулгалт алдлаа', oid, e);
   }

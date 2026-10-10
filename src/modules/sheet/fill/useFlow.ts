@@ -13,8 +13,15 @@ import { useHyanaltRows } from "@/lib/hyanaltStore";
 import { reviewLockState } from "@/lib/hyanaltSubmit";
 import { nowFillMs, type SheetView } from "./util";
 
-/** Хяналтын урсгалын мөрүүд — энэ хуудасны өнөөдрийн/буцаагдсан мөр, өөр өдрүүдийн байдал. */
-export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
+/**
+ * Хяналтын урсгалын мөрүүд — энэ хуудасны өнөөдрийн/буцаагдсан мөр, өөр өдрүүдийн байдал.
+ * ⚠️ 2026-10-09 (аудит №6): `stagedOid` — FillNew-ийн `staged` (давхарласан илгээлт)-ийн OBJECTID. `flow` нь
+ *    өнөөдрийн мөр байхгүй бол ӨӨР ӨДРИЙН буцаагдсан мөрийг буцаадаг тул `staged`-тэй ТУЛГАЛГҮЙ хэрэглэвэл
+ *    (өнөөдрийн илгээлт өнчин + өчигдрийнх буцаагдсан) `staged` өнөөдрийнх, `flow` өчигдрийнх болж зөрдөг
+ *    байв. `flowIsStaged` = `flow[Эх_мөрийн_дугаар] === staged.oid` — `curTgtOn` · `publish`-ийн `fillMs` ·
+ *    буцаалтын баннер/`fixingReturned` ҮҮГЭЭР, `otherDaysReturned` `flow`-г зөвхөн энэ үед хасна.
+ */
+export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; stagedOid?: number | null }) {
   const { rows: hyRows, loading: hyLoading, error: hyErr, reload: reloadHy } = useHyanaltRows();
   /**
    * ӨНӨӨДРИЙН БӨГЛӨХ ӨДӨР (`Date.UTC(y,m,d)`) — ИЛГЭЭЛТИЙН ТҮЛХҮҮРИЙН ӨДӨР.
@@ -40,16 +47,17 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
    * ЭНЭ ӨДРИЙН хяналтын мөрийг ЯЛГАХ шошго — `hyanaltSubmit.dayLabel`-тэй
    * ИЖИЛ хэлбэр (`YYYY.MM.DD`).
    *
-   * ⚠️ ЛОКАЛЬ цагаар задална — `hyanaltSubmit.dayLabel` ч мөн адил
-   *    (`new Date(ms).getFullYear/...`). `todayFillMs` нь `Date.UTC`-ээр
-   *    бүтсэн тул UTC+8-д тэр хоёр НЭГ өдөр өгнө. Хэрэв энэ хоёрын аль нэгийг
-   *    өөрчлөх бол НӨГӨӨГ НЬ ЗААВАЛ хамт өөрчил — эс бөгөөс өнөөдрийн
-   *    хяналтын мөрийг «өөр өдрийнх» гэж уншиж, хориг ажиллахаа болино.
+   * ⚠️ 2026-10-09 (аудит №6): UTC-ээр задална — `hyanaltSubmit.dayLabel` ч мөн адил (`getUTC*`).
+   *    `todayFillMs` нь `Date.UTC(локал он, сар, өдөр)` (`nowFillMs`) тул UTC шөнө дунд — локал
+   *    `getFullYear/getDate`-ээр задалбал UTC-ээс баруун бүсэд (сөрөг офсет) өчигдөр болдог байв.
+   *    `getUTC*` нь бүсээс үл хамааран яг тэр өдрийг өгнө. Хэрэв энэ хоёрын аль нэгийг өөрчлөх бол
+   *    НӨГӨӨГ НЬ ЗААВАЛ хамт өөрчил — эс бөгөөс өнөөдрийн хяналтын мөрийг «өөр өдрийнх» гэж уншиж,
+   *    хориг ажиллахаа болино.
    */
   const todayAjilTag = useMemo(() => {
     const d = new Date(todayFillMs);
     const p = (n: number) => String(n).padStart(2, '0');
-    return `Гүйцэтгэл · ${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+    return `Гүйцэтгэл · ${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
   }, [todayFillMs]);
   const flow = useMemo(() => {
     /*
@@ -149,7 +157,11 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
    *    тэр буцаалт ХААНА Ч харагдахгүй — хариугүй үлддэг байв. `flow`-той ижил
    *    «нэг илгээлтийн сүүлийн тойрог» дүрмээр шүүнэ; `flow` өөрөө буцаагдсан
    *    мөр бол түүнийг давхар хэлэхгүй (`backNote` аль хэдийн харуулна).
+   * ⚠️ 2026-10-09 (аудит №6): `flow`-г ЗӨВХӨН `flowIsStaged` үед хасна — `flow` өчигдрийн буцаалт атал `staged`
+   *    өнөөдрийн (өнчин) илгээлт бол тэр буцаалт баннерт ч, энд ч гарахгүй, засах товч үгүй болдог байв.
    */
+  /* ⚠️ 2026-10-09 (аудит №6): `flow` = давхарласан илгээлтийн мөр мөн үү (`Эх_мөрийн_дугаар` = `staged.oid`) */
+  const flowIsStaged = !!flow && stagedOid != null && stagedOid > 0 && Number(flow[HF.sheetOid]) === stagedOid;
   const otherDaysReturned = useMemo(() => {
     const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
     const lastRound = new Map<number, (typeof hyRows)[number]>();
@@ -164,14 +176,14 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
     }
     const days = new Map<string, number>();
     for (const r of lastRound.values()) {
-      if (flow && r.__oid === flow.__oid) continue;
+      if (flowIsStaged && flow && r.__oid === flow.__oid) continue;
       if (r[HF.status] === STATUS.transferred || OWNER[r[HF.status]] !== 'company') continue;
       const m = /(\d{4}\.\d{2}\.\d{2})/.exec(String(r[HF.ajil] ?? ''));
       /* 2026-09-24: өдөр → илгээлтийн OBJECTID (`resumeReturned`-д) */
       if (m) days.set(m[1], Number(r[HF.sheetOid]));
     }
     return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, soid]) => ({ day, soid }));
-  }, [hyRows, flow, pkg.group, pkg.key, pkg.name]);
+  }, [hyRows, flow, flowIsStaged, pkg.group, pkg.key, pkg.name]);
   /**
    * ЭНЭ СЕШНД ГАРААР СОНГОСОН буцаагдсан илгээлтийн OBJECTID (2026-09-24).
    * ⚠️ Өнөөдрийн илгээлт байхад өмнөх өдрийн буцаалт `flow` болдоггүй тул
@@ -187,6 +199,9 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
   const resumedOid = resumedSt.pkgKey === pkg.key ? resumedSt.oid : null;
   const setResumedOid = useCallback((oid: number | null) => setResumedSt({ pkgKey: pkg.key, oid }), [pkg.key]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
+  /* ⚠️ 2026-10-09 (аудит №6): `flow` буцаагдсан БӨГӨӨД яг `staged` илгээлтийнх — `curTgtOn` · `publish`-ийн
+     `fillMs` · `fixingReturned`-д `returned`-ийн оронд (өөр өдрийн буцаалт өнөөдрийн `staged`-ыг зорилт болгохгүй). */
+  const returnedStaged = returned && flowIsStaged;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
   /**
@@ -279,8 +294,8 @@ export function useFlow({ pkg, view }: { pkg: Pkg; view?: SheetView }) {
   const reviewSoidsKey = reviewSoids.join(',');
   return {
     hyRows, hyLoading, hyErr, reloadHy,
-    todayFillMs, setTodayFillMs, todayAjilTag, flow, otherDaysInReview, otherDaysReturned, reviewLock,
-    resumedOid, setResumedOid, returned, reviewStage, inReview, flowRef, today, reviewSoidsKey,
+    todayFillMs, setTodayFillMs, todayAjilTag, flow, flowIsStaged, otherDaysInReview, otherDaysReturned, reviewLock,
+    resumedOid, setResumedOid, returned, returnedStaged, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   };
 }
 
@@ -291,26 +306,33 @@ export function useReviewInc({ view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef
   /** `${oid}:${b}` → хяналтад байгаа нэмэлт: `n` обьём, `a` хувь (0–1) */
   const [reviewInc, setReviewInc] = useState<Map<string, { n: number | null; a: number | null }>>(new Map());
   const reviewIncKeyRef = useRef('');
+  /* ⚠️ 2026-10-09 (аудит №6): `rows` хамаарал нь зөвхөн ЦОХИЛТ (мөр ачаалагдмагц `loadedPkgRef` таарч эхлэх) —
+     урьд нь цэвэрлэгч `alive=false` + түлхүүр тэглэдэг тул `setRows` бүрд (нүд бүр бөглөх) явж буй уншилт
+     хаягдаж, бүтэн хуудас + илгээлтүүд ДАХИН татагддаг байв. Одоо цэвэрлэгчгүй: уншилт `alive()` =
+     «түлхүүр хэвээр» гэж шалгана — багц/илгээлт солигдвол л хаягдана, `rows` хөдлөхөд үргэлжилнэ. */
   useEffect(() => {
-    if (view || !sc || loadedPkgRef.current !== pkg.key) return undefined;
+    if (view || !sc) return;
+    /* Багц солигдов — өмнөх багцын явж буй уншилтыг хүчингүй болгоно (`alive()` худал) */
+    if (!reviewIncKeyRef.current.startsWith(`${pkg.key}|`)) reviewIncKeyRef.current = '';
+    if (loadedPkgRef.current !== pkg.key) return;
     const k = `${pkg.key}|${reviewSoidsKey}`;
-    if (reviewIncKeyRef.current === k) return undefined;
+    if (reviewIncKeyRef.current === k) return;
     reviewIncKeyRef.current = k;
     setReviewInc(new Map());
-    if (!reviewSoidsKey) return undefined;
-    let alive = true;
-    let finished = false;
+    if (!reviewSoidsKey) return;
+    const alive = () => reviewIncKeyRef.current === k;
     const soids = reviewSoidsKey.split(',').map(Number);
     const add = (x: number | null | undefined, y: number | null) =>
       (y == null ? (x ?? null) : (x ?? 0) + y);
     void (async () => {
       try {
         const base = await loadRows(pkg, sc);
+        if (!alive()) return;
         const baseBy = new Map(base.rows.map((x) => [x.oid, x] as const));
         const acc = new Map<string, { n: number | null; a: number | null }>();
         for (const so of soids) {
           const rr = await readSubmissionByOid(so);
-          if (!alive) return;
+          if (!alive()) return;
           const sub = rr.ok ? rr.sub : null;
           if (!sub || sub.done || sub.payload.pkgKey !== pkg.key || sub.payload.mode !== 'inc') continue;
           /* ⚠️ 2026-10-04: хуучин (`rowOcc`-гүй) илгээлтийн давтамжийг СУУРЬ жаазаас нөхнө — `hyanaltDetail.loadStaged` ·
@@ -318,7 +340,7 @@ export function useReviewInc({ view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef
           let pl = sub.payload;
           if (pl.base != null && needsFrameOcc(pl, base.rows)) {
             try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр */ }
-            if (!alive) return;
+            if (!alive()) return;
           }
           const ov = overlaySubmission(base.rows, pl, sc, sc.bld.length);
           const ovBy = new Map(ov.rows.map((x) => [x.oid, x] as const));
@@ -337,18 +359,12 @@ export function useReviewInc({ view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef
             acc.set(ck, { n: add(prev?.n, dn || null), a: add(prev?.a, da || null) });
           }
         }
-        finished = true;
-        if (alive) setReviewInc(acc);
+        if (alive()) setReviewInc(acc);
       } catch {
         /* Зөвхөн харагдац — уншилт унавал сануулгагүй үлдэнэ, дараагийн ачаалалтаар дахин */
-        finished = true;
-        reviewIncKeyRef.current = '';
+        if (alive()) reviewIncKeyRef.current = '';
       }
     })();
-    return () => {
-      alive = false;
-      if (!finished) reviewIncKeyRef.current = '';
-    };
   }, [view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef]);
   return reviewInc;
 }

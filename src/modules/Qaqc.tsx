@@ -67,7 +67,7 @@ import {
   type QaqcDraftState,
 } from '@/lib/qaqcDraft';
 import { loadAllDocs } from '@/lib/chanarStore';
-import { MS_STATUS, latest, type DocKind } from '@/lib/chanarMs';
+import { latestApproved, type DocKind } from '@/lib/chanarMs';
 import { register } from '@/lib/dataBus';
 import st from '@/modules/sheet/sheet.module.css';
 
@@ -711,14 +711,15 @@ export function Qaqc() {
     if (ap?.key === apKey || apLoading.current === apKey) return;
     const k = apKey;
     apLoading.current = k;
-    /* ⚠️ Бүх хувилбараас ЗӨВХӨН сүүлийнх нь (`latest`), тэр нь approved байвал. */
+    /* ⚠️ Бүх хувилбараас СҮҮЛИЙН БАТЛАГДСАН нь (`latestApproved`).
+       ⚠️ 2026-10-09 (аудит №6): урьд нь `latest()` → approved шүүлт тул «Шинэ хувилбар» (rev+1 ноорог) үүсмэгц
+          батлагдсан rev N-ийн ✓ тэмдэг, datalist-ийн сонголт алга болдог байв — шинэ rev батлагдтал хуучин нь хүчинтэй. */
     const kinds = new Set<DocKind>(Object.values(DOC_KIND_OF));
     loadAllDocs()
       .then((docs) => {
         /* Хуучирсан хариу — шинэ түлхүүрийн татац явж байгаа/явна */
         if (apKeyRef.current !== k) return;
-        const list = latest(docs.filter((d) => kinds.has(d.kind)))
-          .filter((d) => d.status === MS_STATUS.approved)
+        const list = latestApproved(docs.filter((d) => kinds.has(d.kind)))
           .map((d) => ({ kind: d.kind, bagts: d.bagts, no: d.docNo, title: d.title }))
           .sort((a, b) => a.no.localeCompare(b.no, 'mn', { numeric: true }));
         setAp({ key: k, list });

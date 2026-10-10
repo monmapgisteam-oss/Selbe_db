@@ -730,11 +730,26 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setNavDirty('gazar', v, tr('Газар чөлөөлөлт'));
   }, []);
   useEffect(() => () => setNavDirty('gazar', false), []);
-  const askDrop = useCallback((): boolean => {
-    if (!editDirty.current) return true;
-    if (!window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаях уу?'))) return false;
-    markDirty(false);
-    return true;
+  /**
+   * САМБАРЫН ДОТООД БАТАЛГААЖУУЛАЛТ — `window.confirm`-ийн оронд.
+   *
+   * ⚠️ 2026-10-09 (аудит №6): `window.confirm`-ийг хөтөч «энэ хуудас дахин харилцах
+   * цонх гаргахгүй» гэж хаасан үед ҮРГЭЛЖ `false` буцаадаг тул засварын горимоос
+   * гарах, өөр парсел нээх бүгд ЧИМЭЭГҮЙ зогсдог байв (`DedButets.confirmQ`-ийн ижил
+   * сургамж). Асуулт зургийн доод буланд мөр болж гарна; «Тийм» дарахад `onYes`.
+   */
+  const [confirmQ, setConfirmQ] = useState<{ msg: string; onYes: () => void } | null>(null);
+  /**
+   * Хадгалаагүй маягт байвал АСУУЖ, зөвшөөрвөл `run`-ыг ажиллуулна; цэвэр бол шууд.
+   * ⚠️ 2026-10-09 (аудит №6): урьд нь `boolean` буцаадаг синхрон хэлбэр байв —
+   * самбарын асуулт асинхрон тул үргэлжлэлийг callback-аар авна (`DedButets.askDropReshape`).
+   */
+  const askDrop = useCallback((run: () => void) => {
+    if (!editDirty.current) { run(); return; }
+    setConfirmQ({
+      msg: tr('Хадгалаагүй өөрчлөлт байна. Хаях уу?'),
+      onYes: () => { markDirty(false); run(); },
+    });
   }, [markDirty]);
 
   /**
@@ -749,12 +764,13 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
     if (!editMode) return;
-    if (!askDrop()) return;
-    if (!a || id !== PARCEL_LAYER_ID) { setEditOid(null); setHighlight(null); return; }
-    const oid = Number(a[PARCEL_OID]);
-    if (!Number.isFinite(oid)) { setEditOid(null); return; }
-    setEditOid(oid);
-    setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
+    askDrop(() => {
+      if (!a || id !== PARCEL_LAYER_ID) { setEditOid(null); setHighlight(null); return; }
+      const oid = Number(a[PARCEL_OID]);
+      if (!Number.isFinite(oid)) { setEditOid(null); return; }
+      setEditOid(oid);
+      setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
+    });
   }, [editMode, setHighlight, askDrop]);
 
   /**
@@ -763,13 +779,14 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Хадгалаагүй маягт байвал `onMapPick`-ийн адил ЭХЛЭЭД асууна.
    */
   const openParcel = useCallback((oid: number) => {
-    if (!askDrop()) return;
-    setHits([]);
-    setFindMsg('');
-    setEditOid(oid);
-    setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
-    /* ⚠️ Анимацигүй — `pickOverlap`-ийн 2026-08-28-ны шийдвэртэй ижил */
-    zoomToWhere(PARCEL_LAYER_ID, parcelWhere(oid), { animate: false });
+    askDrop(() => {
+      setHits([]);
+      setFindMsg('');
+      setEditOid(oid);
+      setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
+      /* ⚠️ Анимацигүй — `pickOverlap`-ийн 2026-08-28-ны шийдвэртэй ижил */
+      zoomToWhere(PARCEL_LAYER_ID, parcelWhere(oid), { animate: false });
+    });
   }, [askDrop, setHighlight, zoomToWhere]);
 
   const findParcel = useCallback(async () => {
@@ -796,19 +813,22 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   const closeEdit = useCallback(() => {
     markDirty(false);
+    /* ⚠️ 2026-10-09 (аудит №6): маягт өөрөө хаагдсан бол хүлээж буй асуулт хуучирсан */
+    setConfirmQ(null);
     setEditOid(null);
     setHighlight(null);
   }, [setHighlight, markDirty]);
 
   /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
   const exitEdit = useCallback(() => {
-    if (!askDrop()) return;
-    setEditMode(false);
-    setEditOid(null);
-    setHighlight(null);
-    /* ⚠️ 2026-10-01: хайлтын үр дүн дараагийн удаа хуучирч харагдахгүй */
-    setFindMsg('');
-    setHits([]);
+    askDrop(() => {
+      setEditMode(false);
+      setEditOid(null);
+      setHighlight(null);
+      /* ⚠️ 2026-10-01: хайлтын үр дүн дараагийн удаа хуучирч харагдахгүй */
+      setFindMsg('');
+      setHits([]);
+    });
   }, [setHighlight, askDrop]);
 
   /**
@@ -1434,6 +1454,23 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 <span>{[h.owner, h.status].filter((x) => x.trim()).join(' · ') || '—'}</span>
               </button>
             ))}
+          </div>
+        )}
+        {/* САМБАРЫН БАТАЛГААЖУУЛАЛТ — `confirmQ`-ийн тайлбар (2026-10-09, аудит №6).
+            Мэдэгдлийн дээр; «Тийм» үргэлжлүүлж, «Үгүй» юу ч хийхгүй. */}
+        {confirmQ && (
+          <div className={g.confirm} role="group" aria-live="assertive" aria-label={confirmQ.msg}>
+            <span className={g.confirmMsg}>{confirmQ.msg}</span>
+            <button
+              type="button"
+              className={g.primary}
+              onClick={() => { const q = confirmQ; setConfirmQ(null); q.onYes(); }}
+            >
+              {tr('Тийм')}
+            </button>
+            <button type="button" className={g.btn} onClick={() => setConfirmQ(null)}>
+              {tr('Үгүй')}
+            </button>
           </div>
         )}
         {saved && <p className={g.saved} role="status">{saved}</p>}

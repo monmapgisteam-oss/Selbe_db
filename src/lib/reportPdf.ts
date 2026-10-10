@@ -20,6 +20,7 @@ import type {
 import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
 import { buildFindings, type ReportExtra } from '@/lib/reportData';
+import { ailTotal } from '@/lib/execData';
 import { num, pct, dateTime } from '@/lib/format';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
@@ -96,7 +97,15 @@ export function buildReportDoc(
   const budgetOf = (k: string) => extra.finance.byBagts[k] ?? 0;
   const sorted = [...rows].sort((a, b) => budgetOf(b.key) - budgetOf(a.key));
   const blocks = rows.reduce((a, x) => a + x.blocks, 0);
-  const ail = rows.reduce((a, x) => a + x.ail, 0);
+  /* ⚠️ 2026-10-09 (аудит №6): null ≠ 0 — `AIL_TOO` бүгд хоосон → «—», заримд нь хоосон →
+     «N (дутуу)» (`ailTotal`, дэлгэц `Tailan.tsx` ба Dashboard-тай ижил хэлбэр). Урьд нь
+     `reduce` дутуу нийлбэрийг бүрэн мэт хэвлэдэг байв. Багцын мөр бүрт ч ижил (`ailCell`). */
+  const ailOf = (rs: readonly BagtsRow[]) => {
+    const t = ailTotal(rs);
+    return t.ail == null ? '—' : t.partial ? `${num(t.ail)} (${tr('дутуу')})` : num(t.ail);
+  };
+  const ail = ailOf(rows);
+  const ailCell = (x: BagtsRow) => ailOf([x]);
   const budget = rows.reduce((a, x) => a + budgetOf(x.key), 0);
   /* ⚠️ 2026-09-30: §2 «Нийт» = `overall.pct` — порталын ГАНЦ орон сууцны гүйцэтгэл
      (`gdash.housingPct`), дэлгэц (`Tailan.tsx`) ба §3 «Нийт»-тэй ЯГ нэг тоо. Урьд нь
@@ -133,7 +142,7 @@ export function buildReportDoc(
          шошгогүй тавивал «нийт олгосон ÷ гэрээлсэн дүн» мэт уншигдана; тоологчийг ил бичнэ (`paidShare`).
          ⚠️ 2026-10-09: урьдах «26.0% · 522.71 · 530.87» тоо нь холбоосоос (`FIN_PKG_ALIAS`) өмнөх — хуучирсан. */
       d.paidRate != null ? ` (${tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', bn(finance.paidContracted), pct(d.paidRate, 1))})` : ''),
-    tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(habea.workers), num(habea.tehnik), num(blocks), num(ail)),
+    tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(habea.workers), num(habea.tehnik), num(blocks), ail),
   ];
 
   return {
@@ -185,7 +194,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 160], body: [
         [th(tr('Үзүүлэлт')), th(tr('Утга'), true)],
         [td(tr('Орон сууцны блок')), td(num(blocks), true)],
-        [td(tr('Өрхийн орон сууц')), td(num(ail), true)],
+        [td(tr('Өрхийн орон сууц')), td(ail, true)],
         [td(tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)')), td(pct(overall.pct, 2), true)],
         /* ⚠️ 2026-10-09 (аудит №2): «энгийн» — товч танилцуулгын ХО-оор жигнэсэн тооноос ялгана */
         [td(tr('Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)')), td(pct(progress.overall, 2), true)],
@@ -198,15 +207,15 @@ export function buildReportDoc(
 
       ...section('2', tr('Орон сууцны багцууд'),
         /* ⚠️ Багцын ТОО өгөгдлөөс (дэлгэцтэй ижил, 2026-09-17) — урьд нь «долоон» хатуу. */
-        tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length))),
+        tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), ail, bn(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
       { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...sorted.map((x): TableCell[] => [
-          td(tr(x.label)), td(num(x.blocks), true), td(num(x.ail), true),
+          td(tr(x.label)), td(num(x.blocks), true), td(ailCell(x), true),
           td(budgetOf(x.key) > 0 ? bn(budgetOf(x.key)) : '—', true), td(pct(x.progress, 2), true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(num(blocks), true, TOTAL), td(num(ail), true, TOTAL),
+        [td(tr('Нийт'), false, TOTAL), td(num(blocks), true, TOTAL), td(ail, true, TOTAL),
           td(bn(budget), true, TOTAL), td(pct(bagtsAvg, 2), true, TOTAL)],
       ] }, layout: tableLayout },
 
@@ -270,7 +279,7 @@ export function buildReportDoc(
       ...section('6', tr('Барилга угсралтын гүйцэтгэл'),
         tr('Хяналтын {0} блокийн нийт гүйцэтгэлийн энгийн дундаж {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.', num(progress.blocks), pct(progress.overall, 2), progress.date ? tr(' (сүүлийн тайлагнал {0})', progress.date) : '', progress.blocks > progress.reported ? tr('; тайлагнаагүй {0} блок 0%-иар тооцогдсон', num(progress.blocks - progress.reported)) : '', num(progress.reported))
         + (d.startedPhases.length || d.notStartedPhases.length
-          ? `${d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.join('», «')) : ''}${d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : ''}.`
+          ? `${d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.map((x) => tr(x)).join('», «')) : ''}${d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : ''}.`
           : '')),
       cap('6.1', tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 60, 80], body: [

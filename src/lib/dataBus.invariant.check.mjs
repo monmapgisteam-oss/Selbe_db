@@ -207,7 +207,7 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     'Илгээлт нь ЯГ ТЭР `Selbe_Guitsetgel_Draft` хүснэгтийн `sub|<багц>` мөрд '
     + 'бичигддэг (`draftRemote.ts`-тэй ижил хүснэгт, ижил шалтгаан): энэ хүснэгт '
     + '`dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ — бөглөх/хянах хуудас нээгдэх агшинд шууд '
-    + 'уншиж (`loadActiveSubmission`/`loadSubmissionByOid`), дараа нь дэлгэцийн '
+    + 'уншиж (`readActiveSubmission`/`readSubmissionByOid`), дараа нь дэлгэцийн '
     + 'төлөв эх сурвалж болно. ⚠️ Батлагдахад архивт бичих нь ЭНД БИШ '
     + '`hyanaltStore.apply` дотор (`applyAdds`) явагддаг тул Bagts_* кэшийг '
     + 'тэр зам хүчингүй болгоно (2026-09-04, илгээлтийн завсрын хадгалалт).'],

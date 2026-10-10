@@ -22,8 +22,13 @@ const NODE_GLOBALS = Object.fromEntries([
   'queueMicrotask', 'structuredClone', 'performance', 'crypto', 'globalThis',
 ].map((g) => [g, 'readonly']));
 
+/*
+ * ⚠️ 2026-10-09 (аудит №6): `agent-proxy/*.mjs` (реле: server · worker · claudeCode · rateLimit) ч lint-д
+ *    орно — урьд `npm run lint` нь `src tools` л байсан тул релейн тодорхойгүй хувьсагч/алдаа CI-д
+ *    хэзээ ч баригддаггүй байв. `agent-proxy/node_modules` (тусдаа багц) ба `host/` (PowerShell) ignore.
+ */
 export default [
-  { ignores: ['node_modules/**', '.next/**', 'out/**', 'tools/**/*.{js,cjs,py,ipynb,txt}'] },
+  { ignores: ['node_modules/**', '.next/**', 'out/**', 'tools/**/*.{js,cjs,py,ipynb,txt}', 'agent-proxy/node_modules/**', 'agent-proxy/host/**'] },
   ...coreWebVitals,
   ...nextTs,
   {
@@ -59,6 +64,12 @@ export default [
   },
   {
     files: ['tools/**/*.mjs'],
+    languageOptions: { sourceType: 'module', globals: NODE_GLOBALS },
+    rules: { 'no-undef': 'error' },
+  },
+  /* ⚠️ 2026-10-09 (аудит №6): реле — Node ба Cloudflare Worker (`worker.mjs`) хоёулаа ижил Web глобалтай */
+  {
+    files: ['agent-proxy/*.mjs'],
     languageOptions: { sourceType: 'module', globals: NODE_GLOBALS },
     rules: { 'no-undef': 'error' },
   },

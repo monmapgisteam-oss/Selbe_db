@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   createLimiter, LIMITS, WINDOW_MS,
-  createBudget, budgetFromEnv, usageTokens, budgetDay, DAILY_TOKEN_BUDGET_DEFAULT, upstreamErrorText,
+  createBudget, budgetFromEnv, usageTokens, budgetDay, DAILY_TOKEN_BUDGET_DEFAULT, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, estimateInputTokens, reserveTokens, settleTokens, utf8Bytes, botCaller,
   sanitizeChat, sanitizeTools, sanitizeMessages,
 } from '../agent-proxy/rateLimit.mjs';
@@ -102,6 +102,21 @@ for (const f of ['server.mjs', 'worker.mjs']) {
   assert.ok(full > 0 && chk > full, `${f}: authfail шалгалт ArcGIS дуудлагаас өмнө байх ёстой`);
 }
 console.log('✅ server.mjs · worker.mjs: хэрэглэгч 40 · IP 300 · authfail 20 холбогдсон');
+
+/* ── ⚠️ 2026-10-09 (аудит №6): минутын тоолол (`hit`) ЗӨВХӨН слот/төсөв авсны ДАРАА — татгалзсан 429 тоологдохгүй;
+      дээд үйлчилгээний түлхүүрийн алдаа 502 `upstream_auth` (хоёр реле ижил) ── */
+for (const f of ['server.mjs', 'worker.mjs']) {
+  const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
+  const full = src.indexOf('limiter.full(caller, LIMITS.user)');
+  const acq = src.indexOf('inflight.acquire(caller');
+  const hit = src.indexOf('limiter.hit(caller, LIMITS.user)');
+  assert.ok(full > 0, `${f}: хэрэглэгчийн минутын хязгаар \`full\`-ээр шалгагдахгүй`);
+  assert.ok(acq > full, `${f}: \`full\` шалгалт зэрэг хүсэлтийн слотоос ӨМНӨ байх ёстой`);
+  assert.ok(hit > acq, `${f}: \`hit\` (тоолол) зэрэг хүсэлтийн слот авсны ДАРАА байх ёстой`);
+  assert.match(src, /UPSTREAM_AUTH/, `${f}: дээд үйлчилгээний түлхүүрийн алдаа \`UPSTREAM_AUTH\`-аар буцахгүй`);
+}
+assert.deepEqual({ ...UPSTREAM_AUTH }, { error: 'Туслахын серверийн тохиргооны алдаа', code: 'upstream_auth', retryable: false });
+console.log('✅ server.mjs · worker.mjs: минутын тоолол слотын дараа · upstream_auth 502');
 
 /* ── ⚠️ 2026-10-09 (аудит №3): server.mjs — TRUSTED_PROXY алга бол authfail нь IP + ТОКЕНЫ ХЭШ ── */
 {

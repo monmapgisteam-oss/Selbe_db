@@ -23,7 +23,7 @@ import { upstreamOf, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
 import { sheetsOf } from './tuhSchedule';
 import {
   buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
-  ipcOf, earned, daysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
+  ipcOf, earned, calDaysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
   lastReportOf, reportAge,
   type TuhPkg, type TuhStatus, type TuhIpc, type CommissionPartial,
 } from '@/lib/tuhData';
@@ -364,7 +364,9 @@ export function buildModel(input: {
       ipc,
       commission: comm,
       commissionPartial: commPartial,
-      delay: daysBetween(p.end, comm),
+      /* ⚠️ 2026-10-09 (аудит №6): хуанлийн өдрөөр (`calDaysBetween`) — `p.end` UB шөнө дунд,
+         `comm` UTC тул `Math.round` 8 цагийн зөрүүгээр +1 хоногийг 0 болгодог байв */
+      delay: calDaysBetween(p.end, comm),
       blocks: packs ? (pack?.blocks.length ?? 0) : null,
       households: packs ? (pack?.households ?? 0) : null,
       workers,

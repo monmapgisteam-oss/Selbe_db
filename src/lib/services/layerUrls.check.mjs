@@ -26,6 +26,7 @@ const DEAD = [
   'busiin_medeelel_final',
   'Tuluvlult_talbai',
   'Selbe_barilga_last',
+  'A', // ⚠️ 2026-10-09 (аудит №6): CLAUDE.md-ийн 9 дэх устгагдсан үйлчилгээ
 ];
 
 let n = 0;

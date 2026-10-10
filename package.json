@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev -p 8123",
     "build": "next build",
-    "lint": "eslint src tools",
+    "lint": "eslint src tools agent-proxy",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.mjs",
     "test:obyem": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/obyem.check.mjs",

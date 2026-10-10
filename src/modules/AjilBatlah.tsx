@@ -579,7 +579,8 @@ export function AjilBatlah() {
         />
         <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)} aria-label={tr('Бүх багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
-          {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
+          {/* ⚠️ 2026-10-09 (аудит №6): багцын нэр нь ӨГӨГДӨЛ — `tr()`-ээр орчуулахгүй */}
+          {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
         {dirty && (
           <button className={s.clear} onClick={() => { setQ(''); setGrp(ALL); }}>

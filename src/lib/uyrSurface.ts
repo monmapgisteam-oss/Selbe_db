@@ -514,11 +514,13 @@ export function simplifyRings(
  * татсан зурвасаар бодогддог байсан тул зурган дээр урсаж буй ус ба улаанаар
  * тэмдэглэсэн хохирол хоёр ЗӨРДӨГ байв (хэрэглэгчийн 2026-09-09-ны шүүмж).
  *
- * @param minDepth хохиролд тооцох доод гүн (м) — 0.15 м нь хөл нэвтэрч,
+ * @param minDepth хохиролд тооцох доод гүн (м) — `FOOTPRINT_MIN_M` (0.15) нь хөл нэвтэрч,
  *   хаалганы босго давах гүн; түүнээс нимгэн ус эд хөрөнгийн хохирол өгөхгүй
  * @returns ArcGIS-ийн `Polygon.rings`-д шууд өгөх боломжтой цагирагууд
  */
-export function floodFootprint(fd: FloodData, minDepth = 0.15): number[][][] {
+/** ⚠️ 2026-10-09 (аудит №6): НЭГ тогтмол — UI-ийн тайлбар (`Ersdel`) урьд нь `0.15`-ыг хатуу давтдаг байв */
+export const FOOTPRINT_MIN_M = 0.15;
+export function floodFootprint(fd: FloodData, minDepth = FOOTPRINT_MIN_M): number[][][] {
   const md = fd.maxDepth;
   if (!md) return [];
   const W = fd.meta.width;

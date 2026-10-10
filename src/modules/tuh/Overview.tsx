@@ -16,6 +16,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date } from '@/lib/format';
 import {
   TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, elapsedPct,
+  calDaysBetween,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
@@ -120,11 +121,9 @@ export function DuoBars({ elapsed, progress }: { elapsed: number | null; progres
  *    илгээсэн IPC өнөөдөр 21:00-д «2 хоног», гэрээ маргааш дуусахад үдээс хойш «0 хоног» гэж гардаг
  *    байв. Энд хуанлийн өдрийн тоо (Date.UTC-ээр — DST/цагийн бүсийн шилжилтэд бүхэл тоо).
  */
-export const calDaysBetween = (a: number | null, b: number | null): number | null => {
-  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) return null;
-  const day = (ms: number) => { const d = new Date(ms); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
-  return Math.round((day(b) - day(a)) / 86_400_000);
-};
+/* ⚠️ 2026-10-09 (аудит №6): тодорхойлолт `tuhData.calDaysBetween` руу НЭГТГЭГДСЭН (Node тест компонентын
+   файлыг импортлохгүй) — энд зөвхөн дахин экспорт, `PkgDetail`-ийн импорт эвдрэхгүй. */
+export { calDaysBetween };
 
 /**
  * ТУХ-ын төлөв → «Хуваарь»-ийн зурвасын өнгө.

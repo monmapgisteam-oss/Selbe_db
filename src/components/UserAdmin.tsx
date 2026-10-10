@@ -93,8 +93,18 @@ const keepWorkflow = (cur: ViewKey[] | 'all', next: ViewKey[]): ViewKey[] => {
  *    ба эрхийг бүгдийг нь картын «Төрлөөр тохируулах» бичнэ.
  * ⚠️ Функц — текстийг зурагдах агшинд (`capLabel`-ийн ⚠️).
  */
-const rolePresets = (): { key: Role; label: string }[] =>
-  TYPE_ORDER.map((r) => ({ key: r, label: typeLabel(r) }));
+/**
+ * @param hardSuper ⚠️ 2026-10-09 (аудит №6): `super` сонголт ЗӨВХӨН кодонд бүртгэлтэй админы мөрөнд
+ *   (тэнд сонгогч угаасаа идэвхгүй). Урьд нь жирийн аккаунтад ч «Super» харагдаж, ноорог → `setUser`
+ *   нь `role:'super'` override бичдэг байв — `roleTypeApply.applyType` · `UserTypeSection` татгалздаг,
+ *   05-erh-batlah §9 «Super зөвхөн кодын админд». Бөөнөөр засах зурваст (`hardSuper=false`) ч алга.
+ */
+const rolePresets = (hardSuper = false): { key: Role; label: string }[] =>
+  TYPE_ORDER.filter((r) => r !== 'super' || hardSuper).map((r) => ({ key: r, label: typeLabel(r) }));
+
+/** ⚠️ 2026-10-09 (аудит №6): панелаас `super` олгож болохгүй — зөвхөн кодын админ (`applyType`-ийн дүрэм) */
+const grantsSuperToPlain = (username: string, role: Role): boolean =>
+  role === 'super' && roleForUser(username) !== 'super';
 
 const hasView = (views: ViewKey[] | 'all', k: ViewKey) => views === 'all' || views.includes(k);
 
@@ -594,6 +604,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        мөрийн үүрэг сонгогч/бөөнөөр preset нь super-т `injener` г.м. override бичиж, `roleOf`
        (Гүйцэтгэлийн «Нэгтгэл гүйцэтгэл» таб, нүүр цонх) super биш болгодог байв. */
     if (roleForUser(u.username) === 'super' && role !== 'super') return;
+    /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` ОЛГОХГҮЙ (`grantsSuperToPlain`) — `rolePresets`
+       сонголтыг нуудаг ч ноорогийн зам давхар хаалттай */
+    if (grantsSuperToPlain(u.username, role)) {
+      setAddErr(tr('Super төрөл зөвхөн кодонд бүртгэлтэй админд — админ самбарын эрх кодоор л олгогдоно.'));
+      return;
+    }
     const a = roleAccess(role);
     const d = draftOf(u);
     const drop = a.views !== 'all' && dropsGuits(u, d.views, keepWorkflow(d.views, a.views));
@@ -655,7 +671,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const bulkRole = (role: Role) => {
     const a = roleAccess(role);
     /* ⚠️ 2026-09-30: хатуу super-ийг ИЛ алгасна (`applyRole`-ийн дүрэм, `bulkRemove`-той ижил зурвас) */
-    const skipped = selRows.filter((u) => roleForUser(u.username) === 'super' && role !== 'super');
+    /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` олгохыг ч алгасна (`grantsSuperToPlain`) */
+    const skipped = selRows.filter((u) => (roleForUser(u.username) === 'super' && role !== 'super') || grantsSuperToPlain(u.username, role));
     const rows = selRows.filter((u) => !skipped.includes(u));
     // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
     /* ⚠️ 2026-09-30: `applyRole`-той ИЖИЛ илэрхийлэл (`keepWorkflow`). Урьд нь загварын харагдацтай
@@ -758,7 +775,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const ajOk = await purgeAjilAssign(uname);
           /* ⚠️ Дэд бүтцийн засварын хуваарилалт нь ӨӨР мөр (`__butets__:`) — тусад нь арилгана */
           const btOk = await purgeButetsAssign(uname);
-          const capOk = await setCaps(uname, []);
+          /* ⚠️ 2026-10-09 (аудит №6): АБСОЛЮТ устгал — нэгтгэлгүй `capRemove` (`caps.setCaps`-ийн `absolute` ⚠️) */
+          const capOk = await setCaps(uname, [], { absolute: true });
           const r = await removeUser(uname);
           if (r && flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
@@ -783,7 +801,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             if (!(await purgeChanarAssign(uname))) bad = true;
             if (!(await purgeAjilAssign(uname))) bad = true;
             if (!(await purgeButetsAssign(uname))) bad = true;
-            if (!(await setCaps(uname, []))) bad = true;
+            /* ⚠️ 2026-10-09 (аудит №6): абсолют устгал (дээрх устгах замтай ижил) */
+            if (!(await setCaps(uname, [], { absolute: true }))) bad = true;
           }
           const r = await clearOverride(uname);
           /*
@@ -963,7 +982,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const orphanCaps = capsOf(key);
     if (orphanCaps.length) {
       if (!window.confirm(tr('«{0}» нэрээр устгагдсан аккаунтын засах эрх ({1}) үлдсэн байна. Эдгээрийг арилгаад нэмэх үү?', n, orphanCaps.map(capLabelShort).join(', ')))) return;
-      void setCaps(key, []).then((done) => {
+      /* ⚠️ 2026-10-09 (аудит №6): устгагдсан аккаунтын өнчин мөр — абсолют арилгана */
+      void setCaps(key, [], { absolute: true }).then((done) => {
         if (!done) setAddErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
       });
     }
@@ -1029,7 +1049,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       dirtyPerm: dirtyRemote.has(key),
       myName,
       allKeys: ALL_KEYS,
-      rolePresets: rolePresets(),
+      /* ⚠️ 2026-10-09 (аудит №6): `super` сонголт зөвхөн хатуу super-ийн мөрөнд */
+      rolePresets: rolePresets(roleForUser(u.username) === 'super'),
       hasView,
       onPick: (checked) => setSel((prev) => {
         const n = new Set(prev);

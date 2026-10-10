@@ -956,8 +956,8 @@ function readRow(a: RowAttrs | undefined): SubRead {
 /* ⚠️ Хуучин `toStaged` (мөр → `StagedSubmission`, алдааг `null` болгодог)
    ХАСАГДСАН: `readRow` нь «мөр алга» ба «илгээлт атал уншигдсангүй» хоёрыг
    ялгадаг болсон тул алдааг чимээгүй `null` болгох завсрын функц нь тэр
-   ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбар хэрэгтэй дуудагчид
-   `loadActiveSubmission`/`loadSubmissionByOid`-ыг ашиглана. */
+   ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбарууд (`loadActiveSubmission` ·
+   `loadSubmissionByOid`) ч 2026-10-09-нд (аудит №6) дуудагчгүй тул хасагдсан — зөвхөн `read*` үлдэнэ. */
 
 const OUT_FIELDS = ['OBJECTID', 'dkey', 'at', 'payload'];
 
@@ -976,20 +976,8 @@ async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false
   return { ok: true, url: await tableUrl(false) };
 }
 
-/**
- * Багц × ӨДРИЙН ИДЭВХТЭЙ илгээлт — байхгүй/алдаа бол `null`.
- * ⚠️ Давхардвал (зэрэгцээ бичилтийн race) OBJECTID хамгийн ИХ нь ялна —
- *    `saveSubmission` мөн их OBJECTID-д бичиж бусдыг устгадаг тул нийцнэ.
- * ⚠️ Унших зам чимээгүй: алдаа → `null` (илгээлтгүйтэй ижил) — компанийн
- *    хуудас overlay-гүй ч ачаалагдана.
- */
-export async function loadActiveSubmission(
-  pkgKey: string,
-  fillMs?: number | null,
-): Promise<StagedSubmission | null> {
-  const r = await readActiveSubmission(pkgKey, fillMs);
-  return r.ok ? r.sub : null;
-}
+/* ⚠️ 2026-10-09 (аудит №6): чимээгүй `loadActiveSubmission` (алдаа → `null`) ХАСАГДСАН — дуудагчгүй үхмэл код;
+   бүх зам алдааг ялгадаг `readActiveSubmission`-ийг хэрэглэнэ (2026-09-04-ний CRITICAL олдвор). */
 
 /**
  * Багцын ИДЭВХТЭЙ илгээлт — АЛДААГ ЯЛГАДАГ хувилбар.
@@ -1137,19 +1125,10 @@ export async function findNonce(pkgKey: string, nonce: string, since: number): P
   }
 }
 
-/**
- * Илгээлт OBJECTID-оор — хяналтын бүртгэлийн `Эх_мөрийн_дугаар`-аас.
- * `done` = `dkey` нь `done|`-оор эхэлдэг (батлагдсан, архивт орсон).
- *
- * ⚠️ Зөвхөн `sub|`/`done|` мөрийг буцаана: хуучин хяналтын мөрүүдэд
- *    `Эх_мөрийн_дугаар` нь АРХИВЫН OBJECTID тул энэ хүснэгтийн ноорогийн
- *    мөртэй санамсаргүй давхцаж болно — тэр үед `null` буцааж legacy зам
- *    (архивын OBJECTID) ажиллана.
- */
-export async function loadSubmissionByOid(oid: number): Promise<StagedSubmission | null> {
-  const r = await readSubmissionByOid(oid);
-  return r.ok ? r.sub : null;
-}
+/* ⚠️ 2026-10-09 (аудит №6): чимээгүй `loadSubmissionByOid` (алдаа → `null`) ХАСАГДСАН — дуудагчгүй үхмэл код;
+   `readSubmissionByOid` (доор) л үлдэнэ. Хуучин тайлбар: зөвхөн `sub|`/`done|` мөрийг буцаана — хуучин хяналтын
+   мөрүүдэд `Эх_мөрийн_дугаар` нь АРХИВЫН OBJECTID тул ноорогийн мөртэй санамсаргүй давхцаж болно, тэр үед
+   `null` → legacy зам (архивын OBJECTID). */
 
 /**
  * Илгээлт OBJECTID-оор — АЛДААГ ЯЛГАДАГ хувилбар (`SubRead`).

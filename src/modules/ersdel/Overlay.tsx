@@ -1159,7 +1159,10 @@ export function Overlay({
       .map((id) => view?.map?.findLayerById(id) as GraphicsLayer | undefined);
     waterLayers.forEach((wl) => wl?.removeAll());
 
-    const isFlood = bands.length > 0 && bands.every((b) => b.hue === bands[0].hue);
+    /* ⚠️ 2026-10-09 (аудит №6): аюулын төрлийг БҮСИЙН ТҮЛХҮҮРЭЭР (`flood…` — `ersdelGeom.floodBands` ·
+       `Ersdel` загварчлалын мөр; агаар `air…`), өнгөөр БИШ. Урьд нь «бүх бүс нэг өнгөтэй» гэж
+       таамагладаг тул агаарын ГАНЦ бүс үлдэхэд 3D-д `waterSym`-ээр инверсийн өндөрт «ус» зурагддаг байв. */
+    const isFlood = bands.length > 0 && bands[0].key.startsWith('flood');
     /**
      * ⚠️ ЗАГВАРЧЛАЛЫН УС АСААЛТТАЙ бол мужийг УСААР зурахгүй (2026-09-08).
      *

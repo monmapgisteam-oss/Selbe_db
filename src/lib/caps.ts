@@ -273,7 +273,8 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
 /**
  * УРСГАЛТАЙ ХАРАГДАЦУУД — хэрэглэгчийн картын «Харагдац» унтраалгад ОРОХГҮЙ
  * (2026-09-30, хэрэглэгчийн шийдвэр): Гүйцэтгэл · Хуваарь · Хуваарь батлах ·
- * Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC). Тэдгээр нь урсгалын
+ * Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC) · Материал баталгаажуулалт
+ * (`ma`, 2026-10-09 аудит №6: `chanarAuthor/chanarReview`-д орсон — нийт 7). Тэдгээр нь урсгалын
  * хуваарилалтаар (эрх → `CAP_HOST_VIEW`, урсгалын шат → `grantFlowAccess`)
  * автоматаар нээгдэж, хуваарилалт хасахад буцаагдана.
  *
@@ -618,9 +619,16 @@ export function hasCap(username: string | null | undefined, cap: CapKey): boolea
  * админ өөрийн дарсныг шууд харна. Буцах утга нь ArcGIS-т бичигдсэн эсэх;
  * `false` бол дуудагч талд ИЛ анхааруулах ёстой (эрх зөвхөн энэ browser-т).
  */
-export async function setCaps(username: string, caps: CapKey[]): Promise<boolean> {
+/**
+ * @param opts.absolute ⚠️ 2026-10-09 (аудит №6): `true` бол `caps` хоосон байх ёстой ба мөрийг
+ *   НЭГТГЭЛГҮЙ бүрмөсөн арилгана (`capRemove`). Аккаунт устгах/сэргээх зам (`UserAdmin.saveAll`)
+ *   урьд нь `setCaps(u, [])`-аар явж, ялгаа = «кэш − []» тул ЭНЭ табын кэшид байхгүй (өөр админы
+ *   олгосон) эрх `fresh`-д үлдэж, устгагдсан аккаунтад `__cap__:` мөр наалддаг байв.
+ */
+export async function setCaps(username: string, caps: CapKey[], opts?: { absolute?: boolean }): Promise<boolean> {
   const u = username.trim().toLowerCase();
   if (!u) return false;
+  const absolute = opts?.absolute === true && caps.length === 0;
   /* ⚠️ 2026-10-04: энэ дуудлагын ӨӨРЧЛӨЛТ = `next` − суурь (кэш). Remote-д бичихдээ
      ШИНЭЭР уншсан мөр дээр зөвхөн үүнийг давхарлана (`mergeCapDelta`). */
   const base = capsStored(u);
@@ -642,8 +650,13 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
        *    БИЧИХГҮЙ (`ok=false` → dirty, админд «бичигдсэнгүй»).
        */
       /* ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
-         БИШ. Тэр үед урьдын адил бүтэн жагсаалт (`retry`-ийн «Дахин илгээх» ч энэ замаар). */
-      if (u in loadDirty()) {
+         БИШ. Тэр үед урьдын адил бүтэн жагсаалт (`retry`-ийн «Дахин илгээх» ч энэ замаар).
+         ⚠️ 2026-10-09 (аудит №6): ЗӨВХӨН ЭНЭ runtime-ийн dirty (`mineCaps` таарсан) — `permissions`-ийн
+         `mine` дүрэмтэй ижил. Урьд нь `u in loadDirty()` хангалттай байсан тул өмнөх сешн / өөр таб /
+         гараар тарьсан dirty мөр ч нэгтгэлийг алгасуулж, энэ табын кэшээс БҮТЭН жагсаалт бичиж нөгөө
+         админы эрхийг арчдаг байв. Гадны dirty-тэй үед ердийн зам (шинээр уншиж нэгтгэнэ). */
+      const dirtyItem = loadDirty()[u];
+      if (absolute || (dirtyItem && mineCaps.get(u) === serCaps(dirtyItem.caps))) {
         ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
         await trackWrite(u, out, ok);
         return ok;
