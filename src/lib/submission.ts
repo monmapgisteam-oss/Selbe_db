@@ -362,6 +362,46 @@ export function matchArchivedFrame(
 }
 
 /**
+ * ТАСАРСАН ЖААЗНЫ МӨРҮҮД (2026-10-11, аудит №7 — амьд тохиолдол: `Bagts_3_2_9f` 2026-10-11, 500/1471).
+ *
+ * «Архивлаж байна» тэмдгийн дараа (`OID > maxOid0`, тэмдгийн өдөр) бичигдсэн мөрүүд нь тэмдгийн жаазаас
+ * БОГИНО, 500-ийн ҮРЖВЭР (`applyAdds` 500-аар бичдэг), эхний мөрийн № = `rootNo`, жаазны дотор буух дээж
+ * бүр таарч байвал — тэр нь унасан батлалтын ХАГАС жааз: таб хаагдсан/сүлжээ тасарсан тул `archiveSubmission`-ийн
+ * буцаалт (`applyDeletes`) ажиллаагүй. Тийм жааз `loadRows`-ийн F1 шалгуурыг унагааж багцыг (бөглөх · хянах ·
+ * батлах) БҮХЭЛД НЬ хаадаг байв — батлагчийн дахин оролдлого ч `probeArchivedFrame` хүртэл хүрдэггүй.
+ *   · бүтэн (≥ n) жааз → `null` (өөр бичигчийн жинхэнэ жааз байж болно — хөндөхгүй);
+ *   · дээж «хол» зөрвөл / № таарахгүй / 500-ийн үржвэр биш → `null` (танигдсангүй — админ);
+ *   · эс бөгөөс устгах OID-ууд.
+ * Цэвэр функц — `hyanaltStore.cleanupTruncatedFrame` сүлжээг хариуцна.
+ */
+export function truncatedFrameIds(
+  rows: Record<string, unknown>[],
+  mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
+  oidField: string,
+  noField: string,
+  dateFields?: readonly string[],
+): number[] | null {
+  const len = rows.length;
+  if (!len || mark.n <= 0 || len >= mark.n || len % 500 !== 0) return null;
+  const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
+  if (mark.rootNo && noOf(rows[0]) !== mark.rootNo) return null;
+  /* Жаазны эхлэл дунд нь ДАХИН тааралдвал хоёр жааз нийлсэн — танигдсангүй */
+  if (mark.rootNo) for (let i = 1; i < len; i += 1) if (noOf(rows[i]) === mark.rootNo) return null;
+  const dates = new Set(dateFields ?? []);
+  for (const [i, f, v] of mark.probe ?? []) {
+    if (i >= len) continue;
+    if (cmpArchVal(rows[i]?.[f], v, dates.has(f)) === 'far') return null;
+  }
+  const ids: number[] = [];
+  for (const r of rows) {
+    const oid = Number(r[oidField]);
+    if (!Number.isInteger(oid) || oid <= 0) return null;
+    ids.push(oid);
+  }
+  return ids;
+}
+
+/**
  * ТЭМДГИЙН АРХИВЛАЖ БУЙ АГУУЛГА (2026-10-09) — тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бол payload өөрөө; ДАМЖСАН
  * (`mergeSubmission`) бол түүний хуулбар (`prev`) payload-ын хэлбэрээр; аль нь ч биш бол `null` (хасах боломжгүй).
  */

@@ -718,7 +718,12 @@ async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
  * шалгалтад (2026-10-09). Одоогийн жаазны хамгийн их `fillDate`-ийн ӨДРӨӨС өмнөх хамгийн сүүлийн
  * өдрийг олж, `lastFrame`-ийн ижил дүрмээр таслана. Өмнөх өдөр байхгүй бол `null`. Алдааг ШИДНЭ.
  */
-async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number): Promise<number | null> {
+/**
+ * ӨМНӨХ БӨГЛӨСӨН ӨДӨР (`YYYY-MM-DD`) — одоогийн жаазны хамгийн их `fillDate`-ийн өдрөөс ӨМНӨХ хамгийн сүүлийн
+ * өдөр; байхгүй бол `null`. `prevFrameLen` ба `loadRows`-ийн тасарсан жаазны нөөц зам (2026-10-11) хоёул хэрэглэнэ.
+ * Алдааг ШИДНЭ.
+ */
+async function prevFillDay(pkg: Pkg, sc: Schema, cur: Feature[]): Promise<string | null> {
   const fld = sc.f.fillDate;
   if (!fld) return null;
   let mx: number | null = null;
@@ -733,11 +738,18 @@ async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number
     returnGeometry: "false",
   });
   const pm = j.features?.[0]?.attributes?.mx as number | null | undefined;
+  return pm == null ? null : msToDay(pm);
+}
+
+async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number): Promise<number | null> {
+  const fld = sc.f.fillDate;
+  if (!fld) return null;
+  const pm = await prevFillDay(pkg, sc, cur);
   if (pm == null) return null;
   const out: Feature[] = [];
   for (let offset = 0; ; ) {
     const p = await agsFetch(`${pkg.url}/query`, {
-      where: dayFilter(fld, msToDay(pm)),
+      where: dayFilter(fld, pm),
       outFields: [sc.f.oid, sc.f.no, sc.f.work].join(","),
       returnGeometry: "false",
       orderByFields: `${sc.f.oid} ASC`,
@@ -812,6 +824,17 @@ export async function loadRows(
    *    `frame.length >= rawFrameLen`-ийг батлах ёстой.
    */
   rawFrameLen: number;
+  /**
+   * ⚠️ 2026-10-11 (аудит №7): УНШИЛТЫН ЗАМД (`strict` биш, `atDay`-гүй) тэр өдрийн ЦОРЫН ГАНЦ жааз тасарсан
+   *    (F1: лавлахаас богино · F4: 500-ийн үржвэр, өмнөх бүтэн жаазаас богино) бол алдаа шидэхийн оронд
+   *    ӨМНӨХ ӨДРИЙН сүүлийн бүтэн жаазыг татаж буцаана — `lastFrame`-ийн «хуучин боловч БҮТЭН агшин харуулах
+   *    нь хуудсыг бүхэлд нь хаахаас хамаагүй дээр» дүрэм, гэхдээ ӨДӨР ДАМНАСАН. Амьд тохиолдол: `Bagts_3_2_9f`
+   *    2026-10-11 — газрын даргын батлалт 500/1471 мөрөнд унаж, бөглөх хуудас · хянагчийн харагдац · батлалт
+   *    бүгд «сүүлийн агшин дутуу» гэж хаагдсан; батлалт нь тэр тасарсан жаазыг өөрөө цэвэрлэх ёстой атлаа
+   *    (`hyanaltStore.cleanupTruncatedFrame`) хянагчийн харагдац ачаалагдахгүй тул хүрч чаддаггүй байв.
+   *    Энэ талбар байвал дуудагч «хуучин агшин» гэдгийг мэднэ; `strict` (бичих) зам урьдын адил ШИДНЭ.
+   */
+  truncated?: { day: string; rows: number; need: number; shownDay: string };
 }> {
   const tree = TREES[pkg.key] ?? "";
   /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): суурь жаазны лавлахыг мөрийн уншилттай ЗЭРЭГ эхлүүлнэ.
@@ -941,6 +964,20 @@ export async function loadRows(
      *    байж болохгүй. Лавлахыг ЗӨВХӨН зураглалаас богино үед татна (хэвийн багцад хүсэлтгүй);
      *    лавлах татагдахгүй бол (сүлжээ) хуудсыг хаахгүй — бүртгэлд үлдээнэ.
      */
+    /**
+     * ⚠️ 2026-10-11 (аудит №7): ТАСАРСАН ЖААЗНЫ НӨӨЦ ЗАМ (уншилтад л) — буцаах төрлийн `truncated`-ийн ⚠️.
+     *    Өмнөх өдөр олдохгүй / татагдахгүй бол `null` → дуудагч урьдын адил шидэх/анхааруулах.
+     */
+    const fallbackPrevDay = async (got: number, need: number) => {
+      if (opts?.strict || atDay || !sc.f.fillDate) return null;
+      let prev: string | null = null;
+      try { prev = await prevFillDay(pkg, sc, feats2); } catch { return null; }
+      if (!prev) return null;
+      const curDay = (() => { let mx: number | null = null; for (const f of feats2) { const v = num(f.attributes[sc.f.fillDate!]); if (v != null && (mx == null || v > mx)) mx = v; } return mx == null ? '' : msToDay(mx); })();
+      console.warn(`[selbe] ${pkg.key}: ${curDay}-ны жааз тасарсан (${got} мөр, ${need} байх ёстой) — өмнөх өдрийн (${prev}) бүтэн агшныг харуулна`);
+      const r = await loadRows(pkg, sc, prev, fields, opts);
+      return { ...r, truncated: { day: curDay, rows: got, need, shownDay: prev } };
+    };
     if (expect > 0 && feats2.length < expect) {
       let need = 0;
       try {
@@ -951,6 +988,10 @@ export async function loadRows(
         if (opts?.strict)
           throw new Error(tr('{0}: жаазны бүтэн эсэхийг шалгах лавлах татагдсангүй — юу ч бичсэнгүй, дахин оролдоно уу ({1})', pkg.label, String((e as Error)?.message ?? e)));
         console.warn(`[selbe] ${pkg.key}: лавлах татагдсангүй — жаазны уртыг шалгасангүй`, e);
+      }
+      if (feats2.length < need) {
+        const fb = await fallbackPrevDay(feats2.length, need);
+        if (fb) return fb;
       }
       if (feats2.length < need)
         throw new Error(
@@ -980,6 +1021,9 @@ export async function loadRows(
       }
       const curLen = feats2.filter((f) => !isBlankAttrs(f.attributes, sc.f.no, sc.f.work)).length;
       if (prevLen != null && curLen < prevLen) {
+        /* ⚠️ 2026-10-11 (аудит №7): уншилтад тасарсан жаазыг ХАРУУЛАХГҮЙ — өмнөх өдрийн бүтэн агшин (дээрх нөөц зам) */
+        const fb = await fallbackPrevDay(curLen, prevLen);
+        if (fb) return fb;
         if (opts?.strict)
           throw new Error(
             tr(

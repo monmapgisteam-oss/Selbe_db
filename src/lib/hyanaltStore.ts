@@ -840,6 +840,59 @@ export async function probeArchivedFrame(pkgKey: string, mark: ArchivingMark): P
   return matchArchivedFrame(rows, mark, sc.f.oid, sc.f.no, dateFields);
 }
 
+/**
+ * ХУУЧИРСАН ТЭМДГИЙН ТАСАРСАН ЖААЗЫГ ЦЭВЭРЛЭНЭ (2026-10-11, аудит №7 — амьд: `Bagts_3_2_9f`, 2026-10-11:
+ * газрын даргын батлалт 1-р багц (500 мөр) бичээд унасан, буцаалт ажилсангүй; `sub|` мөрөнд тэмдэг үлдсэн).
+ *
+ * ⚠️ Урьд нь ийм жааз `loadRows`-ийн F1 шалгуурыг («500 мөр ирлээ, 1470 байх ёстой») унагааж, хянагчийн
+ *    харагдац ачаалагдахгүй → «Батлах» идэвхгүй → `archiveSubmission`-ийн `probeArchivedFrame` хүртэл ХЭЗЭЭ Ч
+ *    хүрдэггүй байв (гүйцэтгэгчийн бөглөх хуудас ч хаагддаг). Одоо `archiveSubmission` тэмдэг ХУУЧИРСАН
+ *    (`!markFresh`) бөгөөд жааз БУУГААГҮЙ (`probeArchivedFrame === null`) үед энэ функцээр тэмдгийн өдрийн,
+ *    `maxOid0`-ээс хойших мөрүүдийг татаж `submission.truncatedFrameIds`-ээр таньж устгана.
+ *   · `{ deleted: 0 }` — тасарсан мөр алга (юу ч хөндөөгүй);
+ *   · `{ error }` — танигдсангүй / устгал дутуу (fail-closed — дуудагч бичихгүй, админ шалгана).
+ */
+export async function cleanupTruncatedFrame(pkgKey: string, mark: ArchivingMark): Promise<{ deleted: number } | { error: string }> {
+  const [{ PKGS, fillSchema }, { agsFetch }, { msToDay, dayFilter, applyDeletes }, { truncatedFrameIds }] = await Promise.all([
+    import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags'), import('@/modules/sheet/bagtsSheet'), import('./submission'),
+  ]);
+  const pkg = PKGS.find((p) => p.key === pkgKey);
+  if (!pkg) return { error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
+  const sc = await fillSchema(pkg);
+  if (!sc.f.fillDate) return { error: tr('Багцын хуудсанд бөглөсөн огнооны талбар алга — өмнөх архивлалтыг шалгах боломжгүй') };
+  const outFields = [...new Set([sc.f.oid, sc.f.no, ...(mark.probe ?? []).map((p) => p[1])])].join(',');
+  const rows: Record<string, unknown>[] = [];
+  try {
+    for (let offset = 0; ; ) {
+      const j = await agsFetch(`${pkg.url}/query`, {
+        where: `${sc.f.oid} > ${mark.maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(mark.fillMs))}`,
+        outFields,
+        orderByFields: `${sc.f.oid} ASC`,
+        resultRecordCount: '2000',
+        resultOffset: String(offset),
+        returnGeometry: 'false',
+      });
+      const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
+      rows.push(...fs.map((f) => f.attributes));
+      if (!j?.exceededTransferLimit || fs.length === 0) break;
+      offset += fs.length;
+    }
+  } catch (e) {
+    return { error: tr('тасарсан жаазыг шалгах уншилт унав ({0})', String((e as Error)?.message ?? e)) };
+  }
+  if (!rows.length) return { deleted: 0 };
+  const dateFields = [...sc.start, ...sc.end].filter((f): f is string => !!f);
+  const ids = truncatedFrameIds(rows, mark, sc.f.oid, sc.f.no, dateFields);
+  if (!ids) return { error: tr('тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, AGOL дээр админ шалгана уу', String(rows.length)) };
+  let gone = 0;
+  try { gone = await applyDeletes(pkg, ids); } catch (e) {
+    return { error: tr('тасарсан жаазыг устгаж чадсангүй ({0})', String((e as Error)?.message ?? e)) };
+  }
+  if (gone !== ids.length) return { error: tr('тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', String(ids.length), String(ids.length - gone)) };
+  console.warn(`[selbe] ${pkg.key}: хуучирсан тэмдгийн тасарсан ${gone} мөрийг архиваас цэвэрлэв (OID > ${mark.maxOid0}, ${msToDay(mark.fillMs)})`);
+  return { deleted: gone };
+}
+
 /** ⚠️ 2026-10-09: өмнөх архивлалт шийдэгдээгүй — бичихгүй/буцаахгүй үеийн НЭГ мессеж */
 const MARK_UNRESOLVED = (why: string) =>
   tr('Өмнөх архивлалт шалгагдаагүй — давхар тоолохоос сэргийлж юу ч бичсэнгүй. Хэдэн минутын дараа дахин оролдоно уу ({0}).', why);
@@ -1053,6 +1106,7 @@ async function archiveSubmission(
    *    `markArchiving` «claim»-аар татгалзана).
    */
   let rebase = false;
+  let cleanupWarn = '';
   {
     const am = staged.payload.archiving;
     const carried = !!am && am.at !== staged.at;
@@ -1076,6 +1130,15 @@ async function archiveSubmission(
       if (carried) {
         if (hitOid != null) rebase = true;
         else if (markFresh(am)) return { ok: false, error: MARK_UNRESOLVED(tr('өмнөх батлалт явж байж магадгүй')) };
+      }
+      /* ⚠️ 2026-10-11 (аудит №7): жааз БУУГААГҮЙ, тэмдэг ХУУЧИРСАН — өмнөх батлалтын тасарсан хагас жааз
+         (таб хаагдсан, буцаалт ажиллаагүй) архивт үлдсэн байж болно; түүнийг цэвэрлээгүй бол доорх `strict`
+         `loadRows` «сүүлийн агшин дутуу» гэж унаж, батлалт мөнхөд гацна (`cleanupTruncatedFrame`-ийн ⚠️).
+         Танигдахгүй/устгагдахгүй бол ТАТГАЛЗ (fail-closed). */
+      if (hitOid == null && !markFresh(am) && sc.f.fillDate) {
+        const cl = await cleanupTruncatedFrame(pkg.key, am);
+        if ('error' in cl) return { ok: false, error: MARK_UNRESOLVED(cl.error) };
+        if (cl.deleted > 0) cleanupWarn = tr('Өмнөх батлалтын тасарсан {0} мөрийг архиваас цэвэрлэв.', String(cl.deleted));
       }
     }
   }
@@ -1525,6 +1588,7 @@ async function archiveSubmission(
   if (fin.hold) return { ok: false, error: fin.hold };
   const warns = fin.warns;
   if (postWarn) warns.push(postWarn);
+  if (cleanupWarn) warns.push(cleanupWarn);
   const reopen = fin.reopen;
   if (skipped.length)
     warns.push(tr('Архивт илүү хожуу өдрийн жааз аль хэдийн байсан тул {0} нүдийг алгасав (хуримтлал буурахаас сэргийлэв): {1}', String(skipped.length), nameKeys(skipped)));

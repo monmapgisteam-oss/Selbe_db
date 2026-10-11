@@ -7018,6 +7018,11 @@ const en: Record<string, string> = {
   "Хагас — мод холбогдоогүй хуудас": "Partial — sheets without tree link",
   "{0} хуудас бөглөх хуудастай холбогдоогүй тул чанарын оноо ХАГАС өгөгдлөөр": "{0} sheet(s) not linked to the fill sheet, so the quality score uses PARTIAL data",
   "₮ байна. Багц хоорондын гүйцэтгэл ойролцоо байна: хамгийн өндөр нь": "₮. Progress is similar across packages: the highest is",
+  "тасарсан жаазыг шалгах уншилт унав ({0})": "the read that checks for a truncated snapshot failed ({0})",
+  "тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, AGOL дээр админ шалгана уу": "{0} rows exist for the mark's day — not recognised as a truncated snapshot; an admin must check in AGOL",
+  "тасарсан жаазыг устгаж чадсангүй ({0})": "could not delete the truncated snapshot ({0})",
+  "тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү": "{1} of the {0} truncated rows could not be deleted — clean up manually in AGOL",
+  "Өмнөх батлалтын тасарсан {0} мөрийг архиваас цэвэрлэв.": "Removed {0} rows left by a previous interrupted approval from the archive.",
 };
 
 export default en;

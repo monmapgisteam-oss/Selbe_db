@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
+import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, truncatedFrameIds, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -598,6 +598,17 @@ const nextOf = (over = {}) => {
   assert.equal(matchArchivedFrame(wrong, mk, OIDF, NOF), null, 'урт таарсан ч утга зөрвөл — манайх биш');
   assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y'), row(4, 'q')], { n: 3, rootNo: 'A' }, OIDF, NOF), null, 'n-ээс урт жааз — манайх биш');
   assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y')], { n: 3 }, OIDF, NOF), 1, 'хуучин тэмдэг (дээжгүй) — урт + эхний №');
+
+  /* ⚠️ 2026-10-11 (аудит №7): ТАСАРСАН жааз (500-ийн үржвэр, n-ээс богино, № ба дээж таарна) — устгах OID */
+  const half = Array.from({ length: 500 }, (_, i) => row(1000 + i, i === 0 ? 'A' : `r${i}`, { b: i === 1 ? 9 : 0 }));
+  const mkT = { n: 1471, rootNo: 'A', probe: [[1, 'b', 9], [1300, 'b', 5]] };
+  assert.deepEqual(truncatedFrameIds(half, mkT, OIDF, NOF)?.length, 500, 'хагас жааз танигдаж 500 OID буцна (жаазаас гадуурх дээж тоологдохгүй)');
+  assert.equal(truncatedFrameIds(half.slice(0, 499), mkT, OIDF, NOF), null, '500-ийн үржвэр биш — танигдсангүй');
+  assert.equal(truncatedFrameIds(half, { ...mkT, n: 500 }, OIDF, NOF), null, 'n-тэй тэнцүү (бүтэн) — хөндөхгүй');
+  assert.equal(truncatedFrameIds(half, { ...mkT, rootNo: 'B' }, OIDF, NOF), null, 'эхний № зөрвөл — манайх биш');
+  assert.equal(truncatedFrameIds(half, { ...mkT, probe: [[1, 'b', 3]] }, OIDF, NOF), null, 'дээж хол зөрвөл — манайх биш');
+  assert.equal(truncatedFrameIds([...half.slice(0, 250), ...half.slice(0, 250)], mkT, OIDF, NOF), null, 'эхлэл дунд нь давтагдвал (хоёр жааз) — танигдсангүй');
+  assert.equal(truncatedFrameIds([], mkT, OIDF, NOF), null, 'хоосон');
 
   /* задлал: rootNo · probe хадгалагдана, эвдэрсэн дээж хаягдана */
   const base = { at: 1000, startedAt: 1001, maxOid0: 500, fillMs: FILL, n: 3 };
