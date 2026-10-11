@@ -628,7 +628,13 @@ export type SocialRow = {
    */
   per: { id: string; title: string; n: number; capacity: number | null }[];
 };
-export type SocialLive = { rows: SocialRow[]; totalN: number };
+/**
+ * ⚠️ 2026-10-11 (аудит №7): `loaded` — давхарга нь каталогт БАЙГАА (асуулга явсан) бүлгийн түлхүүрүүд.
+ *    `rows` нь урьдын адил ЗӨВХӨН n > 0 бүлгийг агуулна (Dashboard-ын чарт/хүчин чадлын нийлбэр
+ *    0-тэй мөрөөр өөрчлөгдөхгүй), харин Irged «0 объект» (loaded) ба «давхарга алга» (loaded-д
+ *    байхгүй) хоёрыг үүгээр ялгана — null ≠ 0.
+ */
+export type SocialLive = { rows: SocialRow[]; totalN: number; loaded: string[] };
 
 /** test_data-гийн нийгмийн давхаргууд — каталогийн id-гаар (URL нь TD руу шилжсэн) */
 const SOCIAL_GROUPS: { key: string; label: string; ids: string[] }[] = [
@@ -678,7 +684,7 @@ export const loadSocial = cached<SocialLive>(async () => {
       const cap = sumBy(per, (x) => x.cap ?? 0);
       /* ⚠️ 2026-10-09: барилгатай давхарга БҮГД хүчин чадалтай үед л бүрэн (`completeSum`-ийн дүрэм) */
       const capPartial = hasCap && per.some((x) => x.n > 0 && !x.hasCap);
-      return {
+      const row: SocialRow = {
         key: g.key,
         label: g.label,
         n,
@@ -688,10 +694,16 @@ export const loadSocial = cached<SocialLive>(async () => {
           .map((x) => ({ id: x.id, title: x.title, n: x.n, capacity: x.hasCap ? x.cap : null }))
           .filter((x) => x.n > 0),
       };
+      /* ⚠️ 2026-10-11 (аудит №7): бүлгийн ядаж нэг давхарга каталогт байвал «ачаалагдсан» (`SocialLive.loaded`) */
+      return { row, loaded: g.ids.some((id) => LAYER_BY_ID[id] != null) };
     }),
   );
-  const kept = rows.filter((r) => r.n > 0);
-  return { rows: kept, totalN: kept.reduce((s, r) => s + r.n, 0) };
+  const kept = rows.filter((x) => x.row.n > 0).map((x) => x.row);
+  return {
+    rows: kept,
+    totalN: kept.reduce((s, r) => s + r.n, 0),
+    loaded: rows.filter((x) => x.loaded).map((x) => x.row.key),
+  };
   /* ⚠️ 2026-10-05: бусад DashData ачаалагчтай ЖИГД TTL (таг хэвээр хоосон — портал бичдэггүй) */
 }, SESSION_TTL_MS);
 

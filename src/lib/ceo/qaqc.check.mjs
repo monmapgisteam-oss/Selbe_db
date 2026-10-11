@@ -36,8 +36,9 @@ const docs = (...filled) => QAQC_COLS.map((_, i) => (filled.includes(i) ? `d${i}
 const row = (oid, no, work, d = docs(), extra = {}) => ({
   oid, no, work, des: '', depth: 0, group: false, docs: d, ...extra,
 });
-const P1 = { key: 'b1_9f', label: 'Багц 1 · 9 давхар' };
-const P2 = { key: 'b2_9f', label: 'Багц 2 · 9 давхар' };
+/* ⚠️ 2026-10-11 (аудит №7): `group` — хүснэгтийн «Багц» баганад (`samePkg`-д таарна); `label` сүүлийн баганад */
+const P1 = { key: 'b1_9f', label: 'Багц 1 · 9 давхар', group: 'Багц 1' };
+const P2 = { key: 'b2_9f', label: 'Багц 2 · 9 давхар', group: 'Багц 2' };
 /** Мод холбогдсон багц — `flat: false` */
 const ok = (pkg, rows) => ({ pkg, rows, flat: false });
 
@@ -101,27 +102,36 @@ const ok = (pkg, rows) => ({ pkg, rows, flat: false });
 
   const [byPkg, emptyT, partialT] = k.tables;
   assert.equal(byPkg.title, 'Багцаар');
-  assert.equal(byPkg.cols.length, 5);
-  assert.equal(byPkg.rows[0][0].v, P2.label);               // 3/5 = 60% муу нь эхэнд
-  assert.equal(byPkg.rows[1][0].v, P1.label);               // 2/4 = 50%
+  /* ⚠️ 2026-10-11 (аудит №7): «Багц» = бүлэг («Багц 2»), хуудас («… 9 давхар») СҮҮЛИЙН баганад */
+  assert.equal(byPkg.cols.length, 6);
+  assert.equal(byPkg.cols[0], 'Багц');
+  assert.equal(byPkg.rows[0][0].v, P2.group);               // 3/5 = 60% муу нь эхэнд
+  assert.equal(byPkg.rows[1][0].v, P1.group);               // 2/4 = 50%
+  assert.equal(byPkg.rows[0][5].v, P2.label);
   assert.equal(byPkg.rows[0][4].kind, 'pct');
   assert.equal(byPkg.rows[0][4].v, 60);                     // 0–100, 0.6 БИШ
   assert.equal(byPkg.rows[1][4].v, 50);
   assert.deepEqual(byPkg.rows[0].slice(1, 4).map((c) => c.v), [5, 3, 2]);
 
   assert.equal(emptyT.title, 'Баримтгүй ажлууд');
-  assert.deepEqual(emptyT.rows.map((r) => `${r[0].v}|${r[1].v}|${r[2].v}`), [
-    `${P2.label}|2|е`, `${P2.label}|3|ж`, `${P2.label}|4|з`,
-    `${P1.label}|1|а`, `${P1.label}|4|г`,
+  assert.equal(emptyT.cols.length, 4);
+  assert.deepEqual(emptyT.rows.map((r) => `${r[0].v}|${r[1].v}|${r[2].v}|${r[3].v}`), [
+    `${P2.group}|2|е|${P2.label}`, `${P2.group}|3|ж|${P2.label}`, `${P2.group}|4|з|${P2.label}`,
+    `${P1.group}|1|а|${P1.label}`, `${P1.group}|4|г|${P1.label}`,
   ]);
 
   assert.equal(partialT.title, 'Хагас бүрдсэн ажлууд');
-  assert.equal(partialT.cols.length, 4);
+  assert.equal(partialT.cols.length, 5);
   /* Багц 2 дотор: «и» (8 дутуу) эхэнд, «д» (6 дутуу) дараа; Багц 1: «б» (8 дутуу) */
   assert.deepEqual(partialT.rows.map((r) => `${r[0].v}|${r[2].v}`), [
-    `${P2.label}|и`, `${P2.label}|д`, `${P1.label}|б`,
+    `${P2.group}|и`, `${P2.group}|д`, `${P1.group}|б`,
   ]);
   assert.equal(partialT.rows[1][3].v, QAQC_COLS.slice(3).map((c) => c.short).join(', '));
+  assert.equal(partialT.rows[1][4].v, P2.label);
+  /* `ceo/filter.samePkg` (bagtsKey) — «Багц 2» сонгоход мөр таарна (урьд нь «Багц 2 · 9 давхар» таардаггүй) */
+  const { rowInPkg } = await import('./filter.ts');
+  assert.ok(rowInPkg(byPkg.rows[0], 0, 'Багц 2'), 'багцын шүүлт бүлгийн нэрээр таарна');
+  assert.ok(!rowInPkg(byPkg.rows[1], 0, 'Багц 2'));
 }
 
 /* 5 — босго дангаар */
@@ -143,7 +153,7 @@ assert.equal(qaqcEmptyLevel(0, 0), 'unknown');
 {
   const a = summarizePkg(P1, [row(1, '1', 'а'), row(2, '2', 'б', docs(0))]);          // 1/2
   const b = summarizePkg(P2, [row(1, '1', 'а'), row(2, '2', 'б'), row(3, '3', 'в', docs(0)), row(4, '4', 'г', docs(0))]); // 2/4
-  const c = summarizePkg({ key: 'x', label: 'Хоосон' }, []);                            // null
+  const c = summarizePkg({ key: 'x', label: 'Хоосон', group: 'Хоосон' }, []);           // null
   const sorted = [c, a, b].sort(worstFirst).map((p) => p.pkg.label);
   assert.deepEqual(sorted, [P2.label, P1.label, 'Хоосон']);                            // тэнцүү 50% → 2 > 1
 }

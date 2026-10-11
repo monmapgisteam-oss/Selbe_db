@@ -50,7 +50,9 @@ export function varianceLevel(
 /** Хэтэрсэн ажлуудын хүснэгтийн нэг мөр — багана `WORK_COLS`-той ЯГ таарна */
 function workRow(w: VarianceWork): Cell[] {
   return [
+    /* ⚠️ 2026-10-11 (аудит №7): «Багц» = бүлэг («Багц 1», `samePkg`-д таарна); хуудас («9 давхар») тусдаа багана */
     cell(w.pkg),
+    cell(w.sheet),
     /* ⚠️ `no` хоосон байж болно (`String(r.no ?? '')`) — тэр үед «—» */
     cell(w.no || null),
     cell(w.work),
@@ -90,7 +92,7 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
         файлынх, доод давхаргын дараалалд найдахгүй. */
   const works = [...v.all].sort((a, b) => b.mnt - a.mnt);
   const workCols = [
-    tr('Багц'), tr('№'), tr('Ажил'), tr('Обьём'), tr('Бөглөсөн'),
+    tr('Багц'), tr('Бөглөх хуудас'), tr('№'), tr('Ажил'), tr('Обьём'), tr('Бөглөсөн'),
     tr('Хэтрэлт'), tr('Нэгж өртөг'), tr('Зөрүү ₮'),
   ];
 

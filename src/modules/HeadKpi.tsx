@@ -23,7 +23,7 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { loadFinData, physNow } from '@/modules/Finance';
 import { num, monthKey } from '@/lib/format';
 import { loadHeadline, type Headline } from '@/lib/live';
-import type { BagtsRow } from '@/lib/execData';
+import { ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
 import o from './dashboardOv.module.css';
 
 /**
@@ -96,7 +96,9 @@ export function HeadKpi({ bagts, extra }: {
   const b = bagts.state === 'ready' ? bagts.data : null;
   /* ⚠️ `blocks` (блокийн тоо) 2026-09-06-нд хасагдав — зөвхөн доод дэд мөрөнд
      («113 блок») хэрэглэгддэг байсан бөгөөд тэр мөр бүхэлдээ устсан. */
-  const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
+  /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — `reduce(x.ail)` нь `AIL_TOO` хоосон блокийг 0 гэж нэмж дутуу
+     нийлбэрийг бүрэн мэт зурдаг байв; `ailTotal`/`ailLabel` («—» · «N (дутуу)») — Dashboard-тай нэг. */
+  const ailT = b ? ailTotal(b) : null;
   // ⚠️ Толгой/явцыг ЭНД амьдаар ачаална (prop-оор БИШ) — «Иргэдэд хүрэх үр өгөөж»
   //    (Irged.tsx) энэ мөрийг зөвхөн `bagts`-аар дахин ашиглана. loadHeadline/
   //    loadProjectProgress нь cached тул давхар хүсэлт үүсэхгүй.
@@ -123,7 +125,7 @@ export function HeadKpi({ bagts, extra }: {
   /* ⚠️ 2026-10-05: `q` — нүдний эх хүсэлт; унасан бол «⚠» (`FailVal`), «—» биш */
   const tiles: { v: string; unit?: string; label: string; lead?: true; title?: string; q?: AsyncLike }[] = [
     { v: h == null ? dots(hq) : hVal(h, h.areaHa, (n) => num(n, 1)), unit: tr('га'), label: tr('Төслийн талбай'), q: hq },
-    { v: ail == null ? dots(bagts) : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц'), q: bagts },
+    { v: b == null || ailT == null ? dots(bagts) : ailLabel(b), unit: tr('өрх'), label: tr('Өрхийн орон сууц'), q: bagts },
     { v: h == null ? dots(hq) : hVal(h, h.population, (n) => num(n)), unit: tr('хүн'), label: tr('Хамрагдах хүн ам'), q: hq },
     /* ⚠️ 2026-09-06: `bar` (гүйцэтгэлийн зурвас) ХАСАГДАВ. Гүйцэтгэл 4.18%
        үед дүүргэлт нь 2px өндөр замын 4% буюу үл үзэгдэх богино байсан тул

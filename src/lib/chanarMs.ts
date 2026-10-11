@@ -2065,7 +2065,11 @@ export function canAct(
   /* ⚠️ 2026-09-29 (аудит 10): шинэ хувилбартай ХУУЧИН мөрд «Засах»/«Дахин илгээх» гарахгүй —
      урьд нь «Өөрчлөлтийн түүх»-ээс rev N-ийг нээхэд товч харагдаж, дарахад л
      «шинэ хувилбар аль хэдийн бий» гэж татгалздаг байв (`chanarStore.newerExists`). */
-  const editable = extra.superseded !== true && (kind === 'NCR'
+  /* ⚠️ 2026-10-11 (аудит №7): `extra.contractor === false` (дуудагч багцын гүйцэтгэгч БИШ гэж мэдсэн —
+     `Chanar.tsx` `authorOk`) бол засах/илгээх/шинэ хувилбар товч ГАРАХГҮЙ — store (`isAuthorFor`) татгалздаг
+     тул товч нь дарахад л унадаг байв. `undefined` (мэдэхгүй) бол урьдын адил. */
+  const contractorOk = extra.contractor !== false;
+  const editable = contractorOk && extra.superseded !== true && (kind === 'NCR'
     ? doc.status === MS_STATUS.draft
     : doc.status === MS_STATUS.draft || doc.status === MS_STATUS.returned);
   /* ⚠️ Нэвтрээгүй (`u` хоосон) хүнд хянах товч ГАРАХГҮЙ — `review()` хоосон
@@ -2113,7 +2117,7 @@ export function canAct(
     && (kind === 'NCR' || !mine)
     && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
   /* ⚠️ 2026-09-29 (аудит 10): `superseded` — `newRevisionDoc` ч `newerExists`-ээр татгалздаг */
-  const newRev = kind !== 'NCR' && mine && extra.superseded !== true
+  const newRev = kind !== 'NCR' && mine && contractorOk && extra.superseded !== true
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
   /* ⚠️ 2026-10-06: нээгч (`mine`) гүйцэтгэгчийн «Хаасан» мөрийг бөглөхгүй — `closeNcrDoc`-ийн ижил */
   const closeNcrOk = kind === 'NCR' && !!u && extra.contractor === true && !mine && doc.status === MS_STATUS.approved && !extra.ncrClosed;

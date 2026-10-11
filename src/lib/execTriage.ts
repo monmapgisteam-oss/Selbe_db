@@ -29,8 +29,15 @@ import { loadRows } from '@/modules/sheet/bagtsSheet';
 /* ══════════════ 1. Обьёмын зөрүү (Гүйцэтгэлийн хяналт) ══════════════ */
 
 export type VarianceWork = {
-  /** «Багц 1 · 9 давхар» */
+  /**
+   * БАГЦЫН БҮЛЭГ — «Багц 1» (`Pkg.group`).
+   * ⚠️ 2026-10-11 (аудит №7): урьд нь хуудасны нэр («Багц 1 · 9 давхар», `Pkg.label`) байсан тул CEO
+   *    самбарын багцын шүүлт (`ceo/filter.samePkg` — `bagtsKey`) «Багц 1»-тэй ТААРДАГГҮЙ, хүснэгт
+   *    чимээгүй хоосордог байв. Давхрын хувилбар `sheet`-д.
+   */
   pkg: string;
+  /** Бөглөх хуудасны нэр — «Багц 1 · 9 давхар» (`Pkg.label`) */
+  sheet: string;
   /**
    * Мөрийн дугаар (хуудасны «№» багана) — ажлын нэр ХАНГАЛТГҮЙ түлхүүр.
    * ⚠️ 2026-09-06: нэг хуудсанд ижил нэртэй ажил өөр бүлэгт давтагддаг
@@ -128,7 +135,7 @@ export function loadVariance(): Promise<Variance> {
            жижиг байдаггүй). */
         if (sum - r.vol <= Math.max(1e-9, Math.abs(r.vol) * 1e-9)) continue;
         out.push({
-          pkg: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol, sum,
+          pkg: pkg.group, sheet: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol, sum,
           unit: r.unit, mnt: (sum - r.vol) * r.unit,
         });
       }

@@ -23,7 +23,7 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, cfMonthAxis, type PkgFamily,
 } from '@/lib/services';
 /* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
    нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
@@ -35,6 +35,7 @@ import {
   type FinData, type MonthPt,
 } from '@/modules/Finance';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
+import { finPkgKey } from '@/lib/pkgAlias';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
   type BlockProgressMap, type BlockHistory,
@@ -219,7 +220,7 @@ const PL = PARCEL_LEFT.fields;
    тулд дамжуулан экспортолж, дотооддоо мөн хэрэглэнэ. */
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
-import { useBagtsTable, buildProgressOf, ailTotal, type BagtsRow } from '@/lib/execData';
+import { useBagtsTable, buildProgressOf, ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
 import { pkgCostWeight, cfWeightRow, contractedScope, gapPtsWord, pts as ptsFmt } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
@@ -782,6 +783,9 @@ type FltProps = { flt: MapFilter | null; onFlt: (f: MapFilter) => void };
  *
  * ⚠️ ЗӨВШӨӨРӨГДӨХ ШАЛТГААН: ес компонентын АЛЬ Ч НЬ hook дууддаггүй
  * (шалгасан). ЭДГЭЭРТ HOOK НЭМЭХГҮЙ — хэсэг солиход дараалал өөрчлөгдөж унана.
+ * ⚠️ 2026-10-11 (аудит №7): энэ дүрэм НЭГ УДАА зөрчигдсөн — `ScheduleDetail`-д `useMemo` ×4
+ * орж (аудит №6), 02-р хэсэг нээхэд унадаг байв; буцаасан. `useMemo`/`useState`/`useRef` —
+ * АЛЬ Ч hook эдгээр `*Detail` функцэд ОРОХГҮЙ; memo хэрэгтэй бол `Dashboard`-д бодож props-оор.
  */
 function detailPanels(
   k: SecKey, d: DashData, flt: MapFilter | null, onFlt: (f: MapFilter) => void,
@@ -937,7 +941,9 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
      цахилгааны бүлгийн дэд дүнд үлдэнэ. */
   const overall = f ? physNow(f, nowYm) : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
-  const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
+  /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — `reduce(x.ail)` дутуу нийлбэрийг бүрэн мэт бичдэг байв;
+     `ailLabel` («—» · «N (дутуу)» · «N», `execData.ailTotal`) — ScopeDetail/BenefitDetail-тэй нэг. */
+  const ail = b ? ailLabel(b) : null;
 
   switch (k) {
     case 'scope': {
@@ -945,7 +951,7 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       const h = d.headline.state === 'ready' ? d.headline.data : null;
       return {
         value: h == null ? dots(d.headline) : hVal(h, h.areaHa, (n) => tr('{0} га', num(n, 1))),
-        note: blocks == null ? dots(d.bagts) : tr('{0} блок · {1} өрх', num(blocks), num(ail)),
+        note: blocks == null || ail == null ? dots(d.bagts) : tr('{0} блок · {1} өрх', num(blocks), ail),
       };
     }
     case 'schedule':
@@ -975,14 +981,14 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       const avg = b && f
         ? buildProgressOf(b, pkgCostWeight(f.contracts.map(cfWeightRow))).pct
         : null;
-      const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
         /* ⚠️ 2026-09-24: өгөгдөл бэлэн (`b != null`) ч нэг ч багц тайлагнаагүй бол
            «…» мөнхөд үлддэг байв — тэр үед «—». */
         value: b == null ? dots(d.bagts) : f == null ? dots(d.fin) : avg == null ? '—' : pct(avg, 1),
         /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): багцын тоо ХАТУУ «7» БИШ — барилгын
            давхаргад блоктой багцын бодит тоо (`BagtsRow`), блок/өрх нь давхардсан полигонгүй. */
-        note: ailSum == null || !b ? dots(d.bagts) : tr('{0} багц · {1} блок · {2} өрх', num(b.length), num(bl), num(ailSum)),
+        /* ⚠️ 2026-10-11 (аудит №7): өрх `ailLabel` (дээрх `ail`) — дутуу нийлбэр «(дутуу)» тэмдэгтэй */
+        note: ail == null || !b ? dots(d.bagts) : tr('{0} багц · {1} блок · {2} өрх', num(b.length), num(bl), ail),
         pct: avg ?? undefined, tone: o.active,
       };
     }
@@ -1661,7 +1667,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
                 key: r.key,
                 label: r.label,
                 value: r.blocks,
-                display: tr('{0} блок · {1} өрх', num(r.blocks), num(r.ail)),
+                /* ⚠️ 2026-10-11 (аудит №7): багцын өрх `ailLabel([r])` — хоосон `AIL_TOO` «—»/«(дутуу)» */
+                display: tr('{0} блок · {1} өрх', num(r.blocks), ailLabel([r])),
               }))}
             />
           )}
@@ -1886,15 +1893,18 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   pkgProg: Async<PkgProgressRow[]>;
 }) {
   const f = fin.state === 'ready' ? fin.data : null;
-  /* ⚠️ 2026-10-09 (гүйцэтгэл): сарын нэгтгэл · хоцрогдлын цуваа · гэрээлсэн хүрээ нь `f`-ээс л
-     хамаарна — урьд нь render бүрд (hover, шүүлт) дахин бодогдож, `lagSeriesOf` хоёр самбарт
-     ХОЁР удаа дуудагддаг байв. */
-  const months = useMemo(() => (f ? aggregateMonths(f) : null), [f]);
-  const lagSeries = useMemo(() => (months ? lagSeriesOf(months) : []), [months]);
-  const scope = useMemo(() => (f ? contractedScope(f.contracts) : null), [f]);
+  /* ⚠️ 2026-10-11 (аудит №7): ЭНД HOOK ХЭРЭГЛЭХГҮЙ — `ScheduleDetail` нь `detailPanels()`-оос
+     ЭНГИЙН ФУНКЦ байдлаар дуудагддаг (JSX биш) тул доторх `useMemo` нь эцэг `Dashboard`-ын hook
+     дараалалд орж, 02-р хэсэг нээх/хаахад hook-ийн тоо өөрчлөгдөж React унадаг байв (аудит №6-д
+     нэмсэн `useMemo` ×4). Render бүрд дахин бодогдох нь зөвшөөрөгдсөн зардал: `aggregateMonths`
+     ·`lagSeriesOf` · `contractedScope` нь ≤ 100 мөр дээр хэдэн мс. Memo хэрэгтэй бол эцэг
+     `Dashboard`-д `d.fin`-ээр түлхүүрлэж props-оор дамжуулна. */
+  const months = f ? aggregateMonths(f) : null;
+  const lagSeries = months ? lagSeriesOf(months) : [];
+  const scope = f ? contractedScope(f.contracts) : null;
   /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц төлөвлөгөө/хоцрогдлоос хасагдсан бол нэрлэнэ
      (`Finance.projectPlanScope` — хоцрогдлын хоёр тал хуваарьтай багцаар) */
-  const scopeNote = useMemo(() => (f ? planScopeNote(projectPlanScope(f)?.excluded) : null), [f]);
+  const scopeNote = f ? planScopeNote(projectPlanScope(f)?.excluded) : null;
 
   /**
    * «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет.
@@ -2056,17 +2066,23 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
-            const ms = (months ?? []).filter((m) => m.label <= nowYm && m.phys != null);
+            /* ⚠️ 2026-10-11 (аудит №7): тэнхлэг = «одоо» хүртэлх БҮХ сар (`aggregateMonths` нь
+               `cfMonthAxis`-ийн бүтэн тэнхлэг), хэмжилтгүй сар `value: null` → ЦООРХОЙ (`Series`
+               null дэмжинэ). Урьд нь `m.phys != null`-аар шүүж, цоорхой нь нэг алхам болж нийлдэг
+               байв (null ≠ 0 — цоорхойг 0 гэж ч, арилгаж ч болохгүй). */
+            const ms = (months ?? []).filter((m) => m.label <= nowYm);
             const plan = new Map(lagSeries.map((x) => [x.month, x.planned]));
             const pts = ms.map((m) => {
-              const a = m.phys as number;
+              const a = m.phys;
               const p = plan.get(m.label);
               return {
                 key: m.label, label: m.label.slice(2), value: a,
-                display: p == null ? pct(a, 1) : tr('{0} / төл. {1}', pct(a, 1), pct(p, 1)),
+                display: a == null
+                  ? tr('мэдээлэлгүй')
+                  : p == null ? pct(a, 1) : tr('{0} / төл. {1}', pct(a, 1), pct(p, 1)),
               };
             });
-            return pts.length >= 2
+            return pts.filter((p) => p.value != null).length >= 2
               ? <Series items={pts} height={120} unit="%" line />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
           }}
@@ -2222,17 +2238,28 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                нь огноогүй төлбөрийг хасдаг (`FinData.givenTotal`-ийг үз) тул
                урьд нь хуримтлал нийт олгосноос дутуу төгсдөг байв. Дунд цэгт
                оруулахгүй — хэзээ олгосон нь үл мэдэгдэх. */
+            /* ⚠️ 2026-10-11 (аудит №7): ХОЁР ТАЛЫН түлхүүрийг `finPkgKey` (`pkgAlias.FIN_PKG_ALIAS`)-ээр
+               хөрвүүлнэ — `sc.keys` нь Cashflow-ийн («БАГЦ8», «БАГЦ71»), `f.givenTotal`/`f.given` нь
+               HO-ийн («БАГЦ81», «БАГЦ7») түлхүүртэй тул урьд нь Багц-7 · Багц-8.1-ийн олголт энэ муруйд
+               ОГТ орохгүй байв (`paidShare` · `execReport` · `PkgFin` аль хэдийн ингэж холбодог). */
+            const scKeys = new Set([...sc.keys].map(finPkgKey));
             let givenAll = 0;
-            sc.keys.forEach((k) => { givenAll += f.givenTotal.get(k) ?? 0; });
-            /* ⚠️ Огноотойг `f.given`-ээс ШУУД — `months` нь тэнхлэгийн цонхоор
-               тасардаг тул түүгээр хасвал цонхны гаднах олголт «огноогүй» болно.
+            f.givenTotal.forEach((v, k) => { if (scKeys.has(finPkgKey(k))) givenAll += v; });
+            /* ⚠️ Огноотойг `f.given`-ээс ШУУД. ⚠️ 2026-10-11 (аудит №7, тайлбарын засвар): `loadFinData`
+               нь `given`-ийг ТЭНХЛЭГИЙН ЦОНХООР тасалдаг (`Finance.tsx` — `raw < first || raw > last`
+               мөр цуваанд орохгүй), харин `givenTotal` бүрэн — тиймээс цонхны ГАДНАХ огноотой олголт энд
+               `undated`-д орж СҮҮЛИЙН цэгт нэмэгдэнэ (огноогүйтэй нэг хувь заана). Энэ нь санаатай:
+               тэнхлэгийн өмнөх/дараах сарын олголтыг дунд цэгт тараах газар алга.
                ⚠️ 2026-09-30: сар бүрийн дүн ч ГЭРЭЭЛСЭН багцаар (`m.given` — бүх багц БИШ). */
             let dated = 0;
             const givenByMon = new Map<string, number>();
-            sc.keys.forEach((k) => f.given.get(k)?.forEach((v, mon) => {
-              dated += v;
-              givenByMon.set(mon, (givenByMon.get(mon) ?? 0) + v);
-            }));
+            f.given.forEach((byMon, k) => {
+              if (!scKeys.has(finPkgKey(k))) return;
+              byMon.forEach((v, mon) => {
+                dated += v;
+                givenByMon.set(mon, (givenByMon.get(mon) ?? 0) + v);
+              });
+            });
             const undated = Math.max(0, givenAll - dated);
             let cum = 0;
             const pts = ms.map((m, i) => {
@@ -2264,15 +2291,22 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
-            const pts = lagSeries.map((x) => ({
-              key: x.month,
-              label: x.month.slice(2),
-              /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
-                 байж чадахгүй тул тэмдгийг `display` барина. */
-              value: Math.max(0, x.gap),
-              display: gapLabel(x.planned, x.actual),
-            }));
-            return pts.length >= 2
+            /* ⚠️ 2026-10-11 (аудит №7): тэнхлэг = «одоо» хүртэлх БҮХ сар; `lagSeriesOf` нь
+               хэмжилтгүй сарыг АЛГАСДАГ тул Map-аар хайж, байхгүй сар `null` → цоорхой
+               (урьд нь алгассан сар хоорондоо нийлж, нэг алхам мэт зурагддаг байв). */
+            const lagMap = new Map(lagSeries.map((x) => [x.month, x]));
+            const pts = (months ?? []).filter((m) => m.label <= nowYm).map((m) => {
+              const x = lagMap.get(m.label) ?? null;
+              return {
+                key: m.label,
+                label: m.label.slice(2),
+                /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
+                   байж чадахгүй тул тэмдгийг `display` барина. */
+                value: x ? Math.max(0, x.gap) : null,
+                display: x ? gapLabel(x.planned, x.actual) : tr('мэдээлэлгүй'),
+              };
+            });
+            return pts.filter((p) => p.value != null).length >= 2
               ? <Series items={pts} height={120} unit="%" />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
           }}
@@ -2336,14 +2370,20 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
               s2.add(k);
               m.set(ym, s2);
             }));
-            const pts = [...m.entries()]
-              .sort((x, y) => x[0].localeCompare(y[0]))
-              .map(([ym, s2]) => ({
-                key: ym,
-                label: ym.slice(2),
-                value: s2.size,
-                display: tr('{0} багц', num(s2.size)),
-              }));
+            /* ⚠️ 2026-10-11 (аудит №7): тэнхлэг = `cfMonthAxis()`-ийн «одоо» хүртэлх БҮХ сар —
+               нэг ч багц тайлагнаагүй сар БОДИТ 0 (энд 0 нь хэмжилт: «хэн ч бөглөөгүй»), урьд нь
+               тэр сар тэнхлэгээс алга болж, цуваа тасралтгүй мэт харагддаг байв. */
+            const pts = cfMonthAxis()
+              .filter((ym) => ym <= nowYm)
+              .map((ym) => {
+                const n = m.get(ym)?.size ?? 0;
+                return {
+                  key: ym,
+                  label: ym.slice(2),
+                  value: n,
+                  display: tr('{0} багц', num(n)),
+                };
+              });
             return pts.length >= 2
               ? <Series items={pts} height={110} unit={tr('багц')} />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
@@ -2603,7 +2643,8 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
   }
   const rows = q.data;
   const blocks = sumBy(rows, (x) => x.blocks);
-  const ail = sumBy(rows, (x) => x.ail);
+  /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — `sumBy(x.ail)` → `ailLabel` («—» · «N (дутуу)») */
+  const ail = ailLabel(rows);
   // Хамгийн сүүлийн бүртгэлийн огноо — `BlockProgress.date` нь `joinBagts`-д
   // ХАЯГДДАГ тул `prog`-оос шууд. Ингэснээр «энэ тоо ХЭЗЭЭНИЙ байдлаар» гэсэн
   // асуулт самбар дээрээ хариултаа авна.
@@ -2640,7 +2681,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
       <Panel title={tr('Нийт гүйцэтгэл')} note={tr('дундаж = бүх блокоор (тайлангүй блок 0%)')}>
           <Stats cols={2}>
             <Stat accent color={cat(0)} value={num(blocks)} unit={tr('блок')} label={tr('Барилгын блок')} />
-            <Stat accent color={cat(3)} value={num(ail)} unit={tr('өрх')} label={tr('Орон сууц')} />
+            <Stat accent color={cat(3)} value={ail} unit={tr('өрх')} label={tr('Орон сууц')} />
             <Stat accent color={sumBy(rows, (r) => r.missing) ? 'var(--bad)' : NO_DATA}
                   value={num(sumBy(rows, (r) => r.missing))} unit={tr('блок')} label={tr('Тайлан ирээгүй')} />
             <Stat value={asOf || '—'} label={tr('Сүүлийн бүртгэл')} />
@@ -2713,13 +2754,18 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           inline
           selected={sel}
           onSelect={pick}
-          items={rows.map((r) => ({
-            key: r.key,
-            label: r.label,
-            value: r.ail,
-            display: tr('{0} өрх', num(r.ail)),
-            color: heat(r.ail, maxOf(rows.map((x) => x.ail))),
-          }))}
+          /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — `AIL_TOO` бүгд хоосон багц `null` (зурвасгүй, «—»),
+             заримд нь хоосон бол мэдэгдэж буй нийлбэр «(дутуу)» тэмдэгтэй (`ailTotal([r])`). */
+          items={rows.map((r) => {
+            const t = ailTotal([r]);
+            return {
+              key: r.key,
+              label: r.label,
+              value: t.ail,
+              display: tr('{0} өрх', ailLabel([r])),
+              color: t.ail == null ? NO_DATA : heat(t.ail, maxOf(rows.map((x) => x.ail))),
+            };
+          })}
         />
       </Panel>
 
@@ -2767,11 +2813,15 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
         {(() => {
           const nat = rows.filter((r) => BAGTS_ORIGIN[r.label.trim()] === 'Үндэсний');
           const natBlocks = sumBy(nat, (x) => x.blocks);
-          const natAil = sumBy(nat, (x) => x.ail);
+          /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — өрхийн хувь зөвхөн ХОЁР тал БҮРЭН мэдэгдэж байвал
+             (`ailTotal` дутуу/хоосон → `null` → «—»); шошгонд `ailLabel` («(дутуу)» тэмдэгтэй). */
+          const natT = ailTotal(nat);
+          const allT = ailTotal(rows);
+          const natAil = natT.partial || natT.ail == null ? null : natT.ail;
           const allBlocks = sumBy(rows, (x) => x.blocks);
-          const allAil = sumBy(rows, (x) => x.ail);
+          const allAil = allT.partial || allT.ail == null ? null : allT.ail;
           /* ⚠️ 2026-10-09: хуваагч 0 (мөр/блок/өрх алга) → `null` («—»), «0%» БИШ — null ≠ 0 */
-          const p100 = (a: number, b: number): number | null => (b ? Math.round((a / b) * 100) : null);
+          const p100 = (a: number | null, b: number | null): number | null => (a != null && b ? Math.round((a / b) * 100) : null);
           return (
             <>
               <Stats cols={3}>
@@ -2780,7 +2830,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
                 <Stat accent color={HUE[1]} value={pct(p100(natBlocks, allBlocks), 0)}
                   label={tr('Блокийн эзлэх ({0}/{1})', num(natBlocks), num(allBlocks))} />
                 <Stat accent color={HUE[2]} value={pct(p100(natAil, allAil), 0)}
-                  label={tr('Өрхийн эзлэх ({0}/{1})', num(natAil), num(allAil))} />
+                  label={tr('Өрхийн эзлэх ({0}/{1})', ailLabel(nat), ailLabel(rows))} />
               </Stats>
             </>
           );
@@ -3525,7 +3575,8 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
               const rows = bagts.state === 'ready' ? bagts.data : null;
               if (!rows) return dots(bagts);
               const ks = NET_SERVES.flatMap((s) => s.bagts);
-              return num(sumBy(rows.filter((r) => ks.includes(r.key)), (r) => r.ail));
+              /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — `ailLabel` («—» · «N (дутуу)») */
+              return ailLabel(rows.filter((r) => ks.includes(r.key)));
             })()}
             unit={tr('өрх')}
             label={tr('Холбогдох өрх')}
@@ -3606,7 +3657,10 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             const list = NET_SERVES
               .map((s) => {
                 const p = packs.find((x) => x.key === s.key);
-                const ail = sumBy(rows2.filter((r) => s.bagts.includes(r.key)), (r) => r.ail);
+                /* ⚠️ 2026-10-11 (аудит №7): ХАРЬЦААНД зөвхөн БҮРЭН мэдэгдэх өрх — дутуу/хоосон (`ailTotal`)
+                   бол 0 → доорх `x.ail > 0` шүүлтээр хасагдана (дутуу нийлбэрээр хуваавал худал өндөр). */
+                const t = ailTotal(rows2.filter((r) => s.bagts.includes(r.key)));
+                const ail = t.ail != null && !t.partial ? t.ail : 0;
                 return { key: s.key, label: s.label, ail, len: p?.len ?? 0 };
               })
               .filter((x) => x.ail > 0 && x.len > 0)
@@ -3635,10 +3689,13 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           {(rows) => {
             const of = (ks: readonly string[], f: (r: BagtsRow) => number) =>
               sumBy(rows.filter((r) => ks.includes(r.key)), f);
+            /* ⚠️ 2026-10-11 (аудит №7): null ≠ 0 — өрх `ailTotal` (бүгд хоосон → мөр гарахгүй),
+               шошго `ailLabel` («(дутуу)» тэмдэгтэй) */
+            const rowsOf = (ks: readonly string[]) => rows.filter((r) => ks.includes(r.key));
             // Газрын зурагт давхарга БАЙГАА багц л бар болно — дарахад юу ч болохгүй бар гарахгүй
             const groups = NET_SERVES
               .filter((s) => (PKG_BY_BAGTS[s.key] ?? []).length)
-              .map((s) => ({ ...s, ail: of(s.bagts, (r) => r.ail), blocks: of(s.bagts, (r) => r.blocks) }))
+              .map((s) => ({ ...s, ail: ailTotal(rowsOf(s.bagts)).ail ?? 0, ailText: ailLabel(rowsOf(s.bagts)), blocks: of(s.bagts, (r) => r.blocks) }))
               .filter((s) => s.ail > 0);
             if (!groups.length) return <Empty label={tr('Орон сууцны багцын өрхийн тоо алга.')} />;
             return (
@@ -3652,7 +3709,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
                   onSelect={pick}
                   items={heatBars(groups, (s) => ({
                     key: s.key, label: s.label, value: s.ail,
-                    display: tr('{0} өрх · {1} блок', num(s.ail), num(s.blocks)),
+                    display: tr('{0} өрх · {1} блок', s.ailText, num(s.blocks)),
                   }))}
                 />
               </>
@@ -4646,7 +4703,10 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
               .filter((c) => /^b\d/.test(c.key))
               .map((c) => {
                 const key = consumerBagtsKey(c.key);
-                const ail = sumBy(bag.filter((x) => x.key === key), (x) => x.ail);
+                /* ⚠️ 2026-10-11 (аудит №7): 1 өрхөд ногдох чадал — зөвхөн БҮРЭН мэдэгдэх өрхөөр
+                   (`ailTotal` дутуу/хоосон → 0 → доорх шүүлтээр хасагдана; null ≠ 0) */
+                const t = ailTotal(bag.filter((x) => x.key === key));
+                const ail = t.ail != null && !t.partial ? t.ail : 0;
                 return { key, label: c.label, ail, heat: heatOf(c.field), pow: powOf(c.field) };
               })
               .filter((x) => x.ail > 0 && (x.heat > 0 || x.pow > 0))
@@ -4721,7 +4781,9 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
       <Panel title={tr('Хангамжийн хүрэлцээ — нэгжид ногдох')}>
         {(() => {
           const h = d.headline.state === 'ready' ? d.headline.data : null;
-          const ail = d.bagts.state === 'ready' ? sumBy(d.bagts.data, (x) => x.ail) : null;
+          /* ⚠️ 2026-10-11 (аудит №7): 1 өрхөд ногдох — зөвхөн БҮРЭН мэдэгдэх өрх (`ailTotal`, дутуу → «—») */
+          const ailT = d.bagts.state === 'ready' ? ailTotal(d.bagts.data) : null;
+          const ailFull = ailT && ailT.ail != null && !ailT.partial ? ailT.ail : null;
           const capOf = (pre: string) =>
             sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith(pre)), (r) => srcNum(r[F.total]));
           const consOf = (pre: string) => sumBy(
@@ -4736,12 +4798,14 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
             <>
               <Rows
                 items={[
+                  /* ⚠️ 2026-10-11 (аудит №7): «…» ЗӨВХӨН ачаалж байхад (`dots`); ачаалагдсан ч хүн ам/өрх
+                     0 эсвэл мэдээлэлгүй бол «—» — урьд нь `h?.population ? … : '…'` мөнхөд эргэлддэг байв. */
                   { key: tr('1,000 хүнд ногдох дулаан'),
-                    value: h?.population ? tr('{0} МВт', num(heatMw / (h.population / 1000), 2)) : '…' },
+                    value: h == null ? dots(d.headline) : h.population > 0 ? tr('{0} МВт', num(heatMw / (h.population / 1000), 2)) : '—' },
                   { key: tr('1 өрхөд ногдох цахилгаан'),
-                    value: ail ? tr('{0} кВт', num((elMw * 1000) / ail, 2)) : '…' },
+                    value: ailT == null ? dots(d.bagts) : ailFull ? tr('{0} кВт', num((elMw * 1000) / ailFull, 2)) : '—' },
                   { key: tr('1 хүнд ногдох ус'),
-                    value: h?.population ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '…' },
+                    value: h == null ? dots(d.headline) : h.population > 0 ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '—' },
                   { key: tr('Дулаан — хуваарилсан ÷ чадал'), value: share(consOf('Дулаан'), heatMw) },
                   { key: tr('Цахилгаан — хуваарилсан ÷ чадал'), value: share(consOf('Цахилгаан'), elMw) },
                   { key: tr('Ус — хуваарилсан ÷ чадал'), value: share(consOf('Ус'), waterM3) },
@@ -5113,7 +5177,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           га БИШ) нь «хангалттай юу» гэдэгт хариулна. */}
       <Panel title={tr('Ногоон байгууламжийн хүрэлцээ')}>
           <Stats cols={2}>
-            <Stat accent color={HUE[1]} value={h == null ? '…' : num(h.areaHa, 1)} unit={tr('га')} label={tr('Төслийн талбай')} />
+            {/* ⚠️ 2026-10-11 (аудит №7): «…» зөвхөн ачаалж байхад (`dots`), унасан бол ⚠ (`hVal`) — мөнхийн «…» биш */}
+            <Stat accent color={HUE[1]} value={h == null ? dots(d.headline) : hVal(h, h.areaHa, (n) => num(n, 1))} unit={tr('га')} label={tr('Төслийн талбай')} />
             <Stat accent color={HUE[2]}
                   value={h?.greenHa == null || !h.population ? '—' : num((h.greenHa * 10_000) / h.population, 1)}
                   unit={tr('м²/хүн')} label={tr('Нэг хүнд ногоон байгууламж')} />

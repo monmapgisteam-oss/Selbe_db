@@ -524,7 +524,11 @@ export async function registerApproved(
     if (dupRow) {
       const had = num(dupRow[F.progress]);
       /* Ижил тоо — үнэхээр давхар дуудалт, чимээгүй өнгөрнө. */
-      if (had != null && Math.abs(had - s.progress) < 0.01) return { ok: true };
+      /* ⚠️ 2026-10-11 (аудит №7): хувь ижил ч `planned`/`volume`/`volumePlan` ЗӨРВӨЛ эрт буцахгүй — тэдгээрийг
+         шинэчилнэ (урьд нь урьдчилан суулгасан төлөвлөгөөний мөрийн обьём хэзээ ч засагдахгүй байв). */
+      const sameAux = (f: string, v: number | null) => v == null || (num(dupRow[f]) != null && Math.abs((num(dupRow[f]) as number) - v) < 0.01);
+      if (had != null && Math.abs(had - s.progress) < 0.01
+        && sameAux(F.planned, s.planned) && sameAux(F.volume, s.volume) && sameAux(F.volumePlan, s.volumePlan)) return { ok: true };
       /*
        * ⚠️ 2026-09-07: «ӨДӨРТ НЭГ УДАА» гэсэн хязгаар ХАСАГДАВ (хэрэглэгчийн
        * хүсэлт). Урьд нь тухайн өдрийн мөр байгаад утга нь ЗӨРВӨЛ ил алдаа
@@ -560,13 +564,40 @@ export async function registerApproved(
       if (s.volume != null) attrs[F.volume] = s.volume;
       if (s.volumePlan != null) attrs[F.volumePlan] = s.volumePlan;
       wrote = true;
-      const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
-        updates: JSON.stringify([{ attributes: attrs }]),
-        rollbackOnFailure: 'true',
-      })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
-      const ur = upd.updateResults?.[0];
-      if (!ur || ur.success !== true)
-        throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
+      const update = async (a: Record<string, unknown>) => {
+        const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: a }]),
+          rollbackOnFailure: 'true',
+        })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
+        const ur = upd.updateResults?.[0];
+        if (!ur || ur.success !== true)
+          throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
+      };
+      await update(attrs);
+      /* ⚠️ 2026-10-11 (аудит №7): БИЧСЭНИЙ ДАРАА НЭГ УДАА ДАХИН УНШИНА — ArcGIS-д нөхцөлт бичилт байхгүй тул хоёр
+         батлалт (9F · 12F хоёр таб) зэрэг ижил мөрийг шинэчилбэл сүүлийнх нь ялж, өмнөх хуудасны хувь нэгтгэлд
+         алга болдог байв. Хувь манайхаас >0.01 зөрвөл хураангуйг (`summaryOf` — бүх хуудасны нийлбэр) ДАХИН бодож
+         нэг л удаа дахин бичнэ (хязгаартай — мөнхийн уралдаангүй); уншилт унавал бичилт батлагдсан хэвээр. */
+      try {
+        const back = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+          where: `${BAGTS_NEGTGEL.oid} = ${oid}`,
+          outFields: F.progress,
+          returnGeometry: 'false',
+        })) as { features?: { attributes: Record<string, unknown> }[] };
+        const got = num(back.features?.[0]?.attributes?.[F.progress]);
+        if (got != null && Math.abs(got - s.progress) > 0.01) {
+          const s2 = await summaryOf(bagts, sheetOid, pkgKey);
+          if (s2 && s2.progress != null) {
+            const a2: Record<string, unknown> = { [BAGTS_NEGTGEL.oid]: oid, [F.progress]: s2.progress };
+            if (s2.planned != null) a2[F.planned] = s2.planned;
+            if (s2.volume != null) a2[F.volume] = s2.volume;
+            if (s2.volumePlan != null) a2[F.volumePlan] = s2.volumePlan;
+            await update(a2);
+          }
+        }
+      } catch (e) {
+        console.warn('[selbe] нэгтгэлийн бичсэний дараах шалгалт унав (бичилт батлагдсан):', e);
+      }
       return { ok: true };
     }
 

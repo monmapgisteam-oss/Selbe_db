@@ -1114,6 +1114,9 @@ console.log('✅ аудит №3 — буцаалтын засварт зөвх�
   /* Эх кодын гэрээ */
   const DS = readOne('src/modules/sheet/fill/useDraftSync.ts');
   assert.ok(/out\.push\(\[k, p\.at, '', p\.at\]\);/.test(DS) && DS.includes('if (c && c[1] >= p.at) continue;'), 'subReceipts: баримтын хэлбэр / жинхэнэ хожуу баримтыг дарахгүй дүрэм өөрчлөгдөв');
+  /* ⚠️ 2026-10-11 (аудит №7): НАРИЙН баримт (`sv ≠ ''`) серверийн хоосон баримтаар ДАРАГДАХГҮЙ — илгээлтийн `at` хожуу ч */
+  assert.ok(DS.includes("if (c && c[2] !== '') continue;"), 'subReceipts: нарийн баримтыг серверийн хоосон баримтаар дарж байна (аудит №7)');
+  assert.ok(/const newerRc = [\s\S]*?const ax = a\[2\] !== '';[\s\S]*?if \(ax !== bx\) return ax \? a : b;/.test(DS), 'newerRc: нарийн баримт хоосныг давамгайлахгүй (аудит №7)');
   assert.ok(DS.includes("if (rc && rc[2] === '') rcSub.push("), 'серверийн баримтаар хасагдсан нүд тусад нь тоологдохгүй');
   assert.ok(/for \(const id of rcSub\) if \(!seen\(id\)\) nSub \+= 1;/.test(DS) && DS.includes('if (nSub) {'), 'серверийн баримтын хасалт `warns`-д ил биш');
   assert.ok(/const noteSubReceipts = useCallback[\s\S]*?seenAtRef\.current\.set\(rc\[0\], rc\[1\]\)/.test(DS), '`noteSubReceipts` харсан агшныг (`seenAtRef`) тэмдэглэхгүй');
@@ -1121,3 +1124,41 @@ console.log('✅ аудит №3 — буцаалтын засварт зөвх�
   assert.ok(!/\bsubReceipts\(/.test(FNo) && (FNo.match(/noteSubReceipts\(/g) ?? []).length >= 2, 'FillNew серверийн баримтыг `noteSubReceipts`-ээр биш шууд `subReceipts`-ээр тавьж байна');
 }
 console.log('✅ аудит №6 — серверийн илгээлтийн баримт: ил хасалт · харсан агшин');
+
+/* ══════════ 2026-10-11 (аудит №7) — НАРИЙН БАРИМТ ХООСНЫГ ДАРНА · ХУУЧИН ЖААЗНЫ БАРИМТ ШИНЭ ЖААЗЫГ АНХ ХАРСНААС ══════════
+ * А илгээсэн (нарийн баримт R1: sv=5). Дараа нь серверийн хуримтлалын (хоосон sv) баримт ХОЖУУ `at`-тай ирэхэд урьд нь
+ * агшнаар ялж, Б-гийн 8 (5-аас үргэлжилсэн засвар) зөрүү бодолгүй ХАСАГДДАГ байв. Одоо нарийн нь ялж, 8 → 3 (зөрүү). */
+import { rcptAlive, OLD_FRAME_RCPT_TTL_MS } from './fill/draft.ts';
+{
+  const T0 = Date.now() - 60_000;
+  const R1 = ['1:0', T0 + 100, '5', T0 + 50];        // А-гийн нарийн баримт (илгээсэн 5, хуулбарын агшин T0+50)
+  const SUB = ['1:0', T0 + 500, '', T0 + 500];       // серверийн хуримтлалын баримт — ХОЖУУ at
+  const B = { t: T0 + 200, mode: 'inc', cells: [['1:0', '8']], byAt: [['1:0', T0 + 200]], rowKeys: [[1, '1 ¦ x']] };
+  const A = { t: T0 + 150, mode: 'inc', cells: [], rowKeys: [], rcpt: [R1] };
+  const C = { t: T0 + 600, mode: 'inc', cells: [], rowKeys: [], rcpt: [SUB] };
+  const m1 = mergeDrafts(mergeDrafts(A, B), C);
+  assert.equal(new Map(m1.cells).get('1:0'), '3', 'нарийн баримт (5) байхад хожуу хоосон баримт хуулбарыг (8) зөрүү бодолгүй хасав — 3 байх ёстой');
+  const m2 = mergeDrafts(B, mergeDrafts(A, C));
+  assert.equal(new Map(m2.cells).get('1:0'), '3', 'нийлүүлэх дараалал үр дүнг өөрчилж байна');
+  const kept = unpackRcpt(m2.rcpt).find((r) => r[0] === '1:0');
+  assert.equal(kept[2], '5', 'баримтын нэгдэлд нарийн баримт үлдэх ёстой');
+  /* хоёулаа нарийн — хожуу нь (урьдын дүрэм хэвээр) */
+  const R2 = ['1:0', T0 + 700, '9', T0 + 650];
+  assert.equal(unpackRcpt(mergeDrafts(A, { ...C, rcpt: [R2] }).rcpt).find((r) => r[0] === '1:0')[2], '9', 'хоёр нарийн баримтаас хожуу нь ялах ёстой');
+  /* хуучин жаазны баримт — шинэ жаазыг анх харснаас 1 хоног; агшингүй бол баримтаас (урьдын дүрэм) */
+  const old = ['100:0', T0, '5', T0 - 10];
+  const seen = T0 + 20 * 3600 * 1000;                 // шинэ жаазыг баримтаас 20 цагийн дараа анх харсан
+  const now = T0 + 25 * 3600 * 1000;                  // баримтаас 25 цаг, харснаас 5 цаг
+  assert.equal(rcptAlive(old, now, 200, null), false, 'агшингүй — баримтаас тоолж хуучирна (урьдын дүрэм)');
+  assert.equal(rcptAlive(old, now, 200, seen), true, 'шинэ жаазыг анх харснаас 5 цаг — хуучин жаазны баримт амьд байх ёстой');
+  assert.equal(rcptAlive(old, seen + OLD_FRAME_RCPT_TTL_MS + 1, 200, seen), false, 'харснаас 1 хоног хэтэрсэн — хуучирна');
+  assert.equal(rcptAlive(['300:0', T0, '5', T0 - 10], now, 200, seen), true, 'шинэ жаазны баримт хөндөгдөхгүй');
+  /* ноорогт хадгалагдсан `frameSeenAt` — нийлүүлэлт: их oid ялна, ижил oid бол эрт агшин; `compactDraft` түүнийг уншина */
+  const fa = mergeDrafts({ t: 1, mode: 'inc', cells: [], rowKeys: [], frameSeenAt: [200, 50] }, { t: 2, mode: 'inc', cells: [], rowKeys: [], frameSeenAt: [200, 30] });
+  assert.deepEqual(fa.frameSeenAt, [200, 30], 'ижил жааз — эрт агшин ялах ёстой');
+  const fb = mergeDrafts({ t: 1, mode: 'inc', cells: [], rowKeys: [], frameSeenAt: [300, 90] }, { t: 2, mode: 'inc', cells: [], rowKeys: [], frameSeenAt: [200, 30] });
+  assert.deepEqual(fb.frameSeenAt, [300, 90], 'их oid (шинэ жааз) ялах ёстой');
+  const cd = compactDraft({ t: now, mode: 'inc', cells: [], rowKeys: [], rcpt: [old], frameSeenAt: [200, seen] }, { max: 80_000, minOid: 200, now });
+  assert.equal(unpackRcpt(cd.rcpt).length, 1, 'compactDraft ноорогийн `frameSeenAt`-ийг уншихгүй байна');
+}
+console.log('✅ аудит №7 — нарийн баримт хоосныг дарна · хуучин жаазны баримт шинэ жаазыг анх харснаас');

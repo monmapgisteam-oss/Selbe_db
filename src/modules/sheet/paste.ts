@@ -31,8 +31,14 @@ export type PastePlan = {
    *    `bad` — тоо биш/тодорхойгүй таслал; `neg` — сөрөг; `noWrite` — бүлгийн мөр эсвэл
    *    талбаргүй блок (утга нь ХООСОН биш). Хоосон нүд ба хүснэгтээс хальсан нь ОРОХГҮЙ.
    */
-  rejAt: { row: number; b: number; raw: string; why: 'bad' | 'neg' | 'noWrite' }[];
+  rejAt: { row: number; b: number; raw: string; why: 'bad' | 'neg' | 'noWrite' | 'pct' }[];
 };
+/**
+ * ⚠️ 2026-10-11 (аудит №7): `noPct` — ОБЬЁМ горимд `%`-ээр төгссөн утгыг няцаана (`'pct'`). Урьд нь `normCell`
+ *    `%`-ийг чимээгүй хасдаг тул Excel-ийн «50%» багана Обьём горимд 50 м³ (үнэмлэхүй обьём) болж бичигддэг байв.
+ *    Тоологдох нь `bad`-тай адил (татгалзсан нүд).
+ */
+export type PasteOpt = { noPct?: boolean };
 
 /** `badAt`-д хадгалах жишээний дээд тоо */
 const BAD_SAMPLES = 5;
@@ -190,6 +196,7 @@ export function planPaste(
   startVi: number,
   startB: number,
   canWrite: (row: number, b: number) => boolean,
+  opt?: PasteOpt,
 ): PastePlan {
   const hits: PasteHit[] = [];
   let skipped = 0;
@@ -197,7 +204,7 @@ export function planPaste(
   let seen = 0;
   const badAt: PastePlan['badAt'] = [];
   const rejAt: PastePlan['rejAt'] = [];
-  const noteBad = (row: number, b: number, raw: string, why: 'bad' | 'neg' = 'bad') => {
+  const noteBad = (row: number, b: number, raw: string, why: 'bad' | 'neg' | 'pct' = 'bad') => {
     bad += 1;
     if (badAt.length < BAD_SAMPLES) badAt.push({ row, b, raw: raw.trim() });
     rejAt.push({ row, b, raw: raw.trim(), why });
@@ -219,6 +226,8 @@ export function planPaste(
         if (grid[gr][gc].trim() !== '') rejAt.push({ row, b, raw: grid[gr][gc].trim(), why: 'noWrite' });
         continue;
       }
+      /* ⚠️ 2026-10-11 (аудит №7): Обьём горимд `%` — няцаана (`PasteOpt.noPct`-ийн ⚠️) */
+      if (opt?.noPct && /%\s*$/.test(grid[gr][gc].trim())) { noteBad(row, b, grid[gr][gc], 'pct'); continue; }
       const t = normCell(grid[gr][gc]);
       if (t === null) {
         /* ⚠️ ХООСОН нүд нь «устга» ГЭСЭН УТГАГҮЙ — алгасна. Excel-ийн блокт

@@ -7,12 +7,12 @@
  *    шууд `fetch`-ээр явдаг 28 файл (`query.ts` · `ags.ts` · `tableWrite.ts` ·
  *    `hyanalt*.ts` · анализ …) токенгүй тул хоосон хариу/алдаа авна.
  *    Энэ модуль НЭГ эх сурвалж: `AuthGate` нэвтрэлт бүтмэгц IdentityManager-ээ
- *    бүртгэнэ, дараа нь `tokenParam()`/`tokenQs()` синхрон уншина.
+ *    бүртгэнэ, дараа нь `tokenParam()` синхрон уншина.
  *
- * ⚠️ Токен POST-ын БИЕЭР явахыг эрхэмлэнэ (`tokenParam`, `query.arcgisPost`).
- *    ⚠️ 2026-09-30: `tokenQs` (URL query string) нь ЗӨВХӨН POST хийх боломжгүй
- *    газарт — `<img src>`/`<a href>`-ийн хавсралтын хаяг (`ags.attachmentUrl`,
- *    `Habea.tsx`). Бүх `fetch` хүсэлт `query.arcgisPost`-оор явна: query string
+ * ⚠️ Токен POST-ын БИЕЭР явна (`tokenParam`, `query.arcgisPost`).
+ *    ⚠️ 2026-09-30: URL query string-д токен залгах нь ЗӨВХӨН POST хийх боломжгүй
+ *    газарт зөвшөөрөгдөж байсан (`tokenQs` — 2026-10-11-нд дуудагчгүй тул устгагдав:
+ *    хавсралт бүгд blob URL-аар). Бүх `fetch` хүсэлт `query.arcgisPost`-оор явна: query string
  *    нь серверийн/CDN-ийн access log-д хадгалагддаг (CWE-598) бөгөөд хөтчийн
  *    HTTP кэшийн түлхүүрт ордог. Логд, алдааны мессежид URL бичихдээ токеныг
  *    оруулахгүй байхыг анхаар.
@@ -191,15 +191,9 @@ export function tokenParam(): Record<string, string> {
   return t ? { token: t } : {};
 }
 
-/**
- * GET URL-ийн төгсгөлд залгах: `&token=…` эсвэл `''`.
- * ⚠️ 2026-09-30: ЗӨВХӨН `<img src>`-ийн хавсралтын хаягт (POST боломжгүй). Шинэ
- *    `fetch`-д ХЭРЭГЛЭХГҮЙ — `query.arcgisPost` (токен биеэр).
- */
-export function tokenQs(): string {
-  const t = authToken();
-  return t ? `&token=${encodeURIComponent(t)}` : '';
-}
+/* ⚠️ 2026-10-11 (аудит №7): `tokenQs()` (GET URL-д `&token=…` залгагч) УСТГАГДАВ — дуудагчгүй үхмэл код
+   байв (хавсралт бүгд blob URL/POST биеэр: `uzlegReport.fetchAttachment`, `habeaUzleg.AttPhoto`).
+   Query string-д токен залгах зам кодод огт үлдэхгүй (`tools/tokenInUrl.check.mjs`). */
 
 /* ══════════════════ ТОКЕНЫ ХУГАЦАА (2026-09-29) ══════════════════ */
 /**

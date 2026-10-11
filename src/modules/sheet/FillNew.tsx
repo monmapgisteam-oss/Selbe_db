@@ -190,10 +190,17 @@ async function ensureFrameOcc(pkg: Pkg, sc: Schema, p: SubmissionPayload, curRow
 export type FillOpenRequest = { bagts: string; ajil: string; sheetOid: number | null };
 let openReq: FillOpenRequest | null = null;
 export function requestFillOpen(r: FillOpenRequest): void { openReq = r; }
-/** Хүсэлтийн хуудас — `flow`-ийн тулгалттай ИЖИЛ дүрэм (`pkg.name` нь `Ажлын_нэр`-д) */
-function pkgOfReq(r: FillOpenRequest): Pkg | null {
+/**
+ * Хүсэлтийн хуудас — `flow`-ийн тулгалттай ИЖИЛ дүрэм (`pkg.name` нь `Ажлын_нэр`-д).
+ * ⚠️ 2026-10-11 (аудит №7): нэрэнд хуудас байхгүй бол `cand[0]` нь ТААМАГ (`guess`) — олон хуудастай багцад (9F · 12F)
+ *    буруу хуудас нээгдэж, буцаагдсан илгээлт олдохгүй байв. Тэр үед `fixReq`-ийн эффект илгээлтийн payload-ын
+ *    `pkgKey`-ээр (`readSubmissionByOid`) залруулна; уншигдахгүй бол л `cand[0]`.
+ */
+function pkgOfReq(r: FillOpenRequest): { pkg: Pkg; guess: boolean } | null {
   const cand = PKGS.filter((p) => p.group === r.bagts);
-  return cand.find((p) => r.ajil.includes(p.name)) ?? cand[0] ?? null;
+  const hit = cand.find((p) => r.ajil.includes(p.name));
+  if (hit) return { pkg: hit, guess: false };
+  return cand[0] ? { pkg: cand[0], guess: cand.length > 1 } : null;
 }
 
 /* ⚠️ 2026-10-09 (аудит): баганын өргөний ХУУЧИН нэгдсэн `fillnew` хадгалалтаас зөвхөн багцаас үл хамаарах
@@ -226,10 +233,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *     нь `display: none`-д хоосон, fixed-д хоосон биш. */
   const hiddenNow = () => !wrapRef.current?.getClientRects().length;
   /** «Засаад дахин илгээх»-ийн хүсэлт (`requestFillOpen`-ийн ⚠️, 2026-09-30) */
-  const [fixReq, setFixReq] = useState<{ pkgKey: string; soid: number | null } | null>(() => {
+  const [fixReq, setFixReq] = useState<{ pkgKey: string; soid: number | null; guess?: boolean } | null>(() => {
     if (view || !openReq) return null;
     const p = pkgOfReq(openReq);
-    return p ? { pkgKey: p.key, soid: openReq.sheetOid } : null;
+    return p ? { pkgKey: p.pkg.key, soid: openReq.sheetOid, ...(p.guess && openReq.sheetOid != null ? { guess: true } : {}) } : null;
   });
   useEffect(() => { openReq = null; }, []);
   const [pkg, setPkg] = useState<Pkg>(
@@ -237,6 +244,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       || (fixReq && PKGS.find((p) => p.key === fixReq.pkgKey))
       || PKGS[0],
   ); // Багц 1 · 9F — жагсаалтын эхнийх
+  /*
+   * ⚠️ 2026-10-11 (аудит №7): ТААМАГЛАСАН хуудсыг илгээлтийн payload-ын `pkgKey`-ээр залруулна (`pkgOfReq`-ийн ⚠️).
+   *    Уншилт унасан/илгээлт алга бол таамаг хэвээр (`guess` арилна — доорх нээх эффект үргэлжилнэ).
+   */
+  useEffect(() => {
+    if (!fixReq?.guess || fixReq.soid == null) return;
+    let alive = true;
+    const soid = fixReq.soid;
+    const guessed = fixReq.pkgKey;
+    void readSubmissionByOid(soid).then((rr) => {
+      if (!alive) return;
+      const key = rr.ok && rr.sub ? rr.sub.payload.pkgKey : null;
+      const p = key ? PKGS.find((x) => x.key === key) : undefined;
+      setFixReq((cur) => (cur && cur.guess && cur.soid === soid ? { pkgKey: p ? p.key : cur.pkgKey, soid } : cur));
+      if (p && p.key !== guessed) setPkg(p);
+    });
+    return () => { alive = false; };
+  }, [fixReq]);
   const [sc, setSc] = useState<Schema | null>(null);
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
   const [dates, setDates] = useState<string[]>([]);
@@ -1160,6 +1185,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (view || !staged || staged.done) return;
     if (hyLoading || hyErr) return;
     if (registeredRef.current.has(staged.oid)) return;
+    /* ⚠️ 2026-10-11 (аудит №7): АГУУЛГАГҮЙ үлдэгдэл (`residual`, хуучин `closeAfterArchive`-ийн бичсэн хоосон мөр) —
+       бүртгүүлэх зүйлгүй тул «хяналтад бүртгэгдсэнгүй» гэж худал анхааруулахгүй; `hyanaltStore` ийм мөрийг одоо бичихгүй. */
+    {
+      const p = staged.payload;
+      if (p.residual === true && !p.cells.length && !(p.dates ?? []).length && !p.adds.length && p.asOf == null) return;
+    }
     /* ⚠️ 2026-10-04: ижил `sheetOid`-тай ЯМАР Ч мөр биш — одоогийн тойрог хянагчийн гар
        дээр уу, эсвэл буцаалтаас ХОЙШ дахин илгээгээд бүртгэгдээгүй юу (`needsRegistration`). */
     if (!needsRegistration(hyRows as unknown as Record<string, unknown>[], staged.oid, dayTagOf(staged.payload.fillMs), staged.at)) return;
@@ -1228,6 +1259,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (Number(r[HF.sheetOid]) !== resumedOid) continue;
         if (!src || r.__oid > src.__oid) src = r;
       }
+    } else if (!(returnedStaged || (src && staged && Number(src[HF.sheetOid]) === staged.oid))) {
+      /* ⚠️ 2026-10-11 (аудит №7): `flow` нь ӨӨР илгээлтийн буцаалт (өнөөдрийн `staged` биш) байж болно — түүний
+         `okCells`-ийг энэ хуудасны мөрүүдэд наавал ногоон ✓ буруу илгээлтээс ирнэ; `backMeta` (staged-ийн давхарлалтаас)
+         ч өөр илгээлтийнх болж `trusted` холилдоно. Зөвхөн `flow` яг `staged`-ийнх үед (`returnedStaged`). */
+      src = null;
     }
     const none = { ok: new Set<string>(), unknown: 0 };
     if (view || !src) return none;
@@ -1260,7 +1296,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (r) byOid.add(`${r.oid}${k.slice(cut)}`);
     }
     return { ok: byOid, unknown: res.unknown };
-  }, [view, flow, rows, resumedOid, hyRows, backMeta]);
+  }, [view, flow, rows, resumedOid, hyRows, backMeta, returnedStaged, staged]);
   const backOk = backOkRes.ok;
   /* `backChg` — ачаалах эффектээс ДЭЭР зарлагдсан (2026-10-01). */
   /**
@@ -1852,6 +1888,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   useEffect(() => {
     if (!fixReq || view) return;
+    /* ⚠️ 2026-10-11 (аудит №7): таамагласан хуудас — илгээлтийн `pkgKey` уншигдтал хүлээнэ (`pkgOfReq`-ийн ⚠️) */
+    if (fixReq.guess) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-01: нэг удаагийн хүсэлтийг «хэрэглэсэн» гэж тэмдэглэнэ; нөхцөл нь `loadedPkgRef` (ref) уншиж `resumeReturned` (async) дууддаг тул эффектэд л
     if (pkg.key !== fixReq.pkgKey) { setFixReq(null); return; }
     if (!sc || busy || hyLoading || loadedPkgRef.current !== pkg.key) return;
@@ -1952,6 +1990,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (act) noteSubReceipts(act.payload);
       const ov = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
       setUnmovedWarn(ov && ov.unmoved > 0 && act ? describeUnmoved(ov.unmovedKeys, act.payload.rowKeys, sc.bld) : []);
+      /* ⚠️ 2026-10-11 (аудит №7): БУЦААГДСАН илгээлтийн засвар явж байхад (`returnedStaged`) хамтран бөглөгч илгээсэн
+         бол өөрчлөгдсөн нүдний тэмдэглэгээ (`backChg`) ба зөвшөөрлийн итгэлийн мэдээлэл (`backMeta`) ч шинэ давхарлалтаас —
+         ачаалах замтай ИЖИЛ; урьд нь хуучин олонлог үлдэж улаан хүрээ/ногоон ✓ шинэ мөрүүдтэй зөрдөг байв. */
+      if (act && ov && returnedStaged) {
+        setBackChg(changedKeys(next.rows, ov, sc.bld));
+        setBackMeta({ at: act.payload.at, remapped: ov.remapped });
+      }
       /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
       setStaged(act);
       setRows(ov ? ov.rows : next.rows);
@@ -1973,7 +2018,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         refreshStagedRef.current(a);
       }
     }
-  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, noteSubReceipts]);
+  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, noteSubReceipts, returnedStaged]);
   useSyncRef(refreshStagedRef, (a: number) => { void refreshStaged(a); });
 
   /**
@@ -2560,7 +2605,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       } finally {
         setNavDirty('fillnew-send', false);
       }
-      if (!sv.ok) throw new Error(sv.error);
+      if (!sv.ok) {
+        /* ⚠️ 2026-10-11 (аудит №7): ТОДОРХОЙ татгалзал (суурь зөрсөн · серверийн алдаа · давхар бичилтэд ялагдсан) —
+           манай агуулга серверт АМЬД БИШ тул явж буй тэмдгийг арилгана; урьд нь үлдэж, дараагийн ачаалалт/«Илгээх»
+           `findNonce`-оор дэмий хайж, `mayClearInflight` хүртэл «өөр табын илгээлт» гэж андуурдаг байв. Хариу
+           АЛДАГДСАН (`sv.lost`) бол үлдээнэ — илгээлт буусан байж болно. */
+        if (!sv.lost) clearInflight(pkg.key);
+        throw new Error(sv.error);
+      }
       clearInflight(pkg.key);
       const nCells = Object.keys(pend2).length + Object.keys(pendDate2).length;
       /* ⚠️ TOMBSTONE — ИЛГЭЭСЭН түлхүүр бүрд (2026-09-25-ны аудит, доорх ⚠️) */

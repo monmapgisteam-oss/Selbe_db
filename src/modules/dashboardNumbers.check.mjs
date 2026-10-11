@@ -23,12 +23,20 @@ const src = readFileSync(new URL('./Dashboard.tsx', import.meta.url), 'utf8');
 const at = src.indexOf("tr('Санхүүжилтийн хуримтлал — сараар')");
 assert.ok(at > 0, '«Санхүүжилтийн хуримтлал» самбар олдсонгүй');
 const panel = src.slice(at, src.indexOf('</Panel>', at));
-/* ⚠️ 2026-10-09: `contractedScope` нь `ScheduleDetail`-ийн дээд талд MEMO (`scope`) — самбар `const sc = scope;` */
-const scopeMemo = /const scope = useMemo\(\(\) => \(f \? contractedScope\(f\.contracts\) : null\), \[f\]\);/.test(src);
-assert.ok(/contractedScope\(f\.contracts\)/.test(panel) || (scopeMemo && /const sc = scope;/.test(panel)),
+/* ⚠️ 2026-10-09: `contractedScope` нь `ScheduleDetail`-ийн дээд талд (`scope`) — самбар `const sc = scope;`
+   ⚠️ 2026-10-11 (аудит №7): `useMemo` БИШ энгийн `const` — `ScheduleDetail` нь `detailPanels()`-оос энгийн
+   функцээр дуудагддаг тул hook ОРОХГҮЙ (02-р хэсэг нээхэд hook-ийн тоо өөрчлөгдөж унадаг байв). */
+const scopePlain = /const scope = f \? contractedScope\(f\.contracts\) : null;/.test(src);
+assert.ok(/contractedScope\(f\.contracts\)/.test(panel) || (scopePlain && /const sc = scope;/.test(panel)),
   'хуримтлалын хуваагч contractedScope-оос биш');
+const schedFn = src.slice(src.indexOf('function ScheduleDetail('), src.indexOf('03 · Орон сууцны 7 багц'));
+assert.ok(!/\buse[A-Z]\w*\(/.test(schedFn), 'ScheduleDetail дотор hook байна — detailPanels() энгийн функцээр дууддаг тул унана');
 assert.ok(!/planTotal\.forEach/.test(panel), 'хуримтлал FinData.planTotal (гэрээ ЭСВЭЛ төсөв) руу буцав');
-assert.match(panel, /sc\.keys\.forEach\(\(k\) => \{ givenAll \+= f\.givenTotal\.get\(k\)/, 'тоологч гэрээлсэн багцаар шүүгдээгүй');
+/* ⚠️ 2026-10-11 (аудит №7): тоологч нь ХОЁР талын түлхүүрийг `finPkgKey`-ээр хөрвүүлж таарна
+   (Cashflow «БАГЦ8» ↔ HO «БАГЦ81»; `paidShare`-тэй нэг дүрэм) */
+assert.match(panel, /const scKeys = new Set\(\[\.\.\.sc\.keys\]\.map\(finPkgKey\)\);/, 'гэрээлсэн багцын түлхүүр finPkgKey-ээр хөрвүүлэгдээгүй');
+assert.match(panel, /f\.givenTotal\.forEach\(\(v, k\) => \{ if \(scKeys\.has\(finPkgKey\(k\)\)\) givenAll \+= v; \}\);/, 'тоологч гэрээлсэн багцаар (finPkgKey) шүүгдээгүй');
+assert.match(panel, /if \(!scKeys\.has\(finPkgKey\(k\)\)\) return;/, 'сарын дүн finPkgKey-ээр шүүгдээгүй');
 assert.ok(!/cum \+= m\.given/.test(panel), 'сарын дүн БҮХ багцын олголтоос (m.given) авагдав');
 
 /* 2 — «Багц» зурвас ХО жингүйгээр тоо гаргахгүй */

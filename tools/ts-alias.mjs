@@ -54,6 +54,9 @@ for (const f of ['../.env.development.local', '../.env']) {
    гаралтад ч учир нь шууд харагдана. */
 if (!envRead && !HAD_HJ) {
   process.stderr.write('⚠️ .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env)\n');
+} else if (envRead && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
+  /* ⚠️ 2026-10-11 (аудит №7): `.env` байгаа ч утгууд хоосон (загварыг хуулаад бөглөөгүй) — ижил унал, өөр шалтгаан */
+  process.stderr.write('⚠️ .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
 }
 const orgRoot = (u) => (u || '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/, '');
 const HJ = orgRoot(process.env.NEXT_PUBLIC_ARCGIS_HJ);
@@ -113,7 +116,13 @@ if (IS_CHECK && liveTok) {
       const b = init?.body;
       const method = String(init?.method ?? (typeof input === 'object' && !(input instanceof URL) ? input.method : 'GET')).toUpperCase();
       if (b instanceof URLSearchParams) {
-        if (!b.has('token')) b.set('token', tok);
+        /* ⚠️ 2026-10-11 (аудит №7): дуудагчийн объектыг МУТАЦИЛАХГҮЙ — хуулбарт токен нэмнэ (урьд нь дахин
+           ашигласан `URLSearchParams` дээр токен үлдэж, дараагийн хүсэлт/лог руу дамждаг байв). */
+        if (!b.has('token')) {
+          const p = new URLSearchParams(b);
+          p.set('token', tok);
+          init = { ...init, body: p };
+        }
       } else if (typeof b === 'string') {
         const p = new URLSearchParams(b);
         if (!p.has('token')) { p.set('token', tok); init = { ...init, body: p.toString() }; }

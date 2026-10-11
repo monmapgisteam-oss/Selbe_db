@@ -18,7 +18,8 @@ cd agent-proxy
 npm install
 ```
 
-`agent-proxy/.env.local` файлд түлхүүрээ тавина (файл бэлэн үүссэн):
+`agent-proxy/.env.local` файлд түлхүүрээ тавина (файл git-ignored — `agent-proxy/.env*` — тул
+шинэ clone-д БАЙХГҮЙ, өөрөө үүсгэнэ):
 
 ```
 ANTHROPIC_API_KEY=sk-ant-api03-...

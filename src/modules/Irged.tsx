@@ -291,8 +291,11 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     }
     const g = qSocial.data.rows.find((x) => x.key === r.live);
     const n = g?.n ?? 0;
-    /* ⚠️ 2026-10-09 (аудит №6): давхарга ирсэн ч 0 объект бол «0» — «—» нь зөвхөн давхарга алга үед (null ≠ 0) */
-    const add = !g ? '—' : !n ? '0' : g.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
+    /* ⚠️ 2026-10-09 (аудит №6): давхарга ирсэн ч 0 объект бол «0» — «—» нь зөвхөн давхарга алга үед (null ≠ 0)
+       ⚠️ 2026-10-11 (аудит №7): `rows` нь n > 0 бүлгийг л агуулдаг тул «0 объект» ба «давхарга алга» хоёр
+          хоёул `!g` байсан — одоо `loaded` (давхарга каталогт бий, асуулга явсан) түлхүүрээр ялгана. */
+    const loaded = qSocial.data.loaded.includes(r.live);
+    const add = !g ? (loaded ? '0' : '—') : !n ? '0' : g.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
     return { ...r, add, total: headCount(r.now) + n, pending: false };
   }), [qSocial]);
   const socTotals = {

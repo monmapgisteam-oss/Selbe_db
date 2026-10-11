@@ -283,9 +283,11 @@ export const loadScoreLand = cached(async (): Promise<LandExtra> => {
   /* ⚠️ 2026-10-01: хэсэгчилсэн огтлолцлыг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
 }, 5 * 60_000, ['PARCEL_LEFT'], (x) => !x.failed);
 
-export type QualExtra = Map<string, { total: number; empty: number; partial: number }> & {
+export type QualExtra = Map<string, { total: number; empty: number; partial: number; flat?: number }> & {
   /** ⚠️ 2026-09-25: уншигдаагүй хуудсууд (`Pkg.label`) — дэлгэц «Татагдсангүй»-д нэмж болно */
   failed: string[];
+  /** ⚠️ 2026-10-11 (аудит №7): мод холбогдоогүй (`flat`) хуудсууд (`Pkg.label`) — нийлбэрт ОРООГҮЙ, оноо ХАГАС */
+  flat: string[];
 };
 
 /**
@@ -302,19 +304,28 @@ export const loadScoreQual = cached(async (): Promise<QualExtra> => {
     const p = PKGS.find((x) => x.label === label);
     return bagtsKey(p ? keys[p.key] ?? p.group : label);
   }));
-  const m = new Map<string, { total: number; empty: number; partial: number }>();
+  const m = new Map<string, { total: number; empty: number; partial: number; flat?: number }>();
+  /* ⚠️ 2026-10-11 (аудит №7): `flat` хуудсыг `failed`-ийн адил НЭРЭЭР цуглуулж, бүлгийн утгад `flat` тоог
+     бичнэ — урьд нь чимээгүй алгасдаг тул Багц 3.3 (9 давхар flat, 12 давхар холбогдсон) бүрэн оноотой
+     мэт харагддаг байв. `scoreQual` «хагас» гэж ил хэлнэ. */
+  const flat: string[] = [];
   for (const l of ok) {
-    if (l.flat) continue;
-    const s = summarizePkg(l.pkg, l.rows, l.flat);
-    const k = bagtsKey(keys[l.pkg.key] ?? l.pkg.label);
+    const k = bagtsKey(keys[l.pkg.key] ?? l.pkg.group);
     const a = m.get(k) ?? { total: 0, empty: 0, partial: 0 };
+    if (l.flat) {
+      flat.push(l.pkg.label);
+      a.flat = (a.flat ?? 0) + 1;
+      m.set(k, a);
+      continue;
+    }
+    const s = summarizePkg(l.pkg, l.rows, l.flat);
     a.total += s.total;
     a.empty += s.empty;
     a.partial += s.partial;
     m.set(k, a);
   }
   for (const k of failedGroups) m.delete(k);
-  return Object.assign(m, { failed: [...failed] });
+  return Object.assign(m, { failed: [...failed], flat });
   /* ⚠️ 2026-10-01: уншигдаагүй хуудастай үр дүнг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
 }, 5 * 60_000, ['BAGTS_SHEET'], (x) => x.failed.length === 0);
 
@@ -376,7 +387,7 @@ export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> =>
 
 export type Extras = {
   land: LandExtra | null;
-  qual: Map<string, { total: number; empty: number; partial: number }> | null;
+  qual: Map<string, { total: number; empty: number; partial: number; flat?: number }> | null;
   plan: Map<string, PlanInput> | null;
 };
 

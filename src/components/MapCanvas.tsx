@@ -727,7 +727,8 @@ const paintRenderer = (d: LayerDef) => ({
 
 /* ⚠️ Урьд нь энд `WEB_DYNAMIC` хэмээх ХОЁР webmap-ийн симболын ГАР СНАПШОТ
    байв (12 давхарга, single/multi палитр). Одоо загварыг эх webmap-аас БҮТНЭЭР
-   `tools/webmap_style.mjs` үүсгэж `lib/webmapStyle.ts`-д хадгалдаг бөгөөд
+   `tools/webmap_style.mjs` үүсгэж `public/webmap-style.json`-д хадгалдаг (⚠️ 2026-10-11 аудит №7:
+   урьд «`lib/webmapStyle.ts`» гэж бичигдсэн нь хуучирсан — тэр нь одоо slim loader) бөгөөд
    давхаргын renderer JSON `fromJSON`-оор шууд тавигддаг тул гар орчуулгын
    давхарга бүхэлдээ хасагдав — 78 давхарга webmap-тэй 100% ижил зурагдана. */
 
@@ -2984,6 +2985,10 @@ export const MapCanvas = memo(function MapCanvas({
         .then(async (r) => {
           // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
           if (seq !== clickSeq) return;
+          /* ⚠️ 2026-10-11 (аудит №7): эффект цэвэрлэгдсэн (view хадгалагдсан/харагдац солигдсон) бол
+             хоцорсон hitTest-ийн үр дүн шинэ самбарыг нээж/хаахгүй — `alive` нь `view.destroyed`-оос
+             тусдаа: хадгалсан (park) view устдаггүй тул урьд энэ салаа нэвтэрч байв. */
+          if (!alive) return;
           const hit = pickHit(r);
           /**
            * ⚠️ СОНГОЛТ АВАХ ХҮНГҮЙ бол (2026-09-23) товшилт нь hover-ийн
@@ -3005,7 +3010,8 @@ export const MapCanvas = memo(function MapCanvas({
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (view.destroyed || seq !== clickSeq) return;
+          /* ⚠️ 2026-10-11 (аудит №7): `alive` — дээрхтэй ижил шалтгаан (удаан REST fallback-ийн хоцролт) */
+          if (view.destroyed || seq !== clickSeq || !alive) return;
           if (tipOnly) {
             setTip(q ? { x: e.x, y: e.y, id: q.id, attrs: q.attrs, fields: q.fields } : null);
             return;

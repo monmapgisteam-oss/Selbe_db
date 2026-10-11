@@ -36,7 +36,7 @@ import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
-import { loadBuildings } from '@/modules/BuildingPanel';
+import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
 import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
 import { loadFinData, projectLagNow } from '@/modules/Finance';
@@ -125,7 +125,8 @@ export type ExecReport = {
      *    чимээгүй хэвлэж, шалтгаан хаана ч гардаггүй байв (`PkgProg.TsKpi`-тай ижил).
      */
     planFailed: number;
-    packs: { key: string; name: string; kind: 'build' | 'infra'; blocks: number; households: number; progress: number | null }[];
+    /** ⚠️ 2026-10-11 (аудит №7): `householdsMissing` — багцын `AIL_TOO` хоосон блокийн тоо (`householdsLabel`-д) */
+    packs: { key: string; name: string; kind: 'build' | 'infra'; blocks: number; households: number; householdsMissing: number; progress: number | null }[];
     /** Блокийн гүйцэтгэлийн түвшний тархалт */
     levels: { label: string; range: string; n: number; color: string }[];
   };
@@ -178,6 +179,8 @@ export type ExecReport = {
       /** given ÷ plan; гэрээгүй (`contracted = false`) бол null */
       pct: number | null;
       contracted: boolean;
+      /** ⚠️ 2026-10-11 (аудит №7): өөрийн олголтгүй ч олон багц хамарсан төлбөрт орсон — тэр мөрийн нэр (`pkgFinRows`) */
+      rangePaid?: string;
     }[];
   };
   /** Зөвшөөрөл — үйлчилгээ холбогдоогүй бол `null` (мэдээлэлгүй ≠ 0) */
@@ -327,8 +330,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     budget: r.contracted ? r.plan : budgetByKey.get(r.key) ?? r.plan,
     given: r.given,
     /* ⚠️ Гэрээгүй (CONTRACTED мөргүй) багцад хувь ЗОХИОХГҮЙ — `null` («—») */
-    pct: r.contracted && r.contract > 0 ? (r.given / r.contract) * 100 : null,
+    /* ⚠️ 2026-10-11 (аудит №7): ӨӨРИЙН олголтгүй ч ОЛОН БАГЦ ХАМАРСАН төлбөрийн гишүүн багц (`rangePaid`)
+       «0%» БИШ — `null` («—», `pkgFinRows`-тай нэг дүрэм) */
+    pct: r.rangePaid ? null : r.contracted && r.contract > 0 ? (r.given / r.contract) * 100 : null,
     contracted: r.contracted,
+    rangePaid: r.rangePaid,
   }));
   /* ⚠️ 2026-09-21: `share`/`remain`-ийн тоологч = ГЭРЭЭЛСЭН багцын олголт — хуваарь
      `csum` (CONTRACTED) тул нэг хүрээ. Урьд нь `finGiven` (бүх төлбөр) хуваагддаг байв. */
@@ -415,7 +421,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       planFailed: plan.failed.length,
       packs: packs.map((p) => ({
         key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
-        households: p.households, progress: p.progress,
+        households: p.households,
+        /* ⚠️ 2026-10-11 (аудит №7): давхардалгүй блокоор (`uniqueBlocks` — `blockCount`-тай нэг хуваарь) */
+        householdsMissing: uniqueBlocks(p.blocks).filter((b) => b.ailMissing).length,
+        progress: p.progress,
       })),
       levels: PROGRESS_LEVELS.map((l, i) => ({
         label: l.label, range: l.range, color: l.color,
@@ -753,7 +762,8 @@ export function execFacts(x: ExecReport): string {
   if (x.prog.planExcluded.length) {
     L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);
   }
-  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${p.households} өрх)` : ''}`);
+  /* ⚠️ 2026-10-11 (аудит №7): багцын өрх `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)») */
+  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
   /* ⚠️ 2026-09-21: «гэрээлсэн нийт» = 01-ийн «Нийт гэрээлсэн дүн»-тэй ижил (CONTRACTED мөр) */

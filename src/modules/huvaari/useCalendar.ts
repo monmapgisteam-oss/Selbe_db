@@ -183,7 +183,18 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   }, [now, from, px]);
   useEffect(() => () => { if (winTick.current) cancelAnimationFrame(winTick.current); }, []);
   /* Мөр/шүүлт/эвхэлт солигдоход цонхыг шинэчилнэ */
-  useEffect(() => { recalcWin(); }, [visible.length, recalcWin]);
+  /* ⚠️ 2026-10-11 (аудит №7): гүйлгэгчийн (`gWrap`) ХЭМЖЭЭ солигдоход ч (бүтэн дэлгэц · цонх томруулах · dev-tools) дахин
+     бодно — урьд нь зөвхөн гүйлгэх/мөр солигдоход тул бүтэн дэлгэц асаахад өндөрссөн цонхны доод мөрүүд гүйлгэтэл
+     зурагддаггүй байв (`sheet/fill/useRows`-ийн ижил ResizeObserver). `visible.length`-тэй нэг эффектэд: гүйлгэгч
+     хожуу mount болбол ref эхний render-д хоосон байж болно. */
+  useEffect(() => {
+    recalcWin();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => recalcWin());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [visible.length, recalcWin]);
 
   /**
    * ⚠️ ЗАСВАРЛАЖ буй мөр цонхны ГАДНА үлдэж болохгүй: чирэлт нь мөрийн DOM

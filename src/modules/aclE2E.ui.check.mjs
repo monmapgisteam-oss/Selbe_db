@@ -624,7 +624,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(P.listRemoved().includes(hard) && !P.hasAccess(hard), `${tag}: tombstone хэвээр`);
   ok(alerts(m).some((a) => a.includes(u3)), `${tag}: алгассаныг ил хэлнэ`);
   eq(findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled, true, `${tag}: ноорог үлдэхгүй`);
-  await P.clearOverride(hard); await idle();
+  /* ⚠️ 2026-10-11 (аудит №7): tombstone-ыг зөвхөн `revive` («Буцаах») арилгана */
+  await P.clearOverride(hard, { revive: true }); await idle();
 
   /* (5) Устгагдсан (tombstone-гүй) аккаунтын үлдсэн засах эрх нэрийг ДАХИН НЭМЭХИЙГ гацаадаг байв */
   const name = 'ui_orphan_caps';

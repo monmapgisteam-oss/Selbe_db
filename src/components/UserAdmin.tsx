@@ -1358,7 +1358,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       /* ⚠️ 2026-09-30: remote уншигдаагүй бол жагсаалт нь кэш — хуучирсан tombstone-оор бодит мөрийг устгахгүй (`putDraft`-ийн ⚠️) */
                       if (!remoteReady()) { setAddErr(LOCK_MSG); return; }
                       if (!window.confirm(tr('«{0}» аккаунтыг сэргээх үү? Хатуу тохиргооны эрх нь буцна.', k))) return;
-                      void clearOverride(k).then((okRes) => {
+                      /* ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН энэ товч `revive` — tombstone-ыг зориуд арилгана
+                         (`clearOverride`-ийн ⚠️); «Сэргээх»/`d.clear` зам revive хийхгүй */
+                      void clearOverride(k, { revive: true }).then((okRes) => {
                         setUsers(listUsers());
                         if (!okRes) setAddErr(tr('«{0}» сэргээгдсэнгүй — ArcGIS-т бичигдээгүй, дахин оролдоно уу.', k));
                       });

@@ -664,6 +664,11 @@ async function verifyLostAdd(d: ZovDraft, x: unknown): Promise<number> {
 export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number> {
   requireCap('zovshoorol'); // ⚠️ lib-түвшний эрх (2026-09-17) — урьд нь зөвхөн UI
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
+  /* ⚠️ 2026-10-11 (аудит №7): маягтын дүрмийг (`validateZov`) ЭНД ч давтана — урьд нь зөвхөн UI
+     шалгадаг тул агент/скрипт/өөр дуудагчаас нэргүй, багцгүй, төлөв-огноо зөрсөн мөр бичигдэж болдог
+     байв. Давхардлыг `[]`-ээр алгасна — доор серверээс (`slotRows`) тусад нь шалгагдана. */
+  const invalid = Object.values(validateZov(d, [])).find(Boolean);
+  if (invalid) throw new Error(invalid);
   const attributes = zovAttrs(d);
   const edit: Record<string, string> = { rollbackOnFailure: 'true' };
   if (d.oid) {

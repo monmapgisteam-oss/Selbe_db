@@ -21,6 +21,9 @@ WORKDIR /app
 #    Гэвч lockfile-ийн бүрэн бүтэн байдлын төлөө порталтай ИЖИЛ `npm ci`
 #    ашиглана (найдвартай, дахин давтагдах угсралт).
 COPY package.json package-lock.json ./
+# ⚠️ 2026-10-11 (аудит №7): `typescript` нь ажиллах үед хэрэгтэй (`tools/ts-alias-hooks.mjs` нь `.tsx`
+#    импортыг `transpileModule`-ээр хөрвүүлдэг) тул `package.json`-д `dependencies` руу шилжсэн —
+#    `--omit=dev` түүнийг хасахгүй.
 RUN npm ci --omit=dev
 
 # ── Эх код ──

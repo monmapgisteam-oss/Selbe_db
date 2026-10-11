@@ -4,8 +4,9 @@
  *   node tools/webmap_style.mjs <itemId>   — өөр webmap-аас
  *
  * ArcGIS Online webmap-ийн давхарга бүрийн ЗАГВАРЫГ (drawingInfo.renderer,
- * bloom effect, opacity) татаж, `src/lib/webmapStyle.ts` руу ҮЙЛЧИЛГЭЭНИЙ
- * URL-аар түлхүүрлэн бичнэ. Портал газрын зурагтаа энэ снапшотыг давхаргын
+ * bloom effect, opacity) татаж, `public/webmap-style.json` руу ҮЙЛЧИЛГЭЭНИЙ
+ * URL-аар түлхүүрлэн бичнэ (⚠️ 2026-10-11 аудит №7: урьд «`src/lib/webmapStyle.ts`» гэж
+ * бичигдсэн нь хуучирсан — доорх 2026-08-05-ны ⚠️; тэр файл нь одоо slim loader). Портал газрын зурагтаа энэ снапшотыг давхаргын
  * URL-аар нь тааруулж `Renderer.fromJSON()`-д шууд өгдөг тул симболын орчуулга
  * огт хийгдэхгүй — webmap дээр харагдаж буйтай 100% ижил зурагдана.
  *

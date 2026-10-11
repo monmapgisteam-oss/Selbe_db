@@ -66,6 +66,8 @@ import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ Нэмэлтийн мөрийн ГАНЦ дүрэм `bagtsSheet`-д (2026-09-25) — энд давтаж бичвэл
    нэгтгэл ба overlay хоёр өөрөөр уншиж эхэлнэ. Цэвэр функцууд л. */
 import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
+/* ⚠️ 2026-10-11 (аудит №7): хариу алдагдсан бичилтийг тодорхой татгалзлаас ялгана (`saveSubmission.lost`) */
+import { isLostWrite } from './lostWrite';
 
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан батлагдаагүй мөр.
@@ -1242,7 +1244,10 @@ export async function saveSubmission(
    *    (`resolveMark`) тул payload-д тэмдэггүй бичихийг зөвшөөрнө. Доорх тэмдгийн хамгаалалтыг үз.
    */
   expect?: { at: number; dropMark?: number } | null,
-): Promise<{ ok: true; oid: number } | { ok: false; error: string }> {
+  /* ⚠️ 2026-10-11 (аудит №7): `lost` — хариу АЛДАГДСАН (`isLostWrite`: timeout · сүлжээ · 5xx) тул илгээлт серверт
+     буусан байж болно; дуудагч (FillNew) тэр үед л явж буй илгээлтийн тэмдгийг (`Inflight`) үлдээнэ, тодорхой
+     татгалзалд арилгана. */
+): Promise<{ ok: true; oid: number } | { ok: false; error: string; lost?: true }> {
   if (payload.pkgKey !== pkgKey) {
     /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
        руу орно — дуудагчийн алдааг ил зогсооно. */
@@ -1430,7 +1435,7 @@ export async function saveSubmission(
     } catch { /* баталгааны уншилт унасан — бичилт батлагдсан хэвээр */ }
     return { ok: true, oid };
   } catch (e) {
-    return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)) };
+    return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)), ...(isLostWrite(e) ? { lost: true as const } : {}) };
   }
 }
 

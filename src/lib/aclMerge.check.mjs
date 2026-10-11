@@ -125,5 +125,58 @@ eq(sorted(HV.listHuvaariAssigns().find((a) => a.user === U).grants[0].bagts), so
   eq(P.hasAccess(T2), false, 'T2: нэвтрэхгүй');
 }
 
+/* ── clearOverride ↔ tombstone (⚠️ 2026-10-11, аудит №7) ──
+   Энгийн «Сэргээх» (`clearOverride`) нөгөө админы tombstone-ыг АРЧИХГҮЙ; зөвхөн «Буцаах»
+   (`{ revive: true }`) арилгана — сүлжээгүй дарсан ч dirty-д `revive` хадгалагдаж retry-д биелнэ.
+   Энгийн `null` dirty tombstone дээр урьдын адил хаягдана. Локал мөр remote амжилт хүртэл үлдэнэ. */
+{
+  const T3 = 'merge_t3';
+  const T4 = 'merge_t4';
+  const T5 = 'merge_t5';
+  fake.seed([
+    { username: T3, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 },
+    { username: T4, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 },
+    { username: T5, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 },
+  ]);
+  assert.ok(await P.initRemote(false, true), 'initRemote (clear/tombstone)');
+  await settle();
+  const tomb = (t) => Object.assign(fake.find(t)[0], { views: 'removed', role: null, docs: 0 });
+  /* (а) нөгөө админ T3-ийг устгав (энэ сешний кэш мэдэхгүй) → энгийн clear татгалзана */
+  tomb(T3);
+  eq(await P.clearOverride(T3), false, 'T3: энгийн clearOverride tombstone дээр татгалзана');
+  eq(fake.find(T3)[0].views, 'removed', 'T3: ArcGIS tombstone хэвээр');
+  eq(P.hasAccess(T3), false, 'T3: локалд tombstone тусгагдав');
+  eq(P.dirtyKeys().includes(T3), false, 'T3: dirty-д тэмдэглэхгүй');
+  /* (б) «Буцаах» сүлжээгүй → dirty (revive) → дараагийн poll tombstone-ыг арилгана */
+  fake.failWrites = true;
+  eq(await P.clearOverride(T3, { revive: true }), false, 'T3: «Буцаах» унана → dirty');
+  await settle();
+  fake.failWrites = false;
+  eq(P.dirtyKeys().includes(T3), true, 'T3: dirty (revive)');
+  eq(fake.find(T3)[0].views, 'removed', 'T3: бичилт унасан — tombstone хэвээр');
+  assert.ok(await P.initRemote(false, true), 'initRemote (poll, revive)');
+  await settle();
+  eq(fake.find(T3), [], 'T3: retry revive — tombstone арилав');
+  eq(P.dirtyKeys().includes(T3), false, 'T3: dirty арилав');
+  /* (в) энгийн clear сүлжээгүй → dirty (null) → хооронд tomb → retry хаяна, tombstone хэвээр */
+  fake.failWrites = true;
+  eq(await P.clearOverride(T4), false, 'T4: clear унана → dirty');
+  await settle();
+  fake.failWrites = false;
+  eq(P.dirtyKeys().includes(T4), true, 'T4: dirty');
+  eq(P.hasAccess(T4), true, 'T4: remote устгал унасан — локал мөр ХЭВЭЭР (урьдчилж арчихгүй)');
+  tomb(T4);
+  assert.ok(await P.initRemote(false, true), 'initRemote (poll, null)');
+  await settle();
+  eq(fake.find(T4)[0].views, 'removed', 'T4: энгийн null dirty tombstone-ыг арчсангүй');
+  eq(P.dirtyKeys().includes(T4), false, 'T4: dirty хаягдав');
+  eq(P.hasAccess(T4), false, 'T4: нэвтрэхгүй');
+  /* (г) tombstone-гүй энгийн clear хэвээр ажиллана */
+  eq(await P.clearOverride(T5), true, 'T5: энгийн clear амжилттай');
+  await settle();
+  eq(fake.find(T5), [], 'T5: мөр устав');
+  eq(P.hasAccess(T5), false, 'T5: локалоос ч арилав');
+}
+
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явсангүй');
 console.log(`✅ aclMerge: ${checks} шалгалт — хоёр админы зэрэг засвар алдагдалгүй · dirty → tombstone дарахгүй`);

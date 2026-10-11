@@ -331,7 +331,11 @@ const ORG = `${HJ}/A/FeatureServer/0`;
 
 /* ── ⚠️ 2026-09-30: БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ (давхар мөр) ── */
 {
-  for (const ep of ['applyEdits', 'addFeatures', 'updateFeatures', 'deleteFeatures', 'addAttachment']) {
+  /* ⚠️ 2026-10-11 (аудит №7): админ/bootstrap endpoint-ууд (`sharing/rest/*` · үйлчилгээний тодорхойлолт) ч бичилт */
+  for (const ep of [
+    'applyEdits', 'addFeatures', 'updateFeatures', 'deleteFeatures', 'addAttachment',
+    'createService', 'addToDefinition', 'updateDefinition', 'deleteFromDefinition', 'share', 'unshare', 'addItem', 'updateItem', 'deleteItems',
+  ]) {
     let calls = 0;
     globalThis.fetch = async () => { calls += 1; throw new TypeError('Failed to fetch'); };
     await assert.rejects(arcgisPost(URL_.replace(/\/query$/, '') + '/' + ep, {}, { slot: false }));

@@ -241,7 +241,9 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   /* ── Анхааруулга: сүүлийн 30 хоногийнх улаан; түүнээс хуучин хохирол шар ── */
   const issues: KpiIssue[] = [];
   for (const r of rows) {
-    const recent = r.ognoo != null && r.ognoo >= since;
+    /* ⚠️ 2026-10-11 (аудит №7): `<= now` — `agg.recent`-тэй нэг дүрэм; ирээдүйн огноотой (буруу бөглөсөн)
+       мөр «сүүлийн 30 хоног»-ийн улаан анхааруулга болдог байв */
+    const recent = r.ognoo != null && r.ognoo >= since && r.ognoo <= now;
     if (recent) issues.push({ text: issueText(r), tone: 'bad' });
     else if (isDamage(r)) issues.push({ text: issueText(r), tone: 'warn' });
   }

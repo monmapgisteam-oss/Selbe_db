@@ -212,4 +212,10 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
   assert.ok(self.includes('raw.filter((r) => !isBlankIncident(r))'), 'CEO ачаалагч хоосон ноорог хасна');
 }
 
+/* ── 2026-10-11 (аудит №7): ирээдүйн огноотой мөр «сүүлийн 30 хоног»-ийн УЛААН анхааруулга биш (`agg.recent`-тэй нэг) ── */
+{
+  const r = computeSafety([row({ ognoo: NOW + 3 * DAY, turul: 'Зөрчил', bagts: 'Багц 2' })], NOW);
+  assert.equal(r.issues.filter((i) => i.tone === 'bad').length, 0, 'ирээдүйн огноо улаан анхааруулга үүсгэхгүй');
+}
+
 console.log('safety.check.mjs — БҮГД ТЭНЦЛЭЭ');

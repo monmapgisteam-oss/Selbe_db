@@ -291,12 +291,18 @@ const release = () => {
  */
 const ENV_KEEP = new Set([
   "PATH", "PATHEXT", "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "TEMP", "TMP", "COMSPEC",
+  /* ⚠️ 2026-10-11 (аудит №7): прокси/CA/системийн суурь — цагаан жагсаалтаас гээгдсэн тул корпорацийн
+     прокси, өөрийн CA-тай хост дээр `claude` сүлжээнд гарч чадахгүй; `LANG`/`LC_ALL`/`XDG_*` (Linux
+     профайл/кэшийн зам) ба `SYSTEMDRIVE`/`WINDIR`/`PROGRAMFILES` (Windows) мөн. Нууц биш. */
+  "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+  "SYSTEMDRIVE", "WINDIR", "PROGRAMFILES", "LANG", "LC_ALL",
 ]);
 function childEnv() {
   const env = { CLAUDE_CODE_ENTRYPOINT: "selbe-agent-proxy" };
   for (const [k, v] of Object.entries(process.env)) {
     const u = k.toUpperCase();
-    if (v != null && (ENV_KEEP.has(u) || u.startsWith("CLAUDE_"))) env[k] = v;
+    /* `https_proxy`/`no_proxy` жижиг үсгээр — дээд үсгээр харьцуулдаг тул ENV_KEEP-д нэг л бичлэг */
+    if (v != null && (ENV_KEEP.has(u) || u.startsWith("CLAUDE_") || u.startsWith("XDG_"))) env[k] = v;
   }
   return env;
 }
@@ -539,8 +545,10 @@ async function callRaw({ system, messages, tools, model, effort, bin, signal, qu
     }
     if (j.is_error) {
       const msg = String(j.result || j.subtype || "Тодорхойгүй алдаа");
-      /* ⚠️ Нэвтрээгүй / хязгаар дууссан үеийн мессежийг ойлгомжтой болгоно */
-      if (/log ?in|auth|credential|unauthori/i.test(msg)) {
+      /* ⚠️ Нэвтрээгүй / хязгаар дууссан үеийн мессежийг ойлгомжтой болгоно
+         ⚠️ 2026-10-11 (аудит №7): `auth`/`credential` ганцаараа хэт өргөн — «author», «authorization header»
+         г.м. ердийн алдааг 401 болгож релег «нэвтрээгүй» (ready=false) төлөвт оруулдаг байв; нарийвчилсан хэв. */
+      if (/not logged in|\/login\b|unauthori[sz]ed|invalid (api )?key|authentication/i.test(msg)) {
         throw new ClaudeCodeError("Энэ PC дээр Claude Code нэвтрээгүй байна — терминалд `claude` ажиллуулаад /login хийнэ үү.", { status: 401 });
       }
       if (/limit|quota|usage/i.test(msg)) {

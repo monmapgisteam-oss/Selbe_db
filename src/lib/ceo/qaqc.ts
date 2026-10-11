@@ -75,8 +75,14 @@ export const qaqcEmptyLevel = (empty: number, total: number): Level =>
 
 /* ══════════════ Багц тус бүрийн тооцоо (цэвэр) ══════════════ */
 
-/** Багцын танигдах хэсэг — `Pkg`-ийн `url`, `floors` энд хэрэггүй */
-export type PkgLite = { key: string; label: string };
+/**
+ * Багцын танигдах хэсэг — `Pkg`-ийн `url`, `floors` энд хэрэггүй.
+ * ⚠️ 2026-10-11 (аудит №7): `group` («Багц 1», `Pkg.group`) — хүснэгтийн «Багц» баганад ЭНЭ гарна,
+ *    `label` («Багц 1 · 9 давхар») нь «Бөглөх хуудас» баганад. Урьд нь «Багц» баганад `label` байсан
+ *    тул CEO самбарын багцын шүүлт (`ceo/filter.samePkg` — `bagtsKey`) «Багц 1»-тэй таардаггүй,
+ *    хүснэгт чимээгүй хоосордог байв. Issues/failed нь нэрээр (`label`) хэвээр.
+ */
+export type PkgLite = { key: string; label: string; group: string };
 
 /** Хагас бүрдсэн мөр — дутуу баримтын богино нэрс (`QAQC_COLS.short`) хамт */
 export type PartialRow = { row: QaqcRow; missing: string[] };
@@ -214,40 +220,44 @@ export function computeQaqc(loaded: readonly QaqcLoaded[], failed: readonly stri
   if (failed.length > 0) facts.push(tr('{0} багц уншигдаагүй', num(failed.length)));
   if (flat.length > 0) facts.push(tr('{0} багц мод холбогдоогүй', num(flat.length)));
 
+  /* ⚠️ 2026-10-11 (аудит №7): «Багц» = бүлэг (`PkgLite.group`, шүүлтэд таарна); давхрын хуудас нь
+     СҮҮЛИЙН «Бөглөх хуудас» баганад — өмнөх баганын индекс (`pct` 4 г.м.) хөдлөхгүй. */
   const byPkg = table(
     tr('Багцаар'),
-    [tr('Багц'), tr('Ажил'), tr('Баримтгүй'), tr('Хагас'), tr('Баримтгүй %')],
+    [tr('Багц'), tr('Ажил'), tr('Баримтгүй'), tr('Хагас'), tr('Баримтгүй %'), tr('Бөглөх хуудас')],
     pkgs.map((p) => [
-      cell(p.pkg.label),
+      cell(p.pkg.group),
       cell(p.total, 'count'),
       cell(p.empty, 'count'),
       cell(p.partial, 'count'),
       /* ⚠️ `pct` нүдэнд 0–100 — `share` нь 0–1 тул энд 100-аар үржүүлнэ */
       cell(p.share == null ? null : p.share * 100, 'pct'),
+      cell(p.pkg.label),
     ]),
   );
 
   /* Багцаар бүлэглэнэ (багцын дараалал = дээрх муу-нь-эхэндээ); багц дотор хуудасны дараалал */
   const emptyTable = table(
     tr('Баримтгүй ажлууд'),
-    [tr('Багц'), tr('№'), tr('Ажил')],
+    [tr('Багц'), tr('№'), tr('Ажил'), tr('Бөглөх хуудас')],
     pkgs.flatMap((p) => p.emptyRows.map((r) => [
-      cell(p.pkg.label), cell(r.no || null), cell(r.work || null),
+      cell(p.pkg.group), cell(r.no || null), cell(r.work || null), cell(p.pkg.label),
     ])),
   );
 
   /* Багц дотор дутуу баримт ОЛОНТОЙ нь эхэнд; тэнцвэл хуудасны дараалал (sort тогтвортой) */
   const partialTable = table(
     tr('Хагас бүрдсэн ажлууд'),
-    [tr('Багц'), tr('№'), tr('Ажил'), tr('Дутуу баримт')],
+    [tr('Багц'), tr('№'), tr('Ажил'), tr('Дутуу баримт'), tr('Бөглөх хуудас')],
     pkgs.flatMap((p) => [...p.partialRows]
       .sort((a, b) => b.missing.length - a.missing.length)
       .map(({ row, missing }) => [
-        cell(p.pkg.label),
+        cell(p.pkg.group),
         cell(row.no || null),
         cell(row.work || null),
         /* ⚠️ `short` нь `Qaqc.tsx`-тэй адил `tr()`-ээр — толгойн нэр хоёр газар ижил орчуулагдана */
         cell(missing.map((m) => tr(m)).join(', ')),
+        cell(p.pkg.label),
       ])),
   );
 
@@ -339,7 +349,7 @@ async function loadPkg(pkg: Pkg): Promise<QaqcLoaded> {
   /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): хоёр БИЕ ДААСАН уншилт — дараалсан шат биш ЗЭРЭГ.
      `loadTreeRows` ХЭЗЭЭ Ч шидэхгүй (`null`) тул QAQC мөрийн уналт урьдын адил багцыг унагана. */
   const [rows, sheet] = await Promise.all([loadQaqcRows(pkg.key), loadTreeRows(pkg)]);
-  return attachOrFlat({ key: pkg.key, label: pkg.label }, rows, sheet);
+  return attachOrFlat({ key: pkg.key, label: pkg.label, group: pkg.group }, rows, sheet);
 }
 
 /**

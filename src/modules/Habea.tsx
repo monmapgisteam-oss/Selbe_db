@@ -1698,19 +1698,40 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    (`laborDated`). Багцаар нь «Багц» шүүлтгүй (өөрийн хэмжээс — ArcGIS зан).
    */
   const hourDays = useMemo(() => hoursByDay(laborDated), [laborDated]);
+  /**
+   * ⚠️ 2026-10-11 (аудит №7): «Ослын компани» шүүлттэй үед ХУВААРЬ (хүн-цаг) ч тэр компаниар.
+   *    Урьд нь хүртвэр (осол) компаниар шүүгдэж, хуваарь БҮХ компанийн хүн-цаг хэвээр тул давтамж
+   *    хиймлээр доошилдог байв. Ослын компани нь ЧӨЛӨӨТ БИЧВЭР (`field_5`) тул хүн хүчний
+   *    гүйцэтгэгчийн `code`/`label`-тай агуулагдах байдлаар тулгана; нэг ч таарахгүй бол ХООСОН
+   *    олонлог — хүн-цаггүй (давтамж бодогдохгүй; бүх компанийн цагаар худал тоо гаргахаас дээр).
+   */
+  const incCoSfx = useMemo<ReadonlySet<string> | null>(() => {
+    if (!sel.incCompany.length) return null;
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const out = new Set<string>();
+    for (const name of sel.incCompany) {
+      const n = norm(name);
+      if (!n) continue;
+      for (const c of HABEA.labor.companies) {
+        const keys = [c.code, c.label, c.sfx].map(norm).filter(Boolean);
+        if (keys.some((k) => n.includes(k) || k.includes(n))) out.add(c.sfx);
+      }
+    }
+    return out;
+  }, [sel.incCompany]);
   const ratePkg = useMemo(() => {
     /* Шошго нь гүйцэтгэгчийн бүртгэлийн багцаас («Багц -3.1» → «Багц 3.1», `pkgOptions`-ийн дүрэм) */
     const labelOf = (k: string) => {
       const raw = HABEA.labor.companies.find((c) => c.bagts && habeaPkgKey(c.bagts) === k)?.bagts;
       return raw ? tr(habeaPkgLabel(raw.replace(/\s*-\s*/, ' ').trim())) : k;
     };
-    return rateByPkg(hourDays, inc.filter((x) => incPass(x, 'pkg')), PKG_OF_CO, labelOf);
-  }, [hourDays, inc, incPass]);
+    return rateByPkg(hourDays, inc.filter((x) => incPass(x, 'pkg')), PKG_OF_CO, labelOf, incCoSfx);
+  }, [hourDays, inc, incPass, incCoSfx]);
   const rateMonth = useMemo(
     () => rateByMonth(hourDays, fInc, {
-      ymOf: (ms) => ubDayKey(ms).slice(0, 7), pkgOfCo: PKG_OF_CO, pkgs: pkgEff,
+      ymOf: (ms) => ubDayKey(ms).slice(0, 7), pkgOfCo: PKG_OF_CO, pkgs: pkgEff, cos: incCoSfx,
     }),
-    [hourDays, fInc, pkgEff],
+    [hourDays, fInc, pkgEff, incCoSfx],
   );
   /* ⚠️ `lastInc` нь «Сүүлийн ослоос хойш» KPI-д хэрэглэгдэж байсныг
      2026-09-06-нд хэрэглэгчийн хүсэлтээр ХАСАВ. Сүүлийн ослын огноо нь

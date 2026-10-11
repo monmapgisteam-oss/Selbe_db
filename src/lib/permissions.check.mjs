@@ -100,9 +100,24 @@ assert.equal(P.roleOf('huniigui_hun'), null, 'үл мэдэх хүн null');
 assert.equal(P.roleOf(superName), 'super', 'халдашгүй super — tombstone дор ч super');
 
 /* ── 6. clearOverride — устгал ч dirty-д (null) тэмдэглэгдэнэ ── */
-await P.clearOverride('test_dirty_user');
+assert.equal(await P.clearOverride('test_dirty_user'), false, 'ArcGIS-гүй орчинд устгал false байх ёстой');
 assert.ok(P.dirtyKeys().includes('test_dirty_user'), 'устгалын dirty тэмдэг алга');
-assert.equal(P.roleOf('test_dirty_user'), null, 'override арилсан байх ёстой');
+/* ⚠️ 2026-10-11 (аудит №7): offline устгал — локал override (tombstone БИШ) `setUser`-тэй ижил шууд
+   арчигдаж dirty-д үлдэнэ; retry remote tombstone-ыг дахин шалгана. Зөвхөн локал tombstone
+   remote-гүйгээр арчигдахгүй (`aclMerge.check`-ийн fake-тэй кейс). */
+assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал локалд шууд тусна (setUser-тэй ижил)');
+/* ⚠️ 2026-10-11 (аудит №7): «Буцаах»-ийн `revive` зорилго dirty-д хадгалагдаж, `loadDirty`-ийн
+   round-trip-ээс (өөр түлхүүрийн унасан бичилт map-ыг дахин бичнэ) амьд гарна. */
+{
+  const dirty = () => JSON.parse(localStorage.getItem('selbe-perms-dirty-v1') || '{}');
+  assert.equal(dirty().test_dirty_user?.revive, undefined, 'энгийн clear — revive тэмдэггүй');
+  assert.equal(await P.clearOverride('test_dirty_user', { revive: true }), false);
+  assert.equal(dirty().test_dirty_user?.e, null, 'revive clear — зорилго null');
+  assert.equal(dirty().test_dirty_user?.revive, true, '«Буцаах»-ийн revive тэмдэг dirty-д');
+  await P.setUser('test_dirty_other', { views: ['plan'], docs: false }, 'tolovlolt');
+  assert.equal(dirty().test_dirty_user?.revive, true, 'revive тэмдэг loadDirty round-trip-ээс амьд гарна');
+  assert.ok(P.dirtyKeys().includes('test_dirty_user') && P.dirtyKeys().includes('test_dirty_other'));
+}
 
 /* ── 7. «Хуваарь» харагдац ЭРХЭЭС гарна (2026-09-30 регресс): төрлийн загвар урсгалтай
       харагдацыг (`WORKFLOW_VIEWS`) агуулахаа больсон тул хадгалагдсан `views`-д

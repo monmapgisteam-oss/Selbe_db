@@ -72,13 +72,31 @@ export function subReceipts(
   for (const [k] of [...p.cells, ...p.dates]) {
     const c = known.get(k);
     if (c && c[1] >= p.at) continue;
+    /* ⚠️ 2026-10-11 (аудит №7): НАРИЙН баримт (`sv ≠ ''`) байвал серверийн (хоосон `sv`, хуримтлалын) баримтаар
+       ДАРАХГҮЙ — нарийн нь зөрүү бодно (5 → 8 = +3), хоосон нь зөрүү бодолгүй ХАСНА (+3 алдагдана). Илгээлтийн `at`
+       хожуу ч гэсэн тэр нь ижил илгээлтийн (эсвэл түүнийг агуулсан хуримтлалын) серверийн тамга. */
+    if (c && c[2] !== '') continue;
     out.push([k, p.at, '', p.at]);
   }
   return out;
 }
-/** Хоёр баримтаас ХОЖУУ (`a` их) нь — серверээс гаргасан (`subReceipts`) баримт жинхэнэ шинэ баримтыг дарахгүй */
-const newerRc = (a: Rcpt | undefined, b: Rcpt | undefined): Rcpt | undefined =>
-  !a ? b : !b ? a : b[1] > a[1] ? b : a;
+/**
+ * Хоёр баримтаас ХОЖУУ (`a` их) нь — серверээс гаргасан (`subReceipts`) баримт жинхэнэ шинэ баримтыг дарахгүй.
+ * ⚠️ 2026-10-11 (аудит №7): НАРИЙН (`sv ≠ ''`) нь ХООСОН (серверийн хуримтлалын) баримтаас ҮРГЭЛЖ давамгай —
+ *    агшнаар биш (`subReceipts`-ийн ⚠️); хоёулаа ижил төрөл бол агшин.
+ */
+const newerRc = (a: Rcpt | undefined, b: Rcpt | undefined): Rcpt | undefined => {
+  if (!a) return b;
+  if (!b) return a;
+  const ax = a[2] !== '';
+  const bx = b[2] !== '';
+  if (ax !== bx) return ax ? a : b;
+  return b[1] > a[1] ? b : a;
+};
+
+/** ⚠️ 2026-10-11 (аудит №7): одоогийн жаазыг анх харсан агшин — `minOid`-той таарч байвал (`rcptAlive` · `compactDraft`); модулийн түвшинд (hook-ийн хамаарал биш) */
+const frameSeenFor = (fs: readonly [number, number] | null, minOid: number | null): number | null =>
+  fs && fs[0] === minOid ? fs[1] : null;
 
 /**
  * Ноорогийн бүх төлөв (ref · state) ЭНД зарлагдана — FillNew-ийн ачаалах эффект, `publish`,
@@ -412,10 +430,16 @@ export function useDraftSync(p: {
    * (жааз бүр өсөх oid-той хуулагддаг). `null` = мөр ачаалагдаагүй (шахалт хуучин жаазыг хөндөхгүй).
    */
   const minOidRef = useRef<number | null>(null);
+  /**
+   * ⚠️ 2026-10-11 (аудит №7): ОДООГИЙН ЖААЗЫГ АНХ ХАРСАН АГШИН `[minOid, ms]` (`Draft.frameSeenAt`-ийн ⚠️) — хуучин
+   *    жаазны баримтын хугацаа эндээс (`rcptAlive`). Ноорогт хадгалагдаж, сэргээлтэд ЭРТ агшин нь ялна (`pickDraft`).
+   */
+  const frameSeenRef = useRef<[number, number] | null>(null);
   useEffect(() => {
     let m = Number.POSITIVE_INFINITY;
     for (const r of rows) if (r.oid >= 0 && r.oid < m) m = r.oid;
     minOidRef.current = Number.isFinite(m) ? m : null;
+    if (Number.isFinite(m) && frameSeenRef.current?.[0] !== m) frameSeenRef.current = [m, Date.now()];
   }, [rows]);
   /**
    * ЛОКАЛ ХАДГАЛАЛТ УНАСАН (сан дүүрсэн/хаалттай) — 2026-10-04 аудит (#9). Урьд нь `saveDraftLS`
@@ -809,7 +833,7 @@ export function useDraftSync(p: {
     /* ⚠️ 2026-10-04 дахин аудит (#2): алсад бичихийн өмнө ШАХНА (`flush`-тай ижил — `compactDraft`) */
     const merged = rr.ok
       ? compactDraft(mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew,
-        { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null })
+        { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null })
       : null;
     /* ⚠️ 2026-10-06: локалд НИЙЛҮҮЛЖ бичнэ (`writeDraftLS`) — `merged` нь `await`-аас ӨМНӨХ `cur`-аас
        угсрагдсан тул урьд нь `saveDraftLS`-ээр дарж бичихэд завсарт бичсэн нүд локалаас арилдаг байв. */
@@ -911,7 +935,8 @@ export function useDraftSync(p: {
     const dBt = new Map<string, number>(d.bt ?? []);
     /* ⚠️ 2026-10-04 дахин аудит (#2): шахсан хэлбэрийг задална (`unpackRcpt`) */
     const dRc = new Map<string, Rcpt>();
-    for (const r of unpackRcpt(d.rcpt)) { const c = dRc.get(r[0]); if (!c || c[1] < r[1]) dRc.set(r[0], r); }
+    /* ⚠️ 2026-10-11 (аудит №7): нарийн баримт хоосныг дарна (`newerRc`) */
+    for (const r of unpackRcpt(d.rcpt)) { const w = newerRc(dRc.get(r[0]), r); if (w) dRc.set(r[0], w); }
     /**
      * ТЭМДЭГЛЭХ НҮД (2026-10-04 дахин аудит, #7 · #3) — `Held`-ийн ⚠️. Ноорогийн өмнөх тэмдэг (`d.hold`)
      * байвал анх тэмдэглэсэн агшин хадгалагдана (хугацаа түүнээс); `DEL_TTL_MS`-ээс хуучин бол
@@ -1365,8 +1390,13 @@ export function useDraftSync(p: {
     }
     /* ⚠️ 2026-10-04 (#4): баримт ба нүдний суурь баримт — ЗӨВХӨН бүтэн буулгалтад (`rcptRef`-ийн ⚠️) */
     for (const r of dRc.values()) {
-      const c = rcptRef.current.get(r[0]);
-      if (!c || c[1] < r[1]) rcptRef.current.set(r[0], r);
+      /* ⚠️ 2026-10-11 (аудит №7): нарийн баримт хоосныг дарна (`newerRc`) */
+      const w = newerRc(rcptRef.current.get(r[0]), r);
+      if (w && w !== rcptRef.current.get(r[0])) rcptRef.current.set(r[0], w);
+    }
+    /* ⚠️ 2026-10-11 (аудит №7): ноорогт хадгалсан «жаазыг анх харсан» агшин ЭРТ бол (өөр таб/төхөөрөмж эрт харсан) түүнийг авна */
+    if (d.frameSeenAt && frameSeenRef.current && d.frameSeenAt[0] === frameSeenRef.current[0] && d.frameSeenAt[1] < frameSeenRef.current[1]) {
+      frameSeenRef.current = [d.frameSeenAt[0], d.frameSeenAt[1]];
     }
     {
       const nb = new Map<string, number>();
@@ -1962,7 +1992,7 @@ export function useDraftSync(p: {
         const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
         /* ⚠️ 2026-10-04 (#4): илгээлтийн баримт ч мөн «хоосон + баримттай» ноорог бичүүлнэ */
         /* ⚠️ 2026-10-04 дахин аудит (#2): хуучин жаазны баримт 1 хоногт хуучирна (`rcptAlive`) */
-        const liveRc = [...rcptRef.current.values()].filter((r) => rcptAlive(r, nowMs, minOidRef.current));
+        const liveRc = [...rcptRef.current.values()].filter((r) => rcptAlive(r, nowMs, minOidRef.current, frameSeenFor(frameSeenRef.current, minOidRef.current)));
         /* ⚠️ ОГНООНЫ БУЦААЛТ ч TOMBSTONE (2026-09-25-ны аудит, `asOfRevRef`-ийн ⚠️):
            `asOf` өөрчлөгдөж бичигдээд анхны утгандаа буцсан бол алсыг УСТГАХГҮЙ —
            `asOf: null` (ил буцаалт)-тай хоосон ноорог бичнэ, эс бөгөөс бусад
@@ -1977,6 +2007,7 @@ export function useDraftSync(p: {
             asOfAt: asOfStampOf(asOfRevRef.current ? null : undefined),
             done: doneRef.current, marks: [...marksRef.current.values()], del: liveDel,
             rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
+            frameSeenAt: frameSeenRef.current ?? undefined,
             /* ⚠️ 2026-10-04 дахин аудит (#4): хүн бүрийн зорилт (ТАБЫН мэдэх бүгд — `tgtsRef`-ийн ⚠️) */
             tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
           };
@@ -2139,7 +2170,7 @@ export function useDraftSync(p: {
     }
     /* ⚠️ 2026-10-04 дахин аудит (#2): хуучирсан ба ХУУЧИН ЖААЗНЫ (1 хоногоос хуучин) баримтыг ТАБЫН
        төлөвөөс ч хасна (`rcptAlive`); ноорогт ШАХСАН хэлбэрээр (`packRcpt`). */
-    for (const [k, r] of [...rcptRef.current]) if (!rcptAlive(r, at, minOidRef.current)) rcptRef.current.delete(k);
+    for (const [k, r] of [...rcptRef.current]) if (!rcptAlive(r, at, minOidRef.current, frameSeenFor(frameSeenRef.current, minOidRef.current))) rcptRef.current.delete(k);
     const rcpt = [...rcptRef.current.values()];
     /* ⚠️ 2026-10-04 (#8): ҮНЭМЛЭХҮЙ утгын СУУРЬ — анх засах үеийн серверийн утга (дараа нь хөдлөхгүй) */
     const datesB: [string, string][] = [];
@@ -2215,6 +2246,8 @@ export function useDraftSync(p: {
         : undefined,
       asOfB: asOfChanged ? asOfBRef.current : undefined,
       datesB: datesB.length ? datesB : undefined,
+      /* ⚠️ 2026-10-11 (аудит №7): жаазыг анх харсан агшин (`Draft.frameSeenAt`-ийн ⚠️) */
+      frameSeenAt: frameSeenRef.current ?? undefined,
     };
     /* ⚠️ 2026-10-04 аудит (#9): ЛОКАЛЫГ НИЙЛҮҮЛЖ бичнэ (`writeDraftLS` — хоёр таб бие биеийг
        дарахгүй, буулгаагүй хадгалсан нүд үлдэнэ); унавал «хадгалагдав» гэж ХУДАЛ батлахгүй. */
@@ -2365,7 +2398,7 @@ export function useDraftSync(p: {
         /* ⚠️ 2026-10-04 дахин аудит (#2, HIGH): ШАХАЛТ (`compactDraft`) — баримтаар дарагдсан `del`,
            хуучирсан/хуучин жаазны баримтыг хасна; эс бөгөөс том илгээлтийн дараах ноорог `REMOTE_MAX`-аас
            хэтэрч (`big`) алсад баримтгүй хуучин нүд үлдэж, өөр оролцогч ДАХИН илгээх байв. */
-        const merged0 = compactDraft(mergeDrafts(remote, q.draft) ?? q.draft, { max: REMOTE_MAX, minOid: live() ? minOidRef.current : null });
+        const merged0 = compactDraft(mergeDrafts(remote, q.draft) ?? q.draft, { max: REMOTE_MAX, minOid: live() ? minOidRef.current : null, frameSeenAt: live() ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
         /* `body` — хувилбарын дугааргүй агуулга: дэмий бичилт таслахад (доор) */
         const body = JSON.stringify(merged0);
         /*
@@ -2706,12 +2739,13 @@ export function useDraftSync(p: {
   const pushReceipts = useCallback(async (want: string): Promise<{ ok: true } | { ok: false; why: string }> => {
     const nowMs = stamp();
     const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
-    const liveRc = [...rcptRef.current.values()].filter((r) => rcptAlive(r, nowMs, minOidRef.current));
+    const liveRc = [...rcptRef.current.values()].filter((r) => rcptAlive(r, nowMs, minOidRef.current, frameSeenFor(frameSeenRef.current, minOidRef.current)));
     if (!liveDel.length && !liveRc.length) return { ok: true };
     const tomb: Draft = {
       t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
       done: doneRef.current, marks: [...marksRef.current.values()], del: liveDel,
       rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
+      frameSeenAt: frameSeenRef.current ?? undefined,
       tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
     };
     try {
@@ -2725,7 +2759,7 @@ export function useDraftSync(p: {
           remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
         }
         const merged0 = compactDraft(mergeDrafts(remote, tomb) ?? tomb,
-          { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null });
+          { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
         const out: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at0 != null ? at0 + 1 : 0) };
         const body = JSON.stringify(out);
         if (body.length > REMOTE_MAX) return { ok: false, why: tr('ноорог хэт том') };

@@ -320,7 +320,12 @@ async function attemptRequest(
        илгээлт нь `addFeatures`/`applyEdits`-ийн мөрийг ХОЁР удаа нэмнэ (давхар илгээлт,
        давхар хяналтын тойрог). Уншилт (query · statistics) аюулгүй тул хэвээр. 429/503 ба
        498 нь сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн хариу тул тэдгээрийн давталт хэвээр. */
-    const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append)\/?$/i.test(full);
+    /* ⚠️ 2026-10-11 (аудит №7): админ/bootstrap endpoint-ууд ч бичилт — `createService` · `addToDefinition` ·
+       `updateDefinition` · `deleteFromDefinition` · `share`/`unshare` · `addItem`/`updateItem`/`deleteItems`.
+       Урьд нь жагсаалтад байгаагүй тул сүлжээний алдаанд дахин илгээгдэж хүснэгт/зүйл ДАВХАР үүсэх
+       (`permsRemote.createTable`) эрсдэлтэй байв — дээрх 2026-10-05-ны ⚠️ («`sharing/rest/*` хэзээ ч
+       давтагдахгүй») одоо үнэн. */
+    const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append|createService|addToDefinition|updateDefinition|deleteFromDefinition|share|unshare|addItem|updateItem|deleteItems)\/?$/i.test(full);
     /* ⚠️ 2026-10-05: уншилтад `NET_RETRIES` хүртэл backoff-той; бусад (бичилт биш) нь хуучнаараа 1 */
     const netMax = isReadReq(full, params) ? NET_RETRIES : 1;
     if (e instanceof TypeError && netTries < netMax && !isWrite && !o.signal?.aborted && !timedOut()) {

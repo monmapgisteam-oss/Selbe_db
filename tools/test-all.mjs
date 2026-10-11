@@ -35,7 +35,7 @@
  * Гаралт: давсан файлын гаралтыг НУУНА (--verbose-гүй бол), унасан файлынхыг
  * төгсгөлд БҮТНЭЭР хэвлэнэ. Нэг ч унавал exit 1.
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { runCheck, resolveTimeoutS } from './testRun.mjs';
 
@@ -91,6 +91,11 @@ if (!files.length) {
    CI нь орчны хувьсагчаар өгдөг тул `NEXT_PUBLIC_ARCGIS_HJ` байвал чимээгүй. */
 if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
   console.warn('⚠️ test-all: .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env); эс бөгөөс NEXT_PUBLIC_* шаарддаг шалгуурууд унана\n');
+} else if (!process.env.NEXT_PUBLIC_ARCGIS_HJ && existsSync('.env')
+  && !/^\s*NEXT_PUBLIC_ARCGIS_HJ\s*=\s*\S/m.test(readFileSync('.env', 'utf8'))) {
+  /* ⚠️ 2026-10-11 (аудит №7): `.env.example`-ийг хуулсан ч УТГУУДЫГ бөглөөгүй (бүгд хоосон) — «.env алга»-тай
+     ижил ~28 шалгуур унадаг атал дээрх анхааруулга чимээгүй байв. */
+  console.error('⚠️ test-all: .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
 }
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 

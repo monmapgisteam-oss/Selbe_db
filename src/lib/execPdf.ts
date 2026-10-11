@@ -533,8 +533,9 @@ export async function buildExecDoc(
       barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
+        /* ⚠️ 2026-10-11 (аудит №7): багцын өрх ч `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)») */
         ...buildPk.map((k): TableCell[] => [
-          td(k.name), td(num(k.blocks), true), td(num(k.households), true),
+          td(k.name), td(num(k.blocks), true), td(householdsLabel(k), true),
           td(k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1), true,
             k.progress != null && k.progress < 5 ? RED : undefined),
         ]),
@@ -545,8 +546,10 @@ export async function buildExecDoc(
       { table: { headerRows: 1, widths: ['*', 90, 60], body: [
         [th(tr('Түвшин')), th(tr('Хувь')), th(tr('Блок'), true)],
         ...p.levels.map((l): TableCell[] => [td(l.label), td(l.range), td(num(l.n), true)]),
-        [td(tr('Бөглөгдөөгүй'), false, MUTED), td('—', false, MUTED), td(num(p.noData), true, MUTED)],
       ] }, layout: tableLayout },
+      /* ⚠️ 2026-10-11 (аудит №7): бөглөгдөөгүй блок `levelCounts`-ийн 0–25%-д аль хэдийн орсон — нэмэлт мөр
+         байвал мөрүүдийн нийлбэр блокийн тооноос давна; тэмдэглэл (дэлгэцтэй нэг). */
+      ...(p.noData > 0 ? [note(tr('үүнээс бөглөгдөөгүй: {0} — 0–25%-д орсон', num(p.noData)))] : []),
 
       /* ══════════ 4. САНХҮҮЖИЛТ ══════════ */
       { text: '', pageBreak: 'before' },

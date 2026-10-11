@@ -90,7 +90,10 @@ type Store = Record<string, Entry>;
  *    асуултад ЛАВЛАГАА болгон харуулна, итгэлийн шалгуур БИШ.
  * ⚠️ Хуучин хэлбэрийн (`Entry | null` шууд) мөр `by: ''` гэж уншигдана.
  */
-type DirtyItem = { by: string; e: Entry | null };
+/* ⚠️ 2026-10-11 (аудит №7): `revive` — «Буцаах»-ийн устгал (`clearOverride(…, { revive: true })`):
+   retry-д remote tombstone олдсон ч устгалыг ҮРГЭЛЖЛҮҮЛНЭ (сэргээх зорилго). Энгийн `e: null`
+   («Сэргээх»/`removeUser`) tombstone дээр урьдын адил хаягдана. */
+type DirtyItem = { by: string; e: Entry | null; revive?: boolean };
 type DirtyMap = Record<string, DirtyItem>;
 
 /**
@@ -276,7 +279,12 @@ function loadDirty(): DirtyMap {
       const item = v && typeof v === 'object' && 'e' in v && 'by' in v
         ? (v as DirtyItem)
         : { by: '', e: (v ?? null) as Entry | null };
-      out[k] = { by: typeof item.by === 'string' ? item.by : '', e: item.e ?? null };
+      out[k] = {
+        by: typeof item.by === 'string' ? item.by : '',
+        e: item.e ?? null,
+        /* ⚠️ 2026-10-11 (аудит №7): «Буцаах»-ийн зорилго retry хүртэл хадгалагдана (ЗӨВХӨН яг `true`) */
+        ...(item.revive === true && item.e === null ? { revive: true } : {}),
+      };
     }
     return out;
   } catch {
@@ -296,7 +304,7 @@ function saveDirty(d: DirtyMap): void {
 }
 
 /** Бичилтийн үр дүнг dirty-set-д тусгана (ok → цэвэрлэ, унав → тэмдэглэ) */
-function trackWrite(key: string, intended: Entry | null, ok: boolean): void {
+function trackWrite(key: string, intended: Entry | null, ok: boolean, revive = false): void {
   const d = loadDirty();
   if (ok) {
     mine.delete(key);
@@ -304,7 +312,8 @@ function trackWrite(key: string, intended: Entry | null, ok: boolean): void {
     delete d[key];
   } else {
     /* ⚠️ Бичсэн хүн + ЭНЭ runtime-ийн тэмдэг (`mine`) — автомат retry-ийн шалгуур */
-    d[key] = { by: currentUser() ?? '', e: intended };
+    /* ⚠️ 2026-10-11 (аудит №7): `revive` — «Буцаах»-ийн устгал tombstone-ыг зориуд арилгана (`DirtyItem`) */
+    d[key] = { by: currentUser() ?? '', e: intended, ...(revive && intended === null ? { revive: true } : {}) };
     mine.set(key, ser(intended));
   }
   saveDirty(d);
@@ -400,8 +409,12 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
        *    dirty-г арилгаж (retry дахин оролдохгүй), локалд tombstone-ыг тусгана (`done`-оор
        *    кэшид). Уншиж чадаагүй бол dirty хэвээр (fail-closed). Хатуу super-т tombstone
        *    үйлчилдэггүй (`hasAccess`) тул уншилт алгасна.
+       * ⚠️ 2026-10-11 (аудит №7): «Буцаах»-ийн устгал (`item.revive`, `e === null`) нь tombstone-ыг
+       *    ЗОРИУД арилгах тул уншилтыг алгасаж үргэлжлүүлнэ — урьд нь `null` бүгд адилхан хаягдаж
+       *    сүлжээгүй дарсан «Буцаах» хэзээ ч биелэхгүй байв. Энгийн `null` урьдын адил хаягдана.
        */
-      if (!e?.removed && !isHardSuper(key)) {
+      const revive = e === null && item.revive === true;
+      if (!e?.removed && !revive && !isHardSuper(key)) {
         let fresh: Awaited<ReturnType<typeof m.userRead>> = null;
         try { fresh = await m.userRead(key); } catch { fresh = null; }
         if (!fresh) return; // уншиж чадсангүй — dirty хэвээр, дараагийн retry
@@ -989,17 +1002,58 @@ export function mergeUserDelta(base: UserBase | null, next: UserBase, fresh: Use
   };
 }
 
-/** Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил. */
-export function clearOverride(username: string): Promise<boolean> {
+/**
+ * Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил.
+ * ⚠️ 2026-10-11 (аудит №7): TOMBSTONE-ЫГ ЗӨВХӨН `{ revive: true }`-ЭЭР АРИЛГАНА. Урьд нь «Сэргээх»
+ *    (`UserAdmin.saveAll`-ийн `d.clear`) · `removeUser` · `revokeFlowAccess` бүгд энэ замаар remote
+ *    мөрийг шалгалгүй устгадаг тул нөгөө админы ДӨНГӨЖ тавьсан tombstone (манай кэш мэдээгүй)
+ *    арчигдаж, устгагдсан хүн дахин нэвтэрдэг байв. Одоо бичихийн өмнө мөрийг шинээр уншина
+ *    (`setUser`-ийн ижил загвар): remote-д tombstone, `revive` биш бол ЮУ Ч устгахгүй — локалд
+ *    tombstone-ыг тусгаж `false` (dirty-д ТЭМДЭГЛЭХГҮЙ). Уншиж чадаагүй бол бичихгүй (`false` → dirty,
+ *    retry дахин уншина). «Буцаах» товч л `revive: true` өгнө. Хатуу super-т tombstone үйлчилдэггүй.
+ * ⚠️ Локал мөрийг remote устгал АМЖИЛТТАЙ болсны ДАРАА л арилгана — урьд нь эхлээд локалоос
+ *    арчдаг тул remote унасан ч tombstone кэшээс алга болж, тэр хүн энэ табд нэвтэрдэг байв.
+ *    Унасан устгал dirty (`null`)-д үлдэж `retryDirtyOnce`/`mineDirty` дахин оролдоно.
+ */
+export function clearOverride(username: string, opts: { revive?: boolean } = {}): Promise<boolean> {
   const key = username.toLowerCase();
-  const store = { ...loadStore() };
-  delete store[key];
-  saveStore(store);
+  const revive = opts.revive === true;
   /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
-  return serialWrite(key, () => import('./permsRemote')
-    .then((m) => m.remove(username))
-    .catch(() => false)
-    .then((ok) => { trackWrite(key, null, ok); return ok; }));
+  return serialWrite(key, async () => {
+    let ok = false;
+    try {
+      const m = await import('./permsRemote');
+      if (!revive && !isHardSuper(key)) {
+        const fresh = await m.userRead(username);
+        /* ⚠️ 2026-10-11 (аудит №7, 2): remote УНШИГДАХГҮЙ (offline) бол `setUser`-тэй ИЖИЛ — локал мөр
+           tombstone БИШ л бол локалоос шууд арчиж dirty-д үлдээнэ (`retryDirtyOnce` remote tombstone-ыг
+           дахин шалгана); локал мөр tombstone бол remote-оор батлагдахгүйгээр арчихгүй — энэ хөтөч
+           устгагдсан хүнийг оруулахгүй. */
+        if (!fresh) {
+          if (!loadStore()[key]?.removed) { const s0 = { ...loadStore() }; delete s0[key]; saveStore(s0); }
+          trackWrite(key, null, false);
+          return false;
+        }
+        if (fresh.row?.removed) {
+          dropDirty(key, ser(loadDirty()[key]?.e ?? null));
+          const s = { ...loadStore() };
+          s[key] = sanitizeEntry({ views: [], docs: false, role: null, removed: true });
+          saveStore(s);
+          return false;
+        }
+      }
+      ok = await m.remove(username);
+    } catch {
+      ok = false;
+    }
+    if (ok) {
+      const store = { ...loadStore() };
+      delete store[key];
+      saveStore(store);
+    }
+    trackWrite(key, null, ok, revive);
+    return ok;
+  });
 }
 
 /**

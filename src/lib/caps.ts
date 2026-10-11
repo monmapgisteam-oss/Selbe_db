@@ -749,9 +749,12 @@ export async function retryCapsDirty(onlyMine = false): Promise<number> {
  *   `permissions.initRemote(trusted)`-ийн ЯГ ижил үндэслэл.
  */
 export function _syncRemoteCaps(rows: CapRow[], trusted = false): void {
-  const s: Store = {};
+  /* ⚠️ 2026-10-11 (аудит №7): прототипгүй объект + `UNSAFE_KEY` нэрийг алгасна — хүснэгтэд
+     `__cap__:__proto__` мөр бичвэл `s[…] = …` прототипыг солих байв (`loadLocal`-ийн ижил дүрэм) */
+  const s: Store = Object.create(null) as Store;
   for (const r of rows) {
     if (!r.user) continue;
+    if (UNSAFE_KEY.has(r.user.trim().toLowerCase())) continue;
     /* ⚠️ ХООСОН ЖАГСААЛТЫГ ч БИЧНЭ (2026-09-08): урьд нь `c.length` шалгадаг
        байсан тул remote дээрх `[]` мөр кэшид ОГТ тусдаггүй байв. Тэр нь
        өөрөө хор хөнөөлгүй мэт ч `retryDirtyCaps`-ийн «хасалт амжилттай»

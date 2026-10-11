@@ -3897,7 +3897,6 @@ const en: Record<string, string> = {
   "түрүүлэлт": "ahead",
   "хуваарийн дагуу": "on schedule",
   "Блокийн гүйцэтгэлийн түвшин": "Block progress levels",
-  "Бөглөгдөөгүй": "Not filled",
   "Гэрээ (төг)": "Contract (MNT)",
   "Олгосон (төг)": "Disbursed (MNT)",
   "Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ хэсэг мэдээлэлгүй.": "The permit registry is not connected, so this section has no data.",
@@ -7000,6 +6999,25 @@ const en: Record<string, string> = {
   "ХАБЭА-ийн бүртгэл": "HSE registers",
   "Хөтөч энэ форматыг харуулахгүй — дарж татна": "The browser cannot display this format — click to download",
   "{0} нүдний ноорог утга серверт хадгалагдсан илгээлтээс ӨМНӨ бичигдсэн тул илгээгдсэн гэж үзэж хасав (яг илгээсэн утга мэдэгдэхгүй — зөрүү бодоогүй). Тэр нүд илгээлтэд ороогүй байсан бол дахин бөглөнө үү.": "{0} draft cell(s) were written BEFORE the submission saved on the server, so they were treated as submitted and dropped (the exact submitted value is unknown — no diff was computed). If a cell was not part of the submission, fill it in again.",
+  "Хагас бичилтийн хамгаалалтын тэмдэг дахин хадгалагдсангүй ({0}) — өмнөх оролдлогод эх хуудсанд бичигдсэн тул буцаах боломжгүй; «Батлах»-ыг дахин дарж дуусгана уу.": "The partial-write guard mark could not be re-saved ({0}) — a previous attempt already wrote to the source sheet, so returning is not possible; press «Approve» again to finish.",
+  "{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.": "{0} decided this document at the same time ({1}) — your decision was not saved. Refresh the page.",
+  /* ⚠️ 2026-10-11 (аудит №7): ХАБЭА «Хог хаягдал оруулах» — төрлийн шалтгаан */
+  "Үйлчилгээний домэйнд картын (рейс) төрөл алга — хадгалах боломжгүй.": "The service domain has none of the card's (trip) types — nothing can be saved.",
+  "Төрөл сонгоно уу.": "Select a type.",
+  /* ⚠️ 2026-10-11 (аудит №7): бөглөх хуудас · хяналт · нэмэлт ажлын буулгалт */
+  "Хувь бичихдээ «Хувь» горимд оруулна уу": "To enter a percentage, switch to the “Percent” mode",
+  "үлдэгдэл хоосон": "the remainder is empty",
+  "Батлах явцад гүйцэтгэгч дахин илгээсэн боловч агуулга нь архивласнаас ялгаагүй — илгээлтийг хааж чадсангүй, агуулгагүй үлдэгдэл бичсэнгүй; энэ илгээлтийг ДАХИН БАТЛАХГҮЙ байна уу (нэмэлт давхар орно).": "The contractor re-submitted during approval, but the content is identical to what was archived — the submission could not be closed and no empty remainder was written; do NOT approve this submission again (the increment would be counted twice).",
+  "Илгээлт агуулгагүй үлдэгдэл байсан тул архивт бичсэнгүй — илгээлтийг хаав.": "The submission was an empty remainder, so nothing was written to the archive — the submission was closed.",
+  "Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү": "{0} row(s) were found in the archive (after OID {1}, {2}), but it could not be confirmed that they are our frame ({3} rows) — not deleted; please check and clean up manually in AGOL",
+  "Баталгаажсан {0} мөрийн {1}-ийг буцаав": "Reverted {1} of the {0} confirmed row(s)",
+  /* ⚠️ 2026-10-11 (аудит №7) */
+  "үүнээс бөглөгдөөгүй: {0} — 0–25%-д орсон": "of which not filled: {0} — counted in 0–25%",
+  "Бөглөх хуудас": "Fill sheet",
+  "≈одоо": "≈now",
+  "Хагас — мод холбогдоогүй хуудас": "Partial — sheets without tree link",
+  "{0} хуудас бөглөх хуудастай холбогдоогүй тул чанарын оноо ХАГАС өгөгдлөөр": "{0} sheet(s) not linked to the fill sheet, so the quality score uses PARTIAL data",
+  "₮ байна. Багц хоорондын гүйцэтгэл ойролцоо байна: хамгийн өндөр нь": "₮. Progress is similar across packages: the highest is",
 };
 
 export default en;

@@ -26,6 +26,18 @@ import s from './dashboard.module.css';
 const BLANK_HUE = ZONE_TYPE_EMPTY_HUE;
 
 /**
+ * ⚠️ 2026-10-11 (аудит №7): ИДЭВХТЭЙ тодруулга ЭНЭ давхаргынх уу (`only` — мөр эсвэл жагсаалт).
+ *    Доорх гурван самбар (`LayerDashboard` · `PickedZone` · `PickedFeature`) урьд нь зөвхөн ӨӨРИЙН
+ *    `sel` state-ээр шийддэг байв: MapTools-ийн ✕ (`setHighlight(null)`) дарахад `sel` үлдэж, ижил
+ *    товчийг дахин дарахад «унтраах» гэж ойлгоод ХОЁР дахь даралтаар л шүүлт тавигддаг; unmount-ын
+ *    cleanup нь ӨӨР самбар/модулийн (газар чөлөөлөлтийн полигон г.м.) тодруулгыг ч арилгадаг байв.
+ *    Одоо (а) тодруулга алга/өөрийнх биш болмогц `sel` тэглэгдэнэ, (б) cleanup нь зөвхөн өөрийнхөө
+ *    тодруулгыг арилгана.
+ */
+const ownsHighlight = (h: { where: string | null; only?: string | string[] }, id: string): boolean =>
+  !!h.where && (h.only === id || (Array.isArray(h.only) && h.only.includes(id)));
+
+/**
  * Ангилал → монохром сүүдэр (донат ба багана ижил түлхүүрээр нэг өнгөтэй).
  * Тинтийн логик нь портал даяар нэг — `lib/format.ts::shade`. «Бүртгэгдээгүй»
  * саарал хэвээр.
@@ -901,7 +913,7 @@ function LayerDashboard({
   toggle: () => void;
   onBack: () => void;
 }) {
-  const { setHighlight, zoomToLayer, zoomToWhere } = useMap();
+  const { setHighlight, zoomToLayer, zoomToWhere, highlight } = useMap();
   const [sel, setSel] = useState<string | null>(null);
   /**
    * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад «‹ Жагсаалт»-аар
@@ -909,10 +921,19 @@ function LayerDashboard({
    * WHERE-тэй featureEffect зурган дээр үлдэж, цуцлах удирдлага харагдахгүй
    * байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр
    * шалгана) — эс бөгөөс бусад самбарын тодруулгыг дайрч цэвэрлэнэ.
+   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» гэдгийг `sel`-ээр БИШ, идэвхтэй тодруулгын `only === d.id`-ээр
+   *    шалгана (`ownsHighlight`); ✕-ээр арилсан тодруулгад `sel` тэглэгдэнэ.
    */
   const selRef = useRef(sel);
   useSyncRef(selRef, sel);
-  useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
+  const hlRef = useRef(highlight);
+  useSyncRef(hlRef, highlight);
+  const idRef = useRef(d.id);
+  useSyncRef(idRef, d.id);
+  useEffect(() => () => { if (selRef.current != null && ownsHighlight(hlRef.current, idRef.current)) setHighlight(null); }, [setHighlight]);
+  useEffect(() => {
+    if (sel != null && !ownsHighlight(highlight, d.id)) setSel(null);
+  }, [highlight, sel, d.id]);
   /* ⚠️ 2026-09-30: БҮС солигдоход ч тэглэнэ — «Бүсээр» хэсэг алга болж (бүс сонгосон), ангиллын
      чарт бүсээр хумигддаг атал хуучин сонголт ба бүсгүй WHERE-тэй тодруулга үлдэж, давхарга
      цуцлах удирдлагагүйгээр бүдгэрсэн хэвээр байв. */
@@ -1165,7 +1186,7 @@ function PickedZone({
   //    каноник («Багц-1») тул шүүлт, харуулалт хоёуланд нь хөрвүүлж авна.
   const id = zoneCanon(attrs[F.id]);
   const type = zoneType(attrs[F.type]);
-  const { setHighlight } = useMap();
+  const { setHighlight, highlight } = useMap();
   /** Барилгын төлөв дарахад — тэр бүсийн тийм төлөвтэй барилгуудыг тодруулна */
   const [selSt, setSelSt] = useState<string | null>(null);
   /**
@@ -1173,10 +1194,17 @@ function PickedZone({
    * компонент remount хийгдэхгүй тул хуучин бүсийн `zoneWhere`-тэй тодруулга
    * үлдэж, статусын товч (утга нь бүх бүсэд ижил) «идэвхтэй» мэт худал
    * харагддаг байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана.
+   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» = идэвхтэй тодруулгын `only === BUILT_LAYER.id` (`ownsHighlight`);
+   *    ✕-ээр арилсан тодруулгад `selSt` тэглэгдэнэ.
    */
   const selStRef = useRef(selSt);
   useSyncRef(selStRef, selSt);
-  useEffect(() => () => { if (selStRef.current != null) setHighlight(null); }, [setHighlight]);
+  const hlRef = useRef(highlight);
+  useSyncRef(hlRef, highlight);
+  useEffect(() => () => { if (selStRef.current != null && ownsHighlight(hlRef.current, BUILT_LAYER.id)) setHighlight(null); }, [setHighlight]);
+  useEffect(() => {
+    if (selSt != null && !ownsHighlight(highlight, BUILT_LAYER.id)) setSelSt(null);
+  }, [highlight, selSt]);
   const prevIdRef = useRef(id);
   useEffect(() => {
     if (prevIdRef.current === id) return;
@@ -1309,7 +1337,7 @@ function PickedFeature({
   isolated: boolean;
   onIsolate: () => void;
 }) {
-  const { setHighlight } = useMap();
+  const { setHighlight, highlight } = useMap();
   const [active, setActive] = useState<string | null>(null);
   /**
    * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад өөр объект дарахад
@@ -1317,10 +1345,19 @@ function PickedFeature({
    * дээр үлдэж, шинэ объектын товчнуудад хуучин түлхүүр таарахгүй учир цуцлах
    * чип ч харагдахгүй байв. Онц нь `attrs` объект — дарах бүрд шинээр ирнэ.
    * Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана).
+   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» = идэвхтэй тодруулгын `only === def.id` (`ownsHighlight`);
+   *    ✕-ээр арилсан тодруулгад `active` тэглэгдэнэ.
    */
   const activeRef = useRef(active);
   useSyncRef(activeRef, active);
-  useEffect(() => () => { if (activeRef.current != null) setHighlight(null); }, [setHighlight]);
+  const hlRef = useRef(highlight);
+  useSyncRef(hlRef, highlight);
+  const idRef = useRef(def.id);
+  useSyncRef(idRef, def.id);
+  useEffect(() => () => { if (activeRef.current != null && ownsHighlight(hlRef.current, idRef.current)) setHighlight(null); }, [setHighlight]);
+  useEffect(() => {
+    if (active != null && !ownsHighlight(highlight, def.id)) setActive(null);
+  }, [highlight, active, def.id]);
   const prevAttrsRef = useRef(attrs);
   useEffect(() => {
     if (prevAttrsRef.current === attrs) return;

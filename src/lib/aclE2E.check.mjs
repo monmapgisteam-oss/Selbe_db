@@ -557,7 +557,10 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const rt = await run(OPS.flowCellOp(hard, 'manager', p1, true));
   ok(!rt.ok || FL.stageOfUser(hard) === null, `${tag}: устгагдсан аккаунтыг урсгалд томилохгүй`);
   await settle();
-  ok(await P.clearOverride(hard), `${tag}: сэргээх`);
+  /* ⚠️ 2026-10-11 (аудит №7): tombstone-ыг зөвхөн «Буцаах» (`revive`) арилгана — энгийн clear татгалзана */
+  eq(await P.clearOverride(hard), false, `${tag}: энгийн clearOverride tombstone-ыг арчихгүй`);
+  eq(fake.find(hard)[0]?.views, 'removed', `${tag}: ArcGIS tombstone хэвээр`);
+  ok(await P.clearOverride(hard, { revive: true }), `${tag}: сэргээх («Буцаах»)`);
   ok(await FL.regrantFlowAccess(hard), `${tag}: regrant`);
   await both((w) => {
     eq(P.hasAccess(hard), true, `${tag} ${w}: сэргээсний дараа нэвтэрнэ`);

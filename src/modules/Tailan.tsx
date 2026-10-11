@@ -69,6 +69,8 @@ const bn = (v: number) => num(v);
  * гэж бичвэл «үнэгүй» мэт уншигдана — «—» болгоно.
  */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
+/** ⚠️ 2026-10-11 (аудит №7): §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь */
+const BAGTS_GAP_PTS = 20;
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
 function Cap({ no, children }: { no: string; children: React.ReactNode }) {
@@ -539,6 +541,9 @@ function TailanFull() {
                    урьд нь энд тусдаа эрэмбэлж, PDF `progress.byBagts` (зөвхөн тайлантай
                    блокийн дундаж) уншдаг тул хоёр баримт өөр багц нэрлэдэг байв. */
                 const d = buildFindings(x, rows);
+                /* ⚠️ 2026-10-11 (аудит №7): «зөрүү их байна» босго — хоёр багц мэдэгдэж буй үед л */
+                const bagtsGapWide = d.bestBagts != null && d.worstBagts != null
+                  && d.bestBagts.pct - d.worstBagts.pct > BAGTS_GAP_PTS;
                 const bestRow = rows.find((b) => b.label === d.bestBagts?.bagts) ?? null;
 
                 return (
@@ -677,7 +682,12 @@ function TailanFull() {
                         {/* ⚠️ Багцын ТОО нь өгөгдлөөс (`sorted.length`) — урьд
                             нь «долоон» гэж бичигдсэн байсан тул багц нэмэгдэх
                             эсвэл нэгдэхэд тайлан чимээгүй худал болно. */}
-                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {ail} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '—')}
+                        {/* ⚠️ 2026-10-11 (аудит №7): төсөв 0/алга → «—» (`bnOrDash`, «0 ₮» биш); «зөрүү их байна»
+                            өгүүлбэр зөвхөн best − worst > `BAGTS_GAP_PTS` (20 нэгж хувь) үед — урьд нь 2 нэгжийн
+                            зөрүүд ч «их байна» гэж хэвлэдэг байв. */}
+                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {ail} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bnOrDash(budget)} {bagtsGapWide
+                          ? tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')
+                          : tr('₮ байна. Багц хоорондын гүйцэтгэл ойролцоо байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '—')}
                         ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
                         {' '}{tr(d.worstBagts?.bagts ?? '—')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
@@ -736,7 +746,8 @@ function TailanFull() {
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{num(blocks)}</td>
                             <td className={r.num}>{ail}</td>
-                            <td className={r.num}>{bn(budget)}</td>
+                            {/* ⚠️ 2026-10-11 (аудит №7): төсөв 0 → «—» (мөрүүдтэй нэг дүрэм) */}
+                            <td className={r.num}>{bnOrDash(budget)}</td>
                             <td className={r.num}>{pct(bagtsAvg, 2)}</td>
                           </tr>
                         </tbody>

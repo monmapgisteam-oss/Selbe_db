@@ -488,10 +488,15 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
       add('planGu', c.planGuits);
       if (c.actPct == null) { if (c.inProject > 0) actNull = true; } else t.act += w * c.actPct;
     });
-    const act = actNull ? null : t.act;
-    const planG = planNull.planG ? null : t.planG;
-    const planGch = planNull.planGch ? null : t.planGch;
-    const planGu = planNull.planGu ? null : t.planGu;
+    /* ⚠️ 2026-10-11 (аудит №7): Σ жин (`t.p`) 100-аас зөрвөл (1-р түвшний мөр дутуу/илүү, жин засагдаж
+       байгаа) жигнэсэн нийлбэрийг Σ жин-ээр НОРМЧИЛНО — эс бөгөөс Σ жин 90% үед нийт гүйцэтгэл
+       10%-иар доошилж харагдана. [99.95, 100.05] дотор бол хөндөхгүй (бутархайн зөрүү). Σ жин-ийг
+       доор 1 оронтой харуулна — 99.6% нь «100%» гэж бөөрөнхийлөгдөж зөрүү нуугддаг байв. */
+    const norm = t.p > 0 && (t.p < 99.95 || t.p > 100.05) ? t.p / 100 : 1;
+    const act = actNull ? null : t.act / norm;
+    const planG = planNull.planG ? null : t.planG / norm;
+    const planGch = planNull.planGch ? null : t.planGch / norm;
+    const planGu = planNull.planGu ? null : t.planGu / norm;
     const perf = (plan: number | null) => (act == null || plan == null ? null : plan ? (act / plan) * 100 : 0);
     return {
       ...t,
@@ -524,7 +529,7 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
   const leadRest = lead.filter((c) => !frozen.has(c.key));
   const sumW = (cs: typeof lead) => (cs.length ? `calc(${cs.map((c) => WV(c.key)).join(' + ')})` : '0px');
   const total: Partial<Record<ColKey, string>> = {
-    inProject: fmtPct(head.p, 0),
+    inProject: fmtPct(head.p, 1), // ⚠️ 2026-10-11 (аудит №7): 1 орон — Σ жин 100-аас зөрвөл ил (`head`-ийн ⚠️)
     planG: p(head.planG, 2),
     planGch: p(head.planGch, 2),
     planGu: p(head.planGu, 2),

@@ -288,12 +288,17 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (verdict === 'R' && !reason.trim()) throw new Error(tr('Буцаах шалтгаанаа бичнэ үү.'));
   const url = await tableUrl(false);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
+  /* ⚠️ 2026-10-11 (аудит №7): `maOf` (MA + багц) · хүрээний шалгалт `pending` уншилтаас ӨМНӨ — урьд нь уншилт ба бичилтийн
+     завсарт `maOf`-ийн сүлжээний дуудлага байсан тул хоёр хянагч зэрэг шийдвэрлэхэд хоёулаа `pending` харж, сүүлийнх нь
+     эхнийхийг дарж «амжилттай» гэдэг байв. `maNo` нь мөрийн өөрчлөгдөшгүй талбар тул дуудагчийн `row`-оор уншиж болно.
+     ArcGIS-д нөхцөлт update БАЙХГҮЙ тул завсар тэг биш — бичсэний ДАРАА дахин уншиж `decidedBy` ≠ би бол ялсан хянагчийг
+     нэрлэж шиднэ (`huvaariBatlah.casClaim`-ийн ижил дүрэм). */
+  const { bagts } = await maOf(row.maNo);
+  scopeDeny('review', bagts);
   const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
   if (fresh.uploadedBy && fresh.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
-  const { bagts } = await maOf(fresh.maNo);
-  scopeDeny('review', bagts);
   const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
     updates: JSON.stringify([{ attributes: {
       OBJECTID: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
@@ -302,4 +307,8 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   });
   const r = j.updateResults?.[0];
   if (!r?.success) throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
+  const back = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
+  if (back && back.decidedBy && back.decidedBy.toLowerCase() !== s.user.toLowerCase()) {
+    throw new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', back.decidedBy, back.status));
+  }
 }

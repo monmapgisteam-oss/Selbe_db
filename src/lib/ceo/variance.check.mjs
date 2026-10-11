@@ -16,7 +16,10 @@ import { ROW_CAP } from './kpi.ts';
 import { VAR_BAD_MNT } from '../kpiLevels.ts';
 
 const PKG_N = 10;
-const w = (pkg, no, work, vol, sum, unit) => ({ pkg, no, work, vol, sum, unit, mnt: (sum - vol) * unit });
+/* ⚠️ 2026-10-11 (аудит №7): `pkg` = бүлэг («Багц 1»), `sheet` = хуудас («Багц 1 · 9 давхар») */
+const w = (sheet, no, work, vol, sum, unit) => ({
+  pkg: sheet.split(' · ')[0], sheet, no, work, vol, sum, unit, mnt: (sum - vol) * unit,
+});
 const base = (all, failedPkgs = 0) => ({
   works: all.length,
   totalMnt: all.reduce((s, x) => s + x.mnt, 0),
@@ -74,34 +77,37 @@ const ALL = [
   assert.equal(r.unit, 'зөрүү');
 
   const t0 = r.tables[0];
-  assert.equal(t0.cols.length, 8);
+  /* ⚠️ 2026-10-11 (аудит №7): «Багц» (бүлэг) + «Бөглөх хуудас» — 9 багана, индекс +1 */
+  assert.equal(t0.cols.length, 9);
+  assert.equal(t0.cols[0], 'Багц');
   assert.equal(t0.rows.length, ALL.length, 'хүснэгт = БҮХ хэтэрсэн ажил');
   for (const row of t0.rows) assert.equal(row.length, t0.cols.length);
   /* эрэмбэ: зөрүү ₮ буурах */
-  const mnts = t0.rows.map((row) => row[7].v);
+  const mnts = t0.rows.map((row) => row[8].v);
   assert.deepEqual(mnts, [60_000_000, 50_000_000, 5_500_000, 200_000]);
-  assert.deepEqual(t0.rows.map((row) => row[7].kind), ['mnt', 'mnt', 'mnt', 'mnt']);
+  assert.deepEqual(t0.rows.map((row) => row[8].kind), ['mnt', 'mnt', 'mnt', 'mnt']);
   /* эхний мөр: нэрс ба хэтрэлт */
   const first = t0.rows[0];
-  assert.equal(first[0].v, 'Багц 1 · 9 давхар');
-  assert.equal(first[1].v, '12');
-  assert.equal(first[2].v, 'Бетон цутгалт');
-  assert.equal(first[3].v, 100);
-  assert.equal(first[4].v, 130);
-  assert.equal(first[5].v, 30, 'хэтрэлт = бөглөсөн − обьём');
-  assert.equal(first[6].v, 2_000_000);
-  assert.equal(first[6].kind, 'mnt');
+  assert.equal(first[0].v, 'Багц 1', '«Багц» = бүлэг — `samePkg`-д таарна');
+  assert.equal(first[1].v, 'Багц 1 · 9 давхар');
+  assert.equal(first[2].v, '12');
+  assert.equal(first[3].v, 'Бетон цутгалт');
+  assert.equal(first[4].v, 100);
+  assert.equal(first[5].v, 130);
+  assert.equal(first[6].v, 30, 'хэтрэлт = бөглөсөн − обьём');
+  assert.equal(first[7].v, 2_000_000);
+  assert.equal(first[7].kind, 'mnt');
   /* хоосон № → null → «—» */
-  assert.equal(t0.rows[3][1].v, null);
+  assert.equal(t0.rows[3][2].v, null);
 
   const t1 = r.tables[1];
   assert.equal(t1.cols.length, 3);
   assert.deepEqual(
     t1.rows.map((row) => [row[0].v, row[1].v, row[2].v]),
     [
-      ['Багц 1 · 9 давхар', 2, 110_000_000],
-      ['Багц 2 · 9 давхар', 1, 5_500_000],
-      ['Багц 3.1 · 9 давхар', 1, 200_000],
+      ['Багц 1', 2, 110_000_000],
+      ['Багц 2', 1, 5_500_000],
+      ['Багц 3.1', 1, 200_000],
     ],
     'багцаар: буурах эрэмбэ, ажлын тоо, нийлбэр',
   );
@@ -131,7 +137,7 @@ const ALL = [
   assert.equal(t0.rows.length, ROW_CAP + 1, 'cap + нэг «… бас N мөр» мөр');
   assert.ok(String(t0.rows[ROW_CAP][0].v).includes('50'), 'тасалсан тоо ил');
   assert.equal(t0.rows[ROW_CAP].length, t0.cols.length, 'сүүлийн мөр ч баганатай таарна');
-  assert.equal(t0.rows[0][7].v, (ROW_CAP + 50) * 1000, 'хамгийн том нь эхэнд');
+  assert.equal(t0.rows[0][8].v, (ROW_CAP + 50) * 1000, 'хамгийн том нь эхэнд');
   assert.equal(r.tables[1].rows.length, 1);
   assert.equal(r.tables[1].rows[0][1].v, ROW_CAP + 50, 'багцын тоолуур нь таслагдаагүй бүтэн тоо');
 }

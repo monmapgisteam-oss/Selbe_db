@@ -28,7 +28,7 @@ import {
   loadBlockProgress, loadBlockUniverse, pkgProgressOf, universeKeys,
   type BlockProgressMap, type BlockUniverse,
 } from './blockProgress';
-import { text } from './format';
+import { text, num } from './format';
 import { BAGTS_ORIGIN } from './brief';
 import { housingPct } from './gdash';
 import { t as tr } from './i18nCore';
@@ -144,6 +144,16 @@ export function ailTotal(rows: readonly BagtsRow[]): { ail: number | null; parti
   for (const r of rows) { ail += r.ail; missing += r.ailMissing ?? 0; seen += r.ailBlocks ?? 0; }
   if (seen > 0 && missing >= seen) return { ail: null, partial: false, missing };
   return { ail, partial: missing > 0, missing };
+}
+
+/**
+ * ӨРХИЙН ТООНЫ БИЧЛЭГ — `ailTotal`-ийн дэлгэцийн хэлбэр: бүгд хоосон «—», заримд нь «N (дутуу)», бүрэн «N».
+ * ⚠️ 2026-10-11 (аудит №7): Dashboard · HeadKpi · Tailan хэд хэдэн газар `reduce(x.ail)` дутуу нийлбэрийг
+ *    бүрэн мэт хэвлэдэг байв (null ≠ 0) — бүгд энэ НЭГ туслахаар (`execReport.householdsLabel`-тэй ижил үг).
+ */
+export function ailLabel(rows: readonly BagtsRow[]): string {
+  const t = ailTotal(rows);
+  return t.ail == null ? '—' : t.partial ? `${num(t.ail)} (${tr('дутуу')})` : num(t.ail);
 }
 
 export function useBagtsTable(): Async<BagtsRow[]> {

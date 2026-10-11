@@ -10,11 +10,15 @@
  *
  * Энэ шалгуур нь `LAYERS`-ийн давхарга бүрийн ШИЙДЭГДСЭН хаяг (`layerUrl`)
  * доорх хаагдсан/устгагдсан үйлчилгээний аль нэг рүү заахгүйг баталгаажуулна.
- * ⚠️ `styleUrl`-ийг ШАЛГАХГҮЙ — тэр нь webmap-загварын хайлтын түлхүүр л
- *    (хуучин ET хаяг санаатай; `env.ts`-ийн `ET`-ийн ⚠️).
+ * ⚠️ `styleUrl`-ийг ХААГДСАН үйлчилгээний жагсаалтаар ШАЛГАХГҮЙ — тэр нь webmap-загварын хайлтын
+ *    түлхүүр л (хуучин ET хаяг санаатай; `env.ts`-ийн `ET`-ийн ⚠️). Харин 2026-10-11 (аудит №7)-оос
+ *    `styleUrl` бүр `public/webmap-style.json` снапшотод (эсвэл `plan2d`-ийн өөрийн/alias загварт)
+ *    ОЛДОХЫГ батална — олдохгүй түлхүүр нь үхмэл тохиргоо (`layers.ts` §NO_WEBMAP_STYLE).
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 const { LAYERS, layerUrl, TD } = await import('@/lib/services.ts');
+const { PLAN2D_LAYERS, PLAN2D_ALIASED } = await import('@/lib/plan2d.ts');
 
 /** Хаагдсан (499/400) эсвэл устгагдсан үйлчилгээнүүд — шинээр хаагдвал ЭНД нэм */
 const DEAD = [
@@ -63,6 +67,22 @@ ok('pkg:* давхарга бүр TD руу дарж бичигдсэн (TD_LAYE
   assert.ok(pkg.length > 0, 'pkg:* давхарга олдсонгүй — шалгуурыг шинэчил');
   const bad = pkg.filter((l) => !layerUrl(l).startsWith(`${TD}/`)).map((l) => `${l.id} → ${layerUrl(l)}`);
   assert.deepEqual(bad, [], `TD_LAYER-т бүртгэлгүй pkg:* давхарга:\n  ${bad.join('\n  ')}`);
+});
+
+/* ⚠️ 2026-10-11 (аудит №7): `webmapStyle.ts`-ийн `norm`-тай ИЖИЛ хэлбэржүүлэлт (decode + төгсгөлийн `/` + жижиг үсэг) */
+const styleKey = (u) => { try { return decodeURIComponent(u).replace(/\/+$/, '').toLowerCase(); } catch { return u.toLowerCase(); } };
+ok('styleUrl бүр webmap снапшотод (эсвэл plan2d загварт) олдоно', () => {
+  const snap = JSON.parse(readFileSync('public/webmap-style.json', 'utf8'));
+  const keys = new Set(Object.keys(snap).map(styleKey));
+  const plan2d = JSON.parse(readFileSync('public/plan2d-style.json', 'utf8'));
+  /* `sb:*` ба alias-тай давхарга (`et:24`→`sb:4`, `dugui`→`sb:15` …) MapCanvas-д `plan2dStyleOf`-оор зурагдана */
+  const viaPlan2d = (id) => (plan2d[id] != null && PLAN2D_LAYERS.some((p) => p.id === id)) || PLAN2D_ALIASED.has(id);
+  const withStyle = LAYERS.filter((l) => l.styleUrl);
+  assert.ok(withStyle.length > 20, `styleUrl-тэй давхарга хэт цөөн (${withStyle.length})`);
+  const bad = withStyle
+    .filter((l) => !keys.has(styleKey(l.styleUrl)) && !viaPlan2d(l.id))
+    .map((l) => `${l.id} → ${norm(l.styleUrl)}`);
+  assert.deepEqual(bad, [], `снапшотод түлхүүргүй styleUrl (layers.ts §NO_WEBMAP_STYLE-д нэм эсвэл снапшотыг шинэчил):\n  ${bad.join('\n  ')}`);
 });
 
 console.log(`layerUrls: ${n} шалгалт ✓ (${LAYERS.length} давхарга)`);

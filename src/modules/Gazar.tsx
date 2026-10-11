@@ -13,7 +13,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading, Data, userError } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
-  queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg, sqlStr,
+  queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg,
   type Aoi, type Row,
 } from '@/lib/query';
 import {
@@ -1086,10 +1086,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const reasons: ReasonItems = [...rmap.entries()]
       .sort((x, y) => y[1].n - x[1].n)
       .map(([label, v]) => {
-        const eq = [...v.raws].filter((x) => x.trim() !== '')
-          /* ⚠️ 2026-09-21: `N'…'` угтвар — төлөвийн шүүлттэй ижил шалтгаан. */
-          .map((x) => `${L.fields.progress} = ${sqlStr(x)}`);
-        if (label === 'Тодорхойгүй') eq.push(`${L.fields.progress} IS NULL`, `${L.fields.progress} = ''`);
+        /* ⚠️ 2026-09-21: `N'…'` угтвар — төлөвийн шүүлттэй ижил шалтгаан.
+           ⚠️ 2026-10-11 (аудит №7): `land.statusRawsWhere` (2026-10-09-нд засагдсан туслах, төлөвийн шүүлттэй
+           НЭГ эх) — урьд нь энд зайтай («  ») түүхий утгыг `trim() !== ''`-ээр хаядаг тул «Тодорхойгүй»-д
+           тоологдсон тэр мөрүүд зураг дээр шүүгдэхгүй үлддэг байв. */
+        const where = statusRawsWhere(L.fields.progress, v.raws, label === 'Тодорхойгүй', label);
         return {
           key: label,
           label,
@@ -1102,11 +1103,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
           /* ⚠️ Төлөвийн нэмэлт нөхцөл ХЭРЭГГҮЙ: `status` ба `progress` нэг
              талбар тул шалтгааны утга нь өөрөө «чөлөөлөгдөөгүй»-г заана.
-             ⚠️ `eq` ХООСОН бол `()` гэсэн ХҮЧИНГҮЙ SQL үүсэхээс сэргийлж
-             `1=0` (2026-09-15-ны аудит): ArcGIS түүнд HTTP 200 + «'where'
-             parameter is invalid» буцаадаг тул `definitionExpression`
-             эвдэрч, `land:left` давхарга бүрмөсөн зурагдахаа болино. */
-          where: eq.length ? `(${eq.join(' OR ')})` : '1=0',
+             ⚠️ `()` гэсэн ХҮЧИНГҮЙ SQL үүсэхгүй (2026-09-15-ны аудит): `statusRawsWhere` нь түүхий утга
+             хоосон бол `field = N'label'`-аар унадаг — ArcGIS хүчингүй where-д HTTP 200 + «'where'
+             parameter is invalid» буцаадаг тул `definitionExpression` эвдэрч, `land:left` давхарга
+             бүрмөсөн зурагдахаа болих байв. */
+          where,
         };
       });
     return {

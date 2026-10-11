@@ -693,13 +693,17 @@ function fit(points: Reading[], windowH = 24): { perHour: number } | null {
  * ⚠️ 30 хоногоос цааш таамаглахгүй: тийм хол экстраполяци нь тоо болохоос
  *    мэдээлэл биш (хурд нь тэр хооронд олон удаа өөрчлөгдөнө).
  */
-function eta(latest: number | null, perHour: number, alert?: { value: number }): number | null {
+function eta(latest: number | null, perHour: number, alert?: { value: number }, ageHours: number | null = null): number | null {
   if (latest == null || !alert) return null;
   const gap = alert.value - latest;
   if (gap <= 0) return null;            // аль хэдийн давсан
   if (perHour <= 0) return null;        // босго руу ойртохгүй байна
   const h = gap / perHour;
-  return h > 24 * 30 ? null : h;
+  if (h > 24 * 30) return null;
+  /* ⚠️ 2026-10-11 (аудит №7): `h` нь СҮҮЛИЙН ЗААЛТААС хойших цаг — «одоо»-гоос биш. Заалт `ageHours`
+     хоцорсон бол тэр хугацаа аль хэдийн өнгөрсөн тул хасна (0-оос доош биш: «одоо орчим»). Урьд нь
+     1 хоног хоцорсон мэдрэгчид «≈20 цагийн дараа» гэж аль хэдийн өнгөрсөн агшинг заадаг байв. */
+  return ageHours == null ? h : Math.max(0, h - ageHours);
 }
 
 /**
@@ -780,7 +784,8 @@ function summarize(
     min: vals.length ? Math.min(...vals) : null,
     max: vals.length ? Math.max(...vals) : null,
     avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
-    trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert) } : null,
+    /* ⚠️ 2026-10-11 (аудит №7): таамгаас заалтын насыг хасна (`eta`-гийн ⚠️) */
+    trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert, lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null) } : null,
     fault: badLast || outOfRange(m, last?.v ?? null),
     faultNote: badLast && badLow ? (m.rawValid?.lowNote ?? null) : null,
   });

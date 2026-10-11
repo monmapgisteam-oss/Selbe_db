@@ -96,15 +96,26 @@ const nextYm = (ym: string): string => {
   return m >= 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
 };
 
-/** Багцын хуваарилсан хүн-цаг — тухайн өдрийн, сонгосон багцуудын */
+/**
+ * Багцын хуваарилсан хүн-цаг — тухайн өдрийн, сонгосон багцуудын.
+ * ⚠️ 2026-10-11 (аудит №7): `cos` (гүйцэтгэгчийн дагавар `sfx`-ийн олонлог) өгвөл ЗӨВХӨН тэдгээр
+ *    гүйцэтгэгчийн багана — «Ослын компани» шүүлттэй үед хүртвэр (осол) компаниар шүүгдэж байхад
+ *    хуваарь (хүн-цаг) БҮХ компанийнх хэвээр үлдэж давтамж дутуу гардаг байв. `pkgs` ба `cos`
+ *    хоёул өгөгдвөл огтлолцол.
+ */
 const pkgHours = (
-  day: HourDay, pkgOfCo: ReadonlyMap<string, string>, pkgs: ReadonlySet<string>,
+  day: HourDay, pkgOfCo: ReadonlyMap<string, string>, pkgs: ReadonlySet<string> | null,
+  cos: ReadonlySet<string> | null = null,
 ): number | null => {
   if (!day.byCo) return null;
   let s = 0;
   for (const [sfx, h] of Object.entries(day.byCo)) {
-    const k = pkgOfCo.get(sfx);
-    if (k && pkgs.has(k)) s += h;
+    if (cos && !cos.has(sfx)) continue;
+    if (pkgs) {
+      const k = pkgOfCo.get(sfx);
+      if (!k || !pkgs.has(k)) continue;
+    }
+    s += h;
   }
   return s;
 };
@@ -125,11 +136,14 @@ export function rateByMonth(
     ymOf: (ms: number) => string;
     pkgOfCo: ReadonlyMap<string, string>;
     pkgs: ReadonlySet<string> | null;
+    /** ⚠️ 2026-10-11 (аудит №7): сонгосон гүйцэтгэгчийн `sfx` — хуваарийг компаниар шүүнэ (`pkgHours`) */
+    cos?: ReadonlySet<string> | null;
   },
 ): { items: RateMonthItem[]; unmatched: number } {
   const hours = new Map<string, number>();
+  const cos = opts.cos ?? null;
   for (const day of days) {
-    const h = opts.pkgs ? pkgHours(day, opts.pkgOfCo, opts.pkgs) : day.total;
+    const h = opts.pkgs || cos ? pkgHours(day, opts.pkgOfCo, opts.pkgs, cos) : day.total;
     if (h == null || h <= 0) continue;
     const ym = opts.ymOf(day.ms);
     hours.set(ym, (hours.get(ym) ?? 0) + h);
@@ -168,11 +182,14 @@ export function rateByPkg(
   incs: readonly IncLike[],
   pkgOfCo: ReadonlyMap<string, string>,
   labelOf: (pkgKey: string) => string,
+  /** ⚠️ 2026-10-11 (аудит №7): сонгосон гүйцэтгэгчийн `sfx` — хуваарийг компаниар шүүнэ (`pkgHours`-ийн ⚠️) */
+  cos: ReadonlySet<string> | null = null,
 ): { items: RateItem[]; unmatched: number } {
   const hours = new Map<string, number>();
   for (const day of days) {
     if (!day.byCo) continue;
     for (const [sfx, h] of Object.entries(day.byCo)) {
+      if (cos && !cos.has(sfx)) continue;
       const k = pkgOfCo.get(sfx);
       if (!k) continue;
       hours.set(k, (hours.get(k) ?? 0) + h);
@@ -268,11 +285,13 @@ export function ltiFreeHours(
   let hours = 0;
   for (const r of labor) {
     const h = numOrNull(r[L.hunTsag]);
-    if (h == null) continue;
-    if (cut != null) {
-      const ms = numOrNull(r[L.ognoo]);
-      if (ms == null || ms <= 0 || dayOf(ms) <= cut) continue;
-    }
+    /* ⚠️ 2026-10-11 (аудит №7): огноогүй/0 огноотой, эсвэл `h <= 0` мөрийг LTI байгаа эсэхээс
+       ҮЛ ХАМААРАН алгасна — `hoursByDay`-тай нэг дүрэм. Урьд нь LTI огт байхгүй үед огноогүй
+       мөрийн цаг нийлбэрт орж, LTI гарсан үед гарахгүй тул хоёр горим өөр хуваарьтай байв. */
+    if (h == null || h <= 0) continue;
+    const ms = numOrNull(r[L.ognoo]);
+    if (ms == null || ms <= 0) continue;
+    if (cut != null && dayOf(ms) <= cut) continue;
     hours += h;
   }
   return { hours, since, undatedLti: false, futureLti };

@@ -231,7 +231,9 @@ export function computeReview(input: ReviewInput): KpiResult {
     value: num(worstDays),
     unit: tr('хоног хамгийн урт хүлээлт'),
     facts,
-    level: worstOf([reviewAgeLevel(worstDays), fillAgeLevel(maxFillAge)]),
+    /* ⚠️ 2026-10-11 (аудит №7): хүлээгдэл УНШИГДААГҮЙ (`pending == null`) бол түвшин `unknown` — урьд нь
+       `reviewAgeLevel(null)` нөгөө талыг л авч, гол тоо «—» атлаа карт ногоон/шар гардаг байв (null ≠ 0). */
+    level: pending == null ? 'unknown' : worstOf([reviewAgeLevel(worstDays), fillAgeLevel(maxFillAge)]),
     tables,
     issues,
     asOf: latestFillMs,

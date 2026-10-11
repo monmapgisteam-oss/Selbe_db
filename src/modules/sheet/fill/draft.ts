@@ -245,6 +245,14 @@ export type Draft = {
   asOfB?: number | null;
   /** Хуваарийн огнооны СУУРЬ — `түлхүүр → анх засах үеийн серверийн 'YYYY-MM-DD'` (`asOfB`-тэй ижил, #8) */
   datesB?: [string, string][];
+  /**
+   * ОДООГИЙН ЖААЗЫГ АНХ ХАРСАН АГШИН — `[жаазны хамгийн бага oid, ms]` (⚠️ 2026-10-11, аудит №7).
+   * ⚠️ ЯАГААД: хуучин жаазны баримт (`rcptAlive`-ийн `minOid` дүрэм) `OLD_FRAME_RCPT_TTL_MS`-ийг БАРИМТЫН агшнаас
+   *    тоолдог байв — илгээлтээс 1 хоногийн дараа жааз солигдвол баримт ТЭР ДОР нь хуучирч, хуучин жааз дээр
+   *    нээлттэй үлдсэн табын хуулбар баримтгүй зөөгдөж ДАВХАР тоологдох байв. Одоо шинэ жаазыг анх харснаас хойш
+   *    1 хоног; нийлүүлэлтэд их oid ялна, ижил oid бол эрт агшин. Байхгүй (хуучин ноорог) бол урьдын дүрэм.
+   */
+  frameSeenAt?: [number, number];
 };
 
 /**
@@ -384,9 +392,13 @@ export const OLD_FRAME_RCPT_TTL_MS = 24 * 3600 * 1000;
  * Баримт АМЬД уу — `DEL_TTL_MS`-ээс хуучин бол үгүй; ХУУЧИН ЖААЗНЫ (oid < `minOid`) баримт нь
  * `OLD_FRAME_RCPT_TTL_MS`-ээс хуучин бол үгүй (`compactDraft`-ийн ⚠️ 2). `minOid` = `null` — шалгахгүй.
  */
-export function rcptAlive(r: Rcpt, now: number, minOid?: number | null): boolean {
+export function rcptAlive(r: Rcpt, now: number, minOid?: number | null, frameSeenAt?: number | null): boolean {
   if (now - r[1] > DEL_TTL_MS) return false;
-  if (minOid != null && now - r[1] > OLD_FRAME_RCPT_TTL_MS) {
+  /* ⚠️ 2026-10-11 (аудит №7): хуучин жаазны хугацааг ШИНЭ ЖААЗЫГ АНХ ХАРСНААС (`Draft.frameSeenAt`-ийн ⚠️; баримт
+     түүнээс хожуу бол баримтаас) тоолно — урьд нь баримтын агшнаас тул 1 хоногийн дараа жааз солигдоход баримт
+     тэр дор нь хуучирдаг байв. Агшин байхгүй (хуучин ноорог) бол урьдын дүрэм. */
+  const since = frameSeenAt != null && Number.isFinite(frameSeenAt) ? Math.max(frameSeenAt, r[1]) : r[1];
+  if (minOid != null && now - since > OLD_FRAME_RCPT_TTL_MS) {
     const c = r[0].indexOf(':');
     const o = c > 0 ? Number(r[0].slice(0, c)) : NaN;
     if (Number.isInteger(o) && o >= 0 && o < minOid) return false;
@@ -406,9 +418,11 @@ export function rcptAlive(r: Rcpt, now: number, minOid?: number | null): boolean
  *      дараа хаягдана (урьд нь энэ давхардал ноорогийг `REMOTE_MAX`-аас хэтрүүлдэг байв).
  * ⚠️ Нүд/огноог ХӨНДӨХГҮЙ — зөвхөн баримт/tombstone-ийн давхардал.
  */
-export function compactDraft(d: Draft, opt: { max: number; minOid?: number | null; now?: number }): Draft {
+export function compactDraft(d: Draft, opt: { max: number; minOid?: number | null; now?: number; frameSeenAt?: number | null }): Draft {
   const now = opt.now ?? Date.now();
-  const rc = unpackRcpt(d.rcpt).filter((r) => rcptAlive(r, now, opt.minOid));
+  /* ⚠️ 2026-10-11 (аудит №7): `frameSeenAt` — дуудагчийнх, эс бөгөөс ноорогт хадгалагдсан (ижил жааз бол) */
+  const fs = opt.frameSeenAt ?? (d.frameSeenAt && opt.minOid != null && d.frameSeenAt[0] === opt.minOid ? d.frameSeenAt[1] : null);
+  const rc = unpackRcpt(d.rcpt).filter((r) => rcptAlive(r, now, opt.minOid, fs));
   const rcAt = new Map<string, number>();
   for (const r of rc) if ((rcAt.get(r[0]) ?? 0) < r[1]) rcAt.set(r[0], r[1]);
   const keep: [string, number][] = [];
@@ -584,6 +598,8 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
     if (d.conv != null && !Array.isArray(d.conv)) d.conv = undefined;
     if (d.datesB != null && !Array.isArray(d.datesB)) d.datesB = undefined;
     if (d.asOfB != null && !Number.isFinite(d.asOfB)) d.asOfB = undefined;
+    /* ⚠️ 2026-10-11 (аудит №7): жаазыг анх харсан агшин — эвдэрсэн бол тэр хэсгийг л орхино */
+    if (d.frameSeenAt != null && !(Array.isArray(d.frameSeenAt) && Number.isInteger(d.frameSeenAt[0]) && Number.isFinite(d.frameSeenAt[1]))) d.frameSeenAt = undefined;
     /* ⚠️ 2026-10-04 дахин аудит (#4): хэрэглэгч тус бүрийн зорилт — хуучин ганц `[oid, fillMs]` хэлбэр хаягдана */
     if (d.tgt != null) {
       d.tgt = Array.isArray(d.tgt)
@@ -751,7 +767,10 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     /* ⚠️ 2026-10-04 дахин аудит (#2): шахсан/хавтгай хэлбэрийг задална (тал нь баримтгүй бол дуудахгүй — draft.check 4d) */
     for (const r of side.rcpt ? unpackRcpt(side.rcpt) : []) {
       const c = rcpt.get(r[0]);
-      if (!c || r[1] > c[1]) rcpt.set(r[0], r);
+      /* ⚠️ 2026-10-11 (аудит №7): НАРИЙН баримт (`sv ≠ ''`) нь серверийн ХООСОН (`useDraftSync.subReceipts`)
+         баримтаас давамгай — агшнаар биш: хоосон нь зөрүү бодолгүй хасдаг тул хожуу ирсэн хуримтлалын тамга
+         өмнөх нарийн баримтын зөрүүг (5 → 8 = +3) арчих байв. Ижил төрөл бол агшин их нь. */
+      if (!c || ((c[2] === '') === (r[2] === '') ? r[1] > c[1] : c[2] === '')) rcpt.set(r[0], r);
     }
   }
   for (const [k, a] of del) {
@@ -893,6 +912,11 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   }
   for (const o of [...rowKeys.keys()]) if (!liveOid.has(o)) rowKeys.delete(o);
   for (const o of [...occ.keys()]) if (!rowKeys.has(o)) occ.delete(o);
+  /* ⚠️ 2026-10-11 (аудит №7): жаазыг анх харсан агшин (`Draft.frameSeenAt`) — их oid ялна, ижил oid бол ЭРТ агшин
+     (TS тэмдэглэгээгүй — draft.check 4d) */
+  const fsO = older.frameSeenAt;
+  const fsN = newer.frameSeenAt;
+  const frameSeenAt = !fsO ? fsN : !fsN ? fsO : fsN[0] !== fsO[0] ? (fsN[0] > fsO[0] ? fsN : fsO) : (fsN[1] < fsO[1] ? fsN : fsO);
   return {
     t: newer.t,
     /* ⚠️ Горим (2026-09-25) — дээрх тэмдэглэлийн дараа хоёр тал ИЖИЛ горимтой */
@@ -928,6 +952,7 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     tgt: tgt.size ? [...tgt.values()] : undefined,
     asOfB: newer.asOf !== undefined && !asOfOld ? newer.asOfB : older.asOfB,
     datesB: datesB.size ? [...datesB] : undefined,
+    ...(frameSeenAt ? { frameSeenAt } : {}),
   };
 };
 

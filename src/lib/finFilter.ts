@@ -226,7 +226,7 @@ const has = (hay: string, needle: string) => hay.toLowerCase().includes(needle.t
  *    («4058800000»). Хэрэглэгч хоёуланг нь бичдэг — зөвхөн нэгээр нь жишвэл
  *    «яагаад олдохгүй байна вэ» гэсэн чимээгүй бүтэлгүйтэл болно.
  */
-function cellMatches(raw: unknown, shown: string, needle: string, numeric: boolean): boolean {
+function cellMatches(raw: unknown, shown: string, needle: string, numeric: boolean, scale = 1): boolean {
   const s = needle.trim();
   if (s === '') return true;
 
@@ -237,7 +237,9 @@ function cellMatches(raw: unknown, shown: string, needle: string, numeric: boole
          тул урьд нь `=0`, `<1e9`, `0..5e9` зэрэг илэрхийлэлд хоосон мөр таардаг байв
          (null ≠ 0). */
       if (raw == null || String(raw).trim() === '') return false;
-      const x = Number(raw);
+      /* ⚠️ 2026-10-11 (аудит №7): `scale` — ХАРАГДАХ хэмжээс (×100 «Үнэт цаас %»: эх 0–1 бутархай,
+         дэлгэц «9.0%»); урьд нь `>5` гэвэл түүхий 0.09-той жишиж юу ч олдохгүй байв. */
+      const x = Number(raw) * scale;
       return Number.isFinite(x) && t(x);
     }
   }
@@ -256,8 +258,13 @@ export function rowMatches(
   cols: FieldDef[],
   f: FinFilter,
   facets: Facet[],
-  cellText: (v: unknown, type: string) => string,
+  /** ⚠️ 2026-10-11 (аудит №7): 3 дахь аргумент — БАГАНЫН НЭР (`Finance.fmtCell(v, type, name)`-ийн нэрээр
+      хамаарах хэлбэр: «Үнэт цаас %» ×100, бүхэл тоон баганууд) — урьд нь нэргүй дуудаж харагдах
+      текстээс ӨӨР текстээр жишдэг байв. */
+  cellText: (v: unknown, type: string, name: string) => string,
   isNumeric: (type: string) => boolean,
+  /** Баганын тоон ХЭМЖЭЭС — харагдах утга = түүхий × scale (анхдагч 1); `cellMatches`-ийн ⚠️ */
+  numScale: (name: string) => number = () => 1,
 ): boolean {
   /* ── Нүүрнүүд — ЧАНАСАН утгаар яг тэнцүү ── */
   for (const fc of facets) {
@@ -269,7 +276,7 @@ export function rowMatches(
   for (const c of cols) {
     const needle = f.col[c.name];
     if (!needle || needle.trim() === '') continue;
-    if (!cellMatches(r[c.name], cellText(r[c.name], c.type), needle, isNumeric(c.type))) return false;
+    if (!cellMatches(r[c.name], cellText(r[c.name], c.type, c.name), needle, isNumeric(c.type), numScale(c.name))) return false;
   }
 
   /* ── Толгойн сонголт — сонгосон утгуудын АЛЬ НЭГТЭЙ яг тэнцүү ── */
@@ -278,7 +285,7 @@ export function rowMatches(
     for (const c of cols) {
       const want = picks[c.name];
       if (!want || want.length === 0) continue;
-      if (!want.includes(cellText(r[c.name], c.type))) return false;
+      if (!want.includes(cellText(r[c.name], c.type, c.name))) return false;
     }
   }
 
@@ -291,7 +298,7 @@ export function rowMatches(
        хоосон нүд дээр цаг дэмий үрэхээс гадна, доорх түүхий харьцуулалт нь
        `String(null)` = `'null'` болж «null» гэж хайхад таарах эрсдэлтэй. */
     if (raw == null || raw === '') continue;
-    if (has(cellText(raw, c.type), q) || has(String(raw), q)) return true;
+    if (has(cellText(raw, c.type, c.name), q) || has(String(raw), q)) return true;
   }
   return false;
 }

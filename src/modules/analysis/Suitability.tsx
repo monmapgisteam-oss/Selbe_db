@@ -17,7 +17,7 @@ import {
   loadAnalysisCached, computeRaw, defaultGreenCats,
   type AnalysisData, type BuildingPurposeStat,
 } from '@/lib/analysis/data';
-import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues } from '@/lib/services';
+import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues, zoneLegacyValues } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
 import {
   urbanScore, scoreColor, scoreTone, scoreInk, scoreLabel, passesNorm,
@@ -352,10 +352,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           дотор ЗОГСОХ барилга ч алга болох ёстой (ArcGIS-ийн filter-ийн зан).
        ⚠️ Бүсийн код бичиглэлээр зөрдөг («B-2» ↔ «B-2.1», «D-8» ↔ «D-8.1/8.2»)
           тул түүхий id-г шууд БИШ, `zoneRefValues`-ээр бүх хувилбарт тэлж өгнө. */
+    /* ⚠️ 2026-10-11 (аудит №7): барилгын `ZONE_ID` нь ХУУЧИН код («D-8») ч, шинэ код («D-8.1») ч байж
+       болно — `zoneWhere`-ийн ижил нэгдэл (`zoneLegacyValues` + `zoneRefValues`); урьд нь зөвхөн
+       `zoneRefValues` тул хуучин кодтой барилга шүүлтээс чимээгүй унадаг байв. */
+    const zoneVals = (ids: string[]) => [...new Set(ids.flatMap((id) => [...zoneLegacyValues(id), ...zoneRefValues(id)]))];
     if (catOff.size && rows.length) {
       const keep = rows.filter((r) => !catOff.has(r.type)).map((r) => r.id);
       if (!keep.length) return '1=0';
-      const vals = [...new Set(keep.flatMap((id) => zoneRefValues(id)))];
+      const vals = zoneVals(keep);
       parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
     }
 
@@ -367,7 +371,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
      */
     if (locPublicOnly) {
       if (!publicZoneIds.length) return '1=0';
-      const vals = [...new Set(publicZoneIds.flatMap((id) => zoneRefValues(id)))];
+      const vals = zoneVals(publicZoneIds);
       parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
       if (LOCATION_EXCLUDE_OIDS.size) {
         parts.push(`OBJECTID NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);

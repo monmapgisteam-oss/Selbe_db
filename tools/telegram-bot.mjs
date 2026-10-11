@@ -491,8 +491,18 @@ async function handleCallback(cb) {
   if (action === 'no') {
     pending.delete(targetId);
     saveAccess();
-    note = 'Татгалзлаа';
-    await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
+    /* ⚠️ 2026-10-11 (аудит №7): аль хэдийн ЗӨВШӨӨРӨГДСӨН хэрэглэгчид ❌ дарахад урьд нь зөвхөн `pending`
+       цэвэрлэгдэж `users`-ийн мөр үлддэг тул эрх хасагддаггүй байв — одоо мөрийг устгаж хадгална. */
+    if (users[targetId]) {
+      delete users[targetId];
+      const saved = saveUsers();
+      note = 'Эрхийг хаслаа';
+      if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
+      await reply(targetId, 'Эрхийг хаслаа — хандалт хаагдлаа.').catch(() => {});
+    } else {
+      note = 'Татгалзлаа';
+      await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
+    }
   } else {
     const views = action === 'plan' ? PLAN_VIEWS : FULL_VIEWS;
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж

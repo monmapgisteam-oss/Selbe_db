@@ -144,7 +144,12 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
     loadEntryFields(t)
       .then(async (fs) => {
         const init: Record<string, string> = {};
-        for (const f of fs) if (f.type === 'date') init[f.name] = todayStr();
+        /* ⚠️ 2026-10-11 (аудит №7): ӨНӨӨДРИЙГ зөвхөн тохируулсан огнооны талбарт (`item.date` — картын тоолох
+           огноо; алга бол эхний огнооны талбар). Урьд нь БҮХ огнооны талбар (жиш. «Хаасан огноо») өнөөдрөөр
+           бөглөгдөж, хэрэглэгч устгаагүй бол хадгалагддаг байв — бусад нь хоосон, хоосныг бичихгүй (`save`). */
+        const dateName = fs.find((f) => f.type === 'date' && f.name === item?.date)?.name
+          ?? fs.find((f) => f.type === 'date')?.name;
+        if (dateName) init[dateName] = todayStr();
         const seq = fs.find(isSeq);
         let hint: { name: string; value: string } | null = null;
         if (seq) {
@@ -155,9 +160,10 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
       })
       .catch((ex: unknown) => { if (alive) setErr(friendlyError(ex)); });
     return () => { alive = false; };
-  }, [item?.table]);
+  }, [item?.table, item?.date]);
 
-  const dateField = fields?.find((f) => f.type === 'date');
+  /* ⚠️ 2026-10-11 (аудит №7): заавал бөглөх огноо = тоолох огнооны талбар (`item.date`), алга бол эхнийх */
+  const dateField = fields?.find((f) => f.type === 'date' && f.name === item?.date) ?? fields?.find((f) => f.type === 'date');
   const ok = !!fields && (!dateField || !!vals[dateField.name]);
 
   const save = async () => {
@@ -167,6 +173,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
     const attrs: Record<string, unknown> = {};
     for (const f of fields) {
       const v = (vals[f.name] ?? '').trim();
+      /* ⚠️ 2026-10-11 (аудит №7): хоосон талбар (бөглөөгүй огноо ч) ОГТ бичигдэхгүй — NULL хэвээр */
       if (!v) continue;
       attrs[f.name] = f.type === 'date' ? utcDay(v) : f.type === 'number' ? Number(v) : v;
     }
@@ -219,7 +226,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
         <div className={e.grid}>
           {fields.map((f) => (
             <label key={f.name} className={`${x.field} ${f.type === 'long' ? e.wide : ''}`}>
-              <span>{entryFieldLabel(f)}{f.type === 'date' ? ' *' : ''}</span>
+              <span>{entryFieldLabel(f)}{f.name === dateField?.name ? ' *' : ''}</span>
               {f.type === 'long'
                 ? <textarea className={e.input} rows={3} value={vals[f.name] ?? ''} disabled={busy}
                     onChange={(ev) => setVals((v) => ({ ...v, [f.name]: ev.target.value }))} />
@@ -268,12 +275,19 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   /* ⚠️ 2026-10-09: ЗӨВХӨН картад харагдах төрлүүд (`W.kinds`, рейс) — kg/m3 төрлийг оруулбал
      картад хэзээ ч гарахгүй. Домэйнд байхгүй кодыг санал болгохгүй. */
   const kinds = W.kinds.filter((k) => !dom?.length || dom.includes(k.metric));
+  const metricOk = kinds.some((k) => k.metric === metric);
+  /* ⚠️ 2026-10-11 (аудит №7): домэйн ирэхэд одоогийн төрөл жагсаалтад байхгүй бол ЭХНИЙХ рүү шилжүүлнэ —
+     урьд нь `<select>` эхний сонголтыг харуулдаг атал `metric` нь хасагдсан утга хэвээр тул «Хадгалах»
+     шалтгаангүй хаалттай байв. Жагсаалт хоосон бол доорх `hint` шалтгааныг хэлнэ. */
+  useEffect(() => {
+    if (dom && kinds.length && !metricOk) setMetric(kinds[0].metric);
+  }, [dom, kinds, metricOk]);
   const weekN = /^\d+$/.test(week.trim()) ? Number(week) : null;
   const weekOk = isWeekNo(weekN);
   const parsed = Object.fromEntries(W.pkgCols.map(([c]) => [c, cellOf(cols[c])]));
   const cellsOk = Object.values(parsed).every((v) => v !== undefined);
   const anyVal = Object.values(parsed).some((v) => v != null);
-  const ok = weekOk && cellsOk && anyVal && kinds.some((k) => k.metric === metric);
+  const ok = weekOk && cellsOk && anyVal && metricOk;
 
   const save = async () => {
     if (!ok || weekN == null) return;
@@ -290,9 +304,12 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const hint = !dom ? '' : !weekOk ? tr('Долоо хоног 1–53 байна.')
-    : !cellsOk ? tr('Тоо нь 0 ба түүнээс их бүхэл тоо байна.')
-      : !anyVal ? tr('Ядаж нэг багцын тоог оруулна уу.') : '';
+  const hint = !dom ? ''
+    : !kinds.length ? tr('Үйлчилгээний домэйнд картын (рейс) төрөл алга — хадгалах боломжгүй.')
+      : !metricOk ? tr('Төрөл сонгоно уу.')
+        : !weekOk ? tr('Долоо хоног 1–53 байна.')
+          : !cellsOk ? tr('Тоо нь 0 ба түүнээс их бүхэл тоо байна.')
+            : !anyVal ? tr('Ядаж нэг багцын тоог оруулна уу.') : '';
 
   return (
     <Shell

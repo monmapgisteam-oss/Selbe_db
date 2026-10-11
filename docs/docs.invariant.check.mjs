@@ -118,7 +118,10 @@ const DOC03 = read('docs/system/03-ogogdliin-zam.md');
 console.log('\nШ2 · Өгөгдлийн түлхүүр');
 chk('DataKey олдсон', keys.length > 0, `${keys.length} ширхэг`);
 
-const keyMiss = keys.filter((k) => !DOC03.includes(k));
+/* ⚠️ 2026-10-11 (аудит №7): ҮГИЙН ХИЛЭЭР (`\b`) — `includes` нь `IPC` түлхүүрийг `IPC_LOG`, `HABEA`-г
+   `HABEA_UZLEG` дотроос «олж» баримтад жинхэнэ мөр нь дутуу байхад ногоон үлдээдэг байв. */
+const wordRe = (w) => new RegExp(`(?<![A-Za-z0-9_])${w}(?![A-Za-z0-9_])`);
+const keyMiss = keys.filter((k) => !wordRe(k).test(DOC03));
 chk(
   'Бүх түлхүүр баримтад бий',
   keyMiss.length === 0,
@@ -157,7 +160,8 @@ const srcFiles = [];
 })('src');
 const SRC_ALL = srcFiles.map(read).join('\n');
 
-const ghost = uniqCited.filter((n) => !DOC_ONLY.has(n) && !SRC_ALL.includes(n));
+/* ⚠️ 2026-10-11 (аудит №7): үгийн хилээр — `BUILDING` нэрийг `BUILDING_X` дотроос олж худал ногоон болохгүй */
+const ghost = uniqCited.filter((n) => !DOC_ONLY.has(n) && !wordRe(n).test(SRC_ALL));
 
 console.log('\nШ3 · Эх сурвалжийн нэр');
 chk(
@@ -171,11 +175,21 @@ const REG = read('src/lib/ceo/registry.ts');
 const kpiBlock = REG.slice(REG.indexOf('CEO_KPIS'));
 const kpiCount = (kpiBlock.match(/^\s*\{\s*key:\s*'/gm) ?? []).length;
 
-/* Баримтын §4.3 хүснэгтийн дугаарласан мөр */
-const kpiRows = (DOC03.match(/^\| \d+ \| /gm) ?? []).length;
+/* Баримтын §4.3 хүснэгтийн дугаарласан мөр
+   ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН §4.3 хэсгээс (дараагийн `## `/`### ` гарчиг хүртэл) — бүтэн файлаас
+   тоолбол өөр хэсэгт дугаарласан хүснэгт нэмэгдэхэд тоо санамсаргүй таарч/зөрдөг. */
+const S43 = (() => {
+  const from = DOC03.indexOf('### 4.3');
+  if (from < 0) return '';
+  const rest = DOC03.slice(from + 7);
+  const next = rest.search(/^##+ /m);
+  return next < 0 ? rest : rest.slice(0, next);
+})();
+const kpiRows = (S43.match(/^\| \d+ \| /gm) ?? []).length;
 
 console.log('\nШ4 · Удирдлагын үзүүлэлт');
 chk('Бүртгэл олдсон', kpiCount > 0, `${kpiCount} үзүүлэлт`);
+chk('§4.3 хэсэг олдсон', S43.length > 0);
 chk('Баримтын хүснэгт тохирч байна', kpiRows === kpiCount, `${kpiRows} мөр ↔ ${kpiCount} үзүүлэлт`);
 
 /* ═══════════ Ш5 · ДИАГРАМЫН ХЭМЖЭЭ ═══════════

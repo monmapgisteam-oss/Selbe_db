@@ -34,7 +34,8 @@ assert.ok(/if \(!\/\^\[0-9a-f\]\{6\}\/i\.test\(h\)\) return \[220, 38, 38\];/.te
 
 /* 2. Автоматаар асаасан давхарга `activeIds`-аас хасагдана, каталог хэрэглэгчийн сонголтыг бичнэ */
 assert.ok(src.includes('if (autoOn.current.has(l.id)) return;'));
-assert.ok(src.includes('visible.filter((id) => !autoOn.current.has(id))'));
+/* ⚠️ 2026-10-11 (аудит №7): лавлах давхарга (`REFERENCE_IDS`, khil1) идэвхтэйд тоологдохгүй */
+assert.ok(src.includes('visible.filter((id) => !autoOn.current.has(id) && !(REFERENCE_IDS as readonly string[]).includes(id))'));
 assert.ok(src.includes('setVisible={setVisibleUser}'));
 
 /* 3. «Одоогоор ус алга» + дээд гүн/ирэх хугацаа; үерийн бус даралт замыг цэвэрлэнэ */

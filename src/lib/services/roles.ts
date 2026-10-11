@@ -130,6 +130,12 @@ export const ROLE_ACCESS: Record<
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
 };
 
-/** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */
-export const roleForUser = (username?: string | null): Role | null =>
-  username ? ROLE_BY_USER[username.toLowerCase()] ?? null : null;
+/**
+ * ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй).
+ * ⚠️ 2026-10-11 (аудит №7): `Object.hasOwn` — `constructor` · `__proto__` · `toString` г.м. нэр
+ *    энгийн объектын прототипоос функц олж `null` биш утга буцаадаг байв (`Portal.tsx`-ийн ижил засвар).
+ */
+export const roleForUser = (username?: string | null): Role | null => {
+  const k = username ? username.toLowerCase() : '';
+  return k && Object.hasOwn(ROLE_BY_USER, k) ? ROLE_BY_USER[k] : null;
+};

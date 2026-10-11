@@ -1603,6 +1603,8 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
  */
 const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text;
 const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
+/* ⚠️ 2026-10-11 (аудит №7): тоон шүүлтийн хэмжээс — `fmtCell`-ийн ×100 («Үнэт цаас %»)-тай НЭГ (`finFilter.rowMatches`) */
+const shareScale = (n: string): number => (n === CASHFLOW_NEW.fields.share ? 100 : 1);
 
 /**
  * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
@@ -2779,7 +2781,9 @@ function FullTable({
       /* ⚠️ 2026-09-29 (аудит 10): `allCols` — НУУГДСАН баганаар ч хайна. Урьд нь
          `cols` (нуултын дараах харагдац) өгдөг байсан тул анхдагчаар нуугдсан
          19 баганад байгаа бичвэрийг «Бүх баганаар хайх…» олдоггүй байв. */
-      return rowMatches(r, allCols, flt, facets, cellStr, isNumericType);
+      /* ⚠️ 2026-10-11 (аудит №7): `cellStr` баганын НЭРТЭЙ (`fmtCell(v, t, n)`) ба «Үнэт цаас %» ×100 —
+         шүүлт ХАРАГДАХ утгатай («9.0%») таарна; урьд нь нэргүй тул түүхий «0.09»-той жишдэг байв. */
+      return rowMatches(r, allCols, flt, facets, cellStr, isNumericType, shareScale);
     });
   }, [active, rows, allCols, flt, facets, oidField, keepOids]);
 

@@ -318,7 +318,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   /* 2026-09-29 аудит: `previewing` нь `decidePlan` АМЖИЛТТАЙ болсны дараа л тайлагдана */
   /* ⚠️ 2026-10-01: амжилттай салаанд `partialRef` арилгах мөр нэмэгдсэн — хоёр хэлбэрийг таньна */
   assert.ok(/if \(r\.ok\) \{\s*setPreviewing\(false\); setOkRows\(new Set\(\)\);/.test(H)
-    && /\} else \{\s*(?:if \(partialRef\.current === oid\) partialRef\.current = null;\s*)?setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
+    /* ⚠️ 2026-10-11 (аудит №7): амжилттай салаанд `wroteSomeRef`/`lostWriteRef` тэглэлт ба тайлбар ч орж болно */
+    && /\} else \{\s*(?:(?:\/\*[\s\S]*?\*\/|if \((?:partialRef|wroteSomeRef|lostWriteRef)\.current === oid\) \w+\.current = null;)\s*)*setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
     'Huvaari: батлалт унахад previewing тайлагдаж хяналтын товчнууд идэвхгүй үлдэнэ');
   /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
   assert.ok(/if \(back && ap\.ok && lastDecision\.okRows\) \{\s*setBackMarks\(/.test(H),

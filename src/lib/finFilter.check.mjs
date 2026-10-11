@@ -175,4 +175,18 @@ for (const [key, facets] of Object.entries(FIN_FACETS)) {
 /* ── 11. distinct нь давхардуулахгүй ── */
 assert.deepEqual(distinct([{ a: 'x' }, { a: 'x ' }, { a: 'y' }], (r) => String(r.a).trim()), ['x', 'y']);
 
+/* ── 12. 2026-10-11 (аудит №7): баганын НЭР `cellText`-д дамжина; тоон шүүлт ХАРАГДАХ хэмжээсээр (×100) ── */
+{
+  const SHARE_COLS = [{ name: 'zahiramj_unet_tsaas_huvi', alias: 'Үнэт цаас %', type: 'esriFieldTypeDouble' }];
+  const seen = [];
+  const named = (v, t, n) => { seen.push(n); return n === 'zahiramj_unet_tsaas_huvi' && v != null ? `${(Number(v) * 100).toFixed(1)}%` : cellText(v, t); };
+  const scale = (n) => (n === 'zahiramj_unet_tsaas_huvi' ? 100 : 1);
+  const r = { OBJECTID: 9, zahiramj_unet_tsaas_huvi: 0.09 };
+  assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric, scale), true, '0.09 → 9% > 5');
+  assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>50' } }), [], named, isNumeric, scale), false);
+  assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '9.0%' } }), [], named, isNumeric, scale), true, 'харагдах текстээр');
+  assert.ok(seen.includes('zahiramj_unet_tsaas_huvi'), 'cellText баганын нэр авна');
+  assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric), false, 'хэмжээсгүй бол түүхий 0.09 (хуучин зан)');
+}
+
 console.log('finFilter.check.mjs — БҮГД ТЭНЦЛЭЭ');

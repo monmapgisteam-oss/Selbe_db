@@ -530,32 +530,47 @@ export function scoreHse(i: HseInput): DimScore {
 /* ── 7. Чанар ── */
 
 export type QualInput = {
-  /** QAQC хүснэгтийн нийлбэр — хүснэгтгүй бол null */
-  qaqc: { total: number; empty: number; partial: number } | null;
+  /**
+   * QAQC хүснэгтийн нийлбэр — хүснэгтгүй бол null.
+   * ⚠️ 2026-10-11 (аудит №7): `flat` — мод холбогдоогүй тул нийлбэрт ОРООГҮЙ хуудасны тоо
+   *    (`scorecardLoad.loadScoreQual`); > 0 бол оноо ХАГАС өгөгдлөөр — баримт/асуудалд ил.
+   */
+  qaqc: { total: number; empty: number; partial: number; flat?: number } | null;
 };
 
 export function scoreQual(i: QualInput): DimScore {
   const q = i.qaqc;
-  if (!q || q.total <= 0) return NONE;
+  if (!q) return NONE;
+  const flatN = q.flat ?? 0;
+  const flatFact = flatN > 0 ? [fact(tr('Хагас — мод холбогдоогүй хуудас'), num(flatN))] : [];
+  const flatIssue: DimIssue[] = flatN > 0
+    ? [{ tone: 'info', text: tr('{0} хуудас бөглөх хуудастай холбогдоогүй тул чанарын оноо ХАГАС өгөгдлөөр', num(flatN)) }]
+    : [];
+  /* ⚠️ Бүх хуудас нь flat (ажлын мөр 0) — оноогүй ч шалтгааныг ил хэлнэ */
+  if (q.total <= 0) return flatN > 0 ? { score: null, facts: flatFact, issues: flatIssue } : NONE;
   const full = Math.max(0, q.total - q.empty - q.partial);
   const facts = [
     fact(tr('Хяналтын ажлын мөр'), num(q.total)),
     fact(tr('Баримт бүрэн'), num(full)),
     fact(tr('Дутуу'), num(q.partial)),
     fact(tr('Хоосон'), num(q.empty)),
+    ...flatFact,
   ];
   /* ⚠️ НЭГ Ч баримт оруулаагүй — «0 оноо» БИШ, дата хүлээгдэж буй (DimScore.pending) */
   if (full === 0 && q.partial === 0) {
     return {
       score: null, facts, pending: true,
-      issues: [{ tone: 'info', text: tr('QAQC баримт огт оруулаагүй ({0} ажлын мөр)', num(q.total)) }],
+      issues: [{ tone: 'info', text: tr('QAQC баримт огт оруулаагүй ({0} ажлын мөр)', num(q.total)) }, ...flatIssue],
     };
   }
   const score = clamp(((full + q.partial * 0.5) / q.total) * 100);
   const tone = toneOf(score);
   return {
     score, facts,
-    issues: tone ? [{ tone, text: tr('{0} ажлын QAQC баримт хоосон, {1} нь дутуу', num(q.empty), num(q.partial)) }] : [],
+    issues: [
+      ...(tone ? [{ tone, text: tr('{0} ажлын QAQC баримт хоосон, {1} нь дутуу', num(q.empty), num(q.partial)) }] : []),
+      ...flatIssue,
+    ],
   };
 }
 

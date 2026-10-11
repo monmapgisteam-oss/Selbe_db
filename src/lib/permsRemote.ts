@@ -588,6 +588,8 @@ export async function fetchAll(
       /* ── Нэмэлт эрхийн мөр ── */
       if (a.username.startsWith(CAP_PREFIX)) {
         const user = a.username.slice(CAP_PREFIX.length).toLowerCase();
+        /* ⚠️ 2026-10-11 (аудит №7): эрхийн мөрийн (доорх) ижил `UNSAFE_KEY` шүүлт — `caps._syncRemoteCaps`-ийн объектын түлхүүр */
+        if (UNSAFE_KEY.has(user)) continue;
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
           if (user && Array.isArray(d)) capsBy.set(user, { user, caps: d as string[] });

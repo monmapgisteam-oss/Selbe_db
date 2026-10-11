@@ -831,19 +831,29 @@ function PlanModalBody({
    *    сүүлийн сарууд ХООСОН үлдэж чип улаан болно — хэрэглэгч өөрөө бөглөнө (0 ч бичиж болно).
    * ⚠️ Идэвхтэй блок ТЭНЦЭЭГҮЙ (`mvOk` худал) бол хаалттай — зөрүүг олон блокт үржүүлэхгүй. Хуулсны
    *    дараа блок бүр `unbalancedBlocks`-оор (`badBlks`) хэвийн шалгагдана.
-   * ⚠️ Блок бүрд `onApply`-г ТУСАД нь дуудна (огноо · уялдаа · бодит `null`) — `applyModal` сарын
+   * ⚠️ Блок бүрд `onApply`-г ТУСАД нь дуудна (уялдаа · бодит `null`) — `applyModal` сарын
    *    задаргааг тэр блокийн ноорогт бичнэ; цонх ХААГДАХГҮЙ, идэвхтэй блок хэвээр «Тавих»-аар.
+   * ⚠️ 2026-10-11 (аудит №7): ШИЛЖСЭН МУЖ ч хамт (`spans`) — урьд нь зөвхөн саруудыг бичдэг тул блокийн муж хуучнаараа
+   *    үлдэж, сарууд мужаас гадуур («мужаас гадуурх обьём», `obOut`) болж илгээх/батлах хаагддаг байв. Муж = сарын
+   *    тооцооллын ижил `ms1 + shift … endOf(…)` (алхамтай «Тавих»-ийн ижил томьёо). Бүх зорилтот блокийн мужийг НЭГ
+   *    `next` массивт бодоод дуудлага бүрд тэр ИЖИЛ массивыг өгнө — `applyModal`-ийн `propagate` мөрийн мужийг
+   *    бүхэлд нь дардаг тул блок бүрд тусдаа массив өгвөл сүүлийнх өмнөхийн шилжилтийг буцаана. Идэвхтэй блок
+   *    (`next[blk]`) ХӨНДӨГДӨХГҮЙ — «Тавих»-аар (дээрх ⚠️).
    */
   const copyTargets = takt > 0 ? [...selB].filter((b) => b !== blk).sort((x, y) => x - y) : [];
   const copyOff = !mvOk || ms1 == null || ms2 == null || bad || spanLong || mv.size === 0;
   const copyShifted = () => {
-    if (copyOff || !copyTargets.length || ms1 == null || ms2 == null) return;
+    if (copyOff || r.group || !copyTargets.length || ms1 == null || ms2 == null) return;
     if (!window.confirm(tr('Идэвхтэй блокийн сарын задаргааг сонгосон {0} блокт алхмаар шилжүүлж хуулах уу? Тэдгээр блокийн одоогийн задаргаа дарагдана.', num(copyTargets.length)))) return;
     const len = spanDays({ start: ms1, end: ms2 });
+    const next = r.spans.slice();
+    const jobs: { b: number; out: Map<string, number> }[] = [];
     for (const b of copyTargets) {
       const shift = (b - blk) * takt * DAY;
-      const keys = monthsOf({ start: ms1 + shift, end: endOf(ms1 + shift, len) });
+      const sp = { start: ms1 + shift, end: endOf(ms1 + shift, len) };
+      const keys = monthsOf(sp);
       if (!keys.length) continue;
+      next[b] = sp;
       const out = new Map<string, number>();
       mKeys.forEach((k, i) => {
         const v = mv.get(k);
@@ -851,8 +861,9 @@ function PlanModalBody({
         const tk = keys[Math.min(i, keys.length - 1)];
         out.set(tk, Math.round(((out.get(tk) ?? 0) + v) * 100) / 100);
       });
-      onApply(null, null, { months: out, res: null }, null, null, [b], [b]);
+      jobs.push({ b, out });
     }
+    for (const { b, out } of jobs) onApply(next, null, { months: out, res: null }, null, null, [b], [b]);
   };
 
   const clear = () => {

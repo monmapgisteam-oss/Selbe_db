@@ -50,7 +50,7 @@ import {
   type Dep,
 } from '@/lib/deps';
 import {
-  balanced, loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
+  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
@@ -443,6 +443,12 @@ export function Huvaari({
   const partialRef = useRef<number | null>(null);
   /** ⚠️ 2026-10-08: хагас бичилтийн тэмдэг ҮЛДСЭН ч бичилтийн ХАРИУ АЛДАГДСАН (`isLostWrite`) илгээлт — мессеж нь `partialMsg` биш `lostWriteMsg` */
   const lostWriteRef = useRef<number | null>(null);
+  /** ⚠️ 2026-10-11 (аудит №7): энэ илгээлтийн АЛЬ НЭГ оролдлогод эх хуудсанд ≥1 мөр бичигдсэн (эсвэл хариу алдагдсан —
+      бичигдсэн байж болно). `save` ДАХИН оролдлогод (`markPlanPartial` унах · `written === 0`) урьд нь өмнөх оролдлогын
+      бичилтийг үл тоож `clearPlanPartial`-аар тэмдгийг арилгадаг байв — хагас суусан санал буцаагдах/татагдах боломжтой
+      болдог. Энэ ба `lostWriteRef`/`partialRef` нь ЗӨВХӨН `decidePlan(approve)` амжилттай болоход тэглэгдэнэ (oid-оор
+      түлхүүрлэгдсэн тул багц/төрөл солиход өөр илгээлтэд нөлөөлөхгүй). */
+  const wroteSomeRef = useRef<number | null>(null);
   /** ⚠️ 2026-10-09: бичсэний дараа жааз солигдсон (`save`-ийн `frameIdOf` шалгалт) илгээлт — мессеж нь `save`-ийнх хэвээр */
   const frameMovedRef = useRef<number | null>(null);
   /** ⚠️ 2026-10-08: `claimPlan`-ийн түгжээний агшин — `decidePlan({ claimAt })` нэг батлагчийн өөр цонхыг ялгана */
@@ -3136,13 +3142,20 @@ export function Huvaari({
             /* ⚠️ 2026-10-08: тэмдгийн бичилт timeout-оор «унасан» ч сервер дээр СУУСАН байж болно —
                эх хуудсанд юу ч бичээгүй тул ӨӨРИЙН тэмдгийг арилгана; эс бөгөөс буцаах/татах
                (`decidePlan`/`withdrawPlan`) юу ч бичигдээгүй атлаа мөнхөд хаагддаг байв. */
+            /* ⚠️ 2026-10-11 (аудит №7): ӨМНӨХ оролдлогод бичигдсэн (`wroteSomeRef`) бол тэмдгийг АРИЛГАХГҮЙ — дахин
+               тэмдэглэх үеийн уналт нь «юу ч бичигдээгүй» гэсэн үг биш. */
+            if (wroteSomeRef.current === approving) {
+              setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг дахин хадгалагдсангүй ({0}) — өмнөх оролдлогод эх хуудсанд бичигдсэн тул буцаах боломжгүй; «Батлах»-ыг дахин дарж дуусгана уу.', mk.error ?? ''));
+              return false;
+            }
             const hd = await loadSubmissionHead(approving).catch(() => null);
             if (hd && partialBy(hd.status, hd.reason) === (user?.username ?? '').trim().toLowerCase()) await clearPlanPartial(approving);
             setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
             return false;
           }
           partialRef.current = approving;
-          lostWriteRef.current = null;
+          /* ⚠️ 2026-10-11 (аудит №7): `lostWriteRef`-ийг ЭНД тэглэхгүй — дахин оролдлогын эхэнд тэглэвэл өмнөх оролдлогын
+             «хариу алдагдсан» баримт устаж, энэ оролдлого `written === 0`-ээр унахад тэмдэг арилдаг байв (`wroteSomeRef`-ийн ⚠️). */
         }
       }
       /** ⚠️ 2026-10-09: бичихийн өмнөх жааз (`frameIdOf`) — батлах горимд бичсэний дараа тулгана (доорх ⚠️) */
@@ -3151,6 +3164,8 @@ export function Huvaari({
         setProgress(tr('Огноо бичиж байна (1/{0})… {1} мөр', String(steps), num(upd.length)));
         try {
           await applyUpdates(pkg, upd);
+          /* ⚠️ 2026-10-11 (аудит №7): ≥1 мөр суусан — энэ илгээлтийн дараагийн оролдлогод тэмдэг арилгахгүй (`wroteSomeRef`) */
+          if (approvalMode) wroteSomeRef.current = approving;
         } catch (e) {
           /* ⚠️ НЭГ Ч мөр бичигдээгүй (эхний 500-ийн багц бүтнээрээ буцсан) бол хагас бичилт
              БИШ — тэмдгийг арилгана (2026-10-01): эс бөгөөс бичилт дахин дахин унахад санал
@@ -3158,8 +3173,12 @@ export function Huvaari({
           /* ⚠️ 2026-10-08: `written === 0` нь ЗӨВХӨН серверийн ТОДОРХОЙ татгалзалд «юу ч бичигдээгүй»
              гэсэн үг — хариу алдагдсан (`isLostWrite`: timeout · TypeError · кодгүй ArcGIS алдаа) бол
              эхний 500 мөр суусан байж болно: тэмдэг ҮЛДЭНЭ, батлагчид «хариу ирээгүй» гэж хэлнэ. */
+          /* ⚠️ 2026-10-11 (аудит №7): бичигдсэн багц (`written > 0`) эсвэл хариу алдагдсан бол `wroteSomeRef` — ДАРААГИЙН
+             оролдлогын `written === 0` уналт тэмдгийг арилгаж чадахгүй (өмнөх оролдлогын мөрүүд эх хуудсанд суусан). */
+          if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
           if (approvalMode && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
+            else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
             else if (await clearPlanPartial(approving)) partialRef.current = null;
           }
           throw e;
@@ -3203,6 +3222,8 @@ export function Huvaari({
         setProgress(tr('Сарын обьём бичиж байна (2/{0})…', String(steps)));
         try {
           r2 = await applyPlanEdits(obEdits);
+          /* ⚠️ 2026-10-11 (аудит №7): сарын обьём суусан — `wroteSomeRef` (огнооны замын ⚠️) */
+          if (approvalMode && r2[0] + r2[1] + r2[2] > 0) wroteSomeRef.current = approving;
         } catch (e) {
           /* ⚠️ 2026-09-29 аудит: огноо БИЧИГДСЭН, задаргаа ДУНДАА унасан (жиш. 2 дахь
              500-ийн багц) — `rows`/`obOids` сэргээгээгүй бол дахин «Хадгалах»-д амжсан
@@ -3212,8 +3233,11 @@ export function Huvaari({
              сарын обьёмоос НЭГ Ч мөр бичигдээгүй (`written === 0`) бол хагас бичилт БИШ: тэмдгийг
              арилгана, эс бөгөөс санал буцаах/татах боломжгүй түгжигддэг байв. */
           /* ⚠️ 2026-10-08: огнооны замын ижил ангилал — хариу алдагдсан бол тэмдэг үлдэнэ */
+          /* ⚠️ 2026-10-11 (аудит №7): огнооны замын ижил `wroteSomeRef` дүрэм — өмнөх/энэ оролдлогод юу нэгэн суусан бол тэмдэг үлдэнэ */
+          if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
           if (approvalMode && !upd.length && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
+            else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
             else if (await clearPlanPartial(approving)) partialRef.current = null;
           }
           try {
@@ -3253,16 +3277,12 @@ export function Huvaari({
             ноорогоос устгавал хүн юуг дахин бөглөхөө мэдэхгүй үлдэнэ. */
       /* ⚠️ 2026-10-09 (аудит №6): зөвхөн `tookOb`-д орсон (бэлтгэлд өгсөн) түлхүүр цэвэрлэгдэнэ — async завсарт орсон
          хамтрагчийн/өөрийн шинэ нүд ҮЛДЭНЭ (`tookD/tookH`-ийн хэв маяг, дээрх ⚠️). */
+      /* ⚠️ 2026-10-11 (аудит №7): тэнцээгүй эсэхийг `savePrep`-ийн ШИЙДСЭН түлхүүрээр (`unbalKeys`) — урьд нь энд
+         `base`-ээс `des` → мөр-ийг «сүүлийнх ялна» гэж дахин бодож, давхардсан кодонд `savePrep.firstByDes` («эхнийх
+         ялна»)-тай зөрж, бичигдээгүй задаргаа ноорогоос устах/бичигдсэн нь үлдэх байв (`setObResDraft`-ийн ижил хэв маяг). */
       setObDraft((m0) => {
         const m = new Map<string, Map<string, number>>();
-        const byDes = unbal ? new Map(base.map((r) => [r.des, r])) : null;
-        for (const [k, months] of m0) {
-          if (!tookOb.has(k)) { m.set(k, months); continue; }
-          if (!byDes) continue;
-          const des = Number(k.slice(0, k.indexOf('|')));
-          const v = byDes.get(des)?.vol;
-          if (months.size && v != null && v > 0 && !balanced(months, v)) m.set(k, months);
-        }
+        for (const [k, months] of m0) if (!tookOb.has(k) || unbalKeys.has(k)) m.set(k, months);
         return m;
       });
       /* Сарын нөөцийн ноорог — тэнцээгүй (бичигдээгүй) ба талбаргүй тул алгассан
@@ -3659,17 +3679,21 @@ export function Huvaari({
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
     setProgress(tr('Шалгаж байна…'));
-    /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээг СЕРВЕРЭЭС дахин шалгана (`xLockCheck`-ийн ⚠️) —
-       UI-ийн `xLockWhy` хуучирсан байж болно; түгжээтэй мөр байвал (эсвэл шалгаж чадахгүй бол) ИЛГЭЭХГҮЙ. */
-    {
-      const why = await xLockCheck();
-      if (why) { setErr(why); setBusy(false); setProgress(''); return; }
-    }
     /* ⚠️ 2026-10-04 аудит (HIGH): хуваалцсан ноорогийн мөчлөг · бичилтийг ЗОГСООЖ, илгээлтэд
        ОРОХ нүдний тэмдгийг `buildPayload`-тай НЭГ агшинд авна — цэвэрлэлт зөвхөн тэдгээрийг
        хаана; илгээх завсарт хамтрагчийн нэмсэн нүд алсад хэвээр (`useSharedDraft.hdClear`). */
+    /* ⚠️ 2026-10-11 (аудит №7): `xLockCheck`-ийн (сервер) `await`-аас ӨМНӨ — урьд нь тэр завсарт мөчлөгийн `hdApply`
+       хамтрагчийн нүдийг Map-д нийлүүлж, тэмдэг (`hdSnapshot`, амьд ref) тэдгээрийг агуулдаг атлаа `buildPayload`
+       (энэ render-ийн state) агуулдаггүй — цэвэрлэлт илгээлтэд ОРООГҮЙ нүдийг устгах байв. Хаалт (`hdHold`) мөчлөгийг
+       зогсоосноор тэмдэг ба payload нэг агшных; шалгалт `try` дотор — буцалт бүрд `finally`-ийн `hdSubmitEnd()`. */
     const hdMark = hdSubmitBegin();
     try {
+      /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээг СЕРВЕРЭЭС дахин шалгана (`xLockCheck`-ийн ⚠️) —
+         UI-ийн `xLockWhy` хуучирсан байж болно; түгжээтэй мөр байвал (эсвэл шалгаж чадахгүй бол) ИЛГЭЭХГҮЙ. */
+      {
+        const why = await xLockCheck();
+        if (why) { setErr(why); return; }
+      }
       setProgress(tr('Илгээж байна… {0} мөр', num(dirtyRows)));
       const r = await submitPlan({
         pkgKey: pkg.key,
@@ -4173,7 +4197,10 @@ export function Huvaari({
         }
         /* ⚠️ 2026-10-08: түгжээний агшин — батлах эффект `decidePlan({ claimAt })`-д дамжуулна (өөр цонх ялгана) */
         claimAtRef.current = cl.at ?? null;
-        lostWriteRef.current = null;
+        /* ⚠️ 2026-10-11 (аудит №7): ЭНЭ илгээлтийн `lostWriteRef`-ийг дахин оролдлогын эхэнд тэглэхгүй (`wroteSomeRef`-ийн ⚠️) —
+           зөвхөн өөр илгээлтийнх үлдсэн бол. `frameMovedRef` нь оролдлого бүрийн шалгалт тул тэглэнэ. */
+        if (lostWriteRef.current !== pending.oid) lostWriteRef.current = null;
+        if (wroteSomeRef.current !== pending.oid) wroteSomeRef.current = null;
         frameMovedRef.current = null;
         /* ⚠️ 2026-10-01: ХАГАС бичигдсэн илгээлтийн түгжээг ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) —
            дахин «Батлах» дарж агуулга уншигдаагүй/зөрчил гарсан эрт буцалт ч түгжээг алдуулдаг байв. */
@@ -4355,6 +4382,9 @@ export function Huvaari({
               setPreviewing(false); setOkRows(new Set());
               /* ⚠️ 2026-10-01: өмнөх хагас бичилтийг энэ батлалт гүйцээв (сервер тэмдгийг `decidePlan` арилгасан) */
               if (partialRef.current === approving) partialRef.current = null;
+              /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef`/`lostWriteRef` ч ЗӨВХӨН энд тэглэгдэнэ */
+              if (wroteSomeRef.current === approving) wroteSomeRef.current = null;
+              if (lostWriteRef.current === approving) lostWriteRef.current = null;
             }
             setNote(r.ok
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
@@ -4470,6 +4500,9 @@ export function Huvaari({
             + ` ${tr('Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.')}`);
         } else {
           if (partialRef.current === oid) partialRef.current = null;
+          /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef`/`lostWriteRef` ч ЗӨВХӨН энд тэглэгдэнэ (`wroteSomeRef`-ийн ⚠️) */
+          if (wroteSomeRef.current === oid) wroteSomeRef.current = null;
+          if (lostWriteRef.current === oid) lostWriteRef.current = null;
           setPreviewing(false);
           setOkRows(new Set());
           setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
@@ -5151,12 +5184,15 @@ export function Huvaari({
           act: r.act?.[b] ?? null,
         };
       };
-      const out: HvPdfRow[] = visible.map((r) => rowFor(r, blk));
+      /* ⚠️ 2026-10-11 (аудит №7): PDF-д `sticky` (хөлдөөсөн шүүлтийн гишүүнчлэл) ОРОХГҮЙ — `visibleAt(blk)` (`keep`-гүй),
+         `visible` биш: `visibleAt`-ийн ⚠️ («зөвхөн дэлгэцэд; PDF-д үгүй») ба «Бүх блок»-ийн блок бүрийн ижил дүрэм. Урьд нь
+         идэвхтэй блок `visible` (sticky-тэй), бусад блок `visibleAt(b)` (sticky-гүй) тул нэг баримт хоёр өөр мөрийн олонлогтой байв. */
+      const out: HvPdfRow[] = visibleAt(blk).map((r) => rowFor(r, blk));
       /* ⚠️ 2026-10-08: «Бүх блок» — олон блоктой багцад л; блок бүрийн мөрүүд нэг баримтад */
       const allPdf = !!pdfOpts.allBlocks && multiBlk;
       /* ⚠️ 2026-10-09: блок бүрийн мөрийг ТЭР блокийн шүүлтээр (`visibleAt(b)`) — «Хоцорсон»/«Зөрчилтэй» чип идэвхтэй
          блокийн төлвөөр бүх блокийн хуудсыг шүүдэг байв. Чипгүй үед `visible`-тэй ижил. */
-      const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: (b === blk ? visible : visibleAt(b)).map((r) => rowFor(r, b)) })) : undefined;
+      const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: visibleAt(b).map((r) => rowFor(r, b)) })) : undefined;
       const kindLabel = kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
       await downloadHuvaariPdf({
         pkg: pkg.label,
@@ -5181,7 +5217,7 @@ export function Huvaari({
     } finally {
       setPdfBusy(false);
     }
-  }, [sc, pdfBusy, visible, visibleAt, effRow, rowSpanAt, refSpanAt, refSpanOf, multiBlk, kind, plan, byCode, blk, now, showRef,
+  }, [sc, pdfBusy, visibleAt, effRow, rowSpanAt, refSpanAt, refSpanOf, multiBlk, kind, plan, byCode, blk, now, showRef,
     pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */

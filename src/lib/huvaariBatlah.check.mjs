@@ -553,6 +553,13 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
     assert.ok(/partialRef\.current !== approving\) void releasePlanClaim/.test(ln), `Huvaari: хамгаалалтгүй тайлалт: ${ln.trim()}`);
   }
   assert.ok((dc.match(/partialRef\.current = null/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход partialRef арилахгүй');
+  /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef` — өмнөх оролдлогод бичигдсэн бол дахин оролдлогын `written === 0` /
+     дахин тэмдэглэх уналт тэмдгийг арилгахгүй; `lostWriteRef`-ийг дахин оролдлогын эхэнд тэглэхгүй, зөвхөн decidePlan амжилтад */
+  assert.ok((sv.match(/else if \(wroteSomeRef\.current === approving\) \{/g) ?? []).length >= 2, 'Huvaari.save: written === 0 салаа wroteSomeRef-ээр хамгаалагдаагүй');
+  assert.ok(/if \(wroteSomeRef\.current === approving\) \{[\s\S]{0,400}return false;[\s\S]{0,300}await clearPlanPartial\(approving\)/.test(sv), 'Huvaari.save: дахин тэмдэглэх уналтад wroteSomeRef шалгагдаагүй');
+  assert.ok(!/^\s*lostWriteRef\.current = null;/m.test(sv), 'Huvaari.save: lostWriteRef-ийг дахин оролдлогын эхэнд тэглэж байна');
+  assert.ok(/if \(lostWriteRef\.current !== pending\.oid\) lostWriteRef\.current = null;/.test(dc), 'Huvaari.decide: энэ илгээлтийн lostWriteRef тэглэгдэж байна');
+  assert.ok((dc.match(/if \(wroteSomeRef\.current === (approving|oid)\) wroteSomeRef\.current = null;/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход wroteSomeRef арилахгүй');
 }
 console.log('✅ хагас бичилтийн сервер тэмдэг · давхардлын цуцлалт «сүүлийн шийдвэр» биш · obLost хаалт · түгжээ хадгална');
 

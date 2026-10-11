@@ -95,6 +95,18 @@ const inc = [
 }
 /* ── Хүн-цаг огт алга — хоосон (0 давтамж зурахгүй) ── */
 assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).items, []);
+/* ── 2026-10-11 (аудит №7): «Ослын компани» шүүлт — хуваарь (хүн-цаг) СОНГОСОН гүйцэтгэгчийн баганаар ── */
+{
+  const cos = new Set(['MK']);
+  const m = rateByMonth(days, inc.filter((x) => x.bagtsK === 'P41'), { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null, cos });
+  assert.ok(Math.abs(m.items[0].hours - 700) < 1e-9, '8 сар: зөвхөн MK-ийн хүн-цаг (бүх компанийн 1000 биш)');
+  assert.ok(Math.abs(m.items[1].hours - 1000) < 1e-9);
+  const p = rateByPkg(days, inc, PKG_OF_CO, (k) => k, cos);
+  assert.deepEqual(p.items.map((x) => x.key), ['P41'], 'сонгоогүй компанийн багц хуваарьгүй → жагсаалтад орохгүй');
+  assert.ok(Math.abs(p.items[0].hours - 1700) < 1e-9);
+  /* багц ∩ компани — огтлолцол хоосон бол хүн-цаг 0 → мөр алга */
+  assert.deepEqual(rateByMonth(days, [], { ymOf, pkgOfCo: PKG_OF_CO, pkgs: new Set(['P1']), cos }).items, []);
+}
 
 /* ── Явагдаж буй сар ── */
 {
@@ -122,6 +134,9 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   ];
   assert.deepEqual(ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Эд хөрөнгийн хохирол' }], ub),
     { hours: 1800, since: null, undatedLti: false, futureLti: 0 }, 'LTI алга — бүх хүн-цаг');
+  /* ⚠️ 2026-10-11 (аудит №7): огноогүй / ≤0 цагтай мөр LTI байгаа эсэхээс үл хамааран ОРОХГҮЙ (`hoursByDay`-тай нэг дүрэм) */
+  assert.equal(ltiFreeHours([...lab, { Ognoo: null, Hun_tsag: 400 }, { Ognoo: day('2026-08-14'), Hun_tsag: -5 }], [], ub).hours, 1800,
+    'LTI-гүй үед ч огноогүй/сөрөг мөр хасагдана');
   const r = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }], ub);
   assert.equal(r.hours, 300, 'LTI-ийн ӨДРИЙН дараах хүн-цаг л (тэр өдөр ороогүй, null 0 биш алгасна)');
   assert.equal(r.since, day('2026-08-11'));

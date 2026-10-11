@@ -935,7 +935,13 @@ const TD_LAYER: Record<string, number> = {
      үлдэж, «Ногоон байгууламж» тоо бүсээс хамаарахгүй байв. Одоо LayerDef
      хэвээр /118 (бүсийн хилээр тайрагдсан тул нийт 4.2 га бага — бүсээс
      ГАДУУРХ ногоон энд байхгүй, `sb:1` суурь давхаргад харагдсаар). */
-  tgl: 102, dugui: 39, zone: 106, khil1: 97,
+  /* ⚠️ 2026-10-11 (аудит №7): `tgl: 102` ХАСАГДАВ — LayerDef-ийн 2026-09-17-ны огноотой шийдвэр
+     (`url: ${TD}/140`, `geom: "area"`)-ийг энэ бичлэг чимээгүй дарж /102 руу онооход, амьд баталгаажуулалт
+     (2026-10-11, админ токеноор зөвхөн унших тандалт): /102 = `huuhdiin_togloom_0813` — хуучин ЦЭГЭН
+     хуулбар, esriGeometryPoint, 111 цэг, 7 талбар; /140 = `Тоглоомын_талбай` — esriGeometryPolygon,
+     54 полигон, 25 талбар. Талбайн дүүргэлттэй LayerDef-д /140 л тохирно; /102-ыг дахин хэрэглэх бол
+     амьд үйлчилгээгээр баталгаажуулах. */
+  dugui: 39, zone: 106, khil1: 97,
   road: 104, roadOld: 98, bm146: 41,
   /* ⚠️ 2026-09-04: `khil2: 97` ХАСАГДАВ. Үхсэн `Tuluvlult_talbai`-аас нэгтгэсэн
      `data` руу шилжүүлэх үед «Сэлбэ 2 хил» нь «Сэлбэ 1 хил»-ийн мөрийг хамт
@@ -996,10 +1002,20 @@ const TD_DROP_FACETS = new Set(["et:15"]);
  * zoneField/oid) давхарга бүрд аюулгүй болгоно — эс бөгөөс байхгүй талбараар
  * query явж давхарга бүхэлдээ унана.
  */
+/**
+ * ⚠️ 2026-10-11 (аудит №7): `styleUrl` нь `public/webmap-style.json`-д ТҮЛХҮҮРГҮЙ давхаргууд — хуучин
+ *    хаяг нь снапшотод хэзээ ч байгаагүй (`gazar:*` = TD/95·96, `et:11`/`et:5` ET-д загваргүй,
+ *    `bm146` = Бусад_мэдээлэл/146 (снапшотод зөвхөн 193·194), `khil1` = Tuluvlult_talbai/2).
+ *    Үхмэл түлхүүр тавихгүй — `webmapStyleOf(layerUrl)` мөн олохгүй тул каталогийн загвар хэвээр,
+ *    зурагт өөрчлөлтгүй. `layerUrls.check.mjs` үлдсэн бүх `styleUrl` снапшотод (эсвэл `plan2d`-д)
+ *    олдохыг батална.
+ */
+const NO_WEBMAP_STYLE = new Set(["gazar:parcel", "gazar:building", "et:11", "et:5", "bm146", "khil1"]);
+
 for (const l of LAYERS) {
   const n = TD_LAYER[l.id];
   if (n == null) continue;
-  l.styleUrl = l.url ?? `${ET}/${l.n}`;
+  if (!NO_WEBMAP_STYLE.has(l.id)) l.styleUrl = l.url ?? `${ET}/${l.n}`;
   l.url = `${TD}/${n}`;
   if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: 'м²' };
   if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: 'м' };

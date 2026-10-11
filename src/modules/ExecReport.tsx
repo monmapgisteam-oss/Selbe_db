@@ -25,7 +25,7 @@ import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { invalidateAll } from '@/lib/dataBus';
-import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP } from '@/lib/execReport';
+import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel } from '@/lib/execReport';
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
@@ -493,10 +493,14 @@ export function ExecReport() {
                     <thead><tr><th>{tr('Түвшин')}</th><th>{tr('Хувь')}</th><th className={r.num}>{tr('Блок')}</th></tr></thead>
                     <tbody>
                       {x.prog.levels.map((l) => <tr key={l.label}><td>{l.label}</td><td>{l.range}</td><td className={r.num}>{num(l.n)}</td></tr>)}
-                      <tr><td className={e.warn}>{tr('Бөглөгдөөгүй')}</td><td className={e.warn}>—</td><td className={`${r.num} ${e.warn}`}>{num(x.prog.noData)}</td></tr>
-                      <tr className={r.total}><td>{tr('Нийт')}</td><td>{num(x.prog.households)} {tr('өрх')}</td><td className={r.num}>{num(x.prog.blocks)}</td></tr>
+                      {/* ⚠️ 2026-10-11 (аудит №7): өрх `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)»), PDF-тэй нэг */}
+                      <tr className={r.total}><td>{tr('Нийт')}</td><td>{householdsLabel(x.prog)} {tr('өрх')}</td><td className={r.num}>{num(x.prog.blocks)}</td></tr>
                     </tbody>
                   </table></div>
+                  {/* ⚠️ 2026-10-11 (аудит №7): бөглөгдөөгүй блок `levelCounts`-д аль хэдийн 0–25%-ийн мөрөнд
+                      (тайлангүй блок 0%) тоологдсон — урьд нь нэмэлт «Бөглөгдөөгүй» мөр байсан тул мөрүүдийн
+                      нийлбэр блокийн тооноос ДАВДАГ байв. Одоо тэмдэглэл. */}
+                  {x.prog.noData > 0 && <p className={`${r.note} ${e.warn}`}>{tr('үүнээс бөглөгдөөгүй: {0} — 0–25%-д орсон', num(x.prog.noData))}</p>}
                 </section>
 
                 {/* ── 4. Санхүүжилт ── */}

@@ -708,7 +708,12 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
           const samePrev0 = si > 0 ? lastFrame(feats.slice(0, si), sc.f.no, expect, sc.f.work) : [];
           /* ⚠️ Зөвхөн БҮТЭН жааз суурь болно — унасан нийтлэлийн үлдэгдэл (богино)
              бол байрлалаар жишихэд зохиомол «өөрчлөлт» гарна; тэр үед өмнөх өдөр. */
-          const samePrev = expect <= 0 || samePrev0.length >= expect ? samePrev0 : [];
+          /* ⚠️ 2026-10-11 (аудит №7): `expect` нь зураглалын урт (ХООСОН мөрийг ч тоолдог — b31_9f 1471), харин
+             архивын жааз хоосон мөргүй (1470) тул `>= expect` ижил өдрийн өмнөх бүтэн жаазыг ХЭЗЭЭ Ч суурь болгохгүй,
+             өмнөх өдөртэй жишиж зохиомол «өөрчлөлт» гаргадаг байв (`bagtsSheet.ts`-ийн 1470↔1471 ⚠️). Энэ илгээлтийн
+             жаазны уртаар (`feats2.length`) хязгаарлана — `lastFrame` аль хэдийн бүтэн жаазыг л буцаадаг. */
+          const need = Math.min(expect, feats2.length);
+          const samePrev = expect <= 0 || samePrev0.length >= need ? samePrev0 : [];
           /* Мөрийн тоо ч ЭНЭ жаазных — өдрийн бүх жаазны нийлбэр биш */
           if (si >= 0) nRows = feats2.length;
           const q = { features: feats2 };
@@ -717,13 +722,28 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            * ⚠️ OBJECTID-аар холбож БОЛОХГҮЙ: агшин бүрд мөр ДАХИН хуулагддаг
            * тул дугаар нь өөр байна. `№` нь багц дотроо тогтвортой.
            */
+          /*
+           * ⚠️ 2026-10-11 (аудит №7): суурь жаазны мөрийг ТОГТВОРТОЙ танигчаар (`rowSids` — «№ ¦ Ажил»-ын hash +
+           *    ижил шошгын доторх дараалал) индекслэнэ, байрлалаар БИШ. Урьд нь `before.get(String(ri))` тул суурь
+           *    жаазнаас хойш мөр НЭМЭГДСЭН (Хуваарь → нэмэлт ажил) бол нэмсэн мөрөөс хойшхи мөр бүр ӨӨР мөртэй
+           *    жишигдэж зохиомол «өөрчлөлт» гардаг байв. Танигч нь № ба Ажил хоёул хоосон мөрөнд л утгагүй — тэр
+           *    үед байрлал; танигч олдохгүй (шинэ мөр) бол суурьгүй («утгатай нүд бүр шинэ»). Доорх `sidsA`-тай
+           *    (энэ жаазны танигч) нэг функц.
+           */
           const before = new Map<string, Record<string, unknown>>();
+          const beforePos = new Map<string, Record<string, unknown>>();
+          const indexBefore = (fs: { attributes: Record<string, unknown> }[]) => {
+            const ss = rowSids(fs.map((x) => ({ no: String(x.attributes[sc.f.no] ?? ''), work: String(x.attributes[sc.f.work] ?? '') })));
+            fs.forEach((x, i) => { before.set(ss[i], x.attributes); beforePos.set(String(i), x.attributes); });
+          };
+          const blankSid = (x: { attributes: Record<string, unknown> }) =>
+            String(x.attributes[sc.f.no] ?? '').trim() === '' && String(x.attributes[sc.f.work] ?? '').trim() === '';
           if (samePrev.length) {
             /* ⚠️ Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз — өмнөх өдрийнх БИШ (дээрх ⚠️).
                Аль хэдийн татагдсан тул `fill < at` асуулгын алдаа энд хамаагүй. */
             sameDay = true;
             prevFailed = false;
-            samePrev.forEach((x, i) => before.set(String(i), x.attributes));
+            indexBefore(samePrev);
           } else if (prevAt != null) {
             const prevFeats: { attributes: Record<string, unknown> }[] = [];
             try {
@@ -763,7 +783,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               //    өөрчлөлт «олдоно» (дээрх ⚠️).
               const pExpect = (TREES[p.key] ?? '').length;
               const prev2 = lastFrame(prevFeats, sc.f.no, pExpect, sc.f.work);
-              prev2.forEach((x, i) => before.set(String(i), x.attributes));
+              indexBefore(prev2);
             }
           }
 
@@ -785,7 +805,8 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
           })));
           filled = (q.features ?? []).map((x, ri) => {
             const a = x.attributes;
-            const prev = before.get(String(ri));
+            /* ⚠️ 2026-10-11 (аудит №7): танигчаар; хоосон (танигчгүй) мөр л байрлалаар (дээрх `indexBefore`-ийн ⚠️) */
+            const prev = blankSid(x) ? beforePos.get(String(ri)) : before.get(sidsA[ri]);
             const cells = obs.map((n) => num(a[n]));
             const beforeVals = obs.map((n) => (prev ? num(prev[n]) : null));
             const changed = obs.map((n, k) => {

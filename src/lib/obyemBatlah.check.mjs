@@ -182,6 +182,15 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(rs.includes('partialBy(curStatus') && rs.includes('OBYEM_STUCK_PREFIX()'), 'returnStuckObyem: зөвхөн хагас бичигдсэнд · угтвартай шалтгаан');
   const bz = L.slice(L.indexOf('export async function obyemBusyFor('), L.indexOf('export async function releaseObyemClaim('));
   assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
+  /* ⚠️ 2026-10-11 (аудит №7): markObyemPartial — CAS (унш → pending · түгжээ = би → бич → дахин уншиж тэмдэг суусныг тулга),
+     `huvaariBatlah.markPlanPartial`-ийн ижил дүрэм; урьд нь шууд бичдэг тул «татсан»/бусдын мөрөнд тэмдэг суудаг байв */
+  const mp = L.slice(L.indexOf('export async function markObyemPartial('), L.indexOf('export async function clearObyemPartial('));
+  const mpRead = mp.indexOf('await query(');
+  const mpWrite = mp.indexOf('await arcgisPost(');
+  assert.ok(mpRead > 0 && mpWrite > mpRead, 'markObyemPartial: бичихээс өмнө мөрийг дахин уншихгүй байна');
+  assert.ok(/st !== OBYEM_STATUS\.pending\) return \{ ok: false/.test(mp.slice(0, mpWrite)), 'markObyemPartial: pending биш мөрөнд тэмдэг бичиж байна');
+  assert.ok(/claimHolder\(cur\);\s*if \(h !== me\)/.test(mp.slice(0, mpWrite)), 'markObyemPartial: өөрийн түгжээгүй мөрөнд тэмдэг бичиж байна');
+  assert.ok(mp.indexOf('await query(', mpWrite) > 0 && /claimHolder\(back\) !== me \|\| \(s\(back\[F\.reason\]\) \?\? ''\)\.trim\(\) !== mark/.test(mp), 'markObyemPartial: бичсэний дараа тэмдэг суусныг тулгахгүй байна');
   assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
   assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
   /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — түгжихийн ӨМНӨ ба `applyUpdates`-ийн ЯГ ӨМНӨ (fail-closed) */

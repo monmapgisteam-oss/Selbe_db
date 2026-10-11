@@ -66,6 +66,9 @@ export type BuildingProgress = {
  *    айл, гүйцэтгэгч, багцын уншигдах нэрэнд.
  * ⚠️ Тайлагнаагүй блок 0% (2026-10-01-ний хэрэглэгчийн шийдвэр) — бүх дэлгэцтэй нэг дүрэм.
  */
+/** ⚠️ 2026-10-11 (аудит №7): `physNow`-ийн уналтыг процесст НЭГ л удаа логлох туг */
+let physWarned = false;
+
 export async function buildingProgress(scope: AgentScope): Promise<BuildingProgress> {
   // ⚠️ Эрхийн шалгалт — тооцоолсон ч гэсэн эх өгөгдөл нь давхарга
   const src = resolveSource('mon:building', scope);
@@ -80,7 +83,15 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
        Унавал `null` («мэдэгдэхгүй»), бусад тоог унагахгүй. */
     import('@/modules/Finance')
       .then(async (F) => F.physNow(await F.loadFinData()))
-      .catch(() => null),
+      .catch((e: unknown) => {
+        /* ⚠️ 2026-10-11 (аудит №7): НЭГ удаа логлоно — урьд нь чимээгүй залгигдаж, боттой орчинд (`Finance`
+           модуль/санхүүгийн хүснэгт хүрэхгүй) «мэдэгдэхгүй» яагаад вэ гэдэг нь хаана ч харагдахгүй байв. */
+        if (!physWarned) {
+          physWarned = true;
+          console.warn('[selbe] agent/compute: physNow (Finance) ачаалагдсангүй — «мэдэгдэхгүй» гэж тооцно:', e);
+        }
+        return null;
+      }),
   ]);
 
   /* давхаргын feature → айл, гүйцэтгэгч; багцын уншигдах нэр (давхардсан feature НЭГ удаа) */

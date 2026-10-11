@@ -215,6 +215,12 @@ export function useCellEdit(p: {
        мянгат) нь 1.25 болж 1000 дахин БАГА бичигддэг байв. Одоо `1,234.5` ·
        `1 234` зөв уншигдаж, `1,250` шиг ТОДОРХОЙГҮЙ бичлэгийг ил асууна.
        `null` = тоо биш (эсвэл тодорхойгүй); хоосон бол `""` (цэвэрлэх). */
+    /* ⚠️ 2026-10-11 (аудит №7): ОБЬЁМ горимд `%`-тэй утга — `normCell` `%`-ийг чимээгүй хасаж «50%» нь 50 м³ (үнэмлэхүй
+       обьём) болж бичигддэг байв. Няцааж, «Хувь» горимд оруулахыг хэлнэ (буулгалт — `planPaste`-ийн `noPct`). */
+    if (fillMode === "obyem" && /%\s*$/.test(raw.trim())) {
+      warn(`${sc?.bld[b] ?? ""} · ${r.work}: ${tr('Хувь бичихдээ «Хувь» горимд оруулна уу')}`);
+      return false;
+    }
     const t0 = raw.trim() === "" ? "" : normCell(raw);
     /* ⚠️ 2026-10-06: `setEdit(null)` ЭНДЭЭС `commit` руу зөөгдсөн (дээрх ⚠️) */
     if (r.group) return false;
@@ -526,15 +532,19 @@ export function useCellEdit(p: {
 
     /* ⚠️ Байрлалын логик нь `paste.ts`-д — эгнээ гулсах эрсдэлийг зөвхөн
        тестээр (`paste.check.mjs`) барина. */
+    /* ⚠️ 2026-10-11 (аудит №7): Обьём горимд `%`-тэй утгыг няцаана (`commitInner`-ийн ⚠️ — `noPct`) */
     const { hits: raw, skipped, bad, badAt, rejAt } = planPaste(
       grid, vis, sc.bld.length, from, startB,
       (row, b) => writable(rowsAll[row], b),
+      { noPct: fillMode === "obyem" },
     );
     /* ⚠️ 2026-10-01: ТАТГАЛЗАХ нүд байвал ЭХЛЭЭД урьдчилан харуулна (`pastePrev`-ийн ⚠️) */
     if (!confirmed && setPastePrev && rejAt.length > 0 && raw.length > 0) {
-      const why = (w: 'bad' | 'neg' | 'noWrite', row: number, b: number) =>
+      const why = (w: 'bad' | 'neg' | 'noWrite' | 'pct', row: number, b: number) =>
         w === 'neg'
           ? tr('сөрөг утга — буулгалтаар бууруулахгүй (нүд тус бүрээр залруулна)')
+          : w === 'pct'
+            ? tr('Хувь бичихдээ «Хувь» горимд оруулна уу')
           : w === 'noWrite'
             /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөрийн шалтгаан (`synNoVol`) */
             ? (rowsAll[row]?.group ? RO.groupAct : rowsAll[row] && synNoVol(sc, rowsAll[row]) ? RO.synNoVol

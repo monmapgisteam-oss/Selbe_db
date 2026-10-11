@@ -116,6 +116,17 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
   assert.equal(r.score, null, 'нэг ч баримт оруулаагүй → 0 оноо БИШ');
   assert.equal(r.pending, true, '«дата хүлээгдэж буй» гэж тэмдэглэгдэнэ');
 }
+/* ⚠️ 2026-10-11 (аудит №7): мод холбогдоогүй (`flat`) хуудас — оноо ХАГАС өгөгдлөөр гэдгийг ил */
+{
+  const r = scoreQual({ qaqc: { total: 10, empty: 4, partial: 2, flat: 1 } });
+  assert.equal(r.score, 50, 'оноо холбогдсон хуудсаар хэвээр');
+  assert.ok(r.facts.some((f) => f.label.startsWith('Хагас') && f.value === '1'), 'баримтад «Хагас — … 1»');
+  assert.ok(r.issues.some((i) => i.tone === 'info' && i.text.includes('ХАГАС')), 'asуудалд info');
+  const only = scoreQual({ qaqc: { total: 0, empty: 0, partial: 0, flat: 2 } });
+  assert.equal(only.score, null, 'бүх хуудас flat → оноогүй');
+  assert.equal(only.facts.length, 1, '…гэхдээ шалтгаан ил');
+  assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).facts.length, 4, 'flat-гүй бол нэмэлт баримтгүй');
+}
 
 /* ── Нийт: null бүлэг дунджид орохгүй ── */
 {

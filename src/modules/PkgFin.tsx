@@ -363,6 +363,12 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
      */
     contract: number;
     contracted: boolean;
+    /**
+     * ⚠️ 2026-10-11 (аудит №7): ӨӨРИЙН олголт 0 атлаа ОЛОН БАГЦ ХАМАРСАН төлбөрийн (`rangePaysOf`,
+     *    «БАГЦ-10, 11, 13, 15» 5.09 тэрбум) гишүүн — тэр мөрийн нэр. Тэр үед `pct: null`: олголт
+     *    багцад хуваагдаагүй тул «0%» гэж ХУДАЛ хэлэхгүй («—», `TsPackList.rangeOf`-тай нэг дүрэм).
+     */
+    rangePaid?: string;
   }[];
   /** Төслийн нийт — `TsKpi`-тай ижил: гэрээний нийлбэр ба олгосон нийлбэр */
   planTotal: number;
@@ -387,6 +393,9 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       rowsByKey.set(k, arr);
     });
   });
+  /* ⚠️ 2026-10-11 (аудит №7): багц → олон багц хамарсан төлбөрийн мөрийн нэр (`rangePaid`-ийн ⚠️) */
+  const rangeOf = new Map<string, string>();
+  for (const rp of rangePaysOf(raw.pays)) for (const k of rp.members) if (!rangeOf.has(k)) rangeOf.set(k, rp.label);
   const rows = packs
     .map((p) => {
       const list = rowsByKey.get(p.key);
@@ -394,6 +403,7 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       const plan = d.planTotal.get(p.key) ?? 0;
       const given = pkgGivenTotal(list, d);
       if (plan <= 0 && given <= 0) return null;
+      const rangePaid = given === 0 ? rangeOf.get(p.key) : undefined;
       /* ⚠️ 2026-09-21: гэрээт мөрүүд нь `list`-ээс — `aliasFin` нь мөрийн `bagts`-ийг
          дарж бичсэн тул `rowsByKey` аль хэдийн холбоосын дараах түлхүүртэй. */
       /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): гэрээлсэн дүн = `gdash.contractedScope`
@@ -411,8 +421,9 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
            удирдлагын тайлангийн хуваарь. Урьд нь `plan` (гэрээ ЭСВЭЛ төсөв, гэрээгүй мөрийн
            төсөв ч орсон)-оор хуваадаг тул нэг багц хоёр дэлгэцэд өөр хувьтай гардаг байв.
            Гэрээгүй багцад хувь ЗОХИОХГҮЙ (`null` — «—»). */
-        pct: paidPctOf(given, contracted ? contract : 0),
+        pct: rangePaid ? null : paidPctOf(given, contracted ? contract : 0),
         contract, contracted,
+        ...(rangePaid ? { rangePaid } : {}),
       };
     })
     .filter((x): x is NonNullable<typeof x> => x != null)

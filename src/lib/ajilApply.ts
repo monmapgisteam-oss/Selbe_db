@@ -751,11 +751,13 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     if (lost && sc.f.fillDate) {
       const head = tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй');
       const strays = new Set<number>(written);
+      /* ⚠️ 2026-10-11 (аудит №7): олдсон мөрүүд (OID-ын дарааллаар, №/Ажилтай) — МАНАЙ жааз мөн эсэхийг доор тулгана */
+      const found: { o: number; no: string; work: string }[] = [];
       try {
         for (let offset = 0; ; ) {
           const j = await agsFetch(`${pkg.url}/query`, {
             where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
-            outFields: sc.f.oid,
+            outFields: [sc.f.oid, sc.f.no, sc.f.work].join(','),
             orderByFields: `${sc.f.oid} ASC`,
             resultRecordCount: '2000',
             resultOffset: String(offset),
@@ -764,7 +766,10 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
           const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
           for (const f of fs) {
             const o = Number(f.attributes?.[sc.f.oid]);
-            if (Number.isInteger(o) && o > maxOid0) strays.add(o);
+            if (Number.isInteger(o) && o > maxOid0) {
+              strays.add(o);
+              found.push({ o, no: String(f.attributes?.[sc.f.no] ?? '').trim(), work: String(f.attributes?.[sc.f.work] ?? '').trim() });
+            }
           }
           if (!j?.exceededTransferLimit || fs.length === 0) break;
           offset += fs.length;
@@ -774,6 +779,22 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — AGOL дээр гараар шалгаж цэвэрлэнэ үү', String((qe as Error)?.message ?? qe))}` };
       }
       if (!strays.size) return { ok: false, error: `${why} · ${head}` };
+      /* ⚠️ 2026-10-11 (аудит №7): `OID > maxOid0 AND өдөр` нь ЗӨВХӨН манай жааз гэсэн баталгаа биш — A.8б-ийн хаалт
+         (`busyGate`) гүйцэтгэлийн архивлалт/обьёмыг л хардаг тул тэр завсарт өөр бичигч (Улсын комисс · өөр ажлын
+         буулгалт) ижил өдрөөр жааз бичсэн байж болно; урьд нь түүнийг ч ХАМТ устгадаг байв. Олдсон мөрийн тоо манай
+         жаазны урттай ТЭНЦҮҮ бөгөөд №/Ажлын дараалал ЯГ таарч байж л устгана; эс бөгөөс зөвхөн баталгаажсан
+         (`written`) мөрөө устгаад гараар шалгахыг хэлнэ. */
+      const ours = found.length === frame.length && found.every((f, i) =>
+        f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
+      if (!ours) {
+        const gone0 = written.length ? await applyDeletes(pkg, written) : 0;
+        const msg = tr('Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү', String(found.length), String(maxOid0), msToDay(fillMs), String(frame.length));
+        console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg);
+        return {
+          ok: false,
+          error: `${why} · ${head} · ${msg}${written.length ? ` · ${tr('Баталгаажсан {0} мөрийн {1}-ийг буцаав', String(written.length), String(gone0))}` : ''}`,
+        };
+      }
       const gone = await applyDeletes(pkg, [...strays]);
       const left = strays.size - gone;
       return {

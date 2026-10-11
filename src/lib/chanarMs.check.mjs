@@ -535,6 +535,12 @@ const base = () => ({
   const old = canAct({ ...d, status: MS_STATUS.returned }, me, [], { superseded: true });
   assert.equal(old.edit, false, 'superseded → засахгүй'); assert.equal(old.submit, false, 'superseded → илгээхгүй');
   assert.equal(ret.newRevision, true); assert.equal(old.newRevision, false, 'superseded → шинэ хувилбар гаргахгүй');
+  /* ⚠️ 2026-10-11 (аудит №7): `contractor: false` — гүйцэтгэгч биш зохиогчид засах/илгээх/шинэ хувилбар үгүй */
+  const notCon = canAct({ ...d, status: MS_STATUS.returned }, me, [], { contractor: false });
+  assert.equal(notCon.edit, false, 'contractor:false → засахгүй'); assert.equal(notCon.submit, false, 'contractor:false → илгээхгүй');
+  assert.equal(notCon.newRevision, false, 'contractor:false → шинэ хувилбар гаргахгүй');
+  const con = canAct({ ...d, status: MS_STATUS.returned }, me, [], { contractor: true });
+  assert.equal(con.edit, true); assert.equal(con.submit, true); assert.equal(con.newRevision, true, 'contractor:true → урьдын адил');
   /* Хянагч: зөвхөн өгөөгүй үүргээр */
   const half = { ...d, reviews: { ...emptyReviews(), tuh: { who: 'x', at: T, verdict: VERDICT.approve, note: null } } };
   assert.deepEqual(canAct(half, 'rev', ['tuh', 'chanar']).review, ['chanar'], 'tuh өгсөн → зөвхөн chanar үлдэнэ');

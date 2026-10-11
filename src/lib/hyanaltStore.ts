@@ -1004,7 +1004,7 @@ async function archiveSubmission(
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc }, { sameFrame }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -1016,6 +1016,18 @@ async function archiveSubmission(
   const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
+  /*
+   * ⚠️ 2026-10-11 (аудит №7): АГУУЛГАГҮЙ ҮЛДЭГДЭЛ (`residual: true`, нүд · огноо · мөр алга, `asOf` хөндөөгүй —
+   *    хуучин `closeAfterArchive` ийм мөр бичдэг байсан) — архивт бичих зүйлгүй: `applyAdds`-аар ИЖИЛ жаазыг
+   *    дахин хуулахгүй, шууд хаана (`closeAfterArchive`). Өдөр нь `fillMs`-ээр; `archiveOid` 0 — бүртгэх
+   *    гүйцэтгэл байхгүй.
+   */
+  if (pl.residual === true && !pl.cells.length && !(pl.dates ?? []).length && !pl.adds.length && pl.asOf == null) {
+    const fin = await closeAfterArchive(subOid, staged, pl, 0, pkg.name);
+    if (fin.hold) return { ok: false, error: fin.hold };
+    const warns = [tr('Илгээлт агуулгагүй үлдэгдэл байсан тул архивт бичсэнгүй — илгээлтийг хаав.'), ...fin.warns];
+    return { ok: true, archiveOid: 0, day: msToDay(pl.fillMs), pkgKey: pkg.key, warn: warns.join(' · '), ...(fin.reopen ? { reopen: fin.reopen } : {}) };
+  }
   /*
    * ⚠️ 2026-10-09 (R2): АЛЬ ХЭДИЙН АРХИВЛАГДСАН УУ — «архивлаж байна» тэмдэг (`SubmissionPayload.archiving`)
    *    ЭНЭ агуулгынх (`at`) бол тэр үеийн MAX OID-оос хойш, тэр өдрийн жааз архивт БҮТЭН (≥ n мөр)
@@ -1236,11 +1248,12 @@ async function archiveSubmission(
    *    батлагдсан гүйцэтгэл архивт орсон мөртөө хуудсанд хэзээ ч гарч ирэхгүй
    *    алга болно. Тиймээс тийм үед ӨНӨӨДРИЙН өдрөөр бичнэ.
    */
+  /* ⚠️ 2026-10-11 (аудит №7): залруулга нь `ajilApply.fillMsFor` = max(өнөөдөр, сүүлийн жаазны өдөр). Урьд нь
+     ҮРГЭЛЖ өнөөдөр гэж бичдэг тул сүүлийн жааз ИРЭЭДҮЙН өдөртэй бол (цаг зөрсөн машинаас бичигдсэн) шинэ жааз
+     түүнээс хуучин өдөрт унаж, яг дээрх ⚠️-ийн алдаа (хуудсанд хэзээ ч гарахгүй) давтагдах байв. Нөхцөл хэвээр. */
   let fillMs = pl.fillMs;
-  const now = new Date();
   const lastDay = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
-  if (lastDay && lastDay >= msToDay(fillMs))
-    fillMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  if (lastDay && lastDay >= msToDay(fillMs)) fillMs = fillMsFor(Date.now(), loaded.snapshot);
 
   /* ── САРЫН ЗАДАРГАА — дэлгэцтэй ИЖИЛ томъёо ────────────────────────
    * ⚠️ `FillNew` төлөвлөгөөт хувийг задаргаанаас (S-муруй) харуулдаг тул
@@ -1541,6 +1554,12 @@ async function closeAfterArchive(
   };
   const incPl = pl.mode === 'inc';
   const warns: string[] = [];
+  /* ⚠️ 2026-10-11 (аудит №7): ХООСОН үлдэгдэл (нүд · огноо · нэмсэн мөр алга, `asOf` хөндөөгүй) — `sub|` мөрөнд
+     бичихгүй: агуулгагүй `residual` мөр нь дараагийн ачаалалтад давхарлагдаж (`useSub`), өнчин тойрог (`reopen`)
+     нээж, FillNew-ийн «хяналтад бүртгэгдсэнгүй» анхааруулгыг дэмий асаадаг байв. Оронд нь хаалт унасан гэдгийг
+     тэмдэглэж (`unclosedSet` — урьдын нөөц зам) анхааруулна. */
+  const emptyRest = (r: SubmissionPayload): boolean =>
+    !(r.cells ?? []).length && !(r.dates ?? []).length && !(r.adds ?? []).length && r.asOf == null;
   let cl = await closeSubmission(staged.oid, firstOid, Date.now(), true, staged.at);
   if (!cl.ok && !cl.changed) cl = await closeSubmission(staged.oid, firstOid, Date.now(), true, staged.at);
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
@@ -1561,7 +1580,11 @@ async function closeAfterArchive(
   if (!cl.ok && !cl.changed && incPl) {
     const rest = residualAfterArchive(staged.payload, pl);
     let why = rest ? '' : tr('түлхүүр тулгагдсангүй');
-    if (rest) {
+    if (rest && emptyRest(rest)) {
+      /* ⚠️ 2026-10-11 (аудит №7): хоосон үлдэгдэл бичихгүй — хаагдаагүй тэмдэг л (дээрх `emptyRest`-ийн ⚠️) */
+      why = tr('үлдэгдэл хоосон');
+      console.warn('[selbe] илгээлтийг хааж чадсангүй, үлдэгдэл хоосон — агуулгагүй residual мөр бичсэнгүй:', cl.error);
+    } else if (rest) {
       /* ⚠️ 2026-10-09: серверийн мөрийн ОДООГИЙН тэмдэг (энэ батлалтын `markArchiving`) — `dropMark` */
       const cur1 = await readSubmissionByOid(staged.oid);
       const sv = await saveRest(rest, staged.at, cur1.ok ? cur1.sub?.payload.archiving?.startedAt : undefined);
@@ -1581,12 +1604,20 @@ async function closeAfterArchive(
   if (cl.changed && incPl) {
     const cur2 = await readSubmissionByOid(staged.oid);
     let why = '';
+    /** ⚠️ 2026-10-11 (аудит №7): үлдэгдэл хоосон — бичихгүй, зөвхөн тэмдэг + анхааруулга */
+    let emptyW = false;
     if (!cur2.ok) why = cur2.error;
     else if (!cur2.sub || cur2.sub.done) why = '';
     else {
       const rest = residualAfterArchive(cur2.sub.payload, pl);
       if (!rest) why = tr('түлхүүр тулгагдсангүй');
-      else {
+      else if (emptyRest(rest)) {
+        /* ⚠️ 2026-10-11 (аудит №7): дахин илгээлт нь архивласан агуулгаас ЯЛГААГҮЙ (үлдэгдэл хоосон) — агуулгагүй
+           `residual` мөр бичихгүй, шинэ тойрог ч нээхгүй, `hold` ч биш (бүх агуулга архивт орсон); хаагдаагүй
+           тэмдэг + анхааруулга (`emptyRest`-ийн ⚠️) */
+        emptyW = true;
+        console.warn('[selbe] дахин илгээлтийн үлдэгдэл хоосон — агуулгагүй residual мөр бичсэнгүй, илгээлт нээлттэй үлдэв');
+      } else {
         /* ⚠️ `residual: true` (2026-09-25 аудит) — энэ мөрийн агуулга архивт ОРООГҮЙ гэдгийг
            FillNew (давхарлах/нэгтгэх) ба доорх шинэ тойрог мэднэ; урьд нь урсгал
            «Шилжүүлсэн» тул мөр харагдахгүй, дараагийн илгээлтэд дарагдаж алга болдог байв. */
@@ -1606,7 +1637,11 @@ async function closeAfterArchive(
       if (!(cur2.ok && cur2.sub?.payload.archiving)) unclosedSet(subOid, { at: staged.at });
       hold = tr('Архивт бичигдсэн, гэвч батлах явцад гүйцэтгэгч дахин илгээсэн тул шинэ илгээлтээс архивлагдсан нэмэлтийг хасаж хадгалж чадсангүй ({0}). Ажлыг «Шилжүүлсэн» болгосонгүй — эцсийн шатанд үлдлээ; агуулгыг дахин уншиж батална уу (буцааж болохгүй).', why);
     }
-    warns.push(why
+    if (emptyW) {
+      /* ⚠️ 2026-10-11 (аудит №7): хаагдаагүй тэмдэг (дахин батлалт архивласан хэсгийг давхар нэмэхгүй) */
+      unclosedSet(subOid, { at: staged.at });
+      warns.push(tr('Батлах явцад гүйцэтгэгч дахин илгээсэн боловч агуулга нь архивласнаас ялгаагүй — илгээлтийг хааж чадсангүй, агуулгагүй үлдэгдэл бичсэнгүй; энэ илгээлтийг ДАХИН БАТЛАХГҮЙ байна уу (нэмэлт давхар орно).'));
+    } else warns.push(why
       ? tr('Батлах явцад гүйцэтгэгч дахин илгээсэн — өмнөх агуулга архивт орлоо, гэвч шинэ илгээлтээс архивлагдсан нэмэлтийг хасч чадсангүй ({0}). ДАХИН БАТЛАХААС ӨМНӨ шалгана уу — нэмэлт давхар орох эрсдэлтэй.', why)
       : tr('Батлах явцад гүйцэтгэгч дахин илгээсэн — өмнөх агуулга архивт орлоо; архивлагдсан нэмэлтийг шинэ илгээлтээс хасч, зөвхөн шинэ нэмэлт хянагдахаар үлдлээ.'));
   } else if (cl.changed)

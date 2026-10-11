@@ -775,6 +775,10 @@ export async function releaseObyemClaim(args: { oid: number; approver: string })
  * `PARTIAL_MARK`-ийн ⚠️, `huvaariBatlah.markPlanPartial`-ийн загвар).
  * ⚠️ Түгжээ ӨӨРИЙНХ эсэхийг дуудагч (`useObyem` → `obyemApproveGuard`) сая шалгасан — энд
  *    зөвхөн `butsaasan_shaltgaan`-д тэмдэг бичнэ (`approver`/`approverAt` хөндөхгүй → түгжээ хэвээр).
+ * ⚠️ 2026-10-11 (аудит №7): ГЭХДЭЭ CAS хамгаалалттай (`huvaariBatlah.markPlanPartial`-ийн 2026-10-08-ны ижил дүрэм) —
+ *    `obyemApproveGuard` ба энэ бичилтийн ЗАВСАРТ зохиогч татах / өөр батлагч түгжих боломжтой тул тэмдэг
+ *    «татсан»/бусдын мөрөнд суудаг байв. Одоо: төлөв/түгжээг дахин уншиж (`pending` ба түгжээ = би, хугацаа
+ *    дуусаагүй), бичээд, ДАХИН уншиж тэмдэг суусныг баталгаажуулна; зөрвөл тодорхой алдаа.
  * ⚠️ FAIL-CLOSED: бичигдээгүй бол дуудагч үндсэн өгөгдөлд ЮУ Ч бичихгүй.
  */
 export async function markObyemPartial(args: { oid: number; approver: string }): Promise<{ ok: boolean; error?: string }> {
@@ -782,13 +786,30 @@ export async function markObyemPartial(args: { oid: number; approver: string }):
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  const mark = `${PARTIAL_MARK}:${me}`;
+  const fields = `${CLAIM_FIELDS},${F.reason}`;
   try {
+    const cur = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
+    if (!cur) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    const st = s(cur[F.status]);
+    if (st === OBYEM_STATUS.withdrawn) return { ok: false, error: tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.') };
+    if (st !== OBYEM_STATUS.pending) return { ok: false, error: decidedMsg(s(cur[F.approver]), st) };
+    const h = claimHolder(cur);
+    if (h !== me) {
+      return { ok: false, error: h
+        ? heldMsg(h)
+        : tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.') };
+    }
     const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: `${PARTIAL_MARK}:${me}` } }]),
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: mark } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('OBYEM_BATLAH');
+    const back = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
+    if (!back || s(back[F.status]) !== OBYEM_STATUS.pending || claimHolder(back) !== me || (s(back[F.reason]) ?? '').trim() !== mark) {
+      return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };

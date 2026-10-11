@@ -228,6 +228,15 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
   }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem, rows, pkgKeyRef, setPvBusy, setPvErr, setPvNote, setPvPend]);
 
   /**
+   * ⚠️ 2026-10-11 (аудит №7): ЭНЭ ИЛГЭЭЛТИЙН батлалтад үндсэн өгөгдөлд ЯМАР НЭГ мөр бичигдсэн (эсвэл хариу алдагдсан)
+   *    уу — батлалт дундаа унаад дахин дарахад `written === 0`/архивлалтын татгалзлын зам хагас бичилтийн тэмдгийг
+   *    (`markObyemPartial`) АРИЛГАДАГ байв: өмнөх оролдлогын мөрүүд хамгаалалтгүй үлдэж зохиогч татаж, өөр батлагч
+   *    буцааж чаддаг. Зөвхөн `decideObyem` амжилттай болоход тэглэгдэнэ; илгээлт солигдвол (`wroteForRef`) хамаарахгүй.
+   */
+  const wroteSomeRef = useRef(false);
+  const wroteForRef = useRef<number | null>(null);
+
+  /**
    * ШИЙДВЭР — батлах эсвэл буцаах.
    *
    * ⚠️ ДАРААЛАЛ: батлахад ЭХЛЭЭД үндсэн өгөгдөлд бичиж, ЗӨВХӨН амжилттай
@@ -251,6 +260,9 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     let wroteMain = false;
     /** ⚠️ 2026-10-06: түгжсэн атлаа үндсэн өгөгдөлд НЭГ Ч мөр бичээгүй — `finally`-д түгжээг тайлна */
     let holdClaim = false;
+    /* ⚠️ 2026-10-11 (аудит №7): өөр илгээлт — өмнөх илгээлтийн «бичсэн» санамж хамаарахгүй */
+    if (wroteSomeRef.current && wroteForRef.current !== pvSub.oid) wroteSomeRef.current = false;
+    wroteForRef.current = pvSub.oid;
     /** Бичигдсэний ДАРАА шийдвэр унасан үеийн тайлбар — юу болсон, яах вэ */
     const afterWrite = (why: string) => tr('Утгууд үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн, гэхдээ илгээлтийг «Батлагдсан» болгож чадсангүй ({0}). Хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу — ижил утга дахин бичигдэх тул аюулгүй. Давтан унавал админд мэдэгдэнэ үү.', why);
     /**
@@ -424,7 +436,10 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            тэмдгийг арилгаж түгжээг тайлна (`holdClaim` → `finally`). */
         const ab1 = await archBusy();
         if (ab1) {
-          await clearObyemPartial(pvSub.oid);
+          /* ⚠️ 2026-10-11 (аудит №7): ӨМНӨХ оролдлого энэ илгээлтээс үндсэн өгөгдөлд мөр бичсэн (эсвэл хариу нь
+             алдагдсан — `wroteSomeRef`) бол тэмдгийг АРИЛГАХГҮЙ: тэр хагас бичилт хамгаалалтгүй үлдэж, зохиогч
+             татаж/өөр батлагч буцааж чадах байв. Тэмдэг зөвхөн `decideObyem` амжилттай болоход арилна. */
+          if (!wroteSomeRef.current) await clearObyemPartial(pvSub.oid);
           pvErrHere(ab1);
           return;
         }
@@ -434,10 +449,13 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`isLostWrite`) бол `written === 0` нь «юу ч бичигдээгүй» гэсэн
              үг БИШ — эхний хүсэлт серверт хүрч бичигдсэн байж болно. Тэр үед тэмдэг ба түгжээ ХОЁУЛАА
              үлдэнэ (`clearObyemPartial` · `releaseObyemClaim` дуудахгүй); зөвхөн тодорхой татгалзалд арилгана. */
-          if ((e as { written?: number })?.written === 0 && !isLostWrite(e)) await clearObyemPartial(pvSub.oid);
+          /* ⚠️ 2026-10-11 (аудит №7): нэг ч багц бичигдсэн эсвэл хариу алдагдсан бол энэ батлалтын турш санана (`wroteSomeRef`) */
+          if (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e)) wroteSomeRef.current = true;
+          if ((e as { written?: number })?.written === 0 && !isLostWrite(e) && !wroteSomeRef.current) await clearObyemPartial(pvSub.oid);
           else { holdClaim = false; wroteMain = true; }
           throw e;
         }
+        wroteSomeRef.current = true;
         holdClaim = false;
         wroteMain = true;
         pvSkipped = skippedN;
@@ -478,6 +496,8 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       });
       /* ⚠️ 2026-10-09: нөгөө таб (ижил батлагч) түрүүлж баталсан бол амжилт (`doneByMe`-ийн ⚠️) */
       const sameMe = !r.ok && (await doneByMe());
+      /* ⚠️ 2026-10-11 (аудит №7): шийдвэр амжилттай (тэмдэг серверт арилсан) — дараагийн батлалтад тэмдэг арилгахыг зөвшөөрнө */
+      if (r.ok || sameMe) wroteSomeRef.current = false;
       if (!here()) return;
       /* ⚠️ 2026-10-04: бичээд → тэмдэглэх дараалал (дээрх ⚠️) хэвээр; харин тэмдэглэл унавал
          «хадгалагдсангүй» биш — утга АЛЬ ХЭДИЙН бичигдсэнийг ба яах ёстойг хэлнэ. */

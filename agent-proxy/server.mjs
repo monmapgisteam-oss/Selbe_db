@@ -46,6 +46,9 @@ const BACKEND =
  *    харагдаад дарахад унадаг байдлаас сэргийлнэ.
  */
 let ready = { ok: BACKEND !== "claude-code", reason: "шалгаж байна" };
+/* ⚠️ 2026-10-11 (аудит №7): 401-ээр `ready` унасан үед дараагийн өөрийгөө-шалгалтыг БОГИНО (30 с) давтамжаар
+   дахин товлоно — урьд нь 10 минутын таймер хэвээр үлдэж, хэрэглэгч нэвтэрсний дараа ч `/health` 503 байв. */
+let recheckSoon = () => {};
 /* ⚠️ 2026-09-28: ДАСАН ЗОХИЦСОН давтамж — урьд ямагт 10 минут байв. Реле нь PC
    АЧААЛАХАД (нэвтрэхийг хүлээлгүй) асдаг болсон тул эхний шалгалт сүлжээ/
    Tailscale бэлэн болоогүй үед явж уналаа гэхэд дараагийнх нь 10 минутын дараа
@@ -66,6 +69,11 @@ if (BACKEND === "claude-code") {
     }
     if (timer) clearTimeout(timer);
     timer = setTimeout(check, ready.ok ? READY_MS : RETRY_MS);
+    timer.unref();
+  };
+  recheckSoon = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(check, RETRY_MS);
     timer.unref();
   };
   check();
@@ -576,6 +584,7 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
          гэж худал хэлдэг байв → 502 `upstream_auth` (`rateLimit.UPSTREAM_AUTH`); шалтгаан нь логт. */
       if (e.status === 401) {
         ready = { ok: false, reason: e.message };
+        recheckSoon(); // ⚠️ 2026-10-11 (аудит №7): 10 минутын таймерыг хүлээлгүй 30 с-д дахин шалгана
         json(res, 502, UPSTREAM_AUTH);
         return;
       }

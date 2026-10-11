@@ -56,7 +56,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import { useSyncRef } from '@/lib/useSyncRef';
-import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID } from '@/lib/services';
+import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
 import { blank, ha, mnt, num, text } from '@/lib/format';
 import {
   AIR_LEVELS, AQI_BAND, EXPOSURE, FLOOD_LEVELS, GRADE_COLOR, GRADE_LABEL, HAZARDS, KIND_LABEL,
@@ -1205,6 +1205,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       if (!l.visible || !LAYER_BY_ID[l.id]) return;
       /* ⚠️ 2026-09-30: өмнөх шинжилгээ ӨӨРӨӨ асаасныг хэрэглэгчийн сонголт гэж үзэхгүй (`autoOn`) */
       if (autoOn.current.has(l.id)) return;
+      /* ⚠️ 2026-10-11 (аудит №7): лавлагааны хил (`REFERENCE_IDS` — `khil1`, `ALWAYS_ON_IDS`-ээр ҮРГЭЛЖ ил)
+         идэвхтэй давхарга БИШ: урьд нь энд үргэлж орж (а) `out` хэзээ ч хоосрохгүй тул `src:'catalog'`/
+         `'base'` салаа огт ажиллахгүй, (б) 159 га-гийн хилийн полигон «өртсөн талбай»-д бүхэлдээ
+         хатуу хучилт мэт өртөглөгдөж байв. `compareAll` мөн энэ `ids`-ийг хэрэглэдэг тул хоёуланд нь нэг засвар. */
+      if ((REFERENCE_IDS as readonly string[]).includes(l.id)) return;
       // Зөвхөн объектын давхарга — ортофото/меш/BIM-ээс объект тоолох боломжгүй
       if (typeof (l as { queryFeatures?: unknown }).queryFeatures !== 'function') return;
       out.push(l.id);
@@ -1219,7 +1224,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
      * хоёрыг НЭГ «fallback» гэж нийлүүлж болохгүй — тэдгээр нь өөр өөр
      * олонлог тул самбарт өөр өөр өгүүлбэр бичигдэнэ.
      */
-    const picked = visible.filter((id) => !autoOn.current.has(id));
+    const picked = visible.filter((id) => !autoOn.current.has(id) && !(REFERENCE_IDS as readonly string[]).includes(id));
     return picked.length
       ? { ids: picked, src: 'catalog' }
       : { ids: ASSESS_IDS, src: 'base' };
@@ -1815,7 +1820,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
   /* ── Хохирлын нэгтгэл ── */
   const sum = useMemo(() => {
-    const rows = result?.rows ?? [];
+    /* ⚠️ 2026-10-11 (аудит №7): лавлагааны хил (`REFERENCE_IDS`) нийлбэрт орохгүй — `activeIds` түүнийг
+       хасдаг болсон ч хуучин/кэшлэгдсэн үр дүнд үлдсэн байж болзошгүй тул энд ч хамгаална. */
+    const rows = (result?.rows ?? []).filter((r) => !(REFERENCE_IDS as readonly string[]).includes(r.layerId));
     return {
       n: rows.reduce((s, r) => s + r.n, 0),
       area: rows.reduce((s, r) => s + r.area, 0),
