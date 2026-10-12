@@ -236,5 +236,7 @@ console.log('✅ формат · файлын нэр');
   }
   assert.ok(FN.includes("tr('Excel татах')"), 'товчны шошго');
   assert.ok(/disabled=\{!sc \|\| rows\.length === 0 \|\| calc\.length === 0 \|\| busy\}/.test(FN), 'ачаалаагүй/хоосон үед товч идэвхгүй биш');
+  /* ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): товч ЗӨВХӨН super админд (`unrestricted`) — бусдад огт зурагдахгүй */
+  assert.ok(/\{unrestricted && \(\s*<button[\s\S]{0,400}tr\('Excel татах'\)/.test(FN), 'Excel товч `unrestricted`-ээр хаагдаагүй — super-ээс бусдад харагдана');
 }
 console.log('✅ FillNew — Excel товч · одоогийн харагдац дамжина · идэвхгүй нөхцөл');
