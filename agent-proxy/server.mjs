@@ -15,6 +15,10 @@
  * Ажиллуулах:  cd agent-proxy && npm install && npm start
  */
 
+/* ⚠️ 2026-10-12 (дарааллын аудит): цагийн бүс — өдрийн токены төсөв «Улаанбаатарын өдөр»-өөр
+   тоологдох ёстой; UTC хост дээр шөнийн 08:00 хүртэл өмнөх өдөр байв. `||=` — ил өгсөн TZ давамгайлна. */
+process.env.TZ ||= "Asia/Ulaanbaatar";
+
 import { createServer } from "node:http";
 import { timingSafeEqual, createHash, createHmac } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";

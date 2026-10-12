@@ -39,7 +39,7 @@ import { t as tr } from '@/lib/i18nCore';
    Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
    хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
-import { currentUser, requireCap } from './who';
+import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
 
@@ -2134,7 +2134,7 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
  * ⚠️ ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ — зөвхөн урсгалын мөр `withdrawn` болно.
  * ⚠️ ЗӨВХӨН ЗОХИОГЧ: жинхэнэ дүрэм нь СЕРВЕРИЙН `F.author` — дуудагчийн
  *    өгсөн нэрэнд найдахгүй (`decidePlan`-ийн 2026-09-15-ны сургамж).
- *    Мөн `requireCap('plan')` — хуваарь илгээх эрхгүй хүн татаж ч чадахгүй.
+ *    ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('plan')` ХАСАГДСАН — татах нь эрх биш эзэмшил (доорх ⚠️).
  * ⚠️ Зөвхөн `pending` мөрийг татна — шийдвэрлэгдсэнийг татах нь батлагчийн
  *    шийдвэрийг дарах болно.
  * ⚠️ `approver`-т ЮУ Ч бичихгүй, `approverAt`-д татсан агшныг: түүх
@@ -2146,7 +2146,10 @@ export async function withdrawPlan(args: {
   me: string;
 }): Promise<{ ok: boolean; error?: string }> {
   /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decidePlan`-тай ижил шалтгаан (тест барина). */
-  requireCap('plan');
+  /* ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('plan')` ХАСАГДСАН — өөрийн илгээлтээ татах нь ЭРХ биш ЭЗЭМШИЛ.
+     Урьд нь зохиогчийн «хуваарь» эрхийг хассан (үүрэг хасагдсан, шат солигдсон) бол түүний хүлээгдэж буй илгээлт
+     хэн ч татаж чадахгүй гацдаг байв (батлагч буцаатал багц `locked`). Эзэмшлийн шалгалт хэвээр ХАТУУ: татагч =
+     НЭВТЭРСЭН хүн (доор) ба СЕРВЕРИЙН `F.author` = тэр хүн. Эрхгүй хүн БУСДЫН илгээлтийг урьдын адил татаж чадахгүй. */
   const me = args.me.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   if (typeof window !== 'undefined' && AUTH.appId) {

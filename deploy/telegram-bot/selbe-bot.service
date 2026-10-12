@@ -24,6 +24,8 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/opt/selbe-db
 EnvironmentFile=/opt/selbe-db/deploy/telegram-bot/.env
+# ⚠️ 2026-10-12: цагийн бүс — UTC сервер дээр «өнөөдөр»/огноо порталаас 8 цагаар зөрдөг байв
+Environment=TZ=Asia/Ulaanbaatar
 ExecStart=/usr/bin/npm run bot
 Restart=always
 RestartSec=5

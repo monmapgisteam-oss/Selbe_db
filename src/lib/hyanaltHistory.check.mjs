@@ -84,7 +84,8 @@ assert.deepEqual(parseHistory('{"a":1}'), []);
   assert.ok(H.includes('export async function hasHistoryField()'), 'hyanalt: талбарыг илрүүлэх функц алга');
   const S = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(/if \(has !== true\) return \{\};/.test(S), 'historyPatch: талбаргүй/мэдэхгүй үед бичихгүй байх ёстой');
-  assert.equal((S.match(/historyPatch\(/g) ?? []).length, 4, 'apply · recheck ok · recheck back — гурван газар (+ тодорхойлолт)');
+  /* ⚠️ 2026-10-12 (дарааллын аудит, №1): + `retryPendingRegistrations` — гацсан мөрийн төлөв нөхөхөд лог нэмнэ */
+  assert.equal((S.match(/historyPatch\(/g) ?? []).length, 5, 'apply · recheck ok · recheck back · retryPendingRegistrations — дөрвөн газар (+ тодорхойлолт)');
   assert.ok(S.includes('F.okCells, F.history,'), 'movedSince: логийг тулгахгүй байна — завсарт нэмсэн лог дарагдана');
   const G = fs.readFileSync('src/modules/Guitsetgel.tsx', 'utf8');
   assert.ok(G.includes('parseHistory(r[F.history])') && G.includes('attachHistory(out, log, vis)'), 'Guitsetgel: түүх логийг харуулахгүй байна');

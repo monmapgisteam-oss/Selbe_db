@@ -109,8 +109,56 @@ export function invalidate(...keys: DataKey[]): void {
     if (s.reads.some((k) => want.has(k))) { s.drop(); hit += 1; }
   }
   if (!hit) return;
+  /* ⚠️ 2026-10-12 (дарааллын аудит): бүлгийн дотор — мэдэгдлийг хойшлуулна (`batchInvalidate`-ийн ⚠️) */
+  if (batchDepth > 0) { batchHit = true; return; }
   version += 1;
   for (const fn of subs) fn();
+}
+
+/**
+ * ⚠️ 2026-10-12 (дарааллын аудит): ХҮЧИНГҮЙ БОЛГОЛТЫГ БҮЛЭГЛЭХ — `fn` дотор дуудагдсан `invalidate`-уудын
+ *    ЗАХИАЛАГЧИЙН МЭДЭГДЛИЙГ (`version` +1 · `subs`) бүлэг дуустал хойшлуулж, төгсгөлд НЭГ удаа тараана.
+ *    ЯАГААД: эцсийн батлалтын гинж (`hyanaltStore.apply`: архив → төлөв → нэгтгэл → IPC → markRegistered)
+ *    `HYANALT` · `BAGTS_SHEET` · `BAGTS_NEGTGEL` · `HO_IPC` (×2–3) гэж 5–7 удаа хүчингүй болгодог тул
+ *    `useAsync`-ийн бүх дуудагч тэр бүрд дахин зурагдаж, дахин татаж байв (нэг батлалтад дашбоардын
+ *    картууд 5–7 удаа). Одоо нэг удаа.
+ * ⚠️ СЛОТЫН ХАЯЛТ (`drop`) БА БИЧИЛТИЙН ҮЕ (`writes`) ХОЙШЛОХГҮЙ — ШУУД. Гинжний дотор дараагийн алхам
+ *    өмнөх бичилтийн хүснэгтээс УНШДАГ (`registerApproved` → `summaryOf` архивын шинэ жаазыг;
+ *    `syncIpcFromFill` → HO-гийн мөрүүдийг): кэшийг хойшлуулж хаявал тэр уншилт ХУУЧИН амлалтыг авч,
+ *    `query.shared` нь бичилтээс өмнө эхэлсэн уншилтыг хуваалцана. Тиймээс зөвхөн React-ийн мэдэгдэл
+ *    нэгтгэгдэнэ — өгөгдлийн зөв байдал бүлэггүй үеийнхтэй ЯГ ижил.
+ * ⚠️ ҮҮРЛЭСЭН бүлэг дэмжинэ (`batchDepth`); хамгийн гадна талынх дуусахад л тараана. `fn` шидсэн / амлалт
+ *    унасан ч `finally`-д тараана — эс бөгөөс хаягдсан кэш мэдэгдэлгүй үлдэж дэлгэц хуучин тоогоо барина.
+ * ⚠️ `fn` амлалт буцаавал бүлэг амлалт шийдэгдтэл үргэлжилнэ; энэ хооронд ӨӨР газраас дуудагдсан
+ *    `invalidate` ч мөн хойшлогдоно (модулийн нэг тоолуур) — хэдэн секундын саатал, алдагдахгүй.
+ */
+let batchDepth = 0;
+let batchHit = false;
+function endBatch(): void {
+  batchDepth -= 1;
+  if (batchDepth > 0 || !batchHit) return;
+  batchHit = false;
+  version += 1;
+  for (const fn of subs) fn();
+}
+export function batchInvalidate<T>(fn: () => T): T {
+  batchDepth += 1;
+  let res: T;
+  try {
+    res = fn();
+  } catch (e) {
+    endBatch();
+    throw e;
+  }
+  const thenable = res as unknown as { then?: unknown } | null;
+  if (thenable && typeof thenable.then === 'function') {
+    return (res as unknown as Promise<unknown>).then(
+      (v) => { endBatch(); return v; },
+      (e: unknown) => { endBatch(); throw e; },
+    ) as unknown as T;
+  }
+  endBatch();
+  return res;
 }
 
 /**
@@ -131,6 +179,8 @@ export function invalidateAll(): void {
   writes += 1;
   for (const s of SLOTS) s.drop();
   refreshedAt = Date.now();
+  /* ⚠️ 2026-10-12 (дарааллын аудит): бүлгийн дотор — мэдэгдлийг хойшлуулна (`batchInvalidate`-ийн ⚠️) */
+  if (batchDepth > 0) { batchHit = true; return; }
   version += 1;
   for (const fn of subs) fn();
 }

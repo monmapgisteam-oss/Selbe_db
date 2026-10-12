@@ -2110,7 +2110,9 @@ export function canAct(
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): NCR-ийн хариуг ГҮЙЦЭТГЭГЧ (`extra.contractor`)
      хүлээн авна, нээгч биш — `ackRep`-ийн ⚠️. Урьд нь `mine` (NCR-д = нээгч захиалагч) байв. */
   const ackBy = kind === 'NCR' ? !!u && extra.contractor === true && !mine : mine;
-  const ack = ackBy && !!doc.rep && !doc.rep.receivedAt
+  /* ⚠️ 2026-10-12 (дарааллын аудит): `superseded` (шинэ хувилбар бий) бол хариуг ХҮЛЭЭН АВАХГҮЙ — хуучин хувилбарын
+     REP-ийг хүлээн авах нь утгагүй (`newRevision`/`editable`-ийн ижил дүрэм); «Өөрчлөлтийн түүх»-ээс нээхэд товч гардаг байв. */
+  const ack = ackBy && !!doc.rep && !doc.rep.receivedAt && extra.superseded !== true
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
   /* ⚠️ 2026-09-25: `closeAn`-ийн ижил дүрэм — Чанарын хэлтэс (chanar/cheng), зохиогч биш (NCR-ээс бусад) */
   const closeAnOk = !!u && doc.status === MS_STATUS.approved && doc.rep?.verdict === 'AN'

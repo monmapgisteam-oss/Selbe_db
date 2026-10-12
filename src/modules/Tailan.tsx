@@ -46,10 +46,11 @@ import { Icon } from '@/components/Icon';
 import { num, pct, dateTime, mnt } from '@/lib/format';
 import { invalidateAll } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
-import { ailTotal } from '@/lib/execData';
+import { ailTotal, loadBagtsRows } from '@/lib/execData';
+import { useAsync } from '@/lib/useAsync';
 import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } from '@/lib/emailReport';
 import {
-  useReportExtra, buildFindings, type ReportExtra,
+  useReportExtra, buildFindings, loadReportExtra, type ReportExtra,
   /* ⚠️ 2026-09-04: эдгээр нь ХҮЛЭЭЛТИЙН ЯВЦЫГ хэмжихэд л хэрэглэгдэнэ — тоог нь
      хаана ч ХАРУУЛАХГҮЙ (доорх `ReportWaiting`-ийн тайлбарыг үз). Бүгд
      `cached()`-ээр ороосон тул энд дуудахад ШИНЭ HTTP хүсэлт ҮҮСЭХГҮЙ:
@@ -314,6 +315,13 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   );
 }
 
+/**
+ * ⚠️ 2026-10-12 (дарааллын аудит): PDF/мэйлийн ХОС өгөгдөл — нэг амлалт, нэг агшин
+ * (`TailanFull`-ийн `pair`-ийн тайлбар). Хоёулаа `cached()` ачаалагч тул энд дуудахад
+ * `useBagtsTable`/`useReportExtra`-тай НЭГ хүсэлт хуваалцана.
+ */
+const loadReportPair = (): Promise<[BagtsRow[], ReportExtra]> => Promise.all([loadBagtsRows(), loadReportExtra()]);
+
 function TailanFull() {
   /** Огноо — ЗӨВХӨН клиент дээр (сервертэй зөрж hydration эвдэхээс сэргийлнэ). */
   const [date, setDate] = useState('');
@@ -325,8 +333,20 @@ function TailanFull() {
 
   const bagts = useBagtsTable();
   const ex = useReportExtra();
-  const rows = bagts.state === 'ready' ? bagts.data : null;
-  const extra: ReportExtra | null = ex.state === 'ready' ? ex.data : null;
+  /*
+   * ⚠️ 2026-10-12 (дарааллын аудит): `rows` ба `extra` нь урьд нь ХОЁР тусдаа `useAsync`-аас
+   * ирдэг байв. Автобусын хувилбар өсөхөд (нийтлэх · батлах) хоёулаа дахин татдаг ч
+   * stale-while-revalidate тул НЭГ нь шинэ, нөгөө нь хуучин агшинтай завсар үүсч, тэр мөчид
+   * «PDF татах» дарвал нэг тайланд хоёр агшны тоо ордог байв. `useAsync` нь үр дүндээ
+   * автобусын epoch-ыг хадгалдаггүй (`forDeps` нь зөвхөн deps-ийн агшин) тул хоёр хукийг
+   * гаднаас тулгах боломжгүй — оронд нь PDF/мэйлд явах хос НЭГ эффектээр (`loadReportPair`)
+   * татагдана: хоёулаа `cached()` тул сүлжээний хүсэлт нэмэгдэхгүй, харин хос нь ҮРГЭЛЖ нэг
+   * автобусын хувилбараас. `bagts`/`ex` хукууд зөвхөн алхмын явц (`steps`) ба алдааны
+   * нэрлэлтэд үлдэнэ.
+   */
+  const pair = useAsync(loadReportPair, []);
+  const rows = pair.state === 'ready' ? pair.data[0] : null;
+  const extra: ReportExtra | null = pair.state === 'ready' ? pair.data[1] : null;
 
   /** Мэйл үүсгэх явц — pdfmake динамик ачаалалт хормын зуур авна */
   const [busy, setBusy] = useState(false);
@@ -412,8 +432,9 @@ function TailanFull() {
   /* ⚠️ Алдаа гарсан бол хүлээлтийн араг ясыг ХАРУУЛАХГҮЙ — `Data` нь нэрлэсэн
      алдаа ба «Дахин оролдох» товчийг гаргах ёстой. Эс бөгөөс унасан эх
      сурвалж «ачаалж байна» мэт мөнхөд харагдана. */
-  const failed = bagts.state === 'error' || ex.state === 'error';
-  const waiting = !failed && (bagts.state === 'loading' || ex.state === 'loading');
+  const failed = bagts.state === 'error' || ex.state === 'error' || pair.state === 'error';
+  /* ⚠️ 2026-10-12: `pair` ч хүлээлтэд орно — хоёр эх бэлэн ч хос нэг зурагдалт хоцорч болно */
+  const waiting = !failed && (bagts.state === 'loading' || ex.state === 'loading' || pair.state === 'loading');
   const doneMap = useSourceProgress(waiting);
   const secs = useElapsed(waiting);
   const steps = [

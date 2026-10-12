@@ -31,6 +31,8 @@ import { t as tr } from '@/lib/i18nCore';
    доорх `catch`-д орно (урьдын адил кэшлэхгүй, `''` буцаана). */
 import { arcgisPost } from '@/lib/authToken';
 import { addRows, addedOid, deleteRow, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Row, type Status } from './hyanalt';
+/* ⚠️ 2026-10-12 (дарааллын аудит): компанийн илгээсэн огноо серверийн цагаар (`serverClock`-ийн ⚠️) */
+import { serverNow, syncServerClock } from './serverClock';
 /* ⚠️ 2026-10-09 (аудит №2): хяналтын хориг хянагчийн дараалалтай (`Guitsetgel`) ИЖИЛ бүлэглэлтээр */
 import { groupWorks } from './hyanaltGroup';
 
@@ -436,6 +438,8 @@ export async function submitForReview(
   sheet = '',
 ): Promise<{ ok: true; id: string; reused?: true } | { ok: false; error: string }> {
   try {
+    /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагийг синк (кэштэй, унавал `Date.now()`) — доорх `companySent` */
+    await syncServerClock();
     /* ⚠️ 2026-10-06 (аудит #2): ИЛГЭЭХ ЭРХ lib-д — `company` шатанд энэ багцад томилогдсон
        (эсвэл дев/хатуу super). Газрын дарга ч болно: `hyanaltStore.apply` үлдэгдэл нэмэлтийн
        шинэ тойргийг өөрийн нэрээр нээдэг (`companyDeny`-ийн ⚠️). Урьд нь хэн ч дуудаж болдог байв. */
@@ -537,7 +541,8 @@ export async function submitForReview(
       [F.bagts]: bagts,
       [F.ajil]: ajil,
       [F.company]: company,
-      [F.companySent]: Date.now(),
+      /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар — хянагчийн `subAt ≤ okWrittenAt` жишилт өөр хөтчид явдаг */
+      [F.companySent]: serverNow(),
       [F.engineer]: '', [F.engineerDecision]: '', [F.engineerReason]: '',
       [F.engineerReturned]: null, [F.engineerSent]: null,
       [F.manager]: '', [F.managerDecision]: '', [F.managerReason]: '',

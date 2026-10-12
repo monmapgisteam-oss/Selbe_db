@@ -233,7 +233,14 @@ console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараал�
   const WHO = await import('@/lib/who.ts');
   CAPS._syncRemoteCaps([]);
   WHO.setCurrentUser('zohiogch_a');
-  await assert.rejects(withdrawPlan({ oid: 1, me: 'zohiogch_a' }), /эрхгүй/, 'эрхгүй хүн татаж чадав');
+  /* ⚠️ 2026-10-12 (дарааллын аудит): ЭРХГҮЙ ч ШИДЭХГҮЙ — татах нь эзэмшил (`withdrawPlan`-ийн ⚠️); эрх хасагдсан
+     зохиогч өөрийн илгээлтээ татна. Нэвтэрсэн нэр ба серверийн зохиогчийн шалгалт хэвээр (доор). */
+  r = await withdrawPlan({ oid: 1, me: 'zohiogch_a' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /хүснэгт олдсонгүй/, `эрхгүй зохиогч: эрхийн шалтгаанаар унав — ${r.error}`);
+  r = await withdrawPlan({ oid: 1, me: 'batlagch_b' });
+  assert.equal(r.ok, false, 'эрхгүй үед ч өөр нэрээр татах өнгөрөв');
+  assert.match(r.error, /илгээсэн хүн өөрөө/, `буруу шалтгаан: ${r.error}`);
   CAPS._syncRemoteCaps([{ user: 'zohiogch_a', caps: ['plan'] }]);
   r = await withdrawPlan({ oid: 1, me: '   ' });
   assert.equal(r.ok, false, 'нэргүй татах өнгөрөв');

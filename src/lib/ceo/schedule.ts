@@ -71,7 +71,7 @@
  *    шууд дамжуулна.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { cached } from '@/lib/live';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { num, text, monthKey } from '@/lib/format';
 import { CASHFLOW_NEW, pkgKeyOf } from '@/lib/services';
 import { FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
@@ -496,5 +496,8 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `HUVAARI_OBYEM` — хуваарийн муруй (`loadFinData` дотор)
-     сарын обьёмын батлалтаар өөрчлөгдөнө. Муруй унасан (`failedSources`) картыг КЭШЛЭХГҮЙ (`kpiComplete`). */
-}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'HUVAARI_OBYEM'], kpiComplete);
+     сарын обьёмын батлалтаар өөрчлөгдөнө. Муруй унасан (`failedSources`) картыг КЭШЛЭХГҮЙ (`kpiComplete`).
+     ⚠️ 2026-10-12 (дарааллын аудит): 60 с → `SESSION_TTL_MS` (5 мин). 60 с нь ЗӨВХӨН санхүүгийн
+     (`HO_IPC`/`CASHFLOW`) ачаалагчдын «амьд» хугацаа (`docs/system/03 §3.5`); хуваарийн карт
+     санхүүгийн биш — эх нь `loadFinData` (60 с) тул энэ карт түүнээс хамгийн ихдээ 5 мин хоцорч болно. */
+}, SESSION_TTL_MS, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'HUVAARI_OBYEM'], kpiComplete);

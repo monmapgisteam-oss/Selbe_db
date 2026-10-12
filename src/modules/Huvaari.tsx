@@ -65,6 +65,8 @@ import { loadPlanNews, markPlanReturnedSeen, type PlanNews } from '@/components/
 import { isLostWrite } from '@/lib/lostWrite';
 /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж байгаа эсэх — `save`-ийн бичихийн өмнөх хаалт (fail-closed) */
 import { archivingBusy } from '@/lib/submission';
+/* ⚠️ 2026-10-12 (дарааллын аудит): нэмэлт ажлын буулгалт явж байхад бичихгүй (`archGate`) */
+import { ajilApplyBusyFor } from '@/lib/ajilBatlah';
 import { setNavDirty } from '@/lib/navGuard';
 import { hdKey, kA, kH, kM, kN, kR, kS, parseKey } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
@@ -3185,6 +3187,21 @@ export function Huvaari({
         if (arch) {
           setErr(tr('{0} энэ багцын гүйцэтгэлийг архивлаж байна ({1}-аас) — дуустал хуваарь бичихгүй. Эх хуудсанд юу ч бичигдсэнгүй; хэдэн минутын дараа дахин оролдоно уу.',
             arch.who || '—', new Date(arch.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })));
+          return false;
+        }
+        /* ⚠️ 2026-10-12 (дарааллын аудит): НЭМЭЛТ АЖЛЫН БУУЛГАЛТ ЯВЖ БАЙХАД ч бичихгүй (`ajilBatlah.ajilApplyBusyFor` —
+           `materializeInner`-ийн түгжээ). Буулгалт хуудсыг БҮТЭН шинэ жаазаар солидог тул архивлалттай ижил: энд
+           татсан агшин хуучин жааз болж, огноо булагдсан хуулбарт суух байв. `ajilApply.busyGate` нь хуваарийн
+           батлагчийн түгжээг хардаг (нөгөө чиглэл) — одоо хоёр чиглэлд тэгш. Уншилт унавал ТАТГАЛЗАНА (fail-closed). */
+        let aj: { who: string } | null;
+        try {
+          aj = await ajilApplyBusyFor(pkg.key);
+        } catch (e) {
+          setErr(tr('Нэмэлт ажлын буулгалтын төлөв шалгагдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', friendlyError(e)));
+          return false;
+        }
+        if (aj) {
+          setErr(tr('{0} энэ багцад нэмэлт ажлыг яг одоо хуудсанд буулгаж байна — дуусахыг хүлээнэ үү. Юу ч бичсэнгүй.', aj.who || '—'));
           return false;
         }
         return true;

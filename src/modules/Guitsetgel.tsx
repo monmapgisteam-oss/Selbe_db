@@ -35,7 +35,7 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, dismissApplyWarn, reasonMax, REASON_MAX, recheck, resetRegSweep, retryPendingRegistrations, setDecisionErr, useApplyWarns, useDecisionErr, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, dismissApplyWarn, reasonMax, REASON_MAX, recheck, resetRegSweep, retryPendingRegistrations, setDecisionErr, UPPER_SWEEP, useApplyWarns, useDecisionErr, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
@@ -1055,19 +1055,36 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    *    «Дахин шалгалтад ч ХООСНООС … ХУУЧИН агуулгын зөвшөөрөл» ⚠️-тэй зөрчилтэй. Одоо
    *    агуулга зөвшөөрөл бичигдсэнээс хойш шинэчлэгдсэн (эсвэл мэдэхгүй) бол ХООСНООС.
    */
+  /* ⚠️ 2026-10-12 (дарааллын аудит, №4): `fresh` ч буцаана — доорх `recheckOkArg` «дээд шатны жагсаалтыг хэвээр
+     үлдээх үү» гэдгийг үүгээр шийднэ */
   const seedRes = useMemo(() => {
-    if (!recheckSeed || changes == null) return { keys: new Set<string>(), unknown: 0 };
+    if (!recheckSeed || changes == null) return { keys: new Set<string>(), unknown: 0, fresh: false };
     /* ⚠️ 2026-10-12 (R10): агуулга ачаалагдсан (`changes != null`) атлаа `subAt` алга = ӨӨРЧЛӨГДӨХГҮЙ зам (архивласан
        `done|` эсвэл хуучин legacy агшин — `hyanaltDetail.loadArchived`): тэр агуулга зөвшөөрөл бичигдсэнээс хойш
        шинэчлэгдэх боломжгүй тул «шинэ» гэж үзнэ. Урьд нь `subAt == null` → үргэлж хоосноос эхэлдэг байв. */
     const fresh = subAt == null || (Number.isFinite(okWrittenAt) && subAt <= okWrittenAt);
-    if (!fresh) return { keys: new Set<string>(), unknown: 0 };
+    if (!fresh) return { keys: new Set<string>(), unknown: 0, fresh: false };
     const trusted = remapped === false && fresh;
-    return resolveOk(parseOkCells(curOkRaw), okRows, trusted);
+    return { ...resolveOk(parseOkCells(curOkRaw), okRows, trusted), fresh: true };
   }, [recheckSeed, curOkRaw, changes, okRows, remapped, subAt, okWrittenAt]);
   const seed = seedRes.keys;
   const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(null);
   const okKeys = okOv && okOv.key === seedKey ? okOv.keys : seed;
+  /**
+   * ⚠️ 2026-10-12 (дарааллын аудит, №4): ДООШ БУЦААХ (`recheck('back')`) үед `Zovshoorson_nud`-д юу дамжуулах вэ.
+   *    Дээд шатны буцаалтаар бичигдсэн жагсаалт нь АНХДАГЧ (seed): дахин шалгагч нэг ч нүд хөндөөгүй
+   *    (`okOv` алга / хуучирсан түлхүүр) бөгөөд агуулга зөвшөөрөл бичигдсэнээс хойш шинэчлэгдээгүй (`fresh`)
+   *    бол `undefined` — талбар ХӨНДӨГДӨХГҮЙ, дээд шатны жагсаалт гүйцэтгэгчид хэвээр очно (урьд нь `seed`
+   *    «мэдэхгүй» (`unknown`) үед `[]` бичигдэж дээд шатны зөвшөөрөл дарагддаг байв). Дахин шалгагч ИЛ өөрчилсөн
+   *    бол түүний жагсаалт; агуулга ШИНЭЧЛЭГДСЭН (`fresh` худал — 2026-10-06 аудит #4: хуучин агуулгын зөвшөөрөл
+   *    хүчингүй) эсвэл татагдаагүй (`changes == null` — R4) бол урьдын адил ил жагсаалт / `[]`.
+   */
+  const recheckOkArg = (): string[] | undefined => {
+    if (changes == null) return [];
+    const untouched = !okOv || okOv.key !== seedKey;
+    if (untouched && seedRes.fresh) return undefined;
+    return toOkRefs(okKeys, okRows);
+  };
   const setOkKeys = useCallback((upd: Set<string> | ((prev: Set<string>) => Set<string>)) => {
     setOkOv((prev) => {
       const base = prev && prev.key === seedKey ? prev.keys : seed;
@@ -1398,7 +1415,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                         /* ⚠️ 2026-10-12 (R4): агуулга татагдаагүй үед `undefined` БИШ `[]` — `review()`-тэй ижил. `undefined` нь
                            талбарыг хөндөхгүй тул дээд шатны зөвшөөрөл үлдэж гүйцэтгэгчид «зөвшөөрөгдсөн» (түгжигдсэн
                            ногоон) нүд болж харагддаг байв. */
-                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : [], subAt));
+                        /* ⚠️ 2026-10-12 (дарааллын аудит, №4): агуулга татагдсан, дахин шалгагч нүд хөндөөгүй, seed шинэ бол
+                           `undefined` — дээд шатны жагсаалт хэвээр (`recheckOkArg`-ийн ⚠️) */
+                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, recheckOkArg(), subAt));
                       }}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
@@ -1690,19 +1709,22 @@ export function Guitsetgel() {
   const [sweepTick, setSweepTick] = useState(0);
   /** «Дахин оролдох» дарагдсан — дараагийн НЭГ дуудлагын үр дүн шар мөрийг шинэчилнэ (тэг ч) */
   const sweepRetryRef = useRef(false);
+  /* ⚠️ 2026-10-12 (дарааллын аудит, №5): ДЭЭД гурван шат (`UPPER_SWEEP` — хэлтсийн дарга · ерөнхий менежер ·
+     газрын дарга) бүгд нөхнө; урьд нь зөвхөн `chief`/супер тул бусдад шар мөр ч харагддаггүй байв. Эрхийн
+     жинхэнэ шалгуур store дотор (`authz` — томилогдсон багцаар). `who` — гацсан мөрийн төлөв нөхөхөд (№1). */
   useEffect(() => {
     if (loading || !canReview) return;
-    if (stage !== 'chief' && !sweepBypass) return;
+    if (!(UPPER_SWEEP as readonly string[]).includes(stage) && !sweepBypass) return;
     let alive = true;
     const isRetry = sweepRetryRef.current;
     sweepRetryRef.current = false;
-    void retryPendingRegistrations(user?.username, sweepBypass).then((r) => {
+    void retryPendingRegistrations(user?.username, sweepBypass, who).then((r) => {
       if (!alive) return;
       if (r.failed > 0 || isRetry) setSweepFailed(r.failed);
       if (r.done > 0) reload();
     });
     return () => { alive = false; };
-  }, [loading, canReview, stage, sweepBypass, user?.username, reload, sweepTick]);
+  }, [loading, canReview, stage, sweepBypass, user?.username, who, reload, sweepTick]);
   /**
    * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас (`flow.scope`).
    *

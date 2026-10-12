@@ -722,6 +722,32 @@ export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, no
   return ajilClaimOf(x.status, x.reason, now)?.who ?? null;
 }
 
+/**
+ * БАГЦАД НЭМЭЛТ АЖИЛ ЯГ ОДОО ХУУДСАНД БУУЖ БАЙНА УУ — ⚠️ 2026-10-12 (дарааллын аудит), Хуваарь (`Huvaari.archGate`)
+ * ба обьёмын батлагч (`useObyem.archBusy`) `Bagts_*`-д бичихийн ӨМНӨ дуудна.
+ * ⚠️ ЯАГААД: `ajilApply.materializeInner` нь `approved` мөрөнд түгжээ (`AJIL_CLAIM_MARK`) тавиад БҮТЭН шинэ жааз
+ *    бичдэг; тэр зуур хуваарийн/обьёмын батлагч бичвэл утга нь ХУУЧИН (булагдсан) жаазад үлдэнэ. Гүйцэтгэлийн
+ *    архивлалт (`submission.archivingBusy`) ижил шалтгаанаар хаагддаг ч `markArchiving` нь тухайн багцын НЭЭЛТТЭЙ
+ *    `sub|` мөр (OID + `at`) шаарддаг — нэмэлт ажлын буулгалтад тийм мөр байхгүй тул тэр тэмдгийг тавих боломжгүй;
+ *    оронд нь буулгалтын ӨӨРИЙН түгжээг (`ajilClaimOf`, `materializeInner` → `claimApply` … `releaseApply`/
+ *    `markApplied`) уншина. Түгжээ нь бичилтийн БҮХ хугацаанд (A.4–A.11) байна.
+ * ⚠️ Уншилт унавал ШИДНЭ — дуудагч хаана (fail-closed). Хүснэгт ОЛДОХГҮЙ (`tableUrl` null → `[]`) бол `null`
+ *    (нэмэлт ажлын урсгал байхгүй).
+ * @returns `{ who }` — буулгаж буй хүн; эсвэл `null` = чөлөөтэй
+ */
+export async function ajilApplyBusyFor(pkgKey: string): Promise<{ who: string } | null> {
+  const esc = pkgKey.replace(/'/g, "''");
+  const rows = await query(
+    `${F.pkgKey} = '${esc}' AND ${F.status} = N'${AJIL_STATUS.approved}'`,
+    `${F.oid},${F.status},${F.reason}`,
+  );
+  for (const a of rows) {
+    const c = ajilClaimOf(s(a[F.status]), s(a[F.reason]));
+    if (c) return { who: c.who };
+  }
+  return null;
+}
+
 const ajilHeldMsg = (holder: string) => tr('{0} энэ илгээлтийг яг одоо шийдвэрлэж/буулгаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder);
 const ajilDecidedMsg = (by: string | null, st: string | null) => (by
   ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, st ?? '')
@@ -1175,7 +1201,9 @@ export async function withdrawAjil(args: {
   me: string;
 }): Promise<{ ok: boolean; error?: string }> {
   /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
-  requireCap('addRow');
+  /* ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('addRow')` ХАСАГДСАН — өөрийн илгээлтээ татах нь ЭРХ биш ЭЗЭМШИЛ
+     (`huvaariBatlah.withdrawPlan`-ийн ижил дүрэм). Урьд нь зохиогчийн эрх хасагдвал түүний хүлээгдэж буй илгээлтийг
+     хэн ч татаж чадахгүй гацдаг байв. Эзэмшил ХАТУУ хэвээр: татагч = НЭВТЭРСЭН хүн ба СЕРВЕРИЙН `F.author`. */
   const me = args.me.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   if (typeof window !== 'undefined' && AUTH.appId) {

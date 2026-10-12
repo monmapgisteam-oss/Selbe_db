@@ -54,7 +54,7 @@ import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAc
 import {
   purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
-import { allAclReady, subscribeAclPending } from '@/lib/aclOps';
+import { allAclReady, heldByText, pendingHeldBy, subscribeAclPending } from '@/lib/aclOps';
 import { isDerivedCap } from '@/lib/aclRoleCaps';
 import { PlainCapAcl } from '@/modules/PlainCapAcl';
 import { CapOrphanNote } from '@/modules/CapOrphanNote';
@@ -733,8 +733,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        (`putDraft`-ийн ⚠️ — кэш дээр тулгуурласан ноорог бодит мөрийг дарна). Давхар хамгаалалт. */
     if (!remoteReady()) { setAddErr(LOCK_MSG); return; }
     const removing = [...drafts.values()].filter((d) => d.remove).length;
-    if (removing > 0
-      && !window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)))) return;
+    if (removing > 0) {
+      /* ⚠️ 2026-10-12 (дарааллын аудит): УСТГАХЫН ӨМНӨ тэр хүний нэрээр хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг ·
+         батлах түгжээг (хуваарь · обьём · нэмэлт ажил — `aclOps.pendingHeldBy`, зөвхөн уншина) тоолж, БАЙГАА асуултын
+         текстэд залгана — шинэ асуулт нэмэхгүй. Зохиогч устгагдвал тэр илгээлтийг хэн ч татахгүй (батлагч буцаана),
+         тэмдэг/түгжээ нь эзэнгүй үлдэнэ. Шалгаж чадаагүй бол ч хэлнэ (мэдэхгүй ≠ 0). Шийдвэр админых — хориглохгүй. */
+      const gone = [...drafts].filter(([, d]) => d.remove).map(([k]) => k);
+      const held = await pendingHeldBy(gone);
+      const extra = held == null || held.length ? `\n\n${heldByText(held)}` : '';
+      if (!window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)) + extra)) return;
+    }
     setSaving(true);
     setSaved(null);
     /* ⚠️ 2026-10-05: өмнөх үйлдлээс үлдсэн тодорхой шалтгааныг цэвэрлэнэ (`permsRemote.takeWriteError`) */
@@ -767,6 +775,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
            * `__cap__:` мөр огт хөндөгддөггүй тул «Буцаах»/дахин нэмэхэд аккаунт
            * хуучин шат, багц, эрхтэйгээ шууд эргэж ирдэг байв.
            */
+          /* ⚠️ 2026-10-12 (дарааллын аудит): TOMBSTONE ЭХЭЛЖ (`removeUser`), ДАРАА нь хуваарилалт/эрх. Урьд нь эсрэг
+             дараалалтай тул олон секундийн purge-ийн зуур аккаунт нэвтэрч чадсаар (эрх нь хэсэгчлэн үлдсэн) байв; мөн
+             tombstone унавал хуваарилалтгүй «амьд» аккаунт үлддэг. Одоо tombstone унавал ЮУ Ч хөндөхгүй — аккаунт
+             бүтэн, админ дахин хадгална. Tombstone суусны дараа purge унавал өнчин мөр үлдэх ч аккаунт нэвтрэхгүй. */
+          const r = await removeUser(uname);
+          if (!r) { fail += 1; failed.push(uname); continue; }
           const flowOk = await purgeAssign(uname);
           /* ⚠️ Чанарын хуваарилалт нь ӨӨР мөр (`__qaqc__:`) — тусад нь арилгана,
              эс бөгөөс тэр нэрийг дахин нэмэхэд чанарын багц өөрөө эргэж ирнэ. */
@@ -782,8 +796,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const btOk = await purgeButetsAssign(uname);
           /* ⚠️ 2026-10-09 (аудит №6): АБСОЛЮТ устгал — нэгтгэлгүй `capRemove` (`caps.setCaps`-ийн `absolute` ⚠️) */
           const capOk = await setCaps(uname, [], { absolute: true });
-          const r = await removeUser(uname);
-          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         /*

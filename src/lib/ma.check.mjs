@@ -140,3 +140,18 @@ console.log('✅ MIR — мөр · MA-аар бүлэглэх · олон ача
   assert.equal(chainOf('A', { MIR: 'R', FIC: 'A', MAKT: 'A' })[3].state, 'locked', 'MIR R → FIC/М-акт батлагдсан ч хаалттай');
 }
 console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · бүтэн гинж = IPC');
+
+/* ── ⚠️ 2026-10-12 (дарааллын аудит): `decideFm` — гинжийн шат `locked` бол шийдвэр гаргахгүй (`addFm`-ийн ижил `chainOf`) ── */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./ficMakt.ts', import.meta.url), 'utf8');
+  const fn = L.slice(L.indexOf('export async function decideFm('));
+  const chain = fn.indexOf('chainOf(ma.verdict');
+  const fresh = fn.indexOf("queryFm(url, `OBJECTID = ${Number(row.oid)}`)");
+  const write = fn.indexOf('await post<');
+  assert.ok(chain > 0 && fresh > chain && write > fresh, 'decideFm: гинжийн шалгалт `pending` уншилт ба бичилтийн ӨМНӨ байх ёстой');
+  assert.ok(/stage\.state === 'locked'\) \{\s*throw new Error/.test(fn.slice(chain, fresh)), 'decideFm: locked шатанд шиддэггүй');
+  const add = L.slice(L.indexOf('export async function addFm('), L.indexOf('export async function decideFm('));
+  assert.ok(/stage\.state === 'locked'/.test(add), 'addFm: locked шалгалт алга (хуучин дүрэм)');
+  console.log('✅ 2026-10-12 — decideFm гинжийн locked шалгалт');
+}

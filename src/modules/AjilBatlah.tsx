@@ -52,7 +52,7 @@ import {
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { roleOf } from '@/lib/permissions';
-import { classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
+import { busyGate, classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 /**
  * ⚠️ `HuvaariBatlah` · `Guitsetgel` · `ErhOverview`-ТЭЙ ХУВААЛЦСАН CSS:
@@ -382,6 +382,16 @@ export function AjilBatlah() {
        шийдвэрлэсэн» гэж гацдаг байв. */
     let decided = false;
     try {
+      /* ⚠️ 2026-10-12 (дарааллын аудит): ГЭЙТ ШИЙДВЭРИЙН ӨМНӨ (`ajilApply.busyGate`, зөвхөн уншина) — хуваарийн
+         батлагч түгжсэн/хэсэгчлэн бичсэн · обьёмын батлалт явж буй · гүйцэтгэлийн архивлалт үед шийдвэр ГАРГАХГҮЙ.
+         Урьд нь `decideAjil` → `approved` бичигдээд `materializeAdds` гэйтэд унаж, илгээлт «Батлагдсан · буулгаагүй»-д
+         гацдаг байв (батлагч буцааж ч чадахгүй — шийдвэр гарсан). Уншилт унавал гэйт өөрөө хаана (fail-closed).
+         `materializeInner` доторх гэйт давхар хамгаалалт хэвээр. */
+      const gate = await busyGate(x.pkgKey);
+      if ('error' in gate) {
+        setErr(tr('Буулгах боломжгүй тул шийдвэр гаргасангүй: {0}', userError(gate.error)));
+        return;
+      }
       const r = await decideAjil({
         oid: x.oid,
         approve: true,

@@ -16,10 +16,13 @@
  * 12 багцын хүснэгт, 7 багцын орон зайн огтлолцлыг дахин татвал ArcGIS-ийг
  * үерлэнэ. Хуудсыг бүтэн refresh хийвэл л шинэчлэгдэнэ — удирдлагын өглөөний
  * тоймд энэ нь хангалттай шинэлэг.
+ * ⚠️ 2026-10-12 (дарааллын аудит): гурвуулаа `live.cached` (`SESSION_TTL_MS` 5 мин + автобусын
+ *    түлхүүр) — бусад ачаалагчтай ижил хуучралтай; «refresh хийвэл л» гэсэн үе дууссан.
  */
 
 import { queryFeatures } from './query';
-import { register } from './dataBus';
+/* ⚠️ 2026-10-12 (дарааллын аудит): `register` → `cached` + `SESSION_TTL_MS` (гурван гар кэшийн ⚠️) */
+import { cached, SESSION_TTL_MS } from './live';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { t as tr } from './i18nCore';
@@ -87,11 +90,17 @@ export type Variance = {
  * нь «ажил дуусаагүй» гэсэн хэвийн явц тул зөрчил БИШ. Хэтэрсэн нь бодит
  * гүйцэтгэл төлөвлөгдсөн хэмжээнээс давсан — өртгийн хяналтын асуудал.
  */
-let varCache: Promise<Variance> | null = null;
 /**
+ * ⚠️ 2026-10-12 (дарааллын аудит): ГАР КЭШ (`let varCache` + `register`) → `live.cached`
+ * (`SESSION_TTL_MS` = 5 мин, `keep`). Гар кэш TTL-ГҮЙ байсан тул өөр хэрэглэгчийн бөглөлт
+ * (автобус зөвхөн ӨӨРИЙН бичилтэд өснө) CEO самбарт сешн дуустал орж ирдэггүй байв;
+ * `Portal`-ын «Шинэчлэх» нь `invalidateAll` тул хүрдэг байсан ч TTL-ийн жигд дүрэм
+ * (`live.SESSION_TTL_MS`-ийн ⚠️) энэ гурван ачаалагчийг алгасч байлаа. `cached` нь
+ * reject-ийг кэшлэхгүй, `keep` нь хэсэгчилсэн үр дүнг хаяна — доорх 2026-09-25-ны дүрэм хэвээр.
+ *
  * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ — `land.ts:62`-ийн загвараар. Энэ нь
  * `cached()`-ээр ороогүй ГАРААР бичсэн модулийн кэш тул `invalidate()` түүнийг
- * ОГТ хөнддөггүй байв.
+ * ОГТ хөнддөггүй байв (одоо `cached`-ийн `reads`-ээр бүртгэгдэнэ).
  *
  * ⚠️ ТҮЛХҮҮР НЬ `BAGTS_SHEET` — эх сурвалжийг мөшгиж тогтоов: `loadVariance`
  * нь `PKGS` (`bagts.pkg.ts` — `Bagts_*` FeatureServer-ууд) дээр
@@ -101,10 +110,8 @@ let varCache: Promise<Variance> | null = null;
  * тул холбоогүй үед CEO-гийн «Обьёмын зөрүү» карт обьём засагдмагц сесс
  * дуустал хуучин тоогоо барьж, засвар хийгдээгүй мэт харагдана.
  */
-register(() => { varCache = null; }, ['BAGTS_SHEET']);
-export function loadVariance(): Promise<Variance> {
-  if (varCache) return varCache;
-  const p: Promise<Variance> = (async () => {
+export const loadVariance: () => Promise<Variance> = cached(
+  async (): Promise<Variance> => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
       /* ⚠️ 2026-10-09: БӨГЛӨХ бүдүүвч (`fillSchema`) — блокгүй багц (5.x · 6.x · 10) синтетик НЭГ
          блоктой, обьём нь мөрийн `obyem_sum` (хуримтлагдсан). Урьд нь `loadSchema` (`obyem = []`)
@@ -152,17 +159,16 @@ export function loadVariance(): Promise<Variance> {
       failedPkgs: results.length - ok.length,
       measurable: measured + (results.length - ok.length),
     };
-  })().then((v) => {
-    /* ⚠️ 2026-09-25: ХЭСЭГЧЛЭН УНАСАН үр дүнг КЭШЛЭХГҮЙ — нэг багц түр
-       унахад дутуу тоо сесс дуустал (эсвэл дараагийн `BAGTS_SHEET` бичилт
-       хүртэл) хадгалагдаж, дахин нээхэд ч сэргэхгүй байв. Үр дүнг буцаана,
-       дараагийн дуудалт дахин уншина (`Overlaps.failed`-ийн дүрэмтэй ижил). */
-    if (v.failedPkgs > 0 && varCache === p) varCache = null;
-    return v;
-  }, (e) => { if (varCache === p) varCache = null; throw e; });
-  varCache = p;
-  return p;
-}
+  },
+  SESSION_TTL_MS,
+  ['BAGTS_SHEET'],
+  /* ⚠️ 2026-09-25: ХЭСЭГЧЛЭН УНАСАН үр дүнг КЭШЛЭХГҮЙ — нэг багц түр
+     унахад дутуу тоо сесс дуустал (эсвэл дараагийн `BAGTS_SHEET` бичилт
+     хүртэл) хадгалагдаж, дахин нээхэд ч сэргэхгүй байв. Үр дүнг буцаана,
+     дараагийн дуудалт дахин уншина (`Overlaps.failed`-ийн дүрэмтэй ижил).
+     ⚠️ 2026-10-12: `cached`-ийн `keep` — тэр дүрмийн ижил хэрэгжилт. */
+  (v) => v.failedPkgs === 0,
+);
 
 /**
  * Зөрүүгийн мөнгөн дүнгийн босго, ₮.
@@ -204,8 +210,9 @@ const commonName = (titles: string[]): string => {
   return p.replace(/[\s·—-]+$/u, '').trim() || titles[0] || '';
 };
 
-let ovCache: Promise<Overlaps> | null = null;
 /**
+ * ⚠️ 2026-10-12 (дарааллын аудит): гар кэш → `live.cached` (5 мин · `keep`) — `loadVariance`-ийн ⚠️.
+ *
  * ⚠️ ХОЁР ТҮЛХҮҮР — эх сурвалж бүрийг мөшгиж тогтоов (`land.ts:62`-ийн загвар):
  *   · `BUILDING`  — блокуудыг багцаар бүлэглэхдээ `BUILDING.url`-ээс шууд
  *                   уншина (`BAGTS`/OID). Блокийн багцын нэр өөрчлөгдвөл
@@ -220,10 +227,8 @@ let ovCache: Promise<Overlaps> | null = null;
  * кэш тул түүнийг ЭНД хаяхгүй бол цэвэрлэгдсэн эх дээр хуучин нийлбэр
  * үлдэнэ. Буруу түлхүүр бүртгэх нь бүртгэхгүйгээс дор тул хоёуланг зарлав.
  */
-register(() => { ovCache = null; }, ['BUILDING', 'PARCEL_LEFT']);
-export function loadOverlaps(): Promise<Overlaps> {
-  if (ovCache) return ovCache;
-  const run: Promise<Overlaps> = (async () => {
+export const loadOverlaps: () => Promise<Overlaps> = cached(
+  async (): Promise<Overlaps> => {
     // ── Барилгын блокуудыг багцаар нь бүлэглэнэ ──
     const rows = await queryFeatures(BUILDING.url, {
       outFields: [BUILDING.oid, BUILDING.fields.bagts],
@@ -295,19 +300,17 @@ export function loadOverlaps(): Promise<Overlaps> {
        зөв хэвээр тул `failed` тоотой нь (дутуу тоо гэдгийг заан) буцаана. */
     if (failed > 0 && union.size === 0) throw new Error(tr('Давхцал тооцогдсонгүй'));
     return failed > 0 ? { total: union.size, byPkg, failed } : { total: union.size, byPkg };
-  })();
-  ovCache = run;
+  },
+  SESSION_TTL_MS,
+  ['BUILDING', 'PARCEL_LEFT'],
   /* ⚠️ 2026-09-25: ХЭСЭГЧИЛСЭН үр дүнг КЭШЛЭХГҮЙ (`parcelOverlap.ts`-ийн
      `resultCache`-ийн дүрэмтэй ижил). Урьд нь `.catch` нь ЗӨВХӨН reject-ийг
      хасдаг байсан тул нэг давхарга унасан дутуу тоо сесс дуустал «баталгаатай»
      мэт үлдэж, дахин оролдох ч боломжгүй байв. Өөрөө идэвхтэй кэш байхад л
-     цэвэрлэнэ (`live.cached`-ийн 2026-09-08-ны дүрэм). */
-  run.then(
-    (r) => { if (r.failed && ovCache === run) ovCache = null; },
-    () => { if (ovCache === run) ovCache = null; },
-  );
-  return run;
-}
+     цэвэрлэнэ (`live.cached`-ийн 2026-09-08-ны дүрэм).
+     ⚠️ 2026-10-12: `cached`-ийн `keep` — яг тэр дүрэм. */
+  (r) => !r.failed,
+);
 
 /**
  * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): давхцсан талбар БАЙВАЛ ШУУД «Яаралтай
@@ -326,17 +329,16 @@ export type Damage = {
   sample: string[];
 };
 
-let dmgCache: Promise<Damage> | null = null;
 /**
+ * ⚠️ 2026-10-12 (дарааллын аудит): гар кэш → `live.cached` (5 мин) — `loadVariance`-ийн ⚠️.
+ *
  * ⚠️ ТҮЛХҮҮР НЬ `HABEA` — `loadDamage` нь ЗӨВХӨН `HABEA.incident.url`
  * (ослын бүртгэл) уншина. `ceo/safety.ts:263` ба `reportData.ts:711` нь ЯГ ТЭР
  * хүснэгтээс уншиж `['HABEA']` зарладаг: ах дүү ачаалагчид ӨӨР тагтай байвал
  * нэг дэлгэц дээр хоёр өөр агшны тоо гарна (`Habea.tsx:68`-ийн тайлбар).
  */
-register(() => { dmgCache = null; }, ['HABEA']);
-export function loadDamage(): Promise<Damage> {
-  if (dmgCache) return dmgCache;
-  dmgCache = (async () => {
+export const loadDamage: () => Promise<Damage> = cached(
+  async (): Promise<Damage> => {
     const I = HABEA.incident.fields;
     const rows = await queryFeatures(HABEA.incident.url, {
       outFields: [I.turul, I.ognoo, I.bagts, I.company],
@@ -354,9 +356,10 @@ export function loadDamage(): Promise<Damage> {
       .map((r) => [r[I.bagts], r[I.company]].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · '))
       .filter(Boolean);
     return { n: dmg.length, last: dates.length ? Math.max(...dates) : null, sample };
-  })().catch((e) => { dmgCache = null; throw e; });
-  return dmgCache;
-}
+  },
+  SESSION_TTL_MS,
+  ['HABEA'],
+);
 
 /**
  * Хохирлын босго. 0 → Сайн; 1–2 → Дунд; ≥3 → Яаралтай. Мөнгөн дүнгийн талбар

@@ -198,7 +198,7 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   const a1 = fn.indexOf('const ab1 = await archBusy()');
   assert.ok(a0 > 0 && a0 < fn.indexOf('await claimObyem('), 'useObyem: архивлалтын шалгалт түгжихээс ӨМНӨ алга');
   assert.ok(a1 > fn.indexOf('await markObyemPartial(') && a1 < write, 'useObyem: архивлалтын шалгалт applyUpdates-ийн ЯГ ӨМНӨ алга');
-  assert.ok(/await clearObyemPartial\(pvSub\.oid\);\s*pvErrHere\(ab1\)/.test(fn), 'useObyem: архивлалтад татгалзахад хагас бичилтийн тэмдгийг арилгахгүй байна');
+  assert.ok(/await clearObyemPartial\(pvSub\.oid, me\);\s*pvErrHere\(ab1\)/.test(fn), 'useObyem: архивлалтад татгалзахад хагас бичилтийн тэмдгийг (эзэнтэй) арилгахгүй байна');
   const ab = fn.slice(fn.indexOf('const archBusy'), a0);
   assert.ok(/catch \(e\) \{\s*return tr\(/.test(ab), 'useObyem: архивлалтын төлөв уншигдахгүй бол хаахгүй (fail-open)');
 }
@@ -224,5 +224,78 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
 }
 console.log('✅ жааз солигдсон бол батлахгүй · алгассан нүд асууна/хадгална · хоёр таб');
 console.log('✅ архивлалтын хаалт · isLostWrite = isLostResponse');
+
+/* ══ ⚠️ 2026-10-12 (дарааллын аудит): хуваарийн загвар обьёмд — serverNow · claimAt · existing · эзэнтэй clear · withdraw CAS ══ */
+{
+  const fs = await import('node:fs');
+  const L = fs.readFileSync(new URL('./obyemBatlah.ts', import.meta.url), 'utf8');
+  const U = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
+  /* (d) серверийн цаг — `huvaariBatlah.serverNow` импорт; `claimHolder`/`casObyemClaim`-ийн анхдагч; `Date.now()` зөвхөн `authorSent`-д */
+  assert.ok(/import \{[^}]*\bserverNow\b[^}]*\} from '\.\/huvaariBatlah'/.test(L), 'obyemBatlah: `serverNow`-ыг huvaariBatlah-аас импортлоогүй');
+  assert.ok(/function claimHolder\(a: Attrs, now = serverNow\(\)\)/.test(L), 'claimHolder: анхдагч нь серверийн цаг биш');
+  assert.ok(/const now = io\.now \?\? serverNow;/.test(L), 'casObyemClaim: анхдагч нь серверийн цаг биш');
+  const dn = L.split('\n').filter((ln) => ln.includes('Date.now()'));
+  assert.ok(dn.length === 1 && dn[0].includes('authorSent'), `obyemBatlah: Date.now() үлдсэн — ${dn.join(' | ')}`);
+  const HB = fs.readFileSync(new URL('./huvaariBatlah.ts', import.meta.url), 'utf8');
+  assert.ok(!/from '\.\/obyemBatlah'/.test(HB), 'huvaariBatlah → obyemBatlah тойрог импорт');
+  /* (c) `claimObyem` агшин буцаана; guard/mark/decide `claimAt` тулгана (`sameClaimAt`) */
+  assert.ok(/export async function claimObyem\([^)]*\): Promise<\{ ok: boolean; error\?: string; at\?: number \}>/.test(L), 'claimObyem: `at` буцаахгүй');
+  const ag = L.slice(L.indexOf('export async function obyemApproveGuard('), L.indexOf('export async function obyemBusyFor('));
+  assert.ok(/claimAt\?: number/.test(ag) && /sameClaimAt\(cur\[0\]\[F\.approverAt\], args\.claimAt\)/.test(ag), 'obyemApproveGuard: claimAt тулгахгүй');
+  const mp = L.slice(L.indexOf('export async function markObyemPartial('), L.indexOf('export async function clearObyemPartial('));
+  assert.ok((mp.match(/sameClaimAt\((cur|back)\[F\.approverAt\], args\.claimAt\)/g) ?? []).length === 2, 'markObyemPartial: claimAt-ыг бичихийн өмнө ба дараа тулгахгүй');
+  const dc = L.slice(L.indexOf('export async function decideObyem('), L.indexOf('export const OBYEM_STUCK_PREFIX'));
+  assert.ok(/holder === me && args\.claimAt != null && !sameClaimAt\(/.test(dc), 'decideObyem: claimAt тулгахгүй');
+  /* (b) байгаа тэмдгийг дарахгүй (`existing`); `clearObyemPartial(oid, owner)` эзэнтэй */
+  const mpWrite = mp.indexOf('await arcgisPost(');
+  assert.ok(/const had = partialBy\(st, s\(cur\[F\.reason\]\)\);\s*if \(had != null\) return \{ ok: true, existing: had \};/.test(mp.slice(0, mpWrite)), 'markObyemPartial: байгаа тэмдгийг дарж бичиж байна');
+  const cp = L.slice(L.indexOf('export async function clearObyemPartial('), L.indexOf('export async function decideObyem('));
+  assert.ok(/clearObyemPartial\(oid: number, owner\?: string\)/.test(cp) && /if \(owner != null && pb !== owner\.trim\(\)\.toLowerCase\(\)\) return false;/.test(cp), 'clearObyemPartial: эзэнгүй арилгаж байна');
+  /* useObyem: claimAt дамжуулна · толгойд/`existing` тэмдэг байвал wroteSomeRef · эзэнтэй clear */
+  const fn = U.slice(U.indexOf('const decideObyemHere'));
+  assert.ok(/claimAt = claim\.at;/.test(fn), 'useObyem: claimObyem.at-ыг хадгалахгүй');
+  assert.ok(/obyemApproveGuard\(\{ oid: pvSub\.oid, approver: me, claimAt \}\)/.test(fn), 'useObyem: obyemApproveGuard-д claimAt алга');
+  assert.ok(/markObyemPartial\(\{ oid: pvSub\.oid, approver: me, claimAt \}\)/.test(fn), 'useObyem: markObyemPartial-д claimAt алга');
+  assert.ok(/\.\.\.\(claimAt != null \? \{ claimAt \} : \{\}\),/.test(fn), 'useObyem: decideObyem-д claimAt алга');
+  assert.ok(/obyemPartialBy\(h0\.status, h0\.reason\) != null\) wroteSomeRef\.current = true;/.test(fn), 'useObyem: толгойд байсан тэмдэгт wroteSomeRef тарихгүй');
+  assert.ok(/if \(mk\.existing\) wroteSomeRef\.current = true;/.test(fn), 'useObyem: existing тэмдэгт wroteSomeRef тарихгүй');
+  assert.ok(!/clearObyemPartial\(pvSub\.oid\)/.test(fn), 'useObyem: эзэнгүй clearObyemPartial үлдсэн');
+  /* (a) withdrawObyem — CAS → дахин унш (pending · тэмдэггүй · түгжээ минийх) → withdrawn → дахин уншиж батална; унавал release */
+  const wd = L.slice(L.indexOf('export async function withdrawObyem('), L.indexOf('const BADGE_TTL'));
+  const cas = wd.indexOf('casObyemClaim(');
+  const wr = wd.indexOf('[F.status]: OBYEM_STATUS.withdrawn');
+  assert.ok(cas > 0 && wr > cas, 'withdrawObyem: бичихээс өмнө CAS түгжээ алга');
+  const mid = wd.slice(cas, wr);
+  assert.ok(/partialBy\(s\(re\[F\.status\]\), s\(re\[F\.reason\]\)\)/.test(mid), 'withdrawObyem: CAS-ийн дараа хагас бичилтийн тэмдгийг дахин шалгахгүй');
+  assert.ok(/claimHolder\(re\) !== me \|\| at0 == null \|\| !sameClaimAt\(re\[F\.approverAt\], at0\)/.test(mid), 'withdrawObyem: түгжээ минийх эсэхийг агшнаар тулгахгүй');
+  assert.ok((mid.match(/await release\(\)/g) ?? []).length >= 3, 'withdrawObyem: татгалзахад түгжээг тайлахгүй');
+  assert.ok(/s\(back\[F\.status\]\) !== OBYEM_STATUS\.withdrawn/.test(wd.slice(wr)), 'withdrawObyem: бичсэний дараа баталгаажуулахгүй');
+  assert.ok(/\[F\.approverAt\]: serverNow\(\)/.test(wd.slice(wr)), 'withdrawObyem: агшин серверийн цагаар биш');
+}
+/* ── casObyemClaim — цэвэр CAS: бусдын амьд түгжээ · хугацаа дууссан · ялагдсан бичилт ── */
+{
+  const { casObyemClaim, F } = await import('@/lib/obyemBatlah.ts');
+  const T = 10_000_000;
+  const row = (ap, at, st = OBYEM_STATUS.pending) => ({ [F.oid]: 1, [F.status]: st, [F.approver]: ap, [F.approverAt]: at });
+  /* бусдын АМЬД түгжээ — бичихгүй */
+  let wrote = 0;
+  const held = await casObyemClaim({ read: async () => row('bold', T - 60_000), write: async () => { wrote += 1; return true; }, now: () => T }, 'dorj');
+  assert.match(held, /bold/, 'casObyemClaim: бусдын амьд түгжээг давж байна');
+  assert.equal(wrote, 0, 'casObyemClaim: татгалзсан атлаа бичсэн');
+  /* бусдын ХУГАЦАА ДУУССАН түгжээ — авна; бичсэний дараа дахин уншиж тулгана */
+  let cur = row('bold', T - 11 * 60_000);
+  const got = await casObyemClaim({ read: async () => cur, write: async (at) => { cur = row('dorj', at); return true; }, now: () => T }, 'dorj');
+  assert.equal(got, null, 'casObyemClaim: дууссан түгжээг авахгүй байна');
+  assert.equal(cur[F.approverAt], T, 'casObyemClaim: бичих агшин `now()`-оор биш');
+  /* зэрэг бичсэн хүн ялсан — түүний нэр */
+  let cur2 = row(null, null);
+  const lost = await casObyemClaim({ read: async () => cur2, write: async () => { cur2 = row('suren', T + 1); return true; }, now: () => T }, 'dorj');
+  assert.match(lost, /suren/, 'casObyemClaim: ялагдсан бичилтэд ялагчийн нэр алга');
+  /* шийдвэрлэгдсэн мөр — бичихгүй */
+  const dec = await casObyemClaim({ read: async () => row('bold', T, OBYEM_STATUS.approved), write: async () => { wrote += 1; return true; }, now: () => T }, 'dorj');
+  assert.match(dec, /аль хэдийн шийдвэрлэсэн/, 'casObyemClaim: шийдвэрлэгдсэн мөрөнд түгжээ бичиж байна');
+  assert.equal(wrote, 0);
+}
+console.log('✅ 2026-10-12 дарааллын аудит: serverNow · claimAt · existing · эзэнтэй clear · withdraw CAS');
 
 console.log('\nobyemBatlah.check: ok');

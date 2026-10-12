@@ -39,6 +39,10 @@ import type { Stage } from './hyanalt';
 import { capLabelShort, issueText } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
+/* ⚠️ 2026-10-12 (дарааллын аудит): `pendingHeldBy` — зөвхөн уншигчид (нэрийн орон зайгаар, тойрог импортгүй) */
+import * as hv from './huvaariBatlah';
+import * as ob from './obyemBatlah';
+import * as aj from './ajilBatlah';
 import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
 import {
   flowAclReady, flowFailedUsers, listAssigns, removeAssign, retryFlow, setAssign, setViewOnly,
@@ -861,6 +865,56 @@ function newBlockingText(after: After): string {
 }
 
 /**
+ * ХЭРЭГЛЭГЧИЙН НЭРЭЭР ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ · ХАГАС БИЧИЛТИЙН ТЭМДЭГ · ТҮГЖЭЭ — ⚠️ 2026-10-12 (дарааллын аудит).
+ * Хуваарь (`huvaariBatlah`) · обьём (`obyemBatlah`) · нэмэлт ажил (`ajilBatlah`, `pending` + `approved`) — БАЙГАА
+ * уншигчдаар (`loadAllPending`/`loadAllApproved`), юу ч бичихгүй.
+ * ⚠️ ЯАГААД: үүрэг/шат хасах, аккаунт устгах үед тэр хүний зохиосон хүлээгдэж буй илгээлт зохиогчгүй гацна
+ *    (татах эрх алга — `withdrawPlan`-ийн эзэмшлийн дүрэм нэвтэрсэн хүнд л), хагас бичилтийн тэмдэг/түгжээ нь
+ *    батлагчгүй үлдэнэ. Админ үүнийг асуултын текстэд харж байж шийднэ (хориглохгүй).
+ * ⚠️ СТАТИК импорт (`hv`/`ob`/`aj` нэрийн орон зай) — батлах модулиуд `aclOps`-ыг (шууд ч, дамжин ч) импортолдоггүй
+ *    тул тойрог үүсэхгүй; динамик импорт бол `runOp`-ын асуулт модуль хувиргалтын хугацаагаар хоцорч, `aclE2E.ui`-ийн
+ *    `idle()` (сүлжээний `inflight`-ээр л хүлээдэг) асуултыг тоолж амждаггүй байв.
+ * ⚠️ Уншилт унавал `null` (мэдэхгүй ≠ 0) — дуудагч «шалгаж чадсангүй» гэж хэлнэ.
+ */
+export type HeldByUser = { user: string; pending: number; partial: number; locks: number };
+export async function pendingHeldBy(users: readonly string[]): Promise<HeldByUser[] | null> {
+  const want = new Set(users.map(norm).filter(Boolean));
+  if (!want.size) return [];
+  try {
+    const [plans, obyems, ajilP, ajilA] = await Promise.all([
+      hv.loadAllPending(), ob.loadAllPending(), aj.loadAllPending(), aj.loadAllApproved(),
+    ]);
+    const out = new Map<string, HeldByUser>();
+    const at = (u: string): HeldByUser => {
+      let x = out.get(u);
+      if (!x) { x = { user: u, pending: 0, partial: 0, locks: 0 }; out.set(u, x); }
+      return x;
+    };
+    const tally = (author: string | null, holder: string | null, partial: string | null) => {
+      const a = norm(author ?? '');
+      if (a && want.has(a)) at(a).pending += 1;
+      const p = norm(partial ?? '');
+      if (p && want.has(p)) at(p).partial += 1;
+      const h = norm(holder ?? '');
+      /* Хагас бичилтийн тэмдэгтэй мөрийн түгжээ нь ижил хүнийх — давхар тоолохгүй */
+      if (h && want.has(h) && h !== p) at(h).locks += 1;
+    };
+    for (const x of plans) tally(x.author, hv.claimHolderOf(x), hv.partialBy(x.status, x.reason));
+    for (const x of obyems) tally(x.author, ob.claimHolderOf(x), ob.partialBy(x.status, x.reason));
+    for (const x of ajilP) tally(x.author, aj.ajilClaimHolder(x), null);
+    for (const x of ajilA) tally(null, aj.ajilClaimHolder(x), null);
+    return [...out.values()].filter((x) => x.pending || x.partial || x.locks);
+  } catch {
+    return null;
+  }
+}
+/** `pendingHeldBy`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-12) */
+export function heldByText(items: HeldByUser[] | null): string {
+  if (items == null) return tr('Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.');
+  return items.map((x) => tr('«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).', x.user, String(x.pending), String(x.partial), String(x.locks))).join('\n');
+}
+
+/**
  * Op-ыг гүйцэтгэнэ: түгжээ → асуултууд → бичилт → `sync` (+`granted`) хүлээнэ.
  *
  * ⚠️ `r.ok`-ЫГ `await`-ЫН ӨМНӨ шалгана: `{ok:false}` үед `sync` байхгүй тул
@@ -889,6 +943,13 @@ export async function runOp(
   if (confirms.length && op.after) {
     const warn = newBlockingText(op.after);
     if (warn) confirms[confirms.length - 1] += `\n\n${warn}`;
+  }
+  /* ⚠️ 2026-10-12 (дарааллын аудит): үүрэг/шат хасах асуултад тэр хүний ХҮЛЭЭГДЭЖ БУЙ илгээлт · хагас бичилтийн
+     тэмдэг · түгжээний тоог залгана (`pendingHeldBy`) — админ хасахдаа гацах илгээлтийг харна. Зөвхөн асуулттай
+     (хасах/шилжүүлэх) op-д; уншилт унавал юу ч нэмэхгүй (асуултын тоо өөрчлөгдөхгүй). */
+  if (confirms.length && op.user) {
+    const held = await pendingHeldBy([op.user]);
+    if (held && held.length) confirms[confirms.length - 1] += `\n\n${heldByText(held)}`;
   }
   for (const c of confirms) if (!window.confirm(c)) return false;
   const who = op.user ? norm(op.user) : '';

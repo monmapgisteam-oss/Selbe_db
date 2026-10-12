@@ -10,12 +10,13 @@
  *    Энэ ачаалагчийг `cached(…, ['BAGTS_SHEET'])`-ээр ороосон нь бөглөх хуудас
  *    руу бичсэн үед ЭНЭ давхарга шинэчлэгдэнэ гэсэн үг; доод давхаргын кэш
  *    хуудсыг бүтэн refresh хийтэл хэвээр — өглөөний тоймд хангалттай.
+ *    ⚠️ 2026-10-12: доод давхарга (`loadVariance`) одоо мөн `live.cached` (5 мин + `BAGTS_SHEET`).
  *
  * ⚠️ ТӨЛӨВ БҮХЭЛДЭЭ `computeVariance`-д — сүлжээгүй, тестлэгдэнэ
  *    (`variance.check.mjs`). Ачаалагч нь зөвхөн татаад дамжуулна.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { cached } from '@/lib/live';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { mnt, num } from '@/lib/format';
 import { loadVariance, type Variance, type VarianceWork } from '@/lib/execTriage';
 import { VAR_BAD_MNT } from '@/lib/kpiLevels';
@@ -146,6 +147,9 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
  */
 export const loadVarianceKpi = cached(
   async (): Promise<KpiResult> => computeVariance(await loadVariance(), PKGS.length),
-  60_000,
+  /* ⚠️ 2026-10-12 (дарааллын аудит): 60 с → `SESSION_TTL_MS` (5 мин) — санхүүгийн биш
+     (`BAGTS_SHEET`); 60 с нь зөвхөн `HO_IPC`/`CASHFLOW` ачаалагчдад (`docs/system/03 §3.5`).
+     `loadVariance` өөрөө одоо мөн 5 мин `cached` (`execTriage`-ийн ⚠️) тул хоёр давхарга нэг жигд. */
+  SESSION_TTL_MS,
   ['BAGTS_SHEET'],
 );

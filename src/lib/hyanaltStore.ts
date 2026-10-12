@@ -4,7 +4,8 @@
  * ГҮЙЦЭТГЭЛИЙН ХЯНАЛТЫН ӨГӨГДЛИЙН ДАВХАРГА — амьд ArcGIS үйлчилгээ.
  *
  * ⚠️ ОГНООГ СИСТЕМ ТАВЬНА, хэрэглэгч гараар оруулахгүй. Бүх огноо энд
- * `Date.now()`-ээр бичигдэнэ. Дээр нь ArcGIS-ийн Editor Tracking нэмэлт
+ * СЕРВЕРИЙН цагаар (`serverClock.serverNow` — 2026-10-12-ны дарааллын аудит; урьд нь хөтчийн
+ * `Date.now()`) бичигдэнэ. Дээр нь ArcGIS-ийн Editor Tracking нэмэлт
  * баталгаа болно — тэдгээрийг програм БИЧИХГҮЙ.
  *
  * ⚠️ БУЦААХ ЗАМ ЯВСАН ЗАМААРАА: менежер буцаавал ажил ШУУД компанид очихгүй,
@@ -166,6 +167,20 @@ function lastApprover(raw: unknown, stage: ReviewStage): string {
   return best;
 }
 
+/** ⚠️ 2026-10-12 (дарааллын аудит, №1): тухайн шатыг сүүлд ЗӨВШӨӨРСӨН хүний ДЭЛГЭЦИЙН нэр (`who`) — `retryPendingRegistrations` */
+function lastApproverName(raw: unknown, stage: ReviewStage): string {
+  let best = '';
+  let bestAt = -Infinity;
+  for (const e of rawHist(raw)) {
+    if (e.stage !== stage || (e.act !== 'approve' && e.act !== 'recheck-ok')) continue;
+    const at = Number(e.at);
+    if (!Number.isFinite(at) || at < bestAt) continue;
+    bestAt = at;
+    best = typeof e.who === 'string' ? e.who.trim() : '';
+  }
+  return best;
+}
+
 /**
  * ЭРХИЙН ШАЛГУУРЫН ХЭРЭГЛЭГЧ (2026-10-06, аудит #2).
  * ⚠️ ХӨТӨЧИД дуудагчийн `me`-д ИТГЭХГҮЙ — `currentUser()` (AuthGate бичнэ). Node (тест,
@@ -186,6 +201,10 @@ import { AUTH, bagtsKey, roleForUser } from './services';
 import { currentUser } from './who';
 import { arcgisPost } from './query';
 import { isLostWrite } from './lostWrite';
+/* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цаг — шатны огноо · лог · тэмдэг · `approvedAt` (`serverClock`-ийн ⚠️) */
+import { serverNow, syncServerClock } from './serverClock';
+/* ⚠️ 2026-10-12 (дарааллын аудит): эцсийн батлалтын гинжний кэш-мэдэгдлийг нэгтгэнэ (`batchInvalidate`-ийн ⚠️) */
+import { batchInvalidate } from './dataBus';
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАДГАЛАГДАХ ДЭЛГЭЦИЙН НЭР (`who`) — нэвтэрсэн хэрэглэгчийнх мөн эсэх.
@@ -1292,7 +1311,8 @@ async function archiveSubmission(
        нээлттэй хэвээр буюу өмнөх `closeSubmission` хоёулаа унасан гэсэн үг —
        хаалт нь idempotency-ийн ЦОРЫН ГАНЦ байнгын тэмдэг (`done|`). Унавал
        батлалтыг зогсоохгүй (доорх үндсэн замын дүрэмтэй ижил). */
-    const cl = await closeSubmission(staged.oid, seen.oid, Date.now(), true, staged.at);
+    /* ⚠️ 2026-10-12 (дарааллын аудит): `approvedAt` серверийн цагаар (`serverClock`-ийн ⚠️) */
+    const cl = await closeSubmission(staged.oid, seen.oid, serverNow(), true, staged.at);
     if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй (дахин оролдлого):', cl.error);
     else unclosedSet(subOid, null);
     return { ok: true, archiveOid: seen.oid, day: seen.day, pkgKey: staged.payload.pkgKey };
@@ -1610,7 +1630,9 @@ async function archiveSubmission(
      түүнээс хуучин өдөрт унаж, яг дээрх ⚠️-ийн алдаа (хуудсанд хэзээ ч гарахгүй) давтагдах байв. Нөхцөл хэвээр. */
   let fillMs = pl.fillMs;
   const lastDay = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
-  if (lastDay && lastDay >= msToDay(fillMs)) fillMs = fillMsFor(Date.now(), loaded.snapshot);
+  /* ⚠️ 2026-10-12 (дарааллын аудит): «өнөөдөр» СЕРВЕРИЙН өдрөөр (`serverClock`-ийн ⚠️) — хөтчийн цаг хоцорсон
+     машинаас сүүлийн жаазнаас хуучин өдөрт бичигдэхээс сэргийлнэ */
+  if (lastDay && lastDay >= msToDay(fillMs)) fillMs = fillMsFor(serverNow(), loaded.snapshot);
 
   /* ── САРЫН ЗАДАРГАА — дэлгэцтэй ИЖИЛ томъёо ────────────────────────
    * ⚠️ `FillNew` төлөвлөгөөт хувийг задаргаанаас (S-муруй) харуулдаг тул
@@ -1725,7 +1747,8 @@ async function archiveSubmission(
     const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
     const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
     const mr = await markArchiving(staged.oid, staged.at, {
-      at: staged.at, startedAt: Date.now(), maxOid0, fillMs, n: frame.length,
+      /* ⚠️ 2026-10-12 (дарааллын аудит): `startedAt` серверийн цагаар — `markFresh` өөр хөтчид мөн серверийн цагаар жишнэ */
+      at: staged.at, startedAt: serverNow(), maxOid0, fillMs, n: frame.length,
       /* ⚠️ 2026-10-09 (аудит): 64-өөс УРТ бол ОГТ бичихгүй (урьд нь `slice(0, 64)` — таслагдсан утга
          `matchArchivedFrame`-ийн ЯГ тулгалтад хэзээ ч таарахгүй тул бичигдсэн жаазыг «олдсонгүй» гэж
          үзэж нэмэлтийг ДАВХАР тоолох эрсдэлтэй байв). `parseSubmission` урт утгыг аль хэдийн хаядаг;
@@ -1947,7 +1970,8 @@ async function closeAfterArchive(
   /* ⚠️ 2026-10-12 (A9): `residualOf` — хяналтын мөрийн `updateRows` унаж мөр эцсийн шатанд үлдвэл дахин «Батлах»
      энэ үлдэгдлийг архивлахгүй, шинэ тойрог нээнэ (`archiveSubmission`-ий A9 салбар). */
   const saveRest = (rest: SubmissionPayload, at0: number, mark0: number | undefined) => {
-    const body: SubmissionPayload = { ...rest, at: Date.now(), residual: true, residualOf: { row: by.row, archiveOid: firstOid, day: by.day } };
+    /* ⚠️ 2026-10-12 (дарааллын аудит): `at` серверийн цагаар — `apply`-ийн `s0.at >= uc.at` жишилт өөр хөтчид явдаг */
+    const body: SubmissionPayload = { ...rest, at: serverNow(), residual: true, residualOf: { row: by.row, archiveOid: firstOid, day: by.day } };
     delete body.archiving;
     return saveSubmission(rest.pkgKey, body, { at: at0, ...(mark0 != null ? { dropMark: mark0 } : {}) });
   };
@@ -1961,8 +1985,9 @@ async function closeAfterArchive(
     !(r.cells ?? []).length && !(r.dates ?? []).length && !(r.adds ?? []).length && r.asOf == null;
   /* ⚠️ 2026-10-12 (A5): `regPending` ЗӨВХӨН бүртгэх жааз байвал (`firstOid > 0`) — 0 үед `registerApproved` хэзээ ч
      бүтэхгүй тул тэмдэг мөнхөд үлдэж `retryPendingRegistrations` шар мөрийг арилгадаггүй байв. */
-  let cl = await closeSubmission(staged.oid, firstOid, Date.now(), firstOid > 0, staged.at);
-  if (!cl.ok && !cl.changed) cl = await closeSubmission(staged.oid, firstOid, Date.now(), firstOid > 0, staged.at);
+  /* ⚠️ 2026-10-12 (дарааллын аудит): `approvedAt` серверийн цагаар (`serverClock`-ийн ⚠️) */
+  let cl = await closeSubmission(staged.oid, firstOid, serverNow(), firstOid > 0, staged.at);
+  if (!cl.ok && !cl.changed) cl = await closeSubmission(staged.oid, firstOid, serverNow(), firstOid > 0, staged.at);
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
   else unclosedSet(subOid, null);
   /*
@@ -2114,7 +2139,10 @@ export async function apply(a: {
   // ⚠️ Шалтгаангүй буцаалт нь хяналтын бүртгэлийг утгагүй болгоно
   if (returning && !reason) return { ok: false, error: tr('Буцаах шалтгаанаа бичнэ үү') };
 
-  const t = Date.now();
+  /* ⚠️ 2026-10-12 (дарааллын аудит): шатны огноо · лог · `approvedAt` · тэмдэг бүгд СЕРВЕРИЙН цагаар
+     (`serverClock`-ийн ⚠️) — синк кэштэй (10 мин), унавал `Date.now()` (хуучин зан). */
+  await syncServerClock();
+  const t = serverNow();
   const attrs: Attrs = { [HYANALT.oid]: a.oid };
   /*
    * ⚠️ ЗӨВШӨӨРСӨН НҮДНИЙ ЖАГСААЛТ — шатнаас ҮЛ ХАМААРАН нэг талбарт.
@@ -2163,7 +2191,12 @@ export async function apply(a: {
     }
   }
 
+  /* ⚠️ 2026-10-12 (дарааллын аудит): ЭЦСИЙН ШАТНЫ ГИНЖ (архив → төлөв → нэгтгэл → IPC → markRegistered) нэг
+     `batchInvalidate` бүлэгт — `HYANALT` · `BAGTS_*` · `BAGTS_NEGTGEL` · `HO_IPC`-ийн 5–7 хүчингүй болголт
+     React-д НЭГ удаа мэдэгдэнэ (кэш өөрөө ШУУД хаягдана — `dataBus.batchInvalidate`-ийн ⚠️). Дунд шатанд
+     нэг л хүчингүй болголт тул нөлөөгүй. Доторх `return`-ууд бүлгээс гарч `apply`-ийн үр дүн болно. */
   try {
+    return await batchInvalidate(async (): Promise<Result> => {
     const cur = await liveRow(a.oid);
     if (!cur || cur[F.status] !== REVIEW_STATUS[a.stage]) {
       emit();
@@ -2452,8 +2485,12 @@ export async function apply(a: {
        * хяналт дуусаж архивт бичигдсэний ДАРАА. Батлагдаагүй бөглөлтөөс
        * IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
        *
-       * ⚠️ НЭГ БАГЦ · НЭГ САР = НЭГ МӨР. Сард дахин батлагдвал тэр мөр
+       * ⚠️ НЭГ БАГЦ · НЭГ АГШИН (ӨДӨР) = НЭГ МӨР — `ipcAuto.ts`-ийн толгойн ⚠️ (хэрэглэгчийн 2026-09-10-ны
+       * засвар: «гүйцэтгэл орсон болгоор ipc», сард нэгтгэхгүй). Ижил өдөр дахин батлагдвал тэр мөр
        * ШИНЭЧЛЭГДЭНЭ (`ipcAuto.planAuto`), шинэ мөр үүсэхгүй.
+       * ⚠️ 2026-10-12 (дарааллын аудит): урьд нь энд «нэг багц · нэг сар» гэж ХУУЧИРСАН тайлбар байв —
+       *    `ipcAuto`-гийн санаатай шийдвэртэй (өдрийн грейн) зөрж байсан тул ЗӨВХӨН тайлбарыг зассан;
+       *    түлхүүрийг сар болгох нь тэр шийдвэрийг эргүүлэх тул хийгээгүй.
        *
        * ⚠️ АЛДАА ГАРВАЛ БАТАЛГААГ УНАГААХГҮЙ — `registerApproved`-ийн ЯГ
        * ижил шалтгаан: шийдвэр аль хэдийн хадгалагдсан байхад «болсонгүй»
@@ -2531,6 +2568,7 @@ export async function apply(a: {
     }
     try { await refresh(); } catch (e) { console.warn('[selbe] шийдвэрийн дараах дахин ачаалалт унав:', e); }
     return warns.length ? { ok: true, warn: warns.join(' · ') } : { ok: true };
+    });
   } catch (e) { return fail(e); }
 }
 
@@ -2548,6 +2586,9 @@ export function resetRegSweep(): void {
   SWEPT.clear();
 }
 
+/** ⚠️ 2026-10-12 (дарааллын аудит, №5): хүлээгдэж буй бүртгэлийг нөхөж болох ДЭЭД шатнууд — `Guitsetgel`-ийн sweep-тэй нэг эх */
+export const UPPER_SWEEP: readonly ReviewStage[] = ['director', 'head', 'chief'];
+
 /**
  * БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ БАТЛАЛТУУДЫГ НӨХНӨ (2026-09-25 аудит).
  *
@@ -2555,32 +2596,93 @@ export function resetRegSweep(): void {
  *    `syncIpcFromFill` дараалан явдаг; таб энэ хооронд хаагдвал мөр
  *    «Шилжүүлсэн» болсон тул дахин батлах зам хаалттай, тэр өдөр нэгтгэл/IPC-гүй
  *    МӨНХӨД үлддэг байв. `done|` payload-ын `regPending` тэмдэг үүнийг барина.
- * ⚠️ ЗӨВХӨН «Шилжүүлсэн» мөр, ЗӨВХӨН эцсийн шатны эрхтэй хүн (`authz`) —
- *    бусдын бичилт эрхгүйгээр унах байсан. `archiveSubmission` нь `done|`
- *    замаар ЮУ Ч бичихгүй (idempotent), `registerApproved` (багц·огноо) ба
- *    `syncIpcFromFill` (багц·сар) хоёулаа idempotent.
+ * ⚠️ «Шилжүүлсэн» мөр — ДЭЭД шатны (`director` · `head` · `chief`) эрхтэй хүн (`authz`); бусдын бичилт
+ *    эрхгүйгээр унах байсан. `archiveSubmission` нь `done|` замаар ЮУ Ч бичихгүй (idempotent),
+ *    `registerApproved` (багц·огноо) ба `syncIpcFromFill` (багц·өдөр — `ipcAuto`-гийн ⚠️) хоёулаа idempotent.
+ * ⚠️ 2026-10-12 (дарааллын аудит, №5): урьд нь ЗӨВХӨН эцсийн шат (газрын дарга) / супер нөхдөг байв —
+ *    хэлтсийн дарга · ерөнхий менежер хуудас нээхэд хүлээгдэж буй бүртгэл хэвтсээр, шар мөр ч тэдэнд
+ *    харагддаггүй. Нэгтгэл/IPC нь ШИЙДВЭР биш (архив аль хэдийн суусан) тул дээд гурван шатны аль нэгэнд
+ *    томилогдсон хүн нөхөж болно (`Guitsetgel`-ийн `UPPER_SWEEP` ижил жагсаалт).
+ * ⚠️ 2026-10-12 (дарааллын аудит, №1): АРХИВ СУУСАН Ч ТӨЛӨВ БИЧИГДЭЭГҮЙ МӨР. `apply`-д архив → `done|`
+ *    (`regPending`) хаагдсаны ДАРАА хяналтын мөрийн `updateRows` ТОДОРХОЙ татгалзвал мөр «Газрын дарга
+ *    хянаж байна» хэвээр үлддэг; урьд нь энэ функц зөвхөн «Шилжүүлсэн»-ийг хайдаг тул тийм илгээлт
+ *    `regPending`-тэйгээ мөнхөд үлдэж, дарга «Буцаах» ч (ARCHIVED_NO_RETURN) чадахгүй, дахин «Батлах»-аас
+ *    өөр зам байгаагүй. Одоо `done|` илгээлттэй атлаа ЭЦСИЙН хянах шатанд (`REVIEW_STATUS.chief`) байгаа
+ *    мөрийг ч хамруулна: ЭХЛЭЭД төлөвийг «Шилжүүлсэн» + газрын даргын шийдвэр/нэр/огноо (`approvedAt` нь
+ *    `done|` payload-аас; нэр нь логийн сүүлийн `chief`-ийн зөвшөөрөл, байхгүй бол нөхөж буй хүн —
+ *    `who`, лог дээр «нөхөлт» шалтгаантай) нөхөж бичээд, ДАРАА нь нэгтгэл/IPC. Төлөв нөхөх нь ЭЦСИЙН
+ *    ШАТНЫ шийдвэр тул зөвхөн `chief`-ийн эрхтэй (эсвэл `bypass`) хүн хийнэ; бусад дээд шат зөвхөн
+ *    «Шилжүүлсэн» мөрийг нөхнө. CAS: бичихийн ЯГ өмнө `liveRow` — өөр таб аль хэдийн «Шилжүүлсэн»
+ *    болгосон бол бичихгүй, өөр төлөвт шилжсэн бол орхино (`apply`/`movedSince`-ийн дүрэм).
  * ⚠️ Алдаа нь чимээгүй (`console.warn`) — энэ нь нөхөх зам, хуудсыг унагахгүй.
  */
 export async function retryPendingRegistrations(
   me: string | undefined,
   bypass: boolean,
+  /** ⚠️ 2026-10-12 (№1): төлөв нөхөхөд бичигдэх дэлгэцийн нэр (лог · `SF.chief.who`) — өгөөгүй бол `me` */
+  who?: string,
 ): Promise<{ done: number; failed: number }> {
   const out = { done: 0, failed: 0 };
   if (sweeping) return out;
   sweeping = true;
+  /** ⚠️ 2026-10-12 (№1): төлөв нөхөгдсөн мөр байвал төгсгөлд жагсаалтыг дахин уншина */
+  let fixed = 0;
   try {
     const { listRegPending, markRegistered } = await import('./submission');
     const pend = (await listRegPending()).filter((p) => !SWEPT.has(p.oid));
     if (!pend.length) return out;
+    await syncServerClock();
     if (!loaded) await refresh();
     const final = REVIEW_STAGES[REVIEW_STAGES.length - 1];
     for (const sub of pend) {
-      const cur = ROWS.find((r) => Number(r[F.sheetOid]) === sub.oid && r[F.status] === STATUS.transferred);
+      /* ⚠️ 2026-10-12 (№1): эхлээд «Шилжүүлсэн», үгүй бол эцсийн шатанд ГАЦСАН (хамгийн сүүлийн OID) мөр */
+      const mine = ROWS.filter((r) => Number(r[F.sheetOid]) === sub.oid);
+      let cur = mine.find((r) => r[F.status] === STATUS.transferred);
+      const stuck = !cur;
+      if (!cur) cur = mine.filter((r) => r[F.status] === REVIEW_STATUS[final]).sort((x, y) => y.__oid - x.__oid)[0];
       if (!cur) continue;
+      const bagts = String(cur[F.bagts] ?? '');
       /* ⚠️ 2026-10-06 (аудит #2): `me`/`bypass` нь `authz` дотор `currentUser()`-ээр тулгагдана */
-      if (authz(final, me, String(cur[F.bagts] ?? ''), bypass)) continue;
+      /* ⚠️ 2026-10-12 (№5): дээд гурван шатны аль нэгэнд эрхтэй бол нөхнө; (№1) гацсан мөрийн төлөв нөхөх нь
+         зөвхөн эцсийн шатны эрхээр */
+      const canFinal = !authz(final, me, bagts, bypass);
+      if (stuck ? !canFinal : UPPER_SWEEP.every((s) => authz(s, me, bagts, bypass))) continue;
       SWEPT.add(sub.oid);
       try {
+        if (stuck) {
+          /* ⚠️ 2026-10-12 (№1): CAS — бичихийн яг өмнө дахин уншина */
+          const live = await liveRow(cur.__oid);
+          if (!live) { out.failed += 1; continue; }
+          const st = String(live[F.status] ?? '');
+          if (st === STATUS.transferred) {
+            cur = live;
+          } else if (st !== REVIEW_STATUS[final]) {
+            console.warn('[selbe] гацсан мөр өөр төлөвт шилжсэн — төлөв нөхөхгүй:', cur.__oid, st);
+            out.failed += 1;
+            continue;
+          } else {
+            const sf = SF[final];
+            const at = Number.isFinite(sub.payload.approvedAt) ? Number(sub.payload.approvedAt) : serverNow();
+            const logged = lastApproverName(live[F.history], final);
+            const name = logged || (who ?? me ?? '').trim();
+            const fix: Attrs = {
+              [HYANALT.oid]: cur.__oid,
+              [sf.who]: name,
+              [sf.decision]: DECISION.approve,
+              [sf.reason]: '',
+              [sf.returned]: null,
+              [sf.sent]: at,
+              [F.status]: STATUS.transferred,
+              ...(await historyPatch(live[F.history], {
+                stage: final, who: name, at: serverNow(), act: 'approve',
+                reason: tr('Нөхөлт: архив суусан батлалтын төлөв бичигдээгүй байсныг нөхөв'),
+              }, meOf(me))),
+            };
+            await updateRows([fix]);
+            fixed += 1;
+            cur = { ...live, ...fix } as Row;
+          }
+        }
         const ar = await archiveSubmission(cur);
         if (!ar.ok || !ar.pkgKey || !(ar.archiveOid > 0)) { out.failed += 1; continue; }
         const { registerApproved } = await import('./negtgelWrite');
@@ -2607,6 +2709,8 @@ export async function retryPendingRegistrations(
         console.warn('[selbe] хүлээгдэж буй бүртгэлийг нөхөх алдаа:', e);
       }
     }
+    /* ⚠️ 2026-10-12 (№1): төлөв нөхөгдсөн бол жагсаалт шинэчлэгдэнэ (нэгтгэл/IPC унасан ч мөр «Шилжүүлсэн») */
+    if (fixed > 0) await refreshQuiet();
     return out;
   } catch (e) {
     console.warn('[selbe] хүлээгдэж буй бүртгэлийн жагсаалт:', e);
@@ -2699,7 +2803,9 @@ export async function recheck(
     }
   }
 
-  const t = Date.now();
+  /* ⚠️ 2026-10-12 (дарааллын аудит): лог `at` · шатны огноо серверийн цагаар (`serverClock`-ийн ⚠️) */
+  await syncServerClock();
+  const t = serverNow();
 
   if (verdict === 'ok') {
     const base = prev;
@@ -2853,6 +2959,12 @@ export async function recheck(
    *    гүйцэтгэгч рүү буцах зам тул нүдний ялгаа ХАМГИЙН чухал нь энд.
    */
   /* ⚠️ 2026-09-23 (#16): талбар байхгүй бол бичихгүй, `warn`-аар ил хэлнэ. */
+  /* ⚠️ 2026-10-12 (дарааллын аудит, №4): ДЭЭД ШАТНЫ `Zovshoorson_nud` нь АНХДАГЧ (seed). `okCells` `undefined`
+     бол талбарыг ХӨНДӨХГҮЙ — дээд шатны буцаалтаар бичигдсэн зөвшөөрөл (`Guitsetgel.recheckSeed`-ээр дахин
+     шалгагчид ногооноор харагдсан) гүйцэтгэгчид ЯГ ТЭР хэвээр очно. Урьд нь UI ҮРГЭЛЖ жагсаалт дамжуулдаг тул
+     дахин шалгагч нэг ч нүд хөндөөгүй атлаа `seed` хуучирсан/мэдэхгүй (`resolveOk` → `unknown`) үед `[]`
+     бичигдэж дээд шатны зөвшөөрөл дарагддаг байв. Дахин шалгагч ИЛ өөрчилсөн (`okOv`) бол л тэр жагсаалт;
+     агуулга татагдаагүй бол R4-ийн дагуу `[]` хэвээр (UI шийднэ — `Guitsetgel`-ийн `recheckOkArg`). */
   const okp = await okCellsPatch(okCells);
   /* ⚠️ 2026-10-12 (R1): жагсаалт баганад багтахгүй — унах бичилт илгээхгүй */
   if (okp.error) return { ok: false, error: okp.error };

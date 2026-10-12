@@ -68,6 +68,9 @@ import { t as tr } from '@/lib/i18nCore';
 import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
 /* ⚠️ 2026-10-11 (аудит №7): хариу алдагдсан бичилтийг тодорхой татгалзлаас ялгана (`saveSubmission.lost`) */
 import { isLostWrite } from './lostWrite';
+/* ⚠️ 2026-10-12 (дарааллын аудит): «архивлаж байна» тэмдгийн шинэ эсэх (`markFresh`) — ӨӨР хөтчийн `startedAt`-ыг
+   СЕРВЕРИЙН цагаар жишнэ (`serverClock`-ийн ⚠️); синк хийгдээгүй (Node) бол `Date.now()` */
+import { serverNow } from './serverClock';
 
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан батлагдаагүй мөр.
@@ -250,8 +253,9 @@ export const PROBE_MAX = 8;
  * архивын жаазаар шийднэ (`matchArchivedFrame`).
  */
 export const ARCHIVING_TTL_MS = 15 * 60_000;
-/** Тэмдэг ШИНЭ үү (`ARCHIVING_TTL_MS`). ⚠️ Цагийн зөрүүгээр ирээдүйд байвал ч шинэ гэж үзнэ (fail-closed). */
-export const markFresh = (m: Pick<ArchivingMark, 'startedAt'>, now = Date.now()): boolean =>
+/** Тэмдэг ШИНЭ үү (`ARCHIVING_TTL_MS`). ⚠️ Цагийн зөрүүгээр ирээдүйд байвал ч шинэ гэж үзнэ (fail-closed).
+ *  ⚠️ 2026-10-12 (дарааллын аудит): анхдагч `now` нь СЕРВЕРИЙН цаг (`serverNow`) — `startedAt` ч серверийн цагаар бичигдэнэ. */
+export const markFresh = (m: Pick<ArchivingMark, 'startedAt'>, now = serverNow()): boolean =>
   now - m.startedAt < ARCHIVING_TTL_MS;
 
 /**
@@ -468,7 +472,8 @@ export function resolveMark(p: SubmissionPayload, landed: boolean): SubmissionPa
  * `{ sameUser }` (ижил хэрэглэгчийн өөр таб/хөтөч эсэх), эс бөгөөс `null` (дарж болно).
  */
 export function claimConflict(
-  existing: ArchivingMark | undefined, at: number, sid: string, me: string, now = Date.now(),
+  /* ⚠️ 2026-10-12 (дарааллын аудит): анхдагч нь серверийн цаг (`markFresh`-тэй ижил) */
+  existing: ArchivingMark | undefined, at: number, sid: string, me: string, now = serverNow(),
 ): { sameUser: boolean; by: string } | null {
   if (!existing || existing.at !== at || !markFresh(existing, now)) return null;
   if (existing.sid && existing.sid === sid) return null;
@@ -1708,7 +1713,8 @@ export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: 
     returnGeometry: false,
     orderByFields: ['OBJECTID ASC'],
   });
-  const now = Date.now();
+  /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`markFresh`-ийн ⚠️) */
+  const now = serverNow();
   let best: { who: string; at: number } | null = null;
   for (const f of res.features) {
     const r = readRow(f.attributes as RowAttrs | undefined);

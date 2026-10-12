@@ -349,7 +349,8 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  * ⚠️ Тусдаа кэш нь ДАВХАРДАЛ ҮҮСГЭХГҮЙ: `loadReportExtraRaw` нь эдгээр
  *    ороомгуудыг дуудна тул «Тайлан» ба «Схем» хоёр НЭГ хүсэлт хуваалцана.
  */
-export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW']);
+/* ⚠️ 2026-10-12 (дарааллын аудит): `BUILDING` — дотор нь `loadPkgLabels` (барилгын давхаргын `BAGTS`) */
+export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING']);
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW_NEW.fields;
@@ -536,7 +537,8 @@ async function loadSocial(): Promise<ReportExtra['social']> {
 
 /* ═══════════════ Барилга угсралтын гүйцэтгэл ═══════════════ */
 
-export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET']);
+/* ⚠️ 2026-10-12 (дарааллын аудит): `BUILDING` — дотор нь `loadPkgLabels` (`loadOverall`-тай ижил) */
+export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET', 'BUILDING']);
 
 async function loadProgressRaw(): Promise<ReportExtra['progress']> {
   const { loadBlockProgress, loadBlockUniverse, pkgProgressOf, universeKeys, latestMean } = await import('@/lib/blockProgress');
@@ -1015,8 +1017,17 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
  * санхүүгийн засвар, хуваарь хадгалсны дараа дашбоард тэр дор нь шинэчлэгдэх
  * атлаа Тайлан (+PDF) 5 минут хуучин тоогоо барьж, хоёр дэлгэц зөрдөг байв.
  */
+/*
+ * ⚠️ 2026-10-12 (дарааллын аудит): түлхүүр ДУТУУ байв — дотор нь `loadNegtgelPct`
+ * (`negtgel.loadNegtgelFull` → CASHFLOW_NEW · BAGTS_SHEET · BUILDING · PARCEL_LEFT ·
+ * HUVAARI_OBYEM) ба `loadPkgLabels` (BUILDING) уншдаг атлаа энд `BUILDING` ·
+ * `HUVAARI_OBYEM` зарлагдаагүй тул сарын обьём батлагдах / барилгын багцын нэр засагдахад
+ * доод кэш хаягдаж ШИНЭ тоо бэлэн байхад энэ нэгтгэл 5 мин хуучин хэвээр үлддэг байв.
+ * `execReport.loadExecReport`-ийн жагсаалттай ижил; `ZOVSHOOROL`-ыг энэ файл УНШДАГГҮЙ
+ * (grep: `loadZov` алга) тул оруулаагүй — хэрэггүй түлхүүр нь дэмий дахин таталт.
+ */
 export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
-  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL']);
+  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*

@@ -7,6 +7,7 @@
  * Ажиллуулах:  npm run test:tg
  */
 
+import { readFileSync } from 'node:fs';
 import { toHtml, stripHtml } from './telegram-format.mjs';
 
 let failures = 0;
@@ -76,6 +77,21 @@ check(
   'дутуу нүдтэй хүснэгт унахгүй',
   toHtml('| a | b |\n|---|---|\n| ганц |').includes('<pre>'),
 );
+
+/* ⚠️ 2026-10-12 (дарааллын аудит): ЦАГИЙН БҮС — бот ба реле процесс эхлэхэд `TZ`-ээ Улаанбаатар
+   болгох ёстой (статик: эх кодыг уншина — ботыг ажиллуулахгүй). Мөр нь ЭХНИЙ `import`-оос ӨМНӨ. */
+console.log('\n6. Цагийн бүс (TZ) — бот · реле · Claude Code горим');
+for (const f of ['./telegram-bot.mjs', '../agent-proxy/server.mjs', '../agent-proxy/claudeCode.mjs']) {
+  const src = readFileSync(new URL(f, import.meta.url), 'utf8');
+  const tzAt = src.search(/process\.env\.TZ \|\|= ['"]Asia\/Ulaanbaatar['"]/);
+  const impAt = src.search(/^import /m);
+  check(`${f}: TZ ||= Asia/Ulaanbaatar байна`, tzAt >= 0);
+  check(`${f}: TZ нь эхний import-оос өмнө`, tzAt >= 0 && impAt > tzAt, `tz=${tzAt} import=${impAt}`);
+}
+for (const f of ['../deploy/telegram-bot/selbe-bot.service', '../deploy/telegram-bot/Dockerfile']) {
+  const src = readFileSync(new URL(f, import.meta.url), 'utf8');
+  check(`${f}: TZ=Asia/Ulaanbaatar`, /^(Environment=|ENV )TZ=Asia\/Ulaanbaatar/m.test(src));
+}
 
 console.log(failures ? `\n❌ ${failures} шалгуур унав` : '\n✅ Telegram-ийн хөрвүүлэлт бүрэн');
 process.exit(failures ? 1 : 0);

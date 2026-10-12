@@ -20,6 +20,15 @@
  * Ажиллуулах:  npm run bot
  */
 
+/*
+ * ⚠️ 2026-10-12 (дарааллын аудит): ЦАГИЙН БҮС. Бот Linux сервер/контейнерт UTC-ээр ажиллахад
+ *    «өнөөдөр», өдрийн төсөв (`agent-proxy`-ийн Улаанбаатарын өдөр), огнооны хэвлэлт порталаас
+ *    8 цагаар зөрж байв. Орчноос өгөөгүй бол Улаанбаатар; `||=` тул гаднаас ил өгсөн TZ давамгайлна.
+ *    ESM импорт дээш татагддаг ч Node нь `process.env.TZ`-ийг ДИНАМИКААР дахин уншдаг (v13+), харин
+ *    `src/lib/*` нь доор `await import()`-оор ачаалагддаг тул тэдэнд ч эхнээсээ хүчинтэй.
+ */
+process.env.TZ ||= 'Asia/Ulaanbaatar';
+
 import { readFileSync, writeFileSync, existsSync, renameSync, copyFileSync } from 'node:fs';
 import { toHtml, stripHtml } from './telegram-format.mjs';
 import { botFullViews } from './telegram-views.mjs';

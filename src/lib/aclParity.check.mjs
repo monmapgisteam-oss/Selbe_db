@@ -425,8 +425,10 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
   const ro = src.slice(src.indexOf('export async function runOp('));
   assert.equal((ro.match(/if \(!r\.ok\)/g) ?? []).length, 1,
     `${f}: runOp-д r.ok шалгалт ЯГ 1 байх ёстой`);
-  assert.ok(ro.indexOf('if (!r.ok)') < ro.indexOf('await '),
-    `${f}: runOp нь r.ok-ыг await-ын ӨМНӨ шалгах ёстой`);
+  /* ⚠️ 2026-10-12 (дарааллын аудит): дүрэм нь `r.sync`/`r.granted`-ийн `await Promise.all`-ын ӨМНӨ — асуултын өмнөх
+     `pendingHeldBy` (уншилт) await нь `r` үүсэхээс өмнө тул хамаарахгүй */
+  assert.ok(ro.indexOf('if (!r.ok)') < ro.indexOf('await Promise.all('),
+    `${f}: runOp нь r.ok-ыг sync-ийн await-ын ӨМНӨ шалгах ёстой`);
   assert.ok(ro.includes('if (!ready()) { setErr(lockMsg()); return false; }'),
     `${f}: runOp-д түгжээний шалгалт алга`);
 }

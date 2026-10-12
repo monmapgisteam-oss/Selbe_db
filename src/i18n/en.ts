@@ -7078,6 +7078,14 @@ const en: Record<string, string> = {
   "Энэ ажлыг өөр таб эсвэл хэрэглэгч аль хэдийн «Шилжүүлсэн» болгосон байсан — хяналтын мөрийг дахин бичсэнгүй, нэгтгэлийн бүртгэлийг л шалгав.": "Another tab or user had already set this work to «Transferred» — the review row was not rewritten; only the summary registration was checked.",
   "Хяналтын мөрд илгээлтийн дугаар алга (хуучин мөр) — архивт бичих, нэгтгэлд бүртгэх жааз байхгүй.": "The review row has no submission number (legacy row) — there is no frame to archive or register in the summary.",
   "Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (OBJECTID {1}) — таны мөрийг (OBJECTID {2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.": "A duplicate round was created: {0} decided this work while you were deciding it (OBJECTID {1}) — your row (OBJECTID {2}) could not be deleted; ask an admin to delete one of them.",
+  "Хадгалаагүй ажил байгаа тул өгөгдлийг автоматаар шинэчилсэнгүй — хадгалсны дараа «Шинэчлэх» дарна уу.": "Data was not auto-refreshed because there is unsaved work — save first, then press «Refresh».",
+  "Нөхөлт: архив суусан батлалтын төлөв бичигдээгүй байсныг нөхөв": "Repair: the status of an approval whose archive had already landed was filled in",
+  "Буулгах боломжгүй тул шийдвэр гаргасангүй: {0}": "No decision was made because the rows cannot be applied: {0}",
+  "Нэмэлт ажлын буулгалтын төлөв шалгагдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.": "Could not check the extra-work apply state ({0}) — nothing was written, please retry.",
+  "{0} энэ багцад нэмэлт ажлыг яг одоо хуудсанд буулгаж байна — дуусахыг хүлээнэ үү. Юу ч бичсэнгүй.": "{0} is applying extra work to this package’s sheet right now — please wait for it to finish. Nothing was written.",
+  "Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.": "Could not check pending submissions · partial-write marks · locks — review the «Schedule»/«Volume»/«Extra work» approval pages before deleting.",
+  "«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).": "«{0}»: pending submissions {1} · partial-write marks {2} · approval locks {3} — removing/deleting leaves these orphaned (an approver must return or complete them).",
+  "Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.": "The previous stage is not approved — {0} cannot be decided.",
 };
 
 export default en;

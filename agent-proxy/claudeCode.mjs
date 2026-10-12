@@ -25,6 +25,9 @@
  *    хурдны хязгаар хоёр нь тэрийг хамгаална.
  */
 
+/* ⚠️ 2026-10-12 (дарааллын аудит): цагийн бүс — `server.mjs`-тэй ижил (энэ модуль тусдаа ч ачаалагдаж болно) */
+process.env.TZ ||= "Asia/Ulaanbaatar";
+
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { rm } from "node:fs/promises";

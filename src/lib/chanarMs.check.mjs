@@ -941,4 +941,17 @@ console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр 
   console.log('✅ 2026-10-04 — NCR залруулгын тулгалт (correctionChanged)');
 }
 
+/* ── ⚠️ 2026-10-12 (дарааллын аудит): `superseded` бол хариуг ХҮЛЭЭН АВАХ товч гарахгүй (`canAct.ack`) ── */
+{
+  const rep = { no: 'R', at: T, verdict: 'A' };
+  const d = { kind: 'MS', status: MS_STATUS.approved, author: 'g', reviews: emptyReviews(), rep };
+  assert.equal(canAct(d, 'g', []).ack, true, 'зохиогч хариугаа хүлээн авна');
+  assert.equal(canAct(d, 'g', [], { superseded: true }).ack, false, '⚠️ шинэ хувилбартай хуучин мөрд ack гарахгүй');
+  assert.equal(canAct({ ...d, rep: { ...rep, receivedAt: T } }, 'g', []).ack, false, 'аль хэдийн хүлээн авсан');
+  const n = { kind: 'NCR', status: MS_STATUS.approved, author: 'opener', reviews: emptyReviews(), rep };
+  assert.equal(canAct(n, 'c', [], { contractor: true }).ack, true, 'NCR — гүйцэтгэгч хүлээн авна');
+  assert.equal(canAct(n, 'c', [], { contractor: true, superseded: true }).ack, false, '⚠️ NCR superseded — ack гарахгүй');
+  console.log('✅ 2026-10-12 — superseded үед ack гарахгүй');
+}
+
 console.log('chanarMs.check ✓');

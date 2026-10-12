@@ -192,4 +192,78 @@ console.log('\n7. ЖИНХЭНЭ dataBus.ts — зан төлөв (хуулба�
   check('тайлсан захиалагч дуудагдахгүй', fired === f1 + 1);
 }
 
+console.log('\n8. batchInvalidate — бүлгийн дотор слот ШУУД хаягдана, мэдэгдэл НЭГ удаа (2026-10-12)');
+{
+  const bus = await import('@/lib/dataBus');
+  let dA = 0;
+  let dB = 0;
+  bus.register(() => { dA += 1; }, ['HYANALT']);
+  bus.register(() => { dB += 1; }, ['HO_IPC', 'BAGTS_NEGTGEL']);
+  let fired = 0;
+  const off = bus.subscribeData(() => { fired += 1; });
+
+  /* синхрон бүлэг */
+  const v0 = bus.dataVersion();
+  const w0 = bus.writeEpoch();
+  const a0 = dA;
+  const b0 = dB;
+  const ret = bus.batchInvalidate(() => {
+    bus.invalidate('HYANALT');
+    check('бүлгийн дотор слот ШУУД хаягдав (дараагийн уншилт шинэ татна)', dA === a0 + 1);
+    check('бүлгийн дотор бичилтийн үе ШУУД өсөв (query.shared хуучин уншилтыг хуваалцахгүй)', bus.writeEpoch() === w0 + 1);
+    check('бүлгийн дотор захиалагч ДУУДАГДААГҮЙ', fired === 0 && bus.dataVersion() === v0);
+    bus.invalidate('HO_IPC');
+    bus.invalidate('BAGTS_NEGTGEL');
+    bus.invalidate('HO_IPC');
+    return 42;
+  });
+  check('буцаах утга дамжина', ret === 42);
+  check('бүлэг дуусахад мэдэгдэл НЭГ удаа, хувилбар +1', fired === 1 && bus.dataVersion() === v0 + 1);
+  check('бүх слот хаягдсан, үе бүрд өссөн', dA === a0 + 1 && dB === b0 + 3 && bus.writeEpoch() === w0 + 4);
+
+  /* тааралгүй түлхүүр л байвал мэдэгдэл үгүй */
+  const f1 = fired;
+  const v1 = bus.dataVersion();
+  bus.batchInvalidate(() => { bus.invalidate('HABEA'); });
+  check('бүлэгт зөвхөн тааралгүй түлхүүр — мэдэгдэл үгүй', fired === f1 && bus.dataVersion() === v1);
+
+  /* үүрлэсэн бүлэг — хамгийн гадна талынх дуусахад л */
+  bus.batchInvalidate(() => {
+    bus.batchInvalidate(() => { bus.invalidate('HYANALT'); });
+    check('дотоод бүлэг дуусахад мэдэгдэл ХОЙШЛОСОН хэвээр', fired === f1);
+    bus.invalidate('HO_IPC');
+  });
+  check('гадна бүлэг дуусахад нэг мэдэгдэл', fired === f1 + 1);
+
+  /* шидсэн ч тараана */
+  const f2 = fired;
+  let threw = false;
+  try {
+    bus.batchInvalidate(() => { bus.invalidate('HYANALT'); throw new Error('x'); });
+  } catch { threw = true; }
+  check('fn шидвэл алдаа дамжина, мэдэгдэл finally-д тарав', threw && fired === f2 + 1);
+
+  /* async бүлэг — амлалт шийдэгдтэл; унасан ч тараана */
+  const f3 = fired;
+  const p = bus.batchInvalidate(async () => {
+    bus.invalidate('HYANALT');
+    await new Promise((r) => setTimeout(r, 5));
+    check('async бүлгийн дунд мэдэгдэл хойшлосон', fired === f3);
+    bus.invalidate('HO_IPC');
+    return 'ok';
+  });
+  check('async бүлэг амлалт буцаана', typeof p.then === 'function');
+  check('амлалт шийдэгдэв', (await p) === 'ok' && fired === f3 + 1);
+  const f4 = fired;
+  let rej = false;
+  await bus.batchInvalidate(async () => { bus.invalidate('HYANALT'); throw new Error('y'); }).catch(() => { rej = true; });
+  check('async бүлэг унасан ч мэдэгдэл тарав, алдаа дамжина', rej && fired === f4 + 1);
+
+  /* бүлгийн гадна — урьдын адил шууд */
+  const f5 = fired;
+  bus.invalidate('HYANALT');
+  check('бүлгийн гадна invalidate шууд мэдэгдэнэ (тоолуур тэглэгдсэн)', fired === f5 + 1);
+  off();
+}
+
 console.log('\n✅ Автобусын ' + ok + ' шалгуур давлаа');

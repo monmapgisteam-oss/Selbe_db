@@ -293,8 +293,21 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
      эхнийхийг дарж «амжилттай» гэдэг байв. `maNo` нь мөрийн өөрчлөгдөшгүй талбар тул дуудагчийн `row`-оор уншиж болно.
      ArcGIS-д нөхцөлт update БАЙХГҮЙ тул завсар тэг биш — бичсэний ДАРАА дахин уншиж `decidedBy` ≠ би бол ялсан хянагчийг
      нэрлэж шиднэ (`huvaariBatlah.casClaim`-ийн ижил дүрэм). */
-  const { bagts } = await maOf(row.maNo);
+  const { ma, bagts } = await maOf(row.maNo);
   scopeDeny('review', bagts);
+  /* ⚠️ 2026-10-12 (дарааллын аудит): ГИНЖИЙН ШАТ ХААЛТТАЙ бол ШИЙДВЭР ГАРГАХГҮЙ (`addFm`-ийн ижил `chainOf` шалгалт).
+     Урьд нь зөвхөн оруулахад шалгадаг тул оруулсны ДАРАА өмнөх шат буцаагдсан (MIR R → FIC `locked`, FIC R → М-акт
+     `locked`) бол хянагч хаалттай шатны баримтыг батлаж, `ipcReady` гинжийг дундуур нь нөхөх боломжтой байв. Хүлээж
+     буй шат (`next`/`pending`) — шийдвэрлэж болно. Уншилт `pending` уншилтаас ӨМНӨ (дээрх 2026-10-11-ний завсрын дүрэм). */
+  const [mirs, fmAll] = await Promise.all([loadMir(), queryFm(url, `${F.maNo} = N'${row.maNo.replace(/'/g, "''")}'`)]);
+  const stage = chainOf(ma.verdict, {
+    MIR: mirVerdictFor(mirsByMa(mirs).get(row.maNo)),
+    FIC: fmVerdictFor(fmAll.filter((r) => r.kind === 'FIC')),
+    MAKT: fmVerdictFor(fmAll.filter((r) => r.kind === 'MAKT')),
+  }).find((st) => st.key === row.kind);
+  if (!stage || stage.state === 'locked') {
+    throw new Error(tr('Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.', row.kind === 'FIC' ? 'FIC' : tr('М-акт')));
+  }
   const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
   if (fresh.uploadedBy && fresh.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));

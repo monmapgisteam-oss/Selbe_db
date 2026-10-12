@@ -17,6 +17,8 @@ import {
 import { isLostWrite } from '@/lib/lostWrite';
 /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж буй эсэх (доорх `archBusy`-ийн ⚠️) */
 import { archivingBusy } from '@/lib/submission';
+/* ⚠️ 2026-10-12 (дарааллын аудит): нэмэлт ажлын буулгалт явж байхад батлахгүй (`archBusy`) */
+import { ajilApplyBusyFor } from '@/lib/ajilBatlah';
 import { t as tr } from "@/lib/i18nCore";
 /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
 import { userError } from '@/components/ui';
@@ -260,6 +262,8 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     let wroteMain = false;
     /** ⚠️ 2026-10-06: түгжсэн атлаа үндсэн өгөгдөлд НЭГ Ч мөр бичээгүй — `finally`-д түгжээг тайлна */
     let holdClaim = false;
+    /** ⚠️ 2026-10-12 (дарааллын аудит): `claimObyem`-ийн түгжээний агшин — `decideObyem({ claimAt })`-д (өөр цонхны түгжээг ялгана) */
+    let claimAt: number | undefined;
     /* ⚠️ 2026-10-11 (аудит №7): өөр илгээлт — өмнөх илгээлтийн «бичсэн» санамж хамаарахгүй */
     if (wroteSomeRef.current && wroteForRef.current !== pvSub.oid) wroteSomeRef.current = false;
     wroteForRef.current = pvSub.oid;
@@ -407,9 +411,19 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         const archBusy = async (): Promise<string | null> => {
           try {
             const a = await archivingBusy(pkg.key);
-            return a ? tr('{0} гүйцэтгэлийг яг одоо архивлаж байна — дуусахыг хүлээнэ үү', a.who || '—') : null;
+            if (a) return tr('{0} гүйцэтгэлийг яг одоо архивлаж байна — дуусахыг хүлээнэ үү', a.who || '—');
           } catch (e) {
             return tr('Энэ багцын гүйцэтгэлийн архивлалтын төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', userError(e));
+          }
+          /* ⚠️ 2026-10-12 (дарааллын аудит): НЭМЭЛТ АЖЛЫН БУУЛГАЛТ ЯВЖ БАЙХАД ч батлахгүй (`ajilBatlah.ajilApplyBusyFor` —
+             `materializeInner`-ийн түгжээ): буулгалт хуудсыг БҮТЭН шинэ жаазаар солидог тул манай `applyUpdates` хуучин
+             жаазад үлдэнэ (архивлалттай ижил). `ajilApply.busyGate` обьёмын түгжээг хардаг — одоо хоёр чиглэлд тэгш.
+             Уншилт унавал хаана (fail-closed). */
+          try {
+            const aj = await ajilApplyBusyFor(pkg.key);
+            return aj ? tr('{0} энэ багцад нэмэлт ажлыг яг одоо хуудсанд буулгаж байна — дуусахыг хүлээнэ үү. Юу ч бичсэнгүй.', aj.who || '—') : null;
+          } catch (e) {
+            return tr('Нэмэлт ажлын буулгалтын төлөв шалгагдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', userError(e));
           }
         };
         const ab0 = await archBusy();
@@ -421,13 +435,27 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           return;
         }
         holdClaim = true;
-        const why = await obyemApproveGuard({ oid: pvSub.oid, approver: me });
+        /* ⚠️ 2026-10-12 (дарааллын аудит): түгжээний агшин (`claimObyem.at`) — `obyemApproveGuard`/`markObyemPartial`/
+           `decideObyem`-д дамжуулж нэг батлагчийн ӨӨР цонхны түгжээг «минийх» гэхгүй (`Huvaari.claimAtRef`-ийн загвар) */
+        claimAt = claim.at;
+        const why = await obyemApproveGuard({ oid: pvSub.oid, approver: me, claimAt });
         if (why) {
           if (await alreadyMine()) return;
           pvErrHere(why);
           return;
         }
-        const mk = await markObyemPartial({ oid: pvSub.oid, approver: me });
+        /* ⚠️ 2026-10-12 (дарааллын аудит): ТЭМДЭГ АЛЬ ХЭДИЙН БАЙНА (өмнөх сешн/цонх/батлагч бичсэн) → `wroteSomeRef`-ийг
+           ЭНД тарина (`Huvaari.tsx`-ийн 2026-10-12-ны ижил дүрэм). Урьд нь `wroteSomeRef` зөвхөн ЭНЭ сешний бичилтээр
+           тавигддаг тул хуудас сэргээсний дараах дахин оролдлого (архивлалт · `written === 0`) өмнөх сешний хагас
+           бичилтийн тэмдгийг АРИЛГАЖ, үндсэн өгөгдөлд суусан обьёмыг татах/буцаах боломжтой болгодог байв. Уншилт
+           унавал таамаглахгүй (тэмдэг арилгах нь доор эзэнтэй `clearObyemPartial(oid, me)` тул аюулгүй тал). */
+        try {
+          const h0 = await loadObyemHead(pvSub.oid);
+          if (h0 && obyemPartialBy(h0.status, h0.reason) != null) wroteSomeRef.current = true;
+        } catch { /* тэмдэг эзэнтэй арилдаг — таамаглахгүй */ }
+        const mk = await markObyemPartial({ oid: pvSub.oid, approver: me, claimAt });
+        /* ⚠️ 2026-10-12: сервер дээр тэмдэг АЛЬ ХЭДИЙН байсан (`existing`) — энэ оролдлогынх биш тул арилгахгүй */
+        if (mk.existing) wroteSomeRef.current = true;
         if (!mk.ok) {
           pvErrHere(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — үндсэн өгөгдөлд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
           return;
@@ -439,7 +467,9 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           /* ⚠️ 2026-10-11 (аудит №7): ӨМНӨХ оролдлого энэ илгээлтээс үндсэн өгөгдөлд мөр бичсэн (эсвэл хариу нь
              алдагдсан — `wroteSomeRef`) бол тэмдгийг АРИЛГАХГҮЙ: тэр хагас бичилт хамгаалалтгүй үлдэж, зохиогч
              татаж/өөр батлагч буцааж чадах байв. Тэмдэг зөвхөн `decideObyem` амжилттай болоход арилна. */
-          if (!wroteSomeRef.current) await clearObyemPartial(pvSub.oid);
+          /* ⚠️ 2026-10-12 (дарааллын аудит): ЭЗНИЙ ХҮРЭЭТЭЙ арилгалт — зөвхөн МИНИЙ тэмдгийг (уншилт ба арилгалтын завсарт
+             өөр батлагчийн тэмдэг суувал түүнийг арилгахгүй) */
+          if (!wroteSomeRef.current) await clearObyemPartial(pvSub.oid, me);
           pvErrHere(ab1);
           return;
         }
@@ -451,7 +481,8 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
              үлдэнэ (`clearObyemPartial` · `releaseObyemClaim` дуудахгүй); зөвхөн тодорхой татгалзалд арилгана. */
           /* ⚠️ 2026-10-11 (аудит №7): нэг ч багц бичигдсэн эсвэл хариу алдагдсан бол энэ батлалтын турш санана (`wroteSomeRef`) */
           if (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e)) wroteSomeRef.current = true;
-          if ((e as { written?: number })?.written === 0 && !isLostWrite(e) && !wroteSomeRef.current) await clearObyemPartial(pvSub.oid);
+          /* ⚠️ 2026-10-12 (дарааллын аудит): эзэнтэй арилгалт — зөвхөн миний тэмдэг */
+          if ((e as { written?: number })?.written === 0 && !isLostWrite(e) && !wroteSomeRef.current) await clearObyemPartial(pvSub.oid, me);
           else { holdClaim = false; wroteMain = true; }
           throw e;
         }
@@ -493,6 +524,8 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         reason,
         /* ⚠️ 2026-10-09: алгассан нүдийг илгээлтийн `tailbar`-д (дээрх ⚠️) */
         ...(skipNote ? { skipped: skipNote } : {}),
+        /* ⚠️ 2026-10-12 (дарааллын аудит): өөр цонхны ижил батлагчийн түгжээг ялгана (`claimObyem.at`) */
+        ...(claimAt != null ? { claimAt } : {}),
       });
       /* ⚠️ 2026-10-09: нөгөө таб (ижил батлагч) түрүүлж баталсан бол амжилт (`doneByMe`-ийн ⚠️) */
       const sameMe = !r.ok && (await doneByMe());

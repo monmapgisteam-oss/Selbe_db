@@ -628,8 +628,11 @@ function PortalContent(
   /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
-  /** Эрх хумигдаж харагдац солигдсон тухай мэдэгдэл (доорх эрхийн guard-ийн ⚠️ 2026-10-06) */
-  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
+  /** Порталын ерөнхий мэдэгдлийн тууз: эрх хумигдаж харагдац солигдсон (⚠️ 2026-10-06),
+   *  хадгалаагүй ажлаас болж автомат шинэчлэл хойшилсон (⚠️ 2026-10-12, `onVis`) */
+  const [portalNotice, setPortalNotice] = useState<string | null>(null);
+  /** ⚠️ 2026-10-12 (дарааллын аудит): таб буцахад хадгалаагүй ажлаас болж ХОЙШЛУУЛСАН шинэчлэл */
+  const refreshDeferredRef = useRef(false);
   /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
      react-hooks/refs). Уншигч нь зөвхөн үйл явдлын хариулагч ба доорх guard
      эффект — хоёулаа энэ эффектийн ДАРАА ажиллана (зарлалтын дараалал). */
@@ -673,9 +676,17 @@ function PortalContent(
    */
   const dataAt = useSyncExternalStore(subscribeData, dataRefreshedAt, () => 0);
   const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
+  /*
+   * ⚠️ 2026-10-12 (дарааллын аудит): гурван туг ХАНГАЛТГҮЙ — `confirmLeave`-ийн адил
+   *    `hasUnsavedWork()` (QAQC-ийн нүд · `useDraftSync` · CashflowPlan …-ын `beforeunload`
+   *    сонсогч) ч энд орно. Урьд нь тэдгээрийн хадгалаагүй маягт дээр таб буцаж ирэхэд
+   *    `invalidateAll` чимээгүй ажиллаж, маягтын суурь мөр дахин татагдаж засвар дарагдах
+   *    эрсдэлтэй байв; «Шинэчлэх» ч асуулгүй явдаг байв.
+   */
   const refreshData = useCallback(() => {
-    const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0;
+    const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork();
     if (dirty && !window.confirm(tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'))) return;
+    refreshDeferredRef.current = false;
     invalidateAll();
   }, []);
   useEffect(() => {
@@ -684,8 +695,18 @@ function PortalContent(
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       const away = hiddenAt == null ? 0 : Date.now() - hiddenAt;
       hiddenAt = null;
-      if (away <= AWAY_REFRESH_MS) return;
-      if (planNavBusy() || finNavDirty() || navDirtyLabels().length > 0) return;
+      /* ⚠️ 2026-10-12: урьд ХОЙШЛУУЛСАН шинэчлэл байвал богино завсрын дараа ч дахин оролдоно */
+      if (away <= AWAY_REFRESH_MS && !refreshDeferredRef.current) return;
+      if (planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork()) {
+        /* ⚠️ 2026-10-12: хадгалаагүй ажилтай бол ХОЙШЛУУЛНА (дараагийн таб буцах үед, ажил
+           хадгалагдсан бол ажиллана); шалтгааныг НЭГ УДАА л хэлнэ — таб бүр сэлгэхэд давтахгүй. */
+        if (!refreshDeferredRef.current) {
+          refreshDeferredRef.current = true;
+          setPortalNotice(tr('Хадгалаагүй ажил байгаа тул өгөгдлийг автоматаар шинэчилсэнгүй — хадгалсны дараа «Шинэчлэх» дарна уу.'));
+        }
+        return;
+      }
+      refreshDeferredRef.current = false;
       invalidateAll();
     };
     document.addEventListener('visibilitychange', onVis);
@@ -878,7 +899,7 @@ function PortalContent(
       const from = VIEW_BY_KEY[view].title;
       const to = VIEW_BY_KEY[navScope[0]].title;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
-      if (setView(navScope[0])) setScopeNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      if (setView(navScope[0])) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
     }
   }, [navScope, view, setView]);
 
@@ -1007,8 +1028,9 @@ function PortalContent(
           {tr('Сүлжээний холболт тасарсан')}
         </div>
       )}
-      {/* ⚠️ 2026-10-06: эрх хумигдаж харагдац солигдсон — `role="status"` (`offline`-ийн ⚠️) */}
-      {scopeNotice && (
+      {/* ⚠️ 2026-10-06: эрх хумигдаж харагдац солигдсон — `role="status"` (`offline`-ийн ⚠️).
+          ⚠️ 2026-10-12: мөн хадгалаагүй ажлаас болж хойшилсон автомат шинэчлэл (`onVis`). */}
+      {portalNotice && (
         <div
           role="status"
           aria-live="polite"
@@ -1019,10 +1041,10 @@ function PortalContent(
             border: '1px solid var(--line-strong)', boxShadow: 'var(--shadow)', fontSize: 12.5,
           }}
         >
-          <span>{scopeNotice}</span>
+          <span>{portalNotice}</span>
           <button
             type="button"
-            onClick={() => setScopeNotice(null)}
+            onClick={() => setPortalNotice(null)}
             aria-label={tr('Хаах')}
             title={tr('Хаах')}
             style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 14 }}
