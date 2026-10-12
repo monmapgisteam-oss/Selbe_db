@@ -7053,7 +7053,7 @@ const en: Record<string, string> = {
   "өөр батлагч батлаж буй {0}": "{0} being approved by another approver",
   "Ойролцоо — илгээсэн компьютерын цагаар": "Approximate — by the submitting computer's clock",
   "≈{0} хоног хүлээж байна": "≈{0} days waiting",
-  "Хагас бичсэн": "Partially written"
+  "Хагас бичсэн": "Partially written",
   "Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. AGOL дээр баганын уртыг нэмүүлнэ үү.": "The approved-cells list ({0} characters) exceeds the “{1}” column size ({2}) — the decision was not saved. Ask for the column length to be increased in AGOL.",
   "EditDate-ийн дээд утга уншигдсангүй": "Could not read the maximum EditDate",
   "илгээлт №{0} ({1}{2})": "submission #{0} ({1}{2})",
