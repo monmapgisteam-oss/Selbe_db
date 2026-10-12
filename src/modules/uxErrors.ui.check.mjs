@@ -71,7 +71,8 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.ok(!hv.includes(".catch((e) => alive && setErr(String((e as Error).message || e)))"), 'Huvaari: түүхий ачаалах алдаа');
   assert.match(hv, /setLoadErr\(e instanceof Error/);
   assert.match(hv, /\}, \[pkg, reloadN\]\);/, 'Huvaari: «Дахин оролдох» эффектийг дахин ажиллуулна');
-  assert.match(hv, /flowReady === false && canEdit && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
+  /* ⚠️ 2026-10-12: урсгалын алдааг БАТЛАГЧ ч харна (урьд нь зөвхөн зохиогч — батлагчид «хуваарь алга» гэж худал гардаг байв) */
+  assert.match(hv, /flowReady === false && \(canEdit \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
   assert.match(hv, /friendlyError\(\{ message: st\.detail/);
 
   const qa = src('modules/Qaqc.tsx');

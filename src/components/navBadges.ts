@@ -45,10 +45,13 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
   { view: 'huvaariBatlah', load: () => probe(import('@/lib/huvaariBatlah'), ['countPlanPending']) },
   /* ✅ 2026-10-08: `countPlanReturned` — ЗОХИОГЧИД буцаагдсан, дахин илгээгээгүй илгээлт
      («Хуваарь» харагдац; `ViewRail.BADGE_LABEL` нь «буцаагдсан N» гэж уншина). */
-  { view: 'huvaari', load: () => probe(import('@/lib/huvaariBatlah'), ['countPlanReturned']) },
   /* ✅ 2026-10-09: `countPlanApproved` — ЗОХИОГЧИД саяхан (3 хоног) батлагдсан, «Хуваарь» хуудсанд хараагүй
      илгээлт; буцаагдсантай НИЙЛБЭР («Хуваарь» харагдац — `ViewRail.badgeLabel` «шинэ шийдвэр» гэж уншина). */
-  { view: 'huvaari', load: () => probe(import('@/lib/huvaariBatlah'), ['countPlanApproved']) },
+  /* ⚠️ 2026-10-12 (аудит №8): хоёуланг НЭГ тоолуур (`countPlanNews` → `loadPlanNews`) — буцаагдсан шийдвэрийг ч «Хуваарь»
+     хуудсанд ХАРСНЫ дараа тоолохгүй (`markPlanReturnedSeen`). Урьд нь шошго «шинэ шийдвэр» атлаа буцаалт дахин илгээх
+     хүртэл тоологддог байв (зан ба шошго зөрнө). Дүрэм (эрх · хүрээ · 3 хоног) lib-ийн `countPlanReturned`/
+     `countPlanApproved`-оос — энд зөвхөн «харсан»-ыг хасна. */
+  { view: 'huvaari', load: async () => countPlanNews },
   /* ✅ `countObyemPending(username)` — `src/lib/obyemBatlah.ts`.
      Обьёмыг «Гүйцэтгэл» (бөглөх хуудас) дотор батладаг тул тэр харагдацад. */
   { view: 'guitsetgel', load: () => probe(import('@/lib/obyemBatlah'), ['countObyemPending']) },
@@ -143,6 +146,76 @@ export function makeBadgeRefresher(
 
 /** Тэмдэгтэй харагдацууд — эдгээрээс гарахад тоог шууд шинэчилнэ */
 export const BADGE_VIEWS: ReadonlySet<ViewKey> = new Set(SOURCES.map((x) => x.view));
+
+/* ══ ⚠️ 2026-10-12 (аудит №8): «ХУВААРЬ»-ИЙН «ШИНЭ ШИЙДВЭР» — багц бүрээр · «харсан» тэмдэг ══ */
+/**
+ * БУЦААГДСАН шийдвэрийг «Хуваарь» хуудсанд харсан (`Huvaari` — `lastDecision` нь буцаагдсан, зохиогч нь би).
+ * ⚠️ ЭНЭ ХӨТЧИЙН localStorage — `huvaariBatlah.markPlanApprovedSeen`-ийн ижил загвар (өөр төхөөрөмжид дахин «шинэ»).
+ *    Сүүлийн 200 л хадгална. Хаалттай орчинд чимээгүй (тэмдэг «шинэ» хэвээр — аюулгүй тал).
+ */
+const RETURNED_SEEN_KEY = 'selbe-huvaari-returned-seen';
+/**
+ * ⚠️ `huvaariBatlah.APPROVED_SEEN_KEY`-тэй ҮСЭГ ҮСГЭЭРЭЭ ИЖИЛ (lib экспортлодоггүй) — энд ЗӨВХӨН УНШИНА (`countPlanApproved`-ийн
+ *    «хараагүй» шүүлттэй ижил жагсаалт гаргахад). Бичих нь `markPlanApprovedSeen`-д л.
+ */
+const APPROVED_SEEN_KEY = 'selbe-huvaari-approved-seen';
+function seenSet(key: string): Set<number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : []);
+  } catch { return new Set(); }
+}
+/** Зохиогч буцаагдсан илгээлтийг «Хуваарь» хуудсанд харсныг тэмдэглэнэ */
+export function markPlanReturnedSeen(oid: number): void {
+  try {
+    const s = seenSet(RETURNED_SEEN_KEY);
+    if (s.has(oid)) return;
+    s.add(oid);
+    localStorage.setItem(RETURNED_SEEN_KEY, JSON.stringify([...s].slice(-200)));
+  } catch { /* хаалттай орчин */ }
+}
+/** Нэг «шинэ шийдвэр» — багц · төрөл · илгээлт · шийдвэр */
+export type PlanNews = { pkgKey: string; kind: 'plan' | 'geree' | null; oid: number; status: 'returned' | 'approved' };
+/**
+ * ЗОХИОГЧИЙН ШИНЭ ШИЙДВЭРҮҮД (багц бүрээр) — `Huvaari`-ийн багц сонгогчийн цэг · үсрэх товч, цэсний тэмдэг.
+ * ⚠️ ЭРХ · ХҮРЭЭ · 3 ХОНОГ — lib-ийн `countPlanReturned`/`countPlanApproved` (НЭГ эх сурвалж): аль нэг нь `null` бол `null`
+ *    («мэдэхгүй», null ≠ 0 — тэмдэг өмнөх тоогоо үлдээнэ); хоёулаа 0 бол хүсэлтгүйгээр `[]`. Үгүй бол багцын сүүлийн
+ *    илгээлтүүдийг (`loadLastPerPkg`, толгой л) нэг удаа уншиж, «харсан»-ыг хасна.
+ */
+export async function loadPlanNews(username: string | null): Promise<PlanNews[] | null> {
+  try {
+    const m = await import('@/lib/huvaariBatlah');
+    const [nR, nA] = await Promise.all([m.countPlanReturned(username), m.countPlanApproved(username)]);
+    if (nR == null || nA == null) return null;
+    if (!nR && !nA) return [];
+    const me = (username ?? '').trim().toLowerCase();
+    const [{ huvaariScope }, { AUTH }] = await Promise.all([import('@/lib/huvaariAcl'), import('@/lib/services')]);
+    const sc = AUTH.appId ? huvaariScope(me, 'author') : null;
+    const rows = await m.loadLastPerPkg();
+    const rSeen = seenSet(RETURNED_SEEN_KEY);
+    const aSeen = seenSet(APPROVED_SEEN_KEY);
+    const now = Date.now();
+    const out: PlanNews[] = [];
+    for (const x of rows) {
+      if (x.author.trim().toLowerCase() !== me || (sc != null && !sc.includes(x.pkgGroup))) continue;
+      const kind = x.kind ?? null;
+      if (nR > 0 && x.status === m.PLAN_STATUS.returned && !rSeen.has(x.oid)) {
+        out.push({ pkgKey: x.pkgKey, kind, oid: x.oid, status: 'returned' });
+      } else if (nA > 0 && x.status === m.PLAN_STATUS.approved && x.approverAt != null
+        && now - x.approverAt < m.PLAN_APPROVED_TTL && !aSeen.has(x.oid)) {
+        out.push({ pkgKey: x.pkgKey, kind, oid: x.oid, status: 'approved' });
+      }
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+/** «Хуваарь» цэсний тэмдэг — `loadPlanNews`-ийн тоо (дээрх SOURCES-ийн ⚠️) */
+async function countPlanNews(username: string | null): Promise<number | null> {
+  const xs = await loadPlanNews(username);
+  return xs == null ? null : xs.length;
+}
 
 /* ══ ⚠️ 2026-09-30 (кэшийн ажлын урсгал — ЗӨВХӨН энэ блок): чанарын тэмдгийг ACL ирэхэд дахин тоолох ══ */
 /**

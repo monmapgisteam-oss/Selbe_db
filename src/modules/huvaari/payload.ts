@@ -188,6 +188,36 @@ const fRes = (m: ReadonlyMap<string, MonthRes> | null | undefined): string => {
 };
 
 /**
+ * САРЫН ЗАДАРГААНЫ ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТ — САР ТУС БҮРЭЭР (⚠️ 2026-10-12, аудит).
+ *
+ * ⚠️ ЯАГААД: урьд нь бүхэл задаргааг (`sameMonths`/`sameRes`) «сервер = суурь ЭСВЭЛ сервер = санал»
+ *    гэж тулгадаг байв. 500-аас их мөрийн сарын обьём багцаар бичигдэж ДУНДУУР тасарвал (зарим сар
+ *    шинэ, зарим нь хуучин) сервер аль алинтай нь бүхлээрээ тэнцэхгүй тул «Батлах»-ыг дахин дарахад
+ *    «зэрэгцээ өөрчлөлт» гэж зогсож, хагас бичилт мөнхөд гацдаг байв.
+ * ⚠️ ДҮРЭМ: сар бүрд серверийн утга СУУРЬТАЙ (хөндөөгүй/бичигдээгүй) эсвэл САНАЛТАЙ (бичигдсэн) тэнцвэл
+ *    зөрчил биш. Аль алинтай нь зөрвөл л (өөр замаар өөрчлөгдсөн сар) зөрчил — бүхэл задаргааны
+ *    хуучин дүрмээс ХАТУУ БИШ, зөвхөн хагас бичилтийг давтах боломж нээнэ.
+ * ⚠️ `cell` — нүдний харьцуулах түлхүүр; `''` = хоосон (сар байхгүй ба хоосон нөөц нэг) — `sameRes`-ийн
+ *    «утгагүй сар тоологдохгүй» дүрэмтэй нийцтэй. Обьём 0 нь хоосонтой ТЭНЦҮҮ БИШ (`sameMonths`-тэй ижил).
+ */
+export function monthsClash<V>(
+  now: ReadonlyMap<string, V> | null | undefined,
+  was: ReadonlyMap<string, V>,
+  mine: ReadonlyMap<string, V>,
+  cell: (v: V | undefined) => string,
+): boolean {
+  const ms = new Set<string>([...(now?.keys() ?? []), ...was.keys(), ...mine.keys()]);
+  for (const m of ms) {
+    const n0 = cell(now?.get(m));
+    if (n0 !== cell(was.get(m)) && n0 !== cell(mine.get(m))) return true;
+  }
+  return false;
+}
+const obCell = (v: number | undefined): string => (v === undefined ? '' : String(v));
+const resCell = (v: MonthRes | undefined): string =>
+  (v && (v.hun != null || v.mashin != null) ? `${v.hun ?? ''}/${v.mashin ?? ''}` : '');
+
+/**
  * Илгээлтийн агуулгыг ноорогийн Map-ууд болгоно — БАТЛАХЫН ӨМНӨХ алхам
  * (2026-09-30: `Huvaari.tsx`-ийн `applyPayloadToDraft`-оос механикаар салгав — цэвэр
  * функц; state-д тавих нь дуудагчид). Дүрмийн ⚠️ тайлбарууд доор ХЭВЭЭР.
@@ -339,7 +369,8 @@ curRes: PkgRes,
       if (sameMonths(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      if (!sameMonths(now, was) && !sameMonths(now, mine)) hitOb(k, 'obyem', fMonths(now), fMonths(mine));
+      /* ⚠️ 2026-10-12: САР ТУС БҮРЭЭР (`monthsClash`) — бүхэл задаргаагаар БИШ (доорх функцийн ⚠️) */
+      if (monthsClash(now, was, mine, obCell)) hitOb(k, 'obyem', fMonths(now), fMonths(mine));
     }
     ob.set(k, mine);
   }
@@ -392,7 +423,8 @@ curRes: PkgRes,
       if (sameRes(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      if (!sameRes(now, was) && !sameRes(now, mine)) hitOb(k, 'obres', fRes(now), fRes(mine));
+      /* ⚠️ 2026-10-12: сарын нөөц ч САР ТУС БҮРЭЭР — обьёмын ижил дүрэм (`monthsClash`) */
+      if (monthsClash(now, was, mine, resCell)) hitOb(k, 'obres', fRes(now), fRes(mine));
     }
     or.set(k, mine);
   }
@@ -421,9 +453,25 @@ export const conflictMsg = (n0: number) => tr('{0} нүд илгээснээс �
 /**
  * ХАГАС БИЧИГДСЭН БАТЛАЛТ (2026-10-01) — огноо эх хуудсанд орсон, сарын обьём унасан.
  * `prev` — `save`-ийн тавьсан техникийн шалтгаан (сүлжээ г.м.); байвал хойно нь залгана.
+ *
+ * ⚠️ 2026-10-12 (аудит): `ctx` — АЛЬ АЛХАМ тасарсан (`dates` = эх хуудасны огноо `applyUpdates`,
+ *    `obyem` = сарын обьём `applyPlanEdits`) ба ХЭДЭН мөр бичигдсэн (`written`/`total`). Урьд нь мессеж
+ *    ҮРГЭЛЖ «огноо бичигдсэн, обьём бичигдсэнгүй» гэдэг тул огнооны 500-ийн багц дундуур тасрахад худал
+ *    хэлж, батлагч хэр их нь орсныг мэддэггүй байв. `ctx` өгөөгүй бол хуучин текст ЯГ хэвээр.
  */
-export const partialMsg = (prev: string) => tr('Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).')
-  + (prev ? ` (${prev})` : '');
+export const partialMsg = (
+  prev: string,
+  ctx?: { step?: 'dates' | 'obyem'; written?: number; total?: number },
+) => {
+  const head = ctx?.step === 'dates'
+    ? tr('Огнооны бичилт дундуур тасарлаа — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).')
+    : tr('Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).');
+  const w = ctx?.written;
+  const cnt = w == null || !Number.isFinite(w) ? ''
+    : ctx?.total != null && Number.isFinite(ctx.total) ? ` ${tr('Бичигдсэн: {0}/{1} мөр.', num(w), num(ctx.total))}`
+      : ` ${tr('Бичигдсэн: {0} мөр.', num(w))}`;
+  return head + cnt + (prev ? ` (${prev})` : '');
+};
 /** Илгээлтийн мөр одоогийн жаазад алга (2026-09-25 аудит) — preview ба decide хоёуланд нэг */
 export const unknownMsg = (n0: number) => tr('Илгээлтийн {0} мөр одоогийн хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Батлах боломжгүй — буцааж, зохиогч дахин илгээнэ.', num(n0));
 /**

@@ -45,9 +45,10 @@ import { roleForUser, type ViewKey } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
-import { Huvaari } from '@/modules/Huvaari';
+/* ⚠️ 2026-10-12: `showPlanReason` — хадгалсан шалтгааныг уншигчийн хэлээр (lib `displayReason` + «Зөвшөөрөгдөөгүй N мөр») */
+import { Huvaari, showPlanReason } from '@/modules/Huvaari';
 import {
-  claimHolderOf, decidePlan, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
+  BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /**
@@ -66,14 +67,15 @@ const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
 const ALL = '';
 /** Багц бүртгэлд бий юу (⚠️ 2026-10-08: модулийн түвшинд — `todo` memo-ийн тогтвортой хамаарал) */
 const known = (x: PlanSubmission) => PKG_BY_KEY.has(x.pkgKey);
-/** Илгээсэн агшин — эрэмбэнд; огноогүй нь СҮҮЛД (null ≠ 0) */
-const sentOf = (x: PlanSubmission) => x.authorSent ?? Number.MAX_SAFE_INTEGER;
 /**
  * ⚠️ 2026-10-09: ДАРААЛЛААС (хуанли дээр нээлгүй) БУЦААХ — мөр бүрийг тэмдэглээгүй тул `reject` нь `okRows: []`
  *    (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) илгээж, шалтгаанд энэ тайлбарыг залгана. Урьд нь тэмдэглэгээгүй
- *    (`undefined`) буцдаг тул зохиогчид улаан мөр огт гардаггүй, юуг засахаа хайдаг байв. Функц — `tr()` зурагдалтын үед.
+ *    (`undefined`) буцдаг тул зохиогчид улаан мөр огт гардаггүй, юуг засахаа хайдаг байв.
+ * ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ текст тул МОНГОЛ ЭХЭЭР (`tr()`-гүй) — урьд нь батлагчийн хэлээр орчуулагдаж бичигддэг тул
+ *    англи батлагчийн буцаалт монгол зохиогчид англиар гардаг байв. Харуулахдаа `displayReason()` уншигчийн хэлээр.
+ *    Эх нь lib-ийн `BLIND_NOTE_SRC` (`Huvaari`-тай нэг).
  */
-const blindNote = () => tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)');
+const blindNote = () => BLIND_NOTE_SRC;
 
 /**
  * Татах төлөв.
@@ -133,7 +135,8 @@ export function HuvaariBatlah({
    *    үлдэж, шинэ түгжээ харагддаггүй байв. 45 с тутам `now` шинэчилж, дараалал бэлэн ба
    *    үйлдэл явагдаагүй үед толгойг ЧИМЭЭГҮЙ (ачаалж байна-гүй) дахин татна; нуугдсан таб-д үгүй.
    */
-  const [now, setNow] = useState(() => Date.now());
+  /* ⚠️ 2026-10-12: серверийн цаг (`serverNow`) — түгжээний `approverAt` серверийнх; хөтчийн цаг зөрвөл хугацаа худал */
+  const [now, setNow] = useState(() => serverNow());
 
   const [open, setOpen] = useState<number | null>(null);
   const [detail, setDetail] = useState<Map<number, Detail>>(new Map());
@@ -261,12 +264,26 @@ export function HuvaariBatlah({
     (x: PlanSubmission) => !!me && me === x.author.trim().toLowerCase(),
     [me],
   );
-  /* ⚠️ 2026-10-08: ХАМГИЙН УДААН ХҮЛЭЭСЭН нь ЭХЭНД (илгээсэн огноогоор; огноогүй нь сүүлд) — урьд нь
-     OBJECTID-оор тул шинэ илгээлт дээр, хэдэн хоног хүлээсэн нь доор нуугддаг байв. */
+  /* ⚠️ 2026-10-08: ХАМГИЙН УДААН ХҮЛЭЭСЭН нь ЭХЭНД — урьд нь шинэ илгээлт дээр, хэдэн хоног хүлээсэн нь доор нуугддаг байв.
+     ⚠️ 2026-10-12 (аудит №8): OBJECTID-ын ӨСӨХ дараалал (сервер олгодог — илгээсэн дараалалтай ижил). Урьд нь `authorSent`
+        (ЗОХИОГЧИЙН компьютерын цаг) — буруу цагтай компьютерээс илгээсэн нь дарааллыг үсрүүлж, «хамгийн удаан» худал байв.
+        «N хоног хүлээж байна» нь `authorSent`-ээр хэвээр, «≈» тэмдэгтэй (ойролцоо). */
   const todo = useMemo(
-    () => filtered.filter((x) => known(x) && !isOwn(x)).sort((a, b) => sentOf(a) - sentOf(b) || a.oid - b.oid),
+    () => filtered.filter((x) => known(x) && !isOwn(x)).sort((a, b) => a.oid - b.oid),
     [filtered, isOwn],
   );
+  /* ⚠️ 2026-10-12 (аудит №8): ЦЭСНИЙ ТЭМДЭГТЭЙ (`countPlanPending`) ИЖИЛ ТОО — хүрээнд · өөрийнх биш · ӨӨР батлагч түгжээгүй.
+     Урьд нь толгой «хүлээгдэж буй {todo}» (бусдын түгжсэнийг ч тоолно), баруун дээд «{N} илгээлт» (өөрийн · бүртгэлгүй · шүүлт
+     орно), тэмдэг өөр — гурван өөр тоо. Одоо: толгой = тэмдэгтэй ижил дүрэм (хайлт/бүлгийн шүүлт ороогүй), түгжээтэйг тусад нь. */
+  const lockedN = useMemo(
+    () => mine.filter((x) => {
+      if (isOwn(x)) return false;
+      const h0 = claimHolderOf(x, now);
+      return !!h0 && h0 !== me;
+    }).length,
+    [mine, isOwn, now, me],
+  );
+  const actionableN = mine.filter((x) => !isOwn(x)).length - lockedN;
   const own = filtered.filter((x) => known(x) && isOwn(x));
   const orphan = filtered.filter((x) => !known(x));
 
@@ -285,7 +302,7 @@ export function HuvaariBatlah({
     let live = true;
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      setNow(Date.now());
+      setNow(serverNow());
       if (busy) return;
       void loadAllPending().then((rows) => {
         if (live && alive.current) setSt((cur) => (cur.k === 'ready' ? { k: 'ready', rows } : cur));
@@ -374,7 +391,9 @@ export function HuvaariBatlah({
         reason: `${why.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, okRows: [],
       });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
-      setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));
+      /* ⚠️ 2026-10-12 (аудит №8): `warn` (жиш. тэмдэглэгээний талбар алга — ногоон/улаан хадгалагдсангүй) — урьд нь хаягддаг
+         байв (`Huvaari.decide`-ийн ижил дүрэм: мэдэгдэлд залгана). */
+      setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.') + (r.warn ? ` ${r.warn}` : ''));
       setReason((m) => { const n = new Map(m); n.delete(x.oid); return n; });
       setOpen(null);
       /* ⚠️ БҮТЭН ДАХИН УНШИНА, локал хасалт БИШ: өөр батлагч зуур
@@ -456,7 +475,9 @@ export function HuvaariBatlah({
         <Huvaari
           review={{
             ...review,
-            onClose: () => setReview(null),
+            /* ⚠️ 2026-10-12 (аудит №8): шийдвэргүй хаахад ч дахин уншина — хяналтын зуур өөр батлагч шийдсэн/түгжсэн, зохиогч
+               татсан бол дараалал хуучин мөртэй үлдэж, дахин дарахад л алдаа гардаг байв. */
+            onClose: () => { setReview(null); reload(); },
             /* ⚠️ Шийдвэрийн дараа БҮТЭН дахин уншина (`reject`-ийн дүрэм) */
             /* ⚠️ Алдааг `err`-ээр (2026-09-25 аудит #5) — урьд нь «Шийдвэр
                хадгалагдсангүй» г.м. алдаа ногоон мэдээ болж харагддаг байв. */
@@ -500,7 +521,11 @@ export function HuvaariBatlah({
             {tr('Шинэчлэх')}
           </button>
         )}
-        <span className={s.total}>{tr('{0} илгээлт', num(filtered.length))}</span>
+        {/* ⚠️ 2026-10-12 (аудит №8): ЖАГСААЛТАД ХАРАГДАЖ БУЙ нийт (шүүлтийн дараа · өөрийн · бүртгэлгүй орно) — нэрээр ялгана
+            (`actionableN`-ийн ⚠️; цэсний тэмдэг нь толгойн «шийдвэрлэх боломжтой» тоо). */}
+        <span className={s.total} title={tr('Шүүлтийн дараах бүх мөр — өөрийн илгээсэн ба бүртгэлгүй багцынх орно')}>
+          {tr('жагсаалтад {0}', num(filtered.length))}
+        </span>
       </div>
 
       <div className={s.body}>
@@ -527,8 +552,11 @@ export function HuvaariBatlah({
             <div className={s.list}>
               <div className={s.groupHead}>
                 <span>{tr('Шийдвэрлэх')}</span>
-                <span className={s.groupCount}>
-                  {tr('хүлээгдэж буй {0}', num(todo.length))}
+                {/* ⚠️ 2026-10-12 (аудит №8): цэсний тэмдэгтэй (`countPlanPending`) ИЖИЛ дүрэм — `actionableN`-ийн ⚠️ */}
+                <span className={s.groupCount}
+                  title={tr('Цэсний тэмдэгтэй ижил: таны багцуудад, өөрийн биш, өөр батлагч түгжээгүй илгээлт (хайлт/бүлгийн шүүлтээс үл хамаарна)')}>
+                  {tr('шийдвэрлэх боломжтой {0}', num(actionableN))}
+                  {lockedN > 0 && ` · ${tr('өөр батлагч батлаж буй {0}', num(lockedN))}`}
                 </span>
               </div>
               {todo.length === 0 ? (
@@ -579,7 +607,8 @@ export function HuvaariBatlah({
                 </div>
                 {back.filter(isOwn).map((x) => (
                   <div key={x.oid} className={s.item}>
-                    <div className={s.open}>
+                    {/* ⚠️ 2026-10-12 (аудит №8): `.open` нь дотор зайгүй — агуулга ирмэгт наалддаг байв; `Guitsetgel`-ийн адил `.actions` */}
+                    <div className={`${s.open} ${s.actions}`}>
                       <span className={s.who}>
                         <span className={s.ajil}>{PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey}</span>
                         <span className={s.meta}>
@@ -594,7 +623,8 @@ export function HuvaariBatlah({
                       </span>
                       <div className={s.reasonBox} style={{ whiteSpace: 'pre-line' }}>
                         <div className={s.reasonLabel}>{tr('Буцаасан шалтгаан')}</div>
-                        {x.reason?.trim() || tr('шалтгаан бичигдээгүй')}
+                        {/* ⚠️ 2026-10-12 (аудит №8): хадгалсан монгол эх текстийг уншигчийн хэлээр (`displayReason`) */}
+                        {showPlanReason(x.reason?.trim() ?? '') || tr('шалтгаан бичигдээгүй')}
                       </div>
                       <p className={s.meta}>
                         {tr('«Хуваарь» хуудсанд энэ багцыг нээхэд илгээсэн хуваарь ноорог болж буцна — засаад дахин илгээнэ.')}
@@ -755,22 +785,27 @@ function Row({
                 ЦАГГҮЙ өдөр тул тэнд `msToDay` зөв хэвээр. */}
             {sub.authorSent == null ? '—' : dayKey(sub.authorSent)}
             {/* ⚠️ 2026-10-09: 3-аас ДЭЭШ хоног хүлээсэн нь УЛААН ⚠ — илгээлт хүлээгдэж байхад зохиогчийн таб түгжээтэй */}
+            {/* ⚠️ 2026-10-12 (аудит №8): «≈» — `authorSent` нь ЗОХИОГЧИЙН компьютерын цаг (ойролцоо); эрэмбэ нь OBJECTID-оор */}
             {waitDays != null && waitDays >= 1 && (
-              <>{' · '}<b style={waitDays > 3 ? { color: 'var(--bad-ink)' } : undefined}>
-                {waitDays > 3 ? '⚠ ' : ''}{tr('{0} хоног хүлээж байна', num(waitDays))}
+              <>{' · '}<b style={waitDays > 3 ? { color: 'var(--bad-ink)' } : undefined}
+                title={tr('Ойролцоо — илгээсэн компьютерын цагаар')}>
+                {waitDays > 3 ? '⚠ ' : ''}{tr('≈{0} хоног хүлээж байна', num(waitDays))}
               </b></>
             )}
             {' · '}
             {tr('{0} мөр', num(sub.rowCount))}
           </span>
         </span>
+        {/* ⚠️ 2026-10-12 (аудит №8): ТОВЧ шошго — урт `partialWhy` нь `white-space: nowrap` тул нарийн дэлгэцэд тасардаг байв;
+            бүтэн текст нь дэлгэсэн хэсгийн `reasonBox`-д (доор) ба `title`-д. */}
         {partialWhy
-          ? <span className={`${s.badge} ${s.bBack}`}>{partialWhy}</span>
+          ? <span className={`${s.badge} ${s.bBack}`} title={partialWhy}>{tr('Хагас бичсэн')}</span>
           : <span className={`${s.badge} ${s.bWait}`}>{holder ? tr('{0} батлаж байна', holder) : tr('Хүлээгдэж буй')}</span>}
       </button>
 
       {open && (
-        <div className={s.open}>
+        /* ⚠️ 2026-10-12 (аудит №8): `.open` нь дотор зайгүй — `Guitsetgel`-ийн адил `.actions` (padding · босоо зай) */
+        <div className={`${s.open} ${s.actions}`}>
           {sub.note && (
             <div className={s.reasonBox}>
               <div className={s.reasonLabel}>{tr('Гүйцэтгэгчийн тайлбар')}</div>
@@ -863,7 +898,8 @@ function Row({
             </p>
           )}
 
-          <div className={s.actions}>
+          {/* ⚠️ 2026-10-12: эцэг нь аль хэдийн `.actions` (зайтай) — товчнууд хэвтээ эгнээ (`.row`), давхар зайгүй */}
+          <div className={s.row}>
             {onApprove && (
               <button
                 type="button"

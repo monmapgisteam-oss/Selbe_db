@@ -29,7 +29,7 @@ import { type PointerEvent as PEvt, useCallback, useDeferredValue, useEffect, us
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
-import { hasPlanRole, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
@@ -56,8 +56,11 @@ import {
 import {
   approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS, REASON_MAX,
   clearPlanPartial, markPlanApprovedSeen, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
+  renewPlanClaim, displayReason, serverNow, BLIND_NOTE_SRC,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
+/* ⚠️ 2026-10-12: «шинэ шийдвэр» тэмдгийн багц бүрийн жагсаалт · буцаагдсаныг «харсан» тэмдэглэх (`navBadges`-ийн ⚠️) */
+import { loadPlanNews, markPlanReturnedSeen, type PlanNews } from '@/components/navBadges';
 /* ⚠️ 2026-10-09: `isLostWrite` нэг эх сурвалжаас (урьд нь энд `butetsEdit.isLostResponse`-ийн хуулбар байв) */
 import { isLostWrite } from '@/lib/lostWrite';
 /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж байгаа эсэх — `save`-ийн бичихийн өмнөх хаалт (fail-closed) */
@@ -135,13 +138,39 @@ const minutesSince = (ms: number | null | undefined, now: number): number => (ms
 /** ⚠️ 2026-10-09: жаазын танигч — мөрийн OID-ын дараалал + бөглөсөн огноо (`useObyem.frameIdOf`-ийн ижил дүрэм) */
 const frameIdOf = (x: { rows: readonly { oid: number }[]; snapshot: number | null }): string =>
   `${x.snapshot ?? ''}|${x.rows.map((r) => r.oid).join(',')}`;
+/** ⚠️ 2026-10-12 (аудит №8): санал сарын обьём/нөөц агуулах уу — `refetchServer({ needOb })`-ийн ⚠️ (fail-closed тулгалт) */
+const payHasOb = (p: PlanPayload): boolean => Object.keys(p.obyem ?? {}).length > 0 || Object.keys(p.obres ?? {}).length > 0;
+/**
+ * ⚠️ 2026-10-12 (аудит №8): «НЭЭЛГҮЙ БУЦААСАН» ТАЙЛБАР — ХАДГАЛАХ текст, МОНГОЛ ЭХЭЭР (`tr()`-гүй, lib-ийн `BLIND_NOTE_SRC`).
+ *    Урьд нь батлагчийн хэлээр орчуулагдаж бичигддэг тул англи батлагчийн буцаалт монгол зохиогчид англиар гардаг байв.
+ *    Харуулахдаа `displayReason()`.
+ */
+const BLIND_NOTE = BLIND_NOTE_SRC;
+/** ⚠️ 2026-10-12 (аудит №8): `rejectReview`-ийн хадгалдаг «Зөвшөөрөгдөөгүй N мөр: …» мөр (монгол эх) — `showPlanReason` орчуулна */
+const UNAPPROVED_RE = /^Зөвшөөрөгдөөгүй (\d+) мөр: (.*)$/;
+/**
+ * ХАДГАЛСАН БУЦААЛТЫН ШАЛТГААНЫГ ДЭЛГЭЦЭНД (2026-10-12, аудит №8) — lib-ийн `displayReason` (системийн тогтмол мөрүүд) +
+ * ЭНЭ модулийн «Зөвшөөрөгдөөгүй N мөр: …» мөр. Хэрэглэгчийн бичсэн текст ХЭВЭЭР. `HuvaariBatlah` ч үүгээр.
+ */
+export function showPlanReason(raw: string | null | undefined): string {
+  return displayReason(raw).split('\n').map((ln) => {
+    const m = UNAPPROVED_RE.exec(ln.trim());
+    return m ? tr('Зөвшөөрөгдөөгүй {0} мөр: {1}', num(Number(m[1])), m[2]) : ln;
+  }).join('\n');
+}
 
 /**
  * ⚠️ 2026-10-09: НӨГӨӨ ТАБЫН ИЛГЭЭЛТИЙН БОДИТ ОГНОО · НӨӨЦИЙН МӨРҮҮД (`xLock`-ийн ⚠️) — UI-ийн түгжээ (эффект) ба
  *    бичихийн өмнөх шалгалт (`xLockCheck`) НЭГ дүрэм: `actual`/`res` мөр (oid + `keys`-ээр ажлын код) ба сарын
  *    нөөцийн (`obres`) кодууд.
  */
-type XLockSet = { oids: Set<number>; des: Set<number> };
+/*
+ * ⚠️ 2026-10-12 (аудит №8): УЯЛДАА (`deps` → `Hamaaral`) ба САРЫН ОБЬЁМ (`obyem`) ч ТӨРЛӨӨС ҮЛ ХАМААРНА — хоёр төрлийн
+ *    илгээлт ижил мөрийн уялдаа/сарын обьём агуулбал хоёулаа хүлээгдэж, сүүлд батлагдсан нь эхнийхийг чимээгүй дардаг
+ *    байв. Одоо `ham` (уялдааны мөр — oid ба `keys`-ээр код) ба `ob` (сарын обьёмын код) ТУСДАА олонлог —
+ *    бодит огноо · нөөцийн (`oids`/`des`) UI түгжээг (`xLockWhy`) өргөсгөхгүй, зөвхөн `xLockCheck` (илгээх/хадгалах) хэрэглэнэ.
+ */
+type XLockSet = { oids: Set<number>; des: Set<number>; ham: Set<number>; hamDes: Set<number>; ob: Set<number> };
 const xLockSetOf = (p: PlanPayload): XLockSet => {
   const oids = new Set<number>();
   const des = new Set<number>();
@@ -156,7 +185,21 @@ const xLockSetOf = (p: PlanPayload): XLockSet => {
     const d = Number(k.slice(0, k.indexOf('|')));
     if (Number.isFinite(d)) des.add(d);
   }
-  return { oids, des };
+  const ham = new Set<number>();
+  const hamDes = new Set<number>();
+  for (const k of Object.keys(p.deps ?? {})) {
+    const o = Number(k);
+    if (!Number.isFinite(o)) continue;
+    ham.add(o);
+    const d = p.keys?.[k];
+    if (d != null) hamDes.add(d);
+  }
+  const ob = new Set<number>();
+  for (const k of Object.keys(p.obyem ?? {})) {
+    const d = Number(k.slice(0, k.indexOf('|')));
+    if (Number.isFinite(d)) ob.add(d);
+  }
+  return { oids, des, ham, hamDes, ob };
 };
 /** Мөр (oid · ажлын код) түгжээнд орох эсэх — `xLockWhy` ба `xLockCheck`-ийн нэг нөхцөл */
 const xLockHit = (st: XLockSet, oid: number | null, des: number | null): boolean =>
@@ -452,7 +495,15 @@ export function Huvaari({
   /** ⚠️ 2026-10-09: бичсэний дараа жааз солигдсон (`save`-ийн `frameIdOf` шалгалт) илгээлт — мессеж нь `save`-ийнх хэвээр */
   const frameMovedRef = useRef<number | null>(null);
   /** ⚠️ 2026-10-08: `claimPlan`-ийн түгжээний агшин — `decidePlan({ claimAt })` нэг батлагчийн өөр цонхыг ялгана */
+  /* ⚠️ 2026-10-12 (аудит №8): `save` бичих алхам бүрийн ӨМНӨ `renewPlanClaim`-аар сунгаж, шинэ агшныг энд тавина —
+     `approveGuard`/`markPlanPartial`-д ч дамжуулна (ӨӨР цонхны ижил батлагчийн түгжээг «минийх» гэж үзэхгүй). */
   const claimAtRef = useRef<number | null>(null);
+  /**
+   * ⚠️ 2026-10-12 (аудит №8): БАТЛАХ БИЧИЛТ ЯГ АЛЬ АЛХАМД УНАСАН — `partialMsg(…, { step, written, total })`. Урьд нь
+   *    батлах эффект ямар ч уналтад «огноо бичигдсэн боловч сарын обьём бичигдсэнгүй» гэдэг тул огнооны ДУНДАА (500-ийн
+   *    2-р багц) унасан эсвэл түгжээ сунгагдаагүй үед батлагч худал мэдээлэл авдаг байв. oid-оор түлхүүрлэгдэнэ.
+   */
+  const failStepRef = useRef<{ oid: number; step: 'dates' | 'obyem'; written?: number; total?: number } | null>(null);
   /**
    * ОЛОН БЛОК — ЕРӨНХИЙ СОНГОЛТ (2026-09-29, хэрэглэгч: «өмнө нь нэг ажил дээр блок сонгож
    * төлөвлөж болдог байсан бол төлөвлөгөөг бүхэлд нь олон блок сонгож төлөвлөх боломжтой
@@ -553,23 +604,41 @@ export function Huvaari({
     const me = (user?.username ?? '').trim().toLowerCase();
     return !!pending && !!me && me === pending.author.trim().toLowerCase();
   }, [pending, user]);
-  /** ⚠️ 2026-10-08: хүлээгдэж буй илгээлтийн түгжигч (хүчинтэй) ба хагас бичсэн батлагч — зохиогчийн харагдацад (`HEAD_FIELDS`-ээс) */
-  const pendingHolder = useMemo(() => (pending ? claimHolderOf(pending) : null), [pending]);
-  const pendingPartial = useMemo(() => (pending ? partialBy(pending.status, pending.reason) : null), [pending]);
   /* ⚠️ 2026-10-09: «… батлаж байна (N мин)»-ийн цаг — минут тутам, зөвхөн тэр мэдэгдэл харагдах үед (`minutesSince`-ийн ⚠️) */
-  const [clock, setClock] = useState(() => Date.now());
+  /* ⚠️ 2026-10-12 (аудит №8): `pendingHolder`-ээс ӨМНӨ зарлана — түгжигчийг ЭНЭ цагаар бодно (доорх ⚠️) */
+  /* ⚠️ 2026-10-12: СЕРВЕРИЙН цаг (`serverNow` — хөтчийн цагийн зөрүү засагдсан) — түгжээний `approverAt` серверийнх */
+  const [clock, setClock] = useState(() => serverNow());
+  /** ⚠️ 2026-10-08: хүлээгдэж буй илгээлтийн түгжигч (хүчинтэй) ба хагас бичсэн батлагч — зохиогчийн харагдацад (`HEAD_FIELDS`-ээс) */
+  /* ⚠️ 2026-10-12 (аудит №8): `clock`-оор (deps-д) — урьд нь `claimHolderOf(pending)` нь зөвхөн `pending` солигдоход
+     бодогддог тул түгжээ 10 мин-ийн дараа дуусаад ч зохиогчид «X батлаж байна (N мин)» өсөөд, «Илгээлтээ татах» хаалттай
+     үлддэг байв. Одоо минут тутмын цагаар хугацаа нь амьдаар дуусна. */
+  const pendingHolder = useMemo(() => (pending ? claimHolderOf(pending, clock) : null), [pending, clock]);
+  const pendingPartial = useMemo(() => (pending ? partialBy(pending.status, pending.reason) : null), [pending]);
   /* ⚠️ 2026-10-09: хүлээгдэж буй илгээлтийн «N цаг/хоног хүлээж байна» (түгжээний мэдэгдэл) ч энэ цагаар */
   const clockOn = (isOwnSubmission && pendingPartial == null && !!pendingHolder) || (!review && pending != null);
   useEffect(() => {
     if (!clockOn) return undefined;
     /* ⚠️ 2026-10-09: асаалтын агшинд шууд — хуудас удаан нээлттэй байсан бол анхны утга хуучирсан (≤ 1 мин биш) */
-    const t0 = window.setTimeout(() => setClock(Date.now()), 0);
-    const id = window.setInterval(() => setClock(Date.now()), 60_000);
+    const t0 = window.setTimeout(() => setClock(serverNow()), 0);
+    const id = window.setInterval(() => setClock(serverNow()), 60_000);
     return () => { window.clearTimeout(t0); window.clearInterval(id); };
   }, [clockOn]);
 
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
+  /**
+   * ⚠️ 2026-10-12 (аудит №8): ХУУЧИН (ТАСАРСАН ЖААЗНЫ ОРОНД) АГШИН — `loadRows`-ийн `truncated` (уншилтын зам өнөөдрийн
+   *    тасарсан жаазын оронд өмнөх өдрийн бүтэн жаазыг өгсөн). Урьд нь дуудагч энэ тугийг үл тоож, батлагч хуучин агшин
+   *    дээр саналыг тулгаж харж байв. Одоо баннерээр ил хэлж, батлах/хадгалахыг хаана (бичих зам `strict` — ямар ч
+   *    байсан шиднэ). `null` = сүүлийн агшин бүтэн.
+   */
+  const [frameOld, setFrameOld] = useState<{ day: string; shownDay: string } | null>(null);
+  /**
+   * ⚠️ 2026-10-12 (аудит №8): ЗОХИОГЧИЙН «ШИНЭ ШИЙДВЭР» (буцаагдсан · саяхан батлагдсан, хараагүй) — багц бүрээр.
+   *    Цэсний «шинэ шийдвэр N» тэмдэг аль багцад болохыг хэлдэггүй тул зохиогч багц бүрийг нээж хайдаг байв. Багц
+   *    сонгогчид цэг (●) ба толгойн доор үсрэх товчнууд. `null` = уншаагүй/мэдэхгүй (null ≠ хоосон).
+   */
+  const [planNews, setPlanNews] = useState<PlanNews[] | null>(null);
   const [busy, setBusyRaw] = useState(false);
   /* ⚠️ 2026-10-09 (аудит): `busy`-ийн СИНХРОН тусгал + үеийн тоолуур — хадгалах/илгээх/батлах эхлэх БА дуусах бүрд
      тоолуур нэмэгдэнэ. Арын (30 с мөчлөгийн) `refetchServer` эхэндээ үеийг барьж, хариу ирэхэд үе солигдсон бол
@@ -959,7 +1028,14 @@ export function Huvaari({
       const d = Number(k.slice(0, k.indexOf('|')));
       if (Number.isFinite(d)) desR.add(d);
     }
-    if (!oids.size && !desR.size) return null;
+    /* ⚠️ 2026-10-12 (аудит №8): уялдааны (`ham`) ба сарын обьёмын (`obDraft`) ноорог ч (`XLockSet`-ийн ⚠️) */
+    const hamO = new Set<number>(ham.keys());
+    const desOb = new Set<number>();
+    for (const k of obDraft.keys()) {
+      const d = Number(k.slice(0, k.indexOf('|')));
+      if (Number.isFinite(d)) desOb.add(d);
+    }
+    if (!oids.size && !desR.size && !hamO.size && !desOb.size) return null;
     const key = pkg.key;
     const k0 = kind;
     const other: PlanKind = k0 === 'plan' ? 'geree' : 'plan';
@@ -971,11 +1047,11 @@ export function Huvaari({
       if (live()) setPendingOther(pO);
       if (!pO) return null;
       const p = await loadPayload(pO.oid);
-      if (!p) return tr('«{0}» табын хүлээгдэж буй илгээлтийн агуулга уншигдсангүй — бодит огноо · нөөцийн ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab);
+      if (!p) return tr('«{0}» табын хүлээгдэж буй илгээлтийн агуулга уншигдсангүй — бодит огноо · нөөц · уялдаа · сарын обьёмын ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab);
       st = xLockSetOf(p);
       if (live()) setXLock({ oid: pO.oid, set: st });
     } catch (e) {
-      return tr('«{0}» табын хүлээгдэж буй илгээлт шалгагдсангүй ({1}) — бодит огноо · нөөцийн ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab, friendlyError(e));
+      return tr('«{0}» табын хүлээгдэж буй илгээлт шалгагдсангүй ({1}) — бодит огноо · нөөц · уялдаа · сарын обьёмын ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab, friendlyError(e));
     }
     const names: string[] = [];
     const nm = (r: SheetRow | undefined, fb: string) => (r ? `${r.no ?? '—'} · ${r.work ?? ''}` : fb);
@@ -989,10 +1065,26 @@ export function Huvaari({
       if (r && oids.has(r.oid) && xLockHit(st, r.oid, d)) continue;
       names.push(nm(r, String(d)));
     }
-    if (!names.length) return null;
-    const shown = names.slice(0, 5).join(', ') + (names.length > 5 ? ` (+${num(names.length - 5)})` : '');
-    return tr('Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн бодит огноо/нөөцийг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.', lab, shown);
-  }, [aDraft, resDraft, obResDraft, pkg.key, kind, rows, pkgKeyRef, kindRef]);
+    /* ⚠️ 2026-10-12: уялдаа · сарын обьём — тусдаа жагсаалт, тусдаа мессеж (бодит огноо/нөөцийн мессежтэй хольж андуурахгүй) */
+    const names2: string[] = [];
+    for (const o of hamO) {
+      const r = rows.find((x) => x.oid === o);
+      const d = r?.des ?? null;
+      if (st.ham.has(o) || (d != null && st.hamDes.has(d))) names2.push(nm(r, String(o)));
+    }
+    for (const d of desOb) {
+      if (!st.ob.has(d)) continue;
+      const r = rows.find((x) => x.des === d);
+      const lb = nm(r, String(d));
+      if (!names2.includes(lb)) names2.push(lb);
+    }
+    if (!names.length && !names2.length) return null;
+    const show = (xs: string[]) => xs.slice(0, 5).join(', ') + (xs.length > 5 ? ` (+${num(xs.length - 5)})` : '');
+    const msgs: string[] = [];
+    if (names.length) msgs.push(tr('Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн бодит огноо/нөөцийг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.', lab, show(names)));
+    if (names2.length) msgs.push(tr('Уялдаа · сарын обьём түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн уялдаа/сарын обьёмыг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.', lab, show(names2)));
+    return msgs.join(' ');
+  }, [aDraft, resDraft, obResDraft, ham, obDraft, pkg.key, kind, rows, pkgKeyRef, kindRef]);
 
   /**
    * ЛАВЛАГАА ХАРАГДАХ ЭСЭХ — нөгөө төрлийн зурвас (2026-09-11, хэрэглэгч:
@@ -1085,6 +1177,8 @@ export function Huvaari({
        болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
     setBlk(0); jumpedRef.current = false; setGBlks(new Set());
+    /* ⚠️ 2026-10-12: өмнөх багцын «хуучин агшин» тэмдэг шинэ багцад үлдэхгүй (`frameOld`-ийн ⚠️) */
+    setFrameOld(null);
     /* Нэмэлт ажил (2026-09-24): маягт хаана, баннер тэглэнэ, локал ноорогийг сэргээнэ — `useAjil`-ийн
        `[pkg.key]` эффект (энэ эффектийн ДАРАА, нэг commit-д). */
     /* ⚠️ Сарын обьёмыг ТУСАД НЬ татна: тэр үйлчилгээ унасан ч хуваарийн
@@ -1137,6 +1231,8 @@ export function Huvaari({
         }
         setSc(schema);
         setRows(r.rows);
+        /* ⚠️ 2026-10-12: тасарсан жаазын оронд хуучин агшин (`frameOld`-ийн ⚠️) */
+        setFrameOld(r.truncated ? { day: r.truncated.day, shownDay: r.truncated.shownDay } : null);
       })
       /* ⚠️ 2026-10-01: түүхий мессежийг `err` баннерт БИШ — `loadErr`-д (дээрх ⚠️) */
       .catch((e) => alive && setLoadErr(e instanceof Error ? e : new Error(String(e))))
@@ -1176,6 +1272,9 @@ export function Huvaari({
     setOkRows(new Set()); setBackMarks(null);
     /* ⚠️ 2026-10-08: алдааны жагсаалт · буцаалтын агшин · самбар ч төрлийнх */
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0);
+    /* ⚠️ 2026-10-12 (аудит №8): «Тэнцээгүй» чип зөвхөн «Төлөвлөгөө»-нд (сарын обьём) — «Гэрээ» таб руу асаалттай шилжвэл
+       чип нь зурагдахгүй атлаа шүүлт хэвээр тул БҮХ мөр нуугддаг байв (`unbalRows` гэрээнд хоосон). */
+    setChips((s) => (s.has('unbal') ? new Set([...s].filter((c) => c !== 'unbal')) : s));
     /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — таб солиход хүлээгдэж буй илгээлтүүд СОЛИГДОНО
        (`refreshFlow` дараа нь серверээс дахин уншина; энэ нь завсрын зурагдалтад буруу
        табын түгжээ харагдахгүй гэсэн л үүрэгтэй). Ref-ээр — deps `[kind]` хэвээр. */
@@ -2360,6 +2459,14 @@ export function Huvaari({
         /* ⚠️ `rowsAll` (2026-09-24): `at` нь `plan`-ы индекс = `rowsAll`-ынх, `rows`-ынх БИШ */
         const keep = residualDeps(ham.get(oid) ?? rowsAll[at]?.ham ?? null);
         const text = [...keep, formatDeps(deps2)].filter(Boolean).join(',');
+        /* ⚠️ 2026-10-12 (аудит №8): `Hamaaral` талбарт БАГТАХГҮЙ (`HAM_MAX`) уялдааг НҮДНЭЭС (`applyHamText`) ч няцаана —
+           popup (`PlanModal.depsTooLong`) хаадаг ч нүдний зам шууд ноорогт тавьдаг тул илгээгдээд зөвхөн батлагчийн `save`
+           дээр унадаг байв. Тайрахгүй, бичихгүй; нүд засварт үлдэнэ (`why`). */
+        if (text.trim().length > HAM_MAX) {
+          why = tr('Уялдааны бичиглэл {0} тэмдэгт — талбарт {1} хүртэл багтана. Блок цөөлөх эсвэл бүх блокийг сонгож нэг уялдаа болгоно уу.', num(text.trim().length), num(HAM_MAX));
+          setErr(why);
+          return why;
+        }
         /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ БОЛ НООРГООС ХАСНА (2026-10-01): уялдаа нэмээд буцааж устгахад
            (эсвэл өөрчлөөд буцаахад) ноорогт серверийн утга үлдэж «хадгалаагүй» тоологдож,
            илгээлтэд орж байв — тэр хооронд серверт өөр уялдаа батлагдвал батлахад худал
@@ -2997,6 +3104,8 @@ export function Huvaari({
       const approvalMode = approving != null;
       /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) — батлахад 3 алхам (огноо · сарын обьём · төлөв), хадгалахад 2 */
       const steps = approvalMode ? 3 : 2;
+      /* ⚠️ 2026-10-12: уналтын алхам оролдлого бүрд шинээр (`failStepRef`-ийн ⚠️) */
+      if (approvalMode) failStepRef.current = null;
       setProgress(tr('Шалгаж байна…'));
       /* ⚠️ Бэлтгэл (`upd` · `obEdits` · тоолуурууд) — `huvaari/savePrep.ts`, ЮУ Ч БИЧИХГҮЙ */
       const prep = await prepareSave({ sc, kind, pkg, rows, base, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids });
@@ -3028,12 +3137,17 @@ export function Huvaari({
       /* ⚠️ 2026-10-01: `obLost` (ажил хуудсанд олдоогүй сарын задаргаа) ч мөн — урьд нь
          задаргаа нь чимээгүй хаягдаж батлалт АМЖИЛТТАЙ болдог байв. `grpSkipped` БИШ:
          бүлгийн мөр санаатай хөндөгдөхгүй (`savePrep`-ийн ⚠️). */
-      if (approvalMode && (unbal || resSkipped || obLost || (rfUnknown && obResDraft.size > 0))) {
+      /* ⚠️ 2026-10-12 (аудит №8): `resDropped` (мужаас гадуурх сарын нөөц ХАЯГДАХ) ч батлах горимд ХААЛТ — урьд нь зөвхөн
+         `errList`-д анхааруулга болж, хяналтын цонх `onDone`-оор хаагдахад тэр жагсаалт дамжихгүй тул батлагч хэзээ ч
+         хардаггүй байв (саналын хэсэг чимээгүй алга). Мессеж нь батлагчид ЮУ ХИЙХИЙГ хэлнэ: буцааж, зохиогч засна. */
+      if (approvalMode && (unbal || resSkipped || obLost || resDropped || (rfUnknown && obResDraft.size > 0))) {
         const why: string[] = [];
         if (unbal) why.push(tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй', num(unbal)));
         if (resSkipped || rfUnknown) why.push(tr('сарын хүн хүч/машины талбар шалгагдсангүй эсвэл алга'));
         if (obLost) why.push(tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй', num(obLost)));
-        setErr(tr('Батлах боломжгүй — {0}. Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр.', why.join(' · ')));
+        if (resDropped) why.push(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдах байсан', num(resDropped)));
+        /* ⚠️ 2026-10-12 (аудит №8): тэнцээгүй/ажил олдоогүй саналыг батлагч ЗАСАХГҮЙ — «Буцаах» зааврыг ил хэлнэ */
+        setErr(tr('Батлах боломжгүй — {0}. Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр. Буцааж, зохиогч дахин тэнцүүлнэ.', why.join(' · ')));
         return false;
       }
       if (!upd.length && !obDraft.size && !obResDraft.size) {
@@ -3081,7 +3195,9 @@ export function Huvaari({
         const why = await xLockCheck();
         if (why) { setErr(why); return false; }
       }
-      const fresh = await loadRows(pkg, sc);
+      /* ⚠️ 2026-10-12 (аудит №8): БИЧИХ зам — `strict` (тасарсан/шалгагдаагүй жаазыг хүлээн авахгүй, шиднэ). Урьд нь
+         уншилтын замаар татдаг тул тасарсан өдөрт ӨМНӨХ өдрийн жааз (`truncated`) ирж, огноо хуучин жаазад бичигдэх байв. */
+      const fresh = await loadRows(pkg, sc, undefined, undefined, { strict: true });
       let remapped = 0;
       let lost = 0;
       /* ⚠️ 2026-10-06: алдагдсан мөрийн ХУУЧИН oid — тэдний ноорог ЦЭВЭРЛЭГДЭХГҮЙ (доорх ⚠️) */
@@ -3127,8 +3243,15 @@ export function Huvaari({
        */
       if (approvalMode) {
         const head = await loadSubmissionHead(approving);
-        const why = approveGuard(head, approving, user?.username ?? '');
+        /* ⚠️ 2026-10-12 (аудит №8): түгжээний агшинтай (`claimAtRef`) — ӨӨР цонхны ижил батлагчийн түгжээг «минийх» гэхгүй */
+        const why = approveGuard(head, approving, user?.username ?? '', claimAtRef.current ?? undefined);
         if (why) { setErr(why); return false; }
+        /* ⚠️ 2026-10-12 (аудит №8, HIGH): ТЭМДЭГ АЛЬ ХЭДИЙН БАЙНА (өмнөх сешн/цонх/батлагч бичсэн) → `wroteSomeRef`-ийг
+           ЭНД тарина. Урьд нь `wroteSomeRef` зөвхөн ЭНЭ сешний бичилтээр тавигддаг тул хуудас сэргээсний дараах дахин
+           оролдлого (`markPlanPartial` унах · `written === 0`) өмнөх сешний хагас бичилтийн тэмдгийг АРИЛГАЖ, эх хуудсанд
+           суусан саналыг буцаах/татах боломжтой болгодог байв. Энэ оролдлогоос ӨМНӨ байсан тэмдгийг хэзээ ч арилгахгүй.
+           ⚠️ `partialRef`-ийг ЭНД тавихгүй — тэр нь `markPlanPartial` амжилттай болсны ДАРАА л (`huvaariBatlah.check`-ийн дараалал). */
+        if (head && partialBy(head.status, head.reason) != null) wroteSomeRef.current = approving;
         /* ⚠️ ХАГАС БИЧИЛТИЙН ТЭМДЭГ — АНХНЫ бичилтээс ӨМНӨ (2026-10-01). Урьд нь `partialRef`
            зөвхөн «огноо + сарын обьём» хоёулаа бичигдэх үед, огноо бичигдсэний ДАРАА тавигдаж,
            `decidePlan`-аас ӨМНӨ арилдаг байв: бүгд бичигдээд `decidePlan` унавал (эсвэл зөвхөн
@@ -3137,7 +3260,10 @@ export function Huvaari({
            дараа ч хэвээр) + `partialRef` хоёулаа ЭНД тавигдаж, ЗӨВХӨН `decidePlan(approve)`
            амжилттай болоход арилна. Тэмдэг бичигдээгүй бол ЮУ Ч бичихгүй (fail-closed). */
         if (upd.length || obEdits) {
-          const mk = await markPlanPartial({ oid: approving, approver: user?.username ?? '' });
+          const mk = await markPlanPartial({ oid: approving, approver: user?.username ?? '', claimAt: claimAtRef.current ?? undefined });
+          /* ⚠️ 2026-10-12 (аудит №8): сервер дээр тэмдэг АЛЬ ХЭДИЙН байсан (`existing`) — дээрх толгойн уншилтаас хойш суусан ч
+             энэ оролдлогынх биш тул арилгахгүй (`wroteSomeRef`). */
+          if (mk.existing) wroteSomeRef.current = approving;
           if (!mk.ok) {
             /* ⚠️ 2026-10-08: тэмдгийн бичилт timeout-оор «унасан» ч сервер дээр СУУСАН байж болно —
                эх хуудсанд юу ч бичээгүй тул ӨӨРИЙН тэмдгийг арилгана; эс бөгөөс буцаах/татах
@@ -3148,8 +3274,10 @@ export function Huvaari({
               setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг дахин хадгалагдсангүй ({0}) — өмнөх оролдлогод эх хуудсанд бичигдсэн тул буцаах боломжгүй; «Батлах»-ыг дахин дарж дуусгана уу.', mk.error ?? ''));
               return false;
             }
-            const hd = await loadSubmissionHead(approving).catch(() => null);
-            if (hd && partialBy(hd.status, hd.reason) === (user?.username ?? '').trim().toLowerCase()) await clearPlanPartial(approving);
+            /* ⚠️ 2026-10-12 (аудит №8): ЭЗНИЙ ХҮРЭЭТЭЙ арилгалт (`clearPlanPartial(oid, owner)`) — зөвхөн МИНИЙ тэмдгийг
+               (урьд нь толгой уншиж харьцуулдаг байсан — уншилт ба арилгалтын завсарт өөр батлагчийн тэмдэг суувал түүнийг
+               арилгах байв). Өмнө байсан тэмдэг дээрх `wroteSomeRef` салаагаар энд хүрэхгүй. */
+            await clearPlanPartial(approving, user?.username ?? '');
             setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
             return false;
           }
@@ -3158,9 +3286,32 @@ export function Huvaari({
              «хариу алдагдсан» баримт устаж, энэ оролдлого `written === 0`-ээр унахад тэмдэг арилдаг байв (`wroteSomeRef`-ийн ⚠️). */
         }
       }
+      /*
+       * ⚠️ 2026-10-12 (аудит №8): ТҮГЖЭЭ СУНГАХ — эх хуудсанд бичих алхам БҮРИЙН ӨМНӨ (огноо · сарын обьём). Урьд нь түгжээ
+       *    `decide`-д нэг л удаа авагдаж, 1,400 мөрийн бичилт + сарын обьём `CLAIM_TTL` (10 мин)-ээс удвал түгжээ бичилтийн
+       *    ДУНД дуусч, өөр батлагч түгжиж зэрэг бичих боломжтой байв. Сунгалт унавал ЦЭВЭРХЭН зогсоно: юу ч бичихгүй,
+       *    хагас бичилтийн тэмдэг ҮЛДЭНЭ (буцаах/татах хаалттай хэвээр — аюулгүй тал), батлагч дахин «Батлах» дарна.
+       */
+      const renewClaim = async (step: 'dates' | 'obyem'): Promise<boolean> => {
+        if (!approvalMode || approving == null) return true;
+        let rn: { ok: boolean; at?: number; error?: string };
+        try {
+          rn = await renewPlanClaim({ oid: approving, approver: user?.username ?? '', claimAt: claimAtRef.current ?? 0 });
+        } catch (e) {
+          rn = { ok: false, error: friendlyError(e) };
+        }
+        if (rn.ok) {
+          if (rn.at != null) claimAtRef.current = rn.at;
+          return true;
+        }
+        failStepRef.current = { oid: approving, step, written: 0 };
+        setErr(tr('Батлах түгжээг сунгаж чадсангүй ({0}) — энэ алхамд эх хуудсанд юу ч бичигдсэнгүй; илгээлт «Хүлээгдэж буй» хэвээр. Хуудсаа шинэчлээд «Батлах»-ыг дахин дарна уу.', rn.error ?? '—'));
+        return false;
+      };
       /** ⚠️ 2026-10-09: бичихийн өмнөх жааз (`frameIdOf`) — батлах горимд бичсэний дараа тулгана (доорх ⚠️) */
       const frame0 = frameIdOf(fresh);
       if (upd.length) {
+        if (!(await renewClaim('dates'))) return false;
         setProgress(tr('Огноо бичиж байна (1/{0})… {1} мөр', String(steps), num(upd.length)));
         try {
           await applyUpdates(pkg, upd);
@@ -3176,10 +3327,13 @@ export function Huvaari({
           /* ⚠️ 2026-10-11 (аудит №7): бичигдсэн багц (`written > 0`) эсвэл хариу алдагдсан бол `wroteSomeRef` — ДАРААГИЙН
              оролдлогын `written === 0` уналт тэмдгийг арилгаж чадахгүй (өмнөх оролдлогын мөрүүд эх хуудсанд суусан). */
           if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
+          /* ⚠️ 2026-10-12 (аудит №8): уналтын алхам · бичигдсэн/нийт мөр — батлах эффектийн `partialMsg`-д */
+          if (approvalMode) failStepRef.current = { oid: approving, step: 'dates', written: (e as { written?: number })?.written, total: upd.length };
           if (approvalMode && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
             else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
-            else if (await clearPlanPartial(approving)) partialRef.current = null;
+            /* ⚠️ 2026-10-12: эзний хүрээтэй арилгалт (дээрх `markPlanPartial`-ийн ⚠️) */
+            else if (await clearPlanPartial(approving, user?.username ?? '')) partialRef.current = null;
           }
           throw e;
         }
@@ -3194,7 +3348,8 @@ export function Huvaari({
          */
         if (approvalMode) {
           let moved: boolean | null = null;
-          try { moved = frameIdOf(await loadRows(pkg, sc)) !== frame0; } catch { moved = null; }
+          /* ⚠️ 2026-10-12 (аудит №8): `strict` — тасарсан жаазын оронд хуучин агшин ирвэл «солигдоогүй» гэж андуурахгүй (шиднэ → `null`) */
+          try { moved = frameIdOf(await loadRows(pkg, sc, undefined, undefined, { strict: true })) !== frame0; } catch { moved = null; }
           if (moved !== false) {
             frameMovedRef.current = approving;
             setErr(moved
@@ -3219,6 +3374,18 @@ export function Huvaari({
         /* ⚠️ 2026-10-08: `deletes`-т нийлүүлэхгүй — `PlanEdits.dups` (lib давхардлыг ЭХЛЭЭД устгана, дараалал тэнд) */
         obEdits.dups = obDups;
         let r2: [number, number, number];
+        /* ⚠️ 2026-10-12 (аудит №8): сарын обьёмын ӨМНӨ түгжээ сунгаж (`renewClaim`-ийн ⚠️), төлвийг ДАХИН шалгана
+           (`approveGuard`) — огнооны бичилтийн зуур зохиогч/өөр батлагч хөдөлсөн бол обьём бичихгүй (тэмдэг үлдэнэ). */
+        if (approvalMode) {
+          if (!(await renewClaim('obyem'))) return false;
+          const head2 = await loadSubmissionHead(approving).catch(() => null);
+          const why2 = approveGuard(head2, approving, user?.username ?? '', claimAtRef.current ?? undefined);
+          if (why2) {
+            failStepRef.current = { oid: approving, step: 'obyem', written: 0 };
+            setErr(why2);
+            return false;
+          }
+        }
         setProgress(tr('Сарын обьём бичиж байна (2/{0})…', String(steps)));
         try {
           r2 = await applyPlanEdits(obEdits);
@@ -3235,10 +3402,17 @@ export function Huvaari({
           /* ⚠️ 2026-10-08: огнооны замын ижил ангилал — хариу алдагдсан бол тэмдэг үлдэнэ */
           /* ⚠️ 2026-10-11 (аудит №7): огнооны замын ижил `wroteSomeRef` дүрэм — өмнөх/энэ оролдлогод юу нэгэн суусан бол тэмдэг үлдэнэ */
           if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
+          /* ⚠️ 2026-10-12 (аудит №8): уналтын алхам · бичигдсэн/нийт мөр (`failStepRef`-ийн ⚠️) */
+          if (approvalMode) {
+            failStepRef.current = { oid: approving, step: 'obyem', written: (e as { written?: number })?.written,
+              /* ⚠️ lib-ийн `PlanWriteErr.total` (давхардлын устгал орсон) байвал түүгээр */
+              total: (e as { total?: number })?.total ?? (obEdits.adds.length + obEdits.updates.length + obEdits.deletes.length) };
+          }
           if (approvalMode && !upd.length && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
             else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
-            else if (await clearPlanPartial(approving)) partialRef.current = null;
+            /* ⚠️ 2026-10-12: эзний хүрээтэй арилгалт */
+            else if (await clearPlanPartial(approving, user?.username ?? '')) partialRef.current = null;
           }
           try {
             const r0 = await loadRows(pkg, sc);
@@ -3384,6 +3558,9 @@ export function Huvaari({
   const flowSeq = useRef(0);
   /** Сүүлд ачаалсан хүлээгдэж буй илгээлт (багцын түлхүүртэй) — алга болсныг илрүүлэхэд (2026-09-25) */
   const flowPendRef = useRef<{ key: string; oid: number | null }>({ key: '', oid: null });
+  /** ⚠️ 2026-10-12: сүүлийн `refreshFlow` АЛДААГААР (сүлжээ · токен) унасан — мөчлөг зөвхөн тэр үед дахин оролдоно
+      (хүснэгт үүсээгүй/эзэмшил гэх мэт админы шалтгааныг 30 с тутам дахин асууж баннерыг анивчуулахгүй) */
+  const flowThrewRef = useRef(false);
   /* ⚠️ `refetchServer` нь `rows`-оос хамаардаг тул шууд deps-д оруулбал мөр
      солигдох бүрд урсгал дахин татагдана — ref-ээр уншина. (2026-09-30: `refetchServer`-ээс
      ӨМНӨ зарлав — `refreshFlow` ч уншдаг; жинхэнэ утга нь `refetchServer`-ийн доорх
@@ -3424,6 +3601,8 @@ export function Huvaari({
       const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
       if (!live()) return;
       const ready = st.ok;
+      /* ⚠️ 2026-10-12: `st.why === 'error'` (порталын хайлт унасан) нь ч түр алдаа — мөчлөг дахин оролдоно */
+      flowThrewRef.current = !ready && st.why === 'error';
       /* ⚠️ `flowReady=true`-г `pending`-тэй НЭГ зурагдалтад тавина (2026-09-25,
          хөтчийн туршилтаар илэрсэн): урьд нь `loadPending`-ээс ӨМНӨ тавьдаг тул
          `flowReady=true, pending=null` гэсэн завсрын зурагдалт гарч, хяналтын
@@ -3487,6 +3666,7 @@ export function Huvaari({
       setLastDecision(last);
     } catch (e) {
       if (!live()) return;
+      flowThrewRef.current = true;
       setFlowReady(false);
       /* ⚠️ 2026-10-01: шалтгааныг АНГИЛНА (эрх · нэвтрэлт · сүлжээ · хугацаа) — урьд нь ямар ч
          алдааг «сүлжээгээ шалгана уу» гэдэг тул 499/403-д хэрэглэгч буруу зүйл шалгадаг байв. */
@@ -3520,6 +3700,10 @@ export function Huvaari({
      илгээлт (түгжээ) хуудас шинэчлэх хүртэл харагддаггүй байв. Идэвхтэй табынх өөрчлөгдвөл урьдын адил `refreshFlow`,
      зөвхөн нөгөө табынх бол хөнгөн — `setPendingOther` (дэлгэц анивчихгүй). */
   const pollOkRef = useLatest(!review && approving == null && (!previewing || isOwnSubmission) && !busy && flowReady === true);
+  /* ⚠️ 2026-10-12 (аудит №8): урсгал УНШИГДААГҮЙ (`flowReady === false` — сүлжээ · токен) бол мөчлөг `refreshFlow`-ийг
+     дахин оролдоно. Урьд нь мөчлөг зөвхөн `flowReady === true` үед ажилладаг тул түр алдааны дараа хуудас сэргээх хүртэл
+     «илгээх боломжгүй» төлөвт гацдаг байв. */
+  const pollRetryRef = useLatest(!review && approving == null && !busy && flowReady === false);
   /**
    * ⚠️ 2026-10-09: НӨГӨӨ ТАБЫН илгээлт шийдвэрлэгдэв (байсан → алга) — батлагдсан бол эх хуудсанд тэр төрлийн огноо ·
    *    бодит огноо · нөөц бичигдсэн; энэ таб (лавлагааны багана · бодит/нөөц) хуучирсан хэвээр үлддэг байв. Доорх мөчлөг
@@ -3537,7 +3721,10 @@ export function Huvaari({
     /* ⚠️ 2026-10-09 (аудит №2): арын татлага явж байна — дараагийн мөчлөг давхар эхлүүлэхгүй */
     let bgOn = false;
     const id = window.setInterval(() => {
-      if (document.hidden || !pollOkRef.current || pkgKeyRef.current !== key || kindRef.current !== k0) return;
+      if (document.hidden || pkgKeyRef.current !== key || kindRef.current !== k0) return;
+      /* ⚠️ 2026-10-12: уналтаас сэргэх (`pollRetryRef`-ийн ⚠️) */
+      if (pollRetryRef.current) { if (flowThrewRef.current) void refreshFlow(); return; }
+      if (!pollOkRef.current) return;
       const was = flowPendRef.current.oid;
       void loadPendingBoth(key).then((both) => {
         /* ⚠️ 2026-10-09: хариу ирэх зуур таб солигдсон бол хаяна (`kindRef`) — нөгөө табын `was`-тай тулгаж худал «өөрчлөгдсөн» гэдэг байв */
@@ -3574,7 +3761,7 @@ export function Huvaari({
       }).catch(() => { /* дараагийн мөчлөгт */ });
     }, 30_000);
     return () => window.clearInterval(id);
-  }, [pkg.key, kind, status, refreshFlow, refetchBg, pkgKeyRef, kindRef, pollOkRef, pendRef, dragOnRef]);
+  }, [pkg.key, kind, status, refreshFlow, refetchBg, pkgKeyRef, kindRef, pollOkRef, pollRetryRef, pendRef, dragOnRef]);
 
   /**
    * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
@@ -3636,6 +3823,26 @@ export function Huvaari({
   const sendForApproval = useCallback(async (userNote: string) => {
     /* ⚠️ Урьдчилан харж байхад ИЛГЭЭХГҮЙ (2026-09-25 аудит) — ноорог нь бусдын санал */
     if (!dirtyN || busy || previewing) return;
+    /* ⚠️ 2026-10-12 (аудит №8): ӨМНӨХ үйлдлийн жагсаалт (хадгалалт · зөрчил) АМЖИЛТТАЙ илгээлтийн дараа ч үлдэж, шинэ
+       төлөвт хамааралгүй «→ ажил руу» мөрүүд харагддаг байв — эхэнд цэвэрлэнэ (доорх хаалтууд өөрсдийнхөө жагсаалтыг тавина). */
+    setErrList([]);
+    /* ⚠️ 2026-10-12 (аудит №8): УРТ УЯЛДАА (`HAM_MAX`) — илгээх үед ХААНА. Урьд нь илгээлт явж, зөвхөн батлагчийн `save`
+       (`savePrep.hamLong`) дээр «буцааж, зохиогч богиносгоно» гэж унадаг тул нэг тойрог дэмий алдагддаг байв. Мөрүүдийг
+       «→ ажил руу» жагсаалтаар нэрлэнэ (тэнцээгүй обьёмын хэв маяг). */
+    {
+      const byOid0 = new Map(plan.map((r) => [r.oid, r]));
+      const longs = [...ham].filter(([, t]) => t.trim().length > HAM_MAX).map(([o, t]) => {
+        const r = byOid0.get(o);
+        return { msg: `${r ? `${r.no} ${r.work}`.trim() : String(o)} (${num(t.trim().length)} > ${num(HAM_MAX)})`, oid: o };
+      });
+      if (longs.length) {
+        setErr(tr('{0} мөрийн уялдааны бичиглэл {1} тэмдэгтээс урт — илгээгдсэнгүй. Блок тус бүрийн уялдааг цөөлөх эсвэл бүх блокт нэг уялдаа болгоно уу.', num(longs.length), String(HAM_MAX)));
+        setErrList([{ msg: tr('Урт уялдаатай {0} мөр — дарж тухайн ажил руу очно:', num(longs.length)) }, ...longs.slice(0, 30),
+          ...(longs.length > 30 ? [{ msg: tr('… ба {0}', num(longs.length - 30)) }] : [])]);
+        setFlowBox(null);
+        return;
+      }
+    }
     /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17) — дүрэм ба
        ⚠️ тайлбарууд `huvaari/util.unbalancedObyem`-д (2026-09-30: цэвэр функц,
        `obyemGate.check.mjs`-ээр тестлэгдэнэ). Цонх автоматаар нээхгүй — гинж олон
@@ -3819,36 +4026,61 @@ export function Huvaari({
   /* ⚠️ 2026-10-09 (аудит): `guard` — арын татлага (`refetchBg`); `await` бүрийн дараа `false` бол state-д ЮУ Ч
      тавихгүй (`STALE_REFETCH` шиднэ). Задаргааны шатанд хаявал `loading`-ийг л `ok` болгоно (доорх `catch`-ийн
      хуучин задаргаатай үргэлжлэх дүрэмтэй ижил) — эс бөгөөс хуваалцсан ноорогийн дифф үүрд зогсоно. */
-  const refetchServer = useCallback(async (guard?: () => boolean): Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }> => {
-    const freshRows = sc ? (await loadRows(pkg, sc)).rows : rows;
+  /*
+   * ⚠️ 2026-10-12 (аудит №8): `opts.strict` — БАТЛАХ (`decide`) зам мөрийг `strict`-ээр татна (тасарсан жаазын оронд хуучин
+   *    агшин хүлээн авахгүй, шиднэ). Уншилтын замд `truncated` ирвэл `frameOld`-ийг тавина (баннер · батлалтын хаалт).
+   * ⚠️ 2026-10-12 (аудит №8, HIGH): `opts.needOb` — санал САРЫН ОБЬЁМ/НӨӨЦ агуулж байхад (`obyem`/`obres`) задаргаа
+   *    татагдахгүй бол state-ийн ХУУЧИРСАН `obPlan`/`obRes`-тэй тулгахгүй — ШИДНЭ (fail-closed). Урьд нь хуучин задаргаатай
+   *    тулгаж, хооронд нь өөр замаар өөрчлөгдсөн сарын обьём «зөрчилгүй» гэж батлагдаж, түүнийг дарж бичдэг байв.
+   */
+  const refetchServer = useCallback(async (
+    guard?: () => boolean,
+    opts?: { strict?: boolean; needOb?: boolean },
+  ): Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }> => {
+    const lr = sc ? await loadRows(pkg, sc, undefined, undefined, opts?.strict ? { strict: true } : undefined) : null;
+    const freshRows = lr ? lr.rows : rows;
     if (guard && !guard()) throw new Error('STALE_REFETCH');
     /* ⚠️ `loading`-ийг мөртэй НЭГ багцад тавина (2026-09-24): шинэ мөр + хуучин
        задаргаа гэсэн завсрын зурагдалтад хуваалцсан ноорогийн дифф ажиллаж
        сарын нүдийг tombstone болгож байв. Задаргаа ирмэгц `ok`. */
-    if (sc) { setObState('loading'); setRows(freshRows); }
+    if (sc) {
+      setObState('loading'); setRows(freshRows);
+      if (lr) setFrameOld(lr.truncated ? { day: lr.truncated.day, shownDay: lr.truncated.shownDay } : null);
+    }
     try {
       const fp = await loadPkgPlan(pkg.key);
       if (guard && !guard()) { setObState('ok'); return { rows: freshRows, plan: obPlan, res: obRes }; }
       setObPlan(fp.plan); setObRes(fp.res); setObOids(fp.oids); setObDups(fp.dups); setObState('ok');
       return { rows: freshRows, plan: fp.plan, res: fp.res };
-    } catch {
+    } catch (e) {
       setObState('ok');
+      if (opts?.needOb) {
+        throw new Error(tr('Сарын обьёмын хүснэгт уншигдсангүй ({0}) — санал сарын обьём/нөөц агуулж байгаа тул хуучирсан задаргаатай тулгахгүй. Эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', friendlyError(e)));
+      }
       return { rows: freshRows, plan: obPlan, res: obRes };
     }
   }, [sc, pkg, rows, obPlan, obRes, setObState, setRows, setObPlan, setObRes, setObOids, setObDups]);
 
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
-  const preview = useCallback(async () => {
-    if (!pending || busy) return;
+  /* ⚠️ 2026-10-12 (аудит №8): `true` = санал хуанли дээр буусан — хяналтын горимын «Дахин оролдох» (`reviewRetry`) үүгээр */
+  const preview = useCallback(async (): Promise<boolean> => {
+    if (!pending || busy) return false;
     setBusy(true); setErr(''); setPreviewBad(null);
     try {
       /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
       setProgress(tr('Саналыг уншиж байна…'));
       const p = await loadPayload(pending.oid);
-      if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      /* ⚠️ 2026-10-12 (аудит №8): ЗАДАРДАГГҮЙ агуулга (`null`) — дахин оролдоход засрахгүй; `previewBad` тавьж «Буцаах»
+         замыг нээнэ (урьд нь хяналт «буулгагдаагүй» төлөвт гацаж, буцаах ч хаалттай байв). Сүлжээний алдаа нь `catch`-д. */
+      if (!p) {
+        setPreviewBad(pending.oid);
+        setErr(tr('Илгээлтийн агуулга уншигдсангүй (эвдэрсэн) — батлах боломжгүй. Буцааж, зохиогч дахин илгээнэ.'));
+        return false;
+      }
       /* ⚠️ СЕРВЕРЭЭС ШИНЭЭР (2026-09-21) — `decide`-тэй нэг зам. */
       setProgress(tr('Хуудсыг дахин уншиж байна…'));
-      const srv = await refetchServer();
+      /* ⚠️ 2026-10-12: сарын обьём/нөөцтэй саналд задаргаа заавал шинэ (`refetchServer`-ийн `needOb` ⚠️) */
+      const srv = await refetchServer(undefined, { needOb: payHasOb(p) });
       /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ буулгахгүй — батлагч өөр табаар харж байна. */
       const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan, srv.res);
       if (!ap.ok) {
@@ -3861,13 +4093,15 @@ export function Huvaari({
             : p.kind === 'geree'
             ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.')
             : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.'));
-        return;
+        return false;
       }
       setPreviewing(true);
       setFlowBox(null);
       setNote(tr('Санал хуанли дээр урьдчилан харагдаж байна — батлах хүртэл эх хуудсанд бичигдэхгүй.'));
+      return true;
     } catch (e) {
       setErr(userError(e));
+      return false;
     } finally {
       setBusy(false);
       setProgress('');
@@ -4006,9 +4240,10 @@ export function Huvaari({
         setBackMarks({ oid: lastDecision.oid, ok: new Set(lastDecision.okRows), pay: p });
       }
       if (back && ap.ok) {
+        /* ⚠️ 2026-10-12 (аудит №8): төрлөөс үл хамаарах «хуваарь» — гэрээний буцаалтыг «төлөвлөгөө» гэдэг байв */
         setNote((lastDecision.okRows
-          ? tr('Буцаагдсан төлөвлөгөө засварт орлоо — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
-          : tr('Буцаагдсан төлөвлөгөө засварт орлоо — засаад дахин илгээнэ үү.'))
+          ? tr('Буцаагдсан хуваарь засварт орлоо — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
+          : tr('Буцаагдсан хуваарь засварт орлоо — засаад дахин илгээнэ үү.'))
           /* ⚠️ Зэрэгцээ өөрчлөлтийн тоог НУУХГҮЙ (татсан замтай ижил) */
           + (ap.conflicts ? ` ${tr('{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.', num(ap.conflicts))}` : '') + lostTxt);
         return;
@@ -4054,12 +4289,36 @@ export function Huvaari({
     void restoreWithdrawn(true);
   }, [review, lastDecision, pending, busy, dirtyN, canEdit, flowReady, hdReadyKey, obState, rows.length, kind, pkg.key, user, restoreWithdrawn]);
   /* ⚠️ 2026-10-09: ЗОХИОГЧ батлагдсан шийдвэрээ энд харлаа — цэсний «батлагдсан» тэмдэг (`countPlanApproved`) арилна */
+  /* ⚠️ 2026-10-12 (аудит №8): БУЦААГДСАН шийдвэр ч «харсан» болно (`navBadges.markPlanReturnedSeen`) — цэсний «шинэ шийдвэр N»
+     нь урьд нь буцаалтыг дахин илгээх хүртэл тоолдог тул харсан атлаа «шинэ» хэвээр байв (шошго ба зан зөрдөг). Харсан
+     багцын цэг (`planNews`) ч арилна. */
   useEffect(() => {
     const d = lastDecision;
-    if (review || !d || d.status !== PLAN_STATUS.approved) return;
+    if (review || !d || (d.status !== PLAN_STATUS.approved && d.status !== PLAN_STATUS.returned)) return;
     const me = (user?.username ?? '').trim().toLowerCase();
-    if (me && (d.author ?? '').trim().toLowerCase() === me) markPlanApprovedSeen(d.oid);
+    if (!me || (d.author ?? '').trim().toLowerCase() !== me) return;
+    if (d.status === PLAN_STATUS.approved) markPlanApprovedSeen(d.oid); else markPlanReturnedSeen(d.oid);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-12: харсан шийдвэрийн цэгийг (`planNews`) localStorage-ийн тэмдэгтэй НЭГ агшинд арилгана — гадаад төлөвтэй синк
+    setPlanNews((xs) => (xs && xs.some((x) => x.oid === d.oid) ? xs.filter((x) => x.oid !== d.oid) : xs));
   }, [review, lastDecision, user]);
+  /* ⚠️ 2026-10-12: «шинэ шийдвэр»-ийн багцууд — хуудас нээх/хэрэглэгч солигдоход нэг удаа (хөнгөн: толгой л) */
+  const meName = user?.username ?? null;
+  useEffect(() => {
+    if (review) return undefined;
+    let dead = false;
+    void loadPlanNews(meName).then((xs) => {
+      if (dead) return;
+      /* Энэ хуудсанд аль хэдийн харсан (`lastDecision`) нь localStorage-д тэмдэглэгдсэн тул `loadPlanNews` өөрөө хасна */
+      setPlanNews(xs);
+    }).catch(() => { /* тэмдэг бол туслах мэдээлэл */ });
+    return () => { dead = true; };
+  }, [review, meName]);
+  /** «шинэ шийдвэр»-тэй багцын бүлэг ба түлхүүр — сонгогчийн цэг (●) */
+  const newsKeys = useMemo(() => new Set((planNews ?? []).map((x) => x.pkgKey)), [planNews]);
+  const newsGroups = useMemo(
+    () => new Set((planNews ?? []).map((x) => PKGS.find((p) => p.key === x.pkgKey)?.group).filter((g): g is string => !!g)),
+    [planNews],
+  );
 
   /** Урьдчилан харахыг болих — ноорог зүгээр л хаягдана */
   const clearPreview = useCallback(() => {
@@ -4123,7 +4382,8 @@ export function Huvaari({
    */
   const decide = useCallback(async (approve: boolean, reason: string, okList?: number[]) => {
     if (!pending || busy) return;
-    setBusy(true); setErr(''); setNote('');
+    /* ⚠️ 2026-10-12 (аудит №8): өмнөх үйлдлийн `errList` шийдвэрийн дараа үлдэж, хамааралгүй мөрүүд харагддаг байв */
+    setBusy(true); setErr(''); setNote(''); setErrList([]);
     /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) — батлах бичилт нь доорх эффектэд үргэлжилнэ */
     setProgress(approve ? tr('Шалгаж байна…') : tr('Буцааж байна…'));
     try {
@@ -4138,6 +4398,12 @@ export function Huvaari({
            → `applyUpdates`-ыг `decidePlan`-ийн хүрээний шалгуураас ӨМНӨ ажиллуулдаг
            тул эрхгүй хүн (товч нуугдсан ч консолоос) эх хуудсанд бичиж чадах байв. */
         if (!canApprove) { setErr(tr('Энэ багцын хуваарийг батлах эрхгүй.')); return; }
+        /* ⚠️ 2026-10-12 (аудит №8): хуучин (тасарсан жаазын оронд) агшин дээр харсан саналыг батлахгүй (`frameOld`-ийн ⚠️) */
+        if (frameOld) {
+          setErr(tr('Хуудасны сүүлийн агшин тасарсан тул батлах боломжгүй — хуучин агшин ({0}) дээр харсан санал. Агшин цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay));
+          setFlowBox(null);
+          return;
+        }
         /* ⚠️ 2026-10-08: идэвхтэй төрлийнх (`pendingOther`-ийн ⚠️) */
         const fresh = await loadPending(pkg.key, kind);
         if (!fresh || fresh.oid !== pending.oid) {
@@ -4202,6 +4468,7 @@ export function Huvaari({
         if (lostWriteRef.current !== pending.oid) lostWriteRef.current = null;
         if (wroteSomeRef.current !== pending.oid) wroteSomeRef.current = null;
         frameMovedRef.current = null;
+        failStepRef.current = null;
         /* ⚠️ 2026-10-01: ХАГАС бичигдсэн илгээлтийн түгжээг ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) —
            дахин «Батлах» дарж агуулга уншигдаагүй/зөрчил гарсан эрт буцалт ч түгжээг алдуулдаг байв. */
         const oid0 = pending.oid;
@@ -4229,7 +4496,9 @@ export function Huvaari({
              state-ийн хуучирсан `rows`-той биш, дөнгөж татсантай тулгана.
              Сарын задаргаа ч мөн адил (`refetchServer`). */
           setProgress(tr('Хуудсыг дахин уншиж байна…'));
-          const srv = await refetchServer();
+          /* ⚠️ 2026-10-12 (аудит №8): `strict` мөр (тасарсан жаазын оронд хуучин агшинтай тулгахгүй) · сарын обьём/нөөцтэй
+             саналд задаргаа заавал шинэ (`refetchServer`-ийн ⚠️). Шидвэл доорх `finally` түгжээг тайлна. */
+          const srv = await refetchServer(undefined, { strict: true, needOb: payHasOb(p) });
           /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ ЭНД ЗОГСОНО (2026-09-11-ний аудитын S1).
              Ноорогт буулгахгүй тул `save` нь буруу талбарт бичих зам
              бүрмөсөн хаагдана; илгээлт `pending` хэвээр үлдэнэ.
@@ -4270,7 +4539,13 @@ export function Huvaari({
         /* ⚠️ Зөвшөөрсөн мөрүүд (2026-09-25) — гүйцэтгэгч улаан/ногоон харна */
         okRows: okList,
       });
-      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) {
+        setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
+        /* ⚠️ 2026-10-12 (аудит №8): өөр батлагч зуур шийдсэн бол урсгалыг дахин уншина — `lastDecision` тавигдаж хяналтын
+           цонх `onDone`-оор (алдаатай нь) хаагдана; урьд нь цонх «Буцаах»-тай гацдаг байв. */
+        await refreshFlow({ noRefetch: true }).catch(() => { /* мэдэгдэл дээр */ });
+        return;
+      }
       /* ⚠️ Урьдчилан харсан ноорогийг ЗААВАЛ цэвэрлэнэ: буцаасан саналын
          агуулга дэлгэц дээр үлдвэл дараагийн «Хадгалах» түүнийг эх хуудсанд
          бичиж, БУЦААСАН хуваарь батлагдсан мэт болно. */
@@ -4290,7 +4565,7 @@ export function Huvaari({
       setBusy(false);
       setProgress('');
     }
-  }, [pending, busy, pkg, kind, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows, previewing, obOut, obOutMsg, setProgress, setBusy]);
+  }, [pending, busy, pkg, kind, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows, previewing, obOut, obOutMsg, setProgress, setBusy, setErrList, frameOld]);
 
   /**
    * БАТЛАХЫГ ГҮЙЦЭЭХ — агуулга ноорогт буусны ДАРААХ зурагдалт.
@@ -4308,6 +4583,11 @@ export function Huvaari({
       ⚠️ 2026-10-08 (аудит B8): ЗӨВХӨН ӨӨРИЙН батлалт — `approver` нь нэвтэрсэн хэрэглэгч байх ёстой; өөр батлагч
       зуур баталсан бол энэ сешний «амжилт» БИШ (алдаа нь хэвээр гарч, урсгал дахин уншигдана). */
   const headApproved = (oid: number): Promise<boolean> => isApprovedBy(oid, user?.username ?? '');
+  /** ⚠️ 2026-10-12 (аудит №8): `partialMsg`-ийн алхмын мэдээлэл — ЭНЭ илгээлтийн сүүлийн уналт (`failStepRef`-ийн ⚠️) */
+  const stepOf = (o: number): { step: 'dates' | 'obyem'; written?: number; total?: number } | undefined => {
+    const f = failStepRef.current;
+    return f && f.oid === o ? { step: f.step, written: f.written, total: f.total } : undefined;
+  };
   useEffect(() => {
     if (approving == null || busy) return;
     if (!savedRef.current) {
@@ -4436,7 +4716,9 @@ export function Huvaari({
         const lostW = lostWriteRef.current === claimOid;
         /* ⚠️ 2026-10-09: жааз солигдсон (`frameMovedRef`) бол `save`-ийн мессеж ХЭВЭЭР — «сарын обьём бичигдсэнгүй» биш */
         const fm = frameMovedRef.current === claimOid;
-        setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
+        /* ⚠️ 2026-10-12 (аудит №8): ЯГ унасан алхам (`failStepRef`) — «огноо бичигдсэн боловч…» гэж таамаглахгүй */
+        const st0 = stepOf(claimOid);
+        setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur, st0)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       });
       return;
     }
@@ -4469,7 +4751,8 @@ export function Huvaari({
       /* ⚠️ 2026-10-08: хариу алдагдсан бол `lostWriteMsg` (дээрх салаатай ижил) */
       const lostW = lostWriteRef.current === oid;
       const fm = frameMovedRef.current === oid;
-      setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
+      const st1 = stepOf(oid);
+      setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur, st1)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       return;
     }
     /* ⚠️ 2026-09-29 аудит: `previewing`-ийг `decidePlan` АМЖИЛТТАЙ болсны ДАРАА л
@@ -4540,6 +4823,12 @@ export function Huvaari({
   const reviewStarted = useRef(false);
   /** Эхлэлийн эффект «аль хэдийн шийдвэрлэгдсэн» алдаа тавьсан (#5) — `onDone`-ийг алгасна */
   const reviewStartErr = useRef(false);
+  /**
+   * ⚠️ 2026-10-12 (аудит №8): ХЯНАЛТЫН ЭХЛЭЛ УНАСАН (урсгал уншигдсангүй · сүлжээ · задаргаа) — «Дахин оролдох» товч.
+   *    Урьд нь эхлэл НЭГ Л удаа (`reviewStarted`) тул зөрчлөөс бусад уналтад хяналт «буулгагдаагүй» төлөвт гацаж,
+   *    «Батлах»/«Буцаах» хоёулаа хаалттай, зөвхөн «Хаах» үлддэг байв. Зөрчил/эвдэрсэн агуулга нь `previewBad` (буцаах зам).
+   */
+  const [reviewRetry, setReviewRetry] = useState(false);
   useEffect(() => {
     if (!review || reviewStarted.current) return;
     if (pkg.key !== review.pkgKey || flowReady === null || busy || !sc || !rows.length || obState === 'loading') return;
@@ -4548,6 +4837,7 @@ export function Huvaari({
     if (flowReady === false) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: хяналтын горим нээгдэнгүүт нэг удаа саналыг буулгах эффект — алдааг ЯГ энд хэлнэ (⚠️ дээр); async ачаалалт дууссаны дараа л ажиллах тул хариулагч болгох боломжгүй
       setErr(flowWhy || tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
+      setReviewRetry(true);
       return;
     }
     if (pending?.oid !== review.oid) {
@@ -4559,8 +4849,15 @@ export function Huvaari({
       setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
       return;
     }
-    void preview();
+    void preview().then((ok) => { if (!ok) setReviewRetry(true); });
   }, [review, pkg.key, flowReady, flowWhy, busy, sc, rows.length, obState, pending, preview]);
+  /** ⚠️ 2026-10-12: «Дахин оролдох» — эхлэлийг тэглээд урсгалыг дахин уншина; эффект `flowReady`-ийн шилжилтээр дахин ажиллана */
+  const retryReview = () => {
+    reviewStarted.current = false;
+    setReviewRetry(false);
+    setErr('');
+    void refreshFlow();
+  };
   /** Хяналтын ИЛГЭЭЛТ ЯГ ЭНЭ ҮҮ — өөр/шинэ илгээлт дээр шийдвэр гаргуулахгүй */
   const reviewLive = !!review && pending?.oid === review.oid && previewing;
   /* ⚠️ ЗӨРЧЛӨӨР УНАСАН хяналт (2026-09-25 аудит #1) — зөвхөн «Буцаах» нээлттэй,
@@ -4578,7 +4875,13 @@ export function Huvaari({
      зөвхөн `note` дамжуулбал тэр алдаа ор мөргүй алга болно. */
   /* ⚠️ АЛДАА/МЭДЭЭГ ЯЛГАЖ дамжуулна (2026-09-25 аудит #5) — дараалал алдааг
      `note` (ногоон) болгож харуулдаг байв. */
-  const noteRef = useLatest<{ msg: string; isErr: boolean }>(err ? { msg: err, isErr: true } : { msg: note, isErr: false });
+  /* ⚠️ 2026-10-12 (аудит №8): `errList` (хадгалалтын анхааруулга — «дахин уншиж чадсангүй» · бүлгийн задаргаа алгассан г.м.)
+     ч дамжина — урьд нь хяналтын цонх хаагдахад жагсаалт ор мөргүй алга болж, батлагч хэзээ ч хардаггүй байв. */
+  const noteRef = useLatest<{ msg: string; isErr: boolean }>(err
+    ? { msg: err, isErr: true }
+    : errList.length
+      ? { msg: [note, ...errList.map((x) => x.msg)].filter(Boolean).join(' · '), isErr: true }
+      : { msg: note, isErr: false });
   const reviewDoneRef = useLatest(review?.onDone);
   const reviewOid = review?.oid;
   useEffect(() => {
@@ -4600,8 +4903,11 @@ export function Huvaari({
       .map((o) => byOid.get(o)).filter((r): r is PlanRow => !!r);
     const list = bad.slice(0, 12).map((r) => `${r.no} ${r.work}`.trim()).join('; ')
       + (bad.length > 12 ? ` … (+${bad.length - 12})` : '');
+    /* ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ текст МОНГОЛ ЭХЭЭР (`tr()`-гүй, тоо `String`-ээр) — урьд нь батлагчийн хэлээр
+       орчуулагдаж (англи батлагч → англи шалтгаан) бичигддэг тул монгол зохиогч англиар уншдаг байв. Харуулахдаа
+       `displayReason()` уншигчийн хэлээр орчуулна. */
     const why = bad.length
-      ? `${txt.trim()}\n${tr('Зөвшөөрөгдөөгүй {0} мөр: {1}', num(bad.length), list)}`
+      ? `${txt.trim()}\nЗөвшөөрөгдөөгүй ${String(bad.length)} мөр: ${list}`
       : txt.trim();
     /* ⚠️ Зөрчлөөр унасан үед (`reviewConflict`) тэмдэглэгээ ИЛГЭЭХГҮЙ — `[]` бол
        гүйцэтгэгчид бүх мөр «зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана. */
@@ -4631,12 +4937,10 @@ export function Huvaari({
     const r = plan[i];
     const b0 = base[i];
     const bch = r.spans.findIndex((sp, b) => !sameSpan(sp, b0?.spans[b]));
-    if (bch >= 0 && bch !== blk) setBlk(bch);
-    if (!visible.some((v) => v.oid === r.oid)) {
-      setFilter('all'); setFYear('all'); setFGrp('all'); setCollapsed(new Set()); setLvl(0);
-    }
-    setSel(r.oid);
-    scrollToOid.current = { oid: r.oid, blk: bch >= 0 ? bch : blk };
+    /* ⚠️ 2026-10-12 (аудит №8): НЭГ ЗАМ — `goToRow` (чип шүүлтийг ч цэвэрлэж, ил мэдэгдэнэ; эвхсэн өвгийг л дэлгэнэ).
+       Урьд нь энд чипийг (`chips`) цэвэрлэдэггүй тул «Дараагийн улаан/✕»-ийн мөр чипэд нуугдсан хэвээр, сонгогдсон атлаа
+       харагддаггүй байв; мөн бүх модыг хавтгайруулдаг байв (2026-09-02-ны шийдвэртэй зөрнө). */
+    goToRow(r.oid, bch >= 0 ? bch : blk);
   };
   /**
    * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
@@ -5513,7 +5817,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           {/* ⚠️ Хяналтын горимд багц ТОГТМОЛ (дарааллаас сонгосон илгээлтийнх) */}
           <select className={h.select} value={pkg.group} disabled={busy || switching || !!review}
             onChange={(e) => { const v = e.target.value; runSwitch(() => setPkg(pkgFloors(v)[0])); }}>
-            {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
+            {/* ⚠️ 2026-10-12 (аудит №8): «●» — тэр багцад таны илгээлтийн шинэ шийдвэр бий (`planNews`-ийн ⚠️) */}
+            {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}{!review && newsGroups.has(g) ? ' ●' : ''}</option>)}
           </select>
         </label>
         {floors.length > 1 && (
@@ -5524,7 +5829,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 const v = e.target.value;
                 runSwitch(() => setPkg(PKGS.find((x) => x.key === v) ?? pkg));
               }}>
-              {floors.map((p) => <option key={p.key} value={p.key}>{p.floors}F</option>)}
+              {floors.map((p) => <option key={p.key} value={p.key}>{p.floors}F{!review && newsKeys.has(p.key) ? ' ●' : ''}</option>)}
             </select>
           </label>
         )}
@@ -5623,7 +5928,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               ['viol', tr('Зөрчилтэй'), chipCounts.viol],
               ['late', tr('Хоцорсон'), chipCounts.late],
               /* ⚠️ 2026-10-09: «Тэнцээгүй» — сарын обьём тэнцээгүй мөр (`unbalRows`); байхгүй (ба асаагаагүй) үед нуугдана */
-              ...(kind === 'plan' && (unbalRows.size > 0 || chips.has('unbal')) ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
+              /* ⚠️ 2026-10-12: АСААЛТТАЙ бол табаас үл хамааран ЗУРАГДАНА — нуугдсан идэвхтэй шүүлт мөрийг бүгдийг нуудаг байв */
+              ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
             ] as [Chip, string, number][]).map(([c, label, cnt]) => (
               <button key={c} type="button"
                 className={`${h.chipFilter} ${chips.has(c) ? h.chipFilterOn : ''}`}
@@ -5816,7 +6122,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 ⚠️ 2026-10-08: `rollUpGroups`-оор автоматаар орсон бүлгийн мөрийг `dirtyOids` өөрөө
                 хасна (өмнө нь энэ тайлбар тэгж бичсэн ч код тоолдог байв). */}
             {/* ⚠️ 2026-10-08: дарахад өөрчлөлтийн жагсаалт (`chgPanel`) — мөр рүү үсрэх */}
-            {dirtyN ? (
+            {/* ⚠️ 2026-10-12 (аудит №8): урьдчилан харах / илгээсэн хуваарь харах үед НУУНА — ноорог нь САНАЛ (хадгалах зүйл биш);
+                «хадгалаагүй N» гэж харуулбал батлагч/зохиогч өөрийн засвар мэт андуурдаг байв. */}
+            {dirtyN && !previewing ? (
               <>
                 {' · '}
                 <button type="button" className={h.dirtyTag} aria-pressed={chgOpen}
@@ -6010,14 +6318,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         )}
         {/* ⚠️ УРЬДЧИЛАН ХАРАХ — батлагч саналыг ХУАНЛИ ДЭЭР харна. Үүнгүй бол
             «14 мөр» гэсэн тоо л хараад хараагүй зүйлээ баталж байна гэсэн үг. */}
-        {!review && pending && canApprove && !previewing && (
+        {/* ⚠️ 2026-10-12 (аудит №8): ӨӨРИЙН илгээлтэд (зохиогч + батлагч эрхтэй) гарахгүй — тэр хүнд «Батлагдсан/Илгээсэн
+            хуваарь» сэлгүүр (доор) аль хэдийн байдаг тул хоёр өөр харах товч зэрэг гардаг байв. */}
+        {!review && pending && canApprove && !isOwnSubmission && !previewing && (
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Саналыг хуанли дээр буулгаж харна — эх хуудсанд бичигдэхгүй')}
             onClick={() => void preview()}>
             {tr('Урьдчилан харах')}
           </button>
         )}
-        {!review && pending && canApprove && previewing && (
+        {!review && pending && canApprove && !isOwnSubmission && previewing && (
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Урьдчилан харахыг болино')}
             onClick={clearPreview}>
@@ -6117,7 +6427,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </button>
             <button type="button" className={h.save}
               /* ⚠️ 2026-10-01: мужаас гадуурх сарын обьёмтой санал батлагдахгүй (`obOut`) */
-              disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission || (reviewOids.length > 0 && !allOk) || obOut.bad > 0}
+              /* ⚠️ 2026-10-12: хуучин агшин (`frameOld`) дээр батлахгүй — шалтгаан нь дээрх баннерт */
+              disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission || (reviewOids.length > 0 && !allOk) || obOut.bad > 0 || !!frameOld}
               title={isOwnSubmission
                 ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
                 : !canApprove
@@ -6130,6 +6441,14 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={() => { if (window.confirm(tr('Хуваарийг батлах уу? Эх хуудсанд бичигдэнэ.'))) void decide(true, ''); }}>
               {tr('Батлах')}
             </button>
+            {/* ⚠️ 2026-10-12 (аудит №8): эхлэл унасан бол дахин оролдох (`reviewRetry`-ийн ⚠️) */}
+            {reviewRetry && !reviewLive && !reviewConflict && (pending == null || pending.oid === review.oid) && (
+              <button type="button" className={h.discard} disabled={busy || approving != null}
+                title={tr('Саналыг дахин уншиж хуанли дээр буулгана')}
+                onClick={retryReview}>
+                {tr('Дахин оролдох')}
+              </button>
+            )}
             <button type="button" className={h.discard} disabled={busy || approving != null}
               title={tr('Шийдвэргүй хаана (Esc)')}
               onClick={() => { if (confirmDropMarks(okRows.size)) review.onClose(); }}>
@@ -6143,9 +6462,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               const why = !canApprove
                 ? tr('Энэ багцын хуваарийг батлах эрхгүй.')
                 : reviewConflict
-                  ? tr('Санал одоогийн хуваарьтай зөрчилдсөн тул зөвхөн буцаах боломжтой.')
+                  /* ⚠️ 2026-10-12: эвдэрсэн (уншигдаагүй) агуулга ч энд (`preview`-ийн `previewBad`) */
+                  ? tr('Санал одоогийн хуваарьтай зөрчилдсөн эсвэл агуулга нь уншигдсангүй тул зөвхөн буцаах боломжтой.')
                   : !reviewLive
-                    ? tr('Санал хуанли дээр буулгагдаагүй байна — буулгагдсаны дараа шийдвэрлэнэ.')
+                    ? (reviewRetry
+                      ? tr('Санал хуанли дээр буулгагдсангүй — «Дахин оролдох» дарна уу.')
+                      : tr('Санал хуанли дээр буулгагдаагүй байна — буулгагдсаны дараа шийдвэрлэнэ.'))
                     : reviewOids.length > 0 && !allOk
                       ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
                       /* ⚠️ 2026-10-01: мужаас гадуурх обьём — аль ажил/блок/сар гэдгийг нэрлэнэ */
@@ -6360,18 +6682,43 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           {tr('Батлагдсан нэмэлт ажлын {0} илгээлт үндсэн хүснэгтэд хараахан буугаагүй — батлагч «Нэмэлт ажил батлах» хуудаснаас «Дахин буулгах» дарна.', num(ajStuck))}
         </p>
       )}
+      {/* ⚠️ 2026-10-12 (аудит №8): БУСАД багцын «шинэ шийдвэр» — үсрэх товчтой (`planNews`-ийн ⚠️). Одоогийн багцынх доорх
+          сүүлийн шийдвэрийн мэдэгдэлд харагдана. Төрөл (гэрээ) нь товчинд — таб автоматаар солигдохгүй (`jump`-ийн дүрэм). */}
+      {!review && planNews && planNews.some((x) => x.pkgKey !== pkg.key) && (
+        <p className={h.note} role="status">
+          {tr('Таны илгээлтийн шинэ шийдвэр:')}
+          {planNews.filter((x) => x.pkgKey !== pkg.key).slice(0, 8).map((x) => {
+            const p = PKGS.find((q) => q.key === x.pkgKey);
+            if (!p) return null;
+            return (
+              <button key={x.oid} type="button" className={h.noteBtn} disabled={busy || switching}
+                title={tr('Тэр багц руу шилжинэ')}
+                onClick={() => runSwitch(() => setPkg(p))}>
+                {p.label}
+                {' · '}
+                {x.status === 'returned' ? tr('буцаагдсан') : tr('батлагдсан')}
+                {x.kind === 'geree' ? ` · ${tr('Гэрээ')}` : ''}
+              </button>
+            );
+          })}
+        </p>
+      )}
       {/* ⚠️ 2026-10-09: батлагчийн мессежтэй ИЖИЛ ялгал (`hasPlanRole` — багцаас үл хамаарна): «зохиогчийн үүрэг бий ч
           ЭНЭ багцад биш» ба «үүрэг огт алга» хоёр өөр гарцтай. Урьд нь үүрэгтэй хүнд ч «эрх алга» гэдэг байв. */}
       {!review && !canEdit && !canApprove && (
         <p className={h.note}>
           {hasPlanRole(user?.username, 'author')
             ? tr('Танд хуваарь төлөвлөх эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна — зөвхөн харна. Админ «Хуваарийн эрх» → {0} → «Зохиогч» хэсэгт таныг нэмнэ.', tr(pkg.group))
-            : tr('Танд хуваарь засах эрх алга — зөвхөн харна. Эрхийг админ «Хуваарь төлөвлөх» гэж тусад нь олгоно.')}
+            /* ⚠️ 2026-10-12 (аудит №8): ОДООГИЙН эрхийн дэлгэцийн замыг нэрлэнэ (дээрх мөртэй ижил) — «Хуваарь төлөвлөх» гэсэн
+               нэртэй хэсэг байхгүй тул админ хайж олдоггүй байв. */
+            : tr('Танд хуваарь засах эрх алга — зөвхөн харна. Админ «Хуваарийн эрх» → {0} → «Зохиогч» хэсэгт таныг нэмнэ.', tr(pkg.group))}
         </p>
       )}
       {/* ⚠️ Зөвхөн БАТЛАГЧ эрхтэй хүн шийдвэрлэх зүйлгүй үед ХООСОН хуудас
           хараад «эвдэрсэн юм болов уу» гэж бодохоос сэргийлнэ. */}
-      {!review && !canEdit && canApprove && !pending && (
+      {/* ⚠️ 2026-10-12 (аудит №8): зөвхөн урсгал АМЖИЛТТАЙ уншигдсан үед (`flowReady === true`) — уншигдаагүй (сүлжээ) эсвэл
+          ачаалж байхад «батлах хуваарь алга» гэж худал хэлдэг байв (доорх алдааны баннер шалтгааныг хэлнэ). */}
+      {!review && !canEdit && canApprove && !pending && flowReady === true && (
         <p className={h.note}>
           {tr('Танд батлах хуваарь алга — гүйцэтгэгч илгээмэгц энд гарч ирнэ. Хуваарийг та зөвхөн харна, засахгүй.')}
         </p>
@@ -6390,8 +6737,13 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               const hrs = Math.max(0, Math.floor((clock - pending.authorSent) / 3_600_000));
               parts.push(hrs >= 24 ? tr('{0} хоног хүлээж байна', num(Math.floor(hrs / 24))) : tr('{0} цаг хүлээж байна', num(hrs)));
             }
-            const appr = planApproversOf(pkg.group);
+            /* ⚠️ 2026-10-12 (аудит №8): ИЛГЭЭСЭН ЗОХИОГЧИЙГ хасна — өөрийгөө батлахгүй тул «батлагч» жагсаалтад байх нь
+               худал; үлдэгдэл хоосон бол «томилоогүй» (зохиогч хэнд ч хандах боломжгүй гэдгийг мэднэ). */
+            const auth0 = pending.author.trim().toLowerCase();
+            const appr = planApproversOf(pkg.group).filter((u) => u.trim().toLowerCase() !== auth0);
+            /* ⚠️ ACL ачаалагдаагүй бол (`huvaariAclReady`) «томилоогүй» гэж худал хэлэхгүй — юу ч бичихгүй (null ≠ хоосон) */
             if (appr.length) parts.push(tr('батлагч: {0}', appr.slice(0, 5).join(', ') + (appr.length > 5 ? ` (+${num(appr.length - 5)})` : '')));
+            else if (huvaariAclReady()) parts.push(tr('батлагч томилоогүй — админ «Хуваарийн эрх» хэсгээс нэмнэ'));
             return parts.length ? ` ${parts.join(' · ')}.` : '';
           })()}
           {/* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — аль төрөл хүлээгдэж, аль таб засагдахыг хэлнэ */}
@@ -6452,7 +6804,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           {` · ${lastDecision.approver ?? '—'} · ${lastDecision.approverAt == null ? '—' : dayKey(lastDecision.approverAt)}`}
           {'\n'}
           <b>{tr('Буцаасан шалтгаан')}: </b>
-          {lastDecision.reason?.trim() || tr('шалтгаан бичигдээгүй')}
+          {/* ⚠️ 2026-10-12 (аудит №8): хадгалсан монгол эх текстийг уншигчийн хэлээр (`displayReason`) */}
+          {showPlanReason(lastDecision.reason?.trim() ?? '') || tr('шалтгаан бичигдээгүй')}
           {'\n'}
           {tr('Засаад дахин илгээнэ үү.')}
           {/* ⚠️ БАТЛАГЧИЙН ТЭМДЭГЛЭГЭЭ (2026-09-25) — гүйцэтгэлийн «буцаагдсан
@@ -6467,8 +6820,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <button type="button" className={h.noteBtn} disabled={busy || dirtyN > 0} onClick={() => void restoreWithdrawn()}
                 title={dirtyN > 0
                   ? tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))
-                  : tr('Буцаагдсан төлөвлөгөөг хуанлид буулгаж засна — зөвшөөрөгдөөгүй мөр УЛААН, зөвшөөрсөн нь НОГООН')}>
-                {tr('Буцаагдсан төлөвлөгөөг засах')}
+                  : tr('Буцаагдсан хуваарийг хуанлид буулгаж засна — зөвшөөрөгдөөгүй мөр УЛААН, зөвшөөрсөн нь НОГООН')}>
+                {/* ⚠️ 2026-10-12 (аудит №8): «хуваарь» — гэрээний буцаалтад ч (төрөл табаар илэрхий) */}
+                {tr('Буцаагдсан хуваарийг засах')}
               </button>
               {dirtyN > 0 && !backOn && ` ${tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))}`}
             </>
@@ -6522,11 +6876,23 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           «олдсонгүй» мессеж болж нийлдэг тул админ юу засахаа мэдэхгүй байв. */}
       {/* ⚠️ 2026-10-01: хуваарь өөрөө ачаалагдаагүй бол (`loadErr`) урсгалын баннер ДАВХАР
           алдаа болж (ихэвчлэн ижил шалтгаан — эрх/токен) хоёр удаа гардаг байв — нэг л удаа. */}
-      {flowReady === false && canEdit && !loadErr && (
+      {/* ⚠️ 2026-10-12 (аудит №8): БАТЛАГЧИД ч (урьд нь зөвхөн `canEdit` — батлагч «батлах хуваарь алга» гэсэн худал мэдэгдэл
+          хардаг байв) · «Дахин оролдох» (`refreshFlow`) — хуудас бүхэлд нь сэргээх шаардлагагүй. */}
+      {flowReady === false && (canEdit || canApprove) && !loadErr && (
         <p className={h.err} role="alert">
           {flowWhy || tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')}
           {' '}
-          {tr('Түүнийг хүртэл хуваарь илгээх боломжгүй.')}
+          {canEdit ? tr('Түүнийг хүртэл хуваарь илгээх боломжгүй.') : tr('Түүнийг хүртэл батлах хуваарь харагдахгүй.')}
+          {' '}
+          <button type="button" className={h.noteBtn} disabled={busy} onClick={() => void refreshFlow()}>
+            {tr('Дахин оролдох')}
+          </button>
+        </p>
+      )}
+      {/* ⚠️ 2026-10-12 (аудит №8): ТАСАРСАН ЖААЗЫН ОРОНД ХУУЧИН АГШИН (`frameOld`-ийн ⚠️) — ил хэлж, батлах/хадгалах хаалттай */}
+      {frameOld && (
+        <p className={h.err} role="alert">
+          {tr('Хуудасны сүүлийн агшин ({0}) тасарсан тул өмнөх бүтэн агшныг ({1}) харуулж байна. Энэ үед батлах/хадгалах боломжгүй — гүйцэтгэлийн батлалт агшныг цэвэрлэсний дараа хуудсаа сэргээнэ үү.', frameOld.day, frameOld.shownDay)}
         </p>
       )}
 
@@ -7341,18 +7707,24 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           /* ⚠️ Цонхон дотроос УРЬДЧИЛАН ХАРАХ (2026-09-23): «хараагүй» гэж
              сануулаад цонхыг хааж товч хайлгадаг байв. `preview` амжилттай бол
              цонхыг өөрөө хаана. */
-          onPreview={previewing ? undefined : () => void preview()}
+          /* ⚠️ 2026-10-12 (аудит №8): урьдчилан харалт ЗӨРЧЛӨӨР/эвдэрсэн агуулгаар унасан (`previewBad`) бол дахин харах
+             товч ГАРАХГҮЙ — дахин дарахад ижил алдаа; зөвхөн буцаах зам. */
+          onPreview={previewing || previewBad === pending.oid ? undefined : () => void preview()}
           onClose={() => setFlowBox(null)}
           progress={progress}
           /* ⚠️ 2026-10-09: «Батлах» УРЬДЧИЛАН ХАРЖ, бүх мөр ногоон болтол ХААЛТТАЙ (шалтгаан ил) — урьд нь идэвхтэй
              байж дарахад саналыг буулгаад «ногоон болгосны дараа батална» гэж унадаг байв (хяналтын горимтой нэг дүрэм). */
           okDisabled={isOwnSubmission
             ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
-            : !previewing
-              ? tr('Эхлээд «Урьдчилан харах» дарж саналыг хуанли дээр шалгаад, өөрчлөгдсөн мөр бүрийг ногоон болгоно.')
-              : reviewOids.length > 0 && !allOk
-                ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
-                : obOut.bad > 0 ? obOutMsg : undefined}
+            : previewBad === pending.oid
+              ? tr('Санал одоогийн хуваарьтай зөрчилдсөн эсвэл агуулга нь уншигдсангүй тул зөвхөн буцаах боломжтой.')
+              : frameOld
+                ? tr('Хуудасны сүүлийн агшин тасарсан тул батлах боломжгүй — хуучин агшин ({0}) дээр харсан санал. Агшин цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay)
+                : !previewing
+                  ? tr('Эхлээд «Урьдчилан харах» дарж саналыг хуанли дээр шалгаад, өөрчлөгдсөн мөр бүрийг ногоон болгоно.')
+                  : reviewOids.length > 0 && !allOk
+                    ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
+                    : obOut.bad > 0 ? obOutMsg : undefined}
           /* ⚠️ 2026-10-09: талбар нь БУЦААХ шалтгаан — бичсэн текст батлахад хадгалагдахгүйг асууна */
           onOk={(txt) => {
             if (txt.trim() && !window.confirm(tr('Бичсэн тайлбар батлахад хадгалагдахгүй. Үргэлжлүүлэх үү?'))) return;
@@ -7370,7 +7742,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const own = txt.trim();
             if (!own) return;
             if (previewing) { void decide(false, txt, reviewOids.filter((o) => okRows.has(o))); return; }
-            const blind = tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)');
+            /* ⚠️ 2026-10-12 (аудит №8): ЗӨРЧЛӨӨР/эвдэрсэн агуулгаар харалт унасан (`previewBad`) — мөр харагдаагүй тул тэмдэглэгээ
+               ИЛГЭЭХГҮЙ (`undefined`, хяналтын `reviewConflict`-ийн дүрэм) ба «нээлгүй буцаасан» тайлбаргүй (батлагч нээхийг
+               оролдсон; шалтгаан нь зөрчил). Урьд нь `[]` + тайлбар илгээж бүх мөр зохиогчид УЛААН болдог байв. */
+            if (previewBad === pending.oid) { void decide(false, own, undefined); return; }
+            /* ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ тайлбар МОНГОЛ ЭХЭЭР (`tr()`-гүй) — харуулахдаа `displayReason()` орчуулна */
+            const blind = BLIND_NOTE;
             void decide(false, `${own.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, []);
           }}
         />
