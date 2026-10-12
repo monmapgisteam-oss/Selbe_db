@@ -78,6 +78,7 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
   onFlipDocs: p.onFlipDocs,
+  superUser: p.superUser,
 });
 
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */

@@ -461,12 +461,14 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const rd = await run(deny);
   ok(!rd.ok && /багц/.test(rd.err), `${tag}: татгалзлын зурвас`);
   capIs(x, 'plan', false, tag);
-  /* super-т гаргалгаатай эрхийг шууд олгож/хасна (цорын ганц зам) */
-  let r = await run(OPS.capDirectOp(SUPER, 'planApprove', true));
-  ok(r.ok, `${tag}: super-т гаргалгаатай эрх`);
-  await both((w) => capIs(SUPER.toLowerCase(), 'planApprove', true, `${tag} ${w}`));
-  r = await run(OPS.capDirectOp(SUPER, 'planApprove', false));
-  await both((w) => capIs(SUPER.toLowerCase(), 'planApprove', false, `${tag} ${w}`));
+  /* ⚠️ 2026-10-12: super БҮХ эрхтэй тохиргоогүйгээр — олгох no-op, хасах татгалзана, __cap__ мөр бичигдэхгүй */
+  ok(OPS.capDirectOp(SUPER, 'planApprove', true) === null, `${tag}: super-т олгох — no-op`);
+  const sd = OPS.capDirectOp(SUPER, 'planApprove', false);
+  ok(sd && 'error' in sd && /super/i.test(sd.error), `${tag}: super-ээс хасах — татгалзал`);
+  ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(SUPER).includes(c)), `${tag}: super бүх эрхтэй`);
+  ok(CAPS.hasCap(SUPER, 'planApprove') && CAPS.hasCap(SUPER, 'finRow'), `${tag}: super hasCap`);
+  ok((fake.json('__cap__:', SUPER.toLowerCase()) ?? []).length === 0, `${tag}: super-т __cap__ мөр бичигдээгүй`);
+  let r;
   /* өнчин гаргалгаатай эрх (хуваарилалтгүй) — ХАСАХ нь зөвшөөрөгдөнө */
   const o = mkUser();
   await CAPS.setCaps(o, ['addRow']); await settle();
@@ -677,13 +679,15 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     rowGone('obyem', S2, `${tag} ${w}`);
     ok(!QA.listQaqcAssigns().some((a) => a.user === S2), `${tag} ${w}: super qaqc мөр алга`);
     eq(fake.find(`__flow__:${S2}`), [], `${tag} ${w}: super урсгалын мөр алга`);
-    eq(sorted(CAPS.capsOf(S2)), sorted(directCaps), `${tag} ${w}: super-т ШУУД олгосон эрх хэвээр`);
+    /* ⚠️ 2026-10-12: `capsOf(super)` = бүх эрх (кодоос); хадгалагдсан мөр (`capsStored`/ArcGIS) хөндөгдөхгүй */
+    eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: super-ийн хадгалагдсан __cap__ хэвээр`);
     eq(sorted(fake.json('__cap__:', S2)), sorted(directCaps), `${tag} ${w}: ArcGIS __cap__ хэвээр`);
+    ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(S2).includes(c)), `${tag} ${w}: super бүх эрхтэй`);
   });
   fake.seed([{ username: `__qaqc__:${S2}`, views: JSON.stringify({ bagts: [p2] }) }]);
   await roundTrip();
   await QA.removeQaqcAssign(S2).sync; await settle();
-  await both((w) => eq(sorted(CAPS.capsOf(S2)), sorted(directCaps), `${tag} ${w}: removeQaqcAssign(revoke) super-ийн qaqc-ийг буцаахгүй`));
+  await both((w) => eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: removeQaqcAssign(revoke) super-ийн хадгалагдсан мөрийг хөндөхгүй`));
   console.log('✅ §9 цэвэрлэх мөр: устгагдсан аккаунтын ✕ — мөр бүхэлдээ, эрх үүсэхгүй · super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх хэвээр');
 }
 

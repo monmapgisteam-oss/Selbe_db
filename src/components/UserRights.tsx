@@ -41,10 +41,13 @@ export type UserRightsProps = {
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
   onFlipDocs: () => void;
+  /** ⚠️ 2026-10-12: хатуу super — бүх унтраалга асаалттай, түгжээтэй (эрх нь кодоос) */
+  superUser?: boolean;
 };
 
 export function UserRights(props: UserRightsProps) {
   const { d, capViews, caps, hasView, onFlipView, onAllViews, onFlipDocs } = props;
+  const superUser = !!props.superUser;
 
   /** Энэ харагдацыг нээсэн эрхүүдийн ХУУДАСНЫ нэр (хажуугийн цэс) */
   const impliedBy = (v: ViewKey): string =>
@@ -69,18 +72,25 @@ export function UserRights(props: UserRightsProps) {
         */}
       <div className={s.topicHead}>
         <span className={s.topicHeadLabel}>{tr('Харагдац')}</span>
-        <span className={s.saveHint}>{tr('ноорог — «Хадгалах»')}</span>
-        <button type="button" className={s.linkBtn} onClick={() => onAllViews(true)}>
-          {tr('Бүгдийг асаах')}
-        </button>
-        <button type="button" className={s.linkBtn} onClick={() => onAllViews(false)}>
-          {tr('Бүгдийг унтраах')}
-        </button>
+        <span className={s.saveHint}>{superUser ? tr('кодоор — засагдахгүй') : tr('ноорог — «Хадгалах»')}</span>
+        {/* ⚠️ 2026-10-12 (super жигд биш): хатуу super-т «Бүгдийг асаах/унтраах» алга — эрх нь кодоос */}
+        {!superUser && (
+          <>
+            <button type="button" className={s.linkBtn} onClick={() => onAllViews(true)}>
+              {tr('Бүгдийг асаах')}
+            </button>
+            <button type="button" className={s.linkBtn} onClick={() => onAllViews(false)}>
+              {tr('Бүгдийг унтраах')}
+            </button>
+          </>
+        )}
       </div>
       <div className={s.capNote}>
-        {tr('Урсгалтай хуудсууд ({0}) урсгалын эрхийн хуудсаар нээгдэнэ — хуваарилалт олгоход нээгдэж, хасахад хаагдана.', workflowNames)}
+        {superUser
+          ? tr('Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ кодоор нээлттэй; самбараас засагдахгүй.')
+          : tr('Урсгалтай хуудсууд ({0}) урсгалын эрхийн хуудсаар нээгдэнэ — хуваарилалт олгоход нээгдэж, хасахад хаагдана.', workflowNames)}
       </div>
-      {capViews.some((k) => !WORKFLOW_VIEWS.includes(k)) && (
+      {!superUser && capViews.some((k) => !WORKFLOW_VIEWS.includes(k)) && (
         <div className={s.capNote}>
           {tr('Бүдэг унтраалга — засах эрхээр автоматаар нээгдсэн харагдац; хаахын тулд тухайн эрхийн хуудсанд (хажуугийн цэс) эрхийг нь хасна.')}
         </div>
@@ -95,7 +105,9 @@ export function UserRights(props: UserRightsProps) {
              нээлттэй үлддэг байв (tooltip «тэр хуудсанд хасна» гэж хэлдэг атлаа). Хаах зам =
              тухайн эрхийн хуудас; `UserAdmin.flipView` ч мөн хамгаална. */
           const implied = !base && capViews.includes(v.key);
-          const vOn = base || implied;
+          /* ⚠️ 2026-10-12: хатуу super — асаалттай, түгжээтэй (`UserAdmin.flipView` ч татгалзана) */
+          const locked = superUser || implied;
+          const vOn = superUser || base || implied;
           return (
             <div key={v.key} className={s.topicRow}>
               <span className={s.topicName}>
@@ -106,14 +118,16 @@ export function UserRights(props: UserRightsProps) {
                 type="button"
                 role="switch"
                 aria-checked={vOn}
-                aria-disabled={implied || undefined}
+                aria-disabled={locked || undefined}
                 aria-label={v.title}
-                title={implied
-                  ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
-                  : undefined}
-                className={`${s.sw} ${vOn ? s.swOn : ''} ${implied ? s.swImplied : ''}`}
-                style={implied ? { cursor: 'not-allowed' } : undefined}
-                onClick={implied ? undefined : () => onFlipView(v.key)}
+                title={superUser
+                  ? tr('Админ (super) — кодоор нээлттэй')
+                  : implied
+                    ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
+                    : undefined}
+                className={`${s.sw} ${vOn ? s.swOn : ''} ${locked ? s.swImplied : ''}`}
+                style={locked ? { cursor: 'not-allowed' } : undefined}
+                onClick={locked ? undefined : () => onFlipView(v.key)}
               >
                 <span className={s.swKnob} />
               </button>
@@ -128,10 +142,13 @@ export function UserRights(props: UserRightsProps) {
           <button
             type="button"
             role="switch"
-            aria-checked={d.docs}
+            aria-checked={superUser || d.docs}
+            aria-disabled={superUser || undefined}
             aria-label={tr('ТЭЗҮ-БОНУ')}
-            className={`${s.sw} ${d.docs ? s.swOn : ''}`}
-            onClick={() => onFlipDocs()}
+            title={superUser ? tr('Админ (super) — кодоор нээлттэй') : undefined}
+            className={`${s.sw} ${superUser || d.docs ? s.swOn : ''} ${superUser ? s.swImplied : ''}`}
+            style={superUser ? { cursor: 'not-allowed' } : undefined}
+            onClick={superUser ? undefined : () => onFlipDocs()}
           >
             <span className={s.swKnob} />
           </button>

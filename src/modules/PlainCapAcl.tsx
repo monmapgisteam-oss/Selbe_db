@@ -8,10 +8,9 @@
  *    ЗӨВХӨН харагдац болж, картын «Нэмэлт эрх» унтраалга хасагдав. Энгийн дөрвөн
  *    эрх (Зөвшөөрөл · Санхүү — утга · Санхүү — мөр · Газар, `PLAIN_CAPS`) тус
  *    бүр өөрийн цэстэй болж, ЭНЭ панел тэднийг аккаунтын жагсаалтаар олгоно.
- * ⚠️ `superOnly` — гаргалгаатай эрхийн хуудсанд ХАТУУ SUPER-ийн хэсэг: түүнд
- *    хуваарилалт үйлчилдэггүй (`setGrants` татгалзана), `hasCap` super-ийг
- *    тойрдоггүй тул эрхийг шууд олгох цорын ганц зам (2026-09-07 · 08-ын дүрэм,
- *    урьд нь картын унтраалгаар). Бусдад гаргалгаатай эрх энд олгогдохгүй
+ * ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): `superOnly` хэсэг («Админ (super) — шууд олгоно»)
+ *    ХАСАГДСАН — хатуу super бүх эрхтэй (`caps.capsOf`), хуудас бүрд нэг бүрчлэн олгохгүй;
+ *    жагсаалтад super орохгүй. Бусдад гаргалгаатай эрх энд олгогдохгүй
  *    (`aclOps.capDirectOp` татгалзана).
  * ⚠️ ТҮГЖЭЭ `QaqcAcl`-тай ИЖИЛ: `remoteReady() && capsRemoteReady()` — remote
  *    уншигдаагүй бол `[] ∪ {cap}` бичилт remote-ийн бүтэн жагсаалтыг дарна
@@ -34,7 +33,7 @@ import { useAclRunner } from './useAclRunner';
 import { capLabel, capNote } from './capText';
 import s from './guitsetgel.module.css';
 
-export function PlainCapAcl({ cap, superOnly }: { cap: CapKey; superOnly?: boolean }) {
+export function PlainCapAcl({ cap }: { cap: CapKey }) {
   const [, tick] = useState(0);
   useEffect(() => subscribeCaps(() => tick((n) => n + 1)), []);
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
@@ -47,10 +46,10 @@ export function PlainCapAcl({ cap, superOnly }: { cap: CapKey; superOnly?: boole
   const off = locked || busy;
 
   /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно (`QaqcAcl`-ийн ⚠️).
-     Энгийн эрхэд super ч орно (түүнд ч `hasCap` шаардлагатай). */
+     ⚠️ 2026-10-12: super жагсаалтад ОРОХГҮЙ — бүх эрх нь кодоос (`caps.capsOf`). */
   const users = listUsers()
     .map((u) => u.username)
-    .filter((u) => !superOnly || roleForUser(u) === 'super');
+    .filter((u) => roleForUser(u) !== 'super');
   /* ⚠️ Remote-гүй бол кэш (`capsStored`) — `capsOf` [] тул худал «эрхгүй» дүр зурна (2026-09-21) */
   const has = (u: string): boolean => (locked ? capsStored(u) : capsOf(u)).includes(cap);
   const holders = users.filter(has);
@@ -66,24 +65,17 @@ export function PlainCapAcl({ cap, superOnly }: { cap: CapKey; superOnly?: boole
 
   return (
     <div className={s.aclWrap}>
-      {!superOnly && (
-        <p className={s.aclNote}>
-          {capNote(cap)}
-          {' '}
-          {tr('Аккаунт нэмэхэд эрх шууд хадгалагдана (ноорог биш), хасахад шууд буцаагдана.')}
-        </p>
-      )}
+      <p className={s.aclNote}>
+        {capNote(cap)}
+        {' '}
+        {tr('Аккаунт нэмэхэд эрх шууд хадгалагдана (ноорог биш), хасахад шууд буцаагдана.')}
+      </p>
       <div className={s.aclGrid}>
         <div className={`${s.aclCol} ${s.aclOne}`}>
           <div className={s.aclHead}>
-            <span>{superOnly ? tr('Админ (super) — шууд олгоно') : capLabel(cap)}</span>
+            <span>{capLabel(cap)}</span>
             <span className={s.aclCount}>{holders.length}</span>
           </div>
-          {superOnly && (
-            <div className={s.aclEmpty}>
-              {tr('Хатуу super-т багцын хуваарилалт үйлчлэхгүй — энэ эрхийг түүнд энд шууд олгоно, хасна.')}
-            </div>
-          )}
           <div className={s.aclEmpty}>{tr('шууд хадгалагдана')}</div>
 
           <div className={s.aclAdd}>

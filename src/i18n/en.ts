@@ -5674,8 +5674,6 @@ const en: Record<string, string> = {
   "«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.": "Apply the template to {1} users of the “{0}” type? Views and FS-EIA docs will be replaced by the template’s; edit rights are not touched.",
   "Нүүр цонх": "Home view",
   "Аккаунт нэмэхэд эрх шууд хадгалагдана (ноорог биш), хасахад шууд буцаагдана.": "Adding an account saves the right immediately (not a draft); removing revokes it immediately.",
-  "Админ (super) — шууд олгоно": "Admin (super) — granted directly",
-  "Хатуу super-т багцын хуваарилалт үйлчлэхгүй — энэ эрхийг түүнд энд шууд олгоно, хасна.": "Package assignment does not apply to the hard-coded super admin — this right is granted to or removed from them directly here.",
   "Доорх жагсаалт энэ browser-ийн кэшнээс.": "The list below is from this browser’s cache.",
   "Эрхийг хасах": "Remove right",
   "Засах эрх (хуваарь · нэмэлт ажил · обьём · чанарын баримт · QAQC · дэд бүтэц · зөвшөөрөл · санхүү · газар) хажуугийн цэсний тухайн урсгалын хуудсанд олгогдоно.": "Edit rights (schedule · added work · volume · quality documents · QAQC · infrastructure · permits · finance · land) are granted on that workflow’s page in the sidebar.",
@@ -7023,6 +7021,10 @@ const en: Record<string, string> = {
   "тасарсан жаазыг устгаж чадсангүй ({0})": "could not delete the truncated snapshot ({0})",
   "тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү": "{1} of the {0} truncated rows could not be deleted — clean up manually in AGOL",
   "Өмнөх батлалтын тасарсан {0} мөрийг архиваас цэвэрлэв.": "Removed {0} rows left by a previous interrupted approval from the archive.",
+  "кодоор — засагдахгүй": "from code — not editable",
+  "Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ кодоор нээлттэй; самбараас засагдахгүй.": "Admin (super) — all views and the feasibility documents are open from code; not editable from the panel.",
+  "Админ (super) — кодоор нээлттэй": "Admin (super) — open from code",
+  "Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.": "Admin (super) has every right — not configurable.",
 };
 
 export default en;

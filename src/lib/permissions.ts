@@ -767,6 +767,12 @@ export function resolveBaseAccess(username?: string | null): Access | null {
   const ov = loadStore()[username.toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.
   if (ov?.removed) return isHardSuper(username) ? baseline(username) : null;
+  /* ⚠️ 2026-10-12 (super жигд биш): ХАТУУ super-т override ҮЛ ТООЦНО — үргэлж суурь ('all' · docs).
+     Урьд нь панелаас super-ийн харагдацыг хөндсөн (эсвэл хуучин мөр) бол `ov.views`/`ov.docs`
+     буцаж, super бүр өөр өөр тоотой харагддаг (Root нь nav-д 'all' гэж албаддаг ч самбарын
+     унтраалга/тоолуур, ТЭЗҮ-БОНУ `docs`, `erhOverview` зөрдөг) байв. Super = код
+     (`ROLE_BY_USER`); панелийн мөр нь зөвхөн хумих/нэмэх эрхгүй үлдэгдэл. */
+  if (isHardSuper(username)) return baseline(username);
   // ТҮР: бүх нэвтэрсэн аккаунт бүх эрхтэй
   if (GRANT_ALL) return { views: 'all', docs: true };
   /* ⚠️ 2026-09-29 (аудит 10): FAIL-CLOSED — remote нэг ч удаа уншигдаагүй сешнд override-ыг
@@ -808,8 +814,13 @@ export function resolveBaseAccess(username?: string | null): Access | null {
  */
 export function roleOf(username?: string | null): Role | null {
   if (!username) return null;
+  /* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн override `role` ҮЛ ТООЦНО. 2026-09-30-аас өмнө
+     мөрийн сонгогч super-т `injener` г.м. бичдэг байсан тул тийм хуучин мөртэй super нь
+     «Эрхийн төрөл»-ийн тоололд өөр баганад, Гүйцэтгэлийн «Нэгтгэл» табгүй, `resolveAccess`-д
+     урсгалтай харагдац нь хасагддаг — бусад super-ээс зөрдөг байв. */
+  if (isHardSuper(username)) return 'super';
   const ov = loadStore()[username.toLowerCase()];
-  if (ov?.removed) return isHardSuper(username) ? 'super' : null;
+  if (ov?.removed) return null;
   /* ⚠️ 2026-09-29 (аудит 10): remote уншигдаагүй бол override-ын үүргийг үл тооцно —
      `resolveBaseAccess`-ийн тайлбар (localStorage-д өөртөө `role:'super'` бичих зам). */
   return (remoteLoaded ? ov?.role : null) ?? roleForUser(username);
@@ -838,6 +849,11 @@ export function listUsers(): UserPerm[] {
       if (!isHardSuper(uname)) rows.delete(uname.toLowerCase());
       continue;
     }
+    /* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн override мөр самбарт ч ҮЛ ТООЦОГДОНО —
+       мөр нь суурь ('all' · docs · super) хэвээр, `overridden: false` («Сэргээх» ч гарахгүй: мөр нь
+       `resolveBaseAccess`/`roleOf`-д үйлчлэхгүй үлдэгдэл). Урьд нь хуучин мөртэй super нь өөр
+       үүрэг/цөөн харагдацтай гэж харагдаж, супер бүр өөр өөр байв. */
+    if (isHardSuper(uname)) continue;
     const existing = rows.get(uname.toLowerCase());
     rows.set(uname.toLowerCase(), {
       username: existing?.username ?? uname,
@@ -892,6 +908,10 @@ export function setUser(
   username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
 ): Promise<boolean> {
   const key = username.toLowerCase();
+  /* ⚠️ 2026-10-12 (super жигд биш): ХАТУУ super-т override БИЧИХГҮЙ — эрх нь кодоос, панелийн мөр
+     нь `resolveBaseAccess`/`roleOf`/`listUsers`-д үл тооцогддог тул бичих нь зөвхөн зөрүүтэй
+     үлдэгдэл үүсгэнэ (`roleTypeApply.applyType`-ийн «super-т мөр бичихгүй» дүрэмтэй нэг). */
+  if (isHardSuper(username)) return Promise.resolve(true);
   const entry: Entry = { views: sanitizeViews(access.views), docs: access.docs, role };
   /*
    * ⚠️ 2026-10-05: ЭНЭ ДУУДЛАГЫН ӨӨРЧЛӨЛТ = `entry` − суурь. Суурь нь дуудагчийн өгсөн

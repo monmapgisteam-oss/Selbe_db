@@ -27,16 +27,21 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
+const { roleForUser, ROLE_BY_USER } = await import('./services.ts');
+/* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн ХУУЧИН override мөр (2026-09-30-аас өмнө мөрийн сонгогч
+   super-т `injener` г.м. бичдэг байв) — §1б-д үл тооцогдохыг шалгана */
+const legacySuper = Object.keys(ROLE_BY_USER).find((u) => roleForUser(u) === 'super');
+
 /* Хуучин хувилбарын «бохир» өгөгдөл — хасагдсан түлхүүр + өөрөө нэмсэн мөр */
 mem.set('selbe-perms-v1', JSON.stringify({
   selbe_redesign: { views: ['plan', 'bagts', 'monitor', 'iot'], docs: false, role: 'tolovlolt' },
   hacker_selfadd: { views: 'all', docs: true, role: 'super' },
   /* ⚠️ 2026-09-30: танигдахгүй үүрэг (хуучин build / гараар засагдсан мөр) — §8 */
   bogus_role_user: { views: ['plan'], docs: false, role: 'zahiral_old' },
+  [legacySuper]: { views: ['gdash'], docs: false, role: 'injener' },
 }));
 
 const P = await import('./permissions.ts');
-const { roleForUser } = await import('./services.ts');
 
 /* ── 1. Sanitize — үхсэн түлхүүр уншилтад орохгүй ── */
 const row = P.listUsers().find((u) => u.username.toLowerCase() === 'selbe_redesign');
@@ -58,6 +63,23 @@ assert.deepEqual(row.views, ['plan', 'iot'], `үхсэн түлхүүр үлдэ
 }
 /* Remote уншигдсаны дараа (дуурайлт) — override хүчинтэй, цэвэрлэгдсэн */
 P._markRemoteLoaded();
+
+/* ── 1б. Хатуу super ЖИГД — хуучин override мөр ҮЛ ТООЦОГДОНО (2026-10-12) ── */
+{
+  assert.equal(P.resolveBaseAccess(legacySuper).views, 'all', 'хатуу super — override views үл тооцно');
+  assert.equal(P.resolveBaseAccess(legacySuper).docs, true, 'хатуу super — override docs үл тооцно');
+  assert.equal(P.resolveAccess(legacySuper).views, 'all', 'хатуу super — resolveAccess all');
+  assert.equal(P.roleOf(legacySuper), 'super', 'хатуу super — override role (injener) үл тооцно');
+  const r = P.listUsers().find((u) => u.username.toLowerCase() === legacySuper.toLowerCase());
+  assert.ok(r, 'super жагсаалтад байх ёстой');
+  assert.equal(r.views, 'all', 'самбарын мөр — бүх харагдац');
+  assert.equal(r.role, 'super', 'самбарын мөр — үүрэг super');
+  assert.equal(r.overridden, false, 'самбарын мөр — override гэж тэмдэглэхгүй');
+  /* setUser хатуу super-т override бичихгүй (no-op, true) */
+  assert.equal(await P.setUser(legacySuper, { views: ['gdash'], docs: false }, 'injener'), true, 'super-т setUser no-op');
+  assert.equal(P.resolveBaseAccess(legacySuper).views, 'all', 'setUser-ийн дараа ч бүх харагдац');
+  assert.ok(!P.dirtyKeys().includes(legacySuper.toLowerCase()), 'super-т dirty тэмдэг үүсэхгүй');
+}
 const acc = P.resolveAccess('selbe_redesign');
 assert.deepEqual(acc.views, ['plan', 'iot'], 'resolveAccess цэвэрлээгүй');
 P._markRemoteLoaded(false);

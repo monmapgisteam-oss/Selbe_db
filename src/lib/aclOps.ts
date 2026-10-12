@@ -214,9 +214,9 @@ function revokeGoneRoles(
   rr: Write,
   roleCaps: Readonly<Partial<Record<string, CapKey>>>,
 ): Write {
-  /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ. Түүнд хуваарилалт үйлчилдэггүй тул эрх нь
-     ЗӨВХӨН шууд олголтоос (`PlainCapAcl superOnly` · `capDirectOp`) — хуучин (remote-д үлдсэн)
-     хуваарилалтын мөрийг хасахад тэр шууд олгосон эрхийг буцаадаг байв. */
+  /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — хуучин (remote-д үлдсэн) хуваарилалтын
+     мөрийг хасахад `__cap__:` мөрийг нь буцаадаг байв. 2026-10-12-оос super бүх эрхтэй
+     (`caps.capsOf`), хадгалагдсан мөр нь үлдэгдэл — бичилтээр хөндөхгүй. */
   if (!rr.ok || !rr.sync || roleForUser(u) === 'super') return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
@@ -675,6 +675,8 @@ export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean
 export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
+  /* ⚠️ 2026-10-12: хатуу super бүх эрхтэй (`caps.capsOf`) — олгох нь no-op, хасах нь татгалзана */
+  if (roleForUser(u) === 'super') return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
   if (capsOf(u).includes(cap) === on) return null;
   if (on && isDerivedCap(cap) && roleForUser(u) !== 'super') {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };

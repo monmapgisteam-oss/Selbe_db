@@ -246,12 +246,13 @@ console.log('✅ унтраалга хүрээг тэлэхгүй');
   WHO.setCurrentUser('qa_all');
   assert.equal(await saveQaqc('b1_9f', []), 0, '«бүх багц» = хязгааргүй (null ≠ [])');
 
-  /* super — хуваарилалтаас үл хамаарна, гэхдээ `qaqc` эрх нь ХЭВЭЭР шаардлагатай
-     (Qaqc.tsx-ийн `canEdit` эхлээд `hasCap`-ыг шалгадаг) */
+  /* ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): super бүх эрхтэй ТОХИРГООГҮЙ — `caps.capsOf(super)` бүх түлхүүр,
+     `__cap__:` мөр шаардахгүй; хуваарилалтаас ч үл хамаарна. Урьд нь `qaqc` эрхийг тусад нь олгодог байв. */
   WHO.setCurrentUser(superName);
-  await assert.rejects(saveQaqc('b1_9f', []), /эрхгүй/, 'super ч эрхгүй бол унана');
+  CAPS._syncRemoteCaps([]);
+  assert.equal(await saveQaqc('b1_9f', []), 0, 'super — эрх/багцын тохиргоогүй давна');
   CAPS._syncRemoteCaps([{ user: superName, caps: ['qaqc'] }]);
-  assert.equal(await saveQaqc('b1_9f', []), 0, 'super + эрх → багц үл хамаарна');
+  assert.equal(await saveQaqc('b1_9f', []), 0, 'super + хуучин __cap__ мөр → мөн давна');
 
   WHO.setCurrentUser(null);
   CAPS._syncRemoteCaps([]);

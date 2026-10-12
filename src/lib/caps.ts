@@ -40,7 +40,7 @@
  *    `[] ∪ {cap}` нь ArcGIS дээрх бүтэн жагсаалтыг дарж бичих байв.
  */
 
-import { AUTH, type ViewKey } from './services';
+import { AUTH, roleForUser, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
 import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 
@@ -564,6 +564,12 @@ function applyDone(s: Store, done: Record<string, CapKey[]>): void {
  */
 export function capsOf(username?: string | null): CapKey[] {
   if (!username) return [];
+  /* ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): ХАТУУ SUPER-Т БҮХ ЭРХ — тохиргоогүй, remote-оос ч үл хамаарна.
+     Урьд нь super-т гаргалгаатай эрхийг хуудас бүрийн «Админ (super) — шууд олгоно» хэсгээр нэг
+     бүрчлэн олгодог (2026-09-07/08-ын дүрэм) тул super бүр өөр өөр эрхтэй, зарим нь дутуу байв.
+     Super = код (`ROLE_BY_USER`); хадгалагдсан `__cap__:` мөр нь түүнд үйлчлэхгүй үлдэгдэл
+     (`capsStored` — бичих зам — хэвээр). */
+  if (roleForUser(username) === 'super') return Object.keys(CAP_HOST_VIEW) as CapKey[];
   if (!remoteSynced) return [];
   return cache[username.toLowerCase()] ?? [];
 }

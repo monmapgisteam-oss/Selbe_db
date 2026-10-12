@@ -215,8 +215,6 @@ const CASES = [
     expect: ['Санхүүгийн бүртгэл — мөр нэмэх'] },
   { name: 'PlainCapAcl:gazar', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'gazar' }, map: false,
     expect: ['Газрын төлөв засах'] },
-  { name: 'PlainCapAcl:super', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'plan', superOnly: true }, map: false,
-    expect: ['Админ (super)'] },
   { name: 'CapOrphanNote', load: () => import('@/modules/CapOrphanNote'), pick: (m) => m.CapOrphanNote, props: { cap: 'plan' }, map: false,
     /* ⚠️ ACL уншигдаагүй тул `null` — markup хоосон байх нь ЗӨВ; wrap-ын provider-ууд л зурагдана */
     allowEmpty: true },

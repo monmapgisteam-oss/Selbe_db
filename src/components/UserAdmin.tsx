@@ -621,6 +621,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     });
   };
   const flipView = (u: UserPerm, k: ViewKey) => {
+    /* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн харагдац/баримт самбараас ЗАСАГДАХГҮЙ — эрх нь
+       кодоос ('all'), `permissions` override-ыг нь үл тооцно; унтраалга нь `UserRights`-д түгжээтэй. */
+    if (roleForUser(u.username) === 'super') return;
     /* ⚠️ Урсгалтай харагдац картаас засагдахгүй (2026-09-30) — хуваарилалтын хуудсаар */
     if (WORKFLOW_VIEWS.includes(k)) return;
     const d = draftOf(u);
@@ -633,6 +636,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     putDraft(u, { ...d, ...touched, clear: false, views: next });
   };
   const setAllViews = (u: UserPerm, on: boolean) => {
+    if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
     const d = draftOf(u);
     /* ⚠️ «Бүгдийг асаах/унтраах» урсгалтай 6-г ХӨНДӨХГҮЙ (2026-09-30) — байгаагаараа үлдэнэ */
     const next: ViewKey[] = keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : []);
@@ -641,6 +645,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
   };
   const flipDocs = (u: UserPerm) => {
+    if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
     const d = draftOf(u);
     putDraft(u, { ...d, clear: false, docs: !d.docs });
   };
@@ -1029,8 +1034,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ 2026-10-01: урсгалтай 6 харагдац — хадгалсан утгаас БИШ, хуваарилалтаас (`workflowViewsOf`);
        super-т хадгалсан утга ч хүчинтэй (`resolveAccess`-ийн дүрэм) */
     const wf = workflowViewsOf(u.username);
-    const isSup = d.role === 'super' || roleForUser(u.username) === 'super';
-    const opened = (k: ViewKey): boolean => (WORKFLOW_VIEWS.includes(k) && !isSup
+    const hard = roleForUser(u.username) === 'super';
+    const isSup = d.role === 'super' || hard;
+    /* ⚠️ 2026-10-12 (super жигд биш): хатуу super — БҮХ харагдац ('all', кодоос); тоолуур бүх super-т ижил */
+    const opened = (k: ViewKey): boolean => hard || (WORKFLOW_VIEWS.includes(k) && !isSup
       ? wf.includes(k)
       : hasView(d.views, k) || capViews.includes(k));
     return {
@@ -1197,9 +1204,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               <h2 className={s.title}>{paneLabel(pane)}</h2>
               <p className={s.subtitle}>{paneSubtitle(pane)}</p>
             </header>
-            {/* ⚠️ Хуваарилалттай хуудас: тайлбар · эрх бүрийн өнчин/дутуу анхааруулга · багцын панел ·
-                хатуу super-ийн шууд олголт (эрх бүрд). Энгийн эрх: `PlainCapAcl` хэсэг бүрийг өөрөө зурна
-                (санхүү — «утга засах» ба «мөр нэмэх, устгах» хоёр хэсэг нэг хуудсанд). */}
+            {/* ⚠️ Хуваарилалттай хуудас: тайлбар · эрх бүрийн өнчин/дутуу анхааруулга · багцын панел.
+                Энгийн эрх: `PlainCapAcl` хэсэг бүрийг өөрөө зурна (санхүү — «утга засах» ба «мөр нэмэх,
+                устгах» хоёр хэсэг нэг хуудсанд).
+                ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): «Админ (super) — шууд олгоно» хэсэг ХАСАГДСАН — super бүх
+                эрхтэй (`caps.capsOf`), хуудас бүрд нэг бүрчлэн тохируулахгүй. */}
             {PANE_CAPS[pane].some(isDerivedCap) && <p className={s.note}>{paneNote(pane)}</p>}
             {PANE_CAPS[pane].filter(isDerivedCap).map((c) => <CapOrphanNote key={c} cap={c} />)}
             {/* ⚠️ 2026-10-01: унасан бичилтийн «Дахин илгээх» ба устгагдсан аккаунтын үлдэгдэл — хуудас бүрд */}
@@ -1211,7 +1220,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     : pane === 'qaqc' ? <QaqcAcl />
                       : pane === 'butets' ? <DedButetsAcl />
                         : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
-            {PANE_CAPS[pane].filter(isDerivedCap).map((c) => <PlainCapAcl key={c} cap={c} superOnly />)}
           </>
         ) : pane === 'types' ? (
           <>
