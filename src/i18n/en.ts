@@ -7092,6 +7092,13 @@ const en: Record<string, string> = {
   "Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.": "Could not check pending submissions · partial-write marks · locks — review the «Schedule»/«Volume»/«Extra work» approval pages before deleting.",
   "«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).": "«{0}»: pending submissions {1} · partial-write marks {2} · approval locks {3} — removing/deleting leaves these orphaned (an approver must return or complete them).",
   "Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.": "The previous stage is not approved — {0} cannot be decided.",
+  "Горим": "Mode",
+  "Шүүлт": "Filter",
+  "Хэрэглэгч": "User",
+  "Өгөгдлийн огноо": "Data date",
+  "Татсан огноо-цаг": "Downloaded at",
+  "Хяналтын харагдац": "Review view",
+  "Хүснэгтийг яг одоо харагдаж буй хэлбэрээр (шүүлт · эвхэлт · ноорог · горим) Excel файл болгож татна": "Download the table as an Excel file exactly as it is shown now (filter · collapse · draft · mode)",
 };
 
 export default en;

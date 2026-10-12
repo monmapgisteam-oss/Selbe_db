@@ -106,6 +106,8 @@ import { SheetHead } from "./fill/SheetHead";
 import { FillRows } from "./fill/FillRows";
 import { extraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
 import { FillDatePicker } from "./fill/FillDatePicker";
+/* ⚠️ 2026-10-12: «Excel татах» — одоогийн харагдацыг .xlsx болгоно (цэвэр модуль, бусад төлөвт нөлөөгүй) */
+import { downloadFillXlsx } from "./fill/sheetXlsx";
 
 /* `SheetView` — `Sheet.tsx` энэ файлаас импортолдог (2026-09-30: `fill/util`-д зөөгдсөн, re-export) */
 export type { SheetView } from "./fill/util";
@@ -3107,6 +3109,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [pkg.key, sc],
   );
 
+  /**
+   * «EXCEL ТАТАХ» — хүснэгтийг ЯГ ДЭЛГЭЦ ДЭЭР ХАРАГДАЖ БУЙ хэлбэрээр .xlsx болгоно (2026-10-12).
+   * ⚠️ Одоогийн харагдац: шүүлт/эвхэлт хэрэгжсэн `vis` (виртуал цонх БИШ — бүх харагдах мөр), `calc` нь
+   *    `pending`/`pendDate`-тэй бодогдсон тул ноорогтой нүд НООРОГИЙН утгаар; `extra` нь нуусан бол `[]`.
+   *    Улаан/ногоон/цэнхэр тэмдэглэгээ (`backChg` · `backOk` · `view.changed/ok` · ноорог) арын өнгөөр.
+   * ⚠️ Зөвхөн УНШИНА — ямар ч төлөв, ноорог, илгээлтэд хүрэхгүй. Бүтээх нь `fill/sheetXlsx.ts` (цэвэр).
+   */
+  const exportXlsx = useCallback(() => {
+    if (!sc || rowsAll.length === 0 || calc.length === 0) return;
+    const yn = (b: boolean) => (b ? tr('Тийм') : tr('Үгүй'));
+    const filters = [
+      `${tr('Бүлэг')}: ${grpAOpts.find((o) => o.oid === grpA)?.label.trim() ?? tr('Бүгд')}`,
+      `${tr('Дэд бүлэг')}: ${grpBOpts.find((o) => o.oid === grpBEff)?.label.trim() ?? tr('Бүгд')}`,
+      `${tr('Хуваарийн дагуу')}: ${yn(byPlan)}`,
+      ...(extraAll.length ? [`${tr('Бусад талбар')}: ${yn(showExtra)}`] : []),
+    ].join(' · ');
+    downloadFillXlsx({
+      pkg: { label: pkg.label, group: pkg.group, floors: pkg.floors },
+      sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, extra,
+      pvPend, pvPreview, pending, pendDate, backChg, backOk, backChgDates,
+      viewChanged: view?.changed, viewOk: view?.ok,
+      info: { day: view?.day ?? today, snapDay, filters, user: user?.username ?? '', locked },
+    });
+  }, [sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, extra, pvPend, pvPreview, pending, pendDate,
+    backChg, backOk, backChgDates, view, pkg, today, snapDay, user, locked, grpAOpts, grpA, grpBOpts, grpBEff, byPlan, extraAll, showExtra]);
+
   // ⚠️ Үйлчилгээнд ХАДГАЛАГДСАН огноо тайлангийн жагсаалтад байхгүй байж болно
   // (жишээ нь 2026-07-05). Түүнийг сонголт болгож нэмэхгүй бол `<select>`
   // өөрөө өөр огноо руу үсэрч, төлөвлөгөөт хувь чимээгүй өөрчлөгдөнө.
@@ -3194,6 +3222,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           extraN={extraAll.length} showExtra={showExtra} toggleExtra={toggleExtra}
           restoring={restoringUi}
         />
+        {/* ⚠️ 2026-10-12: «EXCEL ТАТАХ» — шүүлтийн ХАЖУУД (шүүлт · эвхэлт · горим хэрэгжсэн ЯГ энэ харагдац татагдана
+            гэдгийг байрлал нь хэлнэ). Хяналтын харагдацад (`locked`) ч ГАРНА — хянагч ч хүснэгтийг Excel-д авна.
+            Ачаалаагүй/хоосон/ажиллаж байх үед идэвхгүй. */}
+        <button
+          type="button"
+          className={st.layerBtn}
+          onClick={exportXlsx}
+          disabled={!sc || rows.length === 0 || calc.length === 0 || busy}
+          title={tr('Хүснэгтийг яг одоо харагдаж буй хэлбэрээр (шүүлт · эвхэлт · ноорог · горим) Excel файл болгож татна')}
+        >
+          <span aria-hidden>⤓</span> {tr('Excel татах')}
+        </button>
         {/* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүнд «Илгээх»/«Дуусгасан» ОГТ гарахгүй —
             урьд нь «Дуусгасан» дарж оролцогч болж бусдын «Илгээх»-ийг түгждэг байв. Шалтгааныг ил хэлнэ. */}
         {canPerf ? (
