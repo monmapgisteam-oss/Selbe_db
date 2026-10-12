@@ -908,6 +908,22 @@ export async function pendingHeldBy(users: readonly string[]): Promise<HeldByUse
     return null;
   }
 }
+/**
+ * ⚠️ 2026-10-12 (CI уналт): `runOp` асуултаас ӨМНӨ `pendingHeldBy`-г хүлээдэг болсон — тэр нь гурван
+ *    батлах хүснэгтийг АМЬД (портал хайлт) уншдаг тул Node-ын UI шалгуурт (`aclE2E.ui.check`) сүлжээ рүү
+ *    гарч, CI дээр асуулт хойшилж «асуулт 0» гэж унав (энд токентой тул хурдан давж байв). Уншигчийг
+ *    СОЛИГДОХ (`setHeldByReader` — шалгуур хуурамц өгнө) ба ХУГАЦААТАЙ (`HELD_BY_TIMEOUT_MS`, хэтэрвэл
+ *    `null` = «шалгаж чадсангүй» текст, асуулт хэвээр) болгов.
+ */
+export type HeldByReader = (users: readonly string[]) => Promise<HeldByUser[] | null>;
+let heldByReader: HeldByReader = pendingHeldBy;
+export function setHeldByReader(fn: HeldByReader | null): void { heldByReader = fn ?? pendingHeldBy; }
+const HELD_BY_TIMEOUT_MS = 2500;
+async function heldByBounded(users: readonly string[]): Promise<HeldByUser[] | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<null>((r) => { timer = setTimeout(() => r(null), HELD_BY_TIMEOUT_MS); (timer as { unref?: () => void }).unref?.(); });
+  try { return await Promise.race([heldByReader(users).catch(() => null), limit]); } finally { if (timer) clearTimeout(timer); }
+}
 /** `pendingHeldBy`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-12) */
 export function heldByText(items: HeldByUser[] | null): string {
   if (items == null) return tr('Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.');
@@ -948,7 +964,7 @@ export async function runOp(
      тэмдэг · түгжээний тоог залгана (`pendingHeldBy`) — админ хасахдаа гацах илгээлтийг харна. Зөвхөн асуулттай
      (хасах/шилжүүлэх) op-д; уншилт унавал юу ч нэмэхгүй (асуултын тоо өөрчлөгдөхгүй). */
   if (confirms.length && op.user) {
-    const held = await pendingHeldBy([op.user]);
+    const held = await heldByBounded([op.user]);
     if (held && held.length) confirms[confirms.length - 1] += `\n\n${heldByText(held)}`;
   }
   for (const c of confirms) if (!window.confirm(c)) return false;

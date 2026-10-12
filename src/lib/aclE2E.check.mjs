@@ -32,6 +32,8 @@ fake.owner = SUPER;
 const P = await import('@/lib/permissions.ts');
 const CAPS = await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
+/* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
+OPS.setHeldByReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
 const QA = await import('@/lib/qaqcAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
