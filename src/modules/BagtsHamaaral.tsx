@@ -189,7 +189,8 @@ export function BagtsHamaaral() {
           </p>
           <span className={s.chips}>
             {orphans.map((o) => {
-              const label = `${byKey.get(o.from)?.code ?? o.from} → ${byKey.get(o.to)?.code ?? o.to}`;
+              const nm = (k: string) => { const x = byKey.get(k); return x ? `${x.code} ${x.name}` : k; };
+              const label = `${nm(o.from)} → ${nm(o.to)}`;
               return (
                 <span key={`${o.from}>${o.to}`} className={s.chip}>
                   <span className={s.mute}>{label}</span>
@@ -260,7 +261,11 @@ function List({ pkgs, all, deps, allDeps, byKey, progress, canEdit, busy, onChan
                       const x = byKey.get(k);
                       return (
                         <span key={k} className={s.chip}>
-                          <button type="button" className={s.chipLink} title={x?.name} onClick={() => jump(k)}>{x?.code ?? k}</button>
+                          {/* ⚠️ 2026-10-12 (хэрэглэгч: «багцууд нэр бүхэлдээ харагдах ёстой, зөвхөн дугаараар болохгүй»):
+                              дугаар + бүтэн нэр */}
+                          <button type="button" className={s.chipLink} title={x?.name} onClick={() => jump(k)}>
+                            {x ? <><b>{x.code}</b> {x.name}</> : k}
+                          </button>
                           {canEdit && (
                             <button type="button" className={s.chipX} disabled={busy}
                               /* ⚠️ 2026-10-05: УСТГАХЫН ӨМНӨ асууна — жижиг ✕ дээр андуурч дарахад холбоо
