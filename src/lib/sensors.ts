@@ -26,7 +26,7 @@
  */
 
 import { queryFeatures, queryCount } from '@/lib/query';
-import { IOT_BASE as IOT } from '@/lib/services';
+import { IOT_SVC as IOT } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { register } from '@/lib/dataBus';
 
@@ -177,8 +177,8 @@ export type SensorDef = {
 const BIN_DEPTH_MM = 3015;
 
 /**
- * ⚠️ Давхаргын ДУГААР нь сервис тус бүрд өөр (60–64) — эдгээр нь нэг том
- * FeatureServer-ийн дугаарлалтаас үлдсэн. Хатуу бичихээс өөр аргагүй.
+ * ⚠️ 2026-10-12: НЭГ сервис (`IoT_sensor`, Enterprise) — давхаргын ДУГААР 12–16. Урьд нь
+ * ArcGIS Online-ийн таван тусдаа сервис (60–64) байв. Талбарын нэрс ЖИЖИГ ҮСЭГТЭЙ.
  */
 export const SENSORS: SensorDef[] = [
   {
@@ -187,7 +187,7 @@ export const SENSORS: SensorDef[] = [
     get note() { return tr('Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.'); },
     devEui: '24e124713c198712',
     layerId: 'iot:waste_sensor',
-    url: `${IOT}/Waste_Sensor/FeatureServer/62`,
+    url: `${IOT}/15`,
     metrics: [
       {
         /**
@@ -249,7 +249,7 @@ export const SENSORS: SensorDef[] = [
     get note() { return tr('Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.'); },
     devEui: '24e124126c148914',
     layerId: 'iot:soil_meter',
-    url: `${IOT}/Soil_Meter/FeatureServer/63`,
+    url: `${IOT}/12`,
     metrics: [
       {
         key: 'moisture', get label() { return tr('Хөрсний чийг'); }, field: 'payload_decoded_data_moisture',
@@ -325,7 +325,7 @@ export const SENSORS: SensorDef[] = [
     get note() { return tr('Орчны гэрэл мэдрэгч сенсор.'); },
     devEui: '24e124126c148962',
     layerId: 'iot:light_sensor',
-    url: `${IOT}/Light_Sensor/FeatureServer/60`,
+    url: `${IOT}/14`,
     metrics: [
       {
         key: 'illumination', get label() { return tr('Орчны гэрэл мэдрэгч'); }, field: 'payload_decoded_data_illumination',
@@ -349,7 +349,7 @@ export const SENSORS: SensorDef[] = [
     get note() { return tr('Гадна орчны температур, чийгшил мэдрэгч сенсор.'); },
     devEui: '24e124136c220656',
     layerId: 'iot:temp_humidity',
-    url: `${IOT}/Temp_Humidity/FeatureServer/64`,
+    url: `${IOT}/16`,
     metrics: [
       {
         key: 'temperature', get label() { return tr('Гадна орчны температур'); }, field: 'payload_decoded_data_temperature',
@@ -398,10 +398,10 @@ export const SENSORS: SensorDef[] = [
     get note() { return tr('Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.'); },
     devEui: '8254812512001104',
     layerId: 'iot:water_meter',
-    url: `${IOT}/Water_Meter/FeatureServer/61`,
+    url: `${IOT}/13`,
     metrics: [
       {
-        key: 'meterReading', get label() { return tr('Тоолуурын заалт'); }, field: 'payload_decoded_data_meterReading',
+        key: 'meterReading', get label() { return tr('Тоолуурын заалт'); }, field: 'payload_decoded_data_meterreading', // ⚠️ 2026-10-12: Enterprise — жижиг үсэг
         get unit() { return tr('м³'); }, dp: 2,
         get note() { return tr('Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.'); },
         /**
@@ -820,7 +820,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
              заалтаа ирэх дарааллаар бичдэг тул OID нь хугацаатай нэг чиглэлтэй;
              жинхэнэ хугацааны эрэмбийг доор `parseTs`-ээр КЛИЕНТ дээр гаргана
              (`pts.sort`). OID нь давхцалгүй тул хуудасны заагт давхардахгүй. */
-          orderBy: 'OBJECTID DESC',
+          orderBy: 'objectid DESC', // ⚠️ 2026-10-12: Enterprise — жижиг үсэг
           limit,
         }),
         // ⚠️ `limit` нь ХАТУУ таг тул татсан мөрийн тоо ≠ нийт. Жинхэнэ тоог

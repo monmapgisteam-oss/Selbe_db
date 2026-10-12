@@ -366,7 +366,7 @@ function registryEntries(): CatEntry[] {
       : main.id === 'habea:uzV11' ? 'NEXT_PUBLIC_HABEA_UZLEG_V11_SVC'
         : main.id === 'habea:uzG' ? 'NEXT_PUBLIC_HABEA_UZLEG_G_SVC'
           : main.id === 'habea:uzZ' ? 'NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC'
-            : main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ARCGIS_IOT'
+            : main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ARCGIS_IOT_SVC'
               : undefined;
     out.push({
       id: `lyr:${main.id}`,
