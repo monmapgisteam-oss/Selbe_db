@@ -650,15 +650,18 @@ export const HOME_SECTIONS: {
  * ⚠️ `system` бүлэг нь цэсний «Систем» хөлд (эрх тохируулах, гарах-ын хамт)
  *    зурагдана — `ViewRail`-ийг үз.
  */
-export type NavGroupId = "work" | "approve" | "monitor" | "money" | "report" | "system";
+export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "money" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
   { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "qaqc"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
-    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "gazar", "zovshoorol", "habea", "dedButets", "iot", "ersdel", "irged", "analysis"],
+    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "gazar", "zovshoorol", "habea", "dedButets"],
   },
+  /* ⚠️ 2026-10-12 (хэрэглэгч: «ухаалаг хот гэсэн тусдаа бүлэг болго»): IoT · эрсдэл · иргэдийн хүртээмж ·
+     тохиромжтой байдал — «Хяналт»-аас салгав */
+  { id: "smart", get title() { return tr('Ухаалаг хот'); }, views: ["iot", "ersdel", "irged", "analysis"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
   { id: "report", get title() { return tr('Тайлан'); }, views: ["tailan", "schem"] },
   { id: "system", get title() { return tr('Систем'); }, views: ["sysdoc"] },
