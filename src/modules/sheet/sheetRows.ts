@@ -228,6 +228,29 @@ async function fetchPage(
 }
 
 /**
+ * ТАСАРСАН ХУУЛБАРУУД (2026-10-12, A8) — цэвэр. `lens[k]` = k-р хуулбарын (хоосон биш) мөрийн тоо, хуудасны дарааллаар.
+ * Өмнөх ҮЛДСЭН хуулбараас БОГИНО хуулбар = тасарсан/бичигдэж буй (`bagtsSheet.lastFrame`: мөр зөвхөн нэмэгддэг) —
+ * ГЭХДЭЭ зөвхөн СҮҮЛИЙН хуулбар эсвэл ДАРААГИЙН хуулбар нь өөрөөсөө урт (бүтэн жааз дахин бичигдсэн) үед.
+ * ⚠️ Дараагийнх нь ижил урттай бол хуудасны БҮТЭЦ жинхэнээр богиноссон (хуучин импорт) гэж үзэж ҮЛДЭЭНЭ — «хамгийн
+ *    их урттай жишвэл» тэр агшнаас хойших БҮХ хуулбар хасагдаж дашбоард хоосорно. Эхний хуулбар үлдэнэ; 0 тоологдохгүй.
+ * @returns хасах хуулбарын дугаарууд
+ */
+export function truncatedSnaps(lens: readonly number[]): Set<number> {
+  const drop = new Set<number>();
+  let prev = 0;
+  let last = -1;
+  lens.forEach((n, k) => { if (n > 0) last = k; });
+  lens.forEach((n, k) => {
+    if (n <= 0) return;
+    let next = 0;
+    for (let j = k + 1; j < lens.length && !next; j += 1) next = lens[j] > 0 ? lens[j] : 0;
+    if (n < prev && (k === last || next > n)) drop.add(k);
+    else prev = n;
+  });
+  return drop;
+}
+
+/**
  * Бөглөх хуудсуудаас УРТ хэлбэрийн мөрүүд.
  *
  * Буцаах дараалал: хуудас бүрийн дотор ObjectID ӨСӨХ (`ord`). Дуудагч тал
@@ -334,6 +357,25 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
         gun: gunF ? nOrNull(a[gunF]) : null,
         level: null,
       });
+    }
+
+    /*
+     * ⚠️ 2026-10-12 (A8): ТАСАРСАН / БИЧИГДЭЖ БУЙ ЖААЗЫГ ХАСНА (`bagtsSheet.lastFrame`-ийн дүрэм). Урьд нь хуулбар
+     *    БҮРИЙН мөрийг шалгалтгүй авдаг тул унасан батлалтын хагас жааз (500/1471) эсвэл яг одоо 500-аар бичигдэж буй
+     *    жаазын мөрүүд дашбоард (`blockProgress`) руу «сүүлийн» утга болж орж, БАТЛАГДААГҮЙ утгыг харуулдаг байв.
+     *    Мөр зөвхөн НЭМЭГДДЭГ тул хуулбар өмнөх БҮТЭН хуулбараасаа богино бол тасарсан. Урт нь № эсвэл Ажилтай мөрийн
+     *    тоо (`lastFrame`-ийн `workField` — хоосон мөргүй шинэ жааз «богино» гэж андуурагдахгүй).
+     */
+    {
+      const lens: number[] = new Array(snapN + 1).fill(0);
+      for (const r of recs) if (r.rawNo || String(r.a[sc.f.work] ?? '').trim()) lens[r.snap] += 1;
+      const drop = truncatedSnaps(lens);
+      if (drop.size) {
+        console.warn(`[selbe] ${pkg.key}: тасарсан ${drop.size} хуулбарыг гүйцэтгэлийн уншилтаас хасав (${[...drop].map((k) => lens[k]).join(', ')} мөр)`);
+        let w = 0;
+        for (const r of recs) if (!drop.has(r.snap)) recs[w++] = r;
+        recs.length = w;
+      }
     }
 
     /*

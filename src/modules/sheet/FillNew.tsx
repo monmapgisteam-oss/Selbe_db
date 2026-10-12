@@ -586,6 +586,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       registeredRef.current.add(stagedOid);
       setSubmitFailed(false);
       reloadHy();
+      /* ⚠️ 2026-10-12 (аудит №8): бүртгэл амжилттай — илгээлт хянагч руу явсан тул буцаалтын улаан тэмдэглэгээ ба
+         гараар сонгосон буцаалт ДУУСЛАА; `publish`-ийн (`rv.ok` → `setBackChg(new Set())`) ба `resendAsIs`-ийн
+         (`setResumedOid(null)`) ⚠️-тэй ИЖИЛ. Урьд нь энд тэглэгддэггүй тул улаан хүрээ үлдэж, дараагийн «Илгээх»
+         `curTgtOn` үнэн хэвээр тэр (хянагдаж буй) өдрийн илгээлтэд нийлэх эрсдэлтэй байв. */
+      setBackChg(new Set());
+      setResumedOid(null);
       done(rv.reused ? tr('Энэ илгээлт хяналтад аль хэдийн бүртгэгдсэн байна') : tr('Хяналтад илгээв ({0})', rv.id));
     }
     else setErr(rv.error);
@@ -800,6 +806,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [subReadErr, setSubReadErr] = useState<string | null>(null);
   /**
+   * ⚠️ 2026-10-12 (аудит №8): СҮҮЛИЙН АРХИВЫН ЖААЗ ТАСАРСАН тул `loadRows` ӨМНӨХ ӨДРИЙН бүтэн жаазыг харуулж байна
+   *    (`bagtsSheet.loadRows`-ийн `truncated`-ийн ⚠️). Урьд нь энэ тугийг бөглөх хуудас ОГТ уншдаггүй тул хуудас
+   *    өчигдрийн тоог ЧИМЭЭГҮЙ харуулж, «Илгээх» тэр хуучин суурь дээр илгээдэг байв. `null` = жааз бүтэн.
+   *    Ачаалах эффект · `refreshStaged` · `publish` (суурь жааз ба дараах дахин ачаалалт) тавина.
+   */
+  const [frameTrunc, setFrameTrunc] = useState<NonNullable<Awaited<ReturnType<typeof loadRows>>['truncated']> | null>(null);
+  /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙН ДАВХАРЛАЛТЫН МЭДЭЭЛЭЛ — `backChg`-тэй ХАМТ тавигдана (2026-10-01).
    * `at` — илгээлтийн агшин (`payload.at`), `remapped` — шинэ жааз руу зөөгдсөн эсэх.
    * ⚠️ Хуучин индексийн зөвшөөрөлд итгэх эсэхэд л (`backOkRes`-ийн ⚠️).
@@ -807,7 +820,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [backMeta, setBackMeta] = useState<{ at: number; remapped: boolean } | null>(null);
   /* ⚠️ 2026-10-01: `backChg` · `ovBase` ачаалах эффектээс ДЭЭР зарлагдана (тэр нь тавьдаг;
      React Compiler: «зарлагдахаас өмнө хандсан») — тайлбар нь `backOk`-ийн доор хэвээр. */
-  const [backChg, setBackChg] = useState<Set<string>>(new Set());
+  const [backChgAll, setBackChg] = useState<Set<string>>(new Set());
+  /*
+   * ⚠️ 2026-10-12 (аудит №8): `backChgAll` нь ДАВХАРЛАСАН илгээлтийн өөрчлөгдсөн нүд (ачаалах эффект · хожуу
+   *    давхарлалт · `resumeReturned` · `refreshStaged` тавина) — илгээлт БУЦААГДСАН эсэхээс үл хамааран. Урьд нь ЭНЭ
+   *    олонлог ШУУД `backChg` байсан тул өнөөдрийн илгээлт инженерийн гар дээр байхад (эсвэл өнчин/үлдэгдэл) F5 дарахад
+   *    улаан хүрээ + «Буцаагдсан нүд · засах N» гарч, `publish`-ийн «илгээсний дараа дууслаа» (`setBackChg(new Set())`)
+   *    ⚠️-тэй зөрдөг байв. Одоо ХАРУУЛАХ/ТҮГЖИХ олонлог (`backChg`) нь ЗӨВХӨН `staged` буцаагдсан үед — `curTgtOn`-той
+   *    ЯГ ижил нөхцөл (`returnedStaged` эсвэл гараар сонгосон `resumedOid`). Тавих газруудад нөхцөл тавихгүй: `flow`
+   *    нь `useHyanaltRows`-оос ХОЖУУ ирдэг тул ачаалах агшинд «буцаагдсан уу» тодорхойгүй (`backOkRes`-ийн ⚠️ —
+   *    ачааллын үед тавьсныг арчвал бүх өнгө алга болдог байсан 2026-09-22-ны гомдол); нөхцөл нь эндээс уншигдана.
+   */
+  const backOn = !view && !!staged && !staged.done && (returnedStaged || resumedOid === staged.oid);
+  const backChg = useMemo(() => (backOn ? backChgAll : new Set<string>()), [backOn, backChgAll]);
   const [ovBase, setOvBase] = useState<Map<number, SheetRow>>(new Map());
   /**
    * ОБЬЁМЫН ТӨЛӨВ — ачаалах эффект багц солиход тэглэдэг тул түүнээс ДЭЭР (2026-10-01,
@@ -953,6 +978,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            (архивын OBJECTID-тай) бүртгэлийн зам дээр үлдэнэ. */
         const r = await loadRows(pkg, schema, view?.subOid ? undefined : view?.day);
         if (!alive) return;
+        /* ⚠️ 2026-10-12 (аудит №8): тасарсан жааз → өмнөх өдрийнхийг харуулж буйг ИЛ хэлнэ (`frameTrunc`-ийн ⚠️) */
+        setFrameTrunc(r.truncated ?? null);
         /* ── ИЛГЭЭЛТИЙН OVERLAY ───────────────────────────────────────────
          * Дүрэм 3 (компанийн хуудас) ба 4 (хянагчийн хуудас): архивын сүүлийн
          * жааз + илгээлтийн зөрүү.
@@ -1125,7 +1152,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 ds.rcptRef.current.set(k, [k, a, sv, sa || a]);
                 ds.delRef.current.set(k, a);
               }
-              say(tr('Өмнөх «Илгээх» сервер дээр АМЖИЛТТАЙ хадгалагдсан байсан (хариу нь тасарсан) — илгээгдсэн нүдийг ноорогоос хасав, давхар илгээгдэхгүй.'));
+              done(tr('Өмнөх «Илгээх» сервер дээр АМЖИЛТТАЙ хадгалагдсан байсан (хариу нь тасарсан) — илгээгдсэн нүдийг ноорогоос хасав, давхар илгээгдэхгүй.'));
               clearInflight(pkg.key);
             } else if (fr.ok && mayClearInflight(inf)) {
               /* ⚠️ 2026-10-06: өөр табын ЯВЖ БУЙ илгээлтийн тэмдгийг арчихгүй (`mayClearInflight`-ийн ⚠️) */
@@ -1814,12 +1841,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const resumeReturned = useCallback(async (soid: number) => {
     if (busy || !sc || view) return;
     /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн үйлдэл — батлагчийн харагдац/томилгоогүй хүн (`noPerfWhy`) сонгохгүй */
-    if (reviewerOnly || !permPerf) { say(noPerfWhy ?? RO.noPerf); return; }
+    if (reviewerOnly || !permPerf) { warn(noPerfWhy ?? RO.noPerf); return; }
     /* ⚠️ 2026-10-04 (#6): ноорог ЯГ ЭНЭ илгээлтийн засвар (`Draft.tgt`) бол саад биш — тэр нь
        F5/багц солихоос өмнө сонгогдсон зорилтоо сэргээж байна (засвар өөр өдөртэй холилдохгүй). */
     if (draftTgt?.[0] !== soid) {
       /* «Шинэчлэгдсэн огноо» нь хуваалцсан — өөрчлөгдсөн бол урьдын адил саад (2026-09-24). */
-      if (asOf !== asOfOrig) { say(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
+      if (asOf !== asOfOrig) { warn(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
       /*
        * ⚠️ 2026-10-09 (аудит №3, HIGH): ХАДГАЛСАН НООРОГ ч шалгана (локал + алс) — урьд нь зөвхөн санах ойн `pending`-ийг
        *    хардаг байв. Хориг идэвхтэй үед сэргээлт явдаггүй тул `pending` хоосон; сонгосны дараа сэргээлт өнөөдрийн
@@ -1833,7 +1860,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setBusy(true);
       let stored: string[] | null = null;
       try { stored = await storedMine(pkg.key, soid); } finally { setBusy(false); }
-      if (stored === null) { say(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаагдсан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
+      if (stored === null) { warn(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаагдсан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
       const mine = [...new Set([...memMine, ...stored])];
       if (mine.length) {
         if (!window.confirm(tr('Таны илгээгээгүй {0} нүд ноорогт байна (өнөөдрийн эсвэл өөр өдрийн ажил). Буцаагдсан илгээлтийн засвартай холилдохгүйн тулд эхлээд тэдгээрийг ноорогоос устгана — бусдын нүд хөндөгдөхгүй. Устгаад үргэлжлүүлэх үү?', mine.length))) return;
@@ -1963,6 +1990,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const next = await loadRows(pkg, sc);
       const ar = await readActiveSubmission(want, todayFillMs);
       if (!live()) return;
+      /* ⚠️ 2026-10-12 (аудит №8): тасарсан жааз (`frameTrunc`-ийн ⚠️) — дэлгэц шинэчлэгдэхээс үл хамааран ил хэлнэ */
+      setFrameTrunc(next.truncated ?? null);
       setSubReadErr(ar.ok ? null : ar.error);
       if (!ar.ok) return;
       reloadHy();
@@ -1993,10 +2022,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* ⚠️ 2026-10-11 (аудит №7): БУЦААГДСАН илгээлтийн засвар явж байхад (`returnedStaged`) хамтран бөглөгч илгээсэн
          бол өөрчлөгдсөн нүдний тэмдэглэгээ (`backChg`) ба зөвшөөрлийн итгэлийн мэдээлэл (`backMeta`) ч шинэ давхарлалтаас —
          ачаалах замтай ИЖИЛ; урьд нь хуучин олонлог үлдэж улаан хүрээ/ногоон ✓ шинэ мөрүүдтэй зөрдөг байв. */
-      if (act && ov && returnedStaged) {
-        setBackChg(changedKeys(next.rows, ov, sc.bld));
-        setBackMeta({ at: act.payload.at, remapped: ov.remapped });
-      }
+      /* ⚠️ 2026-10-12 (аудит №8): ТҮҮХИЙ олонлог (`backChgAll`) одоо ҮРГЭЛЖ шинэ давхарлалтаас — харуулах эсэхийг
+         `backOn` (`curTgtOn`-той ижил) шийднэ. Урьд нь зөвхөн `returnedStaged` үед шинэчлэгддэг тул инженерийн гар дээрх
+         өнөөдрийн илгээлтэд хамтран бөглөгч нэмсний ДАРАА буцаагдвал ХУУЧИН олонлог улаан хүрээгээр гардаг байв. */
+      setBackChg(act && ov ? changedKeys(next.rows, ov, sc.bld) : new Set());
+      setBackMeta(act && ov ? { at: act.payload.at, remapped: ov.remapped } : null);
       /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
       setStaged(act);
       setRows(ov ? ov.rows : next.rows);
@@ -2018,7 +2048,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         refreshStagedRef.current(a);
       }
     }
-  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, noteSubReceipts, returnedStaged]);
+  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, noteSubReceipts]);
   useSyncRef(refreshStagedRef, (a: number) => { void refreshStaged(a); });
 
   /**
@@ -2060,10 +2090,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     /* ⚠️ 2026-10-09 (аудит №3): НООРОГ СЭРГЭЖ ДУУСТАЛ илгээхгүй — Ctrl+S товчийг тойрдог; сэргээлт дуусаагүй `pending`
        нь хагас (локал буусан, алсынх хараахан ирээгүй) бөгөөд `publish`-ийн төгсгөлийн цэвэрлэгээ сэргээлттэй уралдана. */
-    if (restoringUi) { say(RO.restoring); return; }
+    /* ⚠️ 2026-10-12 (аудит №8): «Илгээх»-ийн ХОРИГ бүр `warn` (шар, ⚠) — урьд нь `say` («Энэ нүд засагдахгүй.»
+       гарчигтай `ro` төрөл) байсан тул илгээх хориг нүдний тайлбар мэт уншигдаж, 4 сек-д алга болдог байв. Энэ
+       функц ба `resumeReturned`-ийн бүх хориг ижил; амжилт нь `done`. */
+    if (restoringUi) { warn(RO.restoring); return; }
+    /* ⚠️ 2026-10-12 (аудит №8): НЭЭЛТТЭЙ НҮД (`edit`) байхад илгээхгүй — «Илгээх» товч дарахад blur нь «1,250» г.м.
+       утгыг НЯЦААЖ нүдийг нээлттэй үлдээдэг (`commit`-ийн 2026-10-06 ⚠️) атал `publish` үргэлжилж, амжилтын мэдэгдэл
+       няцаалтын анхааруулгыг дардаг байв. Товч одоо Ctrl+S-тэй ижил зам (`flushEditRef` → `publishQueued`)-аар ирнэ;
+       энэ нь сүүлчийн хамгаалалт (`editRef` — layout эффектээр тольдсон). */
+    if (editRef.current) { warn(tr('Нээлттэй нүдний утга хүлээн авагдаагүй байна — засаад Enter дарсны дараа «Илгээх»-ийг дахин дарна уу.')); return; }
+    /* ⚠️ 2026-10-12 (аудит №8): ХЯНАЛТЫН ЖАГСААЛТ (`hyRows`) ачаалагдаагүй/уншигдаагүй үед ногоон ✓ түгжээ (`backOkRes` →
+       `okLockAt`) ХООСОН — нээлттэй (fail-open) тул зөвшөөрөгдсөн нүдний бичсэн/ноорогоос сэргэсэн утга доорх `okBad`-ийг
+       давж илгээгддэг байв. Идэвхтэй илгээлт (`staged`) байхгүй бол буцаагдсан илгээлт ч байхгүй — ердийн илгээлт
+       хаагдахгүй; байвал жагсаалт ирэхийг хүлээнэ (алдаатай бол дахин ачаална). */
+    if (staged && !staged.done && (hyLoading || !!hyErr)) {
+      if (hyErr) reloadHy();
+      warn(hyErr
+        ? tr('Хяналтын жагсаалтыг татаж чадсангүй — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгах боломжгүй тул илгээсэнгүй. Дахин ачаалж байна; хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.')
+        : tr('Хяналтын жагсаалт ачаалагдаж байна — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгахаас өмнө илгээхгүй. Хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.'));
+      return;
+    }
     /* ⚠️ 2026-10-09 (аудит №3): ЗӨВШӨӨРӨГДСӨН (ногоон ✓) нүдний утга ИЛГЭЭГДЭХГҮЙ — түгжээ урьд нь зөвхөн UI-д байсан тул
        ноорог/хамтран бөглөгчийн нийлүүлэлтээр орсон утга илгээгддэг байв. Тэдгээрийг буцааж (tombstone) ЗОГСОНО —
        хэрэглэгч үлдсэнийг шалгаад дахин дарна. */
+    /* ⚠️ 2026-10-12 (аудит №8, ШИЙДВЭР): зөвшөөрөл нь блокийн НҮДЭЭР (обьём/гүйцэтгэл — `${oid}:${b}`) — хянагчийн
+       `okCells` огноог (`:s`/`:e`) агуулдаггүй, `changedKeys` ч огноог өөрчлөлтөд тооцдоггүй. Тиймээс Эхлэх/Дуусах огноо
+       (`pendDate`) энд ШАЛГАГДАХГҮЙ — хянагчийн нүд тутмын зөвшөөрлөөс ГАДУУР (`FillRows`-ийн огнооны нүдний ⚠️). */
     {
       const okBad = Object.keys(pending).filter((k) => {
         const c = k.indexOf(':');
@@ -2083,7 +2135,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     {
       const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
       if (off.length) {
-        say(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаагдсан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
+        warn(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаагдсан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
         return;
       }
     }
@@ -2097,7 +2149,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    товчны хажуугийн тайлбартай ижил.
      */
     if (!canSubmitNow) {
-      say(tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', ')));
+      warn(tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', ')));
       return;
     }
     /* ⚠️ ӨДӨР СОЛИГДСОН эсэхийг ИЛГЭЭХ АГШИНД шалгана (2026-09-25-ны аудит,
@@ -2110,17 +2162,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* ⚠️ 2026-10-05: обьёмын ноорог (`pvPend`) дахин ачаалалтад УСТДАГ (хаана ч хадгалагддаггүй) —
          эхлээд түүнийг илгээлгэнэ; хуудсыг дахин ачаалахгүй (өдөр солигдох шалгалтын ⚠️-тэй ижил). */
       if (pvDirtyRef.current > 0) {
-        say(tr('Өдөр солигдлоо ({0}). Инженерийн обьёмын илгээгээгүй {1} нүд дахин ачаалахад устах тул эхлээд «Обьём батлуулах» дарна уу (эсвэл тэр нүднүүдээ буцаана уу), дараа нь «Илгээх»-ийг дахин дарна уу.', msToDay(dNow), pvDirtyRef.current));
+        warn(tr('Өдөр солигдлоо ({0}). Инженерийн обьёмын илгээгээгүй {1} нүд дахин ачаалахад устах тул эхлээд «Обьём батлуулах» дарна уу (эсвэл тэр нүднүүдээ буцаана уу), дараа нь «Илгээх»-ийг дахин дарна уу.', msToDay(dNow), pvDirtyRef.current));
         return;
       }
       setTodayFillMs(dNow);
-      say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачаалагдаж байна. Ноорог сэргээгдсэний дараа «Илгээх»-ийг дахин дарна уу.', msToDay(dNow)));
+      warn(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачаалагдаж байна. Ноорог сэргээгдсэний дараа «Илгээх»-ийг дахин дарна уу.', msToDay(dNow)));
       return;
     }
     /* ⚠️ 2026-10-04 аудит (#6): НООРОГ нь ӨӨР (буцаагдсан) илгээлтийн засвар — сонгогдоогүй бол
        ИЛГЭЭХГҮЙ (`tgtMismatch`-ийн ⚠️). Ctrl+S ч энд ирдэг тул товчноос гадна ЭНД шалгана. */
     if (tgtMismatch && draftTgt) {
-      say(tr('Энэ ноорог {0}-ны буцаагдсан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаагдсан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
+      warn(tr('Энэ ноорог {0}-ны буцаагдсан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаагдсан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
       return;
     }
     /*
@@ -2189,6 +2241,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    update хийнэ (хэрэглэгчийн шийдвэр: шинэ тойрог үүсгэхгүй) — тэр
      *    эрсдэлийг ХААХГҮЙ, харин доорх `done(...)` мессежээр ИЛ хэлнэ.
      */
+    /* ⚠️ 2026-10-12 (аудит №8): БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦЫГ хаана — илгээлтийн явцад «Бичих» дарвал утга `pending`-д
+       бууж, төгсгөлийн `setPending({})` түүнийг чимээгүй арчдаг байв (`useCellEdit.confirmPaste`-ийн ⚠️). */
+    setPastePrev(null);
     setBusy(true);
     setErr("");
     try {
@@ -2211,6 +2266,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        */
       const fresh0 = await loadRows(pkg, sc);
       const freshRows = fresh0.rows;
+      /* ⚠️ 2026-10-12 (аудит №8): тасарсан жааз — мэдэгдэл (`frameTrunc`); илгээх хориг нь доор, тэмдэг шийдсэний дараа */
+      setFrameTrunc(fresh0.truncated ?? null);
       /* ⚠️ Суурь жаазын өдөр/агшныг ТӨЛӨВТ буулгана — дэлгэц дээрх «суурь
          жааз» заалт ба payload-ийн `base` хоёулаа энэ утгаас гарна. */
       setSnapDay(fresh0.snapshot != null ? msToDay(fresh0.snapshot) : "");
@@ -2319,18 +2376,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         const am = act.payload.archiving;
         if (markFresh(am))
           throw new Error(tr('Энэ өдрийн илгээлтийг {0} яг одоо архивлаж байна — хэдэн минутын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.', am.by || tr('газрын дарга')));
-        const { probeArchivedFrame } = await import('@/lib/hyanaltStore');
+        const { probeArchivedFrame, cleanupTruncatedFrame } = await import('@/lib/hyanaltStore');
         let hit: number | null | 'ambiguous';
         try { hit = await probeArchivedFrame(pkg.key, am); } catch (e) {
           throw new Error(tr('Энэ өдрийн өмнөх архивлалт шалгагдаагүй — юу ч илгээсэнгүй, дахин оролдоно уу ({0}).', userError(e)));
         }
         if (hit === 'ambiguous')
           throw new Error(tr('Энэ өдрийн өмнөх архивлалт шалгагдаагүй (архивын жааз тодорхойгүй) — юу ч илгээсэнгүй. Газрын даргаар дахин «Батлах» дарж шийдүүлнэ үү.'));
+        /*
+         * ⚠️ 2026-10-12 (аудит №8 — архивын аудит №1-ийн бөглөх хуудасны хэсэг): хуучирсан тэмдэг, жааз БУУГААГҮЙ
+         *    (`hit == null`) бол батлалт дундаа унаж ТАСАРСАН хагас жааз үлдсэн байж болно. Урьд нь энд тэмдгийг шууд
+         *    шийдэж (`resolveMark` + `dropMark`) арчдаг тул тэр хагас жааз ХЭЗЭЭ Ч цэвэрлэгдэхгүй (`cleanupTruncatedFrame`
+         *    зөвхөн тэмдэгтэй үед `archiveSubmission` дотор ажилладаг) → багц «сүүлийн агшин дутуу»-гаар МӨНХӨД түгжигддэг
+         *    байв. Одоо `archiveSubmission`-тэй ИЖИЛ дараалал: ЭХЛЭЭД цэвэрлэнэ. Алдаа → ЗОГСОНО (тэмдэг хэвээр, юу ч
+         *    илгээхгүй — fail-closed). Устгасан бол суурь жааз (`fresh0`) тасарсан жаазын үеийнх тул энэ удаа ИЛГЭЭХГҮЙ —
+         *    дахин дарахад цэвэр жаазаар (тэмдэг тэр үед `deleted: 0`-оор шийдэгдэнэ).
+         */
+        if (hit == null) {
+          const cl = await cleanupTruncatedFrame(pkg.key, am);
+          if ('error' in cl)
+            throw new Error(tr('Энэ өдрийн өмнөх архивлалт дундаа тасарсан бөгөөд үлдсэн хагас жаазыг цэвэрлэж чадсангүй ({0}) — юу ч илгээсэнгүй. Дахин оролдох эсвэл админд хандана уу.', cl.error));
+          if (cl.deleted > 0) {
+            setFrameTrunc(null);
+            warn(tr('Өмнөх тасарсан архивлалтын {0} мөрийг архиваас цэвэрлэв — юу ч илгээсэнгүй. «Илгээх»-ийг дахин дарна уу.', cl.deleted));
+            return;
+          }
+        }
         const rp = resolveMark(act.payload, hit != null);
         if (!rp)
           throw new Error(tr('Энэ өдрийн өмнөх илгээлт архивт бичигдсэн боловч хаагдаагүй бөгөөд шинэ илгээлтээс түүнийг хасах боломжгүй — газрын даргаар дахин «Батлах» дарж хаалгана уу. Юу ч илгээсэнгүй.'));
         resolvedBase = rp;
         markDrop = am.startedAt;
+      }
+      /* ⚠️ 2026-10-12 (аудит №8): СУУРЬ ЖААЗ ТАСАРСАН (`fresh0.truncated` — `loadRows` өмнөх өдрийн бүтэн жаазыг өгсөн)
+         бол ИЛГЭЭХГҮЙ: payload-ийн `base`/`rowKeys` хуучин (өчигдрийн) жаазаас гарч, тасарсан жааз цэвэрлэгдсэний дараа
+         тулгалт зөрнө. Тэмдэгтэй тасралтыг дээрх цэвэрлэгээ шийднэ; тэмдэггүй бол админ/газрын дарга шийднэ. */
+      if (fresh0.truncated) {
+        const t0 = fresh0.truncated;
+        throw new Error(tr('Архивын сүүлийн жааз ({0}) дундаа тасарсан ({1}/{2} мөр) тул хуудас {3}-ны бүтэн жаазыг харуулж байна — тэр хуучин суурь дээр илгээхгүй. Газрын даргаар дахин «Батлах» дарж цэвэрлүүлэх эсвэл админд хандана уу. Юу ч илгээсэнгүй.', t0.day, t0.rows, t0.need, t0.shownDay));
       }
       /*
        * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
@@ -2807,6 +2890,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            дарж бичих эрсдэлтэй байв. Ачаалах эффекттэй ижил: өнөөдрийн илгээлт.
            Уншилт унавал `savedSub`-ийг зөвхөн ӨНӨӨДРИЙНХ бол үлдээнэ. */
         const act2r = await readActiveSubmission(pkg.key, todayFillMs);
+        /* ⚠️ 2026-10-12 (аудит №8): `frameTrunc`-ийн ⚠️ */
+        setFrameTrunc(next.truncated ?? null);
         setSubReadErr(act2r.ok ? null : act2r.error);
         /* ⚠️ 2026-09-25 аудит: ӨМНӨХ ӨДРИЙН (буцаагдсан) илгээлтийг дахин илгээсэн бол
            өнөөдрийн түлхүүрээр мөр ОЛДОХГҮЙ тул дөнгөж илгээсэн агуулга дэлгэцээс алга
@@ -2846,7 +2931,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          ИЛ ХЭЛНЭ (2026-09-07): хориг хасагдсан тул хэрэглэгч мэдэлгүй
          хянагчийн харж буй агуулгыг сольж болно. Шинэ ТОЙРОГ үүсээгүй —
          `submitForReview` тэр өдрийн нээлттэй бүртгэлийг л буцаана. */
-      done((!rv.ok
+      /* ⚠️ 2026-10-12 (аудит №8): бүртгэл УНАСАН бол ШАР (`warn`) — урьд нь ногоон «✓» (`done`) гарчигтай тул
+         «⚠️ хяналтад бүртгэгдсэнгүй» нь амжилт мэт уншигддаг байв (`soft`-ийн ⚠️ — төрөл нь утгатайгаа таарна). */
+      (rv.ok ? done : warn)((!rv.ok
         ? tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error)
         : rv.reused
           /* ⚠️ `rv.reused` — ХЯНАЛТЫН ХАРИУНААС, publish-ээс өмнөх `inReview`
@@ -2861,13 +2948,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
     pullNow, noPerfWhy,
     /* 2026-10-09 (аудит №3) */
-    restoringUi, okLockAt, offTgtKeys, revert]);
+    restoringUi, okLockAt, offTgtKeys, revert,
+    /* 2026-10-12 (аудит №8) */
+    hyLoading, hyErr]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -2975,6 +3064,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
+  /* ⚠️ 2026-10-12 (аудит №8): «Илгээх» ТОВЧ ч Ctrl+S-тэй ИЖИЛ зам — нээлттэй нүдний утгыг эхлээд хүлээн авна
+     (`flushEditRef`), няцаагдвал ИЛГЭЭХГҮЙ (анхааруулга нь харагдсаар), хүлээн авбал төлөвт тусмагц (`publishQueued`)
+     илгээнэ. Урьд нь товч `publish`-ийг шууд дууддаг тул blur-ийн няцаалт («1,250») амжилтын мэдэгдлээр дарагдаж, үлдсэн
+     нүднүүд илгээгддэг байв. `publish`-ийн `editRef` хамгаалалт — сүүлчийн хаалт. */
+  const publishBtn = useCallback(async () => {
+    if (flushEditRef.current()) setPublishQueued(true);
+  }, []);
 
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
 
@@ -3076,7 +3172,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         {canPerf ? (
           <SubmitControls
             /* ⚠️ 2026-10-09 (аудит №3): ноорог сэргэж дуустал «Илгээх» ч түгжээтэй (`publish`-ийн `restoringUi` шалгалт) */
-            locked={locked} canSubmitNow={canSubmitNow} publish={publish} busy={busy || restoringUi} noEdit={noEdit}
+            locked={locked} canSubmitNow={canSubmitNow} publish={publishBtn} busy={busy || restoringUi} noEdit={noEdit}
             dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
             waitingLast={waitingLast}
             resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
@@ -3126,7 +3222,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           <span>
             {tr('Буулгалтын урьдчилсан харагдац: {0} нүд бичигдэнэ (цэнхэр), {1} нүд татгалзагдана (улаан ✕ — нүдэн дээр шалтгаан нь).', pastePrev.ok.size, pastePrev.rej.size)}
           </span>
-          <button type="button" className={st.publishBtn} onClick={confirmPaste}>{tr('Бичих')}</button>
+          {/* ⚠️ 2026-10-12 (аудит №8): илгээлт/сэргээлт явж байхад «Бичих» хаалттай (`useCellEdit.confirmPaste`-ийн ⚠️) */}
+          <button type="button" className={st.publishBtn} onClick={confirmPaste} disabled={busy || restoringUi}>{tr('Бичих')}</button>
           <button type="button" className={st.layerBtn} onClick={cancelPaste}>{tr('Болих')}</button>
         </div>
       )}
@@ -3140,6 +3237,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         /* ⚠️ 2026-10-09 (аудит №3): гүйцэтгэгчийн товч (хяналтад бүртгэх · буцаалтыг сонгох) — томилогдсон гүйцэтгэгчид л.
            `canPerf` БИШ: хориг (`reviewLock`) идэвхтэй үед буцаагдсан илгээлтийг сонгох нь хоригоос гарах ЦОРЫН ГАНЦ зам. */
         canAct={permPerf && !reviewerOnly} reviewLockDays={reviewLockDays}
+        /* ⚠️ 2026-10-12 (аудит №8): хяналтын жагсаалтын алдаа (гүйцэтгэгчийн хуудсанд — хянагчийн харагдац өөрийн
+           жагсаалттай) ба тасарсан жааз (`frameTrunc`-ийн ⚠️) */
+        hyErr={!view && hyErr ? userError(hyErr) : null} frameTrunc={frameTrunc}
       />
       {/* ⚠️ 2026-10-04 аудит (#6): ноорог нь ӨӨР (буцаагдсан) илгээлтийн засвар — сонгох хүртэл «Илгээх» түгжээтэй */}
       {tgtMismatch && draftTgt && (

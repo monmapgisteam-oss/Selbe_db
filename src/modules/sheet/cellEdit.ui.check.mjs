@@ -36,8 +36,9 @@ const row = (oid, vol, obyem, act) => ({
   start: [null, null], end: [null, null],
 });
 
-function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview = false, restoring = false, okLock } = {}) {
-  const st = { pending: {}, warns: [], dones: [], errs: [], prev: null };
+function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview = false, restoring = false, okLock, busy = false } = {}) {
+  /* 2026-10-12 (аудит №8): `busy` — `st`-ээс (тест дундаа сольж «Бичих»-ийн хаалтыг шалгана) */
+  const st = { pending: {}, warns: [], dones: [], errs: [], prev: null, busy };
   const api = () => makeCellEdit({
     sc,
     fillMode,
@@ -55,7 +56,7 @@ function harness(rowsAll, { fillMode = 'obyem', reviewInc = new Map(), preview =
     locked: false,
     noEdit: false,
     canPerf: true,
-    busy: false,
+    busy: st.busy,
     editing: true,
     rowsAll,
     vis: rowsAll.map((_, i) => i),
@@ -428,6 +429,30 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const r2 = run(fr2, oneOn, null);
   ok(r2.planOff && r2.vis.length === 2, '9i: asOf === null — шүүлт алгасагдана');
   ok(!run(fr2, oneOn, undefined).planOff, '9i: asOf дамжуулаагүй (undefined) — шүүлт хэвээр');
+}
+
+/* ── 10. (2026-10-12, аудит №8) «Бичих» нь `pasteBlock`-ийн хаалтуудыг ДАХИН шалгана · хувь горимд 0–1 бутархай асуулт ── */
+{
+  reset(true);
+  const rs = [row(1, 100, [0, 0], [0, 0]), row(2, 100, [0, 0], [0, 0])];
+  const h = harness(rs, { preview: true });
+  h.api().pasteBlock(0, 0, '5\tабв\n6\t7');
+  ok(h.st.prev && h.st.prev.ok.size === 3, '10a: урьдчилсан харагдац нээгдэнэ');
+  h.st.busy = true;
+  const w0 = h.st.warns.length;
+  h.api().confirmPaste();
+  ok(Object.keys(h.st.pending).length === 0 && h.st.warns.length === w0 + 1 && h.st.prev === null,
+    `10a: илгээлт явж байхад «Бичих» юу ч бичихгүй, шалтгааныг хэлнэ (${JSON.stringify(h.st.pending)})`);
+  /* хувь горим — 0.75 нь НЭГ удаагийн асуултад орно; «Үгүй» → юу ч бичихгүй */
+  reset(false);
+  const hp = harness(rs, { fillMode: 'pct' });
+  hp.api().pasteBlock(0, 0, '0.75\t20');
+  ok(asked.length === 1 && /1%-иас бага/.test(asked[0]) && /75%/.test(asked[0]), `10b: 0–1 бутархайг асууна (${asked[0] ?? '—'})`);
+  ok(Object.keys(hp.st.pending).length === 0, '10b: «Үгүй» — юу ч бичигдэхгүй');
+  reset(false);
+  const hq = harness(rs, { fillMode: 'pct' });
+  hq.api().pasteBlock(0, 0, '5\t20');
+  ok(asked.length === 0 && Object.keys(hq.st.pending).length === 2, `10c: 1-ээс их утгад асуулт гарахгүй (${asked[0] ?? '—'})`);
 }
 
 console.log(`✅ cellEdit: ${n} шалгалт — бүгд давлаа`);

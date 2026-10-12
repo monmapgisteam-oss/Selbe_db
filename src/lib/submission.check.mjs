@@ -604,11 +604,25 @@ const nextOf = (over = {}) => {
   const mkT = { n: 1471, rootNo: 'A', probe: [[1, 'b', 9], [1300, 'b', 5]] };
   assert.deepEqual(truncatedFrameIds(half, mkT, OIDF, NOF)?.length, 500, 'хагас жааз танигдаж 500 OID буцна (жаазаас гадуурх дээж тоологдохгүй)');
   assert.equal(truncatedFrameIds(half.slice(0, 499), mkT, OIDF, NOF), null, '500-ийн үржвэр биш — танигдсангүй');
-  assert.equal(truncatedFrameIds(half, { ...mkT, n: 500 }, OIDF, NOF), null, 'n-тэй тэнцүү (бүтэн) — хөндөхгүй');
+  /* ⚠️ 2026-10-12 (A2): бүтэн тэргүүн хэсэг → `[]` (тасарсан мөр алга, юу ч устгахгүй) — урьд нь `null` (мөнхөд «танигдсангүй») */
+  assert.deepEqual(truncatedFrameIds(half, { ...mkT, n: 500 }, OIDF, NOF), [], 'n-тэй тэнцүү (бүтэн) — хөндөхгүй');
   assert.equal(truncatedFrameIds(half, { ...mkT, rootNo: 'B' }, OIDF, NOF), null, 'эхний № зөрвөл — манайх биш');
   assert.equal(truncatedFrameIds(half, { ...mkT, probe: [[1, 'b', 3]] }, OIDF, NOF), null, 'дээж хол зөрвөл — манайх биш');
   assert.equal(truncatedFrameIds([...half.slice(0, 250), ...half.slice(0, 250)], mkT, OIDF, NOF), null, 'эхлэл дунд нь давтагдвал (хоёр жааз) — танигдсангүй');
   assert.equal(truncatedFrameIds([], mkT, OIDF, NOF), null, 'хоосон');
+  /* ⚠️ 2026-10-12 (A2): тасарсан жаазын АРД тэр өдөр өөр бүтэн жааз бичигдсэн — зөвхөн ТЭРГҮҮН (тасарсан) хэсгийг устгана */
+  {
+    const full = Array.from({ length: 1471 }, (_, i) => row(5000 + i, i === 0 ? 'A' : `r${i}`));
+    const ids = truncatedFrameIds([...half, ...full], mkT, OIDF, NOF);
+    assert.equal(ids?.length, 500, 'тэргүүн 500 мөр л (ардах бүтэн жааз хөндөгдөхгүй)');
+    assert.equal(ids?.[0], 1000, 'эхний OID нь тасарсан жаазынх');
+    assert.ok(ids?.every((x) => x < 5000), 'бүтэн жаазын OID орохгүй');
+    const half1000 = Array.from({ length: 1000 }, (_, i) => row(2000 + i, i === 0 ? 'A' : `q${i}`, { b: i === 1 ? 9 : 0 }));
+    assert.equal(truncatedFrameIds([...half1000, ...full], mkT, OIDF, NOF)?.length, 1000, '1000 мөрийн тасарсан + бүтэн → 1000');
+    assert.deepEqual(truncatedFrameIds([...full, ...half], mkT, OIDF, NOF), [], 'тэргүүн нь бүтэн — тасарсан тэргүүн алга');
+    assert.equal(truncatedFrameIds([...half.slice(0, 300), ...full], mkT, OIDF, NOF), null, 'тэргүүн 500-ийн үржвэр биш — танигдсангүй');
+    assert.equal(truncatedFrameIds([...half, ...full], { ...mkT, rootNo: undefined }, OIDF, NOF)?.length, 500, 'хуучин тэмдэг (rootNo-гүй) — мөр 0-ийн №-оор');
+  }
 
   /* задлал: rootNo · probe хадгалагдана, эвдэрсэн дээж хаягдана */
   const base = { at: 1000, startedAt: 1001, maxOid0: 500, fillMs: FILL, n: 3 };
@@ -727,6 +741,21 @@ const nextOf = (over = {}) => {
   const BS = fs.readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
   assert.ok(BS.includes('export type AddsError = Error & { lost?: boolean; cause?: unknown };') && BS.includes('{ cause: e },') && BS.includes('we.lost = lost;'), 'applyAdds lost туг алга');
   console.log('✅ засвар 4 — lost туг');
+}
+
+/* ── 2026-10-12 (A9): үлдэгдлийн эх батлалт (`residualOf`) — задлагдана, residual-гүй/эвдэрсэн бол хаягдана, merge дамжуулахгүй ── */
+{
+  const ro = { row: 42, archiveOid: 9001, day: '2026-10-11' };
+  const p = parseSubmission(JSON.stringify({ ...valid(), residual: true, residualOf: ro }));
+  assert.deepEqual(p.residualOf, ro, 'residualOf уншигдана');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), residualOf: ro })).residualOf, undefined, 'residual-гүй бол утгагүй');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), residual: true, residualOf: { ...ro, day: 'x' } })).residualOf, undefined, 'эвдэрсэн өдөр хаягдана');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), residual: true, residualOf: { ...ro, row: 0 } })).residualOf, undefined, 'мөргүй хаягдана');
+  const m = mergeSubmission(p, { ...valid(), at: 3000 });
+  assert.equal(m.residualOf, undefined, 'дараагийн илгээлт residualOf-ийг дамжуулахгүй');
+  const HY = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok(HY.includes('if (staged.payload.residual === true && ro && ro.row === cur.__oid) {'), 'archiveSubmission үлдэгдлийг шинэ тойрогт оруулахгүй байна (A9)');
+  console.log('✅ A9 — residualOf');
 }
 
 console.log('submission.check ✓');

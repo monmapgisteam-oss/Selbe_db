@@ -14,7 +14,7 @@ type FlowT = ReturnType<typeof useFlow>;
 export function FillNotices({
   locked, submitFailed, resend, resending, unmovedWarn, subReadErr, inReview, reviewStage,
   otherDaysInReview, otherDaysReturned, noEdit, busy, resumedOid, resumeReturned, returned,
-  canAct = true, reviewLockDays = [],
+  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null,
 }: {
   locked: boolean; submitFailed: boolean; resend: () => Promise<void>; resending: boolean;
   unmovedWarn: string[]; subReadErr: string | null; inReview: boolean; reviewStage: FlowT['reviewStage'];
@@ -28,9 +28,29 @@ export function FillNotices({
   canAct?: boolean;
   /** ⚠️ 2026-10-09 (аудит №3): ИДЭВХТЭЙ хоригийн өдрүүд (`FillNew.reviewLockDays`) — буцаалтын засвар хийж байхад хоосон */
   reviewLockDays?: string[];
+  /**
+   * ⚠️ 2026-10-12 (аудит №8): хяналтын жагсаалтын (`useHyanaltRows`) уншилтын алдаа (цэвэрлэсэн текст). Урьд нь
+   *    `useFlow.hyErr` ХААНА Ч зурагддаггүй тул жагсаалт уншигдаагүй үед буцаалт/ногоон ✓ түгжээ/хориг чимээгүй
+   *    алга болдог байв (`FillNew.publish` түүнийг идэвхтэй илгээлттэй үед хаадаг). `null` = алдаагүй.
+   */
+  hyErr?: string | null;
+  /** ⚠️ 2026-10-12 (аудит №8): сүүлийн архивын жааз тасарсан — хуудас өмнөх өдрийн жаазыг харуулж байна (`FillNew.frameTrunc`) */
+  frameTrunc?: { day: string; rows: number; need: number; shownDay: string } | null;
 }) {
   return (
     <>
+      {/* ⚠️ 2026-10-12 (аудит №8): ТАСАРСАН ЖААЗ — хуучин (өмнөх өдрийн) тоо харагдаж буйг ИЛ хэлнэ; «Илгээх» хаалттай */}
+      {frameTrunc && (
+        <p className={st.lockNote} role="alert">
+          {tr('Архивын сүүлийн жааз ({0}) дундаа тасарсан ({1}/{2} мөр) — доорх тоо {3}-ны бүтэн жаазаас. Тасарсан жааз цэвэрлэгдтэл «Илгээх» хаалттай; газрын дарга дахин «Батлах» дарж эсвэл админ цэвэрлэнэ.', frameTrunc.day, frameTrunc.rows, frameTrunc.need, frameTrunc.shownDay)}
+        </p>
+      )}
+      {/* ⚠️ 2026-10-12 (аудит №8): хяналтын жагсаалт уншигдаагүй — буцаалт/зөвшөөрлийн тэмдэглэгээ дутуу байж болзошгүй */}
+      {hyErr && (
+        <p className={st.lockNote} role="alert">
+          {tr('Хяналтын жагсаалтыг татаж чадсангүй ({0}) — буцаалт ба хянагчийн зөвшөөрсөн (ногоон ✓) нүдний тэмдэглэгээ дутуу байж болзошгүй; идэвхтэй илгээлттэй бол «Илгээх» түр хаалттай. Хуудсыг дахин ачаална уу.', hyErr)}
+        </p>
+      )}
       {/*
         * ⚠️ ХОЁР МЭДЭГДЭЛ, ХОЁР ӨӨР ЭХ СУРВАЛЖ:
         *   · унасан бүртгэл → ЗӨВХӨН энэ сешний илгээлтээс (`submitFailed`);

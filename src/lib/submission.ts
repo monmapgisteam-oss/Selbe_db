@@ -185,6 +185,16 @@ export type SubmissionPayload = {
    */
   residual?: true;
   /**
+   * ҮЛДЭГДЛИЙГ ҮҮСГЭСЭН БАТЛАЛТ (2026-10-12, A9) — `hyanaltStore.closeAfterArchive` `residual`-тай хамт бичнэ:
+   *   · `row` — тэр үеийн хяналтын мөрийн OBJECTID (эцсийн шатанд батлагдаж байсан);
+   *   · `archiveOid`/`day` — тэр батлалтаар архивт бичигдсэн жаазны эхний OID ба өдөр (0 = бичээгүй).
+   * ⚠️ ЯАГААД: үлдэгдэл хадгалагдсаны ДАРАА хяналтын мөрийн `updateRows` унавал мөр эцсийн шатанд үлдэж,
+   *    дахин «Батлах» нь ДООД шатнуудын хараагүй үлдэгдлийг шууд архивладаг байв. Энэ тэмдэгтэй ба ижил мөрөөр
+   *    батлагдвал архивлахгүй — «Шилжүүлсэн» болгож үлдэгдлийг шинэ тойрогт оруулна. `mergeSubmission`
+   *    ДАМЖУУЛАХГҮЙ (дараагийн илгээлт энгийн агуулга).
+   */
+  residualOf?: { row: number; archiveOid: number; day: string };
+  /**
    * «АРХИВЛАЖ БАЙНА» ТЭМДЭГ (2026-10-09, R2) — `hyanaltStore.archiveSubmission` `applyAdds`-ийн
    * ӨМНӨ `markArchiving`-аар (at-ийн CAS) бичнэ. `at` ӨӨРЧЛӨГДӨХГҮЙ (агуулгын хувилбар хэвээр).
    *   · `at` — архивлаж буй агуулгын `at`; одоогийн `at`-тай зөрвөл тэмдэг хүчингүй;
@@ -369,10 +379,18 @@ export function matchArchivedFrame(
  * бүр таарч байвал — тэр нь унасан батлалтын ХАГАС жааз: таб хаагдсан/сүлжээ тасарсан тул `archiveSubmission`-ийн
  * буцаалт (`applyDeletes`) ажиллаагүй. Тийм жааз `loadRows`-ийн F1 шалгуурыг унагааж багцыг (бөглөх · хянах ·
  * батлах) БҮХЭЛД НЬ хаадаг байв — батлагчийн дахин оролдлого ч `probeArchivedFrame` хүртэл хүрдэггүй.
- *   · бүтэн (≥ n) жааз → `null` (өөр бичигчийн жинхэнэ жааз байж болно — хөндөхгүй);
+ *   · бүтэн (≥ n) жааз → `[]` (өөр бичигчийн жинхэнэ жааз байж болно — хөндөхгүй; 2026-10-12 хүртэл `null`);
  *   · дээж «хол» зөрвөл / № таарахгүй / 500-ийн үржвэр биш → `null` (танигдсангүй — админ);
  *   · эс бөгөөс устгах OID-ууд.
  * Цэвэр функц — `hyanaltStore.cleanupTruncatedFrame` сүлжээг хариуцна.
+ */
+/*
+ * ⚠️ 2026-10-12 (A2): ЗӨВХӨН ТЭРГҮҮН ХЭСЭГ. Урьд нь `OID > maxOid0` тэр өдрийн БҮХ мөр нэг тасарсан жааз байх ёстой
+ *    гэж үздэг тул тасарсан жаазын ДАРАА тэр өдөр өөр БҮТЭН жааз (ажил нэмэх · Улсын комисс · дараагийн батлалт)
+ *    бичигдсэн бол нийт урт ≥ n эсвэл эхний № дахин тааралдаж «танигдсангүй, админ шалгана» гэж МӨНХӨД гацдаг байв.
+ *    Одоо тасарсан жааз = `maxOid0`-оос шууд эхлэх ТЭРГҮҮН хэсэг: мөр 0 нь эхний № (`rootNo`, эсвэл хуучин тэмдэгт мөр
+ *    0-ийн №), дараагийн тийм № (дараагийн жаазын эхлэл) эсвэл төгсгөл хүртэл. Тэр хэсэг n-ээс БОГИНО, 500-ийн үржвэр,
+ *    дээж таарвал түүний OID-ууд; ард нь орсон бүтэн жаазууд ХӨНДӨГДӨХГҮЙ.
  */
 export function truncatedFrameIds(
   rows: Record<string, unknown>[],
@@ -381,19 +399,24 @@ export function truncatedFrameIds(
   noField: string,
   dateFields?: readonly string[],
 ): number[] | null {
-  const len = rows.length;
-  if (!len || mark.n <= 0 || len >= mark.n || len % 500 !== 0) return null;
+  if (!rows.length || mark.n <= 0) return null;
   const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
-  if (mark.rootNo && noOf(rows[0]) !== mark.rootNo) return null;
-  /* Жаазны эхлэл дунд нь ДАХИН тааралдвал хоёр жааз нийлсэн — танигдсангүй */
-  if (mark.rootNo) for (let i = 1; i < len; i += 1) if (noOf(rows[i]) === mark.rootNo) return null;
+  const root = mark.rootNo ?? noOf(rows[0]);
+  if (!root || noOf(rows[0]) !== root) return null;
+  /* Тэргүүн хэсгийн төгсгөл — дараагийн жаазын эхлэл (ижил эхний №) эсвэл төгсгөл */
+  let len = 1;
+  while (len < rows.length && noOf(rows[len]) !== root) len += 1;
+  /* ⚠️ Тэргүүн хэсэг БҮТЭН (≥ n) — тасарсан жааз АЛГА (`[]`, юу ч устгахгүй); урьд нь `null` («танигдсангүй») тул
+     манай бичилт огт суугаагүй, тэр өдөр өөр бүтэн жааз орсон тохиолдолд батлалт/буцаалт мөнхөд хаагддаг байв. */
+  if (len >= mark.n) return [];
+  if (len % 500 !== 0) return null;
   const dates = new Set(dateFields ?? []);
   for (const [i, f, v] of mark.probe ?? []) {
     if (i >= len) continue;
     if (cmpArchVal(rows[i]?.[f], v, dates.has(f)) === 'far') return null;
   }
   const ids: number[] = [];
-  for (const r of rows) {
+  for (const r of rows.slice(0, len)) {
     const oid = Number(r[oidField]);
     if (!Number.isInteger(oid) || oid <= 0) return null;
     ids.push(oid);
@@ -665,6 +688,11 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (users.length) out.users = users;
     if (d.regPending === true) out.regPending = true;
     if (d.residual === true) out.residual = true;
+    /* ⚠️ 2026-10-12 (A9): үлдэгдлийн эх батлалт — бүх талбар хүчинтэй байж л хүлээн авна */
+    const ro = d.residualOf as Record<string, unknown> | undefined;
+    if (out.residual && ro && typeof ro === 'object' && Number.isInteger(ro.row) && (ro.row as number) > 0
+      && Number.isInteger(ro.archiveOid) && (ro.archiveOid as number) >= 0 && isStr(ro.day) && /^\d{4}-\d{2}-\d{2}$/.test(ro.day))
+      out.residualOf = { row: ro.row as number, archiveOid: ro.archiveOid as number, day: ro.day as string };
     /* ⚠️ 2026-10-09 (R2): «архивлаж байна» тэмдэг — бүх талбар бодит тоо байж л хүлээн авна */
     const ar = d.archiving as Record<string, unknown> | undefined;
     if (ar && typeof ar === 'object' && isFin(ar.at) && isFin(ar.startedAt) && Number.isInteger(ar.maxOid0)
