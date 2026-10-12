@@ -107,7 +107,8 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.match(src('components/ZoneFilter.tsx'), /\{zoneLabel\(z\)\}/, 'бүсийн нэр орчуулагдана');
   assert.match(pt, /zonesLabel\(zone\.split/);
   for (const f of ['modules/Chanar.tsx', 'modules/Huvaari.tsx', 'modules/Qaqc.tsx']) {
-    assert.ok(src(f).includes('<option key={g} value={g}>{tr(g)}</option>'), `${f}: багцын нэр англиар`);
+    /* ⚠️ 2026-10-12: Хуваарь нь шинэ шийдвэртэй багцад « ●» залгана — `{tr(g)}`-ээр эхлэх нь хангалттай */
+    assert.ok(src(f).includes('<option key={g} value={g}>{tr(g)}'), `${f}: багцын нэр англиар`);
   }
 }
 

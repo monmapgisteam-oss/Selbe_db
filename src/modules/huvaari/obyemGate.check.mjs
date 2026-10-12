@@ -268,3 +268,52 @@ console.log('✓ obyemGate 2026-10-01: бүлгийн задаргаа алга�
 }
 
 console.log('✓ obyemGate §9: хөндөөгүй уялдаа · обьём серверийнхээр (tezu-bonu)');
+
+/* ── 10. ⚠️ 2026-10-12 (аудит): САРЫН ЗӨРЧИЛ САР ТУС БҮРЭЭР — 500-аас их мөрийн обьём дундуур тасарсан
+   (зарим сар шинэ, зарим нь хуучин) бол «Батлах»-ыг дахин дарахад зөрчил ГЭЖ ЗОГСООХГҮЙ ── */
+{
+  const { partialMsg, monthsClash } = await import('./payload.ts');
+  const sheet = {
+    oid: 7, no: '1.1', des: 11, work: 'Ажил 11', depth: 1, group: false, vol: 900, ham: null,
+    start: [null, null], end: [null, null], gStart: [null, null], gEnd: [null, null],
+    act: [null, null], aStart: [null, null], aEnd: [null, null], hun: null, mashin: null,
+  };
+  const k = obKey(11, 'B1');
+  const pay = {
+    kind: 'plan', spans: {}, deps: {}, actual: {}, res: {},
+    obyem: { [k]: { '2026-10': 400, '2026-11': 500 } },
+    obres: { [k]: { '2026-10': { hun: 5, mashin: null }, '2026-11': { hun: 6, mashin: 1 } } },
+    base: {
+      spans: {}, deps: {},
+      obyem: { [k]: { '2026-10': 300, '2026-11': 600 } },
+      obres: { [k]: { '2026-10': { hun: 3, mashin: null }, '2026-11': { hun: 3, mashin: 1 } } },
+    },
+  };
+  const srv = (ob) => new Map([[11, new Map([['B1', M(ob)]])]]);
+  const srvR = (o) => new Map([[11, new Map([['B1', new Map(Object.entries(o))]])]]);
+  /* (а) хагас бичигдсэн: 10-р сар шинэ, 11-р сар хуучин → зөрчил биш */
+  let r = payloadToDrafts(pay, [sheet], true, srv({ '2026-10': 400, '2026-11': 600 }),
+    srvR({ '2026-10': { hun: 5, mashin: null }, '2026-11': { hun: 3, mashin: 1 } }), { kind: 'plan', n: 2 });
+  assert.equal(r.ok, true, `хагас бичилт зөрчил болов: ${JSON.stringify(r.conflictList)}`);
+  assert.deepEqual(Object.fromEntries(r.maps.obDraft.get(k)), { '2026-10': 400, '2026-11': 500 }, 'санал бүтнээрээ ноорогт');
+  /* (б) нэг сар өөр замаар өөрчлөгдсөн (суурь ч, санал ч биш) → зөрчил */
+  r = payloadToDrafts(pay, [sheet], true, srv({ '2026-10': 999, '2026-11': 600 }), new Map(), { kind: 'plan', n: 2 });
+  assert.equal(r.ok, false); assert.equal(r.why, 'conflict');
+  assert.ok(r.conflictList.some((c) => c.what === 'obyem'), 'обьёмын зөрчил жагсаалтад алга');
+  /* (в) нэмэгдсэн сар (суурь/саналд алга) → зөрчил; устгагдсан хоосон нөөцийн сар тоологдохгүй */
+  r = payloadToDrafts(pay, [sheet], true, srv({ '2026-10': 400, '2026-11': 500, '2026-12': 1 }), new Map(), { kind: 'plan', n: 2 });
+  assert.equal(r.ok, false, 'шинэ сар зэрэгцээ нэмэгдсэнийг барисангүй');
+  assert.equal(monthsClash(new Map([['a', { hun: null, mashin: null }]]), new Map(), new Map(), (v) => (v && (v.hun != null || v.mashin != null) ? 'x' : '')), false, 'хоосон нөөц = сар алга');
+  /* (г) нөөц: хагас бичилт зөрчил биш, өөр утга зөрчил */
+  r = payloadToDrafts(pay, [sheet], true, srv({ '2026-10': 300, '2026-11': 600 }),
+    srvR({ '2026-10': { hun: 9, mashin: null }, '2026-11': { hun: 6, mashin: 1 } }), { kind: 'plan', n: 2 });
+  assert.equal(r.ok, false); assert.ok(r.conflictList.some((c) => c.what === 'obres'), 'сарын нөөцийн зөрчил алга');
+
+  /* (д) `partialMsg` — ctx-гүй бол хуучин текст ЯГ; ctx-тэй бол алхам · тоо */
+  const old = 'Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).';
+  assert.equal(partialMsg(''), old);
+  assert.equal(partialMsg('сүлжээ'), `${old} (сүлжээ)`);
+  assert.match(partialMsg('', { step: 'dates', written: 500, total: 1471 }), /^Огнооны бичилт дундуур тасарлаа.*500\/1.?471/);
+  assert.match(partialMsg('x', { step: 'obyem', written: 3 }), /^Огноо эх хуудсанд.*Бичигдсэн: 3 мөр\. \(x\)$/);
+}
+console.log('✓ obyemGate §10: сарын зөрчил сараар · хагас бичилт дахин батлагдана · partialMsg ctx');

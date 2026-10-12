@@ -62,6 +62,22 @@ export const PLAN_STATUS = {
 export type PlanStatus = (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS];
 
 /**
+ * Төлөвийн ДЭЛГЭЦИЙН нэр (⚠️ 2026-10-12, аудит) — `PLAN_STATUS` нь ӨГӨГДӨЛ (орчуулагдахгүй), харин
+ * алдааны мессежид («… шийдвэрлэсэн байна ({1})») түүхий утга орж англи UI-д монголоор гардаг байв.
+ * ⚠️ Литерал `tr()` — динамик `tr(st)` биш (i18n-extract түлхүүрийг AST-аар олно).
+ * Танихгүй утга түүхийгээрээ (хоосон бол `''`).
+ */
+export function planStatusLabel(st: string | null | undefined): string {
+  switch (st) {
+    case PLAN_STATUS.pending: return tr('Хүлээгдэж буй');
+    case PLAN_STATUS.approved: return tr('Батлагдсан');
+    case PLAN_STATUS.returned: return tr('Буцаагдсан');
+    case PLAN_STATUS.withdrawn: return tr('Татсан');
+    default: return st ?? '';
+  }
+}
+
+/**
  * БАТЛАХ/ХАДГАЛАХ ГИНЖ ЯВЖ БУЙ эсэх — `Portal` харагдац солихоос өмнө асууна
  * (2026-09-25 аудит #4).
  * ⚠️ ЯАГААД: батлах гинж (`save` → `applyUpdates` → `decidePlan`) нь `Huvaari`
@@ -679,6 +695,70 @@ function errText(e: unknown): string {
 }
 
 /**
+ * СЕРВЕРИЙН ЦАГ — түгжээний агшин ба хугацааг ҮҮГЭЭР (⚠️ 2026-10-12, аудит).
+ *
+ * ⚠️ ЯАГААД: түгжээ (`approverAt`) нь бичсэн хүний ХӨТЧИЙН `Date.now()`, хугацаа дууссан эсэх
+ *    (`CLAIM_TTL`) нь уншиж буй хүний ӨӨР хөтчийн цагаар хэмжигддэг байв. Хоёр компьютерын цаг
+ *    хэдэн минут зөрвөл (2026-10-12-нд энэ машин л AGOL-оос ~100 с түрүүлж байв) нэг нь амьд түгжээг
+ *    «дууссан» гэж үзэж дарж бичих, эсвэл дууссан түгжээг «амьд» гэж хүлээх боломжтой.
+ * ⚠️ ЯАГААД ЭНЭ АРГА: (1) Editor Tracking (`EditDate`) — хүснэгтийг код өөрөө `createService`-ээр
+ *    үүсгэдэг (`createTable`) бөгөөд засварын бүртгэл АСААГҮЙ; бүтцийг зөвхөн хэрэглэгч AGOL дээр
+ *    өөрчилнө. (2) Хариуны `Date` толгой — AGOL `Access-Control-Expose-Headers`-т `Date`-ийг ОРУУЛДАГГҮЙ
+ *    (2026-10-12-нд шалгав: зөвхөн `Request-Context`) тул хөтчийн JS уншиж ЧАДАХГҮЙ. (3) ҮЛДСЭН нь:
+ *    `outStatistics` max(`CURRENT_TIMESTAMP`) — hosted давхаргад ажилладаг (2026-10-12-нд амьд шалгав,
+ *    `Date` толгойтой секундээр таарав). ⚠️ AGOL query-н хариуг КЭШЛЭДЭГ (ижил хүсэлтэд хуучин
+ *    `CURRENT_TIMESTAMP` ирсэн) — тиймээс `where`-д санамсаргүй тоо (`OBJECTID > -N`) нэмнэ.
+ * ⚠️ ЗӨРҮҮ (`clockOff`) = сервер − хөтчийн дундаж (хүсэлтийн хоёр үзүүрийн дундаж; RTT/2-ын нарийвчлал,
+ *    10 мин-ийн TTL-д хангалттай). 10 минут тутам шинэчилнэ; уншиж чадаагүй бол сүүлийн мэдэгдсэн (эхэндээ 0 —
+ *    хуучин зан) хэвээр, 60 с-ийн дараа дахин оролдоно. 10 с-ээс урт хүсэлтийг хэмжилтэд авахгүй.
+ * ⚠️ Хүснэгт ХООСОН бол max нь `null` — түгжээ ч байхгүй тул зөрүү хамааралгүй.
+ */
+let clockOff = 0;
+let clockAt = 0;
+let clockTryAt = 0;
+let clockFlight: Promise<void> | null = null;
+const CLOCK_TTL = 10 * 60_000;
+const CLOCK_RETRY = 60_000;
+/** Серверийн одоогийн агшин (ms) — сүүлийн хэмжсэн зөрүүгээр (`syncServerClock`) */
+export function serverNow(): number {
+  return Date.now() + clockOff;
+}
+/** Зөрүүг бодох цэвэр томьёо — `srv` (серверийн агшин), `t0`/`t1` (хүсэлтийн өмнө/дараах хөтчийн цаг) */
+export function clockOffsetOf(srv: number, t0: number, t1: number): number {
+  return Math.round(srv - (t0 + t1) / 2);
+}
+/** Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина */
+export async function syncServerClock(): Promise<void> {
+  const t = Date.now();
+  if (clockAt && t - clockAt < CLOCK_TTL) return;
+  if (clockFlight) return clockFlight;
+  if (clockTryAt && t - clockTryAt < CLOCK_RETRY) return;
+  clockTryAt = t;
+  clockFlight = (async () => {
+    try {
+      const url = await tableUrl(false);
+      if (!url) return;
+      const t0 = Date.now();
+      const j = await arcgisPost(`${url}/query`, {
+        where: `${F.oid} > -${1 + Math.floor(Math.random() * 1e9)}`,
+        outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
+        returnGeometry: 'false',
+      });
+      const t1 = Date.now();
+      const a = (j.features as { attributes?: Attrs }[] | undefined)?.[0]?.attributes ?? {};
+      const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
+      const v = k ? Number(a[k]) : Number.NaN;
+      if (!Number.isFinite(v) || v <= 0 || t1 - t0 > 10_000) return;
+      clockOff = clockOffsetOf(v, t0, t1);
+      clockAt = t1;
+    } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
+      clockFlight = null;
+    }
+  })();
+  return clockFlight;
+}
+
+/**
  * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед).
  * ⚠️ 2026-09-29 аудит: `submitPlan`/`decidePlan`/`claimPlan` хүрээг `currentUser`-оор
  *    шалгаад НЭРИЙГ args-аас бичдэг байсан тул консолоос өөр нэр дамжуулж
@@ -718,6 +798,9 @@ async function query(where: string, outFields: string, strict = false): Promise<
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
+  /* ⚠️ 2026-10-12: түгжээг уншиж/шүүх бүх зам серверийн цагтай байхаар (`serverNow`) — ихэвчлэн
+     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. */
+  await syncServerClock();
   const out: Attrs[] = [];
   for (let off = 0; ;) {
     const j = await arcgisPost(`${url}/query`, {
@@ -874,8 +957,71 @@ export async function loadAllPending(): Promise<PlanSubmission[]> {
  *    буцаалтаа (ба `countPlanReturned`-ийн тэмдэг) алддаг байв. Төрлийг `KIND_SQL('geree')`-ийн НЭГ
  *    query-гээр; `LIKE` унавал хуучин дүрэм (багцаар, `kind`-гүй).
  */
+/**
+ * ⚠️ 2026-10-12 (аудит): ХӨНГӨН ЗАМ — урьд нь `1=1`-ээр БҮХ илгээлтийн толгойг (+ 65536 тэмдэгтийн
+ *    `zovshoorson_mor`) татаж «сүүлийнх»-ийг клиент дээр сонгодог байв; цэсний тэмдэг (`loadBadgeLast`)
+ *    минут тутам дууддаг тул хүснэгт өсөхийн хэрээр хүндэрнэ. Одоо: (1) СЕРВЕР ДЭЭР багцаар бүлэглэж
+ *    max(OBJECTID)-ийг төрөл тус бүрд (`KIND_SQL`) авна — давхардлын цуцлалт (`isDupCancel`) ба танихгүй
+ *    төлөвийг SQL-ээр хасна (`LAST_SQL`); (2) тэр ≤ (багц × 2) мөрийн толгойг л `HEAD_FIELDS`-ээр татна
+ *    (`okRows`-гүй — энэ жагсаалтын уншигчид түүнийг ашигладаггүй).
+ * ⚠️ ХУГАЦААНЫ ЦОНХ ТАВИАГҮЙ: хуучин буцаалт багцын СҮҮЛИЙН шийдвэр хэвээр бол зохиогчид харагдах ёстой —
+ *    цонх нь тэднийг чимээгүй нууна (зөв байдал алдагдана).
+ * ⚠️ SQL-ийн `NULL` логик: `butsaasan_shaltgaan` хоосон (`NULL`) жинхэнэ татлагыг хасахгүйн тулд `IS NULL OR`.
+ * ⚠️ Бүлэглэлт/`LIKE` унавал ЭСВЭЛ сонгогдсон мөр нь цуцлалт гарвал (SQL ба `isDupCancel` зөрөв) — дуудагч
+ *    хуучин бүтэн уншилт руу унана (үр дүн ИЖИЛ).
+ */
+const LAST_SQL = `${F.status} IN (${Object.values(PLAN_STATUS).map((x) => `N'${x}'`).join(',')})`
+  + ` AND (${F.status} <> N'${PLAN_STATUS.withdrawn}' OR (${F.approverAt} IS NOT NULL AND (${F.reason} IS NULL OR ${F.reason} <> '${DUP_MARK}')))`;
+async function lastOidsBy(url: string, where: string): Promise<number[]> {
+  const j = await arcgisPost(`${url}/query`, {
+    where,
+    groupByFieldsForStatistics: F.pkgKey,
+    outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: F.oid, outStatisticFieldName: 'last_oid' }]),
+    returnGeometry: 'false',
+  });
+  const fs = j.features as { attributes?: Attrs }[] | undefined;
+  if (!Array.isArray(fs)) throw new Error('stats');
+  return fs.map((f) => {
+    const a = f.attributes ?? {};
+    const k = Object.keys(a).find((x) => x.toLowerCase() === 'last_oid');
+    return k ? Number(a[k]) : Number.NaN;
+  }).filter((x) => Number.isInteger(x));
+}
+async function loadLastFast(): Promise<PlanSubmission[]> {
+  const url = await tableUrl(false);
+  if (!url) return [];
+  let kinds: Map<number, PlanPayloadKind> | null = new Map();
+  let oids: number[];
+  try {
+    const [g, p] = await Promise.all([
+      lastOidsBy(url, `${LAST_SQL} AND ${KIND_SQL('geree')}`),
+      /* `NULL` агуулга бүтэн уншилтад `plan` гэж тооцогддог — `NOT (NULL LIKE …)` нь хасах тул ил */
+      lastOidsBy(url, `${LAST_SQL} AND (${F.payload} IS NULL OR ${KIND_SQL('plan')})`),
+    ]);
+    for (const o of g) kinds.set(o, 'geree');
+    for (const o of p) kinds.set(o, 'plan');
+    oids = [...g, ...p];
+  } catch {
+    /* `LIKE` унавал хуучин дүрэм — багцаар, `kind`-гүй */
+    kinds = null;
+    oids = await lastOidsBy(url, LAST_SQL);
+  }
+  if (!oids.length) return [];
+  const out: PlanSubmission[] = [];
+  for (const a of await query(`${F.oid} IN (${oids.join(',')})`, HEAD_FIELDS)) {
+    const x = toSubmission(a);
+    if (!x) continue;
+    if (isDupCancel(x)) throw new Error('dup');
+    if (kinds) x.kind = kinds.get(x.oid);
+    out.push(x);
+  }
+  return out;
+}
+
 export async function loadLastPerPkg(): Promise<PlanSubmission[]> {
-  const rows = await query('1=1', await headFields());
+  try { return await loadLastFast(); } catch { /* доорх бүтэн уншилт */ }
+  /* ⚠️ 2026-10-12: `HEAD_FIELDS` — `okRows` (65536) энэ жагсаалтад хэрэггүй */
+  const rows = await query('1=1', HEAD_FIELDS);
   let geree: Set<number> | null = null;
   try {
     geree = new Set((await query(KIND_SQL('geree'), F.oid)).map((a) => Number(a[F.oid])));
@@ -1104,6 +1250,21 @@ export async function submitPlan(args: {
   if (payloadJson.length > PAYLOAD_MAX) {
     return { ok: false, error: tr('Илгээлтийн агуулга хэт том ({0} тэмдэгт, дээд {1}) — ноорогоо хэд хэдэн илгээлтэд хуваана уу.', String(payloadJson.length), String(PAYLOAD_MAX)) };
   }
+  /* ⚠️ 2026-10-12 (аудит): БҮЛГИЙГ БАГЦЫН ТҮЛХҮҮРЭЭС гаргана (`PKGS`) — урьд нь хүрээг дуудагчийн
+     өгсөн `pkgGroup`-оор шалгаад `pkgKey`-тэй тулгадаггүй тул консолоос эрхтэй бүлгийн нэр + эрхгүй
+     багцын түлхүүр дамжуулж БУСДЫН багцад илгээх (батлагчийн хүрээ ч тэр худал бүлгээр шүүгдэнэ)
+     боломжтой байв. Танихгүй түлхүүр ч татгалзана. `bagts.pkg`-ийг динамикаар (`ajilApply`-ийн загвар). */
+  let pkgGroup: string;
+  try {
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const pk = PKGS.find((p) => p.key === args.pkgKey);
+    if (!pk || pk.group !== args.pkgGroup) {
+      return { ok: false, error: tr('Багцын түлхүүр ба бүлэг зөрж байна — хуудсаа шинэчилнэ үү.') };
+    }
+    pkgGroup = pk.group;
+  } catch (e) {
+    return { ok: false, error: errText(e) };
+  }
   /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
   if (AUTH.appId) {
     /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос super-ийн
@@ -1116,7 +1277,7 @@ export async function submitPlan(args: {
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = huvaariScope(meNow ?? args.author, 'author');
-    if (sc !== null && !sc.includes(args.pkgGroup))
+    if (sc !== null && !sc.includes(pkgGroup))
       return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
   }
   const url = await tableUrl(false);
@@ -1128,10 +1289,11 @@ export async function submitPlan(args: {
   }
   const attrs: Attrs = {
     [F.pkgKey]: args.pkgKey,
-    [F.pkgGroup]: args.pkgGroup,
+    [F.pkgGroup]: pkgGroup,
     [F.status]: PLAN_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
-    [F.authorSent]: Date.now(),
+    /* ⚠️ 2026-10-12: серверийн цагаар (`serverNow`-ийн ⚠️) */
+    [F.authorSent]: serverNow(),
     [F.rowCount]: args.rowCount,
     [F.note]: args.note?.trim() || null,
     [F.payload]: payloadJson,
@@ -1151,8 +1313,11 @@ export async function submitPlan(args: {
      *    шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно (pending-ээс гарна).
      */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
-    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:false`
-       буцаавал UI түгжигдэхгүй, дахин илгээх нь «илгээлт байна»-д унадаг байв. */
+    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр.
+       ⚠️ 2026-10-12 (аудит): урьд нь энд `ok: true` буцааж «илгээгдлээ» гэж хэлдэг байв — гэвч давхардал
+       шалгагдаагүй тул энэ мөр цуцлагдах ёстой илүүдэл байж болно (`loadPending` бага OBJECTID-г
+       сонгоно). Одоо `ok: false` + «шинэчилнэ үү» — хуудас шинэчлэхэд `loadPending` аль нь хүчинтэйг
+       харуулна (хадгалагдсан илгээлт түгжээгээ барина), дахин илгээх нь «илгээлт байна»-д зөв унана. */
     if (Number.isFinite(mine)) try {
       /* ⚠️ 2026-10-08: ижил ТӨРЛИЙН pending л давхардал (`KIND_SQL`) — өөр төрлийнх зэрэгцэн хүлээнэ */
       const rows = await query(
@@ -1162,17 +1327,26 @@ export async function submitPlan(args: {
       const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
       if (first != null && first < mine) {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
           /* ⚠️ 2026-10-01: `DUP_MARK`-аар ялгана — «сүүлийн шийдвэр» болохгүй (`isDupCancel`) */
-          await arcgisPost(`${url}/applyEdits`, {
+          const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: PLAN_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
+          /* ⚠️ 2026-10-12 (аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) — урьд нь
+             шалгадаггүй тул устгал ч, цуцлалт ч унасан үед «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending`
+             мөр батлагчийн жагсаалтад үлддэг байв. */
+          if (!editOk(upd?.updateResults)) {
+            invalidate('HUVAARI_BATLAH');
+            return { ok: false, error: tr('{0} энэ багцын хуваарийг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
+          }
         }
         invalidate('HUVAARI_BATLAH');
-        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         return { ok: false, error: tr('{0} энэ багцын хуваарийг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
-    } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
+    } catch {
+      return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: errText(e) };
@@ -1214,8 +1388,12 @@ export async function decidePlan(args: {
   /**
    * ⚠️ 2026-10-08: `claimPlan`-ийн буцаасан түгжээний агшин (`at`). Өгвөл түгжээ ӨӨРИЙНХ
    *    байсан ч `approverAt` ТЭРТЭЙ таарахыг шаардана — нэг батлагчийн ХОЁР цонх зэрэг
-   *    батлахад хоёулаа «holder === me» тул хоёр гинж хоёулаа эх хуудсанд бичиж
    *    батлагддаг байв; одоо сүүлд түгжсэн цонх л үргэлжилнэ, нөгөө нь эрт унана.
+   * ⚠️ 2026-10-12 (аудит): «эрт унана» гэдэг нь 2026-10-08-нд ХУДАЛ байв — шалгалт ЗӨВХӨН энд (`decidePlan`)
+   *    байсан тул ХОЁР цонх хоёулаа эх хуудсанд (`applyUpdates`) ба сарын обьёмд бичсэний ДАРАА л нэг нь
+   *    унадаг байв. Одоо ижил `claimAt` дүрэм бичилтийн ӨМНӨХ хамгаалалтууд дээр ч: `approveGuard(…, claimAt)`
+   *    ба `markPlanPartial({ claimAt })` — нөгөө цонх эх хуудсанд юу ч бичихээс өмнө зогсоно. Урт `save`-д
+   *    түгжээг `renewPlanClaim`-аар сунгавал шинэ `at`-ийг дуудагч `claimAt` болгон хадгална.
    */
   claimAt?: number;
 }): Promise<{ ok: boolean; error?: string; warn?: string }> {
@@ -1263,7 +1441,8 @@ export async function decidePlan(args: {
     url = u;
     cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
   } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+    /* ⚠️ 2026-10-12: `errText` — `String(e.message)` нь сешн дууссаны тэмдгийг хаядаг (`errText`-ийн ⚠️) */
+    return { ok: false, error: errText(e) };
   }
   /*
    * ⚠️ ШИЙДВЭР ГАРСАН ЭСЭХИЙГ ДАХИН ШАЛГАНА (2026-09-07-ны шалгалт).
@@ -1300,7 +1479,8 @@ export async function decidePlan(args: {
     return {
       ok: false,
       error: by
-        ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
+        /* ⚠️ 2026-10-12: төлөв ДЭЛГЭЦИЙН нэрээр (`planStatusLabel`) — түүхий өгөгдөл англи UI-д монголоор гардаг байв */
+        ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, planStatusLabel(curStatus))
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
@@ -1352,11 +1532,34 @@ export async function decidePlan(args: {
     }
     tookClaim = true;
   }
+  /* ⚠️ 2026-10-12 (аудит): БУЦААЛТЫН ӨМНӨ ХАГАС БИЧИЛТИЙН ТЭМДГИЙГ ДАХИН ШАЛГАНА — дээрх шалгалт нь
+     ЭХНИЙ уншилтын (`cur`) утгаар; түүнээс хойш (түгжээ авах завсарт) өөрийн өөр цонх эсвэл түгжээ нь
+     сая дууссан батлагч `markPlanPartial`-аар тэмдэг тавьж эх хуудсанд бичиж эхэлсэн байж болно. Бичихийн
+     ЯГ өмнө дахин уншаад тэмдэгтэй бол буцаахгүй (өөрөө авсан түгжээг тайлна). Батлалтад хамаарахгүй. */
+  if (!args.approve) {
+    let pb: string | null;
+    try {
+      const re = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.reason}`))[0] ?? null;
+      if (!re || s(re[F.status]) !== PLAN_STATUS.pending) {
+        if (tookClaim) void releasePlanClaim({ oid: args.oid, approver: me });
+        return { ok: false, error: tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.') };
+      }
+      pb = partialBy(s(re[F.status]), s(re[F.reason]));
+    } catch (e) {
+      if (tookClaim) void releasePlanClaim({ oid: args.oid, approver: me });
+      return { ok: false, error: errText(e) };
+    }
+    if (pb != null) {
+      if (tookClaim) void releasePlanClaim({ oid: args.oid, approver: me });
+      return { ok: false, error: tr('Энэ илгээлтийн хуваарийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн — буцаах боломжгүй. «Батлах»-ыг дахин дарж бичилтийг гүйцээнэ үү.', pb || '—') };
+    }
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: args.approve ? PLAN_STATUS.approved : PLAN_STATUS.returned,
     [F.approver]: me,
-    [F.approverAt]: Date.now(),
+    /* ⚠️ 2026-10-12: серверийн цагаар (`serverNow`-ийн ⚠️) */
+    [F.approverAt]: serverNow(),
     [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
   let warn: string | undefined;
@@ -1410,7 +1613,8 @@ export async function casClaim(
   me: string,
   opt: { requireEmpty: boolean },
 ): Promise<{ ok: true } | ClaimFail> {
-  const now = io.now ?? Date.now;
+  /* ⚠️ 2026-10-12: анхдагч нь СЕРВЕРИЙН цаг (`serverNow`-ийн ⚠️) — бичих агшин ба хугацааны шүүлт хоёулаа */
+  const now = io.now ?? serverNow;
   const row = await io.read();
   if (!row) return { ok: false, why: 'gone', holder: null };
   const st = s(row[F.status]);
@@ -1437,7 +1641,7 @@ function claimError(f: ClaimFail): string {
   switch (f.why) {
     case 'gone': return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
     case 'decided': return f.holder
-      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', f.holder, f.status ?? '')
+      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', f.holder, planStatusLabel(f.status))
       : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.');
     case 'expired': return tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', f.holder ?? '');
     case 'write': return tr('ArcGIS-т хадгалагдсангүй.');
@@ -1491,12 +1695,19 @@ export async function isApprovedBy(oid: number, user: string): Promise<boolean> 
  *    ШИЙДЭХ боломжтой. Тэр үед эх хуудсанд бичвэл «татсан/буцаагдсан» санал хуваарьт
  *    суух байв. Бичихийн ЯГ ӨМНӨ төлвийг дахин уншаад энэ функцээр шийднэ.
  * @returns `null` = бичиж болно; мөр = яагаад зогссон (хэрэглэгчид харуулна)
+ *
+ * ⚠️ 2026-10-12 (аудит): `claimAt` — `claimPlan`/`renewPlanClaim`-ийн буцаасан түгжээний агшин. Өгвөл
+ *    түгжээ ӨӨРИЙНХ байсан ч `approverAt` ±1000 мс дотор таарахыг шаардана (`decidePlan`-ийн ижил дүрэм,
+ *    огнооны талбар секундээр тайрагдаж болох тул хүлцэл). Нэг батлагчийн ХОЁР цонх зэрэг батлахад
+ *    хоёулаа «holder === me» тул урьд нь хоёулаа эх хуудсанд бичдэг байв — одоо сүүлд түгжсэн цонх л.
+ *    Өгөөгүй бол хуучин зан (буцаж нийцтэй). `now` — тест/дуудагчид; анхдагч СЕРВЕРИЙН цаг.
  */
 export function approveGuard(
   fresh: Pick<PlanSubmission, 'oid' | 'status' | 'approver' | 'approverAt'> | null,
   oid: number,
   me: string,
-  now = Date.now(),
+  claimAt?: number,
+  now = serverNow(),
 ): string | null {
   const mine = me.trim().toLowerCase();
   if (!fresh || fresh.oid !== oid) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
@@ -1505,11 +1716,16 @@ export function approveGuard(
   }
   if (fresh.status !== PLAN_STATUS.pending) {
     return fresh.approver
-      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', fresh.approver, fresh.status)
+      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', fresh.approver, planStatusLabel(fresh.status))
       : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.');
   }
   const h = claimHolderOf(fresh, now);
-  if (h === mine) return null;
+  if (h === mine) {
+    if (claimAt != null && !sameClaimAt(fresh.approverAt, claimAt)) {
+      return tr('Энэ илгээлтийг таны өөр цонх түгжсэн байна — тэр цонхноос үргэлжлүүлнэ үү, эсвэл хуудсаа шинэчилнэ үү.');
+    }
+    return null;
+  }
   if (h) return tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', h);
   return tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.');
 }
@@ -1530,8 +1746,17 @@ export function approveGuard(
  *    шалгана (`claimPlan`). Зэрэг хоёр түгжилтийн завсар маш богино болно, тэг биш.
  */
 const CLAIM_TTL = 10 * 60_000;
-/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null` */
-function claimHolder(a: Attrs, now = Date.now()): string | null {
+/**
+ * Түгжээний агшин дуудагчийн барьсан агшинтай ИЖИЛ үү — ±1000 мс (огнооны талбар секундээр
+ * тайрагдаж болно; `casClaim`-ийн ижил хүлцэл). `null`/эвдэрсэн бол үгүй (2026-10-12).
+ */
+export function sameClaimAt(at: unknown, claimAt: number): boolean {
+  const v = Number(at);
+  return at != null && Number.isFinite(v) && v > 0 && Math.abs(v - claimAt) < 1000;
+}
+/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null`.
+    ⚠️ 2026-10-12: `now` анхдагч нь СЕРВЕРИЙН цаг (`serverNow`-ийн ⚠️) */
+function claimHolder(a: Attrs, now = serverNow()): string | null {
   if (s(a[F.status]) !== PLAN_STATUS.pending) return null;
   const who = s(a[F.approver])?.toLowerCase() ?? null;
   const at = Number(a[F.approverAt]);
@@ -1543,7 +1768,7 @@ function claimHolder(a: Attrs, now = Date.now()): string | null {
  * аудит: батлагчийн жагсаалт «X батлаж байна» гэж харуулж, хоёр дахь батлагч бүтэн
  * хяналт хийгээд сая `claimPlan` дээр унахаас сэргийлнэ.
  */
-export function claimHolderOf(sub: Pick<PlanSubmission, 'status' | 'approver' | 'approverAt'>, now = Date.now()): string | null {
+export function claimHolderOf(sub: Pick<PlanSubmission, 'status' | 'approver' | 'approverAt'>, now = serverNow()): string | null {
   if (sub.status !== PLAN_STATUS.pending) return null;
   const who = sub.approver?.trim().toLowerCase() || null;
   const at = sub.approverAt;
@@ -1615,6 +1840,52 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
 }
 
 /**
+ * ТҮГЖЭЭГ СУНГАХ — урт `save`-ийн явцад (⚠️ 2026-10-12, аудит).
+ *
+ * ⚠️ ЯАГААД: `save` (эх хуудас + 500-ийн багцтай сарын обьём) `CLAIM_TTL`-ээс (10 мин) удаан үргэлжилбэл
+ *    түгжээ дуусаж, өөр батлагч `claimPlan`-аар авч болно — тэр үед хоёр батлагч нэг хуваарийг давхар
+ *    бичнэ. Дуудагч (`Huvaari`) TTL дотор үе үе дуудаж шинэ агшинг (`at`) өөрийн `claimAt` болгоно.
+ * ⚠️ ЗӨВХӨН ӨӨРИЙН АМЬД ТҮГЖЭЭ: `pending` · түгжигч = би (хугацаа дуусаагүй) · `approverAt` ≈ `claimAt`
+ *    (өөр цонх/сешн дахин түгжээгүй). Дууссан түгжээг СУНГАХГҮЙ — тэр үед `claimPlan` (бусдын түгжээг
+ *    шалгадаг) шаардлагатай. `casClaim`-ийн ижил «унш → бич → дахин уншиж баталгаажуул» (ArcGIS-д
+ *    нөхцөлт update алга); баталгаажуулалтад ялагдвал `ok: false` — дуудагч бичилтээ зогсооно.
+ * ⚠️ `approver`/`approverAt`-аас өөр талбар хөндөхгүй — хагас бичилтийн тэмдэг (`reason`) хэвээр.
+ */
+export async function renewPlanClaim(args: { oid: number; approver: string; claimAt: number }): Promise<{ ok: boolean; at?: number; error?: string }> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const own = sameAsLogin(me);
+  if (own) return own;
+  const fields = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
+  try {
+    const url = await tableUrl(false);
+    if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+    const read = async () => (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
+    const cur = await read();
+    if (!cur) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    if (s(cur[F.status]) !== PLAN_STATUS.pending) return { ok: false, error: tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.') };
+    const h = claimHolder(cur);
+    if (h !== me) {
+      return { ok: false, error: h
+        ? tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', h)
+        : tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.') };
+    }
+    if (!sameClaimAt(cur[F.approverAt], args.claimAt)) {
+      return { ok: false, error: tr('Энэ илгээлтийг таны өөр цонх түгжсэн байна — тэр цонхноос үргэлжлүүлнэ үү, эсвэл хуудсаа шинэчилнэ үү.') };
+    }
+    const at = serverNow();
+    if (!(await writeClaim(url, args.oid, me, at))) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    const back = await read();
+    if (!back || s(back[F.status]) !== PLAN_STATUS.pending || s(back[F.approver])?.toLowerCase() !== me || !sameClaimAt(back[F.approverAt], at)) {
+      return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
+    }
+    return { ok: true, at };
+  } catch (e) {
+    return { ok: false, error: errText(e) };
+  }
+}
+
+/**
  * ТҮГЖЭЭГ ТАЙЛАХ — бичилт унасан/тасарсан үед (`Huvaari`). Зөвхөн ӨӨРИЙН,
  * `pending` хэвээр мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
  */
@@ -1647,14 +1918,21 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
  *    ГАНЦ хамгаалалт тул үнэ цэнэтэй.
  * ⚠️ FAIL-CLOSED: бичигдээгүй бол дуудагч эх хуудсанд ЮУ Ч бичихгүй — тэмдэггүй хагас
  *    бичилт нь хамгаалалтгүй үлдэнэ. ArcGIS алдаа HTTP 200-аар ирдэг тул `editOk`.
+ * ⚠️ 2026-10-12 (аудит): (1) `claimAt` — `approveGuard`-ийн ижил дүрэм: өөрийн ӨӨР цонхны түгжээтэй бол
+ *    тэмдэг тавихгүй (тэр цонх эх хуудсанд бичиж эхэлсэн байж болно). (2) ТЭМДЭГ АЛЬ ХЭДИЙН БАЙВАЛ (хэний ч)
+ *    ДАРЖ БИЧИХГҮЙ — `{ ok: true, existing: <эзэн> }`. Урьд нь өмнөх батлагчийн (түгжээ нь дууссан, бичилт нь
+ *    хагас суусан) тэмдгийг өөрийн нэрээр дардаг тул «хэн хагас бичсэн» гэдэг мэдээлэл алдагдаж, тэр
+ *    эзэн `clearPlanPartial(oid, owner)`-ээр арилгах эсэхийг шийдэх боломжгүй болдог байв. Тэмдэг хэвээр тул
+ *    хамгаалалт (буцаах/татах хаалттай) хэвээр — дуудагч эх хуудсанд бичиж болно.
  */
-export async function markPlanPartial(args: { oid: number; approver: string }): Promise<{ ok: boolean; error?: string }> {
+export async function markPlanPartial(args: { oid: number; approver: string; claimAt?: number }): Promise<{ ok: boolean; error?: string; existing?: string }> {
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
   const fields = `${F.oid},${F.status},${F.approver},${F.approverAt},${F.reason}`;
+  const otherWindow = () => tr('Энэ илгээлтийг таны өөр цонх түгжсэн байна — тэр цонхноос үргэлжлүүлнэ үү, эсвэл хуудсаа шинэчилнэ үү.');
   try {
     const cur = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!cur) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
@@ -1665,6 +1943,10 @@ export async function markPlanPartial(args: { oid: number; approver: string }): 
         ? tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', h)
         : tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.') };
     }
+    if (args.claimAt != null && !sameClaimAt(cur[F.approverAt], args.claimAt)) return { ok: false, error: otherWindow() };
+    /* ⚠️ 2026-10-12: байгаа тэмдгийг ДАРАХГҮЙ (дээрх ⚠️ (2)) */
+    const had = partialBy(s(cur[F.status]), s(cur[F.reason]));
+    if (had != null) return { ok: true, existing: had };
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: mark } }]),
       rollbackOnFailure: 'true',
@@ -1675,6 +1957,7 @@ export async function markPlanPartial(args: { oid: number; approver: string }): 
     if (!back || s(back[F.status]) !== PLAN_STATUS.pending || claimHolder(back) !== me || (s(back[F.reason]) ?? '').trim() !== mark) {
       return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
     }
+    if (args.claimAt != null && !sameClaimAt(back[F.approverAt], args.claimAt)) return { ok: false, error: otherWindow() };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: errText(e) };
@@ -1685,13 +1968,19 @@ export async function markPlanPartial(args: { oid: number; approver: string }): 
  * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ (2026-10-01) — эх хуудсанд НЭГ Ч мөр бичигдээгүй унасан үед.
  * ⚠️ Зөвхөн тэмдэг байгаа үед (`partialBy`) — бодит буцаалтын шалтгааныг дарахгүй.
  * ⚠️ Унавал чимээгүй: тэмдэг үлдэх нь аюулгүй тал (буцаах хаагдсан ч дахин батлаж болно).
+ * ⚠️ 2026-10-12 (аудит): `owner` өгвөл ЗӨВХӨН тэмдгийн эзэн нь тэр (жижиг үсгээр, хоосон зайгүй) бол
+ *    арилгана, эс бөгөөс бичихгүй `false`. Урьд нь «миний оролдлого 0 мөр бичсэн» гэдгээр ӨӨР батлагчийн
+ *    (эсвэл өөрийн өмнөх оролдлогын) хагас бичилтийн тэмдгийг арилгаж, хагас суусан саналыг буцаах/татах
+ *    боломжтой болгодог байв. `owner`-гүй дуудлага — хуучин зан (зөвхөн аврах замууд).
  */
-export async function clearPlanPartial(oid: number): Promise<boolean> {
+export async function clearPlanPartial(oid: number, owner?: string): Promise<boolean> {
   const url = await tableUrl(false);
   if (!url) return false;
   try {
     const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.reason}`);
-    if (!cur.length || partialBy(s(cur[0][F.status]), s(cur[0][F.reason])) == null) return false;
+    const pb = cur.length ? partialBy(s(cur[0][F.status]), s(cur[0][F.reason])) : null;
+    if (pb == null) return false;
+    if (owner != null && pb !== owner.trim().toLowerCase()) return false;
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: null } }]),
       rollbackOnFailure: 'true',
@@ -1704,8 +1993,37 @@ export async function clearPlanPartial(oid: number): Promise<boolean> {
   }
 }
 
-/** `returnStuckPlan`-ийн шалтгааны угтвар — зохиогч «бичигдсэн огноо хэвээр» гэдгийг харна */
+/**
+ * `returnStuckPlan`-ийн шалтгааны угтвар — зохиогч «бичигдсэн огноо хэвээр» гэдгийг харна.
+ *
+ * ⚠️ 2026-10-12 (аудит): ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТ (`STUCK_PREFIX_SRC`) бичигдэнэ.
+ *    Урьд нь `tr()`-ийн үр дүнг бичдэг тул англи UI-тай батлагчийн буцаалт өгөгдөлд англиар суугаад
+ *    монгол зохиогчид англиар харагддаг (эсрэгээр ч) байв. Дэлгэцэнд `displayReason`-оор орчуулна.
+ *    `STUCK_PREFIX()` (орчуулсан) — ЗӨВХӨН дэлгэцэд; хуучин дуудагчдад нийцтэй.
+ */
+export const STUCK_PREFIX_SRC = 'Хагас бичигдсэн батлалт буцаагдав — хуудсанд аль хэдийн бичигдсэн огноо хэвээр.';
 export const STUCK_PREFIX = (): string => tr('Хагас бичигдсэн батлалт буцаагдав — хуудсанд аль хэдийн бичигдсэн огноо хэвээр.');
+/**
+ * «Хуанли дээр нээлгүй буцаасан» тайлбар (`HuvaariBatlah`-ийн дарааллаас буцаах) — БИЧИХДЭЭ энэ эх
+ * текстийг (`tr()`-гүй) шалтгааны сүүлийн мөрөнд залгана; дэлгэцэнд `displayReason` орчуулна (2026-10-12).
+ */
+export const BLIND_NOTE_SRC = '(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)';
+/**
+ * ХАДГАЛСАН ШАЛТГААН/ТАЙЛБАРЫГ ДЭЛГЭЦЭНД (⚠️ 2026-10-12, аудит) — системийн тогтмол мөрүүдийг (`STUCK_PREFIX_SRC`
+ * · `BLIND_NOTE_SRC`) идэвхтэй хэлээр орчуулна; хэрэглэгчийн бичсэн текст ХЭВЭЭР. Мөр тус бүрээр тулгана
+ * (угтвар нь эхний мөр, тайлбар нь сүүлийн мөр — `\n`-ээр залгагддаг). `null`/хоосон → `''` (дуудагч
+ * «шалтгаан бичигдээгүй» г.м.-ийг өөрөө харуулна). ⚠️ Литерал `tr()` — i18n-extract түлхүүрийг олно.
+ * Урьд нь орчуулагдаж (англиар) хадгалагдсан хуучин мөр түүхийгээрээ харагдана.
+ */
+export function displayReason(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw.split('\n').map((ln) => {
+    const t = ln.trim();
+    if (t === STUCK_PREFIX_SRC) return tr('Хагас бичигдсэн батлалт буцаагдав — хуудсанд аль хэдийн бичигдсэн огноо хэвээр.');
+    if (t === BLIND_NOTE_SRC) return tr('(Батлагч хуваарийг хуанли дээр нээлгүй буцаасан — өөрчлөгдсөн бүх мөрийг шалгана уу.)');
+    return ln;
+  }).join('\n');
+}
 
 /**
  * ГАЦСАН (ХАГАС БИЧИГДСЭН) ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (2026-10-08).
@@ -1780,14 +2098,15 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
   } catch (e) {
     return { ok: false, error: errText(e) };
   }
-  const reason = `${STUCK_PREFIX()}\n${why}`.slice(0, REASON_MAX);
+  /* ⚠️ 2026-10-12: эх (орчуулаагүй) угтвар — `STUCK_PREFIX_SRC`-ийн ⚠️ */
+  const reason = `${STUCK_PREFIX_SRC}\n${why}`.slice(0, REASON_MAX);
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
         [F.oid]: args.oid,
         [F.status]: PLAN_STATUS.returned,
         [F.approver]: me,
-        [F.approverAt]: Date.now(),
+        [F.approverAt]: serverNow(),
         [F.reason]: reason,
       } }]),
       rollbackOnFailure: 'true',
@@ -1835,9 +2154,18 @@ export async function withdrawPlan(args: {
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     if (meNow !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
   }
-  const url = await tableUrl(false);
-  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt},${F.reason}`);
+  /* ⚠️ 2026-10-12: уншилтыг `try` дотор (`decidePlan`-ийн 2026-10-06-ны дүрэм) — шидвэл амлалт татгалзагдаж
+     дуудагч алдааг чимээгүй алддаг байв. */
+  let url: string;
+  let cur: Attrs[];
+  try {
+    const u = await tableUrl(false);
+    if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+    url = u;
+    cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt},${F.reason}`);
+  } catch (e) {
+    return { ok: false, error: errText(e) };
+  }
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
@@ -1847,7 +2175,7 @@ export async function withdrawPlan(args: {
     return {
       ok: false,
       error: by
-        ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
+        ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, planStatusLabel(curStatus))
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
@@ -1861,15 +2189,64 @@ export async function withdrawPlan(args: {
     return { ok: false, error: tr('Батлагч ({0}) энэ илгээлтийн хуваарийг эх хуудсанд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.', pb || '—') };
   }
   const holder = claimHolder(cur[0]);
-  if (holder) {
+  /* ⚠️ 2026-10-12: өөрийн (зохиогчийн) үлдсэн түгжээ саад биш — доорх CAS-ийн тасарсан оролдлогоос үлдсэн байж болно */
+  if (holder && holder !== me) {
     return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.', holder) };
+  }
+  /*
+   * ⚠️ 2026-10-12 (аудит): ТАТАХЫН ӨМНӨ ТҮГЖЭЭГ ЗОХИОГЧ АТОМААР АВНА (`casClaim`, `returnStuckPlan`-ийн загвар).
+   *    Урьд нь «уншаад-шалгаад-бичих» байсан тул дээрх шалгалт ба бичилтийн ЗАВСАРТ батлагч `claimPlan`-аар
+   *    түгжиж эх хуудсанд бичиж эхэлж болох байв — тэр бичилт «татсан» саналын огноог хуваарьт суулгана.
+   *    Одоо: (1) `casClaim` (өөр хүний амьд түгжээтэй бол татгалзана; хугацаа нь дууссаныг авч болно);
+   *    (2) ДАХИН уншиж түгжээ МИНИЙХ (агшин нь таарна) ба хагас бичилтийн тэмдэггүйг шалгана — батлагч
+   *        түгжээ авахаас өмнө `markPlanPartial` тавьсан байж болно; (3) бичнэ; (4) ДАХИН уншиж `withdrawn`
+   *    болсныг баталгаажуулна. Татгалзах/унах бүрд өөрийн түгжээг тайлна (`releasePlanClaim` зөвхөн
+   *    `pending` + өөрийн амьд түгжээг тайлдаг тул хариу алдагдсан бичилтэд ч аюулгүй).
+   *    Түгжээ нь `approver` баганад зохиогчийн нэрээр хэдхэн хором харагдана — батлагчид «X батлаж байна».
+   */
+  const claimFields = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
+  const readHead = async (fields: string) => (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
+  let first: Attrs | null = cur[0];
+  let at0: number | undefined;
+  try {
+    const got = await casClaim({
+      read: async () => {
+        if (first) { const f = first; first = null; return f; }
+        return readHead(claimFields);
+      },
+      write: (at) => { at0 = at; return writeClaim(url, args.oid, me, at); },
+    }, me, { requireEmpty: false });
+    if (!got.ok) return { ok: false, error: claimError(got) };
+  } catch (e) {
+    return { ok: false, error: errText(e) };
+  }
+  const release = () => releasePlanClaim({ oid: args.oid, approver: me });
+  try {
+    const re = await readHead(`${claimFields},${F.reason}`);
+    if (!re || s(re[F.status]) !== PLAN_STATUS.pending) {
+      await release();
+      return { ok: false, error: tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.') };
+    }
+    const pb2 = partialBy(s(re[F.status]), s(re[F.reason]));
+    if (pb2 != null) {
+      await release();
+      return { ok: false, error: tr('Батлагч ({0}) энэ илгээлтийн хуваарийг эх хуудсанд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.', pb2 || '—') };
+    }
+    if (claimHolder(re) !== me || at0 == null || !sameClaimAt(re[F.approverAt], at0)) {
+      await release();
+      return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
+    }
+  } catch (e) {
+    await release();
+    return { ok: false, error: errText(e) };
   }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: PLAN_STATUS.withdrawn,
-    /* Түгжээний үлдэгдэл (хугацаа нь өнгөрсөн) «батлагч» баганад үлдэхгүй */
+    /* Түгжээний үлдэгдэл (зохиогчийн CAS түгжээ ч) «батлагч» баганад үлдэхгүй */
     [F.approver]: null,
-    [F.approverAt]: Date.now(),
+    /* ⚠️ 2026-10-12: серверийн цагаар (`serverNow`-ийн ⚠️) */
+    [F.approverAt]: serverNow(),
     [F.reason]: null,
   };
   try {
@@ -1877,12 +2254,20 @@ export async function withdrawPlan(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
     invalidate('HUVAARI_BATLAH');
-    return { ok: true };
   } catch (e) {
+    await release();
     return { ok: false, error: errText(e) };
   }
+  /* (4) баталгаажуулалт — уншилт унавал бичилт амжилттай хариутай тул `ok` (хуудас шинэчлэхэд харагдана) */
+  try {
+    const back = await readHead(`${F.oid},${F.status}`);
+    if (!back || s(back[F.status]) !== PLAN_STATUS.withdrawn) {
+      return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
+    }
+  } catch { /* бичилт `editOk` — амжилттай */ }
+  return { ok: true };
 }
 
 /**
@@ -1917,8 +2302,9 @@ export async function countPlanPending(username: string | null | undefined): Pro
     if (!(await planTableState(false)).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
-    const now = Date.now();
     const rows = await loadBadgePending();
+    /* ⚠️ 2026-10-12: серверийн цагаар, уншилтын ДАРАА (`query` зөрүүг шинэчилсэн байна) */
+    const now = serverNow();
     return rows.filter((x) => {
       if (sc != null && !sc.includes(x.pkgGroup)) return false;
       if (x.author.trim().toLowerCase() === me) return false;
@@ -2004,7 +2390,8 @@ export async function countPlanApproved(username: string | null | undefined): Pr
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgeLast();
     const seen = approvedSeen();
-    const now = Date.now();
+    /* ⚠️ 2026-10-12: `approverAt` серверийн цагаар бичигддэг тул харьцуулалт ч серверийн цагаар */
+    const now = serverNow();
     return rows.filter((x) => x.status === PLAN_STATUS.approved
       && x.author.trim().toLowerCase() === me
       && x.approverAt != null && now - x.approverAt < PLAN_APPROVED_TTL

@@ -465,13 +465,21 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
 
   /* ══ ЭХ ХУУДСАНД БИЧИХИЙН ӨМНӨХ ХАМГААЛАЛТ — `approveGuard` (2026-10-01) ══ */
   const sub = (o) => ({ oid: 5, status: PLAN_STATUS.pending, approver: 'bat', approverAt: NOW - 1000, ...o });
-  assert.equal(approveGuard(sub({}), 5, 'Bat', NOW), null, 'өөрийн хүчинтэй түгжээ → бичнэ');
-  assert.match(approveGuard(sub({ status: PLAN_STATUS.withdrawn, approver: null }), 5, 'bat', NOW), /татсан/, 'зохиогч татсан');
-  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', NOW), /dorj/, 'өөр батлагч шийдсэн → нэр');
-  assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', NOW), /dorj.*батлаж байна/, 'өөр хүн түгжсэн');
-  assert.match(approveGuard(sub({ approverAt: NOW - 11 * 60_000 }), 5, 'bat', NOW), /хугацаа дууссан/, 'түгжээ хугацаа дууссан');
-  assert.match(approveGuard(null, 5, 'bat', NOW), /олдсонгүй/, 'мөр алга');
-  assert.match(approveGuard(sub({ oid: 6 }), 5, 'bat', NOW), /олдсонгүй/, 'өөр илгээлт');
+  assert.equal(approveGuard(sub({}), 5, 'Bat', undefined, NOW), null, 'өөрийн хүчинтэй түгжээ → бичнэ');
+  /* ⚠️ 2026-10-12: `claimAt` — нэг батлагчийн ӨӨР цонхны түгжээ эх хуудсанд бичихээс ӨМНӨ зогсоно */
+  assert.equal(approveGuard(sub({}), 5, 'bat', NOW - 1000, NOW), null, 'claimAt таарсан → бичнэ');
+  assert.equal(approveGuard(sub({}), 5, 'bat', NOW - 1400, NOW), null, 'claimAt ±1000 мс дотор (секундээр тайрагдсан) → бичнэ');
+  assert.match(approveGuard(sub({}), 5, 'bat', NOW - 5000, NOW), /өөр цонх/, 'өөр цонх дахин түгжсэн → зогсоно');
+  assert.match(approveGuard(sub({ approverAt: null }), 5, 'bat', NOW - 1000, NOW), /хугацаа дууссан|өөр цонх/, 'агшингүй түгжээ → бичихгүй');
+  assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', NOW - 1000, NOW), /dorj.*батлаж байна/, 'өөр хүн — claimAt-аас үл хамааран нэрээр');
+  /* төлөв дэлгэцийн нэрээр (түүхий өгөгдөл биш) */
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', undefined, NOW), /Буцаагдсан/);
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.withdrawn, approver: null }), 5, 'bat', undefined, NOW), /татсан/, 'зохиогч татсан');
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', undefined, NOW), /dorj/, 'өөр батлагч шийдсэн → нэр');
+  assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', undefined, NOW), /dorj.*батлаж байна/, 'өөр хүн түгжсэн');
+  assert.match(approveGuard(sub({ approverAt: NOW - 11 * 60_000 }), 5, 'bat', undefined, NOW), /хугацаа дууссан/, 'түгжээ хугацаа дууссан');
+  assert.match(approveGuard(null, 5, 'bat', undefined, NOW), /олдсонгүй/, 'мөр алга');
+  assert.match(approveGuard(sub({ oid: 6 }), 5, 'bat', undefined, NOW), /олдсонгүй/, 'өөр илгээлт');
 
   /* ЭХ КОД: `Huvaari.save` батлах горимд бичихийн ӨМНӨ дахин уншиж `approveGuard`-аар зогсоно */
   const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
@@ -480,7 +488,8 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   const se = H.indexOf('await applyUpdates(pkg, upd);', si);
   assert.ok(si > 0 && se > si, 'Huvaari.save олдсонгүй');
   const pre = H.slice(si, se);
-  assert.ok(/if \(approvalMode\) \{\s*const head = await loadSubmissionHead\(approving\);\s*const why = approveGuard\(/.test(pre),
+  /* ⚠️ 2026-10-12: завсарт тайлбар байж болно (`claimAt` нэмэгдсэн) — 300 тэмдэгт хүртэл */
+  assert.ok(/if \(approvalMode\) \{\s*const head = await loadSubmissionHead\(approving\);[\s\S]{0,300}?const why = approveGuard\(/.test(pre),
     'Huvaari.save: эх хуудсанд бичихийн өмнө илгээлтийн төлвийг дахин уншихгүй байна');
   assert.ok(H.indexOf('applyPlanEdits(obEdits)', si) > se, 'Huvaari.save: сарын обьём хамгаалалтаас ӨМНӨ бичигдэж байна');
 }
@@ -539,7 +548,8 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
   assert.ok(iMark > 0 && iMark < iRef && iRef < iUpd && iUpd < iOb, 'Huvaari.save: хагас бичилтийн тэмдэг анхны бичилтээс ӨМНӨ биш');
   /* ⚠️ 2026-10-01: ЗӨВХӨН нэг ч мөр бичигдээгүй (`written === 0`) үед тэмдгийг арилгаж болно */
   /* ⚠️ 2026-10-05: `/g` — сарын обьёмын catch ч мөн `written === 0`-д тэмдгийг арилгана (хоёр газар) */
-  const svNo0 = sv.replace(/if \(await clearPlanPartial\(approving\)\) partialRef\.current = null;/g, '');
+  /* ⚠️ 2026-10-12: `clearPlanPartial(oid, owner)` — эзэнтэй дуудлагыг ч таньна */
+  const svNo0 = sv.replace(/if \(await clearPlanPartial\(approving(, [^)]*)?\)\) partialRef\.current = null;/g, '');
   assert.ok(/written\)?\s*===\s*0 && partialRef\.current === approving/.test(sv), 'Huvaari.save: тэмдэг арилгах нь written === 0-оор хамгаалагдаагүй');
   assert.ok(!/partialRef\.current = null/.test(svNo0), 'Huvaari.save: partialRef-ийг decidePlan-аас ӨМНӨ арилгаж байна');
   /* obLost нь батлах горимын «бүгд эсвэл юу ч үгүй» шалгуурт */
@@ -556,7 +566,7 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
   /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef` — өмнөх оролдлогод бичигдсэн бол дахин оролдлогын `written === 0` /
      дахин тэмдэглэх уналт тэмдгийг арилгахгүй; `lostWriteRef`-ийг дахин оролдлогын эхэнд тэглэхгүй, зөвхөн decidePlan амжилтад */
   assert.ok((sv.match(/else if \(wroteSomeRef\.current === approving\) \{/g) ?? []).length >= 2, 'Huvaari.save: written === 0 салаа wroteSomeRef-ээр хамгаалагдаагүй');
-  assert.ok(/if \(wroteSomeRef\.current === approving\) \{[\s\S]{0,400}return false;[\s\S]{0,300}await clearPlanPartial\(approving\)/.test(sv), 'Huvaari.save: дахин тэмдэглэх уналтад wroteSomeRef шалгагдаагүй');
+  assert.ok(/if \(wroteSomeRef\.current === approving\) \{[\s\S]{0,400}return false;[\s\S]{0,300}await clearPlanPartial\(approving(, [^)]*)?\)/.test(sv), 'Huvaari.save: дахин тэмдэглэх уналтад wroteSomeRef шалгагдаагүй');
   assert.ok(!/^\s*lostWriteRef\.current = null;/m.test(sv), 'Huvaari.save: lostWriteRef-ийг дахин оролдлогын эхэнд тэглэж байна');
   assert.ok(/if \(lostWriteRef\.current !== pending\.oid\) lostWriteRef\.current = null;/.test(dc), 'Huvaari.decide: энэ илгээлтийн lostWriteRef тэглэгдэж байна');
   assert.ok((dc.match(/if \(wroteSomeRef\.current === (approving|oid)\) wroteSomeRef\.current = null;/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход wroteSomeRef арилахгүй');
@@ -623,3 +633,77 @@ console.log('✅ гацсаныг буцаах — түгжигчийн гэйт
   assert.ok(!/catch/.test(fn), 'loadPendingBoth: алдааг залгиж байна');
 }
 console.log('✅ loadPendingBoth — хямд · хоёр төрөл · strict');
+
+/* ══════════ 2026-10-12 (аудит): claimAt · хагас тэмдгийн эзэн · серверийн цаг · хэлнээс үл хамаарах текст ══════════ */
+{
+  const M = await import('@/lib/huvaariBatlah.ts');
+  /* (а) `sameClaimAt` — ±1000 мс, null/эвдэрсэн бол үгүй */
+  assert.equal(M.sameClaimAt(5_000, 5_400), true);
+  assert.equal(M.sameClaimAt(5_000, 6_000), false, '1000 мс-ээс их');
+  assert.equal(M.sameClaimAt(null, 0), false, 'агшингүй');
+  assert.equal(M.sameClaimAt('x', 5_000), false, 'эвдэрсэн');
+  /* (б) серверийн цагийн зөрүү — хүсэлтийн хоёр үзүүрийн дундаж */
+  assert.equal(M.clockOffsetOf(10_000, 100_000, 100_200), -90_100, 'хөтөч ~90 с түрүүлсэн → сөрөг зөрүү');
+  assert.equal(M.clockOffsetOf(100_100, 100_000, 100_200), 0);
+  assert.equal(typeof M.serverNow(), 'number');
+  await M.syncServerClock(); /* сүлжээгүй — унахгүй, зөрүү 0 хэвээр */
+  assert.ok(Math.abs(M.serverNow() - Date.now()) < 50, 'хүснэгтгүй үед зөрүү 0 биш');
+  /* (в) төлөвийн дэлгэцийн нэр · хадгалсан шалтгааны орчуулга (монгол UI-д эх хэвээр) */
+  assert.equal(M.planStatusLabel(M.PLAN_STATUS.withdrawn), 'Татсан');
+  assert.equal(M.planStatusLabel('xyz'), 'xyz');
+  assert.equal(M.planStatusLabel(null), '');
+  assert.equal(M.displayReason(null), '');
+  assert.equal(M.displayReason(`${M.STUCK_PREFIX_SRC}\nшалтгаан`), `${M.STUCK_PREFIX()}\nшалтгаан`);
+  assert.equal(M.displayReason(`засна уу\n${M.BLIND_NOTE_SRC}`).split('\n')[0], 'засна уу', 'хэрэглэгчийн текст хэвээр');
+  assert.ok(!M.STUCK_PREFIX_SRC.includes('Partially'), 'эх текст монгол');
+  /* (г) `renewPlanClaim` — нэргүй бол сүлжээнээс өмнө; хүснэгтгүйд зөв шалтгаан */
+  let r = await M.renewPlanClaim({ oid: 1, approver: '  ', claimAt: 1 });
+  assert.equal(r.ok, false); assert.match(r.error, /тодорхойгүй/);
+  /* (д) `submitPlan` — бүлэг багцын түлхүүрээс (консолоос худал бүлэг дамжуулах) */
+  const pay = { kind: 'plan', spans: {}, deps: {}, obyem: {}, actual: {}, res: {} };
+  r = await M.submitPlan({ pkgKey: 'b2_9f', pkgGroup: 'Багц 1', author: 'a', rowCount: 1, payload: pay });
+  assert.equal(r.ok, false); assert.match(r.error, /зөрж байна/, `бүлэг зөрсөн илгээлт өнгөрөв: ${r.error}`);
+  r = await M.submitPlan({ pkgKey: 'no_such', pkgGroup: 'Багц 1', author: 'a', rowCount: 1, payload: pay });
+  assert.equal(r.ok, false); assert.match(r.error, /зөрж байна/, 'танихгүй түлхүүр өнгөрөв');
+
+  const fs = await import('node:fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const L = strip(fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8'));
+  const part = (a, b) => { const i = L.indexOf(a); const j = L.indexOf(b, i + a.length); assert.ok(i > 0 && j > i, `${a} олдсонгүй`); return L.slice(i, j); };
+  /* (е) markPlanPartial: claimAt шалгана · байгаа тэмдгийг дарахгүй — бичилтээс ӨМНӨ */
+  const mp = part('export async function markPlanPartial(', 'export async function clearPlanPartial(');
+  const iW = mp.indexOf('applyEdits');
+  assert.ok(mp.indexOf('sameClaimAt(cur[F.approverAt], args.claimAt)') > 0 && mp.indexOf('sameClaimAt(cur[F.approverAt], args.claimAt)') < iW, 'markPlanPartial: claimAt бичилтээс өмнө шалгагдахгүй');
+  assert.ok(/if \(had != null\) return \{ ok: true, existing: had \};/.test(mp) && mp.indexOf('existing: had') < iW, 'markPlanPartial: байгаа тэмдгийг дарж бичнэ');
+  /* (ж) clearPlanPartial(oid, owner): эзэн зөрвөл бичихгүй */
+  const cp = part('export async function clearPlanPartial(', 'export const STUCK_PREFIX_SRC');
+  assert.ok(/clearPlanPartial\(oid: number, owner\?: string\)/.test(cp), 'clearPlanPartial: owner параметр алга');
+  assert.ok(cp.indexOf('pb !== owner.trim().toLowerCase()) return false') > 0 && cp.indexOf('pb !== owner.trim().toLowerCase()') < cp.indexOf('applyEdits'), 'clearPlanPartial: эзнийг бичилтээс өмнө шалгахгүй');
+  /* (з) decidePlan: буцаалтын өмнө тэмдгийг ДАХИН (түгжээ авсны дараа) шалгана */
+  const dp = part('export async function decidePlan(', 'export type ClaimFail');
+  const iCas = dp.indexOf('casClaim(');
+  const i2 = dp.indexOf('partialBy(', iCas);
+  assert.ok(i2 > iCas && i2 < dp.indexOf('const attrs: Attrs'), 'decidePlan: буцаалтын өмнө тэмдэг дахин шалгагдахгүй');
+  assert.ok(!dp.includes('String((e as Error).message'), 'decidePlan: errText биш');
+  /* (и) withdrawPlan: CAS → дахин унш (тэмдэг) → бичих → баталгаажуулах */
+  const wp = part('export async function withdrawPlan(', 'export async function countPlanPending(');
+  const iC = wp.indexOf('await casClaim(');
+  const iWr = wp.indexOf('[F.status]: PLAN_STATUS.withdrawn');
+  assert.ok(iC > 0 && iC < iWr, 'withdrawPlan: бичихээс өмнө casClaim алга');
+  assert.ok(wp.indexOf('partialBy(', iC) > iC && wp.indexOf('partialBy(', iC) < iWr, 'withdrawPlan: түгжээ авсны дараа тэмдэг шалгагдахгүй');
+  assert.ok(wp.indexOf('PLAN_STATUS.withdrawn', iWr + 10) > iWr, 'withdrawPlan: бичсэний дараа баталгаажуулахгүй');
+  /* (к) submitPlan: нөөц цуцлалтын үр дүн · давхардлын шалгалт унавал ok:false */
+  const sp = part('export async function submitPlan(', 'export async function decidePlan(');
+  assert.ok(sp.includes('editOk(upd?.updateResults)'), 'submitPlan: нөөц цуцлалтын үр дүн шалгагдахгүй');
+  assert.ok(/catch \{\s*return \{ ok: false, error: tr\('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй/.test(sp), 'submitPlan: давхардлын шалгалт унахад ok:true');
+  /* (л) өгөгдөлд орчуулсан текст бичихгүй; тэмдгийн жагсаалт хөнгөн */
+  const rs = part('export async function returnStuckPlan(', 'export async function withdrawPlan(');
+  assert.ok(rs.includes('`${STUCK_PREFIX_SRC}\\n${why}`') && !rs.includes('STUCK_PREFIX()'), 'returnStuckPlan: орчуулсан угтвар бичигдэнэ');
+  const ll = part('export async function loadLastPerPkg(', 'export async function loadHistory(');
+  assert.ok(!ll.includes('headFields()') && ll.includes('loadLastFast()'), 'loadLastPerPkg: zovshoorson_mor-ыг татна / хөнгөн зам алга');
+  /* (м) серверийн цаг — түгжээний бичилт/шүүлт `Date.now()`-оор биш */
+  assert.ok(/const now = io\.now \?\? serverNow;/.test(L), 'casClaim: анхдагч цаг серверийнх биш');
+  assert.ok(/function claimHolder\(a: Attrs, now = serverNow\(\)\)/.test(L) && /now = serverNow\(\)\): string \| null \{/.test(L), 'claimHolder/claimHolderOf: серверийн цаг биш');
+  assert.ok(!/\[F\.(approverAt|authorSent)\]: Date\.now\(\)/.test(L), 'бичилтэд хөтчийн цаг үлдэв');
+}
+console.log('✅ 2026-10-12: claimAt · тэмдгийн эзэн · дахин шалгалт · CAS татах · серверийн цаг · эх текст · хөнгөн тэмдэг');

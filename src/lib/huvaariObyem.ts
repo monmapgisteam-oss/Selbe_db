@@ -615,6 +615,13 @@ export async function loadPkgPlan(
  * ⚠️ 500-аар хуваан илгээнэ; `rollbackOnFailure` нь НЭГ багц дотор л үйлчилнэ
  *    тул багц дундуур унавал хэдэн мөр амжсаныг мессежид ХЭЛНЭ.
  */
+/** `applyPlanEdits`-ийн тасарсан шат (2026-10-12) — `all` = ≤500 мөрийн нэг хүсэлт */
+export type PlanWritePhase = 'all' | 'dups' | 'adds' | 'updates' | 'deletes';
+/**
+ * `applyPlanEdits`-ийн шидсэн алдааны нэмэлт талбарууд (2026-10-12): `written` — тасрахаас ӨМНӨ
+ * баталгаатай бичигдсэн мөр; `total` — нийт илгээх мөр; `phase` — тасарсан шат.
+ */
+export type PlanWriteErr = Error & { written?: number; total?: number; phase?: PlanWritePhase };
 export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, number]> {
   const chunk = <T>(a: T[]) => {
     const out: T[][] = [];
@@ -631,7 +638,11 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
         (`rollbackOnFailure`) тул «нэмсэн нь амжсан, шинэчлэл нь унасан» гэж тоолж болохгүй.
      ⚠️ Алдаанд `written` (энэ хүсэлтээс ӨМНӨ бичигдсэн мөр) хавсаргана — батлагч тал
         (`Huvaari.save`) нэг ч мөр бичигдээгүй бол хагас бичилтийн тэмдгийг арилгана. */
-  const run = async (body: Record<string, string>, want: [number, number, number]) => {
+  /* ⚠️ 2026-10-12 (аудит): алдаанд `phase` (аль шат: `all` = нэг хүсэлт · `dups`/`adds`/`updates`/`deletes`)
+     ба `total` (нийт илгээх мөр) ч хавсаргана — батлагчийн мессеж (`payload.partialMsg` ctx) «хэдэн мөрийн
+     хэд нь бичигдсэн, аль шатанд тасарсан»-ыг хэлнэ. Урьд нь зөвхөн `written`. */
+  let total = 0;
+  const run = async (body: Record<string, string>, want: [number, number, number], phase: PlanWritePhase) => {
     try {
       const j = await agsFetch(`${HUVAARI_OBYEM}/applyEdits`, {
         ...body, rollbackOnFailure: 'true',
@@ -656,7 +667,12 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       }
       a += want[0]; u += want[1]; dl += want[2];
     } catch (err) {
-      if (err && typeof err === 'object') (err as { written?: number }).written = a + u + dl;
+      if (err && typeof err === 'object') {
+        const x = err as PlanWriteErr;
+        x.written = a + u + dl;
+        x.total = total;
+        x.phase = phase;
+      }
       throw err;
     }
   };
@@ -681,13 +697,13 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
     const dups = [...dupSet];
     const rest = e.deletes.filter((x) => !dupSet.has(x));
     const deletes = [...dups, ...rest];
-    const total = e.adds.length + e.updates.length + deletes.length;
+    total = e.adds.length + e.updates.length + deletes.length;
     if (total > 0 && total <= 500) {
       const body: Record<string, string> = {};
       if (e.adds.length) body.adds = JSON.stringify(e.adds);
       if (e.updates.length) body.updates = JSON.stringify(e.updates);
       if (deletes.length) body.deletes = deletes.join(',');
-      await run(body, [e.adds.length, e.updates.length, deletes.length]);
+      await run(body, [e.adds.length, e.updates.length, deletes.length], 'all');
     } else {
       /* ⚠️ 2026-10-08: ДАРААЛАЛ давхардлын устгал → нэмэх → шинэчлэх → бусад устгал.
          (а) `indexOids().dups` (давхардсан `dkey`-ийн илүүдэл мөр) ЭХЛЭЭД: урьд нь нэмэлт түрүүлж
@@ -699,11 +715,18 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
              тэр нь нийлбэрт харагдаж, дараагийн бичилтээр `prev`-ээс устгагдана: алдагдал биш.
          ⚠️ ҮЛДЭХ ЭРСДЭЛ: 500-аас их мөрд `rollbackOnFailure` багц бүрд тусдаа тул дундуур унавал
          хагас бичилт үлдэнэ — мессеж тоог хэлнэ (`written`), дахин батлахад `indexOids` ба `dkey`
-         дээр тулгуурлан нөхөгдөнө. */
-      for (const c of chunk(dups)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
-      for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) }, [c.length, 0, 0]);
-      for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) }, [0, c.length, 0]);
-      for (const c of chunk(rest)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
+         дээр тулгуурлан нөхөгдөнө.
+         ⚠️ 2026-10-12 (аудит): ДАХИН ОРОЛДЛОГО IDEMPOTENT — ЗӨВХӨН дуудагч `loadPkgPlan`-ыг ДАХИН уншиж
+         `buildEdits`-ийг шинээр бодвол: (1) бичигдсэн нэмэлт `dkey`-ээрээ `oids`-д орж шинэчлэл болно (давхар
+         нэмэгдэхгүй), өөрчлөгдөөгүй бол алгасагдана; (2) бичигдсэн шинэчлэл `prev === v` тул алгасагдана;
+         (3) устгагдсан сар `prev`-д байхгүй тул дахин устгагдахгүй; (4) хариу алдагдсан нэмэлт давхар `dkey`
+         үүсгэсэн бол дараагийн уншилтын `indexOids().dups` ЭХЭНД цэвэрлэнэ. ХУУЧИН `PlanEdits`-ийг дахин
+         илгээх нь idempotent БИШ (нэмэлт давхарлана) — тиймээс алдаа `phase`/`written`/`total`-ыг хэлнэ.
+         Сарын обьёмын зөрчлийн шалгалт ч сараар (`payload.monthsClash`) тул хагас бичилт дахин батлагдана. */
+      for (const c of chunk(dups)) await run({ deletes: c.join(',') }, [0, 0, c.length], 'dups');
+      for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) }, [c.length, 0, 0], 'adds');
+      for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) }, [0, c.length, 0], 'updates');
+      for (const c of chunk(rest)) await run({ deletes: c.join(',') }, [0, 0, c.length], 'deletes');
     }
   } catch (err) {
     /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`isLostWrite`) бол `a + u + dl` (баталгаажсан тоо) 0 байсан ч сүүлийн

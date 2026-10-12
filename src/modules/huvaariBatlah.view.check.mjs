@@ -421,11 +421,14 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   assert.ok(!/pollOkRef = useLatest\([^)]*pending != null/.test(H), 'Huvaari: мөчлөг идэвхтэй табын илгээлтгүй үед зогссоор — нөгөө табын түгжээ хоцорно');
   /* ⚠️ 2026-10-09: бодит огноо · нөөцийн түгжээ ба архивлалтын хаалт — UI биш, БИЧИХИЙН ӨМНӨ серверээс (fail-closed) */
   {
-    const xc = H.slice(H.indexOf('const xLockCheck = useCallback('), H.indexOf('}, [aDraft, resDraft, obResDraft, pkg.key, kind, rows'));
+    /* ⚠️ 2026-10-12 (аудит №8): deps-д `ham`/`obDraft` нэмэгдсэн (уялдаа · сарын обьёмын түгжээ) */
+    const xc = H.slice(H.indexOf('const xLockCheck = useCallback('), H.indexOf('}, [aDraft, resDraft, obResDraft, ham, obDraft, pkg.key, kind, rows'));
+    assert.ok(xc.includes('st.ham.has(o)') && xc.includes('st.ob.has(d)'), 'Huvaari: xLockCheck уялдаа/сарын обьёмын түгжээг шалгахгүй');
     assert.ok(/await loadPending\(key, other\)/.test(xc) && /await loadPayload\(pO\.oid\)/.test(xc) && /catch \(e\) \{\s*return tr\(/.test(xc),
       'Huvaari: xLockCheck нөгөө табын илгээлтийг серверээс (strict) уншихгүй эсвэл алдаанд нээлттэй');
     const sv = H.slice(H.indexOf('const save = useCallback('), H.indexOf('/* ══════════════ БАТЛАХ УРСГАЛ'));
-    const iFresh = sv.indexOf('const fresh = await loadRows(pkg, sc);');
+    /* ⚠️ 2026-10-12 (аудит №8): бичих зам `strict` (тасарсан жаазын оронд хуучин агшин хүлээн авахгүй) */
+    const iFresh = sv.indexOf('const fresh = await loadRows(pkg, sc, undefined, undefined, { strict: true });');
     assert.ok(sv.indexOf('await archivingBusy(pkg.key)') > 0 && sv.indexOf('await archivingBusy(pkg.key)') < iFresh
       && sv.indexOf('await xLockCheck()') > 0 && sv.indexOf('await xLockCheck()') < iFresh,
       'Huvaari: save архивлалт/түгжээг агшин татах (бичих)-аас ӨМНӨ шалгахгүй байна');
