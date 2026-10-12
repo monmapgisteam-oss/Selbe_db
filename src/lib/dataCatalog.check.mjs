@@ -37,7 +37,8 @@ assert.deepEqual(missing, [], `каталогт ороогүй LAYERS id: ${miss
 
 /* ── 5. Bagts_* ба QAQC ── */
 for (const p of PKGS) assert.ok(byId.has(`bagts:${p.key}`), `Bagts хуудас дутуу: ${p.key}`);
-assert.equal(PKGS.length, 18, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
+/* ⚠️ 2026-10-12: 18 → 24 — 6 блокгүй багц нэмэгдсэн (6.3 · 6.5 · 6.6 · 6.7 · 6.8 · 7.1) */
+assert.equal(PKGS.length, 24, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
 for (const k of Object.keys(QAQC_TABLE)) assert.ok(byId.has(`qaqc:${k}`), `QAQC хүснэгт дутуу: ${k}`);
 
 /* ── 3. шатлалын холбоос ── */

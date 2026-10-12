@@ -77,7 +77,7 @@ export type Variance = {
   failedPkgs: number;
   /**
    * ХЭМЖИГДЭХ багцын тоо — обьёмын баганатай (блоктой) + уншигдаагүй.
-   * ⚠️ 2026-09-17: блокгүй 8 багцад `sc.obyem = []` тул тэд ХЭЗЭЭ Ч унахгүй,
+   * ⚠️ 2026-09-17: блокгүй 14 багцад `sc.obyem = []` тул тэд ХЭЗЭЭ Ч унахгүй,
    *    зөрүү ч гаргахгүй — `failedPkgs >= PKGS.length` (18) хэзээ ч биелэхгүй
    *    байв. Түвшинг ЭНЭ тоотой харьцуулна.
    * ⚠️ 2026-10-09: `fillSchema`-аар блокгүй багц `obyem_sum` талбартай бол ХЭМЖИГДЭНЭ (тоолно).
@@ -113,7 +113,7 @@ export type Variance = {
 export const loadVariance: () => Promise<Variance> = cached(
   async (): Promise<Variance> => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
-      /* ⚠️ 2026-10-09: БӨГЛӨХ бүдүүвч (`fillSchema`) — блокгүй багц (5.x · 6.x · 10) синтетик НЭГ
+      /* ⚠️ 2026-10-09: БӨГЛӨХ бүдүүвч (`fillSchema`) — блокгүй багц (5.x · 6.x · 7.1 · 10) синтетик НЭГ
          блоктой, обьём нь мөрийн `obyem_sum` (хуримтлагдсан). Урьд нь `loadSchema` (`obyem = []`)
          тул блокгүй багцын Обьём хэтрэлт (obyem_sum > Обьём) CEO-гийн самбарт ХЭЗЭЭ Ч гардаггүй
          байв. Блоктой багцад `loadSchema(pkg)`-тэй ЯГ ижил. */

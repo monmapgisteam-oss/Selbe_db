@@ -1189,7 +1189,7 @@ export function Huvaari({
     loadPkgPlan(pkg.key)
       .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); } })
       .catch(() => { if (alive) setObState('fail'); /* задаргаагүйгээр үргэлжилнэ */ });
-    /* ⚠️ СИНТЕТИК БЛОК (2026-09-23): блокгүй 8 багцад (5.x · 6.x · 10) мөрийн
+    /* ⚠️ СИНТЕТИК БЛОК (2026-09-23): блокгүй 14 багцад (5.x · 6.x · 7.1 · 10) мөрийн
        түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах` · `geree_*` · `bodit_*`)
        нэг блок болж орно — хуваарь барилгын багцтай ИЖИЛ ажиллана, доорх
        `save` нь `sc.start[b]`/`sc.gStart[b]`/`sc.aStart[b]` нэрээр бичдэг тул

@@ -43,6 +43,12 @@ let named = 0;
 let checked = 0;
 let fit = 0;
 const perUnit = new Map();
+/* ⚠️ 2026-10-12: 6 шинэ багц (6.3 · 6.5 · 6.6 · 6.7 · 6.8 · 7.1 — кабель · шугам · ус шүүрүүлэх) — `BAND`
+   нь эхний 18 хуудасны (барилга · дулаан · ус) үнэд тохируулагдсан тул эдгээрийг НИЙЦЛИЙН босгонд оруулахгүй,
+   зөвхөн тусад нь тайлагнана (амьд: обьём × нэгж = дүн 100% таарна — өгөгдөл дотроо нийцтэй; 7.1-д
+   ухалтын м³ 12 сая ₮ г.м. — тооллын нэгжийн масштаб гүйцэтгэгчийнх). Хамралт (`cov`) бүгдийг хамарна. */
+const UNCALIBRATED = new Set(['b63', 'b65', 'b66', 'b67', 'b68', 'b71']);
+const extra = new Map();
 
 for (const pkg of PKGS) {
   const sc = await loadSchema(pkg).catch(() => null);
@@ -57,6 +63,10 @@ for (const pkg of PKGS) {
     if (!u || !BAND[u] || x.unit == null || x.unit <= 0) continue;
     const [lo, hi] = BAND[u];
     const ok = x.unit >= lo && x.unit <= hi;
+    if (UNCALIBRATED.has(pkg.key)) {
+      const e = extra.get(pkg.key) ?? { n: 0, ok: 0 }; e.n += 1; if (ok) e.ok += 1; extra.set(pkg.key, e);
+      continue;
+    }
     checked += 1;
     if (ok) fit += 1;
     if (!perUnit.has(u)) perUnit.set(u, { n: 0, ok: 0 });
@@ -73,6 +83,7 @@ for (const [u, p] of [...perUnit].sort((a, b) => b[1].n - a[1].n)) {
   console.log(`  ${u.padEnd(4)} ${String(p.n).padStart(5)} мөр · үнийн нийцэл ${(p.ok * 100 / p.n).toFixed(1)}%`);
 }
 console.log(`үнийн нийцэл нийт: ${fit}/${checked} = ${acc.toFixed(1)}%`);
+for (const [k, e] of extra) console.log(`  (босгогүй) ${k.padEnd(4)} ${String(e.n).padStart(4)} мөр · үнийн нийцэл ${(e.ok * 100 / e.n).toFixed(1)}%`);
 
 assert.ok(cov >= 90, `хамралт ${cov.toFixed(1)}% — 90%-иас доош унав`);
 assert.ok(acc >= 93, `үнийн нийцэл ${acc.toFixed(1)}% — 93%-иас доош унав`);

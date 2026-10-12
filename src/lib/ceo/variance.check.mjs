@@ -53,7 +53,7 @@ const base = (all, failedPkgs = 0) => ({
   assert.equal(r.failedSources.length, 1);
   assert.ok(r.failedSources[0].includes('10'));
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: PKG_N }, PKG_N), 'unknown');
-  /* ⚠️ `measurable` (2026-09-17): блокгүй 8 багц хэмжигдэхгүй тул хэмжигдэх 10
+  /* ⚠️ `measurable` (2026-09-17): блокгүй 14 багц хэмжигдэхгүй тул хэмжигдэх 10
      бүгд унасан ч `failedPkgs (10) < PKG_N (18)` → урьд нь худал 'good' байв. */
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 10, measurable: 10 }, PKG_N), 'unknown', 'measurable нь pkgCount-аас эрхэм');
   /* ⚠️ 2026-10-06: хэсэгчилсэн уналт + хэтрэлтгүй → «warn» (урьд нь худал 'good') */
