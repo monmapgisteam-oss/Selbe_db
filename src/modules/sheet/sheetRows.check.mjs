@@ -139,4 +139,22 @@ console.log('✅ resolveSchema — зорилтот ба хуучин зэрэг
 }
 console.log('✅ normDayMs — локал шөнө дунд → UTC өдөр (loadRows · sheetRows)');
 
+/* ── 6. ТАСАРСАН ХУУЛБАРЫГ ХАСНА (2026-10-12, A8) ──
+ * Унасан батлалтын хагас жааз / яг одоо бичигдэж буй жааз дашбоард руу батлагдаагүй утга оруулахгүй.
+ * Жинхэнэ бүтцийн богиносолт (дараагийн хуулбар ижил урттай) хасагдахгүй. */
+{
+  const { truncatedSnaps } = await import('./sheetRows.ts');
+  const d = (lens) => [...truncatedSnaps(lens)].sort((a, b) => a - b);
+  assert.deepEqual(d([1471, 1471, 1471]), [], 'бүгд бүтэн');
+  assert.deepEqual(d([1471, 500, 1471]), [1], 'дунд тасарсан — ард бүтэн жааз');
+  assert.deepEqual(d([1471, 1471, 1000]), [2], 'сүүлийнх тасарсан/бичигдэж буй');
+  assert.deepEqual(d([1471, 500, 1471, 1000]), [1, 3], 'хоёр тасарсан');
+  assert.deepEqual(d([1471, 1400, 1400, 1400]), [], 'бүтэц жинхэнээр богиноссон — дараагийнх ижил урт → үлдэнэ');
+  assert.deepEqual(d([500, 1471]), [], 'эхний хуулбар харьцуулах зүйлгүй');
+  assert.deepEqual(d([6, 3, 6]), [1], 'constructionOnly (Б-мөр л) — хагас жааз цөөн Б-мөртэй');
+  assert.deepEqual(d([1471, 0, 1471]), [], 'хоосон хуулбар тоологдохгүй');
+  assert.match(SRC, /const drop = truncatedSnaps\(lens\);/, 'loadSheetRows тасарсан хуулбарыг хасахгүй байна');
+}
+console.log('✅ sheetRows — тасарсан хуулбар дашбоард руу орохгүй');
+
 console.log('\nsheetRows.check: ok');

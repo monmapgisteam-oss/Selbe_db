@@ -101,11 +101,35 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     return { ok: false, error: tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.') };
   }
 
-  const [{ loadRows, applyAdds, applyDeletes }, { appendRootLeaf, buildFrame }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes }, { appendRootLeaf, buildFrame }, { agsFetch }, { archivingBusy }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('@/modules/sheet/ags'),
+    import('./submission'),
   ]);
+  /*
+   * ⚠️ 2026-10-12 (A6): ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД БИЧИХГҮЙ (`submission.archivingBusy` — Ажил нэмэх · обьём ·
+   *    Хуваарийн бичигчдийн ижил гэрээ). Урьд нь шалгадаггүй тул архивлалтын A.8 шалгалт ба `applyAdds`-ийн завсарт
+   *    манай жааз орж тэр батлалтын жаазыг (эсвэл бичсэний дараах шалгалтаар буцааж устгагдах) булдаг, архивын
+   *    хагас жаазын цэвэрлэгээ (`cleanupTruncatedFrame` — тэмдгийн өдрийн `OID > maxOid0` мөрүүд) энэ мөрүүдийг
+   *    андуурч устгах эрсдэлтэй байв. Ачаалахаас ӨМНӨ ба `applyAdds`-ийн ЯГ ӨМНӨ; уншиж чадахгүй бол бичихгүй
+   *    (fail-closed — дараагийн нээлтэд нэмэгдэнэ).
+   */
+  const archGate = async (): Promise<string | null> => {
+    try {
+      const b = await archivingBusy(pkg.key);
+      return b
+        ? tr('{0} энэ багцын гүйцэтгэлийг архивлаж байна ({1}-аас) — дуустал хуваарь бичихгүй. Эх хуудсанд юу ч бичигдсэнгүй; хэдэн минутын дараа дахин оролдоно уу.',
+          b.who || '—', new Date(b.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }))
+        : null;
+    } catch (e) {
+      return tr('Гүйцэтгэлийн архивлалтын төлөв шалгагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', String((e as Error)?.message ?? e));
+    }
+  };
+  {
+    const why = await archGate();
+    if (why) return { ok: false, error: why };
+  }
   /* ⚠️ 2026-10-09: `fillSchema` — архивын схем FillNew/hyanaltStore-той ИЖИЛ (materializeAdds-ийн ⚠️);
      блокгүй багцад синтетик НЭГ блок, «Хуваарь»-ийн `synthetic` бүдүүвч БИШ */
   const sc = await fillSchema(pkg);
@@ -162,6 +186,11 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   if (findKomissRow(now.rows)) return { ok: true, added: false };
   if (!sameFrame(loaded, now)) return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
   if ((await maxOidOf()) > maxOid0) return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
+  /* ⚠️ 2026-10-12 (A6): архивлалтыг бичихийн ЯГ өмнө дахин (дээрх `archGate`-ийн ⚠️) */
+  {
+    const why = await archGate();
+    if (why) return { ok: false, error: why };
+  }
 
   /* ⚠️ 2026-10-06: 500-аар ӨӨРӨӨ хувааж дуудна. `applyAdds` нь олон багцын дунд тасарвал
      алдааг «… — дахин Нийтлэх дарж гүйцээнэ үү» гэж ороодог — «Хуваарь»-т ийм товч

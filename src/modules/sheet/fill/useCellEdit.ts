@@ -516,6 +516,13 @@ export function useCellEdit(p: {
     const pv = pastePrev;
     setPastePrev?.(null);
     if (!pv) return;
+    /* ⚠️ 2026-10-12 (аудит №8): `pasteBlock`-тэй ИЖИЛ хаалтууд «Бичих» дарах агшинд ДАХИН — урьдчилсан харагдац нээлттэй
+       хооронд «Илгээх» эхэлсэн (`busy`), ноорог сэргэж эхэлсэн (`restoring`), «Бөглөх» хаагдсан эсвэл эрх солигдсон бол
+       утга `pending`-д бууж, илгээлтийн төгсгөлийн `setPending({})` түүнийг ЧИМЭЭГҮЙ арчдаг байв. */
+    if (locked || noEdit || !canPerf) { warn(locked ? RO.viewOnly : (perfWhy ?? RO.noPerf)); return; }
+    if (busy) { warn(RO.busy); return; }
+    if (restoring) { warn(RO.restoring); return; }
+    if (!editing) { warn(RO.notEditing); return; }
     if (pv.rows !== rowsAll) { warn(tr('Хүснэгт шинэчлэгдсэн тул буулгалт цуцлагдлаа — дахин буулгана уу.')); return; }
     runPaste(pv.startI, pv.startB, pv.grid, true);
   };
@@ -583,6 +590,8 @@ export function useCellEdit(p: {
         v,
         /** Нэмэлтийн ТОО (горимын нэгжээр); 0 = өөрчлөлтгүй */
         n: isPct ? Number(x.v) / 100 : Number(x.v),
+        /** ⚠️ 2026-10-12 (аудит №8): буулгасан ТҮҮХИЙ тоо (хувь горимд 0–100) — «0–1 бутархай» асуултад */
+        raw: Number(x.v),
         r,
         b: x.b,
         /** Шинэ НИЙТ (горимын нэгжээр) */
@@ -621,13 +630,22 @@ export function useCellEdit(p: {
     const over = isPct
       ? hits.filter((x) => x.after != null && overPct(x.after + revOf(x)))
       : hits.filter((x) => x.after != null && x.r.vol != null && (x.r.vol as number) > 0 && overVol(x.after + revOf(x), x.r.vol as number));
-    if (down.length || over.length) {
+    /* ⚠️ 2026-10-12 (аудит №8): ХУВЬ горимд 0-ээс их, 1-ээс бага утга — Excel-ийн БУТАРХАЙ хувь (0.75 = 75%) байх нь
+       элбэг; урьд нь «+0.75%» болж ЧИМЭЭГҮЙ бичигддэг байв (ганц нүдний зам `commitInner` нь анхааруулдаг). Олон нүдэнд
+       нүд тутам анхааруулахгүй — НЭГ УДААГИЙН асуултад нэмнэ («Үгүй» → юу ч бичихгүй, 100-аар үржүүлээд дахин буулгана). */
+    const small = isPct ? hits.filter((x) => x.raw > 0 && x.raw < 1) : [];
+    if (down.length || over.length || small.length) {
       const parts: string[] = [];
       if (down.length) parts.push(tr("{0} нүдэнд утга БУУРНА", String(down.length)));
       if (over.length) {
         parts.push(isPct
           ? tr("{0} нүдэнд 100%-иас ХЭТЭРНЭ", String(over.length))
           : tr("{0} нүдэнд мөрийн Обьёмоос ХЭТЭРНЭ", String(over.length)));
+      }
+      if (small.length) {
+        const ex = small[0].raw;
+        parts.push(tr("{0} нүдэнд 1%-иас бага утга (жиш. {1}% — {2}% гэх гэсэн бол Excel-ийн бутархайг 100-аар үржүүлж дахин буулгана уу; хувийг 0–100-аар бичнэ)",
+          String(small.length), String(ex), String(parseFloat((ex * 100).toPrecision(12)))));
       }
       if (!window.confirm(tr("{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?", String(hits.length), parts.join("; ")))) return true;
     }

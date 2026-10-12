@@ -50,7 +50,19 @@ globalThis.fetch = async (input, init) => {
   }
   if (path === '/applyEdits') {
     st.wrote = true;
+    /* ⚠️ 2026-10-12 (R3): давхар тойргийн устгал (`hyanalt.deleteRow`) */
+    if (body.has('deletes')) {
+      const ids = String(body.get('deletes')).split(',').map(Number);
+      const res = ids.map((id) => {
+        const i = st.rows.findIndex((x) => x.OBJECTID === id);
+        if (i >= 0) st.rows.splice(i, 1);
+        st.deletes.push(id);
+        return { objectId: id, success: i >= 0 };
+      });
+      return json({ deleteResults: res });
+    }
     if (body.has('adds')) {
+      st.beforeAdd?.();
       const arr = JSON.parse(body.get('adds'));
       const res = arr.map((f) => {
         const oid = st.next++;
@@ -107,6 +119,8 @@ const reset = () => {
   st.onQuery = null;
   st.failAfterWrite = false;
   st.wrote = false;
+  st.deletes = [];
+  st.beforeAdd = null;
 };
 /* ⚠️ `bypass: true` — эрхийн шалгуур (`authz`) энэ шалгуурын сэдэв биш */
 const ok = (who) => recheck(1, 'ok', '', who, 'engineer', undefined, true);
@@ -208,6 +222,21 @@ st.onQuery = (q) => {
   const r = await back('Инженер В', 'хэмжилт дутуу');
   check(r.ok === false, '5: шинэ тойрог үүссэн тул буцаалт ЗОГСОНО');
   check(st.updates.length === 0, '5: хуучин мөр засагдахгүй');
+}
+
+/* ── 6. «ok» — ХОЁР хянагч ЗЭРЭГ (хоёулаа шалгалтыг давсан): бага OID-тай ихэр байвал ӨӨРИЙН мөрийг устгана (R3) ── */
+reset();
+st.beforeAdd = () => {
+  /* нөгөө хянагчийн мөр манай `adds`-ын яг өмнө суусан (бага OID) */
+  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+    [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
+  st.beforeAdd = null;
+};
+{
+  const r = await ok('Инженер В');
+  check(r.ok === false && /Инженер Б/.test(r.error ?? ''), `6: давхар тойрог — татгалзаж, нөгөө хянагчийг нэрлэнэ (${r.error ?? ''})`);
+  check(st.deletes.length === 1 && st.deletes[0] === 100, `6: ӨӨРИЙН (их OID) мөрийг устгана (${JSON.stringify(st.deletes)})`);
+  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.OBJECTID === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
 }
 
 assert.deepEqual(st.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

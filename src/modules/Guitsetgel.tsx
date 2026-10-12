@@ -35,7 +35,7 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, dismissApplyWarn, recheck, resetRegSweep, retryPendingRegistrations, useApplyWarns, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, dismissApplyWarn, reasonMax, REASON_MAX, recheck, resetRegSweep, retryPendingRegistrations, setDecisionErr, useApplyWarns, useDecisionErr, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
@@ -134,7 +134,10 @@ const badgeClass = (st: Status, stage: Stage) => {
   if (st === STATUS.transferred) return s.bDone;
   // ⚠️ Компанид «Менежер буцаасан» улаанаар ч харагдах ёсгүй — тэр ажил
   //    хараахан компанид ирээгүй, инженер дээр байгаа.
-  if (st === STATUS.managerReturned) return stage === 'company' ? s.bWait : s.bBack;
+  /* ⚠️ 2026-10-12 (R6): «Менежер буцаасан»-ы тусгай салбар ХАСАГДАВ — тэр нь компаниас бусад БҮХ шатанд
+     (ерөнхий менежер · хэлтсийн · газрын дарга) улаан гаргаж доорх «зөвхөн буцаасан ба хүлээн авсан шат» дүрэмтэй
+     зөрдөг байв. Ерөнхий дүрэм (RETURNER/OWNER) нь менежер (буцаасан) ба инженер (хүлээн авсан)-д улаан,
+     компани ба бусад шатанд «хүлээгдэж буй» — дээрх ⚠️ хадгалагдана. */
   // ⚠️ Дээд шатны буцаалт нь НЭГ АЛХАМ доош очно — зөвхөн буцаасан ба хүлээн
   //    авсан шат «буцсан» гэж харна; бусдын гар дээр ирээгүй (2026-09-23, 6 шат).
   const ret = RETURNER[st];
@@ -359,25 +362,44 @@ function outcomeOf(r: Row, stage: Stage): { text: string; cls: string } {
 const DOT: Record<Step['kind'], string> = { sent: '↑', ok: '✓', bad: '✕' };
 
 function History({ cycles, stage }: { cycles: Row[]; stage: Stage }) {
+  /*
+   * ДАХИН ШАЛГАЛТЫН ТОЙРОГ уу? Инженер менежерийн буцаалтыг дахин
+   * шалгаад менежерт илгээхэд ШИНЭ мөр үүсдэг боловч компани дахин
+   * илгээгээгүй тул `Компани_илгээсэн_огноо` нь өмнөхтэйгээ ИЖИЛ үлдэнэ.
+   *
+   * ⚠️ 2026-10-12 (R7): КОМПАНИД дахин шалгалтын тойргийг ТУСДАА «N-р хянуулалт · дахин шалгалт» гэж
+   *    харуулахгүй — тэр нь дотоод (менежер ↔ инженер) мөчлөгийг ил гаргаж файлын толгойн «КОМПАНИ МЕНЕЖЕРИЙГ
+   *    ХАРАХГҮЙ» дүрмийг зөрчдөг байв. Компанид өмнөх (жинхэнэ илгээлтийн) тойрогт НИЙЛҮҮЛНЭ: алхмуудаас зөвхөн
+   *    КОМПАНИД ХАМААРАХ буцаалт (`bad` — инженерийн «компанид буцаав») нэмэгдэнэ, үр дүн нь гинжний СҮҮЛИЙН
+   *    мөрөөс. Дотоод дахин илгээлтийн «хүлээн авав» алхмууд нэмэгдэхгүй.
+   */
+  const shown: { r: Row; again: boolean; steps: Step[]; out: { text: string; cls: string } }[] = [];
+  cycles.forEach((r, i) => {
+    const again = i > 0 && !!r[F.companySent] && r[F.companySent] === cycles[i - 1][F.companySent];
+    const last = shown[shown.length - 1];
+    if (stage === 'company' && again && last) {
+      const seen = new Set(last.steps.map((x) => `${x.kind}|${x.at}|${x.verb}`));
+      for (const x of stepsOf(r, stage, false)) {
+        if (x.kind !== 'bad' || seen.has(`${x.kind}|${x.at}|${x.verb}`)) continue;
+        last.steps.push(x);
+      }
+      last.steps.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
+      last.out = outcomeOf(r, stage);
+      return;
+    }
+    shown.push({ r, again, steps: stepsOf(r, stage, !again), out: outcomeOf(r, stage) });
+  });
   return (
     <div className={s.hist}>
       <div className={s.histHead}>{tr('Түүх')}</div>
 
-      {cycles.map((r, i) => {
-        /*
-         * ДАХИН ШАЛГАЛТЫН ТОЙРОГ уу? Инженер менежерийн буцаалтыг дахин
-         * шалгаад менежерт илгээхэд ШИНЭ мөр үүсдэг боловч компани дахин
-         * илгээгээгүй тул `Компани_илгээсэн_огноо` нь өмнөхтэйгээ ИЖИЛ үлдэнэ.
-         */
-        const again = i > 0 && !!r[F.companySent] && r[F.companySent] === cycles[i - 1][F.companySent];
-        const steps = stepsOf(r, stage, !again);
-        const out = outcomeOf(r, stage);
+      {shown.map(({ r, again, steps, out }, i) => {
         return (
           <div key={r[F.id]} className={s.cyc}>
             <div className={s.cycHead}>
               <span className={s.cycNo}>{i + 1}</span>
               <span className={s.cycTitle}>{tr('{0}-р хянуулалт', String(i + 1))}</span>
-              {again && <span className={s.cycTag}>{tr('дахин шалгалт')}</span>}
+              {again && stage !== 'company' && <span className={s.cycTag}>{tr('дахин шалгалт')}</span>}
               <span className={s.cycId}>{r[F.id]}</span>
               <span className={s.spacer} />
               <span className={`${s.badge} ${out.cls}`}>{out.text}</span>
@@ -462,6 +484,7 @@ function Submitted({
   onChanges,
   onSubAt,
   onRemapped,
+  onUnmoved,
   onOkAll,
   reloadKey = 0,
 }: {
@@ -493,6 +516,12 @@ function Submitted({
   /** ⚠️ 2026-10-01: илгээлтийн мөрүүд шинэ жааз руу зөөгдсөн эсэх (`Submission.remapped`) — хуучин
       индексийн зөвшөөрөлд итгэх эсэхэд (`hyanaltOkCells.resolveOk`) */
   onRemapped?: (v: boolean | undefined) => void;
+  /**
+   * ⚠️ 2026-10-12 (R5): одоогийн жаазад ТУЛГАГДААГҮЙ нүдний тоо (`Submission.unmoved`) — эцэг батлах товчийг хаана.
+   *    Тэдгээр нүд `changes`-д ОРДОГГҮЙ тул урьд нь `allOk` үнэн болж дунд шатны батлалт хараагүй нүдтэй
+   *    нээлттэй байв (эцсийн шатны архивлалт л зогсдог). `undefined` = уншиж байна / унасан.
+   */
+  onUnmoved?: (n: number | undefined) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -544,6 +573,7 @@ function Submitted({
     onChanges?.(null);
     onSubAt?.(undefined);
     onRemapped?.(undefined);
+    onUnmoved?.(undefined);
     loadSubmission(bagts, sheetOid)
       /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
          «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
@@ -551,7 +581,7 @@ function Submitted({
          уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
-      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); } })
+      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); onUnmoved?.(d ? (d.unmoved ?? 0) : undefined); } })
       .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: userError(e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
@@ -865,7 +895,13 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
-  const [err, setErr] = useState('');
+  /* ⚠️ 2026-10-12 (R2): шийдвэрийн алдаа модулийн store-д (`hyanaltStore.useDecisionErr`) — STALE/`movedSince`
+     үед жагсаалт шинэчлэгдэж ажил «минийх» ↔ «бусад» хооронд шилжихэд `Item` дахин mount болж локал state
+     алга болдог тул хэрэглэгч ямар ч мессеж хардаггүй байв. */
+  const err = useDecisionErr(work.key);
+  const setErr = useCallback((t: string) => setDecisionErr(work.key, t), [work.key]);
+  /* ⚠️ 2026-10-12 (R1): шалтгааны талбарын дээд урт — баганын урт (`reasonMax`), уншигдтал 2000 */
+  const [reasonLim, setReasonLim] = useState(REASON_MAX);
   /** Хагас амжилтын анхааруулга — алдаанаас ТУСДАА (шар) */
   const [warn, setWarn] = useState('');
   const [busy, setBusy] = useState(false);
@@ -946,6 +982,15 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
    */
   const upperOfMe = stage !== 'company' ? nextReview(stage) : null;
+  /* ⚠️ 2026-10-12 (R1): аль шатны шалтгааны багана руу бичигдэх вэ — ердийн хяналт (`apply`) ба дахин шалгалт
+     (`recheck`, `reBy` = энэ шат) хоёулаа ӨӨРИЙН шатных (`SF[stage].reason`) */
+  const reasonStage: ReviewStage | null = stage === 'company' ? null : (stage as ReviewStage);
+  useEffect(() => {
+    if (!reasonStage) return;
+    let alive = true;
+    void reasonMax(reasonStage).then((n) => { if (alive) setReasonLim(n); });
+    return () => { alive = false; };
+  }, [reasonStage]);
   /*
    * ⚠️ ТОЙРОГ СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-15-ны аудит).
    *
@@ -966,6 +1011,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const recheckSeed = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
   /** ⚠️ 2026-10-01: илгээлтийн мөрүүд шинэ жааз руу зөөгдсөн эсэх — `Submitted`-ээс */
   const [remapped, setRemapped] = useState<boolean | undefined>(undefined);
+  /** ⚠️ 2026-10-12 (R5): тулгагдаагүй нүдний тоо — `Submitted.onUnmoved`; > 0 бол батлах (дээш илгээх) ХААЛТТАЙ */
+  const [unmoved, setUnmoved] = useState<number | undefined>(undefined);
   /**
    * ӨӨРЧЛӨГДСӨН НҮДНИЙ МӨРҮҮДИЙН ТОГТВОРТОЙ ТАНИГЧ — индексээр (`Change.row` → `{oid, sid}`).
    * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): зөвшөөрлийг индексээр БИШ үүгээр бичиж/уншина
@@ -1010,7 +1057,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    */
   const seedRes = useMemo(() => {
     if (!recheckSeed || changes == null) return { keys: new Set<string>(), unknown: 0 };
-    const fresh = subAt != null && Number.isFinite(okWrittenAt) && subAt <= okWrittenAt;
+    /* ⚠️ 2026-10-12 (R10): агуулга ачаалагдсан (`changes != null`) атлаа `subAt` алга = ӨӨРЧЛӨГДӨХГҮЙ зам (архивласан
+       `done|` эсвэл хуучин legacy агшин — `hyanaltDetail.loadArchived`): тэр агуулга зөвшөөрөл бичигдсэнээс хойш
+       шинэчлэгдэх боломжгүй тул «шинэ» гэж үзнэ. Урьд нь `subAt == null` → үргэлж хоосноос эхэлдэг байв. */
+    const fresh = subAt == null || (Number.isFinite(okWrittenAt) && subAt <= okWrittenAt);
     if (!fresh) return { keys: new Set<string>(), unknown: 0 };
     const trusted = remapped === false && fresh;
     return resolveOk(parseOkCells(curOkRaw), okRows, trusted);
@@ -1148,11 +1198,15 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
 
   const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
   /** ⚠️ 2026-09-30: батлах товч ХААЛТТАЙ байгаа шалтгаан — tooltip ба ил бичвэрт нэг эх */
+  /* ⚠️ 2026-10-12 (R5): тулгагдаагүй нүдтэй илгээлтийг дунд шатанд ч батлахгүй (`prevError`-ийн ижил хаалт) */
+  const unmovedBlocks = (unmoved ?? 0) > 0;
   const approveWhy: string | undefined = changes == null
     ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
-    : changes.length > 0 && !allOk
-      ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
-      : undefined;
+    : unmovedBlocks
+      ? tr('Илгээлтийн {0} нүд одоогийн хуудсанд тулгагдаагүй тул батлах боломжгүй — гүйцэтгэгчээр дахин илгээлгэнэ үү (буцааж болно).', String(unmoved))
+      : changes.length > 0 && !allOk
+        ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+        : undefined;
   const rechecking = recheckSeed;
   const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
@@ -1167,6 +1221,14 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
         <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>
       </button>
+      {/* ⚠️ 2026-10-12 (R2): шийдвэрийн алдаа ажил «бусад» руу шилжсэн (шийдвэрийн хэсэг алга) эсвэл хураасан үед ч
+          харагдана — урьд нь зөвхөн `mine && open` хэсэгт байсан тул STALE мессеж хэзээ ч харагддаггүй байв. */}
+      {err && !(mine && open) && (
+        <div className={s.error} role="alert">
+          {err}{' '}
+          <button type="button" className={s.btn} onClick={() => setErr('')}>{tr('Хаах')}</button>
+        </div>
+      )}
 
       {open && (
         <div className={s.open}>
@@ -1181,6 +1243,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     /* ⚠️ Зөвшөөрөхөд энэ текст ХАЯГДАНА (`run` → `setReason('')`) —
                        тиймээс «зөвхөн буцаахад» гэж шууд хэлнэ (2026-09-23). */
                     placeholder={tr('Зөвхөн буцаахад бичнэ — буцаах шалтгаан (зөвшөөрөхөд хаягдана)')}
+                    /* ⚠️ 2026-10-12 (R1): баганын уртаар (`reasonMax`) — нүдний жагсаалт залгагдвал `apply` таслана */
+                    maxLength={reasonLim}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
@@ -1203,7 +1267,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
                       className={`${s.btn} ${s.ok}`}
-                      disabled={busy || lackBlocks || changes == null || (changes.length > 0 && !allOk)}
+                      disabled={busy || lackBlocks || changes == null || unmovedBlocks || (changes.length > 0 && !allOk)}
                       title={approveWhy
                           /*
                            * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
@@ -1287,6 +1351,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     className={s.field}
                     rows={2}
                     placeholder={RECHECK_HINT[reBy]}
+                    /* ⚠️ 2026-10-12 (R1): баганын уртаар (`reasonMax`) */
+                    maxLength={reasonLim}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
@@ -1314,7 +1380,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     {/* ⚠️ 2026-10-06 (аудит #3): ДЭЭШ ИЛГЭЭХ нь ердийн батлалттай ИЖИЛ «нүд бүрийг
                         гараар» дүрэмтэй — урьд нь `allOk` шалгагддаггүй тул дахин илгээгдсэн
                         (хараагүй) агуулга нэг ч нүд тэмдэглэлгүй дээш явдаг байв. */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || (changes.length > 0 && !allOk)}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || unmovedBlocks || (changes.length > 0 && !allOk)}
                       title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : approveWhy}
                       onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
                       {RECHECK_UP[reBy]}
@@ -1329,7 +1395,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       onClick={() => {
                         /* ⚠️ 2026-10-06 аудит: доош буцаалтыг баталгаажуулна (дээрх «Буцаах»-ын ⚠️) */
                         if (!window.confirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(reBy)))) return;
-                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : undefined, subAt));
+                        /* ⚠️ 2026-10-12 (R4): агуулга татагдаагүй үед `undefined` БИШ `[]` — `review()`-тэй ижил. `undefined` нь
+                           талбарыг хөндөхгүй тул дээд шатны зөвшөөрөл үлдэж гүйцэтгэгчид «зөвшөөрөгдсөн» (түгжигдсэн
+                           ногоон) нүд болж харагддаг байв. */
+                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : [], subAt));
                       }}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
@@ -1397,6 +1466,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             onChanges={setChanges}
             onSubAt={setSubAt}
             onRemapped={setRemapped}
+            onUnmoved={setUnmoved}
             reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
@@ -1561,8 +1631,12 @@ export function Guitsetgel() {
    * unmount болж ноорогт ХАДГАЛАГДДАГГҮЙ засвар (инженерийн обьём · илгээлт явж буй) асуултгүй
    * устдаг байв. `navGuard`-ийн туг (FillNew тавьдаг) — Portal-ийн `confirmLeave`-тэй ИЖИЛ асуулт.
    */
+  /* ⚠️ 2026-10-12 (R8): ЯМАР Ч табаас гарахад асууна — «Батлах ажил» таб дээр шийдвэр бичигдэж байхад
+     (`run` → 'hyanalt-apply' туг) бөглөх таб руу шилжвэл `Item` unmount болж үр дүн/алдаа алга болдог,
+     архивын бичилт явж байхад хэрэглэгч анхааруулгагүй гардаг байв (бөглөх табын товч `setTab`-ийг шууд
+     дууддаг байсан). Туг тавигдаагүй үед асуулт гарахгүй — урьдын зан. */
   const goTab = (t: 'fill' | 'sent' | 'negtgel') => {
-    if (tab === 'fill' && t !== 'fill') {
+    if (t !== tab) {
       const labels = navDirtyLabels();
       if (labels.length
         && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
@@ -1791,7 +1865,7 @@ export function Guitsetgel() {
             <button
               type="button"
               className={`${s.tab} ${tab === 'fill' ? s.tabOn : ''}`}
-              onClick={() => setTab('fill')}
+              onClick={() => goTab('fill')}
             >
               {stage === 'company' ? tr('Гүйцэтгэл бөглөх') : tr('Гүйцэтгэлийн хүснэгт')}
             </button>

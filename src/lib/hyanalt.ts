@@ -314,6 +314,13 @@ let missingCache: string[] | null = null;
  * кэшлэнэ; унавал `null` («мэдэхгүй»), кэшлэхгүй.
  */
 let fieldsCache: Set<string> | null = null;
+/**
+ * ⚠️ 2026-10-12 (R1): МӨР ТАЛБАРЫН УРТ (`fields[].length`) — ижил уншилтаас. Урьд нь талбарын
+ *    тодорхойлолтыг татаад ЗӨВХӨН нэрийг хадгалдаг тул шалтгаан (`SF[шат].reason`) ба
+ *    `Zovshoorson_nud` AGOL-ын анхдагч 256 тэмдэгтээс хэтрэхэд `applyEdits` бүх шийдвэрийг
+ *    унагадаг байв (хянагч урт шалтгаан + 12 нүдний жагсаалт бичихэд). `fieldMaxLen`-ээр уншина.
+ */
+let lensCache: Map<string, number> | null = null;
 async function serviceFieldNames(): Promise<Set<string> | null> {
   if (fieldsCache) return fieldsCache;
   try {
@@ -327,10 +334,14 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
      * ⚠️ 2026-09-30: `query.arcgisPost` — 200-алдаа, `res.ok`, timeout тэнд шидэгдэнэ
      *    (урьд нь GET + токен query string-д).
      */
-    const j = await arcgisPost<{ fields?: { name: string }[] }>(HYANALT.url, {});
+    const j = await arcgisPost<{ fields?: { name: string; type?: string; length?: number }[] }>(HYANALT.url, {});
     if (!Array.isArray(j.fields)) {
       throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
     }
+    /* ⚠️ 2026-10-12 (R1): мөр (`esriFieldTypeString`) талбарын эерэг урт л — бусад төрөлд урт утгагүй */
+    lensCache = new Map(j.fields
+      .filter((x) => (x.type == null || x.type === 'esriFieldTypeString') && typeof x.length === 'number' && x.length > 0)
+      .map((x): [string, number] => [x.name, x.length as number]));
     fieldsCache = new Set(j.fields.map((x) => x.name));
     return fieldsCache;
   } catch {
@@ -361,6 +372,17 @@ export async function hasOkCellsField(): Promise<boolean | null> {
  *               шийдвэрийн НЭМЭЛТ мэдээлэл тул танигдахгүй талбар руу бичиж
  *               шийдвэрийг өөрийг нь эрсдэлд оруулахгүй.
  */
+/**
+ * МӨР ТАЛБАРЫН ДЭЭД УРТ (тэмдэгт) — 2026-10-12 (R1).
+ *   · тоо  — үйлчилгээний `length`;
+ *   · `null` — мэдэхгүй (уншилт унасан, талбар алга, урт заагаагүй) — дуудагч өөрийн нөөц хязгаарыг хэрэглэнэ.
+ */
+export async function fieldMaxLen(name: string): Promise<number | null> {
+  const have = await serviceFieldNames();
+  if (!have || !lensCache) return null;
+  return lensCache.get(name) ?? null;
+}
+
 export async function hasHistoryField(): Promise<boolean | null> {
   const have = await serviceFieldNames();
   return have ? have.has(F.history) : null;
