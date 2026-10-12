@@ -263,6 +263,37 @@ export function changedKeys(base: SheetRow[], ov: Overlay, bld: string[]): Set<s
   return out;
 }
 
+/**
+ * БУЦААГДСАН ИЛГЭЭЛТЭД ӨӨРЧЛӨГДСӨН ОГНОО — `changedKeys`-ийн огнооны хувилбар.
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `changedKeys` зөвхөн `ov.cellKeys` (обьём/гүйцэтгэл) тул буцаагдсан
+ *    илгээлтийн Эхлэх/Дуусах огнооны өөрчлөлт гүйцэтгэгчид УЛААНААР харагддаггүй, «Буцаагдсан нүд» жагсаалтад ч
+ *    ордоггүй байв — гэтэл хянагчийн тал (`hyanaltDetail`: `ov.dateKeys`, өдрөөр харьцуулж) түүнийг өөрчлөлт гэж
+ *    харуулдаг. Дүрэм ИЖИЛ: суурийн өдөр ≠ илгээлтийн өдөр (`dt`-ээр — ms-ийн өчүүхэн зөрүүг тоохгүй).
+ *    Түлхүүр нь `ov.dateKeys`-ийнх (`${oid}:${b}:s|e`) — `FillRows`-ийн огнооны нүдний `key`-тэй ЯГ ижил.
+ * ⚠️ Ногоон ✓ түгжээ (`okLock`) ОГНООНД ХАМААРАХГҮЙ (аудит №8-ын шийдвэр хэвээр) — энэ олонлог зөвхөн улаан
+ *    тэмдэглэгээ ба жагсаалтад.
+ * ⚠️ `null ≠ 0`: шинэ (oid < 0) мөрд суурь байхгүй — `null`; илгээлтэд огноотой бол өөрчлөгдсөн.
+ */
+export function changedDateKeys(base: SheetRow[], ov: Overlay): Set<string> {
+  const baseBy = new Map(base.map((r) => [r.oid, r] as const));
+  const ovBy = new Map(ov.rows.map((r) => [r.oid, r] as const));
+  const out = new Set<string>();
+  for (const k of ov.dateKeys) {
+    const parts = k.split(':');
+    const oid = Number(parts[0]);
+    const bi = Number(parts[1]);
+    const se = parts[2];
+    if (!Number.isInteger(bi) || bi < 0 || (se !== 's' && se !== 'e')) continue;
+    const r = ovBy.get(oid);
+    if (!r) continue;
+    const b = baseBy.get(oid);
+    const to = (se === 's' ? r.start[bi] : r.end[bi]) ?? null;
+    const from = b ? ((se === 's' ? b.start[bi] : b.end[bi]) ?? null) : null;
+    if (dt(from) !== dt(to)) out.add(k);
+  }
+  return out;
+}
+
 /* ── Задралын үед нэрлэсэн туслах төрлүүд (2026-09-30) — агуулга нь FillNew-ийн хуучин
    inline төрөлтэй ЯГ ижил ── */
 /** Нээлттэй засварын нүд */

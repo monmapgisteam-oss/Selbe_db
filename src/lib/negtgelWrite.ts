@@ -18,6 +18,8 @@
  * дундажлавал жин алдагдаж, дэлгэц дээрх тоо хоорондоо зөрнө.
  * ⚠️ 2026-09-25: ХОЁР ХУУДАСТАЙ багцад (9F + 12F) хуудсуудын «Б.» мөрийг
  * БЛОКИЙН ТООГООР нийлүүлнэ — дэлгэрэнгүйг `summaryOf`-ийн ⚠️-ээс.
+ * ⚠️ 2026-10-12: блокийн тоо нь ДАВХАРДАЛГҮЙ шошгоор (`blendSheets`) — Багц 4-2-ийн 12F
+ * 9F-тэй нэг түлхүүртэй тул жин 0.
  */
 
 import { t as tr } from './i18nCore';
@@ -25,6 +27,7 @@ import { agsFetch } from '@/modules/sheet/ags';
 import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { uniqueBlockCounts } from './blockProgress';
 
 const F = BAGTS_NEGTGEL.fields;
 
@@ -101,6 +104,29 @@ export const blendBlocks = (xs: { n: number; v: number | null }[]): number | nul
     d += w;
   }
   return d > 0 ? s / d : null;
+};
+
+/**
+ * ХУУДСУУДЫН «Б.»-г ДАВХАРДАЛГҮЙ блокийн жингээр нийлүүлнэ (0–1) — `summaryOf` ·
+ * `comparablePct`-ийн ЦЭВЭР хэсэг (сүлжээгүй, `negtgel.check` тулгана).
+ *
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): жин = `blockProgress.uniqueBlockCounts` — хуудас бүрд
+ *    ӨМНӨХ хуудсуудад байхгүй блокийн шошгын тоо. Урьд нь `sc.bld.length` байсан тул Багц 4-2-т
+ *    (9F 14 = F5_1…F5_6 + F6_1…F6_8, 12F 8 = F6_1…F6_8 — `bagts.pkg` хоёуланг «6/x» гэж нэрлэдэг,
+ *    `buildingKey` нэг түлхүүр) хэзээ ч нийтлэгдээгүй 12F-ийн 8 «0%» блок 9F-ийн F6-тай ДАВХАР
+ *    тоологдож, нэгтгэл дашбоардын `pkgProgressOf` (хуваарь = түлхүүрийн олонлог, 14)-оос
+ *    0.636 дахин бага гардаг байв. Бүрэн давхардсан хуудас (жин 0) жигнэлтэд ОРОХГҮЙ; ялгаатай
+ *    түлхүүртэй хуудсууд (Багц 1: 9F/12F) урьдын адил блокийн тоогоор. Эрэмбэ чухал: эхнийх
+ *    (батлагдаж буй / сүүлийн мөрийн ӨДРӨӨС ӨМНӨ хэмжилттэй) давамгайлна.
+ * ⚠️ Жинтэй хуудас ганц (эсвэл блокгүй багц — бүх `bld` хоосон) бол ЭХНИЙХИЙН утга;
+ *    жинтэй хуудсуудын аль нэг нь `null` бол `null` (`blendBlocks`-ийн дүрэм).
+ */
+export const blendSheets = (xs: { bld: readonly string[]; v: number | null }[]): number | null => {
+  if (!xs.length) return null;
+  const w = uniqueBlockCounts(xs.map((x) => x.bld));
+  const kept = xs.map((x, i) => ({ n: w[i], v: x.v })).filter((x) => x.n > 0);
+  if (kept.length < 2) return (kept[0] ?? xs[0]).v;
+  return blendBlocks(kept);
 };
 
 /**
@@ -207,6 +233,8 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
 /**
  * Багцын дүнд орсон НЭГ хуудас. `real: false` = хэзээ ч нийтлэгдээгүй / «Б.» мөр нь
  * хэмжигдээгүй хуудас — блокууд нь 0% гэж орсон (`summaryOf`-ийн ⚠️ 2026-10-09).
+ * ⚠️ 2026-10-12: `n` = ДАВХАРДАЛГҮЙ блокийн жин (`uniqueBlockCounts`, `parts`-ын эрэмбээр) —
+ *    `sc.bld.length` БИШ; 0 бол хуудас жигнэлтэд ороогүй (`blendSheets`).
  */
 type Part = { n: number; r: BRow; p: Pkg; sc: Schema; real: boolean };
 
@@ -307,6 +335,9 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
    *    — өөр блокийн олонлогоор бодсон төлөвлөгөөг гүйцэтгэлтэй жишвэл
    *    хоцрогдол худал гарна. 0% гэж орсон (`real: false`) хуудасны төлөвлөгөө
    *    мэдэгдэхгүй бол багцын `planned` нь `null` (цоорхой, 0 БИШ).
+   * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ЖИН нь блокийн тоо биш, хуудсуудын блокийн ШОШГЫН
+   *    ОЛОНЛОГИЙН ялгавар (`blendSheets` → `uniqueBlockCounts`): Багц 4-2-ийн 12F-ийн 8 блок
+   *    9F-ийн F6_1…F6_8-тай нэг түлхүүр тул жин 0 — нэгтгэл = 9F-ийн «Б.» (дашбоардтай нэг тоо).
    */
   const parts: Part[] = [{ n: one.sc.bld.length, r: own, p: one.p, sc: one.sc, real: true }];
   if (own.act != null) {
@@ -327,8 +358,9 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       }
     }
   }
+  uniqueBlockCounts(parts.map((x) => x.sc.bld)).forEach((w, i) => { parts[i].n = w; });
   const mean = (pick: (r: BRow) => number | null): number | null =>
-    parts.length === 1 ? pick(own) : blendBlocks(parts.map((x) => ({ n: x.n, v: pick(x.r) })));
+    parts.length === 1 ? pick(own) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
   /*
    * ⚠️ ОБЬЁМ нь багцын түвшинд ХОЛИМОГ НЭГЖТЭЙ (м³ бетон + м² хана + ш цонх).
    *    Нийлбэр нь физик утгагүй ч хэрэглэгчийн шийдвэрээр бүртгэгдэнэ —
@@ -390,7 +422,9 @@ async function comparablePct(parts: Part[], lastAt: number | null): Promise<numb
   }
   if (kept.length === parts.length) return 'same';
   if (!kept.length) return null;
-  const v = blendBlocks(kept.map((x) => ({ n: x.n, v: x.r.act })));
+  /* ⚠️ 2026-10-12: жишигдэх ДЭД олонлогт ч давхардалгүй жин — `kept`-ийн эрэмбээр дахин бодно
+     (`blendSheets`); бүрэн давхардсан хуудас (4-2·12F) энд ч жин авахгүй. */
+  const v = blendSheets(kept.map((x) => ({ bld: x.sc.bld, v: x.r.act })));
   return v == null ? null : v * 100;
 }
 

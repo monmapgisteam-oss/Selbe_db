@@ -1453,7 +1453,15 @@ export async function saveSubmission(
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
-    const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `lost` ЗӨВХӨН `applyEdits`-ийн уналтад — урьдчилсан `queryFeatures`
+       (давхардал/тэмдгийн уншилт) унавал юу ч бичигдээгүй тул «алдагдсан» гэж тэмдэглэхгүй (гаднах catch). Урьд нь нэг
+       try дотор байсан тул уншилтын timeout ч `lost` болж, дуудагч илгээлтийн тэмдгийг дэмий үлдээх байв. */
+    let r: Awaited<ReturnType<typeof fl.applyEdits>>;
+    try {
+      r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
+    } catch (e) {
+      return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)), ...(isLostWrite(e) ? { lost: true as const } : {}) };
+    }
     const results = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
     /* ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит): `applyEdits` нь
        алдаагүй атлаа үр дүнгүй буцаж болно. Доорх OID шалгуур нь `add`-ыг
@@ -1503,7 +1511,8 @@ export async function saveSubmission(
     } catch { /* баталгааны уншилт унасан — бичилт батлагдсан хэвээр */ }
     return { ok: true, oid };
   } catch (e) {
-    return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)), ...(isLostWrite(e) ? { lost: true as const } : {}) };
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): энд `applyEdits`-ээс ӨМНӨХ уналт л ирнэ (`lost`-гүй — дээрх ⚠️) */
+    return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)) };
   }
 }
 

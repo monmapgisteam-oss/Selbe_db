@@ -2681,6 +2681,14 @@ export function useDraftSync(p: {
    *    уралддаг байв; одоо тэр хугацаанд нүд нээгдэхгүй, буулгалт хаалттай.
    */
   const restoringUi = !noEdit && canPerf && !busy && rows.length > 0 && !!sc && restDonePkg !== pkg.key;
+  /**
+   * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `restDonePkg` урьд нь ХЭЗЭЭ Ч тэглэгддэггүй байв — нэг багцыг дахин
+   *    ачаалахад (шөнө дунд `todayFillMs` солигдох, «Өдөр солигдлоо», F5-гүй дахин уншилт) `promptedPkgRef` тэглэгдэж
+   *    сэргээлт ДАХИН явдаг атал `restDonePkg === pkg.key` хэвээр тул `restoringUi` хаалт ажиллахгүй, хэрэглэгчийн
+   *    бичилт сэргээгдэж буй ноорогтой уралддаг байв. FillNew-ийн ачаалах эффект `promptedPkgRef = ""`-ийн хажууд
+   *    дуудна; `tgtSeenRef` эффект `restDonePkg !== pkg.key` үед зөвхөн тэмдэглээд буцдаг тул эвдрэхгүй.
+   */
+  const clearRestoreDone = useCallback(() => setRestDonePkg(''), []);
 
   /**
    * ТАБ ХААХ / REFRESH — ноорог ХАДГАЛАГДАЖ АМЖААГҮЙ үед хөтөч зогсооно.
@@ -2900,6 +2908,8 @@ export function useDraftSync(p: {
     waitingLast,
     /* 2026-10-01 */
     undoAllMarks, resetMarks, stamp, restoringUi, offline,
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): дахин ачаалалтад сэргээлтийн түгжээг буцаана (`clearRestoreDone`-ийн ⚠️) */
+    clearRestoreDone,
     /* 2026-10-04 аудит — баримт · суурь · зорилт · локал алдаа */
     rcptRef, btRef, datesBRef, asOfBRef, draftTgt, setDraftTgt, localFail,
     /* 2026-10-04 дахин аудит — тэмдэглэсэн нүд (#7) · хүн бүрийн зорилт (#4) */

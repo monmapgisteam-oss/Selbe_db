@@ -499,3 +499,51 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.ok(iSkip > 0 && iErr > iSkip, '`!s` → алдаа (блокгүй багцад ч)');
   console.log('negtgel 2026-10-09 (блокгүй !s): ok — уншигдаагүй хураангуй алдаа');
 }
+
+/* ── 2026-10-12 (гүйцэтгэлийн аудит): нэг түлхүүртэй ХОЁР хуудас (Багц 4-2: 9F F5_1…F5_6 + F6_1…F6_8,
+   12F F6_1…F6_8 — хоёулаа «6/x») ──
+   1. `uniqueBlockCounts` — жин нь шошгын ОЛОНЛОГИЙН ялгавар (12F → 0); ялгаатай хуудас (Багц 1) бүтэн.
+   2. `blendSheets` (`summaryOf`-ийн цэвэр хэсэг) — 4-2-ийн дүн = 9F-ийн J (12F-ийн 0 нэмэгдэхгүй);
+      Багц 1 урьдын адил блокоор жигнэнэ; `null` дүрэм хэвээр.
+   3. `compute` — өөр хуудасны `null` нүд утгатай нүдийг ДАРАХГҮЙ (мөрийн дарааллаас үл хамааран);
+      нэг хуудас дотор `null` нь урьдын адил «цэвэрлэгдсэн». */
+{
+  const { uniqueBlockCounts, compute } = await import('./blockProgress.ts');
+  const { blendSheets } = await import('./negtgelWrite.ts');
+  const { TASK_SHEET, buildingKey } = await import('./services.ts');
+  const f6 = ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7', '6/8'];
+  const bld9 = ['5/1', '5/2', '5/3', '5/4', '5/5', '5/6', ...f6];           // 4-2 · 9F (14)
+  const bld12 = f6;                                                         // 4-2 · 12F (8)
+  const b1_9 = Array.from({ length: 12 }, (_, i) => `29/${i + 1}`);         // Багц 1 · 9F
+  const b1_12 = Array.from({ length: 17 }, (_, i) => `30/${i + 1}`);        // Багц 1 · 12F
+
+  assert.deepEqual(uniqueBlockCounts([bld9, bld12]), [14, 0], '4-2: 12F бүрэн давхардсан → 0');
+  assert.deepEqual(uniqueBlockCounts([bld12, bld9]), [8, 6], 'эрэмбэ: эхнийх давамгайлна');
+  assert.deepEqual(uniqueBlockCounts([b1_9, b1_12]), [12, 17], 'Багц 1: ялгаатай түлхүүр — бүтэн');
+  assert.deepEqual(uniqueBlockCounts([['5/1 барилга'], ['5/1', '5/2']]), [1, 1], '`blockKey` нормчлол');
+  assert.deepEqual(uniqueBlockCounts([[], []]), [0, 0], 'блокгүй хуудас');
+
+  assert.equal(blendSheets([{ bld: bld9, v: 0.5 }, { bld: bld12, v: 0 }]), 0.5, '4-2: нэгтгэл = 9F-ийн J (12F-ийн 0 нэмэгдэхгүй)');
+  assert.equal(blendSheets([{ bld: bld9, v: 0.5 }, { bld: bld12, v: null }]), 0.5, 'жингүй хуудасны null дүнг null болгохгүй');
+  assert.ok(Math.abs(blendSheets([{ bld: bld12, v: 0.2 }, { bld: bld9, v: 0.5 }]) - (0.2 * 8 + 0.5 * 6) / 14) < 1e-12, '12F батлагдвал: 8 · 6 жин');
+  assert.ok(Math.abs(blendSheets([{ bld: b1_9, v: 0.5 }, { bld: b1_12, v: 0 }]) - 6 / 29) < 1e-12, 'Багц 1: 12·0.5/29 (урьдын адил)');
+  assert.equal(blendSheets([{ bld: b1_9, v: 0.5 }, { bld: b1_12, v: null }]), null, 'Багц 1: null ≠ 0');
+  assert.equal(blendSheets([{ bld: [], v: 0.3 }]), 0.3, 'блокгүй багц — өөрийн утга');
+  assert.equal(blendSheets([{ bld: b1_9, v: null }]), null);
+  assert.equal(blendSheets([]), null);
+
+  const TS = TASK_SHEET.fields;
+  const row = (sheet, date, pct) => ({
+    [TS.bagts]: 'Багц 4-2', [TS.no]: TASK_SHEET.constructionNo, [TS.work]: 'Б', [TS.date]: date, [TS.block]: '6/1', [TS.progress]: pct, sheet,
+  });
+  const k = buildingKey('Багц 4-2', '6/1');
+  const today = '2026-10-12';
+  const a = [row('b42_9f', '2026-09-01', 0.4), row('b42_12f', '2026-09-10', null)];
+  assert.equal(compute(a, today).get(k)?.overall, 40, '12F-ийн сүүлийн null 9F-ийн хэмжилтийг дарахгүй');
+  assert.equal(compute([...a].reverse(), today).get(k)?.overall, 40, 'мөрийн дарааллаас үл хамаарна');
+  assert.equal(compute([row('b42_9f', '2026-09-01', 0.4), row('b42_12f', '2026-09-10', 0.6)], today).get(k)?.overall, 60, '12F-ийн УТГАТАЙ сүүлийн нүд ялна');
+  assert.equal(compute([row('b42_9f', '2026-09-01', 0.4), row('b42_9f', '2026-09-10', null)], today).has(k), false, 'нэг хуудас дотор null = цэвэрлэгдсэн (хэвээр)');
+  const noSheet = [row(undefined, '2026-09-01', 0.4), row(undefined, '2026-09-10', null)];
+  assert.equal(compute(noSheet, today).has(k), false, 'хуудасны түлхүүргүй мөр — хуучин дүрэм');
+  console.log('negtgel 2026-10-12: ok — давхардалгүй жин · blendSheets · compute хуудас хоорондын null');
+}

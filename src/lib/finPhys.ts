@@ -34,6 +34,9 @@
  *    нь «тайлагнасан багц»-ын тоо хэвээр.
  * ⚠️ `null` ≠ 0 ХЭВЭЭР зөвхөн: цэггүй сар нь Map-д түлхүүргүй (дуудагч `null` гэж
  *    уншина); бөглөх хуудас уншигдаагүй (хуваарьт байхгүй) багц хаана ч орохгүй.
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ЦЭВЭРЛЭГДСЭН (`pct: null`) бичилт нь
+ *    `blockProgress.progressSeries('latest')`-тэй ИЖИЛ — тэр агшинд 0%, бүх сараас хасахгүй,
+ *    өмнөх утгаар нөхөхгүй (доорх `members`-ийн ⚠️). Хуваагч = хуваарь ∪ БИЧИЛТТЭЙ блок.
  */
 import { bagtsKey, blockKey } from './services';
 
@@ -111,21 +114,31 @@ export function buildPhys(
 
   for (const k of new Set([...byPkg.keys(), ...uniOf.keys()])) {
     const blocks = byPkg.get(k) ?? new Map<string, { d: string; g: number | null }[]>();
-    /* Утгатай блокууд — СҮҮЛИЙН бичилт нь утгатай (`compute`-ийн олонлог) */
-    const members: { d: string; g: number }[][] = [];
-    /* ⚠️ 2026-10-01: хуваагч = хуваарь ∪ утгатай блок (`pkgProgressOf`-тэй ижил) */
+    /*
+     * Бичилттэй блокууд — ХООСОН (`null`, цэвэрлэгдсэн) бичилт ч бичилт.
+     * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): урьд нь СҮҮЛИЙН бичилт нь `null` блокийг бүх сараас
+     *    хасч (хуваарьт байвал 0%), бусад блокт `null`-ыг АЛГАСАЖ өмнөх утгатай бичилтийг авдаг
+     *    байв. Дашбоардын цуваа (`blockProgress.progressSeries('latest')`) харин тухайн агшны
+     *    СҮҮЛИЙН бичилтийг авдаг — `null` бол тэр агшинд 0% (`compute`-ийн «нүд цэвэрлэгдсэн»),
+     *    дараа нь дахин утга орвол буцаад тоологдоно. Хоёр дэлгэц цэвэрлэгдсэн нүдэнд зөрдөг
+     *    байв (жагсаалт «90 → 90», цуваа «90 → 0»). Одоо ЭНД ч `latest` дүрэм: сар бүрийн цэг =
+     *    блок бүрийн тэр сарын эцэс хүртэлх СҮҮЛИЙН бичилт (`null` → 0), `null` бичилт ч «шинэ
+     *    бичилт» (цэг үүсгэнэ). `phys.check` цуваатай тулгана.
+     */
+    const members: { d: string; g: number | null }[][] = [];
+    /* ⚠️ 2026-10-01: хуваагч = хуваарь ∪ бичилттэй блок (`pkgProgressOf`-тэй ижил) */
     const all = new Set(uniOf.get(k) ?? []);
+    let anyVal = false;
     for (const [b, arr0] of blocks) {
-      const arr = [...arr0].sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
-      const last = arr[arr.length - 1];
-      if (!last || last.g == null) continue; // нүд цэвэрлэгдсэн — хуваарьт байвал 0%
-      members.push(arr.filter((e): e is { d: string; g: number } => e.g != null));
+      if (!arr0.length) continue;
+      members.push([...arr0].sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0)));
       all.add(b);
+      if (arr0.some((e) => e.g != null)) anyVal = true;
     }
     const n = all.size;
     if (n > 0) physN.set(k, n);
-    /* Огт тайлагнаагүй — цэг гаргахгүй (шинэ бичилт алга), `physN`-ээр 0% */
-    if (!members.length) continue;
+    /* Огт тайлагнаагүй (утгатай бичилт нэг ч алга) — цэг гаргахгүй, `physN`-ээр 0% */
+    if (!anyVal) continue;
     const byMon = new Map<string, number>();
     const cntMon = new Map<string, number>();
     const atMon = new Map<string, string>();
@@ -133,20 +146,22 @@ export function buildPhys(
       if (label > nowYm) continue; // ирээдүйн сард биет дата байхгүй
       let sum = 0;
       let fresh = false; // тухайн сард ШИНЭ бичилт бий эсэх (дүрэм 2)
+      let nVal = 0; // тэр агшинд УТГАТАЙ блокийн тоо (`progressSeries`-ийн `blocks`)
       let at = '';
       for (const arr of members) {
-        /* тухайн сарын эцэс хүртэлх хамгийн сүүлийн УТГАТАЙ бичилт */
-        let best: { d: string; g: number } | null = null;
+        /* тухайн сарын эцэс хүртэлх хамгийн сүүлийн бичилт — `null` ч байж болно (⚠️ 2026-10-12) */
+        let best: { d: string; g: number | null } | null = null;
         for (const e of arr) {
           if (e.d.slice(0, 7) > label) break;
           best = e;
         }
         if (!best) continue; // хараахан тайлагнаагүй — 0% (дүрэм 1)
-        sum += best.g;
+        if (best.g != null) { sum += best.g; nVal += 1; }
         if (best.d.slice(0, 7) === label) fresh = true;
         if (best.d > at) at = best.d;
       }
-      if (!fresh) continue;
+      /* ⚠️ 2026-10-12: бүх блок нь `null` агшин — `progressSeries`-ийн `measured` (blocks > 0)-тэй адил цэггүй */
+      if (!fresh || !nVal) continue;
       byMon.set(label, sum / n);
       cntMon.set(label, n);
       atMon.set(label, at);

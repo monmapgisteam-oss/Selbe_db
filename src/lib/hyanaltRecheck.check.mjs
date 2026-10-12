@@ -54,9 +54,11 @@ globalThis.fetch = async (input, init) => {
     if (body.has('deletes')) {
       const ids = String(body.get('deletes')).split(',').map(Number);
       const res = ids.map((id) => {
+        st.deletes.push(id);
+        /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): устгал УНАДАГ горим (`failDelete`) — ихэр үлдэх тохиолдол (7) */
+        if (st.failDelete) return { objectId: id, success: false };
         const i = st.rows.findIndex((x) => x.OBJECTID === id);
         if (i >= 0) st.rows.splice(i, 1);
-        st.deletes.push(id);
         return { objectId: id, success: i >= 0 };
       });
       return json({ deleteResults: res });
@@ -121,6 +123,7 @@ const reset = () => {
   st.wrote = false;
   st.deletes = [];
   st.beforeAdd = null;
+  st.failDelete = false;
 };
 /* ⚠️ `bypass: true` — эрхийн шалгуур (`authz`) энэ шалгуурын сэдэв биш */
 const ok = (who) => recheck(1, 'ok', '', who, 'engineer', undefined, true);
@@ -237,6 +240,22 @@ st.beforeAdd = () => {
   check(r.ok === false && /Инженер Б/.test(r.error ?? ''), `6: давхар тойрог — татгалзаж, нөгөө хянагчийг нэрлэнэ (${r.error ?? ''})`);
   check(st.deletes.length === 1 && st.deletes[0] === 100, `6: ӨӨРИЙН (их OID) мөрийг устгана (${JSON.stringify(st.deletes)})`);
   check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.OBJECTID === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
+}
+
+/* ── 7. «ok» — ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ: чимээгүй биш — `ok:true` + ихэр OID-ийг нэрлэсэн `warn` (2026-10-12) ── */
+reset();
+st.failDelete = true;
+st.beforeAdd = () => {
+  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+    [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
+  st.beforeAdd = null;
+};
+{
+  const r = await ok('Инженер В');
+  check(r.ok === true, `7: шийдвэр суусан тул унагахгүй (алдаа: ${r.error ?? ''})`);
+  check(st.deletes.length === 1 && st.deletes[0] === 100, `7: устгалыг оролдсон (${JSON.stringify(st.deletes)})`);
+  check(/Инженер Б/.test(r.warn ?? '') && /\b50\b/.test(r.warn ?? '') && /\b100\b/.test(r.warn ?? ''), `7: warn ихэр ба өөрийн OID-ийг нэрлэнэ (${r.warn ?? ''})`);
+  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 2, '7: хоёр мөр хэвээр (устгал унасан)');
 }
 
 assert.deepEqual(st.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

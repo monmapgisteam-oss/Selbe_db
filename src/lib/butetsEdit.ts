@@ -54,6 +54,8 @@ function requireLayer(meta: LayerMeta): void {
 import { applyAll } from '@/lib/tableWrite';
 import { normCell } from '@/modules/sheet/paste';
 import { lenFieldUnit } from '@/lib/butetsLen';
+/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `isLostResponse` = `isLostWrite` — нэг эх */
+import { isLostWrite } from '@/lib/lostWrite';
 
 /* ══════════════════ Схем ══════════════════ */
 
@@ -590,13 +592,10 @@ export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
    татгалзал (буруу URL · эрхгүй · давхарга алга) — урьд нь `code == null` тул «хариу алдагдсан»
    гэж тооцогдож, хэрэглэгчийг дэмий «шалгаад дахин ачаал» гэж зовоодог байв. Үлдсэн нь
    (5xx · сүлжээ · timeout · JSON биш хариу) үр дүн тодорхойгүй хэвээр. */
-const DEFINITE_HTTP = new Set([400, 401, 403, 404]);
+/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): НЭГ ЭХ — `lostWrite.isLostWrite` (JS API-ийн `request:server`/`request:timeout`
+   ч ангилагдана). Урьд нь энд хуулбар байж «ЯГ ижил, хамт өөрчил» дүрэм зөрдөг байв. */
 export function isLostResponse(e: unknown): boolean {
-  if (e instanceof TypeError) return true;
-  const name = (e as { name?: string } | null)?.name ?? '';
-  if (name === 'TimeoutError' || name === 'AbortError') return true;
-  if (!(e instanceof ArcGISError) || e.code != null) return false;
-  return e.status == null || !DEFINITE_HTTP.has(e.status);
+  return isLostWrite(e);
 }
 
 /**

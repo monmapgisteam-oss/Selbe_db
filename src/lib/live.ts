@@ -59,6 +59,11 @@ export const POPULATION_FIELD = 'Population'; // ⚠️ export (2026-09-22): Por
  *    хуудсаа refresh хийтэл ХАРДАГГҮЙ байв. Одоо бүгд ИЖИЛ 5 мин (хуучрал нэг жигд хэвээр).
  * ⚠️ TTL нь ДАРААГИЙН дуудалтад л шалгагдана — нээлттэй харагдацыг `Portal`-ын «Шинэчлэх»
  *    товч ба таб буцаж ирэх үеийн `invalidateAll()` шинэчилнэ.
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `loadFillPkgProgress` (мөн `reportData.loadOverall/
+ *    loadProgress`) нь дотроо `blockProgress.loadPkgProgress(false)` → тэндхийн `memo`-г дууддаг;
+ *    тэр memo урьд нь TTL-ГҮЙ тул энд 5 мин дуусаад дахин дуудсан ч ХУУЧИН мөрөөр дахин
+ *    бодогдож, амлалт биелдэггүй байв. Одоо `blockProgress.MEMO_TTL_MS` (ижил 5 мин) —
+ *    тэндээс импортлохгүй (энэ файл түүнийг динамикаар ачаалдаг, мөчлөг).
  */
 export const SESSION_TTL_MS = 5 * 60_000;
 

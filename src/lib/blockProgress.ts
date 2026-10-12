@@ -22,7 +22,7 @@
  * Нүд бүрээр ХАМГИЙН СҮҮЛИЙН огноог авна: бөглөх хуудас нь өөрчилсөн нүдээ
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
-import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
+import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows, sheetBlockKeys } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
@@ -67,7 +67,39 @@ async function fetchConstruction(): Promise<Record<string, unknown>[]> {
     [TS.date]: r.date,
     [TS.block]: r.block,
     [TS.progress]: r.progress,
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): эх хуудасны түлхүүр («b42_9f») — `compute`-д нэг түлхүүрт
+       ХОЁР хуудасны нүд холилдохыг ялгахад (доорх ⚠️). `TASK_SHEET`-ийн талбар биш тул нэрээр. */
+    sheet: r.sheet,
   }));
+}
+
+/**
+ * ХУУДСУУДЫН ДАВХАРДАЛГҮЙ БЛОКИЙН ТОО — багцын хуудас бүрд ӨМНӨХ хуудсуудад байхгүй блокийн
+ * шошгын тоо (`blockKey`-ээр нормчилж жишнэ).
+ *
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): Багц 4-2-ийн `Bagts_4_2_9f` хуудас 14 гүйцэтгэлийн
+ *    баганатай (`F5_1…F5_6` + `F6_1…F6_8`), `Bagts_4_2_12f` 8-тай (`F6_1…F6_8`) — `bagts.pkg`
+ *    хоёуланг «6/1…6/8» гэж нэрлэдэг тул `buildingKey('Багц 4-2','6/x')` ХОЁР хуудсанд НЭГ
+ *    түлхүүр. Хуудсуудын «Б.»-г блокийн ТООГООР (14 + 8 = 22) жигнэвэл нэг блок хоёр жинтэй
+ *    орж, хэзээ ч нийтлэгдээгүй 12F («тайлагнаагүй 0%») нэгтгэлийг дашбоардын `pkgProgressOf`-оос
+ *    (хуваарь = түлхүүрийн ОЛОНЛОГ, 14) 0.636 дахин бага болгодог байв. Жин нь одоо ОЛОНЛОГИЙН
+ *    ялгавар: эхний хуудас бүх блокоо, дараагийнх зөвхөн ШИНЭ шошгоо авна — бүрэн давхардсан
+ *    хуудас 0 (жигнэлтэд ОРОХГҮЙ). Ялгаатай түлхүүртэй хуудсууд (Багц 1: 9F/12F) урьдын адил.
+ *    `negtgelWrite.blendSheets` · `planProgress.loadPlanCurve` ЭНЭ функцээр — нэг дүрэм.
+ * @param blds хуудас бүрийн блокийн шошго (`Schema.bld`) — ЭРЭМБЭ чухал (эхнийх давамгайлна)
+ */
+export function uniqueBlockCounts(blds: readonly (readonly string[])[]): number[] {
+  const seen = new Set<string>();
+  return blds.map((bld) => {
+    let n = 0;
+    for (const b of bld) {
+      const k = blockKey(b);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      n += 1;
+    }
+    return n;
+  });
 }
 
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */
@@ -97,7 +129,7 @@ export type BlockUniverse = ReadonlyMap<string, readonly string[]>;
  */
 export function compute(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockProgressMap {
   /** барилга → (№ → сүүлийн мөр) */
-  const win = new Map<string, Map<string, { pct: number | null; name: string; date: string }>>();
+  const win = new Map<string, Map<string, { pct: number | null; name: string; date: string; sheet: string }>>();
   for (const r of rows) {
     const d = t(r[TS.date]);
     if (!isValidDate(d)) continue;
@@ -110,14 +142,29 @@ export function compute(rows: Record<string, unknown>[], today: string = progres
     const k = buildingKey(r[TS.bagts], r[TS.block]);
     const cells = win.get(k) ?? new Map();
     const prev = cells.get(no);
+    const sheet = typeof r.sheet === 'string' ? r.sheet : '';
+    const inNull = r[TS.progress] == null;
     // ⚠️ Нүд бүрээр сүүлийн огноо ялна; ИЖИЛ огноонд сүүлийн (их OID-той) мөр
     //    ялна — history()-ийн «нэг өдөрт хоёр бичлэг — сүүлийнх ялна» дүрэмтэй
     //    ижил, эс бөгөөс зураг/самбар нэг тоо, муруй өөр тоо заана.
-    if (prev && prev.date > d) continue;
+    if (prev) {
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): НЭГ түлхүүрт ХОЁР хуудасны нүд (Багц 4-2: 9F-ийн
+         F6_x ба 12F-ийн F6_x хоёулаа «6/x» — `uniqueBlockCounts`-ийн ⚠️). 12F нийтлэгдвэл түүний
+         хоосон (`null`) нүд сүүлийн огноотой болж 9F-ийн ХЭМЖИЛТИЙГ дарж, блок зурагт
+         «мэдээлэлгүй» болох байв. ӨӨР хуудасны `null` нүд утгатай нүдийг ДАРАХГҮЙ, утгатай нь
+         өөр хуудасны `null`-ыг огнооноос үл хамааран дарна. НЭГ хуудас дотор `null` нь урьдын
+         адил «нүд цэвэрлэгдсэн» (`history`/`progressSeries('latest')`-тэй нэг дүрэм хэвээр);
+         хуудасны түлхүүр мэдэгдэхгүй (хуучин кэш) мөр ч хуучин дүрмээр. */
+      const cross = sheet !== '' && prev.sheet !== '' && prev.sheet !== sheet;
+      if (cross && inNull !== (prev.pct == null)) {
+        if (inNull) continue;
+      } else if (prev.date > d) continue;
+    }
     cells.set(no, {
-      pct: r[TS.progress] == null ? null : Number(r[TS.progress]) * 100,
+      pct: inNull ? null : Number(r[TS.progress]) * 100,
       name: t(r[TS.work]),
       date: d,
+      sheet,
     });
     win.set(k, cells);
   }
@@ -154,6 +201,11 @@ export type BlockHistory = Map<string, HistoryPoint[]>;
  * ⚠️ `compute`-аас ялгаатай нь энд хуучин огноог ХАЯХГҮЙ — цуваа нь тэдгээр
  * дээр л зурагдана. `pct: null` нь нүд ЦЭВЭРЛЭГДСЭН гэсэн үг (Pivot нь хоосон
  * нүдийг null мөрөөр бичдэг) тул тэр огнооноос хойш уг блок «бөглөгдөөгүй».
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): нэг түлхүүрт ХОЁР хуудасны нүд (Багц 4-2 «6/x» —
+ *    `uniqueBlockCounts`-ийн ⚠️) энд огноогоор ХОЛИЛДСООР — `compute`-ийн «өөр хуудасны null
+ *    дарахгүй» хамгаалалт цувааны цэг бүрд хуудасны мэдээлэл шаардах тул ЭНД ОРООГҮЙ; 12F
+ *    хэзээ ч нийтлэгдээгүй тул одоогоор нөлөөгүй. 12F нийтлэгдвэл `HistoryPoint`-д хуудас
+ *    нэмж `latest`-д ижил дүрэм хэрэгтэй.
  */
 export function history(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockHistory {
   const out: BlockHistory = new Map();
@@ -501,15 +553,28 @@ const nextMonth = (m: string) => {
  * даруйд (`bagtsSheet.applyAdds`) энэ кэш хаягдаж, газрын зургийн блокийн
  * будалт ба дашбоардын явцын тоо хуудас дахин ачаалахгүйгээр шинэчлэгдэнэ.
  */
-function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = []): () => Promise<T> {
+/**
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `memo`-ийн НАС — `live.SESSION_TTL_MS`-тэй ИЖИЛ 5 мин
+ *    (тэндээс импортлохгүй: `live` энэ файлыг динамикаар ачаалдаг — `land.ts`-тэй ижил шалтгаан).
+ *    Урьд нь TTL-гүй: `live.loadFillPkgProgress` · `reportData.loadOverall/loadProgress` 5 мин
+ *    TTL-тэй атлаа дотроо `loadPkgProgress(false)` → ЭНЭ memo-г дууддаг тул TTL дуусахад ч
+ *    хуучин мөрүүд дахин бодогдож, «5 мин» гэсэн амлалт зөвхөн энэ табын бичилтээр (`invalidate`)
+ *    биелдэг байв. Одоо хугацаа дууссан дараагийн дуудалт дахин татна.
+ */
+const MEMO_TTL_MS = 5 * 60_000;
+
+function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = [], ttlMs: number = MEMO_TTL_MS): () => Promise<T> {
   let p: Promise<T> | null = null;
+  /** Хүсэлт ЭХЭЛСЭН агшин — явж буй хүсэлтийг TTL дуусахаас өмнө давхар татахгүй */
+  let at = 0;
   if (reads.length) register(() => { p = null; }, reads);
   /* ⚠️ 2026-09-08: уналтын хаалт нь ӨӨРИЙН амлалт кэшэд ХЭВЭЭР байгаа эсэхийг
      шалгана — `invalidate()` (dataBus) кэшийг хаяж, шинэ хүсэлт амжилттай
      кэшлэгдсэний дараа хоцорсон хуучин уналт тэр ШИНЭ кэшийг устгадаг байв
      (`live.ts`-ийн `cached`-тай ижил алдаа). */
   return () => {
-    if (p) return p;
+    if (p && Date.now() - at < ttlMs) return p;
+    at = Date.now();
     const mine = fn().catch((e) => { if (p === mine) p = null; throw e; });
     p = mine;
     return mine;
@@ -586,6 +651,8 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
  *    хүчингүй болгодоггүй. Хуучин кэшээр бодсон утгыг хүснэгт рүү бичвэл
  *    шинэ табын зөв утгыг дарна. Тиймээс түүхий мөрийг ДАХИН татаж бодно;
  *    дэлгэцийн memo-г ХӨНДӨХГҮЙ (дашбоард анивчихгүй).
+ * ⚠️ 2026-10-12: `memo` одоо 5 мин TTL-тэй (`MEMO_TTL_MS`) — гэхдээ бичих зам 5 мин
+ *    хүртэл хуучин байж болох кэшээр бичиж БОЛОХГҮЙ тул энэ хувилбар хэвээр.
  */
 export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
   return compute(await fetchConstruction());

@@ -68,6 +68,7 @@ import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
 import { t as tr } from './i18nCore';
 import { bagtsKey, isConstructionNo } from './services';
+import { uniqueBlockCounts } from './blockProgress';
 import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 import { register } from './dataBus';
 
@@ -161,7 +162,17 @@ type Sheet = {
   key: string;
   group: string;
   rows: Awaited<ReturnType<typeof loadRows>>['rows'];
+  /** Хуудасны ӨӨРИЙН блокийн тоо — `planCurve`-ийн дундаж үүгээр */
   nBld: number;
+  /** Блокийн шошгууд (`Schema.bld`) — багц доторх давхардлыг ялгахад */
+  bld: readonly string[];
+  /**
+   * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): багцын ӨМНӨХ хуудсуудад (PKGS-ийн дараалал) байхгүй
+   *    блокийн тоо (`blockProgress.uniqueBlockCounts`). 0 = бүрэн давхардсан хуудас
+   *    (Багц 4-2·12F — «6/1…6/8» нь 9F-ийн F6_1…F6_8-тай нэг түлхүүр) — багц/төслийн
+   *    нэгтгэлд ОРОХГҮЙ (`loadPlanCurve`-ийн ⚠️); өөрийн муруй (`bySheet`) хэвээр.
+   */
+  nUniq: number;
   /** «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» мөрийн индекс; олдоогүй бол `-1` */
   bi: number;
   /** Сарын задаргааны хувь бодогч (задаргаагүй бол `undefined`) */
@@ -311,6 +322,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       group: bagtsKey(pkg.group),
       rows,
       nBld: sc.bld.length,
+      bld: sc.bld,
+      nUniq: sc.bld.length,
       bi,
       planPct,
       from,
@@ -324,6 +337,26 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   }
   /** Хуудас нь унасан багцууд — тэдний нэгтгэсэн муруй ГАРАХГҮЙ */
   const failedGroups = new Set(failed.map((x) => x.group));
+
+  /*
+   * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): БАГЦ ДОТОРХ ДАВХАРДСАН БЛОК. Багц 4-2-ийн 9F хуудас
+   *    14 блок (F5_1…F5_6 + F6_1…F6_8), 12F 8 блок (F6_1…F6_8) — `bagts.pkg` хоёуланг
+   *    «6/x» гэж нэрлэдэг тул нэг түлхүүр. Урьд нь `gArr/tAcc`-д ХОЁУЛАА `nBld`-ээр (22) орж
+   *    12F-ийн төлөвлөгөө давхар жинтэй, багц/төслийн муруй дашбоардын блокийн хуваарьтай
+   *    (14 түлхүүр, `pkgProgressOf`) зөрдөг байв. Одоо `nUniq` — `negtgelWrite.blendSheets`-тэй
+   *    НЭГ дүрэм (`uniqueBlockCounts`): PKGS-ийн дарааллаар (9F эхэнд) өмнөх хуудаст байхгүй
+   *    шошго л тоологдоно; `sheets` нь `Promise.all`-ын дуусах дарааллаар тул эхлээд эрэмбэлнэ.
+   *    Бүрэн давхардсан хуудас (`nUniq === 0`) нэгтгэлд орохгүй; амьд өгөгдөлд хэсэгчилсэн
+   *    давхардал (0 < nUniq < nBld) байхгүй — тийм хуудас урьдын адил `nBld`-ээр жигнэнэ
+   *    (`planProgress.check` нь `plan * sh.nBld`-ийн хэлбэрийг барьдаг).
+   */
+  const pkgOrder = new Map(PKGS.map((p, i) => [p.key, i]));
+  sheets.sort((a, b) => (pkgOrder.get(a.key) ?? 0) - (pkgOrder.get(b.key) ?? 0));
+  const byGroup = new Map<string, Sheet[]>();
+  for (const sh of sheets) byGroup.set(sh.group, [...(byGroup.get(sh.group) ?? []), sh]);
+  for (const g of byGroup.values()) {
+    uniqueBlockCounts(g.map((x) => x.bld)).forEach((n, i) => { g[i].nUniq = n; });
+  }
 
   const from = Math.min(...sheets.map((x) => x.from));
   const to = Math.max(...sheets.map((x) => x.to));
@@ -380,7 +413,9 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
          * ⚠️ НЭГТГЭЛД харин ҮЛДЭНЭ: дууссан хуудсыг хасвал багц дуусах
          *    бүрд нийт муруй ДООШ унаж, хуурамч ухралт үүснэ. Эхлээгүй
          *    хуудас нь 0%-иар (`plan` нь аль хэдийн 0) тоологдоно.
+         * ⚠️ 2026-10-12: бүрэн давхардсан хуудас (`nUniq === 0`) нэгтгэлд ОРОХГҮЙ (дээрх ⚠️).
          */
+        if (!sh.nUniq) return;
         gArr[i].s += plan * sh.nBld;
         gArr[i].n += sh.nBld;
         tAcc[i].s += plan * sh.nBld;
@@ -388,6 +423,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
         return;
       }
       pts.push({ label: a.label, pct: plan * 100, vol: sh.volByMonth.get(a.label) ?? null });
+      /* ⚠️ 2026-10-12: бүрэн давхардсан хуудас (`nUniq === 0`) — өөрийн цэг л үлдэнэ, нэгтгэлд орохгүй */
+      if (!sh.nUniq) return;
       /* Багц/төслийн нэгтгэлд БЛОКИЙН ТООГООР жигнэнэ.
          ⚠️ 2026-09-30 (төслийн аудит): ТӨСЛИЙН түвшний ТӨЛӨВЛӨГӨӨГ дэлгэцүүд одоо
          `months`-оос биш `Finance.projectPlanOf` (= `gdash.housingPlanSeries`, ХО жин)-оос

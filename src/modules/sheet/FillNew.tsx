@@ -91,7 +91,7 @@ import {
 } from "./fill/draft";
 import { setNavDirty } from "@/lib/navGuard";
 import {
-  RO, cls, dt, nowFillMs, describeUnmoved, changedKeys, type EditCol, type PickState, type SheetView,
+  RO, cls, dt, nowFillMs, describeUnmoved, changedKeys, changedDateKeys, type EditCol, type PickState, type SheetView,
 } from "./fill/util";
 import { useNotice } from "./fill/useNotice";
 import { useWideMode } from "./fill/useWideMode";
@@ -833,6 +833,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const backOn = !view && !!staged && !staged.done && (returnedStaged || resumedOid === staged.oid);
   const backChg = useMemo(() => (backOn ? backChgAll : new Set<string>()), [backOn, backChgAll]);
+  /**
+   * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): БУЦААГДСАН илгээлтэд ӨӨРЧЛӨГДСӨН ОГНОО (`${oid}:${b}:s|e` —
+   *    `changedDateKeys`) — `backChgAll`-тай ЯГ ижил газруудад тавигдаж, ижил `backOn`-оор харуулагдана. Урьд нь
+   *    огнооны өөрчлөлт улаанаар тэмдэглэгдэхгүй, «Буцаагдсан нүд» жагсаалтад ордоггүй байв (хянагчийн тал харуулдаг).
+   *    Ногоон ✓ түгжээ огноонд хамаарахгүй (аудит №8-ын шийдвэр) — зөвхөн улаан тэмдэглэгээ.
+   */
+  const [backChgDatesAll, setBackChgDates] = useState<Set<string>>(new Set());
+  const backChgDates = useMemo(() => (backOn ? backChgDatesAll : new Set<string>()), [backOn, backChgDatesAll]);
   const [ovBase, setOvBase] = useState<Map<number, SheetRow>>(new Map());
   /**
    * ОБЬЁМЫН ТӨЛӨВ — ачаалах эффект багц солиход тэглэдэг тул түүнээс ДЭЭР (2026-10-01,
@@ -875,6 +883,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        `pending`-ийг «нийтэлсэн» гэж үзээд бүх оролцогчийн ноорогийг (локал +
        ArcGIS) устгадаг байв. Одоо багц бүрийн нээлтэд сэргээлт заавал явна. */
     ds.promptedPkgRef.current = "";
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): сэргээлт дахин явах тул «Ноорог сэргээж байна…» түгжээ (`restoringUi`) ч
+       дахин аснa — урьд нь `restDonePkg` тэглэгддэггүй тул нэг багцын дахин ачаалалтад (шөнө дунд `todayFillMs`
+       солигдох) хаалт ажиллахгүй байв (`useDraftSync.clearRestoreDone`-ийн ⚠️). */
+    ds.clearRestoreDone();
     /* ⚠️ Обьёмын илгээлтийн төлөв ӨМНӨХ багцынх — шууд цэвэрлэнэ (2026-09-17):
        шинэ багцын query унавал А-гийн баннер Б дээр үлдэх байв. */
     setPvSub(null);
@@ -1125,6 +1137,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    байв — яг тэр гомдол.
          */
         setBackChg(ov && sub ? changedKeys(r.rows, ov, schema.bld) : new Set());
+        /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт ч (`backChgDates`-ийн ⚠️) */
+        setBackChgDates(ov && sub ? changedDateKeys(r.rows, ov) : new Set());
         /* ⚠️ 2026-10-01: хуучин (индексийн) зөвшөөрөлд итгэх эсэхийн мэдээлэл (`backMeta`-ийн ⚠️) */
         setBackMeta(ov && sub ? { at: sub.payload.at, remapped: ov.remapped } : null);
         setOvBase(ov ? new Map(r.rows.map((x) => [x.oid, x] as const)) : new Map());
@@ -1373,6 +1387,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(rows, ov, sc.bld));
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт ч (`backChgDates`-ийн ⚠️) */
+      setBackChgDates(changedDateKeys(rows, ov));
       setBackMeta({ at: sub.payload.at, remapped: ov.remapped });
       setOvBase(new Map(rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
@@ -1507,17 +1523,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * хүснэгтийн дарааллаар. ⚠️ Түлхүүр `${oid}:${шошго}` — `FillRows`-ийн `bk`-тэй ижил.
    * ⚠️ Хянагчийн харагдацад (`view`) гарахгүй — тэнд `Guitsetgel`-ийн «Өөрчлөгдсөн нүд» жагсаалт.
    */
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт (`backChgDates`, `date: 's'|'e'`) ч жагсаалтад — үргэлж
+     «засах» (ногоон ✓ огноонд хамаарахгүй); үсрэлт нь мөр/блок руу. */
   const backList = useMemo(() => {
-    if (view || !sc || backChg.size === 0) return [];
-    const out: { row: number; block: string; no: string; work: string; ok: boolean }[] = [];
+    if (view || !sc || (backChg.size === 0 && backChgDates.size === 0)) return [];
+    const out: { row: number; block: string; no: string; work: string; ok: boolean; date?: 's' | 'e' }[] = [];
     rowsAll.forEach((r, i) => {
-      for (const b of sc.bld) {
+      sc.bld.forEach((b, bi) => {
         const k = `${r.oid}:${b}`;
         if (backChg.has(k)) out.push({ row: i, block: b, no: r.no, work: r.work || r.no, ok: backOk.has(k) });
-      }
+        for (const se of ['s', 'e'] as const) {
+          if (backChgDates.has(`${r.oid}:${bi}:${se}`)) out.push({ row: i, block: b, no: r.no, work: r.work || r.no, ok: false, date: se });
+        }
+      });
     });
     return [...out.filter((x) => !x.ok), ...out.filter((x) => x.ok)];
-  }, [view, sc, rowsAll, backChg, backOk]);
+  }, [view, sc, rowsAll, backChg, backOk, backChgDates]);
   const backBad = backList.filter((x) => !x.ok).length;
 
   const toggle = (oid: number) =>
@@ -1880,6 +1901,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(base.rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(base.rows, ov, sc.bld));
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт ч (`backChgDates`-ийн ⚠️) */
+      setBackChgDates(changedDateKeys(base.rows, ov));
       setBackMeta({ at: sub.payload.at, remapped: ov.remapped });
       setOvBase(new Map(base.rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
@@ -2026,6 +2049,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          `backOn` (`curTgtOn`-той ижил) шийднэ. Урьд нь зөвхөн `returnedStaged` үед шинэчлэгддэг тул инженерийн гар дээрх
          өнөөдрийн илгээлтэд хамтран бөглөгч нэмсний ДАРАА буцаагдвал ХУУЧИН олонлог улаан хүрээгээр гардаг байв. */
       setBackChg(act && ov ? changedKeys(next.rows, ov, sc.bld) : new Set());
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт ч (`backChgDates`-ийн ⚠️) */
+      setBackChgDates(act && ov ? changedDateKeys(next.rows, ov) : new Set());
       setBackMeta(act && ov ? { at: act.payload.at, remapped: ov.remapped } : null);
       /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
       setStaged(act);
@@ -2863,6 +2888,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          байхад энэ нь үлддэг байв. Бүртгэл унасан (урсгал буцаагдсан хэвээр)
          бол хэвээр үлдээнэ. */
       if (rv.ok) setBackChg(new Set());
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны улаан тэмдэглэгээ ч хамт (`backChgDates`-ийн ⚠️) */
+      if (rv.ok) setBackChgDates(new Set());
 
       /* ── ДЭЛГЭЦИЙГ ДАХИН БҮТЭЭНЭ ──
          ⚠️ Илгээсэн тоо дэлгэцээс АЛГА БОЛОХ ЁСГҮЙ: архивт юу ч бичигдээгүй
@@ -3172,7 +3199,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         {canPerf ? (
           <SubmitControls
             /* ⚠️ 2026-10-09 (аудит №3): ноорог сэргэж дуустал «Илгээх» ч түгжээтэй (`publish`-ийн `restoringUi` шалгалт) */
-            locked={locked} canSubmitNow={canSubmitNow} publish={publishBtn} busy={busy || restoringUi} noEdit={noEdit}
+            /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): тасарсан жааз (`frameTrunc`) үед ч товч хаалттай — `notices.tsx`-ийн
+               «„Илгээх“ хаалттай» мэдэгдэлтэй нийцнэ (урьд нь зөвхөн `publish` дотор хориглодог байв) */
+            locked={locked} canSubmitNow={canSubmitNow} publish={publishBtn} busy={busy || restoringUi || !!frameTrunc} noEdit={noEdit}
             dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
             waitingLast={waitingLast}
             resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
@@ -3276,13 +3305,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           <div className={st.backWrap}>
             {backList.map((c) => (
               <button
-                key={`${c.row}:${c.block}`}
+                key={`${c.row}:${c.block}${c.date ? `:${c.date}` : ""}`}
                 type="button"
                 className={`${st.backItem}${c.ok ? ` ${st.backItemOk}` : ""}`}
-                title={`${c.no} · ${c.work}\n${c.ok ? tr('Зөвшөөрсөн — засахгүй') : tr('Засах шаардлагатай')}`}
+                title={`${c.no} · ${c.work}${c.date ? ` · ${c.date === 's' ? tr('Эхлэх огноо') : tr('Дуусах огноо')}` : ""}\n${c.ok ? tr('Зөвшөөрсөн — засахгүй') : tr('Засах шаардлагатай')}`}
                 onClick={() => setOwnJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))}
               >
-                <span className={st.backBlk}>{c.block}</span>
+                {/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт — блокийн шошгон дээр «Эхлэх»/«Дуусах» */}
+                <span className={st.backBlk}>{c.date ? `${c.block} · ${c.date === 's' ? tr('Эхлэх') : tr('Дуусах')}` : c.block}</span>
                 <span className={st.backWork}>{c.work}</span>
               </button>
             ))}
@@ -3391,6 +3421,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 collapsed={collapsed} toggle={toggle} ro={ro} editing={editing} canObyemEdit={canObyemEdit} pvSub={pvSub} sc={sc}
                 pvPend={pvPend} pvPreview={pvPreview} setPvPend={setPvPend} pending={pending} byMap={byMap} fillMode={fillMode}
                 ovBase={ovBase} meKey={meKey} volMode={volMode} edit={edit} view={view} backChg={backChg} backOk={backOk}
+                backChgDates={backChgDates}
                 locked={locked} noEdit={noEdit} say={say} canPerf={canPerf} perfWhy={noPerfWhy} busy={busy} pctOnly={pctOnly} pctHintRef={pctHintRef}
                 setVal={setVal} cellSeed={cellSeed} setEdit={setEdit} hitKey={hitKey} noPerf={noPerf} pasteBlock={pasteBlock}
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}

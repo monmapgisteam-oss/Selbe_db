@@ -23,7 +23,7 @@
  *    эвдрэлийг далдална. ДҮРЭМ дээр л тогтоно.
  */
 import assert from 'node:assert/strict';
-import { loadBlockHistory } from '../lib/blockProgress.ts';
+import { loadBlockHistory, progressSeries } from '../lib/blockProgress.ts';
 import { buildPhys } from '../lib/finPhys.ts';
 import { cfMonthAxis } from '../lib/services.ts';
 
@@ -35,7 +35,7 @@ import { cfMonthAxis } from '../lib/services.ts';
     ['Багц 9|9/1', [{ date: '2026-01-10', pct: 10 }, { date: '2026-03-05', pct: 30 }]],
     /* B: 02-д анх 20% */
     ['Багц 9|9/2', [{ date: '2026-02-20', pct: 20 }]],
-    /* C: сүүлийн бичилт нь null (цэвэрлэгдсэн) — хуваагчид ОРОХГҮЙ */
+    /* C: 01-д 90%, 02-д цэвэрлэгдсэн (null) — ⚠️ 2026-10-12: `latest` дүрмээр 02-оос 0%, хуваагчид ОРНО */
     ['Багц 9|9/3', [{ date: '2026-01-15', pct: 90 }, { date: '2026-02-01', pct: null }]],
     /* Бүгд null багц — Map-д ОРОХГҮЙ */
     ['Багц 8|8/1', [{ date: '2026-01-01', pct: null }]],
@@ -45,19 +45,48 @@ import { cfMonthAxis } from '../lib/services.ts';
   assert.ok(k, 'Багц 9 Map-д байх ёстой');
   assert.equal(phys.size, 1, 'бүгд null багц Map-д орохгүй (null ≠ 0)');
   const m = phys.get(k);
-  /* ТОГТМОЛ хуваагч = 2 (A, B); B хараахан тайлагнаагүй сард 0% */
-  assert.equal(m.get('2026-01'), (10 + 0) / 2, '01: A=10, B=0 → 5');
-  assert.equal(m.get('2026-02'), (10 + 20) / 2, '02: A=10, B=20 → 15');
-  assert.equal(m.get('2026-03'), (30 + 20) / 2, '03: A=30, B=20 → 25');
+  /* ТОГТМОЛ хуваагч = 3 (A, B, C); B хараахан тайлагнаагүй сард 0%; C цэвэрлэгдсэнээс хойш 0% */
+  assert.equal(m.get('2026-01'), (10 + 0 + 90) / 3, '01: A=10, B=0, C=90');
+  assert.equal(m.get('2026-02'), (10 + 20 + 0) / 3, '02: A=10, B=20, C=0 (цэвэрлэгдсэн → тэр агшинд 0)');
+  assert.equal(m.get('2026-03'), (30 + 20 + 0) / 3, '03: A=30, B=20, C=0');
   /* ДАВТСАН цэг гарахгүй: 04-д шинэ бичилт алга; 05 нь ирээдүй */
   assert.equal(m.has('2026-04'), false, 'шинэ бичилтгүй сард цэг ГАРАХГҮЙ (carry-forward биш)');
   assert.equal(m.has('2026-05'), false, 'ирээдүйн сард цэг гарахгүй');
-  assert.equal(physCnt.get(k).get('2026-01'), 2, 'хуваагч тогтмол 2');
-  assert.equal(physCnt.get(k).get('2026-03'), 2, 'хуваагч тогтмол 2');
+  assert.equal(physCnt.get(k).get('2026-01'), 3, 'хуваагч тогтмол 3');
+  assert.equal(physCnt.get(k).get('2026-03'), 3, 'хуваагч тогтмол 3');
   /* Хэмжилтийн огноо — тухайн цэгийн хамгийн сүүлийн бичилт */
+  assert.equal(physAt.get(k).get('2026-01'), '2026-01-15');
   assert.equal(physAt.get(k).get('2026-02'), '2026-02-20');
   assert.equal(physAt.get(k).get('2026-03'), '2026-03-05');
   console.log('phys.check: оффлайн дүрэм ok (тогтмол хуваагч · давталтгүй · physAt)');
+
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): цэвэрлэгдсэн (`null`) бичилт — жагсаалт (`buildPhys`) ба
+     дашбоардын цуваа (`progressSeries('latest')`) НЭГ тоо. Урьд нь buildPhys сүүлийн бичилт нь null
+     блокийг бүх сараас хасч, бусад блокт null-ыг алгасаж өмнөх утгыг авдаг (90 → 90), цуваа 90 → 0. */
+  {
+    const h2 = new Map([
+      ['Багц 9|9/1', [{ date: '2026-01-10', pct: 40 }, { date: '2026-02-05', pct: null }, { date: '2026-03-02', pct: 60 }]],
+      ['Багц 9|9/2', [{ date: '2026-01-20', pct: 20 }]],
+    ]);
+    const b = buildPhys(h2, axis, '2026-04');
+    const mb = b.phys.get('БАГЦ9');
+    assert.equal(mb.get('2026-01'), (40 + 20) / 2, '01: 30');
+    assert.equal(mb.get('2026-02'), (0 + 20) / 2, '02: цэвэрлэгдсэн блок тэр агшинд 0 (өмнөх 40-өөр НӨХӨХГҮЙ)');
+    assert.equal(mb.get('2026-03'), (60 + 20) / 2, '03: дахин утга орвол тоологдоно');
+    assert.equal(b.physAt.get('БАГЦ9').get('2026-02'), '2026-02-05', 'null бичилт ч «шинэ бичилт» — цэг ба огноо');
+    const series = progressSeries(h2, [...h2.keys()], 'month', 'latest');
+    assert.deepEqual(
+      series.map((p) => [p.label, p.overall]),
+      ['2026-01', '2026-02', '2026-03'].map((l) => [l, mb.get(l)]),
+      'buildPhys == progressSeries(latest) — сар бүр',
+    );
+    /* Бүх блок нь null агшин — цуваатай адил цэггүй (`measured`: blocks > 0) */
+    const h3 = new Map([['Багц 9|9/1', [{ date: '2026-01-10', pct: 40 }, { date: '2026-02-05', pct: null }]]]);
+    const b3 = buildPhys(h3, axis, '2026-04');
+    assert.equal(b3.phys.get('БАГЦ9').has('2026-02'), false, 'бүх блок null агшинд цэг гарахгүй');
+    assert.equal(progressSeries(h3, [...h3.keys()], 'month', 'latest').some((p) => p.label === '2026-02'), false);
+    console.log('phys.check: цэвэрлэгдсэн бичилт ok (latest дүрэм · цуваатай нэг тоо)');
+  }
 
   /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): блокийн ХУВААРЬ (`universe`) өгвөл хуваагч нь
      багцын БҮХ блок — тайлагнаагүй блок 0%. Дээрх (хуваарьгүй) тохиолдол нь нөөц зам. */

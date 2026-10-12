@@ -17,12 +17,16 @@ import { extraCls, extraVal, type ExtraCol } from "./extraCols";
 /* ⚠️ 2026-10-09: багана бүрийн өргөн — `SheetHead`-ийн бариултай ИЖИЛ түлхүүр (`colWidths.cw`-ийн ⚠️) */
 import { cw } from "../colWidths";
 
+/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `backChgDates`-ийн анхдагч — тогтмол хоосон олонлог (render бүрд шинэ үүсгэхгүй) */
+const EMPTY_KEYS: ReadonlySet<string> = new Set<string>();
+
 type ObyemT = ReturnType<typeof useObyem>;
 type CellT = ReturnType<typeof useCellEdit>;
 
 export function FillRows({
   vis, winFrom, winTo, rowsAll, calc, addedOids, collapsed, toggle, ro, editing, canObyemEdit, pvSub, sc,
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
+  backChgDates = EMPTY_KEYS,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
   restoring = false, remainHint, pastePrev = null, extra = [], clearLocked,
@@ -35,6 +39,8 @@ export function FillRows({
   pending: Record<string, string>; byMap: Map<string, string>; fillMode: "obyem" | "pct";
   ovBase: Map<number, SheetRow>; meKey: string;
   volMode: CellT['volMode']; edit: EditCell | null; view?: SheetView; backChg: Set<string>; backOk: Set<string>;
+  /** ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): буцаагдсан илгээлтэд өөрчлөгдсөн огноо (`${oid}:${b}:s|e`) — улаан хүрээ, түгжээгүй */
+  backChgDates?: ReadonlySet<string>;
   locked: boolean; noEdit: boolean; say: (msg: string) => void; canPerf: boolean;
   /** ⚠️ 2026-10-09: бөглөх эрхгүй ШАЛТГААН (хяналтын хориг · «зөвхөн харна») — байхгүй бол ерөнхий `(perfWhy ?? RO.noPerf)` */
   perfWhy?: string | null; busy: boolean;
@@ -575,9 +581,12 @@ export function FillRows({
                           <td
                             key={`${k}${b}`}
                             style={cw(`${k}${bi}`, "date")}
+                            /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): буцаагдсан илгээлтэд өөрчлөгдсөн огноо улаан хүрээтэй
+                               (`backChgDates`) — обьёмын нүдний `chg`-тэй ижил; ногоон ✓ түгжээ огноонд хамаарахгүй (дээрх ⚠️) */
                             className={cls(
                               "num c-date" +
                                 (editable ? " cursor-cell" : "") +
+                                (backChgDates.has(key) ? " chg" : "") +
                                 (key in pendDate ? " dirty" : ""),
                             )}
                             title={editable ? tr('Дарж календараар сонгоно') : dateWhy}

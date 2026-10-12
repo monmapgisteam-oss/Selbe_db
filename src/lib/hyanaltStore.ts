@@ -59,7 +59,12 @@ import {
 /* ⚠️ 2026-10-12 (R1): `error` — кодлосон жагсаалт баганын уртаас (`fieldMaxLen`) хэтэрсэн: бичилт ЗААВАЛ
    унах тул шийдвэрийг ИЛГЭЭХГҮЙ, дуудагч ил мессежээр зогсоно. Богино кодчилол (`hyanaltOkCells`) байхгүй —
    таслах нь «аль нүд зөвшөөрөгдсөн» мэдээллийг чимээгүй гажуудуулна. */
-async function okCellsPatch(okCells: string[] | undefined): Promise<{ patch: Attrs; warn?: string; error?: string }> {
+/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `strict: false` (ЗӨВШӨӨРӨХ зам) — уртаас хэтэрвэл `error` биш `warn`: талбарыг
+   хөндөхгүй (`patch: {}`) орхиж шийдвэр явна. Зөвшөөрөлд бичигдсэн `Zovshoorson_nud`-ийг хэн ч уншдаггүй (дараагийн шат
+   хоосноос эхэлж, буцаагч өөрийнхөөрөө дардаг, гүйцэтгэгч зөвхөн БУЦААГДСАН мөрийнхийг уншина) тул хатуу зогсолт нь
+   256 тэмдэгтийн баганатай үйлчилгээнд ~11-ээс олон нүдтэй илгээлтийг АЛЬ Ч шат батлахгүй болгож байв.
+   Буцаалтад (`strict: true`, анхдагч) хатуу зогсолт хэвээр — тэнд жагсаалт гүйцэтгэгчийн цорын ганц мэдээлэл. */
+async function okCellsPatch(okCells: string[] | undefined, strict = true): Promise<{ patch: Attrs; warn?: string; error?: string }> {
   if (!okCells) return { patch: {} };
   const has = await hasOkCellsField();
   if (has === false) {
@@ -74,6 +79,12 @@ async function okCellsPatch(okCells: string[] | undefined): Promise<{ patch: Att
   const enc = encodeOkCells(okCells);
   const max = await fieldMaxLen(F.okCells);
   if (max != null && enc.length > max) {
+    if (!strict) {
+      return {
+        patch: {},
+        warn: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрсэн тул хадгалагдсангүй — шийдвэр хэвээр явлаа. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
+      };
+    }
     return {
       patch: {},
       error: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
@@ -375,10 +386,26 @@ async function submittersFor(
   if (bypass && (!AUTH.appId || roleForUser(meOf(me)) === 'super')) return { ok: true };
   const so = Number(row[F.sheetOid]);
   if (!Number.isInteger(so) || so <= 0) return { ok: true };
+  return submittersOfRow(so, row[F.bagts]);
+}
+
+/**
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ХЯНАЛТЫН МӨРИЙН ИЛГЭЭГЧИД — `submittersFor` ба `countReviewPending` хоёрын НЭГ
+ *    уншилт. `Эх_мөрийн_дугаар` нь ХОЁР үйлчилгээний OBJECTID-г нэг талбарт хадгалдаг (`archiveSubmission`-ий ⚠️):
+ *    legacy мөрийн АРХИВЫН дугаар өөр багцын `sub|`/`done|` мөртэй давхцвал тэр багцын илгээгчид «та өөрөө илгээсэн»
+ *    гэж худал татгалзал/тэмдэг өгдөг байв. Илгээлтийн багцыг (`PKGS[pkgKey].group`) хяналтын мөрийн багцтай
+ *    `bagtsKey`-ээр тулгана (`archiveSubmission`-ий ижил шалгуур) — таарахгүй бол legacy гэж үзэж `list` өгөхгүй.
+ *    Уншилт унавал `{ok:false}` — дуудагч бүр өөрийн дүрмээр (fail-closed / тоолсоор).
+ */
+async function submittersOfRow(so: number, bagts: unknown): Promise<{ ok: true; list?: string[] } | { ok: false; error: string }> {
   const { readSubmissionByOid, submittersOf } = await import('./submission');
   const sr = await readSubmissionByOid(so);
   if (!sr.ok) return { ok: false, error: sr.error };
-  return { ok: true, ...(sr.sub ? { list: submittersOf(sr.sub.payload) } : {}) };
+  if (!sr.sub) return { ok: true };
+  const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+  const grp = PKGS.find((p) => p.key === sr.sub?.payload.pkgKey)?.group;
+  if (grp == null || bagtsKey(grp) !== bagtsKey(String(bagts ?? ''))) return { ok: true };
+  return { ok: true, list: submittersOf(sr.sub.payload) };
 }
 
 /* ── ArcGIS ↔ програмын хэлбэр ── */
@@ -689,16 +716,16 @@ export async function countReviewPending(username: string | null | undefined): P
     const pv = stage === 'company' ? null : prevReview(stage);
     if (pv) ws = ws.filter((w) => lastApprover(w.current[F.history], pv) !== me);
     if (stage === 'engineer' && ws.length) {
-      const { readSubmissionByOid, submittersOf } = await import('./submission');
       const lists = await Promise.all(ws.map(async (w): Promise<string[] | undefined> => {
         const so = Number(w.current[F.sheetOid]);
         if (!Number.isInteger(so) || so <= 0) return undefined;
         const hit = badgeSubs.get(so);
         if (hit && Date.now() - hit.at < POLL_MS) return hit.list;
         try {
-          const sr = await readSubmissionByOid(so);
+          /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `submittersOfRow` — илгээлтийн багцыг мөрийн багцтай тулгана (legacy OID давхцал) */
+          const sr = await submittersOfRow(so, w.current[F.bagts]);
           if (!sr.ok) return undefined;
-          const list = sr.sub ? submittersOf(sr.sub.payload) : [];
+          const list = sr.list ?? [];
           badgeSubs.set(so, { at: Date.now(), list });
           return list;
         } catch { return undefined; }
@@ -1019,11 +1046,47 @@ async function archivedDayOf(pkgKey: string, aOid: number, fm: number | null | u
 
 /**
  * СУУРЬ ЖААЗ (`rows` — ачаалсан, `sameFrame`-ээр батлагдсан) АЧААЛСНААС ХОЙШ ЗАСАГДСАН УУ (2026-10-12, A4).
- *   · `EditDate` (`edited`) байвал: жаазын OID-ийн мужийн `max(EditDate)` > ачаалсан мөрүүдийн дээд утга;
+ *   · `EditDate` (`edited`) байвал: жаазын OID-ийн мужийн `max(EditDate)` > бичихийн ӨМНӨ ижил хүсэлтээр авсан `mx0`
+ *     (2026-10-12 гүйцэтгэлийн аудит — `frameEditMax`-ийн ⚠️);
  *   · эс бөгөөс: мужийн мөрүүдийг дахин татаж ачаалсан талбар бүрийг (`raw`) тулгана.
  * ⚠️ Мужид өөр жаазын мөр орсон бол илүү болгоомжтой (худал «засагдсан» → буцааж дахин оролдуулна) — аюулгүй тал.
  * ⚠️ Уншилт унавал THROW — дуудагч устгахгүй, анхааруулна.
  */
+/** Суурь жаазын OID-ийн муж (`where`) — мөргүй бол `null` */
+function frameOidWhere(oidF: string, rows: readonly { oid: number }[]): string | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const r of rows) if (Number.isInteger(r.oid) && r.oid > 0) { lo = Math.min(lo, r.oid); hi = Math.max(hi, r.oid); }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  return `${oidF} >= ${lo} AND ${oidF} <= ${hi}`;
+}
+
+/**
+ * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): СУУРЬ ЖААЗЫН МУЖИЙН `max(EditDate)` — серверээс, НЭГ хүсэлтээр. Бичихийн ӨМНӨ
+ *    (A.8 блок, `sameFrame`-ийн дараа) ба бичсэний ДАРАА (`baseFrameEdited`) ЯГ ИЖИЛ хүсэлтээр авч жишнэ.
+ *    Урьд нь суурь утга (`mx0`) ачаалсан мөрүүдийн `raw`-аас бодогддог байсан атал `loadRows` ХООСОН мөрийг хаядаг,
+ *    сервер нь мужийн БҮХ мөрийг тоолдог: хоосон мөрийн EditDate хожуу бол `mx > mx0` ҮРГЭЛЖ үнэн → жааз бичигдэх
+ *    бүрт буцааж устгагдаж, эцсийн батлалт мөнхөд унадаг байв. Мөргүй муж → `null`. Уншигдахгүй бол THROW.
+ */
+async function frameEditMax(
+  url: string,
+  edited: string,
+  where: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fetcher: (url: string, params: Record<string, string>) => Promise<any>,
+): Promise<number> {
+  const j = await fetcher(`${url}/query`, {
+    where,
+    outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: edited, outStatisticFieldName: 'mx' }]),
+    returnGeometry: 'false',
+  });
+  const mx = Number(j?.features?.[0]?.attributes?.mx);
+  if (!Number.isFinite(mx)) throw new Error(tr('EditDate-ийн дээд утга уншигдсангүй'));
+  return mx;
+}
+
+/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `mx0` — бичихийн ӨМНӨ `frameEditMax`-аар авсан суурь (`raw`-аас БИШ, дээрх ⚠️);
+   `edited` байхад `mx0` өгөөгүй бол талбар бүрийн тулгалт руу унана. */
 async function baseFrameEdited(
   url: string,
   oidF: string,
@@ -1031,22 +1094,12 @@ async function baseFrameEdited(
   rows: readonly { oid: number; raw: Record<string, unknown> }[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fetcher: (url: string, params: Record<string, string>) => Promise<any>,
+  mx0: number | null = null,
 ): Promise<boolean> {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const r of rows) if (Number.isInteger(r.oid) && r.oid > 0) { lo = Math.min(lo, r.oid); hi = Math.max(hi, r.oid); }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return false;
-  const where = `${oidF} >= ${lo} AND ${oidF} <= ${hi}`;
-  if (edited) {
-    const j = await fetcher(`${url}/query`, {
-      where,
-      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: edited, outStatisticFieldName: 'mx' }]),
-      returnGeometry: 'false',
-    });
-    const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('EditDate-ийн дээд утга уншигдсангүй'));
-    let mx0 = -Infinity;
-    for (const r of rows) { const v = Number(r.raw?.[edited]); if (Number.isFinite(v) && v > mx0) mx0 = v; }
+  const where = frameOidWhere(oidF, rows);
+  if (!where) return false;
+  if (edited && mx0 != null) {
+    const mx = await frameEditMax(url, edited, where, fetcher);
     return mx > mx0;
   }
   const want = new Map(rows.map((r) => [r.oid, r.raw] as const));
@@ -1132,6 +1185,11 @@ async function archiveSubmission(
   subAt?: number,
 ): Promise<Archived> {
   const subOid = cur[F.sheetOid];
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `Эх_мөрийн_дугаар` 0/хоосон (хамгийн хуучин мөр) — урьд нь
+     `readSubmissionByOid(0)` → legacy салбар `{archiveOid: 0}` → `apply` худал «нэгтгэлд бүртгэгдсэнгүй (archiveOid = 0)»
+     анхааруулдаг байв. Архивт бичих ч, бүртгэх ч жааз байхгүй → `empty` (A5-ийн ижил утга), ил хэлнэ. */
+  if (!(Number.isInteger(subOid) && subOid > 0))
+    return { ok: true, archiveOid: 0, empty: true, warn: tr('Хяналтын мөрд илгээлтийн дугаар алга (хуучин мөр) — архивт бичих, нэгтгэлд бүртгэх жааз байхгүй.') };
   /* ⚠️ `ARCHIVED`-ийн шалгуур нь ЭНД БИШ, илгээлтийг УНШСАНЫ ДАРАА (доор) —
      түлхүүрт `staged.at` (агуулгын хувилбар) орох ёстой. */
   const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, markFresh, resolveMark, ARCHIVING_TTL_MS } = await import('./submission');
@@ -1686,6 +1744,9 @@ async function archiveSubmission(
   /* ⚠️ A.8/A.8а — жааз ба MAX OID-ийн уралдаа (дээрх `maxOidOf`-ийн ⚠️, 2026-09-25 аудит).
      Шалгаж ЧАДААГҮЙ нь «уралдаагүй» гэсэн үг биш — бичихгүй. Менежер дахин дарна.
      ⚠️ 2026-10-09: тэмдгийн ДАРАА (дээрх ⚠️) — зогсвол архив хөндөгдөөгүй тул өөрийн тэмдгийг арилгана. */
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): суурь жаазын мужийн `max(EditDate)` — бичихийн ӨМНӨХ суурь (A4-ийн `mx0`,
+     `frameEditMax`-ийн ⚠️). `EditDate`-гүй үйлчилгээнд `null` — бичсэний дараа талбар бүрээр тулгана. */
+  let editMax0: number | null = null;
   {
     let stop = '';
     try {
@@ -1694,6 +1755,10 @@ async function archiveSubmission(
         stop = tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.');
       else if ((await maxOidOf()) > maxOid0)
         stop = tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.');
+      else if (sc.f.edited) {
+        const where = frameOidWhere(sc.f.oid, loaded.rows);
+        if (where) editMax0 = await frameEditMax(pkg.url, sc.f.edited, where, agsFetch);
+      }
     } catch (e) {
       stop = tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e));
     }
@@ -1798,8 +1863,9 @@ async function archiveSubmission(
    *    мужид `EditDate`-ийн дээд утга ачаалсан үеийнхээс өссөн (эсвэл `EditDate`-гүй бол утга бүр зөрсөн) бол
    *    манай жаазыг БУЦААЖ устгана (дээрх тооны салбарын ижил дүрэм). Шалгалт унавал устгахгүй — анхааруулна.
    */
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `editMax0` — бичихийн өмнө ИЖИЛ хүсэлтээр авсан суурь (`frameEditMax`-ийн ⚠️) */
   try {
-    if (await baseFrameEdited(pkg.url, sc.f.oid, sc.f.edited, loaded.rows, agsFetch)) {
+    if (await baseFrameEdited(pkg.url, sc.f.oid, sc.f.edited, loaded.rows, agsFetch, editMax0)) {
       const gone = await applyDeletes(pkg, written);
       const left = written.length - gone;
       const markMsg = left === 0 ? await clearMark() : '';
@@ -2058,8 +2124,10 @@ export async function apply(a: {
    * ⚠️ 2026-09-23 (#16): талбар үйлчилгээнд байхгүй бол БИЧИХГҮЙ, `okWarn`-аар
    *    ил хэлнэ (`okCellsPatch`).
    */
-  const okp = await okCellsPatch(a.okCells);
-  /* ⚠️ 2026-10-12 (R1): жагсаалт баганад багтахгүй — унах бичилт илгээхгүй */
+  /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ЗӨВШӨӨРӨХ замд `strict: false` — уртаас хэтэрвэл талбарыг орхиж `warn`
+     (`okCellsPatch`-ийн ⚠️); буцаалтад хатуу зогсолт хэвээр. */
+  const okp = await okCellsPatch(a.okCells, returning);
+  /* ⚠️ 2026-10-12 (R1): жагсаалт баганад багтахгүй — унах бичилт илгээхгүй (буцаалт) */
   if (okp.error) return { ok: false, error: okp.error };
   Object.assign(attrs, okp.patch);
   const okWarn = okp.warn;
@@ -2250,13 +2318,20 @@ export async function apply(a: {
      */
     let histBase: unknown = cur[F.history];
     let overrideWarn = '';
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): хоёр газрын дарга ЗЭРЭГ батлахад хоёр дахь нь `fresh` аль хэдийн
+       «Шилжүүлсэн» байхад ч `updateRows` хийж түрүүлсний нэр · огноо · `Zovshoorson_nud`-ийг дардаг байв. Одоо
+       `updateRows`-ийг алгасаж ил хэлнэ; нэгтгэл/IPC-ийн алхам хэвээр (idempotent). */
+    let alreadyTransferred = false;
     if (registerNow) {
       try {
         const fresh = await liveRow(a.oid);
         if (fresh) {
           histBase = fresh[F.history];
           const fs0 = String(fresh[F.status] ?? '');
-          if (fs0 !== REVIEW_STATUS[a.stage] && fs0 !== STATUS.transferred) {
+          if (fs0 === STATUS.transferred) {
+            alreadyTransferred = true;
+            overrideWarn = tr('Энэ ажлыг өөр таб эсвэл хэрэглэгч аль хэдийн «Шилжүүлсэн» болгосон байсан — хяналтын мөрийг дахин бичсэнгүй, нэгтгэлийн бүртгэлийг л шалгав.');
+          } else if (fs0 !== REVIEW_STATUS[a.stage]) {
             const nm = String((fresh as Record<string, unknown>)[sf.who] ?? '').trim();
             overrideWarn = tr('Таныг батлах хооронд {0} энэ ажлыг буцаасан байсан — архив аль хэдийн бичигдсэн тул буцаалт дарагдаж, ажил «Шилжүүлсэн» боллоо.', nm || tr('өөр хянагч'));
           }
@@ -2280,7 +2355,8 @@ export async function apply(a: {
     }
 
     try {
-      await updateRows([attrs]);
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): өөр таб аль хэдийн шилжүүлсэн бол дарж бичихгүй (дээрх `alreadyTransferred`) */
+      if (!alreadyTransferred) await updateRows([attrs]);
     } catch (e) {
       /*
        * ⚠️ ХАРИУ АЛДАГДСАН Ч СЕРВЕР ДЭЭР СУУСАН БАЙЖ БОЛНО (2026-09-25-ны
@@ -2710,6 +2786,8 @@ export async function recheck(
          үйл явдлууд хуучин мөрийн логт хэвээр (түүх тойрог бүрээр харуулдаг). */
       ...(await historyPatch('', { stage: by, who, at: t, act: 'recheck-ok' }, meOf(me))),
     };
+    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ихэр олдсон ч устгал унасан — `ok:true` + ил анхааруулга (доорх R3) */
+    let twinWarn = '';
     try {
       const res = await addRows([fresh]);
       /*
@@ -2731,16 +2809,21 @@ export async function recheck(
         } catch (e) {
           console.warn('[selbe] дахин шалгалтын давхар тойргийн шалгалт унав:', e);
         }
-        if (lost && (await deleteRow(mine))) {
-          await refreshQuiet();
-          emit();
+        if (lost) {
           const nm = String((lost as Record<string, unknown>)[SF[by].who] ?? '').trim();
-          return {
-            ok: false,
-            error: nm
-              ? tr('Энэ ажлыг {0} таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.', nm)
-              : tr('Энэ ажлыг өөр хэрэглэгч таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.'),
-          };
+          if (await deleteRow(mine)) {
+            await refreshQuiet();
+            emit();
+            return {
+              ok: false,
+              error: nm
+                ? tr('Энэ ажлыг {0} таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.', nm)
+                : tr('Энэ ажлыг өөр хэрэглэгч таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.'),
+            };
+          }
+          /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ — урьд нь чимээгүй `ok:true`
+             буцаж ижил тойргийн ХОЁР мөр үлддэг байв. Шийдвэр суусан тул унагахгүй, ихэр OID-ийг нэрлэж `warn`. */
+          twinWarn = tr('Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (OBJECTID {1}) — таны мөрийг (OBJECTID {2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.', nm || tr('өөр хянагч'), String(lost.__oid), String(mine));
         }
       }
       /* ⚠️ 2026-10-04: `nextId` max+1 уралдаан — бичсэний дараа давхардлыг засна (алдаа нь чимээгүй) */
@@ -2755,7 +2838,7 @@ export async function recheck(
        `{ok:false}` буцаж, хянагч улаан алдаа хараад дахин дарахад STALE авдаг
        (мөр аль хэдийн үүссэн) байв. */
     await refreshQuiet();
-    return { ok: true };
+    return twinWarn ? { ok: true, warn: twinWarn } : { ok: true };
   }
 
   // ── Асуудал БАЙНА — компанид буцаана. Мөрийн ЭЦСИЙН үйлдэл тул шинэ мөр
