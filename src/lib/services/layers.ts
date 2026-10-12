@@ -132,8 +132,16 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
     : {}),
 }));
 
-/** IoT мэдрэгчийн FeatureServer суурь (`…/arcgis/rest/services`) — `sensors.ts` мөн эндээс. */
-export const IOT_BASE = req("NEXT_PUBLIC_ARCGIS_IOT", process.env.NEXT_PUBLIC_ARCGIS_IOT);
+/**
+ * IoT мэдрэгчийн FeatureServer (`…/Hosted/IoT_sensor/FeatureServer`) — `sensors.ts` мөн эндээс.
+ *
+ * ⚠️ 2026-10-12 (хэрэглэгч): ArcGIS Online-ийн ТАВАН тусдаа сервисээс (`…/Waste_Sensor/FeatureServer/62` …)
+ *    Сэлбэ Enterprise-ийн НЭГ сервис рүү шилжив — давхарга 12–16, мөрийн тоо ИЖИЛ (амьдаар тулгав).
+ *    Хувьсагчийн нэр ЗОРИУДААР шинэ (`…_IOT_SVC`): хуучин `NEXT_PUBLIC_ARCGIS_IOT` (сервисүүдийн суурь)
+ *    үлдсэн орчинд чимээгүй буруу хаяг угсрахын оронд `req` ил унана.
+ * ⚠️ Enterprise (PostgreSQL) — талбарын нэрс БҮГД ЖИЖИГ ҮСЭГТЭЙ (`objectid`, `payload_decoded_data_meterreading`).
+ */
+export const IOT_SVC = req("NEXT_PUBLIC_ARCGIS_IOT_SVC", process.env.NEXT_PUBLIC_ARCGIS_IOT_SVC);
 
 /**
  * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
@@ -144,14 +152,15 @@ export const IOT_BASE = req("NEXT_PUBLIC_ARCGIS_IOT", process.env.NEXT_PUBLIC_AR
  *    рендерийг дэмий ачаална.
  * ⚠️ `noZone` — эдгээрт ZONE_ID талбар БАЙХГҮЙ. Бүсээр шүүвэл
  *    definitionExpression бүхэлдээ унаж давхарга зурагдахаа болино.
- * ⚠️ `oid` нь OBJECTID (анхдагч) тул заагаагүй.
+ * ⚠️ 2026-10-12: `oid` = `objectid` (Enterprise, жижиг үсэг).
  */
+/* ⚠️ 2026-10-12: `n` = `IoT_sensor` сервисийн давхаргын дугаар (Enterprise) */
 const IOT_LAYERS: LayerDef[] = [
-  { key: "Waste_Sensor",  n: 62, get title() { return tr('Хогийн савны мэдрэгч'); },   hue: "#ea580c" },
-  { key: "Water_Meter",   n: 61, get title() { return tr('Усны тоолуур'); },           hue: "#0891b2" },
-  { key: "Light_Sensor",  n: 60, get title() { return tr('Гэрэлтүүлгийн мэдрэгч'); },  hue: "#f59e0b" },
-  { key: "Temp_Humidity", n: 64, get title() { return tr('Агаарын темп, чийг'); },     hue: "#22c55e" },
-  { key: "Soil_Meter",    n: 63, get title() { return tr('Хөрсний мэдрэгч'); },        hue: "#a855f7" },
+  { key: "Waste_Sensor",  n: 15, get title() { return tr('Хогийн савны мэдрэгч'); },   hue: "#ea580c" },
+  { key: "Water_Meter",   n: 13, get title() { return tr('Усны тоолуур'); },           hue: "#0891b2" },
+  { key: "Light_Sensor",  n: 14, get title() { return tr('Гэрэлтүүлгийн мэдрэгч'); },  hue: "#f59e0b" },
+  { key: "Temp_Humidity", n: 16, get title() { return tr('Агаарын темп, чийг'); },     hue: "#22c55e" },
+  { key: "Soil_Meter",    n: 12, get title() { return tr('Хөрсний мэдрэгч'); },        hue: "#a855f7" },
 ].map((x) => ({
   id: `iot:${x.key.toLowerCase()}`,
   n: x.n,
@@ -161,9 +170,11 @@ const IOT_LAYERS: LayerDef[] = [
   hue: x.hue,
   marker: "circle" as const,
   size: 11,
-  url: `${IOT_BASE}/${x.key}/FeatureServer/${x.n}`,
+  url: `${IOT_SVC}/${x.n}`,
   where: "device_id IS NULL",
   noZone: true as const,
+  /* ⚠️ 2026-10-12: Enterprise — OID нь жижиг үсгээр */
+  oid: "objectid",
   note: x.key,
 }));
 
