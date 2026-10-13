@@ -22,7 +22,7 @@ import {
 } from '@/modules/BuildingPanel';
 import {
   loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf,
-  projectPlanScope, projectLagNow, planScopeNote, type FinData,
+  projectPlanScope, projectLagNow, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
@@ -1050,12 +1050,9 @@ function TsKpi(
           <span className={o.tileLabel}>{tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)}</span>
         </div>
       )}
-      {/* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц төлөвлөгөө/зөрүүнээс хасагдсаныг нэрлэнэ */}
-      {!errQ && t?.excluded.length ? (
-        <div className={o.tile} style={{ '--tone': 'var(--warn)' } as CSSProperties}>
-          <span className={o.tileLabel}>{planScopeNote(t.excluded)}</span>
-        </div>
-      ) : null}
+      {/* ⚠️ 2026-10-13 (хэрэглэгч): хуваарьгүй багцын тэмдэглэл («Төлөвлөгөө ба хоцрогдол — хуваарьтай
+          багцаар») 12-т ХАРУУЛАХГҮЙ — эхлээд зүүн самбарын карт болгосны дараа «энэ картыг hide хий».
+          Олонлог хэвээр (`projectPlanScope`) — `ProgChart`-ийн гарчгийн «(хуваарьтай багцаар)» л үлдэнэ. */}
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
@@ -1105,14 +1102,15 @@ function TsPackList({
        *    Хэмжилтгүй бол «—» (блокийн дундаж руу БУЦАЖ УНАХГҮЙ — хоёр өөр
        *    хэмжигдэхүүн нэг баганад холилдоно).
        */
-      if (p.kind === 'build') execPct = physLatest(months);
+      execPct = physLatest(months);
       /*
-       * ⚠️ ДЭД БҮТЦИЙН БАГЦАД БИЕТ ЯВЦЫН ӨГӨГДӨЛ БАЙХГҮЙ. Урьд нь түүний
-       *    оронд «олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж
-       *    үзүүлдэг байв — гүйцэтгэлийн цонхонд санхүүгийн тоо, дээрээс нь
-       *    ӨӨР нэрээр. Барилгын багцын биет хувьтай нэг баганад зэрэгцэн
-       *    зогсох тул харьцуулж болохгүй хоёр хэмжигдэхүүн холилдож байв.
-       *    Одоо «мэдээлэлгүй» гэж ил хэлнэ.
+       * ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01. Гүйцэтгэл-ийн батлагдсан хэсгээс нэгтгэ»;
+       *    «10.13-нд Багц 5.1 дээр орсон гүйцэтгэл огт орохгүй байна»): ДЭД БҮТЦИЙН (блокгүй) багц ч
+       *    БИЕТ % — бөглөх хуудасны синтетик блокийн «Б.» мөрөөс (`Finance.loadFinDataRaw` →
+       *    `blockProgress.loadInfraHistory`). Урьд нь `p.kind === 'build'` л уншдаг тул блокгүй 14 багц
+       *    «мэдээлэлгүй» байв. Бөглөх хуудасгүй багц (`months`-д биет цэггүй) — «—» хэвээр.
+       * ⚠️ «Олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж ХЭЗЭЭ Ч харуулахгүй (хуучин дүрэм
+       *    хэвээр) — харьцуулж болохгүй хоёр хэмжигдэхүүн нэг баганад холилдоно.
        */
       return { p, lag, lvl, execPct };
     })

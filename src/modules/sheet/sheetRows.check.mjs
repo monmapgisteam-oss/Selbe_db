@@ -31,10 +31,29 @@ console.log('✅ sheetRows.bagts = pkg.group (label биш)');
  * `sheetRows` нь `blockProgress`/`negtgel`/`PkgProg`-ийн эх — блокгүй багцын
  * синтетик «Ажил» блок энд орвол `buildingKey('Багц 5.1','Ажил')` гэсэн хуурамч
  * барилга үүснэ. Тиймээс энд `loadSchema(pkg)` ЗӨВХӨН опт-ингүй дуудагдана. */
-assert.ok(!/synthetic/.test(SRC), 'sheetRows нь loadSchema-г synthetic опт-интой дуудаж байна — mon:building join-д хуурамч блок орно');
-/* ⚠️ 2026-10-09: бөглөх бүдүүвч (`fillSchema` / `{ fill: true }`) ч мөн синтетик блок өгнө — энд ОРОХГҮЙ */
-assert.ok(!/fillSchema|fill:\s*true/.test(SRC), 'sheetRows нь бөглөх бүдүүвч (fillSchema) ашиглаж байна — mon:building join-д хуурамч «Ажил» блок орно');
-console.log('✅ sheetRows — синтетик блок ОРОХГҮЙ (loadSchema опт-ингүй)');
+/* ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01-ийн батлагдсан хэсгээс нэгтгэ»): синтетик блок нь ЗӨВХӨН
+   опт-ин `blockless` замд (блокгүй багцын БАГЦЫН түвшний нэгтгэл — `blockProgress.loadInfra*`). Анхдагч
+   (блоктой) зам ба `sheetBlockKeys` урьдын адил опт-ингүй — `mon:building` join-д хуурамч блок ОРОХГҮЙ. */
+assert.ok(!/synthetic:\s*true|fillSchema/.test(SRC), 'sheetRows нь synthetic/fillSchema-г шууд дуудаж байна — зөвхөн schemaOf(pkg, fill) замаар');
+/* ⚠️ 2026-10-09: бөглөх бүдүүвч (`{ fill: true }`) синтетик блок өгнө — ЗӨВХӨН `fill` аргументтай `schemaOf`-д */
+assert.ok(/fill \? \{ fill: true \} : \{\}/.test(SRC), 'schemaOf: бөглөх бүдүүвч ЗӨВХӨН `fill` аргументаар');
+assert.equal([...SRC.matchAll(/fill:\s*true/g)].length, 2, 'sheetRows: `{ fill: true }` schemaOf-оос гадна (эсвэл тайлбараас өөр газар) гарсан');
+assert.ok(/schemaOf\(pkg, blockless\)/.test(SRC), 'loadSheetRows: бөглөх бүдүүвч ЗӨВХӨН `blockless` опт-инээр');
+assert.ok(/!blockless \|\| p\.floors == null/.test(SRC), 'loadSheetRows: `blockless` замд ЗӨВХӨН блокгүй багц');
+{
+  const a = SRC.indexOf('export async function sheetBlockKeys');
+  const b = SRC.indexOf('export async function sheetBlocklessKeys');
+  assert.ok(a >= 0 && b > a, 'sheetBlockKeys / sheetBlocklessKeys олдсонгүй');
+  const body = SRC.slice(a, b);
+  assert.ok(/schemaOf\(pkg\)/.test(body) && !/schemaOf\(pkg, /.test(body), 'sheetBlockKeys синтетик блок авч байна — блокийн хуваарьт хуурамч блок орно');
+}
+{
+  const BP = fs.readFileSync('src/lib/blockProgress.ts', 'utf8');
+  assert.ok(/const loadRows = memo\(fetchConstruction, \['BAGTS_SHEET'\]\)/.test(BP), 'loadBlockProgress/History нь блокгүй замыг уншиж байна');
+  assert.ok(/return compute\(await fetchConstruction\(\)\);/.test(BP), 'loadBlockProgressFresh нь блокгүй замыг уншиж байна');
+  assert.ok(/memo\(\(\) => fetchConstruction\(true\)/.test(BP), 'loadInfra* нь блокгүй замаар уншихгүй байна');
+}
+console.log('✅ sheetRows — синтетик блок ЗӨВХӨН блокгүй (blockless) замд, блокийн замд ОРОХГҮЙ');
 
 /* ── 2. bagtsKey: label ба group нь ЯЛГААТАЙ түлхүүр ── */
 const { bagtsKey, buildingKey } = await import('@/lib/services.ts');

@@ -22,7 +22,7 @@
  * `Шинэчлэгдсэн_огноо` нь зөвхөн 1-р мөрд бичигддэг excel-ийн лавлах нүд —
  * агшин ялгах түлхүүр БОЛОХГҮЙ.
  */
-import { PKGS, loadSchema, type Pkg, type Schema } from './bagts.pkg';
+import { PKGS, loadSchema, SYNTHETIC_BLOCK, type Pkg, type Schema } from './bagts.pkg';
 import { msToDay, normDayMs } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TREES } from './bagts.trees';
@@ -104,6 +104,20 @@ export type SheetRowOpts = {
    *    төлөвлөгөөт муруй бодох дуудагч асаана.
    */
   withDates?: boolean;
+  /**
+   * БЛОКГҮЙ БАГЦУУД (5.x · 6.x · 7.1 · 10) — ЗӨВХӨН эдгээрийг, «Гүйцэтгэл бөглөх»-ийн бүдүүвчээр
+   * (`loadSchema(pkg, { fill: true })` — синтетик НЭГ блок `SYNTHETIC_BLOCK`, гүйцэтгэл =
+   * `Ажил_гүйцэтгэл`) уншина.
+   *
+   * ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01. Гүйцэтгэл-д багц бүр дээр бөглөгдөж, батлагдаж
+   *    дууссан хэсгээс авч нэгтгэ»; «10.13-нд Багц 5.1 дээр орсон гүйцэтгэл огт орохгүй байна»).
+   *    Анхдагч зам (`loadSchema(pkg)`) блокгүй хуудсанд ХООСОН блоктой тул (`Schema.synthetic`-ийн ⚠️)
+   *    тэдгээрийн батлагдсан жааз ямар ч нэгтгэлд хүрдэггүй байв.
+   * ⚠️ ОПТ-ИН, ТУСДАА: блоктой зам (`blocks` анхдагч) ХӨНДӨГДӨХГҮЙ — газрын зургийн блокийн join,
+   *    орон сууцны БЛОКИЙН дундаж (`latestMean`), `mapKeyIssues` синтетик түлхүүрийг харахгүй.
+   *    Багцын түвшний нэгтгэл (`blockProgress.loadInfra*`) л үүнийг уншина.
+   */
+  blockless?: boolean;
 };
 
 /** `'` тэмдэгтийг SQL-д аюулгүй болгоно */
@@ -179,11 +193,12 @@ const isTransient = (e: unknown): boolean => {
  *    бүрхүүлээ хүлээж ГАЦДАГ байсан (`ags.agsFetch`-ийн ⚠️). Дахин оролдлого
  *    (түр ↔ тогтвортой ялгал) энд хэвээр.
  */
-async function schemaOf(pkg: Pkg): Promise<Schema | null> {
+async function schemaOf(pkg: Pkg, fill = false): Promise<Schema | null> {
   const RETRIES = 4;
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await loadSchema(pkg);
+      /* ⚠️ 2026-10-13: `fill` — блокгүй багцын синтетик блок (`SheetRowOpts.blockless`-ийн ⚠️) */
+      return await loadSchema(pkg, fill ? { fill: true } : {});
     } catch (e) {
       if (!isTransient(e)) return null;
       if (attempt >= RETRIES) throw e;
@@ -259,12 +274,14 @@ export function truncatedSnaps(lens: readonly number[]): Set<number> {
  */
 export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]> {
   const {
-    group = null, block = null, constructionOnly = false, maxLevel, withDates = false,
+    group = null, block = null, constructionOnly = false, maxLevel, withDates = false, blockless = false,
   } = opts;
 
-  const wanted: Pkg[] = group
+  const wanted: Pkg[] = (group
     ? PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(group))
-    : PKGS;
+    : PKGS)
+    /* ⚠️ 2026-10-13: `blockless` — ЗӨВХӨН блокгүй багц (синтетик блок, `SheetRowOpts.blockless`-ийн ⚠️) */
+    .filter((p) => !blockless || p.floors == null);
   if (!wanted.length) return [];
 
   const subList = TASK_SHEET.subPhaseNos.map((n) => `N'${esc(n)}'`).join(',');
@@ -273,7 +290,9 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
   await Promise.all(wanted.map(async (pkg) => {
     /* ⚠️ `schemaOf` — түр алдаанд дахин оролдож, эцэст нь ШИДНЭ; зөвхөн
        тогтвортой алдаа `null` (доорх ⚠️). */
-    const sc = await schemaOf(pkg);
+    const sc = await schemaOf(pkg, blockless);
+    /* ⚠️ 2026-10-13: блокгүй зам — синтетик блок ҮҮСЭЭГҮЙ (гүйцэтгэлийн багана алга) бол алгасна */
+    if (blockless && !sc?.synthetic) return;
     // Архивын багана үүсээгүй хуудсыг алгасна — агшин ялгах түлхүүргүй тул
     // түүх байгуулах боломжгүй (одоогийн утгыг ч огноогүйгээр хэрэглэхгүй).
     if (!sc?.f.fillDate) return;
@@ -519,6 +538,22 @@ export async function sheetBlockKeys(): Promise<Map<string, string[]>> {
     acc.set(x.k, s);
   }
   return new Map([...acc].map(([k, s]) => [k, [...s]]));
+}
+
+/**
+ * БЛОКГҮЙ БАГЦЫН ХУВААРЬ — `bagtsKey` → [`buildingKey(group, SYNTHETIC_BLOCK)`].
+ * ⚠️ 2026-10-13: `loadSheetRows({ blockless: true })`-тэй ЯГ ИЖИЛ шүүлт (бөглөх бүдүүвч · синтетик ·
+ *    `fillDate` · `act`) — батлагдсан жааз ОГТ байхгүй багц хуваарьт ОРНО (0%, `pkgProgressOf`-ийн
+ *    «тайлагнаагүй = 0%» дүрэм), хуудас нь уншигдаагүй багц ОРОХГҮЙ («мэдээлэлгүй»).
+ */
+export async function sheetBlocklessKeys(): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  await Promise.all(PKGS.filter((p) => p.floors == null).map(async (pkg) => {
+    const sc = await schemaOf(pkg, true);
+    if (!sc?.synthetic || !sc.f.fillDate || !sc.act[0]) return;
+    out.set(bagtsKey(pkg.group), [buildingKey(pkg.group, SYNTHETIC_BLOCK)]);
+  }));
+  return out;
 }
 
 /**

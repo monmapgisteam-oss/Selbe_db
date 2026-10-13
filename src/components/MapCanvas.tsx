@@ -2,8 +2,9 @@
 
 import {
   createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type CSSProperties, type ReactNode, type RefObject,
+  useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject,
 } from 'react';
+import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { useSyncRef } from '@/lib/useSyncRef';
 import Map from '@arcgis/core/Map';
 import { version as arcgisVersion } from '@arcgis/core/kernel';
@@ -1196,7 +1197,21 @@ const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerPro
  * асаасан ч харагдахгүй» байв. `relative-to-scene` нь мешийн гадаргууг олж
  * түүн дээр байрлуулна.
  */
-const ON_SCENE = { mode: 'relative-to-scene' } as unknown as __esri.FeatureLayerProperties['elevationInfo'];
+/*
+ * ⚠️ 2026-10-13 (хэрэглэгч: «ерөнхий төлөвлөгөөний 3D дээр zone feature-ийн зарим хэсэг дээшээ нисэж
+ *    харагдаж байна» — дэлгэцийн зураг): `relative-to-scene` горимд геометр Z УТГАТАЙ бол ArcGIS тэр Z-г
+ *    гадаргуугийн өндөр ДЭЭР НЭМДЭГ. CAD/хэмжилтээс ирсэн зарим полигон (уулархаг хойд хэсгийн бүсүүд)
+ *    ~1300–1500 м-ийн үнэмлэхүй Z-тэй тул гадаргаас тэр хэмжээгээр хөөрч агаарт хөвдөг байв; Z = 0
+ *    (хотын хэсэг) нь зөв суудаг тул «зарим хэсэг» л нисдэг. `featureExpressionInfo: '0'` нь Z-г ҮЛ
+ *    ТООНО — объект бүр яг мешийн/газрын гадаргуу дээр (offset 0). Z-гүй давхаргад нөлөөгүй (урьд нь ч 0).
+ */
+const ON_SCENE = {
+  mode: 'relative-to-scene',
+  featureExpressionInfo: { expression: '0' },
+} as unknown as __esri.FeatureLayerProperties['elevationInfo'];
+/** `elevationInfo.featureExpressionInfo.expression` — горимыг дахин оноох эсэхийг жишихэд */
+const elevExpr = (e: unknown): string | null =>
+  ((e as { featureExpressionInfo?: { expression?: string } | null } | null)?.featureExpressionInfo?.expression ?? null);
 
 /**
  * @param uniform — давхарга бүрийг ГАНЦ жигд өнгөөр (өөрийн `hue`) зурна;
@@ -2136,6 +2151,10 @@ export const MapCanvas = memo(function MapCanvas({
   const setTip = useCallback((t: TipState | null) => { tipSetRef.current(t); }, []);
   /** Блок бүрийн нийт гүйцэтгэл — газрын зургийн өнгө ба tooltip-д хоёуланд нь */
   const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
+  /* ⚠️ 2026-10-13 (хэрэглэгч: «батлагдмагц автомат шинэчлэгдэх ёстой»): өгөгдлийн автобусны хувилбар — батлалт
+     (энэ таб эсвэл `hyanaltStore.startApprovalWatch`) `BAGTS_SHEET`-ийг хүчингүй болгоход блокийн өнгө ДАХИН
+     будагдана. Урьд нь эффект зөвхөн давхарга/бэлэн байдлаар ажилладаг тул зураг «Шинэчлэх» хүртэл хуучин байв. */
+  const busVer = useSyncExternalStore(subscribeData, dataVersion, () => 0);
   /** Гүйцэтгэлийн өнгө КЭШЭЭС будагдсан — амьд дүн ирмэгц false болно */
   const [progStale, setProgStale] = useState(false);
   /** Амьд гүйцэтгэл татаж чадаагүй — блокууд саарал «мэдээлэлгүй» төлөвт */
@@ -4734,7 +4753,8 @@ export const MapCanvas = memo(function MapCanvas({
              тодруулга солигдох бүрд ажилладаг. Нэмэлт тохиргоотой (offset г.м.) бол урьдын адил дарна. */
           const cur = (l as FeatureLayer).elevationInfo as { mode?: string; offset?: number | null; featureExpressionInfo?: unknown } | null;
           const want = (elev as { mode: string }).mode;
-          if (!(cur && cur.mode === want && !cur.offset && !cur.featureExpressionInfo)) {
+          /* ⚠️ 2026-10-13: илэрхийлэл (`ON_SCENE`-ийн «Z-г үл тоох» '0') ч ИЖИЛ байх ёстой — эс бөгөөс Z-тэй полигон нисдэг */
+          if (!(cur && cur.mode === want && !cur.offset && elevExpr(cur) === elevExpr(elev))) {
             (l as FeatureLayer).elevationInfo = elev as never;
           }
         }
@@ -4907,7 +4927,7 @@ export const MapCanvas = memo(function MapCanvas({
         setProgError(true); // «Гүйцэтгэл ачаалагдсангүй» тэмдэг ил гарна
       });
     return () => { alive = false; };
-  }, [visibleKey, ready]);
+  }, [visibleKey, ready, busVer]);
 
   /**
    * ДАВХАРГЫН УНАЛТЫГ АЖИГЛАХ.

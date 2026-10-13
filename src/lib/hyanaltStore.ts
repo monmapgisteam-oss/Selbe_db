@@ -204,7 +204,7 @@ import { isLostWrite } from './lostWrite';
 /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цаг — шатны огноо · лог · тэмдэг · `approvedAt` (`serverClock`-ийн ⚠️) */
 import { serverNow, syncServerClock } from './serverClock';
 /* ⚠️ 2026-10-12 (дарааллын аудит): эцсийн батлалтын гинжний кэш-мэдэгдлийг нэгтгэнэ (`batchInvalidate`-ийн ⚠️) */
-import { batchInvalidate } from './dataBus';
+import { batchInvalidate, invalidate } from './dataBus';
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАДГАЛАГДАХ ДЭЛГЭЦИЙН НЭР (`who`) — нэвтэрсэн хэрэглэгчийнх мөн эсэх.
@@ -488,12 +488,93 @@ export function toRow(a: Attrs): Row {
 
 let ROWS: Row[] = [];
 let loaded = false;
+
+/* ═══════════════ БАТЛАЛТ ХАРАГЧ (2026-10-13) ═══════════════
+ *
+ * ⚠️ ЯАГААД (хэрэглэгч: «гүйцэтгэл бөглөх батлагдсан тохиолдолд шууд багцын гүйцэтгэлийн зүүн панел
+ *    өөрчлөгдөх ёстой, автомат болох ёстой»): ЭНЭ табд баталсан бол эцсийн гинж (`apply` → архив)
+ *    `BAGTS_SHEET`-ийг шууд хүчингүй болгодог. Харин ӨӨР хэрэглэгч (газрын дарга өөр компьютерээс) эсвэл
+ *    ӨӨР таб баталсныг энэ таб мэдэх зам БАЙГААГҮЙ — «Багцын гүйцэтгэл» · Ерөнхий дашбоард · «Багцын
+ *    мэдээлэл» «Шинэчлэх» товч / табаа удаан нуугаад буцаах хүртэл хуучин тоогоо барьдаг байв.
+ * ⚠️ ДҮРЭМ: «Шилжүүлсэн» (`STATUS.transferred` — зургаан шат бүгд өнгөрч архивт суусан) төлөвт ШИНЭЭР
+ *    хүрсэн мөр илэрвэл гүйцэтгэлийн эх хүснэгтүүдийг хүчингүй болгоно → `useAsync`-ийн бүх дуудагч
+ *    (12-ын зүүн самбар г.м.) өөрөө дахин татна. Эх: хямд `queryStatusSig` (oid:төлөв) — 60 с тутам,
+ *    таб харагдаж байхад + таб/цонх идэвхжихэд (`startApprovalWatch`), мөн дарааллын `ROWS` уншилт бүр.
+ * ⚠️ АНХНЫ уншилт = СУУРЬ (хүчингүй болголтгүй) — нээгдэх үед аль хэдийн батлагдсан мөр «шинэ» биш.
+ * ⚠️ ЭНЭ табын батлалт (`apply` · нөхөлт) мөрөө `SEEN_DONE`-д ӨӨРӨӨ нэмнэ — гинж аль хэдийн хүчингүй
+ *    болгосон тул харагч ДАВХАР дахин ачаалуулахгүй.
+ */
+const SEEN_DONE = new Set<number>();
+let doneSeeded = false;
+/** `[oid, төлөв]` — шинээр «Шилжүүлсэн» болсон мөр байвал гүйцэтгэлийн кэшийг хүчингүй болгоно */
+function absorbDone(pairs: Iterable<readonly [number, string]>): void {
+  let fresh = 0;
+  for (const [oid, st] of pairs) {
+    if (st !== STATUS.transferred || !Number.isFinite(oid) || SEEN_DONE.has(oid)) continue;
+    SEEN_DONE.add(oid);
+    fresh += 1;
+  }
+  if (!doneSeeded) { doneSeeded = true; return; }
+  /* ⚠️ Эцсийн гинжийн бичдэг хүснэгтүүд (`apply`-ийн `batchInvalidate` бүлэгтэй ижил) */
+  if (fresh > 0) invalidate('BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HO_IPC', 'HYANALT');
+}
+const absorbRows = (rows: readonly Row[]): void =>
+  absorbDone(rows.map((r) => [r.__oid, String(r[F.status] ?? '')] as const));
+/** `queryStatusSig` («oid:төлөв,oid:төлөв») → хос */
+const sigPairs = (sig: string): [number, string][] => (sig ? sig.split(',').map((p) => {
+  const i = p.indexOf(':');
+  return [Number(p.slice(0, i)), p.slice(i + 1)];
+}) : []);
+let watchUsers = 0;
+let watchOff: (() => void) | null = null;
+let watchBusy = false;
+let watchWarned = false;
+async function watchOnce(): Promise<void> {
+  if (watchBusy || typeof document === 'undefined' || document.visibilityState === 'hidden') return;
+  watchBusy = true;
+  try {
+    absorbDone(sigPairs(await queryStatusSig()));
+  } catch (e) {
+    /* ⚠️ Чимээгүй (нэг удаа анхааруулна) — туслах шинэчлэлт; хяналтын хүснэгт рүү эрхгүй хэрэглэгч ч бий */
+    if (!watchWarned) { watchWarned = true; console.warn('[selbe] батлалт харагч: төлөв уншигдсангүй', e); }
+  } finally { watchBusy = false; }
+}
+/**
+ * Порталын хэмжээнд БАТЛАЛТ ХАРАГЧ эхлүүлнэ (`Portal`) — тайлах функц буцаана. Олон дуудагч нэг таймер
+ * хуваалцана (ref-count). Дээрх ⚠️-ийг үз.
+ */
+export function startApprovalWatch(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  watchUsers += 1;
+  if (watchUsers === 1) {
+    void watchOnce();
+    const iv = setInterval(() => { void watchOnce(); }, POLL_MS);
+    const onVis = () => { if (document.visibilityState === 'visible') void watchOnce(); };
+    const onFocus = () => { void watchOnce(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    watchOff = () => {
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
+  }
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    watchUsers -= 1;
+    if (watchUsers === 0) { watchOff?.(); watchOff = null; }
+  };
+}
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 
 async function refresh(): Promise<void> {
   ROWS = (await queryAll()).map(toRow);
   loaded = true;
+  /* ⚠️ 2026-10-13: батлалт харагч (дээрх ⚠️) — өөр хэрэглэгчийн эцсийн батлалт */
+  absorbRows(ROWS);
   emit();
 }
 
@@ -569,6 +650,8 @@ export function useDecisionErr(key: string): string {
 async function liveRow(oid: number): Promise<Row | undefined> {
   ROWS = (await queryAll()).map(toRow);
   loaded = true;
+  /* ⚠️ 2026-10-13: батлалт харагч — `refresh`-тэй ижил */
+  absorbRows(ROWS);
   return ROWS.find((r) => r.__oid === oid);
 }
 
@@ -669,6 +752,8 @@ async function pollOnce(): Promise<void> {
   polling = true;
   try {
     const sig = await queryStatusSig();
+    /* ⚠️ 2026-10-13: батлалт харагч — гарын үсгийг шууд шингээнэ (`refresh` дахин шингээхэд давхардахгүй) */
+    absorbDone(sigPairs(sig));
     if (sig !== rowsSig()) await refresh();
   } catch (e) {
     console.warn('[selbe] хяналтын дарааллын шинэчлэлт унав:', e);
@@ -2188,6 +2273,8 @@ export async function apply(a: {
       // ЭЦСИЙН БАТАЛГАА — зургаан шат бүгд өнгөрлөө
       attrs[F.status] = STATUS.transferred;
       registerNow = true;
+      /* ⚠️ 2026-10-13: ЭНЭ табын батлалт — гинж өөрөө хүчингүй болгоно; харагч давхар ачаалахгүй (`SEEN_DONE`) */
+      SEEN_DONE.add(a.oid);
     }
   }
 
@@ -2665,6 +2752,8 @@ export async function retryPendingRegistrations(
             const at = Number.isFinite(sub.payload.approvedAt) ? Number(sub.payload.approvedAt) : serverNow();
             const logged = lastApproverName(live[F.history], final);
             const name = logged || (who ?? me ?? '').trim();
+            /* ⚠️ 2026-10-13: ЭНЭ табын нөхөлт — харагч давхар ачаалахгүй (`SEEN_DONE`) */
+            SEEN_DONE.add(cur.__oid);
             const fix: Attrs = {
               [HYANALT.oid]: cur.__oid,
               [sf.who]: name,

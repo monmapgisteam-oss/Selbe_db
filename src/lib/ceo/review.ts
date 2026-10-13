@@ -23,7 +23,7 @@ import { cached } from '@/lib/live';
 import { queryAll } from '@/lib/hyanalt';
 import { toRow } from '@/lib/hyanaltStore';
 import { groupWorks, pendingAging, STAGE_LABEL, type Pending } from '@/lib/hyanaltGroup';
-import { loadBlockHistory, type BlockHistory } from '@/lib/blockProgress';
+import { loadBlockHistory, loadInfraHistory, type BlockHistory } from '@/lib/blockProgress';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { bagtsKey } from '@/lib/services';
 import { TH } from '@/lib/schem';
@@ -257,7 +257,9 @@ export const loadReviewKpi: () => Promise<KpiResult> = cached(async () => {
   const names = [tr('Гүйцэтгэлийн хяналт'), tr('Гүйцэтгэл бөглөх')];
   const [rv, fh] = await Promise.allSettled([
     queryAll().then((attrs) => pendingAging(groupWorks(attrs.map(toRow)), now)),
-    loadBlockHistory().then((h) => fillAgeByPkg(h, now)),
+    /* ⚠️ 2026-10-13: блокгүй багцууд (5.x · 6.x · 7.1 · 10) ч — 01-ийн батлагдсан жааз (`loadInfraHistory`);
+       түлхүүр блоктойгоос ДАВХЦАХГҮЙ тул нийлүүлэхэд давхардахгүй */
+    Promise.all([loadBlockHistory(), loadInfraHistory()]).then(([b, i]) => fillAgeByPkg(new Map([...b, ...i]), now)),
   ]);
   /* ⚠️ `<unknown>` — хоёр эх ӨӨР төрөл буцаадаг (Pending[] · FillAge[]) тул
      `settled`-ийн `T`-г эхний элементээс дүгнүүлбэл хоёр дахь нь таарахгүй. */
