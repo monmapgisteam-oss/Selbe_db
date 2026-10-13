@@ -812,6 +812,19 @@ function PortalContent(
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
+  /* ⚠️ 2026-10-13 (хэрэглэгч: «гүйцэтгэл бөглөх батлагдсан тохиолдолд шууд багцын гүйцэтгэлийн зүүн панел
+     өөрчлөгдөх ёстой, автомат болох ёстой»): БАТЛАЛТ ХАРАГЧ — өөр хэрэглэгч/таб эцэслэн баталсныг (60 с ·
+     таб идэвхжихэд) илрүүлж гүйцэтгэлийн кэшийг хүчингүй болгоно (`hyanaltStore.startApprovalWatch`-ийн ⚠️).
+     ⚠️ ДИНАМИК импорт — `hyanaltStore` том тул порталын анхны багцад оруулахгүй. */
+  useEffect(() => {
+    let off: (() => void) | null = null;
+    let dead = false;
+    void import('@/lib/hyanaltStore')
+      .then((m) => { if (!dead) off = m.startApprovalWatch(); })
+      .catch((e) => console.warn('[selbe] батлалт харагч ачаалагдсангүй', e));
+    return () => { dead = true; off?.(); };
+  }, []);
+
   const setView = useCallback((v: ViewKey): boolean => {
     /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
        шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин

@@ -156,7 +156,9 @@ export function buildPacks(
       where: null,
       blocks: [],
       households: 0,
-      progress: null,
+      /* ⚠️ 2026-10-13: 01-ийн батлагдсан биет % (`loadBuildings().pkgPct` — блокгүй багц ч орсон);
+         бөглөх хуудасгүй багц `null` («мэдээлэлгүй», 0 БИШ) */
+      progress: pkgPct?.get(key) ?? null,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
 

@@ -13,6 +13,14 @@
  * ⚠️ ЭХ: мод ба жин `Negtgel_guitsetgel/0`-оос; гүйцэтгэл/төлөвлөгөө нь
  * СИСТЕМЭЭС АВТОМАТААР бодогдож, хүснэгт рүү ч буцаж бичигдэнэ
  * (`negtgelAuto.ts`). Эх унавал хадгалсан утгаа харуулна.
+ *
+ * ⚠️⚠️ 2026-10-13 (хэрэглэгч: «Negtgel_guitsetgel_1013-ийг хуучин нэгтгэл гүйцэтгэлээр соль; харагдуулах ба
+ *    томьёолол нь docs/…261007 - V3.xlsx-ийн «Төсөл төлөвлөгөө биелэлт» хуудас»): эх нь
+ *    `Negtgel_guitsetgel_1013` (906 мөр, ЗӨВХӨН уншина). Багана нь тэр хуудасны B…W-ийн ЯГ дарааллаар (22):
+ *    Д/Д · Багц · Нэр · Төсөв · Хэсэгт эзлэх · Төсөлд эзлэх · Гэрээ/Хавсралт 5 (эхлэх · дуусах) · Гүйцэтгэгч
+ *    (эхлэх · дуусах) · Бодит (эхлэх · дуусах) · Төлөвлөгөөт хувь ×5 (Гэрээ · Гэрээ ГЧ · Гүйцэтгэгч · Next week ·
+ *    Өмнө долоо хоног) · Гүйцэтгэлийн хувь · Биелэлт ×4 (Гэрээ · Гэрээ ГЧ · Гүйцэтгэгч · Weekly). Мод нь
+ *    Excel-ийн томьёоноос (`negtgelTree.ts`); хүснэгт таарахгүй бол кодоор угсарч ИЛ анхааруулна. Синк `off`.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { flushSync } from 'react-dom';
@@ -29,6 +37,8 @@ import f from './finance.module.css';
 /** Гүн бүрийн нэмэлт догол (px) */
 const INDENT = 12;
 const indentOf = (depth: number) => Math.max(0, Math.min(depth, 5) - 1) * INDENT;
+/** ArcGIS огноо (ms) → «YYYY-MM-DD» — ⚠️ UTC өдөр (Excel-ээс 00:00Z-ээр хадгалагдсан) */
+const ymd = (ms: number | null | undefined) => (ms == null || !Number.isFinite(ms) ? '' : new Date(ms).toISOString().slice(0, 10));
 
 /**
  * Outline товчнууд — шинэ эх 6 түвшинтэй.
@@ -89,10 +99,11 @@ function toneOf(
 /* ═══════════════ БАГАНА — нуух / өргөсгөх (2026-09-25) ═══════════════ */
 
 type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject'
-  | 'planG' | 'planGch' | 'planGu' | 'act' | 'perfG' | 'perfGch' | 'perfGu';
+  | 'ctStart' | 'ctEnd' | 'exStart' | 'exEnd' | 'actStart' | 'actEnd'
+  | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
 
 /**
- * БАГАНУУД — эх Excel-ийн B…N дарааллаар.
+ * БАГАНУУД — эх Excel-ийн B…W дарааллаар (2026-10-13: огноо H…M, Q · R · W нэмэгдэв).
  * ⚠️ Царцаалт нь хэрэглэгчийн сонголт (`ColPrefs.freeze`), анхдагч нь Excel-ийн A…G.
  * ⚠️ Нэр нь функц: хэл солиход дахин орчуулагдана.
  */
@@ -103,13 +114,22 @@ const COLS: { key: ColKey; label: () => string; w: number }[] = [
   { key: 'budget', label: () => tr('Урьдчилсан төсөвт өртөг'), w: 140 },
   { key: 'inSection', label: () => tr('Хэсэгт эзлэх'), w: 104 },
   { key: 'inProject', label: () => tr('Төсөлд эзлэх хувь'), w: 130 },
+  { key: 'ctStart', label: () => tr('Гэрээ/Хавсралт 5 · Төлөвлөгөөт эхлэх'), w: 120 },
+  { key: 'ctEnd', label: () => tr('Гэрээ/Хавсралт 5 · Төлөвлөгөөт дуусах'), w: 120 },
+  { key: 'exStart', label: () => tr('Гүйцэтгэгч · Төлөвлөгөөт эхлэх'), w: 120 },
+  { key: 'exEnd', label: () => tr('Гүйцэтгэгч · Төлөвлөгөөт дуусах'), w: 120 },
+  { key: 'actStart', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит эхлэх'), w: 150 },
+  { key: 'actEnd', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит дуусах'), w: 150 },
   { key: 'planG', label: () => tr('Төлөвлөгөөт хувь Гэрээ Хавсралт 5'), w: 260 },
   { key: 'planGch', label: () => tr('Төлөвлөгөөт хувь Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан Хавсралт 5'), w: 220 },
   { key: 'planGu', label: () => tr('Төлөвлөгөөт хувь Гүйцэтгэгч'), w: 160 },
+  { key: 'planNw', label: () => tr('Төлөвлөгөөт хувь Next week'), w: 150 },
+  { key: 'planPw', label: () => tr('Төлөвлөгөөт хувь Өмнө долоо хоног'), w: 170 },
   { key: 'act', label: () => tr('Гүйцэтгэлийн хувь'), w: 150 },
   { key: 'perfG', label: () => tr('Төлөвлөгөө биелэлт Гэрээ'), w: 170 },
   { key: 'perfGch', label: () => tr('Төлөвлөгөө биелэлт Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан'), w: 220 },
   { key: 'perfGu', label: () => tr('Төлөвлөгөө биелэлт- Гүйцэтгэгч'), w: 170 },
+  { key: 'perfWk', label: () => tr('Төлөвлөгөө биелэлт Weekly'), w: 150 },
 ];
 const COL = new Map(COLS.map((c) => [c.key, c]));
 /** ⚠️ «Ажлын нэр»-ийг нуухгүй — бүлгийг нээх/хаах нь тэр нүдэн дээр */
@@ -164,6 +184,12 @@ export function TusulNegtgel() {
             sync={d.sync}
             onDone={() => { dropNegtgelFull(); q.retry?.(); }}
           />
+          {/* ⚠️ 2026-10-13: хүснэгт Excel-ийн модтой таарахгүй (мөр нэмэгдсэн/хасагдсан) — кодоор угсарсан */}
+          {d.tree === 'code' && (
+            <p className={n.syncNote} role="status">
+              {tr('Хүснэгтийн мөрүүд Excel-ийн модтой таарахгүй байна — модыг кодоор угсарлаа; эцэг-хүүхдийн холбоо Excel-ээс зөрж болно.')}
+            </p>
+          )}
           <Tree rows={d.rows} calc={d.calc} />
         </>
       )}
@@ -465,14 +491,14 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
    *   G = Σ үе шатны жин; H…K = Σ жин × утга; L…N = K ÷ H…J (0 бол 0).
    */
   const head = useMemo(() => {
-    const t = { p: 0, planG: 0, planGch: 0, planGu: 0, act: 0 };
+    const t = { p: 0, planG: 0, planGch: 0, planGu: 0, planNw: 0, planPw: 0, act: 0 };
     /* ⚠️ 2026-09-25: жинтэй үе шатны гүйцэтгэл хэмжигдээгүй бол НИЙТ гүйцэтгэл
        ХООСОН (`negtgelProjectPct`-тэй ижил, null ≠ 0) — 0 гэж нэмбэл доошилно */
     let actNull = false;
     /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨНД мөн адил дүрэм — жинтэй үе шатны төлөвлөгөө
        хоосон бол тэр баганын нийт ХООСОН. Урьд нь `?? 0` тул «0.00%» гарч,
        биелэлт нь «0 бол 0» дүрмээр 0% болдог байв (null ≠ 0). */
-    const planNull = { planG: false, planGch: false, planGu: false };
+    const planNull = { planG: false, planGch: false, planGu: false, planNw: false, planPw: false };
     rows.forEach((r) => {
       if (r.depth !== 1) return;
       const c = calc.get(r.oid);
@@ -486,6 +512,9 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
       add('planG', c.planPct);
       add('planGch', c.planGch);
       add('planGu', c.planGuits);
+      /* ⚠️ 2026-10-13: Excel Q · R (Next week · Өмнө долоо хоног) — ижил SUMPRODUCT */
+      add('planNw', c.planNextWk);
+      add('planPw', c.planPrevWk);
       if (c.actPct == null) { if (c.inProject > 0) actNull = true; } else t.act += w * c.actPct;
     });
     /* ⚠️ 2026-10-11 (аудит №7): Σ жин (`t.p`) 100-аас зөрвөл (1-р түвшний мөр дутуу/илүү, жин засагдаж
@@ -497,14 +526,18 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
     const planG = planNull.planG ? null : t.planG / norm;
     const planGch = planNull.planGch ? null : t.planGch / norm;
     const planGu = planNull.planGu ? null : t.planGu / norm;
+    const planNw = planNull.planNw ? null : t.planNw / norm;
+    const planPw = planNull.planPw ? null : t.planPw / norm;
     const perf = (plan: number | null) => (act == null || plan == null ? null : plan ? (act / plan) * 100 : 0);
     return {
       ...t,
-      planG, planGch, planGu,
+      planG, planGch, planGu, planNw, planPw,
       act,
       perfG: perf(planG),
       perfGch: perf(planGch),
       perfGu: perf(planGu),
+      /* ⚠️ Excel W6 = S6 ÷ R6 (өмнөх долоо хоногийн төлөвлөгөө) */
+      perfWk: perf(planPw),
     };
   }, [rows, calc]);
 
@@ -533,10 +566,13 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
     planG: p(head.planG, 2),
     planGch: p(head.planGch, 2),
     planGu: p(head.planGu, 2),
+    planNw: p(head.planNw, 2),
+    planPw: p(head.planPw, 2),
     act: p(head.act, 2),
     perfG: p(head.perfG, 2),
     perfGch: p(head.perfGch, 2),
     perfGu: p(head.perfGu, 2),
+    perfWk: p(head.perfWk, 2),
   };
 
   return (
@@ -718,10 +754,20 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
                   case 'planG': return p(c?.planPct, dp);
                   case 'planGch': return p(c?.planGch, dp);
                   case 'planGu': return p(c?.planGuits, dp);
+                  case 'planNw': return p(c?.planNextWk, dp);
+                  case 'planPw': return p(c?.planPrevWk, dp);
                   case 'act': return p(c?.actPct, 2);
                   case 'perfG': return p(c?.perf, dp);
                   case 'perfGch': return p(c?.perfGch, dp);
                   case 'perfGu': return p(c?.perfGuits, dp);
+                  case 'perfWk': return p(c?.perfWk, dp);
+                  /* ⚠️ 2026-10-13: огноо — Гэрээ (ms, UTC өдөр), Гүйцэтгэгч/Бодит («YYYY-MM-DD» бичвэр) */
+                  case 'ctStart': return ymd(c?.ctStart);
+                  case 'ctEnd': return ymd(c?.ctEnd);
+                  case 'exStart': return c?.exStart ?? '';
+                  case 'exEnd': return c?.exEnd ?? '';
+                  case 'actStart': return c?.actStart ?? '';
+                  case 'actEnd': return c?.actEnd ?? '';
                 }
               };
               return (
@@ -729,7 +775,7 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
                   key={r.oid}
                   className={tone ? n[tone] : ''}
                   /* Тоо хаанаас гарсныг хулганаар */
-                  title={[c?.how, c?.outside ? tr('Эцгийнхээ нийлбэрт орохгүй (Нийслэл төсөв)') : '']
+                  title={[c?.how, c?.outside ? tr('Excel-ийн томьёонд эцгийнхээ нийлбэрт ороогүй мөр') : '']
                     .filter(Boolean).join(' · ')}
                 >
                   {vis.map((col) => {

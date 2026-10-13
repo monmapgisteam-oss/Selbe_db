@@ -13,7 +13,7 @@
  * болж гажилт бүрмөсөн алга болно — мөн бүх padding·зай нь жинхэнэ пиксел
  * болох тул шошгын мөргөлдөөнийг ч тооцоолж болно.
  */
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
 /**
  * Бүрхүүлийн БОДИТ өргөн (px). Хэмжигдэх хүртэл `fallback` буцаана.
@@ -23,15 +23,31 @@ import { useEffect, useState, type RefObject } from 'react';
  */
 export function useChartWidth(ref: RefObject<HTMLElement | null>, fallback: number): number {
   const [w, setW] = useState(0);
+  /**
+   * ⚠️ 2026-10-13 (хэрэглэгч: «12-ын цуваа график хулганыг дагахгүй байна» — дэлгэцийн зураг):
+   *    урьд нь ажиглалт ЗӨВХӨН mount-ын эффектэд (`[ref]`) эхэлдэг байв. `ProgChart` ачаалж байхдаа
+   *    эрт буцалтаар (Empty) зурагддаг тул тэр мөчид `ref.current` = null — өгөгдөл ирээд бүрхүүл
+   *    гарч ирэхэд эффект ДАХИН АЖИЛЛАДАГГҮЙ (ref объект ижил) тул өргөн мөнхөд `fallback` (1200)
+   *    үлдэж: SVG нь бодит ~1000px рүү АГШИЖ зурагддаг атлаа HTML pill · tooltip · хулганы зураглал
+   *    (`xFor`/`plotW`) 1200 нэгжээр бодогдож hover нь хулганаас хоцорч, pill нь тэмдгээс зөрдөг байв.
+   *    Одоо рендер БҮРИЙН дараа элементийг шалгаж, шинээр гарч ирсэн/солигдсон бол ажиглалтыг
+   *    шилжүүлнэ. `setW` нь ЗӨВХӨН `ResizeObserver`-ийн дуудлагад (эффектийн биед биш).
+   */
+  const obs = useRef<{ el: HTMLElement; ro: ResizeObserver } | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return undefined;
+    if (obs.current?.el === el) return;
+    obs.current?.ro.disconnect();
+    obs.current = null;
+    if (!el) return;
     /* ⚠️ Гараар нэмэлт хэмжилт хийхгүй: `ResizeObserver` нь ажиглаж эхэлмэгц
        эхний дуудлагаа өөрөө өгдөг тул эффектийн биед `setState` дуудахгүй. */
     const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
+    obs.current = { el, ro };
+  });
+  /* unmount — ажиглалтыг салгана */
+  useEffect(() => () => { obs.current?.ro.disconnect(); obs.current = null; }, []);
   return w > 0 ? w : fallback;
 }
 

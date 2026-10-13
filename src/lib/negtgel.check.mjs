@@ -158,12 +158,12 @@ assert.ok(Math.abs(tezuLeaves - 5) < 1e-9, 'навчны жин = хэсгийн
 
 console.log('negtgel.check: ok — мод · жигнэлт · давхар тоолол · жин 100 · SUMPRODUCT');
 
-/* ══════════ АВТОМАТ БОДОЛТ (`negtgelAuto.ts`, 2026-09-25) ══════════
- *   7. ДАВХАРДСАН БҮЛЭГ КОД: «5.2.3» дөрвөн мөрд — эхнийх нь бүлэг, бусад нь
- *      түүний дэд хэсэг. «3» (хүүхэдгүй) давхардал тусдаа хэвээр.
+/* ══════════ НЭГТГЭЛ — Excel V3 «Төсөл төлөвлөгөө биелэлт» ЗАГВАР (`negtgelAuto.ts`, 2026-10-13) ══════════
+ *   7. ДАВХАРДСАН КОД: нөөц мод (`fallbackDepth`) үе шат БҮРТ тусдаа — «3» (Газар чөлөөлөлт · Зөвшөөрөл).
  *   8. БАГЦЫН ДУГААР: «БАГЦ 1- 4» ≠ «БАГЦ-14» (цэг/зураас хадгална).
- *   9. ЭЦЭГ = SUMPRODUCT(жин, хүүхэд) — Σw-д ХУВААХГҮЙ (эх Excel-ийн дүрэм).
- *  10. ЭХ СУРВАЛЖГҮЙ навч хадгалсан утгаа АЛДАХГҮЙ; жин хэзээ ч бичигдэхгүй.
+ *   9. Excel-ийн МОД (`negtgelTree.ts`): 906 мөр, 8 үе шат, 8 «нийлбэрт орохгүй»; хурхираа таарахгүй бол код.
+ *  10. СИСТЕМИЙН ГҮЙЦЭТГЭЛ — зөвхөн гараар бичигддэг мөрөнд (орон сууцны багц · блокгүй багц · газар),
+ *      ЗӨВХӨН ӨӨРЧЛӨГДСӨН салааны өвгүүд Σ F × хүүхэд (outside хасна); бусад нүд Excel-ийн утгаа ЯГ хадгална.
  */
 const A = await import('./negtgelAuto.ts');
 
@@ -177,7 +177,14 @@ assert.deepEqual(
   [3, 4, 4, 5],
   'шилжсэн дэд модны давхардсан код ДАХИН шилжихгүй',
 );
+/* 7 — «3» хоёр үе шатанд: нэг дор nestDupGroups хийвэл Зөвшөөрөл Газар чөлөөлөлтийн доор орно */
+assert.deepEqual(
+  A.fallbackDepth(['3', '3.1', '3.1.1', '3', '3.1', '3.2'], ['Газар', 'Газар', 'Газар', 'Зөв', 'Зөв', 'Зөв']),
+  [1, 2, 3, 1, 2, 2],
+  'нөөц мод — үе шат бүр тусдаа, «3» давхардал эцэг солихгүй',
+);
 
+/* 8 */
 assert.equal(A.pkgNo('БАГЦ 1- 4'), '1-4');
 assert.equal(A.pkgNo('БАГЦ-14'), '14');
 assert.equal(A.pkgNo('БАГЦ - 19.1'), '19.1');
@@ -185,117 +192,139 @@ assert.equal(A.pkgNo('Багц-5.1'), '5.1');
 assert.equal(A.pkgNo('БАГЦ -9'), '9');
 assert.equal(A.pkgNo('БАГЦ-6.1, 6.2 Нэмэлт ажил'), A.pkgNo('БАГЦ-6.1, 6.2'));
 
-const raw0 = (o) => ({
-  oid: o.oid, code: o.code, name: o.name, bagts: o.bagts ?? '', depth: 0, w: o.w ?? null, p: o.p ?? null,
-  act: o.act ?? null, planG: o.planG ?? null, planGch: null, planGu: null, perfG: null, perfGch: null, perfGu: null,
-});
-const tree = [
-  raw0({ oid: 1, code: '4', name: 'Сонгон шалгаруулалт', p: 0.01, act: 0.5, planG: 1 }),
-  raw0({ oid: 2, code: '4.1', name: 'Х', w: 0.6, act: 0.2, planG: 1 }),
-  raw0({ oid: 3, code: '4.1.1', name: 'А', bagts: 'БАГЦ-16.1', w: 0.5, act: 0, planG: 1 }),
-  raw0({ oid: 4, code: '4.1.2', name: 'Б', bagts: 'БАГЦ-99', w: 0.5, act: 0.4, planG: 0 }),
-  raw0({ oid: 5, code: '4.2', name: 'Ц', bagts: 'Багц-7', w: 0.5, act: 0 }),
-  raw0({ oid: 6, code: '6', name: 'Төслийг хүлээлгэн өгөх', p: 0.01, act: 0 }),
-  raw0({ oid: 7, code: '6.1', name: 'Улсын комисс', w: 1, act: 0.3 }),
-];
-const dd = A.nestDupGroups(tree.map((r) => r.code));
-tree.forEach((r, i) => { r.depth = dd[i]; });
-const cfw = (no, tender, budget = 1) => ({ no, sec1: 'БАРИЛГА УГСРАЛТ', sec2: '', name: '', budget, tezu: null, design: null, permit: null, tender, build: null });
-const src = {
-  cf: [cfw('16.1', 100), cfw('7.1', 100, 3), cfw('7.2', 0, 1),
-    /* ⚠️ ЗУРАГ ТӨСЛИЙН гэрээ — барилгын мөрд ОРОХГҮЙ */
-    { ...cfw('16.1', 0), sec1: 'ТЭЗҮ, ЗУРАГ ТӨСӨЛ' }],
-  land: 90, housing: new Map(), housingPlan: new Map(),
-};
-const out = A.computeNegAuto(tree, src);
-const by = (oid) => out.find((r) => r.oid === oid);
-assert.equal(by(3).act, 1, 'Cashflow-оос 100% (зураг төслийн гэрээ оролцохгүй)');
-assert.equal(by(3).auto, true);
-assert.equal(by(4).act, 0.4, 'эх сурвалжгүй багц — хадгалсан утга');
-assert.equal(by(4).auto, false);
-assert.equal(by(5).act, 0.75, '«Багц-7» = 7.1 + 7.2 өртгөөр жигнэсэн');
-assert.equal(by(2).act, 0.7, 'эцэг = 0.5×1 + 0.5×0.4');
-assert.equal(by(1).act, 0.795, 'SUMPRODUCT, Σw = 1.1-д хуваахгүй');
-assert.equal(by(7).act, 0.3, 'хүлээлгэн өгөх — хадгалсан утга');
-assert.equal(by(2).planG, 0.5, 'төлөвлөгөө ч SUMPRODUCT (эцгийн хадгалсан 1 дарагдана)');
-assert.equal(by(2).perfG, 1.4, 'биелэлт = гүйцэтгэл ÷ төлөвлөгөө');
-assert.equal(by(4).perfG, 0, 'төлөвлөгөө 0 бол биелэлт 0');
-assert.ok(Math.abs(A.projectTotal(out) - (0.01 * 0.795 + 0.01 * 0.3)) < 1e-12);
-
-/* 11. Жингийн нийлбэр 1-ээс ИХ бүлэг — эх Excel «Нийслэл төсөв»-ийг нийлбэрт оруулдаггүй */
-assert.deepEqual(A.rollKids([0, 1, 2, 3], [0.8069, 0.037, 0.1561, 0.074]), [0, 1, 2], '5.2: 5.2.4 гадуур');
-assert.deepEqual(A.rollKids([0, 1], [0.5, 0.5]), [0, 1], 'ердийн бүлэг бүтнээрээ');
-
-/* ⚠️ 2026-10-09 (аудит): `budgetWeights` — төсвөөс жин ЗӨВХӨН Σхүүхэд ≈ эцэг (±0.5%) эсвэл
-   «5.2.4»-ийн хэв маяг (угтвар = эцэг, ард нь илүү хүүхэд) үед; бусад үед хадгалсан жин. */
+/* 9 — Excel-ийн мод */
 {
-  const bw = (parentBudget, kidBudgets) => {
-    const rows = [
-      { depth: 1, w: null, p: 0.79, budget: parentBudget },
-      ...kidBudgets.map((b) => ({ depth: 2, w: 0.25, p: null, budget: b })),
-    ];
-    const { parent, kids } = A.treeOf(rows.map((r) => r.depth));
-    const res = A.budgetWeights(rows, parent, kids);
-    return { w: res.w.slice(1), use: A.rollKids(kids[0], res.w) };
-  };
-  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
-  /* яг таарсан */
-  const ex = bw(100, [60, 30, 10]);
-  assert.ok(near(ex.w, [0.6, 0.3, 0.1]), 'Σхүүхэд = эцэг → төсвөөс');
-  assert.deepEqual(ex.use, [1, 2, 3]);
-  /* 5.2.4: угтвар (80.69 + 3.70 + 15.61) = эцэг, ард нь 7.40 */
-  const p524 = bw(100, [80.69, 3.7, 15.61, 7.4]);
-  assert.ok(near(p524.w, [0.8069, 0.037, 0.1561, 0.074]), '5.2.4 хэв маяг → төсвөөс');
-  assert.deepEqual(p524.use, [1, 2, 3], '5.2.4 нийлбэрээс хасагдана');
-  /* дутуу задаргаа */
-  assert.deepEqual(bw(100, [40, 30]).w, [0.25, 0.25], 'Σхүүхэд < эцэг → хадгалсан жин');
-  /* илүүдэл, угтвар таарахгүй (эцгийн төсөв 2% зөрсөн) — 5.2.4 нийлбэрт орох байсан */
-  assert.deepEqual(bw(98, [80.69, 3.7, 15.61, 7.4]).w, [0.25, 0.25, 0.25, 0.25], 'Σ > эцэг, угтвар таарахгүй → хадгалсан жин');
+  const { NEG_TREE, negTreeHash } = await import('./negtgelTree.ts');
+  assert.equal(NEG_TREE.depth.length, NEG_TREE.n, 'гүн мөр бүрт');
+  assert.equal(NEG_TREE.n, 906, 'Excel 6–911-р мөр');
+  const d = Array.from(NEG_TREE.depth, (ch) => ch.charCodeAt(0) - 48);
+  assert.equal(d[0], 0, 'эхний мөр — ТӨСЛИЙН НИЙТ');
+  assert.equal(d.filter((x) => x === 0).length, 1, 'нийт мөр ганц');
+  assert.equal(d.filter((x) => x === 1).length, 8, '8 үе шат');
+  const { parent } = A.treeOf(d);
+  assert.ok(parent.slice(1).every((p) => p >= 0), 'нийтээс бусад бүх мөр эцэгтэй (outline)');
+  assert.deepEqual([...NEG_TREE.outside], [64, 249, 323, 509, 699, 851, 883, 885], 'Excel-ийн томьёонд ороогүй 8 мөр');
+  assert.ok(NEG_TREE.outside.every((i) => d[i] >= 2), '«нийлбэрт орохгүй» нь үе шат биш');
+  /* хурхираа таарахгүй → кодоор */
+  const t = A.excelTree(['0', '1', '1.1', '2'], ['', 'ТЭЗҮ', 'ТЭЗҮ', 'Зураг']);
+  assert.equal(t.source, 'code');
+  assert.deepEqual(t.depth, [0, 1, 2, 1]);
+  assert.ok(t.outside.every((x) => !x));
+  assert.equal(negTreeHash(['0', '1']), negTreeHash(['0', '1']), 'тогтвортой');
+  assert.notEqual(negTreeHash(['0', '1']), negTreeHash(['0', '2']));
 }
 
-const ups = A.negDiff(tree, out);
-for (const u of ups) {
-  assert.ok(!('HESEGT_EZLEH' in u) && !('TOSOLD_EZLEH_HUVI' in u), 'жин бичигдэхгүй');
-  assert.ok(Object.values(u).every((v) => v !== null), 'null-оор дарахгүй');
+const raw0 = (o) => ({
+  oid: o.oid, code: o.code ?? '', name: o.name, bagts: o.bagts ?? '', depth: o.depth, w: o.w ?? null, p: o.p ?? null,
+  act: o.act ?? null, planG: o.planG ?? null, planGch: o.planGch ?? null, planGu: o.planGu ?? null,
+  planNw: o.planNw ?? null, planPw: o.planPw ?? null,
+  perfG: o.perfG ?? null, perfGch: o.perfGch ?? null, perfGu: o.perfGu ?? null, perfWk: o.perfWk ?? null,
+  budget: null, outside: o.outside,
+});
+/* 10 — Excel-ийн хэлбэрийн жижиг мод. Мөр 2 (0.20) нь Σ F × хүүхэд (0.21)-ээс ЗӨРНӨ — Excel-ийн
+   «гараар бичсэн» утга; хувиралгүй үед ХӨНДӨГДӨХГҮЙ ёстой. */
+const xTree = () => [
+  raw0({ oid: 1, depth: 1, name: 'Барилга угсралт', p: 0.79, act: 0.2, planG: 0.5, planPw: 0.4, perfG: 0.4, perfWk: 0.5 }),
+  raw0({ oid: 2, depth: 2, name: 'Барилга угсралт ажил', w: 1, act: 0.2 }),
+  raw0({ oid: 3, depth: 3, name: 'Орон сууцны хороолол барилга угсралт', w: 0.8, act: 0.25 }),
+  raw0({ oid: 4, depth: 4, name: 'Орон сууцны хороолол барилга угсралт', bagts: 'Багц-1', w: 0.5, act: 0.3, planG: 0.8, perfG: 0.375 }),
+  raw0({ oid: 5, depth: 5, name: '9 давхар 71 айл', bagts: '5/1', w: 1, act: 0.28 }),
+  raw0({ oid: 6, depth: 4, name: 'Орон сууцны хороолол барилга угсралт', bagts: 'Багц-2', w: 0.5, act: 0.2 }),
+  raw0({ oid: 7, depth: 3, name: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ', w: 0.2, act: 0.05 }),
+  raw0({ oid: 8, depth: 4, name: 'Гадна дулаан', bagts: 'Багц-5.1', w: 0.5, act: 0.1, planG: 0 }),
+  raw0({ oid: 9, depth: 4, name: 'Гадна дулаан', bagts: 'Багц-5.2', w: 0.5, act: 0 }),
+  raw0({ oid: 10, depth: 3, name: 'НИЙГМИЙН ДЭД БҮТЭЦ (Нийслэл төсөв)', w: 0.1, act: 0, outside: true }),
+  raw0({ oid: 11, depth: 1, name: 'Газар чөлөөлөлт', p: 0.03, act: 0.93 }),
+  raw0({ oid: 12, depth: 2, name: 'Орон сууцны хороолол барилга угсралт', w: 1, act: 0.96 }),
+  raw0({ oid: 13, depth: 1, name: 'Ажлын зураг төсөл', p: 0.1, act: 0.92 }),
+];
+const { bagtsKey } = await import('./services.ts');
+const xSrc = {
+  land: 92,
+  housing: new Map([[bagtsKey('Багц 1'), 40]]),
+  housingPkgs: new Set([bagtsKey('Багц 1'), bagtsKey('Багц 2')]),
+  infra: new Map([['5.1', 36]]),
+  infraPkgs: new Set(['5.1', '5.2']),
+  partial: [],
+};
+{
+  const out = A.computeNegAuto(xTree(), xSrc);
+  const by = (oid) => out.find((r) => r.oid === oid);
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m}: ${a} ≠ ${b}`);
+  near(by(4).act, 0.4, 'орон сууцны багц — 01-ийн батлагдсан');
+  assert.equal(by(4).auto, true);
+  near(by(4).perfG, 0.5, 'өөрчлөгдсөн мөрийн биелэлт = S ÷ N');
+  near(by(5).act, 0.28, 'багцын доторх мөр Excel-ийн утга');
+  assert.equal(by(5).auto, false);
+  near(by(6).act, 0.2, 'тайлагнаагүй багц — Excel-ийн утга (0 БИШ)');
+  assert.equal(by(6).auto, false);
+  near(by(3).act, 0.3, 'эцэг = 0.5×0.40 + 0.5×0.20');
+  near(by(8).act, 0.36, 'блокгүй багц — 01-ийн батлагдсан');
+  assert.equal(by(8).perfG, 0, 'төлөвлөгөө 0 → биелэлт 0');
+  near(by(9).act, 0, 'тайлагнаагүй блокгүй багц — Excel-ийн утга');
+  near(by(7).act, 0.18, 'эцэг = 0.5×0.36 + 0.5×0');
+  near(by(10).act, 0, '«нийлбэрт орохгүй» мөр хөндөгдөхгүй');
+  near(by(2).act, 0.276, 'эцэг = 0.8×0.30 + 0.2×0.18 (Нийслэл төсөв хасагдсан)');
+  near(by(1).act, 0.276, 'үе шат = 1 × 0.276');
+  near(by(1).perfG, 0.552, 'W/T — S ÷ N');
+  near(by(1).perfWk, 0.69, 'Weekly — S ÷ R');
+  near(by(11).act, 0.92, 'газар — модулиас');
+  assert.equal(by(11).auto, true);
+  near(by(12).act, 0.96, 'газрын доторх мөр Excel-ийн утга');
+  near(by(13).act, 0.92, 'системийн эхгүй үе шат — Excel-ийн утга');
+  assert.equal(by(13).auto, false);
+  assert.equal(by(13).perfG, null, 'өөрчлөгдөөгүй мөрийн биелэлт — Excel-ийнх (энд хоосон)');
+  near(A.projectTotal(out), 0.79 * 0.276 + 0.03 * 0.92 + 0.1 * 0.92, 'төслийн нийт = Σ G × S');
 }
-assert.ok(!ups.some((u) => u.OBJECTID === 4 && 'GUITSETGELIIN_HUVI' in u), 'өөрчлөгдөөгүй утга бичигдэхгүй');
+{
+  /* Системийн утга Excel-тэй ИЖИЛ бол юу ч дахин бодогдохгүй — мөр 2 (0.20 ≠ Σ 0.21) Excel-ийнхээрээ */
+  const same = A.computeNegAuto(xTree(), {
+    ...xSrc, land: 93, housing: new Map([[bagtsKey('Багц 1'), 30]]), infra: new Map([['5.1', 10]]),
+  });
+  const by = (oid) => same.find((r) => r.oid === oid);
+  assert.equal(by(2).act, 0.2, 'хувиралгүй салаа Excel-ийн утгаа хадгална');
+  assert.equal(by(1).act, 0.2);
+  assert.equal(by(1).perfG, 0.4, 'хувиралгүй мөрийн биелэлт Excel-ийнх');
+  assert.equal(by(4).auto, true, 'системийн эх тэмдэглэгдэнэ');
+}
+{
+  /* «Талбайн бэлтгэл» (5.1.3) доторх багцын мөр — биет гүйцэтгэл БИШ, системийн утга ОРОХГҮЙ */
+  const prep = [
+    raw0({ oid: 1, depth: 1, name: 'Барилга угсралт', p: 1, act: 0.5 }),
+    raw0({ oid: 2, depth: 2, name: 'Бэлтгэл ажил', w: 1, act: 0.5 }),
+    raw0({ oid: 3, depth: 3, name: 'Талбайн бэлтгэл ажил', w: 1, act: 0.5 }),
+    raw0({ oid: 4, depth: 4, name: 'Орон сууцны хороолол барилга угсралт', w: 1, act: 0.5 }),
+    raw0({ oid: 5, depth: 5, name: 'Орон сууцны хороолол барилга угсралт', bagts: 'Багц-1', w: 1, act: 0.5 }),
+  ];
+  const out = A.computeNegAuto(prep, xSrc);
+  assert.equal(out[4].act, 0.5, 'бэлтгэл ажлын багцын мөр хөндөгдөхгүй');
+  assert.equal(out[4].auto, false);
+}
+{
+  /* Газрын модулиас утга ирээгүй → Excel-ийн утга, эх сурвалжийн тайлбар өөр */
+  const lTree = [raw0({ oid: 31, depth: 1, name: 'Газар чөлөөлөлт', p: 1, act: 0.4 })];
+  const noLand = A.computeNegAuto(lTree, { ...xSrc, land: null })[0];
+  const withLand = A.computeNegAuto(lTree, { ...xSrc, land: 90 })[0];
+  assert.equal(noLand.act, 0.4, 'land null → Excel-ийн утга');
+  assert.equal(noLand.auto, false);
+  assert.notEqual(noLand.how, withLand.how);
+  assert.equal(withLand.act, 0.9);
+  assert.equal(withLand.auto, true);
+}
 
-console.log('negtgelAuto: ok — давхардсан бүлэг · багцын дугаар · SUMPRODUCT · хадгалсан утга · жин бичихгүй');
+console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын дугаар · зөвхөн өөрчлөгдсөн салаа · outside · биелэлт');
 
-/* ══════════ 2026-09-25-НЫ ЗАСВАРУУД ══════════
- *  12. БИЕЛЭЛТ: гүйцэтгэл/төлөвлөгөө `null` → `null` (0 БИШ); төлөвлөгөө 0 → 0.
+/* ══════════ 2026-09-25-НЫ ДҮРМҮҮД (шинэ загвар дээр) ══════════
  *  13. ТӨСЛИЙН НИЙТ: жинтэй 1-р түвшний мөр `null` бол нийт `null` (null ≠ 0).
- *  14. ОРОН СУУЦ: блоктой багцын хэмжилт дутуу бол Cashflow руу УНАХГҮЙ;
- *      жинхэнэ блокгүй мөр («БАГЦ 1-4») л Cashflow-оос.
- *  15. ТӨЛӨВЛӨГӨӨ: өмнөх ба энэ сарын эцсийн хооронд өнөөдрийн өдрөөр завсарлана.
- *  16. ХАМГААЛАЛТ: мөр бүр ±0.2 (өвгөд хамт алгасна), нийт ±0.2 (юу ч бичихгүй).
- *  17. ЭРХ: super биш / хэрэглэгчгүй → бичихгүй (fail-closed).
+ *  15. ТӨЛӨВЛӨГӨӨ (`housingPlanOf` — лавлах хэрэгжилт): сарын хооронд өдрөөр завсарлана.
+ *  16. ХАМГААЛАЛТ: мөр бүр ±0.2 (өвгөд хамт алгасна), нийт ±0.2; бичих утга хүснэгтийн масштабаар (×100).
+ *  17. ЭРХ: super биш / хэрэглэгчгүй → бичихгүй; хүснэгт ЗӨВХӨН уншигддаг (амьд бичигчгүй) → `off`.
  */
 {
-  const { bagtsKey, TUSUL_NEGTGEL } = await import('./services.ts');
+  const { TUSUL_NEGTGEL } = await import('./services.ts');
   const { negtgelProjectPct } = await import('./negtgel.ts');
   const OID = TUSUL_NEGTGEL.oid;
   const ACT = A.VAL_FIELD.act;
-  const mk = (list) => {
-    const rs = list.map(raw0);
-    const d = A.nestDupGroups(rs.map((r) => r.code));
-    rs.forEach((r, i) => { r.depth = d[i]; });
-    return rs;
-  };
-  const cfb = (no, build, tender = null) => ({ no, sec1: 'БАРИЛГА УГСРАЛТ', sec2: '', name: '', budget: 1, tezu: null, design: null, permit: null, tender, build });
-  const emptySrc = { cf: [], land: null, housing: new Map(), housingPlan: new Map(), housingPkgs: new Set() };
-
-  /* 12 */
-  const pf = A.computeNegAuto(mk([
-    { oid: 1, code: '6', name: 'Төслийг хүлээлгэн өгөх', p: 1, act: 0.3, planG: null },
-    { oid: 2, code: '7', name: 'Зүгшрүүлэлт', p: 0, act: null, planG: 0.5 },
-    { oid: 3, code: '8', name: 'Бусад', p: 0, act: 0.2, planG: 0 },
-  ]), emptySrc);
-  assert.equal(pf[0].perfG, null, 'төлөвлөгөөгүй → биелэлт null');
-  assert.equal(pf[1].perfG, null, 'гүйцэтгэлгүй → биелэлт null');
-  assert.equal(pf[2].perfG, 0, 'төлөвлөгөө 0 → 0 (эх хүснэгтийн дүрэм)');
-  assert.ok(A.negDiff(mk([{ oid: 1, code: '6', name: 'x', p: 1, act: 0.3 }]), [{ ...pf[0], oid: 1 }])
-    .every((u) => !(A.VAL_FIELD.perfG in u)), 'null биелэлт бичигдэхгүй');
 
   /* 13 */
   assert.equal(A.projectTotal([{ depth: 1, p: 0.5, act: null }, { depth: 1, p: 0.5, act: 0.4 }]), null, 'жинтэй null мөр → нийт null');
@@ -304,22 +333,6 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.equal(negtgelProjectPct(nRows, new Map([[1, { inProject: 50, actPct: null }], [2, { inProject: 50, actPct: 40 }]])), null,
     'negtgelProjectPct: 1-р түвшний null → null');
   assert.equal(negtgelProjectPct(nRows, new Map([[1, { inProject: 50, actPct: 10 }], [2, { inProject: 50, actPct: 40 }]])), 25);
-
-  /* 14 */
-  const hTree = mk([
-    { oid: 21, code: '5', name: 'Барилга угсралт', p: 1, act: 0.1 },
-    { oid: 22, code: '5.2', name: 'Барилга угсралт ажил', w: 1 },
-    { oid: 23, code: '5.2.1', name: 'Орон сууцны хороолол барилга угсралт', w: 1 },
-    { oid: 24, code: '5.2.1.1', name: 'Блокийн ажил', bagts: 'Багц 1', w: 0.5, act: 0.33 },
-    { oid: 25, code: '5.2.1.2', name: 'Суурийн холболтын ажил', bagts: 'БАГЦ 1-4', w: 0.5, act: 0.1 },
-  ]);
-  const hSrc = { ...emptySrc, cf: [cfb('1', 90), cfb('1-4', 60)], housingPkgs: new Set([bagtsKey('Багц 1')]) };
-  const hOut = A.computeNegAuto(hTree, hSrc);
-  assert.equal(hOut[3].act, 0.33, 'блоктой багцын хэмжилт дутуу → хадгалсан утга (Cashflow 90% БИШ)');
-  assert.equal(hOut[3].auto, false);
-  assert.equal(hOut[4].act, 0.6, 'блокгүй «БАГЦ 1-4» → Cashflow');
-  const hOk = A.computeNegAuto(hTree, { ...hSrc, housing: new Map([[bagtsKey('Багц 1'), 40]]) });
-  assert.equal(hOk[3].act, 0.4, 'хэмжилттэй бол биет хувь');
 
   /* 15 */
   const curve = new Map([
@@ -335,36 +348,38 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.equal(hp.has('d'), false, 'эхлээгүй хуваарь — төлөвлөгөөгүй (0 БИШ)');
   assert.equal(A.housingPlanOf(curve, new Date(2026, 8, 30)).get('a'), 40, 'сарын сүүлийн өдөр = сарын цэг');
 
-  /* 16 — мөр бүрийн хамгаалалт */
-  const gTree = mk([
-    { oid: 11, code: '4', name: 'Сонгон шалгаруулалт', p: 0.3, act: 0.2 },
-    { oid: 12, code: '4.1', name: 'А', bagts: 'БАГЦ-16.1', w: 0.5, act: 0 },
-    { oid: 13, code: '4.2', name: 'Б', bagts: 'БАГЦ-17', w: 0.5, act: 0.1 },
-    { oid: 14, code: '6', name: 'Төслийг хүлээлгэн өгөх', p: 0.7, act: 0.3 },
-    { oid: 15, code: '6.1', name: 'Улсын комисс', w: 1, act: 0.3 },
-  ]);
-  const gSrc = { ...emptySrc, cf: [cfb('16.1', null, 100), cfb('17', null, 20)] };
+  /* 16 — мөр бүрийн хамгаалалт: Багц-1 0.30 → 0.90 (+0.6) хамгаалалтад, өвгөд хамт; Багц-5.1 жижиг өөрчлөлт бичигдэнэ */
+  const gTree = [
+    raw0({ oid: 11, depth: 1, name: 'Барилга угсралт', p: 0.3, act: 0.2 }),
+    raw0({ oid: 12, depth: 2, name: 'Барилга угсралт ажил', w: 1, act: 0.2 }),
+    raw0({ oid: 13, depth: 3, name: 'Орон сууцны хороолол барилга угсралт', w: 0.5, act: 0.3 }),
+    raw0({ oid: 14, depth: 4, name: 'Орон сууцны хороолол барилга угсралт', bagts: 'Багц-1', w: 1, act: 0.3 }),
+    raw0({ oid: 15, depth: 3, name: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ', w: 0.5, act: 0.1 }),
+    raw0({ oid: 16, depth: 4, name: 'Гадна дулаан', bagts: 'Багц-5.1', w: 1, act: 0.1 }),
+    raw0({ oid: 17, depth: 1, name: 'Төслийг хүлээлгэн өгөх', p: 0.7, act: 0.3 }),
+  ];
+  const gSrc = { ...xSrc, land: null, housing: new Map([[bagtsKey('Багц 1'), 90]]), infra: new Map([['5.1', 15]]) };
   const gCalc = A.computeNegAuto(gTree, gSrc);
   const gp = A.planNegSync(gTree, gCalc);
   assert.equal(gp.totalBlocked, false);
-  assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12], '0 → 100% мөр ба эцэг нь хамгаалалтад');
-  /* ⚠️ 2026-09-25: 14 — хүүхэд (15)-ийн төлөвлөгөө БҮГД хоосон тул эцгийн
-     төлөвлөгөө `null` (0 БИШ) — бичигдэхгүй. Урьд нь SUMPRODUCT-аар 0 бичигддэг байв. */
-  assert.deepEqual(gp.ups.map((u) => u[OID]), [13], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
-  assert.equal(gp.ups[0][ACT], 0.2);
-  assert.equal(gCalc[3].planG, null, 'бүх хүүхэд хоосон → эцэг null (0 БИШ)');
-  assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 12), 'force — бүгд');
+  assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12, 13, 14], '0.30 → 0.90 мөр ба өвгөд нь хамгаалалтад');
+  assert.deepEqual(gp.ups.map((u) => u[OID]).sort(), [15, 16], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
+  assert.equal(gp.ups.find((u) => u[OID] === 16)[ACT], 15, 'бичих утга хүснэгтийн масштабаар (0–100)');
+  assert.ok(gp.ups.every((u) => !('SHARE_SEC' in u) && !('SHARE_PRJ' in u)), 'жин бичигдэхгүй');
+  assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 14), 'force — бүгд');
 
   /* 16 — нийтийн хамгаалалт */
-  const tTree = mk([
-    { oid: 31, code: '4', name: 'Сонгон шалгаруулалт', p: 1, act: 0 },
-    { oid: 32, code: '4.1', name: 'А', bagts: 'БАГЦ-16.1', w: 1, act: null },
-  ]);
+  const tTree = [
+    raw0({ oid: 31, depth: 1, name: 'Барилга угсралт', p: 1, act: 0 }),
+    raw0({ oid: 32, depth: 2, name: 'Барилга угсралт ажил', w: 1, act: 0 }),
+    raw0({ oid: 33, depth: 3, name: 'Орон сууцны хороолол барилга угсралт', w: 1, act: 0 }),
+    raw0({ oid: 34, depth: 4, name: 'Орон сууцны хороолол барилга угсралт', bagts: 'Багц-1', w: 1, act: 0 }),
+  ];
   const tp = A.planNegSync(tTree, A.computeNegAuto(tTree, gSrc));
-  assert.equal(tp.totalBlocked, true, 'нийт 0 → 100%');
+  assert.equal(tp.totalBlocked, true, 'нийт 0 → 90%');
   assert.equal(tp.ups.length, 0, 'нийт хамгаалалтад — юу ч бичихгүй');
 
-  /* 17 — эрх (fail-closed) */
+  /* 17 — эрх (fail-closed) ба зөвхөн уншигдах хүснэгт */
   let writes = 0;
   const io = (user) => ({
     user: () => user,
@@ -372,21 +387,22 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
     write: async (u) => { writes += u.length; return u.length; },
   });
   A._resetNegSync();
+  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Query-only');
+  assert.equal((await A.syncNegtgel({}, { user: () => 'saruul_monmap' })).kind, 'off', 'зөвхөн уншигдах хүснэгт — super-т ч бичихгүй');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
   assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
   assert.equal((await A.syncNegtgel()).kind, 'off', 'анхдагч (нэвтрээгүй Node) → бичихгүй');
   assert.equal(writes, 0);
   const st = await A.syncNegtgel({}, io('saruul_monmap'));
-  assert.equal(st.kind, 'guard', 'super — хамгаалалтын төлөв ил');
-  /* ⚠️ 2026-09-25: 2 → 1 — 14-ийн төлөвлөгөө (бүх хүүхэд хоосон) бичигдэхээ болив */
-  assert.equal(st.n, 1);
-  assert.equal(writes, 1, 'super — зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
+  assert.equal(st.kind, 'guard', 'super (тестийн бичигч) — хамгаалалтын төлөв ил');
+  assert.equal(st.n, 2);
+  assert.equal(writes, 2, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
   const again = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(again, st, '10 минутын дотор дахин бичихгүй — сүүлийн төлөв');
-  assert.equal(writes, 1);
+  assert.equal(writes, 2);
   const forced = await A.syncNegtgel({ force: true }, io('saruul_monmap'));
   assert.equal(forced.kind, 'ok', 'баталгаажуулсан бичилт');
-  assert.ok(writes > 1);
+  assert.ok(writes > 2);
   A._resetNegSync();
 
   /* 18 — (2026-09-25) `force` явж буй энгийн синкийн үр дүнд залгигдахгүй */
@@ -402,20 +418,7 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
     A._resetNegSync();
   }
 
-  /* 19 — (2026-09-29, аудит 10) газрын модулиас утга ирээгүй бол эх сурвалжийг
-     «Газар чөлөөлөлт хэсгээс» гэж ХУДАЛ заахгүй; хадгалсан утга үлдэнэ */
-  {
-    const lTree = [{ oid: 31, code: '3', name: 'Газар чөлөөлөлт', p: 1, act: 0.4 }];
-    const noLand = A.computeNegAuto(mk(lTree), emptySrc)[0];
-    const withLand = A.computeNegAuto(mk(lTree), { ...emptySrc, land: 90 })[0];
-    assert.equal(noLand.act, 0.4, 'land null → хадгалсан утга');
-    assert.equal(noLand.auto, false);
-    assert.notEqual(noLand.how, withLand.how, 'land null → эх сурвалжийн тайлбар өөр');
-    assert.equal(withLand.act, 0.9);
-    assert.equal(withLand.auto, true);
-  }
-
-  console.log('negtgel 2026-09-25: ok — биелэлт null · нийт null · орон сууцны уналт · төлөвлөгөөний завсар · хамгаалалт · эрх');
+  console.log('negtgel 2026-09-25: ok — нийт null · төлөвлөгөөний завсар · хамгаалалт (×100) · эрх · зөвхөн уншигдах хүснэгт');
 }
 
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ — эх унасан

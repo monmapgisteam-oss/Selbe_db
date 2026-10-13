@@ -8,7 +8,7 @@ import { queryFeatures } from '@/lib/query';
 import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
 import {
   loadBlockProgress, loadBlockHistory, loadBlockUniverse, progressSeries, pkgProgressOf, universeKeys,
-  latestMean, mapKeyIssues, type BlockHistory,
+  latestMean, mapKeyIssues, loadInfraProgress, type BlockHistory,
 } from '@/lib/blockProgress';
 import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
 import { register } from '@/lib/dataBus';
@@ -185,7 +185,7 @@ export function useBuildings() {
 
 export async function loadBuildings() {
   {
-    const [rows, prog, hist, uni] = await Promise.all([
+    const [rows, prog, hist, uni, infraPct] = await Promise.all([
       queryFeatures(BUILDING.url, {
         outFields: [BUILDING.oid, F.bagts, F.block, F.contractor, F.floors, F.households],
         limit: 2000,
@@ -194,6 +194,9 @@ export async function loadBuildings() {
       loadBlockHistory(),
       /* ⚠️ 2026-10-01: бөглөх хуудасны блокийн хуваарь — тайлагнаагүй блок 0% */
       loadBlockUniverse(),
+      /* ⚠️ 2026-10-13: блокгүй багцын (5.x · 6.x · 7.1 · 10) 01-ийн батлагдсан гүйцэтгэл — зөвхөн БАГЦЫН
+         хувьд (`pkgPct`); блокийн жагсаалт/дундажид ОРОХГҮЙ (`blockProgress.loadInfraProgress`-ийн ⚠️) */
+      loadInfraProgress(),
     ]);
 
     /** Б1…Б5-ын нэр — хүснэгтээс ирнэ (гар аргаар бичихгүй) */
@@ -243,6 +246,8 @@ export async function loadBuildings() {
        тайлагнаагүй блок 0%. */
     const pkgPct = new Map<string, number>();
     for (const [k, v] of pkgProgressOf(prog, uni)) pkgPct.set(k, v.pct);
+    /* ⚠️ 2026-10-13: блокгүй багц — түлхүүр блоктойгоос ДАВХЦАХГҮЙ (дээрх `loadInfraProgress`) */
+    for (const [k, v] of infraPct) if (!pkgPct.has(k)) pkgPct.set(k, v.pct);
     /* ⚠️ 2026-10-01: төслийн БҮХ блокийн хуваарь — нийт дундаж ба цувааны анхдагч хүрээ */
     const allKeys = universeKeys(prog, uni);
 

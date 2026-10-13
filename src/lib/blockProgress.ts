@@ -23,7 +23,7 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo } from './services';
-import { loadSheetRows, sheetBlockKeys } from '@/modules/sheet/sheetRows';
+import { loadSheetRows, sheetBlockKeys, sheetBlocklessKeys } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
 
@@ -58,8 +58,9 @@ export const isFutureDay = (d: string, today: string): boolean => d > today;
  *    `BuildingPanel` ч мөн түүнийг ашигладаг. Энд хуулбарлавал шинэ багана
  *    нэмэгдэх бүрд хоёр газар засах шаардлагатай болно.
  */
-async function fetchConstruction(): Promise<Record<string, unknown>[]> {
-  const rows = await loadSheetRows({ constructionOnly: true });
+/* ⚠️ 2026-10-13: `blockless` — блокгүй багцын синтетик блок (`loadInfraProgress`-ийн ⚠️) */
+async function fetchConstruction(blockless = false): Promise<Record<string, unknown>[]> {
+  const rows = await loadSheetRows({ constructionOnly: true, blockless });
   return rows.map((r) => ({
     [TS.bagts]: r.bagts,
     [TS.no]: r.no,
@@ -678,6 +679,42 @@ export async function loadPkgProgress(fresh = false): Promise<Map<string, PkgPro
     loadBlockUniverse(),
   ]);
   return pkgProgressOf(pm, uni);
+}
+
+/* ═══════════════ БЛОКГҮЙ БАГЦУУД (5.x · 6.x · 7.1 · 10) ═══════════════
+ *
+ * ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01. Гүйцэтгэл-д багц бүр дээр бөглөгдөж, батлагдаж
+ *    дууссан хэсгээс авч нэгтгэ»; «10.13-нд Багц 5.1 дээр орсон гүйцэтгэл огт орохгүй байна»).
+ *    Эдгээр багцын «Б.» мөр нь бөглөх хуудасны синтетик НЭГ блокт (`SYNTHETIC_BLOCK`) — архивын
+ *    (батлагдсан) жаазаас. Урьд нь блокийн уншигч (`loadSheetRows` анхдагч) тэднийг огт уншдаггүй
+ *    тул 5.1-ийн батлагдсан 36% «Багцын гүйцэтгэл» · нэгтгэл · санхүүгийн биет цуваанд хүрдэггүй байв.
+ * ⚠️ БЛОКИЙН Map-д (`loadBlockProgress`/`loadBlockHistory`) ХОЛИХГҮЙ — тэр нь газрын зургийн блок,
+ *    орон сууцны БЛОКИЙН энгийн дундаж (`latestMean` · `universeKeys`), `mapKeyIssues`-ийн эх; нэг
+ *    багц нэг «блок» болж орвол орон сууцны дундаж гажина. Зөвхөн БАГЦЫН түвшний нэгтгэл (ХО дүнгээр
+ *    жигнэдэг `finPhys` → `physNow`/`physLatest`, `negtgelAuto`) эдгээрийг ЗААВАЛ нийлүүлнэ.
+ * ⚠️ Түлхүүр `buildingKey(group, SYNTHETIC_BLOCK)` — блоктой багцын түлхүүртэй ДАВХЦАХГҮЙ.
+ */
+const loadInfraRows = memo(() => fetchConstruction(true), ['BAGTS_SHEET']);
+
+/** Блокгүй багцын «Б.» мөрийн бүх огноо — `loadBlockHistory`-той ижил хэлбэр, тусдаа Map */
+export const loadInfraHistory: () => Promise<BlockHistory> = memo(
+  async () => history(await loadInfraRows()),
+  ['BAGTS_SHEET'],
+);
+
+/** Блокгүй багцын хуваарь (`sheetBlocklessKeys`) — `loadBlockUniverse`-тэй ижил хэлбэр */
+export const loadInfraUniverse: () => Promise<BlockUniverse> = memo(sheetBlocklessKeys);
+
+/**
+ * Блокгүй багц бүрийн гүйцэтгэл (0–100) — `loadPkgProgress`-тэй ижил хэлбэр (`bagtsKey` → `PkgProgress`).
+ * @param fresh `true` = КЭШГҮЙ (зөвхөн хүснэгт рүү БИЧИХ зам — `loadBlockProgressFresh`-ийн ⚠️)
+ */
+export async function loadInfraProgress(fresh = false): Promise<Map<string, PkgProgress>> {
+  const [rows, uni] = await Promise.all([
+    fresh ? fetchConstruction(true) : loadInfraRows(),
+    loadInfraUniverse(),
+  ]);
+  return pkgProgressOf(compute(rows), uni);
 }
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */

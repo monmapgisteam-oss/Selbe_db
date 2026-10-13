@@ -37,7 +37,7 @@ import { cached } from '@/lib/live';
  * татагддаг тул минутанд нэгээс олон удаа татах нь сүлжээг дэмий эзэлнэ.
  */
 const LIVE_TTL = 60_000;
-import { loadBlockHistory, loadBlockUniverse } from '@/lib/blockProgress';
+import { loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUniverse } from '@/lib/blockProgress';
 /*
  * ⚠️ ХУВААРИАС бодсон БИЕТ төлөвлөгөөний муруй (2026-09-04). `lagOf` нь урьд
  *    нь cashflow-ийн ӨССӨН МӨНГӨН хувийг (`cumPct`) БИЕТ гүйцэтгэлийн хувьтай
@@ -980,7 +980,7 @@ export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
 }
 
 async function loadFinDataRaw(): Promise<FinData> {
-    const [contracts, ipc, hist, universe] = await Promise.all([
+    const [contracts, ipc, histB, universeB, histI, universeI] = await Promise.all([
       loadCashflowNewRows(),
       loadHoRows(),
       /*
@@ -996,6 +996,12 @@ async function loadFinDataRaw(): Promise<FinData> {
       /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): багц бүрийн блокийн хуваарь — тайлагнаагүй
          блок/багц 0% (`finPhys.buildPhys`). `loadSchema` кэштэй тул нэмэлт хүсэлтгүй. */
       loadBlockUniverse(),
+      /* ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01-ийн батлагдсан хэсгээс нэгтгэ»): БЛОКГҮЙ багцууд
+         (5.x · 6.x · 7.1 · 10) — бөглөх хуудасны синтетик блокийн «Б.» мөр (`blockProgress.loadInfra*`-ийн ⚠️).
+         Урьд нь энд ОРДОГГҮЙ тул «Багцын гүйцэтгэл»-ийн жагсаалт тэдгээрт «мэдээлэлгүй», төслийн биет
+         гүйцэтгэл (`physNow`) зөвхөн орон сууцны 7 багцаар байв. Түлхүүр нь блоктойгоос ДАВХЦАХГҮЙ. */
+      loadInfraHistory(),
+      loadInfraUniverse(),
       /*
        * ⚠️ Хуваарийн муруйг ЗЭРЭГ татаж кэшлэнэ — `lagOf` үүнийг синхроноор
        *    уншина. ЖАГСААЛТЫН ТӨГСГӨЛД байх ёстой: дээрх задаргаа
@@ -1105,6 +1111,9 @@ async function loadFinDataRaw(): Promise<FinData> {
      *    импортолж шалгана (хуулбар БИШ).
      */
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
+    /* ⚠️ 2026-10-13: блоктой + блокгүй — НЭГ `buildPhys` (ХО дүнгээр жигнэх нэг дүрэм, дээрх ⚠️) */
+    const hist = new Map([...histB, ...histI]);
+    const universe = new Map([...universeB, ...universeI]);
     const { phys, physCnt, physAt, physN } = buildPhys(hist, axis, nowYm, universe);
     /* ⚠️ 2026-09-30: төслийн төлөвлөгөө — бодит талтай НЭГ (ХО) жин (`planProjectCache`).
        ⚠️ 2026-10-09 (аудит): `phys`/`physN` бэлэн болсны ДАРАА — багцын олонлог ч НЭГ (`projectPlanOf`). */

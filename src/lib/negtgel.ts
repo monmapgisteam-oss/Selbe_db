@@ -1,6 +1,10 @@
 /**
  * ТӨСЛИЙН НЭГТГЭЛ ГҮЙЦЭТГЭЛ — ажлын задаргааны (WBS) мод ба түүний бөглөлт.
  *
+ * ⚠️⚠️ 2026-10-13: ЭХ ДАХИН СОЛИГДОВ — `Negtgel_guitsetgel_1013/199` (906 мөр = Excel V3 «Төсөл төлөвлөгөө
+ *    биелэлт»), ЗӨВХӨН уншина. Мод нь Excel-ийн томьёоноос (`negtgelTree.ts`), бодолт нь `negtgelAuto.ts`-ийн
+ *    толгойд. Доорх 2026-09-25-ны тайлбар хуучин хүснэгтийнх.
+ *
  * ⚠️⚠️ 2026-09-25: ЭХ СОЛИГДОВ — `Negtgel_guitsetgel/0` (352 мөр, утгууд
  * БӨГЛӨГДСӨН). Порталд ОДОО ЗӨВХӨН УНШИНА (`loadNegtgelFull`).
  * Доорх Cashflow-оос бодох зам (`computeNegtgel`,
@@ -321,10 +325,26 @@ export type NegtgelCalc = {
   perfGuits?: number | null;
   /** Навч нь СИСТЕМЭЭС бодогдсон (эсвэл доод мөрүүд нь) — `negtgelAuto` */
   auto?: boolean;
-  /** Эцгийнхээ нийлбэрт ОРОХГҮЙ мөр (Нийслэл төсөв) — `negtgelAuto.rollKids` */
+  /** Эцгийнхээ нийлбэрт ОРОХГҮЙ мөр — Excel-ийн томьёонд ороогүй (`negtgelTree.NEG_TREE.outside`) */
   outside?: boolean;
   /** Урьдчилсан төсөвт өртөг, ₮ (эх хүснэгтийнх) */
   budget?: number | null;
+  /**
+   * ⚠️ 2026-10-13: Excel «Төсөл төлөвлөгөө биелэлт»-ийн нэмэлт баганууд (`Negtgel_guitsetgel_1013`) —
+   *    Q «Next week» · R «Өмнө долоо хоног» төлөвлөгөө, W «Weekly» биелэлт (0–100), огноо H…M.
+   */
+  planNextWk?: number | null;
+  planPrevWk?: number | null;
+  perfWk?: number | null;
+  /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (ms) */
+  ctStart?: number | null;
+  ctEnd?: number | null;
+  /** Гүйцэтгэгч — төлөвлөгөөт эхлэх/дуусах («YYYY-MM-DD») */
+  exStart?: string;
+  exEnd?: string;
+  /** Бодит эхлэх/дуусах («YYYY-MM-DD») */
+  actStart?: string;
+  actEnd?: string;
   /** Яаж бодогдсоныг хүнд ойлгуулах тайлбар */
   how: string;
 };
@@ -532,6 +552,11 @@ export type NegtgelFull = {
    * таб нэрийг нь харуулж, дараагийн дуудалт дахин уншина.
    */
   failed: string[];
+  /**
+   * ⚠️ 2026-10-13: модны эх — `excel` (`negtgelTree.ts`, Excel-ийн томьёоноос) эсвэл `code` (хүснэгт өөрчлөгдсөн
+   *    тул кодоор угсарсан нөөц). `code` үед таб анхааруулна.
+   */
+  tree?: 'excel' | 'code';
 };
 
 /**
@@ -541,9 +566,10 @@ export type NegtgelFull = {
  * ⚠️ ДЭЛГЭЦ нь БОДСОН утгыг харуулна — хүснэгт рүү бичих эрхгүй хэрэглэгч ч
  * одоогийн байдлыг харна. Бичилт (`syncNegtgel`) нь ард нь явна — ЗӨВХӨН
  * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
- * ⚠️ Эх сурвалж (Cashflow, бөглөх хуудас, газар) УНАВАЛ хүснэгтийн хадгалсан
- * утгыг харуулна — хоосон дэлгэц/0% биш.
+ * ⚠️ Эх сурвалж (бөглөх хуудас, газар) УНАВАЛ хүснэгтийн (Excel-ийн) утгыг харуулна — хоосон дэлгэц/0% биш.
  * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
+ * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», ЗӨВХӨН уншина) —
+ *    синк (`syncNegtgel`) `off` буцаана.
  */
 async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   const A = await import('@/lib/negtgelAuto');
@@ -562,16 +588,10 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
     /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
     failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
   }
-  /* ⚠️ 2026-10-09 (аудит): эх унасан үед ч жинг ТӨСВӨӨС (`budgetWeights`) — урьд нь
-     энд хадгалсан HESEGT_EZLEH/TOSOLD_EZLEH_HUVI гарч, ердийн уншилтын (төсвийн) жингээс
-     зөрдөг байв. Утга (гүйцэтгэл/төлөвлөгөө) нь хадгалсан хэвээр. */
-  const fb = calcRows ? null : (() => {
-    const { parent, kids } = A.treeOf(stored.map((r) => r.depth));
-    return A.budgetWeights(stored, parent, kids);
-  })();
-  const use = calcRows ?? stored.map((r, i) => ({
-    ...r, w: fb ? fb.w[i] : r.w, p: fb ? fb.p[i] : r.p,
-    auto: false, how: tr('Нэгтгэл гүйцэтгэлийн хүснэгтээс (Negtgel_guitsetgel)'),
+  /* ⚠️ 2026-10-13: жин (F · G) ҮРГЭЛЖ Excel-ийн утгаар (хүснэгтийнх) — төсвөөс БОДОХГҮЙ (Excel V3-ийн F нь
+     зарим бүлэгт гараар өгөгдсөн, жиш. 2.1 = 0.666). Эх унасан үед утга ч Excel-ийнх. */
+  const use = calcRows ?? stored.map((r) => ({
+    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
   }));
   const pc = (v: number | null) => (v == null ? null : v * 100);
   const rows: NegtgelRow[] = [];
@@ -593,12 +613,21 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
       perfGch: pc(r.perfGch),
       perfGuits: pc(r.perfGu),
       auto: r.auto,
-      outside: 'outside' in r ? r.outside : undefined,
+      outside: r.outside,
       budget: r.budget,
+      planNextWk: pc(r.planNw),
+      planPrevWk: pc(r.planPw),
+      perfWk: pc(r.perfWk),
+      ctStart: r.ctStart ?? null,
+      ctEnd: r.ctEnd ?? null,
+      exStart: r.exStart ?? '',
+      exEnd: r.exEnd ?? '',
+      actStart: r.actStart ?? '',
+      actEnd: r.actEnd ?? '',
       how: r.how,
     });
   }
-  return { rows, calc, live: calcRows != null, sync, failed };
+  return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource() };
 }
 
 /*
@@ -608,8 +637,9 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
  */
 let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
-/* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — төлөвлөгөөт хувь хуваарийн муруйгаас (`loadNegSources` → `loadPlanCurveCached`) */
-register(() => { fullP = null; }, ['CASHFLOW_NEW', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HUVAARI_OBYEM']);
+/* ⚠️ 2026-10-13: эх нь газар (`PARCEL_LEFT`) ба 01-ийн бөглөх хуудас (`BAGTS_SHEET` · `BUILDING`) — Cashflow ба
+   хуваарийн муруй (`CASHFLOW_NEW` · `HUVAARI_OBYEM`) нэгтгэлийн эх БИШ болов (`negtgelAuto`-ийн толгой). */
+register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT']);
 
 /** ⚠️ «Системийн утгаар шинэчлэх» бичилтийн дараа — хүснэгтийг дахин уншуулна */
 export function dropNegtgelFull(): void {
