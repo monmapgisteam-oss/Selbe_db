@@ -437,6 +437,51 @@ ul, ol { list-style: none; }
 }
 .esri-widget--button:hover { background: var(--surface-2) !important; }
 
+/* ── SWIPE (харьцуулах) — «Ерөнхий төлөвлөгөө» → «Detail» (2026-10-13) ──
+   ⚠️ Swipe-ийн үндэс нь `esri-swipe esri-widget` — ЗУРГИЙГ БҮТНЭЭР нь бүрхсэн
+      үнэмлэхүй сав. Дээрх `.esri-widget { background: var(--surface) !important }`
+      түүнийг тунгалаг бус болгож газрын зургийг БҮХЭЛД НЬ халхалж байв («мап
+      ачаалагдахгүй»). Сонгогч (0,2,0) нь дээрхээс (0,1,0) тодорхой тул дарна.
+   Хэв маяг: доорх (3)-ыг үз. */
+.esri-swipe.esri-widget {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+/* ⚠️ 2026-10-13 (3): хэрэглэгч — «зураасны өнгийг өөрчил, нарийхан болго, дугуй
+   бариулыг жижиг болго». Өмнөх 4px цагаан шугам + 34px бариул хэт бүдүүн байв.
+   АППЫН ДЭВСГЭРИЙН ӨНГӨ (`--swipe` = `--surface`, хэрэглэгч: «background өнгөтэй ижил болго») — горим бүрт өөрөө тохирно; хиймэл дагуулын дэвсгэр дээр
+   нарийн ч ялгагдана; бараан сүүдэр цайвар (цас, бетон) дэвсгэрт тусална. */
+.esri-swipe.esri-widget { --swipe: var(--surface); }
+.esri-swipe .esri-swipe__divider {
+  background: var(--swipe) !important;
+  border: 0 !important;
+  width: 2px !important;
+  margin-left: -1px !important;
+  box-shadow: 0 0 3px rgb(0 0 0 / 0.6);
+}
+/* Сав 32px (`margin-left:-16px`) — 22px бариулыг төвд: (32 − 22) / 2 = 5px */
+.esri-swipe .esri-swipe__handle {
+  width: 22px;
+  height: 22px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--swipe) !important;
+  border: 1px solid var(--line-strong) !important;
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  outline: none;
+  transition: transform 0.15s var(--ease);
+}
+.esri-swipe .esri-swipe__handle-icon { transform: scale(0.7); }
+.esri-swipe--horizontal .esri-swipe__handle { top: calc(50% - 11px); }
+.esri-swipe .esri-swipe__container:hover .esri-swipe__handle,
+.esri-swipe .esri-swipe__container:active .esri-swipe__handle { transform: scale(1.15); }
+.esri-swipe .esri-swipe__container:focus-visible .esri-swipe__handle {
+  outline: 2px solid var(--swipe);
+  outline-offset: 2px;
+}
+
 .esri-attribution {
   background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
   color: var(--ink-3) !important;

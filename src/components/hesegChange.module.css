@@ -1,0 +1,9 @@
+.measure { flex: none; color: var(--ink-3); font-size: 0.65rem; font-weight: 500; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 1px 10px 9px; }
+.statsPair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stats > div { min-width: 0; }
+.stats dt { margin-bottom: 3px; color: var(--ink-3); font-size: 0.62rem; }
+.stats dd { margin: 0; font-size: 0.82rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stats small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 0.6rem; line-height: 1.35; }
+.resolution { margin: 0; padding: 0 10px 8px; color: var(--ink-3); font-size: 0.62rem; }
+.formula { margin: 0 0 8px; color: var(--ink-3); font-size: 0.65rem; }

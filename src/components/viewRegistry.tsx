@@ -184,7 +184,8 @@ export type ViewCtx = {
 };
 
 /** Газрын зураг + самбараар зурагддаг (`standalone` биш) харагдацууд — бүртгэлд ОРОХГҮЙ */
-export type MapOnlyViewKey = 'plan';
+/* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» (`hesegET`) мөн Portal-ын зураг + самбараар (`HesegPanel`) */
+export type MapOnlyViewKey = 'plan' | 'hesegET';
 
 export type RenderView = (ctx: ViewCtx) => ReactElement;
 

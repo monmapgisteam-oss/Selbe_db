@@ -1,0 +1,20 @@
+.labels {
+  position: absolute;
+  inset: auto 58px 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none !important;
+}
+.label {
+  max-width: 46%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+}

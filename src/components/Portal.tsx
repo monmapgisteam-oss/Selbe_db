@@ -5,7 +5,17 @@ import {
   type CSSProperties, type ErrorInfo, type ReactNode, type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim, type MapLayerFilter } from '@/components/MapCanvas';
+import { PlanOverlapLayers, PlanOverlapPanel, OVERLAP_LAYER_ID, type OverlapFocus } from '@/components/PlanOverlap';
+import { CompareLabels, DetailLayerMenu, SwipeToggle, layerItems, type DetailGroup } from '@/components/DetailLayers';
+import { HesegPanel, type HesegTab } from '@/components/HesegPanel';
+import { ChangePanel, type ChangePick } from '@/components/HesegChange';
+import { ChangeMapFocus } from '@/components/ChangeMapFocus';
+import { ChangeBoundary } from '@/components/ChangeBoundary';
+import { NeedPanel, NeedLayer, useNeedSelection, resetNeedSelection, NEED_COMPARE_LAYERS } from '@/components/HesegNeed';
+import { OVERLAP_CATS, infraIdsOfType, type OverlapCat } from '@/lib/planOverlap';
+import { hesegMapLayers } from '@/lib/hesegMap';
+import { PLAN2D_LAYERS } from '@/lib/plan2d';
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
@@ -39,7 +49,7 @@ import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER,
-  PLAN_ALWAYS_ON_IDS,
+  PLAN_ALWAYS_ON_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS,
   type ViewKey,
 } from '@/lib/services';
 import { readParam, writeParams, foreignViewParams } from '@/lib/urlState';
@@ -157,6 +167,27 @@ import s from '@/app/shell.module.css';
 
 /** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
 const EMPTY_BADGES: NavBadges = {};
+/**
+ * «Хэсэгчилсэн ЕТ» (`hesegET`) — ХЭСЭГ БҮРИЙН газрын зургийн давхаргууд (2026-10-13, хэрэглэгчийн заавар).
+ * ⚠️ Модулийн ТОГТМОЛ — `MapCanvas`-ийн эффектийг рендер бүрт дэмий эргүүлэхгүй.
+ */
+/** Шинэчлэгдсэн (`rd:*`, Redesign): бүс + `OVERLAP_CATS`-ийн шинэ давхаргууд */
+const DETAIL_NEXT_LAYERS: string[] = ['rd:2', ...OVERLAP_CATS.flatMap((c) => c.next)];
+/** Сонголтгүй үед Swipe-ийн зүүн тал: 13-р «Ерөнхий төлөвлөгөө» + асаалттай бүс. */
+const OLD_ET_LAYERS: string[] = [...PLAN2D_LAYERS.map((l) => l.id), ...PLAN_ALWAYS_ON_IDS, ZONE_LAYER.id];
+/**
+ * 01 «Өөрчлөлт» — SWIPE: ЗҮҮН нь 13-р ЕТ-ийн зураг, БАРУУН нь шинэ хэсэгчилсэн ЕТ (хэрэглэгч: «харьцуулах
+ * хэсэг нь 13 дээр байгаа ерөнхий төлөвлөгөөний map»). Мөр сонгоход ИЖИЛ СЭДВИЙН хоёр давхарга
+ * (`CHANGE_ITEMS` `now` ↔ `next`) үлдэнэ. Хуучин бүс нь сонголтгүй эсвэл «Бүс» сонгосон үед асна.
+ * ⚠️ Инженерийн шугам 01-д ХАРАГДАХГҮЙ («шугам сүлжээний мэдээлэл харуулахаа боль»).
+ */
+const H01_SWIPE = {
+  leading: OLD_ET_LAYERS,
+  trailing: DETAIL_NEXT_LAYERS,
+};
+/** The selected intersections are isolated from the partial plan in compare mode. */
+const H02_SWIPE = { leading: DETAIL_NEXT_LAYERS, trailing: [OVERLAP_LAYER_ID.next] };
+const H03_SWIPE = { leading: DED_BUTETS_LAYER_IDS, trailing: [...DETAIL_NEXT_LAYERS, ...NEED_COMPARE_LAYERS.trailing] };
 
 /** Баруун самбарын өргөний хязгаар ба анхны утга (px) */
 const PANEL_MIN = 300;
@@ -452,7 +483,8 @@ const initialDim = (): Dim => {
   /* ⚠️ «Инженерийн дэд бүтэц» ҮРГЭЛЖ 2D-ээр нээгдэнэ (2026-09-16, хэрэглэгчийн
      хүсэлт) — `?d=3d` URL ч дарж чадахгүй. Шугам, худгийн тор нь 3D мешэн дээр
      барилгын дор дарагдаж уншигдахгүй; засах горим ч зөвхөн 2D-д ажилладаг. */
-  if (initialView() === 'dedButets') return '2d';
+  /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» мөн ЗААВАЛ 2D — swipe нь зөвхөн MapView-д ажилладаг */
+  if (initialView() === 'dedButets' || initialView() === 'hesegET') return '2d';
   const d = readParam('d');
   if (d === '3d' || d === 'bim' || d === '2d') return d;
   return initialView() === 'iot' ? '3d' : '2d';
@@ -491,6 +523,73 @@ function PortalContent(
   //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
   const [catalog, setCatalog] = useState(true);
   const [layer, setLayer] = useState<string | null>(initialLayer);
+  /**
+   * «ХЭСЭГЧИЛСЭН ЕТ» (`hesegET`) — гурван хэсэг (2026-10-13, хэрэглэгчийн заавар):
+   *   01 `change` — ерөнхий төлөвлөгөөний өөрчлөлт (тоо хэмжээ + хуучнаас нэмэгдсэн);
+   *   02 `overlap` — одоо байгаа дэд бүтэцтэй давхцал (багц ажлын давхаргаар);
+   *   03 `need` — дэд бүтэц хүртээмжгүй шинэ барилгын нэмэлт холболт.
+   * ⚠️ Урьд «Ерөнхий төлөвлөгөө»-ний «Detail»/«Одоо» горим байсныг ТУСДАА харагдац болгов —
+   *    «Ерөнхий төлөвлөгөө» анхныхаа хэвээр.
+   */
+  const [hesegTab, setHesegTab] = useState<HesegTab>('change');
+  /** 01-д СОНГОСОН мөр — зураг дээр тэр ангиллын давхаргууд л үлдэнэ (ЕТ-ний карт шиг) */
+  const [hesegPick, setHesegPick] = useState<ChangePick>(null);
+  /* `overlapFocus` — самбар ↔ зураг hover-ийн холбоо (`PlanOverlap.tsx`-ийн ⚠️). 02 нь ЗӨВХӨН шинэ тал. */
+  const [overlapFocus, setOverlapFocus] = useState<OverlapFocus>(null);
+  /* Самбарт ДАРЖ СОНГОСОН карт/мөр — hover байхгүй үед зураг дээр үлдэнэ (`PlanOverlap.tsx`-ийн ⚠️) */
+  const [overlapSel, setOverlapSel] = useState<OverlapFocus>(null);
+  /* 02-т чагтаар зураг дээр АСААСАН ангиллууд (`PlanOverlapPanel` §shown) — анхдагч нь унтраалттай */
+  const [overlapShown, setOverlapShown] = useState<OverlapCat[]>([]);
+  /**
+   * Харьцуулах SWIPE АСААЛТТАЙ эсэх — зургийн «Харьцуулах» товч (`SwipeToggle`, fullscreen-ий доор).
+   * ⚠️ 2026-10-13: анхдагч УНТРААЛТТАЙ (хэрэглэгч: «Swipe button дарахад compare хийдэг байх»).
+   */
+  const [hesegSwipe, setHesegSwipe] = useState(false);
+  /* 03-т сонгосон инженерийн төрөл — зураг дээрх шугамыг тэр төрлөөр шүүнэ */
+  const needSelection = useNeedSelection();
+  /**
+   * «Detail»-ийн давхаргын товчоор (`DetailLayerMenu`) УНТРААСАН давхаргууд (2026-10-13).
+   * ⚠️ Хасагдсан жагсаалт (асаалттай биш) — анхдагч нь бүгд асаалттай.
+   */
+  const [detailHidden, setDetailHidden] = useState<string[]>([]);
+  const needExistingIds = useMemo(() => needSelection.type
+    ? needSelection.ready ? infraIdsOfType(needSelection.type).filter((id) => DED_BUTETS_LAYER_IDS.includes(id)) : []
+    : DED_BUTETS_LAYER_IDS, [needSelection.type, needSelection.ready]);
+  const detailVisible = useMemo(() => hesegMapLayers({
+    tab: hesegTab, compare: hesegSwipe,
+    partial: DETAIL_NEXT_LAYERS, previous: OLD_ET_LAYERS,
+    change: hesegPick, overlapActive: !!overlapSel || overlapShown.length > 0,
+    needActive: !!needSelection.type || !!needSelection.zone || needSelection.priorityOnly, hidden: detailHidden,
+    existing: needExistingIds,
+  }), [detailHidden, hesegTab, hesegSwipe, hesegPick, overlapShown, overlapSel, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
+  const detailFilters = useMemo<readonly MapLayerFilter[] | undefined>(() => {
+    if (hesegTab === 'change') return hesegPick?.filters;
+    if (hesegTab !== 'need' || !hesegSwipe || !needSelection.zone) return undefined;
+    return [{ ids: DED_BUTETS_LAYER_IDS, ...(needSelection.existingGeometry
+      ? { geometry: needSelection.existingGeometry } : { where: '1=0' }) }];
+  }, [hesegTab, hesegPick, hesegSwipe, needSelection.zone, needSelection.existingGeometry]);
+  /* Цэс зөвхөн одоогийн сонголтод зурагдах эх давхаргуудыг удирдана. */
+  const detailGroups = useMemo<DetailGroup[]>(() => {
+    if (hesegTab === 'change') {
+      return [
+        ...(hesegSwipe ? [{ key: 'now', title: tr('Ерөнхий төлөвлөгөө'), items: layerItems(hesegPick?.oldLayers ?? OLD_ET_LAYERS) }] : []),
+        { key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(hesegPick?.layers ?? DETAIL_NEXT_LAYERS) },
+      ];
+    }
+    if (hesegTab === 'overlap' && (hesegSwipe || (!overlapSel && !overlapShown.length))) {
+      return [{ key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(DETAIL_NEXT_LAYERS) }];
+    }
+    if (hesegTab === 'need') {
+      return [
+        ...(hesegSwipe ? [{ key: 'existing', title: tr('Одоо байгаа инженерийн дэд бүтэц'), items: INFRA_SYSTEMS.map((system) => ({
+          key: system.key, title: system.title, hue: system.hue, ids: system.ids.filter((id) => needExistingIds.includes(id)),
+        })).filter((system) => system.ids.length > 0) }] : []),
+        ...(!needSelection.type && !needSelection.zone && !needSelection.priorityOnly
+          ? [{ key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(DETAIL_NEXT_LAYERS) }] : []),
+      ];
+    }
+    return [];
+  }, [hesegTab, hesegSwipe, hesegPick, overlapSel, overlapShown.length, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
 
   /**
    * ЗҮҮН ЦЭС ХУРААГДСАН эсэх (хэрэглэгчийн шийдвэр, 2026-08-18) — хураахад
@@ -763,7 +862,17 @@ function PortalContent(
     if (v === 'habea') setDim('2d');
     /* ⚠️ «Инженерийн дэд бүтэц» мөн ЗААВАЛ 2D (2026-09-16) — `initialDim`-ийн
        тайлбарыг үз. Харагдац солихдоо ч, анхны ачаалалтад ч ижил дүрэм. */
-    if (v === 'dedButets') setDim('2d');
+    if (v === 'dedButets' || v === 'hesegET') setDim('2d');
+    if (v === 'hesegET') {
+      setHesegSwipe(false);
+      setHesegTab('change');
+      setHesegPick(null);
+      setOverlapSel(null);
+      setOverlapFocus(null);
+      setOverlapShown([]);
+      resetNeedSelection();
+      setDetailHidden([]);
+    }
     return true;
   }, [clearFilter, confirmLeave]);
   /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`-ийн ⚠️) */
@@ -927,11 +1036,12 @@ function PortalContent(
   useEffect(() => {
     /* ⚠️ 2026-09-24: «Инженерийн дэд бүтэц» ч ортофотогүй нээгдэнэ — суурь нь
        LIGHT GRAY CANVAS (доор), ортофото түүнийг бүрхэж шугам уншигдахгүй. */
-    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'dedButets');
+    /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» мөн ортофотогүй — LIGHT GRAY CANVAS суурьтай нээгдэнэ (хэрэглэгчийн заавар) */
+    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'dedButets' && view !== 'hesegET');
   }, [view, setOrtho]);
   /* Суурь зураг: дэд бүтэц — LIGHT GRAY CANVAS, бусад — хиймэл дагуул */
   useEffect(() => {
-    applyViewBasemap(mapView, view === 'dedButets' ? 'gray-vector' : 'satellite', view);
+    applyViewBasemap(mapView, view === 'dedButets' || view === 'hesegET' ? 'gray-vector' : 'satellite', view);
   }, [view, mapView]);
 
   /* ── Багануудын өргөн ── */
@@ -984,8 +1094,10 @@ function PortalContent(
    * plan-д ч жагсаалтыг нуух/харуулах боломжтой (хэрэглэгчийн хүсэлт).
    */
   const planPanel = view === 'plan';
+  /** «Хэсэгчилсэн ЕТ» (`hesegET`) — дээрх `hesegTab`-ийн ⚠️ */
+  const planDetail = view === 'hesegET';
   // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
-  const catOpen = catalog && !isFull;
+  const catOpen = catalog && !isFull && !planDetail;
 
   /**
    * «Ерөнхий мэдээлэл»-д ХЭДЭН БАГЦ сонгогдсоныг тоолно — самбар өөрөө өргөсөж
@@ -1057,7 +1169,7 @@ function PortalContent(
           будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
           Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
+        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel && !planDetail ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
         style={{
           '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
@@ -1212,18 +1324,70 @@ function PortalContent(
               <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
               <MapCanvas
                 dim={dim}
-                visible={visible}
+                /* ⚠️ «Detail» — зөвхөн хоёр талын давхарга + `bare`: суурь 14-ийн бусад нь асахгүй.
+                   Swipe: зүүн — одоогийн ерөнхий төлөвлөгөө, баруун — шинэчлэгдсэн (`DETAIL_NEXT_LAYERS`). */
+                visible={planDetail ? detailVisible : visible}
+                bare={planDetail}
+                /* Харьцуулах товч асаалттай үед л (`hesegSwipe`); хэсэг бүр өөрийн хоёр талтай */
+                swipe={planDetail && hesegSwipe
+                  ? (hesegTab === 'change' ? H01_SWIPE : hesegTab === 'overlap' ? H02_SWIPE : H03_SWIPE)
+                  : undefined}
+                layerFilters={planDetail ? detailFilters : undefined}
                 opacity={opacity}
-                zone={zone}
+                zone={planDetail ? null : zone}
                 /* ⚠️ Явган хүний зам нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д үргэлж
                    асаалттай (`services.ts` §PLAN_ALWAYS_ON_IDS). */
-                alwaysOn={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
+                alwaysOn={planPanel && !planDetail ? PLAN_ALWAYS_ON_IDS : undefined}
                 onPick={pick}
               />
               </ErrorBoundary>
 
+              {planDetail && dim === '2d' && hesegTab === 'change' && (
+                <ErrorBoundary scope="view" floating label={tr('Тооцоолж чадсангүй')}>
+                  <ChangeBoundary />
+                  <ChangeMapFocus pick={hesegPick} />
+                </ErrorBoundary>
+              )}
+
+              {/* «Detail» — давхцлын тодруулга (swipe нь зөвхөн 2D-д, `MapCanvas` §swipe).
+                  ⚠️ 2026-10-13: «Одоогийн төлөвлөгөө» / «Шинэчлэгдсэн» товч зургаас САМБАРЫН ТОЛГОЙ руу
+                  шилжив (хэрэглэгчийн заавар) — `PlanOverlapPanel` §sideSwitch. */}
+              {planDetail && dim === '2d' && hesegTab === 'overlap' && (
+                <ErrorBoundary scope="view" floating label={tr('Давхцлын тооцоо нээгдсэнгүй')}>
+                  <PlanOverlapLayers focus={overlapFocus} shown={overlapShown} selected={overlapSel} />
+                </ErrorBoundary>
+              )}
+
+              {planDetail && dim === '2d' && hesegTab === 'need' && (
+                <ErrorBoundary scope="view" floating label={tr('Нэмэлт хэрэгцээний тооцоо нээгдсэнгүй')}>
+                  <NeedLayer />
+                </ErrorBoundary>
+              )}
+
+              {/* «Хэсэгчилсэн ЕТ» — харьцуулах (swipe) товч, fullscreen-ий ДООР (`DetailLayers.tsx` §SwipeToggle) */}
+              {planDetail && dim === '2d' && (
+                <ErrorBoundary scope="view" floating label={tr('Харьцуулах товч нээгдсэнгүй')}>
+                  <SwipeToggle on={hesegSwipe} setOn={setHesegSwipe} />
+                  <CompareLabels
+                    on={hesegSwipe}
+                    leading={hesegTab === 'change' ? tr('Хуучин ЕТ') : hesegTab === 'overlap' ? tr('Хэсэгчилсэн ЕТ') : tr('Одоо байгаа инженерийн дэд бүтэц')}
+                    trailing={hesegTab === 'change' ? tr('Хэсэгчилсэн ЕТ') : hesegTab === 'overlap' ? tr('Сонгосон давхцал') : tr('Шинээр нэмэгдэх хэрэгцээ')}
+                  />
+                </ErrorBoundary>
+              )}
+
+              {/* «Detail» — суурь зургийн товчны ДООР давхаргын товч (`DetailLayers.tsx`) */}
+              {planDetail && detailGroups.length > 0 && (
+                <ErrorBoundary scope="view" floating label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
+                  <DetailLayerMenu groups={detailGroups} hidden={detailHidden} setHidden={setDetailHidden} />
+                </ErrorBoundary>
+              )}
+
               {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
-                  (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
+                  (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв.
+                  ⚠️ 2026-10-13: «Detail»-д ГАРАХГҮЙ (хэрэглэгч: «энэ байхгүй, одоо дээр бол байна») —
+                  каталог/тунгалаг/бүс тэнд утгагүй; давхаргыг дээрх товч удирдана. */}
+              {!planDetail && (
               <ErrorBoundary scope="view" floating label={tr('Зургийн хэрэгслүүд нээгдсэнгүй')}>
               <MapTools
                 dim={dim}
@@ -1244,9 +1408,10 @@ function PortalContent(
                 dock
               />
               </ErrorBoundary>
+              )}
 
               {/* Тунгалаг тохируулах хөвөгч цонх */}
-              {opacityOpen && (
+              {opacityOpen && !planDetail && (
                 <ErrorBoundary scope="view" floating label={tr('Тунгалаг тохируулах цонх нээгдсэнгүй')} onClose={closeOpacity}>
                 <OpacityPanel
                   visible={visible}
@@ -1307,6 +1472,8 @@ function PortalContent(
                 title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
               />
 
+              {/* ⚠️ 2026-10-13: «Detail» горимд гарчгийн карт НУУГДАНА (хэрэглэгчийн заавар) */}
+              {!planDetail && (
               <header className={s.panelHead}>
                 <span className={s.panelIcon}><Icon name={active.icon} /></span>
                 <div>
@@ -1314,6 +1481,7 @@ function PortalContent(
                   <p className={s.panelDesc}>{active.desc}</p>
                 </div>
               </header>
+              )}
 
               {/**
                 * Нэгтгэсэн үзүүлэлт — гарчгийн ЯГ доор, самбарын доторх тогтмол зурвас.
@@ -1329,9 +1497,37 @@ function PortalContent(
                 </ErrorBoundary>
               )}
 
+              {/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel`) */}
+              {planDetail && (
+                <div className={s.panelBody}>
+                  <ErrorBoundary scope="view" label={tr('Давхцлын самбар нээгдсэнгүй')}>
+                    <HesegPanel
+                      tab={hesegTab}
+                      setTab={(x) => {
+                        if (x === hesegTab) return;
+                        setHesegTab(x); setHesegPick(null); setOverlapSel(null); setOverlapFocus(null);
+                        setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden([]);
+                      }}
+                      change={<ChangePanel pick={hesegPick} setPick={setHesegPick} />}
+                      overlap={(
+                        <PlanOverlapPanel
+                          side="next"
+                          focus={overlapFocus} setFocus={setOverlapFocus}
+                          selected={overlapSel} setSelected={setOverlapSel}
+                          shown={overlapShown} setShown={setOverlapShown}
+                        />
+                      )}
+                      need={<NeedPanel />}
+                    />
+                  </ErrorBoundary>
+                </div>
+              )}
+
               {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
                   түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
-              <div className={s.panelBody}>
+              {/* ⚠️ «Detail»-д УСТГАХГҮЙ, нуух — самбарын дотоод төлөв «Одоо» руу буцахад хэвээр.
+                  `hidden` атрибут БИШ: `.panelBody`-ийн `display: flex` түүнийг дарна. */}
+              <div className={s.panelBody} style={planDetail ? { display: 'none' } : undefined}>
                 <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
                 <ViewPanel
                   view={view}
@@ -1351,7 +1547,7 @@ function PortalContent(
             </aside>
 
             {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
-            {!planPanel && (
+            {!planPanel && !planDetail && (
               <footer className={s.dashFoot} aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
                 <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
                   <SummaryBar zone={zone} />

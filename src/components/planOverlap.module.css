@@ -1,0 +1,243 @@
+/* «Ерөнхий төлөвлөгөө» → «Detail»: инженерийн шугамын ДАВХЦАЛ (2026-10-13) — `PlanOverlap.tsx` */
+
+/* ── Зураг дээрх hover-ийн тайлбар ── */
+.tip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+.tip[hidden] { display: none; }
+.tip b { font-weight: 600; }
+.tip span { color: var(--ink-3); }
+
+/* Инженерийн төрлийн өнгө, шугамын тэмдэглэгээ — харьцуулалтын шошгоос дээгүүр. */
+.mapLegend {
+  position: absolute;
+  z-index: 8;
+  left: 16px;
+  bottom: 90px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  max-width: min(320px, calc(100% - 80px));
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.66rem;
+  pointer-events: none;
+}
+.mapLegend span { display: inline-flex; align-items: center; gap: 6px; }
+.mapLegend i { width: 19px; border-width: 1.5px 0 0; }
+
+/* ── Тооцоолж байна (зураг дээр) ── */
+.busy {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--hue);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Самбар ── */
+.panel { display: flex; flex-direction: column; gap: 10px; }
+
+.wait, .err, .warn, .note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.err { color: var(--bad, #dc2626); }
+.warn { color: var(--warn-ink, #b45309); }
+.note { display: block; }
+
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.kpiVal { font-size: 1.02rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.kpiLbl { font-size: 0.68rem; color: var(--ink-3); }
+
+.cats { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.cat {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.cat.on, .cat:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+.catHead { display: flex; align-items: center; gap: 7px; padding: 6px 8px; }
+.catSelect, .expand, .row {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.catSelect { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; padding: 4px 0; }
+.expand { display: grid; place-items: center; width: 22px; height: 28px; padding: 0; flex: none; border-radius: 4px; }
+.expand:hover { background: var(--surface-2); }
+.catSelect:focus-visible, .expand:focus-visible, .row:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+.catSwatch { width: 10px; height: 10px; flex: none; border-radius: 3px; }
+.catName { flex: 1; min-width: 0; font-size: 0.76rem; font-weight: 600; }
+.catVal { font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.rows { list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--line); }
+.row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+}
+.row:hover, .row.on { background: var(--surface-2); }
+.sysDot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.sysName { flex: 1; min-width: 0; color: var(--ink-2, var(--ink)); }
+.rowVal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rowVal small { color: var(--ink-3); font-size: 0.66rem; }
+
+/* ── «Detail»-ийн давхаргын товч (`DetailLayers.tsx`) — суурь зургийн товчны ДООР ── */
+.lyrHost { position: relative; }
+.lyrBox { position: relative; }
+.lyrPanel {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  z-index: 30;
+  width: 260px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.74rem;
+}
+.lyrGroup + .lyrGroup { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.lyrGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lyrGroupHead span { flex: 1; }
+.lyrGroupHead small { color: var(--ink-3); font-weight: 500; font-variant-numeric: tabular-nums; }
+.lyrList { list-style: none; margin: 0; padding: 0 0 0 18px; }
+.lyrRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.lyrRow:hover { background: var(--surface-2); }
+.lyrSwatch { width: 10px; height: 10px; flex: none; border-radius: 3px; }
+.lyrName { flex: 1; min-width: 0; }
+.lyrGroupHead input, .lyrRow input { accent-color: var(--hue); margin: 0; }
+
+/* Дарж СОНГОСОН карт/мөр (2026-10-13) — курсор холдсон ч зураг дээр үлдэнэ */
+.cat.enabled { border-color: var(--line-strong); }
+.cat.sel { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
+.row.sel { background: color-mix(in srgb, #38bdf8 16%, transparent); }
+.selection { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; }
+.selection span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.selection button {
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink-2);
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
+.selection button:hover { background: var(--surface-2); }
+
+/* Хэсэгчилсэн ЕТ-ийн полигон бүрийн давхардалгүй дүн, буурах эрэмбэ. */
+.zoneSection { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.zoneHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.zoneHeading h4 { margin: 0; font-size: 0.8rem; }
+.zoneHeading > span { color: var(--ink-3); font-size: 0.68rem; white-space: nowrap; }
+.zoneList { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.zoneList li + li { border-top: 1px solid var(--line); }
+.zoneRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.zoneRow:hover { background: var(--surface-2); }
+.zoneRow:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
+.zoneSelected { background: color-mix(in srgb, var(--hue) 10%, var(--surface)); box-shadow: inset 3px 0 var(--hue); }
+.zoneRank { width: 20px; flex: none; color: var(--ink-3); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
+.zoneName { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.71rem; line-height: 1.35; }
+.zoneValue { display: flex; flex-direction: column; align-items: end; gap: 2px; font-size: 0.73rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zoneValue small { font-size: 0.63rem; font-weight: 400; color: var(--ink-3); }
+.zoneBar { display: block; width: 100%; height: 3px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--surface-2); }
+.zoneBar i { display: block; height: 100%; border-radius: inherit; background: var(--hue); opacity: 0.6; }
+
+/* 02 — ангиллын толгой: дэлгэх сум + зураг дээр асаах чагт (2026-10-13) */
+.chev { color: var(--ink-3); font-size: 0.7rem; transition: transform 0.15s; }
+.chevOn { transform: rotate(90deg); }
+.catChk { margin: 0; accent-color: #38bdf8; cursor: pointer; }
+
+/* Swipe товч асаалттай (`DetailLayers.tsx` §SwipeToggle) — ⚠️ esri-widget дүрмийн !important-ийг дарна */
+.swOn { color: var(--hue) !important; box-shadow: inset 0 0 0 2px var(--hue) !important; }

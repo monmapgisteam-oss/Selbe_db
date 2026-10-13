@@ -178,6 +178,53 @@ const IOT_LAYERS: LayerDef[] = [
   note: x.key,
 }));
 
+/**
+ * REDESIGN — шинэчлэгдсэн ерөнхий төлөвлөгөөний объектууд (2026-10-13, хэрэглэгчийн өгсөн
+ * `Redesign` FeatureServer, UTM 48N). «Ерөнхий төлөвлөгөө» → «Detail»-ийн swipe-ийн БАРУУН
+ * тал ба инженерийн шугамын давхцлын тооцоо (`lib/planOverlap.ts` §OVERLAP_CATS).
+ *
+ * Хэрэглэгчийн тогтоосон зураглал (нэр нь хэрэглэгчийн «ArcGIS layer-уудын жагсаалт»-аас;
+ * Buildings_odoo · Power_easement · Zone · RIVER · DALAN · CANAL · Ger · Buildings_out —
+ * ЗОРИУДААР ороогүй, 2026-10-13): Барилга = REBUILDING (1) · Автозам = 1006_GUDAMJ_MERGE (0) ·
+ * Дугуйн зам = BIKEROAD (18) · Явган зам = PEDESTRIAN (11) · Ногоон байгууламж =
+ * Urban_parkway (6) · River_front_park ×3 (7, 8, 9) · Park (12) · North_park (13).
+ * ⚠️ Shapefile-аас нийтэлсэн тул OID нь `FID` (OBJECTID БИШ) — `oid` ЗААВАЛ.
+ * ⚠️ `noZone` — `ZONE_ID` талбаргүй (CAD/OSM гаралтай).
+ * ⚠️ Каталогийн бүлэгт (`GROUP_LAYERS`) ОРООГҮЙ — зөвхөн «Detail»-д ашиглагдана.
+ */
+const REDESIGN_LAYERS: LayerDef[] = ([
+  { n: 1,  title: () => tr('Шинээр төлөвлөж буй барилга'),           hue: "#e11d48" },
+  { n: 0,  title: () => tr('Автозам (шинэчлэгдсэн)'),           hue: "#64748b" },
+  { n: 18, title: () => tr('Дугуйн зам (шинэчлэгдсэн)'),        hue: "#2563eb" },
+  { n: 11, title: () => tr('Явган зам (шинэчлэгдсэн)'),         hue: "#d97706" },
+  { n: 6,  title: () => tr('Хотын ногоон зурвас'),              hue: "#16a34a" },
+  { n: 7,  title: () => tr('Голын эргийн ногоон байгууламж — сийрэг'),   hue: "#22c55e" },
+  { n: 8,  title: () => tr('Голын эргийн ногоон байгууламж — нягт'),    hue: "#15803d" },
+  { n: 9,  title: () => tr('Голын эргийн ногоон байгууламж — төв хэсэг'),      hue: "#4ade80" },
+  { n: 12, title: () => tr('Цэцэрлэгт хүрээлэн'),               hue: "#65a30d" },
+  { n: 13, title: () => tr('Хойд хэсгийн цэцэрлэгт хүрээлэн'),          hue: "#84cc16" },
+  /* ⚠️ 2026-10-13: Zone (2) — «Ногоон байгууламжийн бүсүүдээс бусад бүс». ЗӨВХӨН ЗУРАГТ —
+     swipe-ийн баруун талын ХАМГИЙН ДООД давхарга (`draw.ts` §drawOrder), давхцлын тооцоонд ОРОХГҮЙ. */
+  /* ⚠️ 2026-10-13: Zone — ТӨРЛӨӨР (`zone` талбар) ЕТ-ийн өнгөөр (хэрэглэгч: «Zoning өнгийг ЕТ дагуу
+     өнгө өнгө type based») — үйлчилгээний рендерерийн ангиллын өнгө, дүүргэлт 60% тунгалаг
+     (хэрэглэгчийн өмнөх «60% болго»), хүрээ нь тухайн өнгөөр. Урьд нь НЭГ өнгөөр (#c7c5b4) байв. */
+  { n: 2,  title: () => tr('Бүс (шинэчлэгдсэн)'),                      hue: "#c7c5b4", svc: { fill: 0.4, outline: 1 } },
+] as { n: number; title: () => string; hue: string; fill?: number; width?: number; svc?: { fill: number; outline: number } }[]).map((x) => ({
+  id: `rd:${x.n}`,
+  n: x.n,
+  get title() { return x.title(); },
+  topic: "plan" as const,
+  geom: "area" as const,
+  hue: x.hue,
+  fill: x.fill ?? 0.45,
+  width: x.width ?? 0.8,
+  url: `${HJ}/Redesign/FeatureServer/${x.n}`,
+  noZone: true as const,
+  oid: "FID",
+  qty: { field: "Shape__Area", unit: 'м²' },
+  ...(x.svc ? { serviceStyle: x.svc } : {}),
+}));
+
 export const LAYERS: LayerDef[] = [
   ...SB_LAYERS,
   /* ─────────── Барилга байгууламж ─────────── */
@@ -898,6 +945,7 @@ export const LAYERS: LayerDef[] = [
   ...PKG_LAYERS,
   ...TD_ONLY_LAYERS,
   ...IOT_LAYERS,
+  ...REDESIGN_LAYERS,
 ];
 
 /* ══════════ TEST_DATA ШИЛЖИЛТ — 2026-08-13 ══════════ */

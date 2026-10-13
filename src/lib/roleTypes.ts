@@ -140,30 +140,30 @@ const LEADER = [...ALL_VIEWS, 'docs'];
  */
 const DEFAULT_TPL: Record<string, TypeTpl> = {
   guitsetgegch: {
-    on: V('pkgFin', 'pkgProg', 'plan', 'habea', 'dedButets', 'zovshoorol'),
+    on: V('pkgFin', 'pkgProg', 'plan', 'hesegET', 'habea', 'dedButets', 'zovshoorol'),
     home: 'guitsetgel',
   },
   injener: {
-    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol'), 'docs'],
+    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol'), 'docs'],
     home: 'guitsetgel',
   },
   menejer: {
-    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol', 'finance'), 'docs'],
+    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol', 'finance'), 'docs'],
     home: 'gdash',
   },
   eronhii: { on: LEADER, home: 'gdash' },
   heltsiin: { on: LEADER, home: 'gdash' },
   gazriin: { on: LEADER, home: 'gdash' },
   taniltsah: {
-    on: [...V('gdash', 'dashboard', 'plan', 'pkgProg', 'tailan', 'schem', 'sysdoc', 'gazar'), 'docs'],
+    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgProg', 'tailan', 'schem', 'sysdoc', 'gazar'), 'docs'],
     home: 'gdash',
   },
   chanar: {
-    on: V('gdash', 'plan', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
+    on: V('gdash', 'plan', 'hesegET', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
     home: 'chanar',
   },
   gazar: {
-    on: V('gazar', 'gdash', 'plan', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
+    on: V('gazar', 'gdash', 'plan', 'hesegET', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
     home: 'gazar',
   },
   /* ⚠️ 2026-10-09 (аудит №6): `'admin'` нь зөвхөн хадгалагдсан өгөгдөлтэй нийцтэй — уншигддаггүй (`settingGroups`-ийн ⚠️) */

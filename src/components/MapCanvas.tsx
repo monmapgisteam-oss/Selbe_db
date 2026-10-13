@@ -35,6 +35,7 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
+import Swipe from '@arcgis/core/widgets/Swipe';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -157,6 +158,13 @@ export type Highlight = {
    * ⚠️ 2D `featureEffect`-ээр л хэрэгжинэ (3D-д ArcGIS үүнийг үл тоомсорлоно).
    */
   geometry?: unknown;
+};
+
+/** Hide features outside a selected topic/area in plan comparisons. */
+export type MapLayerFilter = {
+  ids: readonly string[];
+  where?: string;
+  geometry?: __esri.GeometryUnion;
 };
 
 type MapApi = {
@@ -1402,7 +1410,7 @@ function buildLayers(uniform = false): Layer[] {
         : web?.renderer;
     // План2d style (шууд эсвэл alias-аар). Тавигдвал selbe0724 effect/opacity-г алгасна.
     const p2 = plan2dStyleOf(d.id);
-    return new FeatureLayer({
+    const fl = new FeatureLayer({
       id: d.id,
       url: layerUrl(d),
       title: d.title,
@@ -1422,7 +1430,8 @@ function buildLayers(uniform = false): Layer[] {
        * ⚠️ ГЛОБАЛААР СОЛИХГҮЙ: `et:24` (Барилга) ч `paint`-тай атлаа тэнд
        * webmap-ийн загвар ЗӨВ. Тиймээс давхарга бүр ИЛ сонгоно.
        */
-      renderer: d.paint?.force
+      /* ⚠️ 2026-10-13: `serviceStyle` — үйлчилгээний рендерер (`layerDef.ts` §serviceStyle); renderer ТАВИХГҮЙ */
+      ...(d.serviceStyle ? {} : { renderer: d.paint?.force
         ? paintRenderer(d)
         : p2
         ? (rendererJsonUtils.fromJSON(p2 as never) as unknown as RendererProp)
@@ -1451,7 +1460,7 @@ function buildLayers(uniform = false): Layer[] {
                 symbol: symbolOf(d, l.color),
               })),
             } as unknown as RendererProp)
-          : simple(symbolOf(d)),
+          : simple(symbolOf(d)) }),
       // ⚠️ План2d-аар жигдэлсэн давхаргад selbe0724 снапшотын EFFECT (bloom/гэрэлтэлт)
       //    ба opacity-г ТАВИХГҮЙ — эс бөгөөс барилга гэрэлтэж, өнгө нь план 2D map-аас зөрнө.
       ...(!p2 && web?.effect ? { effect: web.effect as unknown as __esri.FeatureLayerProperties['effect'] } : {}),
@@ -1459,6 +1468,28 @@ function buildLayers(uniform = false): Layer[] {
       ...(d.id === ZONE_LAYER.id ? { labelingInfo: zoneLabels() } : {}),
       ...(d.id === 'source:eh' ? { labelingInfo: sourceLabels(), labelsVisible: true } : {}),
     });
+    /* `serviceStyle` — үйлчилгээний рендерер АЧААЛАГДСАНЫ ДАРАА л бий тул `when`-д: ангиллын өнгө
+       хэвээр, дүүргэлт тунгалаг, хүрээ нь тухайн өнгөөр. */
+    const ss = d.serviceStyle;
+    if (ss) {
+      fl.when(() => {
+        const r = fl.renderer?.clone();
+        if (!r) return;
+        const tint = (sym: unknown) => {
+          const f = sym as __esri.SimpleFillSymbol | null | undefined;
+          if (f?.type !== 'simple-fill' || !f.color) return;
+          const { r: cr, g: cg, b: cb } = f.color;
+          f.outline = { type: 'simple-line', color: [cr, cg, cb, 1], width: ss.outline } as never;
+          f.color = [cr, cg, cb, ss.fill] as never;
+        };
+        if (r.type === 'unique-value') {
+          for (const i of r.uniqueValueInfos ?? []) tint(i.symbol);
+          tint(r.defaultSymbol);
+        } else if (r.type === 'simple') tint(r.symbol);
+        fl.renderer = r;
+      }).catch(() => {});
+    }
+    return fl;
   });
 
   /**
@@ -1748,6 +1779,8 @@ export const MapCanvas = memo(function MapCanvas({
   uniform = false,
   bare = false,
   alwaysOn,
+  swipe,
+  layerFilters,
   onPick,
   sketch = false,
   onSketch,
@@ -1846,6 +1879,18 @@ export const MapCanvas = memo(function MapCanvas({
    * явган хүний зам яг ингэж тархсан).
    */
   alwaysOn?: readonly string[];
+  /**
+   * ХАРЬЦУУЛАХ SWIPE (2026-10-13, «Ерөнхий төлөвлөгөө» → «Detail»): `leading` нь
+   * ЗҮҮН, `trailing` нь БАРУУН талд зурагдана; дунд нь чирэх босоо бариул.
+   *
+   * ⚠️ ЗӨВХӨН 2D — `Swipe` виджет `MapView`-д л ажилладаг (доорх 3D мешийн
+   *    харьцуулалтын ⚠️). 3D/BIM-д энэ проп үл тоомсорлогдоно.
+   * ⚠️ Давхаргыг ИЛ болгодоггүй — харагдах эсэх нь `visible`-ээр хэвээр; swipe
+   *    зөвхөн тал руу нь тасална. Хоёр талын id-ууд `visible`-д байх ёстой.
+   */
+  swipe?: { leading: readonly string[]; trailing: readonly string[] };
+  /** 2D selection filters; unlike highlighting, excluded features are hidden. */
+  layerFilters?: readonly MapLayerFilter[];
   /**
    * Товшилтын сонголт. СОНГОЛТОТ: зарим харагдац (жиш. Газар чөлөөлөлт)
    * зургийн товшилтоос ЮУ Ч хийхгүй.
@@ -1956,6 +2001,8 @@ export const MapCanvas = memo(function MapCanvas({
   useSyncRef(drawKindRef, drawKind);
   const pickRef = useRef(onPick);
   useSyncRef(pickRef, onPick);
+  const renderedPickOnlyRef = useRef(false);
+  useSyncRef(renderedPickOnlyRef, !!swipe || !!layerFilters?.length);
   const onSketchRef = useRef(onSketch);
   useSyncRef(onSketchRef, onSketch);
   const onSketchCancelRef = useRef(onSketchCancel);
@@ -2502,6 +2549,7 @@ export const MapCanvas = memo(function MapCanvas({
      */
     const fsBtn = document.createElement('div');
     fsBtn.className = 'esri-widget--button esri-widget';
+    fsBtn.dataset.mapControl = 'fullscreen';
     fsBtn.setAttribute('role', 'button');
     fsBtn.setAttribute('tabindex', '0');
     paintFsBtn(fsBtn, fsNowRef.current); // ⚠️ 2026-10-09 (a11y): нэр + aria-pressed төлвөөр
@@ -2871,6 +2919,8 @@ export const MapCanvas = memo(function MapCanvas({
      * рендерээс огт хамаарахгүй тул 2D, 3D хоёуланд ижил ажиллана.
      */
     const pickByQuery = async (mapPoint: __esri.Point, tolerance: number) => {
+      // ⚠️ REST fallback cannot see client filters or the swipe's clipped half.
+      if (renderedPickOnlyRef.current) return null;
       /**
        * ⚠️ 2026-08-19: Давхаргын ИДЭВХТЭЙ `definitionExpression`-ийг хамт барина.
        *
@@ -4636,6 +4686,10 @@ export const MapCanvas = memo(function MapCanvas({
        * тэдгээрийг өөрийн эффектээр нэмж/хасдаг тул энд гар хүрэхгүй.
        */
       if (String(l.id).startsWith('ersdel:')) { l.visible = true; return; }
+      /* ⚠️ 2026-10-13: «Detail»-ийн инженерийн шугамын ДАВХЦАЛ (`PlanOverlap.tsx`) — өөрөө
+         нэмж/хасна, каталогт үл хамаарна (дээрх `ersdel:`-ийн ⚠️-тэй ижил шалтгаан). */
+      /* + «Хэсэгчилсэн ЕТ» 03-ийн нэмэлт холболт (`need:`, `HesegNeed.tsx`) — мөн өөрөө удирдана */
+      if (String(l.id).startsWith('overlap:') || String(l.id).startsWith('need:') || String(l.id).startsWith('change:')) return;
       // Лавлагааны хилүүд — каталогоос үл хамааран БҮХ зурагт үргэлж ил.
       /* ⚠️ Хоёр эх: ГЛОБАЛ лавлагаа (хил) ба ХАРАГДАЦЫН ӨӨРИЙН
          (`alwaysOn` проп — жиш. «Ерөнхий төлөвлөгөө»-ний явган зам). */
@@ -4855,6 +4909,76 @@ export const MapCanvas = memo(function MapCanvas({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opacityKey, visibleKey, ready, dim, uniform]);
+
+  /**
+   * ХАРЬЦУУЛАХ SWIPE — `swipe` пропын ⚠️. Давхаргыг id-аар `map.layers`-ээс олно.
+   * ⚠️ `swipeKey` (мөр) нь тогтмол dep — эцэг объектын лавлагаа солигдоход виджетийг
+   *    дахин үүсгэж бариулын байрлалыг 50% руу үсрүүлэхгүй.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready || dim !== '2d' || !layerFilters?.length) return;
+    let alive = true;
+    const applied = new globalThis.Map<__esri.FeatureLayerView, { previous: __esri.FeatureLayerView['filter']; current: __esri.FeatureFilter }>();
+    const pending = new Set<__esri.Layer>();
+    const apply = () => {
+      for (const rule of layerFilters) for (const id of rule.ids) {
+        const layer = map.findLayerById(id);
+        if (!(layer instanceof FeatureLayer) || pending.has(layer)) continue;
+        pending.add(layer);
+        void view.whenLayerView(layer).then((lv) => {
+          if (!alive || view.destroyed) return;
+          const flv = lv as __esri.FeatureLayerView;
+          const current = new FeatureFilter({ where: rule.where ?? '1=1', geometry: rule.geometry, spatialRelationship: 'intersects' });
+          applied.set(flv, { previous: flv.filter, current });
+          flv.filter = current;
+        }).catch(() => { pending.delete(layer); });
+      }
+    };
+    apply();
+    const handle = map.layers.on('change', apply);
+    return () => {
+      alive = false;
+      handle.remove();
+      for (const [lv, { previous, current }] of applied) {
+        if (!lv.destroyed && lv.filter === current) lv.filter = previous;
+      }
+    };
+  }, [layerFilters, ready, dim]);
+
+  const swipePosition = useRef(50);
+  const swipeKey = swipe ? `${swipe.leading.join(',')}|${swipe.trailing.join(',')}` : '';
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready || dim !== '2d' || !swipeKey) return;
+    const [lead, trail] = swipeKey.split('|').map((s) => s.split(',').filter(Boolean));
+    const pick = (ids: string[]) =>
+      ids.map((id) => map.layers.find((l) => l.id === id)).filter((l): l is __esri.Layer => !!l);
+    const w = new Swipe({
+      view: view as __esri.MapView,
+      leadingLayers: pick(lead),
+      trailingLayers: pick(trail),
+      direction: 'horizontal',
+      position: swipePosition.current,
+    });
+    view.ui.add(w);
+    /* ⚠️ Зарим давхарга swipe-ээс ХОЙНО нэмэгддэг (жиш. `overlap:*` — `PlanOverlap.tsx`
+       тооцоогоо дуусгаад) — `map.layers` солигдох бүрд хоёр талыг дахин онооно. */
+    const h = map.layers.on('change', () => {
+      w.leadingLayers.removeAll();
+      w.leadingLayers.addMany(pick(lead));
+      w.trailingLayers.removeAll();
+      w.trailingLayers.addMany(pick(trail));
+    });
+    return () => {
+      swipePosition.current = w.position;
+      h.remove();
+      view.ui.remove(w);
+      w.destroy();
+    };
+  }, [swipeKey, ready, dim]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн

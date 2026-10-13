@@ -43,6 +43,7 @@ export type ViewKey =
   | "iot"
   | "ersdel"
   | "dedButets"
+  | "hesegET"
   | "zovshoorol"
   | "guitsetgel"
   | "qaqc"
@@ -124,6 +125,21 @@ export const VIEWS: {
      * тавихад зураг ачаалахдаа тэдгээр рүү ДӨХӨЖ, ерөнхий төлөвлөгөө
      * дэлгэцээс гардаг байв (станцууд талбайн хойд захад).
      */
+    initial: [],
+  },
+  /**
+   * ХЭСЭГЧИЛСЭН ЕТ (2026-10-13, хэрэглэгчийн заавар: «шинэ section болгож 14 Хэсэгчилсэн ЕТ»).
+   * Урьд «Ерөнхий төлөвлөгөө» дотор «Detail» горим байсныг ТУСДАА харагдац болгов. Гурван хэсэг:
+   *   01 Ерөнхий төлөвлөгөөний өөрчлөлт · 02 Одоо байгаа дэд бүтэцтэй давхцал · 03 Нэмэлт хэрэгцээ.
+   * ⚠️ Давхаргыг `Portal` өөрөө удирдана (`HESEG_*`) — каталог/тойм ХЭРЭГЛЭХГҮЙ тул `layers`/`initial` хоосон.
+   */
+  {
+    key: "hesegET",
+    get title() { return tr('Хэсэгчилсэн ЕТ'); },
+    get desc() { return tr('Ерөнхий төлөвлөгөөний өөрчлөлт, одоо байгаа дэд бүтэцтэй давхцал, нэмэлт хэрэгцээ'); },
+    icon: "layers",
+    hue: "#0d9488",
+    layers: [],
     initial: [],
   },
   /**
@@ -632,7 +648,7 @@ export const HOME_SECTIONS: {
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
-  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "analysis", "irged"] },
+  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged"] },
   { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
@@ -657,7 +673,8 @@ export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] =
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
-    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "gazar", "zovshoorol", "habea", "dedButets"],
+    /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» — «Ерөнхий төлөвлөгөө»-ний ЯГ ДАРАА (цэсэнд 14-т) */
+    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets"],
   },
   /* ⚠️ 2026-10-12 (хэрэглэгч: «ухаалаг хот гэсэн тусдаа бүлэг болго»): IoT · эрсдэл · иргэдийн хүртээмж ·
      тохиромжтой байдал — «Хяналт»-аас салгав */

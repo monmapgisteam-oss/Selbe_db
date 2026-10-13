@@ -311,7 +311,6 @@
 
 /* ── Газрын зураг ── */
 .map { grid-area: map; position: relative; display: flex; min-width: 0; }
-
 /* ── Нэгтгэсэн үзүүлэлт — САМБАРЫН толгойн доор ──
    ⚠️ Урьд нь дэлгэцийн доод хүрээ (`grid-area: foot`) байв. Тэнд байхдаа
    газрын зургийн өндрийг 76px-ээр хасч, нүдний хөдөлгөөнөөс хамгийн хол
@@ -548,6 +547,7 @@
   animation: catPopIn 0.28s var(--ease) both;
 }
 .catPop > * { flex: 1; min-width: 0; }
+
 @keyframes catPopIn {
   from { opacity: 0; transform: translateX(-10px); }
   to   { opacity: 1; transform: translateX(0); }

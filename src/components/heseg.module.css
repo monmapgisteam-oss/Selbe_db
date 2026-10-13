@@ -1,0 +1,180 @@
+/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel` · `HesegChange` · `HesegNeed`), 2026-10-13 */
+
+.wrap { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Хэсэг сонгогч — дугаартай гурван мөр ── */
+.tabs { display: flex; flex-direction: column; gap: 4px; }
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.tab:hover { color: var(--ink); border-color: var(--line-strong); }
+.tab:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.tabOn, .tabOn:hover { color: var(--ink); border-color: var(--hue); background: color-mix(in srgb, var(--hue) 8%, var(--surface)); }
+.tabNo { font-variant-numeric: tabular-nums; color: var(--hue); font-weight: 700; }
+.tabTitle { flex: 1; min-width: 0; }
+.body { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── 01 Өөрчлөлт ── */
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.item:hover { border-color: var(--line-strong); }
+.itemOn { border-color: var(--hue); box-shadow: 0 0 0 1px var(--hue); }
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.swatch { width: 12px; height: 12px; flex: none; border-radius: 3px; }
+.name { flex: 1; min-width: 0; font-size: 0.78rem; font-weight: 600; }
+.val { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
+.valMain { font-size: 0.84rem; font-weight: 700; white-space: nowrap; }
+.delta { font-size: 0.66rem; font-weight: 600; white-space: nowrap; color: var(--ink-3); }
+.up { color: var(--good, #16a34a); }
+.down { color: var(--bad, #dc2626); }
+.chev { color: var(--ink-3); font-size: 0.7rem; transition: transform 0.15s; }
+.chevOn { transform: rotate(90deg); }
+
+.rows { list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--line); }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 31px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.row:hover { background: var(--surface-2); }
+.rowOn { background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.rowName { flex: 1; min-width: 0; color: var(--ink-2, var(--ink)); }
+.rowVal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rowVal small { color: var(--ink-3); font-size: 0.66rem; }
+
+.wait, .err, .note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.err { color: var(--bad, #dc2626); }
+.note { display: block; }
+.spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--hue);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 03 Нэмэлт хэрэгцээ ── */
+.ctrl { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--ink-3); }
+.ctrl input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.kpiVal { font-size: 1.02rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.kpiLbl { font-size: 0.68rem; color: var(--ink-3); }
+.tip {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+.tip[hidden] { display: none; }
+.tip span { color: var(--ink-3); }
+
+/* ── 01-ийн доод хэсэг: хуучин ЕТ-тэй харьцуулалт (2026-10-13) ── */
+.cmp { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-top: 1px solid var(--line); overflow-x: auto; }
+.cmpTitle { margin: 4px 0 0; font-size: 0.76rem; font-weight: 700; }
+.cmpTbl { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.cmpTbl th, .cmpTbl td { padding: 6px 5px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.cmpTbl thead th { font-size: 0.66rem; font-weight: 600; color: var(--ink-3); }
+.cmpTbl th:first-child { text-align: left; font-weight: 600; white-space: normal; }
+.cmpTbl tbody th .swatch { display: inline-block; margin-right: 6px; vertical-align: middle; }
+.cmpTbl tbody th small { display: block; margin-left: 18px; color: var(--ink-3); font-size: 0.62rem; font-weight: 500; }
+.cmpTbl td small { display: block; margin-top: 3px; font-size: 0.62rem; color: var(--ink-3); }
+.val > small { font-size: 0.62rem; color: var(--ink-3); }
+
+/* 03 — «Төрлөөр / Бүсээр» солигч (2026-10-13) */
+.modes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.mode {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mode:hover { color: var(--ink); }
+.mode:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.modeOn, .modeOn:hover { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
