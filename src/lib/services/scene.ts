@@ -668,35 +668,57 @@ export const laborCompanyFields = (sfx: string) => ({
 /**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
  *
- * ⚠️ 2026-09-25: ХУУЧИН 12 ЗАГВАР (`tiles.arcgis.com` · `71_1…71_12`,
- *    `NEXT_PUBLIC_BIM_ROOT`) БҮРМӨСӨН ХАСАГДСАН — хэрэглэгчийн шийдвэр.
- *    Одоо UBHUB Enterprise порталын `Hosted/Багц_<N>_FID<…>` SceneServer-ууд.
- *    Хост нь `UBHUB_SCENE`-тэй ИЖИЛ тул шинэ env хувьсагч ХЭРЭГГҮЙ.
+ * ⚠️⚠️ 2026-10-14: ЭХ СОЛИГДОВ — UBHUB-аас Сэлбэ Enterprise (`gis.selbecity.mn/map`, env
+ *    `NEXT_PUBLIC_BIM_SCENE` = `…/rest/services/Hosted`) руу (хэрэглэгч: «ubhub биш өөр enterprise publish
+ *    хийчихсэн байгаа — ubhub service-ийг сольж миний өгсөн BIM-ийг оронд нь оруул»). 97 SceneServer — 7 багц
+ *    бүгд (Багц 1: 15 · 2: 20 · 3.1: 11 · 3.2: 11 · 3.3: 14 · 4.1: 12 · 4.2: 14). Амьдаар нэг бүрчлэн шалгав:
+ *    97/97 токенгүй нээгдэнэ, бүгд `layerType: Building`, wkid 3857. UBHUB дээр хаалттай байсан Багц 1-ийн 8,
+ *    Багц 2-ын 20, Багц 3.1-ийн 11 загвар ОДОО бүгд орсон.
+ * ⚠️ Хост нь меш/ортофотогийн `UBHUB_SCENE`-ээс ТУСДАА хувьсагч — тэдгээр UBHUB дээр ХЭВЭЭР.
+ * ⚠️ 2026-09-25: хуучин 12 загвар (`tiles.arcgis.com` · `71_1…71_12`, `NEXT_PUBLIC_BIM_ROOT`) хасагдсан.
  *
  * ⚠️ `layerType: 'Building'` — ЗӨВХӨН SceneView-д (3D, `dim === 'bim'`).
  *    Фотограмметрийн меш (`SCENE`)-ээс ЯЛГААТАЙ: зохион бүтээсэн загвар
  *    (давхар, хана, инженерийн систем) тул BIM горимд меш хасагдаж эдгээр
  *    оронд нь харагдана.
- *
- * ⚠️ ЗӨВХӨН НЭРГҮЙ НЭЭЛТТЭЙ 58 үйлчилгээ энд байна (2026-09-25 · 10-04-нд нэг бүрчлэн
- *    шалгав). UBHUB нь ТУСДАА Enterprise портал — AGOL-ийн токен тэнд
- *    хүчингүй (498), тиймээс хаалттай үйлчилгээг нэмбэл BIM горимд орох бүрд
- *    UBHUB-ийн нэвтрэх цонх гарч, манай хэрэглэгчид түүнд аккаунтгүй.
- *    ХААЛТТАЙ тул ОРУУЛААГҮЙ (UBHUB дээр «Everyone»-д хуваалцвал нэмнэ):
- *      · Багц 1   — FID49 · 50_51 · 52 · 53_54 · 56 · 57 · 58_59 · 60
- *      · Багц 3.1 — FID24…FID34 (11)
- *      · Багц 2   — 20 item (URL нь нэргүй хандалтад ч 403)
+ * ⚠️ ЗӨВХӨН НЭРГҮЙ НЭЭЛТТЭЙ үйлчилгээ — хаалттай үйлчилгээ BIM горимд орох бүрд тэр Enterprise-ийн нэвтрэх
+ *    цонх гаргана (манай хэрэглэгчид тэнд аккаунтгүй). Шинээр нэмэхдээ эхлээд `?f=json`-ийг токенгүй шалгана.
  *
  * ⚠️ Нэрлэлт: `Багц_<багц>_FID<n>[_<n>]_<айл>_<single|double|tower>` — `double`
  *    нь ХОЁР FID-тэй (хос блок) нэг загвар.
  */
+const BIM_SCENE = req("NEXT_PUBLIC_BIM_SCENE", process.env.NEXT_PUBLIC_BIM_SCENE);
+
 const BIM_SERVICES: { pkg: string; names: string[] }[] = [
   {
     pkg: '1',
     names: [
-      'Багц_1_FID55_117_single', 'Багц_1_FID61_117_single', 'Багц_1_FID62_63_71_double',
-      'Багц_1_FID64_117_single', 'Багц_1_FID65_117_single', 'Багц_1_FID66_67_71_double',
-      'Багц_1_FID112_117_single',
+      'Багц_1_FID49_71_single', 'Багц_1_FID50_51_71_double', 'Багц_1_FID52_71_single',
+      'Багц_1_FID53_54_71_double', 'Багц_1_FID55_117_single', 'Багц_1_FID56_117_single',
+      'Багц_1_FID57_117_single', 'Багц_1_FID58_59_71_double', 'Багц_1_FID60_117_single',
+      'Багц_1_FID61_117_single', 'Багц_1_FID62_63_71_double', 'Багц_1_FID64_117_single',
+      'Багц_1_FID65_117_single', 'Багц_1_FID66_67_71_double', 'Багц_1_FID112_117_single',
+    ],
+  },
+  {
+    pkg: '2',
+    names: [
+      'Багц_2_FID78_71_single', 'Багц_2_FID79_80_71_double', 'Багц_2_FID81_71_single',
+      'Багц_2_FID82_83_71_double', 'Багц_2_FID84_85_71_double', 'Багц_2_FID86_71_single',
+      'Багц_2_FID87_71_single', 'Багц_2_FID88_71_single', 'Багц_2_FID89_71_single',
+      'Багц_2_FID90_71_single', 'Багц_2_FID91_71_single', 'Багц_2_FID92_71_single',
+      'Багц_2_FID93_71_single', 'Багц_2_FID94_71_single', 'Багц_2_FID95_71_single',
+      'Багц_2_FID96_97_117_double', 'Багц_2_FID98_99_117_double', 'Багц_2_FID100_103_71_double',
+      'Багц_2_FID101_71_single', 'Багц_2_FID102_71_single',
+    ],
+  },
+  {
+    pkg: '3.1',
+    names: [
+      'Багц_3_1_FID24_71_single', 'Багц_3_1_FID25_71_single', 'Багц_3_1_FID26_71_single',
+      'Багц_3_1_FID27_71_single', 'Багц_3_1_FID28_71_single', 'Багц_3_1_FID29_71_single',
+      'Багц_3_1_FID30_71_single', 'Багц_3_1_FID31_71_single', 'Багц_3_1_FID32_71_single',
+      'Багц_3_1_FID33_71_single', 'Багц_3_1_FID34_71_single',
     ],
   },
   {
@@ -718,8 +740,6 @@ const BIM_SERVICES: { pkg: string; names: string[] }[] = [
       'Багц_3_3_FID40_71_single', 'Багц_3_3_FID41_71_single',
     ],
   },
-  /* ⚠️ 2026-10-04 (хэрэглэгч): Багц 4.1 (12) · 4.2 (14) — 26 бүгд нэргүй нээлттэй,
-     `layerType: Building` гэж нэг бүрчлэн шалгав. `tower` — 4.2-ын цамхаг блокууд. */
   {
     pkg: '4.1',
     names: [
@@ -753,7 +773,7 @@ export const BIM = {
       pkg,
       get title() { return tr('Багц {0} · FID {1}', pkg, bimFids(name)); },
       /* ⚠️ Кирилл нэр — URL-д ЗААВАЛ кодлоно */
-      url: `${UBHUB_SCENE}/${encodeURIComponent(name)}/SceneServer`,
+      url: `${BIM_SCENE}/${encodeURIComponent(name)}/SceneServer`,
     })),
   ),
 } as const;

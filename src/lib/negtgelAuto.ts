@@ -37,7 +37,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
-import { TUSUL_NEGTGEL, bagtsKey, roleForUser } from '@/lib/services';
+import { TUSUL_NEGTGEL, bagtsKey, buildingKey, roleForUser } from '@/lib/services';
 import { negtgelDepth } from '@/lib/negtgel';
 import { NEG_TREE, negTreeHash } from '@/lib/negtgelTree';
 import { currentUser } from '@/lib/who';
@@ -265,6 +265,13 @@ export type NegSources = {
   /** Бөглөх хуудастай БЛОКГҮЙ багцууд — `pkgNo` */
   infraPkgs?: Set<string>;
   /**
+   * БЛОК БҮРИЙН батлагдсан биет хувь — `buildingKey` («БАГЦ1|5/1») → `overall` 0–100
+   * (`blockProgress.loadBlockProgress`). Орон сууцны багцын доорх БАРИЛГЫН мөрүүдэд (`housingBreakdown`).
+   */
+  blocks?: ReadonlyMap<string, { overall: number } | null | undefined>;
+  /** Багц бүрийн блокийн хуваарь — `bagtsKey` → `buildingKey`-ууд (`blockProgress.loadBlockUniverse`) */
+  blockUni?: ReadonlyMap<string, readonly string[]>;
+  /**
    * ХЭСЭГЧЛЭН уншигдсан эхүүдийн нэр (2026-10-01) — дэлгэц нэрлэж, `loadNegtgelFull` КЭШЛЭХГҮЙ.
    * ⚠️ 2026-10-13: хуваарийн муруй эх биш болсон тул одоогоор үргэлж хоосон.
    */
@@ -407,6 +414,12 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
   }
   const land = settledValue(res[0]);
   const blocks = settledValue(res[2]);
+  /* ⚠️ 2026-10-14: блокийн хуваарь унавал барилгын задаргаа л алгасагдана (багцын мөр хэвээр системийн) —
+     бүхэлд нь шидэхгүй (`housingBreakdown` хуваарьгүй бол `null`). */
+  const blockUni = await B.loadBlockUniverse().catch((e: unknown) => {
+    console.warn('[negtgel] блокийн хуваарь уншигдсангүй — барилгын задаргаа Excel-ийн утгаар', e);
+    return undefined;
+  });
   const infraP = settledValue(res[3]);
   const infra = new Map<string, number>();
   const infraPkgs = new Set<string>();
@@ -425,6 +438,8 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     housingPkgs: new Set(PKGS.filter((p) => p.floors != null).map((p) => bagtsKey(p.group))),
     infra,
     infraPkgs,
+    blocks,
+    blockUni,
     partial: [],
   };
 }
@@ -442,7 +457,7 @@ export type NegCalcRow = NegRaw & {
  * СИСТЕМИЙН БОДИТ ГҮЙЦЭТГЭЛ (0–100) — Excel-д ч ГАРААР бичигддэг мөрүүдэд (файлын толгойг үз).
  * `null` = энэ мөрөнд системийн эх байхгүй/хэмжилтгүй → Excel-ийн утга.
  */
-function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): { act: number; how: string } | null {
+function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): { act: number; how: string; pk?: string } | null {
   const r = rows[i];
   const chain: string[] = [];
   for (let k = i; k >= 0; k = parent[k]) chain.push(nkey(rows[k].name));
@@ -460,7 +475,7 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
     const k = bagtsKey(r.bagts);
     if (src.housingPkgs?.has(k)) {
       const v = src.housing.get(k);
-      return v == null ? null : { act: v, how: tr('01. Гүйцэтгэл — батлагдсан биет хувь (блокуудаар)') };
+      return v == null ? null : { act: v, how: tr('01. Гүйцэтгэл — батлагдсан биет хувь (блокуудаар)'), pk: k };
     }
   }
   /* Блокгүй багц */
@@ -473,6 +488,58 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
 }
 
 /**
+ * ОРОН СУУЦНЫ БАГЦЫН БАРИЛГЫН ЗАДАРГАА — «Хэсэгт эзлэх» (F) ба «Гүйцэтгэл» (S) СИСТЕМЭЭС.
+ *
+ * ⚠️ 2026-10-14 (хэрэглэгч: «нэгтгэл гүйцэтгэл өөрөө өөрийгөө update хийнэ — 5.2.1-ээс доош задаргаа тус
+ *    бүрийн Хэсэгт эзлэх, Гүйцэтгэлийн хувийг систем update хийнэ»). Excel V3-д барилгын мөрийн S нь ГАРААР
+ *    хуулсан нэг тоо (Багц-1-ийн 20 барилга бүгд 25.72% — багцын хуучин дундаж), багцын мөр нь (28.23%) түүнээс
+ *    бодогддоггүй тул доод мөрүүдийн нийлбэр эцэгтэйгээ таардаггүй байв.
+ *
+ * ДҮРЭМ — 01-ийн багцын хувь (`blockProgress.pkgProgressOf`) нь хуваарийн блокуудын ЭНГИЙН ДУНДАЖ
+ * (тайлагнаагүй блок 0%) тул:
+ *   · Барилгын мөр (C багана «5/1» = `buildingKey`) → S = тэр блокийн батлагдсан `overall`, тайлагнаагүй бол 0;
+ *     F = (1 − блок БУС мөрийн F) ÷ блокийн тоо (тэнцүү жин).
+ *   · Блок БУС мөр (жиш. Багц-4.1 «Бүгд» газар шороо, 0.4%) — системд эх байхгүй → Excel-ийн F ба S ХЭВЭЭР.
+ *   · Багцын мөр = Σ F × S (Excel-ийн томьёо) — блок бус мөргүй багцад 01-ийн багцын хувьтай ЯГ тэнцүү.
+ * ⚠️ F нь төсвийн хувь БИШ болно (Excel: блокийн төсөв ÷ багцын төсөв) — системийн багцын хувь блокуудыг
+ *    тэнцүү жигнэдэг тул төсвийн жингээр нийлүүлбэл багцын мөр 01-ээс (дашбоард 12) зөрнө.
+ * ⚠️ Excel-ийн барилгын мөрүүд хуваарьтай БҮРЭН таарахгүй бол (дутуу/илүү блок, давхардал) `null` — тэр
+ *    багцын задаргааг хөндөхгүй (буруу тэнцүү жин тавихаас Excel-ийн утга дээр).
+ */
+function housingBreakdown(
+  rows: NegRaw[], i: number, kids: number[][], src: NegSources, pk: string,
+): Array<{ k: number; w: number; act: number; how: string }> | null {
+  const uni = src.blockUni?.get(pk);
+  const blocks = src.blocks;
+  if (!uni?.length || !blocks) return null;
+  const want = new Set(uni);
+  const ch = kids[i].filter((k) => !rows[k].outside);
+  const keyOf = new Map(ch.map((k) => [k, buildingKey(rows[i].bagts, rows[k].bagts)] as const));
+  const isBlk = (k: number) => want.has(keyOf.get(k) ?? '');
+  const blk = ch.filter(isBlk);
+  const seen = new Set(blk.map((k) => keyOf.get(k)));
+  if (blk.length !== want.size || seen.size !== want.size) {
+    console.warn('[negtgel] барилгын мөр блокийн хуваарьтай таарсангүй — задаргаа Excel-ийн утгаар', rows[i].code, pk);
+    return null;
+  }
+  const rest = 1 - ch.filter((k) => !isBlk(k)).reduce((a, k) => a + (rows[k].w ?? 0), 0);
+  if (!(rest > 0)) return null;
+  const w = rest / blk.length;
+  return blk.map((k) => {
+    const c = blocks.get(keyOf.get(k) ?? '');
+    const ok = c != null && Number.isFinite(c.overall);
+    return {
+      k,
+      w,
+      act: ok ? c.overall : 0,
+      how: ok
+        ? tr('01. Гүйцэтгэл — блокийн батлагдсан биет хувь; жин = багцын блокуудад тэнцүү')
+        : tr('01. Гүйцэтгэл — блок тайлагнаагүй (0%, багцын дундажтай ижил дүрэм); жин = багцын блокуудад тэнцүү'),
+    };
+  });
+}
+
+/**
  * БҮХ МӨРИЙГ БОДНО — цэвэр функц (тест: `negtgel.check.mjs`).
  *
  * 1. Системийн гүйцэтгэлтэй мөр (`liveAct`) — утгаа ТОГТООНО (pinned; өөрийн хүүхдүүдээс бодогдохгүй, Excel-д
@@ -480,6 +547,8 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
  * 2. Утга нь ӨӨРЧЛӨГДСӨН мөрийн өвгүүд — Excel-ийн томьёо: Σ (хүүхдийн F × хүүхдийн S), `outside` хасна.
  *    Өөрчлөлтгүй салаа Excel-ийн утгаа ЯГ хадгална (толгойн ⚠️ — Excel-ийн мужийн алдаа).
  * 3. Гүйцэтгэл өөрчлөгдсөн мөрийн биелэлт: T/U/V/W = S ÷ N/O/P/R (0 бол 0; аль нэг нь хоосон бол хоосон).
+ * 1б. Орон сууцны багцын барилгын мөрүүд (`housingBreakdown`) — F ба S системээс; багцын мөр нь тэгвэл
+ *    ТОГТООГДОХГҮЙ, 2-р алхмаар Σ F × S болно (доод мөрийн нийлбэр эцэгтэйгээ таарна).
  */
 export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
   const { parent, kids } = treeOf(rows.map((r) => r.depth));
@@ -499,6 +568,27 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
       o.act = nv;
       changed[i] = true;
     }
+    /* 1б. Барилгын задаргаа — багцын мөрийг доод мөрүүдээс нь бодуулна (`housingBreakdown`-ийн ⚠️) */
+    const bd = v.pk ? housingBreakdown(rows, i, kids, src, v.pk) : null;
+    if (!bd) return;
+    pinned[i] = false;
+    for (const b of bd) {
+      const c = out[b.k];
+      const na = r6(b.act / 100);
+      /* ⚠️ жинг ДУГУЙЛАХГҮЙ — 1/26 г.м. дугуйлбал Σ F ≠ 1 болж багцын мөр 01-ээс зөрнө */
+      const nw: number | null = b.w;
+      pinned[b.k] = true;
+      c.auto = true;
+      c.how = b.how;
+      if (nw != null && (c.w == null || Math.abs(nw - c.w) > 1e-9)) {
+        c.w = nw;
+        changed[b.k] = true;
+      }
+      if (na != null && (c.act == null || Math.abs(na - c.act) > 1e-6)) {
+        c.act = na;
+        changed[b.k] = true;
+      }
+    }
   });
 
   /* Өвгүүд — мод нь outline (хүүхэд эцгийнхээ ДАРАА) тул ардаас нэг удаа гүйхэд хүүхэд үргэлж өмнө нь бодогдсон */
@@ -512,7 +602,8 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     const use = kids[i].filter((k) => !rows[k].outside);
     if (!use.some((k) => out[k].act != null)) continue;
     /* ⚠️ Хоосон хүүхэд 0 — Excel-ийн SUMPRODUCT-тэй ижил; хуваагч Σw БИШ */
-    const nv = r6(use.reduce((a, k) => a + (rows[k].w ?? 0) * (out[k].act ?? 0), 0));
+    /* ⚠️ `out[k].w` — барилгын задаргаа жинг солино (`housingBreakdown`) */
+    const nv = r6(use.reduce((a, k) => a + (out[k].w ?? 0) * (out[k].act ?? 0), 0));
     const o = out[i];
     o.auto = true;
     o.how = tr('Доод мөрүүдээс (жингээр) — системийн гүйцэтгэлтэй');

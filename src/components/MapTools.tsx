@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
 import { useMap, type Dim } from './MapCanvas';
 import { prefetch3d } from './lazy3d';
-import { setRender3d, useRender3d, type Render3d } from './render3d';
+import { BIM_PKGS, setBimPkg, setRender3d, useBimPkg, useRender3d, type Render3d } from './render3d';
 import s from './mapTools.module.css';
 
 /**
@@ -176,6 +176,8 @@ export function MapTools({
   const [dimsOn, setDimsOn] = useState(false);
   /* ⚠️ 2026-10-04: 3D/BIM зураглалын горим — MapCanvas ижил хадгалалтаас уншина (`render3d.ts`) */
   const r3 = useRender3d();
+  /* ⚠️ 2026-10-14: «Нарийн»-ы BIM багц (`render3d.BimPkgState`) */
+  const bimPkg = useBimPkg();
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
   /* ⚠️ 2026-10-01: идэвхтэй шүүлт (`ActiveFilterChip`-тэй ижил дүрэм) — хураасан бариулын тэмдэгт */
   const { active: activeFilter } = useFilter();
@@ -361,13 +363,30 @@ export function MapTools({
                 className={`${s.dimBtn} ${s.qBtn} mapDimBtn ${r3 === q ? s.dimOn : ''}`}
                 title={q === 'fast'
                   ? tr('Хурдан — гөлгөр хөдөлгөөн: BIM-ийн гадна бүрхүүл, ойрын барилга бүрэн, сүүдэр/тусгалгүй')
-                  : tr('Нарийн — BIM-ийн бүх элемент, өндөр чанар (удаан ачаална)')}
+                  : tr('Нарийн — СОНГОСОН багцын BIM-ийн бүх элемент, өндөр чанар')}
                 onClick={() => setRender3d(q)}
               >
                 {q === 'fast' ? tr('Хурдан') : tr('Нарийн')}
               </button>
             ))}
           </span>
+          {/* ⚠️ 2026-10-14 (хэрэглэгч: «нарийн дээр багц сонгоод ачаалладаг болго»): «Нарийн» + BIM үед БАГЦ
+              сонгогч — зөвхөн тэр багцын BIM ачаалагдана (`render3d.BimPkgState`). Сонгоогүй бол камерт ойр
+              багц өөрөө сонгогдоно; сонгоход тэр багц руу ойртоно. */}
+          {dim === 'bim' && r3 === 'fine' && (
+            <select
+              className={s.pkgSel}
+              value={bimPkg.pkg}
+              aria-label={tr('BIM багц')}
+              title={tr('Нарийн горимд зөвхөн энэ багцын BIM ачаалагдана')}
+              onChange={(e) => setBimPkg(e.target.value, true)}
+            >
+              {!bimPkg.pkg && <option value="">{tr('Багц…')}</option>}
+              {BIM_PKGS.map((p) => (
+                <option key={p} value={p}>{tr('Багц {0}', p)}</option>
+              ))}
+            </select>
+          )}
         </>
       )}
     </div>

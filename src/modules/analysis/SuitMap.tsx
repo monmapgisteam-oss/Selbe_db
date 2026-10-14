@@ -48,7 +48,7 @@ import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
 import { bimLayerFor, dropBimCache } from '@/components/bimCache';
-import { applyView3d, getRender3d, manageBim, profileFor, useRender3d } from '@/components/render3d';
+import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from '@/components/render3d';
 
 /** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (⚠️ 2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
 const bimAll = (map: Map): BuildingSceneLayer[] => BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
@@ -803,6 +803,8 @@ export function SuitMap({
      энэ зураг урьдын адил ҮЙЛЧИЛГЭЭНИЙ АНХДАГЧ дэд давхаргатай (archOn: false — Architectural-ийг
      хүчээр асаадаггүй байсан); «Хурдан»-д гадна бүрхүүл + ойрын барилга бүрэн. */
   const r3 = useRender3d();
+  /* ⚠️ 2026-10-14: «Нарийн»-д ачаалах BIM багц — MapCanvas-тай нэг төлөв */
+  const bimPkg = useBimPkg();
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !ready || view.type !== '3d') return;
@@ -812,8 +814,9 @@ export function SuitMap({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || dim !== 'bim' || view.type !== '3d') return;
-    return manageBim({ view: view as SceneView, map, all: bimAll(map), m: r3, archOn: false });
-  }, [dim, ready, r3]);
+    return manageBim({ view: view as SceneView, map, all: bimAll(map), m: r3, archOn: false, pkg: bimPkg });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dim, ready, r3, r3 === 'fine' ? bimPkg : null]);
 
   /* ── Давхаргын ил байдал (оноон будалт, шошго ч энд орно) ── */
   useEffect(() => {

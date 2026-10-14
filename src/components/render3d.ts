@@ -1,6 +1,9 @@
 /**
  * 3D/BIM ЗУРАГЛАЛЫН ГОРИМ — «Хурдан» (АНХДАГЧ) ↔ «Нарийн» (⚠️ 2026-10-04, 3D/BIM гүйцэтгэл).
  *
+ * ⚠️ 2026-10-14: BIM нь Сэлбэ Enterprise-ийн 97 үйлчилгээ болов (`services/scene.ts` BIM) — тэдгээр ч ИЖИЛ
+ *    бүтэцтэй, LOD-ГҮЙ (жиш. `Багц_1_FID49`: 3DObject дэд давхарга бүр root + 25 навч node, амьдаар шалгав);
+ *    доорх хэмжилт 58 UBHUB үйлчилгээн дээр хийгдсэн ч дүрэм хэвээр хүчинтэй (`BIM_BUDGET` нь тооноос үл хамаарна).
  * ⚠️ ЯАГААД: UBHUB-ийн 58 BIM үйлчилгээ LOD-ГҮЙ (root + навч mesh л) тул SDK камерын зайнаас
  *    үл хамааран БҮХ геометрийг татаж зурдаг. 2026-10-04-нд nodepages-ийг нэг бүрчлэн тоолов:
  *    нийт ~586 сая орой / ~19,000 node, үүний 452 сая (77%) / 10,214 node нь `GenericModel`
@@ -28,6 +31,7 @@ import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
 import type SceneView from '@arcgis/core/views/SceneView';
 import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
+import { BIM } from '@/lib/services';
 
 export type Render3d = 'fast' | 'fine';
 
@@ -56,6 +60,41 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 /* ⚠️ Статик export — серверийн снапшот «Хурдан»; клиент localStorage-оос уншаад зөрвөл React
    өөрөө дахин зурна (hydration-д алдаа гаргахгүй — `useSyncExternalStore`-ийн зан). */
 export const useRender3d = (): Render3d => useSyncExternalStore(subscribe, getRender3d, () => 'fast');
+
+/* ══════════════════════ «НАРИЙН»-Ы BIM БАГЦ (⚠️ 2026-10-14) ══════════════════════ */
+
+/**
+ * «Нарийн» горимд ачаалах BIM-ийн БАГЦ — 97 BIM-ийг зэрэг ачаалахын оронд НЭГ багц.
+ * ⚠️ 2026-10-14 (хэрэглэгч: «нарийн дээр багц сонгоод ачаалладаг болго»): урьд нь «Нарийн» Map-д БҮХ BIM-ийг
+ *    (58 → 2026-10-14-өөс 97) зэрэг нэмдэг байв — 58 үед ч 60с-д бүрэн ачаалагдаж дуусдаггүй (доорх ⚠️).
+ * ⚠️ `pkg` хоосон = СОНГООГҮЙ → `manageBim` камерт хамгийн ойр BIM-ийн багцыг өөрөө сонгоно.
+ * ⚠️ Сешн доторх санах ой (localStorage БИШ): хадгалсан багц нь камераас хол байж болох тул дараагийн
+ *    нээлтэд ойрын багцаас эхэлнэ.
+ * ⚠️ `fly` — хэрэглэгч сонгосон үед л тэр багц руу ойртоно (автомат сонголтод камер үсрэхгүй);
+ *    `rev` нь ИЖИЛ багцыг дахин сонгоход ч (жиш. ойртох) React-ийн снапшот өөрчлөгдөхийн тулд.
+ */
+export type BimPkgState = { pkg: string; fly: boolean; rev: number };
+/** BIM-тэй багцууд — `BIM.layers`-ийн дарааллаар («1», «2», «3.1» …) */
+export const BIM_PKGS: string[] = [...new Set(BIM.layers.map((l) => l.pkg))];
+/** BIM давхаргын id (`bim:<нэр>`) → багц */
+const PKG_OF = new Map<string, string>(BIM.layers.map((l) => [l.key, l.pkg]));
+export const bimPkgOf = (id: string | number): string | undefined => PKG_OF.get(String(id));
+
+let pkgState: BimPkgState = { pkg: '', fly: false, rev: 0 };
+const pkgSubs = new Set<() => void>();
+export const getBimPkg = (): BimPkgState => pkgState;
+/** Багц сонгоно — `fly`: хэрэглэгчийн сонголт (тэр багц руу ойртоно) */
+export function setBimPkg(pkg: string, fly = false): void {
+  if (pkg === pkgState.pkg && !fly) return;
+  pkgState = { pkg, fly, rev: pkgState.rev + 1 };
+  pkgSubs.forEach((f) => f());
+}
+const IDLE: BimPkgState = { pkg: '', fly: false, rev: 0 };
+export const useBimPkg = (): BimPkgState => useSyncExternalStore(
+  (f) => { pkgSubs.add(f); return () => { pkgSubs.delete(f); }; },
+  getBimPkg,
+  () => IDLE,
+);
 
 /* ══════════════════════ SceneView ══════════════════════ */
 
@@ -333,8 +372,10 @@ export function manageBim(o: {
   m: Render3d;
   archOn: boolean;
   onShown?: (ids: ReadonlySet<string>) => void;
+  /** ⚠️ 2026-10-14: «Нарийн»-д ачаалах багц (`useBimPkg`); хоосон бол камерт хамгийн ойр багцыг сонгоно */
+  pkg?: BimPkgState;
 }): () => void {
-  const { view, map, all, m, archOn, onShown } = o;
+  const { view, map, all, m, archOn, onShown, pkg = IDLE } = o;
   let stale = false;
   let near = new Set<string>();
   let shown = new Set<string>();
@@ -344,22 +385,44 @@ export function manageBim(o: {
   const inMap = (l: BuildingSceneLayer) => map.layers.includes(l as never);
   const apply = (l: BuildingSceneLayer) => applyBimMode(l, m, archOn, near.has(String(l.id)));
 
-  if (m === 'fine') {
-    /* Урьдын зан: 58 бүгд Map-д (`BIM.layers`-ийн дарааллаар) */
-    for (const l of all) if (!inMap(l)) map.add(l as never);
-    shown = new Set(all.map((l) => String(l.id)));
-    onShown?.(shown);
-    // ⚠️ Алдааг залгина — нэг барилга ачаалагдахгүй бол бусад нь хэвийн
-    for (const l of all) l.when(() => { if (!stale) apply(l); }).catch(() => {});
-    return () => { stale = true; };
-  }
-
-  const pick = () => {
-    if (stale || view.destroyed) return;
+  /*
+   * ⚠️ 2026-10-14: «НАРИЙН» = СОНГОСОН БАГЦЫН BIM л (бүгд, төсөвгүй) — бусад нь Map-аас хасагдана. Урьд нь энд
+   *    БҮХ BIM Map-д нэмэгддэг байв (`BimPkgState`-ийн ⚠️). Хасалт нь «Хурдан»-ы ИЖИЛ аюулгүй замаар (`pick`:
+   *    LayerView үүсч дуусаагүй давхаргыг хасахгүй — SDK-ийн `BuildingSceneLayerView3D` алдаа).
+   */
+  const fine = m === 'fine';
+  let flown = !(fine && pkg.fly && pkg.pkg);
+  const choose = (): { next: Set<string>; nextNear: Set<string> } | null => {
+    if (fine) {
+      if (!pkg.pkg) {
+        /* Сонгоогүй — камерт хамгийн ойр (дэлгэцэнд буусан) BIM-ийн багц; эффект шинэ багцаар дахин ажиллана */
+        const r = rankBim(view, all.filter((l) => l.loaded));
+        const p = r.length ? bimPkgOf(r[0].id) : undefined;
+        if (p) setBimPkg(p);
+        return null;
+      }
+      return { next: new Set(all.filter((l) => bimPkgOf(l.id) === pkg.pkg).map((l) => String(l.id))), nextNear: new Set() };
+    }
     const ranked = rankBim(view, all.filter((l) => l.loaded));
     const next = new Set(ranked.slice(0, BIM_BUDGET).map((r) => r.id));
     for (const r of ranked.slice(BIM_BUDGET, BIM_BUDGET + BIM_HYST)) if (shown.has(r.id)) next.add(r.id);
-    const nextNear = new Set(ranked.filter((r) => r.d <= NEAR_M).slice(0, NEAR_MAX).map((r) => r.id));
+    return { next, nextNear: new Set(ranked.filter((r) => r.d <= NEAR_M).slice(0, NEAR_MAX).map((r) => r.id)) };
+  };
+
+  const pick = () => {
+    if (stale || view.destroyed) return;
+    const c = choose();
+    if (!c) return;
+    const { next, nextNear } = c;
+    /* «Нарийн» — хэрэглэгч сонгосон багц руу ойртоно (багцын BIM-ийн метадата бүгд ачаалагдсаны дараа НЭГ удаа) */
+    if (!flown) {
+      const ls = all.filter((l) => next.has(String(l.id)));
+      if (ls.length && ls.every((l) => l.loaded || l.loadStatus === 'failed')) {
+        flown = true;
+        const ex = ls.map((l) => l.fullExtent).filter((e): e is __esri.Extent => !!e);
+        if (ex.length) view.goTo(ex, { duration: 900 }).catch(() => {});
+      }
+    }
     const touch: BuildingSceneLayer[] = [];
     let deferred = false;
     for (const l of all) {

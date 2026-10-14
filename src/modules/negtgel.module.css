@@ -198,6 +198,29 @@
 /* Бүлгийг НЭР дээр нь дарж нээх/хаах — «+/−» тэмдэг хасагдсан (2026-09-25) */
 .nameTog { cursor: pointer; user-select: none; }
 
+/* Д/Д-ийн ард задлах/хураах «+/−» товч (2026-10-14) */
+.tog {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0;
+  vertical-align: middle;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: .75;
+  cursor: pointer;
+}
+.tog:hover { opacity: 1; }
+
 /*
  * ── Мөрийн өнгө ──
  * ⚠️ 2026-09-25 (хэрэглэгчийн заавар: «light дээр тод цэнхэр өнгийг болиулаад
