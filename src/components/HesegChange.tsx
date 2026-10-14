@@ -40,7 +40,6 @@ const fmt = (key: ChangeKey, v: number) => {
 
 /** Карт, хүснэгтэд ижил хэмжилтийн зөрүүг ижил тэмдэг, нэгжээр харуулна. */
 const deltaText = (key: ChangeKey, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${fmt(key, Math.abs(value))}`;
-const directionText = (value: number) => value > 0 ? tr('Нэмэгдсэн') : value < 0 ? tr('Буурсан') : tr('өөрчлөлтгүй');
 
 export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: ChangePick) => void }) {
   const [st, setSt] = useState<{ res: ChangeResult | null; err: string | null }>({ res: null, err: null });
@@ -62,11 +61,12 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
         {CHANGE_ITEMS.map((it) => {
           const r = st.res!.rows.find((x) => x.key === it.key)!;
           /* Харьцуулалт — хуучин тал мөр бүрийн хүрээгээр, шинэ тал бүтнээрээ (`lib/hesegChange.ts`-ийн ⚠️) */
-          const { delta, percent: pctD, status } = compareChangeQuantity(r);
+          const { delta, percent: pctD } = compareChangeQuantity(r);
           const cmp = delta != null;
           const d = delta ?? 0;
           const open = pick?.key === it.key;
-          const showChange = it.key !== 'road' && it.key !== 'green';
+          /* ⚠️ 2026-10-14: автозамд ч «Өөрчлөлт» харуулна (хэрэглэгч: «автозам дээр өөрчлөлт гэсэн хэсэг байхгүй юу»); ногоон — харьцуулахгүй */
+          const showChange = it.key !== 'green';
           /* ⚠️ 2026-10-13: 01-д зөвхөн ШИНЭ хэсэгчилсэн ЕТ (хэрэглэгч: «шинэ хэсэгчилсэн ЕТ мэдээллийг л харуул») */
           return (
             <li key={it.key} className={`${s.item} ${open ? s.itemOn : ''}`}>
@@ -79,33 +79,27 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                 <span className={`${s.chev} ${open ? s.chevOn : ''}`} aria-hidden>▸</span>
                 <span className={s.swatch} style={{ background: it.hue }} aria-hidden />
                 <span className={s.name}>{it.title()}</span>
-                <span className={c.measure}>{it.metric === 'len' ? tr('Тэнхлэгийн урт') : it.metric === 'area' ? tr('Талбай') : tr('Бүсийн тоо')}</span>
               </button>
               <dl className={`${c.stats} ${showChange ? '' : c.statsPair}`}>
                 <div>
                   <dt>{tr('Хуучин ЕТ')}</dt>
                   <dd>{r.oldMeasurementAvailable && r.old != null ? fmt(it.key, r.old) : '—'}</dd>
                   {r.boundary?.oldIn != null && r.old != null && <BoundarySplit inside={r.boundary.oldIn} total={r.old} />}
-                  {it.key === 'road' && r.old != null && <small>{tr('ArcGIS Pro-гоор бодсон лавлах тоо')}</small>}
-                  {r.oldSourceComplete && !r.oldComplete && <small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small>}
                 </div>
                 <div>
                   <dt>{tr('Хэсэгчилсэн ЕТ')}</dt>
                   <dd>{r.nextMeasurementAvailable ? fmt(it.key, r.nextCmp) : '—'}</dd>
                   {r.boundary && r.nextMeasurementAvailable && <BoundarySplit inside={r.boundary.nextIn} total={r.nextCmp} />}
-                  {r.nextSourceComplete && !r.nextComplete && <small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small>}
                 </div>
                 {showChange && <div>
                   <dt>{tr('Өөрчлөлт')}</dt>
                   <dd className={cmp ? d > 0 ? s.up : d < 0 ? s.down : '' : ''}>
                     {cmp ? deltaText(it.key, d) : '—'}
                   </dd>
-                  {cmp && <small>{directionText(d)}{pctD != null && d !== 0 && ` · ${d > 0 ? '+' : '−'}${num(Math.abs(pctD), 1)}%`}</small>}
-                  {status === 'partial' && <small>{tr('Хэсэгчилсэн хэмжилтийн зөрүү')}</small>}
+                  {cmp && pctD != null && d !== 0 && <small>{`${d > 0 ? '+' : '−'}${num(Math.abs(pctD), 1)}%`}</small>}
                   {!cmp && <small>{it.old ? tr('Мэдээлэл дутуу') : tr('харьцуулахгүй')}</small>}
                 </div>}
               </dl>
-              {r.centerlineResolutionM != null && <p className={c.resolution}>{tr('Тэнхлэгийн тор: {0} м', num(r.centerlineResolutionM, 2))}</p>}
               {open && r.nextSourceComplete && r.groups.length > 0 && (
                 <ul className={s.rows}>
                   {r.groups.map((g) => {
@@ -135,7 +129,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
           харьцуулдаг хэсгийг нэм, ижил агуулгын дагуу») — дээрх мөрүүдтэй ИЖИЛ ангилал, хүрээ. */}
       <section className={s.cmp} aria-label={tr('Ерөнхий төлөвлөгөөтэй харьцуулалт')}>
         <h4 className={s.cmpTitle}>{tr('Ерөнхий төлөвлөгөөтэй харьцуулалт')}</h4>
-        <p className={c.formula}>{tr('Өөрчлөлт = Хэсэгчилсэн ЕТ − Хуучин ЕТ')}</p>
         <table className={s.cmpTbl}>
           <thead>
             <tr>
@@ -148,15 +141,15 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
           <tbody>
             {CHANGE_ITEMS.map((it) => {
               const r = st.res!.rows.find((x) => x.key === it.key)!;
-              const { delta: d, percent, status } = compareChangeQuantity(r);
+              const { delta: d, percent } = compareChangeQuantity(r);
               const sourceCmp = r.oldSourceComplete && r.nextSourceComplete;
-              const showChange = it.key !== 'road' && it.key !== 'green';
+              /* ⚠️ 2026-10-14: автозамд ч «Өөрчлөлт» харуулна (хэрэглэгч: «автозам дээр өөрчлөлт гэсэн хэсэг байхгүй юу»); ногоон — харьцуулахгүй */
+          const showChange = it.key !== 'green';
               return (
                 <tr key={it.key}>
                   <th scope="row">
                     <span className={s.swatch} style={{ background: it.hue }} aria-hidden />
                     {it.title()}
-                    {it.metric === 'len' && <small>{tr('Тэнхлэгийн урт')}</small>}
                     {/* Хуучин талын хүрээ — «Олон нийтийн бүс» дотор уу, бүтэн үү */}
                     {r.oldScope === 'red' && <small>{tr('Хуучин: ОНБ · шинэ: бүтэн')}</small>}
                     {r.oldScope === 'khil' && <small>{tr('Сэлбэ 1 хил дотор')}</small>}
@@ -167,8 +160,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                   <td>
                     <div>{r.oldMeasurementAvailable && r.old != null ? fmt(it.key, r.old) : '—'}</div>
                     {r.boundary?.oldIn != null && r.old != null && <BoundarySplit inside={r.boundary.oldIn} total={r.old} />}
-                  {it.key === 'road' && r.old != null && <small>{tr('ArcGIS Pro-гоор бодсон лавлах тоо')}</small>}
-                    {r.oldSourceComplete && !r.oldComplete && <div><small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small></div>}
                     {r.oldN != null && <div><small>{tr('{0} объект', num(r.oldN))}</small></div>}
                     {r.oldLayersN != null && <div><small>{tr('{0} давхарга', num(r.oldLayersN))}</small></div>}
                     {(it.metric === 'len' || it.key === 'zone') && r.oldArea != null && <div><small>{tr('Талбай')}: {ha(r.oldArea, 2)} {tr('га')}</small></div>}
@@ -177,7 +168,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     {r.nextSourceComplete ? <>
                       <div>{r.nextMeasurementAvailable ? fmt(it.key, r.nextCmp) : '—'}</div>
                       {r.boundary && r.nextMeasurementAvailable && <BoundarySplit inside={r.boundary.nextIn} total={r.nextCmp} />}
-                      {!r.nextComplete && <div><small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small></div>}
                       <div><small>{tr('{0} объект', num(r.nextN))}</small></div>
                       <div><small>{tr('{0} давхарга', num(r.nextLayersN))}</small></div>
                       {(it.metric === 'len' || it.key === 'zone') && <div><small>{tr('Талбай')}: {ha(r.nextArea, 2)} {tr('га')}</small></div>}
@@ -187,8 +177,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     {showChange && <>
                     <div>{d == null ? it.old ? tr('Мэдээлэл дутуу') : tr('харьцуулахгүй')
                       : deltaText(it.key, d)}</div>
-                    {d != null && <div><small>{directionText(d)}{percent != null && d !== 0 && ` · ${d > 0 ? '+' : '−'}${num(Math.abs(percent), 1)}%`}</small></div>}
-                    {status === 'partial' && <div><small>{tr('Хэсэгчилсэн хэмжилтийн зөрүү')}</small></div>}
+                    {d != null && percent != null && d !== 0 && <div><small>{`${d > 0 ? '+' : '−'}${num(Math.abs(percent), 1)}%`}</small></div>}
                     {sourceCmp && r.oldN != null && <div><small>{tr('{0} объект', `${r.nextN - r.oldN > 0 ? '+' : ''}${num(r.nextN - r.oldN)}`)}</small></div>}
                     {sourceCmp && r.oldLayersN != null && <div><small>{tr('{0} давхарга', `${r.nextLayersN - r.oldLayersN > 0 ? '+' : ''}${num(r.nextLayersN - r.oldLayersN)}`)}</small></div>}
                     {sourceCmp && (it.metric === 'len' || it.key === 'zone') && r.oldArea != null && <div><small>{r.nextArea - r.oldArea > 0 ? '+' : ''}{ha(r.nextArea - r.oldArea, 2)} {tr('га')}</small></div>}
@@ -204,9 +193,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
       {st.res.failed.length > 0 && (
         <p className={s.err}>{tr('Мэдээлэл болон тооцооны анхааруулга')}: {st.res.failed.join(', ')}</p>
       )}
-      <p className={s.note}>
-        {tr('Самбарт замын тооцоолсон тэнхлэгийн уртыг хуучин, шинэ төлөвлөгөө болон нэмэгдсэн/буурсан хэмжээгээр харьцуулна. Газрын зурагт төлөвлөгөөний эх давхаргуудыг харьцуулна. Тэнхлэгийг бүтэн полигоноос тооцож, дараа нь хил болон бүсээр тайрна; торны нарийвчлал мөр бүрд харагдана. Автозам: хуучин ЕТ болон хэсэгчилсэн ЕТ-ийн бүтэн тэнхлэгийн урт. Дугуйн зам, явган зам: хуучин «Олон нийтийн бүс» доторх урттай шинэ төлөвлөгөөний бүтэн уртыг харьцуулна. Бүс: хуучин, шинэ бүх бүсийн тоо ба талбай. Объектын тоо, талбайг эх полигоноос тусад нь тооцно. Ногоон байгууламж: хуучин ЕТ болон хэсэгчилсэн ЕТ-ийн бүтэн талбайг харьцуулна.')}
-      </p>
     </>
   );
 }
@@ -219,8 +205,10 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
 function BoundarySplit({ inside, total }: { inside: number; total: number }) {
   const outside = Math.max(0, total - inside);
   return (
-    <small className={c.split}>
-      {tr('Хил дотор {0}', fmtLen(inside))} · {tr('Хилээс гадуур {0}', fmtLen(outside))}
-    </small>
+    /* ⚠️ 2026-10-14 (хэрэглэгч: «2 row bullets харуул») — «·»-ээр нэг мөрөнд биш, тусдаа 2 мөр */
+    <ul className={c.split}>
+      <li>{tr('Хил дотор {0}', fmtLen(inside))}</li>
+      <li>{tr('Хилээс гадуур {0}', fmtLen(outside))}</li>
+    </ul>
   );
 }

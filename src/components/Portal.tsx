@@ -178,7 +178,13 @@ const DETAIL_NEXT_LAYERS: string[] = ['rd:2', ...OVERLAP_CATS.flatMap((c) => c.n
  * болон барилга харагдаж байх»). Урьд нь план 2D-ийн бүх 14 давхарга байв.
  */
 /* + хуучин ЕТ-ийн «Автозам» (`sb:2`, 2026-10-14 хэрэглэгч: «бүс ба барилга + зам») */
-const OLD_ET_LAYERS: string[] = [ZONE_LAYER.id, BUILT_LAYER.id, 'sb:2'];
+/**
+ * + дугуйн зам (`sb:15`) · явган хүний зам (`et:27`) · ногоон байгууламж (`sb:1`) — давхаргын цэсэнд
+ * АНХДАГЧААР УНТРААЛТТАЙ (`OLD_ET_OPTIONAL` → `detailHidden`-ийн анхны утга), чагтлахад асна
+ * (2026-10-14, хэрэглэгч: «check буюу асаагаад map дээр харж болохоор оруул, чагтлаагүй байдлаар»).
+ */
+const OLD_ET_OPTIONAL: string[] = ['sb:15', 'et:27', 'sb:1'];
+const OLD_ET_LAYERS: string[] = [ZONE_LAYER.id, BUILT_LAYER.id, 'sb:2', ...OLD_ET_OPTIONAL];
 /**
  * 01 «Өөрчлөлт» — SWIPE: ЗҮҮН нь 13-р ЕТ-ийн зураг, БАРУУН нь шинэ хэсэгчилсэн ЕТ (хэрэглэгч: «харьцуулах
  * хэсэг нь 13 дээр байгаа ерөнхий төлөвлөгөөний map»). Мөр сонгоход ИЖИЛ СЭДВИЙН хоёр давхарга
@@ -556,7 +562,7 @@ function PortalContent(
    * «Detail»-ийн давхаргын товчоор (`DetailLayerMenu`) УНТРААСАН давхаргууд (2026-10-13).
    * ⚠️ Хасагдсан жагсаалт (асаалттай биш) — анхдагч нь бүгд асаалттай.
    */
-  const [detailHidden, setDetailHidden] = useState<string[]>([]);
+  const [detailHidden, setDetailHidden] = useState<string[]>(OLD_ET_OPTIONAL);
   const needExistingIds = useMemo(() => needSelection.type
     ? needSelection.ready ? infraIdsOfType(needSelection.type).filter((id) => DED_BUTETS_LAYER_IDS.includes(id)) : []
     : DED_BUTETS_LAYER_IDS, [needSelection.type, needSelection.ready]);
@@ -564,7 +570,9 @@ function PortalContent(
     tab: hesegTab, compare: hesegSwipe,
     partial: DETAIL_NEXT_LAYERS, previous: OLD_ET_LAYERS,
     change: hesegPick, overlapActive: !!overlapSel || overlapShown.length > 0,
-    needActive: !!needSelection.type || !!needSelection.zone || needSelection.priorityOnly, hidden: detailHidden,
+    needActive: !!needSelection.type || !!needSelection.zone || needSelection.priorityOnly,
+    /* ⚠️ Сэдэв сонгосон бол тэр сэдвийн хуучин давхаргыг (жиш. дугуйн зам) анхдагч `OLD_ET_OPTIONAL` нуулт ДАРАХГҮЙ */
+    hidden: hesegPick ? detailHidden.filter((id) => !(OLD_ET_OPTIONAL.includes(id) && hesegPick.oldLayers.includes(id))) : detailHidden,
     existing: needExistingIds,
   }), [detailHidden, hesegTab, hesegSwipe, hesegPick, overlapShown, overlapSel, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
   const detailFilters = useMemo<readonly MapLayerFilter[] | undefined>(() => {
