@@ -882,7 +882,7 @@ export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, Neg
                   {vis.map((col) => {
                     const k = col.key;
                     if (k === 'name') {
-                      /* ⚠️ «+/−» тэмдэг ХАСАГДСАН (2026-09-25) — бүлгийг НЭР
+                      /* ⚠️ «+/−» нэрнээс ХАСАГДСАН (2026-09-25; 2026-10-14-өөс Д/Д-ийн ард) — бүлгийг НЭР
                          дээр нь дарж нээж/хаана, эсвэл 1–5 товчоор. */
                       return (
                         <td
@@ -893,6 +893,27 @@ export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, Neg
                           aria-expanded={isGroup ? !closed.has(r.oid) : undefined}
                         >
                           {r.name}
+                        </td>
+                      );
+                    }
+                    /* ⚠️ 2026-10-14 (хэрэглэгч: «1-7 тооны ард + оруул, дараад түвшнээрээ задалдаг бай»):
+                       Д/Д-ийн ард «+/−» товч БУЦААЖ нэмэгдэв — 2026-09-25-нд хассан ч хэрэглэгч шууд хүссэн.
+                       Нэр дээр дарж нээх зам ХЭВЭЭР; товч нь нэг шат л нээнэ/хаана (`toggle`). */
+                    if (k === 'code' && isGroup) {
+                      const isOpen = !closed.has(r.oid);
+                      return (
+                        <td key={k} className={`${fzc(k)} ${n.code}`} style={sty(k)}>
+                          {r.code}
+                          <button
+                            type="button"
+                            className={n.tog}
+                            onClick={() => toggle(r.oid)}
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? tr('Хураах') : tr('Задлах')}
+                            title={isOpen ? tr('Хураах') : tr('Задлах')}
+                          >
+                            {isOpen ? '−' : '+'}
+                          </button>
                         </td>
                       );
                     }
