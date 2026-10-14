@@ -7203,12 +7203,6 @@ const en: Record<string, string> = {
   "Нэгтгэл гүйцэтгэл (Excel)": "Consolidated progress (Excel)",
   "01. Гүйцэтгэл — батлагдсан биет хувь (блокуудаар)": "01. Progress — approved physical % (by block)",
   "Доод мөрүүдээс (жингээр) — системийн гүйцэтгэлтэй": "From child rows (weighted) — with system progress",
-  "Гэрээ/Хавсралт 5 · Төлөвлөгөөт эхлэх": "Contract/Annex 5 · Planned start",
-  "Гэрээ/Хавсралт 5 · Төлөвлөгөөт дуусах": "Contract/Annex 5 · Planned finish",
-  "Гүйцэтгэгч · Төлөвлөгөөт эхлэх": "Contractor · Planned start",
-  "Гүйцэтгэгч · Төлөвлөгөөт дуусах": "Contractor · Planned finish",
-  "ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит эхлэх": "Housing/land clearance/legal dispute/height impact · Actual start",
-  "ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит дуусах": "Housing/land clearance/legal dispute/height impact · Actual finish",
   "Төлөвлөгөөт хувь Next week": "Planned % next week",
   "Төлөвлөгөөт хувь Өмнө долоо хоног": "Planned % previous week",
   "Төлөвлөгөө биелэлт Weekly": "Plan fulfilment weekly",
@@ -7220,6 +7214,11 @@ const en: Record<string, string> = {
   "Систем бодит гүйцэтгэлийг дэлгэцэнд нийлүүлнэ (хүснэгт рүү бичихгүй)": "The system merges actual progress on screen (does not write to the table)",
   "Excel-ээс нийтэлсэн хүснэгт — порталаас засахгүй": "Table published from Excel — not edited from the portal",
   "Мод нь Excel-ийн томьёоноос (negtgelTree.ts); хүснэгтийн мөр өөрчлөгдвөл тэр файлыг дахин үүсгэнэ.": "The tree comes from the Excel formulas (negtgelTree.ts); regenerate that file if the table rows change.",
+  "Гэрээ/Хавсралт 5": "Contract/Annex 5",
+  "ОСНАУГ/Газар чөлөөлөлт/ хуулийн маргаан/Өндөржилт нөлөөлөл": "Housing/land clearance/legal dispute/height impact",
+  "Бодит Эхлэх": "Actual start",
+  "Бодит дуусах": "Actual finish",
+  "ТӨСЛИЙН ГҮЙЦЭТГЭЛ": "PROJECT PROGRESS",
 };
 
 export default en;

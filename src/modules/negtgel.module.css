@@ -105,6 +105,47 @@
 }
 /* ⚠️ «Гүйцэтгэлийн хувь»-ийн ногоон толгой ХАСАГДСАН (2026-09-25, хэрэглэгчийн заавар) */
 
+/*
+ * ⚠️ 2026-10-14: ТОЛГОЙ EXCEL-ИЙН 2 · 4 · 5-Р МӨР ШИГ (хэрэглэгчийн заавар) — гарчиг (`thTitle`, B2:V2),
+ *    бүлгийн нэгтгэсэн нүд (`thGrp`, H4:I4 · J4:K4 · L4:M4), дэд толгой (`thSub`, 5-р мөр); бусад нүд 4–5-р
+ *    мөрийг босоогоор (`rowSpan=2`). Мөр бүрийн `top` нь JSX-ээс (`--nh0`, `--nh1` — хэмжсэн өндөр).
+ *    «ТӨСЛИЙН НИЙТ» мөр царцсан (`totalRow`, Excel ySplit=6) — `--nhh` = толгойн бүтэн өндөр.
+ */
+/* ⚠️ `.tbl` угтвартай — `.tbl th` (0,1,1)-ээс давамгай байх ёстой (эс бөгөөс 84px өргөн · голлолт дарна) */
+.tbl .thTitle {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  text-align: left;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  padding: 7px 10px;
+  /* ⚠️ Хүснэгт дэлгэцээс өргөн тул бичиг зүүн ирмэгтээ наалдана (нэг нүд хэвтээ sticky байж чадахгүй) */
+  background: #c9d8e8;
+}
+/* Гарчгийн бичиг — ХАРАГДАЖ БУЙ хэсгийн ГОЛД, хэвтээ гүйлгэхэд ХӨДӨЛГӨӨНГҮЙ (2026-10-14, хэрэглэгч: «голлуулаад
+   зүгээр хөдөлдөггүй болго»). Sticky `left: 50%` нь гүйлгэх хүрээний өргөнөөс бодогдож зүүн ирмэгийг голд
+   барина, `translateX(-50%)` нь бичгийг өөрийнх нь хагасаар буцааж яг голлуулна. */
+.thTitleTxt {
+  position: sticky;
+  left: 50%;
+  display: inline-block;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.tbl .thGrp {
+  z-index: 3;
+  font-weight: 700;
+}
+.tbl .thSub { font-weight: 600; }
+.tbl .totalRow td {
+  position: sticky;
+  top: var(--nhh, 0px);
+  z-index: 2;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+}
+.tbl .totalRow td.fz { z-index: 3; }
+
 .tbl td {
   padding: 4px 6px;
   background: var(--surface);

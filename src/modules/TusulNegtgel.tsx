@@ -36,16 +36,18 @@ import f from './finance.module.css';
 
 /** Гүн бүрийн нэмэлт догол (px) */
 const INDENT = 12;
-const indentOf = (depth: number) => Math.max(0, Math.min(depth, 5) - 1) * INDENT;
+/* ⚠️ 2026-10-14: 6-р түвшин хүртэл догол — Excel-ийн задаргаа 6 түвшинтэй (`LEVELS`-ийн ⚠️) */
+const indentOf = (depth: number) => Math.max(0, Math.min(depth, 6) - 1) * INDENT;
 /** ArcGIS огноо (ms) → «YYYY-MM-DD» — ⚠️ UTC өдөр (Excel-ээс 00:00Z-ээр хадгалагдсан) */
 const ymd = (ms: number | null | undefined) => (ms == null || !Number.isFinite(ms) ? '' : new Date(ms).toISOString().slice(0, 10));
 
 /**
- * Outline товчнууд — шинэ эх 6 түвшинтэй.
- * ⚠️ 5 ба 6 НЭГТГЭГДСЭН (2026-09-25, хэрэглэгчийн заавар): 6-р түвшин нь
- * ердөө 20 мөр (5.1.3.2-ын багцууд) нэмдэг. Сүүлийн товч = БҮХ түвшин.
+ * Outline товчнууд — Excel-ийн задаргаа 6 түвшинтэй.
+ * ⚠️ 2026-09-25: 5 ба 6 НЭГТГЭГДСЭН байв (хуучин хүснэгтэд 6-р түвшин ердөө 20 мөр).
+ * ⚠️ 2026-10-14 (хэрэглэгч: «түвшний задаргаа Excel дээр 6, манай систем дээр 5»): `Negtgel_guitsetgel_1013`-д
+ *    6-р түвшин 141 мөр (барилга угсралтын блок/ажил) — 6 товч, Excel-тэй ижил. Сүүлийн товч = БҮХ түвшин.
  */
-const LEVELS = [1, 2, 3, 4, 5];
+const LEVELS = [1, 2, 3, 4, 5, 6];
 const ALL_DEPTH = 99;
 const depthOf = (btn: number) => (btn === LEVELS[LEVELS.length - 1] ? ALL_DEPTH : btn);
 
@@ -103,23 +105,38 @@ type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject'
   | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
 
 /**
+ * ТОЛГОЙН БҮЛЭГ — Excel-ийн 4-р мөрөнд ХЭВТЭЭ нэгтгэсэн нүд (H4:I4 · J4:K4 · L4:M4), 5-р мөрөнд дэд толгой.
+ * ⚠️ 2026-10-14 (хэрэглэгч: «нэгтгэл гүйцэтгэл дээр харагдацыг Excel шиг болго — толгой хэсэг merge-тэй»):
+ *    бусад багана 4–5-р мөрийг БОСООГООР нэгтгэсэн (`rowSpan=2`). Бүлгийн нүд нь багана БИШ — сонгох/нуух/
+ *    өргөсгөх нь дэд толгой дээр; бүх дэд багана нуугдвал бүлэг ч алга болно.
+ */
+type GrpKey = 'ct' | 'ex' | 'act';
+const GROUPS: { key: GrpKey; label: () => string }[] = [
+  { key: 'ct', label: () => tr('Гэрээ/Хавсралт 5') },
+  { key: 'ex', label: () => tr('Гүйцэтгэгч') },
+  { key: 'act', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/ хуулийн маргаан/Өндөржилт нөлөөлөл') },
+];
+const GROUP = new Map(GROUPS.map((g) => [g.key, g]));
+
+/**
  * БАГАНУУД — эх Excel-ийн B…W дарааллаар (2026-10-13: огноо H…M, Q · R · W нэмэгдэв).
+ * ⚠️ `grp` — толгойн бүлэг (дээрх ⚠️); `label` нь Excel-ийн 5-р мөрийн ДЭД нэр, бүтэн нэр `fullLabel`.
  * ⚠️ Царцаалт нь хэрэглэгчийн сонголт (`ColPrefs.freeze`), анхдагч нь Excel-ийн A…G.
  * ⚠️ Нэр нь функц: хэл солиход дахин орчуулагдана.
  */
-const COLS: { key: ColKey; label: () => string; w: number }[] = [
+const COLS: { key: ColKey; label: () => string; w: number; grp?: GrpKey }[] = [
   { key: 'code', label: () => tr('Д/Д'), w: 92 },
   { key: 'bagts', label: () => tr('Багцын дугаар'), w: 104 },
   { key: 'name', label: () => tr('Ажлын нэр'), w: 320 },
   { key: 'budget', label: () => tr('Урьдчилсан төсөвт өртөг'), w: 140 },
   { key: 'inSection', label: () => tr('Хэсэгт эзлэх'), w: 104 },
   { key: 'inProject', label: () => tr('Төсөлд эзлэх хувь'), w: 130 },
-  { key: 'ctStart', label: () => tr('Гэрээ/Хавсралт 5 · Төлөвлөгөөт эхлэх'), w: 120 },
-  { key: 'ctEnd', label: () => tr('Гэрээ/Хавсралт 5 · Төлөвлөгөөт дуусах'), w: 120 },
-  { key: 'exStart', label: () => tr('Гүйцэтгэгч · Төлөвлөгөөт эхлэх'), w: 120 },
-  { key: 'exEnd', label: () => tr('Гүйцэтгэгч · Төлөвлөгөөт дуусах'), w: 120 },
-  { key: 'actStart', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит эхлэх'), w: 150 },
-  { key: 'actEnd', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл · Бодит дуусах'), w: 150 },
+  { key: 'ctStart', label: () => tr('Төлөвлөгөөт эхлэх'), w: 110, grp: 'ct' },
+  { key: 'ctEnd', label: () => tr('Төлөвлөгөөт дуусах'), w: 110, grp: 'ct' },
+  { key: 'exStart', label: () => tr('Төлөвлөгөөт эхлэх'), w: 110, grp: 'ex' },
+  { key: 'exEnd', label: () => tr('Төлөвлөгөөт дуусах'), w: 110, grp: 'ex' },
+  { key: 'actStart', label: () => tr('Бодит Эхлэх'), w: 110, grp: 'act' },
+  { key: 'actEnd', label: () => tr('Бодит дуусах'), w: 110, grp: 'act' },
   { key: 'planG', label: () => tr('Төлөвлөгөөт хувь Гэрээ Хавсралт 5'), w: 260 },
   { key: 'planGch', label: () => tr('Төлөвлөгөөт хувь Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан Хавсралт 5'), w: 220 },
   { key: 'planGu', label: () => tr('Төлөвлөгөөт хувь Гүйцэтгэгч'), w: 160 },
@@ -132,6 +149,11 @@ const COLS: { key: ColKey; label: () => string; w: number }[] = [
   { key: 'perfWk', label: () => tr('Төлөвлөгөө биелэлт Weekly'), w: 150 },
 ];
 const COL = new Map(COLS.map((c) => [c.key, c]));
+/** Бүтэн нэр — «Бүлэг · дэд» (цэсний толгой, title) */
+const fullLabel = (k: ColKey): string => {
+  const c = COL.get(k)!;
+  return c.grp ? `${GROUP.get(c.grp)!.label()} · ${c.label()}` : c.label();
+};
 /** ⚠️ «Ажлын нэр»-ийг нуухгүй — бүлгийг нээх/хаах нь тэр нүдэн дээр */
 const LOCKED: ColKey = 'name';
 const MIN_W = 40;
@@ -274,7 +296,12 @@ function SyncNotice({ live, failed, sync, onDone }: {
   );
 }
 
-function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> }) {
+/**
+ * ⚠️ 2026-10-14: экспорт — `TusulNegtgel.ui.check.mjs` хүснэгтийг өгөгдөлтэй нь шууд зурж толгойн бүтэц
+ *    (Excel-ийн нэгтгэсэн нүд) · 6 түвшин · нийт мөрийг шалгана (`TusulNegtgel` нь өгөгдлөө effect-ээр татдаг тул
+ *    серверийн render-д «ачаалж байна» л гарна).
+ */
+export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> }) {
   const { parent, kids } = useMemo(() => negtgelTree(rows), [rows]);
 
   /** Хураалттай бүлгүүд (oid) */
@@ -315,6 +342,31 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
   const WV = (k: ColKey) => `var(--nw-${k}, ${W(k)}px)`;
   const tblRef = useRef<HTMLTableElement | null>(null);
   const vis = COLS.filter((c) => !hidden.has(c.key));
+  /**
+   * ⚠️ 2026-10-14: ГУРВАН толгойн мөр (гарчиг · бүлэг · дэд) ба «ТӨСЛИЙН НИЙТ» мөр ЦАРЦСАН (Excel: freeze
+   *    ySplit=6). Мөр бүрийн `top` = дээрх мөрүүдийн нийлбэр өндөр — бичвэр мөр шилжих/өргөн өөрчлөгдөхөд
+   *    өндөр хувьсдаг тул `ResizeObserver`-оор хэмжиж хүснэгтийн CSS хувьсагч (`--nh0 · --nh1 · --nhh`)-д
+   *    өгнө; React state биш (мөр бүр дахин зурагдахгүй).
+   */
+  const hdRef = useRef<HTMLTableSectionElement | null>(null);
+  useLayoutEffect(() => {
+    const head = hdRef.current;
+    const tbl = tblRef.current;
+    if (!head || !tbl) return undefined;
+    const apply = () => {
+      const trs = Array.from(head.rows);
+      const h = (i: number) => trs[i]?.getBoundingClientRect().height ?? 0;
+      tbl.style.setProperty('--nh0', `${h(0)}px`);
+      tbl.style.setProperty('--nh1', `${h(0) + h(1)}px`);
+      tbl.style.setProperty('--nhh', `${head.getBoundingClientRect().height}px`);
+    };
+    const ro = new ResizeObserver(apply);
+    for (const trEl of Array.from(head.rows)) ro.observe(trEl);
+    ro.observe(head);
+    return () => ro.disconnect();
+  }, [vis.length]);
+  /** Харагдах бүлгүүд — дэд багануудаараа (хоосон бүлэг зурагдахгүй) */
+  const grpCols = GROUPS.map((g) => ({ g, cols: vis.filter((c) => c.grp === g.key) })).filter((x) => x.cols.length > 0);
 
   /**
    * ЦАРЦСАН БАГАНЫН `left` — ХАРАГДАЖ БУЙ царцсан баганууд, одоогийн өргөнөөр.
@@ -639,7 +691,7 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
               style={{ left: Math.max(8, Math.min(hMenu.x, window.innerWidth - 280)), top: Math.max(8, hMenu.y) }}
               onClick={(ev) => ev.stopPropagation()}
             >
-              <div className={f.thMenuHead}>{COL.get(k)!.label()}</div>
+              <div className={f.thMenuHead}>{fullLabel(k)}</div>
               <div className={f.thMenuCols}>
                 {keys.some((x) => x !== LOCKED) && (
                   <button type="button" onClick={() => { hideKeys(keys); setPick([]); close(); }}>
@@ -679,24 +731,73 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
 
       <div className={n.scroll}>
         <table className={n.tbl} ref={tblRef}>
-          {/* ⚠️ БАГАНА нь эх Excel-ийнхээр (B…N) — нэр, дараалал хөндөхгүй */}
-          <thead>
+          {/* ⚠️ БАГАНА нь эх Excel-ийнхээр (B…W) — нэр, дараалал хөндөхгүй.
+              ⚠️ 2026-10-14: толгой Excel-ийн 2 · 4 · 5-р мөр шиг — «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» гарчиг (B2:V2), бүлгийн
+                 нэгтгэсэн нүд (H4:I4 · J4:K4 · L4:M4), бусад багана 4–5-р мөрийг босоогоор (`GROUPS`-ийн ⚠️). */}
+          <thead ref={hdRef}>
             <tr>
-              {vis.map((c) => (
+              <th colSpan={vis.length} className={n.thTitle}><span className={n.thTitleTxt}>{tr('ТӨСЛИЙН ГҮЙЦЭТГЭЛ')}</span></th>
+            </tr>
+            <tr>
+              {vis.map((c) => {
+                if (c.grp) {
+                  /* Бүлгийн нүд — бүлгийн ЭХНИЙ харагдах дэд баганад; бусад нь алгасна */
+                  const gx = grpCols.find((x) => x.g.key === c.grp)!;
+                  if (gx.cols[0].key !== c.key) return null;
+                  const fzAll = gx.cols.every((x) => frozen.has(x.key));
+                  return (
+                    <th
+                      key={`grp-${c.grp}`}
+                      colSpan={gx.cols.length}
+                      className={`${n.thGrp} ${fzAll ? n.fz : ''} ${fzAll && gx.cols.some((x) => x.key === edge) ? n.fzEdge : ''}`}
+                      style={{ top: 'var(--nh0, 0px)', ...(fzAll ? { left: left[c.key] } : {}), width: sumW(gx.cols), minWidth: sumW(gx.cols), maxWidth: sumW(gx.cols) }}
+                    >
+                      {gx.g.label()}
+                    </th>
+                  );
+                }
+                return (
+                  <th
+                    key={c.key}
+                    rowSpan={2}
+                    className={`${fzc(c.key)} ${n.thSel} ${pick.includes(c.key) ? f.thPick : ''}`}
+                    style={{ ...sty(c.key), top: 'var(--nh0, 0px)' }}
+                    onClick={(ev) => clickTh(c.key, ev)}
+                    data-neg-col={c.key}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      setHMenu((m) => (m?.k === c.key ? null : { k: c.key, x: ev.clientX, y: ev.clientY }));
+                    }}
+                  >
+                    {c.label()}
+                    {/* Өргөсгөх бариул — чирнэ; давхар дарвал анхдагч.
+                        ⚠️ Товшилт нь толгойн СОНГОЛТ руу хүрэхгүй. */}
+                    <span
+                      className={n.rsz}
+                      onPointerDown={startResize(c.key)}
+                      onClick={(ev) => ev.stopPropagation()}
+                      onDoubleClick={() => resetW(c.key)}
+                      title={tr('Чирж өргөсгөнө · давхар дарвал анхдагч')}
+                    />
+                  </th>
+                );
+              })}
+            </tr>
+            <tr>
+              {vis.filter((c) => c.grp).map((c) => (
                 <th
                   key={c.key}
-                  className={`${fzc(c.key)} ${n.thSel} ${pick.includes(c.key) ? f.thPick : ''}`}
-                  style={sty(c.key)}
+                  className={`${fzc(c.key)} ${n.thSel} ${n.thSub} ${pick.includes(c.key) ? f.thPick : ''}`}
+                  style={{ ...sty(c.key), top: 'var(--nh1, 0px)' }}
                   onClick={(ev) => clickTh(c.key, ev)}
                   data-neg-col={c.key}
+                  title={fullLabel(c.key)}
                   onContextMenu={(ev) => {
                     ev.preventDefault();
                     setHMenu((m) => (m?.k === c.key ? null : { k: c.key, x: ev.clientX, y: ev.clientY }));
                   }}
                 >
                   {c.label()}
-                  {/* Өргөсгөх бариул — чирнэ; давхар дарвал анхдагч.
-                      ⚠️ Товшилт нь толгойн СОНГОЛТ руу хүрэхгүй. */}
                   <span
                     className={n.rsz}
                     onPointerDown={startResize(c.key)}
@@ -709,8 +810,8 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
             </tr>
           </thead>
           <tbody>
-            {/* ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — Excel-ийн 6-р мөр */}
-            <tr className={n.stage}>
+            {/* ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ — Excel-ийн 6-р мөр; ⚠️ 2026-10-14: ЦАРЦСАН (Excel ySplit=6), `--nhh` */}
+            <tr className={`${n.stage} ${n.totalRow}`}>
               {leadFz.length > 0 && (
                 <td
                   colSpan={leadFz.length}
