@@ -15,7 +15,6 @@ import { ChangeBoundary } from '@/components/ChangeBoundary';
 import { NeedPanel, NeedLayer, useNeedSelection, resetNeedSelection, NEED_COMPARE_LAYERS } from '@/components/HesegNeed';
 import { OVERLAP_CATS, infraIdsOfType, type OverlapCat } from '@/lib/planOverlap';
 import { hesegMapLayers } from '@/lib/hesegMap';
-import { PLAN2D_LAYERS } from '@/lib/plan2d';
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
@@ -173,8 +172,13 @@ const EMPTY_BADGES: NavBadges = {};
  */
 /** Шинэчлэгдсэн (`rd:*`, Redesign): бүс + `OVERLAP_CATS`-ийн шинэ давхаргууд */
 const DETAIL_NEXT_LAYERS: string[] = ['rd:2', ...OVERLAP_CATS.flatMap((c) => c.next)];
-/** Сонголтгүй үед Swipe-ийн зүүн тал: 13-р «Ерөнхий төлөвлөгөө» + асаалттай бүс. */
-const OLD_ET_LAYERS: string[] = [...PLAN2D_LAYERS.map((l) => l.id), ...PLAN_ALWAYS_ON_IDS, ZONE_LAYER.id];
+/**
+ * Сонголтгүй үед Swipe-ийн зүүн тал (хуучин ЕТ): ЗӨВХӨН бүс ба барилга — «Ерөнхий дашбоард»-ын зурагтай
+ * ИЖИЛ (`VIEW_BY_KEY.gdash` = `zone` · `et:24`; 2026-10-14, хэрэглэгч: «хуучин ЕТ харагдацыг зөвхөн zone
+ * болон барилга харагдаж байх»). Урьд нь план 2D-ийн бүх 14 давхарга байв.
+ */
+/* + хуучин ЕТ-ийн «Автозам» (`sb:2`, 2026-10-14 хэрэглэгч: «бүс ба барилга + зам») */
+const OLD_ET_LAYERS: string[] = [ZONE_LAYER.id, BUILT_LAYER.id, 'sb:2'];
 /**
  * 01 «Өөрчлөлт» — SWIPE: ЗҮҮН нь 13-р ЕТ-ийн зураг, БАРУУН нь шинэ хэсэгчилсэн ЕТ (хэрэглэгч: «харьцуулах
  * хэсэг нь 13 дээр байгаа ерөнхий төлөвлөгөөний map»). Мөр сонгоход ИЖИЛ СЭДВИЙН хоёр давхарга
@@ -182,7 +186,8 @@ const OLD_ET_LAYERS: string[] = [...PLAN2D_LAYERS.map((l) => l.id), ...PLAN_ALWA
  * ⚠️ Инженерийн шугам 01-д ХАРАГДАХГҮЙ («шугам сүлжээний мэдээлэл харуулахаа боль»).
  */
 const H01_SWIPE = {
-  leading: OLD_ET_LAYERS,
+  /* Сэдэв сонгоход харагдах хуучин давхаргууд (`OVERLAP_CATS.now`) ч ЗҮҮН талд таслагдана */
+  leading: [...new Set([...OLD_ET_LAYERS, ...OVERLAP_CATS.flatMap((c) => c.now)])],
   trailing: DETAIL_NEXT_LAYERS,
 };
 /** The selected intersections are isolated from the partial plan in compare mode. */

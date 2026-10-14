@@ -95,7 +95,8 @@ assert.deepEqual(changeMeasurementState({ sourceComplete: true, calculationCompl
 const item = CHANGE_ITEMS.find((x) => x.key === 'road');
 assert.deepEqual(item.now, ['sb:2']);
 assert.deepEqual(item.next, ['rd:0']);
-assert.equal(item.old, 'khil');
+/* 2026-10-14: автозам БҮТНЭЭР харьцуулна; «Сэлбэ 1 хил» нь зөвхөн дотор/гадуур ЗАДАРГАА (`boundary`) */
+assert.equal(item.old, 'all');
 assert.equal(CHANGE_ITEMS.find((x) => x.key === 'zone').old, 'all', 'All old zones participate in both count and area comparison');
 
 // Old green is the actual full masterplan polygon, never its clipped analysis variant or trees.

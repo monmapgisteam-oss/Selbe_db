@@ -4,6 +4,8 @@ import Query from '@arcgis/core/rest/support/Query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import Polyline from '@arcgis/core/geometry/Polyline';
+import * as projectOperator from '@arcgis/core/geometry/operators/projectOperator';
+import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneType } from '@/lib/services';
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
 
@@ -25,8 +27,12 @@ import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
  * ⚠️ Хэмжээ нь ГЕОДЕЗИЙН (3857 → `geodesicArea/Length`) — хоёр талыг ижил аргаар хэмжинэ
  *    (`Shape__Area` нь үйлчилгээ бүрийн проекцоос хамаарч зөрдөг).
  * ⚠️ 2026-10-13 (хэрэглэгч) ХАРЬЦУУЛАЛТ — «хуучин ЕТ» = порталын 13-р хэсэг «Ерөнхий төлөвлөгөө»:
- *    · Автозам — «Сэлбэ 1 хил» (`khil1`, хэрэглэгчийн зурган дээрх шар хүрээ) ДОТОРХ хуучин ↔ шинэ
- *      (ХОЁР талыг тайрна, `old: 'khil'`; 2026-10-13 «автозамын харьцуулалтыг дахин нягтал»);
+ *    · Автозам — хуучин ЕТ-ийн «Автозам» (TD/85) ↔ шинэ (Redesign/0), ХОЁУЛАА БҮТНЭЭР (`old: 'all'`).
+ *      ⚠️ 2026-10-14: урьд «Сэлбэ 1 хил»-ээр (`khil1`) тайрдаг байв — хилийн дагуух замын тэнхлэг хил
+ *      дээр/гадна орж тасарч, шинэ урт 20.74 км болж байв; хэрэглэгч бүтэн тэнхлэгийг (37.9 км) өөрөө
+ *      бодож шалгасан. Хэрэглэгчийн анхны заавар ч «хуучин ЕТ-ийн яг автозам гэсэн хэсэгтэй».
+ *      Харин «Сэлбэ 1 хил»-ээр ЗАДАЛНА (`boundary`): хил дотор · хилээс гадуур · нийт (хэрэглэгч: «зүгээр
+ *      хил дотор .. км, хилээс гадуур .. км, нийт .. км гэвэл илүү ойлгомжтой»).
  *    · Дугуйн зам · Явган зам — хуучин ЕТ-ийн «Олон нийтийн бүс» ДОТОРХ хэсэгтэй (`old: 'red'`);
  *    · Бүс — хуучин ба шинэ БҮХ бүсийн тоо, талбай;
  *    · Ногоон байгууламж — хуучин ЕТ-ийн БҮТЭН ногоон полигон (`sb:1`, TD/35) ↔ шинэ зургаан
@@ -41,7 +47,7 @@ type Metric = 'count' | 'len' | 'area';
 
 type OldScope = 'khil' | 'red' | 'all' | null;
 export const CHANGE_ITEMS: { key: ChangeKey; title: () => string; hue: string; metric: Metric; old: OldScope; now: string[]; next: string[] }[] = [
-  { key: 'road',  title: () => tr('Автозам'),           hue: '#64748b', metric: 'len',   old: 'khil', now: ['sb:2'],  next: ['rd:0'] },
+  { key: 'road',  title: () => tr('Автозам'),           hue: '#64748b', metric: 'len',   old: 'all',  now: ['sb:2'],  next: ['rd:0'] },
   { key: 'bike',  title: () => tr('Дугуйн зам'),        hue: '#2563eb', metric: 'len',   old: 'red', now: ['sb:15'], next: ['rd:18'] },
   { key: 'walk',  title: () => tr('Явган зам'),         hue: '#d97706', metric: 'len',   old: 'red', now: ['sb:3'],  next: ['rd:11'] },
   { key: 'green', title: () => tr('Ногоон байгууламж'), hue: '#16a34a', metric: 'area',  old: 'all', now: ['sb:1'],  next: ['rd:6', 'rd:7', 'rd:8', 'rd:9', 'rd:12', 'rd:13'] },
@@ -101,6 +107,11 @@ export type ChangeRow = {
   oldMeasurementAvailable: boolean; nextMeasurementAvailable: boolean;
   /** Actual coarsest raster cell in ground meters; length itself is geodesic. */
   centerlineResolutionM: number | null;
+  /**
+   * «Сэлбэ 1 хил» ДОТОРХ тэнхлэгийн урт (автозам) — гадуурх нь нийт − дотор. Хил татагдаагүй бол `null`.
+   * ⚠️ Хилийн дагуух замын тэнхлэг хил дээр/гадна байж болох тул «гадуур»-т орох нь хэвийн.
+   */
+  boundary: { oldIn: number | null; nextIn: number } | null;
 };
 export type ChangeResult = { rows: ChangeRow[]; failed: string[] };
 
@@ -164,7 +175,33 @@ const union = async (gs: Geom[]): Promise<Geom | null> =>
 
 /** The old registered road/roadOld services are simulation lines, not corresponding centerlines.
  * Derive all three road types from their supplied polygon layers by the same method. */
+/**
+ * ХУУЧИН ЕТ-ИЙН АВТОЗАМЫН УРТ — ХЭРЭГЛЭГЧИЙН ӨГСӨН ЛАВЛАХ ТОО (2026-10-14).
+ * ⚠️ TD/85 полигоноос raster skeleton-оор гаргахад жолоо, зогсоолын сам, дотор гарц бүрийн дагуу
+ *    салаа гарч «маш замбараагүй» (хэрэглэгч ArcGIS Pro дээр шалгав) — 38.7 км, салаа хайчлахад ч
+ *    найдваргүй. Хэрэглэгч ArcGIS Pro дээр өөрөө бодсон тоог ӨГСӨН: «миний өгсөн тоог тавь».
+ *    Хуучин талын автозамд тэнхлэг БОДОХГҮЙ. Хэрэглэгчийн Pro үр дүн: НИЙТ 24.19 км = «Сэлбэ 1 хил»
+ *    дотор 18.41 км + хилээс гадуур 5.78 км (2026-10-14; урьд 26.7 км гэж буруу ойлгосон байв).
+ *    Өгөгдөл шинэчлэгдвэл ЭНЭ ТООГ ГАРААР шинэчилнэ.
+ */
+const OLD_ROAD_REFERENCE_M = 24_190;
+/** Дээрхийн «Сэлбэ 1 хил» ДОТОРХ хэсэг (гадуур = нийт − дотор = 5.78 км) */
+const OLD_ROAD_REFERENCE_IN_M = 18_410;
+
+/**
+ * Тэнхлэгийг МЕТРИЙН UTM 48N (32648)-д бодно.
+ * ⚠️ 2026-10-14: ижил полигон (TD/85) Web Mercator-т 52.3 км, UTM-д 38.7 км гарсан — skeleton-ий
+ *    дотоод хязгаарууд координатын нэгжээс хамаардаг. Хэрэглэгчийн ArcGIS-тэй тулгах тоо UTM-ийнх тул
+ *    тэнд бодоод үр дүнг 3857 руу буцаана (дараагийн тайралт/геодезийн хэмжилт 3857-д).
+ */
+const UTM = new SpatialReference({ wkid: 32648 });
+const WM = new SpatialReference({ wkid: WKID });
+let projLoad: Promise<unknown> | null = null;
+const ensureProj = () => { projLoad ??= projectOperator.load().catch((e: unknown) => { projLoad = null; throw e; }); return projLoad; };
+
 async function centerlines(fs: Feat[]): Promise<{ features: Feat[]; resolutionM: number; complete: boolean }> {
+  await ensureProj().catch(() => null);
+  if (!projectOperator.isLoaded()) return { features: [], resolutionM: 0, complete: false };
   const byLayer = new Map<string, Feat[]>();
   for (const f of fs) (byLayer.get(f.layer) ?? byLayer.set(f.layer, []).get(f.layer)!).push(f);
   const features: Feat[] = [];
@@ -172,14 +209,15 @@ async function centerlines(fs: Feat[]): Promise<{ features: Feat[]; resolutionM:
   for (const [layer, source] of byLayer) {
     const polygon = await union(source.map((f) => f.geom));
     if (!polygon || polygon.type !== 'polygon') { complete = false; continue; }
-    // Web Mercator local scale: cos(latitude) = 1 / cosh(y / earth radius).
-    const groundScale = 1 / Math.cosh((polygon.extent?.center.y ?? 0) / 6378137);
-    const result = await polygonCenterlinesAsync((polygon as __esri.Polygon).rings, { resolution: 0.5 / groundScale, maxCells: 16_000_000 });
-    resolutionM = Math.max(resolutionM, result.resolution * groundScale);
+    const utm = projectOperator.execute(polygon, UTM) as __esri.Polygon | null | undefined;
+    if (!utm?.rings?.length) { complete = false; continue; }
+    const result = await polygonCenterlinesAsync(utm.rings, { resolution: 0.5, maxCells: 16_000_000 });
+    resolutionM = Math.max(resolutionM, result.resolution);
     if (!result.complete) complete = false;
     if (!result.paths.length) { complete = false; continue; }
-    const raw = new Polyline({ paths: result.paths, spatialReference: { wkid: WKID } });
-    const geom = await geometryEngineAsync.intersect(raw, polygon) as Geom | null;
+    const rawUtm = new Polyline({ paths: result.paths, spatialReference: UTM });
+    const clipped = await geometryEngineAsync.intersect(rawUtm, utm) as Geom | null;
+    const geom = clipped ? projectOperator.execute(clipped, WM) as Geom | null : null;
     if (!geom || geom.type !== 'polyline' || measure(geom, 'len') <= 0) { complete = false; continue; }
     features.push({ geom, zone: null, layer, oid: source[0].oid });
   }
@@ -242,12 +280,22 @@ export function computeChange(): Promise<ChangeResult> {
       const nextSource = it.old === 'khil' ? await inArea(nextF, 'area', khil) : nextF;
       let oldFs = oldSource, nextFs = nextSource, centerlineResolutionM: number | null = null;
       let oldLinesComplete = true, nextLinesComplete = true;
+      let boundary: ChangeRow['boundary'] = null;
+      /* Хуучин ЕТ-ийн автозам — хэрэглэгчийн лавлах тоо (`OLD_ROAD_REFERENCE_M`-ийн ⚠️), тэнхлэг бодохгүй */
+      const oldRef = it.key === 'road' ? OLD_ROAD_REFERENCE_M : null;
       if (it.metric === 'len') {
         // Compute BEFORE all geographic clipping; boundary cuts must not invent new centerline ends.
-        const [oldLines, nextLines] = await Promise.all([centerlines(nowF), centerlines(nextF)]);
+        const [oldLines, nextLines] = await Promise.all([
+          oldRef != null ? Promise.resolve({ features: [] as Feat[], resolutionM: 0, complete: true }) : centerlines(nowF),
+          centerlines(nextF),
+        ]);
         oldLinesComplete = oldLines.complete; nextLinesComplete = nextLines.complete;
         centerlineResolutionM = Math.max(oldLines.resolutionM, nextLines.resolutionM) || null;
-        oldFs = await inArea(oldLines.features, 'len', area);
+        oldFs = it.old === 'all' ? oldLines.features : await inArea(oldLines.features, 'len', area);
+        if (it.key === 'road' && khil && !failedIds.has(KHIL_ID)) {
+          const nIn = await inArea(nextLines.features, 'len', khil);
+          boundary = { oldIn: oldRef != null ? OLD_ROAD_REFERENCE_IN_M : null, nextIn: nIn.reduce((a, f) => a + measure(f.geom, 'len'), 0) };
+        }
         nextFs = it.old === 'khil' ? await inArea(nextLines.features, 'len', khil) : nextLines.features;
         if (!oldLinesComplete) failed.push(`${it.title()}: ${tr('хуучин тэнхлэг бүрэн тооцогдоогүй')}`);
         if (!nextLinesComplete) failed.push(`${it.title()}: ${tr('шинэ тэнхлэг бүрэн тооцогдоогүй')}`);
@@ -257,7 +305,9 @@ export function computeChange(): Promise<ChangeResult> {
         && (it.old === 'all' || (!failedIds.has(it.old === 'khil' ? KHIL_ID : ZONE_LAYER.id) && area !== null));
       const nextSourceComplete = !it.next.some((id) => failedIds.has(id))
         && (it.old !== 'khil' || (!failedIds.has(KHIL_ID) && khil !== null));
-      const oldMeasurement = changeMeasurementState({ sourceComplete: oldSourceComplete, calculationComplete: oldLinesComplete, sourceCount: oldSource.length, measurementCount: oldFs.length });
+      const oldMeasurement = oldRef != null
+        ? { available: oldSourceComplete, complete: oldSourceComplete }
+        : changeMeasurementState({ sourceComplete: oldSourceComplete, calculationComplete: oldLinesComplete, sourceCount: oldSource.length, measurementCount: oldFs.length });
       const nextMeasurement = changeMeasurementState({ sourceComplete: nextSourceComplete, calculationComplete: nextLinesComplete, sourceCount: nextSource.length, measurementCount: nextFs.length });
       const oldComplete = oldMeasurement.complete, nextComplete = nextMeasurement.complete;
       const filters: ChangeFilter[] = [
@@ -322,13 +372,13 @@ export function computeChange(): Promise<ChangeResult> {
       groups.sort((a, b) => b.value - a.value);
       /* ХУУЧИН/ШИНЭ харьцуулалт — дээрх ⚠️ */
       return {
-        key: it.key, next, nextCmp: next, old: oldMeasurement.available ? sum(oldFs) : null,
+        key: it.key, next, nextCmp: next, old: oldMeasurement.available ? oldRef ?? sum(oldFs) : null,
         oldN: oldSourceComplete ? oldSource.length : null, nextN: nextSource.length,
         oldLayersN: oldSourceComplete ? new Set(oldSource.map((f) => f.layer)).size : null,
         nextLayersN: new Set(nextSource.map((f) => f.layer)).size,
         oldArea: oldSourceComplete ? oldSource.reduce((a, f) => a + measure(f.geom, 'area'), 0) : null,
         nextArea: nextSource.reduce((a, f) => a + measure(f.geom, 'area'), 0),
-        oldComplete, nextComplete, oldSourceComplete, nextSourceComplete, oldScope: it.old, area, filters, pieces, groups, centerlineResolutionM,
+        oldComplete, nextComplete, oldSourceComplete, nextSourceComplete, oldScope: it.old, area, filters, pieces, groups, centerlineResolutionM, boundary,
         oldMeasurementAvailable: oldMeasurement.available, nextMeasurementAvailable: nextMeasurement.available,
       };
     }));

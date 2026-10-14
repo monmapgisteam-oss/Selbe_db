@@ -7,3 +7,6 @@
 .stats small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 0.6rem; line-height: 1.35; }
 .resolution { margin: 0; padding: 0 10px 8px; color: var(--ink-3); font-size: 0.62rem; }
 .formula { margin: 0 0 8px; color: var(--ink-3); font-size: 0.65rem; }
+
+/* «Сэлбэ 1 хил»-ээр задаргаа — хил дотор · гадуур · нийт (2026-10-14) */
+.split { display: block; margin-top: 2px; color: var(--ink-3); font-size: 0.64rem; line-height: 1.35; white-space: normal; }
