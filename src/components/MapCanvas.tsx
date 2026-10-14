@@ -18,7 +18,7 @@ import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import { createBimPicker, type BimPicker } from './bimPicker';
 import type Slide from '@arcgis/core/webscene/Slide';
 import { load3d, mods3d, loadTools3d, type ModsTools } from './lazy3d';
-import { applyView3d, getRender3d, manageBim, profileFor, useRender3d } from './render3d';
+import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from './render3d';
 import FeatureFilter from '@arcgis/core/layers/support/FeatureFilter';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
@@ -90,7 +90,7 @@ let bimHideCache: { sig: string; r: BimHide } | null = null;
 let bimHideFlight: { sig: string; p: Promise<BimHide> } | null = null;
 
 /**
- * Map-ын 58 BIM инстанц (`bimCache`) — Map-д БАЙГАА эсэхээс үл хамаарна (⚠️ 2026-10-04: «Хурдан»-д
+ * Map-ын BIM инстанц (`bimCache`, `BIM.layers` — 2026-10-14-өөс 97) — Map-д БАЙГАА эсэхээс үл хамаарна (⚠️ 2026-10-04: «Хурдан»-д
  * камерт ойр цөөн нь л Map-д байдаг — `manageBim`). 3D модуль ачаалагдаагүй бол хоосон.
  */
 function bimAll(map: Map): BuildingSceneLayer[] {
@@ -2246,6 +2246,8 @@ export const MapCanvas = memo(function MapCanvas({
    */
   /* ⚠️ 2026-10-04: 3D/BIM зураглалын горим «Хурдан»/«Нарийн» (`render3d.ts`-ийн ⚠️) — MapTools-ийн сонгогч */
   const r3 = useRender3d();
+  /* ⚠️ 2026-10-14: «Нарийн»-д ачаалах BIM багц (`render3d.BimPkgState`) */
+  const bimPkg = useBimPkg();
   /** «Хурдан»-д Map-д БАЙГАА BIM-ийн id (`manageBim`-ийн `onShown`) ба BIM-ийн доорх барилгын OID (`computeBimHide`) */
   const bimShownRef = useRef<ReadonlySet<string>>(new Set());
   const bimHideRef = useRef<BimHide | null>(null);
@@ -3671,8 +3673,12 @@ export const MapCanvas = memo(function MapCanvas({
     return manageBim({
       view: view as SceneView, map, all: layers, m: r3, archOn: true,
       onShown: (ids) => { bimShownRef.current = ids; footFilter(); },
+      /* ⚠️ 2026-10-14: «Нарийн» — сонгосон багц л (`render3d.BimPkgState`); «Хурдан»-д үл хамаарна */
+      pkg: bimPkg,
     });
-  }, [dim, ready, r3, footFilter]);
+    /* ⚠️ «Хурдан»-д багц хамаарахгүй — `bimPkg` солигдоход дахин ачаалахгүй */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dim, ready, r3, footFilter, r3 === 'fine' ? bimPkg : null]);
 
   /**
    * SceneView-ийн ЧАНАРЫН ТОХИРГОО — «Хурдан»/«Нарийн» (⚠️ 2026-10-04, `render3d.ts`). 3D ба BIM

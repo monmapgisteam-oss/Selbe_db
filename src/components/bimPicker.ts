@@ -22,6 +22,7 @@ import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import type BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import type SceneView from '@arcgis/core/views/SceneView';
 import { t as tr } from '@/lib/i18nCore';
+import { bimPkgOf, getBimPkg, getRender3d, setBimPkg } from './render3d';
 
 export type BimItem = { key: string; title: string; pkg: string };
 
@@ -113,17 +114,28 @@ export function createBimPicker(opts: {
     hint.style.display = layer ? 'none' : '';
     lastKey = layer && key ? key : null;
     if (!layer || !key) return;
+    /* ⚠️ 2026-10-14: «Нарийн»-д зөвхөн СОНГОСОН багцын BIM Map-д байдаг (`render3d.BimPkgState`) — өөр багцын
+       барилга сонговол тэр багц руу шилжинэ (эс бөгөөс сонгосон барилга харагдахгүй). Барилга руу ойртох нь
+       доор (багц руу биш). */
+    const kp = bimPkgOf(key);
+    if (getRender3d() === 'fine' && kp && kp !== getBimPkg().pkg) setBimPkg(kp);
     const node = document.createElement('div');
     host.append(node);
     const widget = new Explorer({ view, layers: [layer], container: node });
     cur = { key, layer, widget, node };
     /* Сонгосон барилга руу ойртоно — ачаалагдсаны дараа (extent бэлэн).
        ⚠️ Сешнээс СЭРГЭЭХЭД ойртохгүй (`fly=false`) — BIM руу орох бүрд камер үсрэхгүй. */
-    if (fly) layer.when(() => {
+    /* ⚠️ 2026-10-14 (хэрэглэгч: «жагсаалтаас дурын барилга сонгоход тухайн барилга руу map zoom-ин хийдэг болго»):
+       `when()` БИШ `load()` — `when()` давхаргыг ӨӨРӨӨ ачаалдаггүй тул Map-д нэмэгдээгүй («Хурдан»-ы төсвөөс гадуурх,
+       «Нарийн»-д өөр багцын) барилгад хэзээ ч биелэхгүй, ойртолт чимээгүй алга болж байв. Хүрээ нь 3857 + z;
+       камерын хазайлтыг хадгалж (≥45°) барилгыг дэлгэцэд багтаана. Алдааг консолд ИЛ (чимээгүй залгихгүй). */
+    if (fly) void layer.load().then(() => {
       if (disposed || cur?.key !== key || view.destroyed) return;
-      const target = layer.fullExtent ? layer.fullExtent.clone().expand(1.6) : layer;
-      view.goTo(target, { duration: 900 }).catch(() => {});
-    }).catch(() => {});
+      const ex = layer.fullExtent;
+      if (!ex) { console.warn('[bim] барилгын хүрээ алга — ойртсонгүй', key); return; }
+      view.goTo({ target: ex.clone().expand(1.8), tilt: Math.max(45, view.camera?.tilt ?? 60) }, { duration: 900 })
+        .catch((e: unknown) => { if ((e as { name?: string })?.name !== 'AbortError') console.warn('[bim] барилга руу ойртож чадсангүй', key, e); });
+    }).catch((e: unknown) => console.warn('[bim] барилга ачаалагдсангүй', key, e));
   };
 
   sel.addEventListener('change', () => select(sel.value || null));

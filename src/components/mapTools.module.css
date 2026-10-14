@@ -132,6 +132,18 @@
 .dimSep { align-self: stretch; width: 1px; margin: 3px 4px; background: var(--line); }
 .qGroup { display: flex; gap: 2px; }
 .qBtn { letter-spacing: 0; font-weight: 600; }
+/* ⚠️ 2026-10-14: «Нарийн»-ы BIM багц сонгогч — товчнуудтай нэг өндөр, нэг зурваст */
+.pkgSel {
+  margin-left: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
 
 /* ⚠️ `.sep` ХАСАГДСАН — 2D/3D/BIM сегмент зурвасаас гарч голд шилжсэн тул
    «панель нээгч» ба «горим сонгогч»-ийг ялгах зураас хэрэггүй болов. */
