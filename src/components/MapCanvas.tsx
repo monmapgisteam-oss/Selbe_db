@@ -1859,6 +1859,11 @@ export const MapCanvas = memo(function MapCanvas({
     width?: number;
     /** Цэгэн давхаргын диаметр (px) — `DOT_SCALE` ХЭРЭГЛЭГДЭХГҮЙ, шууд утга */
     size?: number;
+    /**
+     * ⚠️ 2026-10-14: АНГИЛЛААР-аар будах (Arcade `valueExpression`) — `hues`-д ОРООГҮЙ утга
+     * симболгүй тул ЗУРАГДАХГҮЙ (шүүлт ба өнгө нэг механизмаар; «Дэд бүтэц»-ийн төлөвийн шүүлтүүр).
+     */
+    classes?: { expression: string; hues: Record<string, string> };
   }>;
   /**
    * ПУЛЬСЛЭХ (анивчих) ДАВХАРГУУД — анхаарал татах ёстой цөөн объектод.
@@ -4849,14 +4854,23 @@ export const MapCanvas = memo(function MapCanvas({
           /* ⚠️ ГЕОМЕТРЭЭР салгана — дээрх `layerStyle`-ийн тэмдэглэлийг үзнэ.
              Давхаргын бүртгэл олдохгүй бол (webmap-аас ирсэн давхарга) хуучин
              зан төлөв буюу талбайн симбол хэвээр. */
-          const hue = ov.hue ?? d?.hue ?? '#0891b2';
-          fl.renderer = simple(
+          const symOf = (hue: string) => (
             d?.geom === 'point'
               ? dot(hue, ov.size ?? (d.size ?? 9) * DOT_SCALE, d.marker ?? 'circle')
               : d?.geom === 'line'
                 ? line(hue, ov.width ?? d.width ?? LINE_PX, d.dash ?? 'solid')
-                : fill(hue, ov.fill ?? 0.25, ov.width ?? 3),
-          ) as unknown as FeatureLayer['renderer'];
+                : fill(hue, ov.fill ?? 0.25, ov.width ?? 3));
+          if (ov.classes) {
+            /* ⚠️ `defaultSymbol` ЗОРИУДААР алга — `hues`-д ороогүй ангилал зурагдахгүй (шүүлт) */
+            fl.renderer = {
+              type: 'unique-value',
+              valueExpression: ov.classes.expression,
+              uniqueValueInfos: Object.entries(ov.classes.hues).map(([value, h]) => ({ value, symbol: symOf(h) })),
+            } as unknown as FeatureLayer['renderer'];
+          } else {
+            const hue = ov.hue ?? d?.hue ?? '#0891b2';
+            fl.renderer = simple(symOf(hue)) as unknown as FeatureLayer['renderer'];
+          }
         } else if (l.id in styleBackup.current) {
           fl.renderer = styleBackup.current[l.id] as FeatureLayer['renderer'];
           delete styleBackup.current[l.id];

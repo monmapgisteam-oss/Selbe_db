@@ -7209,6 +7209,16 @@ const en: Record<string, string> = {
   "Бодит Эхлэх": "Actual start",
   "Бодит дуусах": "Actual finish",
   "ТӨСЛИЙН ГҮЙЦЭТГЭЛ": "PROJECT PROGRESS",
+  "Мэдээллийн төлөв": "Data status",
+  "Шүүхгүй": "No filter",
+  "{0} давхаргад төлөвийн талбар алга": "{0} layers have no status field",
+  "{0} шүүлт": "{0} filters",
+  "Мэдээлэл бүрдүүлэлт": "Data completeness",
+  "Өөрчлөлт орсон эсэх": "Changed or not",
+  "Гүйцэтгэлийн төлөв": "Progress status",
+  "Сонгоно…": "Select…",
+  "{0} давхаргад өөрчлөлтийн талбар алга": "{0} layers have no change field",
+  "Төлөв ороогүй": "No status entered",
 };
 
 export default en;
