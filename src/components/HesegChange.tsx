@@ -85,11 +85,14 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                 <div>
                   <dt>{tr('Хуучин ЕТ')}</dt>
                   <dd>{r.oldMeasurementAvailable && r.old != null ? fmt(it.key, r.old) : '—'}</dd>
+                  {r.boundary?.oldIn != null && r.old != null && <BoundarySplit inside={r.boundary.oldIn} total={r.old} />}
+                  {it.key === 'road' && r.old != null && <small>{tr('ArcGIS Pro-гоор бодсон лавлах тоо')}</small>}
                   {r.oldSourceComplete && !r.oldComplete && <small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small>}
                 </div>
                 <div>
                   <dt>{tr('Хэсэгчилсэн ЕТ')}</dt>
                   <dd>{r.nextMeasurementAvailable ? fmt(it.key, r.nextCmp) : '—'}</dd>
+                  {r.boundary && r.nextMeasurementAvailable && <BoundarySplit inside={r.boundary.nextIn} total={r.nextCmp} />}
                   {r.nextSourceComplete && !r.nextComplete && <small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small>}
                 </div>
                 {showChange && <div>
@@ -158,10 +161,13 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     {r.oldScope === 'red' && <small>{tr('Хуучин: ОНБ · шинэ: бүтэн')}</small>}
                     {r.oldScope === 'khil' && <small>{tr('Сэлбэ 1 хил дотор')}</small>}
                     {r.oldScope === 'all' && <small>{it.key === 'zone' ? tr('Бүх бүс') : tr('Бүтэн төлөвлөгөө')}</small>}
+                    {r.boundary && <small>{tr('Сэлбэ 1 хилээр задалсан')}</small>}
                   </th>
                   {/* Хэмжээ + ОБЪЕКТЫН ТОО (хэрэглэгч: «тоо хэмжээний хамт харьцуулалт хий») */}
                   <td>
                     <div>{r.oldMeasurementAvailable && r.old != null ? fmt(it.key, r.old) : '—'}</div>
+                    {r.boundary?.oldIn != null && r.old != null && <BoundarySplit inside={r.boundary.oldIn} total={r.old} />}
+                  {it.key === 'road' && r.old != null && <small>{tr('ArcGIS Pro-гоор бодсон лавлах тоо')}</small>}
                     {r.oldSourceComplete && !r.oldComplete && <div><small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small></div>}
                     {r.oldN != null && <div><small>{tr('{0} объект', num(r.oldN))}</small></div>}
                     {r.oldLayersN != null && <div><small>{tr('{0} давхарга', num(r.oldLayersN))}</small></div>}
@@ -170,6 +176,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                   <td>
                     {r.nextSourceComplete ? <>
                       <div>{r.nextMeasurementAvailable ? fmt(it.key, r.nextCmp) : '—'}</div>
+                      {r.boundary && r.nextMeasurementAvailable && <BoundarySplit inside={r.boundary.nextIn} total={r.nextCmp} />}
                       {!r.nextComplete && <div><small>{tr('Тэнхлэгийн хэсэгчилсэн тооцоо')}</small></div>}
                       <div><small>{tr('{0} объект', num(r.nextN))}</small></div>
                       <div><small>{tr('{0} давхарга', num(r.nextLayersN))}</small></div>
@@ -198,8 +205,22 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
         <p className={s.err}>{tr('Мэдээлэл болон тооцооны анхааруулга')}: {st.res.failed.join(', ')}</p>
       )}
       <p className={s.note}>
-        {tr('Самбарт замын тооцоолсон тэнхлэгийн уртыг хуучин, шинэ төлөвлөгөө болон нэмэгдсэн/буурсан хэмжээгээр харьцуулна. Газрын зурагт төлөвлөгөөний эх давхаргуудыг харьцуулна. Тэнхлэгийг бүтэн полигоноос тооцож, дараа нь хил болон бүсээр тайрна; торны нарийвчлал мөр бүрд харагдана. Автозам: «Сэлбэ 1 хил» дотор хуучин, шинэ урт. Дугуйн зам, явган зам: хуучин «Олон нийтийн бүс» доторх урттай шинэ төлөвлөгөөний бүтэн уртыг харьцуулна. Бүс: хуучин, шинэ бүх бүсийн тоо ба талбай. Объектын тоо, талбайг эх полигоноос тусад нь тооцно. Ногоон байгууламж: хуучин ЕТ болон хэсэгчилсэн ЕТ-ийн бүтэн талбайг харьцуулна.')}
+        {tr('Самбарт замын тооцоолсон тэнхлэгийн уртыг хуучин, шинэ төлөвлөгөө болон нэмэгдсэн/буурсан хэмжээгээр харьцуулна. Газрын зурагт төлөвлөгөөний эх давхаргуудыг харьцуулна. Тэнхлэгийг бүтэн полигоноос тооцож, дараа нь хил болон бүсээр тайрна; торны нарийвчлал мөр бүрд харагдана. Автозам: хуучин ЕТ болон хэсэгчилсэн ЕТ-ийн бүтэн тэнхлэгийн урт. Дугуйн зам, явган зам: хуучин «Олон нийтийн бүс» доторх урттай шинэ төлөвлөгөөний бүтэн уртыг харьцуулна. Бүс: хуучин, шинэ бүх бүсийн тоо ба талбай. Объектын тоо, талбайг эх полигоноос тусад нь тооцно. Ногоон байгууламж: хуучин ЕТ болон хэсэгчилсэн ЕТ-ийн бүтэн талбайг харьцуулна.')}
       </p>
     </>
+  );
+}
+
+/**
+ * «Сэлбэ 1 хил»-ээр ЗАДАРГАА — хил дотор · хилээс гадуур (2026-10-14, хэрэглэгчийн заавар; «нийт» нь
+ * дээрх гол тоо тул давтахгүй — хэрэглэгч хасуулсан).
+ * ⚠️ Гадуур = нийт − дотор (тэнхлэгийг хилээр тайрсан урт; `lib/hesegChange.ts` §boundary).
+ */
+function BoundarySplit({ inside, total }: { inside: number; total: number }) {
+  const outside = Math.max(0, total - inside);
+  return (
+    <small className={c.split}>
+      {tr('Хил дотор {0}', fmtLen(inside))} · {tr('Хилээс гадуур {0}', fmtLen(outside))}
+    </small>
   );
 }
