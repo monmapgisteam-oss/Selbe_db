@@ -297,8 +297,8 @@ export function computeChange(): Promise<ChangeResult> {
           boundary = { oldIn: oldRef != null ? OLD_ROAD_REFERENCE_IN_M : null, nextIn: nIn.reduce((a, f) => a + measure(f.geom, 'len'), 0) };
         }
         nextFs = it.old === 'khil' ? await inArea(nextLines.features, 'len', khil) : nextLines.features;
-        if (!oldLinesComplete) failed.push(`${it.title()}: ${tr('хуучин тэнхлэг бүрэн тооцогдоогүй')}`);
-        if (!nextLinesComplete) failed.push(`${it.title()}: ${tr('шинэ тэнхлэг бүрэн тооцогдоогүй')}`);
+        /* ⚠️ 2026-10-14 (хэрэглэгч: «…тэнхлэг бүрэн тооцогдоогүй» анхааруулгыг хасуулсан) — самбарт
+           харуулахгүй; давхарга ачаалагдаагүй зэрэг бусад алдаа `failed`-д хэвээр */
       }
       const next = sum(nextFs);
       const oldSourceComplete = it.old !== null && !it.now.some((id) => failedIds.has(id))
