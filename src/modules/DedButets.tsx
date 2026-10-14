@@ -58,6 +58,7 @@ import { BUTETS_PACKS, PACK_OF_LAYER } from '@/lib/butetsPacks';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
+import { StatusBar, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
 import {
   applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
   saveGeometry,
@@ -864,6 +865,37 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const dotStyle = useMemo<Record<string, { size?: number }>>(() => ({}), []);
 
+  /**
+   * МЭДЭЭЛЛИЙН ТӨЛӨВИЙН ШҮҮЛТҮҮР (2026-10-14, `DedButetsStatus`) — «Мэдээлэл» (бөглөсөн/дутуу)
+   * ба «Өөрчлөлт» (өөрчлөгдсөн/ороогүй), «Төлөв» (дууссан/эхэлсэн … — давхаргын төлөвийн талбар).
+   * Өнгө нь СҮҮЛД сонгосон шүүлтүүрийн төлөвөөр.
+   * ⚠️ Зөвхөн засагдах давхаргууд (`PACK_OF_LAYER`) ангилагдана; бөглөх хэсэг хөндөгдөхгүй.
+   */
+  const [stFill, setStFill] = useState<StatusPick>('off');
+  const [stEdit, setStEdit] = useState<StatPick>('off');
+  const [stStat, setStStat] = useState<StatPick>('off');
+  const [stBy, setStBy] = useState<ColorBy>('fill');
+  /* ⚠️ 2026-10-14 (хэрэглэгч): газрын зургийн ХОЁР харагдац — false «Инженерийн» · true «Гүйцэтгэлээр» */
+  const [stPerf, setStPerf] = useState(false);
+  /* Шүүлтүүрийг унтраахад өнгө нь идэвхтэй үлдсэн өөр шүүлтүүрийнх рүү шилжинэ */
+  const recolor = useCallback((next: { fill: StatusPick; edit: StatPick; stat: StatPick }, by: ColorBy, v: string) => {
+    if (v !== 'off') { setStBy(by); return; }
+    setStBy((cur) => (cur !== by ? cur
+      : next.stat !== 'off' ? 'stat' : next.edit !== 'off' ? 'edit' : 'fill'));
+  }, []);
+  const onStFill = useCallback((v: StatusPick) => {
+    setStFill(v); recolor({ fill: v, edit: stEdit, stat: stStat }, 'fill', v);
+  }, [stEdit, stStat, recolor]);
+  const onStEdit = useCallback((v: StatPick) => {
+    setStEdit(v); recolor({ fill: stFill, edit: v, stat: stStat }, 'edit', v);
+  }, [stFill, stStat, recolor]);
+  const onStStat = useCallback((v: StatPick) => {
+    setStStat(v); recolor({ fill: stFill, edit: stEdit, stat: v }, 'stat', v);
+  }, [stFill, stEdit, recolor]);
+  const stIds = useMemo(() => mapVisible.filter((id) => id in PACK_OF_LAYER), [mapVisible]);
+  const st = useStatusClasses(stIds, stFill, stEdit, stStat, stBy, canEdit, stPerf);
+  const mapStyle = useMemo(() => (st.style ? { ...dotStyle, ...st.style } : dotStyle), [dotStyle, st.style]);
+
   /** Каталогийн багана — зөвхөн жагсаалт нээлттэй үед татна (Irged-тэй ижил) */
   /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг
      нуудаг (`allow`) атал нийлбэр нь БҮХ ~127 давхаргаас татагддаг байв —
@@ -1596,7 +1628,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             visible={mapVisible}
             opacity={opacity}
             zone={zone}
-            layerStyle={dotStyle}
+            layerStyle={mapStyle}
             uniform
             /* ⚠️ Зурах хэрэгсэл нь ЗӨВХӨН засварын горимд — эс бөгөөс ердийн
                үзэгч санамсаргүй дүрс зурж, «энэ юу вэ» гэсэн асуулт төрнө. */
@@ -2238,6 +2270,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 * болох байв. Зүүн талын KPI-ууд нь өөрсдийн `Data`-тай тул
                 * урт тооцоолол ТЭНД хэвээр.
                 */}
+              {/* ⚠️ 2026-10-14 (хэрэглэгч): мэдээллийн төлөвийн 3 шүүлтүүр «Дэд бүтэц» жагсаалтын ДЭЭР
+                  (урьд нь газрын зургийн доод зүүн буланд давхарлаж байв) */}
+              {canEdit && (
+                <StatusBar
+                  inline
+                  fill={stFill} edit={stEdit} stat={stStat} colorBy={stBy}
+                  onFill={onStFill} onEdit={onStEdit} onStat={onStStat}
+                  perf={stPerf} onPerf={setStPerf}
+                  statOptions={st.statOptions} chgOptions={st.chgOptions}
+                  noStat={st.noStat} noChg={st.noChg} pending={st.pending}
+                />
+              )}
               <Section
                 title={tr('Дэд бүтэц')}
                 note={tr('{0} багц · {1}', num(viewPacks.length), tr('зурагт харагдах давхарга'))}
