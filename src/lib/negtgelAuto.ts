@@ -488,55 +488,47 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
 }
 
 /**
- * ОРОН СУУЦНЫ БАГЦЫН БАРИЛГЫН ЗАДАРГАА — «Хэсэгт эзлэх» (F) ба «Гүйцэтгэл» (S) СИСТЕМЭЭС.
+ * ОРОН СУУЦНЫ БАГЦЫН БАРИЛГЫН ЗАДАРГАА — «Гүйцэтгэлийн хувь» (S) СИСТЕМЭЭС, «Хэсэгт эзлэх» (F) Excel-ийнх.
  *
  * ⚠️ 2026-10-14 (хэрэглэгч: «нэгтгэл гүйцэтгэл өөрөө өөрийгөө update хийнэ — 5.2.1-ээс доош задаргаа тус
- *    бүрийн Хэсэгт эзлэх, Гүйцэтгэлийн хувийг систем update хийнэ»). Excel V3-д барилгын мөрийн S нь ГАРААР
- *    хуулсан нэг тоо (Багц-1-ийн 20 барилга бүгд 25.72% — багцын хуучин дундаж), багцын мөр нь (28.23%) түүнээс
- *    бодогддоггүй тул доод мөрүүдийн нийлбэр эцэгтэйгээ таардаггүй байв.
+ *    бүрийн тоог систем update хийнэ»). Excel V3-д барилгын мөрийн S нь ГАРААР хуулсан нэг тоо (Багц-1-ийн 20
+ *    барилга бүгд 25.72% — багцын хуучин дундаж), багцын мөр нь (28.23%) түүнээс бодогддоггүй тул доод мөрүүдийн
+ *    нийлбэр эцэгтэйгээ таардаггүй байв.
+ * ⚠️ 2026-10-15 (хэрэглэгч: «Хэсэгт эзлэх хувь Excel-ийн утгаар явна, Excel дээр ямар томьёо байна тэр
+ *    ажиллана»): F нь Excel-ийн (блокийн төсөв ÷ багцын төсөв) — 10-14-ний «блокуудад тэнцүү жин» БУЦААГДАВ.
+ *    Тиймээс багцын мөр нь 01-ийн энгийн дунджаас (дашбоард 12) бага зэрэг ЗӨРНӨ — санаатай: нэгтгэл нь Excel-ийн
+ *    томьёогоор (төсвөөр жигнэж) бодно.
  *
- * ДҮРЭМ — 01-ийн багцын хувь (`blockProgress.pkgProgressOf`) нь хуваарийн блокуудын ЭНГИЙН ДУНДАЖ
- * (тайлагнаагүй блок 0%) тул:
- *   · Барилгын мөр (C багана «5/1» = `buildingKey`) → S = тэр блокийн батлагдсан `overall`, тайлагнаагүй бол 0;
- *     F = (1 − блок БУС мөрийн F) ÷ блокийн тоо (тэнцүү жин).
- *   · Блок БУС мөр (жиш. Багц-4.1 «Бүгд» газар шороо, 0.4%) — системд эх байхгүй → Excel-ийн F ба S ХЭВЭЭР.
- *   · Багцын мөр = Σ F × S (Excel-ийн томьёо) — блок бус мөргүй багцад 01-ийн багцын хувьтай ЯГ тэнцүү.
- * ⚠️ F нь төсвийн хувь БИШ болно (Excel: блокийн төсөв ÷ багцын төсөв) — системийн багцын хувь блокуудыг
- *    тэнцүү жигнэдэг тул төсвийн жингээр нийлүүлбэл багцын мөр 01-ээс (дашбоард 12) зөрнө.
- * ⚠️ Excel-ийн барилгын мөрүүд хуваарьтай БҮРЭН таарахгүй бол (дутуу/илүү блок, давхардал) `null` — тэр
- *    багцын задаргааг хөндөхгүй (буруу тэнцүү жин тавихаас Excel-ийн утга дээр).
+ * ДҮРЭМ:
+ *   · Барилгын мөр (C багана «5/1» = `buildingKey`) → S = тэр блокийн батлагдсан `overall`; хуваарьт байгаа ч
+ *     тайлагнаагүй бол 0 (01-ийн багцын дундажтай ижил дүрэм).
+ *   · Блокт таараагүй мөр (жиш. Багц-4.1 «Бүгд» газар шороо) — системд эх байхгүй → Excel-ийн S ХЭВЭЭР.
+ *   · Багцын мөр = Σ F × S (Excel-ийн томьёо, `computeNegAuto`-ийн 2-р алхам).
+ * ⚠️ Нэг ч мөр блокт таараагүй бол `null` — багцын мөр 01-ийн багцын хувиараа үлдэнэ.
  */
 function housingBreakdown(
   rows: NegRaw[], i: number, kids: number[][], src: NegSources, pk: string,
-): Array<{ k: number; w: number; act: number; how: string }> | null {
+): Array<{ k: number; act: number; how: string }> | null {
   const uni = src.blockUni?.get(pk);
   const blocks = src.blocks;
   if (!uni?.length || !blocks) return null;
   const want = new Set(uni);
-  const ch = kids[i].filter((k) => !rows[k].outside);
-  const keyOf = new Map(ch.map((k) => [k, buildingKey(rows[i].bagts, rows[k].bagts)] as const));
-  const isBlk = (k: number) => want.has(keyOf.get(k) ?? '');
-  const blk = ch.filter(isBlk);
-  const seen = new Set(blk.map((k) => keyOf.get(k)));
-  if (blk.length !== want.size || seen.size !== want.size) {
-    console.warn('[negtgel] барилгын мөр блокийн хуваарьтай таарсангүй — задаргаа Excel-ийн утгаар', rows[i].code, pk);
-    return null;
-  }
-  const rest = 1 - ch.filter((k) => !isBlk(k)).reduce((a, k) => a + (rows[k].w ?? 0), 0);
-  if (!(rest > 0)) return null;
-  const w = rest / blk.length;
-  return blk.map((k) => {
-    const c = blocks.get(keyOf.get(k) ?? '');
+  const out: Array<{ k: number; act: number; how: string }> = [];
+  for (const k of kids[i]) {
+    if (rows[k].outside) continue;
+    const key = buildingKey(rows[i].bagts, rows[k].bagts);
+    if (!want.has(key)) continue;
+    const c = blocks.get(key);
     const ok = c != null && Number.isFinite(c.overall);
-    return {
+    out.push({
       k,
-      w,
       act: ok ? c.overall : 0,
       how: ok
-        ? tr('01. Гүйцэтгэл — блокийн батлагдсан биет хувь; жин = багцын блокуудад тэнцүү')
-        : tr('01. Гүйцэтгэл — блок тайлагнаагүй (0%, багцын дундажтай ижил дүрэм); жин = багцын блокуудад тэнцүү'),
-    };
-  });
+        ? tr('01. Гүйцэтгэл — блокийн батлагдсан биет хувь')
+        : tr('01. Гүйцэтгэл — блок тайлагнаагүй (0%, багцын дундажтай ижил дүрэм)'),
+    });
+  }
+  return out.length ? out : null;
 }
 
 /**
@@ -547,14 +539,16 @@ function housingBreakdown(
  * 2. Утга нь ӨӨРЧЛӨГДСӨН мөрийн өвгүүд — Excel-ийн томьёо: Σ (хүүхдийн F × хүүхдийн S), `outside` хасна.
  *    Өөрчлөлтгүй салаа Excel-ийн утгаа ЯГ хадгална (толгойн ⚠️ — Excel-ийн мужийн алдаа).
  * 3. Гүйцэтгэл өөрчлөгдсөн мөрийн биелэлт: T/U/V/W = S ÷ N/O/P/R (0 бол 0; аль нэг нь хоосон бол хоосон).
- * 1б. Орон сууцны багцын барилгын мөрүүд (`housingBreakdown`) — F ба S системээс; багцын мөр нь тэгвэл
- *    ТОГТООГДОХГҮЙ, 2-р алхмаар Σ F × S болно (доод мөрийн нийлбэр эцэгтэйгээ таарна).
+ * 1б. Орон сууцны багцын барилгын мөрүүд (`housingBreakdown`) — S системээс (F Excel-ийнх); багцын мөр нь
+ *    тэгвэл ТОГТООГДОХГҮЙ, 2-р алхмаар Σ F × S болно (доод мөрийн нийлбэр эцэгтэйгээ таарна).
  */
 export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
   const { parent, kids } = treeOf(rows.map((r) => r.depth));
   const out: NegCalcRow[] = rows.map((r) => ({ ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)') }));
   const pinned = new Array<boolean>(rows.length).fill(false);
   const changed = new Array<boolean>(rows.length).fill(false);
+  /** Задаргаатай багцын мөр — хүүхдийн S өөрчлөгдөөгүй ч Σ F × S-ээр ЗААВАЛ дахин бодно (1б) */
+  const roll = new Array<boolean>(rows.length).fill(false);
 
   rows.forEach((_, i) => {
     const v = liveAct(rows, i, parent, src);
@@ -572,18 +566,13 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     const bd = v.pk ? housingBreakdown(rows, i, kids, src, v.pk) : null;
     if (!bd) return;
     pinned[i] = false;
+    roll[i] = true;
     for (const b of bd) {
       const c = out[b.k];
       const na = r6(b.act / 100);
-      /* ⚠️ жинг ДУГУЙЛАХГҮЙ — 1/26 г.м. дугуйлбал Σ F ≠ 1 болж багцын мөр 01-ээс зөрнө */
-      const nw: number | null = b.w;
       pinned[b.k] = true;
       c.auto = true;
       c.how = b.how;
-      if (nw != null && (c.w == null || Math.abs(nw - c.w) > 1e-9)) {
-        c.w = nw;
-        changed[b.k] = true;
-      }
       if (na != null && (c.act == null || Math.abs(na - c.act) > 1e-6)) {
         c.act = na;
         changed[b.k] = true;
@@ -597,13 +586,16 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     if (!c) return;
     for (let k = parent[i]; k >= 0; k = parent[k]) dirty[k] = true;
   });
+  roll.forEach((r, i) => {
+    if (!r) return;
+    for (let k = i; k >= 0; k = parent[k]) dirty[k] = true;
+  });
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     if (!dirty[i] || pinned[i]) continue;
     const use = kids[i].filter((k) => !rows[k].outside);
     if (!use.some((k) => out[k].act != null)) continue;
     /* ⚠️ Хоосон хүүхэд 0 — Excel-ийн SUMPRODUCT-тэй ижил; хуваагч Σw БИШ */
-    /* ⚠️ `out[k].w` — барилгын задаргаа жинг солино (`housingBreakdown`) */
-    const nv = r6(use.reduce((a, k) => a + (out[k].w ?? 0) * (out[k].act ?? 0), 0));
+    const nv = r6(use.reduce((a, k) => a + (rows[k].w ?? 0) * (out[k].act ?? 0), 0));
     const o = out[i];
     o.auto = true;
     o.how = tr('Доод мөрүүдээс (жингээр) — системийн гүйцэтгэлтэй');

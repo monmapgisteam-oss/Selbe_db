@@ -36,7 +36,7 @@ import {
 } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { register } from '@/lib/dataBus';
-import type { NegSyncState } from '@/lib/negtgelAuto';
+import type { NegRaw, NegSources, NegSyncState } from '@/lib/negtgelAuto';
 
 const F = TUSUL_NEGTGEL.fields;
 const CF = CASHFLOW_NEW.fields;
@@ -557,42 +557,20 @@ export type NegtgelFull = {
    *    тул кодоор угсарсан нөөц). `code` үед таб анхааруулна.
    */
   tree?: 'excel' | 'code';
+  /**
+   * ⚠️ 2026-10-15: ЗАСАХ · НИЙТЛЭХ (`negtgelEdit.ts`) — хүснэгтийн ХАДГАЛСАН мөрүүд (Excel-ийн загвар, 0–1) ба
+   *    системийн эх (`null` = унасан). Таб засварыг `applyNegEdits(stored)` → `computeNegAuto(…, src)` →
+   *    `negDisplay`-ээр дахин зурна.
+   */
+  stored: NegRaw[];
+  src: NegSources | null;
 };
 
 /**
- * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — СИСТЕМЭЭС БОДОЖ харуулна, хүснэгтийг ч шинэчилнэ
- * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
- *
- * ⚠️ ДЭЛГЭЦ нь БОДСОН утгыг харуулна — хүснэгт рүү бичих эрхгүй хэрэглэгч ч
- * одоогийн байдлыг харна. Бичилт (`syncNegtgel`) нь ард нь явна — ЗӨВХӨН
- * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
- * ⚠️ Эх сурвалж (бөглөх хуудас, газар) УНАВАЛ хүснэгтийн (Excel-ийн) утгыг харуулна — хоосон дэлгэц/0% биш.
- * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
- * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», ЗӨВХӨН уншина) —
- *    синк (`syncNegtgel`) `off` буцаана.
+ * Бодсон мөрүүд → табын мөр ба тооцоо (0–100). ⚠️ 2026-10-15: `loadNegtgelFullRaw`-оос гаргав — засварын
+ * загварыг (`TusulNegtgel`) ижил замаар зурна.
  */
-async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
-  const A = await import('@/lib/negtgelAuto');
-  const stored = await A.loadNegRaw();
-  let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
-  let sync: Promise<NegSyncState> | null = null;
-  let failed: string[] = [];
-  try {
-    const src = await A.loadNegSources();
-    failed = src.partial ?? [];
-    calcRows = A.computeNegAuto(stored, src);
-    /* ⚠️ Дэлгэцийн `calcRows`-ийг ДАМЖУУЛАХГҮЙ — синк өөрөө шинээр уншина */
-    sync = A.syncNegtgel();
-  } catch (e) {
-    console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
-    /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
-    failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
-  }
-  /* ⚠️ 2026-10-13: жин (F · G) ҮРГЭЛЖ Excel-ийн утгаар (хүснэгтийнх) — төсвөөс БОДОХГҮЙ (Excel V3-ийн F нь
-     зарим бүлэгт гараар өгөгдсөн, жиш. 2.1 = 0.666). Эх унасан үед утга ч Excel-ийнх. */
-  const use = calcRows ?? stored.map((r) => ({
-    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
-  }));
+export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: string }>): { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> } {
   const pc = (v: number | null) => (v == null ? null : v * 100);
   const rows: NegtgelRow[] = [];
   const calc = new Map<number, NegtgelCalc>();
@@ -612,7 +590,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
       planGuits: pc(r.planGu),
       perfGch: pc(r.perfGch),
       perfGuits: pc(r.perfGu),
-      auto: r.auto,
+      auto: r.auto ?? false,
       outside: r.outside,
       budget: r.budget,
       planNextWk: pc(r.planNw),
@@ -624,10 +602,49 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
       exEnd: r.exEnd ?? '',
       actStart: r.actStart ?? '',
       actEnd: r.actEnd ?? '',
-      how: r.how,
+      how: r.how ?? tr('Нэгтгэл гүйцэтгэл (Excel)'),
     });
   }
-  return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource() };
+  return { rows, calc };
+}
+
+/**
+ * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — СИСТЕМЭЭС БОДОЖ харуулна, хүснэгтийг ч шинэчилнэ
+ * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
+ *
+ * ⚠️ ДЭЛГЭЦ нь БОДСОН утгыг харуулна — хүснэгт рүү бичих эрхгүй хэрэглэгч ч
+ * одоогийн байдлыг харна. Бичилт (`syncNegtgel`) нь ард нь явна — ЗӨВХӨН
+ * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
+ * ⚠️ Эх сурвалж (бөглөх хуудас, газар) УНАВАЛ хүснэгтийн (Excel-ийн) утгыг харуулна — хоосон дэлгэц/0% биш.
+ * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
+ * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», ЗӨВХӨН уншина) —
+ *    синк (`syncNegtgel`) `off` буцаана.
+ */
+async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
+  const A = await import('@/lib/negtgelAuto');
+  const stored = await A.loadNegRaw();
+  let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
+  let sync: Promise<NegSyncState> | null = null;
+  let failed: string[] = [];
+  let src: NegSources | null = null;
+  try {
+    src = await A.loadNegSources();
+    failed = src.partial ?? [];
+    calcRows = A.computeNegAuto(stored, src);
+    /* ⚠️ Дэлгэцийн `calcRows`-ийг ДАМЖУУЛАХГҮЙ — синк өөрөө шинээр уншина */
+    sync = A.syncNegtgel();
+  } catch (e) {
+    console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
+    /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
+    failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
+  }
+  /* ⚠️ 2026-10-13: жин (F · G) ҮРГЭЛЖ Excel-ийн утгаар (хүснэгтийнх) — төсвөөс БОДОХГҮЙ (Excel V3-ийн F нь
+     зарим бүлэгт гараар өгөгдсөн, жиш. 2.1 = 0.666). Эх унасан үед утга ч Excel-ийнх. */
+  const use = calcRows ?? stored.map((r) => ({
+    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
+  }));
+  const { rows, calc } = negDisplay(use);
+  return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource(), stored, src: calcRows ? src : null };
 }
 
 /*
@@ -639,7 +656,8 @@ let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
 /* ⚠️ 2026-10-13: эх нь газар (`PARCEL_LEFT`) ба 01-ийн бөглөх хуудас (`BAGTS_SHEET` · `BUILDING`) — Cashflow ба
    хуваарийн муруй (`CASHFLOW_NEW` · `HUVAARI_OBYEM`) нэгтгэлийн эх БИШ болов (`negtgelAuto`-ийн толгой). */
-register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT']);
+/* ⚠️ 2026-10-15: 'TUSUL_NEGTGEL' — таб дээрх «Нийтлэх»-ийн дараа (`negtgelEdit.publishNegEdits`) */
+register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL']);
 
 /** ⚠️ «Системийн утгаар шинэчлэх» бичилтийн дараа — хүснэгтийг дахин уншуулна */
 export function dropNegtgelFull(): void {

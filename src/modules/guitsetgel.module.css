@@ -408,6 +408,28 @@
   color: var(--ink);
   font-weight: 600;
 }
+/* Ганц таб (урсгалын шатгүй super) — бичиг биш ТОВЧ (2026-10-15, `Guitsetgel`-ийн ⚠️) */
+.tabSolo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tabSolo:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.tabSoloOn {
+  color: var(--data);
+  border-color: var(--data);
+  background: color-mix(in srgb, var(--data) 18%, transparent);
+}
 /* Бөглөх хуудас — өөрийн гүйлгээтэй, үлдсэн өндрийг бүтнээр эзэлнэ */
 .fill { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 

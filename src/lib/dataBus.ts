@@ -59,7 +59,10 @@ export type DataKey =
      `huvaariObyem.HUVAARI_OBYEM` — `services.ts`-д экспорт байхгүй). `applyPlanEdits`
      бичсэний дараа хүчингүй болгоно — төлөвлөгөөт муруй (`planProgress`) уншина. Урьд нь
      зөвхөн обьём өөрчилсөн батлалтын дараа муруй/дашбоард TTL дуустал хуучин байв. */
-  | 'HUVAARI_OBYEM';
+  | 'HUVAARI_OBYEM'
+  /* ⚠️ 2026-10-15: НЭГТГЭЛ ГҮЙЦЭТГЭЛ (`Negtgel_guitsetgel_1013`) — табын «Нийтлэх»-ийн дараа
+     (`negtgelEdit.publishNegEdits`); `loadNegtgelFull` (таб · дашбоард · тайлан) хүчингүй болно. */
+  | 'TUSUL_NEGTGEL';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */

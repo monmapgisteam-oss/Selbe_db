@@ -22,14 +22,16 @@
  *    Өмнө долоо хоног) · Гүйцэтгэлийн хувь · Биелэлт ×4 (Гэрээ · Гэрээ ГЧ · Гүйцэтгэгч · Weekly). Мод нь
  *    Excel-ийн томьёоноос (`negtgelTree.ts`); хүснэгт таарахгүй бол кодоор угсарч ИЛ анхааруулна. Синк `off`.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { Data } from '@/components/ui';
 import { pct as fmtPct, num } from '@/lib/format';
-import { loadNegtgelFull, dropNegtgelFull, negtgelTree, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
-import { syncNegtgel, type NegSyncState } from '@/lib/negtgelAuto';
+import { loadNegtgelFull, dropNegtgelFull, negDisplay, negtgelTree, type NegtgelFull, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
+import { computeNegAuto, syncNegtgel, type NegRaw, type NegSyncState } from '@/lib/negtgelAuto';
+import { applyNegEdits, negDiffers, negEditable, negForm, publishNegEdits, type NegEditKey } from '@/lib/negtgelEdit';
+import { useAuth } from '@/components/AuthGate';
 import n from './negtgel.module.css';
 /* Баруун товшилтын цэс ба сонголтын тэмдэг — Санхүүжилтийн хүснэгттэй НЭГ загвар */
 import f from './finance.module.css';
@@ -212,10 +214,180 @@ export function TusulNegtgel() {
               {tr('Хүснэгтийн мөрүүд Excel-ийн модтой таарахгүй байна — модыг кодоор угсарлаа; эцэг-хүүхдийн холбоо Excel-ээс зөрж болно.')}
             </p>
           )}
-          <Tree rows={d.rows} calc={d.calc} />
+          <NegBody d={d} onReload={() => { dropNegtgelFull(); q.retry?.(); }} />
         </>
       )}
     </Data>
+  );
+}
+
+/* ═══════════════ ЗАСАХ · НИЙТЛЭХ (2026-10-15) ═══════════════
+ *
+ * ⚠️ Хэрэглэгч: «Cashflow шиг засах болон нийтлэх гэсэн хэсэг нэм, тэгээд тоог өөрчлөхөд томьёоны дагуу
+ *    тооцоолол гарна». Санхүүжилтийн урсгалтай ИЖИЛ: «Засах» → Excel-ийн ОРОЛТ нүд засагдана (НОГООН) →
+ *    томьёогоор шууд дахин бодогдоно (өөрчлөгдсөн томьёот нүд ЦЭНХЭР) → «Нийтлэх (n)» — НЭГ бичилтээр (`negtgelEdit.publishNegEdits`).
+ *    Аль нүд оролт, аль нь томьёо вэ — `negtgelEdit.negForm` (хадгалсан утгаас танина).
+ * ⚠️ Нийтлэхээс өмнө ЮУ Ч бичигдэхгүй; горимоос гарвал асууж байж хаяна.
+ * ⚠️ Эрх: таб өөрөө super-т л харагдана (`Guitsetgel`); товч ч мөн super-т, бичих функц дахин шалгана.
+ */
+
+/** Багана → засварын түлхүүр (огноо, биелэлт — засагдахгүй) */
+const EDIT_COL: Partial<Record<ColKey, NegEditKey>> = {
+  budget: 'budget', inSection: 'w', inProject: 'p',
+  planG: 'planG', planGch: 'planGch', planGu: 'planGu', planNw: 'planNw', planPw: 'planPw', act: 'act',
+};
+/** Багана → загварын талбар (томьёогоор өөрчлөгдсөнийг цэнхэрлэхэд) */
+const MODEL_COL: Partial<Record<ColKey, keyof NegRaw>> = {
+  ...EDIT_COL, perfG: 'perfG', perfGch: 'perfGch', perfGu: 'perfGu', perfWk: 'perfWk',
+};
+
+export type NegEditApi = {
+  /** Энэ нүд засагдах уу (Excel-ийн оролт) */
+  can: (oid: number, k: ColKey) => boolean;
+  /** Загварын утга — хувь 0–1, төсөв ₮ */
+  value: (oid: number, k: ColKey) => number | null;
+  /** Оруулсан бичвэрийг хэрэгжүүлнэ */
+  set: (oid: number, k: ColKey, text: string) => void;
+  /** Гараар зассан нүд */
+  edited: (oid: number, k: ColKey) => boolean;
+  /** Томьёогоор өөрчлөгдсөн нүд */
+  derived: (oid: number, k: ColKey) => boolean;
+};
+
+/** Бичвэр → утга: хувь «12,5» / «12.5%» → 0.125; төсөв «1 234 567» → 1234567; хоосон → null; буруу → undefined */
+const parseEdit = (text: string, budget: boolean): number | null | undefined => {
+  const t = text.trim().replace(/%$/, '').trim();
+  if (t === '') return null;
+  const x = Number(budget ? t.replace(/[\s,]/g, '') : t.replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(x)) return undefined;
+  return budget ? x : x / 100;
+};
+
+function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
+  const { role } = useAuth();
+  const canEdit = role === 'super';
+  const [edit, setEdit] = useState(false);
+  const [edits, setEdits] = useState<Map<number, Partial<Record<NegEditKey, number | null>>>>(() => new Map());
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const form = useMemo(() => negForm(d.stored), [d.stored]);
+  const at = useMemo(() => new Map(d.stored.map((r, i) => [r.oid, i])), [d.stored]);
+  const model = useMemo(() => (edits.size ? applyNegEdits(d.stored, form, edits) : d.stored), [d.stored, form, edits]);
+  /* Дэлгэц — засвартай бол загвар → системийн давхарга (`computeNegAuto`) → табын хэлбэр */
+  const view = useMemo(() => {
+    if (!edits.size) return { rows: d.rows, calc: d.calc };
+    return negDisplay(d.src ? computeNegAuto(model, d.src) : model);
+  }, [edits.size, d.rows, d.calc, d.src, model]);
+  const count = useMemo(() => [...edits.values()].reduce((a, e) => a + Object.keys(e).length, 0), [edits]);
+
+  const api = useMemo<NegEditApi>(() => ({
+    can: (oid, k) => {
+      const key = EDIT_COL[k];
+      const i = at.get(oid);
+      if (!key || i == null) return false;
+      /* ⚠️ Системийн гүйцэтгэлтэй мөрийн S — засаад ч дэлгэцэд харагдахгүй (`negtgelEdit`-ийн толгой) */
+      return negEditable(d.stored, form, i, key, d.calc.get(oid)?.auto === true);
+    },
+    value: (oid, k) => {
+      const key = MODEL_COL[k];
+      const i = at.get(oid);
+      return key == null || i == null ? null : (model[i][key] as number | null);
+    },
+    set: (oid, k, text) => {
+      const key = EDIT_COL[k];
+      const i = at.get(oid);
+      if (!key || i == null) return;
+      const budget = key === 'budget';
+      const v = parseEdit(text, budget);
+      if (v === undefined) { setMsg({ ok: false, text: tr('«{0}» тоо биш — засвар хэрэгжсэнгүй', text) }); return; }
+      setMsg(null);
+      setEdits((prev) => {
+        const next = new Map(prev);
+        const cur = { ...(next.get(oid) ?? {}) };
+        /* Анхны утга руугаа буцсан бол засвар биш */
+        if (negDiffers(v, d.stored[i][key] as number | null, budget)) cur[key] = v; else delete cur[key];
+        if (Object.keys(cur).length) next.set(oid, cur); else next.delete(oid);
+        return next;
+      });
+    },
+    edited: (oid, k) => {
+      const key = EDIT_COL[k];
+      return key != null && edits.get(oid)?.[key] !== undefined;
+    },
+    derived: (oid, k) => {
+      const key = MODEL_COL[k];
+      const i = at.get(oid);
+      if (!edits.size || key == null || i == null) return false;
+      return negDiffers(model[i][key] as number | null, d.stored[i][key] as number | null, key === 'budget');
+    },
+  }), [at, d.stored, d.calc, form, model, edits]);
+
+  const toggleEdit = () => {
+    if (edit && count > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар устах уу?', count))) return;
+    if (edit) setEdits(new Map());
+    setMsg(null);
+    setEdit((v) => !v);
+  };
+  const publish = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const n2 = await publishNegEdits(d.stored, model);
+      setEdits(new Map());
+      setEdit(false);
+      setMsg({ ok: true, text: tr('Нийтэллээ — {0} мөр хадгалагдсан', n2) });
+      onReload();
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toolbar = canEdit ? (
+    <span className={n.edBar}>
+      {edit && (
+        <button type="button" className={`${f.editBtn} ${f.pubBtn}`} disabled={!count || saving} onClick={() => { void publish(); }}>
+          {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', count)}
+        </button>
+      )}
+      <button type="button" className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`} disabled={saving} aria-pressed={edit} onClick={toggleEdit}>
+        {tr('Засах')}
+      </button>
+    </span>
+  ) : null;
+
+  return (
+    <>
+      {edit && (
+        <p className={n.syncNote} role="status">
+          {tr('Засах горим: тодруулсан нүд л засагдана (Excel-ийн томьёогүй нүд). Засварласан нүд НОГООН, томьёогоор дахин бодогдсон нүд ЦЭНХЭР. «Нийтлэх» дарах хүртэл хадгалагдахгүй.')}
+        </p>
+      )}
+      {msg && <p className={`${n.syncNote} ${msg.ok ? n.msgOk : n.msgErr}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
+      <Tree rows={view.rows} calc={view.calc} edit={edit ? api : undefined} toolbar={toolbar} />
+    </>
+  );
+}
+
+/** Засварын нүдний оролт — Enter/blur хэрэгжүүлнэ, Esc буцаана */
+function EditInput({ v, budget, onCommit }: { v: number | null; budget: boolean; onCommit: (text: string) => void }) {
+  const shown = v == null ? '' : budget ? String(Math.round(v)) : String(Number((v * 100).toFixed(4)));
+  return (
+    <input
+      key={shown}
+      className={n.edIn}
+      defaultValue={shown}
+      inputMode="decimal"
+      aria-label={tr('Утга засах')}
+      onBlur={(e) => { if (e.target.value !== shown) onCommit(e.target.value); }}
+      onKeyDown={(e) => {
+        const el = e.currentTarget;
+        if (e.key === 'Enter') el.blur();
+        if (e.key === 'Escape') { el.value = shown; el.blur(); }
+      }}
+    />
   );
 }
 
@@ -301,7 +473,14 @@ function SyncNotice({ live, failed, sync, onDone }: {
  *    (Excel-ийн нэгтгэсэн нүд) · 6 түвшин · нийт мөрийг шалгана (`TusulNegtgel` нь өгөгдлөө effect-ээр татдаг тул
  *    серверийн render-д «ачаалж байна» л гарна).
  */
-export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> }) {
+export function Tree({ rows, calc, edit, toolbar }: {
+  rows: NegtgelRow[];
+  calc: Map<number, NegtgelCalc>;
+  /** ⚠️ 2026-10-15: засах горим (`NegBody`) — өгөөгүй бол зөвхөн харна */
+  edit?: NegEditApi;
+  /** «Засах» · «Нийтлэх» товчнууд — хэрэгслийн мөрийн баруун талд */
+  toolbar?: ReactNode;
+}) {
   const { parent, kids } = useMemo(() => negtgelTree(rows), [rows]);
 
   /** Хураалттай бүлгүүд (oid) */
@@ -657,6 +836,7 @@ export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, Neg
         {/* ⚠️ «Царцаах» сонголт ба «Багана ▾» цэс ХАСАГДСАН (2026-09-25,
             хэрэглэгчийн заавар: «del») — нуух, царцаах, өргөн сэргээх нь
             толгойн БАРУУН ТОВШИЛТЫН цэснээс (Санхүүжилттэй ижил). */}
+        {toolbar}
       </div>
 
       {/* БАРУУН ТОВШИЛТЫН ЦЭС — `Finance.headMenu`-тэй ижил үйлдэл, ижил загвар */}
@@ -918,6 +1098,20 @@ export function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, Neg
                       );
                     }
                     const cls = k === 'code' || k === 'bagts' ? n.code : n.num;
+                    /* ⚠️ 2026-10-15: засах горим — оролт нүд нь input; томьёогоор өөрчлөгдсөн нүд цэнхэр */
+                    if (edit) {
+                      const mark = edit.edited(r.oid, k) ? f.cellDirty : edit.derived(r.oid, k) ? n.cellCalc : '';
+                      if (edit.can(r.oid, k)) {
+                        return (
+                          <td key={k} className={`${fzc(k)} ${cls} ${n.edCell} ${mark}`} style={sty(k)}>
+                            <EditInput v={edit.value(r.oid, k)} budget={k === 'budget'} onCommit={(t) => edit.set(r.oid, k, t)} />
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={k} className={`${fzc(k)} ${cls} ${mark}`} style={sty(k)}>{body(k)}</td>
+                      );
+                    }
                     return (
                       <td key={k} className={`${fzc(k)} ${cls}`} style={sty(k)}>{body(k)}</td>
                     );

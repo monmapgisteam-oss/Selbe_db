@@ -288,8 +288,8 @@ const xSrc = {
   assert.equal(by(4).auto, true, 'системийн эх тэмдэглэгдэнэ');
 }
 {
-  /* 2026-10-14: БАРИЛГЫН ЗАДАРГАА (`housingBreakdown`) — блокийн мөр F = (1 − блок бус F) ÷ N, S = блокийн
-     батлагдсан хувь (тайлагнаагүй 0); блок бус мөр Excel-ийнх; багцын мөр = Σ F × S. */
+  /* 2026-10-14/15: БАРИЛГЫН ЗАДАРГАА (`housingBreakdown`) — блокийн мөрийн S = блокийн батлагдсан хувь
+     (тайлагнаагүй 0), F нь Excel-ийнх; блокт таараагүй мөр Excel-ийнх; багцын мөр = Σ F × S. */
   const { buildingKey } = await import('./services.ts');
   const tree = [
     raw0({ oid: 1, depth: 1, name: 'Барилга угсралт', p: 1, act: 0.2 }),
@@ -312,7 +312,8 @@ const xSrc = {
   const out = A.computeNegAuto(tree, src);
   const by = (oid) => out.find((r) => r.oid === oid);
   const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m}: ${a} ≠ ${b}`);
-  near(by(5).w, 0.3, 'блокийн жин = (1 − 0.1) ÷ 3');
+  near(by(5).w, 0.2, 'блокийн жин — Excel-ийнх');
+  near(by(7).w, 0.4, 'блокийн жин — Excel-ийнх');
   near(by(5).act, 0.4, 'блокийн S — батлагдсан');
   near(by(6).act, 0.5, 'блокийн S — батлагдсан');
   near(by(7).act, 0, 'тайлагнаагүй блок 0 (багцын дундажтай ижил дүрэм)');
@@ -320,14 +321,17 @@ const xSrc = {
   near(by(8).w, 0.1, 'блок бус мөрийн F — Excel-ийнх');
   near(by(8).act, 0.5, 'блок бус мөрийн S — Excel-ийнх');
   assert.equal(by(8).auto, false);
-  near(by(4).act, 0.3 * 0.4 + 0.3 * 0.5 + 0.3 * 0 + 0.1 * 0.5, 'багцын мөр = Σ F × S');
+  near(by(4).act, 0.2 * 0.4 + 0.3 * 0.5 + 0.4 * 0 + 0.1 * 0.5, 'багцын мөр = Σ F × S (Excel-ийн F)');
   near(by(3).act, by(4).act, 'дээш нийлнэ');
-  /* Хуваарь таарахгүй (Excel-д нэг блок дутуу) → задаргаа хөндөгдөхгүй, багцын мөр 01-ийн утга */
-  const miss = A.computeNegAuto(tree.filter((r) => r.oid !== 7), src);
+  /* Нэг ч мөр блокт таараагүй → задаргаа хөндөгдөхгүй, багцын мөр 01-ийн утга */
+  const miss = A.computeNegAuto(tree, { ...src, blockUni: new Map([[pk, [buildingKey('Багц-1', '99/9')]]]) });
   const bm = (oid) => miss.find((r) => r.oid === oid);
   near(bm(4).act, 0.3, 'таарахгүй — багцын мөр 01-ийн утга');
   near(bm(5).act, 0.2, 'таарахгүй — барилгын мөр Excel-ийнх');
-  near(bm(5).w, 0.2, 'таарахгүй — жин Excel-ийнх');
+  /* Блокийн S Excel-тэй ИЖИЛ ч багцын мөр Σ F × S-ээр дахин бодогдоно */
+  const flat = tree.map((r) => (r.depth === 5 ? { ...r, act: r.oid === 5 ? 0.4 : r.oid === 6 ? 0.5 : r.oid === 7 ? 0 : r.act } : r));
+  const fb = (oid) => A.computeNegAuto(flat, src).find((r) => r.oid === oid);
+  near(fb(4).act, 0.2 * 0.4 + 0.3 * 0.5 + 0.1 * 0.5, 'хувиралгүй хүүхэдтэй ч багц = Σ F × S');
 }
 {
   /* «Талбайн бэлтгэл» (5.1.3) доторх багцын мөр — биет гүйцэтгэл БИШ, системийн утга ОРОХГҮЙ */

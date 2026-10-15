@@ -95,4 +95,25 @@ assert.ok(!html.includes('ТЭЗҮ ажил'), 'ТЭЗҮ хураалттай');
 assert.ok(html.includes('Бетон цутгалт'), '6-р түвшний мөр харагдана');
 console.log('✅ outside тайлбар · огноо');
 
+/* ── 6. ЗАСАХ ГОРИМ (2026-10-15) — оролт нүд input, зассан нүд НОГООН, томьёот өөрчлөлт ЦЭНХЭР; товч мөрөнд ── */
+{
+  const edit = {
+    can: (oid, k) => oid === 7 && k === 'act',
+    value: () => 0.5,
+    set: () => {},
+    edited: (oid, k) => oid === 7 && k === 'act',
+    derived: (oid, k) => oid === 6 && k === 'act',
+  };
+  const eh = renderToStaticMarkup(h(LocaleProvider, null, h(ThemeProvider, null,
+    h(Tree, { rows, calc, edit, toolbar: h('button', { id: 'pub' }, 'Нийтлэх (1)') }))));
+  const inputs = eh.match(/<input[^>]*class="edIn"[^>]*>/g) ?? [];
+  assert.equal(inputs.length, 1, 'зөвхөн засагдах нүд input');
+  assert.match(inputs[0], /value="50"/, 'хувь 0–100-гаар');
+  assert.match(eh, /class="[^"]*edCell cellDirty"/, 'зассан нүд — НОГООН');
+  assert.match(eh, /class="[^"]*num cellCalc"/, 'томьёогоор өөрчлөгдсөн — ЦЭНХЭР');
+  assert.ok(eh.indexOf('id="pub"') > eh.indexOf('class="levels"') && eh.indexOf('id="pub"') < eh.indexOf('<table'), 'товч хэрэгслийн мөрөнд');
+  assert.ok(!html.includes('class="edIn"'), 'засах горимгүй үед input байхгүй');
+  console.log('✅ засах горим: input · ногоон · цэнхэр · товч');
+}
+
 console.log('TusulNegtgel.ui: ok');

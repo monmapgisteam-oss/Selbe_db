@@ -1911,11 +1911,17 @@ export function Guitsetgel() {
           * томилгоог тооцсон ГАНЦ эх (`permissions.roleOf` → `useAuth`).
           * ⚠️ Нэвтрэлт унтраалттай (дев) үед ч харагдахгүй — «өөр тохиолдол».
           */}
+        {/* ⚠️ 2026-10-15 (хэрэглэгч: «manager_3-аар ороход нэгтгэл гүйцэтгэлийн товч сонин үг л харагдана,
+            товч болго»): урсгалын шатгүй super (`showFill` = false) хүнд энэ таб ГАНЦААРАА — сонгоогүй табын
+            хэлбэр нь хүрээгүй бичиг тул ТОВЧ (`tabSolo`) болгоно; дахин дарвал жагсаалт руу буцна (өөр таб алга). */}
         {isSuperRole && (
           <button
             type="button"
-            className={`${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`}
-            onClick={() => goTab('negtgel')}
+            className={showFill
+              ? `${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`
+              : `${s.tabSolo} ${tab === 'negtgel' ? s.tabSoloOn : ''}`}
+            aria-pressed={showFill ? undefined : tab === 'negtgel'}
+            onClick={() => goTab(!showFill && tab === 'negtgel' ? 'sent' : 'negtgel')}
           >
             {tr('Нэгтгэл гүйцэтгэл')}
           </button>
