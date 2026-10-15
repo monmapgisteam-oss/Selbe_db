@@ -73,6 +73,11 @@ export const ROLE_BY_USER: Record<string, Role> = {
   narandulam_monmap: "super",
   saruul_monmap: "super",
   maralgoo_monmap: "super",
+  /* ⚠️ 2026-10-15 (хэрэглэгчийн шийдвэр): панелийн super-ээс КОДЫН super болгов — панелийн
+     super нь зөвхөн харагдац нээдэг, засах эрх (`caps`) ба багцын хүрээ (`scope`) авдаггүй
+     тул «Дэд бүтэц»-ийн «Мэдээллийн төлөв» г.м. эрхээр хаалттай хэсгүүд дутуу харагддаг байв.
+     Одоо дээрх 7-той ЯГ ижил (`permissions.roleOf`-ийн 2026-10-06-ны ⚠️). */
+  manager_3: "super",
   selbe_et: "beginner",
   selbe_redesign: "tolovlolt",
   /*
