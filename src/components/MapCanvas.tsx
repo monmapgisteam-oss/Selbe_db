@@ -63,6 +63,7 @@ import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text, dateLocale } from '@/lib/format';
+import { registerMapView } from '@/lib/mapShots';
 import s from './map.module.css';
 
 /**
@@ -2482,6 +2483,8 @@ export const MapCanvas = memo(function MapCanvas({
             ui: { components: ['zoom', 'attribution'] },
           }));
     viewRef.current = view;
+    /* «Тайлан татах»-ын газрын зургийн агшин (`mapShots.ts`) */
+    registerMapView(view);
     /** Энэ эффектийн `view.ui`-д нэмсэн зүйлс — хадгалах (park) үед гараар хасна,
         эс бөгөөс дахин авсан view дээр товчнууд давхардана (`view.destroy()` л цэвэрлэдэг байв) */
     const ownUi: (__esri.Widget | HTMLElement)[] = [];

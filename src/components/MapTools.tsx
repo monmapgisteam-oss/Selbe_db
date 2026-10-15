@@ -47,7 +47,7 @@ export function ActiveFilterChip() {
     if (highlight.where || highlight.geometry) setHighlight(null);
   };
   return (
-    <div className={`${s.filterChip} mapFilterChip`} role="status" title={label}>
+    <div data-report-skip="" className={`${s.filterChip} mapFilterChip`} role="status" title={label}>
       <span className={s.filterChipText}>{label}</span>
       <button
         type="button"
@@ -260,7 +260,7 @@ export function MapTools({
     </button>
 
     {barOn && (
-    <div className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`} style={barStyle}>
+    <div data-report-skip="" className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`} style={barStyle}>
       {/* ⚠️ 2026-10-01: идэвхтэй шүүлт/тодруулга байвал ✕-тэй чип — ХАМГИЙН ДЭЭР */}
       <ActiveFilterChip />
       {onLayers && (
@@ -332,7 +332,7 @@ export function MapTools({
     </button>
 
     {dimsOn && (
-    <div className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
+    <div data-report-skip="" className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
       {dims.map((d) => (
         <button
           key={d}

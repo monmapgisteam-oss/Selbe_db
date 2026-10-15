@@ -7241,6 +7241,12 @@ const en: Record<string, string> = {
   "Цэг тавих": "Place point",
   "Нарийн байршилтай цэгийг баруун товшиж WGS84 эсвэл UTM 48N координатаар тавина — дараа нь тэр цэгээс үргэлжлүүлж зурна.": "For a precise location, right-click and place the point by WGS84 or UTM 48N coordinates — then continue drawing from that point.",
   "Координатаар цэг тавьж чадсангүй — зурагт товшиж тавина уу.": "Could not place the point by coordinates — click the map to place it.",
+  "Тайлан үүсгэхэд алдаа гарлаа: {0}": "Failed to build the report: {0}",
+  "«{0}» хэсгийн тайлан татах (Word)": "Download the “{0}” report (Word)",
+  "тайлан": "report",
+  "Шүүлтийн нөхцөл": "Filters",
+  "Шүүлтгүй — бүх өгөгдөл": "No filters — all data",
+  "Дэлгэц дээр тайланд орох мэдээлэл олдсонгүй.": "Nothing on screen to include in the report.",
 };
 
 export default en;
