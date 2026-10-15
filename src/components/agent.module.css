@@ -325,3 +325,35 @@
   line-height: 1.5;
   color: var(--ink-3);
 }
+
+/* ══════ Тайлан татах карт (```report) ══════
+   ⚠️ Сонгогч БҮР локал класстай — `:global`/`body` нь `next build`-ийг
+   «цэвэр биш» гэж унагаана (CLAUDE.md). */
+.report {
+  margin: 12px 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.reportTitle {
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+.reportBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.reportErr {
+  margin-top: 8px;
+  color: var(--bad-ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.reportErr span {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  word-break: break-word;
+}
