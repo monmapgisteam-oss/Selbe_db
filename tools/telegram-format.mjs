@@ -55,6 +55,10 @@ function stripCharts(lines) {
     /* ⚠️ 2026-10-15: ТАЙЛАНГИЙН БЛОК — порталд татах товч болж зурагддаг (`AgentReport.tsx`);
        Telegram-д файл үүсгэх зам байхгүй тул блокийг хасаад хаанаас татахыг нэг мөрөөр хэлнэ. */
     if (kind === 'report') { out.push(REPORT_HINT); buf = null; kind = null; return; }
+    /* ⚠️ 2026-10-15: ТӨЛӨВЛӨГӨӨГ ботод ХАРУУЛАХГҮЙ — порталд явцын карт болж
+       хэрэгтэй (хүлээж байхад харагдана), харин бот бүтэн хариултыг нэг дор
+       илгээдэг тул «юу хийх гэж байсан» нь зөвхөн чимээ болно. */
+    if (kind === 'plan') { buf = null; kind = null; return; }
     // Задлан шинжлэх нь бүтэхгүй бол ЧИМЭЭГҮЙ орхино — түүхий JSON гаргахгүй
     try {
       const note = JSON.parse(buf.join('\n'))?.note;
@@ -66,7 +70,7 @@ function stripCharts(lines) {
 
   for (const l of lines) {
     if (!buf) {
-      const m = /^\s*```\s*(chart|report)\s*$/i.exec(l);
+      const m = /^\s*```\s*(chart|report|plan)\s*$/i.exec(l);
       if (m) { buf = []; kind = m[1].toLowerCase(); continue; }
     }
     if (buf) {

@@ -34,7 +34,8 @@ const VERSION = '2023-06-01';
 
 const DEFAULTS = {
   MODEL: 'claude-opus-5',
-  EFFORT: 'low',
+  /* ⚠️ 2026-10-15: 'low' → 'medium' (`server.mjs`-ийн ⚠️-тэй ижил шалтгаан) */
+  EFFORT: 'medium',
   /**
    * ⚠️ Opus 5-д бодолт анхнаасаа асаалттай ба `max_tokens` нь бодолт + хариу
    * ХОЁУЛАНГ хамарна.

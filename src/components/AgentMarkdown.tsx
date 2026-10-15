@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import { isNumeric } from '@/lib/agent/format';
 import { parseBlocks, type MdBlock } from '@/lib/agent/blocks';
 import { AgentChart } from '@/components/AgentChart';
+import { AgentPlan } from '@/components/AgentPlan';
 import { AgentReport } from '@/components/AgentReport';
 import s from '@/components/agent.module.css';
 
@@ -49,6 +50,11 @@ function inline(text: string, key: string): ReactNode[] {
 /** Нэг блокийг зурна — дараалал нь `parseBlocks`-ийнхтэй ижил */
 function block(b: MdBlock, k: number, source: string): ReactNode {
   if (b.kind === 'chart') return <AgentChart key={`ch${k}`} raw={b.raw} />;
+
+  /* ⚠️ Төлөвлөгөө нь ихэвчлэн хэрэгсэл дуудах эргэлтэд ирдэг (`AgentChat`-ийн
+     тусдаа карт). Хэрэв эцсийн хариултад ч орвол түүхий JSON/жагсаалт
+     харуулахгүй, ижил картаар зурна. */
+  if (b.kind === 'plan') return <AgentPlan key={`pl${k}`} raw={b.raw} />;
 
   /* ⚠️ Татах товчинд ХАРИУЛТ БҮХЭЛДЭЭ хэрэгтэй (файлын агуулга нь хариулт өөрөө) */
   if (b.kind === 'report') return <AgentReport key={`rp${k}`} raw={b.raw} source={source} />;

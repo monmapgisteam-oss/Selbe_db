@@ -357,3 +357,47 @@
   font-size: 11.5px;
   word-break: break-word;
 }
+
+/* ══════════ Ажлын төлөвлөгөө (```plan) ══════════
+   ⚠️ Сонгогч БҮР локал класстай (cssModulePurity). */
+.plan {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sunken);
+}
+.planTitle {
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.planList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.planList li {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.planMark {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  color: var(--ink-3);
+}
+.planDone { color: var(--ink-2); }
+.planDone .planMark { color: var(--good, var(--hue)); }
+/* Одоо явагдаж буй алхам — үлдсэнээс тод */
+.planNow { color: var(--ink); font-weight: 500; }
+.planNow .planMark { color: var(--hue); animation: pulse 1.4s ease-in-out infinite; }

@@ -411,11 +411,19 @@ export async function ask(opts: {
   history: ApiMessage[];
   scope: AgentScope;
   onProgress?: (label: string) => void;
+  /**
+   * ⚠️ 2026-10-15 (төлөвлөгөө): хэрэгсэл дуудаж буй эргэлтийн ТЕКСТ — агентын
+   * ажлын төлөвлөгөө. НЭГ УДАА (эхний удаад) дуудагдана; нэмэлт эргэлт
+   * зарцуулахгүй тул хариулт удаашрахгүй.
+   */
+  onPlan?: (text: string) => void;
+  /** Хэрэгслийн нэг багц гүйцэтгэгдэж дуусахад — төлөвлөгөөний алхам ахина */
+  onStep?: () => void;
   signal?: AbortSignal;
   /** ⚠️ 2026-10-09: зөвхөн Telegram бот — `x-bot-user` толгой (`callRelay`-ийн ⚠️) */
   botUser?: string;
 }): Promise<AskResult> {
-  const { question, history, scope, onProgress, signal, botUser } = opts;
+  const { question, history, scope, onProgress, onPlan, onStep, signal, botUser } = opts;
 
   // ⚠️ Заавар нь бүртгэлээс ЯГ ОДОО тооцоологдоно — өмнөх хариултын хуучирсан
   //    хуулбар хэзээ ч хэрэглэгдэхгүй.
@@ -423,6 +431,8 @@ export async function ask(opts: {
 
   history.push({ role: 'user', content: question });
   onProgress?.(tr('Бодож байна…'));
+  /** Төлөвлөгөөг НЭГ удаа дамжуулна (дээрх `onPlan`-ийн ⚠️) */
+  let planned = false;
 
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
     const reply = await callRelay({ system, messages: history, tools: AGENT_TOOLS }, signal, botUser);
@@ -461,6 +471,12 @@ export async function ask(opts: {
 
     if (!calls.length) return { text, turns: turn };
 
+    /* ⚠️ 2026-10-15: ТӨЛӨВЛӨГӨӨ — хэрэгсэл дуудаж буй эргэлтийн текст. Зөвхөн
+       ЭХНИЙ удаад дамжуулна (дараагийн эргэлтийн тайлбар нь төлөвлөгөө биш,
+       явцын тэмдэглэл) — мөн хэрэглэгчээс зөвшөөрөл асуудаггүй тул гүйцэтгэл
+       тэр дороо үргэлжилнэ. */
+    if (text && !planned) { planned = true; onPlan?.(text); }
+
     onProgress?.(describeCall(calls[0].name, calls[0].input));
 
     /* ⚠️ 2026-09-29 (аудит 10): `signal` хэрэгслийн гүйцэтгэлд дамждаггүй — ✕/Esc/⟲ зөвхөн
@@ -486,6 +502,7 @@ export async function ask(opts: {
     // ⚠️ БҮХ үр дүн НЭГ мессежид орно. Салгавал загвар зэрэгцээ дуудлага
     //    хийхээ болино.
     history.push({ role: 'user', content: results as unknown as ContentBlock[] });
+    onStep?.();
     onProgress?.(tr('Хариултыг бэлдэж байна…'));
   }
 

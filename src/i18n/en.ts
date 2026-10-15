@@ -7365,6 +7365,27 @@ const en: Record<string, string> = {
   "⚠️ Энэ давхаргын бүсийн талбар нь `ZONE_ID` БИШ (каталогийн мөрд заасан нэрийг ашигла). ": "⚠️ This layer’s zone field is NOT `ZONE_ID` (use the name given in its catalogue line). ",
   "`sb:1` нь ижил сэдвийн өөр давхарга — хоёуланг нийлүүлбэл талбай давхардана.": "`sb:1` is a separate layer on the same topic — combining both double counts the area.",
   "⚠️ Энэ нь ТӨСЛИЙН БҮХ усан сан. Нэг багцын ажлын усан сан (жиш. «Багц 13 · 2000 м³») нь дэд бүтцийн тусдаа давхарга — хоёуланг нийлүүлбэл давхардана.": "⚠️ This holds ALL project reservoirs. A single package’s reservoir works (e.g. «Багц 13 · 2000 м³») are a separate infrastructure layer — combining both double counts.",
+
+  /* AI туслах: төлөвлөгөө ба өөрөө засах (2026-10-15) */
+  "## ТӨЛӨВЛӨГӨӨ — хэрэгсэл дуудахын ӨМНӨ": "## PLAN — BEFORE calling any tool",
+  "Өгөгдөл татах шаардлагатай асуултад ЭХНИЙ хариултдаа (хэрэгслийн дуудлагын ХАМТ, тусдаа эргэлт БИШ)": "For a question that needs data, in your FIRST reply (TOGETHER with the tool calls, NOT a separate turn)",
+  "ажлынхаа товч төлөвлөгөөг бич. Хэрэглэгч түүнийг шууд хараад буруу замыг зогсоох боломжтой болно:": "write a short plan of your work. The user sees it immediately and can stop a wrong approach:",
+  "1. Барилгын мэдээллээс төлвөөр тоолох": "1. Count buildings by status",
+  "2. Багц тус бүрээр задлах": "2. Break the result down by package",
+  "3. Үр дүнг хүснэгт болгон харуулах": "3. Present the result as a table",
+  "- 2–4 алхам; алхам бүр НЭГ мөр, үйл үгээр төгсөх, 60 тэмдэгтээс богино.": "- 2–4 steps; each one line, ending in a verb, under 60 characters.",
+  "- Техникийн нэр (давхаргын id, талбарын нэр, SQL) БИЧИХГҮЙ — хүний үгээр.": "- NO technical names (layer ids, field names, SQL) — use plain words.",
+  "- НЭГ дуудлагаар шийдэгдэх энгийн асуултад төлөвлөгөө ХЭРЭГГҮЙ.": "- A simple question answered by ONE call needs NO plan.",
+  "- Төлөвлөгөөг эцсийн хариултдаа ДАХИН бичихгүй — тэр нь тусдаа харагдана.": "- Do NOT repeat the plan in the final answer — it is displayed separately.",
+  "- Явцад шинэ зүйл илэрвэл (талбар алга, өгөгдөл хоосон) төлөвлөгөөгөө ӨӨРЧИЛЖ болно —": "- You may change the plan mid-way if something new appears (missing field, empty data) —",
+  "  гэхдээ эцсийн хариултад юу хийснээ л бич, уучлалт гуйхгүй.": "  but in the final answer state only what you did, with no apologies.",
+  "## ӨӨРӨӨ ЗАСАХ — алдаа гарвал": "## SELF-REPAIR — when an error comes back",
+  "- «Ийм талбар алга» гэсэн хариунд «Ойролцоо нэр:» гэж санал болговол ТЭР нэрээр ДАХИН оролд.": "- If a «field missing» result suggests «Ойролцоо нэр:» (near names), retry with THAT name.",
+  "- «Үйлчилгээний схем ӨӨРЧЛӨГДСӨН» гэвэл талбарын жагсаалтыг уншаад зөв нэрээр үргэлжлүүл.": "- If the service schema CHANGED, read the returned field list and continue with the right name.",
+  "- Талбарын нэрэнд эргэлзвэл ТААМАГЛАХГҮЙ — `describe_feature` нь АМЬД схемийг буцаана.": "- When unsure about a field name, do NOT guess — `describe_feature` returns the LIVE schema.",
+  "- Нэг алдааг ХОЁР удаа давтахгүй: ижил хүсэлтийг өөрчлөлтгүй дахин илгээхгүй.": "- Never repeat the same mistake twice: do not resend an identical request unchanged.",
+  "Ойролцоо нэр: {0}. ": "Near names: {0}. ",
+  "Үйлчилгээний схем ӨӨРЧЛӨГДСӨН байна — ийм талбар одоо алга: {0}. ": "The service schema has CHANGED — these fields no longer exist: {0}. ",
 };
 
 export default en;

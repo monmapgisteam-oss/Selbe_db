@@ -23,7 +23,9 @@ export type MdBlock =
   /** ```chart блок — `spec` нь `null` бол задлагдаагүй (зурахгүй) */
   | { kind: 'chart'; raw: string; spec: ChartSpec | null }
   /** ```report блок — файл үүсгэх заавар (`report.ts` задална) */
-  | { kind: 'report'; raw: string };
+  | { kind: 'report'; raw: string }
+  /** ```plan блок — ажлын төлөвлөгөө (`AgentPlan` зурна) */
+  | { kind: 'plan'; raw: string };
 
 const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
 /** `|---|---|` тусгаарлагч — өгөгдөл БИШ тул хаягдана */
@@ -71,16 +73,19 @@ export function parseBlocks(text: string): MdBlock[] {
     if (!line.trim()) { i++; continue; }
 
     /* ── Хашлагатай блок — ```chart ба ```report ── */
-    const fence = /^\s*```\s*(chart|report)\s*$/i.exec(line);
+    const fence = /^\s*```\s*(chart|report|plan)\s*$/i.exec(line);
     if (fence) {
       i++;
       const buf: string[] = [];
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
       if (i < lines.length) i++; // хаалтын хашлагыг алгасна
       const raw = buf.join('\n');
-      out.push(fence[1].toLowerCase() === 'chart'
+      const kind = fence[1].toLowerCase();
+      out.push(kind === 'chart'
         ? { kind: 'chart', raw, spec: parseChart(raw) }
-        : { kind: 'report', raw });
+        : kind === 'plan'
+          ? { kind: 'plan', raw }
+          : { kind: 'report', raw });
       continue;
     }
 

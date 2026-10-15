@@ -18,6 +18,7 @@ import { buildChatPdf } from '@/lib/agent/reportPdf';
 import { buildChatDocx, DOCX_MIME } from '@/lib/agent/reportDocx';
 import { buildChatXlsx } from '@/lib/agent/reportXlsx';
 import { colHeader, csvTable, typeTable } from '@/lib/agent/reportCells';
+import { planSteps } from '@/lib/agent/plan';
 
 let pass = 0;
 const ok = (name, cond) => {
@@ -186,6 +187,20 @@ console.log('\n7b. CSV — нэгж толгойд, хувь 0–100');
   ok('толгойд «(%)»', c.head[1] === 'Гүйцэтгэл (%)');
   ok('хувь буцаад 19.7', c.rows[0][1] === 19.7);
   ok('тоо бүлэглэлгүй', c.rows[0][2] === 1788);
+}
+
+console.log('\n7c. Төлөвлөгөөний блок');
+{
+  const b = parseBlocks(['```plan', '1. Барилгыг тоолох', '2. Багцаар задлах', '```', 'Үр дүн.'].join('\n'));
+  ok('```plan блок таних', b[0].kind === 'plan' && b[1].kind === 'para');
+  ok('алхмууд задарсан', planSteps(b[0].raw).join('|') === 'Барилгыг тоолох|Багцаар задлах');
+  /* ⚠️ Загвар хашилтгүй ч бичиж болно — тэвчээртэй задлалт */
+  ok('хашилтгүй текст ч алхам болно', planSteps('Эхлээд шалгана\nДараа нь тоолно').length === 2);
+  ok('6-аас олон алхам тайрагдав', planSteps('1\n2\n3\n4\n5\n6\n7\n8').length === 6);
+  ok('хоосон бол алхамгүй', planSteps('   ').length === 0);
+  /* ⚠️ Төлөвлөгөө ФАЙЛД орохгүй (тайлан нь хариултын агуулга) */
+  const doc = { title: 'a', date: 'b', blocks: parseBlocks('```plan\n1. Алхам\n```\n\n| А | Б |\n|---|---|\n| 1 | 2 |') };
+  ok('тайлангийн хүснэгтэд нөлөөлөхгүй', reportTables(doc).length === 1);
 }
 
 console.log('\n8. Файлын нэрийн слаг');
