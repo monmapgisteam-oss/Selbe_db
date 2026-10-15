@@ -49,6 +49,7 @@ import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
 import { bimLayerFor, dropBimCache } from '@/components/bimCache';
 import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from '@/components/render3d';
+import { registerMapView } from '@/lib/mapShots';
 
 /** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (⚠️ 2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
 const bimAll = (map: Map): BuildingSceneLayer[] => BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
@@ -545,6 +546,8 @@ export function SuitMap({
         popupEnabled: false,
       });
     viewRef.current = view;
+    /* «Тайлан татах»-ын газрын зургийн агшин (`mapShots.ts`) */
+    registerMapView(view);
 
     // ⚠️ Виджетүүд MapView|SceneView хоёуланг хүлээж авдаг ч төрлийн
     //    тодорхойлолт нь MapView-г л заадаг тул нэг удаа cast хийнэ.

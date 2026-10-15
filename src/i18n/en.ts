@@ -7209,6 +7209,12 @@ const en: Record<string, string> = {
   "Бодит Эхлэх": "Actual start",
   "Бодит дуусах": "Actual finish",
   "ТӨСЛИЙН ГҮЙЦЭТГЭЛ": "PROJECT PROGRESS",
+  "Тайлан үүсгэхэд алдаа гарлаа: {0}": "Failed to build the report: {0}",
+  "«{0}» хэсгийн тайлан татах (Word)": "Download the “{0}” report (Word)",
+  "тайлан": "report",
+  "Шүүлтийн нөхцөл": "Filters",
+  "Шүүлтгүй — бүх өгөгдөл": "No filters — all data",
+  "Дэлгэц дээр тайланд орох мэдээлэл олдсонгүй.": "Nothing on screen to include in the report.",
 };
 
 export default en;

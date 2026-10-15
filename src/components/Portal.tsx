@@ -58,6 +58,7 @@ import { finNavDirty } from '@/lib/finEdit';
 /* ⚠️ 2026-09-30: харагдацын ерөнхий «хадгалаагүй засвар» туг — импортгүй lib (`confirmLeave`) */
 import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
+import { ReportButton } from '@/components/ReportButton';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
  * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
@@ -1248,6 +1249,15 @@ function PortalContent(
             >
               <span aria-hidden style={{ fontSize: 17, lineHeight: 1 }}>↻</span>
             </button>
+
+            {/* ⚠️ 2026-10-15: «Тайлан» — идэвхтэй харагдацыг (1–26 бүгд) Word болгон татна (`ReportButton`).
+                ЗӨВХӨН super admin-д (хэрэглэгчийн заавар) — `isSuper` нь `AuthGate`-ийн hard role. */}
+            {isSuper && <ReportButton
+              viewKey={view}
+              title={active.title}
+              desc={active.desc}
+              filters={zone ? [`${tr('Бүс')}: ${zonesLabel(zone.split(',').filter(Boolean))}`] : []}
+            />}
 
             <LocaleToggle className={s.iconBtn} />
 
