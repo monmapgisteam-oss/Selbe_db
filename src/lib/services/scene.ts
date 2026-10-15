@@ -42,6 +42,12 @@ const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
  * ⚠️ Хамрах хүрээ ~1.6 × 2.2 км (Сэлбэ орчим) — түүнээс гадна суурь зураг харагдана.
  * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` / `SuitMap` тусад нь нэмнэ.
  */
+/**
+ * Сэлбэ ENTERPRISE-ийн `…/rest/services/Hosted` — BIM (SceneServer) ба ХАБЭА-ийн бүртгэл (2026-10-15)
+ * хоёулаа эндээс. ⚠️ Модулийн ЭХЭНД: `HABEA` тогтмол үүнийг ашигладаг (TDZ).
+ */
+const ENT_HOSTED = req("NEXT_PUBLIC_BIM_SCENE", process.env.NEXT_PUBLIC_BIM_SCENE);
+
 export const IMAGERY = {
   get title() { return tr('Агаарын зураг (ортофото)'); },
   url: `${UBHUB_REST}/Selbe_September_tif/MapServer`,
@@ -563,21 +569,29 @@ export const HABEA = {
    */
   /**
    * ХАБ-ЫН БҮРТГЭЛҮҮД — «Бусад үзүүлэлт» карт (2026-10-08, хэрэглэгчийн хүсэлт).
-   * `Сэлбэ_ХАБ1007` — нийтэд нээлттэй, ХҮСНЭГТҮҮД (давхарга биш). `table: null` = эх сурвалж
-   * хараахан байхгүй мөр (карт «—» харуулна). Талбарын нэрс амьд метадатаас ЯГ хуулав.
+   * ХҮСНЭГТҮҮД (давхарга биш). `table: null` = эх сурвалж хараахан байхгүй мөр (карт «—»).
+   *
+   * ⚠️ 2026-10-15 (хэрэглэгч): ArcGIS Online-ийн `Сэлбэ_ХАБ1007` → Сэлбэ ENTERPRISE-ийн
+   *    `Hosted/Сэлбэ_ХАБ1015` (хост нь `ENT_HOSTED` — BIM-тэй ИЖИЛ хувьсагч). Хүснэгт 37 · 40 · 42 · 33 · 43;
+   *    PostgreSQL тул талбарын нэрс ЖИЖИГ ҮСЭГТЭЙ (`огноо`, `globalid`). Амьдаар шалгав (40: 207 · 42: 83 · 37: 15).
+   *    «Сайжруулалт» (33) нь огноогүй — `week` (ISO долоо хоног) + `тоо` → долоо хоногийн НИЙЛБЭР.
    */
   registers: {
-    url: `${HJ}/${encodeURIComponent('Сэлбэ_ХАБ1007')}/FeatureServer`,
-    /** ⚠️ 2026-10-09: GlobalID талбар (35 · 36 · 38 бүгд, `supportsApplyEditsWithGlobalIds: true`) —
-     *  нэмэлт клиентийн GlobalID-тай (`useGlobalIds`), хариу алдагдвал үүгээр шалгана. */
-    gidField: 'GlobalID',
+    url: `${ENT_HOSTED}/${encodeURIComponent('Сэлбэ_ХАБ1015')}/FeatureServer`,
+    /** GlobalID талбар (`supportsApplyEditsWithGlobalIds`) — хариу алдагдвал үүгээр шалгана */
+    gidField: 'globalid',
     items: [
-      { key: 'zaavar', table: 35, date: 'Огноо', get label() { return tr('Талбайн зааварчилгаа'); } },
-      { key: 'sanuulah', table: 38, date: 'Баримтын_он__сар__өдөр', get label() { return tr('Сануулах хуудас'); } },
-      { key: 'hariutslaga', table: 36, date: 'Огноо', get label() { return tr('Хариуцлага тооцох'); } },
+      { key: 'zaavar', table: 40, date: 'огноо', get label() { return tr('Талбайн зааварчилгаа'); } },
+      { key: 'sanuulah', table: 42, date: 'баримтын_он__сар__өдөр', get label() { return tr('Сануулах хуудас'); } },
+      { key: 'hariutslaga', table: 37, date: 'огноо', get label() { return tr('Хариуцлага тооцох'); } },
       { key: 'ayul', table: null, date: null, get label() { return tr('Аюулыг мэдээлэх хуудас'); } },
-      { key: 'saijruulalt', table: null, date: null, get label() { return tr('Сайжруулалт'); } },
-    ] as { key: string; table: number | null; date: string | null; readonly label: string }[],
+      { key: 'saijruulalt', table: 33, date: null, week: 'week', sum: 'тоо', get label() { return tr('Сайжруулалт'); } },
+    ] as {
+      key: string; table: number | null; date: string | null;
+      /** Огноогүй хүснэгт — долоо хоногийн дугаарын талбар ба нийлүүлэх тооны талбар */
+      week?: string; sum?: string;
+      readonly label: string;
+    }[],
   },
   /**
    * ХОГ ХАЯГДАЛ — «Хог хаягдал» карт (2026-10-08, хэрэглэгчийн хүсэлт). `Хог_хаягдал`
@@ -586,18 +600,19 @@ export const HABEA = {
    * ⚠️ НЭГЖ ХОЛИЛДСОН («рейс» · «kg» · «m3») — донатад ЗӨВХӨН рейстэй төрлүүд.
    */
   waste: {
-    url: `${HJ}/${encodeURIComponent('Хог_хаягдал')}/FeatureServer/0`,
-    /* ⚠️ 2026-10-09: `oid` — хуудаслалтын `orderByFields`. ОН/ОГНОО талбар БАЙХГҮЙ (амьд метадата:
-       Week · Category · Metric · Багц_* · FID; GlobalID/CreationDate ч алга) — он ялгах нь схемийн өөрчлөлт. */
-    fields: { week: 'Week', metric: 'Metric', oid: 'FID' },
+    /* ⚠️ 2026-10-15 (хэрэглэгч): `Хог_хаягдал` (AGOL) → Enterprise `Сэлбэ_ХАБ1015`/43 — ижил бүтэц,
+       талбарууд ЖИЖИГ ҮСЭГТЭЙ (week · category · metric · багц_* · objectid). */
+    url: `${ENT_HOSTED}/${encodeURIComponent('Сэлбэ_ХАБ1015')}/FeatureServer/43`,
+    /* ⚠️ 2026-10-09: `oid` — хуудаслалтын `orderByFields`. ОН/ОГНОО талбар БАЙХГҮЙ — он ялгах нь схемийн өөрчлөлт. */
+    fields: { week: 'week', metric: 'metric', category: 'category', oid: 'objectid' },
     /**
      * Багцын багана → хуудасны «Багц» шүүлтийн нэр (`habeaPkgKey`-д).
      * ⚠️ 2026-10-09: 2 дахь утга нь ТҮЛХҮҮР (орчуулахгүй) — дэлгэцэд `tr('Багц {0}', …)`-ээр
      *    (`HabeaEntry.pkgColLabel`).
      */
     pkgCols: [
-      ['Багц_1', 'Багц 1'], ['Багц_2', 'Багц 2'], ['Багц_3_1', 'Багц 3.1'], ['Багц_3_2', 'Багц 3.2'],
-      ['Багц_3_3', 'Багц 3.3'], ['Багц_4_1', 'Багц 4.1'], ['Багц_4_2', 'Багц 4.2'],
+      ['багц_1', 'Багц 1'], ['багц_2', 'Багц 2'], ['багц_3_1', 'Багц 3.1'], ['багц_3_2', 'Багц 3.2'],
+      ['багц_3_3', 'Багц 3.3'], ['багц_4_1', 'Багц 4.1'], ['багц_4_2', 'Багц 4.2'],
     ] as [string, string][],
     /** Донатын төрлүүд — ЯГ `Metric` домэйны кодоор, дэлгэцийн нэр ба өнгө */
     kinds: [
@@ -687,7 +702,7 @@ export const laborCompanyFields = (sfx: string) => ({
  * ⚠️ Нэрлэлт: `Багц_<багц>_FID<n>[_<n>]_<айл>_<single|double|tower>` — `double`
  *    нь ХОЁР FID-тэй (хос блок) нэг загвар.
  */
-const BIM_SCENE = req("NEXT_PUBLIC_BIM_SCENE", process.env.NEXT_PUBLIC_BIM_SCENE);
+const BIM_SCENE = ENT_HOSTED;
 
 const BIM_SERVICES: { pkg: string; names: string[] }[] = [
   {

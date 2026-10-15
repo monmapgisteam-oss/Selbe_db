@@ -1807,6 +1807,9 @@ export const MapCanvas = memo(function MapCanvas({
   onReshape,
   sketchUndoToken = 0,
   clearToken = 0,
+  onMapContext,
+  sketchVertex,
+  onSketchVertex,
   scene,
   children,
 }: {
@@ -1990,6 +1993,21 @@ export const MapCanvas = memo(function MapCanvas({
   /** Утга нэмэгдэхэд зурсан полигоныг арилгана (гадны «Цэвэрлэх» товч) */
   clearToken?: number;
   /**
+   * ⚠️ 2026-10-14 (хэрэглэгч: «баруун товшиход WGS / UTM 48-аар координатаар цэг тавина»):
+   * 2D-д БАРУУН ТОВШИЛТ — тухайн цэгийн WGS84 координат ба дэлгэцийн байрлал (`clientX/Y`).
+   * Өгөгдсөн үед хөтчийн контекст цэс зураг дээр ГАРАХГҮЙ; өгөөгүй бол хуучин зан хэвээр.
+   */
+  onMapContext?: (p: { lat: number; lon: number; clientX: number; clientY: number }) => void;
+  /**
+   * ⚠️ 2026-10-14 (хэрэглэгч: «координатаар эхний цэгийг шидээд тэр цэгээс үргэлжлүүлж зурна»):
+   * `token` өсөх бүрд WGS84 цэгийг ЯВЖ БУЙ зураалтад (`SketchViewModel.create`) ЖИНХЭНЭ vertex болгон
+   * нэмнэ — дундах зураас, талбайн дүүргэлт, tooltip бүгд ердийн хулганы цэгтэй ИЖИЛ. Зураалт
+   * эхлээгүй бол `drawKind`-аар эхлүүлнэ. Цэгэн дүрс бол тэр цэгээр шууд дуусна.
+   */
+  sketchVertex?: { token: number; lat: number; lon: number } | null;
+  /** `sketchVertex`-ийн үр дүн — `false` = зураалтад цэг НЭМЭГДСЭНГҮЙ (дуудагч хэрэглэгчид хэлнэ) */
+  onSketchVertex?: (ok: boolean) => void;
+  /**
    * 3D горимд зурах IntegratedMesh багц. Байхгүй бол аппын үндсэн `SCENE`.
    *
    * ⚠️ Map нь харагдацуудын хооронд КЭШЛЭГДДЭГ тул энэ жагсаалтад БАЙХГҮЙ
@@ -2033,6 +2051,11 @@ export const MapCanvas = memo(function MapCanvas({
    * дуудлагын турш асаалттай туг нь хэрэглэгчийн Esc-ийг кодын цуцлалтаас ялгана.
    */
   const selfCancelRef = useRef(false);
+  /* ⚠️ 2026-10-14: зураалтын `create` үйл явдлын тоолуур (active · complete) — `sketchVertex`-ийн
+     синтетик товшилт vertex болсон эсэхийг ЭНЭ өөрчлөгдсөнөөр шалгана. */
+  const sketchEvtRef = useRef(0);
+  const onSketchVertexRef = useRef(onSketchVertex);
+  useSyncRef(onSketchVertexRef, onSketchVertex);
   const onReshapeRef = useRef(onReshape);
   useSyncRef(onReshapeRef, onReshape);
   const reshapeGeomRef = useRef(reshapeGeometry);
@@ -4183,6 +4206,17 @@ export const MapCanvas = memo(function MapCanvas({
     const svm = new SketchViewModel({
       view: view as MapView,
       layer,
+      /**
+       * ⚠️ 2026-10-14 (хэрэглэгч: «яг ArcGIS шиг цэг тавьдаг болго»): Map Viewer-ийн зураалтын
+       * ТУСЛАХ — (1) курсорын дэргэдэх tooltip: координат, сегментийн урт, чиглэл; Tab дарж
+       * X/Y эсвэл урт/өнцгийг ГАРААР оруулна (`inputEnabled`); (2) сегмент бүрийн уртын шошго;
+       * (3) НААЛДАЛТ — зурж буй дүрсийн өөрийн цэг/шугам (self) ба зураг дээр харагдаж буй
+       * давхаргын объект руу (feature; эх сурвалж нь доорх эффектээр шинэчлэгдэнэ).
+       */
+      tooltipOptions: { enabled: true, inputEnabled: true } as never,
+      labelOptions: { enabled: true } as never,
+      snappingOptions: { enabled: true, selfEnabled: true, featureEnabled: true } as never,
+      valueOptions: { displayUnits: { length: 'meters', area: 'square-meters' } } as never,
       // Зурсан талбайн симбол — БАРИЛГА (ногоон) ба КАДАСТР (цэнхэр) хоёроос
       // ЯЛГААТАЙ улбар шар, тасархай хүрээ: сонголтын хил гэдэг нь тод харагдана.
       polygonSymbol: {
@@ -4222,6 +4256,7 @@ export const MapCanvas = memo(function MapCanvas({
     const emit = (g: __esri.Geometry | null) => onSketchRef.current?.(g);
 
     const created = svm.on('create', (e) => {
+      if (e.state === 'active' || e.state === 'complete') sketchEvtRef.current += 1;
       /* ⚠️ Esc-ээр цуцалсныг дуудагчид мэдэгдэнэ (`onSketchCancel`-ийн тайлбар);
          өөрсдийн `quietCancel` энд хүрэхгүй. */
       if (e.state === 'cancel') {
@@ -4283,6 +4318,20 @@ export const MapCanvas = memo(function MapCanvas({
     };
   }, [sketch, dim, ready]);
 
+  /* ⚠️ 2026-10-14: НААЛДАЛТЫН эх сурвалж — зураг дээр ХАРАГДАЖ буй вектор давхаргууд (ArcGIS-ийн
+     «Feature to snap to»). `visible` солигдох бүрд шинэчилнэ; нуугдсан давхарга руу наалдахгүй. */
+  useEffect(() => {
+    const svm = sketchVMRef.current;
+    const map = mapRef.current;
+    if (!svm || !map || !sketch) return;
+    const on = new Set(visibleKey.split(','));
+    const layers = map.allLayers.filter((l) => l.type === 'feature' && on.has(l.id)).toArray();
+    try {
+      (svm.snappingOptions as unknown as { featureSources: unknown }).featureSources =
+        layers.map((layer) => ({ layer, enabled: true })) as never;
+    } catch { /* хуучин SDK — наалдалтгүй хэвээр */ }
+  }, [visibleKey, sketch, ready, dim]);
+
   /** Гадны «Полигон зурах» товч — шинэ полигон зурж эхэлнэ */
   useEffect(() => {
     if (!drawToken) return;
@@ -4331,6 +4380,101 @@ export const MapCanvas = memo(function MapCanvas({
     gl.add(graphic);
     try { svm.update([graphic]); } catch { /* геометр танигдсангүй */ }
   }, [reshapeToken]);
+
+  /* ⚠️ 2026-10-14: баруун товшилт (`onMapContext`) — ref-ээр уншина (эффект дахин холбогдохгүй) */
+  const onMapContextRef = useRef(onMapContext);
+  useSyncRef(onMapContextRef, onMapContext);
+  const hasMapContext = Boolean(onMapContext);
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !ready || !hasMapContext || is3D(dim)) return;
+    const box = (view as MapView).container as HTMLElement | null;
+    /* ⚠️ Хөтчийн контекст цэсийг ЗӨВХӨН зургийн дотор хаана */
+    const noMenu = (e: MouseEvent) => e.preventDefault();
+    box?.addEventListener('contextmenu', noMenu);
+    const down = view.on('pointer-down', (e: __esri.ViewPointerDownEvent) => {
+      if (e.button !== 2) return;
+      const mp = (view as MapView).toMap({ x: e.x, y: e.y });
+      if (!mp) return;
+      const g = mp.spatialReference?.isWebMercator
+        ? webMercatorUtils.webMercatorToGeographic(mp) as __esri.Point
+        : mp;
+      const r = box?.getBoundingClientRect();
+      onMapContextRef.current?.({
+        lat: g.y, lon: g.x,
+        clientX: (r?.left ?? 0) + e.x, clientY: (r?.top ?? 0) + e.y,
+      });
+    });
+    return () => {
+      down.remove();
+      box?.removeEventListener('contextmenu', noMenu);
+    };
+  }, [ready, dim, hasMapContext]);
+
+  /**
+   * КООРДИНАТЫН ЦЭГИЙГ ЯВЖ БУЙ ЗУРААЛТАД НЭМНЭ (`sketchVertex`).
+   *
+   * ⚠️ `SketchViewModel`-д «vertex нэмэх» нийтийн API БАЙХГҮЙ. Тиймээс ТЭР ЦЭГИЙН дэлгэцийн
+   *    байрлалд зургийн гадаргуу (`view.surface`) дээр pointer down/up (= нэг товшилт) үүсгэнэ —
+   *    SDK үүнийг хулганы товшилттой ЯГ ИЖИЛ боловсруулна (vertex, дундах зураас, дүүргэлт, буцаах).
+   * ⚠️ Цэг дэлгэцийн гадна бол эхлээд тийш шилжинэ (`goTo`) — эс бөгөөс товшилт хүрэхгүй.
+   * ⚠️ Наалдалтыг (`snappingOptions`) тэр агшинд УНТРААНА — оруулсан координат ойролцоох объект
+   *    руу «наалдаж» хөдлөх ёсгүй (нарийн байршил оруулахын утга).
+   * ⚠️ `pointerId: 1` — Chrome/Edge-ийн хулганы заагч; SDK `setPointerCapture` дуудахад өөр id алдаа шиднэ.
+   */
+  useEffect(() => {
+    if (!sketchVertex?.token) return;
+    const svm = sketchVMRef.current;
+    const view = viewRef.current as MapView | null;
+    if (!svm || !view || is3D(dim)) return;
+    const { lat, lon } = sketchVertex;
+    let cancelled = false;
+    const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+    void (async () => {
+      if (svm.state !== 'active') {
+        quietCancel(svm, selfCancelRef);
+        svm.create(drawKindRef.current);
+        /* ⚠️ `create()` зурах үйлдлээ ДАРААГИЙН кадрт бэлдэнэ — тэр дор нь товшвол алдагдана */
+        await frame();
+      }
+      const pt = webMercatorUtils.geographicToWebMercator(
+        new Point({ x: lon, y: lat, spatialReference: { wkid: 4326 } }),
+      ) as Point;
+      const inView = view.extent?.clone().expand(0.9).contains(pt);
+      if (!inView) {
+        try { await view.goTo({ target: pt }, { animate: false }); } catch { /* шилжилт тасалдав */ }
+        await frame();
+      }
+      if (cancelled) return;
+      const sc = view.toScreen(pt);
+      const surface = (view as unknown as { surface?: HTMLElement }).surface ?? (view.container as HTMLElement | null);
+      if (!sc || !surface) return;
+      const r = surface.getBoundingClientRect();
+      const clientX = r.left + sc.x;
+      const clientY = r.top + sc.y;
+      const snap = svm.snappingOptions as unknown as { enabled?: boolean } | undefined;
+      const snapWas = snap?.enabled;
+      if (snap) snap.enabled = false;
+      const ev = (type: string, buttons: number) => new PointerEvent(type, {
+        bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'mouse',
+        isPrimary: true, button: 0, buttons, clientX, clientY,
+      });
+      const before = sketchEvtRef.current;
+      surface.dispatchEvent(ev('pointermove', 0));
+      surface.dispatchEvent(ev('pointerdown', 1));
+      surface.dispatchEvent(ev('pointerup', 0));
+      /* Наалдалтыг дараагийн кадрт сэргээнэ — SDK товшилтыг боловсруулж дууссаны дараа */
+      window.setTimeout(() => { if (snap && snapWas !== undefined) snap.enabled = snapWas; }, 50);
+      /* ⚠️ Синтетик товшилтыг SDK ТООЦООГҮЙ бол (`create` үйл явдал ирээгүй) дуудагчид хэлнэ —
+         чимээгүй «юу ч болоогүй» үлдээхгүй. */
+      window.setTimeout(() => {
+        if (cancelled) return;
+        onSketchVertexRef.current?.(sketchEvtRef.current !== before);
+      }, 200);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- зөвхөн шинэ token-оор
+  }, [sketchVertex?.token]);
 
   /** Гадны «Алхам буцаах» товч — зураалтын сүүлийн үйлдлийг цуцална */
   useEffect(() => {

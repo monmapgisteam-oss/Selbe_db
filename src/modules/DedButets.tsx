@@ -58,6 +58,7 @@ import { BUTETS_PACKS, PACK_OF_LAYER } from '@/lib/butetsPacks';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
+import { CoordPopup } from './DedButetsCoord';
 import { StatusBar, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
 import {
   applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
@@ -366,6 +367,19 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const [drawToken, setDrawToken] = useState(0);
   /** Зурсан дүрсийг арилгах дохио */
   const [clearToken, setClearToken] = useState(0);
+
+  /**
+   * КООРДИНАТААР ЦЭГ ТАВИХ (2026-10-14, хэрэглэгч: «баруун товшиход WGS / UTM 48-аар цэг тавьдаг»).
+   *   · `coordPop` — баруун товшсон байрлал дахь координатын цонх (`DedButetsCoord`).
+   *   · `vertex` — оруулсан цэгийг ЯВЖ БУЙ хулганы зураалтад vertex болгон нэмнэ (`MapCanvas.sketchVertex`).
+   * ⚠️ 2026-10-14 (хэрэглэгч: «эхний цэгийг координатаар шидээд эхний цэгээс үргэлжлүүлж зурна,
+   *    дундах зураас, талбай харагдана»): урьдах ТУСДАА жагсаалтын горимыг хасав — координатын цэг
+   *    нь ердийн зураалтын нэг цэг; дараагийн цэгүүдийг хулганаар (эсвэл дахин координатаар) үргэлжлүүлнэ.
+   */
+  const [coordPop, setCoordPop] = useState<{ at: { x: number; y: number } | null; start: { lat: number; lon: number } | null } | null>(null);
+  const [vertex, setVertex] = useState<{ token: number; lat: number; lon: number } | null>(null);
+  /** Сүүлд координатаар тавьсан цэг — цонхыг дараагийн удаа урьдчилан бөглөхөд */
+  const lastCoord = useRef<{ lat: number; lon: number } | null>(null);
 
   /* ── ОЛОН ОБЪЕКТ СОНГОЖ НЭГ ДОР ЗАСАХ (2026-09-16) ── */
 
@@ -1323,6 +1337,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
      */
     void loadLayerMeta(id).catch(() => {});
     setConfirmQ(null); // ⚠️ сонголт солигдоно — хүлээгдэж буй асуулт хуучирна
+    setCoordPop(null);
+    lastCoord.current = null;
     setAddTo(id);
     setTplOpen(false);
     setAwaitDraw(true);
@@ -1356,18 +1372,23 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ⚠️ Хайлт нь ОРЧУУЛСАН нэрээр — хэрэглэгч дэлгэц дээр харж байгаа
    * текстээ бичнэ, дотоод монгол түлхүүрийг биш.
    */
+  /* ⚠️ 2026-10-14 (хэрэглэгч: «багцаар нь бүлэглэ»): СИСТЕМЭЭР (дулаан · ус …) биш БАГЦААР
+     (`BUTETS_PACKS` — баруун «Дэд бүтэц» жагсаалттай ИЖИЛ эрэмбэ). Багц дотор системийн
+     дарааллаар (`SYSTEMS`); мөрийн нэрээс багцын угтварыг хасна (`strip`). Хайлт нь бүтэн нэрээр. */
   const tplGroups = useMemo(() => {
     const needle = tplQ.trim().toLowerCase();
-    return SYSTEMS.map((sys) => ({
-      key: sys.key,
-      title: sys.title,
-      ids: sys.ids.filter((id) => {
+    const sysIdx = new Map<string, number>();
+    SYSTEMS.forEach((sys, i) => sys.ids.forEach((id) => sysIdx.set(id, i)));
+    return BUTETS_PACKS.map((p) => ({
+      key: p.key,
+      title: p.name,
+      ids: p.layerIds.filter((id) => {
         const L = LAYER_BY_ID[id];
         if (!L) return false;
         /* ⚠️ Эрхийн хүрээнээс гадуурх давхарга тэмплэйтэд гарахгүй (2026-09-23) */
         if (!editableIds.includes(id)) return false;
         return !needle || tr(L.title).toLowerCase().includes(needle);
-      }),
+      }).sort((a, b) => (sysIdx.get(a) ?? 99) - (sysIdx.get(b) ?? 99)),
     })).filter((g) => g.ids.length > 0);
   }, [tplQ, editableIds]);
 
@@ -1440,6 +1461,30 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setRectDraw(false);
     setAwaitDraw(false);
   }, []);
+
+  /** Баруун товшилт — ЗӨВХӨН зурж буй үед (тэмплэйт сонгосон, маягт нээгдээгүй) */
+  const onMapContext = useCallback((p: { lat: number; lon: number; clientX: number; clientY: number }) => {
+    setCoordPop({ at: { x: p.clientX, y: p.clientY }, start: { lat: p.lat, lon: p.lon } });
+  }, []);
+
+  /** Координатын цэг зураалтад ОРООГҮЙ (SDK синтетик товшилтыг тооцоогүй) — хэрэглэгчид ил хэлнэ */
+  const onSketchVertex = useCallback((ok: boolean) => {
+    if (!ok) toast(tr('Координатаар цэг тавьж чадсангүй — зурагт товшиж тавина уу.'), 'err');
+  }, [toast]);
+  /** Координатын цонхны «Цэг тавих» — явж буй зураалтад vertex болгон нэмнэ */
+  const onCoordPut = useCallback((p: { lat: number; lon: number }) => {
+    setCoordPop(null);
+    lastCoord.current = p;
+    setVertex((v) => ({ token: (v?.token ?? 0) + 1, lat: p.lat, lon: p.lon }));
+  }, []);
+
+  /* Зураалт дуусах/цуцлагдахад координатын цонх хаагдана */
+  useEffect(() => {
+    if (awaitDraw) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- зураалтын горимоос гарахад координатын цонх хаагдана
+    setCoordPop(null);
+    lastCoord.current = null;
+  }, [awaitDraw]);
   /* ⚠️ 2026-10-07: 3D/BIM РУУ ШИЛЖИХЭД зураалт/хэлбэр засварыг ЦУЦАЛНА — `MapCanvas`
      2D-ээс гарахад SketchViewModel-ийг устгадаг ба тэр үед `cancel` үйл явдал
      ИРЭХГҮЙ (`Gazar`-ын ижил засвар). Урьд нь засварын горим 3D-д хэвээр үлдэж,
@@ -1635,6 +1680,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             sketch={editMode}
             onSketch={onSketch}
             onSketchCancel={onSketchCancel}
+            /* ⚠️ 2026-10-14: баруун товшилт — ЗӨВХӨН зурж байх үед (эс бөгөөс хөтчийн цэс хэвээр) */
+            onMapContext={editMode && awaitDraw && !pick && dim === '2d' ? onMapContext : undefined}
+            sketchVertex={vertex}
+            onSketchVertex={onSketchVertex}
             drawToken={drawToken}
             drawKind={drawKind}
             reshapeGeometry={reshape?.geometry}
@@ -1823,28 +1872,20 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   placeholder={tr('Давхарга хайх…')}
                   aria-label={tr('Давхарга хайх…')}
                 />
+                {/* ⚠️ 2026-10-14 (хэрэглэгч: «ArcGIS-ийн зурж нэмдэг хэсэг шиг»): Map Viewer-ийн «Create
+                    features» — багцаар хураагддаг бүлэг (тоотой), мөр бүрд геометрийн төрөл (цэг · шугам ·
+                    талбай). Хайлтын үед бүлгүүд бүгд нээлттэй. «Сүүлд хэрэглэсэн» хэсгийг хэрэглэгч хасуулсан. */}
                 {tplGroups.length === 0 && (
                   <p className={d.modalMsg}>{tr('Олдсонгүй')}</p>
                 )}
                 {tplGroups.map((g) => (
-                  <div key={g.key} className={d.tplGroup}>
-                    <div className={d.tplHead}>{tr(g.title)}</div>
-                    {g.ids.map((id) => {
-                      const L = LAYER_BY_ID[id];
-                      if (!L) return null;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className={d.tplRow}
-                          onClick={() => pickTemplate(id)}
-                        >
-                          <Swatch L={L} />
-                          <span className={d.tplName} title={tr(L.title)}>{tr(L.title)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <details key={`${g.key}-${tplQ.trim() ? 'q' : ''}`} className={d.tplGroup} open={Boolean(tplQ.trim()) || tplGroups.length <= 2}>
+                    <summary className={d.tplHead}>
+                      <span>{g.title}</span>
+                      <span className={d.tplCount}>{num(g.ids.length)}</span>
+                    </summary>
+                    {g.ids.map((id) => <TplRow key={id} id={id} onPick={pickTemplate} strip={g.title} />)}
+                  </details>
                 ))}
               </div>
             </aside>
@@ -1853,19 +1894,37 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           {/* ⚠️ ХҮЛЭЭЛТИЙН самбар — тэмплэйт сонгогдсон ч дүрс дуусаагүй.
               Энэ мөчид маягт ч, жагсаалт ч байхгүй тул самбар ХООСОН харагдаж,
               «эвдэрсэн юм болов уу» гэж уншигдах эрсдэлтэй. */}
+          {/* ⚠️ 2026-10-14: ArcGIS-ийн зураалтын самбар шиг — давхаргын тэмдэг/нэр, геометрийн төрөл,
+              алхам тус бүрийн заавар, «Алхам буцаах» · «Координатаар» · координатын жагсаалт · «Дуусгах». */}
           {editMode && awaitDraw && !pick && (
             <aside className={d.pane}>
               <div className={d.modalHead}>
+                {LAYER_BY_ID[addTo] && <Swatch L={LAYER_BY_ID[addTo]} />}
                 <span className={d.modalTitle}>
                   {tr(LAYER_BY_ID[addTo]?.title ?? '')}
                 </span>
+                <span className={d.geomBadge}>
+                  {drawKind === 'point' ? tr('Цэг') : drawKind === 'polygon' ? tr('Талбай') : tr('Шугам')}
+                </span>
               </div>
-              <p className={d.modalMsg}>
+              <ol className={d.drawSteps}>
                 {drawKind === 'point'
-                  ? tr('Зурагт цэгээ тавина уу.')
-                  : tr('Зурагт дүрсээ зурна уу. Дуусгахдаа хоёр товшино.')}
-              </p>
+                  ? <li>{tr('Зурагт товшиж цэгээ тавина.')}</li>
+                  : <>
+                    <li>{tr('Зурагт товшиж цэг бүрээ тавина.')}</li>
+                    <li>{tr('Дуусгахдаа сүүлийн цэг дээр хоёр товшино.')}</li>
+                  </>}
+                <li>{tr('Нарийн байршилтай цэгийг баруун товшиж WGS84 эсвэл UTM 48N координатаар тавина — дараа нь тэр цэгээс үргэлжлүүлж зурна.')}</li>
+              </ol>
               <div className={d.actions}>
+                {drawKind !== 'point' && (
+                  <button type="button" className={d.btn} onClick={() => setSketchUndoToken((x) => x + 1)}>
+                    {tr('Алхам буцаах')}
+                  </button>
+                )}
+                <button type="button" className={d.btn} onClick={() => setCoordPop({ at: null, start: lastCoord.current })}>
+                  {tr('Координатаар')}
+                </button>
                 <span className={d.spacer} />
                 <button type="button" className={d.btn}
                   onClick={() => { setAwaitDraw(false); setClearToken((x) => x + 1); }}>
@@ -1873,6 +1932,15 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 </button>
               </div>
             </aside>
+          )}
+          {editMode && awaitDraw && !pick && coordPop && (
+            <CoordPopup
+              at={coordPop.at}
+              start={coordPop.start}
+              title={tr('Координатаар цэг тавих')}
+              onPut={onCoordPut}
+              onClose={() => setCoordPop(null)}
+            />
           )}
           {/*
             * ОЛОН ОБЪЕКТ ЗАСАХ САМБАР — сонголтын удирдлага + нэг маягт.
@@ -2335,5 +2403,28 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ТЭМПЛЭЙТИЙН МӨР (2026-10-14) — тэмдэг · нэр · геометрийн төрөл (ArcGIS Map Viewer-ийн
+ * «Create features»-ийн мөр). ⚠️ Тэмдэг нь зурагтай ИЖИЛ (`Swatch`).
+ */
+function TplRow({ id, onPick, strip }: {
+  id: string; onPick: (id: string) => void;
+  /** Бүлгийн (багцын) нэр — мөрийн нэрээс угтвар болгон хасна («Багц 5.1 · ДХТ» → «ДХТ») */
+  strip?: string;
+}) {
+  const L = LAYER_BY_ID[id];
+  if (!L) return null;
+  const g = L.geom === 'point' ? tr('Цэг') : L.geom === 'area' ? tr('Талбай') : tr('Шугам');
+  const full = tr(L.title);
+  const short = strip && full.startsWith(strip) ? full.slice(strip.length).replace(/^[\s·—-]+/u, '') || full : full;
+  return (
+    <button type="button" className={d.tplRow} onClick={() => onPick(id)} title={`${full} · ${g}`}>
+      <Swatch L={L} />
+      <span className={d.tplName}>{short}</span>
+      <span className={d.tplGeom}>{g}</span>
+    </button>
   );
 }

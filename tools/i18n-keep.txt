@@ -190,7 +190,6 @@
 # [const] INFRA_SYSTEMS / catalogGroups гарчиг (Дулаан · Ус хангамж · Цахилгаан …) en.ts
 @dyn lib/reportPdf.ts  tr(g.title)
 @dyn modules/Tailan.tsx  tr(g.title)
-@dyn modules/DedButets.tsx  tr(g.title)
 
 # [const] нийгмийн байгууламжийн давхаргын нэр (LAYERS.title) en.ts
 @dyn lib/reportPdf.ts  tr(s.title)

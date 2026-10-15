@@ -1,11 +1,14 @@
 /**
  * ХАБ-ЫН БҮРТГЭЛҮҮД — «Бусад үзүүлэлт» карт (2026-10-08, хэрэглэгчийн хүсэлт).
  *
- * Эх сурвалж: `Сэлбэ_ХАБ1007` FeatureServer (нийтэд нээлттэй, ГУРВАН хүснэгт):
- *   · 35 — Талбайн зааварчилгааны бүртгэл  (огноо: `Огноо`)
- *   · 38 — Сануулах хуудас өгсөн бүртгэл    (огноо: `Баримтын_он__сар__өдөр`)
- *   · 36 — Хариуцлага тооцох мэдэгдэх       (огноо: `Огноо`)
- * «Аюулыг мэдээлэх хуудас», «Сайжруулалт» — эх хүснэгт ОДООГООР БАЙХГҮЙ: «—»
+ * Эх сурвалж (2026-10-15-наас): Сэлбэ ENTERPRISE `Hosted/Сэлбэ_ХАБ1015` FeatureServer (хүснэгтүүд,
+ * талбарын нэр ЖИЖИГ ҮСЭГТЭЙ; урьд нь AGOL `Сэлбэ_ХАБ1007`):
+ *   · 40 — Талбайн зааварчилгааны бүртгэл  (огноо: `огноо`)
+ *   · 42 — Сануулах хуудас өгсөн бүртгэл    (огноо: `баримтын_он__сар__өдөр`)
+ *   · 37 — Хариуцлага тооцох мэдэгдэх       (огноо: `огноо`)
+ *   · 33 — Сайжруулах (огноогүй: `week` + `тоо` → долоо хоногийн НИЙЛБЭР)
+ *   · 43 — Хог хаягдал (`loadHabeaWaste`)
+ * «Аюулыг мэдээлэх хуудас» — эх хүснэгт ОДООГООР БАЙХГҮЙ: «—»
  * (`null ≠ 0` — тэг гэж харуулбал «бүртгэл алга» гэж ХУДАЛ уншигдана).
  *
  * ⚠️ «7 ХОНОГ» = ӨМНӨХ БҮТЭН долоо хоног (Даваа 00:00 → дараагийн Даваа 00:00) — хэрэглэгч:
@@ -56,6 +59,18 @@ const countOf = async (url: string, where: string): Promise<number | null> => {
 async function fetchRegisters(w: { start: Date; end: Date; no: number }): Promise<RegisterData> {
   const rows = await Promise.all(HABEA.registers.items.map(async (it): Promise<RegisterRow> => {
     /* ⚠️ 2026-10-08: «Нийт» багана ХАСАГДАВ (хэрэглэгч: «зөвхөн сүүлийн долоо хоногийн мэдээ») */
+    if (it.table != null && it.week && it.sum) {
+      /* ⚠️ 2026-10-15: огноогүй хүснэгт («Сайжруулах») — тухайн ISO долоо хоногийн `тоо`-ны НИЙЛБЭР.
+         Мөр алга бол 0 (бүртгэл байгаа хүснэгт, тэр долоо хоногт хоосон), хариу ирээгүй бол `null`. */
+      const j = await arcgisPost<{ features?: { attributes?: { s?: number | null } }[] }>(
+        `${HABEA.registers.url}/${it.table}/query`,
+        { f: 'json', where: `${it.week} = ${w.no}`,
+          outStatistics: JSON.stringify([{ statisticType: 'sum', onStatisticField: it.sum, outStatisticFieldName: 's' }]) },
+      );
+      if (!Array.isArray(j.features)) return { key: it.key, label: it.label, week: null };
+      const v = Number(j.features[0]?.attributes?.s);
+      return { key: it.key, label: it.label, week: Number.isFinite(v) ? v : 0 };
+    }
     if (it.table == null || !it.date) return { key: it.key, label: it.label, week: null };
     const week = await countOf(
       `${HABEA.registers.url}/${it.table}`,
@@ -454,7 +469,7 @@ export async function addWaste(
     try {
       res = oneAdd(await arcgisPost<{ addResults?: ApplyRes[] }>(`${W.url}/applyEdits`, {
         f: 'json',
-        adds: JSON.stringify([{ attributes: { [W.fields.week]: week, Category: 'Waste', [W.fields.metric]: metric, ...cols } }]),
+        adds: JSON.stringify([{ attributes: { [W.fields.week]: week, [W.fields.category]: 'Waste', [W.fields.metric]: metric, ...cols } }]),
         rollbackOnFailure: 'true',
       }));
     } catch (e) {
