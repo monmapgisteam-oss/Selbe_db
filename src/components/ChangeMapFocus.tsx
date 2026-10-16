@@ -11,7 +11,12 @@ export function ChangeMapFocus({ pick }: { pick: ChangePick }) {
   useEffect(() => {
     if (!view || view.type !== '2d' || !pick) return;
     let extent = pick.sub !== undefined ? pick.geometry?.extent?.clone() ?? null : null;
-    if (!extent) for (const piece of pick.pieces) {
+    /* ⚠️ 2026-10-16: ЗӨВХӨН ШИНЭ (Redesign) давхаргын хэсгүүдээр ойртоно. Автозамын хуучин эх (TD/85,
+       `old: 'all'` — хилээр тайрахгүй) дотор Сэлбээс хол нэг полигон байдаг тул бүх хэсгийн нэгдэл
+       Монголоос Тайвань хүртэл сунаж, мөр дарахад зураг тивийн хэмжээнд холддог байв. Шинэ хэсэг
+       байхгүй бол (хуучин талын мөр) бүх хэсгийг авна. */
+    const own = pick.pieces.filter((p) => pick.layers.includes(p.layer));
+    if (!extent) for (const piece of own.length ? own : pick.pieces) {
       const next = piece.geometry.extent;
       if (next) extent = extent ? extent.union(next) : next.clone();
     }
