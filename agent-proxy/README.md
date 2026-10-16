@@ -47,7 +47,7 @@ npm start
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | **Заавал.** [console.anthropic.com](https://console.anthropic.com) |
 | `AGENT_MODEL` | `claude-opus-5` | Хямд туршилтад `claude-haiku-4-5` |
-| `AGENT_EFFORT` | `low` | `low` / `medium` / `high` — хурд ↔ гүн бодолт |
+| `AGENT_EFFORT` | `medium` | `low` / `medium` / `high` — хурд ↔ гүн бодолт. 2026-10-15-наас `medium` (эх сурвалж сонголт, холбоосын дүрэм нарийссан) |
 | `PORT` | `8787` | Релений порт |
 | `ALLOW_ORIGIN` | `http://localhost:8123,…` | Зөвшөөрөх эх (таслалаар) |
 | `BOT_SECRET` | — | Telegram ботын нууц. `ARCGIS_ORG_ID`-тай үед бот ArcGIS токенгүй тул `x-bot-secret` таарвал нэвтрэлтийн шалгалтыг алгасна (worker-тэй ижил). Ботод ИЖИЛ утгыг үндсэн `.env.local`-д `AGENT_BOT_SECRET`-ээр. |

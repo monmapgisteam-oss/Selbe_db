@@ -42,22 +42,37 @@ const isSource = (l) => /^\s*(эх сурвалж|source)\s*:/i.test(l);
  * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) үлдсэн мөрийг бүгдийг
  * залгина — түүхий JSON гарахаас сэргийлэх нь чухал.
  */
+/** Telegram-д тайлангийн блокийн оронд гарах мөр */
+const REPORT_HINT = 'Тайлан файлыг порталын AI туслахаас татна уу.';
+
 function stripCharts(lines) {
   const out = [];
+  let kind = null; // ```chart | ```report
   let buf = null; // null = блокоос гадна
 
   const flush = () => {
     if (!buf) return;
+    /* ⚠️ 2026-10-15: ТАЙЛАНГИЙН БЛОК — порталд татах товч болж зурагддаг (`AgentReport.tsx`);
+       Telegram-д файл үүсгэх зам байхгүй тул блокийг хасаад хаанаас татахыг нэг мөрөөр хэлнэ. */
+    if (kind === 'report') { out.push(REPORT_HINT); buf = null; kind = null; return; }
+    /* ⚠️ 2026-10-15: ТӨЛӨВЛӨГӨӨГ ботод ХАРУУЛАХГҮЙ — порталд явцын карт болж
+       хэрэгтэй (хүлээж байхад харагдана), харин бот бүтэн хариултыг нэг дор
+       илгээдэг тул «юу хийх гэж байсан» нь зөвхөн чимээ болно. */
+    if (kind === 'plan') { buf = null; kind = null; return; }
     // Задлан шинжлэх нь бүтэхгүй бол ЧИМЭЭГҮЙ орхино — түүхий JSON гаргахгүй
     try {
       const note = JSON.parse(buf.join('\n'))?.note;
       if (note && String(note).trim()) out.push(String(note).trim());
     } catch { /* эвдэрсэн JSON — тайлбар алга */ }
     buf = null;
+    kind = null;
   };
 
   for (const l of lines) {
-    if (!buf && /^\s*```\s*chart\s*$/i.test(l)) { buf = []; continue; }
+    if (!buf) {
+      const m = /^\s*```\s*(chart|report|plan)\s*$/i.exec(l);
+      if (m) { buf = []; kind = m[1].toLowerCase(); continue; }
+    }
     if (buf) {
       if (/^\s*```\s*$/.test(l)) flush();
       else buf.push(l);

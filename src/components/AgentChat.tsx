@@ -17,6 +17,7 @@ import { t as tr, perLocale } from '@/lib/i18nCore';
 import { AGENT_API, agentErrorText, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
+import { AgentPlan } from '@/components/AgentPlan';
 import s from '@/components/agent.module.css';
 /* ⚠️ 2026-10-04 (ачааллын аудит): хөвөгч товч ба «оч» дүрс ТУСДАА файлд — `Portal` товчийг
    статикаар, энэ цонхыг (агентын клиент · датасетийн бүртгэл · markdown, ~220 КБ эх код)
@@ -24,7 +25,8 @@ import s from '@/components/agent.module.css';
 import { Spark } from '@/components/AgentButton';
 export { AgentButton } from '@/components/AgentButton';
 
-type Bubble = { role: 'user' | 'bot'; text: string };
+/** ⚠️ `plan` — агентын ажлын төлөвлөгөө (хариултын өмнө үлдэнэ) */
+type Bubble = { role: 'user' | 'bot' | 'plan'; text: string };
 
 /** Өргөн горимын сонголтыг хадгалах түлхүүр */
 const WIDE_KEY = 'selbe-agent-wide';
@@ -88,6 +90,9 @@ export function AgentChat({
   scope: AgentScope;
 }) {
   const [log, setLog] = useState<Bubble[]>([]);
+  /* ⚠️ 2026-10-15: ЯВЦ ДУНДЫН төлөвлөгөө — алхам бүр гүйцэтгэгдэхэд `done` ахина.
+     Хариулт ирэхэд `log`-д тусдаа бөмбөлөг болж үлдэнэ (ил тод байдал). */
+  const [plan, setPlan] = useState<{ raw: string; done: number } | null>(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -242,6 +247,8 @@ export function AgentChat({
       //    хасагдана, огтлолт буцаагдахгүй (энэ нь зориуд).
       trimHistory(h);
       const base = h.length;
+      /* ⚠️ `plan` төлөв нь асинхрон тул `setLog`-д ЛОКАЛ хуулбарыг ашиглана */
+      let planText = '';
 
       try {
         const { text } = await ask({
@@ -249,9 +256,13 @@ export function AgentChat({
           history: h,
           scope,
           onProgress: setProgress,
+          onPlan: (p) => { planText = p; setPlan({ raw: p, done: 0 }); },
+          onStep: () => setPlan((p) => (p ? { ...p, done: p.done + 1 } : p)),
           signal: controller.signal,
         });
-        setLog((l) => [...l, { role: 'bot', text }]);
+        /* ⚠️ Төлөвлөгөө ХАРИУЛТЫН ӨМНӨ бөмбөлөг болж үлдэнэ — хэрэглэгч дараа нь ч
+           «агент ямар замаар явсан» гэдгийг харна. */
+        setLog((l) => [...l, ...(planText ? [{ role: 'plan' as const, text: planText }] : []), { role: 'bot' as const, text }]);
       } catch (e) {
         // Түүхийг тэнцвэртэй (role ээлжилсэн, tool_use бүр tool_result-тай) байдалд
         // буцаана — тасалсан ба алдаатай ХОЁУЛАНД (өмнө нь зөвхөн сүүлийн user
@@ -272,6 +283,7 @@ export function AgentChat({
       } finally {
         setBusy(false);
         setProgress('');
+        setPlan(null);
         abort.current = null;
       }
     },
@@ -394,10 +406,18 @@ export function AgentChat({
         )}
 
         {log.map((m, i) => (
-          <div key={i} className={`${s.msg} ${m.role === 'user' ? s.user : s.bot}`}>
-            {m.role === 'bot' ? <AgentMarkdown text={m.text} /> : m.text}
-          </div>
+          m.role === 'plan'
+            /* ⚠️ Төлөвлөгөө бөмбөлөг БИШ — хүрээгүй карт (хариултаас ялгарна) */
+            ? <AgentPlan key={i} raw={m.text} />
+            : (
+              <div key={i} className={`${s.msg} ${m.role === 'user' ? s.user : s.bot}`}>
+                {m.role === 'bot' ? <AgentMarkdown text={m.text} /> : m.text}
+              </div>
+            )
         ))}
+
+        {/* ⚠️ ЯВЦ ДУНДЫН төлөвлөгөө — алхам бүр гүйцэтгэгдэхэд тэмдэглэгдэнэ */}
+        {busy && plan && <AgentPlan raw={plan.raw} done={plan.done} />}
 
         {busy && progress && (
           <div className={s.progress}>

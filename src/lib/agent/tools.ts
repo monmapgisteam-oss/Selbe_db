@@ -162,15 +162,42 @@ type ServiceMeta = { fields?: FieldMeta[]; maxRecordCount?: number; error?: { me
 const META_TTL = 5 * 60 * 1000;
 const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
 
-async function fieldsOf(url: string): Promise<FieldMeta[]> {
+/**
+ * @param fresh Кэшийг тойрч АМЬДААР унших (схем өөрчлөгдсөн гэж сэжиглэх үед).
+ * ⚠️ 2026-10-15 (схемд зохицох): талбар олдохгүй үед заавал `fresh` уншина —
+ *    үйлчилгээнд талбар нэмэгдсэн/нэр солигдсон бол агент 5 минут хүлээхгүйгээр
+ *    зохицно. Амжилттай асуулгын замд нэмэлт хүсэлт ҮҮСГЭХГҮЙ.
+ */
+async function fieldsOf(url: string, fresh = false): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
-  if (hit && Date.now() - hit.at < META_TTL) return hit.fields;
+  if (!fresh && hit && Date.now() - hit.at < META_TTL) return hit.fields;
   /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`ArcGISError`-оо өөрөө шиднэ:
      `HTTP n`, 200-алдаа, timeout). */
   const body = await arcgisPost<ServiceMeta>(url, {});
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
   return fields;
+}
+
+/**
+ * ОЙРОЛЦОО ТАЛБАРЫН НЭР — буруу нэр дээр загварт ЗАСВАР санал болгоно.
+ *
+ * ⚠️ ЯАГААД: хамгийн түгээмэл бүтэлгүйтэл нь дагавар/бичиглэлийн зөрүү
+ * (`on` ↔ `on_`, `Zone_id` ↔ `ZONE_ID`, `urt` ↔ `urt_m`). Зөвхөн «ийм талбар
+ * алга» гэвэл загвар дахин таамаглаж, эргэлт дэмий өнгөрдөг.
+ */
+export function nearFields(name: string, known: Iterable<string>): string[] {
+  const norm = (s: string) => s.toLowerCase().replace(/[^0-9a-zа-яөү]/gi, '');
+  const n = norm(name);
+  if (!n) return [];
+  const out: { f: string; rank: number }[] = [];
+  for (const f of known) {
+    const k = norm(f);
+    if (k === n) out.push({ f, rank: 0 });
+    else if (k.startsWith(n) || n.startsWith(k)) out.push({ f, rank: 1 });
+    else if (k.includes(n) || n.includes(k)) out.push({ f, rank: 2 });
+  }
+  return out.sort((a, b) => a.rank - b.rank || a.f.length - b.f.length).slice(0, 3).map((x) => x.f);
 }
 
 /* ── Гүйцэтгэл ── */
@@ -261,7 +288,10 @@ async function runDescribe(input: { id?: string }, scope: AgentScope): Promise<T
   const src: AgentSource | null = input.id ? resolveSource(input.id, scope) : null;
   if (!src) return notFound(input.id);
 
-  const fields = await fieldsOf(src.url);
+  /* ⚠️ 2026-10-15: ЭНЭ хэрэгсэл ҮРГЭЛЖ АМЬДААР уншина (кэшийг тойрч) — зорилго нь
+     «бодит мөчийн схемийг мэдэх». Талбар нэмэгдсэн/нэр солигдсоныг агент тэр
+     дороо олж харна; кэш нь зөвхөн `query_feature`-ийн урьдчилсан шалгалтад. */
+  const fields = await fieldsOf(src.url, true);
   return ok({
     id: src.id,
     title: src.title,
@@ -289,7 +319,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
   // ⚠️ Талбарын нэрийг УРЬДЧИЛЖ шалгана. ArcGIS буруу нэр дээр «Unable to perform
   //    query» гэсэн ерөнхий алдаа буцаадаг тул агент юу буруу болсныг ойлгохгүй,
   //    ижил алдааг дахин дахин давтдаг. Энд яг аль нэр буруугий нь хэлж өгнө.
-  const known = new Set((await fieldsOf(url)).map((f) => f.name));
+  let known = new Set((await fieldsOf(url)).map((f) => f.name));
   // orderBy бас шалгах талбар — «талбар [ASC|DESC], …» тул талбарын нэрсийг л салгана.
   // (Өмнө нь шалгагдахгүй тул хуурмаг нэр ArcGIS-ийн ерөнхий алдаа руу шууд оруулдаг байв.)
   const orderFields = (input.orderBy ?? '')
@@ -302,10 +332,24 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
     ...(input.outFields ?? []),
     ...orderFields,
   ];
-  const bad = used.filter((f) => f && f !== '*' && !known.has(f));
+  const missing = (set: Set<string>) => used.filter((f) => f && f !== '*' && !set.has(f));
+  let bad = missing(known);
   if (bad.length) {
+    /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): кэш 5 минут хүртэл хуучирсан байж болно —
+       талбар САЯХАН нэмэгдсэн/нэршилээ сольсон бол энд амьдаар уншиж зохицно.
+       Зөвхөн АЛДААНЫ замд нэмэлт хүсэлт явна (хэвийн асуулга удаашрахгүй). */
+    known = new Set((await fieldsOf(url, true)).map((f) => f.name));
+    bad = missing(known);
+  }
+  if (bad.length) {
+    /* ⚠️ Зөвхөн «алга» гэвэл загвар дахин таамаглана — ОЙРОЛЦОО нэрийг санал болгоно */
+    const hints = bad
+      .map((f) => ({ f, near: nearFields(f, known) }))
+      .filter((x) => x.near.length)
+      .map((x) => `${x.f} → ${x.near.join(' | ')}`);
     return fail(
       tr('Ийм талбар алга: {0}. ', bad.join(', ')) +
+        (hints.length ? tr('Ойролцоо нэр: {0}. ', hints.join('; ')) : '') +
         tr('Байгаа талбарууд: {0}', [...known].slice(0, 60).join(', ')),
     );
   }
@@ -368,7 +412,31 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
       rows,
     });
   } catch (e) {
-    if (e instanceof ArcGISError) return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
+    if (e instanceof ArcGISError) {
+      /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): ArcGIS буруу талбар дээр «Unable to perform query»
+         гэсэн ЕРӨНХИЙ алдаа буцаадаг тул шалтгаан нь схем өөрчлөгдсөн эсэх нь мэдэгдэхгүй.
+         Энд схемийг АМЬДААР дахин уншиж:
+           · талбар үнэхээр алга болсон бол ЯГ алийг нь, ойролцоо нэрийг нь хэлнэ
+             (загвар дараагийн эргэлтэд өөрөө засна);
+           · схем хэвээр бол алдааг хэвээр буцаана (дахин оролдлого нь `query.ts`-д).
+         Шинэчлэлт өөрөө унавал (сүлжээ) анхны алдааг хэвээр үлдээнэ. */
+      try {
+        const live = new Set((await fieldsOf(url, true)).map((f) => f.name));
+        const gone = missing(live);
+        if (gone.length) {
+          const hints = gone
+            .map((f) => ({ f, near: nearFields(f, live) }))
+            .filter((x) => x.near.length)
+            .map((x) => `${x.f} → ${x.near.join(' | ')}`);
+          return fail(
+            tr('Үйлчилгээний схем ӨӨРЧЛӨГДСӨН байна — ийм талбар одоо алга: {0}. ', gone.join(', ')) +
+              (hints.length ? tr('Ойролцоо нэр: {0}. ', hints.join('; ')) : '') +
+              tr('Байгаа талбарууд: {0}', [...live].slice(0, 60).join(', ')),
+          );
+        }
+      } catch { /* схем уншилт ч унасан — доорх анхны алдааг буцаана */ }
+      return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
+    }
     return fail(tr('Асуулга амжилтгүй: {0}', e instanceof Error ? e.message : String(e)));
   }
 }

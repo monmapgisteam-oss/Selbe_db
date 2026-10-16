@@ -16,7 +16,10 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, dateTime, PRINT_COLORS } from '@/lib/format';
+import { num, pct, dateTime } from '@/lib/format';
+/* ⚠️ 2026-10-15: палитр, ₮-ийн орлуулга, хүснэгтийн загвар нь `pdfTheme.ts`-д ЗӨӨГДСӨН —
+   AI туслахын тайлан (`lib/agent/reportPdf.ts`) ижил өнгөтэй байх ёстой (ГАНЦ эх). */
+import { PAPER, INK, INK2, INK3, MUTED, RULE, RULE2, SURF, ACCENT, RED, AMBER, T, tableLayout, th, td, tdBold } from '@/lib/pdfTheme';
 import {
   execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel,
   type ExecFinding, type ExecReport, type ExecAppendix,
@@ -27,59 +30,6 @@ import { buildInfographic, toPng, money } from '@/lib/execInfographic';
 import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
-
-/* ══════════════════════ Өнгөний палитр ══════════════════════
- *
- * ⚠️ Лавлагаа баримтаас ШУУД авсан утгууд (PDF-ийн зурах командуудаас
- * задлав). Дулаан цаас, бараг хар гарчиг, цэнхэр акцент, дулаан саарал
- * зураас. Аль нэгийг өөрчилбөл баримт «өөр газраас гарсан» мэт харагдана.
- */
-const PAPER = '#f9f9f7';   // хуудасны дэвсгэр
-const INK = '#0b0b0b';     // гарчиг
-const INK2 = '#33322f';    // үндсэн бичвэр
-const INK3 = '#52514e';    // хоёрдогч
-const MUTED = '#898781';   // тайлбар, толгойн шошго
-const RULE = '#e1e0d9';    // хүснэгтийн зураас
-const RULE2 = '#c3c2b7';   // тод зааг
-const SURF = '#f0efec';    // хөнгөн дүүргэлт
-/* ⚠️ 2026-10-09 (хэрэглэгчийн сонголт «PDF-д зөвхөн өнгийг тааруулна»):
-   ТӨЛВИЙН ба АКЦЕНТЫН өнгө лавлагааных биш, вэбийн цайвар токен
-   (`PRINT_COLORS`) — дэлгэц дээр улаан/шар/teal байсан зүйл цаасан дээр өөр
-   улаан/шар/цэнхэр болж байв. Цаас, бэх, зураас (дээрх) лавлагаагаар ХЭВЭЭР.
-   Хуучин: акцент #2a78d6 · улаан #d03b3b · шар #fab219 (цагаан дээр бичвэр
-   болоход бараг уншигддаггүй байв). */
-const ACCENT = PRINT_COLORS.data;   // акцент · баганын үндсэн өнгө (--data)
-const RED = PRINT_COLORS.bad;       // --bad
-const AMBER = PRINT_COLORS.warn;    // --warn
-
-/** Roboto-д байхгүй тэмдэгтийг PDF-д орлуулна */
-const T = (s: string) => s.replace(/₮/g, tr('төг'));
-
-/* ══════════════════════ Хүснэгтийн загвар ══════════════════════
- *
- * ⚠️ БОСОО ЗУРААСГҮЙ: лавлагаа баримт мөр хоорондын нимгэн хэвтээ
- * зураасаар л ялгадаг. Босоо шугам нэмбэл «хүснэгтэн тор» болж, хэв маяг
- * эрс өөрчлөгдөнө.
- */
-/* ⚠️ pdfmake-ийн `CustomTableLayout` нь `node`-ыг `ContentTable` гэж өгдөг
-   тул тоологчийг `any`-гүйгээр бичихэд төрөл зөрнө — хамгийн бага хүрээнд
-   `TableLayout` гэж зарлаж, доторх хандалтыг хамгаална. */
-const tableLayout: CustomTableLayout = {
-  hLineColor: (i, node) => (i === 1 || i === node.table.body.length ? RULE2 : RULE),
-  vLineWidth: () => 0,
-  hLineWidth: (i, node) => (i === 0 ? 0 : i === 1 || i === node.table.body.length ? 0.9 : 0.5),
-  paddingLeft: (i) => (i === 0 ? 0 : 6),
-  paddingRight: (i, node) => (i === (Array.isArray(node.table.widths) ? node.table.widths.length : 1) - 1 ? 0 : 6),
-  paddingTop: () => 5,
-  paddingBottom: () => 5,
-};
-
-const th = (t: string, right = false): TableCell =>
-  ({ text: T(t), style: 'th', alignment: right ? 'right' : 'left' });
-const td = (t: string | number, right = false, color?: string): TableCell =>
-  ({ text: T(String(t)), alignment: right ? 'right' : 'left', ...(color ? { color } : {}) });
-const tdBold = (t: string | number, right = false): TableCell =>
-  ({ text: T(String(t)), alignment: right ? 'right' : 'left', bold: true });
 
 /**
  * Бүлгийн гарчиг — дугаар, нэр, доор нь нэг мөрийн тодорхойлолт.

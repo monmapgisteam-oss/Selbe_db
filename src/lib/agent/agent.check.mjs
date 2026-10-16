@@ -381,7 +381,9 @@ async function main() {
   console.log('\n6. Реле рүү явсан хүсэлт');
   const first = seen[0] ?? {};
   check('загвар нь claude-opus-5', first.model === 'claude-opus-5', first.model);
-  check('effort тохируулагдсан', first.output_config?.effort === 'low');
+  /* ⚠️ 2026-10-15: анхдагч 'low' → 'medium' (`server.mjs`-ийн ⚠️). Тогтмолыг хатуу
+     бичихгүй — `AGENT_EFFORT`-оор солигддог; зөвхөн ЗӨВШӨӨРӨГДСӨН утга эсэхийг шалгана. */
+  check('effort тохируулагдсан', ['low', 'medium', 'high'].includes(first.output_config?.effort));
   check('заавар КЭШЛЭГДЭХЭЭР явсан', first.system?.[0]?.cache_control?.type === 'ephemeral');
   check('4 хэрэгсэл дамжсан', first.tools?.length === 4, `${first.tools?.length}`);
   check(

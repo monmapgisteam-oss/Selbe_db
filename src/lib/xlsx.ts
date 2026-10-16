@@ -374,10 +374,12 @@ export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsh
  * Байтыг файл болгон татна (хөтөчид л) — `csvFile.downloadText`-ийн загвар, зөвхөн Blob нь хоёртын.
  * ⚠️ `Uint8Array` → `Blob`: TS 5.7-ийн `ArrayBufferLike` төрлөөс болж `.buffer`-ийг шууд өгөхгүй,
  *    `slice()`-аар шинэ `ArrayBuffer` авна.
+ * ⚠️ 2026-10-15: `mime` параметртэй болов — .docx (`lib/agent/reportDocx.ts`) ч ижил ZIP
+ *    бичигчээр үүсдэг тул татах кодыг хуулахгүй. Анхдагч нь ХУУЧНААР .xlsx.
  */
-export function downloadXlsx(filename: string, bytes: Uint8Array): void {
+export function downloadXlsx(filename: string, bytes: Uint8Array, mime: string = XLSX_MIME): void {
   const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  const url = URL.createObjectURL(new Blob([ab], { type: XLSX_MIME }));
+  const url = URL.createObjectURL(new Blob([ab], { type: mime }));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

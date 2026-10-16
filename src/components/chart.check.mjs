@@ -126,4 +126,16 @@ console.log('\n4. Telegram — JSON ГАРАХГҮЙ, `note` дүгнэлт ҮЛ
   ok('хаалтгүй блок бүрэн залгигдсан', !h.includes('type') && h.includes('Эхлэл'));
 }
 
+
+/* ⚠️ 2026-10-15: ТАЙЛАНГИЙН БЛОК (```report) — порталд татах товч, Telegram-д зөвлөмжийн мөр.
+   Хасахгүй бол ботын хэрэглэгч түүхий JSON хараад ойлгохгүй. */
+console.log('\n6. Тайлангийн блок Telegram-д');
+{
+  const h = toHtml(['Эхлэл.', '```report', '{"title":"Т","formats":["pdf"]}', '```', 'Төгсгөл.'].join('\n'));
+  ok('JSON гарахгүй', !h.includes('formats') && !h.includes('title'));
+  ok('зөвлөмжийн мөр гарав', h.includes('татна уу'));
+  ok('эргэн тойрны текст хэвээр', h.includes('Эхлэл') && h.includes('Төгсгөл'));
+  const u = toHtml(['Эхлэл.', '```report', '{"title":"Т"'].join('\n'));
+  ok('хаалтгүй тайлангийн блок залгигдав', !u.includes('title') && u.includes('Эхлэл'));
+}
 console.log(`\n✅ Графикийн блок — ${pass} шалгуур давлаа\n`);

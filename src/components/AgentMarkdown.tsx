@@ -10,11 +10,18 @@
  *
  * ⚠️ Заавар ба энэ файл ХОСООРОО ажиллана: `registry.ts`-д хариултын хэлбэрийг
  * өөрчилвөл энд харгалзах зураалт байгаа эсэхийг шалгана.
+ *
+ * ⚠️ 2026-10-15: ЗАДЛАЛТ нь энд БИШ — `lib/agent/blocks.ts`-д (ГАНЦ эх). Хариултыг
+ * файл (PDF · Word · Excel · CSV) болгон хөрвүүлдэг болсон тул хоёр тал НЭГ
+ * задлагч хэрэглэнэ, эс бөгөөс файл ба дэлгэц зөрнө. Энэ файл зөвхөн ЗУРНА.
  */
 
 import type { ReactNode } from 'react';
 import { isNumeric } from '@/lib/agent/format';
+import { parseBlocks, type MdBlock } from '@/lib/agent/blocks';
 import { AgentChart } from '@/components/AgentChart';
+import { AgentPlan } from '@/components/AgentPlan';
+import { AgentReport } from '@/components/AgentReport';
 import s from '@/components/agent.module.css';
 
 /** `**тод**` ба `` `код` `` — мөрийн дотоод тэмдэглэгээ */
@@ -40,129 +47,49 @@ function inline(text: string, key: string): ReactNode[] {
   return out;
 }
 
-const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
-/** `|---|---|` тусгаарлагч — өгөгдөл БИШ тул зурахгүй */
-const isTableSep = (l: string) => /^\s*\|[\s:|-]+\|\s*$/.test(l);
-const isBullet = (l: string) => /^\s*[-•]\s+/.test(l);
-const isNumbered = (l: string) => /^\s*\d+[.)]\s+/.test(l);
-const isSource = (l: string) => /^\s*(эх сурвалж|source)\s*[::]/i.test(l);
+/** Нэг блокийг зурна — дараалал нь `parseBlocks`-ийнхтэй ижил */
+function block(b: MdBlock, k: number, source: string): ReactNode {
+  if (b.kind === 'chart') return <AgentChart key={`ch${k}`} raw={b.raw} />;
 
-const cells = (l: string) =>
-  l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  /* ⚠️ Төлөвлөгөө нь ихэвчлэн хэрэгсэл дуудах эргэлтэд ирдэг (`AgentChat`-ийн
+     тусдаа карт). Хэрэв эцсийн хариултад ч орвол түүхий JSON/жагсаалт
+     харуулахгүй, ижил картаар зурна. */
+  if (b.kind === 'plan') return <AgentPlan key={`pl${k}`} raw={b.raw} />;
 
-export function AgentMarkdown({ text }: { text: string }) {
-  const lines = String(text).split('\n');
-  const out: ReactNode[] = [];
-  let i = 0;
+  /* ⚠️ Татах товчинд ХАРИУЛТ БҮХЭЛДЭЭ хэрэгтэй (файлын агуулга нь хариулт өөрөө) */
+  if (b.kind === 'report') return <AgentReport key={`rp${k}`} raw={b.raw} source={source} />;
 
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (!line.trim()) { i++; continue; }
-
-    /**
-     * ── График ── ```chart … ``` хашлагатай JSON блок
-     *
-     * ⚠️ Хаалтын хашлага ирээгүй ч (хариулт таслагдсан) гогцоо мөнхөд эргэлдэхгүй:
-     * файлын төгсгөл хүрвэл цуглуулсанаа зурна.
-     */
-    if (/^\s*```\s*chart\s*$/i.test(line)) {
-      i++;
-      const buf: string[] = [];
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
-      if (i < lines.length) i++; // хаалтын хашлагыг алгасна
-      out.push(<AgentChart key={`ch${i}`} raw={buf.join('\n')} />);
-      continue;
-    }
-
-    /* ── Хүснэгт ── */
-    if (isTableRow(line)) {
-      const rows: string[] = [];
-      while (i < lines.length && isTableRow(lines[i])) rows.push(lines[i++]);
-      const body = rows.filter((r) => !isTableSep(r));
-      if (body.length) {
-        const [head, ...rest] = body;
-        out.push(
-          // ⚠️ Нарийн цонхонд өргөн хүснэгт багтахгүй тул ХӨНДЛӨН гүйлгэнэ —
-          //    эс бөгөөс бүх чат цонх хэвтээгээр сунана.
-          <div key={`t${i}`} className={s.tableWrap}>
-            <table className={s.table}>
-              <thead>
-                <tr>{cells(head).map((c, n) => <th key={n}>{inline(c, `h${i}${n}`)}</th>)}</tr>
-              </thead>
-              <tbody>
-                {rest.map((r, ri) => (
-                  <tr key={ri}>{cells(r).map((c, n) => <td key={n}>{inline(c, `c${i}${ri}${n}`)}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-          </div>,
-        );
-      }
-      continue;
-    }
-
-    /* ── Жагсаалт ── */
-    if (isBullet(line) || isNumbered(line)) {
-      const numbered = isNumbered(line);
-      const items: string[] = [];
-      while (i < lines.length && (numbered ? isNumbered(lines[i]) : isBullet(lines[i]))) {
-        items.push(lines[i++].replace(/^\s*(?:[-•]|\d+[.)])\s+/, ''));
-      }
-      const List = numbered ? 'ol' : 'ul';
-      out.push(
-        <List key={`l${i}`} className={s.list}>
-          {items.map((it, n) => <li key={n}>{inline(it, `li${i}${n}`)}</li>)}
-        </List>,
-      );
-      continue;
-    }
-
-    /**
-     * ── Эх сурвалжийн мөр — ХАЯГДАНА, хэрэглэгчид ХАРАГДАХГҮЙ ──
-     *
-     * ⚠️ Агент нь мөрийг ГАРГАСААР байна (`registry.ts`-ийн дүрэм). Тэр нь
-     * загварыг «энэ тоог яг хаанаас авсан бэ» гэж нэрлэхэд хүргэдэг сахилга
-     * бөгөөд зохиомол тоо гаргах эрсдэлийг бууруулдаг. Зөвхөн ХАРУУЛАХГҮЙ —
-     * удирдлагад `et:24 / OBJECTID` гэдэг нь утгагүй техникийн чимээ.
-     *
-     * ⚠️ Хөгжүүлэгч шалгах шаардлагатай бол `npm run ask "…"` дээр бүрэн харагдана.
-     */
-    if (isSource(line)) {
-      i++;
-      continue;
-    }
-
-    /* ── Энгийн догол мөр — дараалсан мөрүүдийг нэгтгэнэ ── */
-    /**
-     * ⚠️ 2026-08-19: ``` хашилтан блок дээр ЗААВАЛ таслана. Загвар нь ихэвчлэн
-     * «**Гүйцэтгэлийн байдал**» гэсэн тодруулсан гарчгийн ДАРАА хоосон мөр
-     * үлдээлгүй шууд ```chart блок бичдэг. Тасалдаггүй байхад тэр блокийн
-     * хашилт, JSON, хаалт гурвуулаа догол мөрд ЗАЛГИГДАЖ, удирдлагад график
-     * зурагдахын оронд `{"type":"bar",…}` гэсэн түүхий JSON харагддаг байв
-     * (дээрх графикийн салаа нь зөвхөн БЛОК ЭХЛЭХ үед ажилладаг).
-     */
-    const para: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() &&
-      !/^\s*```/.test(lines[i]) &&
-      !isTableRow(lines[i]) &&
-      !isBullet(lines[i]) &&
-      !isNumbered(lines[i]) &&
-      !isSource(lines[i])
-    ) {
-      para.push(lines[i++]);
-    }
-    /**
-     * Хашилт нь ЭХНИЙ мөр байсан бол догол мөр хоосон.
-     * ⚠️ `i++` ЗААВАЛ: энд `continue` дангаараа бичвэл индекс ахихгүй тул
-     * дээрх графикийн салаанд баригдаагүй хашилт (жиш. дан хаалтын ```)
-     * ХЯЗГААРГҮЙ ДАВТАЛТ үүсгэж хөтчийг гацаана. Мөрийг залгиад цааш явна.
-     */
-    if (!para.length) { i++; continue; }
-    out.push(<p key={`p${i}`} className={s.para}>{inline(para.join('\n'), `pi${i}`)}</p>);
+  if (b.kind === 'table') {
+    return (
+      // ⚠️ Нарийн цонхонд өргөн хүснэгт багтахгүй тул ХӨНДЛӨН гүйлгэнэ —
+      //    эс бөгөөс бүх чат цонх хэвтээгээр сунана.
+      <div key={`t${k}`} className={s.tableWrap}>
+        <table className={s.table}>
+          <thead>
+            <tr>{b.head.map((c, n) => <th key={n}>{inline(c, `h${k}${n}`)}</th>)}</tr>
+          </thead>
+          <tbody>
+            {b.rows.map((r, ri) => (
+              <tr key={ri}>{r.map((c, n) => <td key={n}>{inline(c, `c${k}${ri}${n}`)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
-  return <>{out}</>;
+  if (b.kind === 'list') {
+    const List = b.ordered ? 'ol' : 'ul';
+    return (
+      <List key={`l${k}`} className={s.list}>
+        {b.items.map((it, n) => <li key={n}>{inline(it, `li${k}${n}`)}</li>)}
+      </List>
+    );
+  }
+
+  return <p key={`p${k}`} className={s.para}>{inline(b.text, `pi${k}`)}</p>;
+}
+
+export function AgentMarkdown({ text }: { text: string }) {
+  return <>{parseBlocks(text).map((b, k) => block(b, k, text))}</>;
 }
