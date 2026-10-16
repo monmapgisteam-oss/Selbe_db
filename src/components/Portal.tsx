@@ -1309,7 +1309,6 @@ function PortalContent(
           <ViewRail
             view={view}
             setView={railSelect}
-            catalogOpen={catOpen}
             navScope={navScope}
             collapsed={navMin}
             onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}

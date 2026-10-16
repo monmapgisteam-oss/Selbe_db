@@ -37,7 +37,6 @@ export type NavBadges = Partial<Record<ViewKey, number | null>>;
 export function ViewRail({
   view,
   setView,
-  catalogOpen,
   header = false,
   collapsed = false,
   navScope = 'all',
@@ -51,8 +50,6 @@ export function ViewRail({
 }: {
   view: ViewKey;
   setView: (v: ViewKey) => void;
-  /** Давхаргын каталогийн багана нээлттэй эсэх — сумны чиглэлээр заана */
-  catalogOpen: boolean;
   /**
    * Навигацийн ХҮРЭЭ. `'all'` = БҮХ харагдац; харагдацын жагсаалт бол зөвхөн
    * тэдгээр. ТЭЗҮ баримт нь аль ч тохиолдолд байнга (доор).
@@ -252,12 +249,8 @@ export function ViewRail({
   const viewButton = (v: (typeof VIEWS)[number], extraCls = '') => {
     const no = order.get(v.key) ?? 0;
     const on = v.key === view;
-    // Каталогтой харагдацууд — тусдаа бүрэн дэлгэцтэй (дашбоард, анализ) нь үгүй.
-    // ⚠️ Толгойн хэвтээ горимд каталог нь зурган дээрх «Давхарга» товчоор
-    //    нээгддэг тул таб задардаггүй — сум харуулахгүй. Босоо (зүүн) горимд
-    //    л таб дээрх сумаар каталог дэлгэгдэнэ.
-    const expandable = !v.standalone && !header;
-    const expanded = expandable && on && catalogOpen;
+    /* ⚠️ 2026-10-16: каталог дэлгэгдсэнийг заадаг «›» сум ба `aria-expanded` ХАСАГДСАН (хэрэглэгчийн
+       заавар) — цэсний товч зөвхөн харагдац сонгоно, каталогийн төлөвийг заахгүй. */
     const n = badgeOf(v.key);
     return (
       <button
@@ -269,7 +262,6 @@ export function ViewRail({
         /* Дэлгэгдсэн үед нэр харагдаж байгаа тул hover-т ТАЙЛБАРЫГ нь; хураагдсан
            үед өөрийн tooltip (`tipProps`) — давхар гарахгүйн тулд `title`-гүй. */
         title={collapsed && !header ? undefined : v.desc}
-        {...(expandable ? { 'aria-expanded': expanded } : {})}
         className={`${s.item} ${on ? s.itemOn : ''} ${extraCls}`}
         {...tipProps(v.title, v.desc)}
         onClick={guardClick(() => setView(v.key))}
@@ -286,9 +278,6 @@ export function ViewRail({
           {!header && <span className={s.desc}>{v.desc}</span>}
         </span>
         {n > 0 && <span className={`${s.badge} ${s.badgeInline} num`} aria-hidden>{n > 99 ? '99+' : n}</span>}
-        {expandable && (
-          <span className={`${s.chev} ${expanded ? s.chevOn : ''}`} aria-hidden>›</span>
-        )}
       </button>
     );
   };

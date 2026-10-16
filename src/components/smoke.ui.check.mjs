@@ -150,7 +150,7 @@ const CASES = [
   { name: 'Portal', load: () => import('@/components/Portal'), pick: (m) => m.default, props: {}, map: false, preload: true,
     expect: ['Дашбоард'] },
   { name: 'ViewRail', load: () => import('@/components/ViewRail'), pick: (m) => m.ViewRail,
-    props: { view: 'dashboard', setView: noopFn, catalogOpen: false, badges: {} }, map: false },
+    props: { view: 'dashboard', setView: noopFn, badges: {} }, map: false },
   { name: 'HelpPanel', load: () => import('@/components/HelpPanel'), pick: (m) => m.HelpPanel,
     props: { open: true, onClose: noopFn, navScope: 'all', view: 'dashboard', onGo: noopFn }, map: false },
   { name: 'CeoScorecard', load: () => import('@/components/CeoScorecard'), pick: (m) => m.CeoScorecard, props: { onView: noopFn } },

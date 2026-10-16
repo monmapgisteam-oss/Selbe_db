@@ -87,16 +87,6 @@
    Бүтэн тайлбар нь `title` шинжид (hover) хэвээр. */
 .desc { display: none; }
 
-/* Каталог дэлгэгдсэнийг заах сум — дэлгэгдэхэд 90° эргэнэ */
-.chev {
-  flex: none;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--ink-3);
-  transition: transform 0.22s var(--ease), color 0.18s;
-}
-.itemOn .chev { color: var(--hue); }
-.chevOn { transform: rotate(90deg); }
 
 /* ── Цэсний тоон тэмдэг (2026-09-30) — хүлээгдэж буй зүйл ── */
 .icon { position: relative; }
@@ -202,7 +192,7 @@
   .title { font-size: 14px; }
   /* Хураагдсан горимын дүрэм УНЖИХ жагсаалтад хүчингүй */
   .rail.railMin .text { display: flex; }
-  .rail.railMin .no, .rail.railMin .chev { display: inline; }
+  .rail.railMin .no { display: inline; }
   .rail.railMin .railHead { display: block; }
   .rail.railMin .item { justify-content: flex-start; padding: 8px 14px; gap: 9px; }
   .rail.railMin .badgeDot { display: none; }
@@ -241,7 +231,6 @@
 .railRow .icon { width: 22px; height: 22px; border-radius: 6px; flex: none; }
 .railRow .icon svg { width: 14px; height: 14px; }
 .railRow .title { font-size: 0.74rem; white-space: nowrap; }
-.railRow .chev { font-size: 0.9rem; }
 /* «ТЭЗҮ-БОНУ» баримтын таб — бусад харагдацын табтай ИЖИЛ, бүлгээс тусгаарлахгүй.
    Зөвхөн дүрсний өнгө нь модулийн ногоон (утга: харагдац биш, баримт). */
 .docItem { flex: none; }
@@ -269,7 +258,6 @@
 /* ── ХУРААГДСАН босоо цэс — зөвхөн дүрс (нэр нь title tooltip-д) ── */
 .railMin .no,
 .railMin .text,
-.railMin .chev,
 .railMin .railHead { display: none; }
 .railMin .item { justify-content: center; padding: 9px 0; gap: 0; }
 .railMin .icon { width: 26px; height: 26px; }
