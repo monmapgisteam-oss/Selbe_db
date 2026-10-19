@@ -227,7 +227,13 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
           {fields.map((f) => (
             <label key={f.name} className={`${x.field} ${f.type === 'long' ? e.wide : ''}`}>
               <span>{entryFieldLabel(f)}{f.name === dateField?.name ? ' *' : ''}</span>
-              {f.type === 'long'
+              {f.options
+                ? <select className={e.input} value={vals[f.name] ?? ''} disabled={busy}
+                    onChange={(ev) => setVals((v) => ({ ...v, [f.name]: ev.target.value }))}>
+                    <option value="">{tr('Сонгоно…')}</option>
+                    {f.options.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+                  </select>
+                : f.type === 'long'
                 ? <textarea className={e.input} rows={3} value={vals[f.name] ?? ''} disabled={busy}
                     onChange={(ev) => setVals((v) => ({ ...v, [f.name]: ev.target.value }))} />
                 : <input className={e.input} type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}

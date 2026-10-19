@@ -266,8 +266,16 @@ async function gidExists(url: string, gidField: string, gid: string): Promise<bo
   return n > 0;
 }
 
-/** Хүснэгтийн бичих талбар — маягт угсрахад */
-export type EntryField = { name: string; alias: string; type: 'date' | 'number' | 'text' | 'long' };
+/**
+ * Хүснэгтийн бичих талбар — маягт угсрахад.
+ * ⚠️ 2026-10-19 (хэрэглэгч: «домэйн оруулсан талбар сонголтоор харагддаг байх»): `options` —
+ *    кодлогдсон домэйны {код, нэр} жагсаалт; байвал маягт `<select>` зурна (жиш. 40-ийн
+ *    «Талбайн зааварчилгаа өгсөн» — ХАБ ажилтнуудын нэрс).
+ */
+export type EntryField = {
+  name: string; alias: string; type: 'date' | 'number' | 'text' | 'long';
+  options?: { code: string; name: string }[];
+};
 
 const SYS_FIELD = /^(objectid|fid|globalid|creationdate|creator|editdate|editor)$/i;
 /** Урт текстийн талбар — `textarea` */
@@ -303,9 +311,10 @@ export const entryFieldLabel = (f: EntryField): string => FIELD_LABEL[f.name]?.(
 
 /** Бүртгэлийн хүснэгтийн талбарууд (35 · 38 · 36) — метадатаас, дарааллаар */
 export async function loadEntryFields(table: number): Promise<EntryField[]> {
-  const j = await arcgisPost<{ fields?: { name?: string; alias?: string; type?: string; editable?: boolean }[] }>(
-    `${HABEA.registers.url}/${table}`, { f: 'json' },
-  );
+  const j = await arcgisPost<{ fields?: {
+    name?: string; alias?: string; type?: string; editable?: boolean;
+    domain?: { codedValues?: { code?: unknown; name?: unknown }[] } | null;
+  }[] }>(`${HABEA.registers.url}/${table}`, { f: 'json' });
   return (j.fields ?? [])
     .filter((f) => f.name && !SYS_FIELD.test(f.name) && f.editable !== false && !/OID|GlobalID/.test(f.type ?? ''))
     .map((f) => {
@@ -313,7 +322,9 @@ export async function loadEntryFields(table: number): Promise<EntryField[]> {
       const type: EntryField['type'] = /Date/.test(t) ? 'date'
         : /Double|Integer|Single/.test(t) ? 'number'
           : LONG_RE.test(String(f.alias ?? f.name)) ? 'long' : 'text';
-      return { name: String(f.name), alias: String(f.alias || f.name), type };
+      const cv = f.domain?.codedValues;
+      const options = cv?.length ? cv.map((c) => ({ code: String(c.code), name: String(c.name ?? c.code) })) : undefined;
+      return { name: String(f.name), alias: String(f.alias || f.name), type, ...(options ? { options } : {}) };
     });
 }
 
