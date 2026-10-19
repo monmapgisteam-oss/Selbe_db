@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t as tr, perLocale } from '@/lib/i18nCore';
-import { AGENT_API, agentErrorText, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
+import { AGENT_API, agentErrorText, ask, relayAlive, stripThinking, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
 import { AgentPlan } from '@/components/AgentPlan';
@@ -26,7 +26,7 @@ import { Spark } from '@/components/AgentButton';
 export { AgentButton } from '@/components/AgentButton';
 
 /** ⚠️ `plan` — агентын ажлын төлөвлөгөө (хариултын өмнө үлдэнэ) */
-type Bubble = { role: 'user' | 'bot' | 'plan'; text: string };
+type Bubble = { role: 'user' | 'bot' | 'plan'; text: string; done?: boolean };
 
 /** Өргөн горимын сонголтыг хадгалах түлхүүр */
 const WIDE_KEY = 'selbe-agent-wide';
@@ -40,6 +40,14 @@ const WIDE_KEY = 'selbe-agent-wide';
  */
 const MAX_HISTORY_MSGS = 30;
 const MAX_HISTORY_BYTES = 1_500_000;
+/**
+ * ⚠️ 2026-10-19: ОГТЛОХ ЗОРИЛТ — дээд хязгаараас ХАМААГҮЙ доош (≈ хагас). Хязгаарт яг тулгаж огтолбол дараагийн
+ *    асуулт бүр дахин хэтэрч, огтлолт (+ БҮХ бодолтын блокийг хасах `stripThinking`, кэш алдагдах) асуулт бүрд
+ *    давтагддаг байв. Одоо хязгаар хэтэрсэн үед л ажиллаж, түүхийг ЗОРИЛТ хүртэл богиносгоно — дараагийн хэдэн
+ *    асуулт огтлолтгүй (зөвхөн ард нэмэгдэнэ).
+ */
+const TRIM_TO_MSGS = 15;
+const TRIM_TO_BYTES = 750_000;
 
 /**
  * Түүхийг БАЙРАНД нь (in-place) огтолно — `tools/telegram-bot.mjs`-ийн
@@ -50,20 +58,30 @@ const MAX_HISTORY_BYTES = 1_500_000;
  * ⚠️ Массивын ЗААЛТ хэвээр үлдэнэ (`splice`) — `send()` доторх `h`/`base`
  *    буцаалт түүнд тулгуурладаг.
  * Аль ч цэгээс тасалсан ч хязгаарт багтахгүй бол түүхийг бүхэлд нь цэвэрлэнэ.
+ * ⚠️ 2026-10-19 (Claude Opus 5.5 — бодолтын блок ЯРИАНД холбогдсон): эхний эргэлтүүдийг хасмагц үлдсэн
+ *    бодолтын блок бүр «өөр ярианых» болж 400 буцдаг (шинэ байгууллагад). Тиймээс ОГТЛОСОН үед л үлдсэн
+ *    түүхийн БҮХ бодолтын блокийг хасна (`client.stripThinking`); огтлоогүй үед түүх зөвхөн ард нэмэгдэнэ.
+ *    Огтлолт нь асуулт илгээхийн ӨМНӨ (`send`) — явж буй хэрэгслийн гогцооны дунд ХЭЗЭЭ Ч биш.
  */
 function trimHistory(h: ApiMessage[]): void {
   const enc = new TextEncoder();
   const sizes = h.map((m) => enc.encode(JSON.stringify(m)).length);
-  let total = sizes.reduce((a, b) => a + b, 0);
-  if (h.length <= MAX_HISTORY_MSGS && total <= MAX_HISTORY_BYTES) return;
-  for (let i = 0; i < h.length; i++) {
-    const m = h[i];
-    if (i > 0 && m.role === 'user' && typeof m.content === 'string'
-      && h.length - i <= MAX_HISTORY_MSGS && total <= MAX_HISTORY_BYTES) {
-      h.splice(0, i);
-      return;
+  const all = sizes.reduce((a, b) => a + b, 0);
+  if (h.length <= MAX_HISTORY_MSGS && all <= MAX_HISTORY_BYTES) return;
+  /* Эхлээд ЗОРИЛТ (`TRIM_TO_*`); сүүлийн нэг асуулт л гэхэд зорилтоос урт (олон хэрэгслийн эргэлт) бол дээд
+     хязгаараар — урьдын зан, түүхийг бүхэлд нь цэвэрлэхээс сэргийлнэ. */
+  for (const [maxMsgs, maxBytes] of [[TRIM_TO_MSGS, TRIM_TO_BYTES], [MAX_HISTORY_MSGS, MAX_HISTORY_BYTES]]) {
+    let total = all;
+    for (let i = 0; i < h.length; i++) {
+      const m = h[i];
+      if (i > 0 && m.role === 'user' && typeof m.content === 'string'
+        && h.length - i <= maxMsgs && total <= maxBytes) {
+        h.splice(0, i);
+        stripThinking(h);
+        return;
+      }
+      total -= sizes[i];
     }
-    total -= sizes[i];
   }
   h.length = 0;
 }
@@ -90,9 +108,11 @@ export function AgentChat({
   scope: AgentScope;
 }) {
   const [log, setLog] = useState<Bubble[]>([]);
-  /* ⚠️ 2026-10-15: ЯВЦ ДУНДЫН төлөвлөгөө — алхам бүр гүйцэтгэгдэхэд `done` ахина.
-     Хариулт ирэхэд `log`-д тусдаа бөмбөлөг болж үлдэнэ (ил тод байдал). */
-  const [plan, setPlan] = useState<{ raw: string; done: number } | null>(null);
+  /* ⚠️ 2026-10-15: ЯВЦ ДУНДЫН төлөвлөгөө. Хариулт ирэхэд `log`-д тусдаа бөмбөлөг болж үлдэнэ (ил тод байдал).
+     ⚠️ 2026-10-19: алхмыг хэрэгслийн БАГЦЫН тоогоор ✓ тэмдэглэхээ БОЛИВ — нэг алхам олон багц (эсвэл олон
+     алхам нэг багц) явдаг тул «3-р алхам хийгдэж байна» гэсэн худал байдал үүсдэг байв. Явцад алхмууд
+     «гүйцэтгэж байна» төлөвтэй, эргэлт АМЖИЛТТАЙ дуусахад л бүгд ✓ (`AgentPlan.complete`). */
+  const [plan, setPlan] = useState<{ raw: string } | null>(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -256,13 +276,12 @@ export function AgentChat({
           history: h,
           scope,
           onProgress: setProgress,
-          onPlan: (p) => { planText = p; setPlan({ raw: p, done: 0 }); },
-          onStep: () => setPlan((p) => (p ? { ...p, done: p.done + 1 } : p)),
+          onPlan: (p) => { planText = p; setPlan({ raw: p }); },
           signal: controller.signal,
         });
         /* ⚠️ Төлөвлөгөө ХАРИУЛТЫН ӨМНӨ бөмбөлөг болж үлдэнэ — хэрэглэгч дараа нь ч
            «агент ямар замаар явсан» гэдгийг харна. */
-        setLog((l) => [...l, ...(planText ? [{ role: 'plan' as const, text: planText }] : []), { role: 'bot' as const, text }]);
+        setLog((l) => [...l, ...(planText ? [{ role: 'plan' as const, text: planText, done: true }] : []), { role: 'bot' as const, text }]);
       } catch (e) {
         // Түүхийг тэнцвэртэй (role ээлжилсэн, tool_use бүр tool_result-тай) байдалд
         // буцаана — тасалсан ба алдаатай ХОЁУЛАНД (өмнө нь зөвхөн сүүлийн user
@@ -370,14 +389,28 @@ export function AgentChat({
           >
             {checking ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
           </button>
+          {/* ⚠️ 2026-10-19: зөвхөн bash-ийн `KEY=… node` хэлбэр Windows-ийн PowerShell-д ажилладаггүй байв —
+              (1) түлхүүргүй Claude Code хөдөлгүүр (энэ PC-д нэвтэрсэн `claude`), (2) PowerShell, (3) bash. */}
           {process.env.NODE_ENV === 'development' && (
             <>
               <br />
-              {tr('Локалаар асаахдаа:')}
+              {tr('Локалаар асаахдаа (нэг удаа):')}
               <br />
-              <code>cd agent-proxy &amp;&amp; npm install</code>
+              <code>cd agent-proxy; npm install</code>
+              <br />
+              {tr('Түлхүүргүй — энэ PC-д нэвтэрсэн Claude Code-оор (PowerShell ба bash):')}
+              <br />
+              <code>npm run start:claude-code</code>
+              <br />
+              {tr('API түлхүүртэй (PowerShell):')}
+              <br />
+              <code>$env:ANTHROPIC_API_KEY=&quot;…&quot;; node server.mjs</code>
+              <br />
+              {tr('API түлхүүртэй (bash):')}
               <br />
               <code>ANTHROPIC_API_KEY=… node server.mjs</code>
+              <br />
+              {tr('Эсвэл түлхүүрийг agent-proxy/.env.local-д бичээд:')} <code>npm start</code>
               <br />
               {tr('Хаяг:')} <code>{AGENT_API}</code>
             </>
@@ -408,7 +441,7 @@ export function AgentChat({
         {log.map((m, i) => (
           m.role === 'plan'
             /* ⚠️ Төлөвлөгөө бөмбөлөг БИШ — хүрээгүй карт (хариултаас ялгарна) */
-            ? <AgentPlan key={i} raw={m.text} />
+            ? <AgentPlan key={i} raw={m.text} complete={m.done} />
             : (
               <div key={i} className={`${s.msg} ${m.role === 'user' ? s.user : s.bot}`}>
                 {m.role === 'bot' ? <AgentMarkdown text={m.text} /> : m.text}
@@ -417,7 +450,7 @@ export function AgentChat({
         ))}
 
         {/* ⚠️ ЯВЦ ДУНДЫН төлөвлөгөө — алхам бүр гүйцэтгэгдэхэд тэмдэглэгдэнэ */}
-        {busy && plan && <AgentPlan raw={plan.raw} done={plan.done} />}
+        {busy && plan && <AgentPlan raw={plan.raw} running />}
 
         {busy && progress && (
           <div className={s.progress}>

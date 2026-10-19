@@ -40,7 +40,8 @@ const svcRoot = (name: string, v: string | undefined): string => {
  * ЧАНАР · MA (материал баталгаажуулалт) — Survey123 маягт, ENTERPRISE hosted feature service
  * (2026-10-09, туршилт — tezu-bonu). Бүтэн URL (`…/FeatureServer`) эсвэл HJ доторх нэр.
  * ⚠️ ХООСОН БАЙЖ БОЛНО (`req` биш): deploy-д хараахан тохируулаагүй — «MA» харагдац
- *    «үйлчилгээ тохируулаагүй» гэж хэлнэ (`lib/ma.ts`). `tools/envParity.check.mjs`-ийн OPTIONAL_LOCAL.
+ *    «үйлчилгээ тохируулаагүй» гэж хэлнэ (`lib/ma.ts`). ⚠️ 2026-10-19: deploy/CI-д GitHub Variable
+ *    `NEXT_PUBLIC_CHANAR_MA_SVC`-аар (`.env.example`-д хоосон мөр); MIR нь `envParity`-ийн OPTIONAL_LOCAL хэвээр.
  */
 const optSvc = (v: string | undefined): string => {
   const raw = (v ?? "").trim().replace(/\/+$/, "").replace(/\/FeatureServer$/i, "");

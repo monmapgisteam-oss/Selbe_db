@@ -529,7 +529,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(acl(), [], `${tag}: устгасан аккаунтын ArcGIS хуваарилалт/эрхийн мөр үлдээгүй`);
   eq(P.hasAccess(u), false, `${tag}: нэвтрэхгүй`);
   /* хатуу аккаунт → tombstone → «Буцаах» */
-  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'injener')[0];
+  /* ⚠️ 2026-10-19: кодод урсгалын (жишээ) аккаунт алга — §0-д зөвхөн ноорог үүсдэг `beginner` */
+  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'beginner')[0];
   await run(OPS.scopedCellOp('obyem', hard, 'editor', g, true));
   m.render();
   findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === hard).el.props.onFlipRemove(); m.render();

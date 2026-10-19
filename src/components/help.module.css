@@ -131,3 +131,20 @@
 }
 .tipPrimary { background: var(--surface); color: var(--ink); }
 .tipGhost { color: var(--surface); border: 1px solid color-mix(in srgb, var(--surface) 40%, transparent); }
+
+/* ⚠️ 2026-10-19: УТАС (≤480px) — зөвлөмж толгойн ДООР тогтмол 56px-ээр байрлаж, утсан дээр олон мөр болж
+   өндөрссөн толгойг (`--head` түүнийг дагадаггүй) ДАРЖ, навигацийн товчийг хааж байв. Одоо дэлгэцийн ДООД
+   талд нимгэн самбар (сум нь «?» руу заах боломжгүй тул нуугдана) — толгой бүхэлдээ ил. */
+@media (max-width: 480px) {
+  .tip {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    padding: 10px 12px;
+  }
+  .tipArrow { display: none; }
+  .tipText { font-size: 12.5px; line-height: 1.4; }
+  .tipActions { margin-top: 8px; justify-content: flex-end; }
+}

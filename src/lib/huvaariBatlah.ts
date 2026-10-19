@@ -33,7 +33,6 @@
 
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
-import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
    Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
@@ -2299,8 +2298,10 @@ export async function countPlanPending(username: string | null | undefined): Pro
   try {
     const me = (username ?? '').trim().toLowerCase();
     if (AUTH.appId) {
-      if (!me || !capsRemoteReady() || !huvaariAclReady()) return null;
-      if (!hasCap(me, 'planApprove')) return 0;
+      /* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН ХҮРЭЭ (`huvaariScope`) — `decidePlan`-тай ИЖИЛ дүрэм. `planApprove` эрх нь хуваарилалтын
+         ТУСГАЛ (`scopedAcl.syncCaps`) тул тусад нь шаардахад эрхийн бичилт унасан (өнчин/дутуу эрх) хүнд тэмдэг 0, батлах
+         товч идэвхтэй гэсэн зөрчил гардаг байв. Хүрээ хоосон бол доор 0. */
+      if (!me || !huvaariAclReady()) return null;
     }
     if (!(await planTableState(false)).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'approver') : null;
@@ -2339,8 +2340,8 @@ export async function countPlanReturned(username: string | null | undefined): Pr
     const me = (username ?? '').trim().toLowerCase();
     if (!me) return AUTH.appId ? null : 0;
     if (AUTH.appId) {
-      if (!capsRemoteReady() || !huvaariAclReady()) return null;
-      if (!hasCap(me, 'plan')) return 0;
+      /* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН зохиогчийн ХҮРЭЭ — `submitPlan`-тай ИЖИЛ (`countPlanPending`-ийн ⚠️) */
+      if (!huvaariAclReady()) return null;
     }
     if (!(await planTableState(false)).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'author') : null;
@@ -2385,8 +2386,8 @@ export async function countPlanApproved(username: string | null | undefined): Pr
     const me = (username ?? '').trim().toLowerCase();
     if (!me) return AUTH.appId ? null : 0;
     if (AUTH.appId) {
-      if (!capsRemoteReady() || !huvaariAclReady()) return null;
-      if (!hasCap(me, 'plan')) return 0;
+      /* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН зохиогчийн ХҮРЭЭ — `submitPlan`-тай ИЖИЛ (`countPlanPending`-ийн ⚠️) */
+      if (!huvaariAclReady()) return null;
     }
     if (!(await planTableState(false)).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'author') : null;

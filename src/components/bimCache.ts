@@ -36,6 +36,17 @@ export function bimLayerFor<L extends Destroyable>(map: object, key: string, mak
   return l;
 }
 
+/**
+ * ⚠️ 2026-10-19: кэшийн ОДООГИЙН инстанц — ДАХИН ҮҮСГЭХГҮЙ (унасан ч хэвээр буцаана). Урт амьдралтай
+ * эзэмшигч (`manageBim` · `bimPicker`) эрэмбэлэлт/сонголт бүрд үүгээр уншина: `bimLayerFor`-оор уншвал унасан
+ * давхаргыг 120 мс тутам дахин үүсгэж (хүсэлтийн давталт) болох байв; дахин үүсгэх нь ИЛ үйлдэл л
+ * (эффектийн `bimAll`, BIM-ийн «Дахин оролдох»).
+ */
+export function bimLayerPeek<L extends Destroyable>(map: object, key: string): L | undefined {
+  const hit = cache.get(map)?.[key];
+  return hit && !hit.destroyed ? hit as L : undefined;
+}
+
 /** Map бүрмөсөн устах үед — кэшлэгдсэн (Map-д БАЙХГҮЙ үед ч) давхаргуудыг устгана */
 export function dropBimCache(map: object): void {
   const rec = cache.get(map);

@@ -281,11 +281,17 @@ function GroupCard({
   children?: React.ReactNode;
 }) {
   const x = cardStats(ids, map);
+  /* ⚠️ 2026-10-19: ТАТАГДААГҮЙ давхаргатай (Map-д алга — унасан/ачаалж буй) багц — дутуу нийлбэрийг бодит тоо
+     мэт харуулахгүй (`completeSum`-ийн дүрэм, толгойн «—»-тэй ижил). Урьд нь тоо татагдаагүй үед «N төрөл ·
+     0 объект» гэж «багц хоосон» мэт худал уншигддаг байв (null ≠ 0). */
+  const partial = ids.some((id) => LAYER_BY_ID[id] && !map.has(id));
   const rows: { v: string; k: string }[] = [];
   /* ⚠️ 2026-10-01: `qtyText`-ээр — жижиг багц «0.0 км» БИШ «450 м» */
-  if (x.km > 0) rows.push(splitQty(kmText(x.km)));
-  if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
-  if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
+  if (!partial) {
+    if (x.km > 0) rows.push(splitQty(kmText(x.km)));
+    if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
+    if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
+  }
 
   const body = (
     <>
@@ -307,7 +313,7 @@ function GroupCard({
         {/* ⚠️ Хэмжээгүй багц ч гэсэн хоосон харагдаж болохгүй — тоогоо өгнө */}
         {!rows.length && (
           <span className={s.cardStat}>
-            <span className={`${s.cardVal} num`}>{num(x.n)}</span>
+            <span className={`${s.cardVal} num`}>{partial ? '—' : num(x.n)}</span>
             <span className={s.cardKey}>{tr('объект')}</span>
           </span>
         )}

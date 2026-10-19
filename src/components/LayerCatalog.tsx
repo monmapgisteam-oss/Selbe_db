@@ -278,7 +278,13 @@ export const LayerCatalog = memo(function LayerCatalog({
                 Тоог ил хэлж, дахин татах гарц өгнө (`totals.totalsFailedOf` · `retryTotals`). */}
             {(() => {
               if (totals.state !== 'ready') return null;
-              const n = totalsFailedOf(totals.data).length;
+              /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л, давхардалгүй — урьд нь `usePlanTotals`-ын
+                 бүх id-гаас (каталогт харагдахгүй ч хүссэн) тоолж «152 нийт · 153 давхарга татагдсангүй» гэж
+                 нийтээс ИХ тоо гардаг байв. */
+              const bad = new Set(totalsFailedOf(totals.data));
+              /* ⚠️ 2026-10-19 (review): ХАЙЛТААС ҮЛ ХАМААРНА — каталогийн БҮХ (шүүгээгүй) мөрөөс; урьд нь `shown`
+                 (хайлтаар шүүсэн) тул бичих бүрд уналтын тоо өөрчлөгдөж, хайлтад таараагүй уналт нуугддаг байв */
+              const n = new Set(catGroups.flatMap((g) => g.ids).filter((id) => bad.has(id))).size;
               if (!n) return null;
               return (
                 <>

@@ -65,6 +65,7 @@ import {
 import { UserCard } from './UserCard';
 import { capLabelShort } from '@/modules/erhLabels';
 import { ErhTypes } from '@/modules/ErhTypes';
+import { sysByText, useSystemClosed } from './SystemCloseDialog';
 import { NEW_ACCOUNT_ROLE, TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
@@ -218,6 +219,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /** Нэвтэрсэн админы нэр — ӨӨРИЙН аккаунтад устгах товч гарахгүй (өөрийгөө түгжихээс сэргийлнэ) */
   const { user: me } = useAuth();
   const myName = me?.username?.toLowerCase() ?? null;
+  /** ⚠️ 2026-10-19: «Систем түр хаах» төлөв — толгойн улаан зурвас */
+  const sysNow = useSystemClosed();
   /**
    * АЛЬ БҮЛЭГ нээлттэй байна.
    * ⚠️ Хоёр бүлэг нь ӨӨР асуултад хариулна: «ямар харагдац үзэх вэ» ба
@@ -1195,6 +1198,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           Багцаар олгодог бусад 6 хуудас ч ИЖИЛ хүснэгт (`AclGrid`) болсон тул мөн өргөн; `PlainCapAcl`-ийн
           (аккаунтаар) хуудас хэвээр нарийн. */}
       <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
+        {/* ⚠️ 2026-10-19: СИСТЕМ ХААЛТТАЙ бол хуудас БҮРИЙН дээр улаанаар — админ мартаж орхихоос сэргийлнэ
+            (`permsTablePublic`-ийн улаан зурвасын загвар). Нээх нь цэсний «Систем түр хаах»-аас. */}
+        {sysNow && (
+          <div className={s.addErr} role="alert">
+            {tr('🔴 Систем хаалттай — {0}. Зөвхөн «Систем түр хаах» эрхтэй аккаунт ба админ (super) нэвтэрнэ; нээх бол цэсний «Систем» бүлгийн «Систем түр хаах».', sysByText(sysNow) || '—')}
+          </div>
+        )}
         {pane === 'ovw' ? (
           <>
             <header className={s.head}>

@@ -1010,7 +1010,8 @@ export async function createDraft(args: {
   /* ⚠️ NCR (2026-09-28): дугаар `STMCC-STMC-NCR-NNNN` — гүйцэтгэгчийн код ШААРДАХГҮЙ,
      `seq` ТӨСЛИЙН хэмжээнд (`nextSeq(…, null)`). Бусад төрөл багцаар хэвээр. */
   const org = orgCode(args.bagts);
-  if (!org && kind !== 'NCR') return { ok: false, error: tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', args.bagts) };
+  /* ⚠️ 2026-10-19: шалтгаан ба ДАРААГИЙН алхам (`chanarMs.ORG_CODE`-ийн ⚠️) */
+  if (!org && kind !== 'NCR') return { ok: false, error: tr('«{0}» багцын гүйцэтгэгчийн код (баримтын дугаарын угтвар) бүртгэгдээгүй тул баримт үүсгэх боломжгүй — системийн админд хандаж кодыг нэмүүлнэ үү.', args.bagts) };
   /* ⚠️ ЭРХИЙГ ЭНД Ч ШАЛГАНА (2026-09-16 аудит): урьд нь зөвхөн UI (`canAct`)
      шалгадаг байв — консолоос дуудсан хэн ч мөр үүсгэж чаддаг байлаа. */
   const deny = authorDeny(kind, act.who, args.bagts);

@@ -50,6 +50,10 @@ jobs:
       NEXT_PUBLIC_BIM_SCENE: ${{ vars.NEXT_PUBLIC_BIM_SCENE }}
       NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
       NEXT_PUBLIC_ARCGIS_IOT_SVC: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT_SVC }}
+      # ⚠️ 2026-10-19: Чанар · MA (Survey123, Enterprise) — сонголттой; хоосон бол «MA» харагдац «тохируулаагүй»
+      NEXT_PUBLIC_CHANAR_MA_SVC: ${{ vars.NEXT_PUBLIC_CHANAR_MA_SVC }}
+      # ⚠️ 2026-10-19: Enterprise геопортал (`…/geoportal`) — ХАБЭА бичилтийн Enterprise нэвтрэлт; хоосон бол нэргүй бичилт (урьдын зан)
+      NEXT_PUBLIC_ENT_PORTAL_URL: ${{ vars.NEXT_PUBLIC_ENT_PORTAL_URL }}
       NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
       NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
       NEXT_PUBLIC_IRGED_ORTHO_PRE: ${{ vars.NEXT_PUBLIC_IRGED_ORTHO_PRE }}

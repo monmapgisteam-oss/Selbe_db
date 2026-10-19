@@ -363,13 +363,26 @@ export function Huvaari({
    *    Хоёр үүргийн НЭГДЭЛ: зохиогч Багц 3-т, батлагч Багц 5-д томилогдсон
    *    хүн хоёуланг нь харна — эс бөгөөс батлах ажлаа хийж чадахгүй.
    */
+  /* ⚠️ Эрх ба нэмэлт ажлын хуваарилалт ӨӨР хадгалалттай — `groupOpts` · `canAddRow` хоёулаа хамаарна */
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  const [ajN, setAjN] = useState(0);
+  useEffect(() => subscribeAjilAcl(() => setAjN((x) => x + 1)), []);
+  /*
+   * ⚠️ 2026-10-19 (аудит): НЭМЭЛТ АЖЛЫН МӨР НЭМЭГЧИЙН хүрээ (`ajilScope(…, 'editor')` + `addRow` эрх) ч НЭГДЭЛД
+   *    орно. Урьд нь зөвхөн хуваарийн хоёр үүрэг тул «Багц 1-д хуваарь зохиогч, Багц 5-д мөр нэмэгч» хүнд
+   *    сонгогч Багц 1-ээр хумигдаж Багц 5-д мөр нэмэх замгүй байв (мөр нэмэх UI ЭНД л — `canAddRow`).
+   *    ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: огноо засах = `canEdit` (хуваарийн зохиогчийн хүрээ), батлах = `canApprove`,
+   *    мөр нэмэх = `canAddRow` (нэмэлт ажлын хүрээ) — бусад багцад зөвхөн ХАРНА.
+   */
   const groupOpts = useMemo(() => {
     if (status === 'off') return PKG_GROUPS;
     const a = huvaariScope(user?.username, 'author');
     const b = huvaariScope(user?.username, 'approver');
+    const e = hasCap(user?.username, 'addRow') ? ajilScope(user?.username, 'editor') : [];
     /* ⚠️ `null` нь ХЯЗГААРГҮЙ — аль нэг үүрэг нь хязгааргүй бол бүгд */
-    if (a == null || b == null) return PKG_GROUPS;
-    const mine = new Set([...a, ...b]);
+    if (a == null || b == null || e == null) return PKG_GROUPS;
+    const mine = new Set([...a, ...b, ...e]);
     /* ⚠️ Хоёр үүрэгт ч томилогдоогүй бол ХУМИХГҮЙ (дээрх ⚠️) */
     if (mine.size === 0) return PKG_GROUPS;
     const list = PKG_GROUPS.filter((g) => mine.has(g));
@@ -377,7 +390,7 @@ export function Huvaari({
        хоосорно — тэр үед бүгдийг үзүүлнэ, эс бөгөөс хуудас ашиглагдахгүй. */
     return list.length ? list : PKG_GROUPS;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, status, hvN]);
+  }, [user, status, hvN, capN, ajN]);
   /**
    * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
    * ⚠️ Нэг огноо солиход БҮХ багцын төлөвлөгөөт хувь, тайлан, хоцрогдлын
@@ -416,10 +429,7 @@ export function Huvaari({
    *    өөр өөр хариуцлага. Админ (`super`) ч `addRow` эрхээ панелаас ил асаана
    *    (FillNew-ийн 2026-09 дүрэм) — хүрээ л түүнд үл хамаарна.
    */
-  const [capN, setCapN] = useState(0);
-  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
-  const [ajN, setAjN] = useState(0);
-  useEffect(() => subscribeAjilAcl(() => setAjN((x) => x + 1)), []);
+  /* ⚠️ `capN` · `ajN` (эрх · нэмэлт ажлын хуваарилалтын дохио) — `groupOpts`-оос ДЭЭШ зарлагдсан (2026-10-19) */
   const canAddRow = useMemo(() => {
     if (review) return false;
     if (!hasCap(user?.username, 'addRow')) return false;
@@ -6743,7 +6753,13 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       )}
       {/* ⚠️ 2026-10-09: батлагчийн мессежтэй ИЖИЛ ялгал (`hasPlanRole` — багцаас үл хамаарна): «зохиогчийн үүрэг бий ч
           ЭНЭ багцад биш» ба «үүрэг огт алга» хоёр өөр гарцтай. Урьд нь үүрэгтэй хүнд ч «эрх алга» гэдэг байв. */}
-      {!review && !canEdit && !canApprove && (
+      {/* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН мөр нэмэгч (нэмэлт ажлын хүрээгээр энэ багц нээгдсэн) — «эрх алга» гэвэл худал */}
+      {!review && !canEdit && !canApprove && canAddRow && (
+        <p className={h.note}>
+          {tr('Энэ багцад та шинэ ажлын мөр нэмж батлуулахаар илгээх эрхтэй. Хуваарийн огноог засах эрх алга — огноог зөвхөн харна.')}
+        </p>
+      )}
+      {!review && !canEdit && !canApprove && !canAddRow && (
         <p className={h.note}>
           {hasPlanRole(user?.username, 'author')
             ? tr('Танд хуваарь төлөвлөх эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна — зөвхөн харна. Админ «Хуваарийн эрх» → {0} → «Зохиогч» хэсэгт таныг нэмнэ.', tr(pkg.group))

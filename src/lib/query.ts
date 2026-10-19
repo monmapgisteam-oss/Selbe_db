@@ -500,7 +500,10 @@ const reqKey = (url: string, params: Record<string, string>): string =>
 
 /* ⚠️ 2026-10-04: нэгтгэл нь `shared()` (`arcgisPost`-той НЭГ `inflight`, нэг түлхүүрийн дүрэм) —
    хоёр дахь ба цаашхи хүлээгч сүлжээ огт хөндөхгүй, гүн хуулбар авна. */
-async function request(url: string, params: Record<string, string>): Promise<Body> {
+async function request(url: string, params: Record<string, string>, signal?: AbortSignal): Promise<Body> {
+  /* ⚠️ 2026-10-19: `signal`-тай (AI туслахын асуулга — чат хаагдахад/хугацаа дуусахад зогсоно) бол
+     нэгтгэлгүй шууд — `shareable`-ийн ⚠️ (цуцлалт бусад хүлээгчид тархахгүй). */
+  if (signal) return run(`${url}/query`, params, { token: 'org', signal }) as Promise<Body>;
   return shared(`${url}/query`, params, { token: 'org' }) as Promise<Body>;
 }
 
@@ -551,8 +554,8 @@ export async function queryCount(url: string, where = '1=1', aoi?: Aoi): Promise
 }
 
 /** Нэг мөр статистик (бүлэглэлгүй) */
-export async function queryStats(url: string, stats: Stat[], where = '1=1', aoi?: Aoi): Promise<Row> {
-  const body = await request(url, { where, outStatistics: JSON.stringify(stats), ...spatial(aoi) });
+export async function queryStats(url: string, stats: Stat[], where = '1=1', aoi?: Aoi, signal?: AbortSignal): Promise<Row> {
+  const body = await request(url, { where, outStatistics: JSON.stringify(stats), ...spatial(aoi) }, signal);
   return body.features?.[0]?.attributes ?? {};
 }
 
@@ -570,13 +573,15 @@ export async function queryGroupEx(
   stats: Stat[],
   where = '1=1',
   aoi?: Aoi,
+  /** ⚠️ 2026-10-19: цуцлалт (AI туслах) — `request`-ийн ⚠️ */
+  signal?: AbortSignal,
 ): Promise<{ rows: Row[]; truncated: boolean }> {
   const body = await request(url, {
     where,
     groupByFieldsForStatistics: groupBy,
     outStatistics: JSON.stringify(stats),
     ...spatial(aoi),
-  });
+  }, signal);
   // ⚠️ Бүлгийн тоо maxRecordCount-аас хэтэрвэл сервер үр дүнг ЧИМЭЭГҮЙ тайрдаг —
   //    ховор ч тохиолдвол ядаж лог үлдээж мэдэгдэнэ.
   const truncated = !!body.exceededTransferLimit;
@@ -600,6 +605,8 @@ export async function queryFeatures(
   url: string,
   opts: {
     where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi;
+    /** ⚠️ 2026-10-19: цуцлалт (AI туслах) — `request`-ийн ⚠️ */
+    signal?: AbortSignal;
     /**
      * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — НЭРГҮЙ уншилтыг хаасан давхаргад
      * (`allowAnonymousToQuery: false`). Ийм давхарга токенгүй асуухад алдаа
@@ -641,7 +648,7 @@ export async function queryFeatures(
       if (order) page.orderByFields = order;
       if (rows.length) page.resultOffset = String(rows.length);
       if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
-      const body = await request(url, page);
+      const body = await request(url, page, opts.signal);
       oidField = body.objectIdFieldName ?? oidField;
       const feats = (body.features ?? []).map((f) => f.attributes);
       // ⚠️ `exceededTransferLimit` нь ХОЁР ӨӨР шалтгаанаар асдаг: (а) серверийн

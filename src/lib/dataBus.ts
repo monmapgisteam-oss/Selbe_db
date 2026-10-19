@@ -175,6 +175,17 @@ export function dataRefreshedAt(): number {
 }
 
 /**
+ * ⚠️ 2026-10-19 (review): БҮТЭН ШИНЭЧЛЭЛТИЙН ҮЕ — зөвхөн `invalidateAll` өсгөнө. `reads` хоосон (статик) кэштэй хүнд
+ *    тооцоонууд (`hesegChange` · `hesegNeed` · `planOverlap`) зөвхөн тэр үед хаягддаг тул тэдний самбар `dataVersion`
+ *    (хүснэгт бүрийн `invalidate`) биш үүнийг `useSyncExternalStore`-д авна — эс бөгөөс хамааралгүй бичилт бүрд дахин
+ *    захиалж зурагддаг байв.
+ */
+let refreshSeq = 0;
+export function refreshEpoch(): number {
+  return refreshSeq;
+}
+
+/**
  * БҮХ кэшийг хаяна — нэвтрэлт/хэл солигдох, мөн (⚠️ 2026-10-05) хэрэглэгчийн «Шинэчлэх»
  * товч ба таб удаан нуугдаад буцаж ирэх үед (`Portal`).
  */
@@ -182,6 +193,7 @@ export function invalidateAll(): void {
   writes += 1;
   for (const s of SLOTS) s.drop();
   refreshedAt = Date.now();
+  refreshSeq += 1;
   /* ⚠️ 2026-10-12 (дарааллын аудит): бүлгийн дотор — мэдэгдлийг хойшлуулна (`batchInvalidate`-ийн ⚠️) */
   if (batchDepth > 0) { batchHit = true; return; }
   version += 1;

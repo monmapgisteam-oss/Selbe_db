@@ -119,7 +119,16 @@ function qtyCell(v: number | null | undefined, opts: { unit?: string | null; bol
 }
 
 /** Хувийн нүд — 0–1 бутархай хэвээр, `0.0%` (жинд `0.00%`) форматтай */
-function pctCell(v: number | null | undefined, fmt: "0.0%" | "0.00%", opts: { bold?: boolean; fill?: string } = {}): XlsxCell {
+/**
+ * ⚠️ 2026-10-19: ЖИНГИЙН формат — дэлгэцийн `util.wt`-тэй ИЖИЛ орны тоо (≥10% → 1, ≥1% → 2, бусад → 4).
+ *    Урьд нь бүгд «0.00%» тул 0.0083%-ийн жижиг жин Excel-д «0.00%» болж «жингүй» мэт харагддаг байв.
+ */
+function wtFmt(v: number | null | undefined): "0.0%" | "0.00%" | "0.0000%" {
+  const p = Math.abs((v ?? 0) * 100);
+  return p >= 10 ? "0.0%" : p >= 1 || p === 0 ? "0.00%" : "0.0000%";
+}
+
+function pctCell(v: number | null | undefined, fmt: "0.0%" | "0.00%" | "0.0000%", opts: { bold?: boolean; fill?: string } = {}): XlsxCell {
   if (v == null || !Number.isFinite(v)) return { v: null, s: sty({ bold: opts.bold, fill: opts.fill, align: "right" }) };
   return { v, s: sty({ bold: opts.bold, fill: opts.fill, numFmt: fmt, align: "right" }) };
 }
@@ -210,9 +219,9 @@ export function buildRow(inp: FillXlsxInput, i: number): XlsxCell[] | null {
   const out: XlsxCell[] = [
     txtCell(r.no, { bold: g, fill: gf, align: "right" }),
     txtCell(workTxt, { bold: g, fill: gf, indent: r.depth }),
-    pctCell(c.C, "0.00%", { bold: g, fill: gf }),
-    pctCell(c.D, "0.00%", { bold: g, fill: gf }),
-    pctCell(c.E, "0.00%", { bold: g, fill: gf }),
+    pctCell(c.C, wtFmt(c.C), { bold: g, fill: gf }),
+    pctCell(c.D, wtFmt(c.D), { bold: g, fill: gf }),
+    pctCell(c.E, wtFmt(c.E), { bold: g, fill: gf }),
     qtyCell(r.vol, { unit: r.vol != null ? negj : null, bold: g, fill: gf }),
   ];
   /* Инж. төлөвлөсөн обьём — `PvCell.shown`: ноорог → илгээгдсэн урьдчилсан → хадгалсан */

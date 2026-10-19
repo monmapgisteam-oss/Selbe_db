@@ -647,7 +647,15 @@ async function handle(msg) {
     await reply(chatId, `Алдаа гарлаа: ${userErrorText(e)}`);
   } finally {
     clearInterval(typing);
-    if (history.length > MAX_HISTORY) history.splice(0, trimCut(history, MAX_HISTORY));
+    /* ⚠️ 2026-10-19 (Claude Opus 5.5): эхнээс нь огтолсон бол үлдсэн бодолтын блокууд «өөр ярианых» болж 400
+       буцдаг — огтолсны ДАРАА бүгдийг хасна (`client.stripThinking`, `AgentChat.trimHistory`-тэй ижил). */
+    if (history.length > MAX_HISTORY) {
+      const cut = trimCut(history, MAX_HISTORY);
+      if (cut > 0) {
+        history.splice(0, cut);
+        stripThinking(history);
+      }
+    }
   }
 }
 
@@ -697,7 +705,7 @@ function dispatchMessage(msg) {
 /* ── Урт татах гогцоо (long polling) ── */
 
 process.env.NEXT_PUBLIC_AGENT_API ||= 'http://127.0.0.1:8787';
-const { ask, relayAlive, AGENT_API } = await import('../src/lib/agent/client.ts');
+const { ask, relayAlive, AGENT_API, stripThinking } = await import('../src/lib/agent/client.ts');
 
 async function main() {
   if (!(await relayAlive())) {

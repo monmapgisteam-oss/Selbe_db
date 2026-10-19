@@ -776,9 +776,18 @@ const BIM_SERVICES: { pkg: string; names: string[] }[] = [
   },
 ];
 
-/** `Багц_1_FID62_63_71_double` → `62 · 63` · `Багц_4_2_FID104_71_tower` → `104` */
-const bimFids = (name: string): string =>
-  (name.match(/_FID([\d_]+?)_\d+_(?:single|double|tower)$/)?.[1] ?? name).split('_').join(' · ');
+/**
+ * `Багц_1_FID62_63_71_double` → `62 · 63` · `Багц_4_2_FID104_71_tower` → `104`.
+ * ⚠️ 2026-10-19: `Багц_4_1_FID3_71_71_double` → `3 · 71` нь ЗӨВ (айлын «71» давхардсан үсгийн алдаа БИШ) — FID 0…112-оос
+ *    ГАНЦ дутуу нь 71 (бусад үйлчилгээнд алга), загварын хүрээ 49×143 м нь бусад `double` (жиш. `FID4_5`)-тай ижил хос
+ *    блок (амьд `layers/0`-ийн `fullExtent`-ээр шалгав). Тиймээс задлалт нь ТОДОРХОЙ: сүүлийн 2 хэсэг = айл · төрөл,
+ *    үлдсэн нь FID-үүд (lazy regex-ийн таамаглалгүй). Үйлчилгээний URL нэрээрээ хэвээр.
+ */
+const bimFids = (name: string): string => {
+  const parts = name.match(/_FID(\d+(?:_\d+)*)_(?:single|double|tower)$/)?.[1]?.split('_');
+  /* parts = [...FID, айл] — айлын хэсэг (сүүлийнх)-ийг хасна */
+  return parts && parts.length > 1 ? parts.slice(0, -1).join(' · ') : name;
+};
 
 export const BIM = {
   layers: BIM_SERVICES.flatMap(({ pkg, names }) =>

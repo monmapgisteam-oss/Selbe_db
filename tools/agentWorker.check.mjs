@@ -75,6 +75,9 @@ try {
       upstreamCalls++;
       assert.match(String(url), /api\.anthropic\.com\/v1\/messages/);
       assert.equal(init.headers['x-api-key'], 'sk-test');
+      /* ⚠️ 2026-10-19: анхдагч Opus 5.5 — явцын тэмдэглэл (`display: 'updates'`) + beta толгой */
+      assert.equal(init.headers['anthropic-beta'], 'thinking-display-updates-2026-08-18');
+      assert.deepEqual(JSON.parse(init.body).thinking, { type: 'adaptive', display: 'updates' });
       return new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }), {
         status: 401, headers: { 'Content-Type': 'application/json' },
       });

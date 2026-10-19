@@ -89,6 +89,17 @@ export function setBimPkg(pkg: string, fly = false): void {
   pkgState = { pkg, fly, rev: pkgState.rev + 1 };
   pkgSubs.forEach((f) => f());
 }
+/**
+ * ⚠️ 2026-10-19: `fly` НЭГ УДААГИЙН — ойртсон `rev`-ийг энд тэмдэглэнэ. Урьд нь `setBimPkg(p, true)`-ийн
+ *    `fly: true` төлөвт ҮЛДДЭГ тул `manageBim` дахин ажиллах бүрд (горим · dim · ready · BIM-ийн «Дахин
+ *    оролдох») камер тэр багц руу ДАХИН нисдэг байв — хэрэглэгч өөр газар очсон ч буцааж татна.
+ *    Төлөвийг өөрчлөхгүй (React-ийн снапшот → дахин эффект үүсгэхгүйн тулд) — зөвхөн «аль rev ойртсон».
+ */
+let flownRev = -1;
+/** Энэ `rev`-ийн ойртолт хийгдсэн эсэх */
+export const bimFlyDone = (rev: number): boolean => rev === flownRev;
+/** Ойртолтыг хэрэглэсэн гэж тэмдэглэнэ — дараагийн `manageBim` дахин нисэхгүй */
+export const consumeBimFly = (rev: number): void => { flownRev = rev; };
 const IDLE: BimPkgState = { pkg: '', fly: false, rev: 0 };
 export const useBimPkg = (): BimPkgState => useSyncExternalStore(
   (f) => { pkgSubs.add(f); return () => { pkgSubs.delete(f); }; },
@@ -368,14 +379,22 @@ export function rankBim(view: SceneView, layers: { id: string | number; fullExte
 export function manageBim(o: {
   view: SceneView;
   map: { layers: { includes: (l: never) => boolean }; add: (l: never) => void; remove: (l: never) => void };
-  all: BuildingSceneLayer[];
+  /** ⚠️ 2026-10-19: функц өгвөл эрэмбэлэлт БҮРД одоогийн инстанцыг уншина (`bimCache` унасныг сольсон бол
+      устгагдсан хуучин инстанцыг Map-д буцааж нэмэхгүй) — MapCanvas; массив — урьдын зан (SuitMap) */
+  all: BuildingSceneLayer[] | (() => BuildingSceneLayer[]);
   m: Render3d;
   archOn: boolean;
   onShown?: (ids: ReadonlySet<string>) => void;
   /** ⚠️ 2026-10-14: «Нарийн»-д ачаалах багц (`useBimPkg`); хоосон бол камерт хамгийн ойр багцыг сонгоно */
   pkg?: BimPkgState;
 }): () => void {
-  const { view, map, all, m, archOn, onShown, pkg = IDLE } = o;
+  const { view, map, m, archOn, onShown, pkg = IDLE } = o;
+  /* ⚠️ 2026-10-19: инстанцыг эрэмбэлэлт бүрд ШИНЭЭР уншина (`all` функц бол) — `bimCache` унасан давхаргыг
+     сольсны дараа (BIM-ийн «Дахин оролдох», өөр эффектийн `bimAll`) хуучин УСТГАГДСАН инстанцыг барьж,
+     «Нарийн»-ий багцад `map.add` хийдэг байв. Устгагдсаныг хэзээ ч хөндөхгүй. */
+  const src = o.all;
+  const live = (): BuildingSceneLayer[] =>
+    (typeof src === 'function' ? src() : src).filter((l) => !l.destroyed);
   let stale = false;
   let near = new Set<string>();
   let shown = new Set<string>();
@@ -391,10 +410,21 @@ export function manageBim(o: {
    *    LayerView үүсч дуусаагүй давхаргыг хасахгүй — SDK-ийн `BuildingSceneLayerView3D` алдаа).
    */
   const fine = m === 'fine';
-  let flown = !(fine && pkg.fly && pkg.pkg);
-  const choose = (): { next: Set<string>; nextNear: Set<string> } | null => {
+  /* ⚠️ 2026-10-19: ойртолт НЭГ УДАА (`consumeBimFly` — `flownRev`-ийн ⚠️) */
+  let flown = !(fine && pkg.fly && pkg.pkg) || bimFlyDone(pkg.rev);
+  /*
+   * ⚠️ 2026-10-19: АВТОМАТ БАГЦ — давхаргууд АЧААЛАГДСАНЫ дараа эрэмбэлнэ. Урьд нь эхний `load()`-ийн
+   *    120 мс-ийн багцад ачаалагдсан цөөн BIM дундаас л «хамгийн ойр»-ыг сонгодог тул камерын доорх багц
+   *    биш, сүлжээнд хамгийн хурдан хариулсан багц сонгогддог байв. Одоо бүгд ачаалагдах/унах хүртэл
+   *    (`AUTO_WAIT` хүртэл — удаан үйлчилгээ бүхнийг хүлээлгэхгүй) хүлээнэ.
+   */
+  const AUTO_WAIT = 4000;
+  const t0 = Date.now();
+  const choose = (all: BuildingSceneLayer[]): { next: Set<string>; nextNear: Set<string> } | null => {
     if (fine) {
       if (!pkg.pkg) {
+        const settled = all.every((l) => l.loaded || l.loadStatus === 'failed');
+        if (!settled && Date.now() - t0 < AUTO_WAIT) return null;
         /* Сонгоогүй — камерт хамгийн ойр (дэлгэцэнд буусан) BIM-ийн багц; эффект шинэ багцаар дахин ажиллана */
         const r = rankBim(view, all.filter((l) => l.loaded));
         const p = r.length ? bimPkgOf(r[0].id) : undefined;
@@ -409,9 +439,21 @@ export function manageBim(o: {
     return { next, nextNear: new Set(ranked.filter((r) => r.d <= NEAR_M).slice(0, NEAR_MAX).map((r) => r.id)) };
   };
 
+  /** ⚠️ 2026-10-19: `load()` дуудсан инстанц — сольсон (шинэ) инстанцыг ч ачаалж, уналтад ч дахин эрэмбэлнэ */
+  const asked = new WeakSet<object>();
+  const ensureLoad = (all: BuildingSceneLayer[]) => {
+    for (const l of all) {
+      if (asked.has(l)) continue;
+      asked.add(l);
+      l.load().then(() => { if (!stale) soon(); }).catch(() => { if (!stale) soon(); });
+    }
+  };
+
   const pick = () => {
     if (stale || view.destroyed) return;
-    const c = choose();
+    const all = live();
+    ensureLoad(all);
+    const c = choose(all);
     if (!c) return;
     const { next, nextNear } = c;
     /* «Нарийн» — хэрэглэгч сонгосон багц руу ойртоно (багцын BIM-ийн метадата бүгд ачаалагдсаны дараа НЭГ удаа) */
@@ -419,6 +461,7 @@ export function manageBim(o: {
       const ls = all.filter((l) => next.has(String(l.id)));
       if (ls.length && ls.every((l) => l.loaded || l.loadStatus === 'failed')) {
         flown = true;
+        consumeBimFly(pkg.rev);
         const ex = ls.map((l) => l.fullExtent).filter((e): e is __esri.Extent => !!e);
         if (ex.length) view.goTo(ex, { duration: 900 }).catch(() => {});
       }
@@ -436,7 +479,7 @@ export function manageBim(o: {
         /* ⚠️ 2026-10-09: ачаалал УНАСАН (`loadStatus === 'failed'`) эсвэл LayerView үүсгэх нь
            ТАТГАЛЗСАН (`lvFailed`) давхаргад LayerView ХЭЗЭЭ Ч үүсэхгүй — урьд нь тийм давхарга Map-д
            мөнх үлдэж, 800 мс-ийн дахин оролдлого зогсолтгүй давтагддаг байв. Тэдгээрийг шууд хасна. */
-        const lvGone = l.loadStatus === 'failed' || lvFailed.has(id);
+        const lvGone = l.loadStatus === 'failed' || lvFailed.has(l);
         if (!lvGone && !view.allLayerViews.some((lv) => lv.layer === (l as unknown))) {
           deferred = true;
           watchLv(l);
@@ -446,7 +489,7 @@ export function manageBim(o: {
         applied.delete(id);
         continue;
       }
-      if (!inMap(l)) map.add(l as never);
+      if (!inMap(l)) { map.add(l as never); applied.delete(id); }
       if (!applied.has(id) || near.has(id) !== nextNear.has(id)) touch.push(l);
     }
     near = nextNear;
@@ -461,27 +504,34 @@ export function manageBim(o: {
   };
   const RETRY_MAX = 10;
   let tries = 0;
-  /** LayerView үүсгэх нь татгалзсан давхаргууд (id) */
-  const lvFailed = new Set<string>();
-  const lvWatched = new Set<string>();
+  /** LayerView үүсгэх нь татгалзсан давхаргууд — ⚠️ 2026-10-19: id биш ИНСТАНЦААР (сольсон шинэ инстанц дахин оролдоно) */
+  const lvFailed = new WeakSet<object>();
+  const lvWatched = new WeakSet<object>();
   const watchLv = (l: BuildingSceneLayer) => {
-    const id = String(l.id);
-    if (lvWatched.has(id)) return;
-    lvWatched.add(id);
+    if (lvWatched.has(l)) return;
+    lvWatched.add(l);
     /* ⚠️ 2026-10-09: LayerView ҮҮСМЭГЦ ч дахин эрэмбэлнэ — урьд нь зөвхөн татгалзалд `soon()` дуудагддаг
        тул хойшлуулсан хасалт `RETRY_MAX`-ийн 800 мс-ийн оролдлогыг хүлээж (эсвэл хязгаарт хүрвэл
        дараагийн `stationary` хүртэл) барилга төсвөөс илүү Map-д үлддэг байв. */
     view.whenLayerView(l as never)
       .then(() => { if (!stale) soon(); })
-      .catch(() => { if (!stale) { lvFailed.add(id); soon(); } });
+      .catch(() => { if (!stale) { lvFailed.add(l); soon(); } });
   };
   /* Метадата ачаалагдах бүрд биш — 120 мс-ээр багцалж нэг удаа эрэмбэлнэ */
   let t: ReturnType<typeof setTimeout> | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
   const soon = () => { if (!t) t = setTimeout(() => { t = null; pick(); }, 120); };
   /* Өмнөх горимоос үлдсэн (Map-д байгаа) давхарга — эхний эрэмбэлэлт хүртэл хэвээр, дараа нь төсвөөр */
-  shown = new Set(all.filter(inMap).map((l) => String(l.id)));
-  for (const l of all) l.load().then(() => { if (!stale) soon(); }).catch(() => {});
+  const all0 = live();
+  shown = new Set(all0.filter(inMap).map((l) => String(l.id)));
+  ensureLoad(all0);
+  /* ⚠️ 2026-10-19: автомат багцын хүлээлтийн дээд хязгаарт заавал НЭГ эрэмбэлэлт (дээрх `AUTO_WAIT`) */
+  const autoT = fine && !pkg.pkg ? setTimeout(() => { if (!stale) soon(); }, AUTO_WAIT + 50) : null;
   const h = reactiveUtils.watch(() => view.stationary, (st) => { if (st) { tries = 0; soon(); } });
-  return () => { stale = true; h.remove(); if (t) clearTimeout(t); if (retry) clearTimeout(retry); };
+  return () => {
+    stale = true; h.remove();
+    if (t) clearTimeout(t);
+    if (retry) clearTimeout(retry);
+    if (autoT) clearTimeout(autoT);
+  };
 }

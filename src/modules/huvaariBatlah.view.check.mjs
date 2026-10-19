@@ -181,6 +181,9 @@ console.log('✅ буцаасны дараа — бүтэн дахин унши�
   for (const { key } of CAPS) {
     assert.ok(Array.isArray(CAP_HOST_VIEW[key]),
       `caps.ts: CAP_HOST_VIEW.${key} нь массив биш — хоёрдмол хэлбэр capViewsOf-ыг эвдэнэ`);
+    /* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») САНААТАЙ харагдацгүй — удирдлага нь цэсний товч
+       (`ViewRail.onSysClose`), хуудас нээх утгагүй. Бусад эрх харагдацтай байх ёстой хэвээр. */
+    if (key === 'sysClose') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'sysClose: харагдацгүй байх ёстой'); continue; }
     assert.ok(CAP_HOST_VIEW[key].length > 0,
       `caps.ts: CAP_HOST_VIEW.${key} хоосон — эрх нь харагдацгүй, чимээгүй утгагүй`);
   }

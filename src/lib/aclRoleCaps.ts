@@ -51,7 +51,8 @@ export type DerivedSys = ScopedSys | 'qaqc';
  * ⚠️ 2026-10-04: `hamaaral` (багцын хамаарал) — батлагчгүй, багцаар хуваарилагдахгүй.
  */
 /* ⚠️ 2026-10-08: `habeaData` (ХАБЭА-ийн бүртгэл оруулах) — батлагчгүй, багцаар хуваарилагдахгүй. */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData'];
+/* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») — аккаунтаар, харагдац нээхгүй (`caps.ts`-ийн ⚠️). */
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose'];
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

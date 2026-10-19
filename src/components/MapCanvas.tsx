@@ -10,7 +10,7 @@ import Map from '@arcgis/core/Map';
 import { version as arcgisVersion } from '@arcgis/core/kernel';
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
 import { adoptView, parkView, shouldPark, mapStats } from './mapPark';
-import { bimLayerFor } from './bimCache';
+import { bimLayerFor, bimLayerPeek } from './bimCache';
 import MapView from '@arcgis/core/views/MapView';
 /* ⚠️ 2026-10-04: 3D/BIM-ийн классууд СТАТИК БИШ — `lazy3d.ts` (2D хэрэглэгч татахгүй). Энд зөвхөн ТӨРӨЛ. */
 import type SceneView from '@arcgis/core/views/SceneView';
@@ -99,6 +99,14 @@ function bimAll(map: Map): BuildingSceneLayer[] {
   if (!m3) return [];
   return BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
     new m3.BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
+}
+/** ⚠️ 2026-10-19: кэшийн ОДООГИЙН BIM инстанц — дахин үүсгэхгүй (`bimLayerPeek`-ийн ⚠️). `manageBim`/`bimPicker`-т
+    функцээр өгнө — унасныг сольсны дараа устгагдсан хуучин инстанцыг барихгүй. */
+function bimLive(map: Map): BuildingSceneLayer[] {
+  return BIM.layers.flatMap((b) => {
+    const l = bimLayerPeek<BuildingSceneLayer>(map, b.key);
+    return l ? [l] : [];
+  });
 }
 
 /**
@@ -933,6 +941,30 @@ const authedLayers = new WeakSet<FeatureLayer>();
  *    Basemap-ийн давхарга (эцэг нь `Basemap`, `layers` цуглуулгагүй) мөн алгасна.
  */
 const RECREATE_TYPES = new Set(['feature', 'map-image', 'imagery', 'vector-tile']);
+/** «Дахин оролдох»-оор (`recreateFailedLayers`) шинээр үүсгэсэн инстанцууд — 3D-ийн `unstick` хөндөхгүй */
+const retriedLayers = new WeakSet<Layer>();
+
+/**
+ * ИТГЭМЖЛЭЛ ХҮЛЭЭЖ БУЙ ҮЙЛЧИЛГЭЭНИЙ ҮНДЭС (2026-10-19) — `IdentityManager`-ийн хүлээгдэж буй нэвтрэлтийн хүсэлтүүд
+ * (`_busy` · `_soReqs` · `_xoReqs`, 4.34-ийн эх код). `null` = дотоод бүтэц танигдсангүй (SDK шинэчлэгдсэн).
+ * ⚠️ Дотоод талбар — SDK шинэчлэхэд шалгана; танигдахгүй бол дуудагч нь `sourcePreloadCount`-ийн цонхоор хязгаарлана.
+ */
+function authPendingRoots(esriId: unknown): Set<string> | null {
+  const im = esriId as { _busy?: { resUrl_?: unknown } | null; _soReqs?: unknown; _xoReqs?: unknown } | null;
+  if (!im || !Array.isArray(im._soReqs) || !Array.isArray(im._xoReqs)) return null;
+  const out = new Set<string>();
+  for (const r of [im._busy, ...im._soReqs, ...im._xoReqs] as Array<{ resUrl_?: unknown } | null | undefined>) {
+    if (typeof r?.resUrl_ === 'string') out.add(serviceRoot(r.resUrl_));
+  }
+  return out;
+}
+/** URL → үйлчилгээний үндэс (`…/FeatureServer` хүртэл, жижиг үсгээр) */
+function serviceRoot(url: string): string {
+  const u = url.split('?')[0].toLowerCase();
+  const m = /^(.*?\/(?:feature|map|image|vectortile|scene)server)\b/.exec(u);
+  return m ? m[1] : u.replace(/\/\d+\/?$/, '');
+}
+
 function recreateFailedLayers(map: Map | null | undefined): boolean {
   if (!map || map.destroyed) return false;
   const failed = map.allLayers.filter((l) =>
@@ -950,6 +982,8 @@ function recreateFailedLayers(map: Map | null | undefined): boolean {
     let fresh: Layer;
     try { fresh = (old as unknown as { clone: () => Layer }).clone(); } catch { continue; }
     fresh.id = old.id; // ⚠️ `findLayerById`-аар хайдаг бүх эффект ижил id-гаар олно
+    /* ⚠️ 2026-10-19: хэрэглэгч ӨӨРӨӨ дахин оролдуулсан — 3D-ийн гацаа тайлагч (`unstick`) үүнийг ЦУЦЛАХГҮЙ */
+    retriedLayers.add(fresh);
     coll.remove(old);
     coll.add(fresh, at);
     /* ⚠️ Хуучныг `destroy()` ХИЙХГҮЙ — харагдацын түр дарлагын нөөц (`styleBackup` г.м.)
@@ -2052,7 +2086,7 @@ export const MapCanvas = memo(function MapCanvas({
    * дуудлагын турш асаалттай туг нь хэрэглэгчийн Esc-ийг кодын цуцлалтаас ялгана.
    */
   const selfCancelRef = useRef(false);
-  /* ⚠️ 2026-10-14: зураалтын `create` үйл явдлын тоолуур (active · complete) — `sketchVertex`-ийн
+  /* ⚠️ 2026-10-14: зураалтын `create` үйл явдлын тоолуур (2026-10-19-өөс `vertex-add` · complete) — `sketchVertex`-ийн
      синтетик товшилт vertex болсон эсэхийг ЭНЭ өөрчлөгдсөнөөр шалгана. */
   const sketchEvtRef = useRef(0);
   const onSketchVertexRef = useRef(onSketchVertex);
@@ -2173,6 +2207,12 @@ export const MapCanvas = memo(function MapCanvas({
   /** Ачаалагдаж чадаагүй 3D загварын тоо — null = асуудалгүй */
   const [meshError, setMeshError] = useState<number | null>(null);
   /**
+   * ⚠️ 2026-10-19: BIM-ийн «Дахин оролдох» — өсөхөд унасан BIM инстанцыг `bimCache` ШИНЭЭР үүсгэсний (`bimAll`)
+   * дараа BIM-ийн эффектүүд (сонгогч · `manageBim` · доорх барилгын нуулт · `meshError`) дахин ажиллана.
+   * Урьд нь BIM-ийн алдааны картад товч байгаагүй — унасан барилга хуудас дахин ачаалах хүртэл алга.
+   */
+  const [bimTok, setBimTok] = useState(0);
+  /**
    * ЕРДИЙН (2D) давхаргын уналт — унасан давхаргын ГАРЧГУУД.
    *
    * ⚠️ 2026-09-02 аудит: 3D/BIM мешийн уналтыг `meshError` барьдаг байсан ч
@@ -2281,8 +2321,8 @@ export const MapCanvas = memo(function MapCanvas({
   const bimShownRef = useRef<ReadonlySet<string>>(new Set());
   const bimHideRef = useRef<BimHide | null>(null);
   /**
-   * `scene3d:4` (extrude барилга)-ын CLIENT-SIDE шүүлт (⚠️ 2026-10-04): «Хурдан»-д Map-д байгаа BIM-ийн
-   * доорхыг нууна; «Нарийн»-д `null` (тэнд `definitionExpression`). Камер зогсох бүрд биш —
+   * `scene3d:4` (extrude барилга)-ын CLIENT-SIDE шүүлт (⚠️ 2026-10-04): Map-д байгаа BIM-ийн
+   * доорхыг нууна (⚠️ 2026-10-19: хоёр горимд — доорх ⚠️). Камер зогсох бүрд биш —
    * зөвхөн Map-ын BIM-ийн бүрэлдэхүүн өөрчлөгдөхөд (`onShown`) ба нуултын үр дүн ирэхэд.
    */
   const footFilter = useCallback(() => {
@@ -2292,8 +2332,16 @@ export const MapCanvas = memo(function MapCanvas({
     if (!view || view.destroyed || !(bld instanceof FeatureLayer)) return;
     const r = bimHideRef.current;
     let where: string | null = null;
-    if (r && getRender3d() === 'fast') {
-      const ids = new Set([...bimShownRef.current].flatMap((id) => r.byLayer[id] ?? []));
+    /* ⚠️ 2026-10-19: «Нарийн»-д ч ИЖИЛ (Map-д БАЙГАА BIM-ийн доорх л) — урьд нь «Нарийн»-д 97 BIM-ийн
+       хүрээн доорх БҮХ барилгыг `definitionExpression`-ээр нуудаг байсан ч 2026-10-14-өөс Map-д зөвхөн
+       СОНГОСОН багцын BIM байдаг тул бусад багцын талбай ХООСОН (барилгагүй) харагдаж байв. `onShown` нь
+       «Нарийн»-д ч дуудагддаг (`manageBim`). Ачаалал УНАСАН BIM-ийн доорхыг нуухгүй — загвар зурагдахгүй. */
+    if (r) {
+      const live = [...bimShownRef.current].filter((id) => {
+        const l = map?.findLayerById(id);
+        return !!l && !l.destroyed && l.loadStatus !== 'failed';
+      });
+      const ids = new Set(live.flatMap((id) => r.byLayer[id] ?? []));
       if (ids.size) where = `${r.oid} NOT IN (${[...ids].join(',')})`;
     }
     view.whenLayerView(bld)
@@ -2932,6 +2980,57 @@ export const MapCanvas = memo(function MapCanvas({
       }
     });
 
+    /*
+     * ⚠️ 2026-10-19: 3D-Д ГАЦСАН ДАВХАРГА VIEW-Г ХҮЛЭЭЛГЭХГҮЙ (IoT: «Газрын зураг ачаалж байна…» 20с+, IoT-ийн
+     *    нийтийн өгөгдөл аль хэдийн ирсэн ч). SDK 4.34-ийн `DefaultsFromMap` (SceneView-ийн SR/viewingMode):
+     *    WebMercator tile суурь нь ХОЁР нэр дэвшигч өгдөг тул нэг рүү хэзээ ч нарийсдаггүй — `map.layers`-ийн
+     *    эхний ~10 (`sourcePreloadCount`) давхаргыг ӨӨРӨӨ `load()` хийж, бүгд ачаалагдах/УНАХ хүртэл view
+     *    `ready` болдоггүй (эх кодоор шалгав). Хаалттай давхарга итгэмжлэл хүлээж (`IdentityManager`) ачаалал
+     *    нь ДУУСДАГГҮЙ тул зураг бүхэлдээ гацдаг байв. Одоо `STUCK_MS`-ийн дараа ч бэлэн биш бол удаж буй
+     *    ЕРДИЙН давхаргыг `cancelLoad()` — тэр нь «унасан» болж SDK алгасна; зураг байгаа давхаргаараа нээгдэж,
+     *    уналт нь «N давхарга ачаалагдсангүй» картад (`layerFail` — «Дахин оролдох»-той) ил гарна.
+     *    Меш/BIM (`scene:` · `bim:`) — өөрийн карттай, хөндөхгүй. 2D (MapView) энэ замгүй тул хамаарахгүй.
+     * ⚠️ 2026-10-19 (review): цуцлах хүрээ ХУМИГДСАН — урьд нь 4с тутам ҮҮРД давтаж, удаан ч ачаалагдаж буй БҮХ
+     *    ердийн давхаргыг (нийтийн, `scene3d:` барилга, «Дахин оролдох»-оор шинээр үүсгэсэн ч) цуцалдаг байв.
+     *    Одоо НЭГ удаа, зөвхөн:
+     *      · SDK өөрөө ачаалдаг эхний `SOURCE_PRELOAD` (`map.layers`) давхаргын дотор (view-г зөвхөн тэд хүлээлгэдэг);
+     *      · итгэмжлэл ХҮЛЭЭЖ буй үйлчилгээнийх (`authPendingRoots`) — нийтийн (нэвтрэлт хүсээгүй) давхарга хөндөгдөхгүй;
+     *        дотоод бүтэц танигдахгүй (SDK шинэчлэгдсэн) бол зөвхөн preload-ийн цонхоор хязгаарлана;
+     *      · `scene:` · `scene3d:` · `bim:` биш, «Дахин оролдох»-ын шинэ инстанц (`retriedLayers`) биш.
+     */
+    const STUCK_MS = 8000;
+    /** SDK 4.34 `DefaultsFromMap.sourcePreloadCount` */
+    const SOURCE_PRELOAD = 10;
+    let stuckT: ReturnType<typeof setTimeout> | null = null;
+    if (m3 && !reused) {
+      const unstick = async () => {
+        stuckT = null;
+        if (!alive || view.destroyed || view.ready) return;
+        const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+        if (!alive || view.destroyed || view.ready) return;
+        const pending = authPendingRoots(esriId);
+        const preload = new Set<Layer>(map.layers.toArray().slice(0, SOURCE_PRELOAD));
+        const topOf = (l: Layer): Layer => {
+          let cur: Layer = l;
+          for (;;) {
+            const p = (cur as unknown as { parent?: unknown }).parent;
+            if (!p || p === map || !(p as { type?: unknown }).type) return cur;
+            cur = p as Layer;
+          }
+        };
+        let n = 0;
+        map.allLayers.forEach((l) => {
+          if (l.loadStatus !== 'loading' || /^(scene|scene3d|bim):/.test(String(l.id))) return;
+          if (!RECREATE_TYPES.has(l.type) || retriedLayers.has(l) || !preload.has(topOf(l))) return;
+          const url = (l as unknown as { url?: unknown }).url;
+          if (pending && (typeof url !== 'string' || !pending.has(serviceRoot(url)))) return;
+          try { l.cancelLoad(); n += 1; } catch { /* цуцлах боломжгүй */ }
+        });
+        if (n) console.warn(`[selbe] 3D: ${n} давхарга ${STUCK_MS / 1000}с-д итгэмжлэл хүлээж ачаалагдаагүй — зургийг хүлээлгэхгүй (cancelLoad)`);
+      };
+      stuckT = setTimeout(() => { void unstick(); }, STUCK_MS);
+    }
+
     /**
      * Дарж/хулгана аваачихад ХАМААРАХ давхаргын объектыг олох.
      *
@@ -3151,6 +3250,7 @@ export const MapCanvas = memo(function MapCanvas({
 
     return () => {
       alive = false;
+      if (stuckT) clearTimeout(stuckT);
       click.remove();
       move.remove();
       leave.remove();
@@ -3444,8 +3544,9 @@ export const MapCanvas = memo(function MapCanvas({
     const use = (r: BimHide) => {
       if (!alive || bld.destroyed) return;
       bimHideRef.current = r;
-      const where = r3 === 'fast' ? null : r.where;
-      if (bld.definitionExpression !== where) bld.definitionExpression = where as unknown as string;
+      /* ⚠️ 2026-10-19: «Нарийн»-д ч `definitionExpression` ХООСОН — нуулт нь зөвхөн `footFilter` (Map-д БАЙГАА
+         BIM-ийн доорх). `r.where` (бүх BIM-ийн доорх) нь сонгоогүй багцын талбайг хоосон үлдээдэг байв. */
+      if (bld.definitionExpression) bld.definitionExpression = null as unknown as string;
       footFilter();
     };
     if (bimHideCache?.sig === sig) {
@@ -3464,7 +3565,7 @@ export const MapCanvas = memo(function MapCanvas({
       .then(use)
       .catch((e) => { if (alive) console.warn('[selbe] BIM-ийн доорх барилгыг нууж чадсангүй:', e); });
     return () => { alive = false; };
-  }, [dim, ready, sceneKey, r3, footFilter]);
+  }, [dim, ready, sceneKey, r3, footFilter, bimTok]);
 
   /**
    * IoT МЭДРЭГЧ — 3D-д газраас дээш өргөгдсөн радар тэмдэг, 2D-д энгийн цэг.
@@ -3644,8 +3745,9 @@ export const MapCanvas = memo(function MapCanvas({
      *    БҮГДИЙГ нь авч «Select Level» бүх барилгыг нэг дор таслах байв. Одоо дээр нь
      *    барилга сонгох жагсаалт — шүүлт ЗӨВХӨН сонгосонд (`components/bimPicker`).
      */
+    /* ⚠️ 2026-10-19: `layers` функцээр — сонголт бүрд кэшийн ОДООГИЙН инстанц (`bimLive`) */
     const widget = createBimPicker({
-      view: view as SceneView, layers, items: BIM.layers, Explorer: m3.BuildingExplorer,
+      view: view as SceneView, layers: () => bimLive(map), items: BIM.layers, Explorer: m3.BuildingExplorer,
     });
     /**
      * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
@@ -3701,15 +3803,25 @@ export const MapCanvas = memo(function MapCanvas({
     if (!layers.length) return;
     /* archOn: true — «Нарийн»-д урьдын «Architectural үргэлж асаалттай» (дээрх ⚠️).
        «Хурдан»-д Map-д камерт ойр `BIM_BUDGET` л (`manageBim`-ийн ⚠️) — доорх extrude-ийг шүүнэ. */
+    /* ⚠️ 2026-10-19: `all` функцээр (`bimLive`) — эрэмбэлэлт бүрд кэшийн ОДООГИЙН инстанц; `bimTok` («Дахин
+       оролдох») — сольсон инстанцыг шууд ачаалж эрэмбэлнэ (дээрх `bimAll` нь унасныг аль хэдийн сольсон). */
     return manageBim({
-      view: view as SceneView, map, all: layers, m: r3, archOn: true,
+      view: view as SceneView, map, all: () => bimLive(map), m: r3, archOn: true,
       onShown: (ids) => { bimShownRef.current = ids; footFilter(); },
       /* ⚠️ 2026-10-14: «Нарийн» — сонгосон багц л (`render3d.BimPkgState`); «Хурдан»-д үл хамаарна */
       pkg: bimPkg,
     });
     /* ⚠️ «Хурдан»-д багц хамаарахгүй — `bimPkg` солигдоход дахин ачаалахгүй */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dim, ready, r3, footFilter, r3 === 'fine' ? bimPkg : null]);
+  }, [dim, ready, r3, footFilter, r3 === 'fine' ? bimPkg : null, bimTok]);
+
+  /* ⚠️ 2026-10-19 (review): идэвхтэй багц · горим · BIM инстанц («Дахин оролдох» — `bimTok`) солигдоход BIM сонгогчийн
+     BuildingExplorer-ийг одоогийн давхаргад ДАХИН ХОЛБОНО (`bimPicker.rebind`) — урьд нь picker эффект зөвхөн
+     `[dim, ready]`-аар үүсдэг тул багц солигдсоны дараа Map-аас гарсан/устгагдсан инстанцад холбогдсон үлддэг байв. */
+  const bimPkgKey = r3 === 'fine' ? bimPkg.pkg : null;
+  useEffect(() => {
+    if (dim === 'bim' && ready) bimWidgetRef.current?.rebind();
+  }, [dim, ready, r3, bimPkgKey, bimTok]);
 
   /**
    * SceneView-ийн ЧАНАРЫН ТОХИРГОО — «Хурдан»/«Нарийн» (⚠️ 2026-10-04, `render3d.ts`). 3D ба BIM
@@ -4259,7 +4371,11 @@ export const MapCanvas = memo(function MapCanvas({
     const emit = (g: __esri.Geometry | null) => onSketchRef.current?.(g);
 
     const created = svm.on('create', (e) => {
-      if (e.state === 'active' || e.state === 'complete') sketchEvtRef.current += 1;
+      /* ⚠️ 2026-10-19: ЖИНХЭНЭ vertex нэмэгдсэн (`toolEventInfo.type === 'vertex-add'`) эсвэл дууссан (цэгэн
+         дүрс) үед л — урьд нь БҮХ `active` үйл явдлыг тоолдог тул синтетик `pointermove`-ийн
+         `cursor-update` ганцаараа тоолуурыг өсгөж, «Цэг нэмэгдсэнгүй» хэзээ ч гардаггүй байв. Эхний vertex нь
+         `start` төлөвтэй ирнэ. */
+      if (e.state === 'complete' || ((e.state === 'start' || e.state === 'active') && e.toolEventInfo?.type === 'vertex-add')) sketchEvtRef.current += 1;
       /* ⚠️ Esc-ээр цуцалсныг дуудагчид мэдэгдэнэ (`onSketchCancel`-ийн тайлбар);
          өөрсдийн `quietCancel` энд хүрэхгүй. */
       if (e.state === 'cancel') {
@@ -5232,11 +5348,16 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) { setLayerFail([]); return; }
+    /* ⚠️ 2026-10-19: ДАВХАРДАЛГҮЙ id-аар тоолно — «161 → 175 давхарга ачаалагдсангүй» гэж нийт давхаргаас ИХ
+       тоо гарч байв: ижил id-тай хэд хэдэн инстанц (сольсон/дахин үүсгэсэн, 2D/3D/BIM-ийн кэшийн Map) нэг бүрчлэн
+       тоологдож, 97 BIM-ийн уналт ч энд нэмэгддэг байв. BIM (`bim:`) ба меш (`scene:`) нь ӨӨРИЙН картад
+       (`meshError` — «Дахин оролдох»-той) тоологдох тул энд ХАСНА (`recreateFailedLayers` ч тэднийг алгасдаг). */
     const handle = reactiveUtils.watch(
-      () => map.allLayers
+      () => [...new globalThis.Map(map.allLayers
         .filter((l) => l.loadStatus === 'failed')
-        .map((l) => [String(l.id), l.title || String(l.id)])
         .toArray()
+        .filter((l) => !/^(bim|scene):/.test(String(l.id)))
+        .map((l) => [String(l.id), l.title || String(l.id)] as const)).entries()]
         .map((p) => JSON.stringify(p))
         .join('\n'),
       (joined) => setLayerFail(joined ? joined.split('\n').map((x) => JSON.parse(x) as [string, string]) : []),
@@ -5262,10 +5383,12 @@ export const MapCanvas = memo(function MapCanvas({
       if (!alive) return;
       const failed = rs.filter((r) => r.status === 'rejected').length;
       setMeshError(failed === 0 ? null : failed);
+      /* ⚠️ 2026-10-19: унасан BIM-ийн доорх барилгыг буцааж харуулна (`footFilter`-ийн ⚠️) */
+      if (dim === 'bim') footFilter();
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dim, ready, sceneKey]);
+  }, [dim, ready, sceneKey, bimTok]);
 
   /**
    * ⚠️ 2026-09-04: Уналтын ЖИНХЭНЭ шалтгааныг ялгана. ArcGIS нь WebGL-ийн
@@ -5328,6 +5451,26 @@ export const MapCanvas = memo(function MapCanvas({
           <span>
             <code>{hostOf(BIM.layers[0]?.url)}</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
           </span>
+          {/* ⚠️ 2026-10-19: «Дахин оролдох» — `bimAll` унасан инстанцыг `bimCache`-аар ШИНЭЭР үүсгэнэ (хуучныг Map-аас
+              хасаж устгана), `bimTok` BIM-ийн эффектүүдийг дахин ажиллуулна (`bimTok`-ийн ⚠️). Сонгогч ба
+              `manageBim` инстанцыг `bimLive`-аар уншдаг тул устгагдсан хуучныг барихгүй. */}
+          <button
+            type="button"
+            onClick={() => {
+              const m = mapRef.current;
+              if (m && !m.destroyed) bimAll(m);
+              setMeshError(null);
+              setBimTok((t) => t + 1);
+            }}
+            style={{
+              alignSelf: 'flex-start', padding: '3px 10px', cursor: 'pointer',
+              font: 'inherit', fontWeight: 600, color: 'var(--ink)',
+              background: 'var(--surface)', border: '1px solid var(--line)',
+              borderRadius: 6,
+            }}
+          >
+            {tr('Дахин оролдох')}
+          </button>
         </div>
       )}
 

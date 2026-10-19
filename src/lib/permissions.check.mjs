@@ -117,7 +117,16 @@ assert.ok(P.dirtyKeys().includes('test_dirty_user'), 'retry-ийн дараа di
 assert.equal(P.roleOf('test_dirty_user'), null, '⚠️ remote-гүй сешнд override-ын үүрэг гарахгүй (2026-09-29)');
 P._markRemoteLoaded();
 assert.equal(P.roleOf('test_dirty_user'), 'tolovlolt', 'override-ын үүрэг гарах ёстой');
-assert.equal(P.roleOf('selbe_injener'), 'injener', 'хатуу жагсаалтын үүрэг гарах ёстой');
+assert.equal(P.roleOf('selbe_redesign'), 'tolovlolt', 'хатуу жагсаалтын үүрэг гарах ёстой');
+/* ⚠️ 2026-10-19 (аудит №9): кодод «жишээ» урсгалын аккаунт ҮЛДЭХГҮЙ — нэвтрэлт/үүрэг өгөхгүй */
+{
+  const { ROLE_BY_USER } = await import('./services.ts');
+  for (const n of ['selbe_guitsetgegch', 'selbe_injener', 'selbe_menejer', 'selbe_eronhii']) {
+    assert.equal(Object.hasOwn(ROLE_BY_USER, n), false, `жишээ аккаунт ${n} ROLE_BY_USER-д үлдэв`);
+    assert.equal(P.hasAccess(n), false, `жишээ аккаунт ${n} нэвтэрч чадна`);
+    assert.equal(P.roleOf(n), null);
+  }
+}
 assert.equal(P.roleOf('huniigui_hun'), null, 'үл мэдэх хүн null');
 assert.equal(P.roleOf(superName), 'super', 'халдашгүй super — tombstone дор ч super');
 
@@ -186,8 +195,8 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   const CAPS = await import('./caps.ts');
   const { ROLE_ACCESS } = await import('./services.ts');
   P._markRemoteLoaded();
-  /* (а) хатуу үүргийн нөөц — `beginner`-т «Гүйцэтгэл»+«Хуваарь» байдаг, тооцогдохгүй */
-  assert.ok(ROLE_ACCESS.beginner.views.includes('guitsetgel') && ROLE_ACCESS.beginner.views.includes('huvaari'), 'ROLE_ACCESS.beginner тохиргоо өөрчлөгдсөн — шалгуурыг шинэчил');
+  /* (а) хатуу үүргийн нөөц — ⚠️ 2026-10-19: `beginner`-ээс «Гүйцэтгэл»+«Хуваарь» ХАСАГДСАН (үхмэл утга байв) */
+  assert.ok(!ROLE_ACCESS.beginner.views.some((v) => CAPS.WORKFLOW_VIEWS.includes(v)), 'ROLE_ACCESS.beginner-д урсгалтай харагдац үлдэв');
   const et = P.resolveAccess('selbe_et');
   assert.ok(!et.views.includes('guitsetgel') && !et.views.includes('huvaari'), `selbe_et: хуваарилалтгүй урсгалтай харагдац нээгдэв (${et.views})`);
   assert.ok(et.views.includes('plan'), 'selbe_et: урсгалгүй харагдац хэвээр');
@@ -211,10 +220,15 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   FL._syncRemoteAssigns([]);
   CAPS._syncRemoteCaps([]);
   assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хуваарилалт хасагдахад урсгалтай хуудас хаагдана');
-  /* (е) super ХӨНДӨГДӨХГҮЙ — хатуу ба override үүрэг */
+  /* (е) хатуу super ХӨНДӨГДӨХГҮЙ */
   assert.equal(P.resolveAccess(superName).views, 'all', 'хатуу super — бүх харагдац');
+  /* ⚠️ 2026-10-19 (аудит №6): панелийн ХУУЧИН `role:'super'` override мөр — ЭНГИЙН дүрмээр (урьд нь хадгалсан
+     урсгалтай харагдац ба `'all'` нь бүтнээрээ хүчинтэй байв). Панелийн super 2026-10-15-нөөс олгогдохгүй. */
   await P.setUser('wf_sup', { views: ['gdash', 'guitsetgel'], docs: true }, 'super');
-  assert.ok(P.resolveAccess('wf_sup').views.includes('guitsetgel'), 'override super — хадгалсан урсгалтай харагдац хүчинтэй');
+  assert.deepEqual(P.resolveAccess('wf_sup').views, ['gdash'], 'хуучин панелийн super — хадгалсан урсгалтай харагдац хүчингүй');
+  await P.setUser('wf_sup', { views: 'all', docs: true }, 'super');
+  const sv = P.resolveAccess('wf_sup').views;
+  assert.ok(Array.isArray(sv) && !sv.some((v) => CAPS.WORKFLOW_VIEWS.includes(v)), `хуучин панелийн super 'all' задарна (${sv})`);
   /* (ж) super-ээс бусдын 'all' задарна — урсгалтайг хасна */
   await P.setUser('wf_all', { views: 'all', docs: true }, 'taniltsah');
   const all = P.resolveAccess('wf_all').views;
@@ -223,4 +237,64 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   P._markRemoteLoaded(false);
 }
 
-console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар');
+/* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ ТҮЛХҮҮР — эрх олгохгүй, админы цэвэрлэгээнд (`permsRemote.isSpacedKey`). Урьд нь trim-ээр эрх
+   олгодог атлаа `LOWER(username) = …`-ээр олдохгүй тул хасах боломжгүй байв. */
+{
+  const { isSpacedKey } = await import('./permsRemote.ts');
+  for (const k of [' bat', 'bat ', '__cap__: bat', '__flow__:bat ', '__CHANAR__:  x']) assert.equal(isSpacedKey(k), true, k);
+  for (const k of ['bat', 'Bat', '__cap__:bat', '__CAP__:Bat', '__type__:engineer']) assert.equal(isSpacedKey(k), false, k);
+  const { roleForUser } = await import('./services.ts');
+  const sup = Object.entries((await import('./services/roles.ts')).ROLE_BY_USER ?? {}).find(([, r]) => r === 'super')?.[0];
+  if (sup) assert.equal(roleForUser(`  ${sup.toUpperCase()} `), 'super', 'roleForUser: trim + жижиг үсэг');
+}
+
+/* ── 10. «СИСТЕМ ТҮР ХААХ» (⚠️ 2026-10-19) — `__sys__:maintenance` задлалт · зайтай түлхүүр · хэн нэвтрэх ── */
+{
+  const { parseSysState, isSpacedKey } = await import('./permsRemote.ts');
+  /* задлалт: ЗӨВХӨН ил `on: true` хаана; эвдэрсэн → null (нээлттэй, fail-open) */
+  const st = parseSysState(JSON.stringify({ on: true, note: '  шилжүүлэлт  ', until: '10-20 09:00', by: 'bat', at: 5 }));
+  assert.deepEqual(st, { on: true, note: 'шилжүүлэлт', until: '10-20 09:00', by: 'bat', at: 5 }, 'хаалттай мөр задлагдсангүй');
+  assert.deepEqual(parseSysState(JSON.stringify({ on: false, by: 'bat', at: 1 })), { on: false, by: 'bat', at: 1 });
+  for (const bad of [null, '', '{эвдэрсэн', '[]', '"on"', JSON.stringify({ on: 'true' }), JSON.stringify({ on: 1 }), JSON.stringify({ note: 'x' })]) {
+    assert.equal(parseSysState(bad), null, `эвдэрсэн мөр хаах ёсгүй: ${bad}`);
+  }
+  assert.equal(parseSysState(JSON.stringify({ on: true, note: 'x'.repeat(900) })).note.length, 500, 'тайлбар 500 тэмдэгтээр таслагдана');
+  assert.equal(isSpacedKey('__sys__: maintenance'), true);
+  assert.equal(isSpacedKey('__SYS__:maintenance'), false);
+
+  /* хэн нэвтрэх: кодын super · sysClose эрхтэй — тийм; энгийн — үгүй */
+  const CAPS = await import('./caps.ts');
+  CAPS._syncRemoteCaps([{ user: 'sys_holder', caps: ['sysClose'] }, { user: 'sys_plain', caps: ['zovshoorol'] }]);
+  assert.equal(P.canBypassClosed(superName), true, 'кодын super хаалттай үед нэвтэрнэ');
+  assert.equal(P.canBypassClosed('sys_holder'), true, 'sysClose эрхтэй нэвтэрнэ');
+  assert.equal(P.canBypassClosed('SYS_HOLDER'), true, 'том үсэг ялгахгүй');
+  assert.equal(P.canBypassClosed('sys_plain'), false, 'бусад эрх хаалтыг давахгүй');
+  assert.equal(P.canBypassClosed(null), false);
+  /* төлөв: нээлттэй → хэнд ч null; хаалттай → энгийнд л */
+  P._syncRemoteSys(null);
+  assert.equal(P.systemClosed(), null);
+  assert.equal(P.closedFor('sys_plain'), null, 'нээлттэй үед хаалтгүй');
+  P._syncRemoteSys(st);
+  assert.equal(P.systemClosed()?.on, true);
+  assert.equal(P.closedFor('sys_plain'), P.systemClosed(), 'энгийн хэрэглэгчид хаалттай');
+  assert.equal(P.closedFor('sys_holder'), null, 'эрх эзэмшигчид хаалтгүй');
+  assert.equal(P.closedFor(superName), null, 'super-т хаалтгүй');
+  const same = P.systemClosed();
+  P._syncRemoteSys({ ...st });
+  assert.equal(P.systemClosed(), same, 'агуулга ижил бол ИЖИЛ объект (useSyncExternalStore-ийн агшин)');
+  P._syncRemoteSys({ ...st, on: false });
+  assert.equal(P.systemClosed(), null, '`on: false` — нээлттэй');
+  /* ⚠️ 2026-10-19 (аудит №2): caps-ийн синк УНАСАН (энэ сешнд уншигдаагүй) атлаа `__sys__` хаалттай — эзэмшигч
+     СҮҮЛИЙН амжилттай синкийн кэшээр (`selbe-caps-v1`) нэвтэрнэ; энгийн хэрэглэгч хаалттай хэвээр */
+  P._syncRemoteSys(st);
+  CAPS._markCapsSynced(false);
+  assert.equal(CAPS.hasCap('sys_holder', 'sysClose'), false, 'fail-closed hasCap хэвээр (бичих зам)');
+  assert.equal(P.closedFor('sys_holder'), null, 'caps унасан үед эзэмшигч өөрийн хаалтад түгжигдэв');
+  assert.equal(P.closedFor('sys_plain'), P.systemClosed(), 'caps унасан үед энгийн хэрэглэгч нэвтэрлээ');
+  assert.equal(P.closedFor(superName), null);
+  CAPS._markCapsSynced(true);
+  P._syncRemoteSys(null);
+  CAPS._syncRemoteCaps([]);
+}
+
+console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах');

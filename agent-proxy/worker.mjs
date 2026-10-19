@@ -27,13 +27,15 @@ import {
   createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
+  THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from './rateLimit.mjs';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 
 const DEFAULTS = {
-  MODEL: 'claude-opus-5',
+  /* ⚠️ 2026-10-19: `claude-opus-5` → `claude-opus-5-5` (`server.mjs`-ийн MODEL-ийн ⚠️). `AGENT_MODEL`-оор солино. */
+  MODEL: 'claude-opus-5-5',
   /* ⚠️ 2026-10-15: 'low' → 'medium' (`server.mjs`-ийн ⚠️-тэй ижил шалтгаан) */
   EFFORT: 'medium',
   /**
@@ -535,6 +537,8 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
   const reserved = budgeted ? reserveTokens(inputEst, DEFAULTS.MAX_TOKENS) : 0;
   if (reserved) budgetReserve(env, caller, reserved);
   let charge = inputEst;
+  /* ⚠️ 2026-10-19: явцын тэмдэглэл (`rateLimit.thinkingUpdatesFor`-ийн ⚠️) — зөвхөн Opus 5.5 */
+  const updates = thinkingUpdatesFor(MODEL);
   try {
     let res;
     let body;
@@ -545,6 +549,7 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
           'Content-Type': 'application/json',
           'x-api-key': env.ANTHROPIC_API_KEY,
           'anthropic-version': VERSION,
+          ...(updates ? { 'anthropic-beta': THINKING_UPDATES_BETA } : {}),
         },
         body: JSON.stringify({
           model: MODEL,
@@ -557,6 +562,7 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
           //    Тиймээс дэмждэггүй загвар дээр ба `AGENT_EFFORT` хоосон үед ОГТ
           //    илгээхгүй. (Батлагдсан: claude-haiku-4-5, 2026.08.13)
           ...(withEffort ? { output_config: { effort: EFFORT } } : {}),
+          ...(updates ? { thinking: { type: 'adaptive', display: 'updates' } } : {}),
           // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
           //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
           system: system
@@ -570,7 +576,9 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
     } catch (e) {
       /* ⚠️ 2026-10-09 (аудит №7): дэлгэрэнгүй зөвхөн логт (`wrangler tail`) */
       console.error('[agent] AI үйлчилгээтэй холбогдож чадсангүй:', caller, e?.message);
-      return json(502, { error: 'AI үйлчилгээтэй холбогдож чадсангүй — дахин оролдоно уу.', retryable: true }, cors);
+      /* ⚠️ 2026-10-19: `upstream: true` — хүсэлт Anthropic руу ЯВСАН байж болно (холболт хариуны үед тасарсан):
+         клиент өөр хост руу ДАВТАН илгээхгүй (`client.ts` `relayFetch`-ийн ⚠️) — давхар зарцуулалт/хариу. */
+      return json(502, { error: 'AI үйлчилгээтэй холбогдож чадсангүй — дахин оролдоно уу.', retryable: true, upstream: true }, cors);
     }
 
     if (!res.ok) {
@@ -589,8 +597,11 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
       }
       return json(res.status, {
         error: upstreamErrorText(res.status),
-        // 429 (хэт олон хүсэлт) ба 5xx — дахин оролдоход утгатай
-        retryable: res.status === 429 || res.status >= 500,
+        /* ⚠️ 2026-10-19: ЗӨВХӨН 429 · 529 (overloaded) — хүсэлт боловсруулагдаагүй нь баталгаатай. Бусад 5xx нь
+           дээд талд хэсэгчлэн боловсруулагдсан байж болох тул автоматаар давтахгүй (хэрэглэгч өөрөө дахин асууна). */
+        retryable: res.status === 429 || res.status === 529,
+        /* ⚠️ 2026-10-19: дээд үйлчилгээний хариу — клиент өөр хост руу шилжихгүй (`client.ts` `relayFetch`) */
+        upstream: true,
       }, cors);
     }
 

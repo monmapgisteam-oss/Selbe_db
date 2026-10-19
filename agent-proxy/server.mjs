@@ -27,6 +27,7 @@ import {
   createLimiter, LIMITS, createBudget, budgetFromEnv, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
+  THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from "./rateLimit.mjs";
 
 /**
@@ -240,7 +241,7 @@ const ALLOWED = (
  * ⚠️ ЗАГВАР БА ТОХИРГООГ СЕРВЕР ТАЛ ТОГТООНО — browser-оос ирсэн утгыг ХЭРЭГЛЭХГҮЙ.
  * Эс бөгөөс хэн ч энэ релег дуудаж дурын үнэтэй тохиргоогоор токен зарцуулна.
  *
- * ⚠️ АНХДАГЧ нь `claude-opus-5` — хамгийн зөв дүгнэлт гаргана. ТУРШИЛТЫН үед
+ * ⚠️ АНХДАГЧ нь `claude-opus-5-5` (2026-10-19, өмнө `claude-opus-5`) — хамгийн зөв дүгнэлт гаргана. ТУРШИЛТЫН үед
  * зардал хэмнэхийг хүсвэл `AGENT_MODEL=claude-haiku-4-5` (≈5 дахин хямд).
  *
  * ⚠️ 2026-10-15: `effort` АНХДАГЧ нь 'medium' (өмнө 'low'). Шалтгаан: агент 175
@@ -251,8 +252,18 @@ const ALLOWED = (
  *
  * ⚠️ Claude Opus 5-д бодох (thinking) нь АНХНААСАА асаалттай бөгөөд `max_tokens`
  * нь бодолт + хариу ХОЁУЛАНГ хамарна — тиймээс хариултын уртаас хамаагүй өгөөмөр.
+ *
+ * ⚠️ 2026-10-19 — Claude Opus 5.5-ийн онцлог (README «Загвар»-ыг үз):
+ *   · бодолтыг УНТРААХ боломжгүй (`thinking: {type: 'disabled'}` → 400) — энд зөвхөн
+ *     `{type: 'adaptive', display: 'updates'}` (явцын тэмдэглэл, beta; `rateLimit.thinkingUpdatesFor`) илгээнэ;
+ *     гүнийг ЗӨВХӨН `effort`-оор (анхдагч нь загвар дээр 'medium' — энд ч ил 'medium' илгээнэ);
+ *   · албадсан `tool_choice` (`any`/`tool`) → 400 — энд илгээдэггүй;
+ *   · хэрэгслийн дуудлагын ХООРОНДЫН текст `thinking` блок болж ирж болно — клиент төлөвлөгөөг
+ *     текстээс эс олдвол бодолтын блокоос хайна (`client.ts` `planTextOf`);
+ *   · бодолтын блок ЯРИАНД холбогдсон — түүхийг дундаас нь засвал дараагийн хүсэлт 400 (`AgentChat.trimHistory`).
+ *   Хуучин загвар руу буцах бол `AGENT_MODEL=claude-opus-5`.
  */
-const MODEL = process.env.AGENT_MODEL || "claude-opus-5";
+const MODEL = process.env.AGENT_MODEL || "claude-opus-5-5";
 /* ⚠️ `worker.mjs`-ийн `DEFAULTS.MAX_TOKENS`-тай ЗААВАЛ ижил байна. 2026-09-15
    хүртэл 10000 vs 8000 гэж зөрж байсан тул локалд бүтэн гардаг урт хариулт
    байршуулсан Worker дээр таслагдаж, хөгжүүлэгч давтаж чаддаггүй байв. */
@@ -260,6 +271,8 @@ const MAX_TOKENS = 10000;
 const EFFORT = process.env.AGENT_EFFORT || "medium";
 /** `effort` дэмждэг эсэх — `worker.mjs`-тэй ижил дүрэм байх ёстой */
 const WITH_EFFORT = Boolean(EFFORT) && !/haiku/i.test(MODEL);
+/** ⚠️ 2026-10-19: явцын тэмдэглэл (`thinking.display: 'updates'`) — `rateLimit.thinkingUpdatesFor`-ийн ⚠️ */
+const WITH_UPDATES = thinkingUpdatesFor(MODEL);
 
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */
 const MAX_BODY = 2 * 1024 * 1024;
@@ -594,7 +607,9 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
         json(res, 502, UPSTREAM_AUTH);
         return;
       }
-      json(res, e.status, { error: e.message, retryable: e.retryable });
+      /* ⚠️ 2026-10-19: `upstream: true` — Claude Code аль хэдийн ажилласан байж болно; клиент өөр хост руу
+         давтахгүй (`client.ts` `relayFetch`-ийн ⚠️). */
+      json(res, e.status, { error: e.message, retryable: e.retryable, upstream: true });
     }
     return;
   }
@@ -606,6 +621,7 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
       // ⚠️ Haiku ЭНЭ ПАРАМЕТРИЙГ ДЭМЖДЭГГҮЙ — илгээвэл бүх хүсэлт
       //    «This model does not support the effort parameter» гэж унана.
       ...(WITH_EFFORT ? { output_config: { effort: EFFORT } } : {}),
+      ...(WITH_UPDATES ? { thinking: { type: "adaptive", display: "updates" } } : {}),
       // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
       //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
       system: system
@@ -613,7 +629,10 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
         : undefined,
       tools,
       messages,
-    }, { signal: ac.signal });
+    }, {
+      signal: ac.signal,
+      ...(WITH_UPDATES ? { headers: { "anthropic-beta": THINKING_UPDATES_BETA } } : {}),
+    });
 
     /* ⚠️ 2026-10-09: ТАТГАЛЗСАН хариу ч токен зарцуулсан — урьд нь төсөвт нэмэхээс ӨМНӨ буцдаг
        байсан тул татгалзуулах хүсэлтээр төсвийг тойрох боломжтой байв. */
@@ -668,16 +687,20 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
       return;
     }
 
+    /* ⚠️ 2026-10-19: `worker.mjs`-тэй толин — ЗӨВХӨН 429 · 529 (боловсруулагдаагүй нь баталгаатай). Бусад 5xx/холболтын
+       алдаа хэсэгчлэн боловсруулагдсан байж болох тул «дахин оролдож болно» гэж тэмдэглэхгүй. SDK өөрөө
+       (`maxRetries`) аль хэдийн давтсан. */
     const retryable =
       err instanceof Anthropic.RateLimitError ||
-      err instanceof Anthropic.InternalServerError ||
-      err instanceof Anthropic.APIConnectionError;
+      (err instanceof Anthropic.APIError && err.status === 529);
     /* ⚠️ 2026-10-09 (аудит №7): SDK-ийн түүхий мессеж (`msg`) зөвхөн дээрх логт — клиентэд
        статусаас ЕРӨНХИЙ мөр (`worker.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
     const status = err instanceof Anthropic.APIError ? (err.status ?? 502) : 500;
     json(res, status, {
       error: upstreamErrorText(err instanceof Anthropic.APIConnectionError ? 502 : status),
       retryable,
+      /* ⚠️ 2026-10-19: дээд үйлчилгээний хариу — клиент өөр хост руу шилжихгүй */
+      upstream: true,
     });
   }
 }

@@ -166,40 +166,50 @@ export function useStatusClasses(
   const [metas, setMetas] = useState<Record<string, LayerMeta | null>>({});
   /** Домэйнгүй талбарын ялгаатай утгууд — `kind|id`-аар */
   const [vals, setVals] = useState<Record<string, string[]>>({});
-  /** Явж буй ялгаатай утгын хүсэлт — effect дахин ажиллахад давхар илгээхгүй */
+  /**
+   * ⚠️ 2026-10-19: ХҮСЭЛТ ТҮЛХҮҮР БҮРД НЭГ УДАА, цуцлалт зөвхөн UNMOUNT-д (`mounted`). Урьд нь эффект бүр
+   *    өөрийн `alive`-тай бөгөөд `metas`/`vals` deps-д байсан тул ЭХНИЙ хариу ирж төлөв өөрчлөгдөхөд
+   *    өмнөх ажиллалтын `alive` унтарч, явж буй БУСАД хүсэлтийн хариу ХАЯГДДАГ байв; утгын хүсэлтийн
+   *    `asked` нь `finally`-д арилдаг ч эффектийг дахин сэдээх зүйлгүй тул тэр давхаргын утга ХЭЗЭЭ Ч
+   *    дахин хүсэгдэхгүй — жагсаалтад төлөвүүд дутуу гарна. Одоо хариу бүр төлөвт НЭГТГЭГДЭНЭ.
+   */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  /** Хүсэлт илгээсэн давхарга (метадата) — давхар илгээхгүй */
+  const askedMeta = useRef(new Set<string>());
+  /** Хүсэлт илгээсэн ялгаатай утга (`kind|id`) — давхар илгээхгүй */
   const asked = useRef(new Set<string>());
   const key = ids.join(',');
   useEffect(() => {
-    if (!on && !preload) return undefined;
-    let alive = true;
+    if (!on && !preload) return;
     for (const id of key ? key.split(',') : []) {
-      if (id in metas) continue;
+      if (askedMeta.current.has(id)) continue;
+      askedMeta.current.add(id);
       /* ⚠️ Уншиж чадаагүй давхарга `null` — ангилагдахгүй, анхны загвартаа үлдэнэ */
       loadLayerMeta(id)
-        .then((m) => { if (alive) setMetas((p) => ({ ...p, [id]: m })); })
-        .catch(() => { if (alive) setMetas((p) => ({ ...p, [id]: null })); });
+        .then((m) => { if (mounted.current) setMetas((p) => ({ ...p, [id]: m })); })
+        .catch(() => { if (mounted.current) setMetas((p) => ({ ...p, [id]: null })); });
     }
-    return () => { alive = false; };
-  }, [on, preload, key, metas]);
+  }, [on, preload, key]);
   useEffect(() => {
-    if (!on && !preload) return undefined;
-    let alive = true;
+    if (!on && !preload) return;
     for (const [id, m] of Object.entries(metas)) {
       if (!m) continue;
       for (const kind of ['stat', 'chg'] as const) {
         const k = `${kind}|${id}`;
-        if (k in vals || asked.current.has(k)) continue;
+        if (asked.current.has(k)) continue;
         const sf = valFieldOf(m, kind);
         if (!sf || sf.codes?.length) continue;
         asked.current.add(k);
         distinctOf(m, sf.name)
-          .then((v) => { if (alive) setVals((p) => ({ ...p, [k]: v })); })
-          .catch(() => { if (alive) setVals((p) => ({ ...p, [k]: [] })); })
-          .finally(() => asked.current.delete(k));
+          .then((v) => { if (mounted.current) setVals((p) => ({ ...p, [k]: v })); })
+          .catch(() => { if (mounted.current) setVals((p) => ({ ...p, [k]: [] })); });
       }
     }
-    return () => { alive = false; };
-  }, [on, preload, metas, vals]);
+  }, [on, preload, metas]);
 
   /**
    * Сонголтууд — ШОШГООР нэгтгэнэ (`code` = хэвшүүлсэн шошго).

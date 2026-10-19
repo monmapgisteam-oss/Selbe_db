@@ -1934,7 +1934,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             </aside>
           )}
           {editMode && awaitDraw && !pick && coordPop && (
+            /* ⚠️ 2026-10-19: `key` — координат/байрлал бүрд ШИНЭ инстанц. `CoordPopup` урьдчилан бөглөх цэгийг
+               (`start`) зөвхөн АНХ үүсэхэд хуулдаг тул нээлттэй цонхтой үед дахин баруун товшиход хуучин
+               координат үлддэг байв. */
             <CoordPopup
+              key={`${coordPop.start?.lat ?? ''},${coordPop.start?.lon ?? ''}|${coordPop.at?.x ?? ''},${coordPop.at?.y ?? ''}`}
               at={coordPop.at}
               start={coordPop.start}
               title={tr('Координатаар цэг тавих')}

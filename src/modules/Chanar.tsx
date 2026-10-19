@@ -1126,7 +1126,8 @@ export function Chanar() {
             {newLabel(kind)}
           </button>
         )}
-        {noOrg && table?.ok && <span className={s.hint}>{tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', pkg)}</span>}
+        {/* ⚠️ 2026-10-19: шалтгаан + дараагийн алхам (`chanarMs.ORG_CODE`-ийн ⚠️ — 6.3 · 6.5–6.8 г.м. блокгүй багц) */}
+        {noOrg && table?.ok && <span className={s.hint} role="status">{tr('«{0}» багцын гүйцэтгэгчийн код (баримтын дугаарын угтвар) бүртгэгдээгүй тул баримт үүсгэх боломжгүй — системийн админд хандаж кодыг нэмүүлнэ үү.', pkg)}</span>}
       </div>
       {!listFailed && (
         <div className={s.summary} title={tr('Багцын хураангуй')}>

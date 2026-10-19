@@ -126,6 +126,16 @@ export function dismissSessionDead(): void {
   quietUntil = Date.now() + DISMISS_QUIET_MS;
   setDead(false);
 }
+/**
+ * «Түр хаах»-ын чимээгүй цонхыг ЦУЦЛААД «дахин нэвтрэх» цонхыг дахин гаргана (⚠️ 2026-10-19).
+ * ⚠️ `AuthGate.SystemClosed`-ийн «Дахин шалгах»: систем хаалттай хэрэглэгч сешн дууссан цонхыг хаасан бол
+ *    хаалтын цонх бүх дэлгэцийг эзэлж, шалгалт токенгүй тул ҮҮРД унадаг байв — одоо нэвтрэлт дууссан
+ *    (`lastRefreshFail() === 'dead'`) бол энэ дуудлагаар `SessionExpired` (дээр нь) буцаж гарна.
+ */
+export function reopenSessionDead(): void {
+  quietUntil = 0;
+  markDead();
+}
 /** Хэрэглэгч гарах / дахин нэвтрэх гэж байна — итгэмжлэл устахыг «дууссан» гэж тэмдэглэхгүй */
 export function noteSignOut(): void {
   ending = true;

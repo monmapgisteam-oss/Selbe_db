@@ -7,10 +7,12 @@ import Graphic from '@arcgis/core/Graphic';
 import SimpleFillSymbol from '@arcgis/core/symbols/SimpleFillSymbol';
 import CIMSymbol from '@arcgis/core/symbols/CIMSymbol';
 import { useMap } from '@/components/MapCanvas';
-import { computeNeed, NEED_TYPES, type NeedResult, type NeedType } from '@/lib/hesegNeed';
+import { computeNeed, onNeedStep, NEED_TYPES, type NeedResult, type NeedType } from '@/lib/hesegNeed';
+import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { selectNeedLinks, selectNeedSegments, selectNeedUnresolved, summarizeNeed, UNASSIGNED_ZONE } from '@/lib/hesegNeedSummary';
 import { fmtLen, OVERLAP_TYPES } from '@/lib/planOverlap';
 import { num } from '@/lib/format';
+import { placeTip } from '@/components/PlanOverlap';
 import s from './heseg.module.css';
 import n from './hesegNeed.module.css';
 
@@ -61,19 +63,33 @@ const failureTitle = (reason: string) => ({
 }[reason] ?? tr('Трасс тодорхойгүй'));
 
 type State = { res: NeedResult | null; step: string; err: string | null };
+/** «Шинэчлэх»-ийн дараах дахин бодолтын саатал — дараалсан `invalidateAll`-ийг нэг тооцоо болгоно */
+const REFRESH_DEBOUNCE_MS = 400;
 function useNeed(): State {
   const [st, setSt] = useState<State>({ res: null, step: '', err: null });
+  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна (`hesegNeed`) — дахин бодуулна;
+     хуучин үр дүн шинэ нь иртэл үлдэнэ. */
+  /* ⚠️ 2026-10-19 (review): `dataVersion` биш `refreshEpoch` (кэш зөвхөн `invalidateAll`-д хаягдана); дахин бодолтыг
+     сааруулна; өмнөх үеийн хариу ба явцыг (`onNeedStep(fn, p)` — ЗӨВХӨН энэ тооцооных) үл тооно. */
+  const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
+  const mountEpoch = useRef(epoch);
   useEffect(() => {
     let alive = true;
-    computeNeed((step) => { if (alive) setSt((p) => ({ ...p, step })); })
-      .then((res) => {
+    let off = () => {};
+    const t = setTimeout(() => {
+      const p = computeNeed();
+      /* ⚠️ 2026-10-19 (аудит): явцын текст БҮХ хүлээгчид (`onNeedStep`) — урьд нь зөвхөн эхлүүлсэн дуудагчид (зургийн
+         давхарга) очдог тул самбар явцгүй байв; unmount-д цуцална. */
+      off = onNeedStep((step) => { if (alive) setSt((prev) => ({ ...prev, step })); }, p);
+      p.then((res) => {
         if (!alive) return;
         if (needData !== res) { needData = res; setUi({}); }
         setSt({ res, step: '', err: null });
       })
-      .catch((e: unknown) => { if (alive) setSt({ res: null, step: '', err: e instanceof Error ? e.message : String(e) }); });
-    return () => { alive = false; };
-  }, []);
+        .catch((e: unknown) => { if (alive) setSt({ res: null, step: '', err: e instanceof Error ? e.message : String(e) }); });
+    }, epoch === mountEpoch.current ? 0 : REFRESH_DEBOUNCE_MS);
+    return () => { alive = false; clearTimeout(t); off(); };
+  }, [epoch]);
   return st;
 }
 
@@ -326,9 +342,18 @@ export function NeedLayer() {
     })));
   }, [gl, layers, res, links, segments, unresolved, u.type]);
 
-  // Сонголтоор хүрээг томруулна; шийдэгдээгүй барилгыг ч хамруулна.
+  /*
+   * Сонголтоор хүрээг томруулна; шийдэгдээгүй барилгыг ч хамруулна.
+   * ⚠️ 2026-10-19 (аудит): ЗӨВХӨН сонголт (төрөл · бүс) СОЛИГДОХОД — урьд нь босгын (`maxM`) талбарт товч дарах бүрд
+   *    `segments` өөрчлөгдөж зураг дахин ойртдог тул хэрэглэгчийн гүйлгэсэн/томруулсан байдал алга болдог байв.
+   */
+  const zoomedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!view || view.type !== '2d' || !res || (!u.type && !u.zone)) return;
+    if (!u.type && !u.zone) { zoomedRef.current = null; return; }
+    if (!view || view.type !== '2d' || !res) return;
+    const key = `${u.type ?? ''}|${u.zone ?? ''}`;
+    if (zoomedRef.current === key) return;
+    zoomedRef.current = key;
     const targets = [...segments.map((segment) => segment.geometry), ...unresolved.map((item) => res.buildingGeometries[item.building])];
     const extent = zoneGeometry?.extent?.clone() ?? targets.reduce<__esri.Extent | null>((result, geometry) => {
       const current = geometry.extent;
@@ -352,14 +377,14 @@ export function NeedLayer() {
         if (!g) { tip.hidden = true; return; }
         const a = g.attributes as { type?: NeedType; len?: number; unresolved?: boolean; reasons?: string; buildings?: number; kind?: string };
         tip.hidden = false;
-        tip.style.left = `${e.x + 14}px`;
-        tip.style.top = `${e.y + 14}px`;
         tip.innerHTML = '';
         const t = document.createElement('b');
         t.textContent = a.type ? `${TYPE_BY_KEY.get(a.type)?.title() ?? a.type} — ${a.kind === 'corridor' ? tr('Дундын шугам') : tr('Барилга / эх үүсвэрийн холболт')}` : a.unresolved ? tr('Трасс тодорхойгүй') : tr('Холболт төлөвлөсөн барилга');
         const d = document.createElement('span');
         d.textContent = a.unresolved ? a.reasons ?? '' : a.type ? `${fmtLen(a.len ?? 0)} · ${tr('{0} барилга', num(a.buildings ?? 1))}` : tr('Урьдчилсан трасс');
         tip.append(t, d);
+        /* ⚠️ 2026-10-19 (аудит): зургийн хүрээнд шахна (`PlanOverlap.placeTip`-ийн ⚠️) */
+        placeTip(tip, mv, e.x, e.y);
       }).catch(() => {});
     });
     const out = mv.on('pointer-leave', () => { seq++; if (tip) tip.hidden = true; });

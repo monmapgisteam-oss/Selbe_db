@@ -14,6 +14,9 @@
  *      deploy.yml, test.yml гурвуулаа дээр (OPTIONAL_LOCAL-аас бусад).
  *   2. `.env.example` / deploy.yml / test.yml-д байгаа бүр кодод хэрэглэгдэнэ (хуучирсан мөргүй).
  *   3. deploy.yml ба test.yml-ийн жагсаалт ИЖИЛ.
+ *   4. ⚠️ 2026-10-19: Telegram ботын загвар (`deploy/telegram-bot/.env.example`) — кодын `req()`/`svcRoot()`-оор
+ *      ЗААВАЛ шаардсан бүх хувьсагч идэвхтэй мөрөөр байна (дутуу бол бот асахгүй), мөн кодод хэрэглэгдэхгүй
+ *      (хуучирсан) нэр байхгүй. Урьд нь `NEXT_PUBLIC_ARCGIS_IOT` (хуучин нэр) үлдэж, `…_IOT_SVC` · `…_BIM_SCENE` алга байв.
  */
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -26,12 +29,9 @@ import { join, sep } from 'node:path';
 const OPTIONAL_LOCAL = new Map([
   ['NEXT_PUBLIC_AUTH_OFF',
     'Нэвтрэлтийг санаатай унтраах (зөвхөн UI бүтэц харах) — production/CI-д ХЭЗЭЭ Ч тавихгүй (env.ts).'],
-  /* ⚠️ 2026-10-08: Enterprise геопорталын PDF item — ТУРШИЛТ (tezu-bonu), deploy-д хараахан үгүй */
-  ['NEXT_PUBLIC_ENT_PORTAL_URL',
-    'Enterprise геопортал (`…/geoportal`) — PDF-ийг item болгон хадгалах туршилт (lib/entDocs.ts); хоосон бол нуугдана.'],
-  /* ⚠️ 2026-10-09: Чанар · MA Survey123 (Enterprise) — ТУРШИЛТ, deploy-д хараахан үгүй */
-  ['NEXT_PUBLIC_CHANAR_MA_SVC',
-    'MA (материал баталгаажуулалт) Survey123 feature service — Enterprise (lib/ma.ts); хоосон бол «MA» харагдац тохируулаагүй гэнэ.'],
+  /* ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` ЭНД БАЙХГҮЙ БОЛСОН — ХАБЭА-гийн бичилт Enterprise сешнээс хамаардаг тул
+     deploy/CI-д GitHub Variable-аар (сонголттой; хоосон бол `habeaRegisters.entAuth` нэргүй бичилт руу буцна) */
+  /* ⚠️ 2026-10-19: `NEXT_PUBLIC_CHANAR_MA_SVC` ЭНД БАЙХГҮЙ БОЛСОН — deploy/CI-д GitHub Variable-аар (сонголттой, хоосон байж болно) */
   ['NEXT_PUBLIC_CHANAR_MIR_SVC',
     'MIR (материалын үзлэг) Survey123 feature service — Enterprise (lib/mir.ts); хоосон бол MA картад MIR гарахгүй.'],
 ]);
@@ -99,8 +99,30 @@ const wfVars = (file) => {
 const deploy = wfVars('.github/workflows/deploy.yml');
 const test = wfVars('.github/workflows/test.yml');
 
+/* ── 4) Telegram ботын загвар + кодын ЗААВАЛ хувьсагчид (`req("…")` · `svcRoot("…")`) ── */
+const required = new Set();
+const REQ = /\b(?:req|svcRoot)\(\s*["'](NEXT_PUBLIC_[A-Z0-9_]+)["']/g;
+const walkReq = (d) => {
+  for (const e of readdirSync(d, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.next')) continue;
+    const p = join(d, e.name);
+    if (e.isDirectory()) { walkReq(p); continue; }
+    if (!/\.(ts|tsx)$/.test(e.name) || /\.check\./.test(e.name)) continue;
+    for (const m of stripComments(readFileSync(p, 'utf8')).matchAll(REQ)) required.add(m[1]);
+  }
+};
+walkReq('src');
+assert.ok(required.size >= 5, `req()-ээр шаардсан хувьсагч хэт цөөн (${required.size}) — хайлт эвдэрсэн үү?`);
+const bot = new Set();
+for (const line of readFileSync('deploy/telegram-bot/.env.example', 'utf8').split(/\r?\n/)) {
+  const a = /^\s*(NEXT_PUBLIC_[A-Z0-9_]+)\s*=/.exec(line);
+  if (a) bot.add(a[1]);
+}
+
 /* ── Шалгалт ── */
 const errs = [];
+for (const name of required) if (!bot.has(name)) errs.push(`${name} — req()-ээр ЗААВАЛ, гэвч deploy/telegram-bot/.env.example-д алга (бот асахгүй)`);
+for (const name of bot) if (!code.has(name)) errs.push(`${name} — deploy/telegram-bot/.env.example-д байгаа ч кодод хэрэглэгдэхгүй (хуучирсан нэр)`);
 for (const [name, file] of code) {
   if (OPTIONAL_LOCAL.has(name)) {
     if (!exampleCommented.has(name) && !example.has(name)) errs.push(`${name} (${file}) — .env.example-д тайлбар мөрөөр баримтжуулаагүй`);
@@ -122,5 +144,5 @@ if (errs.length) {
   console.error(`❌ NEXT_PUBLIC_* тэнцвэр алдагдсан (${errs.length}):\n  ${[...new Set(errs)].join('\n  ')}`);
   process.exit(1);
 }
-console.log(`✅ ${code.size} NEXT_PUBLIC_* — код · .env.example · deploy.yml · test.yml тэнцүү`
+console.log(`✅ ${code.size} NEXT_PUBLIC_* — код · .env.example · deploy.yml · test.yml тэнцүү; ботын загварт ${required.size} заавал хувьсагч бүгд`
   + ` (зөвхөн локал: ${[...OPTIONAL_LOCAL.keys()].join(', ')})`);

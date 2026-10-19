@@ -25,12 +25,13 @@
  *    системийн утга нь дэлгэцэд ДАРААГИЙН давхарга хэвээр. Тиймээс хүснэгт үргэлж «Excel» хэвээр үлдэнэ.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { queryFeatures } from '@/lib/query';
+import { arcgisPost } from '@/lib/query';
 import { TUSUL_NEGTGEL } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { currentUser } from '@/lib/who';
-import { invalidate } from '@/lib/dataBus';
-import { loadNegRaw, treeOf, type NegRaw } from '@/lib/negtgelAuto';
+import { invalidate, register } from '@/lib/dataBus';
+import { isLostWrite } from '@/lib/lostWrite';
+import { loadNegRaw, negRootOf, treeOf, type NegRaw, type NegRootRow } from '@/lib/negtgelAuto';
 
 const F = TUSUL_NEGTGEL.fields;
 const SCALE = TUSUL_NEGTGEL.scale;
@@ -108,9 +109,12 @@ export function negForm(rows: readonly NegRaw[]): NegForm {
     roll[key] = rows.map((r, i): 'in' | 'all' | null => {
       if (!kids[i].length || r[key] == null || !kids[i].some((k) => rows[k][key] != null)) return null;
       const sum = (ks: number[]) => ks.reduce((a, k) => a + (rows[k].w ?? 0) * (rows[k][key] ?? 0), 0);
+      /* ⚠️ 2026-10-19: мужийн БҮХ жин хоосон бол томьёо биш (Σ = 0 нь «мэдээлэлгүй», `applyNegEdits` null өгнө) —
+         эс бөгөөс засваргүй загвар хадгалсан 0-оос зөрж «засваргүй — зөрүү 0» эвдэрнэ */
+      const wOk = (ks: number[]) => ks.some((k) => rows[k].w != null);
       const ks = inn(i);
-      if (ks.length && near(r[key], sum(ks), FTOL)) return 'in';
-      return ks.length !== kids[i].length && near(r[key], sum(kids[i]), FTOL) ? 'all' : null;
+      if (ks.length && wOk(ks) && near(r[key], sum(ks), FTOL)) return 'in';
+      return ks.length !== kids[i].length && wOk(kids[i]) && near(r[key], sum(kids[i]), FTOL) ? 'all' : null;
     });
   }
   return { parent, kids, eSum, fRatio, gChain, roll };
@@ -157,36 +161,48 @@ export function applyNegEdits(rows: readonly NegRaw[], form: NegForm, edits: Neg
   }
   const { parent, kids } = form;
   const inn = (i: number) => kids[i].filter((k) => !m[k].outside);
+  /*
+   * ⚠️ 2026-10-19 (аудит): ТОМЬЁОТ НҮД ҮРГЭЛЖ ДАХИН БОДОГДОНО — оролт нь «мэдээлэлгүй» болбол үр дүн нь ч `null`
+   *    (null ≠ 0). Урьд нь гурван газар ХУУЧИН утга чимээгүй үлддэг байв:
+   *      · бүх хүүхдийн төсөв хоосорсон эцгийн Σ E — өмнөх нийлбэрээрээ;
+   *      · эцгийн E ≤ 0 / хоосон (эсвэл өөрийн E хоосон) хүүхдийн F — хуучин жингээрээ G ба жигнэсэн нийлбэрт орно;
+   *      · бүх хүүхэд нь хоосорсон эцгийн N…S — өмнөх нийлбэрээрээ.
+   *    «Мэдээлэлтэй эсэх»-ийг БҮХ хүүхдээр (`negForm`-ын танилттай ИЖИЛ), нийлбэрийг мужаар (`in` / `all`) — эс бөгөөс
+   *    засваргүй загвар хадгалсан утгаас зөрж «засваргүй — зөрүү 0» эвдэрнэ.
+   */
   /* E — доороос дээш (хүүхэд эцгийнхээ ДАРАА байрладаг outline) */
   for (let i = n - 1; i >= 0; i -= 1) {
     const mode = form.eSum[i];
     if (!mode) continue;
+    if (!kids[i].some((k) => m[k].budget != null)) { m[i].budget = null; continue; }
     const ks = mode === 'all' ? kids[i] : inn(i);
-    if (!ks.some((k) => m[k].budget != null)) continue;
     m[i].budget = ks.reduce((a, k) => a + (m[k].budget ?? 0), 0);
   }
-  /* F = E ÷ E(эцэг) */
+  /* F = E ÷ E(эцэг) — хуваагч ≤ 0 / хоосон бол тодорхойгүй (Excel-д #DIV/0!) → null */
   for (let i = 0; i < n; i += 1) {
     if (!form.fRatio[i]) continue;
     const pe = m[parent[i]].budget;
     const e = m[i].budget;
-    if (pe != null && pe > 0 && e != null) m[i].w = e / pe;
+    m[i].w = pe != null && pe > 0 && e != null ? e / pe : null;
   }
   /* G = F × G(эцэг) — дээрээс доош */
   for (let i = 0; i < n; i += 1) {
     if (!form.gChain[i]) continue;
     const pg = m[parent[i]].p;
     const w = m[i].w;
-    if (pg != null && w != null) m[i].p = w * pg;
+    m[i].p = pg != null && w != null ? w * pg : null;
   }
-  /* N…R, S = Σ F × хүүхэд — доороос дээш. ⚠️ Хоосон хүүхэд 0 (Excel-ийн SUMPRODUCT) */
+  /* N…R, S = Σ F × хүүхэд — доороос дээш. ⚠️ Хоосон хүүхэд 0 (Excel-ийн SUMPRODUCT); БҮГД хоосон бол эцэг null */
   for (const key of ROLL_KEYS) {
     const on = form.roll[key];
     for (let i = n - 1; i >= 0; i -= 1) {
       const mode = on[i];
       if (!mode) continue;
+      if (!kids[i].some((k) => m[k][key] != null)) { m[i][key] = null; continue; }
       const ks = mode === 'all' ? kids[i] : inn(i);
-      if (!ks.some((k) => m[k][key] != null)) continue;
+      /* ⚠️ 2026-10-19: мужийн БҮХ хүүхдийн жин (F) хоосон бол Σ F × утга нь 0 БИШ, тодорхойгүй → null (null ≠ 0).
+         Утгыг биш ЖИНГ шалгана — F нь E ÷ E(эцэг)-ээр null болж болно (дээрх F-ийн алхам). */
+      if (!ks.some((k) => m[k].w != null)) { m[i][key] = null; continue; }
       m[i][key] = ks.reduce((a, k) => a + (m[k].w ?? 0) * (m[k][key] ?? 0), 0);
     }
   }
@@ -238,75 +254,349 @@ export function negEditDiff(base: readonly NegRaw[], model: readonly NegRaw[]): 
   return out;
 }
 
+/* ═══════════════ «ТӨСЛИЙН НИЙТ» мөр ═══════════════ */
+
+const TOT_KEYS = ['planG', 'planGch', 'planGu', 'planNw', 'planPw', 'act'] as const;
+type TotKey = (typeof TOT_KEYS)[number];
+/** Нийтийн мөрийн утгууд — бүгд 0–1; `p` = Σ үе шатны жин (`null` — жинтэй үе шат алга) */
+export type NegTotal = Record<TotKey | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk', number | null> & { p: number | null };
+
 /**
- * «ТӨСЛИЙН НИЙТ» (WBS «0») мөр — Excel-ийн 6-р мөр: N…S = Σ G(үе шат) × утга, T…W = S ÷ N · O · P · R.
+ * «ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ» — Excel-ийн 6-р мөр: N…S = Σ G(үе шат) × утга, T…W = S ÷ N · O · P · R (0 бол 0).
+ * Цэвэр функц — ДЭЛГЭЦ (`TusulNegtgel.Tree`-ийн нийт мөр) ба НИЙТЛЭЛТ (`publishNegEdits`) ХОЁУЛАА үүнийг дуудна.
+ *
+ * ⚠️ 2026-10-19 (аудит): урьд нь нийтлэлт өөрийн `rootVals`-тай байв — хоосон үе шатыг 0 гэж нэмж, Σ жингээр
+ *    нормчилдоггүй тул хүснэгтэд бичигдсэн нийт мөр дэлгэцийнхээс ЗӨРДӨГ байлаа. Одоо нэг томьёо:
+ *      · жингүй (`p == null`) үе шат алгасагдана;
+ *      · жинтэй (> 0) үе шатны утга хоосон бол тэр баганын нийт ХООСОН (null ≠ 0);
+ *      · Σ жин [0.9995, 1.0005]-ээс гадуур бол жигнэсэн нийлбэрийг Σ жингээр НОРМЧИЛНО (аудит №7, 2026-10-11).
  * ⚠️ E · G нь ХӨНДӨГДӨХГҮЙ — Excel-д E6 = E7 + E9 + E528 (гурван үе шат л) гэх мэт өөр томьёотой.
+ * @param top 1-р түвшний (үе шатны) мөрүүд, утга 0–1
  */
-function rootVals(model: readonly NegRaw[]): Partial<Record<RollKey | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk', number | null>> {
-  const top = model.filter((r) => r.depth === 1);
-  const v: Partial<Record<string, number | null>> = {};
-  for (const key of ROLL_KEYS) {
-    v[key] = top.some((r) => r[key] != null) ? top.reduce((a, r) => a + (r.p ?? 0) * (r[key] ?? 0), 0) : null;
+export function negTotals(top: ReadonlyArray<{ p: number | null } & Record<TotKey, number | null>>): NegTotal {
+  let p = 0;
+  const t = { planG: 0, planGch: 0, planGu: 0, planNw: 0, planPw: 0, act: 0 } as Record<TotKey, number>;
+  const nul = new Set<TotKey>();
+  let weighted = false;
+  for (const r of top) {
+    if (r.p == null) continue;
+    weighted = true;
+    const ip = r.p;
+    p += ip;
+    for (const k of TOT_KEYS) {
+      const v = r[k];
+      if (v == null) { if (ip > 0) nul.add(k); } else t[k] += ip * v;
+    }
   }
-  for (const { perf, plan } of PERF) v[perf] = perfOf(v.act ?? null, v[plan] ?? null);
-  return v;
+  /* ⚠️ 2026-10-19: жинтэй үе шат НЭГ Ч алга (бүх `p` хоосон) эсвэл Σ жин ≤ 0 бол нийт ТОДОРХОЙГҮЙ — бүх багана null
+     (урьд нь 0 буцааж, нийтлэлт хүснэгтийн нийт мөрт 0 бичдэг байв; null ≠ 0). Σ жин нь мөн null («мэдээлэлгүй»). */
+  if (!weighted || !(p > 0)) {
+    const none = { p: weighted ? p : null } as NegTotal;
+    for (const k of TOT_KEYS) none[k] = null;
+    for (const { perf } of PERF) none[perf] = null;
+    return none;
+  }
+  const norm = p < 0.9995 || p > 1.0005 ? p : 1;
+  const out = { p } as NegTotal;
+  for (const k of TOT_KEYS) out[k] = nul.has(k) ? null : t[k] / norm;
+  for (const { perf, plan } of PERF) out[perf] = perfOf(out.act, out[plan]);
+  return out;
 }
 
-/** Нийтлэх эрх — Нэгтгэлийн таб харагддаг хүн (super үүрэг, `permissions.roleOf`) */
+/** Нийт мөрт бичигдэх талбарууд (E · G-гүй) */
+const ROOT_OUT = OUT.filter((o) => o.key !== 'budget' && o.key !== 'w' && o.key !== 'p');
+
+/* ═══════════════ ОРОЛТ ═══════════════ */
+
+export type NegParse = { ok: true; v: number | null } | { ok: false; err: string };
+
+/**
+ * ТӨСВИЙН БИЧВЭР → ТОО-н бичвэр. Зай (мянгат) хасна; таслалыг ЗӨВХӨН тодорхой үед хүлээн авна:
+ *   · «1,234,567» (≥ 2 бүлэг гурван оронтой) → мянгат;   · «1234,5» · «1234,56» → бутархай;
+ *   · «1,234,567.5» → мянгат + цэгэн бутархай;          · «1.234.567,5» → цэгэн мянгат + таслалан бутархай;
+ *   · «1,234» · «1234,567» → ТОДОРХОЙГҮЙ (1.234 уу, 1234 үү) → `null` (татгалзана).
+ * ⚠️ 2026-10-19 (аудит): урьд нь бүх таслалыг хасдаг тул «1234,5» → 12345 (10 дахин) чимээгүй бичигддэг байв.
+ */
+function normBudget(t: string): string | null {
+  if (/^\d+(\.\d+)?$/.test(t)) return t;
+  const comma = t.includes(',');
+  const dot = t.includes('.');
+  if (comma && dot) {
+    if (/^\d{1,3}(,\d{3})+\.\d+$/.test(t)) return t.replace(/,/g, '');
+    if (/^\d{1,3}(\.\d{3})+,\d+$/.test(t)) return t.replace(/\./g, '').replace(',', '.');
+    return null;
+  }
+  if (comma) {
+    if (/^\d{1,3}(,\d{3}){2,}$/.test(t)) return t.replace(/,/g, '');
+    if (/^\d+,(\d{1,2}|\d{4,})$/.test(t)) return t.replace(',', '.');
+    return null;
+  }
+  if (/^\d{1,3}(\.\d{3}){2,}$/.test(t)) return t.replace(/\./g, '');
+  return null;
+}
+
+/**
+ * НҮДНИЙ БИЧВЭР → УТГА — цэвэр функц (тест: `negtgelEdit.check.mjs`).
+ *   · хувь (F · G · N…S): «12,5» / «12.5%» → 0.125; ЗААВАЛ 0–100;
+ *   · төсөв (E): «1 234 567» → 1234567; ≥ 0; таслал — `normBudget`-ийн дүрмээр;
+ *   · хоосон → `null` (нүдийг хоослох).
+ * ⚠️ 2026-10-19 (аудит): урьд нь хүрээ шалгадаггүй тул «250» (%) эсвэл сөрөг төсөв загварт орж, томьёогоор бүх өвөг
+ *    рүү тархдаг байв. Татгалзсан оролтын ШАЛТГААНЫГ буцаана — UI нүдийг буцааж тэмдэглэнэ (`TusulNegtgel.EditInput`).
+ */
+export function parseNegInput(text: string, key: NegEditKey): NegParse {
+  const budget = key === 'budget';
+  let t = text.trim();
+  if (!budget) t = t.replace(/%$/, '').trim();
+  if (t === '') return { ok: true, v: null };
+  t = t.replace(/[\s  ]/g, '');
+  const neg = /^[-−]/.test(t);
+  if (neg) t = t.slice(1);
+  const s = budget ? normBudget(t) : /^\d+([.,]\d+)?$/.test(t) ? t.replace(',', '.') : null;
+  if (s == null) {
+    if (budget && t.includes(',')) {
+      return { ok: false, err: tr('«{0}» — таслал мянгатын эсвэл бутархайн тэмдэг үү тодорхойгүй: бутархайг цэгээр (1234.5), мянгатыг зайгаар (1 234) бичнэ үү', text) };
+    }
+    return { ok: false, err: tr('«{0}» тоо биш — засвар хэрэгжсэнгүй', text) };
+  }
+  const x = Number(s) * (neg ? -1 : 1);
+  if (!Number.isFinite(x)) return { ok: false, err: tr('«{0}» тоо биш — засвар хэрэгжсэнгүй', text) };
+  if (budget) {
+    if (x < 0) return { ok: false, err: tr('«{0}» — төсөв сөрөг байж болохгүй', text) };
+    return { ok: true, v: x };
+  }
+  if (x < 0 || x > 100) return { ok: false, err: tr('«{0}» — хувь 0–100 хооронд байх ёстой', text) };
+  return { ok: true, v: x / 100 };
+}
+
+/* ═══════════════ ЗЭРЭГ ЗАСВАР ═══════════════ */
+
+/** Хүснэгтийн (×100) утга → загварын (0–1) */
+const fromField = (v: unknown, budget?: true): number | null => {
+  const x = numOrNull(v);
+  return x == null ? null : budget ? x : x / SCALE;
+};
+
+/**
+ * ХУУЧИРСАН МӨРҮҮД — бичих гэж буй талбар маань СУУРЬ (засвар эхэлсэн агшин)-аас хойш өөр газраас өөрчлөгдсөн мөрийн OID.
+ * Цэвэр функц (тест).
+ * ⚠️ 2026-10-19 (аудит): шинэ утга НЬ МАНАЙ бичих гэж буй утгатай таарвал зөрчил БИШ — тэр нь бидний өмнөх «хариу
+ *    алдагдсан» (timeout) нийтлэлт амжилттай бичигдсэн гэсэн үг; урьд нь хэрэглэгч дахин «Нийтлэх» дарахад өөрийнх нь
+ *    бичилт «өөр газраас өөрчлөгдсөн» гэж мэдээлэгддэг байв.
+ * ⚠️ Мөрийн бүтэц (OID · гүн · дараалал) өөрчлөгдсөн бол БҮХ шинэчлэлт хуучирсан — мод өөр болсон.
+ */
+export function negStale(
+  updates: ReadonlyArray<Record<string, unknown>>,
+  base: readonly NegRaw[],
+  fresh: readonly NegRaw[],
+): number[] {
+  const oidOf = (u: Record<string, unknown>) => Number(u[TUSUL_NEGTGEL.oid]);
+  if (fresh.length !== base.length || fresh.some((r, i) => r.oid !== base[i].oid || r.depth !== base[i].depth)) {
+    return updates.map(oidOf);
+  }
+  const now = new Map(fresh.map((r) => [r.oid, r]));
+  const was = new Map(base.map((r) => [r.oid, r]));
+  return updates.filter((u) => {
+    const a = now.get(oidOf(u));
+    const b = was.get(oidOf(u));
+    if (!a || !b) return true;
+    return OUT.some((o) => {
+      if (!(o.field in u)) return false;
+      const nv = numOrNull(a[o.key]);
+      return negDiffers(nv, numOrNull(b[o.key]), o.budget) && negDiffers(nv, fromField(u[o.field], o.budget), o.budget);
+    });
+  }).map(oidOf);
+}
+
+/** ШИНЭ мөрүүд дээр манай шинэчлэлтийг тавина — нийт мөрийг үүнээс бодно. Цэвэр функц. */
+export function negMerge(fresh: readonly NegRaw[], updates: ReadonlyArray<Record<string, unknown>>): NegRaw[] {
+  const by = new Map(updates.map((u) => [Number(u[TUSUL_NEGTGEL.oid]), u]));
+  return fresh.map((r) => {
+    const u = by.get(r.oid);
+    if (!u) return r;
+    const m: NegRaw = { ...r };
+    for (const o of OUT) if (o.field in u) (m as Record<string, unknown>)[o.key] = fromField(u[o.field], o.budget);
+    return m;
+  });
+}
+
+/**
+ * НИЙТ МӨРИЙН ШИНЭЧЛЭЛТ — `merged` (шинэ мөр + манай засвар)-аас `negTotals`-аар бодоод, одоогийн нийт мөрөөс
+ * зөрсөн талбарыг л буцаана. Цэвэр функц.
+ * @returns `stale` — нийт мөр СУУРЬ-аас хойш өөр газраас өөрчлөгдсөн (манай бодсон утгатай ч таарахгүй)
+ * ⚠️ 2026-10-19: нийт мөр нь БҮРЭН дериват — давхцаагүй мөр засварласан өөр нийтлэгч ч түүнийг өөрийн томьёогоор
+ *    дахин бичдэг тул «суурьаас өөрчлөгдсөн» нь дангаараа зөрчил БИШ (урьд нь хоёр давхцаагүй нийтлэгчийн хоёр дахь нь
+ *    худал зөрчлөөр зогсдог байв). Одоогийн нийт мөр нь ШИНЭ мөрүүдийн (манай засваргүй, `fresh`) дахин бодолттой таарвал
+ *    түүнийг тайлбарласан — зөрчил биш. Зөвхөн томьёогоор тайлбарлагдахгүй (гараар · Excel синкээр) өөрчлөгдсөн бол зөрчил.
+ * @param fresh ШИНЭ уншилтын мөрүүд (манай засваргүй) — өгөөгүй бол хуучин (хатуу) шалгалт
+ */
+export function negRootUpdate(
+  merged: readonly NegRaw[],
+  root: NegRootRow,
+  baseRoot: NegRootRow | undefined,
+  fresh?: readonly NegRaw[],
+): { attrs: Record<string, unknown> | null; stale: boolean } {
+  const v = negTotals(merged.filter((r) => r.depth === 1));
+  const fv = fresh ? negTotals(fresh.filter((r) => r.depth === 1)) : null;
+  const a: Record<string, unknown> = {};
+  let stale = false;
+  for (const o of ROOT_OUT) {
+    const k = o.key as keyof NegTotal & keyof NegRootRow;
+    const nv = v[k] ?? null;
+    const cur = root[k] ?? null;
+    const explained = fv != null && !negDiffers(cur, fv[k] ?? null);
+    if (baseRoot && !explained && negDiffers(cur, baseRoot[k] ?? null) && negDiffers(cur, nv)) stale = true;
+    if (negDiffers(nv, cur)) a[o.field] = toField(nv);
+  }
+  return { attrs: Object.keys(a).length ? { [TUSUL_NEGTGEL.oid]: root.oid, ...a } : null, stale };
+}
+
+/**
+ * Бичилт ХҮСНЭГТЭД ТУССАН эсэх — шинэчлэлт бүрийн талбар бүр одоо манай утгатай таарна. Цэвэр функц.
+ * («Хариу алдагдсан» нийтлэлтийн дараа дахин уншиж шалгахад — `publishNegEdits`.)
+ */
+export function negLanded(
+  updates: ReadonlyArray<Record<string, unknown>>,
+  rows: readonly NegRaw[],
+  roots: readonly NegRootRow[],
+): boolean {
+  const by = new Map<number, Partial<Record<keyof NegRaw, unknown>>>(rows.map((r) => [r.oid, r]));
+  for (const r of roots) by.set(r.oid, r);
+  return updates.every((u) => {
+    const r = by.get(Number(u[TUSUL_NEGTGEL.oid]));
+    if (!r) return false;
+    return OUT.every((o) => !(o.field in u) || !negDiffers(numOrNull(r[o.key]), fromField(u[o.field], o.budget), o.budget));
+  });
+}
+
+/* ═══════════════ ҮЙЛЧИЛГЭЭНИЙ ЗАСАХ ЧАДВАР ═══════════════ */
+
+/**
+ * Метадатын `capabilities` нь мөр ЗАСАХЫГ зөвшөөрөх үү — `Update`, эсвэл хуучин хэлбэрийн дан `Editing`
+ * (Create/Update/Delete задлаагүй). `null` = метадата ирсэнгүй (тодорхойгүй). Цэвэр функц.
+ */
+export const parseCanUpdate = (capabilities: unknown): boolean | null => {
+  if (typeof capabilities !== 'string') return null;
+  const has = (w: string) => new RegExp(`(^|,)\\s*${w}\\s*(,|$)`, 'i').test(capabilities);
+  return has('update') || (has('editing') && !has('create') && !has('delete'));
+};
+
+let capP: Promise<boolean | null> | null = null;
+/* ⚠️ Үйлчилгээний тохиргоо ховор өөрчлөгдөнө — сешнд нэг удаа; уналтыг кэшлэхгүй; «Шинэчлэх» (`invalidateAll`) хаяна */
+register(() => { capP = null; }, ['TUSUL_NEGTGEL']);
+
+/**
+ * «Засах» товчийг үйлчилгээний ЧАДВАРААР хаах уу (`TusulNegtgel.NegBody`).
+ * ⚠️ 2026-10-19 (аудит): `Negtgel_guitsetgel_1013` нь «Query» л (`services/fields.ts`-ийн `readOnly`) атал товч
+ *    идэвхтэй байсан — хэрэглэгч олон нүд засаад «Нийтлэх» дарсан хойноо л серверийн татгалзал авдаг байв.
+ * ⚠️ Хаалттай ч AGOL-ийн байгууллагын АДМИН бичиж чаддаг (`habeaRegisters.loadIsOrgAdmin`-ийн ⚠️) — тэдэнд нээлттэй.
+ * @returns `true` засаж болно · `false` хаалттай · `null` тодорхойгүй (метадата ирсэнгүй — товчийг ХААХГҮЙ,
+ *          бичилт өөрөө алдаагаа хэлнэ)
+ */
+export function negServiceCanUpdate(): Promise<boolean | null> {
+  if (!capP) {
+    const mine: Promise<boolean | null> = arcgisPost<{ capabilities?: string }>(TUSUL_NEGTGEL.url, {})
+      .then(async (j) => {
+        const can = parseCanUpdate(j.capabilities);
+        if (can !== false) return can;
+        const { loadIsOrgAdmin } = await import('@/lib/habeaRegisters');
+        return (await loadIsOrgAdmin()) ? true : false;
+      })
+      .catch(() => null);
+    capP = mine;
+    void mine.then((v) => { if (v == null && capP === mine) capP = null; });
+  }
+  return capP;
+}
+
+/* ═══════════════ НИЙТЛЭХ ═══════════════ */
+
+/**
+ * Нийтлэх эрх — Нэгтгэлийн таб харагддаг хүн (КОДЫН хатуу super, `roleForUser`).
+ * ⚠️ 2026-10-19 (аудит): урьд нь `permissions.roleOf` — панелийн хуучин `role:'super'` override мөр ч нийтэлж
+ *    чаддаг байв (панелийн super 2026-10-15-нөөс олгогдохгүй). `Guitsetgel.isSuperRole`-тэй ИЖИЛ дүрэм.
+ */
 export async function canEditNegtgel(user: string | null = currentUser()): Promise<boolean> {
   if (!user) return false;
-  const { roleOf } = await import('@/lib/permissions');
-  return roleOf(user) === 'super';
+  const { roleForUser } = await import('@/lib/services');
+  return roleForUser(user) === 'super';
 }
 
 /**
- * НИЙТЛЭХ — засвартай загварыг хүснэгт рүү НЭГ `applyEdits`-ээр (атомаар) бичнэ.
- *
- * ⚠️ ЗЭРЭГ ЗАСВАР: бичихийн өмнө хүснэгтийг ШИНЭЭР уншиж, бичих гэж буй талбарууд маань ачаалсан үеийнхээсээ
- *    өөрчлөгдсөн бол ЗОГСОНО (өөр хүний засварыг чимээгүй дарахгүй).
- * ⚠️ Үйлчилгээ «Query» л бол сервер татгалзана — алдааг ил, засах аргатай нь буцаана.
- * @returns бичигдсэн мөрийн тоо
+ * ⚠️ 2026-10-19 (аудит): НЭГ `applyEdits`-ийн биеийн ДЭЭД хэмжээ (тэмдэгт).
+ *    АТОМ хэвээр (500-гаар хуваахгүй) — шалтгаан: томьёот нүднүүд хоорондоо хамааралтай (E → F → G → Σ), хагас
+ *    бичигдсэн хүснэгт (жиш. хүүхдийн F шинэ, эцгийн Σ хуучин) нь «амжилтгүй» гэснээс ч муу: Excel-ийн загвар эвдэрч,
+ *    дараагийн засварын томьёо танилт (`negForm`) таарахаа больж оролт болно. `rollbackOnFailure` ЗӨВХӨН нэг хүсэлт
+ *    дотор үйлчилнэ (CLAUDE.md-ийн ArcGIS занга).
+ *    Хэмжээ: хүснэгт 906 мөр, мөр бүр ≤ 13 талбар → бүх мөр өөрчлөгдсөн ч ~0.5 МБ — ArcGIS-ийн POST-ийн хязгаараас
+ *    хол доогуур. Энэ босго нь ХЭЗЭЭ Ч хүрэхгүй ёстой; хүрвэл (схем өргөссөн г.м.) хагас бичилтийн оронд илгээхээс
+ *    ӨМНӨ ил зогсоно.
  */
-export async function publishNegEdits(base: readonly NegRaw[], model: readonly NegRaw[]): Promise<number> {
+const MAX_BODY = 4_000_000;
+
+export type NegPublishResult = {
+  /** Бичигдсэн мөрийн тоо (нийт мөрийг оруулаад) */
+  n: number;
+  /** Нийтлэгдсэн ч анхааруулах зүйл (нийт мөр олдсонгүй г.м.) */
+  warn: string | null;
+};
+
+/**
+ * НИЙТЛЭХ — засвартай загварыг хүснэгт рүү НЭГ `applyEdits`-ээр (атомаар, `MAX_BODY`-ийн ⚠️) бичнэ.
+ *
+ * ⚠️ ЗЭРЭГ ЗАСВАР: бичихийн өмнө хүснэгтийг ШИНЭЭР уншиж, бичих гэж буй талбарууд маань СУУРЬ-аас хойш өөрчлөгдсөн
+ *    бол ЗОГСОНО (өөр хүний засварыг чимээгүй дарахгүй, `negStale`).
+ * ⚠️ 2026-10-19 (аудит): `base` нь засах горимд орсон агшинд ЦАРЦААСАН суурь (`TusulNegtgel.NegBody`) — урьд нь
+ *    арын шинэчлэлт `d.stored`-ийг засварын дор сольдог тул шалгалт хэрэглэгчийн ХАРААГҮЙ суурьтай харьцуулж, өөр
+ *    нийтлэгчийн засварыг чимээгүй дарж болдог байв.
+ * ⚠️ 2026-10-19 (аудит): «ТӨСЛИЙН НИЙТ» мөрийг ШИНЭ мөрүүд + манай засвараас (`negMerge`), ДЭЛГЭЦИЙН томьёогоор
+ *    (`negTotals`) бодно; нийт мөр ч зэрэг засварын шалгалтад орно; тоо нь 1 биш бол бичихгүй, анхааруулна.
+ * ⚠️ 2026-10-19 (аудит): ХАРИУ АЛДАГДСАН (timeout · сүлжээ · 5xx, `isLostWrite`) бол кэшийг хаяж ДАХИН уншина —
+ *    бүх утга манайх бол амжилт; эс бөгөөс «тодорхойгүй» гэж хэлнэ (хэзээ ч «бичигдээгүй» гэж таамаглахгүй).
+ * ⚠️ Үйлчилгээ «Query» л бол сервер татгалзана — алдааг ил, засах аргатай нь буцаана.
+ */
+export async function publishNegEdits(base: readonly NegRaw[], model: readonly NegRaw[]): Promise<NegPublishResult> {
   if (!(await canEditNegtgel())) throw new Error(tr('Нэгтгэл гүйцэтгэлийг засах эрх зөвхөн super үүрэгтэй хэрэглэгчид'));
   const updates = negEditDiff(base, model);
-  if (!updates.length) return 0;
+  if (!updates.length) return { n: 0, warn: null };
 
   const fresh = await loadNegRaw();
-  const byOid = new Map(fresh.map((r) => [r.oid, r]));
-  const baseBy = new Map(base.map((r) => [r.oid, r]));
-  const moved = updates.filter((u) => {
-    const oid = Number(u[TUSUL_NEGTGEL.oid]);
-    const now = byOid.get(oid);
-    const was = baseBy.get(oid);
-    if (!now || !was) return true;
-    return OUT.some((o) => o.field in u && negDiffers(numOrNull(now[o.key]), numOrNull(was[o.key]), o.budget));
-  });
+  const moved = negStale(updates, base, fresh);
   if (moved.length) {
     throw new Error(tr('Энэ хооронд хүснэгт өөр газраас өөрчлөгдсөн байна ({0} мөр) — дахин ачаалаад засвараа давтана уу.', moved.length));
   }
 
-  /* «ТӨСЛИЙН НИЙТ» мөр — ⚠️ мөрийн жагсаалтад ОРДОГГҮЙ (`loadNegRaw`) тул тусад нь уншина */
-  const rootRows = await queryFeatures(TUSUL_NEGTGEL.url, { where: `${F.code} = '0'`, outFields: ['*'] });
-  if (rootRows.length === 1) {
-    const r = rootRows[0];
-    const v = rootVals(model);
-    const a: Record<string, unknown> = {};
-    for (const o of OUT) {
-      if (!(o.key in v)) continue;
-      const nv = v[o.key as keyof typeof v] ?? null;
-      const cur = numOrNull(r[o.field]);
-      if (negDiffers(nv, cur == null ? null : cur / SCALE)) a[o.field] = toField(nv);
+  /* «ТӨСЛИЙН НИЙТ» мөр — ⚠️ мөрийн жагсаалтад ОРДОГГҮЙ; ижил уншилтын нийт мөр (`negRootOf`) */
+  let warn: string | null = null;
+  const roots = negRootOf(fresh) ?? [];
+  if (roots.length !== 1) {
+    warn = tr('«ТӨСЛИЙН НИЙТ» мөр хүснэгтэд {0} байна (1 байх ёстой) — нийт мөр бичигдсэнгүй, бусад мөр хадгалагдсан.', roots.length);
+  } else {
+    const baseRoot = negRootOf(base)?.find((r) => r.oid === roots[0].oid);
+    const ru = negRootUpdate(negMerge(fresh, updates), roots[0], baseRoot, fresh);
+    if (ru.stale) {
+      throw new Error(tr('Энэ хооронд хүснэгт өөр газраас өөрчлөгдсөн байна ({0} мөр) — дахин ачаалаад засвараа давтана уу.', 1));
     }
-    if (Object.keys(a).length) updates.push({ [TUSUL_NEGTGEL.oid]: Number(r[TUSUL_NEGTGEL.oid]), ...a });
+    if (ru.attrs) updates.push(ru.attrs);
+  }
+
+  if (JSON.stringify(updates).length > MAX_BODY) {
+    throw new Error(tr('Засвар хэт их ({0} мөр) — нэг хүсэлтээр атомаар бичих хэмжээнээс хэтэрлээ; хэсэгчлэн нийтэлнэ үү.', updates.length));
   }
 
   try {
     const res = await applyAll(TUSUL_NEGTGEL.url, TUSUL_NEGTGEL.oid, { updates });
     invalidate('TUSUL_NEGTGEL');
-    return res.n;
+    return { n: res.n, warn };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (isLostWrite(e)) {
+      /* Хариу алдагдсан — сервер бичсэн байж магадгүй. Кэш хаяж (бичилтийн үе өснө — `query.shared` хуучин
+         уншилтад наалдахгүй) дахин уншина. */
+      invalidate('TUSUL_NEGTGEL');
+      const after = await loadNegRaw().catch(() => null);
+      if (after && negLanded(updates, after, negRootOf(after) ?? [])) return { n: updates.length, warn };
+      throw new Error(tr('Хариу ирсэнгүй ({0}) — дахин уншихад засвар хүснэгтэд бүрэн тусаагүй байна. Засвар тань хадгалагдсан хэвээр — «Нийтлэх»-ийг дахин дарна уу.', msg));
+    }
     if (/not supported|not allowed|permission|does not have|unauthori|403/i.test(msg)) {
       throw new Error(tr('{0} — үйлчилгээнд засвар хаалттай байж магадгүй: ArcGIS дээр Negtgel_guitsetgel_1013 → Settings → «Enable editing» (Update) асаана уу.', msg));
     }

@@ -32,13 +32,14 @@ import {
   type Role,
   type ViewKey,
 } from './services';
-import { capViewsOf, isWorkflowView, UNSAFE_KEY } from './caps';
+import { capViewsOf, capsRemoteReady, capsStored, hasCap, isWorkflowView, UNSAFE_KEY } from './caps';
 import { _typesMark, roleAccess } from './roleTypes';
-import { currentUser } from './who';
+import { currentUser, requireCap } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 /* ⚠️ 2026-10-01: урсгалтай харагдацын эх сурвалж (`workflowViewsOf`). Статик импорт аюулгүй —
    `guitsetgelAcl` энэ файлыг ЗӨВХӨН динамикаар (`await import('./permissions')`) дууддаг. */
 import { stageOfUser } from './guitsetgelAcl';
+import type { SysState } from './permsRemote';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
@@ -523,6 +524,8 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
   const typesMark = _typesMark();
   const remote = await fetchAll(canCreate);
   if (!remote) return false; // ArcGIS алга — cache хэвээр
+  /* ⚠️ 2026-10-19 (аудит): алгассан (эвдэрсэн) мөрүүд — админы тоймд (`remoteMalformed`) */
+  malformedRows = remote.malformed ?? [];
 
   // 1) Унасан локал бичилтүүдийг эхлээд дахин тулгана — «локал үүрд ялна»
   //    биш, retry-then-clear: өөр админы засварыг мөнхөд дарахгүй.
@@ -642,12 +645,141 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
     console.error('[selbe] эрхийн төрлийн загварын синк амжилтгүй:', e);
   }
 
+  // 12) «Систем түр хаах» төлөв (`__sys__:maintenance`, ⚠️ 2026-10-19)
+  //     ⚠️ ЗӨВХӨН амжилттай уншилтад шинэчлэгдэнэ — уншилт унавал (дээрх `!remote` эрт буцалт) СҮҮЛИЙН
+  //        мэдэгдэж буй төлөв хэвээр (fail-open: ArcGIS-ийн түр саатал бүх хүнийг гаргахгүй, хаалттай байсныг ч
+  //        дураар нээхгүй). Агуулга ижил бол хуучин объект — `useSyncExternalStore`-ийн агшин тогтвортой.
+  _syncRemoteSys(remote.sys ?? null);
+
   notify();
   return true;
 }
 
 /** Энэ сешнд remote эрх амжилттай уншигдсан уу — админ панелийн offline тэмдэг */
 export const remoteReady = (): boolean => remoteLoaded;
+
+/**
+ * ЭРХИЙН ХҮСНЭГТИЙН ЗАДЛАГДААГҮЙ МӨРҮҮД (2026-10-19, аудит) — сүүлийн амжилттай `initRemote`-ийн.
+ * ⚠️ Тэдгээр нь эрх НЭЭГЭЭГҮЙ (fail-closed, алгассан) — энэ нь зөвхөн админд «цэвэрлэ» гэж хэлэх жагсаалт
+ *    (`ErhOverview`). Урьд нь чимээгүй алгасдаг тул «томилсон атлаа ажиллахгүй» шалтгаан хаана ч харагдахгүй байв.
+ */
+let malformedRows: import('./permsRemote').MalformedRow[] = [];
+export const remoteMalformed = (): readonly import('./permsRemote').MalformedRow[] => malformedRows;
+
+/* ═══════════════ СИСТЕМ ТҮР ХААХ (maintenance) — ⚠️ 2026-10-19 ═══════════════
+ * Нийслэлийн дата төв рүү шилжих үед порталыг түр хаана. Төлөв нь эрхийн хүснэгтийн `__sys__:maintenance`
+ * мөрөнд (байгууллагад хуваалцсан, статик сайт сервергүй) — `initRemote` бүрд (нэвтрэх · 5 мин · таб идэвхжих ·
+ * хаалттай хэрэглэгчид 30 с) уншигдана.
+ * ⚠️ Хаалттай үед ЗӨВХӨН `sysClose` эрхтэй аккаунт ба кодын super нэвтэрнэ (`canBypassClosed`); бусдад
+ *    `AuthGate` бүтэн дэлгэцийн «Систем түр хаагдсан» цонх гаргаж `who`-г хоосолно (lib бичилт татгалзана).
+ * ⚠️ Клиент талын хаалт (05 §1-ийн ⚠️, `acl-client-only` хүлээн зөвшөөрсөн) — ArcGIS-ийн токен хүчинтэй хэвээр.
+ * ⚠️ localStorage-д КЭШЛЭХГҮЙ: дахин ачаалахад төлөв зөвхөн remote-оос — уншилт унавал нээлттэй (fail-open).
+ */
+let sysState: SysState | null = null;
+
+const sysSig = (x: SysState | null): string => (x ? JSON.stringify([x.on, x.note ?? '', x.until ?? '', x.by, x.at]) : '');
+
+/** Remote-оос уншсан төлөвийг тусгана — `initRemoteInner` ба шалгуур (`*.check.mjs`) */
+export function _syncRemoteSys(next: SysState | null): void {
+  if (sysSig(next) === sysSig(sysState)) return;
+  sysState = next;
+}
+
+/** Систем ХААЛТТАЙ бол төлөв (хэн · хэзээ · тайлбар · дахин нээгдэх), эс бөгөөс `null` */
+export const systemClosed = (): SysState | null => (sysState?.on ? sysState : null);
+
+/**
+ * Хаалттай үед нэвтэрч чадах уу — кодын super ЭСВЭЛ `sysClose` эрхтэй.
+ * ⚠️ `hasCap` нь remote эрх уншигдаагүй сешнд ХООСОН (fail-closed) — гэхдээ хаалтын төлөв ч зөвхөн тэр уншилтаас
+ *    ирдэг тул «хаалттай атлаа эрх уншигдаагүй» төлөв зөвхөн caps-ийн синк унасан үед; тэр үед super нэвтэрнэ.
+ */
+export function canBypassClosed(username?: string | null): boolean {
+  if (!username) return false;
+  if (isHardSuper(username) || hasCap(username, 'sysClose')) return true;
+  /*
+   * ⚠️ 2026-10-19 (аудит): CAPS-ИЙН СИНК УНАСАН атлаа `__sys__` мөр уншигдсан (нэг уншилт — `initRemoteInner`-ийн
+   *    алхам 4 шидсэн: chunk ачаалагдаагүй г.м.) бол `hasCap` ХООСОН (fail-closed) тул `sysClose` эзэмшигч
+   *    ӨӨРИЙНХӨӨ хаасан системд түгжигдэж, нээх ч замгүй болдог байв. Энэ сешнд caps НЭГ Ч удаа уншигдаагүй үед
+   *    л СҮҮЛИЙН АМЖИЛТТАЙ синкийн кэшийг (`caps.capsStored` — `selbe-caps-v1`) хаалтыг давахад тооцно.
+   *    ⚠️ Зөвхөн ЭНЭ шийдвэрт (хаалтыг давах); бичих зам (`requireCap`) fail-closed хэвээр — хаах/нээх бичилт
+   *    caps уншигдмагц л. Клиент талын хаалт (`acl-client-only` хүлээн зөвшөөрсөн) тул кэшийг гараар засах эрсдэл
+   *    нь хаалтын тойргоос хэтрэхгүй.
+   */
+  return !capsRemoteReady() && capsStored(username).includes('sysClose');
+}
+
+/** ЭНЭ хэрэглэгчид систем хаалттай бол төлөв (`AuthGate` блоклоно), эс бөгөөс `null` */
+export const closedFor = (username?: string | null): SysState | null =>
+  (systemClosed() && !canBypassClosed(username) ? systemClosed() : null);
+
+/**
+ * СИСТЕМИЙГ ХААХ / НЭЭХ — `sysClose` эрхтэй эсвэл кодын super (`who.requireCap` — super бүх эрхтэй).
+ * ⚠️ Эрхгүй бол ШИДНЭ (дуудагч алдааг ил харуулна). Бичээд ДАХИН УНШИЖ батална — `upsertByKey` ArcGIS-ийн
+ *    200-аар ирдэг алдааг аль хэдийн барьдаг ч «хадгалсан» гэж худал мэдээлэхгүйн тулд эцсийн утгыг харна.
+ * ⚠️ Уншилт унавал (бичилт бүтсэн) бичсэн утгыг локалд тусгана — дараагийн poll засна.
+ * @returns ArcGIS-т бичигдэж, уншигдсан утга `on`-той таарсан эсэх (шалтгаан — `permsRemote.takeWriteError`)
+ */
+/**
+ * ⚠️ 2026-10-19 (аудит): ХУУЧИРСАН ТӨЛӨВ ДЭЭР СОХОР БИЧИЛТ — удирдлагын цонх нээгдэх үеийн (эсвэл 5 мин-ийн
+ *    poll-ын) төлөв дээр «Нээх»/«Шинэчлэх» дардаг тул завсарт өөр эзэмшигч нээсэн системийг «Тайлбар, хугацааг
+ *    шинэчлэх» нь ДАХИН ХААДАГ (on→on), эсвэл хоёр дахь «Хаах» нь эхнийхийн тайлбарыг дардаг байв. `expect`
+ *    (цонхонд харагдсан төлөв, `systemClosed()`-ийн хэлбэр — нээлттэй = `null`) өгвөл бичихийн ЯГ ӨМНӨ
+ *    `sysRead`-ээр дахин уншиж, зөрвөл шинэ төлөвийг тусгаад `SysStaleError` шиднэ (юу ч бичихгүй).
+ *    `update: true` (тайлбар/хугацааг шинэчлэх) нь шинэ төлөв ХААЛТТАЙ байхыг ч шаардана.
+ */
+export class SysStaleError extends Error {
+  constructor(readonly fresh: SysState | null) {
+    super('sys-stale');
+    this.name = 'SysStaleError';
+  }
+}
+
+/** Хаалттай төлөвийн гарын үсэг — `on: false` мөр = нээлттэй (`null`)-тэй ижил */
+const closedSig = (x: SysState | null | undefined): string => sysSig(x?.on ? x : null);
+
+/**
+ * «Систем түр хаах» төлөвийг ОДОО дахин уншина (⚠️ 2026-10-19 — удирдлагын цонх нээгдэхэд).
+ * @returns шинэ төлөв (`systemClosed()`-ийн хэлбэр), уншиж чадаагүй бол `undefined` (сүүлийн мэдэгдэж буй хэвээр)
+ */
+export async function refreshSystemClosed(): Promise<SysState | null | undefined> {
+  const { sysRead } = await import('./permsRemote');
+  const r = await sysRead();
+  if (!r) return undefined;
+  _syncRemoteSys(r.state);
+  notify();
+  return systemClosed();
+}
+
+export async function setSystemClosed(
+  on: boolean, note = '', until = '', opts?: { expect?: SysState | null; update?: boolean },
+): Promise<boolean> {
+  requireCap('sysClose');
+  const n = note.trim().slice(0, 500);
+  const u = until.trim().slice(0, 100);
+  const st: SysState = {
+    on,
+    ...(on && n ? { note: n } : {}),
+    ...(on && u ? { until: u } : {}),
+    by: currentUser() ?? '',
+    at: Date.now(),
+  };
+  const { sysRead, sysUpsert } = await import('./permsRemote');
+  if (opts && 'expect' in opts) {
+    /* ⚠️ Уншиж чадаагүй бол БИЧИХГҮЙ — төлөвийг батлахгүйгээр сохор бичилт хийхгүй (дуудагч алдааг харуулна) */
+    const fresh = await sysRead();
+    if (!fresh) return false;
+    if (closedSig(fresh.state) !== closedSig(opts.expect) || (opts.update && !fresh.state?.on)) {
+      _syncRemoteSys(fresh.state);
+      notify();
+      throw new SysStaleError(systemClosed());
+    }
+  }
+  if (!(await sysUpsert(st))) return false;
+  const back = await sysRead();
+  _syncRemoteSys(back ? back.state : st);
+  notify();
+  return (systemClosed() != null) === on;
+}
 
 /**
  * ⚠️ ЗӨВХӨН ШАЛГУУРТ (`*.check.mjs`, 2026-09-29 аудит 10): offline орчинд `initRemote`
@@ -686,7 +818,7 @@ export function hasAccess(username?: string | null): boolean {
   // ⚠️ Тombstone-ыг ХАМГИЙН ТҮРҮҮНД: устгагдсан аккаунт хатуу жагсаалтад
   //    байсан ч нэвтрэхгүй — эс бөгөөс «устгах» нь зөвхөн нүднээс далдлаад
   //    нэвтрэлтэд нөлөөгүй худал аюулгүй байдал болно.
-  const ov = loadStore()[username.toLowerCase()];
+  const ov = loadStore()[username.trim().toLowerCase()];
   if (ov?.removed) return false;
   if (roleForUser(username)) return true;
   return remoteLoaded && !!ov;
@@ -701,7 +833,8 @@ export function hasAccess(username?: string | null): boolean {
  *    `workflowViewsOf` (эрхийн гэр харагдац + урсгалын томилгоо) нээнэ. Урьд нь картаас унтраах
  *    замгүй атлаа хадгалагдсан утга нь хуваарилалт хасагдсан ч хуудсыг нээлттэй үлдээдэг байв
  *    («хасахад хаагдана» дүрэм зөрчигдөнө).
- * ⚠️ SUPER (хатуу эсвэл override үүрэг `super`) ХӨНДӨГДӨХГҮЙ — урьдын зан төлөв.
+ * ⚠️ SUPER ХӨНДӨГДӨХГҮЙ — урьдын зан төлөв. 2026-10-19 (аудит): зөвхөн КОДЫН хатуу super; панелийн хуучин
+ *    `role:'super'` override мөр энгийн хэрэглэгчийн дүрмээр (`resolveAccess`-ийн ⚠️).
  * ⚠️ Дараалал = `VIEWS`-ийн дараалал (тогтвортой) — `Root.openEntry` нүүр цонх хүрэхгүй бол
  *    ЭХНИЙ зөвшөөрөгдсөн харагдац руу ордог (2026-10-01-нээс урсгалын хүний нүүр «Гүйцэтгэл»
  *    хуваарилалтгүй бол хаагдах тул тэр нөөц зам ажиллана).
@@ -742,7 +875,11 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
 export function resolveAccess(username?: string | null): Access | null {
   const base = resolveBaseAccess(username);
   if (!base || !username) return base;
-  if (roleOf(username) === 'super') {
+  /* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН КОДЫН хатуу super (`isHardSuper`) — `roleOf` БИШ. Панелийн super 2026-10-15-нөөс
+     олгогдохгүй; урьд нь хуучин `role:'super'` override мөртэй аккаунт энэ салаагаар хадгалсан `'all'`-аа БҮТНЭЭР
+     (урсгалтай 7 харагдацтай нь) авч, «урсгалтай харагдац зөвхөн хуваарилалтаар» дүрмийг тойрдог байв. Тийм мөр
+     одоо доорх энгийн замаар (хадгалсан урсгалгүй харагдац + эрх/томилгоо). Хатуу super-ийн суурь үргэлж `'all'`. */
+  if (isHardSuper(username)) {
     /* ⚠️ Super — урьдын дүрэм: хадгалсан + эрхийн гэр харагдац */
     if (base.views === 'all') return base;
     const extra = capViewsOf(username).filter((v) => !(base.views as ViewKey[]).includes(v));
@@ -764,7 +901,7 @@ export function resolveAccess(username?: string | null): Access | null {
  */
 export function resolveBaseAccess(username?: string | null): Access | null {
   if (!username) return null;
-  const ov = loadStore()[username.toLowerCase()];
+  const ov = loadStore()[username.trim().toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.
   if (ov?.removed) return isHardSuper(username) ? baseline(username) : null;
   /* ⚠️ 2026-10-12 (super жигд биш): ХАТУУ super-т override ҮЛ ТООЦНО — үргэлж суурь ('all' · docs).
@@ -819,7 +956,7 @@ export function roleOf(username?: string | null): Role | null {
      «Эрхийн төрөл»-ийн тоололд өөр баганад, Гүйцэтгэлийн «Нэгтгэл» табгүй, `resolveAccess`-д
      урсгалтай харагдац нь хасагддаг — бусад super-ээс зөрдөг байв. */
   if (isHardSuper(username)) return 'super';
-  const ov = loadStore()[username.toLowerCase()];
+  const ov = loadStore()[username.trim().toLowerCase()];
   if (ov?.removed) return null;
   /* ⚠️ 2026-09-29 (аудит 10): remote уншигдаагүй бол override-ын үүргийг үл тооцно —
      `resolveBaseAccess`-ийн тайлбар (localStorage-д өөртөө `role:'super'` бичих зам). */
@@ -883,7 +1020,8 @@ export function listRemoved(): string[] {
  */
 export function removeUser(username: string): Promise<boolean> {
   if (isHardSuper(username)) return Promise.resolve(false);
-  const key = username.toLowerCase();
+  /* ⚠️ 2026-10-19 (аудит): trim + жижиг үсэг — `permsRemote.fetchAll`/`upsert`-тэй НЭГ түлхүүр */
+  const key = username.trim().toLowerCase();
   if (roleForUser(username)) {
     const entry: Entry = { views: [], docs: false, role: null, removed: true };
     const store = { ...loadStore() };
@@ -907,7 +1045,8 @@ export function removeUser(username: string): Promise<boolean> {
 export function setUser(
   username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
 ): Promise<boolean> {
-  const key = username.toLowerCase();
+  /* ⚠️ 2026-10-19 (аудит): trim + жижиг үсэг — `permsRemote.fetchAll`/`upsert`-тэй НЭГ түлхүүр */
+  const key = username.trim().toLowerCase();
   /* ⚠️ 2026-10-12 (super жигд биш): ХАТУУ super-т override БИЧИХГҮЙ — эрх нь кодоос, панелийн мөр
      нь `resolveBaseAccess`/`roleOf`/`listUsers`-д үл тооцогддог тул бичих нь зөвхөн зөрүүтэй
      үлдэгдэл үүсгэнэ (`roleTypeApply.applyType`-ийн «super-т мөр бичихгүй» дүрэмтэй нэг). */
@@ -1036,7 +1175,8 @@ export function mergeUserDelta(base: UserBase | null, next: UserBase, fresh: Use
  *    Унасан устгал dirty (`null`)-д үлдэж `retryDirtyOnce`/`mineDirty` дахин оролдоно.
  */
 export function clearOverride(username: string, opts: { revive?: boolean } = {}): Promise<boolean> {
-  const key = username.toLowerCase();
+  /* ⚠️ 2026-10-19 (аудит): trim + жижиг үсэг — `permsRemote.fetchAll`/`upsert`-тэй НЭГ түлхүүр */
+  const key = username.trim().toLowerCase();
   const revive = opts.revive === true;
   /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
   return serialWrite(key, async () => {

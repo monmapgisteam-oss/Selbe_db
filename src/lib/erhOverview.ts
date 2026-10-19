@@ -46,7 +46,12 @@ export type FlowRow = { user: string; stage: Stage; bagts: string[]; viewOnly?: 
  *    зохиогч, Багц 5-д батлагч» хүнийг Багц 1 дээр «өөрөө зохиож өөрөө
  *    батална» гэж гэрчилдэг байсан. Одоо grant тус бүрийг ТУСАД нь үзнэ.
  */
-export type ScopedRow = { user: string; grants: { role: string; bagts: string[] }[] };
+/**
+ * ⚠️ 2026-10-19 (аудит): `bagts` — ХУУЧИН дээд түвшний багцын жагсаалт (2026-09-09-өөс өмнөх `{roles, bagts}` мөр).
+ *    `scopedAcl.normalize` нь `grants` байвал түүнийг авч `bagts`-ийг ҮЛ ТООДОГ ч хүснэгтэд үлдсэн хуучин нэр
+ *    танигдаагүй багцын шалгалтад (`unknownBagts`) мөн орно — админ цэвэрлэх ёстой.
+ */
+export type ScopedRow = { user: string; grants: { role: string; bagts: string[] }[]; bagts?: string[] };
 
 export type ErhSource = {
   /** Порталын БҮХ аккаунт (жижиг үсгээр биш, харагдах хэлбэрээр) */
@@ -118,6 +123,12 @@ export type UserErh = {
   views: { open: number; total: number };
   /** Ямар нэг эрх байгаа эсэх — «юу ч хийхгүй» аккаунтыг ялгана */
   any: boolean;
+  /**
+   * ТАНИГДААГҮЙ БАГЦ (2026-10-19, аудит) — хуваарилалтад байгаа ч `PKG_GROUPS`-д алга нэр (нэр солигдсон, гараар
+   * засагдсан мөр). Тэр нэр ямар ч багцыг НЭЭХГҮЙ (`scope`-ийн `includes` хэзээ ч таарахгүй) — админ засах ёстой.
+   * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` түлхүүр (энэ цэвэр файл тэр жагсаалтыг импортлодоггүй).
+   */
+  unknownBagts: string[];
 };
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -125,6 +136,11 @@ const norm = (s: string) => s.trim().toLowerCase();
 /** `[ALL_BAGTS]` → `null` (=бүх багц); хоосон → `[]` */
 const bagtsOf = (b: string[]): string[] | null =>
   (b.includes(ALL_BAGTS) ? null : b);
+
+const KNOWN = new Set<string>(PKG_GROUPS);
+/** `PKG_GROUPS`-д алга (ба `ALL_BAGTS` биш) багцын нэрс — давхардалгүй, эрэмбэтэй */
+const unknownOf = (lists: (readonly string[] | null | undefined)[]): string[] =>
+  [...new Set(lists.flatMap((l) => l ?? []).filter((b) => b !== ALL_BAGTS && !KNOWN.has(b)))].sort();
 
 /** Нэг хүний бүх эрхийг цуглуулна */
 export function userErh(src: ErhSource, user: string): UserErh {
@@ -146,6 +162,16 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
   const superUser = (src.supers ?? []).some((x) => norm(x) === k);
+  /* ⚠️ 2026-10-19 (аудит): `grants[]`-ээс гадна ХУУЧИН дээд түвшний `bagts` (`ScopedRow.bagts`-ийн ⚠️) */
+  const rawGrants = (rows: ScopedRow[]): (readonly string[])[] => {
+    const r = rows.find((x) => norm(x.user) === k);
+    if (!r) return [];
+    return [...(r.grants ?? []).map((g) => g.bagts), ...(Array.isArray(r.bagts) ? [r.bagts] : [])];
+  };
+  const unknownBagts = unknownOf([
+    f?.bagts, q?.bagts,
+    ...rawGrants(src.huvaari), ...rawGrants(src.obyem), ...rawGrants(src.chanar), ...rawGrants(src.ajil ?? []),
+  ]);
 
   return {
     user,
@@ -163,8 +189,13 @@ export function userErh(src: ErhSource, user: string): UserErh {
     /* ⚠️ super нь бүх эрхтэй — «эрх олгоогүй» гэж харуулахгүй (2026-09-24) */
     any: superUser || !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
+    unknownBagts,
   };
 }
+
+/** Танигдаагүй багцтай хуваарилалттай аккаунтууд — тоймын «Анхаарах» (2026-10-19, аудит) */
+export const unknownPkgUsers = (src: ErhSource): { user: string; bagts: string[] }[] =>
+  allUserErh(src).filter((u) => u.unknownBagts.length > 0).map((u) => ({ user: u.user, bagts: u.unknownBagts }));
 
 /** Нэг багцад хэн юу хариуцаж байгаа */
 export type PkgErh = {
@@ -200,6 +231,13 @@ export type PkgIssue = {
    * ⚠️ СОНГОМОЛ — нэмэлт талбар; хуучин дуудагч (тойм) үл тоомсорлоно.
    */
   cols?: string[];
+  /**
+   * ⚠️ 2026-10-19 (аудит): ЗӨВХӨН АДМИН (хатуу super) шийдвэрлэх боломжтой — super-т хуваарилалт үйлчилдэггүй тул
+   *    тэр бүх багц/шатанд ажиллаж ЧАДНА (гацаа биш), гэвч энгийн хариуцагч томилоогүй хэвээр. Өнгө (`tone`) ХЭВЭЭР —
+   *    анхааруулга алга болохгүй, текст нь ил хэлнэ (`erhLabels.issueText`). Устгагдсан super тоологдохгүй.
+   * ⚠️ ЗӨВХӨН цоорхойд (баганад super-ээс өөр хүн огт алга) — `*SelfApprove`-д хэзээ ч (`pkgErh`-ийн `noPlain`).
+   */
+  superOnly?: boolean;
 };
 
 /** Тухайн багцад тэр мөр хамаарах уу (`ALL_BAGTS` бүгдэд) */
@@ -256,9 +294,27 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
     ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((x) => !gone.has(norm(x)))])) as T
     : m);
 
+  /* ⚠️ 2026-10-19 (аудит): амьд хатуу super байвал гацаа нь «зөвхөн админ шийдвэрлэнэ» (`PkgIssue.superOnly`) */
+  const supers = new Set((src.supers ?? []).map(norm).filter((x) => !gone.has(x)));
+  const L = { flow: live(flow), huvaari: live(huvaari), obyem: live(obyem), chanar: live(chanar), ajil: live(ajil) };
+  const issues = pkgIssues(bagts, L.flow, L.huvaari, L.obyem, L.chanar, L.ajil);
+  /*
+   * ⚠️ 2026-10-19 (аудит №2): «энгийн хариуцагч томилоогүй» нь ЗӨВХӨН ЦООРХОЙД — issue-ийн БҮХ баганад (`cols`)
+   *    super-ээс өөр хүн огт томилогдоогүй үед. Урьд нь `*SelfApprove`-д ч (батлагч БАЙГАА, зөвхөн зохиогчтой
+   *    давхцсан) ба хэсэгчлэн томилогдсон `chanarNoReviewer`-т ч залгагддаг тул текст худал байв.
+   *    `*SelfApprove` · `chanarOneManRoles` — ХЭЗЭЭ Ч.
+   */
+  const colUsers = (id: string): string[] => {
+    const [sys, role] = id.split(':');
+    const m = (L as Record<string, Record<string, string[]>>)[sys];
+    return (m?.[role] ?? []) as string[];
+  };
+  const noPlain = (i: PkgIssue): boolean =>
+    !i.key.endsWith('SelfApprove') && i.key !== 'chanarOneManRoles' && !!i.cols?.length
+    && i.cols.every((c) => colUsers(c).every((u) => supers.has(norm(u))));
   return {
     bagts, flow, flowViewers, qaqc, huvaari, obyem, chanar, ajil,
-    issues: pkgIssues(bagts, live(flow), live(huvaari), live(obyem), live(chanar), live(ajil)),
+    issues: supers.size ? issues.map((i) => (noPlain(i) ? { ...i, superOnly: true } : i)) : issues,
   };
 }
 
@@ -363,9 +419,14 @@ function pkgIssues(
   /* ── Гүйцэтгэлийн урсгал — зургаан шат бүрэн байх ёстой ── */
   const gaps = STAGE_ORDER.filter((st) => flow[st].length === 0);
   if (gaps.length && gaps.length < STAGE_ORDER.length) {
-    /* ⚠️ БҮГД хоосон бол тэр багцад урсгал хараахан эхлээгүй — анхааруулга
-       хэрэггүй. Харин ЗАРИМ нь хоосон бол илгээлт тэр шатанд ЗОГСОНО. */
+    /* ⚠️ ЗАРИМ нь хоосон бол илгээлт тэр шатанд ЗОГСОНО. */
     out.push({ tone: 'bad', key: 'flowGap', args: [bagts, String(gaps.length)], cols: gaps.map((st) => `flow:${st}`) });
+  } else if (gaps.length === STAGE_ORDER.length) {
+    /* ⚠️ 2026-10-19 (аудит): БҮГД хоосон — урьд нь «урсгал эхлээгүй» гэж ЧИМЭЭГҮЙ байв. Гэвч тэр багцын гүйцэтгэлийг
+       хэн ч бөглөж, батлах боломжгүй тул админд ил хэлнэ. `warn` (`bad` биш): шинэ/идэвхгүй багцад хэвийн байж
+       болох тул «шинэ гацаа» асуултад (`aclOps.newBlockingText`, зөвхөн `bad`) орохгүй. */
+    /* ⚠️ `cols` ЗААВАЛ (матрицын инвариант — issue бүр баганатай): урсгалын 6 нүд шар */
+    out.push({ tone: 'warn', key: 'flowEmpty', args: [bagts], cols: gaps.map((st) => `flow:${st}`) });
   }
 
   return out;

@@ -109,7 +109,8 @@ console.log('✅ outside тайлбар · огноо');
   const inputs = eh.match(/<input[^>]*class="edIn"[^>]*>/g) ?? [];
   assert.equal(inputs.length, 1, 'зөвхөн засагдах нүд input');
   assert.match(inputs[0], /value="50"/, 'хувь 0–100-гаар');
-  assert.match(eh, /class="[^"]*edCell cellDirty"/, 'зассан нүд — НОГООН');
+  /* ⚠️ 2026-10-19: `dirty` — царцсан нүдэнд тунгалаг бус ногоон (negtgel.module.css) */
+  assert.match(eh, /class="[^"]*edCell cellDirty dirty"/, 'зассан нүд — НОГООН');
   assert.match(eh, /class="[^"]*num cellCalc"/, 'томьёогоор өөрчлөгдсөн — ЦЭНХЭР');
   assert.ok(eh.indexOf('id="pub"') > eh.indexOf('class="levels"') && eh.indexOf('id="pub"') < eh.indexOf('<table'), 'товч хэрэгслийн мөрөнд');
   assert.ok(!html.includes('class="edIn"'), 'засах горимгүй үед input байхгүй');

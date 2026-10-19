@@ -16,6 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { hasCap, subscribeCaps } from '@/lib/caps';
+import { isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
   ATT_TYPES, MA_URL, addMaAtt, attTypeLabel, chainOf, deleteMaAtt, ipcReady, isExpired, latestPerRespNo, listMaAtts, loadMa, type StageKey,
   maAttBlob, maHasAttachments, stageLabel, stageStateLabel, verdictLabel, type AttType, type MaAtt, type MaRow, type Verdict,
@@ -40,15 +42,32 @@ export function Ma() {
   /* ⚠️ 2026-10-09: MIR (2-р шат) — MA карт бүрийн доор, гинжийн MIR шат. Унасан ч MA харагдсаар (`mirQ` тусдаа) */
   const mirQ = useAsync(loadMir, []);
   const mirMap = useMemo(() => (mirQ.state === 'ready' ? mirsByMa(mirQ.data) : null), [mirQ]);
-  const { user } = useAuth();
+  const { user, status } = useAuth();
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  /* ⚠️ 2026-10-19 (аудит): чанарын хуваарилалт ӨӨР хадгалалттай — багцын хүрээ (`attachFor`) түүнээс */
+  const [chN, setChN] = useState(0);
+  useEffect(() => subscribeChanarAcl(() => setChN((x) => x + 1)), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`BagtsHamaaral`-тай ижил)
   const canAttach = useMemo(() => hasCap(user?.username, 'chanarAuthor') || hasCap(user?.username, 'chanarReview'), [user, capN]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
   const canAuthor = useMemo(() => hasCap(user?.username, 'chanarAuthor'), [user, capN]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
   const canReview = useMemo(() => hasCap(user?.username, 'chanarReview'), [user, capN]);
+  /**
+   * ⚠️ 2026-10-19 (аудит): MA КАРТ БҮРИЙН хавсаргах эрх — эрх + ТЭР MA-гийн багцын хүрээ (`ma.maAttachScopeDeny`-тэй
+   *    ИЖИЛ дүрэм; lib нь бичихийн өмнө серверийн мөрөөр дахин шалгана). Урьд нь эрхтэй бол БҮХ багцын MA-д товч
+   *    гардаг байв. Багц танигдахгүй бол хаалттай (fail-closed). Нэвтрэлт унтраалттай (дев) — эрхээр л.
+   */
+  const attachFor = useCallback((pkgKey: string): boolean => {
+    if (!canAttach) return false;
+    if (status === 'off') return true;
+    const me = user?.username;
+    const bagts = PKGS.find((p) => p.key === pkgKey)?.group;
+    if (!bagts) return false;
+    return (canAuthor && isAuthorFor(me, bagts)) || (canReview && reviewerRolesFor(me, bagts).length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
+  }, [canAttach, canAuthor, canReview, status, user, chN]);
 
   /* ⚠️ 2026-10-09: FIC · М-акт (3–4-р шат) — Enterprise хүснэгт, ЗӨВХӨН Enterprise нэвтрэлттэй уншигдана
      (`lib/ficMakt.ts`). Нэвтрээгүй бол `fmMap` = null → тэр шатууд «нэвтэрч харна» гэж гарна. */
@@ -114,7 +133,9 @@ export function Ma() {
           {rows.map((r) => (
             <MaCard key={r.oid} r={r} mirs={mirMap ? mirMap.get(r.respNo) ?? [] : null}
               fm={fmMap ? fmMap.get(r.respNo) ?? { FIC: [], MAKT: [] } : null}
-              canAttach={canAttach} canAuthor={canAuthor} canReview={canReview} me={ent?.user ?? ''} onFmChanged={reloadFm} />
+              canAttach={attachFor(r.pkg)} canAuthor={canAuthor} canReview={canReview}
+              /* ⚠️ 2026-10-19 (аудит): «өөрийн оруулсан» — AGOL нэр (`ficMakt.decideFm`-ийн ⚠️) ба хуучин мөрийн Enterprise нэр */
+              me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm} />
           ))}
         </div>
       )}
@@ -174,7 +195,7 @@ function VerdictChip({ v }: { v: Verdict | null }) {
 type FmEntry = { FIC: FmRow[]; MAKT: FmRow[] };
 type CardProps = {
   r: MaRow; mirs: MirRow[] | null; fm: FmEntry | null;
-  canAttach: boolean; canAuthor: boolean; canReview: boolean; me: string; onFmChanged: () => void;
+  canAttach: boolean; canAuthor: boolean; canReview: boolean; me: readonly string[]; onFmChanged: () => void;
 };
 type PopKey = StageKey | 'IPC';
 
@@ -330,7 +351,7 @@ function MaPop({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
  */
 function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged }: {
   kind: FmKind; maNo: string; state: string; rows: FmRow[] | null;
-  canAuthor: boolean; canReview: boolean; me: string; onChanged: () => void;
+  canAuthor: boolean; canReview: boolean; me: readonly string[]; onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -372,7 +393,7 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
         <p className={s.note}>{locked ? tr('Өмнөх шат батлагдсаны дараа нээгдэнэ.') : kind === 'FIC'
           ? tr('Ажлын явцын үзлэг — PDF хавсаргаж батална.') : tr('Ажил дууссаныг шалгах эцсийн акт — PDF хавсаргаж батална.')}</p>
       ) : rows.map((d) => {
-        const mine = !!me && d.uploadedBy.toLowerCase() === me.toLowerCase();
+        const mine = me.some((x) => !!x && d.uploadedBy.toLowerCase() === x.toLowerCase());
         const st = d.status === 'pending' ? 'pending' : d.status === 'R' ? 'rejected' : 'done';
         return (
           <div key={d.oid} className={`${s.mir} ${s[`st_${st}`] ?? ''}`}>

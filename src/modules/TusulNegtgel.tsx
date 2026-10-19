@@ -25,13 +25,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { t as tr } from '@/lib/i18nCore';
-import { useAsync } from '@/lib/useAsync';
+import { useAsync, type Async } from '@/lib/useAsync';
+import { useSyncRef } from '@/lib/useSyncRef';
+import { setNavDirty } from '@/lib/navGuard';
 import { Data } from '@/components/ui';
 import { pct as fmtPct, num } from '@/lib/format';
 import { loadNegtgelFull, dropNegtgelFull, negDisplay, negtgelTree, type NegtgelFull, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
 import { computeNegAuto, syncNegtgel, type NegRaw, type NegSyncState } from '@/lib/negtgelAuto';
-import { applyNegEdits, negDiffers, negEditable, negForm, publishNegEdits, type NegEditKey } from '@/lib/negtgelEdit';
+import {
+  applyNegEdits, negDiffers, negEditable, negForm, negServiceCanUpdate, negTotals, parseNegInput, publishNegEdits, type NegEditKey,
+} from '@/lib/negtgelEdit';
 import { useAuth } from '@/components/AuthGate';
+import { roleForUser } from '@/lib/services';
 import n from './negtgel.module.css';
 /* Баруун товшилтын цэс ба сонголтын тэмдэг — Санхүүжилтийн хүснэгттэй НЭГ загвар */
 import f from './finance.module.css';
@@ -198,8 +203,19 @@ function readPrefs(): ColPrefs {
 
 export function TusulNegtgel() {
   const q = useAsync(loadNegtgelFull, []);
+  /**
+   * ⚠️ 2026-10-19 (аудит): НИЙТЛЭЭГҮЙ ЗАСВАРТАЙ үед (`NegBody`-ийн `onDirty`) арын дахин уншилт (dataBus ·
+   *    «Шинэчлэх» · синкийн `onDone`) уналт/ачаалалт руу шилжвэл `Data` нь `NegBody`-г САЛГАЖ засвар бүгд алга
+   *    болдог байв. Одоо сүүлийн амжилттай өгөгдлийг (`last`) барьж `NegBody`-г ИЖИЛ модонд (`Data`-аар, бэлэн
+   *    төлөвөөр) үлдээнэ; уналтыг тэр дотор нь ил хэлнэ (`reloadFailed`).
+   */
+  const [dirty, setDirty] = useState(false);
+  const [last, setLast] = useState<NegtgelFull | null>(null);
+  if (q.state === 'ready' && q.data !== last) setLast(q.data);
+  const held = q.state !== 'ready' && dirty && last ? last : null;
+  const qq: Async<NegtgelFull> = held ? { state: 'ready', data: held, error: null, retry: q.retry } : q;
   return (
-    <Data q={q} minH={320}>
+    <Data q={qq} minH={320}>
       {(d) => (
         <>
           <SyncNotice
@@ -214,7 +230,7 @@ export function TusulNegtgel() {
               {tr('Хүснэгтийн мөрүүд Excel-ийн модтой таарахгүй байна — модыг кодоор угсарлаа; эцэг-хүүхдийн холбоо Excel-ээс зөрж болно.')}
             </p>
           )}
-          <NegBody d={d} onReload={() => { dropNegtgelFull(); q.retry?.(); }} />
+          <NegBody d={d} onDirty={setDirty} reloadFailed={held != null && q.state === 'error'} />
         </>
       )}
     </Data>
@@ -246,30 +262,71 @@ export type NegEditApi = {
   can: (oid: number, k: ColKey) => boolean;
   /** Загварын утга — хувь 0–1, төсөв ₮ */
   value: (oid: number, k: ColKey) => number | null;
-  /** Оруулсан бичвэрийг хэрэгжүүлнэ */
-  set: (oid: number, k: ColKey, text: string) => void;
+  /** Оруулсан бичвэрийг хэрэгжүүлнэ — татгалзвал шалтгаан (⚠️ 2026-10-19: нүд буцааж тэмдэглэнэ), эс бөгөөс `null` */
+  set: (oid: number, k: ColKey, text: string) => string | null;
   /** Гараар зассан нүд */
   edited: (oid: number, k: ColKey) => boolean;
   /** Томьёогоор өөрчлөгдсөн нүд */
   derived: (oid: number, k: ColKey) => boolean;
 };
 
-/** Бичвэр → утга: хувь «12,5» / «12.5%» → 0.125; төсөв «1 234 567» → 1234567; хоосон → null; буруу → undefined */
-const parseEdit = (text: string, budget: boolean): number | null | undefined => {
-  const t = text.trim().replace(/%$/, '').trim();
-  if (t === '') return null;
-  const x = Number(budget ? t.replace(/[\s,]/g, '') : t.replace(/\s/g, '').replace(',', '.'));
-  if (!Number.isFinite(x)) return undefined;
-  return budget ? x : x / 100;
-};
-
-function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
-  const { role } = useAuth();
-  const canEdit = role === 'super';
+/**
+ * ЗАСАХ ГОРИМЫН ЦАРЦААСАН СУУРЬ (2026-10-19, аудит).
+ *
+ * ⚠️ Урьд нь арын дахин уншилт (dataBus — өөр газрын бичилт, «Шинэчлэх», синк) `d.stored`-ийг НИЙТЛЭЭГҮЙ засварын
+ *    дор сольдог байв: загвар шинэ суурин дээр дахин бодогдож, нийтлэлтийн зэрэг засварын шалгалт хэрэглэгчийн
+ *    ХАРААГҮЙ суурьтай харьцуулдаг тул өөр нийтлэгчийн засварыг чимээгүй дарж болдог байлаа.
+ *    Одоо: «Засах» дарах агшинд суурийг (`frozen`) царцаана; засвар БАЙХГҮЙ үед шинэ өгөгдлийг шууд авна, засвартай
+ *    үед хуучин суурь хэвээр — «шинэ өгөгдөл бий» гэж хэлээд нийтэлсний/цуцалсны дараа л шинэчилнэ.
+ * ⚠️ Нийтэлсний дараа (`posted`) шинэ уншилт иртэл загварыг (засвартай) харуулна — эс бөгөөс нэг агшин хуучин
+ *    утга гарч «засвар алга болов» мэт харагдана.
+ */
+function NegBody({ d: live, onDirty, reloadFailed }: {
+  d: NegtgelFull;
+  /** Нийтлээгүй засвартай эсэх — эцэг `NegBody`-г уналтад салгахгүй (`TusulNegtgel`-ийн ⚠️) */
+  onDirty: (v: boolean) => void;
+  /** Засвартай үед арын дахин уншилт унасан */
+  reloadFailed: boolean;
+}) {
+  const { role, user, status } = useAuth();
+  /* ⚠️ 2026-10-19 (аудит): КОДЫН хатуу super — `negtgelEdit.canEditNegtgel`-тэй ИЖИЛ (панелийн хуучин super мөр биш) */
+  const canEdit = status === 'off' ? role === 'super' : roleForUser(user?.username) === 'super';
   const [edit, setEdit] = useState(false);
   const [edits, setEdits] = useState<Map<number, Partial<Record<NegEditKey, number | null>>>>(() => new Map());
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [frozen, setFrozen] = useState<NegtgelFull | null>(null);
+  /** Нийтэлсэн агшны `live` — түүнээс ӨӨР уншилт ирэх хүртэл загварыг (засвартай) барина */
+  const [posted, setPosted] = useState<NegtgelFull | null>(null);
+  const liveRef = useRef(live);
+  useSyncRef(liveRef, live);
+  /* Зурах үеийн тохируулга (effect биш — нэг кадр ч хуучин суурь харагдахгүй) */
+  if (posted) {
+    if (posted !== live) { setFrozen(null); setEdits(new Map()); setPosted(null); }
+  } else if (frozen && frozen !== live && !edits.size) {
+    setFrozen(live);
+  }
+  const d = frozen ?? live;
+  const dirty = edits.size > 0 && !posted;
+  const newer = frozen != null && frozen !== live && !posted;
+
+  /* ⚠️ 2026-10-19 (аудит): ХАДГАЛААГҮЙ ЗАСВАРЫН ХАМГААЛАЛТ — `Guitsetgel.goTab` · `Portal.confirmLeave` ·
+     «Шинэчлэх» · `beforeunload` (`navGuard`). Урьд нь таб/харагдац солих, F5 дарахад засвар асуултгүй устдаг байв. */
+  useEffect(() => {
+    setNavDirty('negtgel', dirty, tr('Нэгтгэл гүйцэтгэлийн засвар'));
+    onDirty(dirty);
+  }, [dirty, onDirty]);
+  useEffect(() => () => setNavDirty('negtgel', false), []);
+
+  /* ⚠️ 2026-10-19 (аудит): үйлчилгээ «Query» л бол «Засах»-ыг ХААНА (шалтгаантай) — `negServiceCanUpdate`-ийн ⚠️ */
+  const [svcCan, setSvcCan] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!canEdit) return undefined;
+    let alive = true;
+    void negServiceCanUpdate().then((v) => { if (alive) setSvcCan(v); });
+    return () => { alive = false; };
+  }, [canEdit]);
+  const svcOff = svcCan === false;
 
   const form = useMemo(() => negForm(d.stored), [d.stored]);
   const at = useMemo(() => new Map(d.stored.map((r, i) => [r.oid, i])), [d.stored]);
@@ -297,10 +354,12 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
     set: (oid, k, text) => {
       const key = EDIT_COL[k];
       const i = at.get(oid);
-      if (!key || i == null) return;
+      if (!key || i == null) return null;
       const budget = key === 'budget';
-      const v = parseEdit(text, budget);
-      if (v === undefined) { setMsg({ ok: false, text: tr('«{0}» тоо биш — засвар хэрэгжсэнгүй', text) }); return; }
+      /* ⚠️ 2026-10-19 (аудит): хүрээ (хувь 0–100, төсөв ≥ 0) ба таслалын тодорхой байдал — `parseNegInput` */
+      const r = parseNegInput(text, key);
+      if (!r.ok) { setMsg({ ok: false, text: r.err }); return r.err; }
+      const v = r.v;
       setMsg(null);
       setEdits((prev) => {
         const next = new Map(prev);
@@ -310,6 +369,7 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
         if (Object.keys(cur).length) next.set(oid, cur); else next.delete(oid);
         return next;
       });
+      return null;
     },
     edited: (oid, k) => {
       const key = EDIT_COL[k];
@@ -323,9 +383,16 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
     },
   }), [at, d.stored, d.calc, form, model, edits]);
 
+  /* ⚠️ 2026-10-19: нийтэлсний дараа шинэ уншилт ирэх хүртэл (`posted`) «Засах»-ыг ХААНА. Урьд нь энэ хооронд дахин
+     дарахад суурь нь НИЙТЛЭЛТЭЭС ӨМНӨХ уншилтаар (`live`) царцаж, дараагийн нийтлэлт өөрийн бичилтээ «өөр газраас
+     өөрчлөгдсөн» гэж зогсох эсвэл хуучин утга дээр бодож болдог байв. Уншилт ирмэгц (`posted !== live`) нээгдэнэ;
+     унавал «Шинэчлэх» дахин уншина. */
+  const awaiting = posted != null;
   const toggleEdit = () => {
+    if (awaiting) return;
     if (edit && count > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар устах уу?', count))) return;
-    if (edit) setEdits(new Map());
+    /* ⚠️ Горимд орохдоо засварыг ч цэвэрлэнэ — нийтэлсний дараа шинэ уншилт хүлээж буй (`posted`) загвар үлдсэн байж болно */
+    if (edit) { setEdits(new Map()); setFrozen(null); } else { setEdits(new Map()); setFrozen(live); setPosted(null); }
     setMsg(null);
     setEdit((v) => !v);
   };
@@ -333,11 +400,16 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
     setSaving(true);
     setMsg(null);
     try {
-      const n2 = await publishNegEdits(d.stored, model);
-      setEdits(new Map());
+      /* ⚠️ Суурь нь ЦАРЦААСАН (`d` = `frozen`) — хэрэглэгчийн харсан утга */
+      const r = await publishNegEdits(d.stored, model);
       setEdit(false);
-      setMsg({ ok: true, text: tr('Нийтэллээ — {0} мөр хадгалагдсан', n2) });
-      onReload();
+      /* ⚠️ `onReload` (retry → «ачаалж байна») ХАСАГДСАН: `publishNegEdits` нь `invalidate('TUSUL_NEGTGEL')` дууддаг тул
+         `useAsync` хуучин утгыг барьж дахин уншина — амжилтын мэдэгдэл ч устахгүй. */
+      /* ⚠️ ОДООГИЙН уншилтаас ӨӨР уншилт ирэх хүртэл барина: `invalidate`-ийн дараах шинэ уншилт үүнээс өөр байна.
+         Нийтлэлтийн явцад өөр шинэчлэлт ирсэн бол тэр нь бичилтийн ДАРААХ уу, ӨМНӨХ үү — тодорхойгүй
+         тул дахин нэг уншилт хүлээнэ (хүлээх хооронд харагдах нь яг нийтэлсэн загвар — зөв утга). */
+      if (r.n > 0) setPosted(liveRef.current); else { setEdits(new Map()); setFrozen(null); }
+      setMsg({ ok: true, text: r.warn ? `${tr('Нийтэллээ — {0} мөр хадгалагдсан', r.n)} · ${r.warn}` : tr('Нийтэллээ — {0} мөр хадгалагдсан', r.n) });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -347,12 +419,22 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
 
   const toolbar = canEdit ? (
     <span className={n.edBar}>
+      {svcOff && !edit && (
+        <span className={n.edWhy}>{tr('Засах боломжгүй: Negtgel_guitsetgel_1013 үйлчилгээнд засвар хаалттай (Query) — ArcGIS дээр Settings → «Enable editing» (Update) асаана уу.')}</span>
+      )}
       {edit && (
         <button type="button" className={`${f.editBtn} ${f.pubBtn}`} disabled={!count || saving} onClick={() => { void publish(); }}>
           {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', count)}
         </button>
       )}
-      <button type="button" className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`} disabled={saving} aria-pressed={edit} onClick={toggleEdit}>
+      <button
+        type="button"
+        className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
+        disabled={saving || awaiting || (svcOff && !edit)}
+        aria-pressed={edit}
+        title={awaiting ? tr('Нийтэлсэн өгөгдлийг дахин уншиж байна…') : svcOff && !edit ? tr('Үйлчилгээнд засвар хаалттай (Query)') : undefined}
+        onClick={toggleEdit}
+      >
         {tr('Засах')}
       </button>
     </span>
@@ -365,27 +447,51 @@ function NegBody({ d, onReload }: { d: NegtgelFull; onReload: () => void }) {
           {tr('Засах горим: тодруулсан нүд л засагдана (Excel-ийн томьёогүй нүд). Засварласан нүд НОГООН, томьёогоор дахин бодогдсон нүд ЦЭНХЭР. «Нийтлэх» дарах хүртэл хадгалагдахгүй.')}
         </p>
       )}
+      {newer && (
+        <p className={n.syncNote} role="status">
+          {tr('Шинэ өгөгдөл бий — нийтэлсний/цуцалсны дараа шинэчлэгдэнэ. Нийтлэхэд хүснэгтийг шинээр уншиж зөрчлийг шалгана.')}
+        </p>
+      )}
+      {reloadFailed && (
+        <p className={`${n.syncNote} ${n.msgErr}`} role="alert">
+          {tr('Өгөгдлийг дахин уншиж чадсангүй — засвар тань хадгалагдсан хэвээр; нийтлэхэд хүснэгтийг шинээр уншиж шалгана.')}
+        </p>
+      )}
       {msg && <p className={`${n.syncNote} ${msg.ok ? n.msgOk : n.msgErr}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
       <Tree rows={view.rows} calc={view.calc} edit={edit ? api : undefined} toolbar={toolbar} />
     </>
   );
 }
 
-/** Засварын нүдний оролт — Enter/blur хэрэгжүүлнэ, Esc буцаана */
-function EditInput({ v, budget, onCommit }: { v: number | null; budget: boolean; onCommit: (text: string) => void }) {
+/**
+ * Засварын нүдний оролт — Enter/blur хэрэгжүүлнэ, Esc буцаана.
+ * ⚠️ 2026-10-19 (аудит): ТАТГАЛЗСАН оролт (`parseNegInput`) нүдэндээ ҮЛДЭЭД байдаг тул хэрэглэгч «хадгалагдсан» гэж
+ *    ойлгодог байв (зөвхөн дээд мессеж). Одоо утга нь буцаж, нүд УЛААН хүрээтэй, шалтгаан нь `title`-д — дахин бичих
+ *    хүртэл.
+ */
+function EditInput({ v, budget, onCommit }: { v: number | null; budget: boolean; onCommit: (text: string) => string | null }) {
   const shown = v == null ? '' : budget ? String(Math.round(v)) : String(Number((v * 100).toFixed(4)));
+  const [bad, setBad] = useState<string | null>(null);
   return (
     <input
       key={shown}
-      className={n.edIn}
+      className={bad ? `${n.edIn} ${n.edBad}` : n.edIn}
       defaultValue={shown}
       inputMode="decimal"
       aria-label={tr('Утга засах')}
-      onBlur={(e) => { if (e.target.value !== shown) onCommit(e.target.value); }}
+      aria-invalid={bad ? true : undefined}
+      title={bad ?? undefined}
+      onChange={() => { if (bad) setBad(null); }}
+      onBlur={(e) => {
+        const el = e.target;
+        if (el.value === shown) return;
+        const err = onCommit(el.value);
+        if (err) { el.value = shown; setBad(err); }
+      }}
       onKeyDown={(e) => {
         const el = e.currentTarget;
         if (e.key === 'Enter') el.blur();
-        if (e.key === 'Escape') { el.value = shown; el.blur(); }
+        if (e.key === 'Escape') { el.value = shown; setBad(null); el.blur(); }
       }}
     />
   );
@@ -722,53 +828,32 @@ export function Tree({ rows, calc, edit, toolbar }: {
    *   G = Σ үе шатны жин; H…K = Σ жин × утга; L…N = K ÷ H…J (0 бол 0).
    */
   const head = useMemo(() => {
-    const t = { p: 0, planG: 0, planGch: 0, planGu: 0, planNw: 0, planPw: 0, act: 0 };
-    /* ⚠️ 2026-09-25: жинтэй үе шатны гүйцэтгэл хэмжигдээгүй бол НИЙТ гүйцэтгэл
-       ХООСОН (`negtgelProjectPct`-тэй ижил, null ≠ 0) — 0 гэж нэмбэл доошилно */
-    let actNull = false;
-    /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨНД мөн адил дүрэм — жинтэй үе шатны төлөвлөгөө
-       хоосон бол тэр баганын нийт ХООСОН. Урьд нь `?? 0` тул «0.00%» гарч,
-       биелэлт нь «0 бол 0» дүрмээр 0% болдог байв (null ≠ 0). */
-    const planNull = { planG: false, planGch: false, planGu: false, planNw: false, planPw: false };
-    rows.forEach((r) => {
-      if (r.depth !== 1) return;
+    /* ⚠️ 2026-09-25: жинтэй үе шатны гүйцэтгэл/төлөвлөгөө хэмжигдээгүй бол тэр баганын НИЙТ ХООСОН
+       (`negtgelProjectPct`-тэй ижил, null ≠ 0) — 0 гэж нэмбэл доошилж, биелэлт нь «0 бол 0» дүрмээр 0% болдог байв.
+       ⚠️ 2026-10-13: Excel Q · R (Next week · Өмнө долоо хоног) — ижил SUMPRODUCT.
+       ⚠️ 2026-10-11 (аудит №7): Σ жин 100-аас зөрвөл жигнэсэн нийлбэрийг Σ жин-ээр НОРМЧИЛНО ([99.95, 100.05] дотор
+       хөндөхгүй); Σ жин-ийг доор 1 оронтой харуулна — 99.6% нь «100%» гэж бөөрөнхийлөгдөж зөрүү нуугддаг байв.
+       ⚠️ 2026-10-19 (аудит): томьёо нь `negtgelEdit.negTotals` — НИЙТЛЭЛТ хүснэгтийн «ТӨСЛИЙН НИЙТ» мөрийг ЯГ ҮҮГЭЭР
+       бичнэ (урьд нь өөр томьёотой байсан тул хүснэгт дэлгэцээс зөрдөг байв). Энд 0–100 → 0–1 → 0–100. */
+    const fr = (v: number | null | undefined) => (v == null ? null : v / 100);
+    const top = rows.filter((r) => r.depth === 1).flatMap((r) => {
       const c = calc.get(r.oid);
-      if (!c || c.inProject == null) return;
-      const ip = c.inProject;
-      const w = ip / 100;
-      const add = (k: keyof typeof planNull, v: number | null | undefined) => {
-        if (v == null) { if (ip > 0) planNull[k] = true; } else t[k] += w * v;
-      };
-      t.p += ip;
-      add('planG', c.planPct);
-      add('planGch', c.planGch);
-      add('planGu', c.planGuits);
-      /* ⚠️ 2026-10-13: Excel Q · R (Next week · Өмнө долоо хоног) — ижил SUMPRODUCT */
-      add('planNw', c.planNextWk);
-      add('planPw', c.planPrevWk);
-      if (c.actPct == null) { if (c.inProject > 0) actNull = true; } else t.act += w * c.actPct;
+      return c ? [{
+        p: fr(c.inProject), planG: fr(c.planPct), planGch: fr(c.planGch), planGu: fr(c.planGuits),
+        planNw: fr(c.planNextWk), planPw: fr(c.planPrevWk), act: fr(c.actPct),
+      }] : [];
     });
-    /* ⚠️ 2026-10-11 (аудит №7): Σ жин (`t.p`) 100-аас зөрвөл (1-р түвшний мөр дутуу/илүү, жин засагдаж
-       байгаа) жигнэсэн нийлбэрийг Σ жин-ээр НОРМЧИЛНО — эс бөгөөс Σ жин 90% үед нийт гүйцэтгэл
-       10%-иар доошилж харагдана. [99.95, 100.05] дотор бол хөндөхгүй (бутархайн зөрүү). Σ жин-ийг
-       доор 1 оронтой харуулна — 99.6% нь «100%» гэж бөөрөнхийлөгдөж зөрүү нуугддаг байв. */
-    const norm = t.p > 0 && (t.p < 99.95 || t.p > 100.05) ? t.p / 100 : 1;
-    const act = actNull ? null : t.act / norm;
-    const planG = planNull.planG ? null : t.planG / norm;
-    const planGch = planNull.planGch ? null : t.planGch / norm;
-    const planGu = planNull.planGu ? null : t.planGu / norm;
-    const planNw = planNull.planNw ? null : t.planNw / norm;
-    const planPw = planNull.planPw ? null : t.planPw / norm;
-    const perf = (plan: number | null) => (act == null || plan == null ? null : plan ? (act / plan) * 100 : 0);
+    const T = negTotals(top);
+    const pc = (v: number | null) => (v == null ? null : v * 100);
     return {
-      ...t,
-      planG, planGch, planGu, planNw, planPw,
-      act,
-      perfG: perf(planG),
-      perfGch: perf(planGch),
-      perfGu: perf(planGu),
+      p: T.p == null ? null : T.p * 100,
+      planG: pc(T.planG), planGch: pc(T.planGch), planGu: pc(T.planGu), planNw: pc(T.planNw), planPw: pc(T.planPw),
+      act: pc(T.act),
+      perfG: pc(T.perfG),
+      perfGch: pc(T.perfGch),
+      perfGu: pc(T.perfGu),
       /* ⚠️ Excel W6 = S6 ÷ R6 (өмнөх долоо хоногийн төлөвлөгөө) */
-      perfWk: perf(planPw),
+      perfWk: pc(T.perfWk),
     };
   }, [rows, calc]);
 
@@ -793,7 +878,7 @@ export function Tree({ rows, calc, edit, toolbar }: {
   const leadRest = lead.filter((c) => !frozen.has(c.key));
   const sumW = (cs: typeof lead) => (cs.length ? `calc(${cs.map((c) => WV(c.key)).join(' + ')})` : '0px');
   const total: Partial<Record<ColKey, string>> = {
-    inProject: fmtPct(head.p, 1), // ⚠️ 2026-10-11 (аудит №7): 1 орон — Σ жин 100-аас зөрвөл ил (`head`-ийн ⚠️)
+    inProject: p(head.p, 1), // ⚠️ 2026-10-11 (аудит №7): 1 орон — Σ жин 100-аас зөрвөл ил (`head`-ийн ⚠️)
     planG: p(head.planG, 2),
     planGch: p(head.planGch, 2),
     planGu: p(head.planGu, 2),
@@ -1100,7 +1185,8 @@ export function Tree({ rows, calc, edit, toolbar }: {
                     const cls = k === 'code' || k === 'bagts' ? n.code : n.num;
                     /* ⚠️ 2026-10-15: засах горим — оролт нүд нь input; томьёогоор өөрчлөгдсөн нүд цэнхэр */
                     if (edit) {
-                      const mark = edit.edited(r.oid, k) ? f.cellDirty : edit.derived(r.oid, k) ? n.cellCalc : '';
+                      /* ⚠️ 2026-10-19 (аудит): `n.dirty` — `f.cellDirty`-ийн тунгалаг дэвсгэрийг ЦАРЦСАН нүдэнд тунгалаг бус болгоно */
+                      const mark = edit.edited(r.oid, k) ? `${f.cellDirty} ${n.dirty}` : edit.derived(r.oid, k) ? n.cellCalc : '';
                       if (edit.can(r.oid, k)) {
                         return (
                           <td key={k} className={`${fzc(k)} ${cls} ${n.edCell} ${mark}`} style={sty(k)}>

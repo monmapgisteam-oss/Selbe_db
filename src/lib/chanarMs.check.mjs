@@ -30,7 +30,7 @@ import {
 const T = 1_700_000_000_000;
 const base = () => ({
   status: MS_STATUS.review,
-  author: 'selbe_guitsetgegch',
+  author: 'guits_author',
   reviews: emptyReviews(),
 });
 
@@ -89,6 +89,11 @@ const base = () => ({
   assert.equal(orgCode('Багц 3.2'), 'MSC');
   assert.equal(orgCode('Багц 4-1'), 'MONCON');
   assert.equal(orgCode('Багц 99'), null);
+  /* ⚠️ 2026-10-19: бөглөх хуудасны бүлэг «Багц 7.1» (`PKG_GROUPS`) — «Багц 7»-той ижил гүйцэтгэгч */
+  assert.equal(orgCode('Багц 7.1'), 'GUBBG');
+  assert.equal(docNo('Багц 7.1', 1, 0), 'GUBBG-SLB-MS-P0701-0001-00');
+  /* ⚠️ 2026-10-19: код баталгаажаагүй блокгүй багц — таамаглахгүй (null → UI шалтгааныг хэлнэ) */
+  assert.equal(orgCode('Багц 6.5'), null);
 
   /* Жишээ файлын ЯГ дугаар */
   assert.equal(docNo('Багц 3.2', 11, 1), 'MSC-SLB-MS-P0302-0011-01');
@@ -215,7 +220,7 @@ const base = () => ({
 
   /* ⚠️ №5 — зохиогч өөрийгөө хянахгүй, БҮХ гурван үүргээр */
   for (const as of REVIEWERS) {
-    const x = review(base(), { as, who: 'SELBE_GUITSETGEGCH', verdict: VERDICT.approve });
+    const x = review(base(), { as, who: 'GUITS_AUTHOR', verdict: VERDICT.approve });
     assert.equal(x.ok, false, `⚠️ зохиогч ${as}-аар хянаж чадахгүй`);
     assert.match(x.error, /Зохиогч/);
   }
@@ -493,8 +498,8 @@ const base = () => ({
 
 /* ══ 6. submit — ⚠️ №8 ══ */
 {
-  const d0 = { status: MS_STATUS.draft, rev: 0, author: 'selbe_guitsetgegch' };
-  const s0 = submit(d0, { who: 'selbe_guitsetgegch', now: T });
+  const d0 = { status: MS_STATUS.draft, rev: 0, author: 'guits_author' };
+  const s0 = submit(d0, { who: 'guits_author', now: T });
   assert.ok(s0.ok);
   assert.equal(s0.rev, 0, 'анхны илгээлт rev 0 хэвээр');
   assert.equal(s0.status, MS_STATUS.review);
@@ -502,11 +507,11 @@ const base = () => ({
   assert.deepEqual(s0.reviews, emptyReviews());
 
   /* ⚠️ №8 — буцаагдсанаас дахин: rev+1, хянагчид ЦЭВЭР */
-  const d1 = { status: MS_STATUS.returned, rev: 0, author: 'selbe_guitsetgegch' };
-  const s1n = submit(d1, { who: 'selbe_guitsetgegch', now: T });
+  const d1 = { status: MS_STATUS.returned, rev: 0, author: 'guits_author' };
+  const s1n = submit(d1, { who: 'guits_author', now: T });
   assert.equal(s1n.ok, false, '⚠️ 2026-09-28: rev>0 илгээлтэд хувилбарын шалтгаан ЗААВАЛ'); assert.match(s1n.error, /шалтгаан/);
-  assert.equal(submit({ ...d0, rev: 2 }, { who: 'selbe_guitsetgegch' }).ok, false, 'rev 2 ноорог ч шалтгаангүй илгээхгүй');
-  const s1 = submit(d1, { who: 'selbe_guitsetgegch', now: T, revNote: 'Нийлүүлэгч сольсон' });
+  assert.equal(submit({ ...d0, rev: 2 }, { who: 'guits_author' }).ok, false, 'rev 2 ноорог ч шалтгаангүй илгээхгүй');
+  const s1 = submit(d1, { who: 'guits_author', now: T, revNote: 'Нийлүүлэгч сольсон' });
   assert.ok(s1.ok);
   assert.equal(s1.rev, 1, '⚠️ буцаагдаад дахин → rev+1');
   assert.deepEqual(s1.reviews, emptyReviews(), '⚠️ өмнөх зөвшөөрлүүд ХҮЧИНГҮЙ — гурвуулаа дахин');
@@ -514,16 +519,16 @@ const base = () => ({
   /* Зөвхөн зохиогч */
   assert.equal(submit(d0, { who: 'other' }).ok, false);
   /* Хянагдаж буй / батлагдсаныг дахин илгээхгүй */
-  assert.equal(submit({ ...d0, status: MS_STATUS.review }, { who: 'selbe_guitsetgegch' }).ok, false);
-  assert.equal(submit({ ...d0, status: MS_STATUS.approved }, { who: 'selbe_guitsetgegch' }).ok, false);
+  assert.equal(submit({ ...d0, status: MS_STATUS.review }, { who: 'guits_author' }).ok, false);
+  assert.equal(submit({ ...d0, status: MS_STATUS.approved }, { who: 'guits_author' }).ok, false);
   /* Нэр том/жижиг үсэг хамаагүй */
-  assert.ok(submit(d0, { who: 'SELBE_GUITSETGEGCH' }).ok);
+  assert.ok(submit(d0, { who: 'GUITS_AUTHOR' }).ok);
 }
 
 /* ══ 7. canAct — дэлгэцийн урьдчилсан харуулалт ══ */
 {
   const d = base();
-  const me = 'selbe_guitsetgegch';
+  const me = 'guits_author';
   const none = { correction: false, reopen: false, clientChecks: false, bounce: false, ack: false, closeAn: false, newRevision: false, closeNcr: false };
   /* Зохиогч: review төлөвт засахгүй, илгээхгүй, хянахгүй */
   assert.deepEqual(canAct(d, me, ['tuh']), { edit: false, submit: false, review: [], ...none });

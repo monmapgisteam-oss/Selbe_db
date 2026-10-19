@@ -13,6 +13,9 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { hasCap, type CapKey } from './caps';
+/* ⚠️ 2026-10-19 (аудит): алдаанд эрхийн ХҮНИЙ нэр (`capText.capLabel`, `tr`) — түүхий түлхүүр («obyemEdit») биш.
+   `capText` нь `caps` · `services`-ээс л импортлодог (энэ файлыг биш) тул тойрог үүсэхгүй. */
+import { capLabel } from '@/modules/capText';
 
 let current: string | null = null;
 
@@ -31,5 +34,5 @@ export function requireCap(cap: CapKey): void {
      ҮЛ ТООЦНО (2026-09-21, caps.ts) — сүлжээ хаагаад локалд тарьсан эрхээр
      энэ шалгуурыг давах боломжгүй. */
   if (hasCap(current, cap)) return;
-  throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эрх авна уу.', cap));
+  throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эрх авна уу.', capLabel(cap)));
 }

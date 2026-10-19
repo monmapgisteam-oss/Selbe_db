@@ -52,7 +52,7 @@ npx wrangler deploy                    # шинэ worker.mjs (bot-bypass)-ыг �
 
 ```sh
 curl https://selbe-agent.monmapgisteam.workers.dev/health
-# {"ok":true,"model":"claude-opus-5","effort":"low"}
+# {"ok":true}   ← 2026-09-15-наас загвар/effort задлахгүй (agent-proxy/README.md)
 ```
 
 ---

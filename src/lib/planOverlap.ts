@@ -7,6 +7,7 @@ import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync'
 import { fromJSON as geomFromJSON } from '@arcgis/core/geometry/support/jsonUtils';
 import { LAYER_BY_ID, layerUrl, oidOf, INFRA_SVC } from '@/lib/services';
 import { num, km } from '@/lib/format';
+import { register } from '@/lib/dataBus';
 import { overlapScopeFocus, visibleOverlapItems, type OverlapFocus } from './planOverlapSelection';
 import { buildOverlapDisplay, individualZoneIdentity, type OverlapDisplay, type ZoneBoundary } from './planOverlapZones';
 
@@ -99,6 +100,27 @@ export type OverlapResult = {
 
 type Geom = __esri.GeometryUnion;
 
+/**
+ * НЭГ ХУУДАСНЫ УНШИЛТ — PBF, бүтэлгүйдвэл JSON; ХОЁУЛАА хугацаатай, нэвтрэх цонхгүй.
+ * ⚠️ 2026-10-19 (аудит): токенгүй үед зарим эх (Redesign/FeatureServer/2) `f=pbf`-д HTTP 400 буцаадаг — JS API нь
+ *    IdentityManager-ийн нэвтрэх цонхыг ХҮЛЭЭЖ амлалт ХЭЗЭЭ Ч шийдэгддэггүй байв (01-ийн самбар үүрд «Тооцоолж
+ *    байна…»). Одоо `authMode: 'no-prompt'` (бүртгэлтэй токен хэвээр хэрэглэгдэнэ, шинээр асуухгүй) + `PAGE_TIMEOUT_MS`
+ *    хугацаа (AbortController + race — цонх хүлээж буй хүсэлт signal-ыг үл тоосон ч) → JSON нөөц → алдаа.
+ *    `hesegChange` · `hesegNeed` ч үүнийг хэрэглэнэ.
+ */
+const PAGE_TIMEOUT_MS = 45_000;
+export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
+  const run = (fn: typeof query.executeQueryPBF): Promise<__esri.FeatureSet> => {
+    const ac = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { ac.abort(); reject(new Error(`timeout ${PAGE_TIMEOUT_MS / 1000}s: ${u}`)); }, PAGE_TIMEOUT_MS);
+    });
+    return Promise.race([fn(u, q, { signal: ac.signal, authMode: 'no-prompt' }), late]).finally(() => clearTimeout(timer));
+  };
+  return run(query.executeQueryPBF).catch(() => run(query.executeQueryJSON));
+}
+
 /** Давхаргын бүх геометрийг ХУУДАСЛАЖ татна (`analysis/data.ts` §fetchAll-ийн ⚠️ — OID эрэмбэ заавал) */
 async function fetchObjects(u: string, oid: string, outFields = [oid]): Promise<{ geometry: Geom; attributes: Record<string, unknown> }[]> {
   const out: { geometry: Geom; attributes: Record<string, unknown> }[] = [];
@@ -112,8 +134,8 @@ async function fetchObjects(u: string, oid: string, outFields = [oid]): Promise<
       start,
       num: 2000,
     });
-    /* PBF (JSON-оос ~6 дахин жижиг) — дэмжихгүй үйлчилгээнд JSON руу буцна */
-    const res = await query.executeQueryPBF(u, q).catch(() => query.executeQueryJSON(u, q));
+    /* PBF (JSON-оос ~6 дахин жижиг) — дэмжихгүй үйлчилгээнд JSON руу буцна (`queryPageSafe`-ийн ⚠️) */
+    const res = await queryPageSafe(u, q);
     for (const f of res.features) if (f.geometry) out.push({ geometry: f.geometry as Geom, attributes: f.attributes ?? {} });
     if (!res.features.length) break;
     if (res.features.length < 2000 && !res.exceededTransferLimit) break;
@@ -154,6 +176,12 @@ export type InfraFeat = { feature: string; type: string; layer: string; geom: Ge
  * ⚠️ Модулийн кэш: алдаа гарвал устгана (дараагийн оролдлого дахин татна).
  */
 let infraCache: Promise<{ feats: InfraFeat[]; failed: string[] }> | null = null;
+/*
+ * ⚠️ 2026-10-19 (аудит): санах ойн кэшүүд толгойн «Шинэчлэх»-ээр (`dataBus.invalidateAll`) ХАЯГДАНА — урьд нь
+ *    сешн дуустал үлддэг байв. Хөтчийн хадгалалт (IndexedDB, 24 цаг) нь санаатай шийдвэр (доорх ⚠️) — хэсэгчилсэн
+ *    үр дүн тэнд хэзээ ч бичигддэггүй.
+ */
+register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); }, []);
 /**
  * Инженерийн давхарга (`infra:N`) → төрөл (`OVERLAP_TYPES` түлхүүр) — `loadInfra` ачаалсны дараа дүүрнэ.
  * Газрын зургийг төрлөөр шүүхэд (03-ийн төрөл сонголт, `Portal`) ашиглана.
@@ -187,7 +215,12 @@ export function loadInfra() {
     }));
     return { feats: parts.flat(), failed };
   })().catch((e) => { infraCache = null; throw e; });
-  return infraCache;
+  /* ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүнг (татагдаагүй давхаргатай) КЭШЛЭХГҮЙ — одоогийн дуудагчид хүрнэ
+     (нэрийг нь харуулна), дараагийн дуудалт дахин татна (`hesegChange`-ийн ⚠️-тэй ижил). Урьд нь түр уналт сешн
+     дуустал «дутуу» үр дүн болж үлддэг байв. */
+  const mine = infraCache;
+  void mine.then((r) => { if (r.failed.length && infraCache === mine) infraCache = null; }, () => {});
+  return mine;
 }
 
 /** Цэг нь extent-гүй — координатаар шалгана */
@@ -298,24 +331,63 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Prom
  * ⚠️ 2026-10-13: урьд `onStep` нь ЗӨВХӨН тооцоог ЭХЛҮҮЛСЭН дуудагчид очдог байв — самбар
  *    кэшлэгдсэн promise-ийг авч «Давхцлыг тооцоолж байна…» дээр хувьгүй зогсдог байлаа.
  */
-const stepSubs = new Map<OverlapSide, Set<(msg: string) => void>>();
-const lastStep = new Map<OverlapSide, string>();
-const emitStep = (side: OverlapSide, msg: string) => {
-  lastStep.set(side, msg);
-  for (const fn of stepSubs.get(side) ?? []) fn(msg);
-};
+/*
+ * ⚠️ 2026-10-19 (review): ЯВЦ НЬ ТООЦООНЫ ҮЕ (generation)-ЭЭР ТУСГААРЛАГДСАН — урьд нь тал бүрд нэг жагсаалт байсан тул
+ *    «Шинэчлэх»-ийн дараа ХУУЧИН (хаягдсан) тооцоо үргэлжилсээр шинэ тооцооны хүлээгчдэд өөрийн хувийг илгээдэг байв.
+ */
+type StepGen = { subs: Set<(msg: string) => void>; last: string };
+const stepGens = new Map<number, StepGen>();
+const genOf = new WeakMap<Promise<OverlapResult>, number>();
+let genSeq = 0;
+/** Тал бүрийн ЯВАГДАЖ буй (хамгийн сүүлд эхэлсэн) тооцооны үе — дууссан талд явцын захиалга нэмэхгүй */
+const running = new Map<OverlapSide, number>();
+/**
+ * ⚠️ 2026-10-19 (review): НЭГ ТАЛЫН ТООЦООНЫ ДЭЭД ХУГАЦАА (`hesegChange.CHANGE_TIMEOUT_MS`-тэй ижил) — хуудас бүр
+ *    `PAGE_TIMEOUT_MS`-тэй ч геометрийн worker гацвал самбар үүрд эргэлдэхгүй; алдаа харуулж кэш хаягдана.
+ */
+const OVERLAP_TIMEOUT_MS = 4 * 60_000;
 
-/** Нэг талын давхцлыг бодно (санах ой → хөтчийн хадгалалт → тооцоо). `onStep` — самбарт явцын текст. */
+/**
+ * ЯВЦЫН ТЕКСТИЙГ ЗАХИАЛНА — буцаасан функцээр цуцална (бүрэлдэхүүн unmount-д).
+ * ⚠️ 2026-10-19 (аудит): урьд нь `computeOverlap(side, onStep)` нь кэш ДУУССАН (`end()` бүртгэлийг цэвэрлэсэн) хойно
+ *    ч сонсогчийг шинэ Set-д нэмдэг тул тэр нь хэзээ ч устахгүй, unmount-д ч цуцлагддаггүй байв (санах ойн алдагдал).
+ *    Одоо зөвхөн ЯВАГДАЖ буй тооцоонд нэмнэ; дуусахад (`end`) бүгд арилна.
+ */
+export function onOverlapStep(side: OverlapSide, fn: (msg: string) => void, p?: Promise<OverlapResult>): () => void {
+  /* `p` өгвөл ЗӨВХӨН тэр тооцооны явц (`computeOverlap`-ийн буцаасан амлалт); өгөөгүй бол тэр талын явагдаж буйнх */
+  const gen = p ? genOf.get(p) : running.get(side);
+  const g = gen == null ? undefined : stepGens.get(gen);
+  if (!g) return () => {};
+  g.subs.add(fn);
+  if (g.last) fn(g.last);
+  return () => { g.subs.delete(fn); };
+}
+
+/**
+ * Нэг талын давхцлыг бодно (санах ой → хөтчийн хадгалалт → тооцоо). `onStep` — самбарт явцын текст (тооцоо дуусахад
+ * автоматаар цуцлагдана; бүрэлдэхүүн `onOverlapStep`-ийг шууд хэрэглэвэл unmount-д ч цуцална).
+ */
 export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void): Promise<OverlapResult> {
-  if (onStep) {
-    (stepSubs.get(side) ?? stepSubs.set(side, new Set()).get(side)!).add(onStep);
-    const last = lastStep.get(side);
-    if (last) onStep(last);
-  }
   const hit = resultCache.get(side);
-  if (hit) return hit;
-  const step = (msg: string) => emitStep(side, msg);
-  const p = (async (): Promise<OverlapResult> => {
+  if (hit) {
+    if (onStep) { const off = onOverlapStep(side, onStep, hit); void hit.then(off, off); }
+    return hit;
+  }
+  const gen = ++genSeq;
+  const sg: StepGen = { subs: new Set(), last: '' };
+  stepGens.set(gen, sg);
+  running.set(side, gen);
+  /* ⚠️ Зөвхөн ӨӨРИЙН үеийн захиалагчид — хаягдсан тооцоо шинийхэд явц илгээхгүй */
+  const step = (msg: string) => {
+    if (!stepGens.has(gen)) return;
+    sg.last = msg;
+    for (const fn of sg.subs) fn(msg);
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(tr('Тооцоо хэт удаж байна ({0} мин) — дахин нээж оролдоно уу.', OVERLAP_TIMEOUT_MS / 60_000))), OVERLAP_TIMEOUT_MS);
+  });
+  const work = (async (): Promise<OverlapResult> => {
     const stored = await readStored(side).catch(() => null);
     if (stored) return stored;
     step(tr('Инженерийн шугам татаж байна…'));
@@ -372,10 +444,17 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
     void writeStored(out).catch(() => {});
     return out;
   })();
+  const p = Promise.race([work, late]).finally(() => clearTimeout(timer));
+  genOf.set(p, gen);
   resultCache.set(side, p);
+  if (onStep) { const off = onOverlapStep(side, onStep, p); void p.then(off, off); }
   /* Дууссаны дараа явцын бүртгэлийг цэвэрлэнэ */
-  const end = () => { stepSubs.delete(side); lastStep.delete(side); };
-  p.then(end, () => { end(); resultCache.delete(side); });
+  /* ⚠️ Зөвхөн ӨӨРИЙН үе — «Шинэчлэх»-ийн дараа эхэлсэн шинэ тооцооны бүртгэлийг хуучин нь арилгахгүй */
+  const end = () => { stepGens.delete(gen); if (running.get(side) === gen) running.delete(side); };
+  /* ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүн (`failed`) санах ойд ч КЭШЛЭГДЭХГҮЙ — урьд нь зөвхөн IndexedDB-д
+     бичигддэггүй байсан ч сешн дуустал санах ойд үлддэг байв. */
+  p.then((r) => { end(); if (r.failed.length && resultCache.get(side) === p) resultCache.delete(side); },
+    () => { end(); if (resultCache.get(side) === p) resultCache.delete(side); });
   return p;
 }
 

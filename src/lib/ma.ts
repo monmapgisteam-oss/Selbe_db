@@ -2,7 +2,10 @@ import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MA_SVC } from '@/lib/services/env';
 import { entSession } from '@/lib/entDocs';
-import { requireCap } from '@/lib/who';
+import { currentUser, requireCap } from '@/lib/who';
+import { AUTH } from '@/lib/services';
+import { hasCap } from '@/lib/caps';
+import { capLabel } from '@/modules/capText';
 
 /**
  * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Survey123 маягт → Enterprise hosted
@@ -283,13 +286,52 @@ export async function listMaAtts(oid: number): Promise<MaAtt[]> {
 function requireAttachCap(): void {
   try { requireCap('chanarAuthor'); } catch {
     try { requireCap('chanarReview'); } catch {
-      throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «chanarAuthor» эсвэл «chanarReview» эрх авна уу.'));
+      /* ⚠️ 2026-10-19 (аудит): түүхий түлхүүрийн оронд эрхийн нэр (`who.requireCap`-тэй ижил) */
+      throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эсвэл «{1}» эрх авна уу.', capLabel('chanarAuthor'), capLabel('chanarReview')));
     }
   }
 }
 
+/**
+ * ⚠️ 2026-10-19 (аудит): ХАВСРАЛТЫН БАГЦЫН ХҮРЭЭ — `ficMakt.scopeDeny` · `chanarStore.attachDeny`-ийн ижил дүрэм.
+ *    Урьд нь эрх (`chanarAuthor`/`chanarReview`) л шалгадаг тул Багц 1-ийн ирүүлэгч Багц 5-ын MA-гийн гэрчилгээг
+ *    нэмж/устгаж чаддаг байв. Одоо: (`chanarAuthor` БА тэр багцад ирүүлэгч) ЭСВЭЛ (`chanarReview` БА тэр багцад
+ *    ямар нэг хянагчийн үүрэг). MA-гийн `pkg` нь хуудасны түлхүүр («b1_9f») → `PKGS`-ээр багцын бүлэг; танигдахгүй
+ *    бол FAIL-CLOSED. Хатуу super — `chanarAcl` хязгааргүй (`scope` null).
+ * ⚠️ Зөвхөн нэвтрэлт асаалттай хөтөчид (`strict`, `ficMakt`-тай ижил) — Node шалгуур `strict: true`-г ил өгнө.
+ * ⚠️ Модулиуд ДИНАМИК: `chanarAcl` (→ `permsRemote`) · `bagts.pkg` нь MA-гийн цэвэр шалгуурын (`ma.check`) импортыг
+ *    хүндрүүлэхгүй.
+ * @returns татгалзсан шалтгаан, эсвэл `null` (зөвшөөрнө)
+ */
+export async function maAttachScopeDeny(
+  pkgKey: string,
+  strict: boolean = typeof window !== 'undefined' && !!AUTH.appId,
+): Promise<string | null> {
+  if (!strict) return null;
+  const me = currentUser();
+  if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  const [{ PKGS }, { isAuthorFor, reviewerRolesFor }] = await Promise.all([
+    import('@/modules/sheet/bagts.pkg'), import('@/lib/chanarAcl'),
+  ]);
+  const bagts = PKGS.find((p) => p.key === pkgKey)?.group ?? '';
+  if (!bagts) return tr('MA-гийн багц ({0}) танигдсангүй — багцын хүрээг шалгах боломжгүй.', pkgKey || '—');
+  const asAuthor = hasCap(me, 'chanarAuthor') && isAuthorFor(me, bagts);
+  const asReviewer = hasCap(me, 'chanarReview') && reviewerRolesFor(me, bagts).length > 0;
+  return asAuthor || asReviewer ? null : tr('«{0}» багцад чанарын баримтын эрхгүй — MA-гийн хавсралт нэмэх, устгах боломжгүй.', bagts);
+}
+
+/** Хавсралтын бичилтийн өмнө: MA мөрийг серверээс олж багцын хүрээг шалгана (`maAttachScopeDeny`) */
+async function requireAttachScope(oid: number): Promise<void> {
+  if (!(typeof window !== 'undefined' && !!AUTH.appId)) return;
+  const ma = (await loadMa()).find((r) => r.oid === Number(oid));
+  if (!ma) throw new Error(tr('MA олдсонгүй — устгагдсан байж магадгүй.'));
+  const deny = await maAttachScopeDeny(ma.pkg);
+  if (deny) throw new Error(deny);
+}
+
 export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<void> {
   requireAttachCap();
+  await requireAttachScope(oid);
   const okType = /^(application\/pdf|image\/(jpeg|png))$/.test(file.type) || /\.(pdf|jpe?g|png)$/i.test(file.name);
   if (!okType) throw new Error(tr('Зөвхөн PDF, JPG, PNG файл хавсаргана.'));
   const fd = new FormData();
@@ -303,6 +345,8 @@ export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<
 
 export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
   requireAttachCap();
+  /* ⚠️ 2026-10-19 (аудит): багцын хүрээ — `addMaAtt`-тай ижил */
+  await requireAttachScope(oid);
   const j = await arc<{ deleteAttachmentResults?: { success?: boolean; error?: { description?: string } }[] }>(
     `${MA_URL}/${oid}/deleteAttachments`, new URLSearchParams({ f: 'json', token: tok(), attachmentIds: String(attId) }));
   const r = j.deleteAttachmentResults?.[0];

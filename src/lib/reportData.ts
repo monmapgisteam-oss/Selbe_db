@@ -1027,7 +1027,8 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
  * (grep: `loadZov` алга) тул оруулаагүй — хэрэггүй түлхүүр нь дэмий дахин таталт.
  */
 export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
-  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM']);
+  /* ⚠️ 2026-10-19: `TUSUL_NEGTGEL` — `loadNegtgelPct` нэгтгэлийн хүснэгтээс уншдаг (`execReport.loadExecReport`-тэй ижил) */
+  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*

@@ -222,6 +222,20 @@ async function maOf(maNo: string): Promise<{ ma: MaRow; bagts: string }> {
   return { ma, bagts };
 }
 
+/**
+ * ⚠️ 2026-10-19 (аудит): ӨӨРИЙГӨӨ БАТЛАХ ШАЛГУУРЫН ХЭН — AGOL хэрэглэгчийн нэр (`currentUser`), эрх · хүрээтэй (`requireCap` ·
+ *    `chanarAcl`) НЭГ таних тэмдэг. Урьд нь `uploaded_by`/`decided_by` нь Enterprise сешний нэр (`s.user`) байсан тул
+ *    нэг хүн AGOL дээр ирүүлэгч, Enterprise-д өөр дансаар (эсвэл өөр хүний Enterprise сешнээр) нэвтэрвэл өөрийн
+ *    оруулсныг батлах боломжтой байв. Enterprise нь зөвхөн ТЭЭВЭР (PDF item · хүснэгтийн токен).
+ *    `currentUser` хоосон (Node / нэвтрэлт унтраалттай) бол Enterprise нэр — урьдын зан.
+ */
+const actorOf = (s: { user: string }): string => (currentUser() ?? s.user).trim().toLowerCase();
+/** Өөрийн оруулсан мөр үү — AGOL нэр, эсвэл ХУУЧИН мөрийн Enterprise нэр (2026-10-19-нөөс өмнө бичигдсэн) */
+export const isOwnUpload = (uploadedBy: string, actor: string, entUser: string): boolean => {
+  const u = uploadedBy.trim().toLowerCase();
+  return !!u && (u === actor.trim().toLowerCase() || u === entUser.trim().toLowerCase());
+};
+
 function scopeDeny(role: 'author' | 'review', bagts: string): void {
   if (!strict()) return;
   const me = currentUser();
@@ -265,7 +279,8 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
       adds: JSON.stringify([{ attributes: {
         [F.kind]: a.kind, [F.maNo]: a.maNo, [F.docNo]: a.docNo.slice(0, 60) || null, [F.docDate]: dd,
         [F.pdfItem]: item.id, [F.pdfName]: a.file.name.slice(0, 255), [F.status]: 'pending',
-        [F.uploadedBy]: s.user, [F.uploadedAt]: Date.now(),
+        /* ⚠️ 2026-10-19 (аудит): AGOL нэр (`actorOf`) — Enterprise сешний нэр биш */
+        [F.uploadedBy]: actorOf(s), [F.uploadedAt]: Date.now(),
       } }]),
     });
     const r = j.addResults?.[0];
@@ -310,18 +325,20 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   }
   const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
-  if (fresh.uploadedBy && fresh.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
+  /* ⚠️ 2026-10-19 (аудит): AGOL нэрээр (`actorOf`) — хуучин мөрийн Enterprise нэртэй ч тулгана (`isOwnUpload`) */
+  const actor = actorOf(s);
+  if (isOwnUpload(fresh.uploadedBy, actor, s.user)) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
   const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
     updates: JSON.stringify([{ attributes: {
       OBJECTID: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
-      [F.decidedBy]: s.user, [F.decidedAt]: Date.now(),
+      [F.decidedBy]: actor, [F.decidedAt]: Date.now(),
     } }]),
   });
   const r = j.updateResults?.[0];
   if (!r?.success) throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
   const back = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
-  if (back && back.decidedBy && back.decidedBy.toLowerCase() !== s.user.toLowerCase()) {
+  if (back && back.decidedBy && back.decidedBy.toLowerCase() !== actor) {
     throw new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', back.decidedBy, back.status));
   }
 }

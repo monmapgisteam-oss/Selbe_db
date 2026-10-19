@@ -301,6 +301,8 @@ export function Qaqc() {
    *    алдааны блок: ойлгомжтой тайлбар · эвхмэл техникийн мөр · «Дахин оролдох».
    */
   const [loadErr, setLoadErr] = useState<Error | null>(null);
+  /** Амжилттай ачаалагдсан багц (`loadedPkgRef`-ийн дэлгэцийн хуулбар — тоолуурын «—», ref-ийг зурахад уншихгүй) */
+  const [loadedKey, setLoadedKey] = useState('');
   /** Хадгалаагүй засвар — `${ObjectID}:${баганын индекс}` → текст */
   const [pend, setPend] = useState<Record<string, string>>({});
   /** Яг одоо засагдаж буй нүд — `${мөрийн индекс}:${багана}` */
@@ -387,6 +389,7 @@ export function Qaqc() {
     setRows([]);
     setFlat(false);
     loadedPkgRef.current = '';
+    setLoadedKey('');
     try {
       const { rows: qRows, maxLen: ml } = await loadQaqcSheet(key);
       if (!live()) return;
@@ -413,6 +416,7 @@ export function Qaqc() {
       setMaxLen(ml);
       setFlat(withTree == null);
       loadedPkgRef.current = key;
+      setLoadedKey(key);
     } catch (e) {
       /* ⚠️ 2026-10-01: `loadErr` — ойлгомжтой тайлбар + дахин оролдох (дээрх ⚠️) */
       if (live()) setLoadErr(e instanceof Error ? e : new Error(String(e)));
@@ -1600,8 +1604,11 @@ export function Qaqc() {
           title={tr('Нэг ч баримт бөглөгдөөгүй ажлын мөрүүдийг л харуулна. Бүлгийн мөр хэвээр үлдэнэ — эс бөгөөс шатлал тасарна.')}
         >
           {tr('Зөвхөн бөглөөгүй')}{' '}
+          {/* ⚠️ 2026-10-19: ачаалал унасан үед «—» — «0 / 0» нь алдааны мэдэгдлийн хажууд «ажил алга» гэж худал (null ≠ 0) */}
           <span className={st.layerBtnN}>
-            {emptyCount.toLocaleString()} / {leafCount.toLocaleString()}
+            {/* ⚠️ 2026-10-19 (review): АЧААЛЖ байх үед ч «—» (`loadedKey` — энэ багц амжилттай ачаалагдсан эсэх) — урьд нь
+                ачааллын турш «0 / 0» гарч байв (AjilBatlah · HuvaariBatlah-ийн `st.k === 'ready'`-тэй ижил) */}
+            {loadErr || loadedKey !== pkg.key ? '— / —' : <>{emptyCount.toLocaleString()} / {leafCount.toLocaleString()}</>}
           </span>
         </button>
 

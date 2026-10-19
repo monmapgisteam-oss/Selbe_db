@@ -81,6 +81,12 @@ export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPan
           </button>
         </div>
       )}
+      {/* ⚠️ 2026-10-19 (аудит): танигдаагүй багцын нэртэй хуваарилалт — эрх нээгдэхгүй, админ дахин сонгоно (`erhOverview.unknownBagts`) */}
+      {e.unknownBagts.length > 0 && (
+        <div className={s.capErr} role="alert">
+          {tr('Танигдаагүй багц ({0}) — ямар ч багц нээгдэхгүй; тухайн эрхийн хуудсанд багцыг дахин сонгоно уу.', e.unknownBagts.join(', '))}
+        </div>
+      )}
       {err && <div className={s.capErr} role="alert">{err}</div>}
       <div className={s.wfList}>
         {rows.map((r) => (

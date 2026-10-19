@@ -59,6 +59,8 @@ import { finNavDirty } from '@/lib/finEdit';
 import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
+/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх ба шар зурвас (жижиг, ArcGIS-гүй) */
+import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
  * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
@@ -655,6 +657,13 @@ function PortalContent(
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
   /**
+   * ⚠️ 2026-10-19: «Систем түр хаах» цонх — `sysClose` эрхтэй эсвэл кодын super (`useCanCloseSystem`). Цэсний «Систем»
+   *    бүлэгт товч (`ViewRail.onSysClose`); хаалттай үед ЭНЭ хэрэглэгч нэвтэрсэн бол (эрхтэй) шар зурвас.
+   */
+  const [sysOpen, setSysOpen] = useState(false);
+  const canSys = useCanCloseSystem(auth.user?.username, auth.status === 'signed-in');
+  const sysNow = useSystemClosed();
+  /**
    * AI туслахын цонх нээлттэй эсэх.
    * ⚠️ Агент нь `navScope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн үзэж болох
    * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
@@ -898,7 +907,9 @@ function PortalContent(
       setOverlapFocus(null);
       setOverlapShown([]);
       resetNeedSelection();
-      setDetailHidden([]);
+      /* ⚠️ 2026-10-19 (аудит): `[]` биш `OLD_ET_OPTIONAL` — урьд нь харагдац руу орох бүрд хуучин ЕТ-ийн сонгомол
+         давхаргууд (дугуйн · явган зам · ногоон) АНХДАГЧ унтраалтаа алдаж бүгд асдаг байв (`OLD_ET_OPTIONAL`-ийн ⚠️). */
+      setDetailHidden(OLD_ET_OPTIONAL);
     }
     return true;
   }, [clearFilter, confirmLeave]);
@@ -1316,6 +1327,9 @@ function PortalContent(
             docsActive={docsOpen}
             onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
             adminActive={adminOpen}
+            onSysClose={canSys ? () => setSysOpen(true) : undefined}
+            sysCloseActive={sysOpen}
+            sysClosedNow={!!sysNow}
             /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
                зүйл байхгүй тул мөр гарахгүй. */
             userName={auth.user?.fullName || auth.user?.username}
@@ -1542,7 +1556,8 @@ function PortalContent(
                       setTab={(x) => {
                         if (x === hesegTab) return;
                         setHesegTab(x); setHesegPick(null); setOverlapSel(null); setOverlapFocus(null);
-                        setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden([]);
+                        /* ⚠️ 2026-10-19 (аудит): таб солиход ч хуучин ЕТ-ийн сонгомол давхарга АНХДАГЧААР унтраалттай */
+                        setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden(OLD_ET_OPTIONAL);
                       }}
                       change={<ChangePanel pick={hesegPick} setPick={setHesegPick} />}
                       overlap={(
@@ -1612,6 +1627,20 @@ function PortalContent(
             <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />
           </AdminOpenCtx.Provider>
         </OverlayBoundary>
+      )}
+
+      {/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх (эрхтэй) ба хаалттай үеийн шар зурвас. Зурвас нь
+          ЗӨВХӨН ЭНЭ хэрэглэгчид хаалт үйлчлэхгүй үед (`auth.sysClosed` хоосон) — хаалттай хэрэглэгчид
+          `SystemClosed` цонх аль хэдийн бүтэн дэлгэцээр. */}
+      {canSys && (
+        <OverlayBoundary label={tr('Систем түр хаах цонх нээгдсэнгүй')} onReset={() => setSysOpen(false)}>
+          <SystemCloseDialog open={sysOpen} onClose={() => setSysOpen(false)} />
+        </OverlayBoundary>
+      )}
+      {/* ⚠️ 2026-10-19 (аудит): зурвас ЗӨВХӨН хаалтыг ДАВАХ эрхтэйд (`canSys` = `canBypassClosed`). Урьд нь хаалт
+          хараахан тусаагүй (дараагийн poll хүлээж буй) энгийн хэрэглэгчид «бусдад хаалттай» гэж ХУДАЛ хэлдэг байв. */}
+      {sysNow && canSys && !auth.sysClosed && !sysOpen && (
+        <SystemClosedStrip onOpen={() => setSysOpen(true)} />
       )}
 
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}

@@ -171,10 +171,29 @@ function hideControls(roots: Element[]): Element[] {
   return hidden;
 }
 
-/** Хүснэгт — `<table>` эсвэл `role=table|grid`. colspan-ыг хоосон нүдээр дэлгэнэ */
-function readTable(el: Element): DocBlock | null {
+/**
+ * ⚠️ 2026-10-19: ХҮСНЭГТИЙН НИЙТ МӨР — виртуал гүйлгээтэй хүснэгт DOM-д зөвхөн ХАРАГДАЖ БУЙ цонхоо зурдаг
+ *    (жиш. «Гүйцэтгэл бөглөх» 1,400 мөрийн ~40). Хүснэгт өөрөө нийт тоогоо зарлана: `data-rep-total`
+ *    (манай тэмдэглэгээ, ӨГӨГДЛИЙН мөрийн тоо). Зарлаагүй бол `null` (тоо мэдэгдэхгүй).
+ * ⚠️ `aria-rowcount`-ыг УНШИХГҮЙ — стандартаар толгойн мөрийг ТООЦДОГ тул өгөгдлийн мөртэй харьцуулахад
+ *    бүтэн хүснэгтийг ч «тайрсан» гэж худал тэмдэглэнэ.
+ */
+function declaredTotal(el: Element): number | null {
+  const raw = el.getAttribute('data-rep-total');
+  const n = raw == null ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Хүснэгт — `<table>` эсвэл `role=table|grid`. colspan-ыг хоосон нүдээр дэлгэнэ.
+ * ⚠️ 2026-10-19: ТАЙРАЛТЫГ ИЛ ХЭЛНЭ — урьд нь `MAX_TABLE_ROWS`-оор тайрсан эсвэл виртуал хүснэгтийн
+ *    зөвхөн дэлгэцийн мөрүүдийг авсан тайлан БҮТЭН мэт харагддаг байв. Одоо хүснэгтийн ДАРАА тэмдэглэл.
+ */
+function readTable(el: Element): DocBlock[] {
   const head: string[][] = [];
   const rows: string[][] = [];
+  /** `MAX_TABLE_ROWS`-оор зогссон (цааш мөр үлдсэн) эсэх */
+  let capped = false;
   const txt = (c: Element) => oneLine((c as HTMLElement).innerText || c.textContent || '');
   if (el.tagName === 'TABLE') {
     for (const tr_ of (el as HTMLTableElement).rows) {
@@ -187,8 +206,10 @@ function readTable(el: Element): DocBlock | null {
       }
       if (!cells.some(Boolean)) continue;
       const inHead = tr_.parentElement?.tagName === 'THEAD' || (!rows.length && [...tr_.cells].every((c) => c.tagName === 'TH'));
-      (inHead && !rows.length ? head : rows).push(cells);
-      if (rows.length >= MAX_TABLE_ROWS) break;
+      const dest = inHead && !rows.length ? head : rows;
+      /* ⚠️ 2026-10-19: `capped` нь хязгаараас ЦААШ мөр ҮЛДСЭН үед л — яг 1500 мөртэй хүснэгт бүтэн */
+      if (dest === rows && rows.length >= MAX_TABLE_ROWS) { capped = true; break; }
+      dest.push(cells);
     }
   } else {
     for (const r of el.querySelectorAll('[role="row"]')) {
@@ -197,12 +218,32 @@ function readTable(el: Element): DocBlock | null {
       const cells = cs.map(txt);
       if (!cells.some(Boolean)) continue;
       const isHead = cs.every((c) => c.getAttribute('role') === 'columnheader');
-      (isHead && !rows.length ? head : rows).push(cells);
-      if (rows.length >= MAX_TABLE_ROWS) break;
+      const dest = isHead && !rows.length ? head : rows;
+      if (dest === rows && rows.length >= MAX_TABLE_ROWS) { capped = true; break; }
+      dest.push(cells);
     }
   }
-  if (!head.length && !rows.length) return null;
-  return { kind: 'table', head, rows };
+  if (!head.length && !rows.length) return [];
+  const out: DocBlock[] = [{ kind: 'table', head, rows }];
+  const total = declaredTotal(el);
+  const note = tableNote(rows.length, total, capped);
+  if (note) out.push({ kind: 'p', text: note, italic: true, size: 16, color: '666666' });
+  return out;
+}
+
+/**
+ * Тайрсан/виртуал хүснэгтийн тэмдэглэл (цэвэр — `viewReport.check`).
+ * · нийт тоо мэдэгдэж, түүнээс цөөн мөр орсон → «… мөрөөс эхний N» / «дэлгэцэд харагдаж буй N мөр»;
+ * · нийт тоо мэдэгдэхгүй ч хязгаарт хүрсэн → «эхний N мөр (хязгаар)».
+ */
+export function tableNote(got: number, total: number | null, capped: boolean): string | null {
+  if (total != null && total > got) {
+    return capped
+      ? tr('⚠️ Нийт {0} мөрөөс эхний {1} мөр орсон — бүтнээр нь харагдацын Excel татах товчоор авна уу.', total.toLocaleString('en-US'), got.toLocaleString('en-US'))
+      : tr('⚠️ Зөвхөн дэлгэцэд харагдаж буй мөрүүд ({1} / нийт {0}) — бүтнээр нь харагдацын Excel татах товчоор авна уу.', total.toLocaleString('en-US'), got.toLocaleString('en-US'));
+  }
+  if (capped) return tr('⚠️ Хүснэгтийн эхний {0} мөр орсон (тайлангийн хязгаар) — үлдсэнийг харагдацаас харна уу.', got.toLocaleString('en-US'));
+  return null;
 }
 
 /* SVG-д дэлгэцийн тооцоолсон загварыг суулгана — CSS хувьсагч, класс нь тусдаа
@@ -347,7 +388,7 @@ function collect(root: Element, out: Pending[]): void {
   const walk = (el: Element, axisIn: boolean) => {
     if (el.hasAttribute(HIDE) || !visible(el)) return;
     if (isMapHost(el)) { push({ kind: 'map', host: el, caption: tr('Газрын зураг') }); return; }
-    if (isTable(el)) { const t = readTable(el); if (t) push({ kind: 'block', block: t }); return; }
+    if (isTable(el)) { for (const b of readTable(el)) push({ kind: 'block', block: b }); return; }
     const box = chartBox(el);
     if (box) { push({ kind: 'svg', ...serializeHtml(el), fallback: serializeSvg(box), caption: captionOf(box) }); return; }
     if (isChartSvg(el)) { push({ kind: 'svg', ...serializeSvg(el), caption: captionOf(el) }); return; }

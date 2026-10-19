@@ -324,11 +324,26 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    `bagtsScope` `[]` өгч нэг ч багц нээгддэггүй байв.
    */
   const unrestricted = authStatus === "off" || roleForUser(user?.username) === "super";
-  const myBagts = useMemo(
-    () => (unrestricted ? null : bagtsScope(user?.username)),
+  /*
+   * ⚠️ 2026-10-19 (аудит): ИНЖЕНЕРИЙН ОБЬЁМЫН хүрээ (`obyemScope` · `obyemEdit`/`obyemApprove` эрхтэй үүрэг) ч НЭГДЭЛД.
+   *    Урьд нь зөвхөн урсгалын томилгоо (`bagtsScope`) тул обьёмын засварлагч/батлагч зөвхөн урсгалд томилогдсон
+   *    багцдаа л ажиллаж чаддаг байв (урсгалгүй бол жагсаалт хоосон). Тэр багцад ЗӨВХӨН обьёмын үйлдэл нээгдэнэ
+   *    (`canObyemEdit`/`canObyemApprove` — өөрийн хүрээгээр); гүйцэтгэл бөглөх нь `permPerf` (company томилгоо) хэвээр.
+   */
+  const myBagts = useMemo(() => {
+    if (unrestricted) return null;
+    const flowSc = bagtsScope(user?.username);
+    if (flowSc === null) return null;
+    const out = new Set(flowSc);
+    for (const [cap, role] of [['obyemEdit', 'editor'], ['obyemApprove', 'approver']] as const) {
+      if (!hasCap(user?.username, cap)) continue;
+      const sc = obyemScope(user?.username, role);
+      if (sc === null) return null;
+      sc.forEach((g) => out.add(g));
+    }
+    return [...out];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, unrestricted, aclN],
-  );
+  }, [user, unrestricted, aclN, obN, capN]);
   const groupOpts = useMemo(
     () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
     [myBagts],
@@ -3435,11 +3450,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         >
           <div className={st.tableWrap}>
           <div ref={colHlRef} className={st.colHl} aria-hidden="true" />
+          {/* ⚠️ 2026-10-19: `data-rep-total` — виртуал хүснэгт (`useVirtualWindow`) DOM-д зөвхөн цонхоо зурдаг тул
+              «Тайлан татах» (`viewReport.readTable`) нийт мөрийн тоог эндээс уншиж «дэлгэцэд харагдаж буй мөрүүд»
+              гэж ИЛ тэмдэглэнэ (тайлан бүтэн мэт харагдахгүй). */}
           <table
             className={cls("xl b32")}
             style={colStyle}
             onMouseOver={moveColHl}
             onMouseLeave={hideColHl}
+            data-rep-total={vis.length}
           >
             <SheetHead sc={sc} nBld={nBld} bands={bands} grip={grip} extra={extra} />
             <tbody ref={tbodyRef}>

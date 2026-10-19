@@ -25,8 +25,9 @@
  */
 
 import { useEffect, useState } from 'react';
+import { initRemote } from '@/lib/permissions';
 import { t as tr } from '@/lib/i18nCore';
-import { subscribe } from '@/lib/permissions';
+import { remoteMalformed, subscribe } from '@/lib/permissions';
 import { subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
 import { subscribeAcl } from '@/lib/guitsetgelAcl';
 import { subscribeQaqcAcl } from '@/lib/qaqcAcl';
@@ -38,7 +39,7 @@ import { subscribeButetsAcl } from '@/lib/butetsAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
-import { allPkgErh, allUserErh, type RoleLine } from '@/lib/erhOverview';
+import { allPkgErh, allUserErh, unknownPkgUsers, type RoleLine } from '@/lib/erhOverview';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
 import { ERH_PANES, paneLabel } from './capText';
 import { ErhMatrix } from './ErhMatrix';
@@ -82,6 +83,26 @@ export function ErhOverview({
   const pkgs = allPkgErh(src);
   const people = allUserErh(src);
   const allIssues = pkgs.flatMap((p) => p.issues);
+  /* ⚠️ 2026-10-19 (аудит): ӨГӨГДЛИЙН ЦЭВЭРЛЭГЭЭ — эвдэрсэн мөр (`permsRemote.fetchAll` алгассан) ба танигдаагүй багцын
+     нэртэй хуваарилалт. Аль аль нь ЭРХ НЭЭДЭГГҮЙ (fail-closed) — админ «томилсон атлаа ажиллахгүй» шалтгааныг энд харна. */
+  const malformed = remoteMalformed();
+  const unknownPkgs = unknownPkgUsers(src);
+  /* ⚠️ 2026-10-19: эвдэрсэн мөрийг OBJECTID-оор устгах (`permsRemote.removeMalformedRow`) — зайтай мөрийг
+     `removeByKey` олдоггүй тул энэ л зам. Устгасны дараа хүснэгтийг дахин уншина. */
+  const [cleanBusy, setCleanBusy] = useState<number | null>(null);
+  const [cleanErr, setCleanErr] = useState('');
+  const dropRow = async (oid: number, key: string) => {
+    if (!window.confirm(tr('«{0}» мөрийг эрхийн хүснэгтээс УСТГАХ уу? (OBJECTID {1})', key, oid))) return;
+    setCleanBusy(oid); setCleanErr('');
+    try {
+      const { removeMalformedRow, takeWriteError } = await import('@/lib/permsRemote');
+      const ok = await removeMalformedRow(oid, key);
+      if (!ok) { setCleanErr(takeWriteError() || tr('Устгаж чадсангүй.')); return; }
+      await initRemote(false, true);
+    } finally {
+      setCleanBusy(null);
+    }
+  };
 
   return (
     <div className={s.aclWrap}>
@@ -99,6 +120,46 @@ export function ErhOverview({
           {allIssues.map((i, k) => (
             <div key={`${i.key}-${i.args[0]}-${k}`} className={s.aclErr} role="alert">
               {issueText(i)}
+            </div>
+          ))}
+        </div>
+      )}
+      {(malformed.length > 0 || unknownPkgs.length > 0) && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Эрхийн хүснэгтийн цэвэрлэгээ')}</span>
+            <span className={s.aclCount}>{malformed.length + unknownPkgs.length}</span>
+          </div>
+          {malformed.map((m, k) => (
+            <div key={`m-${m.key}-${k}`} className={s.aclErr} role="alert">
+              {m.reason === 'stage'
+                ? tr('«{0}»: урсгалын мөрөнд шат алга — мөр үл тоогдож байна (хүснэгтээс засна уу).', m.key)
+                : m.reason === 'user'
+                  ? tr('«{0}»: аккаунтын нэр хоосон эсвэл зөвшөөрөгдөөгүй — мөр үл тоогдож байна (хүснэгтээс устгана уу).', m.key)
+                  : m.reason === 'space'
+                    /* ⚠️ 2026-10-19: зайтай нэр — эрх олгохгүй; устгаад зөв нэрээр дахин олгоно */
+                    ? tr('«{0}»: аккаунтын нэрийн захад/угтварын дараа зай байна — мөр үл тоогдож байна, эрх олгохгүй (устгаад зөв нэрээр дахин олгоно уу).', m.key)
+                    : tr('«{0}»: эвдэрсэн мөр (views JSON задлагдсангүй) — үл тоогдож байна, эрх олгохгүй (хүснэгтээс засна уу).', m.key)}
+              {m.oid != null && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className={s.aclPkg}
+                    disabled={cleanBusy != null}
+                    aria-busy={cleanBusy === m.oid || undefined}
+                    onClick={() => { void dropRow(m.oid!, m.key); }}
+                  >
+                    {cleanBusy === m.oid ? tr('Устгаж байна…') : tr('Мөрийг устгах')}
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+          {cleanErr && <div className={s.aclErr} role="alert">{cleanErr}</div>}
+          {unknownPkgs.map((x) => (
+            <div key={`u-${x.user}`} className={s.aclErr} role="alert">
+              {tr('«{0}»: танигдаагүй багц ({1}) — ямар ч багц нээгдэхгүй; тухайн эрхийн хуудсанд багцыг дахин сонгоно уу.', x.user, x.bagts.join(', '))}
             </div>
           ))}
         </div>
@@ -151,6 +212,10 @@ export function ErhOverview({
               )}
               {!u.any && (
                 <div className={s.aclEmpty}>{tr('Эрх олгоогүй — зөвхөн харагдац.')}</div>
+              )}
+              {/* ⚠️ 2026-10-19 (аудит): танигдаагүй багцын нэр — эрх нээгдэхгүй */}
+              {u.unknownBagts.length > 0 && (
+                <div className={s.aclErr} role="alert">{tr('Танигдаагүй багц: {0}', u.unknownBagts.join(', '))}</div>
               )}
 
               {u.flow && (

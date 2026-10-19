@@ -598,7 +598,8 @@ export function AjilBatlah() {
           </button>
         )}
         <span className={s.spacer} />
-        <span className={s.total}>{tr('{0} илгээлт', num(filtered.length))}</span>
+        {/* ⚠️ 2026-10-19: ачаалагдаагүй/унасан үед «—» — «0 илгээлт» алдааны мэдэгдлийн хажууд худал (null ≠ 0) */}
+        <span className={s.total}>{tr('{0} илгээлт', st.k === 'ready' ? num(filtered.length) : '—')}</span>
       </div>
 
       <div className={s.body}>

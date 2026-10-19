@@ -24,9 +24,10 @@ import { friendlyError } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import {
-  addRegister, addWaste, entryFieldLabel, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
+  addRegister, addWaste, entryFieldLabel, habeaEntConfigured, HabeaEntSignInRequired, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
   loadWasteMetrics, newGlobalId, nextNumber, registerSig, type EntryField,
 } from '@/lib/habeaRegisters';
+import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import x from './uzlegExport.module.css';
 import e from './habeaEntry.module.css';
 
@@ -41,7 +42,33 @@ const utcDay = (v: string) => {
 /** «№» / «д/д» — автоматаар дараагийн дугаар санал болгох талбар */
 const isSeq = (f: EntryField) => f.type === 'number' && /^(№|д\/д)$/i.test(f.alias.trim());
 /** Хариу алдагдсан бичилтийн мессеж нь өөрөө тайлбартай — `friendlyError` ангилалд оруулахгүй */
-const errText = (ex: unknown) => (ex instanceof HabeaLostWrite ? ex.message : friendlyError(ex));
+const errText = (ex: unknown) => (ex instanceof HabeaLostWrite || ex instanceof HabeaEntSignInRequired ? ex.message : friendlyError(ex));
+
+/**
+ * ⚠️ 2026-10-19: ENTERPRISE НЭВТРЭЛТ — ХАБЭА-гийн бүртгэл/хог хаягдал Enterprise-д бичигддэг бөгөөд урьд нь
+ *    токенгүй (НЭРГҮЙ) явдаг байв (`habeaRegisters`-ийн толгойн ⚠️). Одоо сешнгүй бол «Хадгалах» хаалттай,
+ *    шалтгаан ба нэвтрэх маягт (`EntSignIn` — MA · FIC/М-актын ижил сешн) маягтын дээд хэсэгт.
+ */
+function EntGate({ ok }: { ok: boolean }) {
+  /* ⚠️ 2026-10-19: геопортал тохируулаагүй — бичилт урьдын адил нэргүй (`habeaRegisters.entAuth`); маягт зөвхөн
+     `habeaData` эрхтэйд нээгддэг тул энэ тэмдэглэл админ/бөглөгчид л харагдана */
+  if (!habeaEntConfigured()) {
+    return (
+      <p className={e.muted} role="note">
+        {tr('Enterprise геопортал тохируулагдаагүй (NEXT_PUBLIC_ENT_PORTAL_URL) — бүртгэл Enterprise нэвтрэлтгүй (нэргүй) хадгалагдана.')}
+      </p>
+    );
+  }
+  if (ok) return <EntSignIn compact />;
+  return (
+    <>
+      <p className={e.muted} role="status">
+        {tr('ХАБЭА-гийн бүртгэл Enterprise геопорталд хадгалагддаг — хадгалахын өмнө Enterprise-д нэвтэрнэ үү.')}
+      </p>
+      <EntSignIn compact />
+    </>
+  );
+}
 /** «Багц 3.1» (шүүлтийн түлхүүр) → дэлгэцийн нэр */
 export const pkgColLabel = (name: string) => tr('Багц {0}', name.replace(/^Багц\s*/, ''));
 
@@ -126,6 +153,10 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
   const [prior, setPrior] = useState<{ sig: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /* ⚠️ 2026-10-19: Enterprise сешн (`EntGate`) */
+  const ent = useEntSession();
+  /* ⚠️ 2026-10-19: Enterprise тохируулаагүй бол урьдын адил нэргүй бичилт (`habeaRegisters.entAuth`) — товч хаалтгүй */
+  const entOk = !!ent || !habeaEntConfigured();
 
   const pickKind = useCallback((k: string) => {
     setKind(k);
@@ -206,13 +237,14 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
           {err && <p className={x.err} role="alert">{err}</p>}
           <div className={x.actions}>
             <button type="button" className={x.btn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
-            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok}>
+            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !entOk}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
             </button>
           </div>
         </>
       )}
     >
+      <EntGate ok={!!ent} />
       <div className={x.chips} role="radiogroup" aria-label={tr('Төрөл')}>
         {kinds.map((k) => (
           <button key={k.key} type="button" role="radio" aria-checked={kind === k.key} disabled={busy}
@@ -265,6 +297,10 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   const [prior, setPrior] = useState<{ before: number; sig: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /* ⚠️ 2026-10-19: Enterprise сешн (`EntGate`) */
+  const ent = useEntSession();
+  /* ⚠️ 2026-10-19: Enterprise тохируулаагүй бол урьдын адил нэргүй бичилт (`habeaRegisters.entAuth`) — товч хаалтгүй */
+  const entOk = !!ent || !habeaEntConfigured();
 
   useEffect(() => {
     let alive = true;
@@ -321,13 +357,14 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
           {err && <p className={x.err} role="alert">{err}</p>}
           <div className={x.actions}>
             <button type="button" className={x.btn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
-            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !dom}>
+            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !dom || !entOk}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
             </button>
           </div>
         </>
       )}
     >
+      <EntGate ok={!!ent} />
       <div className={e.grid}>
         <label className={x.field}>
           <span>{tr('Долоо хоног')}</span>

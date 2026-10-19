@@ -206,7 +206,9 @@ export type ExecReport = {
  */
 export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   /* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — төлөвлөгөөт хувь хуваарийн муруйгаас (`loadPlanCurveCached`) */
-  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
+  /* ⚠️ 2026-10-19: `TUSUL_NEGTGEL` — `loadNegtgelPct` (`negtgel.loadNegtgelFull`) нэгтгэлийн хүснэгтээс уншдаг;
+     табын «Нийтлэх»-ийн (`negtgelEdit.publishNegEdits`) дараа доод кэш хаягдсан ч энэ нэгтгэл 5 мин хуучин тоо барьдаг байв. */
+  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
   const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbsPct] = await Promise.all([

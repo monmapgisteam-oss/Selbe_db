@@ -81,14 +81,12 @@ export const ROLE_BY_USER: Record<string, Role> = {
   selbe_et: "beginner",
   selbe_redesign: "tolovlolt",
   /*
-   * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛЫН аккаунтууд. Нэрийг нь бодит ArcGIS бүртгэлээр
-   * солино — энд байгаа нь БҮТЭЦ харуулсан жишээ. Аккаунт нэмэхдээ зөвхөн
-   * энэ хүснэгтэд мөр нэмнэ; эрх нь `ROLE_ACCESS`-ээс автоматаар гарна.
+   * ⚠️ 2026-10-19 (аудит): ЖИШЭЭ урсгалын дөрвөн аккаунт (`selbe_guitsetgegch` · `selbe_injener` · `selbe_menejer` ·
+   *    `selbe_eronhii`) ХАСАГДСАН. Тайлбар нь «бүтэц харуулсан жишээ» гэдэг байсан ч код тэднийг ЖИНХЭНЭЭР нэвтрүүлдэг
+   *    (`roleForUser` → `hasAccess`) байв — тийм нэрээр ArcGIS аккаунт үүсгэсэн хэн ч нэвтэрч, урсгалын үүрэгтэй
+   *    болох байлаа. Урсгалын хүнийг админ панелаас нэмж (`permissions.setUser`), «Гүйцэтгэлийн урсгалын эрх»-д
+   *    шатанд томилно — шат нь томилгооноос (`resolveFlowStage`), энэ хүснэгтээс биш. Буцааж бүү нэм.
    */
-  selbe_guitsetgegch: "guitsetgegch",
-  selbe_injener: "injener",
-  selbe_menejer: "menejer",
-  selbe_eronhii: "eronhii",
 };
 
 /**
@@ -110,7 +108,10 @@ export const ROLE_ACCESS: Record<
     //    хумигдаагүй: бөглөх хуудас нь тэр харагдацын нэг таб болсон.
     // ⚠️ `sysdoc` (2026-09-16): системийн баримт нь ШИЙДВЭР ГАРГАГЧИД зориулагдсан
     //    тул зөвхөн super биш, ердийн үүрэгт ч нээлттэй. Өгөгдөл уншдаггүй.
-    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari", "sysdoc"],
+    // ⚠️ 2026-10-19 (аудит): «Гүйцэтгэл» · «Хуваарь» ХАСАГДСАН — урсгалтай харагдац (`caps.WORKFLOW_VIEWS`) 2026-10-01-нөөс
+    //    хадгалалт/суурьд ҮЛ ТООЦОГДОНО (`permissions.resolveAccess`), зөвхөн хуваарилалт/томилгоогоор нээгдэнэ. Энд
+    //    үлдсэн нь картын тоолуур ба «суурь» (`revokeFlowAccess.keepGuits`)-ийг төөрөгдүүлдэг үхмэл утга байв.
+    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "sysdoc"],
     docs: true,
     home: "plan",
   },
@@ -141,6 +142,8 @@ export const ROLE_ACCESS: Record<
  *    энгийн объектын прототипоос функц олж `null` биш утга буцаадаг байв (`Portal.tsx`-ийн ижил засвар).
  */
 export const roleForUser = (username?: string | null): Role | null => {
-  const k = username ? username.toLowerCase() : '';
+  /* ⚠️ 2026-10-19 (аудит): `trim()` — бусад бүх эрхийн түлхүүр (`permsRemote.upsert`, `meOf`) trim · жижиг үсгээр;
+     зайтай нэр (« bat ») энд super/admin-ийг алдаж, бусад газарт олддог зөрүү үүсдэг байв. */
+  const k = username ? username.trim().toLowerCase() : '';
   return k && Object.hasOwn(ROLE_BY_USER, k) ? ROLE_BY_USER[k] : null;
 };

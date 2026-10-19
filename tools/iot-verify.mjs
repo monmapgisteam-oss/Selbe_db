@@ -33,7 +33,8 @@ async function rawRows(url, field) {
       /* ⚠️ 2026-10-09: OBJECTID DESC — `received_datetime` нь String бөгөөд `dd/MM/yyyy`
          утга ч ирдэг тул мөрөөр эрэмбэлэх нь хугацааны эрэмбэ БИШ (sensors.ts-ийн
          2026-10-06-ны ⚠️). OID нь давхцалгүй тул хуудаслалт ч тогтвортой. */
-      orderByFields: 'OBJECTID DESC',
+      /* ⚠️ 2026-10-19: IoT давхаргын OID нь ЖИЖИГ үсгээр (`objectid`) — `OBJECTID` гэвэл зарим хостод унана (агентын `ds:iot_*`-тэй ижил) */
+      orderByFields: 'objectid DESC',
       resultOffset: String(off),
       resultRecordCount: '2000',
       returnGeometry: 'false',

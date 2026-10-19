@@ -108,7 +108,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, signOut, status, user, accessLost, recheckPerms } = useAuth();
+  const { authorized, signIn, signOut, status, user, accessLost, sysClosed, recheckPerms } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -362,7 +362,10 @@ export default function Root() {
     const key = `${navScope === 'all' ? 'all' : navScope.join(',')}|${docsAllowed ? 1 : 0}`;
     if (lastPortal?.key !== key) setLastPortal({ navScope, docsAllowed, key });
   }
-  const frozen = scope && accessLost && status === 'denied' ? lastPortal : null;
+  /* ⚠️ 2026-10-19: «СИСТЕМ ТҮР ХААГДСАН» (`AuthCtx.sysClosed`) ч ИЖИЛ загвар — дотор байсан хэрэглэгчийн Portal
+     сүүлийн хүрээгээр амьд үлдэж, `AuthNotice`-ийн `SystemClosed` цонх дээр нь; хаалттай үед ШИНЭЭР нэвтэрсэн хүнд
+     `lastPortal` хоосон тул Portal ОГТ зурагдахгүй (`authorized` худал → нүүр/нээлтийн хуудас цонхны ард). */
+  const frozen = scope && ((accessLost && status === 'denied') || (sysClosed && status === 'signed-in')) ? lastPortal : null;
 
   /* Үүргийн нүүр харагдац — хязгаарлагдмал хэрэглэгчийн нүүрт тодруулна (`openEntry`-тэй ижил эх) */
   const roleHome = (() => {

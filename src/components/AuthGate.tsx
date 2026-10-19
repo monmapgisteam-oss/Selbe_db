@@ -5,11 +5,14 @@ import {
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
-import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
+import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
+import { subscribeCaps } from '@/lib/caps';
+import type { SysState } from '@/lib/permsRemote';
+import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
 import {
-  cancelSignOut, dismissSessionDead, ensureFreshToken, noteSignOut, registerIdentity, retrySession, sessionDead,
-  subscribeSessionDead,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, registerIdentity, reopenSessionDead,
+  retrySession, sessionDead, subscribeSessionDead,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -56,6 +59,12 @@ type AuthCtx = {
    *    цонх гаргана. Сүлжээний түр тасалдалд ХЭЗЭЭ Ч үнэн болохгүй.
    */
   sessionExpired: boolean;
+  /**
+   * ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН — ЭНЭ хэрэглэгчид (`permissions.closedFor`: `sysClose` эрхгүй, кодын super биш).
+   *    `status` нь `signed-in` ХЭВЭЭР, харин `authorized` худал: `Root` дотор байсан Portal-ыг `frozen` загвараар
+   *    амьд үлдээж (хадгалаагүй ажил устахгүй), `AuthNotice` дээр нь `SystemClosed` цонх гаргана. `null` = нээлттэй.
+   */
+  sysClosed: SysState | null;
   /** Эрхийн хүснэгтийг ОДОО дахин уншина (15 с / 5 мин хүлээлгүй) — «Дахин оролдох» товч */
   recheckPerms: () => Promise<void>;
   signIn: () => Promise<void>;
@@ -73,6 +82,7 @@ const Ctx = createContext<AuthCtx>({
   permsRead: true,
   accessLost: false,
   sessionExpired: false,
+  sysClosed: null,
   recheckPerms: async () => {},
   signIn: async () => {},
   signOut: async () => {},
@@ -183,6 +193,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permsRead, setPermsRead] = useState(true);
   /** Ажиллаж байхад эрх хасагдсан (`AuthCtx.accessLost`-ийн тайлбар) */
   const [accessLost, setAccessLost] = useState(false);
+  /** ⚠️ 2026-10-19: систем ЭНЭ хэрэглэгчид хаалттай (`AuthCtx.sysClosed`-ийн тайлбар) */
+  const [sysClosed, setSysClosed] = useState<SysState | null>(null);
+  /** Poll-ын давтамжид (`period`) — эффектийн deps-д ороогүй тул ref (зөвхөн callback дотор бичнэ) */
+  const sysClosedRef = useRef(false);
+  /* ⚠️ Агуулга ижил бол хуучин объект — poll бүрд контекстын хэрэглэгчид дахин зурагдахгүй */
+  const applySysClosed = useCallback((next: SysState | null) => {
+    sysClosedRef.current = !!next;
+    setSysClosed((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, []);
   // ⚠️ registerOAuthInfos дууссаныг илтгэх promise — бүртгэл дуусаагүй үед getCredential
   //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
   //    signIn эхэндээ үүнийг хүлээнэ.
@@ -306,8 +325,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!alive) return;
         attemptClear();
-        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) энэ нэрийг уншина. */
-        setCurrentUser(admitted ? info.username : null);
+        /* ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН (`__sys__:maintenance`) — нэвтрэх эрхтэй ч `sysClose`/super биш бол
+           `signed-in` хэвээр, `authorized` худал (`AuthCtx.sysClosed`). Төлөв `initRemote`-ийн ДАРАА бэлэн. */
+        const lock = admitted ? closedFor(info.username) : null;
+        applySysClosed(lock);
+        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) энэ нэрийг уншина. Хаалттай үед хоосон — бичилт татгалзана. */
+        setCurrentUser(admitted && !lock ? info.username : null);
         setUser(info);
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
@@ -333,7 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { alive = false; };
-  }, []);
+  }, [applySysClosed]);
 
   /*
    * ЭРХИЙН ХҮЧИНГҮЙЖИЛТ — нэвтэрсэн ХЭВЭЭР байхад эрх нь хасагдсаныг барина.
@@ -379,10 +402,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* ⚠️ 2026-10-06: энд үлдэх `cache` нь remote уншигдсаны дараа localStorage-оор
            ӨРГӨСӨХГҮЙ (`permissions.subscribe` → `narrowOnly`) — эрт буцалт хуурамч эрх хадгалахгүй. */
         if (!ok && !rok) return;
+        /* ⚠️ 2026-10-19: «Систем түр хаах» — уншилт унасан (`!rok`) бол `closedFor` СҮҮЛИЙН мэдэгдэж буй төлөвөөр
+           (fail-open, `permissions._syncRemoteSys`-ийн ⚠️). Нээгдвэл F5 шаардалгүй цонх хаагдаж ажил үргэлжилнэ. */
+        const lock = ok ? closedFor(user.username) : null;
+        applySysClosed(lock);
         /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
            урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
            `current=null` үлдэж F5 хүртэл бүх бичилт «эрхгүй» гэдэг байв. */
-        setCurrentUser(ok ? user.username : null);
+        setCurrentUser(ok && !lock ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         /* ⚠️ 2026-09-30: ажиллаж байхад хасагдсаныг тэмдэглэнэ — `Root` Portal-ыг
            үлдээж, дээр нь хаалтын цонх гаргана (ажил алга болохгүй). */
@@ -414,7 +441,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      *    (`setTimeout` гинж): remote уншигдмагц 5 мин руу буцна.
      */
     checkRef.current = check;
-    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000);
+    /* ⚠️ 2026-10-19: систем ХААЛТТАЙ хэрэглэгчид 30 с — дахин нээгдэхийг хурдан мэдэж цонх өөрөө хаагдана
+       (5 мин хүлээлгэхгүй). Хаалттай үед ч `denied`/remote-гүй 15 с нь давамгайлна. */
+    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       timer = setTimeout(() => {
@@ -430,7 +459,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [status, user?.username]);
+  }, [status, user?.username, applySysClosed]);
+
+  /*
+   * ⚠️ 2026-10-19 (аудит): ХААЛТЫГ ЭРХИЙН STORE-ИЙН МЭДЭГДЭЛ БҮРД ДАХИН ТООЦНО. `initRemote`-ийг энэ файлаас
+   *    гадна ч дууддаг (`permissions.scheduleRemoteRefresh`/storage үйл явдал · `Guitsetgel.retryAcl` · `UserAdmin`) —
+   *    тэдгээрт ирсэн «хаагдсан» төлөв урьд нь энд хүрэхгүй, дараагийн 5 мин-ийн poll хүртэл хэрэглэгч дотор
+   *    үлдэж (`who` нэртэй — бичилт ч явна), харин Portal-ын шар зурвас «бусдад хаалттай» гэж худал хэлдэг байв.
+   * ⚠️ Зөвхөн `signed-in` үед; нэвтрэх эрх (`hasAccess`) алга бол юу ч хийхгүй — татгалзлыг poll шийднэ
+   *    (уншилтын амжилтыг тэр л мэднэ). caps-ийн мэдэгдэлд ч (`sysClose` олгогдох/хасагдах).
+   */
+  useEffect(() => {
+    if (status !== 'signed-in' || !user?.username) return undefined;
+    const name = user.username;
+    const sync = () => {
+      if (!hasAccess(name)) return;
+      const lock = closedFor(name);
+      applySysClosed(lock);
+      setCurrentUser(lock ? null : name);
+    };
+    const a = subscribePerms(sync);
+    const b = subscribeCaps(sync);
+    return () => { a(); b(); };
+  }, [status, user?.username, applySysClosed]);
 
   /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): контекстын функцууд ТОГТМОЛ лавлагаатай (`useCallback`) —
      доорх `value`-ийн `useMemo`-тай хамт `useAuth()`-ын хэрэглэгчид рендер бүрт дахин зурагдахгүй. */
@@ -521,10 +572,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-  const authorized = status === 'signed-in' || status === 'off';
+  /* ⚠️ 2026-10-19: систем хаалттай хэрэглэгч `signed-in` атлаа харагдацад ОРОХГҮЙ (`AuthCtx.sysClosed`) */
+  const authorized = (status === 'signed-in' && !sysClosed) || status === 'off';
   const value = useMemo<AuthCtx>(() => ({
-    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError,
-  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError]);
+    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError,
+  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError]);
 
   return (
     <Ctx.Provider value={value}>
@@ -538,14 +590,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError, recheckPerms } = useAuth();
+  const { status, user, error, permsRead, accessLost, sessionExpired, sysClosed, signIn, signOut, clearError, recheckPerms } = useAuth();
   /*
    * ⚠️ 2026-10-05: СЕШН ДУУССАН — Portal доор нь АМЬД (`status` нь `signed-in` хэвээр тул
    *    `Root` юу ч солихгүй). `AccessLost`-ийн ижил хаалтын цонх; дахин нэвтрэх нь хуудсыг
    *    ArcGIS руу чиглүүлдэг (доорх `SessionExpired`-ийн ⚠️) тул хэрэглэгч эхлээд ажлаа
    *    хуулж авах боломжтой.
+   * ⚠️ 2026-10-19 (аудит): `SystemClosed`-ООС ӨМНӨ. Урьд нь хаалтын цонх түрүүнд байсан тул сешн нь дууссан
+   *    хаалттай хэрэглэгч «Дахин нэвтрэх» товчийг ХАРАХГҮЙ, «Дахин шалгах» нь токенгүй тул үүрд унаж — систем
+   *    нээгдсэн ч цонх хаагдахгүй гацдаг байв. Дахин нэвтэрсний дараа хаалттай бол `SystemClosed` гарна.
    */
   if (sessionExpired && status === 'signed-in') return <SessionExpired username={user?.username} onSignOut={signOut} />;
+  /*
+   * ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН — сешн дууссан цонхны ДАРАА, бусад бүх цонхноос өмнө: хаалттай үед
+   *    татгалзал/алдааны цонх утгагүй. `signed-in` үед л (татгалзсан хүнд өөрийн шалтгаан).
+   */
+  if (sysClosed && status === 'signed-in') {
+    return <SystemClosed info={sysClosed} username={user?.username} onRecheck={recheckPerms} onSignOut={signOut} />;
+  }
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
 
   /*
@@ -789,6 +851,63 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
         </button>
         <button type="button" className={s.btnGhost} onClick={dismissSessionDead} disabled={busy}>
           {tr('Түр хаах — хадгалаагүй ажлаа хуулж авах')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
+          {tr('Гарах')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * СИСТЕМ ТҮР ХААГДСАН — бүтэн дэлгэцийн хаалтын цонх (⚠️ 2026-10-19, `permissions.setSystemClosed`).
+ * ⚠️ `AccessLost`-ийн загвар: `.screen .screenOver` (Portal ард нь амьд — хадгалаагүй ажил устахгүй), фокусын урхи.
+ * ⚠️ Тогтмол текст ЗААВАЛ (хэрэглэгчийн шийдвэр) + хаагчийн нэмэлт тайлбар ба «Дахин нээгдэх» (сонголттой).
+ * ⚠️ «Дахин шалгах» нь эрхийн хүснэгтийг шууд дахин уншина (`recheckPerms`) — нээгдсэн бол цонх өөрөө хаагдана;
+ *    автоматаар 30 с тутам ч шалгана (`AuthProvider`-ийн `period`).
+ * ⚠️ ЭКСПОРТ — `smoke.ui.check` зурж шалгана.
+ */
+export function SystemClosed({ info, username, onRecheck, onSignOut }: {
+  info: SysState; username?: string; onRecheck: () => Promise<void>; onSignOut: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  const [busy, setBusy] = useState(false);
+  /*
+   * ⚠️ 2026-10-19 (аудит): «Дахин шалгах» нь НЭВТРЭЛТ ДУУССАН үед ч ажиллана. Хэрэглэгч `SessionExpired`-ийг
+   *    «Түр хаах»-аар хаасан бол (10 мин чимээгүй) энэ цонх л үлдэж, шалгалт токенгүй тул ҮҮРД унадаг байв.
+   *    Одоо: токен үхсэн бол эхлээд сэргээж үзнэ (`retrySession`); бүтэхгүй бол «Дахин нэвтрэх» цонхыг дахин
+   *    гаргана (`reopenSessionDead` — `AuthNotice`-д энэ цонхноос ДЭЭР).
+   */
+  const recheck = async () => {
+    if (lastRefreshFail() === 'dead' && !(await retrySession())) { reopenSessionDead(); return; }
+    await onRecheck();
+    if (lastRefreshFail() === 'dead') reopenSessionDead();
+  };
+  return (
+    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-sys-closed">
+      <div className={s.card}>
+        <img src="/logo.svg" alt="" className={s.logo} />
+        <div className={s.title} id="selbe-sys-closed">{tr('Систем түр хаагдсан')}</div>
+        <p className={`${s.sub} ${s.subTight}`}>
+          {tr('Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.')}
+        </p>
+        {info.note && <p className={`${s.sub} ${s.subTight} ${s.sysNote}`}>{info.note}</p>}
+        {info.until && <p className={`${s.sub} ${s.subTight}`}>{tr('Дахин нээгдэх: {0}', info.until)}</p>}
+        {info.at > 0 && <p className={s.userSub}>{tr('Хаасан: {0}', dateTime(info.at))}</p>}
+        <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
+        <button
+          type="button"
+          className={s.btn}
+          disabled={busy}
+          style={{ marginTop: 16 }}
+          onClick={() => {
+            setBusy(true);
+            void recheck().finally(() => setBusy(false));
+          }}
+        >
+          {busy ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
         </button>
         <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
           {tr('Гарах')}

@@ -29,6 +29,7 @@ import { AUTH, ROLE_BY_USER } from './services';
 import { arcgisPost } from '@/lib/query';
 import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
+import { currentUser } from './who';
 
 const TITLE = 'Selbe_Guitsetgel_Draft';
 const TABLE_NAME = 'drafts';
@@ -43,6 +44,17 @@ const TABLE_NAME = 'drafts';
  * хагас ноорог хүлээж авна.
  */
 export const REMOTE_MAX = 80_000;
+
+/**
+ * АЛСЫН НООРОГ БИЧИХ ТҮГЖИГДСЭН ҮҮ (⚠️ 2026-10-19, «Систем түр хаах»).
+ * ⚠️ `who.currentUser()` хоосон = систем ЭНЭ хэрэглэгчид хаалттай (`AuthGate.closedFor`) эсвэл эрх
+ *    хасагдсан/шалгагдаж байна — тэр үед Portal `frozen` хэлбэрээр АМЬД тул ард нь явдаг мөчлөг/flush
+ *    (`useSharedDraft` · `useDraftSync`) хаалтын үеэр ArcGIS руу бичсээр байв. Одоо алсын бичилт ТАТГАЛЗАНА,
+ *    локал хуулбар (дуудагчид — `hdWriteLocal` г.м.) хэвээр; дуудагчийн backoff (≤60 с) нь нээгдмэгц үргэлжилнэ.
+ * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон, дев) ба Node (тест) орчинд түгжихгүй — `who.requireCap`-ийн дүрэм.
+ */
+export const draftWriteLocked = (): boolean =>
+  typeof window !== 'undefined' && !!AUTH.appId && !currentUser();
 
 let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
@@ -343,6 +355,7 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
 
 /** ХУУЧИН мөрүүдийг устгана — шинэ түлхүүрт АМЖИЛТТАЙ бичсэний ДАРАА л дуудна. */
 export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
+  if (draftWriteLocked()) return false; // ⚠️ 2026-10-19: `draftWriteLocked`-ийн ⚠️
   try {
     const url = await tableUrl(false);
     if (!url) return false;
@@ -472,6 +485,10 @@ export async function saveRemoteDraft(
   if (payload.length > REMOTE_MAX) {
     return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
   }
+  /* ⚠️ 2026-10-19: систем хаалттай / эрх түгжигдсэн үед алсад бичихгүй (`draftWriteLocked`-ийн ⚠️) */
+  if (draftWriteLocked()) {
+    return { ok: false, error: tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтөчид, нээгдмэгц хуулагдана') };
+  }
   try {
     const auth = await getAuth();
     if (!auth) return { ok: false, error: tr('нэвтрээгүй эсвэл токен дууссан') };
@@ -567,6 +584,8 @@ export async function saveRemoteDraft(
  *    ажлыг ч арчих тул дуудагч тал баталгаажуулж асуух ёстой.
  */
 export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
+  /* ⚠️ 2026-10-19: хаалттай үед устгах ч бичилт — татгалзана (`draftWriteLocked`) */
+  if (draftWriteLocked()) return false;
   try {
     const auth = await getAuth();
     if (!auth) return false;

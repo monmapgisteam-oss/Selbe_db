@@ -28,7 +28,8 @@ import {
 } from '@/lib/hyanalt';
 import { useAuth } from '@/components/AuthGate';
 import { flowAclReady, isViewOnly, resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
-import { hasCap } from '@/lib/caps';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { initRemote } from '@/lib/permissions';
 import { roleForUser } from '@/lib/services';
 import { Sheet } from '@/modules/sheet/Sheet';
@@ -1636,7 +1637,27 @@ export function Guitsetgel() {
    *    анхдагч таб нь хяналтын жагсаалт хэвээр.
    */
   const reviewerView = stage !== 'company' && (flow.stage != null || flow.canPick);
-  const canFill = (stage === 'company' && !companyViewOnly) || hasCap(user?.username, 'addRow') || reviewerView;
+  /*
+   * ⚠️ 2026-10-19 (аудит): ИНЖЕНЕРИЙН ОБЬЁМЫН засварлагч/батлагч (`obyemEdit`/`obyemApprove` + `obyemScope`) ч таб
+   *    авна — тэдгээрийн багана ЗӨВХӨН энэ хуудсанд. Урьд нь таб нь урсгалын шат/`addRow`-оор л нээгддэг тул
+   *    урсгалд томилогдоогүй обьёмын инженер «Гүйцэтгэл» харагдацтай атлаа засах газаргүй байв (цэсний тэмдэг
+   *    `obyemBatlah.countObyemPending` хүлээгдэж буйг тоолсоор). Обьём засах/батлахаас өөр бичих эрх НЭМЭГДЭХГҮЙ —
+   *    гүйцэтгэлийн нүд `FillNew.canPerf` (company томилгоо) дээр хэвээр.
+   * ⚠️ `addRow` ХАСАГДСАН: мөр нэмэх UI 2026-09-24-нөөс «Хуваарь»-д (`caps.CAP_HOST_VIEW.addRow`).
+   */
+  const [obN, setObN] = useState(0);
+  useEffect(() => subscribeCaps(() => setObN((n) => n + 1)), []);
+  useEffect(() => subscribeObyemAcl(() => setObN((n) => n + 1)), []);
+  const obyemRole = useMemo(
+    () => (['obyemEdit', 'obyemApprove'] as const).some((c) => {
+      if (!hasCap(user?.username, c)) return false;
+      const sc = obyemScope(user?.username, c === 'obyemEdit' ? 'editor' : 'approver');
+      return sc === null || sc.length > 0;
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `obN` нь эрх/хуваарилалт өөрчлөгдсөн дохио
+    [user, obN],
+  );
+  const canFill = (stage === 'company' && !companyViewOnly) || obyemRole || reviewerView;
   /** Гүйцэтгэгчийн хуудас хоёр талтай: бөглөх ба илгээснээ хянах. */
   /**
    * ⚠️ АНХНЫ ТАБ нь «Илгээсэн ажил» — бөглөх нь БИШ. Хуудсанд ороход эхлээд
@@ -1645,6 +1666,8 @@ export function Guitsetgel() {
    * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
    */
   const [tab, setTab] = useState<'fill' | 'sent' | 'negtgel'>('sent');
+  /** Хэрэглэгч табаа ӨӨРӨӨ сонгосон уу — обьёмын анхдагч таб нэг л удаа (доорх `obyemOnly`, ⚠️ 2026-10-19) */
+  const [tabPicked, setTabPicked] = useState(false);
   /**
    * «Гүйцэтгэл бөглөх» табаас ГАРАХ хамгаалалт (2026-10-04 аудит, #7) — таб солиход FillNew
    * unmount болж ноорогт ХАДГАЛАГДДАГГҮЙ засвар (инженерийн обьём · илгээлт явж буй) асуултгүй
@@ -1660,6 +1683,7 @@ export function Guitsetgel() {
       if (labels.length
         && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
     }
+    setTabPicked(true);
     setTab(t);
   };
   /* ⚠️ 2026-10-09 (аудит №2): бөглөх таб дээр байхад эрх буурвал (томилгоо «зөвхөн харах» болсон —
@@ -1676,8 +1700,22 @@ export function Guitsetgel() {
   }
   if (fillHeld && tab !== 'fill') setFillHeld(false);
   const showFill = canFill || fillHeld;
+  /*
+   * ⚠️ 2026-10-19 (аудит): ЗӨВХӨН ОБЬЁМЫН эрхтэй (урсгалын шат/хянагчгүй, company бөглөгч биш) хүний анхдагч таб
+   *    «Гүйцэтгэл бөглөх». «Батлах ажил» нь тэдэнд үргэлж ХООСОН (урсгалд томилогдоогүй) — обьёмын багана зөвхөн
+   *    бөглөх табад. `obyemRole` нь caps/хуваарилалт уншигдсаны дараа үнэн болдог тул хэрэглэгч таб ӨӨРӨӨ
+   *    сонгоогүй (`tabPicked`) үед л нэг удаа шилжүүлнэ (рендерийн үеийн засвар — дээрх `fillHeld`-ийн загвар).
+   */
+  const obyemOnly = obyemRole && !(stage === 'company' && !companyViewOnly) && !reviewerView;
+  if (obyemOnly && !tabPicked && tab === 'sent') {
+    setTabPicked(true);
+    setTab('fill');
+  }
   /** «Нэгтгэл гүйцэтгэл» таб — зөвхөн super (доорх табын тайлбарыг үз) */
-  const isSuperRole = role === 'super';
+  /* ⚠️ 2026-10-19 (аудит): КОДЫН хатуу super (`roleForUser`) — `roleOf` БИШ. Панелийн super олгогдохоо больсон
+     (2026-10-15) тул хуучин `role:'super'` override мөртэй аккаунт Нэгтгэлийн табыг (нийтлэх эрх — `negtgelEdit`)
+     авдаг байв. Тийм мөр одоо энгийн хэрэглэгч шиг. Дев (`authStatus === 'off'`) урьдын адил `role`-оор. */
+  const isSuperRole = authStatus === 'off' ? role === 'super' : roleForUser(user?.username) === 'super';
   /* ⚠️ 2026-09-25: эрх буурсан (эрх дахин ачаалагдсан, хэрэглэгч солигдсон)
      үед «negtgel» таб дээр үлдвэл товч нь алга ч хуудас нь хоосон/зөрүүтэй
      горимд гацна — «Илгээсэн ажил» руу буцаана. Рендерийн үеийн засвар

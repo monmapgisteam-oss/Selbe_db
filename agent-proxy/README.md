@@ -34,7 +34,7 @@ npm start
 Амжилттай бол:
 
 ```
-[agent-proxy] http://localhost:8787  загвар=claude-opus-5  effort=low
+[agent-proxy] http://localhost:8787  загвар=claude-opus-5-5  effort=medium
 ```
 
 > `.env.local` нь `.gitignore`-д орсон — репод хэзээ ч орохгүй.
@@ -43,10 +43,31 @@ npm start
 
 ## Тохиргоо
 
+### Claude Opus 5.5 (2026-10-19)
+
+Анхдагч загвар `claude-opus-5-5` (`server.mjs` · `worker.mjs` · `wrangler.toml` гурвуулаа ИЖИЛ;
+`AGENT_MODEL`-оор солино, буцаах бол `AGENT_MODEL=claude-opus-5`). Анхаарах зүйлс:
+
+- **Бодолтыг унтраах боломжгүй** — `thinking: {type: "disabled"}` → 400. Реле ЗӨВХӨН `claude-opus-5-5`
+  дээр `thinking: {type: "adaptive", display: "updates"}` + `anthropic-beta: thinking-display-updates-2026-08-18`
+  илгээнэ (явцын тэмдэглэл → «Төлөвлөгөө» карт; `rateLimit.thinkingUpdatesFor`), бусад загварт `thinking`-ийг огт
+  илгээдэггүй; хурд/гүнийг ЗӨВХӨН `AGENT_EFFORT`-оор (`low` · `medium` · `high`). Загварын өөрийн
+  анхдагч `medium` тул бид ч ил `medium` илгээнэ.
+- **Албадсан `tool_choice`** (`any` / `tool`) → 400 — реле илгээдэггүй.
+- **Хэрэгслийн дуудлагын хоорондын текст** `thinking` блок болж (хоосон агуулгатай) ирж болно. Порталын
+  «Төлөвлөгөө» карт текстээс олдохгүй бол бодолтын блокоос ```plan` хашилтыг хайна; аль алинд нь
+  алга бол карт зүгээр л харагдахгүй (алдаа гарахгүй) — `src/lib/agent/client.ts` `planTextOf`.
+- **Бодолтын блок ЯРИАНД холбогдсон** — түүхийн эхний эсвэл дунд эргэлтийг засах/хасахад дараагийн бүх
+  бодолтын блок хүчингүй (шинэ байгууллагад 400). Портал (`AgentChat.trimHistory`) түүхийг огтлохдоо
+  БҮТЭН эргэлтээр огтолж, үлдсэн түүхийн БҮХ бодолтын блокийг хасна (баримтжуулсан «strip» сэргээлт);
+  огтлоогүй үед түүх зөвхөн ард нь нэмэгддэг.
+- **529 (overloaded)** — клиент тусгай мессеж харуулна; 5xx хариуг өөр хост руу ДАВТАЖ илгээхгүй
+  (хариу дээд талд боловсруулагдсан байж болно — релей хариунд `upstream: true`).
+
 | Орчны хувьсагч | Анхдагч | Утга |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | **Заавал.** [console.anthropic.com](https://console.anthropic.com) |
-| `AGENT_MODEL` | `claude-opus-5` | Хямд туршилтад `claude-haiku-4-5` |
+| `AGENT_MODEL` | `claude-opus-5-5` | 2026-10-19-нөөс (өмнө `claude-opus-5`). Хямд туршилтад `claude-haiku-4-5`. Доорх «Claude Opus 5.5»-ыг үз |
 | `AGENT_EFFORT` | `medium` | `low` / `medium` / `high` — хурд ↔ гүн бодолт. 2026-10-15-наас `medium` (эх сурвалж сонголт, холбоосын дүрэм нарийссан) |
 | `PORT` | `8787` | Релений порт |
 | `ALLOW_ORIGIN` | `http://localhost:8123,…` | Зөвшөөрөх эх (таслалаар) |

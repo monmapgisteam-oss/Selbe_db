@@ -37,6 +37,8 @@ const strip = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
+/** §14-ийн товч туслах (⚠️ 2026-10-19) */
+const ok14 = (c, m) => assert.ok(c, m);
 
 /**
  * `<scopeFn>(…) ?? []`  ба  `<scopeFn>(…) || []` хэв шинж.
@@ -270,8 +272,13 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
   const grantsReads = (fetchAllSrc.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
   assert.ok(/export async function scopedRead[\s\S]*?Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/.test(src),
     'scopedRead: grants-ыг fetchAll-тай ижил уншина');
-  assert.equal(grantsReads, 5,
-    `fetchAll: grants уншилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsReads}`);
+  /* ⚠️ 2026-10-19 (аудит №10): таван салаа НЭГ туслахаар (`scoped`) — хуулбар биш, тэгш хэм бүтцээр баталгаатай.
+     Шалгуур: туслах grants-ыг уншина (ЯГ нэг) ба таван угтвар бүгд түүгээр явна. */
+  assert.equal(grantsReads, 1, `fetchAll: grants уншилт нэг туслахад (scoped) байх ёстой, олдсон: ${grantsReads}`);
+  const scopedList = fetchAllSrc.slice(fetchAllSrc.indexOf('const SCOPED'), fetchAllSrc.indexOf('rowLoop:'));
+  for (const pfx of ['AJIL_PREFIX', 'BUTETS_PREFIX', 'CHANAR_PREFIX', 'OBYEM_PREFIX', 'HUVAARI_PREFIX']) {
+    assert.ok(scopedList.includes(`[${pfx}, `), `fetchAll: ${pfx} нийтлэг (grants уншдаг) задлалаар явахгүй байна`);
+  }
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
   assert.equal(grantsWrites, 5,
@@ -670,7 +677,8 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
 
   /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
   const ag = readCode('src/components/AuthGate.tsx');
-  assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000"),
+  /* ⚠️ 2026-10-19: дунд нь «систем хаалттай → 30 с» салаа нэмэгдсэн (§14) — 15 с нь түрүүлж хэвээр */
+  assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000"),
     'AuthGate: signed-in + remote-гүй үед 5 мин хүлээж байна — 15 сек байх ёстой');
 
   /* query.isOrgUrl: org сегмент зөвхөн *.arcgis.com хостод */
@@ -708,20 +716,20 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
       `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
   }
 
-  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 6 (2026-10-04: + hamaaral; 2026-10-08: + habeaData) */
+  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 7 (2026-10-04: + hamaaral; 2026-10-08: + habeaData; 2026-10-19: + sysClose) */
   const { ROLE_CAPS, PLAIN_CAPS, QAQC_CAP, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set([QAQC_CAP, ...Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))]);
-  assert.equal(PLAIN_CAPS.length, 6, `энгийн эрх ЯГ 6 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 7, `энгийн эрх ЯГ 7 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
   assert.equal(derived.size, 10, `гаргалгаатай эрх 10 байх ёстой, олдсон: ${derived.size}`);
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
-console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 6 = CAPS');
+console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 7 = CAPS');
 
 /* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
 /**
@@ -733,8 +741,11 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
 {
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
-  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea'],
-    'capText.ERH_PANES: хажуугийн цэсний 11 хуудас (2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл), энэ дарааллаар');
+  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea', 'sys'],
+    'capText.ERH_PANES: хажуугийн цэсний 12 хуудас (2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
+  /* ⚠️ 2026-10-19: «Систем түр хаах» — харагдац НЭЭХГҮЙ, ганцаараа өөрийн хуудсанд */
+  assert.deepEqual(PANE_CAPS.sys, ['sysClose'], 'Систем түр хаах: тусдаа хуудас');
+  assert.deepEqual(CAP_HOST_VIEW.sysClose, [], 'sysClose: гэр харагдацгүй');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
@@ -807,8 +818,13 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   /* Порталд БАЙГАА (хатуу, super биш) аккаунт — `isKnown` үнэн, асуулт асуугдана */
   /* ⚠️ Хэрэглэгч бүр ТУСДАА: offline бичилт `failed`-д орж, дараагийн `_syncRemote*` тэр хүний
      ЛОКАЛ төлөвийг давамгайлуулдаг (`scopedAcl.syncRemote`-ийн ⚠️) — нэг нэрийг дахин бөглөж болохгүй. */
-  const K = Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase());
-  assert.ok(K.length >= 6, 'хатуу жагсаалтад 6+ энгийн аккаунт хэрэгтэй');
+  /* ⚠️ 2026-10-19 (аудит №9): кодын жишээ урсгалын 4 аккаунт хасагдсан — хатуу энгийн аккаунт (2) + панелийн
+     бүртгэлтэй (доорх `setUser`) нэрсээр 6 болгоно; аль аль нь «порталд байгаа» (`isKnown`) */
+  const K = [
+    ...Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase()),
+    'k_known_a', 'k_known_b', 'k_known_c', 'k_known_d',
+  ].slice(0, 6);
+  assert.ok(K.length >= 6, '6 энгийн аккаунт хэрэгтэй');
   const settle = async (w) => { await w.sync; await w.granted; };
   /* ⚠️ 2026-09-30: `aclOps.isCleanup` — порталд БАЙХГҮЙ нэрийг устгагдсан аккаунт гэж үзэж нүдний ✕ нь
      мөрийг бүхэлд нь (асуулгагүй, эрх хөндөхгүй) цэвэрлэнэ. Доорх зохиомол нэрс «порталд байгаа»
@@ -817,6 +833,8 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
     const P = await import('@/lib/permissions.ts');
     /* ⚠️ 2026-10-09 (аудит №6): + `b_all` — дэд бүтцийн ALL → ил жагсаалт шалгуур `scopedCellOp`-оор (доор) */
     for (const n of ['q_all2', 'c_all', 'c_new', 'c_ball', 'c_q', 'b_all']) void P.setUser(n, { views: [], docs: false }, null);
+    /* ⚠️ 2026-10-19: `K`-ийн панелийн нэрс (хатуу жагсаалтад урсгалын аккаунт алга болсон) */
+    for (const n of K) if (!ROLE_BY_USER[n]) void P.setUser(n, { views: [], docs: false }, null);
   }
 
   /* ── QAQC: шинэ мөр grant=true · багц солих grant=false ──
@@ -969,3 +987,109 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   assert.ok(g.includes('<AclGrid'), 'GuitsetgelAcl: нийтлэг хүснэгт (AclGrid)-ээр зурах ёстой');
 }
 console.log('✅ aclOps зан төлөв — QAQC grant · шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');
+
+/* ══════════ 13. 2026-10-19 АУДИТ — эрхийн гэр харагдац · хүрээний нэгдэл · super · шошго ══════════ */
+/**
+ * №1 мөр нэмэх «Хуваарь»-д (гэр харагдац ч тэнд), сонгогч = хуваарийн ∪ нэмэлт ажлын хүрээ; нэмэлт ажлын батлагч
+ *    «Нэмэлт ажил батлах»-д. №2 обьёмын үүрэг «Гүйцэтгэл бөглөх» табыг ба өөрийн багцуудыг нээнэ. №6 Нэгтгэл —
+ *    КОДЫН super. №7 хуваарийн тэмдэг/комисс — хүрээгээр. №11 FIC — AGOL нэр. №12 алдаанд эрхийн нэр.
+ */
+{
+  const { CAP_HOST_VIEW } = await import('@/lib/caps.ts');
+  assert.deepEqual(CAP_HOST_VIEW.addRow, ['huvaari'], '№1: addRow-ийн гэр харагдац «Хуваарь» байх ёстой');
+  assert.deepEqual(CAP_HOST_VIEW.ajilApprove, ['ajilBatlah'], '№1: ajilApprove-ийн гэр харагдац «Нэмэлт ажил батлах»');
+
+  const hv = readCode('src/modules/Huvaari.tsx');
+  const go = hv.slice(hv.indexOf('const groupOpts = useMemo('), hv.indexOf('const canEdit = useMemo('));
+  assert.ok(/hasCap\(user\?\.username, 'addRow'\) \? ajilScope\(user\?\.username, 'editor'\)/.test(go), '№1: Huvaari.groupOpts нэмэлт ажлын хүрээг нэгтгэхгүй байна');
+  assert.ok(hv.indexOf('const [capN, setCapN]') < hv.indexOf('const groupOpts = useMemo('), '№1: capN groupOpts-оос ӨМНӨ зарлагдах ёстой (TDZ)');
+  assert.ok(/const canEdit = useMemo\(\s*\(\) => !review && \(status === 'off' \|\| inScope\(huvaariScope\(user\?\.username, 'author'\)/.test(hv), '№1: огноо засах эрх хуваарийн хүрээгээр хэвээр');
+
+  const gu = readCode('src/modules/Guitsetgel.tsx');
+  const cf = gu.slice(gu.indexOf('const canFill ='), gu.indexOf('\n', gu.indexOf('const canFill =')));
+  assert.ok(!cf.includes("'addRow'") && cf.includes('obyemRole'), `№2: Guitsetgel.canFill (${cf})`);
+  assert.ok(/obyemScope\(user\?\.username, c === 'obyemEdit' \? 'editor' : 'approver'\)/.test(gu), '№2: obyemRole хүрээгээр');
+  assert.ok(gu.includes("roleForUser(user?.username) === 'super'") && !/const isSuperRole = role === 'super';/.test(gu), '№6: Нэгтгэл таб КОДЫН super-ээр');
+
+  const fn = readCode('src/modules/sheet/FillNew.tsx');
+  const mb = fn.slice(fn.indexOf('const myBagts = useMemo('), fn.indexOf('const groupOpts = useMemo('));
+  assert.ok(mb.includes('bagtsScope(user?.username)') && mb.includes('obyemScope(user?.username, role)'), '№2: FillNew.myBagts обьёмын хүрээг нэгтгэхгүй байна');
+
+  const ne = readCode('src/lib/negtgelEdit.ts');
+  assert.ok(ne.includes("roleForUser(user) === 'super'") && !ne.includes('roleOf(user)'), '№6: canEditNegtgel КОДЫН super');
+  const pm = readCode('src/lib/permissions.ts');
+  const ra = pm.slice(pm.indexOf('export function resolveAccess('), pm.indexOf('export function resolveBaseAccess('));
+  assert.ok(ra.includes('if (isHardSuper(username))') && !ra.includes("roleOf(username) === 'super'"), '№6: resolveAccess — зөвхөн хатуу super');
+
+  const hb = readCode('src/lib/huvaariBatlah.ts');
+  for (const f of ['countPlanPending', 'countPlanReturned', 'countPlanApproved']) {
+    const body = hb.slice(hb.indexOf(`export async function ${f}(`), hb.indexOf('\n}', hb.indexOf(`export async function ${f}(`)));
+    assert.ok(!body.includes('hasCap('), `№7: ${f} эрхээр биш хүрээгээр (decidePlan/submitPlan-тай ижил)`);
+  }
+  assert.ok(!readCode('src/lib/ulsiinKomiss.ts').includes("requireCap('plan')"), '№7: ensureKomissRow хүрээгээр');
+
+  const fm = readCode('src/lib/ficMakt.ts');
+  assert.ok(fm.includes('[F.uploadedBy]: actorOf(s)') && fm.includes('[F.decidedBy]: actor,') && fm.includes('isOwnUpload(fresh.uploadedBy, actor, s.user)'), '№11: FIC/М-акт өөрийгөө батлах шалгуур AGOL нэрээр');
+  const { isOwnUpload } = await import('@/lib/ficMakt.ts');
+  assert.equal(isOwnUpload('Bat_AGOL', 'bat_agol', 'ent_bat'), true);
+  assert.equal(isOwnUpload('ent_bat', 'bat_agol', 'ENT_BAT'), true, 'хуучин мөр (Enterprise нэр) ч тулгагдана');
+  assert.equal(isOwnUpload('dorj', 'bat_agol', 'ent_bat'), false);
+  assert.equal(isOwnUpload('', 'bat_agol', 'ent_bat'), false);
+
+  const who = readCode('src/lib/who.ts');
+  assert.ok(who.includes('capLabel(cap)'), '№12: requireCap алдаанд эрхийн нэр (capLabel)');
+  assert.ok(!readCode('src/lib/ma.ts').includes('«chanarAuthor»'), '№12: MA алдаанд түүхий түлхүүр');
+}
+console.log('✅ 2026-10-19 аудит — гэр харагдац · хүрээний нэгдэл · кодын super · хүрээгээр тэмдэг · AGOL нэр · эрхийн шошго');
+
+/* ══════════ 14. «СИСТЕМ ТҮР ХААХ» — AuthGate · Root · permsRemote эх кодын гэрээ (⚠️ 2026-10-19) ══════════
+ * ⚠️ Хаалтыг ажиллуулж шалгах нь `aclE2E` §11-д (хуурамч хүснэгт); энд UI давхаргын байрлал:
+ *    (а) `AuthNotice`-д `SystemClosed` нь сешн дууссан цонхны ДАРАА (дахин нэвтрэх зам), татгалзсан цонхноос өмнө;
+ *    (б) хаалттай хэрэглэгчийн poll 30 с; (в) хаалттай үед `who` хоосон (lib бичилт татгалзана);
+ *    (г) `authorized` худал ба `Root` Portal-ыг `frozen`-оор амьд үлдээнэ (хадгалаагүй ажил устахгүй);
+ *    (д) `fetchAll`-д `__sys__:` салаа хэрэглэгчийн мөрөөс ӨМНӨ (хий хэрэглэгч үүсгэхгүй). */
+{
+  const ag = readCode('src/components/AuthGate.tsx');
+  const an = ag.slice(ag.indexOf('export function AuthNotice('), ag.indexOf('function NoticeDialog('));
+  const iSys = an.indexOf('<SystemClosed');
+  ok14(iSys > 0, 'AuthNotice: <SystemClosed> алга');
+  for (const other of ['<AccessLost', '<NoticeDialog']) {
+    ok14(iSys < an.indexOf(other), `AuthNotice: SystemClosed нь ${other}-оос ӨМНӨ байх ёстой`);
+  }
+  /* ⚠️ 2026-10-19 (аудит №2): сешн дууссан цонх ХААЛТЫН цонхноос ӨМНӨ — эс бөгөөс хаалттай хэрэглэгч дахин нэвтрэх
+     замгүй, «Дахин шалгах» нь токенгүй үүрд унана */
+  ok14(an.indexOf('<SessionExpired') > 0 && an.indexOf('<SessionExpired') < iSys, 'AuthNotice: SessionExpired нь SystemClosed-оос ӨМНӨ байх ёстой');
+  const scc = ag.slice(ag.indexOf('export function SystemClosed('), ag.indexOf('function AccessLost('));
+  ok14(scc.includes('reopenSessionDead()') && scc.includes('retrySession()') && scc.includes('void recheck()'), 'SystemClosed: «Дахин шалгах» сешн дууссан үед дахин нэвтрэх цонх гаргана');
+  ok14(ag.includes('sysClosedRef.current ? 30_000 : 5 * 60_000'), 'AuthGate.period: хаалттай үед 30 с');
+  ok14((ag.match(/setCurrentUser\([^)]*!lock[^)]*\)/g) ?? []).length === 2, 'AuthGate: хаалттай үед setCurrentUser(null) — нэвтрэлт ба poll ХОЁУЛАА');
+  ok14((ag.match(/closedFor\(/g) ?? []).length === 3, 'AuthGate: closedFor — нэвтрэлт · poll · store-ийн мэдэгдэл');
+  /* ⚠️ 2026-10-19 (аудит №2): бусад `initRemote` дуудагчийн (scheduleRemoteRefresh · retryAcl · UserAdmin) төлөв ч тусна */
+  ok14(ag.includes('const a = subscribePerms(sync);') && ag.includes('const b = subscribeCaps(sync);') && ag.includes('setCurrentUser(lock ? null : name);'),
+    'AuthProvider: эрхийн store/caps мэдэгдэлд хаалтыг дахин тооцдоггүй');
+  const portal = readCode('src/components/Portal.tsx');
+  ok14(portal.includes('{sysNow && canSys && !auth.sysClosed && !sysOpen && ('), 'Portal: шар зурвас ЗӨВХӨН хаалтыг давах эрхтэйд');
+  const scd = readCode('src/components/SystemCloseDialog.tsx');
+  ok14(scd.includes('void refreshSystemClosed()') && scd.includes('{ expect: cur, update }') && scd.includes('e instanceof SysStaleError'),
+    'SystemCloseDialog: нээгдэхэд дахин уншиж, бичихдээ харагдсан төлөвийг (expect) шалгана');
+  ok14(scd.includes("tr('Болих')") && !scd.includes("{tr('Хаах')}"), 'SystemCloseDialog: хаах товч «Болих» (Системийг хаах-тай андуурагдана)');
+  const dr = readCode('src/lib/draftRemote.ts');
+  const sv = dr.slice(dr.indexOf('export async function saveRemoteDraft('), dr.indexOf('export async function clearRemoteDraft('));
+  ok14(sv.indexOf('draftWriteLocked()') > 0 && sv.indexOf('draftWriteLocked()') < sv.indexOf('getAuth()'), 'saveRemoteDraft: хаалттай (who хоосон) үед алсад бичихгүй');
+  const gt = readCode('src/modules/Guitsetgel.tsx');
+  ok14(gt.includes("if (obyemOnly && !tabPicked && tab === 'sent') {"), 'Guitsetgel: зөвхөн обьёмын эрхтэйд анхдагч таб «бөглөх»');
+  ok14(ag.includes("const authorized = (status === 'signed-in' && !sysClosed) || status === 'off';"), 'AuthGate: хаалттай үед authorized худал');
+  ok14(ag.includes("tr('Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.')"), 'SystemClosed: тогтмол текст');
+  const root = readCode('src/components/Root.tsx');
+  ok14(root.includes("(sysClosed && status === 'signed-in')) ? lastPortal : null"), 'Root.frozen: хаалттай үед Portal амьд (lastPortal)');
+  const pr = readCode('src/lib/permsRemote.ts');
+  const fa = pr.slice(pr.indexOf('export async function fetchAll('), pr.indexOf('async function findOids('));
+  ok14(fa.indexOf('strip(lu, SYS_PREFIX)') > 0 && fa.indexOf('strip(lu, SYS_PREFIX)') < fa.indexOf('perms[lu] ='), 'fetchAll: __sys__ салаа хэрэглэгчийн мөрөөс ӨМНӨ');
+  const pm = readCode('src/lib/permissions.ts');
+  const sc = pm.slice(pm.indexOf('export async function setSystemClosed('), pm.indexOf('export function _markRemoteLoaded('));
+  ok14(sc.indexOf("requireCap('sysClose')") > 0 && sc.indexOf("requireCap('sysClose')") < sc.indexOf('sysUpsert('), 'setSystemClosed: requireCap бичихээс ӨМНӨ');
+  const sc2 = pm.slice(pm.indexOf('export async function setSystemClosed('), pm.indexOf('export function _markRemoteLoaded('));
+  ok14(sc2.indexOf('await sysRead()') > 0 && sc2.indexOf('await sysRead()') < sc2.indexOf('sysUpsert(st)') && sc2.includes('throw new SysStaleError('),
+    'setSystemClosed: expect — бичихийн ӨМНӨ дахин уншиж зөрвөл татгалзана');
+}
+console.log('✅ «Систем түр хаах» — SessionExpired › SystemClosed › бусад · 30 с poll · who хоосон · frozen Portal · __sys__ салаа');

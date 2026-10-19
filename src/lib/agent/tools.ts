@@ -33,6 +33,7 @@ import { resolveSource, type AgentScope, type AgentSource } from './registry';
 import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
 import { buildingProgress } from './compute';
+import { financeSummary, pkgPlan } from './screenCompute';
 
 /** Anthropic-ийн tool тодорхойлолт (реле руу энэ хэлбэрээр явна) */
 export type ToolDef = {
@@ -132,13 +133,16 @@ export const AGENT_TOOLS: ToolDef[] = [
       tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: орон сууцны ХО-жинтэй хувь (`housing` — дашбоардын толгойн «Биет гүйцэтгэл»), блокийн дундаж (`overall`), багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
       tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
-      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог).'); },
+      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
+      /* ⚠️ 2026-10-19: дэлгэцийн функцээр бодогддог хоёр шинэ төрөл (`screenCompute.ts`) */
+      tr('`finance_summary` — төслийн нийт төсөвт өртөг, гэрээлсэн дүн, олгосон санхүүжилт, олгосон хувь (дашбоардын ЯГ тэр тоо). Санхүүгийн НИЙТ дүнг асуувал ЭНИЙГ ашигла — Cashflow/IPC-ийн мөрийг өөрөө нийлүүлэхгүй. ') +
+      tr('`pkg_plan` — багц бүрийн бодит ба хуваарийн төлөвлөгөөт гүйцэтгэл, хоцрогдол (нэгжээр), анхааруулгын түвшин («Багцын гүйцэтгэл»-ийн ЯГ тэр тоо). «Төлөвлөгөөнөөс хэр хоцорсон бэ» гэвэл ЭНИЙГ ашигла.'); },
     input_schema: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
-          enum: ['building_progress'],
+          enum: ['building_progress', 'finance_summary', 'pkg_plan'],
           get description() { return tr('Тооцооллын төрөл'); },
         },
       },
@@ -168,12 +172,12 @@ const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
  *    үйлчилгээнд талбар нэмэгдсэн/нэр солигдсон бол агент 5 минут хүлээхгүйгээр
  *    зохицно. Амжилттай асуулгын замд нэмэлт хүсэлт ҮҮСГЭХГҮЙ.
  */
-async function fieldsOf(url: string, fresh = false): Promise<FieldMeta[]> {
+async function fieldsOf(url: string, fresh = false, signal?: AbortSignal): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
   if (!fresh && hit && Date.now() - hit.at < META_TTL) return hit.fields;
   /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`ArcGISError`-оо өөрөө шиднэ:
-     `HTTP n`, 200-алдаа, timeout). */
-  const body = await arcgisPost<ServiceMeta>(url, {});
+     `HTTP n`, 200-алдаа, timeout). ⚠️ 2026-10-19: `signal` — чат хаагдахад зогсоно. */
+  const body = await arcgisPost<ServiceMeta>(url, {}, signal ? { signal } : {});
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
   return fields;
@@ -214,6 +218,67 @@ type QueryIn = {
   orderBy?: string;
   limit?: number;
 };
+
+/**
+ * ЭХ СУРВАЛЖИЙН ХАТУУ ШҮҮЛТ + загварын `where` (⚠️ 2026-10-19, `Dataset.baseWhere`-ийн ⚠️).
+ * Загварын `where`-ийг хаалтад хийнэ — `a OR b` нь хатуу шүүлтийг тойрохгүй.
+ */
+/**
+ * ⚠️ 2026-10-19: ЗАГВАРЫН `where`-ИЙН БҮТЦИЙН ШАЛГАЛТ — `andWhere`-ийн хаалтаас «зугтах»-ыг хаана.
+ *    `1=1) OR (1=1` мэт ТЭНЦВЭРГҮЙ хаалт `(base) AND (…)`-ийн дотор нэг хаалтыг эрт хааж хатуу шүүлтийг
+ *    (`baseWhere`) тойрдог. Мөрийн литерал ('…', '' = escape) ДОТОРХ тэмдгийг тоолохгүй. Мөн литералаас гадуурх
+ *    `;` · `--` · `/*` (тайлбар нь хаах хаалтыг «идэж» болно) татгалзана. Алдаатай бол загварт буцаах
+ *    тайлбар мөр, зөв бол `null`.
+ */
+export function whereError(where: string): string | null {
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < where.length; i++) {
+    const c = where[i];
+    if (inStr) {
+      if (c === "'") {
+        if (where[i + 1] === "'") i++; // '' — литерал доторх хашилт
+        else inStr = false;
+      }
+      continue;
+    }
+    if (c === "'") inStr = true;
+    else if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth < 0) return tr('`where` дахь хаалт тэнцвэргүй: илүү `)` байна.');
+    } else if (c === ';' || (c === '-' && where[i + 1] === '-') || (c === '/' && where[i + 1] === '*')) {
+      return tr('`where`-д `;`, `--`, `/*` хэрэглэж болохгүй.');
+    }
+  }
+  if (inStr) return tr('`where` дахь мөрийн литерал хаагдаагүй (хаах хашилт дутуу).');
+  if (depth !== 0) return tr('`where` дахь хаалт тэнцвэргүй: `(` хаагдаагүй.');
+  return null;
+}
+
+export function andWhere(base: string | undefined, where: string): string {
+  const w = where.trim() || '1=1';
+  if (!base) return w;
+  return w === '1=1' ? base : `(${base}) AND (${w})`;
+}
+
+/**
+ * ⚠️ 2026-10-19: ЦУЦЛАЛТ — сигнал өгвөл `p`-г хүлээхээ ЗОГСООЖ AbortError шиднэ. `zone_overview` ·
+ * `compute` зэрэг олон ачаалагчтай замд сигнал гүнд хүрдэггүй тул ядаж агентын гогцоо шууд чөлөөлөгдөнө
+ * (үлдсэн хүсэлтүүд `query.ts`-ийн 30с timeout-оор дуусна).
+ */
+function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException('aborted', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason ?? new DOMException('aborted', 'AbortError'));
+    signal.addEventListener('abort', stop, { once: true });
+    p.then(
+      (v) => { signal.removeEventListener('abort', stop); resolve(v); },
+      (e) => { signal.removeEventListener('abort', stop); reject(e); },
+    );
+  });
+}
 
 /** Агентын хэрэгслийн үр дүн — `is_error` нь загварт алдааг ойлгуулж, өөрөө засах боломж өгнө */
 export type ToolOutcome = { text: string; isError: boolean };
@@ -284,14 +349,14 @@ const fail = (msg: string): ToolOutcome => ({ text: msg, isError: true });
 const notFound = (id?: string) =>
   fail(tr('`{0}` гэсэн эх сурвалж байхгүй эсвэл танд үзэх эрх алга.', id));
 
-async function runDescribe(input: { id?: string }, scope: AgentScope): Promise<ToolOutcome> {
+async function runDescribe(input: { id?: string }, scope: AgentScope, signal?: AbortSignal): Promise<ToolOutcome> {
   const src: AgentSource | null = input.id ? resolveSource(input.id, scope) : null;
   if (!src) return notFound(input.id);
 
   /* ⚠️ 2026-10-15: ЭНЭ хэрэгсэл ҮРГЭЛЖ АМЬДААР уншина (кэшийг тойрч) — зорилго нь
      «бодит мөчийн схемийг мэдэх». Талбар нэмэгдсэн/нэр солигдсоныг агент тэр
      дороо олж харна; кэш нь зөвхөн `query_feature`-ийн урьдчилсан шалгалтад. */
-  const fields = await fieldsOf(src.url, true);
+  const fields = await fieldsOf(src.url, true, signal);
   return ok({
     id: src.id,
     title: src.title,
@@ -305,21 +370,27 @@ async function runDescribe(input: { id?: string }, scope: AgentScope): Promise<T
     })),
     warn: src.warn,
     note: src.note,
+    /* ⚠️ 2026-10-19: асуулга бүрд автоматаар нэмэгдэх шүүлт — загвар мэдэж байх ёстой */
+    ...(src.baseWhere ? { baseWhere: src.baseWhere } : {}),
   });
 }
 
-async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome> {
+async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal): Promise<ToolOutcome> {
   const src = input.id ? resolveSource(input.id, scope) : null;
   if (!src) return notFound(input.id);
 
   const url = src.url;
   /* ⚠️ 2026-09-30: кирилл литералд `N'…'` угтвар (`nPrefixUnicode`-ийн ⚠️) */
-  const where = nPrefixUnicode(input.where?.trim() || '1=1');
+  /* ⚠️ 2026-10-19: эх сурвалжийн хатуу шүүлт (`baseWhere`, жиш. Cashflow-ийн ажлын мөр) ЗААВАЛ */
+  /* ⚠️ 2026-10-19: хаалтаас зугтах `where`-ийг ArcGIS руу илгээхгүй — загварт алдаагаар буцаана (`whereError`) */
+  const badWhere = whereError(input.where ?? '');
+  if (badWhere) return fail(badWhere);
+  const where = andWhere(src.baseWhere, nPrefixUnicode(input.where?.trim() || '1=1'));
 
   // ⚠️ Талбарын нэрийг УРЬДЧИЛЖ шалгана. ArcGIS буруу нэр дээр «Unable to perform
   //    query» гэсэн ерөнхий алдаа буцаадаг тул агент юу буруу болсныг ойлгохгүй,
   //    ижил алдааг дахин дахин давтдаг. Энд яг аль нэр буруугий нь хэлж өгнө.
-  let known = new Set((await fieldsOf(url)).map((f) => f.name));
+  let known = new Set((await fieldsOf(url, false, signal)).map((f) => f.name));
   // orderBy бас шалгах талбар — «талбар [ASC|DESC], …» тул талбарын нэрсийг л салгана.
   // (Өмнө нь шалгагдахгүй тул хуурмаг нэр ArcGIS-ийн ерөнхий алдаа руу шууд оруулдаг байв.)
   const orderFields = (input.orderBy ?? '')
@@ -338,7 +409,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
     /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): кэш 5 минут хүртэл хуучирсан байж болно —
        талбар САЯХАН нэмэгдсэн/нэршилээ сольсон бол энд амьдаар уншиж зохицно.
        Зөвхөн АЛДААНЫ замд нэмэлт хүсэлт явна (хэвийн асуулга удаашрахгүй). */
-    known = new Set((await fieldsOf(url, true)).map((f) => f.name));
+    known = new Set((await fieldsOf(url, true, signal)).map((f) => f.name));
     bad = missing(known);
   }
   if (bad.length) {
@@ -365,7 +436,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
          бичигдэж, загвар дутуу бүлгүүдийг бүрэн гэж үзэж нийлбэр гаргадаг
          байв (2026-09-03-ны аудит). */
       if (input.groupBy) {
-        const g = await queryGroupEx(url, input.groupBy, stats, where);
+        const g = await queryGroupEx(url, input.groupBy, stats, where, undefined, signal);
         return ok({
           source: src.id,
           where,
@@ -377,7 +448,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
           rows: g.rows,
         });
       }
-      const rows: Row[] = [await queryStats(url, stats, where)];
+      const rows: Row[] = [await queryStats(url, stats, where, undefined, signal)];
       return ok({ source: src.id, where, groupBy: input.groupBy, rows });
     }
 
@@ -387,6 +458,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
       outFields: input.outFields?.length ? input.outFields : undefined,
       orderBy: input.orderBy,
       limit,
+      signal,
     });
     /**
      * ⚠️ ТАЙРАГДСАНЫГ ИЛ ХЭЛНЭ (2026-09-03-ны аудит).
@@ -412,6 +484,8 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
       rows,
     });
   } catch (e) {
+    /* ⚠️ 2026-10-19: цуцлалт — алдаа болгож загварт буцаахгүй, гогцоо өөрөө зогсоно */
+    if (signal?.aborted) throw e;
     if (e instanceof ArcGISError) {
       /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): ArcGIS буруу талбар дээр «Unable to perform query»
          гэсэн ЕРӨНХИЙ алдаа буцаадаг тул шалтгаан нь схем өөрчлөгдсөн эсэх нь мэдэгдэхгүй.
@@ -421,7 +495,7 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
            · схем хэвээр бол алдааг хэвээр буцаана (дахин оролдлого нь `query.ts`-д).
          Шинэчлэлт өөрөө унавал (сүлжээ) анхны алдааг хэвээр үлдээнэ. */
       try {
-        const live = new Set((await fieldsOf(url, true)).map((f) => f.name));
+        const live = new Set((await fieldsOf(url, true, signal)).map((f) => f.name));
         const gone = missing(live);
         if (gone.length) {
           const hints = gone
@@ -441,19 +515,25 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
   }
 }
 
-/** Нэг tool дуудлагыг гүйцэтгэнэ — алдааг ХЭЗЭЭ Ч чимээгүй залгихгүй */
+/**
+ * Нэг tool дуудлагыг гүйцэтгэнэ — алдааг ХЭЗЭЭ Ч чимээгүй залгихгүй.
+ * ⚠️ 2026-10-19: `signal` — чат хаагдах/⟲/асуултын дээд хугацаа (`client.ask`) үед ArcGIS асуулга
+ *    зогсоно; цуцлалт нь `ToolOutcome` БИШ, AbortError-оор шидэгдэнэ (гогцоо зогсох ёстой).
+ */
 export async function runTool(
   name: string,
   input: unknown,
   scope: AgentScope,
+  signal?: AbortSignal,
 ): Promise<ToolOutcome> {
   try {
-    if (name === 'describe_feature') return await runDescribe(input as { id?: string }, scope);
-    if (name === 'query_feature') return await runQuery(input as QueryIn, scope);
+    if (signal?.aborted) throw signal.reason ?? new DOMException('aborted', 'AbortError');
+    if (name === 'describe_feature') return await runDescribe(input as { id?: string }, scope, signal);
+    if (name === 'query_feature') return await runQuery(input as QueryIn, scope, signal);
     if (name === 'zone_overview') {
       const zone = (input as { zone?: string })?.zone?.trim();
       if (!zone) return fail(tr('`zone` заагаагүй байна.'));
-      const ov = await zoneOverview(zone, scope);
+      const ov = await abortable(zoneOverview(zone, scope), signal);
       /* ⚠️ 2026-10-06: эх сурвалж хоосон БОЛОВЧ алдаа өгсөн нь байвал энэ нь ArcGIS-ийн
          алдаа — «нэрээ шалгана уу» гэвэл хэрэглэгч зөв нэрээ дахин дахин солиж төөрдөг байв. */
       if (!ov.sources.length && ov.failedCount > 0) {
@@ -473,11 +553,14 @@ export async function runTool(
     }
     if (name === 'compute') {
       const kind = (input as { kind?: string })?.kind;
-      if (kind === 'building_progress') return ok(await buildingProgress(scope));
+      if (kind === 'building_progress') return ok(await abortable(buildingProgress(scope), signal));
+      if (kind === 'finance_summary') return ok(await abortable(financeSummary(scope), signal));
+      if (kind === 'pkg_plan') return ok(await abortable(pkgPlan(scope), signal));
       return fail(tr('Танихгүй тооцоолол: {0}', kind));
     }
     return fail(tr('Танихгүй хэрэгсэл: {0}', name));
   } catch (e) {
+    if (signal?.aborted) throw e;
     if (e instanceof ArcGISError) return fail(tr('ArcGIS алдаа: {0} ({1})', e.message, e.url));
     return fail(tr('Хэрэгсэл унав: {0}', e instanceof Error ? e.message : String(e)));
   }
@@ -487,7 +570,12 @@ export async function runTool(
 export function describeCall(name: string, input: unknown): string {
   const i = (input ?? {}) as QueryIn & { zone?: string };
   if (name === 'zone_overview') return tr('{0} — бүх эх сурвалжийг шалгаж байна…', i.zone);
-  if (name === 'compute') return tr('Гүйцэтгэлийг тооцоолж байна…');
+  if (name === 'compute') {
+    const kind = (input as { kind?: string } | null)?.kind;
+    if (kind === 'finance_summary') return tr('Санхүүгийн нийт дүнг тооцоолж байна…');
+    if (kind === 'pkg_plan') return tr('Багцын төлөвлөгөө ба хоцрогдлыг тооцоолж байна…');
+    return tr('Гүйцэтгэлийг тооцоолж байна…');
+  }
   if (name === 'describe_feature') return tr('{0} давхаргын талбаруудыг шалгаж байна…', i.id);
   if (name === 'query_feature') {
     return i.stats?.length

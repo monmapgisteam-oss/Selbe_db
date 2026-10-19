@@ -74,6 +74,8 @@ export const fake = {
    * анхны амжилттай уншилтаас ӨМНӨ л утгатай (2026-09-30).
    */
   searchDown: false,
+  /** ⚠️ 2026-10-19: `true` бол `queryFeatures` бүр ШИДНЭ — хүснэгт олдсоны ДАРААХ уншилтын уналт (`initRemote` → false; «Систем түр хаах»-ын fail-open §11) */
+  failReads: false,
   seed(rows) {
     for (const r of rows) this.rows.push({ OBJECTID: this.oid++, role: null, docs: 0, ...r });
   },
@@ -90,9 +92,11 @@ export const fake = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const wait = async () => { if (fake.latency) await sleep(Math.random() * fake.latency); };
 
-/** `where` задлах — `permsRemote` хоёр л хэлбэр хэрэглэдэг */
+/** `where` задлах — `permsRemote`-ийн хэлбэрүүд (⚠️ 2026-10-19: + `OBJECTID = n` — `removeMalformedRow`) */
 function match(where) {
   if (where === '1=1') return () => true;
+  const o = /^OBJECTID = (\d+)$/.exec(where);
+  if (o) return (r) => r.OBJECTID === Number(o[1]);
   const m = /^LOWER\(username\) = '((?:[^']|'')*)'$/.exec(where);
   if (!m) throw new Error(`хуурамч FeatureLayer: танигдахгүй where «${where}»`);
   const key = m[1].replace(/''/g, "'");
@@ -108,6 +112,7 @@ class FakeFeatureLayer {
     fake.inflight += 1;
     try {
       await wait();
+      if (fake.failReads) throw new Error('fake read failure');
       const hit = fake.rows.filter(match(q.where)).sort((a, b) => a.OBJECTID - b.OBJECTID);
       const start = q.start ?? 0;
       const num = q.num ?? 2000;

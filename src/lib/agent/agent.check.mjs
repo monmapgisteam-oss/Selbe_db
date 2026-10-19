@@ -79,7 +79,7 @@ const mock = createServer((req, res) => {
         id: `msg_test_${seen.length}`,
         type: 'message',
         role: 'assistant',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         stop_reason: blocks.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
         content: blocks,
@@ -380,7 +380,18 @@ async function main() {
   /* ── Тест 6: реле рүү явсан хүсэлтийн бүтэц ── */
   console.log('\n6. Реле рүү явсан хүсэлт');
   const first = seen[0] ?? {};
-  check('загвар нь claude-opus-5', first.model === 'claude-opus-5', first.model);
+  /* ⚠️ 2026-10-19: релегийн загварыг ТЕСТИЙН процессын `AGENT_MODEL`-той ЖИШИХГҮЙ — реле өөрийн орчноо
+     (`.env.development.local`, хостын тохиргоо) уншдаг тул хоёр процесс өөр утгатай байж болно. Зөвхөн
+     Claude-ийн загварын id мөн эсэх. */
+  check('загвар нь Claude-ийн id', typeof first.model === 'string' && /^claude-[a-z0-9.-]+$/i.test(first.model), first.model);
+  /* ⚠️ 2026-10-19: Opus 5.5 дээр явцын тэмдэглэл (`display: 'updates'`), бусад загварт `thinking` ОГТ илгээхгүй */
+  check(
+    'thinking — зөвхөн Opus 5.5-д display: updates',
+    /^claude-opus-5-5(?![0-9])/i.test(first.model ?? '')
+      ? first.thinking?.type === 'adaptive' && first.thinking?.display === 'updates'
+      : first.thinking === undefined,
+    JSON.stringify(first.thinking),
+  );
   /* ⚠️ 2026-10-15: анхдагч 'low' → 'medium' (`server.mjs`-ийн ⚠️). Тогтмолыг хатуу
      бичихгүй — `AGENT_EFFORT`-оор солигддог; зөвхөн ЗӨВШӨӨРӨГДСӨН утга эсэхийг шалгана. */
   check('effort тохируулагдсан', ['low', 'medium', 'high'].includes(first.output_config?.effort));

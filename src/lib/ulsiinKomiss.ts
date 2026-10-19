@@ -23,7 +23,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH } from './services';
-import { currentUser, requireCap } from './who';
+import { currentUser } from './who';
 import { huvaariScope } from './huvaariAcl';
 import { fillMsFor, sameFrame } from './ajilApply';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
@@ -79,8 +79,10 @@ export function ensureKomissRow(pkgKey: string): Promise<EnsureResult> {
 }
 
 async function ensureInner(pkgKey: string): Promise<EnsureResult> {
-  /* ⚠️ Эрх СҮЛЖЭЭНЭЭС ӨМНӨ — хуваарь төлөвлөх эрх + тухайн багцын зохиогчийн хүрээ */
-  requireCap('plan');
+  /* ⚠️ Эрх СҮЛЖЭЭНЭЭС ӨМНӨ — тухайн багцын зохиогчийн ХҮРЭЭ (доор).
+     ⚠️ 2026-10-19 (аудит): `requireCap('plan')` ХАСАГДСАН — хуваарийн бичих зам бүр (`submitPlan` · `decidePlan` ·
+     `Huvaari.canEdit`) зөвхөн хүрээгээр шалгадаг; `plan` эрх нь хуваарилалтын тусгал (`scopedAcl.syncCaps`) тул энд
+     давхар шаардахад эрхийн бичилт унасан зохиогчид хуваарь засагдаж, комиссын мөр нэмэгдэхгүй зөрчил гардаг байв. */
   const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((x) => x.key === pkgKey);
   if (!pkg) return { ok: false, error: tr('Багц олдсонгүй: {0}', pkgKey) };

@@ -20,6 +20,7 @@
  *   §6  хэрэглэгчийн карт — үүрэг/харагдац · «Төрлөөр тохируулах» · устгах · сэргээх
  *   §7b зэрэг бичилт (алдагдалгүй) · бичилт унах
  *   §8  remote round-trip — §1–§7-ийн дараа бүр `initRemote`-оор дахин уншиж давтан шалгана
+ *   §11 систем түр хаах (`__sys__:maintenance`, ⚠️ 2026-10-19) — хаах/нээх · хэн нэвтрэх · fail-open · эрхгүй бичилт
  * UI давхарга (✕ аль op-ыг ямар багц/үүргээр дууддаг вэ) — `src/modules/aclE2E.ui.check.mjs`.
  */
 import assert from 'node:assert/strict';
@@ -475,7 +476,8 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const o = mkUser();
   await CAPS.setCaps(o, ['addRow']); await settle();
   r = await run(OPS.capDirectOp(o, 'addRow', false));
-  ok(r.ok && /Бөглөх/.test(r.confirms[0]), `${tag}: addRow-ийн тусгай асуулт`);
+  /* ⚠️ 2026-10-19: мөр нэмэх «Хуваарь»-д (`CAP_HOST_VIEW.addRow`) — асуулт тэр хуудсыг нэрлэнэ */
+  ok(r.ok && /Хуваарь/.test(r.confirms[0]), `${tag}: addRow-ийн тусгай асуулт`);
   await both((w) => capIs(o, 'addRow', false, `${tag} ${w}`));
   console.log(`✅ §5 энгийн ${PLAIN_CAPS.length} эрх олгох/хасах · харагдац нээх/хаах · санхүүгийн хуваалцсан харагдац · super · өнчин эрх`);
 }
@@ -548,7 +550,8 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(FL.stageOfUser(u), null, `${tag} ${w}: урсгалгүй`);
   });
   /* Хатуу жагсаалтын аккаунт → tombstone; «Буцаах» → хатуу суурь, хуучин эрх ЭРГЭЖ ИРЭХГҮЙ */
-  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'menejer')[0];
+  /* ⚠️ 2026-10-19: кодод урсгалын (жишээ) аккаунт алга — урсгалын бус хатуу аккаунт (`tolovlolt`) */
+  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'tolovlolt')[0];
   await run(OPS.flowCellOp(hard, 'manager', p1, true));
   await run(OPS.scopedCellOp('obyem', hard, 'editor', p1, true));
   ok(await del(hard), `${tag}: хатуу аккаунт устгах`);
@@ -571,7 +574,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(FL.stageOfUser(hard), null, `${tag} ${w}: хуучин шат эргэж ирэхгүй`);
     eq(OB.obyemScope(hard, 'editor'), [], `${tag} ${w}: хуучин обьём эргэж ирэхгүй`);
     eq(CAPS.capsOf(hard), [], `${tag} ${w}: хуучин эрх эргэж ирэхгүй`);
-    eq(P.roleOf(hard), 'menejer', `${tag} ${w}: хатуу суурь үүрэг`);
+    eq(P.roleOf(hard), 'tolovlolt', `${tag} ${w}: хатуу суурь үүрэг`);
   });
   console.log('✅ §6 карт: applyType хуваарилалт/эрх/урсгалтай харагдац хөндөөгүй · setUser эрхийн харагдацыг хаадаггүй · устгах (7 purge + эрх) · tombstone · сэргээх');
 }
@@ -691,6 +694,162 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await QA.removeQaqcAssign(S2).sync; await settle();
   await both((w) => eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: removeQaqcAssign(revoke) super-ийн хадгалагдсан мөрийг хөндөхгүй`));
   console.log('✅ §9 цэвэрлэх мөр: устгагдсан аккаунтын ✕ — мөр бүхэлдээ, эрх үүсэхгүй · super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх хэвээр');
+}
+
+/* ══════════ §10. ХҮСНЭГТИЙН ӨГӨГДЛИЙН ТЭСВЭР (2026-10-19, аудит №10) ══════════
+ * Эвдэрсэн мөр чимээгүй алгасагдахгүй (`remoteMalformed`) · угтвар том/жижиг үсэг үл хамаарна · энгийн мөрийн
+ * түлхүүр trim/жижиг үсэг (унших ба бичих) · эвдэрсэн мөр эрх НЭЭХГҮЙ (fail-closed хэвээр). */
+{
+  const tag = '§10';
+  const [p1] = PKG_GROUPS;
+  const up = mkUser();
+  /* ⚠️ POOL-оос БИШ — POOL-ын хэрэглэгч аль хэдийн (зайгүй) мөртэй */
+  const sp = 'spaced_user_e2e';
+  fake.seed([
+    { username: '__flow__:bad_json_u', views: '{эвдэрсэн' },
+    { username: '__flow__:no_stage_u', views: JSON.stringify({ bagts: [p1] }) },
+    { username: '__cap__:bad_cap_u', views: JSON.stringify({ not: 'array' }) },
+    { username: '__huvaari__:', views: JSON.stringify({ grants: [] }) },
+    /* том үсэгтэй угтвар ба зайтай нэр — танигдах ёстой */
+    { username: `__CAP__:${up.toUpperCase()}`, views: JSON.stringify(['zovshoorol']) },
+    { username: `  ${sp.toUpperCase()}  `, role: 'taniltsah', views: JSON.stringify(['gdash', 'plan']), docs: 1 },
+  ]);
+  await roundTrip();
+  const bad = P.remoteMalformed();
+  const has = (k, why) => bad.some((m) => m.key === k && m.reason === why);
+  ok(has('__flow__:bad_json_u', 'json'), `${tag}: эвдэрсэн JSON тоймд гарсангүй (${JSON.stringify(bad)})`);
+  ok(has('__flow__:no_stage_u', 'stage'), `${tag}: шатгүй урсгалын мөр тоймд гарсангүй`);
+  ok(has('__cap__:bad_cap_u', 'json'), `${tag}: массив биш эрхийн мөр тоймд гарсангүй`);
+  ok(has('__huvaari__:', 'user'), `${tag}: нэргүй хуваарилалтын мөр тоймд гарсангүй`);
+  ok(FL.stageOfUser('bad_json_u') === null && FL.stageOfUser('no_stage_u') === null, `${tag}: эвдэрсэн мөр эрх нээв`);
+  ok(!CAPS.capsOf('bad_cap_u').length, `${tag}: эвдэрсэн эрхийн мөр эрх нээв`);
+  ok(CAPS.capsOf(up).includes('zovshoorol'), `${tag}: «__CAP__:» (том үсэг) угтвар танигдсангүй`);
+  ok(!P.listUsers().some((u) => u.username.toLowerCase().startsWith('__cap__:')), `${tag}: угтвартай мөр энгийн хэрэглэгч болж уншигдав`);
+  /* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ мөр эрх ОЛГОХГҮЙ — урьд нь trim-ээр олгодог атлаа `LOWER(username) = …`-ээр олдохгүй
+     тул хасах боломжгүй байв. Одоо цэвэрлэгээнд (`space`, OID-той), устгах нь `removeMalformedRow`. */
+  const a = P.resolveBaseAccess(sp);
+  ok(!a || !Array.isArray(a.views) || !a.views.includes('plan'), `${tag}: зайтай нэрийн мөр эрх олгов (${JSON.stringify(a)})`);
+  const spacedRow = bad.find((m) => m.reason === 'space' && m.key === `  ${sp.toUpperCase()}  `);
+  ok(spacedRow && typeof spacedRow.oid === 'number', `${tag}: зайтай мөр цэвэрлэгээнд (OID-той) гарсангүй (${JSON.stringify(bad)})`);
+  /* бичих тал ч ижил түлхүүр — зайтай/том үсгээр дуудсан ч ижил (trim · жижиг үсэг) түлхүүрээр бичиж уншина.
+     ⚠️ SQL-д TRIM хэрэглэдэггүй тул ХУУЧИН зайтай мөр олдохгүй — шинэ мөр (их OID) нэмэгдэж уншилтад ЯЛНА. */
+  await P.setUser(`  ${sp.toUpperCase()} `, { views: ['gdash'], docs: false }, 'taniltsah');
+  await settle();
+  ok(fake.rows.some((r) => r.username === sp.toUpperCase()), `${tag}: бичсэн мөрийн нэр зайгүй байх ёстой`);
+  await roundTrip();
+  ok(JSON.stringify(P.resolveBaseAccess(sp)?.views) === JSON.stringify(['gdash']), `${tag}: зайтай нэрийн бичилт уншигдсангүй (${JSON.stringify(P.resolveBaseAccess(sp))})`);
+  /* ⚠️ 2026-10-19: зайтай мөрийг OID-оор устгана — өөр нэр зөрвөл устгахгүй */
+  const { removeMalformedRow } = await import('./permsRemote.ts');
+  ok(!(await removeMalformedRow(spacedRow.oid, 'өөр нэр')), `${tag}: нэр зөрсөн ч устгав`);
+  ok(fake.rows.some((r) => r.OBJECTID === spacedRow.oid), `${tag}: нэр зөрсөн мөр устсан`);
+  ok(await removeMalformedRow(spacedRow.oid, spacedRow.key), `${tag}: зайтай мөрийг OID-оор устгаж чадсангүй`);
+  ok(!fake.rows.some((r) => r.OBJECTID === spacedRow.oid), `${tag}: зайтай мөр хүснэгтэд үлдэв`);
+  /* цэвэрлэсний дараа жагсаалтаас арилна */
+  fake.rows = fake.rows.filter((r) => !['__flow__:bad_json_u', '__flow__:no_stage_u', '__cap__:bad_cap_u', '__huvaari__:'].includes(r.username));
+  await roundTrip();
+  ok(!P.remoteMalformed().some((m) => m.key.endsWith('_u') || m.key === '__huvaari__:' || m.reason === 'space'), `${tag}: цэвэрлэсэн мөр жагсаалтад үлдэв`);
+  console.log('✅ §10 эвдэрсэн мөр тоймд · угтвар том/жижиг үсэг · нэрийн trim (унших/бичих) · fail-closed');
+}
+
+/* ══════════ §11. СИСТЕМ ТҮР ХААХ (⚠️ 2026-10-19) ══════════
+ * `sysClose` эзэмшигч хаана → энгийн хэрэглэгчид хаалттай, эзэмшигч ба кодын super-т үгүй · `__sys__:` мөр хий хэрэглэгч
+ * болохгүй · уншилт унахад СҮҮЛИЙН төлөв (fail-open) · нээх · эрхгүй хүний бичилт татгалзана (ArcGIS-т юу ч явахгүй). */
+{
+  const tag = '§11';
+  const WHO = await import('@/lib/who.ts');
+  const { AUTH } = await import('@/lib/services.ts');
+  const holder = mkUser();
+  const plain = mkUser();
+  const KEY = '__sys__:maintenance';
+  let r = await run(OPS.capDirectOp(holder, 'sysClose', true));
+  ok(r.ok && r.confirms.length === 0, `${tag}: sysClose олгох («${r.err}»)`);
+  await roundTrip();
+  ok(P.canBypassClosed(holder) && !P.canBypassClosed(plain), `${tag}: эзэмшигч ба энгийн ялгагдана`);
+
+  /* эрхгүй хүн бичих → татгалзана (нэвтрэлт асаалттай орчинд — `hasCap` нь appId хоосон үед бүгдэд үнэн) */
+  if (AUTH.appId) {
+    WHO.setCurrentUser(plain);
+    const before = fake.edits;
+    await assert.rejects(P.setSystemClosed(true, 'x'), /эрх/, `${tag}: эрхгүй хүний хаалт татгалзах ёстой`);
+    checks += 1;
+    eq(fake.edits, before, `${tag}: эрхгүй үед ArcGIS бичилт явах ёсгүй`);
+    eq(fake.find(KEY), [], `${tag}: эрхгүй үед мөр үүсэх ёсгүй`);
+  }
+
+  /* эзэмшигч хаана */
+  WHO.setCurrentUser(holder);
+  ok(await P.setSystemClosed(true, 'Шилжүүлэлт', '10-20 09:00'), `${tag}: эзэмшигч хаах`);
+  eq(JSON.parse(fake.find(KEY)[0].views).on, true, `${tag}: ArcGIS мөр on:true`);
+  await both((w) => {
+    eq(P.closedFor(plain)?.note, 'Шилжүүлэлт', `${tag} ${w}: энгийн хэрэглэгчид хаалттай (тайлбартай)`);
+    eq(P.closedFor(plain)?.until, '10-20 09:00', `${tag} ${w}: дахин нээгдэх хугацаа`);
+    eq(P.systemClosed()?.by, holder, `${tag} ${w}: хэн хаасан`);
+    eq(P.closedFor(holder), null, `${tag} ${w}: эзэмшигчид хаалтгүй`);
+    eq(P.closedFor(SUPER), null, `${tag} ${w}: кодын super-т хаалтгүй`);
+    ok(!P.listUsers().some((u) => u.username.toLowerCase().startsWith('__sys__')), `${tag} ${w}: __sys__ мөр хий хэрэглэгч болов`);
+    ok(!P.remoteMalformed().some((m) => m.key.startsWith('__sys__')), `${tag} ${w}: __sys__ мөр эвдэрсэн гэж тоологдов`);
+  });
+
+  /* уншилт унавал — сүүлийн мэдэгдэж буй төлөв (fail-open: хаалттай байсныг дураар нээхгүй ч, түгжихгүй) */
+  fake.failReads = true;
+  ok(!(await P.initRemote(false, true)), `${tag}: уншилт унах ёстой`);
+  fake.failReads = false;
+  eq(P.closedFor(plain)?.on, true, `${tag}: уншилт унахад хаалттай төлөв хэвээр`);
+
+  /* нээх */
+  ok(await P.setSystemClosed(false), `${tag}: эзэмшигч нээх`);
+  await both((w) => {
+    eq(P.systemClosed(), null, `${tag} ${w}: нээлттэй`);
+    eq(P.closedFor(plain), null, `${tag} ${w}: энгийн хэрэглэгч орно`);
+  });
+  eq(fake.find(KEY).length, 1, `${tag}: нэг л мөр (upsert)`);
+  fake.failReads = true;
+  await P.initRemote(false, true);
+  fake.failReads = false;
+  eq(P.systemClosed(), null, `${tag}: нээлттэй үед уншилт унасан ч нээлттэй хэвээр`);
+
+  /* кодын super ч хааж/нээж чадна */
+  WHO.setCurrentUser(SUPER);
+  ok(await P.setSystemClosed(true) && P.closedFor(plain) != null, `${tag}: super хаах`);
+  ok(await P.setSystemClosed(false) && P.systemClosed() == null, `${tag}: super нээх`);
+
+  /* ⚠️ 2026-10-19 (аудит №2): ХУУЧИРСАН ТӨЛӨВ — цонхонд харагдсан (`expect`) нь ArcGIS-ийнхаас зөрвөл юу ч бичихгүй */
+  ok(await P.setSystemClosed(true, 'a', '', { expect: null }), `${tag}: expect таарсан хаалт`);
+  const shown = P.systemClosed();
+  ok(shown?.note === 'a', `${tag}: харагдсан төлөв`);
+  /* өөр эзэмшигч завсарт НЭЭВ (энэ таб мэдээгүй) */
+  fake.find(KEY)[0].views = JSON.stringify({ on: false, by: 'other', at: 7 });
+  let ed = fake.edits;
+  await assert.rejects(
+    P.setSystemClosed(true, 'b', '', { expect: shown, update: true }),
+    (e) => e instanceof P.SysStaleError && e.fresh === null,
+    `${tag}: «Тайлбар шинэчлэх» нээлттэй системийг ДАХИН хаав (on→on сохор бичилт)`,
+  );
+  checks += 1;
+  eq(fake.edits, ed, `${tag}: зөрсөн үед ArcGIS бичилт явах ёсгүй`);
+  eq(JSON.parse(fake.find(KEY)[0].views).on, false, `${tag}: нээлттэй хэвээр`);
+  eq(P.systemClosed(), null, `${tag}: шинэ (нээлттэй) төлөв локалд тусгагдсан`);
+  /* «Нээх» ч мөн — харагдсан хаалттай, бодит нь нээлттэй */
+  await assert.rejects(P.setSystemClosed(false, '', '', { expect: shown }), P.SysStaleError, `${tag}: хуучирсан «Нээх»`);
+  checks += 1;
+  /* update нь шинэ төлөв нээлттэй бол expect таарсан ч татгалзана */
+  await assert.rejects(P.setSystemClosed(true, 'c', '', { expect: null, update: true }), P.SysStaleError, `${tag}: нээлттэй үед update`);
+  checks += 1;
+  /* цонх нээгдэхэд дахин уншина — өөр хүний хаалт харагдана */
+  fake.find(KEY)[0].views = JSON.stringify({ on: true, note: 'бусад', by: 'other', at: 9 });
+  eq((await P.refreshSystemClosed())?.by, 'other', `${tag}: refreshSystemClosed шинэ төлөв`);
+  eq(P.systemClosed()?.note, 'бусад', `${tag}: store шинэчлэгдсэн`);
+  /* уншилт унавал БИЧИХГҮЙ (батлах боломжгүй) */
+  fake.failReads = true;
+  ed = fake.edits;
+  ok(!(await P.setSystemClosed(false, '', '', { expect: P.systemClosed() })), `${tag}: уншилт унасан үед бичилт`);
+  eq(await P.refreshSystemClosed(), undefined, `${tag}: уншилт унавал undefined`);
+  fake.failReads = false;
+  eq(fake.edits, ed, `${tag}: уншилт унасан үед ArcGIS бичилт явах ёсгүй`);
+  ok(await P.setSystemClosed(false, '', '', { expect: P.systemClosed() }) && P.systemClosed() == null, `${tag}: таарсан нээлт`);
+
+  WHO.setCurrentUser(null);
+  console.log('✅ §11 систем түр хаах: эзэмшигч хаах/нээх · энгийнд хаалттай, эзэмшигч/super-т үгүй · fail-open · эрхгүй бичилт татгалзав · хуучирсан төлөв дээр бичихгүй');
 }
 
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

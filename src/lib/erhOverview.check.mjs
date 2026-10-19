@@ -7,7 +7,7 @@
  *      нэр гэж уншвал «бүх багцын менежер» хаана ч харагдахгүй.
  *   2. ГАЦААГ УРЬДЧИЛЖ хэлнэ: батлагчгүй, зохиогч=батлагч, урсгалын цоорхой.
  *      Эдгээр нь одоо ЗӨВХӨН ажил зогссоны дараа мэдэгддэг.
- *   3. Бүх шат хоосон нь АНХААРУУЛГА БИШ — тэр багцад урсгал эхлээгүй.
+ *   3. Бүх шат хоосон нь ГАЦАА БИШ (`flowGap` биш) — 2026-10-19-нөөс тусдаа `flowEmpty` (`warn`) анхааруулга.
  *   4. Том/жижиг үсэг, зайг тэсвэрлэнэ (`trim().toLowerCase()`).
  *   5. Матриц (2026-09-25): 19 багана (2026-09-28: + ТУГ, + ЧХ инженер), issue бүр өөрийн багана, viewOnly эзэн
  *      биш, өнчин эрх (super-т үгүй), эрхийн эх сурвалж (ALL → null).
@@ -28,6 +28,7 @@ globalThis.dispatchEvent = () => true;
 
 const {
   userErh, pkgErh, allPkgErh, allUserErh, MATRIX_COLS, pkgMatrix, butetsRows, orphanCaps, capBacking, missingCaps,
+  unknownPkgUsers,
 } = await import('@/lib/erhOverview.ts');
 const { BUTETS_PACKS } = await import('@/lib/butetsPacks.ts');
 const { PKG_GROUPS } = await import('@/modules/sheet/bagts.pkg.ts');
@@ -409,4 +410,58 @@ console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх')
 }
 console.log('✅ устгагдсан аккаунтын хуучин мөр гацааг нуухгүй (нүдэнд харагдсаар)');
 
-console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт');
+/* ── 11. 2026-10-19 (аудит №10): бүх шат хоосон · танигдаагүй багц · зөвхөн super ── */
+{
+  /* (а) БҮХ шат хоосон — урьд нь чимээгүй; одоо `warn` (шинэ гацааны асуултад орохгүй — `bad` биш) */
+  const none = pkgErh(empty(), G0).issues.find((i) => i.key === 'flowEmpty');
+  assert.ok(none, 'бүх шат хоосон багц тоймд гарсангүй');
+  assert.equal(none.tone, 'warn');
+  assert.equal(none.cols.length, STAGE_ORDER.length);
+  const partial = { ...empty(), flow: [{ user: 'a', stage: STAGE_ORDER[0], bagts: [G0] }] };
+  assert.ok(!pkgErh(partial, G0).issues.some((i) => i.key === 'flowEmpty'), 'хэсэгчилсэн цоорхой flowEmpty биш');
+
+  /* (б) танигдаагүй багц — урсгал · QAQC · хуваарь · обьём · чанар · нэмэлт ажил; «*» ба зөв нэр орохгүй */
+  const src = {
+    ...empty(),
+    users: ['u1', 'u2', 'u3'],
+    flow: [{ user: 'u1', stage: STAGE_ORDER[1], bagts: [G0, 'Багц 99 (хуучин)'] }],
+    qaqc: [{ user: 'u2', bagts: ['*'] }],
+    huvaari: [{ user: 'u2', grants: [{ role: 'author', bagts: ['Хуучин нэр'] }] }],
+    ajil: [{ user: 'U3', grants: [{ role: 'editor', bagts: [G1] }] }],
+  };
+  assert.deepEqual(userErh(src, 'u1').unknownBagts, ['Багц 99 (хуучин)']);
+  assert.deepEqual(userErh(src, 'u2').unknownBagts, ['Хуучин нэр'], '«*» танигдаагүй гэж тоологдов');
+  assert.deepEqual(userErh(src, 'u3').unknownBagts, []);
+  assert.deepEqual(unknownPkgUsers(src).map((x) => x.user).sort(), ['u1', 'u2']);
+  /* ⚠️ 2026-10-19 (аудит): ХУУЧИН дээд түвшний `bagts` (grants-тай хамт үлдсэн) ч шалгагдана */
+  const legacy = { ...empty(), users: ['u4'], obyem: [{ user: 'u4', grants: [{ role: 'author', bagts: [G0] }], bagts: ['Хуучин багц'] }] };
+  assert.deepEqual(userErh(legacy, 'u4').unknownBagts, ['Хуучин багц'], 'хуучин `bagts` танигдаагүй багцад орсонгүй');
+
+  /* (в) амьд хатуу super — гацаа АНХААРУУЛГА хэвээр (өнгө ч), «зөвхөн админ» гэж тэмдэглэнэ */
+  const noAppr = { ...empty(), huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }] }] };
+  const plain = pkgErh(noAppr, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(plain && !plain.superOnly, 'super-гүй үед superOnly тэмдэг');
+  const withSup = pkgErh({ ...noAppr, supers: ['boss'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(withSup, 'super байхад анхааруулга АЛГА болов — энгийн хариуцагч томилоогүй хэвээр');
+  assert.equal(withSup.tone, 'bad', 'өнгө хэвээр');
+  assert.equal(withSup.superOnly, true, 'super шийдвэрлэх боломжтойг тэмдэглээгүй');
+  const goneSup = pkgErh({ ...noAppr, supers: ['boss'], gone: ['BOSS'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(!goneSup.superOnly, 'устгагдсан super тоологдов');
+  /* ⚠️ 2026-10-19 (аудит №2): батлагч БАЙГАА (зохиогчтой давхцсан) — «энгийн хариуцагч томилоогүй» ХУДАЛ */
+  const self = { ...empty(), supers: ['boss'], huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }, { role: 'approver', bagts: [G0] }] }] };
+  const selfI = pkgErh(self, G0).issues.find((i) => i.key === 'huvaariSelfApprove');
+  assert.ok(selfI && !selfI.superOnly, '*SelfApprove-д superOnly залгагдав');
+  /* зөвхөн super томилогдсон багана — цоорхой хэвээр (энгийн хүн алга) */
+  const supAppr = { ...empty(), supers: ['boss'], obyem: [{ user: 'e', grants: [{ role: 'editor', bagts: [G0] }] }] };
+  assert.equal(pkgErh(supAppr, G0).issues.find((i) => i.key === 'obyemNoApprover')?.superOnly, true);
+  /* chanarNoReviewer: дутуу үүрэгт зохиогч өөрөө томилогдсон (энгийн хүн БАЙГАА) — superOnly биш */
+  const chPart = {
+    ...empty(), supers: ['boss'],
+    chanar: [{ user: 'c', grants: ['author', 'tuh', 'chanar', 'habea', 'tug', 'cheng'].map((role) => ({ role, bagts: [G0] })) }],
+  };
+  const chI = pkgErh(chPart, G0).issues.find((i) => i.key === 'chanarNoReviewer');
+  assert.ok(chI && !chI.superOnly, 'хэсэгчлэн томилогдсон chanarNoReviewer-т superOnly');
+}
+console.log('✅ бүх шат хоосон · танигдаагүй багц · зөвхөн super (анхааруулга хэвээр)');
+
+console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт · танигдаагүй багц');

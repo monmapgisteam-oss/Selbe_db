@@ -2209,7 +2209,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     label: r.label,
                     value: r.week,
                     display: r.week == null ? '—' : num(r.week),
-                    hint: r.week == null ? tr('Эх сурвалж холбогдоогүй') : undefined,
+                    /* ⚠️ 2026-10-19: шалтгааныг ачаалагч өгвөл түүнийг («бүртгэл ирээгүй» ≠ «эх сурвалжгүй») */
+                    hint: r.week == null ? (r.hint ?? tr('Эх сурвалж холбогдоогүй')) : r.hint,
+                    /* ⚠️ 2026-10-19: утгатай мөрийн тэмдэглэл ч («Оны ялгаагүй» — `habeaRegisters.improvementSum`) hover-т */
                   }))}
                 />
               </div>

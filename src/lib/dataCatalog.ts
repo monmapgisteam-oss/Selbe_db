@@ -858,6 +858,55 @@ function otherEntries(): CatEntry[] {
       ],
       editors: NONE,
     },
+    /* ⚠️ 2026-10-19: ХАБЭА-гийн бүртгэл (37 · 40 · 42 · 33) ба хог хаягдал (43) — Enterprise `Сэлбэ_ХАБ1015`
+       (`NEXT_PUBLIC_BIM_SCENE`-ийн `…/Hosted`). Урьд каталогт ОГТ байгаагүй тул «Өгөгдлийн каталог»-оос эх нь
+       харагдахгүй байв. Бичилт Enterprise нэвтрэлттэй (`habeaRegisters`-ийн ⚠️). */
+    ...HABEA.registers.items.filter((it) => it.table != null).map((it): CatEntry => {
+      const url = `${HABEA.registers.url}/${it.table}`;
+      const p = parseUrl(url);
+      return {
+        id: `habea:reg:${it.table}`,
+        name: tr('ХАБ-ын бүртгэл — {0}', it.label),
+        service: p.service,
+        layer: p.layer,
+        url,
+        kind: 'table',
+        group: 'habea',
+        aliases: [],
+        styleSrc: [],
+        env: 'NEXT_PUBLIC_BIM_SCENE',
+        views: sortViews(['habea']),
+        purpose: () => it.sum
+          ? tr('Долоо хоног бүрийн тоо (огноогүй — долоо хоногийн дугаараар) — ХАБЭА-гийн «Бусад үзүүлэлт» карт.')
+          : tr('ХАБ-ын баримтын бүртгэл (огноотой мөр) — ХАБЭА-гийн «Бусад үзүүлэлт» картад долоо хоногоор тоологдоно.'),
+        chain: () => [
+          S(tr('ХАБЭА-гийн өгөгдөл оруулагч (habeaData эрх) «+ Нэмэх» маягтаар — Enterprise-д нэвтэрч')),
+          S(tr('энэ хүснэгт (шууд, Enterprise)')),
+          S(tr('ХАБЭА · «Бусад үзүүлэлт»')),
+        ],
+        editors: () => [{ cap: 'habeaData', text: tr('ХАБЭА-гийн бүртгэл оруулах') }],
+      };
+    }),
+    {
+      id: 'habea:waste',
+      name: tr('Хог хаягдал — долоо хоногийн рейс'),
+      service: parseUrl(HABEA.waste.url).service,
+      layer: parseUrl(HABEA.waste.url).layer,
+      url: HABEA.waste.url,
+      kind: 'table',
+      group: 'habea',
+      aliases: [],
+      styleSrc: [],
+      env: 'NEXT_PUBLIC_BIM_SCENE',
+      views: sortViews(['habea']),
+      purpose: () => tr('Хаягдлын төрөл × долоо хоног, багц бүрийн рейсийн тоо — ХАБЭА-гийн «Хог хаягдал» карт.'),
+      chain: () => [
+        S(tr('ХАБЭА-гийн өгөгдөл оруулагч (habeaData эрх) «+ Нэмэх» маягтаар — Enterprise-д нэвтэрч')),
+        S(tr('энэ хүснэгт (шууд, Enterprise)')),
+        S(tr('ХАБЭА · «Хог хаягдал»')),
+      ],
+      editors: () => [{ cap: 'habeaData', text: tr('ХАБЭА-гийн бүртгэл оруулах') }],
+    },
     {
       id: 'perms',
       name: tr('Хэрэглэгчийн эрх ба хуваарилалт'),
@@ -875,7 +924,11 @@ function otherEntries(): CatEntry[] {
         S(tr('энэ хүснэгт (мөрийн төрлөөр)')),
         S(tr('Нэвтрэхэд эрх, харагдац, шат тогтоно')),
       ],
-      editors: () => [{ text: tr('Super админ (кодын хатуу жагсаалт)') }],
+      /* ⚠️ 2026-10-19: `sysClose` эрхтэй хүн ЗӨВХӨН `__sys__:maintenance` мөрийг бичнэ («Систем түр хаах») */
+      editors: () => [
+        { text: tr('Super админ (кодын хатуу жагсаалт)') },
+        { cap: 'sysClose', text: tr('Систем түр хаах — зөвхөн системийн төлөвийн мөр') },
+      ],
       rows: () => [
         { key: '<хэрэглэгч>', text: tr('Үүрэг ба харагдах харагдацууд') },
         { key: '__flow__:', text: tr('Гүйцэтгэлийн урсгалын томилгоо — шат ба багц') },
@@ -887,6 +940,8 @@ function otherEntries(): CatEntry[] {
         { key: '__ajil__:', text: tr('Нэмэлт ажлын багцын хуваарилалт') },
         { key: '__butets__:', text: tr('Дэд бүтцийн засварын багцын хуваарилалт') },
         { key: '__type__:', text: tr('Эрхийн төрлийн загвар') },
+        /* ⚠️ 2026-10-19: хэрэглэгчийн мөр БИШ — нэг мөр, JSON `{on, note, until, by, at}` */
+        { key: '__sys__:maintenance', text: tr('Системийн төлөв — «Систем түр хаах» (хаалттай эсэх, тайлбар, дахин нээгдэх хугацаа)') },
       ],
       note: () => tr('Хүснэгтийг super админ анх нэвтрэхэд код өөрөө үүсгэнэ; бүх харагдац (нэвтрэлт) уншина.'),
     },
@@ -957,7 +1012,9 @@ function imgEntries(): CatEntry[] {
       group: 'img' as const,
       aliases: [],
       styleSrc: [],
-      ...(x.id === 'img:elev' ? { env: 'NEXT_PUBLIC_ELEVATION_URL' } : {}),
+      /* ⚠️ 2026-10-19: BIM (SceneServer) нь Enterprise `…/Hosted` — хаяг `NEXT_PUBLIC_BIM_SCENE`-ээс (`services/scene.ts`) */
+      ...(x.id === 'img:elev' ? { env: 'NEXT_PUBLIC_ELEVATION_URL' }
+        : BIM.layers.some((b) => b.key === x.id) ? { env: 'NEXT_PUBLIC_BIM_SCENE' } : {}),
       views: sortViews(x.views),
       ...(x.allMaps ? { allMaps: true as const } : {}),
       purpose: x.purpose,

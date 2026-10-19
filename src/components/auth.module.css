@@ -87,3 +87,59 @@
   font-size: 0.76rem;
   color: var(--bad-ink);
 }
+
+/* ── ⚠️ 2026-10-19: «Систем түр хаах» (`AuthGate.SystemClosed` · `SystemCloseDialog`) ── */
+/* Хаагчийн нэмэлт тайлбар — мөр хадгална */
+.sysNote { color: var(--ink-2); white-space: pre-wrap; }
+/* Удирдлагын цонх — маягттай тул өргөн, талбар зүүн зэрэгцээтэй */
+.cardWide { max-width: 460px; text-align: left; }
+.cardWide .title, .cardWide .logo { text-align: center; }
+.sysState {
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.sysStateOn {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+  color: var(--bad-ink);
+}
+.sysLabel { display: block; margin: 10px 0 4px; font-size: 0.76rem; font-weight: 600; color: var(--ink-2); }
+.sysInput {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  resize: vertical;
+}
+.sysDanger { background: var(--bad); color: #fff; }
+/* Хаалттай үед нэвтэрч буй (эрхтэй) хэрэглэгчийн шар зурвас — мартахаас сэргийлнэ */
+.sysStrip {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5000;
+  max-width: calc(100vw - 32px);
+  padding: 5px 14px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--warn-ink);
+  background: color-mix(in srgb, var(--warn) 22%, var(--surface));
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.sysStrip { cursor: pointer; }

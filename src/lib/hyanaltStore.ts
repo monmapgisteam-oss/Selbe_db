@@ -350,6 +350,11 @@ function authz(
     }
     by = bypass && (!AUTH.appId || roleForUser(u) === 'super');
   }
+  /* ⚠️ 2026-10-19 (ХЭРЭГЛЭГЧИЙН ШИЙДВЭР): `bypass` (хатуу super / нэвтрэлтгүй дев) нь БҮХ шалгуурыг — томилгоо · шат ·
+     багцын хүрээ БА ӨӨРИЙГӨӨ БАТЛАХ дүрмийг (`selfApprovalDeny`) — ЧӨЛӨӨЛНӨ: «super admin гүйцэтгэлийн бүх хэсгийг
+     турших боломжтой байх ёстой» (нэг данс компани болж илгээгээд зургаан шатыг дараалан турших). Энэ нь бусад урсгалаас
+     (`decidePlan` · `decideObyem` · `decideAjil` · `chanarMs.review`) САНААТАЙ ялгаа. Энгийн хэрэглэгчид (`by` худал)
+     `selfApprovalDeny` бүрэн хэвээр — тэр цэвэр функц өөрөө super-ийг ялгадаггүй (дуудагч алгасна). */
   if (by) return null;
   if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
   if (isViewOnly(u)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — шийдвэр гаргах боломжгүй.');
@@ -360,34 +365,78 @@ function authz(
   if (sc !== null && !sc.includes(bagts)) {
     return tr('Энэ багц танд хуваарилагдаагүй байна.');
   }
-  /* ⚠️ 2026-10-09 (аудит): өөрийн илгээсэн гүйцэтгэлийг өөрөө хянахгүй (`submitters`-ийн ⚠️) */
+  /* ⚠️ 2026-10-09 (аудит): өөрийн илгээсэн гүйцэтгэлийг өөрөө хянахгүй; 2026-10-19: аль ч шатанд, өөр шатанд
+     зөвшөөрсөн бол ч (`selfApprovalDeny`) */
+  return selfApprovalDeny(stage, u, hist, same, submitters);
+}
+
+const SAME_ROUND_MSG = (): string =>
+  tr('Энэ илгээлтийг та өөр шатанд аль хэдийн зөвшөөрсөн — нэг илгээлтийг нэг хүн хоёр шатанд шийдвэрлэх боломжгүй.');
+const PREV_STAGE_MSG = (): string =>
+  tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
+
+/**
+ * ӨӨРИЙГӨӨ БАТЛАХ ДҮРЭМ — ЦЭВЭР (`hyanaltAuthz.check.mjs`). `authz`-ийн томилгоо/хүрээний ДАРАА (2026-10-19, аудит).
+ * ⚠️ Хатуу super (`authz`-ийн `bypass`) ЧӨЛӨӨТЭЙ — `authz` энэ функцийг огт дууддаггүй (хэрэглэгчийн шийдвэр
+ *    2026-10-19: бүх шатыг турших). Энэ функц өөрөө хэн болохыг ялгадаггүй — дуудвал super-т ч татгалзана.
+ *   1. Илгээгч (`submitters`) аль ч шатанд батлахгүй (`submitterDeny`).
+ *   2. `hist` өгвөл (зөвшөөрөх чиглэл): энэ тойргийн логт ӨӨР шатанд ЗӨВШӨӨРСӨН (`approve`/`recheck-ok`, `u`) бол
+ *      татгалзана — урьд нь зөвхөн ӨМНӨХ шатыг шалгадаг тул шат шилжүүлсэн хүн (инженерээр баталсны дараа
+ *      ерөнхий менежер болсон) нэг илгээлтийг хоёр удаа баталж чаддаг байв. Тойрог = хяналтын мөр (`ergelt` бүр
+ *      тусдаа мөр, лог нь мөрийнх). Ижил шатыг ДАХИН (дээд шат буцаасны дараа) батлах нь хэвийн.
+ *   3. Логт `u` алга (талбаргүй үйлчилгээ / хуучин лог — R5): ДООД шатуудын дэлгэцийн нэр (`SF[шат].who`) = энэ
+ *      шийдвэрийн `who` бол татгалзана. Зөвхөн доод шатууд — мөр тэдгээрийг давсан тул тэнд ЗӨВШӨӨРСӨН нэр л байна.
+ * ⚠️ `u` нь жижиг үсгээр (`meOf`). Буцаах чиглэлд дуудагч `hist`-ийг өгдөггүй (буцаалт ажлыг батлалтаас холдуулна).
+ */
+export function selfApprovalDeny(
+  stage: ReviewStage,
+  u: string,
+  hist?: unknown,
+  same?: { row: Row; who: string },
+  submitters?: readonly string[],
+): string | null {
   const sd = submitterDeny(stage, u, submitters);
   if (sd) return sd;
-  if (hist !== undefined) {
-    const pv = prevReview(stage);
-    const la = pv ? lastApprover(hist, pv) : '';
-    if (pv && la && la === u) {
-      return tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
-    }
-    /* ⚠️ 2026-10-09 (R5): логт `u` алга — өмнөх шатны дэлгэцийн нэрээр нөөц шалгалт */
-    if (pv && !la && same) {
-      const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+  if (hist === undefined) return null;
+  const pv0 = prevReview(stage);
+  const other = approvedStagesOf(hist, u).filter((st) => st !== stage);
+  if (other.length) return pv0 && other.includes(pv0) ? PREV_STAGE_MSG() : SAME_ROUND_MSG();
+  /* ⚠️ 2026-10-09 (R5): логт `u` алга — доод шатуудын дэлгэцийн нэрээр нөөц (тэр шатанд `u`-тай зөвшөөрөл байхгүй үед л) */
+  if (same) {
+    const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+    const me = norm(same.who);
+    for (let pv = pv0; pv; pv = prevReview(pv)) {
+      if (lastApprover(hist, pv)) continue;
       const pw = norm((same.row as Record<string, unknown>)[SF[pv].who]);
-      if (pw && pw === norm(same.who)) {
-        return tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
-      }
+      if (me && pw && pw === me) return pv === pv0 ? PREV_STAGE_MSG() : SAME_ROUND_MSG();
     }
   }
   return null;
 }
 
+/** Энэ тойргийн логт `u` ЗӨВШӨӨРСӨН (`approve`/`recheck-ok`) шатууд — давхардалгүй (2026-10-19) */
+export function approvedStagesOf(raw: unknown, u: string): ReviewStage[] {
+  const me = u.trim().toLowerCase();
+  if (!me) return [];
+  const out = new Set<ReviewStage>();
+  for (const e of rawHist(raw)) {
+    if (e.act !== 'approve' && e.act !== 'recheck-ok') continue;
+    if (typeof e.u !== 'string' || e.u.trim().toLowerCase() !== me) continue;
+    if ((REVIEW_STAGES as readonly unknown[]).includes(e.stage)) out.add(e.stage as ReviewStage);
+  }
+  return [...out];
+}
+
 /**
  * ⚠️ 2026-10-09 (аудит №2): `authz`-ийн илгээгчийн дүрмийг ЦЭВЭР функц болгон гаргав (Node шалгуур —
- *    `hyanaltAuthz.check.mjs`). Утга ӨӨРЧЛӨГДӨӨГҮЙ: зөвхөн инженер шатанд, `u` илгээгчдийн дунд бол татгалзана;
- *    `submitters` `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй. `u` нь жижиг үсгээр (`meOf`).
+ *    `hyanaltAuthz.check.mjs`). `submitters` `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй.
+ *    `u` нь жижиг үсгээр (`meOf`).
+ * ⚠️ 2026-10-19 (аудит): АЛЬ Ч ШАТАНД — урьд нь зөвхөн инженер шатанд шалгадаг тул компаниас дээд шат руу шилжсэн
+ *    (эсвэл super-ээр компани болж илгээсэн) данс өөрийн илгээлтийг менежер/дарга шатанд баталж чаддаг байв.
+ *    `stage` параметр гарын үсгийн нийцэлд хэвээр.
  */
-export function submitterDeny(stage: ReviewStage, u: string, submitters?: readonly string[]): string | null {
-  if (stage === 'engineer' && submitters?.includes(u)) {
+export function submitterDeny(_stage: ReviewStage, u: string, submitters?: readonly string[]): string | null {
+  if (submitters?.includes(u)) {
     return tr('Энэ гүйцэтгэлийг та өөрөө илгээсэн — өөрийн илгээлтийг хянах боломжгүй.');
   }
   return null;
@@ -399,10 +448,17 @@ export function submitterDeny(stage: ReviewStage, u: string, submitters?: readon
  *    Уншиж чадахгүй бол ТАТГАЛЗАНА (fail-closed, `subAt`-ийн уншилттай ижил); илгээлт алга (legacy) → шалгахгүй.
  */
 async function submittersFor(
-  stage: ReviewStage, row: Row, me: string | undefined, bypass: boolean,
+  _stage: ReviewStage, row: Row, me: string | undefined, _bypass: boolean,
 ): Promise<{ ok: true; list?: string[] } | { ok: false; error: string }> {
-  if (stage !== 'engineer' || typeof window === 'undefined') return { ok: true };
-  if (bypass && (!AUTH.appId || roleForUser(meOf(me)) === 'super')) return { ok: true };
+  /* ⚠️ 2026-10-19 (аудит): БҮХ шатанд уншина (`selfApprovalDeny`-ийн ⚠️) — урьд нь зөвхөн инженер шатанд. Хатуу super
+     ЧӨЛӨӨТЭЙ (доорх ⚠️). Нэвтрэлт унтраалттай дев (`!AUTH.appId`) — хэн болох нь тодорхойгүй тул алгасна. */
+  if (typeof window === 'undefined' || !AUTH.appId || !meOf(me)) return { ok: true };
+  /* ⚠️ 2026-10-19 (хэрэглэгчийн шийдвэр): хатуу super турших эрхтэй (`authz`-ийн ⚠️) — илгээгчийг уншихгүй,
+     уншилтын алдаа ч түүнийг зогсоохгүй */
+  /* ⚠️ 2026-10-19 (аудит): чөлөөлөлт ЗӨВХӨН хатуу super-т (эсвэл нэвтрэлтгүй дев) — `_bypass` нь өөр замаар
+     (номын сангийн туг, дев туршилт) үнэн болсон ЭНГИЙН хэрэглэгчийг өөрийн илгээлтийг батлахаас хамгаалалтгүй
+     үлдээдэг байв. Super-ийн турших эрх (хэрэглэгчийн шийдвэр) хэвээр. */
+  if (_bypass && (!AUTH.appId || roleForUser(meOf(me)) === 'super')) return { ok: true };
   const so = Number(row[F.sheetOid]);
   if (!Number.isInteger(so) || so <= 0) return { ok: true };
   return submittersOfRow(so, row[F.bagts]);
@@ -817,9 +873,14 @@ export async function countReviewPending(username: string | null | undefined): P
      *    (тэмдэг нь зөвлөмж; шийдвэрийн хамгаалалт `authz`-д хэвээр). Илгээгчдийн уншилт 60 с кэштэй.
      */
     /* ⚠️ `company` нь хяналтын шат биш — өмнөх хянагч байхгүй */
-    const pv = stage === 'company' ? null : prevReview(stage);
-    if (pv) ws = ws.filter((w) => lastApprover(w.current[F.history], pv) !== me);
-    if (stage === 'engineer' && ws.length) {
+    /* ⚠️ 2026-10-19 (аудит): `authz`-ийн шинэ дүрэм (`selfApprovalDeny`) — ӨӨР АЛЬ Ч шатанд зөвшөөрсөн, аль ч шатанд
+       өөрийн илгээлт. Урьд нь өмнөх шат ба инженер шатны илгээгч л. */
+    /* ⚠️ 2026-10-19 (хэрэглэгчийн шийдвэр): хатуу super турших эрхтэй (`authz`-ийн ⚠️) — тэмдэг ч шүүхгүй */
+    const tester = roleForUser(me) === 'super';
+    if (stage !== 'company' && !tester) {
+      ws = ws.filter((w) => !approvedStagesOf(w.current[F.history], me).some((st) => st !== stage));
+    }
+    if (stage !== 'company' && !tester && ws.length) {
       const lists = await Promise.all(ws.map(async (w): Promise<string[] | undefined> => {
         const so = Number(w.current[F.sheetOid]);
         if (!Number.isInteger(so) || so <= 0) return undefined;
