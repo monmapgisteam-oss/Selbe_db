@@ -71,12 +71,12 @@ try {
         return {
           exceededTransferLimit: true,
           features: [
-            { attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', багц_1: 2, багц_2: null } },
-            { attributes: { objectid: 2, week: null, metric: 'Бетон (рейс)', багц_1: null, багц_2: 0 } },
+            { attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', bagts1: 2, bagts2: null } },
+            { attributes: { objectid: 2, week: null, metric: 'Бетон (рейс)', bagts1: null, bagts2: 0 } },
           ],
         };
       }
-      return { features: [{ attributes: { objectid: 3, week: 41, metric: 'Ахуйн хог (рейс)', багц_1: null } }] };
+      return { features: [{ attributes: { objectid: 3, week: 41, metric: 'Ахуйн хог (рейс)', bagts1: null } }] };
     };
     const d = await R.loadHabeaWaste(new Date('2026-10-09T12:00:00+08:00'));
     assert.equal(calls.length, 2, 'хоёр хуудас');
@@ -105,7 +105,7 @@ try {
     assert.equal(R.isMultiYear([10, 11, 40], 12), true, 'weekNo ≤ 12 үед ≥ 40');
     assert.equal(R.isMultiYear([], 5), false);
     handler = (path) => (path.endsWith('/query')
-      ? { features: [{ attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', багц_1: 1 } }, { attributes: { objectid: 2, week: 44, metric: 'Бетон (рейс)', багц_1: 1 } }] }
+      ? { features: [{ attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', bagts1: 1 } }, { attributes: { objectid: 2, week: 44, metric: 'Бетон (рейс)', bagts1: 1 } }] }
       : {});
     const { invalidate } = await import('./dataBus.ts');
     invalidate('HABEA');
@@ -186,7 +186,7 @@ try {
 
   /* ══════════ 5. Хог хаягдал нэмэх — GlobalID-гүй, тоогоор ══════════ */
   {
-    const cols = { багц_1: 3, багц_2: null, багц_3_1: null, багц_3_2: null, багц_3_3: null, багц_4_1: null, багц_4_2: 0 };
+    const cols = { bagts1: 3, bagts2: null, bagst3_1: null, bagst3_2: null, bagst3_3: null, bagst4_1: null, bagst4_2: 0 };
     await assert.rejects(() => R.addWaste(0, 'Бетон (рейс)', cols), /1–53/, 'долоо хоног 1–53');
     await assert.rejects(() => R.addWaste(54, 'Бетон (рейс)', cols));
 
@@ -199,10 +199,10 @@ try {
     };
     await R.addWaste(41, 'Бетон (рейс)', cols);
     const w = calls.find((c) => c.path.endsWith('/query')).p.where;
-    assert.match(w, /week = 41 AND metric = N'Бетон \(рейс\)' AND багц_1 = 3 AND багц_2 IS NULL/, 'хоосон нүд IS NULL (0 БИШ)');
-    assert.match(w, /багц_4_2 = 0/);
+    assert.match(w, /week = 41 AND metric = N'Бетон \(рейс\)' AND bagts1 = 3 AND bagts2 IS NULL/, 'хоосон нүд IS NULL (0 БИШ)');
+    assert.match(w, /bagst4_2 = 0/);
     const add = JSON.parse(edits()[0].p.adds)[0].attributes;
-    assert.equal(add.багц_2, null, 'хоосон нүд null бичигдэнэ');
+    assert.equal(add.bagts2, null, 'хоосон нүд null бичигдэнэ');
 
     /* хариу алдагдсан, тоо өсөөгүй → HabeaLostWrite (before, sig) */
     handler = (path) => (path.endsWith('/applyEdits') ? lose() : { count: 5 });

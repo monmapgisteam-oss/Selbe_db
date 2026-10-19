@@ -256,8 +256,9 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
 const cellOf = (v: string | undefined): number | null | undefined => {
   const s = (v ?? '').trim();
   if (!s) return null;
-  const n = Number(s);
-  return Number.isInteger(n) && n >= 0 ? n : undefined;
+  /* ⚠️ 2026-10-19 (хэрэглэгч: «бутархай тоо оруулж болно, талбарын төрлийг Double болгосон») */
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
 
 export function WasteAddDialog({ onClose }: { onClose: () => void }) {
@@ -321,7 +322,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
     : !kinds.length ? tr('Үйлчилгээний домэйнд төрөл алга — хадгалах боломжгүй.')
       : !metricOk ? tr('Төрөл сонгоно уу.')
         : !weekOk ? tr('Долоо хоног 1–53 байна.')
-          : !cellsOk ? tr('Тоо нь 0 ба түүнээс их бүхэл тоо байна.')
+          : !cellsOk ? tr('Тоо нь 0 ба түүнээс их байна.')
             : !anyVal ? tr('Ядаж нэг багцын тоог оруулна уу.') : '';
 
   return (
@@ -358,7 +359,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
         {W.pkgCols.map(([c, name]) => (
           <label key={c} className={x.field}>
             <span>{pkgColLabel(name)}</span>
-            <input className={e.input} type="number" min={0} step={1} value={cols[c] ?? ''} disabled={busy || !dom}
+            <input className={e.input} type="number" min={0} step="any" value={cols[c] ?? ''} disabled={busy || !dom}
               aria-invalid={parsed[c] === undefined}
               onChange={(ev) => setCols((v) => ({ ...v, [c]: ev.target.value }))} />
           </label>
