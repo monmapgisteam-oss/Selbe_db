@@ -6994,7 +6994,7 @@ const en: Record<string, string> = {
   "{0} нүдний ноорог утга серверт хадгалагдсан илгээлтээс ӨМНӨ бичигдсэн тул илгээгдсэн гэж үзэж хасав (яг илгээсэн утга мэдэгдэхгүй — зөрүү бодоогүй). Тэр нүд илгээлтэд ороогүй байсан бол дахин бөглөнө үү.": "{0} draft cell(s) were written BEFORE the submission saved on the server, so they were treated as submitted and dropped (the exact submitted value is unknown — no diff was computed). If a cell was not part of the submission, fill it in again.",
   "Хагас бичилтийн хамгаалалтын тэмдэг дахин хадгалагдсангүй ({0}) — өмнөх оролдлогод эх хуудсанд бичигдсэн тул буцаах боломжгүй; «Батлах»-ыг дахин дарж дуусгана уу.": "The partial-write guard mark could not be re-saved ({0}) — a previous attempt already wrote to the source sheet, so returning is not possible; press «Approve» again to finish.",
   "{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.": "{0} decided this document at the same time ({1}) — your decision was not saved. Refresh the page.",
-  "Үйлчилгээний домэйнд картын (рейс) төрөл алга — хадгалах боломжгүй.": "The service domain has none of the card's (trip) types — nothing can be saved.",
+  "Үйлчилгээний домэйнд төрөл алга — хадгалах боломжгүй.": "The service domain has no types — nothing can be saved.",
   "Төрөл сонгоно уу.": "Select a type.",
   "Хувь бичихдээ «Хувь» горимд оруулна уу": "To enter a percentage, switch to the “Percent” mode",
   "үлдэгдэл хоосон": "the remainder is empty",

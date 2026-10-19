@@ -380,16 +380,16 @@ export async function addRegister(
 
 type WasteMeta = {
   capabilities?: string;
-  fields?: { name?: string; domain?: { codedValues?: { code?: unknown }[] } | null }[];
+  fields?: { name?: string; domain?: { codedValues?: { code?: unknown; name?: unknown }[] } | null }[];
 };
 const wasteMeta = () => arcgisPost<WasteMeta>(HABEA.waste.url, { f: 'json' });
 
-/** «Хог хаягдал»-ын маягтын төрлүүд — домэйны кодууд (метадатаас) */
-export async function loadWasteMetrics(): Promise<string[]> {
+/** «Хог хаягдал»-ын маягтын төрлүүд — домэйны код ба нэр (метадатаас), домэйны дарааллаар */
+export async function loadWasteMetrics(): Promise<{ code: string; name: string }[]> {
   const W = HABEA.waste;
   const meta = await wasteMeta();
   const dom = meta.fields?.find((f) => f.name === W.fields.metric)?.domain?.codedValues ?? [];
-  return dom.map((c) => String(c.code));
+  return dom.map((c) => ({ code: String(c.code), name: String(c.name ?? c.code) }));
 }
 
 /**

@@ -17,7 +17,7 @@
  *    `onSaved → retry` ХАСАГДАВ (хоёр дахин татдаг байв).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
 import { friendlyError } from '@/components/ui';
@@ -257,7 +257,7 @@ const cellOf = (v: string | undefined): number | null | undefined => {
 export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   const W = HABEA.waste;
   /** Домэйны кодууд — ачаалагдсан эсэх нь үйлчилгээ хүрэх эсэхийн шалгуур */
-  const [dom, setDom] = useState<string[] | null>(null);
+  const [dom, setDom] = useState<{ code: string; name: string }[] | null>(null);
   const [week, setWeek] = useState(() => String(lastFullWeek().no));
   const [metric, setMetric] = useState<string>(W.kinds[0].metric);
   const [cols, setCols] = useState<Record<string, string>>({});
@@ -272,9 +272,16 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
     return () => { alive = false; };
   }, []);
 
-  /* ⚠️ 2026-10-09: ЗӨВХӨН картад харагдах төрлүүд (`W.kinds`, рейс) — kg/m3 төрлийг оруулбал
-     картад хэзээ ч гарахгүй. Домэйнд байхгүй кодыг санал болгохгүй. */
-  const kinds = W.kinds.filter((k) => !dom?.length || dom.includes(k.metric));
+  /* ⚠️ 2026-10-19 (хэрэглэгч: «бүх төрөл нь харагддаг байх»): домэйны БҮХ код — эхлээд картын
+     (рейс) төрлүүд `W.kinds`-ийн нэрээр, дараа нь үлдсэн нь (kg · m3 …) домэйны нэрээр. Домэйн
+     ирээгүй/хоосон бол зөвхөн `W.kinds`. Домэйнд байхгүй кодыг санал болгохгүй. */
+  const kinds = useMemo(() => {
+    const codes = dom?.map((c) => c.code) ?? [];
+    if (!codes.length) return W.kinds.map((k) => ({ metric: k.metric, label: k.label }));
+    const card = W.kinds.filter((k) => codes.includes(k.metric)).map((k) => ({ metric: k.metric, label: k.label }));
+    const rest = (dom ?? []).filter((c) => !W.kinds.some((k) => k.metric === c.code)).map((c) => ({ metric: c.code, label: c.name }));
+    return [...card, ...rest];
+  }, [dom, W.kinds]);
   const metricOk = kinds.some((k) => k.metric === metric);
   /* ⚠️ 2026-10-11 (аудит №7): домэйн ирэхэд одоогийн төрөл жагсаалтад байхгүй бол ЭХНИЙХ рүү шилжүүлнэ —
      урьд нь `<select>` эхний сонголтыг харуулдаг атал `metric` нь хасагдсан утга хэвээр тул «Хадгалах»
@@ -305,7 +312,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   };
 
   const hint = !dom ? ''
-    : !kinds.length ? tr('Үйлчилгээний домэйнд картын (рейс) төрөл алга — хадгалах боломжгүй.')
+    : !kinds.length ? tr('Үйлчилгээний домэйнд төрөл алга — хадгалах боломжгүй.')
       : !metricOk ? tr('Төрөл сонгоно уу.')
         : !weekOk ? tr('Долоо хоног 1–53 байна.')
           : !cellsOk ? tr('Тоо нь 0 ба түүнээс их бүхэл тоо байна.')
