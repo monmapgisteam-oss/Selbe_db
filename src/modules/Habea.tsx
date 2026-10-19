@@ -56,6 +56,9 @@ import { UzlegExportButton } from './UzlegExport';
 import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
+
+/** «Хог хаягдал» донат — `HABEA.waste.kinds`-д байхгүй төрлийн нөөц өнгө (өгөгдлийн дарааллаар) */
+const WASTE_EXTRA = ['#7c3aed', '#0ea5e9', '#14b8a6', '#f97316', '#a3e635', '#ec4899', '#64748b', '#eab308'];
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { num, date, text, pct, cat } from '@/lib/format';
@@ -1035,7 +1038,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- capN: эрх шинэчлэгдэхэд дахин бодно
   const canEnter = useMemo(() => hasCap(user?.username, 'habeaData'), [user, capN]);
   const [entry, setEntry] = useState<null | 'reg' | 'waste'>(null);
-  /* «Хог хаягдал» (2026-10-08) — рейстэй төрлүүд, хуудасны «Багц» шүүлтийг дагана */
+  /* «Хог хаягдал» (2026-10-08) — долоо хоногийн бүх төрөл, хуудасны «Багц» шүүлтийг дагана */
   /* ⚠️ 2026-10-09: ЗӨВХӨН өмнөх бүтэн долоо хоног («Бусад үзүүлэлт»-тэй ижил) — долоо хоног солигдоход шинээр */
   const waste = useAsync(() => loadHabeaWaste(new Date(now)), [weekKey, tick], { keepOn: [tick] });
   /* ⚠️ 2026-10-09 (аудит): «Хог хаягдал» давхарга мөр нэмэхийг зөвшөөрдөг эсэх (метадатын `Create`) */
@@ -1060,19 +1063,32 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [pkgs, setPkgs] = useState<string[]>([]);
   /* ⚠️ 2026-10-09: `measured` — шүүлтэд орсон ХЭМЖИЛТТЭЙ нүд байгаа эсэх. Хэмжилтгүй бол «0 рейс» биш
      «бүртгэл алга» (`null ≠ 0`; `byPkg`-д хоосон нүд орохгүй — `habeaRegisters.fetchWaste`). */
+  /* ⚠️ 2026-10-19 (хэрэглэгч: «тухайн долоо хоногийн хогийн төрлүүд харагддаг, динамик, баригдмал биш»):
+     зүсмэлүүд нь тэр долоо хоногийн ӨГӨГДӨЛД БАЙГАА бүх төрөл — `kinds`-д байвал түүний нэр/өнгө
+     (эхэнд), үлдсэн нь өгөгдлийн нэрээрээ нөөц өнгөөр. Утгагүй (хэмжилтгүй) төрөл зурагдахгүй. */
   const { wasteSlices, wasteMeasured } = useMemo(() => {
     if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
     let measured = false;
-    const slices = HABEA.waste.kinds.map((k) => {
-      const row = waste.data.rows.find((r) => r.metric === k.metric);
+    const K = HABEA.waste.kinds;
+    const order = (m: string) => { const i = K.findIndex((k) => k.metric === m); return i < 0 ? K.length : i; };
+    const rows = [...waste.data.rows].sort((a, b) => order(a.metric) - order(b.metric) || a.metric.localeCompare(b.metric));
+    let extra = 0;
+    const slices: { key: string; label: string; value: number; color: string }[] = [];
+    for (const row of rows) {
       let value = 0;
-      for (const [name, v] of Object.entries(row?.byPkg ?? {})) {
+      let has = false;
+      for (const [name, v] of Object.entries(row.byPkg)) {
         if (pkgs.length && !pkgs.includes(habeaPkgKey(name))) continue;
         measured = true;
+        has = true;
         value += v;
       }
-      return { key: k.metric, label: k.label, value, color: k.color };
-    });
+      if (!has) continue;
+      const k = K.find((x) => x.metric === row.metric);
+      slices.push(k
+        ? { key: k.metric, label: k.label, value, color: k.color }
+        : { key: row.metric, label: row.metric, value, color: WASTE_EXTRA[extra++ % WASTE_EXTRA.length] });
+    }
     return { wasteSlices: slices, wasteMeasured: measured };
   }, [waste, pkgs]);
   const wasteTotal = wasteSlices.reduce((acc, x) => acc + x.value, 0);
@@ -2220,7 +2236,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
         {/* ── ХОГ ХАЯГДАЛ (2026-10-08) — «Бусад үзүүлэлт»-ийн ДООР, эхний харагдацад.
-            ⚠️ Зөвхөн «рейс» нэгжтэй төрлүүд: kg, m3 нэгжтэйг нэмбэл утгагүй нийлбэр болно. ── */}
+            ⚠️ 2026-10-19: долоо хоногийн БҮХ төрөл динамикаар (хэрэглэгч) — нэгж холилдож болзошгүйг мэдсээр. ── */}
         {focus === null && (
         <Section
           title={tr('Хог хаягдал')}
