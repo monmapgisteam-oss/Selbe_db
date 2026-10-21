@@ -900,6 +900,13 @@ export function Huvaari({
    *    `fail` = задаргаагүй үргэлжилнэ (сарын суурь мэдэгдэхгүй).
    */
   const [obState, setObState] = useState<'loading' | 'ok' | 'fail'>('loading');
+  /**
+   * ⚠️ 2026-10-21 (аудит, HIGH): энэ багцын задаргаа ДОР ХАЯЖ НЭГ удаа АМЖИЛТТАЙ ачаалагдсан эсэх. Урьд нь
+   *    `refetchServer`-ийн `catch` (ба `guard`-ийн салаа) задаргаа ОГТ ачаалагдаагүй байхад ч `ok` тавьдаг байв —
+   *    `obPlan`/`obOids` хоосон атлаа «ok» болж, сарын обьём оруулбал `buildEdits` OID олохгүй тул сар БҮР серверт
+   *    байгаа мөрийн ХАЖУУД `adds` болж (давхардал), сарын дүн хоёр дахин өсдөг байв. Одоо ачаалагдаагүй бол `fail`.
+   */
+  const obLoadedRef = useRef(false);
   /** `dkey → ObjectID` — бичихэд аль мөрийг шинэчлэхийг мэдэхэд */
   const [obOids, setObOids] = useState<Map<string, number>>(new Map());
   /**
@@ -1176,7 +1183,7 @@ export function Huvaari({
     setLvl(0);
     setObPlan(new Map()); setObOids(new Map()); setObDraft(new Map()); setObDups([]);
     setObRes(new Map()); setObResDraft(new Map());
-    setObState('loading');
+    setObState('loading'); obLoadedRef.current = false;
     /* ⚠️ Урьдчилан харах ба батлах урсгалын төлөв нь БАГЦЫНХ — ноорог
        цэвэрлэгдэхэд эдгээр ч дагаж тэглэгдэхгүй бол өмнөх багцын санал
        харагдсаар байгаа мэт товч, баннер үлдэнэ. */
@@ -1197,7 +1204,7 @@ export function Huvaari({
        хуудас нээгдэх ЁСТОЙ. Алдааг `setErr` рүү хийхгүй — улаан баннер нь
        огноо төлөвлөхөд саад болно; задаргаа нь зүгээр л хоосон харагдана. */
     loadPkgPlan(pkg.key)
-      .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); } })
+      .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); obLoadedRef.current = true; } })
       .catch(() => { if (alive) setObState('fail'); /* задаргаагүйгээр үргэлжилнэ */ });
     /* ⚠️ СИНТЕТИК БЛОК (2026-09-23): блокгүй 14 багцад (5.x · 6.x · 7.1 · 10) мөрийн
        түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах` · `geree_*` · `bodit_*`)
@@ -3117,6 +3124,13 @@ export function Huvaari({
        цэвэрлэгдэнэ (тэнцээгүй/алгассаныг үлдээх дүрэм хэвээр). */
     const tookOb = new Set(obDraft.keys());
     const tookObR = new Set(obResDraft.keys());
+    /* ⚠️ 2026-10-21 (аудит, HIGH): сарын обьём/нөөцийн ноорогтой атлаа задаргаа (`obPlan`/`obOids`) ачаалагдаагүй бол
+       БИЧИХГҮЙ — OID-гүй тул сар бүр серверийн мөрийн хажууд `adds` болж давхардана (`obLoadedRef`-ийн ⚠️). */
+    if ((tookOb.size || tookObR.size) && (obState !== 'ok' || !obLoadedRef.current)) {
+      setErr(tr('Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.'));
+      setBusy(false);
+      return false;
+    }
     try {
       /* ⚠️ 2026-10-08: `approvalMode` бэлтгэлийн мессежүүдэд ч хэрэгтэй тул дээр зарлана (дүрэм нь доорх ⚠️-д) */
       const approvalMode = approving != null;
@@ -3472,8 +3486,8 @@ export function Huvaari({
             const r0 = await loadRows(pkg, sc);
             setRows(r0.rows);
             const fr = await loadPkgPlan(pkg.key);
-            setObPlan(fr.plan); setObRes(fr.res); setObOids(fr.oids); setObDups(fr.dups); setObState('ok');
-          } catch { setObState('fail'); }
+            setObPlan(fr.plan); setObRes(fr.res); setObOids(fr.oids); setObDups(fr.dups); setObState('ok'); obLoadedRef.current = true;
+          } catch { setObState('fail'); obLoadedRef.current = false; }
           throw e;
         }
         obN = r2[0] + r2[1] + r2[2];
@@ -3526,7 +3540,7 @@ export function Huvaari({
         setObRes(fresh2.res);
         setObOids(fresh2.oids);
         setObDups(fresh2.dups);
-        setObState('ok');
+        setObState('ok'); obLoadedRef.current = true;
       } catch { /* задаргаагүйгээр үргэлжилнэ */ }
       setNote(remapped
         ? tr('{0} ажлын хуваарь хадгалагдлаа — хуудас хооронд нь шинэчлэгдсэн тул шинэ агшинд зөөв', num(upd.length))
@@ -3585,7 +3599,7 @@ export function Huvaari({
       setBusy(false);
       setProgress('');
     }
-  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, base, dirtyN, busy, pkg, rows, kind, approving, user, xLockCheck,
+  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, obState, base, dirtyN, busy, pkg, rows, kind, approving, user, xLockCheck,
     setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft, setProgress]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
@@ -4103,11 +4117,12 @@ export function Huvaari({
     }
     try {
       const fp = await loadPkgPlan(pkg.key);
-      if (guard && !guard()) { setObState('ok'); return { rows: freshRows, plan: obPlan, res: obRes }; }
-      setObPlan(fp.plan); setObRes(fp.res); setObOids(fp.oids); setObDups(fp.dups); setObState('ok');
+      /* ⚠️ 2026-10-21: хаясан/унасан салаа өмнөх задаргаа БАЙГАА үед л `ok` (`obLoadedRef`-ийн ⚠️) */
+      if (guard && !guard()) { setObState(obLoadedRef.current ? 'ok' : 'fail'); return { rows: freshRows, plan: obPlan, res: obRes }; }
+      setObPlan(fp.plan); setObRes(fp.res); setObOids(fp.oids); setObDups(fp.dups); setObState('ok'); obLoadedRef.current = true;
       return { rows: freshRows, plan: fp.plan, res: fp.res };
     } catch (e) {
-      setObState('ok');
+      setObState(obLoadedRef.current ? 'ok' : 'fail');
       if (opts?.needOb) {
         throw new Error(tr('Сарын обьёмын хүснэгт уншигдсангүй ({0}) — санал сарын обьём/нөөц агуулж байгаа тул хуучирсан задаргаатай тулгахгүй. Эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', friendlyError(e)));
       }
@@ -7635,7 +7650,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           hamKeep={residualDeps(ham.get(modalRow.oid) ?? rowsAll.find((x) => x.oid === modalRow.oid)?.ham ?? null)}
           hasActual={hasActual}
           hasRes={hasRes}
-          obyem={kind === 'plan'}
+          /* ⚠️ 2026-10-21 (аудит, HIGH): задаргаа ачаалагдаагүй бол сарын хэсэг ГАРАХГҮЙ — OID-гүй ноорог давхардал үүсгэнэ (`obLoadedRef`) */
+          obyem={kind === 'plan' && obState === 'ok'}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
           badBlks={modalBad}
           /* ⚠️ 2026-10-05: гэрээний муж (аль хэдийн ачаалсан `refBase`) — popup зөөлөн анхааруулна; хаахгүй */

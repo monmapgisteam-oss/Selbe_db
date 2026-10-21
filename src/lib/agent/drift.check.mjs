@@ -67,7 +67,7 @@ async function pool(items, worker) {
 
 const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
 /* ⚠️ 2026-10-21: Enterprise-ийн зураглал ба талбарын толь — ӨӨРӨӨ дахин бичихгүй, кодын замтай ИЖИЛ функц */
-const { remapUrl, entDict, entFieldName } = await import('./../services/entMap.ts');
+const { remapUrl, entDict, entFieldName, isAgolUrl } = await import('./../services/entMap.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
 
@@ -105,6 +105,10 @@ const targets = [
 let checked = 0;
 await pool(targets, async (t) => {
   let meta;
+  if (isAgolUrl(t.url)) {
+    FAIL.push(`\`${t.id}\` «${t.title}» — Enterprise зураглалд АЛГА (AGOL түлхүүр хэвээр): ${t.url}`);
+    return;
+  }
   try {
     meta = await getJson(`${t.url}?f=json`);
   } catch (e) {

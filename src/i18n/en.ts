@@ -6922,7 +6922,8 @@ const en: Record<string, string> = {
   "⚠️ {0} бүлгээс эхний статистикаар хамгийн их {1}-ийг л буцаав — бусад бүлэг ороогүй. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.": "⚠️ Only the top {1} of {0} groups (by the first statistic) were returned — the other groups are omitted. Narrow the filter, or tell the user explicitly that the result is incomplete.",
   "Барилга угсралтын нийт биет гүйцэтгэл {0}; хуваарьтай багцаар бодит {1}, төлөвлөсөн {2}-тэй харьцуулахад {3} нэгж хувийн зөрүүтэй байна.{4}": "Overall physical progress of construction is {0}; for scheduled packages the actual is {1}, a difference of {3} percentage points against the planned {2}.{4}",
   "{0} энэ баримтыг яг одоо шийдвэрлэж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.": "{0} is deciding this document right now — refresh the page in a little while.",
-  "Полигоны геометр бүрэн татагдсангүй (сервер хариуг тайрсан) — дутуу дүрсээр тооцохгүй, дахин оролдоно уу.": "Polygon geometry was not fully loaded (the server truncated the response) — incomplete shapes are not used; please try again."
+  "Полигоны геометр бүрэн татагдсангүй (сервер хариуг тайрсан) — дутуу дүрсээр тооцохгүй, дахин оролдоно уу.": "Polygon geometry was not fully loaded (the server truncated the response) — incomplete shapes are not used; please try again.",
+  "Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.": "The monthly volume table was not loaded, so saving is blocked to prevent duplicates. Reload the page and try again."
 };
 
 export default en;
