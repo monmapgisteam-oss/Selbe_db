@@ -672,7 +672,14 @@ assert.equal(
     queryFails = true;
     const r2 = await revertRows(meta, rows);
     assert.deepEqual(sentUpdates, [5], 'уншиж чадаагүй CAS мөрийг дарахгүй');
-    assert.deepEqual([...r2.skipped].sort(), [1, 2, 3, 4]);
+    assert.deepEqual(r2.skipped, [], 'уншилтын түр алдаа буцаалтыг бүрмөсөн алгасуулахгүй — дахин оролдоно');
+    assert.deepEqual(r2.failed.map((x) => x.oid).sort(), [1, 2, 3, 4], 'уншиж чадаагүй мөр бүр дахин оролдох жагсаалтад үлдэнэ');
+    /* Холболт сэргэхэд хуучин утгууд хэвээр: батлагдсан зөрчил/алга мөрийг л алгасна. */
+    sentUpdates.length = 0;
+    queryFails = false;
+    const retry = await revertRows(meta, rows.filter((row) => r2.failed.some((x) => x.oid === row.oid)));
+    assert.deepEqual(sentUpdates, [1, 3], 'дахин оролдоход аюулгүй мөрүүд буцаагдана');
+    assert.deepEqual([...retry.skipped].sort(), [2, 4], 'батлагдсан зөрчил ба алга мөрүүд дахин оролдлогод ч дарагдахгүй');
   } finally {
     globalThis.fetch = realF;
   }

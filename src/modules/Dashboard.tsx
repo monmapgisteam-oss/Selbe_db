@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useState,
+  Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -374,6 +374,8 @@ export type MapFilter = {
   where?: string;
   only?: string[];
   layers?: string[];
+  /** Resolve the package group's raw spellings after selecting it immediately. */
+  bagtsRow?: BagtsRow;
 };
 
 /** SQL string literal — дан хашилтыг давхарлана (нэрэнд ' орсон ч эвдрэхгүй) */
@@ -561,12 +563,13 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
 
   /** Чарт-шүүлт (бүх хэсэгт нэгдсэн) — аттрибутын тодруулгыг зурагт тусгана */
   const [flt, setFlt] = useState<MapFilter | null>(null);
+  const pickedFilter = useRef<MapFilter | null>(null);
   useEffect(() => { setHighlight(flt?.where ?? null, flt?.only); }, [flt, setHighlight]);
   /* ⚠️ 2026-09-29 (аудит 10): харагдац хаагдахад тодруулгыг ЗААВАЛ арилгана —
      `MapProvider.hl` порталын хэмжээнд амьдардаг тул чарт-шүүлт үлдвэл дараагийн
      харагдацын зурагт (dimOther) бүдгэрүүлэлт хэвээр гарна. `Bagts`/`ViewPanel`-ийн
      unmount-цэвэрлэлттэй ижил зарчим. */
-  useEffect(() => () => { setHighlight(null); }, [setHighlight]);
+  useEffect(() => () => { pickedFilter.current = null; setHighlight(null); }, [setHighlight]);
 
 
   /**
@@ -636,6 +639,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     const next: SecKey[] = open.includes(k) ? [] : [k];
     setOpen(next);
     // Хэсэг солигдоход чарт-шүүлт хүчингүй (өөр контекст) — цэвэрлэнэ.
+    pickedFilter.current = null;
     setFlt(null);
     // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `open`-оос деривативаар гарна.
   }, [open]);
@@ -649,10 +653,21 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * нээлттэй хэсгүүдийн анхдагч давхаргууд руу буцна.
    */
   const selectFlt = useCallback((next: MapFilter) => {
-    const off = !!flt && flt.sec === next.sec && flt.key === next.key;
+    const current = pickedFilter.current;
+    const off = !!current && current.sec === next.sec && current.key === next.key;
     // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `flt`-ээс деривативаар гарна.
+    pickedFilter.current = off ? null : next;
     setFlt(off ? null : next);
-  }, [flt]);
+    if (!off && next.bagtsRow) {
+      withBagtsWhere(next.bagtsRow, (where) => {
+        // A section change, toggle, newer selection or unmount cancels this result.
+        if (pickedFilter.current !== next) return;
+        const resolved = { ...next, where };
+        pickedFilter.current = resolved;
+        setFlt(resolved);
+      });
+    }
+  }, []);
 
   /**
    * ХЭСГИЙН КАРТУУДЫГ БҮСЭД ХУВААРИЛАХ — картын ТООНООС хамаарна.
@@ -669,6 +684,8 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const zones = (() => {
     const empty = { top: null as ReactNode, left: [] as ReactNode[], right: [] as ReactNode[] };
     if (!open.length) return empty;
+    // Passed through to click handlers; detailPanels does not invoke selectFlt during render.
+    // eslint-disable-next-line react-hooks/refs
     const cards = detailPanels(open[0], d, flt, selectFlt);
     if (!cards.length) return empty;
     const rest = cards.slice(1);
@@ -1707,17 +1724,18 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
                 const r = rows.find((x) => x.key === key);
                 if (!r) return;
                 /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
-                withBagtsWhere(r, (where) => onFlt({
+                onFlt({
                   sec: 'scope',
                   key,
                   label: tr('Багц: {0}', r.label),
-                  where,
+                  where: bagtsWhereFrom(r, bagtsRawsLast ?? []),
+                  bagtsRow: r,
                   only: ['mon:building'],
                   // ⚠️ `layers` ЗААВАЛ: `SECTION_LAYERS.scope` нь ХООСОН тул 01
                   //    нээхэд `mon:building` зурагт байхгүй — where+only дангаараа
                   //    хаана ч харагдахгүй тодруулга болно.
                   layers: ['mon:building'],
-                }));
+                });
               }}
               items={heatBars(rows, (r) => ({
                 key: r.key,
@@ -2724,10 +2742,10 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
     const r = rows.find((x) => x.key === key);
     if (!r) return;
     /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
-    withBagtsWhere(r, (where) => onFlt({
+    onFlt({
       sec: 'bagts', key, label: tr('Багц: {0}', r.label),
-      where, only: ['mon:building'],
-    }));
+      where: bagtsWhereFrom(r, bagtsRawsLast ?? []), bagtsRow: r, only: ['mon:building'],
+    });
   };
   return (
     <>

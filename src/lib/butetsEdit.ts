@@ -745,7 +745,8 @@ export type RowsResult = {
   unknown?: number[];
   /**
    * ⚠️ 2026-10-09: `revertRows`-ийн CAS-аар АЛГАССАН мөрүүд (`failed`-д ч бий, шалтгаантай) —
-   * одоогийн утга нь манай бичсэн ч, хуучин ч биш (өөр хэрэглэгч өөрчилсөн) эсвэл дахин уншиж чадаагүй.
+   * одоогийн утга нь манай бичсэн ч, хуучин ч биш (өөр хэрэглэгч өөрчилсөн) эсвэл мөр олдоогүй.
+   * Уншилтын түр алдаа зөвхөн `failed`-д орно — дуудагч буцаалтыг хадгалж, дахин оролдоно.
    */
   skipped?: number[];
 };
@@ -943,7 +944,7 @@ export async function revertRows(
   let live = rows.filter((r) => Object.keys(r.attrs).length);
   const acc: RowsResult = { done: [], failed: [], skipped: [] };
   /* ⚠️ 2026-10-09: CAS — `wrote`-тэй мөрүүдийг дахин уншина (`RevertRow`-ийн ⚠️). Уншилт унавал
-     тэдгээрийг БУЦААХГҮЙ (тодорхойгүй дээр бусдын утгыг дарахгүй), `failed` + `skipped`. */
+     тэдгээрийг БУЦААХГҮЙ (тодорхойгүй дээр бусдын утгыг дарахгүй), зөвхөн `failed` — дахин оролдож болно. */
   const cas = live.filter((r) => r.wrote && Object.keys(r.wrote).length);
   if (cas.length) {
     const skip = new Map<number, string>();
@@ -965,7 +966,7 @@ export async function revertRows(
       }
     }
     if (skip.size) {
-      for (const [oid, msg] of skip) { acc.failed.push({ oid, msg }); acc.skipped?.push(oid); }
+      for (const [oid, msg] of skip) { acc.failed.push({ oid, msg }); if (cur) acc.skipped?.push(oid); }
       live = live.filter((r) => !skip.has(Math.trunc(r.oid)));
     }
   }

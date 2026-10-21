@@ -62,6 +62,7 @@ const TABLE = 'https://archive.test/rest/services/Selbe_Guitsetgel_Draft/Feature
 const state = { sub: null, failRead: false, sheets: new Map(), reads: [], unexpected: [] };
 globalThis.__hyanaltDetailFeatureLayer = class {
   constructor({ url }) { assert.equal(url, `${TABLE}/0`); }
+  async load() { return this; }
   async queryFeatures(q) {
     if (state.failRead) throw new Error('submission read failed');
     const oid = Number(/^OBJECTID = (\d+)$/.exec(q.where)?.[1]);

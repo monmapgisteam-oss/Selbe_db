@@ -206,3 +206,46 @@ export function parseCell(
   }
   return v;
 }
+
+/** v2 stores the share input in percentage units; unversioned drafts used fractions. */
+export type FinanceDraft = {
+  v?: number;
+  pend: Record<string, string>;
+  adds: Record<string, string>[];
+  at: number;
+  legacyShareInvalid?: string[];
+};
+
+/** Preserve invalid legacy input for correction instead of reinterpreting its commas as percentages. */
+export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string): FinanceDraft | null {
+  if (draft.v === 2) return draft;
+  if (draft.v !== undefined) return null;
+  const invalid = new Set<string>();
+  const scale = (text: string): string => {
+    try {
+      const value = parseCell(text, 'esriFieldTypeDouble', shareField);
+      if (typeof value !== 'number') return text;
+      const [mantissa, exponent = '0'] = String(value).split('e');
+      const scaled = Number(`${mantissa}e${Number(exponent) + 2}`);
+      if (!Number.isFinite(scaled)) { invalid.add(text); return text; }
+      return String(scaled);
+    } catch {
+      invalid.add(text);
+      return text;
+    }
+  };
+  const pend = Object.fromEntries(Object.entries(draft.pend).map(([key, text]) =>
+    [key, key.slice(key.indexOf(':') + 1) === shareField ? scale(text) : text]));
+  const adds = draft.adds.map((row) => Object.hasOwn(row, shareField)
+    ? { ...row, [shareField]: scale(row[shareField]) } : { ...row });
+  return { ...draft, v: 2, pend, adds, ...(invalid.size ? { legacyShareInvalid: [...invalid] } : {}) };
+}
+
+/** Legacy ambiguous/malformed text keeps its original validation until the user corrects it. */
+export function parseFinanceShare(
+  text: string, type: string, label: string, legacyInvalid: readonly string[] = [], msg: ParseMsg = PARSE_MSG_MN,
+): unknown {
+  if (legacyInvalid.includes(text)) parseCell(text, type, label, msg);
+  const value = parseCell(text, type, label, msg, true);
+  return typeof value === 'number' ? value / 100 : value;
+}

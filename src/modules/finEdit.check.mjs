@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
    импортгүй тул цэвэр `node`-ийн төрөл хасалтаар ачаалагдана). Урьд нь энд
    `editText`/`parseCell`-ийн гар хуулбар байсан тул эх код өөрчлөгдөхөд (`DateOnly`
    салаа, орон нутгийн өдөр) тест хуучин дүрмийг «ногоон» гэж баталсаар байв. */
-import { editText, parseCell, SERVER_RO, NUMERIC_TYPES, awaitingReload } from '../lib/finEdit.ts';
+import { editText, parseCell, SERVER_RO, NUMERIC_TYPES, awaitingReload, upgradeFinanceDraft, parseFinanceShare } from '../lib/finEdit.ts';
 
 assert.ok(NUMERIC_TYPES.has('esriFieldTypeDouble'), 'тоон төрлийн жагсаалт');
 
@@ -73,7 +73,7 @@ check('хувь БИШ талбарт «8,333» → тодорхойгүй (2026
 {
   /* Нийтлэх зам (`Finance.tsx`) хувийн талбарт `pct`-ийг ЗААВАЛ дамжуулна */
   const fin = (await import('node:fs')).readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  const calls = [...fin.matchAll(/=\s*parseCell\(v, typeOf\(fld\), labelOf\(fld\)([^)]*)\)/g)];
+  const calls = [...fin.matchAll(/[:=]\s*parseCell\(v, typeOf\(fld\), labelOf\(fld\)([^)]*)\)/g)];
   check('Finance нийтлэлийн parseCell 2 газар хоёулаа isPctField дамжуулна',
     calls.length === 2 && calls.every((m) => /,\s*isPctField\(fld$/.test(m[1])));
   check('isPctField нь Cashflow_huwi ба FIN_XL_PCT-г хамарна',
@@ -141,6 +141,52 @@ console.log('\nX. ⚠️ 2026-10-01: нийтлэлийн дараах дахи�
     (src.match(/disabled=\{saving \|\| dirty === 0\}/g) ?? []).length === 2
     && (src.match(/\{saving \? tr\('Хадгалж байна…'\)/g) ?? []).length === 2);
   check('амжилттай нийтлэлийн дараа rows-ийг тэмдэглэнэ', src.includes('pubFromRef.current = rows;') && src.includes('setPubFrom(rows);'));
+}
+
+console.log('\nXI. Хуучин санхүүгийн ноорог — хувийн нэгжийг алдагдалгүй сэргээнэ');
+{
+  const share = 'zahiramj_unet_tsaas_huvi';
+  const key = `7:${share}`;
+  const legacy = { pend: { [key]: '0.09', '7:ho_dun_geree': '1234' }, adds: [{ [share]: '0.09', name: 'old' }], at: 123 };
+  const before = JSON.stringify(legacy);
+  const migrated = upgradeFinanceDraft(legacy, share);
+  check('хуучин pend 0.09 → 9', migrated.v === 2 && migrated.pend[key] === '9');
+  check('хуучин adds 0.09 → 9', migrated.adds[0][share] === '9');
+  check('сэргээгдсэн pend дахин нийтлэхэд 0.09 хэвээр', parseFinanceShare(migrated.pend[key], D, share) === 0.09);
+  check('сэргээгдсэн adds дахин нийтлэхэд 0.09 хэвээр', parseFinanceShare(migrated.adds[0][share], D, share) === 0.09);
+  check('бусад талбар/агшин ба эх ноорог өөрчлөгдөөгүй', migrated.pend['7:ho_dun_geree'] === '1234'
+    && migrated.adds[0].name === 'old' && migrated.at === 123 && JSON.stringify(legacy) === before);
+  check('v2 ноорог дахин үржигдэхгүй', upgradeFinanceDraft(migrated, share) === migrated);
+  const current = { v: 2, pend: { [key]: '9' }, adds: [], at: 0 };
+  check('шинэ v2 хувийн 9 хэвээр', upgradeFinanceDraft(current, share).pend[key] === '9');
+  const future = { ...current, v: 3 };
+  check('танихгүй хувилбарыг сэргээхгүй, эх утгыг хадгална', upgradeFinanceDraft(future, share) === null && future.pend[key] === '9');
+  for (const [text, expected] of [['0,09', '9'], ['0,125', '12.5'], ['0.07', '7'], ['', ''], ['   ', '   '], ['0', '0']]) {
+    const draft = upgradeFinanceDraft({ pend: { [key]: text }, adds: [{ [share]: text }], at: 0 }, share);
+    check(`хуучин тоон дүрэм/хоосон: «${text}»`, draft.pend[key] === expected && draft.adds[0][share] === expected);
+    check(`nullable/хувийн нийтлэл: «${text}»`, parseFinanceShare(draft.pend[key], D, share) === parseCell(text, D, share));
+  }
+  for (const text of ['bad', '1,250']) {
+    const draft = upgradeFinanceDraft({ pend: { [key]: text }, adds: [{ [share]: text }], at: 0 }, share);
+    check(`буруу/тодорхойгүй текст хэвээр: «${text}»`, draft.pend[key] === text && draft.adds[0][share] === text
+      && draft.legacyShareInvalid.includes(text));
+    assert.throws(() => parseFinanceShare(text, D, share, draft.legacyShareInvalid));
+    const restored = upgradeFinanceDraft(JSON.parse(JSON.stringify(draft)), share);
+    assert.throws(() => parseFinanceShare(restored.adds[0][share], D, share, restored.legacyShareInvalid));
+    check(`v2-оор дахин сэргээсэн ч хуучин алдаа хаалттай: «${text}»`, true);
+    check(`зассан ил тод текст нийтлэгдэнэ: «${text}»`, parseFinanceShare('1.25', D, share, restored.legacyShareInvalid) === 0.0125);
+  }
+  const overflow = upgradeFinanceDraft({ pend: { [key]: '1e308' }, adds: [], at: 0 }, share);
+  check('×100 overflow эх текстийг Infinity болгож алдахгүй', overflow.pend[key] === '1e308');
+  assert.throws(() => parseFinanceShare(overflow.pend[key], D, share, overflow.legacyShareInvalid), /0–100/);
+}
+{
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  check('Finance v2 ноорог бичиж, сэргээхэд хувилбарыг шалгана', src.includes('JSON.stringify({ v: 2, pend, adds,')
+    && src.includes('upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share)'));
+  check('pend ба adds хоёул хуучин алдааны тэмдэгтэй хувийг шалгана',
+    (src.match(/parseFinanceShare\(v, typeOf\(fld\), labelOf\(fld\), legacyShareInvalidRef\.current, PARSE_MSG\)/g) ?? []).length === 2);
 }
 
 console.log('\n✅ Санхүүгийн засварын ' + ok + ' шалгуур давлаа');

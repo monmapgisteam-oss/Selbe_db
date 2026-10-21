@@ -68,7 +68,7 @@ import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, localDay, parseCell as parseCellRaw, type ParseMsg,
-  setFinNavDirty, awaitingReload,
+  setFinNavDirty, awaitingReload, upgradeFinanceDraft, parseFinanceShare, type FinanceDraft,
 } from '@/lib/finEdit';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
@@ -1625,8 +1625,6 @@ const editTextF = (v: unknown, type: string, name: string): string =>
   name === CASHFLOW_NEW.fields.share && typeof v === 'number' && Number.isFinite(v)
     ? String(Number((v * 100).toPrecision(12)))
     : editText(v, type);
-const shareFromEdit = (name: string, v: unknown): unknown =>
-  name === CASHFLOW_NEW.fields.share && typeof v === 'number' ? v / 100 : v;
 
 /**
  * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
@@ -2077,7 +2075,8 @@ function FullTable({
    */
   const { user: me } = useAuth();
   const draftKey = me?.username ? `selbe.fin.draft:${me.username}:${dataKey}` : null;
-  type FinDraft = { pend: Record<string, string>; adds: Record<string, string>[]; at: number };
+  type FinDraft = FinanceDraft;
+  const legacyShareInvalidRef = useRef<string[]>([]);
   const [offer, setOffer] = useState<FinDraft | null>(null);
   useEffect(() => {
     let d: FinDraft | null = null;
@@ -2086,7 +2085,7 @@ function FullTable({
         const raw = localStorage.getItem(draftKey);
         const j = raw ? (JSON.parse(raw) as Partial<FinDraft>) : null;
         if (j && typeof j.pend === 'object' && j.pend && Array.isArray(j.adds)
-          && (Object.keys(j.pend).length + j.adds.length) > 0) d = { pend: j.pend, adds: j.adds, at: Number(j.at) || 0 };
+          && (Object.keys(j.pend).length + j.adds.length) > 0) d = { ...j, pend: j.pend, adds: j.adds, at: Number(j.at) || 0 };
       } catch { d = null; }
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-06: нээгдэх агшинд нөөцийг НЭГ удаа уншина (localStorage — гадаад эх сурвалж)
@@ -2095,21 +2094,25 @@ function FullTable({
   useEffect(() => {
     if (!draftKey || dirty === 0) return;
     const t = window.setTimeout(() => {
-      try { localStorage.setItem(draftKey, JSON.stringify({ pend, adds, at: Date.now() } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
+      try { localStorage.setItem(draftKey, JSON.stringify({ v: 2, pend, adds, at: Date.now(), legacyShareInvalid: legacyShareInvalidRef.current } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
       /* ⚠️ Санал болгосныг үл тоож шинээр засаж эхэлсэн — хуучин нөөц дарагдсан тул самбар хуучирна */
       setOffer(null);
     }, 800);
     return () => window.clearTimeout(t);
   }, [draftKey, dirty, pend, adds]);
   const dropDraft = () => {
+    legacyShareInvalidRef.current = [];
     if (draftKey) { try { localStorage.removeItem(draftKey); } catch { /* хаалттай — чимээгүй */ } }
     setOffer(null);
   };
   const restoreDraft = () => {
     if (!offer) return;
+    const restored = upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share);
+    if (!restored) { setErr(tr('Агуулга ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).')); return; }
+    legacyShareInvalidRef.current = restored.legacyShareInvalid ?? [];
     /* ⚠️ Эрхээр шүүнэ — нүдний утга `finEdit`, шинэ мөр `finRow` (`valEdit`-ийн ⚠️) */
-    if (canEdit) setPendRaw(offer.pend);
-    if (canRow) setAddsRaw(offer.adds);
+    if (canEdit) setPendRaw(restored.pend);
+    if (canRow) setAddsRaw(restored.adds);
     setEdit(true);
     setOffer(null);
   };
@@ -2153,8 +2156,9 @@ function FullTable({
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
         const a = upd.get(oid) ?? { [oidField]: oid };
-        a[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
-        a[fld] = shareFromEdit(fld, a[fld]); // ⚠️ 2026-10-21: «Үнэт цаас %» ×100 → 0–1
+        a[fld] = fld === CASHFLOW_NEW.fields.share
+          ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
+          : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         upd.set(oid, a);
       }
 
@@ -2166,8 +2170,9 @@ function FullTable({
           /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч илгээгдэхгүй —
              гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
           if (CALC_RO.has(fld)) continue;
-          o[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
-          o[fld] = shareFromEdit(fld, o[fld]); // ⚠️ 2026-10-21: «Үнэт цаас %» ×100 → 0–1
+          o[fld] = fld === CASHFLOW_NEW.fields.share
+            ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
+            : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         }
         return o;
       }).filter((o) => Object.keys(o).length > 0);
