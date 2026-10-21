@@ -1172,14 +1172,6 @@ export function signalStage(code: SignalCode, plan: SignalPlan): number {
   return -1;
 }
 
-/** Тухайн агшинд хэддүгээр ЭЭЛЖ явж байгаа вэ (0-ээс эхлэнэ). */
-export function currentStage(time: number, plan: SignalPlan): number {
-  const n = plan.stages.length;
-  if (n <= 0) return -1;
-  const share = plan.cycle / n;
-  const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
-  return Math.min(n - 1, Math.floor(t / share));
-}
 
 /**
  * Тухайн зураасны ФАЗ. Ээлжийн үргэлжлэх хугацаа = мөчлөг / ээлжийн тоо;

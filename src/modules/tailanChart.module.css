@@ -38,31 +38,9 @@
    үлдэв (2026-10-09-нөөс `ui.Meter tone="warn"`): хуваарьтайгаа харьцуулахад ард
    хоцорсныг ӨНГӨӨР анхааруулна. */
 
-/* ══════════ Хугацааны цуваа ══════════ */
-.spark { display: block; width: 100%; height: 64px; }
-.area { fill: color-mix(in srgb, var(--data) 18%, transparent); stroke: none; }
-.line {
-  fill: none;
-  stroke: var(--data);
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  /* ⚠️ `preserveAspectRatio="none"` нь тэнхлэг тус бүрээр өөр сунгадаг тул
-     зураас гажина — `non-scaling-stroke` нь өргөнийг нь тогтмол барина. */
-  vector-effect: non-scaling-stroke;
-}
-.axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  font-size: 10px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.axis > span { flex: 1; text-align: center; min-width: 0; }
-.axis > span:first-child { text-align: left; }
-.axis > span:last-child { text-align: right; }
-.axHot { color: var(--ink-2); font-weight: 600; }
+/* ══════════ Тайлбар ══════════
+   ⚠️ 2026-10-21: «Хугацааны цуваа» (`.spark · .area · .line · .axis · .axHot`) хасагдсан —
+   тэдгээрийг хэрэглэдэг `TrendArea` бүрэлдэхүүн кодонд хаана ч ашиглагдаагүй тул устгав. */
 .note { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
 .note b { color: var(--ink-2); }
 
@@ -130,15 +108,13 @@
      нь бараг цагаан хэвээр үлдэж, хөтөч дэвсгэрийг хэвлэдэггүй ЦАГААН цаасан
      дээр тоо, нэр, тэнхлэг, тайлбар БҮГД үл үзэгдэх болдог байв. Хажуугийн
      report.module.css яг үүнийг өөрийн элементүүддээ аль хэдийн хийсэн. */
-  .kpiVal, .note b, .axHot { color: #000; }
+  .kpiVal, .note b { color: #000; }
   .cap { color: #222; }
-  .axis, .note, .kpiSub, .kpiLabel, .cap span { color: #555; }
+  .note, .kpiSub, .kpiLabel, .cap span { color: #555; }
   /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр.
      ⚠️ 2026-10-09 (аудит №3): `.fig :global(.chartFill) { background: #767676 }` БҮХ дүүргэлтийг
      нэг саарал болгож эмфазисыг (хуучин `.barHot` #333) устгасан. Одоо `RankBars`-ийн өнгө
      `var(--rank-hot/--rank-dim, …)` тул энд хоёр түвшний бэхийг л тавина. */
   .fig { --rank-hot: #333; --rank-dim: #767676; }
   .meterBlock :global(.chartFill) { background: #333; }
-  .line { stroke: #333; }
-  .area { fill: #d9d9d9; }
 }

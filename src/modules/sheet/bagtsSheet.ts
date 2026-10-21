@@ -2186,25 +2186,6 @@ export function computeAll(
   return out;
 }
 
-/** Засварласан мөр + түүний бүх өвөг мөрийн индексүүд (нийтлэхэд шинэчлэгдэнэ). */
-export function touchedIndexes(
-  rows: SheetRow[],
-  editedOids: Set<number>,
-): number[] {
-  const hit = new Set<number>();
-  const stack: number[] = [];
-  rows.forEach((r, i) => {
-    while (stack.length && rows[stack[stack.length - 1]].depth >= r.depth)
-      stack.pop();
-    if (editedOids.has(r.oid)) {
-      hit.add(i);
-      for (const a of stack) hit.add(a);
-    }
-    stack.push(i);
-  });
-  return [...hit].sort((a, b) => a - b);
-}
-
 /**
  * Хуулбарт ХЭЗЭЭ Ч дамжуулж болохгүй талбарууд — үйлчилгээ өөрөө оноодог.
  * ObjectID-г дамжуулбал `addFeatures` тэр дугаартай мөр рүү наалдах эсвэл

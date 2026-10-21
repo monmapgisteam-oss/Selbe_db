@@ -19,7 +19,6 @@ import { dataCatalog, CAT_GROUPS, CLOSED_SERVICES, CLOSED_WITH_ROWS, searchText 
 import { LAYERS, VIEWS } from './services.ts';
 import { PKGS } from '../modules/sheet/bagts.pkg.ts';
 import { QAQC_TABLE } from './qaqc.ts';
-import { KINDS, REVIEWERS_OF, SEQUENTIAL_KINDS } from './chanarMs.ts';
 
 const cat = dataCatalog();
 assert.ok(cat.length > 50, `каталог хэт цөөн: ${cat.length}`);

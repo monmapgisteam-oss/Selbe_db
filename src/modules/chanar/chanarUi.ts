@@ -187,17 +187,6 @@ export function repSigRoles(): string[] {
   ];
 }
 
-/** Шинэ баримтын товчны нэр — төрлөөр */
-export function newLabel(kind: DocKind): string {
-  if (kind === 'QMP') return tr('+ Шинэ чанарын удирдлагын төлөвлөгөө');
-  if (kind === 'PRC') return tr('+ Шинэ процедур');
-  if (kind === 'MA') return tr('+ Шинэ материал баталгаажуулалт');
-  if (kind === 'MIR') return tr('+ Шинэ материалын үзлэг');
-  if (kind === 'FIC') return tr('+ Шинэ талбайн үзлэг');
-  if (kind === 'NCR') return tr('+ Шинэ үл тохирол');
-  return tr('+ Шинэ аргачлал');
-}
-
 /** Хоосон жагсаалтын зурвас — төрлөөр */
 export function emptyLabel(kind: DocKind): string {
   if (kind === 'QMP') return tr('Энэ багцад чанарын удирдлагын төлөвлөгөө алга.');
