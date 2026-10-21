@@ -22,6 +22,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { mnt, num } from '@/lib/format';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
+import { awaitingReload } from '@/lib/finEdit';
 import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { cfStartKeyOf } from '@/lib/gdash';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
@@ -145,6 +146,20 @@ export function CashflowPlan({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  /**
+   * ⚠️ 2026-10-21: ХАДГАЛСНЫ АГШИН ДАХЬ `months` — шинэ мөрүүд (өөр лавлагаа) ирэх хүртэл `pend`-ийг
+   *    ХАДГАЛНА (`finEdit.awaitingReload`, «Гэрээний бүртгэл»-ийн загвар). Урьд нь `setPend({})` тэр
+   *    дороо ажиллаж, `months` хуучин хэвээр тул нүд хуучин утга руу үсэрч, хэрэглэгч тэр хуучин утгыг
+   *    дахин бичихэд «өөрчлөгдөөгүй» гэж хаягддаг байв. Дахин ачаалалт унавал `Data` алдаанд орж энэ
+   *    бүрэлдэхүүн unmount болно — хаалт мөнхөд үлдэхгүй.
+   */
+  const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
+  const reloading = awaitingReload(pubFrom, months);
+  /* Шинэ мөрүүд ирэв — хадгалсан засварыг одоо л арилгана (render үеийн төлөв тохируулалт) */
+  if (pubFrom != null && !reloading) {
+    setPubFrom(null);
+    setPend({});
+  }
 
   /** Ажил бүрийн сарууд — огноогоор эрэмбэлсэн */
   const byWork = useMemo(() => {
@@ -222,7 +237,10 @@ export function CashflowPlan({
   const curMonths = sel == null ? [] : byWork.get(sel) ?? [];
   const curCost = costOf(cur);
   const curSum = sel == null ? null : sumOf(sel);
-  const dirty = Object.keys(pend).length;
+  /* ⚠️ 2026-10-21: дахин ачаалалт хүлээж буй `pend` нь ХАДГАЛАГДСАН — засвар биш */
+  const dirty = reloading ? 0 : Object.keys(pend).length;
+  /** Хадгалж буй эсвэл хадгалсны дараах дахин ачаалалт — нүд/товч хаалттай */
+  const locked = busy || reloading;
 
   /* ⚠️ Хадгалаагүй засвартай байхад таб хаахад хөтөч анхааруулна — `Finance`-ийн
      IPC бөглөлттэй ижил зан (2026-09-23). Мөн эцэгт `onDirty` мэдэгдэнэ. */
@@ -236,7 +254,7 @@ export function CashflowPlan({
   useEffect(() => () => onDirty?.(false), [onDirty]);
 
   const save = async () => {
-    if (busy || !dirty) return;
+    if (locked || !dirty) return;
     setBusy(true);
     setErr(null);
     setMsg(null);
@@ -311,7 +329,8 @@ export function CashflowPlan({
       });
       const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates }, { cap: 'finEdit' });
       invalidate('CASHFLOW_NEW');
-      setPend({});
+      /* ⚠️ 2026-10-21: `setPend({})` БИШ — шинэ `months` ирэх хүртэл бичсэн утга харагдана (`pubFrom`) */
+      setPubFrom(months);
       setMsg(noCost
         ? tr('{0} сар хадгалагдав · {1} сар гэрээний дүнгүй тул ₮ бичигдсэнгүй', n, noCost)
         : tr('{0} сар хадгалагдав', n));
@@ -436,10 +455,11 @@ export function CashflowPlan({
                                  `save` нь `await applyAll`-ийн дараа `pend`-ийг бүхэлд нь
                                  цэвэрлэдэг тул тэр хооронд бичсэн хувь илгээгдэлгүй арилж,
                                  «хадгалагдав» гэж худал мэдэгддэг байв. */
-                              readOnly={!canEdit || busy}
+                              /* ⚠️ 2026-10-21: дахин ачаалалт хүлээх үед ч (`locked`) */
+                              readOnly={!canEdit || locked}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
                               onChange={(e) => {
-                                if (!canEdit || busy) return;
+                                if (!canEdit || locked) return;
                                 const v = e.target.value;
                                 /* ⚠️ 2026-09-25: анхны утга руугаа БУЦВАЛ засвар биш — `pend`-ээс
                                    хасна. Урьд нь үлдэж, «Хадгалах (N)» ба таб солих баталгаа
@@ -503,7 +523,7 @@ export function CashflowPlan({
             <button
               type="button"
               className={c.clear}
-              disabled={busy || curSum == null}
+              disabled={locked || curSum == null}
               title={tr('Энэ ажлын бүх сарын хувийг хоослоно')}
               onClick={() => setPend((p) => {
                 const nx = { ...p };
@@ -525,10 +545,10 @@ export function CashflowPlan({
           <button
             type="button"
             className={c.save}
-            disabled={busy || !dirty || !canEdit}
+            disabled={locked || !dirty || !canEdit}
             onClick={save}
           >
-            {busy ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
+            {locked ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
           </button>
         </div>
       </div>

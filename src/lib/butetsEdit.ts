@@ -469,6 +469,12 @@ export function validateRow(meta: LayerMeta, patch: Patch): Record<string, strin
         if (!Number.isInteger(x)) e[f.name] = tr('Бүхэл тоо оруулна уу');
         else if (x < lo || x > hi) e[f.name] = tr('{0}…{1} хооронд байна', String(lo), String(hi));
       }
+      /* ⚠️ 2026-10-21: ТООН талбарын кодын домэйн — урьд нь `continue` домэйны шалгалтаас ӨМНӨ тул SmallInteger
+         {1,2,3} домэйнд 7 хүлээгдэж бичигддэг байв. Код нь мөр (`fieldOf`-ийн `String(c.code)`) тул ТООГООР жишнэ
+         («2.0» · «2» ижил). Дээрх алдаа (тоо биш/бүхэл биш) байвал түүнийг давхарлахгүй. */
+      if (!e[f.name] && f.codes && !f.codes.some((c) => c.code.trim() !== '' && Number(c.code) === x)) {
+        e[f.name] = tr('Жагсаалтаас сонгоно уу');
+      }
       continue;
     }
     if (f.length != null && v.length > f.length) {

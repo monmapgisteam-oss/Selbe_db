@@ -186,24 +186,31 @@ export type TrackPair = { date: string; dateStat: string; user: string; userStat
  */
 export const ENT_IMPORT_FROM = Date.UTC(2026, 9, 20, 0, 0, 0);
 export const ENT_IMPORT_TO = Date.UTC(2026, 9, 20, 12, 0, 0);
-const TRACK: readonly TrackPair[] = [
-  { date: 'created_date', dateStat: 'creationdate', user: 'created_user', userStat: 'creator' },
-  { date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' },
-];
+/**
+ * ⚠️ 2026-10-21: мөшгөлтийн ХОСЫГ давхарга тус бүрийн `ren`-ээс гаргана (хатуу `creationdate`/`editdate` БИШ).
+ *    AGOL-ын мөшгөлт нь `CreationDate_1`/`EditDate_1` байсан давхаргад (`Guitsetgel_talbe/183` · `selbe_ET/114`)
+ *    энгийн `creationdate`/`editdate` нь мөшгөлтийн бус ТУСДАА багана — урьд нь тэдгээрээр дарж худал огноо/хэрэглэгч
+ *    гаргадаг байв. `ren`-д `created_date`/`last_edited_date` руу зураглагдсан эх нэр л хуучин эх утгатай багана.
+ *    Огноо ба хэрэглэгчийн аль аль нь зураглагдсан хосыг л авна; нэг ч хосгүй бол `undefined` (засахгүй).
+ */
+export function entTrackFor(ren: Readonly<Record<string, string>> | undefined): TrackPair[] | undefined {
+  if (!ren) return undefined;
+  const stat = (live: string): string | undefined => Object.keys(ren).find((k) => ren[k] === live);
+  const out: TrackPair[] = [];
+  for (const [date, user] of [['created_date', 'created_user'], ['last_edited_date', 'last_edited_user']] as const) {
+    const dateStat = stat(date);
+    const userStat = stat(user);
+    if (dateStat && userStat) out.push({ date, dateStat, user, userStat });
+  }
+  return out.length ? out : undefined;
+}
 
 /**
  * Хуучин баганын нэрийг `ren`-ээс гаргана (2026-10-21, кодын хяналт): зарим давхаргад AGOL-ын мөшгөлт `creationdate_1` …
  * (жиш. хяналтын хүснэгт) бөгөөд `creationdate` нь ӨӨР энгийн талбар — хатуу нэрээр авбал буруу утга орно.
  */
 export function trackOf(ren: Readonly<Record<string, string>>): TrackPair[] {
-  const inv = (live: string): string | undefined => Object.keys(ren).find((k) => ren[k] === live);
-  const out: TrackPair[] = [];
-  for (const t of TRACK) {
-    const dateStat = inv(t.date);
-    const userStat = inv(t.user);
-    if (dateStat && userStat) out.push({ ...t, dateStat, userStat });
-  }
-  return out;
+  return entTrackFor(ren) ?? [];
 }
 
 /** Нэг мөрийн атрибутад (Enterprise нэрээр) импортын амьд утгыг хуучин баганын утгаар солино — цэвэр */
@@ -250,7 +257,10 @@ export function entDict(url: string): EntDict | null {
     d = entDictFor(ENT_FIELDS[k]);
     /* ⚠️ 2026-10-21: хуучин мөшгөлтийн багана зөвхөн gdb-ээс хуулсан давхаргад (`ENT_IMPORT_FROM`-ийн ⚠️) —
        Survey123 (`service_*` · `survey123_*`) давхаргад байхгүй тул тэднийг асуувал 500. */
-    if (d && ENT_FIELDS[k]?.ren && !/^(service_|survey123_)/i.test(k)) d.track = trackOf(ENT_FIELDS[k].ren!);
+    if (d && !/^(service_|survey123_)/i.test(k)) {
+      const track = entTrackFor(ENT_FIELDS[k]?.ren);
+      if (track) d.track = track;
+    }
     dictCache.set(k, d);
   }
   return d;

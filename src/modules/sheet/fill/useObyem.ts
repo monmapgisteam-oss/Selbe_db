@@ -498,7 +498,10 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            шинэ жааз руу зөөгдөнө (ижил утга дахин бичигдэх нь аюулгүй). */
         let moved: boolean | null = null;
         try {
-          moved = frameIdOf(await loadRows(pkg, sc)) !== frameIdOf(base);
+          /* ⚠️ 2026-10-21: strict ЗААВАЛ — strict-гүй ачаалалт шинэ жааз тасархай бол өмнөх бүтэн жааз руу
+             буцдаг тул `moved === false` гарч, утга зөвхөн хуучирсан жаазад байхад батлагддаг байв
+             (Huvaari.tsx-ийн ижил шалгалт strict). */
+          moved = frameIdOf(await loadRows(pkg, sc, undefined, undefined, { strict: true })) !== frameIdOf(base);
         } catch {
           moved = null;
         }

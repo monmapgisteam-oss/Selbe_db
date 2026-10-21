@@ -444,6 +444,50 @@ export async function nextNumber(table: number, field: string): Promise<number> 
 }
 
 /**
+ * ДУГААРЫН (№ · д/д) ДАВХАРДЛЫГ БИЧСЭНИЙ ДАРАА ЗАСНА — `hyanalt.ensureUniqueId`-ийн загвар.
+ * ⚠️ 2026-10-21 (аудит): `nextNumber` нь клиентэд max+1 тул хоёр хүн зэрэг хадгалбал ИЖИЛ дугаар авдаг
+ *    байв. Шинэ мөрийн (`oid`) дугаарыг ӨӨРӨӨС БАГА objectid-тай мөр эзэмшиж байвал ӨӨРИЙНХИЙГ шинэ
+ *    max+1 болгоно — ТЭНЦҮҮЛЭГЧ: зөвхөн ИХ objectid-тай тал шилжинэ (хоёр клиент ижил дүрмээр шийдэх тул
+ *    хоёулаа шилжиж дахин давхцахгүй). Гурав ба түүнээс олон зэрэг бичилтэд цөөн удаа давтана.
+ *    Дэлгэцийн дугаар тул алдаа нь хадгалалтыг УНАГАХГҮЙ (`console.warn`) — мөр аль хэдийн бичигдсэн.
+ *    `oid` мэдэгдэхгүй бол (хариунд `objectId` алга) клиентийн GlobalID-аар олно.
+ */
+async function ensureUniqueSeq(
+  table: number, field: string, oid: number, n: number, auth: Record<string, string>,
+  gid?: string,
+): Promise<void> {
+  const url = `${HABEA.registers.url}/${table}`;
+  let cur = n;
+  try {
+    let id = Number.isInteger(oid) && oid > 0 ? oid : 0;
+    if (!id && gid) {
+      const j = await arcgisPost<{ objectIds?: number[] | null }>(`${url}/query`, {
+        f: 'json', where: `${HABEA.registers.gidField} = '${gid.replace(/'/g, "''")}'`, returnIdsOnly: 'true', ...auth,
+      }, { token: 'org' });
+      id = Number(j.objectIds?.[0]) || 0;
+    }
+    if (!id) return;
+    for (let i = 0; i < 3; i += 1) {
+      const below = await countOf(url, `${field} = ${cur} AND objectid < ${id}`, auth);
+      if (below == null) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+      if (below === 0) return;
+      const next = await nextNumber(table, field);
+      const j = await arcgisPost<{ updateResults?: ApplyRes[] }>(`${url}/applyEdits`, {
+        f: 'json',
+        updates: JSON.stringify([{ attributes: { objectid: id, [field]: next } }]),
+        rollbackOnFailure: 'true',
+        ...auth,
+      }, { token: 'org' });
+      const r = j.updateResults ?? [];
+      if (r.length !== 1 || r[0].success !== true) throw new Error(r[0]?.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+      cur = next;
+    }
+  } catch (e) {
+    console.warn('[habea] бүртгэлийн дугаарын давхардлын шалгалт унав:', e);
+  }
+}
+
+/**
  * Бүртгэлийн мөр нэмэх — клиентийн GlobalID-тай (`useGlobalIds`).
  * ⚠️ 2026-10-09: `gid`-ийг дуудагч НЭГ маягтад тогтвортой барина — дахин «Хадгалах» дарахад ижил
  *    `gid`-ээр эхлээд серверээс асууна (байвал амжилт, ДАХИН ИЛГЭЭХГҮЙ). Хоцорч суусан анхны
@@ -487,10 +531,15 @@ export async function addRegister(
       if (found) return;
       throw new HabeaLostWrite(e, undefined, registerSig(attrs));
     }
-    if (res.success === false) {
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (`oneAdd` зөвхөн тоог шалгадаг) */
+    if (res.success !== true) {
       /* Давхар GlobalID (хоцорч суусан анхны бичилт) — мөр аль хэдийн байвал амжилт */
       if (await gidExists(url, R.gidField, gid).catch(() => false)) return;
       throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+    }
+    /* ⚠️ 2026-10-21 (аудит): зэрэг хадгалалтын ДАВХАР дугаар — бичсэний ДАРАА шалгаж засна (`ensureUniqueSeq`) */
+    if (opts.autoSeq && typeof a[opts.autoSeq] === 'number') {
+      await ensureUniqueSeq(table, opts.autoSeq, Number(res.objectId), a[opts.autoSeq] as number, auth, gid);
     }
   } finally {
     invalidate('HABEA');
@@ -600,7 +649,8 @@ export async function addWaste(
       if (before != null && after != null && after > before) return;
       throw new HabeaLostWrite(e, before ?? undefined, where);
     }
-    if (res.success === false) throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (`oneAdd` зөвхөн тоог шалгадаг) */
+    if (res.success !== true) throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
   } finally {
     invalidate('HABEA');
   }

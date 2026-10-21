@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
+import { isTopFocusTrap, pushFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
 import { arcgisPost } from '@/lib/query';
@@ -364,6 +365,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (!open) return;
     const root = dialogRef.current;
     const onKey = (e: KeyboardEvent) => {
+      /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн дууссан/эрх алдсан цонх) нээлттэй бол Tab · Esc · Ctrl+S
+         бүгд түүнийх — урьд нь энэ урхи фокусыг буцааж татаж, Esc нь порталыг ч хаадаг байв. */
+      if (!isTopFocusTrap(root)) return;
       /* ⚠️ 2026-10-07: дотоод сонголт (AclGrid · ErhMatrix) Esc-ийг аль хэдийн
          барьсан бол (`defaultPrevented`) порталыг хаахгүй */
       if (e.key === 'Escape') { if (!e.defaultPrevented) closeRef.current(); return; }
@@ -395,6 +399,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       document.body.style.overflow = prev;
     };
   }, [open, onClose]);
+  /* ⚠️ 2026-10-21: урхины овоолгод (`pushFocusTrap`) ТУСДАА эффектээр, deps нь ЗӨВХӨН `open` — дээрх
+     эффект `onClose` (зурагдалт бүрд шинэ) -оор дахин ажилладаг тул тэнд бүртгэвэл дахин зурагдах бүрд
+     овоолгын оройд гарч, дээр нь нээлттэй сешн/эрхийн цонхоос урхийг булаана. */
+  useEffect(() => {
+    const root = dialogRef.current;
+    if (!open || !root) return undefined;
+    return pushFocusTrap(root);
+  }, [open]);
 
   /*
    * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ФОКУС — нээхэд портал ДОТОР, хаахад

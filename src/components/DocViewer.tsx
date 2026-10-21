@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
-import { useFocusTrap } from '@/lib/useFocusTrap';
+import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { Icon } from './Icon';
 import { ENT_KEY, EntDocFrame, EntDocsSide } from './EntDocs';
 import s from './docviewer.module.css';
@@ -53,7 +53,8 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   //    Эффектийг нөхцөлт дуудахгүй (hook дүрэм) — дотор нь `open`-оор шалгана.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн/эрхийн цонх) нээлттэй бол Esc нь түүнийх — энэ модалыг хаахгүй */
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopFocusTrap(modalRef.current)) onClose(); };
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';

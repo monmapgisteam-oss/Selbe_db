@@ -788,7 +788,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
          буулгалт) ижил өдрөөр жааз бичсэн байж болно; урьд нь түүнийг ч ХАМТ устгадаг байв. Олдсон мөрийн тоо манай
          жаазны урттай ТЭНЦҮҮ бөгөөд №/Ажлын дараалал ЯГ таарч байж л устгана; эс бөгөөс зөвхөн баталгаажсан
          (`written`) мөрөө устгаад гараар шалгахыг хэлнэ. */
-      const ours = found.length === frame.length && found.every((f, i) =>
+      /* ⚠️ 2026-10-21: ЯГ тэнцүү урт биш — жаазны ЭХЛЭЛ (prefix) байхад хангалттай. `applyAdds` нь 500-мөрийн
+         chunk-ийг дарааллаар бичиж, хариу алдагдсан ЭХНИЙ chunk дээр зогсдог тул серверт ихэвчлэн жаазны
+         эхний хэсэг л үлддэг; урьд нь `found.length === frame.length` шаарддаг тул тэр хагас жааз архивт
+         үлддэг байв. Дараалал (№/Ажил) мөр бүрээр таарах шаардлага хэвээр — өөр бичигчийнхийг устгахгүй. */
+      const ours = found.length > 0 && found.length <= frame.length && found.every((f, i) =>
         f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
       if (!ours) {
         const gone0 = written.length ? await applyDeletes(pkg, written) : 0;

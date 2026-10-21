@@ -703,6 +703,8 @@ export function Qaqc() {
        ⚠️ 2026-10-09 (аудит №6): урьд нь `latest()` → approved шүүлт тул «Шинэ хувилбар» (rev+1 ноорог) үүсмэгц
           батлагдсан rev N-ийн ✓ тэмдэг, datalist-ийн сонголт алга болдог байв — шинэ rev батлагдтал хуучин нь хүчинтэй. */
     const kinds = new Set<DocKind>(Object.values(DOC_KIND_OF));
+    /* ⚠️ 2026-10-21: хоосон массив САНААТАЙ — эх сурвалж `chanarStore.loadAllDocs` нь «Чанарын баримт»
+       модультай хамт хасагдсан (7385de6); Enterprise-д баримтын үйлчилгээ гартал жагсаалт хоосон, чөлөөт текст. */
     Promise.resolve([] as Parameters<typeof latestApproved>[0])
       .then((docs) => {
         /* Хуучирсан хариу — шинэ түлхүүрийн татац явж байгаа/явна */

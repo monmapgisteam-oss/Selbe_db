@@ -776,8 +776,15 @@ export type Group = {
   raws: string[];
   /** Хоосон бүлэг эсэх */
   blank: boolean;
-  /** Тоон хэмжигдэхүүнүүд (outStatistics-ийн outStatisticFieldName-ээр) */
+  /** Тоон хэмжигдэхүүнүүд (outStatistics-ийн outStatisticFieldName-ээр) — хэмжилтгүй бол 0 (нийлбэр/эрэмбэд) */
   values: Record<string, number>;
+  /**
+   * ⚠️ 2026-10-21: `values`-ийн null-ийг хадгалсан хувилбар — бүлгийн БҮХ мөрийн статистик `null` (хэмжилтгүй)
+   *    бол `null`, эс бөгөөс `values`-тэй ижил. Урьд `Number(r[k] ?? 0)` нь хэмжилтгүй бүлгийг «0 м» гэж харуулдаг
+   *    байв (null ≠ 0). `values` нь дуудагчдын (ViewPanel · LayerCatalog · Gazar) арифметикт `number` хэвээр (нийцтэй) — харуулахдаа
+   *    (`qtyText` г.м.) энийг уншина.
+   */
+  stats: Record<string, number | null>;
 };
 
 /**
@@ -801,6 +808,7 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
       raws: [],
       blank: empty,
       values: Object.fromEntries(numeric.map((k) => [k, 0])),
+      stats: Object.fromEntries(numeric.map((k) => [k, null])),
     };
     // ⚠️ Хоосон бүлэгт ч түүхий утгыг ЦУГЛУУЛНА (`null`-аас бусдыг) — `blankWhere`
     //    тэдгээрийг жагсааж, `TRIM()`-гүйгээр яг ижил олонлогийг шүүнэ.
@@ -808,7 +816,13 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
       const raw = String(r[field]);
       if (!g.raws.includes(raw)) g.raws.push(raw);
     }
-    for (const k of numeric) g.values[k] += Number(r[k] ?? 0);
+    /* ⚠️ 2026-10-21: null статистик (бүлгийн бүх утга хоосон) `stats`-д null хэвээр — `values`-д 0 (нийцтэй) */
+    for (const k of numeric) {
+      const v = r[k];
+      if (v == null) continue;
+      g.values[k] += Number(v);
+      g.stats[k] = (g.stats[k] ?? 0) + Number(v);
+    }
     merged.set(label, g);
   }
 

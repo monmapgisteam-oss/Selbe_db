@@ -2009,10 +2009,12 @@ function FinCard({
         /* ⚠️ 2026-09-06: багцын нийт төсөв нь ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
            (`FinData.planTotal`). Урьд нь `cfMonthAxis()`-ийн 12 сарын
            цонхонд багтсан сарын мөрүүдийн нийлбэр байв. */
-        total = pkgSrcKey(rows[0], d.planTotal) != null
-          ? [...new Set(rows.map((r) => pkgSrcKey(r, d.planTotal)))]
-            .reduce<number>((a, k) => a + (k ? (d.planTotal.get(k) ?? 0) : 0), 0)
-          : 0;
+        /* ⚠️ 2026-10-21: ЭХНИЙ мөрийн түлхүүрээр хаалт хийхгүй — эхний гэрээ `planTotal`-д
+           түлхүүргүй бол бусад гэрээний дүн байсаар `total` = 0 болж «Багцын гэрээний дүн»
+           алга болдог байв. Түлхүүргүй мөрийг reduce өөрөө алгасна; хэн ч хувь нэмээгүй
+           бол 0 → доор `total > 0` шалгалтаар «байхгүй» (графикт contract=null). */
+        total = [...new Set(rows.map((r) => pkgSrcKey(r, d.planTotal)))]
+          .reduce<number>((a, k) => a + (k ? (d.planTotal.get(k) ?? 0) : 0), 0);
         /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил;
            хоёр гэрээ нэг түлхүүрт унавал НЭГ УДАА л тоологдоно. */
         givenTotal = pkgGivenTotal(rows, d);

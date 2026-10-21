@@ -272,9 +272,17 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
 
   /* ⚠️ Хүүхэд бүгд хуваарьгүй болбол бүлгийн огноог ХЭВЭЭР үлдээнэ —
      бодох зүйл байхгүй үед гараар оруулсныг устгах нь мэдээлэл алдагдуулна. */
-  const wipe = rollUpGroups(rows, 1, new Map([[2, [null]], [3, [null]]]));
-  assert.equal(wipe.has(1), false, 'бодох зүйлгүй бол бүлэг хөндөгдөхгүй');
+  /* ⚠️ 2026-10-21: «гараар оруулсан» = хүүхдийн өмнөх MIN/MAX-аас ЗӨРСӨН муж л хэвээр */
+  const ownRows = [
+    { ...rows[0], spans: [sp(5, 25)] }, { ...rows[1], spans: [sp(5, 25)] }, rows[2], rows[3],
+  ];
+  const wipe = rollUpGroups(ownRows, 1, new Map([[2, [null]], [3, [null]]]));
+  assert.equal(wipe.has(1), false, 'бодох зүйлгүй бол өөрийн огноотой бүлэг хөндөгдөхгүй');
   assert.equal(wipe.has(0), false);
+  /* ⚠️ 2026-10-21: хүүхдээс БОДОГДСОН (өмнөх MIN/MAX-тай ижил) муж «сүнс» болж үлдэхгүй — арилна */
+  const agg = rollUpGroups(rows, 1, new Map([[2, [null]], [3, [null]]]));
+  assert.equal(agg.get(1)[0], null, 'бодогдсон дэд бүлгийн муж арилав');
+  assert.equal(agg.get(0)[0], null, 'бодогдсон гадаад бүлгийн муж арилав');
 
   assert.equal(rollUpGroups(rows, 1, new Map()).size, 0, 'өөрчлөлтгүй бол юу ч бодохгүй');
   console.log('✅ бүлгийн муж ажлаасаа дагана (rollUpGroups)');

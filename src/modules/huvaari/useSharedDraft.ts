@@ -471,8 +471,21 @@ export function useSharedDraft({
         changed = true;
       }
     }
-    for (const k of prev.keys()) {
-      if (!cur.has(k)) { hdMeta.current.delete(k); hdDel.current.set(k, stamp()); changed = true; }
+    const ctxRows = hdCtxRef.current.rows;
+    for (const [k, pc] of prev) {
+      if (cur.has(k)) continue;
+      /* ⚠️ 2026-10-21: МӨР НЬ АЛГА (жааз солигдож `remapRowsFull` зөөж чадаагүй «өнчин» мөр) нүдийг
+         tombstone ХИЙХГҮЙ — `mapsToCells` суурьгүй мөрийг хаядаг тул «буцаасан» мэт харагддаг ч
+         хэрэглэгч юу ч буцаагаагүй. Урьд нь шинэ жаазад нэг мөр алга/давхардсан бол тэр мөрийн БҮХ
+         нүд (хамтрагчийнх ч) алсаас устдаг байв. Эх метатайгаа `hdStale`-д шилжинэ (`hdLocal` бичсээр,
+         `hdApply`-ийн хуучирсан нүдний дүрэм шийднэ) — жааз солих эффектийн «өнчин хэвээр» амлалт. */
+      const p = parseKey(k);
+      if (p && p.type !== 'm' && p.type !== 'n' && !ctxRows.has(p.oid)) {
+        const m = hdMeta.current.get(k) ?? { at: stamp(), user: meRef.current };
+        hdStale.current.set(k, { val: pc.val, bv: pc.bv, at: m.at, user: m.user });
+        continue;
+      }
+      hdMeta.current.delete(k); hdDel.current.set(k, stamp()); changed = true;
     }
     hdPrev.current = cur;
     if (hdOverAgg.current.n) hdOverFlush();
@@ -1061,7 +1074,10 @@ export function useSharedDraft({
       const rm = hdRemapRef.current;
       if (rm && rm.pkg === pkgKeyRef.current) {
         hdRemapRef.current = null;
-        if (merged) merged = hdRemapDraft(merged, rm.map);
+        /* ⚠️ 2026-10-21: `hdApply`-ийн дуудлагатай ИЖИЛ аргумент — HLC цаг (`hdStamp`, `Date.now()` биш:
+           tombstone харсан нүднээс хожуу байх ёстой) ба БУСДЫН хуучин түлхүүрийг үлдээх `keep` (хуучин
+           жаазтай хамтрагчид хүчинтэй). Урьд нь хоёулаа дутуу тул бусдын нүд ч tombstone авдаг байв. */
+        if (merged) merged = hdRemapDraft(merged, rm.map, hdStamp(), (_k, e) => e.user !== meRef.current);
       }
       hdReady.current = key;
       /* ⚠️ 2026-10-06: сэргээлт шинэ суурь — хоосролтын хүлээлт энд дуусна (хоосон ноорогт `hdApply`

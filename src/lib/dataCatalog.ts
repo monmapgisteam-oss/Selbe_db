@@ -27,7 +27,7 @@
  * ⚠️ React-гүй — `dataCatalog.check.mjs` шууд Node дээр ачаална.
  */
 
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
 import {
   LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF,
   IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM,
@@ -1000,11 +1000,18 @@ function imgEntries(): CatEntry[] {
 
 /* ══════════════════ Нийт ══════════════════ */
 
-let cache: CatEntry[] | null = null;
+/**
+ * ⚠️ 2026-10-21: кэш ХЭЛ СОЛИЛТЫН ҮЕЭР (`getLocaleGeneration`, `i18nCore.perLocale`-ийн ижил түлхүүр) —
+ *    урьд нь анх бүтээсэн хэлээр `name` (`tr()`-ээр БҮТЭЭХ агшинд) хөлддөг байв; `purpose`/`chain` нь lazy тул
+ *    нэг мөрөнд хоёр хэл холилддог, хэл солиход хуудас дахин ачаалагддаггүй (`LOCALE_SWITCH_RELOADS = false`).
+ *    Нэг хэл дотор identity тогтмол.
+ */
+let cache: { gen: number; list: CatEntry[] } | null = null;
 
-/** Бүх мөр — бүлгийн дарааллаар. ⚠️ Хэл ачаалахад тогтдог тул нэг удаа бүтээнэ. */
+/** Бүх мөр — бүлгийн дарааллаар. Хэл бүрд нэг удаа бүтээнэ. */
 export function dataCatalog(): CatEntry[] {
-  if (cache) return cache;
+  const gen = getLocaleGeneration();
+  if (cache && cache.gen === gen) return cache.list;
   const all = [
     ...bagtsEntries(),
     ...guitsEntries(),
@@ -1016,11 +1023,12 @@ export function dataCatalog(): CatEntry[] {
     ...imgEntries(),
   ];
   const order = CAT_GROUPS.map((g) => g.key);
-  cache = all
+  const list = all
     .map((e, i) => ({ e, i }))
     .sort((a, b) => order.indexOf(a.e.group) - order.indexOf(b.e.group) || a.i - b.i)
     .map((x) => x.e);
-  return cache;
+  cache = { gen, list };
+  return list;
 }
 
 /** Хайлтад орох бүх текст — нэр, хаяг, id, зориулалт, шатлал */

@@ -163,7 +163,9 @@ export const newestFirst = (a: SafetyRow, b: SafetyRow): number => {
 export const isDamage = (r: SafetyRow): boolean => DAMAGE_RE.test(r.turul);
 
 export function aggregateSafety(rows: readonly SafetyRow[], now: number): SafetyAgg {
-  const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null);
+  /* ⚠️ 2026-10-21 (аудит): `last`/`daysSince`/`asOf` ч `<= now` — `recent`-тэй нэг дүрэм. Урьд нь ирээдүйн
+     огноотой (буруу бөглөсөн) мөр «сүүлийнх −5 хоногийн өмнө»/ирээдүйн `asOf` болгодог байв. */
+  const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null && x <= now);
   const last = dated.length ? Math.max(...dated) : null;
   const since = now - RECENT_DAYS * 86_400_000;
   return {

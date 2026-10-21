@@ -56,8 +56,28 @@ function b64utf8(str: string): string {
 }
 /** MIME мөр — 76 тэмдэгтээр таслана */
 const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
-/** Гарчиг дахь кириллийг MIME-encoded-word болгоно */
-const encHeader = (str: string) => `=?UTF-8?B?${b64utf8(str)}?=`;
+/**
+ * Гарчиг дахь кириллийг MIME-encoded-word болгоно.
+ * ⚠️ 2026-10-21: RFC 2047 — нэг encoded-word ≤ 75 тэмдэгт. Урьд нь бүх гарчиг НЭГ үг (~120 тэмдэгт) байсан тул
+ *    зарим клиент задлахгүй/тайрдаг. Одоо ≤ 45 байт (base64 60 + `=?UTF-8?B?` `?=` 12 = 72) хэсгүүдэд хувааж,
+ *    CRLF + зайгаар нугална (folding). Код цэгээр (`for…of`) хуваах тул UTF-8 олон байтын дараалал (кирилл 2 байт,
+ *    emoji 4 байт) хоёр үгэнд ХУВААГДАХГҮЙ — үг бүр өөрөө хүчинтэй UTF-8 байх ёстой (RFC 2047 §5).
+ */
+const ENC_WORD_BYTES = 45;
+const encHeader = (str: string): string => {
+  const enc = new TextEncoder();
+  const parts: string[] = [];
+  let cur = '';
+  let curBytes = 0;
+  for (const ch of str) {
+    const n = enc.encode(ch).length;
+    if (cur && curBytes + n > ENC_WORD_BYTES) { parts.push(cur); cur = ''; curBytes = 0; }
+    cur += ch;
+    curBytes += n;
+  }
+  if (cur || !parts.length) parts.push(cur);
+  return parts.map((p) => `=?UTF-8?B?${b64utf8(p)}?=`).join('\r\n ');
+};
 
 /**
  * pdfmake баримтыг base64 PDF болгоно (динамик ачаалалт).

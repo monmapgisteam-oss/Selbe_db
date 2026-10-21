@@ -138,18 +138,32 @@ const hist = await loadBlockHistory();
 const keys = [...prog.keys()];
 const daily = progressSeries(hist, keys, 'day');
 const monthly = progressSeries(hist, keys, 'month');
+const dailyL = progressSeries(hist, keys, 'day', 'latest');
+const monthlyL = progressSeries(hist, keys, 'month', 'latest');
 assert.ok(daily.length > 0, 'цуваа хоосон');
+assert.ok(dailyL.length > 0, '«latest» цуваа хоосон');
 
 const ringVals = keys.map((k) => prog.get(k).overall);
 const ring = ringVals.reduce((a, b) => a + b, 0) / ringVals.length;
 /* ⚠️ Муруй нь блок бүрийн ОРГИЛ (peak — буурдаггүй) утгаар, цагираг нь ОДООГИЙН
-   утгаар бодогддог (2026-09-17): гүйцэтгэл засварлагдаж бага зэрэг БУУРСАН блок
-   байвал муруйн төгсгөл цагирагаас ЯЛИМГҮЙ дээгүүр байх нь ХЭВИЙН. Тиймээс
-   «яг тэнцүү» биш: доогуур байж БОЛОХГҮЙ, дээгүүр бол 0.05 нэгжээс хэтрэхгүй. */
-const ringGap = daily.at(-1).overall - ring;
-assert.ok(ringGap > -1e-9 && ringGap < 0.05,
-  `муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) зөрж байна`);
-assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
+   утгаар бодогддог (2026-09-17): гүйцэтгэл засварлагдаж БУУРСАН блок байвал
+   `peak` муруйн төгсгөл цагирагаас дээгүүр байх нь ХЭВИЙН.
+   ⚠️ 2026-10-21: урьд нь `peak`-ийн зөрүүг «< 0.05 нэгж» гэж хязгаарладаг байв —
+   бодит өгөгдөлд Багц 2-ын 22 блок 2026-10-04 → 10-11 хооронд хуудасны засвараар
+   тус бүр ~0.79 нэгж буурч, зөрүү 0.17 болж шалгуур унасан (код зөв, өгөгдөл
+   бодит). Засварын хэмжээ дур зоргийн тул дээд хязгаар нь ӨГӨГДЛИЙН таамаг —
+   шалгуур биш. Оронд нь ЯГ тодорхой хоёр инвариант:
+     · `'latest'` горимын төгсгөл == цагираг (1e-9) — `progressSeries`-ийн баримтжуулсан
+       гэрээ (`latestMean`/`loadBlockProgress`-той ижил хуваарь, ижил утга);
+     · `'peak'` горимын төгсгөл ≥ цагираг — оргил нь одоогийн утгаас ХЭЗЭЭ Ч доогуур биш. */
+const latestGap = dailyL.at(-1).overall - ring;
+assert.ok(Math.abs(latestGap) < 1e-9,
+  `«latest» муруйн төгсгөл (${dailyL.at(-1).overall}) цагирагтай (${ring}) таарахгүй`);
+const peakGap = daily.at(-1).overall - ring;
+assert.ok(peakGap > -1e-9,
+  `«peak» муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) ДООГУУР`);
+assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн (peak)');
+assert.equal(monthlyL.at(-1).overall, dailyL.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн (latest)');
 
 /* ⚠️ Сарын цуваа ДАРААЛСАН сар БИШ (2026-09-25 аудит): `progressSeries` тайлангүй
    (шинэ агшингүй) сарыг ЗОРИУДААР алгасдаг (`snap === prevSnap → continue`) —

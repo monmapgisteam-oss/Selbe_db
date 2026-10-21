@@ -327,22 +327,57 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (!stage || stage.state === 'locked') {
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.', row.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
-  const fresh = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
+  const readRow = async () => (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
+  const update = async (attributes: Record<string, unknown>) => {
+    const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { objectid: Number(row.oid), ...attributes } }]),
+    });
+    return j.updateResults?.[0];
+  };
+  const raced = (b: FmRow) =>
+    new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', b.decidedBy || '—', b.status));
+  const fresh = await readRow();
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
   /* ⚠️ 2026-10-19 (аудит): AGOL нэрээр (`actorOf`) — хуучин мөрийн Enterprise нэртэй ч тулгана (`isOwnUpload`) */
   const actor = actorOf(s);
   if (isOwnUpload(fresh.uploadedBy, actor, s.user)) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
-  const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
-    updates: JSON.stringify([{ attributes: {
-      objectid: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
-      [F.decidedBy]: actor, [F.decidedAt]: Date.now(),
-    } }]),
-  });
-  const r = j.updateResults?.[0];
-  if (!r?.success) throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
-  const back = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
-  if (back && back.decidedBy && back.decidedBy.toLowerCase() !== actor) {
-    throw new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', back.decidedBy, back.status));
+  /* ⚠️ 2026-10-21: ТҮГЖЭЭ (CAS) — `huvaariBatlah.casClaim`-ийн гурван алхам. Урьд нь шууд шийдвэр бичээд л буцааж
+     уншдаг тул: A бичиж өөрийн нэрийг уншина → дараа нь (A-гийн бичилтээс ӨМНӨ `pending` уншсан) B бичиж өөрийн нэрийг
+     уншина → A-гийн шийдвэр ЧИМЭЭГҮЙ дарагддаг байв (A-гийн шалгалт B-г хэзээ ч харахгүй). Одоо:
+       (1) `pending` мөрд `decided_by` + `decided_at` = ТҮГЖЭЭ (төлөв `pending` хэвээр — `Ma.tsx` шийдвэрлэгчийг зөвхөн
+           `pending` биш үед харуулна). Өөр хүний ШИНЭ (≤ FM_CLAIM_TTL) түгжээтэй бол татгалзана;
+       (2) ДАХИН УНШИЖ түгжээ МИНИЙХ (`pending`, нэр = би, агшин ±1 с) эсэхийг батална — зэрэг түгжсэн хүн ялсан бол
+           шийдвэр БИЧИХГҮЙ (түүний шийдвэр дарагдахгүй);
+       (3) шийдвэрээ бичиж, дахин уншиж батална.
+     ArcGIS-д нөхцөлт update байхгүй тул завсар тэг биш, гэхдээ «хоёулаа амжилттай» болохын тулд дөрвөн бичилт/уншилт
+     нэг RTT дотор яг тодорхой дарааллаар давхцах ёстой (`casClaim`-ийн ⚠️). Хугацаа дууссан (унасан хөтчийн) түгжээг
+     алгасна; хөтчийн цагаар хэмжинэ (FIC/М-акт хүснэгтэд серверийн цагийн хэмжүүр байхгүй). */
+  const claimBy = fresh.decidedBy.trim().toLowerCase();
+  if (claimBy && claimBy !== actor && fresh.decidedAt != null && Math.abs(Date.now() - fresh.decidedAt) < FM_CLAIM_TTL) {
+    throw new Error(tr('{0} энэ баримтыг яг одоо шийдвэрлэж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', fresh.decidedBy));
   }
+  const at = Date.now();
+  const c = await update({ [F.decidedBy]: actor, [F.decidedAt]: at });
+  if (!c?.success) throw new Error(c?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
+  const held = await readRow();
+  if (!held) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
+  if (held.status !== 'pending') throw raced(held);
+  if (held.decidedBy.trim().toLowerCase() !== actor || held.decidedAt == null || Math.abs(held.decidedAt - at) >= 1000) {
+    throw new Error(tr('{0} энэ баримтыг яг одоо шийдвэрлэж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', held.decidedBy || '—'));
+  }
+  const r = await update({
+    [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
+    [F.decidedBy]: actor, [F.decidedAt]: Date.now(),
+  });
+  if (!r?.success) {
+    /* Түгжээгээ суллана (сүлжээ унавал TTL-ээр өөрөө суларна) */
+    await update({ [F.decidedBy]: null, [F.decidedAt]: null }).catch(() => undefined);
+    throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
+  }
+  const back = await readRow();
+  if (back && (back.status !== verdict || back.decidedBy.trim().toLowerCase() !== actor)) throw raced(back);
 }
+
+/** FIC/М-актын шийдвэрийн түгжээний хугацаа — унасан хөтчийн түгжээ үүнээс хойш алгасагдана (`decideFm`) */
+const FM_CLAIM_TTL = 2 * 60_000;

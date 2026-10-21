@@ -68,6 +68,24 @@ export function Ma() {
     return (canAuthor && isAuthorFor(me, bagts)) || (canReview && reviewerRolesFor(me, bagts).length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
   }, [canAttach, canAuthor, canReview, status, user, chN]);
+  /**
+   * ⚠️ 2026-10-21: FIC · М-акт ОРУУЛАХ / БАТЛАХ эрх ч MA-гийн БАГЦААР (`attachFor`-тэй ижил дүрэм, fail-closed).
+   *    Урьд нь ерөнхий `canAuthor`/`canReview`-ээр тул хүрээгүй багцын MA-д товч гарч, сервер л татгалздаг байв.
+   */
+  const fmAuthorFor = useCallback((pkgKey: string): boolean => {
+    if (!canAuthor) return false;
+    if (status === 'off') return true;
+    const bagts = PKGS.find((p) => p.key === pkgKey)?.group;
+    return !!bagts && isAuthorFor(user?.username, bagts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
+  }, [canAuthor, status, user, chN]);
+  const fmReviewFor = useCallback((pkgKey: string): boolean => {
+    if (!canReview) return false;
+    if (status === 'off') return true;
+    const bagts = PKGS.find((p) => p.key === pkgKey)?.group;
+    return !!bagts && reviewerRolesFor(user?.username, bagts).length > 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
+  }, [canReview, status, user, chN]);
 
   /* ⚠️ 2026-10-09: FIC · М-акт (3–4-р шат) — Enterprise хүснэгт, ЗӨВХӨН Enterprise нэвтрэлттэй уншигдана
      (`lib/ficMakt.ts`). Нэвтрээгүй бол `fmMap` = null → тэр шатууд «нэвтэрч харна» гэж гарна. */
@@ -108,7 +126,13 @@ export function Ma() {
             <EntSignIn compact />
           </div>
         )}
-        {fm.err && <p className={s.errNote} role="alert">{tr('FIC · М-акт ачаалагдсангүй: {0}', fm.err)}</p>}
+        {/* ⚠️ 2026-10-21: «Дахин оролдох» — урьд нь алдаа гарвал хуудсыг дахин ачаалахаас өөр зам байгаагүй */}
+        {ent && fm.err && (
+          <p className={s.errNote} role="alert">
+            {tr('FIC · М-акт ачаалагдсангүй: {0}', fm.err)}
+            <button type="button" className={s.retryBtn} onClick={reloadFm}>{tr('Дахин оролдох')}</button>
+          </p>
+        )}
       </header>
 
       {!MA_URL ? (
@@ -133,9 +157,10 @@ export function Ma() {
           {rows.map((r) => (
             <MaCard key={r.oid} r={r} mirs={mirMap ? mirMap.get(r.respNo) ?? [] : null}
               fm={fmMap ? fmMap.get(r.respNo) ?? { FIC: [], MAKT: [] } : null}
-              canAttach={attachFor(r.pkg)} canAuthor={canAuthor} canReview={canReview}
+              canAttach={attachFor(r.pkg)} canAuthor={fmAuthorFor(r.pkg)} canReview={fmReviewFor(r.pkg)}
               /* ⚠️ 2026-10-19 (аудит): «өөрийн оруулсан» — AGOL нэр (`ficMakt.decideFm`-ийн ⚠️) ба хуучин мөрийн Enterprise нэр */
-              me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm} />
+              me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm}
+              fmErr={ent ? fm.err : ''} />
           ))}
         </div>
       )}
@@ -196,6 +221,8 @@ type FmEntry = { FIC: FmRow[]; MAKT: FmRow[] };
 type CardProps = {
   r: MaRow; mirs: MirRow[] | null; fm: FmEntry | null;
   canAttach: boolean; canAuthor: boolean; canReview: boolean; me: readonly string[]; onFmChanged: () => void;
+  /** ⚠️ 2026-10-21: FIC · М-акт ачаалалтын алдаа (нэвтэрсэн үед) — цонхонд «нэвтэрч харна» БИШ алдаа + дахин оролдох */
+  fmErr: string;
 };
 type PopKey = StageKey | 'IPC';
 
@@ -205,7 +232,7 @@ type PopKey = StageKey | 'IPC';
  * ⚠️ Мэдээллийг мөрөнд дэлгэхгүй (хэрэглэгч: «нэг бүтэн процесс харагдах UI үнэхээр тэнэг») — цонхонд.
  * ⚠️ MIR ачаалагдаж байх үед (`mirs == null`) MIR шат «хүлээгдэж буй»; FIC · М-акт нь Enterprise нэвтрэлттэй үед.
  */
-function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged }: CardProps) {
+function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr }: CardProps) {
   const [pop, setPop] = useState<PopKey | null>(null);
   const chain = chainOf(r.verdict, {
     MIR: mirs ? mirVerdictFor(mirs) : undefined,
@@ -261,7 +288,7 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged 
               : pop === 'FIC' || pop === 'MAKT' ? (
                 <FmColumn kind={pop === 'FIC' ? 'FIC' : 'MAKT'} maNo={r.respNo} state={chain[pop === 'FIC' ? 2 : 3].state}
                   rows={fm ? fm[pop === 'FIC' ? 'FIC' : 'MAKT'] : null}
-                  canAuthor={canAuthor} canReview={canReview} me={me} onChanged={onFmChanged} />
+                  canAuthor={canAuthor} canReview={canReview} me={me} onChanged={onFmChanged} loadErr={fmErr} />
               ) : (
                 <p className={s.note}>{ipc ? tr('Дөрвөн шат батлагдсан — IPC олгож болно.') : tr('Дөрвөн шат бүгд батлагдахаас өмнө IPC олгохгүй.')}</p>
               )}
@@ -349,9 +376,11 @@ function MaPop({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
  * ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ТОВЧ нуух — эрх · багцын хүрээ · `locked` гинж · `pending` төлөвийг
  *    `ficMakt.addFm`/`decideFm` СЕРВЕРИЙН өгөгдлөөр дахин шалгаж, `tr()`-тэй алдаа шиднэ (`userError`-оор гарна).
  */
-function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged }: {
+function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged, loadErr = '' }: {
   kind: FmKind; maNo: string; state: string; rows: FmRow[] | null;
   canAuthor: boolean; canReview: boolean; me: readonly string[]; onChanged: () => void;
+  /** ⚠️ 2026-10-21: ачаалалт унасан (нэвтэрсэн үед) — `rows == null`-ийг «нэвтэрч харна» гэж уншихгүй */
+  loadErr?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -361,6 +390,15 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const fileRef = useRef<HTMLInputElement>(null);
   const locked = state === 'locked';
 
+  /* ⚠️ 2026-10-21: ачаалалт УНАСАН бол алдаа + «Дахин оролдох» (`onChanged` = `reloadFm`) */
+  if (rows == null && loadErr && !locked) {
+    return (
+      <p className={s.errNote} role="alert">
+        {tr('FIC · М-акт ачаалагдсангүй: {0}', loadErr)}
+        <button type="button" className={s.retryBtn} onClick={onChanged}>{tr('Дахин оролдох')}</button>
+      </p>
+    );
+  }
   if (rows == null) return <p className={s.note}>{locked ? tr('Өмнөх шат батлагдсаны дараа нээгдэнэ.') : tr('Enterprise-д нэвтэрч харна.')}</p>;
 
   const upload = async () => {

@@ -204,6 +204,12 @@ export async function buildExecDoc(
   const topReason = g.land.reasons[0];
   const bestPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))[0];
   const worstPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (a.progress ?? 0) - (b.progress ?? 0))[0];
+  /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
+     «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
+  const paceText = bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
+    ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
+      bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
+    : '';
 
   return {
     pageSize: 'A4',
@@ -461,16 +467,18 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'before' },
       ...h2('prog',
         tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))), // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
-      lead(tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
-        p.actual == null ? '—' : pct(p.actual, 1),
-        p.planned == null ? '—' : pct(p.planned, 1),
-        gapText,
-        /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
-           «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
-        bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
-          ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
-            bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
-          : '')),
+      /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар, `execFindings`-ийн ⚠️) —
+         хуваарьгүй багц хасагдсан үед бүх багцын `actual`-ийг зөрүүний хажууд тавьвал тоо нийлэхгүй. */
+      lead(p.planExcluded.length
+        ? tr('Барилга угсралтын нийт биет гүйцэтгэл {0}; хуваарьтай багцаар бодит {1}, төлөвлөсөн {2}-тэй харьцуулахад {3} нэгж хувийн зөрүүтэй байна.{4}',
+          p.actual == null ? '—' : pct(p.actual, 1),
+          p.actualLag == null ? '—' : pct(p.actualLag, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          gapText, paceText)
+        : tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
+          p.actual == null ? '—' : pct(p.actual, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          gapText, paceText)),
       kpiRow([
         { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
         /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «(хуваарьтай багцаар)» */

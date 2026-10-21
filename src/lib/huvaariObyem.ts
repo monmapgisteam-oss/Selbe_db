@@ -31,6 +31,8 @@ import { spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилтийг ялгах (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
+/* ⚠️ 2026-10-21: дутуу хариуг «хариу алдагдсан» гэж ангилах (`applyPlanEdits.run`-ийн ⚠️) */
+import { ArcGISError } from './query';
 
 /**
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
@@ -650,7 +652,8 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       const keys = ['addResults', 'updateResults', 'deleteResults'] as const;
       for (let n = 0; n < keys.length; n += 1) {
         const res = (j[keys[n]] ?? []) as Res[];
-        const bad = res.find((r) => r.success === false);
+        /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ */
+        const bad = res.find((r) => r.success !== true);
         if (bad) {
           throw new Error(
             /* ⚠️ tr() (2026-09-25 аудит) — англи хувилбарт монгол текст гарч байв */
@@ -658,10 +661,15 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
             + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
           );
         }
+        /* ⚠️ 2026-10-21 (аудит): дутуу/хоосон хариу = ҮР ДҮН ТОДОРХОЙГҮЙ (сервер бичсэн байж болно) —
+           `bagtsSheet.applyUpdates`-ийн 2026-10-09-ний засвартай ижил кодгүй/статусгүй `ArcGISError`, тиймээс
+           `isLostWrite` үнэн: `Huvaari.save` хагас бичилтийн тэмдгийг АРИЛГАХГҮЙ, доорх `finally` кэшийг
+           хүчингүй болгоно. Урьд нь энгийн `Error` тул «юу ч бичигдээгүй тодорхой татгалзал» мэт харагддаг байв. */
         if (res.length !== want[n]) {
-          throw new Error(
+          throw new ArcGISError(
             `${tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)}`
             + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
+            `${HUVAARI_OBYEM}/applyEdits`,
           );
         }
       }

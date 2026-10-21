@@ -1521,10 +1521,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    */
   const info = hazInfo ?? featInfo;
 
+  /** Даралтын дугаар — тайлбар нь доор (§pickSeq, `onMapPick`-ийн дээр) */
+  const pickSeq = useRef(0);
+
   const clear = useCallback(() => {
     /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно — эс бөгөөс «Цэвэрлэх» дарсны
        дараа хоцорсон хариу ирж, устгасан үр дүн буцаж гарна (2026-09-21) */
     runSeq.current++;
+    /* ⚠️ 2026-10-21: хайрцгийг хаахад нислэгт яваа даралтын хариуг ч хүчингүй болгоно — эс бөгөөс
+       хоцорсон `queryFeatures` хаасан хайрцгийг буцааж нээдэг байв */
+    pickSeq.current++;
     setBusy(false);
     setResult(null);
     setRunErr(null);
@@ -1572,8 +1578,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * ⚠️ Тоолуурыг функцын ЭХЭНД өсгөнө: шинэ даралт нь ямар ч төрлийнх
    * (харуул, үерийн нүд, муж, `null`) байсан нислэгт яваа хуучин хүсэлтийг
    * хүчингүй болгох ёстой.
+   * ⚠️ 2026-10-21: зарлалт нь `clear`-ийн дээр (хайрцаг хаах бүрд мөн өсгөнө).
    */
-  const pickSeq = useRef(0);
 
   /** Аюулын даралт — харуул / өртсөн объект / муж */
   const onMapPick = useCallback(async (p: Pick) => {
@@ -1807,6 +1813,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно (2026-09-21, §runSeq) —
          хуучин түвшний хариу шинэ түвшний нэрээр гарахгүй */
       runSeq.current++;
+      /* ⚠️ 2026-10-21: хоцорсон даралтын хариу хайрцгийг сэргээхгүй (§pickSeq) */
+      pickSeq.current++;
       setBusy(false);
       setResult(null);
       setRunErr(null);
@@ -2842,7 +2850,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <button
                 type="button"
                 className={e.infoClose}
-                onClick={() => { setHazInfo(null); setFeatInfo(null); setPath(null); }}
+                /* ⚠️ 2026-10-21: `pickSeq` өсгөнө — хоцорсон хариу хаасан хайрцгийг сэргээхгүй */
+                onClick={() => { pickSeq.current++; setHazInfo(null); setFeatInfo(null); setPath(null); }}
                 aria-label={tr('Хаах')}
               >
                 ×

@@ -729,8 +729,9 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
   const res = [...(j.addResults ?? []), ...(j.updateResults ?? [])] as {
     success?: boolean; objectId?: number; error?: { description?: string };
   }[];
-  if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
-  const bad = res.find((r) => r.success === false);
+  /* ⚠️ 2026-10-21 (аудит): НЭГ мөр илгээсэн тул ЯГ нэг үр дүн; `success !== true` — талбаргүй үр дүн ч амжилт БИШ */
+  if (res.length !== 1) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+  const bad = res.find((r) => r.success !== true);
   if (bad) throw new Error(bad.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
   /* ⚠️ 2026-10-09: ЗЭРЭГЦЭЭ НЭМЭЛТИЙН УРАЛДААН — урьдчилсан шалгалт ба бичилтийн хооронд өөр
      хүн ижил багц+шатад нэмж болно. Бичсэний ДАРАА дахин тоолно: >1 бол давхардал. OID нь
@@ -783,8 +784,9 @@ export async function deleteZov(oid: number): Promise<void> {
      `agsFetch` нь зөвхөн ДЭЭД ТҮВШНИЙ `{error:…}`-ыг барьдаг тул хагас
      дутуу 200 (схем зөрөх, proxy дахин бичих, буруу endpoint) ЭНД
      баригдана. Дээрх `saveZov` аль хэдийн ижил хамгаалалттай. */
-  if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
-  const bad = res.find((r) => r.success === false);
+  /* ⚠️ 2026-10-21 (аудит): НЭГ мөр устгасан тул ЯГ нэг үр дүн; `success !== true` — талбаргүй үр дүн ч амжилт БИШ */
+  if (res.length !== 1) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+  const bad = res.find((r) => r.success !== true);
   if (bad) throw new Error(bad.error?.description || tr('Устгах амжилтгүй боллоо.'));
   invalidate('ZOVSHOOROL');
 }

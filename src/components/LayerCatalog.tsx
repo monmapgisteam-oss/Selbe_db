@@ -592,7 +592,7 @@ function FacetRows({
       {q.data.items.map((item) => {
         const key = `cat:${d.id}:${item.label}`;
         const on = isOn(key);
-        const qty = qtyText(d, item.values.q);
+        const qty = qtyText(d, item.stats.q ?? null); // ⚠️ 2026-10-21: `stats` — бүх утга хоосон бүлэг «0 м» БИШ хоосон (null ≠ 0)
         return (
           <button
             key={item.label}

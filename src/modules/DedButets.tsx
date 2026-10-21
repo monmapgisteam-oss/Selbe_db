@@ -59,7 +59,7 @@ import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
 import { CoordPopup } from './DedButetsCoord';
-import { StatusBar, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
+import { StatusBar, statusValsChanged, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
 import {
   applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
   saveGeometry,
@@ -1185,7 +1185,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           try {
             const meta = await loadLayerMeta(layerId);
             await deleteRow(meta, oid);
-            refreshLayer(layerId);
+            refreshLayer(layerId); statusValsChanged(layerId);
             dropTotalsLater();
             /* ⚠️ Устгасны дараа сонголт ХООСОН — байхгүй мөрийн маягт нээлттэй
                үлдвэл дараагийн «Хадгалах» нь сервер дээр олдохгүй мөр рүү бичнэ. */
@@ -1217,7 +1217,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     try {
       const meta = await loadLayerMeta(reshape.layerId);
       await saveGeometry(meta, reshape.oid, reshaped);
-      refreshLayer(reshape.layerId);
+      refreshLayer(reshape.layerId); statusValsChanged(reshape.layerId);
       dropTotalsLater();
       /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
       setGeomRev((x) => x + 1);
@@ -1265,7 +1265,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           const r = await revertRows(meta, u.rows);
           if (r.failed.length) {
             const bad = new Set(r.failed.map((x) => x.oid));
-            refreshLayer(u.layerId);
+            refreshLayer(u.layerId); statusValsChanged(u.layerId);
             dropTotalsLater();
             setUndoable({ ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) });
             toast(tr('{0}/{1} объект буцаагдсан, {2} объектод алдаа: {3}. «Үйлдэл буцаах»-аар дахин оролдоно уу.',
@@ -1278,7 +1278,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
           setGeomRev((x) => x + 1);
         }
-        refreshLayer(u.layerId);
+        refreshLayer(u.layerId); statusValsChanged(u.layerId);
         dropTotalsLater();
         /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
         preGeom.current = null;
@@ -2066,7 +2066,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   onPartial={(back) => {
                     const id = msel.layerId;
                     setUndoable(back ? { ...back, layerId: id } : null);
-                    refreshLayer(id);
+                    refreshLayer(id); statusValsChanged(id);
                     dropTotalsLater();
                   }}
                   onDone={(rows, fields, back) => {
@@ -2080,7 +2080,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     setUndoable(back ? { ...back, layerId: id } : null);
                     /* ⚠️ Дан маягттай ИЖИЛ: давхарга дахин уншуулж, уртын
                        нийлбэрийн кэшийг хаяна (`onDone`-ы тайлбар доор). */
-                    if (rows > 0) { refreshLayer(id); dropTotalsLater(); }
+                    if (rows > 0) { refreshLayer(id); statusValsChanged(id); dropTotalsLater(); }
                     toast(tr('{0} объектын {1} талбар хадгалагдлаа', num(rows), num(fields)));
                     /**
                      * ⚠️ ХАДГАЛСНЫ ДАРАА СОНГОЛТ ЦЭВЭРЛЭГДЭНЭ (2026-09-16).
@@ -2223,7 +2223,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                  * ⚠️ Уртын нийлбэрийн кэш нь тусдаа (`totals.ts`-ийн Map) —
                  * түүнийг хаяхгүй бол зүүн баганын км хуучин утгаараа үлдэнэ.
                  */
-                if (n > 0) { refreshLayer(id); dropTotalsLater(); }
+                if (n > 0) { refreshLayer(id); statusValsChanged(id); dropTotalsLater(); }
                 /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. Хоёрыг нэг
                    мессежээр хэлбэл «хадгалагдсангүй» гэж уншигдана. */
                 toast(created

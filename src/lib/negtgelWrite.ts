@@ -117,7 +117,7 @@ export const blendBlocks = (xs: { n: number; v: number | null }[]): number | nul
  *    тоологдож, нэгтгэл дашбоардын `pkgProgressOf` (хуваарь = түлхүүрийн олонлог, 14)-оос
  *    0.636 дахин бага гардаг байв. Бүрэн давхардсан хуудас (жин 0) жигнэлтэд ОРОХГҮЙ; ялгаатай
  *    түлхүүртэй хуудсууд (Багц 1: 9F/12F) урьдын адил блокийн тоогоор. Эрэмбэ чухал: эхнийх
- *    (батлагдаж буй / сүүлийн мөрийн ӨДРӨӨС ӨМНӨ хэмжилттэй) давамгайлна.
+ *    давамгайлна — ⚠️ 2026-10-21: дуудагч (`summaryOf`) PKGS-ийн дарааллаар өгнө (`loadPlanCurve`-тэй нэг).
  * ⚠️ Жинтэй хуудас ганц (эсвэл блокгүй багц — бүх `bld` хоосон) бол ЭХНИЙХИЙН утга;
  *    жинтэй хуудсуудын аль нэг нь `null` бол `null` (`blendBlocks`-ийн дүрэм).
  */
@@ -233,7 +233,7 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
 /**
  * Багцын дүнд орсон НЭГ хуудас. `real: false` = хэзээ ч нийтлэгдээгүй / «Б.» мөр нь
  * хэмжигдээгүй хуудас — блокууд нь 0% гэж орсон (`summaryOf`-ийн ⚠️ 2026-10-09).
- * ⚠️ 2026-10-12: `n` = ДАВХАРДАЛГҮЙ блокийн жин (`uniqueBlockCounts`, `parts`-ын эрэмбээр) —
+ * ⚠️ 2026-10-12: `n` = ДАВХАРДАЛГҮЙ блокийн жин (`uniqueBlockCounts`, `parts`-ын эрэмбээр — 2026-10-21-ээс PKGS-ийн дараалал) —
  *    `sc.bld.length` БИШ; 0 бол хуудас жигнэлтэд ороогүй (`blendSheets`).
  */
 type Part = { n: number; r: BRow; p: Pkg; sc: Schema; real: boolean };
@@ -358,6 +358,12 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       }
     }
   }
+  /* ⚠️ 2026-10-21 (аудит): `parts`-ыг PKGS-ийн дарааллаар (9F эхэнд) эрэмбэлнэ — `planProgress.loadPlanCurve`-тэй
+     НЭГ дүрэм. Урьд нь батлагдсан хуудас ЭХЭНД байсан тул давхардсан шошгыг аль хуудас авах нь (`uniqueBlockCounts`)
+     аль нь батлагдсанаас хамаардаг байв: Багц 4-2-т 9F батлавал [14, 0], 12F батлавал [8, 6] — нэг өдрийн нэгтгэл
+     батлах дарааллаас шалтгаалж өөр тоо гардаг байлаа. `own` (батлагдаж буй хуудасны «Б.») өөрчлөгдөхгүй. */
+  const pkgOrder = new Map(PKGS.map((x, i) => [x.key, i]));
+  parts.sort((a, b) => (pkgOrder.get(a.p.key) ?? 0) - (pkgOrder.get(b.p.key) ?? 0));
   uniqueBlockCounts(parts.map((x) => x.sc.bld)).forEach((w, i) => { parts[i].n = w; });
   const mean = (pick: (r: BRow) => number | null): number | null =>
     parts.length === 1 ? pick(own) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
@@ -367,9 +373,13 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
    *    харьцуулахдаа ЗӨВХӨН өөртэйгөө (төлөвлөгөөт vs бодит) харьцуулна.
    *    Хоёр хуудастай багцад хуудсуудын НИЙЛБЭР; бүгд хоосон бол `null`.
    */
+  /* ⚠️ 2026-10-21 (аудит): бүрэн давхардсан хуудас (`n === 0`, Багц 4-2·12F) обьёмын нийлбэрт ч ОРОХГҮЙ —
+     хувийн зам (`blendSheets`)-тай нэг олонлог; урьд нь 12F-ийн F6_x-ийн обьём 9F-ийнхтэй ДАВХАР нэмэгддэг байв.
+     Жинтэй хуудас огт үгүй (блокгүй багц — бүх `bld` хоосон) бол `blendSheets`-ийн адил эхнийх. */
+  const volParts = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
   const sum = (pick: (r: BRow) => number | null): number | null => {
     let s: number | null = null;
-    for (const x of parts) {
+    for (const x of volParts) {
       const v = pick(x.r);
       if (v != null) s = (s ?? 0) + v;
     }

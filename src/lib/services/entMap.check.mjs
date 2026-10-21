@@ -197,4 +197,21 @@ assert.equal(agolLayerIdWith(`${AGOL}/QAQC2/FeatureServer`, 3, MAP2, ENT, bases)
   assert.ok(requestedFields({ outStatistics: JSON.stringify([{ statisticType: 'sum', onStatisticField: 'Area', outStatisticFieldName: 'area' }]) }).includes('area'));
 }
 
+// 2026-10-21: мөшгөлтийн хос `ren`-ээс — `CreationDate_1`/`EditDate_1` мөшгөлттэй давхаргад энгийн `creationdate` БИШ
+{
+  const { entTrackFor } = await import('./entMap.ts');
+  assert.deepEqual(entTrackFor(ENT_FIELDS['Guitsetgel_talbe/183']?.ren), [
+    { date: 'created_date', dateStat: 'creationdate_1', user: 'created_user', userStat: 'creator_1' },
+    { date: 'last_edited_date', dateStat: 'editdate_1', user: 'last_edited_user', userStat: 'editor_1' },
+  ]);
+  assert.equal(entTrackFor(ENT_FIELDS['selbe_ET/114']?.ren)?.[1].dateStat, 'editdate_1');
+  assert.deepEqual(entTrackFor({ creationdate: 'created_date', creator: 'created_user', editdate: 'last_edited_date', editor: 'last_edited_user' }), [
+    { date: 'created_date', dateStat: 'creationdate', user: 'created_user', userStat: 'creator' },
+    { date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' },
+  ]);
+  // мөшгөлтийн зураглалгүй (`fid` л) · `ren` байхгүй → хосгүй
+  assert.equal(entTrackFor({ fid: 'objectid' }), undefined);
+  assert.equal(entTrackFor(undefined), undefined);
+}
+
 console.log('✅ entMap: 69 шалгуур');

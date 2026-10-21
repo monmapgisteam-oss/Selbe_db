@@ -1597,7 +1597,7 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
     if (PLAIN_INT.has(name)) return { text: String(Math.trunc(x)), num: true };
     /* ⚠️ 2026-10-06: «Үнэт цаас %» (`zahiramj_unet_tsaas_huvi`) нь 0–1 БУТАРХАЙ (`fields.ts`) — урьд нь
        «0.09» гэж түүхийгээр гардаг байв. `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул энд ×100. Зурвас/НИЙТ мөрд
-       хоосон хэвээр (`sumText`-ийн ⚠️). Засварын талбар (`editText`) түүхий утгаа хадгална. */
+       хоосон хэвээр (`sumText`-ийн ⚠️). ⚠️ 2026-10-21: засварын талбар ч ×100 (`editTextF` · `shareFromEdit`). */
     if (name === CASHFLOW_NEW.fields.share) return { text: pct(x * 100, 1), num: true };
     const raw = String(x).split('.')[1]?.length ?? 0;
     const dec = Math.abs(x) >= 1000 ? 0 : Math.min(2, raw);
@@ -1615,6 +1615,18 @@ const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text
 const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
 /* ⚠️ 2026-10-11 (аудит №7): тоон шүүлтийн хэмжээс — `fmtCell`-ийн ×100 («Үнэт цаас %»)-тай НЭГ (`finFilter.rowMatches`) */
 const shareScale = (n: string): number => (n === CASHFLOW_NEW.fields.share ? 100 : 1);
+/**
+ * ⚠️ 2026-10-21: «Үнэт цаас %» ЗАСВАРЫН талбар ч харагдацтай ИЖИЛ ×100 нэгжээр (0–100). Урьд нь
+ *    харагдац «9.0%» атал засвар түүхий 0.09-г харуулж, хэрэглэгч «9» бичихэд 9 хадгалагдаж
+ *    хүснэгтэд 900% гардаг байв. Хадгалахдаа `shareFromEdit` нь ÷100 (мужийг `isPctField` шалгана).
+ *    `toPrecision(12)` — 0.07 × 100 = 7.000000000000001 мэт хөвөгч сүүлийг хасна.
+ */
+const editTextF = (v: unknown, type: string, name: string): string =>
+  name === CASHFLOW_NEW.fields.share && typeof v === 'number' && Number.isFinite(v)
+    ? String(Number((v * 100).toPrecision(12)))
+    : editText(v, type);
+const shareFromEdit = (name: string, v: unknown): unknown =>
+  name === CASHFLOW_NEW.fields.share && typeof v === 'number' ? v / 100 : v;
 
 /**
  * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
@@ -1637,7 +1649,8 @@ const parseCell = (s: string, type: string, label: string, pct = false): unknown
  * ⚠️ 2026-09-30: «8,333» (Excel-ийн аравтын таслал) мянгат гэж уншигдаж 8333% болж,
  *    `Cashflow_dun`-д гэрээний 83 дахин дүн бичигддэг байв.
  */
-const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f);
+/* ⚠️ 2026-10-21: «Үнэт цаас %» ч — засвар нь ×100 нэгжээр (`editTextF`) тул 0–100 муж шалгана */
+const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f) || f === CASHFLOW_NEW.fields.share;
 
 /**
  * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
@@ -2141,6 +2154,7 @@ function FullTable({
         const fld = k.slice(cut + 1);
         const a = upd.get(oid) ?? { [oidField]: oid };
         a[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
+        a[fld] = shareFromEdit(fld, a[fld]); // ⚠️ 2026-10-21: «Үнэт цаас %» ×100 → 0–1
         upd.set(oid, a);
       }
 
@@ -2153,6 +2167,7 @@ function FullTable({
              гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
           if (CALC_RO.has(fld)) continue;
           o[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
+          o[fld] = shareFromEdit(fld, o[fld]); // ⚠️ 2026-10-21: «Үнэт цаас %» ×100 → 0–1
         }
         return o;
       }).filter((o) => Object.keys(o).length > 0);
@@ -3187,7 +3202,7 @@ function FullTable({
   ) => {
     const key = `${oid}:${c.name}`;
     if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
-      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
       /*
        * ⚠️ ЗАССАН НҮД НОГООН. `pend`-д байгаа эсэхээр л шийднэ: `onChange` нь
        * анхны утга руугаа буцсан оролтыг `pend`-ээс УСТГАДАГ тул «засаад
@@ -3200,7 +3215,7 @@ function FullTable({
       const onEdit = (v: string) => setPend((pv) => {
         const nx = { ...pv };
         /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-        if (v === editText(r[c.name], c.type)) delete nx[key];
+        if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
         else nx[key] = v;
         return nx;
       });
@@ -3329,10 +3344,10 @@ function FullTable({
   const passVal = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
     const key = `${oid}:${c.name}`;
     if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
-      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
       const put = (v: string) => setPend((p) => {
         const nx = { ...p };
-        if (v === editText(r[c.name], c.type)) delete nx[key];
+        if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
         else nx[key] = v;
         return nx;
       });
@@ -4538,7 +4553,7 @@ function FullTable({
           const key = `${oid}:${c.name}`;
           const editable = valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name);
           if (editable) {
-            const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+            const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
             return (
               <td key={c.name} className={f.cellEdit}>
                 <input
@@ -4549,7 +4564,7 @@ function FullTable({
                     setPend((p) => {
                       const nx = { ...p };
                       /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-                      if (v === editText(r[c.name], c.type)) delete nx[key];
+                      if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
                       else nx[key] = v;
                       return nx;
                     });

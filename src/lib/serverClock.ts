@@ -70,11 +70,18 @@ export async function measureServerTime(
     const v = k ? Number(a[k]) : Number.NaN;
     if (Number.isFinite(v) && v > 0 && t1 - t0 <= 10_000) return { srv: v, t0, t1 };
   } catch { /* Enterprise — доорх хоёртын хайлт */ }
+  /* ⚠️ 2026-10-21 (аудит): СҮҮЛИЙН ХҮСЭЛТИЙН хоёр үзүүр (`pt0`/`pt1`). Хайлтын явцад серверийн цаг урагшилдаг тул
+     эцсийн муж нь СҮҮЛИЙН шалгалтуудын үеийн (≈t1) серверийн цаг — урьд нь бүх хайлтын (t0+t1)/2-той хослуулдаг
+     тул зөрүү (t1−t0)/2-оор хазайдаг байв. Одоо `clockOffsetOf`-д сүүлийн хүсэлтийн өмнө/дараах цагийг өгнө. */
+  let pt0 = 0;
+  let pt1 = 0;
   const count = async (ms: number): Promise<number> => {
+    pt0 = Date.now();
     const j = await arcgisPost<{ count?: number }>(`${base}/query`, {
       where: `(${salt()}) AND CURRENT_TIMESTAMP > timestamp '${tsLiteral(ms)}'`,
       returnCountOnly: 'true',
     });
+    pt1 = Date.now();
     return Number(j.count ?? 0);
   };
   try {
@@ -88,7 +95,7 @@ export async function measureServerTime(
     }
     const t1 = Date.now();
     if (t1 - t0 > 10_000) return null;
-    return { srv: Math.round((lo + hi) / 2), t0, t1 };
+    return { srv: Math.round((lo + hi) / 2), t0: pt0, t1: pt1 };
   } catch {
     return null;
   }

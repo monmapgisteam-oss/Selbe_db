@@ -45,7 +45,7 @@ import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
 import { paidPctOf } from '@/lib/paidShare';
-import { arcgisToken, relayFetch } from '@/lib/agent/client';
+import { arcgisToken, relayFetch, RelayError } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
 
@@ -649,10 +649,13 @@ export function execFinSplit(x: ExecReport): {
   started: ExecReport['fin']['rows']; zero: ExecReport['fin']['rows']; none: ExecReport['fin']['rows'];
 } {
   const rows = x.fin.rows;
+  /* ⚠️ 2026-10-21: олон багц хамарсан төлбөрийн гишүүн багц (`rangePaid`) — `pkgFinRows` өөрийн
+     олголтыг 0 гэж тавьдаг ч санхүүжилт ЭХЭЛСЭН (хувь нь «—», дээрх `pct`-ийн ⚠️). Урьд нь
+     `given === 0` тул «Олголт эхлээгүй гэрээт багц»-д 0 ₮-өөр (дэлгэц · PDF · хавсралт) гардаг байв. */
   return {
-    started: rows.filter((r) => r.given > 0),
-    zero: rows.filter((r) => r.given === 0 && r.contracted),
-    none: rows.filter((r) => r.given === 0 && !r.contracted),
+    started: rows.filter((r) => r.given > 0 || !!r.rangePaid),
+    zero: rows.filter((r) => r.given === 0 && r.contracted && !r.rangePaid),
+    none: rows.filter((r) => r.given === 0 && !r.contracted && !r.rangePaid),
   };
 }
 
@@ -759,7 +762,9 @@ export function execFacts(x: ExecReport): string {
       ? `${x.prog.households} (дутуу — ${x.prog.householdsMissing} блок өрхгүй)`
       : String(x.prog.households);
   L.push(`Блок: ${x.prog.blocks}; өрх: ${hh}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
-  L.push(`Бодит: ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
+  /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар) — урьд нь бүх багцын
+     `actual`-ийг төлөвлөгөө/зөрүүний хажууд тавьдаг тул AI «бодит − төлөвлөгөө ≠ зөрүү» гэж уншдаг байв. */
+  L.push(`Бодит (бүх багц): ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; бодит (зөрүүний тал, хуваарьтай багцаар): ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−зөрүүний бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
   /* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүү хуваарьтай багцаар бол AI-д ил хэлнэ */
   if (x.prog.planExcluded.length) {
     L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);
@@ -822,24 +827,42 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
   if (signal?.aborted) ac.abort();
   else signal?.addEventListener('abort', () => ac.abort(), { once: true });
   let res: Response;
+  type Reply = {
+    content?: { type: string; text?: string }[]; error?: string; note?: string; stop_reason?: string; code?: string;
+  };
+  let reply: Reply;
+  const body = JSON.stringify({
+    system: SYSTEM,
+    messages: [{
+      role: 'user',
+      /* ⚠️ Орон нутгийн өдөр (`dayKey`) — UTC `toISOString` нь орой 4 цагаас хойш өмнөх өдөр гаргадаг */
+      content: `Огноо: ${dayKey(Date.now())}.\n\n${execFacts(x)}`,
+    }],
+  });
+  /* ⚠️ 2026-09-28: `relayFetch` — олон реле (нөөц хост) дундаас амьдыг сонгоно */
+  const post = (tk: string | null) => relayFetch('/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(tk ? { 'x-arcgis-token': tk } : {}),
+    },
+    body,
+    signal: ac.signal,
+  });
   try {
-    /* ⚠️ 2026-09-28: `relayFetch` — олон реле (нөөц хост) дундаас амьдыг сонгоно */
-    res = await relayFetch('/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'x-arcgis-token': token } : {}),
-      },
-      body: JSON.stringify({
-        system: SYSTEM,
-        messages: [{
-          role: 'user',
-          /* ⚠️ Орон нутгийн өдөр (`dayKey`) — UTC `toISOString` нь орой 4 цагаас хойш өмнөх өдөр гаргадаг */
-          content: `Огноо: ${dayKey(Date.now())}.\n\n${execFacts(x)}`,
-        }],
-      }),
-      signal: ac.signal,
-    });
+    res = await post(token);
+    reply = (await res.json().catch(() => ({}))) as Reply;
+    /* ⚠️ 2026-10-21: реле 401 + биед `code` алга = ArcGIS токен хуучирсан байж болно —
+       `agent/client.callRelay`-тай ИЖИЛ: хүчээр шинэчилж, токен СОЛИГДСОН бол НЭГ удаа дахин
+       илгээнэ. Урьд нь шууд «AI түлхүүр буруу» гэж унадаг байв. `code`-той 401 нь релейн
+       өөрийн алдаа (`upstream_auth` г.м.) — давтахгүй. */
+    if (res.status === 401 && !reply.code && token && !ac.signal.aborted) {
+      const fresh = await arcgisToken(true);
+      if (fresh && fresh !== token) {
+        res = await post(fresh);
+        reply = (await res.json().catch(() => ({}))) as Reply;
+      }
+    }
   } catch (e) {
     if (ac.signal.aborted && !signal?.aborted) {
       throw new Error(tr('AI дүгнэлт {0} секундэд ирсэнгүй. Дахин оролдоно уу.', EXEC_AI_TIMEOUT_MS / 1000));
@@ -848,15 +871,19 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
   } finally {
     clearTimeout(tm);
   }
-  const reply = (await res.json().catch(() => ({}))) as {
-    content?: { type: string; text?: string }[]; error?: string; note?: string; stop_reason?: string;
-  };
   if (!res.ok) {
-    throw new Error(reply.error ?? (res.status === 401
-      ? tr('AI үйлчилгээний түлхүүр буруу байна.')
-      : tr('Реле алдаа (HTTP {0})', res.status)));
+    /* ⚠️ 2026-10-21: 401 ба `code`-той алдааг `RelayError` орчуулна (нэвтрэлт / өдрийн төсөв /
+       `upstream_auth`) — урьдах «AI үйлчилгээний түлхүүр буруу» нь хуучирсан токенд худал байв. */
+    if (res.status === 401 || reply.code) throw new RelayError(res.status, reply.error, reply.code);
+    throw new Error(reply.error ?? tr('Реле алдаа (HTTP {0})', res.status));
   }
   if (reply.stop_reason === 'refusal') return reply.note ?? tr('Энэ хүсэлтэд хариулах боломжгүй байна.');
   const text = (reply.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('\n').trim();
+  /* ⚠️ 2026-10-21: `max_tokens` — хариу ТАСАРСАН (`agent/client.ask`-тай ижил тэмдэглэл). Урьд нь
+     дутуу дүгнэлт бүтэн мэт харагддаг байв. */
+  if (reply.stop_reason === 'max_tokens') {
+    const note = tr('⚠️ Хариу тасарсан (хэт урт болсон) — асуултаа хувааж эсвэл товчлон асууна уу.');
+    return text ? `${text}\n\n${note}` : note;
+  }
   return text || tr('Хариулт хоосон ирлээ.');
 }

@@ -18,7 +18,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals, failedTotals, completeSum, retryTotals, type Totals } from '@/lib/totals';
-import { queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, queryGroup, count, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
@@ -41,8 +41,8 @@ import {
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
-import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
+import { loadLandStatus, statusKey, statusRawsWhere, type LandStatus } from '@/lib/land';
+import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
@@ -402,10 +402,65 @@ const likePrefix = (field: string, v: string): string => {
  *    `= N'Тодорхойгүй'` гэж шүүвэл нэг ч талбар таарахгүй, зураг бүхэлдээ
  *    бүдгэрдэг байв — хоосон төлөвийг IS NULL/'' -ээр хайна.
  */
-const statusWhere = (label: string): string =>
-  label === tr('Тодорхойгүй')
-    ? `(${PL.status} IS NULL OR ${PL.status} = '')`
-    : `${PL.status} = N'${sq(label)}'`;
+/* ⚠️ 2026-10-21: чартын бүлэг нь `land.statusKey`-ээр (бичиглэлийн хувилбар · «—» · зөвхөн зай
+   НЭГ бүлэгт) — шүүлт ч ТЭР бүлгийн ТҮҮХИЙ утгуудаар (`land.statusRawsWhere`, Gazar.tsx-тэй нэг дүрэм).
+   Урьд нь `= N'шошго'` / `IS NULL OR = ''` тул «Бүрэн чөлөөлсөн.» мэт хувилбар ба «—» мөрүүд
+   баганад тоологдсон атлаа зурагт гардаггүй байв. Түүхий утгыг ачаалсан нэгж талбаруудаас
+   (`loadLeftParcels`, `status` багана) авна; ачаалагдаагүй бол хуучин нөхцөл (шошгоор). */
+const statusWhere = (label: string, rows: readonly Row[] | null): string => {
+  const unknown = label === tr('Тодорхойгүй');
+  const key = unknown ? '' : label;
+  const raws = new Set<string>();
+  for (const r of rows ?? []) {
+    const v = r[PL.status];
+    if (v != null && statusKey(v) === key) raws.add(String(v));
+  }
+  return statusRawsWhere(PL.status, raws, unknown, label);
+};
+
+/**
+ * БАРИЛГЫН `BAGTS`-ийн ТҮҮХИЙ утгууд (давхардалгүй) — багцын тодруулгын WHERE-д.
+ * ⚠️ 2026-10-21: багцын мөр `bagtsKey`-ээр бүлэглэгддэг («Багц 4.1» / «Багц 4-1» НЭГ мөр, хоосон →
+ *    «Тодорхойгүй»), харин тодруулга `= N'шошго'` байсан тул бичиглэлийн хувилбар ба хоосон
+ *    утгатай блокууд зурагт ТОДРОХГҮЙ байв. `BagtsRow`-д түүхий утга байхгүй тул энд бүлгийн
+ *    статистикаар (нэг жижиг хүсэлт, кэштэй) авна.
+ */
+/** Сүүлд татсан түүхий утгууд — дараагийн даралт СИНХРОН (`selectFlt`-ийн сэлгэлт хуучин `flt`-ээр уралдахгүй) */
+let bagtsRawsLast: unknown[] | null = null;
+const loadBagtsRaws = cached<unknown[]>(
+  async () => {
+    const v = (await queryGroup(BUILDING.url, BF.bagts, [count(BUILDING.oid, 'n')])).map((r) => r[BF.bagts]);
+    bagtsRawsLast = v;
+    return v;
+  },
+  SESSION_TTL_MS,
+  ['BUILDING'],
+);
+/** Багцын мөрийн бүлгийн БҮХ түүхий утгаар WHERE; түүхий утга алга бол хуучин нөхцөл (шошгоор) */
+const bagtsWhereFrom = (r: BagtsRow, raws: readonly unknown[]): string => {
+  const unknownLabel = tr('Тодорхойгүй');
+  const unknown = r.label === unknownLabel;
+  /* `joinBagts`-тэй ИЖИЛ бүлэглэлт: `text(v, «Тодорхойгүй»)` → `bagtsKey` */
+  const mine = raws.filter((v) => v != null && bagtsKey(text(v, unknownLabel)) === r.key).map(String);
+  const vals = [...new Set(mine.filter((v) => v !== ''))].map((v) => `N'${sq(v)}'`);
+  const parts = vals.length ? [`${BF.bagts} IN (${vals.join(', ')})`] : [];
+  if (unknown) parts.unshift(`${BF.bagts} IS NULL`, `${BF.bagts} = ''`);
+  if (!parts.length) return `${BF.bagts} = N'${sq(r.label)}'`;
+  return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
+};
+/** WHERE-ийг дуудагч руу — түүхий утга бэлэн бол тэр дороо, үгүй бол татаад (алдаанд шошгоор) */
+const withBagtsWhere = (r: BagtsRow, done: (where: string) => void): void => {
+  if (bagtsRawsLast) {
+    done(bagtsWhereFrom(r, bagtsRawsLast));
+    /* Кэш хүчингүй болсон (TTL / `invalidate('BUILDING')`) бол дараагийн даралтад шинэчилнэ */
+    loadBagtsRaws().catch(() => undefined);
+    return;
+  }
+  loadBagtsRaws().then(
+    (raws) => done(bagtsWhereFrom(r, raws)),
+    (e) => { console.warn('[selbe] багцын түүхий утга:', e); done(bagtsWhereFrom(r, [])); },
+  );
+};
 
 /* ⚠️ 2026-10-06: `ERR_MARK` · `AsyncLike` · `dots` · `hVal` · `FailVal` нь `./HeadKpi.tsx`-д
    (HeadKpi-тэй хамт нүүв) — дээд импортыг үз. */
@@ -1651,17 +1706,18 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               onSelect={(key) => {
                 const r = rows.find((x) => x.key === key);
                 if (!r) return;
-                onFlt({
+                /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
+                withBagtsWhere(r, (where) => onFlt({
                   sec: 'scope',
                   key,
                   label: tr('Багц: {0}', r.label),
-                  where: `${BF.bagts} = N'${sq(r.label)}'`,
+                  where,
                   only: ['mon:building'],
                   // ⚠️ `layers` ЗААВАЛ: `SECTION_LAYERS.scope` нь ХООСОН тул 01
                   //    нээхэд `mon:building` зурагт байхгүй — where+only дангаараа
                   //    хаана ч харагдахгүй тодруулга болно.
                   layers: ['mon:building'],
-                });
+                }));
               }}
               items={heatBars(rows, (r) => ({
                 key: r.key,
@@ -2667,10 +2723,11 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
   const pick = (key: string) => {
     const r = rows.find((x) => x.key === key);
     if (!r) return;
-    onFlt({
+    /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
+    withBagtsWhere(r, (where) => onFlt({
       sec: 'bagts', key, label: tr('Багц: {0}', r.label),
-      where: `${BF.bagts} = N'${sq(r.label)}'`, only: ['mon:building'],
-    });
+      where, only: ['mon:building'],
+    }));
   };
   return (
     <>
@@ -3043,7 +3100,8 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
                      «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
                   label: tr('Төлөв: {0}', tr(label)),
-                  where: statusWhere(label),
+                  /* ⚠️ 2026-10-21: бүлгийн ТҮҮХИЙ утгуудаар (`statusWhere`-ийн ⚠️) */
+                  where: statusWhere(label, parcels.state === 'ready' ? parcels.data : null),
                   only: ['land:left'],
                 });
               }}
@@ -3177,7 +3235,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                       key: k,
                       /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
                       label: tr('Төлөв: {0}', tr(label)),
-                      where: statusWhere(label),
+                      where: statusWhere(label, parcels.state === 'ready' ? parcels.data : null),
                       only: ['land:left'],
                     });
                   }}

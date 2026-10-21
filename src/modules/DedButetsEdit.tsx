@@ -50,6 +50,7 @@ import {
   type FieldDef, type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
 import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } from '@/lib/butetsLen';
+import { statusValsChanged } from './DedButetsStatus';
 
 /**
  * ХАДГАЛСНЫ ДАРАА БУЦААХАД хэрэгтэй мэдээлэл.
@@ -360,7 +361,10 @@ export function DedButetsEdit({
       })
       .catch(() => { /* мэдэгдэхгүй — «—» */ });
     return () => { alive = false; };
-  }, [meta, oid]);
+    /* ⚠️ 2026-10-21: `saved` — хадгалсны дараа дээрх ачаалах эффект `geoLen`/`geoArea`-г тэглэдэг, харин
+       `loadLayerMeta` КЭШТЭЙ (ижил `meta` лавлагаа) тул зөвхөн [meta, oid]-оор энэ эффект дахин ажиллахгүй,
+       маягт нээлттэй үлдэхэд геодезийн урт/талбайн мөр алга болдог байв. */
+  }, [meta, oid, saved]);
 
   const set = (name: string, v: string) => {
     dirty.current = true;
@@ -427,6 +431,7 @@ export function DedButetsEdit({
     try {
       if (isNew) {
         const newOid = await createRow(meta, geometry, p);
+        statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
         /* ⚠️ Шинэ объектод «хэдэн талбар бичигдсэн» гэдэг утгагүй — НЭГ МӨР
            нэмэгдсэн гэдгийг 1-ээр дамжуулна (дуудагч тал давхаргаа дахин
            уншуулах эсэхээ үүгээр шийднэ). */
@@ -437,6 +442,7 @@ export function DedButetsEdit({
          хуучирсан хуулбар болох ч энэ объект аль хэдийн салангид. */
       const back = revertAttrs(meta, before as Row, p);
       const n = await saveRow(meta, oid as number, before as Row, p);
+      if (n > 0) statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
       /* ⚠️ 2026-09-21: эцэг `onDone`-д маягтыг хаадаг ч хэрэглэгч хадгалаагүй
          хэлбэрийн засвараа хаяхаас татгалзвал (`DedButets.closeEdit` → `false`)
          маягт НЭЭЛТТЭЙ үлдэнэ. Тэр үед `before` хуучирч (дараагийн хадгалалт

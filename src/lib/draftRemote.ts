@@ -230,13 +230,21 @@ export async function layer(url: string): Promise<FeatureLayerInst> {
     /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
     await installEntInterceptor();
     const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
-    return new FeatureLayer({ url });
+    const fl = new FeatureLayer({ url });
+    /* ⚠️ 2026-10-21: ачааллыг кэшийн promise ДОТОР хүлээнэ. `load()` нэг удаа унасан
+       (мета timeout · 498/499) instance нь `failed` төлөвт мөнхөд үлддэг (Loadable дахин
+       ачаалдаггүй) тул урьд нь ноорог унших/хадгалах/цэвэрлэх ба илгээлт (`submission.ts`)
+       хуудас дахин ачаалах хүртэл бүгд унадаг байв. Унавал доорх `catch` кэшээс хасна —
+       дараагийн дуудлага ШИНЭ instance үүсгэнэ. */
+    await fl.load();
+    return fl;
   })();
   /* ⚠️ PROMISE-ыг кэшилнэ (утгыг биш): зэрэг ирсэн хоёр дуудлага НЭГ
      instance хүлээнэ — эс бөгөөс хоёулаа өөрийгөө үүсгэж давхардана. */
   layerCache.set(url, p);
-  /* Унавал кэшээс хасна — дараагийн дуудлага дахин оролдоно */
-  p.catch(() => layerCache.delete(url));
+  /* Унавал (импорт · конструктор · `load()`) кэшээс хасна — дараагийн дуудлага дахин оролдоно.
+     ⚠️ Зөвхөн ЭНЭ promise хэвээр байвал хасна — шинээр үүссэнийг устгахгүй. */
+  p.catch(() => { if (layerCache.get(url) === p) layerCache.delete(url); });
   return p;
 }
 

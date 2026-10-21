@@ -425,7 +425,10 @@ function PlanOverview({
         const cardIds = (key: keyof typeof GROUP_LAYERS) => GROUP_LAYERS[key].filter((id) => counted.includes(id));
 
         const on = counted.filter((id) => visible.includes(id));
-        const totalN = on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        /* ⚠️ 2026-10-21: сонголтын горимд ч татагдаагүй давхарга 0 биш — «Нийт»-тэй ИЖИЛ
+           дүрмээр null + «N давхарга татагдсангүй» (урьд нь чимээгүй бага гардаг байв). */
+        const onMissing = on.filter((id) => !map.has(id));
+        const totalN = onMissing.length ? null : on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
         /**
          * БҮСЭЭР ШҮҮГДЭЭГҮЙ СОНГОСОН ДАВХАРГА — `ZONE_ID`-гүй (`noZone`).
@@ -484,7 +487,10 @@ function PlanOverview({
             .flatMap((x) => (x.d && x.t ? [{ d: x.d, t: x.t }] : []));
           if (!layers.length) return [];
 
-          const n = layers.reduce((a, x) => a + x.t.n, 0);
+          /* ⚠️ 2026-10-21: багцын сонгосон давхаргын аль нэг нь татагдаагүй бол нийлбэр нь
+             худал бага — null («—»); донат/цуваа нь татагдсан давхаргуудаар үлдэнэ. */
+          const groupMissing = GROUP_LAYERS[g.key].some((id) => on.includes(id) && !map.has(id));
+          const n = groupMissing ? null : layers.reduce((a, x) => a + x.t.n, 0);
 
           // Донат — тоогоор эзлэх хувь. Тоо нь нэгжгүй тул багц дотор ҮРГЭЛЖ зөв.
           // ⚠️ НЭГ ӨНГӨ — багц бүрийн донат/цуваа нь тухайн БАГЦЫН өнгөний
@@ -641,6 +647,12 @@ function PlanOverview({
                   title={tr('Сонгосон')}
                   note={tr('{0} давхарга · {1}', num(on.length), num(totalN))}
                 >
+                  {onMissing.length > 0 && (
+                    <p className={s.warnNote} role="alert">
+                      {tr('{0} давхарга татагдсангүй', num(onMissing.length))}{' '}
+                      <button type="button" className={s.zoneBarBtn} onClick={retryTotals}>{tr('Дахин оролдох')}</button>
+                    </p>
+                  )}
                   <div
                     className={pickedGroups.length > 1 ? s.pickedGrid : s.cardGrid}
                     style={pickedGroups.length > 1 ? undefined : gridStyle(pickedGroups.length)}
@@ -1098,7 +1110,7 @@ function LayerDashboard({
                   //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
                   display: [
                     `${num(item.values.n)}`,
-                    qtyText(d, item.values.q),
+                    qtyText(d, item.stats.q ?? null),
                   ].filter(Boolean).join(' · '),
                   color: shade.get(item.label) ?? BLANK_HUE,
                 }));
@@ -1152,7 +1164,7 @@ function LayerDashboard({
                       value: item.values.n,
                       display: [
                         `${num(item.values.n)}`,
-                        qtyText(d, item.values.q),
+                        qtyText(d, item.stats.q ?? null),
                       ].filter(Boolean).join(' · '),
                     }))}
                   />

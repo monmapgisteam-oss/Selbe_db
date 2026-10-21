@@ -422,8 +422,23 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
   /* ── Нийт ── */
   const workersLatest = latest.workers;
   const workersPrev = prev ? prev.workers : null;
-  const delta = workersLatest == null || workersPrev == null ? null : workersLatest - workersPrev;
-  const deltaPct = delta == null || !workersPrev ? null : (delta / workersPrev) * 100;
+  /* ⚠️ 2026-10-21 (аудит): ЗӨРҮҮ нь ХОЁР өдөр ХОЁУЛАНД тайлан өгсөн (`isReported`) компаниудаар л —
+     урьд нь нийт дүнгүүдийг шууд хасдаг тул маягтаа бөглөөгүй (`unreported`, өнөөдөр 0) компани
+     «−250 хүн» болж түвшинг 'bad' болгодог байв (компани бүрийн анхааруулга `!c.unreported`-аар аль
+     хэдийн хасдаг). Нэг ч компани хоёр өдөр давхцаагүй бол `null` (мэдээлэлгүй, 0 БИШ). */
+  let both = 0;
+  let dCur = 0;
+  let dPrev = 0;
+  for (const c of COMPANIES) {
+    const cur = latest.comp[c.sfx];
+    const p = prev?.comp[c.sfx];
+    if (!cur || !p || !isReported(cur) || !isReported(p)) continue;
+    both += 1;
+    dCur += cur.workers;
+    dPrev += p.workers;
+  }
+  const delta = workersLatest == null || workersPrev == null || !both ? null : dCur - dPrev;
+  const deltaPct = delta == null || !dPrev ? null : (delta / dPrev) * 100;
   const staleDays = daysBetween(latest.at, now);
 
   /* ── Баримтууд — зөвхөн тоо ── */

@@ -170,6 +170,16 @@ assert.ok(
   validateRow(meta, { ...base, turul: 'v' }).turul,
   'домэйнд байхгүй код — сонголтоос гарсан утга',
 );
+/* ⚠️ 2026-10-21: ТООН талбарын кодын домэйн — урьд нь `continue` шалгалтаас өмнө тул 7 хүлээгддэг байв */
+{
+  const nf = { name: 'angilal', alias: 'Ангилал', kind: 'number', length: null, nullable: true, int: 'small',
+    codes: [{ code: '1', label: 'Нэг' }, { code: '2', label: 'Хоёр' }, { code: '3', label: 'Гурав' }] };
+  const nm = { ...meta, fields: [nf] };
+  assert.ok(validateRow(nm, { angilal: '7' }).angilal, 'тоон домэйнд байхгүй код 7');
+  assert.ok(!validateRow(nm, { angilal: '2' }).angilal, 'тоон домэйны код 2 — зөв');
+  assert.ok(!validateRow(nm, { angilal: '2.0' }).angilal, '«2.0» = 2');
+  assert.equal(validateRow(nm, { angilal: '1.5' }).angilal, 'Бүхэл тоо оруулна уу', 'бүхэл биш алдаа давхарлагдахгүй');
+}
 
 /* ⚠️ 2026-09-30: ЗӨВХӨН ХООСОН ЗАЙ нь `Number`-т 0 — тоон талбарт 0 бичигддэг байв
    (олноор засахад «— олон утга —» талбарт зай дарахад БҮХ мөрөнд 0) */

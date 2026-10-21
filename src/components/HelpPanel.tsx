@@ -19,7 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { useFocusTrap } from '@/lib/useFocusTrap';
+import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { NAV_GROUPS, VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, type ViewKey } from '@/lib/services';
 import { Icon } from './Icon';
 import s from './help.module.css';
@@ -90,7 +90,8 @@ export function HelpPanel({
 
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн/эрхийн цонх) нээлттэй бол Esc нь түүнийх — самбарыг хаахгүй */
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopFocusTrap(ref.current)) onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [open, onClose]);
