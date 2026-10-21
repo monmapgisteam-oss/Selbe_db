@@ -31,9 +31,7 @@ const OPTIONAL_LOCAL = new Map([
     'Нэвтрэлтийг санаатай унтраах (зөвхөн UI бүтэц харах) — production/CI-д ХЭЗЭЭ Ч тавихгүй (env.ts).'],
   /* ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` ЭНД БАЙХГҮЙ БОЛСОН — ХАБЭА-гийн бичилт Enterprise сешнээс хамаардаг тул
      deploy/CI-д GitHub Variable-аар (сонголттой; хоосон бол `habeaRegisters.entAuth` нэргүй бичилт руу буцна) */
-  /* ⚠️ 2026-10-19: `NEXT_PUBLIC_CHANAR_MA_SVC` ЭНД БАЙХГҮЙ БОЛСОН — deploy/CI-д GitHub Variable-аар (сонголттой, хоосон байж болно) */
-  ['NEXT_PUBLIC_CHANAR_MIR_SVC',
-    'MIR (материалын үзлэг) Survey123 feature service — Enterprise (lib/mir.ts); хоосон бол MA картад MIR гарахгүй.'],
+  /* ⚠️ 2026-10-20: `NEXT_PUBLIC_CHANAR_MA_SVC` · `NEXT_PUBLIC_CHANAR_MIR_SVC` ХАСАГДСАН — MA · MIR нь `NEXT_PUBLIC_ENT_DATA`-гийн дор тогтмол нэрээр (env.ts) */
 ]);
 
 const SELF = 'tools/envParity.check.mjs';

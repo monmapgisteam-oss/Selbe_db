@@ -81,21 +81,9 @@ for (const e of cat.filter((x) => x.closed)) {
   );
 }
 
-/* ── 6. Чанарын баримтын мөр ↔ `chanarMs` (2026-09-25, аудит 8) ──
-   ⚠️ Каталогийн текст нь дүрмийн ХУУЛБАР тул төрөл/хянагч нэмэгдэхэд чимээгүй
-   хуучирдаг (2026-09-28-нд 5 төрөл · «MA — Чанар · ТУГ зэрэг» гэж үлдсэн байв). */
+/* ── 6. ⚠️ 2026-10-20: «Чанарын баримт» каталогийн мөр системээс ХАСАГДСАН — шалгуур хасагдав. */
 {
-  const e = cat.find((x) => x.id === 'chanar');
-  assert.ok(e, 'chanar мөр алга');
-  for (const k of KINDS) assert.ok(e.name.includes(k), `chanar: нэрэнд төрөл ${k} алга (KINDS=${KINDS.length})`);
-  const chain = e.chain().map((s) => s.label).join(' ');
-  const LABEL = { tuh: 'ТУХ', chanar: 'Чанар', habea: 'ХАБЭА', tug: 'ТУГ', cheng: 'ЧХ инженер' };
-  for (const k of SEQUENTIAL_KINDS) {
-    const seq = REVIEWERS_OF[k].map((r) => LABEL[r]).join(' → ');
-    assert.ok(chain.includes(seq), `chanar: ${k}-ийн дараалсан хянагч «${seq}» шатлалд алга`);
-  }
-  for (const r of REVIEWERS_OF.NCR) assert.ok(chain.includes(LABEL[r]), `chanar: NCR-ийн хянагч ${r} шатлалд алга`);
-  assert.ok(e.views.includes('qaqc'), 'chanar: QAQC харагдац уншдаг (MA · MIR · FIC сонголт)');
+  assert.ok(!cat.some((x) => x.id === 'chanar'), 'chanar мөр хасагдсан байх ёстой');
 }
 
 /* ── Нэг физик давхарга = нэг мөр ── */

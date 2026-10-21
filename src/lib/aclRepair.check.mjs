@@ -82,7 +82,7 @@ const [g1, g2] = PKG_GROUPS;
   eq(rows.guitsetgel.sources.map((s) => [s.sys, s.role, s.bagts]), [['flow', 'engineer', [g1]]], `${tag}: «Гүйцэтгэл» ← урсгал`);
   eq(rows.huvaari.sources.map((s) => [s.sys, s.role, s.cap, s.granted]), [['huvaari', 'author', 'plan', true]], `${tag}: «Хуваарь» ← Хуваарийн эрх · Зохиогч`);
   eq(rows.qaqc.sources.map((s) => [s.sys, s.bagts, s.granted]), [['qaqc', [g2], true]], `${tag}: «Чанар (QAQC)» ← QAQC`);
-  ok(!rows.huvaariBatlah.open && !rows.chanar.open && !rows.ajilBatlah.open, `${tag}: бусад хаалттай`);
+  ok(!rows.huvaariBatlah.open && !rows.ajilBatlah.open, `${tag}: бусад хаалттай`);
   agree(u, tag);
   await roundTrip();
   agree(u, `${tag} remote`);

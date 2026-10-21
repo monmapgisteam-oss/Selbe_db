@@ -58,14 +58,8 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
   /* ✅ 2026-10-04: `hyanaltStore.countReviewPending` — таны шатанд хүлээгдэж буй
      гүйцэтгэлийн хяналт (дээрх обьёмтой НИЙЛБЭР, нэг харагдац). */
   { view: 'guitsetgel', load: () => probe(import('@/lib/hyanaltStore'), ['countReviewPending']) },
-  /* ✅ `chanarStore.countChanarActionable` — чанарын баримтын «таны ээлж».
-     ⚠️ ACL ачаалагдахаас өмнө бага тоолно — 3 минут тутмын шинэчлэлт засна. */
-  {
-    view: 'chanar',
-    load: async () =>
-      (await probe(import('@/lib/chanarStore'), ['countChanarActionable', 'countChanarPending', 'countActionable']))
-      ?? probe(import('@/lib/chanarMs'), ['countChanarActionable', 'countChanarPending', 'countActionable']),
-  },
+  /* ⚠️ 2026-10-20: «Чанарын баримт»-ын тэмдэг ХАСАГДСАН (харагдац ба `chanarStore` хасагдсан). */
+
 ];
 
 /**
@@ -219,19 +213,10 @@ async function countPlanNews(username: string | null): Promise<number | null> {
 
 /* ══ ⚠️ 2026-09-30 (кэшийн ажлын урсгал — ЗӨВХӨН энэ блок): чанарын тэмдгийг ACL ирэхэд дахин тоолох ══ */
 /**
- * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО. `countChanarActionable` нь ACL ачаалагдахаас ӨМНӨ бага
- * тоолдог байв (дээрх SOURCES-ийн ⚠️); одоо (1) тоолуур өөрөө ACL-ийг хязгаартай
- * хүлээнэ (`chanarStore.whenChanarAclReady`), (2) энэ дохио ACL өөрчлөгдөх бүрд
- * (`chanarStore.subscribeChanarActionable`) `cb`-г дуудна — `Portal` `refreshBadges`-ээ
- * өгнө. Тайлах функц буцаана. ⚠️ Модуль ДИНАМИКААР — толгойн ⚠️-ийн адил үндсэн
- * chunk-д орохгүй; тайлагдсаны дараа ирсэн бүртгэл шууд тайлагдана.
+ * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО — `Portal` `refreshBadges`-ээ өгнө, тайлах функц буцаана.
+ * ⚠️ 2026-10-20: цорын ганц эх (`chanarStore.subscribeChanarActionable`, «Чанарын баримт») хасагдсан тул одоо дохио
+ *    үүсгэх эх алга — гарын үсэг хадгалагдсан (дуудагч өөрчлөгдөхгүй); шинэ эх нэмбэл энд бүртгэнэ.
  */
-export function subscribeNavBadges(cb: () => void): () => void {
-  let alive = true;
-  let off: (() => void) | null = null;
-  import('@/lib/chanarStore').then(
-    (m) => { if (alive) off = m.subscribeChanarActionable(cb); else off = null; },
-    () => { /* чимээгүй — тэмдэг бол туслах мэдээлэл */ },
-  );
-  return () => { alive = false; off?.(); off = null; };
+export function subscribeNavBadges(_cb: () => void): () => void {
+  return () => {};
 }

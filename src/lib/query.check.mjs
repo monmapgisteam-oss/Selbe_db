@@ -15,10 +15,11 @@ import * as A from '@/lib/authToken';
 const realFetch = globalThis.fetch;
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 const URL_ = 'https://x/arcgis/rest/services/A/FeatureServer/0';
-/* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана — токены
-   шалгуурууд байгууллагын (env `NEXT_PUBLIC_ARCGIS_HJ`) хаягаар явна. */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-assert.ok(HJ, 'NEXT_PUBLIC_ARCGIS_HJ хоосон — .env ачаалагдаагүй');
+/* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана — токены шалгуурууд байгууллагын хаягаар явна.
+   ⚠️ 2026-10-20: байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`); `SELBE_ENT_OFF`-той тестэд зураглал унтраалттай ч
+   `query.isOrgUrl` хувьсагчийг шууд уншдаг тул токен залгагдана. */
+const HJ = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '');
+assert.ok(HJ, 'NEXT_PUBLIC_ENT_DATA хоосон — .env ачаалагдаагүй');
 const ORG = `${HJ}/A/FeatureServer/0`;
 
 /* ── 200-аар ирдэг {error} → ArcGISError (code · details · url) ── */
@@ -214,7 +215,8 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   seen.length = 0;
   const w = await A.arcgisPost(`${ORG}/query`, {}).catch((x) => x);
   assert.equal(w.code, 498);
-  assert.match(w.message, /Invalid token\. \[A\/FeatureServer\/0\/query 498\]/);
+  /* ⚠️ 2026-10-20: Enterprise хаяг `…/services/Hosted/A/…` тул замын сүүлд `Hosted/` орно */
+  assert.match(w.message, /Invalid token\. \[(Hosted\/)?A\/FeatureServer\/0\/query 498\]/);
   A.registerIdentity(null, '');
   console.log('✅ 498 → refresh → нэг удаа дахин · 30с хүлээлт цагаар (шинэ токеноор 499 → дахин шинэчлэлгүй) · org+дуудагчийн токен → дахин үгүй · authToken бүрхүүл');
 }

@@ -26,6 +26,7 @@ import type Geometry from '@arcgis/core/geometry/Geometry';
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import { TD, layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
+import { remapUrl } from '@/lib/services/entMap';
 import { classifyBuilding, buildingTrips } from './transport';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
@@ -72,7 +73,10 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
       start,
       num: PAGE,
     });
-    const res = await query.executeQueryJSON(u, q);
+    /* ⚠️ 2026-10-20: AGOL түлхүүрийн хаяг (`TD/118`) → Enterprise. JS API-ийн `executeQueryJSON` нь `query.ts`-ийн
+       цөмөөр явдаггүй тул зураглал ЭНД — урьд нь AGOL руу шууд явж 499 → «Тохиромжтой байдал» нээхэд AGOL-ын нэвтрэх
+       цонх гардаг байв. Талбарын нэр (`Shape__Area` · `RefName_12` · `OBJECTID`) `lib/entInterceptor.ts` хөрвүүлнэ. */
+    const res = await query.executeQueryJSON(remapUrl(u), q);
     out.push(...(res.features as unknown as Feat[]));
     if (res.features.length === 0) break;
     if (res.features.length < PAGE && !res.exceededTransferLimit) break;

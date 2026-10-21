@@ -36,6 +36,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
+import { entDirect } from '@/lib/services/entMap';
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
@@ -308,6 +309,13 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
+     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
+  const direct = entDirect(TITLE, 0);
+  if (direct) {
+    tableUrlCache = direct;
+    return direct;
+  }
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);

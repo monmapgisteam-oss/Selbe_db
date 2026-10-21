@@ -16,7 +16,7 @@ const keys = VIEWS.map((v) => v.key);
 const full = botFullViews(keys);
 
 /* ── Шинэ санхүүгийн бус харагдацууд орсон ── */
-for (const k of ['tuh', 'gdash', 'dedButets', 'chanar', 'qaqc', 'dashboard', 'pkgProg', 'guitsetgel', 'schem']) {
+for (const k of ['tuh', 'gdash', 'dedButets', 'qaqc', 'dashboard', 'pkgProg', 'guitsetgel', 'schem']) {
   assert.ok(full.includes(k), `${k} ботын эрхэд орсонгүй`);
 }
 /* Санхүүгийнх хасагдсан */

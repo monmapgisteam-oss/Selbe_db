@@ -66,7 +66,7 @@ import {
   type QaqcDraft,
   type QaqcDraftState,
 } from '@/lib/qaqcDraft';
-import { loadAllDocs } from '@/lib/chanarStore';
+/* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН — батлагдсан баримтын санал (datalist) хоосон, дугаарыг чөлөөт текстээр бичнэ. */
 import { latestApproved, type DocKind } from '@/lib/chanarMs';
 import { register } from '@/lib/dataBus';
 import st from '@/modules/sheet/sheet.module.css';
@@ -719,7 +719,7 @@ export function Qaqc() {
        ⚠️ 2026-10-09 (аудит №6): урьд нь `latest()` → approved шүүлт тул «Шинэ хувилбар» (rev+1 ноорог) үүсмэгц
           батлагдсан rev N-ийн ✓ тэмдэг, datalist-ийн сонголт алга болдог байв — шинэ rev батлагдтал хуучин нь хүчинтэй. */
     const kinds = new Set<DocKind>(Object.values(DOC_KIND_OF));
-    loadAllDocs()
+    Promise.resolve([] as Parameters<typeof latestApproved>[0])
       .then((docs) => {
         /* Хуучирсан хариу — шинэ түлхүүрийн татац явж байгаа/явна */
         if (apKeyRef.current !== k) return;

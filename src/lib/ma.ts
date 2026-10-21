@@ -9,7 +9,7 @@ import { capLabel } from '@/modules/capText';
 
 /**
  * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Survey123 маягт → Enterprise hosted
- * feature service (`NEXT_PUBLIC_CHANAR_MA_SVC`, давхарга `/0`). Портал УНШИНА, бөглөхгүй.
+ * feature service (`services/env.ts` CHANAR_MA_SVC — Enterprise, давхарга `/0`). Портал УНШИНА, бөглөхгүй.
  *
  * ⚠️ ХЭРЭГЛЭГЧИЙН ШИЙДВЭРҮҮД (2026-10-09, `memory/chanar-redesign`):
  *    · Чанарын 4 шат MA → MIR → FIC → М-акт; MA-гүй бол MIR-гүй … (гинж MA дээр тулгуурлана).
@@ -123,7 +123,7 @@ export function rowOf(a: Record<string, unknown>): MaRow {
 
 /** Бүх MA — сүүлд илгээсэн нь эхэнд */
 export async function loadMa(): Promise<MaRow[]> {
-  if (!MA_URL) throw new Error(tr('MA үйлчилгээ тохируулаагүй (NEXT_PUBLIC_CHANAR_MA_SVC).'));
+  if (!MA_URL) throw new Error(tr('MA үйлчилгээ тохируулаагүй.'));
   /* `queryFeatures` → хавтгай атрибут (`Row`), хуудаслалт · 200-аар ирсэн `{error}` дотроо */
   const rows = await queryFeatures(MA_URL, { where: '1=1', outFields: ['*'], orderBy: `${F.oid} DESC` });
   return rows.map((r) => rowOf(r as Record<string, unknown>));

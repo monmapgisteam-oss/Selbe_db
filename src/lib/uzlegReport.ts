@@ -446,14 +446,12 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
 export const attUrl = (layerUrl: string, oid: number, id: number): string =>
   `${layerUrl}/${oid}/attachments/${id}`;
 
-/** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм) */
-const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
-const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`) ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '' : '';
+/** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм).
+ * ⚠️ 2026-10-20: байгууллага = Сэлбэ Enterprise ArcGIS Server (`NEXT_PUBLIC_ENT_DATA`-ийн `/Hosted`-гүй суурь); AGOL
+ *    (`NEXT_PUBLIC_ARCGIS_HJ`) хасагдсан. Хувьсагчийг ШУУД уншина (`services` импортлохгүй — ачаалалтын гинж). */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '').replace(/\/Hosted$/i, '');
 /** ⚠️ 2026-10-09: экспортлогдсон — хуудасны зургийн слайдер ч (blob URL) энэ шалгуураар токен илгээнэ */
-export const isOrgUrl = (url: string): boolean =>
-  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
-  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+export const isOrgUrl = (url: string): boolean => !!ORG_BASE && url.startsWith(`${ORG_BASE}/`);
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАВСРАЛТЫГ ДЭЛГЭЦЭД/ТАБАД ХАРУУЛАХ ЗӨВШӨӨРӨГДСӨН ТӨРӨЛ — зөвхөн растер.

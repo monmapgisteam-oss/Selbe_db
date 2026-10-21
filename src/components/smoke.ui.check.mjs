@@ -181,7 +181,6 @@ const CASES = [
   { name: 'IpcTable', load: () => import('@/modules/IpcTable'), pick: (m) => m.IpcTable, props: { contracts: [] } },
   { name: 'Guitsetgel', load: () => import('@/modules/Guitsetgel'), pick: (m) => m.Guitsetgel, props: {} },
   { name: 'Qaqc', load: () => import('@/modules/Qaqc'), pick: (m) => m.Qaqc, props: {}, expect: ['Багц 3.2', 'Хадгалах'] },
-  { name: 'Chanar', load: () => import('@/modules/Chanar'), pick: (m) => m.Chanar, props: {}, expect: ['Аргачлал', 'Үл тохирол'] },
   { name: 'Zovshoorol', load: () => import('@/modules/Zovshoorol'), pick: (m) => m.Zovshoorol, props: {} },
   { name: 'Tailan', load: () => import('@/modules/Tailan'), pick: (m) => m.Tailan, props: {}, expect: ['Удирдлагын тайлан'] },
   { name: 'ExecReport', load: () => import('@/modules/ExecReport'), pick: (m) => m.ExecReport, props: {} },

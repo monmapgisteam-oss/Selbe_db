@@ -112,7 +112,7 @@ export function Ma() {
       </header>
 
       {!MA_URL ? (
-        <p className={s.failNote}>{tr('MA үйлчилгээ тохируулаагүй (NEXT_PUBLIC_CHANAR_MA_SVC).')}</p>
+        <p className={s.failNote}>{tr('MA үйлчилгээ тохируулаагүй.')}</p>
       ) : q.state === 'loading' ? (
         <div className={s.loading}>{tr('Ачаалж байна…')}</div>
       ) : q.state === 'error' ? (

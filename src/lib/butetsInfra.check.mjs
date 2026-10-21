@@ -26,12 +26,14 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 /** Метадата — ArcGIS алдааг HTTP 200-аар буцаадаг тул биеийг шалгана */
 async function meta(id) {
-  const body = new URLSearchParams({ f: 'json' });
-  const res = await fetch(layerUrl(LAYER_BY_ID[id]), { method: 'POST', body, signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { net: true });
-  const j = await res.json();
-  if (j.error) throw Object.assign(new Error(`${j.error.code} ${j.error.message}`), { arc: j.error.code });
-  return j;
+  /* ⚠️ 2026-10-20: `query.ts`-ээр — Enterprise руу зураглагдаж (`layerUrl`), талбарын нэр эх хэлбэрээр (`SHAPE__Length` → `Shape__Length`) */
+  const { arcgisPost, ArcGISError } = await import('./query.ts');
+  try {
+    return await arcgisPost(layerUrl(LAYER_BY_ID[id]), {}, { timeoutMs: 15000 });
+  } catch (e) {
+    if (e instanceof ArcGISError) throw Object.assign(new Error(e.message), { arc: e.code, net: /^HTTP |хугацаа|JSON биш/.test(e.message) });
+    throw e;
+  }
 }
 
 let m1, m6, m69;

@@ -66,26 +66,17 @@ export const ROLE_STAGE: Partial<Record<Role, Stage>> = Object.fromEntries(
  * (`roleForUser` нь `toLowerCase()`-оор харьцуулна).
  */
 export const ROLE_BY_USER: Record<string, Role> = {
-  bilguuntugs_monmap: "super",
-  enhsaandar_monmap: "super",
-  munkhbaatar_selbe: "super",
-  tumenjargal_monmap: "super",
-  narandulam_monmap: "super",
-  saruul_monmap: "super",
-  maralgoo_monmap: "super",
-  /* ⚠️ 2026-10-15 (хэрэглэгчийн шийдвэр): панелийн super-ээс КОДЫН super болгов — панелийн
-     super нь зөвхөн харагдац нээдэг, засах эрх (`caps`) ба багцын хүрээ (`scope`) авдаггүй
-     тул «Дэд бүтэц»-ийн «Мэдээллийн төлөв» г.м. эрхээр хаалттай хэсгүүд дутуу харагддаг байв.
-     Одоо дээрх 7-той ЯГ ижил (`permissions.roleOf`-ийн 2026-10-06-ны ⚠️). */
-  manager_3: "super",
-  selbe_et: "beginner",
-  selbe_redesign: "tolovlolt",
+  /* ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт, хэрэглэгчийн шийдвэр: «tumenjargal_selbe-г үлдээгээд бусдыг устга»):
+     AGOL-ын бүх аккаунт (bilguuntugs_monmap · enhsaandar_monmap · munkhbaatar_selbe · tumenjargal_monmap ·
+     narandulam_monmap · saruul_monmap · maralgoo_monmap · manager_3 · selbe_et · selbe_redesign) ХАСАГДСАН —
+     нэвтрэлт одоо Сэлбэ Enterprise геопортал (gis.selbecity.mn/geoportal). Цорын ганц КОДЫН super нь Enterprise-ийн
+     `tumenjargal_selbe` (бүх Enterprise үйлчилгээний эзэн); бусад хэрэглэгчийг админ панелаас (`permissions.setUser`) нэмнэ.
+     Эрхийн хүснэгтийн (`SYS_Selbe_Permissions`) AGOL нэртэй мөрүүд мөн устгагдсан (нөөц: шилжилтийн сешний scratchpad). */
+  tumenjargal_selbe: "super",
   /*
    * ⚠️ 2026-10-19 (аудит): ЖИШЭЭ урсгалын дөрвөн аккаунт (`selbe_guitsetgegch` · `selbe_injener` · `selbe_menejer` ·
-   *    `selbe_eronhii`) ХАСАГДСАН. Тайлбар нь «бүтэц харуулсан жишээ» гэдэг байсан ч код тэднийг ЖИНХЭНЭЭР нэвтрүүлдэг
-   *    (`roleForUser` → `hasAccess`) байв — тийм нэрээр ArcGIS аккаунт үүсгэсэн хэн ч нэвтэрч, урсгалын үүрэгтэй
-   *    болох байлаа. Урсгалын хүнийг админ панелаас нэмж (`permissions.setUser`), «Гүйцэтгэлийн урсгалын эрх»-д
-   *    шатанд томилно — шат нь томилгооноос (`resolveFlowStage`), энэ хүснэгтээс биш. Буцааж бүү нэм.
+   *    `selbe_eronhii`) ХАСАГДСАН. Урсгалын хүнийг админ панелаас нэмж (`permissions.setUser`), «Гүйцэтгэлийн урсгалын
+   *    эрх»-д шатанд томилно — шат нь томилгооноос (`resolveFlowStage`), энэ хүснэгтээс биш. Буцааж бүү нэм.
    */
 };
 
@@ -132,7 +123,7 @@ export const ROLE_ACCESS: Record<
    *    бодит харагдац нь админы тохируулсан загвараас (`roleTypes.roleAccess`).
    */
   taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
-  chanar: { views: ["qaqc", "chanar", "ma"], docs: false, home: "chanar" },
+  chanar: { views: ["qaqc", "ma"], docs: false, home: "qaqc" },
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
 };
 

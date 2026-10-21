@@ -40,7 +40,8 @@ import { join, sep } from 'node:path';
 import { runCheck, resolveTimeoutS } from './testRun.mjs';
 
 const ROOTS = ['src', 'docs', 'tools'];
-const LOADER = ['--experimental-transform-types', '--import', './tools/ts-alias.mjs'];
+/* ⚠️ 2026-10-20: `test-users.mjs` — хуучин хатуу хэрэглэгчдийг ЗӨВХӨН тестэд сэргээнэ (тэр файлын ⚠️) */
+const LOADER = ['--experimental-transform-types', '--import', './tools/ts-alias.mjs', '--import', './tools/test-users.mjs'];
 
 /** `npm run test:live`-тэй ИЖИЛ жагсаалт — амьд өгөгдөл / реле шаарддаг */
 const LIVE = new Set([
@@ -88,11 +89,11 @@ if (!files.length) {
 }
 /* ⚠️ 2026-10-09: `.env` нь git-ignored — шинэ clone/worktree дээр ~28 шалгуур учир нь ойлгомжгүй
    унадаг байв. Энд НЭГ удаа, эхэнд нь хэлнэ (`ts-alias.mjs` процесс бүрд мөн stderr-т бичнэ).
-   CI нь орчны хувьсагчаар өгдөг тул `NEXT_PUBLIC_ARCGIS_HJ` байвал чимээгүй. */
-if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
+   CI нь орчны хувьсагчаар өгдөг тул `NEXT_PUBLIC_ENT_DATA` байвал чимээгүй. */
+if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ENT_DATA) {
   console.warn('⚠️ test-all: .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env); эс бөгөөс NEXT_PUBLIC_* шаарддаг шалгуурууд унана\n');
-} else if (!process.env.NEXT_PUBLIC_ARCGIS_HJ && existsSync('.env')
-  && !/^\s*NEXT_PUBLIC_ARCGIS_HJ\s*=\s*\S/m.test(readFileSync('.env', 'utf8'))) {
+} else if (!process.env.NEXT_PUBLIC_ENT_DATA && existsSync('.env')
+  && !/^\s*NEXT_PUBLIC_ENT_DATA\s*=\s*\S/m.test(readFileSync('.env', 'utf8'))) {
   /* ⚠️ 2026-10-11 (аудит №7): `.env.example`-ийг хуулсан ч УТГУУДЫГ бөглөөгүй (бүгд хоосон) — «.env алга»-тай
      ижил ~28 шалгуур унадаг атал дээрх анхааруулга чимээгүй байв. */
   console.error('⚠️ test-all: .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
@@ -100,14 +101,24 @@ if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 
 /* ── Ажиллуулах ── */
-const run = (file) => runCheck(file, { args: LOADER, timeoutMs: timeoutS * 1000 });
+/* ⚠️ 2026-10-20: Enterprise зураглалыг НЭГЖ тестэд УНТРААНА (`services/entMap.ts`-ийн `SELBE_ENT_OFF` ⚠️) — хуурамч
+   хүснэгт/fetch нь AGOL хэлбэрийн хаягаар бичигдсэн. АМЬД (`LIVE`) шалгуур Enterprise руу бодитоор ханддаг тул асаалттай.
+   Зураглалын функцүүд `entMap.check.mjs`-д тусдаа. */
+const run = (file) => runCheck(file, {
+  args: LOADER, timeoutMs: timeoutS * 1000,
+  env: { ...process.env, SELBE_ENT_OFF: LIVE.has(file) ? '0' : (process.env.SELBE_ENT_OFF ?? '1') },
+});
 
 const results = [];
 let next = 0;
 const worker = async () => {
   while (next < files.length) {
     const file = files[next++];
-    const r = await run(file);
+    let r = await run(file);
+    /* ⚠️ 2026-10-20: 200+ зэрэг процессын дунд Node санамсаргүй сүйрдэг (Windows exit 0xC0000409, ГАРАЛТГҮЙ, удаа бүр өөр
+       файл; дангаараа үргэлж давдаг). Ийм — гаралтгүй, хугацаа хэтрээгүй — уналтыг НЭГ удаа дахин ажиллуулна; бодит
+       уналт (assert/алдааны гаралттай) дахин оролдохгүй. */
+    if (r.code !== 0 && !r.timedOut && !String(r.out ?? '').trim()) r = await run(file);
     results.push(r);
     const mark = r.code === 0 ? '✅' : r.timedOut ? '⏱' : '❌';
     console.log(`${mark} ${file} (${(r.ms / 1000).toFixed(1)}с)`);

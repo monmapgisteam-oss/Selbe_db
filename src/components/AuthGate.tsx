@@ -10,6 +10,7 @@ import { subscribeCaps } from '@/lib/caps';
 import type { SysState } from '@/lib/permsRemote';
 import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import {
   cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, registerIdentity, reopenSessionDead,
   retrySession, sessionDead, subscribeSessionDead,
@@ -178,6 +179,10 @@ function watchNavCancel(cb: () => void, ms: number): () => void {
   }
   return stop;
 }
+
+/* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр — JS API-ийн ямар ч давхарга (ноорог · эрхийн хүснэгт ·
+   газрын зураг) үүсэхээс ӨМНӨ, аппын эхэнд нэг удаа (`lib/entInterceptor.ts`). Node/SSR-д чимээгүй алгасна. */
+if (typeof window !== 'undefined') void installEntInterceptor();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(() => (AUTH.appId ? 'checking' : 'off'));

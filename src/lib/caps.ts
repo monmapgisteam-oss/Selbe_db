@@ -279,8 +279,9 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   butets: ['dedButets'],
   /* ⚠️ Чанарын баримт (irgediin-hurteemj, 2026-09-16) — массив хэлбэрт
      (tezu-bonu-гийн шинэ төрөл) нийцүүлэв. */
-  chanarAuthor: ['chanar', 'ma'],
-  chanarReview: ['chanar', 'ma'],
+  /* ⚠️ 2026-10-20: «Чанарын баримт» харагдац хасагдсан — эрх нь MA-д л. */
+  chanarAuthor: ['ma'],
+  chanarReview: ['ma'],
   hamaaral: ['bagtsHamaaral'],
   habeaData: ['habea'],
   /* ⚠️ 2026-10-19: ХООСОН — «Систем түр хаах» нь харагдац биш, цэсний товч (`ViewRail.onSysClose`). Массив хэлбэр

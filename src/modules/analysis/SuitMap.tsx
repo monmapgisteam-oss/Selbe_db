@@ -10,7 +10,7 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
-import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
+import TileLayer from '@arcgis/core/layers/TileLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Basemap from '@arcgis/core/Basemap';
@@ -19,6 +19,7 @@ import Graphic from '@arcgis/core/Graphic';
 import Home from '@arcgis/core/widgets/Home';
 import ScaleBar from '@arcgis/core/widgets/ScaleBar';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
+import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
 import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
@@ -29,8 +30,9 @@ import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import { createBimPicker, type BimPicker } from '@/components/bimPicker';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import {
-  IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
+  IMAGERY, IRGED_ROAD, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -243,7 +245,9 @@ const ROAD_TILE_URL =
      `selberoad_0917` нь 32648 (UTM)-ээр нийтлэгдсэн тул 3857 зурагт зурагдахгүй;
      Web Mercator-оор дахин нийтлэгдмэгц хувьсагчийн утгыг солино. Бусад бүх өгөгдөл monmap.
      Хаяг зөвхөн env (`NEXT_PUBLIC_ROAD_TILE_URL`) — код дотор линк байхгүй; хоосон бол «Бодит» зам гарахгүй. */
-  (process.env.NEXT_PUBLIC_ROAD_TILE_URL ?? '').trim().replace(/\/+$/, '');
+  /* ⚠️ 2026-10-20 (хэрэглэгч): AGOL `test_zam` → Enterprise `selberoad_TILE_1` (`services/scene.ts` IRGED_ROAD — ижил тайл,
+     32648-ийн ⚠️ тэнд). `NEXT_PUBLIC_ROAD_TILE_URL` хувьсагч хасагдсан. */
+  IRGED_ROAD.url;
 
 export function SuitMap({
   dim,
@@ -412,6 +416,8 @@ export function SuitMap({
   useEffect(() => {
     if (!el.current) return;
 
+    /* ⚠️ 2026-10-20: Enterprise талбарын нэрийн хөрвүүлэгч — давхарга үүсэхээс өмнө (`lib/entInterceptor.ts`) */
+    void installEntInterceptor();
     if (!mapRef.current) {
       /* ⚠️ 2026-10-09: хувилбарыг СУУЛГАСАН багцаас (`kernel.version` = «4.34.8» → «4.34») — урьд
          «4.34» гараар бичигдсэн тул `@arcgis/core`-ийг шинэчлэхэд CDN-ийн asset (worker, шрифт)
@@ -483,11 +489,8 @@ export function SuitMap({
         title: IMAGERY.title,
         visible: false,
         listMode: 'hide',
-        /* ⚠️ 2026-10-04: `Selbe_September_tif` MapServer — `MapImageLayer` (`services/scene.ts` IMAGERY-ийн ⚠️) */
-        layers: [new MapImageLayer({
-          id: 'imagery:0', url: IMAGERY.url, visible: true,
-          imageFormat: 'png32', imageTransparency: true, legendEnabled: false,
-        })],
+        /* ⚠️ 2026-10-20: Enterprise-ийн нислэгийн кэштэй тайл (wkid 102100 → `TileLayer`), анхдагч нислэг (`services/scene.ts` ORTHO_FLIGHTS-ийн ⚠️) */
+        layers: IMAGERY.layers.map((o, i) => new TileLayer({ id: `imagery:${i}`, url: o.url, visible: true })),
       });
 
       /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
@@ -577,7 +580,24 @@ export function SuitMap({
     /* ⚠️ 2026-09-25: Галерей нь Expand-ийн content DOM-д суудаг тул
        `view.destroy()` устгадаггүй — 2D↔3D солих бүрд нэг нь үлддэг байв.
        Cleanup-д гараар устгана (MapCanvas-тай ижил). */
-    const gallery = new BasemapGallery({ view: anyView, container: galleryDiv });
+    /* ⚠️ 2026-10-20: ТОДОРХОЙ эх сурвалж (MapCanvas-тай ижил). Анхдагч `PortalBasemapsSource` нь ArcGIS Online-ы
+       суурь зургийн бүлгийг уншдаг бөгөөд тэнд нэвтрэлт шаарддаг item байдаг тул Enterprise руу шилжсэний дараа (AGOL
+       итгэмжлэлгүй) «Please sign in to access the item on ArcGIS Online» цонх гардаг байв. */
+    const gallery = new BasemapGallery({
+      view: anyView,
+      container: galleryDiv,
+      source: new LocalBasemapsSource({
+        basemaps: [
+          Basemap.fromId('topo-vector')!,
+          Basemap.fromId('satellite')!,
+          Basemap.fromId('hybrid')!,
+          Basemap.fromId('streets-vector')!,
+          Basemap.fromId('gray-vector')!,
+          Basemap.fromId('dark-gray-vector')!,
+          Basemap.fromId('osm')!,
+        ],
+      }),
+    });
     view.ui.add(new Expand({
       view: anyView,
       content: bmPanel,

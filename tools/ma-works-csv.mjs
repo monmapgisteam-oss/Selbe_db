@@ -18,7 +18,8 @@ if (!TOK) {
   try { const m = /^ARCGIS_ADMIN_TOKEN=(.+)$/m.exec(readFileSync('.env.development.local', 'utf8')); if (m) TOK = m[1].trim(); } catch { /* алга */ }
 }
 if (!TOK) throw new Error('ARCGIS_ADMIN_TOKEN алга — env эсвэл .env.development.local');
-const ORG = (process.env.NEXT_PUBLIC_ARCGIS_HJ || '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/, '');
+/* ⚠️ 2026-10-20: байгууллага = Сэлбэ Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн `/Hosted`-гүй суурь); ARCGIS_ADMIN_TOKEN нь Enterprise токен. */
+const ORG = (process.env.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '').replace(/\/Hosted$/i, '');
 /* ⚠️ Токен POST-ын БИЕЭР (`tools/tokenInUrl.check.mjs`); `ts-alias` зөвхөн *.check.mjs-д залгадаг тул энд өөрөө */
 const orig = globalThis.fetch;
 globalThis.fetch = async (input, init) => {

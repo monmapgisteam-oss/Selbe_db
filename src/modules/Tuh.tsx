@@ -26,7 +26,7 @@ import { loadCfPlan, CONTRACTED } from '@/lib/gdash';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
-import { loadAllDocs } from '@/lib/chanarStore';
+/* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН (хэрэглэгчийн шийдвэр) — MA/MIR баримтын тоо `docs: null` («—»). */
 import { loadDeps } from '@/lib/bagtsHamaaral';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
@@ -58,7 +58,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const histQ = useAsync(loadBlockHistory, []);
   const comQ = useAsync(loadCommissionDates, []);
   const wfQ = useAsync(loadWorkforceKpi, []);
-  const docQ = useAsync(loadAllDocs, []);
   const budgetQ = useAsync(loadBudget, []);
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь ТУХ огт уншдаггүй тул
      «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
@@ -96,7 +95,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (comQ.state === 'error') failed.push(tr('Улсын комиссын огноо'));
     if (comQ.state === 'ready' && comQ.data.failed.length) failed.push(tr('Улсын комиссын огноо ({0})', comQ.data.failed.join(', ')));
     if (wfQ.state === 'error') failed.push(tr('Хүн хүч (ХАБЭА)'));
-    if (docQ.state === 'error') failed.push(tr('MA/MIR баримт'));
     if (bq.state === 'error') failed.push(tr('Барилгын блок'));
     /* ⚠️ 2026-09-30: хагас уншигдсан хуваарь (`PlanCurve.failed`) — тэр багцын гүйцэтгэгчийн
        төлөвлөгөө «—» болно; шалтгааныг нэрлэнэ («Гүйцэтгэл»-ийн `TsKpi`-тэй ижил) */
@@ -110,7 +108,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (histQ.state === 'loading') loading.add('hist');
     if (comQ.state === 'loading') loading.add('commission');
     if (wfQ.state === 'loading') loading.add('workforce');
-    if (docQ.state === 'loading') loading.add('docs');
     if (bq.state === 'loading') loading.add('packs');
     if (budgetQ.state === 'loading') loading.add('budget');
     if (depQ.state === 'loading') loading.add('deps');
@@ -126,7 +123,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
       commissionPartial: comQ.state === 'ready' ? comQ.data.partial : null,
       workforce: wf,
-      docs: docQ.state === 'ready' ? docQ.data : null,
+      docs: null,
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
       contractedNote: CONTRACTED,
       failed,
@@ -134,7 +131,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
       planError: planQ.state === 'error',
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ, depQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:
@@ -151,11 +148,10 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (histQ.state === 'error') histQ.retry?.();
     if (comQ.state === 'error' || (comQ.state === 'ready' && comQ.data.failed.length)) comQ.retry?.();
     if (wfQ.state === 'error') wfQ.retry?.();
-    if (docQ.state === 'error') docQ.retry?.();
     if (bq.state === 'error') bq.retry?.();
     if (budgetQ.state === 'error') budgetQ.retry?.();
     if (depQ.state === 'error') depQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, budgetQ, depQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);

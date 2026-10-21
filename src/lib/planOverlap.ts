@@ -6,6 +6,7 @@ import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import { fromJSON as geomFromJSON } from '@arcgis/core/geometry/support/jsonUtils';
 import { LAYER_BY_ID, layerUrl, oidOf, INFRA_SVC } from '@/lib/services';
+import { remapUrl, isEntDataUrl, agolLayerId } from '@/lib/services/entMap';
 import { num, km } from '@/lib/format';
 import { register } from '@/lib/dataBus';
 import { overlapScopeFocus, visibleOverlapItems, type OverlapFocus } from './planOverlapSelection';
@@ -110,14 +111,20 @@ type Geom = __esri.GeometryUnion;
  */
 const PAGE_TIMEOUT_MS = 45_000;
 export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
+  /* ⚠️ 2026-10-20: AGOL түлхүүрийн хаяг → Enterprise (`entMap.remapUrl`). JS API-ийн `executeQuery*` нь `query.ts`-ийн
+     цөмөөр явдаггүй тул зураглал ЭНД — урьд нь `Инженерийн_дэд_бүтэц…` AGOL руу шууд явж 499 → AGOL-ын нэвтрэх цонх
+     гардаг байв. Enterprise-д ЗӨВХӨН JSON: талбарын нэрийн хөрвүүлэгч (`lib/entInterceptor.ts`) хоёртын PBF хариуг
+     хөрвүүлж чадахгүй (`attributes.objectid` жижиг үсгээр ирж OID олдохгүй болно). */
+  const target = remapUrl(u);
   const run = (fn: typeof query.executeQueryPBF): Promise<__esri.FeatureSet> => {
     const ac = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { ac.abort(); reject(new Error(`timeout ${PAGE_TIMEOUT_MS / 1000}s: ${u}`)); }, PAGE_TIMEOUT_MS);
+      timer = setTimeout(() => { ac.abort(); reject(new Error(`timeout ${PAGE_TIMEOUT_MS / 1000}s: ${target}`)); }, PAGE_TIMEOUT_MS);
     });
-    return Promise.race([fn(u, q, { signal: ac.signal, authMode: 'no-prompt' }), late]).finally(() => clearTimeout(timer));
+    return Promise.race([fn(target, q, { signal: ac.signal, authMode: 'no-prompt' }), late]).finally(() => clearTimeout(timer));
   };
+  if (isEntDataUrl(target)) return run(query.executeQueryJSON);
   return run(query.executeQueryPBF).catch(() => run(query.executeQueryJSON));
 }
 
@@ -192,8 +199,13 @@ export const infraIdsOfType = (type: string): string[] =>
 
 export function loadInfra() {
   infraCache ??= (async () => {
-    const meta = await esriRequest(INFRA_SVC, { query: { f: 'json' }, responseType: 'json' });
-    const layers = ((meta.data as { layers?: { id: number; name: string }[] }).layers ?? []);
+    /* ⚠️ 2026-10-20: үйлчилгээний мета Enterprise-ээс (`remapUrl`). Тэнд энэ үйлчилгээ `Bagts_ajluud`-ын НЭГ ХЭСЭГ
+       (198 давхаргын 74 нь) бөгөөд давхаргын дугаар ӨӨР → Enterprise дугаарыг AGOL дугаар (`infra:N` — LAYER_BY_ID ·
+       groups.ts · MapCanvas-ийн түлхүүр) руу буцааж, энэ үйлчилгээнд хамаарахгүй давхаргыг АЛГАСНА (`agolLayerId`).
+       Давхаргын хүсэлт (`fetchObjects` → `queryPageSafe`) AGOL дугаартай хаягаа өөрөө зураглана. */
+    const meta = await esriRequest(remapUrl(INFRA_SVC), { query: { f: 'json' }, responseType: 'json' });
+    const layers = ((meta.data as { layers?: { id: number; name: string }[] }).layers ?? [])
+      .flatMap((l) => { const id = agolLayerId(INFRA_SVC, l.id); return id == null ? [] : [{ id, name: l.name }]; });
     const failed: string[] = [];
     const parts = await Promise.all(layers.map(async (l) => {
       const type = classify(l.name);

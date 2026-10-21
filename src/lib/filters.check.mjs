@@ -26,13 +26,10 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
-   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
-   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай — урьд HJ-ээр залгаж байсан тул GAZAR-ийг
-   env-ээр дарахад тест портал хэрэглэдгээс ӨӨР хост шалгадаг байв. */
-const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
-if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const TD_SVC = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана; талбарын нэр эх хэлбэрээр, токен залгагдана. */
+const { TD } = await import('@/lib/services.ts');
+const { arcgisPost } = await import('@/lib/query.ts');
+const TD_SVC = TD;
 const URL_ = `${TD_SVC}/112/query`;
 
 const F = { bagts: 'BAGTS', contractor: 'BAR_COMP' };
@@ -40,24 +37,13 @@ const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 /** WHERE-ийг ЖИНХЭНЭ давхарга дээр гүйлгэнэ — зөвшөөрөгдөөгүй бол алдана. */
 async function count(where) {
-  const res = await fetch(URL_, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ where, returnCountOnly: 'true', f: 'json' }),
-  });
-  const j = await res.json();
+  const j = await arcgisPost(URL_, { where, returnCountOnly: 'true' }).catch((e) => ({ error: { message: e.message } }));
   assert.ok(!j.error, `SQL татгалзав «${where}»: ${j.error?.message || '(хоосон мессеж)'}`);
   return j.count;
 }
 
 const q = async (p) => {
-  const res = await fetch(URL_, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ returnGeometry: 'false', f: 'json', ...p }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message);
+  const j = await arcgisPost(URL_, { returnGeometry: 'false', ...p });
   return (j.features || []).map((f) => f.attributes);
 };
 
@@ -114,14 +100,7 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
 const ET = TD_SVC;
 const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
 
-const post = async (url, p) => {
-  const res = await fetch(`${url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...p }),
-  });
-  return res.json();
-};
+const post = async (url, p) => arcgisPost(`${url}/query`, p).catch((e) => ({ error: { message: e.message } }));
 
 let checked = 0;
 for (const [n, field] of FACETS) {

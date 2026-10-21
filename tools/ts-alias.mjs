@@ -36,7 +36,8 @@ const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
    `.env`-ийг өөрөө уншдаггүй тул энд ачаална (байгаа env-ийг дарахгүй).
    ⚠️ 2026-09-25: `.env.development.local`-ийг ЭХЛЭЖ уншина — «эхэнд тавьсан нь ялна»
    тул урьд `.env` локал давхаргыг дардаг байв (Next.js-ийн дараалалтай эсрэг). */
-const HAD_HJ = !!process.env.NEXT_PUBLIC_ARCGIS_HJ;
+/* ⚠️ 2026-10-20: AGOL (`NEXT_PUBLIC_ARCGIS_HJ`) хасагдсан — Enterprise (`NEXT_PUBLIC_ENT_DATA`) л. */
+const HAD_HJ = !!process.env.NEXT_PUBLIC_ENT_DATA;
 let envRead = false;
 for (const f of ['../.env.development.local', '../.env']) {
   try {
@@ -49,19 +50,20 @@ for (const f of ['../.env.development.local', '../.env']) {
 }
 /* ⚠️ 2026-10-09: `.env` нь git-ignored (зөвхөн `.env.example` track хийгддэг) — шинэ clone/worktree
    дээр `npm test`-ийн ~28 шалгуур «NEXT_PUBLIC_* алга» алдаагаар учир нь ойлгомжгүй унадаг байв.
-   CI нь орчны хувьсагчаар өгдөг (`test.yml`) тул env-д `NEXT_PUBLIC_ARCGIS_HJ` байвал чимээгүй.
+   CI нь орчны хувьсагчаар өгдөг (`test.yml`) тул env-д `NEXT_PUBLIC_ENT_DATA` байвал чимээгүй.
    Процесс бүрд НЭГ мөр (stderr) — `test-all` эхэнд нь мөн нэг удаа хэлнэ, унасан шалгуурын
    гаралтад ч учир нь шууд харагдана. */
 if (!envRead && !HAD_HJ) {
   process.stderr.write('⚠️ .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env)\n');
-} else if (envRead && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
+} else if (envRead && !process.env.NEXT_PUBLIC_ENT_DATA) {
   /* ⚠️ 2026-10-11 (аудит №7): `.env` байгаа ч утгууд хоосон (загварыг хуулаад бөглөөгүй) — ижил унал, өөр шалтгаан */
   process.stderr.write('⚠️ .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
 }
-const orgRoot = (u) => (u || '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/, '');
-const HJ = orgRoot(process.env.NEXT_PUBLIC_ARCGIS_HJ);
-/* ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` (`TD`) нь GAZAR суурьтай — тестүүд түүгээр залгана. */
-const ROOTS = [...new Set([HJ, orgRoot(process.env.NEXT_PUBLIC_ARCGIS_GAZAR)].filter(Boolean))];
+/* ⚠️ 2026-10-20: амьд шалгуурын ТОКЕН (ARCGIS_ADMIN_TOKEN) нь одоо ENTERPRISE-ийн токен — Сэлбэ Enterprise ArcGIS Server
+   (`NEXT_PUBLIC_ENT_DATA`-ийн `…/map/`) доорх бүх хүсэлтэд залгагдана. AGOL (`HJ`/`GAZAR`) хасагдсан. */
+const ENT = (process.env.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '');
+const HJ = ENT ? ENT.replace(/\/Hosted$/i, '').replace(/rest\/services$/i, '') : '';
+const ROOTS = HJ ? [HJ] : [];
 
 function fs2() { return readFileSync(new URL('../.env.development.local', import.meta.url), 'utf8'); }
 let liveTok = '', liveTok2 = '', liveTok2Svc = [];
@@ -89,7 +91,7 @@ const probe = async (tok) => {
   const body = new URLSearchParams({ f: 'json' });
   if (tok) body.set('token', tok);
   /* ⚠️ 4 сек-ийн хязгаар — firewall «drop» үед 80 тест × TCP timeout болохоос (2026-09-17). */
-  const res = await fetch(`${HJ}arcgis/rest/services/Bagts_1_9f/FeatureServer`, {
+  const res = await fetch(`${ENT}/Bagts_ajluud/FeatureServer`, {
     method: 'POST', body, signal: AbortSignal.timeout(4000),
   });
   return res.json();

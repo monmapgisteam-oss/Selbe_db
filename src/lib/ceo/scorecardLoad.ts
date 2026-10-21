@@ -20,6 +20,7 @@ import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { bagtsKey, pkgKeyOf, BUILDING } from '@/lib/services';
+import { remapUrl } from '@/lib/services/entMap';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
@@ -364,7 +365,8 @@ export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> =>
   /* Блокийн геометр — бүсийн координатын системээр (WKID) */
   const blocks: { key: string; rings: number[][][] }[] = [];
   for (let start = 0; ; ) {
-    const res = await query.executeQueryJSON(BUILDING.url, new Query({
+    /* ⚠️ 2026-10-20: `TD/112` AGOL түлхүүр → Enterprise (`analysis/data.ts` fetchAll-ийн ⚠️ — JS API шууд дуудлага) */
+    const res = await query.executeQueryJSON(remapUrl(BUILDING.url), new Query({
       where: '1=1',
       outFields: [BUILDING.fields.bagts],
       returnGeometry: true,

@@ -1,4 +1,8 @@
 import { t as tr } from '@/lib/i18nCore';
+import { ENT_DATA } from '@/lib/services/entMap';
+import { AUTH } from '@/lib/services/env';
+import { authToken } from '@/lib/authToken';
+import { currentUser } from '@/lib/who';
 
 /**
  * ENTERPRISE ГЕОПОРТАЛ ДАХЬ PDF БАРИМТ (2026-10-08, туршилт — tezu-bonu).
@@ -29,9 +33,25 @@ let sess: Sess | null = null;
 const subs = new Set<() => void>();
 const emit = () => { for (const f of subs) f(); };
 
+const norm = (u: string) => u.trim().replace(/\/+$/, '').toLowerCase();
+/**
+ * ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт): үндсэн нэвтрэлт (`AUTH.portalUrl`) ОДОО Enterprise геопортал
+ *    дээр тул энэ модулийн тусдаа нэр/нууц үгийн сешн ШААРДЛАГАГҮЙ — ижил портал бол нэвтэрсэн хэрэглэгчийн
+ *    OAuth токен (`authToken`) ба нэр (`who.currentUser`) нь Enterprise сешн мөн. `EntSignIn` маягт ийм үед
+ *    өөрөө нуугдана (`entSession()` null биш). Портал ӨӨР тохируулагдсан бол (туршилт) хуучин зам хэвээр.
+ */
+const samePortal = (): boolean => !!ENT_PORTAL && norm(ENT_PORTAL) === norm(AUTH.portalUrl);
+
 /** Хүчинтэй сешн (дуусахаас 1 минутын өмнө хүчингүйд тооцно) */
 export function entSession(): Sess | null {
-  return sess && sess.expires > Date.now() + 60_000 ? sess : null;
+  if (sess && sess.expires > Date.now() + 60_000) return sess;
+  if (samePortal()) {
+    const token = authToken();
+    const user = currentUser();
+    /* ⚠️ Хугацааг JS API өөрөө шинэчилдэг (`ensureFreshToken`) — энд зөвхөн «одоо хүчинтэй» гэсэн утга */
+    if (token && user) return { user, token, expires: Date.now() + 10 * 60_000 };
+  }
+  return null;
 }
 export function subscribeEnt(fn: () => void): () => void {
   subs.add(fn);
@@ -66,6 +86,22 @@ async function post<T>(path: string, body: FormData | URLSearchParams): Promise<
   return j;
 }
 
+/**
+ * ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН үйлчилгээ (`entMap.ENT_DATA`) org-only хуваалцсан бол JS API-ийн
+ *    давхарга (газрын зураг · ноорог/эрхийн FeatureLayer) ч энэ токеноор уншина — IdentityManager-т
+ *    бүртгэнэ. REST зам (`query.ts`) нь `entSession()`-ийг өөрөө ашигладаг тул үүнээс хамаарахгүй.
+ */
+async function registerEntToken(s: Sess): Promise<void> {
+  if (!ENT_DATA) return;
+  try {
+    const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+    const server = ENT_DATA.replace(/\/rest\/services\/.*$/i, '/rest/services');
+    esriId.registerToken({ server, token: s.token, expires: s.expires });
+  } catch {
+    /* JS API ачаалагдаагүй (Node/тест) — REST зам хэвээр ажиллана */
+  }
+}
+
 /** Нэр · нууц үгээр токен авна. Нууц үг санах ойд ч үлдэхгүй. */
 export async function entSignIn(username: string, password: string): Promise<void> {
   const g = await post<{ token?: string; expires?: number }>('generateToken', new URLSearchParams({
@@ -78,6 +114,7 @@ export async function entSignIn(username: string, password: string): Promise<voi
   if (!me.username) throw new Error(tr('Enterprise хэрэглэгч тодорхойгүй.'));
   sess = { user: me.username, token: g.token, expires: g.expires ?? Date.now() + 110 * 60_000 };
   emit();
+  void registerEntToken(sess);
 }
 
 export function entSignOut(): void {

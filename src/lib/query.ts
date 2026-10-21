@@ -5,6 +5,9 @@ import {
 } from '@/lib/authToken';
 /* ⚠️ 2026-10-06: бичилтийн үе (`shared`-ийн ⚠️). `dataBus` нь зөвхөн `i18nCore`-ийг импортлодог — мөчлөггүй. */
 import { writeEpoch } from '@/lib/dataBus';
+import {
+  isEntDataUrl, isAgolUrl, remapUrl, entDict, entRequestWith, entResponseWith, requestedFields,
+} from '@/lib/services/entMap';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -166,14 +169,12 @@ const TIMEOUT_MS = 30_000;
  *    `*.arcgis.com` үед л; бусад хостод зөвхөн env-ийн бүтэн origin+path
  *    угтвар (`startsWith`) таарна.
  */
-const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
-const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`)
-  ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? ''
-  : '';
-const isOrgUrl = (url: string): boolean =>
-  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
-  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+/* ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт): байгууллага = Сэлбэ Enterprise ArcGIS Server — `NEXT_PUBLIC_ENT_DATA`
+   (`…/map/rest/services/Hosted`)-ийн `/Hosted`-гүй суурь: hosted өгөгдөл, ортофото (MapServer · ImageServer), меш, BIM
+   бүгд энэ дор. AGOL (`NEXT_PUBLIC_ARCGIS_HJ`) ба `*.arcgis.com`-ын org сегментийн шалгуур ХАСАГДСАН — тэр хост руу
+   хүсэлт явахгүй (`run`-ийн ⚠️). Хувьсагчийг ШУУД (статик нэрээр) уншина — `services` импортлохгүй (ачаалалтын гинж). */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '').replace(/\/Hosted$/i, '');
+const isOrgUrl = (url: string): boolean => !!ORG_BASE && url.startsWith(`${ORG_BASE}/`);
 
 /**
  * ⚠️ 2026-10-01: `token: 'always'` дуудлага org/портал БИШ хост руу явлаа — токен
@@ -264,12 +265,19 @@ async function attemptRequest(
   /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
      горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ.
      ⚠️ 2026-10-01: `'always'` ч ЗӨВХӨН org/портал хост руу (дээрх `ArcgisReqOpts`-ийн ⚠️). */
-  const hostOk = always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full);
+  /* ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт, `services/entMap.ts`): Enterprise ӨГӨГДЛИЙН хаяг
+     (`NEXT_PUBLIC_ENT_DATA`) нь байгууллагын үйлчилгээ — нэвтэрсэн хэрэглэгчийн (Enterprise портал,
+     `AUTH.portalUrl`) токен явна. Хүсэлтийн талбарын нэрийг Enterprise-ийн жижиг үсэг рүү, хариуг
+     кодын эх нэр рүү ЭНД хөрвүүлнэ (`entRequestWith` · `entResponseWith` — `entMap.ts`-ийн ⚠️). */
+  const ent = isEntDataUrl(full);
+  const dict = ent ? entDict(full) : null;
+  const p = ent ? entRequestWith(params, dict) : params;
+  const hostOk = ent || (always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full));
   const userTok = hostOk ? tokenParam() : {};
   if (always && !hostOk) warnForeignHost(full);
   const body = always
-    ? { f: 'json', ...params, ...userTok }
-    : { f: 'json', ...userTok, ...params };
+    ? { f: 'json', ...p, ...userTok }
+    : { f: 'json', ...userTok, ...p };
   /** Энэ хүсэлтэд ЯВСАН хэрэглэгчийн токен — 498-ийн дараа «аль хэдийн солигдсон уу» */
   const sentTok = userTok.token ?? null;
   const ac = new AbortController();
@@ -398,16 +406,24 @@ async function attemptRequest(
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
     throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details, sessionExpired);
   }
-  return json;
+  /* ⚠️ 2026-10-20: Enterprise хариултын жижиг үсэгтэй түлхүүр → кодын эх нэр (дуудагчийн `outFields`-ийн үсэг → толь) */
+  return ent ? entResponseWith(json, dict, requestedFields(params)) : json;
 }
 
 /** Слот авч (эсвэл авалгүй) нэг хүсэлт гүйцэтгэнэ — `ensureFreshToken` хүсэлтийн ӨМНӨ */
 async function run(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
+  /* ⚠️ 2026-10-20: Enterprise зураглал — БҮХ REST хүсэлтийн ганц цөм тул AGOL (түлхүүрийн) хаягийг ЭНД
+     солино (`services/entMap.remapUrl`). Зураглагдаагүй AGOL хаяг → ИЛ АЛДАА: AGOL руу чимээгүй хандах зам
+     байхгүй (хэрэглэгч 2026-10-20: «AGOL датаг бүрэн хая»); `entMap.data.ts`-д тэр давхаргыг нэмнэ. */
+  const target = remapUrl(full);
+  if (isAgolUrl(target)) {
+    throw new ArcGISError(tr('AGOL хаяг Enterprise зураглалд алга — entMap.data.ts-д нэмнэ үү: {0}', full.replace(/\?.*$/, '')), full);
+  }
   await ensureFreshToken();
-  if (o.slot === false) return attemptRequest(full, params, o, 0);
+  if (o.slot === false) return attemptRequest(target, params, o, 0);
   await acquire();
   try {
-    return await attemptRequest(full, params, o, 0);
+    return await attemptRequest(target, params, o, 0);
   } finally {
     release();
   }

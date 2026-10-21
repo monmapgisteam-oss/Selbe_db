@@ -28,10 +28,10 @@ if (process.env.SELBE_LIVE_SKIP) {
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
    `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй. */
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const BLDG = `${HJ}/SELBE_ALL_DATA_last_0917/FeatureServer/112`;
+/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) нь `query.ts`-ээр Enterprise руу зураглагдаж, талбарын нэр эх хэлбэрээрээ ирнэ. */
+const { TD } = await import('@/lib/services.ts');
+const { queryFeatures } = await import('@/lib/query.ts');
+const BLDG = `${TD}/112`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -39,23 +39,7 @@ const blockKey = (v) => String(v ?? '').trim().split(/\s+/)[0];
 const buildingKey = (bagts, block) => `${bagtsKey(bagts)}|${blockKey(block)}`;
 
 async function query(url, params) {
-  const out = [];
-  for (let off = 0; ; ) {
-    const res = await fetch(`${url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        returnGeometry: 'false', f: 'json',
-        resultRecordCount: '2000', resultOffset: String(off), ...params,
-      }),
-    });
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message);
-    const fs = (j.features ?? []).map((f) => f.attributes);
-    out.push(...fs);
-    if (!j.exceededTransferLimit || !fs.length) return out;
-    off += fs.length;
-  }
+  return queryFeatures(url, { where: params.where ?? '1=1', outFields: String(params.outFields ?? '*').split(',').map((s) => s.trim()) });
 }
 
 /* 1 — Барилгын давхарга ↔ гүйцэтгэлийн түлхүүр */

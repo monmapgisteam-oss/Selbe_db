@@ -30,9 +30,10 @@
 
 import { readFileSync } from 'node:fs';
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+/* ⚠️ 2026-10-20: `HJ` нь AGOL-ын ТҮЛХҮҮР (`services/env.ts`), бодит хаяг нь Enterprise — `remapUrl` (`services/entMap.ts`).
+   ARCGIS_ADMIN_TOKEN нь одоо ENTERPRISE-ийн админ токен байх ёстой. */
+const { HJ } = await import('@/lib/services/env.ts');
+const { remapUrl } = await import('@/lib/services/entMap.ts');
 
 /**
  * ⚠️ Жагсаалт нь `src/modules/sheet/bagts.pkg.ts`-ийн `PKGS`-тэй ЯГ таарна.
@@ -97,7 +98,7 @@ async function main() {
   let already = 0, added = 0, failed = 0;
 
   for (const name of SHEETS) {
-    const service = `${HJ}/${name}/FeatureServer`;
+    const service = remapUrl(`${HJ}/${name}/FeatureServer`);
     const admin = service.replace('/rest/services/', '/rest/admin/services/');
 
     /* ⚠️ 2026-09-30: ADMIN токен POST БИЕЭР — урьд нь `GET …/0?f=json&token=…` байсан тул

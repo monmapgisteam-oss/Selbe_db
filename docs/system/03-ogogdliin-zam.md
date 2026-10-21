@@ -219,13 +219,36 @@ sequenceDiagram
 Зарим ачаалагч **5 минутын** шинэчлэлтийн хугацаатай — өөр хүний оруулсан
 өгөгдөл тэр хугацаанд өөрөө орж ирнэ.
 
+## Enterprise — бүх өгөгдлийн ганц эх (2026-10-20)
+
+2026-10-20-оос портал БҮХ өгөгдлөө Сэлбэ Enterprise (`gis.selbecity.mn`, env `NEXT_PUBLIC_ENT_DATA` =
+`…/map/rest/services/Hosted`)-ээс уншина: 225 давхарга/хүснэгт, BIM, меш, ортофото, IoT, ХАБЭА, замын тайл.
+ArcGIS Online (AGOL) ба UBHUB бүрмөсөн хасагдсан — тэдгээр хост руу хүсэлт явахгүй.
+
+**Хаягийн зураглал.** Кодын ~90 давхарга AGOL-ын хуучин хаягаар (`${HJ}/<үйлчилгээ>/FeatureServer/<№>`,
+`src/lib/services/agolKey.ts` — сүлжээний хаяг БИШ, ТҮЛХҮҮР) бичигдсэн хэвээр; `src/lib/services/entMap.data.ts`
+(`tools/entMap-build.mjs` үүсгэнэ — экспортын тайлан + Enterprise мета + `tools/agol-fields.py`) нь
+`<AGOL үйлчилгээ>/<№>` → `<Enterprise үйлчилгээ>/<№>` зураглал. `entMap.remapUrl` нь REST-ийн ганц цөм (`query.run`),
+газрын зургийн давхарга (`layerUrl`) ба порталын хайлтаар олддог байсан хүснэгтүүдэд (`entDirect`: эрх · ноорог · батлах)
+хэрэглэгдэнэ. Зураглалгүй AGOL хаяг → ил алдаа (чимээгүй AGOL руу буцах зам байхгүй).
+
+**Талбарын нэр.** Enterprise (PostgreSQL) нийтлэхдээ талбарын нэрийг ЖИЖИГ үсэг болгосон (`BAGTS` → `bagts`);
+геометрийн системийн талбар `SHAPE__Area` / `SHAPE__Length`. Код эх нэрээрээ ханддаг тул `entMap.ts` хүсэлтийн
+`outFields` · `orderByFields` · `applyEdits`-ийг Enterprise нэр рүү, хариуг эх нэр рүү (дуудагчийн `outFields`-ийн үсэг →
+`ENT_FIELDS` толь) хөрвүүлнэ — REST-д `query.attemptRequest`, JS API-ийн давхаргад `lib/entInterceptor.ts`
+(`esriConfig.request.interceptors`; мета дээр PBF-ийг хааж JSON-оор асуулгана). OID (`FID`/`OBJECTID` → `objectid`) ба
+засварын мөшгөлт (`EditDate` → `last_edited_date`) мөн зураглагдана.
+
+**Нэвтрэлт.** Enterprise геопортал (`NEXT_PUBLIC_PORTAL_URL` = `…/geoportal`, OAuth апп `NEXT_PUBLIC_AUTH_APP_ID`,
+`NEXT_PUBLIC_ALLOWED_ORG_ID` = порталын id). Ижил токен өгөгдөл, ХАБЭА-ийн бичилт, PDF баримтад (`entDocs.entSession`).
+
 ---
 
 **Дараагийн алхам:** харагдац бүр юу харуулдгийг
-[04 · 27 харагдац](04-haragdac.md)-аас үзнэ үү.
+[04 · 26 харагдац](04-haragdac.md)-аас үзнэ үү.
 
 ---
 
-**Хамгийн сүүлд шинэчилсэн:** 2026-10-12
+**Хамгийн сүүлд шинэчилсэн:** 2026-10-20
 **Автомат шалгуур:** [`docs/docs.invariant.check.mjs`](../docs.invariant.check.mjs) (Ш2, Ш4, Ш5)
 **Гараар шалгах:** зэрэгцээ хязгаарын тоо (12 · 6), дахин оролдлогын тоо (4)

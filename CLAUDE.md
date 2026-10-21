@@ -259,6 +259,32 @@ tailan · test-main · tohiromjtoi-baidal · tugsuu) — бүрэн жагсаа
 
 Merge нь **main дээр** хийгддэг; хоёр талын ажлыг бүрэн хадгална.
 
+## Enterprise (gis.selbecity.mn) — 2026-10-20-оос бүх өгөгдөл; AGOL · UBHUB хасагдсан
+
+- Бүх өгөгдөл · BIM · меш · ортофото · IoT · ХАБЭА · замын тайл `NEXT_PUBLIC_ENT_DATA` (`…/map/rest/services/Hosted`),
+  нэвтрэлт `…/geoportal`. GitHub Variables ердөө 10 (ENT_DATA · ENT_PORTAL_URL · PORTAL_URL · AUTH_APP_ID ·
+  ALLOWED_ORG_ID · IRGED_ORTHO_PRE · HABEA 4) — хуучин `ARCGIS_HJ`/`GAZAR`/`BIM_SCENE`/`ELEVATION_URL`/… хувьсагч БАЙХГҮЙ,
+  буцааж нэмэхгүй.
+- Кодын `${HJ}/…` · `${TD}/…` хаяг = AGOL-ын ТҮЛХҮҮР (`services/agolKey.ts`), `entMap.remapUrl` Enterprise руу зураглана
+  (`entMap.data.ts` — `tools/entMap-build.mjs`). Шинэ давхарга нэмэхдээ Enterprise нэр/дугаараар зураглалд нэмнэ;
+  зураглалгүй AGOL хаяг `query.run` ил алдаа шидэнэ.
+- **Талбарын нэр Enterprise-д ЖИЖИГ ҮСЭГ** (`BAGTS`→`bagts`, систем `SHAPE__Area`): `outFields`/`orderByFields`/`applyEdits`
+  том үсгээр явуулбал 500 «Field name does not exist». Кодод эх нэрээ бич — `entMap.entRequestWith`/`entResponseWith`
+  (REST) ба `lib/entInterceptor.ts` (JS API) хөрвүүлнэ; толинд байхгүй давхаргад дуудагчийн `outFields`-ийн үсэг л буцна.
+- Enterprise `where`-д ЛАТИН нэрийн үсэг хамаарахгүй ч КИРИЛЛ талбар (`Талб_1`, `Явцы_1`) яг жижиг үсгээр байх ёстой —
+  эс бөгөөс 500 «Database error has occurred» (2026-10-20, «Газар чөлөөлөлт»). `entWhereWith` толины талбар бүрийг солино;
+  толинд байхгүй шинэ давхаргын кирилл талбарыг `where`-д жижиг үсгээр бич.
+- **JS API-ийн ШУУД дуудлага** (`executeQueryJSON`/`executeQueryPBF` · `esriRequest` · `new FeatureLayer({url})`) `query.ts`-ийн
+  цөмөөр явдаггүй тул `remapUrl` ЗААВАЛ (2026-10-20: `analysis/data.ts`-ийн `TD/118` AGOL руу шууд явж 499 → «Тохиромжтой
+  байдал»-д AGOL-ын «Sign in» цонх; AGOL-д нэвтэрсэн байхад л далд байсан). Enterprise-д PBF биш JSON — хөрвүүлэгч хоёртын
+  хариуг хөрвүүлэхгүй. `Bagts_ajluud` нь 198 давхаргатай НЭГ үйлчилгээ (SELBE_ALL_DATA + инженерийн 74), дугаар ӨӨР —
+  үйлчилгээний метанаас давхарга уншвал `agolLayerId`-аар AGOL дугаар руу буцаана (`planOverlap.loadInfra`).
+- Нэгж тестэд зураглал унтраалттай (`SELBE_ENT_OFF=1`, `tools/test-all.mjs`); амьд (`LIVE`) шалгуур асаалттай,
+  `ARCGIS_ADMIN_TOKEN` нь Enterprise токен. Хуучин хатуу хэрэглэгчид зөвхөн `tools/test-users.mjs`-д.
+- Enterprise токен/мета шалгахдаа токеныг файлаас (scratchpad) уншиж POST биеэр явуулна — URL · лог · хариултад хэзээ ч бичихгүй.
+
+---
+
 ## Хэл
 
 Хэрэглэгчтэй **монголоор** харилцана. Кодын тайлбар мөн монголоор, `⚠️`

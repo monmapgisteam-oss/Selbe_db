@@ -38,9 +38,9 @@ if (!/^https?:\/\/\S+\/FeatureServer\/\d+$/i.test(argTarget.replace(/\/+$/, ''))
   process.exit(1);
 }
 const URL_ = argTarget.replace(/\/+$/, '');
-/* Prod оргийн үндэс (`…/<orgId>/`) — HJ ба GAZAR. Env алга бол prod гэж ҮЗНЭ. */
-const prodRoots = [process.env.NEXT_PUBLIC_ARCGIS_HJ, process.env.NEXT_PUBLIC_ARCGIS_GAZAR]
-  .map((u) => (u ?? '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/i, '').replace(/\/*$/, '/').toLowerCase())
+/* Prod оргийн үндэс — ⚠️ 2026-10-20: Сэлбэ Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер). Env алга бол prod гэж ҮЗНЭ. */
+const prodRoots = [process.env.NEXT_PUBLIC_ENT_DATA]
+  .map((u) => (u ?? '').replace(/\/+$/, '').replace(/\/Hosted$/i, '').replace(/rest\/services$/i, '').replace(/\/*$/, '/').toLowerCase())
   .filter((r) => r !== '/');
 const isProd = !prodRoots.length || prodRoots.some((r) => URL_.toLowerCase().startsWith(r));
 if (isProd && !argv.includes(PROD_FLAG)) {

@@ -590,7 +590,6 @@ console.log('\naclParity.check: ok');
     'src/modules/Qaqc.tsx',
     'src/modules/Huvaari.tsx',
     'src/modules/HuvaariBatlah.tsx',
-    'src/modules/Chanar.tsx',
     'src/modules/Guitsetgel.tsx',
     'src/modules/sheet/FillNew.tsx',
     'src/lib/hyanaltStore.ts',
@@ -681,10 +680,11 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000"),
     'AuthGate: signed-in + remote-гүй үед 5 мин хүлээж байна — 15 сек байх ёстой');
 
-  /* query.isOrgUrl: org сегмент зөвхөн *.arcgis.com хостод */
+  /* query.isOrgUrl: ⚠️ 2026-10-20 — байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер, startsWith); AGOL org сегмент хасагдсан */
   const q = readCode('src/lib/query.ts');
-  assert.ok(q.includes('ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`)'),
-    'query.isOrgUrl: org сегментийн шалгуур хост шалгалтгүй — гадны хост руу токен явна');
+  assert.ok(q.includes("const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim()") && q.includes('url.startsWith(`${ORG_BASE}/`)'),
+    'query.isOrgUrl: Enterprise суурийн (NEXT_PUBLIC_ENT_DATA) startsWith шалгуур алга — гадны хост руу токен явна');
+  assert.ok(!q.includes('ARCGIS_COM_HOST'), 'query.isOrgUrl: AGOL org сегментийн шалгуур буцаж ирсэн (AGOL 2026-10-20-нд хасагдсан)');
 }
 console.log('✅ remote-гүй сешн — toggleCap · syncCaps · regrant · UserAdmin capsLocked · AuthGate 15с · isOrgUrl хост');
 
@@ -764,7 +764,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
     for (const c of all) assert.ok(lbody.includes(`k === '${c}'`), `${lf}: ${fn}-д «${c}» шошго алга`);
   }
   /* ⚠️ 2026-10-09: + «ma» (MA — материал баталгаажуулалт, чанарын эрхээр нээгдэнэ) → 7 */
-  assert.equal(new Set(WORKFLOW_VIEWS).size, 7, 'WORKFLOW_VIEWS 7 байх ёстой');
+  /* ⚠️ 2026-10-20: − «chanar» («Чанарын баримт» харагдац хасагдсан) → 6 */
+  assert.equal(new Set(WORKFLOW_VIEWS).size, 6, 'WORKFLOW_VIEWS 6 байх ёстой');
   for (const v of WORKFLOW_VIEWS) assert.ok(Object.values(CAP_HOST_VIEW).some((vs) => vs.includes(v)), `WORKFLOW_VIEWS: ${v} CAP_HOST_VIEW-д алга`);
 
   const ua = readCode('src/components/UserAdmin.tsx');

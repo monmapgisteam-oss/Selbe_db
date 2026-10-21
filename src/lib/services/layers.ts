@@ -1,6 +1,7 @@
+import { remapUrl } from './entMap';
 import { PLAN2D_LAYERS } from '../plan2d';
 import { t as tr } from '@/lib/i18nCore';
-import { ET, HABEA_SVC, HJ, SOURCE_FS, TD, req } from './env';
+import { ENT_HOSTED, ET, HABEA_SVC, HJ, SOURCE_FS, TD } from './env';
 import { OID, ZONE_FIELD } from './layerDef';
 import type { LayerDef } from './layerDef';
 import { BUILT_STATUS, M, M2, ZONE_CHART_TYPES, ZONE_MAP_TYPES, ZONE_TYPE_EMPTY } from './palette';
@@ -141,7 +142,9 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
  *    үлдсэн орчинд чимээгүй буруу хаяг угсрахын оронд `req` ил унана.
  * ⚠️ Enterprise (PostgreSQL) — талбарын нэрс БҮГД ЖИЖИГ ҮСЭГТЭЙ (`objectid`, `payload_decoded_data_meterreading`).
  */
-export const IOT_SVC = req("NEXT_PUBLIC_ARCGIS_IOT_SVC", process.env.NEXT_PUBLIC_ARCGIS_IOT_SVC);
+/* ⚠️ 2026-10-20: `NEXT_PUBLIC_ARCGIS_IOT_SVC` хувьсагч хасагдсан (хэрэглэгч: зөвхөн 10 хувьсагч) — Enterprise-ийн нэгдсэн
+   `…/Hosted` суурь (`NEXT_PUBLIC_ENT_DATA`) + тогтмол үйлчилгээний нэр. */
+export const IOT_SVC = `${ENT_HOSTED}/IoT_sensor/FeatureServer`;
 
 /**
  * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
@@ -1159,7 +1162,9 @@ export const layerUrl = (l: LayerDef) => {
       `Хуучин ET нөөц зам хаагдсан үйлчилгээ рүү зааж байсан тул устгав.`,
     );
   }
-  return l.url;
+  /* ⚠️ 2026-10-20: Enterprise зураглал (`entMap.remapUrl`) — JS API давхарга ба үүгээр асуудаг бүх зам.
+     `styleUrl` зураглагдахгүй (хаяг биш, webmap-загварын түлхүүр). */
+  return remapUrl(l.url);
 };
 
 /* ⚠️ 2026-08-24: `costSource()` УСТГАГДАВ — `LayerDef.cost`/`costSrc` талбарууд

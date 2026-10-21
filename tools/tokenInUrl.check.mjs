@@ -24,7 +24,6 @@ import { join } from 'node:path';
 /** Ил зөвшөөрөгдсөн байрлал — файл → шалтгаан (мөрийн дугааргүй: засварт тогтвортой) */
 const ALLOW = new Map([
   ['src/lib/authToken.ts', '`tokenQs()`-ийн тодорхойлолт — зөвхөн <img>/<a> хавсралтын хаягт'],
-  ['src/lib/chanarStore.ts', 'чанарын баримтын хавсралтын <a href> (listAttachments, 2026-09-16 аудит)'],
 ]);
 
 const BS = String.fromCharCode(92);

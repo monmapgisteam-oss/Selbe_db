@@ -902,30 +902,7 @@ console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) �
   assert.deepEqual(closed.materials.map((m) => [m.verdict, m.locked]), [['A', true], ['A', false]], '⚠️ түгжигдсэн AN ч A (түгжээ хэвээр)');
   assert.equal(anBody.materials[0].verdict, 'AN', 'оролт өөрчлөгдөөгүй (цэвэр)');
 
-  /* A1 · A7 — сүлжээний давхарга (эх кодын шалгуур) */
-  const fs = await import('node:fs');
-  const store = fs.readFileSync(new URL('./chanarStore.ts', import.meta.url), 'utf8');
-  const rd = store.slice(store.indexOf('export async function reviewDoc'), store.indexOf('const safeJson'));
-  assert.ok(/reviewsJsonEx\(r\.reviews, rep \?\? doc\.rep \?\? null, null, args\.as\)/.test(rd), '⚠️ reviewDoc: эцсийн бус шийдвэр өмнөх REP-ийг хадгална (NCR 2-р тойрог)');
-  assert.ok(/attachDeny\(oid, 'delete'\)/.test(store), '⚠️ deleteAttachment нь устгалын дүрмээр шалгана');
-  const ad = store.slice(store.indexOf('async function attachDeny'), store.indexOf('export async function loadDocs'));
-  assert.ok(/op === 'delete'/.test(ad), '⚠️ NCR илгээсний дараа нотолгоо устгагдахгүй');
-  assert.ok(/sameMaterialContent\(m, sm\[j\]\)/.test(store), '⚠️ ownClientBody: агуулга өөрчлөгдсөн материал түгжигдэхгүй');
-  /* A9 — хянах · хянахгүй буцаах бичихийн өмнө дахин уншина (өөр хүний шийдвэр/bounce-ийг дарахгүй) */
-  const w = rd.indexOf("arcgisPost(`${url}/applyEdits`");
-  /* ⚠️ 2026-10-06: ажиглах талбар `watch` — NCR ба биеийг бичих замд `F.body` ч (хуучин зөвхөн төлөв/хянагчид) */
-  assert.ok(rd.indexOf('await unchanged(args.oid, cur[0], watch)') > 0
-    && rd.indexOf('await unchanged(args.oid, cur[0], watch)') < w, '⚠️ reviewDoc: бичихийн өмнө `unchanged`');
-  assert.ok(/const watch = \(ncrBody \|\| F\.body in attrs\) \? \[F\.status, F\.reviews, F\.body\]/.test(rd), '⚠️ reviewDoc: NCR/бие бичихэд биеийг ч ажиглана');
-  /* ⚠️ 2026-10-09: `hyanalt` 8000 — хэтэрвэл бичихээс ӨМНӨ шалтгаантай татгалзана */
-  assert.ok(rd.indexOf('hyanaltTooLong(') > 0 && rd.indexOf('hyanaltTooLong(') < w, '⚠️ reviewDoc: hyanalt хэтрэлтийг бичихээс өмнө барина');
-  const bd = store.slice(store.indexOf('export async function bounceDoc'), store.indexOf('async function unchanged'));
-  /* ⚠️ 2026-10-09: биеийг бүхэлд нь бичдэг тул `F.body` ч ажиглана (`saveMeta` алдагдахгүй) */
-  assert.ok(bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews, F.body])') > 0
-    && bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews, F.body])') < bd.indexOf('return update(url'), '⚠️ bounceDoc: бичихийн өмнө `unchanged` (бие ч)');
-  const cc = store.slice(store.indexOf('export async function saveClientChecks'), store.indexOf('function clientChecksPure'));
-  assert.ok(cc.indexOf('await unchanged(args.oid, ld.row, [F.status, F.reviews, F.body])') > 0
-    && cc.indexOf('await unchanged(args.oid, ld.row, [F.status, F.reviews, F.body])') < cc.indexOf('return update(ld.url'), '⚠️ saveClientChecks: бичихийн өмнө `unchanged`');
+  /* ⚠️ 2026-10-20: `chanarStore.ts` (сүлжээний давхарга) «Чанарын баримт»-тай хамт ХАСАГДСАН — эх кодын шалгуур хасагдав. */
 }
 console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр · түгжигдсэн агуулга · AN хаалт · NCR REP · нотолгоо');
 
@@ -938,11 +915,6 @@ console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр 
   assert.equal(correctionChanged(null, undefined), false, 'null ≡ залруулга алга');
   assert.equal(correctionChanged(123, 456), true, 'гүйцэтгэгч дахин илгээсэн');
   assert.equal(correctionChanged(null, 456), true, 'хянагч залруулгагүй үед нээсэн');
-  const { readFileSync } = await import('node:fs');
-  const st = readFileSync(new URL('./chanarStore.ts', import.meta.url), 'utf8');
-  const fn = st.slice(st.indexOf('export async function reviewDoc('));
-  assert.ok(fn.indexOf('correctionChanged(args.seenCorrectionAt') > 0
-    && fn.indexOf('correctionChanged(args.seenCorrectionAt') < fn.indexOf('reviewPure('), 'reviewDoc: залруулгын тулгалт шийдвэрээс ӨМНӨ');
   console.log('✅ 2026-10-04 — NCR залруулгын тулгалт (correctionChanged)');
 }
 

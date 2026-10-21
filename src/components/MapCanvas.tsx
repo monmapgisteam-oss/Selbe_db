@@ -27,7 +27,7 @@ import Graphic from '@arcgis/core/Graphic';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Point from '@arcgis/core/geometry/Point';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
-import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
+import TileLayer from '@arcgis/core/layers/TileLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
@@ -47,7 +47,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, IRGED_ORTHO_PRE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  HOME, IMAGERY, ORTHO_FLIGHTS, IRGED_ORTHO_PRE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
   MESH_VERSIONS, DEFAULT_MESH_VER, MESH_CMP_PREFIX, type MeshVer,
   IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
@@ -55,7 +55,13 @@ import {
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
   type LayerDef,
 } from '@/lib/services';
+import { remapUrl } from '@/lib/services/entMap';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
+
+/* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбарыг JS API-ийн давхаргад эх нэрээр харуулах хөрвүүлэгч —
+   ямар ч FeatureLayer үүсэхээс ӨМНӨ (`lib/entInterceptor.ts`). Node/SSR-д чимээгүй алгасна. */
+void installEntInterceptor();
 import { plan2dStyleOf, loadPlan2dStyle, PLAN2D_ALIASED } from '@/lib/plan2d';
 import { queryExtent, queryFeatures, type Aoi } from '@/lib/query';
 import { authToken } from '@/lib/authToken';
@@ -1157,6 +1163,13 @@ const MESH_VER_KEY = 'selbe-mesh-ver';
  */
 const FLIGHTS: MeshVer[] = ['old', 'new'];
 
+/** Нислэгийн ортофото тайлын id — `imagery:f:<нислэг>:<key>` (IMAGERY_ID бүлгийн хүүхэд, `ORTHO_FLIGHTS`) */
+const orthoFlightId = (ver: MeshVer, key: string): string => `${IMAGERY_ID}:f:${ver}:${key}`;
+const orthoFlightVer = (id: string): MeshVer | null => {
+  const m = new RegExp(`^${IMAGERY_ID}:f:(old|new):`).exec(id);
+  return m ? (m[1] as MeshVer) : null;
+};
+
 /**
  * Хоёр хувилбарын (шинэ · хуучин) БҮХ меш id — байнгын `scene:<key>` ба
  * харьцуулалтын `mesh:cmp:<key>`. PASSIVE ба NO_HIGHLIGHT хоёулаа хэрэглэнэ.
@@ -1298,13 +1311,13 @@ function buildLayers(uniform = false): Layer[] {
      * агшинд эцгийнхээ `visible`-ыг шингээдэг бөгөөд конструкторын шинжүүд ямар
      * дарааллаар олгогдох нь баталгаагүй.
      */
-    /* ⚠️ 2026-10-04: `Selbe_September_tif` MapServer — UTM 48N тайлыг 3857 газрын
-       зурагт `TileLayer` зурахгүй тул `MapImageLayer` (сервер талын хөрвүүлэлт),
-       `png32` тунгалаг (`services/scene.ts` IMAGERY-ийн ⚠️). */
-    layers: [new MapImageLayer({
-      id: `${IMAGERY_ID}:0`, url: IMAGERY.url, visible: true,
-      imageFormat: 'png32', imageTransparency: true, legendEnabled: false,
-    })],
+    /* ⚠️ 2026-10-20: Enterprise-ийн нислэг бүрийн кэштэй тайл (`ORTHO_FLIGHTS`, wkid 102100 → `TileLayer` шууд;
+       хуучин UBHUB `Selbe_September_tif`-ийн «UTM тайлыг MapImageLayer-ээр хөрвүүлэх» зам хасагдав).
+       `meshVer`-ийг дагаж аль нэг нислэгийнх л ил (доорх харагдацын эффект); анхдагч `DEFAULT_MESH_VER`. */
+    layers: (Object.entries(ORTHO_FLIGHTS) as [MeshVer, typeof ORTHO_FLIGHTS[MeshVer]][]).flatMap(([ver, list]) =>
+      list.map((o) => new TileLayer({
+        id: orthoFlightId(ver, o.key), title: o.title, url: o.url, visible: ver === DEFAULT_MESH_VER, listMode: 'hide',
+      }))),
   }));
 
   /* ⚠️ 2026-10-04: хуучин ортофотогийн хоёр давхарга (`ORTHO_SWIPE` · `IRGED_ORTHO`,
@@ -1330,7 +1343,8 @@ function buildLayers(uniform = false): Layer[] {
   /* Зам (вектор тайл) — ортофотогийн ДЭЭР, цэгүүдийн ДООР.
      ⚠️ Загварыг URL-ээс автоматаар уншина (`resources/styles`) тул renderer
      бичихгүй. Эхэндээ унтраалттай; `visible` жагсаалтаар асаана. */
-  L.push(new VectorTileLayer({
+  /* ⚠️ 2026-10-20: хаяг хоосон (UBHUB хасагдсан, `services/scene.ts` IRGED_ROAD-ийн ⚠️) бол үүсгэхгүй */
+  if (IRGED_ROAD.url) L.push(new VectorTileLayer({
     id: IRGED_ROAD.id,
     title: IRGED_ROAD.title,
     url: IRGED_ROAD.url,
@@ -1345,7 +1359,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: IRGED_TOILET.id,
     title: IRGED_TOILET.title,
-    url: IRGED_TOILET.url,
+    url: remapUrl(IRGED_TOILET.url),
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -1396,7 +1410,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: IRGED_BUILT.id,
     title: IRGED_BUILT.title,
-    url: IRGED_BUILT.url,
+    url: remapUrl(IRGED_BUILT.url),
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -1414,7 +1428,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: TOILET_PIN_ID,
     title: IRGED_TOILET.title,
-    url: IRGED_TOILET.url,
+    url: remapUrl(IRGED_TOILET.url),
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -3440,7 +3454,7 @@ export const MapCanvas = memo(function MapCanvas({
         }
         map.add(new FeatureLayer({
           id: s.id,
-          url: s.url,
+          url: remapUrl(s.url),
           title: s.title,
           opacity: s.opacity,
           popupEnabled: false,
@@ -4956,7 +4970,15 @@ export const MapCanvas = memo(function MapCanvas({
     map.layers.forEach((l) => {
       /* `source:eh` шинээр ил болов — пульсийг where тавигдсаны ДАРАА (доор) эхлүүлнэ */
       let pulseEh = false;
-      if (l.id === IMAGERY_ID) { l.visible = ortho; return; }
+      if (l.id === IMAGERY_ID) {
+        l.visible = ortho;
+        /* ⚠️ 2026-10-20: нислэгийн ортофото тайл — сонгосон нислэгийнх л ил (`ORTHO_FLIGHTS`, мештэй ижил сонголт) */
+        (l as GroupLayer).layers.forEach((c) => {
+          const v = orthoFlightVer(c.id);
+          if (v) c.visible = v === meshVer;
+        });
+        return;
+      }
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
@@ -5188,7 +5210,7 @@ export const MapCanvas = memo(function MapCanvas({
        болох эсвэл шүүлт солигдоход эхэлнэ (`pulsedWhere`), жагсаалт шинэчлэгдэх
        бүрд бүх давхаргын шүүлтийг дахин тавихгүй. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
+  }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer, meshVer]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй
@@ -5474,10 +5496,11 @@ export const MapCanvas = memo(function MapCanvas({
         </div>
       )}
 
-      {/* НИСЛЭГ СОНГОХ — зөвхөн 3D, өөрийн меш багцгүй (`scene` prop-гүй) харагдацад.
+      {/* НИСЛЭГ СОНГОХ — өөрийн меш багцгүй (`scene` prop-гүй) харагдацад: 3D-д меш, 2D-д (ортофото асаалттай
+          үед) нислэгийн ортофото тайл солигдоно (⚠️ 2026-10-20: `ORTHO_FLIGHTS` — хоёулаа нэг `meshVer`).
           ⚠️ Солихын ӨМНӨ «Меш харьцуулах»-ыг унтраана: идэвхтэй клип нь өмнөх
           нислэгийн давхаргад тавигдсан тул үлдээвэл таслагдсан меш үлдэнэ. */}
-      {dim === '3d' && !scene && ready && (
+      {(dim === '3d' || ortho) && !scene && ready && (
         <div className={s.flightBar} role="group" aria-label={tr('3D мешийн нислэг')}>
           {FLIGHTS.map((f) => (
             <button

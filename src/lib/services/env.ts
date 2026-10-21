@@ -9,6 +9,7 @@
  *    Бүх дэд үйлчилгээ (ET, IMAGERY, BIM г.м.) эдгээр суурьнаас template-ээр гардаг.
  */
 import { t as tr } from '@/lib/i18nCore';
+import { AGOL_KEY_BASE } from './agolKey';
 
 /**
  * ⚠️ `process.env.NEXT_PUBLIC_X`-ийг ЗААВАЛ статик нэрээр дамжуулна — Next.js статик
@@ -21,8 +22,17 @@ export const req = (name: string, v: string | undefined): string => {
   return s;
 };
 
-/** Үндсэн байгууллагын FeatureServer суурь (`…/arcgis/rest/services`) */
-export const HJ = req("NEXT_PUBLIC_ARCGIS_HJ", process.env.NEXT_PUBLIC_ARCGIS_HJ);
+/**
+ * СЭЛБЭ ENTERPRISE-ийн hosted үйлчилгээний суурь (`https://gis.selbecity.mn/map/rest/services/Hosted`) — БҮХ өгөгдөл,
+ * BIM · меш · IoT · ХАБЭА эндээс (2026-10-20, AGOL/UBHUB бүрэн хаягдсан). ЗААВАЛ.
+ */
+export const ENT_HOSTED = req("NEXT_PUBLIC_ENT_DATA", process.env.NEXT_PUBLIC_ENT_DATA);
+
+/**
+ * AGOL-ын ТҮЛХҮҮРИЙН суурь — сүлжээний хаяг БИШ (`agolKey.ts`-ийн ⚠️). Кодын `${HJ}/<үйлчилгээ>/FeatureServer/<№>`
+ * хаягууд `entMap.remapUrl`-аар Enterprise руу зураглагдана. ⚠️ 2026-10-20: `NEXT_PUBLIC_ARCGIS_HJ` хувьсагч хасагдсан.
+ */
+export const HJ = AGOL_KEY_BASE;
 
 /**
  * ХАБЭА-ийн Survey123 ҮЙЛЧИЛГЭЭНИЙ НЭРС — орчны хувьсагчаас (2026-09-17, хэрэглэгч:
@@ -37,19 +47,13 @@ const svcRoot = (name: string, v: string | undefined): string => {
   return raw.includes("://") ? raw : `${HJ}/${raw}`;
 };
 /**
- * ЧАНАР · MA (материал баталгаажуулалт) — Survey123 маягт, ENTERPRISE hosted feature service
- * (2026-10-09, туршилт — tezu-bonu). Бүтэн URL (`…/FeatureServer`) эсвэл HJ доторх нэр.
- * ⚠️ ХООСОН БАЙЖ БОЛНО (`req` биш): deploy-д хараахан тохируулаагүй — «MA» харагдац
- *    «үйлчилгээ тохируулаагүй» гэж хэлнэ (`lib/ma.ts`). ⚠️ 2026-10-19: deploy/CI-д GitHub Variable
- *    `NEXT_PUBLIC_CHANAR_MA_SVC`-аар (`.env.example`-д хоосон мөр); MIR нь `envParity`-ийн OPTIONAL_LOCAL хэвээр.
+ * ЧАНАР · MA (материал баталгаажуулалт) ба MIR (материалын үзлэг) — Survey123, Сэлбэ Enterprise hosted feature service.
+ * ⚠️ 2026-10-20: `NEXT_PUBLIC_CHANAR_MA_SVC` · `NEXT_PUBLIC_CHANAR_MIR_SVC` хувьсагч ХАСАГДСАН (хэрэглэгч: зөвхөн 10 хувьсагч) —
+ *    Enterprise-ийн нэгдсэн суурь + тогтмол үйлчилгээний нэр (геопорталын «MA» · «MIR» маягтын feature service:
+ *    MA `/0` form · MIR `/0` form · `/1` photos; амьд жагсаалт 2026-10-20). Маягт дахин нийтлэгдвэл нэрийг энд солино.
  */
-const optSvc = (v: string | undefined): string => {
-  const raw = (v ?? "").trim().replace(/\/+$/, "").replace(/\/FeatureServer$/i, "");
-  return !raw ? "" : raw.includes("://") ? raw : `${HJ}/${raw}`;
-};
-export const CHANAR_MA_SVC = optSvc(process.env.NEXT_PUBLIC_CHANAR_MA_SVC);
-/** ЧАНАР · MIR (материалын үзлэг) — Survey123, Enterprise hosted: `/0` form (MIR) · `/1` photos (зураг). Хоосон байж болно. */
-export const CHANAR_MIR_SVC = optSvc(process.env.NEXT_PUBLIC_CHANAR_MIR_SVC);
+export const CHANAR_MA_SVC = `${ENT_HOSTED}/service_4c573791e818494da5736086a2535713`;
+export const CHANAR_MIR_SVC = `${ENT_HOSTED}/service_c57fb2dce015439786246f68534ab82d`;
 
 export const HABEA_SVC = {
   labor: svcRoot("NEXT_PUBLIC_HABEA_LABOR_SVC", process.env.NEXT_PUBLIC_HABEA_LABOR_SVC),
@@ -58,7 +62,9 @@ export const HABEA_SVC = {
   uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
   /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
       нийтлэгдсэн; `habea:uzZ` ба ХАБЭА-ийн захиалагчийн үзлэгийн самбар эндээс уншина. */
-  uzlegZahialagch: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC),
+  /* ⚠️ 2026-10-20: хувьсагч (`NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC`) хасагдсан — Enterprise-ийн «Захиалагчийн ажлын байрны
+     үзлэг 2026» үйлчилгээ шууд (амьд жагсаалт: `service_b56e…`; хэрэглэгчид хуваалцаагүй бол 499/403 — геопорталаас хуваалцана). */
+  uzlegZahialagch: `${ENT_HOSTED}/service_b56e0aa028f0441bb49ed6c40e381012`,
 } as const;
 
 /**
@@ -90,7 +96,8 @@ export const HABEA_SVC = {
    шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
    талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
    нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
-export const TD = `${req("NEXT_PUBLIC_ARCGIS_GAZAR", process.env.NEXT_PUBLIC_ARCGIS_GAZAR)}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+/* ⚠️ 2026-10-20: `NEXT_PUBLIC_ARCGIS_GAZAR` хасагдсан — AGOL-ын ТҮЛХҮҮР (`agolKey.ts`), Enterprise руу `entMap`-аар зураглагдана. */
+export const TD = `${AGOL_KEY_BASE}/SELBE_ALL_DATA_last_0917/FeatureServer`;
 
 /**
  * ХУУЧИН ЕТ (`Selbe_ET_20260721`) — ⚠️ УСТГАГДСАН үйлчилгээ, ӨГӨГДЛИЙН эх БИШ.

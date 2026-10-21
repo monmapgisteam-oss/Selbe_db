@@ -29,9 +29,10 @@ const ITEM = process.argv[2] || "d790321542504a54afd006e277d7a137";
  * талбар нь (`Angilal`) ЕТ-ийн `BUS_LAST` (ET/28)-тай яг ижил тул renderer
  * шууд зохино.
  */
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+/* ⚠️ 2026-10-20: снапшотын түлхүүр нь AGOL-ын хуучин хаяг (`services/agolKey.ts` — зураглалын ТҮЛХҮҮР, сүлжээний хаяг биш).
+   Webmap өөрөө AGOL дээр (ITEM) — AGOL хаягдсан тул энэ хэрэгсэл зөвхөн түүхийн снапшотыг дахин үүсгэхэд. */
+const { AGOL_KEY_BASE } = await import('@/lib/services/agolKey.ts');
+const HJ = AGOL_KEY_BASE;
 const HJ_LC = HJ.toLowerCase();
 const ALIAS = [
   [

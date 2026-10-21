@@ -47,7 +47,6 @@ export type ViewKey =
   | "zovshoorol"
   | "guitsetgel"
   | "qaqc"
-  | "chanar"
   | "ma"
   | "schem"
   | "sysdoc";
@@ -519,27 +518,8 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
-  {
-    /**
-     * ЧАНАРЫН БАРИМТ — MS · MA · MIR · FIC · NCR-ийн батлах урсгал.
-     *
-     * ⚠️ «Чанар (QAQC)»-ААС ТУСДАА (2026-09-16, хэрэглэгчийн шийдвэр:
-     *    «ШИНЭ цэс»). Тэр нь Inspection Test Plan-ийн 9 баганыг бөглөх
-     *    хүснэгт; энэ нь Чанарын хэлтсийн 5 процессын зураглалаар явдаг
-     *    БАРИМТЫН УРСГАЛ — ирүүлэх · зэрэгцээ хянах · буцаах · батлах.
-     *    Нэг цэсэнд хольвол хоёр өөр ажлын урсгал нэг хуудсанд шахагдана.
-     *
-     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — хүснэгт (`Selbe_Chanar_Barimt`) геометргүй.
-     */
-    key: "chanar",
-    get title() { return tr('Чанарын баримт'); },
-    get desc() { return tr('Ажлын аргачлал, материалын баталгаа, үл тохирлын баримтыг ирүүлэх, хянах, батлах урсгал (тэмдэглэх хүснэгт нь «Чанар (QAQC)»-д)'); },
-    icon: "shield",
-    hue: "#b45309",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
+  /* ⚠️ 2026-10-20: «Чанарын баримт» (`chanar`, `Selbe_Chanar_Barimt`) харагдац ХАСАГДСАН (хэрэглэгчийн шийдвэр: «системээс бүрэн хас»).
+     Чанарын эрхийн систем (`chanarAcl` · `chanarAuthor`/`chanarReview`) нь MA · FIC-д хэрэглэгдсээр. */
   /**
    * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Чанарын 4 шатны (MA → MIR → FIC → М-акт)
    * эхний шат — «Чанарын баримт»-аас ТУСДАА шинэ сэдэв (хэрэглэгчийн шийдвэр). Survey123 →
@@ -649,7 +629,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -669,7 +649,7 @@ export const HOME_SECTIONS: {
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "money" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
   { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "qaqc"] },
-  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
+  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },

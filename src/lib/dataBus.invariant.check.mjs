@@ -187,6 +187,9 @@ console.log('✅ зөвшөөрлийн жагсаалт хуучраагүй');
 
 /** Бичилт нь ДУУДАГЧ талд хүчингүй болгогддог, эсвэл автобусаар тархдаггүй. */
 const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
+  ['src/lib/services/entMap.ts',
+    'Enterprise зураглал (2026-10-20) — өөрөө бичдэггүй; `applyEdits` нь зөвхөн атрибутын түлхүүрийг Enterprise-ийн '
+    + 'нэр рүү хөрвүүлэх цэвэр функцийн тайлбар/regex-д нэрлэгдэнэ. Бичилтийг дуудагч store хүчингүй болгоно.'],
   ['src/lib/tableWrite.ts',
     'Ерөнхий бичигч — аль хүснэгт болохыг мэдэхгүй. Дуудагч (Finance.tsx, parcelEdit.ts) өөрсдөө хүчингүй болгоно.'],
   ['src/lib/query.ts',
@@ -313,6 +316,8 @@ console.log('✅ бичигчийн зөвшөөрлийн жагсаалт ху
 
 /** Автобусын бүртгэл ШААРДЛАГАГҮЙ гараар бичсэн кэшүүд — шалтгаантайгаар. */
 const GARAAR_ZOVSHOOROGDSON = new Map([
+  ['src/lib/services/entMap.ts',
+    'Талбарын нэрийн толь (`dictCache`) — build үеийн тогтмол `ENT_FIELDS`-ээс тооцсон, сүлжээгүй, өгөгдөл биш (2026-10-20).'],
   ['src/lib/ficMakt.ts',
     '2026-10-09: `urlCache` нь FIC · М-актын Enterprise ХҮСНЭГТИЙН ХАЯГ (нэг удаа олдож/үүсгэгдэнэ) — '
     + 'өгөгдөл БИШ; хаяг ажиллах үед солигддоггүй тул хуучрахгүй.'],
@@ -502,7 +507,6 @@ console.log('✅ гараар бичсэн кэшийн зөвшөөрлийн �
 
 /** Store файл → түүний хүснэгтийн DataKey (нэгдэлд байх ёстой — ХАМААРАЛ 3 барина) */
 const STORE_KEYS = new Map([
-  ['src/lib/chanarStore.ts', 'CHANAR_BARIMT'],
   ['src/lib/huvaariBatlah.ts', 'HUVAARI_BATLAH'],
   ['src/lib/obyemBatlah.ts', 'OBYEM_BATLAH'],
   ['src/lib/ajilBatlah.ts', 'AJIL_BATLAH'],

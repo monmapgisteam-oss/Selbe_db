@@ -160,7 +160,7 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   },
   chanar: {
     on: V('gdash', 'plan', 'hesegET', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
-    home: 'chanar',
+    home: 'qaqc',
   },
   gazar: {
     on: V('gazar', 'gdash', 'plan', 'hesegET', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),

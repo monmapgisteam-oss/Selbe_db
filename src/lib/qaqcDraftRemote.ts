@@ -46,6 +46,8 @@
  *    нөхөгдөнө (нүд бүр агшинтай тул ялагч өөрчлөгдөхгүй).
  */
 
+import { entDirect } from '@/lib/services/entMap';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, ROLE_BY_USER } from './services';
 import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — ArcGIS
@@ -203,6 +205,13 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
+     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
+  const direct = entDirect(TITLE, 0);
+  if (direct) {
+    tableUrlCache = direct;
+    return direct;
+  }
   const auth = await getAuth();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
@@ -216,6 +225,8 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
 async function layer(url: string): Promise<FeatureLayerInst> {
+  /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
+  await installEntInterceptor();
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
 }

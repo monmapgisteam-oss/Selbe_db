@@ -362,12 +362,12 @@ function registryEntries(): CatEntry[] {
       .filter((u): u is string => !!u && keyOfUrl(u) !== keyOfUrl(main.url))
       .map((u) => shortRef(parseUrl(u))))];
     const allScene = sorted.every((r) => r.geom === '3d');
+    /* ⚠️ 2026-10-20: захиалагчийн үзлэг · IoT · бусад бүх давхарга `NEXT_PUBLIC_ENT_DATA`-гийн дор (тусдаа хувьсагч хасагдсан) */
     const envOf = main.id.startsWith('habea:osol') ? 'NEXT_PUBLIC_HABEA_INCIDENT_SVC'
       : main.id === 'habea:uzV11' ? 'NEXT_PUBLIC_HABEA_UZLEG_V11_SVC'
         : main.id === 'habea:uzG' ? 'NEXT_PUBLIC_HABEA_UZLEG_G_SVC'
-          : main.id === 'habea:uzZ' ? 'NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC'
-            : main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ARCGIS_IOT_SVC'
-              : undefined;
+          : main.id === 'habea:uzZ' || main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ENT_DATA'
+            : undefined;
     out.push({
       id: `lyr:${main.id}`,
       name: titles.join(' / '),
@@ -772,41 +772,7 @@ function chanarEntries(): CatEntry[] {
       editors: () => [{ cap: 'qaqc', text: tr('QAQC — Inspection Test Plan') }],
       note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
     },
-    {
-      id: 'chanar',
-      name: tr('Чанарын баримт (MS · QMP · PRC · MA · MIR · FIC · NCR)'),
-      service: 'Selbe_Chanar_Barimt',
-      layer: 'chanar_barimt',
-      url: null,
-      kind: 'table',
-      group: 'chanar',
-      aliases: [],
-      styleSrc: [],
-      /* ⚠️ 2026-09-25: QAQC харагдац ч уншина — MA · MIR · FIC дугаарын нүдний сонголт */
-      views: sortViews(['chanar', 'qaqc']),
-      /* ⚠️ 2026-09-25: 7 төрөл (`turul`, `chanarMs.KINDS`) — MS · QMP · PRC · MA · MIR ·
-         FIC · NCR. Хянагч төрлөөр (`REVIEWERS_OF` · `SEQUENTIAL_KINDS`): MS/QMP/PRC —
-         ТУХ·Чанар·ХАБЭА зэрэг; MA — ЧХ инженер → Чанар → ТУГ ДАРААЛСАН; MIR/FIC —
-         ТУХ → Чанар дараалсан; NCR — захиалагч (ТУХ/Чанар) нээж, гүйцэтгэгч залруулга
-         илгээж, ТУХ·Чанар·ТУГ зэрэг хаана; дугаар STMCC-STMC-NCR-NNNN (төслийн хэмжээнд).
-         Шийдвэр A/AN/R; approved/returned болмогц REP дугаар SLB-REP-<төрөл>-P<багц>-
-         <NNNN>-<RR> (NNNN төслийн хэмжээний дараалал төрөл тус бүр, RR = хариуны тоо).
-         `dataCatalog.check` энэ мөрийг `KINDS`/`REVIEWERS_OF`-той тулгана. */
-      purpose: () => tr('Ажлын аргачлал (MS) · чанарын удирдлагын төлөвлөгөө (QMP) · процедур (PRC) · материал баталгаажуулалт (MA) · материалын/талбайн үзлэг (MIR · FIC) · үл тохирол (NCR) — ирүүлсэн хувилбар, хянагчдын A/AN/R шийдвэр, REP дугаар, хавсралт.'),
-      chain: () => [
-        S(tr('Гүйцэтгэгч (chanarAuthor) ирүүлнэ — NCR-ийг захиалагч (ТУХ/Чанар) нээнэ')),
-        S(tr('Хянагчид төрлөөр (chanarReview): MS · QMP · PRC — ТУХ · Чанар · ХАБЭА зэрэг; MA — ЧХ инженер → Чанар → ТУГ дараалсан; MIR · FIC — ТУХ → Чанар дараалсан; NCR — залруулгын дараа ТУХ · Чанар · ТУГ зэрэг')),
-        S(tr('Бүгд A/AN бол «Батлагдсан» · нэг R бол гүйцэтгэгчид буцна (rev+1; NCR-д rev үгүй) · хариу бүрд SLB-REP-<төрөл>-P<багц>-<NNNN>-<RR> дугаар (RR = хариуны тоо); NCR-ийн дугаар STMCC-STMC-NCR-NNNN')),
-        S(tr('Чанарын баримт')),
-        S(tr('Чанар (QAQC) — MA · MIR · FIC дугаарын нүдэнд батлагдсан баримтаас сонгоно'), 'qaqc:b1_9f'),
-      ],
-      editors: () => [
-        { cap: 'chanarAuthor', text: tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)') },
-        { cap: 'chanarReview', text: tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА · ТУГ · ЧХ инженер)') },
-        { cap: '__chanar__', text: tr('Багцын хуваарилалт') },
-      ],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService). Схем 7 төрөлд нийтлэг — төрлийн нэмэлт өгөгдөл body/reviews JSON дотор.'),
-    },
+    /* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН — каталогийн мөр ч хасагдав. */
   ];
 }
 
@@ -874,7 +840,7 @@ function otherEntries(): CatEntry[] {
         group: 'habea',
         aliases: [],
         styleSrc: [],
-        env: 'NEXT_PUBLIC_BIM_SCENE',
+        env: 'NEXT_PUBLIC_ENT_DATA',
         views: sortViews(['habea']),
         purpose: () => it.sum
           ? tr('Долоо хоног бүрийн тоо (огноогүй — долоо хоногийн дугаараар) — ХАБЭА-гийн «Бусад үзүүлэлт» карт.')
@@ -897,7 +863,7 @@ function otherEntries(): CatEntry[] {
       group: 'habea',
       aliases: [],
       styleSrc: [],
-      env: 'NEXT_PUBLIC_BIM_SCENE',
+      env: 'NEXT_PUBLIC_ENT_DATA',
       views: sortViews(['habea']),
       purpose: () => tr('Хаягдлын төрөл × долоо хоног, багц бүрийн рейсийн тоо — ХАБЭА-гийн «Хог хаягдал» карт.'),
       chain: () => [
@@ -975,10 +941,11 @@ function imgEntries(): CatEntry[] {
       id: 'img:ortho', title: IMAGERY.title, url: IMAGERY.url, kind: 'image', views: [], allMaps: true,
       purpose: () => tr('Агаарын зураг (ортофото) — 2D газрын зургийн суурь.'),
     },
-    {
-      id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image', views: ['irged'],
+    /* ⚠️ 2026-10-20: хаяг хоосон бол мөр гарахгүй (UBHUB хасагдсан, `services/scene.ts` IRGED_ROAD-ийн ⚠️) */
+    ...(IRGED_ROAD.url ? [{
+      id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image' as const, views: ['irged' as const],
       purpose: () => tr('Замын вектор тайл — иргэдэд хүрэх үр өгөөжийн суурь.'),
-    },
+    }] : []),
     {
       id: 'img:elev', title: tr('Өндрийн загвар'), url: ELEVATION_URL, kind: 'image', views: [], allMaps: true,
       purpose: () => tr('Газрын гадаргын өндрийн загвар — 3D горимын суурь.'),
@@ -1013,8 +980,8 @@ function imgEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       /* ⚠️ 2026-10-19: BIM (SceneServer) нь Enterprise `…/Hosted` — хаяг `NEXT_PUBLIC_BIM_SCENE`-ээс (`services/scene.ts`) */
-      ...(x.id === 'img:elev' ? { env: 'NEXT_PUBLIC_ELEVATION_URL' }
-        : BIM.layers.some((b) => b.key === x.id) ? { env: 'NEXT_PUBLIC_BIM_SCENE' } : {}),
+      /* ⚠️ 2026-10-20: BIM · меш · ортофото бүгд `NEXT_PUBLIC_ENT_DATA`; өндрийн загвар тогтмол (`services/scene.ts`) */
+      ...(x.id === 'img:elev' ? {} : { env: 'NEXT_PUBLIC_ENT_DATA' }),
       views: sortViews(x.views),
       ...(x.allMaps ? { allMaps: true as const } : {}),
       purpose: x.purpose,

@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { HABEA_SVC, HJ, TD, req } from './env';
+import { ENT_HOSTED, HABEA_SVC, HJ, TD } from './env';
 import type { LayerDef } from './layerDef';
 import { LAYER_BY_ID } from './layers';
 
@@ -16,9 +16,8 @@ import { LAYER_BY_ID } from './layers';
  * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
  * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
-const UBHUB_SCENE = req("NEXT_PUBLIC_UBHUB_SCENE", process.env.NEXT_PUBLIC_UBHUB_SCENE);
-/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IMAGERY үүнээс. */
-const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
+/* ⚠️ 2026-10-20: UBHUB БҮРМӨСӨН ХАСАГДСАН (хэрэглэгч: «ubhub-ийг мөн адил хая») — меш · ортофото Enterprise-ээс
+   (`ENT_HOSTED`/`ENT_REST`), `NEXT_PUBLIC_UBHUB_SCENE` хувьсагч ч хасагдав. */
 
 /**
  * АГААРЫН ЗУРАГ (ОРТОФОТО) — системийн ГАНЦ ортофото: `Selbe_September_tif`
@@ -42,16 +41,42 @@ const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
  * ⚠️ Хамрах хүрээ ~1.6 × 2.2 км (Сэлбэ орчим) — түүнээс гадна суурь зураг харагдана.
  * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` / `SuitMap` тусад нь нэмнэ.
  */
-/**
- * Сэлбэ ENTERPRISE-ийн `…/rest/services/Hosted` — BIM (SceneServer) ба ХАБЭА-ийн бүртгэл (2026-10-15)
- * хоёулаа эндээс. ⚠️ Модулийн ЭХЭНД: `HABEA` тогтмол үүнийг ашигладаг (TDZ).
- */
-const ENT_HOSTED = req("NEXT_PUBLIC_BIM_SCENE", process.env.NEXT_PUBLIC_BIM_SCENE);
+/* Сэлбэ ENTERPRISE-ийн `…/rest/services/Hosted` (`env.ENT_HOSTED` = `NEXT_PUBLIC_ENT_DATA`) — BIM · меш · ХАБЭА · бүх өгөгдөл.
+   ⚠️ 2026-10-20: `NEXT_PUBLIC_BIM_SCENE` хувьсагч хасагдсан — ижил суурь нэг хувьсагчаас. */
+/** Enterprise ArcGIS Server-ийн `…/map/rest/services` суурь (`Hosted`-гүй) — ортофото (ImageServer · MapServer) эндээс */
+const ENT_REST = ENT_HOSTED.replace(/\/Hosted$/i, "");
 
+/**
+ * НИСЛЭГ БҮРИЙН ОРТОФОТО — системийн суурь ортофото (2026-10-20, Enterprise руу БҮРЭН шилжилт).
+ * ⚠️ UBHUB `Selbe_September_tif` (2026-09 «True Ortho», нэг MapServer) → Сэлбэ Enterprise-ийн нислэг бүрийн ХОЁР
+ *    хэсэгт хуваагдсан кэштэй MapServer (хэрэглэгчийн өгсөн «Ortho nisleg 1/2»; амьд шалгав: wkid 102100, 24 LOD,
+ *    нэвтрэлтгүй нээлттэй). Проекц нь аппын зурагтай ИЖИЛ (3857) тул `TileLayer` шууд — хуучин «UTM тайлыг
+ *    MapImageLayer-ээр серверт хөрвүүлэх» шаардлага АРИЛСАН.
+ * ⚠️ `MESH_VERSIONS`-тэй ИЖИЛ түлхүүр (`old` = нислэг 1 · `new` = нислэг 2): сонгосон нислэгийн меш (3D) ба
+ *    ортофото (2D) ХАМТ солигдоно (`MapCanvas` `meshVer`); анхдагч `DEFAULT_MESH_VER` = нислэг 2.
+ * ⚠️ «Ortho before» (`Selbe_ortho_202609` ImageServer) нь ЭНД БИШ — бүтээн байгуулалтын ӨМНӨХ зураг тул
+ *    `IRGED_ORTHO_PRE` (env `NEXT_PUBLIC_IRGED_ORTHO_PRE`, «Иргэдэд хүрэх үр өгөөж»-ийн товч).
+ */
+export const ORTHO_FLIGHTS: Record<MeshVer, { key: string; title: string; url: string }[]> = {
+  old: [
+    { key: "ortho11", get title() { return tr('Ортофото — нислэг 1 (1)'); }, url: `${ENT_REST}/Ortho_nisleg_1_1_tif/MapServer` },
+    { key: "ortho12", get title() { return tr('Ортофото — нислэг 1 (2)'); }, url: `${ENT_REST}/Ortho_nisleg_1_2_tif/MapServer` },
+  ],
+  new: [
+    { key: "ortho21", get title() { return tr('Ортофото — нислэг 2 (1)'); }, url: `${ENT_REST}/Ortho_nisleg_2_1C/MapServer` },
+    { key: "ortho22", get title() { return tr('Ортофото — нислэг 2 (2)'); }, url: `${ENT_REST}/Ortho_nisleg_2_2C/MapServer` },
+  ],
+};
+
+/**
+ * Системийн ортофото — каталог (`dataCatalog` img:ortho) ба `SuitMap`-д. `layers` = анхдагч нислэгийн хэсгүүд
+ * (`TileLayer`), `url` = эхний хэсэг (каталогийн мөрийн хаяг). Нислэг солих нь зөвхөн `MapCanvas`-д (`ORTHO_FLIGHTS`).
+ */
 export const IMAGERY = {
   get title() { return tr('Агаарын зураг (ортофото)'); },
-  url: `${UBHUB_REST}/Selbe_September_tif/MapServer`,
-} as const;
+  get layers() { return ORTHO_FLIGHTS[DEFAULT_MESH_VER]; },
+  get url() { return ORTHO_FLIGHTS[DEFAULT_MESH_VER][0].url; },
+};
 
 /**
  * «Иргэдэд хүрэх үр өгөөж» харагдацын 3D БОДИТ ЗАГВАР — гурван IntegratedMesh.
@@ -64,22 +89,24 @@ export const IMAGERY = {
  * 3D-ийн бүх дүрэм (зөвхөн `dim === '3d'`-д нэмэх, PASSIVE) тэр угтвараар
  * ажилладаг тул нэрийн загвараа ЗААВАЛ хадгална.
  */
+/* ⚠️ 2026-10-20: UBHUB `Selbe1/2/3_slpk` → Сэлбэ Enterprise `Mesh_before_1_1…3` (хэрэглэгчийн өгсөн «Mesh before»;
+   амьд шалгав: IntegratedMesh · wkid 3857 · нэвтрэлтгүй нээлттэй). */
 export const IRGED_SCENE = {
   layers: [
     {
       key: "irged1",
       get title() { return tr('Бодит загвар — Сэлбэ 1'); },
-      url: `${UBHUB_SCENE}/Selbe1_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_1/SceneServer`,
     },
     {
       key: "irged2",
       get title() { return tr('Бодит загвар — Сэлбэ 2'); },
-      url: `${UBHUB_SCENE}/Selbe2_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_2/SceneServer`,
     },
     {
       key: "irged3",
       get title() { return tr('Бодит загвар — Сэлбэ 3'); },
-      url: `${UBHUB_SCENE}/Selbe3_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_3/SceneServer`,
     },
   ],
 } as const;
@@ -260,8 +287,12 @@ LAYER_BY_ID[IRGED_BUILT_DEF.id] = IRGED_BUILT_DEF;
 export const IRGED_ROAD = {
   id: "irged:road",
   get title() { return tr('Зам'); },
-  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE суурийн дэд үйлчилгээ. */
-  url: `${UBHUB_SCENE}/Selbe_road/VectorTileServer`,
+  /* ⚠️ 2026-10-20: UBHUB `Selbe_road` ХАСАГДСАН (UBHUB бүрмөсөн хаягдсан) → Сэлбэ Enterprise `selberoad_TILE_1`
+     VectorTileServer — Web Mercator (102100/3857, 24 LOD; амьд мета 2026-10-20 20:40). Өмнөх `selberoad_tile`/`selberoad_TILE`
+     нь UTM 32648 тул 3857 зурагт зурагддаггүй байсан (хөтчөөр батлав; JS API вектор тайлыг өөр проекцоор зурдаггүй —
+     зургийн координатын системийг Web Mercator болгож дахин нийтэлсэн). Хоосон `url` → давхарга ба каталогийн мөр
+     үүсэхгүй (`MapCanvas` · `dataCatalog`). Нэвтрэлт шаардана — байгууллагад хуваалцсан байх ёстой. */
+  url: `${ENT_HOSTED}/selberoad_TILE_1/VectorTileServer` as string,
 } as const;
 
 /* ⚠️ 2026-10-04: `IRGED_ORTHO` ба `ORTHO_SWIPE` (хуучин `Selbe_ortho`) ХАСАГДСАН — `IMAGERY`-ийн ⚠️. */
@@ -347,17 +378,19 @@ export const REACH_BUFFERS: {
   },
 ];
 
+/* ⚠️ 2026-10-20: UBHUB `Selbewebapp_slpk` · `Selbewebapp2_slpk` → Enterprise `Mesh_nisleg_1_1` · `Mesh_nisleg_1_2`
+   («Mesh nisleg 1»). `key` ХЭВЭЭР (`scene:mesh1`…) — MapCanvas/SuitMap-ийн id-ууд үүгээр. */
 export const SCENE = {
   layers: [
     {
       key: "mesh1",
       get title() { return tr('Бодит загвар — Сэлбэ 1'); },
-      url: `${UBHUB_SCENE}/Selbewebapp_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_nisleg_1_1/SceneServer`,
     },
     {
       key: "mesh2",
       get title() { return tr('Бодит загвар — Сэлбэ 2'); },
-      url: `${UBHUB_SCENE}/Selbewebapp2_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_nisleg_1_2/SceneServer`,
     },
   ],
 } as const;
@@ -380,14 +413,21 @@ export const SCENE = {
  */
 export type MeshVer = 'new' | 'old';
 
+/* ⚠️ 2026-10-20: UBHUB `Selbe_mesh_0917` (нэг меш) → Enterprise `Mesh_nisleg_2_1` · `Mesh_nisleg_2_2` (ХОЁР хэсэг,
+   «Mesh nisleg 2»). Эхний `key` ХЭВЭЭР (`mesh0917` — `scene:mesh0917` id-г MapCanvas/каталог мэддэг), хоёр дахь нь шинэ. */
 export const MESH_VERSIONS = {
   new: {
     get title() { return tr('Нислэг 2 (2026-09-17)'); },
     layers: [
       {
         key: "mesh0917",
-        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17)'); },
-        url: `${UBHUB_SCENE}/Selbe_mesh_0917/SceneServer`,
+        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17), 1'); },
+        url: `${ENT_HOSTED}/Mesh_nisleg_2_1/SceneServer`,
+      },
+      {
+        key: "mesh0917b",
+        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17), 2'); },
+        url: `${ENT_HOSTED}/Mesh_nisleg_2_2/SceneServer`,
       },
     ],
   },
@@ -406,7 +446,11 @@ export const MESH_CMP_PREFIX = 'mesh:cmp:';
  * Гадаргуугийн өндөр — 3D-д ЗААВАЛ. Меш нь 1325–1440 м ортометрик өндөрт байх
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
-export const ELEVATION_URL = req("NEXT_PUBLIC_ELEVATION_URL", process.env.NEXT_PUBLIC_ELEVATION_URL);
+/* ⚠️ 2026-10-20: `NEXT_PUBLIC_ELEVATION_URL` хувьсагч хасагдсан (хэрэглэгч: зөвхөн 10 хувьсагч). Сэлбэ Enterprise-д өндрийн
+   загвар (ImageServer) АЛГА тул Esri-ийн НИЙТИЙН дэлхийн өндөр — суурь зурагтай адил гадаад дэд бүтэц, төслийн өгөгдөл биш;
+   нэвтрэлтгүй, токен явахгүй (`query.isOrgUrl` Enterprise л). Enterprise-д нийтлэгдвэл `${ENT_REST}/<нэр>/ImageServer` болгоно.
+   «Код дотор үйлчилгээний линк байхгүй» (2026-09-17) дүрмийн ГАНЦ үл хамаарал — хувьсагчийг хэрэглэгч устгасан. */
+export const ELEVATION_URL = "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
 
 /**
  * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
@@ -692,7 +736,7 @@ export const laborCompanyFields = (sfx: string) => ({
  *    бүгд (Багц 1: 15 · 2: 20 · 3.1: 11 · 3.2: 11 · 3.3: 14 · 4.1: 12 · 4.2: 14). Амьдаар нэг бүрчлэн шалгав:
  *    97/97 токенгүй нээгдэнэ, бүгд `layerType: Building`, wkid 3857. UBHUB дээр хаалттай байсан Багц 1-ийн 8,
  *    Багц 2-ын 20, Багц 3.1-ийн 11 загвар ОДОО бүгд орсон.
- * ⚠️ Хост нь меш/ортофотогийн `UBHUB_SCENE`-ээс ТУСДАА хувьсагч — тэдгээр UBHUB дээр ХЭВЭЭР.
+ * ⚠️ 2026-10-20: меш/ортофото ч Enterprise руу шилжсэн — UBHUB бүрмөсөн хасагдсан.
  * ⚠️ 2026-09-25: хуучин 12 загвар (`tiles.arcgis.com` · `71_1…71_12`, `NEXT_PUBLIC_BIM_ROOT`) хасагдсан.
  *
  * ⚠️ `layerType: 'Building'` — ЗӨВХӨН SceneView-д (3D, `dim === 'bim'`).
