@@ -45,7 +45,7 @@ import { km, num } from '@/lib/format';
 import { LAYER_BY_ID } from '@/lib/services';
 import type { Row } from '@/lib/query';
 import {
-  createRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
+  createRow, diffRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
   isLostResponse, saveRow, validateChanged, validateRow,
   type FieldDef, type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
@@ -61,9 +61,10 @@ import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } fro
  */
 export type UndoInfo =
   | { kind: 'add'; oid: number }
-  | { kind: 'attr'; oid: number; attrs: Record<string, unknown> }
+  /** ⚠️ 2026-10-21: `wrote` — манай БИЧСЭН утга (`butetsEdit.RevertRow`-ийн CAS); буцаахын өмнө серверийн одоогийн утгатай тулгана */
+  | { kind: 'attr'; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
   /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
-  | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown> }[] };
+  | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] };
 import d from './dedButets.module.css';
 import { userError } from '@/components/ui';
 
@@ -436,6 +437,9 @@ export function DedButetsEdit({
       /* ⚠️ Буцаах утгуудыг БИЧИХЭЭС ӨМНӨ бэлдэнэ — дараа нь `before` нь
          хуучирсан хуулбар болох ч энэ объект аль хэдийн салангид. */
       const back = revertAttrs(meta, before as Row, p);
+      /* ⚠️ 2026-10-21 (кодын аудит): БИЧИХ утга (`saveRow`-ийн `diffRow`-тай ЯГ ижил) — буцаалт серверийн
+         одоогийн утгыг үүнтэй тулгаж, хооронд нь өөр хэрэглэгч зассан бол ДАРАХГҮЙ (`revertRows`). */
+      const wrote = diffRow(meta, before as Row, p);
       const n = await saveRow(meta, oid as number, before as Row, p);
       /* ⚠️ 2026-09-21: эцэг `onDone`-д маягтыг хаадаг ч хэрэглэгч хадгалаагүй
          хэлбэрийн засвараа хаяхаас татгалзвал (`DedButets.closeEdit` → `false`)
@@ -445,7 +449,7 @@ export function DedButetsEdit({
          татна (`saved` тоолуур ачаалах эффектийг сэргээнэ); маягт салсан бол
          эдгээр setState нь хор хөнөөлгүй. */
       dirty.current = false;
-      onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back } : null);
+      onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back, wrote } : null);
       setSaved((x) => x + 1);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */

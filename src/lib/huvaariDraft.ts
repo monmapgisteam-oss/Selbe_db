@@ -780,11 +780,16 @@ export const hlcNext = (seen: number, now = Date.now()): number => Math.max(now,
 /**
  * `cleared`-ЭЭС ӨМНӨХ НҮДИЙГ ХАСНА — нүд тус бүрээр (`at <= cleared`). Tombstone хэвээр.
  * ⚠️ Сэргээхэд ЛОКАЛ хуулбарт л хэрэглэнэ — алсын мөр өөрөө эх сурвалж (2026-10-04).
+ * ⚠️ 2026-10-21 (кодын аудит): `HD_DEL_TTL`-ээс ШИНЭ нүдийг ХАСАХГҮЙ. `applyClear` нь ЗӨВХӨН илгээлтэд орсон
+ *    нүдэнд tombstone тавьдаг атал `cleared` агшин нь нэг л тоо — урьд нь Б илгээхэд (t2) А-гийн алс руу ХҮРЧ
+ *    АМЖААГҮЙ (t1 < t2) өөр нүднүүд дахин ачаалахад бүгд чимээгүй устдаг байв. Шинэ нүдийг цэвэрлэлт хамарсан
+ *    бол түүний tombstone (`at` > нүдний `at` > `now − TTL`) алсад хэвээр байгаа тул дуудагчийн `merge` хаана;
+ *    tombstone нь хугацаагаар арилсан байж болох ХУУЧИН нүдийг л `cleared`-ээр хаана (амилахаас сэргийлнэ).
  */
-export function dropCleared(d: HDDraft, cleared: number): HDDraft {
+export function dropCleared(d: HDDraft, cleared: number, now = Date.now()): HDDraft {
   if (!cleared) return d;
   const entries: HDEntries = new Map();
-  for (const [k, e] of d.entries) if (e.at > cleared) entries.set(k, e);
+  for (const [k, e] of d.entries) if (e.at > cleared || now - e.at < HD_DEL_TTL) entries.set(k, e);
   return { ...d, entries, cleared: Math.max(d.cleared ?? 0, cleared) };
 }
 

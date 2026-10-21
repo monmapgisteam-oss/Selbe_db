@@ -56,6 +56,11 @@ async function pool(items, worker) {
 const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
+/* ⚠️ 2026-10-21: Enterprise шилжилт — `layerUrl` зураглагддаг ч `DATASETS[].url` ба `TD` нь AGOL-ын ТҮЛХҮҮР хаяг
+   (`services/agolKey.ts`); зураглалгүй дуудвал services.arcgis.com «Token Required». Мөн Enterprise-ийн талбарын нэр
+   ЖИЖИГ үсэг (`OBJECTID` → `objectid`) тул метаг `entResponseWith`-ээр кодын эх нэр рүү буцааж жишнэ — портал
+   (`query.ts`) яг ингэж уншдаг. Үгүй бол 160+ «талбар АЛГА» худал зөрчил гардаг байв. */
+const { remapUrl, entDict, entResponseWith, agolLayerId } = await import('./../services/entMap.ts');
 
 /* ── Кодод нэрлэсэн талбаруудыг цуглуулах ── */
 
@@ -80,14 +85,14 @@ console.log(`Шалгаж байна: ${LAYERS.length} давхарга + ${DATA
 
 const targets = [
   ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: layerUrl(l), want: declaredFields(l) })),
-  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: d.url, want: declaredDatasetFields(d) })),
+  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: remapUrl(d.url), want: declaredDatasetFields(d) })),
 ];
 
 let checked = 0;
 await pool(targets, async (t) => {
   let meta;
   try {
-    meta = await getJson(`${t.url}?f=json`);
+    meta = entResponseWith(await getJson(`${t.url}?f=json`), entDict(t.url));
   } catch (e) {
     FAIL.push(`\`${t.id}\` «${t.title}» — үйлчилгээнд ХҮРЭХГҮЙ: ${e.message}\n      ${t.url}`);
     return;
@@ -147,11 +152,17 @@ const IGNORED = new Set([
  * `data` үйлчилгээнд байдаг тул түүнийг л скан хийнэ — «үйлчилгээнд бий,
  * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
  */
+/* ⚠️ 2026-10-21: TD-ийн давхаргууд Enterprise-д олон AGOL үйлчилгээ нийлсэн НЭГ үйлчилгээнд (`Bagts_ajluud`), дугаар
+   нь ӨӨР — Enterprise-ийн жагсаалтыг уншаад `agolLayerId`-аар TD-ийн дугаар руу буцаана; TD-д хамаарахгүй (инженерийн
+   шугам г.м.) давхарга `null` → алгасна. */
 for (const base of [TD]) {
   try {
-    const root = await getJson(`${base}?f=json`);
+    const entSvc = remapUrl(`${base}/0`).replace(/\/\d+$/, '');
+    const root = await getJson(`${entSvc}?f=json`);
     const extra = (root.layers ?? [])
-      .filter((x) => !knownUrls.has(`${base}/${x.id}`)
+      .map((x) => ({ ...x, id: agolLayerId(base, x.id) }))
+      .filter((x) => x.id != null)
+      .filter((x) => !knownUrls.has(remapUrl(`${base}/${x.id}`))
         && !knownNames.has(norm(x.name))
         && !IGNORED.has(norm(x.name)))
       .map((x) => `${x.id}:${x.name}`);

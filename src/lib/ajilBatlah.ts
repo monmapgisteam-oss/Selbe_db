@@ -55,7 +55,10 @@ import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
-import { REASON_MAX } from './huvaariBatlah';
+/* ⚠️ 2026-10-21 (кодын аудит): `serverNow` — түгжээний агшин, TTL-ийн шүүлт ба `approverAt` СЕРВЕРИЙН цагаар
+   (`obyemBatlah`/`huvaariBatlah`-д 2026-10-12-нд шилжсэн, энд хоцорсон байв): хоёр батлагчийн компьютерийн цаг
+   10 минутаас илүү зөрвөл амьд түгжээг «дууссан» гэж үзэн хоёулаа ИЖИЛ илгээлтийг буулгах боломжтой байлаа. */
+import { REASON_MAX, serverNow, syncServerClock } from './huvaariBatlah';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
 
@@ -371,6 +374,9 @@ function toSubmission(a: Attrs): AjilSubmission | null {
 async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl();
   if (!url) return [];
+  /* ⚠️ 2026-10-21: түгжээг уншиж/шүүх бүх зам серверийн цагтай (`huvaariBatlah`-ийн `loadRows`-тэй ижил) — ихэвчлэн
+     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. */
+  await syncServerClock();
   const out: Attrs[] = [];
   for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {
@@ -714,7 +720,7 @@ const CLAIMABLE: readonly string[] = [AJIL_STATUS.pending, AJIL_STATUS.approved]
 export function ajilClaimOf(
   status: string | null | undefined,
   reason: string | null | undefined,
-  now = Date.now(),
+  now = serverNow(),
 ): { who: string; at: number; tab: string } | null {
   if (!status || !CLAIMABLE.includes(status)) return null;
   const m = CLAIM_RE.exec((reason ?? '').trim());
@@ -726,7 +732,7 @@ export function ajilClaimOf(
 }
 
 /** UI-д: илгээлтийг яг одоо түгжиж буй хүн (жижиг үсгээр), эсвэл `null` */
-export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, now = Date.now()): string | null {
+export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, now = serverNow()): string | null {
   return ajilClaimOf(x.status, x.reason, now)?.who ?? null;
 }
 
@@ -786,7 +792,7 @@ export async function casAjilClaim(
   me: string,
   want: AjilStatus,
 ): Promise<string | null> {
-  const now = io.now ?? Date.now;
+  const now = io.now ?? serverNow;
   const tab = io.tab ?? TAB;
   const u = me.trim().toLowerCase();
   if (!u) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
@@ -974,7 +980,7 @@ export async function submitAjil(args: {
      *    зохиогчийн хуудсанд үлдэнэ.
      */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
-    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`. */
+    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү» (доорх `catch`). */
     if (Number.isFinite(mine)) try {
       const rows = await query(
         `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${AJIL_STATUS.pending}'`,
@@ -983,16 +989,28 @@ export async function submitAjil(args: {
       const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
       if (first != null && first < mine) {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
-          await arcgisPost(`${url}/applyEdits`, {
+          const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: AJIL_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
+          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
+             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
+             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
+             эрсдэлтэй байлаа. */
+          if (!editOk(upd?.updateResults)) {
+            invalidate('AJIL_BATLAH');
+            return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
+          }
         }
         invalidate('AJIL_BATLAH');
-        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
-    } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
+    } catch {
+      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
+         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
+      return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -1155,7 +1173,7 @@ export async function decideAjil(args: {
     [F.oid]: args.oid,
     [F.status]: args.approve ? AJIL_STATUS.approved : AJIL_STATUS.returned,
     [F.approver]: args.approver.toLowerCase(),
-    [F.approverAt]: Date.now(),
+    [F.approverAt]: serverNow(),
     /* ⚠️ 2026-10-06 аудит: `decidePlan`-ийн ижил — UI-г тойрсон урт шалтгааныг тайрна */
     [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
@@ -1242,7 +1260,7 @@ export async function withdrawAjil(args: {
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: AJIL_STATUS.withdrawn,
-    [F.approverAt]: Date.now(),
+    [F.approverAt]: serverNow(),
     [F.reason]: null,
   };
   try {
@@ -1327,7 +1345,7 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
         [F.oid]: args.oid,
         [F.status]: AJIL_STATUS.returned,
         [F.approver]: me || null,
-        [F.approverAt]: Date.now(),
+        [F.approverAt]: serverNow(),
         [F.reason]: reason,
       } }]),
       rollbackOnFailure: 'true',

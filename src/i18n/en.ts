@@ -7107,7 +7107,10 @@ const en: Record<string, string> = {
   "Ортофото — нислэг 2 (2)": "Orthophoto — flight 2 (2)",
   "Бодит загвар — нислэг 2 (2026-09-17), 1": "Reality model — flight 2 (2026-09-17), 1",
   "Бодит загвар — нислэг 2 (2026-09-17), 2": "Reality model — flight 2 (2026-09-17), 2",
-  "Татагдаагүй эх: {0}": "Sources not loaded: {0}"
+  "Татагдаагүй эх: {0}": "Sources not loaded: {0}",
+  "{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} already submitted additional work for this package first — your duplicate submission could not be cancelled. Please refresh the page.",
+  "{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} submitted this package's volumes first — your duplicate submission could not be cancelled. Please refresh the page.",
+  "Буцаагдсангүй: {0}": "Not undone: {0}"
 };
 
 export default en;

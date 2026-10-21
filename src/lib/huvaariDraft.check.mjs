@@ -353,6 +353,19 @@ console.log('✅ remapDraft');
   /* Бусад машины хуучин локал хуулбар — `cleared`-ээр нүд бүрээр */
   const otherLocal = mk([[kH(2), cell('хамтрагч-илгээлтэд-ороогүй', 150, 'b')], [kH(4), cell('хуучин-офлайн', 90, 'b')]]);
   assert.deepEqual([...dropCleared(otherLocal, cl.cleared).entries.keys()], [], 'cleared-ээс хуучин бүх нүд хуулбараас хаагдана');
+  /* ⚠️ 2026-10-21: TTL-ээс ШИНЭ, илгээлтэд ОРООГҮЙ (tombstone-гүй) синк хийгдээгүй нүд ҮЛДЭНЭ; илгээсэн нүдийг алсын
+     tombstone `merge`-ээр хаана */
+  {
+    const T = 10 * 86400e3;
+    const mine = mk([[kH(6), cell('А-синкгүй', T - 50, 'a')], [kH(1), cell('илгээсэн', T - 60, 'a')]]);
+    const rem = applyClear(mk([[kH(1), cell('илгээсэн', T - 60, 'a')]]), new Map([[kH(1), T - 59]]), T);
+    const kept = dropCleared(mine, T, T + 1000);
+    assert.deepEqual([...kept.entries.keys()].sort(), [kH(1), kH(6)].sort(), 'TTL дотрох нүд cleared-ээр хаагдахгүй');
+    const res = merge(rem, kept, T + 1000);
+    assert.equal(res.entries.get(kH(6))?.val, 'А-синкгүй', 'илгээлтэд ороогүй синкгүй нүд ҮЛДЭНЭ');
+    assert.equal(res.entries.has(kH(1)), false, 'илгээсэн нүд tombstone-оор хаагдана');
+    assert.deepEqual([...dropCleared(mine, T, T + 8 * 86400e3).entries.keys()], [], 'TTL-ээс хуучин нүд cleared-ээр хаагдана');
+  }
 
   /* Тэмдэг: сериалчлал · нийлүүлэлт · хамрах */
   assert.ok(!hdClearMarkKey('plan:plan:b32').includes('|'));
