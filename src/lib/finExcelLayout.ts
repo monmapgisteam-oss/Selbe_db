@@ -537,8 +537,7 @@ export const finXlRowHidden = (row: Record<string, unknown>): boolean => (
  * ЗАЙГААР ба түвшний КОДООР («1.1», «4.2») аль хэдийн уншигддаг тул өнгө нь
  * гурав дахь давхардал байв.
  */
-/** Хэсгийн зурвасын дэвсгэр — Excel-ийн «Accent 1, Darker 25%» */
-export const FIN_XL_SECTION_BG = '#2f5597';
+
 
 /**
  * АНХДАГЧААР НУУГДСАН БАГАНА.

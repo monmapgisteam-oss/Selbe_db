@@ -198,23 +198,11 @@ export function inspTemplateOf(kind: InspKind, key: string | null | undefined): 
   return all.find((t) => t.key === key) ?? all[0];
 }
 
-/** Шалгах мөрийн баганын нэр — «Шалгах» (MIR) / «Зүйл» (FIC); тайлбар «Тайлбар» */
-export const inspItemColLabel = (kind: InspKind): string => (kind === 'MIR' ? tr('Шалгах') : tr('Зүйл'));
-export const inspCommentColLabel = (): string => tr('Тайлбар');
-
 /* ════════════════════════ MS — ажлын төрөл ════════════════════════ */
 
 /** MS ажлын бүлэг — 6 ангилал (бүртгэлийн хураангуй, 2026-09-28) */
 export const MS_GROUPS = ['bua', 'gadnaTsahilgaan', 'hd', 'has', 'gadnaShugam', 'uzel'] as const;
 export type MsGroup = (typeof MS_GROUPS)[number];
-export function msGroupLabel(g: MsGroup): string {
-  if (g === 'bua') return tr('БУА');
-  if (g === 'gadnaTsahilgaan') return tr('Гадна цахилгаан');
-  if (g === 'hd') return tr('Гадна болон дотор ХД');
-  if (g === 'has') return tr('Дотор ХАС, ЦБУ');
-  if (g === 'gadnaShugam') return tr('Гадна шугам сүлжээ');
-  return tr('Узель');
-}
 
 export type MsWorkType = { id: string; name: string; required: boolean; group: MsGroup };
 
