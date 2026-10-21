@@ -199,6 +199,10 @@ export function coverageOf(rows: readonly PlanRow[]): Coverage {
     for (const s of r.spans) {
       if (!s) continue;
       any = true;
+      /* ⚠️ 2026-10-21: урвуу муж (дуусах < эхлэх) нь `filled`-д ОРОХГҮЙ, `from`/`to`-г ТОГТООХГҮЙ —
+         `planAt`-д хуваарьгүй (null) тул «бөглөсөн» гэж тоолох нь хамралтыг хөөрөгдөж, урьд нь
+         `end` нь `to`-г сунгаж мужийг гажуудуулдаг байв. Тоог нь `reversed` хэлнэ. */
+      if (s.end < s.start) continue;
       filled += 1;
       if (from == null || s.start < from) from = s.start;
       if (to == null || s.end > to) to = s.end;

@@ -18,6 +18,12 @@ import { obKey, sameMonths, sameRes, sameSpan } from './util';
  */
 /** ⚠️ Мэдрэгч дэлгэцийн «товшилт»-ын босго (px, 2026-10-01) — үүнээс хол бол гүйлгээ */
 const TAP_PX = 8;
+/**
+ * ⚠️ 2026-10-21: ХУЛГАНА/ҮЗГИЙН чирэлтийн босго (px). Урьд нь хулганад босго огт байгаагүй — сарын
+ *    (2.6 px/хоног) ба долоо хоногийн (7 px/хоног) томруулалтад зурвас дээр ~3px чичрэхэд хуваарь
+ *    хоног хөдөлж, цонх «чирсэн» горимоор нээгддэг байв. Мэдрэгчид `TAP_PX`.
+ */
+const DRAG_PX = 4;
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
@@ -290,11 +296,17 @@ export function useDragPlan({
     if (!drag) return;
     /* ⚠️ Мэдрэгчийн гүйлгээ (дээрх `down`-ийн ⚠️) — илэрсэн бол чирэлт ҮГҮЙ */
     if (scroll.current) return;
-    if (down.current.touch && !moved.current) {
+    if (!moved.current) {
       const dx = Math.abs(e.clientX - down.current.x);
       const dy = Math.abs(e.clientY - down.current.y);
-      if (Math.max(dx, dy) > TAP_PX) far.current = true;
-      if (dy > TAP_PX && dy > dx) { scroll.current = true; return; }
+      if (down.current.touch) {
+        if (Math.max(dx, dy) > TAP_PX) far.current = true;
+        if (dy > TAP_PX && dy > dx) { scroll.current = true; return; }
+      }
+      /* ⚠️ 2026-10-21: ҮХМЭЛ БҮС — даралтын цэгээс босго (`DRAG_PX` / мэдрэгчид `TAP_PX`) давахаас өмнө
+         `moveTo` ҮГҮЙ (зөөх · сунгах · шинэ муж бүгд). Давахгүй даралт = товшилт («товшилт ≠ чирэлт»).
+         Босго давсны дараа хөдөлгөөн зангуунаас (`anchor`) бодогддог тул алдагдах зай байхгүй. */
+      if (Math.max(dx, dy) <= (down.current.touch ? TAP_PX : DRAG_PX)) return;
     }
     moveTo(e.clientX);
     /* ⚠️ 2026-10-09: ирмэгт ойртвол автомат гүйлгээ (`auto`-гийн ⚠️) */

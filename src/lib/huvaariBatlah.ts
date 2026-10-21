@@ -119,8 +119,9 @@ export type PlanSubmission = {
   reason: string | null;
   /** Гүйцэтгэгчийн тайлбар (сонголтоор) */
   note: string | null;
-  /** Өөрчлөгдөх мөрийн тоо — жагсаалтад харуулна (payload задлахгүйгээр) */
-  rowCount: number;
+  /** Өөрчлөгдөх мөрийн тоо — жагсаалтад харуулна (payload задлахгүйгээр).
+   *  ⚠️ 2026-10-21: `mor_too` хоосон бол `null` — урьд нь «0 мөр» гэж харагддаг байв; харуулахад `num` → «—» */
+  rowCount: number | null;
   /** Хадгалагдсан ноорог — задлахад `parsePayload` */
   payload: string;
   /**
@@ -609,7 +610,8 @@ function toSubmission(a: Attrs): PlanSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    rowCount: Number(a[F.rowCount]) || 0,
+    /* ⚠️ 2026-10-21: хоосон `mor_too` = мэдэгдэхгүй (`null`), 0 биш (`rowCount`-ийн ⚠️) */
+    rowCount: a[F.rowCount] == null || a[F.rowCount] === '' || !Number.isFinite(Number(a[F.rowCount])) ? null : Number(a[F.rowCount]),
     payload: String(a[F.payload] ?? ''),
     okRows: parseOkRows(okRowsAttr(a)),
   };

@@ -1756,16 +1756,19 @@ export function planCurve(
   /* ── Огноо бүрд — зөвхөн `plan` нийлбэр ── */
   return asOfs.map((asOf) => {
     const plan: (number | null)[][] = new Array(N);
+    /* ⚠️ 2026-10-21: «төлөвлөгөөт хувьтай» туг — `computeAll`-ийн `planHas`-ийн ⚠️ */
+    const has: boolean[][] = new Array(N);
     const avgOut: (number | null)[] = new Array(N).fill(null);
     for (let i = N - 1; i >= 0; i--) {
       const p: (number | null)[] = new Array(n).fill(null);
+      const h: boolean[] = new Array(n).fill(false);
       if (kids[i].length) {
         const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
         for (let b = 0; b < n; b++) {
           let sp = 0; let cnt = 0; let anyKid = false;
           for (const k of kids[i]) {
             const w = den > 0 ? (D[k] ?? 0) : 1;
-            if (plan[k][b] != null) anyKid = true;
+            if (has[k][b]) anyKid = true;
             sp += w * (plan[k][b] ?? 0);
             cnt += w;
           }
@@ -1774,14 +1777,17 @@ export function planCurve(
              бол л огноогоор интерполяци — `computeAll`-ийн ижил онцгой тохиолдол (2026-10-01). */
           if (!anyKid && own[i][b] && St[i][b] != null && En[i][b] != null) {
             p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
-          }
+            h[b] = p[b] != null;
+          } else h[b] = anyKid;
         }
       } else {
         for (let b = 0; b < n; b++) {
           p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
+          h[b] = p[b] != null;
         }
       }
       plan[i] = p;
+      has[i] = h;
       /* `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана */
       avgOut[i] = p.reduce<number>((s, x) => s + (x ?? 0), 0) / n;
     }
@@ -1933,9 +1939,19 @@ export function computeAll(
   }
   // ── 4. Гүйцэтгэл, төлөвлөгөө + E, доороос дээш ─────────────────────────────
   const out: Calc[] = new Array(N);
+  /* ⚠️ 2026-10-21: «төлөвлөгөөт хувьтай» туг — навчинд `plan != null`, бүлэгт «дэд мөрийн аль
+     нэг нь тугтай ЭСВЭЛ өөрийн огноогоор интерполяци хийсэн». Урьд нь эцгийн `anyKidPlan` нь
+     хүүхдийн `plan[b] != null`-оор шалгагддаг байсан ч `asOf` байхад бүлгийн `plan` ҮРГЭЛЖ
+     тоо (`sp / cnt`, огноогүй дэд ажил = 0) тул огноогүй ДУНД бүлгээр дамжихад дүрэм унаж байв:
+     G0 (өөр 01-01..12-31) > G1 (огноогүй) > навч (огноогүй), asOf 07-01 → G0 = 0, харин навч нь
+     шууд G0-ийн доор бол 0.4986. Бүлгийн харагдах `plan` (Excel дүрэм) ӨӨРЧЛӨГДӨӨГҮЙ — зөвхөн
+     эцгийн дүрмийн туг. `planCurve`-ийн `has` — ЯГ ИЖИЛ (`planCurveShape.check`). */
+  const planHas: boolean[][] = new Array(N);
   for (let i = N - 1; i >= 0; i--) {
     const r = rows[i];
     const plan: (number | null)[] = new Array(n).fill(null);
+    const has: boolean[] = new Array(n).fill(false);
+    planHas[i] = has;
     const act: (number | null)[] = new Array(n).fill(null);
     /* ⚠️ ДЭЭШ НЭГТГЭХ утга (`min(act,1)`) ба ТУГ — тайлбарыг `Calc.actAgg`-аас
        унш. Хоёрыг салгасан шалтгаан: нүд нь үнэнээ хэлж, нэгтгэл нь хиймлээр
@@ -1968,7 +1984,7 @@ export function computeAll(
         let anyKidPlan = false;
         for (const k of kids[i]) {
           if (out[k].actAgg[b] != null) anyAct = true;
-          if (out[k].plan[b] != null) anyKidPlan = true;
+          if (planHas[k][b]) anyKidPlan = true;
           const w = den > 0 ? (D[k] ?? 0) : 1;
           sp += w * (out[k].plan[b] ?? 0);
           /* ⚠️ 2026-09-04: урьд нь `out[k].act[b]` (түүхий) байсан. Багц 2·12F
@@ -2003,8 +2019,10 @@ export function computeAll(
           endSrc[b] === "own" &&
           start[b] != null &&
           end[b] != null
-        )
+        ) {
           plan[b] = planOf(i, b, start[b], end[b]);
+          has[b] = plan[b] != null;
+        } else has[b] = anyKidPlan;
       }
     } else {
       for (let b = 0; b < n; b++) {
@@ -2012,6 +2030,7 @@ export function computeAll(
         //   `IF($R$5<=AF,0,IF($R$5>=AG,1,($R$5-AF)/(AG-AF)))`
         // ⚠️ Сарын задаргаатай бол S-муруй давамгайлна (`planOf`).
         plan[b] = planOf(i, b, start[b], end[b]);
+        has[b] = plan[b] != null;
 
         /* ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20) ──────────────────────────────
          * Нүд бүр ХОЁР тусдаа тоог агуулна:
@@ -2271,8 +2290,13 @@ export async function applyAdds(
          `ok` буцдаг байв. Мөр бүр дугаартай ирэх ёстой. */
       /* ⚠️ 2026-10-09: дугааргүй/дутуу хариу = ҮР ДҮН ТОДОРХОЙГҮЙ (дугааргүй мөр серверт суусан байж болно) —
          `lost` (доорх `AddsError`-ийн ⚠️); «юу ч бичигдээгүй» гэж үзэхгүй. */
-      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number")) {
-        const ie = new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number").length)) as AddsError;
+      /* ⚠️ 2026-10-21 (аудит): `success !== true` (талбаргүй/`undefined`) ч амжилт БИШ — урьд нь зөвхөн
+         `success === false`-ийг алдаа гэж үзэж, батлагдаагүй мөрийг «нэмэгдлээ» гэж тоолдог байв
+         (`huvaariObyem.applyPlanEdits`-тай ижил). Тодорхой `false` нь дээр «татгалзал» хэвээр; дугаартай
+         атлаа батлагдаагүй мөр серверт суусан байж болох тул ЭНД `lost` (тодорхойгүй) — дугаар нь дээрх
+         давталтаар `written`-д орсон тул цэвэрлэгээнд хамрагдана. */
+      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number" || r.success !== true)) {
+        const ie = new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number" && r.success === true).length)) as AddsError;
         ie.lost = true;
         throw ie;
       }
@@ -2398,8 +2422,10 @@ export async function applyUpdates(
          болж, `written === 0 && !isLostWrite(e)` дуудагчид (`useObyem.clearObyemPartial` · `Huvaari.clearPlanPartial`)
          «тодорхой татгалзал» гэж хагас бичилтийн тэмдгийг арилгадаг байв. Одоо кодгүй/статусгүй `ArcGISError` —
          `isLostWrite` үүнийг «хариу алдагдсан» гэж ангилна, тэмдэг ҮЛДЭНЭ. */
-      if (ups.length !== chunk.length)
-        throw new ArcGISError(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length), `${pkg.url}/applyEdits`);
+      /* ⚠️ 2026-10-21 (аудит): `success !== true` (талбаргүй/`undefined`) ч амжилт БИШ — `applyAdds`-ийн ижил ⚠️.
+         Тодорхой `false` нь дээр «татгалзал»; батлагдаагүй нь дутуу хариутай адил ТОДОРХОЙГҮЙ (`isLostWrite`). */
+      if (ups.length !== chunk.length || ups.some((r) => r.success !== true))
+        throw new ArcGISError(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.filter((r) => r.success === true).length), `${pkg.url}/applyEdits`);
       written += chunk.length;
     } catch (e) {
       /* ⚠️ 2026-10-09 (R6): хариу алдагдсан chunk бичигдсэн байж магадгүй — `applyAdds`-ийн ижил ⚠️ */

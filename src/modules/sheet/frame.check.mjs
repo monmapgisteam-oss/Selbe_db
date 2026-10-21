@@ -15,7 +15,8 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { alignInsertions, firstDoneFrameAtLeast, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
+import { addsLost, alignInsertions, applyAdds, applyUpdates, firstDoneFrameAtLeast, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
+import { isLostWrite } from '@/lib/lostWrite';
 
 const NO = 'dugaar';
 
@@ -446,4 +447,35 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   /* R6: хариу алдагдсан бичилт кэшийг хүчингүй болгоно */
   assert.ok((SRC3.match(/if \(isLostWrite\(e\)\) invalidate\('BAGTS_SHEET'\);/g) ?? []).length === 2, 'applyAdds/applyUpdates lost → invalidate алга');
   console.log('✅ F5 хоосон мөр · F4 strict · F11 · R6');
+}
+
+/* ── ⚠️ 2026-10-21: `success !== true` — талбаргүй `success` ч амжилт БИШ (applyAdds · applyUpdates) ──
+   Урьд нь зөвхөн `success === false`-ийг алдаа гэж үзэж, `success`-гүй үр дүнг «бичигдлээ» гэж тоолдог байв.
+   Тодорхой `false` = татгалзал (lost биш) хэвээр; батлагдаагүй = ТОДОРХОЙГҮЙ (lost), дугаар нь `written`-д. */
+{
+  const realFetch = globalThis.fetch;
+  const pkg = { key: 'x', label: 'x', url: 'https://example.invalid/arcgis/rest/services/X/FeatureServer/0' };
+  const run = async (reply, fn) => {
+    globalThis.fetch = async () => ({
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(reply), json: async () => structuredClone(reply),
+    });
+    try { return { out: await fn() }; } catch (e) { return { err: e }; } finally { globalThis.fetch = realFetch; }
+  };
+  const w = [];
+  let r = await run({ addResults: [{ objectId: 5 }, { success: true, objectId: 6 }] }, () => applyAdds(pkg, [{ a: 1 }, { a: 2 }], w));
+  assert.ok(r.err, 'applyAdds: success-гүй үр дүн амжилт гэж тоологдов');
+  assert.equal(addsLost(r.err), true, 'applyAdds: батлагдаагүй = тодорхойгүй (lost)');
+  assert.deepEqual(w, [5, 6], 'applyAdds: дугаартай мөрүүд цэвэрлэгээнд written-д');
+  r = await run({ addResults: [{ success: false, error: { description: 'no' } }] }, () => applyAdds(pkg, [{ a: 1 }]));
+  assert.ok(r.err && addsLost(r.err) === false, 'applyAdds: тодорхой false = татгалзал хэвээр');
+  r = await run({ addResults: [{ success: true, objectId: 1 }] }, () => applyAdds(pkg, [{ a: 1 }]));
+  assert.deepEqual(r.out, { added: 1, firstOid: 1 }, 'applyAdds: амжилт хэвээр');
+  r = await run({ updateResults: [{ objectId: 5 }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  assert.ok(r.err && isLostWrite(r.err) === true, 'applyUpdates: success-гүй = тодорхойгүй (lost)');
+  r = await run({ updateResults: [{ success: false }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  assert.ok(r.err && isLostWrite(r.err) === false, 'applyUpdates: тодорхой false = татгалзал хэвээр');
+  r = await run({ updateResults: [{ success: true }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  assert.ok(!r.err, 'applyUpdates: амжилт хэвээр');
+  console.log('✅ applyAdds/applyUpdates — success !== true');
 }

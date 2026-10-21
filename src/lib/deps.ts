@@ -144,18 +144,45 @@ export function codeIndex(rows: PlanRow[]): Map<number, number> {
 }
 
 /**
- * `gi` бүлгийн доорх бүх НАВЧ мөрийн индексүүд (дам хүүхдүүдийг оруулаад).
- * ⚠️ ЭКСПОРТЛОГДОХГҮЙ (2026-09-06): зөвхөн `effSpan` дуудна. Гаднаас
- *    ашиглагдахгүй нэрийг экспортлох нь «хаа нэгтээ хэрэглэгддэг» гэсэн
+ * `gi` бүлгийн доорх ХҮҮХДҮҮДИЙН MIN эхлэх / MAX дуусах (блок `b`). Хүүхэд бүр
+ * `effSpan`-аараа оролцоно: навч — өөрийнх нь, дэд бүлэг — `effSpan(дэд бүлэг)`
+ * (огноотой навчтай бол тэдний MIN/MAX, үгүй бол өөрийн огноо). Хүүхэд огт
+ * хуваарьгүй бол `null`.
+ * ⚠️ ЭКСПОРТЛОГДОХГҮЙ (2026-09-06): зөвхөн `effSpan` · `rollUpGroups` дуудна.
+ *    Гаднаас ашиглагдахгүй нэрийг экспортлох нь «хаа нэгтээ хэрэглэгддэг» гэсэн
  *    худал дохио өгч, устгах эсэхийг шийдэхэд саад болно.
+ * ⚠️ 2026-10-21: урьд нь `leafChildren` — зөвхөн НАВЧДЫН MIN/MAX. Огноотой навчгүй
+ *    дэд бүлгийн ӨӨРИЙН огноо орхигдож, G0 > {G1 03-01..03-31 (огноогүй навчтай),
+ *    L 02-01..02-10} үед `effSpan(G0)` = 02-01..02-10 → G0-оос FS хамаарагч 02-11-нд
+ *    эхэлж (G0 нь 03-31 хүртэл), `rollUpGroups` G0-ийг навчны мужаар дарж бичдэг байв.
+ *    Хүүхдийг `effSpan`-аар авснаар дэд бүлэг өөрийнхөө дэлгэцийн мужаар оролцоно;
+ *    огноотой навчтай дэд бүлэгт MIN/MAX нь ассоциатив тул үр дүн хуучинтай ижил.
  */
-function leafChildren(rows: PlanRow[], gi: number): number[] {
-  const out: number[] = [];
+function childAgg(
+  rows: PlanRow[],
+  gi: number,
+  b: number,
+  spansOf: (i: number) => (Span | null)[],
+): Span | null {
+  let a: number | null = null;
+  let z: number | null = null;
   const d0 = rows[gi].depth;
-  for (let i = gi + 1; i < rows.length && rows[i].depth > d0; i++) {
-    if (!rows[i].group) out.push(i);
+  for (let i = gi + 1; i < rows.length && rows[i].depth > d0;) {
+    const s = effSpan(rows, i, b, spansOf);
+    if (s) {
+      if (a == null || s.start < a) a = s.start;
+      if (z == null || s.end > z) z = s.end;
+    }
+    /* Дэд бүлгийн дам хүүхдүүд дээрх `effSpan`-д аль хэдийн орсон — алгасна.
+       Навчны доорх (гүн нь их) мөрүүдийг алгасахгүй: урьдын `leafChildren` шиг
+       тэд ч хүүхдээр тоологдоно. */
+    if (rows[i].group) {
+      const di = rows[i].depth;
+      i++;
+      while (i < rows.length && rows[i].depth > di) i++;
+    } else i++;
   }
-  return out;
+  return a == null || z == null ? null : { start: a, end: z };
 }
 
 /**
@@ -178,15 +205,7 @@ export function effSpan(
 ): Span | null {
   const own = spansOf(i)[b] ?? null;
   if (!rows[i].group) return own;
-  let a: number | null = null;
-  let z: number | null = null;
-  for (const c of leafChildren(rows, i)) {
-    const s = spansOf(c)[b];
-    if (!s) continue;
-    if (a == null || s.start < a) a = s.start;
-    if (z == null || s.end > z) z = s.end;
-  }
-  return a == null || z == null ? own : { start: a, end: z };
+  return childAgg(rows, i, b, spansOf) ?? own;
 }
 
 /**
@@ -225,23 +244,18 @@ export function rollUpGroups(
     }
   }
   /* ⚠️ Гүн бүлгээс гүехэн рүү: гадна бүлэг нь дотоод бүлгийн ШИНЭ утгыг
-     ашиглах ёстой. `leafChildren` нь дам хүүхдийг бүгдийг авдаг тул
-     үр дүн нь дарааллаас хамаарахгүй ч, дараалал нь тодорхой байх нь
-     дараа алдаа хайхад хялбар. */
+     ашиглах ёстой. ⚠️ 2026-10-21: `childAgg` огноотой навчгүй дэд бүлгийн
+     ӨӨРИЙН (энэ давталтаар шинэчлэгдсэн байж болох) мужийг уншдаг тул дараалал
+     одоо ЗААВАЛ — дэд бүлэг (индекс нь их) эцгээсээ ӨМНӨ бодогдоно. */
   for (const gi of [...groups].sort((a, b) => b - a)) {
-    const leaves = leafChildren(rows, gi);
     const cur = spansOf(gi);
     const next = cur.slice();
     let moved = false;
     for (let b = 0; b < n; b++) {
-      let a: number | null = null;
-      let z: number | null = null;
-      for (const c of leaves) {
-        const s = spansOf(c)[b];
-        if (!s) continue;
-        if (a == null || s.start < a) a = s.start;
-        if (z == null || s.end > z) z = s.end;
-      }
+      /* ⚠️ 2026-10-21: навчдаар биш хүүхдийн `effSpan`-аар — `childAgg`-ийн ⚠️ */
+      const ag = childAgg(rows, gi, b, spansOf);
+      const a = ag?.start ?? null;
+      const z = ag?.end ?? null;
       if (a == null || z == null) {
         /* ⚠️ 2026-10-21: БҮХ НАВЧ ХУВААРЬГҮЙ БОЛСОН — бүлгийн муж нь ӨМНӨ НЬ ХҮҮХДЭЭС БОДОГДСОН (өөрчлөлтийн
            өмнөх навчдын MIN/MAX-тай яг ижил) бол АРИЛГАНА: урьд нь хэвээр үлдэж «сүнс» огноо болон
@@ -250,14 +264,9 @@ export function rollUpGroups(
            ⚠️ Мөрөнд own/agg ялгах туг байхгүй тул энэ тулгалт л ялгах цорын ганц арга. */
         const ov = cur[b] ?? null;
         if (!ov) continue;
-        let pa: number | null = null;
-        let pz: number | null = null;
-        for (const c of leaves) {
-          const s = rows[c].spans[b];
-          if (!s) continue;
-          if (pa == null || s.start < pa) pa = s.start;
-          if (pz == null || s.end > pz) pz = s.end;
-        }
+        const pg = childAgg(rows, gi, b, (k) => rows[k].spans);
+        const pa = pg?.start ?? null;
+        const pz = pg?.end ?? null;
         if (pa != null && pz != null && ov.start === pa && ov.end === pz) { next[b] = null; moved = true; }
         continue;
       }

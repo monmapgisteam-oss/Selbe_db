@@ -735,7 +735,13 @@
    зурвас/бариул чирэх, хоосон мөрд муж татах. `touch-action` нь өвөг рүүгээ
    огтлолцдог тул доторх `.plBar`/`.plGrip` ч `none` болно. */
 .plLanes { position: relative; user-select: none; touch-action: pan-x pan-y; }
-.plLanesEdit { touch-action: none; }
+/* ⚠️ 2026-10-21: засах эрхтэй ч эгнээ ГҮЙНЭ (`pan-x pan-y`) — урьд нь `.plLanesEdit` бүхэлдээ `none` тул
+   засагч хуанлийг хуруугаар гүйлгэж чаддаггүй, `useDragPlan`-ийн «Alt-гүй хоосон хэсэг → хөтөч гүйлгэнэ»
+   (2026-10-09) хүлээлттэй зөрдөг байв. `none` ЗӨВХӨН чирэгдэх зурвас (ба доторх `.plGrip`) дээр; бүлгийн
+   зурвас (`.plBarG`) чирэгдэхгүй тул гүйнэ. Хуваарьгүй мөрд товшилт 1 хоногийн муж үүсгэнэ (хуучнаараа);
+   мэдрэгчээр шударвал хөтөч гүйлгэж `pointercancel` → `onCancel` хагас чирэлтийг буцаана. */
+.plLanesEdit { touch-action: pan-x pan-y; }
+.plLanesEdit .plBar:not(.plBarG) { touch-action: none; }
 .plLane {
   position: absolute;
   left: 0;
