@@ -78,7 +78,7 @@ const C = HABEA.crane.fields;
 // ⚠️ 2026-08-20: Каталогийн БҮРЭН жагсаалт (`services.ts`).
 const CATALOG_IDS = CATALOG_LAYER_IDS;
 
-type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number; failed: string[]; laborFailed: boolean };
+type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number; failed: string[]; laborFailed: boolean; incFailed: boolean; craneFailed: boolean };
 
 /* 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): харагдац сэлгэх бүрд 3 бүтэн
    хүснэгт дахин татагддаг байв */
@@ -98,7 +98,7 @@ const loadHabea = cached(async (): Promise<HabeaData> => {
   const val = (i: number): Row[] => (res[i].status === 'fulfilled' ? (res[i] as PromiseFulfilledResult<Row[]>).value : []);
   // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
   // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  return { labor: val(0), incident: val(1), crane: val(2), fetchedAt: Date.now(), failed: bad.map((i) => names[i]), laborFailed: bad.includes(0) };
+  return { labor: val(0), incident: val(1), crane: val(2), fetchedAt: Date.now(), failed: bad.map((i) => names[i]), laborFailed: bad.includes(0), incFailed: bad.includes(1), craneFailed: bad.includes(2) };
 },
   /* ⚠️ `['HABEA']` таг — `reportData.loadHabeaSummary` мөн ЭНЭ хүснэгтээс
      уншиж `['HABEA']` зарладаг. Хоёр ах дүү ачаалагч ӨӨР тагтай байвал нэг
@@ -1332,6 +1332,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const all = q.state === 'ready' ? q.data : null;
   /* ⚠️ 2026-10-21: хүн хүч татагдаагүй бол KPI «—» (0 биш — null ≠ 0) */
   const laborFailed = !!all?.laborFailed;
+  /* ⚠️ 2026-10-21 (кодын хяналт): осол/кран татагдаагүй бол «0» биш «—» — эс бөгөөс «Осол, зөрчил 0», «осолгүй цаг»
+     (ХЧТА осол олдохгүй тул бүх хүн-цагийг нэмж) худал хэтэрдэг байв (null ≠ 0). */
+  const incFailed = !!all?.incFailed;
+  const craneFailed = !!all?.craneFailed;
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХООСОН НООРОГ (төрөл · багц · огноо гурвуулаа
      хоосон — Survey123-д эхлүүлээд бөглөөгүй) ОСОЛД ТООЛОГДОХГҮЙ (`ceo/safety.isBlankIncident`
      — CEO самбартай НЭГ дүрэм). Урьд нь «—» төрөлтэй, огноогүй «осол» болж KPI-д ордог байв. */
@@ -2131,7 +2135,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           st.stale,
         ))(laborStaleness(labor.asOf, now))}
         {kpiTile(KPI_LOOK.hours,
-          pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),
+          incFailed || laborFailed || pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),
           tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
           undefined,
           /* ⚠️ 2026-10-09: ирээдүйн огноотой ХЧТА (`futureLti`) тооцоонд ороогүйг ил хэлнэ */
@@ -2157,13 +2161,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * жигд болвол «50/50» гэсэн утгагүй заалт өөрөө арилна.
           */}
         {kpiTile(KPI_LOOK.crane,
-          craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
+          craneFailed ? '—' : craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
           tr('Кран'),
           craneUp === fCrane.length ? undefined : tr('идэвхтэй'),
           undefined,
           craneUp === fCrane.length || !fCrane.length ? null : craneUp / fCrane.length,
         )}
-        {kpiTile(KPI_LOOK.inc, num(fInc.length), tr('Осол, зөрчил'))}
+        {kpiTile(KPI_LOOK.inc, incFailed ? '—' : num(fInc.length), tr('Осол, зөрчил'))}
         {/**
           * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ДУНДАЖ ОНОО (2026-09-17, хэрэглэгчийн хүсэлт).
           * Дүрэм, тооцоо: `habeaUzleg.prevWeek` ба `loadWeekScore`.

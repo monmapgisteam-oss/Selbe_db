@@ -186,4 +186,15 @@ assert.equal(agolLayerIdWith(`${AGOL}/QAQC2/FeatureServer`, 3, MAP2, ENT, bases)
   assert.ok(out.includes('created_date') && out.includes('creationdate') && out.includes('created_user') && out.includes('creator'), out.join(','));
 }
 
-console.log('✅ entMap: 64 шалгуур');
+// trackOf — `_1` хувилбартай ren (хяналтын хүснэгт): хуучин багана нь `creationdate_1`, `creationdate` нь өөр талбар
+{
+  const { trackOf } = await import('./entMap.ts');
+  const t = trackOf({ creationdate_1: 'created_date', creator_1: 'created_user', editdate_1: 'last_edited_date', editor_1: 'last_edited_user' });
+  assert.equal(t.length, 2);
+  assert.equal(t[0].dateStat, 'creationdate_1'); assert.equal(t[1].userStat, 'editor_1');
+  assert.equal(trackOf({ fid: 'objectid' }).length, 0, 'мөшгөлтгүй ren');
+  // статистикийн алиас дуудагчийн үсгээр буцна
+  assert.ok(requestedFields({ outStatistics: JSON.stringify([{ statisticType: 'sum', onStatisticField: 'Area', outStatisticFieldName: 'area' }]) }).includes('area'));
+}
+
+console.log('✅ entMap: 69 шалгуур');

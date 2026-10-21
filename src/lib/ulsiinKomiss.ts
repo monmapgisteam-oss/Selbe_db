@@ -214,10 +214,16 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     if (isLostResponse(e) && sc.f.fillDate) {
       try {
         const extra: number[] = [];
+        /* ⚠️ 2026-10-21 (кодын хяналт): ӨДРӨӨР биш АГУУЛГААР таних — тэр өдөр өөр бичигч (батлалт) ижил `fillMs`-тэй
+           бүтэн жааз бичсэн бол урьд нь «манайх» гэж бүхэлд нь устгах эрсдэлтэй байв. Баталгаагүй мөрүүд нь МАНАЙ
+           жаазын `written`-ийн дараах хэсэгтэй (№ + ажлын нэр) ДАРААЛЛААРАА таарах ёстой; эс бөгөөс устгахгүй. */
+        const writtenSet = new Set(written);
+        const tail: { oid: number; no: string; work: string }[] = [];
+        const s2 = (v: unknown) => String(v ?? '').trim();
         for (let off = 0; off <= frame.length; off += 2000) {
           const j = await agsFetch(`${pkg.url}/query`, {
             where: `${sc.f.oid} > ${maxOid0}`,
-            outFields: `${sc.f.oid},${sc.f.fillDate}`,
+            outFields: [sc.f.oid, sc.f.fillDate, sc.f.no, sc.f.work].filter(Boolean).join(','),
             orderByFields: `${sc.f.oid} ASC`,
             resultOffset: String(off),
             resultRecordCount: '2000',
@@ -227,12 +233,22 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
           for (const f of feats) {
             const oid = Number(f.attributes?.[sc.f.oid]);
             if (!Number.isInteger(oid)) continue;
-            if (Number(f.attributes?.[sc.f.fillDate]) === fillMs) extra.push(oid);
-            else foreign = true;
+            if (Number(f.attributes?.[sc.f.fillDate]) === fillMs) {
+              extra.push(oid);
+              if (!writtenSet.has(oid)) tail.push({ oid, no: s2(sc.f.no ? f.attributes?.[sc.f.no] : ''), work: s2(sc.f.work ? f.attributes?.[sc.f.work] : '') });
+            } else foreign = true;
           }
           if (feats.length < 2000) break;
         }
         if (extra.length > frame.length) foreign = true;
+        /* баталгаагүй мөрүүд манай жаазын `written.length`-ээс хойших хэсэгтэй дарааллаараа таарах ёстой */
+        tail.sort((a, b) => a.oid - b.oid);
+        const base = written.length;
+        if (base + tail.length > frame.length) foreign = true;
+        else for (let k = 0; k < tail.length && !foreign; k++) {
+          const exp = frame[base + k] ?? {};
+          if (tail[k].no !== s2(sc.f.no ? exp[sc.f.no] : '') || tail[k].work !== s2(sc.f.work ? exp[sc.f.work] : '')) foreign = true;
+        }
         if (!foreign) for (const x of extra) ids.add(x);
       } catch {
         foreign = true;

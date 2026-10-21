@@ -191,6 +191,21 @@ const TRACK: readonly TrackPair[] = [
   { date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' },
 ];
 
+/**
+ * Хуучин баганын нэрийг `ren`-ээс гаргана (2026-10-21, кодын хяналт): зарим давхаргад AGOL-ын мөшгөлт `creationdate_1` …
+ * (жиш. хяналтын хүснэгт) бөгөөд `creationdate` нь ӨӨР энгийн талбар — хатуу нэрээр авбал буруу утга орно.
+ */
+export function trackOf(ren: Readonly<Record<string, string>>): TrackPair[] {
+  const inv = (live: string): string | undefined => Object.keys(ren).find((k) => ren[k] === live);
+  const out: TrackPair[] = [];
+  for (const t of TRACK) {
+    const dateStat = inv(t.date);
+    const userStat = inv(t.user);
+    if (dateStat && userStat) out.push({ ...t, dateStat, userStat });
+  }
+  return out;
+}
+
 /** Нэг мөрийн атрибутад (Enterprise нэрээр) импортын амьд утгыг хуучин баганын утгаар солино — цэвэр */
 export function entTrackFix(attrs: Keyed, track: readonly TrackPair[] | undefined): void {
   if (!track) return;
@@ -235,7 +250,7 @@ export function entDict(url: string): EntDict | null {
     d = entDictFor(ENT_FIELDS[k]);
     /* ⚠️ 2026-10-21: хуучин мөшгөлтийн багана зөвхөн gdb-ээс хуулсан давхаргад (`ENT_IMPORT_FROM`-ийн ⚠️) —
        Survey123 (`service_*` · `survey123_*`) давхаргад байхгүй тул тэднийг асуувал 500. */
-    if (d && ENT_FIELDS[k]?.ren && !/^(service_|survey123_)/i.test(k)) d.track = TRACK;
+    if (d && ENT_FIELDS[k]?.ren && !/^(service_|survey123_)/i.test(k)) d.track = trackOf(ENT_FIELDS[k].ren!);
     dictCache.set(k, d);
   }
   return d;
@@ -309,7 +324,8 @@ export function entRequestWith(params: Record<string, string>, d: EntDict | null
   const out: Record<string, string> = { ...params };
   if (out.outFields) out.outFields = mapList(out.outFields, d);
   /* ⚠️ 2026-10-21: мөшгөлтийн талбар асуусан бол хос хуучин баганыг ч асууна (`entTrackFix`) */
-  if (out.outFields && d?.track && out.outFields.trim() !== '*') {
+  /* distinct/статистикийн асуулгад нэмэлт багана үр дүнг өөрчилнө — тэр үед нэмэхгүй */
+  if (out.outFields && d?.track && out.outFields.trim() !== '*' && out.returnDistinctValues !== 'true' && !out.outStatistics) {
     const have = new Set(out.outFields.split(',').map((s) => s.trim()));
     for (const t of d.track) {
       if (!have.has(t.date) && !have.has(t.user)) continue;
@@ -335,8 +351,17 @@ export function entRequestWith(params: Record<string, string>, d: EntDict | null
 }
 
 /** Дуудагчийн `outFields`-ийн ҮСЭГ — хариултын түлхүүрийг тэр нэр рүү буцаана (`*`-ыг тооцохгүй) */
-export const requestedFields = (params: Record<string, string>): string[] =>
-  (params.outFields ?? '').split(',').map((s) => s.trim()).filter((s) => s && s !== '*');
+export const requestedFields = (params: Record<string, string>): string[] => {
+  const out = (params.outFields ?? '').split(',').map((s) => s.trim()).filter((s) => s && s !== '*');
+  /* ⚠️ 2026-10-21 (кодын хяналт): статистикийн алиас ба бүлэглэлийн талбарын ДУУДАГЧИЙН үсэг — урьд нь толиор
+     нэрлэгдэж (`area` алиас → давхаргын `Area` талбар) дуудагчийн `r.area` undefined болох эрсдэлтэй байв. */
+  for (const g of (params.groupByFieldsForStatistics ?? '').split(',')) if (g.trim()) out.push(g.trim());
+  try {
+    const st = JSON.parse(params.outStatistics ?? '[]') as { outStatisticFieldName?: unknown }[];
+    if (Array.isArray(st)) for (const x of st) if (typeof x?.outStatisticFieldName === 'string') out.push(x.outStatisticFieldName);
+  } catch { /* JSON биш */ }
+  return out;
+};
 
 type Keyed = Record<string, unknown>;
 const renameKeys = (o: Keyed, f: (k: string) => string): Keyed =>

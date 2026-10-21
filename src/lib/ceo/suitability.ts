@@ -49,11 +49,11 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { scoreLevel, type Level } from '@/lib/kpiLevels';
-import { cached } from '@/lib/live';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { INDICATORS, DENSITY_BY_TYPE, ASSUME_MET, PARKING, ACTIVATABLE_ZONE_TYPES, type Indicator } from '@/lib/analysis/config';
 import { normFor, passesNorm, normGap, normText, urbanScore } from '@/lib/analysis/score';
 import type { Zone } from '@/lib/analysis/data';
-import { cell, table, worstOf, type KpiResult, type KpiIssue, type DetailTable } from './kpi';
+import { cell, table, worstOf, kpiComplete, type KpiResult, type KpiIssue, type DetailTable } from './kpi';
 
 /* ══════════════ Төрлүүд ══════════════ */
 
@@ -216,7 +216,7 @@ export function computeSuitability(
 
 const withUnit = (v: number, d: number, unit: string) => `${num(v, d)}${unit ? ` ${unit}` : ''}`;
 
-export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
+export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] = []): KpiResult {
   const loaded = c.byIndicator.some((r) => r.scored > 0);
   const decimalsOf = new Map(c.byIndicator.map((r) => [r.id, r.decimals]));
   const unitOf = new Map(c.byIndicator.map((r) => [r.id, r.unit]));
@@ -302,7 +302,9 @@ export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
     issues,
     /* Төлөвлөлтийн давхаргад огнооны талбар байхгүй */
     asOf: null,
-    failedSources: [],
+    /* ⚠️ 2026-10-21 (кодын хяналт): `loadAnalysis`-ийн унасан эх (автобус · LRT · инженерийн давхарга) — урьд нь
+       `[]` гэж хатуу өгч дутуу өгөгдлөөр бодсон оноог анхааруулгагүй, сешн дуустал кэшилдэг байв. */
+    failedSources: [...failed],
   };
 }
 
@@ -320,5 +322,6 @@ export const loadSuitabilityKpi = cached(async (): Promise<KpiResult> => {
      түүнгүй бол тэдгээр бүсийн `raw` хоосорч, `computeSuitability` оруулсан ч
      утгагүй болно. */
   computeRaw(data.zones, defaultGreenCats(), PARKING, new Set(ACTIVATABLE_ZONE_TYPES));
-  return buildSuitabilityKpi(computeSuitability(data.zones));
-}, undefined, []);
+  return buildSuitabilityKpi(computeSuitability(data.zones), data.failed);
+  /* ⚠️ 2026-10-21: дутуу (failedSources) үр дүнг кэшлэхгүй — дараагийн нээлт дахин оролдоно (`kpiComplete`) */
+}, SESSION_TTL_MS, [], kpiComplete);
