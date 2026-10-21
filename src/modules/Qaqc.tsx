@@ -68,7 +68,6 @@ import {
 } from '@/lib/qaqcDraft';
 /* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН — батлагдсан баримтын санал (datalist) хоосон, дугаарыг чөлөөт текстээр бичнэ. */
 import { latestApproved, type DocKind } from '@/lib/chanarMs';
-import { register } from '@/lib/dataBus';
 import st from '@/modules/sheet/sheet.module.css';
 
 /** ⚠️ `FillNew`-тэй ИЖИЛ хэрэгсэл — нэг хүснэгтийн загвар хуваалцана. */
@@ -96,15 +95,6 @@ const docKindAt = (di: number): DocKind | null => DOC_KIND_OF[QAQC_COLS[di]?.nam
 /** Батлагдсан баримт — төрөл · багц · дугаар · нэр */
 type ApprovedDoc = { kind: DocKind; bagts: string; no: string; title: string };
 const normNo = (v: string) => v.trim().toUpperCase();
-/**
- * ⚠️ 2026-10-09: БАТЛАГДСАН ЖАГСААЛТ ХУУЧИРНА — `chanarStore`-ийн бичих зам бүр
- *    `invalidate('CHANAR_BARIMT')` дууддаг. Урьд нь жагсаалт харагдац нээгдэхэд НЭГ
- *    удаа татагдаж, хооронд нь батлагдсан баримт «✓»/нэрийн автомат бөглөлтөд
- *    сешн дуустал орж ирдэггүй байв. Модулийн түвшинд НЭГ бүртгэл (`register`-т
- *    тайлах зам байхгүй — mount бүрд бүртгэвэл хуримтлагдана); харагдац дохиог сонсоно.
- */
-const approvedStaleSubs = new Set<() => void>();
-register(() => { for (const fn of approvedStaleSubs) fn(); }, ['CHANAR_BARIMT']);
 /* ══════════════════════════ НООРОГ ══════════════════════════
  * ⚠️ Бөглөх хуудасны ноорогтой ИЖИЛ зарчим: localStorage нь ҮНДСЭН зам,
  *    ArcGIS дээрх хуулбар нь зөвхөн «өөр төхөөрөмж рүү шилжих» асуудлыг
@@ -694,17 +684,10 @@ export function Qaqc() {
 
   /* ══════════════ БАТЛАГДСАН ЧАНАРЫН БАРИМТ (толгойн ⚠️) ══════════════ */
   /** Бүх багцын батлагдсан MA · MIR · FIC (сүүлийн хувилбар); `null` = татаагүй */
-  /* ⚠️ 2026-10-09: жагсаалт нь ТҮЛХҮҮРТЭЙ (`apKey` = багцын бүлэг + хүчингүйдлийн үе) —
-     багц солигдох эсвэл `CHANAR_BARIMT` хүчингүй болоход ДАХИН татна (модулийн
-     `approvedStaleSubs`-ийн ⚠️). Дахин татах хооронд ХУУЧИН жагсаалт харагдсаар —
-     «✓» тэмдэг анивчихгүй. */
-  const [apGen, setApGen] = useState(0);
-  useEffect(() => {
-    const fn = () => setApGen((n) => n + 1);
-    approvedStaleSubs.add(fn);
-    return () => { approvedStaleSubs.delete(fn); };
-  }, []);
-  const apKey = `${pkg.group}|${apGen}`;
+  /* ⚠️ 2026-10-09: жагсаалт нь ТҮЛХҮҮРТЭЙ (`apKey` = багцын бүлэг) — багц солигдоход ДАХИН татна. Дахин татах
+     хооронд ХУУЧИН жагсаалт харагдсаар — «✓» тэмдэг анивчихгүй.
+     ⚠️ 2026-10-21: «Чанарын баримт» хасагдсан тул `CHANAR_BARIMT` хүчингүйдлийн сонсогч (`approvedStaleSubs`) ч хасагдав. */
+  const apKey = pkg.group;
   const apKeyRef = useRef(apKey);
   useSyncRef(apKeyRef, apKey);
   const [ap, setAp] = useState<{ key: string; list: ApprovedDoc[] } | null>(null);

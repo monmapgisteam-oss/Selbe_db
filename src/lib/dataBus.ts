@@ -50,7 +50,6 @@ export type DataKey =
      хуваарь · обьём · нэмэлт ажил · QAQC-ийн нооргийн бичилт ямар ч кэшийг хүчингүй
      болгодоггүй байв (цэсний тэмдэг 3 мин хүртэл хуучин). Нэр нь хүснэгтийн item-ийн
      гарчигтай (`Selbe_*`) тохирно — `services.ts`-д экспорт байхгүй (өөрөө үүсгэдэг). */
-  | 'CHANAR_BARIMT'   // Selbe_Chanar_Barimt   — chanarStore.ts
   | 'HUVAARI_BATLAH'  // Selbe_Huvaari_Batlah  — huvaariBatlah.ts
   | 'OBYEM_BATLAH'    // Selbe_Obyem_Batlah    — obyemBatlah.ts
   | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts

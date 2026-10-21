@@ -283,9 +283,8 @@ console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · 
   /* (6) нэрийн автомат бөглөлт зөвхөн өөрчлөгдсөн дугаарт */
   const cm = between('const commit = (oid: number, di: number, raw: string) => {', 'setPend((p) => {');
   assert.ok(cm.includes('const hit = v !== cur ? approvedHit(di, v) : null;'), '⚠️ өөрчлөгдөөгүй дугаарт нэр автоматаар бөглөгдөх ёсгүй');
-  /* (7) батлагдсан жагсаалт багц солих · CHANAR_BARIMT хүчингүйдэлд дахин татагдана */
-  assert.ok(SRC.includes("register(() => { for (const fn of approvedStaleSubs) fn(); }, ['CHANAR_BARIMT']);"), '⚠️ CHANAR_BARIMT хүчингүйдэл сонсогдох ёстой');
-  assert.ok(SRC.includes('const apKey = `${pkg.group}|${apGen}`;'), '⚠️ батлагдсан жагсаалт багцаар дахин татагдах ёстой');
+  /* (7) батлагдсан жагсаалт багц солиход дахин татагдана (2026-10-21: CHANAR_BARIMT сонсогч «Чанарын баримт»-тай хамт хасагдсан) */
+  assert.ok(SRC.includes('const apKey = pkg.group;'), '⚠️ батлагдсан жагсаалт багцаар дахин татагдах ёстой');
 }
 console.log('✅ зэрэг засвар · булшны дахин дараалал · дахин оролдлого · урт · батлагдсан жагсаалт');
 
