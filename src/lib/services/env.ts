@@ -57,7 +57,10 @@ export const CHANAR_MIR_SVC = `${ENT_HOSTED}/service_c57fb2dce015439786246f68534
 
 export const HABEA_SVC = {
   labor: svcRoot("NEXT_PUBLIC_HABEA_LABOR_SVC", process.env.NEXT_PUBLIC_HABEA_LABOR_SVC),
-  incident: svcRoot("NEXT_PUBLIC_HABEA_INCIDENT_SVC", process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC),
+  /* ⚠️ 2026-10-21 (аудит): `survey123_654f…` нь ганц туршилтын мөртэй хуулбар — шилжүүлсэн 18 осол
+     `service_d3a71860374b45bdbfbe5a1650364f0d`-д. GitHub Variable хуучин утгаараа үлдсэн ч зөв эх рүү заана. */
+  incident: svcRoot("NEXT_PUBLIC_HABEA_INCIDENT_SVC", process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC)
+    .replace("survey123_654f661e1f0e4b37a4fb3a7e026b09c3", "service_d3a71860374b45bdbfbe5a1650364f0d"),
   uzlegV11: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_V11_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC),
   uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
   /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
