@@ -7107,7 +7107,8 @@ const en: Record<string, string> = {
   "Ортофото — нислэг 2 (2)": "Orthophoto — flight 2 (2)",
   "Бодит загвар — нислэг 2 (2026-09-17), 1": "Reality model — flight 2 (2026-09-17), 1",
   "Бодит загвар — нислэг 2 (2026-09-17), 2": "Reality model — flight 2 (2026-09-17), 2",
-  "Татагдаагүй эх: {0}": "Sources not loaded: {0}"
+  "Татагдаагүй эх: {0}": "Sources not loaded: {0}",
+  "Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.": "The monthly volume table was not loaded, so saving is blocked to prevent duplicates. Reload the page and try again."
 };
 
 export default en;

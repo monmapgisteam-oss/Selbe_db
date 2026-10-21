@@ -56,6 +56,12 @@ async function pool(items, worker) {
 const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
+/* ⚠️ 2026-10-21: ENTERPRISE. Энэ шалгуур түүхий `fetch` хэрэглэдэг тул `query.run`-ийн зураглал/хөрвүүлэлт
+   ажилладаггүй байв — `datasets.ts`-ийн AGOL түлхүүр хаяг шууд AGOL руу явж «Token Required», давхаргын
+   метаны ЖИЖИГ ҮСЭГТ талбар (`objectid` · `bagts` · `SHAPE__Area`) кодын эх нэртэй таарахгүй 172 ХУДАЛ
+   зөрчил гаргадаг байв. Одоо хаягийг `remapUrl`-аар, метаг `entResponseWith`-ээр (апп-тай ИЖИЛ зам) хөрвүүлнэ —
+   үлдсэн зөрүү нь ЖИНХЭНЭ (Enterprise дээр тэр талбар үнэхээр алга). */
+const { remapUrl, entDict, entResponseWith, isAgolUrl } = await import('../services/entMap.ts');
 
 /* ── Кодод нэрлэсэн талбаруудыг цуглуулах ── */
 
@@ -80,14 +86,18 @@ console.log(`Шалгаж байна: ${LAYERS.length} давхарга + ${DATA
 
 const targets = [
   ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: layerUrl(l), want: declaredFields(l) })),
-  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: d.url, want: declaredDatasetFields(d) })),
+  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: remapUrl(d.url), want: declaredDatasetFields(d) })),
 ];
 
 let checked = 0;
 await pool(targets, async (t) => {
   let meta;
+  if (isAgolUrl(t.url)) {
+    FAIL.push(`\`${t.id}\` «${t.title}» — Enterprise зураглалд АЛГА (AGOL түлхүүр хэвээр): ${t.url}`);
+    return;
+  }
   try {
-    meta = await getJson(`${t.url}?f=json`);
+    meta = entResponseWith(await getJson(`${t.url}?f=json`), entDict(t.url), t.want);
   } catch (e) {
     FAIL.push(`\`${t.id}\` «${t.title}» — үйлчилгээнд ХҮРЭХГҮЙ: ${e.message}\n      ${t.url}`);
     return;
@@ -108,6 +118,13 @@ await pool(targets, async (t) => {
 /* ── 3. Үйлчилгээнд байгаа ч бүртгэлд ОРООГҮЙ давхаргууд ── */
 
 const knownUrls = new Set(LAYERS.map((l) => layerUrl(l)));
+/* ⚠️ 2026-10-21: `TD` нь AGOL түлхүүр — Enterprise дээр TD-ийн давхаргууд НЭГ үйлчилгээнд (`Bagts_ajluud`), дугаар
+   өөр. TD-ийн давхаргуудын зураглагдсан хаягаас Enterprise үйлчилгээ(нүүд)-ийг гаргаж тэднийг скан хийнэ. */
+const scanBases = [...new Set(LAYERS
+  .filter((l) => String(l.url ?? '').startsWith(`${TD}/`))
+  .map((l) => layerUrl(l))
+  .filter((u) => !isAgolUrl(u))
+  .map((u) => u.replace(/\/\d+$/, '')))];
 
 /**
  * ⚠️ НЭРЭЭР Ч жишнэ. Зарим давхарга ЕТ-д хуучин хувилбараараа үлдсэн ч бүртгэл
@@ -147,7 +164,7 @@ const IGNORED = new Set([
  * `data` үйлчилгээнд байдаг тул түүнийг л скан хийнэ — «үйлчилгээнд бий,
  * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
  */
-for (const base of [TD]) {
+for (const base of scanBases.length ? scanBases : [TD]) {
   try {
     const root = await getJson(`${base}?f=json`);
     const extra = (root.layers ?? [])
