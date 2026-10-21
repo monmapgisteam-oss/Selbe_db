@@ -32,8 +32,17 @@ const nextConfig = {
   //    `Infinity` тул урт dev сешнд хэзээ ч чөлөөлөгдөхгүй, санах ой тасралтгүй өсдөг байв.
   //    1 = сүүлийн эмхэтгэлд ашиглагдаагүй зүйлийг дараагийн эмхэтгэлд хаяна; дахин эмхэтгэлийн
   //    хурдны ашиг хэвээр, дискэнд юу ч бичихгүй (дээрх зорилго хэвээр).
+  /* ⚠️ 2026-10-21: `@arcgis/core`-ийн сэдвийн CSS (`assets/esri/themes/<сэдэв>/main.css`) дээрх autoprefixer-ийн
+     «start/end value has mixed support» анхааруулгыг ШҮҮНЭ. Тэр файл `node_modules` дотор тул засах
+     боломжгүй; анхааруулга нь dev консолыг асаалт бүрд дүүргэж, жинхэнэ алдааг нууж байв. ЗӨВХӨН тэр
+     сангийн, ЗӨВХӨН энэ мессеж — манай CSS-ийн анхааруулга хэвээр харагдана (`planOverlap.module.css`-ийн
+     `align-items: end` → `flex-end` болгож эх үүсвэрээр нь зассан). */
   webpack: (config, { dev }) => {
     if (dev && process.env.NEXT_DEV_MEMORY_CACHE === '1') config.cache = { type: 'memory', maxGenerations: 1 };
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      { module: /[\\/]@arcgis[\\/]core[\\/]assets[\\/]/, message: /autoprefixer: .*mixed support/ },
+    ];
     return config;
   },
 };
