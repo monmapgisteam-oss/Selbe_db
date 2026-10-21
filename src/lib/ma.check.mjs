@@ -214,7 +214,9 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   const client = (user) => {
     const dependencies = {
       '@/lib/i18nCore': { t: tr },
-      '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {} },
+      '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user },
+      /* ⚠️ 2026-10-21: `ENT_DATA` хоосон — шууд хаягаар хайхгүй, хайлтаар (энэ хуурамч сервер) олно */
+      '@/lib/services/entMap': { ENT_DATA: '' },
       '@/lib/ma': { ...ma, loadMa: async () => [rowOf(attrs({ resp_no: 'M1' }))] },
       '@/lib/mir': { ...mir, loadMir: async () => [{ oid: 1, maNo: 'M1', verdict: 'A' }] },
       '@/lib/chanarAcl': {}, '@/lib/who': { currentUser: () => user, requireCap: () => {} },

@@ -208,6 +208,9 @@ async function exactUser(s: Sess): Promise<string> {
   return me.username;
 }
 
+/** Нэвтэрсэн хэрэглэгчийн ПОРТАЛЫН ЯГ нэр (`content/users/{u}/…` замд) — `ficMakt.createTable` ч ашиглана */
+export const entExactUser = (): Promise<string> => exactUser(need());
+
 export async function entUploadPdf(file: File, title?: string): Promise<{ item: EntPdf; warn?: string }> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));

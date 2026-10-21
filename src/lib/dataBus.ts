@@ -61,7 +61,9 @@ export type DataKey =
   | 'HUVAARI_OBYEM'
   /* ⚠️ 2026-10-15: НЭГТГЭЛ ГҮЙЦЭТГЭЛ (`Negtgel_guitsetgel_1013`) — табын «Нийтлэх»-ийн дараа
      (`negtgelEdit.publishNegEdits`); `loadNegtgelFull` (таб · дашбоард · тайлан) хүчингүй болно. */
-  | 'TUSUL_NEGTGEL';
+  | 'TUSUL_NEGTGEL'
+  /* ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ (`material_noots`) — `materialNoots.syncNoots` бичсэний дараа */
+  | 'MATERIAL_NOOTS';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
