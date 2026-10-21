@@ -96,8 +96,6 @@ export const setAjilGrants = (
   user: string, grants: Grant<AjilRole>[], grant = true,
 ) => acl.setGrants(user, grants, grant);
 
-/** Тухайн хэрэглэгчийн хуваарилалт ЯГ ХЭВЭЭР (байхгүй бол `null`) */
-export const ajilGrantsOf = acl.grantsOf;
 
 /** Хуваарилалтаас хасах — `revoke: false` бол эрхийг үлдээнэ */
 export const removeAjilAssign = (user: string, revoke = true) => acl.remove(user, revoke);

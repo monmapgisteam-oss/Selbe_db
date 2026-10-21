@@ -35,10 +35,6 @@ export function serverNow(): number {
   return Date.now() + clockOff;
 }
 
-/** Сүүлийн хэмжсэн зөрүү (ms, сервер − хөтөч) — оношилгоо/тест */
-export function serverClockOffset(): number {
-  return clockOff;
-}
 
 /** Зөрүүг бодох цэвэр томьёо — `srv` (серверийн агшин), `t0`/`t1` (хүсэлтийн өмнө/дараах хөтчийн цаг) */
 export function clockOffsetOf(srv: number, t0: number, t1: number): number {

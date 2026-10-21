@@ -43,8 +43,6 @@ const useUi = () => useSyncExternalStore(
   () => ui,
 );
 
-/** 03-т СОНГОСОН төрөл — Portal зураг дээрх инженерийн шугамыг тэр төрлөөр шүүнэ */
-export const useNeedType = () => useUi().type;
 /** Portal сонгосон төрөл/бүсээс бусад төлөвлөгөөний давхаргыг нуухад хэрэглэнэ. */
 export const useNeedSelection = () => {
   const selection = useUi();

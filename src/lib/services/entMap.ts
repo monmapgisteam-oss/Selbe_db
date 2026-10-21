@@ -148,8 +148,6 @@ export function agolLayerIdWith(agolSvcUrl: string, entId: number, map: EntMap, 
 }
 export const agolLayerId = (agolSvcUrl: string, entId: number): number | null => agolLayerIdWith(agolSvcUrl, entId, ENT_MAP, ENT_DATA, AGOL_BASES);
 
-/** Зураглалын хэмжээ — оношилгоо */
-export const entMapSize = (): number => Object.keys(ENT_MAP).length;
 
 /* ══════════════════ ТАЛБАРЫН НЭРИЙН ХӨРВҮҮЛЭЛТ ══════════════════ */
 

@@ -96,8 +96,6 @@ export const setObyemGrants = (
   user: string, grants: Grant<ObyemRole>[], grant = true,
 ) => acl.setGrants(user, grants, grant);
 
-/** Тухайн хэрэглэгчийн хуваарилалт ЯГ ХЭВЭЭР (байхгүй бол `null`) */
-export const obyemGrantsOf = acl.grantsOf;
 
 /** Хуваарилалтаас хасах — `revoke: false` бол эрхийг үлдээнэ */
 export const removeObyemAssign = (user: string, revoke = true) => acl.remove(user, revoke);

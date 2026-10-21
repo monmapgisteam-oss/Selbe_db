@@ -343,9 +343,6 @@ export function liveErhSource(): ErhSource {
   };
 }
 
-/** QAQC ба урсгалын бичилт унасан хэрэглэгчид — карт/матрицын ⚠️ тэмдэгт */
-export const qaqcFailed = qaqcFailedUsers;
-export const flowFailed = flowFailedUsers;
 
 /* ══════════════════════ Текстүүд ══════════════════════ */
 

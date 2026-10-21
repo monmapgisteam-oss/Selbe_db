@@ -785,8 +785,6 @@ const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
   }
 };
 
-/** Сүүлийн синкийн төлөв (энэ хөтөчид) */
-export const negSyncState = (): NegSyncState | null => lastState;
 
 /**
  * БОДСОН УТГЫГ ХҮСНЭГТ РҮҮ БИЧНЭ — хүн оролцохгүй.

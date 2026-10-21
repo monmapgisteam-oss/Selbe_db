@@ -71,15 +71,11 @@ export const _syncRemoteButets = (
   rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
 ): void => acl.syncRemote(rows);
 
-/** Аккаунтад багц олгох / шинэчлэх (ганц үүрэг тул `roles` үргэлж `['editor']`) */
-export const setButetsAssign = (user: string, bagts: string[], grant = true) =>
-  acl.set(user, ['editor'], bagts, grant);
 
 export const setButetsGrants = (
   user: string, grants: Grant<ButetsRole>[], grant = true,
 ) => acl.setGrants(user, grants, grant);
 
-export const butetsGrantsOf = acl.grantsOf;
 
 export const removeButetsAssign = (user: string, revoke = true) => acl.remove(user, revoke);
 
