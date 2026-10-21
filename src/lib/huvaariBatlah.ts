@@ -745,19 +745,12 @@ export async function syncServerClock(): Promise<void> {
     try {
       const url = await tableUrl(false);
       if (!url) return;
-      const t0 = Date.now();
-      const j = await arcgisPost(`${url}/query`, {
-        where: `${F.oid} > -${1 + Math.floor(Math.random() * 1e9)}`,
-        outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
-        returnGeometry: 'false',
-      });
-      const t1 = Date.now();
-      const a = (j.features as { attributes?: Attrs }[] | undefined)?.[0]?.attributes ?? {};
-      const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
-      const v = k ? Number(a[k]) : Number.NaN;
-      if (!Number.isFinite(v) || v <= 0 || t1 - t0 > 10_000) return;
-      clockOff = clockOffsetOf(v, t0, t1);
-      clockAt = t1;
+      /* ⚠️ 2026-10-21: хэмжилт `serverClock.measureServerTime` (Enterprise-д outStatistics CURRENT_TIMESTAMP 500 → хоёртын хайлт) */
+      const { measureServerTime } = await import('./serverClock');
+      const m = await measureServerTime(url, F.oid);
+      if (!m) return;
+      clockOff = clockOffsetOf(m.srv, m.t0, m.t1);
+      clockAt = m.t1;
     } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
       clockFlight = null;
     }

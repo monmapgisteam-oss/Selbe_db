@@ -59,8 +59,8 @@ function workRow(w: VarianceWork): Cell[] {
     cell(w.work),
     cell(w.vol),
     cell(w.sum),
-    /* Хэтрэлт = бөглөсөн − төлөвлөгдсөн; `loadVariance` зөвхөн > 0 мөр өгдөг */
-    cell(w.sum - w.vol),
+    /* Хэтрэлт — блок бүрээр (`VarianceWork.over`, 2026-10-21); хуучин хэлбэрийн мөрд бөглөсөн − төлөвлөгдсөн */
+    cell(w.over ?? w.sum - w.vol),
     cell(w.unit, 'mnt'),
     cell(w.mnt, 'mnt'),
   ];

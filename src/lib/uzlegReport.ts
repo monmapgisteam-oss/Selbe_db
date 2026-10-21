@@ -359,8 +359,17 @@ export function buildUzReport(
      боломжгүй тул `null` («—»). Урьд нь 0 болж PDF-д «Ноцтой 0» гэж ХУДАЛ бичигддэг байв. */
   const tally = (c: AnsCls): number | null => (answers.length ? all.filter((x) => x.cls === c).length : null);
   const e = numOrNull(r.sc_all_earned); const a = numOrNull(r.sc_all_appl);
-  const creator = r.Creator ?? r.creator;
-  const created = numOrNull(r.CreationDate ?? r.creationdate);
+  /* ⚠️ 2026-10-21 (аудит): Survey123-ийн үзлэгүүдийг Enterprise руу шилжүүлэхэд Creator/CreationDate нь ШИЛЖҮҮЛЭГЧ ба
+     шилжүүлсэн агшин болсон (V11 2026-10-15, захиалагчийн 2026-10-19 — хуучин багана хадгалагдаагүй). Тиймээс «Илгээсэн»
+     нь шилжүүлгийн өмнөх мөрд маягтын өөрийн үзлэгч (`inspector`) ба үзлэгийн огноо (`insp_datetime`). */
+  let creator = r.Creator ?? r.creator;
+  let created = numOrNull(r.CreationDate ?? r.creationdate);
+  if (created != null && created < Date.UTC(2026, 9, 21)) {
+    const insp = r.inspector ?? r.Inspector;
+    const at = numOrNull(r.insp_datetime ?? r.Insp_datetime);
+    if (insp != null && String(insp).trim()) creator = insp;
+    if (at != null) created = at;
+  }
   return {
     oid,
     form,

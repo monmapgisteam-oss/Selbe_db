@@ -257,7 +257,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const info: User = {
           username: u?.username ?? '',
           fullName: u?.fullName || u?.username || '',
-          thumbnail: u?.thumbnailUrl ?? null,
+          /* ⚠️ 2026-10-21 (аудит): JS API `thumbnailUrl`-д OAuth токеныг query string-ээр залгадаг (`Portal.normalizeUrl`) —
+             <img src>-ээр лог · кэш · түүхэнд үлддэг тул ХАСНА (`authToken.ts`-ийн «токен URL-д бичихгүй» дүрэм).
+             Токенгүй уншигдахгүй бол зураг нуугдана (`onError`). */
+          thumbnail: u?.thumbnailUrl ? u.thumbnailUrl.replace(/([?&])token=[^&]*(&?)/, (_m, a: string, b: string) => (b ? a : '')).replace(/[?&]$/, '') : null,
           orgId: u?.orgId ?? null,
         };
         const hard = roleForUser(info.username);
@@ -648,7 +651,7 @@ export function AuthNotice() {
             {user && (
               <div className={s.user}>
                 {user.thumbnail && (
-                  <img src={user.thumbnail} alt="" className={s.avatar} />
+                  <img src={user.thumbnail} alt="" className={s.avatar} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                 )}
                 <div style={{ textAlign: 'left' }}>
                   <div className={s.userName}>{user.fullName}</div>

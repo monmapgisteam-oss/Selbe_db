@@ -253,7 +253,7 @@ export function Home({
             <>
               <span className={s.userChip}>
                 {user.thumbnail ? (
-                  <img src={user.thumbnail} alt="" className={s.avatar} />
+                  <img src={user.thumbnail} alt="" className={s.avatar} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                 ) : (
                   <span className={s.avatarFallback} aria-hidden>{initials(user.fullName)}</span>
                 )}

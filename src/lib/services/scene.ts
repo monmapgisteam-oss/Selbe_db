@@ -577,6 +577,12 @@ export const HABEA = {
        */
       oid: 'OBJECTID',
       bufferLink: 'ORIG_FID',
+      /**
+       * ⚠️ 2026-10-21 (аудит): Enterprise-д шилжүүлэхэд цэг [50]-ийн OBJECTID 1–50 болж ДАХИН ДУГААРЛАГДСАН, AGOL-ын
+       * эх OBJECTID нь шинэ `orig_oid` талбарт үлдсэн; бүс [51]-ийн `ORIG_FID` хуучин дугаараа заасаар (orig_oid-той
+       * 50/51 таарна, objectid-тэй санамсаргүй 29). Иймд бүсийн холбоос нь цэгийн `orig_oid` — талбаргүй (AGOL) бол OBJECTID.
+       */
+      link: 'orig_oid',
     },
   },
 

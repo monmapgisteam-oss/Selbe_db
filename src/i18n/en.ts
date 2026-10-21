@@ -7106,7 +7106,8 @@ const en: Record<string, string> = {
   "Ортофото — нислэг 2 (1)": "Orthophoto — flight 2 (1)",
   "Ортофото — нислэг 2 (2)": "Orthophoto — flight 2 (2)",
   "Бодит загвар — нислэг 2 (2026-09-17), 1": "Reality model — flight 2 (2026-09-17), 1",
-  "Бодит загвар — нислэг 2 (2026-09-17), 2": "Reality model — flight 2 (2026-09-17), 2"
+  "Бодит загвар — нислэг 2 (2026-09-17), 2": "Reality model — flight 2 (2026-09-17), 2",
+  "Татагдаагүй эх: {0}": "Sources not loaded: {0}"
 };
 
 export default en;

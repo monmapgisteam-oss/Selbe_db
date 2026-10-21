@@ -158,4 +158,32 @@ assert.equal(agolLayerIdWith(`${AGOL}/QAQC2/FeatureServer`, 3, MAP2, ENT, bases)
   assert.equal(n, 74, 'инженерийн 74 давхарга');
 }
 
-console.log('✅ entMap: 56 шалгуур');
+// 2026-10-21: засварын мөшгөлт — импортын агшинтай амьд утгыг хуучин баганын утгаар (`entTrackFix`)
+{
+  const { entTrackFix, ENT_IMPORT_FROM } = await import('./entMap.ts');
+  const T = [
+    { date: 'created_date', dateStat: 'creationdate', user: 'created_user', userStat: 'creator' },
+    { date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' },
+  ];
+  const imp = ENT_IMPORT_FROM + 8 * 3600_000; // 08:00 UTC — импорт
+  const a = { created_date: imp, creationdate: 1789000000000, created_user: 'tumenjargal_selbe', creator: 'bat',
+    last_edited_date: imp, editdate: 1790000000000, last_edited_user: 'tumenjargal_selbe', editor: 'dorj' };
+  entTrackFix(a, T);
+  assert.equal(a.created_date, 1789000000000); assert.equal(a.created_user, 'bat');
+  assert.equal(a.last_edited_date, 1790000000000); assert.equal(a.last_edited_user, 'dorj');
+  // шилжилтийн ДАРАА Enterprise дээр засагдсан мөр — амьд утга хэвээр
+  const later = Date.UTC(2026, 10, 1);
+  const b = { last_edited_date: later, editdate: 1790000000000, last_edited_user: 'saraa', editor: 'dorj' };
+  entTrackFix(b, T);
+  assert.equal(b.last_edited_date, later); assert.equal(b.last_edited_user, 'saraa');
+  // хуучин багана хоосон (шинэ мөр) — хэвээр
+  const c = { created_date: imp, creationdate: null, created_user: 'x', creator: null };
+  entTrackFix(c, T);
+  assert.equal(c.created_date, imp);
+  // хүсэлт: мөшгөлтийн талбар асуувал хос хуучин багана нэмэгдэнэ (толь + track)
+  const d = { ...entDictFor({ oid: 'OBJECTID', f: ['OBJECTID', 'CreationDate', 'Creator'], ren: { creationdate: 'created_date', creator: 'created_user' } }), track: T };
+  const out = entRequestWith({ outFields: 'OBJECTID,CreationDate' }, d).outFields.split(',');
+  assert.ok(out.includes('created_date') && out.includes('creationdate') && out.includes('created_user') && out.includes('creator'), out.join(','));
+}
+
+console.log('✅ entMap: 64 шалгуур');

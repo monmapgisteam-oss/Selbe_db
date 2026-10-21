@@ -1,7 +1,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { ENT_DATA } from '@/lib/services/entMap';
 import { AUTH } from '@/lib/services/env';
-import { authToken } from '@/lib/authToken';
+import { authToken, ensureFreshToken } from '@/lib/authToken';
 import { currentUser } from '@/lib/who';
 
 /**
@@ -49,9 +49,27 @@ export function entSession(): Sess | null {
     const token = authToken();
     const user = currentUser();
     /* ⚠️ Хугацааг JS API өөрөө шинэчилдэг (`ensureFreshToken`) — энд зөвхөн «одоо хүчинтэй» гэсэн утга */
-    if (token && user) return { user, token, expires: Date.now() + 10 * 60_000 };
+    /* ⚠️ 2026-10-21: ИЖИЛ объект буцаана (token/user өөрчлөгдөөгүй бол). `useSyncExternalStore`-ийн getSnapshot
+       (`EntSignIn.useEntSession`) тогтвортой утга шаарддаг — урьд нь дуудалт бүрд шинэ объект үүсгэж React #185
+       (төгсгөлгүй дахин зурах) өгч MA · ХАБЭА «Нэмэх» · ТЭЗҮ баримтын цонх нэвтэрсэн бүх хэрэглэгчид унадаг байв. */
+    if (token && user) {
+      if (!shared || shared.token !== token || shared.user !== user) shared = { user, token, expires: Date.now() + 10 * 60_000 };
+      return shared;
+    }
   }
   return null;
+}
+let shared: Sess | null = null;
+/**
+ * ТОКЕН ШИНЭЧЛЭЭД БИЕД ДАХИН ДАРНА — Enterprise рүү ШУУД fetch хийдэг замууд (ma · mir · ficMakt · энэ модуль).
+ * ⚠️ 2026-10-21 (аудит): эдгээр зам `query.ts`-ийн хамгаалалтыг (`ensureFreshToken` + 498 → шинэчлэх) тойрдог тул таб
+ *    унтсаны дараа хугацаа нь дууссан токеноор явж эхний оролдлого 498-аар унадаг байв. Илгээхийн ӨМНӨ шинэчилж,
+ *    биеийн `token`-ыг одоогийнхоор солино (бие токенгүй бол хөндөхгүй).
+ */
+export async function entStamp(body: URLSearchParams | FormData): Promise<void> {
+  await ensureFreshToken();
+  const s = entSession();
+  if (s && body.has('token')) body.set('token', s.token);
 }
 export function subscribeEnt(fn: () => void): () => void {
   subs.add(fn);
@@ -67,6 +85,7 @@ function need(): Sess {
 type ArcErr = { error?: { code?: number; message?: string; details?: string[] } };
 
 async function post<T>(path: string, body: FormData | URLSearchParams): Promise<T> {
+  await entStamp(body);
   let r: Response;
   try {
     r = await fetch(`${ENT_PORTAL}/sharing/rest/${path}`, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -212,10 +231,12 @@ export async function entUploadPdf(file: File, title?: string): Promise<{ item: 
 /** Item-ийн PDF файлыг токентой (POST) татаж Blob болгоно — `<iframe>`-д objectURL-ээр харуулна */
 export async function entPdfBlob(id: string): Promise<Blob> {
   const s = need();
+  const body = new URLSearchParams({ token: s.token });
+  await entStamp(body);
   let r: Response;
   try {
     r = await fetch(`${ENT_PORTAL}/sharing/rest/content/items/${encodeURIComponent(id)}/data`, {
-      method: 'POST', body: new URLSearchParams({ token: s.token }), signal: AbortSignal.timeout(TIMEOUT_MS),
+      method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
     throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));

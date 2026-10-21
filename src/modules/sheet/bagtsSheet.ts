@@ -2191,7 +2191,9 @@ export function computeAll(
  * ObjectID-г дамжуулбал `addFeatures` тэр дугаартай мөр рүү наалдах эсвэл
  * унах эрсдэлтэй; GlobalID/бүртгэлийн талбарууд ч мөн адил.
  */
-const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|EditDate|Editor)$/;
+/* ⚠️ 2026-10-21 (аудит): том/жижиг үсэг ҮЛ ХАМААРАН + Enterprise-ийн амьд мөшгөлтийн нэрс. Enterprise хариуны хуучин
+   (`creationdate` … жижиг) баганууд урьд нь шүүгдэхгүй үлдэж, толиор амьд (засагдахгүй) `created_date`… руу илгээгддэг байв. */
+const SERVER_FIELDS = /^(objectid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i;
 
 /**
  * АРХИВЫН ШИНЭ АГШИН — хуудсыг БҮХЭЛД нь доор нь хуулбарлаж нэмнэ.

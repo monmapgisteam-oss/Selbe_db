@@ -1,7 +1,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MIR_SVC } from '@/lib/services/env';
-import { entSession } from '@/lib/entDocs';
+import { entSession, entStamp } from '@/lib/entDocs';
 import { splitMulti, type StageState, type Verdict } from '@/lib/ma';
 
 /**
@@ -134,6 +134,7 @@ export type MirPhoto = { rowOid: number; attId: number; name: string; note: stri
 type ArcErr = { error?: { code?: number; message?: string } };
 async function postJson<T>(url: string, body: URLSearchParams): Promise<T> {
   const s = entSession(); if (s) body.set('token', s.token);
+  await entStamp(body);
   const r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(60_000) });
   if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
   const j = (await r.json()) as T & ArcErr;
@@ -159,6 +160,7 @@ export async function loadMirPhotos(rowId: string): Promise<MirPhoto[]> {
 export async function mirPhotoBlob(p: MirPhoto): Promise<Blob> {
   const body = new URLSearchParams();
   const s = entSession(); if (s) body.set('token', s.token);
+  await entStamp(body);
   const r = await fetch(`${MIR_PHOTOS_URL}/${p.rowOid}/attachments/${p.attId}`, { method: 'POST', body, signal: AbortSignal.timeout(60_000) });
   if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
   if ((r.headers.get('content-type') ?? '').includes('json')) throw new Error(tr('Зураг татагдсангүй.'));

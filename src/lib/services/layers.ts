@@ -182,6 +182,30 @@ const IOT_LAYERS: LayerDef[] = [
 }));
 
 /**
+ * Шинэчилсэн ЕТ-ийн бүсийн төрөл (`HET_Zone.zone`) → өнгө (2026-10-21). ЕТ-ийн палитр (`palette.ZONE_TYPES`)-ын утгаар:
+ * орон сууц — шар (#ffb300), олон нийт/худалдаа — улаан бүлэг, нийгмийн дэд бүтэц — цэнхэр (#7fdeff),
+ * инженерийн дэд бүтэц — #005199; ЕТ-д байхгүй төрөлд (гэр, үйлдвэр, оффис, зогсоол) ялгагдах өөр өнгө.
+ */
+const REDESIGN_ZONE_HUES: Record<string, string> = {
+  'Residential area': '#ffb300',
+  'Residential area 1': '#ffc94d',
+  'Commercial / Residential': '#ff9f40',
+  'GER': '#c08552',
+  'Mixed use downtown': '#ff7f7f',
+  'Commercial': '#e5484d',
+  'General commercial': '#f06a6a',
+  'Local commercial': '#f8a5a5',
+  'Commercial / Business': '#c2410c',
+  'Offices and shared work place': '#a855f7',
+  'Education': '#7fdeff',
+  'Medical Zone': '#38bdf8',
+  'Engineering Infrastructure Zone': '#005199',
+  'Light Industrial zone': '#94a3b8',
+  'Industrial zone': '#475569',
+  'Машины зогсоол': '#9ca3af',
+};
+
+/**
  * REDESIGN — шинэчлэгдсэн ерөнхий төлөвлөгөөний объектууд (2026-10-13, хэрэглэгчийн өгсөн
  * `Redesign` FeatureServer, UTM 48N). «Ерөнхий төлөвлөгөө» → «Detail»-ийн swipe-ийн БАРУУН
  * тал ба инженерийн шугамын давхцлын тооцоо (`lib/planOverlap.ts` §OVERLAP_CATS).
@@ -211,8 +235,11 @@ const REDESIGN_LAYERS: LayerDef[] = ([
   /* ⚠️ 2026-10-13: Zone — ТӨРЛӨӨР (`zone` талбар) ЕТ-ийн өнгөөр (хэрэглэгч: «Zoning өнгийг ЕТ дагуу
      өнгө өнгө type based») — үйлчилгээний рендерерийн ангиллын өнгө, дүүргэлт 60% тунгалаг
      (хэрэглэгчийн өмнөх «60% болго»), хүрээ нь тухайн өнгөөр. Урьд нь НЭГ өнгөөр (#c7c5b4) байв. */
-  { n: 2,  title: () => tr('Бүс (шинэчлэгдсэн)'),                      hue: "#c7c5b4", svc: { fill: 0.4, outline: 1 } },
-] as { n: number; title: () => string; hue: string; fill?: number; width?: number; svc?: { fill: number; outline: number } }[]).map((x) => ({
+  /* ⚠️ 2026-10-21 (аудит): Enterprise-д нийтлэгдсэн HET_Zone-ийн рендерер нэг өнгийн `simple` болсон тул үйлчилгээний
+     өнгөнд (`svc`) тулгуурлах аргагүй — 16 төрөл бүгд нэг цайвар ногоон байв. AGOL-ын эх рендерер хандах боломжгүй
+     (AGOL хасагдсан) тул ТӨРЛӨӨР кодонд будна (`REDESIGN_ZONE_HUES`, ЕТ-ийн палитрын утгаар бүлэглэсэн). */
+  { n: 2,  title: () => tr('Бүс (шинэчлэгдсэн)'),                      hue: "#c7c5b4", fill: 0.4, zonePaint: true },
+] as { n: number; title: () => string; hue: string; fill?: number; width?: number; svc?: { fill: number; outline: number }; zonePaint?: boolean }[]).map((x) => ({
   id: `rd:${x.n}`,
   n: x.n,
   get title() { return x.title(); },
@@ -226,6 +253,14 @@ const REDESIGN_LAYERS: LayerDef[] = ([
   oid: "FID",
   qty: { field: "Shape__Area", unit: 'м²' },
   ...(x.svc ? { serviceStyle: x.svc } : {}),
+  ...(x.zonePaint ? {
+    paint: {
+      field: 'zone',
+      values: REDESIGN_ZONE_HUES,
+      force: true,
+      get emptyLabel() { return tr('Тодорхойгүй'); },
+    },
+  } : {}),
 }));
 
 export const LAYERS: LayerDef[] = [
@@ -967,7 +1002,7 @@ export const LAYERS: LayerDef[] = [
  */
 const TD_LAYER: Record<string, number> = {
   /* sb — «2D map 0804» webmap давхаргууд */
-  "sb:0": 36, "sb:1": 35, "sb:2": 85, "sb:3": 88, "sb:4": 108, "sb:5": 38,
+  "sb:0": 36, "sb:1": 35, "sb:2": 85, "sb:3": 88, "sb:4": 108, /* sb:5 — 2026-10-21 (аудит): TD/38-д `color` талбар алга (plan2d рендерер цагаан тасархай/бүтэн зураасыг түүгээр ялгадаг → 3465 шугам саарал) — үндсэн `selbe_3D__0804_WFL1/5` (→ selbe_ET/140, `color`-той, ижил 3465 мөр) хэвээр */
   "sb:7": 93, "sb:8": 92, "sb:10": 101, "sb:11": 100, "sb:13": 91, "sb:14": 90,
   "sb:15": 39, "sb:16": 43,
   /* et — ерөнхий төлөвлөгөө */

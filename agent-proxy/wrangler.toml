@@ -30,11 +30,13 @@ ALLOW_ORIGIN = "https://smart.selbecity.mn,https://selbe.monmap.mn"
 # ⚠️ Энэ хувьсагчийг тохируулснаар ArcGIS нэвтрэлт ШААРДАГДАНА: зөвхөн энэ
 #    байгууллагад нэвтэрсэн хэрэглэгч AI-г ашиглана. Хоосон болговол реле
 #    нээлттэй болж, хаягийг олсон хэн ч таны эрхээр токен зарцуулна.
-ARCGIS_ORG_ID = "HJzgwvlNIXssnQar"
+# ⚠️ 2026-10-21: Сэлбэ Enterprise (gis.selbecity.mn/geoportal)-ийн байгууллага — AGOL (HJzgwvlNIXssnQar) хасагдсан.
+#    Портал Enterprise токен олгодог тул AGOL-оор шалгавал бүх хэрэглэгчид 401 (мөн токен arcgis.com руу явдаг байв).
+ARCGIS_ORG_ID = "0123456789ABCDEF"
 
 # ⚠️ `monmap.maps.arcgis.com` БИШ — порталын `AUTH.portalUrl`-тэй ЯГ ижил байх ёстой,
 #    эс бөгөөс токен өөр порталынх болж шалгалт унана.
-ARCGIS_PORTAL = "https://www.arcgis.com"
+ARCGIS_PORTAL = "https://gis.selbecity.mn/geoportal"
 
 # ⚠️ TELEGRAM БОТЫН НУУЦ — энд БИЧИХГҮЙ, НУУЦ болгож тавина:
 #     npx wrangler secret put BOT_SECRET

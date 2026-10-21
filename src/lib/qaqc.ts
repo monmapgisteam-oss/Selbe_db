@@ -161,6 +161,10 @@ export const isDataRow = (r: { no: string; work: string }): boolean =>
 /** Бөглөх хуудасны мөрөөс шатлалд хэрэгтэй хэсэг */
 export type TreeRow = { no: unknown; work: unknown; depth: number; group: boolean };
 
+/** «Улсын комисс» навч мөр (`ulsiinKomiss.findKomissRow`-тэй ижил дүрэм: № «УК» + нэр, бүлэг биш) — цэвэр */
+const isKomissRow = (r: TreeRow): boolean =>
+  !r.group && String(r.no ?? '').trim() === 'УК' && String(r.work ?? '').trim().toLowerCase() === 'улсын комисс';
+
 /**
  * ШАТЛАЛЫГ БӨГЛӨХ ХУУДАСНААС ХОЛБОНО (зөвхөн ХАРАГДАЦ).
  *
@@ -205,8 +209,13 @@ export type TreeRow = { no: unknown; work: unknown; depth: number; group: boolea
  */
 export function attachTree(
   rows: readonly QaqcRow[],
-  sheet: readonly TreeRow[],
+  sheet0: readonly TreeRow[],
 ): QaqcRow[] | null {
+  /* ⚠️ 2026-10-21: «Улсын комисс» (`ulsiinKomiss.ts` — 2026-09-28-аас бөглөх хуудасны төгсгөлд автоматаар бичигддэг навч
+     мөр, № «УК») QAQC хүснэгтэд БАЙХГҮЙ. Урьд нь мөрийн тоо 1-ээр зөрж модгүй (хавтгай) болдог байв — QAQC харагдац ба
+     CEO-ийн QAQC карт / оноон самбар (`ceo/qaqc.ts`) 10 хуудасны 9-ийг хасдаг байв. Энд НЭГ газар алгасна (хоёр дуудагч).
+     Бусад мөр бүр нэрээрээ 100% таарах шаардлага хэвээр. */
+  const sheet = sheet0.filter((r) => !isKomissRow(r));
   if (rows.length === 0 || rows.length !== sheet.length) return null;
   for (let i = 0; i < rows.length; i += 1) {
     if (rows[i].work !== s(sheet[i].work)) return null;

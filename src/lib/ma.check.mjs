@@ -147,7 +147,8 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   const L = readFileSync(new URL('./ficMakt.ts', import.meta.url), 'utf8');
   const fn = L.slice(L.indexOf('export async function decideFm('));
   const chain = fn.indexOf('chainOf(ma.verdict');
-  const fresh = fn.indexOf("queryFm(url, `OBJECTID = ${Number(row.oid)}`)");
+  /* ⚠️ 2026-10-21: Enterprise-ийн OID жижиг үсгээр (`objectid`) — `ficMakt.ts`-ийн ⚠️ */
+  const fresh = fn.indexOf("queryFm(url, `objectid = ${Number(row.oid)}`)");
   const write = fn.indexOf('await post<');
   assert.ok(chain > 0 && fresh > chain && write > fresh, 'decideFm: гинжийн шалгалт `pending` уншилт ба бичилтийн ӨМНӨ байх ёстой');
   assert.ok(/stage\.state === 'locked'\) \{\s*throw new Error/.test(fn.slice(chain, fresh)), 'decideFm: locked шатанд шиддэггүй');

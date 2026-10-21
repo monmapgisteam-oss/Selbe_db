@@ -125,7 +125,8 @@ const clientIp = (req) => {
   }
   return peer;
 };
-const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").replace(/\/+$/, "");
+/* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
+const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://gis.selbecity.mn/geoportal").replace(/\/+$/, "");
 /* ⚠️ 2026-09-30 (`worker.mjs`-тэй ижил): кэшийн дээд хэмжээ (хамгийн хуучныг хаяна) ба
    нэвтрэлт УНАСАН токеныг кэшээс шууд хасна — ArcGIS 498/401 хариулсан агшнаас тэр
    токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй. */

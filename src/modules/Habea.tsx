@@ -78,18 +78,28 @@ const C = HABEA.crane.fields;
 // ⚠️ 2026-08-20: Каталогийн БҮРЭН жагсаалт (`services.ts`).
 const CATALOG_IDS = CATALOG_LAYER_IDS;
 
-type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number };
+type HabeaData = { labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number; failed: string[]; laborFailed: boolean };
 
 /* 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): харагдац сэлгэх бүрд 3 бүтэн
    хүснэгт дахин татагддаг байв */
-const loadHabea = cached((): Promise<HabeaData> =>
-  Promise.all([
+/* ⚠️ 2026-10-21 (аудит): эх бүрийг ТУСАД НЬ — урьд нь `Promise.all` нэг эх (жиш. хүн хүчний Survey123-ийн 403)
+   унахад осол, кран, үзлэг бүхий ХУУДСЫГ БҮХЭЛД нь алдаа болгодог байв. Одоо унасныг `failed`-д нэрлэж
+   (KPI нь «—», null ≠ 0), бусдыг нь харуулна. Гурвуулаа унавал алдаа хэвээр (дахин оролдох). */
+const loadHabea = cached(async (): Promise<HabeaData> => {
+  const names = [tr('Хүн хүч'), tr('Осол, зөрчил'), tr('Цамхагт кран')];
+  const res = await Promise.allSettled([
     queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
     queryFeatures(HABEA.incident.url, { outFields: ['*'] }),
     queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
-    // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
-    // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  ]).then(([labor, incident, crane]) => ({ labor, incident, crane, fetchedAt: Date.now() })),
+  ]);
+  const bad = res.flatMap((r, i) => (r.status === 'rejected' ? [i] : []));
+  if (bad.length === res.length) throw (res[0] as PromiseRejectedResult).reason;
+  for (const i of bad) console.warn(`[selbe] ХАБЭА · «${names[i]}» татагдсангүй:`, (res[i] as PromiseRejectedResult).reason);
+  const val = (i: number): Row[] => (res[i].status === 'fulfilled' ? (res[i] as PromiseFulfilledResult<Row[]>).value : []);
+  // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
+  // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
+  return { labor: val(0), incident: val(1), crane: val(2), fetchedAt: Date.now(), failed: bad.map((i) => names[i]), laborFailed: bad.includes(0) };
+},
   /* ⚠️ `['HABEA']` таг — `reportData.loadHabeaSummary` мөн ЭНЭ хүснэгтээс
      уншиж `['HABEA']` зарладаг. Хоёр ах дүү ачаалагч ӨӨР тагтай байвал нэг
      нь шинэчлэгдээд нөгөө нь хоцорч, хоёр газар өөр тоо гарна. */
@@ -250,12 +260,15 @@ const CRANE_HUE: Record<string, string> = {
 type Crane = {
   /** Цэг [50]-ийн OBJECTID — зураг · бүс · чартын ГАНЦ түлхүүр (`HABEA.crane.fields.oid`) */
   oid: number;
+  /** Бүсийн `ORIG_FID`-тэй тулгах түлхүүр — `orig_oid` (Enterprise), байхгүй бол `oid` (2026-10-21, `HABEA.crane.fields.link`-ийн ⚠️) */
+  link: number;
   dugaar: string; blok: string; bagtsRaw: string; bagtsK: string;
   undur: number; sunUrt: number; tuluv: string;
 };
 
 const normCrane = (r: Row): Crane => ({
   oid: nn(r[C.oid]),
+  link: nn(r[C.link]) || nn(r[C.oid]),
   dugaar: text(r[C.dugaar], '—'),
   blok: text(r[C.blok], '—'),
   bagtsRaw: text(r[C.bagts], '—'),
@@ -1070,10 +1083,15 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
     let measured = false;
     const K = HABEA.waste.kinds;
-    const order = (m: string) => { const i = K.findIndex((k) => k.metric === m); return i < 0 ? K.length : i; };
+    /* ⚠️ 2026-10-21 (аудит): Enterprise-ийн `metric` домэйн нэгжгүй кодтой («Бетон», «Ахуйн хог ») болсон, хуучин мөрүүд
+       «… (рейс)» хэвээр — нэг төрөл хоёр зүсмэл болж, өнгө/нэр алдагддаг байв. Нэгж ба зайг хасаж тулгана. */
+    const base = (m: string) => m.replace(/\s*\((рейс|kg|кг|m3|м3)\)\s*$/i, '').trim().toLowerCase();
+    const kindOf = (m: string) => K.find((k) => base(k.metric) === base(m));
+    const order = (m: string) => { const k = kindOf(m); return k ? K.indexOf(k) : K.length; };
     const rows = [...waste.data.rows].sort((a, b) => order(a.metric) - order(b.metric) || a.metric.localeCompare(b.metric));
     let extra = 0;
     const slices: { key: string; label: string; value: number; color: string }[] = [];
+    const byKey = new Map<string, { key: string; label: string; value: number; color: string }>();
     for (const row of rows) {
       let value = 0;
       let has = false;
@@ -1084,10 +1102,15 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         value += v;
       }
       if (!has) continue;
-      const k = K.find((x) => x.metric === row.metric);
-      slices.push(k
-        ? { key: k.metric, label: k.label, value, color: k.color }
-        : { key: row.metric, label: row.metric, value, color: WASTE_EXTRA[extra++ % WASTE_EXTRA.length] });
+      const k = kindOf(row.metric);
+      const key = k ? k.metric : base(row.metric);
+      const hit = byKey.get(key);
+      if (hit) { hit.value += value; continue; }
+      const sl = k
+        ? { key, label: k.label, value, color: k.color }
+        : { key, label: row.metric.trim(), value, color: WASTE_EXTRA[extra++ % WASTE_EXTRA.length] };
+      byKey.set(key, sl);
+      slices.push(sl);
     }
     return { wasteSlices: slices, wasteMeasured: measured };
   }, [waste, pkgs]);
@@ -1307,6 +1330,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
 
   const all = q.state === 'ready' ? q.data : null;
+  /* ⚠️ 2026-10-21: хүн хүч татагдаагүй бол KPI «—» (0 биш — null ≠ 0) */
+  const laborFailed = !!all?.laborFailed;
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХООСОН НООРОГ (төрөл · багц · огноо гурвуулаа
      хоосон — Survey123-д эхлүүлээд бөглөөгүй) ОСОЛД ТООЛОГДОХГҮЙ (`ceo/safety.isBlankIncident`
      — CEO самбартай НЭГ дүрэм). Урьд нь «—» төрөлтэй, огноогүй «осол» болж KPI-д ордог байв. */
@@ -1456,7 +1481,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ⚠️ 2026-09-15: «осол БИШ бол кран» гэж ҮЗЭХГҮЙ — үзлэгийн давхарга нэмэгдсэн
      тул үзлэг дарахад краны шүүлт андуурч асах байв. Төрөл бүрийг ИЛ шалгана. */
   const pickCraneOid = picked && (picked.id === 'habea:crane' || picked.id === 'habea:buffer')
-    ? nn(picked.id === 'habea:buffer' ? picked.attrs[C.bufferLink] : picked.attrs[C.oid])
+    ? (picked.id === 'habea:buffer'
+      ? (cranes.find((c) => c.link === nn(picked.attrs[C.bufferLink]))?.oid ?? 0)
+      : nn(picked.attrs[C.oid]))
     : 0;
   /* ⚠️ OBJECTID нь маягт БҮРТ 1-ээс эхэлдэг — хоёр маягт зэрэг байхад
      «oid 5» аль маягтынх болохыг ДАВХАРГААР нь ялгана, эс бөгөөс V1.1-ийн
@@ -1623,8 +1650,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const kran = craneOn
       ? (oids.length ? `${C.oid} IN (${oids.join(',')})` : '1=0')
       : null;
+    /* ⚠️ 2026-10-21: бүс нь краны `link` (orig_oid)-оор — OBJECTID дахин дугаарлагдсан (`HABEA.crane.fields.link`-ийн ⚠️) */
+    const links = fCrane.map((x) => x.link).filter((o) => o > 0);
     const buff = craneOn
-      ? (oids.length ? `${C.bufferLink} IN (${oids.join(',')})` : '1=0')
+      ? (links.length ? `${C.bufferLink} IN (${links.join(',')})` : '1=0')
       : null;
     const out: Record<string, string | null> = { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
     if (uzLayerId) out[uzLayerId] = uzWhere;
@@ -2069,6 +2098,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     >
       {/* ── KPI зурвас — бүтэн өргөн, зургаан үзүүлэлт ── */}
       <div className={h.kpi}>
+        {q.data.failed.length > 0 && (
+          <div className={h.photoNote} role="alert" style={{ gridColumn: '1 / -1' }}>
+            {tr('Татагдаагүй эх: {0}', q.data.failed.join(' · '))}{' '}
+            {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
+          </div>
+        )}
         {/* ── Эхний ГУРВАН үзүүлэлт нь ТӨСЛИЙН ЭХНЭЭС хуримтлагдсан нийлбэр
             (маягтын толгойн `Niit_ajiltan` · `Hun_tsag` · `Niit_tehnik`) — бүх
             бүртгэлээр нийлүүлсэн.
@@ -2084,7 +2119,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             анхааруулга (`ceo/workforce.laborStaleness` — CEO самбарын `WORKFORCE_STALE_DAYS`
             босготой НЭГ). Урьд нь тайлан хэдэн өдөр зогссон ч KPI хэвээр «шинэ» харагддаг байв. */}
         {((st) => kpiTile(KPI_LOOK.people,
-          pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
+          laborFailed || pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
           tr('Нийт ажилласан хүн хүч'),
           undefined,
           /* ⚠️ 2026-10-08 (хэрэглэгч): ердийн «Сүүлийн тайлан: огноо» мөр ХАСАГДАВ. Тайлан
@@ -2110,7 +2145,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           ltiFree.undatedLti,
         )}
-        {kpiTile(KPI_LOOK.tech, pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
+        {kpiTile(KPI_LOOK.tech, laborFailed || pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
         {/**
           * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
           * хураасан шалтгаан нь ЭХ СУРВАЛЖИД байсан: test_data-гийн хуулбар

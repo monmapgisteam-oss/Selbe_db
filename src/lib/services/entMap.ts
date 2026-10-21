@@ -48,7 +48,21 @@
  * ⚠️ `styleUrl` (webmap-загварын ТҮЛХҮҮР) зураглагдахгүй — тэр нь хаяг биш, түлхүүр.
  */
 import { HJ, TD, ENT_HOSTED } from './env';
-import { ENT_MAP, ENT_FIELDS, type EntFieldsRec } from './entMap.data';
+import { ENT_MAP, ENT_FIELDS as ENT_FIELDS_GEN, type EntFieldsRec } from './entMap.data';
+
+/**
+ * ГАРААР НЭМСЭН ТОЛЬ — `entMap.data.ts` (үүсгэгдсэн файл) дахин үүсгэхэд устахгүйн тулд ЭНД.
+ * ⚠️ 2026-10-21 (аудит): ХАБЭА-гийн хүн хүчний Survey123 (`survey123_5630…`, `_form` харагдац) ба ослын
+ *    `service_d3a7…` (18 шилжүүлсэн осол) тольгүй байв: `EditDate` → `editdate` (байхгүй) 500 буцааж «Тайлан»,
+ *    CEO ажиллах хүч, «ХАБ өнөөдөр» унадаг; `outFields:['*']`-ийн жижиг түлхүүр кодын `Ognoo`/`Niit_ajiltan`-тай
+ *    таарахгүй тул ХАБЭА хуудас «0 ажилтан» гэж худал тэг харуулдаг байв. AGOL-ын эх нэрс (`agol_fields.json`).
+ */
+const ENT_FIELDS_MANUAL: Readonly<Record<string, EntFieldsRec>> = {
+  'survey123_5630f7a3f23f4315984a9f1a60c19415/0': {"oid":"objectid","f":["objectid","globalid","field_1","CreationDate","Creator","EditDate","Editor","Ognoo","Bagts_HHDMGK","MNG_ajiltani_too_HHDMGK","G_ajiltanii_too_HHDMGK","Tehnik_HHDMGK","Niit_ajiltan_HHDMGK","Bagts_HBZIT","MNG_ajiltani_too_HBZIT","G_ajiltanii_too_HBZIT","Tehnik_HBZIT","Niit_ajiltan_HBZIT","Bagts_HBTIT","MNG_ajiltani_too_HBTIT","G_ajiltanii_too_HBTIT","Tehnik_HBTIT","Niit_ajiltan_HBTIT","Bagts_MSK","MNG_ajiltani_too_MSK","G_ajiltanii_too_MSK","Tehnik_MSK","Niit_ajiltan_MSK","Bagts_NBG","MNG_ajiltani_too_NBG","G_ajiltanii_too_NBG","Tehnik_NBG","Niit_ajiltan_NBG","Bagts_MK","MNG_ajiltani_too_MK","G_ajiltanii_too_MK","Tehnik_MK","Niit_ajiltan_MK","Bagts_P","MNG_ajiltani_too_P","G_ajiltanii_too_P","Tehnik_P","Niit_ajiltan_P","MNG_ajiltani_too_MMSE","G_ajiltanii_too_MMSE","Tehnik_MMSE","Niit_ajiltan_MMSE","MNG_ajiltani_too_SC","G_ajiltanii_too_SC","Tehnik_SC","Niit_ajiltan_SC","MNG_ajiltani_too_OSNAAG","G_ajiltanii_too_OSNAAG","Tehnik_OSNAAG","Niit_ajiltan_OSNAAG","MNG_ajiltani_too_GUBB","G_ajiltanii_too_GUBB","Tehnik_GUBB","Niit_ajiltan_GUBB","MNG_ajiltani_too_CHHO","G_ajiltanii_too_CHHO","Tehnik_CHHO","Niit_ajiltan_CHHO","Zuvshuurul","Niit_ajiltan","Hun_tsag","Niit_tehnik"],"ren":{"creationdate":"created_date","creator":"created_user","editdate":"last_edited_date","editor":"last_edited_user"}},
+  'survey123_5630f7a3f23f4315984a9f1a60c19415_form/0': {"oid":"objectid","f":["objectid","globalid","field_1","CreationDate","Creator","EditDate","Editor","Ognoo","Bagts_HHDMGK","MNG_ajiltani_too_HHDMGK","G_ajiltanii_too_HHDMGK","Tehnik_HHDMGK","Niit_ajiltan_HHDMGK","Bagts_HBZIT","MNG_ajiltani_too_HBZIT","G_ajiltanii_too_HBZIT","Tehnik_HBZIT","Niit_ajiltan_HBZIT","Bagts_HBTIT","MNG_ajiltani_too_HBTIT","G_ajiltanii_too_HBTIT","Tehnik_HBTIT","Niit_ajiltan_HBTIT","Bagts_MSK","MNG_ajiltani_too_MSK","G_ajiltanii_too_MSK","Tehnik_MSK","Niit_ajiltan_MSK","Bagts_NBG","MNG_ajiltani_too_NBG","G_ajiltanii_too_NBG","Tehnik_NBG","Niit_ajiltan_NBG","Bagts_MK","MNG_ajiltani_too_MK","G_ajiltanii_too_MK","Tehnik_MK","Niit_ajiltan_MK","Bagts_P","MNG_ajiltani_too_P","G_ajiltanii_too_P","Tehnik_P","Niit_ajiltan_P","MNG_ajiltani_too_MMSE","G_ajiltanii_too_MMSE","Tehnik_MMSE","Niit_ajiltan_MMSE","MNG_ajiltani_too_SC","G_ajiltanii_too_SC","Tehnik_SC","Niit_ajiltan_SC","MNG_ajiltani_too_OSNAAG","G_ajiltanii_too_OSNAAG","Tehnik_OSNAAG","Niit_ajiltan_OSNAAG","MNG_ajiltani_too_GUBB","G_ajiltanii_too_GUBB","Tehnik_GUBB","Niit_ajiltan_GUBB","MNG_ajiltani_too_CHHO","G_ajiltanii_too_CHHO","Tehnik_CHHO","Niit_ajiltan_CHHO","Zuvshuurul","Niit_ajiltan","Hun_tsag","Niit_tehnik"],"ren":{"creationdate":"created_date","creator":"created_user","editdate":"last_edited_date","editor":"last_edited_user"}},
+  'service_d3a71860374b45bdbfbe5a1650364f0d/0': {"oid":"objectid","f":["objectid","globalid","CreationDate","Creator","EditDate","Editor","field_22","field_5","field_6","field_6_other","field_9","field_7","field_7_other","field_14","field_11","field_11_other","field_13","field_18"],"ren":{"creationdate":"created_date","creator":"created_user","editdate":"last_edited_date","editor":"last_edited_user"}},
+};
+const ENT_FIELDS: Readonly<Record<string, EntFieldsRec>> = { ...ENT_FIELDS_GEN, ...ENT_FIELDS_MANUAL };
 
 /**
  * Enterprise hosted үйлчилгээний суурь (`…/map/rest/services/Hosted`) — ЗААВАЛ.
@@ -151,7 +165,44 @@ export const agolLayerId = (agolSvcUrl: string, entId: number): number | null =>
 /* ══════════════════ ТАЛБАРЫН НЭРИЙН ХӨРВҮҮЛЭЛТ ══════════════════ */
 
 /** Нэг давхаргын толь: AGOL нэр (жижиг) → Enterprise нэр · Enterprise нэр → AGOL эх нэр */
-export type EntDict = { toEnt: Map<string, string>; toOrig: Map<string, string> };
+export type EntDict = {
+  toEnt: Map<string, string>;
+  toOrig: Map<string, string>;
+  /**
+   * Засварын мөшгөлтийн ХОС: амьд талбар (`created_date` …) ↔ AGOL-ын эх утгатай хуучин багана (`creationdate` …).
+   * Зөвхөн gdb-ээс хуулсан давхаргад (`entDict`-ийн ⚠️); Survey123-ийн давхаргад хуучин багана байхгүй.
+   */
+  track?: readonly TrackPair[];
+};
+export type TrackPair = { date: string; dateStat: string; user: string; userStat: string };
+
+/**
+ * ⚠️ 2026-10-21 (аудит): ИМПОРТЫН АГШИН. gdb-ээс Enterprise руу ачаалахад амьд editor tracking бүх мөрд
+ *    2026-10-20 08:4x UTC · tumenjargal_selbe болж дарагдсан; AGOL-ын жинхэнэ утга хуучин (`creationdate` · `creator` ·
+ *    `editdate` · `editor`) баганад үлдсэн. Урьд нь код амьд талбарыг уншдаг тул 34 хоног хүлээгдэж буй зөвшөөрөл
+ *    «0 хоног», CEO газрын «Өгөгдөл» огноо 10-20, «сүүлд хэн зассан» бүгд tumenjargal_selbe гэж худал гардаг байв.
+ *    Амьд огноо энэ цонхонд байвал (= импортын утга) хуучин баганын утгыг авна; дараа нь Enterprise дээр
+ *    засагдсан мөрд амьд утга хэвээр.
+ */
+export const ENT_IMPORT_FROM = Date.UTC(2026, 9, 20, 0, 0, 0);
+export const ENT_IMPORT_TO = Date.UTC(2026, 9, 20, 12, 0, 0);
+const TRACK: readonly TrackPair[] = [
+  { date: 'created_date', dateStat: 'creationdate', user: 'created_user', userStat: 'creator' },
+  { date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' },
+];
+
+/** Нэг мөрийн атрибутад (Enterprise нэрээр) импортын амьд утгыг хуучин баганын утгаар солино — цэвэр */
+export function entTrackFix(attrs: Keyed, track: readonly TrackPair[] | undefined): void {
+  if (!track) return;
+  for (const t of track) {
+    const live = attrs[t.date];
+    const stat = attrs[t.dateStat];
+    if (typeof live !== 'number' || live < ENT_IMPORT_FROM || live > ENT_IMPORT_TO) continue;
+    if (stat == null) continue;
+    attrs[t.date] = stat;
+    if (t.user in attrs && attrs[t.userStat] != null) attrs[t.user] = attrs[t.userStat];
+  }
+}
 
 /** `ENT_FIELDS`-ийн нэг бичлэгээс толь (цэвэр — тест) */
 export function entDictFor(rec: EntFieldsRec | undefined): EntDict | null {
@@ -182,6 +233,9 @@ export function entDict(url: string): EntDict | null {
   let d = dictCache.get(k);
   if (d === undefined) {
     d = entDictFor(ENT_FIELDS[k]);
+    /* ⚠️ 2026-10-21: хуучин мөшгөлтийн багана зөвхөн gdb-ээс хуулсан давхаргад (`ENT_IMPORT_FROM`-ийн ⚠️) —
+       Survey123 (`service_*` · `survey123_*`) давхаргад байхгүй тул тэднийг асуувал 500. */
+    if (d && ENT_FIELDS[k]?.ren && !/^(service_|survey123_)/i.test(k)) d.track = TRACK;
     dictCache.set(k, d);
   }
   return d;
@@ -254,6 +308,14 @@ const mapFeaturesJson = (s: string, d: EntDict | null): string => {
 export function entRequestWith(params: Record<string, string>, d: EntDict | null): Record<string, string> {
   const out: Record<string, string> = { ...params };
   if (out.outFields) out.outFields = mapList(out.outFields, d);
+  /* ⚠️ 2026-10-21: мөшгөлтийн талбар асуусан бол хос хуучин баганыг ч асууна (`entTrackFix`) */
+  if (out.outFields && d?.track && out.outFields.trim() !== '*') {
+    const have = new Set(out.outFields.split(',').map((s) => s.trim()));
+    for (const t of d.track) {
+      if (!have.has(t.date) && !have.has(t.user)) continue;
+      for (const x of [t.date, t.dateStat, t.user, t.userStat]) if (!have.has(x)) { have.add(x); out.outFields += `,${x}`; }
+    }
+  }
   if (out.orderByFields) out.orderByFields = mapOrder(out.orderByFields, d);
   if (out.groupByFieldsForStatistics) out.groupByFieldsForStatistics = mapList(out.groupByFieldsForStatistics, d);
   if (out.outStatistics) {
@@ -291,7 +353,10 @@ export function entResponseWith<T extends Keyed>(body: T, d: EntDict | null, req
   const b = body as Keyed;
   if (Array.isArray(b.features)) {
     for (const f of b.features as { attributes?: Keyed }[]) {
-      if (f && f.attributes && typeof f.attributes === 'object') f.attributes = renameKeys(f.attributes, orig);
+      if (f && f.attributes && typeof f.attributes === 'object') {
+        entTrackFix(f.attributes, d?.track);
+        f.attributes = renameKeys(f.attributes, orig);
+      }
     }
   }
   if (Array.isArray(b.fields)) {

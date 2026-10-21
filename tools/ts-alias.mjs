@@ -156,7 +156,13 @@ if (IS_CHECK && liveTok) {
     if (j?.error?.code === 499 || j?.error?.code === 498) process.env.SELBE_LIVE_SKIP = '1';
     /* ⚠️ Алгасалтыг hooks (`load`) хийнэ — файл дотор `process.exit()` дуудвал
        Windows дээр libuv assertion-оор унадаг (2026-09-17). */
-  } catch { /* сүлжээгүй — шалгуур өөрөө шийднэ */ }
+  } catch (e) {
+    /* ⚠️ 2026-10-21: токенгүй салаа ч сүлжээ унахад АЛГАСНА. GitHub-ийн `ARCGIS_ADMIN_TOKEN` secret хоосон бөгөөд
+       runner Enterprise-д хүрдэггүй (connect timeout) — урьд нь энд чимээгүй залгиж амьд шалгуурууд 180 с гацаж
+       шилжилтээс хойших БҮХ deploy унасан (production 10-19-ний AGOL хувилбар дээр хоцорсон). */
+    console.warn(`⏭ Enterprise хүрэгдсэнгүй (${e?.cause?.code ?? e?.name ?? 'сүлжээ'}) — амьд шалгуурууд алгасна`);
+    process.env.SELBE_LIVE_SKIP = '1';
+  }
 }
 
 /* ⚠️ 2026-09-30: UI SMOKE горим — оролтын цэг `*.ui.check.mjs` (эсвэл `SELBE_UI_SMOKE=1`)

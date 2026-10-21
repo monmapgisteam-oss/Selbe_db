@@ -48,7 +48,8 @@ const DEFAULTS = {
    * байв. Хоёр файл нь толин хувилбар — тоонууд ЗААВАЛ ижил байна.
    */
   MAX_TOKENS: 10000,
-  PORTAL: 'https://www.arcgis.com',
+  /* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
+  PORTAL: 'https://gis.selbecity.mn/geoportal',
 };
 
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */

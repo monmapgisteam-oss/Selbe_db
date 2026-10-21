@@ -946,7 +946,20 @@ const authedLayers = new WeakSet<FeatureLayer>();
  *    нэмэх/хасах эффекттэй (`bimCache`, `meshError`) — тэднийг энд СОЛИВОЛ кэш зөрнө.
  *    Basemap-ийн давхарга (эцэг нь `Basemap`, `layers` цуглуулгагүй) мөн алгасна.
  */
-const RECREATE_TYPES = new Set(['feature', 'map-image', 'imagery', 'vector-tile']);
+/* ⚠️ 2026-10-21 (аудит): 'tile' нэмэв — ортофото 2026-10-20-оос `TileLayer` (урьд MapImageLayer). TileLayer ·
+   VectorTileLayer-д `clone()` БАЙХГҮЙ (4.34) тул тэдгээрийг тохиргооноос нь ШИНЭЭР байгуулна (`rebuild`) — урьд нь
+   «Дахин оролдох» эдгээрт юу ч хийдэггүй байв. */
+const RECREATE_TYPES = new Set(['feature', 'map-image', 'imagery', 'vector-tile', 'tile']);
+/** `clone()`-гүй давхаргыг ижил тохиргоогоор шинээр — url · id · title · visible · opacity · listMode */
+function rebuild(old: Layer): Layer | null {
+  const o = old as unknown as { url?: string; title?: string; visible?: boolean; opacity?: number; listMode?: string; constructor: new (p: object) => Layer };
+  if (!o.url) return null;
+  try {
+    return new o.constructor({ url: o.url, id: old.id, title: o.title, visible: o.visible, opacity: o.opacity, listMode: o.listMode });
+  } catch {
+    return null;
+  }
+}
 /** «Дахин оролдох»-оор (`recreateFailedLayers`) шинээр үүсгэсэн инстанцууд — 3D-ийн `unstick` хөндөхгүй */
 const retriedLayers = new WeakSet<Layer>();
 
@@ -976,8 +989,7 @@ function recreateFailedLayers(map: Map | null | undefined): boolean {
   const failed = map.allLayers.filter((l) =>
     l.loadStatus === 'failed'
     && RECREATE_TYPES.has(l.type)
-    && !String(l.id).startsWith('scene:')
-    && typeof (l as unknown as { clone?: unknown }).clone === 'function').toArray();
+    && !String(l.id).startsWith('scene:')).toArray();
   let n = 0;
   for (const old of failed) {
     const parent = (old as unknown as { parent?: { layers?: __esri.Collection<Layer> } }).parent;
@@ -985,8 +997,10 @@ function recreateFailedLayers(map: Map | null | undefined): boolean {
     if (!coll || typeof coll.indexOf !== 'function') continue;
     const at = coll.indexOf(old);
     if (at < 0) continue;
-    let fresh: Layer;
-    try { fresh = (old as unknown as { clone: () => Layer }).clone(); } catch { continue; }
+    let fresh: Layer | null;
+    const clone = (old as unknown as { clone?: () => Layer }).clone;
+    try { fresh = typeof clone === 'function' ? clone.call(old) : rebuild(old); } catch { continue; }
+    if (!fresh) continue;
     fresh.id = old.id; // ⚠️ `findLayerById`-аар хайдаг бүх эффект ижил id-гаар олно
     /* ⚠️ 2026-10-19: хэрэглэгч ӨӨРӨӨ дахин оролдуулсан — 3D-ийн гацаа тайлагч (`unstick`) үүнийг ЦУЦЛАХГҮЙ */
     retriedLayers.add(fresh);

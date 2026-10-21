@@ -1,7 +1,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MA_SVC } from '@/lib/services/env';
-import { entSession } from '@/lib/entDocs';
+import { entSession, entStamp } from '@/lib/entDocs';
 import { currentUser, requireCap } from '@/lib/who';
 import { AUTH } from '@/lib/services';
 import { hasCap } from '@/lib/caps';
@@ -249,6 +249,7 @@ function tok(): string {
   return s.token;
 }
 async function arc<T>(url: string, body: FormData | URLSearchParams): Promise<T> {
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) }); } catch (e) {
     if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
@@ -263,7 +264,11 @@ async function arc<T>(url: string, body: FormData | URLSearchParams): Promise<T>
 
 /** Давхарга хавсралт зөвшөөрдөг эсэх (`hasAttachments`) — үгүй бол админ геопорталаас асаана */
 export async function maHasAttachments(): Promise<boolean> {
-  const j = await arc<{ hasAttachments?: boolean }>(MA_URL, new URLSearchParams({ f: 'json' }));
+  /* ⚠️ 2026-10-21: Enterprise-ийн давхарга org-only — токенгүй мета 499 «Token Required» буцааж MA-гийн хавсралт
+     хэзээ ч жагсаагддаггүй байв (`listMaAtts`-тэй адил токен залгана). */
+  const body = new URLSearchParams({ f: 'json' });
+  const s = entSession(); if (s) body.set('token', s.token);
+  const j = await arc<{ hasAttachments?: boolean }>(MA_URL, body);
   return !!j.hasAttachments;
 }
 
@@ -357,6 +362,7 @@ export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
 export async function maAttBlob(oid: number, attId: number): Promise<Blob> {
   const body = new URLSearchParams();
   const s = entSession(); if (s) body.set('token', s.token);
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(`${MA_URL}/${oid}/attachments/${attId}`, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) }); } catch {
     throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));

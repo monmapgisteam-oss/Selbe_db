@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entSession, entUploadPdf } from '@/lib/entDocs';
+import { ENT_PORTAL, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
 import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
 import { isAuthorFor, reviewerRolesFor } from '@/lib/chanarAcl';
@@ -111,6 +111,7 @@ function sess() {
 }
 async function post<T>(url: string, params: Record<string, string>): Promise<T> {
   const body = new URLSearchParams({ f: 'json', ...params, token: sess().token });
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(120_000) }); } catch (e) {
     if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
@@ -153,9 +154,9 @@ async function createTable(): Promise<string> {
   await post(`${svc.replace('/rest/services/', '/rest/admin/services/')}/addToDefinition`, {
     addToDefinition: JSON.stringify({
       tables: [{
-        name: TABLE_NAME, type: 'Table', objectIdField: 'OBJECTID', hasAttachments: false,
+        name: TABLE_NAME, type: 'Table', objectIdField: 'objectid', hasAttachments: false,
         fields: [
-          { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+          { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
           s(F.kind, 8, false), s(F.maNo, 40, false), s(F.docNo, 60), d(F.docDate), s(F.pdfItem, 64, false), s(F.pdfName, 255),
           s(F.status, 8, false), s(F.reason, FM_REASON_MAX), s(F.uploadedBy, 128), d(F.uploadedAt), s(F.decidedBy, 128), d(F.decidedAt),
         ],
@@ -174,6 +175,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   return urlCache;
 }
 
+/* ⚠️ 2026-10-21: OID нь Enterprise-д `objectid` (ЖИЖИГ үсэг) — энэ модуль query.ts-ийн хөрвүүлэгчийг тойрч шууд fetch хийдэг тул
+   `OBJECTID` гэж илгээвэл 500 «Field name 'OBJECTID' does not exist» (FIC · М-акт буюу чанарын 3–4-р шат огт ажиллахгүй байв).
+   Хүснэгтийг ч `objectid`-тэй үүсгэнэ; уншихдаа хоёр хэлбэрийг хүлээнэ (`fmRowOf`). */
 /** Хүснэгтийн мөрүүд — `where`-ээр, хуудаслалттай (`fmRowOf`) */
 async function queryFm(url: string, where: string): Promise<FmRow[]> {
   const out: FmRow[] = [];
@@ -183,7 +187,7 @@ async function queryFm(url: string, where: string): Promise<FmRow[]> {
      ЗААВАЛ, `exceededTransferLimit`-ээр таслана (`fs.length`-ээр БИШ). */
   for (let off = 0; ; ) {
     const j = await post<{ features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean }>(`${url}/query`, {
-      where, outFields: '*', orderByFields: 'OBJECTID DESC', resultOffset: String(off), resultRecordCount: '1000',
+      where, outFields: '*', orderByFields: 'objectid DESC', resultOffset: String(off), resultRecordCount: '1000',
     });
     const fs = j.features ?? [];
     out.push(...fs.map((f) => fmRowOf(f.attributes)));
@@ -323,7 +327,7 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (!stage || stage.state === 'locked') {
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.', row.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
-  const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
+  const fresh = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
   /* ⚠️ 2026-10-19 (аудит): AGOL нэрээр (`actorOf`) — хуучин мөрийн Enterprise нэртэй ч тулгана (`isOwnUpload`) */
   const actor = actorOf(s);
@@ -331,13 +335,13 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
   const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
     updates: JSON.stringify([{ attributes: {
-      OBJECTID: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
+      objectid: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
       [F.decidedBy]: actor, [F.decidedAt]: Date.now(),
     } }]),
   });
   const r = j.updateResults?.[0];
   if (!r?.success) throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
-  const back = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
+  const back = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
   if (back && back.decidedBy && back.decidedBy.toLowerCase() !== actor) {
     throw new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', back.decidedBy, back.status));
   }

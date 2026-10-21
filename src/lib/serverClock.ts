@@ -40,6 +40,60 @@ export function clockOffsetOf(srv: number, t0: number, t1: number): number {
   return Math.round(srv - (t0 + t1) / 2);
 }
 
+/** UTC агшныг ArcGIS-ийн `timestamp 'YYYY-MM-DD HH:MM:SS'` хэлбэрээр */
+const tsLiteral = (ms: number): string => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+
+/**
+ * СЕРВЕРИЙН АГШИН ХЭМЖИХ — `{ srv, t0, t1 }` эсвэл `null`. `syncServerClock` (энд) ба `huvaariBatlah` хоёулаа хэрэглэнэ.
+ * ⚠️ 2026-10-21 (аудит): Enterprise (PostgreSQL) `outStatistics`-д `CURRENT_TIMESTAMP`-ийг хүлээн авдаггүй (500) —
+ *    урьд нь алдааг залгиж `clockOff` үргэлж 0 болж, цаг зөрөхөөс хамгаалах механизм чимээгүй унтарсан байв.
+ *    Харин `where`-д `CURRENT_TIMESTAMP > timestamp '…'` ажилладаг тул ХОЁРТЫН ХАЙЛТ: ±12 цагийн мужийг
+ *    `returnCountOnly`-оор 1 с хүртэл нарийсгана (~17 хүсэлт, ~0.2 с; 10 минут тутам нэг удаа). Хүснэгт хоосон
+ *    бол (count үргэлж 0) хэмжихгүй. AGOL-д `outStatistics` зам хэвээр эхэлж оролдоно.
+ */
+export async function measureServerTime(
+  base: string,
+  oidField: string,
+): Promise<{ srv: number; t0: number; t1: number } | null> {
+  const { arcgisPost } = await import('./query');
+  const salt = () => `${oidField} > -${1 + Math.floor(Math.random() * 1e9)}`;
+  try {
+    const t0 = Date.now();
+    const j = await arcgisPost<{ features?: { attributes?: Record<string, unknown> }[] }>(`${base}/query`, {
+      where: salt(),
+      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
+      returnGeometry: 'false',
+    });
+    const t1 = Date.now();
+    const a = j.features?.[0]?.attributes ?? {};
+    const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
+    const v = k ? Number(a[k]) : Number.NaN;
+    if (Number.isFinite(v) && v > 0 && t1 - t0 <= 10_000) return { srv: v, t0, t1 };
+  } catch { /* Enterprise — доорх хоёртын хайлт */ }
+  const count = async (ms: number): Promise<number> => {
+    const j = await arcgisPost<{ count?: number }>(`${base}/query`, {
+      where: `(${salt()}) AND CURRENT_TIMESTAMP > timestamp '${tsLiteral(ms)}'`,
+      returnCountOnly: 'true',
+    });
+    return Number(j.count ?? 0);
+  };
+  try {
+    const t0 = Date.now();
+    let lo = t0 - 12 * 3600_000;
+    let hi = t0 + 12 * 3600_000;
+    if ((await count(lo)) === 0) return null; // хоосон хүснэгт эсвэл зөрүү 12 цагаас их
+    while (hi - lo > 1000) {
+      const mid = Math.floor((lo + hi) / 2);
+      if ((await count(mid)) > 0) lo = mid; else hi = mid;
+    }
+    const t1 = Date.now();
+    if (t1 - t0 > 10_000) return null;
+    return { srv: Math.round((lo + hi) / 2), t0, t1 };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина.
  * @param url хэмжих hosted хүснэгтийн REST хаяг; өгөөгүй бол хяналтын хүснэгт (`hyanalt.HYANALT.url`).
@@ -56,20 +110,10 @@ export async function syncServerClock(url?: string): Promise<void> {
     try {
       const base = url ?? (await import('./hyanalt')).HYANALT.url;
       if (!base) return;
-      const { arcgisPost } = await import('./query');
-      const t0 = Date.now();
-      const j = await arcgisPost<{ features?: { attributes?: Record<string, unknown> }[] }>(`${base}/query`, {
-        where: `OBJECTID > -${1 + Math.floor(Math.random() * 1e9)}`,
-        outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
-        returnGeometry: 'false',
-      });
-      const t1 = Date.now();
-      const a = j.features?.[0]?.attributes ?? {};
-      const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
-      const v = k ? Number(a[k]) : Number.NaN;
-      if (!Number.isFinite(v) || v <= 0 || t1 - t0 > 10_000) return;
-      clockOff = clockOffsetOf(v, t0, t1);
-      clockAt = t1;
+      const m = await measureServerTime(base, 'OBJECTID');
+      if (!m) return;
+      clockOff = clockOffsetOf(m.srv, m.t0, m.t1);
+      clockAt = m.t1;
     } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
       clockFlight = null;
     }
