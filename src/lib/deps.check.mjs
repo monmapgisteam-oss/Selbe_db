@@ -487,4 +487,33 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   console.log('✅ блок хоорондын уялдаа — @A>B бичиглэл, эх блокийн мужаар шаардлага, тархалт');
 }
 
+/* ── ⚠️ 2026-10-21: огноотой навчгүй ДЭД БҮЛГИЙН өөрийн огноо эцгийн мужид оролцоно ── */
+{
+  /* G0 > { G1 (өөр 60..90, огноогүй навчтай), L 31..40 }, X нь G0-оос 1FS0 */
+  const rows = [
+    row(0, 1, [], [null], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(60, 90)], { group: true, depth: 1 }),
+    row(2, 3, [], [null], { depth: 2 }),
+    row(3, 4, [], [sp(31, 40)], { depth: 1 }),
+    row(4, 5, parseDeps('1FS0'), [sp(100, 105)], { depth: 0 }),
+  ];
+  assert.deepEqual(effSpan(rows, 1, 0), sp(60, 90), 'G1 — өөрийн огноо');
+  assert.deepEqual(effSpan(rows, 0, 0), sp(31, 90), 'G0 — G1-ийн өөрийн огноо орно (урьд 31..40)');
+  assert.equal(requiredStart(rows, codeIndex(rows), 4, 0), d(91), 'X нь G0 дуусахаас (урьд 41)');
+  /* rollUp: L хөдлөхөд G0 нь навчны мужаар биш, G1-ийг оруулан бодогдоно */
+  const ru = rollUpGroups(rows, 1, new Map([[3, [sp(32, 42)]]]));
+  assert.deepEqual(ru.get(0), [sp(32, 90)], 'G0 = MIN(L)..MAX(G1)');
+  assert.equal(ru.has(1), false, 'G1 (огноотой навчгүй) хэвээр');
+  /* Огноотой навчтай дэд бүлэг — өөрийн огноо нь нөлөөлөхгүй (хуучин зан) */
+  const rows2 = [
+    row(0, 1, [], [null], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(0, 200)], { group: true, depth: 1 }),
+    row(2, 3, [], [sp(50, 55)], { depth: 2 }),
+    row(3, 4, [], [sp(31, 40)], { depth: 1 }),
+  ];
+  assert.deepEqual(effSpan(rows2, 0, 0), sp(31, 55), 'агрегат давамгайлна');
+  console.log('✅ огноотой навчгүй дэд бүлэг — өөрийн огноогоор эцгийн мужид');
+}
+
+
 console.log('\ndeps.check: ok');

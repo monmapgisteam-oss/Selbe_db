@@ -238,7 +238,8 @@ type PlanModalProps = {
   onApply: (
     spans: (Span | null)[] | null,
     deps: Dep[] | null,
-    ob: { months: Map<string, number> | null; res: Map<string, MonthRes> | null } | null,
+    /** ⚠️ 2026-10-21: `byBlk` — блок бүрийн өөр задаргаа НЭГ дуудлагаар (`copyShifted`); тэр блокт `months`-ийг дарна */
+    ob: { months: Map<string, number> | null; res: Map<string, MonthRes> | null; byBlk?: Map<number, Map<string, number>> } | null,
     actual: { start: number | null; end: number | null } | null,
     res: { hun: number | null; mashin: number | null } | null,
     blks: number[],
@@ -831,7 +832,7 @@ function PlanModalBody({
    *    сүүлийн сарууд ХООСОН үлдэж чип улаан болно — хэрэглэгч өөрөө бөглөнө (0 ч бичиж болно).
    * ⚠️ Идэвхтэй блок ТЭНЦЭЭГҮЙ (`mvOk` худал) бол хаалттай — зөрүүг олон блокт үржүүлэхгүй. Хуулсны
    *    дараа блок бүр `unbalancedBlocks`-оор (`badBlks`) хэвийн шалгагдана.
-   * ⚠️ Блок бүрд `onApply`-г ТУСАД нь дуудна (уялдаа · бодит `null`) — `applyModal` сарын
+   * ⚠️ (2026-10-21: блок бүрд тусдаа биш, НЭГ `onApply` + `byBlk` — доорх ⚠️.) Уялдаа · бодит `null` — `applyModal` сарын
    *    задаргааг тэр блокийн ноорогт бичнэ; цонх ХААГДАХГҮЙ, идэвхтэй блок хэвээр «Тавих»-аар.
    * ⚠️ 2026-10-11 (аудит №7): ШИЛЖСЭН МУЖ ч хамт (`spans`) — урьд нь зөвхөн саруудыг бичдэг тул блокийн муж хуучнаараа
    *    үлдэж, сарууд мужаас гадуур («мужаас гадуурх обьём», `obOut`) болж илгээх/батлах хаагддаг байв. Муж = сарын
@@ -863,7 +864,12 @@ function PlanModalBody({
       });
       jobs.push({ b, out });
     }
-    for (const { b, out } of jobs) onApply(next, null, { months: out, res: null }, null, null, [b], [b]);
+    /* ⚠️ 2026-10-21: НЭГ дуудлага (`byBlk`) — урьд нь блок бүрд `onApply` нэг тикт дуудагдаж, 2 дахь нь хуучин `plan`-аар
+       1 дэх блокийг дахин тайрч (`applyChanges` → `obFullRef`-ийн серверийн сар) сүүлийн хоосон сарууд хуучин утгаараа
+       эргэж гардаг байв (улаан чип алга). Муж (`next`) ба блок бүрийн задаргаа нэг агшинд. */
+    if (!jobs.length) return;
+    const blks = jobs.map((j) => j.b);
+    onApply(next, null, { months: null, res: null, byBlk: new Map(jobs.map((j) => [j.b, j.out])) }, null, null, blks, blks);
   };
 
   const clear = () => {

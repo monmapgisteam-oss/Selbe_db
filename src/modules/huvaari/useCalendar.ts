@@ -4,6 +4,10 @@ import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { PL_OVER, PL_ROW, ZOOM, type Zoom } from './types';
 import { todayUtc } from './util';
 
+/** ⚠️ 2026-10-21: хуанлийн хүрээнд тооцох огнооны хязгаар — `lib/planProgress.ts`-ийн `OK_LO`/`OK_HI`-тэй ИЖИЛ (тэнд экспортлогдоогүй) */
+const SANE_LO = Date.UTC(2000, 0, 1);
+const SANE_HI = Date.UTC(2100, 0, 1);
+
 /**
  * «ӨНӨӨДӨР» (UTC шөнө дундаар түлхүүрлэсэн ЛОКАЛ өдөр) — шөнө дунд бүрд шинэчлэгдэнэ.
  * ⚠️ 2026-10-09: `useCalendar`-аас ГАРГАВ — `Huvaari` нь «хоцорсон» чипт өнөөдрийг `useCalendar`-аас ӨМНӨ
@@ -66,12 +70,16 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
        Safari дээр RangeError өгөх эрсдэлтэй байв. Зурвасгүй бол `now` (хуучин ёс). */
     let lo = now;
     let hi = -Infinity;
-    for (const r of plan) for (const sp of r.spans) if (sp) {
-      if (sp.start < lo) lo = sp.start;
-      if (sp.end < lo) lo = sp.end;
-      if (sp.start > hi) hi = sp.start;
-      if (sp.end > hi) hi = sp.end;
-    }
+    /* ⚠️ 2026-10-21: ЭВДЭРСЭН ОГНОО ХҮРЭЭНД ОРОХГҮЙ — амьд өгөгдөлд бүлгийн 1899 (Excel-ийн 0 сериал) ·
+       1909 · 1946 оны огноо бий (b32_9f · b33_9f · b2_12f) тул хуанли тэр онуудаас эхэлж ашиглах
+       боломжгүй болдог байв. `lib/planProgress.ts`-ийн `sane`-тай ИЖИЛ хязгаар (2000–2100). Мөр өөрөө
+       нуугдахгүй — зөвхөн хүрээний тооцоонд үл тооно. */
+    const take = (ms: number) => {
+      if (!Number.isFinite(ms) || ms < SANE_LO || ms > SANE_HI) return;
+      if (ms < lo) lo = ms;
+      if (ms > hi) hi = ms;
+    };
+    for (const r of plan) for (const sp of r.spans) if (sp) { take(sp.start); take(sp.end); }
     if (hi === -Infinity) hi = now;
     /**
      * ⚠️ СУЛ ЗАЙ (2026-09-02, хэрэглэгч). Урьд нь `from`/`to` нь өгөгдлийн ЯГ

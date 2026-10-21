@@ -98,6 +98,24 @@ const curveOf = (rows) => planCurve(rows, 1, axis).map((c) => (c[0] == null ? nu
   assert.equal(curveOf(onlyOwn)[1], 100, 'дэд ажил хуваарьгүй бол бүлгийн огноогоор 2026-06-д 100%');
 }
 
+/* ── 3в. ⚠️ 2026-10-21: ОГНООГҮЙ ДУНД БҮЛГЭЭР ДАМЖСАН ч «дэд ажил хуваарьгүй» дүрэм ажиллана ──
+   Урьд нь G1 (огноогүй) бүлгийн `plan` нь `asOf` байхад үргэлж 0 (null биш) тул G0 «дэд ажил
+   хуваарьтай» гэж үзэгдэж 0% гарч байв; навч нь шууд G0-ийн доор бол 49.86%. */
+{
+  const asOf = D('2026-07-01');
+  const g0 = row({ oid: 1, group: true, depth: 0, start: [D('2026-01-01')], end: [D('2026-12-31')] });
+  const via = [g0, row({ oid: 2, group: true, depth: 1 }), row({ oid: 3, depth: 2 })];
+  const direct = [g0, row({ oid: 3, depth: 1 })];
+  const want = computeAll(direct, 1, asOf, {}, {}, [false])[0].plan[0];
+  assert.ok(want > 0.49 && want < 0.5, `шууд навч: ${want}`);
+  assert.equal(computeAll(via, 1, asOf, {}, {}, [false])[0].plan[0], want, 'дунд бүлгээр дамжсан ч ижил');
+  assert.equal(planCurve(via, 1, [asOf])[0][0], want, 'planCurve ≡ computeAll');
+  /* Дунд бүлэг ӨӨРИЙН огноотой бол тэр нь «хуваарьтай» хүүхэд — G0 хүүхдээрээ бодогдоно */
+  const ownMid = [g0, row({ oid: 2, group: true, depth: 1, start: [D('2026-07-02')], end: [D('2026-12-31')] }), row({ oid: 3, depth: 2 })];
+  assert.equal(computeAll(ownMid, 1, asOf, {}, {}, [false])[0].plan[0], 0, 'G1 07-02-нд эхэлнэ → 0');
+  assert.equal(planCurve(ownMid, 1, [asOf])[0][0], 0, 'planCurve ≡ computeAll (G1 өөрийн огноотой)');
+}
+
 /* ── 4. ХУВААРЬГҮЙ АЖИЛ = 0% ТӨЛӨВЛӨГӨӨ ──
    ⚠️ Хэрэглэгчийн шийдвэр: «бөглөгдөөгүй байх нь хамаагүй». Хуваарьгүй ажлыг
    алгасвал 6% бөглөгдсөн багц 100% төлөвлөгөөтэй мэт харагдана. */

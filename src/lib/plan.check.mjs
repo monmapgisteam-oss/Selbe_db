@@ -137,6 +137,14 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
     row(2, [span('2026-04-09', '2026-04-01'), null, null, null], { group: true, depth: 4 }),
   ]);
   assert.equal(rev.reversed, 1, 'урвуу огноотой АЖЛЫН тоо (бүлэг тоологдохгүй)');
+  /* ⚠️ 2026-10-21: урвуу муж `filled`-д орохгүй, `from`/`to`-г тогтоохгүй */
+  assert.equal(rev.filled, 2, 'урвуу муж бөглөсөнд тоологдов');
+  assert.equal(rev.from, d('2026-03-01'));
+  assert.equal(rev.to, d('2026-03-05'), 'урвуу мужийн end (03-20) нь to-г сунгав');
+  const onlyRev = coverageOf([row(0, [span('2026-03-29', '2026-03-20'), null, null, null])]);
+  assert.equal(onlyRev.filled, 0);
+  assert.equal(onlyRev.from, null);
+  assert.equal(onlyRev.to, null);
   assert.equal(cov.reversed, 0);
 }
 console.log('plan.check: ok — spanFrac ✓');

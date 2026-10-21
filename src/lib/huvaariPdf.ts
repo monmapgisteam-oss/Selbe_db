@@ -652,7 +652,10 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       const by = ROW_H * 0.14;
       const bh = half ? ROW_H * 0.4 : ROW_H * 0.68;
       /* ⚠️ Гүйцэтгэл 0–1; 0 < act < 1 үед л хэсэгчилсэн дүүргэлт */
-      const act = r.act != null && Number.isFinite(r.act) ? Math.max(0, Math.min(1, r.act)) : null;
+      /* ⚠️ 2026-10-21: `act` (0..1-д тайрсан) — ЗӨВХӨН зурвасын өргөнд. Шошго нь ТҮҮХИЙ `raw`-аас
+         (дэлгэцтэй ижил): урьд нь шошго ч тайрсан утгаас бодогдож 3.099 (309.9%) «100%» гэж бичигддэг байв. */
+      const raw = r.act != null && Number.isFinite(r.act) ? r.act : null;
+      const act = raw != null ? Math.max(0, Math.min(1, raw)) : null;
       const partial = !r.group && act != null && act > 0 && act < 1;
       if (r.group) {
         cv.push({ type: 'rect', x: bx, y: by, w: bw, h: bh, r: 1, color: C.overlap, fillOpacity: 0.16, lineColor: C.overlap, lineWidth: 0.7 });
@@ -680,7 +683,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       const d = spanDays(r.bar);
       /* ⚠️ 2026-10-06: 0 < act < 1 бол 1..99 — урьд нь `Math.round` 0.996-г «100%», 0.004-ийг «0%» гэж
          харуулж, дуусаагүй ажлыг дууссан / эхэлсэн ажлыг эхлээгүй мэт харагдуулдаг байв. */
-      const pv = act == null ? null : act > 0 && act < 1 ? Math.min(99, Math.max(1, Math.round(act * 100))) : Math.round(act * 100);
+      const pv = raw == null ? null : raw > 0 && raw < 1 ? Math.min(99, Math.max(1, Math.round(raw * 100))) : Math.round(raw * 100);
       const pc = pv != null ? ` · ${pv}%` : '';
       const full = `${iso(r.bar.start)} – ${iso(r.bar.end)} · ${d}${tr('х')}${pc}`;
       const cw = LAB_FS * 0.52;

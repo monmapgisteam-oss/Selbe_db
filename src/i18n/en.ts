@@ -6924,7 +6924,14 @@ const en: Record<string, string> = {
   "Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.": "The monthly volume table was not loaded, so saving is blocked to prevent duplicates. Reload the page and try again.",
   "{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} already submitted additional work for this package first — your duplicate submission could not be cancelled. Please refresh the page.",
   "{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} submitted this package's volumes first — your duplicate submission could not be cancelled. Please refresh the page.",
-  "Буцаагдсангүй: {0}": "Not undone: {0}"
+  "Буцаагдсангүй: {0}": "Not undone: {0}",
+  "Сарын обьёмын хүснэгт уншигдаж байна — дуусмагц илгээнэ үү.": "The monthly volume table is loading — submit once it finishes.",
+  "Сарын обьёмын хүснэгт уншигдаагүй тул илгээх боломжгүй. «Сарын обьём дахин ачаалах»-ыг дарна уу.": "The monthly volume table did not load, so it cannot be submitted. Click «Reload monthly volume».",
+  "Сарын обьём дахин ачаалах": "Reload monthly volume",
+  "Хуудасны сүүлийн агшин тасарсан тул илгээх боломжгүй — хуучин агшин ({0}) харагдаж байна. Агшин цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.": "The sheet's latest snapshot is truncated, so it cannot be submitted — an older snapshot ({0}) is shown. Refresh the sheet once the snapshot is cleaned up.",
+  "{0} ажил·блокийн сарын обьёмын ноорог одоогийн хуудсанд байхгүй ажилд хамаарна (өнчин) — илгээгдсэнгүй. «Өнчин ноорог устгах»-аар цэвэрлээд дахин илгээнэ үү.": "Monthly volume drafts for {0} work·block(s) belong to work not on the current sheet (orphaned) — not submitted. Clear them with «Delete orphaned drafts» and submit again.",
+  "{0} ажил·блокийн сарын обьёмын ноорог хуудсанд байхгүй ажлын кодтой (өнчин) — хадгалагдахгүй: {1}.": "Monthly volume drafts for {0} work·block(s) have work codes not on the sheet (orphaned) — they will not be saved: {1}.",
+  "Илгээлт татагдлаа, гэхдээ хуудас дахин уншигдсангүй ({0}) — агуулга ноорогт буусангүй. «Ноорогт буцаах»-ыг дарж сэргээнэ үү.": "The submission was withdrawn, but the sheet could not be reloaded ({0}) — the content was not restored to the draft. Click «Restore to draft» to recover it."
 };
 
 export default en;
