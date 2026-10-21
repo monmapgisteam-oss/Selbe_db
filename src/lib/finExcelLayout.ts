@@ -116,7 +116,6 @@ const lzDuusah_ognoo2 = perLocale(() => ([tr('Төлөвлөгөөт хугац�
 
 const lzEhleh_ognoo1 = perLocale(() => ([tr('Төлөвлөгөөт хугацаа')]));
 
-
 /**
  * БҮЛГИЙН ЗАМ — Excel-ийн нэгтгэсэн толгойн зурвасууд (дээд → доод).
  *
@@ -529,16 +528,6 @@ export const finXlBandLabel = (name: string, parent: string): string => {
 export const finXlRowHidden = (row: Record<string, unknown>): boolean => (
   FIN_XL_ROW_HIDE.includes(String(row[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim())
 );
-
-/*
- * ⚠️ ТҮВШНИЙ ӨНГӨНИЙ ГРАДИЕНТ ХАСАГДСАН (2026-09-09, хэрэглэгчийн сонголт:
- * «зурвасыг голлуулж, нэг өнгөөр»). Урьд нь гүн бүрд цайвар цэнхэрийн өөр
- * шат оноодог байсан (`BLUE_LIGHT` палитр + нэрийн hash). Түвшин нь зүүн
- * ЗАЙГААР ба түвшний КОДООР («1.1», «4.2») аль хэдийн уншигддаг тул өнгө нь
- * гурав дахь давхардал байв.
- */
-/** Хэсгийн зурвасын дэвсгэр — Excel-ийн «Accent 1, Darker 25%» */
-export const FIN_XL_SECTION_BG = '#2f5597';
 
 /**
  * АНХДАГЧААР НУУГДСАН БАГАНА.

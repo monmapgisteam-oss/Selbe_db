@@ -67,9 +67,6 @@ export type InspKind = 'MIR' | 'FIC';
 export const MS_LIKE: readonly DocKind[] = ['MS', 'QMP', 'PRC'];
 export const isMsLike = (kind: DocKind): boolean => MS_LIKE.includes(kind);
 
-export const isKind = (x: unknown): x is DocKind =>
-  typeof x === 'string' && (KINDS as readonly string[]).includes(x);
-
 /** Төрлийн монгол нэр — таб, карт (зурагдах агшинд) */
 export function kindLabel(kind: DocKind): string {
   if (kind === 'MS') return tr('Аргачлал');
@@ -278,9 +275,6 @@ const clipNote = (s: string, max = REP_NOTE_MAX): string => (s.length > max ? `$
  */
 export type BounceReason = 'format' | 'incomplete';
 export type Bounce = { at: number; by: string; reason: BounceReason; note: string };
-export function bounceLabel(r: BounceReason): string {
-  return r === 'format' ? tr('Буцаасан (формат)') : tr('Буцаасан (бүрдэл дутуу)');
-}
 
 /**
  * ЗАХИАЛАГЧИЙН ХАРИУ (REP) — approved/returned болмогц автоматаар үүснэ.
@@ -530,10 +524,6 @@ export function maCheckLabel(k: MaCheckKey): string {
   return tr('Гадаадын 2-оос доошгүй үйлдвэрлэгч, нийлүүлэгчийн санал');
 }
 
-/** Бүрдлийн хэсгийн анхааруулга — маягтын доод тайлбар */
-export const maChecklistWarning = (): string =>
-  tr('Дотоодын болон гадаадын тус бүр 2-оос доошгүй үйлдвэрлэгч, нийлүүлэгчийн саналыг харьцуулан ирүүлнэ. Бүрдэл дутуу бол хянахгүй буцаана.');
-
 /** Гарын үсгийн мөр — нэр · албан тушаал · байгууллага · огноо (хоосон байж болно) */
 export type Sig = { name: string; position: string; org: string; date: number | null };
 export const EMPTY_SIG: Sig = { name: '', position: '', org: '', date: null };
@@ -541,15 +531,6 @@ export const EMPTY_SIG: Sig = { name: '', position: '', org: '', date: null };
 /** Submittal төрөл — Багц 6.2 дамжуулах маягт */
 export const SUBMITTAL_TYPES = ['plan', 'spec', 'subcontractor', 'ma', 'shopDrawing', 'ms', 'opManual'] as const;
 export type SubmittalType = (typeof SUBMITTAL_TYPES)[number];
-export function submittalTypeLabel(t: SubmittalType): string {
-  if (t === 'plan') return tr('Төлөвлөгөө (Plan)');
-  if (t === 'spec') return tr('Техникийн тодорхойлолт (Spec)');
-  if (t === 'subcontractor') return tr('Туслан гүйцэтгэгч');
-  if (t === 'ma') return tr('Материал баталгаажуулалт (MA)');
-  if (t === 'shopDrawing') return tr('Ажлын зураг (Shop drawing)');
-  if (t === 'ms') return tr('Ажлын аргачлал (MS)');
-  return tr('Ашиглалтын заавар (Operation manual)');
-}
 
 /** MA хавсралтын мөр — `kind` нь бүрдлийн түлхүүр эсвэл `other` */
 export type MaAttachment = { kind: MaCheckKey | 'other'; title: string; pages: string };
@@ -622,14 +603,6 @@ export type InspItem = {
 /** Үзлэгийн хавсралтын түлхүүр — загвар бүрд өөр олонлог (`chanarTemplates.InspTemplate.attachments`) */
 export const INSP_ATTACH_KEYS = ['labTest', 'qualityCert', 'photo', 'survey', 'cubes', 'other'] as const;
 export type InspAttachKey = (typeof INSP_ATTACH_KEYS)[number];
-export function inspAttachLabel(k: InspAttachKey): string {
-  if (k === 'labTest') return tr('Лабораторийн туршилтын дүн');
-  if (k === 'qualityCert') return tr('Чанарын гэрчилгээ');
-  if (k === 'photo') return tr('Фото');
-  if (k === 'survey') return tr('Геодезийн хэмжилт');
-  if (k === 'cubes') return tr('Бетон шоо (сорьц)');
-  return tr('Бусад');
-}
 
 export type InspBody = BodyCommon & {
   meta: Meta;
@@ -724,13 +697,9 @@ export function ncrProposedLabel(p: NcrProposed): string {
 /** Хаасан баримтын төрөл (бүртгэлийн багана) */
 export const NCR_CLOSURE_DOC_TYPES = ['method', 'report'] as const;
 export type NcrClosureDocType = (typeof NCR_CLOSURE_DOC_TYPES)[number];
-export const ncrClosureDocTypeLabel = (t: NcrClosureDocType): string =>
-  (t === 'method' ? tr('Аргачлал') : tr('Тайлан'));
 /** Биелэлтийн үр дүн */
 export const NCR_CLOSURE_RESULTS = ['ok', 'notOk'] as const;
 export type NcrClosureResult = (typeof NCR_CLOSURE_RESULTS)[number];
-export const ncrClosureResultLabel = (r: NcrClosureResult): string =>
-  (r === 'ok' ? tr('Хангалттай') : tr('Хангалтгүй'));
 
 export type NcrCorrection = { text: string; completedAt: number | null; steps: string[] };
 
@@ -1601,55 +1570,6 @@ export function review(
   return { ok: true, reviews, status: resolve(reviews, kind) };
 }
 
-/**
- * ГҮЙЦЭТГЭГЧ ИРҮҮЛЭХ — 1 → 2-р алхам. Ноорог эсвэл буцаагдсан баримтаас.
- *
- * ⚠️ Буцаагдсанаас дахин ирүүлэхэд `rev + 1` ба хянагчдын бүртгэл ЦЭВЭРЛЭГДЭНЭ —
- *    бүгд ДАХИН хянана (зураглалын улаан тасархай «ДАХИН ХЯНАХ»: 6 → 2 → 3).
- *    Өмнө зөвшөөрсөн хоёр нь ч дахин үзнэ, учир нь агуулга өөрчлөгдсөн.
- *    (MA: түгжигдсэн A/AN материал ДАХИН хянагдахгүй — `nextRevisionBody`.)
- * ⚠️ Хуучин хувилбарын мөр УСТГАГДАХГҮЙ — дуудагч шинэ мөр нэмнэ (түүх).
- * ⚠️ NCR (2026-09-28): зөвхөн НООРОГООС (нээгч гүйцэтгэгчид илгээнэ), rev
- *    ҮГҮЙ; буцаагдсан («Дахин засах») NCR-ийг гүйцэтгэгч `submitCorrection`-оор
- *    дахин илгээнэ.
- * ⚠️ 2026-09-28 (2-р үе шат): rev > 0 илгээлтэд `revNote` (хувилбарын шалтгаан)
- *    ЗААВАЛ — «Өөрчлөлтийн түүх» хүснэгтийн мөр.
- */
-/**
- * ХООСОН ГОЛ ХЭСГҮҮД — илгээхийн ӨМНӨХ асуултад жагсаана (нэрс).
- *
- * ⚠️ 2026-10-05: зөвхөн гарчигтай баримтыг хянуулахаар илгээж болдог, илгээсний дараа
- *    засах боломжгүй байв. ХОРИГ БИШ, САНУУЛГА — `submit` хэвээр зөвшөөрнө (маягтын
- *    хэсгүүд ажил бүрд өөр, зарим нь хоосон байх нь зөв тохиолдол бий); зохиогч юу дутууг
- *    ХАРААД шийднэ. Хавсралтын тоог дуудагч (`Chanar.send`) нэмж хэлнэ.
- */
-export function emptyKeySections(kind: DocKind, body: AnyBody | null | undefined): string[] {
-  if (!body) return [];
-  const out: string[] = [];
-  const blank = (v: unknown) => typeof v !== 'string' || v.trim() === '';
-  if (isMsLike(kind)) {
-    const b = body as MsBody;
-    if (blank(b.general)) out.push(tr('1. Ерөнхий мэдээлэл'));
-    if (blank(b.scope)) out.push(tr('2. Ажлын хамрах хүрээ'));
-    if (blank(b.materials)) out.push(tr('3. Материал · тоног төхөөрөмж · хүн хүч'));
-    if (blank(b.sequence)) out.push(tr('4. Ажлын дараалал, технологи'));
-    if (blank(b.quality)) out.push(tr('5. Чанарын хяналт, шалгалт'));
-    if (blank(b.safety)) out.push(tr('6. ХАБЭА арга хэмжээ'));
-  } else if (kind === 'MA') {
-    const b = body as MaBody;
-    if (!Array.isArray(b.materials) || b.materials.length === 0) out.push(tr('Материалын жагсаалт'));
-    if (blank(b.manufacturer)) out.push(tr('Үйлдвэрлэгч'));
-  } else if (kind === 'NCR') {
-    const b = body as NcrBody;
-    if (blank(b.description)) out.push(tr('Үл тохирлын тодорхойлолт'));
-    if (b.severity == null) out.push(tr('Ноцтой байдлын зэрэг'));
-  } else {
-    const b = body as InspBody;
-    if (!Array.isArray(b.items) || b.items.length === 0) out.push(tr('Шалгах мөрүүд'));
-  }
-  return out;
-}
-
 export function submit(
   doc: Pick<MsDoc, 'status' | 'rev' | 'author'> & { kind?: DocKind },
   args: { who: string; now?: number; revNote?: string | null },
@@ -2174,50 +2094,6 @@ export function needsMyAction(doc: Pick<FlowDoc, 'status' | 'correctionAt'>, a: 
  */
 export type MyActionWhy = 'review' | 'ncrReview' | 'correction' | 'recorrect' | 'submit' | 'resubmit' | 'closeNcr' | 'ack';
 export type MyAction = { why: MyActionWhy; since: number | null };
-export function myAction(
-  doc: FlowDoc & Pick<MsDoc, 'sentAt' | 'decidedAt'> & { bounce?: Bounce | null },
-  a: Actions,
-  extra: { reopenedAt?: number | null } = {},
-): MyAction | null {
-  if (!needsMyAction(doc, a)) return null;
-  const kind = doc.kind ?? 'MS';
-  const ts = (x: number | null | undefined): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
-  const latestOf = (xs: (number | null)[]): number | null => {
-    const v = xs.filter((x): x is number => x != null);
-    return v.length ? Math.max(...v) : null;
-  };
-  if (a.review.length > 0) {
-    if (kind === 'NCR') return { why: 'ncrReview', since: ts(doc.correctionAt) };
-    if (!SEQUENTIAL_KINDS.includes(kind)) return { why: 'review', since: ts(doc.sentAt) };
-    const order = requiredReviewers(doc.reviews, kind);
-    const idx = a.review.map((r) => order.indexOf(r)).filter((i) => i >= 0);
-    const prev = order.slice(0, idx.length ? Math.min(...idx) : 0).map((p) => ts(doc.reviews[p]?.at));
-    return { why: 'review', since: latestOf(prev) ?? ts(doc.sentAt) };
-  }
-  if (a.correction && (doc.status === MS_STATUS.returned || !doc.correctionAt)) {
-    if (doc.status === MS_STATUS.returned) return { why: 'recorrect', since: ts(doc.decidedAt) };
-    return { why: 'correction', since: latestOf([ts(doc.sentAt), ts(extra.reopenedAt)]) };
-  }
-  if (a.submit) {
-    if (doc.status === MS_STATUS.returned) return { why: 'resubmit', since: ts(doc.decidedAt) ?? ts(doc.bounce?.at) };
-    return { why: 'submit', since: null };
-  }
-  if (a.closeNcr) return { why: 'closeNcr', since: ts(doc.decidedAt) };
-  if (a.ack) return { why: 'ack', since: ts(doc.rep?.at) };
-  return null;
-}
-
-/** «Миний хийх»-ийн шалтгааны товч шошго (зурагдах агшинд) */
-export function myActionLabel(why: MyActionWhy): string {
-  if (why === 'review') return tr('Хянах');
-  if (why === 'ncrReview') return tr('Залруулга ирсэн — шалгах');
-  if (why === 'correction') return tr('Залруулга илгээх');
-  if (why === 'recorrect') return tr('Нэмэлт арга хэмжээ — дахин залруулах');
-  if (why === 'submit') return tr('Илгээх');
-  if (why === 'resubmit') return tr('Буцаагдсан — засаж илгээх');
-  if (why === 'closeNcr') return tr('Үл тохирлыг хаах');
-  return tr('Хариу хүлээн авах');
-}
 
 /**
  * ХҮЛЭЭСЭН ХОНОГ — `since`-ээс хойш бүтэн хоног (2026-10-01).

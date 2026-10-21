@@ -1172,15 +1172,6 @@ export function signalStage(code: SignalCode, plan: SignalPlan): number {
   return -1;
 }
 
-/** Тухайн агшинд хэддүгээр ЭЭЛЖ явж байгаа вэ (0-ээс эхлэнэ). */
-export function currentStage(time: number, plan: SignalPlan): number {
-  const n = plan.stages.length;
-  if (n <= 0) return -1;
-  const share = plan.cycle / n;
-  const t = ((time % plan.cycle) + plan.cycle) % plan.cycle;
-  return Math.min(n - 1, Math.floor(t / share));
-}
-
 /**
  * Тухайн зураасны ФАЗ. Ээлжийн үргэлжлэх хугацаа = мөчлөг / ээлжийн тоо;
  * түүний эхний хэсэг НОГООН, сүүлийн `yellow` секунд ШАР, бусад ээлжид УЛААН.
@@ -1231,7 +1222,6 @@ export function outHeading(edge: NetEdge, node: number): Pt {
   const L = Math.hypot(dx, dy) || 1;
   return [dx / L, dy / L];
 }
-
 
 /* ══════════════════ Машин агент ══════════════════ */
 
@@ -1332,7 +1322,6 @@ export const U_TURN_V = 2.5;
  * ~6-10 м тул 8 м нь бодит харагдана.
  */
 export const TURN_SMOOTH_M = 8;
-
 
 /** Машины ойролцоо урт (м) — car-following-д «эзэлсэн зай». Төрөлгүй машины анхдагч. */
 export const CAR_LEN = 5;

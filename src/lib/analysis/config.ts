@@ -56,7 +56,6 @@ export const ENGINEERING_IDS: string[] = INFRA_SYSTEMS
   .flatMap((x) => x.ids)
   .filter((id) => LAYER_BY_ID[id]?.geom === 'line');
 
-
 /* ══════════════════ Газрын зургийн давхарга ══════════════════ */
 
 export type MapLayerKind = 'point' | 'point-lg' | 'line' | 'fill' | 'hatch' | 'building';
@@ -232,8 +231,6 @@ export const SCORE_LEVELS = [
 export const NO_DATA_COLOR = '#94a3b8';
 /** «Өгөгдөлгүй» — DOM/SVG графикийн токен (dark-тай). ⚠️ 2026-10-09 */
 export const NO_DATA_TONE = 'var(--ink-3)';
-/** ⚠️ 2026-10-09: `NO_DATA_COLOR` дээрх бичиг — цагаан 2.6:1, хар-хүрэн 7.2:1 */
-export const NO_DATA_INK = '#1a1205';
 
 /**
  * ОНООЛОЛД ОРОХГҮЙ бүсийн ангиллууд (каноник нэр, `zoneType()`-ийн гаралт).
