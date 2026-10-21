@@ -107,7 +107,13 @@ if (IS_CHECK && liveTok && HJ) {
       console.warn(`⏭ ARCGIS_ADMIN_TOKEN хүчингүй (${j.error.code}) — амьд шалгуурууд алгасна; түлхүүрээ шинэчилнэ үү`);
       liveTok = ''; process.env.SELBE_LIVE_SKIP = '1';
     }
-  } catch { /* сүлжээгүй — доорх ердийн зам */ }
+  } catch (e) {
+    /* ⚠️ 2026-10-21: Enterprise (`gis.selbecity.mn`) GitHub Actions-ийн серверээс ХҮРЭГДДЭГГҮЙ (connect timeout) —
+       урьд нь энд чимээгүй алгасаж токеныг үлдээдэг тул амьд шалгуурууд (series · bagts · negj · gun · zovshoorol)
+       сервер рүү 180 с гацаж CI/deploy-ийг унагадаг байв. Хүрэхгүй бол хүчингүй токентой ИЖИЛ: ⏭ алгасна. */
+    console.warn(`⏭ Enterprise хүрэгдсэнгүй (${e?.cause?.code ?? e?.name ?? 'сүлжээ'}) — амьд шалгуурууд алгасна`);
+    liveTok = ''; process.env.SELBE_LIVE_SKIP = '1';
+  }
 }
 if (IS_CHECK && liveTok) {
   const orig = globalThis.fetch;

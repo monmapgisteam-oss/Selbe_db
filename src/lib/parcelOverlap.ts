@@ -417,10 +417,22 @@ function shapesOf(fs: readonly Feat[], wkid: number): Array<[string, string]> {
   const ringFeats: number[][][][] = [];
   const pathFeats: number[][][][] = [];
   const pts: number[][] = [];
+  /* ⚠️ 2026-10-21: ДОГОЛДСОН ХЭСЭГ — Enterprise-ийн PostgreSQL (PostGIS) нь урт нь ТЭГ шугам (хоёр ижил цэгтэй
+     `[[x,y],[x,y]]`) эсвэл 3-аас цөөн ялгаатай оройтой цагирагтай НЭГ ч хэсэг байвал асуулгыг бүхэлд нь
+     500 «Database error has occurred» гэж унагадаг (AGOL-ын SQL Server зөвшөөрдөг байсан). Дэд бүтцийн шугамд
+     ийм 2 хэсэг байснаас «Газар чөлөөлөлт» · дашбоардын давхцал «татагдсангүй» болж байв. Хасахгүй — тэр цэгийг
+     multipoint-оор асууна (цэг нэгж талбартай огтлолцож болно → үр дүн алдагдахгүй). */
+  const distinct = (p: number[][]) => new Set(p.map((c) => `${c[0]},${c[1]}`)).size;
   for (const f of fs) {
-    if (f.rings) ringFeats.push(f.rings);
-    else if (f.paths) pathFeats.push(f.paths);
-    else if (f.pt) pts.push(f.pt);
+    if (f.rings) {
+      const ok = f.rings.filter((r) => distinct(r) >= 3);
+      for (const r of f.rings) if (distinct(r) < 3 && r.length) pts.push(r[0]);
+      if (ok.length) ringFeats.push(ok);
+    } else if (f.paths) {
+      const ok = f.paths.filter((p) => distinct(p) >= 2);
+      for (const p of f.paths) if (distinct(p) < 2 && p.length) pts.push(p[0]);
+      if (ok.length) pathFeats.push(ok);
+    } else if (f.pt) pts.push(f.pt);
   }
   const ptChunks: number[][][] = [];
   for (let i = 0; i < pts.length; i += CHUNK) ptChunks.push(pts.slice(i, i + CHUNK));

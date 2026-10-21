@@ -68,6 +68,7 @@ import {
 } from '@/lib/qaqcDraft';
 /* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН — батлагдсан баримтын санал (datalist) хоосон, дугаарыг чөлөөт текстээр бичнэ. */
 import { latestApproved, type DocKind } from '@/lib/chanarMs';
+import { findKomissRow } from '@/lib/ulsiinKomiss';
 import st from '@/modules/sheet/sheet.module.css';
 
 /** ⚠️ `FillNew`-тэй ИЖИЛ хэрэгсэл — нэг хүснэгтийн загвар хуваалцана. */
@@ -396,7 +397,12 @@ export function Qaqc() {
         if (p) {
           const sc = await loadSchema(p);
           const sheet = await loadRows(p, sc);
-          withTree = attachTree(qRows, sheet.rows);
+          /* ⚠️ 2026-10-21: «Улсын комисс» (`ulsiinKomiss.ts`, 2026-09-28-аас бөглөх хуудасны ТӨГСГӨЛД автоматаар
+             бичигддэг навч мөр) QAQC хүснэгтэд БАЙХГҮЙ — урьд нь мөрийн тоо 1-ээр зөрж `attachTree` `null` буцааж,
+             9 багцын QAQC хүснэгт «Ажлын шатлал татагдсангүй» гэж байнга ХАВТГАЙ зурагддаг байв. Зөвхөн тэр мөрийг
+             алгасна — бусад мөр бүр нэрээрээ 100% таарах шаардлага (`attachTree`-ийн ⚠️) хэвээр. */
+          const komiss = findKomissRow(sheet.rows);
+          withTree = attachTree(qRows, komiss ? sheet.rows.filter((r) => r !== komiss) : sheet.rows);
         }
       } catch {
         withTree = null;
