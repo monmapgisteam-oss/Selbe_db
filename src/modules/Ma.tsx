@@ -26,6 +26,8 @@ import { addFm, decideFm, fmByMa, fmVerdictFor, loadFm, FM_REASON_MAX, type FmKi
 import { entPdfBlob } from '@/lib/entDocs';
 import { loadMir, loadMirPhotos, markLabel, mirCheckLabel, mirPhotoBlob, mirState, mirsByMa, mirVerdictFor, type MirPhoto, type MirRow } from '@/lib/mir';
 import { maSheetHtml, mirSheetHtml, printHtml } from '@/lib/chanarSheets';
+import { syncNoots } from '@/lib/materialNoots';
+import { AjilMatTab, NootsTab, type NootsSync } from './MaMaterial';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
@@ -108,6 +110,31 @@ export function Ma() {
   /* ⚠️ Нэг хариу бичгийн дугаар олон удаа илгээгдвэл СҮҮЛИЙНХ л хүчинтэй (`latestPerRespNo`) */
   const rows = useMemo(() => (q.state === 'ready' ? latestPerRespNo(q.data) : []), [q]);
 
+  /**
+   * ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ — MA + MIR батлагдсан материал нөөцөд АВТОМАТААР (`materialNoots.syncNoots`).
+   *    Чанарын эрхтэй хүн (`canAttach` — ирүүлэгч эсвэл хянагч) хуудас нээхэд MA · MIR ачаалагдмагц нэг удаа;
+   *    дахин `MA · MIR-ээс шинэчлэх`-ээр. Унасан ч MA харагдсаар (алдаа нөөцийн табд).
+   */
+  const [tab, setTab] = useState<'chain' | 'noots' | 'ajil'>('chain');
+  const [nootsTick, setNootsTick] = useState(0);
+  const [sync, setSync] = useState<NootsSync>({ state: 'idle' });
+  const canSync = canAttach && q.state === 'ready' && mirQ.state === 'ready';
+  const runSync = useCallback(() => {
+    if (q.state !== 'ready' || mirQ.state !== 'ready') return;
+    setSync({ state: 'running' });
+    syncNoots(q.data, mirQ.data)
+      .then((res) => setSync({ state: 'done', res }))
+      .catch((e) => setSync({ state: 'error', error: userError(e) }))
+      .finally(() => setNootsTick((n) => n + 1));
+  }, [q, mirQ]);
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (!canSync || autoRan.current) return;
+    autoRan.current = true;
+    /* setState нь promise дотор л (`react-hooks/set-state-in-effect`) — эхлэлийн «running»-ийг микро даалгаварт */
+    void Promise.resolve().then(runSync);
+  }, [canSync, runSync]);
+
   return (
     <div className={s.wrap}>
       <header className={s.hero}>
@@ -126,6 +153,11 @@ export function Ma() {
             <EntSignIn compact />
           </div>
         )}
+        <div className={`${s.seg} ${s.tabs}`} role="group" aria-label={tr('Харагдац')}>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => setTab('chain')}>{tr('Баталгаажуулалт')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => setTab('noots')}>{tr('Материалын нөөц')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => setTab('ajil')}>{tr('Ажлын материал')}</button>
+        </div>
         {/* ⚠️ 2026-10-21: «Дахин оролдох» — урьд нь алдаа гарвал хуудсыг дахин ачаалахаас өөр зам байгаагүй */}
         {ent && fm.err && (
           <p className={s.errNote} role="alert">
@@ -135,7 +167,11 @@ export function Ma() {
         )}
       </header>
 
-      {!MA_URL ? (
+      {tab === 'noots' ? (
+        <NootsTab tick={nootsTick} sync={sync} onSync={canSync ? runSync : null} />
+      ) : tab === 'ajil' ? (
+        <AjilMatTab tick={nootsTick} />
+      ) : !MA_URL ? (
         <p className={s.failNote}>{tr('MA үйлчилгээ тохируулаагүй.')}</p>
       ) : q.state === 'loading' ? (
         <div className={s.loading}>{tr('Ачаалж байна…')}</div>

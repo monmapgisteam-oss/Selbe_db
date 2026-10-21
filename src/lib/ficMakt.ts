@@ -1,5 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
+import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
+import { ENT_DATA } from '@/lib/services/entMap';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
 import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
 import { isAuthorFor, reviewerRolesFor } from '@/lib/chanarAcl';
@@ -126,7 +127,26 @@ async function post<T>(url: string, params: Record<string, string>): Promise<T> 
 
 let urlCache: string | null = null;
 
+/**
+ * ⚠️ 2026-10-21 (Enterprise руу бүрэн шилжилт): ЭХЛЭЭД ШУУД ХАЯГААР — Enterprise hosted үйлчилгээний нэр нь item-ийн
+ *    нэртэй ижил (`createTable`-ийн `name`), хүснэгт `/0`. Урьд нь зөвхөн порталын ХАЙЛТААР олдог тул хүснэгт
+ *    үүссэний дараах хайлтын индексийн хоцролтын үед өөр хэрэглэгч «олдсонгүй» → `createTable` → «нэр эзлэгдсэн»
+ *    алдаа авдаг байв. Шууд хаяг олдохгүй (404 · хуучин нэртэй) бол хайлт руу шилжинэ.
+ */
+async function directTable(): Promise<string | null> {
+  if (!ENT_DATA) return null;
+  const url = `${ENT_DATA}/${FM_TITLE}/FeatureServer/0`;
+  try {
+    const m = await post<{ fields?: unknown[] }>(url, {});
+    return Array.isArray(m.fields) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 async function findTable(): Promise<string | null> {
+  const direct = await directTable();
+  if (direct) return direct;
   const j = await post<{ results?: { title?: string; url?: string; type?: string }[] }>(`${rest()}/search`, {
     q: `title:"${FM_TITLE}" AND type:"Feature Service"`, num: '20',
   });
@@ -135,7 +155,9 @@ async function findTable(): Promise<string | null> {
 }
 
 async function createTable(): Promise<string> {
-  const user = sess().user;
+  /* ⚠️ 2026-10-21: `content/users/{u}/…` нь порталын ЯГ нэрийг шаарддаг — `sess().user` (`currentUser`) жижиг үсэгт
+     хөрвүүлэгдсэн тул том үсэгтэй нэртэй зохиогчид `createService`/`share` зөрдөг байв (`entDocs.exactUser`-ийн ⚠️). */
+  const user = await entExactUser();
   const avail = await post<{ available?: boolean }>(`${rest()}/portals/self/isServiceNameAvailable`, { name: FM_TITLE, type: 'Feature Service' });
   if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — эзэмшигч нь байгууллагад хуваалцах ёстой.', FM_TITLE));
   const created = await post<{ encodedServiceURL?: string; serviceurl?: string; itemId?: string }>(

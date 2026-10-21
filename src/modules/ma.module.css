@@ -270,3 +270,20 @@
 }
 
 .stageDate { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+
+/* ── Ажлын материал (2026-10-21, `MaMaterial.tsx`) — нөөцөөс олон материал сонгох жагсаалт ── */
+.matPick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  padding: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.matOpt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.76rem; cursor: pointer; }
+.matOpt input { accent-color: var(--data); margin: 0; }
+.tabs { margin-top: 12px; }
