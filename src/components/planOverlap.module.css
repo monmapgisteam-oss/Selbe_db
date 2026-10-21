@@ -229,7 +229,7 @@
 .zoneSelected { background: color-mix(in srgb, var(--hue) 10%, var(--surface)); box-shadow: inset 3px 0 var(--hue); }
 .zoneRank { width: 20px; flex: none; color: var(--ink-3); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
 .zoneName { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.71rem; line-height: 1.35; }
-.zoneValue { display: flex; flex-direction: column; align-items: end; gap: 2px; font-size: 0.73rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zoneValue { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 0.73rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .zoneValue small { font-size: 0.63rem; font-weight: 400; color: var(--ink-3); }
 .zoneBar { display: block; width: 100%; height: 3px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--surface-2); }
 .zoneBar i { display: block; height: 100%; border-radius: inherit; background: var(--hue); opacity: 0.6; }

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 // ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
@@ -65,8 +65,18 @@ import '@/components/tree.module.css';
  * `--mono`, `--cond` токенууд `globals.css`-д мөн Inter руу заадаг болсон тул
  * тэдгээрийг хэрэглэдэг бүх CSS өөрчлөлтгүй ажиллана.
  */
-const inter = Inter({
-  subsets: ['latin', 'cyrillic'],
+/*
+ * ⚠️ 2026-10-21: ЛОКАЛ ФАЙЛААС (`next/font/local`) — урьд нь `next/font/google` байв.
+ *    Тэр нь dev/build-ийн хөрвүүлэлт БҮРД fonts.googleapis.com руу хандаж, сүлжээ
+ *    удаан үед «Request timed out after 3000ms · Retrying 1/3» гэж 3 секундээр хүлээж
+ *    хуудасны хөрвүүлэлтийг минутаар удаашруулдаг байв (хэрэглэгчийн лог).
+ *    Файл нь Inter-ийн албан ёсны VARIABLE хувилбар (rsms/inter v4.66, 100–900 жин,
+ *    Latin + Cyrillic — Ө, Ү бүрэн) · лиценз `fonts/Inter-LICENSE.txt` (SIL OFL 1.1).
+ *    Шрифт солих бол файлыг солино — интернэт хэрэггүй.
+ */
+const inter = localFont({
+  src: './fonts/InterVariable.woff2',
+  weight: '100 900',
   variable: '--font-sans',
   display: 'swap',
 });
