@@ -411,7 +411,8 @@ const ROWS = [
   const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('function byDaySeries'), src.indexOf('const pkgOrder'));
   assert.ok(body.includes('if (!companyReported(r, sfx)) continue;'), 'byDaySeries — тайлангүй гүйцэтгэгч алгасна');
-  assert.ok(src.includes('laborStaleness(labor.asOf, now)'), '«Сүүлийн тайлан» — CEO-тэй нэг босго');
+  /* ⚠️ 2026-10-21 (хэрэглэгч): ХАБЭА KPI-ийн «Сүүлийн тайлан … хоног шинэчлэгдээгүй» мөр ХАСАГДСАН — `laborStaleness`
+     одоо зөвхөн CEO самбарт; Habea.tsx-д байхыг шаардахгүй (эсрэгээр нь ч шаардахгүй). */
 }
 
 console.log('workforce.check: OK');

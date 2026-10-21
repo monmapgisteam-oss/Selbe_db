@@ -40,9 +40,35 @@ import h from './habea.module.css';
 /* ═════════════════ Төрөл ═════════════════ */
 
 /** Аль маягт вэ */
-export type UzlegKind = 'v11' | 'guitsetgegch' | 'zahialagch';
+/* ⚠️ 2026-10-21: 8 шинэ маягт (`HABEA.uzleg`-ийн ⚠️) — бүгд ижил дүрслэл, зөрүү нь `fieldsOf`/`SEV_LABELS` */
+export type UzlegKind = 'v11' | 'guitsetgegch' | 'zahialagch'
+  | 'env' | 'cold' | 'fire' | 'hazard' | 'autocrane' | 'pump' | 'gondola' | 'tower';
 
 const U = HABEA.uzleg.fields;
+/**
+ * МАЯГТЫН БОГИНО НЭР — «Мэдээлэл» чип ба тайлан татах цонхны асуумжийн хавтанд (2026-10-21, хэрэглэгч:
+ * «зай бага эзэлдэг байх»). Бүтэн нэр (`HABEA.uzleg[kind].title`) нь давхарга, тайлангийн гарчиг, hover-т.
+ */
+export const UZLEG_SHORT: Record<UzlegKind, () => string> = {
+  zahialagch: () => tr('Захиалагчийн ажлын байрны үзлэг'),
+  v11: () => tr('Ажлын байрны үзлэг V1.1'),
+  guitsetgegch: () => tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
+  env: () => tr('Байгаль орчны үзлэг'),
+  cold: () => tr('Хүйтний үеийн түр зогсолтын үзлэг'),
+  fire: () => tr('Галын аюулгүй байдлын үзлэг'),
+  hazard: () => tr('Аюулыг илрүүлэх үзлэг'),
+  autocrane: () => tr('Автокран шалгалт'),
+  pump: () => tr('Автопомп шалгалт'),
+  gondola: () => tr('Люльк (дүүжинт өргүүр) шалгалт'),
+  tower: () => tr('Цамхагт кран шалгалт'),
+};
+type UField = keyof typeof U;
+/**
+ * МАЯГТ БҮРИЙН ТАЛБАР — `fields` дээр `HABEA.uzleg.fieldsBy[kind]` давхарлана (тэндхийн ⚠️).
+ * '' = тэр талбар энэ маягтад байхгүй: `r['']` → undefined → тоо мэдэгдэхгүй, оноо null, «дутуу» гэж сануулахгүй.
+ */
+const FIELDS_BY = HABEA.uzleg.fieldsBy as Partial<Record<UzlegKind, Partial<Record<UField, string>>>>;
+const fieldsOf = (kind: UzlegKind): Record<UField, string> => ({ ...U, ...(FIELDS_BY[kind] ?? {}) });
 
 /* ═════════════════ Домэйн (код → нэр) ═════════════════ */
 
@@ -79,11 +105,10 @@ type UzMeta = { dom: Domains; missing: readonly string[]; failed: boolean };
 const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([
   U.siteOther, U.companyOther, U.block, U.scEarned, U.scAppl, U.week, U.shift,
 ]);
-const UZ_FIELDS: readonly string[] = [...new Set(Object.values(U))];
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
 const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
 const metaCache = new Map<string, Promise<UzMeta>>();
-function loadDomains(url: string): Promise<UzMeta> {
+function loadDomains(url: string, kind: UzlegKind): Promise<UzMeta> {
   let p = metaCache.get(url);
   if (!p) {
     type Meta = {
@@ -111,7 +136,9 @@ function loadDomains(url: string): Promise<UzMeta> {
           out[f.name] = new Map(cv.map((c) => [String(c.code), String(c.name ?? c.code)]));
         }
         /* Талбаргүй хариу (`fields` хоосон) — схемийг мэдэхгүй, «дутуу» гэж дүгнэхгүй */
-        const missing = names.size ? UZ_FIELDS.filter((n) => !UZ_OPTIONAL.has(n) && !names.has(n)) : [];
+        /* ⚠️ 2026-10-21: маягтынхаа талбараар (`fieldsOf`) — '' (байхгүй) талбарыг шаардахгүй */
+        const req = [...new Set(Object.values(fieldsOf(kind)))].filter((n) => n && !UZ_OPTIONAL.has(n));
+        const missing = names.size ? req.filter((n) => !names.has(n)) : [];
         return { dom: out, missing, failed: false };
       })
       .catch(() => {
@@ -125,6 +152,8 @@ function loadDomains(url: string): Promise<UzMeta> {
 
 export type UzlegRow = {
   oid: number;
+  /** Аль маягтынх — зэргийн нэрс (`SEV_LABELS`) маягтаар ялгаатай (2026-10-21) */
+  kind: UzlegKind;
   site: string;
   /**
    * ДОЛОО ХОНОГИЙН ТҮЛХҮҮР — чарт ба шүүлтийн; шошгыг `weekLabel` гаргана.
@@ -177,6 +206,26 @@ export type UzlegRow = {
 /** Үл нийцлийн зэргийн түлхүүр — `cnt_*` таван талбар */
 type SevKey = 'major' | 'minor' | 'obs' | 'conf' | 'na';
 const SEV_KEYS: readonly SevKey[] = ['major', 'minor', 'obs', 'conf', 'na'];
+
+/**
+ * ЗЭРГИЙН ДЭЛГЭЦИЙН НЭРС — анхдагч нь үл нийцлийн зэрэг (V1.1 ба адил 8 маягт). ⚠️ 2026-10-21: env ба hazard
+ * маягтад `cnt_*` талбарын УТГА өөр (`HABEA.uzleg.fieldsBy`-ийн ⚠️) тул түлхүүр ижил ч нэр нь маягтаар:
+ *   · env    → major = үл нийцэл («Үгүй»), conf = нийцсэн («Тийм»)
+ *   · hazard → major = өндөр эрсдэл · minor = дунд · obs = бага · conf = талбайд зассан · na = ажиглалт
+ * Өнгөний дараалал (улаан → ногоон, na саарал) хэвээр — зэрэг нь хүндрэлээр эрэмбэлэгдсэн.
+ */
+const DEFAULT_SEV: Record<SevKey, () => string> = {
+  major: () => tr('Ноцтой үл нийцэл'), minor: () => tr('Бага зэргийн үл нийцэл'), obs: () => tr('Ажиглалт'),
+  conf: () => tr('Нийцсэн'), na: () => tr('Хамааралгүй'),
+};
+const SEV_LABELS: Partial<Record<UzlegKind, Partial<Record<SevKey, () => string>>>> = {
+  env: { major: () => tr('Үл нийцэл') },
+  hazard: {
+    major: () => tr('Өндөр эрсдэлтэй'), minor: () => tr('Дунд түвшний'), obs: () => tr('Бага түвшний'),
+    conf: () => tr('Талбайд зассан'), na: () => tr('Ажиглалт хийсэн'),
+  },
+};
+const sevLabel = (kind: UzlegKind | undefined, k: SevKey): string => (kind && SEV_LABELS[kind]?.[k]?.()) || DEFAULT_SEV[k]();
 
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -303,7 +352,9 @@ export const habeaPkgLabel = (raw: string): string => (PKG2_RE.test(raw) ? tr('�
 export const habeaPkgKey = (raw: unknown): string =>
   (PKG2_RE.test(String(raw ?? '')) ? bagtsKey('Багц 2') : bagtsKey(raw));
 
-const norm = (r: Row, dom: Domains): UzlegRow => {
+const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
+  /* ⚠️ 2026-10-21: маягтынхаа талбараар (env · hazard зөрүүтэй — `fieldsOf`) */
+  const F = fieldsOf(kind);
   /**
    * Домэйны код → нэр; «Бусад» (`other`) сонгосон үед жинхэнэ нэр нь
    * `*_other` талбарт бичигдэнэ. Толинд байхгүй код нь өөрөө үлдэнэ.
@@ -314,36 +365,37 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
     const s = code == null ? '' : String(code);
     return clean(dom[field]?.get(s) ?? s);
   };
-  const site = named(U.site, U.siteOther);
-  const d = nn(r[U.ognoo]);
+  const site = named(F.site, F.siteOther);
+  const d = nn(r[F.ognoo]);
   /* ⚠️ 2026-10-09: ТАЛБАР БҮРЭЭР — утга бөглөгдсөн (`null`/'' биш) бол мэдэгдэнэ. Урьд нь
      `every(f in r)` нэг туг тул `cnt_na` алга/хоосон бол бусад 4 зэргийн тоо ч хаягддаг байв. */
   const known = (f: string) => r[f] != null && r[f] !== '';
   const sevHas: Record<SevKey, boolean> = {
-    major: known(U.major), minor: known(U.minor), obs: known(U.obs), conf: known(U.conf), na: known(U.na),
+    major: known(F.major), minor: known(F.minor), obs: known(F.obs), conf: known(F.conf), na: known(F.na),
   };
   const sevKnown = sevHas.major && sevHas.minor && sevHas.obs && sevHas.conf;
   return {
     oid: nn(r.objectid ?? r.OBJECTID),
+    kind,
     site,
     /* ⚠️ 2026-10-09: огнооноос (ISO, UB); огноогүй бол '' — чарт/KPI-д ОРОХГҮЙ (`UzlegRow.week`) */
     week: d > 0 ? uzWeekKey(d) : '',
-    scE: nnull(r[U.scEarned]),
-    scA: nnull(r[U.scAppl]),
-    company: named(U.company, U.companyOther),
+    scE: nnull(r[F.scEarned]),
+    scA: nnull(r[F.scAppl]),
+    company: named(F.company, F.companyOther),
     /* ⚠️ «Бусад» талбай нь чөлөөт текст — багц гэж ТААМАГЛАХГҮЙ */
-    bagtsK: r[U.site] === 'other' ? '' : habeaPkgKey(site),
-    coSfx: CO_SFX[String(r[U.company] ?? '')] ?? '',
-    block: clean(r[U.block]),
-    shift: named(U.shift),
+    bagtsK: r[F.site] === 'other' ? '' : habeaPkgKey(site),
+    coSfx: CO_SFX[String(r[F.company] ?? '')] ?? '',
+    block: clean(r[F.block]),
+    shift: named(F.shift),
     d,
     sevKnown,
     sevHas,
-    major: nn(r[U.major]),
-    minor: nn(r[U.minor]),
-    obs: nn(r[U.obs]),
-    conf: nn(r[U.conf]),
-    na: nn(r[U.na]),
+    major: nn(r[F.major]),
+    minor: nn(r[F.minor]),
+    obs: nn(r[F.obs]),
+    conf: nn(r[F.conf]),
+    na: nn(r[F.na]),
   };
 };
 
@@ -403,6 +455,15 @@ const loaders: Record<UzlegKind, () => Promise<Row[]>> = {
     5 * 60_000,
     ['HABEA'],
   ),
+  /* ⚠️ 2026-10-21: 8 шинэ маягт — ижил дүрэм (нэвтэрсэн хэрэглэгч · 5 мин · HABEA таг) */
+  env: cached(() => loadPrivate(HABEA.uzleg.env.url), 5 * 60_000, ['HABEA']),
+  cold: cached(() => loadPrivate(HABEA.uzleg.cold.url), 5 * 60_000, ['HABEA']),
+  fire: cached(() => loadPrivate(HABEA.uzleg.fire.url), 5 * 60_000, ['HABEA']),
+  hazard: cached(() => loadPrivate(HABEA.uzleg.hazard.url), 5 * 60_000, ['HABEA']),
+  autocrane: cached(() => loadPrivate(HABEA.uzleg.autocrane.url), 5 * 60_000, ['HABEA']),
+  pump: cached(() => loadPrivate(HABEA.uzleg.pump.url), 5 * 60_000, ['HABEA']),
+  gondola: cached(() => loadPrivate(HABEA.uzleg.gondola.url), 5 * 60_000, ['HABEA']),
+  tower: cached(() => loadPrivate(HABEA.uzleg.tower.url), 5 * 60_000, ['HABEA']),
 };
 
 /**
@@ -556,7 +617,7 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
   const where = `(${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`;
   const groupBy = `${U.site},${U.company}`;
   /* ⚠️ 2026-10-09: метадата ЭХЛЭЭД — унавал шиднэ (дээрх ⚠️); кэштэй тул хурдан */
-  const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url)));
+  const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url, url === HABEA.uzleg.v11.url ? 'v11' : 'zahialagch')));
   if (metas.some((m) => m.failed)) throw new Error(tr('Маягтын кодын тайлбар уншигдсангүй — дахин оролдоно уу.'));
   const parts = await Promise.all(SCORE_URLS.map((url, ui) => Promise.all([
     queryGroup(
@@ -773,10 +834,10 @@ export function uzPickRows(r: UzlegRow): [string, string][] {
     [tr('Ээлж'), r.shift],
   ];
   const sev: [string, number][] = [
-    [tr('Ноцтой үл нийцэл'), r.major],
-    [tr('Бага зэргийн үл нийцэл'), r.minor],
-    [tr('Ажиглалт'), r.obs],
-    [tr('Нийцсэн'), r.conf],
+    [sevLabel(r.kind, 'major'), r.major],
+    [sevLabel(r.kind, 'minor'), r.minor],
+    [sevLabel(r.kind, 'obs'), r.obs],
+    [sevLabel(r.kind, 'conf'), r.conf],
   ];
   for (const [k, v] of sev) if (v > 0) rows.push([k, num(v)]);
   return rows.filter(([, v]) => v !== '—');
@@ -866,8 +927,8 @@ type Pick = { sel: UzSel; onPick: (d: UzDim, key: string) => void };
  *    ачаалагч, домэйн, хэвийн болголт; кэш хуваалцана.
  */
 export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
-  const [rows, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
-  return rows.map((r) => norm(r, meta.dom));
+  const [rows, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url, kind)]);
+  return rows.map((r) => norm(r, meta.dom, kind));
 }
 
 /**
@@ -876,9 +937,9 @@ export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
  * багц, компанийн нэр. ⚠️ Хуудастай НЭГ ачаалагч (кэш хуваалцана).
  */
 export async function loadUzlegBoth(kind: UzlegKind): Promise<{ raw: Row[]; rows: UzlegRow[]; domFail: boolean }> {
-  const [raw, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
+  const [raw, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url, kind)]);
   /* ⚠️ 2026-10-09: `domFail` — тайлан татах цонх ч «Кодын тайлбар уншигдсангүй»-г хэлнэ */
-  return { raw, rows: raw.map((r) => norm(r, meta.dom)), domFail: meta.failed };
+  return { raw, rows: raw.map((r) => norm(r, meta.dom, kind)), domFail: meta.failed };
 }
 
 /** Тогтмол лавлагаа — рендер бүрд шинэ объект үүсгэж deps-ийг хөдөлгөхгүй */
@@ -900,11 +961,11 @@ export function useUzleg(kind: UzlegKind | null): State {
     if (!kind) { setSt({ kind: null, st: { state: 'idle' } }); return undefined; }
     let alive = true;
     setSt({ kind, st: { state: 'loading' } });
-    Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)])
+    Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url, kind)])
       .then(([rows, meta]) => {
         if (alive) {
           setSt({ kind, st: {
-            state: 'ready', rows: rows.map((r) => norm(r, meta.dom)), domFail: meta.failed, schemaMissing: meta.missing,
+            state: 'ready', rows: rows.map((r) => norm(r, meta.dom, kind)), domFail: meta.failed, schemaMissing: meta.missing,
           } });
         }
       })
@@ -1014,14 +1075,16 @@ function severity(rows: UzlegRow[]) {
   /* ⚠️ 2026-10-09: зэрэг БҮРИЙГ өөрийн тугаар (`sevHas[k]`) — бөглөгдөөгүй талбар нийлбэрт
      ОРОХГҮЙ (0 биш мэдэгдэхгүй), гэхдээ бусад зэргийн бодит тоог хаяхгүй. */
   const sum = (k: SevKey) => rows.reduce((s, x) => (x.sevHas[k] ? s + x[k] : s), 0);
+  /* ⚠️ 2026-10-21: нэрс маягтаар (`SEV_LABELS`) — олонлог нэг маягтынх */
+  const k0 = rows[0]?.kind;
   return [
     /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): hex → ДАРААЛСАН шатлалын токен
        `--score-1..5` (globals.css, dark-тай) — хүндрэлийн дараалал (улаан → ногоон) хэвээр. */
-    { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum('major'), color: 'var(--score-1)' },
-    { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum('minor'), color: 'var(--score-2)' },
-    { key: 'obs', label: tr('Ажиглалт'), value: sum('obs'), color: 'var(--score-3)' },
-    { key: 'conf', label: tr('Нийцсэн'), value: sum('conf'), color: 'var(--score-5)' },
-    { key: 'na', label: tr('Хамааралгүй'), value: sum('na'), color: 'var(--ink-3)' },
+    { key: 'major', label: sevLabel(k0, 'major'), value: sum('major'), color: 'var(--score-1)' },
+    { key: 'minor', label: sevLabel(k0, 'minor'), value: sum('minor'), color: 'var(--score-2)' },
+    { key: 'obs', label: sevLabel(k0, 'obs'), value: sum('obs'), color: 'var(--score-3)' },
+    { key: 'conf', label: sevLabel(k0, 'conf'), value: sum('conf'), color: 'var(--score-5)' },
+    { key: 'na', label: sevLabel(k0, 'na'), value: sum('na'), color: 'var(--ink-3)' },
   ]
     .filter((x) => x.value > 0)
     .map((x) => ({ ...x, display: num(x.value) }));

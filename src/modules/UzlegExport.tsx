@@ -31,19 +31,66 @@ import { renderPdfBase64, download } from '@/lib/emailReport';
 import {
   loadUzFields, loadUzAttachments, loadUzLocations, attUrl, buildUzReport, loadReportImages,
   buildUzPdf, buildUzXlsx, companyShort, countReportImages, fmtDate, reportTitle, UZ_IMG_WARN,
-  type UzImg, type UzReport,
+  type UzImg, type UzReport, type UzSection, type AnsCls,
 } from '@/lib/uzlegReport';
-import { loadUzlegBoth, uzScoreLevel, type UzlegKind, type UzlegRow } from './habeaUzleg';
-import type { Row } from '@/lib/query';
+import { loadUzlegBoth, uzScoreLevel, UZLEG_SHORT, type UzlegKind, type UzlegRow } from './habeaUzleg';
+import { queryFeatures, type Row } from '@/lib/query';
 import x from './uzlegExport.module.css';
 
-const KINDS: UzlegKind[] = ['zahialagch', 'v11', 'guitsetgegch'];
+/* ⚠️ 2026-10-21: 8 шинэ маягт (`HABEA.uzleg`-ийн ⚠️) — тайлан татах цонхонд бүгд */
+const KINDS: UzlegKind[] = [
+  'zahialagch', 'v11', 'guitsetgegch',
+  'env', 'cold', 'fire', 'hazard', 'autocrane', 'pump', 'gondola', 'tower',
+];
 /** Файлын нэр ба Excel-ийн хуудасны гарчигт — «Морин сувд - Захиалагчийн үзлэг 2026-09-29» */
 const FORM_SHORT: Record<UzlegKind, string> = {
   zahialagch: 'Захиалагчийн үзлэг',
   v11: 'Ажлын байрны үзлэг V1.1',
   guitsetgegch: 'Гүйцэтгэгчийн үзлэг',
+  env: 'Байгаль орчны үзлэг',
+  cold: 'Хүйтний үеийн түр зогсолтын үзлэг',
+  fire: 'Галын аюулгүй байдлын үзлэг',
+  hazard: 'Аюулыг илрүүлэх үзлэг',
+  autocrane: 'Автокран шалгалт',
+  pump: 'Автопомп шалгалт',
+  gondola: 'Люльк шалгалт',
+  tower: 'Цамхагт кран шалгалт',
 };
+
+/**
+ * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ (2026-10-21). Маягт асуултгүй — илрүүлэлт бүр ХОЛБООТОЙ ХҮСНЭГТИЙН мөр
+ * (`HABEA.uzleg.hazardFindingsUrl`, `parentrowid` → эцгийн `uniquerowid`). Хүснэгт жижиг тул бүгдийг нэг удаа
+ * татаж эцгээр нь бүлэглэнэ; GUID-ийг хаалт/том-жижиг үсэггүй тулгана. Тайланд асуултын оронд «Илрүүлсэн аюул»
+ * хэсэг: асуулт = тайлбар, хариулт = түвшин, блок, арга хэмжээ тэмдэглэлд.
+ * ⚠️ Түвшин → ангилал (өнгө): өндөр = ноцтой · дунд = бага зэргийн · бага, ажиглалт = ажиглалт · зассан = нийцсэн.
+ */
+const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}]/g, '').toUpperCase();
+const LEVEL_CLS: Record<string, AnsCls> = { high: 'major', medium: 'minor', low: 'obs', obs: 'obs', fixed: 'conf' };
+async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection>> {
+  const url = HABEA.uzleg.hazardFindingsUrl;
+  const [rows, fields] = await Promise.all([
+    queryFeatures(url, { outFields: ['*'], orderBy: 'objectid' }),
+    loadUzFields(url),
+  ]);
+  const dom = fields.find((x) => x.name === 'f_level')?.dom ?? null;
+  const want = new Set(parents.map((p) => guidKey(p.uniquerowid)));
+  const title = tr('Илрүүлсэн аюул');
+  const out = new Map<string, UzSection>();
+  for (const r of rows) {
+    const k = guidKey(r.parentrowid);
+    if (!want.has(k)) continue;
+    let sec = out.get(k);
+    if (!sec) { sec = { key: 'findings', title, score: null, items: [] }; out.set(k, sec); }
+    const level = String(r.f_level ?? '');
+    const blk = r.f_blk === 'other' ? String(r.f_blk_other ?? '') : String(r.f_blk ?? '');
+    const action = r.f_action == null || r.f_action === '' ? [] : [String(r.f_action)];
+    sec.items.push({
+      code: `F${sec.items.length + 1}`, q: String(r.f_desc ?? '—'), ans: dom?.get(level) ?? level,
+      cls: LEVEL_CLS[level] ?? 'other', block: blk || null, notes: action, photos: [], section: title,
+    });
+  }
+  return out;
+}
 const PDF_MANY_WARN = 15;
 
 /**
@@ -222,10 +269,15 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       setBusy(tr('Хавсралтын жагсаалтыг уншиж байна…'));
       const [atts, locs] = await Promise.all([loadUzAttachments(url, oids), loadUzLocations(url, oids)]);
       if (!live()) return;
+      /* ⚠️ 2026-10-21: аюулыг илрүүлэх үзлэг — илрүүлэлтийн хүснэгт (`loadHazardFindings`-ийн ⚠️) */
+      const findings = kind === 'hazard' ? await loadHazardFindings(chosen.map((i) => ready.raw[i])) : null;
+      if (!live()) return;
       const reports: UzReport[] = chosen.map((i) => {
         const r = ready.rows[i];
+        const fnd = findings?.get(guidKey(ready.raw[i].uniquerowid));
         return buildUzReport(form, fields, ready.raw[i], r.oid, atts.get(r.oid) ?? [], (id) => attUrl(url, r.oid, id), {
           pkg: r.site, company: r.company, date: r.d, formShort: FORM_SHORT[kind], location: locs.get(r.oid) ?? '',
+          ...(fnd ? { extra: [fnd] } : {}),
         });
       });
       const one = reports.length === 1 ? reports[0] : null;
@@ -315,12 +367,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
             <div className={x.forms} role="radiogroup" aria-label={tr('Асуумж')}>
               {KINDS.map((k) => {
                 const on = kind === k;
+                /* ⚠️ 2026-10-21 (хэрэглэгч): богино нэр (`UZLEG_SHORT`), бүтэн нэр hover-т — 11 хавтан нягт */
                 return (
                   <button key={k} type="button" role="radio" aria-checked={on} disabled={lock}
-                    className={`${x.form} ${on ? x.formOn : ''}`}
+                    className={`${x.form} ${on ? x.formOn : ''}`} title={HABEA.uzleg[k].title}
                     onClick={() => { if (!on) { setKind(k); setCos([]); resetPick(); } }}>
                     <span className={x.formDot} style={{ background: LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[k]]?.hue ?? 'var(--data)' }} aria-hidden />
-                    <span className={x.formName}>{HABEA.uzleg[k].title}</span>
+                    <span className={x.formName}>{UZLEG_SHORT[k]()}</span>
                     {on && ready && <span className={`${x.formCount} num`}>{tr('{0} үзлэг', num(ready.rows.length))}</span>}
                   </button>
                 );

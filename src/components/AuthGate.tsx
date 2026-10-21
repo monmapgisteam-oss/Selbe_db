@@ -246,6 +246,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         oauthReady();
+        /* ⚠️ 2026-10-21 (оношилгоо, ЗӨВХӨН dev): JS API-ийн «Sign in» цонх ЯМАР хаягаас гарч байгааг консолд
+           хэвлэнэ — цонх өөрөө URL-аа хэлдэггүй («ArcGIS Online (item)»). Production багцад орохгүй. */
+        if (process.env.NODE_ENV !== 'production') {
+          const mgr = esriId as unknown as { signIn: (...a: unknown[]) => unknown };
+          const orig = mgr.signIn.bind(esriId);
+          mgr.signIn = (...a: unknown[]) => {
+            console.warn('[selbe] IdentityManager нэвтрэлт шаардав — хаяг:', a[0], '· сервер:', (a[1] as { server?: string } | undefined)?.server);
+            return orig(...a);
+          };
+        }
         /* ⚠️ Бүх REST `fetch` энэ бүртгэлээр токеноо авна (`authToken.ts`). */
         registerIdentity(esriId, sharingUrl());
 

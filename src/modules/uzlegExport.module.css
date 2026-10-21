@@ -86,12 +86,13 @@
 .meta + .link { margin-left: 10px; }
 
 /* Асуумжийн карт */
-.forms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-@media (max-width: 560px) { .forms { grid-template-columns: 1fr; } }
+/* ⚠️ 2026-10-21 (хэрэглэгч: «зай бага эзэлдэг байх»): 11 асуумж — 4 багана, нэг мөр, богино нэр (UZLEG_SHORT) */
+.forms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 760px) { .forms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .form {
   font: inherit; text-align: left;
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; align-items: start;
-  padding: 10px;
+  display: flex; gap: 7px; align-items: center; min-height: 34px;
+  padding: 5px 8px;
   color: var(--ink);
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -101,9 +102,9 @@
 }
 .form:hover { border-color: var(--line-strong); }
 .formOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); background: color-mix(in srgb, var(--data) 7%, var(--surface)); }
-.formDot { width: 10px; height: 10px; margin-top: 3px; border-radius: 3px; }
-.formName { font-size: 12px; font-weight: 600; line-height: 1.35; }
-.formCount { grid-column: 2; font-size: 11px; color: var(--ink-3); }
+.formDot { flex: none; width: 9px; height: 9px; border-radius: 3px; }
+.formName { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
+.formCount { flex: none; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
 
 /* Хугацаа */
 .presets, .chips { display: flex; flex-wrap: wrap; gap: 6px; }

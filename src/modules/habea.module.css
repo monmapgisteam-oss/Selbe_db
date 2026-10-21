@@ -385,23 +385,25 @@
  * багтахгүй тул нэр ХОЁР МӨРӨНД ороох ёстой, эс бөгөөс тайрагдана.
  * `align-items: stretch` — нэг мөрийн хоёр хавтан ижил өндөртэй байна.
  */
+/* ⚠️ 2026-10-21 (хэрэглэгч: «зай бага эзэлдэг байх»): 12 чип — нягт (өндөр 40 → 30, зай 6 → 4, үсэг 11) */
 .focusGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   align-items: stretch;
 }
 .focusGrid .incChip {
   width: 100%;
-  min-height: 40px;
-  padding: 7px 9px;
-  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  gap: 6px;
   border-radius: var(--r-sm);
 }
 .focusGrid .incChipLabel {
   flex: 1;
   white-space: normal;
-  line-height: 1.25;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 /* ══ КОМПАНИ БҮРИЙН МОНГОЛ/ГАДААД задаргаа ══
