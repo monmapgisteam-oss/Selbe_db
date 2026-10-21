@@ -2013,13 +2013,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Давхар дуудлагыг нэгтгэнэ (`refreshRunRef`); багц солигдсон бол хариуг хаяна.
    */
   const refreshRunRef = useRef<{ on: boolean; again: number }>({ on: false, again: 0 });
+  /**
+   * ⚠️ 2026-10-21 (кодын аудит): «ИЛГЭЭХ»-ИЙН ҮЕ — `publish` эхлэхэд ба дуусахад +1 (сондгой = явж байна).
+   *    `refreshStaged` эхлэхдээ үеэ барьж, хариугаа бичихийн ӨМНӨ тулгана: урьд нь сэргээлт явж байхад хэрэглэгч
+   *    илгээвэл сэргээлтийн хожуу хариу ИЛГЭЭХЭЭС ӨМНӨХ илгээлтээр `staged`/`rows`-ыг дарж, саяхан илгээсэн утгууд
+   *    хүснэгтээс алга болж, дараагийн илгээлт хуучралтын шалгалтад унадаг (inc горимд дахин бичвэл ДАВХАР) байв.
+   *    Илгээлт өөрөө дуусахдаа дахин ачаалдаг тул хаягдсан сэргээлт алдагдахгүй.
+   */
+  const pubEpochRef = useRef(0);
   const refreshStaged = useCallback(async (at: number) => {
     if (view || !sc) return;
+    const ep = pubEpochRef.current;
+    if (ep % 2 === 1) return;
     const run = refreshRunRef.current;
     if (run.on) { run.again = Math.max(run.again, at); return; }
     run.on = true;
     const want = pkg.key;
-    const live = () => pkgKeyRef.current === want && loadedPkgRef.current === want;
+    const live = () => pkgKeyRef.current === want && loadedPkgRef.current === want && pubEpochRef.current === ep;
     /* Харагдаж буй ШАР анхааруулгыг (жиш. «Ноорог шинэчлэгдлээ — …») дарахгүй — нэгтгэнэ */
     const tell = (kind: 'ok' | 'warn', msg: string) => {
       const n = noticeRef.current;
@@ -2288,6 +2298,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPastePrev(null);
     setBusy(true);
     setErr("");
+    /* ⚠️ 2026-10-21: явж буй `refreshStaged`-ийн хожуу хариуг хаяна (`pubEpochRef`-ийн ⚠️) */
+    pubEpochRef.current += 1;
     try {
       /*
        * ⚠️ 2026-10-09: ХУВААЛЦСАН НООРОГИЙГ ДАХИН УНШИНА (`useDraftSync.pullNow`-ийн ⚠️). Урьд нь `publish`
@@ -2997,6 +3009,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } catch (e) {
       setErr(userError(e));
     } finally {
+      pubEpochRef.current += 1;
       setBusy(false);
     }
   }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,

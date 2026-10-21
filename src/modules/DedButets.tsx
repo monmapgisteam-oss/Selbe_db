@@ -475,10 +475,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const [undoable, setUndoable] = useState<
     | { kind: 'add'; layerId: string; oid: number }
-    | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown> }
+    | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
     | { kind: 'geom'; layerId: string; oid: number; geometry: unknown }
     /* Олон мөрийн засвар — мөр бүр ӨӨРИЙН хуучин утгатай (`DedButetsBatch`) */
-    | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown> }[] }
+    | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] }
     | null
   >(null);
   const [undoBusy, setUndoBusy] = useState(false);
@@ -1258,16 +1258,29 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       try {
         const meta = await loadLayerMeta(u.layerId);
         if (u.kind === 'add') await deleteRow(meta, u.oid);
+        else if (u.kind === 'attr' && u.wrote) {
+          /* ⚠️ 2026-10-21 (кодын аудит): CAS — `revertRows` серверийн одоогийн утгыг дахин уншиж, манай бичсэн
+             (`wrote`) ч хуучин ч биш бол (өөр хэрэглэгч зассан) ДАРАХГҮЙ. Урьд нь `applyAttrs` сохроор бичдэг байв. */
+          const r = await revertRows(meta, [{ oid: u.oid, attrs: u.attrs, wrote: u.wrote }]);
+          if (r.failed.length) {
+            /* Алгассан (бусад зассан) бол дахин оролдох утгагүй — буцаалтыг арилгана; бусад алдаанд үлдээнэ */
+            if (r.skipped?.length) setUndoable(null);
+            toast(tr('Буцаагдсангүй: {0}', r.failed[0].msg), 'err');
+            return;
+          }
+        }
         else if (u.kind === 'attr') await applyAttrs(meta, u.oid, u.attrs);
         else if (u.kind === 'batch') {
           /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭСЭГЧИЛСЭН буцаалт — унасан мөрүүдэд л
              «Үйлдэл буцаах»-ыг үлдээнэ (буцаагдсанг дахин бичихгүй), тоог ил хэлнэ. */
           const r = await revertRows(meta, u.rows);
           if (r.failed.length) {
-            const bad = new Set(r.failed.map((x) => x.oid));
+            /* ⚠️ 2026-10-21: өөр хэрэглэгч зассан тул АЛГАССАН мөрийг (`skipped`) дахин оролдлогод үлдээхгүй */
+            const skipped = new Set(r.skipped ?? []);
+            const bad = new Set(r.failed.map((x) => x.oid).filter((o) => !skipped.has(o)));
             refreshLayer(u.layerId); statusValsChanged(u.layerId);
             dropTotalsLater();
-            setUndoable({ ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) });
+            setUndoable(bad.size ? { ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) } : null);
             toast(tr('{0}/{1} объект буцаагдсан, {2} объектод алдаа: {3}. «Үйлдэл буцаах»-аар дахин оролдоно уу.',
               num(r.done.length), num(u.rows.length), num(r.failed.length), r.failed[0].msg), 'err');
             return;

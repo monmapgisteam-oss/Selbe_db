@@ -6923,7 +6923,10 @@ const en: Record<string, string> = {
   "Барилга угсралтын нийт биет гүйцэтгэл {0}; хуваарьтай багцаар бодит {1}, төлөвлөсөн {2}-тэй харьцуулахад {3} нэгж хувийн зөрүүтэй байна.{4}": "Overall physical progress of construction is {0}; for scheduled packages the actual is {1}, a difference of {3} percentage points against the planned {2}.{4}",
   "{0} энэ баримтыг яг одоо шийдвэрлэж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.": "{0} is deciding this document right now — refresh the page in a little while.",
   "Полигоны геометр бүрэн татагдсангүй (сервер хариуг тайрсан) — дутуу дүрсээр тооцохгүй, дахин оролдоно уу.": "Polygon geometry was not fully loaded (the server truncated the response) — incomplete shapes are not used; please try again.",
-  "Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.": "The monthly volume table was not loaded, so saving is blocked to prevent duplicates. Reload the page and try again."
+  "Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.": "The monthly volume table was not loaded, so saving is blocked to prevent duplicates. Reload the page and try again.",
+  "{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} already submitted additional work for this package first — your duplicate submission could not be cancelled. Please refresh the page.",
+  "{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.": "{0} submitted this package's volumes first — your duplicate submission could not be cancelled. Please refresh the page.",
+  "Буцаагдсангүй: {0}": "Not undone: {0}"
 };
 
 export default en;

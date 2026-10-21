@@ -62,7 +62,7 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import s from './guitsetgel.module.css';
 import { userError } from '@/components/ui';
 import { setNavDirty } from '@/lib/navGuard';
-import { REASON_MAX } from '@/lib/huvaariBatlah';
+import { REASON_MAX, serverNow } from '@/lib/huvaariBatlah';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -156,9 +156,10 @@ export function AjilBatlah() {
    *    агшнаар (`st.at`) бодож, `AJIL_CLAIM_TTL` (10 мин) дууссан түгжээ хуудас сэргээтэл «X ажиллаж
    *    байна» гэж үлддэг байв. `Date.now()` render-ийн гадна (react-hooks/purity).
    */
-  const [now, setNow] = useState(() => Date.now());
+  /* ⚠️ 2026-10-21: серверийн цаг (`serverNow`) — түгжээний агшин серверийнх (`HuvaariBatlah`-ийн ⚠️) */
+  const [now, setNow] = useState(() => serverNow());
   useEffect(() => {
-    const id = window.setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 45_000);
+    const id = window.setInterval(() => { if (!document.hidden) setNow(serverNow()); }, 45_000);
     return () => window.clearInterval(id);
   }, []);
   /** Түгжигч — ӨӨРӨӨ биш (`h !== me`); өөрийн өөр табын түгжээг «ажиллаж байна» гэж харуулахгүй */
@@ -232,7 +233,7 @@ export function AjilBatlah() {
            илгээлтүүд; хэвийн урсгалд хоосон. Хоёр query зэрэг. */
         const [rows, approved] = await Promise.all([loadAllPending(), loadAllApproved()]);
         if (!alive) return;
-        setSt({ k: 'ready', rows, approved, at: Date.now() });
+        setSt({ k: 'ready', rows, approved, at: serverNow() });
         resetDetail();
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: userError(e) });

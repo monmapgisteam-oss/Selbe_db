@@ -211,6 +211,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setD((p) => ({ ...p, tolov: t, ognoo }));
     setErr((p) => ({ ...p, tolov: undefined, ognoo: undefined }));
     setFail('');
+    /* ⚠️ 2026-10-21 (кодын аудит): `set()`-тэй ИЖИЛ — ирээдүйн огнооны асуулт нээлттэй байхад төлөв
+       солиход «Тийм» нь асуулт нээгдэх үеийн ХУУЧИН `d`-г (хуучин төлөв · огноо) хадгалж, сүүлийн засвар
+       чимээгүй алга болдог байв. */
+    setConfirmQ(null);
   };
 
   const submit = async () => {
@@ -400,6 +404,9 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                      талбарын алдаа арилахгүй — зөвхөн `bagts`-ийнх. */
                   setD((p) => ({ ...p, bagts: b, shat: p.oid || !b ? p.shat : nextShat(b) }));
                   setErr((p) => ({ ...p, bagts: undefined }));
+                  setFail('');
+                  /* ⚠️ 2026-10-21 (кодын аудит): хүлээж буй асуулт хуучирна — `setTolov`-ийн ⚠️ */
+                  setConfirmQ(null);
                 }}
               >
                 <option value="">{tr('— сонгох —')}</option>

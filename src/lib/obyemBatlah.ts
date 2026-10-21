@@ -592,7 +592,7 @@ export async function submitObyem(args: {
      *    шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв. Бичсэний ДАРАА дахин уншиж,
      *    БАГА OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
      *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно.
-     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`.
+     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү».
      */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
     if (Number.isFinite(mine)) try {
@@ -603,18 +603,30 @@ export async function submitObyem(args: {
       const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
       if (first != null && first < mine) {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
           /* ⚠️ 2026-10-06: `DUP_MARK`-аар ялгана, `approverAt` ХООСОН — «сүүлийн шийдвэр» болохгүй
              (`isDupCancel`); урьд нь тэмдэггүй, `approverAt`-тай бичигдэж жинхэнэ татсантай ялгагдахгүй байв. */
-          await arcgisPost(`${url}/applyEdits`, {
+          const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: OBYEM_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
+          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
+             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
+             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
+             эрсдэлтэй байлаа. */
+          if (!editOk(upd?.updateResults)) {
+            invalidate('OBYEM_BATLAH');
+            return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
+          }
         }
         invalidate('OBYEM_BATLAH');
-        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
-    } catch { /* давхардлыг дараагийн уншилт шийднэ */ }
+    } catch {
+      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
+         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
+      return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
