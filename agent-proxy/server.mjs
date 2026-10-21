@@ -448,14 +448,19 @@ const server = createServer(async (req, res) => {
         ? `authfail:${ip}`
         : `authfail:${ip}:${tokenHash(token).slice(0, 16)}`;
       /* ⚠️ 2026-10-09: IP-ийн амжилтгүй нэвтрэлтийн ТАГ (`LIMITS.authFailIp`, `worker.mjs`-тэй ижил) */
-      if (limiter.full(failKey, LIMITS.authFail) || limiter.full(`authfailip:${ip}`, LIMITS.authFailIp)) {
+      /* ⚠️ 2026-10-21: `TRUSTED_PROXY` АЛГА үед loopback (127.0.0.1 · ::1) нь тунелийн БҮХ хэрэглэгчийн
+         хуваалцсан хаяг — нэг хүн минутад 100 санамсаргүй токен илгээхэд `authfailip:127.0.0.1` дүүрч,
+         ШИНЭ токентой бүх хэрэглэгч тэр минутад 429 авдаг байв. Тэр үед IP-ийн тагийг хэрэглэхгүй;
+         токен тус бүрийн `failKey` (20) ба IP-ийн ерөнхий таг (`ipcap`, 300) хэвээр үйлчилнэ. */
+      const ipFailCapped = Boolean(TRUSTED_PROXY) || !/^(127\.|::1$|::ffff:127\.)/.test(ip);
+      if (limiter.full(failKey, LIMITS.authFail) || (ipFailCapped && limiter.full(`authfailip:${ip}`, LIMITS.authFailIp))) {
         json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
         return;
       }
       const auth = await checkArcGIS(token);
       if (!auth.ok) {
         limiter.hit(failKey, LIMITS.authFail);
-        limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
+        if (ipFailCapped) limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
         json(res, 401, { error: auth.reason, retryable: false });
         return;
       }

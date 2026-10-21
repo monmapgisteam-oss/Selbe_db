@@ -424,10 +424,28 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
      эрэмбэлсэн массивын индекс байсан тул эрэмбэ солиход хураасан төлөв ӨӨР
      гэрээнд шилждэг байв. `sortBlocks` объектыг хуулдаггүй тул лавлагаагаар
      олдоно. */
-  const baseIdx = useMemo(() => new Map(blocks.map((b, i) => [b, i])), [blocks]);
-  const keyOf = (b: ContractBlock) => `${b.code}#${baseIdx.get(b) ?? -1}`;
+  /* ⚠️ 2026-10-21: ТОГТВОРТОЙ түлхүүр — гэрээний код → (кодгүй бол) гэрээний дугаар → төлбөрийн мөрийн
+     хамгийн бага OBJECTID; ижил суурьтай хэд байвал л дарааллын дугаар. Урьд нь `код#индекс` (эрэмбэлээгүй
+     `blocks`-ийн) байсан тул дахин ачаалалтаар гэрээ нэмэгдэх/хасагдахад индекс шилжиж ӨӨР бүлэг хураагдаж,
+     `shut` нь хэзээ ч цэвэрлэгддэггүй тул `allShut` (size ≥ length) буруу тоолдог байв. */
+  const keyMap = useMemo(() => {
+    const m = new Map<ContractBlock, string>();
+    const seen = new Map<string, number>();
+    for (const b of blocks) {
+      const oids = b.rows.map((r) => r.oid).filter((x): x is number => x != null);
+      const base = b.code ? `c:${b.code}` : b.contractNo ? `n:${b.contractNo}` : oids.length ? `o:${Math.min(...oids)}` : `i:${b.rows[0]?.id ?? ''}`;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      m.set(b, n ? `${base}#${n}` : base);
+    }
+    return m;
+  }, [blocks]);
+  const keyOf = (b: ContractBlock) => keyMap.get(b) ?? `?:${b.code}`;
+  /* ⚠️ 2026-10-21: одоо БАЙХГҮЙ гэрээний түлхүүрийг тооцохгүй, дараагийн солилтод хаяна */
+  const liveKeys = useMemo(() => new Set(keyMap.values()), [keyMap]);
+  const prune = (p: Set<string>) => new Set([...p].filter((k) => liveKeys.has(k)));
 
-  const allShut = shut.size >= sorted.length;
+  const allShut = sorted.every((b) => shut.has(keyOf(b)));
   const toggleAll = () => {
     setShut(allShut ? new Set() : new Set(sorted.map((b) => keyOf(b))));
   };
@@ -497,7 +515,7 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
                 b={b}
                 open={open}
                 onToggle={() => setShut((p) => {
-                  const n = new Set(p);
+                  const n = prune(p);
                   if (n.has(k)) n.delete(k); else n.add(k);
                   return n;
                 })}

@@ -127,12 +127,8 @@ const rateLabel = (m: MetricSeries, perHour: number): string => {
 
 type Card = { s: SensorLive; m: MetricSeries };
 
-/**
- * ⚠️ `MapCanvas` нь memo() — render бүрд шинэ `() => {}` дамжуулбал memo эвдэрч,
- * минут тутмын цагийн tick (`setNow`) бүрд 3000+ мөрт компонент дэмий дахин
- * ажиллана. Тиймээс модулийн түвшний ТОГТВОРТОЙ noop (Irged.tsx-ийн загвар).
- */
-const noop = () => {};
+/* ⚠️ 2026-10-21: модулийн `noop` (`onPick`-д) ХАСАГДСАН — `MapCanvas`-ын дуудлагын ⚠️-г үз. `onPick`
+   өгөхгүй тул memo-д шинэ функц орохгүй (memo-ийн хамгаалалт хэвээр). */
 
 /* ══════════════════ Жижиг бүрэлдэхүүн ══════════════════ */
 
@@ -334,7 +330,9 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             opacity={opacity}
             zone={zone}
             uniform
-            onPick={noop}
+            /* ⚠️ 2026-10-21: `onPick` ӨГӨХГҮЙ — `noop` нь MapCanvas-ын товшилтын атрибутын хайрцгийг
+               (`tipOnly = !pickRef.current`) унтрааж, мэдрэгчтэй дэлгэцэд цэг товшиход юу ч гардаггүй байв
+               (Irged 2026-10-06-нд ижил noop-ийг хассан). Буцааж бүү нэм. */
           />
 
           {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН «2D | 3D» байсан — Давхарга, Тунгалаг,

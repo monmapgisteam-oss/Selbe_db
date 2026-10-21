@@ -351,6 +351,12 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
   /* ⚠️ 2026-10-09: хариу алдагдсан (`isLostWrite`) үед ч хүчингүй болгоно */
   assert.ok(/if \(isLostWrite\(err\)\) lost = true;/.test(body), 'applyPlanEdits: хариу алдагдсан үед HUVAARI_OBYEM хүчингүй болгохгүй');
   assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0 \|\| lost\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body),'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
+  /* ⚠️ 2026-10-21: дутуу хариу = кодгүй `ArcGISError` → `isLostWrite` үнэн (тэмдэг үлдэнэ, кэш хүчингүй) */
+  assert.ok(/if \(res\.length !== want\[n\]\) \{\s*throw new ArcGISError\(/.test(body), 'applyPlanEdits: дутуу хариу ArcGISError биш — isLostWrite худал');
+  assert.ok(/res\.find\(\(r\) => r\.success !== true\)/.test(body), 'applyPlanEdits: success !== true биш');
+  const { ArcGISError } = await import('./query.ts');
+  const { isLostWrite } = await import('./lostWrite.ts');
+  assert.equal(isLostWrite(new ArcGISError('x', 'u')), true, 'кодгүй ArcGISError → хариу алдагдсан');
 }
 console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй ✓');
 

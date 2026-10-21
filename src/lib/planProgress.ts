@@ -447,6 +447,10 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   /** төсөл → сар → обьёмын нийлбэр */
   const tVol = new Map<string, number>();
   for (const sh of sheets) {
+    /* ⚠️ 2026-10-21 (аудит): бүрэн давхардсан хуудас (`nUniq === 0`, Багц 4-2·12F) багц/төслийн обьёмд ч
+       ОРОХГҮЙ — хувийн нэгтгэлтэй (`gAcc`/`tAcc`) нэг олонлог; урьд нь F6_x-ийн сарын обьём давхар нэмэгддэг байв.
+       Хуудасны өөрийн цэгийн `vol` (`bySheet`) хэвээр. */
+    if (!sh.nUniq) continue;
     const g = gVol.get(sh.group) ?? new Map<string, number>();
     for (const [sar, v] of sh.volByMonth) {
       g.set(sar, (g.get(sar) ?? 0) + v);

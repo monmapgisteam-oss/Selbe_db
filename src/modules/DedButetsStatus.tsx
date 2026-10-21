@@ -143,6 +143,19 @@ function distinctOf(meta: LayerMeta, field: string): Promise<string[]> {
 export type StatOption = { code: string; label: string; hue: string };
 
 /**
+ * ⚠️ 2026-10-21: АТРИБУТ ЗАСАГДСАН ДОХИО — давхаргын ялгаатай утгыг (`vals`) дахин уншуулна. Засвар нь
+ *    dataBus-ийн түлхүүргүй (давхаргыг `refreshLayer`-ээр л шинэчилдэг) тул урьд нь шинэ төлөвийн утга
+ *    сешн дуустал шүүлтүүр/өнгөнд гардаггүй байв. Засагч (`DedButetsEdit` хадгалалт) дуудна.
+ */
+const valSubs = new Set<(layerId: string) => void>();
+export function statusValsChanged(layerId: string): void {
+  for (const fn of valSubs) fn(layerId);
+}
+/** Түр алдааны дараах дахин оролдлого — хоцрол (мс) ба дээд тоо */
+const RETRY_MS = 15_000;
+const RETRY_MAX = 3;
+
+/**
  * Харагдаж буй засагдах давхарга бүрийн renderer дарлага. Шүүлтүүр бүгд унтраалттай бол `null`
  * (давхарга өөрийн анхны загвартаа).
  */
@@ -182,18 +195,54 @@ export function useStatusClasses(
   const askedMeta = useRef(new Set<string>());
   /** Хүсэлт илгээсэн ялгаатай утга (`kind|id`) — давхар илгээхгүй */
   const asked = useRef(new Set<string>());
+  /**
+   * ⚠️ 2026-10-21: ДАХИН ОРОЛДЛОГО ба ЗАСВАРЫН ДАРААХ ШИНЭЧЛЭЛ. Урьд нь метадата/утга түлхүүр бүрд НЭГ л
+   *    удаа хүсэгдэж, нэг түр алдаа давхаргыг сешн турш будаггүй үлдээдэг, засвараар нэмэгдсэн шинэ
+   *    төлөвийн утга жагсаалтад гардаггүй байв. Алдаанд `asked*`-аас хасаж `RETRY_MS`-ийн дараа (дээд
+   *    `RETRY_MAX`) эффектийг `rev`-ээр сэдээнэ; `statusValsChanged` ирэхэд тэр давхаргын утгыг шинээр.
+   */
+  const [rev, setRev] = useState(0);
+  const fails = useRef(new Map<string, number>());
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => () => { for (const t of timers.current) clearTimeout(t); }, []);
+  const retryLater = (k: string, drop: () => void) => {
+    const n = (fails.current.get(k) ?? 0) + 1;
+    fails.current.set(k, n);
+    if (n > RETRY_MAX) return;
+    const t = setTimeout(() => {
+      timers.current.delete(t);
+      if (!mounted.current) return;
+      drop();
+      setRev((x) => x + 1);
+    }, RETRY_MS);
+    timers.current.add(t);
+  };
+  useEffect(() => {
+    const fn = (layerId: string) => {
+      if (!mounted.current) return;
+      asked.current.delete(`stat|${layerId}`);
+      asked.current.delete(`chg|${layerId}`);
+      setRev((x) => x + 1);
+    };
+    valSubs.add(fn);
+    return () => { valSubs.delete(fn); };
+  }, []);
   const key = ids.join(',');
   useEffect(() => {
     if (!on && !preload) return;
     for (const id of key ? key.split(',') : []) {
       if (askedMeta.current.has(id)) continue;
       askedMeta.current.add(id);
-      /* ⚠️ Уншиж чадаагүй давхарга `null` — ангилагдахгүй, анхны загвартаа үлдэнэ */
+      /* ⚠️ Уншиж чадаагүй давхарга `null` — ангилагдахгүй, анхны загвартаа үлдэнэ (дахин оролдоно — дээрх ⚠️) */
       loadLayerMeta(id)
-        .then((m) => { if (mounted.current) setMetas((p) => ({ ...p, [id]: m })); })
-        .catch(() => { if (mounted.current) setMetas((p) => ({ ...p, [id]: null })); });
+        .then((m) => { if (mounted.current) { fails.current.delete(`m|${id}`); setMetas((p) => ({ ...p, [id]: m })); } })
+        .catch(() => {
+          if (!mounted.current) return;
+          setMetas((p) => ({ ...p, [id]: null }));
+          retryLater(`m|${id}`, () => askedMeta.current.delete(id));
+        });
     }
-  }, [on, preload, key]);
+  }, [on, preload, key, rev]);
   useEffect(() => {
     if (!on && !preload) return;
     for (const [id, m] of Object.entries(metas)) {
@@ -205,11 +254,16 @@ export function useStatusClasses(
         if (!sf || sf.codes?.length) continue;
         asked.current.add(k);
         distinctOf(m, sf.name)
-          .then((v) => { if (mounted.current) setVals((p) => ({ ...p, [k]: v })); })
-          .catch(() => { if (mounted.current) setVals((p) => ({ ...p, [k]: [] })); });
+          .then((v) => { if (mounted.current) { fails.current.delete(k); setVals((p) => ({ ...p, [k]: v })); } })
+          .catch(() => {
+            if (!mounted.current) return;
+            /* ⚠️ 2026-10-21: өмнө ирсэн утга байвал ХАДГАЛНА (засварын дараах шинэчлэл унасан) — хоосон болгохгүй */
+            setVals((p) => (k in p ? p : { ...p, [k]: [] }));
+            retryLater(k, () => asked.current.delete(k));
+          });
       }
     }
-  }, [on, preload, metas]);
+  }, [on, preload, metas, rev]);
 
   /**
    * Сонголтууд — ШОШГООР нэгтгэнэ (`code` = хэвшүүлсэн шошго).

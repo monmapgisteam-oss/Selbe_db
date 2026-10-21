@@ -177,7 +177,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17) — `submission.ts`,
        `zovshoorol.deleteZov`-той ижил: нэг мөр илгээсэн тул яг нэг үр дүн ирнэ. */
     if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
-    const bad = res.find((r) => r.success === false);
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (ArcGIS-ийн 200-гийн занга) */
+    const bad = res.find((r) => r.success !== true);
     if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
 
     /* ⚠️ Кэшийг хүчингүй болгоно — эс бөгөөс «Санхүүжилт» хуудас шинэ

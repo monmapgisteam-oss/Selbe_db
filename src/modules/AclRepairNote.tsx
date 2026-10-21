@@ -22,7 +22,7 @@
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  allAclReady, failedUsersOf, goneCleanupOp, goneRightsOf, retryOp, type AclOp, type RepairSys,
+  allAclReady, failedUsersOf, goneCleanupOp, goneRightsOf, retryOp, runOp, type AclOp, type RepairSys,
 } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
 import { PANE_CAPS, type ErhPane } from './capText';
@@ -37,7 +37,7 @@ export const repairSysOf = (pane: ErhPane): RepairSys | null => {
 };
 
 export function AclRepairNote({ pane }: { pane: ErhPane }) {
-  const { busy, err, run } = useAclRunner();
+  const { busy, err, setErr, run } = useAclRunner();
   const [bulk, setBulk] = useState(false);
   if (!allAclReady()) return null;
 
@@ -48,11 +48,20 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
   if (!failed.length && !gone.length && !err) return null;
   const off = busy || bulk;
 
+  /* ⚠️ 2026-10-21: БАГЦЫН алдааг ХУРИМТЛУУЛНА — урьд нь op бүр `run`-ийн нэг `setErr`-ээр явж, дараагийн
+     амжилттай op-ын `setErr('')` өмнөх op-ын унасан шалтгааныг арчдаг байв. Op бүрийн алдааг цуглуулж
+     төгсгөлд нэг удаа бичнэ. `runOp`-ийг шууд — бүх товч `bulk`-аар хаалттай тул `run`-ийн түгжээ хэрэггүй. */
   const all = async (ops: (() => AclOp)[]) => {
     setBulk(true);
+    const errs: string[] = [];
     try {
-      for (const op of ops) await run(op());
+      for (const op of ops) {
+        let last = '';
+        await runOp(op(), (m) => { last = m; });
+        if (last) errs.push(last);
+      }
     } finally {
+      setErr([...new Set(errs)].join(' · '));
       setBulk(false);
     }
   };

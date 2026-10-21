@@ -420,11 +420,11 @@ const handler = {
       return json(429, { error: BUDGET_MSG, code: 'daily_budget', retryable: false }, cors);
     }
 
+    /* ⚠️ 2026-10-21: түлхүүр алга → 502 `upstream_auth` (`server.mjs`-тэй ижил). Урьд 500 буцаадаг байсан нь
+       клиентийн FAILOVER_STATUS-д ороогүй тул нөөц хост (тохиргоо нь зөв байж болох) руу шилждэггүй байв. */
     if (!env.ANTHROPIC_API_KEY) {
-      return json(500, {
-        error: 'AI үйлчилгээний түлхүүр тохируулагдаагүй байна. Системийн администраторт хандана уу.',
-        retryable: false,
-      }, cors);
+      console.error('[agent] ⛔ ANTHROPIC_API_KEY тохируулагдаагүй — `npm run deploy:secret`');
+      return json(502, UPSTREAM_AUTH, cors);
     }
 
     /* ⚠️ 2026-10-09: ЗЭРЭГ ХҮСЭЛТИЙН ТАГ (`LIMITS.concurrent` = 2). ⚠️ ISOLATE ТУС БҮРД — Cloudflare

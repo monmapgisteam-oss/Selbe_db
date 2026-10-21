@@ -203,6 +203,8 @@ export function effSpan(
  * ⚠️ Хүүхдүүд нь БҮГД хуваарьгүй бол бүлгийн огноог ХЭВЭЭР үлдээнэ —
  *    бодох зүйл байхгүй үед гараар оруулсан утгыг устгах нь мэдээлэл
  *    алдагдуулна (`effSpan` ч мөн адил тэр үед `own` руу буцдаг).
+ *    ⚠️ 2026-10-21: ЗӨВХӨН өмнөх MIN/MAX-аас зөрсөн (өөрийн) муж хэвээр; өмнөх
+ *    MIN/MAX-тай яг ижил (хүүхдээс бодогдсон) муж арилна — доорх ⚠️.
  *
  * @returns `ch`-ийн ХУУЛБАР дээр бүлгийн мөрүүдийг нэмсэн шинэ Map.
  */
@@ -240,7 +242,25 @@ export function rollUpGroups(
         if (a == null || s.start < a) a = s.start;
         if (z == null || s.end > z) z = s.end;
       }
-      if (a == null || z == null) continue;
+      if (a == null || z == null) {
+        /* ⚠️ 2026-10-21: БҮХ НАВЧ ХУВААРЬГҮЙ БОЛСОН — бүлгийн муж нь ӨМНӨ НЬ ХҮҮХДЭЭС БОДОГДСОН (өөрчлөлтийн
+           өмнөх навчдын MIN/MAX-тай яг ижил) бол АРИЛГАНА: урьд нь хэвээр үлдэж «сүнс» огноо болон
+           `computeAll`-д төлөвлөгөөт хувь, `effSpan`-аар хамаарагчдыг хязгаарладаг байв. Тэр
+           MIN/MAX-аас ЗӨРСӨН муж = бүлгийн ӨӨРИЙН (гараар/гинжээр тавьсан) огноо → дээрх ⚠️-ийн дагуу ХЭВЭЭР.
+           ⚠️ Мөрөнд own/agg ялгах туг байхгүй тул энэ тулгалт л ялгах цорын ганц арга. */
+        const ov = cur[b] ?? null;
+        if (!ov) continue;
+        let pa: number | null = null;
+        let pz: number | null = null;
+        for (const c of leaves) {
+          const s = rows[c].spans[b];
+          if (!s) continue;
+          if (pa == null || s.start < pa) pa = s.start;
+          if (pz == null || s.end > pz) pz = s.end;
+        }
+        if (pa != null && pz != null && ov.start === pa && ov.end === pz) { next[b] = null; moved = true; }
+        continue;
+      }
       const nv: Span = { start: a, end: z };
       const ov = cur[b] ?? null;
       const same = (!nv && !ov)

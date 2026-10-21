@@ -192,9 +192,26 @@ export async function entListPdfs(): Promise<EntPdf[]> {
  *    АЛДАА ШИДЭХГҮЙ — item аль хэдийн үүссэн тул хэрэглэгч «болсонгүй» гэж бодоод дахин
  *    оруулбал ижил PDF хоёр item болно. Оронд нь анхааруулга буцаана.
  */
+/**
+ * ⚠️ 2026-10-21: ПОРТАЛЫН ЯГ ХЭРЭГЛЭГЧИЙН НЭР — `content/users/{u}/…` замд. Ижил порталын горимд `s.user` нь
+ *    `who.currentUser()` (trim + жижиг үсэг) тул том үсэгтэй нэртэй хэрэглэгчийн `addItem`/`share` зөрдөг байв
+ *    (дээрх `entSignIn`-ий ⚠️ — зам яг порталын нэрийг шаарддаг). `community/self`-ээс нэг удаа (токен тутамд) уншина;
+ *    тусдаа нэвтрэлтийн сешн (`sess`) аль хэдийн яг нэртэй.
+ */
+let exact: { token: string; user: string } | null = null;
+async function exactUser(s: Sess): Promise<string> {
+  if (sess && s === sess) return s.user;
+  if (exact && exact.token === s.token) return exact.user;
+  const me = await post<{ username?: string }>('community/self', new URLSearchParams({ token: s.token, f: 'json' }));
+  if (!me.username) throw new Error(tr('Enterprise хэрэглэгч тодорхойгүй.'));
+  exact = { token: s.token, user: me.username };
+  return me.username;
+}
+
 export async function entUploadPdf(file: File, title?: string): Promise<{ item: EntPdf; warn?: string }> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
+  const owner = await exactUser(s);
   const ttl = (title ?? '').trim() || file.name.replace(/\.pdf$/i, '');
   const fd = new FormData();
   fd.append('f', 'json');
@@ -204,10 +221,10 @@ export async function entUploadPdf(file: File, title?: string): Promise<{ item: 
   fd.append('tags', ENT_TAG);
   fd.append('typeKeywords', ENT_TAG);
   fd.append('file', file, file.name);
-  const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(s.user)}/addItem`, fd);
+  const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(owner)}/addItem`, fd);
   if (!j.success || !j.id) throw new Error(tr('PDF item үүссэнгүй.'));
   const id = j.id;
-  const user = encodeURIComponent(s.user);
+  const user = encodeURIComponent(owner);
   let warn: string | undefined;
   try {
     const sh = await post<{ notSharedWith?: string[] }>(`content/users/${user}/items/${encodeURIComponent(id)}/share`,
@@ -222,7 +239,7 @@ export async function entUploadPdf(file: File, title?: string): Promise<{ item: 
   } catch {
     /* ⚠️ Item бий — мэдээллийг файлаас бүрдүүлнэ (дээрх «алдаа шидэхгүй» ⚠️) */
     return {
-      item: { id, title: (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''), owner: s.user, modified: Date.now(), size: file.size, access: warn ? null : 'org' },
+      item: { id, title: (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''), owner, modified: Date.now(), size: file.size, access: warn ? null : 'org' },
       warn,
     };
   }

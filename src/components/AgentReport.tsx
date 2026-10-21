@@ -18,7 +18,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { parseBlocks } from '@/lib/agent/blocks';
 import { parseReport, reportTables, slug, type ReportDoc, type ReportFormat } from '@/lib/agent/report';
 import { csvTable, typeTable } from '@/lib/agent/reportCells';
-import { downloadText, fileDate, toCsv } from '@/lib/csvFile';
+import { csvCell, downloadText, fileDate, toCsv } from '@/lib/csvFile';
 import s from '@/components/agent.module.css';
 
 /** Товчин дээрх нэр — `tr()` нь модулийн хамрах хүрээнд дуудагдаж БОЛОХГҮЙ */
@@ -60,7 +60,9 @@ export function AgentReport({ raw, source }: { raw: string; source: string }) {
         const text = tables
           .map((t) => {
             const c = csvTable(typeTable(t));
-            return [t.name, toCsv(c.head, c.rows)].join('\r\n');
+            /* ⚠️ 2026-10-21: хүснэгтийн НЭР ч `csvCell`-ээр — түүхий бичвэл `=…` томьёо/таслал
+               Excel-д томьёо болж эсвэл баганыг задалдаг байв (утгууд аль хэдийн `toCsv`-ээр). */
+            return [csvCell(t.name), toCsv(c.head, c.rows)].join('\r\n');
           })
           .join('\r\n\r\n');
         downloadText(`${name}.csv`, text, 'text/csv');

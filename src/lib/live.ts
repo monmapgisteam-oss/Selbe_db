@@ -681,7 +681,9 @@ export const loadSocial = cached<SocialLive>(async () => {
             return { ...c, cap: null } as Row;
           });
           const cap = s.cap == null ? null : Number(s.cap);
-          return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && cap > 0 };
+          /* ⚠️ 2026-10-21: null ≠ 0 — `cap > 0` нь БОДИТ 0 нийлбэрийг «талбаргүй» гэж үзэж «—» харуулдаг байв.
+             `null` = талбар байхгүй (дээрх catch) эсвэл бүх утга хоосон (SUM → null); 0 бол хүчин чадал 0. */
+          return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && Number.isFinite(cap) };
         }),
       );
       const n = sumBy(per, (x) => x.n);

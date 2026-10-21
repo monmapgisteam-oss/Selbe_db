@@ -185,23 +185,47 @@ export const facetValues = (rows: Row[], fc: Facet): string[] => distinct(rows, 
  * ⚠️ Мянгатын таслал зөвшөөрнө (`'>1,000,000'`) — хэрэглэгч хүснэгтээс
  *    хуулж наана.
  */
-export function numTest(expr: string): ((v: number) => boolean) | null {
-  const s = expr.trim().replace(/,/g, '');
+/**
+ * Нэг тооны бичлэг → тоо; танихгүй бол `NaN`.
+ * ⚠️ 2026-10-21: таслалыг `finEdit.parseCell`-тэй НЭГ дүрмээр — урьд нь БҮХ таслалыг хасдаг тул
+ *    «12,5» шүүлтэд 125, засварт 12.5 болдог байв:
+ *      · `1,234,567` (2+ бүлэг) · `1,234.5` → мянгат; `1.234,5` → цэг мянгат, таслал аравтын;
+ *      · `0,125` · `12,5` · `1234,5` → аравтын;
+ *      · `1,250` (1–3 орон + яг 3 орон) — `parseCell` «тодорхойгүй» гэж татгалздаг. Шүүлтэд алдаа
+ *        харуулах газаргүй тул ХУУЧИН утгаар (мянгат, `>1,000` мөнгөн дүнгийн түгээмэл шүүлт), харин
+ *        хувийн баганад (`pct`) нэг таслал ҮРГЭЛЖ аравтын (`parseCell`-ийн `pct` дүрэм).
+ */
+function numOf(tok: string, pct: boolean): number {
+  const t = tok.replace(/[\s ]/g, '');
+  if (!t.includes(',')) return Number(t);
+  if (t.includes('.')) {
+    if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(t)) return Number(t.replace(/,/g, ''));
+    if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) return Number(t.replace(/\./g, '').replace(',', '.'));
+    return NaN;
+  }
+  if (/^-?\d{1,3}(,\d{3}){2,}$/.test(t)) return Number(t.replace(/,/g, ''));
+  if (!/^-?\d+,\d+$/.test(t)) return NaN;
+  if (!pct && /^-?[1-9]\d{0,2},\d{3}$/.test(t)) return Number(t.replace(',', ''));
+  return Number(t.replace(',', '.'));
+}
+
+export function numTest(expr: string, pct = false): ((v: number) => boolean) | null {
+  const s = expr.trim();
   if (s === '') return null;
 
-  const range = /^(-?[\d.]+(?:e[+-]?\d+)?)\s*\.\.\s*(-?[\d.]+(?:e[+-]?\d+)?)$/i.exec(s);
+  const range = /^(-?[\d.,]+(?:e[+-]?\d+)?)\s*\.\.\s*(-?[\d.,]+(?:e[+-]?\d+)?)$/i.exec(s);
   if (range) {
-    const a = Number(range[1]);
-    const b = Number(range[2]);
+    const a = numOf(range[1], pct);
+    const b = numOf(range[2], pct);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
     return (v) => v >= lo && v <= hi;
   }
 
-  const cmp = /^(>=|<=|>|<|=)\s*(-?[\d.]+(?:e[+-]?\d+)?)$/i.exec(s);
+  const cmp = /^(>=|<=|>|<|=)\s*(-?[\d.,]+(?:e[+-]?\d+)?)$/i.exec(s);
   if (cmp) {
-    const x = Number(cmp[2]);
+    const x = numOf(cmp[2], pct);
     if (!Number.isFinite(x)) return null;
     switch (cmp[1]) {
       case '>': return (v) => v > x;
@@ -231,7 +255,8 @@ function cellMatches(raw: unknown, shown: string, needle: string, numeric: boole
   if (s === '') return true;
 
   if (numeric) {
-    const t = numTest(s);
+    /* ⚠️ 2026-10-21: хэмжээстэй (×100 хувийн) баганад нэг таслал аравтын (`numOf`-ийн ⚠️) */
+    const t = numTest(s, scale !== 1);
     if (t) {
       /* ⚠️ 2026-09-25: хоосон нүд (`null`/`''`) нь «дүнгүй», 0 БИШ — `Number(null)` = 0
          тул урьд нь `=0`, `<1e9`, `0..5e9` зэрэг илэрхийлэлд хоосон мөр таардаг байв
@@ -239,7 +264,10 @@ function cellMatches(raw: unknown, shown: string, needle: string, numeric: boole
       if (raw == null || String(raw).trim() === '') return false;
       /* ⚠️ 2026-10-11 (аудит №7): `scale` — ХАРАГДАХ хэмжээс (×100 «Үнэт цаас %»: эх 0–1 бутархай,
          дэлгэц «9.0%»); урьд нь `>5` гэвэл түүхий 0.09-той жишиж юу ч олдохгүй байв. */
-      const x = Number(raw) * scale;
+      /* ⚠️ 2026-10-21: ×scale-ийн хөвөгч цэгийн үлдэгдлийг тайрна — 0.07 × 100 = 7.000000000000001
+         тул `=7` юу ч олдохгүй, `<=7` 7%-ийг алгасдаг байв. 12 чухал орон: харагдах хувийн нарийвчлалаас
+         хамаагүй их, үржүүлгийн алдаанаас бага. `scale` 1 үед түүхий утга хэвээр (их дүн хөндөгдөхгүй). */
+      const x = scale === 1 ? Number(raw) : Number((Number(raw) * scale).toPrecision(12));
       return Number.isFinite(x) && t(x);
     }
   }

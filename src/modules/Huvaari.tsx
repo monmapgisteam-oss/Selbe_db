@@ -2937,13 +2937,19 @@ export function Huvaari({
     while (spans.length < n) spans.push(null);
     let changed = false;
     if (main) { spans[blk] = main; changed = true; }
+    /* ⚠️ 2026-10-21: БУСАД блокийн татгалзсан шалтгааныг ЦУГЛУУЛЖ мэдэгдэнэ — урьд нь чимээгүй алгасдаг
+       тул хэрэглэгч бүх сонгосон блокт тавигдсан гэж андуурдаг байв. Идэвхтэй блок орсон бол нүд засварт
+       үлдэхгүй (буцаахгүй) — зөвхөн баннерт; юу ч орохгүй бол нүдэнд ч буцаана. */
+    const skip: string[] = [];
     for (const b of multiBlks) {
       if (b === blk) continue;
       const nb = ruleAt(cur.spans[b] ?? null);
-      if (nb && typeof nb !== 'string') { spans[b] = nb; changed = true; }
+      if (typeof nb === 'string') skip.push(tr('{0}-р блок: {1}', String(b + 1), nb));
+      else if (nb) { spans[b] = nb; changed = true; }
     }
-    if (!changed) return;
-    setErr('');
+    const skipMsg = skip.length ? tr('{0} блокт хэрэглэгдсэнгүй: {1}', num(skip.length), skip.join('; ')) : '';
+    if (!changed) return skipMsg ? fail(skipMsg) : undefined;
+    setErr(skipMsg);
     applyModal(oid, spans, null, null);
     openAfterDate(oid, via);
   }, [busy, locked, canEdit, plan, blk, n, multiBlks, applyModal, setErr, openAfterDate]);

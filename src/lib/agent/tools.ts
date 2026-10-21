@@ -49,6 +49,13 @@ export type ToolDef = {
  */
 const MAX_ROWS = 40;
 
+/**
+ * ⚠️ 2026-10-21: БҮЛГИЙН дээд тоо. Урьд нь `groupBy` хариу таслагдахгүй
+ * (~2000 бүлэг) тул асар том tool_result нь дараагийн эргэлт БҮРД дахин
+ * илгээгдэж байв. Эхний статистикаар буурахаар эрэмбэлж эхний N-ийг үлдээнэ.
+ */
+const MAX_GROUPS = 100;
+
 export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'describe_feature',
@@ -437,22 +444,47 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
          байв (2026-09-03-ны аудит). */
       if (input.groupBy) {
         const g = await queryGroupEx(url, input.groupBy, stats, where, undefined, signal);
+        /* ⚠️ 2026-10-21: бүлгийн тоог MAX_GROUPS-оор таслана (жагсаалтын MAX_ROWS-тай адил) —
+           эхний статистикаар буурахаар эрэмбэлнэ. Enterprise нэрийн үсгийг өөрчилж
+           болох тул түлхүүрийг үсэг харгалзахгүй хайна. */
+        let rows = g.rows;
+        const capped = rows.length > MAX_GROUPS;
+        if (capped) {
+          const alias = stats[0].outStatisticFieldName.toLowerCase();
+          const val = (r: Row) => {
+            const k = Object.keys(r).find((x) => x.toLowerCase() === alias);
+            const v = k ? r[k] : null;
+            const n = v == null || v === '' ? NaN : Number(v);
+            return Number.isFinite(n) ? n : -Infinity;
+          };
+          rows = [...rows].sort((a, b) => val(b) - val(a)).slice(0, MAX_GROUPS);
+        }
         return ok({
           source: src.id,
           where,
           groupBy: input.groupBy,
-          truncated: g.truncated,
+          truncated: g.truncated || capped,
           ...(g.truncated
             ? { warning: tr('⚠️ Бүлгүүд ТАЙРАГДСАН — нийт дүн дутуу. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.') }
-            : {}),
-          rows: g.rows,
+            : capped
+              ? {
+                groupCount: g.rows.length,
+                warning: tr('⚠️ {0} бүлгээс эхний статистикаар хамгийн их {1}-ийг л буцаав — бусад бүлэг ороогүй. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.', g.rows.length, MAX_GROUPS),
+              }
+              : {}),
+          rows,
         });
       }
       const rows: Row[] = [await queryStats(url, stats, where, undefined, signal)];
       return ok({ source: src.id, where, groupBy: input.groupBy, rows });
     }
 
-    const limit = Math.min(Math.max(1, input.limit ?? 10), MAX_ROWS);
+    /* ⚠️ 2026-10-21: загвар `limit`-д "all"/"max"/объект өгвөл Math.min/max нь NaN
+       буцааж, `queryFeatures` (`if (opts.limit)`) resultRecordCount-гүйгээр БҮТЭН
+       давхаргыг хуудаслан татаж MAX_ROWS-ыг тойрдог байв. Тоо болгож, төгсгөлгүй
+       бол анхдагч 10 руу буцаад дараа нь хязгаарлана. */
+    const rawLimit = Math.floor(Number(input.limit ?? 10));
+    const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 10), MAX_ROWS);
     const rows = await queryFeatures(url, {
       where,
       outFields: input.outFields?.length ? input.outFields : undefined,

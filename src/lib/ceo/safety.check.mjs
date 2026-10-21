@@ -91,6 +91,12 @@ const row = (o = {}) => ({
   // Ирээдүйн огноо (буруу бөглөсөн) «сүүлийн 30 хоногт» орохгүй
   const future = toSafetyRow({ field_22: NOW + 3 * DAY, field_7: 'Зөрчил' });
   assert.equal(aggregateSafety([future], NOW).recent, 0, 'ирээдүйн огноо recent-д орохгүй');
+  // ⚠️ 2026-10-21: ирээдүйн огноо `last`/`daysSince`-д ч орохгүй (`recent`-тэй нэг дүрэм)
+  const past = toSafetyRow({ field_22: NOW - 2 * DAY, field_7: 'Зөрчил' });
+  const fa = aggregateSafety([future, past], NOW);
+  assert.equal(fa.last, NOW - 2 * DAY, 'ирээдүйн огноо last болохгүй');
+  assert.equal(fa.daysSince, 2);
+  assert.equal(aggregateSafety([future], NOW).last, null);
 }
 
 /* ══════════════ 3. Хохирлын regex — execTriage-тэй ижил дүрэм ══════════════ */

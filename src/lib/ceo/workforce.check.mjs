@@ -275,15 +275,34 @@ const ROWS = [
   assert.equal(drop.issues.length, 1);
   assert.equal(drop.issues[0].text, 'Монкон констракшн ХХК — 100 → 60 хүн');
 
-  // Өмнөх 0 → хувь null, delta бий
+  // ⚠️ 2026-10-21: өмнөх өдөр нэг ч компани тайлангүй → зөрүү null (урьд нь +30 «0-ээс»)
   const fromZero = computeWorkforce([
     row(D3, { MK: { w: 30 } }),
     row(D2, {}),
   ], ub(2026, 9, 4));
-  assert.equal(fromZero.detail.delta, 30);
+  assert.equal(fromZero.detail.delta, null);
   assert.equal(fromZero.detail.deltaPct, null);
-  assert.equal(fromZero.facts[0], '+30 хүн өмнөх тайлангаас');
+  assert.equal(fromZero.facts[0], '2026-09-03 · өмнөх 2026-09-02');
   assert.equal(fromZero.level, 'good');
+  // Өмнөх ажилтан 0 ч техниктэй (тайлан өгсөн) → хувь null, delta бий
+  const zeroW = computeWorkforce([
+    row(D3, { MK: { w: 30, t: 2 } }),
+    row(D2, { MK: { w: 0, t: 2 } }),
+  ], ub(2026, 9, 4));
+  assert.equal(zeroW.detail.delta, 30);
+  assert.equal(zeroW.detail.deltaPct, null);
+
+  // ⚠️ 2026-10-21: маягтаа бөглөөгүй компани (өнөөдөр 0, өчигдөр 250) нийт зөрүүнд ОРОХГҮЙ — 'bad' биш
+  const missed = computeWorkforce([
+    row(D3, { MK: { w: 0 }, NBG: { w: 100 } }),
+    row(D2, { MK: { w: 250 }, NBG: { w: 96 } }),
+  ], ub(2026, 9, 4));
+  assert.deepEqual(missed.detail.unreported, ['MK']);
+  assert.equal(missed.detail.workersLatest, 100);
+  assert.equal(missed.detail.workersPrev, 346);
+  assert.equal(missed.detail.delta, 4, 'зөвхөн НБГ 96 → 100');
+  assert.ok(Math.abs(missed.detail.deltaPct - (4 / 96) * 100) < 1e-9);
+  assert.equal(missed.level, 'good');
 
   // Компанийн бууралт, өмнөх < 10 → дохиолохгүй
   const small = computeWorkforce([

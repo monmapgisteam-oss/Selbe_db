@@ -41,10 +41,13 @@ export const HJ = AGOL_KEY_BASE;
  * Fallback БАЙХГҮЙ — хувьсагч дутуу бол `req()` алдаа шиднэ.
  */
 /** Survey123 үйлчилгээний БҮТЭН хаяг: `…/FeatureServer` хүртэл. Хувьсагчид бүтэн URL
-    (`…/rest/services/<нэр>/FeatureServer`) эсвэл зөвхөн нэр өгсөн ч ажиллана. */
+    (`…/rest/services/<нэр>/FeatureServer`) эсвэл зөвхөн нэр өгсөн ч ажиллана.
+    ⚠️ 2026-10-21: ЗӨВХӨН НЭР нь Enterprise-ийн Hosted суурь (`ENT_HOSTED`) дор. Урьд `${HJ}/<нэр>` (AGOL-ын
+    ТҮЛХҮҮРИЙН суурь) болгодог байсан ч Survey123 үйлчилгээ `ENT_MAP`-д зураглалгүй тул `query.run` ХАБЭА-ийн
+    хүсэлт бүрийг «зураглалгүй AGOL хаяг» гэж татгалздаг байв. Бүтэн URL хэвээр. */
 const svcRoot = (name: string, v: string | undefined): string => {
   const raw = req(name, v).replace(/\/FeatureServer$/i, "");
-  return raw.includes("://") ? raw : `${HJ}/${raw}`;
+  return raw.includes("://") ? raw : `${ENT_HOSTED}/${raw}`;
 };
 /**
  * ЧАНАР · MA (материал баталгаажуулалт) ба MIR (материалын үзлэг) — Survey123, Сэлбэ Enterprise hosted feature service.

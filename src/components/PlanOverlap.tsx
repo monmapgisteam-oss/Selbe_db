@@ -177,8 +177,15 @@ export function PlanOverlapLayers({
 
   /* ДАВХАРГА сонгоход тэр давхаргын давхцал руу ОЙРТОНО (хэрэглэгч: «zoom to layer and filter») */
   const selLayer = selected?.layer ?? null;
+  /* ⚠️ 2026-10-21: СОНГОЛТ солигдоход л НЭГ удаа ойртоно. `visiblePieces`/`selectedZone` нь давхцлыг дахин
+     бодох бүрд (ангилал асаах/унтраах, өгөгдөл шинэчлэх) шинэ лавлагаа авдаг тул урьд нь зураг сонголт руу
+     буцаж нисч, хэрэглэгчийн шилжүүлгийг (pan) дарж бичдэг байв. Өгөгдөл хараахан ирээгүй (хүрээгүй) бол
+     түлхүүрийг тэмдэглэхгүй — ирмэгц нэг удаа ойртоно. Сонголт арилахад цэвэрлэж дахин сонгоход ойртоно. */
+  const zoomedKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!view || (!selLayer && !selected?.zone)) return;
+    if (!view || (!selLayer && !selected?.zone)) { zoomedKey.current = null; return; }
+    const key = `${selLayer ?? ''}|${selected?.zone ?? ''}`;
+    if (zoomedKey.current === key) return;
     let ext: __esri.Extent | null = !selLayer ? selectedZone?.geometry.extent?.clone() ?? null : null;
     for (const p of ext ? [] : visiblePieces) {
       const g = p.geometry;
@@ -188,6 +195,7 @@ export function PlanOverlapLayers({
       if (e) ext = ext ? ext.union(e) : e.clone();
     }
     if (ext) {
+      zoomedKey.current = key;
       // Ганц худаг/богино хэсэгт ч тэг биш, уншигдах хүрээ өгнө.
       const padding = Math.max(ext.width, ext.height, 120) * 0.2;
       view.goTo(new Extent({

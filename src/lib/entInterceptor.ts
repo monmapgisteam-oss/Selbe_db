@@ -12,7 +12,7 @@
  *        JS API PBF-ээр асууж, хоёртын хариуг хөрвүүлэх боломжгүй (толь байхгүй давхаргад PBF хэвээр).
  *    Ингэснээр JS API-ийн давхарга (fields · fieldsIndex · popup · renderer · graphic.attributes) AGOL-ынхтай
  *    ЯГ ИЖИЛ, эх нэртэй харагдана — 23 модулийн кодыг хөндөхгүй.
- * ⚠️ Зөвхөн `NEXT_PUBLIC_ENT_DATA`-ийн дор буй хаягт (`urls` угтвар). Нэг л удаа суулгана (`installed`).
+ * ⚠️ Зөвхөн `NEXT_PUBLIC_ENT_DATA`-ийн дор буй хаягт (`urls` угтвар). Нэг л удаа суулгана (`installing`).
  * ⚠️ Дуудах цэг: `AuthGate` (аппын эхэнд, нэвтрэлтээс үл хамааран) · `MapCanvas`/`SuitMap` (view үүсгэхээс өмнө) ·
  *    FeatureLayer кэштэй lib-үүд (`draftRemote` · `permsRemote` · `qaqcDraftRemote`). Node-д (тест) JS API
  *    ачаалагдахгүй тул чимээгүй алгасна.
@@ -49,18 +49,25 @@ export function entJsAfter(data: unknown, d: EntDict | null, requested: readonly
   return body;
 }
 
-let installed = false;
+/* ⚠️ 2026-10-21: boolean биш PROMISE-ыг кэшилнэ. Урьд `installed = true` нь `import('@arcgis/core/config')`
+   шийдэгдэхээс ӨМНӨ тавигддаг тул зэрэг ирсэн хоёр дахь дуудагч хөрвүүлэгч суугаагүй байхад буцаж, түүний
+   FeatureLayer-ийн мета хөрвүүлэгдэлгүй явдаг байв (жижиг үсэгтэй талбар → OBJECTID undefined → ноорог
+   хадгалалт давхардсан add болно). Одоо бүх дуудагч НЭГ суулгалтын дуусахыг хүлээнэ. */
+let installing: Promise<void> | null = null;
 /** `esriConfig.request.interceptors`-т нэг удаа суулгана — JS API байхгүй (Node) бол юу ч хийхгүй */
-export async function installEntInterceptor(): Promise<void> {
-  if (installed || !ENT_DATA) return;
-  installed = true;
-  let esriConfig: { request: { interceptors: unknown[] } };
-  try {
-    esriConfig = (await import('@arcgis/core/config')).default as unknown as typeof esriConfig;
-  } catch {
-    installed = false;
-    return;
+export function installEntInterceptor(): Promise<void> {
+  if (!ENT_DATA) return Promise.resolve();
+  if (!installing) {
+    installing = doInstall().catch(() => {
+      /* Импорт унавал (Node/тест) кэшийг суллаж, дараагийн дуудлагад дахин оролдоно */
+      installing = null;
+    });
   }
+  return installing;
+}
+
+async function doInstall(): Promise<void> {
+  const esriConfig = (await import('@arcgis/core/config')).default as unknown as { request: { interceptors: unknown[] } };
   esriConfig.request.interceptors.push({
     urls: ENT_DATA,
     before(p: Before) {

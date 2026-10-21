@@ -187,6 +187,21 @@ assert.deepEqual(distinct([{ a: 'x' }, { a: 'x ' }, { a: 'y' }], (r) => String(r
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '9.0%' } }), [], named, isNumeric, scale), true, 'харагдах текстээр');
   assert.ok(seen.includes('zahiramj_unet_tsaas_huvi'), 'cellText баганын нэр авна');
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric), false, 'хэмжээсгүй бол түүхий 0.09 (хуучин зан)');
+  /* ⚠️ 2026-10-21: 0.07 × 100 = 7.000000000000001 — тайрсны дараа `=7` таарна */
+  const r7 = { OBJECTID: 10, zahiramj_unet_tsaas_huvi: 0.07 };
+  assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '=7' } }), [], named, isNumeric, scale), true, '0.07 → =7');
+  assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '<=7' } }), [], named, isNumeric, scale), true);
+  assert.equal(rowMatches({ OBJECTID: 11, zahiramj_unet_tsaas_huvi: 0.125 }, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '=12,5' } }), [], named, isNumeric, scale), true, 'хувьд нэг таслал аравтын');
 }
+
+/* ── 13. 2026-10-21: таслал `finEdit.parseCell`-тэй НЭГ дүрмээр ── */
+assert.equal(numTest('=12,5')(12.5), true, '«12,5» → 12.5 (урьд нь 125)');
+assert.equal(numTest('=12,5')(125), false);
+assert.equal(numTest('>1,234.5')(1235), true, 'мянгат + аравтын цэг');
+assert.equal(numTest('=1.234,5')(1234.5), true, 'цэг мянгат, таслал аравтын');
+assert.equal(numTest('>1,000')(1001), true, 'тодорхойгүй «1,000» — мөнгөн шүүлтэд мянгат (хуучин зан)');
+assert.equal(numTest('=1,250', true)(1.25), true, 'хувьд нэг таслал аравтын');
+assert.equal(numTest('0,5..1,5')(1), true, 'муж аравтын таслалтай');
+assert.equal(numTest('>1,2,3'), null, 'буруу таслал — текстээр хайна');
 
 console.log('finFilter.check.mjs — БҮГД ТЭНЦЛЭЭ');

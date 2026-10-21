@@ -136,6 +136,13 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   const nh4 = get(down, 'nh4');
   assert.equal(gradeOf(nh4, 0.1), 'ok');
   assert.equal(gradeOf(nh4, 1.5), 'bad');
+  /* ⚠️ 2026-10-21: pH — ХОЁР ТАЛТ муж (6.5–8.5); урьд нь pH 5.0 «хэвийн» гардаг байв */
+  const ph = get(down, 'ph');
+  assert.equal(gradeOf(ph, 7.2), 'ok');
+  assert.equal(gradeOf(ph, 5.0), 'bad', 'хүчиллэг pH 5.0 — хэтэрсэн');
+  assert.equal(gradeOf(ph, 6.3), 'warn', 'pH 6.3 — анхаарах');
+  assert.equal(gradeOf(ph, 8.7), 'warn');
+  assert.equal(gradeOf(ph, 9.5), 'bad');
 }
 
 /* 7. ХОХИРЛЫН АНГИЛАЛ — нэгж үнэ объектын төрөлд тохирч байх
