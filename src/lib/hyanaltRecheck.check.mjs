@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { F, HYANALT, STATUS, DECISION } from './hyanalt.ts';
 import { recheck } from './hyanaltStore.ts';
+import { calculateRows } from './hyanaltDecision.fake.mjs';
 
 /* ══════════ Хуурамч хяналтын хүснэгт ══════════ */
 const T0 = Date.UTC(2026, 8, 20, 2, 0, 0);
@@ -40,13 +41,18 @@ globalThis.fetch = async (input, init) => {
   /* ⚠️ 2026-10-01: давхаргын МЕТАДАТА (`serviceFieldNames`) — шийдвэрийн лог талбар
      (`Shiidveriin_tuuh`) БАЙГАА үйлчилгээ гэж үзнэ (`hasHistoryField`). */
   if (path === '' || path === '/') {
-    return json({ fields: Object.values(F).map((name) => ({ name })) });
+    return json({ supportsCalculate: true, fields: Object.values(F).map((name) => ({ name })) });
   }
   if (path === '/query') {
     st.queries += 1;
     st.onQuery?.(st.queries);
     if (st.failAfterWrite && st.wrote) return json({ error: { code: 400, message: 'Unable to complete operation.' } });
     return json({ features: st.rows.map((a) => ({ attributes: { ...a } })), exceededTransferLimit: false });
+  }
+  if (path === '/calculate') {
+    const result = calculateRows(st.rows, body, (patch, row) => st.updates.push({ OBJECTID: row.OBJECTID, ...patch }));
+    if (result.updatedFeatureCount) st.wrote = true;
+    return json(result);
   }
   if (path === '/applyEdits') {
     st.wrote = true;

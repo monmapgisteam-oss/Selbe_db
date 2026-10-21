@@ -242,7 +242,7 @@ const backoff = (attempt: number) => sleep(400 * 2 ** attempt + Math.random() * 
  *    барилгын талбайн тогтворгүй сүлжээнд харагдац бүхэлдээ алдаа болдог байв.
  * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета) — бичих endpoint,
  *    `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн тодорхойгүй → давхар бичилт).
- *    Бичилт биш бусад хүсэлтийн хуучин НЭГ удаагийн сүлжээний давталт хэвээр.
+ *    Бусад endpoint-ийн үр дүн тодорхойгүй тул автоматаар дахин илгээхгүй.
  */
 const NET_RETRIES = 3;
 const HTTP5_RETRIES = 2;
@@ -260,6 +260,9 @@ async function attemptRequest(
   netTries = 0,
   refreshed = false,
 ): Promise<ArcgisBody> {
+  // Also covers cancellation while queued, backing off, or refreshing a token.
+  if (o.signal?.aborted) throw o.signal.reason;
+  const readReq = isReadReq(full, params);
   const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
   const always = o.token !== 'org';
   /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
@@ -323,20 +326,8 @@ async function attemptRequest(
     // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
     // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
     // Rate-limit retry-ээс ТУСДАА тоолуур (netTries) тул давхардахгүй.
-    /* ⚠️ 2026-09-30 (төслийн аудит): БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ.
-       Сервер хүсэлтийг хүлээн авч БИЧСЭНИЙ дараа хариу замдаа тасарвал (TypeError) давтан
-       илгээлт нь `addFeatures`/`applyEdits`-ийн мөрийг ХОЁР удаа нэмнэ (давхар илгээлт,
-       давхар хяналтын тойрог). Уншилт (query · statistics) аюулгүй тул хэвээр. 429/503 ба
-       498 нь сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн хариу тул тэдгээрийн давталт хэвээр. */
-    /* ⚠️ 2026-10-11 (аудит №7): админ/bootstrap endpoint-ууд ч бичилт — `createService` · `addToDefinition` ·
-       `updateDefinition` · `deleteFromDefinition` · `share`/`unshare` · `addItem`/`updateItem`/`deleteItems`.
-       Урьд нь жагсаалтад байгаагүй тул сүлжээний алдаанд дахин илгээгдэж хүснэгт/зүйл ДАВХАР үүсэх
-       (`permsRemote.createTable`) эрсдэлтэй байв — дээрх 2026-10-05-ны ⚠️ («`sharing/rest/*` хэзээ ч
-       давтагдахгүй») одоо үнэн. */
-    const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append|createService|addToDefinition|updateDefinition|deleteFromDefinition|share|unshare|addItem|updateItem|deleteItems)\/?$/i.test(full);
-    /* ⚠️ 2026-10-05: уншилтад `NET_RETRIES` хүртэл backoff-той; бусад (бичилт биш) нь хуучнаараа 1 */
-    const netMax = isReadReq(full, params) ? NET_RETRIES : 1;
-    if (e instanceof TypeError && netTries < netMax && !isWrite && !o.signal?.aborted && !timedOut()) {
+    // Only known reads can be replayed: a lost write response may follow a commit.
+    if (e instanceof TypeError && netTries < NET_RETRIES && readReq && !o.signal?.aborted && !timedOut()) {
       if (netTries === 0) await sleep(300 + Math.random() * 200);
       else await netBackoff(netTries);
       return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
@@ -351,16 +342,18 @@ async function attemptRequest(
     clearTimeout(timer);
     o.signal?.removeEventListener('abort', onAbort);
   }
+  if (o.signal?.aborted) throw o.signal.reason;
   if (!res.ok) {
     if (res.status === 429 || res.status === 503) throttleDown();
-    if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
+    // A proxy's 429/503 does not prove that an upstream write was rolled back.
+    if ((res.status === 429 || res.status === 503) && attempt < RETRIES && readReq) {
       await backoff(attempt);
       return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
     }
     /* ⚠️ 2026-10-05: 500/502/504 — ЗӨВХӨН уншилтад дахин (`isReadReq`-ийн ⚠️). Бичилтийн
        5xx нь сервер аль хэдийн бичсэн байж болох тул ХЭЗЭЭ Ч давтахгүй. */
     if ((res.status === 500 || res.status === 502 || res.status === 504)
-      && netTries < HTTP5_RETRIES && isReadReq(full, params) && !o.signal?.aborted) {
+      && netTries < HTTP5_RETRIES && readReq) {
       await netBackoff(netTries);
       return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
     }
@@ -375,7 +368,7 @@ async function attemptRequest(
   if (json.error) {
     const { code, message, details } = json.error;
     if (isRateLimit(message ?? '')) throttleDown();
-    if (isRateLimit(message ?? '') && attempt < RETRIES) {
+    if (isRateLimit(message ?? '') && attempt < RETRIES && readReq) {
       await backoff(attempt);
       return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
     }

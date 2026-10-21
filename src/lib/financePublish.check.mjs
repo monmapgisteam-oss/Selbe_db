@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts, FinancePublishConflict } from './financePublish.ts';
+
+// Pure injected reads/writes: never load credentials or call a production service.
+const parent = { OBJECTID: 1, Cashflow_ID: 9, ho_dun_geree: 100 };
+const month = { OBJECTID: 2, Cashflow_ID: 9, Cashflow_start: 1, Cashflow_huwi: 10, Cashflow_dun: 10 };
+let checks = 0;
+const check = (name, fn) => { fn(); checks++; console.log('  ✓', name); };
+
+async function scenario(changes, live, opts = {}) {
+  const updates = new Map(changes.map((change) => [change.OBJECTID, { ...change }]));
+  const sent = [];
+  const scopes = [];
+  let reads = 0;
+  const read = async (scope) => {
+    scopes.push(scope);
+    reads++;
+    if (reads === 2 && opts.beforeFinalRead) opts.beforeFinalRead(live);
+    if (reads === 2 && opts.failFinalRead) throw new Error('freshness read failed');
+    return structuredClone(live);
+  };
+  const inputs = await loadFinancePublishInputs({ updates, parents: [parent], months: [month], oidField: 'OBJECTID', read });
+  if (inputs) recomputeFinanceAmounts({ updates, parents: inputs.parents, months: inputs.months, oidField: 'OBJECTID', deletes: opts.deletes ?? [] });
+  await publishFinanceBatch(inputs, async () => {
+    sent.push([...updates.values()].map((change) => ({ ...change })));
+    return { n: updates.size };
+  });
+  return { sent, reads, scopes, updates };
+}
+
+// Exact WF04: B saved20%, A's open table still shows10%, A edits contract100 ->200.
+{
+  const live = { parents: [{ ...parent }], months: [{ ...month, Cashflow_huwi: 20, Cashflow_dun: 20 }] };
+  const out = await scenario([{ OBJECTID: 1, ho_dun_geree: 200 }], live);
+  check('stale-session contract edit uses fresh20%, writes amount40', () => {
+    assert.deepEqual(out.sent, [[{ OBJECTID: 1, ho_dun_geree: 200 }, { OBJECTID: 2, Cashflow_dun: 40 }]]);
+    assert.equal(out.updates.get(2).Cashflow_huwi, undefined);
+  });
+  check('contract-only edit refreshes dependencies twice, including every month for id9', () => {
+    assert.equal(out.reads, 2);
+    assert.deepEqual(out.scopes[0], { parentOids: [1], monthOids: [], ids: [9] });
+  });
+}
+
+{
+  const live = { parents: [{ ...parent, ho_dun_geree: 200 }], months: [{ ...month }] };
+  const out = await scenario([{ OBJECTID: 2, Cashflow_huwi: 30 }], live);
+  check('percentage-only edit uses fresh parent contract', () => assert.equal(out.updates.get(2).Cashflow_dun, 60));
+}
+
+{
+  const live = { parents: [{ ...parent }], months: [{ ...month }] };
+  const out = await scenario([{ OBJECTID: 1, ho_dun_geree: 200 }, { OBJECTID: 2, Cashflow_huwi: 25 }], live);
+  check('same-user pending month percentage survives parent recomputation', () => {
+    assert.equal(out.updates.get(2).Cashflow_huwi, 25);
+    assert.equal(out.updates.get(2).Cashflow_dun, 50);
+  });
+}
+
+// The real write wrapper must reject every detected freshness conflict before invoking write.
+async function expectNoWrite(live, changes, mutate) {
+  let writes = 0;
+  const updates = new Map(changes.map((change) => [change.OBJECTID, { ...change }]));
+  await assert.rejects(async () => {
+    const inputs = await loadFinancePublishInputs({ updates, parents: [parent], months: [month], oidField: 'OBJECTID', read: async () => structuredClone(live) });
+    recomputeFinanceAmounts({ updates, parents: inputs.parents, months: inputs.months, oidField: 'OBJECTID', deletes: [] });
+    mutate?.(live);
+    await publishFinanceBatch(inputs, async () => { writes++; });
+  }, FinancePublishConflict);
+  assert.equal(writes, 0);
+}
+
+await expectNoWrite(
+  { parents: [{ ...parent }], months: [{ ...month, Cashflow_huwi: 20, Cashflow_dun: 20 }] },
+  [{ OBJECTID: 2, Cashflow_huwi: 30 }],
+);
+check('remote edit of an explicitly edited percentage conflicts with zero writes', () => {});
+await expectNoWrite(
+  { parents: [{ ...parent, ho_dun_geree: 150 }], months: [{ ...month }] },
+  [{ OBJECTID: 1, ho_dun_geree: 200 }],
+);
+check('remote edit of an explicitly edited contract conflicts with zero writes', () => {});
+await expectNoWrite(
+  { parents: [{ ...parent }], months: [{ ...month }] },
+  [{ OBJECTID: 1, ho_dun_geree: 200 }],
+  (live) => { live.months[0].Cashflow_huwi = 20; live.months[0].Cashflow_dun = 20; },
+);
+check('month changed during preparation conflicts at the final write wrapper with zero writes', () => {});
+await expectNoWrite(
+  { parents: [{ ...parent }], months: [{ ...month }] },
+  [{ OBJECTID: 1, ho_dun_geree: 200 }],
+  (live) => { live.months.push({ ...month, OBJECTID: 3 }); },
+);
+check('new dependent month during preparation conflicts with zero writes', () => {});
+await expectNoWrite(
+  { parents: [{ ...parent }], months: [{ ...month }] },
+  [{ OBJECTID: 2, Cashflow_huwi: 30 }],
+  (live) => { live.parents[0].ho_dun_geree = 200; },
+);
+check('parent changed during percentage preparation conflicts with zero writes', () => {});
+await expectNoWrite(
+  { parents: [], months: [{ ...month }] },
+  [{ OBJECTID: 2, Cashflow_huwi: 30 }],
+);
+check('missing parent conflicts instead of silently clearing the monthly amount', () => {});
+
+{
+  const live = { parents: [{ ...parent }], months: [{ ...month }] };
+  const out = await scenario([{ OBJECTID: 1, ho_dun_geree: 200 }], live, { deletes: [2] });
+  check('month marked for deletion is not reintroduced as an amount update', () => assert.equal(out.updates.has(2), false));
+}
+{
+  const out = await scenario([{ OBJECTID: 2, Cashflow_huwi: null }], { parents: [{ ...parent }], months: [{ ...month }] });
+  check('clearing percentage clears amount as null', () => assert.equal(out.updates.get(2).Cashflow_dun, null));
+}
+{
+  const live = { parents: [{ ...parent }], months: [{ ...month }] };
+  const updates = new Map([[1, { OBJECTID: 1, ho_dun_geree: 200 }]]);
+  let reads = 0, writes = 0;
+  const inputs = await loadFinancePublishInputs({ updates, parents: [parent], months: [month], oidField: 'OBJECTID', read: async () => {
+    if (++reads === 2) throw new Error('freshness read failed');
+    return structuredClone(live);
+  } });
+  await assert.rejects(() => publishFinanceBatch(inputs, async () => { writes++; }), /freshness read failed/);
+  check('failed final dependency read leaves edits unsent', () => assert.equal(writes, 0));
+}
+{
+  const source = readFileSync(new URL('../modules/Finance.tsx', import.meta.url), 'utf8');
+  check('Finance publish calls the tested refresh, recomputation and final write wrapper', () => {
+    assert.match(source, /financeInputs = await loadFinancePublishInputs\(/);
+    assert.match(source, /recomputeFinanceAmounts\(\{\s*updates: upd, parents: publishRows, months: publishMonths/);
+    assert.match(source, /await publishFinanceBatch\(financeInputs, \(\) => \{\s*addsInFlight = [^;]+;\s*return applyAll\(/);
+    assert.match(source, /for \(const mr of publishMonthBy\.get\(id\)/);
+  });
+}
+console.log(`financePublish: ${checks} checks passed; production mutations0. Final read/write is not server-atomic.`);

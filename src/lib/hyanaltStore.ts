@@ -37,7 +37,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { t as tr } from './i18nCore';
 import {
-  addRows, addedOid, deleteRow, ensureUniqueId, fieldMaxLen, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig, updateRows,
+  addRows, addedOid, deleteRow, ensureUniqueId, fieldMaxLen, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig,
+  updateDecision, HyanaltConflict,
   DECISION, F, HYANALT, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview, prevReview,
   type Attrs, type Decision, type ReviewStage, type Row, type Status,
@@ -722,9 +723,9 @@ async function liveRow(oid: number): Promise<Row | undefined> {
 const STALE = () => tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
 
 /**
- * БИЧИХИЙН ЯГ ӨМНӨ ДАХИН ШАЛГАНА — дунд шатны compare-and-set-маягийн хамгаалалт.
+ * Бичихийн өмнөх мэдээллийн шалгалт; атом нөхцөлийг `updateDecision` сервер дээр шалгана.
  *
- * ⚠️ 2026-09-30: ArcGIS-д CAS байхгүй. `apply`/`recheck` мөрийг эхэнд нэг удаа
+ * `apply`/`recheck` мөрийг эхэнд нэг удаа
  *    уншдаг ч түүнээс хойш эрх, илгээлтийн агуулга (`subAt`), `okCellsPatch`
  *    гэх мэт сүлжээний алхмууд явдаг тул нэг шатанд ХОЁР данс томилогдсон үед
  *    хоёулаа эхний шалгуурыг давж, сүүлд бичсэн нь өмнөхийн шийдвэрийг
@@ -2503,10 +2504,12 @@ export async function apply(a: {
        «Шилжүүлсэн» байхад ч `updateRows` хийж түрүүлсний нэр · огноо · `Zovshoorson_nud`-ийг дардаг байв. Одоо
        `updateRows`-ийг алгасаж ил хэлнэ; нэгтгэл/IPC-ийн алхам хэвээр (idempotent). */
     let alreadyTransferred = false;
+    let writeBase = cur;
     if (registerNow) {
       try {
         const fresh = await liveRow(a.oid);
         if (fresh) {
+          writeBase = fresh;
           histBase = fresh[F.history];
           const fs0 = String(fresh[F.status] ?? '');
           if (fs0 === STATUS.transferred) {
@@ -2537,7 +2540,7 @@ export async function apply(a: {
 
     try {
       /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): өөр таб аль хэдийн шилжүүлсэн бол дарж бичихгүй (дээрх `alreadyTransferred`) */
-      if (!alreadyTransferred) await updateRows([attrs]);
+      if (!alreadyTransferred) await updateDecision(writeBase, attrs);
     } catch (e) {
       /*
        * ⚠️ ХАРИУ АЛДАГДСАН Ч СЕРВЕР ДЭЭР СУУСАН БАЙЖ БОЛНО (2026-09-25-ны
@@ -2555,6 +2558,7 @@ export async function apply(a: {
       /* ⚠️ 2026-10-09 (аудит): дунд шатанд хариу АЛДАГДСАН бол энгийн алдаа биш — үр дүн тодорхойгүй,
          жагсаалтыг дахин ачаална (`lostResult`-ийн ⚠️). Тодорхой татгалзал бол урьдын адил. */
       if (!registerNow) {
+        if (e instanceof HyanaltConflict) { await refreshQuiet(); return fail(e); }
         if (lostWrite(e)) return await lostResult(e);
         throw e;
       }
@@ -2828,7 +2832,7 @@ export async function retryPendingRegistrations(
                 reason: tr('Нөхөлт: архив суусан батлалтын төлөв бичигдээгүй байсныг нөхөв'),
               }, meOf(me))),
             };
-            await updateRows([fix]);
+            await updateDecision(live, fix);
             fixed += 1;
             cur = { ...live, ...fix } as Row;
           }
@@ -3143,9 +3147,10 @@ export async function recheck(
   }
 
   try {
-    await updateRows([back]);
+    await updateDecision(prev, back);
   } catch (e) {
     /* ⚠️ 2026-10-09 (аудит): хариу алдагдсан бол буцаалт суусан байж болно — тодорхойгүй + дахин ачаална */
+    if (e instanceof HyanaltConflict) { await refreshQuiet(); return fail(e); }
     if (lostWrite(e)) return lostResult(e);
     return fail(e);
   }

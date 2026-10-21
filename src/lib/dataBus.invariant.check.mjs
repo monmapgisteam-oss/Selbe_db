@@ -192,10 +192,6 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     + 'нэр рүү хөрвүүлэх цэвэр функцийн тайлбар/regex-д нэрлэгдэнэ. Бичилтийг дуудагч store хүчингүй болгоно.'],
   ['src/lib/tableWrite.ts',
     'Ерөнхий бичигч — аль хүснэгт болохыг мэдэхгүй. Дуудагч (Finance.tsx, parcelEdit.ts) өөрсдөө хүчингүй болгоно.'],
-  ['src/lib/query.ts',
-    'Хүсэлтийн ЦӨМ (`arcgisPost`) — өөрөө бичдэггүй; `applyEdits` зөвхөн «бичих endpoint-ийг '
-    + 'сүлжээний алдаанд дахин илгээхгүй» дүрмийн (2026-09-30) regex-д нэрлэгдэнэ. Бичилт бүрийг '
-    + 'дуудагч store өөрийн DataKey-гээр хүчингүй болгоно.'],
   ['src/lib/qaqc.ts',
     'QAQC хүснэгт нь `dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ: түүнийг зөвхөн «Гүйцэтгэл '
     + 'бөглөх» хуудас багц солих бүрд шууд уншиж (`loadQaqc`), бичсэнийхээ дараа '
@@ -265,7 +261,7 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
  *    `hyanalt.addRows`-ийг дууддаг файл (Huvaari · useObyem · negtgelAuto …) торноос гулсдаг байв.
  *    Одоо эдгээр токены аль нэг нь байвал бичигч; `invalidate` эсвэл ил зөвшөөрөл шаардана.
  */
-const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows)\s*\(/m;
+const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows|updateDecision)\s*\(/m;
 const bichigchid = [];
 for (const f of files) {
   /* ⚠️ Тайлбарыг ЗААВАЛ хасна: `MapCanvas.tsx:113` ба `FillNew.tsx:43` нь

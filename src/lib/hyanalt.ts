@@ -20,6 +20,7 @@ import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
 import { collidesBelow, idNum, renumberPlan, type IdRow } from './idUnique';
+import { entDict, entFieldName, isEntDataUrl, remapUrl } from './services/entMap';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -314,6 +315,7 @@ let missingCache: string[] | null = null;
  * кэшлэнэ; унавал `null` («мэдэхгүй»), кэшлэхгүй.
  */
 let fieldsCache: Set<string> | null = null;
+let calculateSupported = false;
 /**
  * ⚠️ 2026-10-12 (R1): МӨР ТАЛБАРЫН УРТ (`fields[].length`) — ижил уншилтаас. Урьд нь талбарын
  *    тодорхойлолтыг татаад ЗӨВХӨН нэрийг хадгалдаг тул шалтгаан (`SF[шат].reason`) ба
@@ -334,7 +336,7 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
      * ⚠️ 2026-09-30: `query.arcgisPost` — 200-алдаа, `res.ok`, timeout тэнд шидэгдэнэ
      *    (урьд нь GET + токен query string-д).
      */
-    const j = await arcgisPost<{ fields?: { name: string; type?: string; length?: number }[] }>(HYANALT.url, {});
+    const j = await arcgisPost<{ supportsCalculate?: boolean; fields?: { name: string; type?: string; length?: number }[] }>(HYANALT.url, {});
     if (!Array.isArray(j.fields)) {
       throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
     }
@@ -343,6 +345,7 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
       .filter((x) => (x.type == null || x.type === 'esriFieldTypeString') && typeof x.length === 'number' && x.length > 0)
       .map((x): [string, number] => [x.name, x.length as number]));
     fieldsCache = new Set(j.fields.map((x) => x.name));
+    calculateSupported = j.supportsCalculate === true;
     return fieldsCache;
   } catch {
     return null;
@@ -643,6 +646,73 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
 
 export const addRows = (rows: Attrs[]) => edit('adds', rows);
 export const updateRows = (rows: Attrs[]) => edit('updates', rows);
+
+/** A stale decision is a definite rejection, not an ambiguous transport failure. */
+export class HyanaltConflict extends HyanaltError {
+  constructor() {
+    super(tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу'));
+    this.name = 'HyanaltConflict';
+  }
+}
+
+/**
+ * Check the old decision and change it in ONE server-side UPDATE. A second browser
+ * cannot pass the same predicate after the first decision changes status/history.
+ * /calculate is supported by the Enterprise review layer (Update capability).
+ * Never fall back to an unconditional applyEdits when it is unavailable.
+ */
+export async function updateDecision(expected: Row, patch: Attrs): Promise<void> {
+  const oid = expected.__oid;
+  if (!Number.isSafeInteger(oid) || oid <= 0 || patch[HYANALT.oid] !== oid) {
+    throw new HyanaltError(tr('Бүртгэл олдсонгүй'));
+  }
+  const fields = await serviceFieldNames();
+  if (!fields || !calculateSupported) {
+    throw new HyanaltError(tr('Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.'));
+  }
+  const quote = (value: string) => `N'${value.replace(/'/g, "''")}'`;
+  const guarded = [F.status, F.history, F.okCells, F.bagts,
+    ...REVIEW_STAGES.flatMap((stage) => [SF[stage].who, SF[stage].decision, SF[stage].reason])];
+  if (!fields.has(F.status)) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+  const clauses = [`${HYANALT.oid} = ${oid}`];
+  for (const field of guarded) {
+    if (!fields.has(field)) continue;
+    const value = String((expected as unknown as Attrs)[field] ?? '');
+    clauses.push(value === '' ? `(${field} IS NULL OR ${field} = '')` : `${field} = ${quote(value)}`);
+  }
+  for (const field of [F.sheetOid, F.ergelt]) {
+    if (!fields.has(field)) continue;
+    const value = (expected as unknown as Attrs)[field];
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+      throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+    }
+    clauses.push(value === 0 ? `(${field} IS NULL OR ${field} = 0)` : `${field} = ${value}`);
+  }
+  const target = remapUrl(HYANALT.url);
+  const enterprise = isEntDataUrl(target);
+  const dict = enterprise ? entDict(target) : null;
+  const changes = Object.entries(patch).filter(([field]) => field !== HYANALT.oid);
+  if (!changes.length || changes.some(([field, value]) => !fields.has(field)
+    || (value !== null && typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))))) {
+    throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+  }
+  try {
+    const result = await post('/calculate', {
+      where: clauses.join(' AND '),
+      calcExpression: JSON.stringify(changes.map(([field, value]) => ({
+        field: enterprise ? entFieldName(field, dict) : field, value,
+      }))),
+      sqlFormat: 'standard',
+    });
+    if (result.success !== true || !Number.isInteger(result.updatedFeatureCount)
+      || Number(result.updatedFeatureCount) < 0 || Number(result.updatedFeatureCount) > 1) {
+      throw new HyanaltError(tr('серверээс үр дүн дутуу ирлээ'));
+    }
+    if (result.updatedFeatureCount === 0) throw new HyanaltConflict();
+  } finally {
+    invalidate('HYANALT');
+  }
+}
 
 /**
  * `Бүртгэлийн_дугаар` ДАВХАРДЛЫГ БИЧСЭНИЙ ДАРАА ЗАСНА (2026-10-04, `idUnique`).

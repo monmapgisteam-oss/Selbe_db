@@ -94,6 +94,7 @@ import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { CHART, lineSegments, glow } from '@/lib/chartStyle';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
+import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts, type FinancePublishInputs } from '@/lib/financePublish';
 import { collidedIds, renumberPlan } from '@/lib/idUnique';
 import { invalidate, type DataKey } from '@/lib/dataBus';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
@@ -2198,8 +2199,43 @@ function FullTable({
       /** ⚠️ 2026-10-04: энэ нийтлэлд ОНООСОН `Cashflow_ID`-ууд ба тэдгээрийг авсан ХУУЧИН мөрийн oid — бичсэний дараах давхардлын шалгалтад */
       const cfAssigned = new Set<number>();
       const cfAssignedOld: number[] = [];
+      let financeInputs: FinancePublishInputs | undefined;
       if (dataKey === 'CASHFLOW_NEW') {
-        const rowByOid = new Map(rows.map((r) => [Number(r[oidField]), r]));
+        // Refresh both sides of the calculation before generating any dependent writes.
+        // A percentage-only edit also needs the current parent contract amount.
+        financeInputs = await loadFinancePublishInputs({
+          updates: upd, parents: rows, months, oidField,
+          read: async ({ parentOids, monthOids, ids }) => {
+            const parentWhere = [
+              ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
+              ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+            ];
+            const monthWhere = [
+              ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
+              ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+            ];
+            const [parents, freshMonths] = await Promise.all([
+              parentWhere.length ? queryFeatures(url, {
+                where: `(${CF_WORK_WHERE}) AND (${parentWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+              }) : Promise.resolve([]),
+              monthWhere.length ? queryFeatures(url, {
+                where: `(${CF_MONTH_WHERE}) AND (${monthWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+              }) : Promise.resolve([]),
+            ]);
+            return { parents, months: freshMonths };
+          },
+        });
+        const publishRows = financeInputs?.parents ?? rows;
+        const publishMonths = financeInputs?.months ?? months;
+        const publishMonthBy = new Map<number, Row[]>();
+        for (const month of publishMonths) {
+          const id = cfIdOf(month.Cashflow_ID);
+          if (id == null) continue;
+          const list = publishMonthBy.get(id) ?? [];
+          list.push(month);
+          publishMonthBy.set(id, list);
+        }
+        const rowByOid = new Map(publishRows.map((r) => [Number(r[oidField]), r]));
         /** Огнооны утга — засвартай бол ТҮҮНИЙГ, эс бөгөөс мөрийнхийг */
         const dateOf = (a: Record<string, unknown>, r: Row | undefined, fld: string) => {
           const v = fld in a ? a[fld] : r?.[fld];
@@ -2309,7 +2345,7 @@ function FullTable({
           affected.add(id);
 
           const have = new Map<string, Row>();
-          for (const mr of monthBy.get(id) ?? []) {
+          for (const mr of publishMonthBy.get(id) ?? []) {
             const t = Number(mr.Cashflow_start);
             if (Number.isFinite(t)) have.set(startKeyOf(t), mr);
           }
@@ -2399,82 +2435,27 @@ function FullTable({
          * ⚠️ `Cashflow_dun` нь ГАРААР бичигддэггүй: хувь × эцгийн ХО дүн.
          * Хоёуланг нь гараар бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
          */
-        const monthByOid = new Map(months.map((r) => [Number(r[oidField]), r]));
-        /* ⚠️ 2026-09-25: гараар оруулсан `Cashflow_dun` ХЭЗЭЭ Ч илгээгдэхгүй
-           (`CALC_RO`) — доор хувь × ХО дүнгээр л бичигдэнэ. */
-        for (const [k, a] of upd) {
-          delete a.Cashflow_dun;
-          if (Object.keys(a).length <= 1) upd.delete(k); // зөвхөн OID үлдсэн
-        }
-        /** Эцгийн ХО дүн — энэ нийтлэлд засагдсан бол ШИНЭ утга */
-        const costOf = (parent: Row | undefined): number | null => {
-          if (!parent) return null;
-          const pa = upd.get(Number(parent[oidField]));
-          const raw = pa && 'ho_dun_geree' in pa ? pa.ho_dun_geree : parent.ho_dun_geree;
-          /* ⚠️ 2026-09-25: эцгийн ХО дүн хоосон/0 бол `Number(null)` = 0 болж
-             `Cashflow_dun = 0 ₮` БИЧИГДДЭГ байв — «мэдээлэлгүй» нь «хэмжсэн тэг»
-             болж S-муруйд орно (null ≠ 0). «Cashflow хувиарлах» табын
-             `CashflowPlan.costOf`-той ИЖИЛ дүрэм: төгсгөлгүй эсвэл ≤0 бол `null`. */
-          const costN = Number(raw);
-          return raw != null && raw !== '' && Number.isFinite(costN) && costN > 0 ? costN : null;
-        };
-        /** Хувь (засвартай бол түүнийг) × ХО дүн. Хувь хоосон бол `null`, 0 БИШ */
-        const dunOf = (huwi: unknown, cost: number | null): number | null => {
-          const pct = Number(huwi);
-          return huwi == null || String(huwi).trim() === '' || !Number.isFinite(pct) || cost == null
-            ? null
-            : (cost * pct) / 100;
-        };
-        for (const [oid, a] of upd) {
-          if (!('Cashflow_huwi' in a)) continue;
-          const mr = monthByOid.get(oid);
-          /* ⚠️ 2026-09-29 (аудит 10): хоосон дугаар 0 === 0 болж ДУРЫН дугааргүй
-             ажилд наалддаг байв (`cfIdOf`-ийн ⚠️) — дугааргүй бол эцэггүй (`null` ₮). */
-          const mid = cfIdOf(mr?.Cashflow_ID);
-          const parent = mid == null ? undefined : rows.find((r) => cfIdOf(r.Cashflow_ID) === mid);
-          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
-          a.Cashflow_dun = dunOf(a.Cashflow_huwi, costOf(parent));
-        }
-        /* ⚠️ 2026-09-25: ЭЦГИЙН ХО ДҮН өөрчлөгдвөл түүний БҮХ сарын дүнг дахин
-           бодно — урьд нь зөвхөн хувь засагдсан сар л шинэчлэгдэж, бусад сар
-           ХУУЧИН ХО дүнгээр бодсон ₮-тэй үлдэн S-муруй гэрээний дүнтэй зөрдөг байв. */
-        for (const [oid, a] of upd) {
-          if (!('ho_dun_geree' in a)) continue;
-          const parent = rowByOid.get(oid);
-          const id = cfIdOf(parent?.Cashflow_ID); // ⚠️ 2026-09-29 (аудит 10): хоосон → 0 БИШ
-          if (id == null) continue;
-          const cost = costOf(parent);
-          for (const mr of monthBy.get(id) ?? []) {
-            const moid = Number(mr[oidField]);
-            if (!Number.isFinite(moid)) continue;
-            /* ⚠️ 2026-09-29 (аудит 10): дээр устгахаар тэмдэглэсэн сарыг `upd`-д
-               БУЦААЖ оруулахгүй (хугацаа ба ХО дүн нэг нийтлэлд засагдсан үед). */
-            if (monthDels.includes(moid)) continue;
-            const ma = upd.get(moid) ?? { [oidField]: moid };
-            if ('Cashflow_huwi' in ma) continue; // дээрх давталт аль хэдийн бодсон
-            const next = dunOf(mr.Cashflow_huwi, cost);
-            const prev = mr.Cashflow_dun == null ? null : Number(mr.Cashflow_dun);
-            if (next === prev) continue; // өөрчлөгдөөгүй — дэмий бичихгүй
-            ma.Cashflow_dun = next;
-            upd.set(moid, ma);
-          }
-        }
+        recomputeFinanceAmounts({
+          updates: upd, parents: publishRows, months: publishMonths, oidField, deletes: monthDels,
+        });
       }
-      addsInFlight = newRows.length + monthAdds.length > 0;
-      const { n, oids: addedOids } = await applyAll(url, oidField, {
-        updates: [...upd.values()],
-        adds: [...newRows, ...monthAdds],
-        /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
-           (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
-        deletes: monthDels,
-      /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
-         (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
-         «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг).
-         ⚠️ 2026-09-29 (аудит 10): СИСТЕМИЙН сарын мөр (`monthAdds`/`monthDels`) `finRow`
-         шаардахгүй — тэдгээр нь эх өгөгдөл БИШ, хугацаанаас бодогдсон хуваарь
-         (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
-         сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
-      }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+      const { n, oids: addedOids } = await publishFinanceBatch(financeInputs, () => {
+        addsInFlight = newRows.length + monthAdds.length > 0;
+        return applyAll(url, oidField, {
+          updates: [...upd.values()],
+          adds: [...newRows, ...monthAdds],
+          /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
+             (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
+          deletes: monthDels,
+          /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
+             (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
+             «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг).
+             ⚠️ 2026-09-29 (аудит 10): СИСТЕМИЙН сарын мөр (`monthAdds`/`monthDels`) `finRow`
+             шаардахгүй — тэдгээр нь эх өгөгдөл БИШ, хугацаанаас бодогдсон хуваарь
+             (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
+             сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
+        }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+      });
       addsInFlight = false;
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */

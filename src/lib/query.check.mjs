@@ -233,7 +233,18 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   globalThis.fetch = async () => ok(++calls === 1 ? { error: { message: 'Unable to perform query. Too many requests.' } } : { count: 3 });
   assert.equal(await queryCount(URL_), 3);
   assert.equal(calls, 2);
-  console.log('✅ 429 / «Too many requests» → backoff → дахин (request() ч ижил цөмөөр)');
+  /* 503 reads and layer metadata retain the same safe replay behavior. */
+  for (const url of [`${URL_}/query`, URL_]) {
+    calls = 0;
+    globalThis.fetch = async () => (++calls === 1 ? { ok: false, status: 503 } : ok({ count: 9 }));
+    assert.deepEqual(await arcgisPost(url, {}, { slot: false }), { count: 9 });
+    assert.equal(calls, 2);
+    calls = 0;
+    globalThis.fetch = async () => ok(++calls === 1 ? { error: { code: 429, message: 'Rate limit exceeded' } } : { count: 8 });
+    assert.deepEqual(await arcgisPost(url, {}, { slot: false }), { count: 8 });
+    assert.equal(calls, 2);
+  }
+  console.log('✅ query/metadata: 429 / 503 / rate-limit body → backoff → retry');
 }
 
 /* ── Timeout: signal-ыг хүндэлдэг stub → TimeoutError → ArcGISError ── */
@@ -331,24 +342,89 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ сүлжээний глитч → нэг удаа дахин · slot:false');
 }
 
-/* ── ⚠️ 2026-09-30: БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ (давхар мөр) ── */
+/* ── Writes must not replay after transport, HTTP, or rate-limit body failures. ── */
 {
-  /* ⚠️ 2026-10-11 (аудит №7): админ/bootstrap endpoint-ууд (`sharing/rest/*` · үйлчилгээний тодорхойлолт) ч бичилт */
+  const failures = [
+    () => { throw new TypeError('Failed to fetch'); },
+    ...[429, 500, 502, 503, 504].map((status) => () => ({ ok: false, status })),
+    () => ok({ error: { code: 429, message: 'Too many requests.' } }),
+  ];
   for (const ep of [
     'applyEdits', 'addFeatures', 'updateFeatures', 'deleteFeatures', 'addAttachment',
+    'updateAttachment', 'deleteAttachments', 'calculate', 'append',
     'createService', 'addToDefinition', 'updateDefinition', 'deleteFromDefinition', 'share', 'unshare', 'addItem', 'updateItem', 'deleteItems',
+    'customMutation', // Unknown endpoints must not gain an unsafe retry by omission.
   ]) {
-    let calls = 0;
-    globalThis.fetch = async () => { calls += 1; throw new TypeError('Failed to fetch'); };
-    await assert.rejects(arcgisPost(URL_.replace(/\/query$/, '') + '/' + ep, {}, { slot: false }));
-    assert.equal(calls, 1, `${ep}: сүлжээний алдаанд ДАХИН илгээсэн — давхар бичилтийн эрсдэл`);
+    for (const fail of failures) {
+      let calls = 0;
+      globalThis.fetch = async () => (++calls === 1 ? fail() : ok({ success: true }));
+      await assert.rejects(arcgisPost(`${URL_}/${ep}`, {}, { slot: false }));
+      assert.equal(calls, 1, `${ep}: ambiguous failure replayed a write`);
+    }
   }
-  /* 429 нь «гүйцэтгээгүй» — бичилтийг ч дахин оролдоно */
+  console.log('✅ writes: transport / HTTP 429,500,502,503,504 / rate-limit body → exactly one attempt');
+}
+
+/* ── Actual tableWrite → query: a commit followed by 503 stays an unknown outcome. ── */
+{
+  const { applyAll } = await import('@/lib/tableWrite');
   let calls = 0;
-  globalThis.fetch = async () => (++calls === 1 ? { ok: false, status: 429, json: async () => ({}) } : ok({ addResults: [] }));
-  assert.deepEqual(await arcgisPost(URL_.replace(/\/query$/, '') + '/addFeatures', {}, { slot: false }), { addResults: [] });
+  let committedRows = 0;
+  globalThis.fetch = async (_url, init) => {
+    calls += 1;
+    const body = new URLSearchParams(String(init.body));
+    committedRows += JSON.parse(body.get('adds')).length;
+    if (calls === 1) return { ok: false, status: 503 };
+    return ok({ addResults: [{ objectId: committedRows, success: true }] });
+  };
+  await assert.rejects(applyAll(URL_, 'OBJECTID', { adds: [{ amount: 55 }] }), (e) => e instanceof ArcGISError && e.status === 503);
+  assert.equal(calls, 1);
+  assert.equal(committedRows, 1, '503 after commit duplicated the added row');
+  console.log('✅ tableWrite commit → 503: one committed row, error returned for reconciliation');
+}
+
+/* ── Explicit token rejection still allows one refreshed write attempt. ── */
+{
+  let refreshes = 0;
+  let calls = 0;
+  let commits = 0;
+  const cred = { token: 'write-old', expires: Date.now() + 3_600_000, refreshToken: async () => { refreshes += 1; cred.token = 'write-new'; } };
+  A.registerIdentity({ findCredential: () => cred }, 'https://www.arcgis.com/sharing');
+  globalThis.fetch = async (_url, init) => {
+    calls += 1;
+    if (new URLSearchParams(String(init.body)).get('token') === 'write-old') return ok({ error: { code: 498, message: 'Invalid token.' } });
+    commits += 1;
+    return ok({ addResults: [{ objectId: 1, success: true }] });
+  };
+  assert.deepEqual(await arcgisPost(`${ORG}/applyEdits`, { adds: '[{"attributes":{"amount":55}}]' }), { addResults: [{ objectId: 1, success: true }] });
   assert.equal(calls, 2);
-  console.log('✅ бичих endpoint: сүлжээний алдаанд дахин илгээхгүй · 429-д дахин оролдоно');
+  assert.equal(refreshes, 1);
+  assert.equal(commits, 1);
+  A.registerIdentity(null, '');
+  console.log('✅ write rejected with 498 → refreshed token → one successful commit');
+}
+
+/* ── Caller cancellation during every transient backoff prevents another fetch. ── */
+{
+  for (const failure of ['network', 429, 500, 502, 503, 504, 'body']) {
+    const ac = new AbortController();
+    const reason = new DOMException('user canceled during retry backoff', 'AbortError');
+    let calls = 0;
+    let timer;
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (calls > 1) return ok({ count: 1 });
+      timer = setTimeout(() => ac.abort(reason), 20);
+      if (failure === 'network') throw new TypeError('Failed to fetch');
+      if (failure === 'body') return ok({ error: { code: 429, message: 'Rate limit exceeded' } });
+      return { ok: false, status: failure };
+    };
+    try {
+      await assert.rejects(arcgisPost(`${URL_}/query`, {}, { signal: ac.signal }), (e) => e === reason);
+      assert.equal(calls, 1, `${failure}: canceled read retried fetch`);
+    } finally { clearTimeout(timer); }
+  }
+  console.log('✅ cancellation during network / HTTP / body backoff prevents every retry');
 }
 
 /* ── ЯВАГДАЖ БУЙ ИЖИЛ УНШИЛТЫН НЭГТГЭЛ — `arcgisPost` (2026-10-04, гүйцэтгэлийн аудит) ── */

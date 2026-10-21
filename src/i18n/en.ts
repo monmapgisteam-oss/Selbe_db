@@ -4270,6 +4270,8 @@ const en: Record<string, string> = {
   "Багц сонгоно уу": "Please select a package",
   "Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана": "Assign to a stage first — view-only oversight is set on top of an assignment",
   "Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу": "Status changed — the list was refreshed, please review again",
+  "Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.": "This service does not support conflict-protected updates — please contact an administrator.",
+  "Санхүүгийн тооцоонд ашиглах өгөгдөл өөрчлөгдсөн байна. Засвар хадгалагдаагүй — хүснэгтийг дахин ачаалж шалгана уу.": "Financial calculation inputs have changed. Your changes were not saved — reload the table and review them.",
   "Буцаах шалтгаанаа бичнэ үү": "Please enter a reason for returning",
   "Бүртгэл олдсонгүй": "Record not found",
   "Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга": "Contractor → engineer → package manager → general manager → department head → director",

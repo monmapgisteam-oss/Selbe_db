@@ -255,12 +255,14 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
     return loadStaged(bagts, sheetOid, staged.payload);
   /*
    * ⚠️ Батлагдсан илгээлтийн `archiveOid` нь архивын ЭХНИЙ мөрийн дугаар —
-   *    түүгээр хуучин зам яг тэр агшныг олно. Дугааргүй бол (хаах алхам
-   *    унасан) `sheetOid`-оор оролдоно: тэр нь архивын мөр биш тул `null`
-   *    буцах ба хянагч «агшин олдсонгүй» гэсэн ил мессеж харна.
+   *    `pkgKey`-тэй нь хамт яг тэр хуудаснаас олно. OBJECTID нь үйлчилгээ
+   *    бүрд давхцаж болдог тул өөр давхрын хуудсаас хайж БОЛОХГҮЙ.
+   *    Дугааргүй батлагдсан илгээлтэд `sheetOid` нь ноорогийн дугаар:
+   *    архивын мөр гэж таамаглахгүй, `null` буцаана.
    */
-  const oid = staged?.payload.archiveOid ?? sheetOid;
-  return loadArchived(bagts, oid);
+  const oid = staged ? staged.payload.archiveOid : sheetOid;
+  if (oid == null) return null;
+  return loadArchived(bagts, oid, staged ? staged.payload.pkgKey : null);
 }
 
 /**
@@ -515,11 +517,20 @@ async function loadStaged(
  *
  * @param bagts    хяналтын бүртгэл дэх «Багц» (жиш. «Багц 1»)
  * @param sheetOid архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID
+ * @param pkgKey   илгээлтийн хуудас; `null` нь зөвхөн хуучин, илгээлтгүй бүртгэл
  */
-async function loadArchived(bagts: string, sheetOid: number): Promise<Submission | null> {
-  // Нэг багцад 9 ба 12 давхрын ХОЁР үйлчилгээ байж болно — аль нь болохыг эх мөрөөр нь тогтооно
+async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | null): Promise<Submission | null> {
+  // Илгээлтийн pkgKey байвал тэр хуудсаар ХЯЗГААРЛАНА; зөвхөн хуучин мөрд давхруудаас хайна.
   /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр (`loadStaged`-ийн ⚠️-тэй ижил) */
-  const cands = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
+  const cands = pkgKey === null
+    ? PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts))
+    : PKGS.filter((p) => p.key === pkgKey);
+  if (pkgKey !== null) {
+    const pkg = cands[0];
+    if (!pkg) throw new Error(tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey));
+    if (bagtsKey(pkg.group) !== bagtsKey(bagts))
+      throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
+  }
   if (!cands.length || !sheetOid) return null;
   let last = '';
 
