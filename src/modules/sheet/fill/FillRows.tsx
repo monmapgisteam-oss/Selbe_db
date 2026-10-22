@@ -237,6 +237,13 @@ export function FillRows({
                         : !dirty && baseRow && totNow != null
                           ? tr('өмнөх: {0} · энэ удаа: {1} · нийт: {2}', fmtU(prevV) || '—', signed(totNow - (prevV ?? 0)), fmtU(totNow))
                           : '';
+                      /* ⚠️ 2026-10-22 (хэрэглэгч: «ийм алдаа дахин гарах эрсдэлийг бүрэн зас»): НИЙТ СӨРӨГ болох нэмэлт —
+                         хуудсанд байгаагаас их хасалт (жиш. хоосон нүдэнд −0.0017). Бичих АГШИНД улаанаар тэмдэглэж,
+                         шалтгааныг хэлнэ; ийм нүдтэй илгээлт `FillNew.publish`-д ХААГДАНА (хянагчид хүрч гацахгүй).
+                         Хүлцэл нь `incCell.below`-тай ижил (хөвөгч цэгийн чимээ сөрөг биш). */
+                      const negTot = incAmt != null ? (prevV ?? 0) + incAmt : null;
+                      const negNow = dirty && negTot != null && incAmt != null
+                        && negTot < -1e-9 * Math.max(1, Math.abs(prevV ?? 0), Math.abs(incAmt));
                       const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
                       /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
@@ -341,7 +348,9 @@ export function FillRows({
                               /* 2026-10-01: буулгалтын урьдчилсан харагдац
                                  ⚠️ 2026-10-07: түлхүүр нь `key` (`cellKey(oid, ИНДЕКС)`) — урьд нь `bk` (`oid:ШОШГО`)
                                     хайдаг тул цэнхэр/улаан тодруулга ХЭЗЭЭ Ч гардаггүй байв. */
-                              (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : ""),
+                              (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : "") +
+                              /* ⚠️ 2026-10-22: нийт сөрөг болох нэмэлт — дээрх `negNow`-ийн ⚠️ */
+                              (negNow ? " negTot" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
@@ -369,6 +378,10 @@ export function FillRows({
                             }
                           }}
                           title={
+                            /* ⚠️ 2026-10-22: нийт сөрөг — хамгийн ЭХЭНД (илгээгдэхгүй шалтгаан) */
+                            (negNow && negTot != null
+                              ? tr('Нийт сөрөг болно ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Хасалтаа устгаж хоосон үлдээнэ үү.', fmtU(negTot)) + '\n'
+                              : '') +
                             /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
                             (pastePrev?.rej.has(key) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(key) ?? '') + '\n' : '') +
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»

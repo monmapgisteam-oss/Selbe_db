@@ -1490,7 +1490,7 @@ export function incCell(
   b: number,
   e: string | undefined,
   hasField: boolean,
-): { obyem: number | null; act: number | null; neg?: true } | null {
+): { obyem: number | null; act: number | null; neg?: true; raw?: { obyem: number | null; act: number | null } } | null {
   const d = parseInc(e);
   if (!d || (d.n === 0 && d.p === 0)) return null;
   /* ⚠️ 2026-10-09 (F5): обьёмын талбаргүй блокт зөвхөн обьёмын нэмэлт (`%`-гүй) — архивт бичих
@@ -1504,20 +1504,28 @@ export function incCell(
     total < -1e-9 * Math.max(1, Math.abs(base), Math.abs(inc));
   let neg = false;
   let ob = r.obyem[b];
+  /* ⚠️ 2026-10-22 (хэрэглэгч): ХАСААГҮЙ (сөрөг) нийт — `raw`; хянагч ба илгээгч дэлгэцэд «0» биш ЖИНХЭНЭ утгыг харна */
+  let rawOb = r.obyem[b];
   const add = d.n + (volPath ? d.p * (vol as number) : 0);
   if (add !== 0) {
     const total = (r.obyem[b] ?? 0) + add;
     if (below(total, r.obyem[b] ?? 0, add)) neg = true;
     ob = Math.max(0, total);
+    rawOb = total;
   }
   const pRest = volPath ? 0 : d.p;
   let act: number | null;
+  let rawAct: number | null;
   if (pRest !== 0) {
     const totalP = (r.act[b] ?? 0) + pRest;
     if (below(totalP, r.act[b] ?? 0, pRest)) neg = true;
     act = Math.max(0, totalP);
-  } else act = volPath && ob != null ? ob / (vol as number) : r.act[b];
-  return neg ? { obyem: ob, act, neg: true } : { obyem: ob, act };
+    rawAct = totalP;
+  } else {
+    act = volPath && ob != null ? ob / (vol as number) : r.act[b];
+    rawAct = volPath && rawOb != null ? rawOb / (vol as number) : r.act[b];
+  }
+  return neg ? { obyem: ob, act, neg: true, raw: { obyem: rawOb, act: rawAct } } : { obyem: ob, act };
 }
 /**
  * БЛОКГҮЙ БАГЦЫН (синтетик блок) ОБЬЁМГҮЙ АЖЛЫН МӨР уу (2026-10-09).

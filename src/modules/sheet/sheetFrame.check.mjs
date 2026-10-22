@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
-  staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc,
+  staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc, describeNegCells,
 } from './sheetFrame.ts';
 import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
 
@@ -513,9 +513,14 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.deepEqual(incCell(r, 0, '15', true), { obyem: 55, act: 0.55 }, 'хэрэглэгчийн жишээ: 40 + 15 = 55');
   assert.deepEqual(incCell(r, 0, '%10', true), { obyem: 50, act: 0.5 }, '%N = Обьёмын N%');
   /* ⚠️ 2026-10-21 (аудит): сөрөг нийт — дэлгэцэд 0, `neg` тугтай (архивлалт татгалзана); яг 0 бол туггүй */
-  assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0, neg: true }, 'нийт 0-ээс доош орохгүй — neg туг');
+  /* ⚠️ 2026-10-22: `raw` — хаагаагүй (сөрөг) нийт, зөвхөн дэлгэцэд */
+  assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0, neg: true, raw: { obyem: -10, act: -0.1 } }, 'нийт 0-ээс доош орохгүй — neg туг + жинхэнэ утга');
   assert.deepEqual(incCell(r, 0, '-40', true), { obyem: 0, act: 0 }, 'яг 0 — сөрөг биш');
-  assert.deepEqual(incCell(row(9, '9', 'N', 3, false, { act: [0.3, null] }), 0, '%-40', true), { obyem: null, act: 0, neg: true }, 'хувийн нийт сөрөг — neg');
+  {
+    const pn = incCell(row(9, '9', 'N', 3, false, { act: [0.3, null] }), 0, '%-40', true);
+    assert.deepEqual([pn.obyem, pn.act, pn.neg], [null, 0, true], 'хувийн нийт сөрөг — neg');
+    assert.ok(pn.raw.obyem === null && Math.abs(pn.raw.act - -0.1) < 1e-12, 'хувийн жинхэнэ утга −0.1');
+  }
   assert.deepEqual(incCell(row(9, '9', 'N', 3, false, { obyem: [0.3, null] }), 0, '-0.1 -0.2', true), { obyem: 0, act: null }, 'хөвөгч чимээ (0.3 − 0.1 − 0.2) сөрөг биш');
   assert.equal(incCell(r, 0, '', true), null, '"" = өөрчлөлтгүй (цэвэрлэх БИШ)');
   assert.equal(incCell(r, 0, '0', true), null, 'тэг нэмэлт = өөрчлөлтгүй');
@@ -567,7 +572,12 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     const ovN = overlaySubmission(fresh, inc([['203:0', '-50'], ['204:0', '-8']]), sc, nBld);
     assert.equal(ovN.negative, 1, '5 − 50 сөрөг; 8 − 8 = 0 сөрөг биш');
     assert.deepEqual(ovN.negKeys, ['203:0']);
-    assert.equal(ovN.rows.find((x) => x.oid === 203).obyem[0], 0, 'дэлгэцэд 0-оор хаасан хэвээр');
+    /* ⚠️ 2026-10-22 (хэрэглэгч): дэлгэцэд 0 биш ЖИНХЭНЭ (сөрөг) утга — «0 м³» гэж харагдаж ойлгомжгүй байв */
+    assert.equal(ovN.rows.find((x) => x.oid === 203).obyem[0], -45, 'дэлгэцэд жинхэнэ утга (5 − 50)');
+    assert.deepEqual(ovN.negInc, { '203:0': '-50' }, 'илгээсэн нэмэлт');
+    const nm = describeNegCells(ovN.negKeys, ovN.rows, ['Блок 1', 'Блок 2'], ovN.negInc);
+    assert.equal(nm.length, 1);
+    assert.ok(nm[0].includes('«') && nm[0].includes('· Блок 1') && nm[0].endsWith('−50'), `нүдний нэр: ${nm[0]}`);
     assert.deepEqual(ovN.cellKeys, ['203:0', '204:0'], 'нүд буусан (cellKeys) хэвээр');
     assert.equal(ovN.unmoved, 0);
     const ovD = overlaySubmission(fresh, inc([['203:0', '-15']]), sc, nBld);

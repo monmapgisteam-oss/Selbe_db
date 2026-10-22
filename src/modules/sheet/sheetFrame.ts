@@ -488,11 +488,46 @@ export type Overlay = {
   remapped: boolean;
   /**
    * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо ба түлхүүр (`incCell.neg`, илгээлтийн
-   *    ЭХ түлхүүрээр). Мөрөнд 0-оор хаасан утга буусан (дэлгэц) ч архивлалт (`hyanaltStore`) `negative > 0` бол татгалзана.
+   *    ЭХ түлхүүрээр). Архивлалт (`hyanaltStore`) `negative > 0` бол татгалзана. ⚠️ 2026-10-22: мөрөнд 0 биш ЖИНХЭНЭ (сөрөг)
+   *    нийт буна (`incCell.raw`, зөвхөн дэлгэц).
    */
   negative: number;
   negKeys: string[];
+  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүд бүрийн ИЛГЭЭСЭН нэмэлт (`negKeys`-ийн түлхүүрээр) — хүнд нэрлэхэд (`describeNegCells`) */
+  negInc: Record<string, string>;
 };
+
+/**
+ * СӨРӨГ НҮДИЙГ ХҮНД ОЛДОХООР НЭРЛЭНЭ (⚠️ 2026-10-22, хэрэглэгч: «хэддүгээр мөр вэ» — «1 нүд» гэх нь хаана гэдгийг хэлдэггүй;
+ * мөрийн № давтагддаг тул эцэг бүлгүүдийн №-ээр замыг өгнө): `Б → Б18 → 10 → 2 «Ажил» −0.0017` (+ блок, олон блоктой бол).
+ * `rows` — давхарласан мөрүүд (`Overlay.rows`, түлхүүрийн oid эндээс).
+ */
+export function describeNegCells(
+  keys: readonly string[],
+  rows: readonly SheetRow[],
+  bld: readonly string[],
+  inc: Readonly<Record<string, string>> = {},
+  max = 10,
+): string[] {
+  const idx = new Map(rows.map((r, i) => [r.oid, i] as const));
+  const out = keys.slice(0, max).map((k) => {
+    const at = k.indexOf(':');
+    const i = idx.get(Number(k.slice(0, at)));
+    const b = Number(k.slice(at + 1));
+    if (i == null) return k;
+    const path: string[] = [];
+    let d = rows[i].depth;
+    for (let j = i - 1; j >= 0 && d > 0; j--) {
+      if (rows[j].depth < d) { if (String(rows[j].no ?? '').trim()) path.unshift(String(rows[j].no).trim()); d = rows[j].depth; }
+    }
+    path.push(String(rows[i].no ?? '').trim() || '—');
+    const blk = bld.length > 1 && bld[b] ? ` · ${bld[b]}` : '';
+    const v = inc[k] != null ? ` ${String(inc[k]).trim().replace(/^-/, '−')}` : '';
+    return `${path.join(' → ')} «${String(rows[i].work ?? '').trim()}»${blk}${v}`;
+  });
+  if (keys.length > out.length) out.push(`… +${keys.length - out.length}`);
+  return out;
+}
 
 /**
  * ИЛГЭЭЛТИЙГ СУУРЬ ЖААЗ ДЭЭР ДАВХАРЛАНА — компанийн хуудас, хянагчийн
@@ -536,6 +571,7 @@ export function overlaySubmission(
   const md = moveKeys(map, Object.fromEntries(sub.dates ?? []));
   const unmovedKeys: string[] = [...mc.unmoved, ...md.unmoved];
   const negKeys: string[] = [];
+  const negInc: Record<string, string> = {};
 
   /* ── 2. Нэмсэн мөр — давхардлыг алгасна ── */
   /**
@@ -637,8 +673,12 @@ export function overlaySubmission(
       /* ⚠️ 2026-10-21 (аудит): НИЙТ СӨРӨГ болох нэмэлт (`incCell.neg`) — дэлгэцэд 0-оор хаасан утга буух ч түлхүүрийг
          `negKeys`-д тэмдэглэнэ; архивлалт (`hyanaltStore.archiveSubmission`) `negative > 0` бол татгалзана. */
       if (res.neg) negKeys.push(k);
-      r.obyem[b] = res.obyem;
-      r.act[b] = res.act;
+      /* ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүдэнд 0-оор хаасан биш ЖИНХЭНЭ (сөрөг) нийтийг харуулна — «0 м³» гэж харагдаж
+         хянагч аль нүд, юу болсныг ойлгодоггүй байв. Батлалт/архивлалт `negative > 0` бол татгалздаг тул энэ утга
+         хаана ч бичигдэхгүй (зөвхөн дэлгэц). */
+      if (res.neg) negInc[k] = v;
+      r.obyem[b] = res.neg && res.raw ? res.raw.obyem : res.obyem;
+      r.act[b] = res.neg && res.raw ? res.raw.act : res.act;
       cellKeys.push(key);
       continue;
     }
@@ -689,6 +729,7 @@ export function overlaySubmission(
     remapped: needMap,
     negative: negKeys.length,
     negKeys,
+    negInc,
   };
 }
 

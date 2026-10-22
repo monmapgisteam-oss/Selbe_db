@@ -1619,6 +1619,12 @@
   background: color-mix(in srgb, var(--bad) 14%, transparent);
 }
 .xl td.pasteBad .cellVol::after { content: " ✕"; color: var(--bad); }
+/* ⚠️ 2026-10-22: нийт СӨРӨГ болох нэмэлт (`FillRows.negNow`) — хуудсанд байгаагаас их хасалт; илгээгдэхгүй */
+.xl td.negTot {
+  box-shadow: inset 0 0 0 2px var(--bad);
+  background: color-mix(in srgb, var(--bad) 18%, transparent);
+}
+.xl td.negTot .cellVol { color: var(--bad); font-weight: 700; }
 .pasteBar {
   display: flex;
   flex-wrap: wrap;

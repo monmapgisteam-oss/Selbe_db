@@ -530,7 +530,8 @@ function Submitted({
    *    хаасан утга энгийн өөрчлөлт мэт харагдаж, инженер→дарга батлаад зөвхөн 6-р шатны архивлалт л татгалздаг байв
    *    (хэн нэгэн гараар буцаатал гацна). `undefined` = уншиж байна / унасан.
    */
-  onNegative?: (n: number | undefined) => void;
+  /* ⚠️ 2026-10-22 (хэрэглэгч): `cells` — сөрөг нүдний НЭР (`Submission.negCells`), батлах товчны шалтгаанд хаана гэдгийг хэлнэ */
+  onNegative?: (n: number | undefined, cells?: string[]) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -591,7 +592,7 @@ function Submitted({
          уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
-      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); onUnmoved?.(d ? (d.unmoved ?? 0) : undefined); onNegative?.(d ? (d.negative ?? 0) : undefined); } })
+      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); onUnmoved?.(d ? (d.unmoved ?? 0) : undefined); onNegative?.(d ? (d.negative ?? 0) : undefined, d?.negCells); } })
       .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: userError(e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
@@ -718,7 +719,9 @@ function Submitted({
               бичвэртэй ижил. Батлах товч `Item`-д хаагдана (`negBlocks`). */}
           {(data.negative ?? 0) > 0 && (
             <div className={s.subWarn} role="alert">
-              {tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) — доорх жагсаалтад 0 гэж харагдах ч батлах боломжгүй. Гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү.', String(data.negative))}
+              {tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) тул батлах боломжгүй — доорх нүд(ийг) гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү:', String(data.negative))}
+              {/* ⚠️ 2026-10-22 (хэрэглэгч: «хэддүгээр мөр вэ»): АЛЬ нүд — эцэг бүлгүүдийн №-ээр зам + илгээсэн утга */}
+              {(data.negCells?.length ?? 0) > 0 && <div>{data.negCells!.join('; ')}</div>}
             </div>
           )}
           {data.asOfChanged && (
@@ -1036,6 +1039,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const [unmoved, setUnmoved] = useState<number | undefined>(undefined);
   /** ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ болох нэмэлтийн нүдний тоо — `Submitted.onNegative`; > 0 бол батлах (дээш илгээх) ХААЛТТАЙ */
   const [negative, setNegative] = useState<number | undefined>(undefined);
+  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүдний НЭР — батлах товчны шалтгаанд (`approveWhy`) хаана гэдгийг хэлнэ */
+  const [negCells, setNegCells] = useState<string[]>([]);
   /**
    * ӨӨРЧЛӨГДСӨН НҮДНИЙ МӨРҮҮДИЙН ТОГТВОРТОЙ ТАНИГЧ — индексээр (`Change.row` → `{oid, sid}`).
    * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): зөвшөөрлийг индексээр БИШ үүгээр бичиж/уншина
@@ -1250,6 +1255,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       ? tr('Илгээлтийн {0} нүдийг хуудсанд буулгаж чадаагүй (мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш) тул батлах боломжгүй — гүйцэтгэгчээр шалгуулж дахин илгээлгэнэ үү (буцааж болно).', String(unmoved))
       : negBlocks
         ? tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) тул батлах боломжгүй — гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү (буцааж болно).', String(negative))
+          + (negCells.length ? ` ${negCells.join('; ')}` : '')
         : changes.length > 0 && !allOk
           ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
           : undefined;
@@ -1516,7 +1522,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             onSubAt={setSubAt}
             onRemapped={setRemapped}
             onUnmoved={setUnmoved}
-            onNegative={setNegative}
+            onNegative={(n, cells) => { setNegative(n); setNegCells(cells ?? []); }}
             reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */

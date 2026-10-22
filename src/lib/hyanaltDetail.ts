@@ -25,7 +25,7 @@ import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
-import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
+import { describeNegCells, needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
@@ -210,6 +210,8 @@ export type Submission = {
    *    хаасан утга харагдах ч батлахад архивлалт ил зогсоно (`hyanaltStore.archiveSubmission`).
    */
   negative?: number;
+  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүднүүдийн НЭР (`describeNegCells` — «Б → Б18 → 10 → 2 «Ажил» −0.0017») — хаана гэдгийг хэлнэ */
+  negCells?: string[];
 };
 
 /**
@@ -515,6 +517,7 @@ async function loadStaged(
     remapped: ov.remapped,
     unmoved: ov.unmoved,
     negative: ov.negative,
+    negCells: ov.negative > 0 ? describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc) : [],
   };
 }
 

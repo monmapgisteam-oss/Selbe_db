@@ -41,9 +41,9 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   const G = g.split('\r\n').join('\n');
   assert.ok(/negative: ov\.negative/.test(fn), 'loadStaged: `negative` тоог буцаана');
   assert.ok(G.includes('onNegative?.(undefined);'), 'Submitted: уншилт эхлэхэд negative-ийг тэглэнэ');
-  assert.ok(G.includes('onNegative?.(d ? (d.negative ?? 0) : undefined);'), 'Submitted: negative-ийг эцэгт дамжуулна');
+  assert.ok(G.includes('onNegative?.(d ? (d.negative ?? 0) : undefined, d?.negCells);'), 'Submitted: negative ба нүдний нэрийг эцэгт дамжуулна');
   assert.ok(G.includes('(data.negative ?? 0) > 0 && ('), 'Submitted: сөрөг нүдийг ИЛ анхааруулна');
-  assert.ok(G.includes('onNegative={setNegative}'), 'Item: Submitted-ээс negative авна');
+  assert.ok(G.includes('onNegative={(n, cells) => { setNegative(n); setNegCells(cells ?? []); }}'), 'Item: Submitted-ээс negative ба нэр авна');
   assert.ok(G.includes('const negBlocks = (negative ?? 0) > 0;'), 'Item: negBlocks');
   const gates = G.match(/disabled=\{busy \|\| lackBlocks \|\| changes == null \|\| unmovedBlocks \|\| negBlocks \|\| \(changes\.length > 0 && !allOk\)\}/g) ?? [];
   assert.equal(gates.length, 2, 'батлах ба «дээш илгээх» ХОЁУЛАА negBlocks-оор хаагдана');
@@ -65,9 +65,20 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   assert.ok(neg > 0, 'FillNew.publish: сөрөг нийтийн шалгалт алга');
   assert.ok(neg > pub.indexOf('payload.rowOcc = rowOccOf('), 'нэгтгэсэн (эцсийн) payload-ыг шалгана');
   assert.ok(neg < pub.indexOf('saveInflight(pkg.key') && neg < pub.indexOf('await saveSubmission('), 'хадгалалтаас ӨМНӨ');
-  assert.match(pub, /if \(ovNeg\.negative > 0 && !window\.confirm\(tr\(/, 'ил асууна');
-  assert.ok(pub.includes('describeUnmoved(ovNeg.negKeys, payload.rowKeys, sc.bld)'), 'сөрөг нүдийг нэрлэнэ');
-  console.log('✅ Guitsetgel · FillNew — сөрөг нийт бүх шатанд хаагдана, илгээхээс өмнө асууна; unmoved хоёр шалтгаантай');
+  /* ⚠️ 2026-10-22 (хэрэглэгч): асуухгүй — ХААНА (сөрөг нүдтэй илгээлт хянагчид хүрэхгүй) */
+  assert.match(pub, /if \(ovNeg\.negative > 0\) \{\s*warn\(tr\(/, 'сөрөг нүдтэй бол илгээхгүй (хаана)');
+  {
+    const blk = pub.slice(neg, pub.indexOf('return;', neg));
+    assert.ok(!blk.includes('window.confirm'), '«Тэгсэн ч илгээх үү» асуулт үлдсэн — хаах ёстой');
+  }
+  const rowsSrc = src('../modules/sheet/fill/FillRows.tsx');
+  assert.ok(rowsSrc.includes('const negNow = dirty && negTot != null') && rowsSrc.includes('(negNow ? " negTot" : "")'),
+    'FillRows: бичих агшинд сөрөг нийтийг улаанаар тэмдэглэнэ');
+  /* ⚠️ 2026-10-22: эцэг бүлгийн №-ээр зам + илгээсэн утга (`describeNegCells`) — `describeUnmoved` (rowKeys шошго) биш */
+  assert.ok(pub.includes('describeNegCells(ovNeg.negKeys, ovNeg.rows, sc.bld, ovNeg.negInc)'), 'сөрөг нүдийг замаар нэрлэнэ');
+  assert.ok(det.includes('describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc)'), 'hyanaltDetail: negCells');
+  assert.ok(G.includes('data.negCells!.join') && G.includes("negCells.join('; ')"), 'Guitsetgel: сөрөг нүдний нэр анхааруулга ба товчны шалтгаанд');
+  console.log('✅ Guitsetgel · FillNew — сөрөг нийт бүх шатанд хаагдана, нүдийг нэрлэнэ; илгээлт ХААГДАНА, бичих агшинд улаан; unmoved хоёр шалтгаантай');
 }
 
 /* ── 2026-10-09: F2 огноогүй хэлтэрхийн нэг дүрэм · F4 гүн `gun`-аас ── */
