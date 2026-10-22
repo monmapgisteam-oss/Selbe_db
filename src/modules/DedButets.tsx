@@ -40,14 +40,11 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import {
-  dropTotalsCache, missingQty, retryTotals, usePlanTotals, usePlanTotalsLive,
-  type LiveTotals, type Totals,
-} from '@/lib/totals';
+import { dropTotalsCache, missingQty, retryTotals, usePlanTotalsLive, type LiveTotals, type Totals } from '@/lib/totals';
 import { PackLayers, Swatch } from '@/components/PackLayers';
 import { List, ListItem, Note, Section, Stat, Stats, friendlyError, userError } from '@/components/ui';
 import {
-  CATALOG_LAYER_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
+  DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
   PKG_FAMILY_BY_BAGTS,
 } from '@/lib/services';
 import { buildPacks, type Pack } from './Bagts';
@@ -910,15 +907,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const st = useStatusClasses(stIds, stFill, stEdit, stStat, stBy, canEdit, stPerf);
   const mapStyle = useMemo(() => (st.style ? { ...dotStyle, ...st.style } : dotStyle), [dotStyle, st.style]);
 
-  /** Каталогийн багана — зөвхөн жагсаалт нээлттэй үед татна (Irged-тэй ижил) */
-  /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг
-     нуудаг (`allow`) атал нийлбэр нь БҮХ ~127 давхаргаас татагддаг байв —
-     дэмий хүсэлт, мөн нуусан багцын тоо сүлжээгээр ил явна. */
-  const catIds = useMemo(
-    () => (hidden ? CATALOG_LAYER_IDS.filter(allow) : CATALOG_LAYER_IDS),
-    [hidden, allow],
-  );
-  const catTotals = usePlanTotals(zone, layerOpen, catIds);
+  /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг нуудаг (`allow`) — нуусан багцын тоо
+     сүлжээгээр ил явахгүй. ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн тоог энд БҮГДИЙГ татахгүй — LayerCatalog `totals`-гүй үед
+     зөвхөн НЭЭЛТТЭЙ бүлгийн, `allow`-оор шүүсэн мөрүүдийн тоог өөрөө татна (`totals.useLazyTotals`) — хүрээ хэвээр. */
 
   /** Хоёр баганын урт ба тоо — ЭНЭ цонхны 30 орчим давхаргаар */
   /**
@@ -2289,7 +2280,6 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 view="dedButets"
                 /* ⚠️ Бусад багцын давхарга каталогт ч гарахгүй (2026-09-23) */
                 allow={hidden ? allow : undefined}
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}

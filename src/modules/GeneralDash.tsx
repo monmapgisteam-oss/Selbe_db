@@ -152,7 +152,9 @@ export function GeneralDash({
   const base = useMemo(() => ['zone', 'et:24'], []);
   const [visible, setVisible] = useLayerPicks(base);
 
-  const totals = usePlanTotals(zone, true);
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын давхаргууд (`PLAN_CARD_IDS`) — урьд нь
+     каталогийн бүх 158-ыг (~156 хүсэлт) нээлт бүрд татдаг байв; каталог нээлттэй бүлгийнхээ тоог өөрөө татна. */
+  const totals = usePlanTotals(zone, true, PLAN_CARD_IDS);
   const cf = useAsync(loadGdashCf, []);
   /**
    * САРЫН ТӨЛӨВЛӨГӨӨ — S-муруйн нарийвчлал.
@@ -755,9 +757,9 @@ export function GeneralDash({
           )}
           {layerOpen && (
             <div className={g.catPanel}>
+              {/* ⚠️ 2026-10-22: `totals` ӨГӨХГҮЙ — нээлттэй бүлгийнхээ тоог л өөрөө татна (`LayerCatalog`-ийн ⚠️) */}
               <LayerCatalog
                 view="plan"
-                totals={totals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}
@@ -2952,6 +2954,15 @@ const PLAN_QTY: { id: string; label: string }[] = [
 
 /** Инженерийн шугам сүлжээ — гурван гэр бүлийн давхаргын нийлбэр урт */
 const NET_FAMILIES: PkgFamily[] = ['net', 'pow', 'src'];
+
+/**
+ * «Ерөнхий төлөвлөгөө» картын (`PlanCard`) уншдаг БҮХ давхарга — `usePlanTotals`-ын жагсаалт (2026-10-22).
+ * ⚠️ Карт доторх `cnt`/`qty`/`netIds`-тэй ЯГ нэг олонлог; бүгд каталогт бий тул тоо ӨӨРЧЛӨГДӨХГҮЙ (урьд нь каталогийн
+ *    бүх 158-ыг татаж эндээс 71-ийг уншдаг байв). Карт шинэ давхарга уншдаг болвол ЭНД нэмнэ, эс бөгөөс «—».
+ */
+const PLAN_CARD_IDS: string[] = [...new Set([
+  'et:24', 'zone', ...PLAN_QTY.map((p) => p.id), ...NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []),
+])];
 
 function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
   /**

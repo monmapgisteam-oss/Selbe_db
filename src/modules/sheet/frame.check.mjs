@@ -438,7 +438,9 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
 
   const SRC3 = readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
   /* F4: strict үед лавлах унавал шиднэ; өмнөх жаазтай жишилт 500-ийн үржвэрт */
-  assert.ok(SRC3.includes('opts?: { strict?: boolean }') && /if \(opts\?\.strict\)\s*throw/.test(SRC3), 'loadRows strict алга');
+  /* ⚠️ 2026-10-22: `persist` (уншдаг самбарын хөтчийн кэш) нэмэгдэв — `strict`/`atDay` үед ҮЛ ХАМААРНА (бичих зам серверээс) */
+  assert.ok(SRC3.includes('opts?: { strict?: boolean; persist?: boolean }') && /if \(opts\?\.strict\)\s*throw/.test(SRC3), 'loadRows strict алга');
+  assert.ok(SRC3.includes('const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;'), 'persist нь strict/atDay үед унтрах ёстой');
   assert.ok(SRC3.includes('feats2.length % 500 === 0') && SRC3.includes('prevFrameLen(pkg, sc, feats2, expect)'), 'өмнөх бүтэн жаазтай жишилт алга');
   const HY = readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok((HY.match(/loadRows\(pkg, sc, undefined, undefined, \{ strict: true \}\)/g) ?? []).length >= 2, 'archiveSubmission strict-ээр уншихгүй байна');

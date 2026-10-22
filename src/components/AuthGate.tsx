@@ -10,10 +10,11 @@ import { subscribeCaps } from '@/lib/caps';
 import type { SysState } from '@/lib/permsRemote';
 import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
-import { installEntInterceptor } from '@/lib/entInterceptor';
+import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
+import { clearMetaCache } from '@/lib/metaCache';
 import {
-  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, registerIdentity, reopenSessionDead,
-  retrySession, sessionDead, subscribeSessionDead,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
+  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -285,6 +286,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerIdentity(esriId, sharingUrl());
 
         await esriId.checkSignInStatus(sharingUrl());
+        /* ⚠️ 2026-10-22 (гүйцэтгэл): ФЕДЕРАЦИЙН СЕРВЕРИЙН итгэмжлэл — Portal/газрын зургийн давхарга үүсэхээс ӨМНӨ, эс бөгөөс
+           ~185 мета хүсэлт бүр эхлээд токенгүй явж 499 аваад дахин илгээгддэг (`authToken.primeServerCredential`-ийн ⚠️).
+           `portal.load` · `initRemote`-тэй ЗЭРЭГ явна; статус тавихын өмнө л хүлээнэ (≤ 4 с — ихэвчлэн аль хэдийн бэлэн).
+           Унавал/удвал чимээгүй: нэвтрэлтийг ХЭЗЭЭ Ч саатуулахгүй, давхарга урьдын адил 499 → JS API-ийн замаар. */
+        const serverCred = primeServerCredential(ENT_SERVER);
 
         const portal = new Portal({ url: AUTH.portalUrl });
         await portal.load();
@@ -366,6 +372,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* ⚠️ ЗӨВХӨН панелаас нэмсэн (хатуу жагсаалтад БАЙХГҮЙ) хүнд утгатай:
            хатуу үүрэгтэй хүн remote-гүй ч нэвтэрдэг тул тэдэнд худал
            анхааруулга гаргах ёсгүй. */
+        /* ⚠️ 2026-10-22: серверийн итгэмжлэл (дээрх `serverCred`) — Portal-ыг зурахаас өмнө; хэзээ ч шидэхгүй */
+        await serverCred;
         /* ⚠️ 2026-10-21 (аудит): `alive`-ийн ДАРАА — цэвэрлэгдсэн эффект салсан компонентын төлөв бичихгүй */
         if (!alive) return;
         setPermsRead(remoteOk || !!hard);
@@ -572,6 +580,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     /* ⚠️ 2026-10-05: итгэмжлэл устахыг «сешн дууссан» гэж тэмдэглэхгүй (`authToken.noteSignOut`) */
     noteSignOut();
+    /* ⚠️ 2026-10-22: давхаргын метагийн кэш (`metaCache`) — дараагийн хэрэглэгчид өмнөхийн эрхийн мета үлдэхгүй */
+    clearMetaCache();
     /* ⚠️ 2026-10-06 (аудит): эрхийн КЭШИЙГ устгана — хуваалцсан компьютер дээр дараагийн хүнд
        өмнөх хэрэглэгчийн эрхийн хүснэгт (хэн ямар эрхтэй) үлдэхгүй. ЗӨВХӨН кэш: dirty-set
        (`*-dirty-v1` — админы ArcGIS-т хүрээгүй засвар)-ийг ХӨНДӨХГҮЙ, «Дахин синк»-ийн эх. */

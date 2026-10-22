@@ -17,6 +17,8 @@ import { invalidate } from "@/lib/dataBus";
 import { isLostWrite } from "@/lib/lostWrite";
 import { ArcGISError } from "@/lib/query";
 import { DAY, spanFrac } from "@/lib/plan";
+/* ⚠️ 2026-10-22: уншдаг самбарын сүүлийн жаазын хөтчийн кэш (`loadRows`-ийн `persist`) */
+import { persistedFrame, probeStats, sigFrom, type Sig } from "@/lib/sheetCache";
 /* ⚠️ 2026-10-21 (аудит): нэмэлтийн бүрэлдэхүүний тоон дүрэм бөглөх хуудастай НЭГ (`parseInc`-ийн ⚠️); `paste.ts` импортгүй — тойрог үүсэхгүй */
 import { normCell } from "./paste";
 
@@ -662,17 +664,25 @@ export async function baseBlankCount(pkg: Pkg, sc: Schema): Promise<number> {
   }
 }
 
-async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
+async function latestWhere(
+  pkg: Pkg,
+  sc: Schema,
+  expect = 0,
+  /**
+   * ⚠️ 2026-10-22: бөглөсөн огнооны max-ыг ДУУДАГЧ аль хэдийн мэдэж байвал (`sheetCache`-ийн тандалт — `where 1=1`-ийн
+   *    max нь `IS NOT NULL`-ийнхтэй ижил, MAX null-ыг алгасдаг) дахин асуухгүй. `undefined` = асууна (хуучин зам).
+   */
+  knownMax?: number | null,
+): Promise<string> {
   const fld = sc.f.fillDate;
   if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
-  const j = await agsFetch(`${pkg.url}/query`, {
+  const mx = knownMax !== undefined ? knownMax : (await agsFetch(`${pkg.url}/query`, {
     where: `${fld} IS NOT NULL`,
     outStatistics: JSON.stringify([
       { statisticType: "max", onStatisticField: fld, outStatisticFieldName: "mx" },
     ]),
     returnGeometry: "false",
-  });
-  const mx = j.features?.[0]?.attributes?.mx as number | null | undefined;
+  })).features?.[0]?.attributes?.mx as number | null | undefined;
   if (mx == null) return `${fld} IS NULL`;
   const day = dayFilter(fld, msToDay(mx));
 
@@ -768,6 +778,39 @@ async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number
     .filter((f) => !isBlankAttrs(f.attributes, sc.f.no, sc.f.work)).length;
 }
 
+/** Нэг `where`-ийн бүх мөр — maxRecordCount 2000 тул `oid ASC`-ээр хуудаслана (`loadRows`-ийн татлага) */
+async function fetchFrame(pkg: Pkg, sc: Schema, where: string, fields?: string[]): Promise<Feature[]> {
+  const feats: Feature[] = [];
+  for (let offset = 0; ; ) {
+    const j = await agsFetch(`${pkg.url}/query`, {
+      where,
+      outFields: fields?.length ? fields.join(",") : "*",
+      returnGeometry: "false",
+      orderByFields: `${sc.f.oid} ASC`,
+      resultRecordCount: "2000",
+      resultOffset: String(offset),
+    });
+    const fs = (j.features || []) as Feature[];
+    feats.push(...fs);
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    offset += fs.length;
+  }
+  return feats;
+}
+
+/**
+ * ХУУДАСНЫ ШИНЭЛЭГ БАЙДЛЫН ТАНДАЛТ — НЭГ `outStatistics` (`sheetCache.probeStats`): мөрийн тоо · objectid-ийн муж ·
+ * сүүлийн засварын огноо · бөглөсөн огнооны max (2026-10-22, `loadRows`-ийн `persist`).
+ */
+async function probeSheet(pkg: Pkg, sc: Schema): Promise<Sig | null> {
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: "1=1",
+    outStatistics: probeStats(sc.f.oid, sc.f.fillDate),
+    returnGeometry: "false",
+  });
+  return sigFrom(j.features?.[0]?.attributes, !!sc.f.fillDate);
+}
+
 /** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
 export async function loadRows(
   pkg: Pkg,
@@ -795,7 +838,12 @@ export async function loadRows(
    *    архивын «сүүлийн агшин»-аас мөнхөд алга). `strict` үед лавлах/өмнөх жаазын шалгалт унавал
    *    THROW (fail-closed). Анхдагч `false` — уншдаг самбарууд урьдын адил (бүртгэлд үлдээнэ).
    */
-  opts?: { strict?: boolean },
+  /**
+   * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `persist` — сүүлийн жаазыг ХӨТЧИЙН КЭШЭЭС (`sheetCache`, IndexedDB) авч болно:
+   *    НЭГ тандалт серверийн өгөгдөл өөрчлөгдөөгүйг батлах үед л. ЗӨВХӨН уншдаг самбар (`planProgress` · `sheetShared`)
+   *    `fields`-тэй өгнө; `strict` (бичих) ба `atDay` (тодорхой агшин) үед ҮЛ ХАМААРНА — үргэлж серверээс.
+   */
+  opts?: { strict?: boolean; persist?: boolean },
 ): Promise<{
   rows: SheetRow[];
   asOf: number | null;
@@ -849,27 +897,26 @@ export async function loadRows(
      хоцрол мэдрэгддэг газар. Дашбоардын олон багцын (`fields`-тэй) уншилтад `gun` дүүрсэн багцуудын
      лавлахыг дэмий татахгүй (хэмжилт: 10 хуудсанд +6 хүсэлт, +1.2 МБ). */
   if (tree.length > 0 && !fields?.length) loadBaseKeys(pkg, sc).catch(() => {});
-  const where =
-    atDay && sc.f.fillDate
-      ? dayFilter(sc.f.fillDate, atDay)
-      /* ⚠️ `tree.length` дамжуулна — `latestWhere` огноогүй мөрийг жаазанд нь
-         нэгтгэх эсэхийг ЗӨВХӨН тэр уртаар шалгаж шийднэ. */
-      : await latestWhere(pkg, sc, tree.length);
-  const feats: Feature[] = [];
-  for (let offset = 0; ; ) {
-    const j = await agsFetch(`${pkg.url}/query`, {
-      where,
-      outFields: fields?.length ? fields.join(",") : "*",
-      returnGeometry: "false",
-      orderByFields: `${sc.f.oid} ASC`,
-      resultRecordCount: "2000",
-      resultOffset: String(offset),
-    });
-    const fs = (j.features || []) as Feature[];
-    feats.push(...fs);
-    if (!j.exceededTransferLimit || fs.length === 0) break;
-    offset += fs.length;
-  }
+  /* ⚠️ 2026-10-22: `persist` (дээрх `opts`-ийн ⚠️) — тандалт таарвал хадгалсан `where` + мөр (сүлжээгүй), эс бөгөөс
+     ДОРХ ЯГ ТЭР зам (тандалтын max нь `latestWhere`-ийн max-ыг орлоно). Цаашхи боловсруулалт (жааз · гүн · мөр) хоёр
+     замд ИЖИЛ — тоо өөрчлөгдөхгүй (`sheetCache.check` · амьд тулгалт). */
+  const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;
+  /* ⚠️ Түлхүүрт `tree.length` — `latestWhere`-ийн огноогүй хэлтэрхийн шийдвэр зураглалын уртаас хамаардаг (кодын
+     `bagts.trees.ts` солигдвол хадгалсан `where` хүчингүй) */
+  const { where, feats } = persist
+    ? await persistedFrame(`${pkg.url}|${tree.length}`, fields, () => probeSheet(pkg, sc), async (sig) => {
+      const w = await latestWhere(pkg, sc, tree.length, sig ? sig.mx : undefined);
+      return { where: w, feats: await fetchFrame(pkg, sc, w, fields) };
+    })
+    : await (async () => {
+      const w =
+        atDay && sc.f.fillDate
+          ? dayFilter(sc.f.fillDate, atDay)
+          /* ⚠️ `tree.length` дамжуулна — `latestWhere` огноогүй мөрийг жаазанд нь
+             нэгтгэх эсэхийг ЗӨВХӨН тэр уртаар шалгаж шийднэ. */
+          : await latestWhere(pkg, sc, tree.length);
+      return { where: w, feats: await fetchFrame(pkg, sc, w, fields) };
+    })();
   /* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): ОГНООТОЙ ЖААЗГҮЙ хуудас (`where` нь ЯГ `fld IS NULL` — b42_12f: 1,593 мөр) —
      энэ татлага нь `baseFetch(…, "null")`-тай ИЖИЛ олонлог (ижил where · `oid ASC` · 2000-ын хуудаслалт · ижил зогсолт)
      бөгөөд `oid`/`no`/`work` багана агуулсан бол суурь лавлахын кэшийг (`baseKeyCache`) эндээс дулаацуулна — урьд нь ЯГ

@@ -76,7 +76,9 @@ export function loadSheetShared(pkg: Pkg, kind: SheetKind): Promise<SharedSheet>
        ирж төрлөө өргөжүүлдэг (`upgrade`) — дараа нь л битүүмжилж татна. */
     await Promise.resolve();
     want.sealed = true;
-    const { rows } = await loadRows(pkg, sc, undefined, sharedFields(sc, want.kind));
+    /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `persist` — хуудас өөрчлөгдөөгүй бол (НЭГ тандалт) хөтчийн кэшээс
+       (`sheetCache`); зөрүүний 24 хуудас (10.7 МБ) нээлт бүрд дахин татагдахгүй. */
+    const { rows } = await loadRows(pkg, sc, undefined, sharedFields(sc, want.kind), { persist: true });
     return { sc, rows };
   })();
   const entry: Entry = { p, at: Date.now(), want };

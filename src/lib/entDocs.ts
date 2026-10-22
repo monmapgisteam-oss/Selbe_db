@@ -1,5 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_DATA } from '@/lib/services/entMap';
+import { ENT_SERVER } from '@/lib/entInterceptor';
+import { clearMetaCache } from '@/lib/metaCache';
 import { AUTH } from '@/lib/services/env';
 import { authToken, ensureFreshToken } from '@/lib/authToken';
 import { currentUser } from '@/lib/who';
@@ -109,13 +110,18 @@ async function post<T>(path: string, body: FormData | URLSearchParams): Promise<
  * ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН үйлчилгээ (`entMap.ENT_DATA`) org-only хуваалцсан бол JS API-ийн
  *    давхарга (газрын зураг · ноорог/эрхийн FeatureLayer) ч энэ токеноор уншина — IdentityManager-т
  *    бүртгэнэ. REST зам (`query.ts`) нь `entSession()`-ийг өөрөө ашигладаг тул үүнээс хамаарахгүй.
+ * ⚠️ 2026-10-22 (гүйцэтгэл, `AuthGate`-ийн замтай ИЖИЛ): серверийн үндэс нь `entInterceptor.ENT_SERVER` — interceptor
+ *    түүнийг «нэвтэрсэн» гэж таньж (`sessionUrls`) үйлчилгээ бүрийн ЭХНИЙ хүсэлтийн өмнө итгэмжлэлийг бүртгэнэ (урьд
+ *    `findCredential` үйлчилгээ бүрийг тусад нь шаарддаг тул эхний хүсэлт бүр 499 → дахин илгээгддэг байв).
+ *    `userId` — итгэмжлэлд хэрэглэгч тодорхой (метагийн кэшийн түлхүүр, `findCredential(url, userId)`).
+ *    Нэвтрэлт солигдсон тул давхаргын метагийн кэш хаягдана.
  */
 async function registerEntToken(s: Sess): Promise<void> {
-  if (!ENT_DATA) return;
+  if (!ENT_SERVER) return;
+  clearMetaCache();
   try {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
-    const server = ENT_DATA.replace(/\/rest\/services\/.*$/i, '/rest/services');
-    esriId.registerToken({ server, token: s.token, expires: s.expires });
+    esriId.registerToken({ server: ENT_SERVER, token: s.token, expires: s.expires, userId: s.user });
   } catch {
     /* JS API ачаалагдаагүй (Node/тест) — REST зам хэвээр ажиллана */
   }
@@ -138,6 +144,8 @@ export async function entSignIn(username: string, password: string): Promise<voi
 
 export function entSignOut(): void {
   sess = null;
+  /* ⚠️ 2026-10-22: нэвтрэлт солигдсон — давхаргын метагийн кэш (`metaCache`) хуучин хэрэглэгчийн эрхээр үлдэхгүй */
+  clearMetaCache();
   emit();
 }
 

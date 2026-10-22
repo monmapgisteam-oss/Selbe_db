@@ -33,6 +33,7 @@ import type SceneView from '@arcgis/core/views/SceneView';
 import type FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 
 import { LAYER_BY_ID, layerUrl, oidOf, TD } from '@/lib/services';
+import { mapLayer } from '@/components/lazyLayers';
 import { t as tr } from '@/lib/i18nCore';
 import {
   AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, buildingPeople, classOf, damageCost, queryRingsPaged,
@@ -581,7 +582,9 @@ export async function damageOf(
     if (!def) continue;
     /* ⚠️ Гол/усан сан нь үерийн ЭХ УУЛ, хохирогч БИШ (`FLOOD_SKIP_IDS`) */
     if (kind === 'flood' && FLOOD_SKIP_IDS.has(id)) continue;
-    const fl = view.map?.findLayerById(id) as FeatureLayer | undefined;
+    /* ⚠️ 2026-10-22: `mapLayer` — нуугдсан давхарга Map-д ОРООГҮЙ байж болно (`MapCanvas` lazy, `lazyLayers.ts`); үндсэн
+       багц (`ASSESS_IDS`) нь ихэвчлэн унтраалттай тул `findLayerById` тэднийг чимээгүй алгасаж «эрсдэлгүй» гэх байв. */
+    const fl = mapLayer(view.map, id) as FeatureLayer | null;
     if (!fl || typeof fl.queryFeatures !== 'function') continue;
     const geom: DamageRow['geom'] = def.geom === 'line' ? 'line' : def.geom === 'point' ? 'point' : 'area';
 

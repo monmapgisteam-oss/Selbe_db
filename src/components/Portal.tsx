@@ -46,7 +46,7 @@ import { queryStats, count, sum } from '@/lib/query';
 import { loadHeadline, loadHousing, POPULATION_FIELD } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
-  PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
+  PLAN_LAYER_IDS, LAYER_BY_ID, groupOf,
   ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER,
   PLAN_ALWAYS_ON_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS,
   type ViewKey,
@@ -172,6 +172,8 @@ import { useFocusTrap } from '@/lib/useFocusTrap';
 
 /** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
 const EMPTY_BADGES: NavBadges = {};
+/** ⚠️ 2026-10-22: нуугдмал самбарын (`hesegET`) тоо — татахгүй, «ачаалж буй» (хоосон Map-ыг уналт гэж зурахгүй) */
+const TOTALS_IDLE = { state: 'loading', data: null, error: null } as const;
 /**
  * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ БИЧИЛТИЙН (`setNavDirty`-ийн `-send`/`-apply` түлхүүртэй) тугуудын нэрс — «Гүйцэтгэл
  *    бөглөх»-ийн илгээлт (`fillnew-send`), «Гүйцэтгэлийн хяналт»-ын шийдвэр (`hyanalt-apply`), нэмэлт ажил буулгалт
@@ -756,14 +758,13 @@ function PortalContent(
    */
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
-  const catalogIds = useMemo(
-    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
-    //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
-    () => CATALOG_LAYER_IDS,
-    [],
-  );
-  // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
-  const totals = usePlanTotals(zone, !standalone, catalogIds);
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): урьд нь каталогийн БҮХ 158 давхаргыг (~156 статистик хүсэлт) харагдац нээх
+     бүрд татдаг байв (2026-08-20: каталог бүх давхаргыг харуулдаг) — бүлгүүд хураалттай эхэлдэг, «Хэсэгчилсэн ЕТ»-д
+     самбар нуугдмал тул тэр тоог хэн ч хараагүй байхад. Одоо ЗӨВХӨН самбарын тойм (`ViewPanel.PlanOverview` —
+     `PLAN_LAYER_IDS`, «Ерөнхий мэдээлэл» л); каталог нээлттэй бүлгийнхээ тоог өөрөө татна (`LayerCatalog`-д
+     `totals` өгөхгүй), сонгосон давхаргын самбар — өөрийнхөө. Бүгд давхарга тус бүрийн НЭГ кэшээс
+     (`totals.layerTotalsShared`) тул тоо зөрөхгүй, давхардсан хүсэлтгүй. */
+  const totals = usePlanTotals(zone, !standalone && view === 'plan', PLAN_LAYER_IDS);
 
   /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
@@ -1534,9 +1535,9 @@ function PortalContent(
               {catOpen && (
                 <div className={s.catPop}>
                   <ErrorBoundary scope="view" label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
+                  {/* ⚠️ 2026-10-22: `totals` ӨГӨХГҮЙ — нээлттэй бүлгийнхээ тоог л өөрөө татна (дээрх `totals`-ийн ⚠️) */}
                   <LayerCatalog
                     view="plan"
-                    totals={totals}
                     visible={visible}
                     setVisible={setVisible}
                     selected={layer}
@@ -1634,7 +1635,9 @@ function PortalContent(
                 <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
                 <ViewPanel
                   view={view}
-                  totals={totals}
+                  /* ⚠️ 2026-10-22: нуугдмал самбарт тоо татахгүй — хоосон (унтраалттай) Map-ыг «N давхарга татагдсангүй»
+                     (role=alert) гэж зурахгүйн тулд «ачаалж буй» төлөв (`TOTALS_IDLE`) */
+                  totals={view === 'plan' ? totals : TOTALS_IDLE}
                   visible={visible}
                   setVisible={setVisible}
                   zone={zone}

@@ -54,7 +54,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
+
 import { Empty, Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 /* ⚠️ 2026-10-06 (аудит): `@/modules/Dashboard`-аас БИШ — тэр нь Dashboard-ын бүх графыг (~1.8 МБ,
@@ -254,7 +254,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const [visible, setVisible] = useLayerPicks(base);
   const [layerSel, setLayerSel] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, layerOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
 
   /**
    * НҮХЭН ЖОРЛОНГИЙН ТОО — ЗӨВХӨН тоолно (`returnCountOnly`), нэг ч атрибут
@@ -647,7 +648,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 */}
               <LayerCatalog
                 view="irged"
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}

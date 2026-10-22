@@ -16,7 +16,7 @@ import {
   LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
-import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, type Totals } from '@/lib/totals';
+import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, useLazyTotals, type Totals } from '@/lib/totals';
 import { POPULATION_FIELD } from '@/lib/live';
 import { num, text, shade } from '@/lib/format';
 import { toggleIsolate, zoomWhereFor, type Iso } from './viewPanelLogic';
@@ -50,6 +50,8 @@ const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
 /**
  * ⚠️ Тоо, хэмжээг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
  * Каталогийн багана ба энэ самбар ижил тоо харуулах ёстой.
+ * ⚠️ 2026-10-22: `totals` нь зөвхөн тоймын (`PLAN_LAYER_IDS`) давхаргууд; сонгосон давхаргын самбар (`LayerDashboard`)
+ * өөрийн давхаргаа давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`) уншина — каталогтой нэг агшны тоо.
  */
 export function ViewPanel({
   view,
@@ -122,7 +124,6 @@ export function ViewPanel({
       {def ? (
         <LayerDashboard
           d={def}
-          totals={totals}
           zone={zone}
           on={visible.includes(def.id)}
           toggle={() =>
@@ -926,14 +927,12 @@ function LayerTypeCharts({
  */
 function LayerDashboard({
   d,
-  totals,
   zone,
   on,
   toggle,
   onBack,
 }: {
   d: LayerDef;
-  totals: Async<Map<string, Totals>>;
   zone: string | null;
   on: boolean;
   toggle: () => void;
@@ -1021,7 +1020,11 @@ function LayerDashboard({
     pick(k, item ? groupWhere(f.field, item) : null);
   };
 
-  const t = totals.state === 'ready' ? totals.data.get(d.id) : undefined;
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): ЭНЭ давхаргын тоо — давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`).
+     `Portal` самбарт одоо зөвхөн тоймын (`PLAN_LAYER_IDS`) тоог татдаг тул каталогоос сонгосон бусад давхарга (33)
+     тэр Map-д байхгүй — урьд нь каталогийн бүх 158-ыг урьдчилж татдаг байв. Каталог/тоймтой ижил агшны тоо. */
+  const one = useLazyTotals(zone, [d.id]);
+  const t = one.map.get(d.id);
   const qty = t ? qtyText(d, t.q) : null;
 
   /**
@@ -1066,10 +1069,9 @@ function LayerDashboard({
           </div>
         </div>
 
-        {totals.state === 'error' ? (
-          <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={totals.retry} />
-        ) : totals.state === 'ready' && !t ? (
-          /* ⚠️ 2026-09-30: хэсэгчилсэн Map-д энэ давхарга алга (унасан) — урьд нь «…» мөнхөд */
+        {one.failed.length > 0 ? (
+          /* ⚠️ 2026-09-30: унасан давхарга — урьд нь «…» мөнхөд. 2026-10-22: унасныг `useLazyTotals` хэлнэ;
+             «Дахин оролдох» нь бүх тоог шинэ эринээр (`retryTotals`) */
           <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={retryTotals} />
         ) : (
           <Stats cols={avg != null ? 3 : 2}>

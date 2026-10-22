@@ -11,7 +11,7 @@ import { LayerSwatch } from './LayerSwatch';
 import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
-import { qtyText, whereFor, layerStats, totalsFailedOf, retryTotals } from '@/lib/totals';
+import { qtyText, whereFor, layerStats, totalsFailedOf, retryTotals, useLazyTotals } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroupEx, groups, groupWhere } from '@/lib/query';
 import {
@@ -30,6 +30,9 @@ import s from './catalog.module.css';
  *
  * ⚠️ Тоо, хэмжээг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
  * дамжуулна — самбарын дүнтэй зөрөх боломжгүй байх ёстой.
+ * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `totals` ӨГӨӨГҮЙ бол (Portal · «Ерөнхий дашбоард») НЭЭЛТТЭЙ бүлгийн мөрүүдийн
+ * тоог л өөрөө татна (`useLazyTotals`) — бүлгүүд хураалттай эхэлдэг тул урьд нь хэн ч хараагүй 158 давхаргын тоо
+ * (~156 хүсэлт) харагдац нээх бүрд явдаг байв. Самбартай зөрөхгүй: хоёулаа давхарга тус бүрийн НЭГ кэшээс.
  *
  * Мөр бүр ХОЁР үйлдэлтэй (2026-07-31, хэрэглэгчийн хүсэлт — чагт хасагдсан):
  *   · нэр — зурагт харуулах/нуух (багана нээлттэй хэвээр)
@@ -70,7 +73,11 @@ export const LayerCatalog = memo(function LayerCatalog({
    * булагдана (`catalogGroups`-ын тайлбарыг үз).
    */
   view: CatalogView;
-  totals: Async<Map<string, Totals>>;
+  /**
+   * Бүх мөрийн тоо/хэмжээ (дуудагч татсан). ⚠️ 2026-10-22: ӨГӨӨГҮЙ бол нээлттэй бүлгийнхийг л өөрөө татна
+   * (компонентын толгойн ⚠️).
+   */
+  totals?: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   selected: string | null;
@@ -229,6 +236,30 @@ export const LayerCatalog = memo(function LayerCatalog({
     ...forcedAll.filter((id) => shown.includes(id)),
   ]).size;
 
+  /*
+   * ⚠️ 2026-10-22: ТОО/ХЭМЖЭЭ — дуудагчийн `totals` эсвэл (өгөөгүй бол) ЗӨВХӨН ДЭЛГЭЦЭД ГАРСАН мөрүүдийнх: нээлттэй
+   *    бүлэг (хайлт идэвхтэй бол таарсан бүх бүлэг — доорх `open`-той НЭГ дүрэм). Бүлэг нээхэд шинэ мөрүүд л татагдана,
+   *    ирсэн нь хэвээр (`useLazyTotals`). Доорх зураглал хоёр эх сурвалжид нэг хэлбэртэй (`tot`).
+   */
+  const lazyIds = totals ? [] : catGroups.flatMap((g) => (needle || !shut.has(g.key) ? g.ids.filter((id) => hit(id, g.title)) : []));
+  const lazy = useLazyTotals(zone, lazyIds, !totals);
+  const tot = totals
+    ? {
+      map: totals.state === 'ready' ? totals.data : null,
+      loading: totals.state === 'loading',
+      error: totals.state === 'error' ? totals : null,
+      /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л — доорх толгойн тоолуурын ⚠️ */
+      failed: totals.state === 'ready' ? totalsFailedOf(totals.data) : [],
+      rowLoading: (_id: string) => totals.state === 'loading',
+    }
+    : {
+      map: lazy.map,
+      loading: lazy.pending > 0,
+      error: null,
+      failed: lazy.failed,
+      rowLoading: (id: string) => !lazy.failed.includes(id),
+    };
+
   return (
     <aside data-report-skip="" className={`${s.drawer} ${embedded ? s.embedded : ''} mapCatalog`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
@@ -252,19 +283,19 @@ export const LayerCatalog = memo(function LayerCatalog({
           <span className={s.sub}>
             {num(shown.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
-            {totals.state === 'loading' && <> {tr('· тоолж байна…')}</>}
+            {tot.loading && <> {tr('· тоолж байна…')}</>}
             {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
                 дахин оролдох гарц өгнө. Товч нь текстэн холбоос маягтай тул
                 css модульд шинэ класс нэмэлгүй inline-аар зурав. */}
-            {totals.state === 'error' && (
+            {tot.error && (
               <>
                 {' · '}<em className={s.rowWarn}>{tr('тоо татагдсангүй')}</em>
-                {totals.retry && (
+                {tot.error.retry && (
                   <>
                     {' '}
                     <button
                       type="button"
-                      onClick={totals.retry}
+                      onClick={tot.error.retry}
                       style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
                     >
                       {tr('дахин оролдох')}
@@ -277,11 +308,11 @@ export const LayerCatalog = memo(function LayerCatalog({
                 «бэлэн» гэж буцаадаг тул унасан мөрүүд ЧИМЭЭГҮЙ «—» (мэдээлэлгүй мэт) харагддаг байв.
                 Тоог ил хэлж, дахин татах гарц өгнө (`totals.totalsFailedOf` · `retryTotals`). */}
             {(() => {
-              if (totals.state !== 'ready') return null;
+              if (!tot.failed.length) return null;
               /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л, давхардалгүй — урьд нь `usePlanTotals`-ын
                  бүх id-гаас (каталогт харагдахгүй ч хүссэн) тоолж «152 нийт · 153 давхарга татагдсангүй» гэж
                  нийтээс ИХ тоо гардаг байв. */
-              const bad = new Set(totalsFailedOf(totals.data));
+              const bad = new Set(tot.failed);
               /* ⚠️ 2026-10-19 (review): ХАЙЛТААС ҮЛ ХАМААРНА — каталогийн БҮХ (шүүгээгүй) мөрөөс; урьд нь `shown`
                  (хайлтаар шүүсэн) тул бичих бүрд уналтын тоо өөрчлөгдөж, хайлтад таараагүй уналт нуугддаг байв */
               const n = new Set(catGroups.flatMap((g) => g.ids).filter((id) => bad.has(id))).size;
@@ -371,8 +402,7 @@ export const LayerCatalog = memo(function LayerCatalog({
          * мөр бүрд ирэх бүрд нь дүүрнэ (ачаалж байхад «…», алдвал «—»).
          */}
         {(() => {
-          const map = totals.state === 'ready' ? totals.data : null;
-          const loadingTotals = totals.state === 'loading';
+          const map = tot.map;
           return (
             <>
               {/* ⚠️ ХООСОН ХАЙЛТ (2026-09-23): нэг ч давхарга таарахгүй бол жагсаалт
@@ -485,7 +515,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
-                                {t ? tr('{0} ш', num(t.n)) : (loadingTotals ? '…' : '—')}
+                                {t ? tr('{0} ш', num(t.n)) : (tot.rowLoading(d.id) ? '…' : '—')}
                                 {q ? ` · ${q}` : ''}
                                 {zone && d.noZone && <em className={s.rowWarn}> {tr('· бүсгүй')}</em>}
                               </span>

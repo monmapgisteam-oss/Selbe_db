@@ -10,7 +10,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
+
 import { useAsync } from '@/lib/useAsync';
 import {
   loadSensors, RANGES, SENSOR_STALE_H, withGaps, type RangeKey, type SensorLive, type MetricSeries,
@@ -307,7 +307,8 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   return (
@@ -354,7 +355,6 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <div className={o.catPanel}>
               <LayerCatalog
                 view="iot"
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}

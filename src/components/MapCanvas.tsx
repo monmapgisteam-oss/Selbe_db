@@ -58,6 +58,10 @@ import {
 import { remapUrl } from '@/lib/services/entMap';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
+/* ⚠️ 2026-10-22 (гүйцэтгэл): давхаргыг Map-д ХЭРЭГТЭЙ үед нь л нэмнэ — `lazyLayers.ts`-ийн ⚠️ */
+import {
+  LAZY_END, lazyRegister, mapLayer, ensureMapLayer, lazyTop, lazyKids, lazyShowVisible, lazyAbsent, lazyReplace,
+} from './lazyLayers';
 
 /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбарыг JS API-ийн давхаргад эх нэрээр харуулах хөрвүүлэгч —
    ямар ч FeatureLayer үүсэхээс ӨМНӨ (`lib/entInterceptor.ts`). Node/SSR-д чимээгүй алгасна. */
@@ -990,6 +994,10 @@ function recreateFailedLayers(map: Map | null | undefined): boolean {
     l.loadStatus === 'failed'
     && RECREATE_TYPES.has(l.type)
     && !String(l.id).startsWith('scene:')).toArray();
+  const freshOf = (old: Layer): Layer | null => {
+    const clone = (old as unknown as { clone?: () => Layer }).clone;
+    try { return typeof clone === 'function' ? clone.call(old) : rebuild(old); } catch { return null; }
+  };
   let n = 0;
   for (const old of failed) {
     const parent = (old as unknown as { parent?: { layers?: __esri.Collection<Layer> } }).parent;
@@ -997,17 +1005,27 @@ function recreateFailedLayers(map: Map | null | undefined): boolean {
     if (!coll || typeof coll.indexOf !== 'function') continue;
     const at = coll.indexOf(old);
     if (at < 0) continue;
-    let fresh: Layer | null;
-    const clone = (old as unknown as { clone?: () => Layer }).clone;
-    try { fresh = typeof clone === 'function' ? clone.call(old) : rebuild(old); } catch { continue; }
+    const fresh = freshOf(old);
     if (!fresh) continue;
     fresh.id = old.id; // ⚠️ `findLayerById`-аар хайдаг бүх эффект ижил id-гаар олно
     /* ⚠️ 2026-10-19: хэрэглэгч ӨӨРӨӨ дахин оролдуулсан — 3D-ийн гацаа тайлагч (`unstick`) үүнийг ЦУЦЛАХГҮЙ */
     retriedLayers.add(fresh);
     coll.remove(old);
     coll.add(fresh, at);
+    lazyReplace(map, old, fresh); // ⚠️ 2026-10-22: сан (`lazyLayers`) шинэ инстанцыг заана
     /* ⚠️ Хуучныг `destroy()` ХИЙХГҮЙ — харагдацын түр дарлагын нөөц (`styleBackup` г.м.)
        түүнийг барьж байж болно; унасан инстанц нөөц бараг эзэлдэггүй, GC цэвэрлэнэ. */
+    n += 1;
+  }
+  /* ⚠️ 2026-10-22: Map-д хараахан ОРООГҮЙ ч асуулгаар (`mapLayer` → `queryFeatures`) ачаалагдаж УНАСАН сангийн
+     инстанц — Map-д орохоос нь өмнө шинээр сольно (урьд нь бүгд Map-д байсан тул дээрх давталт тэднийг ч барьдаг байв). */
+  for (const old of lazyAbsent(map)) {
+    if (old.loadStatus !== 'failed' || !RECREATE_TYPES.has(old.type)) continue;
+    const fresh = freshOf(old);
+    if (!fresh) continue;
+    fresh.id = old.id;
+    retriedLayers.add(fresh);
+    lazyReplace(map, old, fresh);
     n += 1;
   }
   return n > 0;
@@ -1307,6 +1325,8 @@ const mapFields = (d: LayerDef): string[] => {
   return [...fs];
 };
 
+/* ⚠️ 2026-10-22: үр дүн нь Map-д ШУУД биш САНД (`lazyLayers.ts`) орно — дараалал нь Map дахь зэрэглэл хэвээр; Map-д
+   анх ил болоход л нэмэгдэнэ. Давхаргыг id-аар авахдаа `mapLayer`/`ensureMapLayer` (`findLayerById` нь Map-д байгааг л). */
 function buildLayers(uniform = false): Layer[] {
   const L: Layer[] = [];
 
@@ -1627,7 +1647,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
     if (!view || view.destroyed || !view.map) return;
     const is3d = view.type === '3d';
     const onlyList = hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only];
-    view.map.layers.forEach((l) => {
+    /* ⚠️ 2026-10-22: Map-д хараахан ОРООГҮЙ (lazy) давхаргад ч тавина — асаагдаж Map-д орох агшинд шүүлт бэлэн (`lazyTop`) */
+    lazyTop(view.map).forEach((l) => {
       if (NO_HIGHLIGHT.has(l.id) || !('featureEffect' in l)) return;
       const fl = l as FeatureLayer;
       // ⚠️ `visible` шалгахгүй: нуугдсан давхаргын эффектийг цэвэрлэх боломжтой
@@ -1806,6 +1827,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
    * ⚠️ 2D-д `refresh()` хангалттай; 3D-д мөн ижил (SceneView нь ижил
    * FeatureLayer-ийг хуваалцдаг). Давхарга олдоогүй бол ЧИМЭЭГҮЙ өнгөрнө —
    * тухайн давхарга унтраалттай байхад алдаа шидэх нь утгагүй.
+   * ⚠️ 2026-10-22: `findLayerById` (Map-д БАЙГАА л) хангалттай — Map-д ороогүй (lazy) давхаргад LayerView/кэш байхгүй,
+   *    Map-д орохдоо өгөгдлөө шинээр татна.
    */
   const refreshLayer = useCallback((layerId: string) => {
     const l = view && !view.destroyed
@@ -2170,7 +2193,8 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => {
     const t = ++zoneMaskToken.current;
     if (!ready || dim !== '2d' || !zone) { setZoneMask(null); return; }
-    const zl = mapRef.current?.findLayerById(ZONE_LAYER.id) as FeatureLayer | undefined;
+    /* ⚠️ 2026-10-22: `mapLayer` — бүсийн давхарга унтраалттай (Map-д ороогүй) ч асуулга явна */
+    const zl = mapLayer(mapRef.current, ZONE_LAYER.id) as FeatureLayer | null;
     if (!zl) { setZoneMask(null); return; }
     (async () => {
       try {
@@ -2203,7 +2227,7 @@ export const MapCanvas = memo(function MapCanvas({
    */
   useEffect(() => {
     if (!ready) return;
-    const l = mapRef.current?.findLayerById('tgl') as FeatureLayer | undefined;
+    const l = mapLayer(mapRef.current, 'tgl') as FeatureLayer | null; // ⚠️ 2026-10-22: Map-д ороогүй ч (lazy)
     const view = viewRef.current;
     /* ⚠️ Цэгийн SVG дүрс ЗӨВХӨН цэгийн давхаргад (2026-09-17: `tgl` одоо ТАЛБАЙ,
        `type` талбаргүй — unique-value renderer талбайд тавибал юу ч зурагдахгүй). */
@@ -2482,11 +2506,24 @@ export const MapCanvas = memo(function MapCanvas({
     if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
       /* ⚠️ 2026-10-09: хувилбарыг @arcgis/core-оос (SuitMap-тай ижил) — 4.35 руу шинэчлэхэд worker/WASM таарахгүй болохоос сэргийлнэ */
       esriConfig.assetsPath = `https://js.arcgis.com/${String(arcgisVersion).split(".").slice(0, 2).join(".")}/@arcgis/core/assets`;
+      /* ⚠️ 2026-10-22 (гүйцэтгэл, `lazyLayers.ts`-ийн ⚠️): `buildLayers` нь ЦОР ГАНЦ тодорхойлолт хэвээр, гэхдээ Map-д
+         эхэндээ зөвхөн ортофото (индекс 0 — меш/эрсдэлийн «ортофотогийн дараа» байрлалын тулгуур) ба `LAZY_END`
+         тэмдэгт ордог; бусад нь санд (pool) хүлээж, анх ил болоход л нэмэгдэнэ (харагдацын эффектийн
+         `lazyShowVisible`). Урьд нь ~180 давхарга бүгд Map-д орж, нуугдсан ч LayerView + метадата (~410 хүсэлт)
+         үүсгэдэг байв. Ортофотогийн СОНГООГҮЙ нислэгийн тайл (ортофото унтраалттай бол бүгд — «Ерөнхий дашбоард»,
+         «Ерөнхий төлөвлөгөө») мөн хүлээнэ: `meshVer` солигдох / ортофото асахад нэмэгдэнэ. */
+      const all = buildLayers(uniform);
+      const imagery = all.find((l) => l.id === IMAGERY_ID) as GroupLayer | undefined;
+      const kids = imagery ? imagery.layers.toArray() : [];
+      if (imagery) {
+        imagery.layers.removeMany(kids.filter((c) => !orthoRef.current || orthoFlightVer(c.id) !== meshVerRef.current));
+      }
       mapCache[mapKey] = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
-        layers: buildLayers(uniform),
+        layers: [...(imagery ? [imagery] : []), new GraphicsLayer({ id: LAZY_END, listMode: 'hide', visible: false })],
       });
+      lazyRegister(mapCache[mapKey], all, imagery ? [{ group: imagery, kids }] : []);
     }
     mapRef.current = mapCache[mapKey];
     /* ⚠️ 2026-10-09 (аудит №2): кэшийн Map-д өмнө нь УНАСАН давхаргыг шинээр үүсгэнэ — View
@@ -3346,12 +3383,13 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => () => {
     const map = mapRef.current;
     if (map) {
+      /* ⚠️ 2026-10-22: `mapLayer` — дарлагыг Map-д хараахан ОРООГҮЙ (lazy) давхаргад ч тавьдаг тул буцаалт ч тэднийг олно */
       for (const [id, r] of Object.entries(styleBackup.current)) {
-        const fl = map.findLayerById(id) as FeatureLayer | null;
+        const fl = mapLayer(map, id) as FeatureLayer | null;
         if (fl && 'renderer' in fl) fl.renderer = r as FeatureLayer['renderer'];
       }
       for (const [id, v] of Object.entries(defaultOpacityRef.current)) {
-        const l = map.findLayerById(id);
+        const l = mapLayer(map, id);
         if (l && 'opacity' in l) l.opacity = v;
       }
     }
@@ -3611,7 +3649,8 @@ export const MapCanvas = memo(function MapCanvas({
     const lift = dim !== '2d';
     for (const d of LAYERS) {
       if (!d.id.startsWith('iot:')) continue;
-      const l = map.findLayerById(d.id) as __esri.FeatureLayer | undefined;
+      /* ⚠️ 2026-10-22: Map-д ороогүй (lazy) мэдрэгчид ч горимын симболыг тавина — асаахад шууд зөв */
+      const l = mapLayer(map, d.id) as __esri.FeatureLayer | null;
       if (!l) continue;
       l.renderer = simple(lift ? radarSymbol(d.hue) : symbolOf(d)) as never;
       /**
@@ -3655,7 +3694,7 @@ export const MapCanvas = memo(function MapCanvas({
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
       for (const d of defs) {
         if (!alive) return;
-        const fl = map.findLayerById(d.id) as FeatureLayer | null;
+        const fl = mapLayer(map, d.id) as FeatureLayer | null; // ⚠️ 2026-10-22: Map-д ороогүй (lazy) ч
         if (!fl || authedLayers.has(fl)) continue;
         /* ⚠️ Хуучин пин (HMR/кэшийн Map) үлдсэн бол арилгана — эс бөгөөс хуучин токен давамгайлна */
         if (fl.customParameters?.token) {
@@ -3704,7 +3743,7 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !ready) return;
     for (const d of LAYERS) {
       if (!d.id.startsWith('infra:')) continue;
-      const l = map.findLayerById(d.id) as __esri.FeatureLayer | undefined;
+      const l = mapLayer(map, d.id) as __esri.FeatureLayer | null; // ⚠️ 2026-10-22: Map-д ороогүй (lazy) ч
       if (!l) continue;
       l.elevationInfo = ON_GROUND;
       /**
@@ -4474,7 +4513,10 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (!svm || !map || !sketch) return;
     const on = new Set(visibleKey.split(','));
-    const layers = map.allLayers.filter((l) => l.type === 'feature' && on.has(l.id)).toArray();
+    /* ⚠️ 2026-10-22: ил давхаргыг ЭНД Map-д нэмнэ (`ensureMapLayer`) — энэ эффект харагдацын эффектээс ӨМНӨ ажилладаг
+       тул шинээр асаасан давхарга (lazy) Map-д хараахан ороогүй байж наалдалтын эх сурвалжаас хасагдах байв. 2D-д
+       `visible`-ийн id бүр харагдацын эффектээр ч ил болдог (snapping зөвхөн 2D) — илүү давхарга нэмэгдэхгүй. */
+    const layers = [...on].map((id) => ensureMapLayer(map, id)).filter((l): l is Layer => l?.type === 'feature');
     try {
       (svm.snappingOptions as unknown as { featureSources: unknown }).featureSources =
         layers.map((layer) => ({ layer, enabled: true })) as never;
@@ -4873,7 +4915,9 @@ export const MapCanvas = memo(function MapCanvas({
            Радиус нь бүлэг дотроо ижил тул нэг удаа хэлэхэд хангалттай. */
         let labelled = false;
         for (const id of g.ids) {
-          const fl = map.findLayerById(id) as FeatureLayer | null;
+          /* ⚠️ 2026-10-22: `mapLayer` — бүлгийн нуугдсан (Map-д ороогүй, lazy) давхаргын буфер ч урьдын адил зурагдана;
+             энэ эффект харагдацын эффектээс ӨМНӨ ажилладаг тул шинээр асаасан нь ч Map-д хараахан ороогүй байж болно */
+          const fl = mapLayer(map, id) as FeatureLayer | null;
           if (!fl) continue;
           try {
             /* ⚠️ `load()` ЗААВАЛ: ачаалагдаагүй давхаргын `queryFeatures` нь
@@ -4998,18 +5042,23 @@ export const MapCanvas = memo(function MapCanvas({
      */
     const elev = dim === '3d' ? ON_SCENE : ON_GROUND;
 
-    map.layers.forEach((l) => {
+    /* ⚠️ 2026-10-22 (гүйцэтгэл, `lazyLayers.ts`-ийн ⚠️): Map-д хараахан ОРООГҮЙ сангийн давхаргыг ч (`lazyTop`) ЭНД
+       давтана — бүс/өндрийн горим/дарлага/пульс урьдын адил БҮГДЭД тавигдана; ил болсныг нь давталтын ДАРАА
+       `lazyShowVisible` Map-д (`buildLayers`-ийн дарааллаар) нэмнэ. Урьд нь бүгд Map-д байсан (`map.layers.forEach`). */
+    lazyTop(map).forEach((l) => {
       /* `source:eh` шинээр ил болов — пульсийг where тавигдсаны ДАРАА (доор) эхлүүлнэ */
       let pulseEh = false;
       if (l.id === IMAGERY_ID) {
         l.visible = ortho;
         /* ⚠️ 2026-10-20: нислэгийн ортофото тайл — сонгосон нислэгийнх л ил (`ORTHO_FLIGHTS`, мештэй ижил сонголт) */
-        (l as GroupLayer).layers.forEach((c) => {
+        /* ⚠️ 2026-10-22: сонгоогүй нислэгийн тайл санд хүлээж байж болно (`lazyKids`) */
+        lazyKids(map, l).forEach((c) => {
           const v = orthoFlightVer(c.id);
           if (v) c.visible = v === meshVer;
         });
         return;
       }
+      if (l.id === LAZY_END) return; // ⚠️ 2026-10-22: сангийн дээд хилийн тэмдэгт (хоосон) — каталогт үл хамаарна
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
@@ -5236,6 +5285,8 @@ export const MapCanvas = memo(function MapCanvas({
       /* ⚠️ 2026-09-21: `source:eh`-ийн пульс — шүүлт тавигдсаны ДАРАА (дээрх дүрэм) */
       if (pulseEh) pulseLayer(l);
     });
+    /* ⚠️ 2026-10-22: ил болсон боловч Map-д ороогүй сангийн давхаргыг НЭМНЭ (шинж нь дээр аль хэдийн тавигдсан) */
+    lazyShowVisible(map);
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
     /* ⚠️ pulseIds/restartPulse санаатай ОРУУЛААГҮЙ — пульс нь зөвхөн давхарга ил
@@ -5255,7 +5306,8 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     if (!map || !ready) return;
     const over = opacity ?? {};
-    map.layers.forEach((l) => {
+    /* ⚠️ 2026-10-22: Map-д ороогүй (lazy) давхаргад ч — асаахад тунгалаг нь шууд зөв (`lazyTop`) */
+    lazyTop(map).forEach((l) => {
       if (!('opacity' in l) || l.id === IMAGERY_ID || l.id === 'sketch') return;
       // ⚠️ Пульсэлж буй (fadingRef) давхаргыг АЛГАСАХГҮЙ — пульс нь эх давхаргын
       //    opacity-д хүрдэггүй тул алгасвал «Эх үүсвэр»-ийн гулсуур үхмэл болно.
@@ -5281,6 +5333,8 @@ export const MapCanvas = memo(function MapCanvas({
     const pending = new Set<__esri.Layer>();
     const apply = () => {
       for (const rule of layerFilters) for (const id of rule.ids) {
+        /* ⚠️ 2026-10-22: `findLayerById` (Map-д БАЙГАА л) зориуд — `whenLayerView` Map-д байхыг шаардана; Map-д хожим
+           орсон (lazy) давхаргыг доорх `change` сонсогч дахин барина */
         const layer = map.findLayerById(id);
         if (!(layer instanceof FeatureLayer) || pending.has(layer)) continue;
         pending.add(layer);
@@ -5322,7 +5376,8 @@ export const MapCanvas = memo(function MapCanvas({
     });
     view.ui.add(w);
     /* ⚠️ Зарим давхарга swipe-ээс ХОЙНО нэмэгддэг (жиш. `overlap:*` — `PlanOverlap.tsx`
-       тооцоогоо дуусгаад) — `map.layers` солигдох бүрд хоёр талыг дахин онооно. */
+       тооцоогоо дуусгаад; ⚠️ 2026-10-22: сангийн давхарга ч анх ил болоход — `lazyLayers.ts`) — `map.layers`
+       солигдох бүрд хоёр талыг дахин онооно. */
     const h = map.layers.on('change', () => {
       w.leadingLayers.removeAll();
       w.leadingLayers.addMany(pick(lead));
@@ -5351,7 +5406,7 @@ export const MapCanvas = memo(function MapCanvas({
        ӨМНӨ давхаргыг унтраавал `alive=false` болж тэмдэг үүрд үлддэг байв. */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: давхарга унтрахад алдааны тэмдгийг синхрон нууна — ArcGIS давхаргын амьдралын мөчлөгтэй нэг эффектэд
     if (!on.has('mon:building')) { setProgError(false); setProgStale(false); return; }
-    const layer = map.findLayerById('mon:building') as FeatureLayer | null;
+    const layer = mapLayer(map, 'mon:building') as FeatureLayer | null; // ⚠️ 2026-10-22: сангаас ч (lazy)
     if (!layer) return;
     let alive = true;
     /**

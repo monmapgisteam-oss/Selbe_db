@@ -272,7 +272,9 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
          Урьд нь `*` (~60+ багана: блок бүрийн гүйцэтгэл · обьём · бодит огноо …) — 10 хуудас
          нийлээд ~71 МБ JSON; одоо ~1/6. Тоо ӨӨРЧЛӨГДӨХГҮЙ: `planCurve`/`planPct`/муж нь зөвхөн
          эдгээр талбарыг уншдаг (`planFields`-ийн ⚠️), бусад нь `loadRows`-д `null` болно. */
-      r = await retry(() => loadRows(pkg, s, undefined, planFields(s)));
+      /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `persist` — хуудас өөрчлөгдөөгүй бол (НЭГ тандалт) мөрийг хөтчийн кэшээс
+         (`sheetCache`); дахин нээлт бүрд 10 хуудас · 22.5 МБ JSON татаж задлахгүй. Тоо ИЖИЛ (амьд тулгалт). */
+      r = await retry(() => loadRows(pkg, s, undefined, planFields(s), { persist: true }));
     } catch (e) {
       failed.push({ key: pkg.key, group: bagtsKey(pkg.group) });
       console.warn(`[selbe] төлөвлөгөөт муруй: ${pkg.key} уншигдсангүй — багц/төслийн муруй гаргахгүй`, e);

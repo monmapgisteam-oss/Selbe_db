@@ -8,7 +8,7 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { usePlanTotals } from '@/lib/totals';
+
 import {
   Section, Note, Data, Empty, Rows, Bars, List, ListItem, PointCallout, SvgHoverMarker, calloutAlign,
 } from '@/components/ui';
@@ -519,7 +519,8 @@ export function PkgProg({ dim, setDim }: {
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   /**
@@ -809,7 +810,6 @@ export function PkgProg({ dim, setDim }: {
           <div className={o.catPanel}>
             <LayerCatalog
               view="monitor"
-              totals={catTotals}
               visible={visible}
               setVisible={setVisible}
               selected={layerSel}

@@ -195,7 +195,8 @@ assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   }
   for (const k of ['sc.f.des', 'sc.f.no', 'sc.f.work', 'sc.f.oid', 'sc.f.fillDate'])
     assert.ok(pf.includes(k), `planFields нь ${k}-ийг агуулах ёстой (planPct · loadRows)`);
-  assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\)\)/, 'муруй мөрийг planFields-ээр уншина');
+  /* ⚠️ 2026-10-22: хөтчийн кэш (`persist`) — талбарын жагсаалт ӨӨРЧЛӨГДӨӨГҮЙ, зөвхөн тандалттай кэш нэмэгдэв */
+  assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\), \{ persist: true \}\)/, 'муруй мөрийг planFields-ээр (persist) уншина');
 }
 
 /* ── ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ = муруйн ТӨГСГӨЛ ──

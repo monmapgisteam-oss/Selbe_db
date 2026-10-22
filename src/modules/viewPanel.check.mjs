@@ -51,7 +51,8 @@ assert.ok(vp.includes('LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).map
 
 /* 5 */
 assert.ok(vp.includes('const allN = missing.length ? null :'));
-assert.ok(vp.includes("totals.state === 'ready' && !t ? ("));
+/* ⚠️ 2026-10-22: сонгосон давхаргын тоо давхарга тус бүрийн кэшээс (`useLazyTotals`) — унасан бол «…» мөнхөд БИШ, «татагдсангүй» */
+assert.ok(vp.includes('const one = useLazyTotals(zone, [d.id]);') && vp.includes('{one.failed.length > 0 ? ('), 'унасан давхарга — Empty');
 
 /* 6 */
 assert.ok(vp.includes("const selKey = `${d.id}|${zone ?? ''}`;"));

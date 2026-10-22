@@ -45,6 +45,7 @@ import {
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { mapLayer } from '@/components/lazyLayers';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -53,7 +54,7 @@ import { Icon } from '@/components/Icon';
 import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip } from '@/components/ui';
 import { CHART, lineSegments } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
+
 import { useAsync } from '@/lib/useAsync';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
@@ -645,7 +646,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
 
   /* ── Горим ба хувилбар ── */
   const [mode, setMode] = useState<'now' | 'model'>('now');
@@ -1747,7 +1749,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       rows: p.band && !isFlood ? [bandRow(p.band)] : [],
     };
     setHazInfo(head);
-    const fl = viewRef.current?.map?.findLayerById(p.layerId) as __esri.FeatureLayer | undefined;
+    /* ⚠️ 2026-10-22: `mapLayer` — шинжилсэн давхарга нуугдмал (Map-д ороогүй, `lazyLayers.ts`) байж болно */
+    const fl = mapLayer(viewRef.current?.map, p.layerId) as __esri.FeatureLayer | null;
     if (!fl || p.oid == null || typeof fl.queryFeatures !== 'function') return;
     try {
       /* ⚠️ Геометрийг ҮЕРТ л татна (WM-д) — footprint-ийн гүнд хэрэгтэй */
@@ -2670,7 +2673,6 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           <div className={o.catPanel}>
             <LayerCatalog
               view="ersdel"
-              totals={catTotals}
               visible={visible}
               setVisible={setVisibleUser}
               selected={layerSel}

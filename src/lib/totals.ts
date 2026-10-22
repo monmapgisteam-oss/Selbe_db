@@ -11,7 +11,7 @@ import { queryStats, count, sum, arcgisPost, type Aoi } from './query';
 import { t as tr } from '@/lib/i18nCore';
 import { layerUrl, OID, oidOf, CATALOG_LAYER_IDS, LAYER_BY_ID, ZONE_LAYER, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 import { register } from './dataBus';
 
@@ -212,6 +212,11 @@ export const geomText = (d: LayerDef): string =>
  *
  * ⚠️ `enabled` нь «Барилгын хяналт» харагдацад хэрэгтэй: тэнд ЕТ-ийн давхарга
  * огт үзүүлэхгүй тул 29 хүсэлт явуулах нь дэмий.
+ *
+ * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): «нэг удаа, БҮГДИЙГ» нь ~156 хүсэлт болж, хэн ч хараагүй үед (каталогийн
+ * бүлгүүд хураалттай, «Хэсэгчилсэн ЕТ»-ийн самбар нуугдмал) харагдац нээх бүрд явдаг байв. Одоо дуудагч ХАРУУЛЖ БУЙ
+ * давхаргаа л асууна (`Portal` самбарын тойм — `PLAN_LAYER_IDS`, каталог — нээлттэй бүлэг `useLazyTotals`); тоо зөрөхгүй
+ * баталгаа нь «нэг Map» биш, давхарга тус бүрийн ХУВААЛЦСАН кэш (`layerTotalsShared`).
  */
 /**
  * SESSION КЭШ — нэг удаа татсан (бүс, давхаргын багц)-ын дүнг санана.
@@ -313,8 +318,141 @@ const totalsSubs = new Set<() => void>();
 
 export function dropTotalsCache(): void {
   totalsCache.clear();
+  /* ⚠️ 2026-10-22: давхарга тус бүрийн кэш ч (`layerTotalsShared`) — түлхүүрт эрин ордог ч санах ойг чөлөөлнө */
+  layerCache.clear();
+  layerDone.clear();
+  layerFail.clear();
   totalsEpochN += 1;
   for (const fn of totalsSubs) fn();
+  bumpLayers();
+}
+
+/* ══════════ ДАВХАРГА ТУС БҮРИЙН КЭШ (2026-10-22, гүйцэтгэлийн аудит) ══════════ */
+
+/**
+ * ДАВХАРГА ТУС БҮРИЙН АМЛАЛТ — `эрин|бүс|id` → `layerTotals`.
+ *
+ * ⚠️ ЯАГААД: урьд нь `Portal` · «Ерөнхий дашбоард» каталогийн БҮХ 158 давхаргын тоо/хэмжээг (~156 статистик хүсэлт)
+ *    харагдац НЭЭГДЭХ БҮРД татдаг байв — каталогийн бүлгүүд хураалттай эхэлдэг, «Хэсэгчилсэн ЕТ»-д самбар нуугдмал тул
+ *    тэр тоог хэн ч хараагүй байхад. Одоо дуудагч бүр ЗӨВХӨН ХАРУУЛЖ БУЙ давхаргаа асууна (каталог — нээлттэй бүлэг,
+ *    самбар — тойм, дашбоард — картынхаа давхарга); давхцсан нь НЭГ хүсэлт хуваалцана — тоо нэг агшных (файлын толгойн ⚠️).
+ * ⚠️ Уналт КЭШЛЭГДЭХГҮЙ: дараагийн асуулт дахин оролдоно (`layerFail` — зөвхөн «одоо унасан» тэмдэг, `useLazyTotals`-д).
+ *    Эрин (`dropTotalsCache` · `retryTotals` · `invalidateAll`) бүгдийг хаяна — урьдын адил.
+ */
+const layerCache = new Map<string, Promise<Totals>>();
+/** Шийдэгдсэн утга — `useLazyTotals` зурах үедээ синхрон уншина */
+const layerDone = new Map<string, Totals>();
+/** Сүүлийн оролдлого нь унасан түлхүүрүүд (дахин оролдоход арилна) */
+const layerFail = new Set<string>();
+const layerKey = (epoch: number, zone: string | null, id: string): string => `${epoch}|${zone ?? ''}|${id}`;
+
+/** Давхаргын кэшийн өөрчлөлтийн дохио — ~100 мс-д НЭГ удаа (`usePlanTotalsLive`-ийн хэсэгчилсэн шинэчлэлийн зарчим) */
+let layersVer = 0;
+const layerSubs = new Set<() => void>();
+let layerTimer: ReturnType<typeof setTimeout> | null = null;
+function bumpLayers(): void {
+  if (layerTimer != null) return;
+  layerTimer = setTimeout(() => {
+    layerTimer = null;
+    layersVer += 1;
+    for (const fn of layerSubs) fn();
+  }, 100);
+}
+const subscribeLayers = (fn: () => void): (() => void) => {
+  layerSubs.add(fn);
+  return () => { layerSubs.delete(fn); };
+};
+const layersVersion = (): number => layersVer;
+/** Хүсэлтгүй (хаалттай каталог) дуудагч — бусдын татлагаар 100 мс тутам дэмий зурагдахгүй */
+const subscribeNone = (): (() => void) => () => {};
+const versionNone = (): number => 0;
+
+/**
+ * НЭГ ДАВХАРГЫН тоо/хэмжээ — эрин ба бүсээр ХУВААЛЦСАН амлалт (дээрх ⚠️). Шүүлт нь урьдын адил `whereFor`.
+ * ⚠️ Мэдэгдэхгүй id → унасан амлалт (урьд нь `LAYER_BY_ID[id]` undefined нь `whereFor` дотор TypeError болдог байв).
+ */
+export function layerTotalsShared(zone: string | null, id: string): Promise<Totals> {
+  const k = layerKey(totalsEpochN, zone, id);
+  const hit = layerCache.get(k);
+  if (hit) return hit;
+  layerFail.delete(k);
+  const d = LAYER_BY_ID[id];
+  const p = d ? layerTotals(d, whereFor(d, zone)) : Promise.reject(new Error(`unknown layer: ${id}`));
+  layerCache.set(k, p);
+  p.then(
+    (t) => { if (layerCache.get(k) === p) { layerDone.set(k, t); bumpLayers(); } },
+    () => { if (layerCache.get(k) === p) { layerCache.delete(k); layerFail.add(k); bumpLayers(); } },
+  );
+  return p;
+}
+
+/** `useLazyTotals`-ийн үр дүн */
+export type LazyTotals = {
+  /** Ирсэн давхаргууд (хүссэн `ids`-ээс) */
+  map: ReadonlyMap<string, Totals>;
+  /** Хүлээгдэж буй давхаргын тоо — 0 бол бүгд шийдэгдсэн («· тоолж байна…») */
+  pending: number;
+  /** Унасан id-ууд — «N давхарга татагдсангүй · дахин оролдох» (`retryTotals`); мөрөнд «—» */
+  failed: readonly string[];
+};
+
+/**
+ * Хүссэн давхаргын үр дүнг кэшээс ялгана (цэвэр — `totals.check`): ирсэн → `map`, унасан (дахин оролдоогүй) → `failed`,
+ * бусад нь хүлээгдэж буй. ⚠️ Унасан ч явж буй (дахин оролдож буй) бол хүлээгдэж буй.
+ */
+export function lazyView(
+  ids: readonly string[],
+  keyOf: (id: string) => string,
+  done: ReadonlyMap<string, Totals>,
+  fail: ReadonlySet<string>,
+  inflight: { has(k: string): boolean },
+): LazyTotals {
+  const map = new Map<string, Totals>();
+  const failed: string[] = [];
+  let pending = 0;
+  for (const id of new Set(ids)) {
+    const k = keyOf(id);
+    const v = done.get(k);
+    if (v) map.set(id, v);
+    else if (fail.has(k) && !inflight.has(k)) failed.push(id);
+    else pending += 1;
+  }
+  return { map, pending, failed };
+}
+
+/**
+ * ХАРАГДАЖ БУЙ давхаргуудын тоо — давхарга тус бүрээр, ирсэн бүрийг шууд (2026-10-22).
+ *
+ * ⚠️ `usePlanTotals`-аас ЯЛГАА: жагсаалт өөрчлөгдөхөд (каталогийн бүлэг нээх) БҮГД «…» руу буцахгүй — шинэ id-ууд л
+ *    татагдаж, ирсэн нь хэвээр. Кэшийг (`layerTotalsShared`) бусад дуудагчтай хуваалцана.
+ * ⚠️ Унасан давхаргыг ЭНЭ mount-д дахин оролдохгүй (давталт үүсэхгүй) — «дахин оролдох» (`retryTotals`) эсвэл дараагийн
+ *    mount/бүс солилт эдгээнэ (`usePlanTotals`-ын «дутуу Map-ыг кэшлэхгүй» дүрэмтэй ижил үр дүн).
+ * ⚠️ `enabled = false` эсвэл хоосон `ids` — хүсэлтгүй.
+ */
+export function useLazyTotals(zone: string | null, ids: readonly string[], enabled = true): LazyTotals {
+  const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
+  const idsKey = ids.join(',');
+  /* Кэш өөрчлөгдөхөд дахин зурагдана — үр дүнг доор модулийн кэшээс шууд уншина */
+  const live = enabled && idsKey !== '';
+  useSyncExternalStore(live ? subscribeLayers : subscribeNone, live ? layersVersion : versionNone, live ? layersVersion : versionNone);
+  const base = `${epoch}|${zone ?? ''}`;
+  /** Энэ mount-д (бүс · эрин) аль хэдийн асуусан id — унасныг давтан асуухгүй */
+  const tried = useRef<{ base: string; ids: Set<string> }>({ base: '', ids: new Set() });
+  useEffect(() => {
+    if (!enabled) return;
+    if (tried.current.base !== base) tried.current = { base, ids: new Set() };
+    const seen = tried.current.ids;
+    for (const id of idsKey ? idsKey.split(',') : []) {
+      const k = layerKey(totalsEpochN, zone, id);
+      if (layerDone.has(k) || layerCache.has(k) || seen.has(id)) continue;
+      seen.add(id);
+      layerTotalsShared(zone, id).catch(() => { /* `layerFail`-д — `lazyView` «—» болгоно */ });
+    }
+    /* ⚠️ `ids`-ийг `idsKey`-ээр (дуудагч `useMemo`-гүй өгч болно — `usePlanTotalsLive`-ийн ижил дүрэм) */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, idsKey, enabled]);
+  if (!enabled) return { map: new Map(), pending: 0, failed: [] };
+  return lazyView(ids, (id) => layerKey(epoch, zone, id), layerDone, layerFail, layerCache);
 }
 
 /* ⚠️ 2026-10-06: Порталын «↻ Шинэчлэх» / таб руу буцах (`dataBus.invalidateAll`) энэ кэшийг
@@ -368,11 +506,10 @@ export function usePlanTotals(
     //    Map алдаа болж, каталог/дашбоардын БҮХ тоо «татагдсангүй» болдог байв.
     //    Унасан давхаргыг Map-д оруулахгүй — каталогийн мөр «—» гэж гарна
     //    (LayerCatalog-ийн «алдвал “—”» тохиролцоо), бусад нь хэвийн үзэгдэнэ.
+    /* ⚠️ 2026-10-22: давхарга тус бүрийн ХУВААЛЦСАН кэшээр (`layerTotalsShared`) — каталогийн нээлттэй бүлэг ба самбар
+       ижил давхаргыг дахин татахгүй; шүүлт (`whereFor`) ба уналтын дүрэм урьдын адил. */
     const settled = await Promise.allSettled(
-      ids.map(async (id) => {
-        const d = LAYER_BY_ID[id];
-        return [id, await layerTotals(d, whereFor(d, zone))] as const;
-      }),
+      ids.map(async (id) => [id, await layerTotalsShared(zone, id)] as const),
     );
     const map = new Map<string, Totals>();
     const failed: string[] = [];

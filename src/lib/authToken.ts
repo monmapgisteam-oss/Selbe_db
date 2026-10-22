@@ -26,8 +26,13 @@
  */
 
 import { arcgisPost as queryPost } from '@/lib/query';
+import { clearMetaCache } from '@/lib/metaCache';
 
-type Esri = { findCredential: (url: string) => { token?: string } | null | undefined };
+type Esri = {
+  findCredential: (url: string) => { token?: string } | null | undefined;
+  /** Зөвхөн хөтчийн IdentityManager-т (`primeServerCredential`); Telegram ботын объектод байхгүй */
+  getCredential?(url: string, options?: Record<string, unknown>): Promise<unknown>;
+};
 
 let esri: Esri | null = null;
 let sharing = '';
@@ -43,6 +48,40 @@ export function registerIdentity(mgr: Esri, sharingUrl: string): void {
   lastFail = null;
   quietUntil = 0;
   setDead(false);
+  /* ⚠️ 2026-10-22: шинэ сешн — өмнөх хэрэглэгчийн давхаргын мета (эрхээс хамаарах capabilities) хэрэглэгдэхгүй */
+  clearMetaCache();
+}
+
+/**
+ * ФЕДЕРАЦИЙН СЕРВЕРИЙН ИТГЭМЖЛЭЛИЙГ УРЬДЧИЛЖ АВНА — `AuthGate` порталд нэвтэрмэгц, Portal/газрын зураг үүсэхээс ӨМНӨ.
+ * `true` = итгэмжлэл бэлэн. ХЭЗЭЭ Ч шидэхгүй, `timeoutMs`-ээс удахгүй — нэвтрэлтийг саатуулахгүй.
+ *
+ * ⚠️ 2026-10-22 (гүйцэтгэл): урьд серверийн итгэмжлэл зөвхөн ЭХНИЙ 499-ийн ДАРАА үүсдэг байв — хуудас бүрийн ~185 мета
+ *    хүсэлт эхлээд токенгүй явж «Token Required» аваад дахин илгээгддэг (CDP: эхнийх t≈3.1 с токенгүй, хоёр дахь нь
+ *    t≈3.4 с токентой). `getCredential(server, { prompt: false })` нь федерацийн серверт порталын итгэмжлэлээс
+ *    (`rest/info` → `owningSystemUrl` → порталын `generateToken`) ЦОНХГҮЙ үүсгэдэг албан ёсны зам. Үйлчилгээ бүрт
+ *    бүртгэхийг хүсэлт тус бүрийн өмнө `entInterceptor` хийнэ (⚠️ «ЭХНИЙ ХҮСЭЛТ ТОКЕНТОЙ») — тэнд сүлжээгүй.
+ * ⚠️ ШИНЭЧЛЭЛТ: ингэж үүссэн серверийн итгэмжлэл нь `ServerInfo.owningSystemUrl`-аар порталын итгэмжлэлтэй ХОЛБООТОЙ —
+ *    порталын токен шинэчлэгдэхэд (JS API-ийн цаг хэмжигч эсвэл `ensureFreshToken`/`retrySession` →
+ *    `Credential.refreshToken`) JS API `refreshServerTokens()`-оор серверийн токеныг ӨӨРӨӨ дахин үүсгэдэг; дахин
+ *    бүртгэх шаардлагагүй. Хоорондох агшинд хуучирсан бол давхаргын хүсэлт 498 → JS API-ийн өөрийн дахин оролдлого.
+ *    Тиймээс ПОРТАЛЫН токеныг `registerToken`-оор сервер рүү ГАРААР бүртгэхгүй — тэр нь холбоосгүй, шинэчлэгдэхгүй.
+ */
+export async function primeServerCredential(serverUrl: string, timeoutMs = 4_000): Promise<boolean> {
+  const mgr = esri;
+  if (!mgr || !serverUrl || typeof mgr.getCredential !== 'function') return false;
+  try { if (mgr.findCredential(serverUrl)) return true; } catch { /* доорх оролдлого */ }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      mgr.getCredential(serverUrl, { prompt: false }).then(() => true, () => false),
+      new Promise<boolean>((res) => { timer = setTimeout(() => res(false), timeoutMs); }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function authToken(): string | null {
