@@ -69,7 +69,7 @@ import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
 import { t as tr } from './i18nCore';
 import { bagtsKey, isConstructionNo } from './services';
 import { uniqueBlockCounts } from './blockProgress';
-import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
+import { countPlanRows, loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 import { register } from './dataBus';
 
 /** Нэг сарын цэг */
@@ -210,6 +210,29 @@ export const planFields = (sc: Schema): string[] => [...new Set([
   ...sc.start, ...sc.end,
 ].filter((x): x is string => !!x))];
 
+/**
+ * ЗАДАРГААНЫ ХҮСНЭГТ ХООСОН УУ — `countPlanRows()`-ийн 5 минутын кэш.
+ * ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): `HUVAARI_OBYEM` одоогоор 0 мөртэй тул доорх 10 хуудасны `loadPkgPlan` (мета +
+ *    10 асуулга, 65 хүсэлтийн 11 нь) бүгд хоосон буцдаг байв — одоо НЭГ тоолох асуулга, 0 бол багцаар асуухгүй. Муруйн
+ *    тоо ӨӨРЧЛӨГДӨХГҮЙ: `null` задаргаа ба хоосон `Map` хоёулаа `planPct = undefined` · `volByMonth` хоосон.
+ *    `HUVAARI_OBYEM` бичилтээр (`applyPlanEdits` → `invalidate`) шууд хаягдана; бусад хэрэглэгчийн бичилт 5 мин дотор
+ *    (`loadPlanCurveCached`-тай нэг TTL). Тоолж чадаагүй (`null`) бол «хоосон биш» гэж үзэж урьдын адил багцаар
+ *    асууна — тэр хариуг кэшлэхгүй (`obyemResFields`-ийн дүрэм).
+ */
+let planEmptyP: Promise<boolean> | null = null;
+let planEmptyAt = 0;
+register(() => { planEmptyP = null; }, ['HUVAARI_OBYEM']);
+function planTableEmpty(): Promise<boolean> {
+  if (!planEmptyP || Date.now() - planEmptyAt > 5 * 60_000) {
+    planEmptyAt = Date.now();
+    const raw = countPlanRows();
+    const mine = raw.then((c) => c === 0);
+    planEmptyP = mine;
+    void raw.then((c) => { if (c == null && planEmptyP === mine) planEmptyP = null; });
+  }
+  return planEmptyP;
+}
+
 export async function loadPlanCurve(): Promise<PlanCurve> {
   const sheets: Sheet[] = [];
   /** Уншигдаагүй хуудсууд — `PlanCurve.failed`-ийн ⚠️ */
@@ -224,6 +247,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       return fn();
     }
   };
+  /* ⚠️ 2026-10-21: нэг удаа, хуудсуудтай ЗЭРЭГ — багц бүр үүнийг хүлээгээд задаргаагаа асуух эсэхээ шийднэ */
+  const emptyP = planTableEmpty();
 
   await Promise.all(PKGS.map(async (pkg) => {
     let sc: Awaited<ReturnType<typeof loadSchema>>;
@@ -240,7 +265,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): задаргааг мөрийн ДАРАА биш ЗЭРЭГ эхлүүлнэ —
          хоёр бие даасан уншилт дараалсан шат (waterfall) болдог байв. Уналт нь урьдын адил
          ЧИМЭЭГҮЙ `null` (доорх ⚠️); мөр унавал үр дүнг нь ашиглахгүй (хаягдана). */
-      obP = loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+      /* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): хүснэгт ХООСОН бол багцаар асуухгүй (`planTableEmpty`-ийн ⚠️) */
+      obP = emptyP.then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan))).catch(() => null);
       /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): ЗӨВХӨН муруйд хэрэгтэй БАГАНУУД (`planFields`).
          Урьд нь `*` (~60+ багана: блок бүрийн гүйцэтгэл · обьём · бодит огноо …) — 10 хуудас
          нийлээд ~71 МБ JSON; одоо ~1/6. Тоо ӨӨРЧЛӨГДӨХГҮЙ: `planCurve`/`planPct`/муж нь зөвхөн

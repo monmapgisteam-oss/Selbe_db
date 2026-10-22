@@ -486,6 +486,7 @@ function Submitted({
   onSubAt,
   onRemapped,
   onUnmoved,
+  onNegative,
   onOkAll,
   reloadKey = 0,
 }: {
@@ -523,6 +524,13 @@ function Submitted({
    *    нээлттэй байв (эцсийн шатны архивлалт л зогсдог). `undefined` = уншиж байна / унасан.
    */
   onUnmoved?: (n: number | undefined) => void;
+  /**
+   * ⚠️ 2026-10-22 (аудит): НИЙТ дүнг СӨРӨГ болгох нэмэлтийн нүдний тоо (`Submission.negative`) — `onUnmoved`-той ЯГ
+   *    ижил: эцэг батлах (дээш илгээх) товчийг БҮХ шатанд хаана. Урьд нь энэ тоог юу ч уншдаггүй тул жагсаалтад 0-оор
+   *    хаасан утга энгийн өөрчлөлт мэт харагдаж, инженер→дарга батлаад зөвхөн 6-р шатны архивлалт л татгалздаг байв
+   *    (хэн нэгэн гараар буцаатал гацна). `undefined` = уншиж байна / унасан.
+   */
+  onNegative?: (n: number | undefined) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -575,6 +583,7 @@ function Submitted({
     onSubAt?.(undefined);
     onRemapped?.(undefined);
     onUnmoved?.(undefined);
+    onNegative?.(undefined);
     loadSubmission(bagts, sheetOid)
       /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
          «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
@@ -582,7 +591,7 @@ function Submitted({
          уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
-      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); onUnmoved?.(d ? (d.unmoved ?? 0) : undefined); } })
+      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); onUnmoved?.(d ? (d.unmoved ?? 0) : undefined); onNegative?.(d ? (d.negative ?? 0) : undefined); } })
       .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: userError(e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
@@ -696,9 +705,20 @@ function Submitted({
             </div>
           )}
           {/* ⚠️ 2026-10-04: одоогийн жаазад тулгагдаагүй нүд — жагсаалтад харагдахгүй (`Submission.unmoved`) */}
+          {/* ⚠️ 2026-10-22 (аудит): `unmoved` ХОЁР шалтгаантай — мөр нь тулгагдаагүй, ЭСВЭЛ нэмэлтийн утга нь тоо биш
+              («1,250» · «abc» — `sheetFrame.overlaySubmission`-ийн 2026-10-21 ⚠️). Урьд нь зөвхөн «тулгагдсангүй» гэдэг тул
+              гүйцэтгэгч мөрөө хайж буруу зүйлийг засдаг байв — хоёуланг нэрлэнэ. Батлах товч `Item`-д хаагдана. */}
           {(data.unmoved ?? 0) > 0 && (
             <div className={s.subWarn} role="alert">
-              {tr('Илгээлтийн {0} нүд одоогийн хуудасны мөрөнд тулгагдсангүй — доорх жагсаалтад харагдахгүй бөгөөд батлахад архивлалт зогсоно. Гүйцэтгэгчээр шалгуулж дахин илгээлгэнэ үү.', String(data.unmoved))}
+              {tr('Илгээлтийн {0} нүдийг хуудсанд буулгаж чадсангүй — мөр нь одоогийн хуудсанд тулгагдаагүй, эсвэл нэмэлтийн утга нь тоо биш («1,250» · «abc» мэт). Доорх жагсаалтад харагдахгүй бөгөөд батлах боломжгүй — гүйцэтгэгчээр шалгуулж (тоог зөв бичээд) дахин илгээлгэнэ үү.', String(data.unmoved))}
+            </div>
+          )}
+          {/* ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ болох нэмэлт (`Submission.negative`) — жагсаалтад 0-оор хаасан утга энгийн
+              өөрчлөлт мэт харагддаг тул ИЛ хэлнэ; шалтгаан нь архивлалтын татгалзалтын (`hyanaltStore.archiveSubmission`)
+              бичвэртэй ижил. Батлах товч `Item`-д хаагдана (`negBlocks`). */}
+          {(data.negative ?? 0) > 0 && (
+            <div className={s.subWarn} role="alert">
+              {tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) — доорх жагсаалтад 0 гэж харагдах ч батлах боломжгүй. Гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү.', String(data.negative))}
             </div>
           )}
           {data.asOfChanged && (
@@ -1014,6 +1034,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const [remapped, setRemapped] = useState<boolean | undefined>(undefined);
   /** ⚠️ 2026-10-12 (R5): тулгагдаагүй нүдний тоо — `Submitted.onUnmoved`; > 0 бол батлах (дээш илгээх) ХААЛТТАЙ */
   const [unmoved, setUnmoved] = useState<number | undefined>(undefined);
+  /** ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ болох нэмэлтийн нүдний тоо — `Submitted.onNegative`; > 0 бол батлах (дээш илгээх) ХААЛТТАЙ */
+  const [negative, setNegative] = useState<number | undefined>(undefined);
   /**
    * ӨӨРЧЛӨГДСӨН НҮДНИЙ МӨРҮҮДИЙН ТОГТВОРТОЙ ТАНИГЧ — индексээр (`Change.row` → `{oid, sid}`).
    * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): зөвшөөрлийг индексээр БИШ үүгээр бичиж/уншина
@@ -1218,13 +1240,19 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   /** ⚠️ 2026-09-30: батлах товч ХААЛТТАЙ байгаа шалтгаан — tooltip ба ил бичвэрт нэг эх */
   /* ⚠️ 2026-10-12 (R5): тулгагдаагүй нүдтэй илгээлтийг дунд шатанд ч батлахгүй (`prevError`-ийн ижил хаалт) */
   const unmovedBlocks = (unmoved ?? 0) > 0;
+  /* ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ болох нэмэлттэй илгээлтийг ч (`Submitted.onNegative`) — `unmovedBlocks`-ийн ижил хаалт
+     БҮХ шатанд. Урьд нь зөвхөн 6-р шатны архивлалт татгалздаг тул доод шатнууд 0-оор хаасан утгыг харж баталдаг байв.
+     Шалтгааны бичвэр нь архивлалтын алдаатай ижил. `unmoved`-ийн бичвэр одоо хоёр шалтгааныг (тулгалт · тоо биш) нэрлэнэ. */
+  const negBlocks = (negative ?? 0) > 0;
   const approveWhy: string | undefined = changes == null
     ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
     : unmovedBlocks
-      ? tr('Илгээлтийн {0} нүд одоогийн хуудсанд тулгагдаагүй тул батлах боломжгүй — гүйцэтгэгчээр дахин илгээлгэнэ үү (буцааж болно).', String(unmoved))
-      : changes.length > 0 && !allOk
-        ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
-        : undefined;
+      ? tr('Илгээлтийн {0} нүдийг хуудсанд буулгаж чадаагүй (мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш) тул батлах боломжгүй — гүйцэтгэгчээр шалгуулж дахин илгээлгэнэ үү (буцааж болно).', String(unmoved))
+      : negBlocks
+        ? tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) тул батлах боломжгүй — гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү (буцааж болно).', String(negative))
+        : changes.length > 0 && !allOk
+          ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+          : undefined;
   const rechecking = recheckSeed;
   const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
@@ -1285,7 +1313,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
                       className={`${s.btn} ${s.ok}`}
-                      disabled={busy || lackBlocks || changes == null || unmovedBlocks || (changes.length > 0 && !allOk)}
+                      disabled={busy || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
                       title={approveWhy
                           /*
                            * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
@@ -1398,7 +1426,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     {/* ⚠️ 2026-10-06 (аудит #3): ДЭЭШ ИЛГЭЭХ нь ердийн батлалттай ИЖИЛ «нүд бүрийг
                         гараар» дүрэмтэй — урьд нь `allOk` шалгагддаггүй тул дахин илгээгдсэн
                         (хараагүй) агуулга нэг ч нүд тэмдэглэлгүй дээш явдаг байв. */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || unmovedBlocks || (changes.length > 0 && !allOk)}
+                    {/* ⚠️ 2026-10-22 (аудит): `negBlocks` — батлах товчтой ИЖИЛ (дээрх `negBlocks`-ийн ⚠️) */}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
                       title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : approveWhy}
                       onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
                       {RECHECK_UP[reBy]}
@@ -1487,6 +1516,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             onSubAt={setSubAt}
             onRemapped={setRemapped}
             onUnmoved={setUnmoved}
+            onNegative={setNegative}
             reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */

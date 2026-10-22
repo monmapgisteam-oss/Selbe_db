@@ -145,6 +145,17 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
   assert.equal(onlyRev.filled, 0);
   assert.equal(onlyRev.from, null);
   assert.equal(onlyRev.to, null);
+  /* ⚠️ 2026-10-21 (аудит №2): зөвхөн урвуу мужтай ажил «хуваарьтай» (`planned`) ч, хэв шинж (`patterns`) ч биш */
+  assert.equal(onlyRev.planned, 0, 'урвуу муж planned-д тоологдов');
+  assert.equal(onlyRev.patterns, 0, 'урвуу муж хэв шинжид тоологдов');
+  assert.equal(onlyRev.reversed, 1);
+  assert.equal(rev.planned, 2, 'хүчинтэй мужтай ажил planned хэвээр');
+  /* урвуу муж хэв шинжид '-' — урвуу + хүчинтэй муж нь зөвхөн тэр хүчинтэй мужтай ажилтай нэг хэв шинж */
+  const pat = coverageOf([
+    row(0, [span('2026-03-29', '2026-03-20'), span('2026-03-01', '2026-03-05'), null, null]),
+    row(1, [null, span('2026-03-01', '2026-03-05'), null, null]),
+  ]);
+  assert.equal(pat.patterns, 1, 'урвуу муж хэв шинжийг салгав');
   assert.equal(cov.reversed, 0);
 }
 console.log('plan.check: ok — spanFrac ✓');

@@ -105,4 +105,12 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   }
 }
 
+/* ── §4 (2026-10-21, аудит): Irged — нийгмийн үйлчилгээний амьд давхарга унавал алдаа + «Дахин оролдох»; алга давхарга «—» (0 биш) ── */
+{
+  const ir = src('modules/Irged.tsx');
+  assert.ok(ir.includes("{qSocial.state === 'error' && <Data q={qSocial}>{() => null}</Data>}"), 'Irged: qSocial алдаа → Data (шалтгаан + retry)');
+  assert.ok(ir.includes('total: missing ? null : headCount(r.now) + n'), 'Irged: давхарга алга → нийт null (одоо + 0 биш)');
+  assert.ok(ir.includes("r.failed || r.total == null ? '—' : r.total"), 'Irged: null нийт «—»');
+}
+
 console.log('✅ Унасан ачаалал: userError · тайлангийн огноо · тоо/хоосон төлөвийн хамгаалалт · retry · ачаалалтын дэлгэц');

@@ -4,7 +4,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { AUTH, roleForUser, type Role } from '@/lib/services';
+import { AUTH, BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
 import { subscribeCaps } from '@/lib/caps';
 import type { SysState } from '@/lib/permsRemote';
@@ -35,6 +35,31 @@ import s from './auth.module.css';
  */
 
 type User = { username: string; fullName: string; thumbnail: string | null; orgId: string | null };
+
+/**
+ * ⚠️ 2026-10-21 (аудит): SUPER-ИЙН БАТЛАХ ХҮСНЭГТҮҮДИЙН ҮҮСГЭЛТ — ХУУДАСНЫ ТУРШ НЭГ Л УДАА. Нэвтрэлтийн эффект дахин
+ *    ажиллахад (deps · StrictMode-ийн давхар mount) `planTableReady(true)` / `obyemTableReady(true)` зэрэгцэн давхар
+ *    явж, хүснэгт олдоогүй агшинд ХОЁР удаа үүсгэх эрсдэлтэй байв (`tableUrl` зөвхөн АМЖИЛТЫГ кэшлэдэг). Бэлэн болоогүй
+ *    (унасан) бол амлалтыг тэглэнэ — дараагийн нэвтрэлтэд дахин оролдоно. Алдааг ЗАЛГИНА (доорх ⚠️: нэвтрэлтийн зам).
+ */
+let superTablesOnce: Promise<void> | null = null;
+function ensureSuperTables(): Promise<void> {
+  if (!superTablesOnce) {
+    superTablesOnce = (async () => {
+      let ok = true;
+      try {
+        const { planTableReady } = await import('@/lib/huvaariBatlah');
+        ok = (await planTableReady(true)) && ok;
+      } catch { ok = false; /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
+      try {
+        const { obyemTableReady } = await import('@/lib/obyemBatlah');
+        ok = (await obyemTableReady(true)) && ok;
+      } catch { ok = false; /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
+      if (!ok) superTablesOnce = null;
+    })();
+  }
+  return superTablesOnce;
+}
 /** Эрхийн хүснэгт уншигдсан эсэх — татгалзлын ЖИНХЭНЭ шалтгааныг ялгана */
 export type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'denied' | 'off';
 
@@ -263,7 +288,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           thumbnail: u?.thumbnailUrl ? u.thumbnailUrl.replace(/([?&])token=[^&]*(&?)/, (_m, a: string, b: string) => (b ? a : '')).replace(/[?&]$/, '') : null,
           orgId: u?.orgId ?? null,
         };
-        const hard = roleForUser(info.username);
+        /* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = эрхийн хүснэгтийн мөр (`roles._setTableSupers`) — хүснэгт
+           уншигдахаас ӨМНӨ хэн ч super биш, тиймээс `hard`-ыг `initRemote`-ийн ДАРАА бодно (доор). Хүснэгт үүсгэх
+           эрх (`canCreate`): кодын (тестийн) super эсвэл анхны админ (`BOOTSTRAP_SUPER` — хүснэгт байхгүй = super мөргүй). */
+        const canCreate = isCodeSuper(info.username) || info.username.trim().toLowerCase() === BOOTSTRAP_SUPER;
         const orgOk = !AUTH.allowedOrgId || info.orgId === AUTH.allowedOrgId;
         orgOkRef.current = orgOk;
 
@@ -283,7 +311,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          * ⚠️ Хатуу жагсаалтын хүн (`roleForUser`) нөлөөлөхгүй — тэд remote-гүй
          * нэвтэрнэ. Асуудал нь ЗӨВХӨН панелаас нэмсэн аккаунтуудад хамаарна.
          */
-        const remoteOk = await initRemote(hard === 'super');
+        const remoteOk = await initRemote(canCreate);
+        /* ⚠️ 2026-10-21 (аудит): `alive`-ийг ЭНД шалгана — урьд нь зөвхөн `setPermsRead`-ийн ДАРАА байсан тул
+           эффект цэвэрлэгдсэн (unmount / дахин ажилласан) хойно ч хүснэгт үүсгэлт · `setPermsRead` явдаг байв. */
+        if (!alive) return;
+        /* ⚠️ 2026-10-21: хүснэгт уншигдсаны ДАРАА — хүснэгтийн super (эсвэл super мөргүй хүснэгтэд анхны админ) энд л танигдана */
+        const hard = roleForUser(info.username);
         /*
          * ⚠️ ХУВААРИЙН БАТЛАХ ХҮСНЭГТИЙГ ч мөн super нэвтрэхэд үүсгэнэ
          *    (2026-09-07-ны аудит). Урьд нь тэр нь ЗӨВХӨН super «Хуваарь»
@@ -296,10 +329,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          *    Хуудас өөрөө шалтгааныг ил хэлнэ (`flowReady === false`).
          */
         if (hard === 'super') {
-          try {
-            const { planTableReady } = await import('@/lib/huvaariBatlah');
-            await planTableReady(true);
-          } catch { /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
           /*
            * ⚠️ ИНЖЕНЕРИЙН ОБЬЁМЫН БАТЛАХ ХҮСНЭГТ — ЯГ ИЖИЛ ШАЛТГААН
            * (2026-09-08-ны 100% аудитаар илэрсэн). Модуль нь `canCreate`
@@ -309,11 +338,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            * «Батлах хүснэгт олдсонгүй — админд хандана уу» гэж мөнхөд
            * няцаагдана. Хуваарийн хүснэгтийн 2026-09-07-ны сургамжийг
            * давтсан алдаа.
+           * ⚠️ 2026-10-21 (аудит): хоёулаа `ensureSuperTables` — модулийн түвшний НЭГ амлалт (дээрх ⚠️).
            */
-          try {
-            const { obyemTableReady } = await import('@/lib/obyemBatlah');
-            await obyemTableReady(true);
-          } catch { /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
+          await ensureSuperTables();
+          if (!alive) return;
         }
         /*
          * ҮҮРЭГ — override-ыг тооцсон ГАНЦ эх сурвалж (`roleOf`).
@@ -328,10 +356,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* ⚠️ ЗӨВХӨН панелаас нэмсэн (хатуу жагсаалтад БАЙХГҮЙ) хүнд утгатай:
            хатуу үүрэгтэй хүн remote-гүй ч нэвтэрдэг тул тэдэнд худал
            анхааруулга гаргах ёсгүй. */
+        /* ⚠️ 2026-10-21 (аудит): `alive`-ийн ДАРАА — цэвэрлэгдсэн эффект салсан компонентын төлөв бичихгүй */
+        if (!alive) return;
         setPermsRead(remoteOk || !!hard);
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
-        if (!alive) return;
         attemptClear();
         /* ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН (`__sys__:maintenance`) — нэвтрэх эрхтэй ч `sysClose`/super биш бол
            `signed-in` хэвээр, `authorized` худал (`AuthCtx.sysClosed`). Төлөв `initRemote`-ийн ДАРАА бэлэн. */

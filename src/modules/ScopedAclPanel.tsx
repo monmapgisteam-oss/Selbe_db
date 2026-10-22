@@ -44,7 +44,7 @@ import type { Grant } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
 import { scopedCellOp } from '@/lib/aclOps';
 import { grantHolds } from '@/lib/aclGrid';
@@ -107,7 +107,8 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    * ⚠️ Хатуу super-ийг САНАЛ БОЛГОХГҮЙ — түүнд хязгаар үйлчилдэггүй.
    */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = spec.list();

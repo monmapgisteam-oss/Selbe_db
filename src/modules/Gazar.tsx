@@ -397,7 +397,8 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш'), 
     key: grp.label || `#${i}`,
     label: grp.label,
     value: grp.values[valueKey] ?? 0,
-    display: `${num(grp.values[valueKey] ?? 0)} ${unit}`,
+    /* ⚠️ 2026-10-21 (аудит): харагдац `stats`-аас — хэмжилтгүй бүлэг «0» БИШ «—» (`query.Group.stats`; count-д null гарахгүй) */
+    display: grp.stats[valueKey] == null ? '—' : `${num(grp.stats[valueKey])} ${unit}`,
     color: PALETTE[i % PALETTE.length],
     where: groupWhere(field, grp),
   }));
@@ -789,14 +790,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     });
   }, [askDrop, setHighlight, zoomToWhere]);
 
+  /* ⚠️ 2026-10-21 (аудит): ХАЙЛТЫН ДУГААР — «Хаах» (`exitEdit`) дарсны дараа ирсэн хоцорсон хариу
+     `openParcel`-оор засах маягтыг дахин нээж, тодруулга тавьдаг байв (горим унтарсан атал маягт гарна).
+     Хайлт бүр шинэ дугаар авна; `exitEdit` ч өсгөнө — хуучин дугаартай хариу бүхэлдээ хаягдана. */
+  const findSeq = useRef(0);
   const findParcel = useCallback(async () => {
     const no = findNo.trim();
     if (!no) return;
+    const seq = ++findSeq.current;
     setFinding(true);
     setFindMsg('');
     setHits([]);
     try {
       const list = await findParcelsByNo(no);
+      if (seq !== findSeq.current) return;
       if (!list.length) setFindMsg(tr('«{0}» дугаартай нэгж талбар олдсонгүй', no));
       else if (list.length === 1) openParcel(list[0].oid);
       else {
@@ -804,10 +811,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         setFindMsg(tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
       }
     } catch (e) {
+      if (seq !== findSeq.current) return;
       /* ⚠️ Алдааг НУУХГҮЙ — «олдсонгүй» гэж худал хэлэхгүй */
       setFindMsg(userError(e));
     } finally {
-      setFinding(false);
+      if (seq === findSeq.current) setFinding(false);
     }
   }, [findNo, openParcel]);
 
@@ -822,6 +830,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
   const exitEdit = useCallback(() => {
     askDrop(() => {
+      /* ⚠️ 2026-10-21 (аудит): нислэгт яваа хайлтыг хүчингүй болгоно (`findSeq`-ийн ⚠️) — `finding` ч тэглэнэ,
+         эс бөгөөс дараагийн удаа орох үед хайлтын талбар идэвхгүй үлдэнэ */
+      findSeq.current++;
+      setFinding(false);
       setEditMode(false);
       setEditOid(null);
       setHighlight(null);
@@ -1331,7 +1343,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
         {/* ⚠️ ТАЛБАР ЗАСАХ ОРОХ ЦЭГ — 2026-09-15-нд хасагдаж, 2026-09-30-нд
             сэргээгдсэн (дээрх `editMode`-ийн тайлбарыг үз). */}
-        {editOid != null && (
+        {/* ⚠️ 2026-10-21 (аудит): `editMode` ч шаардана — горим хаагдсаны дараа хоцорсон `setEditOid` маягт нээхгүй */}
+        {editMode && editOid != null && (
           <GazarEdit
             /* ⚠️ 2026-10-06 (аудит): парсел солигдоход маягтыг ШИНЭЭР mount
                хийнэ — өмнөх парселийн ноорог/`dirty` үлдэхгүй (`GazarEdit`-ийн ⚠️) */

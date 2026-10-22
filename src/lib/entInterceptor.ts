@@ -34,6 +34,11 @@ export function entJsBefore(query: Query, d: EntDict | null): { query: Query; re
   for (const [k, v] of Object.entries(query)) {
     if (typeof v === 'string') strs[k] = v;
     else if (Array.isArray(v) && ['outFields', 'orderByFields', 'groupByFieldsForStatistics'].includes(k)) strs[k] = v.join(',');
+    /* ⚠️ 2026-10-22 (аудит №4): JS API `returnDistinctValues`-ийг BOOLEAN `true`, `outStatistics`-ийг заримдаа массиваар өгдөг —
+       мөр биш тул хуулагдахгүй байж `entRequestWith` distinct/статистик асуулгыг таньдаггүй, ORDER BY-д CASE илэрхийлэл
+       (`trackOrderExpr`) орж Enterprise 500 «Database error» (амьдаар Bagts_ajluud/0,1,10,11) өгдөг байв. Мөр болгож хуулна. */
+    else if (typeof v === 'boolean' && (k === 'returnDistinctValues' || k === 'returnCountOnly' || k === 'returnIdsOnly')) strs[k] = String(v);
+    else if (k === 'outStatistics' && v && typeof v === 'object') strs[k] = JSON.stringify(v);
   }
   const requested = requestedFields(strs);
   const mapped = entRequestWith(strs, d);

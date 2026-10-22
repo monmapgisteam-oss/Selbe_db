@@ -40,6 +40,24 @@ export function clockOffsetOf(srv: number, t0: number, t1: number): number {
   return Math.round(srv - (t0 + t1) / 2);
 }
 
+/**
+ * ⚠️ 2026-10-21 (аудит №2): ХҮЛЭЭН АВАХ ЗӨРҮҮНИЙ ДЭЭД ХЯЗГААР — 15 мин. Урьд нь ямар ч зөрүүг хязгаарлалтгүй
+ *    авдаг байв. Үүнээс их зөрүү нь бодит цагийн зөрүүгээс илүү ХЭМЖИЛТИЙН АЛДАА (цагийн бүсгүй тайлал — яг N цаг,
+ *    кэшлэгдсэн хариу, хоёртын хайлтын гажуудал) байх магадлалтай бөгөөд тийм утгаар бүх түгжээ · тэмдэг · батлалтын
+ *    огноо нэг дор буруу бичигдэнэ. Хүлээн авахгүй, `console.warn`-оор ил хэлнэ (чимээгүй биш); сүүлийн мэдэгдсэн
+ *    зөрүү хэвээр, дараагийн хэмжилт `CLOCK_TTL`-ийн дараа (`clockAt` тавигдана — минут тутам ~17 хүсэлтээр
+ *    давтахгүй). `huvaariBatlah.syncServerClock` ч ЭНЭ дүрмээр.
+ */
+export const MAX_CLOCK_OFF = 15 * 60_000;
+/** Хэмжсэн зөрүү хүлээн авахуйц уу — `|off| ≤ MAX_CLOCK_OFF` (цэвэр; тест) */
+export function clockOffsetOk(off: number): boolean {
+  return Number.isFinite(off) && Math.abs(off) <= MAX_CLOCK_OFF;
+}
+/** Хүлээн аваагүй зөрүүг ил хэлнэ — хоёр `syncServerClock` нэг мессеж */
+export function warnClockOff(off: number): void {
+  console.warn(`serverClock: серверийн цагийн зөрүү ${Math.round(off / 1000)} с — ${MAX_CLOCK_OFF / 60_000} мин-ээс их тул хүлээн авсангүй (хэмжилтийн алдаа байж болзошгүй)`);
+}
+
 /** UTC агшныг ArcGIS-ийн `timestamp 'YYYY-MM-DD HH:MM:SS'` хэлбэрээр */
 const tsLiteral = (ms: number): string => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 
@@ -49,27 +67,35 @@ const tsLiteral = (ms: number): string => new Date(ms).toISOString().slice(0, 19
  *    урьд нь алдааг залгиж `clockOff` үргэлж 0 болж, цаг зөрөхөөс хамгаалах механизм чимээгүй унтарсан байв.
  *    Харин `where`-д `CURRENT_TIMESTAMP > timestamp '…'` ажилладаг тул ХОЁРТЫН ХАЙЛТ: ±12 цагийн мужийг
  *    `returnCountOnly`-оор 1 с хүртэл нарийсгана (~17 хүсэлт, ~0.2 с; 10 минут тутам нэг удаа). Хүснэгт хоосон
- *    бол (count үргэлж 0) хэмжихгүй. AGOL-д `outStatistics` зам хэвээр эхэлж оролдоно.
+ *    бол (count үргэлж 0) хэмжихгүй. AGOL-д `outStatistics` зам хэвээр эхэлж оролдоно; Enterprise хаягт
+ *    (`isEntDataUrl`) оролдохгүй — доорх ⚠️ 2026-10-21 (аудит №2).
  */
 export async function measureServerTime(
   base: string,
   oidField: string,
 ): Promise<{ srv: number; t0: number; t1: number } | null> {
   const { arcgisPost } = await import('./query');
+  const { isEntDataUrl, remapUrl } = await import('./services/entMap');
   const salt = () => `${oidField} > -${1 + Math.floor(Math.random() * 1e9)}`;
-  try {
-    const t0 = Date.now();
-    const j = await arcgisPost<{ features?: { attributes?: Record<string, unknown> }[] }>(`${base}/query`, {
-      where: salt(),
-      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
-      returnGeometry: 'false',
-    });
-    const t1 = Date.now();
-    const a = j.features?.[0]?.attributes ?? {};
-    const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
-    const v = k ? Number(a[k]) : Number.NaN;
-    if (Number.isFinite(v) && v > 0 && t1 - t0 <= 10_000) return { srv: v, t0, t1 };
-  } catch { /* Enterprise — доорх хоёртын хайлт */ }
+  /* ⚠️ 2026-10-21 (аудит №2): Enterprise хаягт (зураглалын ДАРААХ хаягаар — `base` нь AGOL түлхүүр байж болно)
+     `outStatistics` max(CURRENT_TIMESTAMP) замыг ОРОЛДОХГҮЙ — тэнд ҮРГЭЛЖ 500 тул хэмжилт бүрд нэг дэмий алдааны
+     хүсэлт серверийн логт бичигдэж, хоёртын хайлт нэг RTT хожимддог байв. AGOL/бусад хаягт нэг хүсэлтийн зам хэвээр. */
+  const ent = isEntDataUrl(remapUrl(base));
+  if (!ent) {
+    try {
+      const t0 = Date.now();
+      const j = await arcgisPost<{ features?: { attributes?: Record<string, unknown> }[] }>(`${base}/query`, {
+        where: salt(),
+        outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'CURRENT_TIMESTAMP', outStatisticFieldName: 'srv_now' }]),
+        returnGeometry: 'false',
+      });
+      const t1 = Date.now();
+      const a = j.features?.[0]?.attributes ?? {};
+      const k = Object.keys(a).find((x) => x.toLowerCase() === 'srv_now');
+      const v = k ? Number(a[k]) : Number.NaN;
+      if (Number.isFinite(v) && v > 0 && t1 - t0 <= 10_000) return { srv: v, t0, t1 };
+    } catch { /* доорх хоёртын хайлт */ }
+  }
   /* ⚠️ 2026-10-21 (аудит): СҮҮЛИЙН ХҮСЭЛТИЙН хоёр үзүүр (`pt0`/`pt1`). Хайлтын явцад серверийн цаг урагшилдаг тул
      эцсийн муж нь СҮҮЛИЙН шалгалтуудын үеийн (≈t1) серверийн цаг — урьд нь бүх хайлтын (t0+t1)/2-той хослуулдаг
      тул зөрүү (t1−t0)/2-оор хазайдаг байв. Одоо `clockOffsetOf`-д сүүлийн хүсэлтийн өмнө/дараах цагийг өгнө. */
@@ -119,7 +145,10 @@ export async function syncServerClock(url?: string): Promise<void> {
       if (!base) return;
       const m = await measureServerTime(base, 'OBJECTID');
       if (!m) return;
-      clockOff = clockOffsetOf(m.srv, m.t0, m.t1);
+      const off = clockOffsetOf(m.srv, m.t0, m.t1);
+      /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг хүлээн авахгүй (дээрх ⚠️) */
+      if (!clockOffsetOk(off)) { warnClockOff(off); clockAt = m.t1; return; }
+      clockOff = off;
       clockAt = m.t1;
     } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
       clockFlight = null;

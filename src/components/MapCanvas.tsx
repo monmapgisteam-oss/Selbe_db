@@ -4831,6 +4831,8 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !ready) return;
 
     const REACH_ID = 'irged:reach';
+    /* ⚠️ 2026-10-21: хуудасны хэмжээ — Enterprise `maxRecordCount` (доорх `queryFeatures`-ийн ⚠️) */
+    const REACH_PAGE = 2000;
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
     const want = is3D(dim)
       ? []
@@ -4881,12 +4883,25 @@ export const MapCanvas = memo(function MapCanvas({
                сонгосон ч бүх хотын байгууламжийн тойрог зурагддаг байв.
                `await load()`-ийн дараа уншина: доорх бүсийн эффект энэ коммит
                дотор синхроноор аль хэдийн тавьсан байна. */
-            const res = await fl.queryFeatures({
-              where: (fl.definitionExpression as string | null) || '1=1',
-              returnGeometry: true,
-              outFields: [fl.objectIdField],
-            });
-            for (const f of res.features) {
+            /* ⚠️ 2026-10-21 (аудит): ХУУДАСЛАНА — `queryFeatures` нэг дуудлагад `maxRecordCount` (2000) хүртэл л
+               буцаадаг бөгөөд `exceededTransferLimit`-ийг үл тоовол их объекттой давхаргын буфер чимээгүй ДУТУУ
+               зурагддаг байв. `orderByFields` ЗААВАЛ (эрэмбэгүй хуудас мөр давхардуулж/алдана — `analysis/data.ts`-ийн
+               ⚠️); дараагийн хуудсыг ИРСЭН мөрийн тоогоор ахиулна (хариуны хэмжээгээр тайрахад 2000-аас цөөн ирдэг). */
+            const feats: __esri.Graphic[] = [];
+            for (let start = 0; alive; ) {
+              const q = fl.createQuery();
+              q.where = (fl.definitionExpression as string | null) || '1=1';
+              q.returnGeometry = true;
+              q.outFields = [fl.objectIdField];
+              q.orderByFields = [`${fl.objectIdField} ASC`];
+              q.start = start;
+              q.num = REACH_PAGE;
+              const res = await fl.queryFeatures(q);
+              feats.push(...res.features);
+              if (res.features.length === 0 || !res.exceededTransferLimit) break;
+              start += res.features.length;
+            }
+            for (const f of feats) {
               if (!f.geometry) continue;
               /* Полигон барилгын ТӨВӨӨС буфер — ирмэгээс нь биш. Норматив нь
                  «барилга хүртэлх зай» тул төв нь хамгийн ойрын төлөөлөл.

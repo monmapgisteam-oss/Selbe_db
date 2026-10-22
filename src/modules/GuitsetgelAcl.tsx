@@ -41,7 +41,7 @@ import { useAclRunner } from './useAclRunner';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
 
 export function GuitsetgelAcl() {
@@ -62,7 +62,8 @@ export function GuitsetgelAcl() {
    *    харуулаад, дэмий override мөр л үүсгэдэг байв.
    */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) томилогдоно (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   /** Порталд БАЙГАА аккаунтууд (жижиг үсгээр) — устгагдсаны өнчин томилгоог ялгана */
   const known = new Set(all.map((a) => a.toLowerCase()));
   /** Хасалт унасан (мөр нь аль ч нүдэнд алга) — хүснэгтэд нэгэн адил хамаарна */

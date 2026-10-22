@@ -29,6 +29,11 @@ import {
   ROLE_BY_USER,
   VIEWS,
   roleForUser,
+  isCodeSuper,
+  BOOTSTRAP_SUPER,
+  tableSuperUsers,
+  _markTableSuper,
+  _setTableSupers,
   type Role,
   type ViewKey,
 } from './services';
@@ -330,10 +335,11 @@ export function dirtyKeys(): string[] {
  * ЭНЭ СЕШНД ҮҮСЭЭГҮЙ dirty мөрүүд (2026-09-25) — «Дахин синк» бичихээс өмнө
  * ИЛ баталгаажуулахад. `by` нь localStorage-оос — баталгаагүй лавлагаа.
  */
-export function foreignDirty(): { key: string; by: string }[] {
+export function foreignDirty(): { key: string; by: string; role: Role | null }[] {
   return Object.entries(loadDirty())
     .filter(([k, v]) => mine.get(k) !== ser(v.e))
-    .map(([key, v]) => ({ key, by: v.by }));
+    /* ⚠️ 2026-10-22: `role` — super олголтыг «Дахин синк» илгээхгүй тул `UserAdmin` анхааруулна (`retryDirtyOnce`) */
+    .map(([key, v]) => ({ key, by: v.by, role: v.e && !v.e.removed ? v.e.role ?? null : null }));
 }
 
 function notify(): void {
@@ -344,14 +350,34 @@ function loadStore(): Store {
   return cache;
 }
 
+/** Кэшийн super мөрүүд (устгагдаагүй `role:'super'`) — `roles._setTableSupers`-д (⚠️ 2026-10-21) */
+const supersIn = (s: Store): string[] =>
+  Object.entries(s).filter(([, r]) => r && !r.removed && r.role === 'super').map(([u]) => u);
+
 function saveStore(s: Store): void {
   cache = s;
   saveLocal(s);
   notify();
 }
 
-/** Хатуу тохиргооны ХАЛДАШГҮЙ super эсэх — tombstone-д автдаггүй (доорх тайлбар) */
+/**
+ * SUPER эсэх — tombstone-д автдаггүй (доорх тайлбар).
+ * ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): кодын хатуу super ХАСАГДСАН — `roleForUser` одоо ЭРХИЙН ХҮСНЭГТИЙН `role:'super'`
+ *    мөрөөс (`roles._setTableSupers`, `initRemoteInner` тавина). Доорх «хатуу super» тайлбарууд энэ утгаар (кодын +
+ *    хүснэгтийн super) уншигдана; ЗӨВХӨН КОДЫН (тестийн) super-т хамаарах газар `isCodeSuper`.
+ */
 const isHardSuper = (username: string): boolean => roleForUser(username) === 'super';
+
+/**
+ * Нэвтэрсэн хэрэглэгч ЗӨВХӨН АНХНЫ АДМИНААР super (`roles.BOOTSTRAP_SUPER` — хүснэгт уншигдсан, super мөргүй) бол
+ * түүний түлхүүр, үгүй бол `null` — `setUser`-ийн «өөрийн мөрөө эхэлж бич» дүрэмд (⚠️ 2026-10-21).
+ */
+const bootstrapOnlySuper = (): string | null => {
+  const me = (currentUser() ?? '').trim().toLowerCase();
+  if (!me || me !== BOOTSTRAP_SUPER.toLowerCase()) return null;
+  const sup = tableSuperUsers();
+  return sup && sup.length === 0 ? me : null;
+};
 
 /**
  * Dirty тэмдгийг арилгана — ЗӨВХӨН утга нь хэвээр (`want`) бол (хооронд нь шинэ бичилт орсон бол
@@ -414,8 +440,18 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
        *    ЗОРИУД арилгах тул уншилтыг алгасаж үргэлжлүүлнэ — урьд нь `null` бүгд адилхан хаягдаж
        *    сүлжээгүй дарсан «Буцаах» хэзээ ч биелэхгүй байв. Энгийн `null` урьдын адил хаягдана.
        */
+      /* ⚠️ 2026-10-22 (аудит №4): ЭНЭ runtime-д үүсээгүй `role:'super'` мөрийг «Дахин синк» БИЧИХГҮЙ. Dirty-set нь
+         localStorage-д (browser-ийн бүх аккаунтад хуваалцсан) тул гараар тарьсан мөр батлах цонхонд зөвхөн `нэр (бичсэн хүн)`
+         гэж харагдаад (бичсэн хүн нь хуурамч байж болно) super-ийн токеноор бичигдэж БҮРЭН super болдог байв (10-21-ээс өмнө
+         ийм мөр зөвхөн харагдац дардаг). Тэмдгийг хаяна — жинхэнэ олголт бол самбараас дахин олгоно (`UserAdmin` анхааруулна). */
+      if (e && e.role === 'super' && !e.removed && mine.get(key) !== want) {
+        dropDirty(key, want);
+        console.warn(`[selbe] «${key}»: өмнөх сешний super олголтыг илгээсэнгүй — шаардлагатай бол самбараас дахин олгоно уу`);
+        return;
+      }
       const revive = e === null && item.revive === true;
-      if (!e?.removed && !revive && !isHardSuper(key)) {
+      /* ⚠️ 2026-10-21: зөвхөн КОДЫН super-т tombstone үйлчлэхгүй — хүснэгтийн super-ийн мөр энгийн мөр */
+      if (!e?.removed && !revive && !isCodeSuper(key)) {
         let fresh: Awaited<ReturnType<typeof m.userRead>> = null;
         try { fresh = await m.userRead(key); } catch { fresh = null; }
         if (!fresh) return; // уншиж чадсангүй — dirty хэвээр, дараагийн retry
@@ -442,6 +478,8 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
       }
       if (mine.get(key) === want) mine.delete(key);
       done[key] = e;
+      /* ⚠️ 2026-10-22: бичигдсэн утгын super төлөв (`setUser`-ийн ижил дүрэм — олголт зөвхөн амжилтын дараа) */
+      _markTableSuper(key, !!e && e.role === 'super' && !e.removed);
     });
   }
   return done;
@@ -556,6 +594,9 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
   }
   cache = s;
   remoteLoaded = true;
+  /* ⚠️ 2026-10-21: SUPER = эрхийн хүснэгтийн `role:'super'` мөр (устгагдаагүй) — `roles._setTableSupers`-ийн ⚠️.
+     Уншилт бүрд дахин тавина (өөр админ super олгосон/хассан бол 5 минутын poll-д хүрнэ). */
+  _setTableSupers(supersIn(s));
   saveLocal(s);
 
   // 3) Урсгалын томилгоо → guitsetgelAcl (динамик — SSR/гогцооноос сэргийлнэ)
@@ -990,7 +1031,13 @@ export function listUsers(): UserPerm[] {
        мөр нь суурь ('all' · docs · super) хэвээр, `overridden: false` («Сэргээх» ч гарахгүй: мөр нь
        `resolveBaseAccess`/`roleOf`-д үйлчлэхгүй үлдэгдэл). Урьд нь хуучин мөртэй super нь өөр
        үүрэг/цөөн харагдацтай гэж харагдаж, супер бүр өөр өөр байв. */
-    if (isHardSuper(uname)) continue;
+    if (isCodeSuper(uname)) continue;
+    /* ⚠️ 2026-10-21: ХҮСНЭГТИЙН super — мөр нь өөрөө эрхийн эх; самбарт 'all' · docs · super, «Сэргээх»-гүй
+       (`overridden: false`), харин үүрэг/устгалт нь ӨӨР super админд нээлттэй (`roleTypeApply.applyType`-ийн дүрэм). */
+    if (roleForUser(uname) === 'super') {
+      rows.set(uname.toLowerCase(), { username: uname, role: 'super', views: 'all', docs: true, overridden: false });
+      continue;
+    }
     const existing = rows.get(uname.toLowerCase());
     rows.set(uname.toLowerCase(), {
       username: existing?.username ?? uname,
@@ -999,6 +1046,13 @@ export function listUsers(): UserPerm[] {
       docs: ov.docs,
       overridden: true,
     });
+  }
+  /* ⚠️ 2026-10-21 (аудит): ИДЭВХТЭЙ АНХНЫ АДМИН (`roles.BOOTSTRAP_SUPER` — хүснэгтэд super мөргүй үед) мөргүй тул самбарт
+     огт гардаггүй байв: «Төрлөөр тохируулах»-аар өөрийгөө бүртгэх гэвэл `roleTypeApply.applyType` «устгагдсан аккаунт»
+     гэж худал татгалзана, `aclOps.isKnown` ч танихгүй. Синтетик super мөр (`overridden: false`, «Сэргээх»-гүй). */
+  const boot = BOOTSTRAP_SUPER.toLowerCase();
+  if (!rows.has(boot) && roleForUser(boot) === 'super') {
+    rows.set(boot, { username: boot, role: 'super', views: 'all', docs: true, overridden: false });
   }
   return [...rows.values()].sort((a, b) => a.username.localeCompare(b.username));
 }
@@ -1019,10 +1073,15 @@ export function listRemoved(): string[] {
  * · Хатуу SUPER — ТАТГАЛЗАНА: код өөрчлөхөөс өөр замаар super хасагдахгүй.
  */
 export function removeUser(username: string): Promise<boolean> {
-  if (isHardSuper(username)) return Promise.resolve(false);
+  /* ⚠️ 2026-10-21: КОДЫН (тестийн) super л халдашгүй; ХҮСНЭГТИЙН super-ийн мөрийг өөр super админ арилгана
+     (`clearOverride` — панелаас нэмсэн аккаунттай ижил), харин ӨӨРИЙН super-ийг өөрөө хасахгүй (сүүлчийн админ
+     түгжигдэхээс сэргийлнэ — `roleTypeApply.applyType`-ийн ижил дүрэм). */
+  if (isCodeSuper(username)) return Promise.resolve(false);
   /* ⚠️ 2026-10-19 (аудит): trim + жижиг үсэг — `permsRemote.fetchAll`/`upsert`-тэй НЭГ түлхүүр */
   const key = username.trim().toLowerCase();
-  if (roleForUser(username)) {
+  const role = roleForUser(username);
+  if (role === 'super' && key === (currentUser() ?? '').trim().toLowerCase()) return Promise.resolve(false);
+  if (role && role !== 'super') {
     const entry: Entry = { views: [], docs: false, role: null, removed: true };
     const store = { ...loadStore() };
     store[key] = entry;
@@ -1050,7 +1109,20 @@ export function setUser(
   /* ⚠️ 2026-10-12 (super жигд биш): ХАТУУ super-т override БИЧИХГҮЙ — эрх нь кодоос, панелийн мөр
      нь `resolveBaseAccess`/`roleOf`/`listUsers`-д үл тооцогддог тул бичих нь зөвхөн зөрүүтэй
      үлдэгдэл үүсгэнэ (`roleTypeApply.applyType`-ийн «super-т мөр бичихгүй» дүрэмтэй нэг). */
-  if (isHardSuper(username)) return Promise.resolve(true);
+  /* ⚠️ 2026-10-21: зөвхөн КОДЫН (тестийн) super-т бичихгүй — хүснэгтийн super-ийн мөр нь өөрөө эрхийн эх (бичнэ) */
+  if (isCodeSuper(username)) return Promise.resolve(true);
+  /* ⚠️ 2026-10-21 (аудит): АНХНЫ АДМИН (`roles.BOOTSTRAP_SUPER` — зөвхөн хүснэгтэд super мөргүй үед super) өөр хүнд super
+     олгохдоо ӨӨРИЙН `role:'super'` мөрөө ЭХЭЛЖ бичнэ. Урьд нь доорх `_markTableSuper(нөгөөх, true)` агшинд `tableSupers`
+     хоосон биш болж `roleForUser(анхны админ)` → null: админ самбар шууд хаагдаж, мөргүй тул `hasAccess` дараагийн
+     нэвтрэлтэд татгалзана (реле `hasPortalRow` ч 403) — сэргээх зам нь Enterprise дээр тэр super мөрийг гараар устгах л
+     байв. Өөрийн мөр ArcGIS-т бичигдээгүй бол (сүлжээ) нөгөөд ОЛГОХГҮЙ (`false`, fail-closed): remote-д зөвхөн нөгөөх
+     super болж, өөрөө дахин ачаалахад түгжигдэхээс сэргийлнэ; локалд өөрийн мөр dirty — retry дахин бичнэ. Хоёр дахь
+     дуудлагад `tableSupers` хоосон биш тул энэ салаа дахин орохгүй. */
+  const boot = role === 'super' ? bootstrapOnlySuper() : null;
+  if (boot && boot !== key) {
+    return setUser(boot, { views: 'all', docs: true }, 'super')
+      .then((own) => (own ? setUser(username, access, role, baseOf) : false));
+  }
   const entry: Entry = { views: sanitizeViews(access.views), docs: access.docs, role };
   /*
    * ⚠️ 2026-10-05: ЭНЭ ДУУДЛАГЫН ӨӨРЧЛӨЛТ = `entry` − суурь. Суурь нь дуудагчийн өгсөн
@@ -1066,6 +1138,13 @@ export function setUser(
   const store = { ...loadStore() };
   store[key] = entry;
   saveStore(store);
+  /* ⚠️ 2026-10-21: super = хүснэгт — ЭНЭ мөрийн super төлөвийг тусгана (`roles._markTableSuper`; remote уншигдаагүй
+     сешнд no-op). Кэшийг бүхэлд нь дахин уншдаггүй — localStorage-ийн гараар тарьсан `role:'super'` мөр super болохгүй.
+     ⚠️ 2026-10-22 (аудит №4): super-ийг ХАСАХ нь шууд (fail-closed), харин ОЛГОХ тэмдэг ArcGIS-т АМЖИЛТТАЙ бичигдсэний
+     ДАРАА л (доор, `out.role`-оор). Урьд нь бичихээс өмнө тавьдаг тул унасан бичилтийн дараа ч `tableSupers`-д үлдэж,
+     анхны админы дараагийн олголт (`bootstrapOnlySuper` → supers=[өөрөө]) «өөрийн мөрөө эхэлж бич» салааг алгасдаг байв:
+     remote-д зөвхөн нөгөөх super болж, анхны админ мөргүй үлдээд дахин ачаалахад түгжигддэг байв. */
+  if (role !== 'super') _markTableSuper(key, false);
   /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
   return serialWrite(key, async () => {
     let out = entry;
@@ -1086,7 +1165,8 @@ export function setUser(
          `upsert` явж, нөгөө админы ДӨНГӨЖ тавьсан tombstone-ыг дарж устгагдсан хүнийг амилуулдаг
          байв — `retryDirtyOnce`-ийн ижил цоорхой. Хатуу super-т tombstone үйлчилдэггүй. */
       const wasDirty = key in loadDirty();
-      const hard = isHardSuper(username);
+      /* ⚠️ 2026-10-21: зөвхөн кодын super-т tombstone үйлчлэхгүй (`isCodeSuper`) */
+      const hard = isCodeSuper(username);
       if (!wasDirty || !hard) {
         const fresh = await m.userRead(username);
         if (!fresh) { trackWrite(key, entry, false); return false; }
@@ -1111,6 +1191,7 @@ export function setUser(
           const s = { ...loadStore() };
           s[key] = fr;
           saveStore(s);
+          _markTableSuper(key, false);
           return false;
         }
         /* ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
@@ -1127,6 +1208,8 @@ export function setUser(
     } catch {
       ok = false;
     }
+    /* ⚠️ 2026-10-22: super тэмдэг ЗӨВХӨН бичигдсэн утгаар (`mergeUserDelta` үүргийг өөрчилж болно) — дээрх ⚠️ */
+    if (ok) _markTableSuper(key, out.role === 'super');
     trackWrite(key, out, ok);
     return ok;
   });
@@ -1183,14 +1266,15 @@ export function clearOverride(username: string, opts: { revive?: boolean } = {})
     let ok = false;
     try {
       const m = await import('./permsRemote');
-      if (!revive && !isHardSuper(key)) {
+      /* ⚠️ 2026-10-21: зөвхөн кодын super-т tombstone үйлчлэхгүй (`isCodeSuper`) */
+      if (!revive && !isCodeSuper(key)) {
         const fresh = await m.userRead(username);
         /* ⚠️ 2026-10-11 (аудит №7, 2): remote УНШИГДАХГҮЙ (offline) бол `setUser`-тэй ИЖИЛ — локал мөр
            tombstone БИШ л бол локалоос шууд арчиж dirty-д үлдээнэ (`retryDirtyOnce` remote tombstone-ыг
            дахин шалгана); локал мөр tombstone бол remote-оор батлагдахгүйгээр арчихгүй — энэ хөтөч
            устгагдсан хүнийг оруулахгүй. */
         if (!fresh) {
-          if (!loadStore()[key]?.removed) { const s0 = { ...loadStore() }; delete s0[key]; saveStore(s0); }
+          if (!loadStore()[key]?.removed) { const s0 = { ...loadStore() }; delete s0[key]; saveStore(s0); _markTableSuper(key, false); }
           trackWrite(key, null, false);
           return false;
         }
@@ -1199,6 +1283,7 @@ export function clearOverride(username: string, opts: { revive?: boolean } = {})
           const s = { ...loadStore() };
           s[key] = sanitizeEntry({ views: [], docs: false, role: null, removed: true });
           saveStore(s);
+          _markTableSuper(key, false);
           return false;
         }
       }
@@ -1210,6 +1295,8 @@ export function clearOverride(username: string, opts: { revive?: boolean } = {})
       const store = { ...loadStore() };
       delete store[key];
       saveStore(store);
+      /* ⚠️ 2026-10-21: мөр арилсан — хүснэгтийн super ч арилна (`roles._markTableSuper`) */
+      _markTableSuper(key, false);
     }
     trackWrite(key, null, ok, revive);
     return ok;

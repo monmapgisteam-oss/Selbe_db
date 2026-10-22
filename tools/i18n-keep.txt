@@ -47,8 +47,9 @@
 # [const] LAYERS[*].paint.labels (Явган хүний зам · Цементэн талбай) + paint.values
 #         түлхүүрүүд: BUILT_STATUS (Одоо байгаа · Баригдаж байгаа · Төлөвлөсөн),
 #         TOGLOOM_TYPES (Гулгуур · Дүүжин · Том гулсууран тоглоом) → enData.ts;
-#         [data] бусад давхаргын facet утга (бүсийн төрөл — доорх zoneCanon)
-@dyn components/LayerCatalog.tsx  tr(f.field === d.paint?.field
+#         [data] бусад давхаргын facet утга (бүсийн төрөл — `facet.canon` = zoneType → доорх каноник нэр, 2026-10-21)
+@dyn components/LayerCatalog.tsx  tr(f.canon
+@dyn modules/ViewPanel.tsx  tr(f.canon
 
 # [const] LAYERS[*].qty.unit — м² · м · км · ш · м³ · тн (бүгд en.ts)
 @dyn components/MapCanvas.tsx  tr(d.qty!.unit)
@@ -65,6 +66,7 @@
 # [const] zoneCanon / analysis/config бүсийн каноник нэр (дээрх жагсаалт + en.ts)
 @dyn components/ZoneFilter.tsx  tr(g.type)
 @dyn modules/Gazar.tsx  tr(z.label)
+@dyn modules/analysis/suit/format.ts  tr(zoneType(t))
 
 # [pass] ui.tsx-ийн ерөнхий график/донат/легенд — шошго нь ДУУДАГЧААС ирнэ
 #        (Dashboard · GeneralDash · Gazar · PkgFin …); дуудагч бүр өөрийн
@@ -166,8 +168,12 @@
 # [data] ослын төрөл (ХАБЭА incident «turul»: Осол дөхсөн тохиолдол · Эд хөрөнгийн хохирол ·
 #        Эмнэлгийн тусламж авсан гэмтэл · Анхны тусламж авсан осол зөрчил · Амь нас эрсдэж
 #        болзошгүй байсан · Ноцтой байдалд хүргэж болзошгүй …) — enData.ts
+#        ⚠️ 2026-10-21: төрөл ДОМЭЙНЫ НЭРЭЭР (`lib/codedDomain`, код тасархай байв) — код ба нэр хоёулаа enData.ts-д;
+#        попапын төрөл (`codedName`) ба краны төлөв (Одоо байгаа · Буусан · Шинээр нэмэгдсэн) мөн tr()-ээр
 @dyn modules/Habea.tsx  tr(i.type)
 @dyn modules/Habea.tsx  tr(x.type)
+@dyn modules/Habea.tsx  tr(codedName(dom[I.turul], a[I.turul]) || '—')
+@dyn modules/Habea.tsx  tr(text(a[C.tuluv], '—'))
 
 # [data] ажлын үе шатны нэр (бөглөх хуудасны `Ажил` талбар: Барилгын ажил · Цэвэр бохир
 #        усны ажил · Халаалт агаар сэлгэлт ажил · Цахилгаан, гэрэлтүүлэг · Холбоо дохиолол)

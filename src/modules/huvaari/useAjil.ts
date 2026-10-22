@@ -333,25 +333,31 @@ export function useAjil({
        ИЛГЭЭСЭН мөрүүдийг хасна — завсарт нэмсэн нь үлдэнэ. */
     const want = pkg.key;
     const sent = new Set(adds.map((a) => a.oid));
+    /* ⚠️ 2026-10-21 (аудит №1): `await`-ийн ДАРАА багц солигдсон эсэхийг шалгана (`live`) — LS (`want`-аар) хэвээр
+       бичигдэнэ, харин ДЭЛГЭЦИЙН төлөв (алдаа · мэдэгдэл · маягт · `refreshAjil`) зөвхөн тэр багц дээр хэвээр бол.
+       Урьд нь Б багц руу шилжсэний дараа А-гийн «илгээгдлээ»/алдаа Б-д гарч, `refreshAjil` А-г дэмий татдаг байв.
+       `editAjilHere` · `saveAjilEdit` · `withdrawAjilHere` ижил. */
+    const live = () => pkgKeyRef.current === want;
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const r = await submitAjil({
         pkgKey: want, pkgGroup: pkg.group, author: user?.username ?? '',
         payload: { v: 1, pkgKey: want, adds },
       });
-      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return; }
+      if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return; }
       const st = addsStRef.current;
       writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
       setAddsSt((s) => (s.key === want ? { key: want, list: s.list.filter((a) => !sent.has(a.oid)) } : s));
+      if (!live()) return;
       setAddFor(null);
       setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(userError(e));
+      if (live()) setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
-  }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil, addsStRef, setAddsSt]);
+  }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТЭЭ ЗАСАХ (2026-09-29, хэрэглэгч: «ажил нэмэх хүсэлт явуулсны дараа
@@ -367,8 +373,9 @@ export function useAjil({
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const pl = await loadAjilPayload(ajSub.oid);
-      if (!pl?.adds.length) { setAjErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      /* ⚠️ 2026-10-21 (аудит №1): багц солигдсон бол алдааг ч Б-д харуулахгүй — `sendAjil`-ийн ⚠️ */
       if (pkgKeyRef.current !== want) return;
+      if (!pl?.adds.length) { setAjErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
       const st = addsStRef.current;
       const before = st.key === want ? st.list : readAdds(want);
       const had = new Set(before.map((a) => a.oid));
@@ -379,7 +386,7 @@ export function useAjil({
       setAjEdit({ oid: ajSub.oid, rows: merged.filter((a) => !had.has(a.oid)).map((a) => a.oid) });
       setAjNote(tr('Илгээсэн нэмэлт ажил засварт нээгдлээ — улаан мөрүүдийг засаад «Засварыг хадгалах» дарна уу. Батлагч шийдээгүй хэвээр.'));
     } catch (e) {
-      setAjErr(userError(e));
+      if (pkgKeyRef.current === want) setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
@@ -390,19 +397,22 @@ export function useAjil({
     if (!ajSub || !ajEdit || ajEdit.oid !== ajSub.oid || ajBusy) return;
     const want = pkg.key;
     const sent = new Set(adds.map((a) => a.oid));
+    /* ⚠️ 2026-10-21 (аудит №1): багц солигдсон бол дэлгэцийн төлөвийг хөндөхгүй — `sendAjil`-ийн ⚠️ */
+    const live = () => pkgKeyRef.current === want;
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const r = await updateAjil({ oid: ajSub.oid, me: user?.username ?? '', payload: { v: 1, pkgKey: want, adds } });
-      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Засвар хадгалагдсангүй.')); return; }
+      if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Засвар хадгалагдсангүй.')); return; }
       const st = addsStRef.current;
       writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
       setAddsSt((s0) => (s0.key === want ? { key: want, list: s0.list.filter((a) => !sent.has(a.oid)) } : s0));
       writeAjEdit(want, null);
-      if (pkgKeyRef.current === want) { setAjEditSt(null); setEditAdd(null); setAddFor(null); }
+      if (!live()) return;
+      setAjEditSt(null); setEditAdd(null); setAddFor(null);
       setAjNote(tr('Нэмэлт ажлын засвар хадгалагдлаа — батлагч шинэ хувилбарыг харна.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(userError(e));
+      if (live()) setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
@@ -441,11 +451,13 @@ export function useAjil({
     if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'))) return;
     /* ⚠️ Багцыг ОДОО барина (2026-09-25 аудит) — `sendAjil`-ийн ижил шалтгаан */
     const want = pkg.key;
+    /* ⚠️ 2026-10-21 (аудит №1): багц солигдсон бол дэлгэцийн төлөвийг хөндөхгүй (LS хэвээр) — `sendAjil`-ийн ⚠️ */
+    const live = () => pkgKeyRef.current === want;
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const pl = editing ? null : await loadAjilPayload(ajSub.oid);
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
-      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Татагдсангүй.')); return; }
+      if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
       /* ⚠️ LS-д СИНХРОН (`refreshAjil`-ийн #5 дүрэм) — багц солигдсон ч А-д хадгалагдана */
       if (pl?.adds.length) {
@@ -457,15 +469,16 @@ export function useAjil({
           addsStRef.current = { key: want, list: merged };
         }
       }
-      if (editing) { writeAjEdit(want, null); setAjEditSt(null); }
+      if (editing) { writeAjEdit(want, null); if (live()) setAjEditSt(null); }
+      if (!live()) return;
       setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(userError(e));
+      if (live()) setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
-  }, [ajSub, ajBusy, ajEdit, user, pkg.key, refreshAjil, addsStRef, setAddsSt]);
+  }, [ajSub, ajBusy, ajEdit, user, pkg.key, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
 
   /**
    * БҮЛЭГТ ШИНЭ АЖИЛ НЭМЭХ — шалгалт FillNew-ийн 2026-09 хувилбартай ҮГЧЛЭН ижил.

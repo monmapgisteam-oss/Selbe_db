@@ -19,3 +19,14 @@ export const FINANCE_VIEWS = new Set(['pkgFin', 'finance']);
 export function botFullViews(keys) {
   return [...new Set(keys)].filter((k) => !FINANCE_VIEWS.has(k));
 }
+
+/**
+ * ⚠️ 2026-10-21 (аудит): ОЛГОХ ХАРАГДАЦ ∩ АДМИНЫ ӨӨРИЙН ХҮРЭЭ. `TELEGRAM_ALLOWED`-д хязгаартай админ (`<id>:plan|pkgProg`)
+ *    «✅ Зөвшөөрөх» товчоор ӨӨРТ нь байхгүй харагдацыг (FULL_VIEWS бүхэлдээ) олгодог байв — эрх дамжуулалт өөрийнхөөс
+ *    давж байв. `'all'` админ бүгдийг; хязгаартай админ зөвхөн өөрийн хүрээг; хүрээгүй (`null`) → хоосон (бот татгалзана).
+ */
+export function grantWithin(views, adminScope) {
+  if (adminScope === 'all') return [...views];
+  if (!Array.isArray(adminScope)) return [];
+  return views.filter((v) => adminScope.includes(v));
+}

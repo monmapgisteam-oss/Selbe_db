@@ -25,8 +25,25 @@ import s from './ma.module.css';
 
 const qty = (v: number | null) => (v == null ? '—' : num(v));
 
-/** Синкийн төлөв — `Ma.tsx` удирдана */
-export type NootsSync = { state: 'idle' | 'running' } | { state: 'done'; res: SyncResult } | { state: 'error'; error: string };
+/* ⚠️ 2026-10-22 (аудит): ТӨЛӨВИЙН ДЭЛГЭЦИЙН НЭР — утга нь ӨГӨГДӨЛ (`tolov` баганад монголоор, `materialNoots.TOLOV`), зөвхөн
+   ДЭЛГЭЦЭД орчуулна; урьд нь `{m.status}` түүхийгээр англи горимд «Дууссан»/«Дуусаагүй» хэвээр үлддэг байв. Хоёр л утгатай
+   тул ЛИТЕРАЛ `tr()` (динамик `tr(m.status)` биш — i18n-extract түлхүүрийг шалгана); танихгүй утга хэвээр. Өнгөний
+   харьцуулалт (`TOLOV.done`) түүхий утгаараа. */
+const statusLabel = (v: string): string =>
+  v === TOLOV.done ? tr('Дууссан') : v === TOLOV.open ? tr('Дуусаагүй') : v;
+
+/** Синкийн төлөв — `Ma.tsx` удирдана. `disabled` — автомат бүртгэл идэвхгүй (`mir_id` алга/тохирохгүй), нөөц зөвхөн харагдана */
+export type NootsSync =
+  | { state: 'idle' | 'running' } | { state: 'done'; res: SyncResult } | { state: 'error'; error: string } | { state: 'disabled'; reason: string };
+
+/* ⚠️ 2026-10-21 (аудит №2): ХЭСЭГЧИЛСЭН НИЙЛБЭР ИЛ — тоо хэмжээгүй (null) ачаа байвал нийлбэрийн хажууд тэмдэглэнэ (null ≠ 0) */
+function PartialQty({ sum, unknown }: { sum: number | null; unknown: number }) {
+  return (
+    <td className={s.num} title={unknown ? tr('{0} ачааны тоо хэмжээ мэдэгдэхгүй — нийлбэр дутуу', unknown) : undefined}>
+      {qty(sum)}{sum != null && unknown > 0 && <span className={s.expired}> {tr('({0} ачаа тоогүй)', unknown)}</span>}
+    </td>
+  );
+}
 
 export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync; onSync: (() => void) | null }) {
   const q = useAsync(loadNoots, [tick]);
@@ -42,7 +59,8 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
         <span className={s.note}>
           {sync.state === 'running' ? tr('MA · MIR-ээс нөөцийг тулгаж байна…')
             : sync.state === 'done' ? tr('Нөөц шинэчлэгдлээ — нэмсэн {0} · зассан {1} · хассан {2}.', sync.res.added, sync.res.updated, sync.res.removed)
-              : tr('MA ба MIR батлагдсан материал нөөцөд автоматаар орно; нэг материалыг нэрээр нь нэгтгэнэ.')}
+              : sync.state === 'disabled' ? tr('Автомат бүртгэл идэвхгүй — нөөцийг зөвхөн харна.')
+                : tr('MA ба MIR батлагдсан материал нөөцөд автоматаар орно; нэг материалыг нэрээр нь нэгтгэнэ.')}
         </span>
       </div>
       {sync.state === 'error' && <p className={s.errNote} role="alert">{tr('Нөөцийн автомат бүртгэл амжилтгүй: {0}', sync.error)}</p>}
@@ -71,10 +89,10 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
                     <td className={m.units.length > 1 ? s.expired : ''} title={m.units.length > 1 ? tr('Өөр өөр нэгжээр ирсэн — нийлбэр буруу байж болно') : undefined}>
                       {m.units.join(', ') || '—'}
                     </td>
-                    <td className={s.num}>{qty(m.inSum)}</td>
-                    <td className={s.num}>{qty(m.usedSum)}</td>
-                    <td className={s.num}>{qty(m.rest)}</td>
-                    <td><span className={m.status === TOLOV.done ? s.expired : s.valid}>{m.status}</span></td>
+                    <PartialQty sum={m.inSum} unknown={m.inUnknown} />
+                    <PartialQty sum={m.usedSum} unknown={m.usedUnknown} />
+                    <td className={s.num} title={m.rest == null && (m.inUnknown || m.usedUnknown) ? tr('Үлдэгдэл тодорхойгүй — тоо хэмжээгүй ачаа байна') : undefined}>{qty(m.rest)}</td>
+                    <td><span className={m.status === TOLOV.done ? s.expired : s.valid}>{statusLabel(m.status)}</span></td>
                     <td className={s.num}>{m.n}</td>
                   </tr>
                 ))}

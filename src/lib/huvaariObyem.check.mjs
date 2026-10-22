@@ -352,8 +352,12 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
   assert.ok(/if \(isLostWrite\(err\)\) lost = true;/.test(body), 'applyPlanEdits: хариу алдагдсан үед HUVAARI_OBYEM хүчингүй болгохгүй');
   assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0 \|\| lost\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body),'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
   /* ⚠️ 2026-10-21: дутуу хариу = кодгүй `ArcGISError` → `isLostWrite` үнэн (тэмдэг үлдэнэ, кэш хүчингүй) */
-  assert.ok(/if \(res\.length !== want\[n\]\) \{\s*throw new ArcGISError\(/.test(body), 'applyPlanEdits: дутуу хариу ArcGISError биш — isLostWrite худал');
-  assert.ok(/res\.find\(\(r\) => r\.success !== true\)/.test(body), 'applyPlanEdits: success !== true биш');
+  assert.ok(/if \(res\.length !== want\[n\] \|\| unsure\) \{\s*throw new ArcGISError\(/.test(body), 'applyPlanEdits: дутуу хариу ArcGISError биш — isLostWrite худал');
+  /* ⚠️ 2026-10-21 (аудит №2): ЗӨВХӨН `success === false` тодорхой татгалзал (энгийн Error); `success`-гүй үр дүн
+     нь `unsure` → `ArcGISError` (lost) — `bagtsSheet.applyAdds`/`applyUpdates`-ийн нэг дүрэм */
+  assert.ok(/const bad = res\.find\(\(r\) => r\.success === false\);/.test(body), 'applyPlanEdits: тодорхой татгалзал зөвхөн success === false биш');
+  assert.ok(/const unsure = res\.some\(\(r\) => r\.success !== true\);/.test(body), 'applyPlanEdits: success-гүй үр дүн тодорхойгүй (lost) биш');
+  assert.ok(!/r\.success !== true\)\);\s*if \(bad\)/.test(body), 'applyPlanEdits: success-гүй үр дүн татгалзал гэж шидэгдэж байна');
   const { ArcGISError } = await import('./query.ts');
   const { isLostWrite } = await import('./lostWrite.ts');
   assert.equal(isLostWrite(new ArcGISError('x', 'u')), true, 'кодгүй ArcGISError → хариу алдагдсан');

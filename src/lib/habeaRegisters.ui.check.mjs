@@ -23,6 +23,13 @@ const R = await import('./habeaRegisters.ts');
 const { prevWeek } = await import('../modules/habeaUzleg.tsx');
 const { dataVersion } = await import('./dataBus.ts');
 
+/* ══════════ 0. (2026-10-21, кэшийн аудит) POLL нь TTL-ээс УРТ ══════════ */
+{
+  assert.equal(R.HABEA_TTL_MS, 5 * 60_000, 'ХАБЭА кэшийн TTL 5 мин (`live.SESSION_TTL_MS`-тэй ижил)');
+  assert.ok(R.HABEA_POLL_MS > R.HABEA_TTL_MS, 'poll нь TTL-ээс УРТ — тэнцүү бол эхний tick бүр кэшээс буцна (бодит шинэчлэл 10 мин)');
+  assert.ok(R.HABEA_POLL_MS - R.HABEA_TTL_MS >= 10_000, 'зөрүү ≥10 с — хүсэлтийн хугацаанаас урт');
+}
+
 /* ══════════ 1. UB долоо хоног ══════════ */
 {
   const now = new Date(Date.parse('2026-09-14T00:30:00+08:00')); // Даваа 00:30 UB (UTC-ээр Ням)

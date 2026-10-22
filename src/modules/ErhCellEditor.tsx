@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { listUsers } from '@/lib/permissions';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import { stageOfUser } from '@/lib/guitsetgelAcl';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
@@ -71,7 +71,8 @@ export function ErhCellEditor({
     const d = drafts.get(a.toLowerCase());
     return !!d && (!!d.remove || !!d.isNew);
   };
-  const free = all.filter((a) => roleForUser(a) !== 'super' && !taken.has(a.toLowerCase()) && !frozen(a));
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const free = all.filter((a) => !isCodeSuper(a) && !taken.has(a.toLowerCase()) && !frozen(a));
 
   /** Картын хамгаалалт — op бүтээхээс ӨМНӨ (`runOp` `error`-ийг зурвас болгоно) */
   const guard = (u: string, op: () => AclOp): AclOp => {

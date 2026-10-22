@@ -17,6 +17,8 @@ import { invalidate } from "@/lib/dataBus";
 import { isLostWrite } from "@/lib/lostWrite";
 import { ArcGISError } from "@/lib/query";
 import { DAY, spanFrac } from "@/lib/plan";
+/* ⚠️ 2026-10-21 (аудит): нэмэлтийн бүрэлдэхүүний тоон дүрэм бөглөх хуудастай НЭГ (`parseInc`-ийн ⚠️); `paste.ts` импортгүй — тойрог үүсэхгүй */
+import { normCell } from "./paste";
 
 export type SheetRow = {
   oid: number;
@@ -868,6 +870,16 @@ export async function loadRows(
     if (!j.exceededTransferLimit || fs.length === 0) break;
     offset += fs.length;
   }
+  /* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): ОГНООТОЙ ЖААЗГҮЙ хуудас (`where` нь ЯГ `fld IS NULL` — b42_12f: 1,593 мөр) —
+     энэ татлага нь `baseFetch(…, "null")`-тай ИЖИЛ олонлог (ижил where · `oid ASC` · 2000-ын хуудаслалт · ижил зогсолт)
+     бөгөөд `oid`/`no`/`work` багана агуулсан бол суурь лавлахын кэшийг (`baseKeyCache`) эндээс дулаацуулна — урьд нь ЯГ
+     ТЭР мөрүүд дараа нь 3 баганаар ДАХИН татагддаг байв (`loadBaseKeys` → `baseFetch`; муруй · зөрүүний картад +1 хүсэлт,
+     +145 КБ багц бүрд). Зөвхөн кэш хоосон үед; `loadBaseKeys` түлхүүрийг `no`/`work`-оос л таслах тул илүү багана нөлөөгүй. */
+  if (sc.f.fillDate && where === `${sc.f.fillDate} IS NULL`
+    && (!fields?.length || [sc.f.oid, sc.f.no, sc.f.work].every((f) => fields.includes(f)))
+    && !baseKeyCache.has(`${pkg.key}|null`)) {
+    baseKeyCache.set(`${pkg.key}|null`, Promise.resolve(feats));
+  }
 
   /**
    * ⚠️ ӨДӨРТ ХОЁР УДАА нийтэлбэл (санамсаргүй давхар товшилт, эсвэл алдаа
@@ -1389,6 +1401,11 @@ export type CellMode = "abs" | "inc";
  * хувь хоёр ТУСДАА багана тул нэг нүдэнд хоёулаа хуримтлагдаж болно).
  * ⚠️ СӨРӨГ нэмэлт ЗӨВШӨӨРӨГДӨНӨ (залруулга) — нийт нь `incCell`-д ≥ 0-оор хаагдана.
  * ⚠️ Хоосон (`""`) ба тоо биш бүрэлдэхүүн → `null` («засвар алга», 0 БИШ).
+ * ⚠️ 2026-10-21 (аудит): бүрэлдэхүүн бүр `paste.normCell`-ийн дүрмээр (бөглөх хуудасны `commit`/буулгалттай НЭГ):
+ *    «12,5» → 12.5 (урьд нь `Number` NaN → чимээгүй хаягддаг), «1e3» · «0x10» · «0b11» → хог (урьд нь `Number` 1000 · 16
+ *    гэж хүлээн авдаг), «1,250» хоёрдмол → хог; обьёмын бүрэлдэхүүнд `%`-ээр төгссөн утга хог (хувь нь ЗӨВХӨН `%N`
+ *    угтвараар — `normCell` төгсгөлийн `%`-ийг хасдаг тул энд тусад нь няцаана). Хог = `null` — `overlaySubmission` тэр
+ *    нүдийг `unmoved`-д тоолно (0 эсвэл «өөрчлөлтгүй» БИШ).
  */
 export function parseInc(v: string | undefined): { n: number; p: number } | null {
   if (typeof v !== "string") return null;
@@ -1397,22 +1414,26 @@ export function parseInc(v: string | undefined): { n: number; p: number } | null
   let n = 0;
   let p = 0;
   for (const t of toks) {
-    if (t.startsWith(PCT)) {
-      const s = t.slice(PCT.length);
-      const x = Number(s);
-      if (s === "" || !Number.isFinite(x)) return null;
-      p += x / 100;
-    } else {
-      const x = Number(t);
-      if (!Number.isFinite(x)) return null;
-      n += x;
-    }
+    const pct = t.startsWith(PCT);
+    const s = pct ? t.slice(PCT.length) : t;
+    if (!pct && s.endsWith(PCT)) return null;
+    const norm = normCell(s);
+    if (norm == null) return null;
+    const x = Number(norm);
+    if (!Number.isFinite(x)) return null;
+    if (pct) p += x / 100;
+    else n += x;
   }
   return { n, p };
 }
 
-/** Хөвөгч цэгийн чимээг (0.1 + 0.2) арилгаж мөр болгоно — 12 ач холбогдолтой орон. */
-const numStr = (x: number): string => String(parseFloat(x.toPrecision(12)));
+/** Хөвөгч цэгийн чимээг (0.1 + 0.2) арилгаж мөр болгоно — 12 ач холбогдолтой орон.
+ *  ⚠️ 2026-10-21 (аудит): ЭКСПОНЕНТГҮЙ («1e-7» биш «0.0000001») — `parseInc` одоо `normCell`-ийн энгийн аравтын дүрмээр
+ *  задалдаг тул экспонент бичлэг хог болж нэмэлт алдагдах байв. 1e21-ээс их утга бодитгүй (`toFixed` ч экспонент өгнө). */
+const numStr = (x: number): string => {
+  const s = String(parseFloat(x.toPrecision(12)));
+  return /e/i.test(s) ? parseFloat(x.toPrecision(12)).toFixed(12).replace(/\.?0+$/, "") : s;
+};
 
 /** `{n, p}` → нэмэлтийн мөр (`parseInc`-ийн урвуу). Хоёулаа 0 бол `""`. */
 export function fmtInc(d: { n: number; p: number }): string {
@@ -1456,7 +1477,11 @@ export function negInc(a: string | undefined): string {
  *    хоосон нүдийн нийт нь 0. Мөрийн `Обьём`тэй боловч `obyem`-гүй (зөвхөн
  *    хувиар бүртгэгдсэн) хуучин нүдэнд хувийг обьём руу БУЦААЖ БОДОХГҮЙ
  *    (дээрх ⚠️ «Обьёмыг хувиас нь БУЦААЖ БОДОХГҮЙ») — нийт нь 0-ээс эхэлнэ.
- * ⚠️ НИЙТ ≥ 0: сөрөг нэмэлт (залруулга) нийтийг 0-ээс доош оруулахгүй.
+ * ⚠️ НИЙТ ≥ 0: сөрөг нэмэлт (залруулга) нийтийг 0-ээс доош оруулахгүй — ЗӨВХӨН ДЭЛГЭЦЭД (`neg` туг, ⚠️ 2026-10-21 аудит):
+ *    нийт сөрөг болох бол буцаах утгыг 0-оор хаасан хэвээр `neg: true` тавина; `overlaySubmission` → `hyanaltStore`
+ *    архивлалт тийм нүдийг ТАТГАЛЗАНА. Урьд нь чимээгүй 0 болгодог тул хоёр илгээлтийн батлалтын ДАРААЛЛААС
+ *    хамаарч өөр дүн гардаг байв (суурь 0: +10 дараа −15 → 0, харин −15 дараа +10 → 10). Хөвөгч цэгийн чимээг
+ *    (0.3 − 0.1 − 0.2) сөрөг гэж тооцохгүй (харьцангуй 1e-9 хүлцэл).
  * ⚠️ ЦЭВЭРЛЭХ (`null` болгох) зам энэ горимд БАЙХГҮЙ — `""` нь «засвараа
  *    буцаах». Бүртгэлийг тэглэх бол сөрөг нэмэлтээр 0 болгоно.
  */
@@ -1465,7 +1490,7 @@ export function incCell(
   b: number,
   e: string | undefined,
   hasField: boolean,
-): { obyem: number | null; act: number | null } | null {
+): { obyem: number | null; act: number | null; neg?: true } | null {
   const d = parseInc(e);
   if (!d || (d.n === 0 && d.p === 0)) return null;
   /* ⚠️ 2026-10-09 (F5): обьёмын талбаргүй блокт зөвхөн обьёмын нэмэлт (`%`-гүй) — архивт бичих
@@ -1474,16 +1499,25 @@ export function incCell(
   if (!hasField && d.p === 0) return null;
   const vol = r.vol != null && r.vol > 0 ? r.vol : null;
   const volPath = hasField && vol != null;
+  /* ⚠️ 2026-10-21 (аудит): нийт сөрөг үү — хөвөгч цэгийн чимээг тооцохгүй (харьцангуй 1e-9) */
+  const below = (total: number, base: number, inc: number): boolean =>
+    total < -1e-9 * Math.max(1, Math.abs(base), Math.abs(inc));
+  let neg = false;
   let ob = r.obyem[b];
   const add = d.n + (volPath ? d.p * (vol as number) : 0);
-  if (add !== 0) ob = Math.max(0, (r.obyem[b] ?? 0) + add);
+  if (add !== 0) {
+    const total = (r.obyem[b] ?? 0) + add;
+    if (below(total, r.obyem[b] ?? 0, add)) neg = true;
+    ob = Math.max(0, total);
+  }
   const pRest = volPath ? 0 : d.p;
-  const act = pRest !== 0
-    ? Math.max(0, (r.act[b] ?? 0) + pRest)
-    : volPath && ob != null
-      ? ob / (vol as number)
-      : r.act[b];
-  return { obyem: ob, act };
+  let act: number | null;
+  if (pRest !== 0) {
+    const totalP = (r.act[b] ?? 0) + pRest;
+    if (below(totalP, r.act[b] ?? 0, pRest)) neg = true;
+    act = Math.max(0, totalP);
+  } else act = volPath && ob != null ? ob / (vol as number) : r.act[b];
+  return neg ? { obyem: ob, act, neg: true } : { obyem: ob, act };
 }
 /**
  * БЛОКГҮЙ БАГЦЫН (синтетик блок) ОБЬЁМГҮЙ АЖЛЫН МӨР уу (2026-10-09).

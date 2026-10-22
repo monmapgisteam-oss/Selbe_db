@@ -298,7 +298,10 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           хоёул `!g` байсан — одоо `loaded` (давхарга каталогт бий, асуулга явсан) түлхүүрээр ялгана. */
     const loaded = qSocial.data.loaded.includes(r.live);
     const add = !g ? (loaded ? '0' : '—') : !n ? '0' : g.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
-    return { ...r, add, total: headCount(r.now) + n, pending: false, failed: false };
+    /* ⚠️ 2026-10-21 (аудит): давхарга каталогт АЛГА (`!loaded`, бүлэг ч ирээгүй) бол нийт `null` («—») — урьд нь
+       «одоо + 0» гэж бүтэн тоо мэт гардаг байв (null ≠ 0); нийлбэрээс ч хасагдана (`failed` → «—»). */
+    const missing = !g && !loaded;
+    return { ...r, add, total: missing ? null : headCount(r.now) + n, pending: false, failed: missing };
   }), [qSocial]);
   const socTotals = {
     now: socRows.reduce((s, r) => s + headCount(r.now), 0),
@@ -710,6 +713,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           title={tr('Нийгмийн үйлчилгээ (одоо {0} + шинэ {1})', String(socTotals.now), socTotals.add == null ? (socTotals.failed ? '—' : '…') : String(socTotals.add))}
           note={socTotals.add == null ? undefined : tr('{0} → {1}', String(socTotals.now), String(socTotals.now + socTotals.add))}
         >
+          {/* ⚠️ 2026-10-21 (аудит): амьд давхарга унавал шалтгаан + «Дахин оролдох» (`Data`) — урьд нь зөвхөн «—» */}
+          {qSocial.state === 'error' && <Data q={qSocial}>{() => null}</Data>}
           <p className={i.socSrc}>
             {tr('«Шинээр» — сургууль, цэцэрлэгийнх газрын зургийн давхаргаас (амьд), бусад нь илтгэлээс; «Одоо байгаа» — илтгэлээс.')}
           </p>
@@ -725,7 +730,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               return (
                 <div key={r.label} className={i.socBlock}>
                   <div className={i.socHead}>
-                    <b className={i.socTotal}>{r.pending ? '…' : r.failed ? '—' : r.total}</b>
+                    <b className={i.socTotal}>{r.pending ? '…' : r.failed || r.total == null ? '—' : r.total}</b>
                     <span className={i.socName}>{r.label}</span>
                   </div>
                   <div className={i.socLine}>

@@ -756,7 +756,7 @@ function LayerTypeCharts({
   d, f, zone, view,
 }: {
   d: LayerDef;
-  f: { field: string; label: string };
+  f: { field: string; label: string; canon?: (raw: string) => string };
   zone: string | null;
   view: ViewKey;
 }) {
@@ -796,10 +796,18 @@ function LayerTypeCharts({
   // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт (олон өнгө биш)
   const shade = monoShades(d, data);
   const colorOf = (label: string) => shade.get(label) ?? BLANK_HUE;
+  /* ⚠️ 2026-10-22 (аудит №4): ангиллын НЭР — `LayerCatalog.nameOf`-той нэг дүрэм (бүсийн ангилал → `f.canon`, кодтой
+     талбар → `paint.labels`), орчуулсан. Урьд нь донат/багана ба шүүлтийн чип түүхий утга («орон сууцны бүс») харуулж
+     англи горимд монголоор үлддэг байв. Түлхүүр · өнгө · шүүлтийн нөхцөл түүхий утгаараа хэвээр. */
+  const nameOf = (label: string): string => tr(f.canon
+    ? f.canon(label)
+    : f.field === d.paint?.field
+      ? d.paint.labels?.[label] ?? label
+      : label);
 
   const items = data.map((x) => ({
     key: `${d.id}:${x.label}`,
-    label: x.label,
+    label: nameOf(x.label),
     value: x.values.n,
     color: colorOf(x.label),
   }));
@@ -817,7 +825,7 @@ function LayerTypeCharts({
     if (!item) return;
     toggle({
       key,
-      label: item.label,
+      label: nameOf(item.label),
       group: `${d.title} · ${f.label}`,
       where: groupWhere(f.field, item),
       view,
@@ -1265,12 +1273,16 @@ function PickedZone({
     const extra = rows
       .filter((r) => !known.has(r.label) && r.values.n > 0)
       .map((r) => ({ label: r.label, n: r.values.n, where: groupWhere(B.status, r) }));
+    /* ⚠️ 2026-10-21 (аудит): өрх/хүн амын нийлбэр `stats`-аас — БҮХ бүлэгт хэмжилтгүй бол `null` («—»), 0 БИШ
+       (`query.Group.stats`-ийн ⚠️: null ≠ 0). Барилгын тоо (`n`) нь count тул үргэлж тоо. */
+    const sumStat = (k: string): number | null => (rows.every((r) => r.stats[k] == null)
+      ? null : rows.reduce((a, r) => a + (r.stats[k] ?? 0), 0));
     return {
       status,
       extra,
       built: rows.reduce((a, r) => a + r.values.n, 0),
-      urh: rows.reduce((a, r) => a + r.values.urh, 0),
-      pop: rows.reduce((a, r) => a + r.values.pop, 0),
+      urh: sumStat('urh'),
+      pop: sumStat('pop'),
     };
   }, [id]);
 

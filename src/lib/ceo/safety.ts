@@ -20,6 +20,10 @@
  *    `asOf`-д орохгүй, хүснэгтэд «—» гарна — ямар нэг огноо зохиож
  *    орлуулахгүй. Огноо огт байхгүй бол `asOf: null`.
  *
+ * ⚠️ 2026-10-21 (аудит): ХОХИРЛЫН ТҮВШИН ч `RECENT_DAYS` цонхоор (`damageRecent`) — ослын түвшин
+ *    2026-10-09-нд 30 хоног болсон атал хохирол бүх хугацаагаар үлдсэн тул 3 дахь хохирол
+ *    бүртгэгдмэгц карт мөнхөд «Яаралтай» байв. Бүх хугацааны хохирол «{0} хохирол» баримтад хэвээр.
+ *
  * ⚠️ Тооцоо (`computeSafety`) нь ЦЭВЭР — сүлжээгүй, `Date.now()`-гүй — тул
  *    `safety.check.mjs` түүнийг шууд импортлон шалгана. `now` нь зөвхөн
  *    ачаалагчийн биед авагдана.
@@ -135,6 +139,8 @@ export type SafetyAgg = {
   daysSince: number | null;
   /** Сүүлийн `RECENT_DAYS` хоногт бүртгэгдсэн тоо */
   recent: number;
+  /** Сүүлийн `RECENT_DAYS` хоногт бүртгэгдсэн ХОХИРОЛ (2026-10-21) — түвшинд энэ, `damage` нь бүх хугацааных */
+  damageRecent: number;
   byType: { name: string; n: number }[];
   byBagts: { name: string; n: number }[];
   byCompany: { name: string; n: number }[];
@@ -168,14 +174,17 @@ export function aggregateSafety(rows: readonly SafetyRow[], now: number): Safety
   const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null && x <= now);
   const last = dated.length ? Math.max(...dated) : null;
   const since = now - RECENT_DAYS * 86_400_000;
+  /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
+     тоологдож картыг улаан болгодог байв */
+  const recentRows = rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now);
   return {
     total: rows.length,
     damage: rows.filter(isDamage).length,
     last,
     daysSince: last == null ? null : daysBetween(last, now),
-    /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
-       тоологдож картыг улаан болгодог байв */
-    recent: rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now).length,
+    recent: recentRows.length,
+    /* ⚠️ 2026-10-21: түвшний хохирол — ЗӨВХӨН цонхонд (толгойн ⚠️); бүх хугацааных `damage` баримтад */
+    damageRecent: recentRows.filter(isDamage).length,
     byType: tally(rows, (r) => r.turul),
     byBagts: tally(rows, (r) => r.bagts),
     byCompany: tally(rows, (r) => r.company),
@@ -217,8 +226,10 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   /* ── Түвшин ── */
   /* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`). Урьд нь бүх хугацааны
      `agg.total` тул 6 дахь осол бүртгэгдмэгц карт мөнхөд «Яаралтай» болж, сайжрал харагддаггүй
-     байв. Хохирлын түвшин (`damage`) хэвээр бүх хугацаагаар. Гол тоо ба шошго ч 30 хоног. */
-  const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damage)]);
+     байв. Гол тоо ба шошго ч 30 хоног.
+     ⚠️ 2026-10-21 (аудит): хохирлын түвшин ч ИЖИЛ цонхоор (`agg.damageRecent`) — бүх хугацааны
+     `agg.damage` ≥ 3 болмогц карт мөнхөд улаан байсан; бүх хугацааны тоо баримтад хэвээр. */
+  const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damageRecent)]);
 
   /* ── Хүснэгтүүд: бүх бүртгэл нэрээр нь, дараа нь төрөл/багцын задаргаа ── */
   const all: Cell[][] = rows.map((r) => [

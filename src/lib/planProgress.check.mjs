@@ -160,6 +160,20 @@ assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаа�
    (`applyPlanEdits`) тэр дор нь хаягдана. */
 assert.ok(/register\(\(\) => \{ curveP = null; \}, \[[^\]]*'BAGTS_SHEET'[^\]]*'HUVAARI_OBYEM'[^\]]*\]\)/.test(SRC),
   'муруй BAGTS_SHEET ба HUVAARI_OBYEM хоёуланд бүртгэгдэх ёстой');
+
+/* ── 2026-10-21 (гүйцэтгэлийн аудит): задаргааны хүснэгт ХООСОН бол багц бүрийн `loadPkgPlan` АЛГАСАГДАНА ──
+   Хамгаалах алдаа: (а) тугийг `HUVAARI_OBYEM` бичилтээр хаяхгүй бол обьём батлагдсаны дараа муруй задаргаагүй хэвээр;
+   (б) `countPlanRows` нь `null` (шалгаж чадаагүй) үед багцаар асуух зам алга болбол муруй ЧИМЭЭГҮЙ задаргаагүй. */
+assert.match(SRC, /import\s*\{[^}]*countPlanRows[^}]*\}\s*from\s*'\.\/huvaariObyem'/,
+  '`countPlanRows`-ийг huvaariObyem-оос авна');
+assert.match(SRC, /register\(\(\) => \{ planEmptyP = null; \}, \['HUVAARI_OBYEM'\]\)/,
+  'хоосон-тугийн кэш HUVAARI_OBYEM бичилтээр хаягдах ёстой');
+assert.match(SRC, /emptyP\.then\(\(empty\) => \(empty \? null : loadPkgPlan\(pkg\.key\)/,
+  'хоосон бол `loadPkgPlan` дуудагдахгүй, бусад үед урьдын адил');
+assert.match(SRC, /if \(c == null && planEmptyP === mine\) planEmptyP = null;/,
+  'шалгаж чадаагүй (`null`) хариуг кэшлэхгүй');
+assert.match(fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8'), /returnCountOnly: 'true'/,
+  'тоолох асуулга `returnCountOnly` — мөр татахгүй');
 assert.ok(/planPctFromMonths\(m, asOf, sane\(s\) && sane\(e\) \? \{ start: s, end: e \} : null\)/.test(SRC),
   'сар доторх хувьд ажлын муж (эвдэрсэн огноо бол null) дамжих ёстой');
 assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),

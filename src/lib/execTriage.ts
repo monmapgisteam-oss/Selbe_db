@@ -27,7 +27,8 @@ import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { t as tr } from './i18nCore';
 import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
-import { loadRows } from '@/modules/sheet/bagtsSheet';
+/* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): мөр нь QAQC-ийн мод · оноон самбартай ХУВААЛЦСАН нэг уншилтаас */
+import { loadSheetShared } from './sheetShared';
 
 /* ══════════════ 1. Обьёмын зөрүү (Гүйцэтгэлийн хяналт) ══════════════ */
 
@@ -130,13 +131,12 @@ export const loadVariance: () => Promise<Variance> = cached(
          ⚠️ Синтетик блокт `obyem = [null]` байж болно — уртаар биш, жинхэнэ нэрээр шалгана. */
       if (!sc.obyem.some(Boolean)) return null;
       /* Зөвхөн зөрүү бодоход хэрэгтэй талбарууд — бүтэн «*» татахад мөр ~60+
-         баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит) */
-      const need = [
-        sc.f.oid, sc.f.no, sc.f.work, sc.f.vol, sc.f.unit,
-        sc.f.asOf, sc.f.fillDate,
-        ...sc.obyem,
-      ].filter((x): x is string => Boolean(x));
-      const { rows } = await loadRows(pkg, sc, undefined, need);
+         баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит).
+         ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): талбарын жагсаалт одоо `sheetShared.sharedFields(sc, 'variance')` (зөрүүний
+         `oid·no·work·vol·unit·asOf·fillDate·obyem` + QAQC-ийн модны `gun`) — багц бүрийн 5 алхамт `loadRows`
+         CEO самбарт нэг л удаа явна (урьд нь зөрүү 122 хүсэлт / 11.5 МБ + QAQC тусдаа). `gun` нэмэгдсэнээр `gun` дүүрсэн
+         хуудас (Багц 3.3) `TREES` зэрэгцүүлэлтэд унахаа больж картад ОРДОГ болсон — `sheetShared.ts`-ийн ⚠️. */
+      const { rows } = await loadSheetShared(pkg, 'variance');
       const out: VarianceWork[] = [];
       for (const r of rows) {
         // Зөвхөн НАВЧ ажил — бүлгийн мөр нь нэгтгэл тул давхар тоологдоно

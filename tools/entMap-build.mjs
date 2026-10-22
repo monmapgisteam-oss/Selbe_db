@@ -6,8 +6,10 @@
  *        --svc https://gis.selbecity.mn/map/rest/services/Hosted/Selbe_ET/FeatureServer [--svc …]
  *   эсвэл
  *   node tools/entMap-build.mjs --csv … --base https://gis.selbecity.mn/map/rest/services/Hosted --names Selbe_ET,Selbe_BA,…
- *   Сонголт: --token <Enterprise токен> (org-only үйлчилгээ; POST БИЕЭР — URL-д хэзээ ч орохгүй,
- *            `tools/tokenInUrl.check.mjs`) · --dry (файл бичихгүй, зөвхөн тайлан) · --out <зам>
+ *   Сонголт: --token-file <зам> эсвэл орчны ARCGIS_ADMIN_TOKEN (Enterprise токен; org-only үйлчилгээ; POST БИЕЭР —
+ *            URL-д хэзээ ч орохгүй, `tools/tokenInUrl.check.mjs`) · --dry (файл бичихгүй, зөвхөн тайлан) · --out <зам>
+ *   ⚠️ 2026-10-21 (аудит): `--token <утга>` argv-д ИЛ (процессын жагсаалт · shell-ийн түүх) — ажиллах ч анхааруулна;
+ *      давуу эрэмбэ: --token-file → ARCGIS_ADMIN_TOKEN → --token.
  *
  * Оролт 1 — ArcGIS Pro экспортын тайлан (`export_tailan.csv`, UTF-8 BOM): «Үйлчилгээ» (AGOL үйлчилгээний
  *   нэр), «Давхарга №», «Шинэ нэр» (gdb дахь нэр = Enterprise-д нийтлэгдсэн давхарга/хүснэгтийн нэр), «Төлөв».
@@ -26,7 +28,11 @@ const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
 const multi = (k) => args.flatMap((a, i) => (a === k ? [args[i + 1]] : []));
 const csvPath = opt('--csv') ?? 'E:\\selbe_1019\\export_tailan.csv';
-const token = opt('--token') ?? '';
+/* ⚠️ 2026-10-21 (аудит): токеныг argv-д бичихгүй — файл эсвэл орчны хувьсагч; `--token` хэвээр ажиллах ч анхааруулна */
+const argvToken = opt('--token') ?? '';
+if (argvToken) console.warn('⚠️ --token argv-д ил (процессын жагсаалт · shell түүх) — --token-file <зам> эсвэл ARCGIS_ADMIN_TOKEN хэрэглэнэ үү');
+const tokenFile = opt('--token-file');
+const token = (tokenFile ? readFileSync(tokenFile, 'utf8').trim() : '') || (process.env.ARCGIS_ADMIN_TOKEN ?? '').trim() || argvToken;
 const dry = args.includes('--dry');
 const outPath = resolve(opt('--out') ?? 'src/lib/services/entMap.data.ts');
 let svcs = multi('--svc').filter(Boolean);

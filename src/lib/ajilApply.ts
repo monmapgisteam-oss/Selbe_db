@@ -752,7 +752,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
        хаасан) ба «үр дүн тодорхойгүй» гэж хэлнэ. Хайлт унавал гараар цэвэрлүүлнэ. */
     const ex = e as { lost?: unknown; cause?: unknown } | null;
     const lost = ex?.lost === true || isLostWrite(e) || isLostWrite(ex?.cause);
-    if (lost && sc.f.fillDate) {
+    /* ⚠️ 2026-10-21 (аудит): ОГНООНЫ ТАЛБАРГҮЙ багцад ч (`sc.f.fillDate` алга) — `OID > maxOid0` мөрүүдийг татаж жаазтай
+       дарааллаар (№ · Ажил) тулгана; урьд нь зөвхөн `written`-ийг устгадаг тул алдагдсан chunk хагас жааз болж үлдэн
+       `loadRows`-ийг хааж, дахин оролдлогын жаазыг булдаг байв. Өдрийн шүүлтгүй тул өөр бичигчийн мөр орж болно — доорх
+       дарааллын тулгалт тэднийг «манайх биш» гэж ялгана (устгахгүй, гараар шалгуулна). */
+    if (lost) {
       const head = tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй');
       const strays = new Set<number>(written);
       /* ⚠️ 2026-10-11 (аудит №7): олдсон мөрүүд (OID-ын дарааллаар, №/Ажилтай) — МАНАЙ жааз мөн эсэхийг доор тулгана */
@@ -760,7 +764,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       try {
         for (let offset = 0; ; ) {
           const j = await agsFetch(`${pkg.url}/query`, {
-            where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
+            where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`,
             outFields: [sc.f.oid, sc.f.no, sc.f.work].join(','),
             orderByFields: `${sc.f.oid} ASC`,
             resultRecordCount: '2000',
@@ -796,7 +800,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
       if (!ours) {
         const gone0 = written.length ? await applyDeletes(pkg, written) : 0;
-        const msg = tr('Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү', String(found.length), String(maxOid0), msToDay(fillMs), String(frame.length));
+        const msg = tr('Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү', String(found.length), String(maxOid0), sc.f.fillDate ? msToDay(fillMs) : '—', String(frame.length));
         console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg);
         return {
           ok: false,

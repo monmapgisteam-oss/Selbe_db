@@ -32,7 +32,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import {
   CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
@@ -59,7 +59,8 @@ export function ChanarAcl() {
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
 
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = listChanarAssigns();

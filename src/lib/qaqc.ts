@@ -27,6 +27,8 @@ import { AUTH, HJ, roleForUser } from '@/lib/services';
 import { currentUser, requireCap } from '@/lib/who';
 import { qaqcScope } from '@/lib/qaqcAcl';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { invalidate } from '@/lib/dataBus';
+import { isLostWrite } from '@/lib/lostWrite';
 
 /** QAQC хүснэгтүүд байрлах үйлчилгээнүүд */
 export const QAQC_SERVICES = {
@@ -658,45 +660,59 @@ export async function saveQaqc(
   if (!ref) throw new Error(tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.'));
   const url = `${qaqcUrl(ref)}/applyEdits`;
   let done = 0;
-  for (let i = 0; i < updates.length; i += 500) {
-    const chunk = updates.slice(i, i + 500);
-    /* ⚠️ 2026-10-06 аудит: СҮЛЖЭЭНИЙ алдаа (2+ дахь багц) урьд нь түүхийгээр шидэгддэг тул өмнөх
-       багцууд аль хэдийн бичигдсэнийг хэрэглэгч мэддэггүй байв — `bad`-ийн мессежтэй ижил хэлбэрээр
-       хадгалагдсан мөрийн тоог хавсаргана. Эхний багц (`done === 0`) бол түүхий хэвээр — юу ч бичигдээгүй. */
-    let j: Record<string, unknown>;
-    try {
-      j = await agsFetch(url, {
-        updates: qaqcPayload(chunk),
-        rollbackOnFailure: 'true',
-      });
-    } catch (e) {
-      if (done > 0) throw new Error(tr('{0} ({1} мөр хадгалагдсан)', String((e as Error)?.message || e), done));
-      throw e;
+  /* ⚠️ 2026-10-21 (кэшийн аудит): ХҮСНЭГТ ӨӨРЧЛӨГДСӨН (эсвэл өөрчлөгдсөн байж МАГАДГҮЙ) үед `invalidate('QAQC')`.
+     Урьд нь энэ бичилт ямар ч DataKey хүчингүй болгодоггүй тул CEO «Чанар» карт · Нүүрний чанарын оноо
+     (`ceo/qaqc.loadQaqcLoaded` · `scorecardLoad.loadScoreQual`) өөрийн бичилтийн дараа 5 мин хуучин байв.
+     Дүрэм (`dataBus.invalidate`-ийн ⚠️): багц АМЖИЛТТАЙ бичигдсэн (`touched`) эсвэл хариу АЛДАГДСАН/баталгаажаагүй
+     (`isLostWrite` · дутуу `updateResults` — сервер бичсэн байж магадгүй) үед л; серверийн ТОДОРХОЙ татгалзал
+     (`success: false`, юу ч бичигдээгүй) кэшийг хөндөхгүй — сайн өгөгдлийг дэмий дахин татахгүй. */
+  let touched = false;
+  try {
+    for (let i = 0; i < updates.length; i += 500) {
+      const chunk = updates.slice(i, i + 500);
+      /* ⚠️ 2026-10-06 аудит: СҮЛЖЭЭНИЙ алдаа (2+ дахь багц) урьд нь түүхийгээр шидэгддэг тул өмнөх
+         багцууд аль хэдийн бичигдсэнийг хэрэглэгч мэддэггүй байв — `bad`-ийн мессежтэй ижил хэлбэрээр
+         хадгалагдсан мөрийн тоог хавсаргана. Эхний багц (`done === 0`) бол түүхий хэвээр — юу ч бичигдээгүй. */
+      let j: Record<string, unknown>;
+      try {
+        j = await agsFetch(url, {
+          updates: qaqcPayload(chunk),
+          rollbackOnFailure: 'true',
+        });
+      } catch (e) {
+        if (isLostWrite(e)) touched = true;
+        if (done > 0) throw new Error(tr('{0} ({1} мөр хадгалагдсан)', String((e as Error)?.message || e), done));
+        throw e;
+      }
+      const res = (j.updateResults ?? []) as {
+        success?: boolean;
+        error?: { description?: string };
+      }[];
+      /* ⚠️ `success !== true` (2026-09-08): урьд нь ЗӨВХӨН `=== false`-ыг
+         шалгадаг байсан тул `success` талбар БАЙХГҮЙ хариу чимээгүй давдаг. */
+      const bad = res.find((r) => r.success !== true);
+      if (bad) {
+        throw new Error(
+          tr('{0} ({1} мөр хадгалагдсан)', bad.error?.description || tr('QAQC хадгалалт амжилтгүй'), done),
+        );
+      }
+      /* ⚠️ ХООСОН/ДУТУУ `updateResults` нь АЛДАА (2026-09-08): ArcGIS алдаагаа
+         HTTP 200-аар буцаадаг тул бичилт хэрэгжээгүй үед `updateResults` огт
+         ирэхгүй байж болно. Урьд нь `res = []` бол `find` нь `undefined` буцааж,
+         `done += 0` хийгээд «0 мөр хадгалагдлаа» гэсэн НОГООН амжилт харуулж,
+         дуудагч нь локал БА алсын ноорогийг устгаснаар бөглөсөн ажил бүрмөсөн
+         алга болдог байв. */
+      if (res.length !== chunk.length) {
+        touched = true;
+        throw new Error(
+          tr('QAQC хадгалалт баталгаажсангүй: {0} мөр илгээснээс {1} мөрийн хариу ирлээ ({2} мөр хадгалагдсан). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй байж магадгүй.', chunk.length, res.length, done),
+        );
+      }
+      done += res.length;
+      touched = true;
     }
-    const res = (j.updateResults ?? []) as {
-      success?: boolean;
-      error?: { description?: string };
-    }[];
-    /* ⚠️ `success !== true` (2026-09-08): урьд нь ЗӨВХӨН `=== false`-ыг
-       шалгадаг байсан тул `success` талбар БАЙХГҮЙ хариу чимээгүй давдаг. */
-    const bad = res.find((r) => r.success !== true);
-    if (bad) {
-      throw new Error(
-        tr('{0} ({1} мөр хадгалагдсан)', bad.error?.description || tr('QAQC хадгалалт амжилтгүй'), done),
-      );
-    }
-    /* ⚠️ ХООСОН/ДУТУУ `updateResults` нь АЛДАА (2026-09-08): ArcGIS алдаагаа
-       HTTP 200-аар буцаадаг тул бичилт хэрэгжээгүй үед `updateResults` огт
-       ирэхгүй байж болно. Урьд нь `res = []` бол `find` нь `undefined` буцааж,
-       `done += 0` хийгээд «0 мөр хадгалагдлаа» гэсэн НОГООН амжилт харуулж,
-       дуудагч нь локал БА алсын ноорогийг устгаснаар бөглөсөн ажил бүрмөсөн
-       алга болдог байв. */
-    if (res.length !== chunk.length) {
-      throw new Error(
-        tr('QAQC хадгалалт баталгаажсангүй: {0} мөр илгээснээс {1} мөрийн хариу ирлээ ({2} мөр хадгалагдсан). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй байж магадгүй.', chunk.length, res.length, done),
-      );
-    }
-    done += res.length;
+    return done;
+  } finally {
+    if (touched) invalidate('QAQC');
   }
-  return done;
 }

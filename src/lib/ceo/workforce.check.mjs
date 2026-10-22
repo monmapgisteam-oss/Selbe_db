@@ -114,7 +114,8 @@ const ROWS = [
   assert.equal(d.latestKey, '2026-09-03');
   assert.equal(d.prevKey, '2026-09-02');
   assert.equal(d.staleDays, 0);
-  assert.equal(k.level, 'good');
+  assert.equal(k.level, 'warn', '⚠️ 2026-10-21: тайлангүй компанитай (П) → нийт дутуу → ядаж warn');
+  assert.equal(d.incomplete, true, '⚠️ 2026-10-21: нийт дутуу туг');
   assert.deepEqual(k.failedSources, []);
 
   // Баримтууд — зөвхөн тоо
@@ -123,7 +124,7 @@ const ROWS = [
     'техник 72',
     'хүн-цаг 11,776',
     '2026-09-03 · өмнөх 2026-09-02',
-    '1 компани тайлангүй',
+    '1 компани тайлангүй — нийт дутуу',
   ]);
 
   // Тайлангүй: П 09-01-нд 77 байсан, 09-02/09-03-нд 0
@@ -302,7 +303,8 @@ const ROWS = [
   assert.equal(missed.detail.workersPrev, 346);
   assert.equal(missed.detail.delta, 4, 'зөвхөн НБГ 96 → 100');
   assert.ok(Math.abs(missed.detail.deltaPct - (4 / 96) * 100) < 1e-9);
-  assert.equal(missed.level, 'good');
+  assert.equal(missed.level, 'warn', '⚠️ 2026-10-21: МК тайлангүй → нийт дутуу → warn (bad БИШ)');
+  assert.equal(missed.detail.incomplete, true);
 
   // Компанийн бууралт, өмнөх < 10 → дохиолохгүй
   const small = computeWorkforce([
@@ -318,6 +320,7 @@ const ROWS = [
   assert.equal(single.facts[0], 'техник 72');
   assert.ok(single.facts.includes('2026-09-03'));
   assert.equal(single.level, 'good');
+  assert.equal(single.detail.incomplete, false, 'тайлангүй компанигүй → бүрэн');
   assert.ok(single.tables[0].rows.every((r) => r[3].v === null), 'өмнөх «—»');
 }
 
@@ -337,7 +340,8 @@ const ROWS = [
     row(D3 - 6 * DAY, { MK: { w: 10 }, P: { w: 50 } }),
   ], ub(2026, 9, 4));
   assert.deepEqual(k2.detail.unreported, ['P']);
-  assert.equal(k2.facts.at(-1), '1 компани тайлангүй');
+  assert.equal(k2.facts.at(-1), '1 компани тайлангүй — нийт дутуу');
+  assert.equal(k2.level, 'warn', '⚠️ 2026-10-21: тайлангүй → warn');
   // Трендийн цонх: 20 хоногийн өмнөх өдөр орохгүй
   const k3 = computeWorkforce([
     row(D3, { MK: { w: 10 } }),

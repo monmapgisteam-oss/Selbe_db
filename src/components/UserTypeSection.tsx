@@ -18,6 +18,8 @@ import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import type { Role } from '@/lib/services';
 import { remoteReady } from '@/lib/permissions';
+import { roleForUser } from '@/lib/services';
+import { currentUser } from '@/lib/who';
 import { TYPE_ORDER, isTypeRole, typeLabel } from '@/lib/roleTypes';
 import { applyType, typeApplyBusy } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
@@ -70,15 +72,16 @@ export function UserTypeSection({
           onChange={(e) => { setType(e.target.value as Role | ''); setMsg(''); }}
         >
           <option value="">{tr('— төрөл сонгох —')}</option>
-          {/* ⚠️ 2026-09-25: Super төрөл зөвхөн кодонд бүртгэлтэй админд (`applyType`-ийн ⚠️) */}
+          {/* ⚠️ 2026-10-21: Super төрөл — нэвтэрсэн админ ӨӨРӨӨ super бол сонгогдоно (эрхийн тохиргооноос олгоно,
+              `applyType`-ийн дүрэм); `hardSuper` = ӨӨРИЙН мөр (өөрийгөө доошлуулахгүй) */}
           {TYPE_ORDER.map((r) => (
-            <option key={r} value={r} disabled={r === 'super' && !hardSuper}>{typeLabel(r)}</option>
+            <option key={r} value={r} disabled={r === 'super' && roleForUser(currentUser()) !== 'super'}>{typeLabel(r)}</option>
           ))}
         </select>
         <button type="button" className={s.saveBtn} disabled={off || !type} onClick={() => { void run(); }}>
           {busy ? tr('Тохируулж байна…') : tr('Төрлөөр тохируулах')}
         </button>
-        {hardSuper && <span className={s.saveHint}>{tr('Кодонд бүртгэлтэй админ')}</span>}
+        {hardSuper && <span className={s.saveHint}>{tr('Өөрийн super эрх — өөр super админ өөрчилнө')}</span>}
       </div>
       <div className={s.capNote}>{tr('Загвар зөвхөн харагдац · ТЭЗҮ-БОНУ · нүүр цонхыг тохируулна — засах эрх тус тусын хуудаснаас.')}</div>
       {msg && <div className={s.capNote} role="status">{msg}</div>}

@@ -164,6 +164,37 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(noCode.budgetTotal, 533_100_000, '⚠️ төсөв нь чимээгүй алга болохгүй');
   assert.equal(noCode.key, '', 'багцгүй тул түлхүүр хоосон');
   assert.equal(hoTotals(rows).budget, 533_100_050, 'нийт төсөвт ҮЛДЭНЭ');
+
+  /* ⚠️ 2026-10-21 (аудит): ХОЁР кодгүй мөр — тус тусдаа гэрээ (OID-оор); төсөв нь нийлэхгүй, алдагдахгүй,
+     төлбөр/хувь нь холилдохгүй. Урьд нь нэг `''` гэрээ болж 100-ийн төсөв алга, paidPct (7+3)/500 болдог байв. */
+  const two = [
+    pay(1, 'Багц-1', 'Багц-1', work, 10, { [C.budgetTotal]: 50 }),
+    pay(2, null, null, work, 7, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 500 }),
+    pay(3, '', null, work, 3, { [C.budgetTotal]: 100, [C.contractTotal]: 100 }),
+  ];
+  const g2 = groupHo(two);
+  assert.equal(g2.length, 3, 'кодгүй мөр бүр ӨӨРИЙН гэрээ');
+  const nc = g2.filter((c) => c.code === '');
+  assert.equal(nc.length, 2, 'хоёулаа code \'\' хэвээр (дуудагчид «кодгүй» гэж таних)');
+  assert.deepEqual(nc.map((c) => c.budgetTotal), [533_100_000, 100], 'төсөв тус тусдаа');
+  assert.deepEqual(nc.map((c) => c.paidTotal), [7, 3]);
+  assert.deepEqual(nc.map((c) => c.paidPct), [(7 / 500) * 100, 3], 'хувь тус тусын гэрээт дүнгээр (нийлсэн бол (7+3)/500)');
+  assert.equal(hoTotals(two).budget, 533_100_150, 'хоёр дахь кодгүй гэрээний төсөв алдагдахгүй');
+  assert.equal(hoTotals(two).contracts, 3);
+  /* OID-гүй кодгүй мөр (зохиомол) — индексээр тусдаа, шидэхгүй */
+  const noOid = groupHo([{ [C.code]: null, [P.amount]: 1 }, { [C.code]: null, [P.amount]: 2 }]);
+  assert.equal(noOid.length, 2);
+
+  /* ⚠️ 2026-10-22 (аудит №4): НЭГ гэрээний (дугаар ижил) хоёр төлбөрийн кодгүй мөр — нэг гэрээ, төсөв давхардахгүй */
+  const sameNo = [
+    pay(1, null, null, work, 100, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
+    pay(2, null, null, work, 50, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
+  ];
+  const g3 = groupHo(sameNo);
+  assert.equal(g3.length, 1, 'ижил дугаартай кодгүй мөрүүд нэг гэрээ');
+  assert.equal(g3[0].code, '', 'кодгүй хэвээр');
+  assert.equal(g3[0].paidTotal, 150, 'төлбөрүүд нэг гэрээнд');
+  assert.equal(hoTotals(sameNo).budget, 533_100_000, 'төсөв давхардахгүй (урьд 1,066.2М)');
 }
 
 /* ══ 7. IPC ДУГААРЫН ДАРААЛАЛ ══ */

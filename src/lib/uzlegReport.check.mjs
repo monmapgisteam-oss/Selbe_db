@@ -241,4 +241,20 @@ console.log('✅ fetchAttachment: текст/JSON/HTML хавсралт нээг
   assert.equal(attachmentFileName(7, 'x', 'text/html; charset=utf-8'), 'x', 'html-д өргөтгөл нэмэхгүй');
 }
 console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) · sniffRasterType · attachmentFileName');
+/* ── 2026-10-21 аудит: «Илгээсэн» — `inspector` домэйны НЭРЭЭР (код биш), Creator зөвхөн үзлэгчгүй мөрд ── */
+{
+  const fi = [...fields, F('inspector', 'Үзлэг хийсэн ажилтан', 'esriFieldTypeString', new Map([['dagiiranz', 'Б.Дагийранз ХАБЭА-н инженер']]))];
+  const M = { pkg: '', company: '', date: 0 };
+  const old = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', Creator: 'tumenjargal_selbe', CreationDate: Date.UTC(2026, 9, 19) }, 11, [], (id) => `u/${id}`, M);
+  assert.equal(old.submitter, 'Б.Дагийранз ХАБЭА-н инженер', 'шилжүүлсэн мөр: домэйны нэр, код биш');
+  assert.equal(old.submitted, row.insp_datetime, 'шилжүүлсэн мөр: үзлэгийн огноо');
+  const fresh = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', Creator: 'dagiiranz_selbe', CreationDate: Date.UTC(2026, 9, 22) }, 12, [], (id) => `u/${id}`, M);
+  assert.equal(fresh.submitter, 'Б.Дагийранз ХАБЭА-н инженер', 'шинэ мөр: ижил нэрлэлт');
+  assert.equal(fresh.submitted, Date.UTC(2026, 9, 22), 'шинэ мөр: илгээсэн огноо Creator-ынх');
+  const noInsp = buildUzReport('X', fi, { ...row, inspector: null, Creator: 'guest_user', CreationDate: Date.UTC(2026, 9, 22) }, 13, [], (id) => `u/${id}`, M);
+  assert.equal(noInsp.submitter, 'guest_user', 'үзлэгчгүй мөр: Creator');
+  const unknownCode = buildUzReport('X', fi, { ...row, inspector: 'newbie', CreationDate: Date.UTC(2026, 9, 22) }, 14, [], (id) => `u/${id}`, M);
+  assert.equal(unknownCode.submitter, 'newbie', 'домэйнд байхгүй код хэвээр');
+  console.log('✅ Илгээсэн — inspector домэйны нэрээр (2026-10-21)');
+}
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

@@ -11,7 +11,7 @@
  * ⚠️ БҮЛГИЙН МӨРИЙГ ЯЛГАХ ГАНЦ ЗАМ — БӨГЛӨХ ХУУДАСНЫ МОД. `loadQaqcRows` нь
  *    ҮРГЭЛЖ `group: false, depth: 0` буцаадаг (QAQC хүснэгтэд шатлалын
  *    багана байхгүй, `qaqc.ts`-ийн тайлбар). Тиймээс багц бүрд бөглөх
- *    хуудасны мөрийг (`loadSchema` + `loadRows`, зөвхөн 4 талбар) татаж
+ *    хуудасны мөрийг (`sheetShared.loadSheetShared` — зөрүүний карттай ХУВААЛЦСАН нэг уншилт, 2026-10-21) татаж
  *    `attachTree`-ээр холбоно — «Чанар» харагдац (`Qaqc.tsx`) яг ингэдэг тул
  *    энд гарах «баримтгүй» тоо тэр харагдацын толгойн тоотой ТААРНА.
  *    Мод холбогдохгүй бол (хуудас унасан, мөр зөрсөн) багцыг ХАЯХГҮЙ —
@@ -19,12 +19,11 @@
  *    (ойролцоогоор мөрийн 8–15%) «ажил» болж давхар тоологдоно гэдгийг
  *    `issues` ба `facts`-д ИЛ хэлнэ, чимээгүй хөөрөгдөхгүй.
  *
- * ⚠️ ХҮЧИНГҮЙ БОЛГОХ ТҮЛХҮҮР ХАГАС. `dataBus`-т QAQC-ийн `DataKey` алга тул
- *    `saveQaqc` («Чанар» харагдацаас хадгалахад) ЭНЭ кэшийг хүчингүй
- *    болгодоггүй — зөвхөн 5 минутын TTL-ээр шинэчлэгдэнэ. Харин мод нь
- *    бөглөх хуудаснаас ирдэг тул `['BAGTS_SHEET']` таг — хуудсанд мөр
- *    нэмэгдэхэд шатлал өөрчлөгдөж, холболт дахин хийгдэх ёстой.
- *    Хэрэв хожим `'QAQC'` түлхүүр `dataBus.ts`-д нэмэгдвэл энд нэмнэ.
+ * ⚠️ ХҮЧИНГҮЙ БОЛГОХ ТҮЛХҮҮР ХОЁР (2026-10-21, кэшийн аудит): `'QAQC'` — `saveQaqc` («Чанар»
+ *    харагдацаас хадгалахад) QAQC хүснэгтийг өөрчилсний дараа; `'BAGTS_SHEET'` — мод нь бөглөх
+ *    хуудаснаас ирдэг тул хуудсанд мөр нэмэгдэхэд шатлал өөрчлөгдөж, холболт дахин хийгдэх
+ *    ёстой. Урьд нь `'QAQC'` түлхүүр `dataBus.ts`-д байгаагүй тул өөрийн бичилтийн дараа энэ
+ *    кэш зөвхөн 5 минутын TTL-ээр шинэчлэгддэг байв.
  *
  * ⚠️ ЗЭРЭГ 3 ХҮСЭЛТЭЭС ИЛҮҮГҮЙ (`QAQC_CONCURRENCY`). Багц бүр QAQC метадата +
  *    хуудаслалт + бөглөх хуудасны схем + хуудаслалт гэсэн 4+ дуудалттай; 10-ыг
@@ -47,8 +46,8 @@ import {
   QAQC_COLS, attachTree, filledCount, isDataRow, loadQaqcRows, qaqcTableOf,
   type QaqcRow, type TreeRow,
 } from '@/lib/qaqc';
-import { PKGS, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
-import { loadRows } from '@/modules/sheet/bagtsSheet';
+import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
+import { loadSheetShared } from '@/lib/sheetShared';
 import { cell, settled, table, kpiComplete, type KpiIssue, type KpiResult } from './kpi';
 
 /* ══════════════ Босго ══════════════ */
@@ -325,20 +324,21 @@ export function limiter(max: number): <T>(task: () => Promise<T>) => Promise<T> 
 }
 
 /**
- * Бөглөх хуудасны ШАТЛАЛД хэрэгтэй мөрүүд — зөвхөн 4 талбар.
+ * Бөглөх хуудасны ШАТЛАЛД хэрэгтэй мөрүүд.
  *
  * ⚠️ `fields`-ээр хязгаарлана: бүтэн «*» татвал мөр ~60+ баганатай, 10 багц
  *    ~10–20МБ (`execTriage.ts`-ийн аудит). `loadRows`-д хэрэгтэй нь `oid`
  *    (эрэмбэ), `no` (жаазны заагч `lastFrame`), `work` (зэрэгцүүлэлт), `gun`
  *    (гүн — байхгүй бол `TREES` зураглалд буцна). Бусад нь модонд хэрэггүй.
+ * ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): уншилт нь `sheetShared.loadSheetShared(pkg, 'tree')` — дээрх 4 талбар хэвээр
+ *    (Нүүрний оноон самбар зөвхөн үүнийг уншдаг тул илүү багана татахгүй); CEO самбарт «Обьёмын зөрүү»-тэй НЭГ
+ *    татлага хуваалцана (`'tree'` ⊂ `'variance'`). Мод `no`/`work`/`depth`/`group`-ийг л уншдаг тул үр дүн ижил;
+ *    урьд нь ижил жааз 10 багцад хоёр дахин татагддаг байв.
  * ⚠️ Уналт нь `null` — дуудагч хавтгайгаар үргэлжилнэ, QAQC багцыг унагахгүй.
  */
 async function loadTreeRows(pkg: Pkg): Promise<TreeRow[] | null> {
   try {
-    const sc = await loadSchema(pkg);
-    const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun].filter((x): x is string => Boolean(x));
-    const { rows } = await loadRows(pkg, sc, undefined, need);
-    return rows;
+    return (await loadSheetShared(pkg, 'tree')).rows;
   } catch {
     return null;
   }
@@ -374,7 +374,7 @@ export const loadQaqcLoaded = cached(async (): Promise<{ ok: QaqcLoaded[]; faile
   return { ok, failed, keys };
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХЭСЭГЧИЛСЭН (`failed` хоосон биш) үр дүнг
      КЭШЛЭХГҮЙ — одоогийн дэлгэц унасан багцын нэртэй гарна, дараагийн дуудалт дахин уншина. */
-}, 5 * 60_000, ['BAGTS_SHEET'], (x) => x.failed.length === 0);
+}, 5 * 60_000, ['QAQC', 'BAGTS_SHEET'], (x) => x.failed.length === 0);
 
 async function loadAll(): Promise<KpiResult> {
   const { ok, failed } = await loadQaqcLoaded();
@@ -382,8 +382,7 @@ async function loadAll(): Promise<KpiResult> {
 }
 
 /**
- * ⚠️ `['BAGTS_SHEET']` — мод бөглөх хуудаснаас ирдэг (файлын толгойн тайлбар).
- *    QAQC хүснэгтийн ӨӨРИЙН бичилтэд (`saveQaqc`) `DataKey` байхгүй тул түүнд
- *    зөвхөн 5 минутын TTL үйлчилнэ.
+ * ⚠️ `['QAQC', 'BAGTS_SHEET']` (2026-10-21) — QAQC хүснэгтийн өөрийн бичилт (`saveQaqc`) ба мод
+ *    бөглөх хуудаснаас ирдэг (файлын толгойн тайлбар).
  */
-export const loadQaqcKpi: () => Promise<KpiResult> = cached(loadAll, 5 * 60_000, ['BAGTS_SHEET'], kpiComplete);
+export const loadQaqcKpi: () => Promise<KpiResult> = cached(loadAll, 5 * 60_000, ['QAQC', 'BAGTS_SHEET'], kpiComplete);

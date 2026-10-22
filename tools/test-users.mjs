@@ -7,6 +7,9 @@
  *    хэд хэдэн super-тэй аккаунт байхыг шаарддаг. Тиймээс ХУУЧИН жагсаалтыг ЗӨВХӨН тестийн процесст сэргээнэ —
  *    production кодонд (`roles.ts`) эдгээр нэр ОГТ байхгүй.
  * ⚠️ Модулиудаас ӨМНӨ ачаалагдана (`--import`) — `permsRemote.SUPER_OWNERS` г.м. импортын үед тооцогддог утгууд үүнийг харна.
+ * ⚠️ 2026-10-21: production-д super = ЭРХИЙН ХҮСНЭГТИЙН мөр (`roles._setTableSupers`, `ROLE_BY_USER` хоосон) — тестийн
+ *    хатуу super-ууд энд ХЭВЭЭР (`isCodeSuper`): мөр бичигдэхгүй, самбараас өөрчлөгдөхгүй; хүснэгтийн super-ийн дүрмийг
+ *    `permissions.check.mjs` §12 ба `aclE2E.check.mjs` §6 шалгана.
  */
 const { ROLE_BY_USER } = await import('../src/lib/services/roles.ts');
 Object.assign(ROLE_BY_USER, {

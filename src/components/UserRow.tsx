@@ -22,7 +22,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { roleForUser, type ViewKey, type Role } from '@/lib/services';
+import { isCodeSuper, roleForUser, type ViewKey, type Role } from '@/lib/services';
 import type { UserPerm } from '@/lib/permissions';
 import type { CapKey } from '@/lib/caps';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -63,7 +63,7 @@ export type UserRowProps = {
   onFlipRemove: () => void;
   onClear: () => void;
   onGoFlow: () => void;
-  /** Хатуу super — «Төрлөөр тохируулах»-д Super төрөл зөвхөн түүнд */
+  /** ⚠️ 2026-10-21: ӨӨРИЙН super мөр — үүрэг сонгогч · устгах · «Төрлөөр тохируулах» түгжээтэй (өөр super өөрчилнө) */
   superUser: boolean;
   /** Хэрэглэгчийн карт нээх */
   onOpenCard: () => void;
@@ -134,9 +134,9 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
         onChange={(e) => { if (e.target.value) onRole(e.target.value as Role); }}
         aria-label={tr('Үүрэг')}
         title={p.superUser
-          ? tr('Кодонд бүртгэлтэй админ')
+          ? tr('Өөрийн super эрх — өөр super админ өөрчилнө')
           : d.role === 'super'
-            ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
+            ? tr('Бүх харагдац ба админ портал нээгдэнэ — super эрх нь эрхийн тохиргооноос (өөр super админ олгоно/хасна).')
             : tr('Үүрэг')}
       >
         {!d.role && <option value="">{tr('Үүрэг сонгох…')}</option>}
@@ -152,7 +152,8 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
       </select>
       {/* ⚠️ Зөвхөн хатуу суурьтай хэрэглэгчид — панелаас нэмсэн аккаунтад
           «сэргээх» = чимээгүй устгах байв; тэдэнд «Устгах» л байна */}
-      {roleForUser(u.username) && (u.overridden || dirty) && !d.remove && !d.isNew && (
+      {/* ⚠️ 2026-10-21: хүснэгтийн super-т «Сэргээх» байхгүй — мөр нь өөрөө эрхийн эх, арилгавал super хасагдана */}
+      {roleForUser(u.username) && roleForUser(u.username) !== 'super' && (u.overridden || dirty) && !d.remove && !d.isNew && (
         <button
           type="button"
           className={s.reset}
@@ -162,9 +163,9 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
           {tr('Сэргээх')}
         </button>
       )}
-      {/* ⚠️ Хатуу тохиргооны super устгагдахгүй — хуваалцсан хүснэгтээр
-          бүх админыг түгжих замыг хаана; хасах цор ганц зам = код. */}
-      {key !== myName && roleForUser(u.username) !== 'super' && (
+      {/* ⚠️ 2026-10-21: super нь эрхийн тохиргоо — ӨӨРИЙГӨӨ л устгахгүй (бүх super-ийг хасвал анхны админ
+          `BOOTSTRAP_SUPER` буцаж идэвхжинэ — `roles.ts`). Урьд super устгагдахгүй (хасах зам = код) байв. */}
+      {key !== myName && !isCodeSuper(u.username) && (
         <button
           type="button"
           className={`${s.delBtn} ${d.remove ? s.delBtnOn : ''}`}

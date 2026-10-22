@@ -127,6 +127,8 @@ const clientIp = (req) => {
 };
 /* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
 const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://gis.selbecity.mn/geoportal").replace(/\/+$/, "");
+/* ⚠️ 2026-10-21 (аудит): порталын эрхийн хүснэгт — `hasPortalRow`-ийн ⚠️ (`worker.mjs`-тэй ижил анхдагч) */
+const ARCGIS_PERMS_URL = (process.env.ARCGIS_PERMS_URL || "https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230").replace(/\/+$/, "");
 /* ⚠️ 2026-09-30 (`worker.mjs`-тэй ижил): кэшийн дээд хэмжээ (хамгийн хуучныг хаяна) ба
    нэвтрэлт УНАСАН токеныг кэшээс шууд хасна — ArcGIS 498/401 хариулсан агшнаас тэр
    токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй. */
@@ -145,6 +147,34 @@ const verified = new Map();
 function verifiedUser(key) {
   const hit = verified.get(key);
   return hit && hit.until > Date.now() ? hit.username : null;
+}
+/** SQL мөрийн литерал — `'` → `''` */
+const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+/**
+ * ⚠️ 2026-10-21 (аудит): ПОРТАЛЫН ЭРХИЙН ХҮСНЭГТИЙН МӨР ЗААВАЛ — `worker.mjs`-ийн `hasPortalRow`-ийн ТОЛИН (тайлбар тэнд).
+ *    Нэг байгууллагатай Enterprise дээр `ARCGIS_ORG_ID` дангаараа «порталын хэрэглэгч» гэсэн баталгаа биш. Мөргүй/устгагдсан
+ *    (`views: 'removed'`) → 403; хүснэгт уншигдахгүй → 503 retryable (fail-closed). Токен POST биед, талбар жижиг үсгээр.
+ */
+async function hasPortalRow(token, username) {
+  const name = String(username ?? "").trim();
+  const lo = name.toLowerCase();
+  const where = lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`;
+  let data;
+  try {
+    const r = await fetch(`${ARCGIS_PERMS_URL}/query`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views", returnGeometry: "false", resultRecordCount: "5", token }).toString(),
+    });
+    data = await r.json();
+  } catch {
+    return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
+  }
+  if (!data || data.error || !Array.isArray(data.features)) {
+    return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
+  }
+  const live = data.features.some((f) => f?.attributes && String(f.attributes.views ?? "") !== "removed");
+  return live ? { ok: true } : { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
 }
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
@@ -170,6 +200,12 @@ async function checkArcGIS(token) {
   if (data.orgId !== ARCGIS_ORG_ID) {
     verified.delete(key);
     return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
+  }
+  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн мөр заавал (`hasPortalRow`) — байхгүй бол кэшлэхгүй */
+  const row = await hasPortalRow(token, data.username);
+  if (!row.ok) {
+    verified.delete(key);
+    return { ok: false, reason: row.reason, status: row.status };
   }
   verified.delete(key);
   while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
@@ -459,9 +495,14 @@ const server = createServer(async (req, res) => {
       }
       const auth = await checkArcGIS(token);
       if (!auth.ok) {
-        limiter.hit(failKey, LIMITS.authFail);
-        if (ipFailCapped) limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
-        json(res, 401, { error: auth.reason, retryable: false });
+        /* ⚠️ 2026-10-21: 403 (порталд бүртгэлгүй) · 503 (эрхийн хүснэгт шалгагдсангүй, retryable) — `hasPortalRow`;
+           хүснэгтийн түр саатлыг амжилтгүй нэвтрэлтэд тоолохгүй (`worker.mjs`-тэй ижил) */
+        const status = auth.status ?? 401;
+        if (status !== 503) {
+          limiter.hit(failKey, LIMITS.authFail);
+          if (ipFailCapped) limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
+        }
+        json(res, status, { error: auth.reason, retryable: status === 503 });
         return;
       }
       caller = `user:${auth.username}`;

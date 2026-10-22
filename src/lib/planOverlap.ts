@@ -9,6 +9,7 @@ import { LAYER_BY_ID, layerUrl, oidOf, INFRA_SVC } from '@/lib/services';
 import { remapUrl, isEntDataUrl, agolLayerId } from '@/lib/services/entMap';
 import { num, km } from '@/lib/format';
 import { register } from '@/lib/dataBus';
+import { subscribeTotals } from '@/lib/totals';
 import { overlapScopeFocus, visibleOverlapItems, type OverlapFocus } from './planOverlapSelection';
 import { buildOverlapDisplay, individualZoneIdentity, type OverlapDisplay, type ZoneBoundary } from './planOverlapZones';
 
@@ -189,6 +190,15 @@ let infraCache: Promise<{ feats: InfraFeat[]; failed: string[] }> | null = null;
  *    үр дүн тэнд хэзээ ч бичигддэггүй.
  */
 register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); }, []);
+/*
+ * ⚠️ 2026-10-21 (кэшийн аудит): «Инженерийн дэд бүтэц» (`DedButets` → `butetsEdit`) ЯГ ЭНЭ `infra:*` давхаргуудад бичдэг
+ *    бөгөөд бичих зам бүр `dropTotalsCache()`-аар дуусдаг (автобусын түлхүүргүй) — `pkgSaad` · `parcelOverlap` ·
+ *    `layerSummary`-ийн адил тэр эрийг сонсож санах ойн кэшийг хаяна. Урьд нь засварын дараа «Хэсгийн хэрэгцээ»
+ *    (`hesegNeed` → `loadInfra`) ба давхцал хуучин геометрээр бодогдож, зөвхөн толгойн «Шинэчлэх»-ийг хүлээдэг байв.
+ *    Хөтчийн хадгалалт (IndexedDB, 24 ц) санаатай хэвээр (доорх ⚠️ 2026-10-13) — хадгалсан давхцлын үр дүн тэр хугацаанд
+ *    хэвээр, харин шинэ/хугацаа дууссан тооцоо л шинэ геометрээр.
+ */
+subscribeTotals(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); });
 /**
  * Инженерийн давхарга (`infra:N`) → төрөл (`OVERLAP_TYPES` түлхүүр) — `loadInfra` ачаалсны дараа дүүрнэ.
  * Газрын зургийг төрлөөр шүүхэд (03-ийн төрөл сонголт, `Portal`) ашиглана.

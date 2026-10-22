@@ -38,6 +38,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { runCheck, resolveTimeoutS } from './testRun.mjs';
+import { loadPublicEnv, adminToken, liveStatus, liveEnvOf } from './liveEnv.mjs';
 
 const ROOTS = ['src', 'docs', 'tools'];
 /* ⚠️ 2026-10-20: `test-users.mjs` — хуучин хатуу хэрэглэгчдийг ЗӨВХӨН тестэд сэргээнэ (тэр файлын ⚠️) */
@@ -115,6 +116,18 @@ if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ENT_DATA) {
      ижил ~28 шалгуур унадаг атал дээрх анхааруулга чимээгүй байв. */
   console.error('⚠️ test-all: .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
 }
+/* ⚠️ 2026-10-22 (аудит): АМЬД ТАНДАЛТ ЭНД НЭГ УДАА (`liveEnv.mjs`-ийн ⚠️) — урьд шалгуур БҮРИЙН процесс (`ts-alias.mjs`)
+   өөрөө тандадаг тул Enterprise хүрэгдэхгүй CI-д ~220 процесс тус бүр 10–14 с сул зогсож `npm test` ~10–14 мин болдог байв.
+   Үр дүнг env-ээр (`SELBE_LIVE_PROBED` · `SELBE_LIVE_TOKEN_OFF` · `SELBE_LIVE_SKIP`/`_REASON`) дамжуулна; хаяг/токен нь
+   хүүхэд процессынхтой НЭГ дүрмээр (`loadPublicEnv` · `adminToken`). Эцэг аль хэдийн тандсан (`SELBE_LIVE_PROBED=1`) эсвэл
+   `NEXT_PUBLIC_ENT_DATA` хоосон бол тандахгүй — хүүхэд урьдын адил шийднэ. */
+let liveEnv = {};
+if (process.env.SELBE_LIVE_PROBED !== '1') {
+  const pub = { ...process.env };
+  loadPublicEnv(pub);
+  const ent = String(pub.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '');
+  if (ent) liveEnv = liveEnvOf(await liveStatus({ ent, tok: adminToken(), warn: (m) => console.warn(m) }));
+}
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 
 /* ── Ажиллуулах ── */
@@ -123,7 +136,7 @@ console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · �
    Зураглалын функцүүд `entMap.check.mjs`-д тусдаа. */
 const run = (file) => runCheck(file, {
   args: LOADER, timeoutMs: timeoutS * 1000,
-  env: { ...process.env, SELBE_ENT_OFF: LIVE.has(file) || LIVE_OPT.has(file) ? '0' : (process.env.SELBE_ENT_OFF ?? '1') },
+  env: { ...process.env, ...liveEnv, SELBE_ENT_OFF: LIVE.has(file) || LIVE_OPT.has(file) ? '0' : (process.env.SELBE_ENT_OFF ?? '1') },
 });
 
 const results = [];
@@ -162,10 +175,25 @@ for (const r of failed) {
     console.log(`::error file=${r.file},title=${ghEsc(`test-all: ${r.file} (exit ${r.code})`)}::${ghEsc(tail.slice(-3500))}`);
   }
 }
+/* ⚠️ 2026-10-21 (аудит): АЛГАССАН АМЬД ШАЛГУУР — урьд CI дээр чимээгүй (⏭ мөр зөвхөн процессын логт) тул deploy ногоон
+   атлаа амьд шалгуур нэг ч ажиллаагүйг хэн ч мэддэггүй байв. Одоо тоо + шалтгаан дүнд, GitHub Actions-д `::warning::`
+   тэмдэглэл (нэг); алгасалтыг унал болгох бол `SELBE_LIVE_REQUIRED=1` (`ts-alias-hooks.mjs`). */
+/* ⚠️ 2026-10-22 (аудит): `( … )` хэсэгтэй мөрийг ч тоолно — `gun.check.mjs` нь 1-р (сүлжээгүй) хэсгээ ажиллуулаад
+   «⏭ амьд шалгуур (2–4) алгасав — …» гэж бичдэг тул урьд тоололд ОРДОГГҮЙ байв. */
+const SKIP_RE = /^⏭ амьд шалгуур(?: \([^)]*\))? алгасав — (.*)$/m;
+const skippedLive = results.filter((r) => SKIP_RE.test(r.out ?? ''));
+if (skippedLive.length) {
+  const why = SKIP_RE.exec(skippedLive[0].out)?.[1] ?? '?';
+  console.log(`\n⏭ амьд шалгуур алгассан: ${skippedLive.length} (${why}) — ${skippedLive.map((r) => r.file).join(', ')}`);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::warning title=${ghEsc('Сэлбэ: амьд шалгуур алгасав')}::${ghEsc(`${skippedLive.length} амьд шалгуур ажиллаагүй — ${why}. Заавал болгох бол SELBE_LIVE_REQUIRED=1.`)}`);
+  }
+}
 const total = results.reduce((s, r) => s + r.ms, 0);
 console.log(
   `\ntest-all: ${results.length - failed.length}/${results.length} давлаа` +
   ` · нийт ${(total / 1000).toFixed(0)}с CPU` +
+  (skippedLive.length ? ` · амьд алгассан ${skippedLive.length}` : '') +
   (failed.length ? ` · УНАСАН: ${failed.map((r) => r.file).join(', ')}` : ''),
 );
 process.exit(failed.length ? 1 : 0);

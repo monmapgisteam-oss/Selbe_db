@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { isTopFocusTrap, pushFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
-import { AUTH, VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
+import { AUTH, VIEWS, isCodeSuper, roleForUser, type Role, type ViewKey } from '@/lib/services';
 import { arcgisPost } from '@/lib/query';
 import { authToken } from '@/lib/authToken';
+import { currentUser } from '@/lib/who';
 import {
   listUsers,
   listRemoved,
@@ -23,7 +24,7 @@ import {
   type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
-import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
+import { permsOwnerMismatch, permsTableOrgEditable, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { userError } from '@/components/ui';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
@@ -105,8 +106,10 @@ const rolePresets = (hardSuper = false): { key: Role; label: string }[] =>
   TYPE_ORDER.filter((r) => r !== 'super' || hardSuper).map((r) => ({ key: r, label: typeLabel(r) }));
 
 /** ⚠️ 2026-10-09 (аудит №6): панелаас `super` олгож болохгүй — зөвхөн кодын админ (`applyType`-ийн дүрэм) */
-const grantsSuperToPlain = (username: string, role: Role): boolean =>
-  role === 'super' && roleForUser(username) !== 'super';
+/* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): super-ийг самбараас олгоно — ЗӨВХӨН super админ (`roleTypeApply.applyType`-ийн
+   дүрэм, нэвтэрсэн админ `who.currentUser`); нэр нь хуучнаараа */
+const grantsSuperToPlain = (_username: string, role: Role): boolean =>
+  role === 'super' && roleForUser(currentUser()) !== 'super';
 
 const hasView = (views: ViewKey[] | 'all', k: ViewKey) => views === 'all' || views.includes(k);
 
@@ -539,6 +542,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        *    бичихээс өмнө нэрсийг харуулж зөвшөөрөл авна. Хаалтанд — бичсэн хүн
        *    (localStorage-оос, баталгаагүй). Татгалзвал ЗӨВХӨН энэ сешнийхийг.
        */
+      /* ⚠️ 2026-10-22 (аудит №4): өмнөх сешний super олголтыг `retryDirty` илгээхгүй (тарьсан мөр super болохоос) — ил хэлнэ */
+      const superForeign = foreignDirty().filter((f) => f.role === 'super').map((f) => f.key);
       const foreign = new Map<string, string>();
       for (const f of [...foreignDirty(), ...foreignCapsDirty()]) {
         if (!foreign.has(f.key) || !foreign.get(f.key)) foreign.set(f.key, f.by);
@@ -555,7 +560,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       setUsers(listUsers());
       setSaved(left === 0 ? null : saved);
       /* ⚠️ Үлдсэн бол ил хэлнэ (2026-09-23) — урьд нь товч зүгээр л буцаж, админ юу болсныг мэддэггүй байв */
-      if (left > 0) setAddErr(tr('{0} өөрчлөлт дахин хүрсэнгүй — холболтоо шалгаад дахин синк дарна уу.', String(left)));
+      const msgs: string[] = [];
+      if (left > 0) msgs.push(tr('{0} өөрчлөлт дахин хүрсэнгүй — холболтоо шалгаад дахин синк дарна уу.', String(left)));
+      if (!onlyMine && superForeign.length) {
+        msgs.push(tr('Өмнөх сешнээс үлдсэн super олголт ({0}) аюулгүй байдлын үүднээс илгээгдсэнгүй — шаардлагатай бол самбараас дахин олгоно уу.', superForeign.join(', ')));
+      }
+      if (msgs.length) setAddErr(msgs.join(' '));
     } finally {
       setSyncing(false);
     }
@@ -618,11 +628,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        («Кодонд бүртгэлтэй админыг өөр төрөлд шилжүүлэх боломжгүй») ноорог замд ч. Урьд нь
        мөрийн үүрэг сонгогч/бөөнөөр preset нь super-т `injener` г.м. override бичиж, `roleOf`
        (Гүйцэтгэлийн «Нэгтгэл гүйцэтгэл» таб, нүүр цонх) super биш болгодог байв. */
-    if (roleForUser(u.username) === 'super' && role !== 'super') return;
+    /* ⚠️ 2026-10-21: SUPER = эрхийн тохиргоо — өөр super-ийг доошлуулж болно, ӨӨРИЙН super-ийг өөрөө хасахгүй (өөр super
+       хасна); кодын (тестийн) super хэвээр хөндөгдөхгүй (`roleTypeApply.applyType` · `permissions.setUser` no-op) */
+    if (roleForUser(u.username) === 'super' && role !== 'super' && (isCodeSuper(u.username) || u.username.toLowerCase() === myName)) return;
     /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` ОЛГОХГҮЙ (`grantsSuperToPlain`) — `rolePresets`
        сонголтыг нуудаг ч ноорогийн зам давхар хаалттай */
     if (grantsSuperToPlain(u.username, role)) {
-      setAddErr(tr('Super төрөл зөвхөн кодонд бүртгэлтэй админд — админ самбарын эрх кодоор л олгогдоно.'));
+      setAddErr(tr('Super эрхийг зөвхөн super админ олгож, хасна.'));
       return;
     }
     const a = roleAccess(role);
@@ -692,7 +704,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const a = roleAccess(role);
     /* ⚠️ 2026-09-30: хатуу super-ийг ИЛ алгасна (`applyRole`-ийн дүрэм, `bulkRemove`-той ижил зурвас) */
     /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` олгохыг ч алгасна (`grantsSuperToPlain`) */
-    const skipped = selRows.filter((u) => (roleForUser(u.username) === 'super' && role !== 'super') || grantsSuperToPlain(u.username, role));
+    const skipped = selRows.filter((u) => (roleForUser(u.username) === 'super' && role !== 'super' && (isCodeSuper(u.username) || u.username.toLowerCase() === myName)) || grantsSuperToPlain(u.username, role));
     const rows = selRows.filter((u) => !skipped.includes(u));
     // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
     /* ⚠️ 2026-09-30: `applyRole`-той ИЖИЛ илэрхийлэл (`keepWorkflow`). Урьд нь загварын харагдацтай
@@ -709,7 +721,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ Өөрийгөө ба хатуу super-ийг алгасна — гэхдээ ЧИМЭЭГҮЙ биш (2026-09-23):
        «N сонгосон» атал цөөн нь устгагдахад админ шалтгааныг мэдэх ёстой. */
     const skipped = selRows
-      .filter((u) => u.username.toLowerCase() === myName || roleForUser(u.username) === 'super')
+      /* ⚠️ 2026-10-21: хүснэгтийн super устгагдана (өөр super админ) — ӨӨРИЙГӨӨ ба кодын (тестийн) super-ийг л алгасна */
+      .filter((u) => u.username.toLowerCase() === myName || isCodeSuper(u.username))
       .map((u) => u.username);
     selRows
       .filter((u) => !skipped.includes(u.username))
@@ -1084,8 +1097,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       dirtyPerm: dirtyRemote.has(key),
       myName,
       allKeys: ALL_KEYS,
-      /* ⚠️ 2026-10-09 (аудит №6): `super` сонголт зөвхөн хатуу super-ийн мөрөнд */
-      rolePresets: rolePresets(roleForUser(u.username) === 'super'),
+      /* ⚠️ 2026-10-21: «Super» сонголт — нэвтэрсэн админ ӨӨРӨӨ super бол (эрхийн тохиргооноос олгоно) */
+      rolePresets: rolePresets(roleForUser(myName) === 'super'),
       hasView,
       onPick: (checked) => setSel((prev) => {
         const n = new Set(prev);
@@ -1104,7 +1117,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onFlipRemove: () => flipRemove(u),
       onClear: () => markClear(u),
       onGoFlow: () => goPane('guits'),
-      superUser: roleForUser(u.username) === 'super',
+      /* ⚠️ 2026-10-21: түгжээ ӨӨРИЙН super мөрөнд (өөрийгөө доошлуулахгүй/устгахгүй) ба кодын (тестийн) super-т */
+      superUser: roleForUser(u.username) === 'super' && (key === myName || isCodeSuper(u.username)),
       onOpenCard: () => setCard({ user: key }),
     };
   };
@@ -1305,12 +1319,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               гардаг байв; одоо эзний нэр ба хоёр засварыг ИЛ хэлнэ (`permsOwnerMismatch`). */}
           {permsOwnerMismatch().length > 0 && (
             <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгтийн (Selbe_Permissions) эзэн «{0}» нь кодын админ (super) жагсаалтад алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: ArcGIS дээр item-ийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчээр энэ нэрийг permsRemote.ts-ийн FORMER_TABLE_OWNERS жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
+              {/* ⚠️ 2026-10-21 (аудит): «кодын super жагсаалт» гэдэг нь 2026-10-21-ээс хуучирсан (super = хүснэгт) — эзний
+                  итгэмжлэл нь `permsRemote.TABLE_OWNERS` (AGOL хайлтын зам л; Enterprise `entDirect` замд эзэн шалгагддаггүй). */}
+              {tr('🔴 Эрхийн хүснэгтийн (Selbe_Permissions) эзэн «{0}» нь итгэмжлэгдсэн эзний жагсаалтад (permsRemote.ts) алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: ArcGIS дээр item-ийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчээр энэ нэрийг permsRemote.ts-ийн FORMER_TABLE_OWNERS жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
             </div>
           )}
           {permsTablePublic() && (
             <div className={s.addErr} role="alert">
               {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.')}
+            </div>
+          )}
+          {/* ⚠️ 2026-10-21 (аудит): Enterprise замд хүснэгт org-даяар засагдах бол — super нь энэ хүснэгтийн мөр тул засах
+              эрхтэй аккаунт бүр өөртөө super бичиж чадна (`permsRemote.probeEntExposure`). Серверийн тохиргоо — кодоор засагдахгүй. */}
+          {permsTableOrgEditable() && (
+            <div className={s.addErr} role="alert">
+              {tr('🔴 Эрхийн хүснэгт (SYS_Selbe_Permissions) байгууллагад засагдахаар нээлттэй (Editing) — super нь энэ хүснэгтийн мөр тул засах эрхтэй аккаунт бүр өөртөө super бичиж чадна. Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана уу (уншилт байгууллагад хэвээр).')}
             </div>
           )}
         </header>

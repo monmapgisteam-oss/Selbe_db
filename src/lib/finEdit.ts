@@ -207,7 +207,7 @@ export function parseCell(
   return v;
 }
 
-/** v2 stores the share input in percentage units; unversioned drafts used fractions. */
+/** v3 stores every fraction-percent input (share · advance %) in percentage units; v2 only the share; unversioned drafts used fractions. */
 export type FinanceDraft = {
   v?: number;
   pend: Record<string, string>;
@@ -217,10 +217,16 @@ export type FinanceDraft = {
 };
 
 /** Preserve invalid legacy input for correction instead of reinterpreting its commas as percentages. */
-export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string): FinanceDraft | null {
-  if (draft.v === 2) return draft;
-  if (draft.v !== undefined) return null;
-  const invalid = new Set<string>();
+/* ⚠️ 2026-10-21 (аудит): v3 — `fractionFields` (`FIN_XL_FRACTION`: үнэт цаасны хувь + `urdchilgaa_huvi`) БҮГД ×100
+   нэгжээр хадгалагдана. v2 ноорогт зөвхөн `shareField` ×100 байсан тул бусад бутархай талбарын текстийг л үржүүлнэ
+   (хувийг дахин үржихгүй); хувилбаргүй ноорогт бүгдийг. Хуучин алдаатай текст (`legacyShareInvalid`) хэвээр. */
+export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string, fractionFields: readonly string[] = []): FinanceDraft | null {
+  if (draft.v === 3) return draft;
+  if (draft.v !== undefined && draft.v !== 2) return null;
+  const scaledFields = new Set(draft.v === 2
+    ? fractionFields.filter((f) => f !== shareField)
+    : [shareField, ...fractionFields]);
+  const invalid = new Set<string>(draft.legacyShareInvalid ?? []);
   const scale = (text: string): string => {
     try {
       const value = parseCell(text, 'esriFieldTypeDouble', shareField);
@@ -235,10 +241,13 @@ export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string): Fi
     }
   };
   const pend = Object.fromEntries(Object.entries(draft.pend).map(([key, text]) =>
-    [key, key.slice(key.indexOf(':') + 1) === shareField ? scale(text) : text]));
-  const adds = draft.adds.map((row) => Object.hasOwn(row, shareField)
-    ? { ...row, [shareField]: scale(row[shareField]) } : { ...row });
-  return { ...draft, v: 2, pend, adds, ...(invalid.size ? { legacyShareInvalid: [...invalid] } : {}) };
+    [key, scaledFields.has(key.slice(key.indexOf(':') + 1)) ? scale(text) : text]));
+  const adds = draft.adds.map((row) => {
+    const next = { ...row };
+    for (const f of scaledFields) if (Object.hasOwn(row, f)) next[f] = scale(row[f]);
+    return next;
+  });
+  return { ...draft, v: 3, pend, adds, ...(invalid.size ? { legacyShareInvalid: [...invalid] } : {}) };
 }
 
 /** Legacy ambiguous/malformed text keeps its original validation until the user corrects it. */

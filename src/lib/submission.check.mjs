@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, truncatedFrameIds, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
+import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, saveResidualSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, truncatedFrameIds, lostFrameIds, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -639,6 +639,53 @@ const nextOf = (over = {}) => {
   console.log('✅ R2-a/b/c · 7 — архивлах тэмдэг');
 }
 
+/* ── 2026-10-21 (аудит): хариу алдагдсан бичилтийн цэвэрлэгээ — ЭНЭ жаазыг АГУУЛГААР таньж устгана (`lostFrameIds`) ── */
+{
+  const OIDF = 'oid';
+  const NOF = 'no';
+  const row = (oid, no, extra = {}) => ({ [OIDF]: oid, [NOF]: no, ...extra });
+  const mk = { n: 3, rootNo: 'A', probe: [[1, 'b', 9]] };
+  /* тэр өдөр ӨӨР батлалтын 5 мөрийн жааз (эхний № ижил) + манай 3 мөрийн жааз */
+  const other = [row(101, 'A'), row(102, 'x'), row(103, 'y'), row(104, 'z'), row(105, 'w')];
+  const ours = [row(106, 'A'), row(107, 'x', { b: 9 }), row(108, 'y')];
+  assert.deepEqual(lostFrameIds([...other, ...ours], mk, OIDF, NOF), [106, 107, 108], 'манай бүтэн жааз — өөр жаазыг хөндөхгүй (урьд нь өдрийн бүх мөр устдаг байв)');
+  assert.deepEqual(lostFrameIds(other, mk, OIDF, NOF), [], 'манай жааз алга — юу ч устгахгүй');
+  assert.deepEqual(lostFrameIds(other, mk, OIDF, NOF, undefined, [77]), [77], 'баталгаажсан OID (`written`) үргэлж орно');
+  const wrong = [row(106, 'A'), row(107, 'x', { b: 8 }), row(108, 'y')];
+  assert.deepEqual(lostFrameIds([...other, ...wrong], mk, OIDF, NOF), [], 'урт таарсан ч дээж зөрвөл — манайх биш');
+  assert.equal(lostFrameIds([row(106, 'A'), row(107, 'x', { b: 9 + 1e-8 }), row(108, 'y')], mk, OIDF, NOF), null, 'бөөрөнхийллийн зөрүү → тодорхойгүй (null)');
+  assert.equal(lostFrameIds([...other, ...ours], mk, OIDF, NOF, undefined, [103]), null, 'баталгаажсан OID танигдсан хэсгийн гадна — жааз холилдсон → null');
+  assert.deepEqual(lostFrameIds([], mk, OIDF, NOF, undefined, [5, 6]), [5, 6], 'хоосон архив — зөвхөн written');
+  assert.deepEqual(lostFrameIds([row(1, 'A'), row(2, 'x'), row(3, 'y')], { n: 3 }, OIDF, NOF), [1, 2, 3], 'хуучин тэмдэг (rootNo · дээжгүй) — урт + мөр 0-ийн №');
+  /* тасарсан (500-ийн үржвэр) — өөр жаазын АРД ч танигдана; 500-ийн үржвэр биш → устгахгүй; хоёр ижил хэсэг → null */
+  const half = Array.from({ length: 500 }, (_, i) => row(1000 + i, i === 0 ? 'A' : `r${i}`, { b: i === 1 ? 9 : 0 }));
+  const mkT = { n: 1471, rootNo: 'A', probe: [[1, 'b', 9], [1300, 'b', 5]] };
+  assert.equal(lostFrameIds([...other, ...half], mkT, OIDF, NOF)?.length, 500, 'өөр жаазын ард тасарсан манай 500 мөр');
+  assert.equal(lostFrameIds([...other, ...half], mkT, OIDF, NOF)?.[0], 1000, 'эхний OID манай тасарсан жаазынх');
+  assert.deepEqual(lostFrameIds(half.slice(0, 300), mkT, OIDF, NOF), [], '500-ийн үржвэр биш — танигдсангүй, устгахгүй');
+  assert.equal(lostFrameIds([...half, ...half.map((r) => ({ ...r, [OIDF]: r[OIDF] + 5000 }))], mkT, OIDF, NOF), null, 'хоёр ижил хэсэг — хоёрдмол → null');
+
+  /* `residual` тугийг КЛИЕНТЭЭС хүлээн авахгүй — сүлжээнээс ӨМНӨ татгалзана; үлдэгдлийн зам тугийг шаардана */
+  const rp = { ...valid(), residual: true };
+  const rs = await saveSubmission(rp.pkgKey, rp);
+  assert.equal(rs.ok, false); assert.match(rs.error, /residual/, `residual туг клиентээс өнгөрөв: ${rs.error}`);
+  const rs2 = await saveSubmission(valid().pkgKey, { ...valid(), residualOf: { row: 1, archiveOid: 0, day: '2026-10-21' } });
+  assert.equal(rs2.ok, false); assert.match(rs2.error, /residual/, `residualOf клиентээс өнгөрөв: ${rs2.error}`);
+  const rs3 = await saveResidualSubmission(valid().pkgKey, valid());
+  assert.equal(rs3.ok, false); assert.match(rs3.error, /тэмдэггүй/, `үлдэгдлийн зам туггүй payload авав: ${rs3.error}`);
+
+  /* эх код: hyanaltStore — агуулгаар таних · бусад мөрийн архивлалт · үлдэгдлийн тусгай зам; archivingBusy өөрийн мөрийг алгасна */
+  const HY4 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok(HY4.includes('lostFrameIds(rows, { n: frame.length'), 'хариу алдагдсан цэвэрлэгээ агуулгаар таньдаггүй');
+  assert.ok(!/returnIdsOnly: 'true',\s*\}\);\s*for \(const x of \(j\?\.objectIds/.test(HY4), 'хуучин «өдрийн бүх мөрийг устгах» зам үлдсэн');
+  assert.ok(HY4.includes('await archivingBusy(pkg.key, staged.oid)'), 'багцын бусад мөрийн архивлалтын шалгалт алга');
+  assert.ok(HY4.includes('saveResidualSubmission(rest.pkgKey, body'), 'closeAfterArchive үлдэгдлийг тусгай замаар бичдэггүй');
+  const SB4 = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB4.includes('exceptOid != null && r.sub.oid === exceptOid'), 'archivingBusy өөрийн мөрийг алгасдаггүй');
+  assert.ok(/const deny = residual \? await chiefDeny\(grp\) : await companyDeny\(grp\);/.test(SB4), 'үлдэгдэлд эцсийн шатны томилгоо шаарддаггүй');
+  console.log('✅ 2026-10-21 — хариу алдагдсан цэвэрлэгээ агуулгаар · бусад мөрийн архивлалт · residual зөвхөн архивлалтаас');
+}
+
 /* ── 2026-10-09 (засвар 1): тэмдэг дахин илгээлтэд ДАМЖИЖ, буусан жаазаас хасагдана (sim: base+15 → +5 → base+35 БИШ) ── */
 {
   const mk = { at: 100, startedAt: 101, maxOid0: 5, fillMs: FILL, n: 3, rootNo: 'A' };
@@ -680,7 +727,8 @@ const nextOf = (over = {}) => {
   assert.ok(FN2.includes('const rp = resolveMark(act.payload, hit != null);') && FN2.includes('dropMark: markDrop'), 'FillNew.publish тэмдгийг шийдэхгүй байна');
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
   assert.ok(SB.includes('payload.archiving?.startedAt !== cm.startedAt && expect?.dropMark !== cm.startedAt'), 'saveSubmission тэмдгийг чимээгүй арчиж болно');
-  assert.ok(SB.includes('export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: number } | null>'), 'archivingBusy гэрээ');
+  /* ⚠️ 2026-10-21 (аудит): `exceptOid` нэмэгдсэн (өөрийн мөрийг алгасах) — гэрээ (нэр · буцах төрөл) хэвээр */
+  assert.ok(/export async function archivingBusy\(\s*pkgKey: string,[\s\S]*?exceptOid\?: number,\s*\): Promise<\{ who: string; at: number \} \| null> \{/.test(SB), 'archivingBusy гэрээ');
   console.log('✅ засвар 1 — тэмдэг дамжиж, буусан жаазаас хасагдана');
 }
 

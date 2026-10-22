@@ -14,6 +14,7 @@
  * `useSheetCols`/`useColWidths`-д хадгалагддаг бөгөөд ЭНДЭХИЙГ ДАРНА.
  */
 import { t as tr, perLocale } from '@/lib/i18nCore';
+import { pct } from '@/lib/format';
 
 /**
  * ЗОХИОМЖИЙН ХУВИЛБАР — хадгалагдсан баганы дарааллыг хэзээ хаяхыг шийднэ.
@@ -302,7 +303,6 @@ export const FIN_XL_PCT: readonly string[] = [
   'gazar_chuluulult',
   'zuwshuurul',
   'songon_shalgaruulalt',
-  'urdchilgaa_huvi',
   /*
    * ⚠️ `zahiramj_unet_tsaas_huvi` ХАСАГДСАН (2026-09-15-ны аудит). Тэр талбар
    *    нь 0–100 БИШ, 0–1 БУТАРХАЙ: `agent/datasets.ts` («0.1414 = 14.14%») ба
@@ -310,6 +310,33 @@ export const FIN_XL_PCT: readonly string[] = [
    *    байх нь «0–100 хувь» гэсэн утгатай тул зурвасын жигнэсэн дундаж
    *    «0.25» гэж гарч, 24.7% байх ёстойгоо орхидог байв.
    */
+  /*
+   * ⚠️ 2026-10-21 (аудит): `urdchilgaa_huvi` ч ХАСАГДАВ — амьд өгөгдөлд 0–1 БУТАРХАЙ
+   *    (58 мөр: max 0.2; `urdchilgaa_batalgaa_dun ÷ geree_dun`-тэй ЯГ тэнцүү), харин
+   *    энд үлдсэн 6 талбар амьдаар 0–100 (max 100). Энд байснаар «Урьдчилгаа → Хувь»
+   *    багана «0.2», зурвасын жигнэсэн дундаж «0.18» гэж гарч, засварт «20» бичихийг
+   *    зөвшөөрч 0.2 ба 20 холилддог байв. Одоо `FIN_XL_FRACTION` (доор) — үнэт
+   *    цаасны хувьтай НЭГ зам.
+   */
+];
+
+/**
+ * 0–1 БУТАРХАЙ хувийн баганууд — `FIN_XL_PCT` (0–100)-аас ТУСДАА (2026-10-21).
+ *
+ * ⚠️ Үйлчилгээнд бутархайгаар хадгалагддаг (`fields.ts`: `share` · `advancePct`),
+ *    хүнд хувиар харагдана: харагдац ×100 (`Finance.fmtCell`), засварын текст ×100 /
+ *    хадгалахад ÷100 (`editTextF` · `parseFinanceShare`), 0–100 мужийн шалгалт
+ *    (`isPctField`), тоон шүүлт ×100 (`shareScale`), зурвас/НИЙТ мөрд өртгөөр
+ *    жигнэсэн дундаж ×100 (`sumText`; «Үнэт цаас %»-д зурвас ХООСОН хэвээр —
+ *    Finance.tsx-ийн 2026-09-29-ний ⚠️). Хуучин ноорог (`upgradeFinanceDraft` v3) ч
+ *    энэ жагсаалтаар ×100 болно.
+ * ⚠️ 2026-10-22 (аудит): ×100 · жигнэсэн дундажийн дүрэм доорх ЦЭВЭР функцүүдэд (`finXlScale` · `finXlFractionText` ·
+ *    `finXlEditText` · `finXlWeightedMean`) — `Finance.tsx` тэднийг дууддаг.
+ * ⚠️ `FIN_XL_PCT`-д ХЭЗЭЭ Ч оруулахгүй — тэр жагсаалт «0–100» гэсэн утгатай.
+ */
+export const FIN_XL_FRACTION: readonly string[] = [
+  'zahiramj_unet_tsaas_huvi',
+  'urdchilgaa_huvi',
 ];
 
 /**
@@ -321,6 +348,55 @@ export const FIN_XL_PCT: readonly string[] = [
  * мөр бүхэл бүлгийн дунджийг 0 руу татна.
  */
 export const FIN_XL_PCT_WEIGHT = 'ho_dun_geree';
+
+/* ═══════════════ БУТАРХАЙ (0–1) ХУВИЙН ЗАМ — ЦЭВЭР ФУНКЦҮҮД ═══════════════
+ *
+ * ⚠️ 2026-10-22 (аудит): харагдац ×100 · засварын текст ×100 · тоон шүүлтийн ×100 · зурвас/НИЙТ мөрийн жигнэсэн дундаж
+ *    урьд нь `Finance.tsx` (React) дотор бичигдсэн байсан тул `finExcelLayout.check.mjs` дунджийг ӨӨРӨӨ дахин бодож,
+ *    холболтыг эх кодын regex-ээр тулгадаг байв — бүтээгдэхүүний дүрэм өөрчлөгдсөн ч шалгуур ногоон хэвээр үлдэх
+ *    эрсдэлтэй. Одоо дүрэм ЭНД: `Finance.tsx` (`fmtCell` · `shareScale` · `editTextF` · `sumText`) шууд дуудаж, шалгуур
+ *    амьд хэлбэрийн (0–1) утгаар ажиллуулна. Зан ӨӨРЧЛӨГДӨӨГҮЙ. Хадгалах ÷100 нь `finEdit.parseFinanceShare` (өөрөө цэвэр).
+ */
+
+/** Бутархай (0–1) хувийн талбар уу (`FIN_XL_FRACTION`) */
+export const finXlIsFraction = (name: string): boolean => FIN_XL_FRACTION.includes(name);
+
+/** Харагдац · засвар · тоон шүүлтийн хэмжээс — бутархай талбарт 100, бусдад 1 (`finFilter.rowMatches`-ийн `scale`) */
+export const finXlScale = (name: string): number => (finXlIsFraction(name) ? 100 : 1);
+
+/** Бутархай утгын ХАРАГДАХ текст — `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул ×100 (0.2 → «20.0%», «0.2%» БИШ) */
+export const finXlFractionText = (x: number): string => pct(x * 100, 1);
+
+/**
+ * Засварын талбарын текст — бутархай талбарын ТОО бол харагдацтай ижил ×100 («20», «0.2» биш); бусад үед `null`
+ * (дуудагч `finEdit.editText`-ээ хэрэглэнэ). `toPrecision(12)` — 0.07 × 100 = 7.000000000000001 мэт хөвөгч сүүлийг хасна.
+ */
+export const finXlEditText = (v: unknown, name: string): string | null =>
+  finXlIsFraction(name) && typeof v === 'number' && Number.isFinite(v)
+    ? String(Number((v * 100).toPrecision(12)))
+    : null;
+
+/** Зурвас/НИЙТ мөрд НИЙЛБЭР БИШ жигнэсэн дундаж гаргах багана уу — 0–100 хувь (`FIN_XL_PCT`) ба 0–1 бутархай */
+export const finXlIsMean = (name: string): boolean => FIN_XL_PCT.includes(name) || finXlIsFraction(name);
+
+/**
+ * Өртгөөр (`FIN_XL_PCT_WEIGHT`) ЖИГНЭСЭН ДУНДАЖ — хадгалсан хэмжээсээрээ (бутархай бол 0–1; ×100-г харагдац хийнэ).
+ * ⚠️ `null` ≠ 0: хэмжилтгүй мөр дундажийн хуваарьт ч, хүртвэрт ч орохгүй; жингүй (`null` / ≤0) мөр ч орохгүй.
+ *    Орох мөр нэг ч үгүй бол `null` — зурвасын нүд хоосон (0 биш).
+ */
+export function finXlWeightedMean(rows: Iterable<Record<string, unknown>>, name: string): number | null {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  let w = 0;
+  let top = 0;
+  for (const r of rows) {
+    const v = num(r[name]);
+    const g = num(r[FIN_XL_PCT_WEIGHT]);
+    if (v == null || g == null || g <= 0) continue;
+    w += g;
+    top += g * v;
+  }
+  return w === 0 ? null : top / w;
+}
 
 /* ═══════════════ МӨРИЙН БҮТЭЦ — Excel-ийн шатлал ═══════════════
  *
@@ -566,17 +642,29 @@ export const finXlRowHidden = (row: Record<string, unknown>): boolean => (
  * шинэ багана нэмэгдэх бүрд энэ жагсаалтыг мартаж, хүснэгт чимээгүй
  * уртсах эрсдэлтэй.
  */
+/**
+ * ХҮСНЭГТЭЭС БҮРМӨСӨН ХАСАГДАХ багана — нуугдсан БИШ, «Нуусан баганыг харуулах»-аар ч гарахгүй.
+ *
+ * ⚠️ 2026-10-21 (аудит): `tusuld_ezleh_huvi` нь `tusuld_ezleh_huvi_dun`-ийн ТЕКСТЭН
+ *    хуулбар гэж нуугддаг байсан ч амьд өгөгдөлд ХУУЧИРСАН: тогтмол 0.715 дахин бага
+ *    (OID 11: «10.7087» ↔ 14.97; OID 13: «5.0453» ↔ 7.05) — тоон ихрийн 76 мөрийн
+ *    нийлбэр 100.000, текст нь өөр (хуучин) нийлбэрээр бодогдсон. Дэлгэсэн хэрэглэгч хоёр
+ *    өөр «Төсөлд эзлэх хувь» хардаг байв. ГАНЦ эх сурвалж нь тоон ихэр (`gdash.share`);
+ *    үйлчилгээний утгыг ХӨНДӨХГҮЙ, зөвхөн харуулахгүй. `Finance.allCols` энэ жагсаалтыг
+ *    задаргааны түвшинтэй хамт шүүнэ (`FIN_XL_ORDER`/шошгонд үлдээв — эрэмбийн хувилбар
+ *    хөдлөхгүй).
+ */
+export const FIN_XL_DROP: readonly string[] = ['tusuld_ezleh_huvi'];
+
 const HIDE_FROM = 'guitsetgel_huvi';
 export const FIN_XL_HIDE: string[] = FIN_XL_ORDER
   .slice(FIN_XL_ORDER.indexOf(HIDE_FROM) + 1)
   /* ⚠️ ЗАДАРГААНЫ ТҮВШИН (`ajil_tuvshin*` · `bagts_tuvshin*`) энд ОРОХГҮЙ:
      тэдгээр нь нуугдсан биш, ОГТ БАГАНА БИШ — `Finance.tsx` тэднийг баганы
      жагсаалтаас бүрмөсөн гаргаж, зурвас мөр болгоно. */
-  .concat([
-    /* ⚠️ ТЕКСТЭН хуулбар — тоон ихэр нь (`tusuld_ezleh_huvi_dun`) харагдана.
-       Хоёуланг нь үзүүлбэл нэг утга хоёр баганад, нэг нь тоогоор ажиллахгүй. */
-    'tusuld_ezleh_huvi',
-  ]);
+  /* ⚠️ 2026-10-21: `tusuld_ezleh_huvi` (текстэн хуулбар) ЭНДЭЭС ХАСАГДАВ — нуугдсан биш,
+     ОГТ багана биш болсон (`FIN_XL_DROP`, дээр). */
+  .filter((n) => !FIN_XL_DROP.includes(n));
 
 /*
  * ⚠️ САРЫН ТАВАН БАГАНА (`Cashflow_*`) ч ЭНД БАГТАНА. Тэдгээрийг

@@ -214,4 +214,62 @@ assert.equal(agolLayerIdWith(`${AGOL}/QAQC2/FeatureServer`, 3, MAP2, ENT, bases)
   assert.equal(entTrackFor(undefined), undefined);
 }
 
-console.log('✅ entMap: 69 шалгуур');
+// 2026-10-21 (аудит): onStatisticField — энгийн нэр толиор, SQL илэрхийлэл бүхэлдээ жижиг болохгүй (толины талбар л)
+{
+  const st = (f) => JSON.parse(entRequestWith({ outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: f, outStatisticFieldName: 'm' }]) }, D).outStatistics)[0].onStatisticField;
+  assert.equal(st('UPPER(Work_Status)'), 'UPPER(work_status)', 'илэрхийлэл: функцийн нэр хэвээр, толины талбар л солигдоно (урьд upper(work_status) болдог байв)');
+  assert.equal(st('Shape__Area * 2'), 'Shape__Area * 2', 'толинд байхгүй нэр илэрхийлэлд хөндөгдөхгүй');
+  assert.equal(st('EditDate + 1'), 'last_edited_date + 1', 'илэрхийлэл доторх толины талбар л солигдоно');
+  assert.equal(st('EditDate'), 'last_edited_date', 'энгийн нэр толиор');
+}
+
+// 2026-10-21 (аудит): orderByFields дахь мөшгөлтийн огноо — CASE илэрхийлэл (entTrackFix-ийн дүрэм); outStatistics хэвээр
+{
+  const { trackOrderExpr } = await import('./entMap.ts');
+  const T = [{ date: 'last_edited_date', dateStat: 'editdate', user: 'last_edited_user', userStat: 'editor' }];
+  const dT = { ...D, track: T };
+  const ob = entRequestWith({ orderByFields: 'EditDate DESC, FID' }, dT).orderByFields;
+  assert.equal(ob, `${trackOrderExpr(T[0])} DESC,objectid`);
+  assert.equal(trackOrderExpr(T[0]), "CASE WHEN last_edited_date BETWEEN timestamp '2026-10-20 00:00:00' AND timestamp '2026-10-20 12:00:00' THEN COALESCE(editdate, last_edited_date) ELSE last_edited_date END", 'импортын цонх UTC');
+  assert.equal(entRequestWith({ orderByFields: 'EditDate DESC' }, D).orderByFields, 'last_edited_date DESC', 'мөшгөлтийн хосгүй толь — плэйн');
+  const st = JSON.parse(entRequestWith({ outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'EditDate', outStatisticFieldName: 'm' }]) }, dT).outStatistics)[0].onStatisticField;
+  assert.equal(st, 'last_edited_date', 'outStatistics-д илэрхийлэл 500 — плэйн хэвээр');
+  /* ⚠️ 2026-10-21 (аудит): GROUP BY (outStatistics) · SELECT DISTINCT асуулгын orderByFields ч ПЛЭЙН — бүлэглээгүй CASE-ээр
+     эрэмбэлэх нь PostgreSQL-д 500; энгийн асуулгад илэрхийлэл хэвээр */
+  const grp = entRequestWith({
+    groupByFieldsForStatistics: 'BAGTS', orderByFields: 'EditDate DESC',
+    outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: 'EditDate', outStatisticFieldName: 'm' }]),
+  }, dT);
+  assert.equal(grp.orderByFields, 'last_edited_date DESC', 'outStatistics + orderByFields → плэйн (CASE-гүй)');
+  assert.equal(grp.groupByFieldsForStatistics, 'bagts');
+  const dis = entRequestWith({ returnDistinctValues: 'true', outFields: 'EditDate', orderByFields: 'EditDate DESC, FID' }, dT);
+  assert.equal(dis.orderByFields, 'last_edited_date DESC,objectid', 'returnDistinctValues + orderByFields → плэйн');
+  assert.equal(dis.outFields, 'last_edited_date', 'distinct-д мөшгөлтийн хос багана нэмэгдэхгүй (хэвээр)');
+  assert.equal(entRequestWith({ returnDistinctValues: 'false', orderByFields: 'EditDate DESC' }, dT).orderByFields, `${trackOrderExpr(T[0])} DESC`, 'энгийн асуулгад илэрхийлэл хэвээр');
+  /* ⚠️ 2026-10-22 (аудит №4): JS API boolean `returnDistinctValues: true` · массив `outStatistics` — interceptor мөр болгож
+     хуулна, эс бөгөөс CASE илэрхийлэл DISTINCT/GROUP BY-ийн ORDER BY-д орж Enterprise 500 */
+  const jd = entJsBefore({ returnDistinctValues: true, outFields: ['EditDate'], orderByFields: ['EditDate DESC'] }, dT).query;
+  assert.equal(jd.orderByFields, 'last_edited_date DESC', 'JS API boolean distinct → плэйн');
+  const js = entJsBefore({ orderByFields: ['EditDate DESC'], outStatistics: [{ statisticType: 'max', onStatisticField: 'EditDate', outStatisticFieldName: 'm' }] }, dT).query;
+  assert.equal(js.orderByFields, 'last_edited_date DESC', 'JS API массив outStatistics → плэйн');
+  assert.equal(JSON.parse(js.outStatistics)[0].onStatisticField, 'last_edited_date', 'массив outStatistics-ийн талбар ч хөрвөнө');
+}
+
+// 2026-10-21 (аудит): JS API мета — typeIdField · types[].domains түлхүүр · geometryProperties.*FieldName · relationships[].keyField
+{
+  const m = entResponseWith({
+    type: 'Feature Layer', fields: [{ name: 'objectid' }], typeIdField: 'bagts',
+    types: [{ id: 1, domains: { bagts: { type: 'inherited' }, work_status: { type: 'codedValue' } }, templates: [{ prototype: { attributes: { bagts: 'x' } } }] }],
+    geometryProperties: { shapeAreaFieldName: 'SHAPE__Area', shapeLengthFieldName: 'SHAPE__Length', units: 'esriMeters' },
+    relationships: [{ id: 0, keyField: 'objectid', name: 'r' }],
+  }, D, []);
+  assert.equal(m.typeIdField, 'BAGTS');
+  assert.deepEqual(Object.keys(m.types[0].domains), ['BAGTS', 'Work_Status']);
+  assert.deepEqual(m.types[0].templates[0].prototype.attributes, { BAGTS: 'x' }, 'types[].templates хэвээр хөрвөнө');
+  assert.equal(m.geometryProperties.shapeAreaFieldName, 'Shape__Area');
+  assert.equal(m.geometryProperties.shapeLengthFieldName, 'Shape__Length');
+  assert.equal(m.geometryProperties.units, 'esriMeters', 'нэрийн бус талбар хөндөгдөхгүй');
+  assert.equal(m.relationships[0].keyField, 'FID');
+}
+
+console.log('✅ entMap: 89 шалгуур');

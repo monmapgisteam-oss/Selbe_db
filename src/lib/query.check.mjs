@@ -9,7 +9,7 @@
  *    `authToken.arcgisPost` бүрхүүл (импортын тойрог ажилладаг).
  */
 import assert from 'node:assert/strict';
-import { arcgisPost, ArcGISError, queryCount } from '@/lib/query';
+import { arcgisPost, ArcGISError, queryCount, groups } from '@/lib/query';
 import * as A from '@/lib/authToken';
 
 const realFetch = globalThis.fetch;
@@ -498,6 +498,52 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   assert.equal(A.sessionDead(), true, 'шинэ сешнд чимээгүй цонх үлдэв');
   A.registerIdentity(null, '');
   console.log('✅ «Түр хаах» → 10 мин poll-оор цонх буцаж гарахгүй · шинэ сешн тэглэнэ');
+}
+
+/* ── ⚠️ 2026-10-21 (аудит): хавсралтын жагсаалт · queryAttachments · queryRelatedRecords · queryDomains — идемпотент
+      УНШИЛТ тул сүлжээ/5xx/rate-limit-д дахин оролдоно (2026-10-05-ны «зөвхөн /query» хязгаарлалт эдгээрийг алдсан байв) ── */
+{
+  for (const url of [`${URL_}/7/attachments`, `${URL_}/queryAttachments`, `${URL_}/queryRelatedRecords`, `${URL_}/queryDomains`]) {
+    for (const fail of [
+      () => { throw new TypeError('Failed to fetch'); },
+      () => ({ ok: false, status: 503 }),
+      () => ({ ok: false, status: 502 }),
+      () => ok({ error: { code: 429, message: 'Rate limit exceeded' } }),
+    ]) {
+      let calls = 0;
+      globalThis.fetch = async () => (++calls === 1 ? fail() : ok({ attachmentInfos: [] }));
+      assert.deepEqual(await arcgisPost(url, { f: 'json' }, { slot: false }), { attachmentInfos: [] }, url);
+      assert.equal(calls, 2, `${url}: уншилт дахин оролдсонгүй`);
+    }
+  }
+  /* Хавсралт БИЧИХ endpoint-ууд нэг л оролдлого хэвээр; `/<oid>/attachments/<id>` (татах) ч жагсаалт биш */
+  for (const ep of ['7/addAttachment', '7/updateAttachment', '7/deleteAttachments', '7/attachments/3']) {
+    let calls = 0;
+    globalThis.fetch = async () => (++calls === 1 ? { ok: false, status: 503 } : ok({ success: true }));
+    await assert.rejects(arcgisPost(`${URL_}/${ep}`, {}, { slot: false }));
+    assert.equal(calls, 1, `${ep}: бичилт/татах дахин оролдов`);
+  }
+  console.log('✅ attachments · queryAttachments · queryRelatedRecords · queryDomains: сүлжээ/5xx/rate-limit → дахин; addAttachment г.м. нэг оролдлого');
+}
+
+/* ── ⚠️ 2026-10-21 (аудит): `groups()` — хэмжилтгүй бүлгийн статистик `stats`-д null хэвээр (`values`-д 0, нийцтэй) ── */
+{
+  const rows = [
+    { f: 'A', n: 2, q: null }, { f: 'A', n: 1, q: null },
+    { f: 'B', n: 3, q: 10 }, { f: 'B', n: 1, q: null },
+    { f: '', n: 1, q: 0 }, { f: null, n: 1, q: null },
+  ];
+  const g = groups(rows, 'f', 'Хоосон', ['n', 'q']);
+  const by = Object.fromEntries(g.map((x) => [x.label, x]));
+  assert.equal(by.A.values.q, 0);
+  assert.equal(by.A.stats.q, null, 'бүх мөр null → stats null');
+  assert.equal(by.B.values.q, 10);
+  assert.equal(by.B.stats.q, 10, 'зарим мөр null → нийлбэр');
+  assert.equal(by['Хоосон'].stats.q, 0, 'бодит 0 нь 0 хэвээр (null ≠ 0)');
+  assert.equal(by.A.stats.n, 3);
+  assert.equal(by.A.values.n, 3);
+  assert.deepEqual(g.map((x) => x.label), ['B', 'A', 'Хоосон'], 'эрэмбэ values.n-ээр хэвээр');
+  console.log('✅ groups(): stats null-ийг хадгална · values 0 (нийцтэй) · эрэмбэ хэвээр');
 }
 
 globalThis.fetch = realFetch;

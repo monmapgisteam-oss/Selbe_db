@@ -41,6 +41,7 @@ import { TUSUL_NEGTGEL, bagtsKey, buildingKey, roleForUser } from '@/lib/service
 import { negtgelDepth } from '@/lib/negtgel';
 import { NEG_TREE, negTreeHash } from '@/lib/negtgelTree';
 import { currentUser } from '@/lib/who';
+import { invalidate } from '@/lib/dataBus';
 
 const F = TUSUL_NEGTGEL.fields;
 /** Хүснэгтийн хувийн масштаб (100 = 0–100) */
@@ -810,6 +811,14 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
       const calc = computeNegAuto(stored, src);
       const plan = planNegSync(stored, calc, !!opts.force);
       const n = plan.ups.length ? await (io.write ?? liveWrite)(plan.ups) : 0;
+      /* ⚠️ 2026-10-21 (кэшийн аудит): БАТАЛГААТАЙ бичилтийн дараа `TUSUL_NEGTGEL` хүчингүй — урьд нь зөвхөн
+         `dropNegtgelFull` (таб) тул «Тайлан» (`reportData.loadReportExtra`) · удирдлагын тайлан (`execReport`) ·
+         `negtgelEdit.capP` 5 мин хуучин нэгтгэл уншдаг байв (`negtgelEdit.publishNegEdits`-ийн 2026-10-19-ний ⚠️-тэй ижил).
+         ⚠️ ЗӨВХӨН `n > 0` — уналт/хариу алдагдсан үед ХҮЧИНГҮЙ БОЛГОХГҮЙ: энэ синк ачаалагч (`negtgel.loadNegtgelFullRaw`)
+         дотроос дуудагддаг, уналтад `lastSync = 0` тул хүчингүй болговол дахин ачаалал → дахин синк → дахин уналт
+         гэсэн давталт үүснэ. Амжилтад давталт байхгүй: дахин ачаалалтын синк `lastState`-ээ буцаана (`SYNC_GAP`).
+         Одоо `readOnly` тул зам унтраалттай (`fields.ts`-ийн ⚠️) — асаахад л нөлөөлнө. */
+      if (n > 0) invalidate('TUSUL_NEGTGEL');
       st = plan.blocked.length || plan.totalBlocked
         ? { kind: 'guard', n, at: Date.now(), blocked: plan.blocked, total: plan.total, totalBlocked: plan.totalBlocked }
         : { kind: 'ok', n, at: Date.now() };

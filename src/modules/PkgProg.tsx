@@ -281,8 +281,12 @@ export function PkgProg({ dim, setDim }: {
   useEffect(() => {
     let alive = true;
     const builds = packs.filter((pk) => pk.kind === 'build');
+    /* ⚠️ 2026-10-21 (аудит): барилга ачаалагдаагүй (`q` бэлэн биш → `buildPacks(null)`-д барилгын багц
+       байхгүй) үед «хоосон Map» (= тоологдсон) БИШ, `null` (ачаалж байна); бэлэн болоход ч өмнөх
+       (хоцорсон) үр дүнг харуулахгүй null-ээс эхэлнэ. Хоосон Map нь зөвхөн барилга бэлэн, багцгүй үед. */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
-    if (!builds.length) { setOvByPack(new Map()); return; }
+    setOvByPack(q.state === 'ready' && !builds.length ? new Map() : null);
+    if (q.state !== 'ready' || !builds.length) return;
     Promise.allSettled(
       builds.map(async (pk) => [
         pk.key,
@@ -301,7 +305,7 @@ export function PkgProg({ dim, setDim }: {
       setOvByPack(m);
     });
     return () => { alive = false; };
-  }, [packs]);
+  }, [packs, q.state]);
 
   /**
    * АНГИЛАЛ БҮРИЙН асуудалтай (давхцсан үлдсэн) нэгж талбар — «Блокийн
@@ -311,8 +315,13 @@ export function PkgProg({ dim, setDim }: {
    */
   const [ovByCat, setOvByCat] = useState<Map<PackCat, number | 'error'> | null>(null);
   useEffect(() => {
-    if (!packs.length) return;
     let alive = true;
+    /* ⚠️ 2026-10-21 (аудит): барилга бэлэн болтол ТООЛОХГҮЙ — урьд нь дэд бүтцийн багц ирмэгц ажиллаж,
+       барилгын ангилалд эх давхарга байхгүй тул `0` («асуудалгүй») бичиж, барилга ирсний дараа ч шинэ
+       тоо иртэл тэр 0 харагддаг байв. Шинэ тоолол бүрийн эхэнд `null` (ачаалж байна) руу тэглэнэ. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-21: татах эффект — шинэ тоолол эхлэхэд өмнөх үр дүнг синхрон тэглэнэ
+    setOvByCat(null);
+    if (q.state !== 'ready' || !packs.length) return;
     Promise.allSettled(PACK_CATS.map(async (c) => {
       const srcs = packs
         .filter((p) => catOf(p) === c.key)
@@ -335,7 +344,7 @@ export function PkgProg({ dim, setDim }: {
       setOvByCat(m);
     });
     return () => { alive = false; };
-  }, [packs]);
+  }, [packs, q.state]);
 
   /**
    * САНХҮҮГИЙН КАРТЫН ӨНДӨР — картын дээд ирмэгийн бариулаар чирч тохируулна

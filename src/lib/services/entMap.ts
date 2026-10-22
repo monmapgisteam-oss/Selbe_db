@@ -302,10 +302,41 @@ export function entWhereWith(where: string, d: EntDict | null): string {
 const mapList = (s: string, d: EntDict | null): string =>
   s.split(',').map((x) => (x.trim() === '*' ? '*' : entFieldName(x, d))).join(',');
 
-const mapOrder = (s: string, d: EntDict | null): string =>
+/** Энгийн таних тэмдэг (нэг талбарын нэр) — латин · кирилл · `_` · тоо */
+const IDENT = /^[A-Za-z_Ѐ-ӿ][\wЀ-ӿ]*$/;
+/**
+ * `outStatistics[].onStatisticField` — энгийн нэр бол толиор (`EditDate` → `last_edited_date`), SQL ИЛЭРХИЙЛЭЛ
+ * (`CURRENT_TIMESTAMP` · `Shape__Area * 2`) бол `where`-ийн дүрмээр зөвхөн толины талбарыг солино.
+ * ⚠️ 2026-10-21 (аудит): урьд илэрхийллийг бүхэлд нь `entFieldName`-ээр ЖИЖИГ ҮСЭГ болгодог байв (`UPPER(Work_Status)` →
+ *    `upper(work_status)`: функцийн нэр · литерал ч хөндөгдөнө) — илэрхийлэлд зөвхөн толины талбарыг солино.
+ */
+const mapStatField = (s: string, d: EntDict | null): string => (IDENT.test(s.trim()) ? entFieldName(s, d) : entWhereWith(s, d));
+
+const sqlTs = (ms: number): string => `timestamp '${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')}'`;
+/**
+ * ⚠️ 2026-10-21 (аудит): `orderByFields` дахь МӨШГӨЛТИЙН огнооны талбар — `entTrackFix` зөвхөн ХАРИУНЫ мөрийг засдаг тул
+ *    серверийн эрэмбэ импортын агшнаар (бүх мөр 2026-10-20, ижил) явж «сүүлд зассан» дараалал утгагүй байв. Enterprise
+ *    (PostgreSQL) `orderByFields`-д CASE/COALESCE илэрхийллийг хүлээн авдаг — амьд шалгалт 2026-10-21 (`Gazar_choloololt/152` ·
+ *    `Guitsetgel_talbe/183`: эрэмбэ бодитоор илэрхийллээр, хуудаслалттай ч). Илэрхийлэл = `entTrackFix`-ийн ЯГ дүрэм: амьд
+ *    огноо импортын цонхонд бол хуучин багана (байвал), эс бөгөөс амьд. `outStatistics.onStatisticField`-д ижил илэрхийлэл
+ *    500 (амьд шалгалт) тул ТЭНД хэвээр (плэйн талбар); `where`-д ч хөндөхгүй (дуудагчийн нөхцөл — хэт нийлмэл).
+ */
+export const trackOrderExpr = (t: TrackPair): string =>
+  `CASE WHEN ${t.date} BETWEEN ${sqlTs(ENT_IMPORT_FROM)} AND ${sqlTs(ENT_IMPORT_TO)} THEN COALESCE(${t.dateStat}, ${t.date}) ELSE ${t.date} END`;
+
+/**
+ * @param plain ⚠️ 2026-10-21 (аудит): `true` бол ЗӨВХӨН толиор нэр солино — `trackOrderExpr`-гүй. `outStatistics`
+ *   (GROUP BY) ба `returnDistinctValues` (SELECT DISTINCT) асуулгад PostgreSQL бүлэглээгүй/сонгоогүй CASE илэрхийллээр
+ *   эрэмбэлэхийг хүлээн авдаггүй (500 «Database error has occurred») — `onStatisticField`-ийн ижил хязгаар (дээрх ⚠️).
+ *   `entRequestWith` тэр хоёр асуулгад `plain` өгнө; энгийн асуулгад илэрхийлэл хэвээр.
+ */
+const mapOrder = (s: string, d: EntDict | null, plain = false): string =>
   s.split(',').map((x) => {
     const m = /^\s*(\S+)(\s+(?:ASC|DESC))?\s*$/i.exec(x);
-    return m ? `${entFieldName(m[1], d)}${m[2] ?? ''}` : x;
+    if (!m) return x;
+    const f = entFieldName(m[1], d);
+    const t = plain ? undefined : d?.track?.find((p) => p.date === f);
+    return `${t ? trackOrderExpr(t) : f}${m[2] ?? ''}`;
   }).join(',');
 
 /** Атрибутын түлхүүрүүд → Enterprise нэр (`applyEdits` · `addFeatures`) */
@@ -342,14 +373,15 @@ export function entRequestWith(params: Record<string, string>, d: EntDict | null
       for (const x of [t.date, t.dateStat, t.user, t.userStat]) if (!have.has(x)) { have.add(x); out.outFields += `,${x}`; }
     }
   }
-  if (out.orderByFields) out.orderByFields = mapOrder(out.orderByFields, d);
+  /* ⚠️ 2026-10-21 (аудит): статистик/distinct асуулгад эрэмбэ ПЛЭЙН (`mapOrder`-ийн `plain` ⚠️) */
+  if (out.orderByFields) out.orderByFields = mapOrder(out.orderByFields, d, !!out.outStatistics || out.returnDistinctValues === 'true');
   if (out.groupByFieldsForStatistics) out.groupByFieldsForStatistics = mapList(out.groupByFieldsForStatistics, d);
   if (out.outStatistics) {
     try {
       const st = JSON.parse(out.outStatistics) as unknown;
       if (Array.isArray(st)) {
         for (const s of st as { onStatisticField?: unknown }[]) {
-          if (s && typeof s.onStatisticField === 'string') s.onStatisticField = entFieldName(s.onStatisticField, d);
+          if (s && typeof s.onStatisticField === 'string') s.onStatisticField = mapStatField(s.onStatisticField, d);
         }
         out.outStatistics = JSON.stringify(st);
       }
@@ -413,7 +445,23 @@ export function entResponseWith<T extends Keyed>(body: T, d: EntDict | null, req
     }
   };
   tpl(b.templates);
-  if (Array.isArray(b.types)) for (const t of b.types as { templates?: unknown }[]) tpl(t?.templates);
+  /* ⚠️ 2026-10-21 (аудит): JS API-ийн метагийн БУСАД талбарын нэр — `typeIdField` (дэд төрлийн талбар), `types[].domains`-ийн
+     түлхүүр (талбар бүрийн домэйн), `geometryProperties.*FieldName` (`SHAPE__Area` → `Shape__Area`), `relationships[].keyField` —
+     урьд хөрвүүлэгдэхгүй тул `layer.typeIdField` · `getFieldDomain` · `layer.relationships` эх нэрээр олддоггүй байв. */
+  if (typeof b.typeIdField === 'string') b.typeIdField = orig(b.typeIdField);
+  if (Array.isArray(b.types)) {
+    for (const t of b.types as { templates?: unknown; domains?: Keyed }[]) {
+      tpl(t?.templates);
+      if (t?.domains && typeof t.domains === 'object') t.domains = renameKeys(t.domains, orig);
+    }
+  }
+  const gp = b.geometryProperties as Keyed | undefined;
+  if (gp && typeof gp === 'object') {
+    for (const k of Object.keys(gp)) if (/FieldName$/.test(k) && typeof gp[k] === 'string') gp[k] = orig(gp[k] as string);
+  }
+  if (Array.isArray(b.relationships)) {
+    for (const r of b.relationships as Keyed[]) if (r && typeof r.keyField === 'string') r.keyField = orig(r.keyField);
+  }
   return body;
 }
 

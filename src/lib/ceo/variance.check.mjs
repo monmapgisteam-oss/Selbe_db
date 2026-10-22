@@ -9,10 +9,13 @@
  *      тасалсан бол тасалсан тоог ил мөр болгоно.
  *   3. ЭРЭМБЭ. Хамгийн том зөрүү эхэнд — CEO эхний мөрийг л уншина.
  *   4. МӨНГӨ ТОВЧЛОЛГҮЙ. «тэрбум»/«сая» гарвал format.ts-ийн шийдвэр зөрчигдсөн.
+ *   5. (2026-10-21) ХЭМЖСЭН ТЭГ ≠ МЭДЭЭЛЭЛГҮЙ. Бүгд уншигдаж хэтрэлтгүй бол «0 ₮» ил; «—» зөвхөн
+ *      мэдээлэлгүй (бүгд/хэсэгчлэн унасан). Дутуу үр дүн (`failedSources`) `kpiComplete`-ээр кэшлэгдэхгүй.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { computeVariance, varianceLevel } from './variance.ts';
-import { ROW_CAP } from './kpi.ts';
+import { ROW_CAP, kpiComplete } from './kpi.ts';
 import { VAR_BAD_MNT } from '../kpiLevels.ts';
 
 const PKG_N = 10;
@@ -28,11 +31,12 @@ const base = (all, failedPkgs = 0) => ({
   failedPkgs,
 });
 
-/* ── 1. Зөрүүгүй, бүгд уншигдсан → good, «—» ── */
+/* ── 1. Зөрүүгүй, бүгд уншигдсан → good, «0 ₮» ил (2026-10-21: null ≠ 0 — «—» нь мэдээлэлгүйд л) ── */
 {
   const r = computeVariance(base([]), PKG_N);
   assert.equal(r.level, 'good');
-  assert.equal(r.value, '—', 'mnt(0) нь «—» — «0 ₮» биш');
+  assert.equal(r.value, '0 ₮', 'бүгд уншигдаж хэтрэлтгүй → хэмжсэн тэг ИЛ, «—» (мэдээлэлгүй) биш');
+  assert.equal(kpiComplete(r), true, 'бүрэн үр дүн — кэшлэгдэнэ');
   assert.deepEqual(r.facts, ['0 ажил хэтэрсэн']);
   assert.equal(r.tables.length, 2);
   assert.equal(r.tables[0].rows.length, 0);
@@ -59,6 +63,10 @@ const base = (all, failedPkgs = 0) => ({
   /* ⚠️ 2026-10-06: хэсэгчилсэн уналт + хэтрэлтгүй → «warn» (урьд нь худал 'good') */
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 3, measurable: 10 }, PKG_N), 'warn');
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 0, measurable: 10 }, PKG_N), 'good');
+  /* ⚠️ 2026-10-21: хэсэгчлэн унасан + хэтрэлтгүй → «—» хэвээр (дүн дутуу — «0 ₮» гэж худал хэлэхгүй), кэшлэгдэхгүй */
+  const part = computeVariance(base([], 3), PKG_N);
+  assert.equal(part.value, '—', 'хэсэгчлэн унасан үед «0 ₮» биш');
+  assert.equal(kpiComplete(part), false, 'дутуу үр дүн — `kpiComplete` false → `cached` хаяна');
 }
 
 /* ── 3. Бодит мөрүүд — bad, эрэмбэ, хэтрэлт, багцын бүлэглэл ── */
@@ -124,8 +132,18 @@ const ALL = [
   assert.equal(r.issues.length, 1);
   assert.ok(r.issues[0].text.startsWith('2 '), r.issues[0].text);
   assert.deepEqual(r.failedSources, ['2 багцын бөглөх хуудас']);
+  assert.equal(kpiComplete(r), false, '2026-10-21: дутуу үр дүн кэшлэгдэхгүй');
   assert.equal(varianceLevel({ works: 1, totalMnt: VAR_BAD_MNT, failedPkgs: 0 }, PKG_N), 'bad', 'босго дээрээ = bad');
   assert.equal(varianceLevel({ works: 1, totalMnt: VAR_BAD_MNT - 1, failedPkgs: 0 }, PKG_N), 'warn');
+}
+
+/* ── 4b. (2026-10-21) Ачаалагч `kpiComplete`-ийг `cached`-ийн 4 дэх аргументаар дамжуулна — эх кодоос тулгана ── */
+{
+  /* ⚠️ тайлбарыг ЭХЛЭЭД хасна — тайлбар дотор «`BAGTS_SHEET`);» мэт текст regex-ийг эрт тасалдаг */
+  const src = readFileSync(new URL('./variance.ts', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /loadVarianceKpi\s*=\s*cached\(([\s\S]*?)\);/.exec(src);
+  assert.ok(m, 'loadVarianceKpi = cached(…) олдсонгүй');
+  assert.match(m[1], /\[\s*'BAGTS_SHEET'\s*\]\s*,\s*kpiComplete\s*,?\s*$/, 'cached(…, SESSION_TTL_MS, [BAGTS_SHEET], kpiComplete) — дутуу үр дүн 5 мин кэшлэгдэхгүй');
 }
 
 /* ── 5. ROW_CAP — таслалт ИЛ ── */

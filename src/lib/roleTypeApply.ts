@@ -16,13 +16,15 @@
  * ⚠️ Бичих зам ШИНЭ БИШ — `permissions.setUser` (харагдац/үүргийн мөр).
  * ⚠️ Түгжээ: эрхийн хүснэгт уншигдаагүй бол татгалзана (`remoteReady`) — уншигдаагүй
  *    сешнд `roleOf`/override хүчингүй тул бичвэл бодит мөрийг дарна.
- * ⚠️ Super төрөл зөвхөн хатуу super-т; хатуу super-ийг доошлуулахгүй; хатуу super-т
- *    override мөр бичихгүй (эрх нь кодоос).
+ * ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = ЭРХИЙН ТОХИРГОО (`roles._setTableSupers`) — Super төрлийг самбараас
+ *    зөвхөн SUPER АДМИН олгоно/хасна (мөр бичигдэнэ); өөрийн super-ийг өөрөө хасахгүй. Кодын (тестийн) super л
+ *    доошлохгүй, мөр нь бичигдэхгүй (`permissions.setUser`). Урьд (2026-09-25 · 10-19) super зөвхөн кодоор байв.
  */
 
 import { t as tr } from './i18nCore';
-import { roleForUser, type Role } from './services';
+import { isCodeSuper, roleForUser, type Role } from './services';
 import { listUsers, remoteReady, setUser } from './permissions';
+import { currentUser } from './who';
 import { roleAccess, typesReady } from './roleTypes';
 import { WORKFLOW_VIEWS } from './caps';
 
@@ -69,14 +71,21 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   if (!listUsers().some((x) => x.username.toLowerCase() === u)) {
     return { ok: false, errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
   }
-  const hard = roleForUser(u) === 'super';
-  /* ⚠️ Хатуу super-ийг панелаас доошлуулахгүй — `permissions.hasAccess`-ийн ⚠️ */
-  if (hard && role !== 'super') {
+  /* ⚠️ Кодын (тестийн) super-ийг самбараас доошлуулахгүй — мөр нь бичигдэхгүй тул өөрчлөлт худал болно */
+  if (isCodeSuper(u) && role !== 'super') {
     return { ok: false, errors: [tr('Кодонд бүртгэлтэй админыг (super) өөр төрөлд шилжүүлэх боломжгүй.')] };
   }
-  /* ⚠️ 2026-09-25: админ самбарын эрх ЗӨВХӨН кодоор (`ROLE_BY_USER`). */
-  if (!hard && role === 'super') {
-    return { ok: false, errors: [tr('Super төрөл зөвхөн кодонд бүртгэлтэй админд — админ самбарын эрх кодоор л олгогдоно.')] };
+  /* ⚠️ 2026-10-21: SUPER = эрхийн тохиргоо. Олгох/хасах нь ЗӨВХӨН super админд (нэвтэрсэн хэрэглэгч — `who.currentUser`,
+     тодорхойгүй бол ТАТГАЛЗАНА, fail-closed); өөрийн super-ийг өөрөө хасахгүй (сүүлчийн админ түгжигдэхээс сэргийлнэ —
+     өөр super хасна). */
+  const me = (currentUser() ?? '').trim().toLowerCase();
+  const adminSuper = !!me && roleForUser(me) === 'super';
+  const wasSuper = roleForUser(u) === 'super';
+  if ((role === 'super' || wasSuper) && !adminSuper) {
+    return { ok: false, errors: [tr('Super эрхийг зөвхөн super админ олгож, хасна.')] };
+  }
+  if (wasSuper && role !== 'super' && u === me) {
+    return { ok: false, errors: [tr('Өөрийн super эрхийг өөрөө хасах боломжгүй — өөр super админ хасна.')] };
   }
   if (draftUsers.has(u)) {
     return { ok: false, errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Цуцлах» дарна уу.')] };
@@ -87,8 +96,8 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   userLocks.add(u);
   emit(LOCK_EVENT);
   try {
-    /* ⚠️ Хатуу super-т override мөр БИЧИХГҮЙ — эрх нь кодоос (`ROLE_BY_USER`) */
-    if (role === 'super') return { ok: true, errors: [] };
+    /* ⚠️ 2026-10-21: Super төрөл ч мөр бичнэ (`views: 'all'` · `role: 'super'`) — хүснэгтийн super (`permissions.setUser`
+       кодын super-т л no-op) */
     const acc = roleAccess(role);
     /*
      * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): УРСГАЛТАЙ ХАРАГДАЦ БИЧИГДЭХГҮЙ. Урьд нь

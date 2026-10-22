@@ -21,7 +21,7 @@ import { mnt, num } from '@/lib/format';
 import { loadVariance, type Variance, type VarianceWork } from '@/lib/execTriage';
 import { VAR_BAD_MNT } from '@/lib/kpiLevels';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
-import { cell, table, type Cell, type KpiResult, type Level } from './kpi';
+import { cell, kpiComplete, table, type Cell, type KpiResult, type Level } from './kpi';
 
 /**
  * Түвшин.
@@ -124,8 +124,10 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
   }
 
   return {
-    /* ⚠️ `mnt(0)` нь «—» (format.ts-ийн санаатай зан) — зөрүүгүй үед «0 ₮» биш */
-    value: allFailed ? '—' : mnt(v.totalMnt),
+    /* ⚠️ 2026-10-21 (KPI аудит): БҮХ багц уншигдаж хэтрэлт АЛГА бол «0 ₮» гэж ИЛ. `mnt(0)` нь «—» (format.ts-ийн
+       санаатай зан — хөндөхгүй) боловч энд «—» нь «бүгд унасан» (`unknown`)-тай ЯГ ижил харагдаж, хэмжсэн тэг ба
+       мэдээлэлгүйг нэгтгэдэг байв (null ≠ 0). Хэсэгчлэн унасан (`failedPkgs > 0`) үед хэвээр «—» — дүн дутуу. */
+    value: allFailed ? '—' : v.works === 0 && v.failedPkgs === 0 ? `${num(0)} ₮` : mnt(v.totalMnt),
     unit: tr('зөрүү'),
     facts,
     level,
@@ -152,4 +154,8 @@ export const loadVarianceKpi = cached(
      `loadVariance` өөрөө одоо мөн 5 мин `cached` (`execTriage`-ийн ⚠️) тул хоёр давхарга нэг жигд. */
   SESSION_TTL_MS,
   ['BAGTS_SHEET'],
+  /* ⚠️ 2026-10-21 (KPI аудит): ДУТУУ үр дүнг (хэсэг багц уншигдаагүй — `failedSources`) 5 мин кэшлэхгүй — бусад CEO
+     ачаалагчдын (`loadQaqcKpi` · `loadIotKpi` …) 2026-10-01-ний `kpiComplete` дүрэм энд дутуу байв: нэг багцын түр
+     уналт картыг 5 мин турш «дүн дутуу» хэвээр барьж, дахин оролдох боломжгүй байлаа. */
+  kpiComplete,
 );

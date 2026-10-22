@@ -8,6 +8,7 @@ import { t as tr } from '@/lib/i18nCore';
 import type { Indicator } from '@/lib/analysis/config';
 import { toCsv } from '@/lib/csvFile';
 import { valueOf, type Mode, type Row } from './model';
+import { zoneTypeLabel } from './format';
 
 /**
  * ӨРСӨЛДӨӨНИЙ ЭРЭМБЭ («1, 2, 2, 4») — ДЭЛГЭЦЭД ХАРАГДАХ (бүхэлчилсэн) оноогоор.
@@ -56,8 +57,10 @@ export function zoneCsv(rows: Row[], mode: Mode, ind: Indicator, indicators: rea
   const out = order.map((k) => {
     const r = rows[k];
     const actual = r.rawActual ?? r.raw;
+    /* ⚠️ 2026-10-22 (аудит): ангилал нь жагсаалттай (`Ranking`) ижил орчуулсан нэрээр — толгой аль хэдийн `tr()`-тэй тул
+       англи горимд холимог (англи толгой · монгол ангилал) гардаг байв (`zoneTypeLabel`-ийн ⚠️) */
     return [
-      ranks[k], r.id, r.type, round(vals[k], 1), round(r.urban, 1),
+      ranks[k], r.id, zoneTypeLabel(r.type), round(vals[k], 1), round(r.urban, 1),
       round(r.residentPop, 0), round(r.households, 0), round(r.areaHa, 2),
       ...indicators.flatMap((i) => [round(actual[i.id], Math.max(0, i.decimals)), round(r.parts[i.id]?.score, 1)]),
     ];

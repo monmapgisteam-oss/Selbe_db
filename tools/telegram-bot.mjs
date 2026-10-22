@@ -30,8 +30,8 @@
 process.env.TZ ||= 'Asia/Ulaanbaatar';
 
 import { readFileSync, writeFileSync, existsSync, renameSync, copyFileSync } from 'node:fs';
-import { toHtml, stripHtml } from './telegram-format.mjs';
-import { botFullViews } from './telegram-views.mjs';
+import { toHtmlChunks, stripHtml } from './telegram-format.mjs';
+import { botFullViews, grantWithin } from './telegram-views.mjs';
 
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -191,10 +191,11 @@ async function tg(method, body) {
 const NO_PREVIEW = { link_preview_options: { is_disabled: true } };
 
 /** ⚠️ Telegram-ийн мессеж 4096 тэмдэгтээр хязгаартай — урт хариултыг хуваана */
+/* ⚠️ 2026-10-21 (аудит): HTML-ийг 3800-аар хайчлахаа болив — markdown-ийн мөрийн хил дээр хувааж, хэсэг бүрийг тусад нь
+   хөрвүүлнэ (`telegram-format.toHtmlChunks`): таг/entity дундуур таслагдахгүй, хүснэгт `<pre>` бүтэн. Доорх цэвэр
+   текстийн нөөц зам хэвээр (Telegram-ийн бусад 400-д). */
 async function reply(chatId, text, extra = {}) {
-  const html = toHtml(text);
-  for (let i = 0; i < html.length; i += 3800) {
-    const chunk = html.slice(i, i + 3800);
+  for (const chunk of toHtmlChunks(text)) {
     try {
       await tg('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'HTML', ...NO_PREVIEW, ...extra });
     } catch (e) {
@@ -513,7 +514,14 @@ async function handleCallback(cb) {
       await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
     }
   } else {
-    const views = action === 'plan' ? PLAN_VIEWS : FULL_VIEWS;
+    /* ⚠️ 2026-10-21 (аудит): ХЯЗГААРТАЙ админ (`<id>:plan|pkgProg`) FULL_VIEWS бүхэлдээ олгодог байв — олгох харагдац ∩
+       админы ӨӨРИЙН хүрээ (`telegram-views.grantWithin`); хүрээнд нь нэг ч байхгүй бол татгалзана. */
+    const own = ADMINS.get(adminId);
+    const views = grantWithin(action === 'plan' ? PLAN_VIEWS : FULL_VIEWS, own);
+    if (!views.length) {
+      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Таны эрхийн хүрээнд олгох харагдац алга', show_alert: true });
+      return;
+    }
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
     // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
     users[targetId] = { views, name: pending.get(targetId)?.name ?? '', at: new Date().toISOString() };
@@ -521,7 +529,9 @@ async function handleCallback(cb) {
     pending.delete(targetId);
     repliedAt.delete(targetId);
     saveAccess();
-    note = action === 'plan' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө';
+    note = action === 'plan'
+      ? (own === 'all' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : `Төлөвлөлтийн эрхээр (таны хүрээний ${views.length}) зөвшөөрлөө`)
+      : (own === 'all' ? 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө' : `Таны хүрээний ${views.length} харагдацаар зөвшөөрлөө`);
     /* ⚠️ 2026-10-09: файлд хадгалагдаагүй бол админд ил хэлнэ (`saveUsers`-ийн ⚠️) — дахин асахад алга болно */
     if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
     await reply(

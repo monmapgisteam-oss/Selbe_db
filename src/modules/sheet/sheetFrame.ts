@@ -16,7 +16,7 @@
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, cellPct, computeAll, dayToMs, incCell, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -486,6 +486,12 @@ export type Overlay = {
    *    мөрийн дараалалд итгэгдэхгүй.
    */
   remapped: boolean;
+  /**
+   * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо ба түлхүүр (`incCell.neg`, илгээлтийн
+   *    ЭХ түлхүүрээр). Мөрөнд 0-оор хаасан утга буусан (дэлгэц) ч архивлалт (`hyanaltStore`) `negative > 0` бол татгалзана.
+   */
+  negative: number;
+  negKeys: string[];
 };
 
 /**
@@ -529,6 +535,7 @@ export function overlaySubmission(
   const mc = moveKeys(map, Object.fromEntries(sub.cells ?? []));
   const md = moveKeys(map, Object.fromEntries(sub.dates ?? []));
   const unmovedKeys: string[] = [...mc.unmoved, ...md.unmoved];
+  const negKeys: string[] = [];
 
   /* ── 2. Нэмсэн мөр — давхардлыг алгасна ── */
   /**
@@ -620,7 +627,16 @@ export function overlaySubmission(
          орох байв. `unmoved` БИШ: тэр нь батлалтыг МӨНХӨД зогсооно, харин энэ нүдийг засах зам алга. */
       if (synNoVol(sc, r)) continue;
       const res = incCell(r, b, v, !!sc.obyem[b]);
-      if (!res) continue;
+      if (!res) {
+        /* ⚠️ 2026-10-21 (аудит): ХОГ УТГА (хоосон биш атлаа `parseInc` задлахгүй — «abc» · «1e3» · «1,250») — урьд нь
+           чимээгүй алгасагдаж илгээлт «өөрчлөлтгүй» мэт батлагддаг байв; одоо `unmoved` (батлалт ил зогсоно, FillNew
+           анхааруулна). Тэг/хоосон нэмэлт нь хэвээр «өөрчлөлтгүй». */
+        if (v.trim() !== "" && parseInc(v) == null) unmovedKeys.push(k);
+        continue;
+      }
+      /* ⚠️ 2026-10-21 (аудит): НИЙТ СӨРӨГ болох нэмэлт (`incCell.neg`) — дэлгэцэд 0-оор хаасан утга буух ч түлхүүрийг
+         `negKeys`-д тэмдэглэнэ; архивлалт (`hyanaltStore.archiveSubmission`) `negative > 0` бол татгалзана. */
+      if (res.neg) negKeys.push(k);
       r.obyem[b] = res.obyem;
       r.act[b] = res.act;
       cellKeys.push(key);
@@ -671,6 +687,8 @@ export function overlaySubmission(
     unmoved: unmovedKeys.length,
     unmovedKeys,
     remapped: needMap,
+    negative: negKeys.length,
+    negKeys,
   };
 }
 

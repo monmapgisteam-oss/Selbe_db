@@ -27,6 +27,7 @@ type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import { TD, layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
 import { remapUrl } from '@/lib/services/entMap';
+import { register } from '@/lib/dataBus';
 import { classifyBuilding, buildingTrips } from './transport';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
@@ -249,12 +250,51 @@ function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
 }
 
 /**
+ * БҮСИЙН ДАВХАРДСАН КОД — нэг кодтой олон мөрөөс талбай (`areaOf`) хамгийн ТОМ нэгийг үлдээнэ; байрлал нь эхний
+ * мөрийнх (цэвэр функц — `zoneDedupe.check`). Кодгүй (хоосон) мөр хөндөгдөхгүй.
+ * ⚠️ 2026-10-21 (аудит): ӨГӨГДЛИЙН АЛДАА — бүсийн давхаргад (`selbe_ET/100`) «X-13» ХОЁР мөртэй: objectid 47 (1 цагираг,
+ *    20,347 м²) ба objectid 12 (ЯГ ТЭР гадна цагираг + 7,905 м² НҮХ = 12,442 м²; `gazar_ga` хоёуланд 1.2441 — хуулбар мөр).
+ *    Урьд нь хоёулаа тусдаа `Zone` болж: `greenByZone` (кодоор) ижил 3,058 м² ногоон ХОЁР удаа төслийн нийлбэрт,
+ *    `aggregateBuildings` эхний таарсан полигонд, бүсийн тоо 58 (57 код). Давхаргад засах хүртэл ЭНД нэгтгэнэ: том
+ *    полигон нь жижгийг бүхэлд нь агуулдаг (нүх нь л ялгаа) тул «том нь» = хоёрын нэгдэл — барилга/ногооны оноолт
+ *    алдагдахгүй. Давхардлыг `console.warn`-д нэрлэнэ; `failed`-д ОРУУЛАХГҮЙ (тэр нь кэшлэлтийг хаана — өгөгдөл
+ *    засагдтал нээлт бүрд секундын тооцоо дахин явах байсан).
+ */
+export function dedupeZoneFeats<T extends { attributes: Record<string, unknown> }>(
+  feats: readonly T[],
+  idOf: (a: Record<string, unknown>) => string,
+  areaOf: (a: Record<string, unknown>) => number,
+): { feats: T[]; dups: string[] } {
+  const out: T[] = [];
+  const at = new Map<string, number>();
+  const dups = new Set<string>();
+  for (const f of feats) {
+    const id = idOf(f.attributes);
+    const i = id ? at.get(id) : undefined;
+    if (i == null) {
+      if (id) at.set(id, out.length);
+      out.push(f);
+      continue;
+    }
+    dups.add(id);
+    if (areaOf(f.attributes) > areaOf(out[i].attributes)) out[i] = f;
+  }
+  return { feats: out, dups: [...dups] };
+}
+
+/**
  * ⚠️ Модулийн түвшний КЭШ. Энэ ачаалалт нь 4,000+ шугамын union, 368×52
  * `contains` тест хийдэг тул хэдэн секунд авна. Харагдац солих бүрд дахин
  * ажиллуулбал хэрэглэгч буцаж ирэх бүрдээ хүлээх болно. Өгөгдөл нь сесс дотор
  * өөрчлөгддөггүй тул амлалтыг нь хадгалж дахин ашиглана.
  */
 let cache: Promise<AnalysisData> | null = null;
+/* ⚠️ 2026-10-21 (кэшийн аудит): толгойн «Шинэчлэх» (`dataBus.invalidateAll`) энэ кэшийг ч хаяна — `hesegChange` ·
+   `hesegNeed` · `planOverlap`-ийн 2026-10-19-ний дүрэм (хоосон `reads`: хүснэгтийн бичилт хөндөхгүй, зөвхөн бүтэн
+   шинэчлэлт). Урьд нь автобусад бүртгэлгүй тул ArcGIS Pro-гийн бүс/барилгын засвар хуудас дахин ачаалтал
+   «Тохиромжтой байдал» · Нүүрний оноонд харагддаггүй, толгойн «Өгөгдөл: HH:MM» худал шинэ цаг заадаг байв.
+   Дээрх «сесс дотор өөрчлөгддөггүй» нь ХАРАГДАЦ солиход дахин бодохгүй гэсэн шийдвэр хэвээр. */
+register(() => { cache = null; }, []);
 
 export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<AnalysisData> {
   if (!cache) {
@@ -274,10 +314,15 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   // ⚠️ Талбарын нэрийг ЭНД бичихгүй — бүсийн давхарга солигдоход (`ZONE_ID` →
   //    `RefName_1`, `TOROL` → `Angilal`) энэ жагсаалт чимээгүй хоосон утга буцаана.
   const Z = ZONE_FIELDS;
-  const zoneFeats = await fetchAll(url(SRC.zones), [
+  const zoneFeats0 = await fetchAll(url(SRC.zones), [
     Z.id, Z.type, Z.areaHa, 'Shape__Area', Z.far, Z.farPct, Z.bcr,
     Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
+  /* ⚠️ 2026-10-21 (аудит): давхардсан код (X-13) — нэг бүс, том полигон (`dedupeZoneFeats`-ийн ⚠️) */
+  const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.Shape__Area));
+  if (zoneDups.length) {
+    console.warn(`[selbe] анализ: бүсийн давхаргад давхардсан код — ${zoneDups.join(', ')} (том полигоныг үлдээв; давхаргад засах хэрэгтэй)`);
+  }
 
   onProgress(tr('Барилга байгууламж…'), 22);
   const buildings = await fetchAll(url(SRC.buildings), [

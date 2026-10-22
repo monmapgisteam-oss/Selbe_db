@@ -13,7 +13,8 @@
  *     өөр огноо, «сүүлийн 30 хоногт» өөр тоо болно. Ирээдүйн огноо «сүүлийн 30»-д орохгүй.
  *  2. Хохирлын regex `execTriage.loadDamage`-аас зөрөх — нүүр самбар ба
  *     ХАБЭА хуудас өөр тоо харуулна.
- *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай.
+ *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай
+ *     (⚠️ 2026-10-21: хохирол ч СҮҮЛИЙН 30 хоногоор — хуучин хохирол түвшинд биш, баримтад л).
  *  4. Хүснэгт ТОО биш НЭРЭЭР: бүх бүртгэл мөр бүр гарна, шинэ нь эхэнд,
  *     огноогүй нь СҮҮЛД; баганын тоо мөр бүрд таарна.
  *  5. Анхааруулга: сүүлийн 30 хоногийнх улаан, хуучин хохирол шар, хуучин
@@ -127,11 +128,22 @@ assert.equal(computeSafety(dated(INCIDENT_WARN_MAX, 0), NOW).level, 'warn', '30 
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 0), NOW).level, 'bad', '30 хоногт 6+ осол → Яаралтай');
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 100), NOW).level, 'good', 'хуучин 6+ осол (хохиролгүй) → 30 хоногт 0 → Сайн');
 assert.equal(computeSafety(dated(3, 100), NOW).value, '0', 'гол тоо = сүүлийн 30 хоног');
+/* ⚠️ 2026-10-21: хохирлын түвшин ч СҮҮЛИЙН 30 ХОНОГООР (`agg.damageRecent`) */
 assert.equal(
-  computeSafety(dated(DMG_BAD_N, 100, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
-  'хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
+  computeSafety(dated(DMG_BAD_N, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
+  '30 хоногт хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
 );
-assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'warn');
+assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'warn');
+{
+  const oldRows = dated(DMG_BAD_N, 100, { turul: 'Эд хөрөнгийн хохирол' });
+  const old = computeSafety(oldRows, NOW);
+  assert.equal(old.level, 'good', '100 хоногийн өмнөх хохирол → 30 хоногт 0 → Сайн (урьд нь мөнхөд bad)');
+  assert.ok(old.facts.includes(`${DMG_BAD_N} хохирол`), `бүх хугацааны хохирол баримтад хэвээр: ${old.facts}`);
+  const oa = aggregateSafety(oldRows, NOW);
+  assert.equal(oa.damage, DMG_BAD_N);
+  assert.equal(oa.damageRecent, 0);
+  assert.equal(aggregateSafety(dated(2, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).damageRecent, 2);
+}
 
 /* ══════════════ 5. Нэгтгэл, 30 хоногийн зааг, баримт ══════════════ */
 
@@ -146,6 +158,7 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
   const a = aggregateSafety(rows, NOW);
   assert.equal(a.total, 5);
   assert.equal(a.damage, 2);
+  assert.equal(a.damageRecent, 0, '⚠️ 2026-10-21: 1 мс хуучин ба огноогүй хохирол 30 хоногт орохгүй');
   assert.equal(a.last, NOW - 3 * DAY);
   assert.equal(a.daysSince, 3);
   assert.equal(a.recent, 2, 'яг 30 хоногийн зааг орно, 1 мс хуучин орохгүй');

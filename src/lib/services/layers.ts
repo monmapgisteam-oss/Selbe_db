@@ -4,7 +4,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { ENT_HOSTED, ET, HABEA_SVC, HJ, SOURCE_FS, TD } from './env';
 import { OID, ZONE_FIELD } from './layerDef';
 import type { LayerDef } from './layerDef';
-import { BUILT_STATUS, M, M2, ZONE_CHART_TYPES, ZONE_MAP_TYPES, ZONE_TYPE_EMPTY } from './palette';
+import { BUILT_STATUS, M, M2, ZONE_CHART_TYPES, ZONE_MAP_TYPES, ZONE_TYPE_EMPTY, zoneType } from './palette';
 import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_STATUS_HUES } from './fields';
 import { PKG_HUE, PKG_LAYERS } from './pkg';
 
@@ -715,7 +715,9 @@ export const LAYERS: LayerDef[] = [
     zoneField: "RefName_1",
     get note() { return tr('FAR, BCR, зогсоолын үзүүлэлттэй'); },
     facets: [
-      { field: "Angilal", get label() { return tr('Бүсийн ангилал'); } },
+      /* ⚠️ 2026-10-21 (аудит): `canon: zoneType` — каталогийн facet англи горимд 8-ын 7 нь монголоор үлддэг байв
+         (өгөгдөл жижиг үсэг, толь каноник); ZoneFilter-тэй ижил каноник нэр, `where` түүхий хэвээр. */
+      { field: "Angilal", get label() { return tr('Бүсийн ангилал'); }, canon: zoneType },
       { field: "zoriulalt", get label() { return tr('Зориулалт'); } },
     ],
     // ⚠️ Зурагт зөвхөн орон сууц/олон нийт улаанаар — бусад нь жигд суурь өнгө

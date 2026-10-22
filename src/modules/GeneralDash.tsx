@@ -64,6 +64,8 @@ import {
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import g from './generalDash.module.css';
+/* ⚠️ 2026-10-22 (аудит): «Багц 74»-ийн асаалт/унтраалтын дүрэм — цэвэр модуль (`generalDashLayers.check.mjs` шууд шалгана) */
+import { pkgWorkAdded, pkgWorkDrop, pkgWorkOn } from '@/modules/generalDashLayers';
 
 /**
  * ЕРӨНХИЙ ДАШБОАРД — ТӨСЛИЙН НЭГ ХУУДАС ДЭЭРХ ТОЙМ.
@@ -588,7 +590,11 @@ export function GeneralDash({
      * шилжихэд дахин бичвэл «зөвхөн нэгж талбар» гэсэн завсрын төлөв
      * сэргээх цэг болж хоцорно.
      */
-    if (beforeReason.current == null) beforeReason.current = visible;
+    /* ⚠️ 2026-10-21 (аудит): хөндлөн сонголт (`xsPick`) идэвхтэй байхад `visible` нь ТҮҮНИЙ давхаргууд тул
+       сэргээх цэг болгон авбал хэрэглэгчийн ӨӨРИЙН асаасан давхаргууд (`beforeXs`) алдагдаж, шалтгааныг
+       цуцлахад чартын сонголтын давхарга сэргэдэг байв (доор `beforeXs` тэглэгддэг тул хаанаас ч буцахгүй).
+       Хэрэглэгчийн давхарга `beforeXs`-д байвал ТҮҮНИЙГ авна. */
+    if (beforeReason.current == null) beforeReason.current = beforeXs.current ?? visible;
     /* ⚠️ Багцын сэргээх цэгийг ХҮЧИНГҮЙ болгоно: шалтгаан солигдоход тэр нь
        өөр шалтгааны давхаргын жагсаалт руу заасан хуучин утга болно. */
     beforePkg.current = null;
@@ -2530,6 +2536,9 @@ function PkgWorkList({
 }) {
   const [open, setOpen] = useState(false);
   const map = useMap();
+  /* ⚠️ 2026-10-21 (аудит): ажил асаахад ШИНЭЭР нэмэгдсэн давхаргын бүртгэл (ажлын oid → ids) — унтраахад
+     зөвхөн тэднийг хасна (доорх `onClick`-ийн ⚠️). Ref: рендерт нөлөөлөхгүй, зөвхөн дараагийн даралтад. */
+  const addedRef = useRef(new Map<CfRow['oid'], string[]>());
 
   const works = useMemo(() => {
     if (!rows) return [];
@@ -2546,9 +2555,7 @@ function PkgWorkList({
   }, [rows]);
 
   /* ⚠️ Зурагт ил гарсан ажлын тоо — толгойн «N/74» тоолуур */
-  const onCount = works.filter(
-    (w) => w.ids.length > 0 && w.ids.every((id) => visible.includes(id)),
-  ).length;
+  const onCount = works.filter((w) => pkgWorkOn(w, visible)).length;
 
   if (works.length === 0) return null;
 
@@ -2568,7 +2575,7 @@ function PkgWorkList({
         <div className={g.pkgRows}>
           {works.map((w) => {
             const has = w.ids.length > 0;
-            const isOn = has && w.ids.every((id) => visible.includes(id));
+            const isOn = pkgWorkOn(w, visible);
             return (
               <button
                 key={w.oid}
@@ -2579,9 +2586,18 @@ function PkgWorkList({
                 onClick={() => {
                   if (!has) return;
                   if (isOn) {
-                    setVisible((v) => v.filter((id) => !w.ids.includes(id)));
+                    /* ⚠️ 2026-10-21 (аудит): ЗӨВХӨН энэ ажил асаахад НЭМЭГДСЭН давхаргыг хасна (`addedRef`) — урьд нь
+                       `w.ids` бүгдийг хасдаг тул хэрэглэгчийн өмнө нь асаасан, эсвэл ӨӨР идэвхтэй ажилд хамаарах
+                       (нэг багцын ажлууд давхаргаа хуваалцдаг) давхарга хамт унтардаг байв. Бүртгэлгүй (анхнаасаа
+                       асаалттай байсан) бол `w.ids`-ээс бусад идэвхтэй ажлынхыг л үлдээнэ. */
+                    /* ⚠️ 2026-10-22 (аудит): «бусад идэвхтэй ажил» = ИЛ асаасан (`addedRef`-д бүртгэлтэй) — харагдаж буй
+                       биш; урьд нэг багцын ИЖИЛ давхаргатай хоёр ажил хэзээ ч унтардаггүй байв (`generalDashLayers.pkgWorkDrop`). */
+                    const drop = pkgWorkDrop(works, w, addedRef.current);
+                    addedRef.current.delete(w.oid);
+                    setVisible((v) => v.filter((id) => !drop.includes(id)));
                     return;
                   }
+                  addedRef.current.set(w.oid, pkgWorkAdded(w, visible));
                   setVisible((v) => [...new Set([...v, ...w.ids])]);
                   if (w.ids[0]) map.zoomToLayer(w.ids[0]);
                 }}

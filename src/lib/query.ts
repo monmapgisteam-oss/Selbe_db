@@ -240,15 +240,20 @@ const backoff = (attempt: number) => sleep(400 * 2 ** attempt + Math.random() * 
  * ⚠️ 2026-10-05: УНШИЛТЫН сүлжээний/5xx дахин оролдлого. Урьд нь сүлжээний алдаанд НЭГ л
  *    удаа (300–500 мс) дахин оролддог, HTTP 500/502/504-ийг огт давтдаггүй байсан тул
  *    барилгын талбайн тогтворгүй сүлжээнд харагдац бүхэлдээ алдаа болдог байв.
- * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета) — бичих endpoint,
- *    `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн тодорхойгүй → давхар бичилт).
- *    Бусад endpoint-ийн үр дүн тодорхойгүй тул автоматаар дахин илгээхгүй.
+ * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета · доорх хавсралт/холбоот
+ *    бичлэг/домэйны уншилт) — бичих endpoint, `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн
+ *    тодорхойгүй → давхар бичилт). Бусад endpoint-ийн үр дүн тодорхойгүй тул автоматаар дахин илгээхгүй.
+ * ⚠️ 2026-10-21 (аудит): `/queryAttachments` · `/queryRelatedRecords` · `/queryDomains` ба
+ *    `/<oid>/attachments` (хавсралтын ЖАГСААЛТ — `addAttachment`/`deleteAttachments` биш) нь идемпотент
+ *    уншилт: 2026-10-05-ны «зөвхөн /query» хязгаарлалтаар МА/MIR/ХАБЭА-ийн зургийн жагсаалт, үзлэгийн
+ *    тайлангийн хавсралт нэг глитч/503-д шууд алдаа болдог болсон байв (суурь хувилбарт давтагддаг байсан).
  */
 const NET_RETRIES = 3;
 const HTTP5_RETRIES = 2;
 const netBackoff = (n: number) => sleep(350 * 2 ** n + Math.random() * 200);
 const isReadReq = (url: string, params: Record<string, string>): boolean =>
-  /\/query\/?$/i.test(url)
+  /\/(query|queryAttachments|queryRelatedRecords|queryDomains)\/?$/i.test(url)
+  || /\/\d+\/attachments\/?$/i.test(url)
   || (Object.keys(params).length === 0 && /\/(FeatureServer|MapServer)(\/\d+)?\/?$/i.test(url));
 
 async function attemptRequest(
@@ -782,7 +787,8 @@ export type Group = {
    * ⚠️ 2026-10-21: `values`-ийн null-ийг хадгалсан хувилбар — бүлгийн БҮХ мөрийн статистик `null` (хэмжилтгүй)
    *    бол `null`, эс бөгөөс `values`-тэй ижил. Урьд `Number(r[k] ?? 0)` нь хэмжилтгүй бүлгийг «0 м» гэж харуулдаг
    *    байв (null ≠ 0). `values` нь дуудагчдын (ViewPanel · LayerCatalog · Gazar) арифметикт `number` хэвээр (нийцтэй) — харуулахдаа
-   *    (`qtyText` г.м.) энийг уншина.
+   *    (`qtyText` г.м.) энийг уншина. ⚠️ 2026-10-21 (аудит): дуудагчид одоо үнэхээр уншина — LayerCatalog/ViewPanel-ийн
+   *    `qtyText(d, item.stats.q)`, ViewPanel-ийн бүсийн өрх/хүн амын нийлбэр (`sumStat`), Gazar-ийн `toItems` харагдац.
    */
   stats: Record<string, number | null>;
 };

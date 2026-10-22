@@ -15,7 +15,7 @@
  *    ирэх тусам нүд бөглөгдөнө. Нэг нь унавал бусад бүлэг хэвээр.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { cached } from '@/lib/live';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
@@ -328,7 +328,9 @@ export const loadScoreQual = cached(async (): Promise<QualExtra> => {
   for (const k of failedGroups) m.delete(k);
   return Object.assign(m, { failed: [...failed], flat });
   /* ⚠️ 2026-10-01: уншигдаагүй хуудастай үр дүнг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
-}, 5 * 60_000, ['BAGTS_SHEET'], (x) => x.failed.length === 0);
+  /* ⚠️ 2026-10-21 (кэшийн аудит): `'QAQC'` — «Чанар» харагдацын `saveQaqc`-ийн дараа; `ceo/qaqc.loadQaqcLoaded`-тэй
+     ЯГ ИЖИЛ таг — ах дүү ачаалагч өөр тагтай байвал нэг нь шинэчлэгдээд нөгөө нь хоцорно. */
+}, 5 * 60_000, ['QAQC', 'BAGTS_SHEET'], (x) => x.failed.length === 0);
 
 /**
  * Ерөнхий төлөвлөгөө — блок бүрийн байрлах бүсийн тохиромжтой байдлын оноо.
@@ -383,7 +385,11 @@ export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> =>
     start += res.features.length;
   }
   return blockZoneScores(zones, blocks);
-}, undefined, ['BUILDING']);
+  /* ⚠️ 2026-10-21 (кэшийн аудит): TTL-гүй (сешн) байсныг `SESSION_TTL_MS` (5 мин) болгов — `BUILDING`-ийг порталаас
+     хэн ч хүчингүй болгодоггүй тул ArcGIS Pro-гийн барилга/бүсийн засвар хуудас дахин ачаалтал харагддаггүй байв;
+     одоо бусад сешний кэштэй ЖИГД (`live.ts`-ийн 2026-10-05-ны ⚠️). `loadAnalysisCached` нь толгойн «Шинэчлэх»-ээр
+     хаягдана (`analysis/data.ts`). */
+}, SESSION_TTL_MS, ['BUILDING']);
 
 /* ══════════════ Нэгтгэл ══════════════ */
 

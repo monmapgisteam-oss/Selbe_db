@@ -37,7 +37,7 @@
 import { STAGE_ORDER, type Stage } from './hyanalt';
 import { t as tr } from './i18nCore';
 import {
-  ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
+  ROLE_STAGE, STAGE_ROLE, isCodeSuper, roleForUser, type Role, type ViewKey,
 } from './services';
 import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 /* ⚠️ 2026-09-25: харагдац нь эрхийн төрлийн загвараас — `ROLE_ACCESS` нь зөвхөн нөөц */
@@ -371,7 +371,9 @@ export function setAssign(
 ): { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
-  if (roleForUser(u) === 'super') {
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super (доошлуулж болно) томилогдоно, мөр нь энгийн
+     мөр (`aclOps.isCleanup`-ийн ⚠️); шат/хүрээ нь super байхад нь `resolveFlowStage` → хязгааргүй хэвээр */
+  if (isCodeSuper(u)) {
     return { ok: false, error: tr('Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй') };
   }
   if (!bagts.length) return { ok: false, error: tr('Багц сонгоно уу') };
@@ -608,6 +610,9 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
     /* ⚠️ TOMBSTONE-ЫГ ДАРЖ БИЧИХГҮЙ (2026-09-25) — `setAssign`-ийн ⚠️;
        `revokeFlowAccess`-ийн tombstone шалгууртай тэгш хэм. */
     if (await isTombstoned(user)) return false;
+    /* ⚠️ 2026-10-21 (аудит): SUPER (кодын · хүснэгтийн) — бүх харагдац аль хэдийн нээлттэй, бичих зүйлгүй. Хүснэгтийн
+       super-ийн мөр нь super-ийн ЭХ тул энд дахин бичихгүй; `revokeFlowAccess`-ийн ⚠️ (`clearOverride` super-ийг хасна). */
+    if (roleForUser(user) === 'super') return true;
     const { resolveBaseAccess, roleOf, setUser } = await import('./permissions');
     const role = STAGE_ROLE[stage];
     const curRole = roleOf(user);
@@ -670,6 +675,10 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
    * `clearOverride` tombstone-ыг нь арчиж, тэр хүн дахин нэвтэрдэг байв.
    */
   if (!cur) return true;
+  /* ⚠️ 2026-10-21 (аудит): SUPER-Т БУЦААХ ЗҮЙЛГҮЙ. Хүснэгтийн super (2026-10-21-ээс `role:'super'` мөр; хуваарилалт нь
+     энгийн мөр — `aclOps.isCleanup`) энэ замд орвол `base`/`curRole`/`views` суурьтайгаа ЯГ таарч доорх `clearOverride`
+     нь super-ийн мөрийг ӨӨРИЙГ нь арчиж super-ийг хасах байв. Урьд super энд хүрдэггүй (`isCleanup` → `revoke=false`). */
+  if (roleForUser(user) === 'super') return true;
   const base = roleForUser(user);
   if (base && FLOW_ROLES.has(base)) {
     return await clearOverride(user);

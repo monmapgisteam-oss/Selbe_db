@@ -63,7 +63,12 @@ export type DataKey =
      (`negtgelEdit.publishNegEdits`); `loadNegtgelFull` (таб · дашбоард · тайлан) хүчингүй болно. */
   | 'TUSUL_NEGTGEL'
   /* ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ (`material_noots`) — `materialNoots.syncNoots` бичсэний дараа */
-  | 'MATERIAL_NOOTS';
+  | 'MATERIAL_NOOTS'
+  /* ⚠️ 2026-10-21 (кэшийн аудит): QAQC ХҮСНЭГТҮҮД (`QAQC`/`QAQC2` үйлчилгээний 10 хүснэгт, `qaqc.ts`) — «Чанар»
+     харагдацын `saveQaqc` бичсэний дараа. Урьд нь түлхүүргүй тул CEO «Чанар» карт · Нүүрний чанарын оноо өөрийн
+     бичилтийн дараа 5 мин хуучин, харин хамааралгүй `BAGTS_SHEET` бичилт бүрд 10 QAQC хүснэгт дэмий дахин татагддаг
+     байв (`ceo/qaqc.ts` · `scorecardLoad.loadScoreQual` одоо `['QAQC', 'BAGTS_SHEET']`). */
+  | 'QAQC';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */

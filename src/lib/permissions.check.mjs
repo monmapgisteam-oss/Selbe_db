@@ -297,4 +297,104 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   CAPS._syncRemoteCaps([]);
 }
 
-console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах');
+/* ── 12. SUPER = ЭРХИЙН ХҮСНЭГТ (⚠️ 2026-10-21, хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй») ── */
+{
+  const R = await import('./services/roles.ts');
+  const WHO = await import('./who.ts');
+  const code = superName; // тестийн (кодын) super — `tools/test-users.mjs`
+  /* хүснэгт уншигдаагүй (`null`) — хэн ч super биш, анхны админ ч биш (fail-closed) */
+  R._setTableSupers(null);
+  assert.equal(R.tableSuperUsers(), null);
+  assert.equal(R.roleForUser('tbl_sup'), null);
+  assert.equal(R.roleForUser(R.BOOTSTRAP_SUPER), null, 'хүснэгт уншигдаагүй — анхны админ ч идэвхгүй');
+  assert.equal(R.isCodeSuper(code), true); assert.equal(R.isCodeSuper('tbl_sup'), false);
+  assert.equal(R.roleForUser(code), 'super', 'кодын (тестийн) super хэвээр');
+  /* хүснэгт уншигдсан, super мөргүй — ЗӨВХӨН анхны админ super */
+  P._markRemoteLoaded();
+  R._setTableSupers([]);
+  assert.equal(R.roleForUser(R.BOOTSTRAP_SUPER), 'super', 'super мөргүй хүснэгт — анхны админ');
+  assert.equal(P.hasAccess(R.BOOTSTRAP_SUPER), true);
+  assert.equal(R.roleForUser('tbl_sup'), null);
+  /* super админ хүснэгтийн мөр бичнэ (`setUser` — кодын super-т л no-op) → super; анхны админ унтарна; trim + жижиг үсэг.
+     ⚠️ 2026-10-22 (аудит №4): энд ArcGIS алга тул бичилт УНАНА — унасан олголт super тэмдэг ҮЛДЭЭХГҮЙ (анхны админы
+     түгжрэлийн шалтгаан байв); амжилттай бичилтийн тэмдгийг `aclE2E` §12/§12b хуурамч хүснэгтээр шалгана. Энд хүснэгтэд
+     мөр бичигдсэнийг remote уншилтаар (`_setTableSupers`) дуурайна. */
+  assert.equal(await P.setUser(' Tbl_Sup ', { views: 'all', docs: true }, 'super'), false, 'ArcGIS алга — бичилт унана');
+  assert.equal(R.roleForUser('tbl_sup'), null, 'унасан олголт — super тэмдэг үлдэхгүй (fail-closed)');
+  R._setTableSupers(['tbl_sup']);
+  assert.equal(R.roleForUser('tbl_sup'), 'super', 'role:super мөр → super');
+  assert.equal(R.roleForUser(' TBL_SUP '), 'super', 'trim + жижиг үсэг');
+  assert.equal(R.roleForUser(R.BOOTSTRAP_SUPER), null, 'super мөр байхад анхны админ ҮЙЛЧЛЭХГҮЙ');
+  assert.equal(P.roleOf('tbl_sup'), 'super');
+  assert.equal(P.hasAccess('tbl_sup'), true, 'хүснэгтийн super нэвтэрнэ');
+  assert.equal(P.resolveAccess('tbl_sup').views, 'all');
+  assert.equal(P.resolveBaseAccess('tbl_sup').docs, true);
+  assert.equal(P.canBypassClosed('tbl_sup'), true, 'систем хаалттай үед хүснэгтийн super нэвтэрнэ');
+  const row = P.listUsers().find((u) => u.username.toLowerCase() === 'tbl_sup');
+  assert.ok(row && row.role === 'super' && row.views === 'all' && row.docs === true && row.overridden === false, 'самбарт super мөр (Сэргээхгүй)');
+  assert.ok(!P.listRemoved().includes('tbl_sup'));
+  /* үүрэг солиход super хасагдана; буцааж олгож болно */
+  await P.setUser('tbl_sup', { views: ['gdash'], docs: false }, 'gazar');
+  assert.equal(R.roleForUser('tbl_sup'), null, 'role солигдоход хүснэгтийн super хасагдана');
+  assert.equal(P.roleOf('tbl_sup'), 'gazar');
+  assert.deepEqual(P.resolveAccess('tbl_sup').views, ['gdash']);
+  await P.setUser('tbl_sup', { views: 'all', docs: true }, 'super');
+  assert.equal(R.roleForUser('tbl_sup'), null, 'унасан дахин олголт — тэмдэггүй (⚠️ 2026-10-22)');
+  R._setTableSupers(['tbl_sup']); /* remote уншилт — мөр бичигдсэн */
+  assert.equal(R.roleForUser('tbl_sup'), 'super');
+  /* removeUser — өөрийн super-ийг өөрөө устгахгүй; өөр super устгана (мөр арилна); кодын super халдашгүй */
+  WHO.setCurrentUser('tbl_sup');
+  assert.equal(await P.removeUser('tbl_sup'), false, 'өөрийн super-ийг өөрөө устгахгүй');
+  assert.equal(R.roleForUser('tbl_sup'), 'super');
+  WHO.setCurrentUser(code);
+  await P.removeUser('tbl_sup');
+  assert.equal(R.roleForUser('tbl_sup'), null, 'өөр super устгахад super хасагдана');
+  assert.equal(P.hasAccess('tbl_sup'), false, 'устгагдсан — нэвтрэхгүй');
+  assert.equal(await P.removeUser(code), false, 'кодын super устгагдахгүй');
+  assert.equal(await P.setUser(code, { views: ['gdash'], docs: false }, 'gazar'), true, 'кодын super-т setUser no-op');
+  assert.equal(R.roleForUser(code), 'super');
+  WHO.setCurrentUser(null);
+  /* localStorage-ийн `role:'super'` мөр (hacker_selfadd) — remote-оос ирээгүй тул super биш */
+  assert.equal(R.roleForUser('hacker_selfadd'), null, 'localStorage-ийн super мөр эрх олгохгүй');
+
+  /* ⚠️ 2026-10-21 (аудит): АНХНЫ АДМИН өөр хүнд super олгохдоо өөрийн super мөрөө ЭХЭЛЖ бичнэ — super хэвээр, нэвтэрнэ,
+     самбарт харагдана; өөрийн мөр remote-д бичигдээгүй (энд ArcGIS алга) бол нөгөөд олгохгүй (fail-closed) */
+  R._setTableSupers([]);
+  const boot = R.BOOTSTRAP_SUPER;
+  assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && u.views === 'all' && u.overridden === false),
+    'идэвхтэй анхны админ самбарт синтетик super мөрөөр');
+  WHO.setCurrentUser(boot);
+  assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'өөрийн мөр ArcGIS-т бичигдээгүй → нөгөөд олгохгүй');
+  /* ⚠️ 2026-10-22 (аудит №4): унасан өөрийн мөр локалд super тэмдэг ҮЛДЭЭХГҮЙ — урьд нь үлдэж, дараагийн олголт
+     «өөрийн мөрөө эхэлж бич» салааг алгасаад remote-д анхны админ мөргүй үлдэж түгжигддэг байв */
+  assert.deepEqual(R.tableSuperUsers(), [], 'унасан өөрийн мөр — тэмдэг үлдэхгүй');
+  assert.equal(R.roleForUser(boot), 'super', 'анхны админ super хэвээр');
+  assert.equal(P.hasAccess(boot), true, 'анхны админ нэвтэрнэ');
+  assert.equal(P.roleOf(boot), 'super');
+  assert.equal(R.roleForUser('tbl_sup2'), null, 'нөгөөд super олгогдоогүй (fail-closed)');
+  assert.ok(P.dirtyKeys().includes(boot), 'өөрийн мөр dirty — retry бичнэ');
+  const bootRow = P.listUsers().find((u) => u.username.toLowerCase() === boot);
+  assert.ok(bootRow && bootRow.role === 'super' && bootRow.views === 'all' && bootRow.overridden === false, 'самбарт өөрийн super мөр');
+  /* ДАХИН оролдлого — хүснэгтэд super мөр алга хэвээр тул ДАХИАД өөрийн мөрийг эхэлж бичнэ (унавал нөгөөд олгохгүй) */
+  assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'дахин оролдлого ч өөрийн мөргүйгээр олгохгүй');
+  assert.equal(R.roleForUser('tbl_sup2'), null);
+  /* хүснэгтэд super бий (өөрийн мөр бичигдсэн — remote уншилт) бол ердийн зам; анхны админ хэвээр */
+  R._setTableSupers([boot]);
+  await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super');
+  assert.equal(R.roleForUser('tbl_sup2'), null, 'энд ArcGIS алга — бичигдээгүй олголт тэмдэггүй');
+  assert.equal(R.roleForUser(boot), 'super', 'анхны админ super хэвээр (өөрийн мөрөөр)');
+  /* ердийн super админ олгоход анхны админы мөр хөндөгдөхгүй */
+  WHO.setCurrentUser('tbl_sup2');
+  R._setTableSupers(['tbl_sup2']);
+  await P.setUser('tbl_sup3', { views: 'all', docs: true }, 'super');
+  assert.ok(!R.tableSuperUsers().includes(boot), 'ердийн super админ — анхны админы мөр бичигдэхгүй');
+  /* идэвхгүй анхны админ (super мөртэй хүснэгт, өөрийн мөргүй) самбарт гарахгүй */
+  const s0 = { ...JSON.parse(mem.get('selbe-perms-v1')) };
+  delete s0[boot];
+  mem.set('selbe-perms-v1', JSON.stringify(s0));
+  WHO.setCurrentUser(null);
+  R._setTableSupers(null);
+  P._markRemoteLoaded(false);
+}
+
+console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах · super = хүснэгт');

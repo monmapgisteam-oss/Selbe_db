@@ -34,6 +34,42 @@ const g = src('../modules/Guitsetgel.tsx');
 assert.ok(g.includes('data.unmoved'), 'Guitsetgel: тулгагдаагүй нүдний тоог харуулна');
 console.log('✅ hyanaltDetail · useFlow — батлалттай ижил withFrameOcc · unmoved харагдана');
 
+/* ── ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ НЭМЭЛТ (`Submission.negative`) — хянагч БҮХ шатанд ИЛ харж, батлах/дээш илгээх
+      товч хаагдана (урьд нь зөвхөн 6-р шатны архивлалт татгалздаг байв); гүйцэтгэгчээс илгээхээс ӨМНӨ асууна.
+      `unmoved`-ийн тайлбар ХОЁР шалтгааныг (тулгалт · тоо биш нэмэлт) нэрлэнэ. Эх кодын шалгуур (сүлжээгүй). ── */
+{
+  const G = g.split('\r\n').join('\n');
+  assert.ok(/negative: ov\.negative/.test(fn), 'loadStaged: `negative` тоог буцаана');
+  assert.ok(G.includes('onNegative?.(undefined);'), 'Submitted: уншилт эхлэхэд negative-ийг тэглэнэ');
+  assert.ok(G.includes('onNegative?.(d ? (d.negative ?? 0) : undefined);'), 'Submitted: negative-ийг эцэгт дамжуулна');
+  assert.ok(G.includes('(data.negative ?? 0) > 0 && ('), 'Submitted: сөрөг нүдийг ИЛ анхааруулна');
+  assert.ok(G.includes('onNegative={setNegative}'), 'Item: Submitted-ээс negative авна');
+  assert.ok(G.includes('const negBlocks = (negative ?? 0) > 0;'), 'Item: negBlocks');
+  const gates = G.match(/disabled=\{busy \|\| lackBlocks \|\| changes == null \|\| unmovedBlocks \|\| negBlocks \|\| \(changes\.length > 0 && !allOk\)\}/g) ?? [];
+  assert.equal(gates.length, 2, 'батлах ба «дээш илгээх» ХОЁУЛАА negBlocks-оор хаагдана');
+  assert.ok(!/unmovedBlocks \|\| \(changes\.length/.test(G), 'negBlocks-гүй батлах товч үлдсэн');
+  assert.match(G, /: negBlocks\s*\? tr\('\{0\} нүдний нэмэлт нийт дүнг сөрөг болгоно \(суурь утгаас их хасалт\) тул батлах боломжгүй/,
+    'approveWhy: хаалттай шалтгаан ил');
+  /* шалтгааны бичвэр архивлалтын татгалзалттай (`hyanaltStore.archiveSubmission`) ижил */
+  const reason = 'нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт)';
+  assert.ok(store.includes(reason) && G.split(reason).length - 1 >= 2, 'сөрөг шалтгаан архивын алдаатай ижил бичвэрээр');
+  /* `unmoved` — хоёр шалтгаан (sheetFrame: хог нэмэлт ч `unmovedKeys`-д) */
+  assert.ok(G.includes('мөр нь одоогийн хуудсанд тулгагдаагүй, эсвэл нэмэлтийн утга нь тоо биш'), 'Submitted: unmoved хоёр шалтгаан');
+  assert.ok(G.includes('(мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш)'), 'approveWhy: unmoved хоёр шалтгаан');
+  assert.ok(!G.includes('одоогийн хуудасны мөрөнд тулгагдсангүй — доорх'), 'хуучин «зөвхөн тулгалт» тайлбар үлдсэн');
+
+  /* FillNew — нэгтгэсэн payload-ыг хянагчийн СУУРЬ жааз дээр шалгаж, явж буй тэмдэг/хадгалалтаас ӨМНӨ асууна */
+  const fill = src('../modules/sheet/FillNew.tsx').split('\r\n').join('\n');
+  const pub = fill.slice(fill.indexOf('const publish = useCallback('));
+  const neg = pub.indexOf('const ovNeg = overlaySubmission(freshRows, payload, sc, nBld);');
+  assert.ok(neg > 0, 'FillNew.publish: сөрөг нийтийн шалгалт алга');
+  assert.ok(neg > pub.indexOf('payload.rowOcc = rowOccOf('), 'нэгтгэсэн (эцсийн) payload-ыг шалгана');
+  assert.ok(neg < pub.indexOf('saveInflight(pkg.key') && neg < pub.indexOf('await saveSubmission('), 'хадгалалтаас ӨМНӨ');
+  assert.match(pub, /if \(ovNeg\.negative > 0 && !window\.confirm\(tr\(/, 'ил асууна');
+  assert.ok(pub.includes('describeUnmoved(ovNeg.negKeys, payload.rowKeys, sc.bld)'), 'сөрөг нүдийг нэрлэнэ');
+  console.log('✅ Guitsetgel · FillNew — сөрөг нийт бүх шатанд хаагдана, илгээхээс өмнө асууна; unmoved хоёр шалтгаантай');
+}
+
 /* ── 2026-10-09: F2 огноогүй хэлтэрхийн нэг дүрэм · F4 гүн `gun`-аас ── */
 /* 2026-10-09 (F3): доод хязгаарт зураглалын хоосон мөрийг хасна — latestWhere-тэй ижил baseBlankCount */
 assert.ok(det.includes('nullFragmentFits(nRows, nNull, nExpect, await baseBlankCount(p, sc))') && !det.includes('nRows + nNull === nExpect'),

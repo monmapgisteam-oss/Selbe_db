@@ -362,12 +362,16 @@ export function buildUzReport(
   /* ⚠️ 2026-10-21 (аудит): Survey123-ийн үзлэгүүдийг Enterprise руу шилжүүлэхэд Creator/CreationDate нь ШИЛЖҮҮЛЭГЧ ба
      шилжүүлсэн агшин болсон (V11 2026-10-15, захиалагчийн 2026-10-19 — хуучин багана хадгалагдаагүй). Тиймээс «Илгээсэн»
      нь шилжүүлгийн өмнөх мөрд маягтын өөрийн үзлэгч (`inspector`) ба үзлэгийн огноо (`insp_datetime`). */
-  let creator = r.Creator ?? r.creator;
+  /* ⚠️ 2026-10-21 (аудит): `inspector` нь codedValue домэйнтэй (код «dagiiranz» → «Б.Дагийранз ХАБЭА-н инженер») —
+     урьд нь код хэвээр гарч, толгойн «Үзлэг хийсэн ажилтан» (домэйны нэр) ба шинэ мөрийн Creator (ArcGIS нэр)-тэй
+     нэг баганад гурван нэрлэлт болдог байв. Одоо үзлэгчтэй мөр БҮРД домэйны нэр (`fieldText`), үзлэгчгүй мөрд л
+     Creator; огноо нь шилжүүлгийн өмнөх мөрд үзлэгийн огноо хэвээр. */
+  const inspField = byName.get('inspector') ?? byName.get('Inspector');
+  const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? r.Inspector ?? '').trim();
+  const creator: unknown = inspector || (r.Creator ?? r.creator);
   let created = numOrNull(r.CreationDate ?? r.creationdate);
   if (created != null && created < Date.UTC(2026, 9, 21)) {
-    const insp = r.inspector ?? r.Inspector;
     const at = numOrNull(r.insp_datetime ?? r.Insp_datetime);
-    if (insp != null && String(insp).trim()) creator = insp;
     if (at != null) created = at;
   }
   return {

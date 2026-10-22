@@ -748,10 +748,13 @@ export async function syncServerClock(): Promise<void> {
       const url = await tableUrl(false);
       if (!url) return;
       /* ⚠️ 2026-10-21: хэмжилт `serverClock.measureServerTime` (Enterprise-д outStatistics CURRENT_TIMESTAMP 500 → хоёртын хайлт) */
-      const { measureServerTime } = await import('./serverClock');
+      const { measureServerTime, clockOffsetOk, warnClockOff } = await import('./serverClock');
       const m = await measureServerTime(url, F.oid);
       if (!m) return;
-      clockOff = clockOffsetOf(m.srv, m.t0, m.t1);
+      const off = clockOffsetOf(m.srv, m.t0, m.t1);
+      /* ⚠️ 2026-10-21 (аудит №2): 15 мин-ээс их зөрүүг хүлээн авахгүй — `serverClock.MAX_CLOCK_OFF`-ийн ⚠️ */
+      if (!clockOffsetOk(off)) { warnClockOff(off); clockAt = m.t1; return; }
+      clockOff = off;
       clockAt = m.t1;
     } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
       clockFlight = null;

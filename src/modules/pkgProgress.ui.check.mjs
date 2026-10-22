@@ -259,4 +259,15 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(r2.pct, null, 'гэрээгүй багц — «—»');
 }
 
+/* ⚠️ 2026-10-21 (аудит): барилга ачаалагдаагүй үед давхцлын тоо «0» (= асуудалгүй) биш, null (ачаалж байна) */
+{
+  const { readFileSync } = await import('node:fs');
+  /* CRLF ажлын мод — LF болгож жишнэ */
+  const src = readFileSync(new URL('./PkgProg.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(src.includes("setOvByPack(q.state === 'ready' && !builds.length ? new Map() : null);"), 'ovByPack: бэлэн биш → null');
+  assert.ok(src.includes("if (q.state !== 'ready' || !builds.length) return;"), 'ovByPack: барилга иртэл татахгүй');
+  assert.ok(src.includes("setOvByCat(null);\n    if (q.state !== 'ready' || !packs.length) return;"), 'ovByCat: эхэнд null, бэлэн биш бол татахгүй');
+  assert.ok(!src.includes("if (!packs.length) return;\n    let alive = true;"), 'ovByCat: хуучин «packs ирмэгц тоолох» зам үлдсэн');
+}
+
 console.log('pkgProgress.ui.check.mjs — БҮГД ТЭНЦЛЭЭ');

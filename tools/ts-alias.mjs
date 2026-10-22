@@ -26,7 +26,9 @@ import { register } from 'node:module';
  * ⚠️ 2026-09-25: токен ХЭЗЭЭ Ч query string-д орохгүй (сервер/прокси лог,
  *    Referer-ээр алдагдана) — GET хүсэлтийг POST form болгож хөрвүүлнэ.
  */
-import { existsSync, readFileSync } from 'node:fs';
+/* ⚠️ 2026-10-22 (аудит): `.env` ачаалалт · токены уншилт · тандалт `liveEnv.mjs`-д — `test-all.mjs` ч НЭГ дүрмээр
+   (нэг удаа) тандаж үр дүнг энд env-ээр дамжуулна (доорх «ТАНДАЛТ НЭГ УДАА»). */
+import { loadPublicEnv, devLocal, adminToken, liveStatus } from './liveEnv.mjs';
 
 const ENTRY = String(process.argv[1] ?? '').replace(/\\/g, '/');
 const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
@@ -38,16 +40,7 @@ const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
    тул урьд `.env` локал давхаргыг дардаг байв (Next.js-ийн дараалалтай эсрэг). */
 /* ⚠️ 2026-10-20: AGOL (`NEXT_PUBLIC_ARCGIS_HJ`) хасагдсан — Enterprise (`NEXT_PUBLIC_ENT_DATA`) л. */
 const HAD_HJ = !!process.env.NEXT_PUBLIC_ENT_DATA;
-let envRead = false;
-for (const f of ['../.env.development.local', '../.env']) {
-  try {
-    if (f === '../.env') envRead = existsSync(new URL(f, import.meta.url));
-    for (const line of readFileSync(new URL(f, import.meta.url), 'utf8').split(/\r?\n/)) {
-      const m = /^\s*(NEXT_PUBLIC_[A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
-    }
-  } catch { /* файл алга — хэвийн */ }
-}
+const envRead = loadPublicEnv(process.env);
 /* ⚠️ 2026-10-09: `.env` нь git-ignored (зөвхөн `.env.example` track хийгддэг) — шинэ clone/worktree
    дээр `npm test`-ийн ~28 шалгуур «NEXT_PUBLIC_* алга» алдаагаар учир нь ойлгомжгүй унадаг байв.
    CI нь орчны хувьсагчаар өгдөг (`test.yml`) тул env-д `NEXT_PUBLIC_ENT_DATA` байвал чимээгүй.
@@ -65,55 +58,41 @@ const ENT = (process.env.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '');
 const HJ = ENT ? ENT.replace(/\/Hosted$/i, '').replace(/rest\/services$/i, '') : '';
 const ROOTS = HJ ? [HJ] : [];
 
-function fs2() { return readFileSync(new URL('../.env.development.local', import.meta.url), 'utf8'); }
 let liveTok = '', liveTok2 = '', liveTok2Svc = [];
 if (IS_CHECK) {
-  liveTok = process.env.ARCGIS_ADMIN_TOKEN || '';
-  if (!liveTok) {
-    try {
-      const m = /^ARCGIS_ADMIN_TOKEN=(.+)$/m.exec(fs2());
-      if (m) liveTok = m[1].trim();
-    } catch { /* файл алга — хэвийн */ }
-  }
+  liveTok = adminToken();
   /* ⚠️ 2-Р ТОКЕН (2026-09-17): ХАБЭА Survey123 үйлчилгээнүүд тусдаа API key-тэй —
      `ARCGIS_ADMIN_TOKEN_2` + `ARCGIS_ADMIN_TOKEN_2_SERVICES` (үйлчилгээний нэр, таслалаар). */
   liveTok2 = process.env.ARCGIS_ADMIN_TOKEN_2 || '';
   try {
-    const src = fs2();
+    const src = devLocal();
     if (!liveTok2) { const m = /^ARCGIS_ADMIN_TOKEN_2=(.+)$/m.exec(src); if (m) liveTok2 = m[1].trim(); }
     const m2 = /^ARCGIS_ADMIN_TOKEN_2_SERVICES=(.+)$/m.exec(src); if (m2) liveTok2Svc = m2[1].split(',').map((x) => x.trim()).filter(Boolean);
   } catch { /* файл алга */ }
 }
 const tokFor = (url) => (liveTok2 && liveTok2Svc.some((n) => url.includes(`/services/${n}/`)) ? liveTok2 : liveTok);
 
-/** Тандалт — токеныг POST биед (query string-д БИШ). */
-const probe = async (tok) => {
-  const body = new URLSearchParams({ f: 'json' });
-  if (tok) body.set('token', tok);
-  /* ⚠️ 4 сек-ийн хязгаар — firewall «drop» үед 80 тест × TCP timeout болохоос (2026-09-17). */
-  const res = await fetch(`${ENT}/Bagts_ajluud/FeatureServer`, {
-    method: 'POST', body, signal: AbortSignal.timeout(4000),
-  });
-  return res.json();
-};
+/* ⚠️ 2026-10-21 (аудит): амьд шалгуурын АЛГАСАЛТЫН ШАЛТГААНЫГ дамжуулна — `ts-alias-hooks.mjs` (⏭ мөрөнд, мөн
+   `SELBE_LIVE_REQUIRED=1` бол алгасахын оронд УНАГАНА) ба `test-all.mjs` (GitHub Actions-д `::warning::` нэгтгэл:
+   хэдэн шалгуур, ямар шалтгаанаар). Урьд CI дээр чимээгүй алгасдаг тул deploy ногоон атлаа амьд шалгуур 0 ажилласныг
+   хэн ч мэддэггүй байв. Анхдагч зан (⏭ алгасах) ХЭВЭЭР. */
+function liveSkip(reason) {
+  process.env.SELBE_LIVE_SKIP = '1';
+  /* эхний (хамгийн тодорхой) шалтгаан үлдэнэ — токентой салаа унасны дараа токенгүй тандалт дахин алгасдаг */
+  process.env.SELBE_LIVE_SKIP_REASON ||= reason;
+}
 
-/* ⚠️ 2026-09-21: ТОКЕН БАЙСАН Ч нэг удаа тандана — API key-ийн хугацаа дуусвал (498 «Invalid
-   token») бүх амьд шалгуур «алдаа» гэж унадаг байв; одоо хүчингүй токеныг хаяж ⏭ алгасна
-   (сүлжээгүй/499-тэй ижил). Хүчинтэй бол урьдын адил залгана. */
-if (IS_CHECK && liveTok && HJ) {
-  try {
-    const j = await probe(liveTok);
-    if (j?.error?.code === 498 || j?.error?.code === 499) {
-      console.warn(`⏭ ARCGIS_ADMIN_TOKEN хүчингүй (${j.error.code}) — амьд шалгуурууд алгасна; түлхүүрээ шинэчилнэ үү`);
-      liveTok = ''; process.env.SELBE_LIVE_SKIP = '1';
-    }
-  } catch (e) {
-    /* ⚠️ 2026-10-21: Enterprise (`gis.selbecity.mn`) GitHub Actions-ийн серверээс ХҮРЭГДДЭГГҮЙ (connect timeout) —
-       урьд нь энд чимээгүй алгасаж токеныг үлдээдэг тул амьд шалгуурууд (series · bagts · negj · gun · zovshoorol)
-       сервер рүү 180 с гацаж CI/deploy-ийг унагадаг байв. Хүрэхгүй бол хүчингүй токентой ИЖИЛ: ⏭ алгасна. */
-    console.warn(`⏭ Enterprise хүрэгдсэнгүй (${e?.cause?.code ?? e?.name ?? 'сүлжээ'}) — амьд шалгуурууд алгасна`);
-    liveTok = ''; process.env.SELBE_LIVE_SKIP = '1';
-  }
+/* ⚠️ 2026-10-22 (аудит): ТАНДАЛТ НЭГ УДАА. `test-all.mjs` тандаад үр дүнг env-ээр дамжуулна (`liveEnv.liveEnvOf`):
+   `SELBE_LIVE_PROBED=1` бол энд ДАХИН ТАНДАХГҮЙ — `SELBE_LIVE_TOKEN_OFF=1` бол токен залгахгүй, `SELBE_LIVE_SKIP`/`_REASON`
+   env-ээрээ hooks руу (⏭). Урьд ~220 шалгуур тус бүр өөрөө тандаж, Enterprise хүрэгдэхгүй CI-д процесс бүр 10–14 с сул
+   зогсдог байв (`liveEnv.mjs`-ийн ⚠️). Дангаар ажиллуулсан шалгуур урьдын адил өөрөө тандана; дүрмүүд (токен байсан ч
+   тандах 2026-09-21 · хүрэгдэхгүй бол ⏭ 2026-10-21 · 4 с хязгаар 2026-09-17) `liveEnv.liveStatus`-д ХЭВЭЭР. */
+if (IS_CHECK && process.env.SELBE_LIVE_PROBED === '1') {
+  if (process.env.SELBE_LIVE_TOKEN_OFF === '1') liveTok = '';
+} else if (IS_CHECK && HJ) {
+  const st = await liveStatus({ ent: ENT, tok: liveTok, warn: (m) => console.warn(m) });
+  if (st.tokOff) liveTok = '';
+  if (st.skip) liveSkip(st.reason);
 }
 if (IS_CHECK && liveTok) {
   const orig = globalThis.fetch;
@@ -150,20 +129,9 @@ if (IS_CHECK && liveTok) {
     }
     return orig(input, init);
   };
-} else if (IS_CHECK && HJ) {
-  try {
-    const j = await probe('');
-    if (j?.error?.code === 499 || j?.error?.code === 498) process.env.SELBE_LIVE_SKIP = '1';
-    /* ⚠️ Алгасалтыг hooks (`load`) хийнэ — файл дотор `process.exit()` дуудвал
-       Windows дээр libuv assertion-оор унадаг (2026-09-17). */
-  } catch (e) {
-    /* ⚠️ 2026-10-21: токенгүй салаа ч сүлжээ унахад АЛГАСНА. GitHub-ийн `ARCGIS_ADMIN_TOKEN` secret хоосон бөгөөд
-       runner Enterprise-д хүрдэггүй (connect timeout) — урьд нь энд чимээгүй залгиж амьд шалгуурууд 180 с гацаж
-       шилжилтээс хойших БҮХ deploy унасан (production 10-19-ний AGOL хувилбар дээр хоцорсон). */
-    console.warn(`⏭ Enterprise хүрэгдсэнгүй (${e?.cause?.code ?? e?.name ?? 'сүлжээ'}) — амьд шалгуурууд алгасна`);
-    process.env.SELBE_LIVE_SKIP = '1';
-  }
 }
+/* ⚠️ Алгасалтыг hooks (`load`) хийнэ — файл дотор `process.exit()` дуудвал
+   Windows дээр libuv assertion-оор унадаг (2026-09-17). */
 
 /* ⚠️ 2026-09-30: UI SMOKE горим — оролтын цэг `*.ui.check.mjs` (эсвэл `SELBE_UI_SMOKE=1`)
    бол hooks нь `*.css` → класс-нэрийн Proxy, `next/dynamic` → синхрон стуб,

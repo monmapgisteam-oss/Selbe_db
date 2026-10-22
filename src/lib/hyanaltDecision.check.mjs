@@ -95,7 +95,11 @@ const unchangedRejection = async (fn, matcher) => {
 try {
   reset();
   if (['unsupported', 'metadata-error', 'metadata-malformed'].includes(mode)) {
-    await unchangedRejection(() => updateDecision(toRow(original()), patch()), HyanaltError);
+    /* ⚠️ 2026-10-21 (аудит): «дэмжигдээгүй — админд» ЗӨВХӨН амжилттай уншилт `supportsCalculate:false` өгөхөд;
+       мета унасан/гажсан (мэдэхгүй) үед «дахин оролдоно уу» — хоёулаа бичилтгүй */
+    const expected = mode === 'unsupported' ? /дэмжигдээгүй/ : /дахин оролдоно уу/;
+    await unchangedRejection(() => updateDecision(toRow(original()), patch()),
+      (e) => e instanceof HyanaltError && expected.test(e.message));
     assert.equal(state.requests.length, 0, 'unsupported or unknown capability cannot submit a calculation');
     console.log(`✅ hyanaltDecision: ${mode} rejects without a write`);
   } else if (enterprise) {

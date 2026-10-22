@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
+import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import {
   HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
   laborCompanyFields, roleForUser,
@@ -39,6 +40,9 @@ import { usePlanTotals } from '@/lib/totals';
 import { latestRowPerDay, companyReported, laborStaleness, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours } from './habeaRate';
+/* ⚠️ 2026-10-21 (аудит): Монгол · Гадаад задаргаа `habeaMix.ts`-д (цэвэр, шалгууртай) — нэг компани задаргаа
+   бөглөхөд «Нийт» муруй null болж бусдын тоо алга болдог байсныг тэнд засав */
+import { mixByDay, mixByMonth, mixLines } from './habeaMix';
 import { cached } from '@/lib/live';
 import { register } from '@/lib/dataBus';
 import { usePanes } from './habeaPanes';
@@ -53,7 +57,7 @@ import { MultiSelect } from '@/components/MultiSelect';
 import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
-import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate } from '@/lib/habeaRegisters';
+import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
 
@@ -82,6 +86,8 @@ const CATALOG_IDS = CATALOG_LAYER_IDS;
 type HabeaData = {
   labor: Row[]; incident: Row[]; crane: Row[]; fetchedAt: number; failed: string[];
   laborFailed: boolean; incFailed: boolean; craneFailed: boolean;
+  /** Ослын давхаргын codedValue домэйн (төрөл · шалтгааны төрөл) — код → нэр; мета унавал `{}` (код хэвээр) */
+  incDom: CodedMaps;
 };
 
 /* 5 мин кэш (2026-08-21 гүйцэтгэлийн аудит): харагдац сэлгэх бүрд 3 бүтэн
@@ -91,23 +97,27 @@ type HabeaData = {
    (KPI нь «—», null ≠ 0), бусдыг нь харуулна. Гурвуулаа унавал алдаа хэвээр (дахин оролдох). */
 const loadHabea = cached(async (): Promise<HabeaData> => {
   const names = [tr('Хүн хүч'), tr('Осол, зөрчил'), tr('Цамхагт кран')];
-  const res = await Promise.allSettled([
+  /* ⚠️ 2026-10-21 (аудит): ослын төрөл/шалтгааны төрөл нь Survey123 домэйны КОД (31 тэмдэгтэд тасарсан —
+     «Моторт тээврийн хэрэгсэлийн осо», «other») тул давхаргын метадатаас код → нэр толийг ЗЭРЭГ татна
+     (`lib/codedDomain`). Мета унавал `{}` — код хэвээр харагдана, хуудас унахгүй. */
+  const [res, incDom] = await Promise.all([Promise.allSettled([
     queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
     queryFeatures(HABEA.incident.url, { outFields: ['*'] }),
     queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
-  ]);
+  ]), loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul])]);
   const bad = res.flatMap((r, i) => (r.status === 'rejected' ? [i] : []));
   if (bad.length === res.length) throw (res[0] as PromiseRejectedResult).reason;
   for (const i of bad) console.warn(`[selbe] ХАБЭА · «${names[i]}» татагдсангүй:`, (res[i] as PromiseRejectedResult).reason);
   const val = (i: number): Row[] => (res[i].status === 'fulfilled' ? (res[i] as PromiseFulfilledResult<Row[]>).value : []);
   // «Осолгүй хоног» render дотор Date.now() дуудаж болохгүй (react-hooks/purity)
   // тул лавлах цэг нь ӨГӨГДӨЛ ТАТСАН мөч — дахин ачаалахад шинэчлэгдэнэ.
-  return { labor: val(0), incident: val(1), crane: val(2), fetchedAt: Date.now(), failed: bad.map((i) => names[i]), laborFailed: bad.includes(0), incFailed: bad.includes(1), craneFailed: bad.includes(2) };
+  return { labor: val(0), incident: val(1), crane: val(2), fetchedAt: Date.now(), failed: bad.map((i) => names[i]), laborFailed: bad.includes(0), incFailed: bad.includes(1), craneFailed: bad.includes(2), incDom };
 },
   /* ⚠️ `['HABEA']` таг — `reportData.loadHabeaSummary` мөн ЭНЭ хүснэгтээс
      уншиж `['HABEA']` зарладаг. Хоёр ах дүү ачаалагч ӨӨР тагтай байвал нэг
      нь шинэчлэгдээд нөгөө нь хоцорч, хоёр газар өөр тоо гарна. */
-  5 * 60_000, ['HABEA']);
+  /* ⚠️ 2026-10-21: TTL нь poll-оос (`HABEA_POLL_MS`) БОГИНО байх ёстой — `habeaRegisters.HABEA_POLL_MS`-ийн ⚠️ */
+  HABEA_TTL_MS, ['HABEA']);
 
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -234,7 +244,9 @@ type Inc = {
 /** Ослын огноо — 0 (маягтад огноо алга) бол «1970.01.01» биш «огноогүй» */
 const incDate = (d: number): string => (d > 0 ? date(d) : tr('огноогүй'));
 
-const normIncident = (r: Row): Inc => ({
+/* ⚠️ 2026-10-21 (аудит): төрөл/шалтгааны төрөл домэйны НЭРЭЭР (`codedName`) — код тасархай («…хэрэгсэлийн осо»),
+   «other» → «Бусад». Шүүлт (`sel.incType`/`sel.cause`), чарт, жагсаалт, попап бүгд энэ нэг нэрээр явна. */
+const normIncident = (r: Row, dom: CodedMaps): Inc => ({
   oid: nn(r['objectid']),
   /* ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17). Огноогүй маягт `d = 0`
      үлдэнэ: огнооны сонголт идэвхтэй үед л ХАСАГДАНА (`incPass`-ийн ⚠️),
@@ -244,8 +256,8 @@ const normIncident = (r: Row): Inc => ({
   bagtsRaw: text(r[I.bagts], '—'),
   bagtsK: habeaPkgKey(r[I.bagts]),
   company: clean(r[I.company]),
-  type: text(r[I.turul], '—'),
-  cause: text(r[I.shaltgaanTurul], '—'),
+  type: codedName(dom[I.turul], r[I.turul]) || '—',
+  cause: codedName(dom[I.shaltgaanTurul], r[I.shaltgaanTurul]) || '—',
   info: text(r[I.medeelel], '—'),
   reason: text(r[I.shaltgaan], '—'),
   action: text(r[I.argaHemjee], '—'),
@@ -520,80 +532,6 @@ const cmpPkg = (a: string, b: string): number => {
  */
 /* ⚠️ 2026-10-01: `curYm` — ЯВАГДАЖ БУЙ сар «*»-тай (`habeaRate.markCurMonth`): сарын дунд
    хүн-өдрийн нийлбэр ДУТУУ тул сүүлийн багана «унасан» мэт уншигддаг байв. */
-/**
- * МОНГОЛ · ГАДААД — ӨДӨР БҮРИЙН задаргаа (2026-10-06, хэрэглэгчийн хүсэлт:
- * «Ажилтан — өдрөөр»-ийг задаргаа орж ирсэн өдрөөс хойш хоёр муруйгаар).
- *
- * ⚠️ `byDaySeries`-ийн ИЖИЛ дүрэм: тайлан өгөөгүй гүйцэтгэгчийг алгасна
- *    (`companyReported`), орон нутгийн өдрийн түлхүүр (`ubDayKey`). Хоёул 0 бол
- *    тэр өдөр задаргаагүй — Map-д ОРОХГҮЙ (0 гэж зурахгүй, цоорхой).
- */
-function mixByDay(rows: Row[], sfxs: readonly string[] | null): Map<string, { mongol: number; gadaad: number }> {
-  const list = (sfxs ?? HABEA.labor.companies.map((c) => c.sfx)).map((sfx) => ({ sfx, f: laborCompanyFields(sfx) }));
-  const out = new Map<string, { mongol: number; gadaad: number }>();
-  for (const r of rows) {
-    const d = nn(r[L.ognoo]);
-    if (!(d > 0)) continue;
-    let mongol = 0;
-    let gadaad = 0;
-    for (const { sfx, f } of list) {
-      if (!companyReported(r, sfx)) continue;
-      mongol += nn(r[f.mongol]);
-      gadaad += nn(r[f.gadaad]);
-    }
-    if (mongol + gadaad <= 0) continue;
-    const k = ubDayKey(d);
-    const cur = out.get(k);
-    if (cur) { cur.mongol += mongol; cur.gadaad += gadaad; } else out.set(k, { mongol, gadaad });
-  }
-  return out;
-}
-
-/**
- * Өдрийн задаргааг САР руу нэгтгэнэ (хүн-өдөр — `byMonthSeries`-ийн ижил нэгж).
- * ⚠️ Сарын ЗАРИМ өдөр задаргаагүй бол тэр сарыг задаргаатай гэж ҮЗЭХГҮЙ — Монгол +
- *    Гадаадын нийлбэр нь сарын нийт хүн-өдрөөс ДУТУУ болж, худал бууралт харагдана.
- *    Тэр сар «Нийт» муруйгаар гарна.
- */
-function mixByMonth(mix: Map<string, { mongol: number; gadaad: number }>, days: { key: string }[]) {
-  const partial = new Set(days.filter((x) => !mix.has(x.key)).map((x) => x.key.slice(0, 7)));
-  const out = new Map<string, { mongol: number; gadaad: number }>();
-  for (const [k, v] of mix) {
-    if (partial.has(k.slice(0, 7))) continue;
-    const ym = k.slice(0, 7);
-    const cur = out.get(ym);
-    if (cur) { cur.mongol += v.mongol; cur.gadaad += v.gadaad; } else out.set(ym, { ...v });
-  }
-  return out;
-}
-
-/**
- * Монгол · Гадаад хоёр муруй + задаргаагүй үед НИЙТ муруй (2026-10-06).
- *
- * ⚠️ Хэрэглэгч: «монгол гадаад төрөл байхгүй бол нийтээр нь харуул». Тиймээс
- *    цувааг ТАЙРАХГҮЙ: задаргаатай өдөр Монгол · Гадаад, задаргаагүй өдөр
- *    Нийт (одоогийн утга). Шугам бүр өөрт хамаарахгүй өдөр `null` (цоорхой).
- * ⚠️ Задаргаа огт байхгүй бол `null` — дуудагч ОДООГИЙН нэг муруйгаар зурна.
- * ⚠️ Өнгө нь «Компаниар — монгол, гадаад»-тай ИЖИЛ (`--c1` · `--c2`); Нийт нь
- *    анхдагч өгөгдлийн өнгө (`--data`) — өмнөх нэг муруйтай ижил.
- */
-function mixLines<T extends { key: string; value: number }>(
-  items: T[], mix: Map<string, { mongol: number; gadaad: number }>,
-): SeriesLineDef[] | null {
-  if (!mix.size || !items.some((x) => mix.has(x.key))) return null;
-  const pick = (k: 'mongol' | 'gadaad') => items.map((x) => mix.get(x.key)?.[k] ?? null);
-  const total = items.map((x) => (mix.has(x.key) ? null : x.value));
-  const out: SeriesLineDef[] = [];
-  if (total.some((v) => v != null)) {
-    out.push({ key: 'all', label: tr('Нийт'), color: 'var(--data)', values: total });
-  }
-  out.push(
-    { key: 'mn', label: tr('Монгол'), color: 'var(--c1)', values: pick('mongol') },
-    { key: 'fr', label: tr('Гадаад'), color: 'var(--c2)', values: pick('gadaad') },
-  );
-  return out;
-}
-
 function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
   const m = new Map<string, number>();
   for (const x of daily) {
@@ -837,11 +775,13 @@ function PhotoWall({ list }: { list: Inc[] }) {
 }
 
 /** Зурган дээрээс сонгосон объектын картын мөрүүд */
-function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
+function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [string, string][] {
   if (id === 'habea:osol') {
+    /* ⚠️ 2026-10-21 (аудит): төрөл домэйны нэрээр + tr() — жагсаалт («Near miss») ба попап («Осол дөхсөн тохиолдол»)
+       нэг дэлгэцэд өөр хэлээр гардаг байв. «—» толинд байхгүй тул tr() хэвээр буцааж, доорх шүүлтэд хасагдана. */
     return ([
       [tr('Огноо'), date(a[I.ognoo] as number)],
-      [tr('Төрөл'), text(a[I.turul], '—')],
+      [tr('Төрөл'), tr(codedName(dom[I.turul], a[I.turul]) || '—')],
       [tr('Багц'), text(a[I.bagts], '—')],
       [tr('Компани'), clean(a[I.company])],
       [tr('Мэдээлэл'), text(a[I.medeelel], '—')],
@@ -859,7 +799,8 @@ function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
   const rows: [string, string][] = [
     [tr('Багц'), text(a[C.bagts], '—')],
     [tr('Блок'), text(a[C.blok], '—')],
-    [tr('Төлөв'), text(a[C.tuluv], '—')],
+    /* ⚠️ 2026-10-21 (аудит): краны төлөв tr()-ээр — донат «Existing», попап «Одоо байгаа» зөрдөг байв */
+    [tr('Төлөв'), tr(text(a[C.tuluv], '—'))],
     [tr('Өндөр'), meters(a[C.undur])],
     /* ⚠️ Хоёр бичиглэл уншдаг байсан зам ХАСАГДЛАА (2026-09-04): эх
        үйлчилгээнд цэг [50] ба бүс [51] ХОЁУЛАА «суны» гэж бичдэг. Хоёр нэр нь
@@ -1018,7 +959,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const clock = setInterval(() => setNow(Date.now()), 60_000);
-    const poll = setInterval(() => { if (!document.hidden) setTick((t) => t + 1); }, 5 * 60_000);
+    /* ⚠️ 2026-10-21 (кэшийн аудит): TTL-тэй яг тэнцүү 5 мин байсныг `HABEA_POLL_MS` (5 мин 30 с) болгов — тэнцүү үед
+       эхний tick бүр кэшээс буцаж бодит шинэчлэл 10 мин тутам байв (`habeaRegisters.HABEA_POLL_MS`-ийн ⚠️). */
+    const poll = setInterval(() => { if (!document.hidden) setTick((t) => t + 1); }, HABEA_POLL_MS);
     const onShow = () => {
       if (document.hidden) return;
       setNow(Date.now());
@@ -1034,8 +977,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ⚠️ 2026-10-06 (аудит): үндсэн 3 хүснэгт мөн `tick`-ээр ДАХИН татагдана — урьд нь
      `useAsync(loadHabea, [])` хуудас нээгдэх агшинд НЭГ л удаа ажилладаг байсан тул
      дээрх «5 мин тутам дахин татна» гэсэн тайлбартай зөрж, нээлттэй таб өдөржин хуучин
-     осол/ажиллах хүчийг харуулдаг байв. `loadHabea`-ийн кэшийн TTL (5 мин) нь poll-той
-     ижил тул 5 минутын tick бүр сүлжээнд хүрнэ; таб буцаж харагдах үеийн tick нь TTL
+     осол/ажиллах хүчийг харуулдаг байв. `loadHabea`-ийн кэшийн TTL (`HABEA_TTL_MS`, 5 мин)-ээс
+     poll (`HABEA_POLL_MS`, 5 мин 30 с) УРТ тул tick бүр сүлжээнд хүрнэ (⚠️ 2026-10-21: урьд нь яг
+     тэнцүү байсан тул эхний tick бүр кэшээс буцдаг байв); таб буцаж харагдах үеийн tick нь TTL
      дотор бол кэшээс шууд (дэмий хүсэлтгүй). `keepOn: [tick]` — хуучин утга дэлгэцэд
      үлдэж анивчихгүй, алдвал `error` руу шилжинэ. */
   const q = useAsync<HabeaData>(loadHabea, [tick], { keepOn: [tick] });
@@ -1344,7 +1288,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      хоосон — Survey123-д эхлүүлээд бөглөөгүй) ОСОЛД ТООЛОГДОХГҮЙ (`ceo/safety.isBlankIncident`
      — CEO самбартай НЭГ дүрэм). Урьд нь «—» төрөлтэй, огноогүй «осол» болж KPI-д ордог байв. */
   const inc = useMemo(
-    () => (all ? all.incident.filter((r) => !isBlankIncident(r)).map(normIncident) : []),
+    () => (all ? all.incident.filter((r) => !isBlankIncident(r)).map((r) => normIncident(r, all.incDom)) : []),
     [all],
   );
   /** «Ослын дэлгэрэнгүй мэдээлэл» — бүгдийг харуулах эсэх (анхдагч: сүүлийн 6) */
@@ -2571,7 +2515,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <dl className={h.pickRows}>
               {(pickUzOid
                 ? (pickUzRow ? uzPickRows(pickUzRow) : [])
-                : pickRows(picked.id, picked.attrs)).map(([k, v]) => (
+                : pickRows(picked.id, picked.attrs, all?.incDom ?? {})).map(([k, v]) => (
                 <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
               ))}
             </dl>

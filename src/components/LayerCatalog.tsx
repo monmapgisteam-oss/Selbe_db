@@ -587,11 +587,24 @@ function FacetRows({
 
   if (q.state !== 'ready' || q.data.items.length < 2) return null;
 
+  /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15): «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ.
+     ⚠️ 2026-10-21 (аудит): `f.canon` (бүсийн ангилал → `zoneType`) — өгөгдлийн жижиг үсгийн утга толины каноник
+     түлхүүрт таардаггүй тул англи горимд монголоор үлддэг байв; ZoneFilter-тэй нэг нэр.
+     ⚠️ 2026-10-22 (аудит): НЭГ ГАЗРААС — мөр БА шүүлтийн чип (`Portal.ActiveFilterChip` нь `label`-ийг дахин
+     орчуулдаггүй) ижил орчуулсан нэр хэлнэ. Урьд нь чип рүү түүхий утга (`item.label`, «орон сууцны бүс») очиж англи
+     горимд монголоор үлддэг байв. Шүүлтийн түлхүүр/нөхцөл (`key` · `groupWhere`) түүхий утгаараа хэвээр. */
+  const nameOf = (label: string): string => tr(f.canon
+    ? f.canon(label)
+    : f.field === d.paint?.field
+      ? d.paint.labels?.[label] ?? label
+      : label);
+
   return (
     <div className={s.facetRows}>
       {q.data.items.map((item) => {
         const key = `cat:${d.id}:${item.label}`;
         const on = isOn(key);
+        const name = nameOf(item.label);
         const qty = qtyText(d, item.stats.q ?? null); // ⚠️ 2026-10-21: `stats` — бүх утга хоосон бүлэг «0 м» БИШ хоосон (null ≠ 0)
         return (
           <button
@@ -603,7 +616,7 @@ function FacetRows({
               onNeedVisible();
               toggle({
                 key,
-                label: item.label,
+                label: name,
                 group: f.label,
                 where: groupWhere(f.field, item),
                 view,
@@ -613,13 +626,8 @@ function FacetRows({
               });
             }}
           >
-            {/* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15):
-                «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ. */}
-            <span className={s.facetName}>
-              {tr(f.field === d.paint?.field
-                ? d.paint.labels?.[item.label] ?? item.label
-                : item.label)}
-            </span>
+            {/* ⚠️ Нэр — дээрх `nameOf` (2026-09-15 · 2026-10-21 · 2026-10-22-ны ⚠️) */}
+            <span className={s.facetName}>{name}</span>
             <span className={`${s.facetMeta} num`}>
               {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}
             </span>

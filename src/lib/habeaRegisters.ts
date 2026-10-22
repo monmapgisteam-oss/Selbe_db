@@ -34,6 +34,7 @@ import { invalidate } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
 import { prevWeek } from '@/modules/habeaUzleg';
 import { ENT_PORTAL, entSession } from '@/lib/entDocs';
+import { HABEA_TTL_MS, HABEA_POLL_MS } from '@/lib/habeaTiming';
 
 export type RegisterRow = {
   key: string;
@@ -145,11 +146,16 @@ async function fetchRegisters(w: { start: Date; end: Date; no: number }): Promis
  */
 let regCache: { k: number; load: () => Promise<RegisterData> } | null = null;
 
+/* ХАБЭА-ийн кэшийн TTL ба ХУУДАСНЫ POLL (2026-10-21, кэшийн аудит) — POLL нь TTL-ээс ЗААВАЛ УРТ (тайлбар `habeaTiming.ts`-д).
+   ⚠️ 2026-10-22 (аудит): тодорхойлолт `habeaTiming.ts`-д (импортгүй модуль — `cacheDrop.check.mjs` ТООГООР харьцуулна);
+   энд дахин экспортолно — `Habea.tsx` · `habeaRegisters.ui.check.mjs` эндээс авсаар. */
+export { HABEA_TTL_MS, HABEA_POLL_MS };
+
 /** Карт ачаалагч. ⚠️ Дуудагч `now`-оо өгнө (render-ийн `Date.now()` биш — react-hooks/purity). */
 export function loadHabeaRegisters(now = new Date()): Promise<RegisterData> {
   const w = prevWeek(now);
   const k = w.start.getTime();
-  if (!regCache || regCache.k !== k) regCache = { k, load: cached(() => fetchRegisters(w), 5 * 60_000, ['HABEA']) };
+  if (!regCache || regCache.k !== k) regCache = { k, load: cached(() => fetchRegisters(w), HABEA_TTL_MS, ['HABEA']) };
   return regCache.load();
 }
 

@@ -610,6 +610,28 @@ export async function loadPkgPlan(
 }
 
 /**
+ * ТӨЛӨВЛӨГӨӨНИЙ МӨРИЙН ТОО — хүснэгт бүхэлдээ (`turul = 'tolovlolt'`), нэг `returnCountOnly` асуулга.
+ * ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): `loadPlanCurve` 10 хуудас бүрд `loadPkgPlan` дууддаг атал хүснэгт ХООСОН
+ *    (Enterprise /186: count 0; AGOL-д ч 0 байсан — экспортын алдагдал биш) тул мета + 10 асуулга бүгд 0 мөр буцдаг
+ *    байв. Уншигч (`planProgress.planTableEmpty`) үүнийг 5 мин кэшилж, 0 бол багцаар асуухгүй. ЭНД КЭШЛЭХГҮЙ —
+ *    бичих зам (`buildEdits` → `loadPkgPlan`-ы `oids`/`dups`) хуучирсан «хоосон»-оор давхар `add` үүсгэж
+ *    болзошгүй (`dkeyOf`-ийн ⚠️: сангийн түвшний unique хамгаалалт байхгүй).
+ * @returns мөрийн тоо; шалгаж чадаагүй (сүлжээ · 200-алдаа) бол `null` — дуудагч урьдын адил багцаар асууна.
+ */
+export async function countPlanRows(): Promise<number | null> {
+  try {
+    const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+      where: `turul = '${TURUL_PLAN}'`,
+      returnCountOnly: 'true',
+    }) as { count?: unknown };
+    const c = Number(j.count);
+    return Number.isFinite(c) ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Багц засварыг хадгална. Буцаах нь (нэмсэн, шинэчилсэн, устгасан) тоо.
  *
  * ⚠️ Алдаа HTTP 200-аар ирдэг — үр дүн бүрийн `success`-ыг ЗААВАЛ шалгана,
@@ -652,8 +674,13 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       const keys = ['addResults', 'updateResults', 'deleteResults'] as const;
       for (let n = 0; n < keys.length; n += 1) {
         const res = (j[keys[n]] ?? []) as Res[];
-        /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ */
-        const bad = res.find((r) => r.success !== true);
+        /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ.
+           ⚠️ 2026-10-21 (аудит №2): харин ТОДОРХОЙ татгалзал (энгийн `Error` — «юу ч бичигдээгүй», `Huvaari.save`-ийн
+           `clearPlanPartial` хагас бичилтийн тэмдгийг арилгана) нь ЗӨВХӨН `success === false`; `success` ТАЛБАРГҮЙ
+           үр дүн нь дутуу хариутай адил ТОДОРХОЙГҮЙ (мөр серверт суусан байж болно) → доорх `unsure` →
+           `ArcGISError` (`isLostWrite` үнэн). `bagtsSheet.applyAdds`/`applyUpdates`-ийн нэг дүрэм; урьд нь энд
+           `!== true` бүгдийг татгалзал гэж шидэж, хагас бичилтийн хамгаалалт алдагддаг байв. */
+        const bad = res.find((r) => r.success === false);
         if (bad) {
           throw new Error(
             /* ⚠️ tr() (2026-09-25 аудит) — англи хувилбарт монгол текст гарч байв */
@@ -665,9 +692,13 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
            `bagtsSheet.applyUpdates`-ийн 2026-10-09-ний засвартай ижил кодгүй/статусгүй `ArcGISError`, тиймээс
            `isLostWrite` үнэн: `Huvaari.save` хагас бичилтийн тэмдгийг АРИЛГАХГҮЙ, доорх `finally` кэшийг
            хүчингүй болгоно. Урьд нь энгийн `Error` тул «юу ч бичигдээгүй тодорхой татгалзал» мэт харагддаг байв. */
-        if (res.length !== want[n]) {
+        /* ⚠️ 2026-10-21 (аудит №2): `success`-гүй үр дүн ч ЭНД (тодорхойгүй) — дээрх ⚠️ */
+        const unsure = res.some((r) => r.success !== true);
+        if (res.length !== want[n] || unsure) {
           throw new ArcGISError(
-            `${tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)}`
+            `${res.length !== want[n]
+              ? tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)
+              : tr('Серверийн хариунд мөрийн үр дүн алга — бичигдсэн эсэх тодорхойгүй')}`
             + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
             `${HUVAARI_OBYEM}/applyEdits`,
           );

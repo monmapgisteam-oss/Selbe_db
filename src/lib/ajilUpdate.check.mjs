@@ -57,6 +57,11 @@ console.log('✅ updateAjil — эрх → нэр → агуулга → сүл�
   assert.ok(/updates: JSON\.stringify/.test(body) && !/adds: JSON\.stringify/.test(body), 'updateAjil шинэ мөр нэмж байна');
   assert.ok(!/\[F\.status\]:/.test(body), 'updateAjil төлөвийг өөрчилж байна — `pending` хэвээр байх ёстой');
   assert.ok(/AJIL_STATUS\.pending/.test(body) && /const after = await query/.test(body), 'updateAjil бичсэний дараа төлөвийг дахин шалгахгүй');
+  /* ⚠️ 2026-10-21 (аудит): бичихээс ӨМНӨ серверийн түгжээ (`claimAjil`, pending), дараа нь тайлна (`releaseAjilClaim`) */
+  const iClaim = body.indexOf('await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending })');
+  const iUpd = body.indexOf('updates: JSON.stringify');
+  assert.ok(iClaim > 0 && iClaim < iUpd, 'updateAjil түгжээ авалгүй бичиж байна');
+  assert.ok(/finally \{\s*await releaseAjilClaim\(\{ oid: args\.oid, me \}\)/.test(body), 'updateAjil түгжээг тайлахгүй');
 }
 console.log('✅ updateAjil — ижил мөр, төлөв хэвээр, дараах шалгалт');
 

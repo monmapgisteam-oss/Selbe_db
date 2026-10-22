@@ -515,5 +515,79 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   console.log('✅ огноотой навчгүй дэд бүлэг — өөрийн огноогоор эцгийн мужид');
 }
 
+/* ── ⚠️ 2026-10-21 (аудит №2): «сүнс огноо» дүрэм BASE-тай тулгана — бүлгийн ӨӨРИЙН серверийн огноо
+   навчийг огноолоод буцаахад устахгүй (урьд нь ноорогтой тулгаж null болж хадгалагддаг байв) ── */
+{
+  /* G1 (серверийн өөрийн 60..90) > L (огноогүй) */
+  const base = [
+    row(0, 1, [], [sp(60, 90)], { group: true, depth: 0 }),
+    row(1, 2, [], [null], { depth: 1 }),
+  ];
+  const baseOf = (k) => base[k].spans;
+  /* 1) L-г огноолно → G1 ноорогт навчны мужаар */
+  const ru1 = rollUpGroups(base, 1, new Map([[1, [sp(31, 40)]]]), baseOf);
+  assert.deepEqual(ru1.get(0), [sp(31, 40)], 'G1 = навчны муж (ноорог)');
+  /* ноорогтой plan: G1 ба L хоёулаа 31..40 */
+  const plan = [
+    row(0, 1, [], [sp(31, 40)], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(31, 40)], { depth: 1 }),
+  ];
+  /* 2) L-г арилгана → BASE-тай тулгахад G1-ийн серверийн өөрийн огноо СЭРГЭНЭ */
+  const ru2 = rollUpGroups(plan, 1, new Map([[1, [null]]]), baseOf);
+  assert.deepEqual(ru2.get(0), [sp(60, 90)], 'G1 — серверийн өөрийн огноо сэргэв (урьд null)');
+  /* base-гүй дуудлага (payload.ts: rows нь серверийн мөр) — хуучин зан: ноорогтой тулгана */
+  assert.deepEqual(rollUpGroups(plan, 1, new Map([[1, [null]]])).get(0), [null], 'base-гүй: ноорогтой тулгана');
+  /* 3) сүнс: серверийн өөрийн огноо = серверийн навчдын MIN/MAX → арилна */
+  const ghost = [
+    row(0, 1, [], [sp(10, 20)], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(10, 20)], { depth: 1 }),
+  ];
+  assert.deepEqual(rollUpGroups(ghost, 1, new Map([[1, [null]]]), (k) => ghost[k].spans).get(0), [null], 'сүнс огноо арилна');
+  /* 4) серверт өөрийн огноогүй бүлэг — ноорогт навчаас бодогдсон → арилна */
+  const base4 = [
+    row(0, 1, [], [null], { group: true, depth: 0 }),
+    row(1, 2, [], [null], { depth: 1 }),
+  ];
+  assert.deepEqual(rollUpGroups(plan, 1, new Map([[1, [null]]]), (k) => base4[k].spans).get(0), [null], 'серверт огноогүй бүлэг → null');
+  /* 5) өөрийн огноо (60..90) ≠ серверийн навчны муж (10..20): навч арилгахад бүлэг хөндөгдөхгүй */
+  const base5 = [
+    row(0, 1, [], [sp(60, 90)], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(10, 20)], { depth: 1 }),
+  ];
+  assert.equal(rollUpGroups(base5, 1, new Map([[1, [null]]]), (k) => base5[k].spans).has(0), false, 'өөрийн огноо хэвээр — хөндөгдөхгүй');
+  /* 6) гүн: G0 > G1 (өөрийн 60..90) > L — L арилгахад G1 сэргэж, G0 нь G1-ийн өөрийн мужаар */
+  const base6 = [
+    row(0, 1, [], [null], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(60, 90)], { group: true, depth: 1 }),
+    row(2, 3, [], [null], { depth: 2 }),
+  ];
+  const plan6 = [
+    row(0, 1, [], [sp(31, 40)], { group: true, depth: 0 }),
+    row(1, 2, [], [sp(31, 40)], { group: true, depth: 1 }),
+    row(2, 3, [], [sp(31, 40)], { depth: 2 }),
+  ];
+  const ru6 = rollUpGroups(plan6, 1, new Map([[2, [null]]]), (k) => base6[k].spans);
+  assert.deepEqual(ru6.get(1), [sp(60, 90)], 'G1 сэргэв');
+  assert.deepEqual(ru6.get(0), [sp(60, 90)], 'G0 = G1-ийн өөрийн муж');
+  console.log('✅ сүнс огноо — BASE-тай тулгаж, бүлгийн өөрийн серверийн огноо хэвээр');
+}
+
+/* ── ⚠️ 2026-10-22 (аудит №4): гинжээр (FS) шилжсэн бүлгийн ӨӨРИЙН муж огноотой навчгүй блокт серверийнх рүү БУЦАХГҮЙ ── */
+{
+  /* P (навч) → G (бүлэг, 1FS0; b0 өөрийн 60..90, b1 = L-ийн муж) > L (b0 огноогүй, b1 100..110) */
+  const base = [
+    row(0, 1, [], [sp(1, 10), sp(1, 10)], { depth: 0 }),
+    row(1, 2, [{ code: 1, type: 'FS', lag: 0 }], [sp(60, 90), sp(100, 110)], { group: true, depth: 0 }),
+    row(2, 3, [], [null, sp(100, 110)], { depth: 1 }),
+  ];
+  const plan = base.map((r) => ({ ...r, spans: r.spans.slice() }));
+  const ch0 = propagate(plan, 2, new Map([[0, [sp(61, 70), sp(61, 70)]]]));
+  const g0 = ch0.get(1);
+  const ru = rollUpGroups(plan, 2, ch0, (k) => base[k].spans);
+  assert.deepEqual(ru.get(1)?.[0], g0[0], 'b0: гинжээр шилжсэн өөрийн муж хэвээр (урьд 60..90 руу буцдаг)');
+  assert.notDeepEqual(ru.get(1)?.[0], sp(60, 90), 'b0: серверийн муж руу буцаагүй');
+  console.log('✅ гинжээр шилжсэн бүлгийн өөрийн муж — навчгүй блокт хэвээр');
+}
+
 
 console.log('\ndeps.check: ok');

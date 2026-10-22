@@ -5,7 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { SCORE_LEVELS, levelOf, NO_DATA_TONE, type Indicator } from '@/lib/analysis/config';
 import { scoreTone, scoreInk } from '@/lib/analysis/score';
 import { useTheme } from '@/lib/theme';
-import { nf } from './format';
+import { nf, zoneTypeLabel } from './format';
 import { valueOf, type Mode, type Row } from './model';
 import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
 import { downloadText, fileDate } from '@/lib/csvFile';
@@ -100,7 +100,8 @@ export function Ranking({
         onClick={() => onSelect(selected === r.id ? null : r.id)}
       >
         <span className="rk">{ranks[i] ?? '—'}</span>
-        <span className="nm">{r.id}<i>{r.type}</i></span>
+        {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
+        <span className="nm">{r.id}<i>{zoneTypeLabel(r.type)}</i></span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,

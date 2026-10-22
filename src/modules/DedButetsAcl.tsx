@@ -23,7 +23,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import {
   butetsAclReady, butetsFailedUsers, listButetsAssigns, subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
@@ -42,7 +42,8 @@ export function DedButetsAcl() {
 
   /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно; super-ийг санал болгохгүй */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = listButetsAssigns();

@@ -956,7 +956,9 @@ export async function submitAjil(args: {
     [F.pkgGroup]: args.pkgGroup,
     [F.status]: AJIL_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
-    [F.authorSent]: Date.now(),
+    /* ⚠️ 2026-10-21 (аудит): СЕРВЕРИЙН цагаар (`huvaariBatlah.submitPlan`-тай ижил) — түгжээ · `approverAt` аль хэдийн
+       `serverNow`, илгээсэн огноо л хөтчийн цагаар үлдсэн байв (хүлээлтийн нас өөр машин дээр зөрнө) */
+    [F.authorSent]: serverNow(),
     [F.rowCount]: args.payload.adds.length,
     [F.note]: args.note?.trim() || null,
     [F.payload]: JSON.stringify(args.payload),
@@ -1423,6 +1425,12 @@ export async function updateAjil(args: {
   /* ⚠️ 2026-10-09: батлагч түгжсэн (шийдвэрээ бичиж буй) үед засахгүй — батлагчийн ХАРААГҮЙ агуулга батлагдана */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
   if (held) return { ok: false, error: ajilHeldMsg(held.who) };
+  /* ⚠️ 2026-10-21 (аудит): ЗАСВАРЫН ӨМНӨ ТҮГЖЭЭ (`claimAjil`, `pending` — CAS). Дээрх уншилт ба доорх бичилтийн ЗАВСАРТ
+     батлагч түгжиж шийдвэрлэвэл (`decideAjil` → `approved`) засагдсан агуулга батлагчийн ХАРААГҮЙ хувилбараар буудаг байв
+     (`materializeInner`-ийн `stamp` тулгалт зөвхөн `decideAjil`-ийн тэмдэгтэй дуудлагад; доорх `after` шалгалт бичсэний
+     ДАРАА л илрүүлнэ). Түгжээтэй үед батлагчийн `claimAjil` татгалзана; бичсэний дараа тайлна (зөвхөн өөрийн тэмдгийг). */
+  const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
+  if (claimErr) return { ok: false, error: claimErr };
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.rowCount]: args.payload.adds.length,
@@ -1445,6 +1453,8 @@ export async function updateAjil(args: {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  } finally {
+    await releaseAjilClaim({ oid: args.oid, me }).catch(() => undefined);
   }
 }
 

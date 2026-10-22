@@ -140,4 +140,24 @@ console.log('✅ GazarEdit: хөндөөгүй төлөв хадгалалтыг
 }
 console.log('✅ Тодорхойгүй баганын WHERE: NULL · хоосон · «—» · зай');
 
+/* ⚠️ 2026-10-21 (аудит): `toItems` харагдац `query.Group.stats`-аас — хэмжилтгүй бүлэг «—», 0 биш */
+assert.match(src, /display: grp\.stats\[valueKey\] == null \? '—' : `\$\{num\(grp\.stats\[valueKey\]\)\} \$\{unit\}`/, 'toItems харагдац stats-аас биш');
+console.log('✅ toItems: хэмжилтгүй бүлэг «—»');
+
+/* ── ⚠️ 2026-10-21 (аудит): хоцорсон хайлтын хариу засах маягтыг нээхгүй ── */
+{
+  assert.match(src, /const findSeq = useRef\(0\);/, '`findSeq` тоолуур алга');
+  const m = /const findParcel = useCallback\(async \(\) => \{([\s\S]*?)\}, \[findNo, openParcel\]\);/.exec(src);
+  assert.ok(m, '`findParcel` олдсонгүй');
+  const body = m[1];
+  assert.match(body, /const seq = \+\+findSeq\.current;/, 'хайлт бүр шинэ дугаар авах ёстой');
+  assert.match(body, /await findParcelsByNo\(no\);\s*if \(seq !== findSeq\.current\) return;/, 'хариу ирмэгц дугаар тулгах ёстой');
+  assert.match(body, /if \(seq === findSeq\.current\) setFinding\(false\);/, 'хуучин хайлт шинийн `finding`-ийг тэглэх ёсгүй');
+  const ex = /const exitEdit = useCallback\(\(\) => \{([\s\S]*?)\}, \[setHighlight, askDrop\]\);/.exec(src);
+  assert.ok(ex, '`exitEdit` олдсонгүй');
+  assert.match(ex[1], /findSeq\.current\+\+;\s*setFinding\(false\);/, '«Хаах» нислэгт яваа хайлтыг хүчингүй болгох ёстой');
+  assert.match(src, /\{editMode && editOid != null && \(\s*<GazarEdit/, 'GazarEdit зөвхөн `editMode`-д зурагдах ёстой');
+}
+console.log('✅ Хоцорсон хайлт: `findSeq` · GazarEdit зөвхөн editMode-д');
+
 console.log('\ngazar.check: ok — засварын горим ба полигоны шүүлт зөрөхгүй');

@@ -28,7 +28,7 @@
  * ⚠️ FAIL-CLOSED: хуваарилагдаагүй бол `[]` — нэг ч багц.
  */
 
-import { roleForUser } from './services';
+import { isCodeSuper, roleForUser } from './services';
 import type { CapKey } from './caps';
 
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
@@ -432,7 +432,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — эрх нь ЗӨВХӨН шууд олголтоос
        (`aclOps.capDirectOp`). `setGrants` super-ийг татгалздаг ч `removeAssign(u, revoke=true)`
        хуучин мөрийг хасахад энд хүрч шууд олгосон эрхийг (`qaqc` г.м.) буцаадаг байв. */
-    if (roleForUser(user) === 'super') return true;
+    /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super — хүснэгтийн super-ийн эрх хуваарилалттайгаа синклэгдэнэ (`aclOps.isCleanup`-ийн ⚠️) */
+    if (isCodeSuper(user)) return true;
     try {
       const c = await import('./caps');
       /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар) —
@@ -579,7 +580,9 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const setGrants = (user: string, grants: Grant<R>[], grant = true): AclWrite => {
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
-    if (roleForUser(u) === 'super') return { ok: false, error: spec.msg.superUser };
+    /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super (доошлуулж болно) хуваарилагдана, мөр нь
+       энгийн мөр (`aclOps.isCleanup`-ийн ⚠️); хүрээ нь super байхад нь `scope` → хязгааргүй хэвээр */
+    if (isCodeSuper(u)) return { ok: false, error: spec.msg.superUser };
 
     /* Танигдахгүй үүрэг, багцгүй мөрийг хаяна */
     const clean = grants
@@ -712,7 +715,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
        *    амжилттай мэт харагдах байв. Хадгалсан (зорьсон) жагсаалтыг бүтнээр нь илгээнэ —
        *    `caps.retryCapsDirty`-ийн тухайн хэрэглэгчийн хувилбар.
        */
-      if (grant && a && roleForUser(u) !== 'super') {
+      /* ⚠️ 2026-10-21 (аудит): кодын super-ээс бусдад (хүснэгтийн super ч) — `syncCaps`-тай ижил дүрэм */
+      if (grant && a && !isCodeSuper(u)) {
         try {
           const c = await import('./caps');
           if (c.capsRemoteReady() && c.dirtyCapKeys().includes(u)) g = (await c.setCaps(u, c.capsStored(u))) && g;

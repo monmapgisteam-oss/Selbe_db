@@ -26,7 +26,8 @@
 import assert from 'node:assert/strict';
 import { fake, takeConfirms, settle, setConfirmAnswer } from './aclE2E.fake.mjs';
 
-const { ROLE_BY_USER } = await import('@/lib/services.ts');
+const SV = await import('@/lib/services.ts');
+const { ROLE_BY_USER } = SV;
 const SUPER = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'super')[0];
 fake.owner = SUPER;
 
@@ -515,10 +516,35 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(FL.stageOfUser(u), 'engineer', `${tag} ${w}: урсгалын шат хэвээр`);
     for (const v of RT.roleAccess('gazar').views) ok(P.resolveAccess(u).views.includes(v), `${tag} ${w}: загварын «${v}»`);
   });
+  /* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = эрхийн тохиргоо — super админ л олгоно/хасна (нэвтэрсэн хэрэглэгч
+     тодорхойгүй бол татгалзана); кодын (тестийн) super доошлохгүй; өөрийн super-ийг өөрөө хасахгүй */
+  const WHO6 = await import('@/lib/who.ts');
   res = await RTA.applyType(u, 'super');
-  ok(!res.ok, `${tag}: super төрөл зөвхөн хатуу super-т`);
+  ok(!res.ok, `${tag}: нэвтэрсэн super админгүй — super олгохгүй`);
+  WHO6.setCurrentUser(SUPER);
+  res = await RTA.applyType(u, 'super'); await settle();
+  ok(res.ok, `${tag}: super админ super олгоно (${res.errors})`);
+  await both((w) => {
+    eq(SV.roleForUser(u), 'super', `${tag} ${w}: хүснэгтийн role:super мөр → super`);
+    eq(P.roleOf(u), 'super', `${tag} ${w}: roleOf super`);
+    eq(P.resolveAccess(u).views, 'all', `${tag} ${w}: бүх харагдац`);
+    ok(P.listUsers().some((x) => x.username.toLowerCase() === u && x.role === 'super' && x.views === 'all' && !x.overridden), `${tag} ${w}: самбарт super мөр`);
+    ok(CAPS.capsOf(u).includes('plan') && CAPS.capsOf(u).includes('sysClose'), `${tag} ${w}: super бүх эрхтэй`);
+  });
   res = await RTA.applyType(SUPER, 'injener');
-  ok(!res.ok, `${tag}: хатуу super-ийг доошлуулахгүй`);
+  ok(!res.ok, `${tag}: кодын (тестийн) super-ийг доошлуулахгүй`);
+  WHO6.setCurrentUser(u);
+  res = await RTA.applyType(u, 'gazar');
+  ok(!res.ok, `${tag}: өөрийн super-ийг өөрөө хасахгүй`);
+  WHO6.setCurrentUser(SUPER);
+  res = await RTA.applyType(u, 'gazar'); await settle();
+  ok(res.ok, `${tag}: өөр super админ хасна (${res.errors})`);
+  await both((w) => {
+    eq(SV.roleForUser(u), null, `${tag} ${w}: super хасагдсан`);
+    eq(P.roleOf(u), 'gazar', `${tag} ${w}: үүрэг gazar`);
+    eq(FL.stageOfUser(u), 'engineer', `${tag} ${w}: урсгалын шат хэвээр`);
+  });
+  WHO6.setCurrentUser(null);
 
   /* Карт «Хадгалах» (харагдац/үүрэг) — `permissions.setUser`: урсгалтай харагдацыг
      картаас засдаггүй (`UserAdmin.TOGGLE_KEYS`); эрхээр нээгдсэн нь хадгалалтаас үл хамаарна */
@@ -850,6 +876,171 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
 
   WHO.setCurrentUser(null);
   console.log('✅ §11 систем түр хаах: эзэмшигч хаах/нээх · энгийнд хаалттай, эзэмшигч/super-т үгүй · fail-open · эрхгүй бичилт татгалзав · хуучирсан төлөв дээр бичихгүй');
+}
+
+/* ══════════ §9b. ХҮСНЭГТИЙН SUPER-ИЙН МӨР — энгийн мөр (⚠️ 2026-10-21, аудит) ══════════
+ * Super = `role:'super'` мөр (доошлуулж болно) тул түүний хуваарилалт «цэвэрлэх мөр» БИШ: ✕ нэг багцыг л хасна,
+ * сүүлийнх асууж эрх буцаана; эрх (`__cap__:`) хуваарилалттайгаа синклэгдэнэ; super мөр нь хөндөгдөхгүй
+ * (`grantFlowAccess`/`revokeFlowAccess`); доошлуулсны дараа хуваарилалт хэвээр. Кодын (тестийн) super-ийн мөр §9-өөр хэвээр. */
+{
+  const tag = '§9b';
+  const [p1, p2] = PKG_GROUPS;
+  const WHO9 = await import('@/lib/who.ts');
+  const T = mkUser();
+  /* super байхад `scope` → null (хязгааргүй) тул `grantIs` биш — мөрийн grant-ыг локал · ArcGIS-аас шууд */
+  const hvAuthor = (w) => {
+    const local = HV.listHuvaariAssigns().find((a) => a.user === T)?.grants.find((g) => g.role === 'author')?.bagts ?? null;
+    const remote = fake.json('__huvaari__:', T)?.grants?.find((g) => g.role === 'author')?.bagts ?? null;
+    eq(local && sorted(local), w && sorted(w), `${tag}: huvaari.author локал grant`);
+    eq(remote && sorted(remote), w && sorted(w), `${tag}: huvaari.author ArcGIS grant`);
+  };
+  WHO9.setCurrentUser(SUPER);
+  let res = await RTA.applyType(T, 'super'); await settle();
+  ok(res.ok, `${tag}: хүснэгтийн super олгох (${res.errors})`);
+  eq(SV.roleForUser(T), 'super', `${tag}: хүснэгтийн super`);
+  ok(!SV.isCodeSuper(T), `${tag}: кодын super биш`);
+  /* хуваарилалт — super байхад нь ч бичигдэнэ (доошлуулсны дараах тохиргоо) */
+  let r = await run(OPS.scopedCellOp('huvaari', T, 'author', p1, true));
+  ok(r.ok, `${tag}: super-т хуваарь олгох («${r.err}»)`);
+  r = await run(OPS.scopedCellOp('huvaari', T, 'author', p2, true));
+  ok(r.ok, `${tag}: хоёр дахь багц («${r.err}»)`);
+  r = await run(OPS.flowCellOp(T, 'manager', p1, true));
+  ok(r.ok, `${tag}: урсгалд томилох («${r.err}»)`);
+  r = await run(OPS.flowCellOp(T, 'manager', p2, true));
+  ok(r.ok, `${tag}: урсгал хоёр дахь багц («${r.err}»)`);
+  r = await run(OPS.qaqcCellOp(T, p1, true));
+  ok(r.ok, `${tag}: qaqc («${r.err}»)`);
+  await both((w) => {
+    hvAuthor([p1, p2]);
+    eq(FL.stageOfUser(T), 'manager', `${tag} ${w}: шат`);
+    eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (grantFlowAccess мөрийг хөндөхгүй)`);
+    ok((fake.json('__cap__:', T) ?? []).includes('plan') && (fake.json('__cap__:', T) ?? []).includes('qaqc'), `${tag} ${w}: __cap__ мөр синклэгдсэн`);
+    eq(HV.huvaariScope(T, 'author'), null, `${tag} ${w}: super байхад хүрээ хязгааргүй`);
+  });
+  /* ✕ нэг багц — мөр бүхэлдээ арилахгүй (цэвэрлэх мөр биш), асуухгүй */
+  r = await run(OPS.scopedCellOp('huvaari', T, 'author', p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: нэг багц хасах («${r.err}»)`);
+  r = await run(OPS.flowCellOp(T, 'manager', p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: урсгалын нэг багц хасах («${r.err}»)`);
+  await both((w) => {
+    hvAuthor([p2]);
+    eq(FL.stageOfUser(T), 'manager', `${tag} ${w}: урсгалын мөр хэвээр`);
+    eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр`);
+  });
+  /* сүүлийн багц — асууж (цэвэрлэх мөр биш) эрх буцаана; super мөр хэвээр */
+  r = await run(OPS.qaqcCellOp(T, p1, false));
+  ok(r.ok && r.confirms.length === 1, `${tag}: qaqc сүүлийн багц — асууна («${r.err}»)`);
+  r = await run(OPS.flowCellOp(T, 'manager', p2, false));
+  ok(r.ok && r.confirms.length === 1, `${tag}: урсгалын сүүлийн багц — асууна («${r.err}»)`);
+  await both((w) => {
+    eq(FL.stageOfUser(T), null, `${tag} ${w}: урсгалгүй`);
+    ok(!(fake.json('__cap__:', T) ?? []).includes('qaqc'), `${tag} ${w}: qaqc эрх хадгалагдсан мөрөөс буцсан`);
+    eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (revokeFlowAccess мөрийг арчихгүй)`);
+    ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(T).includes(c)), `${tag} ${w}: super байхад бүх эрх`);
+  });
+  /* доошлуулах — үлдсэн хуваарилалт хэвээр, эрх нь хуваарилалтаас */
+  res = await RTA.applyType(T, 'gazar'); await settle();
+  ok(res.ok, `${tag}: доошлуулах (${res.errors})`);
+  await both((w) => {
+    eq(SV.roleForUser(T), null, `${tag} ${w}: super хасагдсан`);
+    grantIs('huvaari', T, 'author', [p2], `${tag} ${w}: доошлуулсны дараа хуваарь хэвээр`);
+    capIs(T, 'plan', true, `${tag} ${w}`);
+    eq(CAPS.capsOf(T).includes('qaqc'), false, `${tag} ${w}: хассан qaqc эргэж ирэхгүй`);
+  });
+  WHO9.setCurrentUser(null);
+  console.log('✅ §9b хүснэгтийн super: хуваарилалт энгийн мөр — ✕ нэг багц · сүүлийнх асууна · эрх синк · super мөр хөндөгдөхгүй · доошлуулсны дараа хэвээр');
+}
+
+/* ══════════ §12. АНХНЫ АДМИН (`roles.BOOTSTRAP_SUPER`) — super олгохдоо өөрийн мөрөө бичнэ (⚠️ 2026-10-21, аудит) ══════════
+ * Хүснэгтэд super мөргүй үед анхны админ super; өөр хүнд super олгомогц урьд өөрөө super-ээ алдаж (мөргүй) дараагийн
+ * нэвтрэлтэд түгжигддэг байв. Одоо `permissions.setUser` өөрийн `role:'super'` мөрийг ЭХЭЛЖ бичнэ. */
+{
+  const tag = '§12';
+  const WHO12 = await import('@/lib/who.ts');
+  const boot = SV.BOOTSTRAP_SUPER;
+  /* super мөргүй хүснэгт — анхны админ идэвхтэй */
+  fake.rows = fake.rows.filter((r) => r.role !== 'super');
+  await roundTrip();
+  eq(SV.tableSuperUsers(), [], `${tag}: super мөргүй хүснэгт`);
+  eq(SV.roleForUser(boot), 'super', `${tag}: анхны админ super`);
+  ok(P.listUsers().some((x) => x.username === boot && x.role === 'super' && x.views === 'all' && !x.overridden), `${tag}: анхны админ самбарт (синтетик мөр)`);
+  const B = mkUser();
+  WHO12.setCurrentUser(boot);
+  let res = await RTA.applyType(B, 'super'); await settle();
+  ok(res.ok, `${tag}: анхны админ super олгоно (${res.errors})`);
+  await both((w) => {
+    eq(SV.roleForUser(B), 'super', `${tag} ${w}: нөгөөх super`);
+    eq(SV.roleForUser(boot), 'super', `${tag} ${w}: анхны админ super ХЭВЭЭР (өөрийн мөр)`);
+    eq(P.hasAccess(boot), true, `${tag} ${w}: анхны админ нэвтэрнэ`);
+    eq(fake.find(boot)[0]?.role, 'super', `${tag} ${w}: ArcGIS-т өөрийн super мөр`);
+    ok(SV.tableSuperUsers().includes(boot) && SV.tableSuperUsers().includes(B), `${tag} ${w}: хоёулаа хүснэгтийн super`);
+  });
+  /* өөр super анхны админыг доошлуулж болно (ердийн super мөрийн дүрэм) — super мөр бий тул bootstrap үйлчлэхгүй */
+  WHO12.setCurrentUser(B);
+  res = await RTA.applyType(boot, 'gazar'); await settle();
+  ok(res.ok, `${tag}: өөр super анхны админыг доошлуулна (${res.errors})`);
+  await both((w) => {
+    eq(SV.roleForUser(boot), null, `${tag} ${w}: анхны админ энгийн`);
+    eq(P.roleOf(boot), 'gazar', `${tag} ${w}: үүрэг gazar`);
+  });
+  /* цэвэрлэх — дараагийн хэсэгт super мөр үлдээхгүй */
+  WHO12.setCurrentUser(SUPER);
+  res = await RTA.applyType(B, 'gazar'); await settle();
+  ok(res.ok, `${tag}: цэвэрлэх (${res.errors})`);
+  WHO12.setCurrentUser(null);
+  console.log('✅ §12 анхны админ: super олгохдоо өөрийн super мөрөө бичнэ — super хэвээр · нэвтэрнэ · самбарт харагдана · өөр super доошлуулна');
+}
+
+/* ══════════ §12b. АНХНЫ АДМИН — өөрийн мөрийн бичилт УНАСНЫ дараах олголт (⚠️ 2026-10-22, аудит №4) ══════════
+ * Урьд нь `setUser` super тэмдгийг бичихээс ӨМНӨ тавьдаг тул унасан бичилтийн дараа supers=[анхны админ] болж, дараагийн
+ * олголт «өөрийн мөрөө эхэлж бич» салааг алгасдаг байв → remote-д зөвхөн нөгөөх super, анхны админ мөргүй → дахин
+ * ачаалахад нэвтэрч чадахгүй. */
+{
+  const tag = '§12b';
+  const WHO = await import('@/lib/who.ts');
+  const boot = SV.BOOTSTRAP_SUPER;
+  fake.rows = fake.rows.filter((r) => r.role !== 'super' && r.username.toLowerCase() !== boot);
+  await roundTrip();
+  eq(SV.roleForUser(boot), 'super', `${tag}: super мөргүй — анхны админ super`);
+  const C = mkUser();
+  const D = mkUser();
+  WHO.setCurrentUser(boot);
+  fake.failWrites = true;
+  let res = await RTA.applyType(C, 'super'); await settle();
+  fake.failWrites = false;
+  ok(!res.ok, `${tag}: өөрийн мөр бичигдээгүй — олголт татгалзана`);
+  eq(SV.tableSuperUsers(), [], `${tag}: унасан бичилт super тэмдэг ҮЛДЭЭХГҮЙ`);
+  res = await RTA.applyType(D, 'super'); await settle();
+  ok(res.ok, `${tag}: дахин оролдлого (${res.errors})`);
+  eq(fake.find(boot)[0]?.role, 'super', `${tag}: ArcGIS-т анхны админы өөрийн super мөр ЭХЭЛЖ бичигдсэн`);
+  await both((w) => {
+    eq(SV.roleForUser(boot), 'super', `${tag} ${w}: анхны админ super хэвээр`);
+    eq(P.hasAccess(boot), true, `${tag} ${w}: анхны админ нэвтэрнэ`);
+    eq(SV.roleForUser(D), 'super', `${tag} ${w}: нөгөөх super`);
+    ok(SV.roleForUser(C) !== 'super', `${tag} ${w}: татгалзсан олголт super биш`);
+  });
+  WHO.setCurrentUser(SUPER);
+  for (const u of [D, boot]) { res = await RTA.applyType(u, 'gazar'); await settle(); ok(res.ok, `${tag}: цэвэрлэх ${u} (${res.errors})`); }
+  WHO.setCurrentUser(null);
+  console.log('✅ §12b анхны админ: өөрийн мөр унасны дараах олголт өөрийн мөрийг эхэлж бичнэ — түгжигдэхгүй');
+}
+
+/* ══════════ §12c. «Дахин синк» — ТАРЬСАН (өөр сешний) `role:'super'` dirty мөрийг БИЧИХГҮЙ (⚠️ 2026-10-22, аудит №4) ══════════
+ * Dirty-set нь localStorage-д (browser-ийн бүх аккаунтад) — гараар тарьсан super мөр super-ийн токеноор бичигдэж бүрэн
+ * super болдог байв. */
+{
+  const tag = '§12c';
+  const WHO = await import('@/lib/who.ts');
+  const E = mkUser();
+  WHO.setCurrentUser(SUPER);
+  localStorage.setItem('selbe-perms-dirty-v1', JSON.stringify({ [E]: { by: SV.BOOTSTRAP_SUPER, e: { views: 'all', docs: true, role: 'super' } } }));
+  ok(P.foreignDirty().some((f) => f.key === E && f.role === 'super'), `${tag}: батлах цонхонд super олголт гэж танигдана`);
+  const left = await P.retryDirty(false); await settle();
+  eq(left, 0, `${tag}: тарьсан мөр dirty-д ҮЛДЭХГҮЙ (хаягдсан)`);
+  ok(fake.find(E).every((r) => r.role !== 'super'), `${tag}: ArcGIS-т super бичигдээгүй`);
+  await both((w) => ok(SV.roleForUser(E) !== 'super', `${tag} ${w}: тарьсан мөр super болоогүй`));
+  WHO.setCurrentUser(null);
+  console.log('✅ §12c «Дахин синк»: тарьсан super мөрийг бичихгүй — хаяж, анхааруулна');
 }
 
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

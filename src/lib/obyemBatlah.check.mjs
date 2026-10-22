@@ -191,6 +191,12 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(/st !== OBYEM_STATUS\.pending\) return \{ ok: false/.test(mp.slice(0, mpWrite)), 'markObyemPartial: pending биш мөрөнд тэмдэг бичиж байна');
   assert.ok(/claimHolder\(cur\);\s*if \(h !== me\)/.test(mp.slice(0, mpWrite)), 'markObyemPartial: өөрийн түгжээгүй мөрөнд тэмдэг бичиж байна');
   assert.ok(mp.indexOf('await query(', mpWrite) > 0 && /claimHolder\(back\) !== me \|\| \(s\(back\[F\.reason\]\) \?\? ''\)\.trim\(\) !== mark/.test(mp), 'markObyemPartial: бичсэний дараа тэмдэг суусныг тулгахгүй байна');
+  /* ⚠️ 2026-10-21 (аудит): claimObyem · markObyemPartial — decideObyem-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур (`obyemAuthzDeny`) */
+  const cl = L.slice(L.indexOf('export async function claimObyem('), L.indexOf('export async function obyemApproveGuard('));
+  assert.ok(cl.indexOf('obyemAuthzDeny(') > 0 && cl.indexOf('obyemAuthzDeny(') < cl.indexOf('casObyemClaim('), 'claimObyem: хүрээ/зохиогч шалгалгүй түгжиж байна');
+  assert.ok(mp.indexOf('obyemAuthzDeny(') > 0 && mp.indexOf('obyemAuthzDeny(') < mp.indexOf('claimHolder(cur)'), 'markObyemPartial: хүрээ/зохиогч шалгалгүй тэмдэг тавьж байна');
+  const az = L.slice(L.indexOf('function obyemAuthzDeny('), L.indexOf('export async function claimObyem('));
+  assert.ok(/obyemScope\(meNow \?\? me, 'approver'\)/.test(az) && /me === author/.test(az), 'obyemAuthzDeny: хүрээ ба зохиогч дүрэм дутуу');
   assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
   assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
   /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — түгжихийн ӨМНӨ ба `applyUpdates`-ийн ЯГ ӨМНӨ (fail-closed) */

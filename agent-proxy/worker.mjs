@@ -50,6 +50,8 @@ const DEFAULTS = {
   MAX_TOKENS: 10000,
   /* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
   PORTAL: 'https://gis.selbecity.mn/geoportal',
+  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн хүснэгт (`SYS_Selbe_Permissions/230`) — `hasPortalRow`-ийн ⚠️; `ARCGIS_PERMS_URL`-оор солино */
+  PERMS: 'https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230',
 };
 
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */
@@ -77,6 +79,41 @@ const verified = new Map();
 function verifiedUser(key) {
   const hit = verified.get(key);
   return hit && hit.until > Date.now() ? hit.username : null;
+}
+
+/** SQL мөрийн литерал — `'` → `''` (хэрэглэгчийн нэр `where`-д орно) */
+const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+/**
+ * ⚠️ 2026-10-21 (аудит): ПОРТАЛЫН ЭРХИЙН ХҮСНЭГТИЙН МӨР ЗААВАЛ. Нэг байгууллагатай Enterprise дээр `ARCGIS_ORG_ID`
+ *    шалгалт утгагүй (геопорталд нэвтэрсэн ХЭН Ч тэр orgId-тай) — порталд бүртгэлгүй аккаунт ч релег ашиглаж чаддаг байв.
+ *    Одоо `community/self`-ийн дараа ХЭРЭГЛЭГЧИЙН ӨӨРИЙН токеноор `SYS_Selbe_Permissions`-оос мөрийг нь асууна
+ *    (`username = '<нэр>'` — хүснэгтийн түлхүүр trim · жижиг үсэг, `permsRemote.upsert`; устгагдсан мөр = `views: 'removed'`).
+ *    Мөргүй/устгагдсан → 403 (кэшлэхгүй); хүснэгт уншигдахгүй (сүлжээ · 403 · алдаа) → 503, retryable (fail-closed —
+ *    порталын `hasAccess`-тэй нэг зарчим). Талбарын нэр ЖИЖИГ үсгээр (Enterprise), токен POST биед — `server.mjs`-ийн толин.
+ * @returns {Promise<{ok: true} | {ok: false, reason: string, status: 403 | 503}>}
+ */
+async function hasPortalRow(token, username, env) {
+  const url = (env.ARCGIS_PERMS_URL || DEFAULTS.PERMS).replace(/\/+$/, '');
+  const name = String(username ?? '').trim();
+  const lo = name.toLowerCase();
+  const where = lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`;
+  let data;
+  try {
+    const res = await fetch(`${url}/query`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ f: 'json', where, outFields: 'username,role,views', returnGeometry: 'false', resultRecordCount: '5', token }).toString(),
+    });
+    data = await res.json();
+  } catch {
+    return { ok: false, reason: 'Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу', status: 503 };
+  }
+  // ⚠️ ArcGIS алдаагаа HTTP 200 + `error` биеэр буцаадаг
+  if (!data || data.error || !Array.isArray(data.features)) {
+    return { ok: false, reason: 'Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу', status: 503 };
+  }
+  const live = data.features.some((f) => f?.attributes && String(f.attributes.views ?? '') !== 'removed');
+  return live ? { ok: true } : { ok: false, reason: 'Порталд бүртгэлгүй аккаунт — админаас эрх авна уу', status: 403 };
 }
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -175,6 +212,20 @@ async function kvHit(env, ctx, key, limit) {
  *    KV холбохыг зөвлөнө.
  */
 const memBudget = createBudget();
+/* ⚠️ 2026-10-21 (аудит): `RL_KV` ХОЛБООГҮЙ production — өдрийн төсөв isolate тус бүрд тэглэгддэг тул бодит хязгаар =
+   тохируулсных × isolate-ийн тоо (хязгаарлалт БАЙХГҮЙТЭЙ ойролцоо). Isolate бүрд НЭГ удаа ЧАНГА анхааруулаад isolate
+   доторх төсвийг `NO_KV_BUDGET_SHARE` (½)-аар хумина — реле ажилласаар (эвдэхгүй), харин хэтрэлт багасна. Зэрэг таг
+   (`inflight`) KV-гүй үед ч урьдын адил isolate тус бүрд. Production-д KV ЗААВАЛ — `wrangler.toml`-ийн `[[kv_namespaces]]`. */
+const NO_KV_BUDGET_SHARE = 0.5;
+let warnedNoKv = false;
+function budgetCapFor(env, configured) {
+  if (env.RL_KV || !configured) return configured;
+  if (!warnedNoKv) {
+    warnedNoKv = true;
+    console.warn('[agent] ⚠️ RL_KV холбоогүй — өдрийн төсөв/хурдны хязгаар зөвхөн isolate тус бүрд (production-д wrangler.toml [[kv_namespaces]] ЗААВАЛ); isolate доторх төсвийг ½ болгов');
+  }
+  return Math.max(1, Math.floor(configured * NO_KV_BUDGET_SHARE));
+}
 /* ⚠️ 2026-10-09: KV горимд УРЬДЧИЛСАН ТООЦОО (`reserveTokens`) зөвхөн САНАХ ОЙД (isolate тус бүр).
    Урьд нь хүсэлт бүр KV-д ХОЁР удаа уншиж-бичдэг байв (тооцоо + тааруулалт, секундэд багтан) —
    KV нь нэг түлхүүрт ~1 бичилт/с тул хоёр дахь бичилт эхнийхийг дарах/алдах эрсдэлтэй. Одоо
@@ -296,6 +347,12 @@ async function checkArcGIS(token, env, key) {
     verified.delete(key);
     return { ok: false, reason: 'Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна' };
   }
+  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн мөр заавал (`hasPortalRow`-ийн ⚠️) — байхгүй бол кэшлэхгүй */
+  const row = await hasPortalRow(token, data.username, env);
+  if (!row.ok) {
+    verified.delete(key);
+    return { ok: false, reason: row.reason, status: row.status };
+  }
 
   /* ⚠️ Дээд хэмжээ — Map оруулсан дарааллаа хадгалдаг тул эхнийх нь хамгийн хуучин */
   verified.delete(key);
@@ -356,6 +413,14 @@ const handler = {
      */
     const isBot = Boolean(env.BOT_SECRET) && secretMatches(request.headers.get('x-bot-secret'), env.BOT_SECRET);
 
+    /* ⚠️ 2026-10-21 (аудит): `ARCGIS_ORG_ID` ХООСОН бол реле НЭЭЛТТЭЙ (fail-open) байв — хаягийг олсон хэн ч түлхүүр
+       зарцуулна. Worker үргэлж нийтэд ил тул тохиргоогүй = АЖИЛЛАХГҮЙ: бот (`BOT_SECRET` таарсан)-оос бусдад 503
+       (`server.mjs`-ийн тунелийн 403-ын толин). Локал `wrangler dev`-д `.dev.vars`-д ARCGIS_ORG_ID өгнө. */
+    if (!env.ARCGIS_ORG_ID?.trim() && !isBot) {
+      console.error('[agent] ⛔ ARCGIS_ORG_ID тохируулагдаагүй — реле нэвтрэлтгүй ажиллахгүй (wrangler.toml / .dev.vars)');
+      return json(503, { error: 'Реле нэвтрэлтгүй тохируулагдсан байна — администраторт хандана уу', retryable: false }, cors);
+    }
+
     /*
      * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр
      * локал хөгжүүлэлт (`server.mjs`, тохиргоогүй) хэвээр ажиллана.
@@ -393,11 +458,16 @@ const handler = {
         }
         const auth = await checkArcGIS(token, env, hash);
         if (!auth.ok) {
-          limiter.hit(failKey, LIMITS.authFail);
-          limiter.hit(ipFailKey, LIMITS.authFailIp);
-          await kvHit(env, ctx, failKey, LIMITS.authFail);
-          await kvHit(env, ctx, ipFailKey, LIMITS.authFailIp);
-          return json(401, { error: auth.reason, retryable: false }, cors);
+          /* ⚠️ 2026-10-21: 403 (порталд бүртгэлгүй) · 503 (эрхийн хүснэгт шалгагдсангүй, retryable) — `hasPortalRow`;
+             хүснэгтийн түр саатлыг амжилтгүй нэвтрэлтэд ТООЛОХГҮЙ (хэрэглэгчийн буруу биш) */
+          const status = auth.status ?? 401;
+          if (status !== 503) {
+            limiter.hit(failKey, LIMITS.authFail);
+            limiter.hit(ipFailKey, LIMITS.authFailIp);
+            await kvHit(env, ctx, failKey, LIMITS.authFail);
+            await kvHit(env, ctx, ipFailKey, LIMITS.authFailIp);
+          }
+          return json(status, { error: auth.reason, retryable: status === 503 }, cors);
         }
         caller = `user:${auth.username}`;
       }
@@ -413,7 +483,8 @@ const handler = {
     }
     /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — нийтлэг `bot` түлхүүр (хуучин, `x-bot-user`-гүй бот) ЧӨЛӨӨТ
        (`server.mjs`-ийн ⚠️: бүх ботын хэрэглэгч нэг түлхүүр хуваалцана); `bot:<id>` төсөвтэй. */
-    const dailyBudget = budgetFromEnv(env.DAILY_TOKEN_BUDGET);
+    /* ⚠️ 2026-10-21: KV-гүй бол isolate доторх хумьсан төсөв (`budgetCapFor`-ийн ⚠️) */
+    const dailyBudget = budgetCapFor(env, budgetFromEnv(env.DAILY_TOKEN_BUDGET));
     /* ⚠️ 2026-10-09: төсөв унтраалттай (`DAILY_TOKEN_BUDGET=0`) бол тооцоо/KV бичилт ОГТ хийхгүй */
     const budgeted = caller !== 'bot' && dailyBudget > 0;
     if (budgeted && await budgetOver(env, caller, dailyBudget)) {

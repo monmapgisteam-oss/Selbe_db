@@ -1523,26 +1523,32 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
   /** Даралтын дугаар — тайлбар нь доор (§pickSeq, `onMapPick`-ийн дээр) */
   const pickSeq = useRef(0);
+  /**
+   * МЭДЭЭЛЛИЙН ХАЙРЦГИЙГ ХААХ ГАНЦ ЗАМ (⚠️ 2026-10-21, аудит): `pickSeq`-ийг өсгөж нислэгт яваа даралтын
+   * хариуг хүчингүй болгоод хайрцаг · усны замыг арилгана. Урьд нь `setHazInfo(null)` гурван газарт
+   * (цэвэрлэх · таб/түвшин солих · ×) тус тусдаа бичигдэж, аль нэг нь `pickSeq`-гүй үлдвэл хоцорсон
+   * `queryFeatures` хаасан хайрцгийг буцааж нээдэг байв — `onMapPick`-ээс гадуур хайрцгийг ЭНД л хаана.
+   */
+  const closeInfo = useCallback(() => {
+    pickSeq.current++;
+    setHazInfo(null);
+    setFeatInfo(null);
+    setPath(null);
+  }, []);
 
   const clear = useCallback(() => {
     /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно — эс бөгөөс «Цэвэрлэх» дарсны
        дараа хоцорсон хариу ирж, устгасан үр дүн буцаж гарна (2026-09-21) */
     runSeq.current++;
-    /* ⚠️ 2026-10-21: хайрцгийг хаахад нислэгт яваа даралтын хариуг ч хүчингүй болгоно — эс бөгөөс
-       хоцорсон `queryFeatures` хаасан хайрцгийг буцааж нээдэг байв */
-    pickSeq.current++;
     setBusy(false);
     setResult(null);
     setRunErr(null);
     /* ⚠️ Мэдээллийн хайрцгийг ч хаана — эс бөгөөс устгасан үр дүнгийн мужийн
-       гүн/агууламж зурган дээр үлдэж, «юу ч байхгүй атал тоо байна» болно. */
-    setHazInfo(null);
-    setFeatInfo(null);
-    /* ⚠️ УСНЫ ЗАМ ч арилна (2026-09-21): урьд нь зөвхөн хайрцгийн × дээр
-       тэглэгддэг байсан тул цэвэрлэсний дараа ч хуучин нүдний зам зурагт
-       үлддэг байв. */
-    setPath(null);
-  }, []);
+       гүн/агууламж зурган дээр үлдэж, «юу ч байхгүй атал тоо байна» болно.
+       ⚠️ УСНЫ ЗАМ ч арилна (2026-09-21): урьд нь зөвхөн хайрцгийн × дээр тэглэгддэг байсан тул
+       цэвэрлэсний дараа ч хуучин нүдний зам зурагт үлддэг байв. Хоёулаа `closeInfo` (⚠️ 2026-10-21). */
+    closeInfo();
+  }, [closeInfo]);
 
   const liveRef = useRef(live);
   useSyncRef(liveRef, live);
@@ -1813,18 +1819,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно (2026-09-21, §runSeq) —
          хуучин түвшний хариу шинэ түвшний нэрээр гарахгүй */
       runSeq.current++;
-      /* ⚠️ 2026-10-21: хоцорсон даралтын хариу хайрцгийг сэргээхгүй (§pickSeq) */
-      pickSeq.current++;
       setBusy(false);
       setResult(null);
       setRunErr(null);
-      setHazInfo(null);
-      setFeatInfo(null);
-      /* ⚠️ Усны зам ХУУЧИН загварчлалын нүднийх — таб/түвшин солиход
-         арилна (2026-09-21) */
-      setPath(null);
+      /* ⚠️ 2026-10-21: хоцорсон даралтын хариу хайрцгийг сэргээхгүй (§pickSeq); усны зам ХУУЧИН
+         загварчлалын нүднийх — таб/түвшин солиход арилна (2026-09-21). Хоёулаа `closeInfo`. */
+      closeInfo();
     }
-  }, [hazard, level, mode, area]);
+  }, [hazard, level, mode, area, closeInfo]);
 
   /* ── Хохирлын нэгтгэл ── */
   const sum = useMemo(() => {
@@ -2850,8 +2852,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <button
                 type="button"
                 className={e.infoClose}
-                /* ⚠️ 2026-10-21: `pickSeq` өсгөнө — хоцорсон хариу хаасан хайрцгийг сэргээхгүй */
-                onClick={() => { pickSeq.current++; setHazInfo(null); setFeatInfo(null); setPath(null); }}
+                /* ⚠️ 2026-10-21: `closeInfo` — `pickSeq` өсгөнө, хоцорсон хариу хаасан хайрцгийг сэргээхгүй */
+                onClick={closeInfo}
                 aria-label={tr('Хаах')}
               >
                 ×

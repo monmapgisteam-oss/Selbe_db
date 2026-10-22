@@ -13,7 +13,7 @@ import { cat, NO_DATA } from '@/lib/format';
 import { CHART } from '@/lib/chartStyle';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
-import { nf } from './suit/format';
+import { nf, zoneTypeLabel } from './suit/format';
 import s from './suitability.module.css';
 
 /**
@@ -287,7 +287,8 @@ export function SuitDetail({
         </div>
         <div>
           <h3>{r.id}</h3>
-          <p>{r.type} · {nf(r.areaHa, 2)} {tr('га ·')} {scoreLabel(tot)}</p>
+          {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
+          <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {scoreLabel(tot)}</p>
         </div>
         <button type="button" className={s.dClose} title={tr('Хаах')} onClick={onClose}>×</button>
       </div>

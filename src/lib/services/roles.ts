@@ -72,7 +72,11 @@ export const ROLE_BY_USER: Record<string, Role> = {
      нэвтрэлт одоо Сэлбэ Enterprise геопортал (gis.selbecity.mn/geoportal). Цорын ганц КОДЫН super нь Enterprise-ийн
      `tumenjargal_selbe` (бүх Enterprise үйлчилгээний эзэн); бусад хэрэглэгчийг админ панелаас (`permissions.setUser`) нэмнэ.
      Эрхийн хүснэгтийн (`SYS_Selbe_Permissions`) AGOL нэртэй мөрүүд мөн устгагдсан (нөөц: шилжилтийн сешний scratchpad). */
-  tumenjargal_selbe: "super",
+  /* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй — бүгд эрхийн тохиргооноос»):
+     КОДЫН хатуу super (`tumenjargal_selbe`) ХАСАГДСАН. Super нь одоо эрхийн хүснэгтийн мөр (`role: 'super'`, админ
+     самбараас super админ олгоно/хасна) — доорх `_setTableSupers` · `roleForUser`. Энэ объект production-д ХООСОН,
+     зөвхөн нэгж тестэд (`tools/test-users.mjs`) бөглөгдөнө. Хүснэгтэд нэг ч super байхгүй үеийн анхны админ —
+     `BOOTSTRAP_SUPER`. */
   /*
    * ⚠️ 2026-10-19 (аудит): ЖИШЭЭ урсгалын дөрвөн аккаунт (`selbe_guitsetgegch` · `selbe_injener` · `selbe_menejer` ·
    *    `selbe_eronhii`) ХАСАГДСАН. Урсгалын хүнийг админ панелаас нэмж (`permissions.setUser`), «Гүйцэтгэлийн урсгалын
@@ -132,9 +136,47 @@ export const ROLE_ACCESS: Record<
  * ⚠️ 2026-10-11 (аудит №7): `Object.hasOwn` — `constructor` · `__proto__` · `toString` г.м. нэр
  *    энгийн объектын прототипоос функц олж `null` биш утга буцаадаг байв (`Portal.tsx`-ийн ижил засвар).
  */
+/**
+ * ЭРХИЙН ХҮСНЭГТИЙН SUPER-УУД (⚠️ 2026-10-21, хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй»).
+ * `permissions.initRemoteInner` амжилттай уншилт бүрд (`role:'super'`, устгагдаагүй мөрүүд) тавина; түүнээс хойш энэ
+ * runtime-ийн бичилт мөр мөрөөр тусгана (`_markTableSuper` — `setUser`/`retryDirtyOnce` олголтыг АМЖИЛТТАЙ бичсэний дараа,
+ * хасалтыг шууд; `clearOverride`). `null` = энэ сешнд хүснэгт НЭГ Ч удаа уншигдаагүй — FAIL-CLOSED: хэн ч
+ * super биш, анхны админ ч биш (localStorage-д өөртөө `role:'super'` бичих зам хаалттай — `permissions.resolveBaseAccess`).
+ */
+let tableSupers: Set<string> | null = null;
+export function _setTableSupers(users: Iterable<string> | null): void {
+  tableSupers = users == null ? null : new Set([...users].map((u) => u.trim().toLowerCase()).filter(Boolean));
+}
+/**
+ * НЭГ мөрийн super төлөв — энэ runtime-ийн бичилт (`permissions.setUser` · `clearOverride`) дор хаяж remote-ийн дараагийн
+ * уншилт хүртэл тусгагдана. Хүснэгт уншигдаагүй (`null`) бол ЮУ Ч хийхгүй (fail-closed хэвээр) — localStorage-ийн кэшийг
+ * бүхэлд нь дахин уншдаггүй: тэнд гараар тарьсан `role:'super'` мөр super болохгүй.
+ */
+export function _markTableSuper(username: string, on: boolean): void {
+  if (!tableSupers) return;
+  const k = username.trim().toLowerCase();
+  if (on) tableSupers.add(k); else tableSupers.delete(k);
+}
+/** Хүснэгтийн super-ууд (энэ сешнд уншигдаагүй бол `null`) — `permissions` ба шалгуурт */
+export const tableSuperUsers = (): readonly string[] | null => (tableSupers ? [...tableSupers] : null);
+/**
+ * АНХНЫ АДМИН — ЗӨВХӨН эрхийн хүснэгтэд нэг ч super БАЙХГҮЙ үед (шинэ/хоосон хүснэгт) super болно, ингэснээр админ
+ * самбарт орж өөртөө/бусдад super олгоно. Хүснэгтэд super мөр бий болмогц энэ нь ҮЙЛЧЛЭХГҮЙ.
+ * ⚠️ Хүснэгтийн бүх super-ийг устгавал дахин идэвхжинэ — админгүй болж түгжигдэхээс сэргийлэх цорын ганц зам.
+ */
+export const BOOTSTRAP_SUPER = 'tumenjargal_selbe';
+/** Кодын (тестийн) super эсэх — эрхийн хүснэгтэд мөр бичигдэхгүй (`permissions.setUser`), самбараас өөрчлөгдөхгүй */
+export const isCodeSuper = (username?: string | null): boolean => {
+  const k = username ? username.trim().toLowerCase() : '';
+  return !!k && Object.hasOwn(ROLE_BY_USER, k) && ROLE_BY_USER[k] === 'super';
+};
 export const roleForUser = (username?: string | null): Role | null => {
   /* ⚠️ 2026-10-19 (аудит): `trim()` — бусад бүх эрхийн түлхүүр (`permsRemote.upsert`, `meOf`) trim · жижиг үсгээр;
      зайтай нэр (« bat ») энд super/admin-ийг алдаж, бусад газарт олддог зөрүү үүсдэг байв. */
   const k = username ? username.trim().toLowerCase() : '';
-  return k && Object.hasOwn(ROLE_BY_USER, k) ? ROLE_BY_USER[k] : null;
+  if (k && Object.hasOwn(ROLE_BY_USER, k)) return ROLE_BY_USER[k];
+  /* ⚠️ 2026-10-21: super = эрхийн хүснэгт (дээрх ⚠️); хүснэгтэд super огт байхгүй бол анхны админ */
+  if (!k || !tableSupers) return null;
+  if (tableSupers.has(k)) return 'super';
+  return tableSupers.size === 0 && k === BOOTSTRAP_SUPER ? 'super' : null;
 };

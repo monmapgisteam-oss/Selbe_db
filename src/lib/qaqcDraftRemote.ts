@@ -55,6 +55,9 @@ import { t as tr } from '@/lib/i18nCore';
    сургамж); токеныг хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно. */
 import { arcgisPost } from '@/lib/authToken';
 import { invalidate } from './dataBus';
+/* ⚠️ 2026-10-21 (аудит): хаалтын хамгаалалт `draftRemote`-той НЭГ (`draftWriteLocked`-ийн ⚠️ 2026-10-19) — зөвхөн цэвэр
+   функц импортлоно, тэр модулийн хүснэгтийн кэштэй (`tableUrlCache`) холбогдохгүй (толгойн «ЯАГААД ХУУЛБАР» хэвээр). */
+import { draftWriteLocked } from './draftRemote';
 import {
   mergeQaqcDrafts,
   parseQaqcDraft,
@@ -338,6 +341,9 @@ export function saveQaqcDraft(pkgKey: string, draft: QaqcDraft): Promise<QaqcDra
 }
 
 async function writeQaqcDraft(pkgKey: string, draft: QaqcDraft): Promise<QaqcDraftWrite> {
+  /* ⚠️ 2026-10-21 (аудит): систем хаалттай / эрх түгжигдсэн үед алсад бичихгүй (`draftRemote.saveRemoteDraft`-ийн
+     2026-10-19 дүрэм энд хоцорсон байв) — `'fail'` → локал ноорог хэвээр, дуудагч (`Qaqc.tsx`) дараа дахин оролдоно. */
+  if (draftWriteLocked()) return 'fail';
   try {
     const auth = await getAuth();
     if (!auth) return 'fail';
@@ -392,6 +398,20 @@ async function writeQaqcDraft(pkgKey: string, draft: QaqcDraft): Promise<QaqcDra
     if (saved) {
       invalidate('QAQC_DRAFT');
       const oid = target ?? (ok[0]?.objectId as number | undefined);
+      /* ⚠️ 2026-10-21 (аудит): БИЧСЭНИЙ ДАРААХ БАТАЛГАА (`draftRemote.saveRemoteDraft`-ийн `expectAt` дүрэм) — «уншаад →
+         нэгтгээд → бичих» нь атом биш: өөр төхөөрөмж завсарт бичвэл түүний (эсвэл манай) нэгтгэл дарагдана. Мөрийн `at`
+         МАНАЙХ (`merged.t`) биш бол `'fail'` — дуудагч (`Qaqc.tsx`) дараалалд буцааж ~60 с-ийн дараа ДАХИН нэгтгэж бичнэ
+         (локал ноорог эх хэвээр, нэгтгэл давтахад аюулгүй). Шалгалт өөрөө унавал амжилт (бичилт буусан). */
+      try {
+        const chk = await fl.queryFeatures({
+          where: `dkey = ${sqlStr(dkey)}`,
+          outFields: ['OBJECTID', 'at'],
+          returnGeometry: false,
+          orderByFields: ['OBJECTID ASC'],
+        });
+        const got = Number(chk.features[chk.features.length - 1]?.attributes?.at);
+        if (Number.isFinite(got) && got > 0 && got !== merged.t) return 'fail';
+      } catch { /* шалгалт унасан — бичилт өөрөө амжилттай буусан */ }
       if (typeof oid === 'number') await learnClockOffset(fl, oid, (t0 + t1) / 2);
     }
     return saved ? 'ok' : 'fail';
@@ -438,6 +458,8 @@ export function clearQaqcDraft(pkgKey: string): Promise<boolean> {
 }
 
 async function clearQaqcDraftNow(pkgKey: string): Promise<boolean> {
+  /* ⚠️ 2026-10-21 (аудит): хаалттай үед устгах ч бичилт — татгалзана (`draftRemote.clearRemoteDraft`-ийн ижил дүрэм) */
+  if (draftWriteLocked()) return false;
   try {
     const auth = await getAuth();
     if (!auth) return false;

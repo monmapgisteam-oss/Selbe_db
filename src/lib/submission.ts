@@ -429,6 +429,69 @@ export function truncatedFrameIds(
 }
 
 /**
+ * ХАРИУ АЛДАГДСАН БИЧИЛТИЙН ЦЭВЭРЛЭГЭЭ — ЭНЭ ЖААЗЫН МӨРҮҮД (⚠️ 2026-10-21, аудит; `ulsiinKomiss`-ийн 2026-10-21-ний
+ * «өдрөөр биш АГУУЛГААР таних» дүрмийн архивлалтын хувилбар).
+ *
+ * `hyanaltStore.archiveSubmission`-ийн `applyAdds` хариу алдагдсан (`addsLost`) үед тэмдгийн өдрийн `OID > maxOid0`
+ * мөрүүдээс (OID-оор эрэмбэлсэн) МАНАЙ жаазыг таньж устгах OID-уудыг буцаана. Урьд нь тэр өдрийн тэр мужийн БҮХ
+ * мөрийг устгадаг тул тэмдэг ба бичилтийн завсарт ижил өдрөөр бичигдсэн ӨӨР батлалтын (өөр `sub|` мөр) жааз ч
+ * устдаг байв.
+ *   · жааз = `rootNo`-оор эхэлж дараагийн тийм № (эсвэл төгсгөл) хүртэлх хэсэг (`matchArchivedFrame`-ийн дүрэм);
+ *   · БҮТЭН (ЯГ `n` мөр) эсвэл ТАСАРСАН (`n`-ээс богино, 500-ийн үржвэр — `applyAdds` 500-аар бичдэг) бөгөөд дээж
+ *     (`probe`) таарсан хэсэг л манайх; `written` (баталгаажсан OID) үргэлж орно;
+ *   · таарах хэсэг ОЛОН (хоёрдмол), дээж зөвхөн бөөрөнхийллөөр зөрсөн (`'near'`), эсвэл баталгаажсан OID танигдсан
+ *     хэсгийн ГАДНА (жааз холилдсон) → `null` (танигдсангүй — дуудагч зөвхөн `written`-ийг устгаж, үлдсэнийг ил
+ *     хэлнэ; fail-closed);
+ *   · таарах хэсэг алга → `[...written]`.
+ * Цэвэр функц — сүлжээг `hyanaltStore` хариуцна.
+ */
+export function lostFrameIds(
+  rows: Record<string, unknown>[],
+  mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
+  oidField: string,
+  noField: string,
+  dateFields?: readonly string[],
+  written?: readonly number[],
+): number[] | null {
+  const own = new Set((written ?? []).filter((x) => Number.isInteger(x) && x > 0));
+  if (!rows.length || mark.n <= 0) return [...own];
+  const dates = new Set(dateFields ?? []);
+  const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
+  const root = mark.rootNo ?? noOf(rows[0]);
+  const starts: number[] = [];
+  if (root) rows.forEach((r, i) => { if (noOf(r) === root) starts.push(i); });
+  else starts.push(0);
+  let hit: number[] | null = null;
+  for (let k = 0; k < starts.length; k += 1) {
+    const s = starts[k];
+    const end = root ? (k + 1 < starts.length ? starts[k + 1] : rows.length) : rows.length;
+    const len = end - s;
+    if (len !== mark.n && !(len < mark.n && len % 500 === 0)) continue;
+    let near = false;
+    let far = false;
+    for (const [i, f, v] of mark.probe ?? []) {
+      if (i >= len) continue;
+      const c = cmpArchVal(rows[s + i]?.[f], v, dates.has(f));
+      if (c === 'far') { far = true; break; }
+      if (c === 'near') near = true;
+    }
+    if (far) continue;
+    if (near || hit) return null;
+    hit = [];
+    for (const r of rows.slice(s, end)) {
+      const oid = Number(r[oidField]);
+      if (!Number.isInteger(oid) || oid <= 0) return null;
+      hit.push(oid);
+    }
+  }
+  if (hit) {
+    const hs = new Set(hit);
+    for (const w of own) if (!hs.has(w) && rows.some((r) => Number(r[oidField]) === w)) return null;
+  }
+  return [...new Set([...(hit ?? []), ...own])];
+}
+
+/**
  * ТЭМДГИЙН АРХИВЛАЖ БУЙ АГУУЛГА (2026-10-09) — тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бол payload өөрөө; ДАМЖСАН
  * (`mergeSubmission`) бол түүний хуулбар (`prev`) payload-ын хэлбэрээр; аль нь ч биш бол `null` (хасах боломжгүй).
  */
@@ -1270,6 +1333,27 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
 }
 
 /**
+ * ҮЛДЭГДЭЛ БИЧИХ ЭРХ (⚠️ 2026-10-21, аудит) — `saveResidualSubmission`: тухайн багцад ЭЦСИЙН (`chief`) шатанд
+ * томилогдсон эсэх. Чөлөөлөлт `companyDeny`-тэй ижил (Node · нэвтрэлт унтраалттай · `super`); «зөвхөн харна» хориотой.
+ * ⚠️ Гүйцэтгэгчийн (`company`) томилгоо ХАНГАЛТГҮЙ — үлдэгдэл нь архивлалтын дараах хаалт, гүйцэтгэгчийн илгээлт биш;
+ *    урьд нь `companyDeny(grp, true)` хоёуланг зөвшөөрдөг тул `residual` туг гүйцэтгэгчийн бүх шалгалтыг тойрдог байв.
+ */
+export async function chiefDeny(group: string): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
+    import('./services'), import('./who'), import('./guitsetgelAcl'),
+  ]);
+  if (!AUTH.appId) return null;
+  const me = currentUser();
+  if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  if (roleForUser(me) === 'super') return null;
+  if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
+  const ch = bagtsFor(me, 'chief');
+  if (ch === null || ch.includes(group)) return null;
+  return tr('Та «{0}» багцын эцсийн шатны батлагчаар томилогдоогүй тул үлдэгдэл илгээлт бичих эрхгүй.', group);
+}
+
+/**
  * ИЛГЭЭЛТИЙГ ХАДГАЛНА (upsert `sub|<pkgKey>|<payload.fillMs>`).
  *
  * ⚠️ ТҮЛХҮҮРИЙН ӨДӨР НЬ `payload.fillMs` (2026-09-07) — дуудагчаас ТУСДАА
@@ -1299,6 +1383,40 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
 export async function saveSubmission(
   pkgKey: string,
   payload: SubmissionPayload,
+  expect?: { at: number; dropMark?: number } | null,
+): Promise<SaveSubmissionResult> {
+  /* ⚠️ 2026-10-21 (аудит): `residual`/`residualOf` ЗӨВХӨН архивлалтын дараах хаалт бичнэ (`saveResidualSubmission` ←
+     `hyanaltStore.closeAfterArchive`). Урьд нь клиентийн payload-д `residual: true` тавихад л илгээгчийн шалгалт
+     (`user` = нэвтэрсэн хүн) ба хяналтын хориг (`reviewLockDeny`) хоёулаа АЛГАСАГДДАГ байв — дурын нэрээр, хянагдаж буй
+     илгээлтийн дор нь бичих боломжтой. Серверийн мөрөөс уншихад (`parseSubmission`) туг хэвээр. */
+  if (payload.residual === true || payload.residualOf != null)
+    return { ok: false, error: tr('Үлдэгдлийн (residual) тэмдэгтэй илгээлтийг зөвхөн архивлалтын хаалт бичнэ — энэ замаар хүлээн авахгүй.') };
+  return saveSubmissionInner(pkgKey, payload, expect, false);
+}
+
+/** `saveSubmission` · `saveResidualSubmission`-ий үр дүн (`lost` — `saveSubmissionInner`-ийн ⚠️) */
+export type SaveSubmissionResult = { ok: true; oid: number } | { ok: false; error: string; lost?: true };
+
+/**
+ * ҮЛДЭГДЭЛ ИЛГЭЭЛТИЙГ ХАДГАЛНА (⚠️ 2026-10-21, аудит) — ЗӨВХӨН `hyanaltStore.closeAfterArchive` дуудна: батлах явцад
+ * дахин илгээснээс архивласан хэсгийг хассан үлдэгдэл (`residual: true` · `residualOf`). Бичигч нь тухайн багцын ЭЦСИЙН
+ * (`chief`) шатны томилгоотой байх ёстой (`chiefDeny`) — гүйцэтгэгчийн томилгоо хангалтгүй. Илгээгчийн шалгалт
+ * (агуулга гүйцэтгэгчийнх — `user`/`users` хэвээр) ба хяналтын хориг (үлдэгдэл = шинэ тойрог) энд ҮЙЛЧЛЭХГҮЙ.
+ */
+export async function saveResidualSubmission(
+  pkgKey: string,
+  payload: SubmissionPayload,
+  expect?: { at: number; dropMark?: number } | null,
+): Promise<SaveSubmissionResult> {
+  if (payload.residual !== true)
+    return { ok: false, error: tr('Үлдэгдлийн тэмдэггүй илгээлт — энэ зам зөвхөн үлдэгдэлд.') };
+  return saveSubmissionInner(pkgKey, payload, expect, true);
+}
+
+/** `saveSubmission`/`saveResidualSubmission`-ийн НЭГ бие — `residual` аргумент нь payload-ын тугийг ОРЛОНО (дуудагчид итгэхгүй) */
+async function saveSubmissionInner(
+  pkgKey: string,
+  payload: SubmissionPayload,
   /**
    * ХҮЛЭЭГДЭЖ БУЙ СУУРЬ (optimistic concurrency) — заавал биш.
    *   · `undefined` → шалгахгүй (хуучин зан төлөв);
@@ -1317,10 +1435,12 @@ export async function saveSubmission(
    *    (`resolveMark`) тул payload-д тэмдэггүй бичихийг зөвшөөрнө. Доорх тэмдгийн хамгаалалтыг үз.
    */
   expect?: { at: number; dropMark?: number } | null,
+  /** ⚠️ 2026-10-21 (аудит): `true` — ЗӨВХӨН `saveResidualSubmission`-аас (илгээгчийн шалгалт · хяналтын хориггүй, `chiefDeny`-тэй) */
+  residual = false,
   /* ⚠️ 2026-10-11 (аудит №7): `lost` — хариу АЛДАГДСАН (`isLostWrite`: timeout · сүлжээ · 5xx) тул илгээлт серверт
      буусан байж болно; дуудагч (FillNew) тэр үед л явж буй илгээлтийн тэмдгийг (`Inflight`) үлдээнэ, тодорхой
      татгалзалд арилгана. */
-): Promise<{ ok: true; oid: number } | { ok: false; error: string; lost?: true }> {
+): Promise<SaveSubmissionResult> {
   if (payload.pkgKey !== pkgKey) {
     /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
        руу орно — дуудагчийн алдааг ил зогсооно. */
@@ -1336,7 +1456,7 @@ export async function saveSubmission(
    *    хэвээр үлдээнэ (даргыг илгээгч гэж бүртгэвэл инженерийн шалгуур буруу хүнийг барина).
    */
   let body: SubmissionPayload = payload;
-  if (typeof window !== 'undefined' && payload.residual !== true) {
+  if (typeof window !== 'undefined' && !residual) {
     const [{ AUTH }, { currentUser }] = await Promise.all([import('./services'), import('./who')]);
     if (AUTH.appId) {
       const me = (currentUser() ?? '').trim().toLowerCase();
@@ -1367,13 +1487,14 @@ export async function saveSubmission(
     const { PKGS } = await import('@/modules/sheet/bagts.pkg');
     const grp = PKGS.find((p) => p.key === pkgKey)?.group;
     if (!grp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
-    const deny = await companyDeny(grp, payload.residual === true);
+    /* ⚠️ 2026-10-21 (аудит): үлдэгдэл → ЭЦСИЙН шатны томилгоо (`chiefDeny`); гүйцэтгэгчийн томилгоо хангалтгүй */
+    const deny = residual ? await chiefDeny(grp) : await companyDeny(grp);
     if (deny) return { ok: false, error: deny };
     /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): хуудсанд
        хяналтад явж буй илгээлт байвал шинэ илгээлт ч, тэрийг доор нь солих ч ХОРИГЛОНО
        (`hyanaltSubmit.reviewLockDays`-ийн ⚠️). Үлдэгдэл (`residual`) — газрын даргын архивын дараах
        ШИНЭ тойрог, хориг БИШ. ⚠️ Бичихээс ӨМНӨ — `submitForReview` агуулга бичигдсэний ДАРАА дуудагддаг. */
-    if (payload.residual !== true) {
+    if (!residual) {
       const pk = PKGS.find((p) => p.key === pkgKey);
       const others = PKGS.filter((p) => p.group === grp && p.key !== pkgKey).map((p) => p.name);
       const { reviewLockDeny } = await import('./hyanaltSubmit');
@@ -1702,7 +1823,11 @@ export async function markArchiving(
  * ⚠️ Задраагүй мөрийг алгасна (тийм мөрийг архивлах боломжгүй — `readRow` ил алдаагаар зогсдог).
  * ⚠️ Серверт `payload LIKE '%"archiving"%'`-аар шүүнэ (`JSON.stringify` яг ийм бичдэг) — бүх payload-ыг татахгүй.
  */
-export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: number } | null> {
+export async function archivingBusy(
+  pkgKey: string,
+  /** ⚠️ 2026-10-21 (аудит): ӨӨРИЙН `sub|` мөрийг алгасна — `archiveSubmission` тэмдгээ тавьсны ДАРАА багцын БУСАД мөрийн тэмдгийг шалгана */
+  exceptOid?: number,
+): Promise<{ who: string; at: number } | null> {
   const u = await readUrl();
   if (!u.ok) throw new Error(u.error);
   if (!u.url) return null;
@@ -1719,6 +1844,7 @@ export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: 
   for (const f of res.features) {
     const r = readRow(f.attributes as RowAttrs | undefined);
     if (!r.ok || !r.sub || r.sub.done || r.sub.payload.pkgKey !== pkgKey) continue;
+    if (exceptOid != null && r.sub.oid === exceptOid) continue;
     const m = r.sub.payload.archiving;
     if (!m || !markFresh(m, now)) continue;
     if (!best || m.startedAt > best.at) best = { who: m.by ?? '', at: m.startedAt };

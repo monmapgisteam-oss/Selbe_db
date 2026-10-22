@@ -28,7 +28,7 @@
 
 import { t as tr } from './i18nCore';
 import { listUsers, remoteReady, resolveAccess } from './permissions';
-import { roleForUser, VIEWS } from './services';
+import { isCodeSuper, roleForUser, VIEWS } from './services';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
@@ -221,7 +221,10 @@ function revokeGoneRoles(
   /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — хуучин (remote-д үлдсэн) хуваарилалтын
      мөрийг хасахад `__cap__:` мөрийг нь буцаадаг байв. 2026-10-12-оос super бүх эрхтэй
      (`caps.capsOf`), хадгалагдсан мөр нь үлдэгдэл — бичилтээр хөндөхгүй. */
-  if (!rr.ok || !rr.sync || roleForUser(u) === 'super') return rr;
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super (`isCodeSuper`). Хүснэгтийн super (`role:'super'` мөр — доошлуулж болно)
+     энгийн хэрэглэгч шиг: хадгалагдсан `__cap__:` мөр нь хуваарилалттайгаа хамт синклэгдэнэ (`capsOf` super байхад нь
+     бүх эрх өгсөөр), эс бөгөөс доошлуулсны дараа хуучин/дутуу эрхтэй үлдэнэ (`isCleanup`-ийн ⚠️). */
+  if (!rr.ok || !rr.sync || isCodeSuper(u)) return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
     const caps = new Set<CapKey>();
@@ -379,7 +382,11 @@ const isKnown = (u: string): boolean => listUsers().some((x) => x.username.toLow
  *      унадаг (мөрийг арилгах зам алга), сүүлийн багц → бүтэн хасалт нь super-т ШУУД олгосон
  *      эрхийг (`plan` · `qaqc` г.м.) буцаадаг байв.
  */
-const isCleanup = (u: string): boolean => !isKnown(u) || roleForUser(u) === 'super';
+/* ⚠️ 2026-10-21 (аудит): «super-ийн хуучин мөр» = ЗӨВХӨН КОДЫН super (`isCodeSuper`). Хүснэгтийн super (2026-10-21-ээс
+   `role:'super'` мөр — доошлуулж болно) нь ЭНГИЙН мөр: ✕ нэг багцыг л хасна, сүүлийнх асууж эрх буцаана, эрх нь
+   хуваарилалттайгаа синклэгдэнэ (`revokeGoneRoles` · `scopedAcl.syncCaps`/`setGrants` · `guitsetgelAcl.setAssign`) —
+   урьд нь мөрийг бүхэлд нь асуулгагүй арилгаж, доошлуулсны дараа хуваарилалтгүй/хуучин эрхтэй аккаунт үлдээдэг байв. */
+const isCleanup = (u: string): boolean => !isKnown(u) || isCodeSuper(u);
 
 /* ══════════════ Үүрэгтэй таван систем (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц) ══════════════ */
 
@@ -676,7 +683,9 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
   /* ⚠️ 2026-10-12: хатуу super бүх эрхтэй (`caps.capsOf`) — олгох нь no-op, хасах нь татгалзана */
-  if (roleForUser(u) === 'super') return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super-ийн ХАДГАЛАГДСАН мөр (`capsStored`) засагдана
+     (өнчин/хуучин эрхийг цэвэрлэх — `CapOrphanNote`); `capsOf` super байхад нь бүх эрх өгсөөр тул олгох нь no-op хэвээр. */
+  if (isCodeSuper(u)) return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
   if (capsOf(u).includes(cap) === on) return null;
   if (on && isDerivedCap(cap) && roleForUser(u) !== 'super') {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };

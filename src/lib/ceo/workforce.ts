@@ -40,6 +40,9 @@
  *    ажилтан ч, техник ч 0 боловч өмнөх 7 хоногт нэг ч удаа тоотой байсан
  *    компанийг «тайлангүй» гэж ТУСАД НЬ тэмдэглэнэ — нийлбэрт 0-оор орно
  *    (тайлан дээр байхгүй = талбай дээр тоологдоогүй), харин issue-д гарна.
+ *    ⚠️ 2026-10-21 (аудит): тийм компанитай үед НИЙТ ДУТУУ (`detail.incomplete`),
+ *    баримт «нийт дутуу» гэж хэлнэ, түвшин ядаж 'warn' — 0-оор орсон компани
+ *    нийтийг жинхэнээсээ бага харуулж буйг «сайн» гэж баталж болохгүй.
  *
  * ⚠️ `null` ≠ 0: сүүлийн мөрөнд НЭГ Ч компанийн ажилтны талбар байхгүй бол
  *    ажилтны нийлбэр `null` («—»), 0 биш. Техник нь ТУСДАА туг — бүх
@@ -141,6 +144,8 @@ export type WorkforceDetail = {
   staleDays: number | null;
   /** Сүүлийн тайланд ороогүй компанийн `sfx`-үүд */
   unreported: string[];
+  /** ⚠️ 2026-10-21: `unreported` байвал true — нийт ажилтан ДУТУУ (тэр компани 0-оор орсон) */
+  incomplete: boolean;
   companies: WorkforceCompanyRow[];
   days: WorkforceDay[];
 };
@@ -379,7 +384,7 @@ const UNIT = () => tr('хүн ажиллаж байна');
 const EMPTY_DETAIL = (): WorkforceDetail => ({
   latestKey: null, prevKey: null, workersLatest: null, workersPrev: null,
   delta: null, deltaPct: null, manHours: null, technik: null, headerWorkers: null,
-  staleDays: null, unreported: [], companies: [], days: [],
+  staleDays: null, unreported: [], incomplete: false, companies: [], days: [],
 });
 
 /* ══════════════ Цэвэр тооцоо ══════════════ */
@@ -452,7 +457,8 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
   if (latest.technik != null) facts.push(tr('техник {0}', num(latest.technik)));
   if (latest.header.manHours != null) facts.push(tr('хүн-цаг {0}', num(latest.header.manHours)));
   facts.push(prev ? tr('{0} · өмнөх {1}', latest.key, prev.key) : latest.key);
-  if (unreported.length) facts.push(tr('{0} компани тайлангүй', unreported.length));
+  /* ⚠️ 2026-10-21 (аудит): «нийт дутуу» — тайлангүй компани 0-оор орсон тул гол тоо жинхэнээсээ бага (толгойн ⚠️) */
+  if (unreported.length) facts.push(tr('{0} компани тайлангүй — нийт дутуу', unreported.length));
 
   /* ── Хүснэгт 1: компаниар, хамгийн их бууралт эхэнд ── */
   const compRows = companies
@@ -509,7 +515,10 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
     .filter((c) => c.unreported)
     .forEach((c) => issues.push({ tone: 'warn', text: tr('{0} — сүүлийн тайланд орсонгүй', c.label) }));
 
-  const level: Level = workersLatest == null ? 'unknown' : workforceLevel(deltaPct, staleDays);
+  const base: Level = workersLatest == null ? 'unknown' : workforceLevel(deltaPct, staleDays);
+  /* ⚠️ 2026-10-21 (аудит): тайлангүй компанитай бол ЯДАЖ 'warn' — нийт дүн дутуу (толгойн ⚠️).
+     'unknown' (нэг ч талбар байхгүй) хэвээр: мэдээлэлгүйг шар болгохгүй (`worstOf`-ийн дүрэм). */
+  const level: Level = unreported.length && base === 'good' ? 'warn' : base;
 
   return {
     value: num(workersLatest),
@@ -529,6 +538,7 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
       headerWorkers: latest.header.workers,
       staleDays,
       unreported,
+      incomplete: unreported.length > 0,
       companies,
       days,
     },

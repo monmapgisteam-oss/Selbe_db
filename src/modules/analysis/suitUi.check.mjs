@@ -55,4 +55,22 @@ assert.ok(suit.includes('data && data.failed.length > 0 && ('));
 /* 5 */
 assert.ok(suit.includes('if (!roadMode && clock.playing) clock.setPlaying(false);'));
 
+/* ⚠️ 2026-10-21 (аудит): талбайгүй барилгын попап «0 м²» биш — мөр орохгүй (null ≠ 0) */
+assert.ok(suit.includes("const area = Number.isFinite(areaM2) && areaM2 > 0 ? tr('{0} м²', nf(areaM2)) : null;"));
+assert.ok(suit.includes("dt(tr('Нийт талбай'), area)"));
+assert.ok(!suit.includes("nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0))"), '«0 м²» бичдэг хуучин зам үлдсэн');
+
+/* ⚠️ 2026-10-21 (аудит): BIM сонгогч · `manageBim` кэшийн ОДООГИЙН инстанцыг ФУНКЦЭЭР (`bimLive`) авч,
+   багц/горим солигдоход `rebind` — MapCanvas-тай ижил; нэг удаагийн `bimAll` массив үлдээгүй */
+{
+  const suitMap = read('./SuitMap.tsx');
+  assert.ok(suitMap.includes('const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {'), '`bimLive` алга');
+  assert.ok(suitMap.includes('bimLayerPeek<BuildingSceneLayer>(map, b.key)'), '`bimLive` кэшээс `peek` хийх ёстой (дахин үүсгэхгүй)');
+  assert.ok(suitMap.includes('layers: () => bimLive(map), items: BIM.layers, Explorer: BuildingExplorer'), 'сонгогчид `layers` функцээр биш');
+  assert.ok(suitMap.includes('all: () => bimLive(map), m: r3, archOn: false, pkg: bimPkg'), '`manageBim`-д `all` функцээр биш');
+  assert.ok(!suitMap.includes('all: bimAll(map)'), 'нэг удаагийн `bimAll` массив үлдсэн');
+  assert.ok(/const bimPkgKey = r3 === 'fine' \? bimPkg\.pkg : null;\s*useEffect\(\(\) => \{\s*if \(dim === 'bim' && ready\) bimWidgetRef\.current\?\.rebind\(\);\s*\}, \[dim, ready, r3, bimPkgKey\]\);/.test(suitMap),
+    'багц · горим солигдоход `rebind` эффект алга');
+}
+
 console.log('suitUi.check: OK');

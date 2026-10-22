@@ -433,7 +433,11 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
     write: async (u) => { writes += u.length; return u.length; },
   });
   A._resetNegSync();
-  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Query-only');
+  /* ⚠️ 2026-10-21 (кэшийн аудит): баталгаатай бичилтийн (n > 0) дараа `TUSUL_NEGTGEL` хүчингүй; бичилтгүй/уналтад үгүй */
+  const bus = await import('./dataBus.ts');
+  let negDrops = 0;
+  bus.register(() => { negDrops += 1; }, ['TUSUL_NEGTGEL']);
+  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — readOnly (хэрэглэгчийн шийдвэр; амьд capabilities 2026-10-21-ээс Editing)');
   assert.equal((await A.syncNegtgel({}, { user: () => 'saruul_monmap' })).kind, 'off', 'зөвхөн уншигдах хүснэгт — super-т ч бичихгүй');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
   assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
@@ -443,13 +447,23 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal(st.kind, 'guard', 'super (тестийн бичигч) — хамгаалалтын төлөв ил');
   assert.equal(st.n, 2);
   assert.equal(writes, 2, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
+  assert.equal(negDrops, 1, '2026-10-21: баталгаатай бичилт (n > 0) → TUSUL_NEGTGEL хүчингүй');
   const again = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(again, st, '10 минутын дотор дахин бичихгүй — сүүлийн төлөв');
   assert.equal(writes, 2);
+  assert.equal(negDrops, 1, 'бичилтгүй дахин дуудалт — хүчингүй болгохгүй');
   const forced = await A.syncNegtgel({ force: true }, io('saruul_monmap'));
   assert.equal(forced.kind, 'ok', 'баталгаажуулсан бичилт');
   assert.ok(writes > 2);
+  assert.equal(negDrops, 2, 'force бичилт → дахин хүчингүй');
   A._resetNegSync();
+  {
+    /* ⚠️ уналт/хариу алдагдсан → хүчингүй болгохгүй (ачаалагч доторх дахин ачаалал → дахин синкийн давталтаас сэргийлнэ) */
+    const failing = { ...io('saruul_monmap'), write: async () => { throw new TypeError('сүлжээ тасрав'); } };
+    assert.equal((await A.syncNegtgel({}, failing)).kind, 'error');
+    assert.equal(negDrops, 2, 'уналтад TUSUL_NEGTGEL хүчингүй болохгүй');
+    A._resetNegSync();
+  }
 
   /* 18 — (2026-09-25) `force` явж буй энгийн синкийн үр дүнд залгигдахгүй */
   {

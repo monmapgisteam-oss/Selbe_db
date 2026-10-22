@@ -667,7 +667,11 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
     throw new HyanaltError(tr('Бүртгэл олдсонгүй'));
   }
   const fields = await serviceFieldNames();
-  if (!fields || !calculateSupported) {
+  /* ⚠️ 2026-10-21 (аудит): мета уншилт ТҮР унасан (`null` — сүлжээ · 429 · 5xx · JSON биш; кэшлэгдэхгүй) ба үйлчилгээ
+     ҮНЭХЭЭР дэмжихгүй (`supportsCalculate:false`) хоёрыг салгана — урьд нь хоёулаа «админд мэдэгдэнэ үү» гэж хянагчийг
+     буруу чиглүүлдэг байв; түр унасан үед дахин дарахад бичилт бүтнэ. Хоёулаа fail-closed хэвээр (бичилтгүй). */
+  if (!fields) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй — дахин оролдоно уу'));
+  if (!calculateSupported) {
     throw new HyanaltError(tr('Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.'));
   }
   const quote = (value: string) => `N'${value.replace(/'/g, "''")}'`;

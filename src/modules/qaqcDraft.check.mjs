@@ -246,6 +246,12 @@ console.log('✅ хадгалсны дараа гүйлгэлтийн байрл
   assert.ok(w.includes('serializeQaqcDraft(merged, { now, maxLen: QAQC_REMOTE_MAX })'), '⚠️ хэмжээ нэгтгэлийн ДАРАА шалгагдана (хуучин булш эхэлж хаягдана)');
   assert.ok(REMOTE.includes('return serial(() => writeQaqcDraft(pkgKey, draft));'), '⚠️ энэ табын бичилтүүд дараалан явах ёстой');
   assert.ok(REMOTE.includes('editFieldsInfo?.editDateField'), '⚠️ Editor Tracking байвал серверийн цагаар засна (feature-detect)');
+  /* ⚠️ 2026-10-21 (аудит): хаалттай үед алсад бичихгүй/устгахгүй (`draftRemote.draftWriteLocked`); бичсэний дараа `at` МАНАЙХ эсэхийг тулгана */
+  assert.ok(w.indexOf('draftWriteLocked()') > 0 && w.indexOf('draftWriteLocked()') < w.indexOf('getAuth()'), 'writeQaqcDraft: хаалттай үед бичихгүй шалгалт алга');
+  assert.ok(/got !== merged\.t\) return 'fail'/.test(w), 'writeQaqcDraft: бичсэний дараах баталгаа (optimistic lock) алга');
+  const c = REMOTE.slice(REMOTE.indexOf('async function clearQaqcDraftNow('));
+  assert.ok(c.indexOf('draftWriteLocked()') > 0 && c.indexOf('draftWriteLocked()') < c.indexOf('getAuth()'), 'clearQaqcDraftNow: хаалттай үед устгахгүй шалгалт алга');
+  assert.ok(REMOTE.includes("import { draftWriteLocked } from './draftRemote';"), 'хаалтын хамгаалалт draftRemote-той нэг эх сурвалжаас биш');
 }
 console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · серверийн цаг');
 

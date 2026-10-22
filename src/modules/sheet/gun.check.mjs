@@ -45,7 +45,15 @@ for (const [key, t] of Object.entries(TREES)) {
 console.log(`✅ «бүлэг эсэх» дүрэм ${checked} мөр дээр TREES-тэй таарлаа`);
 
 if (liveSkip) {
-  console.log('⏭ амьд шалгуур (2–4) алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  /* ⚠️ 2026-10-22 (аудит): шалтгааныг loader-оос (`…_REASON`, нэрийг дээрх шиг ЗАЛГАЖ) авна — урьд «Organization-only»
+     гэж хатуу бичигдсэн тул Enterprise хүрэгдээгүй CI дээр ч тэгж хэлдэг байв. `SELBE_LIVE_REQUIRED=1` бол бусад амьд
+     шалгуурын адил (`ts-alias-hooks.mjs`) алгасахын оронд УНАНА — энэ файл бүхэлдээ stub болдоггүй тул урьд тэр тугийг
+     тойрдог байв. «⏭ амьд шалгуур (2–4) алгасав — …» мөрийг `test-all.mjs`-ийн `SKIP_RE` тоолно. */
+  const why = process.env[`${LIVE_SKIP_ENV}_REASON`] || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
+  if (process.env.SELBE_LIVE_REQUIRED === '1') {
+    throw new Error(`⛔ SELBE_LIVE_REQUIRED=1: амьд шалгуур (2–4) алгасагдах байсан — ${why}`);
+  }
+  console.log(`⏭ амьд шалгуур (2–4) алгасав — ${why}`);
 } else {
   /* ═══ 2. Багц бүр — `gun` багана ба модны таарц ═══ */
   let withGun = 0;

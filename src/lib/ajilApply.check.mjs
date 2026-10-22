@@ -91,4 +91,15 @@ assert.equal(dayStartUtc(Date.UTC(2026, 8, 24, 13, 45)), today);
 assert.ok(fillMsFor(T, Date.UTC(2020, 0, 1)) >= today, 'өнөөдрөөс хуучин өдөр хэзээ ч буцаахгүй');
 console.log('✅ бөглөсөн өдрийн дүрэм');
 
+/* ── 2026-10-21 (аудит): хариу алдагдсан бичилт — огнооны талбаргүй багцад ч `OID > maxOid0` мөрийг жаазтай тулгана ── */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./ajilApply.ts', import.meta.url), 'utf8');
+  const w = L.slice(L.indexOf('async function writeFrameLive('));
+  assert.ok(w.includes('if (lost) {') && !w.includes('if (lost && sc.f.fillDate) {'), 'огнооны талбаргүй багцад цэвэрлэгээ алгасагдаж байна');
+  assert.ok(w.includes("where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`"), 'огноогүй үед OID > maxOid0-оор хайхгүй байна');
+  assert.ok(/const ours = found\.length > 0 && found\.length <= frame\.length && found\.every/.test(w), 'жаазтай дарааллын тулгалт алга');
+}
+console.log('✅ хариу алдагдсан — огноогүй багцад ч жаазаар таньж цэвэрлэнэ');
+
 console.log('ajilApply.check: OK');

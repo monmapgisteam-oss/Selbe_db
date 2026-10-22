@@ -7,6 +7,7 @@ import Polygon from '@arcgis/core/geometry/Polygon';
 import { LAYER_BY_ID, layerUrl, oidOf } from '@/lib/services';
 import { loadInfra, queryPageSafe } from '@/lib/planOverlap';
 import { register } from '@/lib/dataBus';
+import { subscribeTotals } from '@/lib/totals';
 import { NEED_TYPES, UNASSIGNED_ZONE, type NeedType } from '@/lib/hesegNeedSummary';
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
 import { buildRoutingGraph, routeUtilityNetwork, type RouteFailure, type RouteSegment } from '@/lib/utilityRouting';
@@ -79,6 +80,9 @@ const yieldBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0)
  */
 let needCache: Promise<NeedResult> | null = null;
 register(() => { needCache = null; }, []);
+/* ⚠️ 2026-10-21 (кэшийн аудит): инженерийн шугамын засвар (`DedButets` → `dropTotalsCache`) — `planOverlap.loadInfra`-тай
+   ХАМТ хаягдана, эс бөгөөс хэрэгцээний тооцоо засварын өмнөх геометрээр үлдэнэ (`planOverlap.ts`-ийн ижил ⚠️). */
+subscribeTotals(() => { needCache = null; });
 
 /**
  * ЯВЦЫН ТЕКСТ — тооцоог хүлээж буй БҮХ дуудагчид (самбар · зургийн давхарга), `planOverlap.onOverlapStep`-ийн загвар.

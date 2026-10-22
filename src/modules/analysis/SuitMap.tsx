@@ -49,13 +49,19 @@ import type { TrafficStats } from './suit/TrafficOverlay';
 import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
-import { bimLayerFor, dropBimCache } from '@/components/bimCache';
+import { bimLayerFor, bimLayerPeek, dropBimCache } from '@/components/bimCache';
 import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from '@/components/render3d';
 import { registerMapView } from '@/lib/mapShots';
 
 /** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (⚠️ 2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
 const bimAll = (map: Map): BuildingSceneLayer[] => BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
   new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
+/** ⚠️ 2026-10-21 (аудит): кэшийн ОДООГИЙН инстанц — дахин үүсгэхгүй (MapCanvas-ийн `bimLive`-тай ижил). Сонгогч ·
+    `manageBim`-д ФУНКЦЭЭР өгнө — нэг удаагийн массив барьвал кэшээс хасагдсан/солигдсон инстанцад холбогдсон үлддэг. */
+const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {
+  const l = bimLayerPeek<BuildingSceneLayer>(map, b.key);
+  return l ? [l] : [];
+});
 
 export type MapRow = Zone & {
   urban: number | null;
@@ -814,7 +820,9 @@ export function SuitMap({
 
     clear();
     /* ⚠️ 2026-10-04: BIM НЭГ НЭГЭЭР — MapCanvas-ийн ⚠️-ийг үз */
-    const widget = createBimPicker({ view: view as SceneView, layers, items: BIM.layers, Explorer: BuildingExplorer });
+    /* ⚠️ 2026-10-21 (аудит): `layers` ФУНКЦЭЭР — сонголт бүрд кэшийн ОДООГИЙН инстанц (`bimLive`, MapCanvas-тай ижил);
+       урьд нь нэг удаагийн `bimAll` массив барьж, багц/горим солигдсоны дараа ч хуучин инстанцад холбогдсон байв. */
+    const widget = createBimPicker({ view: view as SceneView, layers: () => bimLive(map), items: BIM.layers, Explorer: BuildingExplorer });
     view.ui.add(widget.el, 'top-right');
     bimWidgetRef.current = widget;
     clickH = view.on('click', (e: __esri.ViewClickEvent) => { void widget.pickAt(e); });
@@ -837,9 +845,19 @@ export function SuitMap({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || dim !== 'bim' || view.type !== '3d') return;
-    return manageBim({ view: view as SceneView, map, all: bimAll(map), m: r3, archOn: false, pkg: bimPkg });
+    /* ⚠️ 2026-10-21 (аудит): `bimAll` кэшийг дүүргэнэ, `manageBim`-д `all` ФУНКЦЭЭР (`bimLive`) — MapCanvas-тай ижил */
+    if (!bimAll(map).length) return;
+    return manageBim({ view: view as SceneView, map, all: () => bimLive(map), m: r3, archOn: false, pkg: bimPkg });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready, r3, r3 === 'fine' ? bimPkg : null]);
+
+  /* ⚠️ 2026-10-21 (аудит): багц · горим солигдоход BIM сонгогчийн BuildingExplorer-ийг одоогийн давхаргад ДАХИН
+     ХОЛБОНО (MapCanvas-ийн `rebind` эффекттэй ижил) — сонгогчийн эффект зөвхөн `[dim, ready]`-аар үүсдэг тул урьд нь
+     багц солигдсоны дараа Map-аас гарсан инстанцад холбогдсон үлддэг байв. */
+  const bimPkgKey = r3 === 'fine' ? bimPkg.pkg : null;
+  useEffect(() => {
+    if (dim === 'bim' && ready) bimWidgetRef.current?.rebind();
+  }, [dim, ready, r3, bimPkgKey]);
 
   /* ── Давхаргын ил байдал (оноон будалт, шошго ч энд орно) ── */
   useEffect(() => {

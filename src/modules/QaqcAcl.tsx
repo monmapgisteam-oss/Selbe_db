@@ -45,7 +45,7 @@ import { AclGrid, type GridHolder } from './AclGrid';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
 
 export function QaqcAcl() {
@@ -64,7 +64,8 @@ export function QaqcAcl() {
    *    (`qaqcScope` `null`) тул хуваарилалт нь худал хязгаар л харуулна.
    */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   /** Порталд БАЙГАА аккаунтууд (жижиг үсгээр) — устгагдсаны өнчин мөрийг ялгана */
   const known = new Set(all.map((a) => a.toLowerCase()));
 

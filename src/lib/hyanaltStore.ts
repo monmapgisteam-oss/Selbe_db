@@ -205,7 +205,7 @@ import { isLostWrite } from './lostWrite';
 /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цаг — шатны огноо · лог · тэмдэг · `approvedAt` (`serverClock`-ийн ⚠️) */
 import { serverNow, syncServerClock } from './serverClock';
 /* ⚠️ 2026-10-12 (дарааллын аудит): эцсийн батлалтын гинжний кэш-мэдэгдлийг нэгтгэнэ (`batchInvalidate`-ийн ⚠️) */
-import { batchInvalidate, invalidate } from './dataBus';
+import { batchInvalidate, invalidate, register } from './dataBus';
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАДГАЛАГДАХ ДЭЛГЭЦИЙН НЭР (`who`) — нэвтэрсэн хэрэглэгчийнх мөн эсэх.
@@ -849,6 +849,13 @@ function startPoll(): () => void {
  *    (22 орчим мөр, 60 с кэш).
  */
 let badgeRows: { at: number; rows: Row[] } | null = null;
+/* ⚠️ 2026-10-21 (кэшийн аудит): тэмдгийн кэшийг автобусад БҮРТГЭНЭ. Хяналтын шийдвэр (`hyanalt.updateDecision` →
+   `invalidate('HYANALT')`) `Guitsetgel`/Нүүр ачаалагдаагүй сешнд (localStorage-ийн сүүлийн харагдацаар шууд өөр
+   хуудсанд орсон) ямар ч `HYANALT` слот тааралгүй тул `dataBus` хувилбараа өсгөхгүй, React-д мэдэгдэхгүй — цэсний
+   «хүлээгдэж буй» тоо 3 мин (`Portal`-ын таймер) хуучин үлддэг байв. Энэ слот шийдвэр гаргах модульд өөрт нь байгаа
+   тул ҮРГЭЛЖ таарч, `Portal.refreshBadges` (`subscribeData`) шууд дахин тоолно; 60 с-ийн `POLL_MS` TTL бусдын
+   шийдвэрт хэвээр. */
+register(() => { badgeRows = null; }, ['HYANALT']);
 export async function countReviewPending(username: string | null | undefined): Promise<number | null> {
   try {
     const me = (username ?? '').trim().toLowerCase();
@@ -1358,7 +1365,7 @@ async function archiveSubmission(
     return { ok: true, archiveOid: 0, empty: true, warn: tr('Хяналтын мөрд илгээлтийн дугаар алга (хуучин мөр) — архивт бичих, нэгтгэлд бүртгэх жааз байхгүй.') };
   /* ⚠️ `ARCHIVED`-ийн шалгуур нь ЭНД БИШ, илгээлтийг УНШСАНЫ ДАРАА (доор) —
      түлхүүрт `staged.at` (агуулгын хувилбар) орох ёстой. */
-  const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, markFresh, resolveMark, ARCHIVING_TTL_MS } = await import('./submission');
+  const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, markFresh, resolveMark, ARCHIVING_TTL_MS, archivingBusy, lostFrameIds } = await import('./submission');
   /*
    * ⚠️ АЛДААГ ЯЛГАДАГ ХУВИЛБАР (2026-09-04-ний аудитын CRITICAL олдвор).
    *    Урьд нь энд `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь
@@ -1750,6 +1757,17 @@ async function archiveSubmission(
     };
   }
   /*
+   * ⚠️ 2026-10-21 (аудит): НИЙТ СӨРӨГ БОЛОХ НЭМЭЛТ (`incCell.neg` → `Overlay.negative`) — архивлахгүй, ИЛ зогсоно.
+   *    Урьд нь `max(0, …)`-оор чимээгүй 0 болгодог тул хоёр илгээлтийн БАТЛАЛТЫН ДАРААЛЛААС хамаарч өөр дүн гардаг
+   *    байв (суурь 0: +10 дараа −15 → 0, харин −15 дараа +10 → 10). Дэлгэцэд (FillNew · хянагч) 0-оор хаасан хэвээр.
+   */
+  if (ov.negative > 0) {
+    return {
+      ok: false,
+      error: tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) — архивт бичсэнгүй. Гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү: {1}', String(ov.negative), nameKeys(ov.negKeys)),
+    };
+  }
+  /*
    * ⚠️ `asOf` нь `computeAll`-ийн ЛАВЛАХ огноо. БАЙХГҮЙ БАЙЖ БОЛНО
    *    (2026-09-06): хэзээ ч нийтлэгдээгүй хуудсанд огноо тохируулаагүй
    *    бөгөөд бөглөгч түүнийг «Хуваарь» харагдацаар дараа тавина. Тэр үед
@@ -1886,13 +1904,15 @@ async function archiveSubmission(
       .catch((x: unknown) => ({ ok: false as const, error: String((x as Error)?.message ?? x) }));
     return r.ok ? '' : ` · ${tr('«Архивлаж байна» тэмдгийг арилгаж чадсангүй ({0})', r.error ?? '')}`;
   };
+  /* ⚠️ 2026-10-09 (R2-c): жаазыг ДАРАА нь ЯГ таних дээж — эхний мөрийн № ба илгээлтээр өөрчлөгдсөн
+     нүднүүд (`frameProbe`, ачаалсан жаазтай OID-оор тулгана; шинэ мөр бүхэлдээ «өөрчлөгдсөн»).
+     ⚠️ 2026-10-21 (аудит): блокоос гаргав — доорх хариу алдагдсан цэвэрлэгээ (`lostFrameIds`) ч ИЖИЛ дээжээр таньна. */
+  const prevByOid = new Map(loaded.rows.map((r) => [r.oid, r.raw]));
+  const probeFields = [...sc.act, ...sc.obyem, ...sc.start, ...sc.end].filter((f): f is string => !!f);
+  const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
+  const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
+  const dateFields = [...sc.start, ...sc.end].filter((f): f is string => !!f);
   {
-    /* ⚠️ 2026-10-09 (R2-c): жаазыг ДАРАА нь ЯГ таних дээж — эхний мөрийн № ба илгээлтээр өөрчлөгдсөн
-       нүднүүд (`frameProbe`, ачаалсан жаазтай OID-оор тулгана; шинэ мөр бүхэлдээ «өөрчлөгдсөн»). */
-    const prevByOid = new Map(loaded.rows.map((r) => [r.oid, r.raw]));
-    const probeFields = [...sc.act, ...sc.obyem, ...sc.start, ...sc.end].filter((f): f is string => !!f);
-    const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
-    const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
     const mr = await markArchiving(staged.oid, staged.at, {
       /* ⚠️ 2026-10-12 (дарааллын аудит): `startedAt` серверийн цагаар — `markFresh` өөр хөтчид мөн серверийн цагаар жишнэ */
       at: staged.at, startedAt: serverNow(), maxOid0, fillMs, n: frame.length,
@@ -1916,6 +1936,21 @@ async function archiveSubmission(
      ⚠️ 2026-10-09: тэмдгийн ДАРАА (дээрх ⚠️) — зогсвол архив хөндөгдөөгүй тул өөрийн тэмдгийг арилгана. */
   /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): суурь жаазын мужийн `max(EditDate)` — бичихийн ӨМНӨХ суурь (A4-ийн `mx0`,
      `frameEditMax`-ийн ⚠️). `EditDate`-гүй үйлчилгээнд `null` — бичсэний дараа талбар бүрээр тулгана. */
+  /* ⚠️ 2026-10-21 (аудит): БАГЦЫН БУСАД `sub|` мөрийн ШИНЭ «архивлаж байна» тэмдэг — өөр өдрийн илгээлтийг өөр хянагч яг
+     одоо архивлаж байвал (нэг багцад хоёр батлалт зэрэг) ЗОГСОНО, өөрийн тэмдгийг арилгана. `markArchiving`-ийн claim нь
+     зөвхөн ӨӨРИЙН мөрөнд үйлчилдэг тул урьд нь хоёулаа бичиж, хоёр дахь нь эхнийхийн жаазыг булах эсвэл хариу алдагдсан
+     цэвэрлэгээгээр устгах боломжтой байв. Ажил нэмэх · обьём · Хуваарийн бичигчдийн ижил гэрээ (`archivingBusy`),
+     өөрийн мөрийг алгасна; уншиж чадахгүй бол бичихгүй (fail-closed). */
+  {
+    let otherArch: { who: string; at: number } | null;
+    try {
+      otherArch = await archivingBusy(pkg.key, staged.oid);
+    } catch (e) {
+      return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) + (await clearMark()) };
+    }
+    if (otherArch)
+      return { ok: false, error: tr('{0} энэ багцын өөр илгээлтийг яг одоо архивлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', otherArch.who || tr('Өөр хянагч')) + (await clearMark()) };
+  }
   let editMax0: number | null = null;
   {
     let stop = '';
@@ -1966,20 +2001,43 @@ async function archiveSubmission(
     if (addsLost(e)) {
       const ids = new Set(written);
       let strayErr = '';
-      if (sc.f.fillDate) {
-        try {
+      /* ⚠️ 2026-10-21 (аудит): ӨДРӨӨР биш АГУУЛГААР таньж устгана (`submission.lostFrameIds` — `matchArchivedFrame`/
+         `truncatedFrameIds`-ийн дүрэм, `ulsiinKomiss`-ийн 2026-10-21-ний засвартай ижил). Урьд нь тэмдгийн өдрийн
+         `OID > maxOid0` БҮХ мөрийг устгадаг тул тэмдэг ба бичилтийн завсарт ижил өдрөөр бичигдсэн ӨӨР батлалтын жааз ч
+         устдаг байв. Танигдаагүй (`unknown`) мөрийг хөндөхгүй; таньж чадаагүй бол (`matched` худал) тэдгээр манайх байж
+         болзошгүй гэж ил хэлнэ (fail-closed — зөвхөн баталгаажсан `written`). Огнооны талбаргүй багцад `OID > maxOid0`-оор. */
+      let matched = false;
+      let unknown = 0;
+      try {
+        const rows: Record<string, unknown>[] = [];
+        const outFields = [...new Set([sc.f.oid, sc.f.no, ...probe.map((p) => p[1])])].join(',');
+        for (let offset = 0; ; ) {
           const j = await agsFetch(`${pkg.url}/query`, {
-            where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
-            returnIdsOnly: 'true',
+            where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`,
+            outFields,
+            orderByFields: `${sc.f.oid} ASC`,
+            resultRecordCount: '2000',
+            resultOffset: String(offset),
+            returnGeometry: 'false',
           });
-          for (const x of (j?.objectIds ?? []) as unknown[]) if (Number.isInteger(x) && (x as number) > maxOid0) ids.add(x as number);
-        } catch (x) { strayErr = String((x as Error)?.message ?? x); }
-      }
+          const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
+          rows.push(...fs.map((f) => f.attributes));
+          if (!j?.exceededTransferLimit || fs.length === 0) break;
+          offset += fs.length;
+        }
+        const mine = lostFrameIds(rows, { n: frame.length, ...(rootNo && rootNo.length <= 64 ? { rootNo } : {}), ...(probe.length ? { probe } : {}) }, sc.f.oid, sc.f.no, dateFields, written);
+        if (mine) { matched = true; for (const x of mine) ids.add(x); }
+        unknown = rows.filter((r) => !ids.has(Number(r[sc.f.oid]))).length;
+      } catch (x) { strayErr = String((x as Error)?.message ?? x); }
       const gone = ids.size ? await applyDeletes(pkg, [...ids]) : 0;
       const left = ids.size - gone;
+      const maybeLeft = Math.max(left, 0) + (matched ? 0 : unknown);
+      const tail = maybeLeft > 0 || strayErr
+        ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — AGOL дээр шалгана уу', String(maybeLeft))}${strayErr ? `: ${strayErr}` : ''})`
+        : unknown > 0 ? ` (${tr('тэр өдрийн өөр бичигчийн {0} мөрийг хөндөөгүй', String(unknown))})` : '';
       return {
         ok: false,
-        error: `${why} · ${tr('Архивын бичилтийн хариу алдагдсан — үр дүн тодорхойгүй. Энэ жаазны {0} мөрийг архиваас устгав{1}; «Архивлаж байна» тэмдэг үлдлээ — {2} минутын дараа дахин «Батлах» дарахад архивыг шалгаж шийднэ.', String(gone), left > 0 || strayErr ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — AGOL дээр шалгана уу', String(Math.max(left, 0)))}${strayErr ? `: ${strayErr}` : ''})` : '', String(Math.round(ARCHIVING_TTL_MS / 60_000)))}`,
+        error: `${why} · ${tr('Архивын бичилтийн хариу алдагдсан — үр дүн тодорхойгүй. Энэ жаазны {0} мөрийг архиваас устгав{1}; «Архивлаж байна» тэмдэг үлдлээ — {2} минутын дараа дахин «Батлах» дарахад архивыг шалгаж шийднэ.', String(gone), tail, String(Math.round(ARCHIVING_TTL_MS / 60_000)))}`,
       };
     }
     if (written.length) {
@@ -2111,7 +2169,7 @@ async function closeAfterArchive(
    */
   by: { row: number; day: string },
 ): Promise<{ warns: string[]; reopen?: { fillMs: number; sheetOid: number; sheet: string }; hold?: string }> {
-  const { readSubmissionByOid, closeSubmission, saveSubmission, residualAfterArchive } = await import('./submission');
+  const { readSubmissionByOid, closeSubmission, saveResidualSubmission, residualAfterArchive } = await import('./submission');
   /** ⚠️ 2026-10-09: үлдэгдлийн бичилт — архив шийдэгдсэн тул «архивлаж байна» тэмдгийг АРИЛГАЖ (`dropMark` —
       `saveSubmission`-ий тэмдгийн хамгаалалт) бичнэ; урьд нь `residualAfterArchive` тэмдгийг дамжуулж үлдээдэг байв. */
   /* ⚠️ 2026-10-12 (A9): `residualOf` — хяналтын мөрийн `updateRows` унаж мөр эцсийн шатанд үлдвэл дахин «Батлах»
@@ -2120,7 +2178,9 @@ async function closeAfterArchive(
     /* ⚠️ 2026-10-12 (дарааллын аудит): `at` серверийн цагаар — `apply`-ийн `s0.at >= uc.at` жишилт өөр хөтчид явдаг */
     const body: SubmissionPayload = { ...rest, at: serverNow(), residual: true, residualOf: { row: by.row, archiveOid: firstOid, day: by.day } };
     delete body.archiving;
-    return saveSubmission(rest.pkgKey, body, { at: at0, ...(mark0 != null ? { dropMark: mark0 } : {}) });
+    /* ⚠️ 2026-10-21 (аудит): үлдэгдлийн тусгай зам (`saveResidualSubmission`, `chiefDeny`) — `saveSubmission` клиентийн
+       `residual` тугийг татгалздаг болсон (`submission.ts`-ийн ⚠️) */
+    return saveResidualSubmission(rest.pkgKey, body, { at: at0, ...(mark0 != null ? { dropMark: mark0 } : {}) });
   };
   const incPl = pl.mode === 'inc';
   const warns: string[] = [];

@@ -224,13 +224,18 @@ export function effSpan(
  *    алдагдуулна (`effSpan` ч мөн адил тэр үед `own` руу буцдаг).
  *    ⚠️ 2026-10-21: ЗӨВХӨН өмнөх MIN/MAX-аас зөрсөн (өөрийн) муж хэвээр; өмнөх
  *    MIN/MAX-тай яг ижил (хүүхдээс бодогдсон) муж арилна — доорх ⚠️.
+ *    ⚠️ 2026-10-21 (аудит №2): тэр тулгалтыг `baseSpansOf` (СЕРВЕРИЙН муж) өгсөн бол ноорогтой
+ *    биш ТҮҮНТЭЙ хийнэ — доорх ⚠️.
  *
+ * @param baseSpansOf мөрийн СЕРВЕРИЙН (ноороггүй) муж — `Huvaari.applyChanges` `base`-ээс өгнө;
+ *   өгөөгүй бол `rows`-ын мужтай тулгана (`payload.ts`: тэнд `rows` нь өөрөө серверийн мөр).
  * @returns `ch`-ийн ХУУЛБАР дээр бүлгийн мөрүүдийг нэмсэн шинэ Map.
  */
 export function rollUpGroups(
   rows: PlanRow[],
   n: number,
   ch: Map<number, (Span | null)[]>,
+  baseSpansOf?: (i: number) => (Span | null)[],
 ): Map<number, (Span | null)[]> {
   if (!ch.size) return ch;
   const out = new Map(ch);
@@ -264,10 +269,29 @@ export function rollUpGroups(
            ⚠️ Мөрөнд own/agg ялгах туг байхгүй тул энэ тулгалт л ялгах цорын ганц арга. */
         const ov = cur[b] ?? null;
         if (!ov) continue;
+        /* ⚠️ 2026-10-22 (аудит №4): ЗӨВХӨН өмнөх (ноорогийн) хүүхдийн MIN/MAX-тай ЯГ тэнцүү муж = хүүхдээс бодогдсон.
+           Бусад нь бүлгийн ӨӨРИЙН огноо — гинжээр (`propagate`, FS холбоос) шилжсэн ч — ХЭВЭЭР. Урьд нь `baseSpansOf`
+           салаа энэ нөхцөлгүй ажиллаж, огноотой навчгүй блокт бүлгийн гинжээр шилжсэн өөрийн мужийг серверийнх рүү
+           буцааж (холбоос тасарч, хамаарагчид нь аль хэдийн шилжсэн) анхааруулгагүй хадгалдаг байв. */
         const pg = childAgg(rows, gi, b, (k) => rows[k].spans);
         const pa = pg?.start ?? null;
         const pz = pg?.end ?? null;
-        if (pa != null && pz != null && ov.start === pa && ov.end === pz) { next[b] = null; moved = true; }
+        if (pa == null || pz == null || ov.start !== pa || ov.end !== pz) continue;
+        if (baseSpansOf) {
+          /* ⚠️ 2026-10-21 (аудит №2): ноорогтой (`rows[k].spans`) биш СЕРВЕРИЙН мужтай тулгана. Навчийг огноолоход
+             бүлгийн муж ноорогт навчны мужаар ДАРАГДСАН байдаг тул дараа нь навчийг арилгахад «өмнөх MIN/MAX» =
+             дарагдсан муж = тэр навчны муж болж, бүлгийн ӨӨРИЙН серверийн огноо (Excel/гараар тавьсан, жиш. 60..90)
+             null болж ХАДГАЛАГДДАГ байв (мэдээлэл алдагдал). Серверийн өөрийн муж (`bv`) серверийн хүүхдийн
+             MIN/MAX (`bg`)-тай ЯГ тэнцвэл (эсвэл байхгүй бол) сүнс → null; зөрвөл өөрийн огноо → серверийнхийг
+             СЭРГЭЭНЭ (`applyChanges`-ийн «серверийнхтэй ижил» дүрмээр ноорогоос хасагдана). */
+          const bv = baseSpansOf(gi)[b] ?? null;
+          const bg = childAgg(rows, gi, b, baseSpansOf);
+          const ghost = !bv || (!!bg && bv.start === bg.start && bv.end === bg.end);
+          const want = ghost ? null : bv;
+          if (!want || want.start !== ov.start || want.end !== ov.end) { next[b] = want; moved = true; }
+          continue;
+        }
+        next[b] = null; moved = true;
         continue;
       }
       const nv: Span = { start: a, end: z };

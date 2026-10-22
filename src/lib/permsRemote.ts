@@ -25,6 +25,10 @@
  * доторх, бичих эрх бүхий хэн боловч REST-ээр шууд засаж чадна. Клиент талын
  * системд үүнээс чанга хамгаалалт байхгүй; нэвтрэлтийн түвшний эрсдэлийг
  * `permissions.hasAccess` (хатуу жагсаалт + remote баталгаажилт) барина.
+ * ⚠️ 2026-10-21 (аудит): SUPER = ЭНЭ ХҮСНЭГТИЙН `role:'super'` МӨР болсноос хойш (`roles._setTableSupers`) дээрх
+ *    хязгаар нь харагдац/cap биш АДМИН ЭРХИЙН асуудал: org-даяар засагдах хүснэгтэд бичих эрхтэй ямар ч аккаунт өөртөө
+ *    super бичиж чадна. Кодоор хаагдахгүй — Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана
+ *    (уншилт org-д хэвээр: реле `hasPortalRow` хэрэглэгчийн токеноор мөрөө уншина); `probeEntExposure` илрүүлж улаанаар хэлнэ.
  */
 
 import { entDirect } from '@/lib/services/entMap';
@@ -343,6 +347,51 @@ let tablePublic = false;
 export const permsTablePublic = (): boolean => tablePublic;
 
 /**
+ * ⚠️ 2026-10-21 (аудит): ENTERPRISE ЗАМД хүснэгтийн ИЛ БАЙДЛЫГ шалгана. `tablePublic` зөвхөн AGOL-ын item хайлтад
+ *    (`findTableUrl`) тавигддаг тул `entDirect` замд (2026-10-20-оос бүх өгөгдөл) ХЭЗЭЭ Ч ажиллахгүй байв. Super нь
+ *    одоо энэ хүснэгтийн мөр (`roles._setTableSupers`) — давхарга org-даяар засагдах (`capabilities`-д Editing/Create/
+ *    Update/Delete, item `access` org/public) бол байгууллагын засах эрхтэй ЯМАР Ч аккаунт өөрийн токеноор `applyEdits`-ээр
+ *    өөртөө `role:'super'` бичиж (шинэ мөр их OID-той тул `fetchAll`-д ялна — мөрийн эзэмшлийн хязгаар ч хамгаалахгүй),
+ *    5 минутын poll-оос админ самбар · бүх эрх авна. Зөвхөн УНШИЖ илрүүлнэ (бичихгүй, токен POST биед — `arcgisPost`);
+ *    серверийн тохиргоо тул кодоор засагдахгүй — админд улаанаар (`permsTableOrgEditable`): Enterprise дээр үйлчилгээний
+ *    засах эрхийг админ бүлгээр хязгаарлах (уншилт org-д хэвээр — реле `hasPortalRow`-д хэрэгтэй). Шалгаж чадаагүй бол
+ *    анхааруулгагүй (мэдэхгүй ≠ аюулгүй) — уншилтын замыг унагаахгүй; нэг сешнд нэг удаа, зөвхөн хөтөчид.
+ */
+let tableOrgEditable = false;
+/** Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй эсэх (Enterprise) — UserAdmin-ы анхааруулга */
+export const permsTableOrgEditable = (): boolean => tableOrgEditable;
+let exposureProbed = false;
+type LayerMetaLite = { capabilities?: unknown; serviceItemId?: unknown };
+async function probeEntExposure(layerUrl: string): Promise<void> {
+  if (exposureProbed) return;
+  exposureProbed = true;
+  try {
+    const meta = await arcgisPost<LayerMetaLite>(layerUrl, {}, { token: 'org' });
+    const caps = String(meta.capabilities ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const editable = ['editing', 'create', 'update', 'delete'].some((c) => caps.includes(c));
+    let itemId = typeof meta.serviceItemId === 'string' ? meta.serviceItemId : '';
+    if (!itemId) {
+      const svc = await arcgisPost<LayerMetaLite>(layerUrl.replace(/\/\d+\/?$/, ''), {}, { token: 'org' });
+      itemId = typeof svc.serviceItemId === 'string' ? svc.serviceItemId : '';
+    }
+    if (!itemId) return;
+    /* Порталын item — анхдагч `token: 'always'`: портал хост руу хэрэглэгчийн токен явна */
+    const item = await arcgisPost<{ access?: unknown }>(`${restBase()}/content/items/${encodeURIComponent(itemId)}`, {});
+    const access = String(item.access ?? '').toLowerCase();
+    tablePublic = access === 'public';
+    tableOrgEditable = editable && (access === 'org' || access === 'public');
+    if (tableOrgEditable) {
+      console.error(
+        `[selbe] ${TITLE} хүснэгт байгууллагад засагдахаар нээлттэй (${caps.join(',')} · ${access}) — засах эрхтэй аккаунт бүр өөртөө super бичиж чадна.`,
+        'Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана уу (уншилт org-д хэвээр).',
+      );
+    }
+  } catch {
+    /* шалгаж чадсангүй — анхааруулгагүй (дээрх ⚠️) */
+  }
+}
+
+/**
  * Хүснэгтийн URL олох — байгаа item-ээс.
  *
  * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
@@ -456,6 +505,8 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const direct = entDirect(TITLE, 0);
   if (direct) {
     tableUrlCache = direct;
+    /* ⚠️ 2026-10-21 (аудит): ил байдлын шалгалт — зөвхөн хөтөчид (тест/Node-д сүлжээ хөндөхгүй), нэг удаа (`probeEntExposure`-ийн ⚠️) */
+    if (typeof document !== 'undefined') void probeEntExposure(direct);
     return direct;
   }
   const auth = await getToken();

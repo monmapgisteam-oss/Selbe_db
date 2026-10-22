@@ -30,8 +30,12 @@
  *    мөрөөс. Төсвийг БҮХ мөрөөс (гэрээгүй 43-ыг оруулаад) нийлбэрлэвэл
  *    «гэрээлсэн X / төсөв Y» баримт ~1.5 их наядын «хэмнэлт» мэт уншигдана —
  *    үнэндээ тэр нь гэрээ БАЙГУУЛААГҮЙ ажил (өөр картын сэдэв). Гэрээгүй
- *    ажлын төсөв энэ картад ХАМААРАХГҮЙ. Үлдэх зөрүү = Σ diff + төсөвгүй
- *    гэрээний Σ дүн (тэдгээрийн тоо «N гэрээ төсөвт өртөггүй» баримтад ил).
+ *    ажлын төсөв энэ картад ХАМААРАХГҮЙ.
+ *    ⚠️ 2026-10-21 (аудит): хоёулаа ЯГ НЭГ олонлог — төсөв ч, гэрээ ч бөглөгдсөн мөр.
+ *    Урьд нь `contractTotal`-д төсөвгүй гэрээний дүн ч ордог тул «гэрээлсэн X / төсөв Y»
+ *    нь Σ diff-ээс тэр дүнгээр зөрж, хуурамч давалт мэт уншигдаж байв. Одоо
+ *    contract − budget = Σ over + Σ under; төсөвгүй гэрээний Σ дүн ТУСДАА
+ *    (`noBudgetSum`, «N гэрээ төсөвт өртөггүй (Σ)» баримтад ил).
  *
  * ⚠️ 2026-10-04 · ТӨСВИЙН ТАЛБАР СОЛИГДОВ (KPI ҮРГЭЛЖ 0 байв): урьд нь төсөв = `ho_dun_geree`
  *    (`F.budget`). Тэр талбар нь «ХО дүн (ГЭРЭЭ болон урьдчилсан тооцоолол)» — ГЭРЭЭТЭЙ мөрд
@@ -109,6 +113,8 @@ export type ContractGap = {
   noContract: number;
   /** Гэрээтэй боловч төсөвгүй мөр — зөрүү бодогдоогүй */
   noBudget: number;
+  /** Төсөвгүй гэрээний Σ дүн — `contractTotal`-д ОРОХГҮЙ (2026-10-21, толгойн ⚠️); нэг ч байхгүй бол null */
+  noBudgetSum: number | null;
   /** Эх хүснэгтийн нийт мөр */
   total: number;
 };
@@ -177,12 +183,15 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     rows,
     over: { count: overDiffs.length, sum: sumOrNull(overDiffs) },
     under: { count: underDiffs.length, sum: sumOrNull(underDiffs) },
-    contractTotal: sumOrNull(rows.flatMap((r) => (r.contract != null ? [r.contract] : []))),
+    /* ⚠️ 2026-10-21 (аудит): ТӨСӨВ ч, ГЭРЭЭ ч бөглөгдсөн мөр — `budgetTotal`-тай ЯГ нэг популяци
+       (толгойн ⚠️); төсөвгүй гэрээний дүн `noBudgetSum`-д тусдаа */
+    contractTotal: sumOrNull(rows.flatMap((r) => (r.budget != null && r.contract != null ? [r.contract] : []))),
     /* Зөвхөн гэрээтэй, ДҮНТЭЙ мөр — `contractTotal`-тай нэг популяци (дүнгүй
        CONTRACTED мөрийн төсөв орвол тааруулалт эвдэрнэ) */
     budgetTotal: sumOrNull(rows.flatMap((r) => (r.budget != null && r.contract != null ? [r.budget] : []))),
     noContract,
     noBudget,
+    noBudgetSum: sumOrNull(rows.flatMap((r) => (r.budget == null && r.contract != null ? [r.contract] : []))),
     /* ⚠️ 2026-10-04: НИЙТ хүрээний мөр (`finXlInTotal`) */
     total: raw.filter((r) => finXlInTotal(r)).length,
   };
@@ -222,7 +231,12 @@ export function buildContractGapKpi(g: ContractGap): Omit<KpiResult, 'failedSour
     tr('гэрээлсэн {0} / төсөв {1}', mnt(g.contractTotal), mnt(g.budgetTotal)),
   ];
   /* ⚠️ Зөвхөн БАЙГАА үед — «0 гэрээ төсөвгүй» гэсэн хоосон баримт хэрэггүй */
-  if (g.noBudget > 0) facts.push(tr('{0} гэрээ төсөвт өртөггүй', g.noBudget));
+  /* ⚠️ 2026-10-21: тэдгээрийн Σ дүн ИЛ — `contractTotal`-аас хасагдсан тул хэрэглэгч хаана байгааг харна */
+  if (g.noBudget > 0) {
+    facts.push(g.noBudgetSum == null
+      ? tr('{0} гэрээ төсөвт өртөггүй', g.noBudget)
+      : tr('{0} гэрээ төсөвт өртөггүй ({1})', g.noBudget, mnt(g.noBudgetSum)));
+  }
 
   const cols = [
     tr('Ажил'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Гэрээний дугаар'),

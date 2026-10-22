@@ -75,7 +75,9 @@ import {
   FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, FIN_XL_CODE,
   FIN_XL_HIDE, FIN_XL_TOTAL_LABEL, finXlInTotal, finXlRowHidden,
   FIN_XL_LVL_KEEP, finXlBandLabel,
-  FIN_XL_PCT, FIN_XL_PCT_WEIGHT, FIN_XL_ORDER_V,
+  FIN_XL_PCT, FIN_XL_ORDER_V, FIN_XL_FRACTION, FIN_XL_DROP,
+  /* ⚠️ 2026-10-22 (аудит): бутархай хувийн ×100 · жигнэсэн дундаж — цэвэр функцүүд (`finExcelLayout.check.mjs` шууд шалгана) */
+  finXlIsFraction, finXlScale, finXlFractionText, finXlEditText, finXlIsMean, finXlWeightedMean,
 } from '@/lib/finExcelLayout';
 import { useColWidths } from '@/modules/sheet/colWidths';
 import { useSheetCols } from '@/modules/sheet/sheetCols';
@@ -1597,8 +1599,11 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
     if (PLAIN_INT.has(name)) return { text: String(Math.trunc(x)), num: true };
     /* ⚠️ 2026-10-06: «Үнэт цаас %» (`zahiramj_unet_tsaas_huvi`) нь 0–1 БУТАРХАЙ (`fields.ts`) — урьд нь
        «0.09» гэж түүхийгээр гардаг байв. `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул энд ×100. Зурвас/НИЙТ мөрд
-       хоосон хэвээр (`sumText`-ийн ⚠️). ⚠️ 2026-10-21: засварын талбар ч ×100 (`editTextF` · `shareFromEdit`). */
-    if (name === CASHFLOW_NEW.fields.share) return { text: pct(x * 100, 1), num: true };
+       хоосон хэвээр (`sumText`-ийн ⚠️). ⚠️ 2026-10-21: засварын талбар ч ×100 (`editTextF` · `shareFromEdit`).
+       ⚠️ 2026-10-21 (аудит): «Урьдчилгаа → Хувь» (`urdchilgaa_huvi`) ч 0–1 бутархай (амьд max 0.2) — нэг
+       жагсаалтаар (`FIN_XL_FRACTION`); урьд нь `FIN_XL_PCT` (0–100)-д байж «0.2» гэж гардаг байв. */
+    /* ⚠️ 2026-10-22 (аудит): дүрэм `finExcelLayout.finXlFractionText`-д (×100) */
+    if (finXlIsFraction(name)) return { text: finXlFractionText(x), num: true };
     const raw = String(x).split('.')[1]?.length ?? 0;
     const dec = Math.abs(x) >= 1000 ? 0 : Math.min(2, raw);
     return { text: num(x, dec), num: true };
@@ -1614,17 +1619,19 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
 const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text;
 const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
 /* ⚠️ 2026-10-11 (аудит №7): тоон шүүлтийн хэмжээс — `fmtCell`-ийн ×100 («Үнэт цаас %»)-тай НЭГ (`finFilter.rowMatches`) */
-const shareScale = (n: string): number => (n === CASHFLOW_NEW.fields.share ? 100 : 1);
+/* ⚠️ 2026-10-21 (аудит): `FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч ×100 */
+/* ⚠️ 2026-10-22 (аудит): дүрэм `finExcelLayout.finXlScale`-д (шалгуур шууд дууддаг) */
+const shareScale = finXlScale;
 /**
  * ⚠️ 2026-10-21: «Үнэт цаас %» ЗАСВАРЫН талбар ч харагдацтай ИЖИЛ ×100 нэгжээр (0–100). Урьд нь
  *    харагдац «9.0%» атал засвар түүхий 0.09-г харуулж, хэрэглэгч «9» бичихэд 9 хадгалагдаж
  *    хүснэгтэд 900% гардаг байв. Хадгалахдаа `shareFromEdit` нь ÷100 (мужийг `isPctField` шалгана).
  *    `toPrecision(12)` — 0.07 × 100 = 7.000000000000001 мэт хөвөгч сүүлийг хасна.
+ * ⚠️ 2026-10-21 (аудит): бүх бутархай хувийн талбарт (`FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч).
  */
+/* ⚠️ 2026-10-22 (аудит): ×100 · `toPrecision(12)` дүрэм `finExcelLayout.finXlEditText`-д */
 const editTextF = (v: unknown, type: string, name: string): string =>
-  name === CASHFLOW_NEW.fields.share && typeof v === 'number' && Number.isFinite(v)
-    ? String(Number((v * 100).toPrecision(12)))
-    : editText(v, type);
+  finXlEditText(v, name) ?? editText(v, type);
 
 /**
  * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
@@ -1647,8 +1654,9 @@ const parseCell = (s: string, type: string, label: string, pct = false): unknown
  * ⚠️ 2026-09-30: «8,333» (Excel-ийн аравтын таслал) мянгат гэж уншигдаж 8333% болж,
  *    `Cashflow_dun`-д гэрээний 83 дахин дүн бичигддэг байв.
  */
-/* ⚠️ 2026-10-21: «Үнэт цаас %» ч — засвар нь ×100 нэгжээр (`editTextF`) тул 0–100 муж шалгана */
-const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f) || f === CASHFLOW_NEW.fields.share;
+/* ⚠️ 2026-10-21: бутархай хувийн талбарууд (`FIN_XL_FRACTION`: «Үнэт цаас %» · «Урьдчилгаа → Хувь») ч — засвар нь
+   ×100 нэгжээр (`editTextF`) тул 0–100 муж шалгана */
+const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);
 
 /**
  * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
@@ -2094,7 +2102,8 @@ function FullTable({
   useEffect(() => {
     if (!draftKey || dirty === 0) return;
     const t = window.setTimeout(() => {
-      try { localStorage.setItem(draftKey, JSON.stringify({ v: 2, pend, adds, at: Date.now(), legacyShareInvalid: legacyShareInvalidRef.current } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
+      /* ⚠️ 2026-10-21: v3 — `FIN_XL_FRACTION`-ийн бүх талбар ×100 нэгжээр (`upgradeFinanceDraft`-ийн ⚠️) */
+      try { localStorage.setItem(draftKey, JSON.stringify({ v: 3, pend, adds, at: Date.now(), legacyShareInvalid: legacyShareInvalidRef.current } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
       /* ⚠️ Санал болгосныг үл тоож шинээр засаж эхэлсэн — хуучин нөөц дарагдсан тул самбар хуучирна */
       setOffer(null);
     }, 800);
@@ -2107,7 +2116,8 @@ function FullTable({
   };
   const restoreDraft = () => {
     if (!offer) return;
-    const restored = upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share);
+    /* ⚠️ 2026-10-21: v2 ноорогт «Урьдчилгаа → Хувь» бутархай текст (0.2) хэвээр — `FIN_XL_FRACTION`-аар ×100 (20) */
+    const restored = upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share, FIN_XL_FRACTION);
     if (!restored) { setErr(tr('Агуулга ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).')); return; }
     legacyShareInvalidRef.current = restored.legacyShareInvalid ?? [];
     /* ⚠️ Эрхээр шүүнэ — нүдний утга `finEdit`, шинэ мөр `finRow` (`valEdit`-ийн ⚠️) */
@@ -2156,7 +2166,9 @@ function FullTable({
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
         const a = upd.get(oid) ?? { [oidField]: oid };
-        a[fld] = fld === CASHFLOW_NEW.fields.share
+        /* ⚠️ 2026-10-21 (аудит): `FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч ÷100 (`parseFinanceShare`); урьд нь
+           0–100 гэж шалгаад «20»-ийг шууд хадгалж 0.2 ба 20 холилддог байв. */
+        a[fld] = FIN_XL_FRACTION.includes(fld)
           ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
           : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         upd.set(oid, a);
@@ -2170,7 +2182,7 @@ function FullTable({
           /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч илгээгдэхгүй —
              гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
           if (CALC_RO.has(fld)) continue;
-          o[fld] = fld === CASHFLOW_NEW.fields.share
+          o[fld] = FIN_XL_FRACTION.includes(fld)
             ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
             : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         }
@@ -2247,6 +2259,10 @@ function FullTable({
         });
         const publishRows = financeInputs?.parents ?? rows;
         const publishMonths = financeInputs?.months ?? months;
+        /* ⚠️ 2026-10-21 (аудит): `financeInputs.months` нь засварын ХУУЧИН ба ШИНЭ `Cashflow_ID`-ийн бүх сар
+           (`loadFinancePublishInputs`-ийн scope.ids — `Cashflow_ID` одоо SOURCE_FIELDS). Урьд нь зөвхөн хуучин дугаарынх
+           тул дугаар + хугацаа хамт засахад `have` хоосон гарч, мужаас гарсан хоосон сар устгагдахгүй, тооны мэдэгдэл
+           зөрдөг байв. Хуучирсан `monthBy` руу УНАХГҮЙ — шинэ уншилт л үнэн (устгасан сар сэргэхгүй). */
         const publishMonthBy = new Map<number, Row[]>();
         for (const month of publishMonths) {
           const id = cfIdOf(month.Cashflow_ID);
@@ -2599,8 +2615,9 @@ function FullTable({
      * ⚠️ КОДЫН талбарууд (`bagts_tuvshin*`) ч мөн адил — тэдгээр нь зурвасын
      * шошгын урд («4.1 · Гадна цахилгаан холбоо») гарна.
      */
+    /* ⚠️ 2026-10-21 (аудит): `FIN_XL_DROP` (`tusuld_ezleh_huvi` — хуучирсан текстэн хуулбар) ч багана болохгүй */
     const STRUCT = new Set<string>([
-      FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, ...FIN_XL_CODE,
+      FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, ...FIN_XL_CODE, ...FIN_XL_DROP,
     ]);
     const noSec = base.filter((c) => !STRUCT.has(c.name));
     const rank = (n: string) => {
@@ -3906,8 +3923,6 @@ function FullTable({
     const summable = (c: FieldDef) => (
       NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name)
     );
-    /** Тухайн багана ХУВЬ мөн үү — нийлбэр биш, жигнэсэн дундаж */
-    const isPct = (name: string) => FIN_XL_PCT.includes(name);
 
     /**
      * Зурвасын нүдний ТЕКСТ — нийлбэр эсвэл жигнэсэн дундаж.
@@ -3923,17 +3938,13 @@ function FullTable({
          (`FIN_XL_PCT`-д санаатай БАЙХГҮЙ). Нийлбэрийн салаанд унаж зурвас ба
          НИЙТ мөрд «9.13» гэж гардаг байв — хувиудын нийлбэр утгагүй тул хоосон. */
       if (c.name === CASHFLOW_NEW.fields.share) return '';
-      if (isPct(c.name)) {
-        let w = 0;
-        let top = 0;
-        for (const p of rows) {
-          const v = num(p.row[c.name]);
-          const g = num(p.row[FIN_XL_PCT_WEIGHT]);
-          if (v == null || g == null || g <= 0) continue;
-          w += g;
-          top += g * v;
-        }
-        return w === 0 ? '' : fmtCell(top / w, c.type, c.name).text;
+      /* ⚠️ 2026-10-21 (аудит): «Урьдчилгаа → Хувь» (`FIN_XL_FRACTION`, 0–1) ч өртгөөр жигнэсэн дундаж —
+         `fmtCell` ×100 харуулна (урьд нь `FIN_XL_PCT`-д байж «0.18» гэж гардаг байв). */
+      /* ⚠️ 2026-10-22 (аудит): ХУВЬ (`FIN_XL_PCT`) ба бутархай багана — жигнэсэн дундаж `finExcelLayout.finXlWeightedMean`-д
+         (`null` ≠ 0, жингүй мөр орохгүй — дүрэм тэнд, шалгуур шууд дууддаг) */
+      if (finXlIsMean(c.name)) {
+        const m = finXlWeightedMean(rows.map((p) => p.row), c.name);
+        return m == null ? '' : fmtCell(m, c.type, c.name).text;
       }
       const sum = rows.reduce((a, p) => a + (num(p.row[c.name]) ?? 0), 0);
       return sum === 0 ? '' : fmtCell(sum, c.type, c.name).text;

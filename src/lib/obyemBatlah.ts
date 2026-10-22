@@ -706,6 +706,27 @@ export async function casObyemClaim(
 }
 
 /**
+ * БАТЛАГЧИЙН ХҮРЭЭ ба ЗОХИОГЧ ≠ БАТЛАГЧ — `decideObyem`-ийн дүрмийг `claimObyem` · `markObyemPartial`-д ч НЭГ газраас
+ * (⚠️ 2026-10-21, аудит). Серверийн мөрөөр (`F.author` · `F.pkgGroup`); `null` = зөвшөөрнө.
+ * ⚠️ Хүрээ: `AUTH.appId` үед нэвтэрсэн хэрэглэгчээр (`obyemScope(…, 'approver')`, `null` = хязгааргүй); хөтөчид
+ *    нэвтрээгүй бол хаана. Зохиогч: `me === author` бол татгалзана (`decideObyem`-ийн 2-р шалгуур).
+ * ⚠️ ЯАГААД: түгжээ (`claimObyem`) ба хагас бичилтийн тэмдэг (`markObyemPartial`) урьд нь ЗӨВХӨН түгжээний эзэн/төлөв
+ *    шалгадаг тул хүрээний гаднах батлагч эсвэл зохиогч өөрөө `pending` мөрөө 10 минут түгжиж бусдын батлалтыг хаах,
+ *    `useObyem`-ийн `dryRun`-ийг тойрсон дуудлагаар хагас бичилтийн тэмдэг тавих (буцаалтыг хаах) боломжтой байв.
+ */
+function obyemAuthzDeny(cur: Attrs, me: string): string | null {
+  if (AUTH.appId) {
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+    const sc = obyemScope(meNow ?? me, 'approver');
+    if (sc !== null && !sc.includes(String(cur[F.pkgGroup] ?? ''))) return tr('Энэ багцын обьёмыг батлах эрхгүй.');
+  }
+  const author = s(cur[F.author])?.trim().toLowerCase() ?? '';
+  if (me && author && me === author) return tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.');
+  return null;
+}
+
+/**
  * БАТЛАХААР ТҮГЖИХ — үндсэн өгөгдөлд бичихээс ӨМНӨ (`useObyem.decideObyemHere`), ⚠️ 2026-10-05.
  * ⚠️ Дүрмүүд (өөрийгөө биш · хүрээ · `pending`)-ийг дуудагч ЯГ ӨМНӨ нь `decideObyem({ dryRun })`-аар
  *    шалгасан байх ёстой — энд зөвхөн түгжээ. Амжилттай бол `withdrawObyem` ба өөр батлагчийн
@@ -723,6 +744,11 @@ export async function claimObyem(args: { oid: number; approver: string }): Promi
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
+    /* ⚠️ 2026-10-21 (аудит): `decideObyem`-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур ЭНД Ч (`obyemAuthzDeny`-ийн ⚠️) — түгжихээс ӨМНӨ */
+    const cur0 = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup}`))[0];
+    if (!cur0) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    const deny0 = obyemAuthzDeny(cur0, me);
+    if (deny0) return { ok: false, error: deny0 };
     let at0: number | undefined;
     const err = await casObyemClaim({
       read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
@@ -841,13 +867,17 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
-  const fields = `${CLAIM_FIELDS},${F.reason}`;
+  /* ⚠️ 2026-10-21 (аудит): `author` · `pkgGroup` — хүрээ/зохиогчийн шалгуурт (`obyemAuthzDeny`) */
+  const fields = `${CLAIM_FIELDS},${F.reason},${F.author},${F.pkgGroup}`;
   try {
     const cur = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!cur) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     const st = s(cur[F.status]);
     if (st === OBYEM_STATUS.withdrawn) return { ok: false, error: tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.') };
     if (st !== OBYEM_STATUS.pending) return { ok: false, error: decidedMsg(s(cur[F.approver]), st) };
+    /* ⚠️ 2026-10-21 (аудит): хүрээ ба зохиогч — `claimObyem`-тэй ижил (`obyemAuthzDeny`-ийн ⚠️) */
+    const deny = obyemAuthzDeny(cur, me);
+    if (deny) return { ok: false, error: deny };
     const h = claimHolder(cur);
     if (h !== me) {
       return { ok: false, error: h

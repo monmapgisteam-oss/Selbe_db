@@ -8,7 +8,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { toHtml, stripHtml } from './telegram-format.mjs';
+import { toHtml, stripHtml, toHtmlChunks, toHtmlBlocks, TG_CHUNK_MAX } from './telegram-format.mjs';
 
 let failures = 0;
 const check = (label, cond, extra = '') => {
@@ -77,6 +77,72 @@ check(
   'дутуу нүдтэй хүснэгт унахгүй',
   toHtml('| a | b |\n|---|---|\n| ганц |').includes('<pre>'),
 );
+
+/* ⚠️ 2026-10-21 (аудит): УРТ ХАРИУЛТЫН ХУВААЛТ — HTML-ийг 3800-аар хайчлахгүй, мөрийн хил дээр; таг таслагдахгүй */
+console.log('\n7. Урт хариултын хуваалт (toHtmlChunks)');
+{
+  const balanced = (h) => {
+    for (const t of ['b', 'code', 'pre']) {
+      const o = (h.match(new RegExp(`<${t}>`, 'g')) ?? []).length;
+      const c = (h.match(new RegExp(`</${t}>`, 'g')) ?? []).length;
+      if (o !== c) return false;
+    }
+    return !/<\/?[a-z]*$/i.test(h) && !/&[a-z]*$/i.test(h);
+  };
+  check('богино текст нэг хэсэг, toHtml-тэй ижил', JSON.stringify(toHtmlChunks(REAL)) === JSON.stringify([toHtml(REAL)]));
+  check('хоосон текст — хэсэггүй', toHtmlChunks('').length === 0);
+  // 300 мөр × ~60 тэмдэгт тод/код тэмдэглэгээтэй — 3800-аас хэд дахин урт
+  const long = Array.from({ length: 300 }, (_, i) => `Мөр ${i + 1}: **тод ${i}** ба \`код_${i}\` & < > текст`).join('\n');
+  const ch = toHtmlChunks(long);
+  check('олон хэсэг болов', ch.length > 1, `${ch.length}`);
+  check('хэсэг бүр ≤ 3800', ch.every((c) => c.length <= TG_CHUNK_MAX), `${Math.max(...ch.map((c) => c.length))}`);
+  check('хэсэг бүрийн таг тэнцвэртэй (хагас таг/entity-гүй)', ch.every(balanced));
+  check('хэсгүүдийг залгавал toHtml-тэй ижил', ch.join('\n') === toHtml(long));
+  check('мөрийн хил дээр хуваагдсан (хэсэг бүр бүтэн мөрөөр эхэлнэ)', ch.every((c) => /^Мөр \d+:/.test(c)));
+  // урт хүснэгт — <pre> блок бүтэн эсвэл <pre>-ээр дахин ороосон хэсгүүдэд
+  const table = ['| Нэр | Тоо |', '|---|---|', ...Array.from({ length: 400 }, (_, i) => `| Багц ${i} баримт_${i} | ${i * 7} |`)].join('\n');
+  const tc = toHtmlChunks(`Толгой\n${table}\nТөгсгөл`);
+  check('урт хүснэгт хэд хэдэн хэсэгт', tc.length > 1, `${tc.length}`);
+  check('хүснэгтийн хэсэг бүр ≤ 3800 ба <pre> тэнцвэртэй', tc.every((c) => c.length <= TG_CHUNK_MAX && balanced(c)));
+  check('хүснэгтийн мөр дундуур таслагдаагүй', tc.flatMap((c) => c.split('\n')).map((l) => l.replace(/<\/?pre>/g, '')).filter((l) => /^Багц/.test(l)).every((l) => /\d+$/.test(l)));
+  // нэг ХЭТ УРТ мөр (4500 тэмдэгт, тод хэсэгтэй) — зайн дээр хуваагдаж, нээлттэй <b> хаагдаж дахин нээгдэнэ
+  const words = Array.from({ length: 700 }, (_, i) => `үг${i}`).join(' ');
+  const oneLine = `Эхлэл **${words}** төгсгөл`;
+  const oc = toHtmlChunks(oneLine);
+  check('хэт урт мөр хуваагдав', oc.length > 1, `${oc.length}`);
+  check('хэсэг бүр ≤ 3800, таг тэнцвэртэй', oc.every((c) => c.length <= TG_CHUNK_MAX && balanced(c)));
+  check('тод таг хаагдаж дахин нээгдэв', oc.slice(0, -1).every((c) => c.endsWith('</b>')) && oc.slice(1).every((c) => c.startsWith('<b>')));
+  check('хуваахад текст алдагдаагүй', stripHtml(oc.join(' ')).replace(/\s+/g, ' ') === stripHtml(toHtml(oneLine)).replace(/\s+/g, ' '));
+  check('toHtmlBlocks — мөр бүр блок, хүснэгт нэг блок', toHtmlBlocks(REAL).filter((b) => b.startsWith('<pre>')).length === 1);
+}
+
+/* ⚠️ 2026-10-22 (аудит): ХАТУУ ХАЙЧИЛТ entity (`&amp;` · `&lt;` · `&gt;`) дундуур орохгүй — урьд зайгүй >3780 тэмдэгтийн
+   «үг» ба >3789 тэмдэгтийн хүснэгтийн мөр `&am|p;` гэж хуваагдаж Telegram 400 болдог байв (`telegram-format.cutAt`). */
+console.log('\n8. Хатуу хайчилт — entity таслагдахгүй');
+{
+  /** `&` бүр бүтэн `&amp;` / `&lt;` / `&gt;`-ийн эхлэл эсэх (тагийг хасаад) */
+  const entOk = (h) => {
+    const t = h.replace(/<\/?(?:b|code|pre)>/g, '');
+    return [...t.matchAll(/&/g)].every((m) => /^&(?:amp|lt|gt);/.test(t.slice(m.index, m.index + 5)));
+  };
+  const preOk = (h) => (h.match(/<pre>/g) ?? []).length === (h.match(/<\/pre>/g) ?? []).length;
+  const word = `x${'&'.repeat(5000)}`;
+  const wc = toHtmlChunks(word);
+  check('зайгүй урт «үг» (&×5000) хуваагдав', wc.length > 1, `${wc.length}`);
+  check('«үг»: хэсэг бүр ≤ 3800, entity бүтэн', wc.every((c) => c.length <= TG_CHUNK_MAX && entOk(c)),
+    wc.map((c) => JSON.stringify(c.slice(-6))).join(' '));
+  check('«үг»: залгахад текст ЯГ хэвээр', stripHtml(wc.join('')) === word);
+  const url = `үз https://e.x/?${Array.from({ length: 900 }, (_, i) => `a${i}=1&`).join('')}`;
+  const uc = toHtmlChunks(url);
+  check('урт холбоос (& дунд нь): хэсэг бүр ≤ 3800, entity бүтэн', uc.length > 1 && uc.every((c) => c.length <= TG_CHUNK_MAX && entOk(c)));
+  check('урт холбоос: текст алдагдаагүй', stripHtml(uc.join('')).replace(/\s+/g, '') === url.replace(/\s+/g, ''));
+  const row = '&<>'.repeat(1500);
+  const rc = toHtmlChunks(`| n | v |\n|---|---|\n| ${row} | 1 |`);
+  check('урт хүснэгтийн мөр (&<>×1500) хуваагдав', rc.length > 1, `${rc.length}`);
+  check('мөр: хэсэг бүр ≤ 3800, <pre> тэнцвэртэй, entity бүтэн', rc.every((c) => c.length <= TG_CHUNK_MAX && preOk(c) && entOk(c)),
+    rc.map((c) => JSON.stringify(c.slice(-12))).join(' '));
+  check('мөр: текст алдагдаагүй', stripHtml(rc.join('')).replace(/\s+/g, '') === `nv${row}1`);
+}
 
 /* ⚠️ 2026-10-12 (дарааллын аудит): ЦАГИЙН БҮС — бот ба реле процесс эхлэхэд `TZ`-ээ Улаанбаатар
    болгох ёстой (статик: эх кодыг уншина — ботыг ажиллуулахгүй). Мөр нь ЭХНИЙ `import`-оос ӨМНӨ. */

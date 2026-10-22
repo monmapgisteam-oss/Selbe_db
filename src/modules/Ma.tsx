@@ -27,6 +27,7 @@ import { entPdfBlob } from '@/lib/entDocs';
 import { loadMir, loadMirPhotos, markLabel, mirCheckLabel, mirPhotoBlob, mirState, mirsByMa, mirVerdictFor, type MirPhoto, type MirRow } from '@/lib/mir';
 import { maSheetHtml, mirSheetHtml, printHtml } from '@/lib/chanarSheets';
 import { syncNoots } from '@/lib/materialNoots';
+import { navDirtyLabels } from '@/lib/navGuard';
 import { AjilMatTab, NootsTab, type NootsSync } from './MaMaterial';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
@@ -114,16 +115,32 @@ export function Ma() {
    * ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ — MA + MIR батлагдсан материал нөөцөд АВТОМАТААР (`materialNoots.syncNoots`).
    *    Чанарын эрхтэй хүн (`canAttach` — ирүүлэгч эсвэл хянагч) хуудас нээхэд MA · MIR ачаалагдмагц нэг удаа;
    *    дахин `MA · MIR-ээс шинэчлэх`-ээр. Унасан ч MA харагдсаар (алдаа нөөцийн табд).
+   * ⚠️ 2026-10-21 (аудит №2): `mir_id` талбар алга/тохирохгүй бол lib ШИДЭХГҮЙ (`SyncResult.disabled`) — мэдэгдэл толгойд
+   *    НЭГ удаа (бүх табд), шинэчлэх товч нуугдана, MA · нөөцийн харагдац ажилласаар. Урьд нь алдаа гэж гарч нөөцийн боломж
+   *    бүхэлдээ ажиллахгүй мэт харагддаг байв. Сэргээлт — админ талбар нэмсний дараа хуудсыг дахин ачаална.
    */
   const [tab, setTab] = useState<'chain' | 'noots' | 'ajil'>('chain');
+  /**
+   * ⚠️ 2026-10-21 (аудит №2): ДОТООД ТАБ СОЛИХ ХАМГААЛАЛТ — «Ажлын материал»-ын ноорог (`AjilMatTab.draft`) табын дотоод
+   *    төлөв тул таб солиход unmount болж асуултгүй устдаг байв (`navGuard` нь зөвхөн харагдац солих · F5-д асуудаг).
+   *    `Guitsetgel.goTab` · `Portal.confirmLeave`-тэй ИЖИЛ асуулт; туг тавигдаагүй үед асуултгүй.
+   */
+  const goTab = (t: 'chain' | 'noots' | 'ajil') => {
+    if (t !== tab) {
+      const labels = navDirtyLabels();
+      if (labels.length
+        && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
+    }
+    setTab(t);
+  };
   const [nootsTick, setNootsTick] = useState(0);
   const [sync, setSync] = useState<NootsSync>({ state: 'idle' });
-  const canSync = canAttach && q.state === 'ready' && mirQ.state === 'ready';
+  const canSync = canAttach && q.state === 'ready' && mirQ.state === 'ready' && sync.state !== 'disabled';
   const runSync = useCallback(() => {
     if (q.state !== 'ready' || mirQ.state !== 'ready') return;
     setSync({ state: 'running' });
     syncNoots(q.data, mirQ.data)
-      .then((res) => setSync({ state: 'done', res }))
+      .then((res) => setSync(res.disabled ? { state: 'disabled', reason: res.disabled } : { state: 'done', res }))
       .catch((e) => setSync({ state: 'error', error: userError(e) }))
       .finally(() => setNootsTick((n) => n + 1));
   }, [q, mirQ]);
@@ -154,10 +171,14 @@ export function Ma() {
           </div>
         )}
         <div className={`${s.seg} ${s.tabs}`} role="group" aria-label={tr('Харагдац')}>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => setTab('chain')}>{tr('Баталгаажуулалт')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => setTab('noots')}>{tr('Материалын нөөц')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => setTab('ajil')}>{tr('Ажлын материал')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => goTab('chain')}>{tr('Баталгаажуулалт')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => goTab('noots')}>{tr('Материалын нөөц')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => goTab('ajil')}>{tr('Ажлын материал')}</button>
         </div>
+        {/* ⚠️ 2026-10-21 (аудит №2): автомат бүртгэл идэвхгүй (`mir_id`) — мэдэгдэл НЭГ удаа, бүх табд; MA харагдац ажилласаар */}
+        {sync.state === 'disabled' && (
+          <p className={s.failNote} role="status">{tr('Материалын нөөцийн автомат бүртгэл идэвхгүй: {0}', sync.reason)}</p>
+        )}
         {/* ⚠️ 2026-10-21: «Дахин оролдох» — урьд нь алдаа гарвал хуудсыг дахин ачаалахаас өөр зам байгаагүй */}
         {ent && fm.err && (
           <p className={s.errNote} role="alert">

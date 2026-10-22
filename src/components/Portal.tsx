@@ -166,9 +166,27 @@ const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.A
 });
 
 import s from '@/app/shell.module.css';
+/* ⚠️ 2026-10-21 (аудит): эрх хасагдсан харагдацын хаалтын цонх (`ViewLost`) — `AuthGate`-ийн цонхнуудтай нэг загвар */
+import a from '@/components/auth.module.css';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 
 /** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
 const EMPTY_BADGES: NavBadges = {};
+/**
+ * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ БИЧИЛТИЙН (`setNavDirty`-ийн `-send`/`-apply` түлхүүртэй) тугуудын нэрс — «Гүйцэтгэл
+ *    бөглөх»-ийн илгээлт (`fillnew-send`), «Гүйцэтгэлийн хяналт»-ын шийдвэр (`hyanalt-apply`), нэмэлт ажил буулгалт
+ *    (`ajil-apply`). `navGuard` түлхүүрийг гаргадаггүй тул НЭРЭЭР тулгана (дуудагч бүр ижил `tr()`-ээр өгдөг). Эрх хасагдсан
+ *    харагдацын товч (`setView` `force`) хадгалаагүй засварын асуултыг алгасдаг ч эдгээрийг АСУУСААР (`confirmLeave`-ийн
+ *    `busyOnly`). Шинэ ийм туг нэмбэл нэрийг энд нэмнэ — `portalLeave.check.mjs` эх кодоос тулгаж унагана.
+ */
+const navBusyLabels = (): string[] => {
+  const busy = new Set([
+    tr('Гүйцэтгэл илгээж байна'),
+    tr('Гүйцэтгэлийн шийдвэр хадгалж байна'),
+    tr('Нэмэлт ажлыг хуудсанд буулгаж байна'),
+  ]);
+  return navDirtyLabels().filter((l) => busy.has(l));
+};
 /**
  * «Хэсэгчилсэн ЕТ» (`hesegET`) — ХЭСЭГ БҮРИЙН газрын зургийн давхаргууд (2026-10-13, хэрэглэгчийн заавар).
  * ⚠️ Модулийн ТОГТМОЛ — `MapCanvas`-ийн эффектийг рендер бүрт дэмий эргүүлэхгүй.
@@ -764,27 +782,41 @@ function PortalContent(
   /* ⚠️ 2026-09-30: хамгаалалт ТУСДАА функц — харагдац солих, лого (нүүр рүү)
      ба «Гарах» ГУРВУУЛАА үүгээр явна. Урьд нь зөвхөн `setView`-д байсан тул
      лого эсвэл «Гарах» дарахад хадгалаагүй ажил асуултгүй алга болдог байв. */
-  const confirmLeave = useCallback((): boolean => {
+  /* ⚠️ 2026-10-21 (аудит): `reason` — асуултын ӨМНӨ яагаад гарах болсныг хэлнэ (эрх хасагдсан үед
+     урьд нь зөвхөн «Хадгалаагүй засвар байна. Гарах уу?» гарч, хэрэглэгч шалтгааныг мэдэхгүй
+     «Болих» дарж эрхгүй харагдацдаа үлддэг байв — доорх эрхийн хамгаалалтын ⚠️). */
+  const confirmLeave = useCallback((reason?: string, busyOnly = false): boolean => {
+    const ask = (msg: string) => window.confirm(reason ? `${reason}\n\n${msg}` : msg);
     if (planNavBusy()
-      && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
+      && !ask(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
+    /* ⚠️ 2026-10-22 (аудит): `busyOnly` (эрх хасагдсан цонхны товч — `setView`-ийн `force`) — ЗӨВХӨН ЯВЖ БУЙ бичилтийг
+       асууна: дээрх Хуваарийн гинж (`planNavBusy` — `Huvaari.tsx`-ийн «ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ» ⚠️) ба илгээлт/шийдвэр/
+       буулгалт (`navBusyLabels`). Хадгалаагүй засварын асуултууд (доор) алгасагдана — товч өөрөө «алдагдана» гэж хэлдэг
+       тул давхар асуухгүй (2026-10-21-ний шийдвэр хэвээр). Урьд нь `force` бүх асуултыг алгасаж модулийг бичилтийн
+       дундуур unmount хийдэг байв. */
+    if (busyOnly) {
+      const busyL = navBusyLabels();
+      return !busyL.length
+        || ask(tr('{0}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?', busyL.join(' · ')));
+    }
     /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
        хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
        байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
     if (finNavDirty()
-      && !window.confirm(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
+      && !ask(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
     /* ⚠️ 2026-09-30: ЕРӨНХИЙ хамгаалалт (`navGuard.setNavDirty`) — «Дэд бүтэц», «Газар»,
        «Зөвшөөрөл» зэрэг харагдацын засварын маягт урьд нь харагдац солих, лого,
        «Гарах»-д асуултгүй алга болдог байв. Шинэ харагдац энд юу ч засахгүйгээр нэмэгдэнэ. */
     const labels = navDirtyLabels();
     if (labels.length
-      && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
+      && !ask(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
     /* ⚠️ 2026-10-06 (аудит): дээрх гурван тугт ОРООГҮЙ модулиуд (QAQC-ийн хадгалаагүй нүд,
        `useDraftSync`, CashflowPlan …) — тэдний `beforeunload` сонсогчоос асууна
        (`LocaleToggle.hasUnsavedWork`-ийн ⚠️). Дээр аль хэдийн асууж зөвшөөрсөн бол ДАХИН
        асуухгүй (тэр модулиуд ч `beforeunload` бүртгэдэг тул давхар асуулт гарна). */
     const asked = planNavBusy() || finNavDirty() || labels.length > 0;
     if (!asked && hasUnsavedWork()
-      && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'))) return false;
+      && !ask(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'))) return false;
     return true;
   }, []);
   /**
@@ -848,14 +880,21 @@ function PortalContent(
     return () => { dead = true; off?.(); };
   }, []);
 
-  const setView = useCallback((v: ViewKey): boolean => {
+  /* ⚠️ 2026-10-21 (аудит): `opts.reason` — асуултын шалтгаан (`confirmLeave`-ийн ⚠️); `opts.force` — АСУУЛГҮЙ
+     шилжинэ: эрх хасагдсан харагдацын хаалтын цонхны товч (`ViewLost`) — хэрэглэгч шалтгааныг аль хэдийн
+     уншсан, хадгалаагүй ажил алдагдахыг товч өөрөө хэлдэг тул давхар асуулт гаргахгүй. */
+  const setView = useCallback((v: ViewKey, opts?: { reason?: string; force?: boolean }): boolean => {
     /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
        шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин
        дарах (`ViewRail`-ийн ⚠️ «жагсаалт хумигдана/дэлгэгдэнэ»), алгасах холбоосын `#` навигаци
        ба `Tuh`-ийн түүхийн бичлэг дээрх Back (popstate) хэрэглэгчийн ажлыг чимээгүй арилгадаг
        байв. Каталогийг сэлгэх нь ЗӨВХӨН цэсний даралтад (`railSelect`). */
     if (v === viewNowRef.current) return true;
-    if (!confirmLeave()) return false;
+    /* ⚠️ 2026-10-22 (аудит): `force` нь ЗӨВХӨН хадгалаагүй засварын асуултыг алгасна — явж буй бичилтийг (Хуваарийн
+       save→decidePlan гинж · гүйцэтгэлийн илгээлт/шийдвэр · нэмэлт ажил буулгалт) асуусаар (`confirmLeave`-ийн
+       `busyOnly`). Урьд нь `!opts?.force && …` нь БҮХ асуултыг алгасаж, бичилт явж байхад эрх хумигдаад «Болих»
+       дарсан хэрэглэгч цонхны товчоор модулийг гинжийн дундуур unmount хийдэг байв. */
+    if (!confirmLeave(opts?.reason, !!opts?.force)) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -1045,10 +1084,21 @@ function PortalContent(
          агуулгын түлхүүрээр тогтворжсон тул энэ эффект рендер бүрт дахин асуухгүй. */
       const from = VIEW_BY_KEY[view].title;
       const to = VIEW_BY_KEY[navScope[0]].title;
+      /* ⚠️ 2026-10-21 (аудит): асуултад ШАЛТГААНЫГ хэлнэ (`confirmLeave(reason)`). Татгалзвал («Болих» —
+         хадгалаагүй ажлаа алдахгүйн тулд) харагдац ҮЛДЭХ ч эрхгүй агуулга ХАРАГДАХГҮЙ: доорх `viewAllowed`
+         рендерийн хамгаалалт `ViewLost` хаалтын цонх гаргаж, порталыг `inert` болгоно (Root-ийн `frozen`-тэй
+         ижил зарчим — ажил нь амьд, эрх сэргэвэл цонх өөрөө хаагдана). */
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
-      if (setView(navScope[0])) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      if (setView(navScope[0], { reason: tr('Таны эрх өөрчлөгдсөн тул «{0}» харагдац хаагдана.', from) })) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
     }
   }, [navScope, view, setView]);
+  /**
+   * ⚠️ 2026-10-21 (аудит): РЕНДЕРИЙН ЭРХИЙН ХАМГААЛАЛТ. Дээрх эффект нь «Болих»-оор няцаагдах (хадгалаагүй
+   *    ажил) ба эффект ажиллах хүртэлх нэг кадрын аль алинд нь эрхгүй харагдац бүрэн зурагддаг байв. Одоо
+   *    `view` хүрээнд байхгүй л бол порталын агуулга `inert`, дээр нь `ViewLost` хаалтын цонх (шалтгаан +
+   *    хүрээний эхний харагдац руу АСУУЛГҮЙ шилжих товч). Эрх сэргэвэл (`navScope` дахин агуулна) цонх алга.
+   */
+  const viewAllowed = navScope === 'all' || navScope.includes(view);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
@@ -1208,6 +1258,8 @@ function PortalContent(
           Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
       <div
         className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel && !planDetail ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
+        /* ⚠️ 2026-10-21 (аудит): эрхгүй харагдац — агуулга `inert` (`viewAllowed`-ийн ⚠️, `ViewLost` дээр нь) */
+        inert={!viewAllowed}
         style={{
           '--panel': panelVar,
           '--catalog': `${catSize.width}px`,
@@ -1609,6 +1661,16 @@ function PortalContent(
         )}
       </div>
 
+      {/* ⚠️ 2026-10-21 (аудит): эрхгүй харагдацын хаалтын цонх (`viewAllowed`-ийн ⚠️) */}
+      {/* `!viewAllowed` нь `navScope`-ыг массив болгож нарийсгана (TS-ийн alias нарийсгалт) */}
+      {!viewAllowed && (
+        <ViewLost
+          from={VIEW_BY_KEY[view].title}
+          to={VIEW_BY_KEY[navScope[0]].title}
+          onGo={() => setView(navScope[0], { force: true })}
+        />
+      )}
+
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
       {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
           байх үед super admin панелаас буурвал нээлттэй цонх өөрөө хаагдана. */}
@@ -1659,6 +1721,35 @@ function PortalContent(
         </OverlayBoundary>
       )}
     </>
+  );
+}
+
+/* ── Эрх хасагдсан харагдацын хаалтын цонх ── */
+
+/**
+ * ⚠️ 2026-10-21 (аудит): эрх хасагдсан атлаа хадгалаагүй ажлаас болж («Болих») үлдсэн харагдацыг
+ * ХААНА — `AuthGate.AccessLost`-той ижил загвар (`auth.module.css`), фокусын урхитай (`useFocusTrap`).
+ * Агуулга нь ард `inert` — харагдахгүй, дарагдахгүй; эрх сэргэвэл Portal энэ цонхыг зурахаа болино.
+ * Товч нь `setView(…, { force: true })` — асуулгүй: хадгалаагүй ажил алдагдахыг товч өөрөө хэлнэ.
+ * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ бичилт (Хуваарийн гинж · илгээлт · шийдвэр · буулгалт) байвал товч АСУУНА
+ *    (`confirmLeave`-ийн `busyOnly`) — «Болих» бол бичилт дуустал цонх хэвээр, дараа нь дахин дарна.
+ * `role="alertdialog"` (`alert` БИШ — `Booting` нь `[role="alert"]`-ыг «харагдац унасан» гэж уншдаг).
+ */
+function ViewLost({ from, to, onGo }: { from: string; to: string; onGo: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  return (
+    <div ref={ref} className={`${a.screen} ${a.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-view-lost">
+      <div className={a.card}>
+        <div className={a.title} id="selbe-view-lost">{tr('«{0}» харагдацын эрх хасагдлаа', from)}</div>
+        <p className={a.sub}>
+          {tr('Таны эрх өөрчлөгдсөн тул энэ харагдац хаагдах ёстой. Хадгалаагүй ажил байгаа тул одоогоор хаагаагүй — эрх сэргээгдвэл энэ цонх өөрөө хаагдаж, ажил тань хэвээр үлдэнэ.')}
+        </p>
+        <button type="button" className={a.btn} onClick={onGo}>
+          {tr('«{0}» руу шилжих — хадгалаагүй ажил алдагдана', to)}
+        </button>
+      </div>
+    </div>
   );
 }
 

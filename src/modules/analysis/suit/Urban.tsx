@@ -10,7 +10,7 @@ import {
 import { scoreTone, clamp, passesNorm, patchNorm } from '@/lib/analysis/score';
 import { Donut, useTip } from '@/components/ui';
 import { pct as fmtPct } from '@/lib/format';
-import { nf, normLine } from './format';
+import { nf, normLine, zoneTypeLabel } from './format';
 import type { LocationPt } from '@/lib/analysis/data';
 import type { Row } from './model';
 import s from '../suitability.module.css';
@@ -302,7 +302,8 @@ export function Weights({
               <div className={s.wTypes}>
                 {Object.entries(DENSITY_BY_TYPE).map(([t, v]) => (
                   <div key={t}>
-                    <span>{t}</span>
+                    {/* ⚠️ 2026-10-22 (аудит): түлхүүр нь каноник нэр — орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
+                    <span>{zoneTypeLabel(t)}</span>
                     <b>≤ {nf(v[i.byType!], i.decimals)}{i.unit ? ` ${i.unit}` : ''}</b>
                   </div>
                 ))}

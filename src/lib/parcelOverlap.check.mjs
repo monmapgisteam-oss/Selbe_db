@@ -185,4 +185,23 @@ await ok('эхний хэсэг гадна, 2-р хэсэг эх полигон 
   assert.deepEqual(r2.oids, [140]);
 });
 
+console.log('\n8. Нэгж талбарын засвар (`PARCEL_LEFT`) — эх геометр кэшээс, огтлолцол дахин (2026-10-21)');
+await ok('invalidate(PARCEL_LEFT): геометрийн хүсэлт 0, огтлолцол дахин явж үр дүн ижил', async () => {
+  const { invalidate } = await import('./dataBus.ts');
+  const G = await import('./parcelOverlap.ts?parcelEdit');
+  const srcs = [[{ layerId: BLD, where: 'OBJECTID IN (1,2)' }], [{ layerId: infraIds[0], where: null }], [{ layerId: infraIds[1], where: null }]];
+  const r1 = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  calls = 0;
+  const same = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  assert.equal(calls, 0, 'ижил дуудлага үр дүнгийн кэшээс');
+  const g0 = kinds.geom;
+  const i0 = kinds.intersect;
+  invalidate('PARCEL_LEFT');
+  const r2 = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  assert.equal(kinds.geom, g0, 'эх давхаргын геометр ДАХИН татагдав — нэгж талбарын засвар эх геометрийг өөрчилдөггүй');
+  assert.ok(kinds.intersect > i0, 'огтлолцол дахин асуугдах ёстой (үр дүнгийн кэш хаягдана)');
+  assert.deepEqual(r2.map((r) => r.oids), r1.map((r) => r.oids));
+  assert.deepEqual(same.map((r) => r.oids), r1.map((r) => r.oids));
+});
+
 console.log(`\n${n} шалгалт ✓`);

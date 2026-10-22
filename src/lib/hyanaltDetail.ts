@@ -205,6 +205,11 @@ export type Submission = {
    *    > 0 бол хянагчийн жагсаалтад тэдгээр нүд харагдахгүй — батлахад архивлалт ил зогсоно.
    */
   unmoved?: number;
+  /**
+   * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо (`Overlay.negative`) — жагсаалтад 0-оор
+   *    хаасан утга харагдах ч батлахад архивлалт ил зогсоно (`hyanaltStore.archiveSubmission`).
+   */
+  negative?: number;
 };
 
 /**
@@ -509,6 +514,7 @@ async function loadStaged(
     subAt: pl.at,
     remapped: ov.remapped,
     unmoved: ov.unmoved,
+    negative: ov.negative,
   };
 }
 

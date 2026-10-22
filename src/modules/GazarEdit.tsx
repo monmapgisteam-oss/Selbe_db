@@ -225,7 +225,8 @@ export function GazarEdit({
                 <dt>{tr('Кадастрын дугаар')}</dt>
                 <dd>{before.parcelNo || '—'}</dd>
                 <dt>{tr('Талбай')}</dt>
-                <dd>{before.areaM2 == null ? '—' : `${num(before.areaM2)} м²`}</dd>
+                {/* ⚠️ 2026-10-21 (аудит): нэгж tr()-ээр — англи горимд «1,234 м²» үлддэг байв (ViewPanel-тэй ижил `{0} м²`) */}
+                <dd>{before.areaM2 == null ? '—' : tr('{0} м²', num(before.areaM2))}</dd>
                 {/* ⚠️ 2026-10-01: ArcGIS Editor Tracking — давхаргад асаалттай үед л
                     (`parcelEdit.loadEditFields`). Утга алга бол мөр ОГТ гарахгүй:
                     «—» нь «хэн ч засаагүй» гэж худал уншигдана. Зөвхөн СҮҮЛИЙН

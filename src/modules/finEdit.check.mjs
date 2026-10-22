@@ -76,8 +76,8 @@ check('хувь БИШ талбарт «8,333» → тодорхойгүй (2026
   const calls = [...fin.matchAll(/[:=]\s*parseCell\(v, typeOf\(fld\), labelOf\(fld\)([^)]*)\)/g)];
   check('Finance нийтлэлийн parseCell 2 газар хоёулаа isPctField дамжуулна',
     calls.length === 2 && calls.every((m) => /,\s*isPctField\(fld$/.test(m[1])));
-  check('isPctField нь Cashflow_huwi ба FIN_XL_PCT-г хамарна',
-    /const isPctField = \(f: string\): boolean => f === 'Cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\)/.test(fin));
+  check('isPctField нь Cashflow_huwi · FIN_XL_PCT · FIN_XL_FRACTION-г хамарна',
+    /const isPctField = \(f: string\): boolean => f === 'Cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\) \|\| FIN_XL_FRACTION\.includes\(f\);/.test(fin));
 }
 
 console.log('\n3. БУРУУ утга — ЧИМЭЭГҮЙ 0 болгохгүй, алдаа шиднэ');
@@ -150,16 +150,16 @@ console.log('\nXI. Хуучин санхүүгийн ноорог — хувий
   const legacy = { pend: { [key]: '0.09', '7:ho_dun_geree': '1234' }, adds: [{ [share]: '0.09', name: 'old' }], at: 123 };
   const before = JSON.stringify(legacy);
   const migrated = upgradeFinanceDraft(legacy, share);
-  check('хуучин pend 0.09 → 9', migrated.v === 2 && migrated.pend[key] === '9');
+  check('хуучин pend 0.09 → 9', migrated.v === 3 && migrated.pend[key] === '9');
   check('хуучин adds 0.09 → 9', migrated.adds[0][share] === '9');
   check('сэргээгдсэн pend дахин нийтлэхэд 0.09 хэвээр', parseFinanceShare(migrated.pend[key], D, share) === 0.09);
   check('сэргээгдсэн adds дахин нийтлэхэд 0.09 хэвээр', parseFinanceShare(migrated.adds[0][share], D, share) === 0.09);
   check('бусад талбар/агшин ба эх ноорог өөрчлөгдөөгүй', migrated.pend['7:ho_dun_geree'] === '1234'
     && migrated.adds[0].name === 'old' && migrated.at === 123 && JSON.stringify(legacy) === before);
-  check('v2 ноорог дахин үржигдэхгүй', upgradeFinanceDraft(migrated, share) === migrated);
+  check('v3 ноорог дахин үржигдэхгүй', upgradeFinanceDraft(migrated, share) === migrated);
   const current = { v: 2, pend: { [key]: '9' }, adds: [], at: 0 };
-  check('шинэ v2 хувийн 9 хэвээр', upgradeFinanceDraft(current, share).pend[key] === '9');
-  const future = { ...current, v: 3 };
+  check('v2 хувийн 9 хэвээр (v3 болно, дахин үржихгүй)', upgradeFinanceDraft(current, share).pend[key] === '9' && upgradeFinanceDraft(current, share).v === 3);
+  const future = { ...current, v: 4 };
   check('танихгүй хувилбарыг сэргээхгүй, эх утгыг хадгална', upgradeFinanceDraft(future, share) === null && future.pend[key] === '9');
   for (const [text, expected] of [['0,09', '9'], ['0,125', '12.5'], ['0.07', '7'], ['', ''], ['   ', '   '], ['0', '0']]) {
     const draft = upgradeFinanceDraft({ pend: { [key]: text }, adds: [{ [share]: text }], at: 0 }, share);
@@ -179,12 +179,27 @@ console.log('\nXI. Хуучин санхүүгийн ноорог — хувий
   const overflow = upgradeFinanceDraft({ pend: { [key]: '1e308' }, adds: [], at: 0 }, share);
   check('×100 overflow эх текстийг Infinity болгож алдахгүй', overflow.pend[key] === '1e308');
   assert.throws(() => parseFinanceShare(overflow.pend[key], D, share, overflow.legacyShareInvalid), /0–100/);
+
+  /* ⚠️ 2026-10-21 (аудит): v3 — `FIN_XL_FRACTION` (хувь + `urdchilgaa_huvi`) бүгд ×100 нэгжээр; v2-д зөвхөн хувь ×100 байсан */
+  const adv = 'urdchilgaa_huvi';
+  const FR = [share, adv];
+  const v2 = { v: 2, pend: { [key]: '9', [`7:${adv}`]: '0.2', '7:ho_dun_geree': '5' }, adds: [{ [share]: '9', [adv]: '0.164' }], at: 5, legacyShareInvalid: ['bad'] };
+  const v3 = upgradeFinanceDraft(v2, share, FR);
+  check('v2 → v3: urdchilgaa_huvi 0.2 → 20, хувь 9 ХЭВЭЭР (дахин үржихгүй), бусад талбар хэвээр',
+    v3.v === 3 && v3.pend[`7:${adv}`] === '20' && v3.pend[key] === '9' && v3.pend['7:ho_dun_geree'] === '5');
+  check('v2 → v3: adds 0.164 → 16.4, хувь 9 хэвээр, хуучин алдааны тэмдэг хадгалагдана',
+    v3.adds[0][adv] === '16.4' && v3.adds[0][share] === '9' && v3.legacyShareInvalid.includes('bad'));
+  check('v3 ноорог дахин үржигдэхгүй', upgradeFinanceDraft(v3, share, FR) === v3);
+  const v0 = upgradeFinanceDraft({ pend: { [key]: '0.09', [`7:${adv}`]: '0,2' }, adds: [], at: 0 }, share, FR);
+  check('хувилбаргүй ноорог: хувь 0.09 → 9, urdchilgaa_huvi «0,2» → 20', v0.v === 3 && v0.pend[key] === '9' && v0.pend[`7:${adv}`] === '20');
+  check('сэргээгдсэн urdchilgaa_huvi 20 дахин нийтлэхэд 0.2 (÷100)', parseFinanceShare(v3.pend[`7:${adv}`], D, adv) === 0.2);
+  check('fractionFields-гүй дуудлага хувийг л үржүүлнэ', upgradeFinanceDraft({ pend: { [`7:${adv}`]: '0.2' }, adds: [], at: 0 }, share).pend[`7:${adv}`] === '0.2');
 }
 {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  check('Finance v2 ноорог бичиж, сэргээхэд хувилбарыг шалгана', src.includes('JSON.stringify({ v: 2, pend, adds,')
-    && src.includes('upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share)'));
+  check('Finance v3 ноорог бичиж, сэргээхэд FIN_XL_FRACTION-аар шалгана', src.includes('JSON.stringify({ v: 3, pend, adds,')
+    && src.includes('upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share, FIN_XL_FRACTION)'));
   check('pend ба adds хоёул хуучин алдааны тэмдэгтэй хувийг шалгана',
     (src.match(/parseFinanceShare\(v, typeOf\(fld\), labelOf\(fld\), legacyShareInvalidRef\.current, PARSE_MSG\)/g) ?? []).length === 2);
 }
