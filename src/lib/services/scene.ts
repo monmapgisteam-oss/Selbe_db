@@ -702,6 +702,43 @@ export const HABEA = {
       get title() { return tr('Захиалагчийн ажлын байрны үзлэг'); },
       url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
     },
+    /* ⚠️ 2026-10-21: 8 ШИНЭ МАЯГТ (хэрэглэгчийн жагсаалт) — `HABEA_SVC.uz*`-ийн ⚠️. Зургаа нь (cold · fire · autocrane ·
+       pump · gondola · tower) V1.1-тэй ЯГ ижил бүтэцтэй (major/minor/obs/conf домэйн · cnt_* · sc_all_earned/appl);
+       env ба hazard-ын зөрүүг доорх `fieldsBy` зохицуулна. Гарчиг нь геопорталын item-ийн нэр ЯГ. */
+    env: {
+      get title() { return tr('Байгаль орчны үзлэг'); },
+      url: `${HABEA_SVC.uzEnv}/FeatureServer/0`,
+    },
+    cold: {
+      get title() { return tr('Барилгын талбайн хүйтний үеийн түр зогсолтын бэлтгэл ажлын үзлэг шалгалт'); },
+      url: `${HABEA_SVC.uzCold}/FeatureServer/0`,
+    },
+    fire: {
+      get title() { return tr('ХАБЭАБО-н Ажлын байрны галын аюулгүй байдлын үзлэг - Барилгын талбай'); },
+      url: `${HABEA_SVC.uzFire}/FeatureServer/0`,
+    },
+    hazard: {
+      get title() { return tr('ХАБЭАБО-н Аюулыг илрүүлэх үзлэг - Барилгын талбай'); },
+      url: `${HABEA_SVC.uzHazard}/FeatureServer/0`,
+    },
+    autocrane: {
+      get title() { return tr('ХАБЭАБО-н Барилгын автокран шалгалт'); },
+      url: `${HABEA_SVC.uzAutocrane}/FeatureServer/0`,
+    },
+    pump: {
+      get title() { return tr('ХАБЭАБО-н Барилгын автопомп шалгалт'); },
+      url: `${HABEA_SVC.uzPump}/FeatureServer/0`,
+    },
+    gondola: {
+      get title() { return tr('ХАБЭАБО-н Барилгын люльк буюу дүүжинт өргүүрийн шалгалт'); },
+      url: `${HABEA_SVC.uzGondola}/FeatureServer/0`,
+    },
+    tower: {
+      get title() { return tr('ХАБЭАБО-н Барилгын цамхагт кран шалгалт'); },
+      url: `${HABEA_SVC.uzTower}/FeatureServer/0`,
+    },
+    /** «Аюулыг илрүүлэх үзлэг»-ийн илрүүлэлтийн ХҮСНЭГТ (`findings`, `parentrowid` → эцгийн `uniquerowid`) — тайланд */
+    hazardFindingsUrl: `${HABEA_SVC.uzHazard}/FeatureServer/1`,
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
       site: 'site', siteOther: 'site_other',
@@ -719,6 +756,19 @@ export const HABEA = {
        * долоо хоногийн оноог `Σ earned / Σ appl`-аар жигнэж бодно.
        */
       scEarned: 'sc_all_earned', scAppl: 'sc_all_appl',
+    },
+    /**
+     * ⚠️ 2026-10-21: МАЯГТ БҮРИЙН ТАЛБАРЫН ЗӨРҮҮ — `fields`-ийн ДЭЭР давхарлана (`habeaUzleg.fieldsOf`).
+     *    Хоосон мөр ('') = тэр талбар ЭНЭ маягтад БАЙХГҮЙ: тоонд орохгүй, «талбар дутуу» гэж сануулахгүй, оноо null.
+     *    · env (Байгаль орчны үзлэг): асуулт тийм/үгүй/хамааралгүй — `cnt_ok` (нийцсэн) · `cnt_nc` (үл нийцэл) · `cnt_na`;
+     *      авсан/боломжит онооны талбаргүй (зөвхөн `sc_all` хувь — хэрэглэхгүй, дээрх ⚠️).
+     *    · hazard (Аюулыг илрүүлэх үзлэг): асуултгүй — илрүүлэлт ТҮВШНЭЭР: `cnt_high` · `cnt_medium` · `cnt_low` ·
+     *      `cnt_fixed` (талбайд зассан) · `cnt_obs` (ажиглалт). Зэргийн ТҮЛХҮҮР (major…na) нь өнгөний дараалал л;
+     *      дэлгэцийн нэрс `habeaUzleg.SEV_LABELS`-д маягтаар.
+     */
+    fieldsBy: {
+      env: { major: 'cnt_nc', minor: '', obs: '', conf: 'cnt_ok', na: 'cnt_na', scEarned: '', scAppl: '' },
+      hazard: { major: 'cnt_high', minor: 'cnt_medium', obs: 'cnt_low', conf: 'cnt_fixed', na: 'cnt_obs', scEarned: '', scAppl: '' },
     },
   },
 } as const;

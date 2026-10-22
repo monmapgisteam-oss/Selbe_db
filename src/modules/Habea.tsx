@@ -37,7 +37,7 @@ import { usePlanTotals } from '@/lib/totals';
 /* ⚠️ 2026-10-09: ӨДРИЙН ТҮЛХҮҮР — Улаанбаатарын хуанли (`ubDayKey`), хөтчийн локал `dayKey` БИШ.
    CEO самбарын хүн хүч (`ceo/workforce`) UB-ээр огтолдог тул гадаад цагийн бүсэд нээхэд
    энэ хуудасны өдөр/сар (цуваа, `incPass`, `uzPass`) нэг өдрөөр гулсдаг байв. */
-import { latestRowPerDay, companyReported, laborStaleness, ubDayKey } from '@/lib/ceo/workforce';
+import { latestRowPerDay, companyReported, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours } from './habeaRate';
 /* ⚠️ 2026-10-21 (аудит): Монгол · Гадаад задаргаа `habeaMix.ts`-д (цэвэр, шалгууртай) — нэг компани задаргаа
@@ -51,7 +51,7 @@ import {
   habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByPkg, ScoreColumns, scoreColor, weekNcByPkg, UzSrcHead, stepNote,
   UzlegPhotos, AttPhoto, inSel,
   SERIES_VISIBLE,
-  type UzlegKind, type UzDim,
+  UZLEG_SHORT, type UzlegKind, type UzDim,
 } from './habeaUzleg';
 import { MultiSelect } from '@/components/MultiSelect';
 import { DateRangePill } from '@/components/DateRangePill';
@@ -823,7 +823,8 @@ function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [stri
  * тэдгээрийг ЗААВАЛ татах хэрэгтэй болно — залхуу ачаалалтын утга алдагдана.
  */
 const FOCUS_CHIPS: {
-  key: 'inc' | 'labor' | 'v11' | 'guitsetgegch';
+  /* ⚠️ 2026-10-21: захиалагчийн маягт `v11` фокусын баруун тал (`dual`) тул тусдаа чип биш */
+  key: 'inc' | 'labor' | Exclude<UzlegKind, 'zahialagch'>;
   label: () => string;
   count: (inc: number) => number | null;
 }[] = [
@@ -834,6 +835,16 @@ const FOCUS_CHIPS: {
      зүүн талд V1.1, баруун талд захиалагчийн шинэ маягт (`dual`). */
   { key: 'v11', label: () => tr('Захиалагчийн ажлын байрны үзлэг'), count: () => null },
   { key: 'guitsetgegch', label: () => tr('Гүйцэтгэгчийн ажлын байрны үзлэг'), count: () => null },
+  /* ⚠️ 2026-10-21 (хэрэглэгч): 8 шинэ Survey123 маягт (`HABEA.uzleg`-ийн ⚠️) — чипэнд БОГИНО нэр, бүтэн нэр
+     нь `HABEA.uzleg[kind].title` (тайлан татах цонх, давхарга). Залхуу ачаалалт хэвээр (тоо байхгүй). */
+  { key: 'env', label: UZLEG_SHORT.env, count: () => null },
+  { key: 'cold', label: UZLEG_SHORT.cold, count: () => null },
+  { key: 'fire', label: UZLEG_SHORT.fire, count: () => null },
+  { key: 'hazard', label: UZLEG_SHORT.hazard, count: () => null },
+  { key: 'autocrane', label: UZLEG_SHORT.autocrane, count: () => null },
+  { key: 'pump', label: UZLEG_SHORT.pump, count: () => null },
+  { key: 'gondola', label: UZLEG_SHORT.gondola, count: () => null },
+  { key: 'tower', label: UZLEG_SHORT.tower, count: () => null },
 ];
 
 /* ⚠️ Цувааны харагдах үеийн тоо `SERIES_VISIBLE` (=7) — `habeaUzleg`-ээс, НЭГ эх сурвалж. */
@@ -1093,7 +1104,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * краны багана нуугдахад. Энэ нь давхардал БИШ: анхны харагдац бол
    * «бүх зүйлийн тойм», фокус бол «зөвхөн хүн хүч».
    */
-  type Focus = 'inc' | 'labor' | 'v11' | 'guitsetgegch' | null;
+  type Focus = 'inc' | 'labor' | Exclude<UzlegKind, 'zahialagch'> | null;
   const [focus, setFocus] = useState<Focus>(null);
 
   /** Ослын чартууд нээлттэй эсэх — олон газар шалгагддаг тул тусад нь */
@@ -1110,7 +1121,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const laborOpen = focus === null || laborFocus;
   const uzlegKind: UzlegKind | null =
-    focus === 'v11' || focus === 'guitsetgegch' ? focus : null;
+    /* ⚠️ 2026-10-21: осол, хүн хүчнээс бусад фокус БҮГД үзлэгийн маягт (8 шинэ маягт нэмэгдэв) */
+    focus && focus !== 'inc' && focus !== 'labor' ? focus : null;
   /* ⚠️ Залхуу ачаалалт: фокус үзлэг рүү орсон үед л татна */
   const uz = useUzleg(uzlegKind);
   /**
@@ -1441,9 +1453,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      «oid 5» аль маягтынх болохыг ДАВХАРГААР нь ялгана, эс бөгөөс V1.1-ийн
      цэг дарахад захиалагчийн маягтын 5-р үзлэг шүүгдэнэ. */
   const pickUzZ = picked?.id === HABEA_UZLEG_LAYER_ID.zahialagch;
-  const pickUzOid = picked
-    && (picked.id === HABEA_UZLEG_LAYER_ID.v11 || picked.id === HABEA_UZLEG_LAYER_ID.guitsetgegch
-      || pickUzZ)
+  /* ⚠️ 2026-10-21: үзлэгийн АЛЬ Ч давхарга (11 маягт) — `HABEA_UZLEG_LAYER_ID`-ийн утгаар */
+  const pickUzOid = picked && (Object.values(HABEA_UZLEG_LAYER_ID) as string[]).includes(picked.id)
     ? nn(picked.attrs['objectid'])
     : 0;
   const pickSrc = pickUzZ ? uz2 : uz;
@@ -2075,21 +2086,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             захиалагч шийдсэн — тоог өөрчлөхөөс өмнө үүнийг мэд.
 
             Толгойн талбар компаниар задардаггүй тул шүүлт идэвхтэй үед «—». */}
-        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Сүүлийн тайлан: {огноо}» + хуучирсан
-            анхааруулга (`ceo/workforce.laborStaleness` — CEO самбарын `WORKFORCE_STALE_DAYS`
-            босготой НЭГ). Урьд нь тайлан хэдэн өдөр зогссон ч KPI хэвээр «шинэ» харагддаг байв. */}
-        {((st) => kpiTile(KPI_LOOK.people,
+        {/* ⚠️ 2026-10-21 (хэрэглэгч: «энэ байгаад байх шаардлагагүй»): «Сүүлийн тайлан: {огноо} · N хоног
+            шинэчлэгдээгүй» анхааруулга (2026-10-01-нд нэмэгдсэн, `laborStaleness`) KPI-гаас ХАСАГДАВ — тайлангийн
+            хуучралтыг CEO самбар (`WORKFORCE_STALE_DAYS`) хэвээр харуулна. Урьд нь 2026-10-08-нд ердийн огнооны мөр
+            хасагдаж зөвхөн анхааруулга үлдсэн байв. */}
+        {kpiTile(KPI_LOOK.people,
           laborFailed || pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
           tr('Нийт ажилласан хүн хүч'),
-          undefined,
-          /* ⚠️ 2026-10-08 (хэрэглэгч): ердийн «Сүүлийн тайлан: огноо» мөр ХАСАГДАВ. Тайлан
-             ХУУЧИРСАН үед л анхааруулга гарна — эс бөгөөс зогссон тайланг «шинэ» гэж уншина. */
-          labor.asOf == null || !st.stale
-            ? undefined
-            : tr('Сүүлийн тайлан: {0} · {1} хоног шинэчлэгдээгүй', date(labor.asOf), num(st.days ?? 0)),
-          undefined,
-          st.stale,
-        ))(laborStaleness(labor.asOf, now))}
+        )}
         {kpiTile(KPI_LOOK.hours,
           /* ⚠️ 2026-10-21: хүн хүч эсвэл осол татагдаагүй бол «—» (хоосон эхээс 0 / «бүх цаг осолгүй» гэж уншихгүй) */
           laborFailed || incFailed || pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),

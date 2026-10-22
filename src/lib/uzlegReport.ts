@@ -109,6 +109,9 @@ export function ansCls(code: unknown, label: unknown): AnsCls {
   if (/minor|бага зэрг/.test(t)) return 'minor';
   if (/observ|ажиглалт/.test(t)) return 'obs';
   if (/\bn\/?a\b|хамааралгүй|not applicable/.test(t)) return 'na';
+  /* ⚠️ 2026-10-21: тийм/үгүй маягт («Байгаль орчны үзлэг») — «Тийм» = нийцсэн, «Үгүй» = үл нийцэл (улаан, тоололд major) */
+  if (/^yes\b|\bтийм\b/.test(t)) return 'conf';
+  if (/^no\b|\bүгүй\b/.test(t)) return 'major';
   if (/conform|нийцсэн/.test(t)) return 'conf';
   return 'other';
 }
@@ -233,7 +236,11 @@ export function buildUzReport(
   oid: number,
   atts: UzAttachment[],
   photoUrl: (attId: number) => string,
-  meta: { pkg: string; company: string; date: number; formShort?: string; location?: string },
+  meta: {
+    pkg: string; company: string; date: number; formShort?: string; location?: string;
+    /** ⚠️ 2026-10-21: асуултын хэсгүүдийн ДАРАА нэмэх бэлэн хэсгүүд (жиш. аюулыг илрүүлэх үзлэгийн илрүүлэлтийн хүснэгт) */
+    extra?: UzSection[];
+  },
 ): UzReport {
   const byName = new Map(fields.map((f) => [f.name, f]));
   const answers = fields.filter((f) => isAnswerDomain(f.dom));
@@ -390,7 +397,7 @@ export function buildUzReport(
       na: cnt('na') ?? tally('na'),
     },
     header,
-    sections: sections.filter((s) => s.items.length),
+    sections: [...sections.filter((s) => s.items.length), ...(meta.extra ?? [])],
     summary,
     signatures,
     extraPhotos,

@@ -473,6 +473,9 @@ export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:bu
  */
 export const HABEA_UZLEG_LAYER_ID = {
   v11: "habea:uzV11", guitsetgegch: "habea:uzG", zahialagch: "habea:uzZ",
+  /* ⚠️ 2026-10-21: 8 шинэ маягт (`HABEA.uzleg`-ийн ⚠️) — маягт бүрт нэг давхарга */
+  env: "habea:uzEnv", cold: "habea:uzCold", fire: "habea:uzFire", hazard: "habea:uzHazard",
+  autocrane: "habea:uzAutocrane", pump: "habea:uzPump", gondola: "habea:uzGondola", tower: "habea:uzTower",
 } as const;
 
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */

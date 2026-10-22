@@ -71,6 +71,20 @@ export const HABEA_SVC = {
   /* ⚠️ 2026-10-20: хувьсагч (`NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC`) хасагдсан — Enterprise-ийн «Захиалагчийн ажлын байрны
      үзлэг 2026» үйлчилгээ шууд (амьд жагсаалт: `service_b56e…`; хэрэглэгчид хуваалцаагүй бол 499/403 — геопорталаас хуваалцана). */
   uzlegZahialagch: `${ENT_HOSTED}/service_b56e0aa028f0441bb49ed6c40e381012`,
+  /* ⚠️ 2026-10-21 (хэрэглэгч: 8 шинэ үзлэгийн маягт — ХАБЭА «Мэдээлэл» ба тайлан татах). Enterprise геопорталын амьд
+     жагсаалтаас (API key-ээр, 2026-10-21): маягт бүр 4 үйлчилгээтэй — `survey123_<id>` (ХООСОН 6 талбартай загвар),
+     `service_<id>` (ЖИНХЭНЭ өгөгдөл, `hse_*` давхарга · 145–382 талбар), `_form` ба `_results` (эрхгүй 403).
+     ЗӨВХӨН `service_<id>`-г уншина. Толгойн талбарууд (site · company · inspector · insp_datetime · week · shift ·
+     cnt_* · sc_all_*) бүгдэд ижил; Байгаль орчны (yes/no, cnt_ok/cnt_nc) ба Аюулыг илрүүлэх (асуултгүй, /1 findings)
+     хоёр нь зөрүүтэй — `HABEA.uzleg.fieldsBy`. */
+  uzEnv: `${ENT_HOSTED}/service_985b2ec629f5480a8d0e071ef51211b8`,
+  uzCold: `${ENT_HOSTED}/service_50331e94f21e4ebca3ed9971bc6d3a42`,
+  uzFire: `${ENT_HOSTED}/service_53db3f2e7b034167a25851ca62402d44`,
+  uzHazard: `${ENT_HOSTED}/service_00dfa6d8bb0f4920bb13364411bb068e`,
+  uzAutocrane: `${ENT_HOSTED}/service_4d63bab70b8849abb20eb2b8917b948f`,
+  uzPump: `${ENT_HOSTED}/service_72a6df0a2e214c10bab574893cf5ca22`,
+  uzGondola: `${ENT_HOSTED}/service_0cf2eaedd0374eca8cca2f59cb22b95e`,
+  uzTower: `${ENT_HOSTED}/service_c802687a7d1e4cc781a79cfcaf9d7812`,
 } as const;
 
 /**
