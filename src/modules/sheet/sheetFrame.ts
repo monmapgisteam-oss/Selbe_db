@@ -16,7 +16,7 @@
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, cellPct, computeAll, dayToMs, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -463,7 +463,8 @@ export function moveKeys(
 export type Overlay = {
   /** Суурь мөрүүдийн ХУУЛБАР (+ нэмсэн мөр) дээр илгээлтийн утга бичигдсэн */
   rows: SheetRow[];
-  /** Илгээлтийн «Шинэчлэгдсэн огноо» — өөрчлөөгүй бол `null` */
+  /** Илгээлтийн «Шинэчлэгдсэн огноо» — өөрчлөөгүй бол `null`.
+   *  ⚠️ 2026-10-22 (аудит): архивт БИЧИХ/хянагчид ХАРУУЛАХ огноо нь `laterAsOf(asOf, архивынх)` — шууд биш (ухрахгүй). */
   asOf: number | null;
   /** Мөрөнд БУУСАН нүдний түлхүүрүүд (`${oid}:${b}`, oid = `rows`-ийнх) */
   cellKeys: string[];
@@ -527,6 +528,105 @@ export function describeNegCells(
   });
   if (keys.length > out.length) out.push(`… +${keys.length - out.length}`);
   return out;
+}
+
+/** ⚠️ 2026-10-22 (аудит): сөрөг нийтийн хүлцэл — `incCell.below`-ийн доод хязгаар (сөрөг нүдний жинхэнэ утга < −1e-9) */
+const NEG_EPS = 1e-9;
+
+/**
+ * ДАВХАРЛАСАН МӨРИЙН НҮД НИЙТ СӨРӨГ ҮҮ (⚠️ 2026-10-22, аудит).
+ * `overlaySubmission` зөвхөн `incCell.neg` нүдэнд ЖИНХЭНЭ (сөрөг) нийт буулгадаг, бусад нь ≥ 0-оор хаагдсан тул мөрийн
+ * утгаас шууд таньна — хянагчийн (`hyanaltDetail` → `Change.neg`) ба гүйцэтгэгчийн (`FillNew.backOkRes` · `FillRows`) хоёр
+ * тал НЭГ дүрмээр. Түр (нэмсэн) мөрийн alias-тай түлхүүрт ч ажиллана (`negKeys` нь ЭХ түлхүүртэй).
+ */
+export function negTotalAt(r: Pick<SheetRow, "obyem" | "act">, b: number): boolean {
+  return (r.obyem[b] ?? 0) < -NEG_EPS || (r.act[b] ?? 0) < -NEG_EPS;
+}
+
+/**
+ * НИЙТИЙГ 0 БОЛГОХ УТГА — гүйцэтгэгч тэр нүдэнд ЯГ юу бичих вэ (⚠️ 2026-10-22, аудит).
+ *
+ * ⚠️ ЯАГААД: «хасалтаа устгаж хоосон үлдээнэ үү» гэсэн зөвлөгөө БУЦААГДСАН илгээлтэд БУРУУ — `mergeSubmission` шинэ
+ *    нэмэлтийг өмнө илгээсэн дээр НЭМДЭГ тул нүдийг хоосон болгоход өмнөх −0.0017 хэвээр үлдэнэ; эсрэг тоог (+0.0017)
+ *    бичих ёстой. Хуудас 3 оронтой харуулдаг (−0.0017 → «−0.002») тул харагдсан тоог бичвэл 0 болохгүй — БҮТЭН
+ *    нарийвчлалаар (`fmtInc`, 12 орон) өгнө. Бичсэн тоо нь тэр нүдний ноорогийг ОРЛОНО (`useCellEdit.commit`).
+ * @param excl нүдний нийт ЭНЭ НООРОГИЙН нэмэлтгүйгээр (= суурь + өмнө илгээсэн) — обьём, `pct` бол 0–1 бутархай
+ * @returns бичих тоо (ASCII «-» — нүдэнд шууд бичигдэнэ; `pct` бол «…%»); `""` — ноорогүйгээр нийт 0 → нүдийг хоосон болгоно
+ */
+export function negFixText(excl: number, pct = false): string {
+  const need = -excl;
+  if (Math.abs(need) <= NEG_EPS) return "";
+  return pct ? `${fmtInc({ n: need * 100, p: 0 })}%` : fmtInc({ n: need, p: 0 });
+}
+
+/**
+ * ДАВХАРЛАСАН МӨРИЙН СӨРӨГ НҮДЭНД бичих утга (`negFixText`) — `r` нь ноорогийн нэмэлт ОРСОН нийттэй (`overlaySubmission`-ийн
+ * илгээх/илгээсэн payload), `draft` нь тэр нүдний ноорог (байхгүй бол — дахин илгээх, буцаагдсан нүд). ⚠️ 2026-10-22 (аудит).
+ * `null` — ерөнхий текст: хувийн хэсэг сөрөг (обьёмын замгүй `%`), обьёмын талбаргүй блок, Хувь горимд мөрийн Обьём алга
+ * (`useCellEdit.commit` тэр нүдэнд обьёмыг илэрхийлж чадахгүй).
+ * ⚠️ Обьёмын замгүй (мөрийн Обьём алга) нүдэнд Обьём горимд бичсэн тоо зөвхөн обьёмын хэсгийг солино (хувь нь үлдэнэ —
+ *    `useCellEdit.otherPart`) тул ноорогийн ЗӨВХӨН `n`-ийг хасна; Обьёмтой бол бүтэн нэмэлтийг (`n + p × Обьём`).
+ */
+export function negFixOf(
+  r: Pick<SheetRow, "obyem" | "act" | "vol">,
+  b: number,
+  hasField: boolean,
+  draft?: string,
+  mode: "obyem" | "pct" = "obyem",
+): string | null {
+  const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+  const volPath = hasField && vol != null;
+  if (!volPath && (r.act[b] ?? 0) < -NEG_EPS) return null;
+  const raw = r.obyem[b];
+  if (!hasField || raw == null || !(raw < -NEG_EPS)) return null;
+  if (mode === "pct" && !volPath) return null;
+  const d = parseInc(draft);
+  const dv = d ? d.n + (volPath ? d.p * (vol as number) : 0) : 0;
+  const excl = raw - dv;
+  return mode === "pct" ? negFixText(excl / (vol as number), true) : negFixText(excl);
+}
+
+/**
+ * СӨРӨГ НҮД БҮРИЙГ НЭРЛЭЭД ЯГ ЮУ БИЧИХИЙГ ХЭЛНЭ (⚠️ 2026-10-22, аудит) — `FillNew.publish` ба `resendAsIs`-ийн хориг.
+ * `«{нэр}: энэ нүдэнд «0.0017» гэж бичнэ үү»` · `«{нэр}: энэ нүдийг хоосон болгоно уу»` · хувийн хэсэгт ерөнхий текст.
+ * `draft` — ноорогийн нэмэлт `negKeys`-ийн түлхүүрээр (`publish`-ийн `pend2`); `mode` — хуудасны бөглөх горим.
+ */
+export function describeNegFixes(
+  ov: Pick<Overlay, "negKeys" | "rows" | "negInc">,
+  sc: Pick<Schema, "bld" | "obyem">,
+  draft: Readonly<Record<string, string>> = {},
+  mode: "obyem" | "pct" = "obyem",
+  max = 10,
+): string[] {
+  const idx = new Map(ov.rows.map((r, i) => [r.oid, i] as const));
+  const names = describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc, max);
+  const named = Math.min(max, ov.negKeys.length);
+  return names.map((name, j) => {
+    /* «… +N» мөр — түлхүүргүй */
+    if (j >= named) return name;
+    const k = ov.negKeys[j];
+    const at = k.indexOf(":");
+    const i = idx.get(Number(k.slice(0, at)));
+    const b = Number(k.slice(at + 1));
+    const fix = i == null ? null : negFixOf(ov.rows[i], b, !!sc.obyem[b], draft[k], mode);
+    return fix == null
+      ? tr('{0}: хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу', name)
+      : fix === ""
+        ? tr('{0}: энэ нүдийг хоосон болгоно уу', name)
+        : tr('{0}: энэ нүдэнд «{1}» гэж бичнэ үү', name, fix);
+  });
+}
+
+/**
+ * АРХИВЫН «ШИНЭЧЛЭГДСЭН ОГНОО» — ХОЖУУ НЬ (⚠️ 2026-10-22, аудит). Өдөр бүр тусдаа илгээлттэй тул ХУУЧИН өдрийн илгээлт
+ * хожуу батлагдвал (10-12-ныхын дараа 10-10-ных) архивын огноо УХАРЧ, БҮХ мөрийн төлөвлөгөөт хувь буцаж бодогддог байв.
+ * Архивлалт (`hyanaltStore.archiveSubmission`) ба хянагчийн харагдац (`hyanaltDetail.loadStaged`) НЭГ дүрмээр.
+ * `sub` — илгээлтийн `asOf` (`null` = огноог хөндөөгүй), `cur` — архивын сүүлийн жаазных.
+ */
+export function laterAsOf(sub: number | null | undefined, cur: number | null | undefined): number | null {
+  if (sub == null) return cur ?? null;
+  if (cur == null) return sub;
+  return Math.max(sub, cur);
 }
 
 /**

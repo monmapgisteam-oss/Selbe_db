@@ -11,6 +11,12 @@
  *    гүйцэтгэгч бичээгүй, эсвэл эсрэгээр) «гэрээгүй» болж худал улаан гарна.
  *    Тэднийг ТУСАД НЬ «дутуу бүртгэл» гэж тоолж, 2-р хүснэгтэд нэрээр нь
  *    жагсаана — өгөгдлийн алдааг төслийн алдаатай холихгүй.
+ * ⚠️ 2026-10-22 (аудит): ДЭЭРХ ДҮРЭМ ХҮЧИНГҮЙ — «гэрээтэй/гэрээгүй» нь порталын НЭГ предикатаар
+ *    (`gdash.isContracted`: тайлбар === «Гэрээлсэн дүн»). Урьд нь Багц 5.3 · 5.4 (тайлбар «Гэрээлсэн дүн», дүн ба
+ *    гүйцэтгэгч хоосон, 30.0 тэрбум ₮) энэ картад «гэрээгүй», Ерөнхий дашбоард · удирдлагын тайланд «гэрээтэй» гардаг
+ *    байв. Одоо: «гэрээгүй» = `!isContracted`; «дутуу бүртгэл» = гэрээтэй (тайлбараар) боловч дүн ЭСВЭЛ гүйцэтгэгчийн
+ *    НЭГ нь алга; тайлбар ↔ дүнгийн ЗӨРҮҮ хоёр чиглэлд өгөгдлийн эзэнд жагсаана (`noteMismatch` — дүнтэй атлаа
+ *    тайлбаргүй, `noteOnly` — тайлбартай атлаа дүн/гүйцэтгэгчгүй).
  *
  * ⚠️ `HO_dungiin_tailbar` («Гэрээлсэн дүн» — `gdash.CONTRACTED`) нь ШҮҮЛТИЙН
  *    түлхүүр БИШ, зөвхөн тайлбар багана. Амьд өгөгдөлд (2026-09-06) 10 өөр
@@ -134,19 +140,28 @@ const descNullLast = (a: number | null, b: number | null): number => (
 );
 
 /**
- * ГЭРЭЭГҮЙ: гэрээний дүн хоосон/0 БА гүйцэтгэгч хоосон.
- * ⚠️ Хоёр нөхцөл ЗЭРЭГ — аль нэг нь бөглөгдсөн бол `isInconsistent`.
+ * ГЭРЭЭГҮЙ — порталын НЭГ предикатын эсрэг (`gdash.isContracted`: тайлбар «Гэрээлсэн дүн» биш).
+ * ⚠️ 2026-10-22 (аудит): урьд нь «дүн хоосон БА гүйцэтгэгч хоосон» байсан тул «Гэрээлсэн дүн» тайлбартай,
+ *    дүнгүй мөр (Багц 5.3 · 5.4) энд «гэрээгүй», бусад бүх харагдацад «гэрээтэй» гардаг байв (толгойн ⚠️).
  */
-export const isUncontracted = (r: CfRaw): boolean => (
-  posOf(r[F.contractAmount]) == null && blank(r[F.contractor])
+export const isUncontracted = (r: CfRaw): boolean => !isContracted(r);
+
+/**
+ * ДУТУУ БҮРТГЭЛ: гэрээтэй (тайлбараар) боловч дүн бий ч гүйцэтгэгч алга, эсвэл гүйцэтгэгч бий ч дүн алга.
+ * Гэрээгүй ч биш, бүрэн гэрээтэй ч биш — өгөгдлийн асуудал.
+ * ⚠️ 2026-10-22 (аудит): зөвхөн `isContracted` мөрд — гэрээгүй мөр «гэрээгүй ажил»-д (нэг предикат).
+ */
+export const isInconsistent = (r: CfRaw): boolean => (
+  isContracted(r) && (posOf(r[F.contractAmount]) != null) !== !blank(r[F.contractor])
 );
 
 /**
- * ДУТУУ БҮРТГЭЛ: дүн бий ч гүйцэтгэгч алга, эсвэл гүйцэтгэгч бий ч дүн алга.
- * Гэрээгүй ч биш, бүрэн гэрээтэй ч биш — өгөгдлийн асуудал.
+ * ЭСРЭГ ЗӨРҮҮ (2026-10-22, аудит): «Гэрээлсэн дүн» тайлбартай боловч гэрээний дүн ЧИНЬ, гүйцэтгэгч ЧИНЬ хоосон —
+ * портал гэрээтэй гэж тоолдог (нэг предикат), харин гэрээний бичлэг огт бөглөгдөөгүй. Тоо/түвшинд нөлөөлөхгүй,
+ * өгөгдлийн эзэнд засуулах жагсаалтад (`noteOnly`) нэрээр гарна.
  */
-export const isInconsistent = (r: CfRaw): boolean => (
-  (posOf(r[F.contractAmount]) != null) !== !blank(r[F.contractor])
+export const isNoteOnly = (r: CfRaw): boolean => (
+  isContracted(r) && posOf(r[F.contractAmount]) == null && blank(r[F.contractor])
 );
 
 /**
@@ -186,8 +201,10 @@ export function contractOf(r: CfRaw): CfContract {
 /**
  * Картын үр дүн + ТОДОРХОЙЛОЛТЫН ЗӨРҮҮ (2026-10-09): `noteMismatch` — гэрээний дүнтэй (`geree_dun > 0`)
  * атлаа `gdash.isContracted` биш мөрүүд (хасагдсан ажил орохгүй), дүнгээр буурах.
+ * ⚠️ 2026-10-22 (аудит): `noteOnly` — ЭСРЭГ чиглэл (`isNoteOnly`): «Гэрээлсэн дүн» тайлбартай атлаа дүн,
+ *    гүйцэтгэгч хоёулаа хоосон (Багц 5.3 · 5.4), төсвөөр буурах.
  */
-export type UncontractedKpi = KpiResult & { noteMismatch: CfContract[] };
+export type UncontractedKpi = KpiResult & { noteMismatch: CfContract[]; noteOnly: CfContract[] };
 
 /** Хоосон текст → `null` нүд («—»), эс бөгөөс текст */
 const txt = (s: string): Cell => cell(s || null);
@@ -208,7 +225,7 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
   if (rows.length === 0) {
     return {
       value: num(null), unit, facts: [], level: 'unknown',
-      tables: [], issues: [], asOf: null, failedSources: [], noteMismatch: [],
+      tables: [], issues: [], asOf: null, failedSources: [], noteMismatch: [], noteOnly: [],
     };
   }
 
@@ -216,6 +233,8 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
   const partial: CfContract[] = [];
   const cancelled: CfContract[] = [];
   const noteMismatch: CfContract[] = [];
+  /* ⚠️ 2026-10-22 (аудит): эсрэг зөрүү — тайлбартай атлаа дүн/гүйцэтгэгчгүй (`isNoteOnly`) */
+  const noteOnly: CfContract[] = [];
   for (const r of rows) {
     /* ⚠️ 2026-10-06: ГАЗАР ЧӨЛӨӨЛӨЛТ (6-р хэсэг — нөхөн олговор, гүйцэтгэгчтэй байгуулах гэрээ БИШ,
        «78 биш 74») ба НУУГДСАН «7 БОНДЫН ХҮҮ» (OID 78, ажил биш) мөр «гэрээгүй ажил»/«дутуу
@@ -228,6 +247,7 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
        бусад бүх газар (санхүү, оноо, гэрээ-төсвийн зөрүү) тайлбараар ангилдаг тул ийм мөр энд
        «гэрээтэй», тэнд «гэрээгүй» болно — нуухгүй, тусад нь жагсаана. Тоо ба түвшинд НӨЛӨӨЛӨХГҮЙ. */
     if (posOf(r[F.contractAmount]) != null && !isContracted(r) && !isCancelled(r)) noteMismatch.push(contractOf(r));
+    if (isNoteOnly(r) && !isCancelled(r)) noteOnly.push(contractOf(r));
     const inScope = isUncontracted(r) ? none : isInconsistent(r) ? partial : null;
     if (!inScope) continue;
     (isCancelled(r) ? cancelled : inScope).push(contractOf(r));
@@ -254,6 +274,10 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
   facts.push(tr('{0} дутуу бүртгэл', num(inconsistent)));
   /* Хасагдсан нь ховор — 0 бол факт нэмэхгүй (мөрийг дэмий уртасгахгүй) */
   if (cancelled.length > 0) facts.push(tr('{0} хасагдсан ажил', num(cancelled.length)));
+  /* ⚠️ 2026-10-22 (аудит): тайлбар ↔ дүнгийн зөрүү (хоёр чиглэл) — картын нүүрэнд тоогоор, жагсаалт нь 4-5-р хүснэгтэд */
+  if (noteMismatch.length + noteOnly.length > 0) {
+    facts.push(tr('{0} бүртгэлийн зөрүү (тайлбар ↔ дүн)', num(noteMismatch.length + noteOnly.length)));
+  }
 
   /*
    * ХҮСНЭГТ 1 — гэрээгүй ажил. ЭХЛЭХ ЁСТОЙ БАЙСАН нь эхэнд (хамгийн эрт
@@ -324,6 +348,16 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
     ));
   }
 
+  /* ХҮСНЭГТ 5 — ЭСРЭГ зөрүү (2026-10-22, аудит): «Гэрээлсэн дүн» тайлбартай атлаа дүн, гүйцэтгэгчгүй — төсвөөр буурах */
+  const noteOnlySorted = [...noteOnly].sort((a, b) => descNullLast(a.budget, b.budget));
+  if (noteOnlySorted.length) {
+    tables.push(table(
+      tr('«Гэрээлсэн дүн» тайлбартай боловч гэрээний дүн, гүйцэтгэгчгүй'),
+      [tr('Ажил'), tr('Багц'), tr('Төсөвт өртөг'), tr('Тайлбар')],
+      noteOnlySorted.map((c) => [txt(c.work), txt(c.pkg), cell(c.budget, 'mnt'), txt(c.note)]),
+    ));
+  }
+
   /* Анхааруулга — эхлэх хугацаа өнгөрсөн мөр бүр, хамгийн их хоцорсон нь эхэнд */
   const issues: KpiIssue[] = noneSorted.filter(isStarted).map((c) => ({
     tone: 'bad',
@@ -344,6 +378,7 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
     asOf: null,
     failedSources: [],
     noteMismatch: mismatchSorted,
+    noteOnly: noteOnlySorted,
   };
 }
 

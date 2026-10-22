@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 /* ⚠️ 2026-10-06 аудит: алдааг ТҮҮХИЙГЭЭР нь («Token Required» г.м.) харуулахгүй — `userError` */
@@ -9,17 +9,23 @@ import type { NewRow } from '@/modules/sheet/sheetFrame';
 import type { PlanRow } from '@/lib/plan';
 import type { PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import {
-  AJIL_STATUS, loadApproved as loadAjilApproved, loadHistory as loadAjilHistory,
+  AJIL_STATUS, loadApproved as loadAjilApproved, loadHead as loadAjilHead, loadHistory as loadAjilHistory,
   loadPayload as loadAjilPayload, loadPending as loadAjilPending, markRestored as markAjilRestored,
   submitAjil, updateAjil, withdrawAjil, type AjilSubmission,
 } from '@/lib/ajilBatlah';
+/* ⚠️ 2026-10-22 (аудит №3): эцэг бүлгийн хайлт — `sheetFrame.insertAdds`/`ajilApply` буулгалттай ЯГ НЭГ дүрэм */
+import { missingParents } from '@/lib/ajilApply';
 import {
-  EMPTY_FORM, mergeIncoming, nextTmpOid, pushTmpOid, readAdds, readAjEdit, writeAdds, writeAjEdit,
+  EMPTY_FORM, mergeIncoming, nextTmpOid, pushTmpOid, readAdds, readAjEdit, readWdMark, writeAdds, writeAjEdit, writeWdMark,
   type AddForm, type AjEdit,
 } from './adds';
 import type { ADraft, Draft, ResDraft } from './types';
 import { remapRowsFull } from './savePrep';
 import { normCell } from '@/modules/sheet/paste';
+
+/** ⚠️ 2026-10-22 (аудит №3): эцэггүй мөртэй үед илгээх/засвар хадгалахыг хаах мессеж (`useAjil.ajOrphans`-ийн ⚠️) */
+export const orphanAddsMsg = (n0: number): string =>
+  tr('{0} нэмэлт мөрийн эцэг бүлэг хуудсанд олдсонгүй — доорх жагсаалтаас устгах эсвэл одоо байгаа бүлэгт харьяалуулаад дахин илгээнэ үү.', num(n0));
 
 /**
  * НЭМЭЛТ АЖИЛ — локал ноорог (`adds`) · илгээх · засах · татах · буцаагдсаныг буулгах
@@ -151,6 +157,32 @@ export function useAjil({
     try {
       const sub = await loadAjilPending(want);
       if (!live()) return;
+      /*
+       * ⚠️ 2026-10-22 (аудит №6): ТОДОРХОЙГҮЙ ТАТАЛТ (`adds.WdMark`) — `setAjSub`-ЭЭС ӨМНӨ шийднэ. Тэр илгээлт хүлээгдсэн
+       *    хэвээр бол таталт буугаагүй (тэмдэг л арилна); «Татсан» бол мөрүүд энд `adds`-д буцна (засварын горимд засварын
+       *    төлвийг цэвэрлэнэ — эс бөгөөс доорх «илгээлт шийдэгдсэн тул засвар хаагдлаа» эффект мөрүүдийг ХАСНА). Уншилт
+       *    унавал тэмдэг үлдэж дараагийн удаа дахин оролдоно.
+       */
+      const wd = readWdMark(want);
+      if (wd && sub?.oid === wd.oid) writeWdMark(want, null);
+      else if (wd) {
+        const head = await loadAjilHead(wd.oid).catch(() => undefined);
+        if (!live()) return;
+        if (head !== undefined) {
+          if (head?.status === AJIL_STATUS.withdrawn) {
+            if (wd.adds.length) {
+              const cur = addsStRef.current;
+              const merged = mergeIncoming(cur.key === want ? cur.list : readAdds(want), wd.adds);
+              writeAdds(want, merged);
+              setAddsSt({ key: want, list: merged });
+              addsStRef.current = { key: want, list: merged };
+            }
+            if (wd.editing) { writeAjEdit(want, null); setAjEditSt(null); setEditAdd(null); }
+            setAjNote(tr('Илгээлт татагдсан байна — мөрүүд хуудсанд буцаж орлоо.'));
+          }
+          writeWdMark(want, null);
+        }
+      }
       setAjSub(sub);
       setAjSubFor(want);
       const lookBack = prevOid != null && sub?.oid !== prevOid;
@@ -317,6 +349,24 @@ export function useAjil({
   }, [ajSub, ajTrack, refreshAjil]);
 
   /**
+   * ЭЦЭГГҮЙ НЭМЭЛТ МӨРҮҮД (⚠️ 2026-10-22, аудит №3) — эцэг бүлэг нь одоогийн хуудсанд алга (`ajilApply.missingParents`).
+   * ⚠️ Тэд хүснэгтэд ХАРАГДАХГҮЙ (`insertAdds` алгасдаг) тул «×»/«✎»-ээр хүрэх аргагүй атлаа илгээгдэж, батлагдвал
+   *    буулгалт «эцэг олдсонгүй» гэж гацдаг байв. Эцэг (`Huvaari`) тэднийг баннерт жагсааж «Устгах» / «Бүлэг сонгох»
+   *    үйлдэл өгнө; доорх илгээх/засвар хадгалах нь байхад ХААЛТТАЙ. Мөр ачаалагдаагүй (`rows` хоосон) үед тооцохгүй —
+   *    ачаалалтын завсарт бүх мөр «эцэггүй» мэт гялсхийхгүй.
+   */
+  const ajOrphans = useMemo(() => (rows.length ? missingParents(rows, adds) : []), [rows, adds]);
+  /** Эцэггүй мөрийг одоогийн бүлэгт харьяалуулна — `parentIdx` нь СЕРВЕРИЙН `rows`-ын индекс (`addRow`-ийн ⚠️) */
+  const setAddParent = useCallback((oid: number, parentOid: number) => {
+    const pi = rows.findIndex((r) => r.oid === parentOid);
+    const p = pi >= 0 ? rows[pi] : null;
+    if (!p || !p.group) return;
+    setAdds((a) => a.map((x) => (x.oid === oid ? { ...x, parentNo: p.no, parentWork: p.work, parentIdx: pi } : x)));
+    setAjErr('');
+    setAjNote(tr('Мөрийг «{0}» бүлэгт харьяалууллаа.', `${p.no} ${p.work}`.trim()));
+  }, [rows, setAdds]);
+
+  /**
    * «Нэмэлт ажил батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй.
    * ⚠️ Хуваарийн «Батлуулах»-аас ТУСДАА: тэр нь ОГНООГ хуваарийн батлах
    *    урсгалд, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг 2 шатат урсгалд.
@@ -326,6 +376,8 @@ export function useAjil({
    */
   const sendAjil = useCallback(async () => {
     if (!adds.length || ajBusy) return;
+    /* ⚠️ 2026-10-22 (аудит №3): эцэггүй мөртэй үед илгээхгүй — батлагдвал буулгалт гацна (`ajOrphans`-ийн ⚠️) */
+    if (ajOrphans.length) { setAjErr(orphanAddsMsg(ajOrphans.length)); return; }
     /* ⚠️ БАГЦЫГ ОДОО барина (2026-09-25 аудит): `setAdds` нь дарсан агшны `pkg.key`-ийг
        барьдаг тул хүсэлт явж байхад багц солиход Б-гийн мөрүүд харагдахаа больж,
        А-гийн LS илгээсэн мөрөө хадгалсаар буцаж ирдэг байв. Одоо А-г (`want`) шууд
@@ -357,7 +409,7 @@ export function useAjil({
     } finally {
       setAjBusy(false);
     }
-  }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
+  }, [adds, ajBusy, ajOrphans, pkg.key, pkg.group, user, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТЭЭ ЗАСАХ (2026-09-29, хэрэглэгч: «ажил нэмэх хүсэлт явуулсны дараа
@@ -395,6 +447,8 @@ export function useAjil({
   /** Засварыг ИЖИЛ илгээлтэд хадгална — `adds` бүхэлдээ илгээлтийн шинэ агуулга болно */
   const saveAjilEdit = useCallback(async () => {
     if (!ajSub || !ajEdit || ajEdit.oid !== ajSub.oid || ajBusy) return;
+    /* ⚠️ 2026-10-22 (аудит №3): засварын шинэ агуулгад эцэггүй мөр орохгүй — `sendAjil`-ийн ижил хаалт */
+    if (ajOrphans.length) { setAjErr(orphanAddsMsg(ajOrphans.length)); return; }
     const want = pkg.key;
     const sent = new Set(adds.map((a) => a.oid));
     /* ⚠️ 2026-10-21 (аудит №1): багц солигдсон бол дэлгэцийн төлөвийг хөндөхгүй — `sendAjil`-ийн ⚠️ */
@@ -416,7 +470,7 @@ export function useAjil({
     } finally {
       setAjBusy(false);
     }
-  }, [ajSub, ajEdit, ajBusy, adds, pkg.key, user, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
+  }, [ajSub, ajEdit, ajBusy, ajOrphans, adds, pkg.key, user, refreshAjil, addsStRef, pkgKeyRef, setAddsSt]);
 
   /** Засварыг болих — илгээлтээс буулгасан мөрүүдийг хасна (илгээлт хөндөгдөхгүй) */
   const cancelAjilEdit = useCallback(() => {
@@ -457,6 +511,10 @@ export function useAjil({
     try {
       const pl = editing ? null : await loadAjilPayload(ajSub.oid);
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
+      /* ⚠️ 2026-10-22 (аудит №6): хариу алдагдсан ба дахин уншилт ч унасан (`unsure`) — татагдсан байж болох тул
+         мөрүүдийг ТЭМДЭГЛЭНЭ (`adds.WdMark`, LS — багц солигдсон ч); `refreshAjil` (30 с-ийн мөчлөг · хуудас шинэчлэх)
+         серверийн төлвөөр шийдэж, «Татсан» бол буулгана. Урьд нь энэ үед мөрүүд бүрмөсөн алга болдог байв. */
+      if (!r.ok && r.unsure) writeWdMark(want, { oid: ajSub.oid, adds: pl?.adds ?? [], editing });
       if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
       /* ⚠️ LS-д СИНХРОН (`refreshAjil`-ийн #5 дүрэм) — багц солигдсон ч А-д хадгалагдана */
@@ -551,5 +609,7 @@ export function useAjil({
     ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, setAjBack, ajStuck, ajApplied,
     refreshAfterApplied, sendAjil, editAjilHere, saveAjilEdit, cancelAjilEdit,
     withdrawAjilHere, saveEditAdd, addRow, dropAdd,
+    /* ⚠️ 2026-10-22 (аудит №3): эцэггүй нэмэлт мөр ба бүлэгт харьяалуулах (`ajOrphans`-ийн ⚠️) */
+    ajOrphans, setAddParent,
   };
 }

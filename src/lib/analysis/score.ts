@@ -5,7 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 
 import {
   SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_TONE, STRICT_NORM, NORM_FAIL_MAX,
-  densityNormOf, type Indicator,
+  densityNormOf, ASSUME_MET, MIN_MEASURED_SHARE, type Indicator,
 } from './config';
 import { SCORE_HEX, SCORE_INK, SCORE_NODATA_INK } from '@/lib/chartStyle';
 
@@ -33,10 +33,24 @@ const lerp = (v: number, a: number, b: number) => (b === a ? (v >= a ? 1 : 0) : 
  */
 export function normFor(ind: Indicator, torol?: string | null): Indicator {
   if (!ind.byType || !torol) return ind;
-  const max = densityNormOf(torol)[ind.byType];
+  /* ⚠️ 2026-10-22 (аудит): Хүснэгт 6.1-д ангилалгүй төрөл — норм ХАМААРАХГҮЙ (`na`), орон сууцны нормыг далд тулгахгүй
+     (`config.densityNormOf`-ийн ⚠️). */
+  const d = densityNormOf(torol);
+  if (!d) return { ...ind, na: true };
+  const max = d[ind.byType];
   if (max == null) return ind;
   return { ...ind, best: max, hardMax: max * 2 };
 }
+
+/**
+ * ДЭЛГЭЦИЙН НАРИЙВЧЛАЛААР бүхэлчилнэ (`ind.decimals`).
+ * ⚠️ 2026-10-22 (аудит): нормтой ДЭЛГЭЦЭД ХАРАГДАХ утгаар харьцуулна — E-5-ийн FAR 1.2017 нь «1.20 ≤ 1.20» гэж харагдаад
+ *    100 → 44 (56 оноо) алддаг байв. Хэрэглэгч харж буй тоо ба дүгнэлт зөрөх ёсгүй.
+ */
+export const atPrecision = (v: number, decimals: number): number => {
+  const k = 10 ** Math.max(0, Math.min(6, decimals));
+  return Math.round(v * k) / k;
+};
 
 /**
  * Нэг үзүүлэлтийн утгыг 0..100 оноо болгоно. `null` = өгөгдөл дутуу.
@@ -46,8 +60,11 @@ export function normFor(ind: Indicator, torol?: string | null): Indicator {
  * Энэ нь 100 → 44 гэсэн 56 онооны ҮСРЭЛТ үүсгэдэг: норм хангасан ба зөрчсөн
  * хоёрын хооронд завсрын байдал байхгүй гэсэн САНААТАЙ шийдэл.
  */
-export function scoreIndicator(value: number | null | undefined, ind: Indicator): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
+export function scoreIndicator(raw: number | null | undefined, ind: Indicator): number | null {
+  if (raw == null || !Number.isFinite(raw)) return null;
+  /* ⚠️ 2026-10-22 (аудит): норм хамаарахгүй → оноогүй; харьцуулалт дэлгэцийн нарийвчлалаар (`atPrecision`-ийн ⚠️) */
+  if (ind.na) return null;
+  const value = atPrecision(raw, ind.decimals);
 
   const fail = STRICT_NORM ? NORM_FAIL_MAX : 100;
 
@@ -123,17 +140,33 @@ export type Part = {
   norm: Indicator;
 };
 
+export type UrbanScore = {
+  score: number | null;
+  parts: Record<string, Part>;
+  /**
+   * ХЭМЖСЭН ЖИН ÷ НИЙТ ЖИН (0–1): оноо бодогдсон, `ASSUME_MET`-ээр ДҮГНЭГДЭЭГҮЙ үзүүлэлтүүдийн жин ÷ оноолдог бүх
+   * үзүүлэлтийн жин. Оноолдог үзүүлэлт алга бол `null`. ⚠️ 2026-10-22 (аудит): `MIN_MEASURED_SHARE`-ийн ⚠️.
+   */
+  coverage: number | null;
+  /** `score` null-ийн шалтгаан: `nodata` — нэг ч үзүүлэлт бодогдоогүй; `coverage` — хэмжсэн жин босгоос доош */
+  reason: 'nodata' | 'coverage' | null;
+};
+
 /**
  * Хот төлөвлөлтийн нийлмэл оноо.
  * ⚠️ Өгөгдөлгүй үзүүлэлтийг жингээс ХАСААД үлдсэнийг дахин нормчилно — эс
  * бөгөөс мэдээлэл дутуу бүс зүгээр л бага оноо авч, «муу» мэт харагдана.
+ * ⚠️ 2026-10-22 (аудит): ГЭХДЭЭ хэмжсэн жин (`coverage`) `minShare`-ээс доош бол оноо `null` (`reason: 'coverage'`) —
+ *    дахин нормчлол нь цөөн үзүүлэлт (жиш. зөвхөн FAR+BCR) ба `ASSUME_MET`-ийн таамгийн 100-аар бүсийг 100 болгодог байв
+ *    (`config.MIN_MEASURED_SHARE`-ийн ⚠️). `ASSUME_MET`-ийн үзүүлэлт оноонд орсоор (хэрэглэгчийн шийдвэр), хэмжсэнд үгүй.
  */
 export function urbanScore(
   raw: Record<string, number | null>,
   indicators: Indicator[],
   torol?: string | null,
-): { score: number | null; parts: Record<string, Part> } {
-  let sum = 0, wsum = 0;
+  minShare: number = MIN_MEASURED_SHARE,
+): UrbanScore {
+  let sum = 0, wsum = 0, total = 0, measured = 0;
   const parts: Record<string, Part> = {};
 
   for (const ind of indicators) {
@@ -144,12 +177,20 @@ export function urbanScore(
       parts[ind.id] = { value: raw[ind.id] ?? null, score: null, weight: 0, norm: eff };
       continue;
     }
+    total += ind.weight;
     const s = scoreIndicator(raw[ind.id], eff);
     parts[ind.id] = { value: raw[ind.id] ?? null, score: s, weight: ind.weight, norm: eff };
-    if (s !== null) { sum += s * ind.weight; wsum += ind.weight; }
+    if (s !== null) {
+      sum += s * ind.weight; wsum += ind.weight;
+      if (!(ind.id in ASSUME_MET)) measured += ind.weight;
+    }
   }
 
-  return { score: wsum ? sum / wsum : null, parts };
+  const coverage = total > 0 ? measured / total : null;
+  if (!wsum) return { score: null, parts, coverage, reason: 'nodata' };
+  /* 1e-9 — 46/92 гэх мэт яг тал нь хөвөгч цэгийн алдаагаар унахгүй */
+  if (coverage == null || coverage + 1e-9 < minShare) return { score: null, parts, coverage, reason: 'coverage' };
+  return { score: sum / wsum, parts, coverage, reason: null };
 }
 
 /**
@@ -200,8 +241,11 @@ export function scoreLabel(score: number | null | undefined): string {
 }
 
 /** Норм хангасан эсэх — оноо биш, ТҮҮХИЙ утгаар шалгана */
-export function passesNorm(value: number | null | undefined, ind: Indicator): boolean | null {
-  if (value == null || !Number.isFinite(value)) return null;
+export function passesNorm(raw: number | null | undefined, ind: Indicator): boolean | null {
+  if (raw == null || !Number.isFinite(raw)) return null;
+  /* ⚠️ 2026-10-22 (аудит): норм хамаарахгүй → дүгнэхгүй; дэлгэцийн нарийвчлалаар (`scoreIndicator`-тэй ижил) */
+  if (ind.na) return null;
+  const value = atPrecision(raw, ind.decimals);
   if (ind.mode === 'band') return value >= (ind.optMin ?? 0) && value <= (ind.optMax ?? 0);
   if (ind.mode === 'higher') return value >= (ind.target ?? 0);
   return value <= (ind.best ?? 0);
@@ -216,8 +260,10 @@ export function passesNorm(value: number | null | undefined, ind: Indicator): bo
  * ⚠️ `band` горимд хоёр талдаа зөрч болно (нягтшил хэт бага ч, хэт өндөр ч) —
  * хаана талаас нь давсныг дуудагч тал `value < optMin` гэж өөрөө шалгана.
  */
-export function normGap(value: number | null | undefined, ind: Indicator): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
+export function normGap(raw: number | null | undefined, ind: Indicator): number | null {
+  if (raw == null || !Number.isFinite(raw)) return null;
+  if (ind.na) return null;
+  const value = atPrecision(raw, ind.decimals);
   if (ind.mode === 'higher') return Math.max(0, (ind.target ?? 0) - value);
   if (ind.mode === 'lower') return Math.max(0, value - (ind.best ?? 0));
   const lo = ind.optMin ?? 0;

@@ -17,16 +17,16 @@ import {
   type Aoi, type Row,
 } from '@/lib/query';
 import {
-  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere, parcelOidsWhere,
+  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelOidsWhere,
   PKG_FAMILY_BY_BAGTS,
-  layerUrl, ZONE_LAYER, ZONE_FIELDS, zoneType,
+  layerUrl, ZONE_LAYER, ZONE_FIELDS, zoneType, LAYER_BY_ID, zoneWhere,
 } from '@/lib/services';
 import { loadPkgOverlaps, type PkgOverlap } from '@/lib/pkgSaad';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
-import { statusKey, isClearedStatus, parcelAltAreaWhere, statusRawsWhere } from '@/lib/land';
+import { statusKey, isClearedStatus, statusRawsWhere, loadParcelAreaRows, parcelGroupRows } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
 import { num, text, cat, NO_DATA } from '@/lib/format';
@@ -945,10 +945,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     () => (zonePick ? [...new Set([...mapVisible, ZONE_LAYER.id])] : mapVisible),
     [mapVisible, zonePick],
   );
-  const mapWhere = useMemo<Record<string, string | null> | undefined>(
-    () => (zonePick ? { ...(ovWhere ?? {}), [ZONE_LAYER.id]: zonePick.where } : ovWhere),
-    [ovWhere, zonePick],
-  );
+  /* ⚠️ 2026-10-22 (аудит): өөрийн WHERE-тэй давхаргад (багцын давхцал · бүсийн ангилал) БҮСИЙН шүүлтийг AND-аар нэмнэ —
+     `MapCanvas` өөрийн WHERE-ийг бүсийн шүүлтийн ОРОНД тавьдаг тул чарт/багц сонгоход сонгосон бүсээс гадуурх объект
+     зурагт гардаг байв. Жагсаалтад байхгүй давхаргад `MapCanvas` өөрөө бүсээр шүүнэ. */
+  const mapWhere = useMemo<Record<string, string | null> | undefined>(() => {
+    const own = zonePick ? { ...(ovWhere ?? {}), [ZONE_LAYER.id]: zonePick.where } : ovWhere;
+    if (!own || !zone) return own;
+    const out: Record<string, string | null> = {};
+    for (const [id, w] of Object.entries(own)) {
+      const d = LAYER_BY_ID[id];
+      const zw = w && d ? zoneWhere(d, zone) : null;
+      out[id] = w && zw ? `(${w}) AND (${zw})` : w;
+    }
+    return out;
+  }, [ovWhere, zonePick, zone]);
 
   const clear = useCallback(() => {
     keepAoiRef.current = false; // ⚠️ «Цэвэрлэх» нь AOI-г ЖИНХЭНЭ хаяна
@@ -969,18 +979,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const P = GAZAR_PARCEL;
     /* ⚠️ 2026-10-01: төлөв ба шалтгаан НЭГ талбар уу (`services.ts`-ийн 2026-09-06 шийдвэр) */
     const sameField = L.fields.status === L.fields.progress;
-    const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse, lAlt, lAltReason] = await Promise.all([
-      queryStats(L.url, [count(L.oid, 'n'), sum(L.fields.area, 'area')], '1=1', area),
-      // ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал
-      queryGroup(L.url, L.fields.status, [count(L.oid, 'n'), sum(L.fields.area, 'a')], '1=1', area),
-      /* ҮЛДСЭН талбарын ШАЛТГААН.
-         ⚠️ 2026-09-06: шинэ эхэд `status` ба `progress` нь НЭГ талбар тул энэ
-         асуулга нь «Бүрэн чөлөөлсөн»-өөс бусад мөрүүдийг өөрсдийнх нь утгаар
-         бүлэглэнэ — өөрөөр хэлбэл шалтгаан нь төлөв нь өөрөө. */
-      queryGroup(
-        L.url, L.fields.progress, [count(L.oid, 'n'), sum(L.fields.area, 'a')],
-        parcelLeftWhere(), area,
-      ),
+    /* ⚠️ 2026-10-22 (аудит): НЭГЖ ТАЛБАРЫН тоо/талбайг МӨРӨӨР (`land.loadParcelAreaRows` + `parcelGroupRows`) — дашбоардын эх
+       (`land.ts`)-тэй ЯГ НЭГ дүрэм: `area_m2 = 0` мөрд полигоны талбай, хуваагдсан нэгж талбарын талбай нэг удаа, `Талб_1`
+       нөхөлт багтсан. Урьд нь серверийн `SUM(area_m2)` (+ нөхөлтийн тусдаа асуулга) тул 24 мөрийн 9,015 м² дутуу, 3 нэгж
+       талбарын 1,699 м² давхар байв. Полигон (AOI) хэвээр үйлчилнэ. */
+    const [lRows, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
+      loadParcelAreaRows('1=1', area),
       // ⚠️ area_m2 талбар test_data [96]-д устсан тул талбайн нийлбэр асуухгүй
       queryStats(B.url, [
         count(B.oid, 'n'), sum(B.fields.value, 'val'),
@@ -991,22 +995,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryStats(P.url, [count(P.oid, 'n'), sum(P.fields.area, 'area')], '1=1', area),
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
-      /*
-       * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ТАЛБАЙН НӨХӨЛТ — `area_m2 ?? Талб_1`.
-       * Урьд нь энэ харагдац ЗӨВХӨН `SUM(area_m2)` авдаг байсан бол дашбоардын эх
-       * (`land.ts`) гараар бичсэн `Талб_1`-ийг НӨХДӨГ тул «Нийт талбай» хоёр газар
-       * ЗӨРӨХ замтай байв. Одоо ИЖИЛ нөхцөлөөр (`parcelAltAreaWhere`) нэмнэ —
-       * нийт, төлөв бүр, шалтгаан бүрд. Полигон (AOI) ч мөн адил хэрэглэгдэнэ.
-       */
-      queryGroup(L.url, L.fields.status, [sum(L.fields.areaAlt, 'a')], parcelAltAreaWhere(), area),
-      /* Шалтгаан нь ТУСДАА талбар бол л тусад нь асууна — нэг талбар бол дээрхээс */
-      sameField
-        ? Promise.resolve(null)
-        : queryGroup(
-          L.url, L.fields.progress, [sum(L.fields.areaAlt, 'a')],
-          `${parcelLeftWhere()} AND ${parcelAltAreaWhere()}`, area,
-        ),
     ]);
+    /* ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал */
+    const lStatus = parcelGroupRows(lRows);
+    /* ҮЛДСЭН талбарын ШАЛТГААН. ⚠️ 2026-09-06: `status` ба `progress` НЭГ талбар — шалтгаан нь төлөв өөрөө.
+       ⚠️ 2026-10-22: «Бүрэн чөлөөлсөн»-ийн бүх бичиглэлийг хасна (`parcelLeftWhere` + `addReason`-ийн дүрэм) */
+    const lReason = parcelGroupRows(lRows.filter((r) => !isClearedStatus(r[L.fields.status])), L.fields.progress);
+    const lStat = { n: lRows.length, area: lStatus.reduce((s, r) => s + Number(r.a ?? 0), 0) };
+    /* `Талб_1` нөхөлт `parcelAreaOf`-д багтсан — тусдаа нөхөлтийн мөр алга (`sameField` хамаарахгүй) */
+    const lAlt: Row[] = [];
+    const lAltReason: Row[] | null = sameField ? null : [];
     /** Нөхөлтийн талбайг ТӨЛӨВӨӨР — `smap`-д нэмэхэд */
     const altArea = (r: Row) => Number(r.a ?? 0);
     // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).

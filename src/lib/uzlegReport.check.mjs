@@ -257,4 +257,45 @@ console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) ·
   assert.equal(unknownCode.submitter, 'newbie', 'домэйнд байхгүй код хэвээр');
   console.log('✅ Илгээсэн — inspector домэйны нэрээр (2026-10-21)');
 }
+/* ── ⚠️ 2026-10-22 аудит: «Аюулыг илрүүлэх үзлэг» — илрүүлэлт эцгийн `uniquerowid || globalid`-д, зураг нь хүснэгтийн хавсралтаас ──
+   Амьд өгөгдөл: 61/61 эцгийн `uniquerowid` NULL, 345/345 илрүүлэлтийн `parentrowid` = эцгийн `globalid` — урьд 0 илрүүлэлт. */
+{
+  const { groupFindings, parentKeys, guidKey } = await import('@/lib/uzlegReport.ts');
+  const G1 = '2D70DC7C-7BEC-4FD6-BFD3-1BF1B1135C85';
+  const G2 = 'B6D1148A-89F7-4806-B29A-02260A336CF9';
+  const U3 = 'AAAA0000-1111-2222-3333-444455556666';
+  assert.equal(guidKey(`{${G1.toLowerCase()}} `), G1, 'хаалт/жижиг үсэг/зай үл хамаарна');
+  assert.deepEqual(parentKeys({ uniquerowid: null, globalid: `{${G1}}` }), [G1], 'uniquerowid NULL → globalid');
+  assert.deepEqual(parentKeys({ uniquerowid: U3, globalid: `{${G2}}` }), [U3, G2], 'хоёулаа — uniquerowid үндсэн');
+  assert.deepEqual(parentKeys({}), []);
+  const parents = [
+    { objectid: 1, uniquerowid: null, globalid: `{${G1}}` },
+    { objectid: 2, uniquerowid: U3.toLowerCase(), globalid: `{${G2}}` },
+  ];
+  const rows = [
+    { objectid: 10, parentrowid: `{${G1}}`, f_level: 'high', f_desc: 'Хашаагүй нүх', f_blk: '5', f_action: 'Хаасан' },
+    { objectid: 11, parentrowid: `{${G1}}`, f_level: 'fixed', f_desc: 'Кабель', f_blk: 'other', f_blk_other: 'Гадна' },
+    { objectid: 12, parentrowid: `{${U3}}`, f_level: 'low', f_desc: 'Тэмдэг' },
+    { objectid: 13, parentrowid: `{${G2}}`, f_level: 'medium', f_desc: 'Шат' },
+    { objectid: 14, parentrowid: '{FFFFFFFF-0000-0000-0000-000000000000}', f_level: 'high', f_desc: 'Өөр үзлэг' },
+  ];
+  const atts = new Map([
+    [10, [{ id: 1, keywords: 'f_img', contentType: 'image/jpeg' }, { id: 2, keywords: 'f_img', contentType: 'image/png' }]],
+    [13, [{ id: 5, keywords: 'f_img', contentType: 'image/heic' }, { id: 6, keywords: '', contentType: 'application/pdf' }]],
+  ]);
+  const dom = new Map([['high', 'Өндөр'], ['fixed', 'Зассан']]);
+  const g = groupFindings(parents, rows, { title: 'Илрүүлсэн аюул', dom, atts, photoUrl: (oid, id) => `L/${oid}/attachments/${id}` });
+  assert.deepEqual([...g.keys()].sort(), [G1, U3].sort(), 'түлхүүр = эцгийн ҮНДСЭН түлхүүр');
+  const s1 = g.get(G1);
+  assert.equal(s1.items.length, 2, 'globalid-ээр холбогдсон 2 илрүүлэлт (урьд 0)');
+  assert.deepEqual(s1.items.map((x) => [x.code, x.ans, x.cls, x.block]), [['F1', 'Өндөр', 'major', '5'], ['F2', 'Зассан', 'conf', 'Гадна']]);
+  assert.deepEqual(s1.items[0].photos, [{ url: 'L/10/attachments/1', png: false }, { url: 'L/10/attachments/2', png: true }], 'илрүүлэлтийн зураг');
+  assert.deepEqual(s1.items[0].notes, ['Хаасан']);
+  assert.equal(g.get(U3).items.length, 2, 'uniquerowid ба globalid хоёулаа нэг эцэгт');
+  assert.deepEqual(g.get(U3).items.find((x) => x.q === 'Шат').photos, [{ url: 'L/13/attachments/5', png: false, heic: true }], 'HEIC тэмдэг; PDF хавсралт зураг биш');
+  assert.ok(![...g.values()].some((s) => s.items.some((x) => x.q === 'Өөр үзлэг')), 'бусад эцгийн илрүүлэлт орохгүй');
+  const bare = groupFindings(parents, rows, { title: 'T' });
+  assert.deepEqual(bare.get(G1).items[0].photos, [], 'хавсралтгүй дуудлага — хоосон зураг');
+  console.log('✅ аюулыг илрүүлэх үзлэг — uniquerowid || globalid · илрүүлэлтийн зураг (2026-10-22)');
+}
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

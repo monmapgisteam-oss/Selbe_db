@@ -40,7 +40,9 @@ import {
   rowOccOf,
   withFrameOcc,
   needsFrameOcc,
-  describeNegCells,
+  /* ⚠️ 2026-10-22 (аудит): сөрөг нүд бүрт ЯГ бичих утга (`publish` · `resendAsIs`) · сөрөг нүд түгжигдэхгүй (`backOkRes`) */
+  describeNegFixes,
+  negTotalAt,
 } from "./sheetFrame";
 import {
   /* ⚠️ `listActiveSubmissions` ЭНД ХЭРЭГЛЭГДЭХГҮЙ (2026-09-07): «өөр өдрийн
@@ -1352,10 +1354,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const cut = k.indexOf(':');
       if (cut <= 0) continue;
       const r = rows[Number(k.slice(0, cut))];
-      if (r) byOid.add(`${r.oid}${k.slice(cut)}`);
+      if (!r) continue;
+      /* ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ нүд (`sheetFrame.negTotalAt` — давхарлалтын жинхэнэ утга) ХЭЗЭЭ Ч «зөвшөөрөгдсөн»
+         биш — хянагчийн жагсаалтад орсон байсан ч (хуучин буцаалт, дээд шатны жагсаалт) ногоон/түгжээтэй болгохгүй. Урьд нь
+         тэр нүд `okLockAt`-оор түгжигдэж, харин «Илгээх» сөрөг нүдээр хаагддаг тул гүйцэтгэгч засах ч, илгээх ч боломжгүй
+         гацдаг байв. НЭГ эх: `okLockAt` (UI · ноорог · «Илгээх»), `FillRows.okLock/okd`, `backList` бүгд `backOk`-оос. */
+      const bi = sc ? sc.bld.indexOf(k.slice(cut + 1)) : -1;
+      if (bi >= 0 && negTotalAt(r, bi)) continue;
+      byOid.add(`${r.oid}${k.slice(cut)}`);
     }
     return { ok: byOid, unknown: res.unknown };
-  }, [view, flow, rows, resumedOid, hyRows, backMeta, returnedStaged, staged]);
+  }, [view, flow, rows, resumedOid, hyRows, backMeta, returnedStaged, staged, sc]);
   const backOk = backOkRes.ok;
   /* `backChg` — ачаалах эффектээс ДЭЭР зарлагдсан (2026-10-01). */
   /**
@@ -2711,12 +2720,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          үү?» гэж асуудаг тул «Тийм» дарвал сөрөг нүдтэй илгээлт хянагчид очиж, аль ч шатанд батлагдахгүй гацдаг байв
          (Багц 7.1 · 2026.10.14 — хоосон нүдэнд −0.0017, 6 удаа буцаагдсан). Одоо ИЛГЭЭГДЭХГҮЙ, нүдийг замаар нь
          нэрлэнэ (`describeNegCells`, мөрийн № давтагддаг); хуудсанд ч бичих агшинд улаан (`FillRows.negNow`). */
+      /* ⚠️ 2026-10-22 (аудит): «хасалтаа устгаж хоосон үлдээ» гэсэн зөвлөгөө БУЦААГДСАН илгээлтэд БУРУУ — `mergeSubmission`
+         шинэ нэмэлтийг өмнө илгээсэн дээр НЭМДЭГ тул хоосон нүдэнд өмнөх −0.0017 үлдэнэ. Нүд бүрт нийтийг 0 болгох ЯГ
+         утгыг (бүтэн нарийвчлалаар, ноорогийг орлох) хэлнэ (`describeNegFixes`); `resendAsIs` ЯГ энэ мессежээр хаана. */
       {
         const ovNeg = overlaySubmission(freshRows, payload, sc, nBld);
         if (ovNeg.negative > 0) {
           warn(tr(
-            'Илгээсэнгүй — {0} нүдний нэмэлт нийт дүнг сөрөг болгоно (хуудсанд байгаагаас их хасалт): {1}. Тэр нүдний хасалтыг устгаж хоосон үлдээгээд «Илгээх»-ийг дахин дарна уу (ноорог хадгалагдсан хэвээр).',
-            ovNeg.negative, describeNegCells(ovNeg.negKeys, ovNeg.rows, sc.bld, ovNeg.negInc).join('; '),
+            'Илгээсэнгүй — {0} нүдний нэмэлт нийт дүнг сөрөг болгоно (хуудсанд байгаагаас их хасалт). Нийтийг 0 болгохын тулд: {1}. Дараа нь «Илгээх»-ийг дарна уу (юу ч илгээгдээгүй, ноорог хэвээр).',
+            ovNeg.negative, describeNegFixes(ovNeg, sc, pend2, fillMode).join('; '),
           ));
           return;
         }
@@ -3043,7 +3055,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* 2026-10-09 (аудит №3) */
     restoringUi, okLockAt, offTgtKeys, revert,
     /* 2026-10-12 (аудит №8) */
-    hyLoading, hyErr]);
+    hyLoading, hyErr,
+    /* 2026-10-22 (аудит): сөрөг нүдний засварын утга горимын нэгжээр (`describeNegFixes`) */
+    fillMode]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -3059,10 +3073,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (noEdit) { setErr(RO.viewOnly); return; }
     /* ⚠️ 2026-10-09 (аудит №3): батлагчийн харагдац/эрхгүй хүн тойрог нээхгүй (`resend`-ийн ⚠️) */
     if (reviewerOnly || !canPerf) { setErr(noPerfWhy ?? RO.noPerf); return; }
-    if (!window.confirm(tr('Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)))) return;
     setBusy(true);
     setErr("");
     try {
+      /*
+       * ⚠️ 2026-10-22 (аудит): ДАХИН ИЛГЭЭХЭЭС ӨМНӨ `publish`-тэй ИЖИЛ шалгалт — хянагчийн харах СУУРЬ жааз (архивын
+       *    сүүлийн) дээр ЯГ тэр давхарлалт (`overlaySubmission`, `ensureFrameOcc` — `hyanaltDetail.loadStaged`-тэй нэг дүрэм):
+       *    нийт СӨРӨГ нүд (`negative`) эсвэл буулгаж чадаагүй нүд (`unmoved`) байвал ИЛГЭЭХГҮЙ, `publish`-ийн мессежээр (нүд
+       *    бүрт ЯГ бичих утга). Урьд нь шалгалтгүй тул ийм илгээлт дахин хянагчид очиж, аль ч шатанд батлагдахгүй
+       *    (`Guitsetgel` — `negBlocks`/`unmovedBlocks`) буцаагдах тойрог давтагддаг байв. Уншиж чадаагүй бол ИЛГЭЭХГҮЙ
+       *    (fail-closed). Асуултаас ӨМНӨ — илгээгдэхгүй зүйлийг асуухгүй.
+       */
+      {
+        let ovChk: ReturnType<typeof overlaySubmission>;
+        let pChk: SubmissionPayload;
+        try {
+          const fresh = await loadRows(pkg, sc);
+          pChk = await ensureFrameOcc(pkg, sc, staged.payload, fresh.rows);
+          ovChk = overlaySubmission(fresh.rows, pChk, sc, nBld);
+        } catch (e) {
+          setErr(tr('Илгээлтийг шалгаж чадсангүй — юу ч илгээсэнгүй, дахин оролдоно уу ({0}).', userError(e)));
+          return;
+        }
+        if (ovChk.negative > 0) {
+          warn(tr(
+            'Илгээсэнгүй — {0} нүдний нэмэлт нийт дүнг сөрөг болгоно (хуудсанд байгаагаас их хасалт). Нийтийг 0 болгохын тулд: {1}. Дараа нь «Илгээх»-ийг дарна уу (юу ч илгээгдээгүй, ноорог хэвээр).',
+            ovChk.negative, describeNegFixes(ovChk, sc, {}, fillMode).join('; '),
+          ));
+          return;
+        }
+        if (ovChk.unmoved > 0) {
+          warn(tr(
+            'Илгээсэнгүй — илгээлтийн {0} нүдийг хуудсанд буулгаж чадсангүй (мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш): {1}. Хянагч ийм илгээлтийг батлах боломжгүй — тэр нүдийг дахин бөглөж (тоог зөв бичиж) «Илгээх»-ээр илгээнэ үү.',
+            ovChk.unmoved, describeUnmoved(ovChk.unmovedKeys, pChk.rowKeys, sc.bld).join('; '),
+          ));
+          return;
+        }
+      }
+      if (!window.confirm(tr('Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)))) return;
       const rv = await submitForReview(pkg.group, staged.payload.fillMs, staged.oid, pkg.name);
       if (!rv.ok) { setErr(rv.error); return; }
       registeredRef.current.add(staged.oid);
@@ -3109,7 +3157,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done, reviewerOnly, canPerf, noPerfWhy]);
+  }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done, reviewerOnly, canPerf, noPerfWhy,
+    /* 2026-10-22 (аудит): илгээхийн өмнөх шалгалт (сөрөг · тулгагдаагүй нүд) */
+    warn, fillMode]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин

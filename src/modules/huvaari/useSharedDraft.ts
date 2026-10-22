@@ -756,13 +756,22 @@ export function useSharedDraft({
         /* Энэ түлхүүр нээлттэй, сэргээгдсэн бол цэвэрлэлтээс хойшхи өөрийн засвар (tombstone) ч хамт */
         const mine = cur() && hdReady.current === key ? hdLocal() : null;
         const t = hdStamp();
-        const base0: HDDraft = hdMerge(remote, mine) ?? {
+        const empty = (): HDDraft => ({
           t, kind: kindRef.current, pkg: pkgKeyRef.current, by: { user: meRef.current, at: t },
           entries: new Map(), del: new Map(), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
-        };
-        const d: HDDraft = { ...applyClear(base0, mk.keys, mk.ts), t, by: { user: meRef.current, at: t } };
+        });
+        const cleared = (b0: HDDraft | null): HDDraft => ({ ...applyClear(b0 ?? empty(), mk.keys, mk.ts), t, by: { user: meRef.current, at: t } });
+        let d: HDDraft = cleared(hdMerge(remote, mine));
         /* ⚠️ 2026-10-09: `REMOTE_MAX` — танихуун хэмжээг хэтрүүлбэл хасагдана (`serialize`-ийн ⚠️) */
-        const body = hdSerialize(d, REMOTE_MAX);
+        /* ⚠️ 2026-10-22 (аудит №1): tombstone НЯГТ (`huvaariDraft.encodeDel`) — илгээлтийн хэмжээнээс үл хамааран багтана.
+           Хэтэрсэн хэвээр бол шалтгаан нь ЭНЭ клиентийн бусад (илгээгээгүй, алсад хэзээ ч хүрээгүй «хэт том») нүд байж болно —
+           тэр үед ЗӨВХӨН алсын мөрийг цэвэрлэнэ (`remote` + тэмдэг): цэвэрлэлт заавал бууна, миний бусад нүд санах ой ба
+           локал хуулбарт хэвээр, ердийн бичилт (`hdFlush` — `hdLastSeenAt` хөдлөөгүй тул дахин уншиж нийлүүлнэ) авч явна. */
+        let body = hdSerialize(d, REMOTE_MAX);
+        if (body.length > REMOTE_MAX && mine) {
+          d = cleared(remote);
+          body = hdSerialize(d, REMOTE_MAX);
+        }
         if (body.length > REMOTE_MAX) {
           err = tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(body.length), String(REMOTE_MAX));
           break;

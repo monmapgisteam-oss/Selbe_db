@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { SCORE_LEVELS, levelOf, NO_DATA_TONE, type Indicator } from '@/lib/analysis/config';
+import { SCORE_LEVELS, levelOf, NO_DATA_TONE, MIN_MEASURED_SHARE, type Indicator } from '@/lib/analysis/config';
 import { scoreTone, scoreInk } from '@/lib/analysis/score';
 import { useTheme } from '@/lib/theme';
 import { nf, zoneTypeLabel } from './format';
@@ -48,6 +48,10 @@ export function Ranking({
    */
   const ranks = useMemo(() => competitionRanks(sorted.map((r) => valueOf(r, mode, ind))), [sorted, mode, ind]);
   const withData = countWithData(rows, mode, ind);
+  /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин босгоос доош (оноогүй) бүсийн тоо — урьд нь `ASSUME_MET`-ийн таамгаар бүх бүс
+     оноотой болж «40/40 бүс өгөгдөлтэй» гэж худал хэлдэг байв (`config.MIN_MEASURED_SHARE`-ийн ⚠️) */
+  const lowCov = mode === 'urban' ? rows.filter((r) => r.urbanReason === 'coverage').length : 0;
+  const minPct = Math.round(MIN_MEASURED_SHARE * 100);
   const exportCsv = () => downloadText(
     `selbe-bus-onoo-${fileDate()}.csv`, zoneCsv(rows, mode, ind, indicators), 'text/csv',
   );
@@ -98,10 +102,11 @@ export function Ranking({
         type="button"
         className={`${s.rankRow} ${selected === r.id ? s.rankSel : ''} ${/багц/i.test(r.id) ? s.bagts : ''}`}
         onClick={() => onSelect(selected === r.id ? null : r.id)}
+        title={r.coverage == null ? undefined : tr('Хэмжсэн жин {0}% — оноо гаргахад ≥ {1}% шаардлагатай', Math.round(r.coverage * 100), minPct)}
       >
         <span className="rk">{ranks[i] ?? '—'}</span>
-        {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
-        <span className="nm">{r.id}<i>{zoneTypeLabel(r.type)}</i></span>
+        {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) · хэмжсэн жингийн хувь (`MapRow.coverage`) */}
+        <span className="nm">{r.id}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', Math.round(r.coverage * 100))}</i>}</span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,
@@ -112,7 +117,10 @@ export function Ranking({
     <>
       {/* ⚠️ 2026-10-01: хэдэн бүс ОНООТОЙ вэ (өгөгдөлгүй нь байргүй) + CSV экспорт */}
       <div className={s.rankMeta}>
-        <span>{tr('{0}/{1} бүс өгөгдөлтэй', withData, rows.length)}</span>
+        <span>
+          {tr('{0}/{1} бүс өгөгдөлтэй', withData, rows.length)}
+          {lowCov > 0 && ` · ${tr('{0} бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < {1}%)', lowCov, minPct)}`}
+        </span>
         <button
           type="button"
           className={s.mini}

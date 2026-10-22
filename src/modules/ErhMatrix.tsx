@@ -85,21 +85,27 @@ export function ErhMatrix({
    *    super-ийн хуучин мөрийг жирийн хуваарилалт гэж ойлгох эрсдэлтэй байв.
    */
   const gone = new Set((src.gone ?? []).map((x) => x.toLowerCase()));
+  /* ⚠️ 2026-10-22 (аудит): порталд алга (`ErhSource.absent`) нь `gone`-д ч орсон (гацааны шалгуур) — шошгыг ЯЛГАНА:
+     хүснэгтэд мөртэй тул «устгагдсан» биш, «порталд алга» (админ хасаж/шилжүүлнэ) */
+  const absent = new Set((src.absent ?? []).map((x) => x.toLowerCase()));
   const adm = new Set(supers.map((x) => x.toLowerCase()));
   const person = (u: string, view: boolean) => {
     const k = u.toLowerCase();
-    const isGone = gone.has(k);
-    const isAdm = !isGone && adm.has(k);
+    const isAbsent = absent.has(k);
+    const isGone = !isAbsent && gone.has(k);
+    const isAdm = !isGone && !isAbsent && adm.has(k);
     const notes = [
       view ? tr('зөвхөн харна') : '',
       isGone ? tr('устгагдсан аккаунт — тухайн эрхийн хуудсанд «Цэвэрлэх»') : '',
+      isAbsent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
       isAdm ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
     ].filter(Boolean);
-    const cls = [s.mxName, view ? s.mxView : '', isGone ? s.aclGoneName : '', isAdm ? s.aclAdminName : ''].filter(Boolean).join(' ');
+    const cls = [s.mxName, view ? s.mxView : '', isGone || isAbsent ? s.aclGoneName : '', isAdm ? s.aclAdminName : ''].filter(Boolean).join(' ');
     return (
       <span key={`${view ? 'v' : 'o'}-${u}`} className={cls} title={notes.join(' · ') || undefined}>
         {u}
         {isGone && <span className={s.aclMarkTag}>{tr('устгагдсан')}</span>}
+        {isAbsent && <span className={s.aclMarkTag}>{tr('порталд алга')}</span>}
         {isAdm && <span className={s.aclMarkTag}>{tr('админ')}</span>}
       </span>
     );

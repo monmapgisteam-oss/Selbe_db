@@ -17,8 +17,12 @@ import {
 } from '@/lib/deps.ts';
 import { DAY, spanDays } from '@/lib/plan.ts';
 
-/** Өдрийн дугаар → мс (уншихад хялбар) */
-const d = (n) => n * DAY;
+/** Өдрийн дугаар → мс (уншихад хялбар).
+ * ⚠️ 2026-10-22 (аудит №5): 2026-01-01-ЭЭС тоолно — бүлгийн нэгтгэл 2000–2100-аас гадуурх мужийг «хуваарьгүй» гэж
+ *    үздэг болсон (`deps.saneSpan`) тул 1970 оны жижиг хоногоор бичсэн хуучин тохиолдлууд бүлгийн мужгүй болж байв.
+ *    Бүх тулгалт `d()`-ээр явдаг тул шилжүүлэлт нь тулгалтын утгыг өөрчлөхгүй (FS/SS хоцролт нь зөрүү). */
+const D0 = Date.UTC(2026, 0, 1);
+const d = (n) => D0 + n * DAY;
 /** Товч мөр үүсгэгч */
 const row = (i, des, deps, spans, { group = false, depth = 1 } = {}) => ({
   i, oid: 100 + i, no: String(i), des, deps, work: `Ажил ${i}`, depth, group, spans,
@@ -445,7 +449,9 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   const ch = propagate(rows, 1, new Map([[0, [sp(2, 11)]]]));
   assert.deepEqual(ch.get(5), [sp(12, 17)], 'E2 P-г дагав');
   assert.deepEqual(ch.get(2), [sp(20, 29)], 'B: бүлгийн шилжилтээр хэтэрсэн ч өөрийн уялдаа (H төгсгөл 19) руу буцна');
-  assert.deepEqual(ch.get(6), [sp(30, 39)], 'D: B эх байрлалдаа буцсан тул 1-р давалгааны байранд үлдэхгүй');
+  /* ⚠️ 2026-10-22 (аудит №9): B (дотоод мөр) бүлгийн шилжилтийн ДАРУЙ өөрийн уялдаагаар засагддаг болсон тул D хэзээ ч
+     хөдлөхгүй — `out`-д орохгүй байж болно; үр дүнтэй муж (`?? rows`) нь урьдын адил 30..39. */
+  assert.deepEqual(ch.get(6) ?? rows[6].spans, [sp(30, 39)], 'D: B эх байрлалдаа буцсан тул 1-р давалгааны байранд үлдэхгүй');
   console.log('✅ ромбо, монотон биш — сүүлд бодсон шаардлагатай тулгана, хэтэрсэн навч буцна');
 }
 
@@ -587,6 +593,68 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   assert.deepEqual(ru.get(1)?.[0], g0[0], 'b0: гинжээр шилжсэн өөрийн муж хэвээр (урьд 60..90 руу буцдаг)');
   assert.notDeepEqual(ru.get(1)?.[0], sp(60, 90), 'b0: серверийн муж руу буцаагүй');
   console.log('✅ гинжээр шилжсэн бүлгийн өөрийн муж — навчгүй блокт хэвээр');
+}
+
+/* ── ⚠️ 2026-10-22 (аудит №5): 2000–2100-аас гадуурх (1899-12-30 г.м.) муж өвөг бүлэгт ТАРХАХГҮЙ ── */
+{
+  const old = { start: Date.UTC(1899, 11, 30), end: Date.UTC(1899, 11, 30) };
+  const rows = [
+    row(0, 1, [], [null], { group: true, depth: 0 }),             // Б1 (өвөг)
+    row(1, 2, [], [old], { group: true, depth: 1 }),              // эвдэрсэн өөрийн огноотой, навчгүй дэд бүлэг
+    row(2, 3, [], [null], { depth: 2 }),                          // огноогүй навч
+    row(3, 4, [], [sp(10, 30)], { depth: 1 }),                    // хүчинтэй навч
+  ];
+  assert.deepEqual(effSpan(rows, 0, 0), sp(10, 30), 'өвгийн муж эвдэрсэн 1899 огноог алгасна');
+  assert.deepEqual(effSpan(rows, 1, 0), old, 'дэд бүлгийн өөрийн муж харагдсаар (устахгүй)');
+  /* Навчийг зөөхөд өвгийн ноорог 1899-ээс эхлэхгүй */
+  const ru = rollUpGroups(rows, 1, new Map([[3, [sp(11, 31)]]]));
+  assert.deepEqual(ru.get(0), [sp(11, 31)], 'rollUpGroups: өвөг = хүчинтэй хүүхдийн муж');
+  /* 2100-аас хойших ч мөн */
+  const far = { start: Date.UTC(2101, 0, 1), end: Date.UTC(2101, 0, 5) };
+  const rows2 = [row(0, 1, [], [null], { group: true, depth: 0 }), row(1, 2, [], [far], { depth: 1 }), row(2, 3, [], [sp(1, 2)], { depth: 1 })];
+  assert.deepEqual(effSpan(rows2, 0, 0), sp(1, 2), '2101 он нэгтгэлд орохгүй');
+  console.log('✅ эвдэрсэн хуучин огноо (2000–2100-аас гадуур) өвөг бүлэгт тархахгүй');
+}
+
+/* ── ⚠️ 2026-10-22 (аудит №9): бүлэг гинжээр шилжихэд дотоод мөрийн ГАДНЫ уялдаа дахин шалгагдана ── */
+{
+  /* P → G (1FS); G > L1, L2 (9FS — G-ээс гадуурх X); X хөдлөхгүй. P 5 хоног урагшлахад G дэд модоо −5 шилжүүлнэ,
+     L2 нь X-ийн шаардлага (35)-аас өмнө (30) үлддэг байв. */
+  const rows = [
+    row(0, 1, [], [sp(5, 14)], { depth: 0 }),                       // P
+    row(1, 2, parseDeps('1FS'), [null], { group: true, depth: 0 }), // G
+    row(2, 3, [], [sp(15, 24)], { depth: 1 }),                      // L1
+    row(3, 4, parseDeps('9FS'), [sp(35, 44)], { depth: 1 }),        // L2 → X
+    row(4, 9, [], [sp(25, 34)], { depth: 0 }),                      // X (гадна)
+  ];
+  const ch = propagate(rows, 1, new Map([[0, [sp(0, 9)]]]));
+  assert.deepEqual(ch.get(2), [sp(10, 19)], 'L1 бүлэгтэйгээ шилжив');
+  const l2 = (ch.get(3) ?? rows[3].spans)[0];
+  const after = rows.map((r, i) => ({ ...r, spans: ch.get(i) ?? r.spans }));
+  const req = requiredStart(after, codeIndex(after), 3, 0);
+  assert.ok(l2.start >= req, `L2 X-ийн шаардлагыг зөрчихгүй (${(l2.start - D0) / DAY} ≥ ${(req - D0) / DAY})`);
+  assert.deepEqual(l2, sp(35, 44), 'L2 өөрийн уялдаагаар (X дууссаны маргааш) засагдав');
+  /* X нь өөр бүлэг H-д, H-ийн өөр хүүхэд E гинжинд орсон (ромбо маягийн) үед ч мөн */
+  const rows2 = [
+    row(0, 1, [], [sp(5, 14)], { depth: 0 }),
+    row(1, 2, parseDeps('1FS'), [null], { group: true, depth: 0 }),
+    row(2, 3, [], [sp(15, 24)], { depth: 1 }),
+    row(3, 4, parseDeps('9FS'), [sp(35, 44)], { depth: 1 }),
+    row(4, 6, [], [null], { group: true, depth: 0 }),
+    row(5, 9, [], [sp(25, 34)], { depth: 1 }),
+    row(6, 8, parseDeps('1SS'), [sp(5, 6)], { depth: 1 }),
+  ];
+  const ch2 = propagate(rows2, 1, new Map([[0, [sp(0, 9)]]]));
+  assert.deepEqual((ch2.get(3) ?? rows2[3].spans)[0], sp(35, 44), 'ромбо маягийн: L2 мөн засагдав');
+  /* Дугуй өгөгдөлд гацахгүй (дотоод мөр бүлгээсээ дам хамаарах) */
+  const cyc = [
+    row(0, 1, [], [sp(5, 14)], { depth: 0 }),
+    row(1, 2, parseDeps('1FS'), [null], { group: true, depth: 0 }),
+    row(2, 3, parseDeps('5FS'), [sp(15, 24)], { depth: 1 }),
+    row(3, 5, parseDeps('3FS'), [sp(25, 30)], { depth: 0 }),
+  ];
+  propagate(cyc, 1, new Map([[0, [sp(0, 9)]]]));
+  console.log('✅ бүлгийн шилжилтийн дараа дотоод мөрийн гадны уялдаа дахин шалгагдана');
 }
 
 

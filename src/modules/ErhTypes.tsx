@@ -30,6 +30,11 @@ import {
   unseenViews, type TypeTpl,
 } from '@/lib/roleTypes';
 import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
+/* ⚠️ 2026-10-22 (аудит): урсгалын төрлийг хэрэгжүүлсний дараа шатгүй үлдсэн хүмүүс (`erhOverview.typeStageGaps`) */
+import { ROLE_STAGE } from '@/lib/services';
+import { flowAclReady } from '@/lib/guitsetgelAcl';
+import { liveErhSource } from '@/lib/aclOps';
+import { typeStageGaps } from '@/lib/erhOverview';
 import ua from '@/components/userAdmin.module.css';
 import s from './erhTypes.module.css';
 
@@ -150,9 +155,16 @@ export function ErhTypes({ remote, onDirty }: {
   const bulkMsg = !bulk ? '' : bulk.running
     ? tr('«{0}»: хэрэгжүүлж байна… {1}/{2}', typeLabel(bulk.role), String(bulkDone), String(bulk.total))
     : tr('«{0}»: {1}/{2} хэрэглэгчид хэрэгжлээ.', typeLabel(bulk.role), String(bulk.ok), String(bulk.total));
+  /* ⚠️ 2026-10-22 (аудит): «Хэрэгжүүлэх» нь урсгалын ТӨРӨЛД ч зөвхөн үүрэг/харагдацыг бичдэг — шат, «Гүйцэтгэл» хуудас,
+     батлах эрх үүсэхгүй. Дууссаны дараа тэр төрлийн ШАТГҮЙ хүмүүсийг нэрээр нь хэлнэ (томилгоо — урсгалын хуудсанд). */
+  const bulkStage = bulk && !bulk.running ? ROLE_STAGE[bulk.role] : undefined;
+  const bulkNoStage = bulkStage && flowAclReady()
+    ? typeStageGaps(liveErhSource()).filter((g) => g.want === bulkStage && !g.have).map((g) => g.user)
+    : [];
   const bulkErr = !bulk ? '' : [
     ...(bulk.skipped.length ? [tr('Хадгалаагүй ноорогтой тул алгассан: {0}', bulk.skipped.join(', '))] : []),
     ...bulk.errors,
+    ...(bulkNoStage.length ? [tr('⚠️ «{0}» төрөл урсгалын шат олгодоггүй — шатанд томилогдоогүй: {1}. «Гүйцэтгэлийн урсгалын эрх» хуудсанд томилохгүй бол «Гүйцэтгэл» хуудас нээгдэхгүй, батлах боломжгүй.', typeLabel(bulk.role), bulkNoStage.join(', '))] : []),
   ].join('\n');
 
   if (!typesReady()) {

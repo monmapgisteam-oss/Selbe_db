@@ -30,6 +30,7 @@ globalThis.dispatchEvent = () => true;
 
 const {
   PLAN_STATUS, parsePayload, parseOkRows, decidePlan, withdrawPlan, claimPlan, submitPlan, claimHolderOf, PAYLOAD_MAX,
+  encodePayload,
 } = await import('@/lib/huvaariBatlah.ts');
 
 /* ── 1. Төлөвийн утгууд — өгөгдөл тул ОРЧУУЛАГДАХГҮЙ ── */
@@ -344,12 +345,81 @@ console.log('✅ түгжээ — нэргүй/өөрийгөө хаагдана
 /* ══════════ АГУУЛГЫН ДЭЭД ХЭМЖЭЭ (2026-09-29 аудит) ══════════ */
 {
   assert.equal(PAYLOAD_MAX, 1_048_576);
-  const big = { spans: { 1: [{ start: 0, end: 1 }] }, deps: {}, obyem: {}, note: 'x'.repeat(PAYLOAD_MAX) };
+  /* ⚠️ 2026-10-22 (аудит №4): нягт хэлбэр (`encodePayload`) зөвхөн `PlanPayload`-ийн талбаруудыг бичдэг — хэмжээг уялдааны
+     текстээр хэтрүүлнэ (урьд нь танихгүй `note` талбараар). */
+  const big = { kind: 'plan', spans: { 1: [{ start: 0, end: 1 }] }, deps: { 1: 'x'.repeat(PAYLOAD_MAX) }, obyem: {}, actual: {}, res: {} };
   const r = await submitPlan({ pkgKey: 'p', pkgGroup: 'g', author: 'a', rowCount: 1, payload: big });
   assert.equal(r.ok, false, 'хэт том агуулга сүлжээнд хүрэв');
   assert.match(r.error, /хэт том/, 'уртын алдааны мессеж');
+  /* ⚠️ 2026-10-22 (аудит №4): «хэд хэдэн илгээлтэд хуваа» гэж ХУДАЛ зөвлөхгүй — нэг багцад нэг л илгээлт хүлээгдэнэ */
+  assert.doesNotMatch(r.error, /хэд хэдэн илгээлтэд/, 'хуваах зөвлөгөө (нэг багцад нэг л илгээлт)');
+  assert.match(r.error, /нэг л илгээлт/, 'нэг илгээлтийн дүрмийг хэлнэ');
 }
 console.log('✅ агуулга — 1 MB-аас хэтэрвэл илгээхийн өмнө зогсоно');
+
+/* ══════════ ⚠️ 2026-10-22 (аудит №4): НЯГТ АГУУЛГА (v2) — АЛДАГДАЛГҮЙ, хуучин хэлбэр уншигдсаар ══════════ */
+{
+  const DAY = 86_400_000;
+  const D = (y, m, d) => Date.UTC(y, m - 1, d);
+  const sp = (a, b) => ({ start: a, end: b });
+  const full = {
+    kind: 'plan',
+    spans: {
+      10: [sp(D(2026, 1, 5), D(2026, 2, 1)), null, sp(D(2026, 3, 1), D(2026, 3, 9)), sp(D(2026, 4, 1), D(2026, 4, 2))],
+      11: [null, sp(D(2026, 1, 1) + 3600_000, D(2026, 1, 2) + 1), null, null], // цагтай мс — алдагдахгүй
+      12: [sp(D(1899, 12, 30), D(1899, 12, 30)), null, null, null],              // эвдэрсэн хуучин огноо ч хэвээр
+      13: [sp(D(2026, 5, 9), D(2026, 5, 1)), null, null, null],                  // урвуу муж → хоёр замаар null
+    },
+    deps: { 10: '7FS', 12: '' },
+    obyem: { '501|5/1': { '2026-01': 3, '2026-03': 0, '2026-02': 1.5 }, '502|5/2': {}, '503|x': { 'буруу': 4 } },
+    obres: { '501|5/1': { '2026-01': { hun: 3, mashin: null }, '2026-04': { hun: null, mashin: null } } },
+    actual: { 10: { start: [D(2026, 1, 6), null, null, null], end: [null, null, null, D(2026, 4, 2) + 7] } },
+    res: { 10: { hun: 5, mashin: null } },
+    keys: { 10: 501, 11: 502 },
+    base: {
+      spans: {
+        10: [sp(D(2026, 1, 5), D(2026, 2, 1)), null, sp(D(2026, 3, 2), D(2026, 3, 9)), sp(D(2026, 4, 1), D(2026, 4, 2))],
+        11: [null, null, null, null],
+      },
+      deps: { 10: null, 12: '3FS' },
+      obyem: { '501|5/1': { '2026-01': 3 } },
+      actual: { 10: { start: [null, null, null, null], end: [null, null, null, null] } },
+      res: { 10: { hun: null, mashin: 2 } },
+      obres: {},
+    },
+  };
+  const same = (p, why) => assert.deepStrictEqual(parsePayload(encodePayload(p)), parsePayload(JSON.stringify(p)), why);
+  same(full, 'бүрэн санал — хоёр хэлбэрийн задлалт ижил');
+  same({ ...full, kind: 'geree' }, 'гэрээ');
+  { const { base: _b, ...noBase } = full; same(noBase, 'суурьгүй (хуучин «бүх блок зассан» зан)'); }
+  same({ kind: 'plan', spans: {}, deps: {}, obyem: {}, actual: {}, res: {}, obres: {} }, 'хоосон санал');
+  same({ ...full, base: { spans: full.base.spans, deps: {}, obyem: {} } }, 'суурийн нэмэлт хэсгүүдгүй (2026-09-23-аас өмнөх)');
+  /* Хөндөөгүй блок → `0` (суурь нэг л удаа); `kind` ЭХЭНД, `"kind":"geree"` (`KIND_SQL` LIKE) */
+  const enc = JSON.parse(encodePayload(full));
+  assert.equal(enc.z, 2);
+  assert.equal(enc.sp[10][0], 0, 'суурьтай ижил блок → 0');
+  assert.notEqual(enc.sp[10][2], 0, 'зассан блок утгатай');
+  assert.equal(enc.spans, undefined, 'хуучин клиент `spans`-гүйг fail-closed уншина (null)');
+  assert.ok(encodePayload({ ...full, kind: 'geree' }).startsWith('{"kind":"geree"'), '`"kind":"geree"` эхэнд');
+  assert.ok(!encodePayload(full).includes('"kind":"geree"'), 'төлөвлөгөөний санал geree LIKE-д таарахгүй');
+  /* Эвдэрсэн нягт агуулга — fail-closed */
+  assert.equal(parsePayload('{"kind":"plan","z":2,"d0":"x","sp":{}}'), null, 'd0 эвдэрсэн → null');
+  /* Хэмжээ: 1,400 мөр × 22 блок бүтэн хуваарь (бүх блок зассан, суурьтай) — хуучнаар 1 MB-аас их, нягтаар багтана */
+  const n = 22; const rows = 1400; const t0 = D(2026, 11, 1);
+  const big = { kind: 'plan', spans: {}, deps: {}, obyem: {}, actual: {}, res: {}, obres: {}, keys: {},
+    base: { spans: {}, deps: {}, obyem: {}, actual: {}, res: {}, obres: {} } };
+  for (let r = 0; r < rows; r += 1) {
+    big.spans[1000 + r] = Array.from({ length: n }, (_, b) => sp(t0 + b * 7 * DAY, t0 + (b * 7 + 20) * DAY));
+    big.base.spans[1000 + r] = Array.from({ length: n }, (_, b) => (b % 3 ? sp(t0 - 30 * DAY + b * DAY, t0 + b * DAY) : null));
+    big.keys[1000 + r] = r + 1;
+  }
+  const oldLen = JSON.stringify(big).length;
+  const newLen = encodePayload(big).length;
+  assert.ok(oldLen > PAYLOAD_MAX, `хуучин хэлбэр ${oldLen} — 1 MB-аас их байх ёстой (тестийн загвар)`);
+  assert.ok(newLen < PAYLOAD_MAX * 0.75, `нягт хэлбэр ${newLen} тэмдэгт — 1 MB-д нөөцтэй багтах ёстой`);
+  same(big, 'том санал ч алдагдалгүй');
+  console.log(`✅ нягт агуулга — алдагдалгүй, хуучин хэлбэр уншигдана, 1,400×22: ${oldLen} → ${newLen} тэмдэгт`);
+}
 
 console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал · түгжээ · урт');
 

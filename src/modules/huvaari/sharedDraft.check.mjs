@@ -34,6 +34,9 @@ const body = (src, name) => {
   const rc = body(U, 'hdRunClear');
   assert.ok(rc.includes('readRemoteDraft(key)') && rc.includes('applyClear(') && rc.includes('expectAt:'),
     'цэвэрлэлт read-merge-write (applyClear, expectAt) биш');
+  /* ⚠️ 2026-10-22 (аудит №1): миний бусад нүдтэй хамт хэтэрвэл ЗӨВХӨН алсын мөрийг цэвэрлэнэ — цэвэрлэлт заавал бууна */
+  assert.ok(/if \(body\.length > REMOTE_MAX && mine\) \{\s*d = cleared\(remote\);\s*body = hdSerialize\(d, REMOTE_MAX\);/.test(rc),
+    'хэт том үед зөвхөн алсын мөрийг цэвэрлэх нөөц зам алга');
   const cl = body(U, 'hdClear');
   assert.ok(!/saveRemoteDraft\(key, now, body\)/.test(cl), 'hdClear уншилтгүй (blind) бичсээр');
   assert.ok(cl.includes('hdPutMark(') && cl.includes('hdWriteLocal(key, hdLocal(), mark)'), 'цэвэрлэлтийн тэмдэг/локал хуулбар алга');

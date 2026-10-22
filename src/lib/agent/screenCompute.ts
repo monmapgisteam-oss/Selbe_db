@@ -17,6 +17,7 @@
  */
 
 import { paidShareOf } from '@/lib/paidShare';
+import { coverageOk } from '@/lib/planProgress';
 import { t as tr } from '@/lib/i18nCore';
 import { resolveSource, type AgentScope } from './registry';
 
@@ -86,7 +87,8 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
 /* ══════════════ pkg_plan ══════════════ */
 
 type MonthLike = { label: string; phys: number | null; physAt?: string | null };
-type Lag = { month: string; planned: number; actual: number; gap: number } | null;
+/* ⚠️ 2026-10-22 (аудит): `coverage` — хуваарийн хамралт (0–100, `planProgress.planCoverage`); < 95% бол дүгнэхгүй */
+type Lag = { month: string; planned: number; actual: number; gap: number; coverage?: number | null } | null;
 
 /** Дэлгэцийн функцүүд — бодит замд `Finance.tsx`-ийнх, тестэд ижил гарын үсэгтэй */
 export type PkgPlanDeps<M extends MonthLike = MonthLike> = {
@@ -113,8 +115,10 @@ export type PkgPlanRow = {
   gap: number | null;
   /** Хэмжилтийн сар «YYYY-MM» */
   month: string | null;
-  /** PkgProg-ийн alert-ийн түвшин (`lagLevel`) */
+  /** PkgProg-ийн alert-ийн түвшин (`lagLevel`) — хуваарь < 95% хамарсан бол `null` (дүгнэхгүй) */
   level: 'red' | 'yellow' | null;
+  /** ⚠️ 2026-10-22 (аудит): хуваарийн хамралт, % — `null` = мэдэгдэхгүй (fallback зам); < 95 бол `gap`/`level` = null */
+  coverage: number | null;
 };
 
 /** ЦЭВЭР цөм — багц бүрийн сарын цэгүүдээс (`pkgMonthsMap`) дэлгэцийн функцээр */
@@ -133,7 +137,12 @@ export function pkgPlanOf<M extends MonthLike>(
        `progressOf` = `physLatest` (`buildModel`-ийн `actual` Map) = энд `actual`. Тэмдэг нь ТУХ-ийн эсрэг
        (энд төлөвлөгөө − бодит, эерэг = хоцорсон — PkgProg/`lagOf().gap`-тай ижил). */
     const progress = housing ? actual : null;
-    const gap = lag ? lag.gap : planned != null && progress != null ? planned - progress : null;
+    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг ДҮГНЭХГҮЙ (`gap`/`level` = null) — дэлгэцийн
+       `Finance.lagJudged`-тэй нэг дүрэм; AI «хоцорсон/түрүүлсэн» гэж худал хэлэхгүй, хамралтыг нэрлэнэ. */
+    const coverage = lag?.coverage ?? null;
+    /* хамралт ӨГӨГДӨӨГҮЙ (`undefined` — хуучин/тестийн deps) бол өмнөх зан; ӨГӨГДСӨН ба < 95 бол л дүгнэхгүй */
+    const judged = !lag || lag.coverage === undefined || coverageOk(coverage);
+    const gap = !judged ? null : lag ? lag.gap : planned != null && progress != null ? planned - progress : null;
     if (actual == null && planned == null) return; // хуваарьгүй · хэмжилтгүй — «мэдээлэлгүй», мөр БИШ
     out.push({
       bagts: key,
@@ -142,6 +151,7 @@ export function pkgPlanOf<M extends MonthLike>(
       gap,
       month: lag?.month ?? null,
       level: gap == null ? null : deps.lagLevel(gap),
+      coverage,
     });
   });
   /* Хамгийн их хоцорсон эхэнд; тодорхойгүй хоцрогдол төгсгөлд */

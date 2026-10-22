@@ -707,6 +707,8 @@ export const LAYERS: LayerDef[] = [
    * ⚠️ `paint.values`-ийн ТҮЛХҮҮР нь МӨР: ArcGIS-ийн `uniqueValueInfos` ба
    * порталын шүүлт хоёулаа утгыг мөрөөр жишдэг. Талбар нь Integer ч
    * `String(value)` болж харьцуулагддаг тул «1»/«2» гэж бичнэ.
+   * ⚠️ 2026-10-22 (аудит): ШҮҮЛТИЙН SQL нь харин ТООГООР (`query.groupWhere` → `Code IN (1)`) — Enterprise-д `Code`
+   *    Integer тул `N'1'` нь 500 «Invalid data type» өгч төрлөөр шүүхэд бүх объект бүдгэрдэг байв.
    * ⚠️ ҮРГЭЛЖ АСААЛТТАЙ (`ALWAYS_ON_IDS`) — хэрэглэгчийн шаардлага.
    */
   {

@@ -236,6 +236,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         ...z,
         urban: u.score,
         parts: u.parts,
+        /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин · шалтгаан — эрэмбэ/дэлгэрэнгүйд (`MapRow.coverage`-ийн ⚠️) */
+        coverage: u.coverage,
+        urbanReason: u.reason,
         displayGeom: geoms.get(z.id) ?? null,
         scored: !z.excluded || scoreOn.has(z.type),
       };

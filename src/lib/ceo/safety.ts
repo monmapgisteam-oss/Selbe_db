@@ -31,6 +31,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { queryFeatures, type Row } from '@/lib/query';
+import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import { HABEA } from '@/lib/services';
 import { date, num } from '@/lib/format';
 import { DMG_BAD_N, incidentLevel, type Level } from '@/lib/kpiLevels';
@@ -105,8 +106,13 @@ export function isBlankIncident(r: Row): boolean {
   return blankStr(r[I.turul]) && blankStr(r[I.bagts]) && toMs(r[I.ognoo]) == null;
 }
 
-/** Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс */
-export function toSafetyRow(r: Row): SafetyRow {
+/**
+ * Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс.
+ * ⚠️ 2026-10-22 (аудит): төрөл · шалтгааны төрөл · компани нь домэйны НЭРЭЭР (`dom`, `codedName`) — Survey123-ийн КОД 30–31
+ *    тэмдэгтэд тасардаг тул CEO картад «"Хятадын хоёр дахь металлурги г», «Моторт тээврийн хэрэгсэлийн осо» гэж гардаг
+ *    байв (ХАБЭА хуудас 2026-10-21-нээс нэрээр). Толь алга/танихгүй код → код өөрөө.
+ */
+export function toSafetyRow(r: Row, dom: CodedMaps = {}): SafetyRow {
   const I = HABEA.incident.fields;
   /* ⚠️ Survey123 давхаргын OID нь жижиг үсгээр `objectid` (Habea.tsx-тэй ижил);
      өөр нэртэй ирвэл ч алдахгүй — зөвхөн тодорхойлоход хэрэглэнэ. */
@@ -117,12 +123,12 @@ export function toSafetyRow(r: Row): SafetyRow {
     /* ⚠️ 2026-10-09: `Habea.tsx` `normIncident`-тэй ИЖИЛ — ЗӨВХӨН `field_22`; 0/хоосон → `null`
        (`CreationDate` руу УНАХГҮЙ — толгойн ⚠️) */
     ognoo: toMs(r[I.ognoo]),
-    company: str(r[I.company]),
+    company: codedName(dom[I.company], r[I.company]),
     bagts: str(r[I.bagts]),
     dugaar: str(r[I.dugaar]),
-    turul: str(r[I.turul]),
+    turul: codedName(dom[I.turul], r[I.turul]),
     medeelel: str(r[I.medeelel]),
-    shaltgaanTurul: str(r[I.shaltgaanTurul]),
+    shaltgaanTurul: codedName(dom[I.shaltgaanTurul], r[I.shaltgaanTurul]),
     shaltgaan: str(r[I.shaltgaan]),
     argaHemjee: str(r[I.argaHemjee]),
   };
@@ -287,15 +293,19 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
  */
 export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const I = HABEA.incident.fields;
-  const raw = await queryFeatures(HABEA.incident.url, {
-    /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
-    outFields: [...Object.values(I), 'objectid'],
-    /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
-       дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
-    orderBy: `${I.ognoo} DESC, objectid DESC`,
-  });
+  /* ⚠️ 2026-10-22 (аудит): домэйны толь ЗЭРЭГ (`toSafetyRow`-ийн ⚠️); мета унавал `{}` — код хэвээр, карт унахгүй */
+  const [raw, dom] = await Promise.all([
+    queryFeatures(HABEA.incident.url, {
+      /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
+      outFields: [...Object.values(I), 'objectid'],
+      /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
+         дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
+      orderBy: `${I.ognoo} DESC, objectid DESC`,
+    }),
+    loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul, I.company]),
+  ]);
   /* ⚠️ 2026-10-01: хоосон ноорог хасагдана (`isBlankIncident`) */
-  return raw.filter((r) => !isBlankIncident(r)).map(toSafetyRow);
+  return raw.filter((r) => !isBlankIncident(r)).map((r) => toSafetyRow(r, dom));
 }, 5 * 60_000, ['HABEA']);
 
 export const loadSafetyKpi = cached(async (): Promise<KpiResult> => (

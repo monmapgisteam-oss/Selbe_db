@@ -52,7 +52,7 @@ import {
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { roleOf } from '@/lib/permissions';
-import { busyGate, classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
+import { busyGate, classifyStuck, materializeAdds, mayReapply, parentsCheck } from '@/lib/ajilApply';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 /**
  * ⚠️ `HuvaariBatlah` · `Guitsetgel` · `ErhOverview`-ТЭЙ ХУВААЛЦСАН CSS:
@@ -391,6 +391,16 @@ export function AjilBatlah() {
       const gate = await busyGate(x.pkgKey);
       if ('error' in gate) {
         setErr(tr('Буулгах боломжгүй тул шийдвэр гаргасангүй: {0}', userError(gate.error)));
+        return;
+      }
+      /* ⚠️ 2026-10-22 (аудит №3): ЭЦЭГ БҮЛЭГ ШИЙДВЭРИЙН ӨМНӨ (`ajilApply.parentsCheck`) — эцэг нь хуудсанд алга мөртэй
+         илгээлтийг батлавал «Батлагдсан» бичигдээд буулгалт «эцэг олдсонгүй» гэж гацдаг байв. Одоо батлахгүй, буцаах
+         шалтгааныг стандарт текстээр (`NO_PARENT_REASON`) бөглөж батлагчийг «Буцаах» руу чиглүүлнэ. */
+      const pc = await parentsCheck(x.pkgKey, d.p.adds);
+      if (!alive.current) return;
+      if (!pc.ok) {
+        setErr(pc.error);
+        if (pc.missing.length) setReason((m) => (m.get(x.oid)?.trim() ? m : new Map(m).set(x.oid, NO_PARENT_REASON())));
         return;
       }
       const r = await decideAjil({

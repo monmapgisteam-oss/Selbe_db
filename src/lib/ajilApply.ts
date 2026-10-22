@@ -140,6 +140,48 @@ export function dedupeAdds(rows: readonly RowLike[], adds: readonly NewRow[]): {
   return { fresh, dropped };
 }
 
+/**
+ * ЭЦЭГ БҮЛЭГ НЬ ХУУДСАНД АЛГА НЭМЭЛТ МӨРҮҮД (⚠️ 2026-10-22, аудит №3) — `parentIdxOf < 0`, өөрөөр хэлбэл
+ * `sheetFrame.insertAdds` чимээгүй алгасах мөрүүд.
+ * ⚠️ ЯАГААД: эцэг бүлэг устсан/нэр солигдсон (эсвэл «эцэг олдсонгүй»-гаар буцаагдсан) мөр «Хуваарь»-ийн хүснэгтэд
+ *    ХАРАГДАХГҮЙ (тиймээс «×»-ээр устгах, засах боломжгүй) атлаа «Нэмэлт ажил батлуулах (N)»-д тоологдож ИЛГЭЭГДДЭГ,
+ *    батлагдмагц буулгалт «эцэг бүлэг олдсонгүй» (`code: 'no-parent'`) гэж унаж «Батлагдсан · буулгаагүй»-д гацдаг,
+ *    буцаагдахад дахин нөгөө тойрог руу орж байв. Зохиогчийн хуудас (`useAjil`) эдгээрийг жагсааж, илгээхийг хаана;
+ *    батлагч (`parentsCheck`) батлахаас ӨМНӨ шалгана.
+ */
+export function missingParents<T extends NewRow>(rows: readonly RowLike[], adds: readonly T[]): T[] {
+  return adds.filter((a) => parentIdxOf(rows, a) < 0);
+}
+
+/**
+ * БАТЛАХЫН ӨМНӨХ ЭЦГИЙН ШАЛГАЛТ (⚠️ 2026-10-22, аудит №3) — буулгалттай (`writeFrameLive`) ИЖИЛ схем (`fillSchema`) ба
+ * хатуу уншилтаар (`strict`) одоогийн хуудсыг уншиж, эцэггүй мөр байвал шийдвэр гаргахыг ХААНА. Урьд нь `decideAjil`
+ * эхлээд «Батлагдсан» бичээд, буулгалт л «эцэг олдсонгүй» гэж унадаг тул илгээлт гацаж, батлагч «Гацсаныг буцаах»-ыг
+ * хайж олох шаардлагатай болдог байв. Уншилт унавал ч хаана (fail-closed) — дахин оролдоно.
+ * @returns `ok: true` — бүх мөрийн эцэг олдсон; эсвэл алдааны мессеж ба эцэггүй мөрүүд
+ */
+export async function parentsCheck(pkgKey: string, adds: readonly NewRow[]): Promise<{ ok: true } | { ok: false; error: string; missing: NewRow[] }> {
+  try {
+    const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
+    const pkg = PKGS.find((p) => p.key === pkgKey);
+    if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey), missing: [] };
+    const { loadRows } = await import('@/modules/sheet/bagtsSheet');
+    const sc = await fillSchema(pkg);
+    const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true });
+    const missing = missingParents(loaded.rows, adds);
+    if (!missing.length) return { ok: true };
+    const names = missing.map((a) => `${a.no} · ${a.work} (${tr('эцэг: {0}', `${a.parentNo} ${a.parentWork}`.trim() || '—')})`);
+    return {
+      ok: false,
+      missing,
+      error: tr('{0} мөрийн эцэг бүлэг одоогийн хуудсанд олдсонгүй: {1} — батлавал хуудсанд буухгүй гацна. «Буцаах»-аар (шалтгаан бөглөгдсөн) нэмэгчид буцаана уу.',
+        String(missing.length), names.slice(0, 5).join('; ') + (names.length > 5 ? ` (+${names.length - 5})` : '')),
+    };
+  } catch (e) {
+    return { ok: false, missing: [], error: tr('Эцэг бүлгийг шалгах үед хуудас уншигдсангүй — дахин оролдоно уу: {0}', String((e as Error)?.message ?? e)) };
+  }
+}
+
 /** UTC өдрийн эхэн (`Date.UTC(y,m,d)`) */
 export const dayStartUtc = (ms: number): number => {
   const d = new Date(ms);

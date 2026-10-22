@@ -322,6 +322,33 @@ export type WorkMeta = {
   niit: number | null;
 };
 
+/**
+ * `sar` (DateOnly) талбарт БИЧИХ утга — «YYYY-MM-01» МӨР; буруу сар бол `null`.
+ * ⚠️ 2026-10-22 (аудит №2): Enterprise-ийн `Guitsetgel_talbe/186`-ийн `sar` нь `esriFieldTypeDateOnly` (метаг амьдаар
+ *    шалгав) — DateOnly нь epoch мс БИШ, «2026-06-08» хэлбэрийн мөр хүлээн авдаг (`zovshoorol.toDateOnly` ·
+ *    `finEdit.dateOnlyText`-ийн дүрэм). Урьд нь `monthStart()` (epoch мс) илгээдэг тул хүснэгт хоосон (0 мөр) хэвээр байв.
+ */
+export const sarDateOnly = (key: string): string | null => (monthStart(key) == null ? null : `${key.trim()}-01`);
+
+/**
+ * Мөрийн САРЫН ТҮЛХҮҮР («YYYY-MM») — `sar_txt`-ээс, хоосон/эвдэрсэн бол `sar` (DateOnly)-аас.
+ * ⚠️ 2026-10-22 (аудит №2): `sar` нь ХОЁР хэлбэрээр ирж болно — DateOnly мөр («2026-10-01») эсвэл хуучин epoch мс
+ *    (AGOL-ын Date талбар / өмнөх бичилт). Мс нь УБ-ын шөнө дунд (16:00Z) байж болох тул UTC ӨДӨРТ бөөрөнхийлж сар
+ *    авна (`bagtsSheet.normDayMs`-ийн зарчим) — эс бөгөөс сарын 1 өмнөх сар руу гулсана. Аль нь ч таарахгүй бол
+ *    `sar_txt`-ийн түүхий утга (дуудагч `monthStart`-аар хаяна).
+ */
+export function sarKeyOf(a: Record<string, unknown>): string {
+  const t = String(a.sar_txt ?? '').trim();
+  if (monthStart(t) != null) return t;
+  const v = a.sar;
+  if (typeof v === 'number' && Number.isFinite(v)) return monthKey(Math.round(v / 86_400_000) * 86_400_000);
+  if (typeof v === 'string') {
+    const m = /^(\d{4})-(\d{2})/.exec(v.trim());
+    if (m && monthStart(`${m[1]}-${m[2]}`) != null) return `${m[1]}-${m[2]}`;
+  }
+  return t;
+}
+
 /** Түүхий `features` → бүтэц. Гэмтэлтэй мөрийг АЛГАСНА, унагахгүй. */
 export function toPkgPlan(
   feats: readonly { attributes: Record<string, unknown> }[],
@@ -335,7 +362,8 @@ export function toPkgPlan(
     if (a.des_dugaar == null || a.obyem == null) continue;
     const des = Number(a.des_dugaar);
     const blok = String(a.blok ?? '').trim();
-    const sar = String(a.sar_txt ?? '').trim();
+    /* ⚠️ 2026-10-22 (аудит №2): `sar_txt` эсвэл `sar` (DateOnly мөр / хуучин мс) — `sarKeyOf` */
+    const sar = sarKeyOf(a);
     const v = Number(a.obyem);
     if (!Number.isInteger(des) || !blok || !monthStart(sar) || !Number.isFinite(v)) continue;
     let byBlok = out.get(des);
@@ -366,7 +394,8 @@ export function toPkgRes(
     if (a.des_dugaar == null || a.obyem == null) continue;
     const des = Number(a.des_dugaar);
     const blok = String(a.blok ?? '').trim();
-    const sar = String(a.sar_txt ?? '').trim();
+    /* ⚠️ 2026-10-22 (аудит №2): `toPkgPlan`-тай НЭГ уншилт (`sarKeyOf`) */
+    const sar = sarKeyOf(a);
     if (!Number.isInteger(des) || !blok || !monthStart(sar) || !Number.isFinite(Number(a.obyem))) continue;
     const hun = numOrNull(a.hun_huch);
     const mashin = numOrNull(a.mashin_mehanizm);
@@ -490,8 +519,9 @@ export function buildEdits(
     ajil_no: meta.ajilNo,
     ajil_ner: meta.ajilNer,
     blok,
-    /* ⚠️ `sar` нь `DateOnly` — цагийн бүсгүй, сарын 1-ний өдөр */
-    sar: monthStart(sar),
+    /* ⚠️ `sar` нь `DateOnly` — цагийн бүсгүй, сарын 1-ний өдөр.
+       ⚠️ 2026-10-22 (аудит №2): «YYYY-MM-01» МӨР (`sarDateOnly`) — epoch мс DateOnly талбарт тохирохгүй. */
+    sar: sarDateOnly(sar),
     sar_txt: sar,
     obyem: v,
     negj: meta.negj,
@@ -527,8 +557,9 @@ export function buildEdits(
 
 /* ══════════════════ Сүлжээ ══════════════════ */
 
+/* ⚠️ 2026-10-22 (аудит №2): `sar` (DateOnly) ч уншина — `sar_txt` хоосон мөрийн нөөц (`sarKeyOf`) */
 const FIELDS = [
-  'OBJECTID', 'dkey', 'des_dugaar', 'blok', 'sar_txt', 'obyem', 'niit_obyem',
+  'OBJECTID', 'dkey', 'des_dugaar', 'blok', 'sar', 'sar_txt', 'obyem', 'niit_obyem',
 ];
 
 /**

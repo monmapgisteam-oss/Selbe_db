@@ -34,6 +34,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, date } from '@/lib/format';
 import { overlapLevel, pctLevel, scoreLevel as urbanScoreLevel, type Level } from '@/lib/kpiLevels';
+import { coverageOk } from '@/lib/planProgress';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
@@ -207,8 +208,12 @@ export const RULE = {
 /* ── 1. Гүйцэтгэл ── */
 
 export type PerfInput = {
-  /** 05-ын хуваарийн хоцрогдол (`collectPkgLags`) — байвал ЗӨВХӨН үүнийг */
-  lag: { planned: number; actual: number } | null;
+  /**
+   * 05-ын хуваарийн хоцрогдол (`collectPkgLags`) — байвал ЗӨВХӨН үүнийг.
+   * ⚠️ 2026-10-22 (аудит): `coverage` — муруйн хуваарийн хамралт (`Finance.lagOf`); `coverageOk` биш бол
+   *    оноо ТАВИХГҮЙ (`perfPartial`).
+   */
+  lag: { planned: number; actual: number; coverage?: number | null } | null;
   start: number | null;
   end: number | null;
   /** Cashflow-ийн гүйцэтгэлийн хувь, 0–100 */
@@ -217,6 +222,10 @@ export type PerfInput = {
 };
 
 export function scorePerf(i: PerfInput): DimScore {
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан (эсвэл хамралт мэдэгдэхгүй) бол ОНОО ТАВИХГҮЙ — огноогүй ажлын жин
+     төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага, хоцорсон багц 100 оноо авдаг байв (Багц 3.3: хамралт 8.6%).
+     Огнооны шугам + Cashflow-ийн хувь руу ч БУУХГҮЙ (`perfNotStarted`-ийн зарчим). */
+  if (i.lag && !coverageOk(i.lag.coverage)) return perfPartial(i.lag);
   let planned: number | null = null;
   let actual: number | null = null;
   if (i.lag) {
@@ -254,6 +263,24 @@ export function perfNoCurve(): DimScore {
     score: null,
     facts: [fact(tr('Хуваарийн муруй'), tr('уншигдсангүй'))],
     issues: [{ tone: 'info', text: tr('Хуваарийн муруй уншигдсангүй — гүйцэтгэлийн оноог Cashflow-ийн хувиар орлуулж бодсонгүй. Дахин ачаална уу.') }],
+  };
+}
+
+/**
+ * ХУВААРЬ ДУТУУ барилгын мөрийн гүйцэтгэлийн оноо (2026-10-22, аудит).
+ * ⚠️ Хуваарийн хамралт < 95% — оноо `null` («—», 0 БИШ), тоо (төлөвлөсөн · бодит · хамралт) ба шалтгаан ил (`info`).
+ *    Хамралт бага муруйн «төлөвлөсөн» хэт бага тул хоцрогдлыг ДҮГНЭХГҮЙ (100 оноо худал гардаг байв).
+ */
+export function perfPartial(lag: { planned: number; actual: number; coverage?: number | null }): DimScore {
+  const cov = lag.coverage == null ? '—' : pct(lag.coverage, 1);
+  return {
+    score: null,
+    facts: [
+      fact(tr('Төлөвлөсөн гүйцэтгэл'), pct(lag.planned, 1)),
+      fact(tr('Бодит гүйцэтгэл'), pct(lag.actual, 1)),
+      fact(tr('Хуваарийн хамралт'), cov),
+    ],
+    issues: [{ tone: 'info', text: tr('Хуваарь {0} хамарсан — гүйцэтгэлийн оноо тавигдахгүй (огноогүй ажлын жин төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага гардаг). Багцын хуваарийг бүрэн бөглөнө үү.', cov) }],
   };
 }
 

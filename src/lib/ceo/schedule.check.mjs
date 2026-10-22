@@ -41,7 +41,8 @@ const lagOfLike = (cache) => (months) => {
   for (const p of series) { if (p.label > months[mi].label) break; planned = p.pct; found = true; }
   if (!found || planned <= 0) return null;
   const actual = months[mi].phys ?? 0;
-  return { month: months[mi].label, planned, actual, gap: planned - actual };
+  /* ⚠️ 2026-10-22 (аудит): `coverage` — муруйн төгсгөл (`planProgress.planCoverage`), Finance.lagOf-той нэг */
+  return { month: months[mi].label, planned, actual, gap: planned - actual, coverage: series[series.length - 1].pct };
 };
 
 /* ── monthsBetween / monthEndMs / prevYm ── */
@@ -127,7 +128,8 @@ assert.equal(curveViaLag(infinite, 'K', '2026-05', 3).length, 3);
 assert.equal(curveViaLag(infinite, 'K', 'x').length, 1);
 
 /* ── computeSchedule ── */
-const mk = (key, label, lag, hasPhys = true) => ({ key, curveKey: key, label, lag, hasPhys });
+/* ⚠️ 2026-10-22 (аудит): хуваарь БҮРЭН хамарсан (`coverage: 100`) — дүгнэгдэнэ; дутуугийн шалгуур доор (§ хамралт) */
+const mk = (key, label, lag, hasPhys = true) => ({ key, curveKey: key, label, lag: lag && { coverage: 100, ...lag }, hasPhys });
 const pkgs = [
   mk('БАГЦ3', 'Багц 3', { month: '2026-05', planned: 30, actual: 28, gap: 2 }),
   mk('БАГЦ1', 'Багц 1', { month: '2026-05', planned: 30, actual: 15, gap: 15 }),
@@ -230,6 +232,43 @@ assert.equal(r6.tables[0].rows[1][4].v, 2);
 /* Түрүүлсэн: муруйн хэсэг хэмжилтийн сар хүртэл л байхад ч сарын хоцрогдол 0 */
 assert.equal(r6.tables[0].rows[1][5].v, 0);
 
+/* ── ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ < 95% — тоо ил, ДҮГНЭЛТ үгүй ──
+   Багц 3.3 (хамралт 8.6%): төлөвлөсөн 8.6 < бодит 25.1 тул урьд нь «Хэвийн» (good) гардаг байв. */
+{
+  const rc = computeSchedule(
+    [mk('БАГЦ1', 'Багц 1', { month: '2026-03', planned: 10, actual: 8, gap: 2 }),
+      mk('БАГЦ33', 'Багц 3.3', { month: '2026-05', planned: 8.6, actual: 25.1, gap: -16.5, coverage: 8.6 }),
+      mk('БАГЦ42', 'Багц 4.2', { month: '2026-05', planned: 30, actual: 9, gap: 21, coverage: 44.1 }),
+      mk('БАГЦ9', 'Багц 9', { month: '2026-05', planned: 30, actual: 9, gap: 21, coverage: null })],
+    curves, lagLevel, now,
+  );
+  /* дутуу хамралттай Багц 4.2 (gap 21 ≥ 10) УЛААН болохгүй, тоолуурт орохгүй */
+  assert.equal(rc.value, '0', 'зөвхөн дүгнэгдсэн Багц 1 тоологдоно');
+  assert.equal(rc.level, 'good');
+  assert.deepEqual(rc.tables[0].rows.map((row) => row[0].v), ['Багц 1'], 'дутуу хамралт «Багц бүрээр» (түвшинтэй) хүснэгтэд орохгүй');
+  assert.ok(rc.facts.includes('3 багцын хуваарь дутуу — дүгнээгүй'), `факт: ${rc.facts}`);
+  assert.equal(rc.issues.length, 0, 'дутуу хамралтын багцад «яаралтай» анхааруулга гарахгүй');
+  const tp = rc.tables[2];
+  assert.equal(tp.title, 'Хуваарь дутуу — дүгнээгүй');
+  assert.equal(tp.cols.length, 5);
+  /* хамралт багаас нь; мэдэгдэхгүй (null) нь эхэнд — «—» */
+  assert.deepEqual(tp.rows.map((row) => row[0].v), ['Багц 9', 'Багц 3.3', 'Багц 4.2']);
+  assert.deepEqual(tp.rows[1].map((c) => c.v), ['Багц 3.3', '2026-05', 8.6, 25.1, 8.6]);
+  assert.equal(tp.rows[0][4].v, null, 'хамралт мэдэгдэхгүй → null нүд (0 биш)');
+  /* asOf-д дутуу хамралттай багцын хэмжилт ч орно */
+  assert.equal(rc.asOf, Date.UTC(2026, 4, 31));
+
+  /* бүгд дутуу → «—», unknown («0 багц хоцорсон» биш) */
+  const rc2 = computeSchedule([mk('БАГЦ33', 'Багц 3.3', { month: '2026-05', planned: 8.6, actual: 25.1, gap: -16.5, coverage: 8.6 })], curves, lagLevel, now);
+  assert.equal(rc2.value, '—');
+  assert.equal(rc2.level, 'unknown');
+  /* хил: 95% — дүгнэнэ, 94.9% — үгүй */
+  const at95 = computeSchedule([mk('БАГЦ1', 'Багц 1', { month: '2026-03', planned: 30, actual: 9, gap: 21, coverage: 95 })], curves, lagLevel, now);
+  assert.equal(at95.level, 'bad', '95% хамралт — дүгнэгдэнэ');
+  const at949 = computeSchedule([mk('БАГЦ1', 'Багц 1', { month: '2026-03', planned: 30, actual: 9, gap: 21, coverage: 94.9 })], curves, lagLevel, now);
+  assert.equal(at949.level, 'unknown', '94.9% — дүгнэхгүй');
+}
+
 /* ── collectPkgLags: дедуп, диапазон алгасах, нэр pkg2 || pkg ── */
 const C = CASHFLOW_NEW.fields;
 const rows = [
@@ -299,12 +338,20 @@ const chainMonths = (r0) => {
     label, given: 0, phys: label === at ? phys : null, pkg: key,
   }));
 };
-const chainPkgs = collectPkgLags(chainRows, chainMonths, lagOf);
+/* ⚠️ 2026-10-22 (аудит): туршилтын муруй 30%/20%-д дуусдаг (хамралт < 95%) — `lagOf` (Finance-ийн хуулбар) тэр
+   хамралтыг тавина. Бүрэн хуваарийн гинжийг хамралт 100-аар, дутуугийнхыг доор тус тусад нь. */
+const lagOfFull = (ms) => { const l = lagOf(ms); return l && { ...l, coverage: 100 }; };
+const chainPkgs = collectPkgLags(chainRows, chainMonths, lagOfFull);
 const chainCurves = collectCurves(chainPkgs, lagOf, NOW_YM);
 const r8 = computeSchedule(chainPkgs, chainCurves, lagLevel, now);
 assert.deepEqual(r8.tables[0].rows.map((row) => row.map((c) => c.v)), [
   ['Багц 1', '2026-05', 30, 15, -15, 1, 'Яаралтай'],
   ['Багц 2', '2026-03', 20, 13, -7, 0, 'Анхаарах'],
 ]);
+/* Дутуу хуваарь (муруй 30% · 20%-д дуусна) — тоо ил, дүгнэлт үгүй */
+const r8p = computeSchedule(collectPkgLags(chainRows, chainMonths, lagOf), chainCurves, lagLevel, now);
+assert.equal(r8p.value, '—');
+assert.equal(r8p.level, 'unknown');
+assert.deepEqual(r8p.tables[2].rows.map((row) => [row[0].v, row[4].v]), [['Багц 2', 20], ['Багц 1', 30]]);
 
 console.log('schedule.check: OK');

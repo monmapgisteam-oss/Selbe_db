@@ -157,11 +157,19 @@ export function AjilMatTab({ tick }: { tick: number }) {
     if (sheet.state !== 'ready' || !draft.size) return;
     setBusy(true); setMsg(null);
     try {
-      const r = await saveWorkMats(pkg, sheet.data.sc, draft);
+      /* ⚠️ 2026-10-22 (аудит №8): ХУУДАС АЧААЛСАН ҮЕИЙН утга (`base`) — энэ хооронд өөр хүн хадгалсан бол lib нийлүүлнэ
+         (`materialAjil.saveWorkMats`-ийн ⚠️); урьд нь бүх жагсаалт дарагдаж бусдын нэрс чимээгүй устдаг байв. */
+      const byDes = new Map(sheet.data.rows.filter((x) => x.des != null).map((x) => [x.des as number, x]));
+      const base = new Map<number, string[]>();
+      for (const des of draft.keys()) { const r0 = byDes.get(des); if (r0) base.set(des, matsOf(r0)); }
+      const r = await saveWorkMats(pkg, sheet.data.sc, draft, base);
       setDraft(new Map()); setOpen(null);
+      const mergedNote = r.merged.length
+        ? ' ' + tr('{0} ажлын материалыг энэ хооронд өөр хүн өөрчилсөн байсан — таны өөрчлөлттэй нийлүүлэв (код: {1}).', r.merged.length, r.merged.join(', '))
+        : '';
       setMsg(r.lost.length
-        ? { kind: 'err', text: tr('{0} ажил хадгалагдлаа; {1} ажил шинэ хуудсанд олдсонгүй (код: {2}) — дахин тохируулна уу.', r.written, r.lost.length, r.lost.join(', ')) }
-        : { kind: 'ok', text: tr('{0} ажлын материал хадгалагдлаа.', r.written) });
+        ? { kind: 'err', text: tr('{0} ажил хадгалагдлаа; {1} ажил шинэ хуудсанд олдсонгүй (код: {2}) — дахин тохируулна уу.', r.written, r.lost.length, r.lost.join(', ')) + mergedNote }
+        : { kind: 'ok', text: tr('{0} ажлын материал хадгалагдлаа.', r.written) + mergedNote });
       setRev((x) => x + 1);
     } catch (e) {
       setMsg({ kind: 'err', text: userError(e) });

@@ -86,6 +86,19 @@ export type ErhSource = {
    *    мөнхөд хүлээдэг байв. Нүдэнд харагдсаар (✕-ээр цэвэрлэхийн тулд).
    */
   gone?: string[];
+  /**
+   * ⚠️ 2026-10-22 (аудит): эрхийн хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунтууд
+   *    (`portalPresence.portalMissing`). Нэвтэрч чадахгүй тул гацааны шалгуурт эзэн биш — хуваарилалттай бол дуудагч
+   *    (`aclOps.liveErhSource`) тэднийг `gone`-д ч нэмнэ; энэ жагсаалт зөвхөн «порталд алга» гэж ялгаж харуулахад.
+   *    СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
+   */
+  absent?: string[];
+  /**
+   * ⚠️ 2026-10-22 (аудит): аккаунт (жижиг үсгээр) → ЭРХИЙН ТӨРЛӨӨС нь хүлээгдэх урсгалын шат («Газрын дарга» → `chief`).
+   *    Төрөл нь зөвхөн харагдац/үүргийг бичдэг (`roleTypeApply.applyType`) — шат ЗӨВХӨН «Гүйцэтгэлийн урсгалын эрх»-ийн
+   *    томилгооноос. Тиймээс урсгалын төрөлтэй атлаа шатгүй/өөр шаттай хүнийг `typeStageGaps` ил гаргана. СОНГОМОЛ.
+   */
+  typeStage?: Record<string, Stage>;
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -191,6 +204,28 @@ export function userErh(src: ErhSource, user: string): UserErh {
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
     unknownBagts,
   };
+}
+
+/**
+ * ТӨРӨЛ ↔ УРСГАЛЫН ШАТ ЗӨРӨӨ — ⚠️ 2026-10-22 (аудит).
+ * ⚠️ ЯАГААД: «Гүйцэтгэгч компани» … «Газрын дарга» төрлийг сонгоход (карт · «Хэрэгжүүлэх») зөвхөн үүрэг ба харагдац
+ *    бичигддэг — шат, «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ, анхааруулга ч гардаггүй байв (амьд: `munkhbaatar` нь
+ *    «Газрын дарга» атлаа урсгалын томилгоогүй). Энд: төрлийн шат (`typeStage`) ба томилгооны шат (`flow`) зөрсөн хүмүүс.
+ *    `have === null` — шатгүй (Гүйцэтгэл хуудас нээгдэхгүй, батлахгүй); өөр шат — төрлийн шошго нь худал.
+ * ⚠️ Зөвхөн АНХААРУУЛГА: шат нь томилгооноос гардаг (`resolveFlowStage`) тул зөрөө нь заримдаа санаатай байж болно.
+ *    Устгагдсан/порталд алга (`gone` · `absent`) ба super-ийг алгасна. «Зөвхөн харна» томилгоо ч шат гэж тооцогдоно.
+ */
+export type TypeStageGap = { user: string; want: Stage; have: Stage | null };
+export function typeStageGaps(src: ErhSource): TypeStageGap[] {
+  const skip = new Set([...(src.gone ?? []), ...(src.absent ?? []), ...(src.supers ?? [])].map(norm));
+  const out: TypeStageGap[] = [];
+  for (const [k, want] of Object.entries(src.typeStage ?? {})) {
+    const key = norm(k);
+    if (skip.has(key)) continue;
+    const have = src.flow.find((x) => norm(x.user) === key)?.stage ?? null;
+    if (have !== want) out.push({ user: src.users.find((u) => norm(u) === key) ?? key, want, have });
+  }
+  return out.sort((a, b) => a.user.localeCompare(b.user));
 }
 
 /** Танигдаагүй багцтай хуваарилалттай аккаунтууд — тоймын «Анхаарах» (2026-10-19, аудит) */

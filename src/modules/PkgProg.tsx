@@ -21,8 +21,8 @@ import {
   pickedBuilding, uniqueBlocks, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf,
-  projectPlanScope, projectLagNow, type FinData,
+  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevelOf, lagJudged, projectPlanOf,
+  projectPlanScope, projectLagNow, infraPhysNow, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
@@ -35,7 +35,10 @@ export { aggregateMonths, physNow } from '@/modules/pkgShared';
    урьд нь энэ дэлгэцэнд KPI «−5.0 н.х», жагсаалт/график «-5.0 pp» (`pkgShared.pp`) гэж ХОЁР
    нэгжээр бичдэг байв; `pp(-gap)` нь тэг дээр «-0.0 pp» гаргадаг. */
 import { gapPts, gapPtsWord } from '@/lib/gdash';
-import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
+import {
+  loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, coverageNote,
+  type PlanPoint, type PlanCurve,
+} from '@/lib/planProgress';
 
 /**
  * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
@@ -419,6 +422,16 @@ export function PkgProg({ dim, setDim }: {
   const planExcl = useMemo<string[]>(() => (finQ.state === 'ready' && planQ.state === 'ready'
     ? projectPlanScope(finQ.data, planQ.data)?.excluded ?? []
     : []), [finQ, planQ]);
+  /* ⚠️ 2026-10-22 (аудит): графикийн ТӨЛӨВЛӨГӨӨТ муруйн хуваарийн хамралт — гарчигт «хуваарь X% хамарсан»
+     (`planProgress.coverageNote`); хамралт бага муруй «төлөвлөгөө бага» мэт уншигдахаас сэргийлнэ. */
+  const chartCov = useMemo<string>(() => {
+    const pc = planQ.state === 'ready' ? planQ.data : null;
+    if (!pc) return '';
+    const series = active && active.key !== '__all'
+      ? pc.byBagts.get(active.key)
+      : (finQ.state === 'ready' ? projectPlanOf(finQ.data, pc) : pc.months);
+    return coverageNote(planCoverage(series));
+  }, [active, finQ, planQ]);
 
 
   /**
@@ -438,8 +451,8 @@ export function PkgProg({ dim, setDim }: {
     packs.forEach((p) => {
       const months = finMap.get(p.key);
       if (!months) return;
-      const lag = lagOf(months);
-      if (lag && lagLevel(lag.gap)) s.add(p.key);
+      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан багцыг хоцорсон гэж ДҮГНЭХГҮЙ (`lagLevelOf`) */
+      if (lagLevelOf(lagOf(months))) s.add(p.key);
     });
     return s;
   }, [packs, finMap]);
@@ -564,6 +577,9 @@ export function PkgProg({ dim, setDim }: {
          шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
          `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
          хэвээр үйлчилнэ). */
+      /* ⚠️ 2026-10-22 (аудит): MapCanvas одоо `null`/жагсаалтад алга давхаргад ӨӨРӨӨ бүсийн шүүлт тавьдаг болсон
+         (`MapCanvas.layerWhere`-ийн ⚠️) — доорх давталт ижил утга өгөх тул хор хөнөөлгүй; `null` (жиш. дэд бүтцийн
+         багцын «давхарга бүхэлдээ») одоо бүсийн шүүлтээ хадгална. */
       const w: Record<string, string | null> = {};
       if (zone) {
         for (const id of mapVisible) {
@@ -849,7 +865,13 @@ export function PkgProg({ dim, setDim }: {
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
             {/* ⚠️ 2026-09-30: орон сууцны багана = `physNow` (TsKpi-тай нэг тоо); ачаалж байхад `undefined` */}
-            <CatChart packs={packs} housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined} />
+            {/* ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц» — ӨӨРИЙН батлагдсан биет хувь (`infraPhysNow`, GeneralDash ·
+                удирдлагын тайлантай нэг); урьд нь «мэдээлэлгүй» */}
+            <CatChart
+              packs={packs}
+              housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined}
+              infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? null : finQ.state === 'error' ? null : undefined}
+            />
             {/* ⚠️ 2026-10-06: хуваарь = бөглөх хуудасны блок (`q.data.keys`), газрын зургийн блок БИШ */}
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
@@ -934,9 +956,10 @@ export function PkgProg({ dim, setDim }: {
           /* ⚠️ 2026-09-29 (аудит 10): ачаалж байх үед `progMonths` = null тул график
              «Гүйцэтгэлийн дата алга» гэж ХАРИУЛТ мэт бичдэг байв — ачаалал ≠ хоосон. */
           loading={planQ.state === 'loading' || finQ.state === 'loading'}
-          title={active
+          title={(active
             ? tr('{0} — гүйцэтгэлийн явц', tr(active.name))
-            : tr('Төсөл нийт — гүйцэтгэлийн явц') + (planExcl.length ? ` ${tr('(хуваарьтай багцаар)')}` : '')}
+            : tr('Төсөл нийт — гүйцэтгэлийн явц') + (planExcl.length ? ` ${tr('(хуваарьтай багцаар)')}` : ''))
+            + (chartCov ? ` · ${chartCov}` : '')}
         />
       </div>
 
@@ -1011,16 +1034,24 @@ function TsKpi(
        хоёр тал НЭГ (хуваарьтай) багцын олонлог. Хуваарьгүй багц бодит талд л тоологдож хоцрогдлыг
        хэтрүүлэхгүй; `actual` (толгойн тоо) нь `physNow` хэвээр. */
     let excluded: string[] = [];
+    /* ⚠️ 2026-10-22 (аудит): ХАРУУЛАХ бодит = зөрүүний бодит тал. Урьд нь хуваарьгүй багц хасагдсан үед
+       «бодит» хавтан `physNow` (бүх багц), «зөрүү» нь `physLag`-аас бодогддог тул нэг эгнээний тоо хоорондоо
+       нийцдэггүй байв (23.1% · 34.2% · −9.6 н.х — зөрүү нь харагдахгүй 24.55%-иас). Одоо хасагдсан багц байвал
+       бодит нь ч тэр олонлогоор (шошгонд «(хуваарьтай багцаар)»); хасагдаагүй бол хоёр ЯГ ижил. */
+    let actualShown = actual;
+    let coverage: number | null = null;
     if (planQ.state === 'ready') {
       const ln = projectLagNow(fin, planQ.data, nowYm, todayDayKey());
       planned = ln.planned;
       gap = ln.gap;
       excluded = ln.excluded;
+      if (ln.excluded.length) actualShown = ln.actual;
+      coverage = ln.coverage;
     }
     /* ⚠️ 2026-10-09 (аудит №6): `planTotal · given · share · remain` ХАСАГДАВ — бодогдоод
        `items`-д хэзээ ч ордоггүй үхмэл код байсан; `share` нь `paidShareOf`-оос зөрдөг хуучин
        томьёо (төлөвлөгөө = гэрээ ЭСВЭЛ төсөв). Санхүүгийн тоонууд PkgFin-ийн `TsKpi`-д. */
-    return { planned, actual, gap, excluded };
+    return { planned, actual: actualShown, gap, excluded, coverage };
   }, [fin, plan, planQ]);
   /**
    * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
@@ -1034,16 +1065,23 @@ function TsKpi(
       ирсэн ч `actual`/`planned` null бол «…» мөнхөд «ачаалж байна» мэт харагдав. */
   const loading = finQ.state === 'loading' || planQ.state === 'loading';
   const none = loading && !failed ? '…' : '—';
+  /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт — «төлөвлөсөн»-ийн хажууд; < 95% бол зөрүүг ДҮГНЭХГҮЙ (шошгонд) */
+  const covNote = coverageNote(t?.coverage);
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
-      { v: t?.actual == null ? none : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
-      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
+      {
+        v: t?.actual == null ? none : pct(t.actual, 1),
+        /* ⚠️ 2026-10-22 (аудит): зөрүүний бодит тал (хуваарьтай багцаар) бол шошгонд хэлнэ — дээрх `actualShown` */
+        l: t?.excluded.length ? `${tr('бодит гүйцэтгэлийн хувь')} ${tr('(хуваарьтай багцаар)')}` : tr('бодит гүйцэтгэлийн хувь'),
+      },
+      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') + (covNote ? ` · ${covNote}` : '') },
       {
         /* ⚠️ 2026-10-06 (аудит): нэгж pp, `num()` — ТУХ-тай нэг хэлбэр (`pkgShared.pp`).
            `gap` = төлөвлөгөө − бодит (эерэг = хоцорсон) тул тэмдгийг эргүүлнэ: хоцорсон → «-5.0 pp».
            ⚠️ 2026-10-09 (аудит №2): порталын нэг хэлбэр `gdash.gapPts` — «−5.0 н.х», тэг «0.0 н.х». */
         v: t?.gap == null ? none : gapPts(t.gap),
-        l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
+        l: tr('гүйцэтгэлийн зөрүүгийн хувь')
+          + (t?.gap != null && !coverageOk(t.coverage) ? ` · ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''),
     },
   ];
   /* ⚠️ Алдааг НУУХГҮЙ — нэрлэсэн шалтгаан ба «Дахин оролдох» товч `Data`-аас
@@ -1100,7 +1138,8 @@ function TsPackList({
       const months = finMap?.get(p.key) ?? null;
       /* ХОЦРОГДОЛ — БИЕТ явц төлөвлөсөн явцаас хэдэн ХУВЬ хоцорсон */
       const lag = months ? lagOf(months) : null;
-      const lvl = lag ? lagLevel(lag.gap) : null;
+      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол улаан/шар/хэвийн ДҮГНЭХГҮЙ (`lagLevelOf`) */
+      const lvl = lagLevelOf(lag);
       let execPct: number | null = null;
       /*
        * ⚠️ БОДИТ ГҮЙЦЭТГЭЛ (2026-09-30, хэрэглэгч: «бодит гүйцэтгэлийн хувь руу
@@ -1150,7 +1189,11 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={p.kind === 'build'
-                  ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1)) : '')
+                  /* ⚠️ 2026-10-22 (аудит): дүгнэгдээгүй (хуваарь < 95%) багцад ч төл./бодит + «хуваарь X% хамарсан» */
+                  ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && (lvl || !lagJudged(lag))
+                    ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1))
+                      + (lagJudged(lag) || !coverageNote(lag.coverage) ? '' : ` · ${coverageNote(lag.coverage)}`)
+                    : '')
                   /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
@@ -1241,13 +1284,18 @@ function TsPackList({
  * ⚠️ Санхүүгийн бүртгэлгүй багцыг ХАСНА — «0 ₮» гэж харуулбал «олгоогүй»
  * гэсэн ХУДАЛ дохио өгнө; бодит утга нь «гэрээ бүртгэгдээгүй».
  */
-function CatChart({ packs, housing }: {
+function CatChart({ packs, housing, infra }: {
   packs: Pack[];
   /**
    * Орон сууцны (барилга угсралт) биет хувь — `physNow` (ХО дүнгээр жигнэсэн,
    * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = мэдээлэлгүй.
    */
   housing: number | null | undefined;
+  /**
+   * ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц»-ийн батлагдсан биет хувь — `Finance.infraPhysNow` (Cashflow-ийн
+   * ангиллаар). `undefined` = ачаалж байна, `null` = хэмжигдээгүй (0 биш).
+   */
+  infra?: number | null;
 }) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
@@ -1265,6 +1313,10 @@ function CatChart({ packs, housing }: {
        хоосон («мэдээлэлгүй») хэвээр — мөнгөн хувиар нөхөхгүй. */
     if (c.key === 'build') {
       return { c, n: list.length, mean: housing ?? null, wait: housing === undefined };
+    }
+    /* ⚠️ 2026-10-22 (аудит): дэд бүтэц — блокгүй тул доорх блокийн дундаж үргэлж хоосон байв; батлагдсан хувиар */
+    if (c.key === 'infra') {
+      return { c, n: list.length, mean: infra ?? null, wait: infra === undefined };
     }
     for (const p of list) {
       if (p.kind !== 'build') continue;

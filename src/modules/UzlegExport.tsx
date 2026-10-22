@@ -31,7 +31,8 @@ import { renderPdfBase64, download } from '@/lib/emailReport';
 import {
   loadUzFields, loadUzAttachments, loadUzLocations, attUrl, buildUzReport, loadReportImages,
   buildUzPdf, buildUzXlsx, companyShort, countReportImages, fmtDate, reportTitle, UZ_IMG_WARN,
-  type UzImg, type UzReport, type UzSection, type AnsCls,
+  groupFindings, guidKey, parentKeys,
+  type UzImg, type UzReport, type UzSection, type UzAttachment,
 } from '@/lib/uzlegReport';
 import { loadUzlegBoth, uzScoreLevel, UZLEG_SHORT, type UzlegKind, type UzlegRow } from './habeaUzleg';
 import { queryFeatures, type Row } from '@/lib/query';
@@ -59,13 +60,11 @@ const FORM_SHORT: Record<UzlegKind, string> = {
 
 /**
  * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ (2026-10-21). Маягт асуултгүй — илрүүлэлт бүр ХОЛБООТОЙ ХҮСНЭГТИЙН мөр
- * (`HABEA.uzleg.hazardFindingsUrl`, `parentrowid` → эцгийн `uniquerowid`). Хүснэгт жижиг тул бүгдийг нэг удаа
- * татаж эцгээр нь бүлэглэнэ; GUID-ийг хаалт/том-жижиг үсэггүй тулгана. Тайланд асуултын оронд «Илрүүлсэн аюул»
- * хэсэг: асуулт = тайлбар, хариулт = түвшин, блок, арга хэмжээ тэмдэглэлд.
- * ⚠️ Түвшин → ангилал (өнгө): өндөр = ноцтой · дунд = бага зэргийн · бага, ажиглалт = ажиглалт · зассан = нийцсэн.
+ * (`HABEA.uzleg.hazardFindingsUrl`). Хүснэгт жижиг тул бүгдийг нэг удаа татаж эцгээр нь бүлэглэнэ (`groupFindings`).
+ * ⚠️ 2026-10-22 (аудит): холбоос `parentrowid` → эцгийн `uniquerowid || globalid` (`parentKeys`) — амьдаар 61/61 эцгийн
+ *    `uniquerowid` NULL, 345/345 илрүүлэлт `globalid`-ийг заадаг тул урьд нь тайланд илрүүлэлт ОГТ гардаггүй байв.
+ *    Илрүүлэлтийн зураг нь хүснэгтийн мөрийн хавсралт (`/1`) — сонгосон эцгүүдийн илрүүлэлтийнхийг л татна.
  */
-const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}]/g, '').toUpperCase();
-const LEVEL_CLS: Record<string, AnsCls> = { high: 'major', medium: 'minor', low: 'obs', obs: 'obs', fixed: 'conf' };
 async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection>> {
   const url = HABEA.uzleg.hazardFindingsUrl;
   const [rows, fields] = await Promise.all([
@@ -73,23 +72,13 @@ async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection
     loadUzFields(url),
   ]);
   const dom = fields.find((x) => x.name === 'f_level')?.dom ?? null;
-  const want = new Set(parents.map((p) => guidKey(p.uniquerowid)));
-  const title = tr('Илрүүлсэн аюул');
-  const out = new Map<string, UzSection>();
-  for (const r of rows) {
-    const k = guidKey(r.parentrowid);
-    if (!want.has(k)) continue;
-    let sec = out.get(k);
-    if (!sec) { sec = { key: 'findings', title, score: null, items: [] }; out.set(k, sec); }
-    const level = String(r.f_level ?? '');
-    const blk = r.f_blk === 'other' ? String(r.f_blk_other ?? '') : String(r.f_blk ?? '');
-    const action = r.f_action == null || r.f_action === '' ? [] : [String(r.f_action)];
-    sec.items.push({
-      code: `F${sec.items.length + 1}`, q: String(r.f_desc ?? '—'), ans: dom?.get(level) ?? level,
-      cls: LEVEL_CLS[level] ?? 'other', block: blk || null, notes: action, photos: [], section: title,
-    });
-  }
-  return out;
+  const want = new Set(parents.flatMap((p) => parentKeys(p)));
+  const mine = rows.filter((r) => want.has(guidKey(r.parentrowid)));
+  const oids = mine.map((r) => Number(r.objectid)).filter(Number.isFinite);
+  const atts = oids.length ? await loadUzAttachments(url, oids) : new Map<number, UzAttachment[]>();
+  return groupFindings(parents, mine, {
+    title: tr('Илрүүлсэн аюул'), dom, atts, photoUrl: (oid, id) => attUrl(url, oid, id),
+  });
 }
 const PDF_MANY_WARN = 15;
 
@@ -274,7 +263,8 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       if (!live()) return;
       const reports: UzReport[] = chosen.map((i) => {
         const r = ready.rows[i];
-        const fnd = findings?.get(guidKey(ready.raw[i].uniquerowid));
+        /* ⚠️ 2026-10-22 (аудит): эцгийн ҮНДСЭН түлхүүрээр (`uniquerowid || globalid`) — `groupFindings`-ийн түлхүүртэй ижил */
+        const fnd = findings?.get(parentKeys(ready.raw[i])[0] ?? '');
         return buildUzReport(form, fields, ready.raw[i], r.oid, atts.get(r.oid) ?? [], (id) => attUrl(url, r.oid, id), {
           pkg: r.site, company: r.company, date: r.d, formShort: FORM_SHORT[kind], location: locs.get(r.oid) ?? '',
           ...(fnd ? { extra: [fnd] } : {}),

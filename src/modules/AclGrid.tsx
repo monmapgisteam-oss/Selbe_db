@@ -36,6 +36,11 @@ export type GridHolder = {
   viaAll: boolean;
   /** Устгагдсан аккаунтын өнчин мөр — ✕-ээр цэвэрлэнэ */
   gone: boolean;
+  /**
+   * ⚠️ 2026-10-22 (аудит): эрхийн хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА (`portalPresence`) — нэвтэрч чадахгүй
+   *    тул шийдвэрлэгч биш (дуудагчийн `stuck` тоолохгүй). ✕ нь энгийн хасалт (эрх буцаана), устгагдсаных шиг цэвэрлэгээ БИШ.
+   */
+  absent?: boolean;
   /** Хатуу super — багцын хязгаар үйлчлэхгүй (remote-ийн хуучин мөр) */
   admin?: boolean;
   /** ArcGIS бичилт унасан */
@@ -203,16 +208,19 @@ function Chip({ h, off, flag, onRemove }: {
   const notes = [
     h.viaAll ? tr('бүх багц') : '',
     h.gone ? tr('устгагдсан аккаунт — томилгоог ✕-ээр цэвэрлэнэ үү') : '',
+    /* ⚠️ 2026-10-22 (аудит): порталд алга — ил шошготой (доор), админ ✕-ээр хасаж өөр хүн томилно */
+    h.absent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
     h.admin ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
     h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т') : '',
     h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»') : '',
   ].filter(Boolean);
-  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.admin ? s.ggChipOdd : '', h.failed || h.dirty ? s.ggChipBad : '']
+  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.absent || h.admin ? s.ggChipOdd : '', h.failed || h.dirty || h.absent ? s.ggChipBad : '']
     .filter(Boolean).join(' ');
   return (
     <span className={cls} title={[h.user, ...notes].join(' · ')}>
       <span className={s.ggName}>{h.user}</span>
       {h.viaAll && <span className={s.ggTag}>{tr('бүх')}</span>}
+      {h.absent && <span className={s.ggTag}>{tr('порталд алга')}</span>}
       {(h.failed || h.dirty) && <span className={s.ggWarn} aria-label={notes.join(' · ')}>!</span>}
       {flag}
       <button

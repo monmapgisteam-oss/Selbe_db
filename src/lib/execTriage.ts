@@ -21,6 +21,7 @@
  */
 
 import { queryFeatures } from './query';
+import { loadCodedMaps, codedName } from './codedDomain';
 /* ⚠️ 2026-10-12 (дарааллын аудит): `register` → `cached` + `SESSION_TTL_MS` (гурван гар кэшийн ⚠️) */
 import { cached, SESSION_TTL_MS } from './live';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
@@ -350,20 +351,23 @@ export type Damage = {
 export const loadDamage: () => Promise<Damage> = cached(
   async (): Promise<Damage> => {
     const I = HABEA.incident.fields;
-    const rows = await queryFeatures(HABEA.incident.url, {
-      outFields: [I.turul, I.ognoo, I.bagts, I.company],
-    });
+    /* ⚠️ 2026-10-22 (аудит): төрөл ба компани домэйны НЭРЭЭР (`ceo/safety.toSafetyRow`-ийн ⚠️) — жишээ мөрөнд тасархай
+       код («"Хятадын хоёр дахь металлурги г») гардаг байв. Мета унавал `{}` — код хэвээр. */
+    const [rows, dom] = await Promise.all([
+      queryFeatures(HABEA.incident.url, { outFields: [I.turul, I.ognoo, I.bagts, I.company] }),
+      loadCodedMaps(HABEA.incident.url, [I.turul, I.company]),
+    ]);
     /**
      * ⚠️ Төрлийг ЯГ таарцаар биш, «хохирол» агуулснаар шүүнэ — Survey123-ийн
      * сонголтод «Эд хөрөнгийн хохирол» гэж байгаа ч гараар бичсэн хувилбар
      * («эд хөрөнгийн хохирол учруулсан» г.м.) алдагдах ёсгүй.
      */
-    const dmg = rows.filter((r) => /хохирол/i.test(String(r[I.turul] ?? '')));
+    const dmg = rows.filter((r) => /хохирол/i.test(codedName(dom[I.turul], r[I.turul])));
     const dates = dmg.map((r) => Number(r[I.ognoo])).filter((x) => Number.isFinite(x) && x > 0);
     const sample = dmg
       .sort((a, b) => Number(b[I.ognoo] ?? 0) - Number(a[I.ognoo] ?? 0))
       .slice(0, 3)
-      .map((r) => [r[I.bagts], r[I.company]].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · '))
+      .map((r) => [String(r[I.bagts] ?? '').trim(), codedName(dom[I.company], r[I.company])].filter(Boolean).join(' · '))
       .filter(Boolean);
     return { n: dmg.length, last: dates.length ? Math.max(...dates) : null, sample };
   },

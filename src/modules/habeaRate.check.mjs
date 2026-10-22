@@ -179,4 +179,32 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   assert.equal(isLtiType('Осол дөхсөн тохиолдол (ноцтой осол болох байсан)'), false, 'LTI үг зөвхөн дагалдах хэсэгт');
 }
 
+/* ══════════ 7. Ослын компани → гүйцэтгэгч (2026-10-22, аудит) ══════════
+   ⚠️ Амьд `field_5` домэйны 6 КОД (хуудас `clean()`-ээр хашилтыг хасна) — урьд нь 3 нь ямар ч гүйцэтгэгчтэй таардаггүй байв. */
+{
+  const { incCompanySfx } = await import('./habeaRate.ts');
+  const one = (s) => [...incCompanySfx([s])];
+  const clean = (s) => s.replace(/["“”]/g, '').trim();
+  const CODES = [
+    ['"Хятадын хоёр дахь металлурги г', 'HHDMGK'],
+    ['"Нутгын буян" групп', 'NBG'],
+    ['"Хятадын барилгын зургаа дугаар', 'HBZIT'],
+    ['"Moncon construction LLC"', 'MK'],
+    ['"Професионалстрой" ХХК', 'P'],
+    ['"Морин сувд констракшн" ХХК', 'MSK'],
+  ];
+  for (const [code, sfx] of CODES) {
+    assert.deepEqual(one(code), [sfx], `код ${code}`);
+    assert.deepEqual(one(clean(code)), [sfx], `хуудасны цэвэрлэсэн нэр ${clean(code)}`);
+  }
+  assert.deepEqual(one('"Хятадын барилгын зургаа дугаар инженерийн товчоо" ХХК'), ['HBZIT'], 'домэйны бүтэн НЭР');
+  assert.deepEqual([...incCompanySfx(CODES.map(([c]) => clean(c)))].sort(), ['HBZIT', 'HHDMGK', 'MK', 'MSK', 'NBG', 'P'], '6/6 таарна (урьд 3/6)');
+  /* Нөөц: бүртгэлгүй нэр — ойролцоо тулгалт; богино түлхүүр зөвхөн бүтэн үгээр («групп»-ийн «п» ≠ Професионалстрой) */
+  assert.deepEqual(one('Морин сувд констракшн ХХК'), ['MSK']);
+  assert.deepEqual(one('Шинэ групп ХХК'), [], '«п» үсэг Професионалстройг нэмэхгүй');
+  assert.deepEqual(one('Smart craft'), ['SC']);
+  assert.deepEqual(one(''), []);
+}
+console.log('✅ ослын компани → гүйцэтгэгч: ил зураглал 6/6 (2026-10-22)');
+
 console.log('habeaRate.check: OK');

@@ -65,6 +65,12 @@ const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {
 
 export type MapRow = Zone & {
   urban: number | null;
+  /**
+   * ⚠️ 2026-10-22 (аудит): ХЭМЖСЭН ЖИНГИЙН хувь (0–1) ба оноо `null`-ийн шалтгаан — `urbanScore`-оос
+   * (`config.MIN_MEASURED_SHARE`-ийн ⚠️). Эрэмбэ · дэлгэрэнгүй · CSV «өгөгдөл хангалтгүй»-г ил харуулна.
+   */
+  coverage?: number | null;
+  urbanReason?: 'nodata' | 'coverage' | null;
   displayGeom: Polygon | null;
   /**
    * ОНООЛОЛД ОРСОН эсэх — `!excluded || scoreOn.has(type)` (2026-09-21).

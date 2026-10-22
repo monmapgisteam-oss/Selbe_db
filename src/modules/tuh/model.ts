@@ -11,7 +11,7 @@ import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gd
 import { ipcNumbers } from '@/lib/ipc';
 import { contractBlocks, ipcTotals } from '@/lib/ipcTable';
 import { paidShareOf } from '@/lib/paidShare';
-import { planPctAt, type PlanCurve } from '@/lib/planProgress';
+import { planPctAt, planCoverage, coverageOk, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
 import { MS_STATUS, latest as latestRev, type MsDoc } from '@/lib/chanarMs';
@@ -55,6 +55,11 @@ export type TuhRow = {
   planContractor: number | null;
   /** Гүйцэтгэл − гүйцэтгэгчийн төлөвлөгөө (pp) */
   gapContractor: number | null;
+  /**
+   * ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн ХАМРАЛТ (0–100, `planProgress.planCoverage`) — `coverageOk` биш бол
+   * `planContractor` хэт бага (огноогүй ажлын жин 0-ээр) тул түүгээр «Хоцорсон/Хэвийн», SPI ДҮГНЭХГҮЙ. `null` = хуваарьгүй.
+   */
+  planCoverage: number | null;
   /**
    * Гэрээний төлөвлөгөө (CASHFLOW сарын мөр) 0–100 — биет гүйцэтгэлийн ХЭМЖИЛТИЙН
    * өдрөөр (`measDayOf`), хэмжилтгүй бол өнөөдрөөр (`cfPlanPctAt`-ийн ⚠️ 2026-09-30).
@@ -127,6 +132,8 @@ export type TuhModel = {
     planContractor: number | null;
     /** ⚠️ 2026-10-09 (аудит №2): `planContractor`-оос хасагдсан хуваарьгүй багцууд (нэрээр) */
     planExcluded: string[];
+    /** ⚠️ 2026-10-22 (аудит): `planContractor`-ийн хуваарийн хамралт (`Finance.projectLagNow`) — «хуваарь X% хамарсан» */
+    planCoverage: number | null;
   };
   /**
    * `pct` — `paidShare.paidShareOf` (порталын нэг тодорхойлолт, 2026-10-01).
@@ -283,6 +290,10 @@ export function buildModel(input: {
       ?? (series?.length ? planPctAt(series, measDayOf(months, nowYm, today)) : null);
     const gapContractor = lag ? lag.actual - lag.planned
       : progress != null && planContractor != null ? progress - planContractor : null;
+    /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (`planCoverage`) — < 95% бол гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ: төлөв
+       гэрээний төлөвлөгөөнд (`gapContract`) шилжинэ, SPI (гүйцэтгэгч) «—». Тоо (`planContractor`, `gapContractor`) хэвээр. */
+    const planCov = series?.length ? planCoverage(series) : null;
+    const covOk = coverageOk(planCov);
     const items = cfItemsOf(p);
     /* ⚠️ 2026-09-30: ХЭМЖИЛТИЙН өдрөөр (`measDayOf` = `lagOf`-ийн `at`) — урьд нь энэ САРЫН
        бүтэн төлөвлөгөөг хэдэн долоо хоногийн өмнөх хэмжилттэй жишдэг байв (`cfPlanPctAt`-ийн ⚠️) */
@@ -345,6 +356,7 @@ export function buildModel(input: {
       progress,
       planContractor,
       gapContractor,
+      planCoverage: planCov,
       planContract,
       gapContract,
       /* ⚠️ 2026-10-01: зураг төслийн мөрийн хэмжигдээгүй гүйцэтгэл = «Мэдээлэлгүй» (`statusOf`-ийн ⚠️) */
@@ -356,10 +368,10 @@ export function buildModel(input: {
       status: statusOf({
         contracted: p.contracted,
         progress,
-        gap: lag ? lag.gap : gapContract != null ? -gapContract : null,
+        gap: lag && covOk ? lag.gap : gapContract != null ? -gapContract : null,
         nullAs: p.group === 'design' ? 'unknown' : 'todo',
       }),
-      statusBasis: lag ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
+      statusBasis: lag && covOk ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
       week,
       ipc,
       commission: comm,
@@ -375,7 +387,8 @@ export function buildModel(input: {
       ma,
       mir,
       docs: mine,
-      ev: earned(p.cost, progress, planContract, planContractor),
+      /* ⚠️ 2026-10-22 (аудит): хуваарь дутуу бол SPI (гүйцэтгэгч) бодохгүй — хэт бага төлөвлөгөөнд хуваавал «түрүүлсэн» гарна */
+      ev: earned(p.cost, progress, planContract, covOk ? planContractor : null),
       prog,
       months: allMonths,
       lag,
@@ -433,7 +446,7 @@ export function buildModel(input: {
          арилгахгүй), хэмжилтийн өдөр нь ТЭР олонлогийн; хасагдсан багцыг `planExcluded` нэрлэнэ. */
       ...(() => {
         const ln = plan?.months.length ? projectLagNow(fin, plan, nowYm) : null;
-        return { planContractor: ln ? ln.planned : null, planExcluded: ln ? ln.excluded : [] };
+        return { planContractor: ln ? ln.planned : null, planExcluded: ln ? ln.excluded : [], planCoverage: ln ? ln.coverage : null };
       })(),
     },
     /* ⚠️ 2026-10-01: `other` — «IPC» хуудастай ижил хувьд ороогүй олголтыг тусад нь нэрлэнэ */

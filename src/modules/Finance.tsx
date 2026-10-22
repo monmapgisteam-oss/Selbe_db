@@ -50,11 +50,11 @@ import { loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUnivers
  *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
-import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 /* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
    Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
-import { housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, cfStartKeyOf } from '@/lib/gdash';
+import { housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, cfStartKeyOf, HOUSING_PKGS } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
   CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
@@ -78,6 +78,8 @@ import {
   FIN_XL_PCT, FIN_XL_ORDER_V, FIN_XL_FRACTION, FIN_XL_DROP,
   /* ⚠️ 2026-10-22 (аудит): бутархай хувийн ×100 · жигнэсэн дундаж — цэвэр функцүүд (`finExcelLayout.check.mjs` шууд шалгана) */
   finXlIsFraction, finXlScale, finXlFractionText, finXlEditText, finXlIsMean, finXlWeightedMean,
+  /* ⚠️ 2026-10-22 (аудит): Cashflow-ийн ТҮҮХИЙ мөрийн ангилал (`gdash.CfRow.type`-тай нэг) — `infraPhysNow` */
+  finXlChartCat,
 } from '@/lib/finExcelLayout';
 import { useColWidths } from '@/modules/sheet/colWidths';
 import { useSheetCols } from '@/modules/sheet/sheetCols';
@@ -234,7 +236,8 @@ export type MonthPt = {
    * ⚠️ 2026-10-09 (аудит №2): ХОЦРОГДЛЫН «бодит» тал — ЗӨВХӨН хуваарьтай багцаар
    * (`gdash.planScope`), төлөвлөгөө (`projectPlanOf`)-тэй НЭГ олонлог. Зөвхөн
    * `aggregateMonths` (төслийн зам) бөглөнө; `undefined` бол `lagOf` `phys`-ийг авна.
-   * Толгойн «Биет гүйцэтгэл» (`physNow`) `phys`-ээс — бүх багцаар, ХӨНДӨГДӨХГҮЙ.
+   * Толгойн «Биет гүйцэтгэл» (`physNow`) `phys`-ээс, ХӨНДӨГДӨХГҮЙ.
+   * ⚠️ 2026-10-22 (аудит): `phys` нь одоо ОРОН СУУЦНЫ багцаар (`aggregateMonths`-ийн ⚠️) — «бүх багцаар» биш.
    */
   physLag?: number | null;
   /** `physLag`-ийн хэмжилтийн огноо — `physAt`-тай ижил утгатай */
@@ -842,6 +845,17 @@ export function planCurveMissing(key?: string | null): boolean {
 }
 
 /**
+ * ТӨСЛИЙН «ОРОН СУУЦНЫ» НЭГТГЭЛИЙН БАГЦУУД — `gdash.HOUSING_PKGS` (`housingMoney`-тэй НЭГ олонлог).
+ * ⚠️ 2026-10-22 (аудит): 2026-10-13-нд блокгүй (дэд бүтцийн) багцууд `phys`-д орсноос хойш «Орон сууцны
+ *    гүйцэтгэл» шошготой `physNow`/`aggregateMonths` 21 багцаар бодогдож (23.10%) орон сууц дангаараа (24.55%)-аас
+ *    зөрж, төлөвлөгөө (хуваарьтай 7 багц) ба зөрүү өөр олонлогоос гардаг байв. Одоо төслийн нэгтгэл · төлөвлөгөө ·
+ *    хоцрогдол бүгд ЭНЭ олонлогоор; дэд бүтэц өөрийн ангилалд (`physNowOf`), багц бүрийн цуваа (`contractMonths`) хэвээр.
+ */
+const HOUSING_SET: ReadonlySet<string> = new Set(HOUSING_PKGS);
+const housingKeys = (fin: Pick<FinData, 'phys' | 'physN'>): string[] =>
+  [...new Set([...fin.phys.keys(), ...(fin.physN?.keys() ?? [])])].filter((k) => HOUSING_SET.has(k));
+
+/**
  * ТӨСЛИЙН ТӨЛӨВЛӨГӨӨТ ХУВИЙН ЦУВАА — бодит тал (`pkgShared.aggregateMonths`/`physNow`)-тай
  * ЯГ НЭГ жин (`gdash.pkgCostWeight` ← ижил `contracts`). PkgProg `TsKpi` + графикийн
  * төслийн муруй · удирдлагын тайлан · `lagOf` (Дашбоард, PkgFin) бүгд ЭНЭ функцээр.
@@ -850,8 +864,10 @@ export function projectPlanOf(fin: Pick<FinData, 'contracts' | 'phys' | 'physN'>
   /* ⚠️ 2026-10-09 (аудит): багцын олонлог бодит талтай (`phys` ∪ `physN`) НЭГ —
      `gdash.housingPlanSeries`-ийн `pkgs` ⚠️ (хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй)
      ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц байвал ХООСОН буцаахаа БОЛИВ — шугам
-     ХУВААРЬТАЙ багцаар; хоцрогдлын бодит тал ч ТЭР олонлогоор (`physLag`, `projectLagNow`). */
-  const pkgs = [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])];
+     ХУВААРЬТАЙ багцаар; хоцрогдлын бодит тал ч ТЭР олонлогоор (`physLag`, `projectLagNow`).
+     ⚠️ 2026-10-22 (аудит): бодит тал орон сууцаар (`housingKeys`) тул энд ч мөн — дэд бүтэц «хасагдсан
+     хуваарьгүй багц» болж «(хуваарьтай багцаар)» тэмдэглэл, тусдаа бодит (`physLag`) үүсгэхгүй. */
+  const pkgs = housingKeys(fin);
   return housingPlanSeries(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), pc.months, pkgs);
 }
 
@@ -865,8 +881,8 @@ export function projectPlanScope(
   pc: PlanCurve | null = planCurveCache,
 ): { keys: Set<string>; excluded: string[] } | null {
   if (!pc) return null;
-  const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)),
-    [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])]);
+  /* ⚠️ 2026-10-22 (аудит): орон сууцны олонлог (`housingKeys`) — `projectPlanOf`-той нэг */
+  const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), housingKeys(fin));
   /* PKGS-д алга (дэд бүтэц г.м.) бол «БАГЦ14» → «Багц 14» */
   const name = (k: string) => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k.replace(/^БАГЦ/, 'Багц ');
   return { keys: sc.keys, excluded: sc.excluded.map(name) };
@@ -877,13 +893,15 @@ export function projectPlanScope(
  * (`physLag`) ХОЁУЛАА хуваарьтай багцаар (нэг олонлог). PkgProg `TsKpi` · удирдлагын тайлан ·
  * ТУХ-ийн нэг дүрэм. `actual` нь ХАРЬЦУУЛАЛТЫН тал — толгойн тоо (`physNow`) биш;
  * `excluded` хоосон бол хоёр ЯГ ижил. Хэмжилтийн өдөр — `measureDayOf` (`lagOf`-той нэг).
+ * ⚠️ 2026-10-22 (аудит): `coverage` — төлөвлөгөөний муруйн хуваарийн хамралт (`planCoverage`, ХО жингээр);
+ *    `coverageOk` биш бол дуудагч хоцорсон/хэвийн гэж ДҮГНЭХГҮЙ, төлөвлөсөн %-ийн хажууд `coverageNote`.
  */
 export function projectLagNow(
   fin: FinData,
   pc: PlanCurve | null,
   nowYm: string = monthKey(),
   today: string = dayKey(Date.now()),
-): { planned: number | null; actual: number | null; gap: number | null; measAt: string; physAsOf: string; excluded: string[] } {
+): { planned: number | null; actual: number | null; gap: number | null; measAt: string; physAsOf: string; excluded: string[]; coverage: number | null } {
   const sc = projectPlanScope(fin, pc);
   let last: { label: string; phys: number; physAt: string | null | undefined } | null = null;
   for (const m of aggregateMonths(fin, pc)) {
@@ -901,6 +919,7 @@ export function projectLagNow(
     measAt,
     physAsOf: last ? (last.physAt ?? last.label) : '',
     excluded: sc?.excluded ?? [],
+    coverage: plan.length ? planCoverage(plan) : null,
   };
 }
 
@@ -931,9 +950,12 @@ export function aggregateMonths(
    * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ — бүгд
    *    `gdash.housingPct` — нэг томьёо.
    * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`) ч 0%-иар орно.
+   * ⚠️ 2026-10-22 (аудит): ЗӨВХӨН орон сууцны багцаар (`HOUSING_SET`, `housingKeys`-ийн ⚠️) — «Орон сууцны
+   *    гүйцэтгэл» гэж нэрлэгддэг бүх тоо (physNow · TsKpi · ТУХ · удирдлагын тайлан · GeneralDash) дэд бүтцийг
+   *    агуулахаа болив. `given` (олголт) БҮХ багцаар хэвээр.
    */
   const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
-  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN);
+  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN, HOUSING_SET);
   /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй (ХО жинтэй) багц байвал хоцрогдлын бодит талыг
      ХУВААРЬТАЙ багцаар тусад нь (`physLag`) — төлөвлөгөө (`projectPlanOf`)-тэй нэг олонлог.
      `phys` (толгойн тоо) ХӨНДӨГДӨХГҮЙ. Хасагдсан багц алга бол `physLag` огт тавигдахгүй. */
@@ -980,6 +1002,63 @@ export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
   }
   byKey.set(key, actual);
   return actual;
+}
+
+/**
+ * БАГЦЫН ОЛОНЛОГИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `physNow`-той ЯГ НЭГ томьёо (`gdash.housingSeries`: ХО дүнгээр
+ * жигнэсэн, хуудастай боловч тайлагнаагүй багц 0%), зөвхөн `only` багцаар. Хэмжилтгүй бол `null` (0 биш).
+ * ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц» ангилал (GeneralDash · удирдлагын тайлан) ӨӨРИЙН батлагдсан
+ *    хувьтай болов — урьд нь орон сууцны тоонд холилдож, ангилал нь «Гүйцэтгэл хэмжигдээгүй» гэж гардаг байв
+ *    (5.1 · 5.2 · 7.1 батлагдсан хувьтай атал).
+ */
+export function physNowOf(d: FinData, only: ReadonlySet<string>, nowYm: string = monthKey()): { pct: number; at: string } | null {
+  if (!only.size) return null;
+  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
+  let out: { pct: number; at: string } | null = null;
+  for (const s of housingSeries(d.phys, d.physCnt, d.physAt, cost, cfMonthAxis(), d.physN, only)) {
+    if (s.label > nowYm) continue;
+    if (s.phys != null) out = { pct: s.phys, at: s.label };
+  }
+  return out;
+}
+
+/** Cashflow-ийн ажлын төрөл (`CfRow.type`) — инженерийн дэд бүтэц (2026-10-22, `typePhysNow`) */
+export const INFRA_TYPE = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ';
+
+/**
+ * АЖЛЫН ТӨРЛИЙН (ангиллын) БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — тэр төрлийн мөрүүдийн багцаар (`pkgKeyOf(pkg2)`) `physNowOf`.
+ * ⚠️ 2026-10-22 (аудит): GeneralDash «Төсөв, гэрээлсэн дүн» ба удирдлагын тайлангийн «Ажлын төрлөөр» хүснэгт
+ *    НЭГ функцээр — дэд бүтцийн ангилал «Гүйцэтгэл хэмжигдээгүй» биш, өөрийн батлагдсан хувьтай. Бөглөх хуудасгүй
+ *    багц (8, 7.2 г.м.) олонлогт ороод ч `phys`/`physN`-д алга тул тооцоонд ОРОХГҮЙ (null ≠ 0).
+ */
+export function typePhysNow(
+  d: FinData,
+  rows: Iterable<{ type: string; pkg2: string }>,
+  type: string,
+  nowYm: string = monthKey(),
+): { pct: number; at: string } | null {
+  const keys = new Set<string>();
+  for (const r of rows) {
+    if (r.type !== type) continue;
+    const k = pkgKeyOf(r.pkg2);
+    if (k && k !== '0') keys.add(k);
+  }
+  return physNowOf(d, keys, nowYm);
+}
+
+/**
+ * «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ»-ийн биет хувь `FinData.contracts`-аас (ТҮҮХИЙ мөр — ангилал `finXlChartCat`, `gdash.loadGdashCf`-ийн
+ * `CfRow.type`-тай НЭГ дүрэм) — «Гүйцэтгэл»-ийн «Төслийн төрөл» (2026-10-22, аудит). GeneralDash · удирдлагын тайлантай
+ * (`typePhysNow(…, CfRow[])`) ижил тоо.
+ */
+export function infraPhysNow(d: FinData, nowYm: string = monthKey()): { pct: number; at: string } | null {
+  const C = CASHFLOW_NEW.fields;
+  return typePhysNow(
+    d,
+    d.contracts.map((r) => ({ type: finXlChartCat(r), pkg2: String(r[C.pkg2] ?? '').trim() })),
+    INFRA_TYPE,
+    nowYm,
+  );
 }
 
 async function loadFinDataRaw(): Promise<FinData> {
@@ -1350,6 +1429,9 @@ export function physLatest(months: MonthPt[] | null | undefined): number | null 
   return v;
 }
 
+/** `lagOf`-ийн үр дүн — ⚠️ 2026-10-22 (аудит): `coverage` = тухайн муруйн хуваарийн хамралт (`planCoverage`, 0–100) */
+export type LagPoint = { month: string; planned: number; actual: number; gap: number; coverage: number | null };
+
 /**
  * ХОЦРОГДЛЫН ШАЛГАЛТ — БИЕТ гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
  * сүүлийн биет дататай сар дээр «хуваариар байх ЁСТОЙ биет %» − «бодит биет %».
@@ -1374,8 +1456,11 @@ export function physLatest(months: MonthPt[] | null | undefined): number | null 
  *
  * ⚠️ ГАРЫН ҮСЭГ ХЭВЭЭР (`lagOf(months)`) — ExecKpi · PkgProg · PkgFin гурав
  *    үүнийг дууддаг. Багцын түлхүүр нь `MonthPt.pkg`-ээр цэг дотроо явна.
+ * ⚠️ 2026-10-22 (аудит): үр дүнд `coverage` (тухайн муруйн хуваарийн хамралт, `planCoverage`) НЭМЭГДЭВ —
+ *    огноогүй ажил төлөвлөгөөнд 0-ээр ордог тул хамралт бага муруйн `planned` хэт бага, `gap` нь «түрүүлсэн»
+ *    мэт гардаг. Дүгнэлт (`lagLevelOf`/`lagJudged`) зөвхөн `coverageOk` үед; тоо (`planned`) хэвээр.
  */
-export function lagOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number } | null {
+export function lagOf(months: MonthPt[]): LagPoint | null {
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   let mi = -1;
   months.forEach((m, i) => {
@@ -1427,11 +1512,12 @@ function lagPhysAt(m: MonthPt): string | null | undefined {
   return m.physLagAt !== undefined ? m.physLagAt : m.physAt;
 }
 
-function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; planned: number; actual: number; gap: number } | null {
+function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): LagPoint | null {
   const planned = planPctAt(series, measureDayOf(m.label, lagPhysAt(m), dayKey(Date.now())));
   if (planned == null || planned <= 0) return null;
   const actual = lagPhys(m) ?? 0;
-  return { month: m.label, planned, actual, gap: planned - actual };
+  /* ⚠️ 2026-10-22 (аудит): хамралт — ЯГ ЭНЭ муруйн төгсгөл (`lagOf`-ийн ⚠️) */
+  return { month: m.label, planned, actual, gap: planned - actual, coverage: planCoverage(series) };
 }
 
 /**
@@ -1441,11 +1527,11 @@ function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; 
  *    сараар» урьд нь `selbe_bagts_guitsetgel_negtgel`-ийн ТУРШИЛТЫН мөрөөс зурагддаг байв
  *    (сүүлийн мөр 09-09, Б3.1 алга, төлөвлөгөө буруу) — одоо PkgProg/ТУХ-тай нэг эх.
  */
-export function lagSeriesOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number }[] {
+export function lagSeriesOf(months: MonthPt[]): LagPoint[] {
   const series = lagSeriesCurve(months);
   if (!series) return [];
   const nowYm = monthKey();
-  const out: { month: string; planned: number; actual: number; gap: number }[] = [];
+  const out: LagPoint[] = [];
   for (const m of months) {
     if (m.label > nowYm || lagPhys(m) == null) continue;
     const p = lagPointAt(m, series);
@@ -1475,6 +1561,19 @@ export function lagReasonOf(months: MonthPt[]): 'ok' | 'no-phys' | 'no-curve' | 
 /** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
+
+/**
+ * ХОЦРОГДЛЫГ ДҮГНЭЖ БОЛОХ УУ — муруй хангалттай хамарсан (`planProgress.coverageOk`, ≥ 95%).
+ * ⚠️ 2026-10-22 (аудит): хамралт бага үед улаан/шар/«хэвийн», «хоцорсон/түрүүлсэн» үг, хуваарийн оноо ГАРАХГҮЙ —
+ *    хуваарьгүй ажлын жин төлөвлөгөөнд 0-ээр орж хоцорсон багцыг «Хэвийн» гэж харуулдаг байв. Төлөвлөсөн % нь
+ *    хамралтын тэмдэглэлтэй (`coverageNote`) харагдсаар.
+ */
+export const lagJudged = (lag: { coverage?: number | null } | null | undefined): boolean =>
+  !!lag && coverageOk(lag.coverage);
+
+/** `lagLevel` — ЗӨВХӨН дүгнэж болох хоцрогдолд (`lagJudged`), эс бөгөөс `null` (2026-10-22) */
+export const lagLevelOf = (lag: { gap: number; coverage?: number | null } | null | undefined): 'red' | 'yellow' | null =>
+  (lag && lagJudged(lag) ? lagLevel(lag.gap) : null);
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ

@@ -31,15 +31,15 @@ import {
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
-import { loadNegtgelPct } from '@/lib/negtgel';
-import { loadPlanCurveCached } from '@/lib/planProgress';
+import { loadNegtgelFull, negtgelProjectPct, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
+import { loadPlanCurveCached, coverageOk } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
 import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
-import { loadFinData, projectLagNow } from '@/modules/Finance';
+import { loadFinData, projectLagNow, typePhysNow, INFRA_TYPE } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
@@ -63,6 +63,13 @@ export type ExecReport = {
      *    «нэгтгэл гүйцэтгэлээр» гэсэн нэрээр хадгалагдахгүй — эх нь хамт явна.
      */
     progressSrc: ProgressSrc;
+    /**
+     * ⚠️ 2026-10-22 (аудит): `progress`-ийн ӨӨРИЙН төлөвлөгөө — «Нэгтгэл гүйцэтгэл»-ийн 1-р түвшний мөрийн
+     * (төсөлд эзлэх × төлөвлөгөөт хувь) нийлбэр (`negtgelProjectPlan`), 0–100. Урьд нь толгойд «Төслийн гүйцэтгэл 38.9%»
+     * нь орон сууцны хуваарийн «Төлөвлөсөн 34.2%»-ийн хажууд зогсож, нэгнийх нь төлөвлөгөө мэт уншигддаг байв
+     * (өөрийн төлөвлөгөө нь 71.9%). 6 шатны нөөц (`progressSrc: 'stage'`) эсвэл төлөвлөгөө алга бол `null`.
+     */
+    progressPlan: number | null;
     packages: number;
     types: number;
     landPct: number | null;
@@ -119,6 +126,12 @@ export type ExecReport = {
     actualLag: number | null;
     /** ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/хоцрогдлоос хасагдсан хуваарьгүй багцууд (нэрээр) */
     planExcluded: string[];
+    /**
+     * ⚠️ 2026-10-22 (аудит): `planned`-ийн муруйн ХУВААРИЙН ХАМРАЛТ (0–100, `planProgress.planCoverage`) —
+     * < 95% (`coverageOk` биш) бол хоцорсон/түрүүлсэн гэж ДҮГНЭХГҮЙ (дэлгэц · дүгнэлт · PDF-ийн үг), «Төлөвлөсөн»-ийн
+     * хажууд «хуваарь X% хамарсан». `null` = муруй алга.
+     */
+    planCoverage: number | null;
     /**
      * ⚠️ 2026-09-25: УНШИГДААГҮЙ бөглөх хуудасны тоо (`PlanCurve.failed`). 0-ээс их
      *    бол `planned` нь `null` (төслийн муруй хоосон) — урьд нь тайлан «—» гэж
@@ -211,7 +224,7 @@ export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbsPct] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbs] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
@@ -229,8 +242,13 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     /* ⚠️ 2026-09-25: «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт хувь — дашбоардын
        индикатортой НЭГ тоо (`GeneralDash.KpiStrip`). Унавал (эсвэл 1-р
        түвшний мөр хэмжигдээгүй бол) 6 шатны бодолт, `progressSrc: 'stage'`. */
-    loadNegtgelPct().catch(() => null),
+    /* ⚠️ 2026-10-22 (аудит): `loadNegtgelPct`-ийн ЯГ НЭГ бодолт (`loadNegtgelFull` → `negtgelProjectPct`, кэштэй) +
+       ӨӨРИЙН төлөвлөгөө (`negtgelProjectPlan`) — толгойд «Төслийн гүйцэтгэл»-ийг өөрийн төлөвлөгөөтэй хамт. */
+    loadNegtgelFull()
+      .then((f) => ({ pct: negtgelProjectPct(f.rows, f.calc), plan: negtgelProjectPlan(f.rows, f.calc) }))
+      .catch(() => null),
   ]);
+  const wbsPct = wbs?.pct ?? null;
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
   /* ⚠️ 2026-09-30: `bld.pkgPct` — багцын мөрийн хувь «Гүйцэтгэл»-ийн жагсаалт
@@ -283,6 +301,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      `GeneralDash.catPct`-тай ижил дүрэм. */
   const catPct = new Map<string, number>();
   if (actual != null) catPct.set('ОРОН СУУЦНЫ ХОРООЛОЛ', actual);
+  /* ⚠️ 2026-10-22 (аудит): «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» — ӨӨРИЙН батлагдсан биет хувь (`Finance.typePhysNow`, ангиллын
+     багцаар, `physNow`-той нэг томьёо). Урьд нь `fillProg` (зөвхөн блоктой 7 багц)-оор бодогдож «—» гардаг байв
+     (5.1 · 5.2 · 7.1 батлагдсан хувьтай атал); орон сууцны тоо харин тэднийг агуулдаг байв. `GeneralDash`-тай нэг. */
+  const infra = typePhysNow(fin, cf, INFRA_TYPE, nowYm);
+  if (infra) catPct.set(INFRA_TYPE, infra.pct);
   /**
    * ⚠️ ХЭРЭГЛЭГЧЭЭС НУУСАН ХЭСЭГ ЧАРТАД Ч ОРОХГҮЙ (2026-09-17).
    *
@@ -402,9 +425,21 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      Урьд нь зөвхөн хэмжигдсэн, газрын зургийн блок (`uniqueBlocks(bld.rows)`)-оор тоолдог тул
      дэлгэц · PDF · инфографик · AI-ийн тархалт Дашбоардаас зөрдөг байв. */
   const lvCounts = levelCounts(bld.prog, bld.keys);
+  /* ⚠️ 2026-10-22 (аудит): БЛОКИЙН ТОО = түвшний хүснэгтийн ЯГ ТЭР олонлог (бөглөх хуудасны хуваарь ∪ хэмжилт, 113) —
+     Дашбоард · ерөнхий тайлан · энэ тайлангийн өөрийн хүснэгт/графиктай нэг. Урьд нь `bld.blocks` (газрын зургийн
+     давхардалгүй полигон, 111) тул §3 «111 блок», хүснэгт нь 113 гэж зөрдөг байв. «Бөглөгдөөгүй» ч ТЭР олонлогоор. */
+  const lvKeys = new Set<string>(bld.keys);
+  bld.prog.forEach((_, key) => lvKeys.add(key));
+  let lvNoData = 0;
+  lvKeys.forEach((key) => {
+    const v = bld.prog.get(key)?.overall;
+    if (v == null || !Number.isFinite(v)) lvNoData += 1;
+  });
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
+      /* ⚠️ 2026-10-22 (аудит): зөвхөн нэгтгэлээс бодсон үед (6 шатны нөөцөд нэгтгэлийн төлөвлөгөө хамаарахгүй) */
+      progressPlan: k.progressSrc === 'negtgel' ? wbs?.plan ?? null : null,
       packages: k.packages, types: k.types, landPct: land.pct,
       land: {
         total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
@@ -416,10 +451,14 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       bySource,
     },
     prog: {
-      blocks: bld.blocks, households: bld.households, householdsMissing: bld.householdsMissing,
-      noData: bld.noData, asOf: physAsOf,
+      blocks: lvKeys.size, households: bld.households,
+      /* ⚠️ 2026-10-22: өрх нь газрын зургийн полигон (111)-оос — БҮГД хоосон бол «—» (`householdsLabel`) хэвээр байхаар
+         хуваарийг шинэ блокийн тоонд (`lvKeys`) тааруулна */
+      householdsMissing: bld.blocks > 0 && bld.householdsMissing >= bld.blocks ? lvKeys.size : bld.householdsMissing,
+      noData: lvNoData, asOf: physAsOf,
       actual, planned, gap,
       actualLag: lagNow.actual, planExcluded: lagNow.excluded,
+      planCoverage: lagNow.coverage,
       planFailed: plan.failed.length,
       packs: packs.map((p) => ({
         key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
@@ -452,6 +491,28 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     zov,
     fetchedAt: Date.now(),
   };
+}
+
+/**
+ * «НЭГТГЭЛ ГҮЙЦЭТГЭЛ»-ИЙН ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ (0–100) — `negtgel.negtgelProjectPct`-ийн ЯГ НЭГ томьёо, гүйцэтгэлийн оронд
+ * төлөвлөгөөт хувь (`NegtgelCalc.planPct`): Σ 1-р түвшний (төсөлд эзлэх × төлөвлөгөө) ÷ 100.
+ * ⚠️ 2026-10-22 (аудит): жинтэй мөрийн төлөвлөгөө алга бол `null` (0 биш); жин 0 бол `null`. Амьдаар 71.9%.
+ */
+export function negtgelProjectPlan(rows: readonly NegtgelRow[], calc: ReadonlyMap<number, NegtgelCalc>): number | null {
+  let w = 0;
+  let sum = 0;
+  for (const r of rows) {
+    if (r.depth !== 1) continue;
+    const c = calc.get(r.oid);
+    if (!c || c.inProject == null) continue;
+    if (c.planPct == null) {
+      if (c.inProject > 0) return null;
+      continue;
+    }
+    w += c.inProject;
+    sum += (c.inProject * c.planPct) / 100;
+  }
+  return w > 0 ? sum : null;
 }
 
 /* ═══════════════ Дүгнэлт — дүрэмд суурилсан ═══════════════ */
@@ -593,7 +654,17 @@ export function execFindings(x: ExecReport): ExecFinding[] {
       items: stalled.map((p) => p.name),
     });
   }
-  if (x.prog.gap != null && x.prog.gap >= LATE_GAP) {
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцорсон/түрүүлсэн гэж ДҮГНЭХГҮЙ — огноогүй ажлын жин
+     төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага гардаг тул «түрүүлж байна» гэж худал хэлж болно. Оронд нь шалтгаан. */
+  if (x.prog.gap != null && !coverageOk(x.prog.planCoverage)) {
+    out.push({
+      sev: 'warn',
+      area: A_PROG,
+      text: tr('Орон сууцны барилга угсралтын хуваарь {0} хамарсан тул хоцрогдлыг дүгнэсэнгүй (төлөвлөгөө {1}, бодит {2}).',
+        x.prog.planCoverage == null ? '—' : pct(x.prog.planCoverage, 1), pct(x.prog.planned, 1), pct(x.prog.actualLag, 1)),
+      advice: tr('Багц бүрийн хуваарийг (ажлын эхлэх, дуусах огноо) бүрэн бөглүүлж, хамралт 95%-д хүрсний дараа хоцрогдлыг үнэлэх.'),
+    });
+  } else if (x.prog.gap != null && x.prog.gap >= LATE_GAP) {
     out.push({
       sev: 'warn',
       area: A_PROG,
@@ -745,6 +816,8 @@ export function execFacts(x: ExecReport): string {
   L.push(`Нийт гэрээлсэн дүн: ${num(x.gdash.contract)} ₮`);
   /* ⚠️ 2026-09-25: эх нь `progressSrc`-ээр — 6 шатны нөөц тоог «нэгтгэлээр» гэж AI-д хэлэхгүй */
   L.push(`Гүйцэтгэлийн хувь (${x.gdash.progressSrc === 'negtgel' ? 'нэгтгэл гүйцэтгэлээр' : '6 шатаар — нэгтгэл гүйцэтгэл уншигдаагүй'}): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
+  /* ⚠️ 2026-10-22 (аудит): нэгтгэлийн ӨӨРИЙН төлөвлөгөө — орон сууцны хуваарийн «төлөвлөсөн»-тэй холихгүй */
+  if (x.gdash.progressPlan != null) L.push(`Гүйцэтгэлийн хувийн өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): ${pct(x.gdash.progressPlan, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
   L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);
@@ -764,7 +837,10 @@ export function execFacts(x: ExecReport): string {
   L.push(`Блок: ${x.prog.blocks}; өрх: ${hh}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
   /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар) — урьд нь бүх багцын
      `actual`-ийг төлөвлөгөө/зөрүүний хажууд тавьдаг тул AI «бодит − төлөвлөгөө ≠ зөрүү» гэж уншдаг байв. */
-  L.push(`Бодит (бүх багц): ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; бодит (зөрүүний тал, хуваарьтай багцаар): ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−зөрүүний бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
+  /* ⚠️ 2026-10-22 (аудит): «бүх багц» биш — орон сууцны 7 багц (`Finance.aggregateMonths`-ийн ⚠️); хуваарийн хамралт ба
+     дүгнэх эсэхийг AI-д ил хэлнэ (хамралт < 95% бол хоцрогдол гэж дүгнэхгүй) */
+  L.push(`Бодит (орон сууцны багцууд): ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; бодит (зөрүүний тал, хуваарьтай багцаар): ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−зөрүүний бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
+  L.push(`Хуваарийн хамралт (төлөвлөгөөнд огноотой ажлын жин): ${x.prog.planCoverage == null ? '—' : pct(x.prog.planCoverage, 1)}${coverageOk(x.prog.planCoverage) ? '' : ' — 95%-иас бага тул хоцрогдол/түрүүлэлт гэж ДҮГНЭХГҮЙ'}`);
   /* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүү хуваарьтай багцаар бол AI-д ил хэлнэ */
   if (x.prog.planExcluded.length) {
     L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);

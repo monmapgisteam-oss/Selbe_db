@@ -791,6 +791,12 @@ export type Group = {
    *    `qtyText(d, item.stats.q)`, ViewPanel-ийн бүсийн өрх/хүн амын нийлбэр (`sumStat`), Gazar-ийн `toItems` харагдац.
    */
   stats: Record<string, number | null>;
+  /**
+   * ⚠️ 2026-10-22 (аудит): бүлгийн түүхий утга ТООГООР ирсэн (талбар Integer/Double) — `groupWhere` хашилтгүй бичнэ.
+   *    Урьд нь `Code IN (N'1')` гэж явж Enterprise (PostgreSQL) 500 «Invalid data type» буцааж, «Явган хүний зам»
+   *    (et:27, үргэлж асаалттай) төрлөөр шүүхэд 2,548 объект бүгд бүдгэрдэг байв.
+   */
+  num?: boolean;
 };
 
 /**
@@ -821,6 +827,8 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
     if (r[field] != null) {
       const raw = String(r[field]);
       if (!g.raws.includes(raw)) g.raws.push(raw);
+      /* ⚠️ 2026-10-22 (аудит): утгын ТӨРЛИЙГ хадгална — `Group.num`-ийн ⚠️ */
+      if (typeof r[field] === 'number') g.num = true;
     }
     /* ⚠️ 2026-10-21: null статистик (бүлгийн бүх утга хоосон) `stats`-д null хэвээр — `values`-д 0 (нийцтэй) */
     for (const k of numeric) {
@@ -835,6 +843,22 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
   return [...merged.values()].sort((a, b) => (b.values[numeric[0]] ?? 0) - (a.values[numeric[0]] ?? 0));
 }
 
-/** Бүлгийг газрын зурагт шүүх SQL — тоологдсонтой яг ижил олонлог сонгоно */
-export const groupWhere = (field: string, g: Group): string =>
-  g.blank ? blankWhere(field, g.raws) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;
+/** Тоон литерал (зөвхөн цифр · цэг · илтгэгч) — бусад бол null (SQL-д хашилтгүй бичихэд аюулгүй эсэх) */
+const numLit = (v: string): string | null => (/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(v.trim()) ? v.trim() : null);
+
+/**
+ * Бүлгийг газрын зурагт шүүх SQL — тоологдсонтой яг ижил олонлог сонгоно.
+ * ⚠️ 2026-10-22 (аудит): ТООН талбарт (`Group.num`) литерал ХАШИЛТГҮЙ — `code IN (1, 2)`; `N'1'` нь Enterprise-д
+ *    500 «Invalid data type» (`Group.num`-ийн ⚠️). Тоо биш утга орвол (холимог) хуучин мөрөн хэлбэр.
+ */
+export const groupWhere = (field: string, g: Group): string => {
+  if (g.num) {
+    const lits = g.raws.map(numLit);
+    if (lits.every((x): x is string => x != null)) {
+      const inList = lits.length ? `${field} IN (${lits.join(', ')})` : '';
+      if (!g.blank) return inList || '1=0';
+      return inList ? `${field} IS NULL OR ${inList}` : `${field} IS NULL`;
+    }
+  }
+  return g.blank ? blankWhere(field, g.raws) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;
+};

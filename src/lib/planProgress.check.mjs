@@ -198,4 +198,20 @@ assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\)\)/, 'муруй мөрийг planFields-ээр уншина');
 }
 
+/* ── ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ = муруйн ТӨГСГӨЛ ──
+   Огноогүй ажил `planCurve`-д 0 гэж тоологдож жин нь хуваарьт үлддэг (`plan[k][b] ?? 0`) тул муруйн төгсгөл = огноотой
+   жингийн хувь. Энэ таамаг эвдэрвэл (огноогүй ажлыг хуваариас хасвал) хамралт үргэлж 100% болж дүгнэлт буцаж худлаа. */
+{
+  const body = SHEET.slice(SHEET.indexOf('export function planCurve('), SHEET.indexOf('export function computeAll('));
+  assert.match(body, /sp \+= w \* \(plan\[k\]\[b\] \?\? 0\);\s*cnt \+= w;/, 'огноогүй дэд ажил 0-ээр орж жин нь хуваарьт үлдэх ёстой (хамралтын үндэс)');
+  const { planCoverage, coverageOk, coverageNote, PLAN_COVERAGE_MIN } = await import('./planProgress.ts');
+  assert.equal(planCoverage([{ label: '2026-01', pct: 0 }, { label: '2027-03', pct: 8.58 }]), 8.58);
+  assert.equal(planCoverage([{ label: '2027-03', pct: 44.1 }, { label: '2026-01', pct: 3 }]), 44.1, 'шошгоор сүүлийн цэг');
+  assert.equal(planCoverage(undefined), null, 'муруй алга → null (0 биш)');
+  assert.equal(PLAN_COVERAGE_MIN, 95);
+  assert.ok(coverageOk(95) && !coverageOk(94.9) && !coverageOk(null));
+  assert.equal(coverageNote(8.58), 'хуваарь 8.6% хамарсан');
+  assert.equal(coverageNote(100), '');
+}
+
 console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

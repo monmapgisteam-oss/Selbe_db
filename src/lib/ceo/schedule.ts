@@ -75,7 +75,7 @@ import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { num, text, monthKey } from '@/lib/format';
 import { CASHFLOW_NEW, pkgKeyOf } from '@/lib/services';
 import { FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
-import type { PlanPoint } from '@/lib/planProgress';
+import { coverageOk, type PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
 import type { MonthPt } from '@/modules/Finance';
 import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult } from './kpi';
@@ -84,8 +84,13 @@ import { gapPts } from '@/lib/gdash';
 
 /* ══════════════ Төрөл ══════════════ */
 
-/** `lagOf`-ийн үр дүн — сар · төлөвлөсөн % · бодит % · зөрүү (төл. − бодит, пп) */
-export type Lag = { month: string; planned: number; actual: number; gap: number };
+/**
+ * `lagOf`-ийн үр дүн — сар · төлөвлөсөн % · бодит % · зөрүү (төл. − бодит, пп).
+ * ⚠️ 2026-10-22 (аудит): `coverage` — тухайн муруйн хуваарийн хамралт (`planProgress.planCoverage`, 0–100).
+ *    `coverageOk` биш (< 95% эсвэл мэдэгдэхгүй) бол хоцорсон/хэвийн гэж ДҮГНЭХГҮЙ (`computeSchedule`), оноо
+ *    тавихгүй (`scorecard.scorePerf`) — огноогүй ажлын жин төлөвлөгөөнд 0-ээр орж «Хэвийн» гэж худал гардаг байв.
+ */
+export type Lag = { month: string; planned: number; actual: number; gap: number; coverage?: number | null };
 
 /** `lagLevel`-ийн үр дүн: ≥10 пп улаан, 5–10 шар, бусад нь дохио биш */
 export type LagTone = 'red' | 'yellow' | null;
@@ -127,6 +132,8 @@ export type SchedulePkg = {
   /** Сарын хоцрогдол — муруй байхгүй бол null */
   slipMonths: number | null;
   tone: LagTone;
+  /** ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (0–100) — `null` = мэдэгдэхгүй */
+  coverage: number | null;
 };
 
 /* ══════════════ Цэвэр туслахууд ══════════════ */
@@ -360,18 +367,23 @@ export function computeSchedule(
   finCurveMissing = false,
 ): KpiResult {
   const measured: SchedulePkg[] = [];
+  /* ⚠️ 2026-10-22 (аудит): ХУВААРЬ ДУТУУ (хамралт < 95%) багц — тоо нь (төл./бодит/зөрүү) ил, харин түвшин · тоолуур ·
+     «Хэвийн» · сарын хоцрогдолд ОРОХГҮЙ. Урьд нь Багц 3.3 (хамралт 8.6%)-ын «төлөвлөсөн» хэт бага тул «Хэвийн» гардаг байв. */
+  const partial: SchedulePkg[] = [];
   const noData: PkgLag[] = [];
   for (const p of pkgs) {
     if (!p.lag) { noData.push(p); continue; }
-    measured.push({
+    const judged = coverageOk(p.lag.coverage);
+    (judged ? measured : partial).push({
       key: p.key,
       label: p.label,
       month: p.lag.month,
       planned: p.lag.planned,
       actual: p.lag.actual,
       gap: p.lag.gap,
-      slipMonths: slipMonthsOf(curves.get(p.curveKey), p.lag.actual, p.lag.month),
-      tone: lagLevelFn(p.lag.gap),
+      slipMonths: judged ? slipMonthsOf(curves.get(p.curveKey), p.lag.actual, p.lag.month) : null,
+      tone: judged ? lagLevelFn(p.lag.gap) : null,
+      coverage: p.lag.coverage ?? null,
     });
   }
   /* Хамгийн муу нь дээр; тэнцвэл нэрээр */
@@ -392,6 +404,7 @@ export function computeSchedule(
     if (worstGap != null) facts.push(tr('хамгийн муу {0}', gapPts(worstGap)));
     if (avgGap != null && measured.length > 1) facts.push(tr('дундаж {0}', gapPts(avgGap)));
   }
+  if (partial.length) facts.push(tr('{0} багцын хуваарь дутуу — дүгнээгүй', num(partial.length)));
   if (noData.length) facts.push(tr('{0} багц хэмжилтгүй', num(noData.length)));
 
   /* ── Түвшин ── */
@@ -430,6 +443,16 @@ export function computeSchedule(
     ),
     table(tr('Хэмжилтгүй багц'), [tr('Багц'), tr('Шалтгаан')], noRows),
   ];
+  /* ⚠️ 2026-10-22 (аудит): 3-р хүснэгт — хуваарь дутуу (дүгнээгүй) багц, хамралт багаас нь; зөвхөн байвал */
+  if (partial.length) {
+    tables.push(table(
+      tr('Хуваарь дутуу — дүгнээгүй'),
+      [tr('Багц'), tr('Сар'), tr('Төлөвлөсөн %'), tr('Бодит %'), tr('Хуваарийн хамралт')],
+      [...partial]
+        .sort((a, b) => (a.coverage ?? -1) - (b.coverage ?? -1) || a.label.localeCompare(b.label))
+        .map((m) => [cell(m.label), cell(m.month), cell(m.planned, 'pct'), cell(m.actual, 'pct'), cell(m.coverage, 'pct')]),
+    ));
+  }
 
   /* ── Анхааруулга: улаан багц бүр нэрээр ── */
   const issues: KpiIssue[] = measured
@@ -442,7 +465,8 @@ export function computeSchedule(
 
   /* ── asOf: хамгийн сүүлийн хэмжилтийн сарын эцэс, ирээдүй рүү гаргахгүй ── */
   let asOf: number | null = null;
-  for (const m of measured) {
+  /* ⚠️ 2026-10-22: хуваарь дутуу багц ч ХЭМЖИГДСЭН — өгөгдлийн агшинд орно */
+  for (const m of [...measured, ...partial]) {
     const ms = monthEndMs(m.month);
     if (ms != null && (asOf == null || ms > asOf)) asOf = ms;
   }

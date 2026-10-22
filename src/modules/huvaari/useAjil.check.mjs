@@ -38,3 +38,34 @@ for (const name of ['sendAjil', 'saveAjilEdit', 'withdrawAjilHere']) {
   assert.ok(/catch \(e\) \{\s*if \(pkgKeyRef\.current === want\) setAjErr\(userError\(e\)\);/.test(body), 'editAjilHere: catch-ийн алдааг өөр багцад харуулна');
 }
 console.log('useAjil.check: ok — багц солигдсон бол дэлгэцийн төлөв хөндөгдөхгүй ✓');
+
+/* ── ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ нэмэлт мөр — илгээх · засвар хадгалах ХААЛТТАЙ, жагсаалт/бүлэг сонгох буцаана ── */
+{
+  for (const name of ['sendAjil', 'saveAjilEdit']) {
+    const { body, deps } = fn(name);
+    const g = body.indexOf('if (ajOrphans.length) { setAjErr(orphanAddsMsg(ajOrphans.length)); return; }');
+    assert.ok(g >= 0, `${name}: эцэггүй мөрийн хаалт алга`);
+    assert.ok(g < body.indexOf('await '), `${name}: хаалт сүлжээний хүсэлтээс ӨМНӨ байх ёстой`);
+    assert.ok(/ajOrphans/.test(deps), `${name}: deps-д ajOrphans алга`);
+  }
+  assert.ok(/const ajOrphans = useMemo\(\(\) => \(rows\.length \? missingParents\(rows, adds\) : \[\]\), \[rows, adds\]\);/.test(src), 'ajOrphans: мөр ачаалагдаагүй үед тооцохгүй');
+  assert.ok(/ajOrphans, setAddParent,\n  \};/.test(src.replace(/\r\n/g, '\n')), 'hook ajOrphans · setAddParent буцаадаггүй');
+  const hv = readFileSync('src/modules/Huvaari.tsx', 'utf8');
+  assert.ok(/disabled=\{ajBusy \|\| ajOrphans\.length > 0\}/.test(hv), 'Huvaari: «Нэмэлт ажил батлуулах» эцэггүй мөртэй үед хаагддаггүй');
+  assert.ok(/setAddParent\(a\.oid, v\)/.test(hv) && /dropAdd\(a\.oid\)/.test(hv), 'Huvaari: эцэггүй мөрийн баннерт устгах/бүлэг сонгох алга');
+  console.log('useAjil.check: ok — эцэггүй нэмэлт мөр жагсаагдаж, илгээх хаалттай ✓');
+}
+
+/* ── ⚠️ 2026-10-22 (аудит №6): ТОДОРХОЙГҮЙ ТАТАЛТ — мөрүүд тэмдэглэгдэж, `refreshAjil` «Татсан» бол буулгана ── */
+{
+  const { body } = fn('withdrawAjilHere');
+  assert.ok(/if \(!r\.ok && r\.unsure\) writeWdMark\(want, \{ oid: ajSub\.oid, adds: pl\?\.adds \?\? \[\], editing \}\);/.test(body), 'withdrawAjilHere: unsure үед мөрүүдийг тэмдэглэдэггүй');
+  assert.ok(body.indexOf('writeWdMark(want') < body.indexOf('if (!r.ok) { if (live())'), 'тэмдэг `live()`-аас үл хамааран (LS) бичигдэх ёстой');
+  const i = src.indexOf('const refreshAjil = useCallback(');
+  const rb = src.slice(i, src.indexOf('\n  }, [', i));
+  const w = rb.indexOf('const wd = readWdMark(want);');
+  assert.ok(w >= 0 && w < rb.indexOf('setAjSub(sub);'), 'refreshAjil: тэмдгийг `setAjSub`-ээс ӨМНӨ шийдэх ёстой (засварын мөрүүд хасагдахгүй)');
+  assert.ok(/head\?\.status === AJIL_STATUS\.withdrawn/.test(rb) && /mergeIncoming\(cur\.key === want \? cur\.list : readAdds\(want\), wd\.adds\)/.test(rb), 'refreshAjil: «Татсан» бол мөрүүдийг буулгадаггүй');
+  assert.ok(/if \(wd && sub\?\.oid === wd\.oid\) writeWdMark\(want, null\);/.test(rb), 'refreshAjil: хүлээгдсэн хэвээр бол тэмдгийг арилгадаггүй');
+  console.log('useAjil.check: ok — тодорхойгүй таталтын мөрүүд алдагдахгүй ✓');
+}

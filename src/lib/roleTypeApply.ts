@@ -108,6 +108,10 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
      *    (`roleTypes.TPL_VIEWS`) — давхар шүүлт.
      */
     const views = acc.views === 'all' ? 'all' : acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v));
+    /* ⚠️ 2026-10-22 (аудит): урсгалын төрөл («Гүйцэтгэгч компани» … «Газрын дарга») ч ЗӨВХӨН үүрэг/харагдац бичнэ — шат,
+       «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ (шат = «Гүйцэтгэлийн урсгалын эрх»-ийн томилгоо, багцтай нь — энд багц мэдэгдэхгүй
+       тул автоматаар «бүх багц» бичихгүй). Зөрөөг UI ил хэлнэ: карт (`UserCard` · `UserHeadBadges`), «Тойм»
+       (`erhOverview.typeStageGaps`), «Хэрэгжүүлэх»-ийн дүн (`ErhTypes`). */
     const ok = await setUser(u, { views, docs: acc.docs }, role);
     return ok ? { ok: true, errors: [] } : { ok: false, errors: [tr('Харагдац: ArcGIS-т хадгалагдсангүй')] };
   } finally {

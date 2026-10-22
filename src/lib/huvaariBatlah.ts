@@ -1072,6 +1072,182 @@ export async function loadHistory(pkgKey: string, limit = 20, kind?: PlanPayload
   return out;
 }
 
+/* ══════════════ НЯГТ АГУУЛГА (v2) — ⚠️ 2026-10-22 (аудит №4) ══════════════
+ *
+ * ⚠️ ЯАГААД: `aguulga` 1,048,576 тэмдэгт. Хуучин хэлбэр (`JSON.stringify(PlanPayload)`) огноог `{"start":1761955200000,
+ *    "end":…}` гэж, суурийг (`base.spans`) ДАХИН бүтнээр бичдэг тул бүтэн хуваарь (бүх мөр × бүх блок) b41_9f-д 1.30M,
+ *    b42_9f-д 1.41M, b2_9f-д 2.65M тэмдэгт болж илгээгдэх боломжгүй байв (мессеж нь «хэд хэдэн илгээлтэд хуваа» гэдэг
+ *    атал нэг багцад нэг л илгээлт хүлээгдэнэ).
+ * ⚠️ ХЭЛБЭР (`z: 2`) — АЛДАГДАЛГҮЙ: `parsePayload(encodePayload(p))` нь `parsePayload(JSON.stringify(p))`-тэй ЯГ ИЖИЛ
+ *    `PlanPayload` өгнө (тест: `huvaariBatlah.check.mjs`). Тиймээс бүх хэрэглэгч (`payloadToDrafts` · `backMarkMapOf` ·
+ *    `HuvaariBatlah`-ийн тоонууд) өөрчлөлтгүй.
+ *      · Огноо → `d0`-оос тоолсон ХОНОГ (бүхэл хоног бол); цагтай мс нь МӨР («1761955200001») — андуурагдахгүй.
+ *      · Муж `[эхлэх, дуусах]`; суурьтай ИЖИЛ блок нь `0` (утга нь суурьт нэг л удаа — «хөндөөгүй блокийн суурь давхардахгүй»).
+ *      · Сарын задаргаа → `[эхний сарын индекс, утга…]` (дундах хоосон сар `null`); «YYYY-MM» биш түлхүүр байвал хуучин объект.
+ *      · Богино түлхүүр: `sp`/`bs` (муж/суурь), `ob`/`bob` (сарын обьём), `or`/`bor` (сарын нөөц), `ac`/`bac` (бодит огноо),
+ *        `rs`/`brs` (нөөц), `bdeps` (уялдааны суурь), `hb` = суурь БАЙГАА (хуучин суурьгүй илгээлтийн «бүх блок зассан» зан).
+ * ⚠️ `kind` ЭХНИЙ түлхүүр, `"kind":"geree"` хэлбэрээр — `KIND_SQL`-ийн `LIKE` үүгээр ялгадаг.
+ * ⚠️ ХУУЧИН клиент `spans`-гүй тул `parsePayload` нь `null` буцаана (fail-closed — «агуулга уншигдсангүй»), буруу
+ *    задлаж «юу ч өөрчлөөгүй» гэж батлахгүй. ХУУЧИН илгээлт (`z`-гүй) урьдын адил уншигдана.
+ */
+const PAY_DAY = 86_400_000;
+type Enc = number | string | null;
+/** Огноо (мс) → хоногийн зөрүү (бүхэл хоног бол) эсвэл мс-ийн мөр */
+const encMs = (ms: number | null | undefined, d0: number): Enc => {
+  if (ms == null || typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+  return Number.isInteger(ms) && ms % PAY_DAY === 0 ? ms / PAY_DAY - d0 : String(ms);
+};
+const decMs = (x: unknown, d0: number): number | null => {
+  if (typeof x === 'number' && Number.isFinite(x)) return (d0 + x) * PAY_DAY;
+  if (typeof x === 'string' && x.trim() !== '' && Number.isFinite(Number(x))) return Number(x);
+  return null;
+};
+const MONTH_RE = /^(\d{4})-(\d{2})$/;
+const monIdx = (k: string): number | null => {
+  const m = MONTH_RE.exec(k);
+  if (!m) return null;
+  const mo = Number(m[2]);
+  return mo >= 1 && mo <= 12 ? Number(m[1]) * 12 + (mo - 1) : null;
+};
+const monKey = (i: number): string => `${String(Math.floor(i / 12)).padStart(4, '0')}-${String((i % 12) + 1).padStart(2, '0')}`;
+/** Сар → утга объектыг `[эхний индекс, …утга]` болгоно; түлхүүр/утга хэвийн биш бол объектоор нь (алдагдалгүй) */
+function encMonths<V>(rec: Record<string, V>, ok: (v: V) => boolean, enc: (v: V) => unknown): unknown {
+  const ks = Object.keys(rec);
+  if (!ks.length) return [];
+  const idx = ks.map(monIdx);
+  if (idx.some((i) => i == null) || ks.some((k) => !ok(rec[k]))) return rec;
+  const lo = Math.min(...(idx as number[]));
+  const hi = Math.max(...(idx as number[]));
+  if (hi - lo > 1200) return rec;
+  const out: unknown[] = [lo];
+  for (let i = lo; i <= hi; i += 1) {
+    const k = monKey(i);
+    out.push(k in rec ? enc(rec[k]) : null);
+  }
+  return out;
+}
+function decMonths(x: unknown, dec: (v: unknown) => unknown): unknown {
+  if (!Array.isArray(x)) return x;
+  const out: Record<string, unknown> = {};
+  if (!x.length) return out;
+  const lo = Number(x[0]);
+  if (!Number.isInteger(lo)) return out;
+  for (let k = 1; k < x.length; k += 1) if (x[k] !== null) out[monKey(lo + k - 1)] = dec(x[k]);
+  return out;
+}
+const mapRec = <A, B>(rec: Record<string, A> | undefined, f: (v: A, k: string) => B): Record<string, B> =>
+  Object.fromEntries(Object.entries(rec ?? {}).map(([k, v]) => [k, f(v, k)]));
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** `PlanPayload` → нягт JSON мөр (v2). Илгээх (`submitPlan`) үүгээр. */
+export function encodePayload(p: PlanPayload): string {
+  /* Хоногийн эх — бүх бүхэл хоногийн огнооны MIN (зөрүүнүүд сөрөг биш, богино) */
+  let d0 = Number.POSITIVE_INFINITY;
+  const see = (ms: number | null | undefined) => {
+    if (typeof ms === 'number' && Number.isInteger(ms) && ms % PAY_DAY === 0 && ms / PAY_DAY < d0) d0 = ms / PAY_DAY;
+  };
+  const seeSpans = (rec: PlanPayload['spans'] | undefined) => {
+    for (const arr of Object.values(rec ?? {})) for (const s of arr ?? []) if (s) { see(s.start); see(s.end); }
+  };
+  const seeActual = (rec: PlanPayload['actual'] | undefined) => {
+    for (const v of Object.values(rec ?? {})) { for (const x of v?.start ?? []) see(x); for (const x of v?.end ?? []) see(x); }
+  };
+  seeSpans(p.spans); seeSpans(p.base?.spans); seeActual(p.actual); seeActual(p.base?.actual);
+  if (!Number.isFinite(d0)) d0 = 0;
+  const sp1 = (s: { start: number; end: number } | null | undefined): unknown =>
+    (s ? [encMs(s.start, d0), encMs(s.end, d0)] : null);
+  const same = (a: { start: number; end: number } | null | undefined, b: { start: number; end: number } | null | undefined) =>
+    !!a && !!b && a.start === b.start && a.end === b.end;
+  const sp = mapRec(p.spans, (arr, k) => {
+    const bs = p.base?.spans?.[k];
+    return (arr ?? []).map((s, b) => (bs && same(s, bs[b]) ? 0 : sp1(s)));
+  });
+  /* Хэлбэр нь эвдэрсэн мөр `null` — хуучин задлалт ч тэр мөрийг хаядаг (`sanitizeActual`/`sanitizeRes`) */
+  const ac1 = (v: { start: (number | null)[]; end: (number | null)[] }) =>
+    (v && Array.isArray(v.start) && Array.isArray(v.end)
+      ? [v.start.map((x) => encMs(x, d0)), v.end.map((x) => encMs(x, d0))]
+      : null);
+  const rs1 = (v: { hun: number | null; mashin: number | null }) =>
+    (v && typeof v === 'object' ? [v.hun ?? null, v.mashin ?? null] : null);
+  const obEnc = (rec: Record<string, number>) => encMonths(rec, isNum, (v) => v);
+  const orEnc = (rec: Record<string, { hun: number | null; mashin: number | null }>) =>
+    encMonths(rec, (v) => !!v && typeof v === 'object', (v) => [v.hun ?? null, v.mashin ?? null]);
+  const b = p.base;
+  const w: Record<string, unknown> = {
+    /* ⚠️ ЭХНИЙ түлхүүр — `KIND_SQL` (`"kind":"geree"` LIKE) */
+    kind: p.kind,
+    z: 2,
+    d0,
+    sp,
+    deps: p.deps ?? {},
+    ob: mapRec(p.obyem, obEnc),
+    or: mapRec(p.obres, orEnc),
+    ac: mapRec(p.actual, ac1),
+    rs: mapRec(p.res, rs1),
+    ...(p.keys ? { keys: p.keys } : {}),
+    ...(b ? {
+      hb: 1,
+      bs: mapRec(b.spans, (arr) => (arr ?? []).map(sp1)),
+      bdeps: b.deps ?? {},
+      bob: mapRec(b.obyem, obEnc),
+      ...(b.actual ? { bac: mapRec(b.actual, ac1) } : {}),
+      ...(b.res ? { brs: mapRec(b.res, rs1) } : {}),
+      ...(b.obres ? { bor: mapRec(b.obres, orEnc) } : {}),
+    } : {}),
+  };
+  return JSON.stringify(w);
+}
+
+/**
+ * Нягт (v2) объект → ХУУЧИН хэлбэрийн объект — `parsePayload` цааш нь урьдын шалгалтаар цэвэрлэнэ.
+ * ⚠️ Эвдэрсэн хэсэг нь хуучин хэлбэрт «эвдэрсэн» утга болж (жиш. `null`) хуучин дүрмээр хаягдана; бүтэц нь
+ *    танигдахгүй бол шиднэ — дуудагч `null` буцаана (fail-closed).
+ */
+function expandPayload(w: Record<string, unknown>): Record<string, unknown> {
+  const d0 = Number(w.d0);
+  if (!Number.isFinite(d0)) throw new Error('d0');
+  const rec = (x: unknown): Record<string, unknown> => (x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, unknown> : {});
+  const spanOf = (x: unknown) => {
+    if (!Array.isArray(x)) return null;
+    const s = decMs(x[0], d0);
+    const e = decMs(x[1], d0);
+    return s == null || e == null ? { start: Number.NaN, end: Number.NaN } : { start: s, end: e };
+  };
+  const bsRec = mapRec(rec(w.bs) as Record<string, unknown>, (arr) => (Array.isArray(arr) ? arr.map(spanOf) : arr));
+  const spans = mapRec(rec(w.sp) as Record<string, unknown>, (arr, k) => {
+    if (!Array.isArray(arr)) return arr;
+    const bs = bsRec[k];
+    return arr.map((x, i) => (x === 0 ? (Array.isArray(bs) ? bs[i] ?? null : null) : spanOf(x)));
+  });
+  const acOf = (v: unknown) => (Array.isArray(v) && Array.isArray(v[0]) && Array.isArray(v[1])
+    ? { start: (v[0] as unknown[]).map((x) => decMs(x, d0)), end: (v[1] as unknown[]).map((x) => decMs(x, d0)) }
+    : null);
+  const rsOf = (v: unknown) => (Array.isArray(v) ? { hun: v[0] ?? null, mashin: v[1] ?? null } : null);
+  const obOf = (v: unknown) => decMonths(v, (x) => x);
+  const orOf = (v: unknown) => decMonths(v, (x) => (Array.isArray(x) ? { hun: x[0] ?? null, mashin: x[1] ?? null } : x));
+  const out: Record<string, unknown> = {
+    kind: w.kind,
+    spans,
+    deps: rec(w.deps),
+    obyem: mapRec(rec(w.ob) as Record<string, unknown>, obOf),
+    obres: mapRec(rec(w.or) as Record<string, unknown>, orOf),
+    actual: mapRec(rec(w.ac) as Record<string, unknown>, acOf),
+    res: mapRec(rec(w.rs) as Record<string, unknown>, rsOf),
+    ...(w.keys !== undefined ? { keys: w.keys } : {}),
+  };
+  if (w.hb === 1) {
+    out.base = {
+      spans: bsRec,
+      deps: rec(w.bdeps),
+      obyem: mapRec(rec(w.bob) as Record<string, unknown>, obOf),
+      ...(w.bac !== undefined ? { actual: mapRec(rec(w.bac) as Record<string, unknown>, acOf) } : {}),
+      ...(w.brs !== undefined ? { res: mapRec(rec(w.brs) as Record<string, unknown>, rsOf) } : {}),
+      ...(w.bor !== undefined ? { obres: mapRec(rec(w.bor) as Record<string, unknown>, orOf) } : {}),
+    };
+  }
+  return out;
+}
+
 /** Нэг илгээлтийн АГУУЛГА — батлахад л хэрэгтэй тул тусад нь татна */
 export async function loadPayload(oid: number): Promise<PlanPayload | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.payload}`);
@@ -1183,8 +1359,10 @@ function sanitizeKeys(raw: unknown): Record<string, number> {
 
 export function parsePayload(raw: string): PlanPayload | null {
   try {
-    const j = JSON.parse(raw) as Partial<PlanPayload>;
-    if (!j || typeof j !== 'object') return null;
+    const j0 = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!j0 || typeof j0 !== 'object') return null;
+    /* ⚠️ 2026-10-22 (аудит №4): НЯГТ хэлбэр (`z: 2`, `encodePayload`) — хуучин хэлбэр рүү задлаад доорх ИЖИЛ шалгалтаар */
+    const j = (j0.z === 2 ? expandPayload(j0) : j0) as Partial<PlanPayload>;
     const spans = j.spans && typeof j.spans === 'object' ? sanitizeSpans(j.spans) : null;
     if (!spans) return null;
     /*
@@ -1251,9 +1429,12 @@ export async function submitPlan(args: {
   /* ⚠️ 2026-09-29 аудит: `aguulga` 1,048,576 тэмдэгт — `base` нэмэгдсэнээс хойш
      том багцад (1,459 мөр × 22 блок) хэтэрч `applyEdits` шалтгаангүй унадаг байв.
      Цэвэр шалгуур тул эрх/сүлжээнээс ӨМНӨ. */
-  const payloadJson = JSON.stringify(args.payload);
+  /* ⚠️ 2026-10-22 (аудит №4): НЯГТ хэлбэрээр (`encodePayload` — хоног, хөндөөгүй блокийн суурь давхардахгүй) — бүтэн
+     хуваарь (b2_9f 2.65M) ч 1 MB-д багтана. Мессеж «хэд хэдэн илгээлтэд хуваа» гэдэг байсан нь ХУДАЛ: нэг багц · төрөлд
+     зөвхөн НЭГ хүлээгдэж буй илгээлт зөвшөөрөгдөнө (`loadPending` доор) — одоо бодит гарцыг хэлнэ. */
+  const payloadJson = encodePayload(args.payload);
   if (payloadJson.length > PAYLOAD_MAX) {
-    return { ok: false, error: tr('Илгээлтийн агуулга хэт том ({0} тэмдэгт, дээд {1}) — ноорогоо хэд хэдэн илгээлтэд хуваана уу.', String(payloadJson.length), String(PAYLOAD_MAX)) };
+    return { ok: false, error: tr('Илгээлтийн агуулга хэт том ({0} тэмдэгт, дээд {1}). Нэг багцад нэг л илгээлт хүлээгдэх тул хуваан зэрэг илгээх боломжгүй — өөрчлөлтийн нэг хэсгийг эхлээд батлуулж, дараа нь үлдсэнийг илгээнэ үү (эсвэл админд хандана уу).', String(payloadJson.length), String(PAYLOAD_MAX)) };
   }
   /* ⚠️ 2026-10-12 (аудит): БҮЛГИЙГ БАГЦЫН ТҮЛХҮҮРЭЭС гаргана (`PKGS`) — урьд нь хүрээг дуудагчийн
      өгсөн `pkgGroup`-оор шалгаад `pkgKey`-тэй тулгадаггүй тул консолоос эрхтэй бүлгийн нэр + эрхгүй

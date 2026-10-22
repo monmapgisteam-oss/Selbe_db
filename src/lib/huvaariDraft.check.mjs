@@ -475,4 +475,89 @@ console.log('✅ нягт бичиглэл · хуучин хэлбэр унши
 }
 console.log('✅ шинэ жааз — танихуунаар зөөнө');
 
+/* ── ⚠️ 2026-10-22 (аудит №1): НЯГТ TOMBSTONE — ямар ч хэмжээний илгээлтийн цэвэрлэлт алсад багтана ── */
+{
+  const MAX = 80_000; // `draftRemote.REMOTE_MAX` (тэр модуль ArcGIS импортолдог тул энд тоогоор)
+  /* 1. Эргэх хөрвүүлэлт — бүх төрлийн түлхүүр, сөрөг oid, загваргүй (түүхий) түлхүүр, олон агшин */
+  const del0 = new Map([
+    [kS(1687, 0), 5000], [kS(1688, 0), 5000], [kS(1690, 0), 5000], [kS(-3, 2), 5000], [kA(7, 1), 5001],
+    [kH(1687), 5001], [kR(9), 7000], [kM('1000|Ажил'), 5000], [kM('1001|Ажил'), 5000], [kN('14|5/1'), 9000],
+    [kM('abc|x'), 9000], [kS(12, 3), 4000],
+  ]);
+  const w = JSON.parse(serialize(mk([], [...del0])));
+  assert.equal(w.del, undefined, 'хуучин `del` массив бичигдэхгүй');
+  assert.ok(Array.isArray(w.dz), 'нягт `dz`');
+  assert.deepEqual([...parse(JSON.stringify(w)).del].sort(), [...del0].sort(), 'tombstone алдагдалгүй (агшин бүр ЯГ)');
+  /* Хуучин `del` хэлбэр уншигдсаар; хоёулаа байвал түлхүүр бүрт ИХ агшин */
+  const both = parse(JSON.stringify({ ...w, del: [[kS(1687, 0), 6000], [kH(3), 10]] }));
+  assert.equal(both.del.get(kS(1687, 0)), 6000);
+  assert.equal(both.del.get(kH(3)), 10);
+  /* Гарын үсэг детерминист — оруулсан дараалал нөлөөгүй */
+  assert.equal(sig(mk([], [...del0])), sig(mk([], [...del0].reverse())), 'sig дарааллаас хамаарахгүй');
+
+  /* 2. b54-тэй ижил цэвэрлэлт: 1,687 мужийн + 1,539 сарын + 13 нөөцийн нүд (3,239), ~1,600 ЯЛГААТАЙ агшин —
+        урьд нь ~90,000+ тэмдэгт болж `REMOTE_MAX`-аас хэтэрч алсын ноорог хэзээ ч цэвэрлэгддэггүй байв. */
+  const ents = [];
+  let t = 1_790_000_000_000;
+  for (let i = 0; i < 1687; i += 1) ents.push([kS(1687 + i, 0), cell({ start: 1, end: 2 }, (t += i % 2 ? 0 : 37_000), 'u')]);
+  for (let i = 0; i < 1539; i += 1) ents.push([kM(`${1000 + i}|Ажил`), cell([['2026-01', 1]], (t += i % 2 ? 0 : 41_000), 'u')]);
+  for (let i = 0; i < 13; i += 1) ents.push([kN(`${1000 + i}|Ажил`), cell([['2026-01', 1, null]], (t += 13_000), 'u')]);
+  const keep = cell({ start: 3, end: 4 }, t + 5, 'bat'); // хамтрагчийн илгээлтэд ОРООГҮЙ нүд
+  const remote = mk([...ents, [kS(99_999, 0), keep]], [], t);
+  const ts = t + 100;
+  const mark = new Map(ents.map(([k, e]) => [k, Math.min(ts, e.at + 1)]));
+  const cleared = applyClear(remote, mark, ts);
+  const oldLen = JSON.stringify([...cleared.del]).length;
+  const body = serialize({ ...cleared, t: ts }, MAX);
+  assert.ok(oldLen > MAX, `хуучин бичиглэл ${oldLen} — REMOTE_MAX-аас их байх ёстой (тестийн загвар)`);
+  assert.ok(body.length <= MAX, `нягт цэвэрлэлт ${body.length} тэмдэгт — REMOTE_MAX-д багтах ёстой`);
+  const back = parse(body);
+  assert.deepEqual([...back.del].sort(), [...cleared.del].sort(), 'энэ хэмжээнд агшин бөөрөнхийлөгдөхгүй (ЯГ)');
+  assert.equal(back.entries.size, 1, 'илгээлтэд ороогүй нүд үлдэнэ');
+  assert.equal(back.cleared, ts);
+  /* ⚠️ баталгаанууд хэвээр: хуучин хуулбар амилахгүй, ШИНЭ засвар үлдэнэ */
+  const oldCopy = mk([[kS(1700, 0), cell({ start: 1, end: 2 }, ents[13][1].at, 'u')]], [], 1);
+  assert.equal(merge(back, oldCopy, ts + 10).entries.has(kS(1700, 0)), false, 'цэвэрлэгдсэн нүдний хуучин хуулбар амилахгүй');
+  const newer = mk([[kS(1700, 0), cell({ start: 5, end: 6 }, ents[13][1].at + 1, 'bat')]], [], 1);
+  assert.equal(merge(back, newer, ts + 10).entries.has(kS(1700, 0)), true, 'илгээснээс ХОЙШ засагдсан нүд үлдэнэ');
+  console.log(`   b54 маягийн цэвэрлэлт: tombstone ${oldLen} → ноорог бүтнээрээ ${body.length} тэмдэгт`);
+
+  /* 3. Бүтэн хуваарийн хэмжээ: 1,500 мөрийн жааз (oid 5000…6499) × 22 блок, ӨНГӨРСӨН мөр бүр (тархай) мужийн ба бодит
+        огнооны нүд (33,000), нүд БҮР ЯЛГААТАЙ агшинтай — ЯГ бичиглэл ~1 MB; бөөрөнхийлж + битмапаар БАГТАНА. Агшин зөвхөн
+        ДЭЭШ, анхны дээдээс хэтрэхгүй; ноорогт нүдтэй түлхүүрийн tombstone хөндөгдөхгүй. */
+  const many = [];
+  let c = 0;
+  for (let i = 0; i < 1500; i += 2) {
+    for (let b = 0; b < 22; b += 1) {
+      many.push([kS(5000 + i, b), 1_790_000_000_000 + (c += 1) * 997]);
+      many.push([kA(5000 + i, b), 1_790_000_000_000 + (c += 1) * 997]);
+    }
+  }
+  const liveKey = many[10][0];
+  const live = cell({ start: 1, end: 2 }, many[10][1] + 10, 'u');
+  const huge = { ...mk([[liveKey, live]], many), t: 1_800_000_000_000 };
+  const exact = serialize(huge);
+  assert.ok(exact.length > MAX, `ЯГ бичиглэл ${exact.length} — бөөрөнхийлөлт шаардлагатай (тестийн загвар)`);
+  const hb = serialize(huge, MAX);
+  assert.ok(hb.length <= MAX, `бөөрөнхийлсөн ${hb.length} тэмдэгт — багтах ёстой`);
+  const hp = parse(hb);
+  const top = Math.max(...many.map(([, a]) => a));
+  for (const [k, a] of many) {
+    const g = hp.del.get(k);
+    assert.ok(g != null && g >= a, `${k}: tombstone алга эсвэл бага (${g} < ${a}) — цэвэрлэгдсэн хувилбар амилна`);
+    assert.ok(g <= top, `${k}: tombstone хамгийн их анхны агшнаас хэтэрлээ`);
+  }
+  assert.equal(hp.del.get(liveKey), many[10][1], 'нүдтэй түлхүүрийн tombstone хөндөгдөөгүй');
+  assert.ok(hp.entries.has(liveKey), 'нүд хэвээр');
+  console.log(`   33,000 тархай нүд, бүгд өөр агшин: ЯГ ${exact.length} → бөөрөнхийлсөн ${hb.length} тэмдэгт`);
+
+  /* 4. Цэвэрлэлтийн тэмдэг (localStorage) — нягт, хуучин хэлбэр уншигдсаар */
+  const m = { ts: 9000, keys: new Map([...mark].slice(0, 500)) };
+  const sm = serializeMark(m);
+  assert.ok(sm.length < JSON.stringify({ ts: m.ts, keys: [...m.keys] }).length / 2, 'тэмдэг нягт');
+  assert.deepEqual([...parseMark(sm).keys].sort(), [...m.keys].sort(), 'тэмдэг алдагдалгүй');
+  assert.deepEqual([...parseMark(JSON.stringify({ ts: 9000, keys: [[kH(1), 77]] })).keys], [[kH(1), 77]], 'хуучин тэмдэг');
+}
+console.log('✅ нягт tombstone — том илгээлтийн цэвэрлэлт багтана, баталгаа хэвээр');
+
 console.log('✅ huvaariDraft: бүх шалгуур давлаа');

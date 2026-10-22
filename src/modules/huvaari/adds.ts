@@ -93,6 +93,28 @@ export function writeAjEdit(pkgKey: string, v: AjEdit | null): void {
   } catch { /* хаалттай орчин */ }
 }
 /**
+ * ТОДОРХОЙГҮЙ ТАТАЛТ (⚠️ 2026-10-22, аудит №6) — `withdrawAjil`-ийн хариу алдагдаж, дахин уншилт ч унасан үед (`unsure`)
+ * тэр илгээлтийн мөрүүдийг энд хадгална. `useAjil.refreshAjil` серверийн төлвийг уншаад «Татсан» бол мөрүүдийг `adds`-д
+ * буулгана (засварын горимд — `editing` — мөрүүд аль хэдийн `adds`-д тул засварын төлвийг л цэвэрлэнэ); хүлээгдсэн
+ * хэвээр (татагдаагүй) эсвэл өөр төлөвт тэмдгийг зүгээр арилгана. Урьд нь энэ тохиолдолд «Татсан» илгээлтийн мөрүүд
+ * хаанаас ч сэргэдэггүй (`refreshAjil` зөвхөн «Буцаагдсан»-ыг сэргээдэг) — ажил бүрмөсөн алга болдог байв.
+ */
+export type WdMark = { oid: number; adds: NewRow[]; editing: boolean };
+export const AJ_WD_LS = (pkgKey: string) => `selbe-ajil-wd|${pkgKey}`;
+export function readWdMark(pkgKey: string): WdMark | null {
+  try {
+    const j = JSON.parse(localStorage.getItem(AJ_WD_LS(pkgKey)) ?? 'null') as Partial<WdMark> | null;
+    if (!j || !Number.isInteger(j.oid) || !Array.isArray(j.adds)) return null;
+    return { oid: j.oid as number, adds: j.adds as NewRow[], editing: j.editing === true };
+  } catch { return null; }
+}
+export function writeWdMark(pkgKey: string, v: WdMark | null): void {
+  try {
+    if (!v) localStorage.removeItem(AJ_WD_LS(pkgKey));
+    else localStorage.setItem(AJ_WD_LS(pkgKey), JSON.stringify(v));
+  } catch { /* хаалттай орчин */ }
+}
+/**
  * Ирсэн мөрүүдийг (татсан · буцаагдсан) `adds`-д НИЙЛҮҮЛНЭ — FillNew-ийн
  * `mergeIncomingAdds`-ийн хуулбар: ижил мөр байвал алгасна, oid мөргөлдвөл
  * шинэ сул дугаар, тоолуурыг түлхэнэ.

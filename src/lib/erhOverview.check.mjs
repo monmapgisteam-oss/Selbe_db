@@ -28,7 +28,7 @@ globalThis.dispatchEvent = () => true;
 
 const {
   userErh, pkgErh, allPkgErh, allUserErh, MATRIX_COLS, pkgMatrix, butetsRows, orphanCaps, capBacking, missingCaps,
-  unknownPkgUsers,
+  unknownPkgUsers, typeStageGaps,
 } = await import('@/lib/erhOverview.ts');
 const { BUTETS_PACKS } = await import('@/lib/butetsPacks.ts');
 const { PKG_GROUPS } = await import('@/modules/sheet/bagts.pkg.ts');
@@ -463,4 +463,30 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
 }
 console.log('✅ бүх шат хоосон · танигдаагүй багц · зөвхөн super (анхааруулга хэвээр)');
 
-console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт · танигдаагүй багц');
+/* ── ⚠️ 2026-10-22 (аудит): ТӨРӨЛ ↔ УРСГАЛЫН ШАТ — урсгалын төрөл шат олгодоггүй (`typeStageGaps`) ── */
+{
+  const src = {
+    ...empty(),
+    users: ['Chief_NoFlow', 'eng_ok', 'mis', 'vo', 'gone_u', 'abs_u', 'boss', 'plain'],
+    flow: [
+      { user: 'eng_ok', stage: 'engineer', bagts: ['*'] },
+      { user: 'mis', stage: 'manager', bagts: [G0] },
+      /* «Зөвхөн харна» ч ШАТ мөн — зөрөө биш */
+      { user: 'vo', stage: 'director', bagts: ['*'], viewOnly: true },
+    ],
+    typeStage: {
+      chief_noflow: 'chief', eng_ok: 'engineer', mis: 'engineer', vo: 'director',
+      gone_u: 'company', abs_u: 'head', boss: 'chief',
+    },
+    gone: ['gone_u'], absent: ['ABS_U'], supers: ['boss'],
+  };
+  const gaps = typeStageGaps(src);
+  assert.deepEqual(gaps, [
+    { user: 'Chief_NoFlow', want: 'chief', have: null },
+    { user: 'mis', want: 'engineer', have: 'manager' },
+  ], 'шатгүй + өөр шаттай л; зөв · зөвхөн харна · устгагдсан · порталд алга · super алгасна');
+  assert.deepEqual(typeStageGaps(empty()), [], 'typeStage-гүй хуучин эх сурвалж — хоосон');
+}
+console.log('✅ төрөл ↔ урсгалын шат: шатгүй · өөр шат ил; зөв/зөвхөн харна/устгагдсан/порталд алга/super үгүй');
+
+console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт · танигдаагүй багц · төрөл↔шат');

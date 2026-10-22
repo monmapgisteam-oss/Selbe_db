@@ -34,7 +34,8 @@ import { Section as Card, Series, Meter, type SeriesLineDef } from '@/components
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
-import { ComboChart, lagLevel } from '@/modules/Finance';
+import { ComboChart, lagLevel, lagLevelOf } from '@/modules/Finance';
+import { coverageOk, coverageNote } from '@/lib/planProgress';
 import {
   Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp, barSt,
   PREREQ_LANES, DepList, calDaysBetween,
@@ -242,8 +243,12 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${gapTone(r.gapContractor)}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
-          <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}</span>
+          {/* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол өнгөөр (хоцорсон/хэвийн) ДҮГНЭХГҮЙ, хамралтыг нэрлэнэ */}
+          <span className={`${s.statValue} ${r.planCoverage == null || coverageOk(r.planCoverage) ? gapTone(r.gapContractor) : ''}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
+          <span className={s.statNote}>
+            {tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}
+            {r.planCoverage != null && !coverageOk(r.planCoverage) ? ` · ${coverageNote(r.planCoverage)} — ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''}
+          </span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
@@ -595,7 +600,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             items={r.months}
             height={280}
             lagMonth={r.lag?.month}
-            lagLvl={r.lag ? lagLevel(r.lag.gap) : null}
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлын тэмдэг ГАРГАХГҮЙ (`lagLevelOf`) */
+            lagLvl={lagLevelOf(r.lag)}
             contract={r.p.cost != null && r.p.cost > 0 ? r.p.cost : null}
           />
         ) : <p className={s.note}>—</p>}

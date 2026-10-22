@@ -1503,7 +1503,7 @@ async function archiveSubmission(
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -1779,7 +1779,10 @@ async function archiveSubmission(
    *    орж чадахгүй, ерөнхий менежер шалтгааныг нь ойлгомжгүй алдаанаас л
    *    мэддэг байлаа.
    */
-  const asOf = ov.asOf ?? loaded.asOf;
+  /* ⚠️ 2026-10-22 (аудит): ХОЖУУ НЬ (`sheetFrame.laterAsOf`) — урьд нь `ov.asOf ?? loaded.asOf` тул ХУУЧИН өдрийн илгээлт
+     хожуу батлагдахад (10-12-ныхын дараа 10-10-ных) архивын «Шинэчлэгдсэн огноо» ухарч, БҮХ мөрийн төлөвлөгөөт хувь
+     буцаж бодогддог байв. Хянагчийн харагдац (`hyanaltDetail.loadStaged`) ЯГ энэ дүрмээр харуулна. */
+  const asOf = laterAsOf(ov.asOf, loaded.asOf);
 
   /*
    * БӨГЛӨСӨН ӨДӨР — илгээсэн өдөр (`payload.fillMs`).

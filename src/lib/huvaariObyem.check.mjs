@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import {
   monthKey, monthStart, monthsOf, keepMonths, sumMonths, balanced,
   planPctFromMonths, dkeyOf, toPkgPlan, TURUL_PLAN, buildEdits, indexOids,
-  toPkgRes, keepRes, sumRes, sameMonthRes,
+  toPkgRes, keepRes, sumRes, sameMonthRes, sarDateOnly, sarKeyOf,
 } from './huvaariObyem.ts';
 
 const d = (iso) => Date.parse(`${iso}T00:00:00Z`);
@@ -125,6 +125,24 @@ assert.equal(dkeyOf('b1_9f', 412, '5/1', '2025-10'), `b1_9f|${TURUL_PLAN}|412|5/
   assert.equal(p.get(412).get('5/1').get('2025-11'), 880);
   assert.equal(sumMonths(p.get(412).get('5/1')), 1300);
 }
+/* ── 6б. ⚠️ 2026-10-22 (аудит №2): `sar` (DateOnly) — бичих «YYYY-MM-01» мөр; уншихад мөр ч, хуучин мс ч ── */
+{
+  const at = (o) => ({ attributes: o });
+  assert.equal(sarDateOnly('2026-03'), '2026-03-01');
+  assert.equal(sarDateOnly('муу'), null, 'буруу сар → null');
+  assert.equal(sarKeyOf({ sar_txt: '2025-10', sar: '2024-01-01' }), '2025-10', '`sar_txt` давамгайлна');
+  assert.equal(sarKeyOf({ sar_txt: '', sar: '2025-11-01' }), '2025-11', 'DateOnly мөр');
+  assert.equal(sarKeyOf({ sar_txt: null, sar: Date.UTC(2025, 11, 1) }), '2025-12', 'хуучин epoch мс (UTC)');
+  assert.equal(sarKeyOf({ sar: Date.UTC(2025, 9, 31, 16) }), '2025-11', 'УБ-ын шөнө дунд (16:00Z) → дараагийн өдрийн сар');
+  assert.equal(sarKeyOf({ sar_txt: 'муу', sar: null }), 'муу', 'аль нь ч биш → түүхий (дуудагч хаяна)');
+  const p = toPkgPlan([
+    at({ des_dugaar: 5, blok: 'A', sar_txt: null, sar: '2026-02-01', obyem: 7 }),
+    at({ des_dugaar: 5, blok: 'A', sar: Date.UTC(2026, 2, 1), obyem: 8 }),
+  ]);
+  assert.deepEqual([...p.get(5).get('A')], [['2026-02', 7], ['2026-03', 8]], 'sar_txt-гүй мөр ч уншигдана');
+  const r = toPkgRes([at({ des_dugaar: 5, blok: 'A', sar: '2026-02-01', obyem: 7, hun_huch: 3, mashin_mehanizm: null })]);
+  assert.deepEqual(r.get(5).get('A').get('2026-02'), { hun: 3, mashin: null });
+}
 
 console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓ нийлбэр ✓ S-муруй ✓ задлалт ✓');
 
@@ -148,7 +166,9 @@ console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓
 
   assert.equal(e.adds.length, 1, 'шинэ сар нэмэгдэх ёстой');
   assert.equal(e.adds[0].attributes.sar_txt, '2026-01');
-  assert.equal(e.adds[0].attributes.sar, monthStart('2026-01'), 'sar нь DateOnly, сарын 1-ний өдөр');
+  /* ⚠️ 2026-10-22 (аудит №2): DateOnly талбарт «YYYY-MM-DD» МӨР (epoch мс БИШ) — Enterprise /186 метаг амьдаар шалгав */
+  assert.equal(e.adds[0].attributes.sar, '2026-01-01', 'sar нь DateOnly МӨР, сарын 1-ний өдөр');
+  assert.equal(typeof e.updates[0]?.attributes.sar, 'string', 'шинэчлэлд ч мөр');
   assert.equal(e.adds[0].attributes.turul, TURUL_PLAN);
   assert.equal(e.adds[0].attributes.niit_obyem, 1300, 'нийт обьём мөр бүрд');
   assert.equal(e.adds[0].attributes.negj, 'м³');

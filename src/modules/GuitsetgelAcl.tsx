@@ -42,6 +42,7 @@ import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { isCodeSuper, roleForUser } from '@/lib/services';
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 export function GuitsetgelAcl() {
@@ -101,6 +102,8 @@ export function GuitsetgelAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа порталд алга — шийдвэрлэгч биш (`stuck` доор) */
+        absent: portalMissing(a.user),
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
@@ -141,7 +144,9 @@ export function GuitsetgelAcl() {
         /* ⚠️ ХООСОН НҮД = шийдвэрлэх хүнгүй (зөвхөн «харна» хүмүүс ч тоогдохгүй) —
            тэр багцын ажил энэ шатанд ГАЦНА.
            ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) ч тоологдохгүй — нэвтэрч чадахгүй. */
-        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !rowOf.get(h.user)?.viewOnly)}
+        /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — урьд нь `selbe_redesign` (порталд алга) нь
+           «Гүйцэтгэгч компани» баганыг 21 багцад «эзэнтэй» харуулж, гацаа ХЭЗЭЭ Ч гардаггүй байв. */
+        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !h.absent && !rowOf.get(h.user)?.viewOnly)}
         stuckTitle={() => tr('Энэ багцын энэ шатанд шийдвэрлэх аккаунт алга — ажил энд гацна')}
         /*
          * ⚠️ Сонгогчид ЗӨВХӨН өөрчлөлт хийх аккаунт: аль хэдийн хамарсан
@@ -159,7 +164,7 @@ export function GuitsetgelAcl() {
         addTitle={(r, c) => tr('{0} — {1} шатанд аккаунт нэмэх', r.label, c.label)}
         flag={(h) => {
           const a = rowOf.get(h.user);
-          return a && !h.gone && !h.admin ? <ViewOnlyFlag a={a} off={off} onClick={() => act(flowViewOnlyOp(a.user, !a.viewOnly))} /> : null;
+          return a && !h.gone && !h.absent && !h.admin ? <ViewOnlyFlag a={a} off={off} onClick={() => act(flowViewOnlyOp(a.user, !a.viewOnly))} /> : null;
         }}
         off={off}
         canOpen={() => { if (locked) { setErr(LOCK_MSG); return false; } return true; }}

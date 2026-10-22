@@ -27,8 +27,10 @@
  */
 
 import { t as tr } from './i18nCore';
-import { listUsers, remoteReady, resolveAccess } from './permissions';
-import { isCodeSuper, roleForUser, VIEWS } from './services';
+import { listUsers, remoteReady, resolveAccess, roleOf } from './permissions';
+import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
+import { portalMissing } from './portalPresence';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
@@ -324,12 +326,25 @@ export function liveErhSource(): ErhSource {
   /* ⚠️ 2026-09-30: хуваарилалттай атлаа порталд алга (устгагдсан) — гацааны шалгуурт тоологдохгүй (`ErhSource.gone`) */
   const known = new Set(users.map((u) => u.toLowerCase()));
   const rows: { user: string }[][] = [flow, qaqc, huvaari, obyem, chanar, ajil, butets];
-  const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))].filter((u) => !known.has(u.toLowerCase()));
+  /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунт (`portalPresence`) ч
+     «устгагдсан»-тай адил эзэн БИШ — урьд нь «gone» = зөвхөн «хүснэгтэд мөргүй» тул `selbe_redesign` (порталд алга) нь
+     «Гүйцэтгэгч компани» шатны цорын ганц эзэн мэт тоологдож 21 багцын гацаа ХЭЗЭЭ Ч гардаггүй байв. Мэдэхгүй бол «байгаа». */
+  const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))]
+    .filter((u) => !known.has(u.toLowerCase()) || portalMissing(u));
+  /* ⚠️ 2026-10-22 (аудит): төрлөөс хүлээгдэх урсгалын шат — `erhOverview.typeStageGaps` (төрөл ↔ томилгоо зөрөө) */
+  const typeStage: Record<string, Stage> = {};
+  for (const u of users) {
+    const r = roleOf(u);
+    const st = r ? ROLE_STAGE[r] : undefined;
+    if (st) typeStage[u.toLowerCase()] = st;
+  }
   return {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
     supers: users.filter((u) => roleForUser(u) === 'super'),
     gone,
+    absent: users.filter((u) => portalMissing(u)),
+    typeStage,
     flow,
     qaqc,
     huvaari,
@@ -934,6 +949,90 @@ async function heldByBounded(users: readonly string[]): Promise<HeldByUser[] | n
 export function heldByText(items: HeldByUser[] | null): string {
   if (items == null) return tr('Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.');
   return items.map((x) => tr('«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).', x.user, String(x.pending), String(x.partial), String(x.locks))).join('\n');
+}
+
+/* ══════════════ Аккаунт УСТГАХ — «ажил гацах уу» урьдчилсан шалгалт (⚠️ 2026-10-22, аудит) ══════════════ */
+
+/**
+ * АККАУНТ УСТГАСНЫ ДАРААХ ЭРХИЙН ЗУРАГ — цэвэр. Устгагдах хүмүүсийг аккаунтын жагсаалтаас хасаж `gone`-д нэмнэ
+ * (`erhOverview.pkgErh` тэднийг эзэн гэж тоолохгүй — хуваарилалтын мөр нь `purge*` хүртэл хэвээр ч ажил гацна).
+ */
+const afterRemoveUsers = (users: readonly string[]): After => (src) => {
+  const drop = new Set(users.map(norm).filter(Boolean));
+  return {
+    ...src,
+    users: src.users.filter((u) => !drop.has(norm(u))),
+    supers: (src.supers ?? []).filter((u) => !drop.has(norm(u))),
+    gone: [...new Set([...(src.gone ?? []), ...drop])],
+  };
+};
+
+/**
+ * Аккаунт(ууд)-ыг УСТГАХАД шинээр үүсэх ажил ГАЦААХ цоорхойн текст (хоосон = үгүй) — ⚠️ 2026-10-22 (аудит).
+ * ⚠️ ЯАГААД: хүснэгтийн нүдний хасалт (`runOp` → `op.after`) энэ шалгалтыг 2026-10-05-наас хийдэг ч «Хэрэглэгчид»-ийн
+ *    «Устгах» хийдэггүй байв — цорын ганц хяналтын инженерийг устгахад 21 багцын урсгал чимээгүй тасарсан (аудитын
+ *    шалгалт). Дүрэм ДАХИН бичигдээгүй — `newBlockingText` (тойм · матрицын ижил `pkgIssues`).
+ */
+export function removalBlockingText(users: readonly string[]): string {
+  return users.length ? newBlockingText(afterRemoveUsers(users)) : '';
+}
+
+/**
+ * ГҮЙЦЭТГЭЛ — УСТГАГДАХ ХҮНИЙ ШАТАНД ХҮЛЭЭГДЭЖ БУЙ АЖИЛ (⚠️ 2026-10-22, аудит).
+ * ⚠️ ЯАГААД: устгах асуулт хуваарь · обьём · нэмэлт ажлын илгээлтийг л тоолдог (`pendingHeldBy`) — тэр хүний урсгалын
+ *    шатанд (жиш. инженер) ХҮЛЭЭГДЭЖ БУЙ гүйцэтгэлийн илгээлт тоологддоггүй тул устгасны дараа эзэнгүй гацдаг байв.
+ *   · `waiting`  — тэр хүний шат · багцын хүрээнд одоо хүлээгдэж буй ажил (ажлын СҮҮЛИЙН тойрог — `groupWorks`);
+ *   · `orphaned` — тэдгээрээс тухайн багцад тэр шатанд ӨӨР шийдвэрлэх эзэнгүй үлдэх нь (устгагдах · хүснэгтэд/порталд
+ *     алга · «Зөвхөн харна» тоологдохгүй) — устгасны дараа ШУУД гацна.
+ * ⚠️ «Зөвхөн харна» томилгоотой хүн шийдвэрлэдэггүй тул өөрийн мөр тоологдохгүй. Уншилт унавал/хугацаа хэтэрвэл `null`
+ *    (мэдэхгүй ≠ 0) — дуудагч «шалгаж чадсангүй» гэж хэлнэ.
+ * ⚠️ Уншигч СОЛИГДОНО (`setFlowWorksReader`) — Node-ийн шалгуур амьд хүснэгт рүү гарахгүй (`setHeldByReader`-ийн ⚠️).
+ */
+export type FlowWork = { bagts: string; owner: Stage; done: boolean };
+export type FlowWaiting = { user: string; stage: Stage; waiting: number; orphaned: number };
+export type FlowWorksReader = () => Promise<FlowWork[]>;
+async function readFlowWorks(): Promise<FlowWork[]> {
+  /* ⚠️ ДИНАМИК: `hyanaltStore` (React-тай том модуль) зөвхөн устгах асуултад — `runOp`-ын статик импортын дүрэм (дээрх
+     `pendingHeldBy`-ийн ⚠️) энд хамаарахгүй. Хөрвүүлэлт `toRow` нь ГАНЦ газар (тэр файлын ⚠️). */
+  const [H, S, G] = await Promise.all([import('./hyanalt'), import('./hyanaltStore'), import('./hyanaltGroup')]);
+  return G.groupWorks((await H.queryAll()).map(S.toRow))
+    .map((w) => ({ bagts: w.bagts, owner: w.owner, done: w.status === H.STATUS.transferred }));
+}
+let flowWorksReader: FlowWorksReader = readFlowWorks;
+export function setFlowWorksReader(fn: FlowWorksReader | null): void { flowWorksReader = fn ?? readFlowWorks; }
+const FLOW_WAIT_TIMEOUT_MS = 4000;
+export async function flowWaitingFor(users: readonly string[]): Promise<FlowWaiting[] | null> {
+  const drop = new Set(users.map(norm).filter(Boolean));
+  const mine = listAssigns().filter((a) => drop.has(norm(a.user)) && !a.viewOnly);
+  if (!mine.length) return [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<null>((r) => { timer = setTimeout(() => r(null), FLOW_WAIT_TIMEOUT_MS); (timer as { unref?: () => void }).unref?.(); });
+  let works: FlowWork[] | null;
+  try {
+    works = await Promise.race([flowWorksReader(), limit]);
+  } catch {
+    works = null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (!works) return null;
+  const covers = (b: readonly string[], g: string): boolean => b.includes(ALL_BAGTS) || b.includes(g);
+  /* Үлдэх шийдвэрлэгчид — устгагдах · хүснэгтэд алга · порталд алга · «зөвхөн харна»-аас бусад */
+  const others = listAssigns().filter((a) => {
+    const k = norm(a.user);
+    return !drop.has(k) && !a.viewOnly && isKnown(k) && !portalMissing(k);
+  });
+  return mine.map((a) => {
+    const open = works.filter((w) => !w.done && w.owner === a.stage && covers(a.bagts, w.bagts));
+    const orphaned = open.filter((w) => !others.some((o) => o.stage === a.stage && covers(o.bagts, w.bagts))).length;
+    return { user: norm(a.user), stage: a.stage, waiting: open.length, orphaned };
+  }).filter((x) => x.waiting > 0);
+}
+/** `flowWaitingFor`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-22) */
+export function flowWaitingText(items: FlowWaiting[] | null): string {
+  if (items == null) return tr('Гүйцэтгэлийн урсгалд хүлээгдэж буй ажлыг шалгаж чадсангүй — устгахаас өмнө «Гүйцэтгэл» хуудсыг шалгана уу.');
+  return items.map((x) => tr('«{0}»: Гүйцэтгэлийн «{1}» шатанд {2} ажил хүлээгдэж байна — {3} нь өөр шийдвэрлэгчгүй үлдэж гацна.',
+    x.user, STAGE_LABEL[x.stage], String(x.waiting), String(x.orphaned))).join('\n');
 }
 
 /**

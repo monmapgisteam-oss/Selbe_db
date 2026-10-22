@@ -131,6 +131,13 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
 /** Нэг давхаргаас татах хуудасны дээд тоо — хамгаалалт (хязгааргүй давталтаас) */
 const MAX_PAGES = 200;
 
+/**
+ * ЭХ ГЕОМЕТРИЙН ЕРӨНХИЙЛӨЛТ (м) — `maxAllowableOffset`. ⚠️ 2026-10-22 (аудит): 1 → 0.1 м. 1 м-ийн ерөнхийлөлт ирмэгийг
+ * 1 м хүртэл шилжүүлж хөрш нэгж талбарыг «огтлолцсон» болгодог байв (БАГЦ164 · БАГЦ174: 6 саадын 3 нь бүтэн нарийвчлалд
+ * огт огтлолцдоггүй). Мөн энэ нь «зөвхөн хүрэлцсэн»-ийг ялгах хүлцэл (`TOUCH_TOL`) — үүнээс нимгэн давхцал нь шуугиан.
+ */
+const GEN_M = 0.1;
+
 /* ⚠️ ДАВХАРГА БҮРИЙН ГЕОМЕТРИЙН КЭШ (2026-08-21 гүйцэтгэлийн аудит):
    нүүр (53 ажил) ба Tsogts (3 эффект) ИЖИЛ давхаргуудын геометрийг олон
    дахин татдаг байв — МБ-аар хэмжигдэх JSON бүрийг нэг л удаа татна.
@@ -143,9 +150,9 @@ const geomKey = (layerId: string, where: string, wkid: number) => `${layerId}|${
 /**
  * Нэг давхаргын геометрийг ХУУДАСЛАН татна.
  *
- * ⚠️ `maxAllowableOffset` — геометрийг 1 м нарийвчлалаар ЕРӨНХИЙЛНӨ. Замын
- *    шугам зэрэг олон мянган цэгтэй объектын payload-ыг эрс багасгах бөгөөд
- *    нэгж талбарын хэмжээ (арав гаруй метр) дээр огтлолцлын үр дүн өөрчлөгдөхгүй.
+ * ⚠️ `maxAllowableOffset` — геометрийг ЕРӨНХИЙЛНӨ (payload багасгах). ⚠️ 2026-10-22 (аудит): 1 м → 0.1 м (`GEN_M`) —
+ *    «нэгж талбарын хэмжээнд үр дүн өөрчлөгдөхгүй» гэсэн таамаг БУРУУ байв: хөрш талбарын хил дээр 1 м шилжилт
+ *    худал огтлолцол үүсгэдэг (БАГЦ164/174-ийн 6 саадын 3).
  * ⚠️ 2026-09-25 аудит: ХУУДАСЛАЛТ. `orderByFields` ЗААВАЛ (CLAUDE.md: эрэмбэгүй offset
  *    давхардал/алдагдал үүсгэнэ). Хуудас хоосон атлаа `exceededTransferLimit` бол —
  *    хуудаслалт дэмжигдэхгүй — ДУТУУ үр дүн буцаахгүй, шидэж давхаргыг `failed`-д оруулна.
@@ -165,7 +172,8 @@ async function fetchFeats(url: string, where: string, wkid: number, layerId: str
       where,
       returnGeometry: 'true',
       outSR: String(wkid),
-      maxAllowableOffset: '1',
+      /* ⚠️ 2026-10-22 (аудит): 0.1 м (`GEN_M`-ийн ⚠️) — урьд 1 м */
+      maxAllowableOffset: String(GEN_M),
     };
     if (meta) {
       params.outFields = meta.oid;
@@ -324,7 +332,7 @@ subscribeTotals(() => { geomCache.clear(); resultCache.clear(); });
  *      2. огтлолцол — БҮХ багцын геометрийн НЭГДЛЭЭР серверт (400-аар хэсэглэсэн) → нэр
  *         дэвшигч талбарууд (огтлолцлуудын нэгдэл = нэгдлийн огтлолцол — НИЙТ тоо серверийнх);
  *      3. дэвшигчдийн геометр НЭГ асуулгаар (`objectIds`), багц бүрийн хуваарилалт клиент
- *         талд (`hitsFeat` — ArcGIS-ийн «intersects»: хүрэлцэх ч орно, 1 мм хүлцэл).
+ *         талд (`interiorHit` — ⚠️ 2026-10-22: ДОТООД огтлолцол; зөвхөн хүрэлцсэн нь саад БИШ, `GEN_M` хүлцэл).
  *    Ганц дуудлага (Bagts, PkgProg …) ХУУЧИН замаар — серверийн огтлолцол шууд.
  * ⚠️ Багцын аль ч шатанд алдаа гарвал дуудлага бүрийг ХУУЧИН замаар (тус тусад нь)
  *    дахин ажиллуулна — хурд алдагдана, үр дүн/уналтын зан хэвээр.
@@ -455,37 +463,8 @@ function shapesOf(fs: readonly Feat[], wkid: number): Array<[string, string]> {
   ];
 }
 
-/**
- * «Бүрэн чөлөөлсөн»-ийн ХУВИЛБАР бичиглэлтэй (цэг · зай · том/жижиг үсэг) дэвшигчдийг хасна.
- *
- * ⚠️ 2026-10-09: `parcelLeftWhere` нь ЯГ таарцын SQL тул «Бүрэн чөлөөлсөн.» гэх мэт мөр
- *    дашбоард дээр (`land.isClearedStatus`) ЧӨЛӨӨЛСӨН, харин давхцалд СААД болж ЗӨРДӨГ байв.
- *    SQL-ээр хэвийншүүлэх найдваргүй (кирилл LOWER/TRIM үйлчилгээ бүрд ялгаатай) тул дэвшигч
- *    OID-уудын төлөвийг асууж клиент талд ижил дүрмээр шүүнэ. Хариунд ирээгүй OID-г ҮЛДЭЭНЭ
- *    (саад гэж үзэх нь «саадгүй» гэсэн худлаас аюулгүй).
- */
-async function dropCleared(ids: Set<number>): Promise<Set<number>> {
-  if (!ids.size) return ids;
-  const oidF = PARCEL_LEFT.oid;
-  const all = [...ids];
-  const STEP = 500;
-  const pages: number[][] = [];
-  for (let i = 0; i < all.length; i += STEP) pages.push(all.slice(i, i + STEP));
-  const res = await Promise.all(pages.map((p) => post(PARCEL_LEFT.url, {
-    objectIds: p.join(','),
-    outFields: `${oidF},${PARCEL_LEFT.fields.status}`,
-    returnGeometry: 'false',
-  })));
-  const out = new Set(ids);
-  for (const j of res) {
-    if (j.exceededTransferLimit) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
-    for (const f of (j.features ?? []) as { attributes?: Record<string, unknown> }[]) {
-      const id = Number(f.attributes?.[oidF]);
-      if (Number.isFinite(id) && isClearedStatus(f.attributes?.[PARCEL_LEFT.fields.status])) out.delete(id);
-    }
-  }
-  return out;
-}
+/* ⚠️ 2026-10-22 (аудит): `dropCleared` хасагдсан — ганц зам ч одоо дэвшигчдийн геометрийг (`parcelRings`) татаж
+   «Бүрэн чөлөөлсөн»-ийн хувилбарыг ТҮҮГЭЭР хасна (2026-10-09-ний дүрэм хэвээр), дотоод огтлолцлыг клиентээр шалгана. */
 
 /** Серверийн огтлолцол — хэлбэр бүртэй огтлолцох ҮЛДСЭН нэгж талбарын OID-ууд */
 async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<Set<number>> {
@@ -510,19 +489,47 @@ async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<S
   return left;
 }
 
-/** ХУУЧИН ЗАМ — нэг дуудлага, серверийн огтлолцол шууд */
+/**
+ * ХУУЧИН ЗАМ — нэг дуудлага: серверийн огтлолцол (дэвшигч) → дэвшигчдийн геометр → ДОТООД огтлолцол (клиент).
+ * ⚠️ 2026-10-22 (аудит): серверийн «intersects» нь ЗӨВХӨН ХҮРЭЛЦСЭН (хил/орой дээр) талбарыг ч саад гэж тоолдог байв —
+ *    одоо талбайтай (дотоод) огтлолцол л саад (`hitParcels`); багцын замтай ЯГ нэг дүрэм.
+ */
 async function overlapSingle(sources: Src[]): Promise<Overlap> {
   const wkid = await parcelSR();
   const { parts, failed } = await gather(sources, wkid);
   /* ⚠️ БҮГД унасан бол энэ нь үр дүн БИШ, АЛДАА — хоосон `oids` нь «саад
      алга» гэж уншигдах тул шидэж, дуудагчийн `catch` замд оруулна. */
   if (failed.length === sources.length) throw allFailed(failed.length);
-  const shapes = shapesOf(parts.flatMap(([, fs]) => fs), wkid);
+  const feats = parts.flatMap(([, fs]) => fs);
+  const shapes = shapesOf(feats, wkid);
   /* ⚠️ Геометр огт гараагүй ч УНАСАН давхарга байвал түүнийг дамжуулна —
      эс бөгөөс «хэлбэр алга» нь «саад алга» гэж ХУДАЛ уншигдана. */
   if (!shapes.length) return withFailed([], failed);
-  /* ⚠️ 2026-10-09: чөлөөлсөн-ий хувилбар бичиглэлийг хасна (`dropCleared`) */
-  return withFailed([...await dropCleared(await askLeft(shapes, wkid))], failed);
+  const cand = await askLeft(shapes, wkid);
+  if (!cand.size) return withFailed([], failed);
+  /* ⚠️ 2026-10-09: чөлөөлсөн-ий хувилбар бичиглэлийг хасна (`parcelRings`) */
+  const parcels = await parcelRings([...cand], wkid);
+  return withFailed(hitParcels(parcels, feats), failed);
+}
+
+/** Дэвшигч нэгж талбаруудаас эх объектуудын аль нэгтэй ДОТООД огтлолцолтой (`interiorHit`) нь — OID-ууд */
+function hitParcels(parcels: Map<number, number[][][]>, feats: readonly Feat[]): number[] {
+  const pList = [...parcels].map(([id, rings]) => ({ id, rings, bb: bboxOf(rings) }));
+  if (!pList.length || !feats.length) return [];
+  const { eps, tol } = tolOf(pList[0].rings);
+  const fx = feats.map((f) => ({ f, bb: featBox(f) }));
+  return pList
+    .filter((q) => fx.some(({ f, bb }) => boxHit(q.bb, bb, eps) && interiorHit(q.rings, q.bb, f, eps, tol)))
+    .map((q) => q.id);
+}
+
+/**
+ * Хүлцэл — координатаас (сервер `outSR`-оор буцаасан): проекцтой (метр) бол `eps` 1 мм (ArcGIS-ийн анхдагч XY tolerance),
+ * `tol` = `GEN_M` (0.1 м — ерөнхийлөлтийн шуугиан); градусад 1e-8 ба 1e-6.
+ */
+function tolOf(rings: number[][][]): { eps: number; tol: number } {
+  const deg = Math.abs(rings[0]?.[0]?.[0] ?? 1e6) <= 360;
+  return deg ? { eps: 1e-8, tol: 1e-6 } : { eps: 1e-3, tol: GEN_M };
 }
 
 /**
@@ -567,24 +574,15 @@ async function overlapBatch(b: Ask[]): Promise<Array<{ ok: Overlap } | { err: un
   const shapes = shapesOf([...uniq.values()].flat(), wkid);
   const cand = shapes.length ? await askLeft(shapes, wkid) : new Set<number>();
   const parcels = cand.size ? await parcelRings([...cand], wkid) : new Map<number, number[][][]>();
-  const pList = [...parcels].map(([id, rings]) => ({ id, rings, bb: bboxOf(rings) }));
-  /* ⚠️ Хүлцэл: проекцтой (метр) координатад 1 мм (ArcGIS-ийн анхдагч XY tolerance),
-     градусад 1e-8 — `wkid`-ээс биш координатаас (сервер `outSR`-оор буцаасан) */
-  const eps = pList.length && Math.abs(pList[0].rings[0]?.[0]?.[0] ?? 1e6) <= 360 ? 1e-8 : 1e-3;
   return b.map((a, i) => {
     const p = per[i];
     if (p.failed.length === a.sources.length) return { err: allFailed(p.failed.length) };
-    const feats = p.parts.flatMap(([, fs]) => fs);
-    if (!feats.length || !pList.length) return { ok: withFailed([], p.failed) };
-    const fx = feats.map((f) => ({ f, bb: featBox(f) }));
-    const oids = pList
-      .filter((q) => fx.some(({ f, bb }) => boxHit(q.bb, bb, eps) && hitsFeat(q.rings, q.bb, f, eps)))
-      .map((q) => q.id);
-    return { ok: withFailed(oids, p.failed) };
+    /* ⚠️ 2026-10-22 (аудит): ДОТООД огтлолцол (`interiorHit`) — ганц замтай ижил `hitParcels` */
+    return { ok: withFailed(hitParcels(parcels, p.parts.flatMap(([, fs]) => fs)), p.failed) };
   });
 }
 
-/* ══════════════ Клиент талын «intersects» — зөвхөн БАГЦЫН хуваарилалтад ══════════════ */
+/* ══════════════ Клиент талын ДОТООД огтлолцол — серверийн дэвшигчдийг шүүх ба багцын хуваарилалт ══════════════ */
 
 type Box = [number, number, number, number];
 
@@ -608,8 +606,6 @@ const featBox = (f: Feat): Box => (f.rings ? bboxOf(f.rings) : f.paths ? bboxOf(
 
 const boxHit = (a: Box, b: Box, e: number) => a[0] <= b[2] + e && b[0] <= a[2] + e && a[1] <= b[3] + e && b[1] <= a[3] + e;
 
-const orient = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
-  (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 
 /** p цэг [a,b] хэрчмээс ≤ e зайд уу (хүрэлцэх = огтлолцох) */
 function nearSeg(ax: number, ay: number, bx: number, by: number, px: number, py: number, e: number): boolean {
@@ -621,15 +617,6 @@ function nearSeg(ax: number, ay: number, bx: number, by: number, px: number, py:
   return qx * qx + qy * qy <= e * e;
 }
 
-function segHit(a: number[], b: number[], c: number[], d: number[], e: number): boolean {
-  const o1 = orient(a[0], a[1], b[0], b[1], c[0], c[1]);
-  const o2 = orient(a[0], a[1], b[0], b[1], d[0], d[1]);
-  const o3 = orient(c[0], c[1], d[0], d[1], a[0], a[1]);
-  const o4 = orient(c[0], c[1], d[0], d[1], b[0], b[1]);
-  if (((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) && ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))) return true;
-  return nearSeg(a[0], a[1], b[0], b[1], c[0], c[1], e) || nearSeg(a[0], a[1], b[0], b[1], d[0], d[1], e)
-    || nearSeg(c[0], c[1], d[0], d[1], a[0], a[1], e) || nearSeg(c[0], c[1], d[0], d[1], b[0], b[1], e);
-}
 
 /** Цэг полигон ДОТОР уу — бүх цагиргаар even-odd (нүх зөв тооцогдоно) */
 function inRings(rings: number[][][], x: number, y: number): boolean {
@@ -643,15 +630,47 @@ function inRings(rings: number[][][], x: number, y: number): boolean {
   return inside;
 }
 
-/** Хэрчмүүдийн (цагираг/шугам) аль нэг нь нэгж талбарын хилтэй огтлолцох/хүрэлцэх уу */
-function edgesHit(parcel: number[][][], pbb: Box, line: number[][], e: number): boolean {
-  for (let i = 1; i < line.length; i += 1) {
-    const a = line[i - 1], b = line[i];
-    if (Math.max(a[0], b[0]) < pbb[0] - e || Math.min(a[0], b[0]) > pbb[2] + e
-      || Math.max(a[1], b[1]) < pbb[1] - e || Math.min(a[1], b[1]) > pbb[3] + e) continue;
-    for (const r of parcel) for (let k = 1; k < r.length; k += 1) if (segHit(a, b, r[k - 1], r[k], e)) return true;
+/**
+ * Хэрчим [a,b]-г `rings`-ийн ирмэгүүдтэй огтлолцох/хүрэлцэх цэгүүдээр ТАСЛААД дэд хэрчим бүрийн ДУНД цэгийг буцаана
+ * (`e`-ээс богино дэд хэрчим алгасна). Дунд цэгүүд нь нөгөө дүрсийн хилтэй ЗӨВХӨН дэд хэрчмийн төгсгөлд таарна — тиймээс
+ * «дунд цэг дотор уу» гэдэг нь «хэрчмийн тэр хэсэг дотор уу» гэсэн үг.
+ */
+function splitMids(a: number[], b: number[], rings: number[][][], e: number): number[][] {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const L2 = dx * dx + dy * dy;
+  if (!L2) return [];
+  const ts = [0, 1];
+  const x0 = Math.min(a[0], b[0]) - e, x1 = Math.max(a[0], b[0]) + e;
+  const y0 = Math.min(a[1], b[1]) - e, y1 = Math.max(a[1], b[1]) + e;
+  for (const r of rings) {
+    for (let k = 1; k < r.length; k += 1) {
+      const c = r[k - 1], d = r[k];
+      if (Math.max(c[0], d[0]) < x0 || Math.min(c[0], d[0]) > x1 || Math.max(c[1], d[1]) < y0 || Math.min(c[1], d[1]) > y1) continue;
+      const ex = d[0] - c[0], ey = d[1] - c[1];
+      const den = dx * ey - dy * ex;
+      if (den !== 0) {
+        const wx = c[0] - a[0], wy = c[1] - a[1];
+        const t = (wx * ey - wy * ex) / den;
+        const u = (wx * dy - wy * dx) / den;
+        if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
+      }
+      for (const p of [c, d]) {
+        const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2;
+        if (t <= 0 || t >= 1) continue;
+        const qx = a[0] + t * dx - p[0], qy = a[1] + t * dy - p[1];
+        if (qx * qx + qy * qy <= e * e) ts.push(t);
+      }
+    }
   }
-  return false;
+  ts.sort((p, q) => p - q);
+  const len = Math.sqrt(L2);
+  const out: number[][] = [];
+  for (let i = 1; i < ts.length; i += 1) {
+    if ((ts[i] - ts[i - 1]) * len <= e) continue;
+    const t = (ts[i] + ts[i - 1]) / 2;
+    out.push([a[0] + t * dx, a[1] + t * dy]);
+  }
+  return out;
 }
 
 function onBoundary(rings: number[][][], x: number, y: number, e: number): boolean {
@@ -661,30 +680,69 @@ function onBoundary(rings: number[][][], x: number, y: number, e: number): boole
   return false;
 }
 
+/** Цэг дүрсийн ДОТОР, хилээс `tol`-оос илүү зайтай уу */
+const strictlyIn = (rings: number[][][], p: number[], tol: number): boolean =>
+  inRings(rings, p[0], p[1]) && !onBoundary(rings, p[0], p[1], tol);
+
+/** Нэгж талбарын ДОТООД цэг — хамгийн урт ирмэгийн дундаас дотогш `2·tol` (нимгэн бол null) */
+function interiorPoint(rings: number[][][], tol: number): number[] | null {
+  let best: [number[], number[]] | null = null;
+  let bl = 0;
+  for (const r of rings) {
+    for (let k = 1; k < r.length; k += 1) {
+      const l = Math.hypot(r[k][0] - r[k - 1][0], r[k][1] - r[k - 1][1]);
+      if (l > bl) { bl = l; best = [r[k - 1], r[k]]; }
+    }
+  }
+  if (!best || !bl) return null;
+  const [a, b] = best;
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  const nx = -(b[1] - a[1]) / bl, ny = (b[0] - a[0]) / bl;
+  for (const s of [1, -1]) {
+    const p = [mx + s * 2 * tol * nx, my + s * 2 * tol * ny];
+    if (strictlyIn(rings, p, tol)) return p;
+  }
+  return null;
+}
+
+const distinctN = (p: number[][]) => new Set(p.map((c) => `${c[0]},${c[1]}`)).size;
+
 /**
- * ArcGIS `esriSpatialRelIntersects`-тэй ижил утга: дотор, хилээр хүрэлцэх, давхцах — бүгд «тийм».
- * ⚠️ Хил огтлолцохгүй бол нэг нь нөгөөгөө бүхэлд нь агуулна эсвэл салангид — тиймээс
- *    нэг оройг шалгахад хангалттай.
+ * ДОТООД ОГТЛОЛЦОЛ — эх объект нэгж талбарын ДОТОР ТАЛТАЙ (хилээс `tol`-оос гүн) огтлолцох уу.
+ * ⚠️ 2026-10-22 (аудит): урьд нь ArcGIS-ийн «intersects»-тэй ижил (хил/оройгоор ХҮРЭЛЦЭХ ч «тийм») тул зөвхөн
+ *    хүрэлцсэн хөрш талбар «саад» болдог байв (БАГЦ164/174: 6 саадын 1 нь зөвхөн хүрэлцдэг). Одоо:
+ *      · цэг — талбар дотор (хил дээр биш);
+ *      · шугам/полигоны ирмэг — нэгж талбарын хилээр таслагдсан дэд хэрчмийн дунд цэг талбар ДОТОР;
+ *      · полигон — эсрэгээр нэгж талбарын ирмэгийн дэд хэрчим эх полигон ДОТОР, эсвэл хил нь давхцсан (ижил дүрс)
+ *        үед нэгж талбарын дотоод цэг эх полигон дотор (нүхэн дотор бол «үгүй» — X-13/K-6 мэт).
+ *    Доголдсон хэсэг (тэг урт шугам, < 3 оройтой цагираг) нь `shapesOf`-ийн дүрмээр ЦЭГ гэж тооцогдоно.
  */
-function hitsFeat(parcel: number[][][], pbb: Box, f: Feat, e: number): boolean {
-  if (f.pt) return inRings(parcel, f.pt[0], f.pt[1]) || onBoundary(parcel, f.pt[0], f.pt[1], e);
-  if (f.paths) {
-    for (const p of f.paths) {
-      if (!p.length) continue;
-      if (edgesHit(parcel, pbb, p, e)) return true;
-      if (inRings(parcel, p[0][0], p[0][1])) return true;
+function interiorHit(parcel: number[][][], pbb: Box, f: Feat, e: number, tol: number): boolean {
+  if (f.pt) return strictlyIn(parcel, f.pt, tol);
+  const parts = f.rings ?? f.paths ?? [];
+  const minN = f.rings ? 3 : 2;
+  const solid: number[][][] = [];
+  for (const p of parts) {
+    if (!p.length) continue;
+    if (distinctN(p) < minN) { if (strictlyIn(parcel, p[0], tol)) return true; continue; }
+    solid.push(p);
+    for (let i = 1; i < p.length; i += 1) {
+      const a = p[i - 1], b = p[i];
+      if (Math.max(a[0], b[0]) < pbb[0] - e || Math.min(a[0], b[0]) > pbb[2] + e
+        || Math.max(a[1], b[1]) < pbb[1] - e || Math.min(a[1], b[1]) > pbb[3] + e) continue;
+      for (const m of splitMids(a, b, parcel, e)) if (strictlyIn(parcel, m, tol)) return true;
     }
-    return false;
   }
-  if (f.rings) {
-    for (const r of f.rings) if (edgesHit(parcel, pbb, r, e)) return true;
-    /* ⚠️ 2026-10-09: ОЛОН хэсэгтэй нэгж талбарын ЦАГИРАГ БҮРИЙН эхний оройг шалгана — урьд нь
-       зөвхөн `parcel[0][0]` тул эхний хэсэг гадна, бусад хэсэг эх полигон дотор бол алдагддаг байв. */
-    for (const pr of parcel) {
-      const v = pr[0];
-      if (v && inRings(f.rings, v[0], v[1])) return true;        // нэгж талбар эх полигон дотор
+  if (!f.rings || !solid.length) return false;
+  const sbb = bboxOf(solid);
+  for (const r of parcel) {
+    for (let k = 1; k < r.length; k += 1) {
+      const a = r[k - 1], b = r[k];
+      if (Math.max(a[0], b[0]) < sbb[0] - e || Math.min(a[0], b[0]) > sbb[2] + e
+        || Math.max(a[1], b[1]) < sbb[1] - e || Math.min(a[1], b[1]) > sbb[3] + e) continue;
+      for (const m of splitMids(a, b, solid, e)) if (strictlyIn(solid, m, tol)) return true;
     }
-    for (const r of f.rings) if (r.length && inRings(parcel, r[0][0], r[0][1])) return true; // эх нь нэгж талбар дотор
   }
-  return false;
+  const ip = interiorPoint(parcel, tol);
+  return !!ip && strictlyIn(solid, ip, tol);
 }

@@ -19,6 +19,10 @@
  *
  * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон) эсвэл Node (тест/tools)
  *    орчинд хоосон буцаана — зан төлөв өөрчлөгдөхгүй.
+ * ⚠️ 2026-10-22 (аудит): ҮЛ ХАМААРАХ НЭГ — Telegram бот (Node) `registerIdentity`-д СЕРВЕРИЙН уншилтын итгэмжлэлээ
+ *    (`tools/telegram-arcgis.mjs`, IdentityManager-ийн `findCredential` → `{ token, expires, refreshToken }` хэлбэр)
+ *    бүртгэнэ: урьд нь энд үргэлж `null` тул ботын бүх эх сурвалж «Token Required» авдаг байв. Доорх шинэчлэлтийн
+ *    механизм (`ensureFreshToken` · `refreshAfterTokenError`) түүнд ч ИЖИЛ үйлчилнэ — энэ файлын код өөрчлөгдөөгүй.
  */
 
 import { arcgisPost as queryPost } from '@/lib/query';

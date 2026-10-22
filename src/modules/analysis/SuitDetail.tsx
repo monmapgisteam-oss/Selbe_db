@@ -288,7 +288,10 @@ export function SuitDetail({
         <div>
           <h3>{r.id}</h3>
           {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
-          <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {scoreLabel(tot)}</p>
+          {/* ⚠️ 2026-10-22 (аудит): хэмжсэн жин босгоос доош бол «өгөгдөлгүй» биш «хангалтгүй» гэж хувьтай нь (`urbanScore`) */}
+          <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {tot == null && r.urbanReason === 'coverage' && r.coverage != null
+            ? tr('Өгөгдөл хангалтгүй — хэмжсэн жин {0}%', Math.round(r.coverage * 100))
+            : scoreLabel(tot)}</p>
         </div>
         <button type="button" className={s.dClose} title={tr('Хаах')} onClick={onClose}>×</button>
       </div>

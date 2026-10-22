@@ -250,8 +250,15 @@ function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
 }
 
 /**
- * БҮСИЙН ДАВХАРДСАН КОД — нэг кодтой олон мөрөөс талбай (`areaOf`) хамгийн ТОМ нэгийг үлдээнэ; байрлал нь эхний
- * мөрийнх (цэвэр функц — `zoneDedupe.check`). Кодгүй (хоосон) мөр хөндөгдөхгүй.
+ * БҮСИЙН ДАВХАРДСАН КОД — нэг кодтой олон мөрөөс НЭГИЙГ үлдээнэ; байрлал нь эхний мөрийнх (цэвэр функц —
+ * `zoneDedupe.check`). Кодгүй (хоосон) мөр хөндөгдөхгүй. Сонголтын дараалал:
+ *   1. бусад кодын бүстэй ДАВХЦАЛ хамгийн бага (`overlapOf`, м²; 1 м²-аас бага зөрүү тэнцүү);
+ *   2. дотоод цагираг (НҮХ) олон (`holesOf`);
+ *   3. талбай (`areaOf`) том; 4. тэнцвэл эхнийх.
+ * ⚠️ 2026-10-22 (аудит): урьд нь зөвхөн «том нь» гэж objectid 47-г үлдээдэг байв — тэр нь objectid 12-ын нүх (7,905 м²)
+ *    болох K-6 бүсийг БҮТНЭЭР нь агуулдаг тул K-6-ийн 2 барилга (240 хүүхдийн цэцэрлэг орно) X-13 (оноололд ордоггүй
+ *    ногоон бүс) руу оноогдож K-6 «барилгагүй» харагддаг байв. Одоо нүхтэй, давхцалгүй objectid 12 үлдэнэ.
+ *    ⚠️ ӨГӨГДЛИЙН ЭЗЭНД: objectid 47 нь ДАВХАРДСАН ХУУЛБАР (нүхгүй) — `selbe_ET/100`-аас устгах хэрэгтэй.
  * ⚠️ 2026-10-21 (аудит): ӨГӨГДЛИЙН АЛДАА — бүсийн давхаргад (`selbe_ET/100`) «X-13» ХОЁР мөртэй: objectid 47 (1 цагираг,
  *    20,347 м²) ба objectid 12 (ЯГ ТЭР гадна цагираг + 7,905 м² НҮХ = 12,442 м²; `gazar_ga` хоёуланд 1.2441 — хуулбар мөр).
  *    Урьд нь хоёулаа тусдаа `Zone` болж: `greenByZone` (кодоор) ижил 3,058 м² ногоон ХОЁР удаа төслийн нийлбэрт,
@@ -264,23 +271,71 @@ export function dedupeZoneFeats<T extends { attributes: Record<string, unknown> 
   feats: readonly T[],
   idOf: (a: Record<string, unknown>) => string,
   areaOf: (a: Record<string, unknown>) => number,
+  opts: {
+    /** Дотоод цагирагийн (нүхний) тоо */
+    holesOf?: (f: T) => number;
+    /** Бусад КОДЫН бүсүүдтэй давхцах талбай (м²) — `others` нь өөр кодтой мөрүүд */
+    overlapOf?: (f: T, others: readonly T[]) => number;
+  } = {},
 ): { feats: T[]; dups: string[] } {
-  const out: T[] = [];
-  const at = new Map<string, number>();
-  const dups = new Set<string>();
+  const groups = new Map<string, T[]>();
   for (const f of feats) {
     const id = idOf(f.attributes);
-    const i = id ? at.get(id) : undefined;
-    if (i == null) {
-      if (id) at.set(id, out.length);
-      out.push(f);
-      continue;
-    }
-    dups.add(id);
-    if (areaOf(f.attributes) > areaOf(out[i].attributes)) out[i] = f;
+    if (!id) continue;
+    const g = groups.get(id);
+    if (g) g.push(f); else groups.set(id, [f]);
   }
-  return { feats: out, dups: [...dups] };
+  const best = new Map<string, T>();
+  const dups: string[] = [];
+  for (const [id, g] of groups) {
+    if (g.length === 1) continue;
+    dups.push(id);
+    const others = opts.overlapOf ? feats.filter((f) => idOf(f.attributes) !== id) : [];
+    const rank = g.map((f) => ({
+      f,
+      ov: opts.overlapOf ? opts.overlapOf(f, others) : 0,
+      holes: opts.holesOf ? opts.holesOf(f) : 0,
+      area: areaOf(f.attributes),
+    }));
+    let b = rank[0];
+    for (const c of rank.slice(1)) {
+      const better = Math.abs(c.ov - b.ov) >= 1 ? c.ov < b.ov
+        : c.holes !== b.holes ? c.holes > b.holes
+          : c.area > b.area;
+      if (better) b = c;
+    }
+    best.set(id, b.f);
+  }
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const f of feats) {
+    const id = idOf(f.attributes);
+    if (!id) { out.push(f); continue; }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(best.get(id) ?? f);
+  }
+  return { feats: out, dups };
 }
+
+/** Полигоны ДОТООД цагирагийн тоо — ESRI-д гадна цагираг цагийн зүүний дагуу, нүх эсрэг (шулуун тооллын талбай > 0) */
+export function interiorRingCount(rings: readonly (readonly (readonly number[])[])[] | null | undefined): number {
+  let n = 0;
+  for (const r of rings ?? []) {
+    let s = 0;
+    for (let i = 0; i + 1 < r.length; i += 1) s += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+    if (s > 0) n += 1;
+  }
+  return n;
+}
+
+/**
+ * БҮСИЙН ТӨЛӨВЛӨЛТИЙН БИЧЛЭГ ХООСОН эсэх — FAR · BCR · зогсоолын норм · төлөвлөсөн ил/далд зогсоол БҮГД 0/хоосон.
+ * ⚠️ 2026-10-22 (аудит): B-2-ийн бичлэг бүхэлдээ 0 (бөглөгдөөгүй) атал «төлөвлөсөн зогсоол 0» гэж уншигдаж зогсоолын
+ *    хангамж 0% (188 өрхийн 100% дутагдал) болдог байв. Бүх утга 0 нь хэмжилт биш — ӨГӨГДӨЛГҮЙ (null ≠ 0).
+ */
+export const planRecordMissing = (z: Pick<Zone, 'zoneFar' | 'zoneBcr' | 'normParking' | 'etIl' | 'etDald'>): boolean =>
+  !(z.zoneFar ?? 0) && !(z.zoneBcr ?? 0) && !z.normParking && !z.etIl && !z.etDald;
 
 /**
  * ⚠️ Модулийн түвшний КЭШ. Энэ ачаалалт нь 4,000+ шугамын union, 368×52
@@ -318,10 +373,26 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     Z.id, Z.type, Z.areaHa, 'Shape__Area', Z.far, Z.farPct, Z.bcr,
     Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
-  /* ⚠️ 2026-10-21 (аудит): давхардсан код (X-13) — нэг бүс, том полигон (`dedupeZoneFeats`-ийн ⚠️) */
-  const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.Shape__Area));
+  /* ⚠️ 2026-10-21 (аудит): давхардсан код (X-13) — нэг бүс. ⚠️ 2026-10-22: бусад бүстэй давхцалгүй / нүхтэй хуулбар
+     (`dedupeZoneFeats`-ийн ⚠️) — давхцлыг ЗӨВХӨН давхардсан кодын хуулбаруудад бодно (хямд). */
+  const ringsOf = (f: Feat) => ((f.geometry as Polygon | null)?.rings ?? []) as number[][][];
+  const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.Shape__Area), {
+    holesOf: (f) => interiorRingCount(ringsOf(f)),
+    overlapOf: (f, others) => {
+      const g = f.geometry as GeomArg | null;
+      if (!g) return 0;
+      let s = 0;
+      for (const o of others) {
+        const og = o.geometry as GeomArg | null;
+        if (!og || !geometryEngine.intersects(g, og)) continue;
+        const x = geometryEngine.intersect(g, og) as Polygon | null;
+        if (x) s += Math.abs(geometryEngine.planarArea(x, 'square-meters'));
+      }
+      return s;
+    },
+  });
   if (zoneDups.length) {
-    console.warn(`[selbe] анализ: бүсийн давхаргад давхардсан код — ${zoneDups.join(', ')} (том полигоныг үлдээв; давхаргад засах хэрэгтэй)`);
+    console.warn(`[selbe] анализ: бүсийн давхаргад давхардсан код — ${zoneDups.join(', ')} (бусад бүстэй давхцалгүй/нүхтэй хуулбарыг үлдээв; давхаргад засах хэрэгтэй)`);
   }
 
   onProgress(tr('Барилга байгууламж…'), 22);
@@ -824,14 +895,16 @@ export function computeRaw(
 
     z.parkingSupply = z.etNiit;
     z.parkingNeed = parkingNeedOf(z, parking);
-    z.parkingGap = z.parkingNeed == null ? null : z.parkingSupply - z.parkingNeed;
+    /* ⚠️ 2026-10-22 (аудит): бүсийн бичлэг бүхэлдээ 0 бол төлөвлөсөн зогсоол МЭДЭГДЭХГҮЙ (`planRecordMissing`) — дутагдал null */
+    const planMissing = planRecordMissing(z);
+    z.parkingGap = z.parkingNeed == null || planMissing ? null : z.parkingSupply - z.parkingNeed;
 
     z.raw = {
       // ⚠️ FAR/BCR нь 0 бол «норм хангасан» БИШ: барилгажилт төлөвлөөгүй гэсэн үг
       //    тул ӨГӨГДӨЛГҮЙ гэж үзэн оноололтоос хасна.
       far: z.zoneFar && z.zoneFar > 0 ? z.zoneFar : null,
       bcr: z.zoneBcr && z.zoneBcr > 0 ? z.zoneBcr : null,
-      parking: z.parkingNeed && z.parkingNeed > 0 ? (z.parkingSupply / z.parkingNeed) * 100 : null,
+      parking: !planMissing && z.parkingNeed && z.parkingNeed > 0 ? (z.parkingSupply / z.parkingNeed) * 100 : null,
       /**
        * НОГООН — ХОЁР ТУСДАА үзүүлэлт, нягтшилтай ЯГ ижил хос:
        *   · `green`    — нэг ОРШИН СУУГЧид ногдох м² (БНБД 8.2, жинтэй)
@@ -870,7 +943,9 @@ export function computeRaw(
        ⚠️ Бодит утгыг УСТГАХГҮЙ — `rawActual`-д бүтнээрээ үлдэнэ. Өгөгдөлгүй
        (`null`) бүсэд ч хангасан гэж үзнэ: зорилго нь тэр үзүүлэлтийг оноололд
        нөлөөлүүлэхгүй байх (эс бөгөөс жин нь дахин хуваарилагдаж, өөр
-       үзүүлэлтийн эзлэх хувийг чимээгүй өсгөнө). */
+       үзүүлэлтийн эзлэх хувийг чимээгүй өсгөнө).
+       ⚠️ 2026-10-22 (аудит): эдгээр нь «ХЭМЖСЭН ЖИН»-д ОРОХГҮЙ — `urbanScore` хэмжсэн жин `MIN_MEASURED_SHARE`-ээс доош
+       бүсийг оноогүй (null) болгоно; эс бөгөөс зөвхөн FAR+BCR-тэй бүс таамгийн 100-аар 100 оноо авдаг байв. */
     z.rawActual = z.raw;
     const assumed = Object.entries(ASSUME_MET);
     if (assumed.length) {

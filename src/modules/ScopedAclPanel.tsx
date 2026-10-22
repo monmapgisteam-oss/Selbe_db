@@ -50,6 +50,8 @@ import { scopedCellOp } from '@/lib/aclOps';
 import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 /*
@@ -172,6 +174,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        absent: portalMissing(a.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
@@ -183,8 +186,9 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
   const state = new Map(PKG_GROUPS.map((g) => {
     /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) нэвтэрч чадахгүй — гацааны шалгуурт тоолохгүй
        (`erhOverview.ErhSource.gone`-той ижил); урьд нь түүний хуучин мөр «батлагчгүй» анхааруулгыг нууж байв */
-    const authors = holdersOf(g, authorRole).filter((h) => !h.gone).map((h) => h.user);
-    const approvers = holdersOf(g, approverRole).filter((h) => !h.gone).map((h) => h.user);
+    /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч нэвтэрч чадахгүй — тоолохгүй */
+    const authors = holdersOf(g, authorRole).filter((h) => !h.gone && !h.absent).map((h) => h.user);
+    const approvers = holdersOf(g, approverRole).filter((h) => !h.gone && !h.absent).map((h) => h.user);
     /**
      * ⚠️ ГАЦААНЫ АНХААРУУЛГА: зохиогч нь бий атлаа батлагч нь ЗӨВХӨН тэр өөрөө
      *    бол илгээсэн зүйлийг нь хэн ч батлах боломжгүй болно (батлах логик

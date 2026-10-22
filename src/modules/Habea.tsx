@@ -29,7 +29,7 @@ import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import {
-  HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
+  HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS, zoneWhere,
   laborCompanyFields, roleForUser,
 } from '@/lib/services';
 import { rasterTypeOf } from '@/lib/uzlegReport';
@@ -39,7 +39,7 @@ import { usePlanTotals } from '@/lib/totals';
    энэ хуудасны өдөр/сар (цуваа, `incPass`, `uzPass`) нэг өдрөөр гулсдаг байв. */
 import { latestRowPerDay, companyReported, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
-import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours } from './habeaRate';
+import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours, incCompanySfx } from './habeaRate';
 /* ⚠️ 2026-10-21 (аудит): Монгол · Гадаад задаргаа `habeaMix.ts`-д (цэвэр, шалгууртай) — нэг компани задаргаа
    бөглөхөд «Нийт» муруй null болж бусдын тоо алга болдог байсныг тэнд засав */
 import { mixByDay, mixByMonth, mixLines } from './habeaMix';
@@ -1621,8 +1621,38 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const out: Record<string, string | null> = { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
     if (uzLayerId) out[uzLayerId] = uzWhere;
     if (uzLayerId2) out[uzLayerId2] = uzWhere2;
+    /* ⚠️ 2026-10-22 (аудит): өөрийн WHERE-тэй давхаргад ч БҮСИЙН шүүлт (`zoneWhere`) AND-аар — `MapCanvas` өөрийн WHERE-ийг
+       бүсийн шүүлтийн ОРОНД тавьдаг тул шүүлт асаалттай үед бүс алгасагдах байв (ХАБЭА-ийн давхаргууд `noZone` — үйлчлэхгүй). */
+    if (zone) {
+      for (const [id, w] of Object.entries(out)) {
+        const d = LAYER_BY_ID[id];
+        const zw = w && d ? zoneWhere(d, zone) : null;
+        if (w && zw) out[id] = `(${w}) AND (${zw})`;
+      }
+    }
     return out;
-  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2]);
+  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2, zone]);
+
+  /**
+   * ⚠️ 2026-10-22 (аудит): КРАНЫ АЮУЛТАЙ БҮСИЙН ӨНГӨ — ХОЛБОГДСОН КРАНЫ төлөвөөр. Бүс [51]-ийн `tuluv` 51/51 мөрд ХООСОН
+   *    (Enterprise) тул давхаргын `paint` (Tuluv) бүх бүсийг улаан (`defaultHue`) зурж, «Буусан» краны бүс ч аюултай
+   *    харагддаг байв. Бүсийн `ORIG_FID` = краны `link` (orig_oid, `HABEA.crane.fields.link`-ийн ⚠️) — «Буусан» нь саарал,
+   *    бусад нь улаан (палитр нь `layers.ts`-ийн `habea:buffer.paint`-аас). Кран ачаалагдтал давхаргын анхдагч зураг.
+   */
+  const bufferStyle = useMemo(() => {
+    const d = LAYER_BY_ID['habea:buffer'];
+    if (!d?.paint || !cranes.length) return undefined;
+    const off = cranes.filter((c) => c.tuluv === 'Буусан' && c.link > 0).map((c) => c.link);
+    return {
+      'habea:buffer': {
+        fill: d.fill, width: d.width,
+        classes: {
+          expression: `var off = [${off.join(',')}];\nIIf(IndexOf(off, $feature.${C.bufferLink}) > -1, 'off', 'on')`,
+          hues: { on: d.paint.defaultHue ?? d.hue, off: d.paint.values['Буусан'] ?? '#9ca3af' },
+        },
+      },
+    };
+  }, [cranes]);
 
   /* Өдөр тутмын цувааnууд — сонгосон гүйцэтгэгчийг дагана */
   const byDay = useMemo(() => byDaySeries(laborRows, coEff, 'niitAjiltan'), [laborRows, coEff]);
@@ -1713,28 +1743,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    гүйцэтгэгчийн `code`/`label`-тай агуулагдах байдлаар тулгана; нэг ч таарахгүй бол ХООСОН
    *    олонлог — хүн-цаггүй (давтамж бодогдохгүй; бүх компанийн цагаар худал тоо гаргахаас дээр).
    */
-  const incCoSfx = useMemo<ReadonlySet<string> | null>(() => {
-    if (!sel.incCompany.length) return null;
-    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-    const out = new Set<string>();
-    /* ⚠️ 2026-10-21: БОГИНО түлхүүр (< 4 тэмдэгт: «П», «МК», «SC» …) нь ЗӨВХӨН бүтэн ҮГЭЭР таарна.
-       Урьд нь хоёр талын агуулагдах тулгалт «…металлурги групп корпорац ХХК»-ийн «групп» дотрох «п»-д
-       Професионалстройг (Багц 4.2) нэмж, хуваарийг өсгөн давтамжийг доошлуулдаг байв. Урвуу чиглэл
-       (түлхүүр ⊃ нэр) мөн ≥ 4 тэмдэгттэй нэрт л. */
-    const MIN_SUB = 4;
-    for (const name of sel.incCompany) {
-      const n = norm(name);
-      if (!n) continue;
-      const toks = new Set(n.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-      for (const c of HABEA.labor.companies) {
-        const keys = [c.code, c.label, c.sfx].map(norm).filter(Boolean);
-        if (keys.some((k) => (k.length < MIN_SUB
-          ? n === k || toks.has(k)
-          : n.includes(k) || (n.length >= MIN_SUB && k.includes(n))))) out.add(c.sfx);
-      }
-    }
-    return out;
-  }, [sel.incCompany]);
+  /* ⚠️ 2026-10-21: БОГИНО түлхүүр (< 4 тэмдэгт: «П», «МК», «SC» …) нь ЗӨВХӨН бүтэн ҮГЭЭР таарна (урьд «групп»-ийн «п»-д
+     Професионалстрой нэмэгддэг байв). ⚠️ 2026-10-22 (аудит): эхлээд `field_5` домэйны ИЛ зураглал (`habeaRate.incCompanySfx`)
+     — ойролцоо тулгалтаар 6 компанийн 3 нь (18 ослын 12) хүн-цаггүй үлддэг байв; ойролцоо тулгалт нь зөвхөн нөөц. */
+  const incCoSfx = useMemo<ReadonlySet<string> | null>(
+    () => (sel.incCompany.length ? incCompanySfx(sel.incCompany) : null),
+    [sel.incCompany],
+  );
   const ratePkg = useMemo(() => {
     /* Шошго нь гүйцэтгэгчийн бүртгэлийн багцаас («Багц -3.1» → «Багц 3.1», `pkgOptions`-ийн дүрэм) */
     const labelOf = (k: string) => {
@@ -2432,12 +2447,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ── ТӨВ: газрын зураг — «Ерөнхий мэдээлэл»-ийн бүтэц ЯГ ХЭВЭЭРЭЭ ── */}
       <div className={h.map}>
+        {/* ⚠️ 2026-10-22 (аудит): `zone={zone}` — урьд `null` тул «Бүс» товч зөвхөн томруулж, зураг бүсээр ШҮҮГДДЭГГҮЙ байв
+            (бусад харагдацтай ижил: ХАБЭА-ийн `noZone` давхаргад үйлчлэхгүй, контекст давхаргад үйлчилнэ).
+            `layerStyle` — краны бүсийн өнгө холбогдсон краны төлөвөөр (`bufferStyle`-ийн ⚠️). */}
         <MapCanvas
           dim={dim}
           visible={mapVisible}
           opacity={opacity}
           layerWhere={layerWhere}
-          zone={null}
+          layerStyle={bufferStyle}
+          zone={zone}
           onPick={onPick}
         />
 

@@ -31,9 +31,10 @@ import {
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
 import {
-  loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
+  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
   type FinData, type MonthPt,
 } from '@/modules/Finance';
+import { coverageNote } from '@/lib/planProgress';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import { finPkgKey } from '@/lib/pkgAlias';
 import {
@@ -2016,8 +2017,12 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             /* ⚠️ 2026-10-09 (аудит №2): `lag.gap` — төлөвлөгөөтэй НЭГ багцын олонлогийн бодит
                (`physLag`); урьд нь `planned − physNow` (хуваарьгүй багцыг бодит талд л тоолж
                хоцрогдлыг хэтрүүлдэг) байв. Хасагдсан багц байвал шошгонд тэмдэглэнэ. */
-            value={lag ? gapPtsWord(lag.gap) : wait ? '…' : '—'}
-            label={scopeNote ? tr('Гүйцэтгэлийн зөрүү (хуваарьтай багцаар)') : tr('Гүйцэтгэлийн зөрүү')}
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүг ДҮГНЭХГҮЙ («—» + хамралт) — огноогүй ажлын
+               жин төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага гардаг тул хоцорсон багц «түрүүлж» харагддаг байв
+               (`Finance.lagJudged`, PkgProg · ТУХ · удирдлагын тайлантай нэг дүрэм). */
+            value={lag ? (lagJudged(lag) ? gapPtsWord(lag.gap) : '—') : wait ? '…' : '—'}
+            label={(scopeNote ? tr('Гүйцэтгэлийн зөрүү (хуваарьтай багцаар)') : tr('Гүйцэтгэлийн зөрүү'))
+              + (lag && !lagJudged(lag) && coverageNote(lag.coverage) ? ` · ${coverageNote(lag.coverage)}` : '')}
           />
           <Stat
             accent
@@ -2374,7 +2379,9 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             /* ⚠️ 2026-10-11 (аудит №7): тэнхлэг = «одоо» хүртэлх БҮХ сар; `lagSeriesOf` нь
                хэмжилтгүй сарыг АЛГАСДАГ тул Map-аар хайж, байхгүй сар `null` → цоорхой
                (урьд нь алгассан сар хоорондоо нийлж, нэг алхам мэт зурагддаг байв). */
-            const lagMap = new Map(lagSeries.map((x) => [x.month, x]));
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан сарын хоцрогдлыг ЗУРАХГҮЙ (цоорхой) — «Гүйцэтгэлийн зөрүү»-тэй
+               нэг дүрэм (`lagJudged`); «Төлөвлөгөө vs бодит» график тоогоо хамралтын тэмдэглэлтэй хэвээр харуулна. */
+            const lagMap = new Map(lagSeries.filter((x) => lagJudged(x)).map((x) => [x.month, x]));
             const pts = (months ?? []).filter((m) => m.label <= nowYm).map((m) => {
               const x = lagMap.get(m.label) ?? null;
               return {
@@ -2610,7 +2617,9 @@ function pkgLagRows(f: FinData, labelOf: (k: string) => string): PkgLagRow[] {
     const months = mm.get(k);
     if (!months) return;
     const lag = lagOf(months);
-    out.push({ key: k, label: labelOf(k), actual: physLatest(months), planned: lag ? lag.planned : null, months });
+    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан багцын төлөвлөгөөг хоцрогдлын/харьцуулалтын жагсаалтад
+       ОРУУЛАХГҮЙ (`planned: null` → доорх шүүлтүүрээр гарна) — хэт бага «төлөвлөсөн» нь хоцорсон багцыг «урд» харуулдаг */
+    out.push({ key: k, label: labelOf(k), actual: physLatest(months), planned: lag && lagJudged(lag) ? lag.planned : null, months });
   });
   return out.sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }

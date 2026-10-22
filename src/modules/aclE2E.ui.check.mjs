@@ -45,6 +45,8 @@ const CAPS = await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
 /* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
 OPS.setHeldByReader(async () => []);
+/* ⚠️ 2026-10-22 (аудит): устгах асуултын гүйцэтгэлийн уншилт (`flowWaitingFor`) ч амьд хүснэгт — хуурамцаар */
+OPS.setFlowWorksReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
 const QA = await import('@/lib/qaqcAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
@@ -522,11 +524,16 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m.render();
   rowOf().onFlipRemove(); m.render();
   takeConfirms();
+  /* ⚠️ 2026-10-22 (аудит): тэр хүний шатанд (инженер · g) хүлээгдэж буй гүйцэтгэл устгах асуултад тоологдоно */
+  OPS.setFlowWorksReader(async () => [{ bagts: g, owner: 'engineer', done: false }]);
   save().props.onClick({});
   /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
   await settle(() => { m.render(); return fake.inflight > 0 || acl().length > 0 || P.hasAccess(u); });
   await idle(); m.render();
-  ok(takeConfirms().some((c) => /УСТГАГДАНА/.test(c)), `${tag}: устгахыг асуусан`);
+  const delAsk = takeConfirms();
+  ok(delAsk.some((c) => /УСТГАГДАНА/.test(c)), `${tag}: устгахыг асуусан`);
+  ok(delAsk.some((c) => /УСТГАГДАНА/.test(c) && /шатанд 1 ажил хүлээгдэж байна/.test(c)), `${tag}: устгах асуултад шатанд хүлээгдэж буй гүйцэтгэл (${delAsk.join(' | ').slice(0, 300)})`);
+  OPS.setFlowWorksReader(async () => []);
   await P.initRemote(false, true); await idle();
   eq(acl(), [], `${tag}: устгасан аккаунтын ArcGIS хуваарилалт/эрхийн мөр үлдээгүй`);
   eq(P.hasAccess(u), false, `${tag}: нэвтрэхгүй`);

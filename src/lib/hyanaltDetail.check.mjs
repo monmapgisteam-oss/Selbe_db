@@ -72,13 +72,49 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
     assert.ok(!blk.includes('window.confirm'), '«Тэгсэн ч илгээх үү» асуулт үлдсэн — хаах ёстой');
   }
   const rowsSrc = src('../modules/sheet/fill/FillRows.tsx');
-  assert.ok(rowsSrc.includes('const negNow = dirty && negTot != null') && rowsSrc.includes('(negNow ? " negTot" : "")'),
-    'FillRows: бичих агшинд сөрөг нийтийг улаанаар тэмдэглэнэ');
-  /* ⚠️ 2026-10-22: эцэг бүлгийн №-ээр зам + илгээсэн утга (`describeNegCells`) — `describeUnmoved` (rowKeys шошго) биш */
-  assert.ok(pub.includes('describeNegCells(ovNeg.negKeys, ovNeg.rows, sc.bld, ovNeg.negInc)'), 'сөрөг нүдийг замаар нэрлэнэ');
+  /* ⚠️ 2026-10-22 (аудит): илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) улаан */
+  assert.ok(rowsSrc.includes('const negNow = dirty && negTot != null') && rowsSrc.includes('(negNow || negSent ? " negTot" : "")'),
+    'FillRows: бичих агшинд ба илгээсэн сөрөг нийтийг улаанаар тэмдэглэнэ');
+  /* ⚠️ 2026-10-22: эцэг бүлгийн №-ээр зам + илгээсэн утга (`describeNegCells`) — `describeUnmoved` (rowKeys шошго) биш;
+     аудит: нүд бүрт ЯГ бичих утга (`describeNegFixes` — нэрийг `describeNegCells`-ээс) */
+  assert.ok(pub.includes('describeNegFixes(ovNeg, sc, pend2, fillMode)'), 'сөрөг нүдийг замаар нэрлэж, ЯГ бичих утгыг хэлнэ');
   assert.ok(det.includes('describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc)'), 'hyanaltDetail: negCells');
   assert.ok(G.includes('data.negCells!.join') && G.includes("negCells.join('; ')"), 'Guitsetgel: сөрөг нүдний нэр анхааруулга ба товчны шалтгаанд');
   console.log('✅ Guitsetgel · FillNew — сөрөг нийт бүх шатанд хаагдана, нүдийг нэрлэнэ; илгээлт ХААГДАНА, бичих агшинд улаан; unmoved хоёр шалтгаантай');
+
+  /* ── ⚠️ 2026-10-22 (аудит, гүйцэтгэлийн урсгал): №2 «Өөрчлөлтгүй дахин илгээх» ЯГ ижил шалгалттай · №3 ЯГ бичих утга
+        («хоосон үлдээ» БИШ) · №4 «Шинэчлэгдсэн огноо» ухрахгүй. Эх кодын гэрээ — цэвэр логик нь `sheetFrame.check` 9f-3/9f-4. ── */
+  {
+    /* №2 — `resendAsIs`: давхарлалт (сөрөг · тулгагдаагүй) `submitForReview`-ээс ӨМНӨ, асуултаас ч ӨМНӨ */
+    const rs = fill.slice(fill.indexOf('const resendAsIs = useCallback('));
+    const rsEnd = rs.indexOf('submitForReview(');
+    assert.ok(rsEnd > 0, 'resendAsIs: submitForReview алга');
+    const chk = rs.indexOf('ovChk = overlaySubmission(fresh.rows, pChk, sc, nBld);');
+    assert.ok(chk > 0 && chk < rsEnd, 'resendAsIs: илгээхээс ӨМНӨ давхарлалтаар шалгана');
+    assert.ok(rs.indexOf('pChk = await ensureFrameOcc(pkg, sc, staged.payload, fresh.rows);') < chk, 'хянагчтай нэг дүрэм (ensureFrameOcc)');
+    const negAt = rs.indexOf('if (ovChk.negative > 0) {');
+    const unmAt = rs.indexOf('if (ovChk.unmoved > 0) {');
+    assert.ok(negAt > chk && unmAt > chk && negAt < rsEnd && unmAt < rsEnd, 'сөрөг ба тулгагдаагүй нүдээр хаана');
+    assert.ok(rs.indexOf('window.confirm(') > unmAt && rs.indexOf('window.confirm(') < rsEnd, 'асуулт шалгалтын ДАРАА');
+    assert.ok(rs.slice(0, rsEnd).includes('describeNegFixes(ovChk, sc, {}, fillMode)'), 'ноорог алга — илгээсний эсрэг тоо');
+    /* ЯГ ижил мессеж (publish ↔ resendAsIs) */
+    const msg = /warn\(tr\(\s*('Илгээсэнгүй — \{0\} нүдний нэмэлт нийт дүнг сөрөг[^']*')/;
+    assert.equal(rs.match(msg)?.[1], pub.match(msg)?.[1], 'publish ба resendAsIs нэг мессеж');
+    assert.ok(!fill.includes('Тэр нүдний хасалтыг устгаж хоосон үлдээгээд'), '№3: «хоосон үлдээ» зөвлөгөө үлдсэн');
+    assert.ok(!rowsSrc.includes('Хасалтаа устгаж хоосон үлдээнэ үү'), '№3: FillRows-д «хоосон үлдээ» зөвлөгөө үлдсэн');
+    /* №3 — FillRows: илгээсэн сөрөг нүд (`negSent`) ба ЯГ бичих тоо (`negFix`), хянагчид «зөвшөөрөх боломжгүй» */
+    assert.ok(rowsSrc.includes('const negSent = !dirty && negTotalAt(r, bi);'), 'FillRows: илгээсэн сөрөг нүд');
+    assert.ok(rowsSrc.includes(': negSent ? negFixOf(r, bi, hasF, undefined, fillMode) : null;'), 'FillRows: ЯГ бичих тоо');
+    assert.ok(rowsSrc.includes('Нийтийг 0 болгохын тулд энэ нүдэнд «{1}» гэж бичнэ үү.'), 'FillRows: тайлбарт тоо');
+    assert.ok(rowsSrc.includes('if (why) say(why);'), 'FillRows: зөвшөөрлийн татгалзлыг хэлнэ');
+    /* №4 — архив ба хянагчийн харагдац НЭГ дүрэм (`laterAsOf`); анхааруулгад «хуучин → шинэ» */
+    assert.ok(store.includes('const asOf = laterAsOf(ov.asOf, loaded.asOf);') && !store.includes('const asOf = ov.asOf ?? loaded.asOf;'),
+      'hyanaltStore: архивын огноо ухрахгүй');
+    assert.ok(det.includes('const asOf = laterAsOf(ov.asOf, loaded.asOf);') && det.includes('asOfChanged: asOf != null && asOf !== loaded.asOf,'),
+      'hyanaltDetail: хянагч архивт бичигдэх огноог харна');
+    assert.ok(G.includes("data.asOfFrom ?? '—', data.asOfTo ?? '—'"), 'Guitsetgel: «хуучин → шинэ»');
+    console.log('✅ аудит 2026-10-22 — дахин илгээх шалгалттай · ЯГ бичих утга · огноо ухрахгүй (эх код)');
+  }
 }
 
 /* ── 2026-10-09: F2 огноогүй хэлтэрхийн нэг дүрэм · F4 гүн `gun`-аас ── */
@@ -242,6 +278,21 @@ try {
   assert.equal(staged?.subOid, 44, 'staged submissions still use the overlay path');
   assert.equal(staged.pkgKey, 'b1_12f');
   assert.equal(staged.filled[0].cells[0], 37);
+
+  /* ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ нүд — `Change.neg` (хянагч ногоон болгохгүй, `Guitsetgel.toggleOk`);
+     «Шинэчлэгдсэн огноо» нь архивт бичигдэх огноогоор (`laterAsOf`) — хуучин өдрийн илгээлт ухраахгүй */
+  submission({ mode: 'inc', cells: [['44:0', '-20']] }, false);
+  const negSub = await loadSubmission('Багц 1', 44);
+  assert.equal(negSub.negative, 1, '12 − 20 сөрөг');
+  assert.deepEqual(negSub.changes.map((c) => c.neg), [true], 'сөрөг нүд — Change.neg');
+  submission({ mode: 'inc', cells: [['44:0', '5']] }, false);
+  assert.deepEqual((await loadSubmission('Багц 1', 44)).changes.map((c) => c.neg), [undefined], 'хэвийн нүд — neg-гүй');
+  submission({ cells: [['44:0', '37']], asOf: Date.UTC(2026, 9, 5) }, false);
+  const olderAsOf = await loadSubmission('Багц 1', 44);
+  assert.equal(olderAsOf.asOfChanged, false, 'хуучин огноотой илгээлт архивын огноог ухраахгүй — өөрчлөлт биш');
+  submission({ cells: [['44:0', '37']], asOf: Date.UTC(2026, 9, 15) }, false);
+  const newerAsOf = await loadSubmission('Багц 1', 44);
+  assert.deepEqual([newerAsOf.asOfChanged, newerAsOf.asOfFrom, newerAsOf.asOfTo], [true, '2026-10-11', '2026-10-15'], '«хуучин → шинэ»');
 
   state.failRead = true;
   state.reads = [];

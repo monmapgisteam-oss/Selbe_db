@@ -13,6 +13,7 @@ import {
   scorePerf, scoreFin, scoreLand, scorePlan, scoreHse, scoreQual, scoreLevel, dimLevel, scorePermit,
   totalOf, groupByType, projectDims, pointInRings, ringCenter, blockZoneScores, meanOf, DIMS, workIssues,
   statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve, workDimLevel,
+  perfPartial,
 } from './scorecard.ts';
 
 const DAY = 86_400_000;
@@ -30,10 +31,32 @@ assert.equal(meanOf([null, null]), null);
 assert.equal(meanOf([0, 100, null]), 50);
 
 /* ── 1. Гүйцэтгэл ── */
-assert.equal(scorePerf({ lag: { planned: 30, actual: 30 }, start: null, end: null, progress: null, now }).score, 100);
-assert.equal(scorePerf({ lag: { planned: 30, actual: 10 }, start: null, end: null, progress: null, now }).score, 50);
-assert.equal(scorePerf({ lag: { planned: 10, actual: 40 }, start: null, end: null, progress: null, now }).score, 100, 'түрүүлсэн нь торгуулгүй');
-assert.equal(scorePerf({ lag: { planned: 80, actual: 0 }, start: null, end: null, progress: null, now }).score, 0, '0-ээс доош буухгүй');
+/* ⚠️ 2026-10-22 (аудит): `coverage: 100` — хуваарь бүрэн хамарсан (дүгнэгдэнэ); дутуу хамралт доор (§1б) */
+assert.equal(scorePerf({ lag: { planned: 30, actual: 30, coverage: 100 }, start: null, end: null, progress: null, now }).score, 100);
+assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: 100 }, start: null, end: null, progress: null, now }).score, 50);
+assert.equal(scorePerf({ lag: { planned: 10, actual: 40, coverage: 100 }, start: null, end: null, progress: null, now }).score, 100, 'түрүүлсэн нь торгуулгүй');
+assert.equal(scorePerf({ lag: { planned: 80, actual: 0, coverage: 100 }, start: null, end: null, progress: null, now }).score, 0, '0-ээс доош буухгүй');
+/* ── 1б. ⚠️ 2026-10-22 (аудит): ХУВААРЬ ДУТУУ (< 95%) — оноо `null` (100 БИШ), шалтгаан ил ──
+   Багц 3.3: хамралт 8.6% тул төлөвлөсөн 8.6 < бодит 25.1 → урьд нь 100 оноо «Хэвийн» гардаг байв. */
+{
+  const p = scorePerf({ lag: { planned: 8.6, actual: 25.1, coverage: 8.6 }, start: now - 50 * DAY, end: now + 50 * DAY, progress: 40, now });
+  assert.equal(p.score, null, 'дутуу хамралт → null (огнооны шугам + Cashflow руу ч БУУХГҮЙ)');
+  assert.deepEqual(p.facts.map((f) => f.value), ['8.6%', '25.1%', '8.6%'], 'төлөвлөсөн · бодит · хамралт');
+  assert.equal(p.facts[2].label, 'Хуваарийн хамралт');
+  assert.equal(p.issues?.[0]?.tone, 'info');
+  assert.ok(p.issues[0].text.includes('8.6%'), p.issues[0].text);
+  /* хамралт мэдэгдэхгүй (null/алга) — дүгнэхгүй */
+  assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: null }, start: null, end: null, progress: null, now }).score, null);
+  assert.equal(scorePerf({ lag: { planned: 30, actual: 10 }, start: null, end: null, progress: null, now }).score, null, 'хамралтгүй lag → дүгнэхгүй');
+  /* хил: 95 — дүгнэнэ, 94.9 — үгүй */
+  assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: 95 }, start: null, end: null, progress: null, now }).score, 50);
+  assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: 94.9 }, start: null, end: null, progress: null, now }).score, null);
+  assert.deepEqual(perfPartial({ planned: 1, actual: 2, coverage: null }).facts[2].value, '—', 'хамралт null → «—» (0% биш)');
+  /* нийт дунджид ОРОХГҮЙ */
+  const dims = Object.fromEntries(DIMS.map((k) => [k, { score: null, facts: [] }]));
+  dims.perf = p; dims.fin = { score: 60, facts: [] };
+  assert.equal(totalOf(dims), 60, 'дутуу хуваарийн гүйцэтгэл нийт оноонд орохгүй');
+}
 {
   /* Муруйгүй: шугаман төлөвлөгөө — хугацааны тал өнгөрсөн → 50% */
   const r = scorePerf({ lag: null, start: now - 50 * DAY, end: now + 50 * DAY, progress: 40, now });
@@ -212,7 +235,7 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
 
 /* ── Асуудлын эрэмбэ ── */
 {
-  const perf = scorePerf({ lag: { planned: 40, actual: 30 }, start: null, end: null, progress: null, now }); // 75 → warn
+  const perf = scorePerf({ lag: { planned: 40, actual: 30, coverage: 100 }, start: null, end: null, progress: null, now }); // 75 → warn
   assert.equal(perf.issues.length, 1);
   assert.equal(perf.issues[0].tone, 'warn');
   const fin = scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: null, paidPct: null, actual: null });
@@ -222,7 +245,7 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
   assert.equal(hse.issues[0].tone, 'bad');
   const qual = scoreQual({ qaqc: { total: 5, empty: 5, partial: 0 } });
   assert.equal(qual.issues[0].tone, 'info');
-  assert.equal(scorePerf({ lag: { planned: 30, actual: 30 }, start: null, end: null, progress: null, now }).issues.length, 0, 'хэвийн → асуудалгүй');
+  assert.equal(scorePerf({ lag: { planned: 30, actual: 30, coverage: 100 }, start: null, end: null, progress: null, now }).issues.length, 0, 'хэвийн → асуудалгүй');
 
   const none = { score: null, facts: [] };
   const w = {

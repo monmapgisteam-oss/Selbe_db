@@ -1889,8 +1889,10 @@ export const MapCanvas = memo(function MapCanvas({
   zone: string | null;
   /**
    * Давхарга ТУС БҮРИЙН `definitionExpression` (cross-filter дашбоардад).
-   * Заасан бол `zone`-ийн нэгдсэн шүүлтийг ДАРНА — давхарга бүр өөрийн WHERE-ээр
-   * шүүгдэнэ. `null`/байхгүй утга = шүүлтгүй.
+   * Заасан (null биш) утга нь тухайн давхаргад `zone`-ийн нэгдсэн шүүлтийг ДАРНА.
+   * ⚠️ 2026-10-22 (аудит): `null`/БАЙХГҮЙ давхарга нь `zone`-ийн шүүлтээ (`zoneWhere`) ХАДГАЛНА. Урьд нь
+   *    `layerWhere` өгөгдмөгц жагсаалтад байхгүй давхарга ч шүүлтгүй болдог тул «Ерөнхий дашбоард»-д бүс сонгоход
+   *    (үргэлж `layerWhere` дамжуулдаг) зураг шүүгддэггүй байв (Багц-1: KPI 30 барилга, зураг 368).
    */
   layerWhere?: Record<string, string | null>;
   /**
@@ -5194,10 +5196,11 @@ export const MapCanvas = memo(function MapCanvas({
       if (d && 'definitionExpression' in l) {
         // `layerWhere` заасан бол давхарга бүрийн өөрийн WHERE; эс бөгөөс бүсийн
         // нэгдсэн шүүлт (cross-filter дашбоард нь давхарга тус бүрээ шүүнэ).
-        const own = layerWhere ? layerWhere[l.id] ?? null : undefined;
-        const base = own !== undefined
-          ? own
-          : zone ? zoneWhere(d, zone) : null;
+        /* ⚠️ 2026-10-22 (аудит): өөрийн WHERE-гүй (`null`/жагсаалтад алга) давхаргад БҮСИЙН шүүлт (`zoneWhere`) —
+           урьд нь `layerWhere` өгөгдмөгц БҮХ давхаргын бүсийн шүүлт алгасагддаг байв (prop-ийн ⚠️). Тодорхой WHERE
+           (жиш. сонгосон багцын блок, `1=0`) хэвээр ДАРНА. */
+        const own = layerWhere?.[l.id] ?? null;
+        const base = own ?? (zone ? zoneWhere(d, zone) : null);
         const hlOn = is3D(dim) && hl.where && (!hlOnly || hlOnly.includes(l.id))
           ? hl.where
           : null;

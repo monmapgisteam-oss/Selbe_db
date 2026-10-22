@@ -39,7 +39,9 @@ import { subscribeButetsAcl } from '@/lib/butetsAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
-import { allPkgErh, allUserErh, unknownPkgUsers, type RoleLine } from '@/lib/erhOverview';
+import { allPkgErh, allUserErh, typeStageGaps, unknownPkgUsers, userErh, type RoleLine } from '@/lib/erhOverview';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт · шалгалтын төлөв (`portalPresence`) */
+import { portalCheckStatus } from '@/lib/portalPresence';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
 import { ERH_PANES, paneLabel } from './capText';
 import { ErhMatrix } from './ErhMatrix';
@@ -87,6 +89,12 @@ export function ErhOverview({
      нэртэй хуваарилалт. Аль аль нь ЭРХ НЭЭДЭГГҮЙ (fail-closed) — админ «томилсон атлаа ажиллахгүй» шалтгааныг энд харна. */
   const malformed = remoteMalformed();
   const unknownPkgs = unknownPkgUsers(src);
+  /* ⚠️ 2026-10-22 (аудит): ПОРТАЛД АЛГА аккаунт (хүснэгтэд мөртэй, нэвтэрч чадахгүй) ба ТӨРӨЛ ↔ ШАТ зөрөө — урьд нь аль
+     аль нь хаана ч харагддаггүй байв: порталд алга `selbe_redesign` компанийн шатыг 21 багцад «эзэнтэй» харуулж, «Газрын
+     дарга» төрөлтэй `munkhbaatar` шатгүй (Гүйцэтгэл хуудасгүй, батлахгүй) үлдсэн. Хуваарилалт нь `ErhSource`-оос. */
+  const absent = (src.absent ?? []).map((u) => userErh(src, u));
+  const typeGaps = typeStageGaps(src);
+  const presence = portalCheckStatus();
   /* ⚠️ 2026-10-19: эвдэрсэн мөрийг OBJECTID-оор устгах (`permsRemote.removeMalformedRow`) — зайтай мөрийг
      `removeByKey` олдоггүй тул энэ л зам. Устгасны дараа хүснэгтийг дахин уншина. */
   const [cleanBusy, setCleanBusy] = useState<number | null>(null);
@@ -123,6 +131,51 @@ export function ErhOverview({
             </div>
           ))}
         </div>
+      )}
+      {absent.length > 0 && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Порталд алга аккаунт')}</span>
+            <span className={s.aclCount}>{absent.length}</span>
+          </div>
+          {absent.map((u) => (
+            <div key={`a-${u.user}`} className={s.aclErr} role="alert">
+              {tr('«{0}»: Enterprise порталд бүртгэлгүй — нэвтэрч чадахгүй тул түүний хуваарилалт ажил гүйцэтгэхгүй (гацааны шалгуурт тоологдохгүй). Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл аккаунтыг устгана уу.', u.user)}
+              {u.flow && <> {tr('Урсгал: {0} · {1}.', STAGE_LABEL[u.flow.stage], bagtsText(u.flow.bagts))}</>}
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onOpenUser(u.user)}>{tr('Карт')}</button>
+              {u.flow && (
+                <>
+                  {' '}
+                  <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {typeGaps.length > 0 && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Эрхийн төрөл ↔ урсгалын шат')}</span>
+            <span className={s.aclCount}>{typeGaps.length}</span>
+          </div>
+          {typeGaps.map((g) => (
+            <div key={`t-${g.user}`} className={s.aclErr} role="alert">
+              {g.have
+                ? tr('«{0}»: «{1}» төрөлтэй атлаа «{2}» шатанд томилогдсон — төрөл ба шат зөрж байна (шат нь томилгооноос).', g.user, STAGE_LABEL[g.want], STAGE_LABEL[g.have])
+                : tr('«{0}»: «{1}» төрөлтэй атлаа урсгалын шатанд томилогдоогүй — «Гүйцэтгэл» хуудас нээгдэхгүй, батлах боломжгүй. Төрөл нь шат олгодоггүй.', g.user, STAGE_LABEL[g.want])}
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onOpenUser(g.user)}>{tr('Карт')}</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* ⚠️ 2026-10-22: порталын тулгалт ажиллаагүй шалтгаан (fail-open — «алга» гэж тэмдэглээгүй) */}
+      {presence === 'noPrivilege' && (
+        <p className={s.aclNote}>{tr('Порталын аккаунтыг тулгаж чадсангүй — таны Enterprise эрх бүх гишүүнийг харахгүй (порталын админ биш). «Порталд алга» аккаунт тэмдэглэгдээгүй.')}</p>
       )}
       {(malformed.length > 0 || unknownPkgs.length > 0) && (
         <div className={s.aclCol}>

@@ -28,6 +28,7 @@ import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
 import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
+import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
 
@@ -469,7 +470,13 @@ export async function buildExecDoc(
         tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))), // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
       /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар, `execFindings`-ийн ⚠️) —
          хуваарьгүй багц хасагдсан үед бүх багцын `actual`-ийг зөрүүний хажууд тавьвал тоо нийлэхгүй. */
-      lead(p.planExcluded.length
+      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүний өгүүлбэр БИШ — шалтгааны өгүүлбэр (дүгнэхгүй) */
+      lead(!coverageOk(p.planCoverage) && p.gap != null
+        ? tr('Орон сууцны барилга угсралтын хуваарь {0} хамарсан тул хоцрогдлыг дүгнэсэнгүй (төлөвлөгөө {1}, бодит {2}).',
+          p.planCoverage == null ? '—' : pct(p.planCoverage, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          p.actualLag == null ? '—' : pct(p.actualLag, 1)) + paceText
+        : p.planExcluded.length
         ? tr('Барилга угсралтын нийт биет гүйцэтгэл {0}; хуваарьтай багцаар бодит {1}, төлөвлөсөн {2}-тэй харьцуулахад {3} нэгж хувийн зөрүүтэй байна.{4}',
           p.actual == null ? '—' : pct(p.actual, 1),
           p.actualLag == null ? '—' : pct(p.actualLag, 1),
@@ -484,7 +491,11 @@ export async function buildExecDoc(
         /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «(хуваарьтай багцаар)» */
         { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: p.planExcluded.length ? tr('(хуваарьтай багцаар)') : tr('хуваариас') },
         /* ⚠️ 2026-10-09 (аудит №2): `gdash.gapPts` — порталын нэг хэлбэр */
-        { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
+        /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүг ДҮГНЭХГҮЙ — «—» + хамралт (`planProgress.coverageOk`,
+           дэлгэцийн удирдлагын тайлантай нэг дүрэм) */
+        coverageOk(p.planCoverage)
+          ? { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') }
+          : { label: tr('Зөрүү'), value: '—', sub: coverageNote(p.planCoverage) || undefined },
       ]),
       ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),

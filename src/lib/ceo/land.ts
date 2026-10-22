@@ -46,7 +46,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, text } from '@/lib/format';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { PARCEL_LEFT, parcelLeftWhere } from '@/lib/services';
-import { isClearedStatus } from '@/lib/land';
+import { isClearedStatus, parcelAreaOf, landuseText, PARCEL_SHAPE_AREA } from '@/lib/land';
 import { cached, loadClearance, type Clearance } from '@/lib/live';
 import { loadOverlaps, type Overlaps } from '@/lib/execTriage';
 import { overlapLevel, pctLevel } from '@/lib/kpiLevels';
@@ -62,7 +62,7 @@ export type LandParcel = {
   address: string | null;
   /** Төлөв=шалтгаан; хоосон бол `NO_STATUS` */
   reason: string;
-  /** м² — `area`, хоосон бол `areaAlt`; хоёулаа хоосон бол `null` */
+  /** м² — `land.parcelAreaOf`: `area` > 0, эс бөгөөс `areaAlt` > 0, эс бөгөөс полигоны талбай; бүгд алга бол `null` */
   areaM2: number | null;
   landuse: string | null;
   note: string | null;
@@ -119,12 +119,7 @@ export const SOURCE = {
 
 /* ══════════════════ Цэвэр тооцоо ══════════════════ */
 
-/** ArcGIS тоо — хоосон/NaN бол `null`. ⚠️ 0-ийг `null` болгохгүй, `null`-ыг 0 болгохгүй. */
-const numOrNull = (v: unknown): number | null => {
-  if (v == null || v === '') return null;
-  const n = typeof v === 'number' ? v : Number(String(v).replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
-};
+/* ⚠️ 2026-10-22 (аудит): `numOrNull` хасагдсан — талбай одоо `land.parcelAreaOf`-оор (нэг дүрэм) */
 
 /** Текст — хоосон/зай бол `null` (`Zoriulalt` нь " " гэж ирдэг) */
 const strOrNull = (v: unknown): string | null => {
@@ -139,27 +134,37 @@ export function parseParcels(rows: readonly Row[]): LandParcel[] {
      ЯГ таарцын SQL тул тэдгээр мөр «үлдсэн саад»-д тоологдож, «Газар» дашбоард (`land.isClearedStatus`)
      ба давхцал (`parcelOverlap.dropCleared`) чөлөөлсөн гэж үздэг атал CEO KPI-д саад болж ЗӨРДӨГ
      байв. SQL-ээр хэвийншүүлэх найдваргүй тул клиент талд ИЖИЛ дүрмээр шүүнэ. */
-  return rows.filter((r) => !isClearedStatus(r[F.status])).map((r) => {
-    const area = numOrNull(r[F.area]);
-    return {
-      oid: Number(r[PARCEL_LEFT.oid]),
-      parcelNo: strOrNull(r[F.parcelNo]),
-      owner: strOrNull(r[F.owner]),
-      address: strOrNull(r[F.address]),
-      reason: strOrNull(r[F.status]) ?? NO_STATUS(),
-      // ⚠️ `area` 0 бол 0 хэвээр (хэмжсэн тэг) — зөвхөн `null` үед `areaAlt`
-      areaM2: area ?? numOrNull(r[F.areaAlt]),
-      landuse: strOrNull(r[F.landuse]),
-      note: strOrNull(r[F.note]),
-    };
-  });
+  /* ⚠️ 2026-10-22 (аудит): зориулалт — `landuse_de` (бүтэн) ?? `Zoriulalt` (тасархайг мэдэгдэх бүтэн нэрээр), `land.landuseText` */
+  const known = [...new Set(rows.map((r) => strOrNull(r[F.landuseFull])).filter((x): x is string => !!x))];
+  return rows.filter((r) => !isClearedStatus(r[F.status])).map((r) => ({
+    oid: Number(r[PARCEL_LEFT.oid]),
+    parcelNo: strOrNull(r[F.parcelNo]),
+    owner: strOrNull(r[F.owner]),
+    address: strOrNull(r[F.address]),
+    reason: strOrNull(r[F.status]) ?? NO_STATUS(),
+    /* ⚠️ 2026-10-22 (аудит): `land.parcelAreaOf` — `area = 0` нь хэмжилт биш (полигоны талбай руу), `land.ts`-тэй НЭГ дүрэм.
+       Урьд «0 хэвээр (хэмжсэн тэг)» гэж үздэг байв. */
+    areaM2: parcelAreaOf(r),
+    landuse: landuseText(r[F.landuseFull], r[F.landuse], known),
+    note: strOrNull(r[F.note]),
+  }));
 }
 
-/** Талбайтай мөрүүдийн м² нийлбэр; нэг ч талбайгүй бол `null` */
+/**
+ * Талбайтай мөрүүдийн м² нийлбэр; нэг ч талбайгүй бол `null`.
+ * ⚠️ 2026-10-22 (аудит): ХУВААГДСАН нэгж талбар (ижил кадастрын дугаар + ижил талбай, олон полигон) НЭГ л удаа —
+ *    `land.parcelAreasDeduped`-ийн дүрэм (хүснэгтэд полигон бүр хэвээр).
+ */
 export function sumAreaM2(parcels: readonly LandParcel[]): number | null {
   let s: number | null = null;
+  const seen = new Set<string>();
   for (const p of parcels) {
     if (p.areaM2 == null) continue;
+    if (p.parcelNo && p.areaM2 > 0) {
+      const k = `${p.parcelNo}|${p.areaM2}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+    }
     s = (s ?? 0) + p.areaM2;
   }
   return s;
@@ -239,8 +244,9 @@ export function computeLand(input: LandInput): KpiResult {
       tr('Чөлөөлөгдөөгүй талбар'),
       [tr('Кадастрын дугаар'), tr('Эзэмшигч'), tr('Хаяг'), tr('Шалтгаан'), tr('Талбай (м²)'), tr('Зориулалт'), tr('Тайлбар')],
       sorted.map((p) => [
+        /* ⚠️ 2026-10-22 (аудит): зориулалт нь өгөгдлийн утга — англи хэлэнд `tr()` (enData: бүтэн ба тасархай түлхүүр) */
         cell(p.parcelNo), cell(p.owner), cell(p.address), cell(p.reason),
-        cell(p.areaM2, 'count'), cell(p.landuse), cell(p.note),
+        cell(p.areaM2, 'count'), cell(p.landuse == null ? null : tr(p.landuse)), cell(p.note),
       ]),
     ));
   }
@@ -316,9 +322,10 @@ async function fetchParcels(): Promise<{ parcels: LandParcel[]; asOf: number | n
   const ed = await editDateFieldOf(PARCEL_LEFT.url);
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
+    /* ⚠️ 2026-10-22 (аудит): полигоны талбай (`area = 0`-ийн нөөц) ба бүтэн зориулалт (`landuse_de`) — `parseParcels`-ийн ⚠️ */
     outFields: [
       PARCEL_LEFT.oid, F.parcelNo, F.owner, F.address, F.status,
-      F.area, F.areaAlt, F.note, F.landuse,
+      F.area, F.areaAlt, F.note, F.landuse, F.landuseFull, PARCEL_SHAPE_AREA,
       ...(ed ? [ed] : []),
     ],
     // ⚠️ 2000-аас цөөн ч эрэмбэ өгнө — хуудаслалт хэзээ нэгэн цагт хэрэг болбол

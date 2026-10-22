@@ -964,7 +964,8 @@ export function SystemClosed({ info, username, onRecheck, onSignOut }: {
   );
 }
 
-function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
+/* ⚠️ 2026-10-22 (аудит): ЭКСПОРТ — `Root` сүүлийн харагдацаа ажиллаж байхдаа алдсан хэрэглэгчид (Portal хөлдсөн) ижил цонхыг гаргана */
+export function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
   return (

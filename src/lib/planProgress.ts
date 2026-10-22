@@ -67,6 +67,7 @@
 import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
 import { t as tr } from './i18nCore';
+import { pct } from './format';
 import { bagtsKey, isConstructionNo } from './services';
 import { uniqueBlockCounts } from './blockProgress';
 import { countPlanRows, loadPkgPlan, planPctFromMonths } from './huvaariObyem';
@@ -567,6 +568,39 @@ export function planPctAt(
   if (p1 != null) return (p0 ?? 0) + (p1 - (p0 ?? 0)) * frac;
   return past ? past.pct : null;
 }
+
+/**
+ * ХУВААРИЙН ХАМРАЛТ (%) — төлөвлөгөөт муруйн ТӨГСГӨЛИЙН утга, 0–100 (цэвэр функц).
+ *
+ * ⚠️ 2026-10-22 (аудит): огноогүй ажил `bagtsSheet.planCurve`-д 0 гэж тоологддог боловч жин нь хуваарьт
+ *    ҮЛДДЭГ (`plan[k] ?? 0`) тул муруйн ТӨГСГӨЛ = мөнгөн жингийн ОГНООТОЙ хэсэг (хуваарийн хамралт). Хуваарь
+ *    дутуу багцын «Төлөвлөсөн %» хэт бага гарч, хоцорсон багц «Хэвийн», оноо 100 болдог байв (амьдаар төсөл
+ *    59.1% ХО жингээр, Багц 3.3 8.6%, 4.1 22.4%, 3.1 32.6%, 4.2 44.1%). НЭМЭЛТ ХҮСЭЛТГҮЙ — тухайн хувийг
+ *    гаргасан ЯГ ТЭР муруйн (багц → `byBagts`, төсөл → `projectPlanOf`) сүүлийн цэгээс.
+ * ⚠️ `null` = муруй алга (хамралт мэдэгдэхгүй) — 0 биш.
+ */
+export function planCoverage(series: ReadonlyArray<{ label: string; pct: number }> | null | undefined): number | null {
+  if (!series?.length) return null;
+  let last = series[0];
+  for (const p of series) if (p.label > last.label) last = p;
+  return Number.isFinite(last.pct) ? Math.max(0, Math.min(100, last.pct)) : null;
+}
+
+/**
+ * ⚠️ 2026-10-22 (аудит): ДҮГНЭХ ДООД ХАМРАЛТ (%) — хуваарь үүнээс бага хамарсан бол хоцорсон/хэвийн гэж
+ *    ДҮГНЭХГҮЙ, хуваарийн оноо тавихгүй (`null`, шалтгаантай). Төлөвлөсөн % нь хамралтын тэмдэглэлтэй хэвээр.
+ */
+export const PLAN_COVERAGE_MIN = 95;
+
+/** Хуваарь дүгнэхэд хангалттай хамарсан уу — мэдэгдэхгүй (`null`) бол ҮГҮЙ (2026-10-22) */
+export const coverageOk = (c: number | null | undefined): boolean => c != null && c >= PLAN_COVERAGE_MIN;
+
+/**
+ * «хуваарь X% хамарсан» — «Төлөвлөсөн %»-ийн хажууд (2026-10-22, аудит). Бүрэн (≥ 99.95) эсвэл
+ * мэдэгдэхгүй бол '' — бүрэн хуваарьт дуу чимээ нэмэхгүй.
+ */
+export const coverageNote = (c: number | null | undefined): string =>
+  (c == null || c >= 99.95 ? '' : tr('хуваарь {0} хамарсан', pct(c, 1)));
 
 /**
  * ХЭМЖИЛТИЙН ӨДӨР — төлөвлөгөөг (`planPctAt`) ЯМАР өдрөөр жишихийг сонгоно.

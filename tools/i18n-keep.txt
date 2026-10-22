@@ -66,6 +66,7 @@
 # [const] zoneCanon / analysis/config бүсийн каноник нэр (дээрх жагсаалт + en.ts)
 @dyn components/ZoneFilter.tsx  tr(g.type)
 @dyn modules/Gazar.tsx  tr(z.label)
+@dyn lib/ceo/land.ts  tr(p.landuse)
 @dyn modules/analysis/suit/format.ts  tr(zoneType(t))
 
 # [pass] ui.tsx-ийн ерөнхий график/донат/легенд — шошго нь ДУУДАГЧААС ирнэ

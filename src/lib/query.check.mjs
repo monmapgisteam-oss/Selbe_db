@@ -546,5 +546,29 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ groups(): stats null-ийг хадгална · values 0 (нийцтэй) · эрэмбэ хэвээр');
 }
 
+/* ── ⚠️ 2026-10-22 (аудит): ТООН талбарын бүлгийн шүүлт хашилтгүй — `Code IN (N'1')` → Enterprise 500 «Invalid data type» ── */
+{
+  const { groupWhere } = await import('./query.ts');
+  const rows = [{ Code: 1, n: 1108 }, { Code: 2, n: 1440 }, { Code: null, n: 3 }];
+  const g = groups(rows, 'Code', 'Ангилалгүй', ['n']);
+  const by = Object.fromEntries(g.map((x) => [x.label, x]));
+  assert.equal(by['1'].num, true);
+  assert.equal(groupWhere('Code', by['1']), 'Code IN (1)', 'тоон литерал хашилтгүй');
+  assert.equal(groupWhere('Code', by['2']), 'Code IN (2)');
+  assert.equal(groupWhere('Code', by['Ангилалгүй']), 'Code IS NULL', 'хоосон тоон бүлэг — зөвхөн NULL');
+  const dbl = groups([{ v: 1.5, n: 1 }, { v: -2, n: 1 }], 'v', '—', ['n']);
+  assert.deepEqual(dbl.map((x) => groupWhere('v', x)).sort(), ['v IN (-2)', 'v IN (1.5)']);
+  /* Мөрөн талбар — хуучин хэлбэр (N'…' угтвар, хашилттай) */
+  const s = groups([{ t: 'Зам', n: 1 }, { t: '1', n: 1 }, { t: '', n: 1 }], 't', 'Хоосон', ['n']);
+  const bs = Object.fromEntries(s.map((x) => [x.label, x]));
+  assert.equal(bs['1'].num, undefined, '«1» мөр нь тоо БИШ');
+  assert.equal(groupWhere('t', bs['1']), "t IN (N'1')");
+  assert.equal(groupWhere('t', bs['Зам']), "t IN (N'Зам')");
+  assert.equal(groupWhere('t', bs['Хоосон']), "t IS NULL OR t IN (N'')");
+  /* Тарилга: тоон гэж тэмдэглэгдсэн ч тоо биш утга → мөрөн хэлбэр (хашилттай) */
+  assert.equal(groupWhere('x', { label: 'a', raws: ["1); DROP"], blank: false, values: {}, stats: {}, num: true }), "x IN (N'1); DROP')");
+  console.log('✅ groupWhere: тоон талбар хашилтгүй · мөрөн хэвээр · хоосон тоон бүлэг IS NULL (2026-10-22)');
+}
+
 globalThis.fetch = realFetch;
 console.log('\nquery.check: ok');

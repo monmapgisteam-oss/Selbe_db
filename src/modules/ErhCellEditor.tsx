@@ -23,6 +23,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { listUsers } from '@/lib/permissions';
 import { isCodeSuper, roleForUser } from '@/lib/services';
 import { stageOfUser } from '@/lib/guitsetgelAcl';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын шошго (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
@@ -122,6 +124,10 @@ export function ErhCellEditor({
       </span>
       {/* ⚠️ 2026-10-01: устгагдсан · админ тэмдэг ИЛ текстээр (матрицын `ErhMatrix.person`-той ижил) */}
       {!known.has(u.toLowerCase()) && <span className={s.aclMarkTag} title={tr('устгагдсан аккаунт')}>{tr('устгагдсан')}</span>}
+      {/* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise порталд алга — нэвтэрч чадахгүй, хасаж/шилжүүлнэ */}
+      {known.has(u.toLowerCase()) && portalMissing(u) && (
+        <span className={s.aclMarkTag} title={tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу')}>{tr('порталд алга')}</span>
+      )}
       {known.has(u.toLowerCase()) && roleForUser(u) === 'super' && (
         <span className={s.aclMarkTag} title={tr('админ — багцын хязгаар үйлчлэхгүй')}>{tr('админ')}</span>
       )}

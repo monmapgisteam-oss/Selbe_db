@@ -31,6 +31,8 @@ import { scopedCellOp } from '@/lib/aclOps';
 import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 const ROLE: ButetsRole = 'editor';
@@ -92,6 +94,7 @@ export function DedButetsAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        absent: portalMissing(a.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),

@@ -22,7 +22,10 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { isCodeSuper, roleForUser, type ViewKey, type Role } from '@/lib/services';
+import { ROLE_STAGE, isCodeSuper, roleForUser, type ViewKey, type Role } from '@/lib/services';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын тэмдэг (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
+import { flowAclReady } from '@/lib/guitsetgelAcl';
 import type { UserPerm } from '@/lib/permissions';
 import type { CapKey } from '@/lib/caps';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -84,9 +87,33 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */
 export function UserHeadBadges({ p }: { p: UserRowProps }) {
   const { d, dirty, st, on, allKeys, dirtyPerm, onGoFlow } = p;
+  /* ⚠️ 2026-10-22 (аудит): УРСГАЛЫН ТӨРӨЛ ↔ ШАТ. «Гүйцэтгэгч компани» … «Газрын дарга» төрөл (ноорог ч) зөвхөн үүрэг/харагдацыг
+     бичдэг — шат, «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ (`roleTypeApply.applyType`), анхааруулга ч байгаагүй (амьд:
+     `munkhbaatar` «Газрын дарга» атлаа томилгоогүй). Шатгүй/өөр шаттай бол урсгалын хуудас руу заах тэмдэг. */
+  const want = d.role ? ROLE_STAGE[d.role] : undefined;
+  /* ⚠️ Томилгоо уншигдтал (`flowAclReady`) `st` нь null — худал «шатгүй» гаргахгүй */
+  const typeGap = !d.remove && !!want && flowAclReady() && st !== want;
   return (
     <span className={s.badges}>
       {d.isNew && <span className={s.newBadge}>{tr('шинэ')}</span>}
+      {/* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise порталд алга — нэвтэрч чадахгүй (`portalPresence`) */}
+      {portalMissing(p.u.username) && (
+        <span className={s.removeBadge} title={tr('Enterprise порталд энэ нэртэй аккаунт алга — нэвтэрч чадахгүй. Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл устгана уу.')}>
+          {tr('порталд алга')}
+        </span>
+      )}
+      {typeGap && want && (
+        <button
+          type="button"
+          className={s.stageBadge}
+          onClick={() => onGoFlow()}
+          title={st
+            ? tr('«{0}» төрөлтэй атлаа «{1}» шатанд томилогдсон — шат нь томилгооноос. Дарж «Гүйцэтгэлийн урсгалын эрх» руу очно.', STAGE_LABEL[want], STAGE_LABEL[st])
+            : tr('«{0}» төрөл урсгалын шат олгодоггүй — «Гүйцэтгэлийн урсгалын эрх» хуудсанд «{0}» шатанд томилохгүй бол «Гүйцэтгэл» хуудас нээгдэхгүй, батлахгүй. Дарж очно.', STAGE_LABEL[want])}
+        >
+          {st ? tr('⚠ төрөл ≠ шат') : tr('⚠ шатгүй')}
+        </button>
+      )}
       {d.remove && <span className={s.removeBadge}>{tr('хадгалахад устгагдана')}</span>}
       {!d.remove && (
         <span className={s.countBadge} title={tr('Нээлттэй харагдацын тоо')}>

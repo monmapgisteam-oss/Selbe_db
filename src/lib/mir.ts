@@ -7,7 +7,7 @@ import { splitMulti, type StageState, type Verdict } from '@/lib/ma';
 /**
  * MIR — МАТЕРИАЛЫН ҮЗЛЭГ ШАЛГАЛТ (2026-10-09). Чанарын 2-р шат. Survey123 → Enterprise hosted:
  *   `/0` form — MIR бичлэг (MA-тай `ma_no`-оор холбогдоно),
- *   `/1` photos — талбайн зураг (`parentrowid` → form.`uniquerowid`, зураг нь энэ хүснэгтийн attachment).
+ *   `/1` photos — талбайн зураг (`parentrowid` → form.`uniquerowid || globalid`, зураг нь энэ хүснэгтийн attachment).
  *
  * ⚠️ ХЭРЭГЛЭГЧИЙН ШИЙДВЭР (`memory/chanar-redesign`): MA-гүй бол MIR-гүй. MIR нь талбайд ирсэн НЭГ
  *    АЧААНЫ үзлэг — нэг MA-д олон MIR (олон ачаа) байна.
@@ -50,13 +50,25 @@ export type MirRow = {
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+/**
+ * GUID → Enterprise-ийн GUID талбарын БИЧИГЛЭЛ `{XXXXXXXX-…}` (хаалттай, том үсэг); хоосон бол ''.
+ * ⚠️ 2026-10-22 (аудит): `parentrowid` нь GUID төрөл — `where`-д ЯГ энэ бичиглэл л таарна (амьдаар: хаалтгүй эсвэл
+ *    жижиг үсэг → 0 мөр). `uzlegReport.guidKey`-ийн ижил хэвийншүүлэлт (тэр модулийг импортлохгүй — PDF/xlsx хамаарал).
+ */
+export const guidBraced = (v: unknown): string => {
+  const k = str(v).replace(/[{}\s]/g, '').toUpperCase();
+  return k ? `{${k}}` : '';
+};
 const mark = (v: unknown): CheckMark => { const s = str(v).toUpperCase(); return s === 'OK' || s === 'NA' || s === 'X' ? s : null; };
 
 export function mirRowOf(a: Record<string, unknown>): MirRow {
   const v = str(a.verdict).toUpperCase();
   return {
     oid: Number(a.objectid),
-    rowId: str(a.uniquerowid),
+    /* ⚠️ 2026-10-22 (аудит): `uniquerowid || globalid` — Enterprise руу шилжүүлсэн Survey123 маягтад `uniquerowid` NULL
+       болж хүүхэд хүснэгт эцгийн `globalid`-ийг заадаг («Аюулыг илрүүлэх үзлэг» 61/61, `uzlegReport.parentKeys`).
+       Урьд нь ийм MIR-ийн зураг ОГТ олдохгүй, нөөцийн бүртгэлд (`materialNoots`, rowId-гүй) ч орохгүй байв. */
+    rowId: guidBraced(a.uniquerowid) || guidBraced(a.globalid ?? a.GlobalID),
     docNo: str(a.doc_no),
     date: num(a.insp_date),
     pkg: str(a.pkg),
@@ -144,9 +156,11 @@ async function postJson<T>(url: string, body: URLSearchParams): Promise<T> {
 
 /** MIR-ийн зургууд — photos хүснэгтийн мөр бүрийн attachment */
 export async function loadMirPhotos(rowId: string): Promise<MirPhoto[]> {
-  if (!MIR_PHOTOS_URL || !rowId) return [];
-  const safe = rowId.replace(/'/g, "''");
-  const rows = await queryFeatures(MIR_PHOTOS_URL, { where: `parentrowid='${safe}'`, outFields: ['objectid', 'photo_note'], orderBy: 'objectid' });
+  /* ⚠️ 2026-10-22 (аудит): GUID-ийн бичиглэлийг хэвийншүүлнэ (`guidBraced`) — хаалтгүй/жижиг үсгээр ирсэн түлхүүр
+     GUID талбарт 0 мөр буцааж «Зураг алга» гэж худал хэлдэг байв. `'`-г хасдаг тул SQL-д аюулгүй. */
+  const id = guidBraced(rowId).replace(/'/g, '');
+  if (!MIR_PHOTOS_URL || !id) return [];
+  const rows = await queryFeatures(MIR_PHOTOS_URL, { where: `parentrowid='${id}'`, outFields: ['objectid', 'photo_note'], orderBy: 'objectid' });
   const out: MirPhoto[] = [];
   for (const r of rows) {
     const oid = Number(r.objectid);

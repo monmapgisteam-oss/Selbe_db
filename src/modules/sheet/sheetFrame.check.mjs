@@ -20,6 +20,8 @@ import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
   staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc, describeNegCells,
+  /* ⚠️ 2026-10-22 (аудит): сөрөг нүдний засвар · архивын огноо */
+  negTotalAt, negFixText, negFixOf, describeNegFixes, laterAsOf,
 } from './sheetFrame.ts';
 import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
 
@@ -583,6 +585,93 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     const ovD = overlaySubmission(fresh, inc([['203:0', '-15']]), sc, nBld);
     assert.equal(ovD.negative, 1, '5 − 15 сөрөг');
     assert.equal(overlaySubmission(ovD.rows, inc([['203:0', '15']]), sc, nBld).negative, 0, 'дараагийн +15 сөрөг биш');
+  }
+
+  /* 9f-3. ⚠️ 2026-10-22 (аудит): сөрөг нүдийг таних (`negTotalAt`) ба ЯГ бичих утга (`negFixText`/`negFixOf`/`describeNegFixes`).
+     «Хасалтаа устгаж хоосон үлдээ» нь БУЦААГДСАН илгээлтэд буруу — `mergeSubmission` нэмэлтийг НИЙЛҮҮЛДЭГ (`sumInc`) тул
+     хоосон нүдэнд өмнөх −0.0017 үлддэг; харагдсан (3 оронтой) «0.002»-ыг бичвэл 0 биш 0.0003 болно. */
+  {
+    /* таних — хүлцэл `incCell.below`-тай ижил; хэвийн (≥ 0) нүд, null, хөвөгч цэгийн чимээ сөрөг биш */
+    assert.equal(negTotalAt({ obyem: [-0.0017], act: [null] }, 0), true, 'обьём сөрөг');
+    assert.equal(negTotalAt({ obyem: [2], act: [-0.1] }, 0), true, 'хувийн хэсэг сөрөг');
+    assert.equal(negTotalAt({ obyem: [null], act: [null] }, 0), false, 'null ≠ сөрөг');
+    assert.equal(negTotalAt({ obyem: [-1e-12], act: [0] }, 0), false, 'хөвөгч цэгийн чимээ сөрөг биш');
+    /* бичих утга — «ноорогүй нийт»-ийн эсрэг тоо, бүтэн нарийвчлал, ASCII «-» (нүдэнд шууд бичигдэнэ) */
+    assert.equal(negFixText(0), '', 'ноорогүйгээр 0 → нүдийг хоосон болгоно');
+    assert.equal(negFixText(1e-12), '', 'чимээ → хоосон');
+    assert.equal(negFixText(-0.0017), '0.0017', 'буцаагдсан −0.0017 → +0.0017 (дэлгэцийн «0.002» биш)');
+    assert.equal(negFixText(-0.0027 - -0.001), '0.0017', 'хөвөгч цэгийн үлдэгдэлгүй');
+    assert.equal(negFixText(5), '-5', 'суурь 5 → хамгийн ихдээ −5');
+    assert.equal(negFixText(0.05, true), '-5%', 'Хувь горимд хувиар');
+
+    /* A. Шинэ илгээлт, хэт их хасалт: 5 − 50 = −45 → энэ нүдэнд «-5» (ноорог −50-ийг орлоно) */
+    const ovA = overlaySubmission(fresh, inc([['203:0', '-50']]), sc, nBld);
+    const rA = ovA.rows.find((x) => x.oid === 203);
+    assert.equal(negTotalAt(rA, 0), true);
+    assert.equal(negTotalAt(rA, 1), false, 'нөгөө блок хөндөгдөөгүй');
+    assert.equal(negFixOf(rA, 0, true, '-50'), '-5');
+    assert.equal(incCell(fresh.find((x) => x.oid === 203), 0, negFixOf(rA, 0, true, '-50'), true).obyem, 0, '«-5» бичвэл нийт ЯГ 0');
+    assert.equal(negFixOf(rA, 0, true, '-50', 'pct'), '-5%', 'Хувь горимд: 5 ÷ 100 → «-5%»');
+    assert.equal(incCell(fresh.find((x) => x.oid === 203), 0, '%-5', true).obyem, 0, '«-5%» бичвэл нийт ЯГ 0');
+    assert.equal(negFixOf(rA, 1, false, undefined), null, 'обьёмын талбаргүй блок — ерөнхий текст');
+    const fA = describeNegFixes(ovA, sc, { '203:0': '-50' });
+    assert.equal(fA.length, 1);
+    assert.ok(fA[0].startsWith(describeNegCells(ovA.negKeys, ovA.rows, sc.bld, ovA.negInc)[0]) && fA[0].includes('«-5»'), `засвар: ${fA[0]}`);
+
+    /* B. БУЦААГДСАН илгээлт (хоосон нүдэнд −0.0017), ноорог алга — «Өөрчлөлтгүй дахин илгээх» */
+    const sent = '-0.0017';
+    const ovB = overlaySubmission(fresh, inc([['206:0', sent]]), sc, nBld);
+    assert.equal(ovB.negative, 1);
+    const fB = describeNegFixes(ovB, sc);
+    assert.ok(fB[0].includes('«0.0017»') && !fB[0].includes('0.002'), `бүтэн нарийвчлал: ${fB[0]}`);
+    const after = (draft) => overlaySubmission(fresh, inc([['206:0', sumInc(sent, draft)]]), sc, nBld);
+    assert.equal(after('0.0017').negative, 0, 'зөвлөсөн «0.0017» — нийт 0');
+    assert.equal(after('0.0017').rows.find((x) => x.oid === 206).obyem[0], null, 'нүд хөндөгдөөгүй (нийлбэр 0 → өөрчлөлтгүй)');
+    assert.equal(after('').negative, 1, 'ХУУЧИН зөвлөгөө «хоосон үлдээ» — сөрөг хэвээр');
+    assert.ok(Math.abs(after('0.002').rows.find((x) => x.oid === 206).obyem[0] - 0.0003) < 1e-12, 'харагдсан «0.002» → 0.0003 (0 биш)');
+
+    /* C. Буцаагдсан + ноорог (−0.001): нэгтгэсэн −0.0027 → ноорогийг «0.0017»-оор солино */
+    const ovC = overlaySubmission(fresh, inc([['206:0', sumInc(sent, '-0.001')]]), sc, nBld);
+    assert.equal(negFixOf(ovC.rows.find((x) => x.oid === 206), 0, true, '-0.001'), '0.0017');
+    assert.ok(describeNegFixes(ovC, sc, { '206:0': '-0.001' })[0].includes('«0.0017»'));
+
+    /* D. Хоосон нүдэнд ЗӨВХӨН ноорог (−0.0017, урьд илгээгээгүй) — нүдийг хоосон болгоно */
+    const fD = describeNegFixes(ovB, sc, { '206:0': sent });
+    assert.ok(fD[0].endsWith('энэ нүдийг хоосон болгоно уу'), `хоосон: ${fD[0]}`);
+
+    /* E. Хувийн хэсэг сөрөг (мөрийн Обьёмгүй, `%`) — ерөнхий текст; Обьёмгүй мөрийн обьёмын хэсэг — тоо (хувь үлдэнэ) */
+    const pr = [row(41, '1', 'A', 0, false, { act: [0.4, null] }), row(42, '2', 'B', 0, false, { obyem: [2, null], act: [0.3, null] })];
+    const ovE = overlaySubmission(pr, inc([['41:0', '%-50'], ['42:0', '-5']]), sc, nBld);
+    assert.deepEqual(ovE.negKeys, ['41:0', '42:0']);
+    assert.equal(negFixOf(ovE.rows[0], 0, true, '%-50'), null, 'хувийн хэсэг — тоо биш');
+    assert.equal(negFixOf(ovE.rows[1], 0, true, '-5'), '-2', 'обьёмын хэсэг: 2 − 5 → «-2»');
+    assert.equal(negFixOf(ovE.rows[1], 0, true, '-5', 'pct'), null, 'Хувь горимд мөрийн Обьёмгүй — илэрхийлэх аргагүй');
+    const fE = describeNegFixes(ovE, sc, { '41:0': '%-50', '42:0': '-5' });
+    assert.ok(fE[0].endsWith('хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу') && fE[1].includes('«-2»'), fE.join(' | '));
+
+    /* F. Олон нүд — `max`-аас илүүг «… +N» (түлхүүр гэж уншихгүй); ноорог алга (дахин илгээх) бол илгээсэн −50-ийн
+       эсрэг: 5 − 50 = −45 → «45» (нэгтгэхэд −50 + 45 = −5 → нийт 0) */
+    const ovF = overlaySubmission(fresh, inc([['203:0', '-50'], ['204:0', '-9']]), sc, nBld);
+    assert.equal(ovF.negative, 2);
+    const fF = describeNegFixes(ovF, sc, {}, 'obyem', 1);
+    assert.equal(fF.length, 2);
+    assert.ok(fF[0].includes('«45»') && fF[1] === '… +1', fF.join(' | '));
+    assert.equal(overlaySubmission(fresh, inc([['203:0', sumInc('-50', '45')]]), sc, nBld).rows.find((x) => x.oid === 203).obyem[0], 0, '«45» → нийт 0');
+  }
+
+  /* 9f-4. ⚠️ 2026-10-22 (аудит): «Шинэчлэгдсэн огноо» — хожуу нь (`laterAsOf`); хуучин өдрийн хожуу батлалт огноог УХРААХГҮЙ */
+  {
+    const d10 = D('2026-10-10');
+    const d12 = D('2026-10-12');
+    assert.equal(laterAsOf(d10, d12), d12, '10-10-ны илгээлт 10-12-ны архивын огноог ухраахгүй');
+    assert.equal(laterAsOf(d12, d10), d12, 'шинэ огноо урагшилна');
+    assert.equal(laterAsOf(null, d12), d12, 'огноог хөндөөгүй илгээлт — архивынх');
+    assert.equal(laterAsOf(d10, null), d10, 'архив огноогүй — илгээлтийнх');
+    assert.equal(laterAsOf(undefined, undefined), null, 'хоёулаа алга — null (0 БИШ)');
+    /* хуучин дүрэм (`ov.asOf ?? loaded.asOf`) ухрааж байсныг баримтжуулна */
+    const ovOld = overlaySubmission(fresh, inc([['203:0', '1']], { asOf: d10 }), sc, nBld);
+    assert.equal(ovOld.asOf ?? d12, d10, 'хуучин дүрэм — ухарна');
+    assert.equal(laterAsOf(ovOld.asOf, d12), d12, 'шинэ дүрэм — хэвээр');
   }
 
   /* 9g. `staleSubmissionKeys` — inc payload-ын НҮДИЙГ алгасахгүй, огноог шалгасаар */

@@ -1227,7 +1227,15 @@ export async function withdrawAjil(args: {
   oid: number;
   /** Татаж буй хүн — нэвтэрсэн хэрэглэгч (`currentUser`) байх ёстой */
   me: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{
+  ok: boolean;
+  error?: string;
+  /**
+   * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН ба дахин уншилт ч унасан — татагдсан эсэх ТОДОРХОЙГҮЙ. Дуудагч
+   *    (`useAjil.withdrawAjilHere`) мөрүүдийг алдахгүйн тулд тэмдэглэж, дараагийн шалгалтаар (`refreshAjil`) шийднэ.
+   */
+  unsure?: boolean;
+}> {
   /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
   /* ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('addRow')` ХАСАГДСАН — өөрийн илгээлтээ татах нь ЭРХ биш ЭЗЭМШИЛ
      (`huvaariBatlah.withdrawPlan`-ийн ижил дүрэм). Урьд нь зохиогчийн эрх хасагдвал түүний хүлээгдэж буй илгээлтийг
@@ -1248,7 +1256,7 @@ export async function withdrawAjil(args: {
   /* ⚠️ 2026-10-09: батлагч түгжсэн (`decideAjil` шийдвэрээ бичиж буй) үед татахгүй — эс бөгөөс татсан
      төлвийг батлагчийн шийдвэр дарж бичнэ (`AJIL_CLAIM_MARK`-ийн ⚠️). */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
-  if (held) return { ok: false, error: ajilHeldMsg(held.who) };
+  if (held && held.who !== me) return { ok: false, error: ajilHeldMsg(held.who) };
   const curStatus = s(cur[0][F.status]);
   if (curStatus !== AJIL_STATUS.pending) {
     const by = s(cur[0][F.approver]);
@@ -1258,6 +1266,28 @@ export async function withdrawAjil(args: {
         ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
+  }
+  /*
+   * ⚠️ 2026-10-22 (аудит №6): ТҮГЖЭЭ ЭХЛЭЭД (`claimAjil` — `decideAjil`-ийн ижил CAS). Урьд нь дээрх уншилт (түгжээгүй) →
+   *    бичилт л байсан тул батлагч ЯГ тэр завсарт түгжээгээ аваад батлахад хоёр бичилт бие биеэ дарж, зохиогч «Татсан»
+   *    гэж харсан илгээлт «Батлагдсан» болж хуудсанд буух, эсвэл батлагчийн шийдвэр «Татсан»-аар дарагдах боломжтой
+   *    байв (mock harness-ээр давтагдсан). Одоо түгжээтэй үед батлагч (`decideAjil`) ба зохиогч хоёулаа татгалзана;
+   *    татах бичилт тэмдгийг өөрөө арилгана (`reason: null`), унавал тайлна.
+   */
+  const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
+  if (claimErr) return { ok: false, error: claimErr };
+  const release = () => { void releaseAjilClaim({ oid: args.oid, me }); };
+  try {
+    const again = (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0];
+    if (!again) { release(); return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') }; }
+    if (s(again[F.status]) !== AJIL_STATUS.pending) { release(); return { ok: false, error: ajilDecidedMsg(s(again[F.approver]), s(again[F.status])) }; }
+    const h = ajilClaimOf(s(again[F.status]), s(again[F.reason]));
+    if (!h || h.who !== me || h.tab !== TAB) {
+      return { ok: false, error: h ? ajilHeldMsg(h.who) : tr('Таны түгжээний хугацаа дууссан — юу ч бичигдсэнгүй. Дахин оролдоно уу.') };
+    }
+  } catch (e) {
+    release();
+    return { ok: false, error: String((e as Error).message || e) };
   }
   const attrs: Attrs = {
     [F.oid]: args.oid,
@@ -1270,10 +1300,34 @@ export async function withdrawAjil(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) { release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
+    /*
+     * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН (`isLostWrite` — timeout · сүлжээ · 5xx) бол «Татсан» серверт суусан
+     *    байж болно. Урьд нь энгийн алдаа буцаадаг тул зохиогчийн мөрүүд хуудсанд буцаж ордоггүй (`withdrawAjilHere`
+     *    зөвхөн `ok`-д буулгадаг), илгээлт нь «Татсан» болсон тул өөр замаар ч сэргэдэггүй — ажил бүрмөсөн алга болдог
+     *    байв. Одоо мөрийг ДАХИН УНШИЖ: «Татсан» → амжилт (мөрүүд буулгагдана); хүлээгдэж буй хэвээр → бичигдээгүй
+     *    (түгжээг тайлж алдаа); уншилт ч унавал `unsure` — дуудагч мөрүүдийг тэмдэглэж дараа шийднэ.
+     */
+    if (isLostWrite(e) || isLostWrite((e as { cause?: unknown } | null)?.cause)) {
+      invalidate('AJIL_BATLAH');
+      try {
+        const back = (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0];
+        const st = back ? s(back[F.status]) : null;
+        if (st === AJIL_STATUS.withdrawn) return { ok: true };
+        if (st === AJIL_STATUS.pending) {
+          release();
+          return { ok: false, error: tr('Татах хүсэлтийн хариу алдагдсан — илгээлт татагдаагүй, хүлээгдсэн хэвээр. Дахин оролдоно уу.') };
+        }
+        return { ok: false, error: back ? ajilDecidedMsg(s(back[F.approver]), st) : tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+      } catch (e2) {
+        console.warn('[selbe] нэмэлт ажил татах хариу алдагдсан — дахин уншиж чадсангүй:', e2);
+        return { ok: false, unsure: true, error: tr('Татах хүсэлтийн хариу алдагдсан — татагдсан эсэх тодорхойгүй. Мөрүүдийг энэ компьютерт хадгалав; хуудсаа шинэчлэхэд шийдэгдэнэ.') };
+      }
+    }
+    release();
     return { ok: false, error: String((e as Error).message || e) };
   }
 }

@@ -26,7 +26,7 @@ import { loadFillPkgProgress, loadHeadline, loadHousing } from '@/lib/live';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
-import { loadFinData } from '@/modules/Finance';
+import { loadFinData, typePhysNow, INFRA_TYPE } from '@/modules/Finance';
 /* ⚠️ 2026-09-10: IPC муруйн эх — HO хүснэгтийн БҮХ мөр (`ipcByMonth`-ийн тайлбарыг үз) */
 import { loadHoRows } from '@/lib/ipc';
 import { aggregateMonths } from '@/modules/PkgProg';
@@ -40,6 +40,8 @@ import {
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
   PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  /* ⚠️ 2026-10-22 (аудит): бүсийн полигон дарахад КАНОНИК бүс (`zoneCanon`) — `pick`-ийн ⚠️ */
+  ZONE_FIELDS, ZONE_LAYER, zoneCanon,
   /* ⚠️ 2026-09-15: чартын сонголтыг ГАЗРЫН ЗУРАГТАЙ холбоно — багцын
      нэр (`bagts`) → тухайн багцын давхаргууд. `pkgKeyOf` нь `bagtsKey` БИШ:
      «Багц 1-4» гэсэн ДИАПАЗОН бичиглэлийг `''` болгож, бодит «Багц 14»-ийн
@@ -342,8 +344,15 @@ export function GeneralDash({
     /* ⚠️ «Төсөв, гэрээлсэн дүн»-гийн орон сууцны хороолол ба «Төслийн
        гүйцэтгэл»-ийн орон сууцны барилга угсралт — НЭГ тоо (`housingNow`). */
     if (housingNow != null) m.set('ОРОН СУУЦНЫ ХОРООЛОЛ', housingNow.pct);
+    /* ⚠️ 2026-10-22 (аудит): «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» — ӨӨРИЙН батлагдсан биет хувь (`Finance.typePhysNow`,
+       удирдлагын тайлантай нэг функц). Урьд нь `pkgPct` (блоктой 7 багц) л байсан тул «Гүйцэтгэл хэмжигдээгүй»
+       гардаг байв (5.1 · 5.2 · 7.1 батлагдсан хувьтай), харин тэдний хувь «орон сууц»-ны тоонд холилдож байв. */
+    if (finD.state === 'ready' && cf.state === 'ready') {
+      const inf = typePhysNow(finD.data, cf.data, INFRA_TYPE);
+      if (inf) m.set(INFRA_TYPE, inf.pct);
+    }
     return m;
-  }, [housingNow]);
+  }, [housingNow, finD, cf]);
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlanInScope, cfTotal, grainOf(period), period, ipcByMonth,
@@ -638,10 +647,15 @@ export function GeneralDash({
     [BLOCK_LAYER]: houseWhere,
   }), [parcelWhere, houseWhere]);
 
-  const pick = useCallback((attrs: Record<string, unknown> | null) => {
+  /* ⚠️ 2026-10-22 (аудит): БҮСИЙН ПОЛИГОН дарахад КАНОНИК бүс (`zoneCanon`). Урьд нь `ZONE_ID`-г (бүсийн давхаргад
+     ТИЙМ ТАЛБАР БАЙХГҮЙ — `RefName_1`, «E-5-1» гэх мэт түүхий бичиглэл) түүхийгээр нь тавьдаг тул бүс дарахад юу ч
+     болохгүй, бусад давхаргаас ирсэн «Багц -1» мэт бичиглэл чиптэй (каноник «Багц-1») таарахгүй байв. Бусад
+     давхарга (барилга г.м.) `ZONE_ID`-аараа хэвээр, мөн каноник болгоно. */
+  const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     if (!attrs) return;
-    const zid = String(attrs[ZONE_FIELD] ?? '').trim();
-    if (zid && zid !== ZONE_NONE.trim()) setZone(zid);
+    const raw = layerId === ZONE_LAYER.id ? attrs[ZONE_FIELDS.id] : (attrs[ZONE_FIELD] ?? attrs[ZONE_FIELDS.id]);
+    const zid = zoneCanon(raw);
+    if (zid && zid !== zoneCanon(ZONE_NONE)) setZone(zid);
   }, [setZone]);
 
   return (

@@ -114,6 +114,15 @@ console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLa
     assert.equal(by['Багц 5'].gap, null);
     assert.equal(by['Багц 5'].actual, 10);
   });
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг дүгнэхгүй — gap/level null, хамралтыг буцаана */
+  ok('хамралт < 95% → gap/level null, coverage буцаана; ≥ 95% → хэвийн', () => {
+    const ms = new Map([['Б', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]], ['В', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]]]);
+    const lg = { 'Б': { month: '2026-09', planned: 8.6, actual: 20, gap: -11.4, coverage: 8.6 }, 'В': { month: '2026-09', planned: 40, actual: 20, gap: 20, coverage: 100 } };
+    const k2 = (m) => [...ms.entries()].find(([, v]) => v === m)?.[0];
+    const r2 = Object.fromEntries(pkgPlanOf(ms, { ...deps, lagOf: (m) => lg[k2(m)] ?? null, isHousing: () => true }).map((r) => [r.bagts, r]));
+    assert.deepEqual([r2['Б'].gap, r2['Б'].level, r2['Б'].coverage, r2['Б'].planned], [null, null, 8.6, 8.6], 'дүгнэхгүй, тоо хэвээр');
+    assert.deepEqual([r2['В'].gap, r2['В'].level, r2['В'].coverage], [20, 'red', 100]);
+  });
   ok('хэмжилтгүй ба хуваарьгүй багц мөр БОЛОХГҮЙ (null ≠ 0); хамгийн хоцорсон эхэнд', () => {
     assert.equal(by['Багц 3'], undefined);
     assert.deepEqual(rows.map((r) => r.bagts), ['Багц 1', 'Багц 4', 'Багц 2', 'Багц 5']);

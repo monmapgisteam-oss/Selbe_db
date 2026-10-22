@@ -41,6 +41,8 @@ import { grantHolds } from '@/lib/aclGrid';
 import { reviewerClashes } from '@/lib/chanarMs';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
@@ -102,6 +104,7 @@ export function ChanarAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        absent: portalMissing(a.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
@@ -112,7 +115,8 @@ export function ChanarAcl() {
   /** Багц бүрийн гацаа — нэг удаа тооцоод мөр, нүд хоёуланд */
   const state = new Map(PKG_GROUPS.map((group) => {
     /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) гацааны шалгуурт тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
-    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone).map((h) => h.user)])) as Record<ChanarRole, string[]>;
+    /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
+    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone && !h.absent).map((h) => h.user)])) as Record<ChanarRole, string[]>;
     const authors = by.author;
     /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх.
        ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, `erhOverview.noOther` ба ScopedAclPanel

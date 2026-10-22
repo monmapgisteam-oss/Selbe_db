@@ -5,7 +5,9 @@
  */
 import { Fragment, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
-import { parseInc, type SheetRow } from "../bagtsSheet";
+import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
+/* ⚠️ 2026-10-22 (аудит): сөрөг нийтийн нэг дүрэм — хянагч (`hyanaltDetail`), «Илгээх» (`FillNew`) ба энэ хүснэгт */
+import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
 import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
 import { PvCell } from "./PvCell";
@@ -244,6 +246,35 @@ export function FillRows({
                       const negTot = incAmt != null ? (prevV ?? 0) + incAmt : null;
                       const negNow = dirty && negTot != null && incAmt != null
                         && negTot < -1e-9 * Math.max(1, Math.abs(prevV ?? 0), Math.abs(incAmt));
+                      /* ⚠️ 2026-10-22 (аудит): ИЛГЭЭСЭН (буцаагдсан/хянагдаж буй) нүдний нийт СӨРӨГ — ноорогийн биш, давхарлалтаас
+                         (`sheetFrame.negTotalAt`). Урьд нь зөвхөн бичих агшинд улаан болдог тул буцаагдсан илгээлтийн сөрөг нүд
+                         энгийн «өөрчлөгдсөн» мэт харагдаж, гүйцэтгэгч юу бичихээ мэддэггүй байв. */
+                      const negSent = !dirty && negTotalAt(r, bi);
+                      /* ⚠️ 2026-10-22 (аудит): нийтийг 0 болгох утга — бичсэн тоо ноорогийг ОРЛОНО (`useCellEdit.commit`) тул
+                         «ноорогүй нийт»-ийн эсрэг тоо, БҮТЭН нарийвчлалаар (дэлгэц 3 оронтой: −0.0017 → «−0.002»; харагдсаныг
+                         бичвэл 0 болохгүй). Буцаагдсан илгээлтэд «хоосон үлдээ» БУРУУ — өмнө илгээсэн хасалт үлддэг
+                         (`mergeSubmission` нийлүүлдэг). `null` — хувийн хэсэг / обьёмоор илэрхийлэх аргагүй (ерөнхий текст). */
+                      const hasF = !!sc.obyem[bi];
+                      const negFix = negNow
+                        ? hasF && (fillMode === "obyem" || volR != null)
+                          ? negFixText(fillMode === "pct" ? (r.obyem[bi] ?? 0) / (volR as number) : (r.obyem[bi] ?? 0), fillMode === "pct")
+                          : null
+                        : negSent ? negFixOf(r, bi, hasF, undefined, fillMode) : null;
+                      /** Сөрөг нийт — БҮТЭН нарийвчлалаар (обьём, эсвэл хувийн хэсэг сөрөг бол хувиар) */
+                      const negShow = negNow && negTot != null
+                        ? fillMode === "pct" ? `${fmtInc({ n: negTot * 100, p: 0 }) || "0"}%` : fmtInc({ n: negTot, p: 0 }) || "0"
+                        : (r.obyem[bi] ?? 0) < 0
+                          ? fmtInc({ n: r.obyem[bi] as number, p: 0 }) || "0"
+                          : `${fmtInc({ n: (r.act[bi] ?? 0) * 100, p: 0 }) || "0"}%`;
+                      const negTip = !(negNow || negSent)
+                        ? ''
+                        : view
+                          ? tr('Нийт сөрөг ({0}) — ийм нүдийг зөвшөөрөх боломжгүй; гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү.', negShow)
+                          : negFix == null
+                            ? tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу.', negShow)
+                            : negFix === ''
+                              ? tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Энэ нүдийг хоосон болгоно уу.', negShow)
+                              : tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Нийтийг 0 болгохын тулд энэ нүдэнд «{1}» гэж бичнэ үү.', negShow, negFix);
                       const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
                       /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
@@ -274,7 +305,12 @@ export function FillRows({
                       const okLock = !view && backChg.has(bk) && backOk.has(bk);
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
-                        if (locked) return changed && view?.onCell?.(i, b);
+                        /* ⚠️ 2026-10-22 (аудит): зөвшөөрөл татгалзвал (нийт сөрөг — `Guitsetgel.toggleOk`) шалтгааныг хэлнэ */
+                        if (locked) {
+                          const why = changed ? view?.onCell?.(i, b) : undefined;
+                          if (why) say(why);
+                          return;
+                        }
                         if (noEdit)
                           return say(
                             /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
@@ -349,8 +385,8 @@ export function FillRows({
                                  ⚠️ 2026-10-07: түлхүүр нь `key` (`cellKey(oid, ИНДЕКС)`) — урьд нь `bk` (`oid:ШОШГО`)
                                     хайдаг тул цэнхэр/улаан тодруулга ХЭЗЭЭ Ч гардаггүй байв. */
                               (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : "") +
-                              /* ⚠️ 2026-10-22: нийт сөрөг болох нэмэлт — дээрх `negNow`-ийн ⚠️ */
-                              (negNow ? " negTot" : ""),
+                              /* ⚠️ 2026-10-22: нийт сөрөг болох нэмэлт — дээрх `negNow`-ийн ⚠️; илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) */
+                              (negNow || negSent ? " negTot" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
@@ -368,7 +404,9 @@ export function FillRows({
                             if (locked) {
                               if (changed && (e.key === "Enter" || e.key === " ")) {
                                 e.preventDefault();
-                                view?.onCell?.(i, b);
+                                /* ⚠️ 2026-10-22 (аудит): татгалзлын шалтгаан (`open`-ийн ⚠️) */
+                                const why = view?.onCell?.(i, b);
+                                if (why) say(why);
                               }
                               return;
                             }
@@ -378,10 +416,8 @@ export function FillRows({
                             }
                           }}
                           title={
-                            /* ⚠️ 2026-10-22: нийт сөрөг — хамгийн ЭХЭНД (илгээгдэхгүй шалтгаан) */
-                            (negNow && negTot != null
-                              ? tr('Нийт сөрөг болно ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Хасалтаа устгаж хоосон үлдээнэ үү.', fmtU(negTot)) + '\n'
-                              : '') +
+                            /* ⚠️ 2026-10-22: нийт сөрөг — хамгийн ЭХЭНД (илгээгдэхгүй шалтгаан); аудит: ЯГ бичих тоог хэлнэ (`negTip`) */
+                            (negTip ? negTip + '\n' : '') +
                             /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
                             (pastePrev?.rej.has(key) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(key) ?? '') + '\n' : '') +
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
@@ -396,7 +432,10 @@ export function FillRows({
                               : changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
-                                : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
+                                /* ⚠️ 2026-10-22 (аудит): хянагчид сөрөг нүд зөвшөөрөгдөхгүй — «дарж зөвшөөрнө үү» гэж хэлэхгүй (`negTip`) */
+                                : negSent && view
+                                  ? ''
+                                  : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
                               : r.group
                               ? RO.groupAct
                               : !canVol

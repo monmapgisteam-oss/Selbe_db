@@ -49,7 +49,8 @@ export function zoneCsv(rows: Row[], mode: Mode, ind: Indicator, indicators: rea
   const header = [
     tr('Байр'), tr('Бүс'), tr('Ангилал'),
     mode === 'urban' ? tr('Оноо') : tr('Оноо «{0}»', ind.short),
-    tr('Хот төлөвлөлтийн оноо'), tr('Оршин суугч'), tr('Өрх'), tr('Талбай (га)'),
+    /* ⚠️ 2026-10-22 (аудит): хэмжсэн жингийн хувь — оноо гарсан/гараагүйн шалтгаан (`MapRow.coverage`) */
+    tr('Хот төлөвлөлтийн оноо'), tr('Хэмжсэн жин (%)'), tr('Оршин суугч'), tr('Өрх'), tr('Талбай (га)'),
     ...indicators.flatMap((i) => [`${i.short}${unitOf(i)}`, tr('{0} оноо', i.short)]),
   ];
   const round = (v: number | null | undefined, d: number) =>
@@ -61,6 +62,7 @@ export function zoneCsv(rows: Row[], mode: Mode, ind: Indicator, indicators: rea
        англи горимд холимог (англи толгой · монгол ангилал) гардаг байв (`zoneTypeLabel`-ийн ⚠️) */
     return [
       ranks[k], r.id, zoneTypeLabel(r.type), round(vals[k], 1), round(r.urban, 1),
+      r.coverage == null ? null : round(r.coverage * 100, 0),
       round(r.residentPop, 0), round(r.households, 0), round(r.areaHa, 2),
       ...indicators.flatMap((i) => [round(actual[i.id], Math.max(0, i.decimals)), round(r.parts[i.id]?.score, 1)]),
     ];

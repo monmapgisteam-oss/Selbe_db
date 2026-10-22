@@ -510,7 +510,8 @@ function Submitted({
   reloadKey?: number;
   /** Зөвшөөрсөн нүднүүд — эцэг (`Item`) эзэмшинэ: товч түүнд байна. */
   ok?: Set<string>;
-  onCell?: (row: number, block: string) => void;
+  /** ⚠️ 2026-10-22 (аудит): мөр буцаавал татгалзлын ШАЛТГААН (сөрөг нийт — `Item.toggleOk`); хүснэгт түүнийг харуулна */
+  onCell?: (row: number, block: string) => string | void;
   /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
   onChanges?: (c: Change[] | null) => void;
   /** Илгээлтийн агшин (`payload.at`) — эцэг `apply`-д `subAt` болгон дамжуулна (2026-09-24). */
@@ -569,6 +570,9 @@ function Submitted({
   /** Өөрчлөгдсөн нүд: `${мөр}:${блок}` — бөглөх хуудсанд улаанаар тэмдэглэнэ. */
   /** Хэдийг нь зөвшөөрсөн — толгойд харуулна. */
   const okCount = (data?.changes ?? []).filter((c) => ok?.has(`${c.row}:${c.block}`)).length;
+  /** ⚠️ 2026-10-22 (аудит): ЗӨВШӨӨРЧ БОЛОХ нүд — нийт сөрөг (`Change.neg`) нь хэзээ ч ногоон болохгүй тул «бүгдийг ногоон»
+      товч тэднийг тоолж үүрд харагдахгүй (`Item.onOkAll` тэднийг алгасна) */
+  const okable = (data?.changes ?? []).filter((c) => !c.neg).length;
   const changedKeys = useMemo(
     () => new Set((data?.changes ?? []).map((c) => `${c.row}:${c.block}`)),
     [data],
@@ -666,16 +670,16 @@ function Submitted({
             {/* ⚠️ ТУСДАА ТОВЧ (2026-09-06) — өөрчлөгдсөн нүдний тоолуурын
                 ХАЖУУД, шийдвэрийн товчнуудаас ТУСГААРЛАСАН. Зөвхөн
                 тэмдэглэгээ тавина: аль ч шатны шийдвэрийг ГАРГАХГҮЙ. */}
-            {onOkAll && okCount < data.changes.length && (
+            {onOkAll && okCount < okable && (
               <>
                 {' · '}
                 <button
                   type="button"
                   className={s.okAllBtn}
                   onClick={onOkAll}
-                  title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.', String(data.changes.length - okCount))}
+                  title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.', String(okable - okCount))}
                 >
-                  {tr('✓ бүгдийг ногоон болгох ({0})', String(data.changes.length - okCount))}
+                  {tr('✓ бүгдийг ногоон болгох ({0})', String(okable - okCount))}
                 </button>
               </>
             )}
@@ -724,9 +728,10 @@ function Submitted({
               {(data.negCells?.length ?? 0) > 0 && <div>{data.negCells!.join('; ')}</div>}
             </div>
           )}
+          {/* ⚠️ 2026-10-22 (аудит): «хуучин → шинэ» — архивт БИЧИГДЭХ огноо (`laterAsOf`: хуучин өдрийн илгээлт ухраахгүй) */}
           {data.asOfChanged && (
             <div className={s.subWarn}>
-              {tr('«Шинэчлэгдсэн огноо» өөрчлөгдсөн — батлахад БҮХ мөрийн төлөвлөгөөт гүйцэтгэл дахин бодогдоно.')}
+              {tr('«Шинэчлэгдсэн огноо» өөрчлөгдөнө ({0} → {1}) — батлахад БҮХ мөрийн төлөвлөгөөт гүйцэтгэл дахин бодогдоно.', data.asOfFrom ?? '—', data.asOfTo ?? '—')}
             </div>
           )}
           {data.dateChanges.length > 0 && (
@@ -1097,7 +1102,21 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   }, [recheckSeed, curOkRaw, changes, okRows, remapped, subAt, okWrittenAt]);
   const seed = seedRes.keys;
   const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(null);
-  const okKeys = okOv && okOv.key === seedKey ? okOv.keys : seed;
+  /**
+   * ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ НҮД (`Change.neg`) ХЭЗЭЭ Ч ЗӨВШӨӨРӨГДӨХГҮЙ — ногоон тэмдэг (товшилт · «бүгдийг
+   *    ногоон» · дээд шатны буцаалтын жагсаалт) тэдэнд суухгүй, `okCells`-д ч бичигдэхгүй. Урьд нь хянагч сөрөг нүдийг
+   *    ногоон болгож буцаахад гүйцэтгэгчийн талд тэр нүд түгжигдэж (`FillNew.okLockAt`), харин «Илгээх» сөрөг нүдээр
+   *    хаагддаг тул гүйцэтгэгч засах ч, илгээх ч боломжгүй гацдаг байв.
+   */
+  const negSet = useMemo(
+    () => new Set((changes ?? []).filter((c) => c.neg).map((c) => `${c.row}:${c.block}`)),
+    [changes],
+  );
+  const okKeys0 = okOv && okOv.key === seedKey ? okOv.keys : seed;
+  const okKeys = useMemo(
+    () => (negSet.size ? new Set([...okKeys0].filter((k) => !negSet.has(k))) : okKeys0),
+    [okKeys0, negSet],
+  );
   /**
    * ⚠️ 2026-10-12 (дарааллын аудит, №4): ДООШ БУЦААХ (`recheck('back')`) үед `Zovshoorson_nud`-д юу дамжуулах вэ.
    *    Дээд шатны буцаалтаар бичигдсэн жагсаалт нь АНХДАГЧ (seed): дахин шалгагч нэг ч нүд хөндөөгүй
@@ -1110,7 +1129,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const recheckOkArg = (): string[] | undefined => {
     if (changes == null) return [];
     const untouched = !okOv || okOv.key !== seedKey;
-    if (untouched && seedRes.fresh) return undefined;
+    /* ⚠️ 2026-10-22 (аудит): дээд шатны жагсаалтад СӨРӨГ нүд (`negSet`) байвал ХЭВЭЭР дамжуулахгүй — сөрөггүй жагсаалтыг
+       ил бичнэ (`okKeys` шүүгдсэн); эс бөгөөс тэр нүд гүйцэтгэгчид «зөвшөөрөгдсөн» (түгжээтэй) болж очдог байв. */
+    const seedNeg = [...seed].some((k) => negSet.has(k));
+    if (untouched && seedRes.fresh && !seedNeg) return undefined;
     return toOkRefs(okKeys, okRows);
   };
   const setOkKeys = useCallback((upd: Set<string> | ((prev: Set<string>) => Set<string>)) => {
@@ -1141,15 +1163,20 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   }, [subAt, setOkKeys]);
   /** `Submitted`-ийг дахин ачаалуулах тоолуур — «агуулга өөрчлөгдсөн» үед */
   const [subReload, setSubReload] = useState(0);
-  const toggleOk = useCallback((row: number, block: string) => {
+  /* ⚠️ 2026-10-22 (аудит): сөрөг нийттэй нүдийг (`negSet`) ногоон болгохгүй — татгалзлын шалтгааныг буцаана, хүснэгт
+     (`FillRows`) түүнийг харуулна. Батлах товч `negBlocks`-оор аль хэдийн хаалттай; энэ нь «Буцаах»-ын `okCells`-ийг хамгаална. */
+  const toggleOk = useCallback((row: number, block: string): string | undefined => {
+    const k = `${row}:${block}`;
+    if (negSet.has(k))
+      return tr('Энэ нүдний нийт сөрөг (суурь утгаас их хасалт) — зөвшөөрөх боломжгүй. Гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү (буцааж болно).');
     setOkKeys((prev) => {
       const n = new Set(prev);
-      const k = `${row}:${block}`;
       if (n.has(k)) n.delete(k);
       else n.add(k);
       return n;
     });
-  }, [setOkKeys]);
+    return undefined;
+  }, [setOkKeys, negSet]);
   /** Хараахан зөвшөөрөөгүй = асуудалтай гэж үзэх өөрчлөлтүүд */
   const bad = (changes ?? []).filter((c) => !okKeys.has(`${c.row}:${c.block}`));
   const allOk = changes != null && changes.length > 0 && bad.length === 0;
@@ -1527,7 +1554,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
             onOkAll={isSuper && mine && reviewing
-              ? () => setOkKeys(new Set((changes ?? []).map((c) => `${c.row}:${c.block}`)))
+              /* ⚠️ 2026-10-22 (аудит): сөрөг нийттэй нүдийг (`Change.neg`) алгасна — `negSet`-ийн ⚠️ */
+              ? () => setOkKeys(new Set((changes ?? []).filter((c) => !c.neg).map((c) => `${c.row}:${c.block}`)))
               : undefined}
           />
           <History cycles={work.cycles} stage={stage} />

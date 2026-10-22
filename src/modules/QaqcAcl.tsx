@@ -46,6 +46,8 @@ import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { isCodeSuper, roleForUser } from '@/lib/services';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын «порталд алга» тэмдэг (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 export function QaqcAcl() {
@@ -104,6 +106,7 @@ export function QaqcAcl() {
         user: r.user,
         viaAll: held === 'all',
         gone: !known.has(r.user),
+        absent: portalMissing(r.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(r.user) === 'super',
         failed: failed.has(r.user),

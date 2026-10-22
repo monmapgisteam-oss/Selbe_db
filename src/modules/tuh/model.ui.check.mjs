@@ -268,6 +268,29 @@ console.log('\n8. Зурагдах (SSR)');
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
     assert.ok(/<details[^>]*>\s*<summary><h2>Зураг<\/h2>/.test(hd));
   });
+
+  /* ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн ХАМРАЛТ — муруй 70%-д дуусдаг (огноогүй ажлын жин 30%) */
+  console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');
+  ok('БАГЦ1: хамралт 70 → төлөв гэрээний төлөвлөгөөгөөр, SPI (гүйцэтгэгч) «—», hero-д «хуваарь 70.0% хамарсан»', () => {
+    assert.equal(h1.planCoverage, 70);
+    assert.notEqual(h1.statusBasis, 'contractor', 'дутуу хуваарьтай гүйцэтгэгчийн зөрүүгөөр төлөв тогтоохгүй');
+    assert.equal(h1.ev.spiContractor, null, 'хэт бага төлөвлөгөөнд хуваасан SPI «түрүүлсэн» мэт гарахгүй');
+    near(h1.planContractor, 15, 'төлөвлөгөөний ТОО хэвээр харагдана');
+    assert.equal(m.hero.planCoverage, 70);
+    assert.ok(html.includes('хуваарь 70.0% хамарсан'), 'hero — гүйцэтгэгчийн төлөвлөгөөний хажууд хамралт');
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('хуваарь 70.0% хамарсан — хуваарь дутуу — дүгнэхгүй'), 'дэлгэрэнгүй — дүгнэхгүй гэж ил');
+  });
+  ok('хамралт 100% — SPI (гүйцэтгэгч) бодогдоно, hero-д тэмдэглэлгүй', () => {
+    const full = [{ label: '2026-07', pct: 10, vol: null }, { label: '2026-08', pct: 41, vol: null }, { label: '2026-12', pct: 100, vol: null }];
+    const mf = buildModel(input({ plan: { ...plan, months: full, byBagts: new Map([['БАГЦ1', full]]) } }));
+    const r = mf.rows.find((x) => x.p.key === 'БАГЦ1');
+    assert.equal(r.planCoverage, 100);
+    assert.ok(r.ev.spiContractor != null, 'бүрэн хуваарьт SPI');
+    assert.equal(mf.hero.planCoverage, 100);
+    const hf = renderToStaticMarkup(React.createElement(Overview, { m: mf, contractTotal: null, onOpen: noop }));
+    assert.ok(!hf.includes('хамарсан'), 'бүрэн хуваарьт хамралтын тэмдэглэл нэмэхгүй');
+  });
 }
 
 assert.equal(monthKey(Date.UTC(2026, 4, 31, 16)), '2026-06', 'TZ = УБ');

@@ -56,7 +56,11 @@ import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAc
 import {
   purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
-import { allAclReady, heldByText, pendingHeldBy, subscribeAclPending } from '@/lib/aclOps';
+import {
+  allAclReady, flowWaitingFor, flowWaitingText, heldByText, pendingHeldBy, removalBlockingText, subscribeAclPending,
+} from '@/lib/aclOps';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — самбар нээгдэхэд нэг удаа тулгана (`portalPresence`-ийн ⚠️) */
+import { checkPortalPresence, subscribePortalPresence } from '@/lib/portalPresence';
 import { isDerivedCap } from '@/lib/aclRoleCaps';
 import { PlainCapAcl } from '@/modules/PlainCapAcl';
 import { CapOrphanNote } from '@/modules/CapOrphanNote';
@@ -266,7 +270,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const reloadRemote = useCallback(() => {
     setRemoteBusy(true);
     void initRemote(false, true)
-      .then((ok) => { setRemoteOk(ok); setUsers(listUsers()); })
+      .then((ok) => {
+        setRemoteOk(ok);
+        setUsers(listUsers());
+        /* ⚠️ 2026-10-22 (аудит): хүснэгтийн аккаунтыг Enterprise порталтай НЭГ удаа тулгана (нэр бүрийг сешнд нэг удаа,
+           зөвхөн уншина, fail-open) — порталд алга хүн гацааны шалгуурт эзэн гэж тоологдохоо болино (`portalPresence`) */
+        void checkPortalPresence(listUsers().map((u) => u.username));
+      })
       .catch(() => setRemoteOk(false))
       .finally(() => setRemoteBusy(false));
   }, []);
@@ -461,6 +471,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeAclPending(() => setAclN((n) => n + 1)), []);
   /* ⚠️ 2026-09-25: «Төрлөөр тохируулах»-ын хэрэглэгчийн түгжээ — карт хаагдаж/нээгдэнэ */
   useEffect(() => subscribeTypeLock(() => setAclN((n) => n + 1)), []);
+  /* ⚠️ 2026-10-22 (аудит): порталын тулгалт дуусахад — «порталд алга» тэмдэг ба гацаа бүх хуудсанд шинэчлэгдэнэ */
+  useEffect(() => subscribePortalPresence(() => setAclN((n) => n + 1)), []);
   /* ⚠️ 2026-09-25: ноорогтой хэрэглэгчдийг бөөнөөр хэрэгжүүлэлтэд мэдэгдэнэ — тэднийг
      алгасна (`roleTypeApply.setTypeDraftUsers`); эс бөгөөс дараагийн «Хадгалах»
      ХУУЧИН ноорогоор загварын харагдацыг дарна. */
@@ -767,8 +779,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
          текстэд залгана — шинэ асуулт нэмэхгүй. Зохиогч устгагдвал тэр илгээлтийг хэн ч татахгүй (батлагч буцаана),
          тэмдэг/түгжээ нь эзэнгүй үлдэнэ. Шалгаж чадаагүй бол ч хэлнэ (мэдэхгүй ≠ 0). Шийдвэр админых — хориглохгүй. */
       const gone = [...drafts].filter(([, d]) => d.remove).map(([k]) => k);
-      const held = await pendingHeldBy(gone);
-      const extra = held == null || held.length ? `\n\n${heldByText(held)}` : '';
+      /* ⚠️ 2026-10-22 (аудит): + ажил ГАЦААХ шинэ цоорхой (хүснэгтийн нүдний хасалттай ИЖИЛ шалгалт — `removalBlockingText`)
+         ба тэр хүний урсгалын шатанд хүлээгдэж буй ГҮЙЦЭТГЭЛ (`flowWaitingFor`). Урьд нь цорын ганц инженерийг устгахад
+         21 багцын урсгал чимээгүй тасарч, шатанд нь хүлээж буй илгээлт ч тоологддоггүй байв. Хориглохгүй — админ шийднэ. */
+      const [held, flowHeld] = await Promise.all([pendingHeldBy(gone), flowWaitingFor(gone)]);
+      const parts = [
+        removalBlockingText(gone),
+        flowHeld == null || flowHeld.length ? flowWaitingText(flowHeld) : '',
+        held == null || held.length ? heldByText(held) : '',
+      ].filter(Boolean);
+      const extra = parts.length ? `\n\n${parts.join('\n\n')}` : '';
       if (!window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)) + extra)) return;
     }
     setSaving(true);

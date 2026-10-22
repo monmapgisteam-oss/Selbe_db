@@ -91,7 +91,7 @@ import { ColGrip } from './huvaari/ColGrip';
 import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
-import { useAjil } from './huvaari/useAjil';
+import { orphanAddsMsg, useAjil } from './huvaari/useAjil';
 import {
   backMarkMapOf, buildPayloadOf, conflictMsg, conflictText, partialMsg, payloadToDrafts, reviewOidsOf, unknownMsg,
 } from './huvaari/payload';
@@ -4259,6 +4259,8 @@ export function Huvaari({
     ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, setAjBack, ajStuck, ajApplied,
     refreshAfterApplied, sendAjil, editAjilHere, saveAjilEdit, cancelAjilEdit,
     withdrawAjilHere, saveEditAdd, addRow, dropAdd,
+    /* ⚠️ 2026-10-22 (аудит №3): эцэггүй нэмэлт мөр — баннер (устгах · бүлэг сонгох) ба илгээх товчны хаалт */
+    ajOrphans, setAddParent,
   } = useAjil({
     pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
     adds, setAdds, setAddsSt, addsStRef,
@@ -5547,28 +5549,11 @@ export function Huvaari({
      орж ирсэн ч андуурахгүй. */
   const effRow = useMemo(() => {
     const grp = lazyCache((r: PlanRow): PlanRow => {
-      /* ⚠️ `r.spans.map((_, b) => effSpan(plan, r.i, b))`-тэй ЯГ ИЖИЛ, гэхдээ дэд модыг НЭГ
-         удаа гүйнэ (блок бүрд `leafChildren` дахин үүсгэхгүй): навч хүүхдийн блок бүрийн MIN
-         эхлэх / MAX дуусах; хуваарьтай хүүхэдгүй блокт бүлгийн ӨӨРИЙН муж (`effSpan`-ийн дүрэм). */
-      const own = plan[r.i].spans;
-      const lo: (number | null)[] = own.map(() => null);
-      const hi: (number | null)[] = own.map(() => null);
-      const d0 = plan[r.i].depth;
-      for (let k = r.i + 1; k < plan.length && plan[k].depth > d0; k++) {
-        const c = plan[k];
-        if (c.group) continue;
-        for (let b = 0; b < own.length; b++) {
-          const s = c.spans[b];
-          if (!s) continue;
-          if (lo[b] == null || s.start < (lo[b] as number)) lo[b] = s.start;
-          if (hi[b] == null || s.end > (hi[b] as number)) hi[b] = s.end;
-        }
-      }
-      const spans = r.spans.map((_, b) => {
-        const a = lo[b] ?? null;
-        const z = hi[b] ?? null;
-        return a == null || z == null ? own[b] ?? null : { start: a, end: z };
-      });
+      /* ⚠️ 2026-10-22 (аудит №7): ЗУРВАСТАЙ ЯГ НЭГ ЭХ — `effSpan`. Урьд нь энд зөвхөн НАВЧ хүүхдийн MIN/MAX-ыг гараар
+         бодож, огноотой навчгүй дэд бүлгийн ӨӨРИЙН мужийг (2026-10-21-ний `childAgg` дүрэм) ба 2000–2100-аас гадуурх
+         эвдэрсэн огноог алгасах дүрмийг (`deps.saneSpan`) мэддэггүй тул popup-ийн «Бүлгийн муж» зурвасаас өөр муж
+         хэлдэг байв. Кэш (`lazyCache`, бүлэг бүрд нэг удаа) хэвээр — `effSpan` нь дэд модыг блок бүрд нэг гүйнэ. */
+      const spans = r.spans.map((_, b) => effSpan(plan, r.i, b));
       return { ...r, spans, ...aggExtra(plan, r.i, n) };
     });
     /* ⚠️ Бодит огноо · нөөц ч хүүхдээс (2026-09-23, `aggExtra`) — бичигдэхгүй. */
@@ -6442,8 +6427,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             урсгалд. Хүлээгдэж буй илгээлт байхад (`ajSub`) гарахгүй — `submitAjil`
             хоёр дахийг татгалзана. */}
         {canAddRow && !ajSub && adds.length > 0 && (
-          <button type="button" className={h.save} disabled={ajBusy}
-            title={tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
+          /* ⚠️ 2026-10-22 (аудит №3): эцэггүй мөр байвал ХААЛТТАЙ, шалтгаан `title`-д (`useAjil.ajOrphans`-ийн ⚠️) */
+          <button type="button" className={h.save} disabled={ajBusy || ajOrphans.length > 0}
+            title={ajOrphans.length > 0
+              ? orphanAddsMsg(ajOrphans.length)
+              : tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
             onClick={() => void sendAjil()}>
             {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
           </button>
@@ -6841,6 +6829,35 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           {tr('Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', String(ajBack.n), ajBack.by || '—', ajBack.reason || '—')}
           <button type="button" className={h.noteX} onClick={() => setAjBack(null)} aria-label={tr('Хаах')}>×</button>
         </p>
+      )}
+      {/* ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ НЭМЭЛТ МӨР — эцэг бүлэг нь хуудсанд алга тул хүснэгтэд ХАРАГДАХГҮЙ (`insertAdds`
+          алгасдаг) атлаа тоологдож илгээгддэг байв. Энд мөр бүрийг нэрлэж «Устгах» ба одоо байгаа бүлэгт харьяалуулах
+          сонголт өгнө; байх хооронд «Нэмэлт ажил батлуулах» хаалттай (`useAjil.ajOrphans`). */}
+      {!review && canAddRow && ajOrphans.length > 0 && (
+        <div className={h.err} role="alert">
+          {orphanAddsMsg(ajOrphans.length)}
+          <ul>
+            {ajOrphans.map((a) => (
+              <li key={a.oid}>
+                {a.no} · {a.work} ({tr('эцэг: {0}', `${a.parentNo} ${a.parentWork}`.trim() || '—')})
+                {' '}
+                <select className={h.select} value="" disabled={ajBusy}
+                  aria-label={tr('Бүлэг сонгох')}
+                  onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value) setAddParent(a.oid, v); }}>
+                  <option value="">{tr('Бүлэг сонгох…')}</option>
+                  {rows.filter((r) => r.group).map((r) => (
+                    <option key={r.oid} value={r.oid}>{`${'· '.repeat(Math.max(0, r.depth))}${r.no} ${r.work}`.trim()}</option>
+                  ))}
+                </select>
+                {' '}
+                <button type="button" className={h.noteBtn} disabled={ajBusy}
+                  onClick={() => { if (window.confirm(tr('«{0}» мөрийг устгах уу? Батлуулаагүй мөр тул буцаах боломжгүй.', `${a.no} ${a.work}`.trim()))) dropAdd(a.oid); }}>
+                  {tr('Устгах')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {!review && ajApplied && (
         <p className={h.note} role="status">

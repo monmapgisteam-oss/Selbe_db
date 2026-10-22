@@ -25,7 +25,7 @@ import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
-import { describeNegCells, needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
+import { describeNegCells, laterAsOf, needsFrameOcc, negTotalAt, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
@@ -100,6 +100,12 @@ export type Change = {
    *    үүгээр хадгална — жааз солигдох/мөр нэмэгдэхэд индекс гулсдаг.
    */
   rid?: string;
+  /**
+   * ⚠️ 2026-10-22 (аудит): энэ нүдний НИЙТ СӨРӨГ (`sheetFrame.negTotalAt`) — хянагч ХЭЗЭЭ Ч зөвшөөрч (ногоон) болохгүй.
+   *    Урьд нь ногоон болгож буцаахад гүйцэтгэгчийн талд тэр нүд түгжигдэж (`FillNew.okLockAt`), харин «Илгээх» сөрөг
+   *    нүдээр хаагддаг тул гүйцэтгэгч засах ч, илгээх ч боломжгүй гацдаг байв (`Guitsetgel.toggleOk`).
+   */
+  neg?: true;
 };
 
 /** `to − (from ?? 0)`; шинэ утга `null` бол `null` (`null ≠ 0` — «мэдээлэлгүй»). */
@@ -175,8 +181,12 @@ export type Submission = {
    * ⚠️ Энэ нь ганц нүдний засвар БИШ: `computeAll` түүгээр БҮХ мөрийн
    *    төлөвлөгөөт хувийг дахин боддог тул батлахад хуудас бүхэлдээ өөрчлөгдөнө.
    *    Хянагч үүнийг мэдэхгүй батлах ёсгүй.
+   * ⚠️ 2026-10-22 (аудит): батлахад архивт БИЧИГДЭХ огноогоор (`sheetFrame.laterAsOf` — хуучин өдрийн илгээлт огноог
+   *    УХРААХГҮЙ); `asOfFrom` → `asOfTo` (`YYYY-MM-DD`, алга бол `null`) — анхааруулгад «хуучин → шинэ».
    */
   asOfChanged: boolean;
+  asOfFrom?: string | null;
+  asOfTo?: string | null;
   /**
    * Илгээлтийн СҮҮЛИЙН агшин (ms) — хяналтын мөрийн «Компани илгээсэн»
    * огноотой жишихэд.
@@ -319,7 +329,9 @@ async function loadStaged(
     try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр — доорх `unmoved` */ }
   }
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
-  const asOf = ov.asOf ?? loaded.asOf;
+  /* ⚠️ 2026-10-22 (аудит): архивлалттай (`hyanaltStore.archiveSubmission`) НЭГ дүрэм — хожуу нь (`laterAsOf`); урьд нь
+     `ov.asOf ?? loaded.asOf` тул хуучин өдрийн илгээлтийн огноогоор төлөвлөгөөт хувийг бодож, батлахад огноо ухардаг байв */
+  const asOf = laterAsOf(ov.asOf, loaded.asOf);
   /* ⚠️ 2026-10-01: мөр бүрийн тогтвортой танигч (`Change.rid`) — FillNew-ийн `rows`-той ИЖИЛ дараалал */
   const sids = rowSids(ov.rows);
   /*
@@ -415,6 +427,8 @@ async function loadStaged(
     /* Хувийн «юунаас юу» — `blocks`-ийн индексээр (`obyem` өөрчлөгдөөгүй нүдэнд харуулна) */
     const pctFrom: (number | null)[] = [];
     const pctTo: (number | null)[] = [];
+    /** ⚠️ 2026-10-22 (аудит): нийт сөрөг нүд — `blocks`-ийн индексээр (`Change.neg`) */
+    const negs: boolean[] = [];
     for (let b = 0; b < nBld; b += 1) {
       if (colOf[b] < 0) {
         /* ⚠️ ОБЬЁМГҮЙ БЛОК (2026-09-24-ний аудит): `blocks`-д багана байхгүй ч
@@ -439,6 +453,8 @@ async function loadStaged(
           toPct: toA0,
           incPct: deltaOf(fromA0, toA0),
           rid: `${r.oid}|${sids[i]}`,
+          /* ⚠️ 2026-10-22 (аудит): нийт сөрөг — зөвшөөрөгдөхгүй (`Change.neg`-ийн ⚠️) */
+          ...(negTotalAt(r, b) ? { neg: true as const } : {}),
         });
         continue;
       }
@@ -455,6 +471,7 @@ async function loadStaged(
       pctFrom.push(fromA);
       pctTo.push(toA);
       changed.push(touched.has(`${r.oid}:${b}`) && (from !== to || fromA !== toA));
+      negs.push(negTotalAt(r, b));
     }
     changed.forEach((yes, k) => {
       if (!yes) return;
@@ -471,6 +488,7 @@ async function loadStaged(
         inc: deltaOf(before[k], cells[k]),
         incPct: deltaOf(pctFrom[k], pctTo[k]),
         rid: `${r.oid}|${sids[i]}`,
+        ...(negs[k] ? { neg: true as const } : {}),
       });
     });
     return {
@@ -511,7 +529,10 @@ async function loadStaged(
     dateChanges,
     /* ⚠️ Суурьтайгаа ЖИШИНЭ: илгээлт огноог хөндөөгүй бол `null`, ижил утга
        илгээсэн бол өөрчлөлт БИШ. */
-    asOfChanged: ov.asOf != null && ov.asOf !== loaded.asOf,
+    /* ⚠️ 2026-10-22 (аудит): архивт БИЧИГДЭХ огноогоор (`laterAsOf` — хуучин нь ухраахгүй тул өөрчлөлт биш) + «хуучин → шинэ» */
+    asOfChanged: asOf != null && asOf !== loaded.asOf,
+    asOfFrom: loaded.asOf != null ? msToDay(loaded.asOf) : null,
+    asOfTo: asOf != null ? msToDay(asOf) : null,
     subOid,
     subAt: pl.at,
     remapped: ov.remapped,

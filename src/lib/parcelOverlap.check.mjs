@@ -10,7 +10,7 @@
  *  1. Нэг tick-ийн олон дуудлага (багц) ба ганц ганцаар (хуучин зам) — ЯГ ижил OID-ууд.
  *  2. Багцын хүсэлтийн тоо эрс цөөн (барилгын багцууд нэг татлага, нэг огтлолцлын нэгдэл).
  *  3. Дараагийн бүтэн барилгын дуудлага (`allBld`) геометрээ кэшээс авна.
- *  4. Хүрэлцэх (хил дээр) = огтлолцох; салангид объект тоологдохгүй.
+ *  4. ⚠️ 2026-10-22 (аудит): ЗӨВХӨН хүрэлцэх (хил дээр) нь огтлолцол БИШ (урьд «= огтлолцох»); салангид объект тоологдохгүй.
  *  5. Уналт: давхарга унасан дуудлага `failed`-тэй, бүгд унасан нь алдаа — хуучин зан.
  *  6. (2026-10-09) «Бүрэн чөлөөлсөн.» зэрэг ХУВИЛБАР бичиглэл саад БИШ (ганц ба багцын зам).
  *  7. (2026-10-09) Олон хэсэгтэй нэгж талбар: 2-р хэсэг нь эх полигон дотор бол давхцана.
@@ -113,9 +113,10 @@ await ok('OID-ууд багц бүрд ЯГ ижил', () => {
   assert.deepEqual(batch.map((r) => [...r.oids].sort()), single.map((r) => [...r.oids].sort()));
   assert.ok(batch.every((r) => !r.failed), 'уналтгүй');
 });
-await ok('хүлээгдэж буй давхцал: тэгш OID-той барилга, хил дээр хүрэлцсэн 41, дэд бүтэц бүр', () => {
+await ok('хүлээгдэж буй давхцал: тэгш OID-той барилга, дэд бүтэц бүр; хил дээр ЗӨВХӨН хүрэлцсэн 41 — саад БИШ', () => {
   assert.deepEqual(batch[0].oids, [102], 'OID 1 (хол) + 2 (талбар 2)');
-  assert.deepEqual(batch[20].oids, [141], 'хил дээр хүрэлцэх = огтлолцох');
+  assert.deepEqual(batch[20].oids, [], '⚠️ 2026-10-22: хил дээр хүрэлцэх ≠ огтлолцох (урьд [141])');
+  assert.deepEqual(single[20].oids, [], 'ганц зам ч ижил');
   infraIds.forEach((_, j) => assert.deepEqual(batch[21 + j].oids, [145 + j], `дэд бүтэц ${j}`));
 });
 await ok(`хүсэлт: багц ${batchCalls} ↔ ганцаар ${singleCalls}`, () => {
@@ -132,7 +133,8 @@ await ok('allBld: огтлолцол + дэвшигчдийн төлөв (2026-1
   const r = await A.overlapLeftParcels(allBld);
   assert.equal(kinds.geom, g0, 'геометр дахин татагдав');
   assert.equal(calls, 2, `${calls} хүсэлт`);
-  assert.deepEqual([...r.oids].sort(), [...Array.from({ length: 20 }, (_, i) => 102 + 2 * i), 141].sort());
+  /* ⚠️ 2026-10-22: 141 нь зөвхөн хүрэлцдэг — хасагдана */
+  assert.deepEqual([...r.oids].sort(), [...Array.from({ length: 20 }, (_, i) => 102 + 2 * i)].sort());
 });
 
 console.log('\n5. Уналт — хуучин зан');
@@ -202,6 +204,25 @@ await ok('invalidate(PARCEL_LEFT): геометрийн хүсэлт 0, огтл
   assert.ok(kinds.intersect > i0, 'огтлолцол дахин асуугдах ёстой (үр дүнгийн кэш хаягдана)');
   assert.deepEqual(r2.map((r) => r.oids), r1.map((r) => r.oids));
   assert.deepEqual(same.map((r) => r.oids), r1.map((r) => r.oids));
+});
+
+console.log('\n9. ДОТООД огтлолцол — хүрэлцэх ба ерөнхийлөлтийн шуугиан саад биш (2026-10-22, аудит)');
+await ok('хил дагуу шугам · хил давхцсан полигон · 5 см нимгэн давхцал — саад биш; гүн давхцал · ижил дүрс — саад', async () => {
+  /* FID 130: x 600…610, y 0…10. Барилгын мөрүүдийг түр сольж ганц замаар шалгана */
+  const save = bldFeats.splice(0, bldFeats.length);
+  const P = 600;
+  bldFeats.push(
+    { attributes: { OBJECTID: 1 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P, 10], [P, 0], [P - 5, 0]]] } },   // хил давхцсан хөрш
+    { attributes: { OBJECTID: 2 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 0.05, 10], [P + 0.05, 0], [P - 5, 0]]] } }, // 5 см шуугиан
+    { attributes: { OBJECTID: 3 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 2, 10], [P + 2, 0], [P - 5, 0]]] } }, // 2 м давхцал
+    { attributes: { OBJECTID: 4 }, geometry: { rings: sq(P, 0) } },                                                           // ижил дүрс
+    { attributes: { OBJECTID: 5 }, geometry: { rings: [[[P - 20, -20], [P - 20, 30], [P + 30, 30], [P + 30, -20], [P - 20, -20]], [[P, 0], [P + 10, 0], [P + 10, 10], [P, 10], [P, 0]]] } }, // нүх = талбар
+  );
+  const H = await import('./parcelOverlap.ts?interior');
+  const one = async (k) => (await H.overlapLeftParcels([{ layerId: BLD, where: `OBJECTID IN (${k})` }])).oids.filter((id) => id === 130);
+  const got = [await one(1), await one(2), await one(3), await one(4), await one(5)];
+  bldFeats.splice(0, bldFeats.length, ...save);
+  assert.deepEqual(got, [[], [], [130], [130], []], 'хүрэлцэх · шуугиан · гүн · ижил · нүхэн дотор');
 });
 
 console.log(`\n${n} шалгалт ✓`);

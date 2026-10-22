@@ -179,6 +179,84 @@ export type UzReport = {
 
 export type UzAttachment = { id: number; keywords: string; contentType: string };
 
+/** Хавсралт → тайлангийн зургийн лавлагаа (дуудагч `image/*`-ийг шүүнэ; HEIC тэмдэглэгээтэй) */
+export const uzPhotoRef = (a: UzAttachment, url: string): UzPhotoRef => ({
+  url, png: /png/i.test(a.contentType), ...(/hei[cf]/i.test(a.contentType) ? { heic: true } : {}),
+});
+
+/* ═════════════════ Эцэг ↔ хүүхэд мөр (Survey123-ийн repeat хүснэгт) ═════════════════ */
+
+/**
+ * GUID-ийн харьцуулах түлхүүр — хаалт, зай хасаж ТОМ үсгээр.
+ * ⚠️ 2026-10-22 (аудит): Enterprise-ийн GUID талбар `{XXXXXXXX-…}` (том үсэг, хаалттай) гэж буцдаг ч импорт/Survey123
+ *    хаалтгүй эсвэл жижиг үсгээр бичиж болно — тулгалт бичиглэлээс хамаарахгүй байх ёстой.
+ */
+export const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}\s]/g, '').toUpperCase();
+
+/**
+ * ЭЦГИЙН МӨРИЙН ХОЛБООСЫН ТҮЛХҮҮРҮҮД — `uniquerowid`, дараа нь `globalid` (хоосныг хасна; эхнийх нь ҮНДСЭН).
+ * ⚠️ 2026-10-22 (аудит): хүүхэд хүснэгтийн `parentrowid` нь эцгийн `uniquerowid`-ийг заадаг гэж үзэж ЗӨВХӨН түүгээр
+ *    тулгадаг байв. Enterprise руу шилжүүлэхэд «Аюулыг илрүүлэх үзлэг»-ийн 61/61 эцгийн `uniquerowid` NULL болж,
+ *    345/345 илрүүлэлт эцгийн `globalid`-ийг заадаг (амьдаар) тул тайланд НЭГ Ч илрүүлэлт гардаггүй байв. Одоо
+ *    `uniquerowid || globalid` — аль нь таарсан ч нэг эцэгт оноогдоно (`mir.ts`-ийн `mirRowOf` ижил дүрэм).
+ */
+export function parentKeys(r: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const v of [r.uniquerowid, r.globalid ?? r.GlobalID ?? r.GLOBALID]) {
+    const k = guidKey(v);
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+/** Илрүүлэлтийн түвшин → ангилал (өнгө): өндөр = ноцтой · дунд = бага зэргийн · бага, ажиглалт = ажиглалт · зассан = нийцсэн */
+const LEVEL_CLS: Record<string, AnsCls> = { high: 'major', medium: 'minor', low: 'obs', obs: 'obs', fixed: 'conf' };
+
+/**
+ * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ → эцэг бүрийн «Илрүүлсэн аюул» хэсэг (цэвэр функц — `uzlegReport.check`).
+ * Маягт асуултгүй — илрүүлэлт бүр холбоотой хүснэгтийн мөр: асуулт = тайлбар, хариулт = түвшин, блок, арга хэмжээ
+ * тэмдэглэлд. Үр дүнгийн түлхүүр = эцгийн ҮНДСЭН түлхүүр (`parentKeys(p)[0]`).
+ * ⚠️ 2026-10-22 (аудит): (1) `parentrowid` эцгийн АЛЬ Ч түлхүүрт (uniquerowid · globalid) таарна — `parentKeys`-ийн ⚠️;
+ *    (2) илрүүлэлтийн ЗУРАГ = хүснэгтийн (`/1`) мөр бүрийн хавсралт (амьдаар ~900) — урьд нь `photos: []` тул
+ *    тайланд нэг ч зураг ордоггүй байв.
+ */
+export function groupFindings(
+  parents: readonly Record<string, unknown>[],
+  rows: readonly Row[],
+  opts: {
+    title: string;
+    dom?: Map<string, string> | null;
+    atts?: ReadonlyMap<number, UzAttachment[]>;
+    photoUrl?: (oid: number, attId: number) => string;
+  },
+): Map<string, UzSection> {
+  const owner = new Map<string, string>();
+  for (const p of parents) {
+    const ks = parentKeys(p);
+    for (const k of ks) if (!owner.has(k)) owner.set(k, ks[0]);
+  }
+  const out = new Map<string, UzSection>();
+  for (const r of rows) {
+    const key = owner.get(guidKey(r.parentrowid));
+    if (!key) continue;
+    let sec = out.get(key);
+    if (!sec) { sec = { key: 'findings', title: opts.title, score: null, items: [] }; out.set(key, sec); }
+    const level = String(r.f_level ?? '');
+    const blk = r.f_blk === 'other' ? String(r.f_blk_other ?? '') : String(r.f_blk ?? '');
+    const action = r.f_action == null || r.f_action === '' ? [] : [String(r.f_action)];
+    const oid = Number(r.objectid ?? r.OBJECTID);
+    const url = opts.photoUrl;
+    const photos = Number.isFinite(oid) && opts.atts && url
+      ? (opts.atts.get(oid) ?? []).filter((a) => a.contentType.startsWith('image/')).map((a) => uzPhotoRef(a, url(oid, a.id)))
+      : [];
+    sec.items.push({
+      code: `F${sec.items.length + 1}`, q: String(r.f_desc ?? '—'), ans: opts.dom?.get(level) ?? level,
+      cls: LEVEL_CLS[level] ?? 'other', block: blk || null, notes: action, photos, section: opts.title,
+    });
+  }
+  return out;
+}
+
 const two = (n: number) => String(n).padStart(2, '0');
 /** Улаанбаатарын цагийн бүс (UTC+8, зуны цаггүй) — `ceo/workforce.ubDayKey`-ийн дүрэм */
 const UB_OFFSET_MS = 8 * 3_600_000;
@@ -271,7 +349,7 @@ export function buildUzReport(
   const loose = new Map<string, UzPhotoRef[]>();
   for (const a of atts) {
     if (!a.contentType.startsWith('image/')) continue;
-    const ref: UzPhotoRef = { url: photoUrl(a.id), png: /png/i.test(a.contentType), ...(/hei[cf]/i.test(a.contentType) ? { heic: true } : {}) };
+    const ref = uzPhotoRef(a, photoUrl(a.id));
     const kw = a.keywords.trim();
     let best: string | null = null;
     for (const q of answers) {

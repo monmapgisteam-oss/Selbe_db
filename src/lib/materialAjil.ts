@@ -51,21 +51,50 @@ export function canEditMats(user: string | null | undefined, group: string): boo
 }
 
 /**
+ * ГУРВАН ТАЛЫН НИЙЛҮҮЛЭЛТ (⚠️ 2026-10-22, аудит №8) — хуудас ачаалсан үеийн (`base`) жагсаалтаас ЭНЭ хэрэглэгчийн
+ * нэмсэн/хассан нэрсийг серверийн ОДООГИЙН (`fresh`) жагсаалт дээр давхарлана. Нэг ажилд нэг нэр нэг л удаа байх
+ * ОЛОНЛОГ тул хоёр тал ялгаатай нэр нэмэх/хасахад зөрчил үүсэхгүй — нийлүүлэлт үргэлж тодорхой (эсрэг утгагүй):
+ * миний хассан нь хасагдана, бусдын нэмсэн/хассан нь хэвээр, хоёулаа нэмсэн нь нэг удаа. Дараалал — серверийнх, дараа нь
+ * миний шинэ нэрс. Оролтыг өөрчлөхгүй (цэвэр — `materialAjil.check.mjs`).
+ */
+export function mergeMats(base: readonly string[], mine: readonly string[], fresh: readonly string[]): string[] {
+  const b = new Set(base);
+  const m = new Set(mine);
+  const removed = new Set(base.filter((x) => !m.has(x)));
+  const out = parseMats(fresh.join(';')).filter((x) => !removed.has(x));
+  for (const x of mine) if (!b.has(x) && !out.includes(x)) out.push(x);
+  return out;
+}
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((x) => b.includes(x));
+
+/**
  * ХАДГАЛАХ — зөвхөн ӨӨРЧЛӨГДСӨН ажлууд (`des` → нэрс). Хуваарийн хадгалалттай ИЖИЛ хамгаалалт:
  *   1) гүйцэтгэлийн архивлалт / нэмэлт ажлын буулгалт явж байвал бичихгүй (fail-closed);
  *   2) СҮҮЛИЙН жаазыг `strict`-ээр дахин татаж `des`-ээр шинэ `oid` руу зурна;
  *   3) бичихийн яг өмнө (1)-ийг ДАХИН шалгана (дахин татах хэдэн секунд үргэлжилдэг).
- * @returns бичигдсэн мөрийн тоо; шинэ жаазад олдоогүй ажлууд (`lost`) — тэдгээр бичигдээгүй.
+ * @param base ⚠️ 2026-10-22 (аудит №8): хуудас АЧААЛСАН үеийн утга (`des` → нэрс). Урьд нь бүх жагсаалтыг уншилтгүй
+ *   ДАРЖ бичдэг тул хоёр хүн нэг ажлын материалыг зэрэг тохируулахад СҮҮЛД хадгалсан нь эхнийхийн нэрсийг чимээгүй
+ *   устгадаг байв (last save wins). Одоо (2)-ын шинэ мөрийн утга `base`-ээс зөрвөл (энэ хооронд өөр хүн хадгалсан)
+ *   `mergeMats`-аар нийлүүлж, тэр ажлыг `merged`-д нэрлэнэ — дуудагч хэрэглэгчид ил хэлнэ. `base`-д байхгүй ажил =
+ *   хуучин зан (шууд бичнэ). Серверийн утга нийлүүлэлттэй аль хэдийн ижил бол бичихгүй.
+ * @returns бичигдсэн мөрийн тоо; шинэ жаазад олдоогүй ажлууд (`lost`) — тэдгээр бичигдээгүй; `merged` — нийлүүлсэн ажлууд.
  */
-export async function saveWorkMats(pkg: Pkg, sc: Schema, changes: ReadonlyMap<number, readonly string[]>): Promise<{ written: number; lost: number[] }> {
+export async function saveWorkMats(
+  pkg: Pkg,
+  sc: Schema,
+  changes: ReadonlyMap<number, readonly string[]>,
+  base: ReadonlyMap<number, readonly string[]>,
+): Promise<{ written: number; lost: number[]; merged: number[] }> {
   if (typeof window !== 'undefined' && AUTH.appId) {
     const me = currentUser();
     if (!me) throw new Error(tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.'));
     if (!canEditMats(me, pkg.group)) throw new Error(tr('«{0}» багцад материал тохируулах эрхгүй (Хуваарийн зохиогчийн эрх шаардлагатай).', pkg.group));
   }
-  if (!changes.size) return { written: 0, lost: [] };
-  const vals = new Map<number, string | null>();
-  for (const [des, names] of changes) vals.set(des, formatMats(names));
+  if (!changes.size) return { written: 0, lost: [], merged: [] };
+  /* ⚠️ 2026-10-22 (аудит №8): уртын шалгалт (`formatMats` шиднэ) СҮЛЖЭЭНЭЭС ӨМНӨ ч — урьдын адил эрт хэлнэ */
+  for (const names of changes.values()) formatMats(names);
 
   const gate = async (): Promise<void> => {
     const arch = await archivingBusy(pkg.key);
@@ -75,19 +104,29 @@ export async function saveWorkMats(pkg: Pkg, sc: Schema, changes: ReadonlyMap<nu
   };
   await gate();
   const fresh = await loadRows(pkg, sc, undefined, undefined, { strict: true });
-  const oidByDes = new Map<number, number>();
-  for (const r of fresh.rows) if (!r.group && r.des != null && !oidByDes.has(r.des)) oidByDes.set(r.des, r.oid);
+  const rowByDes = new Map<number, SheetRow>();
+  for (const r of fresh.rows) if (!r.group && r.des != null && !rowByDes.has(r.des)) rowByDes.set(r.des, r);
   const updates: Record<string, unknown>[] = [];
   const lost: number[] = [];
-  for (const [des, v] of vals) {
-    const oid = oidByDes.get(des);
-    if (oid == null) { lost.push(des); continue; }
-    updates.push({ [sc.f.oid]: oid, [MAT_FIELD]: v });
+  const merged: number[] = [];
+  for (const [des, names] of changes) {
+    const r = rowByDes.get(des);
+    if (!r) { lost.push(des); continue; }
+    /* ⚠️ 2026-10-22 (аудит №8): ачаалснаас хойш серверийн утга өөрчлөгдсөн бол нийлүүлнэ (`base`-ийн ⚠️) */
+    const now = matsOf(r);
+    const was = base.get(des);
+    let want: readonly string[] = names;
+    if (was && !sameList(was, now)) {
+      want = mergeMats(was, names, now);
+      merged.push(des);
+    }
+    if (sameList(want, now)) continue;
+    updates.push({ [sc.f.oid]: r.oid, [MAT_FIELD]: formatMats(want) });
   }
-  if (!updates.length) return { written: 0, lost };
+  if (!updates.length) return { written: 0, lost, merged };
   await gate();
   await applyUpdates(pkg, updates);
   /* dataBus.invariant: бичигч бүр өөрөө хүчингүй болгоно (`applyUpdates`-ийнхтэй давхардсан ч хор хөнөөлгүй) */
   invalidate('BAGTS_SHEET');
-  return { written: updates.length, lost };
+  return { written: updates.length, lost, merged };
 }

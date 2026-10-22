@@ -86,3 +86,32 @@ import {
   assert.ok((D.match(/rid: `/g) ?? []).length >= 3, 'hyanaltDetail: өөрчлөлт бүрд мөрийн танигч (rid) алга');
 }
 console.log('✅ зөвшөөрсөн нүд — мөрийн түлхүүрээр · индекс гулсахгүй · хуучныг баттай үед л · эс бөгөөс «дахин хянах»');
+
+/* ── 5. ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ НҮД ХЭЗЭЭ Ч «ЗӨВШӨӨРӨГДСӨН» БИШ ──
+   Алдаа (аудит, `traps.mjs` A): хянагч сөрөг нүдийг ногоон болгож буцаахад (эсвэл дээд шатны жагсаалт `recheckOkArg`-аар
+   доош дамжихад) гүйцэтгэгчийн талд тэр нүд түгжигдэж (`FillNew.okLockAt`), харин «Илгээх» сөрөг нүдээр хаагддаг тул
+   гүйцэтгэгч засах ч, илгээх ч боломжгүй гацдаг байв. Хоёр тал НЭГ дүрмээр (`sheetFrame.negTotalAt`). */
+{
+  const norm = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n');
+  const G = norm('src/modules/Guitsetgel.tsx');
+  /* хянагч: сөрөг нүдний олонлог (`Change.neg`) — товшилт татгалзана, «бүгдийг ногоон» алгасна, бичих/дамжуулах жагсаалтаас хасна */
+  assert.ok(G.includes('() => new Set((changes ?? []).filter((c) => c.neg).map((c) => `${c.row}:${c.block}`)),'), 'Guitsetgel: negSet');
+  assert.ok(G.includes('() => (negSet.size ? new Set([...okKeys0].filter((k) => !negSet.has(k))) : okKeys0),'), 'Guitsetgel: okKeys сөрөг нүдгүй');
+  const tg = G.slice(G.indexOf('const toggleOk = useCallback('));
+  assert.ok(/^const toggleOk = useCallback\(\(row: number, block: string\): string \| undefined => \{\s*const k = `\$\{row\}:\$\{block\}`;\s*if \(negSet\.has\(k\)\)\s*return tr\(/.test(tg),
+    'toggleOk: сөрөг нүдийг ногоон болгохгүй, шалтгааныг буцаана');
+  assert.ok(G.includes('setOkKeys(new Set((changes ?? []).filter((c) => !c.neg).map((c) => `${c.row}:${c.block}`)))'), '«бүгдийг ногоон» сөрөг нүдийг алгасна');
+  assert.ok(G.includes('const okable = (data?.changes ?? []).filter((c) => !c.neg).length;') && G.includes('onOkAll && okCount < okable &&'),
+    '«бүгдийг ногоон» товч сөрөг нүдийг тоолохгүй');
+  assert.ok(G.includes('if (untouched && seedRes.fresh && !seedNeg) return undefined;'), 'recheckOkArg: сөрөг нүдтэй дээд жагсаалтыг хэвээр дамжуулахгүй');
+  assert.ok(G.includes('okCells: changes != null ? toOkRefs(okKeys, okRows) : [],'), 'буцаалт шүүсэн okKeys-ийг бичнэ');
+  /* гүйцэтгэгч: хянагчийн жагсаалтад байсан ч сөрөг нүд `backOk`-д орохгүй → `okLockAt`/`FillRows.okLock` түгжихгүй */
+  const FN = norm('src/modules/sheet/FillNew.tsx');
+  const bo = FN.slice(FN.indexOf('const backOkRes = useMemo('), FN.indexOf('const backOk = backOkRes.ok;'));
+  const skip = bo.indexOf('if (bi >= 0 && negTotalAt(r, bi)) continue;');
+  assert.ok(skip > 0 && skip < bo.indexOf('byOid.add(`${r.oid}${k.slice(cut)}`);'), 'FillNew.backOkRes: сөрөг нүдийг зөвшөөрөгдсөнд тооцохгүй');
+  assert.ok(FN.includes('return backChg.has(k) && backOk.has(k);'), 'okLockAt нь backOk-оос (НЭГ эх)');
+  const D = norm('src/lib/hyanaltDetail.ts');
+  assert.equal((D.match(/neg: true as const/g) ?? []).length, 2, 'hyanaltDetail: хоёр замд (обьёмтой/обьёмгүй блок) Change.neg');
+  console.log('✅ сөрөг нүд — хянагч ногоон болгохгүй · дээд жагсаалт дамжихгүй · гүйцэтгэгчид түгжигдэхгүй');
+}

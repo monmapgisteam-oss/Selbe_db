@@ -77,17 +77,23 @@ console.log('✅ Полигон зурж байхад засварын гори�
 }
 console.log('✅ «Бүрэн чөлөөлсөн»-ийн бичиглэлүүд дашбоардтай ижил бүлэглэгдэнэ');
 
-/* ── 5. Талбай: area_m2 ?? Талб_1 — дашбоардтай ИЖИЛ нөхөлт ── */
+/* ── 5. Талбай: дашбоардтай ИЖИЛ дүрэм ──
+   ⚠️ 2026-10-22 (аудит): серверийн `SUM(area_m2)` + `Талб_1` нөхөлтийн асуулга → МӨРӨӨР (`land.loadParcelAreaRows` +
+   `parcelGroupRows`): `area_m2 = 0` → полигоны талбай, хуваагдсан нэгж талбар нэг удаа, `Талб_1` нөхөлт багтсан. `land.ts`
+   ЯГ тэр хоёр функцийг хэрэглэх ёстой — эс бөгөөс «Нийт талбай» хоёр газар зөрнө. */
 {
-  assert.match(src, /parcelAltAreaWhere\(\)/, 'Газар: `Талб_1` нөхөлтийн асуулга алга');
-  assert.match(src, /sum\(L\.fields\.areaAlt,/, 'Газар: `areaAlt`-ийн нийлбэр асуугдах ёстой');
+  assert.match(src, /loadParcelAreaRows\('1=1', area\)/, 'Газар: нэгж талбарын мөрүүд (AOI-тай) `land.loadParcelAreaRows`-оор');
+  assert.match(src, /const lStatus = parcelGroupRows\(lRows\)/, 'Газар: төлөв бүрийн тоо/талбай `parcelGroupRows`-оор');
+  const landSrc = strip(fs.readFileSync('src/lib/land.ts', 'utf8'));
+  assert.match(landSrc, /loadParcelAreaRows\(\)\.then\(\(rows\) => buildLandStatus\(parcelGroupRows\(rows\), \[\]\)\)/,
+    'land.ts: дашбоардын эх ИЖИЛ функцээр');
   assert.match(src, /area:\s*Number\(lStat\.area \?\? 0\)\s*\+\s*altTotal/,
     'Газар: «Нийт талбай» нөхөлтийг агуулах ёстой (`land.ts`-ийн `areaM2`-тэй ижил)');
   /* нөхөлт төлөв ба шалтгаан бүрд нэмэгдэнэ */
   assert.match(src, /for \(const r of lAlt\)[^\n]*addStatus\(r, 0,/, 'Газар: төлөв бүрд нөхөлт');
   assert.match(src, /for \(const r of lAltReason \?\? lAlt\)[^\n]*addReason\(r, 0,/, 'Газар: шалтгаан бүрд нөхөлт');
 }
-console.log('✅ Газар ба дашбоард талбайг ИЖИЛ дүрмээр (area_m2 ?? Талб_1)');
+console.log('✅ Газар ба дашбоард талбайг ИЖИЛ дүрмээр (мөрөөр: area_m2 > 0 ?? Талб_1 ?? полигон, хуваагдсан нэг удаа)');
 
 /* ── 6. Хадгалсны мэдэгдэл нь НЭГЖ ТАЛБАР тоолно ── */
 {

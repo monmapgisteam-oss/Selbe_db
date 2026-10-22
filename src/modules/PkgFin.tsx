@@ -15,8 +15,9 @@ import {
 } from '@/modules/Bagts';
 import { useBuildings, pickedBuilding } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, projectPlanScope, planScopeNote, type FinData,
+  loadFinData, contractMonths, ComboChart, lagOf, lagLevelOf, lagJudged, projectPlanScope, planScopeNote, type FinData,
 } from '@/modules/Finance';
+import { coverageNote } from '@/lib/planProgress';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
@@ -822,6 +823,9 @@ export function PkgFin({ dim, setDim }: {
          шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
          `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
          хэвээр үйлчилнэ). */
+      /* ⚠️ 2026-10-22 (аудит): MapCanvas одоо `null`/жагсаалтад алга давхаргад ӨӨРӨӨ бүсийн шүүлт тавьдаг болсон
+         (`MapCanvas.layerWhere`-ийн ⚠️) — доорх давталт ижил утга өгөх тул хор хөнөөлгүй. Үр дүн: багц сонгоогүй,
+         хоцрогдолтой багцгүй үед (`alertedWhere` = null) блокийн давхарга ч бүсээр шүүгдэнэ (урьд нь шүүгддэггүй байв). */
       const w: Record<string, string | null> = {};
       if (zone) {
         for (const id of mapVisible) {
@@ -2034,7 +2038,8 @@ function FinCard({
     }
   }
   const lag = months ? lagOf(months) : null;
-  const lvl = lag ? lagLevel(lag.gap) : null;
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол улаан/шар тэмдэг ГАРГАХГҮЙ (`lagLevelOf`) */
+  const lvl = lagLevelOf(lag);
 
   /**
    * KPI — ГЭРЭЭНИЙ дүн ба IPC-ийн олгосон акт (₮), тэдгээрийн ЗӨРҮҮ; мөн
@@ -2183,7 +2188,12 @@ function FinCard({
               /* ⚠️ Гүйцэтгэлийн гурван хувь ЗӨВХӨН нэгдсэн горимд — санхүүгийн
                  харагдацад биет явц огт харагдахгүй (2026-08-21). */
               ...(finOnly ? [] : [
-                { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
+                /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт — «хуваарь X% хамарсан» (бага бол төлөвлөгөө хэт бага) */
+                {
+                  v: plannedPct == null ? '—' : pct(plannedPct, 1),
+                  l: tr('Төлөвлөгөөт гүйцэтгэл') + (lag && coverageNote(lag.coverage) ? ` · ${coverageNote(lag.coverage)}` : ''),
+                  c: 'var(--ink)',
+                },
                 /* ⚠️ 2026-10-09 (аудит №2): `actualPct` = `lag.actual` — хуваарьгүй багц хасагдсан бол
                    хуваарьтай багцаар (зөрүүтэй нэг олонлог); шошго үүнийг хэлнэ */
                 {
@@ -2191,7 +2201,12 @@ function FinCard({
                   l: projExcl.length ? tr('Бодит гүйцэтгэл (хуваарьтай багцаар)') : tr('Бодит гүйцэтгэл'),
                   c: 'var(--ink)',
                 },
-                { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
+                /* ⚠️ 2026-10-22 (аудит): хамралт < 95% бол зөрүүг ДҮГНЭХГҮЙ (шошгонд) */
+                {
+                  v: gapText,
+                  l: tr('Гүйцэтгэлийн зөрүү') + (lag && !lagJudged(lag) ? ` · ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''),
+                  c: 'var(--ink)',
+                },
               ]),
               /* ⚠️ «Давхцсан үлдсэн нэгж талбар» индикатор ЭНДЭЭС ХАСАГДАВ
                  (2026-08-21): нэгдсэн тоо нь аль багц саадтайг хэлдэггүй
