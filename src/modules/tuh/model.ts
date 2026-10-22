@@ -19,7 +19,8 @@ import { lagOf, pkgMonthsMap, physLatest, projectLagNow, type FinData, type Mont
 import { physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
-import { upstreamOf, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
+/* ⚠️ 2026-10-22: багцын түвшний хамаарал АЖЛЫН графаас (`workDeps.pkgDeps`, түлхүүр нь `bagtsKey`) */
+import { upstreamOf, downstreamOf, type PkgDep } from '@/lib/workDeps';
 import { sheetsOf } from './tuhSchedule';
 import {
   buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
@@ -155,10 +156,12 @@ export type TuhModel = {
    */
   planFailed: number;
   /**
-   * Багц хоорондын хамаарал («Багцын хамаарал», `bagtsHamaaral.loadDeps`) — `null` = ирээгүй/унасан.
+   * Багц хоорондын хамаарал («Багцын хамаарал») — `null` = ирээгүй/унасан.
    * ⚠️ 2026-10-06 (аудит): урьд нь ТУХ огт уншдаггүй байв (`depRows`-ийг үз).
+   * ⚠️ 2026-10-22: АЖЛЫН холбоосоос гаргасан (`workDepsRemote.loadPkgDeps`) — түлхүүр нь `TuhPkg.key` БИШ,
+   *    багцын түлхүүр (`pkgKey` = `bagtsKey`); `depRows` түлхүүрийн ЭЗЭН мөрөөр (`own`) тулгана.
    */
-  deps: readonly Dep[] | null;
+  deps: readonly PkgDep[] | null;
 };
 
 /**
@@ -168,10 +171,14 @@ export type TuhModel = {
  */
 export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'up' | 'down'): TuhRow[] | null {
   if (!m.deps) return null;
-  const keys = dir === 'up' ? upstreamOf(m.deps, key) : downstreamOf(m.deps, key);
+  /* ⚠️ 2026-10-22: `deps` нь багцын түлхүүрээр (`pkgKey`) — мөрийн түлхүүр → `pkgKey` → эзэн мөрүүд (`own`;
+     зураг төслийн давхар мөр хоёр удаа гарахгүй — `keyOwners`-ийн ⚠️) */
+  const me = m.rows.find((x) => x.p.key === key);
+  if (!me?.own || !me.p.pkgKey) return [];
+  const keys = dir === 'up' ? upstreamOf(m.deps, me.p.pkgKey) : downstreamOf(m.deps, me.p.pkgKey);
   const out: TuhRow[] = [];
   for (const k of keys) {
-    const r = m.rows.find((x) => x.p.key === k);
+    const r = m.rows.find((x) => x.own && x.p.pkgKey === k);
     if (r) out.push(r);
   }
   return out;
@@ -218,8 +225,8 @@ export function buildModel(input: {
   commissionPartial?: ReadonlyMap<string, CommissionPartial> | null;
   workforce: WorkforceDetail | null;
   docs: MsDoc[] | null;
-  /** «Багцын хамаарал»-ын холбоосууд — `null` = ирээгүй/унасан */
-  deps?: readonly Dep[] | null;
+  /** «Багцын хамаарал»-ын холбоосууд (багцын түлхүүрээр) — `null` = ирээгүй/унасан */
+  deps?: readonly PkgDep[] | null;
   contractedNote: string;
   failed: string[];
   /** Ачаалж буй эх сурвалжууд (байхгүй бол хоосон) */

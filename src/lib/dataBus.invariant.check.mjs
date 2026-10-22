@@ -236,6 +236,9 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     '`bagtsSheet.applyUpdates`-аар бичдэг — тэр өөрөө `written > 0` үед BAGTS_SHEET-ийг хүчингүй болгоно.'],
   ['src/modules/sheet/fill/useObyem.ts',
     '`bagtsSheet.applyUpdates`-аар бичдэг — тэр өөрөө BAGTS_SHEET-ийг хүчингүй болгоно.'],
+  ['src/lib/workDepsRemote.ts',
+    '2026-10-22: багц хоорондын ажлын хамаарал — `bagtsSheet.applyUpdates`-аар бичдэг (тэр өөрөө BAGTS_SHEET хүчингүй '
+    + 'болгоно). Өөрийн кэш нь BAGTS_SHEET-д бүртгэлтэй (бүхэлд нь хаягдана).'],
   ['src/lib/butetsEdit.ts',
     '`tableWrite.applyAll`-аар дэд бүтцийн давхаргад бичдэг — автобусын түлхүүр байхгүй; кэшийг '
     + 'дуудагч (`DedButets` → `dropTotalsCache`) хаяна (`layerSummary.ts`-ийн зөвшөөрөлтэй ижил).'],

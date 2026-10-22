@@ -309,6 +309,13 @@ export type Schema = {
      */
     ham: string | null;
     /**
+     * ⚠️ 2026-10-22: БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ (`bagts_hamaaral`, String 8000 — админ Notebook-оор нэмнэ).
+     *    Энэ (ард талын) ажлын ӨӨР хуудасны урьдчилагчид, JSON (`lib/workDeps.ts`). Талбар хараахан алга
+     *    хуудсанд `null` — «Багцын хамаарал» тэр хуудсанд зөвхөн харах горимтой. Архивын жаазад `raw`-аар
+     *    (`buildFrame`-ийн `{...r.raw}`) дамжина. `?` — гар бүдүүвчтэй шалгуурууд хүчинтэй хэвээр.
+     */
+    bham?: string | null;
+    /**
      * ХҮН ХҮЧ (`hun_huch`) ба МАШИН МЕХАНИЗМ (`mashin_mehanizm`) — Integer,
      * 2026-09-23-нд 18/18 бөглөх хуудсанд нэмэгдсэн. Ажил (навч) бүрийн
      * нөөцийн тоо; «Хуваарь» модулиас засагдана, бүлгийн мөрд нийлбэр нь
@@ -640,6 +647,8 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
     // ⚠️ `Des_dugaar` мөн латин нэртэй — шууд нэрээр, том/жижиг үсэг үл ялгана.
     des: names.find((n) => /^des_dugaar$/i.test(n)) ?? null,
     ham: names.find((n) => /^hamaaral$/i.test(n)) ?? null,
+    /* ⚠️ 2026-10-22: ЯГ нэрээр — `^hamaaral$` нь `bagts_hamaaral`-д ТААРАХГҮЙ (хоёр талбар тусдаа утгатай) */
+    bham: names.find((n) => /^bagts_hamaaral$/i.test(n)) ?? null,
     /* Хүн хүч · машин механизм (2026-09-23) — латин, шууд нэрээр. */
     hunHuch: names.find((n) => /^hun_huch$/i.test(n)) ?? null,
     mashin: names.find((n) => /^mashin_mehanizm$/i.test(n)) ?? null,

@@ -1,11 +1,11 @@
 /* ══════════════════════════════════════════════════════════
-   «БАГЦЫН ХАМААРАЛ» — ЗӨВХӨН энэ харагдацын хэв маяг (2026-10-04).
+   «БАГЦЫН ХАМААРАЛ» — ЗӨВХӨН энэ харагдацын хэв маяг.
 
-   ГАНЦ ЖАГСААЛТ: багц → ард талын хамааралтай багцууд (мөр бүрд) + «нэмэх»
-
+   ⚠️ 2026-10-22: АЖИЛ ↔ АЖИЛ болж дахин бүтээгдэв — тойм (чип) + засвар (А ажил | сонгосон ажил · Б).
    ⚠️ ТУХ-ын хэв маяг (`tuh.module.css`) — ХУУЛБАР, импортлохгүй (`layout.tsx`-ийн ⚠️:
       харагдацууд стайл хуваалцахгүй). Өнгө бүгд глобал токен.
    ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620.
+   ⚠️ Сонгогч БҮР локал класс агуулна (`next build`-ийн «is not pure»).
    ══════════════════════════════════════════════════════════ */
 
 .wrap {
@@ -34,19 +34,24 @@
 
 .mute { color: var(--ink-3); }
 
-/* ── Шүүлтүүр (ТУХ) ── */
-.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 10px; }
-.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
-.segBtn {
-  all: unset;
-  cursor: pointer;
-  padding: 4px 9px;
+/* ── Карт ── */
+.card {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  font-size: 0.74rem;
-  color: var(--ink-2);
+  background: var(--surface);
 }
-.segBtn[aria-pressed='true'] { background: var(--data); color: var(--bg); font-weight: 600; }
-.segBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.cardTitle { margin: 0 0 8px; font-size: 0.95rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.subTitle { margin: 14px 0 6px; font-size: 0.78rem; font-weight: 600; color: var(--ink-2); }
+
+/* ── Засвар: хоёр багана (нарийн дэлгэцэнд нэг) ── */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.grid > .card { margin: 0; }
+
+/* ── Шүүлтүүр (ТУХ) ── */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 8px; }
 .search {
   flex: 1 1 200px;
   min-width: 0;
@@ -58,82 +63,114 @@
   font: inherit;
   font-size: 0.8rem;
 }
-
-/* ══════════ ЖАГСААЛТ (ТУХ хүснэгт) ══════════ */
-.tableWrap {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-}
-.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
-.table th {
-  position: sticky;
-  top: 0;
-  padding: 7px 8px;
-  text-align: left;
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-.table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.table tr:last-child td { border-bottom: 0; }
-.pkgCell { width: 38%; }
-.pkgCell b { font-weight: 700; }
-/* Бодит гүйцэтгэл — нэрний ард */
-.pct { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pkgCell small { display: block; color: var(--ink-2); font-size: 0.72rem; margin-top: 2px; }
-.arrowCell { width: 24px; text-align: center; font-size: 1rem; color: var(--ink-3); }
-.emptyRow td { color: var(--ink-3); text-align: center; padding: 14px 8px; }
-
-/* Чип (ТУХ) — ард багц; засах эрхтэй бол ✕ */
-.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 4px 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--good) 45%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--good) 10%, transparent);
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.chipLink { all: unset; cursor: pointer; color: var(--ink); padding-right: 4px; }
-.chipLink:hover, .chipLink:focus-visible { color: var(--data); text-decoration: underline; }
-.chipX { all: unset; cursor: pointer; padding: 0 4px; border-radius: 999px; color: var(--ink-3); font-size: 0.66rem; }
-.chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
-.chipX:disabled { opacity: 0.4; cursor: not-allowed; }
-.addChip {
-  all: unset;
-  cursor: pointer;
-  padding: 2px 8px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 999px;
-  font-size: 0.7rem;
-  color: var(--ink-2);
-}
-.addChip:hover, .addChip:focus-visible { color: var(--data); border-color: var(--data); }
-
-/* ── Холбоо нэмэх ── */
-.addRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .select {
   flex: 1 1 160px;
   min-width: 0;
-  padding: 4px 6px;
+  max-width: 100%;
+  padding: 5px 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
 }
+
+/* ── Жагсаалт (хэсгээр) ── */
+.listBox {
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.sec { border-bottom: 1px solid var(--line); }
+.sec:last-child { border-bottom: 0; }
+.secHead {
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+}
+.plainList { margin: 0; padding: 0; list-style: none; }
+.workBtn {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  padding: 5px 8px 5px 18px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.workBtn:hover, .workBtn:focus-visible { background: color-mix(in srgb, var(--data) 8%, transparent); }
+.workBtn[aria-pressed='true'] { background: color-mix(in srgb, var(--data) 16%, transparent); font-weight: 600; }
+.counts { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.checkRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 8px 4px 14px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.checkRow input { flex: none; margin-top: 2px; }
+
+/* ── Сонгосон ажил ── */
+.pkgGroup { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.pkgName { font-size: 0.74rem; }
+.editBox { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line-strong); }
+.pickBox { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+/* Чип (ТУХ) — засах эрхтэй бол ✕; бүтэн нэр мөр шилжинэ */
+.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.chip, .chipBad {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  text-align: left;
+}
+.chip { border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.chipBad { border: 1px dashed color-mix(in srgb, var(--warn) 60%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.chipLink { all: unset; cursor: pointer; color: var(--ink); padding-right: 4px; line-height: 1.35; overflow-wrap: anywhere; }
+.chipLink:hover, .chipLink:focus-visible { color: var(--data); text-decoration: underline; }
+.chipLink b { font-weight: 700; margin-right: 4px; }
+.chipX { all: unset; cursor: pointer; padding: 0 4px; border-radius: 999px; color: var(--ink-3); font-size: 0.66rem; }
+.chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.chipX:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Тоймын хос — дарахад шүүнэ */
+.pairChip {
+  all: unset;
+  cursor: pointer;
+  padding: 3px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.pairChip:hover, .pairChip:focus-visible { color: var(--data); border-color: var(--data); }
+.pairChip[aria-pressed='true'] { background: var(--data); border-color: var(--data); color: var(--bg); }
+
+/* Хуучин холбоос */
+.legacyRow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 4px 0; font-size: 0.78rem; }
+
+/* ── Товч ── */
+.addRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ghostBtn {
   all: unset;
   cursor: pointer;
@@ -146,9 +183,25 @@
 }
 .ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
 .ghostBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.primaryBtn {
+  all: unset;
+  cursor: pointer;
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  background: var(--data);
+  color: var(--bg);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.primaryBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.primaryBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.linkBtn { all: unset; cursor: pointer; color: var(--data); text-decoration: underline; }
 
-.note { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
+/* ── Мэдэгдэл ── */
+.note { margin: 0 0 6px; font-size: 0.72rem; color: var(--ink-3); }
 .failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--warn-ink); }
+.warnNote { margin: 8px 0; padding: 8px 10px; border: 1px dashed color-mix(in srgb, var(--warn) 50%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--ink-2); }
+.okNote { margin: 8px 0; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--ink); }
 .retryBtn {
   margin-left: 6px; padding: 3px 12px; font-size: 0.72rem; font-weight: 600;
   color: var(--ink); background: var(--surface-2);
@@ -157,12 +210,11 @@
 .retryBtn:hover { border-color: var(--line-strong); }
 .loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
 
+@media (max-width: 900px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 620px) {
   .wrap { padding: 8px 8px 24px; }
-  .pkgCell { width: 45%; }
+  .card { padding: 10px; }
+  .listBox { max-height: 50vh; }
 }
-
-/* ⚠️ 2026-10-12: чипэнд багцын БҮТЭН нэр (хэрэглэгч) — урт нэр мөр шилжинэ, дугаар тод */
-.chip { white-space: normal; max-width: 100%; border-radius: 12px; text-align: left; }
-.chipLink { font-weight: 400; line-height: 1.35; }
-.chipLink b { font-weight: 700; margin-right: 4px; }

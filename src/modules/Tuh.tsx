@@ -27,7 +27,8 @@ import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
 /* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН (хэрэглэгчийн шийдвэр) — MA/MIR баримтын тоо `docs: null` («—»). */
-import { loadDeps } from '@/lib/bagtsHamaaral';
+/* ⚠️ 2026-10-22: багцын хамаарал нь АЖЛЫН холбоосоос (`bagts_hamaaral` талбар) — хуучин багц ↔ багц бүртгэл биш */
+import { loadPkgDeps } from '@/lib/workDepsRemote';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import { loadFinData } from '@/modules/Finance';
@@ -62,7 +63,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь ТУХ огт уншдаггүй тул
      «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
      ХУДАЛ бичигтэй байв. */
-  const depQ = useAsync(loadDeps, []);
+  const depQ = useAsync(loadPkgDeps, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
   /*

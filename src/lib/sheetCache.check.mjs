@@ -226,7 +226,8 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   walk('src');
   const code = (f) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const users = files.filter((f) => /loadRows\([^;]*persist: true/.test(code(f))).map((f) => f.replace(/\\/g, '/')).sort();
-  assert.deepEqual(users, ['src/lib/planProgress.ts', 'src/lib/sheetShared.ts'], 'persist зөвхөн муруй ба CEO-ийн хуваалцсан уншилтад');
+  /* ⚠️ 2026-10-22: `workDepsRemote` — «Багцын хамаарал»/ТУХ-ын 24 хуудасны уншилт (6 багана); бичихийн өмнөх дахин уншилт нь `strict` (кэшгүй) */
+  assert.deepEqual(users, ['src/lib/planProgress.ts', 'src/lib/sheetShared.ts', 'src/lib/workDepsRemote.ts'], 'persist зөвхөн уншдаг самбаруудад');
   for (const f of users) assert.doesNotMatch(readFileSync(f, 'utf8'), /strict: true[^)]*persist|persist: true[^)]*strict/, `${f}: strict+persist хамт`);
   assert.doesNotMatch(readFileSync('src/lib/sheetCache.ts', 'utf8'), /from ['"]react['"]/, 'React импортлохгүй (Node тест)');
 }
