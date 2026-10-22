@@ -291,7 +291,7 @@ async function dedupeAuto(
   if (dr.length !== 1 || dr[0].success !== true)
     return {
       ok: false,
-      error: tr('Давхар IPC мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}', newOid, dr[0]?.error?.description ?? ''),
+      error: tr('Давхар IPC мөр (бүртгэл №{0}) үлдлээ — админд мэдэгдэнэ үү (гараар устгах шаардлагатай): {1}', newOid, dr[0]?.error?.description ?? ''),
     };
   return { ok: true, op: 'update', why: 'dedup' };
 }

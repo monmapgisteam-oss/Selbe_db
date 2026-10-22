@@ -34,6 +34,15 @@ import { coverageNote } from '@/lib/planProgress';
 import { pp } from '@/modules/pkgShared';
 import s from '../tuh.module.css';
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит E4): урт мөнгөн дүнг ЗӨВХӨН мянгатын таслалын ДАРАА шилжүүлнэ (`<wbr>`).
+ *    `.statValue`-ийн `overflow-wrap: anywhere` нь «2,009,768,762,9 / 35 ₮» гэж цифрийн дундуур тасалдаг байв.
+ *    ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️ — бүх мөнгөн дүн бүтэн).
+ */
+const wrapNum = (txt: string): ReactNode => txt.split(',').map((part, i, a) => (
+  i < a.length - 1 ? <span key={i}>{part},<wbr /></span> : <span key={i}>{part}</span>
+));
+
 export function StatusChip({ st }: { st: TuhStatus }) {
   const m = statusMeta(st);
   return <span className={s.chip} data-tone={m.tone}>{m.icon} {m.label()}</span>;
@@ -290,8 +299,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       <div className={s.stats}>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний нийт дүн')}</span>
-          <span className={s.statValue}>{lz(m, 'budget')(mnt(contractTotal))}</span>
-          <span className={s.statNote}>{tr('{0} багц', num(m.rows.length))}</span>
+          <span className={s.statValue}>{wrapNum(lz(m, 'budget')(mnt(contractTotal)))}</span>
+          {/* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг tooltip-ээр — бусад харагдацын багцын тоотой (55/50) зөрдөг байв */}
+          <span className={s.statNote} title={tr('Гэрээний бүртгэлийн бүх мөр — зураг төсөл, олон багцын нэгдсэн гэрээ ч орно')}>{tr('{0} багц', num(m.rows.length))}</span>
         </div>
         <div className={s.stat}>
           {/* ⚠️ 2026-10-06 (аудит): утга нь ЗӨРҮҮ (pp) тул шошго ч тийм — урьд нь «Орон сууцны
@@ -316,7 +326,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Нийт олгосон санхүүжилт')}</span>
-          <span className={s.statValue}>{mnt(m.paid.total)}</span>
+          <span className={s.statValue}>{wrapNum(mnt(m.paid.total))}</span>
           <span className={s.statNote}>
             {tr('{0} IPC · {1} гэрээний', num(m.paid.ipcCount), pct(m.paid.pct))}
             {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — `paidShare.paidOther` (олгосон − гэрээлсэн багцын олголт; 2026-10-04: удирдлагын тайлангийн `givenOther`-той нэг тодорхойлолт, нэг шошго) */}

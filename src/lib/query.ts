@@ -415,7 +415,10 @@ async function run(full: string, params: Record<string, string>, o: ArcgisReqOpt
      байхгүй (хэрэглэгч 2026-10-20: «AGOL датаг бүрэн хая»); `entMap.data.ts`-д тэр давхаргыг нэмнэ. */
   const target = remapUrl(full);
   if (isAgolUrl(target)) {
-    throw new ArcGISError(tr('AGOL хаяг Enterprise зураглалд алга — entMap.data.ts-д нэмнэ үү: {0}', full.replace(/\?.*$/, '')), full);
+    /* ⚠️ 2026-10-23 (UX аудит S16): хэрэглэгчид ЭНГИЙН үгээр — «entMap.data.ts», «AGOL» гэх хөгжүүлэгчийн
+       нэр томьёо дэлгэц дээр гардаг байв. Засах дэлгэрэнгүй (хаяг, файл) нь консолд ба алдааны `url`-д үлдэнэ. */
+    console.error(`[selbe] AGOL хаяг Enterprise зураглалд алга — entMap.data.ts-д нэмнэ үү: ${full.replace(/\?.*$/, '')}`);
+    throw new ArcGISError(tr('Энэ давхарга серверт холбогдоогүй — админд мэдэгдэнэ үү.'), full);
   }
   await ensureFreshToken();
   if (o.slot === false) return attemptRequest(target, params, o, 0);

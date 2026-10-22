@@ -2,11 +2,13 @@
 
 import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { fixCyr, num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { formatDeps, sameDep, type Dep, type DepType } from '@/lib/deps';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+/* ⚠️ 2026-10-23 (UX аудит X1/P7): аппын дотоод асуулт ба «↶ Буцаах» мэдэгдэл */
+import { askConfirm, toastUndo } from '@/lib/confirm';
 import { balanced, monthsOf, sumMonths, sumRes, type MonthRes } from '@/lib/huvaariObyem';
 import { dayToMs, sameRes } from './util';
 import { DateField } from './DateField';
@@ -223,6 +225,12 @@ type PlanModalProps = {
    */
   onShiftGroup?: (days: number, blks: number[]) => void;
   /**
+   * ⚠️ 2026-10-23 (UX аудит P7): «Арилгах»-ын «↶ Буцаах». `onApply`-аас ӨМНӨ дуудаж буцаах функц авна — тэр нь ЗӨВХӨН энэ
+   *    арилгалтыг буцаана (`Huvaari.markUndo`: дараа нь өөр өөрчлөлт орсон бол буцаахгүй, мэдэгдэнэ).
+   *    Өгвөл «Арилгах» асуултгүй ажиллаж мэдэгдлээр буцаагдана; өгөхгүй бол олон блокт урьдын адил асууна.
+   */
+  onUndo?: () => () => void;
+  /**
    * ⚠️ 2026-10-07: хаахад фокус буцаах элемент (`useFocusTrap`-ийн нөөц зам) — нүднээс
    *    (`DateCell`-д Enter) нээгдэхэд оролт аль хэдийн салсан тул «өмнөх фокус» `<body>`
    *    байдаг байв. Хаах агшинд дуудагдана (виртуал мөр дахин зурагдсан байж болно).
@@ -285,7 +293,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup,
+  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
@@ -423,8 +431,10 @@ function PlanModalBody({
      дараа) зурагдалт бүрд шинэчлэгдэнэ; эффект дахин бүртгэгдэхгүйн тулд ref. */
   const mdDirtyRef = useRef(false);
   const tryClose = useCallback(() => {
-    if (mdDirtyRef.current && !window.confirm(tr('Оруулсан өөрчлөлт хадгалагдаагүй — хаяж цонхыг хаах уу?'))) return;
-    onClose();
+    if (!mdDirtyRef.current) { onClose(); return; }
+    /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — async; Esc-ийг асуулт өөрөө (capture) барина */
+    void askConfirm(tr('Оруулсан өөрчлөлт хадгалагдаагүй — хаяж цонхыг хаах уу?'), { danger: true, ok: tr('Хаяж хаах') })
+      .then((ok) => { if (ok) onClose(); });
   }, [onClose]);
   /* ⚠️ 2026-09-30: Талбар дотор дараад (сонголт/чирэлт) АРД суллахад `click` нь
      арын элемент дээр буудаг тул цонх санамсаргүй хаагддаг байв — дарах нь ч
@@ -843,9 +853,10 @@ function PlanModalBody({
    */
   const copyTargets = takt > 0 ? [...selB].filter((b) => b !== blk).sort((x, y) => x - y) : [];
   const copyOff = !mvOk || ms1 == null || ms2 == null || bad || spanLong || mv.size === 0;
-  const copyShifted = () => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): async — `askConfirm`; ms1/ms2 нь render-ийн утга (асуулт нээлттэй зуур цонх хөдлөхгүй) */
+  const copyShifted = async () => {
     if (copyOff || r.group || !copyTargets.length || ms1 == null || ms2 == null) return;
-    if (!window.confirm(tr('Идэвхтэй блокийн сарын задаргааг сонгосон {0} блокт алхмаар шилжүүлж хуулах уу? Тэдгээр блокийн одоогийн задаргаа дарагдана.', num(copyTargets.length)))) return;
+    if (!(await askConfirm(tr('Идэвхтэй блокийн сарын задаргааг сонгосон {0} блокт алхмаар шилжүүлж хуулах уу? Тэдгээр блокийн одоогийн задаргаа дарагдана.', num(copyTargets.length)), { ok: tr('Хуулах') }))) return;
     const len = spanDays({ start: ms1, end: ms2 });
     const next = r.spans.slice();
     const jobs: { b: number; out: Map<string, number> }[] = [];
@@ -872,9 +883,11 @@ function PlanModalBody({
     onApply(next, null, { months: null, res: null, byBlk: new Map(jobs.map((j) => [j.b, j.out])) }, null, null, blks, blks);
   };
 
-  const clear = () => {
+  const clear = async () => {
     /* ⚠️ 2026-10-09: ОЛОН блок сонгосон үед нэг товшилтоор олон блокийн огноо · задаргаа устдаг байв — баталгаажуулна */
-    if (selB.size > 1 && !window.confirm(tr('{0} блокийн огноо ба сарын задаргаа арилна. Үргэлжлүүлэх үү?', num(selB.size)))) return;
+    /* ⚠️ 2026-10-23 (UX аудит P7): буцаах зам (`onUndo`) байвал АСУУХГҮЙ — арилгаад «↶ Буцаах» мэдэгдэл (доор); үгүй бол асууна */
+    const nB = selB.size;
+    if (nB > 1 && !onUndo && !(await askConfirm(tr('{0} блокийн огноо ба сарын задаргаа арилна. Үргэлжлүүлэх үү?', num(nB)), { danger: true, ok: tr('Арилгах') }))) return;
     const next = r.spans.slice();
     for (const b of selB) next[b] = null;
     /* ⚠️ Зөвхөн ОГНООГ арилгана — уялдаа нь хэвээр: хуваариа дахин тавихад
@@ -883,8 +896,10 @@ function PlanModalBody({
        үлдвэл нийлбэрийн шалгуур мөнхөд зөрчилтэй болно.
        ⚠️ Бодит огноо · нөөц ХӨНДӨХГҮЙ (2026-09-23): төлөвлөгөөг арилгах нь
        баримтыг устгах шалтгаан биш — талбарыг хоослоод «Тавих». */
+    const undo = onUndo?.();
     onApply(next, null, { months: new Map(), res: new Map() }, null, null, [...selB], [...selB]);
     onClose();
+    if (undo) void toastUndo(tr('{0} блокийн огноо ба сарын задаргаа арилгав.', num(nB)), undo);
   };
 
   /* ⚠️ 2026-10-05: «Тавих» хаалттайн шалтгаан — товчны `title` ба доорх ил бичвэр ХОЁУЛАА эндээс
@@ -934,7 +949,7 @@ function PlanModalBody({
         onClick={(e) => e.stopPropagation()}>
         <header className={h.mdHead}>
           <span className={h.mdNo}>{r.no}</span>
-          <b className={h.mdWork}>{r.work || tr('(нэргүй)')}</b>
+          <b className={h.mdWork}>{fixCyr(r.work) || tr('(нэргүй)')}</b>
           {/* ⚠️ 2026-10-01: «×» ба доорх «Хаах» ч `tryClose`-оор — урьд нь `onClose`-ыг
               шууд дуудаж, хадгалаагүй өөрчлөлтийн асуултыг алгасдаг байв. */}
           <button type="button" className={h.mdX} onClick={tryClose} aria-label={tr('Хаах')}>×</button>
@@ -979,7 +994,7 @@ function PlanModalBody({
           <p className={h.mdPar}>
             {tr('Бүлгийн муж')}: <b className="num">{msToDay(pspan.start)}</b>
             {' → '}<b className="num">{msToDay(pspan.end)}</b>
-            {par?.work ? <span className={h.mdParWork}> · {par.work}</span> : null}
+            {par?.work ? <span className={h.mdParWork}> · {fixCyr(par.work)}</span> : null}
             {dEdit && (a !== msToDay(pspan.start) || z !== msToDay(pspan.end)) && (
               /* ⚠️ Байгаа хуваарийг АВТОМАТААР дарж бичихгүй — бодит өгөгдөл.
                  Бүлгийн мужийг бүтнээр нь авахыг ЭНД ил санал болгоно. */
@@ -1214,7 +1229,8 @@ function PlanModalBody({
                 {xLock && canEdit && !hasActual && <p className={h.mdWarn} role="status">{xLock}</p>}
                 {(resFields.hun === false || resFields.mashin === false) && mrHas && (
                   <p className={h.mdWarn}>
-                    {tr('Сарын хүснэгтэд хүн хүч/машин механизмын талбар алга — сарын нөөц хадгалагдахгүй, админ AGOL дээр нэмнэ.')}
+                    {/* ⚠️ 2026-10-23 (UX аудит X2): AGOL хасагдсан */}
+                    {tr('Сарын хүснэгтэд хүн хүч/машин механизмын талбар алга — сарын нөөц хадгалагдахгүй. Админд мэдэгдэнэ үү.')}
                   </p>
                 )}
 
@@ -1278,7 +1294,7 @@ function PlanModalBody({
                     (`copyShifted`-ийн ⚠️: автомат тараалт БИШ). */}
                 {dEdit && copyTargets.length > 0 && (
                   <p className={h.mdPar}>
-                    <button type="button" className={h.tlZoomB} disabled={copyOff} onClick={copyShifted}
+                    <button type="button" className={h.tlZoomB} disabled={copyOff} onClick={() => void copyShifted()}
                       title={copyOff
                         ? tr('Эхлээд идэвхтэй блокийн сарын задаргааг бүрэн, нийлбэр тэнцүү бөглөнө')
                         : tr('Идэвхтэй блокийн саруудыг блок бүрийн алхмын шилжилтээр ({0} хоног × блокийн зөрүү) зөөж хуулна — дараа нь блок бүрийг шалгана уу', num(takt))}>
@@ -1420,7 +1436,7 @@ function PlanModalBody({
         {canEdit && applyWhy && <p className={h.mdWarn} role="status">{tr('«Тавих» хаалттай')}: {applyWhy}</p>}
         <footer className={h.mdFoot}>
           {dEdit && (
-            <button type="button" className={h.tlZoomB} onClick={clear}
+            <button type="button" className={h.tlZoomB} onClick={() => void clear()}
               disabled={![...selB].some((b) => r.spans[b])}>
               {tr('Арилгах')}
             </button>

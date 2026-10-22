@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
+import { askConfirm } from '@/lib/confirm';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import type { PlanRow } from '@/lib/plan';
@@ -1403,7 +1404,8 @@ export function useSharedDraft({
   const askSwitch = useCallback(
     async (): Promise<boolean> => {
       if (previewing) {
-        return window.confirm(tr('Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?'));
+        /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт (`askConfirm`) — `askSwitch` аль хэдийн async */
+        return askConfirm(tr('Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?'));
       }
       /* ⚠️ 2026-09-29 аудит: зөвхөн ХАРАГЧИД бусдын ноорог Map-д байдаг — юу ч бичихгүй */
       if (!canEditRef.current) return true;
@@ -1417,7 +1419,8 @@ export function useSharedDraft({
          (`hdReady !== key` — `hdLocal()` хоосон, локал хуулбарыг хоосоор дарах байв) үед
          хадгалах боломжгүй — урьдын асуулт хэвээр, алс/локал руу юу ч бичихгүй. */
       if (!hdWritableRef.current || hdReady.current !== key) {
-        return dirtyN === 0 || window.confirm(tr('Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?', num(dirtyN)));
+        /* ⚠️ 2026-10-23 (UX аудит P4/X1): «Илгээгээгүй» (`dirtyN` нь илгээгээгүй тоо) · аппын дотоод асуулт */
+        return dirtyN === 0 || askConfirm(tr('Илгээгээгүй {0} өөрчлөлт байна. Хаяад солих уу?', num(dirtyN)), { danger: true, ok: tr('Хаяад солих') });
       }
       /*
        * ⚠️ НООРОГ УСТГАХГҮЙ — ХАДГАЛААД СОЛИНО (2026-10-01, хэрэглэгч: «төлөвлөгөө хэсгийн

@@ -43,7 +43,7 @@
   align-items: center;
   gap: 7px;
   padding: 6px 11px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-2);
 }
 .staleDot {
@@ -106,11 +106,11 @@
 }
 .tipRows { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .tipRows > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.tipRows dt { flex: none; font-size: 0.655rem; color: var(--ink-3); }
+.tipRows dt { flex: none; font-size: 0.6875rem; color: var(--ink-3); }
 .tipRows dd {
   min-width: 0;
   text-align: right;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--ink-2);
   overflow-wrap: anywhere;
@@ -151,10 +151,15 @@
 /* ══════ 3D НИСЛЭГ СОНГОХ — зургийн ДООД ГОЛД (2026-09-25) ══════
    ⚠️ `mapTools.module.css`-ийн 2D/3D/BIM сегменттэй (`.dimsBar`/`.dimBtn`) ИЖИЛ
    загвар — нэг зурган дээрх хоёр сегмент нэг гэр бүл шиг харагдах ёстой.
-   ⚠️ `bottom: 28px` — Esri-ийн attribution мөрийг (доод ирмэг) халхлахгүй. */
+   ⚠️ `bottom: 28px` — Esri-ийн attribution мөрийг (доод ирмэг) халхлахгүй.
+   ⚠️ 2026-10-23 (UX аудит S2): 28px → 72px. Модулиудын газрын зургийн тайлбар (легенд — pkgProg · tuh ·
+   habea · irged · pkgFin · dedButets, бүгд `bottom: 12px; left: 12px`, өргөн нь зургийн 100%−24px хүртэл)
+   нэг-хоёр мөр (≈30–56px) эзэлдэг тул «Нислэг 1/2» түүнийг ДАРЖ, өнгөний тайлбар уншигдахгүй байв.
+   Легенд модуль бүрийн өөр файлд, янз бүрийн өргөнтэй — зурвасыг легендийн ДЭЭР өргөх нь бүгдэд ажиллах
+   ганц шийдэл. Доорх тунгалагийн хавтан ба баруун доод сануулга (`.floatBR`) ч дагаж өргөгдөнө. */
 .flightBar {
   position: absolute;
-  bottom: 28px;
+  bottom: 72px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;
@@ -203,5 +208,10 @@
 *:has(.flightBar) *:has(> :global(.mapCatalog)) > :global(.mapOpacity),
 *:has(.flightBar) *:has(> * > :global(.mapCatalog)) > :global(.mapOpacity) {
   top: auto;
-  bottom: 72px;
+  /* ⚠️ 2026-10-23: 72 → 116px — зурвас 72–108px руу өргөгдсөн (дээрх `.flightBar`-ийн ⚠️) */
+  bottom: 116px;
 }
+/* ⚠️ 2026-10-23: зүүн/баруун доод сануулга (64px-ээс дээш, өргөн ≤330px) нь өргөгдсөн зурвастай (72–108px)
+   нарийн зурагт давхцана — зурвас байх үед түүний дээр. */
+.wrap:has(> .flightBar) > .floatBR,
+.wrap:has(> .flightBar) > .floatBL { bottom: 116px; }

@@ -54,7 +54,8 @@ const DAYS = { def: 40, min: 34, max: 90 };
 const RES = { def: 44, min: 28, max: 100 };
 const SPEC: Record<ColKey, { v: string; def: number; min: number; max: number }> = {
   des: { v: '--des-w', def: 60, min: 44, max: 160 },
-  work: { v: '--work-min', def: 140, min: 80, max: 600 },
+  /* ⚠️ 2026-10-23 (UX аудит P5): 140 → 170 — `huvaari.module.css`-ийн `.gSide --work-min` ба `clamp(1020px…)`-тэй ИЖИЛ */
+  work: { v: '--work-min', def: 170, min: 80, max: 600 },
   gs: { v: '--w-gs', ...DATE },
   ge: { v: '--w-ge', ...DATE },
   gd: { v: '--w-gd', ...DAYS },

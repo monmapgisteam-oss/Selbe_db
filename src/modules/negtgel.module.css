@@ -56,7 +56,7 @@
 .lvOn {
   background: var(--data) !important;
   border-color: var(--data) !important;
-  color: #fff !important;
+  color: var(--hue-ink) !important;
 }
 
 .scroll {

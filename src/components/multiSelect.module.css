@@ -25,7 +25,7 @@
 
 .pillLabel {
   flex: none;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -59,7 +59,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.caret { flex: none; font-size: 10px; color: var(--ink-3); }
+.caret { flex: none; font-size: 11px; color: var(--ink-3); }
 
 /* ══ ЖАГСААЛТ ══
    ⚠️ `position: fixed` — координатыг `MultiSelect.place()` өгнө. Дэвсгэр нь

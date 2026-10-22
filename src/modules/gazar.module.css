@@ -48,7 +48,7 @@
 .colHd {
   flex: none;
   padding: 2px 2px 0;
-  font-size: 10.5px;
+  font-size: 11px;
   /* ⚠️ 1 БИШ — кириллийн Й/Ё-гийн дээд тэмдэг тайрагдана */
   line-height: 1.3;
   font-weight: 600;
@@ -96,7 +96,7 @@
   margin: 0 0 4px;
   padding: 0 0 3px;
   border-bottom: 1px solid var(--line);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -104,9 +104,9 @@
 }
 .ovGroupHd:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
 /* Сум — тогтмол өргөнтэй: нээх/хаахад нэр хөдлөхгүй */
-.ovGroupCaret { flex: none; width: 9px; font-size: 9px; color: var(--ink-3); }
+.ovGroupCaret { flex: none; width: 9px; font-size: 11px; color: var(--ink-3); }
 .ovGroupName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ovGroupNum { flex: none; font-size: 10.5px; font-weight: 600; color: var(--bad-ink); }
+.ovGroupNum { flex: none; font-size: 11px; font-weight: 600; color: var(--bad-ink); }
 
 /* ── Панель — envhub Box: surface + hairline, толгой нь доод зураастай ── */
 .panel {
@@ -194,7 +194,7 @@
 .ringSub {
   display: block;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -203,7 +203,7 @@
 
 /* Дэд гарчиг (диаграмын дээр) — envhub eyebrow */
 .subHead {
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
@@ -265,7 +265,7 @@
 }
 .scopeSel .scopeDot { background: var(--data); }
 .scopeText { font-size: 12px; font-weight: 600; color: var(--ink); }
-.scopeHint { font-size: 10.5px; color: var(--ink-3); }
+.scopeHint { font-size: 11px; color: var(--ink-3); }
 
 /* ── Responsive — нарийн дэлгэцэд frame нурж БОСОО өрөгдөж, гүйнэ ── */
 /* Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). Бариул мөн нуугдана. */

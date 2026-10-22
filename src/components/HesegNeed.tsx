@@ -13,6 +13,8 @@ import { selectNeedLinks, selectNeedSegments, selectNeedUnresolved, summarizeNee
 import { fmtLen, OVERLAP_TYPES } from '@/lib/planOverlap';
 import { num } from '@/lib/format';
 import { placeTip } from '@/components/PlanOverlap';
+import { userError } from '@/components/ui';
+import { useElapsed } from '@/components/HesegChange';
 import s from './heseg.module.css';
 import n from './hesegNeed.module.css';
 
@@ -84,7 +86,11 @@ function useNeed(): State {
         if (needData !== res) { needData = res; setUi({}); }
         setSt({ res, step: '', err: null });
       })
-        .catch((e: unknown) => { if (alive) setSt({ res: null, step: '', err: e instanceof Error ? e.message : String(e) }); });
+        .catch((e: unknown) => {
+          /* ⚠️ 2026-10-23 (UX аудит X3): түүхий серверийн мөр биш — `userError` */
+          console.error('[selbe] хэсэгчилсэн ЕТ — хэрэгцээ:', e);
+          if (alive) setSt({ res: null, step: '', err: userError(e) });
+        });
     }, epoch === mountEpoch.current ? 0 : REFRESH_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(t); off(); };
   }, [epoch]);
@@ -98,9 +104,19 @@ export function NeedPanel() {
   const u = useUi();
 
   const stats = useMemo(() => res ? summarizeNeed(res, u) : null, [res, u]);
+  /* ⚠️ 2026-10-23 (UX аудит E7): алхмын бичиг удаан нэг дээр зогсоход ч хөдөлгөөн харагдана — хүлээсэн секунд */
+  const secs = useElapsed(!res && !err);
 
   if (err) return <p className={s.err}>{tr('Тооцоолж чадсангүй')}: {err}</p>;
-  if (!res || !stats) return <p className={s.wait}><span className={s.spin} aria-hidden />{step || tr('Тооцоолж байна…')}</p>;
+  if (!res || !stats) {
+    return (
+      <p className={s.wait}>
+        <span className={s.spin} aria-hidden />
+        {step || tr('Тооцоолж байна…')}
+        {secs >= 3 && <> {tr('({0} с)', num(secs))}</>}
+      </p>
+    );
+  }
   const incomplete = res.failed.length > 0;
   const lengthText = (value: number, unknown = false) => (incomplete || unknown) && value === 0 ? tr('Тодорхойгүй') : fmtLen(value);
 

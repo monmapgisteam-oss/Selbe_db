@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Data, Trend, Note } from '@/components/ui';
+import { Data, Trend, Note, friendlyError } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -454,11 +454,20 @@ function Board({ all, range, setRange }: {
           {/* ⚠️ 2026-08-21: «Сүүлийн заалт» карт хасагдсан ч ДОТОРХ ХОЁР
               СЭРЭМЖЛҮҮЛГИЙГ энд авчрав. Эдгээргүй бол унасан үйлчилгээ ба
               задраагүй заалт нь ялгагдалгүй, чимээгүй хоосон нүд болж харагдана. */}
+          {/* ⚠️ 2026-10-23 (UX аудит E8/X3): серверийн түүхий англи алдааг ×N давтахгүй — НЭГ энгийн мөр (шалтгаан нь
+              `friendlyError`-оор, бүгд ижил бол нэг удаа), мэдрэгч бүрийн түүхий алдаа «Дэлгэрэнгүй» дотор хэвээр (доорх
+              2026-08-21-ний ⚠️ — аль мэдрэгч юунаас унасан нь харагдах ёстой). «decoder» гэх техник үгийг хасав. */}
           {failed.length > 0 && (
             <>
               <Note>
-                <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
+                {tr('{0} мэдрэгчийн өгөгдөл татагдсангүй.', num(failed.length))}
+                {(() => {
+                  const why = [...new Set(failed.map((x) => friendlyError(x.error)))];
+                  return why.length === 1 ? <> {why[0]}</> : null;
+                })()}
               </Note>
+              <details>
+                <summary>{tr('Дэлгэрэнгүй')}</summary>
               {/* ⚠️ Дээрх «доорх алдааг үзнэ үү» амлалтын БИЕЛЭЛ. Мэдрэгч бүрийн
                   алдааны жагсаалт 2026-08-21-нд «Сүүлийн заалт» карттай ХАМТ
                   устсан тул аль мэдрэгч ямар шалтгаанаар унасан нь хаана ч
@@ -471,11 +480,12 @@ function Board({ all, range, setRange }: {
                   <span style={{ color: 'var(--bad-ink)' }}>{x.error}</span>
                 </Note>
               ))}
+              </details>
             </>
           )}
           {live.length + failed.length < all.length && (
             <Note>
-              <b>{all.length - live.length - failed.length}</b> {tr('мэдрэгчээс задарсан утга ирээгүй. Холбоо тасраагүй — түүхий өгөгдөл ирж байгаа ч Mononet-ийн decoder утгыг задлаагүй байна.')}
+              {tr('{0} мэдрэгчээс шинэ утга ирээгүй байна. Мэдрэгч холбогдсон — утга боловсруулагдахыг хүлээж байна.', num(all.length - live.length - failed.length))}
             </Note>
           )}
         </div>

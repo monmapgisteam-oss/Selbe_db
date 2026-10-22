@@ -115,7 +115,7 @@
   font-weight: 600;
   letter-spacing: 0.36em;
   text-transform: uppercase;
-  color: var(--data);
+  color: var(--data-ink);
 }
 
 /* ⚠️ 2026-09-30: порталын нэг өгүүлбэрийн тайлбар — шошгоны доор, энгийн бичвэр */
@@ -170,7 +170,7 @@
   margin: 18px 0 0 var(--indent);
   max-width: 540px;
   font-size: 0.82rem;
-  color: var(--bad);
+  color: var(--bad-ink);
 }
 
 /* ══════════ Хөл ══════════ */

@@ -46,7 +46,7 @@
 .app button { font-family: inherit; cursor: pointer }
 .muted { color: var(--ink-3) }
 .small { font-size: 11.5px; line-height: 1.5 }
-.xsmall { font-size: 10.5px; line-height: 1.45 }
+.xsmall { font-size: 11px; line-height: 1.45 }
 
 /* ---------- Loader ---------- */
 .loader {
@@ -82,7 +82,7 @@
    боодол `min-width: 0`, гарчиг «…»-ээр тасарна (бүтэн нэр нь `title`-д). */
 .brand > div { min-width: 0 }
 .brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis }
-.brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.brand p { margin: 1px 0 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 @media (max-width: 600px) {
   .topbar { gap: 10px }
   .brand { flex: 1 1 auto }
@@ -145,10 +145,10 @@
   font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3);
   margin-bottom: 9px; display: flex; align-items: center; gap: 8px;
 }
-.pill { margin-left: auto; background: var(--surface-2); color: var(--ink-3); border-radius: 999px; padding: 2px 8px; font-size: 10px; letter-spacing: 0 }
+.pill { margin-left: auto; background: var(--surface-2); color: var(--ink-3); border-radius: 999px; padding: 2px 8px; font-size: 11px; letter-spacing: 0 }
 .mini {
   margin-left: auto; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-3);
-  border-radius: var(--r-sm); padding: 3px 8px; font-size: 10px;
+  border-radius: var(--r-sm); padding: 3px 8px; font-size: 11px;
   display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
   transition: color .12s, background .12s, border-color .12s;
 }
@@ -160,7 +160,7 @@
 .collapsible > .body { margin-top: 9px }
 .caret {
   margin-left: auto; flex: none; width: 17px; height: 17px; border-radius: var(--r-sm); background: var(--surface-2);
-  display: grid; place-items: center; font-size: 9px; color: var(--ink-3); transition: transform .2s;
+  display: grid; place-items: center; font-size: 11px; color: var(--ink-3); transition: transform .2s;
 }
 .mini + .caret { margin-left: 6px }
 .collapsed .caret { transform: rotate(-90deg) }
@@ -181,11 +181,11 @@
 /* ⚠️ 2026-10-01: «N/M бүс өгөгдөлтэй» + CSV товч */
 .rankMeta {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 0 8px 6px; font-size: 10.5px; color: var(--ink-3);
+  padding: 0 8px 6px; font-size: 11px; color: var(--ink-3);
 }
 .rankHead {
   display: grid; grid-template-columns: 26px 1fr 74px 52px; gap: 6px;
-  font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px;
+  font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px;
   padding: 0 8px 6px; border-bottom: 1px solid var(--line);
 }
 .rankHead span:first-child { text-align: center }
@@ -201,7 +201,7 @@
 .rankSel { background: var(--sel); border-left-color: var(--data) }
 .rankRow :global(.rk) { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: center }
 .rankRow :global(.nm) { overflow-wrap: anywhere; font-weight: 600; letter-spacing: .2px }
-.rankRow :global(.nm) i { display: block; font-style: normal; font-size: 10.5px; color: var(--ink-3); font-weight: 400; margin-top: 2px }
+.rankRow :global(.nm) i { display: block; font-style: normal; font-size: 11px; color: var(--ink-3); font-weight: 400; margin-top: 2px }
 .rankRow :global(.nm2) { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 11px; white-space: nowrap }
 /* Онооны нүд — дэвсгэр нь TSX-ээс scoreColor(оноо) (утга заасан өнгө тул үлдэнэ);
    ⚠️ 2026-10-09: бичиг нь TSX-ээс scoreInk(оноо) — `var(--bg)` (цайвар горимд цагаан) шар/ногоон
@@ -221,19 +221,19 @@
 }
 /* ⚠️ Sticky тул hover нь ЗААВАЛ тунгалаг биш өнгө — доогуур гүйх мөр нэвт харагдах ёсгүй */
 .rankGrp:hover { background: var(--surface-2) }
-.rankGrp u { text-decoration: none; font-size: 8px; color: var(--ink-3); text-align: center; transition: transform .18s }
+.rankGrp u { text-decoration: none; font-size: 11px; color: var(--ink-3); text-align: center; transition: transform .18s }
 .grpOff u { transform: rotate(-90deg) }
 .grpOff { opacity: .72; border-bottom-color: var(--line) }
 .rankGrp:first-child { margin-top: 0 }
 .rankGrp i { width: 9px; height: 9px; border-radius: var(--r-sm) }
-.rankGrp span { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-2); font-weight: 600 }
-.rankGrp em { font-style: normal; font-size: 9px; color: var(--ink-3); font-variant-numeric: tabular-nums }
+.rankGrp span { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-2); font-weight: 600 }
+.rankGrp em { font-style: normal; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums }
 .rankGrp b { text-align: right; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums }
 
 /* Багц бүсийг эрэмбэд онцлох — өнгөөр биш ◆ тэмдгээр ялгана (envhub:
    ангиллын ялгаа = тэмдэг/байрлал, чимэглэлийн шар хасагдсан) */
 .bagts :global(.nm) { color: var(--ink) }
-.bagts :global(.nm)::before { content: '◆'; font-size: 8px; color: var(--data); margin-right: 5px; vertical-align: middle }
+.bagts :global(.nm)::before { content: '◆'; font-size: 11px; color: var(--data-ink); margin-right: 5px; vertical-align: middle }
 
 /* ---------- Toggles ---------- */
 .toggles { display: flex; flex-direction: column; gap: 6px }
@@ -255,12 +255,17 @@
 .wRow:last-child { border-bottom: 0 }
 .wTop { display: flex; align-items: baseline; gap: 6px }
 .wTop :global(.nm) { font-size: 11.5px; flex: 1; line-height: 1.35; color: var(--ink) }
-.wTop :global(.pct) { font-size: 12.5px; font-weight: 700; color: var(--data); font-variant-numeric: tabular-nums }
+.wTop :global(.pct) { font-size: 12.5px; font-weight: 700; color: var(--data-ink); font-variant-numeric: tabular-nums }
 
 .app input[type=range] {
   -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: var(--r-sm);
   background: var(--line); outline: none; margin: 6px 0;
 }
+/* ⚠️ 2026-10-23 (UX аудит S11): дээрх `outline: none` (0,2,1) нь глобал `:focus-visible` цагиргийг (мөн 0,2,1,
+   эрт импортлогддог) дардаг тул гараар (Tab) очсон гулсуур ЯМАР Ч тэмдэггүй байв. Гарын фокусад л цагираг. */
+.app input[type=range]:focus-visible { outline: 2px solid var(--hue); outline-offset: 4px; }
+.app input[type=range]:focus-visible::-webkit-slider-thumb { background: var(--data); }
+.app input[type=range]:focus-visible::-moz-range-thumb { background: var(--data); }
 /* Гулсуурын бариул — envhub range-thumb: бараг хурц дөрвөлжин, картын дэвсгэр,
    дата өнгийн хүрээ */
 .app input[type=range]::-webkit-slider-thumb {
@@ -279,14 +284,14 @@
   font-size: 11px; color: var(--ink-2); background: var(--surface-2); border-radius: var(--r-sm);
   padding: 4px 8px; border-left: 2px solid var(--data);
 }
-.wReq b { color: var(--data); font-weight: 600 }
+.wReq b { color: var(--data-ink); font-weight: 600 }
 /* Эх сурвалжийн иш */
-.wSrc { font-size: 9.5px; color: var(--ink-3); margin: 4px 0 0; line-height: 1.4 }
+.wSrc { font-size: 11px; color: var(--ink-3); margin: 4px 0 0; line-height: 1.4 }
 
 /* Бүсийн төрлөөр өөр норм (FAR/BCR) */
 .wTypes { margin-top: 6px; display: flex; flex-direction: column; gap: 1px }
 .wTypes div {
-  display: flex; gap: 8px; align-items: baseline; font-size: 10px;
+  display: flex; gap: 8px; align-items: baseline; font-size: 11px;
   padding: 2px 6px; border-radius: var(--r-sm); background: var(--surface-2);
 }
 .wTypes span { flex: 1; color: var(--ink-3); overflow-wrap: anywhere }
@@ -295,7 +300,7 @@
 /* Босго засварлах талбарууд */
 .wThr { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 7px }
 .wThr label {
-  font-size: 9px; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px;
+  font-size: 11px; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px;
   text-transform: uppercase; letter-spacing: .3px;
 }
 .wThr input {
@@ -308,17 +313,17 @@
 /* ---------- Finance ---------- */
 .sliderRow { margin-bottom: 13px }
 .sliderRow label { font-size: 11.5px; display: flex; justify-content: space-between; align-items: baseline; gap: 6px }
-.sliderRow :global(.val) { color: var(--data); font-weight: 600; font-variant-numeric: tabular-nums }
+.sliderRow :global(.val) { color: var(--data-ink); font-weight: 600; font-variant-numeric: tabular-nums }
 .finSummary {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
   display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
 }
 .finSummary > div { background: var(--surface-2); border-radius: var(--r-sm); padding: 7px 9px }
-.finSummary span { display: block; font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px }
+.finSummary span { display: block; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px }
 .finSummary b { font-size: 12.5px; font-variant-numeric: tabular-nums }
 
 /* ---------- Зогсоолын хэрэгцээ ---------- */
-.subLabel { font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin: 11px 0 5px }
+.subLabel { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin: 11px 0 5px }
 .parkHead { display: flex; align-items: center; gap: 11px; margin-top: 12px }
 .parkPct { font-size: 27px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums }
 .parkPct i { font-style: normal; font-size: 13px; margin-left: 1px }
@@ -336,7 +341,7 @@
 }
 .parkBar::before { content: ''; position: absolute; inset: -6px 0 }
 .parkBar span { display: block; height: 100%; border-radius: 1px; transition: width 0.6s var(--ease) }
-.parkScale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--ink-3); letter-spacing: .3px }
+.parkScale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 11px; color: var(--ink-3); letter-spacing: .3px }
 .parkFormula {
   margin-top: 9px; padding: 7px 9px; background: var(--surface-2); border-radius: var(--r-sm);
   font-size: 11px; color: var(--ink-3); line-height: 1.5;
@@ -365,8 +370,8 @@
 .econRowTop i { width: 8px; height: 8px; border-radius: var(--r-sm); flex: none; align-self: center }
 .econRowTop :global(.nm) { flex: 1; color: var(--ink-2); overflow-wrap: anywhere; text-align: left }
 .econRowTop b { font-variant-numeric: tabular-nums; color: var(--ink) }
-.econRowTop em { font-style: normal; font-size: 9.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right }
-.econMeta { margin-top: 2px; font-size: 9px; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: left }
+.econRowTop em { font-style: normal; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right }
+.econMeta { margin-top: 2px; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: left }
 
 /* Хураадаг дэд гарчиг */
 .toggleLabel {
@@ -378,7 +383,7 @@
 .toggleLabel span { flex: 1; text-align: left }
 .toggleLabel i {
   font-style: normal; width: 15px; height: 15px; border-radius: var(--r-sm); background: var(--surface-2);
-  display: grid; place-items: center; font-size: 8px; transition: transform .2s;
+  display: grid; place-items: center; font-size: 11px; transition: transform .2s;
 }
 .toggleOff i { transform: rotate(-90deg) }
 
@@ -401,14 +406,14 @@
 .mapTip :global(.t) b { font-size: 12px; color: var(--ink); flex: 1; line-height: 1.3 }
 /* ⚠️ 2026-10-09: `var(--bg)` → хар-хүрэн — тэмдгийн дэвсгэр бүгд цайвар (барилгын төлөв, симуляц);
    онооны тэмдэг inline `scoreInk`-ээр дарна (улаан түвшинд цагаан) */
-.mapTip :global(.st) { flex: none; font-size: 9px; padding: 2px 6px; border-radius: 999px; color: #1a1205; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
+.mapTip :global(.st) { flex: none; font-size: 11px; padding: 2px 6px; border-radius: 999px; color: #1a1205; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
 .mapTip dl { display: grid; grid-template-columns: auto auto; gap: 3px 10px; margin: 0 }
-.mapTip dt { color: var(--ink-3); font-size: 10px }
-.mapTip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-size: 10.5px }
+.mapTip dt { color: var(--ink-3); font-size: 11px }
+.mapTip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-size: 11px }
 /* Бүсийн hover — дэд гарчиг ба норм зөрчсөн үзүүлэлтүүд */
-.mapTip :global(.sub2) { font-size: 9.5px; color: var(--ink-3); margin: -4px 0 7px; line-height: 1.4 }
+.mapTip :global(.sub2) { font-size: 11px; color: var(--ink-3); margin: -4px 0 7px; line-height: 1.4 }
 .mapTip :global(.fails) { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px }
-.mapTip :global(.fails) div { display: flex; gap: 8px; align-items: baseline; font-size: 9.5px }
+.mapTip :global(.fails) div { display: flex; gap: 8px; align-items: baseline; font-size: 11px }
 /* Норм зөрчил — утга заасан улаан тул статус токеноор */
 .mapTip :global(.fails) span { flex: 1; color: var(--bad-ink); overflow-wrap: anywhere }
 .mapTip :global(.fails) em { font-style: normal; color: var(--ink); font-variant-numeric: tabular-nums; flex: none }
@@ -452,7 +457,7 @@
 .dSect { padding: 11px 14px; border-bottom: 1px solid var(--line) }
 .dSect:last-child { border-bottom: 0 }
 /* Хэсгийн гарчиг — үндсэн бэхээр (бүх хэсэгт ижил; урьд нь бүдэг саарал байв) */
-.dSect h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink); font-weight: 600 }
+.dSect h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink); font-weight: 600 }
 
 .mRow { margin-bottom: 9px }
 .mRow:last-child { margin-bottom: 0 }
@@ -461,8 +466,8 @@
 .mTop { display: flex; align-items: baseline; gap: 6px; font-size: 11px; margin-bottom: 3px }
 .mTop :global(.nm) { flex: 1; color: var(--ink-2); line-height: 1.3 }
 .mTop :global(.v) { font-weight: 600; font-variant-numeric: tabular-nums }
-.mTop :global(.w) { color: var(--ink-3); font-size: 9.5px }
-.mNorm { font-size: 9.5px; margin: 0 0 3px }
+.mTop :global(.w) { color: var(--ink-3); font-size: 11px }
+.mNorm { font-size: 11px; margin: 0 0 3px }
 /* ⚠️ Норм ХАНГАСАН ба ЗӨРЧСӨН аль ч тохиолдолд НЭГ ногоон (урьд нь зөрчсөнийг
    улаанаар бичдэг байв). Энэ мөр нь үнэлгээ биш, ШААРДЛАГА-ыг бичдэг; хангасан
    эсэхийг ✓/✗ тэмдэг ба дээрх утгын өнгө (оноо) хэлнэ. Өгөгдөлгүй бол бүдэг. */
@@ -473,7 +478,7 @@
 
 .dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
 .dGrid > div { background: var(--surface-2); border-radius: var(--r-sm); padding: 7px 9px }
-.dGrid span { display: block; font-size: 9.5px; color: var(--ink-3) }
+.dGrid span { display: block; font-size: 11px; color: var(--ink-3) }
 .dGrid b { font-size: 12px; font-variant-numeric: tabular-nums }
 /* Ашиг/алдагдал — утга заасан өнгө тул статус токеноор */
 .pos { color: var(--good-ink) }
@@ -487,7 +492,7 @@
 .chart { margin: 0 0 10px }
 .chart:last-child { margin-bottom: 0 }
 /* Диаграмын тайлбар — юуг юутай харьцуулж байгааг үгээр хэлнэ */
-.chCap { margin-top: 6px; font-size: 9.5px; color: var(--ink-3); line-height: 1.45 }
+.chCap { margin-top: 6px; font-size: 11px; color: var(--ink-3); line-height: 1.45 }
 .chCap b { color: var(--ink-2); font-weight: 600 }
 
 /* Пайн диаграм ЗҮҮН, тайлбар нь БАРУУН талд зэрэгцэнэ (`Donut`-ын DOM дараалал).
@@ -507,10 +512,10 @@
 /* ⚠️ 2026-10-09: өгөгдөлгүй тэнхлэгтэй үед ДҮҮРГЭЛТГҮЙ хөрш-ирмэгүүд — гүүр татахгүй (null ≠ 0) */
 .radarEdge { stroke: var(--data); stroke-width: 2; stroke-linecap: round }
 /* Радарын бичиг — үндсэн бэх (хоёр горимд токеноороо тохирно) */
-.radarLbl { fill: var(--ink); font-size: 8.5px }
-.radarTick { fill: var(--ink); font-size: 7px; opacity: .75 }
+.radarLbl { fill: var(--ink); font-size: 11px }
+.radarTick { fill: var(--ink); font-size: 11px; opacity: .75 }
 .radarCtr { fill: var(--ink); font-size: 20px; font-weight: 700 }
-.radarCtrLbl { fill: var(--ink); font-size: 7.5px }
+.radarCtrLbl { fill: var(--ink); font-size: 11px }
 
 /* ⚠️ 2026-08-24: БОСОО БАГАНАН диаграмын ангиуд (`cols`, `colItem`, `colVal`,
    `colBar`, `colNames`) устгав — `SuitDetail.tsx`-ийн `Columns` компонент
@@ -519,7 +524,7 @@
 /* ---------- Үзүүлэлт сонгох жагсаалт ---------- */
 .indHead {
   display: grid; grid-template-columns: 1fr 30px 42px 34px; gap: 7px;
-  font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px;
+  font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px;
   padding: 0 6px 5px; border-bottom: 1px solid var(--line);
 }
 .indHead span:nth-child(n+2) { text-align: right }
@@ -534,8 +539,8 @@
 .indOn { background: var(--sel); box-shadow: inset 2px 0 0 var(--data) }
 .indOn :global(.nm) { color: var(--ink); font-weight: 600 }
 .ind :global(.nm) { color: var(--ink-2); overflow-wrap: anywhere; text-align: left }
-.ind :global(.wt) { text-align: right; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums }
-.ind :global(.cnt) { text-align: right; font-size: 10.5px; color: var(--ink); font-variant-numeric: tabular-nums }
+.ind :global(.wt) { text-align: right; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums }
+.ind :global(.cnt) { text-align: right; font-size: 11px; color: var(--ink); font-variant-numeric: tabular-nums }
 /* ⚠️ 2026-10-09: 5px → 2px зам, радиус 1px («бүх графикийн загварыг жигдлэх») */
 .ind :global(.bar) { height: 2px; background: var(--chart-track); border-radius: 1px; overflow: hidden }
 .ind :global(.bar) i { display: block; height: 100%; border-radius: 1px; transition: width 0.6s var(--ease) }
@@ -544,7 +549,7 @@
 .indNote { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line) }
 .indNote .wReq { display: flex; align-items: baseline; gap: 8px }
 .indNote .wReq :global(.wt) {
-  margin-left: auto; flex: none; font-size: 9.5px; color: var(--ink-3);
+  margin-left: auto; flex: none; font-size: 11px; color: var(--ink-3);
   background: var(--surface-2); border-radius: 999px; padding: 1px 7px;
 }
 

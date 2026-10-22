@@ -321,7 +321,7 @@ export function Zovshoorol() {
             className={s.btn}
             onClick={() => setN((x) => x + 1)}
             disabled={busy}
-            title={tr('Дахин ачаалах')}
+            title={tr('Дахин ачаалах')} aria-label={tr('Дахин ачаалах')}
           >
             ↻
           </button>

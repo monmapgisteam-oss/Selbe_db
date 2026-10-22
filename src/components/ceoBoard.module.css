@@ -124,11 +124,11 @@
 .alertTitle { font-size: 0.75rem; font-weight: 650; color: var(--ink); white-space: nowrap; }
 /* ⚠️ Тоо нь БАРУУН тийш түлхэгдэнэ — багана эгнэж, дээрээс доош харьцуулагдана */
 .alertVal { margin-left: auto; font-size: 0.75rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
-.alertUnit { font-size: 0.65rem; font-style: normal; color: var(--ink-3); white-space: nowrap; }
+.alertUnit { font-size: 0.6875rem; font-style: normal; color: var(--ink-3); white-space: nowrap; }
 /* Схемийн аль зангилаанд байгаа нь */
 .alertAt {
   flex: none;
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
   padding: 1px 6px;
   background: var(--surface);
@@ -165,7 +165,7 @@
 }
 .sideHead {
   margin: 2px 4px 8px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -229,7 +229,7 @@
   color: var(--ink);
 }
 .sideUnit {
-  font-size: 0.6rem;
+  font-size: 0.6875rem;
   font-style: normal;
   color: var(--ink-3);
   overflow: hidden;
@@ -334,7 +334,7 @@
   background: color-mix(in srgb, var(--h) 14%, transparent);
 }
 .nTitle {
-  font-size: 0.67rem;
+  font-size: 0.6875rem;
   font-weight: 650;
   line-height: 1.2;
   color: var(--ink);
@@ -352,7 +352,7 @@
   place-items: center;
   width: 17px;
   height: 17px;
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 800;
   color: var(--h);
   background: color-mix(in srgb, var(--h) 16%, transparent);
@@ -362,7 +362,7 @@
 
 /* Үзүүлэлтгүй зангилааны тодорхойлолт */
 .nDesc {
-  font-size: 0.6rem;
+  font-size: 0.6875rem;
   line-height: 1.28;
   color: var(--ink-3);
   display: -webkit-box;
@@ -396,7 +396,7 @@
  * уншигдахуйц хэвээр. Хэмжээ нь картын өргөнөөс (`cqw`) хамаарна.
  */
 .nVal {
-  font-size: clamp(0.66rem, 4.4cqw, 0.82rem);
+  font-size: clamp(0.6875rem, 4.4cqw, 0.82rem);
   font-weight: 750;
   line-height: 1.15;
   color: var(--ink);
@@ -405,7 +405,7 @@
   min-height: 1em;
 }
 .nUnit {
-  font-size: 0.57rem;
+  font-size: 0.6875rem;
   font-style: normal;
   line-height: 1.2;
   color: var(--ink-3);
@@ -492,7 +492,7 @@
 .kTitle { font-size: 0.84rem; font-weight: 700; color: var(--ink); }
 .kTag {
   padding: 1px 7px;
-  font-size: 0.63rem;
+  font-size: 0.6875rem;
   font-weight: 650;
   letter-spacing: 0.02em;
   color: var(--h);
@@ -539,14 +539,14 @@
 .dRetry {
   font: inherit;
   font-size: 0.72rem;
-  color: var(--data);
+  color: var(--data-ink);
   background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
   text-decoration: underline;
 }
-.dErr { color: var(--ink-3); font-size: 0.68rem; }
+.dErr { color: var(--ink-3); font-size: 0.6875rem; }
 
 /* Хоёрдугаар мөрийн тоо — чип */
 .dFacts {
@@ -604,7 +604,7 @@
   color: var(--ink-2);
   margin-bottom: 6px;
 }
-.tCount { font-size: 0.65rem; font-weight: 600; color: var(--ink-3); }
+.tCount { font-size: 0.6875rem; font-weight: 600; color: var(--ink-3); }
 /* ⚠️ Хэвтээ ба босоо гүйлт нь ХҮСНЭГТ ДОТРОО — толгой наалддаг */
 .tWrap {
   overflow: auto;
@@ -646,8 +646,8 @@
 
 /* ══ Эх сурвалж ══ */
 
-.dSrc { margin: 11px 0 0; font-size: 0.67rem; color: var(--ink-3); }
-.dSrcBad { color: var(--bad); }
+.dSrc { margin: 11px 0 0; font-size: 0.6875rem; color: var(--ink-3); }
+.dSrcBad { color: var(--bad-ink); }
 
 /* Зөвхөн дэлгэц уншигчид — өнгө/тэмдгийн үгэн хувилбар (WCAG 1.4.1) */
 .sr {

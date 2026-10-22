@@ -495,6 +495,79 @@ function roots(): Element[] {
   return ['main', 'panel'].map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
 }
 
+/* Анхдагч («бүгд») сонголт — шүүлт биш */
+const ALL_RE = /^(бүгд|бүх(\s|$)|all(\s|$)|—$)/i;
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E1): ХАРАГДАЦЫН ӨӨРИЙН ШҮҮЛТ — дэлгэцээс (DOM). Урьд нь тайланд зөвхөн порталын бүс
+ *    бичигддэг тул он/сар/улирал, багц, таб, чартын сонголтоор нарийссан тайлан «Шүүлтгүй — бүх өгөгдөл» гэж худал
+ *    гарч байв. 26 харагдацын төлөв модуль дотроо (файлын толгойн ⚠️ ЯАГААД DOM-ООС) тул:
+ *    (1) `data-rep-filter="Нэр: утга"` — модуль өөрөө зарласан шүүлт (хамгийн үнэн);
+ *    (2) `<select>` — анхдагч биш (эхний сонголт биш, «Бүх…» биш) утга, нэр нь aria-label/label/title;
+ *    (3) сегментлэсэн товчны бүлэг (≥2 ах дүү, ЯГ НЭГ нь pressed/selected) — «Бүгд» биш бол; бүлгийн нэр нь
+ *        эцгийн aria-label эсвэл бүлгийн өмнөх богино шошго («ЖИЛ»).
+ *    Тайлангийн удирдлага нуух (`hideControls`) -аас ӨМНӨ уншина.
+ */
+export function readFilters(rs: Element[] = roots()): string[] {
+  const out: string[] = [];
+  const add = (s: string) => { const t = oneLine(s); if (t && !out.includes(t)) out.push(t); };
+  const labelOf = (el: Element): string => {
+    const aria = el.getAttribute('aria-label') || el.getAttribute('title');
+    if (aria) return oneLine(aria);
+    const id = el.getAttribute('id');
+    const lab = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : el.closest('label');
+    return lab ? oneLine((lab as HTMLElement).innerText || '').replace(/:$/, '') : '';
+  };
+  for (const r of rs) {
+    for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el)) add(el.getAttribute('data-rep-filter') || '');
+    for (const el of r.querySelectorAll('select')) {
+      const sel = el as HTMLSelectElement;
+      if (!visible(sel) || sel.selectedIndex <= 0) continue;
+      const v = oneLine(sel.selectedOptions[0]?.text || '');
+      if (!v || ALL_RE.test(v)) continue;
+      const name = labelOf(sel);
+      add(name ? `${name}: ${v}` : v);
+    }
+    const seen = new Set<Element>();
+    for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"]')) {
+      const p = el.parentElement;
+      if (!p || seen.has(p) || !visible(el)) continue;
+      seen.add(p);
+      const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected'));
+      const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true');
+      /* ≥3: «График | Хүснэгт» зэрэг 2 товчтой ХАРАГДАХ ГОРИМ шүүлт биш */
+      if (sib.length < 3 || on.length !== 1) continue;
+      const v = oneLine((el as HTMLElement).innerText || '');
+      if (!v || v.length > 40 || ALL_RE.test(v)) continue;
+      /* Бүлгийн нэр — эцгийн aria-label, эсвэл бүлгийн ӨМНӨХ товч биш богино шошго («ЖИЛ») */
+      let name = p.getAttribute('aria-label') || '';
+      if (!name) {
+        const prev = [...p.children].find((k) => !sib.includes(k) && k.tagName !== 'BUTTON');
+        const t = prev ? oneLine((prev as HTMLElement).innerText || '') : '';
+        if (t && t.length <= 24) name = t;
+      }
+      add(name ? `${sentence(name)}: ${v}` : v);
+    }
+  }
+  return out;
+}
+/** «ЖИЛ» → «Жил» (CSS uppercase шошгын `innerText`) */
+const sentence = (s: string) => (s === s.toUpperCase() ? s.charAt(0) + s.slice(1).toLowerCase() : s);
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E1): ДЭЛГЭЦ БҮРЭН АЧААЛАГДААГҮЙ эсэх — ачаалж буй хэсгийн тоо (эргэлдэгч · `aria-busy`).
+ *    Урьд нь ачаалж байхад дарахад тэр хэсгүүд тайланд «Ачаалж байна…» эсвэл огт ороогүй байв (`ReportButton` асууна).
+ */
+export function pendingCount(rs: Element[] = roots()): number {
+  let n = 0;
+  for (const r of rs) {
+    for (const el of r.querySelectorAll('[aria-busy="true"],[class*="spinner"],[class*="_spin_"]')) {
+      if (visible(el)) n += 1;
+    }
+  }
+  return n;
+}
+
 const p2 = (x: number) => String(x).padStart(2, '0');
 /** YYYY-MM-DD HH:MM — `toLocaleString('mn-MN')` Chrome-д «10/15/2026, 5:27 PM» өгдөг */
 const stamp = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
@@ -504,6 +577,8 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   const html = document.documentElement;
   const prevTheme = html.dataset.theme;
   const rs = roots();
+  /* ⚠️ 2026-10-23 (UX аудит E1): удирдлагыг нуухаас ӨМНӨ — шүүлтийн товч/сонголтыг уншина (`readFilters`) */
+  const filters = [...new Set([...meta.filters, ...readFilters(rs)])];
   /* ⚠️ Гэрэл горим + удирдлага нуух — зөвхөн синхрон хэсэгт (файлын толгойн ⚠️) */
   const style = document.createElement('style');
   style.textContent = `[${HIDE}]{display:none!important}`;
@@ -519,7 +594,10 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
     else html.dataset.theme = prevTheme;
   }
 
-  const body = (await Promise.all(pending.map(resolve))).filter((b): b is DocBlock => !!b);
+  const resolved = await Promise.all(pending.map(resolve));
+  const body = resolved.filter((b): b is DocBlock => !!b);
+  /* ⚠️ 2026-10-23 (UX аудит E1): зураг болгож чадаагүй график/газрын зураг ЧИМЭЭГҮЙ алга болохгүй — тэмдэглэл */
+  const dropped = resolved.filter((b, i) => !b && pending[i].kind !== 'block').length;
 
   /* Khorshoo-гийн бүтэц: 1-р түвшний гарчгийг дугаарлана */
   let n = 0;
@@ -532,8 +610,11 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   if (meta.desc) head.push({ kind: 'p', text: meta.desc, italic: true, center: true, color: '555555' });
   head.push(
     { kind: 'p', text: `${tr('Огноо')}: ${stamp(new Date())}` },
-    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${meta.filters.length ? meta.filters.join(' | ') : tr('Шүүлтгүй — бүх өгөгдөл')}`, bold: true },
+    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${filters.length ? filters.join(' | ') : tr('Шүүлтгүй — бүх өгөгдөл')}`, bold: true },
   );
+  if (dropped) {
+    head.push({ kind: 'p', text: tr('⚠️ {0} график/газрын зураг тайланд орж чадсангүй — дэлгэцээс харна уу.', dropped), italic: true, color: '666666' });
+  }
   if (!body.length) body.push({ kind: 'p', text: tr('Дэлгэц дээр тайланд орох мэдээлэл олдсонгүй.') });
   return [...head, ...body];
 }

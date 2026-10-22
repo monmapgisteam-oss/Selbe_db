@@ -19,6 +19,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
 import { Data, Empty, Note, userError, PointCallout, SvgHoverMarker, calloutAlign } from '@/components/ui';
+import { askConfirm } from '@/lib/confirm';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, ArcGISError } from '@/lib/query';
@@ -3042,7 +3043,7 @@ function FullTable({
           <button
             type="button"
             className={f.rowBtn}
-            title={tr('Мөр хасах')}
+            title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
             onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
           >×</button>
         </td>
@@ -4409,7 +4410,7 @@ function FullTable({
                     <button
                       type="button"
                       className={f.rowBtn}
-                      title={tr('Мөр хасах')}
+                      title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
                       onClick={() => setAdds((st) => st.filter((_, k) => k !== ai))}
                     >×</button>
                   )}
@@ -4601,7 +4602,7 @@ function FullTable({
                 <button
                   type="button"
                   className={f.rowBtn}
-                  title={tr('Мөр хасах')}
+                  title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
                   onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
                 >×</button>
               )}
@@ -4743,8 +4744,10 @@ function FullTable({
         {(canEdit || canRow) && isFlat && (
           /*
            * ГЭРЭЭНИЙ БҮРТГЭЛИЙН ХЭРЭГСЛҮҮД — хоёр товч ҮРГЭЛЖ зэрэг харагдана.
-           * ⚠️ «Нийтлэх» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
+           * ⚠️ «Хадгалах» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
            * илүү ноцтой тул нүдэнд шууд ялгарах ёстой.
+           * ⚠️ 2026-10-23 (UX аудит X7, хэрэглэгч: «бүгдийг зас»): «Нийтлэх ({0})» → «Хадгалах ({0})» — CashflowPlan ·
+           *    TusulNegtgel-тэй НЭГ үг. Хоёр товчны зохиомж (Засах + хадгалах, «Болих»-гүй) ХЭВЭЭР.
            * ⚠️ «Засах» нь ДАРААХ товч (toggle) — «Болих» товчгүй болсон тул
            * засварыг цуцлах цорын ганц зам нь энэ.
            */
@@ -4755,18 +4758,23 @@ function FullTable({
               disabled={saving || dirty === 0}
               onClick={publish}
             >
-              {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+              {saving ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
             </button>
             <button
               type="button"
               className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
               aria-pressed={edit}
               disabled={busy}
-              onClick={() => {
+              onClick={async () => {
                 /* ⚠️ 2026-10-04: нийтлээгүй засвартай үед асуулгүй хаяхгүй — урьд нь «Засах»-ыг
                    дахин дармагц бүх нүдний засвар чимээгүй алга болдог байв. */
+                /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` — хөтөч «дахин бүү асуу»
+                   тэмдэглэсэн үед `window.confirm` чимээгүй false буцааж товч ажиллахаа больдог байв. */
                 if (edit) {
-                  if (dirty > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар бий — хаяж засварын горимоос гарах уу?', dirty))) return;
+                  if (dirty > 0 && !(await askConfirm(
+                    tr('Хадгалаагүй {0} засвар бий — хаяж засварын горимоос гарах уу?', dirty),
+                    { danger: true, ok: tr('Засварыг хаях') },
+                  ))) return;
                   reset();
                 }
                 setEdit((v) => !v);
@@ -4807,10 +4815,10 @@ function FullTable({
                   disabled={saving || dirty === 0}
                   onClick={publish}
                 >
-                  {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+                  {saving ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
                 </button>
                 {/* ⚠️ Гэрээний бүртгэлд «Болих» БАЙХГҮЙ — хэрэглэгч зөвхөн
-                    «Засах» ба «Нийтлэх» хоёрыг хүссэн. Засварыг цуцлах нь
+                    «Засах» ба «Нийтлэх» (2026-10-23-нөөс «Хадгалах») хоёрыг хүссэн. Засварыг цуцлах нь
                     хуудсыг дахин ачаалахтай тэнцүү. */}
                 {!isFlat && (
                 <button
@@ -4842,7 +4850,7 @@ function FullTable({
       {msg && !err && <p className={f.editOk} role="status" aria-live="polite">{msg}</p>}
       {offer && dirty === 0 && (canEdit || canRow) && (
         <p className={f.editOk} role="status">
-          {tr('Энэ хүснэгтэд өмнө нийтлээгүй {0} засвар үлдсэн байна.', Object.keys(offer.pend).length + offer.adds.length)}{' '}
+          {tr('Энэ хүснэгтэд өмнө хадгалаагүй {0} засвар үлдсэн байна.', Object.keys(offer.pend).length + offer.adds.length)}{' '}
           <button type="button" className={f.editBtn} disabled={busy} onClick={restoreDraft}>{tr('Хадгалаагүй засвар сэргээх')}</button>{' '}
           <button type="button" className={f.editBtn} disabled={busy} onClick={dropDraft}>{tr('Хаях')}</button>
         </p>
@@ -5052,7 +5060,7 @@ function FullTable({
               <section className={f.bBox}>
                 <div className={f.bName}>
                   <span className={f.grpCaret}>+</span>
-                  {tr('Нийтлээгүй шинэ мөр')}
+                  {tr('Хадгалаагүй шинэ мөр')}
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(adds.length))}</span>
                 </div>
                 <div className={f.tscroll}>
@@ -5185,12 +5193,14 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
      өөрийн `pend`/`adds`-тэй — таб солиход засвар нь чимээгүй алга болдог байв. */
   const cfDirty = useRef(false);
   const onCfDirty = useCallback((v: boolean) => { cfDirty.current = v; setFinNavDirty('cf', v); }, []);
-  const switchTab = (t: 'cf' | 'ipc' | 'plan') => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` (async) — `window.confirm` нь «дахин бүү асуу»-гийн дараа
+     чимээгүй false буцааж таб огт солигддоггүй байв. */
+  const switchTab = async (t: 'cf' | 'ipc' | 'plan') => {
     if (t === tab) return;
     if (tab === 'plan' && planDirty.current
-      && !window.confirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+      && !(await askConfirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Таб солих') }))) return;
     if (tab === 'cf' && cfDirty.current
-      && !window.confirm(tr('Гэрээний бүртгэлд нийтлээгүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+      && !(await askConfirm(tr('Гэрээний бүртгэлд хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Таб солих') }))) return;
     setTab(t);
   };
 
@@ -5217,25 +5227,26 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
             role="tab"
             aria-selected={tab === 'cf'}
             className={`${f.tab} ${tab === 'cf' ? f.tabOn : ''}`}
-            onClick={() => switchTab('cf')}
+            onClick={() => void switchTab('cf')}
           >
-            {tr('Cashflow')}
+            {/* ⚠️ 2026-10-23 (UX аудит E9): монгол горимд ч монгол нэр — «Cashflow/IPC» нь хаалтанд (хэрэглэгчдийн танил нэр) */}
+            {tr('Гэрээ (Cashflow)')}
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={tab === 'ipc'}
             className={`${f.tab} ${tab === 'ipc' ? f.tabOn : ''}`}
-            onClick={() => switchTab('ipc')}
+            onClick={() => void switchTab('ipc')}
           >
-            {tr('IPC')}
+            {tr('Төлбөрийн акт (IPC)')}
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={tab === 'plan'}
             className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
-            onClick={() => switchTab('plan')}
+            onClick={() => void switchTab('plan')}
           >
             {tr('Cashflow хувиарлах')}
           </button>

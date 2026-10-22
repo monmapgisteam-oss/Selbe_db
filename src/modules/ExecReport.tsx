@@ -206,7 +206,7 @@ export function ExecReport() {
               `invalidateAll()`; урьд нь энэ горимд 5 минутын кэшийг хаях зам байгаагүй. Өгөгдөл
               солигдоход AI дүгнэлт цэвэрлэгдэнэ (дээрх 2026-09-23-ны ⚠️). */}
           <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={refresh}
-            title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}>
+            title={tr('Тайлангийн түр санах ойг хаяж өгөгдлийг дахин татна')}>
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
           </button>

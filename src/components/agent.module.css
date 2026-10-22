@@ -1,5 +1,6 @@
 /* Сэлбэ AI туслах — баруун доод буланд хөвөгч цонх */
 
+/* ⚠️ 2026-10-23 (UX аудит S7): дүрс лэ (40px) — бичиг hover/фокус үед дэлгэгдэнэ (`AgentButton`-ийн ⚠️) */
 .fab {
   position: fixed;
   right: 18px;
@@ -7,8 +8,11 @@
   z-index: 60;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  justify-content: center;
+  gap: 0;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--surface);
@@ -21,7 +25,15 @@
   transition: transform 0.15s var(--ease), border-color 0.15s var(--ease);
 }
 .fab:hover { transform: translateY(-1px); border-color: var(--hue); }
-.fab[aria-pressed='true'] { border-color: var(--hue); color: var(--hue); }
+.fabLabel {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.2s var(--ease), margin 0.2s var(--ease);
+}
+.fab:hover .fabLabel,
+.fab:focus-visible .fabLabel { max-width: 140px; margin-left: 8px; }
+.fab[aria-pressed='true'] { border-color: var(--hue); color: var(--data-ink); }
 
 .panel {
   position: fixed;
@@ -269,7 +281,7 @@
   border: 1px solid var(--hue);
   border-radius: var(--r-sm);
   background: var(--hue);
-  color: #fff;
+  color: var(--hue-ink);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -400,4 +412,4 @@
 .planDone .planMark { color: var(--good, var(--hue)); }
 /* Одоо явагдаж буй алхам — үлдсэнээс тод */
 .planNow { color: var(--ink); font-weight: 500; }
-.planNow .planMark { color: var(--hue); animation: pulse 1.4s ease-in-out infinite; }
+.planNow .planMark { color: var(--data-ink); animation: pulse 1.4s ease-in-out infinite; }

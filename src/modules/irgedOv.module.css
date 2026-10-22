@@ -34,12 +34,12 @@
 .shell[data-detail='1'] .panelHead { padding: 5px 9px; }
 
 .shell[data-detail='1'] .panelTitle {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--ink-2);
 }
 
-.shell[data-detail='1'] .panelNote { font-size: 10px; }
+.shell[data-detail='1'] .panelNote { font-size: 11px; }
 
 .shell[data-detail='1'] .panelBody { padding: 8px 9px; }
 

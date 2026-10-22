@@ -28,7 +28,9 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { setNavDirty } from '@/lib/navGuard';
-import { Data } from '@/components/ui';
+import { Data, userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт */
+import { askConfirm } from '@/lib/confirm';
 import { pct as fmtPct, num } from '@/lib/format';
 import { loadNegtgelFull, dropNegtgelFull, negDisplay, negtgelTree, type NegtgelFull, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
 import { computeNegAuto, syncNegtgel, type NegRaw, type NegSyncState } from '@/lib/negtgelAuto';
@@ -388,9 +390,10 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
      өөрчлөгдсөн» гэж зогсох эсвэл хуучин утга дээр бодож болдог байв. Уншилт ирмэгц (`posted !== live`) нээгдэнэ;
      унавал «Шинэчлэх» дахин уншина. */
   const awaiting = posted != null;
-  const toggleEdit = () => {
+  /* ⚠️ 2026-10-23 (UX аудит X1/X7): async — `askConfirm`; «Нийтлэх» → «Хадгалах» (порталын нэг нэр томьёо) */
+  const toggleEdit = async () => {
     if (awaiting) return;
-    if (edit && count > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар устах уу?', count))) return;
+    if (edit && count > 0 && !(await askConfirm(tr('Хадгалаагүй {0} засвар устах уу?', count), { danger: true, ok: tr('Засвар хаях') }))) return;
     /* ⚠️ Горимд орохдоо засварыг ч цэвэрлэнэ — нийтэлсний дараа шинэ уншилт хүлээж буй (`posted`) загвар үлдсэн байж болно */
     if (edit) { setEdits(new Map()); setFrozen(null); } else { setEdits(new Map()); setFrozen(live); setPosted(null); }
     setMsg(null);
@@ -409,9 +412,10 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
          Нийтлэлтийн явцад өөр шинэчлэлт ирсэн бол тэр нь бичилтийн ДАРААХ уу, ӨМНӨХ үү — тодорхойгүй
          тул дахин нэг уншилт хүлээнэ (хүлээх хооронд харагдах нь яг нийтэлсэн загвар — зөв утга). */
       if (r.n > 0) setPosted(liveRef.current); else { setEdits(new Map()); setFrozen(null); }
-      setMsg({ ok: true, text: r.warn ? `${tr('Нийтэллээ — {0} мөр хадгалагдсан', r.n)} · ${r.warn}` : tr('Нийтэллээ — {0} мөр хадгалагдсан', r.n) });
+      setMsg({ ok: true, text: r.warn ? `${tr('Хадгалагдлаа — {0} мөр', r.n)} · ${r.warn}` : tr('Хадгалагдлаа — {0} мөр', r.n) });
     } catch (e) {
-      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+      /* ⚠️ 2026-10-23 (UX аудит X3): түүхий алдааг `userError`-оор */
+      setMsg({ ok: false, text: userError(e) });
     } finally {
       setSaving(false);
     }
@@ -420,11 +424,12 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
   const toolbar = canEdit ? (
     <span className={n.edBar}>
       {svcOff && !edit && (
-        <span className={n.edWhy}>{tr('Засах боломжгүй: Negtgel_guitsetgel_1013 үйлчилгээнд засвар хаалттай (Query) — ArcGIS дээр Settings → «Enable editing» (Update) асаана уу.')}</span>
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): үйлчилгээний нэр/тохиргооны алхмыг хэрэглэгчид харуулахгүй — техник дэлгэрэнгүй `title`-д */
+        <span className={n.edWhy} title="Negtgel_guitsetgel_1013 · Settings → Enable editing (Update)">{tr('Засах боломжгүй: энэ хүснэгтэд засвар хаалттай байна — админд мэдэгдэнэ үү.')}</span>
       )}
       {edit && (
         <button type="button" className={`${f.editBtn} ${f.pubBtn}`} disabled={!count || saving} onClick={() => { void publish(); }}>
-          {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', count)}
+          {saving ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', count)}
         </button>
       )}
       <button
@@ -432,8 +437,8 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
         className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
         disabled={saving || awaiting || (svcOff && !edit)}
         aria-pressed={edit}
-        title={awaiting ? tr('Нийтэлсэн өгөгдлийг дахин уншиж байна…') : svcOff && !edit ? tr('Үйлчилгээнд засвар хаалттай (Query)') : undefined}
-        onClick={toggleEdit}
+        title={awaiting ? tr('Хадгалсан өгөгдлийг дахин уншиж байна…') : svcOff && !edit ? tr('Энэ хүснэгтэд засвар хаалттай') : undefined}
+        onClick={() => { void toggleEdit(); }}
       >
         {tr('Засах')}
       </button>
@@ -444,17 +449,17 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
     <>
       {edit && (
         <p className={n.syncNote} role="status">
-          {tr('Засах горим: тодруулсан нүд л засагдана (Excel-ийн томьёогүй нүд). Засварласан нүд НОГООН, томьёогоор дахин бодогдсон нүд ЦЭНХЭР. «Нийтлэх» дарах хүртэл хадгалагдахгүй.')}
+          {tr('Засах горим: тодруулсан нүд л засагдана (Excel-ийн томьёогүй нүд). Засварласан нүд НОГООН, томьёогоор дахин бодогдсон нүд ЦЭНХЭР. «Хадгалах» дарах хүртэл хадгалагдахгүй.')}
         </p>
       )}
       {newer && (
         <p className={n.syncNote} role="status">
-          {tr('Шинэ өгөгдөл бий — нийтэлсний/цуцалсны дараа шинэчлэгдэнэ. Нийтлэхэд хүснэгтийг шинээр уншиж зөрчлийг шалгана.')}
+          {tr('Шинэ өгөгдөл бий — хадгалсны/болисны дараа шинэчлэгдэнэ. Хадгалахад хүснэгтийг шинээр уншиж зөрчлийг шалгана.')}
         </p>
       )}
       {reloadFailed && (
         <p className={`${n.syncNote} ${n.msgErr}`} role="alert">
-          {tr('Өгөгдлийг дахин уншиж чадсангүй — засвар тань хадгалагдсан хэвээр; нийтлэхэд хүснэгтийг шинээр уншиж шалгана.')}
+          {tr('Өгөгдлийг дахин уншиж чадсангүй — засвар тань хэвээр байна; хадгалахад хүснэгтийг шинээр уншиж шалгана.')}
         </p>
       )}
       {msg && <p className={`${n.syncNote} ${msg.ok ? n.msgOk : n.msgErr}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
@@ -554,11 +559,11 @@ function SyncNotice({ live, failed, sync, onDone }: {
     {partialNote}
     <div className={n.syncNote} role="status">
       {st.kind === 'error' ? (
-        <span>{tr('Синк хийгдсэнгүй — {0}', st.reason)}</span>
+        <span>{tr('Хүснэгтэд бичигдсэнгүй — {0}', st.reason)}</span>
       ) : st.totalBlocked && st.total ? (
-        <span>{tr('Синк хийгдсэнгүй — төслийн нийт {0} → {1} болж 20-оос илүү нэгжээр өөрчлөгдөх байсан тул хүснэгтэд бичсэнгүй.', p1(st.total.from), p1(st.total.to))}</span>
+        <span>{tr('Хүснэгтэд бичигдсэнгүй — төслийн нийт {0} → {1} болж 20-оос илүү нэгжээр өөрчлөгдөх байсан тул бичсэнгүй.', p1(st.total.from), p1(st.total.to))}</span>
       ) : (
-        <span>{tr('Синк хэсэгчлэн хийгдсэнгүй — {0} мөр нэг дор 20-оос илүү нэгжээр өөрчлөгдөх байсан тул алгасав (бусад {1} мөр бичигдсэн).', num(new Set(st.blocked.map((b) => b.oid)).size), num(st.n))}</span>
+        <span>{tr('Хүснэгтэд хэсэгчлэн бичигдсэнгүй — {0} мөр нэг дор 20-оос илүү нэгжээр өөрчлөгдөх байсан тул алгасав (бусад {1} мөр бичигдсэн).', num(new Set(st.blocked.map((b) => b.oid)).size), num(st.n))}</span>
       )}
       {st.kind === 'guard' && st.blocked.length > 0 && (
         <span className={n.syncRows}>

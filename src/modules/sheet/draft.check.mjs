@@ -574,7 +574,8 @@ console.log('✅ өнчин илгээлт хуудас дахин нээхэд 
   const res = between('const resumeReturned = useCallback(async (soid: number) => {', 'const rr = await readSubmissionByOid(soid);');
   assert.ok(res.includes('await storedMine(pkg.key, soid)'), 'resumeReturned хадгалсан ноорогийг шалгахгүй байна');
   assert.ok(res.includes('if (stored === null)') && res.includes('return; }'), 'ноорог уншигдахгүй үед зогсохгүй байна');
-  assert.ok(res.includes('window.confirm(') && res.includes('dropMine(pkg.key, mine);'), 'өөрийн нүдийг зөвшөөрлөөр хаях зам алга');
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` */
+  assert.ok(res.includes('await askConfirm(') && res.includes('dropMine(pkg.key, mine);'), 'өөрийн нүдийг зөвшөөрлөөр хаях зам алга');
   assert.ok(res.includes('if (reviewerOnly || !permPerf)'), 'батлагч буцаалтыг сонгож чадаж байна');
   /* publish — сэргээлт · зөвшөөрөгдсөн нүд · зорилт зөрсөн нүд */
   const pub = between('const publish = useCallback(async () => {', '/* ⚠️ Нэмэлт мөрийн шалгуур');

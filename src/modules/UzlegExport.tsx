@@ -12,9 +12,9 @@
  *    сольж болно — олон үзлэгийг ч НЭГ PDF-д (тайлан бүр шинэ хуудаснаас) гаргана.
  * ⚠️ PDF-д зураг ОРНО тул олон үзлэгийн PDF удаан (зураг бүр татагдана) — анхааруулна.
  * ⚠️ Өгөгдөл нь ХАБЭА хуудастай НЭГ ачаалагчаас (`loadUzlegBoth`) — кэш хуваалцана.
- * ⚠️ 2026-10-09: «Цуцлах» — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
+ * ⚠️ 2026-10-09: «Болих» (2026-10-23 хүртэл «Цуцлах», X7 нэр томьёо) — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
  *    fetch) цонхыг МӨНХӨД хаагдахгүй үлдээдэг байв. Одоо хавсралт бүр 30с (`ATT_TIMEOUT_MS`),
- *    «Цуцлах» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
+ *    «Болих» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
  * ⚠️ 2026-10-09: «Зураггүй» сонголт ба `UZ_IMG_WARN`-ээс олон зурагт баталгаажуулалт —
  *    мянга мянган зураг хөтчийн санах ойг дүүргэдэг.
  * ⚠️ 2026-10-09: фокусын урхи (`useFocusTrap`) — нээхэд фокус цонхонд, хаахад буцна.
@@ -22,6 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { HABEA, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID } from '@/lib/services';
@@ -283,12 +284,17 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
         : xlsBase;
       /* ⚠️ 2026-10-09: олон зураг — санах ой/хугацааны анхааруулга, «Зураггүй»-г санал болгоно */
       const nImg = noPhotos ? 0 : countReportImages(reports);
+      /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид татах товч чимээгүй зогсдог
+         байв. Хариулах хооронд цонх хаагдсан/цуцлагдсан бол (`live`) юу ч хийхгүй. */
       if (nImg > UZ_IMG_WARN
-        && !window.confirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)))) {
+        && !(await askConfirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)),
+          { ok: tr('Татах') }))) {
+        if (!live()) return;
         ctlRef.current = null;
         setBusy(''); setProg(null);
         return;
       }
+      if (!live()) return;
       const { images: img, failed, heic } = noPhotos
         ? { images: new Map<string, UzImg>(), failed: [] as string[], heic: [] as string[] }
         : await loadReportImages(reports, {
@@ -527,7 +533,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
           {warn && !busy && <p className={x.err} role="alert">⚠ {warn}</p>}
           <div className={x.actions}>
             {lock
-              ? <button type="button" className={x.btn} onClick={cancel}>{tr('Цуцлах')}</button>
+              ? <button type="button" className={x.btn} onClick={cancel}>{tr('Болих')}</button>
               : <button type="button" className={x.btn} onClick={onClose}>{tr('Болих')}</button>}
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void run(); }}
               disabled={lock || !ready || !chosen.length}>

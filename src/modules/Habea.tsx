@@ -2064,6 +2064,15 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }
 
   const surveyEmpty = <Empty label={tr('Судалгаа бөглөгдөөгүй')} />;
+  /**
+   * ⚠️ 2026-10-23 (UX аудит X6): ХООСОН ТӨЛӨВТ ЯАГААД / ДАРАА НЬ ЮУ — шүүлт (чип) идэвхтэй бол шалтгаан нь шүүлт гэдгийг
+   *    хэлж арилгах замыг заана; шүүлтгүй бол бүртгэл шинээр орж ирэхэд автоматаар гарна гэнэ. Урьд нь зөвхөн
+   *    «Бүртгэл алга» гэдэг тул шүүлтээс болсон эсэх нь ойлгомжгүй байв.
+   */
+  const emptyHint = chips.length
+    ? tr('Сонгосон шүүлтэд тохирох бүртгэл алга — дээрх шүүлтийн чипийг (×) арилгаж бүгдийг харна.')
+    : tr('Шинэ бүртгэл орж ирэхэд энд автоматаар гарна.');
+  const noRecords = <Empty label={tr('Бүртгэл алга')} hint={emptyHint} />;
 
   return (
     /**
@@ -2278,8 +2287,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               {canEnter && (wasteCan.state !== 'ready' || wasteCan.data.create !== false
                 ? <> <AddButton onClick={() => setEntry('waste')} /></>
                 : isSuperUser || wasteCan.data.admin
-                  ? <> <AddButton onClick={() => setEntry('waste')} note={tr('Үйлчилгээнд засварлах (Create) эрх хаалттай — зөвхөн AGOL-ийн эзэмшигч/админы эрхээр бичигдэнэ.')} /></>
-                  : <> <AddButton disabled note={tr('Нэмэх боломжгүй: «Хог хаягдал» үйлчилгээнд засварлах эрх хаалттай. AGOL дээр үйлчилгээний тохиргооноос «Enable editing»-ийг асаах шаардлагатай.')} /></>)}
+                  ? <> <AddButton onClick={() => setEntry('waste')} note={tr('Үйлчилгээнд бичлэг нэмэх эрх хаалттай — зөвхөн үйлчилгээний эзэмшигч/админы эрхээр бичигдэнэ.')} /></>
+                  : <> <AddButton disabled note={tr('Нэмэх боломжгүй: «Хог хаягдал» үйлчилгээнд засварлах эрх хаалттай — админд мэдэгдэнэ үү.')} /></>)}
             </>
           )}
         >
@@ -2291,7 +2300,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). Хэмжилтгүй бол «Бүртгэл алга». */
             : wasteMeasured
               ? <Empty label={tr('Бүртгэгдсэн рейс {0} — {1}-р долоо хоног', num(0), num(waste.data.weekNo))} />
-              : <Empty label={tr('Бүртгэл алга')} />)}
+              : <Empty label={tr('Бүртгэл алга')} hint={canEnter ? tr('«+ Нэмэх» товчоор энэ долоо хоногийн рейсийг бүртгэнэ.') : undefined} />)}
         </Section>
         )}
         {/* ⚠️ 2026-10-09: `onSaved → retry` ХАСАГДАВ — бичилт `invalidate('HABEA')` хийдэг тул автобус
@@ -2354,7 +2363,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {craneByStatus.length
             ? <Donut items={craneByStatus} stack size="md" center={num(craneStatusBase.length)} centerLabel={tr('кран')}
                 selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
-            : <Empty label={tr('Бүртгэл алга')} />}
+            : noRecords}
         </Section>
         )}
 
@@ -2385,7 +2394,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {incByType.length
             ? <Donut items={incByType} stack size="md" center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />
-            : <Empty label={tr('Бүртгэл алга')} />}
+            : noRecords}
         </Section>
         <Section title={tr('Шалтгааны төрөл')} note={tr('{0} бүртгэл', num(causeTotal))}>
           {causeSlices.length
@@ -2700,7 +2709,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 )}
               </div>
             );
-          }) : <Empty label={tr('Бүртгэл алга')} />}
+          }) : noRecords}
         </Section>
         )}
 
@@ -2849,7 +2858,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         <Section title={tr('Осол, зөрчил — компаниар')}>
           {incByCompany.length
             ? <Bars items={incByCompany} selected={sel.incCompany} onSelect={(k) => toggleDim('incCompany', k)} />
-            : <Empty label={tr('Бүртгэл алга')} />}
+            : noRecords}
         </Section>
         </>)}
 

@@ -430,9 +430,9 @@
 .chainEnd .chainIcon {
   background: color-mix(in srgb, var(--bad) 14%, transparent);
   border-color: color-mix(in srgb, var(--bad) 45%, transparent);
-  color: var(--bad);
+  color: var(--bad-ink);
 }
-.chainEnd .chainVal { color: var(--bad); }
+.chainEnd .chainVal { color: var(--bad-ink); }
 
 /* Чартын доорх эх сурвалж/задаргааны мөр — чартаас бүдэг, жижиг */
 .chartNote {
@@ -465,7 +465,7 @@
   font-size: 22px;
   font-weight: 700;
   line-height: 1;
-  color: var(--data);
+  color: var(--data-ink);
   font-variant-numeric: tabular-nums;
 }
 .socName {
@@ -490,7 +490,7 @@
   gap: 8px;
   padding: 2px 0;
 }
-.socWhen { font-size: 10.5px; color: var(--ink-3); }
+.socWhen { font-size: 11px; color: var(--ink-3); }
 .socDots { display: flex; gap: 3px; }
 .socDots i { display: block; width: 12px; height: 12px; border-radius: 2px; }
 .socOn { background: var(--data); }
@@ -580,14 +580,14 @@
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.walkStop em { font-style: normal; font-size: 9.5px; color: var(--ink-3); }
+.walkStop em { font-style: normal; font-size: 11px; color: var(--ink-3); }
 .walkTag { font-size: 11px; color: var(--ink-2); }
-.walkM { font-size: 9.5px; color: var(--ink-3); }
+.walkM { font-size: 11px; color: var(--ink-3); }
 
 /* Тэнхлэгийн төгсгөл — амлалтын хязгаар */
 .walkEnd {
   margin: 4px 0 0 16px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-3);
   letter-spacing: 0.03em;
 }

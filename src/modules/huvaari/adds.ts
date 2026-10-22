@@ -165,5 +165,21 @@ export function backSeenGet(pkgKey: string, kind: string): number | null {
 export function backSeenSet(pkgKey: string, kind: string, oid: number): void {
   try { localStorage.setItem(backSeenKey(pkgKey, kind), String(oid)); } catch { /* хаалттай орчин */ }
 }
+/**
+ * НЭМЭЛТ АЖЛЫН БУЦААЛТЫН МЭДЭГДЭЛ ХААСАН (⚠️ 2026-10-23, UX аудит P1) — багц бүрд хаасан илгээлтийн `oid`.
+ * ⚠️ Урьд нь буцаах шалтгаан мөрүүдийг буулгах агшинд НЭГ УДАА л гардаг (`markRestored`-ийн дараа дахин хэзээ ч) тул хуудас
+ *    шинэчлэхэд шалтгаан алга болдог байв. Одоо түүхээс (`loadHistory`) сүүлийн буцаалтыг дахин уншиж харуулна — хэрэглэгч
+ *    «×» дарж хаах хүртэл (энэ тэмдэг) эсвэл дахин илгээх хүртэл. Зөвхөн энэ хөтчид (localStorage).
+ */
+export const AJ_BACK_HIDE_LS = (pkgKey: string) => `selbe-ajil-back-hide|${pkgKey}`;
+export function ajBackHidden(pkgKey: string): number | null {
+  try {
+    const v = Number(localStorage.getItem(AJ_BACK_HIDE_LS(pkgKey)));
+    return Number.isInteger(v) && v > 0 ? v : null;
+  } catch { return null; }
+}
+export function hideAjBack(pkgKey: string, oid: number): void {
+  try { localStorage.setItem(AJ_BACK_HIDE_LS(pkgKey), String(oid)); } catch { /* хаалттай орчин */ }
+}
 export type AddForm = { no: string; work: string; vol: string; unit: string };
 export const EMPTY_FORM: AddForm = { no: '', work: '', vol: '', unit: '' };

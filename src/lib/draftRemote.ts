@@ -506,7 +506,7 @@ export async function saveRemoteDraft(
   }
   /* ⚠️ 2026-10-19: систем хаалттай / эрх түгжигдсэн үед алсад бичихгүй (`draftWriteLocked`-ийн ⚠️) */
   if (draftWriteLocked()) {
-    return { ok: false, error: tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтөчид, нээгдмэгц хуулагдана') };
+    return { ok: false, error: tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтчид, нээгдмэгц хуулагдана') };
   }
   try {
     const auth = await getAuth();

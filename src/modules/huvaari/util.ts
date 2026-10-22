@@ -4,6 +4,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { fixCyr } from '@/lib/format';
 import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
 import type { PlanRow, Span, Status } from '@/lib/plan';
@@ -374,3 +375,11 @@ export function obyemOutsideSpan(
   }
   return { bad, names };
 }
+
+/**
+ * ХАРУУЛАХ НЭР (⚠️ 2026-10-23, UX аудит P6) — хоосон нэртэй мөр «» болж харагдаж, ««»» бүлэгт ажил нэмэх» гэх мэт
+ * шошго гардаг байв. Бүлэгт «(нэргүй бүлэг)», ажилд «(нэргүй ажил)». ЗӨВХӨН харуулна — өгөгдөл/түлхүүрт (№ ¦ нэр) хэрэглэхгүй.
+ */
+/* ⚠️ 2026-10-23 (UX аудит S15): өгөгдөлд «хєрс», «нїх» (є/ї) — ЗӨВХӨН харуулахдаа `fixCyr`; түлхүүрт түүхий нэр */
+export const workName = (r: { work?: string | null; group?: boolean }): string =>
+  fixCyr((r.work ?? '').trim()) || (r.group ? tr('(нэргүй бүлэг)') : tr('(нэргүй ажил)'));

@@ -79,7 +79,7 @@
   width: 28px;
   height: 28px;
   border-radius: var(--r-sm);
-  color: var(--hue);
+  color: var(--data-ink);
   background: color-mix(in oklab, var(--hue) 12%, transparent);
 }
 .icon svg { width: 15px; height: 15px; }
@@ -91,13 +91,63 @@
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 999px;
-  color: var(--hue);
+  color: var(--data-ink);
   background: color-mix(in oklab, var(--hue) 14%, transparent);
 }
 .desc { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
 .who { font-size: 12px; color: var(--ink-3); }
 
 .foot { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+
+/* ── «Хэрхэн хийх вэ» — алхам алхмаар заавар (⚠️ 2026-10-23, S18) ── */
+.howList { display: grid; gap: 4px; }
+.how {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.how[open] { background: var(--surface-2); }
+.howSum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.howSum::-webkit-details-marker { display: none; }
+.howSum::before {
+  content: '▸';
+  flex: none;
+  color: var(--data-ink);
+  transition: transform 0.15s var(--ease);
+}
+.how[open] > .howSum::before { transform: rotate(90deg); }
+.howSteps {
+  margin: 0;
+  padding: 0 14px 10px 34px;
+  list-style: decimal;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.howGo {
+  margin: 0 12px 12px 34px;
+  padding: 6px 12px;
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--data-ink);
+  background: var(--surface);
+}
+.howGo:hover { background: var(--bg); }
 
 /* ── Анхны оролтын зөвлөмж — толгойн «?» товчны доор ── */
 .tip {

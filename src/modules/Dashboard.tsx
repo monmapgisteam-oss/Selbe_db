@@ -810,13 +810,13 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
               {zone && (
                 <div className={o.filterChip}>
                   <span className={o.filterLabel}>{tr('Бүс:')} {zone}</span>
-                  <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label={tr('Цуцлах')}>×</button>
+                  <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
                 </div>
               )}
               {flt && (
                 <div className={o.filterChip}>
                   <span className={o.filterLabel}>{flt.label}</span>
-                  <button type="button" className={o.filterClear} onClick={() => selectFlt(flt)} aria-label={tr('Цуцлах')}>×</button>
+                  <button type="button" className={o.filterClear} onClick={() => selectFlt(flt)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
                 </div>
               )}
             </div>
@@ -2404,7 +2404,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           эзлэхүүн нь БИЕТ хэмжигдэхүүн (м³, м²). Хоёр нь зөрвөл аль нэг нь
           буруу бүртгэгдсэн гэсэн үг — тиймээс тусад нь харуулах нь хяналтын
           утга. */}
-      <Panel title={tr('Эзлэхүүний биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт эзлэхүүн'), SRC_NEGTGEL)}>
+      <Panel title={tr('Обьёмын биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт обьём'), SRC_NEGTGEL)}>
         <Data q={pkgProg} loading={tr('Татаж байна…')}>
           {(list) => {
             const rows = latestPkgProgress(list)
@@ -2437,7 +2437,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                     : tr('{0} · {1} / {2}', pct(x.pct, 1), num(x.v), num(x.p)),
                 }))}
               />
-            ) : <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            ) : <Empty label={tr('Обьём бүртгэгдээгүй.')} />;
           }}
         </Data>
       </Panel>
@@ -2815,7 +2815,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           гэдгээс «дотор нь ЯМАР ажил хоцорсон» нь хамаагүй ашигтай. */}
       <Panel title={tr('Дэд үе шатын гүйцэтгэл (Б1–Б5)')}
              note={tr('тайлагнасан блокоор дундажлав')}>
-        {pm == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
+        {pm == null ? <Pending failed={prog.state === 'error'} label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
           // Багц сонгосон бол ТЭР багцаар (cross-filter), эс бөгөөс 7 багц бүгд.
           const scope = new Set(rows.filter((r) => !sel || r.key === sel).flatMap((r) => r.keys));
           const ph = [...pm].filter(([k]) => scope.has(k)).flatMap(([, c]) => c.phases);
@@ -2968,7 +2968,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           тоог нэг шкалд, хамгийн их утгаар будаж, нэгжгүй харуулдаг байв —
           багц хооронд харьцуулах боломжгүй (06 §5). Түүхий тоо зөвхөн шошгонд,
           тухайн багцын дотор. Төлөвлөгөөгүй багц % бодогдохгүй → саарал. */}
-      <Panel title={tr('Ажлын эзлэхүүн — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
+      <Panel title={tr('Ажлын обьём — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
         <Data q={pkgProg} loading={tr('Татаж байна…')}>
           {(list) => {
             const withVol = latestPkgProgress(list)
@@ -2981,7 +2981,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
                   : null,
               }))
               .sort((a, b) => (b.vp ?? -1) - (a.vp ?? -1));
-            if (!withVol.length) return <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            if (!withVol.length) return <Empty label={tr('Обьём бүртгэгдээгүй.')} />;
             const raw = (v: number | null) => (v == null ? tr('мэдээлэлгүй') : num(v));
             return (
               <Bars
@@ -3421,7 +3421,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
           хэлнэ. Гэвч «Нийт 96.52 га» гэсэн тэмдэглэл дэх зөрүү яг эндээс
           гарна: 1,000 м²-ээс дээш талбарууд тоогоор цөөн ч талбайгаар
           хамаагүй их эзэлнэ. Тоо ба талбайг ЗЭРЭГЦҮҮЛЖ харуулна. */}
-      <Panel title={tr('Талбайн эзлэхүүн — хэмжээний бүлгээр')} note={tr('га · бүх талбар')}>
+      <Panel title={tr('Талбайн хэмжээ — бүлгээр')} note={tr('га · бүх талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const BUCKETS = [
@@ -4348,8 +4348,9 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                 <p className={o.note}>
                   {/* ⚠️ 7 БАГАНАН ЧАРТ ХИЙХГҮЙ: бүх блок 0% тул хоосон Bars нь
                       «эвдэрсэн» мэт харагдана. Тоог ил хэлэх нь зөв. */}
-                  {tr('Барилга дотрын цахилгаан, гэрэлтүүлгийн ажил')} {num(cells.length)} {tr('блокийн')}
-                  {' '}<b>{num(cells.length - started)}</b>{tr('-д хараахан эхлээгүй.')}
+                  {/* ⚠️ 2026-10-23 (UX аудит X8): нэг өгүүлбэр = нэг `tr()` (англид үгийн дараалал эвдэрдэг байв);
+                      «дотрын» → «доторх» (үсгийн алдаа) */}
+                  {tr('Барилга доторх цахилгаан, гэрэлтүүлгийн ажил {0} блокийн {1}-д хараахан эхлээгүй.', num(cells.length), num(cells.length - started))}
                 </p>
               </>
             );
@@ -5149,6 +5150,16 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
    давхаргуудын id-г аль хэдийн авчирдаг тул текст хайлт ОГТ хэрэггүй. */
 
 /**
+ * ⚠️ 2026-10-23 (UX аудит X5): «Татаж байна…»-г `Empty`-ээр (эргэлдэгчгүй, хоосон мэт) БИШ `Loading`-оор.
+ *    Эх нь унасан (`error`) бол мөнхийн «татаж байна» биш — шалтгаан ба дараагийн алхмыг хэлнэ.
+ */
+function Pending({ failed, label }: { failed: boolean; label?: string }) {
+  return failed
+    ? <Empty label={tr('Өгөгдөл татагдсангүй')} hint={tr('Толгойн «Шинэчлэх» (↻) товчоор дахин оролдоно уу.')} />
+    : <Loading label={label} />;
+}
+
+/**
  * БҮХ ТОО АМЬД. Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL хатуу мөрүүд хасагдаж,
  * үлдсэн нь үйлчилгээнээс бодогдоно (headline/social нь `d`-гээс).
  * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) дахин ашиглаж болохоор.
@@ -5291,7 +5302,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       </Panel>
 
       <Panel title={tr('Нийгмийн дэд бүтэц · шинээр')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (
           <Bars
             inline
             selected={selCat}
@@ -5312,7 +5323,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       {/* `capacity` нь өнөөдөр дээрх картын `display`-д ТЕКСТ л байдаг. 3 сургууль
           ба 3,780 суудал бол ӨӨР хоёр түүх — тусад нь зурна. */}
       <Panel title={tr('Хүчин чадал — суудал, орны тоо')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (() => {
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (() => {
           const withCap = soc.rows.filter((r) => r.capacity != null && r.capacity > 0);
           if (!withCap.length) return <Empty label={tr('Хүчин чадлын талбар бөглөгдөөгүй.')} />;
           return (
@@ -5393,7 +5404,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       <Panel title={tr('Нэг суудалд ногдох суурийн талбай')} note={tr('м² / суудал')}>
         <Data q={socQ} loading={tr('Татаж байна…')}>
           {() => {
-            if (soc == null) return <Empty label={tr('Татаж байна…')} />;
+            if (soc == null) return <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} />;
             /** Давхаргын гарчиг → хүчин чадал (`SocialRow.per`-ээс) */
             const capOf = new Map<string, number>();
             soc.rows.forEach((r) => r.per.forEach((x) => {
@@ -5482,8 +5493,13 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           Ногоон байгууламжийн «13.6 м²/хүн»-тэй ИЖИЛ логик. */}
       <Panel title={tr('1,000 хүнд ногдох хүчин чадал')} note={tr('шинэ орон сууцны хүн амаар')}>
         {(() => {
-          if (soc == null || h?.population == null || !h.population) {
-            return <Empty label={tr('Татаж байна…')} />;
+          /* ⚠️ 2026-10-23 (UX аудит X5/X6): ачаалал ба ЖИНХЭНЭ хоосныг салгана — хүн амын тоо 0/хоосон бол
+             «татаж байна» мөнхөд биш, шалтгааныг хэлнэ. */
+          if (soc == null || h == null) {
+            return <Pending failed={d.social.state === 'error' || d.headline.state === 'error'} label={tr('Татаж байна…')} />;
+          }
+          if (h.population == null || !h.population) {
+            return <Empty label={tr('Хүн амын тоо бүртгэгдээгүй')} hint={tr('Шинэ орон сууцны хүн ам бүртгэгдсэний дараа харьцаа бодогдоно.')} />;
           }
           const rows2 = soc.rows
             .filter((r) => (r.capacity ?? 0) > 0)
@@ -5562,7 +5578,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       {/* Барилга ТУС БҮРЭЭР — `loadSocial` давхарга тутамд count+sum аль хэдийн
           асуудаг байсныг (`SocialRow.per`) дүнг нь хаяхаа больж ил гаргав. */}
       <Panel title={tr('Барилга тус бүрээр — тоо, хүчин чадал')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (
           <Rows
             items={soc.rows.flatMap((r) => r.per.map((x) => ({
               key: x.title,

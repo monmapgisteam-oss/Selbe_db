@@ -22,6 +22,8 @@ import { ajilApplyBusyFor } from '@/lib/ajilBatlah';
 import { t as tr } from "@/lib/i18nCore";
 /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
 import { userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд апп доторх асуулт */
+import { askConfirm } from '@/lib/confirm';
 
 /**
  * ⚠️ 2026-10-09: алгассан нүдний тэмдэглэлийн угтвар — илгээлтийн `tailbar`-д хадгалагдах
@@ -313,7 +315,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
             await refreshObyem();
             return;
           }
-          pvErrHere(pre.error ? userError(pre.error) : tr('Шийдвэр хадгалагдсангүй.'));
+          pvErrHere(pre.error ? userError(pre.error) : tr('Шийдвэр хадгалагдсангүй — холболтоо шалгаад дахин дарна уу.'));
           return;
         }
         const pl = await loadObyemPayload(pvSub.oid);
@@ -375,7 +377,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            ижил), зөвшөөрвөл алгассан нүдийг илгээлтийн `tailbar`-д хадгална (`decideObyem.skipped`). */
         if (skippedN > 0) {
           const list = skippedLbl.slice(0, 20).join('; ') + (skippedLbl.length > 20 ? ` … (+${skippedLbl.length - 20})` : '');
-          if (!window.confirm(tr('{0} нүд архивын сүүлийн жаазад тулгагдсангүй — тэдгээр нь үндсэн өгөгдөлд БИЧИГДЭХГҮЙ: {1}. Үлдсэн {2} нүдийг батлах уу? Алгассан нүд илгээлтийн тайлбарт тэмдэглэгдэнэ.', skippedN, list, upd.length))) {
+          if (!(await askConfirm(tr('{0} нүд архивын сүүлийн жаазад тулгагдсангүй — тэдгээр нь үндсэн өгөгдөлд БИЧИГДЭХГҮЙ: {1}. Үлдсэн {2} нүдийг батлах уу? Алгассан нүд илгээлтийн тайлбарт тэмдэглэгдэнэ.', skippedN, list, upd.length), { ok: tr('Үлдсэнийг батлах') }))) {
             pvErrHere(tr('Батлалт цуцлагдлаа — {0} нүд сүүлийн жаазад тулгагдсангүй: {1}. Буцааж, инженерээр дахин илгээлгэнэ үү.', skippedN, list));
             return;
           }
@@ -431,7 +433,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         const claim = await claimObyem({ oid: pvSub.oid, approver: me });
         if (!claim.ok) {
           if (await alreadyMine()) return;
-          pvErrHere(claim.error ? userError(claim.error) : tr('Шийдвэр хадгалагдсангүй.'));
+          pvErrHere(claim.error ? userError(claim.error) : tr('Шийдвэр хадгалагдсангүй — холболтоо шалгаад дахин дарна уу.'));
           return;
         }
         holdClaim = true;
@@ -507,7 +509,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         }
         if (moved !== false) {
           pvErrHere(moved
-            ? tr('Бичих зуур хуудасны жааз солигдсон (өөр батлалт/нийтлэл) — утга хуучин жаазад бичигдсэн байж болзошгүй. Илгээлт «Хүлээгдэж буй» хэвээр; хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу.')
+            ? tr('Бичих зуур хуудасны жааз солигдсон (өөр батлалт/илгээлт) — утга хуучин жаазад бичигдсэн байж болзошгүй. Илгээлт «Хүлээгдэж буй» хэвээр; хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу.')
             : tr('Бичсэний дараах жаазын шалгалт унав — илгээлт «Хүлээгдэж буй» хэвээр; хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу.'));
           return;
         }
@@ -537,7 +539,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       if (!here()) return;
       /* ⚠️ 2026-10-04: бичээд → тэмдэглэх дараалал (дээрх ⚠️) хэвээр; харин тэмдэглэл унавал
          «хадгалагдсангүй» биш — утга АЛЬ ХЭДИЙН бичигдсэнийг ба яах ёстойг хэлнэ. */
-      if (!r.ok && !sameMe) { setPvErr(wroteMain ? afterWrite(userError(r.error ?? '')) : (r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'))); return; }
+      if (!r.ok && !sameMe) { setPvErr(wroteMain ? afterWrite(userError(r.error ?? '')) : (r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй — холболтоо шалгаад дахин дарна уу.'))); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
           + (pvSkipped ? ' ' + tr('{0} мөр архивын сүүлийн жаазад тулгагдаагүй тул бичигдсэнгүй.', pvSkipped) : '')
@@ -561,7 +563,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
    */
   const withdrawObyemHere = useCallback(async () => {
     if (!pvSub || pvBusy) return;
-    if (!window.confirm(tr('Обьёмын илгээлтээ ({0} нүд) татаж авах уу? Батлагч үүнийг цаашид харахгүй; засаад дахин илгээж болно.', String(pvSub.cellCount)))) return;
+    if (!(await askConfirm(tr('Обьёмын илгээлтээ ({0} нүд) татаж авах уу? Батлагч үүнийг цаашид харахгүй; засаад дахин илгээж болно.', String(pvSub.cellCount)), { ok: tr('Илгээлтээ татаж авах') }))) return;
     const want = pkg.key;
     setPvBusy(true); setPvErr(""); setPvNote("");
     try {
@@ -589,7 +591,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     try {
       const r = await returnStuckObyem({ oid: pvSub.oid, approver: user?.username ?? '', reason });
       if (pkgKeyRef.current !== want) return;
-      if (!r.ok) { setPvErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) { setPvErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй — холболтоо шалгаад дахин дарна уу.')); return; }
       setPvNote(tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
       await refreshObyem();
     } catch (e) {

@@ -86,7 +86,8 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
               disabled={off || free.length === 0}
               aria-label={tr('Аккаунт сонгох…')}
             >
-              <option value="">{free.length ? tr('Аккаунт сонгох…') : tr('Чөлөөтэй аккаунт алга')}</option>
+              {/* ⚠️ 2026-10-23 (UX аудит A2): хоосон бол ЯАГААД — шинэ (хадгалаагүй) аккаунт энд гарахгүй */}
+              <option value="">{free.length ? tr('Аккаунт сонгох…') : tr('Чөлөөтэй аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
               {free.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
             <button type="button" className={s.aclBtn} onClick={push} disabled={off || !add.trim()}>
@@ -95,7 +96,7 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
           </div>
           {locked && (
             <div className={s.aclErr} role="alert">
-              {LOCK_MSG} {tr('Доорх жагсаалт энэ browser-ийн кэшнээс.')}
+              {LOCK_MSG} {tr('Доорх жагсаалт энэ хөтчийн түр санах ойноос.')}
             </div>
           )}
           {err && <div className={s.aclErr} role="alert">{err}</div>}
@@ -105,10 +106,10 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
             <div key={u} className={s.aclUser}>
               <span className={s.aclName} title={u}>{u}</span>
               {dirtyCaps.has(u.toLowerCase()) && (
-                <span className={s.aclErr} title={tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}>⚠️</span>
+                <span className={s.aclErr} title={tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид')}>⚠️</span>
               )}
               {dirtyPerms.has(u.toLowerCase()) && (
-                <span className={s.aclErr} title={tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»')}>⚠️</span>
+                <span className={s.aclErr} title={tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин илгээх»')}>⚠️</span>
               )}
               <button
                 type="button"

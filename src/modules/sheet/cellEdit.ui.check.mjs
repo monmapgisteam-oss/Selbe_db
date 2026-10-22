@@ -160,10 +160,14 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(h2.st.warns.length === 0 && h2.st.dones.length === 1, '4d: зөвхөн хоосон нүд алгассан бол ногоон хэвээр');
 }
 
-/* ── 5. Ctrl+S — нээлттэй нүд няцаагдвал илгээхгүй (эх кодын шалгуур) ── */
+/* ── 5. «Илгээх» товч / Ctrl+S — нээлттэй нүд няцаагдвал үргэлжлүүлэхгүй (эх кодын шалгуур) ── */
 {
   const src = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  ok(/if \(flushEditRef\.current\(\)\) setPublishQueued\(true\);/.test(src), '5: Ctrl+S нь `commit`-ийн үр дүнг шалгах ёстой');
+  ok(/if \(flushEditRef\.current\(\)\) setPublishQueued\(true\);/.test(src), '5: «Илгээх» нь `commit`-ийн үр дүнг шалгах ёстой');
+  /* ⚠️ 2026-10-23 (UX аудит F1): Ctrl+S нь ЗӨВХӨН ноорог хадгална — илгээхгүй; «Илгээх» илгээхээс өмнө асууна */
+  ok(/if \(flushEditRef\.current\(\)\) setSaveQueued\(true\);/.test(src), '5: Ctrl+S нь ноорог хадгална (`saveQueued`)');
+  const pub = src.slice(src.indexOf('const publish = useCallback'), src.indexOf('// Ctrl+S'));
+  ok(/await askConfirm\(/.test(pub), '5: «Илгээх» илгээхээс өмнө асууна');
   ok(/return commit\(rowsAll\[edit\.i\]/.test(src), '5: `flushEditRef` нь `commit`-ийн үр дүнг буцаана');
 }
 
@@ -453,6 +457,29 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const hq = harness(rs, { fillMode: 'pct' });
   hq.api().pasteBlock(0, 0, '5\t20');
   ok(asked.length === 0 && Object.keys(hq.st.pending).length === 2, `10c: 1-ээс их утгад асуулт гарахгүй (${asked[0] ?? '—'})`);
+}
+
+/* ── 11. (2026-10-23, UX аудит X1) апп доторх асуулт — «Тийм» бол ИЖИЛ оролтоор дахин бичнэ (`commit` синхрон false) ── */
+{
+  const tick = () => new Promise((res) => setTimeout(res, 0));
+  reset(true);
+  const r = row(1, 100, [null, null], [0.5, null]);
+  const { st, api } = harness([r]);
+  ok(api().commit(r, 0, '10') === false && asked.length === 1, '11a: асуулт нээлттэй үед нүд хаагдахгүй (false)');
+  await tick();
+  ok(st.pending['1:0'] === '10' && asked.length === 1, `11a: «Тийм» — бичигдэв, дахин асуухгүй (${JSON.stringify(st.pending)})`);
+  reset(true);
+  const rs = [row(1, 100, [null, null], [0.5, null]), row(2, 100, [null, null], [0.6, null])];
+  const h = harness(rs);
+  h.api().pasteBlock(0, 0, '10\n10');
+  ok(asked.length === 1, '11b: буулгалт нэг удаа асууна');
+  await tick();
+  ok(h.st.pending['1:0'] === '10' && h.st.pending['2:0'] === '10', `11b: «Тийм» — буулгалт бичигдэв (${JSON.stringify(h.st.pending)})`);
+  reset(false);
+  const h2 = harness(rs);
+  h2.api().pasteBlock(0, 0, '10\n10');
+  await tick();
+  ok(Object.keys(h2.st.pending).length === 0, '11c: «Болих» — юу ч бичигдэхгүй');
 }
 
 console.log(`✅ cellEdit: ${n} шалгалт — бүгд давлаа`);

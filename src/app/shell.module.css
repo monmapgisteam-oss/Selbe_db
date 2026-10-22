@@ -100,7 +100,7 @@
   background: transparent;
 }
 .dashFoot .sumValue { font-size: 1.12rem; }
-.dashFoot .sumLabel { font-size: 0.66rem; }
+.dashFoot .sumLabel { font-size: 0.6875rem; }
 
 /**
  * АНАЛИЗ — Suitability Modeler нь ӨӨРИЙН бүрэн дэлгэцтэй (өөрийн 4 талын хүрээ:
@@ -210,7 +210,7 @@
 }
 .filterText { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
 .filterGroup {
-  font-size: 0.6rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -306,7 +306,7 @@
   padding: 3px 10px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-strong);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink);
   background: var(--surface);
 }
@@ -335,7 +335,7 @@
   border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--hue) 14%, transparent);
   color: color-mix(in srgb, var(--hue) 65%, var(--ink));
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -343,7 +343,7 @@
 /* ⚠️ Доод хүрээнийхээс ЖИЖИГ (1.12→0.94rem): самбар 360px өргөнтэй тул
    5 үзүүлэлт хуучин хэмжээгээрээ 3 мөр болж, гол агуулгыг доош түлхэнэ. */
 .sumValue { font-size: 0.94rem; font-weight: 600; letter-spacing: -0.01em; }
-.sumLabel { font-size: 0.62rem; color: var(--ink-3); white-space: nowrap; }
+.sumLabel { font-size: 0.6875rem; color: var(--ink-3); white-space: nowrap; }
 
 /* ── Дашбоард ── */
 /* ⚠️ 2026-08-17: envhub — самбар нь ЦУЛ цагаан/бараан хавтан БИШ: хуудасны
@@ -430,7 +430,7 @@
   border-radius: var(--r-sm);
   /* envhub — хавтгай өнгөн угаалт + өнгөт дүрс (товойлт, сүүдэргүй) */
   background: color-mix(in oklab, var(--hue) 14%, transparent);
-  color: var(--hue);
+  color: var(--data-ink);
 }
 .panelIcon svg { width: 15px; height: 15px; }
 .panelTitle {
@@ -489,6 +489,29 @@
   .filterChip { padding: 5px 6px 5px 8px; }
   /* Маш нарийн үед: брэндийн нэрийг нуух (зөвхөн лого) — таб гүйх зай нэмэгдэнэ. */
   .brandName { display: none; }
+}
+
+/* ⚠️ 2026-10-23 (UX аудит S1): УТАС (≤620px) — 390px өргөнд толгойн «?» ба гэрэлтүүлгийн товч дэлгэцээс
+   ГАДАГШ (x 413–447) гарч, `.head { overflow: hidden }`-д тайрагддаг байв (анхны зөвлөмж «? товчийг дар»
+   гэдэг атлаа). Лого 30→22px (≈156→115px), товч 34→32px, завсар 8→4px, «Тайлан»-ы бичиг нүдэнд нуугдана
+   (дэлгэц уншигчид нэр хэвээр — clip, `display:none` БИШ). Сүүлийн хамгаалалт: хэрэгслийн бүлэг хумигдаж
+   дотроо хэвтээ гүйнэ — товч хэзээ ч тайрагдаж алга болохгүй. */
+@media (max-width: 620px) {
+  .logo { height: 22px; }
+  .head { gap: 8px; padding: 0 10px; }
+  /* padding 4px — гүйлгэх сав фокусын цагиргийг (2px + offset 2px) тайрахгүй */
+  .headTools { gap: 4px; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -4px 0; }
+  .headTools::-webkit-scrollbar { display: none; }
+  .iconBtn { width: 32px; height: 32px; }
+  .reportBtn { width: 32px; padding: 0; justify-content: center; }
+  .reportBtn > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }
 
 /* ══════════════ 2026-08-18: UI шинэчлэл (хэрэглэгчийн 8 хүсэлт) ══════════════ */

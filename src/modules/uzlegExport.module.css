@@ -16,14 +16,14 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: var(--data);
+  color: var(--data-ink);
   background: color-mix(in srgb, var(--data) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
   border-radius: var(--r-sm);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.trigger:hover { color: #fff; background: var(--data); }
+.trigger:hover { color: var(--hue-ink); background: var(--data); }
 .trigger:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 
 /* ── Цонх ── */
@@ -74,13 +74,13 @@
 .stepHead > i {
   font-style: normal; display: grid; place-items: center;
   width: 18px; height: 18px; border-radius: 50%;
-  font-size: 10px; letter-spacing: 0;
-  color: #fff; background: var(--data);
+  font-size: 11px; letter-spacing: 0;
+  color: var(--hue-ink); background: var(--data);
 }
 .meta { margin-left: auto; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
 .link {
   font: inherit; font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0;
-  color: var(--data); background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--data-ink); background: none; border: 0; padding: 0; cursor: pointer;
 }
 .stepHead > .link { margin-left: auto; }
 .meta + .link { margin-left: 10px; }
@@ -104,7 +104,7 @@
 .formOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); background: color-mix(in srgb, var(--data) 7%, var(--surface)); }
 .formDot { flex: none; width: 9px; height: 9px; border-radius: 3px; }
 .formName { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
-.formCount { flex: none; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+.formCount { flex: none; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 
 /* Хугацаа */
 .presets, .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -121,7 +121,7 @@
 .chip:hover { border-color: var(--line-strong); color: var(--ink); }
 .chip b { font-weight: 700; color: var(--ink-3); }
 .chipText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
-.chipOn { color: #fff; background: var(--data); border-color: var(--data); }
+.chipOn { color: var(--hue-ink); background: var(--data); border-color: var(--data); }
 .chipOn b { color: #fff; opacity: 0.85; }
 .dates { display: flex; align-items: flex-end; gap: 8px; }
 .field { flex: 1; display: grid; gap: 3px; font-size: 11px; color: var(--ink-3); }
@@ -162,12 +162,12 @@
 .rowMain { display: grid; gap: 2px; min-width: 0; }
 .rowTop { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .pkg {
-  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px;
   color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line);
 }
 .rowCo { font-size: 11.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flag {
-  font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 99px; white-space: nowrap;
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 99px; white-space: nowrap;
   color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 15%, transparent);
 }
 .flagMajor { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
@@ -210,7 +210,7 @@
 .fmtOpt b { font-size: 12.5px; }
 
 .fmtOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); }
-.fmtOn b { color: var(--data); }
+.fmtOn b { color: var(--data-ink); }
 
 .progress { display: grid; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
 .bar { height: 4px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
@@ -234,7 +234,7 @@
   cursor: pointer;
 }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.pri { color: #fff; background: var(--data); border-color: var(--data); }
+.pri { color: var(--hue-ink); background: var(--data); border-color: var(--data); }
 .pri:not(:disabled):hover { filter: brightness(1.08); }
 .btnCount {
   min-width: 20px; padding: 1px 6px; border-radius: 99px;

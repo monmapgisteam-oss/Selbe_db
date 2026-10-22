@@ -249,7 +249,7 @@
   min-width: 0;
   min-height: 2.6em; /* ⚠️ 2026-10-08 (хэрэглэгч: «зургийг дээш шах»): 3 → 2 мөр */
   /* ⚠️ 2026-10-08 (хэрэглэгч): 10px → 9px */
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: 0.05em;
@@ -310,7 +310,7 @@
   background: var(--t);
 }
 .ktSub {
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.3;
   /* ⚠️ 2026-10-08: НЭГ мөр — нүдийг өндөрсгөхгүй, бүтэн бичиг title-д */
   max-width: 100%;
@@ -370,7 +370,7 @@
   border-top: 1px solid var(--line);
 }
 .fltHead {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -418,7 +418,7 @@
   align-items: baseline;
   gap: 8px;
 }
-.regHead { padding-bottom: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.regHead { padding-bottom: 4px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .regHead span:not(:first-child) { text-align: right; }
 /* ⚠️ 2026-10-09: `.regRow`/`.regLabel`/`.regBar` УСТГАВ — мөрүүд порталын `Bars` болсон
    (зам нь `--line` биш `--chart-track`, hover `useTip`). */
@@ -499,7 +499,7 @@
   border-radius: 999px;
   cursor: pointer;
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.5;
   color: var(--ink-3);
@@ -635,7 +635,7 @@
 
 .pillLabel {
   flex: none;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -697,7 +697,7 @@
    гарчигт дахин хэрэг болж магадгүй. */
 .filtersLabel {
   flex: none;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -780,7 +780,7 @@
   gap: 7px;
   min-width: 0;
   padding: 2px 2px 0;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -912,7 +912,7 @@
 /* Картын доорх нэг мөр тайлбар (кран: дундаж өндөр/сум) */
 .mini {
   margin-top: 6px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
 }
 
@@ -935,7 +935,7 @@
 }
 /* ⚠️ var(--accent) нь overview-ийн `.shell` дотор л тодорхойлогддог байсан тул
    энд УНШИГДДАГГҮЙ байв — өгөгдлийн ганц өнгөөр шууд. */
-.incHead:hover .incType { color: var(--data); }
+.incHead:hover .incType { color: var(--data-ink); }
 .incDot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .incType {
   flex: 1;
@@ -946,7 +946,7 @@
   overflow-wrap: anywhere;
 }
 .incDate {
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -954,7 +954,7 @@
 .incSub {
   margin-top: 2px;
   padding-left: 15px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
   line-height: 1.35;
 }
@@ -990,7 +990,8 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
-  max-width: calc(100% - 24px);
+  /* ⚠️ 2026-10-23 (UX аудит S3): баруун хагаст л — дээд голын 2D/3D табыг (MapTools, z 10) бүрхдэг байв */
+  max-width: calc(50% - 40px);
   padding: 6px;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--line);
@@ -998,6 +999,13 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* ⚠️ 2026-10-23 (засвар): өргөн хязгаартай (`max-width` дээр) капсул 720px-ээс өргөн зурагт ОЛОН МӨРӨНД ороход 999px
+   булантай өндөр «цэцгийн сав» болж зургийн баруун дээд хэсгийг бүрхдэг байв — мөр таслахгүй, хэвтээ гүйлгэнэ.
+   `MultiSelect`-ийн жагсаалт `fixed` тул `overflow` түүнийг тайрахгүй (дээрх ⚠️). Нарийн зурагт доорх босоо хэлбэр
+   (булан `--r-sm`) хэвээр. */
+@media (min-width: 721px) {
+  .mapFilter { flex-wrap: nowrap; justify-content: safe flex-end; overflow-x: auto; scrollbar-width: thin; }
+}
 /* Нарийн зурагт капсулууд босоо — хэвтээ дараалал зургийг бүрхэнэ */
 @media (max-width: 720px) {
   .mapFilter { border-radius: var(--r-sm); flex-direction: column; align-items: flex-end; }
@@ -1076,7 +1084,7 @@
 .photos a:hover { border-color: var(--data); }
 .photoNote {
   margin-top: 6px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
 }
 
@@ -1125,7 +1133,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: 5px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
 }
 .slideCapText {

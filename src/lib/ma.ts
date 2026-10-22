@@ -129,8 +129,10 @@ export async function loadMa(): Promise<MaRow[]> {
   return rows.map((r) => rowOf(r as Record<string, unknown>));
 }
 
+/* ⚠️ 2026-10-23 (UX аудит Q6 · X7): «Татгалзаагүй» гэсэн давхар үгүйсгэл → «Зөвшөөрсөн»; R нь бусад урсгалын
+   буцаалттай НЭГ үг «Буцаасан». Утга (A · AN · R код) өөрчлөгдөөгүй — зөвхөн шошго. */
 export const verdictLabel = (v: Verdict | null): string =>
-  v === 'A' ? tr('A — Татгалзаагүй') : v === 'AN' ? tr('AN — Саналтай татгалзаагүй') : v === 'R' ? tr('R — Татгалзсан') : tr('Шийдвэргүй');
+  v === 'A' ? tr('A — Зөвшөөрсөн') : v === 'AN' ? tr('AN — Саналтай зөвшөөрсөн') : v === 'R' ? tr('R — Буцаасан') : tr('Шийдвэргүй');
 
 /** Батлагдсан (ажил эхлэх хаалгыг нээдэг) шийдвэр — A эсвэл AN */
 export const isApproved = (v: Verdict | null): boolean => v === 'A' || v === 'AN';
@@ -178,9 +180,14 @@ export function chainOf(ma: Verdict | null, next: ChainInput = {}): Stage[] {
 export const ipcReady = (chain: readonly Stage[]): boolean => chain.every((s) => s.state === 'done');
 export const stageLabel = (k: StageKey): string =>
   k === 'MA' ? tr('MA · Материал') : k === 'MIR' ? tr('MIR · Үзлэг') : k === 'FIC' ? tr('FIC · Явцын үзлэг') : tr('М-акт · Дууссан');
+/**
+ * ⚠️ 2026-10-23 (UX аудит Q4): «Хүлээгдэж буй» ба «Шийдвэр хүлээж буй» хоёр ялгагдахгүй байв — ХЭНИЙ ээлж
+ *    болохыг хэлнэ: `next` = баримт хараахан ирээгүй (гүйцэтгэгч оруулна), `pending` = ирсэн, хянагч шийднэ.
+ *    `rejected` нь бусад урсгалын буцаалттай НЭГ үг «Буцаасан» (X7).
+ */
 export const stageStateLabel = (s: StageState): string =>
-  s === 'done' ? tr('Батлагдсан') : s === 'rejected' ? tr('Татгалзсан') : s === 'pending' ? tr('Шийдвэр хүлээж буй')
-    : s === 'next' ? tr('Хүлээгдэж буй') : tr('Хаалттай');
+  s === 'done' ? tr('Батлагдсан') : s === 'rejected' ? tr('Буцаасан') : s === 'pending' ? tr('Хянагч шийднэ')
+    : s === 'next' ? tr('Гүйцэтгэгч оруулна') : tr('Хаалттай');
 
 /**
  * Нэг хариу бичгийн дугаар (`resp_no`) олон удаа илгээгдсэн бол (засвар · давхар илгээлт)
@@ -195,6 +202,36 @@ export function latestPerRespNo(rows: readonly MaRow[]): MaRow[] {
     if (!cur || r.oid > cur.oid) best.set(r.respNo, r);
   }
   return [...best.values(), ...loose].sort((a, b) => b.oid - a.oid);
+}
+
+/**
+ * ДАХИН ИРҮҮЛСЭН MA-ГИЙН ХОЛБОО (⚠️ 2026-10-23, UX аудит Q10). Буцаасан (R) MA-г гүйцэтгэгч засаад ШИНЭ хариу
+ * бичгийн дугаартай илгээвэл `latestPerRespNo` хоёуланг нь тусдаа карт болгодог тул «хоёр өөр материал» мэт
+ * харагддаг байв. Нэг багц + нэг материалын нэр (том/жижиг үсэг · зай ялгахгүй) доторх R мөрийн ДАРААГИЙН
+ * (их objectid) мөрийг түүний дахин ирүүлэлт гэж холбоно.
+ * ⚠️ Зөвхөн ХАРУУЛАХ холбоо — гинж/хаалганы дүрэмд (`maGateOf` · `chainOf`) ОРОЛЦОХГҮЙ: материалын нэр гараар
+ *    бичигддэг тул таамаг. Тестлэгдэнэ (`ma.check.mjs`).
+ */
+export type ResubLink = { prev?: MaRow; next?: MaRow };
+export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
+  const groups = new Map<string, MaRow[]>();
+  for (const r of rows) {
+    const mat = r.material.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!mat || !r.pkg) continue;
+    const k = `${r.pkg}|${mat}`;
+    const g = groups.get(k);
+    if (g) g.push(r); else groups.set(k, [r]);
+  }
+  const out = new Map<number, ResubLink>();
+  for (const g of groups.values()) {
+    g.sort((a, b) => a.oid - b.oid);
+    for (let i = 0; i + 1 < g.length; i++) {
+      if (g[i].verdict !== 'R') continue;
+      out.set(g[i].oid, { ...out.get(g[i].oid), next: g[i + 1] });
+      out.set(g[i + 1].oid, { ...out.get(g[i + 1].oid), prev: g[i] });
+    }
+  }
+  return out;
 }
 
 /* ═══════════════ ХАВСРАЛТ (Enterprise токентой) ═══════════════ */

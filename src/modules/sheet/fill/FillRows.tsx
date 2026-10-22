@@ -10,6 +10,9 @@ import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
 import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
 import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
+import { fixCyr } from "@/lib/format";
+/* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт */
+import { askConfirm, getConfirmSnapshot } from "@/lib/confirm";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
 import type { useCellEdit, PastePrev } from "./useCellEdit";
@@ -75,7 +78,8 @@ export function FillRows({
                 const isNew = r.oid < 0 || addedOids.has(r.oid);
                 /* ⚠️ 2026-10-09: № нь бүтэн гарчиг (зайтай) бөгөөд Ажил хоосон бол нэрийг «Ажил» нүдэнд (доорх ⚠️) */
                 const noTitle = /\s/.test(r.no);
-                const workTxt = r.work || (noTitle ? r.no : "");
+                /* ⚠️ 2026-10-23 (UX аудит S15): өгөгдөлд «хєрс», «нїх» (є/ї) — ЗӨВХӨН харуулахдаа `fixCyr`; түлхүүрт түүхий нэр */
+                const workTxt = fixCyr(r.work || (noTitle ? r.no : ""));
                 return (
                   <Fragment key={r.oid}>
                   <tr
@@ -322,9 +326,11 @@ export function FillRows({
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
                         /* ⚠️ 2026-10-09 (аудит №3): ногоон нүдэнд илгээгээгүй утга үлдсэн бол БУЦААХ л боломжтой (`clearLocked`) */
                         if (okLock) {
-                          if (dirty && clearLocked && editing && !busy && !restoring
-                            && window.confirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'))) {
-                            clearLocked(r, bi);
+                          /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — татгалзвал урьдын адил шалтгааныг хэлнэ.
+                             `clearLocked` өөрөө түгжээ ба ноорогт байгааг ДАХИН шалгана (асуулт нээлттэй хооронд өөрчлөгдсөн бол юу ч хийхгүй). */
+                          if (dirty && clearLocked && editing && !busy && !restoring) {
+                            void askConfirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'), { ok: tr('Утгыг арилгах') })
+                              .then((yes) => { if (yes) clearLocked(r, bi); else say(RO.okLocked); });
                             return;
                           }
                           return say(RO.okLocked);
@@ -435,7 +441,8 @@ export function FillRows({
                                 /* ⚠️ 2026-10-22 (аудит): хянагчид сөрөг нүд зөвшөөрөгдөхгүй — «дарж зөвшөөрнө үү» гэж хэлэхгүй (`negTip`) */
                                 : negSent && view
                                   ? ''
-                                  : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
+                                  /* ⚠️ 2026-10-23 (UX аудит X3): «агшин» — дотоод нэр */
+                                  : tr('Өмнөх батлагдсан утгаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
                               : r.group
                               ? RO.groupAct
                               : !canVol
@@ -479,7 +486,9 @@ export function FillRows({
                                   /* ⚠️ 2026-10-07: blur-ийн commit НЯЦААГДВАЛ (асуултад «Цуцлах» · тоо биш) нүд
                                      нээлттэй үлддэг (`commit`-ийн 2026-10-06 ⚠️) ч фокус нь алга болж, дараагийн
                                      товшилт бичсэн текстийг арчдаг байв — оролтод буцааж фокуслана. */
-                                  if (!commit(r, bi, el.value) && el.isConnected) el.focus();
+                                  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт НЭЭЛТТЭЙ бол фокусыг БУЦААХГҮЙ — цонхны фокусыг
+                                     булаавал Esc/Enter оролтод очиж, цонх хариугүй үлдэнэ (`useCellEdit.asking`-ийн ⚠️) */
+                                  if (!commit(r, bi, el.value) && el.isConnected && !getConfirmSnapshot().req) el.focus();
                                 },
                                 /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
                                    нь нэг мөр текст л авдаг тул таслан авна. */

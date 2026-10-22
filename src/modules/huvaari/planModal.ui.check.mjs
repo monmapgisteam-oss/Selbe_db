@@ -164,7 +164,7 @@ console.log('✓ savePrep: урт уялдаа тайрахгүй, татгал�
   const PM = fs.readFileSync('src/modules/huvaari/PlanModal.tsx', 'utf8');
   const oi = PM.indexOf('const onStart = (v: string) => {');
   assert.ok(oi > 0 && PM.slice(oi, oi + 400).includes('if (ms2 != null && s <= ms2) return;'), 'onStart: эхлэх ≤ дуусах → дуусах хэвээр');
-  assert.ok(PM.indexOf('copyShifted') > 0 && /window\.confirm\(/.test(PM.slice(PM.indexOf('const copyShifted'), PM.indexOf('const copyShifted') + 600)), 'хуулах нь баталгаажуулалттай ил үйлдэл');
+  assert.ok(PM.indexOf('copyShifted') > 0 && /askConfirm\(/.test(PM.slice(PM.indexOf('const copyShifted'), PM.indexOf('const copyShifted') + 600)), 'хуулах нь баталгаажуулалттай ил үйлдэл');
 }
 console.log('✓ PlanModal SSR: combobox · алхмаар хуулах товч · onStart дүрэм');
 

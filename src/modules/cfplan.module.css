@@ -43,7 +43,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
@@ -140,7 +140,7 @@
 
 .tbl { border-collapse: collapse; width: 100%; max-width: 520px; }
 .tbl th {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -184,7 +184,7 @@
 .tbl tfoot tr.done td { color: var(--good); }
 .tbl tfoot tr.part td { color: var(--warn); }
 .tbl tfoot tr.none td { color: var(--ink-3); }
-.tbl tfoot tr.over td { color: var(--bad); }
+.tbl tfoot tr.over td { color: var(--bad-ink); }
 
 .warn { margin: 8px 0 0; font-size: 11px; color: var(--warn); max-width: 520px; }
 
@@ -196,14 +196,14 @@
   margin-top: auto;
   padding-top: 12px;
 }
-.err { font-size: 11px; color: var(--bad); }
+.err { font-size: 11px; color: var(--bad-ink); }
 .ok { font-size: 11px; color: var(--good); }
 .save {
   padding: 6px 14px;
   border-radius: 6px;
   border: 1px solid var(--data);
   background: var(--data);
-  color: #fff;
+  color: var(--hue-ink);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -234,5 +234,5 @@
   font-size: 12px;
   cursor: pointer;
 }
-.clear:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+.clear:hover:not(:disabled) { border-color: var(--bad); color: var(--bad-ink); }
 .clear:disabled { opacity: 0.4; cursor: default; }

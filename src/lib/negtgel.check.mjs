@@ -558,7 +558,7 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
     'блокгүй алгасалт `s && s.progress == null` нөхцөлтэй');
   assert.ok(!/\(!s \|\| s\.progress == null\) && isBlocklessBagts/.test(W), 'хураангуй уншигдаагүй (`!s`) блокгүй багц `ok: true` болж чимээгүй алгасагдаж байна');
   const iSkip = W.indexOf('if (s && s.progress == null && isBlocklessBagts');
-  const iErr = W.indexOf("if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };");
+  const iErr = W.indexOf("if (!s) return { ok: false, error: tr('Бөглөх хуудасны хадгалсан хувилбар олдсонгүй') };");
   assert.ok(iSkip > 0 && iErr > iSkip, '`!s` → алдаа (блокгүй багцад ч)');
   console.log('negtgel 2026-10-09 (блокгүй !s): ok — уншигдаагүй хураангуй алдаа');
 }

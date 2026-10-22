@@ -8,6 +8,7 @@ import { PKGS, pkgFloors, type Pkg } from "../bagts.pkg";
 import { date as fmtDate, dateLocale, num, pct } from "@/lib/format";
 import { REASON_MAX } from "@/lib/huvaariBatlah";
 import { useFocusTrap } from "@/lib/useFocusTrap";
+import { askConfirm } from "@/lib/confirm";
 import { LOCAL_DRAFT_TTL_MS } from "./draft";
 import { t as tr } from "@/lib/i18nCore";
 import type { useObyem } from "./useObyem";
@@ -28,7 +29,8 @@ export function FilterBar({
 }: {
   locked: boolean; busy: boolean; noPerf: boolean;
   fillMode: "obyem" | "pct"; toggleFill: () => void;
-  pkg: Pkg; setPkg: Dispatch<SetStateAction<Pkg>>; confirmSwitch: () => boolean;
+  pkg: Pkg; setPkg: Dispatch<SetStateAction<Pkg>>; /** ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт (`askConfirm`) — асинхрон */
+  confirmSwitch: () => Promise<boolean>;
   groupOpts: string[]; floorOpts: Pkg[];
   asOf: number | null; setAsOf: Dispatch<SetStateAction<number | null>>; dateOpts: string[];
   grpA: number; setGrpA: Dispatch<SetStateAction<number>>; grpAOpts: RowsT['grpAOpts'];
@@ -70,9 +72,11 @@ export function FilterBar({
             className={st.select}
             value={pkg.group}
             disabled={busy}
-            onChange={(e) => {
-              if (!confirmSwitch()) return;
-              setPkg(pkgFloors(e.target.value)[0]);
+            onChange={async (e) => {
+              /* ⚠️ 2026-10-23: утгыг asyncаас ӨМНӨ авна (React-ийн үйл явдлын объект дахин ашиглагдаж болно) */
+              const g = e.target.value;
+              if (!(await confirmSwitch())) return;
+              setPkg(pkgFloors(g)[0]);
             }}
           >
             {groupOpts.map((g) => (
@@ -91,9 +95,10 @@ export function FilterBar({
               className={st.select}
               value={pkg.key}
               disabled={busy}
-              onChange={(e) => {
-                if (!confirmSwitch()) return;
-                setPkg(PKGS.find((p) => p.key === e.target.value) ?? pkg);
+              onChange={async (e) => {
+                const k = e.target.value;
+                if (!(await confirmSwitch())) return;
+                setPkg((cur) => PKGS.find((p) => p.key === k) ?? cur);
               }}
             >
               {floorOpts.map((p) => (
@@ -255,7 +260,8 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
              илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
              Мэдэгдэл нь доорх `lockNote`-оор гарна. */
           disabled={busy || noEdit || (dirtyCount === 0 && !resendAsIs)}
-          title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд газрын дарга баталсны дараа л орно (Ctrl+S)')}
+          /* ⚠️ 2026-10-23 (UX аудит F1): Ctrl+S нь одоо ЗӨВХӨН ноорог хадгална — товчны тайлбараас хасав */
+          title={tr('Хянагчид илгээнэ — газрын дарга баталсны дараа л үндсэн өгөгдөлд орно')}
         >
           {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
               2026-09-04-нөөс энэ товч ҮНДСЭН ӨГӨГДӨЛД ОГТ БИЧИХГҮЙ — зөвхөн
@@ -283,12 +289,16 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
         {/* ⚠️ 2026-10-06 аудит: ХЭЗЭЭНЭЭС хойш хүлээж буйг ба АВТОМАТ чөлөөлөлтийг хэлнэ —
             урьд нь сүүлийн хүн 3 хоног хүртэл шалтгаангүй гацдаг байв (`waitingOn`-ийн ⚠️).
             Агшингүй (хуучин ноорог) хүний нэрийг огноогүй бичнэ — «мэдээлэлгүй» ≠ «идэвхгүй». */}
+        {/* ⚠️ 2026-10-23 (UX аудит F7): ЮУ ХИЙХИЙГ ИЛ хэлнэ — хамтран бөглөгч «Дуусгасан» дартал «Илгээх» түгжээтэй
+            гэдгийг урьд нь «Илгээх — X дуусгаагүй байна» гэж л хэлдэг тул хэн, юу дарах ёстой нь ойлгомжгүй, илгээлт
+            3 хоног хүлээгддэг байв. Өөрөө дуусгаагүй бол өөрийн алхмыг ч хэлнэ. */}
         {!locked && !canSubmitNow && (
           <span className={st.muted} role="status">
-            {tr('Илгээх — {0} дуусгаагүй байна', waitingOn.map((u) => {
+            {tr('«Илгээх» түгжээтэй: {0} «Дуусгасан» товч дартал хүлээнэ — тэдэнд мэдэгдэнэ үү.', waitingOn.map((u) => {
               const a = waitingLast?.get(u);
               return a != null ? tr('{0} (сүүлд {1})', u, fmtDate(a)) : u;
             }).join(', '))}
+            {!iAmDone && <>{' '}{tr('Таны хэсэг дууссан бол та ч «Дуусгасан» дарна уу — хамгийн сүүлд үлдсэн хүн илгээнэ.')}</>}
             {' · '}
             {tr('{0} хоног идэвхгүй бол автоматаар чөлөөлөгдөнө', String(Math.round(LOCAL_DRAFT_TTL_MS / 86_400_000)))}
           </span>
@@ -355,7 +365,7 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             инженер (обьём засах эрхтэй хүн) хуудсандаа харна; дахин илгээмэгц алга болно. */}
         {canObyemEdit && !pvSub && pvReturned && (
           <span className={st.lockNote} role="status">
-            {tr('Обьёмын илгээлт буцаагдсан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
+            {tr('Обьёмын илгээлт буцаасан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
               String(pvReturned.cellCount),
               /* ⚠️ 2026-10-06 аудит: `'mn-MN'` хатуу байсан — англи горимд ч монгол огноо гардаг байв */
               [pvReturned.approver ?? '', pvReturned.approverAt ? fmtDate(pvReturned.approverAt) : ''].filter(Boolean).join(' · ') || '—',
@@ -401,9 +411,10 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
           <>
             <button
               className={st.publishBtn}
-              onClick={() => {
+              onClick={async () => {
                 /* ⚠️ 2026-10-04: баталгаажуулалт — батлахад утга ШУУД үндсэн өгөгдөлд бичигдэнэ */
-                if (!window.confirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', String(pvSub.cellCount)))) return;
+                /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — `window.confirm` хаагдсан хөтөчид товч чимээгүй юу ч хийдэггүй байв */
+                if (!(await askConfirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', String(pvSub.cellCount)), { ok: tr('Обьём батлах') }))) return;
                 void decideObyemHere(true);
               }}
               disabled={pvBusy}
@@ -653,7 +664,7 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             className={st.autosave}
             /* ⚠️ Тайлбар нь ҮНЭН байх ёстой: ноорог одоо ArcGIS руу ч
                хуулагддаг тул «зөвхөн энэ компьютерт» гэдэг нь худал болов. */
-            title={tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
+            title={tr('Ноорог энэ хөтчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
@@ -681,7 +692,7 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             алсын хуулбар ХЭЗЭЭ хуулагдсаныг тусад нь харуулж байж л бөглөгч
             «өөр компьютероос үргэлжлүүлж болно» гэдэгт итгэнэ. */}
         {remoteState?.kind === 'ok' && !locked && dirtyCount > 0 && (
-          <span className={st.autosave} title={tr('Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
+          <span className={st.autosave} title={tr('Энэ цагийн байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
             {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}

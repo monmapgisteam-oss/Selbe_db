@@ -172,7 +172,11 @@ export function HeadKpi({ bagts, extra }: {
               * `statValueLong`-той ЯГ ижил зарчим: хэмжээг УТГЫН УРТААР шийднэ.
               */}
             <b className={`${String(t.v).length >= 10 ? o.tileValLong : ''} num`}>
-              {t.v === ERR_MARK && t.q ? <FailVal q={t.q} /> : t.v}
+              {/* ⚠️ 2026-10-23 (UX аудит E4): урт тоо нүдэнд багтахгүй үед «2,493,041,880,53|» гэж ХАЛИЛТААР тасардаг байв —
+                  мянгатын таслал бүрийн дараа `<wbr>` (`tuh/Overview.wrapNum`-тай ижил); тоог товчлохгүй (`format.mnt`-ийн ⚠️) */}
+              {t.v === ERR_MARK && t.q ? <FailVal q={t.q} /> : t.v.split(',').map((part, i, a) => (
+                i < a.length - 1 ? <span key={i}>{part},<wbr /></span> : <span key={i}>{part}</span>
+              ))}
             </b>
             {t.unit && <i>{tr(t.unit)}</i>}
           </span>

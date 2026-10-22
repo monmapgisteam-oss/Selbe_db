@@ -22,8 +22,19 @@ import { roleForUser } from '@/lib/services';
 import { currentUser } from '@/lib/who';
 import { TYPE_ORDER, isTypeRole, typeLabel } from '@/lib/roleTypes';
 import { applyType, typeApplyBusy } from '@/lib/roleTypeApply';
+import { askConfirm } from '@/lib/confirm';
+import { userError } from '@/components/ui';
 import s from './userAdmin.module.css';
 import t from '@/modules/erhTypes.module.css';
+
+/**
+ * SUPER ОЛГОХ АСУУЛТ — үр дагаврыг нэрлэнэ (⚠️ 2026-10-23, UX аудит A1). Мөрийн үүргийн сонгогч (`UserAdmin.applyRole`)
+ * ба картын «Төрлөөр тохируулах» ХОЁУЛАА энэ текстийг асууна. Урьд нь мөрөөс асуулгүй, картаас «засах эрх
+ * хөндөгдөхгүй» гэсэн ХУДАЛ текстээр асуудаг байв — super нь бүх засах эрхийг авдаг (`caps.capsOf`).
+ * ⚠️ Функц — текстийг дуудах агшинд (`tr`).
+ */
+export const superGrantMsg = (user: string): string =>
+  tr('«{0}»-д Админ (super) эрх олгох уу? Тэр БҮХ хуудас, БҮХ засах эрхтэй болно — санхүүгийн мөр устгах, зөвшөөрөл, бусад хэрэглэгчийн эрх удирдах, системийг түр хаах зэрэг. Зөвхөн итгэмжлэгдсэн админд олгоно уу.', user);
 
 export function UserTypeSection({
   user, role, disabled, hardSuper,
@@ -42,7 +53,16 @@ export function UserTypeSection({
 
   const run = async () => {
     if (!type || off) return;
-    if (!window.confirm(tr('«{0}»-г «{1}» төрлөөр тохируулах уу? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', user, typeLabel(type)))) return;
+    /* ⚠️ 2026-10-23 (UX аудит A1 · X1): `askConfirm`; «засах эрх хөндөгдөхгүй» нь SUPER олгох/хасахад ХУДАЛ байв —
+       super бүх засах эрхийг авдаг, хасахад тэр бүгд алга болно. Тэр хоёр тохиолдолд үр дагаврыг нэрлэж асууна. */
+    const toSuper = type === 'super' && role !== 'super';
+    const fromSuper = role === 'super' && type !== 'super';
+    const q = toSuper
+      ? superGrantMsg(user)
+      : fromSuper
+        ? tr('«{0}»-ийн Админ (super) эрхийг хасаж «{1}» төрөлтэй болгох уу? Бүх засах эрх ба админ портал хаагдана — зөвхөн эрхийн хуудсуудад тусад нь олгосон эрх үлдэнэ.', user, typeLabel(type))
+        : tr('«{0}»-г «{1}» төрлөөр тохируулах уу? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', user, typeLabel(type));
+    if (!(await askConfirm(q, toSuper || fromSuper ? { danger: true, ok: toSuper ? tr('Админ эрх олгох') : tr('Админ эрх хасах') } : { ok: tr('Тохируулах') }))) return;
     setBusy(true); setErr(''); setMsg('');
     /* ⚠️ 2026-09-25: try/finally — шидвэл товч үүрд «Тохируулж байна…» дээр үлдэхгүй */
     try {
@@ -50,7 +70,8 @@ export function UserTypeSection({
       if (r.ok) setMsg(tr('Тохируулагдлаа.'));
       else setErr(r.errors.join('\n'));
     } catch (e) {
-      setErr(String(e));
+      /* ⚠️ 2026-10-23 (UX аудит X3): түүхий `String(e)` («TypeError: …») биш — ойлгомжтой текст */
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }

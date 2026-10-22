@@ -10,6 +10,24 @@ import { isAmbiguousComma, normCell, parseGrid, planPaste } from "../paste";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cellKey, pc, qty, qtyRaw, synNoVol, type EditCell, type EditCol } from "./util";
 import { remainOf } from "./remain";
+import { askConfirm, hasConfirmHost } from "@/lib/confirm";
+
+/**
+ * НҮДНИЙ АСУУЛТ — АПП ДОТОРХ (⚠️ 2026-10-23, UX аудит X1).
+ * ⚠️ ЯАГААД: `window.confirm`-ийг хөтөч «дахин асуухгүй» сонголтоор хаасан бол асуултгүй `false` буцаадаг тул бууралт ·
+ *    хэтрэлтийн асуулттай нүд ЧИМЭЭГҮЙ бичигдэхгүй, нүд нээлттэй гацдаг байв.
+ * ⚠️ `commit` СИНХРОН `boolean` хэвээр (Enter/Tab шилжилт, blur, Ctrl+S-ийн `flushEditRef` түүнд найддаг): асуулт
+ *    шаардлагатай бол асуугаад ШУУД `false` (нүд нээлттэй — «Цуцлах»-тай ижил); «Тийм» бол ИЖИЛ оролтоор ДАХИН бичнэ
+ *    (зөвшөөрсөн асуултыг `acc`-аар алгасна, дараагийн асуулт байвал түүнийг асууна) ба нүдийг хаана. Enter-ийн дараах
+ *    шилжилт хийгдэхгүй — хэрэглэгч хариулсны дараа өөрөө шилжинэ.
+ * ⚠️ `asking` — цонх нээгдэхэд оролтын blur ИЖИЛ утгаар `commit` дахин дууддаг; давхар асуулт гаргахгүй. Хост алга
+ *    (нэгж тест — `window.confirm` синхрон) бол хамгаалалт хэрэггүй, ашиглахгүй.
+ * Модулийн түвшинд — энэ hook React-ийн hook дууддаггүй (`cellEdit.ui.check` шууд дууддаг), нэг зэрэг нэг л асуулт.
+ */
+let asking: string | null = null;
+const NO_ACC: ReadonlySet<string> = new Set();
+/** «Тийм» гэж хариулсан асуултууд — ЗӨВХӨН дахин бичих синхрон дуудлагад (`commitInner` эхэндээ уншаад тэглэнэ) */
+let accNext: ReadonlySet<string> = NO_ACC;
 
 /**
  * «ХЭТЭРСЭН ҮҮ» — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
@@ -210,6 +228,25 @@ export function useCellEdit(p: {
    *  урьд нь буруу/сөрөг/татгалзсан (confirm) утга дээр ч дараагийн нүд рүү гүйдэг байв. */
   const commitInner = (r: SheetRow, b: number, raw: string): boolean => {
     const key = cellKey(r.oid, b);
+    const acc = accNext;
+    accNext = NO_ACC;
+    /** Асуулт (`asking`-ийн ⚠️) — үргэлж `false` буцаана; «Тийм» бол `id`-г зөвшөөрөөд дахин бичнэ */
+    const ask = (id: string, msg: string): false => {
+      const tag = `${key}|${raw}`;
+      const host = hasConfirmHost();
+      if (host && asking === tag) return false;
+      if (host) asking = tag;
+      void askConfirm(msg).then((yes) => {
+        if (asking === tag) asking = null;
+        if (!yes) return;
+        const next = new Set(acc);
+        next.add(id);
+        accNext = next;
+        /* `commit` — зөвшөөрөгдсөн нүдний түгжээг ДАХИН шалгаж, амжилттай бол нүдийг хаана */
+        commit(r, b, raw);
+      });
+      return false;
+    };
     /* ⚠️ БУУЛГАЛТТАЙ НЭГ ДҮРЭМ — `paste.normCell` (2026-09-25-ны аудит). Урьд нь
        энд эхний таслалыг ҮРГЭЛЖ аравтын цэг болгодог тул «1,250» (en-US
        мянгат) нь 1.25 болж 1000 дахин БАГА бичигддэг байв. Одоо `1,234.5` ·
@@ -309,9 +346,8 @@ export function useCellEdit(p: {
     /* ⚠️ СӨРӨГ НЭМЭЛТ = ЗАЛРУУЛГА — ЗӨВШӨӨРНӨ, гэхдээ ИЛ АСУУНА (2026-09-25).
        Урьд нь (НИЙТ горимд) сөрөг утгыг хаадаг байв; одоо «−5» нь «өмнөхөөс 5-аар
        бага» гэсэн үнэн утгатай. 0-ээс доош нийт 0-ээр хаагдах нь асуултад харагдана. */
-    if (
-      incN < 0 &&
-      !window.confirm(
+    if (incN < 0 && !acc.has('neg'))
+      return ask('neg',
         tr(
           '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн — {3} болж БУУРНА.\nБуруу бичсэнээ засаж байна уу?',
           sc?.bld[b] ?? "",
@@ -319,9 +355,7 @@ export function useCellEdit(p: {
           fmt(before ?? 0),
           fmt(after ?? 0),
         ),
-      )
-    )
-      return false;
+      );
     /* ⚠️ 2026-09-25 аудит: ЭЕРЭГ нэмэлт ч БУУРУУЛЖ болно — хувиар бүртгэгдсэн ХУУЧИН
        нүдэнд (act бий, obyem null, мөр обьёмтой) `incCell` обьёмыг 0-ээс эхлүүлдэг
        (санаатай: «хувиас обьём БУЦААЖ БОДОХГҮЙ») тул 50% → +10% = 10%. Чимээгүй
@@ -336,7 +370,9 @@ export function useCellEdit(p: {
       pctAfter != null &&
       storedPct != null &&
       pctAfter < storedPct &&
-      !window.confirm(
+      !acc.has('down')
+    )
+      return ask('down',
         tr(
           '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн (хувиар) — нэмэлт бичихэд обьём 0-ээс эхэлж {3} болж БУУРНА.\nҮргэлжлүүлэх үү?',
           sc?.bld[b] ?? "",
@@ -344,9 +380,7 @@ export function useCellEdit(p: {
           pc(storedPct, 1),
           pc(pctAfter, 1),
         ),
-      )
-    )
-      return false;
+      );
     /* ⚠️ 2026-09-30: өөр өдрийн ХЯНАЛТАД байгаа нэмэлтийг ч тооцно (`reviewInc`-ийн ⚠️) —
        батлагдвал тэр нь мөн архив дээр нэмэгдэнэ. Зөвхөн сануулга, бичилтэд орохгүй. */
     const revN = reviewInc.get(key)?.n ?? null;
@@ -359,7 +393,9 @@ export function useCellEdit(p: {
       vol > 0 &&
       /* ⚠️ 2026-09-30: хөвөгч цэгийн хүлцэл (`overVol`) — 1.1 + 2.2 = 3.3000000000000003 */
       overVol(afterAll, vol) &&
-      !window.confirm(
+      !acc.has('vol')
+    )
+      return ask('vol',
         revN != null && revN > 0
           ? tr(
             '{0} · {1}:\n{2} + хяналтад байгаа {3} = {4} нь мөрийн Обьём {5}-оос ХЭТЭРЧ байна ({6}).\nҮргэлжлүүлэх үү?',
@@ -379,9 +415,7 @@ export function useCellEdit(p: {
             qty(vol),
             pc(afterAll / vol, 1),
           ),
-      )
-    )
-      return false;
+      );
     /* ⚠️ 2026-10-05: ХУВЬ горимд ч 100%-иас хэтрэхийг АСУУНА (хориглохгүй — дээрх 2026-09-06-ны
        ⚠️: хувь 100-аас давж БОЛНО). Урьд нь олон нүд буулгах зам (`pasteAt` — «100%-иас ХЭТЭРНЭ»)
        асуудаг атлаа гараас ганц нүд бичихэд чимээгүй өнгөрдөг байв (жиш. «+750» гэж андуурах).
@@ -393,16 +427,16 @@ export function useCellEdit(p: {
       incN > 0 &&
       pctAll != null &&
       overPct(pctAll) &&
-      !window.confirm(
+      !acc.has('pct')
+    )
+      return ask('pct',
         tr(
           '{0} · {1}:\nнийт {2} болж 100%-иас ХЭТЭРЧ байна.\nҮргэлжлүүлэх үү?',
           sc?.bld[b] ?? "",
           r.work,
           pc(pctAll, 1),
         ),
-      )
-    )
-      return false;
+      );
     setErr("");
     /* ⚠️ 2026-10-05: ЗӨӨЛӨН САНУУЛГА (бичилтийг зогсоохгүй) — хувь горимд 0-ээс их, 1-ээс бага
        утга нь ихэвчлэн бутархайгаар бичсэн хувь (0.75 → 75 гэх гэсэн). Хувийг 0–100-аар бичнэ. */
@@ -471,7 +505,7 @@ export function useCellEdit(p: {
    * Ингэснээр дэлгэц дээр харагдаж буй эгнээ хадгалагдана; алгасвал доорх
    * бүх утга нэг мөр дээшилж, чимээгүй буруу мөрд бичигдэнэ.
    *
-   * ⚠️ БАТАЛГААЖУУЛАЛТ НЭГ УДАА. `commit` нь нүд тутамд `window.confirm`
+   * ⚠️ БАТАЛГААЖУУЛАЛТ НЭГ УДАА. `commit` нь нүд тутамд асуулт (`askConfirm`)
    * асуудаг — 40 нүдэд 40 цонх гарна. Тиймээс энд бууралт/хэтрэлтийг
    * ЦУГЛУУЛЖ, нэг хураангуй асуултаар шийднэ.
    */
@@ -647,9 +681,18 @@ export function useCellEdit(p: {
         parts.push(tr("{0} нүдэнд 1%-иас бага утга (жиш. {1}% — {2}% гэх гэсэн бол Excel-ийн бутархайг 100-аар үржүүлж дахин буулгана уу; хувийг 0–100-аар бичнэ)",
           String(small.length), String(ex), String(parseFloat((ex * 100).toPrecision(12)))));
       }
-      if (!window.confirm(tr("{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?", String(hits.length), parts.join("; ")))) return true;
+      /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — хариуг хүлээлгүй `true` (буулгалт «шийдэгдсэн», хөтчийн буулгалт
+         хаагдана); «Тийм» бол доорх бичилт (`apply`). Цонх модаль тул хариулах хооронд хүснэгтэд засвар орохгүй;
+         `pending`-ийг функцэн шинэчлэгчээр бичнэ (нийлүүлэлтийг дарахгүй). */
+      void askConfirm(tr("{0} нүд бичих гэж байна.\n{1}.\nҮргэлжлүүлэх үү?", String(hits.length), parts.join("; ")))
+        .then((yes) => { if (yes) apply(); });
+      return true;
     }
+    apply();
+    return true;
 
+    function apply() {
+    if (!sc) return;
     setErr("");
     /* ⚠️ 2026-09-25: ГАЖ НӨЛӨӨ (revert · mineRef · touchMine) setState-ийн шинэчлэгч
        ДОТОР БАЙХГҮЙ — React (StrictMode/дахин зурагдалт) шинэчлэгчийг хоёр удаа
@@ -657,14 +700,22 @@ export function useCellEdit(p: {
        функцийн хүрээнд шинэ (`busy` үед буулгалт хаалттай тул завсрын бичилт үгүй). */
     {
       const pv = pending;
-      const n = { ...pv };
+      /* ⚠️ 2026-10-23: ФУНКЦЭН шинэчлэгч (цэвэр — гаж нөлөөгүй) — асуултын хооронд нийлүүлэлтээр орсон бусад нүдийг
+         хуучин `pending`-ээр дарахгүй. Гаж нөлөө (revert · mineRef · touchMine) доорх давталтад, шинэчлэгчээс ГАДНА. */
+      const upd = (prev: Record<string, string>) => {
+        const n = { ...prev };
+        for (const x of hits) {
+          const same = x.n === 0;
+          if (same && x.keepStr) n[x.key] = x.keepStr;
+          else if (same) delete n[x.key];
+          else n[x.key] = x.v;
+        }
+        return n;
+      };
       for (const x of hits) {
         /* Тэг нэмэлт = өөрчлөлтгүй → «нийтлээгүй» тэмдэглэгээг арилгана (2026-09-25). */
         const same = x.n === 0;
-        /* ⚠️ 2026-09-30: тэг нэмэлт — нөгөө горимын хэсэг байвал ТҮҮНИЙГ үлдээнэ */
-        if (same && x.keepStr) n[x.key] = x.keepStr;
-        else if (same) delete n[x.key];
-        else n[x.key] = x.v;
+        /* ⚠️ 2026-09-30: тэг нэмэлт — нөгөө горимын хэсэг байвал ТҮҮНИЙГ үлдээнэ (`upd`) */
         /* ⚠️ ЭЗЭМШЛИЙГ ЭНД тэмдэглэнэ (2026-09-08): энэ бол нүдийг ГАРААС
            засах ЦОРЫН ГАНЦ зам. Нийлүүлэлтээр ирсэн бусдын нүд энд ордоггүй
            тул оролцогчийн жагсаалт зөв үлдэнэ. Хоосон болгосон (`same`) нүдийг
@@ -675,7 +726,7 @@ export function useCellEdit(p: {
         if (same && !x.keepStr) revert(x.key, x.key in pv);
         else { mineRef.current.add(x.key); touchMine(x.key); }
       }
-      setPending(n);
+      setPending(upd);
     }
     setEdit(null);
     /* ⚠️ 2026-09-30: ТОО БИШ / ТОДОРХОЙГҮЙ («1,250») / СӨРӨГ утгыг ногоон «алгасав»-д
@@ -692,7 +743,7 @@ export function useCellEdit(p: {
         ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped))
         : tr("{0} нүд бичигдлээ", String(hits.length)));
     }
-    return true;
+    }
   };
 
   const nextEditable = (i: number, b: number, step: number, col: EditCol) => {

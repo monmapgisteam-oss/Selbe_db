@@ -949,7 +949,8 @@ export function buildFrame(
 ): Record<string, unknown>[] {
   if (!sc.f.fillDate)
     throw new Error(
-      tr('«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).'),
+      /* ⚠️ 2026-10-23 (UX аудит X2): талбарын нэр, «AGOL дээр багана нэмнэ үү» заавар хэрэглэгчид хамааралгүй — энгийн үгээр */
+      tr('Энэ хуудсанд бөглөсөн огнооны багана алга — архив үүсгэх боломжгүй тул илгээлтийг зогсоов. Админд мэдэгдэнэ үү.'),
     );
   /* ⚠️ 2026-10-09: блокгүй багцын синтетик блокт J = L (хэмжилтгүй бол null) — `computeAll`-ийн `synthetic` */
   const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct, "abs", sc.synthetic);

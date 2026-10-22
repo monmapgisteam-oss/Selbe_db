@@ -173,7 +173,8 @@ const S = (label: string, ref?: string): Step => (ref ? { label, ref } : { label
 
 /** Гараар шинэчлэгддэг лавлах давхарга */
 const refChain = (view: string = tr('Газрын зураг')): Step[] => [
-  S(tr('ArcGIS Pro / AGOL-оор гараар шинэчилнэ')),
+  /* ⚠️ 2026-10-23 (X2): AGOL 2026-10-20-нд хасагдсан — бүх өгөгдөл Enterprise-д */
+  S(tr('ArcGIS Pro / Enterprise-ээр гараар шинэчилнэ')),
   S(tr('давхарга')),
   S(view),
 ];
@@ -412,7 +413,7 @@ function bagtsEntries(): CatEntry[] {
       aliases: [pkg.key],
       styleSrc: [],
       views: sortViews(BAGTS_VIEWS),
-      purpose: () => tr('Багцын ажил × блокийн гүйцэтгэл, обьём, хуваарь — батлагдсан агшин бүр шинэ хуулбар болж архивлагдана.'),
+      purpose: () => tr('Багцын ажил × блокийн гүйцэтгэл, обьём, хуваарь — батлагдсан хувилбар бүр шинэ хуулбар болж архивлагдана.'),
       chain: () => [
         S(tr('Гүйцэтгэгч бөглөнө')),
         S(tr('Ноорог · илгээлт (Selbe_Guitsetgel_Draft)'), 'draft'),
@@ -506,7 +507,7 @@ function guitsEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: sortViews(['gdash', 'dashboard', 'tailan', 'schem']),
-      purpose: () => tr('Багц бүрийн батлагдсан гүйцэтгэлийн хувь (агшин бүр нэг мөр) — төлөвлөгөө ба бодитын харьцуулалт.'),
+      purpose: () => tr('Багц бүрийн батлагдсан гүйцэтгэлийн хувь (батлагдсан хувилбар бүр нэг мөр) — төлөвлөгөө ба бодитын харьцуулалт.'),
       chain: () => [
         S(tr('Газрын дарга эцэслэн батална'), 'hyanalt'),
         S(tr('Архивын «Б.» мөрийн нэгдсэн хувь')),
@@ -715,7 +716,7 @@ function huvaariEntries(): CatEntry[] {
         { cap: 'ajilApprove', text: tr('Нэмэлт ажил батлах') },
         { cap: '__ajil__', text: tr('Багцын хуваарилалт') },
       ],
-      note: () => tr('Хэрэглэгч CSV-ээс AGOL дээр нийтэлсэн — код үүсгэхгүй, зөвхөн хайж олно.'),
+      note: () => tr('Хэрэглэгч CSV-ээс нийтэлсэн — код үүсгэхгүй, зөвхөн хайж олно.'),
     },
   ];
 }

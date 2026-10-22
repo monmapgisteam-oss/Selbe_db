@@ -277,7 +277,8 @@ export async function loadQaqcSheet(pkgKey: string): Promise<QaqcSheet> {
   const url = qaqcUrl(ref);
   const have = await fieldsOf(url);
   const want = [OID, ...INFO_FIELDS, ...QAQC_COLS.map((c) => c.name)].filter((f) => have.has(f));
-  if (!want.includes(OID)) throw new Error(tr('QAQC хүснэгтэд ObjectID талбар алга.'));
+  /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид ЭНГИЙН үгээр — техникийн нэр (OBJECTID, «агшин») дэлгэцэнд гардаг байв */
+  if (!want.includes(OID)) throw new Error(tr('QAQC хүснэгтийн бүтэц дутуу байна — админд мэдэгдэнэ үү.'));
 
   const feats: Feat[] = [];
   /*

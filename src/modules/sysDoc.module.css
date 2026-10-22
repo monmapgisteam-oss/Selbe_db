@@ -179,7 +179,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--data);
+  color: var(--data-ink);
   font: inherit;
   text-align: left;
   text-decoration: underline;

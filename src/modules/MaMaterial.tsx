@@ -11,8 +11,9 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { useAsync } from '@/lib/useAsync';
-import { num } from '@/lib/format';
+import { fixCyr, num } from '@/lib/format';
 import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError } from '@/components/ui';
 import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
@@ -134,8 +135,9 @@ export function AjilMatTab({ tick }: { tick: number }) {
     return () => setNavDirty('maMaterial', false);
   }, [dirty]);
 
-  const switchPkg = (k: string) => {
-    if (dirty && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаяад өөр багц руу шилжих үү?'))) return;
+  /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид багц огт солигддоггүй байв */
+  const switchPkg = async (k: string) => {
+    if (dirty && !(await askConfirm(tr('Хадгалаагүй өөрчлөлт байна. Хаяад өөр багц руу шилжих үү?'), { danger: true, ok: tr('Хаяад шилжих') }))) return;
     setDraft(new Map()); setOpen(null); setMsg(null); setPkgKey(k);
   };
 
@@ -184,7 +186,7 @@ export function AjilMatTab({ tick }: { tick: number }) {
   return (
     <div className={s.block}>
       <div className={s.filters}>
-        <select className={s.select} value={pkg.key} onChange={(e) => switchPkg(e.target.value)} aria-label={tr('Багц')} disabled={busy}>
+        <select className={s.select} value={pkg.key} onChange={(e) => { void switchPkg(e.target.value); }} aria-label={tr('Багц')} disabled={busy}>
           {PKGS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
         </select>
         <input className={s.search} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={tr('Ажил, материалаар хайх')} />
@@ -227,7 +229,7 @@ export function AjilMatTab({ tick }: { tick: number }) {
                   return (
                     <tr key={des} className={`${s.row} ${changed ? s.rowOn : ''}`}>
                       <td className={s.num}>{r.no}</td>
-                      <td>{r.work}</td>
+                      <td>{fixCyr(r.work)}</td>
                       <td>
                         <div className={s.chips}>
                           {mine.length ? mine.map((m) => (

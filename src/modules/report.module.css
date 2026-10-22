@@ -83,7 +83,7 @@
   font-weight: 600;
   color: var(--ink-2);
 }
-.btn:hover:not(:disabled), .btn:focus-visible { color: var(--data); border-color: var(--data); }
+.btn:hover:not(:disabled), .btn:focus-visible { color: var(--data-ink); border-color: var(--data); }
 .btn svg { width: 13px; height: 13px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -140,7 +140,7 @@
   top: 0;
   padding: 7px 8px;
   text-align: left;
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;

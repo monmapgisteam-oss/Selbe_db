@@ -144,11 +144,12 @@ export function AclGrid({
                 if (u) onAdd(row.key, col.key, u);
               }}
             >
-              <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга')}</option>
+              {/* ⚠️ 2026-10-23 (UX аудит A2): хоосон бол ЯАГААД — шинэ (хадгалаагүй) аккаунт энд гарахгүй */}
+              <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
               {cands.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           ) : (
-            <button type="button" className={s.ggAdd} disabled={off} title={addTitle(row, col)}
+            <button type="button" className={s.ggAdd} disabled={off} title={addTitle(row, col)} aria-label={addTitle(row, col)}
               onClick={() => { if (canOpen && !canOpen()) return; setOpen(key); }}>
               +
             </button>
@@ -211,8 +212,9 @@ function Chip({ h, off, flag, onRemove }: {
     /* ⚠️ 2026-10-22 (аудит): порталд алга — ил шошготой (доор), админ ✕-ээр хасаж өөр хүн томилно */
     h.absent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
     h.admin ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
-    h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т') : '',
-    h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»') : '',
+    /* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «синк» → «хөтөч» · «Дахин илгээх» */
+    h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид') : '',
+    h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин илгээх»') : '',
   ].filter(Boolean);
   const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.absent || h.admin ? s.ggChipOdd : '', h.failed || h.dirty || h.absent ? s.ggChipBad : '']
     .filter(Boolean).join(' ');

@@ -42,7 +42,7 @@
   color: var(--ink-2);
   white-space: nowrap;
 }
-.segBtn[aria-pressed='true'] { background: var(--data); color: #fff; }
+.segBtn[aria-pressed='true'] { background: var(--data); color: var(--hue-ink); }
 .segBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 .search,
 .select,
@@ -73,7 +73,7 @@
   top: 0;
   padding: 7px 8px;
   text-align: left;
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -86,7 +86,7 @@
 .row:hover td { background: var(--surface-2); }
 .rowOn td { background: color-mix(in srgb, var(--data) 6%, var(--surface)); }
 .rowBtn { all: unset; cursor: pointer; font-weight: 600; white-space: nowrap; }
-.rowBtn:hover, .rowBtn:focus-visible { color: var(--data); text-decoration: underline; }
+.rowBtn:hover, .rowBtn:focus-visible { color: var(--data-ink); text-decoration: underline; }
 .caret { display: inline-block; width: 14px; color: var(--ink-3); }
 .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .emptyRow td { color: var(--ink-3); text-align: center; padding: 14px 8px; }
@@ -131,7 +131,7 @@
   font-size: 0.76rem;
 }
 .attOpen { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; flex: 1 1 260px; min-width: 0; }
-.attOpen:hover span, .attOpen:focus-visible span { color: var(--data); text-decoration: underline; }
+.attOpen:hover span, .attOpen:focus-visible span { color: var(--data-ink); text-decoration: underline; }
 .attOpen span { overflow-wrap: anywhere; }
 .attMeta { display: inline-flex; flex-wrap: wrap; gap: 6px; color: var(--ink-3); font-size: 0.72rem; }
 .valid { color: var(--good-ink, var(--ink-2)); font-weight: 600; }
@@ -154,7 +154,7 @@
   font-weight: 600;
   color: var(--ink-2);
 }
-.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
+.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data-ink); border-color: var(--data); }
 .ghostBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .note { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
@@ -176,8 +176,12 @@
 }
 
 /* ── 2026-10-09: КАРТ — MA бүр бүтэн харагдана (шүүлтүүргүй, хураалтгүй) ── */
+.okNote { margin: 0; font-size: 0.74rem; color: var(--good-ink, var(--ink-2)); font-weight: 600; }
+/* ⚠️ 2026-10-23 (UX аудит Q10): дахин ирүүлэлтийн холбоо — хуучин (буцаасан) карт бүдэг, шинийнхээ доор */
+.resubNote { margin: 0; padding: 6px 12px; font-size: 0.74rem; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--line); }
 .cards { display: grid; gap: 12px; }
 .card { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; }
+.cardOld { margin-top: -6px; border-style: dashed; background: var(--surface-2); }
 .cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .cardTitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .cardTitle b { font-size: 0.95rem; }
@@ -203,15 +207,17 @@
 .stageNo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 999px; font-size: 0.7rem; font-weight: 700; background: var(--sunken); color: var(--ink-3); }
 .stageText { display: flex; flex-direction: column; min-width: 0; }
 .stageText b { font-size: 0.76rem; }
-.stageText small { font-size: 0.68rem; color: var(--ink-3); }
+.stageText small { font-size: 0.6875rem; color: var(--ink-3); }
 .st_done { border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--surface)); }
-.st_done .stageNo { background: var(--good); color: #fff; }
+/* ⚠️ 2026-10-23 (UX аудит S8): шатны дугаар `--hue-ink` (цайвар горимд цагаан, харанхуйд бараан) — харанхуйн цайвар
+   ногоон/шар/улаан дүүргэлт дээр цагаан бичиг 3:1-ээс доош унадаг байв */
+.st_done .stageNo { background: var(--good); color: var(--hue-ink); }
 .st_rejected { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 8%, var(--surface)); }
-.st_rejected .stageNo { background: var(--bad); color: #fff; }
+.st_rejected .stageNo { background: var(--bad); color: var(--hue-ink); }
 .st_pending { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
-.st_pending .stageNo { background: var(--warn); color: #fff; }
+.st_pending .stageNo { background: var(--warn); color: var(--hue-ink); }
 .st_next { border-style: dashed; border-color: var(--data); }
-.st_next .stageNo { background: color-mix(in srgb, var(--data) 18%, transparent); color: var(--data); }
+.st_next .stageNo { background: color-mix(in srgb, var(--data) 18%, transparent); color: var(--data-ink); }
 .st_locked { opacity: 0.55; }
 
 /* works.csv татах мөр */
@@ -222,7 +228,7 @@
 .mir { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
 .mirHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .chk { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
-.chk th { text-align: left; font-size: 0.64rem; font-weight: 600; color: var(--ink-3); padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.chk th { text-align: left; font-size: 0.6875rem; font-weight: 600; color: var(--ink-3); padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .chk td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .chk td + td { width: 90px; font-weight: 600; text-align: center; }
 

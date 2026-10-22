@@ -27,7 +27,7 @@
   line-height: 1.55;
 }
 .notice p { margin: 6px 0 0; color: var(--ink-3); font-size: 0.82rem; }
-.bad { border-color: var(--bad); color: var(--bad); }
+.bad { border-color: var(--bad); color: var(--bad-ink); }
 
 /* ── Багцын хэсэг ── */
 .pack {
@@ -51,7 +51,7 @@
 .counts { font-size: 0.78rem; color: var(--ink-3); }
 .cOk { color: var(--good); }
 .cWait { color: var(--ink-2); }
-.cNo { color: var(--bad); }
+.cNo { color: var(--bad-ink); }
 
 /* ── Гинж ── */
 .chain {
@@ -89,10 +89,10 @@
    түүнийг ч анивчуулбал бүх дэлгэц анивчиж, жинхэнэ асуудал алдагдана. */
 .no {
   border-color: var(--bad);
-  color: var(--bad);
+  color: var(--bad-ink);
   animation: zovBlink 1.4s ease-in-out infinite;
 }
-.no .chipIcon { color: var(--bad); }
+.no .chipIcon { color: var(--bad-ink); }
 @keyframes zovBlink {
   0%, 100% { background: var(--surface-2); }
   50% { background: color-mix(in srgb, var(--bad) 22%, transparent); }
@@ -206,7 +206,7 @@
   font-size: 0.76rem;
   cursor: pointer;
 }
-.addBtn:hover { border-style: solid; border-color: var(--hue); color: var(--hue); }
+.addBtn:hover { border-style: solid; border-color: var(--hue); color: var(--data-ink); }
 
 .form { padding: 14px 16px; display: grid; gap: 12px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -217,7 +217,7 @@
 .fHint { font-size: 0.72rem; color: var(--ink-3); }
 /* ⚠️ Алдаа нь сануулгаас ӨНГӨӨРӨӨ ялгарна — хоёул жижиг саарал байвал
    хэрэглэгч алдааг зөвлөмж гэж уншаад цааш үргэлжлүүлнэ. */
-.fErr { font-size: 0.74rem; color: var(--bad); }
+.fErr { font-size: 0.74rem; color: var(--bad-ink); }
 
 .input {
   width: 100%;
@@ -247,7 +247,7 @@
   padding: 9px 11px;
   border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--bad) 14%, transparent);
-  color: var(--bad);
+  color: var(--bad-ink);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -272,7 +272,7 @@
    дээрх #06202a нь 3.63:1 болж WCAG AA (4.5:1) давахгүй байв. --hue-ink нь
    яг энэ («--hue дэвсгэр дээрх текст») зорилгоор globals.css-д тодорхойлогдсон. */
 .primary { border-color: var(--hue); color: var(--hue-ink); background: var(--hue); font-weight: 600; }
-.danger { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad); background: transparent; }
+.danger { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); color: var(--bad-ink); background: transparent; }
 .danger:hover { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .btn:disabled, .primary:disabled, .danger:disabled { opacity: 0.5; cursor: default; }
 

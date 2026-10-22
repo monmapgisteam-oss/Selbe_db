@@ -25,6 +25,7 @@ import {
   allAclReady, failedUsersOf, goneCleanupOp, goneRightsOf, retryOp, runOp, type AclOp, type RepairSys,
 } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
+import { askConfirm } from '@/lib/confirm';
 import { PANE_CAPS, type ErhPane } from './capText';
 import { capLabelShort } from './erhLabels';
 import s from './guitsetgel.module.css';
@@ -70,7 +71,7 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
     <div className={s.aclWrap}>
       {failed.length > 0 && sys && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т хадгалагдаагүй хуваарилалт (бичилт унасан) — энэ browser-т л байна:')}
+          {tr('⚠️ ArcGIS-т хадгалагдаагүй хуваарилалт (бичилт унасан) — энэ хөтчид л байна:')}
           {' '}
           {failed.map((u) => (
             <span key={u}>
@@ -112,9 +113,10 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
           ))}
           {gone.length > 1 && (
             <button type="button" className={s.aclPkg} disabled={off}
-              onClick={() => {
-                if (!window.confirm(tr('Устгагдсан {0} аккаунтын энэ хуудасны үлдсэн хуваарилалт ба эрхийг арилгах уу? {1}',
-                  String(gone.length), gone.map((g) => g.user).join(', ')))) return;
+              /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
+              onClick={async () => {
+                if (!(await askConfirm(tr('Устгагдсан {0} аккаунтын энэ хуудасны үлдсэн хуваарилалт ба эрхийг арилгах уу? {1}',
+                  String(gone.length), gone.map((g) => g.user).join(', ')), { ok: tr('Цэвэрлэх') }))) return;
                 void all(gone.map((g) => () => goneCleanupOp(sys, caps, g.user)));
               }}>
               {tr('Бүгдийг цэвэрлэх ({0})', String(gone.length))}

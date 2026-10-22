@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fixCyr } from "@/lib/format";
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
@@ -71,6 +72,8 @@ import { roleForUser } from "@/lib/services";
 import { hasCap, subscribeCaps } from "@/lib/caps";
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд апп доторх асуулт */
+import { askConfirm } from '@/lib/confirm';
 import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
@@ -104,7 +107,7 @@ import { useAddedOids, usePkgPct, useRowFilter, useVirtualWindow } from "./fill/
 import { useCellEdit, type PastePrev } from "./fill/useCellEdit";
 import { useDraftSync, type DraftSync } from "./fill/useDraftSync";
 import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, SubmitControls } from "./fill/toolbar";
-import { FillNotices, NoticeToast } from "./fill/notices";
+import { FillNotices, NoticeToast, StickyNotice } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
 import { FillRows } from "./fill/FillRows";
 import { extraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
@@ -214,6 +217,23 @@ function pkgOfReq(r: FillOpenRequest): { pkg: Pkg; guess: boolean } | null {
 const fillWidthKeep = (col: string) => !/^[apse]\d+$/.test(col);
 const FILL_W_FALLBACK = { key: "fillnew", keep: fillWidthKeep };
 
+/**
+ * СОНГОСОН БАГЦЫГ САНАНА (⚠️ 2026-10-23, UX аудит F5) — таб солих (компонент unmount) ба F5-д эхний багц руу
+ *    үсэрдэг байв. `sessionStorage` — зөвхөн энэ табд, хөтөч хаахад арилна (өөр хүн/таб нөлөөлөхгүй). Хадгалсан
+ *    түлхүүр одоо байхгүй/эрхээс гадуур бол эхний зөвшөөрөгдсөн багц руу өөрөө шилжинэ (`groupOpts`-ийн ⚠️).
+ *    Хувийн горим/хаалттай сан — ШИДДЭГ тул try/catch (`AuthGate`-ийн ⚠️).
+ */
+const PKG_SS = 'selbe.fillnew.pkg';
+function readPkgSS(): Pkg | undefined {
+  try {
+    const k = typeof window !== 'undefined' ? window.sessionStorage.getItem(PKG_SS) : null;
+    return k ? PKGS.find((p) => p.key === k) : undefined;
+  } catch { return undefined; }
+}
+function writePkgSS(key: string): void {
+  try { window.sessionStorage.setItem(PKG_SS, key); } catch { /* хаалттай сан — санахгүй */ }
+}
+
 /** Хуваарийн задаргаа хараахан уншигдаагүй/өөр багцынх бол — ХООСОН (`useAddedOids`-тай ижил хэв маяг) */
 const NO_PLAN: PkgPlan = new Map();
 
@@ -247,8 +267,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [pkg, setPkg] = useState<Pkg>(
     () => (view && PKGS.find((p) => p.key === view.pkgKey))
       || (fixReq && PKGS.find((p) => p.key === fixReq.pkgKey))
+      /* ⚠️ 2026-10-23 (UX аудит F5): энэ табд сүүлд сонгосон багц */
+      || (!view && readPkgSS())
       || PKGS[0],
   ); // Багц 1 · 9F — жагсаалтын эхнийх
+  /* ⚠️ 2026-10-23 (UX аудит F5): сонголтыг санана — хяналтын харагдац (`view`) хамаарахгүй (тогтмол багц) */
+  useEffect(() => { if (!view) writePkgSS(pkg.key); }, [view, pkg.key]);
   /*
    * ⚠️ 2026-10-11 (аудит №7): ТААМАГЛАСАН хуудсыг илгээлтийн payload-ын `pkgKey`-ээр залруулна (`pkgOfReq`-ийн ⚠️).
    *    Уншилт унасан/илгээлт алга бол таамаг хэвээр (`guess` арилна — доорх нээх эффект үргэлжилнэ).
@@ -379,7 +403,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const {
     hyRows, hyLoading, hyErr, reloadHy,
     todayFillMs, setTodayFillMs, flow, otherDaysInReview, otherDaysReturned, reviewLock: reviewLockSt,
-    resumedOid, setResumedOid, returnedStaged, reviewStage, inReview, flowRef, today, reviewSoidsKey,
+    resumedOid, setResumedOid, returnedStaged, returnInfo, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   } = useFlow({ pkg, view, stagedOid: staged?.oid ?? null });
   /**
    * Өнөөдөр архивт жааз үүссэн үү — ЗӨВХӨН дэлгэцийн мэдээлэл.
@@ -761,7 +785,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Нээлттэй календар: аль нүднээс, ямар утгатай, хаана байрлах вэ. */
   const [pick, setPick] = useState<PickState | null>(null);
 
-  const { notice, setNotice, show, say, done, warn, ro } = useNotice();
+  const { notice, setNotice, show, say, done, warn, ro, sticky, stick, unstick } = useNotice();
+  /* ⚠️ 2026-10-23 (UX аудит F4): наалдсан анхааруулга ЭНЭ багцынх — багц солиход харагдахгүй (`useNotice.stick`-ийн ⚠️) */
+  const stickHere = useCallback((msg: string) => stick(msg, pkg.key), [stick, pkg.key]);
   /**
    * ⚠️ 2026-10-09: САЛАА МЭДЭГДЭЛ (`useDraftSync`-ийн `soft`) — «Ноорог сэргээв…» ба «Хамтын ноорог
    *    шинэчлэгдлээ». Урьд нь `say` («Энэ нүд засагдахгүй.» гарчигтай, ХУДАЛ) татах мөчлөг бүрд дуудагдаж
@@ -1719,6 +1745,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     show, say,
     /* ⚠️ 2026-10-09: хоёр хүн зэрэг бөглөх — салаа мэдэгдэл · шинэ баримт · тодруулга · харагдаж буй нүд */
     soft, onReceipts, flashCells, visibleKeys,
+    /* ⚠️ 2026-10-23 (UX аудит F3): сэргээгдээгүй нүдний жагсаалт — наалдсан анхааруулгаар */
+    stick: stickHere,
     /* ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдийг ноорогоос буулгахгүй (`okLockAt`-ийн ⚠️) */
     okLock: okLockAt,
   });
@@ -1804,17 +1832,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     okLock: okLockAt,
   });
 
-  /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */
-  const confirmSwitch = () =>
+  /** Багц/хувилбар солихын өмнө илгээгээгүй засварыг баталгаажуулна. */
+  /* ⚠️ 2026-10-23 (UX аудит F6 · X1): «Нийтлэгдээгүй» → «Илгээгээгүй» («Нийтлэх» товч 2026-09-06-нд «Илгээх» болсон);
+     «сэргээхийг санал болгоно» нь ХУДАЛ байв — ноорог 2026-09-06-наас асуултгүй, ШУУД сэргэдэг. Апп доторх асуулт. */
+  const confirmSwitch = async (): Promise<boolean> =>
     unsavedCount === 0 ||
-    window.confirm(
-      tr('Нийтлэгдээгүй {0} өөрчлөлт бий. Багц солих уу?', unsavedCount) + "\n" +
-        tr('(Нүдний засварууд ноорог болон хадгалагдаж, буцаж ирэхэд сэргээхийг санал болгоно.)') +
+    askConfirm(
+      tr('Илгээгээгүй {0} өөрчлөлт бий. Багц солих уу?', unsavedCount) + "\n" +
+        tr('(Гүйцэтгэлийн засвар ноорогт хадгалагдсан — энэ багц руу буцаж ирэхэд автоматаар сэргэнэ.)') +
         /* ⚠️ ОБЬЁМЫН ноорог нь ноорогт ХАДГАЛАГДДАГГҮЙ — «сэргээнэ» гэсэн
            дээрх мөр түүнд ХАМААРАХГҮЙ тул үнэнийг тусад нь хэлнэ. */
         (pvDirty
           ? "\n" + tr('⚠ Инженерийн төлөвлөсөн обьёмын {0} нүд нь ноорогт хадгалагддаггүй — багц солиход БҮРМӨСӨН устана. Эхлээд «Обьём батлуулах» дарна уу.', pvDirty)
           : ""),
+      { ok: tr('Багц солих'), danger: pvDirty > 0 },
     );
   /** Огнооны нүдний ХАДГАЛАГДСАН утга «YYYY-MM-DD» хэлбэрээр. */
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
@@ -1847,7 +1878,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (sDay && eDay && eDay < sDay) notes.push(tr('«Дуусах» ({0}) нь «Эхлэх»-ээс ({1}) ӨМНӨ байна — төлөвлөгөөт хувь бодогдохгүй', eDay, sDay));
       const yr = Number(raw.slice(0, 4));
       if (Number.isFinite(yr) && Math.abs(yr - new Date().getFullYear()) > 5) notes.push(tr('он ({0}) өнөөдрөөс 5-аас их жилээр зөрж байна', String(yr)));
-      if (notes.length) warn(tr('{0} · {1}: {2}. Огноогоо шалгана уу.', sc?.bld[b] ?? "", r.work, notes.join('; ')));
+      if (notes.length) warn(tr('{0} · {1}: {2}. Огноогоо шалгана уу.', sc?.bld[b] ?? "", fixCyr(r.work), notes.join('; ')));
     }
     // Анхны утгадаа буцсан бол «нийтлээгүй» тэмдэглэгээг арилгана.
     const sameDate = raw === origDay(r, b, k);
@@ -1908,10 +1939,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setBusy(true);
       let stored: string[] | null = null;
       try { stored = await storedMine(pkg.key, soid); } finally { setBusy(false); }
-      if (stored === null) { warn(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаагдсан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
+      if (stored === null) { warn(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаасан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
       const mine = [...new Set([...memMine, ...stored])];
       if (mine.length) {
-        if (!window.confirm(tr('Таны илгээгээгүй {0} нүд ноорогт байна (өнөөдрийн эсвэл өөр өдрийн ажил). Буцаагдсан илгээлтийн засвартай холилдохгүйн тулд эхлээд тэдгээрийг ноорогоос устгана — бусдын нүд хөндөгдөхгүй. Устгаад үргэлжлүүлэх үү?', mine.length))) return;
+        if (!(await askConfirm(tr('Таны илгээгээгүй {0} нүд ноорогт байна (өнөөдрийн эсвэл өөр өдрийн ажил). Буцаасан илгээлтийн засвартай холилдохгүйн тулд эхлээд тэдгээрийг ноорогоос устгана — бусдын нүд хөндөгдөхгүй. Устгаад үргэлжлүүлэх үү?', mine.length), { ok: tr('Устгаад үргэлжлүүлэх'), danger: true }))) return;
         dropMine(pkg.key, mine);
       }
     }
@@ -1920,7 +1951,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const rr = await readSubmissionByOid(soid);
       if (!rr.ok) throw new Error(rr.error);
       const sub0 = rr.sub;
-      if (!sub0 || sub0.done || sub0.payload.pkgKey !== pkg.key) throw new Error(tr('Буцаагдсан илгээлт олдсонгүй — хуудсыг дахин ачаална уу.'));
+      if (!sub0 || sub0.done || sub0.payload.pkgKey !== pkg.key) throw new Error(tr('Буцаасан илгээлт олдсонгүй — хуудсыг дахин ачаална уу.'));
       const base = await loadRows(pkg, sc);
       /* ⚠️ 2026-10-04 дахин аудит (#1): хуучин (`rowOcc`-гүй) илгээлтийн давтамжийг суурь жаазаас нөхнө */
       const p2 = await ensureFrameOcc(pkg, sc, sub0.payload, base.rows);
@@ -1946,7 +1977,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setAsOfOrig(a0);
       setSnapDay(base.snapshot != null ? msToDay(base.snapshot) : "");
       setSnapMs(base.snapshot ?? null);
-      done(tr('{0}-ны буцаагдсан илгээлт давхарлагдлаа — засаад «Илгээх» дарна.', msToDay(sub.payload.fillMs)));
+      done(tr('{0}-ны буцаасан илгээлт давхарлагдлаа — засаад «Илгээх» дарна.', msToDay(sub.payload.fillMs)));
     } catch (e) {
       setErr(userError(e));
     } finally {
@@ -2125,6 +2156,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хяналтын бүртгэл үүснэ. Архивт бичих цорын ганц зам —
    *    `hyanaltStore.apply` (газрын даргын батламж).
    */
+  /* ⚠️ 2026-10-23 (UX аудит F1): `publish`-ийн давхар асуултын хамгаалалт (асуулт нээлттэй үед) */
+  const pubAskRef = useRef(false);
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
     /* ⚠️ `asOf == null` нь ЗОГСООХ шалтгаан БИШ (2026-09-06): хэзээ ч
@@ -2197,7 +2230,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     {
       const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
       if (off.length) {
-        warn(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаагдсан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
+        warn(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
         return;
       }
     }
@@ -2234,9 +2267,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ 2026-10-04 аудит (#6): НООРОГ нь ӨӨР (буцаагдсан) илгээлтийн засвар — сонгогдоогүй бол
        ИЛГЭЭХГҮЙ (`tgtMismatch`-ийн ⚠️). Ctrl+S ч энд ирдэг тул товчноос гадна ЭНД шалгана. */
     if (tgtMismatch && draftTgt) {
-      warn(tr('Энэ ноорог {0}-ны буцаагдсан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаагдсан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
+      warn(tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаасан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
       return;
     }
+    /*
+     * ⚠️ 2026-10-23 (UX аудит F1): ИЛГЭЭХЭЭС ӨМНӨ АСУУНА — илгээлт хянагчийн гар дээр очмогц 6 шат дуустал (эсвэл буцаагдтал)
+     *    энэ багцад шинээр бөглөх/илгээх хаалттай (`reviewLock`), буцаах зам байхгүй. Урьд нь «Илгээх» ба Ctrl+S шууд
+     *    илгээдэг тул санамсаргүй дарсан хүн хуудсаа түгжчихдэг байв. Бүх хоригийн ДАРАА (илгээгдэхгүй зүйлийг асуухгүй),
+     *    бичилтийн ӨМНӨ. `pubAskRef` — асуулт нээлттэй байхад давхар дарвал хоёр дахь асуулт гарахгүй.
+     */
+    if (pubAskRef.current) return;
+    pubAskRef.current = true;
+    let yes = false;
+    try {
+      yes = await askConfirm(
+        tr('{0} өөрчлөлтийг хянагчид илгээх үү?\n\nИлгээсний дараа 6 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.', dirtyCount),
+        { ok: tr('Илгээх'), title: pkg.label },
+      );
+    } finally { pubAskRef.current = false; }
+    if (!yes) return;
     /*
      * ⚠️ 2026-10-04 аудит (#4): доорх `sentAt` нь одоо TOMBSTONE-ийн агшин БИШ — илгээлтийн
      *    БАРИМТЫН (`Draft.rcpt`) `sa` (илгээсэн хуулбарын агшин). Tombstone/баримтын агшин нь
@@ -2308,6 +2357,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPastePrev(null);
     setBusy(true);
     setErr("");
+    /* ⚠️ 2026-10-23 (UX аудит F4): өмнөх «Илгээсэнгүй — …» наалдсан анхааруулга шинэ оролдлогоор арилна */
+    unstick();
     /* ⚠️ 2026-10-21: явж буй `refreshStaged`-ийн хожуу хариуг хаяна (`pubEpochRef`-ийн ⚠️) */
     pubEpochRef.current += 1;
     try {
@@ -2497,7 +2548,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const oidMap = (rows.length && freshRows.length && freshRows[0].oid !== rows[0].oid)
         ? buildOidMap(pageRows.map((r): [number, string] => [r.oid, rowKeyOf(r)]), freshRows, rowOccOf(pageRows))
         : new Map<number, number>();
-      const stale = tr('Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч нийтэлсэн) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — нийтлэлийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж, сэргээгээд дахин Илгээнэ үү.');
+      /* ⚠️ 2026-10-23 (UX аудит F6): «нийтэлсэн/нийтлэл» → «илгээсэн/илгээлт» (товчны нэртэй нэг) */
+      const stale = tr('Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч илгээсэн эсвэл батлагдсан) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — илгээлтийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж (F5), сэргээгээд дахин «Илгээх» дарна уу.');
       const mc = moveKeys(oidMap, pending);
       const md = moveKeys(oidMap, pendDate);
       if (mc.unmoved.length || md.unmoved.length) throw new Error(stale);
@@ -2605,10 +2657,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         /* ⚠️ ГАРЦ: тулгаж чадаагүй нүдийг нэрлэж ИЛ асууна — «Үгүй» бол урьдын адил зогсоно (ноорог
            хэвээр). «Тийм» бол тэр нүд ӨМНӨХ илгээлтээс ХАСАГДАНА (дутуу тоологдоно — ил, засагдана;
            буруу мөрөнд буух/давхардахаас аюулгүй). */
-        if (mv.lost.length && !window.confirm(tr(
+        if (mv.lost.length && !(await askConfirm(tr(
           'Өмнөх илгээлтийн {0} нүдийг шинэ хүснэгтийн мөрөнд тулгаж чадсангүй (ижил нэртэй мөр олон эсвэл мөр хасагдсан): {1}. Тэдгээрийг өмнөх илгээлтээс ХАСААД үргэлжлүүлэх үү? (Үгүй — илгээхгүй, ноорог хэвээр.) Хассан нүдийг дараа нь гараар дахин бөглөнө үү.',
           mv.lost.length, describeUnmoved(mv.lost, staged.payload.rowKeys, sc.bld).join('; '),
-        ))) throw new Error(stale);
+        ), { ok: tr('Хасаад үргэлжлүүлэх'), danger: true }))) throw new Error(stale);
         mergeBase = mv.p;
       }
       /*
@@ -2652,7 +2704,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
              `%act` бичигдэж обьёмын +15 чимээгүй алга болдог байв. Хоёуланг илэрхийлэх зам алга тул ИЛ ЗОГСООНО
              (ноорог хэвээр) — нэгийг нь хаяж батлуулахгүй. */
           if (hasF && vol0 == null && d0.n !== 0 && d0.p !== 0) {
-            throw new Error(tr('Нэг нүдэнд обьём ба хувийн нэмэлт хоёулаа бичигдсэн (мөрийн Обьём хоосон) — өнөөдрийн хуучин (нийт утгатай) илгээлттэй нэгтгэх боломжгүй тул нийтлэлийг зогсоов. Тэр нүдэнд зөвхөн обьём эсвэл зөвхөн хувь бичээд дахин Илгээнэ үү (ноорог хадгалагдсан хэвээр).'));
+            throw new Error(tr('Нэг нүдэнд обьём ба хувийн нэмэлт хоёулаа бичигдсэн (мөрийн Обьём хоосон) — өнөөдрийн хуучин (нийт утгатай) илгээлттэй нэгтгэх боломжгүй тул илгээлтийг зогсоов. Тэр нүдэнд зөвхөн обьём эсвэл зөвхөн хувь бичээд дахин «Илгээх» дарна уу (ноорог хадгалагдсан хэвээр).'));
           }
           absPend[k] = hasF && (d0.p === 0 || vol0 != null) && res.obyem != null
             ? String(res.obyem)
@@ -2726,7 +2778,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       {
         const ovNeg = overlaySubmission(freshRows, payload, sc, nBld);
         if (ovNeg.negative > 0) {
-          warn(tr(
+          /* ⚠️ 2026-10-23 (UX аудит F4): засах нүдний жагсаалт — НААЛДСАН (4 сек-д алга болохгүй) */
+          stickHere(tr(
             'Илгээсэнгүй — {0} нүдний нэмэлт нийт дүнг сөрөг болгоно (хуудсанд байгаагаас их хасалт). Нийтийг 0 болгохын тулд: {1}. Дараа нь «Илгээх»-ийг дарна уу (юу ч илгээгдээгүй, ноорог хэвээр).',
             ovNeg.negative, describeNegFixes(ovNeg, sc, pend2, fillMode).join('; '),
           ));
@@ -3057,7 +3110,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* 2026-10-12 (аудит №8) */
     hyLoading, hyErr,
     /* 2026-10-22 (аудит): сөрөг нүдний засварын утга горимын нэгжээр (`describeNegFixes`) */
-    fillMode]);
+    fillMode,
+    /* 2026-10-23 (UX аудит F4): наалдсан анхааруулга */
+    stickHere, unstick]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -3075,6 +3130,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (reviewerOnly || !canPerf) { setErr(noPerfWhy ?? RO.noPerf); return; }
     setBusy(true);
     setErr("");
+    /* ⚠️ 2026-10-23 (UX аудит F4): шинэ оролдлого — өмнөх наалдсан анхааруулга арилна */
+    unstick();
     try {
       /*
        * ⚠️ 2026-10-22 (аудит): ДАХИН ИЛГЭЭХЭЭС ӨМНӨ `publish`-тэй ИЖИЛ шалгалт — хянагчийн харах СУУРЬ жааз (архивын
@@ -3096,21 +3153,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           return;
         }
         if (ovChk.negative > 0) {
-          warn(tr(
+          /* ⚠️ 2026-10-23 (UX аудит F4): наалдсан — `publish`-ийн ижил мессежтэй адил */
+          stickHere(tr(
             'Илгээсэнгүй — {0} нүдний нэмэлт нийт дүнг сөрөг болгоно (хуудсанд байгаагаас их хасалт). Нийтийг 0 болгохын тулд: {1}. Дараа нь «Илгээх»-ийг дарна уу (юу ч илгээгдээгүй, ноорог хэвээр).',
             ovChk.negative, describeNegFixes(ovChk, sc, {}, fillMode).join('; '),
           ));
           return;
         }
         if (ovChk.unmoved > 0) {
-          warn(tr(
+          stickHere(tr(
             'Илгээсэнгүй — илгээлтийн {0} нүдийг хуудсанд буулгаж чадсангүй (мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш): {1}. Хянагч ийм илгээлтийг батлах боломжгүй — тэр нүдийг дахин бөглөж (тоог зөв бичиж) «Илгээх»-ээр илгээнэ үү.',
             ovChk.unmoved, describeUnmoved(ovChk.unmovedKeys, pChk.rowKeys, sc.bld).join('; '),
           ));
           return;
         }
       }
-      if (!window.confirm(tr('Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)))) return;
+      if (!(await askConfirm(tr('Буцаасан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)), { ok: tr('Илгээх') }))) return;
       const rv = await submitForReview(pkg.group, staged.payload.fillMs, staged.oid, pkg.name);
       if (!rv.ok) { setErr(rv.error); return; }
       registeredRef.current.add(staged.oid);
@@ -3159,9 +3217,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
   }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done, reviewerOnly, canPerf, noPerfWhy,
     /* 2026-10-22 (аудит): илгээхийн өмнөх шалгалт (сөрөг · тулгагдаагүй нүд) */
-    warn, fillMode]);
+    fillMode,
+    /* 2026-10-23 (UX аудит F4): наалдсан анхааруулга (`warn`-ийн оронд) */
+    stickHere, unstick]);
 
-  // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
+  // Ctrl+S — ⚠️ 2026-10-23 (UX аудит F1): ЗӨВХӨН НООРОГ ХАДГАЛНА (доорх `saveQueued`), илгээхгүй.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
   // pending-ээр нийтлээд, оролтын утга дараа нь blur дээр эргэж dirty болж
   // хэрэглэгч «хадгалагдсан» гэж андуурдаг байв. commit нь state-д дараагийн
@@ -3186,16 +3246,40 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPublishQueued(false);
     publish();
   }, [publishQueued, edit, publish]);
+  /*
+   * ⚠️ 2026-10-23 (UX аудит F1, хэрэглэгч: «бүгдийг зас»): Ctrl+S = НООРОГ ХАДГАЛАХ. Урьд нь Ctrl+S нь асуултгүй ИЛГЭЭДЭГ
+   *    тул «хадгалах» гэж дарсан хүн илгээлт үүсгэж, багц 6 шат дуустал түгжигддэг байв. Ноорог засвар бүрд өөрөө
+   *    хадгалагддаг (локал + ArcGIS, debounce) тул Ctrl+S нь нээлттэй нүдийг хүлээн авч алсын хуулбарыг ШУУД явуулна
+   *    (`useDraftSync.flushRef`) ба «хадгалагдсан» гэж батална. Илгээх нь ЗӨВХӨН «Илгээх» товч (асуулттай).
+   */
+  const [saveQueued, setSaveQueued] = useState(false);
+  const flushDraftRef = draftSync.flushRef;
+  /* ⚠️ 2026-10-23 (засвар): таймер ref-д — эффектийн цэвэрлэгээнд БИШ. `setSaveQueued(false)` дахин зурагдалт үүсгэж
+     хамаарал солигдоход цэвэрлэгээ 0 мс-ийн таймерыг ажиллахаас нь өмнө устгаж, алсын хуулбар шууд явдаггүй байв
+     (мэдэгдэл «хадгалагдлаа» гэсээр debounce-ыг хүлээдэг). Зөвхөн unmount-д цэвэрлэнэ. */
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+  useEffect(() => {
+    if (!saveQueued || edit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-23: Ctrl+S-ийн дараалал — нээлттэй нүдний утга төлөвт тусмагц ноорогийн алсын хуулбарыг явуулна (гаднын нөлөө)
+    setSaveQueued(false);
+    /* локал хадгалах эффект энэ commit-д ажилласан — алсын дарааллыг дараагийн мөчлөгт явуулна */
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => { saveTimerRef.current = null; flushDraftRef.current(); }, 0);
+    if (dirtyCount > 0) done(tr('Ноорог хадгалагдлаа — хянагчид илгээхийн тулд «Илгээх» товчийг дарна уу (Ctrl+S илгээхгүй).'));
+  }, [saveQueued, edit, flushDraftRef, dirtyCount, done]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (hiddenNow()) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        /* ⚠️ Хөтчийн «Хуудас хадгалах» цонхыг ҮРГЭЛЖ хаана */
         e.preventDefault();
         /* ⚠️ 2026-09-30: нээлттэй нүдний утга НЯЦААГДВАЛ (тоо биш, «1,250», хэтрэлтийн
            асуултад «Цуцлах») ИЛГЭЭХГҮЙ. Урьд нь үлдсэн нүднүүд илгээгдэж, ганц
            мэдэгдлийн байрыг «✓ Хяналтад илгээв» эзэлж, няцаагдсан утгын шар
            анхааруулга алга болдог байв — хэрэглэгч тэр утга орсон гэж андуурна. */
-        if (flushEditRef.current()) setPublishQueued(true);
+        /* ⚠️ 2026-10-23 (UX аудит F1): илгээхгүй — ноорог хадгална (`saveQueued`) */
+        if (flushEditRef.current()) setSaveQueued(true);
       }
     };
     window.addEventListener("keydown", h);
@@ -3420,11 +3504,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         /* ⚠️ 2026-10-12 (аудит №8): хяналтын жагсаалтын алдаа (гүйцэтгэгчийн хуудсанд — хянагчийн харагдац өөрийн
            жагсаалттай) ба тасарсан жааз (`frameTrunc`-ийн ⚠️) */
         hyErr={!view && hyErr ? userError(hyErr) : null} frameTrunc={frameTrunc}
+        /* ⚠️ 2026-10-23 (UX аудит F2): буцаалтын шалтгаан · хянагч · огноо */
+        returnInfo={returnInfo}
       />
+      {/* ⚠️ 2026-10-23 (UX аудит F4 · F3): «Илгээсэнгүй — …» засах нүдний жагсаалт ба сэргээгдээгүй нүд — хаах хүртэл */}
+      <StickyNotice msg={sticky && sticky.tag === pkg.key ? sticky.msg : null} onClose={unstick} />
       {/* ⚠️ 2026-10-04 аудит (#6): ноорог нь ӨӨР (буцаагдсан) илгээлтийн засвар — сонгох хүртэл «Илгээх» түгжээтэй */}
       {tgtMismatch && draftTgt && (
         <p className={st.backNote} role="alert">
-          {tr('Энэ ноорог {0}-ны буцаагдсан илгээлтийн засвар — өнөөдрийн илгээлтэд нийлүүлэхгүйн тулд «Илгээх» түгжээтэй. Тэр илгээлтийг сонгоно уу, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1]))}
+          {tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — өнөөдрийн илгээлтэд нийлүүлэхгүйн тулд «Илгээх» түгжээтэй. Тэр илгээлтийг сонгоно уу, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1]))}
           {!noEdit && (
             <button type="button" className={st.linkBtn} disabled={busy} onClick={() => void resumeReturned(draftTgt[0])}>
               {tr('Тэр илгээлтийг сонгох')}
@@ -3449,7 +3537,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       {backList.length > 0 && (
         <div className={st.backList}>
           <div className={st.backHead}>
-            {tr('Буцаагдсан нүд')}
+            {/* ⚠️ 2026-10-23 (UX аудит X7): буцаалтын төлөвийн нэр НЭГ — «Буцаасан» */}
+            {tr('Буцаасан нүд')}
             <span className={st.backBadN}>{tr('засах {0}', backBad)}</span>
             <span className={st.backOkN}>{tr('зөвшөөрсөн {0}', backList.length - backBad)}</span>
           </div>
@@ -3459,12 +3548,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 key={`${c.row}:${c.block}${c.date ? `:${c.date}` : ""}`}
                 type="button"
                 className={`${st.backItem}${c.ok ? ` ${st.backItemOk}` : ""}`}
-                title={`${c.no} · ${c.work}${c.date ? ` · ${c.date === 's' ? tr('Эхлэх огноо') : tr('Дуусах огноо')}` : ""}\n${c.ok ? tr('Зөвшөөрсөн — засахгүй') : tr('Засах шаардлагатай')}`}
+                title={`${c.no} · ${fixCyr(c.work)}${c.date ? ` · ${c.date === 's' ? tr('Эхлэх огноо') : tr('Дуусах огноо')}` : ""}\n${c.ok ? tr('Зөвшөөрсөн — засахгүй') : tr('Засах шаардлагатай')}`}
                 onClick={() => setOwnJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))}
               >
                 {/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): огнооны өөрчлөлт — блокийн шошгон дээр «Эхлэх»/«Дуусах» */}
                 <span className={st.backBlk}>{c.date ? `${c.block} · ${c.date === 's' ? tr('Эхлэх') : tr('Дуусах')}` : c.block}</span>
-                <span className={st.backWork}>{c.work}</span>
+                <span className={st.backWork}>{fixCyr(c.work)}</span>
               </button>
             ))}
           </div>
@@ -3494,7 +3583,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
       {/* Хоосон үр дүнг тайлбаргүй орхивол хэрэглэгч юу болсныг мэдэхгүй гацдаг. */}
       {!busy && !err && sc && rows.length === 0 && (
-        <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй.')}</p>
+        /* ⚠️ 2026-10-23 (UX аудит X6): юу хийхийг хэлнэ */
+        <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй — өөр багц/хувилбар сонгоно уу, эсвэл хуудсыг дахин ачаална уу (F5).')}</p>
       )}
       {rows.length > 0 && sc && calc.length === 0 && (
         <p className={st.muted}>

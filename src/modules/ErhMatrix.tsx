@@ -64,6 +64,9 @@ export function ErhMatrix({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      /* ⚠️ 2026-10-23 (UX аудит A5): нүдний засварын дээр апп доторх асуулт (`askConfirm`) нээлттэй бол Esc нь ТЭР асуултынх —
+         эс бөгөөс энд залгигдаж, popover хаагдаад асуулт нээлттэй үлддэг байв */
+      if (document.querySelector('[role="alertdialog"]')) return;
       e.stopImmediatePropagation();
       e.preventDefault();
       setOpen(null);

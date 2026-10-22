@@ -41,8 +41,10 @@ import {
   updateDecision, HyanaltConflict,
   DECISION, F, HYANALT, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview, prevReview,
-  type Attrs, type Decision, type ReviewStage, type Row, type Status,
+  type Attrs, type Decision, type ReviewStage, type Row, type Stage, type Status,
 } from './hyanalt';
+/* ⚠️ 2026-10-23: ЗӨВХӨН төрөл (`selfBlocks`) — модуль нь `countReviewPending`-д динамикаар хэвээр */
+import type { Work } from './hyanaltGroup';
 
 /**
  * `Zovshoorson_nud` (`F.okCells`) ТАЛБАРТ БИЧИХ PATCH — талбар үйлчилгээнд
@@ -73,7 +75,7 @@ async function okCellsPatch(okCells: string[] | undefined, strict = true): Promi
     console.warn(`[selbe] «${F.okCells}» талбар хяналтын үйлчилгээнд алга — зөвшөөрсөн нүд хадгалагдсангүй. AGOL дээр талбар нэмнэ үү.`);
     return {
       patch: {},
-      warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. AGOL дээр багана нэмнэ үү.', F.okCells),
+      warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. Админд мэдэгдэнэ үү.', F.okCells),
     };
   }
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗӨВХӨН ШИНЭ хэлбэр (`{v:2,c:[…]}` — мөрийн
@@ -84,12 +86,12 @@ async function okCellsPatch(okCells: string[] | undefined, strict = true): Promi
     if (!strict) {
       return {
         patch: {},
-        warn: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрсэн тул хадгалагдсангүй — шийдвэр хэвээр явлаа. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
+        warn: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрсэн тул хадгалагдсангүй — шийдвэр хэвээр явлаа. Баганын уртыг нэмүүлэхээр админд мэдэгдэнэ үү.', String(enc.length), F.okCells, String(max)),
       };
     }
     return {
       patch: {},
-      error: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
+      error: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. Баганын уртыг нэмүүлэхээр админд мэдэгдэнэ үү.', String(enc.length), F.okCells, String(max)),
     };
   }
   return { patch: { [F.okCells]: enc } };
@@ -541,6 +543,45 @@ export function toRow(a: Attrs): Row {
   };
 }
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит F2/R7): БУЦААЛТЫН МЭДЭЭЛЭЛ — бөглөх хуудасны «Буцаасан» баннерт шалтгаан · хэн · хэзээ.
+ *    Гүйцэтгэгчийн гар дээр ирэх цорын ганц буцаалт = «Инженер буцаасан» (`OWNER` — дээд шатны буцаалт инженерт
+ *    очдог), тиймээс инженерийн талбаруудаас уншина. Мөр буцаагдаагүй бол `null`. ЦЭВЭР функц — сүлжээ, React үгүй.
+ *    ⚠️ Гүйцэтгэгчид зөвхөн инженерийн нэр харагдана (`Guitsetgel.stepsOf`-ийн `seesManager` дүрэм) — энэ туслах
+ *    дээд шатны нэрийг санаатай буцаадаггүй.
+ */
+export type ReturnInfo = {
+  /** Буцаасан шалтгаан (хоосон байж болно — хуучин мөр) */
+  reason: string;
+  /** Буцаасан хянагчийн дэлгэцийн нэр (хоосон байж болно) */
+  by: string;
+  /** Буцаасан огноо — ISO мөр, эсвэл `null` */
+  at: string | null;
+  /** Үргэлж `'engineer'` (2-р шат) — шошгыг `STAGE_LABEL.engineer`-ээс */
+  stage: 'engineer';
+};
+export function returnInfoOf(r: Row | null | undefined): ReturnInfo | null {
+  if (!r || r[F.status] !== STATUS.engineerReturned) return null;
+  return {
+    reason: String(r[F.engineerReason] ?? '').trim(),
+    by: String(r[F.engineer] ?? '').trim(),
+    at: r[F.engineerReturned] || null,
+    stage: 'engineer',
+  };
+}
+/**
+ * Илгээлтийн OBJECTID (`Эх_мөрийн_дугаар`) + багцаар СҮҮЛИЙН тойргийг олж буцаалтын мэдээллийг өгнө —
+ * `useFlow.otherDaysReturned`-ийн `{ day, soid }`-д. Сүүлийн тойрог буцаагдаагүй бол `null`.
+ */
+export function returnInfoFor(rows: readonly Row[], bagts: string, sheetOid: number): ReturnInfo | null {
+  let last: Row | null = null;
+  for (const r of rows) {
+    if (r[F.bagts] !== bagts || Number(r[F.sheetOid]) !== sheetOid) continue;
+    if (!last || r.__oid > last.__oid) last = r;
+  }
+  return returnInfoOf(last);
+}
+
 /* ── Захиалагчид мэдэгдэх модулийн түвшний store ── */
 
 let ROWS: Row[] = [];
@@ -870,7 +911,7 @@ export async function countReviewPending(username: string | null | undefined): P
     else if (badgeRows && Date.now() - badgeRows.at < POLL_MS) rows = badgeRows.rows;
     else { rows = (await queryAll()).map(toRow); badgeRows = { at: Date.now(), rows }; }
     const { groupWorks } = await import('./hyanaltGroup');
-    let ws = groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
+    const ws = groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
       && (sc == null || sc.includes(w.bagts)));
     /*
      * ⚠️ 2026-10-12 (R9): ЭНЭ ХЭРЭГЛЭГЧ ЗӨВШӨӨРЧ ЧАДАХГҮЙ ажлыг тоолохгүй — `authz`-ийн ЯГ тэр хоёр дүрэм:
@@ -884,34 +925,62 @@ export async function countReviewPending(username: string | null | undefined): P
     /* ⚠️ 2026-10-19 (аудит): `authz`-ийн шинэ дүрэм (`selfApprovalDeny`) — ӨӨР АЛЬ Ч шатанд зөвшөөрсөн, аль ч шатанд
        өөрийн илгээлт. Урьд нь өмнөх шат ба инженер шатны илгээгч л. */
     /* ⚠️ 2026-10-19 (хэрэглэгчийн шийдвэр): хатуу super турших эрхтэй (`authz`-ийн ⚠️) — тэмдэг ч шүүхгүй */
-    const tester = roleForUser(me) === 'super';
-    if (stage !== 'company' && !tester) {
-      ws = ws.filter((w) => !approvedStagesOf(w.current[F.history], me).some((st) => st !== stage));
-    }
-    if (stage !== 'company' && !tester && ws.length) {
-      const lists = await Promise.all(ws.map(async (w): Promise<string[] | undefined> => {
-        const so = Number(w.current[F.sheetOid]);
-        if (!Number.isInteger(so) || so <= 0) return undefined;
-        const hit = badgeSubs.get(so);
-        if (hit && Date.now() - hit.at < POLL_MS) return hit.list;
-        try {
-          /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `submittersOfRow` — илгээлтийн багцыг мөрийн багцтай тулгана (legacy OID давхцал) */
-          const sr = await submittersOfRow(so, w.current[F.bagts]);
-          if (!sr.ok) return undefined;
-          const list = sr.list ?? [];
-          badgeSubs.set(so, { at: Date.now(), list });
-          return list;
-        } catch { return undefined; }
-      }));
-      ws = ws.filter((_, i) => !submitterDeny(stage, me, lists[i]));
-    }
-    return ws.length;
+    /* ⚠️ 2026-10-23 (UX аудит R1): дүрэм `selfBlocks`-д — «Батлах ажил» таб ЯГ ТЭР функцээр шүүнэ (тэмдэг «2» · таб «3» зөрдөг байв) */
+    const blocked = await selfBlocks(ws, me, stage);
+    return ws.filter((w) => !blocked.has(w.key)).length;
   } catch {
     return null;
   }
 }
 /** ⚠️ 2026-10-12 (R9): тэмдгийн илгээгчдийн кэш — `илгээлтийн oid → { at, данснууд }` */
 const badgeSubs = new Map<number, { at: number; list: string[] }>();
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит R1): ЭНЭ ХЭРЭГЛЭГЧ ЗӨВШӨӨРЧ ЧАДАХГҮЙ ажлууд — `ажлын түлхүүр → шалтгаан`.
+ *    `countReviewPending` (цэсний тэмдэг) ба `Guitsetgel`-ийн «Батлах ажил» жагсаалт НЭГ дүрмээр: урьд нь жагсаалт
+ *    өөрийн илгээлт / өөр шатанд зөвшөөрсөн ажлыг ч «хүлээгдэж буй» гэж харуулж, татгалзал зөвхөн «Зөвшөөрөх» дарсны
+ *    ДАРАА (`authz`) гардаг байв. Дүрэм нь `authz`-ийн хоёр хэсэг (R9 ⚠️ дээр):
+ *      (1) энэ тойрогт ӨӨР шатанд өөрөө зөвшөөрсөн (`approvedStagesOf`) — мессеж `selfApprovalDeny`-тэй ижил;
+ *      (2) өөрийн илгээлт (`submitterDeny`) — илгээгчдийн уншилт 60 с кэштэй, уншигдахгүй бол ХААХГҮЙ (зөвлөмж;
+ *          жинхэнэ хамгаалалт `authz`-д хэвээр).
+ *    Компани шат · хатуу super (турших эрх — 2026-10-19 шийдвэр) · нэвтрээгүй → хоосон.
+ * ⚠️ Зөвхөн ЗӨВШӨӨРӨХ чиглэл — буцаах замд (`apply` return · `recheck` back) `authz` эдгээрийг шалгадаггүй.
+ */
+export async function selfBlocks(
+  works: readonly Work[], username: string | null | undefined, stage: Stage,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const me = (username ?? '').trim().toLowerCase();
+  if (!me || stage === 'company' || roleForUser(me) === 'super') return out;
+  const st = stage as ReviewStage;
+  const pv = prevReview(st);
+  const rest: Work[] = [];
+  for (const w of works) {
+    const other = approvedStagesOf(w.current[F.history], me).filter((x) => x !== st);
+    if (other.length) out.set(w.key, pv && other.includes(pv) ? PREV_STAGE_MSG() : SAME_ROUND_MSG());
+    else rest.push(w);
+  }
+  if (!rest.length) return out;
+  const lists = await Promise.all(rest.map(async (w): Promise<string[] | undefined> => {
+    const so = Number(w.current[F.sheetOid]);
+    if (!Number.isInteger(so) || so <= 0) return undefined;
+    const hit = badgeSubs.get(so);
+    if (hit && Date.now() - hit.at < POLL_MS) return hit.list;
+    try {
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `submittersOfRow` — илгээлтийн багцыг мөрийн багцтай тулгана (legacy OID давхцал) */
+      const sr = await submittersOfRow(so, w.current[F.bagts]);
+      if (!sr.ok) return undefined;
+      const list = sr.list ?? [];
+      badgeSubs.set(so, { at: Date.now(), list });
+      return list;
+    } catch { return undefined; }
+  }));
+  rest.forEach((w, i) => {
+    const d = submitterDeny(st, me, lists[i]);
+    if (d) out.set(w.key, d);
+  });
+  return out;
+}
 
 /* ── Үйлдэл ── */
 
@@ -1165,14 +1234,14 @@ export async function cleanupTruncatedFrame(pkgKey: string, mark: ArchivingMark)
   if (!rows.length) return { deleted: 0 };
   const dateFields = [...sc.start, ...sc.end].filter((f): f is string => !!f);
   const ids = truncatedFrameIds(rows, mark, sc.f.oid, sc.f.no, dateFields);
-  if (!ids) return { error: tr('тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, AGOL дээр админ шалгана уу', String(rows.length)) };
+  if (!ids) return { error: tr('тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, админд мэдэгдэнэ үү', String(rows.length)) };
   /* ⚠️ 2026-10-12 (A2): тэргүүн хэсэг бүтэн жааз — тасарсан мөр алга (`truncatedFrameIds`-ийн `[]`) */
   if (!ids.length) return { deleted: 0 };
   let gone = 0;
   try { gone = await applyDeletes(pkg, ids); } catch (e) {
     return { error: tr('тасарсан жаазыг устгаж чадсангүй ({0})', String((e as Error)?.message ?? e)) };
   }
-  if (gone !== ids.length) return { error: tr('тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', String(ids.length), String(ids.length - gone)) };
+  if (gone !== ids.length) return { error: tr('тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай)', String(ids.length), String(ids.length - gone)) };
   console.warn(`[selbe] ${pkg.key}: хуучирсан тэмдгийн тасарсан ${gone} мөрийг архиваас цэвэрлэв (OID > ${mark.maxOid0}, ${msToDay(mark.fillMs)})`);
   return { deleted: gone };
 }
@@ -1603,7 +1672,7 @@ async function archiveSubmission(
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    if (!Number.isFinite(mx)) throw new Error(tr('Бүртгэлийн дугаарын дээд утга уншигдсангүй'));
     return mx;
   };
   let maxOid0: number;
@@ -2036,7 +2105,7 @@ async function archiveSubmission(
       const left = ids.size - gone;
       const maybeLeft = Math.max(left, 0) + (matched ? 0 : unknown);
       const tail = maybeLeft > 0 || strayErr
-        ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — AGOL дээр шалгана уу', String(maybeLeft))}${strayErr ? `: ${strayErr}` : ''})`
+        ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — админд мэдэгдэнэ үү', String(maybeLeft))}${strayErr ? `: ${strayErr}` : ''})`
         : unknown > 0 ? ` (${tr('тэр өдрийн өөр бичигчийн {0} мөрийг хөндөөгүй', String(unknown))})` : '';
       return {
         ok: false,
@@ -2053,7 +2122,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай)', written.length, left)}`
           : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`) + markMsg,
       };
     }
@@ -2080,7 +2149,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, AGOL дээр гараар цэвэрлэнэ үү.', written.length, left)
+          ? tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)
           : tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазыг архиваас буцааж устгав, дахин оролдоно уу.')) + markMsg,
       };
     }
@@ -2103,7 +2172,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, AGOL дээр гараар цэвэрлэнэ үү.', written.length, left)
+          ? tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)
           : tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазыг архиваас буцааж устгав, дахин оролдоно уу.')) + markMsg,
       };
     }
@@ -3146,7 +3215,7 @@ export async function recheck(
           }
           /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ — урьд нь чимээгүй `ok:true`
              буцаж ижил тойргийн ХОЁР мөр үлддэг байв. Шийдвэр суусан тул унагахгүй, ихэр OID-ийг нэрлэж `warn`. */
-          twinWarn = tr('Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (OBJECTID {1}) — таны мөрийг (OBJECTID {2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.', nm || tr('өөр хянагч'), String(lost.__oid), String(mine));
+          twinWarn = tr('Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (бүртгэл №{1}) — таны мөрийг (бүртгэл №{2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.', nm || tr('өөр хянагч'), String(lost.__oid), String(mine));
         }
       }
       /* ⚠️ 2026-10-04: `nextId` max+1 уралдаан — бичсэний дараа давхардлыг засна (алдаа нь чимээгүй) */

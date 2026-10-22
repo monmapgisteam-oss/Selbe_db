@@ -47,7 +47,7 @@
 }
 .select:focus { outline: 2px solid var(--data); outline-offset: -1px; }
 .total { font-size: 0.8rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.clear { font-size: 0.8rem; color: var(--data); padding: 6px 4px; }
+.clear { font-size: 0.8rem; color: var(--data-ink); padding: 6px 4px; }
 .clear:hover { text-decoration: underline; }
 
 /* ══════════ Их бие ══════════ */
@@ -122,7 +122,7 @@
   padding: 3px 10px; border-radius: 20px;
   font-size: 0.73rem; font-weight: 650; white-space: nowrap;
 }
-.bWait { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data); }
+.bWait { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data-ink); }
 .bBack { background: color-mix(in srgb, var(--bad) 13%, transparent); color: var(--bad-ink); }
 .bDone { background: color-mix(in srgb, var(--good) 13%, transparent); color: var(--good-ink); }
 
@@ -221,10 +221,10 @@
 .dot {
   display: grid; place-items: center;
   width: 19px; height: 19px; border-radius: 50%;
-  font-size: 0.66rem; font-weight: 700; line-height: 1;
+  font-size: 0.6875rem; font-weight: 700; line-height: 1;
   margin-top: 1px;
 }
-.sent { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data); }
+.sent { background: color-mix(in srgb, var(--data) 14%, transparent); color: var(--data-ink); }
 .ok { background: color-mix(in srgb, var(--good) 13%, transparent); color: var(--good-ink); }
 .bad { background: color-mix(in srgb, var(--bad) 13%, transparent); color: var(--bad-ink); }
 
@@ -257,7 +257,7 @@
 }
 .whyLabel {
   display: block;
-  font-size: 0.67rem; font-weight: 650; color: var(--ink-3);
+  font-size: 0.6875rem; font-weight: 650; color: var(--ink-3);
   letter-spacing: 0.05em; text-transform: uppercase;
   margin-bottom: 2px;
 }
@@ -265,8 +265,8 @@
 /* Дахин шалгалтын тойрог — компани дахин илгээгээгүйг тэмдэглэнэ */
 .cycTag {
   padding: 1px 8px; border-radius: 5px;
-  background: color-mix(in srgb, var(--data) 13%, transparent); color: var(--data);
-  font-size: 0.68rem; font-weight: 600; white-space: nowrap;
+  background: color-mix(in srgb, var(--data) 13%, transparent); color: var(--data-ink);
+  font-size: 0.6875rem; font-weight: 600; white-space: nowrap;
 }
 
 /* Бүлгийн толгойн баруун талын тоо — нэрээс сулхан, тоо нь эгнэнэ */
@@ -334,7 +334,7 @@
 }
 
 .subLegend {
-  color: var(--bad);
+  color: var(--bad-ink);
 }
 
 /* ══════════════ УРСГАЛЫН ЗУРАГЛАЛ ══════════════
@@ -372,7 +372,7 @@
   font-size: 11px;
   text-align: center;
 }
-.flowOn .flowNum { background: var(--hue); color: #fff; }
+.flowOn .flowNum { background: var(--hue); color: var(--hue-ink); }
 .flowArrow { color: var(--ink-3); font-size: 13px; }
 
 /* Аккаунтын үүрэг — солигдохгүй тул ТОВЧ биш, шошго */
@@ -426,7 +426,7 @@
 }
 .tabSolo:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); }
 .tabSoloOn {
-  color: var(--data);
+  color: var(--data-ink);
   border-color: var(--data);
   background: color-mix(in srgb, var(--data) 18%, transparent);
 }
@@ -533,7 +533,7 @@
   width: 18px; height: 18px;
   display: grid; place-items: center;
   border-radius: 50%;
-  font-size: 10px; font-weight: 700;
+  font-size: 11px; font-weight: 700;
   border: 1px solid var(--line);
   color: var(--ink-3);
   background: var(--surface-2);
@@ -542,7 +542,7 @@
 /* ОДООГИЙН шат — цохилж байгаа мэт цагираг. Зогссон газар нь хамгийн
    түрүүнд нүдэнд туусан байх ёстой. */
 .tkNow {
-  background: var(--data); border-color: transparent; color: #fff;
+  background: var(--data); border-color: transparent; color: var(--hue-ink);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--data) 30%, transparent);
 }
 .tkWait { opacity: 0.55; }
@@ -614,7 +614,7 @@
   font-weight: 600;
 }
 .aclBtn:disabled { opacity: 0.45; }
-.aclErr { color: var(--bad); font-size: 0.76rem; }
+.aclErr { color: var(--bad-ink); font-size: 0.76rem; }
 .aclEmpty { color: var(--ink-3); font-size: 0.78rem; padding: 4px 0; }
 .aclUser { display: flex; align-items: center; gap: 8px; }
 .aclName { flex: 1; min-width: 0; font-weight: 600; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; }
@@ -634,7 +634,7 @@
   min-height: 32px;
   line-height: 1;
 }
-.aclX:hover, .aclX:focus-visible { color: var(--bad); }
+.aclX:hover, .aclX:focus-visible { color: var(--bad-ink); }
 .aclPkgs { display: flex; flex-wrap: wrap; gap: 4px; }
 /* Багцын шошго — асаалттай нь ЯЛГАРНА: хуваарилалт хагас харагдаж болохгүй. */
 .aclPkg {
@@ -648,7 +648,7 @@
 .aclPkgOn {
   background: var(--data);
   border-color: transparent;
-  color: #fff;
+  color: var(--hue-ink);
   font-weight: 650;
 }
 
@@ -851,21 +851,21 @@
 .ggChipOdd .ggName { text-decoration: line-through; color: var(--ink-3); }
 .ggChipBad { border-color: var(--bad); }
 .ggName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ggTag { font-size: 0.64rem; color: var(--ink-3); padding: 0 3px; }
-.ggWarn { color: var(--bad); font-weight: 800; padding: 0 3px; }
+.ggTag { font-size: 0.6875rem; color: var(--ink-3); padding: 0 3px; }
+.ggWarn { color: var(--bad-ink); font-weight: 800; padding: 0 3px; }
 .ggVo, .ggX {
   flex: none;
   min-width: 22px;
   min-height: 22px;
   padding: 0 5px;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   line-height: 1;
   color: var(--ink-3);
 }
-.ggVoOn { background: var(--data); color: #fff; font-weight: 650; }
+.ggVoOn { background: var(--data); color: var(--hue-ink); font-weight: 650; }
 .ggX { color: var(--bad-ink); }
-.ggX:hover, .ggX:focus-visible { color: var(--bad); }
+.ggX:hover, .ggX:focus-visible { color: var(--bad-ink); }
 .ggVo:disabled, .ggX:disabled, .ggAdd:disabled { opacity: 0.45; }
 /* «+» — нүдний баруун дээд буланд, мөр эзлэхгүй */
 .ggAdd {
@@ -904,7 +904,7 @@
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink-3);
-  font-size: 0.6rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   font-style: normal;
   text-decoration: none;
@@ -921,3 +921,15 @@
 }
 .warnBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .warnBanner b { display: block; margin-bottom: 2px; }
+
+/* ⚠️ 2026-10-23 (UX аудит R3): шийдвэрийн дараах амжилтын мөр — ажил жагсаалтаас шилжсэн ч хаашаа явсныг хэлнэ */
+.okBanner {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 0 0 10px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--good, #147c3b);
+  background: color-mix(in srgb, var(--good, #147c3b) 12%, transparent);
+  color: var(--good-ink, #0d7a3e); font-size: 0.85rem;
+}
+.okBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* ⚠️ 2026-10-23 (UX аудит R3): бичилт явж буй үеийн «Хадгалж байна…» */
+.saving { margin-top: 6px; font-size: 0.8rem; color: var(--ink-2); }

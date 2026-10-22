@@ -145,7 +145,7 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    if (!Number.isFinite(mx)) throw new Error(tr('Бүртгэлийн дугаарын дээд утга уншигдсангүй'));
     return mx;
   };
   const maxOid0 = await maxOidOf();
@@ -260,12 +260,12 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
       return {
         ok: false,
         error: left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', ids.size, left)}`
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай)', ids.size, left)}`
           : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', ids.size)}`
-            + (foreign ? ` · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — AGOL дээр шалгана уу')}` : ''),
+            + (foreign ? ` · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — админд мэдэгдэнэ үү')}` : ''),
       };
     }
-    if (foreign) return { ok: false, error: `${why} · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — AGOL дээр шалгана уу')}` };
+    if (foreign) return { ok: false, error: `${why} · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — админд мэдэгдэнэ үү')}` };
     return { ok: false, error: why };
   }
 

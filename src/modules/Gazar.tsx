@@ -470,6 +470,9 @@ type GazarData = {
   pUse: ReturnType<typeof toItems>;
 };
 
+/* ⚠️ 2026-10-23 (UX аудит E13): агуулга гарах хүртэл ~25 с — энэ удаа ӨӨРЧЛӨӨГҮЙ. Хөтөч · амьд сервергүй шатанд аль
+   асуулга удааширч буйг хэмжиж чадаагүй тул хэмжилтгүй хойшлуулалт (архитектурын өөрчлөлт) хийсэнгүй; дэлгэрэнгүйг
+   `GeneralDash`-ийн E12/E13 ⚠️-ээс үз. */
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
@@ -1405,7 +1408,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           >
             {/* ⚠️ Зурж байх үед ЦУЦЛАХ гэж хэлнэ — тэр товшилт нь зурахыг
                 эхлүүлэхгүй, буцаана (`startDraw`-ийн тайлбарыг үз). */}
-            {drawing ? tr('Цуцлах') : aoi ? tr('Дахин тооцоолох') : tr('Чөлөөлөлт тооцоолох')}
+            {drawing ? tr('Болих') : aoi ? tr('Дахин тооцоолох') : tr('Чөлөөлөлт тооцоолох')}
           </MapToolBtn>
           {aoi && <MapToolBtn onClick={clear}>{tr('Цэвэрлэх')}</MapToolBtn>}
           {/* ⚠️ Эрхгүй хүнд ОГТ харагдахгүй — идэвхгүй товч нь «яагаад
@@ -1530,7 +1533,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <div className={o.chipBar}>
             <div className={o.filterChip}>
               <span className={o.filterLabel}>{flt.label}</span>
-              <button type="button" className={o.filterClear} onClick={() => pickFlt(flt)} aria-label={tr('Цуцлах')}>×</button>
+              <button type="button" className={o.filterClear} onClick={() => pickFlt(flt)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
             </div>
           </div>
         )}

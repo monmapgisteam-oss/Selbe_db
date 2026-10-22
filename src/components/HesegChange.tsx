@@ -6,6 +6,7 @@ import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { computeChange, compareChangeQuantity, CHANGE_ITEMS, type ChangeKey, type ChangeResult, type ChangeFilter, type ChangePiece, type ChangeRow, type ChangeGroup } from '@/lib/hesegChange';
 import { fmtLen } from '@/lib/planOverlap';
 import { num, ha } from '@/lib/format';
+import { userError } from '@/components/ui';
 import s from './heseg.module.css';
 import c from './hesegChange.module.css';
 
@@ -46,6 +47,24 @@ const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${num(Math.abs
 /** Талбайн зөрүү (га) — ⚠️ 2026-10-19 (аудит): сөрөг тэмдэг нь ASCII «-» биш «−» (`deltaText`-тэй ижил) */
 const haDelta = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${ha(Math.abs(value), 2)}`;
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит E7): ХҮЛЭЭСЭН ХУГАЦАА (сек). Тооцоо ~30 с үргэлжилдэг ч явцын дохиогүй «Тооцоолж байна…»
+ *    нь гацсан мэт уншигддаг байв. Тооцооны lib (`hesegChange.computeChange`) алхмын мэдээ өгдөггүй тул секунд + хэвийн
+ *    хугацааг хэлнэ. Тоолуурыг ЗӨВХӨН таймерын callback-аас шинэчилнэ (`Tailan.useElapsed`-ийн eslint-ийн ⚠️).
+ */
+export function useElapsed(active: boolean): number {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t0 = Date.now();
+    const upd = () => setSecs(Math.round((Date.now() - t0) / 1000));
+    const first = setTimeout(upd, 0);
+    const id = setInterval(upd, 1000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, [active]);
+  return secs;
+}
+
 /** «Шинэчлэх»-ийн дараах дахин бодолтын саатал — дараалсан `invalidateAll`-ийг нэг тооцоо болгоно */
 const REFRESH_DEBOUNCE_MS = 400;
 
@@ -56,19 +75,33 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
      хаягддаг; дахин бодолтыг сааруулна (`REFRESH_DEBOUNCE_MS`), өмнөх үеийн хариуг `alive`-аар үл тооно. */
   const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
   const mountEpoch = useRef(epoch);
+  const secs = useElapsed(!st.res && !st.err);
 
   useEffect(() => {
     let alive = true;
     const t = setTimeout(() => {
       computeChange()
         .then((res) => { if (alive) setSt({ res, err: null }); })
-        .catch((e: unknown) => { if (alive) setSt({ res: null, err: e instanceof Error ? e.message : String(e) }); });
+        .catch((e: unknown) => {
+          /* ⚠️ 2026-10-23 (UX аудит X3): түүхий серверийн мөр биш — `userError` (монгол мессеж хэвээр, англи нь ойлгомжтой) */
+          console.error('[selbe] хэсэгчилсэн ЕТ — өөрчлөлт:', e);
+          if (alive) setSt({ res: null, err: userError(e) });
+        });
     }, epoch === mountEpoch.current ? 0 : REFRESH_DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(t); };
   }, [epoch]);
 
   if (st.err) return <p className={s.err}>{tr('Тооцоолж чадсангүй')}: {st.err}</p>;
-  if (!st.res) return <p className={s.wait}><span className={s.spin} aria-hidden />{tr('Тооцоолж байна…')}</p>;
+  if (!st.res) {
+    return (
+      <p className={s.wait}>
+        <span className={s.spin} aria-hidden />
+        {secs >= 3
+          ? tr('Тооцоолж байна… {0} с — ихэвчлэн 30 секунд хүртэл үргэлжилнэ.', num(secs))
+          : tr('Тооцоолж байна…')}
+      </p>
+    );
+  }
 
   return (
     <>

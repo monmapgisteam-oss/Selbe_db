@@ -115,7 +115,7 @@ export function DedButetsAcl() {
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
 

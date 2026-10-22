@@ -28,6 +28,7 @@ import { cfStartKeyOf } from '@/lib/gdash';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
 import c from '@/modules/cfplan.module.css';
 import { userError } from '@/components/ui';
+import { askConfirm } from '@/lib/confirm';
 
 type Row = Record<string, unknown>;
 
@@ -307,7 +308,12 @@ export function CashflowPlan({
           return `${sOf(w?.ajil_uilchilgee) || wid} — ${num(sumOf(wid) ?? 0, 2)}%`;
         });
         if (offIds.size > names.length) names.push('…');
-        if (!window.confirm(tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')))) return;
+        /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` — `window.confirm` «дахин бүү асуу»-гийн дараа
+           чимээгүй false буцааж «Хадгалах» юу ч хийхгүй болдог байв. */
+        if (!(await askConfirm(
+          tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')),
+          { ok: tr('Ийм хэвээр хадгалах') },
+        ))) return;
       }
 
       /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */

@@ -95,7 +95,12 @@ export function UserHeadBadges({ p }: { p: UserRowProps }) {
   const typeGap = !d.remove && !!want && flowAclReady() && st !== want;
   return (
     <span className={s.badges}>
-      {d.isNew && <span className={s.newBadge}>{tr('шинэ')}</span>}
+      {/* ⚠️ 2026-10-23 (UX аудит A2): шинэ аккаунт «Хадгалах» хүртэл эрхийн хуудсанд сонгогдохгүй — шалтгааныг tooltip-д */}
+      {d.isNew && (
+        <span className={s.newBadge} title={tr('Хадгалаагүй шинэ аккаунт — «Хадгалах» дарсны дараа багц, засах эрх олгох хуудсуудад сонгогдоно.')}>
+          {tr('шинэ')}
+        </span>
+      )}
       {/* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise порталд алга — нэвтэрч чадахгүй (`portalPresence`) */}
       {portalMissing(p.u.username) && (
         <span className={s.removeBadge} title={tr('Enterprise порталд энэ нэртэй аккаунт алга — нэвтэрч чадахгүй. Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл устгана уу.')}>
@@ -136,9 +141,10 @@ export function UserHeadBadges({ p }: { p: UserRowProps }) {
       {dirtyPerm && (
         <span
           className={s.unsynced}
-          title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй. «Дахин синк» товчоор дахин илгээнэ.')}
+          /* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «синк» → «хөтөч» · «Дахин илгээх» (товчны шинэ нэр) */
+          title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй. «Дахин илгээх» товчоор дахин илгээнэ.')}
         >
-          {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}
+          {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид')}
         </span>
       )}
     </span>

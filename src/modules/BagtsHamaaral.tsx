@@ -31,10 +31,16 @@ import { dropWorkCache, loadWorkData, saveWorkLinks, sheetsOfPkgKey } from '@/li
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1/P7/P8): аппын дотоод асуулт · «↶ Буцаах» · харагдацаас гарахад асуух */
+import { askConfirm, toastUndo } from '@/lib/confirm';
+import { setNavDirty } from '@/lib/navGuard';
 import s from './bagtsHamaaral.module.css';
 
 const pkgLabel = (p: string): string => PKGS.find((x) => x.key === p)?.label ?? p;
-const nodeLabel = (n: Pick<WNode, 'path' | 'work'>): string => `${n.path.join(' → ')} «${n.work}»`;
+/* ⚠️ 2026-10-23 (UX аудит P6): хоосон нэр «» болж харагддаг байв (жиш. «А. Бэлтгэл ажил «» (8)») — бүлэгт «(нэргүй бүлэг)»,
+   ажилд «(нэргүй ажил)»; замын хоосон хэсэгт «(нэргүй бүлэг)». Зөвхөн харуулна — түлхүүрт (`refOf`) хөндөхгүй. */
+const nodeLabel = (n: Pick<WNode, 'path' | 'work'> & { group?: boolean }): string =>
+  `${n.path.map((x) => x.trim() || tr('(нэргүй бүлэг)')).join(' → ')} «${n.work.trim() || (n.group ? tr('(нэргүй бүлэг)') : tr('(нэргүй ажил)'))}»`;
 /** Урьдчилагчийн хуудас — тулгагдаагүй бол холбоосын `p` */
 const edgePkg = (g: WorkGraph, e: Edge): string => (e.to ? g.nodes.get(e.to)?.p ?? e.ref.p : e.ref.p);
 const whyText = (e: Edge): string => (e.why === 'unloaded'
@@ -63,6 +69,21 @@ export function BagtsHamaaral() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const editorRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * ⚠️ 2026-10-23 (UX аудит P8): ХАДГАЛААГҮЙ УРЬДЧИЛАГЧИЙН СОНГОЛТ (`PrereqPicker`) — урьд нь өөр ажил/багц сонгоход
+   *    чимээгүй хаягддаг байв. Тоо нь энд (`onPickDirty`); сонголт солих бүр `guard`-аар асууна, харагдацаас гарах/F5-д
+   *    `navGuard` (`Portal` · `beforeunload`) асууна.
+   */
+  const pickDirtyRef = useRef(0);
+  const onPickDirty = useCallback((n: number) => {
+    pickDirtyRef.current = n;
+    setNavDirty('hamaaral-pick', n > 0, tr('Хадгалаагүй урьдчилагчийн сонголт'));
+  }, []);
+  useEffect(() => () => setNavDirty('hamaaral-pick', false), []);
+  const guard = useCallback(async (): Promise<boolean> => {
+    const n = pickDirtyRef.current;
+    return n === 0 || askConfirm(tr('Хадгалаагүй {0} сонголт хаягдана. Үргэлжлүүлэх үү?', num(n)), { danger: true, ok: tr('Хаях') });
+  }, []);
 
   const data = dataQ.state === 'ready' ? dataQ.data : null;
   const g = data?.graph ?? null;
@@ -96,7 +117,8 @@ export function BagtsHamaaral() {
   }, [canEdit, g, legacyQ.state, legacy, pairs, retryLegacy]);
 
   const removeLegacy = useCallback(async (d: Dep) => {
-    if (!window.confirm(tr('Хуучин «{0}» → «{1}» холбоосыг устгах уу?', d.from, d.to))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1/X7): аппын дотоод асуулт; «холбоос» → «холбоо» (товчны нэртэй нэг) */
+    if (!(await askConfirm(tr('Хуучин «{0}» → «{1}» холбоог устгах уу?', d.from, d.to), { danger: true, ok: tr('Устгах') }))) return;
     setBusy(true);
     setErr('');
     try {
@@ -110,21 +132,27 @@ export function BagtsHamaaral() {
     }
   }, [retryLegacy]);
 
-  const migrate = useCallback((d: Dep) => {
+  const migrate = useCallback(async (d: Dep) => {
     const pre = sheetsOfPkgKey(legacyPkgKey(d.from));
     const post = sheetsOfPkgKey(legacyPkgKey(d.to));
     if (!pre.length || !post.length) return;
+    if (!(await guard())) return; // ⚠️ 2026-10-23 (P8)
     setPA(post[0]);
     setPB(pre[0]);
     setSel(null);
     setFlt(null);
     setQA('');
     editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+  }, [guard]);
 
   /* ── Хадгалах ── */
+  /* ⚠️ 2026-10-23 (засвар): завгүй эсэхийг ref-ээр — «↶ Буцаах» мэдэгдэл ✕ дарсан үеийн `save`-ийн хаалтыг (тэр
+     зурагдалтын `busy === false`) барьдаг тул 6 с-д өөр хадгалалт эхэлсэн үед буцаахад `saveWorkLinks`-ийн хоёр
+     уншиж-бичих дуудлага зэрэг явж нэг өөрчлөлт чимээгүй алдагдах байв. */
+  const busyRef = useRef(false);
   const save = useCallback(async (dep: WNode, change: RefChange): Promise<boolean> => {
-    if (!g || busy) return false;
+    if (!g || busyRef.current) return false;
+    busyRef.current = true;
     setBusy(true);
     setErr('');
     setMsg('');
@@ -139,30 +167,33 @@ export function BagtsHamaaral() {
       setErr(userError(e));
       return false;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
-  }, [g, busy]);
+  }, [g]);
 
   const reload = useCallback(() => { dropWorkCache(); dataQ.retry?.(); }, [dataQ]);
 
   /* ⚠️ 2026-10-22 (аудит): ≤900px-д (`.grid` нэг багана) дэлгэрэнгүй нь 60vh жагсаалтын ДООР — сонгоход юу ч өөрчлөгдсөнгүй
      мэт харагддаг байв; нарийн дэлгэцэд түүн рүү гүйлгэнэ */
   const detailRef = useRef<HTMLElement | null>(null);
-  const pickWork = useCallback((id: NodeId) => {
+  const pickWork = useCallback(async (id: NodeId) => {
+    if (id !== sel && !(await guard())) return; // ⚠️ 2026-10-23 (P8)
     setSel(id);
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches) {
       requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
-  }, []);
+  }, [sel, guard]);
 
-  const openNode = useCallback((id: NodeId) => {
+  const openNode = useCallback(async (id: NodeId) => {
     const n = g?.nodes.get(id);
     if (!n) return;
+    if (id !== sel && !(await guard())) return; // ⚠️ 2026-10-23 (P8)
     setPA(n.p);
     setSel(id);
     setFlt(null);
     setQA('');
-  }, [g]);
+  }, [g, sel, guard]);
 
   if (dataQ.state === 'loading') return <div className={s.wrap}><p className={s.loading}>{tr('Ачаалж байна…')}</p></div>;
   if (dataQ.state === 'error') {
@@ -217,14 +248,14 @@ export function BagtsHamaaral() {
 
       {orphans.length > 0 && (
         <section className={s.card}>
-          <h2 className={s.cardTitle}>{tr('Өнчин холбоос ({0}) — урьдчилагч ажил нь олдохгүй байна', num(orphans.length))}</h2>
-          <p className={s.note}>{tr('Ажлыг нээж холбоосыг устгах эсвэл зөв ажлаар солино уу.')}</p>
+          <h2 className={s.cardTitle}>{tr('Өнчин холбоо ({0}) — урьдчилагч ажил нь олдохгүй байна', num(orphans.length))}</h2>
+          <p className={s.note}>{tr('Ажлыг нээж холбоог устгах эсвэл зөв ажлаар солино уу.')}</p>
           <ul className={s.plainList}>
             {orphans.slice(0, 50).map(({ id, e }) => {
               const d = g.nodes.get(id);
               return (
                 <li key={`${id}|${e.ref.p}|${e.ref.k}|${e.ref.o ?? 0}`} className={s.legacyRow}>
-                  <button type="button" className={s.linkBtn} onClick={() => openNode(id)}>
+                  <button type="button" className={s.linkBtn} onClick={() => void openNode(id)}>
                     {d ? `${pkgLabel(d.p)} · ${nodeLabel(d)}` : id}
                   </button>
                   <span>← {pkgLabel(e.ref.p)} · {e.ref.k}</span>
@@ -240,14 +271,14 @@ export function BagtsHamaaral() {
       {/* ── Хуучин багц ↔ багц холбоос ── */}
       {legacyQ.state === 'error' && (
         <p className={s.failNote} role="alert">
-          {tr('Хуучин багц хоорондын холбоос уншигдсангүй')}: {friendlyError(legacyQ.error)}
+          {tr('Хуучин багц хоорондын холбоо уншигдсангүй')}: {friendlyError(legacyQ.error)}
           {' '}<button type="button" className={s.retryBtn} onClick={() => legacyQ.retry?.()}>{tr('Дахин оролдох')}</button>
         </p>
       )}
       {legacy.length > 0 && (
         <section className={s.card}>
           <h2 className={s.cardTitle}>{tr('Хуучин багц хоорондын холбоо — ажлыг нь сонгож шилжүүлнэ үү')}</h2>
-          <p className={s.note}>{tr('Ажлын холбоос хадгалагдмагц тухайн хуучин холбоо автоматаар устна.')}</p>
+          <p className={s.note}>{tr('Ажлын холбоо хадгалагдмагц тухайн хуучин холбоо автоматаар устна.')}</p>
           <ul className={s.plainList}>
             {legacy.map((d) => {
               const ok = sheetsOfPkgKey(legacyPkgKey(d.from)).length > 0 && sheetsOfPkgKey(legacyPkgKey(d.to)).length > 0;
@@ -256,7 +287,7 @@ export function BagtsHamaaral() {
                   <span><b>{legacyPkgKey(d.from) || d.from}</b> → <b>{legacyPkgKey(d.to) || d.to}</b></span>
                   {!ok && <small className={s.mute}>{tr('бөглөх хуудасгүй багц — шилжүүлэх боломжгүй')}</small>}
                   {canEdit && ok && (
-                    <button type="button" className={s.ghostBtn} onClick={() => migrate(d)}>{tr('Шилжүүлэх')}</button>
+                    <button type="button" className={s.ghostBtn} onClick={() => void migrate(d)}>{tr('Шилжүүлэх')}</button>
                   )}
                   {canEdit && !ok && (
                     <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void removeLegacy(d); }}>{tr('Устгах')}</button>
@@ -280,7 +311,11 @@ export function BagtsHamaaral() {
               return (
                 <button key={`${x.from}>${x.to}`} type="button" className={s.pairChip} aria-pressed={on}
                   title={tr('«{0}»-ийн ажлууд «{1}»-ийн ажлаас хамаарна', pkgLabel(x.to), pkgLabel(x.from))}
-                  onClick={() => { if (on) { setFlt(null); return; } setPA(x.to); setPB(x.from); setFlt(x.from); setSel(null); setQA(''); }}>
+                  onClick={async () => {
+                    if (on) { setFlt(null); return; }
+                    if (!(await guard())) return; // ⚠️ 2026-10-23 (P8)
+                    setPA(x.to); setPB(x.from); setFlt(x.from); setSel(null); setQA('');
+                  }}>
                   {pkgLabel(x.from)} → {pkgLabel(x.to)}: <b>{tr('{0} холбоо', num(x.n))}</b>
                 </button>
               );
@@ -295,7 +330,11 @@ export function BagtsHamaaral() {
           <h2 className={s.cardTitle}>{tr('Хамаарах ажил (А)')}</h2>
           <div className={s.filters}>
             <select className={s.select} value={pA} aria-label={tr('Багц (А)')}
-              onChange={(e) => { setPA(e.target.value); setSel(null); setFlt(null); }}>
+              onChange={(e) => {
+                /* ⚠️ 2026-10-23 (P8): хадгалаагүй сонголттой бол асууна — болих үед утга хэвээр (удирдлагатай select) */
+                const v = e.target.value;
+                void guard().then((ok) => { if (ok) { setPA(v); setSel(null); setFlt(null); } });
+              }}>
               {PKGS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
             <input className={s.search} type="search" value={qA} onChange={(e) => setQA(e.target.value)}
@@ -311,15 +350,16 @@ export function BagtsHamaaral() {
             <p className={s.note}>{tr('Энэ хуудсанд «{0}» талбар алга — зөвхөн харах.', 'bagts_hamaaral')}</p>
           )}
           {sheetOf.get(pA)?.error && <p className={s.note}>{tr('Хуудас уншигдсангүй')}: {sheetOf.get(pA)!.error}</p>}
-          <WorkPicker g={g} p={pA} q={qA} sel={sel} onSel={pickWork} flt={flt} />
+          <WorkPicker g={g} p={pA} q={qA} sel={sel} onSel={(id) => void pickWork(id)} flt={flt} />
         </section>
 
         <section ref={detailRef} className={s.card}>
           {!selNode ? (
             <p className={s.note}>{tr('Зүүн талаас ажил сонгоно уу.')}</p>
           ) : (
-            <WorkDetail key={selNode.id} g={g} n={selNode} canWrite={canWriteA} busy={busy} pB={pB} setPB={setPB}
-              onSave={save} onOpen={openNode} />
+            <WorkDetail key={selNode.id} g={g} n={selNode} canWrite={canWriteA} busy={busy} pB={pB}
+              setPB={(p) => { void guard().then((ok) => { if (ok) setPB(p); }); }}
+              onSave={save} onOpen={(id) => void openNode(id)} onDirty={onPickDirty} />
           )}
         </section>
       </div>
@@ -344,7 +384,8 @@ function WorkPicker({ g, p, q, sel, onSel, flt }: {
     }),
   })).filter((sec) => sec.items.length), [g, p, q, flt]);
   const narrow = !!q.trim() || !!flt;
-  if (!secs.length) return <p className={s.note}>{tr('Ажил олдсонгүй')}</p>;
+  /* ⚠️ 2026-10-23 (UX аудит X6): хайлт/шүүлтээс болсон эсэхийг ИЛ хэлнэ */
+  if (!secs.length) return <p className={s.note}>{narrow ? tr('Хайлт эсвэл шүүлтэд тохирох ажил алга — хайлтаа өөрчилнө үү.') : tr('Ажил олдсонгүй')}</p>;
   return (
     <div className={s.listBox}>
       {secs.map((sec) => {
@@ -381,11 +422,13 @@ function WorkPicker({ g, p, q, sel, onSel, flt }: {
 
 /* ══════════════ Сонгосон ажил — урьдчилагчид · хамааралтай · засвар ══════════════ */
 
-function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen }: {
+function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }: {
   g: WorkGraph; n: WNode; canWrite: boolean; busy: boolean;
   pB: string; setPB: (p: string) => void;
   onSave: (dep: WNode, c: RefChange) => Promise<boolean>;
   onOpen: (id: NodeId) => void;
+  /** ⚠️ 2026-10-23 (P8): хадгалаагүй сонголтын тоо — эцэг асуулт/`navGuard`-д */
+  onDirty: (n: number) => void;
 }) {
   const edges = useMemo(() => g.pre.get(n.id) ?? [], [g, n.id]);
   const byPkg = useMemo(() => {
@@ -424,10 +467,12 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen }: {
                   )}
                   {canWrite && (
                     <button type="button" className={s.chipX} disabled={busy} title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}
-                      onClick={() => {
-                        /* ⚠️ Устгахын өмнө асууна — жижиг ✕ дээр андуурч дарах (хуучин модулийн 2026-10-05 ⚠️) */
-                        if (!window.confirm(tr('«{0}» холбоосыг устгах уу?', label))) return;
-                        void onSave(n, { add: [], remove: [e.ref] });
+                      onClick={async () => {
+                        /* ⚠️ Жижиг ✕ дээр андуурч дарахаас хамгаална (хуучин модулийн 2026-10-05 ⚠️).
+                           ⚠️ 2026-10-23 (UX аудит P7): асуултын ОРОНД «↶ Буцаах» мэдэгдэл — устгаад, буцаавал ИЖИЛ холбоог
+                              (`e.ref`) дахин нэмнэ. Хамгаалалтын зорилго хэвээр, нэг товшилт илүү. */
+                        if (!(await onSave(n, { add: [], remove: [e.ref] }))) return;
+                        void toastUndo(tr('«{0}» холбоо устгагдлаа.', label), () => { void onSave(n, { add: [e.ref], remove: [] }); });
                       }}>✕</button>
                   )}
                 </span>
@@ -459,7 +504,7 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen }: {
             <option value="">{tr('Багц сонгох (Б)…')}</option>
             {otherPkgs.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
-          {b && <PrereqPicker key={`${n.id}|${b}`} g={g} n={n} p={b} busy={busy} onSave={onSave} />}
+          {b && <PrereqPicker key={`${n.id}|${b}`} g={g} n={n} p={b} busy={busy} onSave={onSave} onDirty={onDirty} />}
         </div>
       )}
     </>
@@ -468,9 +513,10 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen }: {
 
 /* ══════════════ Б — урьдчилагч сонгох (checkbox) ══════════════ */
 
-function PrereqPicker({ g, n, p, busy, onSave }: {
+function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
   g: WorkGraph; n: WNode; p: string; busy: boolean;
   onSave: (dep: WNode, c: RefChange) => Promise<boolean>;
+  onDirty: (n: number) => void;
 }) {
   const [q, setQ] = useState('');
   /* Б-гийн одоо холбогдсон ажлууд (тулгагдсан) — тэдгээрийн хадгалсан холбоос (`ref`) хасахад */
@@ -501,6 +547,10 @@ function PrereqPicker({ g, n, p, busy, onSave }: {
   const rm = [...cur.keys()].filter((id) => !chosen.has(id));
   const dirty = add.length + rm.length > 0;
   const narrow = !!q.trim();
+  /* ⚠️ 2026-10-23 (UX аудит P8): хадгалаагүй тоог эцэгт мэдэгдэнэ; салахад (өөр ажил/багц) 0 */
+  const dirtyN = add.length + rm.length;
+  useEffect(() => { onDirty(dirtyN); }, [dirtyN, onDirty]);
+  useEffect(() => () => onDirty(0), [onDirty]);
 
   return (
     <div className={s.pickBox}>

@@ -191,12 +191,12 @@
 .shell[data-detail='1'] .panelHead { padding: 5px 9px; }
 
 .shell[data-detail='1'] .panelTitle {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--ink-2);
 }
 
-.shell[data-detail='1'] .panelNote { font-size: 10px; }
+.shell[data-detail='1'] .panelNote { font-size: 11px; }
 
 .shell[data-detail='1'] .panelBody { padding: 8px 9px; }
 
@@ -220,13 +220,13 @@
   color: var(--ink);
 }
 
-.shell[data-detail='1'] :global(.statNum) > span { font-size: 10.5px; }
+.shell[data-detail='1'] :global(.statNum) > span { font-size: 11px; }
 
 .shell[data-detail='1'] :global(.statTag) {
   /* Нөөцлөсөн 26px-гүй, гэхдээ шошго «…» болохгүй — 2 мөрөнд бүтэн
      (2026-08-21 аудит: нэг мөрийн таслалт урт монгол нэрийг иддэг байв) */
   min-height: 0;
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   line-height: 1.2;
   overflow: hidden;
@@ -418,13 +418,13 @@
   .railItem { min-width: 84px; padding: 6px 9px; gap: 6px; }
   /* Цэг хасагдана — 9px + 7px зай нь нарийн товчинд нэрнээс илүү үнэтэй */
   .railItem::before { display: none; }
-  .railTitle { font-size: 10.5px; line-height: 1.18; }
+  .railTitle { font-size: 11px; line-height: 1.18; }
   .railVal { font-size: 11.5px; }
 }
 
 @media (max-width: 1024px) {
   .railItem { min-width: 72px; padding: 6px 8px; gap: 5px; border-width: 1px; }
-  .railTitle { font-size: 10px; }
+  .railTitle { font-size: 11px; }
   .railVal { font-size: 11px; }
 }
 
@@ -611,7 +611,7 @@
 .tileLabel {
   width: 100%;
   text-align: left;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -976,7 +976,7 @@
 .indCell { display: flex; flex-direction: column; padding: 10px 13px; background: var(--surface); min-width: 0; }
 
 /* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
-.indLabel { display: block; min-height: 28px; font-size: 10px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+.indLabel { display: block; min-height: 28px; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
 
 .indBottom { margin-top: auto; display: flex; align-items: center; gap: 8px; }
 
@@ -1002,7 +1002,7 @@
 }
 
 /* Эх сурвалжийн мөр — зургийн доор, дэвсгэргүй (envhub) */
-.srcLine { flex: none; padding: 0 2px; font-size: 10.5px; line-height: 1.4; color: var(--ink-3); }
+.srcLine { flex: none; padding: 0 2px; font-size: 11px; line-height: 1.4; color: var(--ink-3); }
 
 /* Нарийн дэлгэц — багана доошоо эвхэгдэнэ, хуудас босоогоор гүйнэ.
    Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). */
@@ -1166,7 +1166,7 @@
 .shell[data-detail='1'][data-sec='scope'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1257,7 +1257,7 @@
 .shell[data-detail='1'][data-sec='schedule'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1348,7 +1348,7 @@
 .shell[data-detail='1'][data-sec='land'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1438,7 +1438,7 @@
 .shell[data-detail='1'][data-sec='bagts'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1536,7 +1536,7 @@
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1636,7 +1636,7 @@
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1734,7 +1734,7 @@
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1834,7 +1834,7 @@
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1934,7 +1934,7 @@
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;

@@ -2,13 +2,14 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { fixCyr, num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { formatDeps } from '@/lib/deps';
 import { parseDayInput } from '@/lib/dateInput';
 import { MAX_DAYS, PL_ROW, type PlanKind } from './types';
 import type { AddForm } from './adds';
+import { workName } from './util';
 import h from '../huvaari.module.css';
 
 /**
@@ -153,7 +154,8 @@ export function TaskRow({
         </span>
       )}
 
-      <div className={h.rowTree} style={{ paddingLeft: `${r.depth * 12}px` }}>
+      {/* ⚠️ 2026-10-23 (UX аудит P5): догол мөр 2 түвшнээс цааш 12 → 6px — гүн бүлгийн нэр догол мөрөнд «идэгдэж» тасардаг байв */}
+      <div className={h.rowTree} style={{ paddingLeft: `${Math.min(r.depth, 2) * 12 + Math.max(0, r.depth - 2) * 6}px` }}>
         {r.group ? (
           <button type="button" className={h.caret} onClick={onToggle}
             aria-label={collapsed ? tr('Дэлгэх') : tr('Эвхэх')}>
@@ -165,7 +167,7 @@ export function TaskRow({
         {r.group && onAdd && (
           <button type="button" className={h.addBtn}
             title={tr('Энэ бүлэгт шинэ ажлын мөр нэмэх')}
-            aria-label={tr('«{0}» бүлэгт ажил нэмэх', r.work)}
+            aria-label={tr('«{0}» бүлэгт ажил нэмэх', workName(r))}
             onClick={(e) => { e.stopPropagation(); onAdd(); }}>
             +
           </button>
@@ -178,13 +180,15 @@ export function TaskRow({
         {added ? (
           <span className={h.rowMain} title={tr('Батлагдаагүй шинэ ажил — батлагдсаны дараа хуваарь тавина')}>
             <span className={h.rowNo}>{r.no}</span>
-            <span className={h.rowWork}>{r.work}</span>
+            {/* ⚠️ 2026-10-23 (UX аудит P6): хоосон нэрд «(нэргүй бүлэг/ажил)» (`util.workName`) */}
+            <span className={h.rowWork}>{workName(r)}</span>
           </span>
         ) : (
           <button type="button" className={h.rowMain} onClick={onPick}
-            title={`${r.work}\n${tr('Хуанлиар оруулах')}`}>
+            title={`${fixCyr(r.work)}\n${tr('Хуанлиар оруулах')}`}>
             <span className={h.rowNo}>{r.no}</span>
-            <span className={h.rowWork}>{r.work}</span>
+            {/* ⚠️ 2026-10-23 (UX аудит P6): хоосон нэрд «(нэргүй бүлэг/ажил)» (`util.workName`) */}
+            <span className={h.rowWork}>{workName(r)}</span>
           </button>
         )}
         {/* ⚠️ 2026-10-08: ХАМТРАН ЗАСАГЧИЙН ЦЭГ — хуваалцсан нооргоос ирсэн мөр; цаг нь орон нутгийн */}
@@ -215,15 +219,15 @@ export function TaskRow({
         {added && onEditAdd && (
           <button type="button" className={h.dropBtn}
             title={tr('Шинэ мөрийг засах (№ · нэр · обьём · нэгж өртөг)')}
-            aria-label={tr('«{0}» мөрийг засах', r.work)}
+            aria-label={tr('«{0}» мөрийг засах', workName(r))}
             onClick={(e) => { e.stopPropagation(); onEditAdd(); }}>
             ✎
           </button>
         )}
         {added && onDrop && (
           <button type="button" className={h.dropBtn}
-            title={tr('Илгээгээгүй шинэ мөрийг хасах')}
-            aria-label={tr('«{0}» мөрийг хасах', r.work)}
+            title={tr('Илгээгээгүй шинэ мөрийг хасах — «↶ Буцаах»-аар сэргээнэ')}
+            aria-label={tr('«{0}» мөрийг хасах', workName(r))}
             onClick={(e) => { e.stopPropagation(); onDrop(); }}>
             ×
           </button>
@@ -330,7 +334,7 @@ export function BlockRow({
       <div className={h.rowTree} style={{ paddingLeft: `${(r.depth + 1) * 12}px` }}>
         <span className={h.caretGap} />
         <button type="button" className={h.rowMain} onClick={onPick}
-          title={`${r.work}\n${tr('Дарж «{0}» блок руу орж засна', name)}`}>
+          title={`${fixCyr(r.work)}\n${tr('Дарж «{0}» блок руу орж засна', name)}`}>
           <span className={h.rowWork}>{name}</span>
         </button>
       </div>
@@ -382,9 +386,9 @@ export function AddBox({ parent, form, onForm, onOk, onCancel, edit = false }: {
       onChange={(e) => onForm({ ...form, [k]: e.target.value })} onKeyDown={key} />
   );
   return (
-    <div className={h.addPop} role="dialog" aria-label={edit ? tr('«{0}» мөрийг засах', parent.work) : tr('«{0}» дотор шинэ ажил', parent.work)}
+    <div className={h.addPop} role="dialog" aria-label={edit ? tr('«{0}» мөрийг засах', fixCyr(parent.work)) : tr('«{0}» дотор шинэ ажил', fixCyr(parent.work))}
       onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-      <span className={h.addTitle}>{edit ? tr('«{0}» мөрийг засах', parent.work) : tr('«{0}» дотор шинэ ажил', parent.work)}</span>
+      <span className={h.addTitle}>{edit ? tr('«{0}» мөрийг засах', fixCyr(parent.work)) : tr('«{0}» дотор шинэ ажил', fixCyr(parent.work))}</span>
       {field('no', h.addNo, tr('№'), false, first)}
       {field('work', h.addWork, tr('Ажлын нэр'))}
       {field('vol', h.addNum, tr('Обьём'), true)}
@@ -778,7 +782,7 @@ function HamCell({
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}
       {onPick && (
         <button type="button" className={h.hamMore} onClick={onPick}
-          title={tr('Жагсаалтаас сонгох')}>…</button>
+          title={tr('Жагсаалтаас сонгох')} aria-label={tr('Жагсаалтаас сонгох')}>…</button>
       )}
     </span>
   );
@@ -789,7 +793,7 @@ function HamCell({
 const HOWTO_LS = 'selbe-huvaari-howto';
 
 /**
- * Хүснэгтийн НЭГ УДААГИЙН «Хэрхэн» заавар — жижиг «?» товч + popover. Анх удаа өөрөө нээгдэнэ,
+ * Хүснэгтийн НЭГ УДААГИЙН «Хэрхэн» заавар — жижиг «?» товч + popover. ⚠️ 2026-10-23 (UX аудит P5): өөрөө НЭЭГДЭХГҮЙ (урьд нь анх удаа нээгдэж хуваарийг таглаж байв),
  * «Ойлголоо» дарахад `localStorage`-д тэмдэглэгдэж дахин өөрөө гарахгүй; «?»-ээр хүссэн үедээ.
  * ⚠️ `Huvaari.tsx` толгойн зурваст зурна (`<HowtoHint />`) — мөрийн бүрэлдэхүүн биш.
  * ⚠️ Анхны төлөв нь lazy initializer (`Huvaari.tsx`-ийн `selbe-huvaari-wide`-тэй ижил хэв маяг):
@@ -801,9 +805,10 @@ const HOWTO_LS = 'selbe-huvaari-howto';
  *    «Ойлголоо» дартал ажилладаггүй байв. `Huvaari`-ийн хаалтууд одоо зөвхөн `[aria-modal="true"]`-г шалгана.
  */
 export function HowtoHint() {
-  const [open, setOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem(HOWTO_LS) !== '1'; } catch { return false; }
-  });
+  /* ⚠️ 2026-10-23 (UX аудит P5): ӨӨРӨӨ НЭЭГДЭХГҮЙ — анх нээгдэж хуваарийг таглаж байв; зөвхөн «?» дарахад */
+  const [open, setOpen] = useState(false);
+  /* ⚠️ 2026-10-23 (P5): баруун талд зай хүрэхгүй бол popover-ыг баруунаар тэгшилнэ (`.howtoPopR`) — тасардаг байв */
+  const [right, setRight] = useState(false);
   const dismiss = () => {
     setOpen(false);
     try { localStorage.setItem(HOWTO_LS, '1'); } catch { /* хаалттай орчин */ }
@@ -812,9 +817,14 @@ export function HowtoHint() {
     <span className={h.howto}>
       <button type="button" className={`${h.howtoBtn}${open ? ` ${h.howtoBtnOn}` : ''}`}
         aria-expanded={open} aria-label={tr('Хэрхэн ашиглах')} title={tr('Хэрхэн ашиглах')}
-        onClick={() => (open ? dismiss() : setOpen(true))}>?</button>
+        onClick={(e) => {
+          if (open) { dismiss(); return; }
+          const rc = e.currentTarget.getBoundingClientRect();
+          setRight(rc.left + Math.min(360, window.innerWidth - 32) > window.innerWidth - 16);
+          setOpen(true);
+        }}>?</button>
       {open && (
-        <div className={h.howtoPop} role="note" aria-label={tr('Хэрхэн')}
+        <div className={`${h.howtoPop}${right ? ` ${h.howtoPopR}` : ''}`} role="note" aria-label={tr('Хэрхэн')}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); } }}>
           <b>{tr('Хэрхэн')}</b>
           <ul className={h.howtoList}>

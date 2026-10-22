@@ -9,7 +9,7 @@ import { loadRows, msToDay, type SheetRow } from "../bagtsSheet";
 import { needsFrameOcc, overlaySubmission, withFrameOcc } from "../sheetFrame";
 import { readSubmissionByOid } from "@/lib/submission";
 import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
-import { useHyanaltRows } from "@/lib/hyanaltStore";
+import { useHyanaltRows, returnInfoOf, type ReturnInfo } from "@/lib/hyanaltStore";
 import { reviewLockState } from "@/lib/hyanaltSubmit";
 import { nowFillMs, type SheetView } from "./util";
 
@@ -174,15 +174,16 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
       const prev = lastRound.get(k);
       if (!prev || r.__oid > prev.__oid) lastRound.set(k, r);
     }
-    const days = new Map<string, number>();
+    /* ⚠️ 2026-10-23 (UX аудит F2): өдөр бүрийн буцаалтын шалтгаан · хэн · хэзээ (`returnInfoOf`) — баннерт */
+    const days = new Map<string, { soid: number; info: ReturnInfo | null }>();
     for (const r of lastRound.values()) {
       if (flowIsStaged && flow && r.__oid === flow.__oid) continue;
       if (r[HF.status] === STATUS.transferred || OWNER[r[HF.status]] !== 'company') continue;
       const m = /(\d{4}\.\d{2}\.\d{2})/.exec(String(r[HF.ajil] ?? ''));
       /* 2026-09-24: өдөр → илгээлтийн OBJECTID (`resumeReturned`-д) */
-      if (m) days.set(m[1], Number(r[HF.sheetOid]));
+      if (m) days.set(m[1], { soid: Number(r[HF.sheetOid]), info: returnInfoOf(r) });
     }
-    return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, soid]) => ({ day, soid }));
+    return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, v]) => ({ day, soid: v.soid, info: v.info }));
   }, [hyRows, flow, flowIsStaged, pkg.group, pkg.key, pkg.name]);
   /**
    * ЭНЭ СЕШНД ГАРААР СОНГОСОН буцаагдсан илгээлтийн OBJECTID (2026-09-24).
@@ -202,6 +203,9 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
   /* ⚠️ 2026-10-09 (аудит №6): `flow` буцаагдсан БӨГӨӨД яг `staged` илгээлтийнх — `curTgtOn` · `publish`-ийн
      `fillMs` · `fixingReturned`-д `returned`-ийн оронд (өөр өдрийн буцаалт өнөөдрийн `staged`-ыг зорилт болгохгүй). */
   const returnedStaged = returned && flowIsStaged;
+  /* ⚠️ 2026-10-23 (UX аудит F2): ЭНЭ илгээлтийн буцаалтын шалтгаан · хянагч · огноо — «Буцаасан» баннерт. Урьд нь
+     бөглөх хуудсанд шалтгаан ОГТ харагддаггүй тул гүйцэтгэгч «Гүйцэтгэлийн хяналт» руу буцаж уншдаг байв. */
+  const returnInfo = useMemo(() => (returnedStaged ? returnInfoOf(flow) : null), [returnedStaged, flow]);
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
   /**
@@ -295,7 +299,7 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
   return {
     hyRows, hyLoading, hyErr, reloadHy,
     todayFillMs, setTodayFillMs, todayAjilTag, flow, flowIsStaged, otherDaysInReview, otherDaysReturned, reviewLock,
-    resumedOid, setResumedOid, returned, returnedStaged, reviewStage, inReview, flowRef, today, reviewSoidsKey,
+    resumedOid, setResumedOid, returned, returnedStaged, returnInfo, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   };
 }
 

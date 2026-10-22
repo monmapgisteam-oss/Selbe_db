@@ -10,6 +10,8 @@ import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AccessLost, AuthNotice, useAuth } from './AuthGate';
+/* ⚠️ 2026-10-23: аппын дотоод асуулт/«Буцаах» мэдэгдэл — `window.confirm`-ийн оронд (`lib/confirm.ts`) */
+import { ConfirmHost } from './ConfirmHost';
 /* ⚠️ 2026-10-22 (аудит): удирдлагын самбарын шалгуур — урсгалтай бус бүх харагдац (`homeBoard`-ийн ⚠️) */
 import { boardAllowedFor } from '@/lib/homeBoard';
 import { remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
@@ -427,6 +429,7 @@ export default function Root() {
   return (
     <>
       <AuthNotice />
+      <ConfirmHost />
       {/* ⚠️ 2026-10-22 (аудит): сүүлийн харагдацаа ажиллаж байхдаа алдсан — Portal ард нь хөлдсөн (`viewsLost`-ийн ⚠️) */}
       {frozen && viewsLost && <AccessLost username={user?.username} onSignOut={signOut} />}
       {/*

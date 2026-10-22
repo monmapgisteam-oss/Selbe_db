@@ -59,6 +59,7 @@ import { finNavDirty } from '@/lib/finEdit';
 import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
+import { askConfirm } from '@/lib/confirm';
 /* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх ба шар зурвас (жижиг, ArcGIS-гүй) */
 import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /**
@@ -555,7 +556,8 @@ function PortalContent(
   // Давхаргын сонголт — «Давхарга» товчоор нээж/хаана.
   // ⚠️ 2026-08-18: зүүн БАГАНА байсныг зурган дээрх ХӨВӨГЧ POPUP болгов
   //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
-  const [catalog, setCatalog] = useState(true);
+  /* ⚠️ 2026-10-23 (UX аудит S14): УТСАН дээр (≤620px) давхаргын жагсаалт газрын зургийн ~75%-ийг бүрхэж нээгддэг байв — хумигдсан эхэлнэ */
+  const [catalog, setCatalog] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 620px)').matches);
   const [layer, setLayer] = useState<string | null>(initialLayer);
   /**
    * «ХЭСЭГЧИЛСЭН ЕТ» (`hesegET`) — гурван хэсэг (2026-10-13, хэрэглэгчийн заавар):
@@ -786,10 +788,14 @@ function PortalContent(
   /* ⚠️ 2026-10-21 (аудит): `reason` — асуултын ӨМНӨ яагаад гарах болсныг хэлнэ (эрх хасагдсан үед
      урьд нь зөвхөн «Хадгалаагүй засвар байна. Гарах уу?» гарч, хэрэглэгч шалтгааныг мэдэхгүй
      «Болих» дарж эрхгүй харагдацдаа үлддэг байв — доорх эрхийн хамгаалалтын ⚠️). */
-  const confirmLeave = useCallback((reason?: string, busyOnly = false): boolean => {
-    const ask = (msg: string) => window.confirm(reason ? `${reason}\n\n${msg}` : msg);
-    if (planNavBusy()
-      && !ask(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` (ASYNC). Хөтчийн «энэ сайтаас дахин
+     бүү асуу» тэмдэглэгдсэн үед `window.confirm` чимээгүй false буцааж харагдац солих · лого · «Гарах» · Back БҮГД
+     юу ч хийхгүй болдог байв. Иймд гинж бүхэлдээ async (`setView` · popstate · лого · «Гарах» · эрхийн хамгаалалт).
+     `leaveAsks` — СИНХРОН: асуух зүйл байгаа эсэхийг Back (`onPop`) асуултын ӨМНӨ мэдэх ёстой (`Root`-ийн хойшлуулсан
+     popstate URL-ыг 0мс-д уншина — асуух бол URL-ыг тэр агшинд сэргээнэ). Нөхцөл, дараалал нь хуучнаараа. */
+  const leaveAsks = useCallback((busyOnly = false): string[] => {
+    const qs: string[] = [];
+    if (planNavBusy()) qs.push(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'));
     /* ⚠️ 2026-10-22 (аудит): `busyOnly` (эрх хасагдсан цонхны товч — `setView`-ийн `force`) — ЗӨВХӨН ЯВЖ БУЙ бичилтийг
        асууна: дээрх Хуваарийн гинж (`planNavBusy` — `Huvaari.tsx`-ийн «ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ» ⚠️) ба илгээлт/шийдвэр/
        буулгалт (`navBusyLabels`). Хадгалаагүй засварын асуултууд (доор) алгасагдана — товч өөрөө «алдагдана» гэж хэлдэг
@@ -797,29 +803,43 @@ function PortalContent(
        дундуур unmount хийдэг байв. */
     if (busyOnly) {
       const busyL = navBusyLabels();
-      return !busyL.length
-        || ask(tr('{0}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?', busyL.join(' · ')));
+      if (busyL.length) qs.push(tr('{0}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?', busyL.join(' · ')));
+      return qs;
     }
     /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
        хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
        байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
-    if (finNavDirty()
-      && !ask(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
+    if (finNavDirty()) qs.push(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'));
     /* ⚠️ 2026-09-30: ЕРӨНХИЙ хамгаалалт (`navGuard.setNavDirty`) — «Дэд бүтэц», «Газар»,
        «Зөвшөөрөл» зэрэг харагдацын засварын маягт урьд нь харагдац солих, лого,
        «Гарах»-д асуултгүй алга болдог байв. Шинэ харагдац энд юу ч засахгүйгээр нэмэгдэнэ. */
     const labels = navDirtyLabels();
-    if (labels.length
-      && !ask(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
+    if (labels.length) qs.push(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')));
     /* ⚠️ 2026-10-06 (аудит): дээрх гурван тугт ОРООГҮЙ модулиуд (QAQC-ийн хадгалаагүй нүд,
        `useDraftSync`, CashflowPlan …) — тэдний `beforeunload` сонсогчоос асууна
        (`LocaleToggle.hasUnsavedWork`-ийн ⚠️). Дээр аль хэдийн асууж зөвшөөрсөн бол ДАХИН
        асуухгүй (тэр модулиуд ч `beforeunload` бүртгэдэг тул давхар асуулт гарна). */
-    const asked = planNavBusy() || finNavDirty() || labels.length > 0;
-    if (!asked && hasUnsavedWork()
-      && !ask(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'))) return false;
-    return true;
+    const asked = qs.length > 0;
+    if (!asked && hasUnsavedWork()) qs.push(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'));
+    return qs;
   }, []);
+  /** Асуулт нээлттэй эсэх — давхар даралт/Back асуултыг ДАРААЛУУЛЖ олон цонх гаргахгүй (2-р дуудлага `false`) */
+  const leavingRef = useRef(false);
+  const confirmLeave = useCallback(async (reason?: string, busyOnly = false): Promise<boolean> => {
+    const qs = leaveAsks(busyOnly);
+    if (!qs.length) return true;
+    if (leavingRef.current) return false;
+    leavingRef.current = true;
+    try {
+      /* Асуулт бүр шалтгаанаар эхэлнэ (`reason`); нэгийг нь «Үлдэх» гэвэл гарахгүй */
+      for (const q of qs) {
+        if (!(await askConfirm(reason ? `${reason}\n\n${q}` : q, { danger: true, ok: tr('Хаяад гарах'), cancel: tr('Үлдэх') }))) return false;
+      }
+      return true;
+    } finally {
+      leavingRef.current = false;
+    }
+  }, [leaveAsks]);
   /**
    * ⚠️ 2026-10-05: ӨГӨГДЛИЙН ШИНЭЧЛЭЛ. Кэшийн TTL нь ДАРААГИЙН дуудалтад л шалгагддаг тул
    *    нээлттэй харагдац өөрөө хэзээ ч дахин татдаггүй, `invalidateAll` зөвхөн хэл солиход
@@ -838,9 +858,13 @@ function PortalContent(
    *    `invalidateAll` чимээгүй ажиллаж, маягтын суурь мөр дахин татагдаж засвар дарагдах
    *    эрсдэлтэй байв; «Шинэчлэх» ч асуулгүй явдаг байв.
    */
-  const refreshData = useCallback(() => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` (async) — `confirmLeave`-ийн ⚠️ */
+  const refreshData = useCallback(async () => {
     const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork();
-    if (dirty && !window.confirm(tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'))) return;
+    if (dirty && !(await askConfirm(
+      tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'),
+      { danger: true, ok: tr('Шинэчлэх') },
+    ))) return;
     refreshDeferredRef.current = false;
     invalidateAll();
   }, []);
@@ -884,7 +908,8 @@ function PortalContent(
   /* ⚠️ 2026-10-21 (аудит): `opts.reason` — асуултын шалтгаан (`confirmLeave`-ийн ⚠️); `opts.force` — АСУУЛГҮЙ
      шилжинэ: эрх хасагдсан харагдацын хаалтын цонхны товч (`ViewLost`) — хэрэглэгч шалтгааныг аль хэдийн
      уншсан, хадгалаагүй ажил алдагдахыг товч өөрөө хэлдэг тул давхар асуулт гаргахгүй. */
-  const setView = useCallback((v: ViewKey, opts?: { reason?: string; force?: boolean }): boolean => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): ASYNC — `confirmLeave` апп доторх цонхоор асуудаг болсон (`confirmLeave`-ийн ⚠️) */
+  const setView = useCallback(async (v: ViewKey, opts?: { reason?: string; force?: boolean }): Promise<boolean> => {
     /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
        шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин
        дарах (`ViewRail`-ийн ⚠️ «жагсаалт хумигдана/дэлгэгдэнэ»), алгасах холбоосын `#` навигаци
@@ -895,7 +920,7 @@ function PortalContent(
        save→decidePlan гинж · гүйцэтгэлийн илгээлт/шийдвэр · нэмэлт ажил буулгалт) асуусаар (`confirmLeave`-ийн
        `busyOnly`). Урьд нь `!opts?.force && …` нь БҮХ асуултыг алгасаж, бичилт явж байхад эрх хумигдаад «Болих»
        дарсан хэрэглэгч цонхны товчоор модулийг гинжийн дундуур unmount хийдэг байв. */
-    if (!confirmLeave(opts?.reason, !!opts?.force)) return false;
+    if (!(await confirmLeave(opts?.reason, !!opts?.force))) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -915,7 +940,7 @@ function PortalContent(
     if (filterActiveRef.current) clearFilter();
     // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
     //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
-    setCatalog(v === 'plan');
+    setCatalog(v === 'plan' && !window.matchMedia('(max-width: 620px)').matches);
     /**
      * IoT руу орход 3D. ⚠️ ЗӨВХӨН IoT-д тавина — бусад харагдац руу шилжихэд
      * горимыг ХҮЧЭЭР 2D болгохгүй: хэрэглэгч 3D-г санаатай сонгосон бол тэр
@@ -956,8 +981,11 @@ function PortalContent(
   /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`-ийн ⚠️) */
   const railSelect = useCallback((v: ViewKey) => {
     if (v === viewNowRef.current) { setCatalog((c) => !c); return; }
-    setView(v);
+    void setView(v);
   }, [setView]);
+  /* ⚠️ 2026-10-23: `ViewCtx.setView` (`viewRegistry`) СИНХРОН `boolean` төрөлтэй — модулиуд утгыг нь уншдаггүй
+     (HuvaariBatlah · Tuh · Schem · SysDoc зөвхөн дууддаг) тул асуултыг эхлүүлээд `true` буцаана. */
+  const ctxSetView = useCallback((v: ViewKey): boolean => { void setView(v); return true; }, [setView]);
 
   const badgeViewRef = useRef(view);
   useEffect(() => {
@@ -1028,8 +1056,12 @@ function PortalContent(
          алга болдог байв. Одоо лого/«Гарах»-тай ИЖИЛ `confirmLeave()`; татгалзвал
          `all=1`-тэй URL-ыг буцааж бичнэ — `Root` өөрийн сонсогчийг хойшлуулж
          (`setTimeout`) ЭНЭ сэргээсэн URL-ыг уншина. */
+      /* ⚠️ 2026-10-23 (UX аудит X1): асуулт ASYNC болсон тул асуух зүйлтэй бол URL-ыг ЭХЛЭЭД (синхрон) сэргээнэ —
+         `Root` 0мс-д уншихдаа порталд үлдэнэ; «Гарах» гэвэл нүүр рүү `onHome`-оор (логотой ижил) гарна. */
       if (!inPortalUrl()) {
-        if (!confirmLeave()) restoreUrl({ all: '1' });
+        if (!leaveAsks().length) return;
+        restoreUrl({ all: '1' });
+        void confirmLeave().then((ok) => { if (ok) onHome?.(); });
         return;
       }
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
@@ -1051,18 +1083,25 @@ function PortalContent(
          харагдацыг заасан хэвээр үлддэг байв (төлөв ≠ URL, F5 → буруу
          харагдац). Татгалзвал юуг ч хөндөхгүй, одоогийн төлөвийг URL-д
          PUSH-ээр буцааж бичнэ — Back-ийн өмнөх бичлэг түүхэнд хэвээр. */
-      if (!setView(next)) {
-        restoreUrl();
-        return;
-      }
-      if (next !== initialView()) lastViewRef.current = next;
-      setZone(readParam('z'));
-      setLayer(initialLayer());
-      setDim(initialDim());
+      /* ⚠️ 2026-10-23: `setView` ASYNC — URL-ын утгуудыг асуултын ӨМНӨ авна (хариулах хооронд URL өөрчлөгдөж болно) */
+      const urlView = initialView();
+      const z = readParam('z');
+      const l = initialLayer();
+      const d = initialDim();
+      void setView(next).then((ok) => {
+        if (!ok) {
+          restoreUrl();
+          return;
+        }
+        if (next !== urlView) lastViewRef.current = next;
+        setZone(z);
+        setLayer(l);
+        setDim(d);
+      });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [setView, navScope, confirmLeave]);
+  }, [setView, navScope, confirmLeave, leaveAsks, onHome]);
 
   /**
    * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн
@@ -1090,7 +1129,9 @@ function PortalContent(
          рендерийн хамгаалалт `ViewLost` хаалтын цонх гаргаж, порталыг `inert` болгоно (Root-ийн `frozen`-тэй
          ижил зарчим — ажил нь амьд, эрх сэргэвэл цонх өөрөө хаагдана). */
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
-      if (setView(navScope[0], { reason: tr('Таны эрх өөрчлөгдсөн тул «{0}» харагдац хаагдана.', from) })) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      void setView(navScope[0], { reason: tr('Таны эрх өөрчлөгдсөн тул «{0}» харагдац хаагдана.', from) }).then((ok) => {
+        if (ok) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      });
     }
   }, [navScope, view, setView]);
   /**
@@ -1172,8 +1213,8 @@ function PortalContent(
   /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): `ViewSlot`-ын контекст рендер бүрт ШИНЭ объект байсан тул
      харагдацын модуль Portal-ын рендер бүрд (тэмдэг, сүлжээ, өгөгдлийн цаг) дахин зурагддаг байв. */
   const slotCtx = useMemo(
-    () => ({ dim, setDim, zone, setZone, navScope, setView, planJump, setPlanJump, clearPlanJump }),
-    [dim, zone, navScope, setView, planJump, clearPlanJump],
+    () => ({ dim, setDim, zone, setZone, navScope, setView: ctxSetView, planJump, setPlanJump, clearPlanJump }),
+    [dim, zone, navScope, ctxSetView, planJump, clearPlanJump],
   );
   // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -1272,7 +1313,7 @@ function PortalContent(
             type="button"
             className={s.brand}
             /* ⚠️ 2026-09-30: `confirmLeave` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️) */
-            onClick={onHome ? () => { if (confirmLeave()) onHome(); } : undefined}
+            onClick={onHome ? async () => { if (await confirmLeave()) onHome(); } : undefined}
             disabled={!onHome}
             title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
           >
@@ -1307,7 +1348,7 @@ function PortalContent(
             <button
               type="button"
               className={s.iconBtn}
-              onClick={refreshData}
+              onClick={() => void refreshData()}
               aria-label={tr('Шинэчлэх')}
               title={tr('Бүх өгөгдлийг дахин татах')}
             >
@@ -1320,7 +1361,15 @@ function PortalContent(
               viewKey={view}
               title={active.title}
               desc={active.desc}
-              filters={zone ? [`${tr('Бүс')}: ${zonesLabel(zone.split(',').filter(Boolean))}`] : []}
+              /* ⚠️ 2026-10-23 (UX аудит E1): «Бүс» ЗӨВХӨН бүсээр шүүдэг харагдацад (зурагтай харагдац · Ерөнхий/
+                 Дашбоард) — урьд нь бүсгүй харагдацын тайланд ч «Бүс: X» гэж худал бичигддэг байв. Ерөнхий дашбоардад бүс
+                 нь ЗӨВХӨН газрын зургийг шүүнэ (KPI нь төслийн нийт — `GeneralDash`-ийн E2 ⚠️). Он/сар/таб/сонголт зэрэг
+                 харагдацын өөрийн шүүлтийг `viewReport` дэлгэцээс уншиж нэмнэ (`readFilters`). */
+              filters={zone && (!standalone || view === 'gdash' || view === 'dashboard')
+                ? [view === 'gdash'
+                  ? tr('Бүс (зөвхөн газрын зураг): {0}', zonesLabel(zone.split(',').filter(Boolean)))
+                  : `${tr('Бүс')}: ${zonesLabel(zone.split(',').filter(Boolean))}`]
+                : []}
             />}
 
             <LocaleToggle className={s.iconBtn} />
@@ -1386,7 +1435,7 @@ function PortalContent(
             /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
                зүйл байхгүй тул мөр гарахгүй. */
             userName={auth.user?.fullName || auth.user?.username}
-            onSignOut={auth.status === 'signed-in' ? () => { if (confirmLeave()) void auth.signOut(); } : undefined}
+            onSignOut={auth.status === 'signed-in' ? async () => { if (await confirmLeave()) void auth.signOut(); } : undefined}
             badges={badges}
           />
           </ErrorBoundary>
@@ -1670,7 +1719,7 @@ function PortalContent(
         <ViewLost
           from={VIEW_BY_KEY[view].title}
           to={VIEW_BY_KEY[navScope[0]].title}
-          onGo={() => setView(navScope[0], { force: true })}
+          onGo={() => { void setView(navScope[0], { force: true }); }}
         />
       )}
 
@@ -1710,7 +1759,7 @@ function PortalContent(
 
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
       <OverlayBoundary label={tr('Тусламж нээгдсэнгүй')} onReset={closeHelp}>
-        <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
+        <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} user={auth.user?.username} />
         {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
       </OverlayBoundary>
 

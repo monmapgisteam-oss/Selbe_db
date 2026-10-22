@@ -82,7 +82,7 @@
   border-radius: var(--r);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-2);
 }
 .mapLegendItem { display: flex; align-items: center; gap: 5px; }
@@ -130,7 +130,7 @@
   min-width: 0;
 }
 .statLabel {
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -164,7 +164,7 @@
   top: 0;
   padding: 7px 8px;
   text-align: left;
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -183,7 +183,7 @@
   font-weight: 600;
   color: var(--ink);
 }
-.rowLink:hover, .rowLink:focus-visible { color: var(--data); text-decoration: underline; }
+.rowLink:hover, .rowLink:focus-visible { color: var(--data-ink); text-decoration: underline; }
 .emptyRow td { color: var(--ink-3); text-align: center; padding: 14px 8px; }
 
 /* ── Чип ── */
@@ -194,7 +194,7 @@
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   white-space: nowrap;
   background: var(--surface-2);
@@ -301,7 +301,7 @@
 /* Картын баримт — шошго ДЭЭР, утга ДООР: урт нэр/бүтэн мөнгөн дүн хуваагдаж эвдрэхгүй */
 .cardFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; font-size: 0.74rem; }
 .cardFacts > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.cardFacts > div > span { font-size: 0.66rem; color: var(--ink-3); }
+.cardFacts > div > span { font-size: 0.6875rem; color: var(--ink-3); }
 .cardFacts > div > b { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .cardFacts > .wide { grid-column: 1 / -1; }
 .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 0.74rem; }
@@ -318,7 +318,7 @@
   font-weight: 600;
   color: var(--ink-2);
 }
-.ghostBtn:hover, .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
+.ghostBtn:hover, .ghostBtn:focus-visible { color: var(--data-ink); border-color: var(--data); }
 
 /* ── Хэмжигч — `ui.Meter` (2026-10-09; локал `.meter*` хуулбар хасагдсан) ──
    ⚠️ Зөвхөн ГАДНА зай: төлөвлөгөөний зураас замаас ±4px сунадаг тул дээд/доод
@@ -392,7 +392,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
   position: absolute;
   top: 5px;
   padding-left: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
@@ -424,7 +424,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
   border-color: color-mix(in srgb, var(--ink-3) 40%, transparent);
 }
 .ganttBarLab {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   color: var(--surface);
@@ -432,11 +432,11 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
   pointer-events: none;
 }
 .st_todo .ganttBarLab, .st_none .ganttBarLab { color: var(--ink); }
-.ganttPct { position: absolute; top: 6px; font-size: 9.5px; font-style: normal; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ganttPct { position: absolute; top: 6px; font-size: 11px; font-style: normal; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ganttThin { position: absolute; bottom: 1px; height: 2px; border-radius: 1px; background: var(--ink-2); }
-.ganttNoDate { position: absolute; left: 6px; top: 6px; font-size: 10px; font-style: normal; color: var(--ink-3); }
+.ganttNoDate { position: absolute; left: 6px; top: 6px; font-size: 11px; font-style: normal; color: var(--ink-3); }
 .ganttMark { position: absolute; z-index: 3; top: 5px; transform: translateX(-50%); font-size: 12px; line-height: 1; color: var(--ink); }
-.ganttMark[data-kind='heat'] { color: var(--bad); }
+.ganttMark[data-kind='heat'] { color: var(--bad-ink); }
 .ganttMark[data-kind='milestone'] { color: var(--ink-2); }
 /* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил.
    ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёр гантад НЭГ дүрэм — 1.5px ТАСАРХАЙ `--bad`
@@ -477,7 +477,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
 .tbGrid { display: grid; grid-template-columns: 1fr 1fr; margin: 0; }
 .tbGrid > div { padding: 8px 12px; border-bottom: 1px solid var(--line-strong); min-width: 0; }
 .tbGrid > div:nth-child(odd) { border-right: 1px solid var(--line-strong); }
-.tbGrid dt { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
+.tbGrid dt { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
 .tbGrid dd { margin: 2px 0 0; font-size: 0.82rem; overflow-wrap: anywhere; }
 .secNav {
   position: sticky;
@@ -523,7 +523,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
 .elapsed { display: grid; grid-template-columns: 120px minmax(0, 1fr) 48px; gap: 8px; align-items: center; font-size: 0.72rem; }
 .levels { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px; font-size: 0.74rem; }
 .levels li { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
-.levels b { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 3px; background: var(--data); color: var(--bg); font-size: 0.66rem; }
+.levels b { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 3px; background: var(--data); color: var(--bg); font-size: 0.6875rem; }
 .weeks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .week { min-height: 70px; padding: 8px; border: 1px dashed var(--line-strong); border-radius: var(--r-sm); font-size: 0.74rem; color: var(--ink-3); }
 .week b { display: block; margin-bottom: 4px; color: var(--ink-2); }
@@ -532,7 +532,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
 .lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
 .lane { padding: 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); font-size: 0.74rem; }
 .lane b { display: block; margin-bottom: 4px; font-size: 0.7rem; color: var(--ink-2); }
-.stepNo { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.stepNo { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .commission { margin-top: 8px; padding: 12px; border: 1.5px solid var(--data); border-radius: var(--r-sm); background: color-mix(in srgb, var(--data) 6%, var(--surface)); }
 .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .note { margin: 6px 0 0; font-size: 0.72rem; color: var(--ink-3); }

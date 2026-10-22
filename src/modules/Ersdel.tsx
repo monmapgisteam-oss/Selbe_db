@@ -51,7 +51,8 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { Icon } from '@/components/Icon';
-import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X3): алдааг `userError`-оор — серверийн түүхий англи мөр хэрэглэгчид гарахгүй (монгол мессеж хэвээр) */
+import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip, userError } from '@/components/ui';
 import { CHART, lineSegments } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 
@@ -840,7 +841,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         if (alive) { setFlood(d); setSimPct(1); setSimEta(null); }
       })
       .catch((err: unknown) => {
-        if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
+        if (alive) setFloodErr(userError(err));
       });
     return () => { alive = false; release(); };
   }, [wantFlood, level, area, runSim]);
@@ -935,7 +936,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
            үлдэж, загварчлал өөр (өмнөх) талбай дээр явдаг байв. */
         const stray = gl.graphics.filter((x) => x !== applied).toArray();
         if (stray.length) gl.removeMany(stray);
-        setFloodErr(err instanceof Error ? err.message : String(err));
+        setFloodErr(userError(err));
       });
     });
     svm.on('update', (ev) => {
@@ -956,7 +957,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         setArea((prev) => (prev && sameRings(prev, next) ? prev : next));
       }, (err: unknown) => {
         if (mine !== areaSeq || view.destroyed) return;
-        setFloodErr(err instanceof Error ? err.message : String(err));
+        setFloodErr(userError(err));
       });
     });
     areaLayerRef.current = gl;
@@ -1404,7 +1405,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       }
     } catch (err) {
       if (stale()) return;
-      setRunErr(err instanceof Error ? err.message : String(err));
+      setRunErr(userError(err));
       setResult(null);
     } finally {
       /* ⚠️ Хуучирсан нислэг ШИНЭ нислэгийн «ажиллаж байна» төлөвийг унтраахгүй */
@@ -1505,7 +1506,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     } catch (err) {
       if (seq !== cmpSeq.current) return;
       if (err instanceof Error && err.name === 'AbortError') return;
-      setCmp((c) => (c ? { ...c, busy: null, err: err instanceof Error ? err.message : String(err) } : c));
+      setCmp((c) => (c ? { ...c, busy: null, err: userError(err) } : c));
     }
   }, [view, area, activeIds, getSim]);
 
@@ -2109,7 +2110,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                               />
                               {wind!.cached ? (
                                 <p className={e.windSrc}>
-                                  {tr('Кэшнээс — сүлжээ татагдсангүй')}
+                                  {tr('Түр санах ойгоос — сүлжээнээс татагдсангүй')}
                                 </p>
                               ) : null}
                             </>
@@ -2359,7 +2360,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         </Note>
                       )}
                       {windFlow && windField?.cached && (
-                        <p className={e.windSrc}>{tr('Кэшнээс — сүлжээ татагдсангүй')}</p>
+                        <p className={e.windSrc}>{tr('Түр санах ойгоос — сүлжээнээс татагдсангүй')}</p>
                       )}
                     </div>
                   </>
@@ -2948,7 +2949,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         <Trend
                           unit={m.unit}
                           height={132}
-                          visible={10}
+                          /* ⚠️ 2026-10-23 (UX аудит E5): 10 → 6 цэг — нарийн баганад 10 шошго («10-22 15:00»)
+                             бие биеэ дарж, эхнийх нь тайрагддаг байв; үлдсэнийг хэвтээ гүйлгэж харна. */
+                          visible={6}
                           points={m.points.map((p) => ({ label: axisLabel(p.t), value: p.v }))}
                         />
                       </div>

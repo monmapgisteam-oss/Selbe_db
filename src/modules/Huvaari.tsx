@@ -32,7 +32,7 @@ import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
-import { dayKey, num } from '@/lib/format';
+import { dayKey, fixCyr, num } from '@/lib/format';
 import {
   loadSchema, pkgFloors, PKG_GROUPS, PKGS, type Pkg, type Schema,
 } from '@/modules/sheet/bagts.pkg';
@@ -68,6 +68,8 @@ import { archivingBusy } from '@/lib/submission';
 /* ⚠️ 2026-10-12 (дарааллын аудит): нэмэлт ажлын буулгалт явж байхад бичихгүй (`archGate`) */
 import { ajilApplyBusyFor } from '@/lib/ajilBatlah';
 import { setNavDirty } from '@/lib/navGuard';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (хөтөч «дахин асуухгүй» гэвэл чимээгүй `false` буцаадаг) */
+import { askConfirm } from '@/lib/confirm';
 import { hdKey, kA, kH, kM, kN, kR, kS, parseKey } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
 /* ⚠️ 2026-09-30: 8.2k мөрийн нэг файлыг `src/modules/huvaari/`-д хуваав — туслах ·
@@ -78,7 +80,7 @@ import {
 } from './huvaari/types';
 import {
   aggExtra, dayToMs, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
-  unbalancedBlocks, unbalancedObyem,
+  unbalancedBlocks, unbalancedObyem, workName,
 } from './huvaari/util';
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
 import { useLatest } from './huvaari/useLatest';
@@ -117,8 +119,9 @@ const ST_CLASS: Record<Status, string> = {
  * ногоон тэмдэглэгээ (`okRows`) зөвхөн санах ойд тул ЧИМЭЭГҮЙ устдаг байв.
  * Тэмдэглэгээ байвал хаахаас өмнө асууна; байхгүй бол шууд хаана.
  */
-function confirmDropMarks(n: number): boolean {
-  return n === 0 || window.confirm(tr('Зөвшөөрсөн {0} мөрийн тэмдэглэгээ хадгалагдахгүй. Шийдвэргүй хаах уу?', num(n)));
+/* ⚠️ 2026-10-23 (UX аудит X1): async — аппын дотоод асуулт (`askConfirm`) */
+async function confirmDropMarks(n: number): Promise<boolean> {
+  return n === 0 || askConfirm(tr('Зөвшөөрсөн {0} мөрийн тэмдэглэгээ хадгалагдахгүй. Шийдвэргүй хаах уу?', num(n)), { danger: true, ok: tr('Хаах') });
 }
 
 /*
@@ -541,6 +544,12 @@ export function Huvaari({
    */
   const [flowTxt, setFlowTxt] = useState('');
   /**
+   * ⚠️ 2026-10-23 (UX аудит P3): НЭМЭЛТ АЖИЛ ИЛГЭЭХ ЦОНХ — нэмэгчийн тайлбар (`submitAjil.note`) бичих газар. Урьд нь товч шууд
+   *    илгээдэг тул батлагчийн «Нэмэгчийн тайлбар» ҮРГЭЛЖ хоосон байв. Текст ЭЦЭГТ — Esc/ард дарж хаахад устахгүй (`flowTxt`-ийн дүрэм).
+   */
+  const [ajBox, setAjBox] = useState(false);
+  const [ajTxt, setAjTxt] = useState('');
+  /**
    * БАТЛАХ ЯВЦАД — батлагдаж буй илгээлтийн `oid`.
    * ⚠️ `save` нь ноорогийг React төлөвөөс уншдаг тул агуулгыг буулгасны ДАРАА,
    *    дараагийн зурагдалтад бичилтийг гүйцэтгэнэ (`useEffect` доор).
@@ -765,7 +774,9 @@ export function Huvaari({
          хяналт/бүтэн дэлгэц хаагддаг байв. */
       if (e.key !== 'Escape' || e.defaultPrevented || keyIgnored(e.target) || document.querySelector('[role="dialog"]')) return;
       if (isReview) {
-        if (!escBlockRef.current && confirmDropMarks(okNRef.current)) reviewCloseRef.current?.();
+        if (escBlockRef.current) return;
+        /* ⚠️ 2026-10-23: асуулт async — хариулах зуур явц эхэлсэн бол (`escBlockRef`) хаахгүй */
+        void confirmDropMarks(okNRef.current).then((ok) => { if (ok && !escBlockRef.current) reviewCloseRef.current?.(); });
       } else setWide(false);
     };
     window.addEventListener('keydown', esc);
@@ -1087,7 +1098,7 @@ export function Huvaari({
       return tr('«{0}» табын хүлээгдэж буй илгээлт шалгагдсангүй ({1}) — бодит огноо · нөөц · уялдаа · сарын обьёмын ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab, friendlyError(e));
     }
     const names: string[] = [];
-    const nm = (r: SheetRow | undefined, fb: string) => (r ? `${r.no ?? '—'} · ${r.work ?? ''}` : fb);
+    const nm = (r: SheetRow | undefined, fb: string) => (r ? `${r.no ?? '—'} · ${fixCyr(r.work) ?? ''}` : fb);
     for (const o of oids) {
       const r = rows.find((x) => x.oid === o);
       if (xLockHit(st, o, r?.des ?? null)) names.push(nm(r, String(o)));
@@ -1749,7 +1760,7 @@ export function Huvaari({
   const groups = useMemo(
     () => plan.filter((r) => r.group).map((r) => ({
       oid: r.oid,
-      label: `${'  '.repeat(r.depth)}${r.no} ${r.work}`.trimEnd(),
+      label: `${'  '.repeat(r.depth)}${r.no} ${workName(r)}`.trimEnd(),
     })),
     [plan],
   );
@@ -2442,6 +2453,30 @@ export function Huvaari({
     setNote(tr('Өөрчлөлт дахин хийгдлээ.'));
   }, [redoSnap, busy, locked, canEdit, drag, invOf, applySnap, setNote, setUndoSnap, setChainN]);
   const undoLastRef = useLatest(undoLast);
+  /*
+   * ⚠️ 2026-10-23 (засвар): «Арилгах»-ын «↶ Буцаах» — ЗӨВХӨН ТЭР арилгалтыг буцаана. Урьд нь шууд `undoLast` (Ctrl+Z) байсан
+   *    тул мэдэгдэл ил байх 6 с-д өөр засвар хийсэн / Ctrl+Z дарсан / арилгалт агшин үүсгээгүй бол ӨӨР өөрчлөлт буцдаг байв.
+   *    `onApply`-аас ӨМНӨ дуудагдаж стекийн одоогийн хэлбэрийг тэмдэглэнэ; commit-ийн дараа шинэ оройн агшныг «минийх»
+   *    гэж барина (нийлүүлсэн бол нийлсэн орой — Ctrl+Z ч тэгж буцаана). Товшиход орой хэвээр бол л буцаана.
+   */
+  const undoStkRef = useLatest(undoStk);
+  const markUndo = useCallback((): (() => void) => {
+    const before = undoStkRef.current.u;
+    let mine: UndoSnap | null | undefined;
+    const grab = () => {
+      if (mine !== undefined) return;
+      const u = undoStkRef.current.u;
+      const top = u.length ? u[u.length - 1] : null;
+      mine = top && !before.includes(top) ? top : null;
+    };
+    setTimeout(grab, 0);
+    return () => {
+      grab();
+      const u = undoStkRef.current.u;
+      if (mine && u.length && u[u.length - 1] === mine) undoLastRef.current();
+      else setNote(tr('Энэ арилгалтыг буцаах боломжгүй — дараа нь өөр өөрчлөлт орсон байна. Ctrl+Z-ээр дарааллаар нь буцаана уу.'));
+    };
+  }, [undoStkRef, undoLastRef, setNote]);
   const redoLastRef = useLatest(redoLast);
 
   /**
@@ -3331,7 +3366,7 @@ export function Huvaari({
            үлдсэнийг бичээд «батлагдлаа» гэж үргэлжилж, алдагдсан мөрийн санал ор мөргүй
            алга болдог байв. */
         if (lost && approvalMode) {
-          setErr(tr('{0} мөр шинэ агшинд олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Эх хуудсанд юу ч бичигдсэнгүй; буцааж, зохиогч дахин илгээнэ.', num(lost)));
+          setErr(tr('{0} мөр хуудасны шинэ хувилбарт олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Эх хуудсанд юу ч бичигдсэнгүй; буцааж, зохиогч дахин илгээнэ.', num(lost)));
           return false;
         }
         upd.length = 0;
@@ -3597,7 +3632,7 @@ export function Huvaari({
         setObState('ok'); obLoadedRef.current = true;
       } catch { /* задаргаагүйгээр үргэлжилнэ */ }
       setNote(remapped
-        ? tr('{0} ажлын хуваарь хадгалагдлаа — хуудас хооронд нь шинэчлэгдсэн тул шинэ агшинд зөөв', num(upd.length))
+        ? tr('{0} ажлын хуваарь хадгалагдлаа — хуудас хооронд нь шинэчлэгдсэн тул шинэ хувилбарт зөөв', num(upd.length))
         : obN
           ? tr('{0} ажлын хуваарь · {1} сарын обьём хадгалагдлаа', num(upd.length), num(obN))
           : tr('{0} ажлын хуваарь хадгалагдлаа', num(upd.length)));
@@ -3607,10 +3642,10 @@ export function Huvaari({
       const errs: { msg: string; oid?: number }[] = [];
       if (lost) {
         /* ⚠️ 2026-10-06: аль мөр гэдгийг «№ · ажил»-аар нэрлэнэ — ноорог нь үлдсэн (дээрх ⚠️) */
-        errs.push({ msg: tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)) });
+        errs.push({ msg: tr('{0} мөр хуудасны шинэ хувилбарт олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)) });
         for (const o of lostOids) {
           const r0 = rows.find((x) => x.oid === o);
-          errs.push({ msg: tr('Ноорогт үлдсэн: {0}', r0 ? `${r0.no ?? '—'} · ${r0.work ?? ''}` : String(o)), oid: o });
+          errs.push({ msg: tr('Ноорогт үлдсэн: {0}', r0 ? `${r0.no ?? '—'} · ${fixCyr(r0.work) ?? ''}` : String(o)), oid: o });
         }
       }
       if (reloadFail) errs.push({ msg: tr('Хадгалагдсан боловч хуудсыг дахин уншиж чадсангүй — хуудсаа сэргээнэ үү.') });
@@ -3625,7 +3660,8 @@ export function Huvaari({
       if (resSkipped && rfUnknown) {
         errs.push({ msg: tr('Сарын хүснэгтийн хүн хүч/машин талбарыг шалгаж чадсангүй — {0} ажил·блокийн сарын нөөц хадгалагдсангүй. Дахин оролдоно уу.', num(resSkipped)) });
       } else if (resSkipped) {
-        errs.push({ msg: tr('{0} ажил·блокийн сарын хүн хүч/машин механизм хадгалагдсангүй — сарын хүснэгтэд «hun_huch»/«mashin_mehanizm» талбар алга. Админ AGOL дээр нэмнэ үү.', num(resSkipped)) });
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан · талбарын техник нэрийг хэрэглэгчид харуулахгүй */
+          errs.push({ msg: tr('{0} ажил·блокийн сарын хүн хүч/машин механизм хадгалагдсангүй — сарын хүснэгтэд энэ талбар алга. Админд мэдэгдэнэ үү.', num(resSkipped)) });
       }
       /* ⚠️ Мужаас гадуурх сарын нөөц хаягдсаныг ил хэлнэ (2026-09-24 аудит) */
       if (resDropped) {
@@ -3733,9 +3769,9 @@ export function Huvaari({
       if (!ready) setFlowReady(false);
       setFlowWhy(ready ? '' : (
         st.why === 'auth'
-          ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+          ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
           : st.why === 'owner'
-            ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+            ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
             /* ⚠️ 2026-10-01: түүхий дэлгэрэнгүйг («Token Required») ойлгомжтой болгоно */
             : st.why === 'error'
               ? tr('Порталын хайлт амжилтгүй: {0}', friendlyError({ message: st.detail ?? '' }))
@@ -3957,7 +3993,7 @@ export function Huvaari({
     /* ⚠️ 2026-10-21: ТАСАРСАН ЖААЗЫН ОРОНД ХУУЧИН АГШИН (`frameOld`) дээр ИЛГЭЭХГҮЙ — баннер «батлах/хадгалах
        боломжгүй» гэдэг атлаа илгээлт нээлттэй байв (батлагч ч `frameOld`-д батлахгүй). */
     if (frameOld) {
-      setErr(tr('Хуудасны сүүлийн агшин тасарсан тул илгээх боломжгүй — хуучин агшин ({0}) харагдаж байна. Агшин цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.', frameOld.shownDay));
+      setErr(tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул илгээх боломжгүй — өмнөх хувилбар ({0}) харагдаж байна. Цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.', frameOld.shownDay));
       return;
     }
     /* ⚠️ 2026-10-12 (аудит №8): ӨМНӨХ үйлдлийн жагсаалт (хадгалалт · зөрчил) АМЖИЛТТАЙ илгээлтийн дараа ч үлдэж, шинэ
@@ -3970,7 +4006,7 @@ export function Huvaari({
       const byOid0 = new Map(plan.map((r) => [r.oid, r]));
       const longs = [...ham].filter(([, t]) => t.trim().length > HAM_MAX).map(([o, t]) => {
         const r = byOid0.get(o);
-        return { msg: `${r ? `${r.no} ${r.work}`.trim() : String(o)} (${num(t.trim().length)} > ${num(HAM_MAX)})`, oid: o };
+        return { msg: `${r ? `${r.no} ${fixCyr(r.work)}`.trim() : String(o)} (${num(t.trim().length)} > ${num(HAM_MAX)})`, oid: o };
       });
       if (longs.length) {
         setErr(tr('{0} мөрийн уялдааны бичиглэл {1} тэмдэгтээс урт — илгээгдсэнгүй. Блок тус бүрийн уялдааг цөөлөх эсвэл бүх блокт нэг уялдаа болгоно уу.', num(longs.length), String(HAM_MAX)));
@@ -3995,7 +4031,7 @@ export function Huvaari({
         const items = [...unbalRows].map(([o, bs]) => {
           const r = byOid.get(o);
           const bn = (sc?.bld.length ?? 0) > 1 ? ` (${bs.map((b) => sc?.bld[b] ?? String(b + 1)).join(', ')})` : '';
-          return { msg: `${r ? `${r.no} ${r.work}`.trim() : String(o)}${bn}`, oid: o, b: bs[0] };
+          return { msg: `${r ? `${r.no} ${fixCyr(r.work)}`.trim() : String(o)}${bn}`, oid: o, b: bs[0] };
         });
         setErrList([{ msg: tr('Тэнцээгүй {0} мөр — дарж тухайн ажил руу очно:', num(items.length)) }, ...items.slice(0, 30),
           ...(items.length > 30 ? [{ msg: tr('… ба {0}', num(items.length - 30)) }] : [])]);
@@ -4256,7 +4292,7 @@ export function Huvaari({
   /* ══════════════════ НЭМЭЛТ АЖИЛ — урсгал (2026-09-24; `useAjil`) ══════════════════ */
   const {
     addFor, setAddFor, addForm, setAddForm, ajSub, ajEdit, editAdd, setEditAdd,
-    ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, setAjBack, ajStuck, ajApplied,
+    ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, dismissAjBack, ajStuck, ajApplied,
     refreshAfterApplied, sendAjil, editAjilHere, saveAjilEdit, cancelAjilEdit,
     withdrawAjilHere, saveEditAdd, addRow, dropAdd,
     /* ⚠️ 2026-10-22 (аудит №3): эцэггүй нэмэлт мөр — баннер (устгах · бүлэг сонгох) ба илгээх товчны хаалт */
@@ -4284,7 +4320,7 @@ export function Huvaari({
    */
   const withdraw = useCallback(async () => {
     if (!pending || busy || !isOwnSubmission) return;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулга нь ноорог болж буцна.'))) return;
+    if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулга нь ноорог болж буцна.'), { ok: tr('Илгээлтээ татах') }))) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const oid = pending.oid;
@@ -4397,8 +4433,8 @@ export function Huvaari({
       if (back && ap.ok) {
         /* ⚠️ 2026-10-12 (аудит №8): төрлөөс үл хамаарах «хуваарь» — гэрээний буцаалтыг «төлөвлөгөө» гэдэг байв */
         setNote((lastDecision.okRows
-          ? tr('Буцаагдсан хуваарь засварт орлоо — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
-          : tr('Буцаагдсан хуваарь засварт орлоо — засаад дахин илгээнэ үү.'))
+          ? tr('Буцаасан хуваарь засварт орлоо — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
+          : tr('Буцаасан хуваарь засварт орлоо — засаад дахин илгээнэ үү.'))
           /* ⚠️ Зэрэгцээ өөрчлөлтийн тоог НУУХГҮЙ (татсан замтай ижил) */
           + (ap.conflicts ? ` ${tr('{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.', num(ap.conflicts))}` : '') + lostTxt);
         return;
@@ -4555,7 +4591,7 @@ export function Huvaari({
         if (!canApprove) { setErr(tr('Энэ багцын хуваарийг батлах эрхгүй.')); return; }
         /* ⚠️ 2026-10-12 (аудит №8): хуучин (тасарсан жаазын оронд) агшин дээр харсан саналыг батлахгүй (`frameOld`-ийн ⚠️) */
         if (frameOld) {
-          setErr(tr('Хуудасны сүүлийн агшин тасарсан тул батлах боломжгүй — хуучин агшин ({0}) дээр харсан санал. Агшин цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay));
+          setErr(tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул батлах боломжгүй — өмнөх хувилбар ({0}) дээр харсан санал. Цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay));
           setFlowBox(null);
           return;
         }
@@ -5056,7 +5092,7 @@ export function Huvaari({
     const byOid = new Map(plan.map((r) => [r.oid, r]));
     const bad = !reviewLive ? [] : reviewOids.filter((o) => !okRows.has(o))
       .map((o) => byOid.get(o)).filter((r): r is PlanRow => !!r);
-    const list = bad.slice(0, 12).map((r) => `${r.no} ${r.work}`.trim()).join('; ')
+    const list = bad.slice(0, 12).map((r) => `${r.no} ${fixCyr(r.work)}`.trim()).join('; ')
       + (bad.length > 12 ? ` … (+${bad.length - 12})` : '');
     /* ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ текст МОНГОЛ ЭХЭЭР (`tr()`-гүй, тоо `String`-ээр) — урьд нь батлагчийн хэлээр
        орчуулагдаж (англи батлагч → англи шалтгаан) бичигддэг тул монгол зохиогч англиар уншдаг байв. Харуулахдаа
@@ -5426,7 +5462,8 @@ export function Huvaari({
   /* ⚠️ 2026-10-09: «БОЛИХ» САЛАА ХҮРЭГДЭХ БОЛОВ — урьд нь бүлгийн мөр өөрөө өөрчлөгдсөн (`self`) бөгөөд бүх навч ногоон
      үед `toggleOk` зөвхөн бүлгийн мөрийг сэлгэж, навчдын зөвшөөрлийг бөөнөөр болих зам огт байгаагүй. Одоо: аль нэг
      нь (навч эсвэл бүлэг өөрөө) ногоон биш → бүгдийг зөвшөөрнө; бүгд ногоон → бүгдийн зөвшөөрлийг болино. */
-  const markGroup = (r: PlanRow) => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): async — `askConfirm`; хариулах зуур `okRows` өөрчлөгдөж болох тул функцэн setState хэвээр */
+  const markGroup = async (r: PlanRow) => {
     if (busy || approving != null) return;
     const leaves = grpLeaf.get(r.oid) ?? [];
     const self = reviewSet.has(r.oid);
@@ -5435,20 +5472,23 @@ export function Huvaari({
     const selfPend = self && !okRows.has(r.oid);
     if (pend.length || selfPend) {
       const n2 = pend.length + (selfPend ? 1 : 0);
-      if (!window.confirm(tr('«{0}» бүлгийн {1} мөрийг зөвшөөрөх үү?', r.work, num(n2)))) return;
+      if (!(await askConfirm(tr('«{0}» бүлгийн {1} мөрийг зөвшөөрөх үү?', workName(r), num(n2)), { ok: tr('Зөвшөөрөх') }))) return;
       setOkRows((s0) => { const m = new Set(s0); for (const o of pend) m.add(o); if (self) m.add(r.oid); return m; });
       return;
     }
     const n3 = leaves.length + (self ? 1 : 0);
-    if (!window.confirm(tr('«{0}» бүлгийн {1} мөрийн зөвшөөрлийг болих уу?', r.work, num(n3)))) return;
+    if (!(await askConfirm(tr('«{0}» бүлгийн {1} мөрийн зөвшөөрлийг болих уу?', workName(r), num(n3)), { ok: tr('Зөвшөөрлийг болих') }))) return;
     setOkRows((s0) => { const m = new Set(s0); for (const o of leaves) m.delete(o); if (self) m.delete(r.oid); return m; });
   };
-  /** НӨГӨӨ ТАБЫН огнооны нүд дээр дарахад — асууж табаа солино (2026-10-08, `TaskRow.onOtherTab`) */
+  /**
+   * НӨГӨӨ ТАБЫН огнооны нүд дээр дарахад табаа солино (2026-10-08, `TaskRow.onOtherTab`).
+   * ⚠️ 2026-10-23 (UX аудит P7): «шилжих үү?» асуултыг ХАСАВ — шилжилт юу ч устгадаггүй (хадгалаагүй засвартай бол
+   *    `runSwitch` → `askSwitch` өөрөө асууна/хадгална). Шилжсэнийг мэдэгдлээр хэлнэ.
+   */
   const otherTab = () => {
     const other: PlanKind = kind === 'plan' ? 'geree' : 'plan';
     const lab = other === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
-    if (!window.confirm(tr('«{0}» табд засна — шилжих үү?', lab))) return;
-    runSwitch(() => setKind(other));
+    runSwitch(() => { setKind(other); setNote(tr('«{0}» таб руу шилжлээ — огноог эндээс засна.', lab)); });
   };
   /**
    * ХУРДАН ТОВЧЛУУР (2026-10-08): Ctrl/⌘+Z — сүүлийн өөрчлөлт буцаах; хяналтад `]` — дараагийн ✕,
@@ -5720,7 +5760,7 @@ export function Huvaari({
       if (r.des == null || blocked.has(r.des) || hierRelated(plan, modalRow.i, r.i)) continue;
       out.push({
         code: r.des,
-        label: `${r.des} · ${'· '.repeat(r.depth)}${r.work || r.no}`,
+        label: `${r.des} · ${'· '.repeat(r.depth)}${fixCyr(r.work) || r.no}`,
       });
     }
     return out;
@@ -5755,6 +5795,16 @@ export function Huvaari({
         style={{ top: k * PL_ROW, height: PL_ROW }}
         title={sub ? tr('Дарж «{0}» блок руу орж засна', who) : undefined}
         onClick={sub ? () => pickBlk(r.oid, b) : () => setSel(r.oid)}
+        /* ⚠️ 2026-10-23 (UX аудит P9): ГАРААР ч сонгоно — урьд нь зөвхөн хулганаар (Tab-аар хүрч Enter/Space) */
+        role="button"
+        tabIndex={0}
+        aria-label={sub ? tr('Дарж «{0}» блок руу орж засна', who) : `${workName(r)} · ${who}`}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          if (e.target !== e.currentTarget) return;
+          e.preventDefault();
+          if (sub) pickBlk(r.oid, b); else setSel(r.oid);
+        }}
       >
         {act?.start != null && (() => {
           const as0 = act.start;
@@ -5771,8 +5821,8 @@ export function Huvaari({
           <div
             className={`${h.plBar} ${sub ? h.plBarSub : ''} ${cls} ${sel === r.oid && (!sub || b === blk) ? h.tlBarOn : ''}`}
             style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
-            aria-label={`${r.work || r.no} · ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
-            title={`${r.work}
+            aria-label={`${fixCyr(r.work) || r.no} · ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
+            title={`${fixCyr(r.work)}
 ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))})${sub && !r.group ? ` · ${stText(st)}` : ''}`}
           >
             {w > 250 ? (
@@ -6072,7 +6122,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <button key={c} type="button"
                 className={`${h.chipFilter} ${chips.has(c) ? h.chipFilterOn : ''}`}
                 aria-pressed={chips.has(c)}
-                title={c === 'dirty' ? tr('Зөвхөн хадгалаагүй ноорогтой мөр')
+                title={c === 'dirty' ? tr('Зөвхөн илгээгээгүй ноорогтой мөр')
                   : c === 'viol' ? tr('Зөвхөн уялдааны зөрчилтэй мөр (идэвхтэй блок)')
                     : c === 'unbal' ? tr('Зөвхөн сарын обьём нь нийт обьёмтой тэнцээгүй мөр (бүх блок) — илгээхээс өмнө засна')
                       : tr('Зөвхөн хоцорсон мөр (идэвхтэй блок)')}
@@ -6266,9 +6316,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <>
                 {' · '}
                 <button type="button" className={h.dirtyTag} aria-pressed={chgOpen}
-                  title={tr('Хадгалаагүй өөрчлөлтийн жагсаалт — мөр рүү үсэрнэ')}
+                  title={tr('Батлуулахаар илгээгээгүй өөрчлөлтийн жагсаалт — мөр рүү үсэрнэ')}
                   onClick={() => setChgOpen((v) => !v)}>
-                  {tr('хадгалаагүй')} {num(dirtyRows)}
+                  {/* ⚠️ 2026-10-23 (UX аудит P4): «хадгалаагүй» биш — ноорог автоматаар хадгалагддаг, энэ нь ИЛГЭЭГЭЭГҮЙ тоо */}
+                  {tr('илгээгээгүй')} {num(dirtyRows)}
                 </button>
               </>
             ) : null}
@@ -6373,8 +6424,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
              өөрчлөлт гарна — хадгалахаас өмнө бүгдийг нэг товчоор цуцлах
              боломжгүй бол хэрэглэгч хуудсаа дахин ачаалахаас өөр аргагүй. */
           <button type="button" className={h.discard} disabled={busy}
-            title={tr('Хадгалаагүй бүх өөрчлөлтийг хаяна — хуваалцсан ноорог БҮХ оролцогчид устна')}
-            onClick={() => {
+            title={tr('Илгээгээгүй бүх өөрчлөлтийг хаяна — хуваалцсан ноорог БҮХ оролцогчид устна')}
+            onClick={async () => {
               /* ⚠️ Олон өөрчлөлтийг нэг товшилтоор алдахгүй (2026-09-23): 3-аас
                  дээш бол баталгаажуулна; цөөнд нь асуулт саад болно. */
               /* ⚠️ Хуваалцсан ноорог (2026-09-24): хоосорсныг дифф → `hdFlush` алсыг
@@ -6387,7 +6438,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): асуултын тоо = ТОВЧНЫ тоо (`dirtyRows`,
                  өөрчлөгдсөн мөр). Урьд нь `dirtyN` (сарын нүд бүрийг тоолдог) байсан тул
                  товч «(3)» гэж байхад асуулт «12 өөрчлөлт» гэж зөрдөг байв. */
-              if (!window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others))) return;
+              /* ⚠️ 2026-10-23 (UX аудит P4): «Хадгалаагүй» → «Илгээгээгүй» — ноорог хуваалцсан мөрөнд АВТОМАТААР хадгалагддаг;
+                 тоолж буй нь батлуулахаар илгээгээгүй өөрчлөлт. X1: аппын дотоод асуулт. */
+              if (!(await askConfirm(tr('Илгээгээгүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others), { danger: true, ok: tr('Ноорог хаях') }))) return;
               /* ⚠️ 2026-10-04 аудит: Map-уудыг хоослохоос ӨМНӨ — дэлгэц дээрх нүдийг локалд СИНХРОН
                  tombstone болгож (шууд F5 дарвал амилахгүй), алсад read-merge-write-аар хаана. */
               hdDiscard();
@@ -6432,7 +6485,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             title={ajOrphans.length > 0
               ? orphanAddsMsg(ajOrphans.length)
               : tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
-            onClick={() => void sendAjil()}>
+            /* ⚠️ 2026-10-23 (UX аудит P3): шууд илгээхгүй — тайлбартай цонх (`ajBox`) нээнэ */
+            onClick={() => { setAjErr(''); setAjBox(true); }}>
             {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
           </button>
         )}
@@ -6446,7 +6500,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             title={flowReady === false
               ? (flowWhy || tr('Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.'))
               : frameOld
-                ? tr('Хуудасны сүүлийн агшин тасарсан тул илгээх боломжгүй — хуучин агшин ({0}) харагдаж байна. Агшин цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.', frameOld.shownDay)
+                ? tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул илгээх боломжгүй — өмнөх хувилбар ({0}) харагдаж байна. Цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.', frameOld.shownDay)
               : obNotReady
                 ? (obState === 'loading'
                   ? tr('Сарын обьёмын хүснэгт уншигдаж байна — дуусмагц илгээнэ үү.')
@@ -6595,7 +6649,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     : obOut.bad > 0
                       ? obOutMsg
                       : tr('Батлахад хуваарь эх хуудсанд бичигдэнэ.')}
-              onClick={() => { if (window.confirm(tr('Хуваарийг батлах уу? Эх хуудсанд бичигдэнэ.'))) void decide(true, ''); }}>
+              onClick={async () => { if (await askConfirm(tr('Хуваарийг батлах уу? Эх хуудсанд бичигдэнэ.'), { ok: tr('Батлах') })) void decide(true, ''); }}>
               {tr('Батлах')}
             </button>
             {/* ⚠️ 2026-10-12 (аудит №8): эхлэл унасан бол дахин оролдох (`reviewRetry`-ийн ⚠️) */}
@@ -6608,7 +6662,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             )}
             <button type="button" className={h.discard} disabled={busy || approving != null}
               title={tr('Шийдвэргүй хаана (Esc)')}
-              onClick={() => { if (confirmDropMarks(okRows.size)) review.onClose(); }}>
+              onClick={() => { void confirmDropMarks(okRows.size).then((ok) => { if (ok) review.onClose(); }); }}>
               ✕ {tr('Хаах')}
             </button>
             {/* ⚠️ 2026-09-30: «Батлах»/«Буцаах» хаалттай ШАЛТГААН ИЛ мөрөөр (5784-ийн
@@ -6761,7 +6815,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 </span>
               )}
               <button type="button" className={h.rowMain} title={tr('Мөр рүү үсрэх')} onClick={() => goToRow(c.oid, c.b0)}>
-                <b>{c.no} {c.work}</b>
+                <b>{c.no} {fixCyr(c.work)}</b>
                 <span className={h.muted}>{chgText(c)}</span>
               </button>
             </div>
@@ -6826,8 +6880,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       )}
       {ajBack && (
         <p className={h.err} role="alert">
-          {tr('Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', String(ajBack.n), ajBack.by || '—', ajBack.reason || '—')}
-          <button type="button" className={h.noteX} onClick={() => setAjBack(null)} aria-label={tr('Хаах')}>×</button>
+          {/* ⚠️ 2026-10-23 (UX аудит P1): шалтгаан ТҮҮХЭЭС дахин гарна (`useAjil.refreshAjil`) — «×» дарвал энэ хөтөч санана */}
+          {tr('Нэмэлт ажил буцаасан ({0} мөр, {1}, {2}): {3} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', String(ajBack.n), ajBack.by || '—', ajBack.at != null ? dayKey(ajBack.at) : '—', ajBack.reason || '—')}
+          <button type="button" className={h.noteX} onClick={dismissAjBack} aria-label={tr('Хаах')}>×</button>
         </p>
       )}
       {/* ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ НЭМЭЛТ МӨР — эцэг бүлэг нь хуудсанд алга тул хүснэгтэд ХАРАГДАХГҮЙ (`insertAdds`
@@ -6839,19 +6894,20 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           <ul>
             {ajOrphans.map((a) => (
               <li key={a.oid}>
-                {a.no} · {a.work} ({tr('эцэг: {0}', `${a.parentNo} ${a.parentWork}`.trim() || '—')})
+                {a.no} · {fixCyr(a.work)} ({tr('эцэг: {0}', `${a.parentNo} ${fixCyr(a.parentWork)}`.trim() || '—')})
                 {' '}
                 <select className={h.select} value="" disabled={ajBusy}
                   aria-label={tr('Бүлэг сонгох')}
                   onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && e.target.value) setAddParent(a.oid, v); }}>
                   <option value="">{tr('Бүлэг сонгох…')}</option>
                   {rows.filter((r) => r.group).map((r) => (
-                    <option key={r.oid} value={r.oid}>{`${'· '.repeat(Math.max(0, r.depth))}${r.no} ${r.work}`.trim()}</option>
+                    <option key={r.oid} value={r.oid}>{`${'· '.repeat(Math.max(0, r.depth))}${r.no} ${fixCyr(r.work)}`.trim()}</option>
                   ))}
                 </select>
                 {' '}
                 <button type="button" className={h.noteBtn} disabled={ajBusy}
-                  onClick={() => { if (window.confirm(tr('«{0}» мөрийг устгах уу? Батлуулаагүй мөр тул буцаах боломжгүй.', `${a.no} ${a.work}`.trim()))) dropAdd(a.oid); }}>
+                  /* ⚠️ 2026-10-23 (UX аудит P2): асуултгүй — `dropAdd` «↶ Буцаах» мэдэгдэлтэй (хүснэгтийн «×»-тэй НЭГ зам) */
+                  onClick={() => dropAdd(a.oid)}>
                   {tr('Устгах')}
                 </button>
               </li>
@@ -6888,7 +6944,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 onClick={() => runSwitch(() => setPkg(p))}>
                 {p.label}
                 {' · '}
-                {x.status === 'returned' ? tr('буцаагдсан') : tr('батлагдсан')}
+                {x.status === 'returned' ? tr('буцаасан') : tr('батлагдсан')}
                 {x.kind === 'geree' ? ` · ${tr('Гэрээ')}` : ''}
               </button>
             );
@@ -6998,7 +7054,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         <p className={h.err} role="status" style={{ whiteSpace: 'pre-line' }}>
           {/* ⚠️ 2026-09-29 (хэрэглэгч: «буцаасан шалтгаан зохиогчид харагдахгүй байна»):
               шалтгааныг ТУСДАА мөрөнд, шошготой, тодоор — урт мэдэгдлийн дунд уусдаг байв. */}
-          <b>{tr('Хуваарь буцаагдсан')}</b>
+          <b>{tr('Хуваарь буцаасан')}</b>
           {` · ${lastDecision.approver ?? '—'} · ${lastDecision.approverAt == null ? '—' : dayKey(lastDecision.approverAt)}`}
           {'\n'}
           <b>{tr('Буцаасан шалтгаан')}: </b>
@@ -7018,9 +7074,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <button type="button" className={h.noteBtn} disabled={busy || dirtyN > 0} onClick={() => void restoreWithdrawn()}
                 title={dirtyN > 0
                   ? tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))
-                  : tr('Буцаагдсан хуваарийг хуанлид буулгаж засна — зөвшөөрөгдөөгүй мөр УЛААН, зөвшөөрсөн нь НОГООН')}>
+                  : tr('Буцаасан хуваарийг хуанлид буулгаж засна — зөвшөөрөгдөөгүй мөр УЛААН, зөвшөөрсөн нь НОГООН')}>
                 {/* ⚠️ 2026-10-12 (аудит №8): «хуваарь» — гэрээний буцаалтад ч (төрөл табаар илэрхий) */}
-                {tr('Буцаагдсан хуваарийг засах')}
+                {tr('Буцаасан хуваарийг засах')}
               </button>
               {dirtyN > 0 && !backOn && ` ${tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))}`}
             </>
@@ -7090,7 +7146,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       {/* ⚠️ 2026-10-12 (аудит №8): ТАСАРСАН ЖААЗЫН ОРОНД ХУУЧИН АГШИН (`frameOld`-ийн ⚠️) — ил хэлж, батлах/хадгалах хаалттай */}
       {frameOld && (
         <p className={h.err} role="alert">
-          {tr('Хуудасны сүүлийн агшин ({0}) тасарсан тул өмнөх бүтэн агшныг ({1}) харуулж байна. Энэ үед батлах/хадгалах боломжгүй — гүйцэтгэлийн батлалт агшныг цэвэрлэсний дараа хуудсаа сэргээнэ үү.', frameOld.day, frameOld.shownDay)}
+          {tr('Хуудасны сүүлийн хувилбар ({0}) бүрэн хадгалагдаагүй тул өмнөх бүтэн хувилбарыг ({1}) харуулж байна. Энэ үед батлах/хадгалах боломжгүй — гүйцэтгэлийн батлалт түүнийг цэвэрлэсний дараа хуудсаа сэргээнэ үү.', frameOld.day, frameOld.shownDay)}
         </p>
       )}
 
@@ -7100,7 +7156,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         /* ⚠️ 2026-10-01: ачаалах алдаа — `Data`-гийн нэг загвар (тайлбар · техникийн мөр · дахин оролдох) */
         <Data q={{ state: 'error', data: null, error: loadErr, retry: () => setReloadN((n) => n + 1) }}>{() => null}</Data>
       ) : !sc || !rows.length ? (
-        <Empty label={tr('Энэ багцад мөр олдсонгүй.')} />
+        /* ⚠️ 2026-10-23 (UX аудит X6): ЯАГААД · ЮУ ХИЙХ */
+        <Empty label={tr('Энэ багцад мөр олдсонгүй.')}
+          hint={tr('Энэ багцын бөглөх хуудас хоосон байна — өөр багц сонгоно уу, эсвэл админд мэдэгдэнэ үү.')} />
       ) : (
         /* ⚠️ `title`/`note` ӨГӨХГҮЙ — толгойн мөр нь дээрх нэгтгэсэн зурваст
            уусав. `Section` нь `title`-гүй үед header-ээ огт зурдаггүй. */
@@ -7202,7 +7260,18 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </div>
           )}
           {visible.length === 0 ? (
-            !hdRestoringUi && <Empty label={tr('Мөр алга.')} />
+            /* ⚠️ 2026-10-23 (UX аудит X6): шүүлтээс болсон бол ИЛ хэлж, нэг товчоор арилгана */
+            !hdRestoringUi && (filtOn || fGrp !== 'all'
+              ? (
+                <Empty label={tr('Шүүлтэнд тохирох мөр алга.')}
+                  hint={(
+                    <button type="button" className={h.noteBtn}
+                      onClick={() => { setFilter('all'); setFYear('all'); setChips(new Set()); setFGrp('all'); }}>
+                      {tr('Шүүлт арилгах')}
+                    </button>
+                  )} />
+              )
+              : <Empty label={tr('Мөр алга.')} />)
           ) : (
             <div className={`${h.gWrap}${hdRestoringUi ? ` ${h.gWrapGated}` : ''}`} ref={scrollRef} onScroll={onScroll}
               aria-hidden={hdRestoringUi || undefined} inert={hdRestoringUi}>
@@ -7405,7 +7474,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                        «энэ бүлгийн N мөрийг зөвшөөрөх үү?» (`markGroup`, баталгаажуулалттай — `grpLeaf`-ийн ⚠️) */
                     mark={markOf(r) ?? (marking && r.group ? grpMark(r.oid) : undefined)}
                     onMark={marking && (markOf(r) || (r.group && grpMark(r.oid)))
-                      ? () => (r.group ? markGroup(r) : toggleOk(r.oid)) : undefined}
+                      ? () => { if (r.group) void markGroup(r); else toggleOk(r.oid); } : undefined}
                   >
                     {/* ⚠️ 2026-10-09: САРЫН ОБЬЁМ ТЭНЦЭЭГҮЙ мөрийн тэмдэг (`unbalRows`) — мөрийн баруун захад, өндөр
                         хөдлөхгүй (`.row` нь `position: relative`); дарахад тухайн ажлын цонх (тэнцээгүй эхний блок). */}
@@ -7573,8 +7642,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                                 setSel(r.oid);
                                 setModal(r.oid);
                               }}
-                              aria-label={`${r.work || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
-                              title={`${r.work}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
+                              aria-label={`${fixCyr(r.work) || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
+                              title={`${fixCyr(r.work)}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
                             >
                               {/* ⚠️ Бариул нь зөвхөн АЖЛЫН зурваст: бүлгийнх
                                   бодогдох тул сунгах утгагүй. */}
@@ -7612,7 +7681,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               {!half && spanDays(sp) * px > 100 ? (
                                 <span className={`${h.plBarLab} ${h.plBarTwo}`}>
                                   {spanDays(sp) * px > 250 && (
-                                    <span className={h.plBarName}>{r.work || r.no}</span>
+                                    <span className={h.plBarName}>{fixCyr(r.work) || r.no}</span>
                                   )}
                                   <span className={h.plBarWhen}>
                                     <span>{msToDay(sp.start)}</span>
@@ -7621,7 +7690,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                                 </span>
                               ) : spanDays(sp) * px > 250 ? (
                                 <span className={h.plBarLab}>
-                                  <span className={h.plBarName}>{r.work || r.no}</span>
+                                  <span className={h.plBarName}>{fixCyr(r.work) || r.no}</span>
                                   <span className={h.plBarWhen}>
                                     {msToDay(sp.start)}→{msToDay(sp.end)} · {spanDays(sp)}{tr('х')}
                                   </span>
@@ -7795,6 +7864,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           onKeep={keepDragClose}
           /* ⚠️ 2026-10-09: бүлгийн мөрд «Бүлгийг шилжүүлэх» (`shiftGroup`) */
           onShiftGroup={modalRow.group ? (d, bs) => shiftGroup(modalRow.oid, d, bs) : undefined}
+          /* ⚠️ 2026-10-23 (UX аудит P7): «Арилгах»-ын «↶ Буцаах» — тэр арилгалтын агшинд уягдсан (`markUndo`-ийн ⚠️) */
+          onUndo={markUndo}
           /* ⚠️ 2026-10-07: нүднээс нээгдсэн бол хаахад фокус тэр мөрийн нэрийн товч руу (`modalFrom`) */
           returnFocus={modalFrom === modalRow.oid
             ? () => document.querySelector<HTMLElement>(`[data-oid="${modalRow.oid}"] .${h.rowMain}`)
@@ -7874,7 +7945,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <ul className={h.chgPanel} aria-label={tr('Илгээгдэх өөрчлөлт')}>
                 {changes.slice(0, 50).map((c) => (
                   <li key={c.oid} className={h.chgItem}>
-                    <b>{c.no} {c.work}</b>{' '}
+                    <b>{c.no} {fixCyr(c.work)}</b>{' '}
                     <span className={h.muted}>{chgText(c)}</span>
                   </li>
                 ))}
@@ -7918,15 +7989,15 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             : previewBad === pending.oid
               ? tr('Санал одоогийн хуваарьтай зөрчилдсөн эсвэл агуулга нь уншигдсангүй тул зөвхөн буцаах боломжтой.')
               : frameOld
-                ? tr('Хуудасны сүүлийн агшин тасарсан тул батлах боломжгүй — хуучин агшин ({0}) дээр харсан санал. Агшин цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay)
+                ? tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул батлах боломжгүй — өмнөх хувилбар ({0}) дээр харсан санал. Цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay)
                 : !previewing
                   ? tr('Эхлээд «Урьдчилан харах» дарж саналыг хуанли дээр шалгаад, өөрчлөгдсөн мөр бүрийг ногоон болгоно.')
                   : reviewOids.length > 0 && !allOk
                     ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
                     : obOut.bad > 0 ? obOutMsg : undefined}
           /* ⚠️ 2026-10-09: талбар нь БУЦААХ шалтгаан — бичсэн текст батлахад хадгалагдахгүйг асууна */
-          onOk={(txt) => {
-            if (txt.trim() && !window.confirm(tr('Бичсэн тайлбар батлахад хадгалагдахгүй. Үргэлжлүүлэх үү?'))) return;
+          onOk={async (txt) => {
+            if (txt.trim() && !(await askConfirm(tr('Бичсэн тайлбар батлахад хадгалагдахгүй. Үргэлжлүүлэх үү?'), { ok: tr('Батлах') }))) return;
             void decide(true, '');
           }}
           /* ⚠️ 2026-09-29 аудит: урьдчилан харж тэмдэглэсэн бол ногоон/улаан `rejectReview`-тэй
@@ -7949,6 +8020,33 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const blind = BLIND_NOTE;
             void decide(false, `${own.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, []);
           }}
+        />
+      )}
+      {/* ⚠️ 2026-10-23 (UX аудит P3): нэмэлт ажил илгээх цонх — тайлбар + юу илгээгдэх жагсаалт */}
+      {ajBox && canAddRow && !ajSub && adds.length > 0 && (
+        <FlowBox
+          title={tr('Нэмэлт ажил батлуулах')}
+          desc={tr('{0} шинэ ажлын мөр батлагчид илгээгдэнэ. Батлагдтал үндсэн өгөгдөлд бичигдэхгүй.', num(adds.length))}
+          label={tr('Батлагчид тайлбар (сонголтоор) — яагаад нэмэх шаардлагатай вэ')}
+          okText={tr('Илгээх')}
+          busy={ajBusy}
+          err={ajErr}
+          text={ajTxt}
+          onText={setAjTxt}
+          onClose={() => setAjBox(false)}
+          okDisabled={ajOrphans.length > 0 ? orphanAddsMsg(ajOrphans.length) : undefined}
+          onOk={(txt) => { void sendAjil(txt).then((ok) => { if (ok) { setAjBox(false); setAjTxt(''); } }); }}
+          summary={(
+            <ul className={h.chgPanel} aria-label={tr('Илгээгдэх мөрүүд')}>
+              {adds.slice(0, 50).map((a) => (
+                <li key={a.oid} className={h.chgItem}>
+                  <b>{a.no} {fixCyr(a.work)}</b>{' '}
+                  <span className={h.muted}>{tr('эцэг: {0}', `${a.parentNo} ${a.parentWork}`.trim() || '—')}</span>
+                </li>
+              ))}
+              {adds.length > 50 && <li className={h.muted}>{tr('… ба {0}', num(adds.length - 50))}</li>}
+            </ul>
+          )}
         />
       )}
       {flowBox === 'reject' && pending && (

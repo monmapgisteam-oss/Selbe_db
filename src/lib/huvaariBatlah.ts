@@ -71,7 +71,8 @@ export function planStatusLabel(st: string | null | undefined): string {
   switch (st) {
     case PLAN_STATUS.pending: return tr('Хүлээгдэж буй');
     case PLAN_STATUS.approved: return tr('Батлагдсан');
-    case PLAN_STATUS.returned: return tr('Буцаагдсан');
+    /* ⚠️ 2026-10-23 (UX аудит X7): харуулах нэр «Буцаасан» (нэг нэр томьёо); серверийн утга `PLAN_STATUS.returned` ХЭВЭЭР */
+    case PLAN_STATUS.returned: return tr('Буцаасан');
     case PLAN_STATUS.withdrawn: return tr('Татсан');
     default: return st ?? '';
   }
@@ -1489,7 +1490,7 @@ export async function submitPlan(args: {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('HUVAARI_BATLAH');
     /*
      * ⚠️ ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (2026-10-01, хэрэглэгч). Дээрх `loadPending` шалгалт ба
@@ -1755,14 +1756,16 @@ export async function decidePlan(args: {
     const len = await okRowsFieldLen().catch(() => -1);
     /* ⚠️ 2026-09-29 аудит: «уншигдсангүй» (−1) ≠ «алга» (0) — сүлжээний алдаанд
        «AGOL дээр талбар нэмнэ үү» гэсэн худал заавар өгдөг байв. */
-    if (len < 0) warn = tr('«{0}» талбарын урт уншигдсангүй (сүлжээ) — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан).', F.okRows);
+    /* ⚠️ 2026-10-23 (UX аудит X2/X3): талбарын техник нэр · AGOL-гүй — хэрэглэгчид «админд мэдэгдэнэ үү»; техник дэлгэрэнгүй консолд */
+    if (len < 0) warn = tr('Зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан) — холболт тасарсан байж магадгүй.');
     else
     /* ⚠️ УРТ ХЭТЭРВЭЛ БИЧИХГҮЙ (2026-09-25 аудит): AGOL-ийн анхдагч 256 тэмдэгттэй
        талбарт ~35-аас олон мөр багтахгүй — хэтэрсэн утга `applyEdits`-ийг бүхэлд нь
        унагаж, батлагч БУЦААЖ ЧАДАХГҮЙ болно. Шийдвэр чухал, тэмдэглэгээ нэмэлт. */
     if (len > 0 && js.length <= len) attrs[okRowsName] = js;
-    else if (len > 0) warn = tr('«{0}» талбар богино ({1} тэмдэгт) — зөвшөөрсөн мөрийн тэмдэглэгээ багтсангүй (шийдвэр хадгалагдсан). AGOL дээр талбарын уртыг 65536 болгоно уу.', F.okRows, String(len));
-    else warn = tr('Батлах хүснэгтэд «{0}» талбар алга — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан). AGOL дээр String (урт 65536) талбар нэмнэ үү.', F.okRows);
+    else if (len > 0) warn = tr('Зөвшөөрсөн мөрийн тэмдэглэгээ хүснэгтийн талбарт багтсангүй (шийдвэр хадгалагдсан) — админд мэдэгдэнэ үү.');
+    else warn = tr('Батлах хүснэгтэд зөвшөөрсөн мөрийн тэмдэглэгээний талбар алга (шийдвэр хадгалагдсан) — админд мэдэгдэнэ үү.');
+    if (len === 0 || (len > 0 && js.length > len)) console.warn(`[selbe] huvaariBatlah: «${F.okRows}» талбар ${len > 0 ? `богино (${len})` : 'алга'} — String (урт 65536) болгоно`);
   }
   /* ⚠️ 2026-10-01: ӨӨРӨӨ авсан түгжээг шийдвэр бичигдээгүй үед тайлна — эс бөгөөс
      `CLAIM_TTL` (10 мин) дуустал зохиогч татаж, өөр батлагч шийдэж чадахгүй. */
@@ -1772,7 +1775,7 @@ export async function decidePlan(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('HUVAARI_BATLAH');
     return { ok: true, warn };
   } catch (e) {
@@ -1830,7 +1833,7 @@ function claimError(f: ClaimFail): string {
       ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', f.holder, planStatusLabel(f.status))
       : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.');
     case 'expired': return tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', f.holder ?? '');
-    case 'write': return tr('ArcGIS-т хадгалагдсангүй.');
+    case 'write': return tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.');
     case 'held':
     case 'lost':
     default: return f.holder
@@ -2060,7 +2063,7 @@ export async function renewPlanClaim(args: { oid: number; approver: string; clai
       return { ok: false, error: tr('Энэ илгээлтийг таны өөр цонх түгжсэн байна — тэр цонхноос үргэлжлүүлнэ үү, эсвэл хуудсаа шинэчилнэ үү.') };
     }
     const at = serverNow();
-    if (!(await writeClaim(url, args.oid, me, at))) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!(await writeClaim(url, args.oid, me, at))) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     const back = await read();
     if (!back || s(back[F.status]) !== PLAN_STATUS.pending || s(back[F.approver])?.toLowerCase() !== me || !sameClaimAt(back[F.approverAt], at)) {
       return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
@@ -2137,7 +2140,7 @@ export async function markPlanPartial(args: { oid: number; approver: string; cla
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: mark } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('HUVAARI_BATLAH');
     const back = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!back || s(back[F.status]) !== PLAN_STATUS.pending || claimHolder(back) !== me || (s(back[F.reason]) ?? '').trim() !== mark) {
@@ -2299,7 +2302,7 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
     });
     if (!editOk(j.updateResults)) {
       await releasePlanClaim({ oid: args.oid, approver: me });
-      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     }
     invalidate('HUVAARI_BATLAH');
     return { ok: true };
@@ -2443,7 +2446,7 @@ export async function withdrawPlan(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('HUVAARI_BATLAH');
   } catch (e) {
     await release();

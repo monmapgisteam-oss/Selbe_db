@@ -151,7 +151,7 @@ assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, '  '
   const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
   assert.ok(src.includes('wroteMain ? afterWrite('), 'useObyem: бичигдсэний дараах шийдвэрийн алдаа «аль хэдийн бичигдсэн» гэж хэлнэ');
   const tb = fs.readFileSync(new URL('../modules/sheet/fill/toolbar.tsx', import.meta.url), 'utf8');
-  assert.ok(/window\.confirm\([^]*?decideObyemHere\(true\)/.test(tb), 'toolbar: «Обьём батлах» баталгаажуулалттай');
+  assert.ok(/askConfirm\([^]*?decideObyemHere\(true\)/.test(tb), 'toolbar: «Обьём батлах» баталгаажуулалттай');
 }
 console.log('✅ татан авах дүрэм · батлах баталгаа · бичилтийн дараах алдааны мессеж');
 
@@ -169,7 +169,7 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   /* Алгассан нүд — баталгаагүйгээр батлахгүй, түгжээ/бичилтээс ӨМНӨ асууна; тэмдэглэл `skipped`-ээр */
   const ask = fn.indexOf('if (skippedN > 0)');
   assert.ok(ask > 0 && ask < fn.indexOf('claimObyem('), 'useObyem: алгассан нүдийг түгжихээс ӨМНӨ асуух ёстой');
-  assert.ok(/window\.confirm\(/.test(fn.slice(ask, fn.indexOf('claimObyem('))), 'useObyem: алгассан нүдэд баталгаажуулалт алга');
+  assert.ok(/askConfirm\(/.test(fn.slice(ask, fn.indexOf('claimObyem('))), 'useObyem: алгассан нүдэд баталгаажуулалт алга');
   assert.ok(/skipped: skipNote/.test(fn), 'useObyem: алгассан нүдийг `decideObyem.skipped`-ээр хадгалахгүй байна');
   /* Нэг батлагч хоёр таб — «аль хэдийн шийдвэрлэсэн» ӨӨРӨӨ бол амжилт */
   assert.ok(/doneByMe\(\)/.test(fn) && /h\.status === OBYEM_STATUS\.approved && h\.approver === meLc/.test(fn), 'useObyem: ӨӨРИЙН баталсныг амжилт гэж үзэхгүй байна');

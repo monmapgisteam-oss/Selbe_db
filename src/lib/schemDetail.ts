@@ -477,7 +477,7 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
   if (stuck.length) {
     const { shown, hidden } = capped(stuck);
     p.tables.push({
-      title: tr('Буцаагдсан ажлууд'),
+      title: tr('Буцаасан ажлууд'),
       cols: [tr('Багц'), tr('Ажил'), tr('Компани'), tr('Буцаалт'), tr('Тойрог')],
       rows: [
         ...shown.map((w) => [

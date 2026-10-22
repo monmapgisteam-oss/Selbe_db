@@ -128,7 +128,7 @@
    хүрээ (halo) нь шугамтай давхцахад үсгийг уншигдахуйц үлдээнэ. `text-anchor` нь
    JSX-ийн style-оор ирнэ (энэ анхдагчийг дарна). */
 .edgeLab {
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--bad-ink);
   text-anchor: middle;
   paint-order: stroke;
@@ -196,7 +196,7 @@
  */
 .tag {
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: 11px;
   border-radius: 2px;
   border: 1px solid var(--line);
   color: var(--ink-3);
@@ -227,7 +227,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -239,7 +239,7 @@
   display: inline-block;
 }
 .railOn i { background: var(--hue); }
-.railSep { color: var(--ink-3); font-size: 9px; }
+.railSep { color: var(--ink-3); font-size: 11px; }
 
 /* ══ Анхааруулгатай карт — БҮХЭЛДЭЭ ялгарна ══
    ⚠️ 2026-09-02, хэрэглэгч: «анхааруулгатай нь ялгагдахгүй байна». Карт бүр
@@ -281,7 +281,7 @@
   margin-left: auto;
   flex: none;
   padding: 0 5px;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   border-radius: 2px;
   border-width: 1px;
@@ -307,7 +307,7 @@
   background: var(--sunken);
 }
 .statLabel {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ink-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -341,7 +341,7 @@
   display: flex;
   align-items: flex-start;
   gap: 4px;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.28;
   /* ⚠️ Өнгө нь `.hWarn`/`.hBad`-аас ирнэ — тэдгээр нь хүрээ ба БЭХИЙГ өгдөг
      тул энд хүрээг нь буцааж хасна (карт дотор хайрцаг үүсгэхгүй). */
@@ -364,7 +364,7 @@
   overflow: hidden;
 }
 /* ⚠️ Тасалсан тоог ИЛ үлдээнэ — эс бөгөөс хоёрыг «бүгд» гэж уншина */
-.alertMore { font-size: 9px; color: var(--ink-3); }
+.alertMore { font-size: 11px; color: var(--ink-3); }
 
 /* Толгойн нийт тоо — «схемд анхаарах зүйл байна уу» гэдгийн нэг харцын хариу */
 .alertBar {
@@ -383,7 +383,7 @@
    бүртгэгдс…» гэж таслагдаж, тоо нь яагаад бүрэн бус болохыг хэлэхээ болино. */
 .note {
   margin: 1px 0 0;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.25;
   color: var(--warn-ink);
 }
@@ -445,7 +445,7 @@
   margin: 0;
   align-self: flex-start;
   padding: 1px 7px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -469,7 +469,7 @@
 .pSrc { display: flex; flex-wrap: wrap; gap: 4px; }
 .srcTag {
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: 11px;
   border-radius: 2px;
   border: 1px solid var(--line);
   white-space: nowrap;
@@ -483,7 +483,7 @@
 .pSec { display: flex; flex-direction: column; gap: 5px; }
 .pSecTitle {
   margin: 4px 0 0;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -585,21 +585,21 @@
    уншигдахаа болино. */
 .fineNode { gap: 4px; padding: 8px 10px 9px; }
 .fineNode .nodeTitle { font-size: 11px; }
-.fineNode .metric { font-size: 10.5px; }
-.fineNode .tag { font-size: 9px; padding: 0 5px; }
-.fineNode .note { font-size: 9px; }
+.fineNode .metric { font-size: 11px; }
+.fineNode .tag { font-size: 11px; padding: 0 5px; }
+.fineNode .note { font-size: 11px; }
 /* ⚠️ Нарийн картад тодорхойлолт аль хэдийн 5 мөр эзэлдэг тул анхааруулгыг
    НЭГ мөрөөр тайрна — эс бөгөөс карт торны өндрөөс хоёр дахин тэлж, доорх
    эгнээ рүү дүрэгдэнэ. Бүтэн текст нь hover ба самбарт хэвээр. */
 .fineNode .alertText { -webkit-line-clamp: 1; }
-.fineNode .alert { font-size: 9px; }
+.fineNode .alert { font-size: 11px; }
 
 /* ⚠️ ТОДОРХОЙЛОЛТ КАРТ ДЭЭР. Урьд нь зөвхөн hover-ийн бичээст байсан тул
    «Тайлагнасан блок гэж юу вэ» гэсэн асуулт хариултгүй үлддэг байв — хулгана
    аваачихгүй бол мэдэх арга байхгүй, хүрэлтийн дэлгэц дээр огт харагдахгүй.
    Гурван мөрөөр тайрна; бүтэн текст нь hover-т хэвээр. */
 .nodeDesc {
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.32;
   color: var(--ink-3);
   display: -webkit-box;

@@ -22,6 +22,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
+import { fixCyr } from '@/lib/format';
+import { askConfirm } from '@/lib/confirm';
 import { useAuth } from '@/components/AuthGate';
 import { Data, userError } from '@/components/ui';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
@@ -36,7 +38,6 @@ import {
   fetchQaqcDocs,
   filledCount,
   loadQaqcSheet,
-  QAQC_BAND,
   QAQC_COLS,
   QAQC_GROUPS,
   planQaqcPaste,
@@ -507,7 +508,7 @@ export function Qaqc() {
     const min = Math.min(...rows.filter((r) => r.group).map((r) => r.depth), 99);
     return rows
       .filter((r) => r.group && r.depth === min)
-      .map((r) => ({ oid: r.oid, label: `${r.no} ${r.work}`.trim() }));
+      .map((r) => ({ oid: r.oid, label: `${r.no} ${fixCyr(r.work)}`.trim() }));
   }, [rows]);
 
   /** Индекс → мөрийн эцэг бүлгийн ObjectID (гүнээр) */
@@ -562,7 +563,7 @@ export function Qaqc() {
     return deeper
       .filter((r) => r.depth === min)
       .filter((r) => !grpA || inBranch(idxOf.get(r.oid) ?? -1, grpA))
-      .map((r) => ({ oid: r.oid, label: `${r.no} ${r.work}`.trim() }));
+      .map((r) => ({ oid: r.oid, label: `${r.no} ${fixCyr(r.work)}`.trim() }));
   }, [rows, grpA, inBranch, idxOf]);
   const grpBEff = useMemo(
     () => (grpBOpts.some((g) => g.oid === grpB) ? grpB : 0),
@@ -1267,13 +1268,15 @@ export function Qaqc() {
    *    зам байхгүй (түүх хадгалагддаггүй).
    * ⚠️ Үйлчилгээнд бичигдсэн утга ХӨНДӨГДӨХГҮЙ — зөвхөн хадгалаагүй засвар.
    */
-  const dropDraft = useCallback(() => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт (`askConfirm`) — `window.confirm` хаалттай хөтөчид товч чимээгүй
+     ажилладаггүй байв. Асуулт модал тул хариулах хооронд хүснэгт засагдахгүй (closure-ийн `pend` хуучрахгүй). */
+  const dropDraft = useCallback(async () => {
     if (!dirtyCount) return;
     const q = tr(
       '{0} нүдийн хадгалаагүй засвар УСТАНА. Үйлчилгээнд бичигдсэн утга хөндөгдөхгүй. Үргэлжлүүлэх үү?',
       dirtyCount,
     );
-    if (!window.confirm(q)) return;
+    if (!(await askConfirm(q, { danger: true, ok: tr('Устгах') }))) return;
     setPend({});
     setEditCell(null);
     /* ⚠️ 2026-10-01: УСТГАХГҮЙ — БУЛШЛАНА. Урьд нь локал ба ArcGIS-ийн ноорогийг
@@ -1489,9 +1492,11 @@ export function Qaqc() {
   }, [pend]);
 
   /** Багц солиход хадгалаагүй засвар байвал баталгаа авна */
-  const confirmSwitch = () =>
+  /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — асинхрон тул сонгогч (`select`) хариулт ирэх хүртэл хуучин утгаа харуулна */
+  const confirmSwitch = async () =>
     dirtyCount === 0
-    || window.confirm(tr('{0} нүд хадгалагдаагүй байна. Ноорог үлдэх ч багц солиход дэлгэцээс арилна. Үргэлжлүүлэх үү?', dirtyCount));
+    || askConfirm(tr('{0} нүд хадгалагдаагүй байна. Ноорог үлдэх ч багц солиход дэлгэцээс арилна. Үргэлжлүүлэх үү?', dirtyCount),
+      { ok: tr('Багц солих') });
 
   /* ══════════════ ЗУРАГДАЛТ ══════════════ */
 
@@ -1516,8 +1521,8 @@ export function Qaqc() {
             value={pkg.group}
             disabled={busy}
             onChange={(e) => {
-              if (!confirmSwitch()) return;
-              setPkg(pkgFloors(e.target.value)[0]);
+              const v = e.target.value;
+              void confirmSwitch().then((ok) => { if (ok) setPkg(pkgFloors(v)[0]); });
             }}
           >
             {groupOpts.map((g) => (
@@ -1537,8 +1542,8 @@ export function Qaqc() {
               value={pkg.key}
               disabled={busy}
               onChange={(e) => {
-                if (!confirmSwitch()) return;
-                setPkg(PKGS.find((p) => p.key === e.target.value) ?? pkg);
+                const v = e.target.value;
+                void confirmSwitch().then((ok) => { if (ok) setPkg((cur) => PKGS.find((p) => p.key === v) ?? cur); });
               }}
             >
               {floorOpts.map((p) => (
@@ -1623,7 +1628,7 @@ export function Qaqc() {
           <button
             type="button"
             className={st.linkBtn}
-            onClick={dropDraft}
+            onClick={() => { void dropDraft(); }}
             disabled={busy}
             title={tr('Хадгалаагүй засварыг бүрэн хаяна — энэ хөтөч ба ArcGIS дээрх ноорог хоёулаа устана')}
           >
@@ -1647,7 +1652,7 @@ export function Qaqc() {
         {savedAt != null && dirtyCount > 0 && !localFail && (
           <span
             className={st.autosave}
-            title={tr('Ноорог ЭНЭ хөтөчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}
+            title={tr('Ноорог ЭНЭ хөтчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
           </span>
@@ -1742,7 +1747,8 @@ export function Qaqc() {
                 <tr>
                   <th rowSpan={3} className={cls('fz c-no')}>№<i {...grip('no')} /></th>
                   <th rowSpan={3} className={cls('fz c-ajil')}>{tr('Ажил')}<i {...grip('ajil')} /></th>
-                  <th colSpan={QAQC_COLS.length} className={cls('band')}>{tr(QAQC_BAND)}</th>
+                  <th colSpan={QAQC_COLS.length} className={cls('band')}>{/* ⚠️ 2026-10-23 (UX аудит Q9): монгол горимд англи «INSPECTION TEST PLAN» гардаг байв (`QAQC_BAND` латин) */}
+                    {tr('Хяналт, туршилтын төлөвлөгөө (ITP)')}</th>
                 </tr>
                 <tr>
                   {QAQC_GROUPS.map((g) => (
@@ -1789,7 +1795,7 @@ export function Qaqc() {
                           className={cls('fz c-ajil')}
                           style={{ paddingLeft: `${r.depth * 14 + 6}px` }}
                           {...ro(RO_NO)}
-                          title={r.des ? `${r.work || r.no} · ${r.des}` : (r.work || r.no)}
+                          title={fixCyr(r.des ? `${r.work || r.no} · ${r.des}` : (r.work || r.no))}
                         >
                           {r.group && (
                             <button
@@ -1805,7 +1811,7 @@ export function Qaqc() {
                               {collapsed.has(r.oid) ? '▸' : '▾'}
                             </button>
                           )}
-                          {r.work || (/\s/.test(r.no) ? r.no : '')}
+                          {fixCyr(r.work || (/\s/.test(r.no) ? r.no : ''))}
                         </td>
                         {/* ── БАРИМТ БИЧИГ — дарж текст бичнэ ──
                             ⚠️ Бүлгийн мөрд ч засагдана: М-акт, FIC зэрэг нь

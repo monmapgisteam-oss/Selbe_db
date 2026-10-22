@@ -34,9 +34,12 @@ export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () =>
   }, [open]);
   if (open || !CONFIGURED) return null;
   return (
+    /* ⚠️ 2026-10-23 (UX аудит S7): хөвөгч товч баруун доод булангийн агуулгыг (хүснэгтийн сүүлийн мөр, «Илгээх»
+       товч) ДАРДАГ байв. Одоо ДҮРС ЛЭ (≈40px дугуй) — бичиг нь hover/фокус үед л дэлгэгдэнэ (`.fabLabel`).
+       Нэр нь харагдах бичгээс (дэлгэц уншигч `max-width: 0`-тэй ч уншина) — `aria-label` хэрэггүй. */
     <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />
-      {tr('AI туслах')}
+      <span className={s.fabLabel}>{tr('AI туслах')}</span>
     </button>
   );
 }

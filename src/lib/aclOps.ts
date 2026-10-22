@@ -27,6 +27,8 @@
  */
 
 import { t as tr } from './i18nCore';
+/* ⚠️ 2026-10-23 (UX аудит X1 · A3): аппын дотоод асуулт ба «Буцаах» мэдэгдэл — `window.confirm`-ийн оронд */
+import { askConfirm, toastUndo } from './confirm';
 import { listUsers, remoteReady, resolveAccess, roleOf } from './permissions';
 import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
@@ -91,6 +93,15 @@ export type AclOp = {
    *    Зөвхөн АСУУЛТТАЙ хасах/шилжүүлэх op-д; нэмэх op-д байхгүй.
    */
   after?: After;
+  /**
+   * ⚠️ 2026-10-23 (UX аудит A3): АСУУЛТГҮЙ ХАСАЛТЫН «БУЦААХ». Нэг нүднээс ✕ (багцын жагсаалт багасах — `set`)
+   *    урьд нь нэг товшилтоор асуулгүй бичигдэж, буцаах замгүй байв. Асуулт НЭМЭХГҮЙ (`runOp`-ын «асуултын тоо
+   *    өөрчлөгдөхгүй» ⚠️) — оронд нь бичилт амжилттай болмогц «Буцаах» мэдэгдэл (`toastUndo`) гарч, дарвал энэ
+   *    эсрэг op (тэр нүдийг дахин нэмэх) ажиллана. Эсрэг op нь ДАРАХ агшинд шинэ мөрөөс бүтнэ (хооронд хийсэн
+   *    өөр засварыг дарахгүй). `done` — мэдэгдлийн текст.
+   */
+  undo?: () => AclOp;
+  done?: string;
 } | { error: string } | null;
 
 /** Эрхийн зургийг op-ын дараах байдал руу хувиргана — цэвэр */
@@ -520,7 +531,14 @@ export function scopedCellOp(
     case 'create': return { user: u, run: () => spec.setGrants(u, p.grants) };
     case 'set': return add
       ? { user: u, run: () => spec.setGrants(u, p.grants) }
-      : { user: u, run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps) };
+      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
+      : {
+        user: u,
+        after: afterGrants(sys, u, p.grants),
+        undo: () => scopedCellOp(sys, user, role, pkg, true, label),
+        done: tr('«{0}» «{1}»-оос хасагдлаа.', u, label),
+        run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps),
+      };
     case 'narrow': return {
       user: u,
       confirm: sys === 'butets' ? [] : [narrowMsg(u, label, p.left.length)],
@@ -570,7 +588,15 @@ export function qaqcCellOp(user: string, pkg: string, add: boolean): AclOp {
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => setQaqcAssign(u, p.bagts) };
-    case 'set': return { user: u, run: () => setQaqcAssign(u, p.bagts, false) };
+    case 'set': return add
+      ? { user: u, run: () => setQaqcAssign(u, p.bagts, false) }
+      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`); QAQC-д гацаа үүсэхгүй */
+      : {
+        user: u,
+        undo: () => qaqcCellOp(user, pkg, true),
+        done: tr('«{0}» «{1}»-оос хасагдлаа.', u, pkg),
+        run: () => setQaqcAssign(u, p.bagts, false),
+      };
     case 'narrow': return { user: u, confirm: [narrowMsg(u, pkg, p.bagts.length)], run: () => setQaqcAssign(u, p.bagts, false) };
     case 'drop': return qaqcDropOp(u);
   }
@@ -666,7 +692,16 @@ export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean
       after: afterFlow(u, { stage: p.stage, bagts: p.bagts }),
       run: () => setAssign(u, p.stage, p.bagts),
     };
-    case 'set': return { user: u, run: () => setAssign(u, p.stage, p.bagts, false) };
+    case 'set': return add
+      ? { user: u, run: () => setAssign(u, p.stage, p.bagts, false) }
+      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
+      : {
+        user: u,
+        after: afterFlow(u, { stage: p.stage, bagts: p.bagts, viewOnly: cur?.viewOnly === true }),
+        undo: () => flowCellOp(user, p.stage, pkg, true),
+        done: tr('«{0}» {1} шатны «{2}»-оос хасагдлаа.', u, STAGE_LABEL[p.stage], scopeText(pkg)),
+        run: () => setAssign(u, p.stage, p.bagts, false),
+      };
     case 'narrow': return {
       user: u,
       confirm: [tr('«{0}» нь {1} шатанд БҮХ багцад томилогдсон. «{2}»-оос хасвал бусад {3} багцын ил жагсаалт болно (шинэ багц нэмэгдэхэд автоматаар хамрахгүй). Үргэлжлүүлэх үү?',
@@ -1072,7 +1107,15 @@ export async function runOp(
     const held = await heldByBounded([op.user]);
     if (held && held.length) confirms[confirms.length - 1] += `\n\n${heldByText(held)}`;
   }
-  for (const c of confirms) if (!window.confirm(c)) return false;
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → `askConfirm` — хөтөч цонхыг хаасан бол асуулгүй `false` болж
+     ✕/«+» ЧИМЭЭГҮЙ юу ч хийдэггүй байв. Хост алга (Node-ийн шалгуур) бол `window.confirm` руу буцна. */
+  for (const c of confirms) if (!(await askConfirm(c))) return false;
+  /* ⚠️ 2026-10-23 (засвар): асуулт async болсон — цонх нээлттэй байх зуур хүснэгтүүд алсын бэлэн байдлаа алдаж болно.
+     Бичихийн өмнө түгжээг ДАХИН шалгана (урьдын синхрон `window.confirm`-д шалгалт бичилттэй нэг агшинд байсан). */
+  if (!ready()) { setErr(lockMsg()); return false; }
+  /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалтын ШИНЭ гацааг БИЧИХЭЭС ӨМНӨ бодно — дараа нь бодвол «өмнөх» ба
+     «дараах» зураг ижил болж юу ч олдохгүй. Асуулт нэмэхгүй: «Буцаах» мэдэгдэл ба самбарын алдааны мөрөнд хэлнэ. */
+  const undoWarn = !confirms.length && op.undo && op.after ? newBlockingText(op.after) : '';
   const who = op.user ? norm(op.user) : '';
   /* ⚠️ `run`-аас ӨМНӨ тэмдэглэнэ — локал бичилтийн notify-аар дахин зурахад
      аль хэдийн «явагдаж буй» байх ёстой (эс бөгөөс нэг рендер худал өнчин). */
@@ -1086,8 +1129,19 @@ export async function runOp(
       /* ⚠️ 2026-10-05: ТОДОРХОЙ шалтгаан байвал (`views` талбарын урт хэтэрсэн г.м.) түүнийг —
          ерөнхий «хадгалагдсангүй» нь админыг сүлжээгээ шалгахад хүргэдэг байв. */
       const why = await import('./permsRemote').then((m) => m.takeWriteError()).catch(() => '');
-      setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+      setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид'));
       return false;
+    }
+    /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт амжилттай — «Буцаах» мэдэгдэл; дарвал эсрэг op (`AclOp.undo`) мөн
+       `runOp`-оор (түгжээ · явагдаж буй тэмдэг · асуулт ижил). Гацаа үүссэн бол самбарт ҮЛДЭХ мөрөнд ч хэлнэ. */
+    if (!confirms.length && op.undo) {
+      const undo = op.undo;
+      if (undoWarn) setErr(undoWarn);
+      void toastUndo(
+        [op.done || tr('Хасагдлаа.'), undoWarn.replace(/\n+/g, ' ')].filter(Boolean).join(' '),
+        () => { void runOp(undo(), setErr, ready); },
+        undoWarn ? 10_000 : 6_000,
+      );
     }
     return true;
   } finally {

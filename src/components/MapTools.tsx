@@ -216,6 +216,9 @@ export function MapTools({
    *    байв. Намхан зурагт Esri-ийн луужинг хэсэгчлэн дарах нь товчнууд
    *    бүрэн алга болсноос дээр. `maxHeight` нь доод талдаа 96px-ээс багасахгүй.
    */
+  /* ⚠️ 2026-10-23 (S5): хураасан бариулын шошго — зарим дуудагч (ТУХ-ийн зураг Тайланд) `dim`-ийг ачаалал дуустал
+     өгдөггүй тул `undefined`-д унахгүй (2D гэж үзнэ). */
+  const dimLabel = String(dim || '2d').toUpperCase();
   const lift = !dock && dim !== '2d';
   const TOP_3D = 'min(205px, 40%)';
   const barStyle = lift
@@ -249,12 +252,21 @@ export function MapTools({
         dock ? s.tabDock : s.toolsTab,
         barOn ? (dock ? s.tabDockOpen : s.toolsTabOpen) : '',
       ].filter(Boolean).join(' ')}
-      title={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
-      aria-label={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      title={barOn ? tr('Товчнуудыг хураах') : tr('Давхарга · Тунгалаг · Бүс товчнуудыг харуулах')}
+      /* ⚠️ 2026-10-23 (UX аудит S5): хураасан бариул нь шошготой («Хэрэгсэл ▸») — урьд нь 20×34 «▸» тэмдэг
+         л байсан тул хэрэглэгч ард нь «Давхарга · Тунгалаг · Бүс» байгааг олдоггүй байв. Анхдагч ХУРААСАН
+         хэвээр (2026-10-07-ны хэрэглэгчийн шийдвэр, дээрх `barOn`-ийн ⚠️). Шошготой үед нэр нь харагдах бичиг. */
+      aria-label={barOn ? tr('Товчнуудыг хураах') : undefined}
       style={topStyle}
       onClick={() => setBarOn((v) => !v)}
     >
-      {barOn ? '◂' : '▸'}
+      {barOn ? '◂' : (
+        <>
+          <Icon name="layers" size={14} />
+          <span>{tr('Хэрэгсэл')}</span>
+          <span aria-hidden>▸</span>
+        </>
+      )}
       {/* ⚠️ 2026-10-01: хураасан үед ч идэвхтэй шүүлт байгааг тэмдэглэнэ — дэлгэхэд ✕ чип гарна */}
       {!barOn && filterOn && <span className={s.tabDot} aria-hidden />}
     </button>
@@ -325,10 +337,11 @@ export function MapTools({
       aria-expanded={dimsOn}
       className={`${s.tab} ${s.dimsTab} ${dimsOn ? s.dimsTabOpen : ''}`}
       title={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
-      aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
+      /* ⚠️ 2026-10-23 (S5): хураасан үед ОДООГИЙН горимыг («2D ▾») харуулна — хоосон «▾» юуг нээхийг хэлдэггүй байв */
+      aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('{0} — харагдацын товч дэлгэх', dimLabel)}
       onClick={() => setDimsOn((v) => !v)}
     >
-      {dimsOn ? '▴' : '▾'}
+      {dimsOn ? '▴' : <>{dimLabel} <span aria-hidden>▾</span></>}
     </button>
 
     {dimsOn && (
@@ -395,7 +408,14 @@ export function MapTools({
     {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
         байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
     {setZone && zoneShown && (
-      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`} style={zoneStyle}>
+      /* ⚠️ 2026-10-23 (UX аудит S17): хавтан Esc-ээр хаагдана (фокус дотор нь байх үед) */
+      <div
+        className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`}
+        style={zoneStyle}
+        role="region"
+        aria-label={tr('Бүсээр шүүх')}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setZoneOpen(false); } }}
+      >
         <header className={s.zoneHead}>
           <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
           <button
@@ -403,6 +423,7 @@ export function MapTools({
             className={s.zoneClose}
             onClick={() => setZoneOpen(false)}
             aria-label={tr('Хаах')}
+            title={tr('Хаах')}
           >
             ×
           </button>

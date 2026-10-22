@@ -146,9 +146,9 @@
 .chip { border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); background: color-mix(in srgb, var(--good) 10%, transparent); }
 .chipBad { border: 1px dashed color-mix(in srgb, var(--warn) 60%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .chipLink { all: unset; cursor: pointer; color: var(--ink); padding-right: 4px; line-height: 1.35; overflow-wrap: anywhere; }
-.chipLink:hover, .chipLink:focus-visible { color: var(--data); text-decoration: underline; }
+.chipLink:hover, .chipLink:focus-visible { color: var(--data-ink); text-decoration: underline; }
 .chipLink b { font-weight: 700; margin-right: 4px; }
-.chipX { all: unset; cursor: pointer; padding: 0 4px; border-radius: 999px; color: var(--ink-3); font-size: 0.66rem; }
+.chipX { all: unset; cursor: pointer; padding: 0 4px; border-radius: 999px; color: var(--ink-3); font-size: 0.6875rem; }
 .chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .chipX:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -163,7 +163,7 @@
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
-.pairChip:hover, .pairChip:focus-visible { color: var(--data); border-color: var(--data); }
+.pairChip:hover, .pairChip:focus-visible { color: var(--data-ink); border-color: var(--data); }
 .pairChip[aria-pressed='true'] { background: var(--data); border-color: var(--data); color: var(--bg); }
 
 /* Хуучин холбоос */
@@ -181,7 +181,7 @@
   font-weight: 600;
   color: var(--ink-2);
 }
-.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
+.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data-ink); border-color: var(--data); }
 .ghostBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .primaryBtn {
   all: unset;
@@ -195,7 +195,7 @@
 }
 .primaryBtn:disabled { opacity: 0.45; cursor: not-allowed; }
 .primaryBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.linkBtn { all: unset; cursor: pointer; color: var(--data); text-decoration: underline; }
+.linkBtn { all: unset; cursor: pointer; color: var(--data-ink); text-decoration: underline; }
 
 /* ── Мэдэгдэл ── */
 .note { margin: 0 0 6px; font-size: 0.72rem; color: var(--ink-3); }

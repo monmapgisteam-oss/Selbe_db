@@ -85,7 +85,15 @@ export function date(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
   const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dfOf(dateLocale()).format(dt);
+  const loc = dateLocale();
+  const f = dfOf(loc);
+  /* ⚠️ 2026-10-23 (UX аудит E6): `mn` ICU өгөгдөлгүй хөтөч (Chrome-ийн зарим хувилбар) `mn-MN`-ийг en-US руу
+     буулгаж «09/30/2027» (сар/өдөр) гаргадаг байв. Тийм үед Node/ICU-ийн монгол хэлбэр «YYYY.MM.DD»-ийг гараар. */
+  if (loc !== 'en-US' && !f.resolvedOptions().locale.startsWith('mn')) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}.${p(dt.getMonth() + 1)}.${p(dt.getDate())}`;
+  }
+  return f.format(dt);
 }
 /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `toLocaleDateString(loc, opts)` дуудлага бүрд шинэ
    `Intl.DateTimeFormat` үүсгэдэг (~65 мкс) — Санхүүгийн 5-р түвшинд (~1,000 мөр) товчлуур бүрд
@@ -363,4 +371,20 @@ export function sentenceCase(s: string): string {
       return low.charAt(0).toLocaleUpperCase('mn-MN') + low.slice(1);
     })
     .join('');
+}
+
+/**
+ * КИРИЛЛ ҮСГИЙН КОДЧЛОЛЫН ЗАСВАР — ЗӨВХӨН ДЭЛГЭЦЭНД (⚠️ 2026-10-23, UX аудит S15).
+ *
+ * ⚠️ ЯАГААД: зарим ажлын нэр Excel/хуучин фонтоос хөрвөхдөө украин «є/ї»-г монгол «ө/ү»-ийн оронд
+ *    хадгалсан («хєрсийг», «нїхийг», «тємєр»). Монгол бичигт є/ї ОГТ хэрэглэгддэггүй тул орлуулга аюулгүй.
+ * ⚠️ ӨГӨГДЛИЙГ ЗАСАХГҮЙ (ArcGIS-д бичихгүй) — мөрийн ТАНИХ түлхүүр («№ ¦ Ажил» — `rowKeyOf`, `rowSids`
+ *    хэш, хамаарлын лавлагаа, QAQC-ийн нэрийн тааруулалт) ТҮҮХИЙ нэрээр хадгалагдсан тул ЗӨВХӨН харуулах,
+ *    хайх утгад хэрэглэнэ. Түлхүүр бодох газарт ХЭЗЭЭ Ч бүү хэрэглэ — хадгалсан холбоос тасарна.
+ */
+const CYR_FIX: Record<string, string> = { 'є': 'ө', 'Є': 'Ө', 'ї': 'ү', 'Ї': 'Ү' };
+export function fixCyr(s: string): string;
+export function fixCyr(s: string | null | undefined): string | null | undefined;
+export function fixCyr(s: string | null | undefined): string | null | undefined {
+  return s == null ? s : String(s).replace(/[єЄїЇ]/g, (c) => CYR_FIX[c] ?? c);
 }

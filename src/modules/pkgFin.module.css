@@ -106,7 +106,7 @@
 /* Шошго = eyebrow, утгын ДЭЭР (envhub Indicator-ын дараалал) */
 .finKpiLabel {
   order: -1;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -164,7 +164,7 @@
   white-space: nowrap;
 }
 .totNote b {
-  color: var(--data);
+  color: var(--data-ink);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-size: 12.5px;
@@ -274,7 +274,7 @@
   cursor: pointer;
 }
 .kpiToggle:hover { color: var(--ink); }
-.kpiCaret { font-size: 9px; line-height: 1; transition: transform 0.14s ease; }
+.kpiCaret { font-size: 11px; line-height: 1; transition: transform 0.14s ease; }
 .kpiCaretOff { transform: rotate(-90deg); }
 
 /* ── Санхүүгийн картын өндрийн чирэх бариул (2026-08-21) — картын дээд
@@ -388,7 +388,7 @@
 /* Сумыг томсгож, эргэлтийг зөөлрүүлэв — хаалттай/нээлттэй нь холоос танигдана */
 .list [data-ui='sec-caret'] {
   font-size: 11px;
-  color: var(--hue);
+  color: var(--data-ink);
   transition: transform 0.18s var(--ease, ease);
 }
 
@@ -486,7 +486,7 @@
 /* Актын хамрах хугацаа — дүнгийн доор жижиг мөр */
 .actPeriod {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: var(--ink-3);
   white-space: nowrap;
@@ -502,7 +502,7 @@
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink-3);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }

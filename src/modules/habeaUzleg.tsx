@@ -819,6 +819,17 @@ export type UzDim = 'sev' | 'shift' | 'company' | 'week' | 'day' | 'month';
    мутацлахгүй — шинэчлэл нь `Habea.toggleDim`-д шинэ массиваар хийгдэнэ. */
 export type UzSel = Record<UzDim, string[]>;
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит X6): ХООСОН КАРТЫН ТАЙЛБАР — үзлэгийн сонголт (зэрэг · компани · өдөр …) идэвхтэй бол
+ *    шалтгаан нь сонголт гэдгийг хэлнэ; эс бөгөөс хуудасны хугацаа/багцад үзлэг ороогүй гэнэ. Урьд нь зөвхөн
+ *    «Бүртгэл алга» гардаг байв.
+ */
+const uzEmpty = (sel: UzSel) => (
+  <Empty label={tr('Бүртгэл алга')} hint={Object.values(sel).some((v) => v.length > 0)
+    ? tr('Сонгосон шүүлтэд тохирох үзлэг алга — сонголтоо арилгаж бүгдийг харна.')
+    : tr('Сонгосон хугацаа, багцад энэ маягтаар үзлэг бүртгэгдээгүй.')} />
+);
+
 /** Зэргийн түлхүүр → хүний уншиж болох нэр (чипэнд) */
 /**
  * ГАЗРЫН ЗУРАГ ДЭЭР ДАРСАН ҮЗЛЭГИЙН КАРТЫН МӨРҮҮД.
@@ -1698,7 +1709,7 @@ export function UzlegRight({ st, sel, onPick }: { st: State } & Pick) {
       >
         {co.length
           ? <Bars items={co} selected={sel.company} onSelect={(k) => onPick('company', k)} />
-          : <Empty label={tr('Бүртгэл алга')} />}
+          : uzEmpty(sel)}
       </Section>
     </>
   );
@@ -1827,7 +1838,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
               </div>
             </div>
           )
-          : <Empty label={tr('Бүртгэл алга')} />}
+          : uzEmpty(sel)}
       </Section>
       {/*
         * ДОЛОО ХОНОГООР — ОНОО. ⚠️ 2026-09-17-нд ХОЁР УДАА өөрчлөгдсөн:
@@ -1857,7 +1868,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
               </div>
             </div>
           )
-          : <Empty label={tr('Бүртгэл алга')} />}
+          : uzEmpty(sel)}
       </Section>
     </>
   );

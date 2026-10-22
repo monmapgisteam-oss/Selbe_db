@@ -128,7 +128,7 @@ export function GuitsetgelAcl() {
       {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
       {err && <div className={s.aclErr} role="alert">{err}</div>}

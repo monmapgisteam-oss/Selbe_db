@@ -211,7 +211,7 @@
 .ovTotLabel {
   display: block;
   margin-bottom: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -285,7 +285,7 @@
 /* Сумыг томсгож, эргэлтийг зөөлрүүлэв — хаалттай/нээлттэй нь холоос танигдана */
 .list [data-ui='sec-caret'] {
   font-size: 11px;
-  color: var(--hue);
+  color: var(--data-ink);
   transition: transform 0.18s var(--ease, ease);
 }
 
@@ -366,7 +366,7 @@
    токен өөрөө hairline тунгалаг) */
 .progGrid { stroke: var(--chart-grid); stroke-width: 1; }
 .progCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
-.progAxisY { fill: var(--ink-3); font-size: 10px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.progAxisY { fill: var(--ink-3); font-size: 11px; opacity: 0.75; font-variant-numeric: tabular-nums; }
 .progAxisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* ── ЗӨРҮҮГИЙН ТАЛБАЙ ──
@@ -404,7 +404,7 @@
  * шошго муруйтай нийлж «бохир» болно.
  */
 .progVal {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   paint-order: stroke;
@@ -420,7 +420,7 @@
  * ⚠️ Өнгийг `fill`-ээр биш `opacity`-оор бууруулна: эцэг `text` нь багцын
  *    өнгийг (`cat(2)`) inline style-аар авдаг тул дарж бичихгүй.
  */
-.progVol { font-size: 9px; font-weight: 500; opacity: 0.62; }
+.progVol { font-size: 11px; font-weight: 500; opacity: 0.62; }
 
 /* Гарчгийн баруун талын одоогийн зөрүү */
 .progBad { color: var(--bad-ink, var(--bad)); font-weight: 700; font-variant-numeric: tabular-nums; }

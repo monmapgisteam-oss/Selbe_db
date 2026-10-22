@@ -193,7 +193,7 @@
 }
 .zoneTitle {
   flex: 1;
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -236,27 +236,54 @@
   -webkit-backdrop-filter: blur(4px);
   cursor: pointer;
 }
-.tab:hover { color: var(--data); border-color: var(--data); }
+.tab:hover { color: var(--data-ink); border-color: var(--data); }
 
 /* Давхарга · тунгалаг · бүс — ЗҮҮН тийш хугална */
+/* ⚠️ 2026-10-23 (UX аудит S5): ХУРААСАН бариул нь ШОШГОТОЙ товч («☰ Хэрэгсэл ▸», 32px өндөр) — урьд нь
+   20×34 «▸» тэмдэг л байсан тул ард нь хэрэгсэл байгааг олдоггүй байв. Дэлгэсэн үед (`.toolsTabOpen`)
+   баганын баруун ирмэгт нарийн «◂» хэвээр (шошго багана дотор харагдана). */
 .toolsTab {
   top: var(--tools-top, 96px);
   left: 15px;
-  width: 20px;
-  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
+.toolsTab svg { width: 14px; height: 14px; flex: none; }
 /* Дэлгэсэн үед баганын БАРУУН ирмэг дээр (15 + өргөн + 4) */
-.toolsTabOpen { left: calc(19px + var(--tools-w, 176px)); }
+.toolsTabOpen { left: calc(19px + var(--tools-w, 176px)); width: 22px; height: 34px; padding: 0; justify-content: center; }
 
 /* 2D/3D/BIM — ДЭЭШ хураана (зурвас нь дээд ТӨВД тул бариул түүний дор) */
+/* ⚠️ 2026-10-23 (S5): хураасан үед одоогийн горимыг бичнэ («2D ▾»), 34×20 → ≥44×26 */
 .dimsTab {
   top: 15px;
   left: 50%;
   transform: translateX(-50%);
-  width: 34px;
-  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 .dimsTabOpen { top: 62px; }
+/* Хүрэлтийн төхөөрөмж — хүрэх талбай ≥32px (S13) */
+@media (pointer: coarse) {
+  .dimsTab { height: 32px; }
+  .dimsTabOpen { top: 64px; }
+  .toolsTabOpen { width: 32px; }
+}
 /*
  * ⚠️ «ХАВТАН НЭЭЛТТЭЙ ҮЕД БАРУУН ТИЙШ ШИЛЖИХ» дүрэм ХАСАГДСАН
  * (2026-09-15). Тэр нь товчны баганыг зургийн ДУНД аваачиж хөвүүлдэг
@@ -300,13 +327,21 @@
 .tabDock {
   top: 0;
   left: 0;
-  width: 20px;
+  /* ⚠️ 2026-10-23 (S5): хураасан үед шошготой («Хэрэгсэл ▸») — `.toolsTab`-тай ижил агуулга */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
   height: 44px;
   border-top: 0;
   border-left: 0;
   border-radius: 0;
 }
-.tabDockOpen { left: calc(min(var(--catalog, 360px), 92%) - 20px); }
+/* ⚠️ 2026-10-23 (S5): зүүн хавтасны толгой ЗӨВХӨН дэлгэсэн үед — нарийн 20px «◂» (толгойн баруун захад) */
+.tabDockOpen { left: calc(min(var(--catalog, 360px), 92%) - 20px); width: 20px; padding: 0; justify-content: center; }
 /* Бүсийн хавтан — толгойн ЯГ доор, ижил өргөн */
 .zoneDock {
   top: 44px;
@@ -384,9 +419,21 @@
  * ба бариулыг ДООД төв рүү (Esri-ийн attribution-оос дээш) буулгана. Бусад
  * харагдац (dock-гүй) хэвээр — 2026-09-15-ны «зөвхөн ерөнхий төлөвлөгөө» дүрэм.
  */
+/* ⚠️ 2026-10-23 (UX аудит S3): доод ТӨВ нь утсан дээр зүүн хавтасны (каталог, өргөн min(360px, 92%), доод
+   ирмэг хүртэл) ДОТОР орж «▾» бариул «Барилга» мөрийг дардаг байв. ДООД БАРУУН буланд (Esri-ийн attribution
+   мөрөөс дээш) — хавтас баруун 8%-ийг үргэлж чөлөөлдөг, Esri-ийн баруун товчнууд ДЭЭД талд. `transform`
+   ба анимаци нь `translateX(-50%)`-ийг агуулдаг тул тэглэнэ (эс бөгөөс `both` дүүргэлт буцааж хэрэглэнэ). */
 @media (max-width: 900px) {
-  *:has(> .tabDock) > .dimsBar { top: auto; bottom: 34px; }
-  *:has(> .tabDock) > .dimsTab { top: auto; bottom: 12px; }
+  *:has(> .tabDock) > .dimsBar { top: auto; bottom: 62px; left: auto; right: 12px; transform: none; animation: none; }
+  *:has(> .tabDock) > .dimsTab { top: auto; bottom: 22px; left: auto; right: 12px; transform: none; }
+  /* ⚠️ 2026-10-23 (засвар): доод баруун буланд зурвас (62–98px) нь газрын зургийн сануулгатай (`map.module.css`
+     `.floatBR`, 64px) ба 3D-д голын нислэгийн зурвастай (72–108px, 390px өргөнд баруун хагас руу орно) давхцаж байв.
+     Сануулга зурвасын ДЭЭР; 3D-д зурвас нислэгийн ДЭЭР (116px), сануулга түүнээс ч дээр. Модуль хоорондын класс
+     хэшлэгддэг тул `MapCanvas`-ийн `data-float-br` · `data-flight` тэмдгээр; `[role]` нь `.wrap:has(> .flightBar) >
+     .floatBR` (0,3,0)-аас өвөрмөц чанарыг илүү болгоно. */
+  *:has(> .tabDock) [data-float-br][role] { bottom: 110px; }
+  *:has(> .tabDock):has([data-flight]) > .dimsBar { bottom: 116px; }
+  *:has(> .tabDock):has([data-flight]) [data-float-br][role] { bottom: 164px; }
 }
 
 /*

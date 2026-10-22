@@ -159,7 +159,7 @@ async function createTable(): Promise<string> {
      хөрвүүлэгдсэн тул том үсэгтэй нэртэй зохиогчид `createService`/`share` зөрдөг байв (`entDocs.exactUser`-ийн ⚠️). */
   const user = await entExactUser();
   const avail = await post<{ available?: boolean }>(`${rest()}/portals/self/isServiceNameAvailable`, { name: FM_TITLE, type: 'Feature Service' });
-  if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — эзэмшигч нь байгууллагад хуваалцах ёстой.', FM_TITLE));
+  if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — админд мэдэгдэнэ үү (эзэмшигч нь байгууллагад хуваалцах ёстой).', FM_TITLE));
   const created = await post<{ encodedServiceURL?: string; serviceurl?: string; itemId?: string }>(
     `${rest()}/content/users/${encodeURIComponent(user)}/createService`, {
       outputType: 'featureService',
@@ -312,7 +312,8 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
     const r = j.addResults?.[0];
     if (!r?.success) throw new Error(r?.error?.description || tr('Мөр нэмэгдсэнгүй.'));
   } catch (e) {
-    throw new Error(tr('PDF item ({0}) үүссэн боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулахаас өмнө геопорталаас item-ийг устгана уу.', item.id, (e as Error).message));
+    /* ⚠️ 2026-10-23 (UX аудит X2 · X3): хэрэглэгч геопорталын item устгах эрхгүй — «админд мэдэгдэнэ үү», ID нь админд */
+    throw new Error(tr('PDF хадгалагдсан боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулбал давхардана — админд мэдэгдэнэ үү (файлын дугаар: {0}).', item.id, (e as Error).message));
   }
   return { warn };
 }
@@ -327,6 +328,9 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   const s = sess();
   requireCap('chanarReview');
   if (verdict === 'R' && !reason.trim()) throw new Error(tr('Буцаах шалтгаанаа бичнэ үү.'));
+  /* ⚠️ 2026-10-23 (UX аудит Q1): AN = «саналтай зөвшөөрсөн» — санал нь шийдвэрийн утга тул заавал (урьд нь
+     хоосон саналтай AN хадгалагддаг байв). UI товчийг хаадаг ч сервер рүү бичихийн өмнө энд дахин шалгана. */
+  if (verdict === 'AN' && !reason.trim()) throw new Error(tr('AN шийдвэрт саналаа бичнэ үү.'));
   const url = await tableUrl(false);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
   /* Багцын хүрээ ба өмнөх шатыг шалгасны дараа мөрийг дахин уншина. Эцсийн бичилт нь
@@ -384,7 +388,7 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   });
   if (result.success !== true || !Number.isInteger(result.updatedFeatureCount)
     || Number(result.updatedFeatureCount) < 0 || Number(result.updatedFeatureCount) > 1) {
-    throw new Error(tr('серверээс үр дүн дутуу ирлээ'));
+    throw new Error(tr('Шийдвэр хадгалагдсан эсэх тодорхойгүй — серверээс үр дүн дутуу ирлээ. Жагсаалт шинэчлэгдсэний дараа шалгана уу.'));
   }
   if (result.updatedFeatureCount === 0) throw new Error(tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу'));
 }

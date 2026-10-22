@@ -322,7 +322,7 @@ const P = HO_IPC.payFields;
   /* нэг нь огт нийтлэгдээгүй — ҮРГЭЛЖИЛНЭ (0 оролцоотой), анхааруулгатай */
   v = sheetsVerdict(['read', 'unpublished']);
   assert.ok(v.go, '⚠️ огт нийтлэгдээгүй хуудас — missing БИШ, бичилт үргэлжилнэ (аудит №6)');
-  assert.ok(v.go && v.warn && v.warn.includes('огт нийтлэгдээгүй'), 'анхааруулга «огт нийтлэгдээгүй» гэж тодруулна');
+  assert.ok(v.go && v.warn && v.warn.includes('огт илгээгдээгүй'), 'анхааруулга «огт илгээгдээгүй» гэж тодруулна (2026-10-23: нийтлэх → илгээх)');
   /* тэр өдөр бөглөгдөөгүй / уншигдаагүй (`missing`) — хэвээр татгалзана (09-15-ны дүрэм) */
   v = sheetsVerdict(['read', 'missing']);
   assert.ok(!v.go && !v.result.ok && v.result.error.includes('бөглөгдөөгүй'), 'дутуу хуудас → ok:false хэвээр');
@@ -331,7 +331,7 @@ const P = HO_IPC.payFields;
   assert.ok(!v.go && v.result.ok && v.result.op === 'skip' && v.result.why === 'no-data', 'бүгд обьёмгүй → no-data');
   /* юу ч уншигдаагүй — батлагдсан хуудасны өөрийн жааз байх ёстой тул АЛДАА (fail-closed), no-data биш */
   v = sheetsVerdict(['unpublished', 'unpublished']);
-  assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт нийтлэгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт илгээгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');
   v = sheetsVerdict(['no-obyem', 'unpublished']);
   assert.ok(!v.go && !v.result.ok, 'обьёмгүй + нийтлэгдээгүй → уншигдсан зүйлгүй → ok:false');
   /* нэг хуудастай багц */

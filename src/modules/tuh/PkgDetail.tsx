@@ -14,7 +14,7 @@
  */
 import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, date } from '@/lib/format';
+import { num, pct, mnt, date, fixCyr } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { CASHFLOW_NEW, HO_IPC, PKG_BY_BAGTS, LAYER_BY_ID } from '@/lib/services';
 import { isContracted } from '@/lib/gdash';
@@ -137,7 +137,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         const st = sp.start != null && sp.end != null ? planStatus({ start: sp.start, end: sp.end }, act, today) : 'none';
         l3.push({
           key: `${x.sheet.key}:${i}`,
-          label: q.depth === top ? <b>{q.work}</b> : q.work,
+          label: q.depth === top ? <b>{fixCyr(q.work)}</b> : fixCyr(q.work),
           start: sp.start,
           end: sp.end,
           progress: act == null ? null : act * 100,

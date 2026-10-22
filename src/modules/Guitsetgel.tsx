@@ -21,6 +21,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { fixCyr } from '@/lib/format';
 import {
   DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, nextReview,
@@ -36,12 +37,13 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, dismissApplyWarn, reasonMax, REASON_MAX, recheck, resetRegSweep, retryPendingRegistrations, setDecisionErr, UPPER_SWEEP, useApplyWarns, useDecisionErr, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, dismissApplyWarn, reasonMax, REASON_MAX, recheck, resetRegSweep, retryPendingRegistrations, selfBlocks, setDecisionErr, UPPER_SWEEP, useApplyWarns, useDecisionErr, useHyanaltRows } from '@/lib/hyanaltStore';
+import { askConfirm } from '@/lib/confirm';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 import s from './guitsetgel.module.css';
 
 /* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат) — энд давхар жагсаавал зөрнө */
@@ -65,12 +67,14 @@ export { STAGE_LABEL };
  * ⚠️ Төлөвийн УТГА нь өгөгдөл (ArcGIS-д монголоор хадгалагдана) — дэлгэцэд
  * гаргахдаа л орчуулна. Түлхүүр нь шууд бичигдсэн байх ёстой, эс бөгөөс
  * `i18n-extract` олохгүй.
+ * ⚠️ 2026-10-23 (UX аудит R6): дэлгэцэд «Менежер» БИШ «Багцын менежер» — «Ерөнхий менежер»-тэй андуурагддаг байв.
+ *    Өгөгдлийн утга (`STATUS.managerReview` = «Менежер хянаж байна») ХЭВЭЭР, зөвхөн шошго.
  */
 const STATUS_LABEL: Record<Status, string> = {
   get [STATUS.engineerReview]() { return tr('Инженер хянаж байна'); },
   get [STATUS.engineerReturned]() { return tr('Инженер буцаасан'); },
-  get [STATUS.managerReview]() { return tr('Менежер хянаж байна'); },
-  get [STATUS.managerReturned]() { return tr('Менежер буцаасан'); },
+  get [STATUS.managerReview]() { return tr('Багцын менежер хянаж байна'); },
+  get [STATUS.managerReturned]() { return tr('Багцын менежер буцаасан'); },
   get [STATUS.directorReview]() { return tr('Ерөнхий менежер хянаж байна'); },
   get [STATUS.directorReturned]() { return tr('Ерөнхий менежер буцаасан'); },
   get [STATUS.headReview]() { return tr('Хэлтсийн дарга хянаж байна'); },
@@ -89,7 +93,7 @@ const APPROVE_LABEL: Record<ReviewStage, string> = {
   get chief() { return tr('Баталж архивт бүртгэх'); },
 };
 const SENT_VERB: Record<ReviewStage, string> = {
-  get engineer() { return tr('шалгаж менежерт илгээв'); },
+  get engineer() { return tr('шалгаж багцын менежерт илгээв'); },
   get manager() { return tr('зөвшөөрч ерөнхий менежерт илгээв'); },
   get director() { return tr('зөвшөөрч хэлтсийн даргад илгээв'); },
   get head() { return tr('зөвшөөрч газрын даргад илгээв'); },
@@ -104,7 +108,7 @@ const RETURN_VERB: Record<ReviewStage, string> = {
 };
 /** Дахин шалгагчийн товч · placeholder — «дээшээ» ба «доошоо» */
 const RECHECK_UP: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  get engineer() { return tr('Дахин шалгасан — асуудалгүй, менежерт илгээх'); },
+  get engineer() { return tr('Дахин шалгасан — асуудалгүй, багцын менежерт илгээх'); },
   get manager() { return tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх'); },
   get director() { return tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'); },
   get head() { return tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'); },
@@ -116,12 +120,15 @@ const RECHECK_DOWN: Record<Exclude<ReviewStage, 'chief'>, string> = {
   get head() { return tr('Асуудал байна — ерөнхий менежерт буцаах'); },
 };
 const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)'); },
+  get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (багцын менежерийн бичвэр компанид харагдахгүй)'); },
   get manager() { return tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
   get director() { return tr('Багцын менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
   get head() { return tr('Ерөнхий менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
 };
 
+/* ⚠️ 2026-10-23 (UX аудит E11): гүйцэтгэлийн илгээлтийн мөрийн нэр «Гүйцэтгэл · 2026.10.14 · …» (`hyanaltSubmit.dayTagOf`)
+   ArcGIS-д МОНГОЛООР хадгалагддаг (түлхүүр — өөрчлөхгүй) тул англи горимд угтварыг зөвхөн ДЭЛГЭЦЭНД орчуулна. */
+const ajilLabel = (a: string): string => (a.startsWith('Гүйцэтгэл · ') ? `${tr('Гүйцэтгэл')} · ${a.slice('Гүйцэтгэл · '.length)}` : a);
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('mn-MN', {
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -199,7 +206,7 @@ type Step = {
 /** ⚠️ 2026-10-01: логийн үйл явдлын нэрийн өмнөх шатны шошго (`stepsOf`-той ижил) */
 const STAGE_WHO: Record<ReviewStage, string> = {
   get engineer() { return tr('Инженер'); },
-  get manager() { return tr('Менежер'); },
+  get manager() { return tr('Багцын менежер'); },
   get director() { return tr('Ерөнхий менежер'); },
   get head() { return tr('Хэлтсийн дарга'); },
   get chief() { return tr('Газрын дарга'); },
@@ -255,7 +262,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     out.push({
       who: eng,
       // Компани менежерийн тухай сонсох ёсгүй тул үйл үгийг нь өөрчилнө
-      verb: seesManager(stage) ? tr('шалгаж менежерт илгээв') : tr('хүлээн авав'),
+      verb: seesManager(stage) ? tr('шалгаж багцын менежерт илгээв') : tr('хүлээн авав'),
       at: r[F.engineerSent],
       reason: '',
       kind: 'ok',
@@ -276,7 +283,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
   }
 
   if (seesManager(stage)) {
-    const mgr = `${tr('Менежер')} ${r[F.manager]}`.trim();
+    const mgr = `${tr('Багцын менежер')} ${r[F.manager]}`.trim();
     const mgrOv = overwritten(r[F.managerSent], r[F.managerReturned]);
     if (r[F.managerSent]) {
       out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
@@ -604,7 +611,8 @@ function Submitted({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reqKey]);
 
-  if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
+  /* ⚠️ 2026-10-23 (UX аудит X7): «Нийтэлсэн/нийтлэл» → «Илгээсэн/илгээлт» — гүйцэтгэгчийн товч «Илгээх» тул нэг нэр томьёо */
+  if (busy) return <div className={s.subMuted}>{tr('Илгээсэн гүйцэтгэлийг татаж байна…')}</div>;
   /* ⚠️ Унасныг бүдэг биш УЛААНААР, дахин оролдох товчтой (2026-09-23) —
      бүдэг мөр нь «хоосон» мэт харагдаж, хянагч дахин ачаалах замгүй байв. */
   if (err) {
@@ -615,12 +623,12 @@ function Submitted({
       </div>
     );
   }
-  if (!data) return <div className={s.subMuted}>{tr('Холбогдох архивын агшин олдсонгүй.')}</div>;
+  if (!data) return <div className={s.subMuted}>{tr('Энэ илгээлтийн хадгалсан агуулга олдсонгүй (устгагдсан эсвэл хуучин бүртгэл) — гүйцэтгэгчээр дахин илгээлгэнэ үү.')}</div>;
 
   return (
     <div className={s.sub}>
       <div className={s.subHead}>
-        <span>{tr('Нийтэлсэн гүйцэтгэл')}</span>
+        <span>{tr('Илгээсэн гүйцэтгэл')}</span>
         <span className={s.subMeta}>
           {/*
             * ⚠️ Хараахан АРХИВЛААГҮЙ илгээлтийг «архивлав» гэж ХЭЛЭХГҮЙ
@@ -645,7 +653,7 @@ function Submitted({
         *   хянагчид зөвхөн «Буцаах» үлддэг байв.
         */}
       {data.filledCount === 0 && (
-        <div className={s.subWarn}>{tr('Энэ нийтлэлд обьём огт бөглөгдөөгүй байна.')}</div>
+        <div className={s.subWarn}>{tr('Энэ илгээлтэд обьём огт бөглөгдөөгүй байна.')}</div>
       )}
       <>
           <div className={s.subMuted}>
@@ -653,7 +661,7 @@ function Submitted({
               * ⚠️ «Анхны нийтлэл» гэхийн оронд НИЙТЭЛСЭН ЯГ АГШНЫГ бичнэ —
               * хянагчид «хэзээ ирсэн бэ» гэдэг нь илүү хэрэгтэй мэдээлэл.
               */}
-            {tr('Нийтэлсэн: {0}', stamp(sentAt))}
+            {tr('Илгээсэн: {0}', stamp(sentAt))}
             {' · '}
             {tr('Обьём бөглөсөн ажил: {0}', String(data.filledCount))}
             {' · '}
@@ -687,7 +695,7 @@ function Submitted({
               <>
                 {' · '}
                 <span className={s.subLegend}>
-                  {tr('улаан хүрээ — энэ нийтлэлд өөрчлөгдсөн')}
+                  {tr('улаан хүрээ — энэ илгээлтэд өөрчлөгдсөн')}
                 </span>
               </>
             )}
@@ -705,7 +713,7 @@ function Submitted({
             */}
           {data.prevError && (
             <div className={s.error} role="alert">
-              {tr('Өмнөх агшныг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
+              {tr('Өмнөх хувилбарыг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
               <button type="button" className={s.btn} onClick={() => setTryN((n) => n + 1)}>{tr('Дахин оролдох')}</button>
             </div>
           )}
@@ -741,7 +749,7 @@ function Submitted({
               {data.dateChanges.slice(0, 8).map((d, i) => (
                 <span key={`${d.no}:${d.block}:${d.se}:${i}`}>
                   {i > 0 ? '; ' : ''}
-                  {`${d.block} · ${d.work} · ${d.se === 's' ? tr('эхлэх') : tr('дуусах')}: ${d.from ?? '—'} → ${d.to ?? '—'}`}
+                  {`${d.block} · ${fixCyr(d.work)} · ${d.se === 's' ? tr('эхлэх') : tr('дуусах')}: ${d.from ?? '—'} → ${d.to ?? '—'}`}
                 </span>
               ))}
               {data.dateChanges.length > 8 && ` … +${data.dateChanges.length - 8}`}
@@ -797,7 +805,7 @@ function Submitted({
                     key={`${ci}:${c.row}:${c.col}`}
                     type="button"
                     className={`${s.chItem} ${ok?.has(`${c.row}:${c.block}`) ? s.chOk : ''}`}
-                    title={`${c.no} · ${c.work}`}
+                    title={`${c.no} · ${fixCyr(c.work)}`}
                     onClick={() => {
                       setJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }));
                       /* ⚠️ 2026-10-07: хүснэгт (`.subSheet`) урт жагсаалтын ДООР — дотоод гүйлгээ биелсэн ч
@@ -806,7 +814,7 @@ function Submitted({
                     }}
                   >
                     <span className={s.chBlk}>{c.block}</span>
-                    <span className={s.chWork}>{c.work}</span>
+                    <span className={s.chWork}>{fixCyr(c.work)}</span>
                     <span className={s.chVal}>
                       {/* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол ХУВИЙГ харуулна (2026-09-24) */}
                       {/* ⚠️ 2026-09-25: НЭМЭЛТ («+15») нь нийтийн ард — «өмнөх → нийт (+энэ удаа)».
@@ -887,8 +895,56 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
+/*
+ * ⚠️ 2026-10-23 (UX аудит R2): ХЯНАГЧИЙН ДУТУУ АЖИЛ — ногоон нүд · бичсэн шалтгаан — МОДУЛИЙН түвшинд.
+ *    Урьд нь `Item`-ийн локал state байсан тул таб · шүүлт · харагдац солиход (`Item` unmount) 50 ногоон нүд, бичсэн
+ *    шалтгаан АСУУЛТГҮЙ устдаг байв. Одоо сешний туршид хадгалагдаж буцаж ирэхэд сэргэнэ — тиймээс тэр үед асуух
+ *    шаардлагагүй. Зөвхөн F5 / таб хаахад алдагдана → хөтчийн `beforeunload` асууна (`syncDraftGuard`).
+ * ⚠️ `navGuard` БИШ: тэр нь харагдац/таб солиход «Гарвал алдагдана» гэж асуудаг — энд алдагдахгүй тул худал асуулт болно.
+ * ⚠️ Ногоон нүд нь `seedKey` (тойрог · дахин шалгалт · мөрийн зөвшөөрөл) ба `subAt` (агуулга)-тай уягдана — агуулга
+ *    солигдсон бол хуучин тэмдэг ШИНЭ утгад суухгүй (`seenAt`-ийн 2026-09-25 ⚠️ хэвээр: сэргээсэн `subAt`-аас эхэлнэ).
+ * ⚠️ Түлхүүр = `хэрэглэгч|ажил` — нэг табд өөр хэрэглэгч нэвтэрвэл өмнөхийн тэмдэг харагдахгүй.
+ */
+type ReviewDraft = { seedKey: string; keys: Set<string> | null; reason: string; subAt?: number };
+const REVIEW_DRAFTS = new Map<string, ReviewDraft>();
+const draftLive = (d: ReviewDraft): boolean => !!d.reason.trim() || (d.keys?.size ?? 0) > 0;
+/*
+ * ⚠️ 2026-10-23 (засвар): ЗӨВХӨН хөтчийн жинхэнэ (`isTrusted`) unload-д асууна. `LocaleToggle.hasUnsavedWork` нь
+ *    хиймэл `beforeunload` шидэж `defaultPrevented`-ийг уншдаг — энд хариулбал харагдац солих · ↻ · хэл солих ·
+ *    сешн дуусахад «Хадгалаагүй өөрчлөлт… алдагдана» гэж ХУДЛАА асууна (ноорог модулийн түвшинд хадгалагддаг тул
+ *    алдагдахгүй). Сонсогч Guitsetgel-ээс гарсны дараа ч үлдэнэ — зөв: ноорог F5-д л алдагдана.
+ */
+function onDraftUnload(e: BeforeUnloadEvent): void {
+  if (!e.isTrusted) return;
+  e.preventDefault();
+  e.returnValue = '';
+}
+let draftGuardOn = false;
+function syncDraftGuard(): void {
+  if (typeof window === 'undefined') return;
+  const on = [...REVIEW_DRAFTS.values()].some(draftLive);
+  if (on === draftGuardOn) return;
+  draftGuardOn = on;
+  if (on) window.addEventListener('beforeunload', onDraftUnload);
+  else window.removeEventListener('beforeunload', onDraftUnload);
+}
+/** Одоо шийдвэрлэх боломжтой ажлуудад хамааралгүй (өөр хүн шийдсэн · хэрэглэгч солигдсон) ноорогуудыг хаяна */
+function pruneDrafts(live: ReadonlySet<string>): void {
+  let hit = false;
+  for (const k of REVIEW_DRAFTS.keys()) if (!live.has(k)) { REVIEW_DRAFTS.delete(k); hit = true; }
+  if (hit) syncDraftGuard();
+}
+
+function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedWhy, onDone }: {
   work: Work; stage: Stage; who: string;
+  /**
+   * ⚠️ 2026-10-23 (UX аудит R1): энэ хэрэглэгч ЗӨВШӨӨРЧ ЧАДАХГҮЙ шалтгаан (`hyanaltStore.selfBlocks` — өөрийн илгээлт /
+   *    өөр шатанд зөвшөөрсөн). Өгөгдвөл зөвшөөрөх · дээш илгээх товч УРЬДЧИЛАН хаагдаж шалтгаан ил бичигдэнэ — урьд нь
+   *    дарсны ДАРАА л татгалзал гардаг байв. Буцаах зам нээлттэй (`authz` буцаалтад эдгээрийг шалгадаггүй).
+   */
+  blockedWhy?: string;
+  /** ⚠️ 2026-10-23 (UX аудит R3): шийдвэр амжилттай — ажил жагсаалтаас шилжихээс өмнө эцэгт «хаашаа явсан»-ыг хэлнэ */
+  onDone?: (msg: string) => void;
   /** ⚠️ 2026-09-30: буцаагдсан ажлын багц/илгээлтийг дамжуулна (`goFix`-ийн ⚠️) */
   onFix: (w: Work) => void;
   /**
@@ -922,8 +978,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    */
   readOnly?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState('');
+  /* ⚠️ 2026-10-23 (UX аудит R2): дутуу ажлын ноорог (`REVIEW_DRAFTS`) — байвал нээлттэй, шалтгаан сэргэнэ */
+  const dk = `${(me ?? '').trim().toLowerCase()}|${work.key}`;
+  const [open, setOpen] = useState(() => REVIEW_DRAFTS.has(dk));
+  const [reason, setReason] = useState(() => REVIEW_DRAFTS.get(dk)?.reason ?? '');
   /* ⚠️ 2026-10-12 (R2): шийдвэрийн алдаа модулийн store-д (`hyanaltStore.useDecisionErr`) — STALE/`movedSince`
      үед жагсаалт шинэчлэгдэж ажил «минийх» ↔ «бусад» хооронд шилжихэд `Item` дахин mount болж локал state
      алга болдог тул хэрэглэгч ямар ч мессеж хардаггүй байв. */
@@ -1101,7 +1159,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     return { ...resolveOk(parseOkCells(curOkRaw), okRows, trusted), fresh: true };
   }, [recheckSeed, curOkRaw, changes, okRows, remapped, subAt, okWrittenAt]);
   const seed = seedRes.keys;
-  const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(null);
+  /* ⚠️ 2026-10-23 (UX аудит R2): ноорогоос сэргэнэ — `seedKey` зөрвөл (шинэ тойрог) доорх `okKeys0` түүнийг үл тоомсорлоно */
+  const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(() => {
+    const d = REVIEW_DRAFTS.get(dk);
+    return d?.keys ? { key: d.seedKey, keys: d.keys } : null;
+  });
   /**
    * ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ НҮД (`Change.neg`) ХЭЗЭЭ Ч ЗӨВШӨӨРӨГДӨХГҮЙ — ногоон тэмдэг (товшилт · «бүгдийг
    *    ногоон» · дээд шатны буцаалтын жагсаалт) тэдэнд суухгүй, `okCells`-д ч бичигдэхгүй. Урьд нь хянагч сөрөг нүдийг
@@ -1153,7 +1215,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    * ⚠️ Дахин шалгалтад ч ХООСНООС (мөрийн `Zovshoorson_nud` биш): тэр нь
    *    ХУУЧИН агуулгын зөвшөөрөл.
    */
-  const seenAt = useRef<number | undefined>(undefined);
+  /* ⚠️ 2026-10-23 (UX аудит R2): ноорогийн агуулгын агшнаас эхэлнэ — буцаж ирэхэд агуулга шинэчлэгдсэн бол тэглэгдэнэ */
+  const seenAt = useRef<number | undefined>(REVIEW_DRAFTS.get(dk)?.subAt);
   useEffect(() => {
     if (subAt == null) return;
     const was = seenAt.current;
@@ -1161,6 +1224,15 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     if (was != null && was !== subAt) setOkKeys(new Set());
     /* ⚠️ `setOkKeys` нь эхлэлийн түлхүүртэй (2026-09-30) — солигдоход дахин ажиллана; `was === subAt` тул тэглэхгүй */
   }, [subAt, setOkKeys]);
+  /* ⚠️ 2026-10-23 (UX аудит R2): ногоон нүд · шалтгааныг модулийн ноорогт бичнэ (`REVIEW_DRAFTS`-ийн ⚠️). Хэрэглэгч
+     хөндөөгүй (`okOv` алга / хуучирсан) бол нүд ноорог БИШ. Хоосон бол устгана. */
+  useEffect(() => {
+    const keys = okOv && okOv.key === seedKey ? okOv.keys : null;
+    const d: ReviewDraft = { seedKey, keys, reason, subAt: subAt ?? seenAt.current };
+    if (draftLive(d)) REVIEW_DRAFTS.set(dk, d);
+    else REVIEW_DRAFTS.delete(dk);
+    syncDraftGuard();
+  }, [dk, okOv, seedKey, reason, subAt]);
   /** `Submitted`-ийг дахин ачаалуулах тоолуур — «агуулга өөрчлөгдсөн» үед */
   const [subReload, setSubReload] = useState(0);
   /* ⚠️ 2026-10-22 (аудит): сөрөг нийттэй нүдийг (`negSet`) ногоон болгохгүй — татгалзлын шалтгааныг буцаана, хүснэгт
@@ -1192,7 +1264,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       .slice(0, 12)
       /* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол хувийг нэрлэнэ (2026-09-24) */
       /* ⚠️ 2026-09-25: обьёмыг `qty`-ээр (мянгатын тусгаарлагч, 3 орон) — түүхий тоо `1234.56789` буцаалтын шалтгаанд ордог байв */
-      .map((c) => `${c.block} · ${c.work} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : qty(c.to)}`)
+      .map((c) => `${c.block} · ${fixCyr(c.work)} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : qty(c.to)}`)
       .join("; ");
     const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
     const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
@@ -1207,7 +1279,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    * ч мэддэггүй байв. `ok: true` тул шийдвэрийг буцаахгүй — гагцхүү
    * анхааруулгыг ил гаргана.
    */
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string; contentChanged?: true }>) => {
+  /* ⚠️ 2026-10-23 (UX аудит R3): `okMsg` — амжилтын дараа эцэгт (`onDone`) «→ дараагийн шат руу илгээгдлээ»; ажил
+     жагсаалтаас ЧИМЭЭГҮЙ алга болдог байв. Ноорог (R2) мөн цэвэрлэгдэнэ. */
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string; contentChanged?: true }>, okMsg?: string) => {
     if (busy) return;
     setBusy(true);
     /* ⚠️ 2026-10-06 аудит: (1) ЭЦСИЙН батлалт архивт БҮТЭН ЖААЗ бичдэг (≈1,400 мөр, 500-аар
@@ -1235,8 +1309,19 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг `userError`-оор */
     setErr(r.ok ? '' : (r.error ? userError(r.error) : tr('Алдаа гарлаа')));
     setWarn(r.ok ? (r.warn ?? '') : '');
-    if (r.ok) setReason('');
+    if (r.ok) {
+      setReason('');
+      setOkOv(null);
+      REVIEW_DRAFTS.delete(dk);
+      syncDraftGuard();
+      if (okMsg) onDone?.(okMsg);
+    }
   };
+  /** ⚠️ 2026-10-23 (UX аудит R3): амжилтын мессеж — ажил хаашаа явсныг нэрлэнэ */
+  const sentTo = (x: ReviewStage | null): string => (x
+    ? tr('«{0}» — {1} руу илгээгдлээ.', ajilLabel(work.ajil), STAGE_LABEL[x])
+    : tr('«{0}» — батлагдаж архивт бүртгэгдлээ.', ajilLabel(work.ajil)));
+  const backTo = (x: Stage): string => tr('«{0}» — {1} руу буцаалаа.', ajilLabel(work.ajil), lowerLabel(x));
 
   /* ⚠️ 2026-10-04: `apply`-ийн `warn`-ыг store (`useApplyWarns`) хуудасны дээд хэсэгт
      харуулна — энд давхар гаргахгүй (мөр «бусад» руу шилжвэл энэ state алга болдог байв). */
@@ -1266,7 +1351,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       okCells: changes != null ? toOkRefs(okKeys, okRows) : [],
       /* ⚠️ Илгээлтийн агуулгын тулгалт (2026-09-24) — `hyanaltStore.apply`-ийн `subAt` */
       subAt,
-    })), warn: undefined }));
+    })), warn: undefined }), decision === DECISION.approve ? sentTo(nextReview(stage as ReviewStage)) : backTo(stage));
 
   const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
   /** ⚠️ 2026-09-30: батлах товч ХААЛТТАЙ байгаа шалтгаан — tooltip ба ил бичвэрт нэг эх */
@@ -1276,7 +1361,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
      БҮХ шатанд. Урьд нь зөвхөн 6-р шатны архивлалт татгалздаг тул доод шатнууд 0-оор хаасан утгыг харж баталдаг байв.
      Шалтгааны бичвэр нь архивлалтын алдаатай ижил. `unmoved`-ийн бичвэр одоо хоёр шалтгааныг (тулгалт · тоо биш) нэрлэнэ. */
   const negBlocks = (negative ?? 0) > 0;
-  const approveWhy: string | undefined = changes == null
+  /* ⚠️ 2026-10-23 (UX аудит R1): өөрийн илгээлт / өөр шатанд зөвшөөрсөн (`blockedWhy` — `selfBlocks`) ЭХЭНД — нүд ногоон
+     болгохоос ӨМНӨ хэлнэ (урьд нь бүгдийг ногоон болгож «Зөвшөөрөх» дарсны дараа л татгалздаг байв) */
+  const approveWhy: string | undefined = blockedWhy ?? (changes == null
     ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
     : unmovedBlocks
       ? tr('Илгээлтийн {0} нүдийг хуудсанд буулгаж чадаагүй (мөр нь тулгагдаагүй эсвэл нэмэлтийн утга нь тоо биш) тул батлах боломжгүй — гүйцэтгэгчээр шалгуулж дахин илгээлгэнэ үү (буцааж болно).', String(unmoved))
@@ -1285,16 +1372,18 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
           + (negCells.length ? ` ${negCells.join('; ')}` : '')
         : changes.length > 0 && !allOk
           ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
-          : undefined;
+          : undefined);
+  /** ⚠️ 2026-10-23 (UX аудит R1): `blockedWhy` нь БҮХ зөвшөөрөх (дээш илгээх) товчийг хаана — нүд ногоон байсан ч */
+  const selfBlocked = !!blockedWhy;
   const rechecking = recheckSeed;
   const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
   return (
     <div className={s.item}>
-      <button className={s.itemHead} onClick={() => setOpen((v) => !v)}>
+      <button className={s.itemHead} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className={s.chev}>{open ? '▾' : '▸'}</span>
         <span className={s.who}>
-          <div className={s.ajil} title={work.ajil}>{work.ajil}</div>
+          <div className={s.ajil} title={ajilLabel(work.ajil)}>{ajilLabel(work.ajil)}</div>
           <div className={s.meta} title={`${work.bagts} · ${work.company}`}>{work.bagts} · {work.company}</div>
         </span>
         <Track status={st} stage={stage} />
@@ -1346,7 +1435,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     {/* ⚠️ Бүх өөрчлөлт ногоон болтол ШИЛЖҮҮЛЭХ БОЛОМЖГҮЙ. */}
                     <button
                       className={`${s.btn} ${s.ok}`}
-                      disabled={busy || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
+                      disabled={busy || selfBlocked || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
                       title={approveWhy
                           /*
                            * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
@@ -1363,9 +1452,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                          адил баталгаажуулах асуулт тавина — урьд нь анхааруулга нь
                          зөвхөн tooltip байсан тул нэг санамсаргүй товшилтоор архивт
                          орж байв. */
-                      onClick={() => {
-                        if (stage === 'chief' && !window.confirm(tr('Гүйцэтгэлийг баталж архивт бүртгэх үү? Архив болон нэгтгэлд бичигдэж, үндсэн өгөгдөлд орно.'))) return;
-                        review(DECISION.approve);
+                      /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт (`askConfirm`) — `window.confirm`-ыг хөтөч «дахин бүү
+                         харуул»-аар чимээгүй `false` болгодог тул товч юу ч хийхгүй мэт байв */
+                      onClick={async () => {
+                        if (stage === 'chief' && !(await askConfirm(tr('Гүйцэтгэлийг баталж архивт бүртгэх үү? Архив болон нэгтгэлд бичигдэж, үндсэн өгөгдөлд орно.'), { ok: tr('Баталж бүртгэх') }))) return;
+                        void review(DECISION.approve);
                       }}>
                       {APPROVE_LABEL[stage]}
                       {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
@@ -1392,11 +1483,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                             ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана')
                             : undefined
                       }
-                      onClick={() => {
+                      onClick={async () => {
                         /* ⚠️ 2026-10-06 аудит: БАТАЛГААЖУУЛНА — AjilBatlah/HuvaariBatlah-ийн буцаалтын
                            асуулттай (2026-09-30) ижил; буцаалт нь буцаах замгүй, шат нэрлэнэ. */
-                        if (!window.confirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(stage)))) return;
-                        review(DECISION.return);
+                        /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` (апп доторх) */
+                        if (!(await askConfirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(stage)), { danger: true, ok: tr('Буцаах') }))) return;
+                        void review(DECISION.return);
                       }}>
                       {tr('Буцаах')}
                       {bad.length > 0 && ` (${bad.length})`}
@@ -1460,9 +1552,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                         гараар» дүрэмтэй — урьд нь `allOk` шалгагддаггүй тул дахин илгээгдсэн
                         (хараагүй) агуулга нэг ч нүд тэмдэглэлгүй дээш явдаг байв. */}
                     {/* ⚠️ 2026-10-22 (аудит): `negBlocks` — батлах товчтой ИЖИЛ (дээрх `negBlocks`-ийн ⚠️) */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || selfBlocked || lackBlocks || changes == null || unmovedBlocks || negBlocks || (changes.length > 0 && !allOk)}
                       title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : approveWhy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
+                      onClick={() => void run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt), sentTo(nextReview(reBy)))}>
                       {RECHECK_UP[reBy]}
                       {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
@@ -1472,15 +1564,16 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                         доошоо явах нь хараагүй агуулгыг БАТЛАХГҮЙ. */}
                     <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
-                      onClick={() => {
+                      onClick={async () => {
                         /* ⚠️ 2026-10-06 аудит: доош буцаалтыг баталгаажуулна (дээрх «Буцаах»-ын ⚠️) */
-                        if (!window.confirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(reBy)))) return;
+                        /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` (апп доторх) */
+                        if (!(await askConfirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(reBy)), { danger: true, ok: tr('Буцаах') }))) return;
                         /* ⚠️ 2026-10-12 (R4): агуулга татагдаагүй үед `undefined` БИШ `[]` — `review()`-тэй ижил. `undefined` нь
                            талбарыг хөндөхгүй тул дээд шатны зөвшөөрөл үлдэж гүйцэтгэгчид «зөвшөөрөгдсөн» (түгжигдсэн
                            ногоон) нүд болж харагддаг байв. */
                         /* ⚠️ 2026-10-12 (дарааллын аудит, №4): агуулга татагдсан, дахин шалгагч нүд хөндөөгүй, seed шинэ бол
                            `undefined` — дээд шатны жагсаалт хэвээр (`recheckOkArg`-ийн ⚠️) */
-                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, recheckOkArg(), subAt));
+                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, recheckOkArg(), subAt), backTo(reBy));
                       }}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
@@ -1528,6 +1621,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                 </>
               )}
 
+              {/* ⚠️ 2026-10-23 (UX аудит R3): бичилт явж буйг ил хэлнэ — эцсийн батлалт (архив) хэдэн арван секунд үргэлжилдэг */}
+              {busy && <div className={s.saving} role="status">{tr('Хадгалж байна…')}</div>}
               {err && <div className={s.error} role="alert">{err}</div>}
               {warn && <div className={s.warn} role="status">{warn}</div>}
             </div>
@@ -1568,6 +1663,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
 /* ══════════ Үндсэн харагдац ══════════ */
 
 const ALL = '';
+/** ⚠️ 2026-10-23 (R1): `selfBlocks` уншигдтал — тогтвортой хоосон (шинэ `Map` рендер бүрд үүсгэхгүй) */
+const NO_BLOCKS: ReadonlyMap<string, string> = new Map();
 
 /**
  * Төлөвийн шүүлт — ШАТААС хамаарна.
@@ -1741,11 +1838,12 @@ export function Guitsetgel() {
      (`run` → 'hyanalt-apply' туг) бөглөх таб руу шилжвэл `Item` unmount болж үр дүн/алдаа алга болдог,
      архивын бичилт явж байхад хэрэглэгч анхааруулгагүй гардаг байв (бөглөх табын товч `setTab`-ийг шууд
      дууддаг байсан). Туг тавигдаагүй үед асуулт гарахгүй — урьдын зан. */
-  const goTab = (t: 'fill' | 'sent' | 'negtgel') => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` (апп доторх) — тиймээс async; дуудагч `void goTab(…)` */
+  const goTab = async (t: 'fill' | 'sent' | 'negtgel') => {
     if (t !== tab) {
       const labels = navDirtyLabels();
       if (labels.length
-        && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
+        && !(await askConfirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')), { danger: true, ok: tr('Хаяад гарах') }))) return;
     }
     setTabPicked(true);
     setTab(t);
@@ -1905,6 +2003,44 @@ export function Guitsetgel() {
   const others = filtered.filter((w) => !(w.owner === stage && w.status !== STATUS.transferred));
 
   /*
+   * ⚠️ 2026-10-23 (UX аудит R1): ЗӨВШӨӨРЧ ЧАДАХГҮЙ ажил (өөрийн илгээлт · өөр шатанд зөвшөөрсөн) — цэсний тэмдэгтэй
+   *    (`countReviewPending`) НЭГ функц `hyanaltStore.selfBlocks`. Урьд нь тэмдэг «2», таб «3» гэж зөрж, ийм ажил
+   *    «хүлээгдэж буй» жагсаалтад орж, татгалзал зөвхөн «Зөвшөөрөх» дарсны дараа гардаг байв. Одоо тусдаа бүлэгт,
+   *    зөвшөөрөх товч урьдчилан хаалттай (`Item.blockedWhy`). Шүүлтгүй `works`-оор (тэмдэг шүүлтгүй тоолдог).
+   *    Уншиж дуустал (`sig` зөрүү) хоосон = урьдын зан; жинхэнэ хамгаалалт `authz`-д хэвээр.
+   */
+  const myQueue = useMemo(() => works.filter((w) => w.owner === stage && w.status !== STATUS.transferred), [works, stage]);
+  const blockSig = `${(user?.username ?? '').toLowerCase()}|${stage}|${myQueue.map((w) => `${w.key}#${w.current.__oid}`).join(',')}`;
+  const [blockRes, setBlockRes] = useState<{ sig: string; m: Map<string, string> }>({ sig: '', m: new Map() });
+  useEffect(() => {
+    let alive = true;
+    void selfBlocks(myQueue, user?.username, stage)
+      .then((m) => { if (alive) setBlockRes({ sig: blockSig, m }); })
+      .catch(() => { /* зөвлөмж — унавал хаалтгүй (хамгаалалт `authz`-д) */ });
+    return () => { alive = false; };
+  }, [myQueue, user?.username, stage, blockSig]);
+  const blocked = blockRes.sig === blockSig ? blockRes.m : NO_BLOCKS;
+  const mineOk = mine.filter((w) => !blocked.has(w.key));
+  const mineBlocked = mine.filter((w) => blocked.has(w.key));
+  /* ⚠️ Табын тоо = цэсний тэмдэг (`countReviewPending`): зөвхөн харах томилгоо → 0, өөрийгөө батлах хоригтой нь хасагдана */
+  const tabCount = !flow.canPick && authStatus !== 'off' && isViewOnly(user?.username)
+    ? 0 : myQueue.filter((w) => !blocked.has(w.key)).length;
+  /* ⚠️ 2026-10-23 (UX аудит R2): шийдвэрлэх боломжгүй болсон ажлын ноорог (`REVIEW_DRAFTS`) хаягдана — эс бөгөөс F5 дээр
+     хөтөч дэмий асууна */
+  useEffect(() => {
+    if (loading || loadFailed) return;
+    const me = (user?.username ?? '').trim().toLowerCase();
+    pruneDrafts(new Set(myQueue.map((w) => `${me}|${w.key}`)));
+  }, [loading, loadFailed, myQueue, user?.username]);
+  /* ⚠️ 2026-10-23 (UX аудит R3): шийдвэрийн дараах ногоон мөр — ажил жагсаалтаас шилжсэн ч хаашаа явсныг хэлнэ */
+  const [doneMsg, setDoneMsg] = useState('');
+  useEffect(() => {
+    if (!doneMsg) return;
+    const t = setTimeout(() => setDoneMsg(''), 10_000);
+    return () => clearTimeout(t);
+  }, [doneMsg]);
+
+  /*
    * ГҮЙЦЭТГЭГЧИЙН ХАРАГДАЦ — «миний илгээсэн ажил хаана явж байна вэ».
    *
    * ⚠️ Урьд нь илгээсэн ажил нь «Бусад ажил» гэсэн нэг овоонд ордог байв —
@@ -1989,7 +2125,7 @@ export function Guitsetgel() {
             <button
               type="button"
               className={`${s.tab} ${tab === 'fill' ? s.tabOn : ''}`}
-              onClick={() => goTab('fill')}
+              onClick={() => void goTab('fill')}
             >
               {stage === 'company' ? tr('Гүйцэтгэл бөглөх') : tr('Гүйцэтгэлийн хүснэгт')}
             </button>
@@ -1997,10 +2133,11 @@ export function Guitsetgel() {
             <button
               type="button"
               className={`${s.tab} ${tab === 'sent' ? s.tabOn : ''}`}
-              onClick={() => goTab('sent')}
+              onClick={() => void goTab('sent')}
             >
               {stage === 'company' ? tr('Илгээсэн ажил') : tr('Батлах ажил')}
-              {countFor(stage) > 0 && <span className={s.count}>{countFor(stage)}</span>}
+              {/* ⚠️ 2026-10-23 (UX аудит R1): цэсний тэмдэгтэй ижил тоо (`tabCount`) */}
+              {tabCount > 0 && <span className={s.count}>{tabCount}</span>}
             </button>
           </>
         )}
@@ -2023,7 +2160,7 @@ export function Guitsetgel() {
               ? `${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`
               : `${s.tabSolo} ${tab === 'negtgel' ? s.tabSoloOn : ''}`}
             aria-pressed={showFill ? undefined : tab === 'negtgel'}
-            onClick={() => goTab(!showFill && tab === 'negtgel' ? 'sent' : 'negtgel')}
+            onClick={() => void goTab(!showFill && tab === 'negtgel' ? 'sent' : 'negtgel')}
           >
             {tr('Нэгтгэл гүйцэтгэл')}
           </button>
@@ -2101,16 +2238,26 @@ export function Guitsetgel() {
           </div>
         ))}
 
+        {/* ⚠️ 2026-10-23 (UX аудит R3): шийдвэрийн дараа ажил хаашаа явсныг хэлнэ (10 с, эсвэл «Хаах») */}
+        {doneMsg && (
+          <div className={s.okBanner} role="status">
+            <div>✓ {doneMsg}</div>
+            <button className={s.clear} onClick={() => setDoneMsg('')}>{tr('Хаах')}</button>
+          </div>
+        )}
+
+        {/* ⚠️ 2026-10-23 (UX аудит X5): эргэлдэгчтэй ачаалал (`Loading`) — хоосон мэт бичвэр биш */}
         {loading ? (
-          <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+          <Loading />
         ) : loadFailed ? null : (
           <>
             <div className={s.list}>
               {/* ⚠️ Нэр ЗҮҮН, тоо БАРУУН — зураасаар холбохгүй */}
               <div className={s.groupHead}>
-                <span>{stage === 'company' ? tr('Засах шаардлагатай — буцаагдсан') : STAGE_LABEL[stage]}</span>
+                <span>{stage === 'company' ? tr('Засах шаардлагатай — буцаасан') : STAGE_LABEL[stage]}</span>
                 <span className={s.groupCount}>
-                  {tr('хүлээгдэж буй {0}', String(mine.length))}
+                  {/* ⚠️ 2026-10-23 (UX аудит R1): зөвхөн ӨӨРӨӨ шийдэх боломжтой (`mineOk`) — тэмдэг/табтай ижил */}
+                  {tr('хүлээгдэж буй {0}', String(mineOk.length))}
                 </span>
               </div>
               {/* ⚠️ 2026-10-09 (хэрэглэгч: «бүгдийг ногоон болгосон ч батлах хэсэг алга»): шийдвэрийн
@@ -2148,12 +2295,47 @@ export function Guitsetgel() {
                       ))
                     : noScope
                     ? tr('Танд нэг ч багц хуваарилагдаагүй байна. Админ «Гүйцэтгэлийн урсгал» хэсэгт багц зааж өгсний дараа ажлууд харагдана.')
+                    /* ⚠️ 2026-10-23 (UX аудит X6): шүүлтээс болж хоосон бол тэрийгээ хэлж цэвэрлэх товчтой */
+                    : dirty && myQueue.length > 0
+                      ? (
+                        <>
+                          {tr('Шүүлтэд тохирох ажил алга — шүүлтийг цэвэрлэвэл {0} ажил харагдана.', String(myQueue.length))}
+                          {' '}
+                          <button className={s.clear} onClick={() => { setQ(''); setBagts(ALL); setCompany(ALL); setStatus(ALL); }}>{tr('Цэвэрлэх')}</button>
+                        </>
+                      )
+                    /* ⚠️ 2026-10-23 (UX аудит R4): анх удаа орж буй гүйцэтгэгчид «бүх илгээлт хэвийн» гэх нь ХУДАЛ (илгээлт алга) —
+                       илгээгээгүйг хэлж бөглөх таб руу шууд оруулна */
+                    : stage === 'company' && works.length === 0
+                      ? (
+                        <>
+                          {tr('Та одоогоор гүйцэтгэл илгээгээгүй байна. «Гүйцэтгэл бөглөх» табд бөглөөд «Илгээх» дарна уу.')}
+                          {showFill && (
+                            <>
+                              {' '}
+                              <button className={s.clear} onClick={() => void goTab('fill')}>{tr('Гүйцэтгэл бөглөх')}</button>
+                            </>
+                          )}
+                        </>
+                      )
                     : stage === 'company'
-                      ? tr('Буцаагдсан ажил алга — бүх илгээлт хэвийн явж байна.')
-                      : tr('Хүлээгдэж буй ажил алга.')}
+                      ? tr('Буцаасан ажил алга — бүх илгээлт хэвийн явж байна.')
+                      : tr('Хүлээгдэж буй ажил алга — шинэ илгээлт ирэхэд энд автоматаар гарна.')}
                 </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)
+                <>
+                  {mineOk.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} onDone={setDoneMsg} />)}
+                  {/* ⚠️ 2026-10-23 (UX аудит R1): өөрийн илгээлт / өөр шатанд зөвшөөрсөн — тусдаа, шалтгаантай */}
+                  {mineBlocked.length > 0 && (
+                    <>
+                      <div className={s.groupHead}>
+                        <span>{tr('Та зөвшөөрөх боломжгүй — энэ шатны өөр хянагч шийднэ')}</span>
+                        <span className={s.groupCount}>{mineBlocked.length}</span>
+                      </div>
+                      {mineBlocked.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} onDone={setDoneMsg} blockedWhy={blocked.get(w.key)} />)}
+                    </>
+                  )}
+                </>
               )}
             </div>
 

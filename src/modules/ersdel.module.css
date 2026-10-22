@@ -37,7 +37,7 @@
 .colHd {
   flex: none;
   padding: 2px 2px 0;
-  font-size: 10.5px;
+  font-size: 11px;
   /* ⚠️ 1 БИШ — кириллийн Й/Ё-гийн дээд тэмдэг тайрагдана */
   line-height: 1.3;
   font-weight: 600;
@@ -131,7 +131,7 @@
 .metricName {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.3;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -146,7 +146,7 @@
 /* Үнэлгээ (хэвийн/анхаарах/хэтэрсэн) — өнгө нь TSX-ээс (утгаас) */
 .metricGrade {
   flex: none;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -161,12 +161,12 @@
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.metricUnit { font-size: 10px; font-weight: 500; color: var(--ink-3); }
+.metricUnit { font-size: 11px; font-weight: 500; color: var(--ink-3); }
 .metricFoot {
   display: flex;
   justify-content: space-between;
   gap: 6px;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -227,7 +227,7 @@
 .ringSub {
   display: block;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -262,7 +262,7 @@
 }
 .pickTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .pickDesc {
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--ink-3);
   /* 3 мөрөөс хэтрэхгүй — хоёр карт ижил өндөртэй үлдэнэ */
@@ -382,7 +382,7 @@
   border-radius: var(--r-sm);
 }
 .costLabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -405,7 +405,7 @@
 .table th {
   padding: 5px 6px;
   text-align: left;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -424,7 +424,7 @@
 .trunc {
   display: block;
   margin-top: 2px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -507,7 +507,7 @@
 .chipWarn {
   padding: 1px 7px;
   border-radius: 99px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   color: var(--warn-ink, var(--warn));
   background: color-mix(in srgb, var(--warn) 14%, transparent);
@@ -604,7 +604,7 @@
 .infoClose:hover { color: var(--ink); background: var(--surface-2); }
 .infoSub {
   margin: 2px 0 0;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -633,7 +633,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-3);
 }
 .infoVal {
@@ -667,7 +667,7 @@
   line-height: 1;
   cursor: pointer;
 }
-.playBtn:hover { border-color: var(--data); color: var(--data); }
+.playBtn:hover { border-color: var(--data); color: var(--data-ink); }
 .timeRange {
   flex: 1 1 auto;
   min-width: 0;
@@ -695,7 +695,7 @@
   align-items: baseline;
   gap: 8px;
   margin: 6px 0 2px;
-  font-size: 9.5px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-3);
@@ -737,14 +737,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--ink-3);
 }
 .windHd b { color: var(--ink-2); font-weight: 600; }
-.windSrc { margin: 0; font-size: 9.5px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.windSrc { margin: 0; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
 /* Эх сурвалжийн тэмдэг баруун захад — гарчгаас зайдуу */
 .windHd .windSrc { margin-left: auto; }
 
@@ -755,12 +755,12 @@
   display: inline-block;
   font-size: 16px;
   line-height: 1;
-  color: var(--data);
+  color: var(--data-ink);
 }
 .windVal { font-size: 20px; font-weight: 500; color: var(--ink); line-height: 1; }
 .windVal i { font-size: 11px; font-style: normal; color: var(--ink-3); margin-left: 2px; }
 .windDir { font-size: 11.5px; color: var(--ink-2); }
-.windNote { margin: 0; font-size: 10.5px; line-height: 1.4; font-weight: 600; }
+.windNote { margin: 0; font-size: 11px; line-height: 1.4; font-weight: 600; }
 
 /* ══════════ САЛХИНЫ УРСГАЛЫН УДИРДЛАГА (WIND-MODULE.md §6-гийн timeline) ══════════ */
 
@@ -779,7 +779,7 @@
 
 .flowBtn {
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
   color: var(--ink-2);
@@ -799,7 +799,7 @@
 }
 
 .flowHour {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -867,7 +867,7 @@
  * нүднүүдийн доод ирмэг тэнцүү үлдэж, карт хазайхгүй.
  */
 .heroLbl {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
   min-height: 26px;
   text-transform: uppercase;

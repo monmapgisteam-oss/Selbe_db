@@ -82,7 +82,7 @@
 # [const] QAQC_COLS.short / .label · QAQC_GROUPS.label · QAQC_BAND (lib/qaqc.ts —
 #         тодорхойлолтдоо tr(); латин «FIC», «MIR», «Inspection Test Plan» орчуулгагүй)
 @dyn lib/ceo/qaqc.ts  tr(m)
-@dyn modules/Qaqc.tsx  tr(QAQC_BAND)
+
 @dyn modules/Qaqc.tsx  tr(c.label)
 @dyn modules/Qaqc.tsx  tr(c.short)
 @dyn modules/Qaqc.tsx  tr(dc.label)
@@ -234,3 +234,9 @@
 
 # [data] бүсийн нэр (zoneCanon) — «Багц-1…4.2» enData.ts, бусад нь латин код (D-8.1 …) (2026-10-04)
 @dyn components/ZoneFilter.tsx  tr(z)
+
+# ⚠️ 2026-10-23 (UX аудит) — бүлгүүдийн нэмсэн динамик түлхүүр
+# 2026-10-23 (UX аудит E11): Ерөнхий дашбоардын динамик ангилал/шалтгаан — `GeneralDash` Bars `tr(label)`
+Орон сууцны хороолол
+Газар чөлөөлөлт, буулгалт цэвэрлэгээ
+Атд

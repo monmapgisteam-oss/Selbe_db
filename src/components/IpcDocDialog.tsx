@@ -39,7 +39,7 @@ function writeSaved(packKey: string, v: Saved): void {
 }
 
 const NOTE_UI = (n: IpcNote): string => ({
-  noPrev: tr('Системд өмнөх сарын агшин алга — тайлант үеийн гүйцэтгэл нь эхнээсээ хуримтлагдсан дүн.'),
+  noPrev: tr('Системд өмнөх сарын батлагдсан гүйцэтгэл алга — тайлант үеийн гүйцэтгэл нь эхнээсээ хуримтлагдсан дүн.'),
   noAdvance: tr('ХО-д урьдчилгааны бүртгэл алга — урьдчилгаа ба эргэн төлөлт 0.'),
   negative: tr('Энэ сарын гүйцэтгэл өмнөх сараас буурсан (засвар) — сөрөг дүн.'),
   over: tr('Хуримтлагдсан гүйцэтгэл гэрээний дүнгээс давсан.'),
@@ -122,7 +122,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
         if (!pick) return;
         setMonth(pick.month);
         setIpcNo(String(want && ipcNo0 ? ipcNo0 : x.months.indexOf(pick) + 1));
-        if (month0 && !want) setErr(tr('{0} сард батлагдсан гүйцэтгэлийн агшин архивт алга — хамгийн сүүлийн сарыг сонголоо.', month0));
+        if (month0 && !want) setErr(tr('{0} сард батлагдсан гүйцэтгэл архивт алга — хамгийн сүүлийн сарыг сонголоо.', month0));
       })
       .catch((e) => { if (alive) setErr(userError(e)); });
     return () => { alive = false; };
@@ -201,7 +201,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
 
         {err && <p className={s.err} role="alert">{err}</p>}
         {!src && !err && <p className={s.sub}>{tr('Гүйцэтгэлийн архивыг уншиж байна…')}</p>}
-        {src && !src.months.length && <p className={s.err}>{tr('Энэ багцад батлагдсан гүйцэтгэлийн агшин алга.')}</p>}
+        {src && !src.months.length && <p className={s.err}>{tr('Энэ багцад батлагдсан гүйцэтгэл алга.')}</p>}
         {src?.warn && <p className={s.note}>⚠ {src.warn}</p>}
         {src && src.contract == null && <p className={s.err}>{tr('ХО-д энэ багцын гэрээний дүн бүртгэгдээгүй — баримт гаргах боломжгүй.')}</p>}
 
@@ -268,7 +268,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
         {/* ⚠️ 2026-10-01: энэ сард АНХ агшинтай болсон хуудас — IPC хүснэгтийн картын анхааруулгатай ижил */}
         {doc && doc.lateSheets.length > 0 && (
           <p className={s.note}>
-            {tr('⚠ {0} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', doc.lateSheets.join(', '))}
+            {tr('⚠ {0} хуудасны анхны батлагдсан гүйцэтгэл энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', doc.lateSheets.join(', '))}
           </p>
         )}
 

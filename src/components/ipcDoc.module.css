@@ -58,4 +58,4 @@
   cursor: pointer;
 }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.pri { color: #fff; background: var(--data); border-color: var(--data); }
+.pri { color: var(--hue-ink); background: var(--data); border-color: var(--data); }

@@ -9,7 +9,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 
-import { Section, Note, Data, Empty, Rows, Bars, Donut, List, ListItem } from '@/components/ui';
+import { Section, Note, Data, Empty, Loading, Rows, Bars, Donut, List, ListItem } from '@/components/ui';
 import {
   buildPacks, PackKpi, InvestCard, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
@@ -935,7 +935,7 @@ export function PkgFin({ dim, setDim }: {
           (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : finErr ? (
+        {errQ ? null : loading ? <Loading /> : finErr ? (
           <Empty label={tr('Санхүүгийн өгөгдөл уншигдсангүй')} />
         ) : active ? (
           /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
@@ -952,7 +952,7 @@ export function PkgFin({ dim, setDim }: {
         {errQ ? (
           <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
         ) : loading ? (
-          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
+          <Section title={tr('Багцууд')}><Loading /></Section>
         ) : (
           <>
             {/* ⚠️ 2026-09-06: «Санхүүжилт хоцорсон багц» тусдаа бүлэг
@@ -1212,7 +1212,8 @@ function TsKpi({ packs, fin, share }: {
    * санхүүжилт ба түүний хувь нь санхүүгийн талд.
    */
   const items = [
-      { v: num(packs.length), l: tr('нийт төслийн тоо') },
+      /* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг `h` (tooltip) хэлнэ — 55/50/77 зэрэг өөр өөр тоо тайлбаргүй байв */
+      { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
       { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
       { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %') },
       /* ⚠️ Гүйцэтгэлийн хувийн оронд МӨНГӨН үлдэгдэл — санхүүгийн харагдацад
@@ -1224,7 +1225,9 @@ function TsKpi({ packs, fin, share }: {
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
-          <span className={`${o.tileVal} num`}>{i.v}</span>
+          {/* ⚠️ 2026-10-23 (UX аудит E4): утгыг `<b>`-д — CSS-ийн `.tileVal b` (бүтэн мөнгөн дүнд зориулсан хэмжээ) үйлчилнэ;
+              урьд нь шууд текст тул «530,872,795,39|» хавтангаас хальж тайрагддаг байв. ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️). */}
+          <span className={`${o.tileVal} num`} title={'h' in i && i.h ? i.h : i.v}><b>{i.v}</b></span>
           <span className={o.tileLabel}>{i.l}</span>
         </div>
       ))}
@@ -1445,7 +1448,7 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number; c
   return (
     <Section tone="primary" title={tr('{0} — санхүү', tr(p.name))}>
       {fin == null ? (
-        <Empty label={tr('Ачаалж байна…')} />
+        <Loading />
       ) : !has ? (
         <Empty label={tr('Гэрээ бүртгэгдээгүй')} />
       ) : (
@@ -1483,7 +1486,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   const txt = (v: unknown) => String(v ?? '').trim();
   const nn2 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-  if (loading) return <Section title={tr('Гэрээний мэдээлэл')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (loading) return <Section title={tr('Гэрээний мэдээлэл')}><Loading /></Section>;
   if (!row) return <Section title={tr('Гэрээний мэдээлэл')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
 
   /* Урт текст (ажлын нэр 163 тэмдэгт хүрдэг) — 3 мөрөөр таслаж, бүтнийг нь
@@ -1624,7 +1627,7 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finQ, p.key]);
 
-  if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Loading /></Section>;
   /* ⚠️ 2026-09-25: алдаа нь «бүртгэлгүй» БИШ — уншигдаагүй */
   if (finQ.state === 'error') return <Section title={tr('Олгосон төлбөр')}><Data q={finQ}>{() => null}</Data></Section>;
   if (!acts || !acts.length) return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Төлбөр бүртгэгдээгүй')} /></Section>;
@@ -1752,7 +1755,7 @@ function PkgMonths({
      жагсаалтыг дүүргэнэ. */
   const rows = (months ?? []).filter((m) => m.given > 0);
 
-  if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Loading /></Section>;
   if (!rows.length) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Олголт бүртгэгдээгүй')} /></Section>;
 
   return (
@@ -1802,13 +1805,13 @@ function PkgFinList({
       .sort((a, b) => b.given - a.given);
   }, [packs, givenMap, planMap, contractMap]);
 
-  if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Loading /></Section>;
   if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
 
   return (
     <Section
       title={tr('Багц бүрийн санхүүжилт')}
-      note={tr('{0} багц · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
+      note={tr('{0} багц (гэрээ эсвэл олголттой) · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
     >
       {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): багц бүр НЭР — эрэмбэгүй ангилал тул НЭГ өнгө
           (`--data`, `Bars`-ийн анхдагч); урьд нь `shade(HUE, i)` hex шатлал нь уртаар аль хэдийн
@@ -2128,7 +2131,7 @@ function FinCard({
   return (
     <Section tone="primary" title={title} note={note}>
       {finQ.state === 'loading' ? (
-        <Empty label={tr('Санхүүжилтийн дата…')} />
+        <Loading label={tr('Санхүүжилтийн өгөгдлийг татаж байна…')} />
       ) : finQ.state === 'error' ? (
         <Data q={finQ}>{() => null}</Data>
       ) : noRow ? (

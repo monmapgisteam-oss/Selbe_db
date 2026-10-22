@@ -1,0 +1,154 @@
+/*
+ * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛ — `ConfirmHost` (⚠️ 2026-10-23, `window.confirm`-ийн оронд).
+ * ⚠️ z-index 6500: бүх модал (DocViewer · UserAdmin · тусламж) ба «Систем түр хаах» цонхноос (`auth.module.css`
+ *    `.screenOver` 6000) ДЭЭР — тэдгээрийн дотроос асуулт асуудаг.
+ * ⚠️ Сонгогч бүр локал класстай (`next build`-ийн «is not pure» — CLAUDE.md).
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6500;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px 22px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--hue);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+}
+/* Устгал/буцаах боломжгүй үйлдэл — дээд зурвас улаан (өнгөнөөс гадна товчны бичиг ч хэлнэ) */
+.cardDanger { border-top-color: var(--bad); }
+
+.title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ⚠️ `pre-line` — хуучин `window.confirm`-ийн мессежүүд `\n\n`-ээр догол мөр тусгаарладаг */
+.msg {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.btn,
+.btnOk {
+  min-height: 36px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.btn {
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.btn:hover { background: var(--sunken); }
+.btnOk {
+  color: var(--hue-ink);
+  background: var(--hue);
+  border: 1px solid var(--hue);
+}
+.btnOk:hover { filter: brightness(1.08); }
+/* ⚠️ Бэх `--hue-ink` — цайвар горимд #fff, харанхуйд бараан: харанхуйн цайвар `--bad` дээр цагаан бичиг 2.8:1 л байв */
+.btnDanger {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+.btn:focus-visible,
+.btnOk:focus-visible,
+.undo:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--hue);
+  outline-offset: 2px;
+}
+
+/* ── «Буцаах» мэдэгдэл ── */
+/* ⚠️ Хүрээ нь ҮРГЭЛЖ DOM-д (`role="status"`) — дэлгэц уншигч агуулга нэмэгдэхэд л зарладаг */
+.toastWrap {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 6500;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--hue);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+
+.toastMsg {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.undo {
+  flex: none;
+  min-height: 32px;
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--hue-ink);
+  background: var(--hue);
+  border: 0;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.undo:hover { filter: brightness(1.08); }
+
+.close {
+  flex: none;
+  min-width: 32px;
+  min-height: 32px;
+  font: inherit;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.close:hover { color: var(--ink); background: var(--sunken); }

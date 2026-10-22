@@ -19,6 +19,7 @@
  *    8000 тэмдэгтээс урт бичлэг мөн хориотой (ил шалтгаантай).
  */
 import { t as tr } from '@/lib/i18nCore';
+import { fixCyr } from '@/lib/format';
 import { rowKeyOf, rowOccOf } from '@/modules/sheet/sheetFrame';
 
 /** Талбарын нэр (Enterprise — жижиг үсгээр; `bagts.pkg.resolveSchema` `f.bham`) */
@@ -236,7 +237,9 @@ export function buildGraph(sheets: readonly SheetIn[]): WorkGraph {
       if (l) l.push(id); else idx.set(k, [id]);
       const par = paths[i].parent;
       g.nodes.set(id, {
-        id, p: sh.p, k, o, n, oid: r.oid, no: r.no, work: r.work, depth: r.depth, group: r.group,
+        /* ⚠️ 2026-10-23 (S15): `work` нь ДЭЛГЭЦ/хайлтын нэр — є/ї → ө/ү (`format.fixCyr`). Таних түлхүүр `k` нь
+           ТҮҮХИЙ нэрээс (`rowKeyOf(r)` дээр) — хадгалсан хамаарлын лавлагаа тасрахгүй. */
+        id, p: sh.p, k, o, n, oid: r.oid, no: r.no, work: fixCyr(r.work), depth: r.depth, group: r.group,
         des: r.des ?? null, path: paths[i].path, parent: par >= 0 ? ids[par] : null,
       });
       if (sh.field && r.val != null && String(r.val).trim()) vals.push([id, r.val]);

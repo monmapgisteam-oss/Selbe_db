@@ -3,6 +3,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 /* ⚠️ 2026-10-06 аудит: алдааг ТҮҮХИЙГЭЭР нь («Token Required» г.м.) харуулахгүй — `userError` */
 import { userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1/P2): аппын дотоод асуулт ба «↶ Буцаах» мэдэгдэл */
+import { askConfirm, toastUndo } from '@/lib/confirm';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { Pkg } from '@/modules/sheet/bagts.pkg';
 import type { NewRow } from '@/modules/sheet/sheetFrame';
@@ -16,7 +18,7 @@ import {
 /* ⚠️ 2026-10-22 (аудит №3): эцэг бүлгийн хайлт — `sheetFrame.insertAdds`/`ajilApply` буулгалттай ЯГ НЭГ дүрэм */
 import { missingParents } from '@/lib/ajilApply';
 import {
-  EMPTY_FORM, mergeIncoming, nextTmpOid, pushTmpOid, readAdds, readAjEdit, readWdMark, writeAdds, writeAjEdit, writeWdMark,
+  EMPTY_FORM, ajBackHidden, hideAjBack, mergeIncoming, nextTmpOid, pushTmpOid, readAdds, readAjEdit, readWdMark, writeAdds, writeAjEdit, writeWdMark,
   type AddForm, type AjEdit,
 } from './adds';
 import type { ADraft, Draft, ResDraft } from './types';
@@ -96,8 +98,12 @@ export function useAjil({
   const [ajBusy, setAjBusy] = useState(false);
   const [ajErr, setAjErr] = useState('');
   const [ajNote, setAjNote] = useState('');
-  /** Буцаагдсан — зохиогчид шалтгаантай нь */
-  const [ajBack, setAjBack] = useState<{ n: number; by: string; reason: string } | null>(null);
+  /** Буцаагдсан — зохиогчид шалтгаантай нь (⚠️ 2026-10-23, P1: `oid` — хаасныг санахад, `at` — шийдвэрийн огноо) */
+  const [ajBack, setAjBack] = useState<{ oid: number; n: number; by: string; reason: string; at: number | null } | null>(null);
+  /** ⚠️ 2026-10-23 (UX аудит P1): буцаалтын мэдэгдлийг «×»-ээр хаавал энэ хөтөч санана (`adds.hideAjBack`) — дахин гарахгүй */
+  const dismissAjBack = useCallback(() => {
+    setAjBack((b) => { if (b) hideAjBack(pkg.key, b.oid); return null; });
+  }, [pkg.key]);
   /** Батлагдсан ч үндсэн хүснэгтэд буугаагүй илгээлтийн тоо (буулгалт унасан) */
   const [ajStuck, setAjStuck] = useState(0);
   /**
@@ -194,6 +200,8 @@ export function useAjil({
       let applied = false;
       /** Батлагдсан ч хараахан буугаагүй — мөчлөгийг үргэлжлүүлнэ (`ajTrack`) */
       let midway = false;
+      /** ⚠️ 2026-10-23 (P1): энэ удаад буцаалтыг буулгаж мэдэгдэл тавьсан эсэх */
+      let backSet = false;
       for (const h0 of hist) {
         if (lookBack && h0.oid === prevOid && h0.status === AJIL_STATUS.applied) applied = true;
         if (lookBack && h0.oid === prevOid && h0.status === AJIL_STATUS.approved) midway = true;
@@ -216,9 +224,21 @@ export function useAjil({
         if (!live()) return;
         await markAjilRestored(h0.oid);
         if (!live()) return;
-        setAjBack({ n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: h0.reason ?? '' });
+        setAjBack({ oid: h0.oid, n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: h0.reason ?? '', at: h0.approverAt });
+        backSet = true;
       }
       if (!live()) return;
+      /*
+       * ⚠️ 2026-10-23 (UX аудит P1): БУЦААЛТЫН ШАЛТГААН ТҮҮХЭЭС — урьд нь мөрүүдийг буулгах агшинд НЭГ УДАА л гардаг тул хуудас
+       *    шинэчлэхэд/багц солиход шалтгаан алга болж, зохиогч юуг засахаа мэдэхгүй үлддэг байв. Одоо зохиогчийн СҮҮЛИЙН
+       *    шийдвэр нь буцаалт (`restored` — мөрүүд аль хэдийн буусан) бөгөөд шинэ илгээлт хүлээгдээгүй бол шалтгааныг дахин
+       *    харуулна. «×»-ээр хаасан (`ajBackHidden`) бол үгүй. `hist` нь шинээс хуучин руу (`loadHistory`).
+       */
+      if (!backSet) {
+        const last = hist.find((h0) => !authOn || h0.author === me);
+        const show = !sub && last && last.status === AJIL_STATUS.restored && last.oid !== ajBackHidden(want);
+        setAjBack(show && last ? { oid: last.oid, n: last.rowCount, by: last.approver ?? '', reason: last.reason ?? '', at: last.approverAt } : null);
+      }
       /* ⚠️ Зөвхөн ДАГАЖ БУЙ илгээлтийг шийдсэн үед цэвэрлэнэ (2026-09-25 review):
          урьд нь `refreshAjil(null)` (илгээх · татах · effect) бүр `ajTrack`-ийг
          арилгаж, батлагдсан-буугаагүй илгээлтийн `applied`-ийг хэзээ ч барихгүй
@@ -374,10 +394,12 @@ export function useAjil({
    *    локалд үлдвэл дахин илгээгдэж давхар мөр үүснэ. Буцаагдвал/татвал
    *    `refreshAjil`/`withdrawAjilHere` буцааж авчирна.
    */
-  const sendAjil = useCallback(async () => {
-    if (!adds.length || ajBusy) return;
+  /* ⚠️ 2026-10-23 (UX аудит P3): `note` — нэмэгчийн тайлбар (батлагчийн «Нэмэгчийн тайлбар»); урьд нь илгээх цонхгүй тул ҮРГЭЛЖ
+     хоосон байв. Амжилттай бол `true` — дуудагч (`Huvaari`-ийн илгээх цонх) тэгэхэд л цонх/текстээ цэвэрлэнэ. */
+  const sendAjil = useCallback(async (note?: string): Promise<boolean> => {
+    if (!adds.length || ajBusy) return false;
     /* ⚠️ 2026-10-22 (аудит №3): эцэггүй мөртэй үед илгээхгүй — батлагдвал буулгалт гацна (`ajOrphans`-ийн ⚠️) */
-    if (ajOrphans.length) { setAjErr(orphanAddsMsg(ajOrphans.length)); return; }
+    if (ajOrphans.length) { setAjErr(orphanAddsMsg(ajOrphans.length)); return false; }
     /* ⚠️ БАГЦЫГ ОДОО барина (2026-09-25 аудит): `setAdds` нь дарсан агшны `pkg.key`-ийг
        барьдаг тул хүсэлт явж байхад багц солиход Б-гийн мөрүүд харагдахаа больж,
        А-гийн LS илгээсэн мөрөө хадгалсаар буцаж ирдэг байв. Одоо А-г (`want`) шууд
@@ -395,17 +417,20 @@ export function useAjil({
       const r = await submitAjil({
         pkgKey: want, pkgGroup: pkg.group, author: user?.username ?? '',
         payload: { v: 1, pkgKey: want, adds },
+        note: note?.trim() || undefined,
       });
-      if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return; }
+      if (!r.ok) { if (live()) setAjErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return false; }
       const st = addsStRef.current;
       writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
       setAddsSt((s) => (s.key === want ? { key: want, list: s.list.filter((a) => !sent.has(a.oid)) } : s));
-      if (!live()) return;
+      if (!live()) return true;
       setAddFor(null);
       setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshAjil(null);
+      return true;
     } catch (e) {
       if (live()) setAjErr(userError(e));
+      return false;
     } finally {
       setAjBusy(false);
     }
@@ -502,7 +527,8 @@ export function useAjil({
     /* ⚠️ 2026-09-29: засварын дундуур татвал ЗАССАН хувилбар хуудсанд үлдэх ёстой — серверийн
        (хуучин) агуулгыг давхар буулгахгүй */
     const editing = !!ajEdit && ajEdit.oid === ajSub.oid;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт */
+    if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'), { ok: tr('Илгээлтээ татах') }))) return;
     /* ⚠️ Багцыг ОДОО барина (2026-09-25 аудит) — `sendAjil`-ийн ижил шалтгаан */
     const want = pkg.key;
     /* ⚠️ 2026-10-21 (аудит №1): багц солигдсон бол дэлгэцийн төлөвийг хөндөхгүй (LS хэвээр) — `sendAjil`-ийн ⚠️ */
@@ -601,12 +627,37 @@ export function useAjil({
     setAddFor(null); setAddForm(EMPTY_FORM);
     setAjNote(tr('«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдмагц үндсэн хүснэгтэд бичигдэнэ.', work));
   }, [readForm, setAdds, rows, setCollapsed]);
-  /** Батлуулаагүй мөрийг хасах — зөвхөн локал (`adds` + LS) */
-  const dropAdd = useCallback((oid: number) => setAdds((a) => a.filter((x) => x.oid !== oid)), [setAdds]);
+  /**
+   * Батлуулаагүй мөрийг хасах — зөвхөн локал (`adds` + LS).
+   * ⚠️ 2026-10-23 (UX аудит P2): «×» нэг товшилтоор асуултгүй, БУЦААХ замгүй устгадаг байв — одоо «↶ Буцаах» мэдэгдэл (6 с)
+   *    мөрийг ӨМНӨХ байрлалд нь сэргээнэ. Сэргээлт LS-ээр (`want`) — хооронд багц солигдсон бол тэр багцын төлөвийг хөндөхгүй
+   *    (`setAdds` нь дарсан агшны багцыг барьдаг тул ашиглахгүй).
+   */
+  const dropAdd = useCallback((oid: number) => {
+    const want = pkg.key;
+    const st = addsStRef.current;
+    const list = st.key === want ? st.list : readAdds(want);
+    const i = list.findIndex((x) => x.oid === oid);
+    if (i < 0) return;
+    const removed = list[i];
+    setAdds((a) => a.filter((x) => x.oid !== oid));
+    void toastUndo(tr('«{0}» мөр хасагдлаа.', `${removed.no} ${removed.work}`.trim()), () => {
+      const cur = addsStRef.current;
+      const base = cur.key === want ? cur.list : readAdds(want);
+      if (base.some((x) => x.oid === removed.oid)) return;
+      const next = base.slice();
+      next.splice(Math.min(i, next.length), 0, removed);
+      writeAdds(want, next);
+      if (cur.key === want) {
+        setAddsSt({ key: want, list: next });
+        addsStRef.current = { key: want, list: next };
+      }
+    });
+  }, [pkg.key, addsStRef, setAdds, setAddsSt]);
 
   return {
     addFor, setAddFor, addForm, setAddForm, ajSub, ajEdit, editAdd, setEditAdd,
-    ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, setAjBack, ajStuck, ajApplied,
+    ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, setAjBack, dismissAjBack, ajStuck, ajApplied,
     refreshAfterApplied, sendAjil, editAjilHere, saveAjilEdit, cancelAjilEdit,
     withdrawAjilHere, saveEditAdd, addRow, dropAdd,
     /* ⚠️ 2026-10-22 (аудит №3): эцэггүй нэмэлт мөр ба бүлэгт харьяалуулах (`ajOrphans`-ийн ⚠️) */

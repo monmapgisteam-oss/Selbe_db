@@ -722,7 +722,7 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   /* #8 буцаагдсан өмнөх өдөр мэдэгдэнэ */
   assert.ok(FN.includes('const otherDaysReturned = useMemo(() => {'), '#8: otherDaysReturned алга');
   /* 2026-09-24: өдөр бүр `{day, soid}` — сонгож дахин илгээх товчтой */
-  assert.ok(FN.includes("tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))"), '#8: мэдэгдэл алга');
+  assert.ok(FN.includes("tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))"), '#8: мэдэгдэл алга');
   assert.ok(FN.includes('const resumeReturned = useCallback(async (soid: number) => {'), '#8: буцаагдсан илгээлтийг сонгох зам алга (2026-09-24)');
   /* Илгээлт tombstone-ийг тэглэнэ — эс бөгөөс хоосон зам ноорог цэвэрлэхгүй */
   const pi = FN.indexOf('const nCells = Object.keys(pend2).length');

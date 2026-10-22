@@ -45,7 +45,8 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   assert.ok(G.includes('(data.negative ?? 0) > 0 && ('), 'Submitted: сөрөг нүдийг ИЛ анхааруулна');
   assert.ok(G.includes('onNegative={(n, cells) => { setNegative(n); setNegCells(cells ?? []); }}'), 'Item: Submitted-ээс negative ба нэр авна');
   assert.ok(G.includes('const negBlocks = (negative ?? 0) > 0;'), 'Item: negBlocks');
-  const gates = G.match(/disabled=\{busy \|\| lackBlocks \|\| changes == null \|\| unmovedBlocks \|\| negBlocks \|\| \(changes\.length > 0 && !allOk\)\}/g) ?? [];
+  /* ⚠️ 2026-10-23 (UX аудит R1): `selfBlocked` (өөрийгөө батлах хориг) урьдчилсан хаалт нэмэгдэж болно */
+  const gates = G.match(/disabled=\{busy \|\| (?:selfBlocked \|\| )?lackBlocks \|\| changes == null \|\| unmovedBlocks \|\| negBlocks \|\| \(changes\.length > 0 && !allOk\)\}/g) ?? [];
   assert.equal(gates.length, 2, 'батлах ба «дээш илгээх» ХОЁУЛАА negBlocks-оор хаагдана');
   assert.ok(!/unmovedBlocks \|\| \(changes\.length/.test(G), 'negBlocks-гүй батлах товч үлдсэн');
   assert.match(G, /: negBlocks\s*\? tr\('\{0\} нүдний нэмэлт нийт дүнг сөрөг болгоно \(суурь утгаас их хасалт\) тул батлах боломжгүй/,
@@ -66,10 +67,11 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   assert.ok(neg > pub.indexOf('payload.rowOcc = rowOccOf('), 'нэгтгэсэн (эцсийн) payload-ыг шалгана');
   assert.ok(neg < pub.indexOf('saveInflight(pkg.key') && neg < pub.indexOf('await saveSubmission('), 'хадгалалтаас ӨМНӨ');
   /* ⚠️ 2026-10-22 (хэрэглэгч): асуухгүй — ХААНА (сөрөг нүдтэй илгээлт хянагчид хүрэхгүй) */
-  assert.match(pub, /if \(ovNeg\.negative > 0\) \{\s*warn\(tr\(/, 'сөрөг нүдтэй бол илгээхгүй (хаана)');
+  /* ⚠️ 2026-10-23 (UX аудит F4): мессеж наалддаг (`stick…`) болж болно — хаалт хэвээр эсэхийг л шалгана */
+  assert.match(pub, /if \(ovNeg\.negative > 0\) \{\s*(?:\/\*[\s\S]*?\*\/\s*)?(?:warn|stick\w*)\(tr\(/, 'сөрөг нүдтэй бол илгээхгүй (хаана)');
   {
     const blk = pub.slice(neg, pub.indexOf('return;', neg));
-    assert.ok(!blk.includes('window.confirm'), '«Тэгсэн ч илгээх үү» асуулт үлдсэн — хаах ёстой');
+    assert.ok(!blk.includes('window.confirm') && !blk.includes('askConfirm('), '«Тэгсэн ч илгээх үү» асуулт үлдсэн — хаах ёстой');
   }
   const rowsSrc = src('../modules/sheet/fill/FillRows.tsx');
   /* ⚠️ 2026-10-22 (аудит): илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) улаан */
@@ -95,7 +97,9 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
     const negAt = rs.indexOf('if (ovChk.negative > 0) {');
     const unmAt = rs.indexOf('if (ovChk.unmoved > 0) {');
     assert.ok(negAt > chk && unmAt > chk && negAt < rsEnd && unmAt < rsEnd, 'сөрөг ба тулгагдаагүй нүдээр хаана');
-    assert.ok(rs.indexOf('window.confirm(') > unmAt && rs.indexOf('window.confirm(') < rsEnd, 'асуулт шалгалтын ДАРАА');
+    /* ⚠️ 2026-10-23 (UX аудит X1): асуулт апп доторх `askConfirm` болж болно (`window.confirm` хуучин) — аль нь ч шалгалтын ДАРАА */
+    const cfAt = rs.indexOf('askConfirm(') >= 0 ? rs.indexOf('askConfirm(') : rs.indexOf('window.confirm(');
+    assert.ok(cfAt > unmAt && cfAt < rsEnd, 'асуулт шалгалтын ДАРАА');
     assert.ok(rs.slice(0, rsEnd).includes('describeNegFixes(ovChk, sc, {}, fillMode)'), 'ноорог алга — илгээсний эсрэг тоо');
     /* ЯГ ижил мессеж (publish ↔ resendAsIs) */
     const msg = /warn\(tr\(\s*('Илгээсэнгүй — \{0\} нүдний нэмэлт нийт дүнг сөрөг[^']*')/;

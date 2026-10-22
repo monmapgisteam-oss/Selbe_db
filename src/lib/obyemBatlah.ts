@@ -584,7 +584,9 @@ export async function submitObyem(args: {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    /* ⚠️ 2026-10-23 (UX аудит X4): «ArcGIS-т хадгалагдсангүй.» нь дараагийн алхмыг хэлдэггүй байв — энэ файлын
+       бүх бичилтийн уналтад ижил мессеж (холболт шалгаад дахин). */
+    if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     invalidate('OBYEM_BATLAH');
     /*
      * ⚠️ 2026-10-05: ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (`huvaariBatlah.submitPlan`-ийн загвар). Дээрх
@@ -692,7 +694,7 @@ export async function casObyemClaim(
   const h = claimHolder(row, now());
   if (h && h !== me) return heldMsg(h);
   const at = now();
-  if (!(await io.write(at))) return tr('ArcGIS-т хадгалагдсангүй.');
+  if (!(await io.write(at))) return tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.');
   const back = await io.read();
   const who = back ? s(back[F.approver])?.toLowerCase() ?? null : null;
   const ok = !!back
@@ -892,7 +894,7 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: mark } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     invalidate('OBYEM_BATLAH');
     const back = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!back || s(back[F.status]) !== OBYEM_STATUS.pending || claimHolder(back) !== me || (s(back[F.reason]) ?? '').trim() !== mark) {
@@ -1123,7 +1125,7 @@ export async function decideObyem(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') }; }
     invalidate('OBYEM_BATLAH');
     return { ok: true };
   } catch (e) {
@@ -1222,7 +1224,7 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     });
     if (!editOk(j.updateResults)) {
       await releaseObyemClaim({ oid: args.oid, approver: me });
-      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     }
     invalidate('OBYEM_BATLAH');
     return { ok: true };
@@ -1335,7 +1337,7 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approver]: null, [F.approverAt]: serverNow() } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') }; }
     invalidate('OBYEM_BATLAH');
   } catch (e) {
     await release();

@@ -94,7 +94,7 @@
 .cardWide .cardStats { flex-direction: row; flex-wrap: wrap; gap: 6px 22px; }
 .cardWide .cardStat { flex-direction: column; align-items: flex-start; gap: 0; }
 .cardWide .cardVal { font-size: 1.5rem; line-height: 1.15; }
-.cardWide .cardKey { font-size: 0.66rem; }
+.cardWide .cardKey { font-size: 0.6875rem; }
 .cardWide .cardTitle { font-size: 0.84rem; }
 .cardWide { gap: 12px; padding: 15px 16px; }
 
@@ -176,7 +176,7 @@ button.card:active { transform: scale(0.985); }
 .cardStats { display: flex; flex-direction: column; gap: 4px; }
 .cardStat { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 .cardVal { font-size: 0.98rem; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-.cardKey { font-size: 0.62rem; color: var(--ink-3); white-space: nowrap; }
+.cardKey { font-size: 0.6875rem; color: var(--ink-3); white-space: nowrap; }
 
 /* ── Давхаргын дашбоардын толгой ── */
 .crumb {
@@ -198,7 +198,7 @@ button.card:active { transform: scale(0.985); }
 }
 .crumbBack:hover { background: var(--surface); color: var(--ink); }
 .crumbGroup {
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -217,7 +217,7 @@ button.card:active { transform: scale(0.985); }
   line-height: 1.3;
   color: var(--ink);
 }
-.headNote { margin-top: 2px; font-size: 0.68rem; line-height: 1.4; color: var(--ink-3); }
+.headNote { margin-top: 2px; font-size: 0.6875rem; line-height: 1.4; color: var(--ink-3); }
 .checkOn { background: var(--tone); border-color: var(--tone); }
 .checkOn svg { opacity: 1; transform: scale(1); }
 .headRow .check { margin-top: 3px; }
@@ -258,7 +258,7 @@ button.card:active { transform: scale(0.985); }
   background: color-mix(in srgb, var(--hue) 8%, var(--surface));
 }
 .zoneBarLabel {
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -271,7 +271,7 @@ button.card:active { transform: scale(0.985); }
   padding: 4px 9px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
@@ -296,7 +296,7 @@ button.card:active { transform: scale(0.985); }
   align-items: center;
   gap: 7px;
   margin-bottom: 6px;
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -376,14 +376,14 @@ button.card:active { transform: scale(0.985); }
 }
 .zoneJump:hover { background: color-mix(in srgb, var(--hue) 14%, transparent); }
 .zoneJumpLabel {
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--hue);
+  color: var(--data-ink);
 }
 .zoneJumpValue { flex: 1; text-align: left; font-size: 0.8rem; font-weight: 600; color: var(--ink); }
-.zoneJumpGo { font-size: 0.67rem; color: var(--ink-3); }
+.zoneJumpGo { font-size: 0.6875rem; color: var(--ink-3); }
 
 /* ── Товчлуур ── */
 .zoomBtn {

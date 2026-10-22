@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useMap } from '@/components/MapCanvas';
 import { Icon } from '@/components/Icon';
 import { LAYER_BY_ID } from '@/lib/services';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './planOverlap.module.css';
 import compareStyle from './hesegCompare.module.css';
 
@@ -97,6 +98,11 @@ export function DetailLayerMenu({
   const [host, setHost] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  /* ⚠️ 2026-10-23 (UX аудит S12): `role="dialog"` атлаа Esc ба фокусын урхигүй байв — гараар нээсэн хүн
+     жагсаалт руу орж чадахгүй, хаах аргагүй. Нээхэд фокус эхний чагт руу, Tab дотроо эргэлдэнэ, Esc/хаахад
+     фокус «Давхарга» товч руу буцна (`useFocusTrap`). Гадна товшиход хаагдах зан хэвээр. */
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!view) return;
@@ -139,7 +145,13 @@ export function DetailLayerMenu({
         <Icon name="layers" size={16} />
       </button>
       {open && (
-        <div className={s.lyrPanel} role="dialog" aria-label={tr('Давхарга')}>
+        <div
+          ref={panelRef}
+          className={s.lyrPanel}
+          role="dialog"
+          aria-label={tr('Давхарга')}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } }}
+        >
           {groups.map((g) => {
             const gIds = g.items.flatMap((x) => x.ids);
             const on = g.items.filter((x) => x.ids.some((id) => !hidden.includes(id))).length;

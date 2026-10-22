@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  rowOf, splitMulti, toVerdict, maGateOf, latestPerRespNo, formatKeywords, parseKeywords, isExpired, isApproved,
+  rowOf, splitMulti, toVerdict, maGateOf, latestPerRespNo, formatKeywords, parseKeywords, isExpired, isApproved, resubmitLinks,
 } from '@/lib/ma.ts';
 
 const attrs = (o = {}) => ({
@@ -61,6 +61,21 @@ console.log('✅ maGateOf — none · ok · олон MA-гийн нэг нь R/�
   assert.equal(maGateOf('b1_9f:12', [old, nu]).gate, 'ok', 'хуучин R хувилбар тоологдохгүй');
 }
 console.log('✅ latestPerRespNo — сүүлийн хувилбар ялна · дугааргүй мөр тус бүр');
+
+/* 3б. ⚠️ 2026-10-23 (UX аудит Q10): буцаасан (R) MA-г шинэ дугаартай дахин ирүүлбэл холбоно — нэг багц + материал */
+{
+  const r1 = rowOf(attrs({ objectid: 10, resp_no: 'X1', material_name: 'Арматур', verdict: 'R' }));
+  const r2 = rowOf(attrs({ objectid: 12, resp_no: 'X2', material_name: '  арматур ', verdict: 'A' }));
+  const other = rowOf(attrs({ objectid: 11, resp_no: 'X3', material_name: 'Бетон', verdict: 'R' }));
+  const okOld = rowOf(attrs({ objectid: 13, resp_no: 'X4', material_name: 'Тоосго', verdict: 'A' }));
+  const okNew = rowOf(attrs({ objectid: 14, resp_no: 'X5', material_name: 'Тоосго', verdict: 'A' }));
+  const L = resubmitLinks([r2, other, r1, okOld, okNew]);
+  assert.equal(L.get(10)?.next?.oid, 12, 'R → дараагийн ижил материал');
+  assert.equal(L.get(12)?.prev?.oid, 10);
+  assert.equal(L.has(11), false, 'өөр материал холбогдохгүй');
+  assert.equal(L.has(13), false, 'R биш мөр дахин ирүүлэлт биш');
+}
+console.log('✅ resubmitLinks — R → дахин ирүүлсэн MA');
 
 /* 4. хавсралтын мета — keywords ↔ объект; `;` `=` утгаас хасагдана; хугацаа */
 {

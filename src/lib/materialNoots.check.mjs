@@ -94,7 +94,8 @@ assert.deepEqual(statusFixes([row({ usedQty: 10, status: TOLOV.done }), row({ oi
 /* 8. Эх кодын дүрэм — таб солих хамгаалалт · бичилтгүй бол хүчингүй болгохгүй · эрх lib-д */
 const here = fileURLToPath(new URL('.', import.meta.url));
 const MA = readFileSync(`${here}/../modules/Ma.tsx`, 'utf8');
-assert.ok(/const goTab = \(t: 'chain' \| 'noots' \| 'ajil'\)/.test(MA) && /navDirtyLabels\(\)/.test(MA), 'Ma.tsx: таб солиход navGuard асуулт');
+/* ⚠️ 2026-10-23 (UX аудит X1): `goTab` нь `askConfirm`-ийг хүлээдэг тул async */
+assert.ok(/const goTab = (async )?\(t: 'chain' \| 'noots' \| 'ajil'\)/.test(MA) && /navDirtyLabels\(\)/.test(MA), 'Ma.tsx: таб солиход navGuard асуулт');
 assert.ok(!/onClick=\{\(\) => setTab\(/.test(MA), 'Ma.tsx: табын товч setTab-ийг шууд дууддаггүй');
 const LIB = readFileSync(`${here}/materialNoots.ts`, 'utf8');
 assert.ok(/if \(wrote\) invalidate\('MATERIAL_NOOTS'\)/.test(LIB), 'зөвхөн бичилт оролдсон үед хүчингүй болгоно');

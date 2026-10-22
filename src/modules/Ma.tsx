@@ -12,15 +12,17 @@
  * ⚠️ Хавсаргах эрх — `chanarAuthor` эсвэл `chanarReview`. Эрхгүй хүн ХАРНА, засахгүй.
  * ⚠️ Загвар нь «Багцын хамаарал»-ынх (ТУХ хүснэгт) — `ma.module.css` ХУУЛБАР.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { useAsync } from '@/lib/useAsync';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
   ATT_TYPES, MA_URL, addMaAtt, attTypeLabel, chainOf, deleteMaAtt, ipcReady, isExpired, latestPerRespNo, listMaAtts, loadMa, type StageKey,
-  maAttBlob, maHasAttachments, stageLabel, stageStateLabel, verdictLabel, type AttType, type MaAtt, type MaRow, type Verdict,
+  maAttBlob, maHasAttachments, resubmitLinks, stageLabel, stageStateLabel, verdictLabel, type AttType, type MaAtt, type MaRow, type Verdict,
+  type ResubLink,
 } from '@/lib/ma';
 import { addFm, decideFm, fmByMa, fmVerdictFor, loadFm, FM_REASON_MAX, type FmKind, type FmRow } from '@/lib/ficMakt';
 import { entPdfBlob } from '@/lib/entDocs';
@@ -39,6 +41,8 @@ import s from './ma.module.css';
 const day = (ms: number | null) => (ms == null ? '—' : new Date(ms).toLocaleDateString('sv-SE'));
 const kb = (n: number | null) =>
   n == null ? '' : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+/** FIC · М-акт баримтын харагдах нэр */
+const d0 = (d: FmRow) => d.docNo || d.pdfName || tr('(дугааргүй)');
 
 export function Ma() {
   const q = useAsync(loadMa, []);
@@ -105,11 +109,33 @@ export function Ma() {
   }, [ent, fmTick]);
   const fmMap = useMemo(() => (ent && fm.rows ? fmByMa(fm.rows) : null), [ent, fm]);
   const reloadFm = useCallback(() => setFmTick((n) => n + 1), []);
+  /**
+   * ⚠️ 2026-10-23 (UX аудит Q5): шатны өгөгдөл ҮЛ МЭДЭГДЭХ шалтгаан — нэвтрээгүй / ачаалж буй / унасан. Урьд нь
+   *    нэвтрээгүй үед FIC «Хүлээгдэж буй», М-акт «Хаалттай», IPC «Олгохгүй» гэж батлагдсан MA-д ч ХУДАЛ гардаг байв.
+   *    Хоосон мөр = өгөгдөл бэлэн.
+   */
+  const fmWhy = !ent ? tr('Нэвтэрч харна') : fm.rows ? '' : fm.err ? tr('Ачаалагдсангүй') : tr('Ачаалж байна…');
+  const mirWhy = mirQ.state === 'ready' ? '' : mirQ.state === 'error' ? tr('Ачаалагдсангүй') : tr('Ачаалж байна…');
 
   /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг бүртгэл бүхэлдээ харагдана, filter хэрэггүй»): шүүлтүүр ·
      хураасан хүснэгт ХАСАГДСАН — MA бүр бүтэн карт (толгой + дэлгэрэнгүй + хавсралт). Буцааж бүү нэм. */
   /* ⚠️ Нэг хариу бичгийн дугаар олон удаа илгээгдвэл СҮҮЛИЙНХ л хүчинтэй (`latestPerRespNo`) */
   const rows = useMemo(() => (q.state === 'ready' ? latestPerRespNo(q.data) : []), [q]);
+  /**
+   * ⚠️ 2026-10-23 (UX аудит Q10): буцаасан MA-г шинэ дугаартай дахин ирүүлбэл (`resubmitLinks`) хуучин карт
+   *    шинийнхээ ШУУД ДООР, тэмдэглэгээтэй — урьд нь хоёр тусдаа материал мэт хол зайтай гардаг байв.
+   *    Шүүлтүүр нэмэхгүй, карт нуухгүй (дээрх 2026-10-09-ний ⚠️).
+   */
+  const links = useMemo(() => resubmitLinks(rows), [rows]);
+  const ordered = useMemo(() => {
+    const out: MaRow[] = [];
+    for (const r of rows) {
+      if (links.get(r.oid)?.next) continue; // шинэ хувилбарынхаа доор орно
+      out.push(r);
+      for (let p = links.get(r.oid)?.prev; p; p = links.get(p.oid)?.prev) out.push(p);
+    }
+    return out;
+  }, [rows, links]);
 
   /**
    * ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ — MA + MIR батлагдсан материал нөөцөд АВТОМАТААР (`materialNoots.syncNoots`).
@@ -125,11 +151,15 @@ export function Ma() {
    *    төлөв тул таб солиход unmount болж асуултгүй устдаг байв (`navGuard` нь зөвхөн харагдац солих · F5-д асуудаг).
    *    `Guitsetgel.goTab` · `Portal.confirmLeave`-тэй ИЖИЛ асуулт; туг тавигдаагүй үед асуултгүй.
    */
-  const goTab = (t: 'chain' | 'noots' | 'ajil') => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт (`askConfirm`) — `window.confirm`-ийг «дахин бүү харуул» гэж
+     хаасан хөтөчид асуулт чимээгүй `false` болж таб огт солигддоггүй байв. */
+  const goTab = async (t: 'chain' | 'noots' | 'ajil') => {
     if (t !== tab) {
       const labels = navDirtyLabels();
-      if (labels.length
-        && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
+      if (labels.length && !(await askConfirm(
+        tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')),
+        { danger: true, ok: tr('Хаяад гарах') },
+      ))) return;
     }
     setTab(t);
   };
@@ -166,14 +196,16 @@ export function Ma() {
         {canAttach && <WorksCsvButton />}
         {!ent && (
           <div className={s.signBox}>
-            <p className={s.note}>{tr('FIC · М-акт харах, PDF оруулах, хавсралт нэмэхэд Enterprise-д нэвтэрнэ.')}</p>
+            {/* ⚠️ 2026-10-23 (UX аудит Q7): ЯАГААД тусдаа нэвтрэлт — FIC · М-акт · хавсралт нь геопорталын (Enterprise)
+                хүснэгт/файл тул түүний дансаар нэвтэрнэ; MA · MIR-ийг нэвтрэлтгүйгээр харна */}
+            <p className={s.note}>{tr('FIC · М-акт ба хавсралт геопорталд (gis.selbecity.mn) хадгалагддаг тул тэдгээрийг харах, оруулахад геопорталын дансаар нэвтэрнэ. MA · MIR нэвтрэлтгүйгээр харагдана.')}</p>
             <EntSignIn compact />
           </div>
         )}
         <div className={`${s.seg} ${s.tabs}`} role="group" aria-label={tr('Харагдац')}>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => goTab('chain')}>{tr('Баталгаажуулалт')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => goTab('noots')}>{tr('Материалын нөөц')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => goTab('ajil')}>{tr('Ажлын материал')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => { void goTab('chain'); }}>{tr('Баталгаажуулалт')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => { void goTab('noots'); }}>{tr('Материалын нөөц')}</button>
+          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => { void goTab('ajil'); }}>{tr('Ажлын материал')}</button>
         </div>
         {/* ⚠️ 2026-10-21 (аудит №2): автомат бүртгэл идэвхгүй (`mir_id`) — мэдэгдэл НЭГ удаа, бүх табд; MA харагдац ажилласаар */}
         {sync.state === 'disabled' && (
@@ -202,7 +234,7 @@ export function Ma() {
           {q.retry && <button type="button" className={s.retryBtn} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
         </p>
       ) : rows.length === 0 ? (
-        <p className={s.emptyNote}>{tr('MA бүртгэгдээгүй байна')}</p>
+        <p className={s.emptyNote}>{tr('MA бүртгэгдээгүй байна')} — {tr('Survey123-ын MA маягтаар бөглөгдөхөд энд автоматаар гарна.')}</p>
       ) : (
         <div className={s.cards}>
           {mirQ.state === 'error' && (
@@ -211,9 +243,10 @@ export function Ma() {
               {mirQ.retry && <button type="button" className={s.retryBtn} onClick={mirQ.retry}>{tr('Дахин оролдох')}</button>}
             </p>
           )}
-          {rows.map((r) => (
+          {ordered.map((r) => (
             <MaCard key={r.oid} r={r} mirs={mirMap ? mirMap.get(r.respNo) ?? [] : null}
               fm={fmMap ? fmMap.get(r.respNo) ?? { FIC: [], MAKT: [] } : null}
+              link={links.get(r.oid)} mirWhy={mirWhy} fmWhy={fmWhy}
               canAttach={attachFor(r.pkg)} canAuthor={fmAuthorFor(r.pkg)} canReview={fmReviewFor(r.pkg)}
               /* ⚠️ 2026-10-19 (аудит): «өөрийн оруулсан» — AGOL нэр (`ficMakt.decideFm`-ийн ⚠️) ба хуучин мөрийн Enterprise нэр */
               me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm}
@@ -280,6 +313,10 @@ type CardProps = {
   canAttach: boolean; canAuthor: boolean; canReview: boolean; me: readonly string[]; onFmChanged: () => void;
   /** ⚠️ 2026-10-21: FIC · М-акт ачаалалтын алдаа (нэвтэрсэн үед) — цонхонд «нэвтэрч харна» БИШ алдаа + дахин оролдох */
   fmErr: string;
+  /** ⚠️ 2026-10-23 (Q10): дахин ирүүлэлтийн холбоо (`resubmitLinks`) */
+  link?: ResubLink;
+  /** ⚠️ 2026-10-23 (Q5): MIR / FIC · М-актын өгөгдөл үл мэдэгдэх шалтгаан (хоосон = бэлэн) */
+  mirWhy: string; fmWhy: string;
 };
 type PopKey = StageKey | 'IPC';
 
@@ -289,7 +326,7 @@ type PopKey = StageKey | 'IPC';
  * ⚠️ Мэдээллийг мөрөнд дэлгэхгүй (хэрэглэгч: «нэг бүтэн процесс харагдах UI үнэхээр тэнэг») — цонхонд.
  * ⚠️ MIR ачаалагдаж байх үед (`mirs == null`) MIR шат «хүлээгдэж буй»; FIC · М-акт нь Enterprise нэвтрэлттэй үед.
  */
-function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr }: CardProps) {
+function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr, link, mirWhy, fmWhy }: CardProps) {
   const [pop, setPop] = useState<PopKey | null>(null);
   const chain = chainOf(r.verdict, {
     MIR: mirs ? mirVerdictFor(mirs) : undefined,
@@ -297,6 +334,20 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
     MAKT: fm ? fmVerdictFor(fm.MAKT) : undefined,
   });
   const ipc = ipcReady(chain);
+  /**
+   * ⚠️ 2026-10-23 (UX аудит Q5): ҮЛ МЭДЭГДЭХ ШАТ — өмнөх шат батлагдсан ч тэр шатны өгөгдөл уншигдаагүй
+   *    (нэвтрээгүй · ачаалж буй · унасан) бол `chainOf`-ийн `next`/`locked`-ийг харуулахгүй, шалтгааныг хэлнэ;
+   *    дараагийн шатууд ч мөн үл мэдэгдэх. IPC ч «Олгохгүй» биш — тодорхойгүй. Гинжийн дүрэм (`chainOf`) хөндөгдөөгүй.
+   */
+  const unk = new Map<StageKey, string>();
+  for (let i = 1; i < chain.length; i++) {
+    const prev = chain[i - 1];
+    const own = chain[i].key === 'MIR' ? (mirs == null ? mirWhy : '') : (fm == null ? fmWhy : '');
+    const inherited = unk.get(prev.key);
+    if (inherited) unk.set(chain[i].key, inherited);
+    else if (prev.state === 'done' && own) unk.set(chain[i].key, own);
+  }
+  const ipcWhy = unk.size ? [...unk.values()][0] : '';
   const summary = (k: StageKey): string =>
     k === 'MA' ? `${r.material || '—'} · ${r.respNo || tr('(дугааргүй)')}`
       : k === 'MIR' ? (mirs ? tr('{0} ачаа', mirs.length) : '…')
@@ -317,24 +368,31 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
   const title = (k: PopKey) => (k === 'IPC' ? tr('IPC') : `${stageLabel(k)} — ${r.material || r.respNo}`);
 
   return (
-    <article className={s.card}>
+    <article className={`${s.card} ${link?.next ? s.cardOld : ''}`}>
+      {/* ⚠️ 2026-10-23 (UX аудит Q10): дахин ирүүлэлтийн холбоо — хуучин (буцаасан) карт шинийнхээ доор */}
+      {link?.next && (
+        <p className={s.resubNote}>{tr('Буцаасан — засаж дахин ирүүлсэн: MA {0} (дээрх карт).', link.next.respNo || tr('(дугааргүй)'))}</p>
+      )}
+      {link?.prev && (
+        <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).', link.prev.respNo || tr('(дугааргүй)'))}</p>
+      )}
       <div className={s.strip} role="list" aria-label={tr('Чанарын шатлал')}>
         {chain.map((st, i) => (
           <button key={st.key} type="button" role="listitem" onClick={() => setPop(st.key)}
-            className={`${s.stage} ${s.stageBtn} ${s[`st_${st.state}`] ?? ''}`}>
+            className={`${s.stage} ${s.stageBtn} ${unk.has(st.key) ? '' : s[`st_${st.state}`] ?? ''}`}>
             <span className={s.stageNo}>{i + 1}</span>
             <span className={s.stageText}>
               <b>{stageLabel(st.key)}</b>
-              <small>{stageStateLabel(st.state)}</small>
+              <small>{unk.get(st.key) ?? stageStateLabel(st.state)}</small>
               <small className={s.stageSum}>{summary(st.key)}</small>
               <small className={s.stageDate}>{day(dateOf(st.key))}</small>
             </span>
           </button>
         ))}
         <button type="button" role="listitem" onClick={() => setPop('IPC')}
-          className={`${s.stage} ${s.stageBtn} ${ipc ? s.st_done : s.st_locked}`}>
+          className={`${s.stage} ${s.stageBtn} ${ipc ? s.st_done : ipcWhy ? '' : s.st_locked}`}>
           <span className={s.stageNo}>₮</span>
-          <span className={s.stageText}><b>{tr('IPC')}</b><small>{ipc ? tr('Олгож болно') : tr('Олгохгүй')}</small><small className={s.stageDate}>{day(dateOf('IPC'))}</small></span>
+          <span className={s.stageText}><b>{tr('IPC')}</b><small>{ipc ? tr('Олгож болно') : ipcWhy || tr('Олгохгүй')}</small><small className={s.stageDate}>{day(dateOf('IPC'))}</small></span>
         </button>
       </div>
 
@@ -343,11 +401,15 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
           {pop === 'MA' ? <MaPop r={r} canAttach={canAttach} />
             : pop === 'MIR' ? <MirList mirs={mirs} />
               : pop === 'FIC' || pop === 'MAKT' ? (
-                <FmColumn kind={pop === 'FIC' ? 'FIC' : 'MAKT'} maNo={r.respNo} state={chain[pop === 'FIC' ? 2 : 3].state}
+                <FmColumn kind={pop === 'FIC' ? 'FIC' : 'MAKT'} maNo={r.respNo}
+                  /* ⚠️ 2026-10-23 (Q5): үл мэдэгдэх шатыг «хаалттай» гэж хэлэхгүй */
+                  state={unk.has(pop) ? 'next' : chain[pop === 'FIC' ? 2 : 3].state}
                   rows={fm ? fm[pop === 'FIC' ? 'FIC' : 'MAKT'] : null}
                   canAuthor={canAuthor} canReview={canReview} me={me} onChanged={onFmChanged} loadErr={fmErr} />
               ) : (
-                <p className={s.note}>{ipc ? tr('Дөрвөн шат батлагдсан — IPC олгож болно.') : tr('Дөрвөн шат бүгд батлагдахаас өмнө IPC олгохгүй.')}</p>
+                <p className={s.note}>{ipc ? tr('Дөрвөн шат батлагдсан — IPC олгож болно.')
+                  : ipcWhy ? tr('Шатны төлөв бүрэн уншигдаагүй ({0}) — IPC олгох эсэх одоохондоо тодорхойгүй.', ipcWhy)
+                    : tr('Дөрвөн шат бүгд батлагдахаас өмнө IPC олгохгүй.')}</p>
               )}
         </Modal>
       )}
@@ -359,25 +421,62 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
  * ЦОНХ (popup) — Esc / ар тал дарж хаана, фокус дотроо (`useFocusTrap`).
  * ⚠️ Ар талын товшилт зөвхөн ар тал дээр ЭХЭЛСЭН бол хаана — цонх доторх сонголт чирэхэд хаагдахгүй.
  */
+/**
+ * ⚠️ 2026-10-23 (UX аудит Q3): ЦОНХНЫ ТҮГЖЭЭ — цонх доторх маягт (FIC · М-акт PDF, хавсралт) өөрийн төлөвийг
+ *    мэдээлнэ: ИЛГЭЭЖ байхад (`busy`) Esc · ар тал · ✕ цонхыг ХААХГҮЙ; бичсэн боловч хадгалаагүй (`dirty`) бол
+ *    хаахаас өмнө асууна (`IpcDocDialog`-ийн зарчим). Урьд нь PDF илгээж байхад Esc дарахад цонх хаагдаж үр дүн,
+ *    алдаа нь харагдахгүй, бичсэн дугаар/огноо/шалтгаан асуултгүй алга болдог байв.
+ */
+type Lock = { busy: boolean; dirty: boolean };
+const ModalLockCtx = createContext<((id: string, l: Lock | null) => void) | null>(null);
+function useModalLock(busy: boolean, dirty: boolean) {
+  const report = useContext(ModalLockCtx);
+  const id = useId();
+  useEffect(() => { report?.(id, { busy, dirty }); }, [report, id, busy, dirty]);
+  useEffect(() => () => report?.(id, null), [report, id]);
+}
+
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const downOnBack = useRef(false);
+  const locks = useRef(new Map<string, Lock>());
+  const asking = useRef(false);
+  const [busy, setBusy] = useState(false);
   useFocusTrap(ref, true);
+  const report = useCallback((id: string, l: Lock | null) => {
+    if (l) locks.current.set(id, l); else locks.current.delete(id);
+    setBusy([...locks.current.values()].some((x) => x.busy));
+  }, []);
+  const tryClose = useCallback(async () => {
+    const all = [...locks.current.values()];
+    if (asking.current || all.some((x) => x.busy)) return;
+    if (all.some((x) => x.dirty)) {
+      asking.current = true;
+      const ok = await askConfirm(tr('Бичсэн боловч хадгалаагүй мэдээлэл байна. Цонхыг хаавал алдагдана. Хаах уу?'),
+        { danger: true, ok: tr('Хаах') });
+      asking.current = false;
+      if (!ok) return;
+    }
+    onClose();
+  }, [onClose]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') void tryClose(); };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
+  }, [tryClose]);
   return (
     <div className={s.overlay} role="presentation"
       onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
-      onClick={(e) => { if (downOnBack.current && e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className={s.modal} role="dialog" aria-modal="true" aria-label={title}>
+      onClick={(e) => { if (downOnBack.current && e.target === e.currentTarget) void tryClose(); }}>
+      <div ref={ref} className={s.modal} role="dialog" aria-modal="true" aria-label={title} aria-busy={busy}>
         <header className={s.modalHead}>
           <h2 className={s.modalTitle}>{title}</h2>
-          <button type="button" className={s.closeBtn} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
+          <button type="button" className={s.closeBtn} onClick={() => { void tryClose(); }} aria-label={tr('Хаах')} disabled={busy}
+            title={busy ? tr('Илгээж байна — дуустал хаах боломжгүй') : undefined}>✕</button>
         </header>
-        <div className={s.modalBody}>{children}</div>
+        <ModalLockCtx.Provider value={report}>
+          <div className={s.modalBody}>{children}</div>
+        </ModalLockCtx.Provider>
       </div>
     </div>
   );
@@ -444,8 +543,12 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const [docNo, setDocNo] = useState('');
   const [date, setDate] = useState('');
   const [reason, setReason] = useState<Record<number, string>>({});
+  /* ⚠️ 2026-10-23 (UX аудит Q2): амжилтын мэдэгдэл — урьд нь шийдвэр/PDF хадгалагдсаныг юу ч хэлдэггүй байв */
+  const [okMsg, setOkMsg] = useState('');
+  const [fileName, setFileName] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const locked = state === 'locked';
+  useModalLock(busy, !!(docNo.trim() || date || fileName || Object.values(reason).some((v) => v.trim())));
 
   /* ⚠️ 2026-10-21: ачаалалт УНАСАН бол алдаа + «Дахин оролдох» (`onChanged` = `reloadFm`) */
   if (rows == null && loadErr && !locked) {
@@ -461,17 +564,39 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const upload = async () => {
     const f = fileRef.current?.files?.[0];
     if (!f) { setErr(tr('PDF файл сонгоно уу.')); return; }
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setOkMsg('');
     try {
       const { warn } = await addFm({ kind, maNo, docNo: docNo.trim(), docDate: date, file: f });
-      setDocNo(''); setDate(''); if (fileRef.current) fileRef.current.value = '';
+      setDocNo(''); setDate(''); setFileName(''); if (fileRef.current) fileRef.current.value = '';
       if (warn) setErr(warn);
+      setOkMsg(tr('PDF оруулагдлаа — хянагч шийднэ.'));
       onChanged();
     } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
+  /**
+   * ⚠️ 2026-10-23 (UX аудит Q1 · Q2): ШИЙДВЭР — нэг товшилтоор буцаалтгүй бичигддэг байв.
+   *    · AN (санал) · R (шалтгаан) — бичвэр заавал (`ficMakt.decideFm` ч шалгана); товч хоосон үед идэвхгүй.
+   *    · Бичихийн өмнө аппын асуулт: шийдвэрийг дараа нь өөрчлөх боломжгүй (`decideFm` зөвхөн `pending`-ийг бичнэ).
+   *    · Алдаа гарвал (ялангуяа «Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ») жагсаалтыг ҮНЭХЭЭР дахин ачаална —
+   *      урьд нь мессеж «шинэчлэгдлээ» гэдэг атал хуучин жагсаалт үлддэг байв. Амжилтад «Шийдвэр хадгалагдлаа».
+   */
   const decide = async (row: FmRow, v: Verdict) => {
-    setBusy(true); setErr('');
-    try { await decideFm(row, v, reason[row.oid] ?? ''); onChanged(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
+    const why = (reason[row.oid] ?? '').trim();
+    if (v !== 'A' && !why) { setErr(v === 'AN' ? tr('AN шийдвэрт саналаа бичнэ үү.') : tr('Буцаах шалтгаанаа бичнэ үү.')); return; }
+    if (!(await askConfirm(
+      tr('«{0}» баримтад «{1}» шийдвэр гаргах уу? Шийдвэрийг дараа нь өөрчлөх, буцаах боломжгүй.', d0(row), verdictLabel(v)),
+      { danger: v === 'R', ok: tr('Шийдвэрлэх') },
+    ))) return;
+    setBusy(true); setErr(''); setOkMsg('');
+    try {
+      await decideFm(row, v, why);
+      setReason((m) => { const n = { ...m }; delete n[row.oid]; return n; });
+      setOkMsg(tr('Шийдвэр хадгалагдлаа: {0}.', verdictLabel(v)));
+      onChanged();
+    } catch (e) {
+      setErr(userError(e));
+      onChanged();
+    } finally { setBusy(false); }
   };
   const open = async (row: FmRow) => {
     const w = window.open('', '_blank');
@@ -494,22 +619,30 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
           <div key={d.oid} className={`${s.mir} ${s[`st_${st}`] ?? ''}`}>
             <div className={s.mirHead}>
               <button type="button" className={s.rowBtn} onClick={() => { void open(d); }} title={d.pdfName}>
-                {d.docNo || d.pdfName || tr('(дугааргүй)')}
+                {d0(d)}
               </button>
               {d.status === 'pending' ? <span className={`${s.vchip} ${s.vNone}`}>…</span> : <VerdictChip v={d.status} />}
             </div>
             <span className={s.cardNo}>{day(d.docDate)} · {d.uploadedBy}</span>
             {d.status !== 'pending' && <span className={s.cardNo}>{tr('Шийдвэрлэсэн: {0} · {1}', d.decidedBy, day(d.decidedAt))}</span>}
             {d.reason && <p className={s.pre}>{d.reason}</p>}
-            {d.status === 'pending' && canReview && !mine && (
-              <div className={s.addForm}>
-                <input className={s.input} value={reason[d.oid] ?? ''} onChange={(e) => setReason((m) => ({ ...m, [d.oid]: e.target.value }))}
-                  placeholder={tr('Санал / буцаах шалтгаан')} disabled={busy} maxLength={FM_REASON_MAX} />
-                <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void decide(d, 'A'); }}>A</button>
-                <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void decide(d, 'AN'); }}>AN</button>
-                <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void decide(d, 'R'); }}>R</button>
-              </div>
-            )}
+            {d.status === 'pending' && canReview && !mine && (() => {
+              /* ⚠️ 2026-10-23 (Q1): AN · R нь бичвэргүй бол идэвхгүй; товч бүр шийдвэрийн бүтэн нэртэй (title · aria-label) */
+              const noText = !(reason[d.oid] ?? '').trim();
+              const vBtn = (v: Verdict) => (
+                <button type="button" className={s.ghostBtn} disabled={busy || (v !== 'A' && noText)}
+                  title={v !== 'A' && noText ? tr('{0} — эхлээд санал/шалтгаанаа бичнэ үү', verdictLabel(v)) : verdictLabel(v)}
+                  aria-label={verdictLabel(v)} onClick={() => { void decide(d, v); }}>{v}</button>
+              );
+              return (
+                <div className={s.addForm}>
+                  <input className={s.input} value={reason[d.oid] ?? ''} onChange={(e) => setReason((m) => ({ ...m, [d.oid]: e.target.value }))}
+                    placeholder={tr('Санал (AN) / буцаах шалтгаан (R)')} aria-label={tr('Санал (AN) / буцаах шалтгаан (R)')}
+                    disabled={busy} maxLength={FM_REASON_MAX} />
+                  {vBtn('A')}{vBtn('AN')}{vBtn('R')}
+                </div>
+              );
+            })()}
             {d.status === 'pending' && mine && <span className={s.note}>{tr('Өөр хянагч батална.')}</span>}
           </div>
         );
@@ -518,12 +651,14 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
         <div className={s.addForm}>
           <input className={s.input} value={docNo} onChange={(e) => setDocNo(e.target.value)} placeholder={tr('Баримтын дугаар')} disabled={busy} maxLength={60} />
           <input className={s.input} type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={busy} aria-label={tr('Огноо')} />
-          <input ref={fileRef} className={s.file} type="file" accept="application/pdf,.pdf" disabled={busy} />
+          <input ref={fileRef} className={s.file} type="file" accept="application/pdf,.pdf" disabled={busy}
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')} aria-label={tr('PDF файл')} />
           <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void upload(); }}>
             {busy ? tr('Түр хүлээнэ үү…') : kind === 'FIC' ? tr('FIC PDF оруулах') : tr('М-акт PDF оруулах')}
           </button>
         </div>
       )}
+      {okMsg && !err && <p className={s.okNote} role="status">{okMsg}</p>}
       {err && <p className={s.errNote} role="alert">{err}</p>}
     </div>
   );
@@ -570,7 +705,10 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   const [no, setNo] = useState('');
   const [std, setStd] = useState('');
   const [valid, setValid] = useState('');
+  const [picked, setPicked] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  /* ⚠️ 2026-10-23 (Q3): илгээж байхад цонх хаагдахгүй; бөглөсөн мэдээлэл/сонгосон файлтай бол хаахаас өмнө асууна */
+  useModalLock(busy, !!(title.trim() || no.trim() || std.trim() || valid || picked));
 
   const reload = useCallback(async () => {
     setErr('');
@@ -605,14 +743,15 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
       } catch (e) { errs.push(`${f.name}: ${userError(e)}`); }
     }
     if (fileRef.current) fileRef.current.value = '';
-    setTitle(''); setNo(''); setStd(''); setValid('');
+    setTitle(''); setNo(''); setStd(''); setValid(''); setPicked(0);
     await reload();
     if (errs.length) setErr(errs.join('\n'));
     setBusy(false);
   };
 
   const remove = async (a: MaAtt) => {
-    if (!window.confirm(tr('«{0}» хавсралтыг устгах уу?', a.name))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид устгах товч чимээгүй ажилладаггүй байв */
+    if (!(await askConfirm(tr('«{0}» хавсралтыг устгах уу?', a.name), { danger: true, ok: tr('Устгах') }))) return;
     setBusy(true); setErr('');
     try { await deleteMaAtt(oid, a.id); await reload(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
@@ -665,7 +804,9 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
 
       {canAttach && (
         hasAtt === false ? (
-          <p className={s.failNote}>{tr('Энэ MA давхаргад хавсралт идэвхгүй — геопорталын item → Settings → «Enable attachments»-ыг асаана уу.')}</p>
+          /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид — «админд мэдэгдэнэ үү»; тохиргооны зам нь зөвхөн админд хэрэгтэй.
+             ⚠️ 2026-10-23 (засвар): тэр зам ил бичвэрт БИШ, `title`-д — энгийн хэрэглэгчид ойлгомжтой */
+          <p className={s.failNote} title={tr('Админд: геопортал дахь давхаргын item → Settings → «Enable attachments»')}>{tr('Энэ MA давхаргад хавсралт нэмэх боломж идэвхгүй — админд мэдэгдэнэ үү.')}</p>
         ) : !sess ? (
           <div className={s.signBox}>
             <p className={s.note}>{tr('Хавсралт нэмэхийн тулд Enterprise-д нэвтэрнэ.')}</p>
@@ -689,7 +830,8 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
                 <input className={s.input} type="date" value={valid} onChange={(e) => setValid(e.target.value)} disabled={busy} />
               </label>
             )}
-            <input ref={fileRef} className={s.file} type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple disabled={busy} />
+            <input ref={fileRef} className={s.file} type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple disabled={busy}
+              onChange={(e) => setPicked(e.target.files?.length ?? 0)} aria-label={tr('Файл')} />
             <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void upload(); }}>
               {busy ? tr('Түр хүлээнэ үү…') : tr('Хавсаргах')}
             </button>

@@ -45,10 +45,10 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { ajilScope, hasAjilRole, subscribeAjilAcl } from '@/lib/ajilAcl';
 import { roleForUser } from '@/lib/services';
-import { dayKey, num } from '@/lib/format';
+import { date, dayKey, fixCyr, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  NO_PARENT_REASON, ajilClaimHolder, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
+  NO_PARENT_REASON, ajilClaimHolder, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadAllReturned, loadPayloadStamped, returnStuckAjil, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { roleOf } from '@/lib/permissions';
@@ -63,6 +63,8 @@ import s from './guitsetgel.module.css';
 import { userError } from '@/components/ui';
 import { setNavDirty } from '@/lib/navGuard';
 import { REASON_MAX, serverNow } from '@/lib/huvaariBatlah';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (хөтөч «дахин асуухгүй» гэвэл чимээгүй `false` буцаадаг) */
+import { askConfirm } from '@/lib/confirm';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -85,6 +87,8 @@ type State =
   | { k: 'error'; msg: string }
   | {
     k: 'ready'; rows: AjilSubmission[]; /** батлагдсан ч буугаагүй (2026-09-24) */ approved: AjilSubmission[];
+    /** ⚠️ 2026-10-23 (UX аудит P1): сүүлийн 30 хоногт буцаасан — шалтгаантай (`loadAllReturned`); уншилт унавал `[]` */
+    returned: AjilSubmission[];
     /** ⚠️ 2026-10-01: татсан агшин — `classifyStuck`-ийн «одоо» (render дотор `Date.now()` дуудахгүй) */
     at: number;
   };
@@ -217,12 +221,13 @@ export function AjilBatlah() {
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
-              ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+              ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
               : t.why === 'owner'
-                ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+                ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
                 : t.why === 'error'
-                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ?? '')
-                  : tr('Батлах хүснэгт олдсонгүй — AGOL дээр «Selbe_Ajil_Batlah_csv» үйлчилгээ нийтлэгдсэн эсэхийг админаас лавлана уу.') });
+                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
+                  /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан — үйлчилгээний нэрийг хэрэглэгчид харуулахгүй */
+                  : tr('Нэмэлт ажлын батлах хүснэгт олдсонгүй — админд мэдэгдэнэ үү.') });
           return;
         }
         /* ⚠️ `HEAD_FIELDS`-ийн хөнгөн байдал нь ГЭРЭЭ: `payload` (1,048,576
@@ -231,9 +236,10 @@ export function AjilBatlah() {
            татагдаж хуудас гацна. */
         /* ⚠️ «Батлагдсан · буулгаагүй» (2026-09-24) — `materializeAdds` унасан
            илгээлтүүд; хэвийн урсгалд хоосон. Хоёр query зэрэг. */
-        const [rows, approved] = await Promise.all([loadAllPending(), loadAllApproved()]);
+        /* ⚠️ 2026-10-23 (UX аудит P1): «Буцаасан» хэсэг — ТУСЛАХ мэдээлэл тул уншилт унавал хоосон (дарааллыг хаахгүй) */
+        const [rows, approved, returned] = await Promise.all([loadAllPending(), loadAllApproved(), loadAllReturned(30).catch(() => [])]);
         if (!alive) return;
-        setSt({ k: 'ready', rows, approved, at: serverNow() });
+        setSt({ k: 'ready', rows, approved, returned, at: serverNow() });
         resetDetail();
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: userError(e) });
@@ -339,6 +345,17 @@ export function AjilBatlah() {
     (x: AjilSubmission) => !!me && me === x.author.trim().toLowerCase(),
     [me],
   );
+  /* ⚠️ 2026-10-23 (UX аудит P1): «Буцаасан» — дарааллын ижил хүрээ (`scope`) ба шүүлт (хайлт · багц) */
+  const returned = useMemo(() => {
+    if (st.k !== 'ready') return [];
+    const needle = q.trim().toLowerCase();
+    return st.returned.filter((x) => (scope == null || scope.includes(x.pkgGroup))
+      && (!grp || x.pkgGroup === grp)
+      && (!needle
+        || (PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey).toLowerCase().includes(needle)
+        || x.author.toLowerCase().includes(needle)
+        || (x.reason ?? '').toLowerCase().includes(needle)));
+  }, [st, scope, q, grp]);
   const todo = filtered.filter((x) => known(x) && !isOwn(x));
   const own = filtered.filter((x) => known(x) && isOwn(x));
   const orphan = filtered.filter((x) => !known(x));
@@ -366,6 +383,11 @@ export function AjilBatlah() {
    *    зөвхөн бичилт хоцорсон.
    * ⚠️ Агуулга уншигдаагүй бол товч ХААЛТТАЙ (`Row`-д) — батлагч юу
    *    батлахаа хараагүй байж батлах ёсгүй.
+   * ⚠️ 2026-10-23 (UX аудит P3 — МӨР ТУС БҮРИЙН ✓/✕ ХИЙГЭЭГҮЙ, санаатай): шийдвэр ИЛГЭЭЛТ БҮХЛЭЭРЭЭ. Илгээлт нь
+   *    урсгалын НЭГ мөр (нэг төлөв · нэг `stamp`) бөгөөд `materializeAdds` нэмэлт ажлуудыг эцэг-хүүхдийн дугаартай НЭГ
+   *    жааз болгон буулгадаг — хэсгийг батлаж хэсгийг буцаавал дугаарлалт · эцэг мөр тасарч, үлдсэн хэсэг шинэ илгээлт
+   *    болж дахин 1-р шатнаас эхлэх шаардлагатай (урсгал эвдэрнэ). Нэг мөр буруу бол бүхлээр нь шалтгаантай буцаана —
+   *    шалтгаанд аль мөр болохыг бичнэ.
    */
   const approve = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
@@ -375,7 +397,8 @@ export function AjilBatlah() {
     const d = detail.get(x.oid);
     if (d?.k !== 'ok') return;
     const n = d.p.adds.length;
-    if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)))) return;
+    if (!(await askConfirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)), { ok: tr('Батлах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ Шийдвэр СЕРВЕРТ гарсан эсэх — `catch`-д дараалал дахин уншихад
        (2026-09-25 аудит): шийдвэрийн дараа юу ч шидсэн мөр `approved` болсон
@@ -501,7 +524,8 @@ export function AjilBatlah() {
    *    батлагч/админ илгээлтийг шалтгаантай нь нэмэгчид буцаана (`ajilBatlah.returnStuckAjil`). */
   const returnStuck = useCallback(async (x: AjilSubmission, why: string) => {
     if (busy) return;
-    if (!window.confirm(tr('Батлагдсан ч хуудсанд буулгах боломжгүй илгээлтийг нэмэгчид буцаах уу? Шалтгаан: {0}', why))) return;
+    if (!(await askConfirm(tr('Батлагдсан ч хуудсанд буулгах боломжгүй илгээлтийг нэмэгчид буцаах уу? Шалтгаан: {0}', why), { ok: tr('Нэмэгчид буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await returnStuckAjil({ oid: x.oid, me: user?.username ?? '', reason: why });
@@ -525,7 +549,8 @@ export function AjilBatlah() {
     /* ⚠️ 2026-09-30: БАТАЛГААЖУУЛНА — буцаалт нь буцаах замгүй бөгөөд шалтгаан
        нэмэгчид шууд харагдана (`Huvaari` буцаагдсан илгээлтийг шалтгаантай нь
        нооргонд буулгана). */
-    if (!window.confirm(tr('Илгээлтийг буцаах уу? Бичсэн шалтгаан нэмэгчид илгээгдэнэ — нэмэгч засаад дахин илгээнэ.'))) return;
+    if (!(await askConfirm(tr('Илгээлтийг буцаах уу? Бичсэн шалтгаан нэмэгчид илгээгдэнэ — нэмэгч засаад дахин илгээнэ.'), { ok: tr('Буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const d = detail.get(x.oid);
@@ -565,7 +590,8 @@ export function AjilBatlah() {
    *    дахин нэмнэ. Тиймээс баталгаажуулах цонхонд түүнийг ИЛ хэлнэ. */
   const withdraw = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүдээ «Хуваарь» хуудсанд дахин нэмнэ.'))) return;
+    if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүдээ «Хуваарь» хуудсанд дахин нэмнэ.'), { ok: tr('Илгээлтээ татах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawAjil({ oid: x.oid, me: user?.username ?? '' });
@@ -740,6 +766,35 @@ export function AjilBatlah() {
               </div>
             )}
 
+            {/* ⚠️ 2026-10-23 (UX аудит P1): БУЦААСАН — сүүлийн 30 хоног, шалтгаантай. Урьд нь буцаасны дараа илгээлт
+                жагсаалтаас алга болж, батлагч юуг яагаад буцаасныг хаанаас ч харах боломжгүй, тоо нь ч байгаагүй.
+                Эвхэгдсэн (`details`) — дарааллыг дарахгүй. Зөвхөн харуулна, үйлдэлгүй. */}
+            {returned.length > 0 && (
+              <details className={s.list} style={{ marginTop: 18 }}>
+                <summary className={s.groupHead}>
+                  <span>{tr('Буцаасан — сүүлийн 30 хоног')}</span>
+                  <span className={s.groupCount}>{num(returned.length)}</span>
+                </summary>
+                {returned.map((x) => (
+                  <div key={x.oid} className={s.item}>
+                    <div className={s.open}>
+                      <span className={s.who}>
+                        <span className={s.ajil}>{PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey}</span>
+                        <span className={s.meta}>
+                          {tr('{0} илгээсэн · {1} буцаасан · {2} · {3} мөр', x.author, x.approver ?? '—',
+                            /* ⚠️ 2026-10-23 (E6): `format.date` — бусад огноотой нэг хэлбэр */ date(x.approverAt), num(x.rowCount))}
+                        </span>
+                      </span>
+                      <div className={s.reasonBox}>
+                        <div className={s.reasonLabel}>{tr('Буцаасан шалтгаан')}</div>
+                        {x.reason || '—'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </details>
+            )}
+
             {/* ⚠️ БҮРТГЭЛГҮЙ БАГЦ — мөрийг ХАЯХГҮЙ. Хаявал гацсан санал
                 мөнхөд харагдахгүй болж, тэр багцад шинэ илгээлт хийх
                 боломжгүй болно (`submitAjil` нь pending байвал татгалздаг).
@@ -871,7 +926,7 @@ function Row({
                 {p.adds.map((a) => (
                   <div key={a.oid} className={s.chItem}>
                     <span className={s.chWork}>
-                      {a.no ? `${a.no} · ` : ''}{a.work}
+                      {a.no ? `${a.no} · ` : ''}{fixCyr(a.work)}
                     </span>
                     <span className={s.chBlk}>
                       {tr('Эцэг: {0}', a.parentWork || '—')}

@@ -407,7 +407,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   // fillDate байхгүй → throw
   assert.throws(
     () => buildFrame(ov.rows, { ...sc, f: { ...sc.f, fillDate: null } }, nBld, asOf, hasObyem, fillMs),
-    /buglusun_ognoo/,
+    /огнооны багана алга/,
     'fillDate багана алга → зогсооно',
   );
   // pending зам (FillNew-ийн хуучин): нүдэн дээр буугаагүй засвар мөн тусна

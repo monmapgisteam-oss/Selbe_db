@@ -550,7 +550,7 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   assert.match(approveGuard(sub({ approverAt: null }), 5, 'bat', NOW - 1000, NOW), /хугацаа дууссан|өөр цонх/, 'агшингүй түгжээ → бичихгүй');
   assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', NOW - 1000, NOW), /dorj.*батлаж байна/, 'өөр хүн — claimAt-аас үл хамааран нэрээр');
   /* төлөв дэлгэцийн нэрээр (түүхий өгөгдөл биш) */
-  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', undefined, NOW), /Буцаагдсан/);
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', undefined, NOW), /Буцаасан/);
   assert.match(approveGuard(sub({ status: PLAN_STATUS.withdrawn, approver: null }), 5, 'bat', undefined, NOW), /татсан/, 'зохиогч татсан');
   assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', undefined, NOW), /dorj/, 'өөр батлагч шийдсэн → нэр');
   assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', undefined, NOW), /dorj.*батлаж байна/, 'өөр хүн түгжсэн');

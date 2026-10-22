@@ -23,6 +23,7 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { VIEWS, type Role, type ViewKey } from '@/lib/services';
 import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
@@ -132,7 +133,8 @@ export function ErhTypes({ remote, onDirty }: {
         for (const r of dirtyRoles) if (!failed.includes(r)) delete n[r];
         return n;
       });
-      if (failed.length) setErr(tr('ArcGIS-т хадгалагдсангүй: {0}', failed.map(typeLabel).join(', ')));
+      /* ⚠️ 2026-10-23 (UX аудит X4): дараагийн алхмыг хэлнэ — унасан төрлийн ноорог дээр УСТГАГДАХГҮЙ тул үнэн */
+      if (failed.length) setErr(tr('Хадгалагдсангүй: {0} — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.', failed.map(typeLabel).join(', ')));
       else setMsg(tr('Хадгалагдлаа. Хэрэглэгчдэд тараахын тулд баганын «Хэрэгжүүлэх»-ийг дарна уу.'));
     } finally {
       setSaving(false);
@@ -145,7 +147,8 @@ export function ErhTypes({ remote, onDirty }: {
     if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
-    if (!window.confirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
+    if (!(await askConfirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)), { ok: tr('Хэрэгжүүлэх') }))) return;
     setErr(''); setMsg('');
     if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
   };
@@ -265,8 +268,9 @@ export function ErhTypes({ remote, onDirty }: {
           {dirtyRoles.length ? tr('Хадгалах ({0} төрөл)', String(dirtyRoles.length)) : tr('Хадгалах')}
         </button>
         {dirtyRoles.length > 0 && (
+          /* ⚠️ 2026-10-23 (UX аудит X7): болих товч порталд «Болих» (UserAdmin-ы хадгалах мөртэй ижил) */
           <button type="button" className={ua.cancelBtn} disabled={busy} onClick={() => setDrafts({})}>
-            {tr('Цуцлах')}
+            {tr('Болих')}
           </button>
         )}
         {!remoteReady() && <span className={s.err}>{tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')}</span>}

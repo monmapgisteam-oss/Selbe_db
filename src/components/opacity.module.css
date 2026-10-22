@@ -45,7 +45,7 @@
 }
 .title {
   flex: 1;
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -54,7 +54,7 @@
 .reset {
   flex: none;
   padding: 3px 9px;
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
@@ -90,7 +90,7 @@
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-.pct { flex: none; font-size: 0.68rem; font-weight: 600; color: var(--tone); }
+.pct { flex: none; font-size: 0.6875rem; font-weight: 600; color: var(--tone); }
 
 /* Гулсуур — замыг өнгөт (--tone), товчийг цагаан */
 .slider {

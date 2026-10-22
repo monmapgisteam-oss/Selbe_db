@@ -5,16 +5,29 @@
  */
 import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { t as tr } from "@/lib/i18nCore";
+import { date as fmtDate } from "@/lib/format";
+import type { ReturnInfo } from "@/lib/hyanaltStore";
 import type { useFlow } from "./useFlow";
 import type { NoticeKind } from "./util";
 import st from "../sheet.module.css";
 
 type FlowT = ReturnType<typeof useFlow>;
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит F2): БУЦААЛТЫН ШАЛТГААН · ХЭН · ХЭЗЭЭ — нэг мөрөөр. Шалтгаан хоосон (хуучин мөр) бол
+ *    «шалтгаан бичигдээгүй» гэж ИЛ хэлнэ (хоосон зай үлдээхгүй). Нэр/огноо байхгүй бол тэр хэсгийг л орхино.
+ */
+function returnLine(info: ReturnInfo | null | undefined): string {
+  if (!info) return '';
+  const who = [info.by, info.at ? fmtDate(info.at) : ''].filter(Boolean).join(' · ');
+  const why = info.reason || tr('шалтгаан бичигдээгүй');
+  return who ? tr('Шалтгаан: {0} ({1})', why, who) : tr('Шалтгаан: {0}', why);
+}
+
 export function FillNotices({
   locked, submitFailed, resend, resending, unmovedWarn, subReadErr, inReview, reviewStage,
   otherDaysInReview, otherDaysReturned, noEdit, busy, resumedOid, resumeReturned, returned,
-  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null,
+  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null, returnInfo = null,
 }: {
   locked: boolean; submitFailed: boolean; resend: () => Promise<void>; resending: boolean;
   unmovedWarn: string[]; subReadErr: string | null; inReview: boolean; reviewStage: FlowT['reviewStage'];
@@ -36,6 +49,8 @@ export function FillNotices({
   hyErr?: string | null;
   /** ⚠️ 2026-10-12 (аудит №8): сүүлийн архивын жааз тасарсан — хуудас өмнөх өдрийн жаазыг харуулж байна (`FillNew.frameTrunc`) */
   frameTrunc?: { day: string; rows: number; need: number; shownDay: string } | null;
+  /** ⚠️ 2026-10-23 (UX аудит F2): ЭНЭ илгээлтийн буцаалтын шалтгаан · хянагч · огноо (`useFlow.returnInfo`) */
+  returnInfo?: ReturnInfo | null;
 }) {
   return (
     <>
@@ -113,15 +128,19 @@ export function FillNotices({
       {!locked && otherDaysInReview.length > 0 && (
         <p className={st.lockNote}>
           {reviewLockDays.length > 0
-            ? tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — 6 шат бүрэн батлагдаж архивлагдтал өнөөдрийн шинэ бөглөлт, илгээлт хаалттай. Буцаагдсан илгээлтийг засаж дахин илгээх боломжтой.', otherDaysInReview.join(', '))
-            : tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — одоо зөвхөн буцаагдсан илгээлтийн засварыг илгээнэ; шинэ бөглөлт тэр илгээлт батлагдаж архивлагдсаны дараа.', otherDaysInReview.join(', '))}
+            ? tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — 6 шат бүрэн батлагдаж архивлагдтал өнөөдрийн шинэ бөглөлт, илгээлт хаалттай. Буцаасан илгээлтийг засаж дахин илгээх боломжтой.', otherDaysInReview.join(', '))
+            : tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — одоо зөвхөн буцаасан илгээлтийн засварыг илгээнэ; шинэ бөглөлт тэр илгээлт батлагдаж архивлагдсаны дараа.', otherDaysInReview.join(', '))}
         </p>
       )}
       {/* 2026-09-21 (дахин аудит): өнөөдрийн мөр байхад өмнөх өдрийн буцаалт
           `flow` болдоггүй тул тусад нь мэдэгдэнэ (`otherDaysReturned`). */}
       {!locked && otherDaysReturned.length > 0 && (
         <p className={st.backNote}>
-          {tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))}
+          {tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))}
+          {/* ⚠️ 2026-10-23 (UX аудит F2): өдөр бүрийн шалтгаан — сонгохоос ӨМНӨ юу засахаа мэднэ */}
+          {otherDaysReturned.filter((x) => x.info).map((x) => (
+            <span key={`r${x.soid}`} className={st.returnWhy}>{x.day}: {returnLine(x.info)}</span>
+          ))}
           {/* ⚠️ Буцаагдсан илгээлтийг сонгож давхарлана — `resumedOid`-ийн ⚠️ (2026-09-24) */}
           {/* ⚠️ 2026-10-09 (аудит №3): зөвхөн гүйцэтгэгчид (`canAct`-ийн ⚠️) */}
           {!noEdit && canAct && otherDaysReturned.filter((x) => Number.isInteger(x.soid) && x.soid > 0).map((x) => (
@@ -135,9 +154,27 @@ export function FillNotices({
       {!locked && returned && (
         <p className={st.backNote}>
           {tr('Хяналтаас БУЦААСАН — засвар оруулаад дахин илгээнэ үү.')}
+          {/* ⚠️ 2026-10-23 (UX аудит F2): шалтгаан · хянагч · огноо — засах үед ЭНД харагдана */}
+          {returnInfo && <span className={st.returnWhy}>{returnLine(returnInfo)}</span>}
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * НААЛДСАН АНХААРУУЛГА (⚠️ 2026-10-23, UX аудит F4 · F3) — «Илгээх» хориглогдсон шалтгаан, засах нүдний жагсаалт.
+ *    Хугацаагүй; ✕-ээр хаана (`useNotice.stick`-ийн ⚠️). `role="alert"` — гарч ирэхэд дэлгэц уншигч хэлнэ.
+ */
+export function StickyNotice({ msg, onClose }: { msg: string | null; onClose: () => void }) {
+  if (!msg) return null;
+  return (
+    <p className={st.lockNote} role="alert">
+      <span aria-hidden>{'⚠ '}</span>{msg}
+      <button type="button" className={st.resend} onClick={onClose} aria-label={tr('Анхааруулгыг хаах')}>
+        {'✕ '}{tr('Хаах')}
+      </button>
+    </p>
   );
 }
 

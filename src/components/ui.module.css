@@ -129,7 +129,7 @@
   cursor: pointer;
 }
 .secCaret {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   color: var(--ink-3);
   transition: transform 0.14s ease;
@@ -149,7 +149,7 @@
   background: color-mix(in srgb, var(--hue) 4%, var(--surface));
   box-shadow: inset 3px 0 0 var(--hue);
 }
-.sectionPrimary .sectionTitle { color: var(--hue); }
+.sectionPrimary .sectionTitle { color: var(--data-ink); }
 
 /* ── Байрлалын примитив ── */
 .col { display: flex; flex-direction: column; }
@@ -204,7 +204,7 @@
 .tab:hover { color: var(--ink-2); }
 /* Идэвхтэй таб — доогуур зураас + дээшээ уусах зөөлөн өнгөт дэвсгэр */
 .tabOn {
-  color: var(--hue);
+  color: var(--data-ink);
   border-bottom-color: var(--hue);
   background: linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--hue) 8%, transparent));
 }
@@ -212,14 +212,14 @@
 .tabCount {
   padding: 1px 6px;
   border-radius: 99px;
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--ink-3);
   background: var(--surface-2);
   border: 1px solid var(--line);
 }
 .tabOn .tabCount {
-  color: var(--hue);
+  color: var(--data-ink);
   background: color-mix(in srgb, var(--hue) 12%, transparent);
   border-color: color-mix(in srgb, var(--hue) 26%, transparent);
 }
@@ -292,7 +292,7 @@
 /* envhub eyebrow — 2 мөрийн зай нөөцөлж, олон карт зэрэгцэхэд тоонууд нэг
    суурьт зэрэгцэнэ */
 .statLabel {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -472,7 +472,7 @@
 .legendVal { color: var(--ink); font-weight: 500; }
 /* Хувь — үнэмлэхүй тооны ХАЖУУД. Хоёулаа хэрэгтэй: тоо нь хэмжээг, хувь нь
    бүхэлд эзлэх байрыг хэлнэ. */
-.legendPct { font-size: 0.68rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.legendPct { font-size: 0.6875rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ── Цагираг ── */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
@@ -483,7 +483,7 @@
 .ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
 /* ⚠️ 2026-10-09: төвийн утга 600 — Donut-тай ижил */
 .ringValue { font-weight: 600; color: var(--ink); }
-.ringLabel { font-size: 0.62rem; color: var(--ink-3); margin-top: 2px; }
+.ringLabel { font-size: 0.6875rem; color: var(--ink-3); margin-top: 2px; }
 
 /* ── Түлхүүр → утга ── */
 .rows { display: flex; flex-direction: column; }
@@ -637,14 +637,14 @@
 .donutLead { display: flex; justify-content: center; }
 .donutLead svg { max-width: 100%; height: auto; overflow: hidden; }
 .donutLeadCtr { font-size: 15px; font-weight: 600; fill: var(--ink); }
-.donutLeadCtrLbl { font-size: 8px; fill: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.donutLeadCtrLbl { font-size: 11px; fill: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 /* foreignObject доторх HTML шошго — мөр даруулж БҮТЭН нэрийг харуулна */
 .donutLeadBox {
   display: flex;
   flex-direction: column;
   justify-content: center;
   height: 100%;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.22;
   color: var(--ink-2);
   overflow-wrap: break-word;
@@ -660,7 +660,7 @@
 .donutStack { flex-direction: column; align-items: center; flex-wrap: nowrap; gap: 12px; }
 .donutStack .donutLegend { width: 100%; min-width: 0; flex: none; }
 .donutStack .donutName { white-space: normal; overflow: visible; }
-.donutRow .donutItem { gap: 5px; font-size: 0.68rem; align-items: flex-start; }
+.donutRow .donutItem { gap: 5px; font-size: 0.6875rem; align-items: flex-start; }
 .donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
 .donutRow .legendDot,
 .donutRow .legendRing { margin-top: 2px; }
@@ -672,7 +672,7 @@
 /* Зурвас ДОТОРХ хувь (≥8%) — 10px/600, өнгөт дүүргэлт дээрх бэх (`--hue-ink`) + цайварт
    бараан хүрээ (`--chart-on-fill-halo`) — --c6 шар дээр ч уншигдана. */
 .donutPctIn {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   fill: var(--hue-ink);
   paint-order: stroke;
@@ -698,8 +698,8 @@
 .donutValue { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.1; }
 /* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
    таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
-.donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
-.donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; line-height: 1.2; max-width: 90%; }
+.donutValueLong { font-size: 11px; letter-spacing: -0.02em; white-space: nowrap; }
+.donutLabel { font-size: 11px; color: var(--ink-3); text-align: center; line-height: 1.2; max-width: 90%; }
 
 .donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
 .donutItem { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
@@ -780,7 +780,7 @@
    талд (дээр нь) байрлана — дотор нь байрлуулбал намхан багананд багтахгүй. */
 .seriesVal {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
   font-weight: 600;
   text-align: center;
@@ -830,7 +830,7 @@
   position: absolute;
   transform: translate(-50%, -100%);
   margin-top: -7px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   font-weight: 600;
   color: var(--ink-2);
@@ -858,7 +858,7 @@
 .seriesLabel {
   flex: 1;
   min-width: 0;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   text-align: center;
   color: var(--ink-3);
@@ -872,7 +872,7 @@
    (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
 .seriesLabelWide { overflow: visible; text-overflow: clip; }
 /* Нэгж = чартын ДЭЭД баруун булангийн тайлбар (тэнхлэгийн шошготой хутгалдахгүй) */
-.seriesUnit { margin-bottom: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
+.seriesUnit { margin-bottom: 4px; font-size: 11px; color: var(--ink-3); text-align: right; }
 /* Олон муруйн тайлбар — нэгжийн мөрөнд (Series.lines) */
 .seriesLegend { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; color: var(--ink-2); }
 .seriesLegend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
@@ -901,7 +901,7 @@
 .trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 /* `nowrap` — бүтэн мөнгөн дүн хоёр мөр болж толгойг эвдэхгүй (2026-09-01) */
 .trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; white-space: nowrap; }
-.trendMeta { font-size: 10.5px; color: var(--ink-3); }
+.trendMeta { font-size: 11px; color: var(--ink-3); }
 
 /* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): дээд зай 6 → 22px (`TREND_PLOT_TOP` — ui.tsx-тэй ИЖИЛ) —
@@ -920,7 +920,7 @@
   position: absolute;
   right: 4px;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   color: var(--ink-3);
   white-space: nowrap;
@@ -1001,7 +1001,7 @@
   position: relative;
   height: 14px;
   margin: 4px 9px 0;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-3);
 }
 .trendAxisTick {
@@ -1039,7 +1039,7 @@
   line-height: 1.25;
 }
 .trendTickDay { color: var(--ink-2); }
-.trendTickClock { color: var(--ink-3); font-size: 9px; }
+.trendTickClock { color: var(--ink-3); font-size: 11px; }
 
 /* Цэгийн утга — муруйн ДЭЭР. `.trendHit` нь 26px өргөн ч энэ бичиг түүнээс
    гарч болно (товч нь тайрдаггүй); `nowrap` нь «1,234.5»-ыг хугалахгүй.
@@ -1055,7 +1055,7 @@
   /* Зузаан дэвсгэр — муруй, торон дээр давхарлахад ч уншигдана */
   background: var(--surface);
   border-radius: 2px;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
@@ -1095,7 +1095,7 @@
   border-radius: var(--r-sm);
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
@@ -1223,7 +1223,7 @@
   right: 100%;
   padding-right: 5px;
   transform: translateY(50%);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   color: var(--ink-3);
   white-space: nowrap;

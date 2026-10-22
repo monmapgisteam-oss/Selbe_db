@@ -60,6 +60,8 @@ import {
  */
 import s from './guitsetgel.module.css';
 import { userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт */
+import { askConfirm } from '@/lib/confirm';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -176,9 +178,9 @@ export function HuvaariBatlah({
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
-              ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+              ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
               : t.why === 'owner'
-                ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+                ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
                 : t.why === 'error'
                   ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
                   : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
@@ -373,7 +375,8 @@ export function HuvaariBatlah({
     if (busy || !why) return;
     /* ⚠️ 2026-09-30: Буцаалт нэг товшилтоор явдаг байв — «Татах»-тай адил
        баталгаажуулна; буцаасны дараа гүйцэтгэгч дахин илгээх хэрэгтэй болно. */
-    if (!window.confirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'))) return;
+    if (!(await askConfirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'), { ok: tr('Буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ 2026-10-09 (аудит): урьд нь `${why}\n${тайлбар}`-ыг бүхэлд нь `REASON_MAX`-аар тасалдаг тул урт шалтгаанд
        «нээлгүй буцаасан» тайлбар ТАСАРДАГ байв. Одоо тайлбар үргэлж багтахаар ХЭРЭГЛЭГЧИЙН текстийг (`why`) тайрна.
@@ -415,7 +418,8 @@ export function HuvaariBatlah({
   const returnStuck = useCallback(async (x: PlanSubmission) => {
     const why = (reason.get(x.oid) ?? '').trim();
     if (busy || !why) return;
-    if (!window.confirm(tr('Гацсан (хэсэгчлэн бичигдсэн) илгээлтийг буцаах уу? Эх хуудсанд аль хэдийн бичигдсэн огноо ХЭВЭЭР үлдэнэ — зохиогч тэдгээрийг мэдэж засаад дахин илгээнэ.'))) return;
+    if (!(await askConfirm(tr('Гацсан (хэсэгчлэн бичигдсэн) илгээлтийг буцаах уу? Эх хуудсанд аль хэдийн бичигдсэн огноо ХЭВЭЭР үлдэнэ — зохиогч тэдгээрийг мэдэж засаад дахин илгээнэ.'), { ok: tr('Буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await returnStuckPlan({ oid: x.oid, approver: user?.username ?? '', reason: why });
@@ -440,7 +444,8 @@ export function HuvaariBatlah({
    *    түүнийг сэргээнэ (2026-09-23). */
   const withdraw = useCallback(async (x: PlanSubmission) => {
     if (busy) return;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулгыг «Хуваарь» хуудсанд «Ноорогт буцаах» товчоор сэргээж болно.'))) return;
+    if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулгыг «Хуваарь» хуудсанд «Ноорогт буцаах» товчоор сэргээж болно.'), { ok: tr('Илгээлтээ татах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawPlan({ oid: x.oid, me: user?.username ?? '' });
@@ -603,7 +608,7 @@ export function HuvaariBatlah({
             {back.filter(isOwn).length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>
-                  <span>{tr('Буцаагдсан — засаад дахин илгээнэ')}</span>
+                  <span>{tr('Буцаасан — засаад дахин илгээнэ')}</span>
                   <span className={s.groupCount}>{num(back.filter(isOwn).length)}</span>
                 </div>
                 {back.filter(isOwn).map((x) => (

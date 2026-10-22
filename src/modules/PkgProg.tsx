@@ -10,7 +10,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 
 import {
-  Section, Note, Data, Empty, Rows, Bars, List, ListItem, PointCallout, SvgHoverMarker, calloutAlign,
+  Section, Note, Data, Empty, Loading, Rows, Bars, List, ListItem, PointCallout, SvgHoverMarker, calloutAlign,
 } from '@/components/ui';
 import { PackLayers } from '@/components/PackLayers';
 import {
@@ -715,7 +715,7 @@ export function PkgProg({ dim, setDim }: {
           (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : active ? (
+        {errQ ? null : loading ? <Loading /> : active ? (
           /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
              гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} />
@@ -730,7 +730,7 @@ export function PkgProg({ dim, setDim }: {
         {errQ ? (
           <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
         ) : loading ? (
-          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
+          <Section title={tr('Багцууд')}><Loading /></Section>
         ) : (
           <>
             {/*
@@ -1068,7 +1068,8 @@ function TsKpi(
   /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт — «төлөвлөсөн»-ийн хажууд; < 95% бол зөрүүг ДҮГНЭХГҮЙ (шошгонд) */
   const covNote = coverageNote(t?.coverage);
   const items = [
-      { v: num(packs.length), l: tr('нийт төслийн тоо') },
+      /* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг `h` (tooltip) хэлнэ — 55/50/77 зэрэг өөр өөр тоо тайлбаргүй байв */
+      { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
       {
         v: t?.actual == null ? none : pct(t.actual, 1),
         /* ⚠️ 2026-10-22 (аудит): зөрүүний бодит тал (хуваарьтай багцаар) бол шошгонд хэлнэ — дээрх `actualShown` */
@@ -1103,7 +1104,9 @@ function TsKpi(
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
-          <span className={`${o.tileVal} num`}>{i.v}</span>
+          {/* ⚠️ 2026-10-23 (UX аудит E4): утгыг `<b>`-д — CSS-ийн `.tileVal b` (бүтэн мөнгөн дүнд зориулсан хэмжээ) үйлчилнэ;
+              урьд нь шууд текст тул «530,872,795,39|» хавтангаас хальж тайрагддаг байв. ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️). */}
+          <span className={`${o.tileVal} num`} title={'h' in i && i.h ? i.h : i.v}><b>{i.v}</b></span>
           <span className={o.tileLabel}>{i.l}</span>
         </div>
       ))}
@@ -1493,7 +1496,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)
             : tr('Төлөвлөгөөт муруй уншигдсангүй'))
           /* ⚠️ 2026-09-29 (аудит 10): алдаа нь ачааллаас ДАВУУ — унасан муруйг хүлээлгэхгүй */
-          : loading ? tr('Ачаалж байна…') : tr('Гүйцэтгэлийн дата алга.')}
+          : loading ? tr('Ачаалж байна…') : tr('Гүйцэтгэлийн өгөгдөл алга.')}
         />
       </Section>
     );

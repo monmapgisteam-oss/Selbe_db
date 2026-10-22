@@ -770,7 +770,8 @@ export async function deleteZov(oid: number): Promise<void> {
    * буцаана. Хоёр мессеж ЯГ ижил байх ёстой: i18n-д нэг л түлхүүр.
    */
   if (!Number.isFinite(oid) || oid <= 0) {
-    throw new Error(tr('Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.'));
+    /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид ЭНГИЙН үгээр — техникийн нэр (OBJECTID, «агшин») дэлгэцэнд гардаг байв */
+    throw new Error(tr('Мөрийн дугаар уншигдаагүй тул устгах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
   }
   const j = await agsFetch(`${URL}/applyEdits`, {
     deletes: JSON.stringify([oid]),

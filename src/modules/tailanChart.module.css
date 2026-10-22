@@ -73,7 +73,7 @@
   border-bottom: 1px solid var(--line);
 }
 .kpiLabel {
-  font-size: 0.66rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;

@@ -488,7 +488,7 @@ export async function registerApproved(
        олдсонгүй · сүлжээ · үйлчилгээ унасан) нь барилгын багцтай адил АЛДАА — урьд нь блокгүй багцад
        `ok: true` буцааж бүртгэгдсэн гэж тэмдэглэгдэн дахин оролдлогогүй ЧИМЭЭГҮЙ алдагддаг байв. */
     if (s && s.progress == null && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };
-    if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };
+    if (!s) return { ok: false, error: tr('Бөглөх хуудасны хадгалсан хувилбар олдсонгүй') };
     /* ⚠️ 2026-10-09 (F12): ХУУДАС БҮРИЙН хувь 0–100-д (`toPct` нь 0–1 хүлээдэг — 0–100 бичигдсэн хуудас
        2,600% болно). Шинэ хуудас ±20-ийн жишилтээс хасагддаг тул энд, бичихээс ӨМНӨ. */
     for (const x of s.parts) {
@@ -713,7 +713,7 @@ export async function registerApproved(
         if (!dr || dr.success !== true)
           return {
             ok: false,
-            error: tr('Давхар нэгтгэлийн мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}', newOid, dr?.error?.description ?? ''),
+            error: tr('Давхар нэгтгэлийн мөр (бүртгэл №{0}) үлдлээ — админд мэдэгдэнэ үү (гараар устгах шаардлагатай): {1}', newOid, dr?.error?.description ?? ''),
           };
         return { ok: true };
       }

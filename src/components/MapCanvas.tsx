@@ -5555,7 +5555,7 @@ export const MapCanvas = memo(function MapCanvas({
       )}
 
       {meshError != null && dim === 'bim' && (
-        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert" data-float-br="">
           <b className={s.warnTitle}>{tr('Барилгын загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
             <code>{hostOf(BIM.layers[0]?.url)}</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
@@ -5587,8 +5587,9 @@ export const MapCanvas = memo(function MapCanvas({
           үед) нислэгийн ортофото тайл солигдоно (⚠️ 2026-10-20: `ORTHO_FLIGHTS` — хоёулаа нэг `meshVer`).
           ⚠️ Солихын ӨМНӨ «Меш харьцуулах»-ыг унтраана: идэвхтэй клип нь өмнөх
           нислэгийн давхаргад тавигдсан тул үлдээвэл таслагдсан меш үлдэнэ. */}
+      {/* ⚠️ 2026-10-23: `data-flight` · `data-float-br` — `mapTools.module.css`-ийн утасны 2D/3D/BIM зурвас тэдгээрээс зайлна */}
       {(dim === '3d' || ortho) && !scene && ready && (
-        <div className={s.flightBar} role="group" aria-label={tr('3D мешийн нислэг')}>
+        <div className={s.flightBar} role="group" aria-label={tr('3D мешийн нислэг')} data-flight="">
           {FLIGHTS.map((f) => (
             <button
               key={f}
@@ -5609,7 +5610,7 @@ export const MapCanvas = memo(function MapCanvas({
       )}
 
       {meshError != null && dim === '3d' && (
-        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert" data-float-br="">
           <b className={s.warnTitle}>{tr('3D бодит загвар ачаалагдсангүй (')}{meshError})</b>
           <span>
             <code>{hostOf(MESH_VERSIONS[meshVer].layers[0].url)}</code> {tr('руу хандаж чадсангүй. Сервер ажиллаж байгаа эсэх, CORS-ын')} <b>allowedOrigins</b>{tr('-д энэ хаяг байгаа эсэхийг шалгана уу.')}
@@ -5621,7 +5622,7 @@ export const MapCanvas = memo(function MapCanvas({
           ХООСОН зурагдаж, «энэ бүсэд өгөгдөл алга» гэж ХУДАЛ уншигддаг байв
           (2026-09-02 аудит). Мешийнхтэй ижил байрлал, ижил дүр төрх. */}
       {layerFail.length > 0 && (
-        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert">
+        <div className={`${s.float} ${s.floatBR} ${s.warn}`} role="alert" data-float-br="">
           <b className={s.warnTitle}>
             {tr('{0} давхарга ачаалагдсангүй', String(layerFail.length))}
           </b>

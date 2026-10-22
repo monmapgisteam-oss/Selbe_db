@@ -595,7 +595,7 @@ export async function publishNegEdits(base: readonly NegRaw[], model: readonly N
       invalidate('TUSUL_NEGTGEL');
       const after = await loadNegRaw().catch(() => null);
       if (after && negLanded(updates, after, negRootOf(after) ?? [])) return { n: updates.length, warn };
-      throw new Error(tr('Хариу ирсэнгүй ({0}) — дахин уншихад засвар хүснэгтэд бүрэн тусаагүй байна. Засвар тань хадгалагдсан хэвээр — «Нийтлэх»-ийг дахин дарна уу.', msg));
+      throw new Error(tr('Хариу ирсэнгүй ({0}) — дахин уншихад засвар хүснэгтэд бүрэн тусаагүй байна. Засвар тань хэвээр байна — «Хадгалах»-ыг дахин дарна уу.', msg));
     }
     if (/not supported|not allowed|permission|does not have|unauthori|403/i.test(msg)) {
       throw new Error(tr('{0} — үйлчилгээнд засвар хаалттай байж магадгүй: ArcGIS дээр Negtgel_guitsetgel_1013 → Settings → «Enable editing» (Update) асаана уу.', msg));

@@ -698,7 +698,8 @@ export function pickedBuilding(
  */
 export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
+    /* ⚠️ 2026-10-23 (UX аудит X6): хоосон төлөв ДАРААГИЙН алхмыг хэлнэ */
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} hint={tr('Газрын зураг дээрх барилга дээр дарж сонгоно уу.')} /></Section>;
   }
   return (
     <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
@@ -745,12 +746,12 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
  */
 export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} hint={tr('Газрын зураг дээрх барилга дээр дарж сонгоно уу.')} /></Section>;
   }
   return (
     <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
       {(d) => {
-        if (!d) return <Section title={tr('Гүйцэтгэл үе шатаар')}><Empty label={tr('Мэдээлэл алга.')} /></Section>;
+        if (!d) return <Section title={tr('Гүйцэтгэл үе шатаар')}><Empty label={tr('Мэдээлэл алга.')} hint={tr('Энэ барилгын ажлын гүйцэтгэл «Гүйцэтгэл бөглөх» хуудсанд хараахан бүртгэгдээгүй байна.')} /></Section>;
         return (
           <>
             {/* Энэ блокийн «Б.» мөрийн бүртгэл бүхэн — хэзээ хурдалсныг харуулна */}

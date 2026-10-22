@@ -55,12 +55,12 @@
 .no {
   flex: none;
   width: 2ch;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
-.itemOn .no { color: var(--hue); }
+.itemOn .no { color: var(--data-ink); }
 
 /* ⚠️ 2026-08-18: дүрс бүр өөрийн hue-ээр будагдаж солонго болдог байсныг НЭГ
    форматад оруулав: энгийн үед саарал (монохром), идэвхтэйд л акцент дүүргэлт. */
@@ -75,7 +75,7 @@
   background: color-mix(in oklab, var(--ink) 7%, transparent);
   transition: background 0.18s var(--ease), color 0.18s;
 }
-.item:hover .icon { color: var(--hue); }
+.item:hover .icon { color: var(--data-ink); }
 .itemOn .icon { background: var(--hue); color: var(--surface); }
 .icon svg { width: 14px; height: 14px; }
 
@@ -95,7 +95,7 @@
   color: var(--ink-3);
   transition: transform 0.22s var(--ease), color 0.18s;
 }
-.itemOn .chev { color: var(--hue); }
+.itemOn .chev { color: var(--data-ink); }
 .chevOn { transform: rotate(90deg); }
 
 /* ── Цэсний тоон тэмдэг (2026-09-30) — хүлээгдэж буй зүйл ── */
@@ -125,7 +125,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 11px;
   box-shadow: 0 0 0 2px var(--surface-2);
 }
 

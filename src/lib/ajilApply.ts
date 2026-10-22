@@ -539,7 +539,7 @@ export async function busyGate(pkgKey: string): Promise<{ error: string } | { wa
     if (h) return { error: tr('{0} энэ багцын хуваарийг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', h) };
   }
   const warn = pps.length
-    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны агшин шинэчлэгдэж, батлагч саналыг шинэ агшинд тулгана.', pps.map((p) => p.author).join(', '))
+    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны шинэ хувилбар үүсэж, батлагч саналыг түүнд тулгана.', pps.map((p) => p.author).join(', '))
     : undefined;
   /* ⚠️ 2026-10-09: ОБЬЁМЫН БАТЛАЛТ ЯВЖ БАЙХАД — батлагч одоогийн жаазын мөрүүдэд OID-оор бичиж байна
      (түгжээ) эсвэл ХЭСЭГЧЛЭН бичсэн (тэмдэг). Жааз солигдвол обьём архивласан жаазад үлдэнэ — ХААНА.
@@ -640,7 +640,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     const m = await _io.markApplied(args.ajilOid);
     done = m.ok;
     if (w.added === 0)
-      return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
+      return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
     /* ⚠️ 2026-10-08: `warn` зөвхөн байвал — `ajilReapply.check`-ийн `deepStrictEqual` түлхүүр хүртэл тулгадаг */
     return { ok: true, added: w.added, ...(warn ? { warn } : {}) };
@@ -687,7 +687,8 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» техник нэрийг хэрэглэгчид харуулахгүй */
+    if (!Number.isFinite(mx)) throw new Error(tr('Хүснэгтийн сүүлийн мөрийн дугаар уншигдсангүй'));
     return mx;
   };
   let maxOid0: number;
@@ -826,7 +827,9 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         }
       } catch (qe) {
         if (written.length) await applyDeletes(pkg, written);
-        return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — AGOL дээр гараар шалгаж цэвэрлэнэ үү', String((qe as Error)?.message ?? qe))}` };
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан — «админд мэдэгдэнэ үү»; түүхий алдаа консолд */
+        console.warn('[selbe] ajilApply: архивын шалгалт унав — ', qe);
+        return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String((qe as Error)?.message ?? qe))}` };
       }
       if (!strays.size) return { ok: false, error: `${why} · ${head}` };
       /* ⚠️ 2026-10-11 (аудит №7): `OID > maxOid0 AND өдөр` нь ЗӨВХӨН манай жааз гэсэн баталгаа биш — A.8б-ийн хаалт
@@ -842,8 +845,9 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
       if (!ours) {
         const gone0 = written.length ? await applyDeletes(pkg, written) : 0;
-        const msg = tr('Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү', String(found.length), String(maxOid0), sc.f.fillDate ? msToDay(fillMs) : '—', String(frame.length));
-        console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg);
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): хэрэглэгчид мөрийн дугаар (OID)-гүй, AGOL-гүй; техник дэлгэрэнгүй консолд */
+        const msg = tr('Архивт {0} мөр ({1}) олдсон боловч энэ батлалтынх ({2} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String(found.length), sc.f.fillDate ? msToDay(fillMs) : '—', String(frame.length));
+        console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg, { maxOid0, found: found.length, frame: frame.length });
         return {
           ok: false,
           error: `${why} · ${head} · ${msg}${written.length ? ` · ${tr('Баталгаажсан {0} мөрийн {1}-ийг буцаав', String(written.length), String(gone0))}` : ''}`,
@@ -854,7 +858,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       return {
         ok: false,
         error: `${why} · ${head} · ${left > 0
-          ? tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', strays.size, left)
+          ? tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', strays.size, left)
           : tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', strays.size)}`,
       };
     }
@@ -864,7 +868,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       return {
         ok: false,
         error: left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)}`
           : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`,
       };
     }
@@ -884,7 +888,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     return {
       ok: false,
       error: left > 0
-        ? `${why} · ${tr('Бичсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+        ? `${why} · ${tr('Бичсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)}`
         : `${why} · ${tr('Бичсэн {0} мөрийг архиваас буцааж устгав', written.length)}`,
     };
   };

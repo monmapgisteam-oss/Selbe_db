@@ -70,6 +70,11 @@
      хэмжээ, тунгалагаар ялгарна. #4FB3BF цагаан дээр 2.3:1 л өгдөг тул light-д
      гүн хувилбар. */
   --data: #2e7f8b;
+  /* ⚠️ 2026-10-23 (UX аудит S9): `--data` нь ТЕКСТ болоход цайвар гадаргууд дээр 3.98–4.32:1 (AA 4.5-аас
+     доош: --surface-2/--bg/--sunken). Текстэд зориулсан бараан хувилбар — `#287079` нь дөрвөн цайвар
+     гадаргуу бүгд дээр ≥4.8:1 (#fff 5.9 · --sunken 4.9). Дүүргэлт/хүрээ/график `--data`-аараа үлдэнэ (тэдэнд 3:1 хангалттай).
+     `color: var(--hue)` / `color: var(--data)` гэж бичихийн оронд ЭНИЙГ хэрэглэнэ. */
+  --data-ink: #287079;
   /* АКЦЕНТ ДЭВСГЭР ДЭЭРХ бэх. Цайвар горимд акцент нь гүн teal тул цагаан;
      харанхуйд акцент нь ЦАЙВАР cyan (#67d7e4) тул цагаан текст 1.7:1 л өгдөг —
      тэнд бараан бэх хэрэгтэй. `var(--hue)`/`var(--data)`/төлвийн өнгөн дэвсгэр
@@ -195,6 +200,8 @@
 
   /* envhub-ийн cyan — харанхуйд гэрэлтэй хувилбар (карт дээр 6+:1) */
   --data: #67d7e4;
+  /* ⚠️ 2026-10-23: харанхуйд `--data` өөрөө текстэд хангалттай (карт дээр 6+:1) — ЦАЙВАР блокийн тайлбарыг үз */
+  --data-ink: var(--data);
   /* Цайвар cyan акцент дээр бараан бэх (≈12:1) — цагаан байсан бол 1.7:1 */
   --hue-ink: #0f1720;
 
@@ -459,7 +466,7 @@ ul, ol { list-style: none; }
   z-index: 999;
   padding: 10px 18px;
   background: var(--hue);
-  color: #fff;
+  color: var(--hue-ink);
   border-radius: 0 0 var(--r) var(--r);
   font-weight: 600;
   transition: top 0.15s;
@@ -525,7 +532,7 @@ ul, ol { list-style: none; }
 .esri-attribution {
   background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
   color: var(--ink-3) !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   border: none !important;
 }
 .esri-zoom .esri-widget--button { border-radius: var(--r-sm) !important; }

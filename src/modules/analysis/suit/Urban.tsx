@@ -776,8 +776,9 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
             {me.trips > 0 ? tr(' · {0} зорчилт/ц', nf(me.trips)) : ''}
           </div>
         </div>
+        {/* ⚠️ 2026-10-23 (X7): сонголтыг АРИЛГАХ — «Цуцлах» нь «үйлдлийг болих» гэж уншигддаг байв */}
         <button type="button" className={s.mini} onClick={() => onSel(null)}>
-          {tr('Цуцлах')}
+          {tr('Арилгах')}
         </button>
       </div>
 

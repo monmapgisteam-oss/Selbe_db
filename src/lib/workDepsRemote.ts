@@ -135,7 +135,8 @@ async function maxOid(pkg: Pkg, sc: Schema): Promise<number> {
     returnGeometry: 'false',
   });
   const v = Number(j?.features?.[0]?.attributes?.hi);
-  if (!Number.isFinite(v)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+  /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид ЭНГИЙН үгээр — техникийн нэр (OBJECTID, «агшин») дэлгэцэнд гардаг байв */
+  if (!Number.isFinite(v)) throw new Error(tr('Хүснэгтийн мөрийн дугаар уншигдсангүй — дахин оролдоно уу.'));
   return v;
 }
 
@@ -201,7 +202,7 @@ export async function saveWorkLinks(dep: WorkRef, change: RefChange): Promise<Sa
       return { ok: false, error: String((e as Error)?.message ?? e) };
     }
     const row = locateRow(rows, dep);
-    if (!row) return { ok: false, error: tr('Ажил хуудасны сүүлийн агшинд олдсонгүй (хуудас шинэчлэгдсэн) — дахин ачаална уу') };
+    if (!row) return { ok: false, error: tr('Ажил хуудасны сүүлийн хувилбарт олдсонгүй (хуудас шинэчлэгдсэн) — дахин ачаална уу') };
     let cur: WorkRef[];
     try {
       cur = parseRefs(row.val);
@@ -215,7 +216,7 @@ export async function saveWorkLinks(dep: WorkRef, change: RefChange): Promise<Sa
       { p: pkg.key, rows, field: true },
     ]);
     const depId = (g.bySheet.get(pkg.key) ?? []).find((id) => g.nodes.get(id)?.oid === row.oid);
-    if (!depId) return { ok: false, error: tr('Ажил хуудасны сүүлийн агшинд олдсонгүй (хуудас шинэчлэгдсэн) — дахин ачаална уу') };
+    if (!depId) return { ok: false, error: tr('Ажил хуудасны сүүлийн хувилбарт олдсонгүй (хуудас шинэчлэгдсэн) — дахин ачаална уу') };
     const next = applyRefChange(cur, rebaseChange(g, cur, change));
     if (sameRefs(cur, next)) return { ok: true, refs: cur, wrote: false };
     const err = checkNext(g, depId, cur, next);

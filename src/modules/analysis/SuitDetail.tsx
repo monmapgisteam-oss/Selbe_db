@@ -293,7 +293,8 @@ export function SuitDetail({
             ? tr('Өгөгдөл хангалтгүй — хэмжсэн жин {0}%', Math.round(r.coverage * 100))
             : scoreLabel(tot)}</p>
         </div>
-        <button type="button" className={s.dClose} title={tr('Хаах')} onClick={onClose}>×</button>
+        {/* ⚠️ 2026-10-23 (S19): зөвхөн «×» тэмдэгтэй товч — нэр `aria-label`-д (title нь гар/хүрэлтэд хүрдэггүй) */}
+        <button type="button" className={s.dClose} title={tr('Хаах')} aria-label={tr('Хаах')} onClick={onClose}>×</button>
       </div>
 
       {urbanModes && (

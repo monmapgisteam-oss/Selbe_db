@@ -27,6 +27,7 @@
 import { useEffect, useState } from 'react';
 import { initRemote } from '@/lib/permissions';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { remoteMalformed, subscribe } from '@/lib/permissions';
 import { subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
 import { subscribeAcl } from '@/lib/guitsetgelAcl';
@@ -100,7 +101,8 @@ export function ErhOverview({
   const [cleanBusy, setCleanBusy] = useState<number | null>(null);
   const [cleanErr, setCleanErr] = useState('');
   const dropRow = async (oid: number, key: string) => {
-    if (!window.confirm(tr('«{0}» мөрийг эрхийн хүснэгтээс УСТГАХ уу? (OBJECTID {1})', key, oid))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1 · X3): `askConfirm`; «OBJECTID» гэх техникийн үг асуултаас хасагдав (мөр нь нэрээрээ) */
+    if (!(await askConfirm(tr('«{0}» мөрийг эрхийн хүснэгтээс УСТГАХ уу? Буцаах боломжгүй.', key), { danger: true, ok: tr('Мөрийг устгах') }))) return;
     setCleanBusy(oid); setCleanErr('');
     try {
       const { removeMalformedRow, takeWriteError } = await import('@/lib/permsRemote');

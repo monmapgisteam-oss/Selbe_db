@@ -20,7 +20,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
-import { NAV_GROUPS, VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, type ViewKey } from '@/lib/services';
+import { NAV_GROUPS, VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, roleForUser, type ViewKey } from '@/lib/services';
+import { resolveFlowStage } from '@/lib/guitsetgelAcl';
 import { Icon } from './Icon';
 import s from './help.module.css';
 
@@ -54,14 +55,98 @@ const WHO: Record<ViewKey, () => string> = {
   sysdoc: () => tr('Админ, өгөгдөл хариуцагч'),
 };
 
+/**
+ * «ХЭРХЭН…» — АЛХАМ АЛХМААР ЗААВАР (⚠️ 2026-10-23, UX аудит S18).
+ *
+ * ⚠️ ЯАГААД: тусламж зөвхөн «аль хэсэг юунд» гэж хэлдэг байсан тул «илгээсний дараа юу болох»,
+ *    «буцаасныг хаана засах» зэрэг ажлын урсгалыг хэрэглэгч таамагладаг байв. Энд хамгийн түгээмэл
+ *    зургаан урсгал. `view` — тухайн урсгалын харагдац: хэрэглэгчийн эрхэнд байхгүй бол заавар ГАРАХГҮЙ
+ *    (хийж чадахгүй зүйлийг заахгүй), байвал «Нээх» товчоор шууд очно.
+ * ⚠️ Товчны нэрийг «…»-д ЯГ дэлгэц дээрхээр бичнэ (`Guitsetgel` · `toolbar` · `Huvaari` · `Tailan`) —
+ *    тэдгээр өөрчлөгдвөл энд ч засна. Шатны дараалал нь `lib/hyanalt.ts` `STAGE_ORDER`.
+ */
+/* ⚠️ 2026-10-23 (засвар): `steps(full)` — `full === false` нь гүйцэтгэгч (компани шат): `Guitsetgel.seesManager`-ийн дүрмээр
+   менежер · даргын шатны НЭРИЙГ ОГТ харуулахгүй (урьд нь «review» заавар бүх гинжийг гүйцэтгэгчид ил бичдэг байв). */
+const HOWTO: { id: string; view: ViewKey; title: () => string; steps: (full: boolean) => string[] }[] = [
+  {
+    id: 'fill',
+    view: 'guitsetgel',
+    title: () => tr('Гүйцэтгэл бөглөж илгээх'),
+    steps: () => [
+      tr('«Гүйцэтгэл» хэсгийг нээж «Гүйцэтгэл бөглөх» табаас багцаа сонгоно.'),
+      tr('Нүдэнд гүйцэтгэлийн хувь эсвэл обьём бичнэ — ноорог автоматаар хадгалагдана, хуудсаа хаасан ч алдагдахгүй.'),
+      tr('Бэлэн болмогц «Илгээх» дарна. Илгээсний дараа хяналт дуустал тэр хуудсыг засах боломжгүй.'),
+      tr('Хамтран бөглөгч байвал тэр «Дуусгасан» дарсны дараа илгээлт хяналтад орно.'),
+    ],
+  },
+  {
+    id: 'review',
+    view: 'guitsetgel',
+    title: () => tr('Илгээсэн гүйцэтгэл 6 шатаар батлагдах'),
+    steps: (full) => full ? [
+      tr('Дараалал: гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга.'),
+      tr('Хянагч бүр «Батлах ажил» табаас нүд бүрийг шалгаж зөвшөөрнө эсвэл шалтгаантай буцаана.'),
+      tr('Газрын дарга зөвшөөрсний дараа л гүйцэтгэл үндсэн өгөгдөлд бүртгэгдэнэ.'),
+      tr('Явцыг «Илгээсэн ажил» табаас харна.'),
+    ] : [
+      tr('Илгээлт 6 шатаар хянагдана — эхлээд хяналтын инженер шалгана.'),
+      tr('Буцаавал «Илгээсэн ажил» табд шалтгаантай нь ирнэ.'),
+      tr('Эцсийн шат зөвшөөрсний дараа л гүйцэтгэл үндсэн өгөгдөлд бүртгэгдэнэ.'),
+      tr('Явцыг «Илгээсэн ажил» табаас харна.'),
+    ],
+  },
+  {
+    id: 'fix',
+    view: 'guitsetgel',
+    title: () => tr('Буцаасан гүйцэтгэлийг засах'),
+    steps: () => [
+      tr('Цэсний улаан тоо буцаасан илгээлт байгааг илтгэнэ.'),
+      tr('«Илгээсэн ажил» табаас «Буцаасан» шүүлтээр олж, буцаасан шалтгааныг уншина.'),
+      tr('«Гүйцэтгэл бөглөх» табд тэр багцыг нээж засаад дахин «Илгээх» дарна.'),
+    ],
+  },
+  {
+    id: 'plan',
+    view: 'huvaari',
+    title: () => tr('Хуваарь чирж төлөвлөх'),
+    steps: () => [
+      tr('«Хуваарь» хэсгийн дээд талаас багц, бүлгээ сонгоно.'),
+      tr('Доод хуанли дээр ажлын мөрийн ард чирж хугацааны муж татна, голоос нь чирж зөөнө, ирмэгээс нь татаж уртасгана.'),
+      tr('Өөрчлөлт ноорог болж хадгалагдана. Дуусаад «Батлуулах» → «Илгээх» дарна — батлагдтал эх хуваарь хөдлөхгүй.'),
+    ],
+  },
+  {
+    id: 'extra',
+    view: 'huvaari',
+    title: () => tr('Нэмэлт ажил нэмж батлуулах'),
+    steps: () => [
+      tr('«Хуваарь» хэсэгт бүлгийн мөрийн «+» (бүлэгт ажил нэмэх) товчоор шинэ ажлын мөр нэмнэ.'),
+      tr('«Нэмэлт ажил батлуулах» дарж илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй.'),
+      tr('Эрхтэй менежер «Нэмэлт ажил батлах» хэсгээс баталж эсвэл шалтгаантай буцаана.'),
+    ],
+  },
+  {
+    id: 'report',
+    view: 'tailan',
+    title: () => tr('Тайлан татах'),
+    steps: () => [
+      tr('«Тайлан» хэсгийг нээнэ.'),
+      tr('«PDF татах» дарвал файл татагдана; «Outlook-оор илгээх» дарвал PDF хавсаргасан мэйл нээгдэнэ.'),
+    ],
+  },
+];
+
 export function HelpPanel({
   open,
   onClose,
   navScope,
   view,
   onGo,
+  user,
 }: {
   open: boolean;
+  /** ⚠️ 2026-10-23: нэвтэрсэн хэрэглэгч (ArcGIS username) — «review» зааврын шатны нэрийг гүйцэтгэгчээс нуухад */
+  user?: string | null;
   onClose: () => void;
   navScope: 'all' | ViewKey[];
   /** Одоо нээлттэй харагдац — жагсаалтад тодруулна */
@@ -107,6 +192,8 @@ export function HelpPanel({
     ...NAV_GROUPS.map((g) => ({ id: g.id as string, title: g.title, views: g.views.filter((k) => shown.has(k)) })),
     { id: 'other', title: tr('Бусад'), views: [...shown].filter((k) => !covered.has(k)) },
   ].filter((g) => g.views.length > 0);
+  const howto = HOWTO.filter((h) => shown.has(h.view));
+  const fullFlow = resolveFlowStage(user, roleForUser(user)).stage !== 'company';
 
   return (
     <div className={s.backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -128,6 +215,28 @@ export function HelpPanel({
         </header>
 
         <div className={s.body}>
+          {/* ⚠️ 2026-10-23 (S18): алхам алхмаар заавар — эрхэнд байгаа урсгал л; `<details>` тул гарын
+              товчлуураар (Enter/Space) нээгдэнэ, анхдагч хаалттай — хэсгүүдийн жагсаалтыг доош түлхэхгүй. */}
+          {howto.length > 0 && (
+            <section className={s.group} aria-labelledby="selbe-help-howto">
+              <h3 id="selbe-help-howto" className={s.groupTitle}>{tr('Хэрхэн хийх вэ — алхам алхмаар')}</h3>
+              <div className={s.howList}>
+                {howto.map((h) => (
+                  <details key={h.id} className={s.how}>
+                    <summary className={s.howSum}>{h.title()}</summary>
+                    <ol className={s.howSteps}>
+                      {h.steps(fullFlow).map((st, i) => <li key={i}>{st}</li>)}
+                    </ol>
+                    {h.view !== view && (
+                      <button type="button" className={s.howGo} onClick={() => { onClose(); onGo(h.view); }}>
+                        {tr('«{0}» хэсгийг нээх', VIEW_BY_KEY[h.view].title)}
+                      </button>
+                    )}
+                  </details>
+                ))}
+              </div>
+            </section>
+          )}
           {groups.map((g) => (
             <section key={g.id} className={s.group} aria-label={g.title}>
               <h3 className={s.groupTitle}>{g.title}</h3>
@@ -178,13 +287,38 @@ export function HelpTip({ onOpen }: { onOpen: () => void }) {
   const [show, setShow] = useState(() => {
     try { return !localStorage.getItem(TIP_KEY); } catch { return false; /* хувийн горим */ }
   });
+  const tipRef = useRef<HTMLDivElement>(null);
+  /*
+   * ⚠️ 2026-10-23 (UX аудит S6): «харагдац бүрд гардаг, самбарыг халхалдаг». Урьд нь «Ойлголоо» дарах хүртэл
+   *    тэмдэглэгдэхгүй тул дарахгүй үлдээсэн хэрэглэгчид харагдац солих, дахин ачаалах бүрд баруун дээд
+   *    самбарыг дарж гарч байв. Одоо: (1) ГАРМАГЦ «харсан» гэж тэмдэглэнэ — дараагийн ачаалалтад дахин
+   *    гарахгүй (жинхэнэ «нэг удаа»); (2) 15 с-ийн дараа эсвэл зөвлөмжийн ГАДНА товшиход өөрөө хаагдана —
+   *    агуулгыг хэзээ ч удаан халхлахгүй. «Тусламж нээх» товч нь «?» товчтой ижил тул алдах зүйлгүй.
+   */
+  useEffect(() => {
+    if (!show) return undefined;
+    try { localStorage.setItem(TIP_KEY, '1'); } catch { /* хувийн горим */ }
+    const timer = setTimeout(() => setShow(false), 15000);
+    const onDown = (e: PointerEvent) => {
+      if (!tipRef.current?.contains(e.target as Node)) setShow(false);
+    };
+    window.addEventListener('pointerdown', onDown);
+    return () => { clearTimeout(timer); window.removeEventListener('pointerdown', onDown); };
+  }, [show]);
+  /*
+   * ⚠️ 2026-10-23 (UX аудит S7): «Ойлголоо» дарахад товч DOM-оос устаж фокус `<body>`-д унадаг тул дараагийн
+   *    Tab нь DOM-д зөвлөмжийн ДАРААХ «AI туслах» товч руу очиж, дараа нь дээш үсэрдэг байв. Хаахдаа фокусыг
+   *    толгойн «?» товч руу шилжүүлнэ (зөвлөмжийн зааж буй товч — `HelpPanel`-ийн trigger-ийн ижил сонгогч).
+   */
   const done = () => {
+    const hadFocus = tipRef.current?.contains(document.activeElement) ?? false;
     setShow(false);
     try { localStorage.setItem(TIP_KEY, '1'); } catch { /* хувийн горим */ }
+    if (hadFocus) document.querySelector<HTMLElement>('header button[aria-haspopup="dialog"]')?.focus();
   };
   if (!show) return null;
   return (
-    <div className={s.tip} role="status">
+    <div ref={tipRef} className={s.tip} role="status">
       <span className={s.tipArrow} aria-hidden />
       <p className={s.tipText}>
         {tr('Шинээр орж байна уу? «?» товчоос хэсэг бүр юунд зориулагдсаныг харна уу.')}

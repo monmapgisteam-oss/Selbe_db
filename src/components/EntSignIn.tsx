@@ -47,7 +47,8 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
   return (
     <form className={`${s.form} ${compact ? s.compact : ''}`} onSubmit={signIn}>
       <input className={s.input} value={user} onChange={(e) => setUser(e.target.value)}
-        placeholder={tr('Enterprise хэрэглэгчийн нэр')} autoComplete="username" disabled={busy} />
+        /* ⚠️ 2026-10-23 (UX аудит Q7): товч горимд урт placeholder тасардаг байв («…хэрэглэгчийн нэ») — богино бичиг, бүтэн нэр `aria-label`-д */
+        placeholder={tr('Геопорталын нэр')} aria-label={tr('Геопорталын нэр')} autoComplete="username" disabled={busy} />
       <input className={s.input} type="password" value={pass} onChange={(e) => setPass(e.target.value)}
         placeholder={tr('Нууц үг')} autoComplete="current-password" disabled={busy} />
       <button type="submit" className={s.btn} disabled={busy || !user.trim() || !pass}>

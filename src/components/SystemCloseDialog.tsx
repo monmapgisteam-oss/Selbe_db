@@ -20,6 +20,8 @@ import { subscribeCaps } from '@/lib/caps';
 import type { SysState } from '@/lib/permsRemote';
 import { dateTime } from '@/lib/format';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+import { askConfirm } from '@/lib/confirm';
+import { userError } from '@/components/ui';
 import s from './auth.module.css';
 
 /**
@@ -114,7 +116,10 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
       : update
         ? tr('Хаалтын тайлбар ба дахин нээгдэх хугацааг шинэчлэх үү?')
         : tr('Системийг хаах уу? Таныг болон админаас (super) бусад бүх хэрэглэгч «Систем түр хаагдсан» цонх харж, порталд орж чадахгүй болно. Одоо дотор байгаа хүмүүст 5 минутын дотор (эсвэл цонх идэвхжихэд) гарна — хадгалаагүй ажил нь устахгүй.');
-    if (!window.confirm(q)) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — хаах нь бүх хэрэглэгчийг гаргадаг тул улаан (`danger`) */
+    if (!(await askConfirm(q, on && !update
+      ? { danger: true, ok: tr('Системийг хаах') }
+      : { ok: !on ? tr('Системийг нээх') : tr('Шинэчлэх') }))) return;
     setBusy(true);
     setMsg(null);
     try {
@@ -134,7 +139,8 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
         setUntil(e.fresh?.until ?? '');
         setMsg({ ok: false, text: tr('Төлөв өөрчлөгдсөн — шинэчиллээ. Шинэ төлөвийг шалгаад дахин сонгоно уу.') });
       } else {
-        setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+        /* ⚠️ 2026-10-23 (UX аудит X3): түүхий `e.message` биш — ойлгомжтой текст (`userError`) */
+        setMsg({ ok: false, text: userError(e) });
       }
     } finally {
       setBusy(false);

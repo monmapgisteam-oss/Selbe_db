@@ -89,6 +89,14 @@ import { pkgWorkAdded, pkgWorkDrop, pkgWorkOn } from '@/modules/generalDashLayer
  * S-муруй, индикатор) үйлчилнэ. ХАБ, газар чөлөөлөлт, ерөнхий төлөвлөгөө нь
  * ажлын төлөвлөгөөт хугацааны талбаргүй тул тэднийг хуурамчаар шүүхгүй —
  * картын толгойд «Бүх хугацаа» гэж ИЛ бичнэ.
+ *
+ * ⚠️ 2026-10-23 (UX аудит E12/E13 — АЧААЛЛЫН ХУГАЦАА, ШИЙДВЭР: ЭНЭ УДАА ӨӨРЧЛӨӨГҮЙ). Утсанд 30 с+ · компьютерт ~13 с
+ *    агуулга гарах хүртэл. Эхний зурагдалтад ~15 бие даасан `useAsync` (cashflow · IPC/HO · санхүү · газар · WBS ·
+ *    дэд багц · ХАБЭА …) ЗЭРЭГ явдаг; тэдгээр нь модулийн кэштэй (`live`/`negtgel`/`Finance`) тул дараагийн нээлт хурдан.
+ *    Аудитын энэ шатанд хөтөч · амьд сервер ажиллуулахгүй дүрэмтэй тул аль асуулга удааширч буйг ХЭМЖИЖ чадаагүй;
+ *    хэмжилтгүйгээр асуулгыг хойшлуулах (харагдах үед) нь самбарын «нэг дэлгэц — бүгд нэг дор» зохиомж ба `cfGate`-ийн
+ *    нэгтгэсэн төлвийг өөрчлөх архитектурын засвар тул хийгээгүй. Дараагийн алхам: Network-ийн waterfall-аар хамгийн
+ *    удаан 2–3 асуулгыг (HO бүх мөр · `loadNegtgelFull` сэжигтэй) олж, тэдгээрийг л доод картын үзэгдэх үед хойшлуулах.
  */
 export function GeneralDash({
   dim, setDim, zone, setZone,
@@ -711,6 +719,9 @@ export function GeneralDash({
           setPeriod={setPeriod}
           years={cf.state === 'ready' ? yearsOf(cf.data) : []}
         />
+        {/* ⚠️ 2026-10-23 (UX аудит E2): бүс сонгоход ЗӨВХӨН зураг шүүгдэнэ — үзүүлэлт, чартууд төслийн нийтээр
+            хэвээр. Урьд нь дохиогүй тул хэрэглэгч KPI-г бүсийн тоо гэж уншдаг байв. */}
+        {zone && <p className={g.wait} role="note">{tr('Бүс зөвхөн газрын зургийг шүүнэ — үзүүлэлт, графикууд төслийн нийтээр.')}</p>}
         <Data q={cf} minH={72}>
           {(rows) => (
             <KpiStrip
@@ -1044,6 +1055,7 @@ function PeriodBar({
             type="button"
             aria-pressed={sel.includes(v)}
             title={c.full(v)}
+            aria-label={c.full(v)}
             className={`${g.fPill} ${sel.includes(v) ? g.fPillOn : ''}`}
             onClick={() => toggle(k, v)}
           >
@@ -2226,6 +2238,12 @@ function Timeline({
       {/* ⚠️ 2026-10-06 (аудит): `aria-live` — гараар (←/→) үе солиход дэлгэц уншигч энэ мөрийг уншина */}
       <div className={g.tlHead} aria-live="polite" aria-atomic="true">
         <span className={g.tlHeadLbl}>{cur.label}</span>
+        {/* ⚠️ 2026-10-23 (UX аудит E5): аль тоо ТӨЛӨВЛӨГӨӨ, аль нь БОДИТ гэдгийг шошгоор хэлнэ — урьд нь «2027 92.8%»
+            (төлөвлөгөө) нь KPI-ийн «Гүйцэтгэлийн хувь 38.9%»-ийн хажууд нэргүй тул бодит гүйцэтгэл мэт уншигддаг байв. */}
+        <span className={g.tlHeadTag} style={{ marginLeft: 0 }}>
+          <i style={{ background: 'var(--chart-plan)' }} />
+          {tr('Төлөвлөгөө')}
+        </span>
         {/* ⚠️ Төлөвлөгөө хэмжигдээгүй үед «0%» БИШ «—» (`null ≠ 0`) */}
         <b className={g.tlHeadPct}>{cur.pct == null ? '—' : pct(cur.pct)}</b>
         {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
@@ -2253,7 +2271,7 @@ function Timeline({
         {cur.ipcPct != null && (
           <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
             <i style={{ background: 'var(--chart-actual)' }} />
-            {pct(cur.ipcPct)}
+            {tr('Бодит (олгосон IPC): {0}', pct(cur.ipcPct))}
             {cur.ipcMoney != null && <> · {tr('олгосон {0}', mnt(cur.ipcMoney))}</>}
           </span>
         )}
@@ -2421,6 +2439,29 @@ function Timeline({
               <b className={twoRow && i % 2 === 1 ? g.tlDotUp : undefined}>{pct(p.pct)}</b>
             </span>
           )))}
+          {/* ⚠️ 2026-10-23 (UX аудит E5): БОДИТ (олгосон IPC) муруй ч утгын шошготой — урьд нь зөвхөн
+              төлөвлөгөөний цэгүүд шошготой тул бодит шугамын тоо графикаас уншигддаггүй байв. Шошго нь
+              муруйн ДООР (төлөвлөгөөнийх дээр) — хоёр цуваа мөргөлдөхгүй. Олон үед (> 24) дунд цэгүүдийг
+              тэнцүү алхмаар (~12) + сүүлийнхийг — бүх цэгт бичвэл нэг эгнээнд давхарлана (CLAUDE.md: зөвхөн
+              төгсгөлийн шошго биш, дунд цэгүүд ч). */}
+          {pts.map((p, i) => {
+            if (p.ipcPct == null) return null;
+            const step = n > 24 ? Math.ceil(n / 12) : 1;
+            const lastIpc = pts.reduce((a, q, k) => (q.ipcPct != null ? k : a), -1);
+            const label = i === at || i === lastIpc || (n - 1 - i) % step === 0;
+            return (
+              <span
+                key={`ipc-${p.key}`}
+                className={`${g.tlDot} ${g.tlDotIpc} ${i === at ? g.tlDotOn : ''}`}
+                style={{
+                  left: `${((i + 0.5) / n) * 100}%`,
+                  bottom: `${Math.max(0, Math.min(100, p.ipcPct))}%`,
+                }}
+              >
+                {label && <b>{pct(p.ipcPct)}</b>}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -3072,8 +3113,13 @@ function HseCard() {
    * өгүүлбэр байснаа хэрэглэгч хассан (2026-09-06).
    */
   const stamp = hse.state === 'ready' ? hse.data?.date : null;
+  /* ⚠️ 2026-10-23 (UX аудит E8): ЭРХГҮЙ хэрэглэгчид улаан алдаа + «Дахин оролдох» БИШ — дахин оролдох нь
+     утгагүй (эрх өөрчлөгдөхгүй). Энгийн нэг мөр. Бусад алдаа (сүлжээ, сервер) `Data`-гаар хэвээр. */
+  const denied = hse.state === 'error'
+    && friendlyError(hse.error) === tr('Энэ өгөгдөлд хандах эрх алга байна. Админд хандана уу.');
   return (
     <Section title={tr('ХАБ')} note={stamp || undefined}>
+      {denied ? <Empty icon="shield" label={tr('Танд энэ хэсгийг харах эрх олгогдоогүй')} /> : (
       <Data q={hse} minH={130}>
         {(d) => (d == null ? <Empty label={tr('Бүртгэл алга')} /> : (
           <Stats cols={3}>
@@ -3083,6 +3129,7 @@ function HseCard() {
           </Stats>
         ))}
       </Data>
+      )}
     </Section>
   );
 }

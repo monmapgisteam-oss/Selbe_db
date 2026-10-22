@@ -173,7 +173,7 @@ export const FINE_NODES: readonly FineNode[] = [
   {
     id: 'hyCo', group: 'hyanalt', col: 6, row: 0, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Гүйцэтгэгч компани'); },
-    get desc() { return tr('Гүйцэтгэлээ бөглөж хяналтад илгээх ЭХНИЙ шат. Буцаагдсан ажил энд эргэж ирнэ'); },
+    get desc() { return tr('Гүйцэтгэлээ бөглөж хяналтад илгээх ЭХНИЙ шат. Буцаасан ажил энд эргэж ирнэ'); },
   },
   {
     id: 'hyEng', group: 'hyanalt', col: 6, row: 1, view: 'guitsetgel', icon: 'pen',

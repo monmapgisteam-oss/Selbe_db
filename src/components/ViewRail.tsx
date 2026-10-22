@@ -8,6 +8,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { Icon } from './Icon';
 import { VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, NAV_GROUPS, type ViewKey } from '@/lib/services';
+import { badgeLabelFor } from './navBadges';
 import s from './tree.module.css';
 
 /**
@@ -205,8 +206,13 @@ export function ViewRail({
   /* ⚠️ 2026-10-09: тоо `num()`-аар (мянгатын тусгаарлагч · хэл) — урьд нь түүхий тоо */
   /* ⚠️ 2026-10-09: «Хуваарь»-ын тоо = буцаагдсан + саяхан БАТЛАГДСАН (`countPlanApproved`) — «буцаагдсан»
      гэвэл батлагдсан мэдэгдэл худал нэрлэгдэнэ; хоёуланг багтаасан «шинэ шийдвэр». */
+  /* ⚠️ 2026-10-23 (UX аудит R5): «Гүйцэтгэл»-ийн тоо гүйцэтгэгчид БУЦААСАН (засах) ажил — «хүлээгдэж байна» гэвэл
+     «хянагч хүлээж байна» гэж ойлгогддог байв. Харагдац тус бүрийн утгыг `navBadges.badgeLabelFor` (тоолуурын эх)
+     нэрлэнэ; `null` бол хуучин ерөнхий шошго. X7: «буцаагдсан» → «буцаасан» (нэг нэр томьёо). */
   const badgeLabel = (n: number, k?: ViewKey) => (n
-    ? (k === 'huvaari' ? tr('шинэ шийдвэр {0} (буцаагдсан · батлагдсан)', num(n)) : tr('{0} хүлээгдэж байна', num(n)))
+    ? (k === 'huvaari'
+      ? tr('шинэ шийдвэр {0} (буцаасан · батлагдсан)', num(n))
+      : (k ? badgeLabelFor(k, n, num) : null) ?? tr('{0} хүлээгдэж байна', num(n)))
     : '');
 
   {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
@@ -280,10 +286,11 @@ export function ViewRail({
         aria-label={n ? `${v.title} · ${badgeLabel(n, v.key)}` : v.title}
         /* Дэлгэгдсэн үед нэр харагдаж байгаа тул hover-т ТАЙЛБАРЫГ нь; хураагдсан
            үед өөрийн tooltip (`tipProps`) — давхар гарахгүйн тулд `title`-гүй. */
-        title={collapsed && !header ? undefined : v.desc}
+        /* ⚠️ 2026-10-23 (R5): тэмдэгтэй үед утгыг нь hover-т ч хэлнэ («Буцаасан 2 — засах») — тоо дангаараа юу гэдгээ хэлдэггүй */
+        title={collapsed && !header ? undefined : (n ? `${badgeLabel(n, v.key)} — ${v.desc}` : v.desc)}
         {...(expandable ? { 'aria-expanded': expanded } : {})}
         className={`${s.item} ${on ? s.itemOn : ''} ${extraCls}`}
-        {...tipProps(v.title, v.desc)}
+        {...tipProps(v.title, n ? `${badgeLabel(n, v.key)} — ${v.desc}` : v.desc)}
         onClick={guardClick(() => setView(v.key))}
       >
         {/* envhub-ийн хэлтсийн жагсаалт шиг дугаарлалт — зөвхөн БОСОО горимд.

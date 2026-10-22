@@ -549,7 +549,8 @@ const nextOf = (over = {}) => {
     'батлалт хуучин payload-ын давтамжийг суурь жаазаас нөхөхгүй байна — мөнхөд гацна');
   const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
   assert.ok(FN.includes('const mv = movePayload(await ensureFrameOcc(pkg, sc, resolvedBase ?? staged.payload, freshRows));'), 'дахин илгээх зам суурь жаазаас нөхөхгүй');
-  assert.ok(FN.includes('if (mv.lost.length && !window.confirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` */
+  assert.ok(FN.includes('if (mv.lost.length && !(await askConfirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
   /* #5: батлагдсан (`done|`) мөрөөс ч хайна */
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
   assert.ok(SB.includes('export async function findNonce(') && /dkey LIKE \$\{sqlStr\(`\$\{DONE_PREFIX\}%`\)\}/.test(SB), 'танигчийг done| мөрөөс хайхгүй байна');

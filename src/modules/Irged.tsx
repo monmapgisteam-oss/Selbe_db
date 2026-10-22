@@ -55,7 +55,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 
-import { Empty, Data } from '@/components/ui';
+import { Data, Loading } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 /* ⚠️ 2026-10-06 (аудит): `@/modules/Dashboard`-аас БИШ — тэр нь Dashboard-ын бүх графыг (~1.8 МБ,
    `viewRegistry.tsx`-ийн 2026-10-04-ний ⚠️) энэ chunk руу чирдэг байв. */
@@ -423,7 +423,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               ? qBuilt.data.reduce((t, x) => t + x.n, 0)
               : null;
             const s = hh == null ? null : stoveLoad(hh);
-            if (!s) return <Empty label={tr('Тооцоолж байна…')} />;
+            /* ⚠️ 2026-10-23 (UX аудит X5): ачаалал = эргэлдэгч (`Loading`), хоосон мэт `Empty` биш */
+            if (!s) return <Loading label={tr('Тооцоолж байна…')} />;
             return (
               <>
                 <Chain
@@ -460,7 +461,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             if (qToilet.state === 'error') return <Data q={qToilet}>{() => null}</Data>;
             const pits = qToilet.state === 'ready' ? qToilet.data : null;
             const l = pits == null ? null : latrineLoad(pits);
-            if (!l) return <Empty label={tr('Тооцоолж байна…')} />;
+            if (!l) return <Loading label={tr('Тооцоолж байна…')} />;
             return (
               <>
                 <Chain

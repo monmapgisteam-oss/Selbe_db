@@ -22,7 +22,7 @@
 .cWarn { color: var(--warn-ink, var(--warn)); }
 .cGood { color: var(--good-ink, var(--good)); }
 .cNone { color: var(--ink-3); font-weight: 500 !important; }
-.legend { margin-left: auto; font-size: 0.68rem; color: var(--ink-3); }
+.legend { margin-left: auto; font-size: 0.6875rem; color: var(--ink-3); }
 
 .err { font-size: 0.8rem; color: var(--bad-ink, var(--bad)); }
 .errMsg { color: var(--ink-3); }
@@ -46,7 +46,7 @@
 .scoreBig { min-width: 52px; padding: 4px 10px; font-size: 1.05rem; border-radius: 8px; }
 /* «Дата хүлээгдэж буй» — өнгөгүй, тасархай хүрээ: оноо ч биш, эрсдэл ч биш */
 .pending {
-  font-size: 0.64rem; font-weight: 600; color: var(--ink-3);
+  font-size: 0.6875rem; font-weight: 600; color: var(--ink-3);
   background: transparent; border: 1px dashed var(--ink-3);
 }
 .scoreBig.pending { font-size: 0.78rem; }
@@ -73,7 +73,7 @@
 .sumTotal:hover { border-color: var(--line); }
 .sumOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); }
 .sumLabel { display: inline-flex; align-items: center; gap: 5px; font-size: 0.74rem; font-weight: 650; }
-.sumSub { font-size: 0.64rem; line-height: 1.35; color: var(--ink-3); }
+.sumSub { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); }
 
 /* ══ Жагсаалт + задаргаа ══ */
 .stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 12px; align-items: start; }
@@ -91,11 +91,11 @@
 .tbl thead th {
   position: sticky; top: 0; z-index: 1;
   background: var(--surface-2, var(--surface));
-  font-size: 0.68rem; font-weight: 700; color: var(--ink-3); text-align: center;
+  font-size: 0.6875rem; font-weight: 700; color: var(--ink-3); text-align: center;
 }
 .thName { text-align: left !important; min-width: 220px; }
 .thDim { width: 58px; }
-.thOn { color: var(--data) !important; }
+.thOn { color: var(--data-ink) !important; }
 .thBtn { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
 .thBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .cell { text-align: center; }
@@ -113,7 +113,7 @@
 .groupBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .caret { color: var(--ink-3); width: 10px; }
 .groupCount {
-  font-size: 0.66rem; font-weight: 600; color: var(--ink-3);
+  font-size: 0.6875rem; font-weight: 600; color: var(--ink-3);
   border: 1px solid var(--line); border-radius: 999px; padding: 0 6px;
 }
 
@@ -129,7 +129,7 @@
 }
 .workBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .wName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wPkg { font-size: 0.66rem; color: var(--ink-3); }
+.wPkg { font-size: 0.6875rem; color: var(--ink-3); }
 
 /* ══ Задаргаа ══ */
 .detail {
@@ -146,9 +146,9 @@
 .note { margin: 0; font-size: 0.78rem; color: var(--ink-3); }
 .dHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
 .dTitleBox { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.dEyebrow { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.dEyebrow { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
 .dTitle { font-size: 0.9rem; line-height: 1.3; color: var(--ink); }
-.dTotal { display: grid; justify-items: center; gap: 2px; font-size: 0.62rem; color: var(--ink-3); }
+.dTotal { display: grid; justify-items: center; gap: 2px; font-size: 0.6875rem; color: var(--ink-3); }
 .dClose {
   flex: none; width: 26px; height: 26px; border-radius: 6px;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-3);
@@ -163,9 +163,9 @@
   border-radius: 8px; background: var(--surface-2, var(--surface));
 }
 .meta div { display: grid; gap: 1px; min-width: 0; }
-.meta dt { font-size: 0.62rem; color: var(--ink-3); }
+.meta dt { font-size: 0.6875rem; color: var(--ink-3); }
 .meta dd { margin: 0; font-size: 0.76rem; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
-.hint { margin: 0 0 10px; font-size: 0.64rem; line-height: 1.4; color: var(--ink-3); }
+.hint { margin: 0 0 10px; font-size: 0.6875rem; line-height: 1.4; color: var(--ink-3); }
 
 .dims { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 520px) { .dims { grid-template-columns: 1fr; } }
@@ -185,12 +185,12 @@
    зам `--chart-track` (ui.module.css `.barTrack`-тэй ижил тоо). */
 .bar { display: block; height: 2px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 1px; background: var(--h); }
-.facts { font-size: 0.66rem; line-height: 1.35; color: var(--ink-3); }
-.measure { font-size: 0.64rem; line-height: 1.35; color: var(--ink-3); font-style: italic; }
+.facts { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); }
+.measure { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); font-style: italic; }
 .dimPending { border-left-style: dashed; }
-.pendingNote { font-size: 0.68rem; line-height: 1.35; color: var(--ink-2); }
+.pendingNote { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-2); }
 .factList { display: grid; gap: 2px; margin: 2px 0 0; }
-.factList div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.68rem; }
+.factList div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.6875rem; }
 .factList dt { color: var(--ink-3); }
 .factList dd { margin: 0; font-weight: 650; color: var(--ink); text-align: right; }
 
@@ -200,7 +200,7 @@
   border-top: 1px solid var(--line);
   font-size: 0.8rem; font-weight: 700; color: var(--ink);
 }
-.kpiRule { font-size: 0.66rem; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
+.kpiRule { font-size: 0.6875rem; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
 
 /* Эх сурвалжийн тайлбар — холбогдох CEO үзүүлэлтгүй бүлэгт (ХАБЭА) */
 .srcBox {
@@ -227,7 +227,7 @@
 .issuesHead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 0.8rem; font-weight: 700; color: var(--ink); }
 .issuesCount {
   min-width: 20px; padding: 0 6px; border-radius: 999px;
-  background: var(--bad); color: #fff; font-size: 0.68rem; text-align: center;
+  background: var(--bad); color: #fff; font-size: 0.6875rem; text-align: center;
 }
 .issuesNone { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
 .issueList { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -248,10 +248,10 @@
   flex: none; width: 20px; height: 20px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--h) 20%, transparent);
-  font-size: 0.66rem; font-weight: 700;
+  font-size: 0.6875rem; font-weight: 700;
 }
 .issueBody { display: grid; gap: 1px; min-width: 0; }
-.issueMeta { font-size: 0.62rem; color: var(--ink-3); }
+.issueMeta { font-size: 0.6875rem; color: var(--ink-3); }
 .issueMeta b { color: var(--h); font-weight: 700; }
 .issueText { font-size: 0.74rem; line-height: 1.4; color: var(--ink); }
 
@@ -262,7 +262,7 @@
 }
 .statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .statusHead b { font-size: 0.84rem; color: var(--ink); }
-.statusHead span { font-size: 0.68rem; color: var(--ink-3); }
+.statusHead span { font-size: 0.6875rem; color: var(--ink-3); }
 /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Stack` (ui.module.css .stack) —
    8px, радиус 4px, суурь `--chart-track`, хэсэг хооронд 2px ГАДАРГУУН зай (`box-shadow` —
    өргөнийг өөрчлөхгүй тул харьцаа ЯГ хэвээр). Урьд нь 1px `gap` байв. */
@@ -291,15 +291,15 @@
 .stDot {
   flex: none; width: 18px; height: 18px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 2px solid var(--h); color: var(--h); font-size: 0.66rem; font-weight: 800;
+  border: 2px solid var(--h); color: var(--h); font-size: 0.6875rem; font-weight: 800;
 }
 .stOn .stDot { background: var(--h); color: var(--surface); }
 .stBody { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .stName { font-size: 0.78rem; font-weight: 650; }
-.stRule { font-size: 0.62rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stRule { font-size: 0.6875rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stNums { display: grid; justify-items: end; gap: 0; }
 .stNum { font-size: 1.35rem; line-height: 1.1; font-weight: 750; }
-.stPct { font-size: 0.66rem; color: var(--ink-3); }
+.stPct { font-size: 0.6875rem; color: var(--ink-3); }
 
 /* «Багц ажил» жагсаалтын «Төлөв» багана */
 .thStatus { min-width: 150px; width: 22%; text-align: left !important; }
@@ -313,7 +313,7 @@
   border: 0; padding: 0; cursor: pointer;
   box-shadow: inset -2px 0 0 var(--surface);
   background: var(--h); color: var(--hue-ink);
-  font: inherit; font-size: 0.64rem; font-weight: 700;
+  font: inherit; font-size: 0.6875rem; font-weight: 700;
   transition: opacity 0.15s;
 }
 .gSeg:hover { filter: brightness(1.1); }
@@ -325,7 +325,7 @@
   padding: 1px 8px; border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--h) 60%, transparent);
   background: color-mix(in srgb, var(--h) 16%, transparent);
-  font-size: 0.66rem; font-weight: 600; color: var(--ink); white-space: nowrap;
+  font-size: 0.6875rem; font-weight: 600; color: var(--ink); white-space: nowrap;
 }
 
 /* Бүлгийн хавтан доторх тархалт */
@@ -334,7 +334,7 @@
 .dimBar i { flex-basis: 0; background: var(--h); box-shadow: inset -2px 0 0 var(--surface); }
 .dimBar i:last-child { box-shadow: none; }
 .dimBar i.segPending { background: repeating-linear-gradient(90deg, var(--ink-3) 0 3px, transparent 3px 5px); }
-.sumProblem { font-size: 0.66rem; color: var(--ink-3); }
+.sumProblem { font-size: 0.6875rem; color: var(--ink-3); }
 .sumProblem b { color: var(--bad-ink, var(--bad)); }
 
 /* Идэвхтэй шүүлт */

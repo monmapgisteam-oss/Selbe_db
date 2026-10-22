@@ -20,6 +20,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { listUsers } from '@/lib/permissions';
 import { isCodeSuper, roleForUser } from '@/lib/services';
 import { stageOfUser } from '@/lib/guitsetgelAcl';
@@ -58,6 +60,28 @@ export function ErhCellEditor({
 }) {
   const [add, setAdd] = useState('');
   const box = useRef<HTMLDivElement>(null);
+  /*
+   * ⚠️ 2026-10-23 (UX аудит A5): `role="dialog"` атлаа фокусын урхигүй, Esc нь эцгийнх (`ErhMatrix`) байв — Tab нь
+   *    popover-оос гарч ард байгаа матриц руу явдаг байв. Одоо урхи (`useFocusTrap`, хаахад нээсэн нүд рүү буцна) ба
+   *    ӨӨРИЙН Esc. Урхи ЭХЭНД зарлагдана: доорх эффект (select-ийг фокуслах, 2026-10-07 ⚠️) түүний ДАРАА ажиллаж
+   *    урхины «эхний товч» (толгойн ✕) фокусыг засна.
+   */
+  useFocusTrap(box, true);
+  /* ⚠️ `onClose` нь эцгээс inline (зурагдалт бүрд шинэ) — ref-ээр уншина, эс бөгөөс сонсогч дахин бүртгэгдэж эцгийнхээс ХОЙШ орно */
+  const closeRef = useRef(onClose);
+  useSyncRef(closeRef, onClose);
+  useEffect(() => {
+    /* ⚠️ CAPTURE — хүүхдийн эффект эцгийнхээс (`ErhMatrix`) ӨМНӨ бүртгэгдэх тул энэ нь эхэлж ажиллана. Дээр нь өөр
+       урхи (асуултын цонх `askConfirm`) нээлттэй бол Esc түүнийх — оролцохгүй. */
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !isTopFocusTrap(box.current)) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      closeRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
   /* ⚠️ 2026-10-07: ЭХЛЭЭД select — `'select, button'` нь баримтын дарааллаар толгойн ✕-г
      олдог тул Enter дарахад засварлагч шууд хаагддаг байв. */
   useEffect(() => {
@@ -134,7 +158,7 @@ export function ErhCellEditor({
       <button
         type="button"
         className={s.aclX}
-        title={tr('Энэ багцаас хасах')}
+        title={tr('Энэ багцаас хасах')} aria-label={tr('Энэ багцаас хасах')}
         disabled={off}
         onClick={() => { void exec(guard(u, () => rmOp(u))); }}
       >
@@ -154,7 +178,7 @@ export function ErhCellEditor({
     >
       <div className={s.aclHead}>
         <span>{title}</span>
-        <button type="button" className={s.aclX} title={tr('Хаах')} onClick={onClose}>✕</button>
+        <button type="button" className={s.aclX} title={tr('Хаах')} aria-label={tr('Хаах')} onClick={onClose}>✕</button>
       </div>
       {locked && <div className={s.aclErr} role="alert">{lockMsg()}</div>}
       {err && <div className={s.aclErr} role="alert">{err}</div>}

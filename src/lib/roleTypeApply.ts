@@ -88,7 +88,7 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
     return { ok: false, errors: [tr('Өөрийн super эрхийг өөрөө хасах боломжгүй — өөр super админ хасна.')] };
   }
   if (draftUsers.has(u)) {
-    return { ok: false, errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Цуцлах» дарна уу.')] };
+    return { ok: false, errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Болих» дарна уу.')] };
   }
   if (userLocks.has(u)) {
     return { ok: false, errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };

@@ -214,7 +214,8 @@ const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util
   assert.ok(gi > 0 && gi < SP.indexOf('!balanced(months, r.vol)'), 'savePrep: бүлгийн задаргаа unbal-д тоологдож байна');
   /* «Ноорог хаях» — асуултын тоо = товчны тоо (dirtyRows) */
   const di = H.indexOf("tr('Ноорог хаях')");
-  const dc = H.lastIndexOf('window.confirm(', di);
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → `askConfirm` */
+  const dc = H.lastIndexOf('askConfirm(', di);
   assert.ok(dc > 0 && /num\(dirtyRows\), others/.test(H.slice(dc, di)), '«Ноорог хаях»-ын асуулт товчноос өөр тоо харуулж байна');
   assert.ok(/\{tr\('Ноорог хаях'\)\} \(\{num\(dirtyRows\)\}\)/.test(H), 'товчны тоо dirtyRows хэвээр');
   /* Батлах эффект — мужаас гадуурх обьёмд эх хуудсанд бичихгүй (save-ээс ӨМНӨ) */
