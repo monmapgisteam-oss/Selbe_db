@@ -6122,7 +6122,6 @@ const en: Record<string, string> = {
   "Серверийн хариу алдагдсан: {0}-д {1}-р дараалалд таны мөр бичигдсэн боловч давхардал илэрлээ ({2}). Юуг ч устгаагүй — жагсаалтаас шалгаж илүүдлийг гараар устгана уу.": "The server response was lost: your row was written to {0}, sequence {1}, but a duplicate was found ({2}). Nothing was deleted — check the list and delete the extra row manually.",
   "Бүртгэгдсэн рейс {0} — {1}-р долоо хоног": "{0} trips recorded — week {1}",
   "Тоо нь 0 ба түүнээс их байна.": "Values must be 0 or greater.",
-  "Ядаж нэг багцын тоог оруулна уу.": "Enter a count for at least one package.",
   "хамтрагч": "collaborator",
   "Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн бодит огноо/нөөцийг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.": "Actual dates · resources are locked — the pending submission on the «{0}» tab contains the actual dates/resources of these rows: {1}. Try again after that submission is decided.",
   "Гүйцэтгэлийн архивлалтын төлөв шалгагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.": "Could not check the progress-archiving status ({0}) — nothing was written to the source sheet; please try again.",

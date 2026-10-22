@@ -359,7 +359,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
       : !metricOk ? tr('Төрөл сонгоно уу.')
         : !weekOk ? tr('Долоо хоног 1–53 байна.')
           : !cellsOk ? tr('Тоо нь 0 ба түүнээс их байна.')
-            : !anyVal ? tr('Ядаж нэг багцын тоог оруулна уу.') : '';
+            : '';
 
   return (
     <Shell
