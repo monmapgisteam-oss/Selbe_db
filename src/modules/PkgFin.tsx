@@ -2226,8 +2226,10 @@ function FinCard({
                 хуваарь `cashflow_0813`-тайгаа хамт хаягдсан). ЗУРАГДААГҮЙ
                 ЦУВААГ домогт жагсаах нь хэрэглэгчид «дутуу зурагдсан юм
                 биш үү» гэсэн эргэлзээ төрүүлнэ. */}
-            <span><i className={ts.legSolid} style={{ background: cat(0) }} />{tr('Олгосон санхүүжилт')}</span>
-            {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл')}</span>}
+            {/* ⚠️ 2026-10-23: Environment — ComboChart-ын НЭГ өнгөтэй тааруулав: олголт `--data` бүтэн
+                шугам, биет `--chart-plan` ТАСАРХАЙ `4 4` (урьд `cat(0)`/`cat(1)` дөрвөлжин). */}
+            <span><i className={ts.legSolid} style={{ background: 'var(--data)' }} />{tr('Олгосон санхүүжилт')}</span>
+            {!finOnly && <span><i className={ts.legDash} />{tr('Биет гүйцэтгэл')}</span>}
             {/* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хоцрогдлоос хасагдсаныг нэрлэнэ */}
             {!finOnly && projExcl.length > 0 && <span>{planScopeNote(projExcl)}</span>}
           </div>

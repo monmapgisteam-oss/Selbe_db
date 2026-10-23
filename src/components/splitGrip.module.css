@@ -4,11 +4,10 @@
  * бөгөөд өргөн нь CSS хувьсагчаар (`--side-l`, `--side-r`) өгөгддөг. Энэ бариул
  * тэр хувьсагчийг чирж өөрчилнө — бүрхүүлийн бүтэц огт хөндөгдөхгүй.
  *
- * ⚠️ 2026-08-21 (хэрэглэгчийн сонголт): харагдах хэл нь «Тохиромжтой байдлын
- * үнэлгээ»-гийн `.resizer`-тэй (analysis/suitability.module.css) ЯГ ИЖИЛ —
- * 5px саарал зурвас + голдоо 26px ховил, hover/чирэлтэд --data өнгөөр асна.
- * Тэр нь сүлжээний жинхэнэ багана, энэ нь давхарласан зурвас гэдгээрээ л
- * ялгаатай; аль нэгийг нь өөрчилбөл нөгөөг нь ХАМТ өөрчил.
+ * ⚠️ 2026-10-23: Environment (`ui/resizable-columns.tsx`) — 5px саарал зурвас + 26px ховил (2026-08-21-ний
+ * «Тохиромжтой байдлын үнэлгээ»-ний `.resizer`-ийн хэл) → ЕРДӨӨ 1px --line зураас, hover/фокус/чирэлтэд
+ * --data. Хүрэх талбай (11px) хэвээр. Порталын `ResizableColumns`-тай НЭГ хэл; `analysis/suitability.module.css`
+ * `.resizer` нь өөр эзэнтэй файл — тэнд ч ижил болгох нь зүйтэй.
  */
 .grip {
   position: absolute;
@@ -25,39 +24,20 @@
      бариулыг нарийхан байлгаж, зөвхөн заагийг эзэлнэ. */
 }
 
-/* Харагдах зурвас — analysis-ийн .resizer-ийн биетэй ижил 5px, var(--line) */
+/* Харагдах зурвас — 1px, var(--line) */
 .grip::after {
   content: "";
   position: absolute;
   inset: 0 auto 0 50%;
-  width: 5px;
+  width: 1px;
   transform: translateX(-50%);
   background: var(--line);
-  transition: background 0.15s;
-}
-/* Голын ховил — 1×26px, зурваснаас тодхон (analysis-ийн ::after-тэй ижил) */
-.grip::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1px;
-  height: 26px;
-  transform: translate(-50%, -50%);
-  border-radius: 1px;
-  background: var(--line-strong);
-  z-index: 1;
   transition: background 0.15s;
 }
 .grip:hover::after,
 .grip:focus-visible::after,
 .gripOn::after {
   background: var(--data);
-}
-.grip:hover::before,
-.grip:focus-visible::before,
-.gripOn::before {
-  background: var(--bg);
 }
 .grip:focus-visible {
   outline: none;

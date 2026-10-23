@@ -12,8 +12,9 @@
    (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
 /* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
    100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
-/* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
-   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+/* ⚠️ 2026-10-23: Environment — `.analytics-stat` хавтан: булан 13px, --line хүрээ, --surface,
+   сүүдэргүй; шошго ДЭЭР (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), тоо доор 600 жинтэй.
+   Padding 14/18 биш 12/14 — бүтэн мөнгөн дүн 150px хавтанд багтах ёстой. */
 .tile {
   display: flex;
   flex-direction: column;
@@ -21,10 +22,10 @@
   justify-content: space-between;
   gap: 5px;
   text-align: left;
-  padding: 8px 12px;
+  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-xl);
 }
 
 .tileLabel { order: -1; }
@@ -45,17 +46,17 @@
    богиносгохгүй, тайрахгүй. */
 .tileVal b {
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
-/* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
-.tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+/* Environment шошго (10px ink-3) — `order:-1`-ээр нүдний дээд мөр болно */
+.tileLabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.4; color: var(--ink-3); }
 
 /* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
 /* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
@@ -85,8 +86,9 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч гадарга: --line-strong хүрээ + --shadow */
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }
@@ -101,11 +103,11 @@
   gap: 4px 12px;
   max-width: calc(100% - 24px);
   padding: 7px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(8px);
-  font-size: 0.68rem;
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+  font-size: 11px;
   color: var(--ink-2);
 }
 
@@ -121,9 +123,11 @@
   z-index: 2;
   margin: -2px 0 -2px;
   padding: 4px 2px 6px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  /* ⚠️ 2026-10-23: Environment `.eyebrow` — 11px/600/0.15em, uppercase кирилл line-height ≥1.3 */
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  line-height: 1.3;
   text-transform: uppercase;
   color: var(--ink-3);
   background: var(--bg);
@@ -136,6 +140,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 

@@ -1,4 +1,8 @@
-/* «Ерөнхий төлөвлөгөө» → «Detail»: инженерийн шугамын ДАВХЦАЛ (2026-10-13) — `PlanOverlap.tsx` */
+/* «Ерөнхий төлөвлөгөө» → «Detail»: инженерийн шугамын ДАВХЦАЛ (2026-10-13) — `PlanOverlap.tsx`
+   ⚠️ 2026-10-23: Environment — газрын зургийн tooltip 6px + дээд 2px --data зурвас;
+   хөвөгч гадаргуу paper 94% + blur, --line-strong; карт 12px · --line (сүүдэргүй);
+   KPI .analytics-stat; сонголт (#38bdf8 → --data) moss 12% + 45% хүрээ + inset 3px;
+   жин ≤600. Ангиллын/системийн өнгө (inline) — газрын зургийн утга, хөндөхгүй. */
 
 /* ── Зураг дээрх hover-ийн тайлбар ── */
 .tip {
@@ -9,13 +13,16 @@
   gap: 2px;
   max-width: 260px;
   padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  border-top: 2px solid var(--data);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: var(--ink);
-  font-size: 0.72rem;
+  font-size: 11.5px;
   line-height: 1.35;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
   pointer-events: none;
 }
 .tip[hidden] { display: none; }
@@ -33,12 +40,14 @@
   gap: 5px 12px;
   max-width: min(320px, calc(100% - 80px));
   padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--ink-2);
   box-shadow: var(--shadow-sm);
-  font-size: 0.66rem;
+  font-size: 10.5px;
   pointer-events: none;
 }
 .mapLegend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -54,22 +63,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 0.72rem;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink-2);
+  font-size: 11.5px;
   box-shadow: var(--shadow);
   pointer-events: none;
 }
+/* Ачаалж буй — ink-3 эргэх дугуй (lucide Loader2-той ижил хэмжээ) */
 .spin {
   width: 12px;
   height: 12px;
   flex: none;
   border-radius: 50%;
-  border: 2px solid var(--line);
-  border-top-color: var(--hue);
+  border: 1.5px solid var(--line-strong);
+  border-top-color: var(--ink-3);
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -81,36 +94,38 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.72rem;
+  font-size: 11.5px;
   line-height: 1.45;
   color: var(--ink-3);
 }
-.err { color: var(--bad, #dc2626); }
-.warn { color: var(--warn-ink, #b45309); }
+.err { color: var(--bad-ink); }
+.warn { color: var(--warn-ink); }
 .note { display: block; }
 
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 9px 11px;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-xl);
   background: var(--surface);
 }
-.kpiVal { font-size: 1.02rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.kpiLbl { font-size: 0.68rem; color: var(--ink-3); }
+.kpiVal { font-size: 17px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpiLbl { font-size: 10px; line-height: 1.3; color: var(--ink-3); }
 
 .cats { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
 .cat {
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   background: var(--surface);
-  transition: border-color 0.12s, box-shadow 0.12s;
+  overflow: hidden;
+  transition: border-color 0.12s;
 }
-.cat.on, .cat:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
-.catHead { display: flex; align-items: center; gap: 7px; padding: 6px 8px; }
+.cat.on, .cat:hover { border-color: var(--line-strong); }
+.catHead { display: flex; align-items: center; gap: 7px; padding: 6px 10px; }
 .catSelect, .expand, .row {
   border: 0;
   background: transparent;
@@ -120,12 +135,12 @@
   cursor: pointer;
 }
 .catSelect { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; padding: 4px 0; }
-.expand { display: grid; place-items: center; width: 22px; height: 28px; padding: 0; flex: none; border-radius: 4px; }
+.expand { display: grid; place-items: center; width: 24px; height: 28px; padding: 0; flex: none; border-radius: var(--r-sm); }
 .expand:hover { background: var(--surface-2); }
 .catSelect:focus-visible, .expand:focus-visible, .row:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
 .catSwatch { width: 10px; height: 10px; flex: none; border-radius: 3px; }
-.catName { flex: 1; min-width: 0; font-size: 0.76rem; font-weight: 600; }
-.catVal { font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.catName { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; }
+.catVal { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .rows { list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--line); }
 .row {
@@ -133,14 +148,14 @@
   width: 100%;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
-  font-size: 0.72rem;
+  padding: 6px 10px;
+  font-size: 11.5px;
 }
 .row:hover, .row.on { background: var(--surface-2); }
 .sysDot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
 .sysName { flex: 1; min-width: 0; color: var(--ink-2, var(--ink)); }
 .rowVal { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rowVal small { color: var(--ink-3); font-size: 0.66rem; }
+.rowVal small { color: var(--ink-3); font-size: 10.5px; }
 
 /* ── «Detail»-ийн давхаргын товч (`DetailLayers.tsx`) — суурь зургийн товчны ДООР ── */
 .lyrHost { position: relative; }
@@ -154,12 +169,14 @@
   max-height: min(70vh, 520px);
   overflow-y: auto;
   padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: var(--ink);
-  box-shadow: var(--shadow-lg);
-  font-size: 0.74rem;
+  box-shadow: var(--shadow);
+  font-size: 12px;
 }
 .lyrGroup + .lyrGroup { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .lyrGroupHead {
@@ -177,8 +194,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 4px;
-  border-radius: 6px;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .lyrRow:hover { background: var(--surface-2); }
@@ -188,35 +205,41 @@
 
 /* Дарж СОНГОСОН карт/мөр (2026-10-13) — курсор холдсон ч зураг дээр үлдэнэ */
 .cat.enabled { border-color: var(--line-strong); }
-.cat.sel { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
-.row.sel { background: color-mix(in srgb, #38bdf8 16%, transparent); }
-.selection { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; }
+.cat.sel { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 6%, var(--surface)); }
+.row.sel { background: color-mix(in oklab, var(--data) 12%, transparent); box-shadow: inset 3px 0 0 var(--data); }
+.selection { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
 .selection span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .selection button {
   flex: none;
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   color: var(--ink-2);
-  background: var(--surface);
+  background: transparent;
   font: inherit;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.selection button:hover { background: var(--surface-2); }
+.selection button:hover { background: var(--surface-2); color: var(--ink); }
 
 /* Хэсэгчилсэн ЕТ-ийн полигон бүрийн давхардалгүй дүн, буурах эрэмбэ. */
 .zoneSection { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .zoneHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.zoneHeading h4 { margin: 0; font-size: 0.8rem; }
-.zoneHeading > span { color: var(--ink-3); font-size: 0.68rem; white-space: nowrap; }
-.zoneList { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.zoneHeading h4 { margin: 0; font-size: 12.5px; font-weight: 600; }
+.zoneHeading > span { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; }
+.zoneList { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .zoneList li + li { border-top: 1px solid var(--line); }
 .zoneRow {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border: 0;
   background: var(--surface);
   color: var(--ink);
@@ -226,18 +249,23 @@
 }
 .zoneRow:hover { background: var(--surface-2); }
 .zoneRow:focus-visible { outline: 2px solid var(--hue); outline-offset: -2px; }
-.zoneSelected { background: color-mix(in srgb, var(--hue) 10%, var(--surface)); box-shadow: inset 3px 0 var(--hue); }
-.zoneRank { width: 20px; flex: none; color: var(--ink-3); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
-.zoneName { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.71rem; line-height: 1.35; }
-.zoneValue { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 0.73rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.zoneValue small { font-size: 0.63rem; font-weight: 400; color: var(--ink-3); }
-.zoneBar { display: block; width: 100%; height: 3px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--surface-2); }
-.zoneBar i { display: block; height: 100%; border-radius: inherit; background: var(--hue); opacity: 0.6; }
+.zoneSelected { background: color-mix(in oklab, var(--hue) 12%, var(--surface)); box-shadow: inset 3px 0 0 var(--hue); }
+.zoneRank { width: 20px; flex: none; color: var(--ink-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.zoneName { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11.5px; line-height: 1.35; }
+.zoneValue { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zoneValue small { font-size: 10px; font-weight: 400; color: var(--ink-3); }
+/* Мөрийн зам 5px --chart-track, дүүргэлт НЭГ өнгө --data */
+.zoneBar { display: block; width: 100%; height: 5px; margin-top: 6px; overflow: hidden; border-radius: 999px; background: var(--chart-track); }
+.zoneBar i { display: block; height: 100%; border-radius: inherit; background: var(--data); opacity: 0.88; }
 
 /* 02 — ангиллын толгой: дэлгэх сум + зураг дээр асаах чагт (2026-10-13) */
-.chev { color: var(--ink-3); font-size: 0.7rem; transition: transform 0.15s; }
+.chev { color: var(--ink-3); font-size: 11px; transition: transform 0.15s; }
 .chevOn { transform: rotate(90deg); }
-.catChk { margin: 0; accent-color: #38bdf8; cursor: pointer; }
+.catChk { margin: 0; accent-color: var(--data); cursor: pointer; }
 
 /* Swipe товч асаалттай (`DetailLayers.tsx` §SwipeToggle) — ⚠️ esri-widget дүрмийн !important-ийг дарна */
-.swOn { color: var(--hue) !important; box-shadow: inset 0 0 0 2px var(--hue) !important; }
+.swOn {
+  color: var(--data) !important;
+  background: color-mix(in oklab, var(--data) 12%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--data) 45%, transparent) !important;
+}

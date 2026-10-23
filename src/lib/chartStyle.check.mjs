@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  CHART, DONUT_SIZES, RING_SIZES, ringStroke, linePath, lineSegments, areaPath, monotonePath,
+  CHART, DONUT_SIZES, RING_SIZES, ringStroke, donutGeom, linePath, lineSegments, areaPath, monotonePath,
   glow, niceTicks, stepDecimals, arcPath, roundPctsTo100,
   SCORE_HEX, SCORE_INK, SCORE_NODATA_INK,
 } from '@/lib/chartStyle';
@@ -29,26 +29,49 @@ assert.deepEqual(roundPctsTo100([]), []);
 for (const vs of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [3, 3, 3, 1]]) {
   assert.equal(roundPctsTo100(vs).reduce((a, b) => a + b, 0), 100, `нийлбэр 100: ${vs}`);
 }
+/* ⚠️ 2026-10-23: Environment — Donut-ын тайлбар НЭГ оронтой; нийлбэр нь ЯГ 100.0 хэвээр */
+assert.deepEqual(roundPctsTo100([1, 1, 1], undefined, 1), [33.4, 33.3, 33.3], '1 орон: 33.4 · 33.3 · 33.3');
+assert.deepEqual(roundPctsTo100([3, 1], undefined, 1), [75, 25]);
+for (const vs of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [3, 3, 3, 1], [1, 1, 1, 1, 1, 1]]) {
+  const sum = roundPctsTo100(vs, undefined, 1).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(sum - 100) < 1e-9, `1 оронтой нийлбэр 100.0: ${vs} → ${sum}`);
+}
 
 /* ── Тогтмолууд ── */
 for (const k of ['stroke', 'markerR', 'ring', 'dim', 'areaTop', 'areaBottom', 'gapFill', 'planDash', 'grid', 'barH', 'stackH', 'meterH']) {
   assert.ok(k in CHART, `CHART.${k} байх ёстой`);
 }
 assert.equal(CHART.stroke, 2);
-assert.equal(CHART.markerR, 3);
+/* ⚠️ 2026-10-23: Environment — 5px цэг, 5px мөрийн зам, тасархай төлөвлөгөө, талбай .22 → .02,
+   donut дотоод = .72 × гадаад, гэрэлтэлтгүй (`glowBlur` 0) */
+assert.equal(CHART.markerR, 2.5);
 assert.equal(CHART.dim, 0.35);
-assert.equal(CHART.barH, 2, 'хэвтээ багана нимгэн 2px (хэрэглэгчийн сонголт)');
+assert.equal(CHART.barH, 5, 'мөрийн зам 5px (Environment row-chart-track)');
 assert.deepEqual([...CHART.grid], [0, 25, 50, 75, 100]);
-/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): төлөвлөгөө ЦЭГЭН, талбай 0.32 → 0, donut ~20% */
-assert.equal(CHART.planDash, '1 5');
-assert.equal(CHART.areaTop, 0.32);
-assert.equal(CHART.areaBottom, 0);
-assert.equal(CHART.areaMultiTop, 0.16);
-assert.deepEqual(DONUT_SIZES, { sm: [96, 19], md: [132, 26], lg: [150, 30] });
+assert.equal(CHART.planDash, '4 4');
+assert.equal(CHART.areaTop, 0.22);
+assert.equal(CHART.areaBottom, 0.02);
+assert.equal(CHART.areaMultiTop, 0.12);
+assert.equal(CHART.glowBlur, 0);
+assert.equal(CHART.donutInner, 0.72);
+assert.equal(CHART.colMaxW, 44);
+assert.equal(CHART.colRadius, 5);
+assert.equal(CHART.colW, 0.8, 'Environment .bar-chart-fill 80%');
+assert.equal(CHART.colDim, 0.18);
+assert.equal(CHART.meterH, 6, 'Environment Meter h-1.5');
+/* ⚠️ 2026-10-23: Environment PieChart — суурь 112, гадаад R = size/2 − 4, дотоод .72R */
+assert.deepEqual(DONUT_SIZES, { sm: [82, 10], md: [112, 15], lg: [128, 17] });
+{
+  const g = donutGeom(112);
+  assert.equal(g.c, 56);
+  assert.equal(g.R, 52);
+  assert.ok(Math.abs(g.r - 52 * 0.72) < 1e-9, 'дотоод = .72R');
+  assert.equal(donutGeom(112, 10).r, 42, '`width` өгвөл R − width');
+}
 assert.deepEqual(RING_SIZES, { sm: 88, md: 120, lg: 148 });
-assert.equal(ringStroke(120), 12);
-assert.equal(ringStroke(88), 9);
-assert.equal(ringStroke(148), 15);
+assert.equal(ringStroke(120), 16, 'Ring зузаан = R − .72R');
+assert.equal(ringStroke(88), 11);
+assert.equal(ringStroke(148), 20);
 
 /* ── null дээр тасрах ── */
 const P = (x, y) => ({ x, y });
@@ -105,8 +128,8 @@ ctrlYs(monotonePath(uneven)).forEach(([c1, c2], i) => {
 /* smooth:false — зөвхөн шулуун хэрчим */
 assert.ok(!linePath([P(0, 0), P(1, 1), P(2, 0)], { smooth: false })[0].includes('C'));
 
-/* ── Гэрэлтэлт: цувааны ӨӨРИЙН токен, хүч нь --chart-glow ── */
-assert.ok(glow('var(--c2)').startsWith('drop-shadow(0 0 4px color-mix(in srgb, var(--c2) var(--chart-glow'));
+/* ── Гэрэлтэлт: цувааны ӨӨРИЙН токен, хүч нь --chart-glow (2026-10-23: blur 0 — харагдахгүй) ── */
+assert.ok(glow('var(--c2)').startsWith('drop-shadow(0 0 0px color-mix(in srgb, var(--c2) var(--chart-glow'));
 
 /* ── niceTicks: 1·2·2.5·5 алхам, мужийг бүрэн хамарна, хавтгай/хоосон цуваанд ч ≥2 утга ── */
 assert.deepEqual(niceTicks(0, 68, 5), [0, 20, 40, 60, 80]);

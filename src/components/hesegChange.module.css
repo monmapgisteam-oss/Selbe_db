@@ -1,10 +1,11 @@
+/* ⚠️ 2026-10-23: Environment — шошго 10px ink-3, утга 600 жин (≤600), тоо tabular. */
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 1px 10px 9px; }
 .statsPair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .stats > div { min-width: 0; }
-.stats dt { margin-bottom: 3px; color: var(--ink-3); font-size: 0.62rem; }
-.stats dd { margin: 0; font-size: 0.82rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.stats small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 0.6rem; line-height: 1.35; }
+.stats dt { margin-bottom: 3px; color: var(--ink-3); font-size: 10px; line-height: 1.3; }
+.stats dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stats small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 10px; line-height: 1.35; }
 
 /* «Сэлбэ 1 хил»-ээр задаргаа — хил дотор · гадуур · нийт (2026-10-14) */
-.split { margin: 2px 0 0; padding-left: 14px; list-style: disc; color: var(--ink-3); font-size: 0.64rem; line-height: 1.35; white-space: normal; text-align: left; }
+.split { margin: 2px 0 0; padding-left: 14px; list-style: disc; color: var(--ink-3); font-size: 10px; line-height: 1.35; white-space: normal; text-align: left; }
 .split li { margin: 0; }

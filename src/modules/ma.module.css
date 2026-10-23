@@ -3,6 +3,8 @@
    ⚠️ «Багцын хамаарал»-ын (ТУХ) хэв маягийн ХУУЛБАР — импортлохгүй (харагдацууд стайл
       хуваалцахгүй). Өнгө бүгд глобал токен. Сонгогч БҮР локал класс агуулна (pure).
    ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620.
+   ⚠️ 2026-10-23: Environment — карт/хүснэгт 12px, .pe-table (11.5px мөр, 10px толгой), .view-switch,
+      .pe-field (32px), .pe-ghost, 6px badge, цонх --line-strong + --shadow.
    ══════════════════════════════════════════════════════════ */
 
 .wrap {
@@ -19,43 +21,51 @@
 .hero { padding: 4px 4px 14px; }
 .eyebrow {
   margin: 0 0 6px;
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  line-height: 1.3;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.hero h1 { margin: 0; font-size: 1.45rem; line-height: 1.2; font-weight: 600; }
-.total { margin-left: 6px; font-size: 0.85rem; font-weight: 600; color: var(--ink-3); }
-.heroSub { margin: 6px 0 0; color: var(--ink-2); font-size: 0.85rem; max-width: 900px; }
+.hero h1 { margin: 0; font-family: var(--font-display); font-size: 1.45rem; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; }
+.total { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.heroSub { margin: 6px 0 0; color: var(--ink-2); font-size: 12.5px; max-width: 900px; }
 
 /* ── Шүүлтүүр ── */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 10px; }
-.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); background: transparent; }
 .segBtn {
   all: unset;
   cursor: pointer;
   padding: 4px 10px;
-  border-radius: var(--r-sm);
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-2);
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-3);
   white-space: nowrap;
 }
-.segBtn[aria-pressed='true'] { background: var(--data); color: #fff; }
+.segBtn:hover { color: var(--ink); }
+.segBtn[aria-pressed='true'] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 5px #00000012; }
 .segBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 .search,
 .select,
 .input {
   min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--ink);
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 12.5px;
+  outline: none;
 }
+.search:focus,
+.select:focus,
+.input:focus { border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .search { flex: 1 1 220px; }
 .select { flex: 0 1 200px; }
 .input { flex: 1 1 160px; }
@@ -63,28 +73,30 @@
 /* ── Жагсаалт ── */
 .tableWrap {
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
   background: var(--surface);
 }
-.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
 .table th {
   position: sticky;
   top: 0;
-  padding: 7px 8px;
+  padding: 7px 10px;
   text-align: left;
-  font-size: 0.64rem;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-3);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
   white-space: nowrap;
 }
-.table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-2); }
 .row:hover td { background: var(--surface-2); }
-.rowOn td { background: color-mix(in srgb, var(--data) 6%, var(--surface)); }
+.rowOn td { background: color-mix(in oklab, var(--data) 12%, var(--surface)); color: var(--ink); }
+.rowOn td:first-child { box-shadow: inset 3px 0 0 var(--data); }
 .rowBtn { all: unset; cursor: pointer; font-weight: 600; white-space: nowrap; }
 .rowBtn:hover, .rowBtn:focus-visible { color: var(--data); text-decoration: underline; }
 .caret { display: inline-block; width: 14px; color: var(--ink-3); }
@@ -93,27 +105,28 @@
 .detailRow td { background: var(--surface-2); padding: 0; }
 
 /* Шийдвэрийн чип */
-.vchip { display: inline-block; min-width: 26px; padding: 1px 8px; border-radius: 999px; text-align: center; font-size: 0.7rem; font-weight: 700; }
-.vA { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good-ink, var(--ink)); }
-.vAN { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-ink, var(--ink)); }
-.vR { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad-ink, var(--ink)); }
-.vNone { background: var(--sunken); color: var(--ink-3); }
+.vchip { display: inline-block; min-width: 26px; padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); text-align: center; font-size: 11px; font-weight: 500; }
+.vA { background: color-mix(in oklab, var(--good) 8%, transparent); border-color: color-mix(in oklab, var(--good) 35%, transparent); color: var(--good-ink); }
+.vAN { background: color-mix(in oklab, var(--warn) 8%, transparent); border-color: color-mix(in oklab, var(--warn) 35%, transparent); color: var(--warn-ink); }
+.vR { background: color-mix(in oklab, var(--bad) 8%, transparent); border-color: color-mix(in oklab, var(--bad) 35%, transparent); color: var(--bad-ink); }
+.vNone { background: transparent; color: var(--ink-3); }
 
 /* ── Дэлгэрэнгүй ── */
 .detail { display: grid; gap: 12px; padding: 12px 14px 16px 30px; }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 0.78rem; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 12px; }
 .kv dt { color: var(--ink-3); }
 .kv dd { margin: 0; }
 .pre { white-space: pre-line; }
 .block { display: grid; gap: 6px; }
-.h3 { margin: 0; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.h3 { margin: 0; font-size: 10.5px; font-weight: 600; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
 .chip {
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
   background: var(--surface);
-  font-size: 0.7rem;
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -124,49 +137,56 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface);
-  font-size: 0.76rem;
+  font-size: 12px;
 }
 .attOpen { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; flex: 1 1 260px; min-width: 0; }
 .attOpen:hover span, .attOpen:focus-visible span { color: var(--data); text-decoration: underline; }
 .attOpen span { overflow-wrap: anywhere; }
-.attMeta { display: inline-flex; flex-wrap: wrap; gap: 6px; color: var(--ink-3); font-size: 0.72rem; }
-.valid { color: var(--good-ink, var(--ink-2)); font-weight: 600; }
-.expired { color: var(--bad-ink, #c0392b); font-weight: 700; }
-.chipX { all: unset; cursor: pointer; padding: 0 6px; border-radius: 999px; color: var(--ink-3); font-size: 0.72rem; }
-.chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.attMeta { display: inline-flex; flex-wrap: wrap; gap: 6px; color: var(--ink-3); font-size: 11px; }
+.valid { color: var(--good-ink); font-weight: 600; }
+.expired { color: var(--bad-ink); font-weight: 600; }
+.chipX { all: unset; cursor: pointer; padding: 0 6px; border-radius: 4px; color: var(--ink-3); font-size: 11px; }
+.chipX:hover:not(:disabled), .chipX:focus-visible { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) var(--tint), transparent); }
 .chipX:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .addForm { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-top: 4px; }
-.dateLbl { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--ink-3); }
-.file { flex: 1 1 220px; font-size: 0.74rem; }
+.dateLbl { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); }
+.file { flex: 1 1 220px; font-size: 11.5px; }
 .signBox { display: grid; gap: 6px; }
 .ghostBtn {
   all: unset;
   cursor: pointer;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  font-size: 0.74rem;
-  font-weight: 600;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
 }
-.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
-.ghostBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ghostBtn:hover:not(:disabled), .ghostBtn:focus-visible { color: var(--ink); background: var(--surface-2); }
+.ghostBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.note { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
-.errNote { margin: 0; white-space: pre-line; font-size: 0.74rem; color: var(--bad-ink, #c0392b); }
-.failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--warn-ink); }
+.note { margin: 0; font-size: 11px; color: var(--ink-3); }
+.errNote { margin: 0; white-space: pre-line; font-size: 11.5px; color: var(--bad-ink); }
+.failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent); border-radius: var(--r); background: color-mix(in oklab, var(--warn) 8%, transparent); font-size: 12px; color: var(--warn-ink); }
 .retryBtn {
-  margin-left: 6px; padding: 3px 12px; font-size: 0.72rem; font-weight: 600;
-  color: var(--ink); background: var(--surface-2);
-  border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer;
+  margin-left: 6px; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500;
+  color: var(--ink-2); background: transparent;
+  border: 1px solid var(--line-strong); border-radius: var(--r); cursor: pointer;
 }
-.retryBtn:hover { border-color: var(--line-strong); }
-.loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
+.retryBtn:hover { background: var(--surface-2); color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — ачаалж буй / хоосон төлөв: тасархай хүрээ, төвд ink-3 */
+.loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 
 @media (max-width: 620px) {
   .wrap { padding: 10px 10px 24px; }
@@ -177,12 +197,12 @@
 
 /* ── 2026-10-09: КАРТ — MA бүр бүтэн харагдана (шүүлтүүргүй, хураалтгүй) ── */
 .cards { display: grid; gap: 12px; }
-.card { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; }
-.cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: transparent; }
 .cardTitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.cardTitle b { font-size: 0.95rem; }
-.cardNo { font-size: 0.74rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.emptyNote { margin: 12px 0; color: var(--ink-3); font-size: 0.85rem; }
+.cardTitle b { font-size: 13px; font-weight: 600; }
+.cardNo { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.emptyNote { margin: 12px 0; padding: 24px 12px; color: var(--ink-3); font-size: 12px; text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 .card .detail { padding: 12px 14px 14px; }
 
 /* ── 2026-10-09: ШАТЛАЛЫН УЯЛДАА — MA → MIR → FIC → М-акт → IPC ── */
@@ -196,22 +216,22 @@
   min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface);
 }
-.stage + .stage::before { content: '→'; position: absolute; left: -11px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 0.8rem; }
-.stageNo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 999px; font-size: 0.7rem; font-weight: 700; background: var(--sunken); color: var(--ink-3); }
+.stage + .stage::before { content: '→'; position: absolute; left: -11px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 12px; }
+.stageNo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--paper-hi); color: var(--ink-3); }
 .stageText { display: flex; flex-direction: column; min-width: 0; }
-.stageText b { font-size: 0.76rem; }
-.stageText small { font-size: 0.68rem; color: var(--ink-3); }
-.st_done { border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--surface)); }
-.st_done .stageNo { background: var(--good); color: #fff; }
-.st_rejected { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 8%, var(--surface)); }
-.st_rejected .stageNo { background: var(--bad); color: #fff; }
-.st_pending { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
-.st_pending .stageNo { background: var(--warn); color: #fff; }
+.stageText b { font-size: 12px; font-weight: 600; }
+.stageText small { font-size: 10.5px; color: var(--ink-3); }
+.st_done { border-color: color-mix(in oklab, var(--good) 45%, transparent); background: color-mix(in oklab, var(--good) var(--tint), var(--surface)); }
+.st_done .stageNo { background: var(--good); color: var(--bg); }
+.st_rejected { border-color: color-mix(in oklab, var(--bad) 45%, transparent); background: color-mix(in oklab, var(--bad) var(--tint), var(--surface)); }
+.st_rejected .stageNo { background: var(--bad); color: var(--bg); }
+.st_pending { border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
+.st_pending .stageNo { background: var(--warn); color: var(--bg); }
 .st_next { border-style: dashed; border-color: var(--data); }
-.st_next .stageNo { background: color-mix(in srgb, var(--data) 18%, transparent); color: var(--data); }
+.st_next .stageNo { background: color-mix(in oklab, var(--data) 14%, transparent); color: var(--data); }
 .st_locked { opacity: 0.55; }
 
 /* works.csv татах мөр */
@@ -219,10 +239,10 @@
 
 /* ── 2026-10-09: MIR жагсаалт (MA картын доор) ── */
 .mirBox { display: grid; gap: 8px; padding: 0 14px 14px; }
-.mir { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+.mir { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); }
 .mirHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.chk { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
-.chk th { text-align: left; font-size: 0.64rem; font-weight: 600; color: var(--ink-3); padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.chk { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.chk th { text-align: left; font-size: 10px; font-weight: 600; line-height: 1.3; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); padding: 4px 6px; border-bottom: 1px solid var(--line-strong); }
 .chk td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .chk td + td { width: 90px; font-weight: 600; text-align: center; }
 
@@ -238,27 +258,28 @@
 .flow .stage { margin-bottom: 10px; }
 .col { display: grid; align-content: start; gap: 8px; min-width: 0; padding-top: 2px; }
 .colHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.colHead b { font-size: 0.95rem; }
+.colHead b { font-size: 13px; font-weight: 600; }
 .col .detail { padding: 0; }
 .col .mirBox { padding: 0; }
-.col .kv { grid-template-columns: max-content 1fr; font-size: 0.74rem; }
+.col .kv { grid-template-columns: max-content 1fr; font-size: 11.5px; }
 
 /* ── 2026-10-09: ШАТНЫ МӨР (зөвхөн товчлуур) + ЦОНХ (popup) + цаасан баримт ── */
 .strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; padding: 10px 14px; }
 .stageBtn { all: unset; box-sizing: border-box; cursor: pointer; }
-.strip .stageBtn { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
-.strip .stageBtn:hover, .strip .stageBtn:focus-visible { border-color: var(--data); box-shadow: 0 0 0 2px color-mix(in srgb, var(--data) 25%, transparent); }
+.strip .stageBtn { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.strip .stageBtn:hover, .strip .stageBtn:focus-visible { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 8%, var(--surface)); }
 .stageSum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 .overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgb(0 0 0 / 0.5); }
-.modal { display: flex; flex-direction: column; width: min(1100px, 96vw); max-height: 92vh; max-height: 92dvh; border: 1px solid var(--line); border-radius: var(--r-lg, 10px); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); overflow: hidden; }
-.modalHead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
-.modalTitle { flex: 1; min-width: 0; margin: 0; font-size: 0.95rem; font-weight: 700; }
-.closeBtn { all: unset; cursor: pointer; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-sm); color: var(--ink-3); }
-.closeBtn:hover, .closeBtn:focus-visible { background: var(--sunken); color: var(--ink); }
+.modal { display: flex; flex-direction: column; width: min(1100px, 96vw); max-height: 92vh; max-height: 92dvh; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); overflow: hidden; }
+.modalHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: transparent; }
+.modalTitle { flex: 1; min-width: 0; margin: 0; font-size: 13px; font-weight: 600; }
+.closeBtn { all: unset; cursor: pointer; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--ink-3); }
+.closeBtn:hover, .closeBtn:focus-visible { background: var(--surface-2); color: var(--ink); }
 .modalBody { overflow-y: auto; padding: 14px; display: grid; gap: 12px; }
 .modalBody .detail { padding: 0; }
 .modalBody .mirBox { padding: 0; }
-.sheet { width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: var(--r-sm); background: #e9e9e9; }
+/* ⚠️ Цаасан баримтын урьдчилсан харагдац — цаасны саарал санаатай (UI өнгө биш) */
+.sheet { width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: var(--r); background: #e9e9e9; }
 
 @media (max-width: 900px) {
   .strip { grid-template-columns: 1fr 1fr; }
@@ -281,9 +302,9 @@
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface-2);
 }
-.matOpt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.76rem; cursor: pointer; }
+.matOpt { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .matOpt input { accent-color: var(--data); margin: 0; }
 .tabs { margin-top: 12px; }

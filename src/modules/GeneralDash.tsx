@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useId, useMemo, useRef, useState,
   type Dispatch, type SetStateAction,
 } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
@@ -11,7 +11,7 @@ import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
-import { CHART, lineSegments, glow } from '@/lib/chartStyle';
+import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
    төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
@@ -53,7 +53,7 @@ import {
   BUILT_STATUS,
 } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
-import { cat, mnt, num, pct, monthKey } from '@/lib/format';
+import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
   loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
@@ -813,7 +813,8 @@ export function GeneralDash({
               {cfMode === 'chart' && (
                 <span className={g.tlKey}>
                   {/* ⚠️ 2026-10-09: домгийн тэмдэг муруйтай ИЖИЛ — төлөвлөгөө ЦЭГЭН (лавлах CRM загвар, '1 5') */}
-                  <b style={{ height: 0, background: 'none', borderTop: '2px dotted var(--chart-plan)' }} />{tr('Төлөвлөсөн')}
+                  {/* ⚠️ 2026-10-23: Environment — муруйтай ижил ТАСАРХАЙ ('4 4') */}
+                  <b style={{ height: 2, background: 'repeating-linear-gradient(to right, var(--chart-plan) 0 4px, transparent 4px 8px)' }} />{tr('Төлөвлөсөн')}
                   <b style={{ background: 'var(--chart-actual)' }} />{tr('Олгосон')}
                   {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
                       хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
@@ -1570,8 +1571,9 @@ const countBars = (
  * ⚠️ Мөр бүр өөр өнгөтэй байх нь «ангилал бүр өөр зүйл» гэсэн утга дамжуулдаг
  * ч энд мөрүүд нь НЭГ хэмжигдэхүүний харьцуулалт тул өнгө мэдээлэл өгөхгүй,
  * зөвхөн шуугиан нэмнэ. Урт нь өөрөө харьцааг хэлнэ.
+ * ⚠️ 2026-10-23: Environment — НЭГ өнгө нь `--data` (moss), `cat(0)` слот БИШ.
  */
-const BAR_HUE = cat(0);
+const BAR_HUE = 'var(--data)';
 
 /**
  * «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» ЧАРТЫН МӨРҮҮД — ЯГ ЭДГЭЭР зургаан үзүүлэлт.
@@ -1905,6 +1907,8 @@ function Timeline({
     c: 'label' | 'sub' | 'pct' | 'ipc'; d: 1 | -1;
   }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
+  /** ⚠️ 2026-10-23: Environment — IPC-ийн талбайн градиентын давтагдашгүй id (`AreaChart`-ын `useId`) */
+  const gid = useId().replace(/:/g, '');
   /** Явагдаж буй чирэлтийн `window` сонсогчийг цэвэрлэгч — unmount-д дуудна (2026-10-09) */
   const dragOff = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragOff.current?.(); }, []);
@@ -2127,7 +2131,13 @@ function Timeline({
    * ⚠️ Налуу үед мөнгөн дүнг тэнхлэгээс ХАСНА: хоёр налуу мөр бие биенийхээ
    * дундуур гарна. Тэр тоо уншилтын мөрөнд hover-оор гарсаар байна.
    */
-  const tilt = n > 24;
+  /*
+   * ⚠️ 2026-10-23: Environment `AreaChart` — налалт −60° (45° БИШ), нөхцөл нь Env-ийнх:
+   *    цэг > 8 · ≥4 тэмдэгттэй шошго байгаа · хоосон бус шошго > 8. Сэлбэгийн сарын
+   *    тэнхлэг «06» (2 тэмдэгт) тул Env-ийн уртын нөхцөл хангагдахгүй ч 24-өөс олон үед
+   *    нүд нь шошгоос нарийн болж давхцдаг — хуучин `n > 24` нөхцлийг НЭМЭЛТ болгож үлдээв.
+   *    (`ticks`/`tilt` нь `shortLbl`-ийн ДАРАА — const функцийг зарлахаас өмнө дуудахгүй.)
+   */
   /**
    * ТЭНХЛЭГИЙН ШОШГО — ЗӨВХӨН ДОТООД хэсэг («06», «II»), он нь ДООРХ зурваст.
    *
@@ -2142,6 +2152,10 @@ function Timeline({
       : grain === 'quarter' ? (p.label.split(' ')[1] ?? p.label)
         : p.key.slice(5)
   );
+  const ticks = pts.map((p) => shortLbl(p));
+  const tilt = n > 8
+    && ticks.filter(Boolean).length > 8
+    && (ticks.some((t) => t.length >= 4) || n > 24);
   /**
    * ОНЫ БҮЛГҮҮД — зэргэлдээ нүднүүдийг он тус бүрээр нэгтгэнэ.
    *
@@ -2204,6 +2218,22 @@ function Timeline({
    */
   const path = curveOf((p) => p.pct);
   const ipcPath = curveOf((p) => p.ipcPct);
+  /*
+   * ⚠️ 2026-10-23: Environment `AreaChart` — бодит (IPC) муруйн ДООР tone .22→.02 градиент.
+   *    Хэсэг БҮРД тусдаа (`areaPath`) — null цоорхойд талбай ч ТАСАРНА (null ≠ 0). Төлөвлөгөө
+   *    (тасархай) нь таамаг тул талбайгүй. Мөнгөн БАГАНЫ «талбай биш» шийдвэр (2026-09-07)
+   *    үүнд хамаарахгүй — тэр нь олголтын ₮, энэ нь хуримтлагдсан хувийн муруй.
+   */
+  const ipcArea = (() => {
+    const vals = pts.map((p) => p.ipcPct);
+    if (vals.filter((v) => v != null && Number.isFinite(v)).length < 2) return '';
+    return lineSegments(vals.map((v, i) => (v == null || !Number.isFinite(v)
+      ? null
+      : { x: xOf(i), y: 100 - Math.max(0, Math.min(100, v)) })))
+      .map((s) => areaPath(s, 100))
+      .filter(Boolean)
+      .join(' ');
+  })();
   /**
    * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
    * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
@@ -2297,6 +2327,7 @@ function Timeline({
             * ⚠️ `hov` шалгана, `at` БИШ: `at` нь заагаагүй үед СҮҮЛИЙНХ рүү
             * унадаг тул зураас хулгана хүрээгүй байхад ч байнга гарна.
             */}
+          {/* ⚠️ 2026-10-23: Environment — crosshair tone (`--data`) 1px `2 2`, .7 (CSS) */}
           {hov != null && hov < n && (
             <i className={g.tlCursor} style={{ left: `${xOf(hov)}%` }} />
           )}
@@ -2339,7 +2370,15 @@ function Timeline({
           {/* ⚠️ 2026-10-09 (хэрэглэгчийн сонголт): S-муруйн бүдэг ХЭВТЭЭ ТОР 0/25/50/75/100%
               (`CHART.grid`) — муруйн ӨМНӨ зурагдана, тиймээс ард үлдэнэ. Өнгө `style`-аар
               (SVG шинж дотор `var()` бичихгүй — format.ts-ийн дүрэм). */}
-          {CHART.grid.map((v) => (
+          {/* ⚠️ 2026-10-23: Environment `AreaChart` — тор 0/25/50/75% БҮГД 1px ТАСАРХАЙ `3 4` `--line`
+              (суурь ч тасархай), ДЭЭД (100%) шугамгүй. */}
+          <defs>
+            <linearGradient id={`tlFill-${gid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" style={{ stopColor: 'var(--chart-actual)', stopOpacity: CHART.areaTop }} />
+              <stop offset="100%" style={{ stopColor: 'var(--chart-actual)', stopOpacity: CHART.areaBottom }} />
+            </linearGradient>
+          </defs>
+          {CHART.grid.filter((v) => v < 100).map((v) => (
             <line
               key={v}
               x1={0}
@@ -2347,35 +2386,26 @@ function Timeline({
               y1={100 - v}
               y2={100 - v}
               vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
+              style={{ stroke: 'var(--line)', strokeWidth: 1, strokeDasharray: '3 4' }}
             />
           ))}
-          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — нүдний ТӨВД (цэгтэй нэг
-              байрлал); олон үед (>12) тэнцүү алхмаар ~12 шугам л — 66 сарын шугам нь тор биш
-              «зурвас» болж муруйг дарна. */}
-          {pts.map((p, i) => ((n - 1 - i) % Math.max(1, Math.ceil(n / 12)) === 0 ? (
-            <line
-              key={`vg-${p.key}`}
-              x1={xOf(i)}
-              x2={xOf(i)}
-              y1={0}
-              y2={100}
-              vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
-            />
-          ) : null))}
+          {ipcArea && <path d={ipcArea} fill={`url(#tlFill-${gid})`} />}
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — нүдний ТӨВД байв.
+              ⚠️ 2026-10-23: Environment — БОСОО тор ХАСАГДСАН (хэвтээ тасархай л). */}
           {/* ⚠️ 2026-10-09: төлөвлөгөө `--chart-plan` 2px ТАСАРХАЙ (`CHART.planDash`) —
               «таамаг/төлөвлөгөө» гэж уншигдана; бодит IPC нь бүтэн.
               ⚠️ 2026-10-09 (лавлах CRM загвар): тасархай → ЦЭГЭН ('1 5', round cap), хоёр шугам
-              цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана). */}
+              цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана).
+              ⚠️ 2026-10-23: Environment — төлөвлөгөө `--chart-plan` ТАСАРХАЙ ('4 4', butt), бодит
+              `--chart-actual` (= --data) цул; гэрэлтэлт ХАСАГДСАН. */}
           <path
-            className={`${g.tlLine} chartGlow`}
+            className={g.tlLine}
             d={path}
             fill="none"
             vectorEffect="non-scaling-stroke"
             style={{
               stroke: 'var(--chart-plan)', strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash,
-              strokeLinecap: 'round', filter: glow('var(--chart-plan)'),
+              strokeLinecap: 'butt',
             }}
           />
           {/* ⚠️ IPC нь ТӨЛӨВЛӨГӨӨНИЙ ДАРАА зурагдана — давхцсан хэсэгт
@@ -2383,11 +2413,11 @@ function Timeline({
               гэдэг нь нэг харцаар уншигдана. */}
           {ipcPath && (
             <path
-              className={`${g.tlLineIpc} chartGlow`}
+              className={g.tlLineIpc}
               d={ipcPath}
               fill="none"
               vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke, filter: glow('var(--chart-actual)') }}
+              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke, strokeLinecap: 'round', strokeLinejoin: 'round' }}
             />
           )}
           {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
@@ -2409,10 +2439,12 @@ function Timeline({
               атал цэг нь тэг дээр эгнэж, «тэр саруудад төлөвлөгөө тэг» гэсэн
               худал уншилт төрнө. Муруй (`curveOf`) ч ЯГ ижил цэгүүдийг
               алгасдаг тул хоёулаа нийцнэ. */}
+          {/* ⚠️ 2026-10-23: Environment `AreaChart` — цэг 5px анхдагчаар .5 ХАРАГДАНА, заасан нь 1,
+              бусад нь .15 (`hov`-оор — заагаагүй үед бүгд .5); томруулахгүй, PILL-гүй. */}
           {pts.map((p, i) => (p.pct == null ? null : (
             <span
               key={p.key}
-              className={`${g.tlDot} ${i === at ? g.tlDotOn : ''}`}
+              className={`${g.tlDot} ${hov === i ? g.tlDotOn : hov != null && hov < n ? g.tlDotDim : ''}`}
               style={{
                 left: `${((i + 0.5) / n) * 100}%`,
                 bottom: `${Math.max(0, Math.min(100, p.pct))}%`,
@@ -2454,18 +2486,44 @@ function Timeline({
         * ирмэг дээр чирэх = СУНГАХ. Гурвуулаа нэг `drag()` дотор — тусдаа
         * бичвэл ирмэгүүд хоорондоо солигдох (`lo > hi`) тохиолдол гарна.
         */}
+      {/*
+        * ⚠️ 2026-10-23: Environment `YearRange` — хоёр үзүүрт 12px/500 PILL (эхлэл/төгсгөлийн
+        *    үе), дунд нь «Бүх хугацаа» эсвэл мужийн урт; 3px зам `--paper-hi`, сонгосон муж
+        *    `--data`; 12px дөрвөлжин бариул (булан 2, 1.5px moss хүрээ, `--surface`); доор үе
+        *    бүрийн 1px зураас (мужид `--data` .8). Чирэх зан (шинээр · зөөх · сунгах) ХЭВЭЭР.
+        */}
       {N > 12 && (
-        <div className={g.tlZoom} ref={barRef} onPointerDown={drag('new')}>
-          <div
-            className={g.tlZoomWin}
-            style={{
-              left: `${(lo / (N - 1)) * 100}%`,
-              right: `${100 - (hi / (N - 1)) * 100}%`,
-            }}
-            onPointerDown={drag('move')}
-          >
-            <i className={g.tlZoomGrip} onPointerDown={drag('lo')} />
-            <i className={`${g.tlZoomGrip} ${g.tlZoomGripR}`} onPointerDown={drag('hi')} />
+        <div className={g.tlRange}>
+          <div className={g.tlRangeHead}>
+            <span className={g.tlRangePill}>{all[lo].label}</span>
+            <span className={g.tlRangeRule} />
+            <span className={g.tlRangeSpan}>
+              {!zoom || (lo === 0 && hi === N - 1)
+                ? tr('Бүх хугацаа')
+                : grain === 'year' ? tr('{0} жил', hi - lo + 1)
+                  : grain === 'quarter' ? tr('{0} улирал', hi - lo + 1)
+                    : tr('{0} сар', hi - lo + 1)}
+            </span>
+            <span className={g.tlRangeRule} />
+            <span className={g.tlRangePill}>{all[hi].label}</span>
+          </div>
+          <div className={g.tlZoom} ref={barRef} onPointerDown={drag('new')}>
+            <div
+              className={g.tlZoomWin}
+              style={{
+                left: `${(lo / (N - 1)) * 100}%`,
+                right: `${100 - (hi / (N - 1)) * 100}%`,
+              }}
+              onPointerDown={drag('move')}
+            >
+              <i className={g.tlZoomGrip} onPointerDown={drag('lo')} />
+              <i className={`${g.tlZoomGrip} ${g.tlZoomGripR}`} onPointerDown={drag('hi')} />
+            </div>
+          </div>
+          <div className={g.tlRangeTicks} aria-hidden>
+            {all.map((p, i) => (
+              <i key={p.key} className={i >= lo && i <= hi ? g.tlRangeTickOn : undefined} />
+            ))}
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ import {
   type CSSProperties, type Dispatch, type SetStateAction, type ReactNode,
   type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, EyeOff, Search, X } from 'lucide-react';
 import { Icon } from './Icon';
 import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
@@ -341,23 +342,30 @@ export const LayerCatalog = memo(function LayerCatalog({
           title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
           aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
-          {shut.size ? '▸' : '▾'}
+          {/* ⚠️ 2026-10-23: Environment — lucide дүрс (урьд нь «▸/▾» тэмдэгт) */}
+          {shut.size ? <ChevronsUpDown size={14} strokeWidth={1.6} aria-hidden /> : <ChevronsDownUp size={14} strokeWidth={1.6} aria-hidden />}
         </button>
         {!pinned && (
-          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>×</button>
+          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>
+            <X size={14} strokeWidth={1.6} aria-hidden />
+          </button>
         )}
       </header>
 
       <div className={s.body}>
-        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️) */}
-        <input
-          type="search"
-          className={s.search}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={tr('Давхарга хайх…')}
-          aria-label={tr('Давхарга хайх')}
-        />
+        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️).
+            ⚠️ 2026-10-23: Environment `.dataset-panel-search` — дүрстэй хайрцаг (оролт нь хэвээр). */}
+        <label className={s.searchBox}>
+          <Search size={13} strokeWidth={1.75} aria-hidden />
+          <input
+            type="search"
+            className={s.search}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={tr('Давхарга хайх…')}
+            aria-label={tr('Давхарга хайх')}
+          />
+        </label>
 
         {/* БҮХ ДАВХАРГЫГ УНТРААХ — жагсаалтын хамгийн дээд, тусдаа том товч
             (хэрэглэгчийн хүсэлт: шууд нүдэнд харагдахуйц). Унтраах юмгүй үед
@@ -370,7 +378,7 @@ export const LayerCatalog = memo(function LayerCatalog({
           disabled={visible.filter((id) => all.includes(id)).length === 0}
           onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
         >
-          <Icon name="layers" size={15} />
+          <EyeOff size={14} strokeWidth={1.6} aria-hidden />
           {tr('Бүх давхаргыг унтраах')}
           {onCount > 0 && <span className={`${s.allOffCount} num`}>{onCount}</span>}
         </button>
@@ -461,7 +469,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                           setOpenState(g.key, on === 0);
                         }}
                       >
-                        <span className={s.groupIcon}><Icon name={g.icon} size={15} /></span>
+                        <span className={s.groupIcon}><Icon name={g.icon} size={16} /></span>
                         <span className={s.groupTitle}>{g.title}</span>
                         {/* Тоолуур — товч БИШ, зөвхөн төлөв заана */}
                         <span className={`${s.groupBtn} num`}>{on}/{ids.length}</span>
@@ -476,7 +484,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                         className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`}
                         onClick={() => setOpenState(g.key, !open)}
                       >
-                        ▾
+                        <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
                       </button>
                     </div>
 
@@ -530,7 +538,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                               className={s.rowChart}
                               onClick={() => onSelect(d.id)}
                             >
-                              <Icon name="chart" size={13} />
+                              <Icon name="chart" size={14} />
                             </button>
 
                             {/* Ангиллаараа задарсан давхарга — доор нь дэд мөрүүд */}

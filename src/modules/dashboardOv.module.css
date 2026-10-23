@@ -5,6 +5,11 @@
    хуваалцахгүй. Графикийн хэмжээ (өндөр, мөрийн нягт г.м.)-г энд өөрчлөхөд
    БУСАД харагдацад огт нөлөөлөхгүй тул цөөн/олон өгөгдөлтэй график бүрийг
    өөрт нь тохируулж болно.
+   ⚠️ 2026-10-23: Environment — карт/KPI/зурвас 12–13px булан, 1px --line, --surface
+   (сүүдэргүй); KPI нүд .analytics-stat (10.5px uppercase шошго lh 1.3, 600 утга);
+   графикийн картын толгой 9px 12px; идэвхтэй хэсгийн капсул --workspace-accent;
+   хөвөгч хавтан (каталог, шүүлтийн чип) --line-strong + --shadow + blur; жин ≤600.
+   Хуучин «envhub 2px/4px» радиусын тайлбарууд энэ дүрмээр солигдсон.
    ══════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════════
@@ -186,12 +191,14 @@
      · дотоод зай 6–9px, хүрээ 1px, радиус жижиг — Grafana/Metabase-ийн хэл.
    ══════════════════════════════════════════════════════════════════ */
 /* ── Карт: нимгэн толгой, нягт бие ── */
-.shell[data-detail='1'] .panel { border-radius: 4px; }
+/* ⚠️ 2026-10-23: Environment — 4px → 12px булан (картын нэгдсэн хэл), толгой 9px 12px. */
+.shell[data-detail='1'] .panel { border-radius: var(--r-lg); }
 
-.shell[data-detail='1'] .panelHead { padding: 5px 9px; }
+.shell[data-detail='1'] .panelHead { padding: 9px 12px; }
 
 .shell[data-detail='1'] .panelTitle {
   font-size: 10.5px;
+  line-height: 1.3;
   letter-spacing: 0.08em;
   color: var(--ink-2);
 }
@@ -202,9 +209,10 @@
 
 /* ── Үзүүлэлтийн нүд ── */
 .shell[data-detail='1'] :global(.statCard) {
-  gap: 3px;
-  padding: 6px 9px;
-  border-radius: 4px;
+  gap: 4px;
+  padding: 10px 12px;
+  /* ⚠️ 2026-10-23: Environment — .analytics-stat-ийн 13px булан */
+  border-radius: var(--r-xl);
   /* ⚠️ tint-ийг БҮРМӨСӨН унтраана — `statAccent`-ийн градиент, өнгөт хүрээ
      хоёулаа энд хүчингүй. Дуудагч талын `accent`/`color` пропыг засах
      шаардлагагүй: бусад харагдацад (Иргэд, Багц) хэвээр ажиллана. */
@@ -215,7 +223,7 @@
 .shell[data-detail='1'] :global(.statNum) {
   font-size: 21px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.04em;
   /* ⚠️ `--tone` БИШ: өнгөт тоо нь харанхуй дэвсгэр дээр контраст алддаг */
   color: var(--ink);
 }
@@ -226,9 +234,9 @@
   /* Нөөцлөсөн 26px-гүй, гэхдээ шошго «…» болохгүй — 2 мөрөнд бүтэн
      (2026-08-21 аудит: нэг мөрийн таслалт урт монгол нэрийг иддэг байв) */
   min-height: 0;
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.1em;
-  line-height: 1.2;
+  line-height: 1.3;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -330,18 +338,20 @@
   outline-offset: 2px;
 }
 
-/* ── ИДЭВХТЭЙ — дүүрэн будагдана ── */
+/* ── ИДЭВХТЭЙ — дүүрэн будагдана ──
+   ⚠️ 2026-10-23: Environment — дүүргэлт нь гол товчны хос токен
+   (`--workspace-accent` / `-ink`): бараанд лайм дээр бараан бэх. */
 .railOn,
 .railOn:hover {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--workspace-accent);
+  border-color: var(--workspace-accent);
 }
 
 /* Цэг дүүрч «асав» гэж хэлнэ */
 .railOn::before,
 .railOn:hover::before {
-  background: var(--surface);
-  border-color: var(--surface);
+  background: var(--workspace-accent-ink);
+  border-color: var(--workspace-accent-ink);
 }
 
 /* ── Товчны дотоод бичиг ── */
@@ -375,14 +385,14 @@
 .railItem:hover .railTitle { color: var(--accent); }
 
 .railOn .railTitle,
-.railOn:hover .railTitle { color: var(--surface); }
+.railOn:hover .railTitle { color: var(--workspace-accent-ink); }
 
 /* Утга — товчны баруун ирмэгт, нэрээс тодорхой ялгарна */
 .railVal {
   flex: none;
   margin-left: auto;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -393,7 +403,7 @@
 .railItem:hover .railVal { color: var(--accent); }
 
 .railOn .railVal,
-.railOn:hover .railVal { color: var(--surface); }
+.railOn:hover .railVal { color: var(--workspace-accent-ink); }
 
 /* ⚠️ `.railBar` (явцын зурвас) ба `.railNote` (тайлбар мөр) ХАСАГДСАН —
    товчинд зөвхөн нэр ба утга. `railStat()` нь `pct`/`tone`/`note`-оо
@@ -547,10 +557,11 @@
   justify-content: flex-start;
   gap: 5px;
   text-align: left;
-  padding: 9px 12px;
+  /* ⚠️ 2026-10-23: Environment — .analytics-stat (13px булан, 12/16px зай) */
+  padding: 12px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-xl);
 }
 
 .tileLabel { order: -1; }
@@ -593,7 +604,7 @@
   font-size: 18px;
   font-weight: 600;
   line-height: 1.05;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -615,7 +626,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 
@@ -641,7 +652,8 @@
    */
   max-height: 62dvh;
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
+  background: var(--sunken);
   overflow: hidden;
 }
 
@@ -671,7 +683,7 @@
    */
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 /* Картын БИЕ — толгойн доор, ӨӨРӨӨ гүйнэ (envhub: `min-h-0 flex-1
@@ -686,7 +698,7 @@
   overflow: visible;
   padding: 12px;
   /* Радиусын таслалт нь одоо ЭНД (карт өөрөө overflow-гүй болсон) */
-  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 
 .panelHead {
@@ -695,13 +707,14 @@
   justify-content: space-between;
   gap: 8px;
   flex: none;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 
+/* ⚠️ 2026-10-23: Environment — гарчиг 12px/600, uppercase тул line-height 1.3 */
 .panelTitle {
-  font-size: 13.5px;
-  line-height: 1;
+  font-size: 12px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -716,7 +729,7 @@
  * тайрагдаж байлаа. Одоо зай хүрэхгүй бол «…»-ээр төгсөнө.
  */
 .panelNote {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--ink-3);
   min-width: 0;
   /* 2026-08-21 аудит: нэг мөрийн «…» нь тоо агуулсан тайлбарыг («173 байгууламж»
@@ -739,7 +752,7 @@
   margin-top: 9px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
-  font-size: 0.71rem;
+  font-size: 11.5px;
   line-height: 1.55;
   color: var(--ink-3);
 }
@@ -782,8 +795,8 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }
@@ -808,30 +821,35 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  padding: 5px 6px 5px 11px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  font-size: 0.78rem;
+  /* ⚠️ 2026-10-23: Environment — газрын зураг дээрх сонгогдсон шүүлт: paper 94% +
+     blur, moss 45% хүрээ, 8px булан, жижиг сүүдэр. */
+  min-height: 28px;
+  padding: 3px 4px 3px 10px;
+  background: color-mix(in oklab, color-mix(in oklab, var(--data) 12%, var(--surface)) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
 }
 
-.filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.filterLabel { font-weight: 600; color: var(--data); overflow-wrap: anywhere; }
 
 .filterClear {
   display: grid;
   place-items: center;
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
   flex: none;
-  border-radius: 50%;
-  font-size: 1.12rem;
+  border-radius: var(--r-sm);
+  font-size: 16px;
   line-height: 1;
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
 
-.filterClear:hover { background: var(--sunken); color: var(--ink); }
+.filterClear:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ══════════════════ Дэлгэц бага үед ══════════════════ */
 /**
@@ -969,11 +987,11 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 
-.indCell { display: flex; flex-direction: column; padding: 10px 13px; background: var(--surface); min-width: 0; }
+.indCell { display: flex; flex-direction: column; padding: 14px 18px; background: var(--surface); min-width: 0; }
 
 /* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
 .indLabel { display: block; min-height: 28px; font-size: 10px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
@@ -995,8 +1013,10 @@
 .indVal {
   font-size: 19px;
   line-height: 1.15;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.04em;
   color: var(--ink);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: normal;
   word-break: keep-all;
 }
@@ -1137,7 +1157,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна */
@@ -1170,7 +1190,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='scope'] .zTop :global(.barsList),
@@ -1233,7 +1253,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд — агуулга ГОЛЛУУЛСАН; 4 нүд тул 01-ээс өргөн, зай сул */
@@ -1261,7 +1281,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='schedule'] .zTop :global(.barsList),
@@ -1324,7 +1344,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд — агуулга ГОЛЛУУЛСАН */
@@ -1352,7 +1372,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='land'] .zTop :global(.barsList),
@@ -1415,7 +1435,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд — агуулга ГОЛЛУУЛСАН */
@@ -1442,7 +1462,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='bagts'] .zTop :global(.barsList),
@@ -1511,7 +1531,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
@@ -1540,7 +1560,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.barsList),
@@ -1609,7 +1629,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
@@ -1640,7 +1660,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.barsList),
@@ -1707,7 +1727,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
@@ -1738,7 +1758,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.barsList),
@@ -1807,7 +1827,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
@@ -1838,7 +1858,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.barsList),
@@ -1907,7 +1927,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Нүд бүр өөрийн хүрээгүй — зааг нь савны `gap`-аас гарна; агуулга ГОЛЛУУЛСАН */
@@ -1938,7 +1958,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.barsList),

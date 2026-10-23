@@ -40,10 +40,9 @@
   color: var(--ink);
 }
 
-/* ⚠️ 2026-08-18 (envhub шилжилт): картын хүрээ/гарчгийн локал override-ууд
-   ХАСАГДАВ — Section нь ui.module.css-ээс envhub Box+Head төрхөө (hairline,
-   var(--r-sm), 13.5px uppercase гарчиг) аль хэдийн авдаг тул энд давхарлах
-   шаардлагагүй. Cyan `--hue` hex мөн хасагдав — глобал `--hue: var(--data)`. */
+/* ⚠️ 2026-10-23: Environment — картын хүрээ/гарчгийн локал override БАЙХГҮЙ:
+   Section нь ui.module.css-ээс Environment картын төрхөө (12px булан, --line
+   хүрээ, --surface, сүүдэргүй) авдаг. `--hue` = глобал `--data` (moss). */
 
 /* ── Дээд KPI зурвас — envhub Indicator (нэг мөр хавтангууд) ── */
 .kpi {
@@ -57,12 +56,15 @@
    зүүн зэрэгцүүлэлт) авдаг — энд зөвхөн индикаторын ТОМ утгын хэмжээ:
    19–20px/500, var(--ink). Акцент өнгөөр будахгүй — гол утга байрлалаараа
    ялгарна (envhub Indicator дүрэм). */
-.kpi > div { border-radius: var(--r-sm); }
+/* ⚠️ 2026-10-23: Environment — `.analytics-stat` (булан 13px · утга compact 17px/600/-0.04em).
+   Мөнгөн дүн урт тул 23px биш compact хэмжээ. */
+.kpi > div { border-radius: var(--r-xl); }
 /* `:global(.num)` — зөвхөн утгын span (шошго ба Empty-д халдахгүй) */
 .kpi > div > :global(.num) {
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 1;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
   color: var(--ink);
 }
 
@@ -94,9 +96,10 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
+  background: var(--sunken);
 }
 
 /* ── УЛААН alert-ийн анивчилт (жагсаалтын ⚠ тэмдэг) ── */
@@ -130,20 +133,24 @@
   .alertBlink, .alertCard section { animation: none; }
 }
 
-/* Барилгын хяналт руу буцах товч */
+/* Барилгын хяналт руу буцах товч — ⚠️ 2026-10-23: Environment `.pe-ghost` (32px · булан 8px · 12px/500) */
 .backBtn {
   flex: none;
   align-self: flex-start;
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
   color: var(--ink-2);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
-.backBtn:hover { color: var(--ink); }
+.backBtn:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ── Нарийн дэлгэц — босоо цуваа ── */
 /* Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). */
@@ -165,24 +172,33 @@
 /* ══════════ 2026-08-18: багцын хоцрогдол ба задаргаа (хэрэглэгчийн хүсэлт) ══════════ */
 
 /* Хоцрогдлын тэмдэг — ⚠ + зөрүү% + төлөвлөсөн/бодит. Урьд нь зөвхөн ⚠ байв.
-   Жижиг pill (999px нь envhub-д badge-д зөвшөөрөгдсөн цорын ганц дугуй). */
+   ⚠️ 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8%. */
 .gapBadge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 2px 7px;
-  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.gapBadge small { font-size: 0.86em; font-weight: 600; opacity: 0.72; }
+.gapBadge small { font-size: 0.86em; font-weight: 500; opacity: 0.72; }
 /* Текстэд light горимд -ink хувилбар (4.5:1), dark-д fill өнгө нь өөрөө хүрэлцдэг */
-.gapRed { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad-ink, var(--bad)); }
-.gapYellow { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn-ink, var(--warn)); }
+.gapRed {
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  color: var(--bad-ink, var(--bad));
+}
+.gapYellow {
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
+  color: var(--warn-ink, var(--warn));
+}
 
 /* ⚠️ .packExpand / .packLegend ХАСАГДСАН (2026-08-25): жагсаалтын доторх
    жижиг график устгагдсан тул түүний бүрхүүл, легенд хэрэггүй болов. */
@@ -202,26 +218,31 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  line-height: 1.3;
   color: var(--ink-3);
   cursor: pointer;
 }
 
 /* ── Төслийн нийт давхцсан үлдсэн нэгж талбарын карт (2026-08-21 буцаав) —
       envhub Indicator өрлөг: жижиг eyebrow шошго дээр, ТОМ утга доор ── */
+/* ⚠️ 2026-10-23: Environment `.analytics-stat` — шошго 10px ink-3, утга 23px/600/-0.04em */
 .ovTotLabel {
   display: block;
-  margin-bottom: 6px;
-  font-size: 10.5px;
+  margin-bottom: 5px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  line-height: 1.4;
   color: var(--ink-3);
 }
 .ovTotVal {
   display: block;
-  font-size: 26px;
+  font-size: 23px;
   font-weight: 600;
-  line-height: 1;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД суулгана (2026-08-21):
@@ -272,7 +293,7 @@
   transition: background 0.14s var(--ease, ease);
 }
 .list section > header:hover {
-  background: color-mix(in srgb, var(--hue) 8%, transparent);
+  background: var(--surface-2);
 }
 
 /* Хаалттай карт — зөвхөн гарчиг үлдэх тул доод зай хэрэггүй */
@@ -303,16 +324,17 @@
 /* ── СОНГОСОН БАГЦ — жагсаалтад тод тэмдэглэгдэнэ ──
    ⚠️ Урьд нь сонголт зөвхөн баруун картаар мэдрэгддэг байсан тул хэрэглэгч
    жагсаалт руу буцахад аль мөр идэвхтэйг хайдаг байв. */
+/* ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12% + inset 3px moss зүүн зурвас */
 .list [aria-pressed='true'] {
-  background: color-mix(in srgb, var(--hue) 10%, transparent);
-  box-shadow: inset 2px 0 0 var(--hue);
+  background: color-mix(in oklab, var(--moss) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--moss);
 }
 
-/* Дээд KPI зурвасын доогуур нимгэн зурвас — аль горимд байгааг захаас нь
-   хэлнэ. Гарчиг уншихгүйгээр өнгө нь өөрөө ялгана. */
+/* Дээд KPI зурвасын доогуур нимгэн зааг.
+   ⚠️ 2026-10-23: Environment — өнгөт 2px зурвас биш 1px --line (гүнийг зураасаар). */
 .kpi {
   padding-bottom: 8px;
-  border-bottom: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  border-bottom: 1px solid var(--line);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -364,10 +386,13 @@
 /* Тор — өгөгдлөөс илүү анхаарал татахгүй */
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): хэвтээ + БОСОО тор, бүрэн `--chart-grid` (0.6 бүдгэрүүлэлтгүй —
    токен өөрөө hairline тунгалаг) */
-.progGrid { stroke: var(--chart-grid); stroke-width: 1; }
-.progCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
-.progAxisY { fill: var(--ink-3); font-size: 10px; opacity: 0.75; font-variant-numeric: tabular-nums; }
-.progAxisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-10-23: Environment `AreaChart` — БОСОО тор хасагдсан; хэвтээ нь БҮГД 1px тасархай `3 4` `--line`.
+   Crosshair нь `--data` 1px `2 2` .7; Y шошго 9px бүтэн тунгалаг; заасан сарын X шошго `--ink`. */
+.progGrid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.progCursor { stroke: var(--data); stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.7; }
+.progAxisY { fill: var(--ink-3); font-size: 9px; font-variant-numeric: tabular-nums; }
+.progAxisX { fill: var(--ink-3); font-size: 10px; font-variant-numeric: tabular-nums; }
+.progAxisX.progAxisXOn { fill: var(--ink); }
 
 /* ── ЗӨРҮҮГИЙН ТАЛБАЙ ──
    Байрлалаараа утгатай: бодит нь төлөвлөгөөнөөс ДООГУУР бол улаан. */
@@ -381,12 +406,13 @@
       тасархай `CHART.planDash` — бүх S-муруйд нэг дүрэм. Зузаан/тасархайг tsx-ээс
       inline давхар өгдөг; энд өөрчилбөл `chartStyle.ts`-д ч өөрчил. */
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): төлөвлөгөө ЦЭГЭН `1 5` (round cap) — `CHART.planDash` */
+/* ⚠️ 2026-10-23: Environment — буцаад ТАСАРХАЙ `4 4` (`CHART.planDash`), butt үзүүр; tsx-ээс inline давхар. */
 .progPlan {
   fill: none;
   stroke-width: 2;
-  stroke-dasharray: 1 5;
+  stroke-dasharray: 4 4;
   stroke-linejoin: round;
-  stroke-linecap: round;
+  stroke-linecap: butt;
 }
 .progAct {
   fill: none;
@@ -394,24 +420,24 @@
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.progDot { stroke: var(--surface); stroke-width: 2; }
-.progEnd { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-10-23: Environment — 5px цэг + 2px `--surface` цагираг; тунгалгийг tsx өгнө (.5 / 1 / .15) */
+.progDot { stroke: var(--surface); stroke-width: 2; transition: opacity 150ms; }
+/* Сүүлийн цэгийн утга — ⚠️ 2026-10-23: Environment — бусад шошготой ижил 10px/400 ink-2 (урьд 12px/600) */
+.progEnd { font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; fill: var(--ink-2); }
 
 /**
  * ЦЭГ БҮРИЙН УТГА — муруйн дагуух жижиг тоонууд.
- * ⚠️ `paint-order: stroke` + дэвсгэрийн өнгөт зузаан контур: тоо нь торны
- * шугам, нөгөө муруйн дээгүүр таарсан ч уншигдана. Үүнгүйгээр 12 сарын
- * шошго муруйтай нийлж «бохир» болно.
+ * ⚠️ 2026-10-23: Environment `AreaChart` — 10px/400 `--ink-2` (заасан сард `--ink`), halo-ГҮЙ.
+ *    Урьд нь `paint-order: stroke` + `--surface` контуртай, 600 жинтэй, цувааны өнгөтэй байв.
  */
 .progVal {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  paint-order: stroke;
-  stroke: var(--surface);
-  stroke-width: 3px;
-  stroke-linejoin: round;
+  fill: var(--ink-2);
 }
+.progVal.progValOn,
+.progEnd.progValOn { fill: var(--ink); }
 
 /*
  * ТӨЛӨВЛӨСӨН ОБЬЁМ — хувийн ХАЖУУД, БҮДЭГ (2026-09-09).
@@ -423,8 +449,8 @@
 .progVol { font-size: 9px; font-weight: 500; opacity: 0.62; }
 
 /* Гарчгийн баруун талын одоогийн зөрүү */
-.progBad { color: var(--bad-ink, var(--bad)); font-weight: 700; font-variant-numeric: tabular-nums; }
-.progGood { color: var(--good-ink, var(--good)); font-weight: 700; font-variant-numeric: tabular-nums; }
+.progBad { color: var(--bad-ink, var(--bad)); font-weight: 600; font-variant-numeric: tabular-nums; }
+.progGood { color: var(--good-ink, var(--good)); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Легенд — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана */
 .progLegend {
@@ -432,7 +458,7 @@
   flex-wrap: wrap;
   gap: 6px 18px;
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 10.5px; /* ⚠️ 2026-10-23: Environment-ийн графикийн тайлбар 10.5px ink-2 */
   color: var(--ink-2);
 }
 .progLegend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -440,7 +466,15 @@
 /* ⚠️ 2026-10-09: тэмдэг нь шугамтай ИЖИЛ 2px (урьд бодит 3px, тасархай 0.85 бүдэг) */
 .progSolid { width: 18px; height: 2px; border-radius: 1px; display: inline-block; flex: none; }
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): домгийн тэмдэг шугамтай ИЖИЛ — ЦЭГЭН */
-.progDash { width: 18px; height: 0; border-top: 2px dotted; display: inline-block; flex: none; }
+/* ⚠️ 2026-10-23: Environment — графикийн шугамтай ИЖИЛ ТАСАРХАЙ `4 4` (`CHART.planDash`); өнгийг tsx `color`-оор */
+.progDash {
+  width: 18px;
+  height: 2px;
+  display: inline-block;
+  flex: none;
+  color: var(--chart-plan);
+  background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px);
+}
 .progAreaBad,
 .progAreaGood { width: 18px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
 .progAreaBad { background: color-mix(in srgb, var(--bad) 22%, transparent); }
@@ -463,28 +497,43 @@
 }
 
 /* Tooltip — хөвөгч тул сүүдэр зөвшөөрөгдөнө
-   ⚠️ 2026-10-09: ComboChart-ын `.tip` (finance.module.css)-тэй ЯГ ижил загвар (min-width 160) */
+   ⚠️ 2026-10-09: ComboChart-ын `.tip` (finance.module.css)-тэй ЯГ ижил загвар
+   ⚠️ 2026-10-23: Environment `AreaChart` Tooltip — ЦЭГИЙН дэргэд (байрлалыг tsx: left/top/transform),
+   min 140, булан 12, `--line-strong` хүрээ, `--surface` 95% + blur; толгой 8×4 `--data` 10% дэвсгэр,
+   доод зураас, 6px цэг, 11.5/500; бие 8×6: утга 17/500 цувааны өнгөөр + нэгж 10.5 ink-3, ▲/▼ мөр. */
 .progTip {
   position: absolute;
-  top: 8px;
   z-index: 4;
-  min-width: 160px;
-  padding: 9px 11px;
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  min-width: 140px;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   pointer-events: none;
+  white-space: nowrap;
 }
-.progTipHd { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
-.progTipRow {
+.progTipHd {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  padding: 4px 8px;
   font-size: 11.5px;
-  color: var(--ink-2);
-  line-height: 1.7;
+  font-weight: 500;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 10%, transparent);
+  border-bottom: 1px solid var(--line);
 }
-.progTipRow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.progTipRow b { margin-left: auto; font-weight: 600; color: var(--ink); }
+.progTipDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.progTipBody { padding: 6px 8px; }
+.progTipMain { display: flex; align-items: baseline; gap: 4px; }
+.progTipBig { font-size: 17px; line-height: 1; font-weight: 500; }
+.progTipUnit { font-size: 10.5px; color: var(--ink-3); }
+.progTipMeta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 10.5px; color: var(--ink-3); }
+.progTipRow { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 10.5px; color: var(--ink-3); }
+.progTipRow i { width: 12px; height: 2px; flex: none; }
+.progTipRow b { margin-left: auto; padding-left: 12px; font-weight: 500; color: var(--ink-2); }
+/* Цувааны тэмдэг — шугамын ХЭЛБЭРИЙГ давтана: тасархай `4 4` `--chart-plan` */
+.progTipRow i.progTipSwDash { background: repeating-linear-gradient(90deg, var(--chart-plan) 0 4px, transparent 4px 8px); }
 .progTipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }

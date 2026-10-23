@@ -5,6 +5,9 @@
       зүүн дээд  · лого
       зүүн дунд  · төслийн нэр, тайлбар, үндсэн товч
       зүүн доод  · эзэмшигч
+
+   ⚠️ 2026-10-23: Environment нүүр (`workspace.css` §workspace-header · §intro-copy ·
+   §action-primary · §workspace-footer) — токен нь порталынх (`--bg`/`--ink`/`--moss`).
    ═══════════════════════════════════════════════════════════ */
 
 .wrap {
@@ -18,52 +21,40 @@
 }
 
 /*
- * ⚠️ Бүрхүүлийг ТЭЛЭХ шаардлагагүй болов. `-30px` нь зөвхөн `filter: blur()`-ийн
- * зөөлөрсөн ирмэгийг дэлгэцээс гаргах зорилготой байсан — бүдгэрүүлэлт байхгүй
- * бол тэр нь зүгээр л зургийн ирмэгийг илүү тайрна.
+ * ⚠️ 2026-09-06: агаарын зураг (`/home-bg.webp`) ХАСАГДАВ — нүүр самбартай
+ * ижил шалтгаан (`home.module.css`-ийн ⚠️-г үз). Нээлтийн хуудас нь
+ * порталтай НЭГ гадаргуутай болсноор нэвтрэх → портал шилжилт үсрэхээ болино.
+ * ⚠️ 2026-10-23: Environment — радиал толбо ч ХАСАГДАВ (брифийн «радиал градиент ХАСНА»).
  */
 .bg {
   position: absolute;
   inset: 0;
-  /*
-   * ⚠️ 2026-09-06: агаарын зураг (`/home-bg.webp`) ХАСАГДАВ — нүүр самбартай
-   * ижил шалтгаан (`home.module.css`-ийн ⚠️-г үз). Нээлтийн хуудас нь
-   * порталтай НЭГ гадаргуутай болсноор нэвтрэх → портал шилжилт үсрэхээ болино.
-   */
-  background:
-    radial-gradient(1200px 700px at 18% -10%,
-      color-mix(in srgb, var(--accent, var(--data)) 14%, transparent) 0%,
-      transparent 60%),
-    radial-gradient(900px 640px at 92% 104%,
-      color-mix(in srgb, var(--ink) 7%, transparent) 0%,
-      transparent 58%),
-    var(--bg);
-  /*
-   * ⚠️ БҮДГЭРҮҮЛЭЛТГҮЙ. Нээлтийн хуудсанд бичвэр цөөн бөгөөд том тул зургийг
-   * бүтнээр нь тод үзүүлж болно. (Самбарын дэвсгэр нь өөр: тэнд нягт бичвэр,
-   * карт дээгүүр нь суух тул `blur(9px)` хэвээр.)
-   */
+  background: var(--bg);
 }
 
-/* ══════════ Дээд зурвас ══════════ */
+/* ══════════ Дээд зурвас — Environment `.workspace-header` ══════════ */
 
 .top {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   /* Лого зүүн, нэвтрэх баруун — хооронд нь бүх зай */
   justify-content: space-between;
   gap: 20px;
-  padding: 20px clamp(22px, 4vw, 56px);
+  min-height: var(--head, 80px);
+  padding: 0 clamp(20px, 2.4vw, 48px);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-.logo { height: 34px; width: auto; flex: none; }
+.logo { height: 44px; width: auto; flex: none; }
 
-/* ══════════ Гол хэсэг ══════════ */
+/* ══════════ Гол хэсэг — Environment `.home-intro .intro-copy` ══════════ */
 
-/* Бичвэрийн зүүн зөөлт — гарчиг, шошго, алдааны мөрөнд ижил хэмжээгээр */
 .hero {
-  --indent: clamp(0px, 7vw, 120px);
   position: relative;
   flex: 1;
   display: flex;
@@ -71,60 +62,56 @@
   align-items: flex-start;      /* ⚠️ ЗҮҮН эгнээ — голд БИШ */
   justify-content: center;
   gap: 0;
-  padding: 0 clamp(22px, 4vw, 56px) 60px;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 40px clamp(20px, 2.4vw, 48px) 60px;
+}
+
+/* Environment `.section-kicker` — 10px/600/0.12em, 6px moss цэг */
+.tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.7;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.tag > span {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--moss);
 }
 
 /*
- * ⚠️ Том үсэгт `letter-spacing` ЭЕРЭГ байна — том үсэг хоорондоо ойртож
- * харагддаг тул сөрөг зайтай бол шахагдаж уншихад хүндэрнэ.
+ * HERO ГАРЧИГ — Environment `.intro-copy h1`: Manrope clamp(34–64px)/600/−0.055em, мөр 1.18;
+ * 2 дахь мөр (`.titleSub`) moss.
+ * ⚠️ 2026-10-23: урьдын 9.5rem UPPERCASE градиент бичиг (`background-clip: text`) хасагдав.
  */
 .title {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0 0 0 var(--indent);
-  font-family: var(--cond);
-  font-size: clamp(2.8rem, 12vw, 9.5rem);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  line-height: 0.98;
-  background: linear-gradient(96deg, var(--ink) 26%, var(--data) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.titleSub {
-  font-size: 0.3em;
+  margin: 28px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 3.9vw, 64px);
   font-weight: 600;
-  letter-spacing: 0.24em;
-  color: var(--ink-2);
-  /* ⚠️ Эцгийн градиентыг ӨВЛӨХГҮЙ — эс бөгөөс энэ мөр ч тунгалаг болно */
-  background: none;
-  -webkit-text-fill-color: var(--ink-2);
+  letter-spacing: -0.055em;
+  line-height: 1.18;
+  color: var(--ink);
 }
+.titleSub { color: var(--data); }
 
-/*
- * Гарчгийн доорх шошго.
- * ⚠️ Зүүн эгнээтэй тул `letter-spacing`-ийн сүүлийн зайг нөхөх хэрэггүй —
- * тэр гажилт зөвхөн ГОЛЛУУЛСАН бичвэрт мэдэгддэг.
- */
-.tag {
-  margin: 18px 0 0 var(--indent);
-  font-size: 1.45rem;
-  font-weight: 600;
-  letter-spacing: 0.36em;
-  text-transform: uppercase;
-  color: var(--data);
-}
-
-/* ⚠️ 2026-09-30: порталын нэг өгүүлбэрийн тайлбар — шошгоны доор, энгийн бичвэр */
+/* ⚠️ 2026-09-30: порталын нэг өгүүлбэрийн тайлбар — гарчгийн доор, энгийн бичвэр */
 .lede {
-  margin: 14px 0 0 var(--indent);
+  margin: 20px 0 0;
   max-width: 560px;
-  font-size: 1rem;
-  line-height: 1.55;
-  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-3);
 }
 
 /* Хэл солигч + нэвтрэх товч — баруун дээд буланд хамт */
@@ -132,57 +119,84 @@
 
 /* ══════════ Нэвтрэх ══════════ */
 
+/* Толгойн товч — Environment `.pe-ghost` (32px, 8px булан, `--line-strong`) */
 .enter {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--data) 16%, transparent);
-  color: var(--ink);
+  gap: 8px;
+  flex: none;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-2);
   font: inherit;
-  font-weight: 650;
-  letter-spacing: 0.03em;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.16s, border-color 0.16s, box-shadow 0.16s, transform 0.1s;
+  transition: background 0.16s, color 0.16s;
 }
-.enter {
-  /* ⚠️ Толгойн зурваст суух тул илүү нягт — гол товч биш, буланд байна */
-  flex: none;
-  padding: 9px 22px;
-  font-size: 0.85rem;
-}
+.enter:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.enter:disabled { opacity: 0.4; cursor: progress; }
 
-.enter:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--data) 26%, transparent);
-  border-color: color-mix(in srgb, var(--data) 70%, transparent);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--data) 22%, transparent);
-}
-.enter:active:not(:disabled) { transform: translateY(1px); }
-.enter:disabled { opacity: 0.55; cursor: progress; }
-.enter:focus-visible { outline: 2px solid var(--data); outline-offset: 3px; }
+.arrow { display: inline-flex; transition: transform 0.16s var(--ease); }
+.enter:hover:not(:disabled) .arrow { transform: translateX(3px); }
 
-.arrow { transition: transform 0.16s var(--ease); }
-.enter:hover:not(:disabled) .arrow { transform: translateX(4px); }
+/* Environment `.intro-actions` + `.action-primary` (46px, 8px булан, accent, 12px/600) */
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 28px;
+}
+.actionPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 46px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s;
+}
+.actionPrimary:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.actionPrimary:disabled { opacity: 0.4; cursor: progress; }
 
 .error {
-  margin: 18px 0 0 var(--indent);
+  margin: 18px 0 0;
   max-width: 540px;
-  font-size: 0.82rem;
-  color: var(--bad);
+  font-size: 12px;
+  color: var(--bad-ink, var(--bad));
 }
 
-/* ══════════ Хөл ══════════ */
+/* ══════════ Хөл — Environment `.workspace-footer` ══════════ */
 
 .foot {
   position: relative;
-  padding: 0 clamp(22px, 4vw, 56px) 22px;
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  width: calc(100% - 2 * clamp(20px, 2.4vw, 48px));
+  max-width: calc(1600px - 2 * clamp(20px, 2.4vw, 48px));
+  margin: 0 auto;
+  padding: 20px 0 22px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
   color: var(--ink-3);
 }
 
 @media (max-width: 620px) {
-  .hero { padding-bottom: 40px; }
+  .hero { padding: 28px 16px 40px; }
+  .top { padding: 0 16px; min-height: 64px; }
+  .logo { height: 34px; }
+  .foot { width: calc(100% - 32px); }
+  .enter { height: 44px; }
 }

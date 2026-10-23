@@ -73,6 +73,7 @@ export function Fig({ no, children }: { no: string; children: React.ReactNode })
  *    `chartTrack`/`chartFill` глобал нэрээр). «Эмфазис» (`hot`) нь `selected` БИШ —
  *    тэр нь бусад мөрийн НЭРИЙГ ч 0.35 болгож тайлангийн уншигдахыг бууруулна; өнгөний
  *    нягтаар ялгана (бусад нь `--data`-ийн 60%).
+ * ⚠️ 2026-10-23: Environment — `ui.Bars`-ийн зам 5px болсон (2px биш); энд өөрчлөлтгүй.
  */
 export function RankBars({
   items,
@@ -89,7 +90,8 @@ export function RankBars({
 }) {
   const vals = items.map((i) => i.value);
   const valid = vals.filter((v): v is number => v != null && Number.isFinite(v));
-  if (!items.length || !valid.length) return <p className={c.note}>{tr('мэдээлэлгүй')}</p>;
+  /* ⚠️ 2026-10-23: Environment `.chart-empty` — тасархай хүрээ, төвд `--ink-3`, дүрсгүй */
+  if (!items.length || !valid.length) return <p className={c.empty}>{tr('мэдээлэлгүй')}</p>;
   // Keep a common baseline, including measured zeroes and values above 100%.
   const top = Math.max(max ?? 0, ...valid, 1);
 
@@ -150,6 +152,7 @@ export { LATE_GAP };
  *    ШУУД (2px зам, төлөвлөгөөний зураас ±4px, hover = `useTip`). Энд зөвхөн тайлангийн
  *    ДҮРЭМ үлдэв: хоцрогдлын өнгө (`LATE_GAP`) ба 2 оронтой «Бодит · Төлөвлөгөө» бичвэр.
  *    Хэвлэлтийн өнгө `.meterBlock`-ийн `@media print`-д.
+ * ⚠️ 2026-10-23: Environment — `ui.Meter`-ийн зам 5px (`CHART.meterH`).
  */
 export function PlanMeter({
   value,

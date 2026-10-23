@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FileText, LoaderCircle } from 'lucide-react';
 import { tr } from '@/lib/i18n';
 import s from '@/app/shell.module.css';
 
@@ -35,6 +36,9 @@ export function ReportButton({ viewKey, title, desc, filters }: {
     }
   };
 
+  /* ⚠️ 2026-10-23: Environment — толгойн 40px ДУГУЙ дүрсэн товч (lucide FileText; бэлтгэж байхад Loader2 эргэнэ).
+     Урьдын «⤓ Тайлан» бичиг нь `aria-label`-д («Тайлан — …» / «Бэлтгэж байна…») шилжив. */
+  const label = busy ? tr('Бэлтгэж байна…') : `${tr('Тайлан')} — ${tr('«{0}» хэсгийн тайлан татах (Word)', title)}`;
   return (
     <button
       type="button"
@@ -42,14 +46,12 @@ export function ReportButton({ viewKey, title, desc, filters }: {
       onClick={onClick}
       disabled={busy}
       aria-busy={busy}
+      aria-label={label}
       title={tr('«{0}» хэсгийн тайлан татах (Word)', title)}
     >
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M12 3v12" />
-        <path d="M7 10l5 5 5-5" />
-        <path d="M5 21h14" />
-      </svg>
-      <span>{busy ? tr('Бэлтгэж байна…') : tr('Тайлан')}</span>
+      {busy
+        ? <LoaderCircle size={18} strokeWidth={1.6} className={s.spin} aria-hidden />
+        : <FileText size={18} strokeWidth={1.6} aria-hidden />}
     </button>
   );
 }

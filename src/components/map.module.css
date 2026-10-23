@@ -205,3 +205,9 @@
   top: auto;
   bottom: 72px;
 }
+/* ⚠️ 2026-10-23: нислэгийн зурвастай үед тунгалаг 56px дээш — каталог ч тэр хэмжээгээр эрт дуусна
+   (`opacity.module.css` §давхардалгүй, 0,3,0 > тэндхийн 0,2,0) */
+.wrap:has(.flightBar) *:has(> :global(.mapOpacity)) > *:has(> :global(.mapCatalog)),
+.wrap:has(.flightBar) *:has(> :global(.mapOpacity)) > :global(.mapCatalog) {
+  max-height: calc(100% - 88px - min(42%, 320px) - 82px);
+}

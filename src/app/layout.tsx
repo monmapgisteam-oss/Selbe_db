@@ -54,6 +54,8 @@ import '@/components/mapTools.module.css';
 import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
+// ⚠️ 2026-10-23: Environment — порталын чирэгддэг 3 багана (`ResizableColumns`)
+import '@/components/resizableColumns.module.css';
 
 /**
  * ⚠️ 2026-08-17: ГАНЦХАН гэр бүл — INTER (envhub «Environment» порталын дизайн

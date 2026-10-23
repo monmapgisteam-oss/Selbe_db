@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useId, Fragment, type MouseEvent, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -18,7 +18,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty, Note, userError, PointCallout, SvgHoverMarker, calloutAlign } from '@/components/ui';
+import { Data, Empty, Note, userError } from '@/components/ui';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, ArcGISError } from '@/lib/query';
@@ -92,10 +92,10 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
-import { mnt, num, pct, text, cat, date, monthKey, dayKey } from '@/lib/format';
+import { mnt, num, pct, text, date, monthKey, dayKey } from '@/lib/format';
 import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
-import { CHART, lineSegments, glow } from '@/lib/chartStyle';
+import { CHART, lineSegments } from '@/lib/chartStyle';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts, type FinancePublishInputs } from '@/lib/financePublish';
@@ -183,8 +183,11 @@ function ym(v: unknown): string | null {
 /* ⚠️ 2026-09-06: `PLAN` (индиго — төлөвлөгөөт муруй) ХАСАГДСАН, тэр цуваа
    өөрөө байхгүй болсон тул. Слот 1/2 нь CVD-ийн шалгуурт хамгийн сайн
    салгагдсан хос хэвээр. */
-const ACT = cat(0); // олгосон санхүүжилтийн өссөн ₮ — усан цэнхэр (аппын акцент)
-const PHYS = cat(1); // биет гүйцэтгэлийн % — улбар шар (муруй, хоёуланаас тодрох)
+/* ⚠️ 2026-10-23: Environment — график НЭГ өнгө (хэрэглэгчийн шийдвэр): `cat(0)`/`cat(1)` → бодит
+   (олголт) = `--data` БҮТЭН, биет = `--chart-plan` ТАСАРХАЙ (`CHART.planDash`). Хоёр цувааг өнгө биш
+   ХЭЛБЭР (бүтэн/тасархай) ялгана; PkgFin-ийн тайлбар (легенд) мөн ижил. */
+const ACT = 'var(--data)'; // олгосон санхүүжилтийн өссөн ₮ — бүтэн шугам
+const PHYS = 'var(--chart-plan)'; // биет гүйцэтгэлийн % — тасархай шугам
 
 type Row = Record<string, unknown>;
 
@@ -331,6 +334,11 @@ export type FinData = {
 
 // ═══════════════════════════════════════════════════════════
 //  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
+//  ⚠️ 2026-10-23: Environment — дахин glow-гүй (2026-10-09-ний гэрэлтэлт хасагдсан); тор нь
+//  хэвтээ квартал (0/¼/½/¾/1) БҮГД тасархай `3 4` (ёроол ч), босоо торгүй. Хоёр цуваа: олголт =
+//  `--data` бүтэн (доороо .22→.02 талбай), биет = `--chart-plan` тасархай — `cat(0)`/`cat(1)` ХАСАГДСАН.
+//  Цэг бүр үргэлж 5px (.5; заасан 1, бусад .15), шошго 10px/400 ink-2, tooltip нь Environment
+//  `AreaChart`-ынх шиг ЦЭГИЙН дэргэд; «PointCallout» pill · «SvgHoverMarker» ХАСАГДСАН.
 //  ГУРВАН шугам давхацна: төлөвлөгөө (PLAN) · олгосон санхүүжилт (ACT —
 //  нарийн, цэгтэй; 2026-08-21-нд багана байсныг шугам болгов) · биет (PHYS).
 //  X тэнхлэгт он сар + өссөн хувиуд цуваа өөрийн слотын өнгөөр.
@@ -374,6 +382,8 @@ export function ComboChart({
 }) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  /* Олголтын талбайн градиентийн id — нэг хуудсанд хэд хэдэн ComboChart байж болно */
+  const gid = useId().replace(/:/g, '');
   const N = items.length;
 
   /*
@@ -487,6 +497,8 @@ export function ComboChart({
     setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
   };
   const pt = hi != null ? rows[hi] : null;
+  /** Цэгийн тунгалаг — Environment `AreaChart`: энгийн .5, заасан 1, бусад .15 */
+  const dotOp = (i: number) => (hi == null ? 0.5 : i === hi ? 1 : 0.15);
 
   const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
@@ -501,13 +513,22 @@ export function ComboChart({
    * ⚠️ Цуваа бүр ТУСДАА: олголт муруйнхаа дээр, биет доор бичигддэг тул
    *    хоорондоо мөргөлдөхгүй; нэг цувааны дотор л зай шалгах ёстой.
    */
+  /* ⚠️ 2026-10-23: Environment `AreaChart` — эхлээд ≥11% алхмаар сийрэгжүүлнэ (эхний ба сүүлчийнх
+     ҮРГЭЛЖ, сүүлчийнхтэй 11%-иас ойр завсрынх алгасна), дараа нь дээрх ⚠️-ийн ЖИНХЭНЭ пикселийн
+     багтаамж (`fitLabels`). Дунд цэгүүдийн утга харагдсаар (зөвхөн төгсгөл БИШ). */
+  const envThin = (i: number, last: number) => {
+    if (N <= 1 || i === 0 || i === last) return true;
+    const gap = 100 / (N - 1);
+    const step = Math.max(1, Math.ceil(11 / gap));
+    return i % step === 0 && (last - i) * gap >= 11;
+  };
   const fitFor = (last: number, valOf: (r: typeof rows[number]) => string) => new Set(
     fitLabels(rows.slice(0, last + 1).map((r, i) => ({
       i,
       x: xFor(i),
       w: textW(valOf(r)),
       anchor: anchorFor(i),
-    }))),
+    })).filter((l) => envThin(l.i, last))),
   );
   const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
   /* ⚠️ 2026-10-09: `pct(v, 1)` — диаграм ба tooltip НЭГ формат (урьд нь toFixed(0) vs toFixed(1)) */
@@ -568,11 +589,11 @@ export function ComboChart({
             (`padL`) гаргаж, баруун зэрэгцүүлэв. Мөн 5 биш 4 шугам — нягт тор
             нь өгөгдлөөс илүү анхаарал татдаг. */}
         {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — он·сарын шошготой сар бүрд
-            1px `--chart-grid`; хэвтээ 4 шугам (тэнхлэгийн тоо) хэвээр. */}
-        {rows.map((r, i) => (axisLbl.has(i) ? (
-          <line key={`vg-${r.label}`} x1={xFor(i)} x2={xFor(i)} y1={padT} y2={padT + plotH} className={f.curveGrid} />
-        ) : null))}
-        {[0, 1 / 3, 2 / 3, 1].map((t) => {
+            1px `--chart-grid`; хэвтээ 4 шугам (тэнхлэгийн тоо) хэвээр.
+            ⚠️ 2026-10-23: Environment — БОСОО тор ХАСАГДСАН; хэвтээ нь 1px ТАСАРХАЙ.
+            ⚠️ 2026-10-23 (Environment `AreaChart`): 4 шугам (⅓) → КВАРТАЛ 0/¼/½/¾/1, БҮГД тасархай `3 4`
+               (ёроол ч — урьдын бүтэн/`3 3` зөрүү засагдсан); Y шошго 9px бүтэн тунгалаг. */}
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
           const gy = yFor(t * yMax);
           return (
             <g key={t}>
@@ -619,16 +640,67 @@ export function ComboChart({
         {/* ── МУРУЙНУУД — олгосон санхүүжилт (зузаан, бүтэн) ба биет гүйцэтгэл ── */}
         {/* ⚠️ 2026-10-09: хоёр шугам 2px (`CHART.stroke`; урьд олголт 2.8).
             ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`;
-            хэвлэхэд `chartGlow` унтраана). Дээрх «градиентгүй, glow-гүй» envhub-ийн хэлийг ОРЛОНО. */}
+            хэвлэхэд `chartGlow` унтраана). Дээрх «градиентгүй, glow-гүй» envhub-ийн хэлийг ОРЛОНО.
+            ⚠️ 2026-10-23: Environment — гэрэлтэлт ХАСАГДСАН (2px цул шугам).
+            ⚠️ 2026-10-23 (Environment `AreaChart`): олголтын муруйн ДООР `--data` .22→.02 градиент
+               талбай; биет нь `--chart-plan` ТАСАРХАЙ (`CHART.planDash`, `butt` үзүүр) — нэг өнгөт
+               графикт хоёр цувааг хэлбэрээр ялгана. */}
+        <defs>
+          <linearGradient id={`cmb-${gid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style={{ stopColor: ACT, stopOpacity: CHART.areaTop }} />
+            <stop offset="100%" style={{ stopColor: ACT, stopOpacity: CHART.areaBottom }} />
+          </linearGradient>
+        </defs>
         {givenSegs.map((seg) => (seg.single ? null : (
-          <path key={`gs-${seg.from}`} d={seg.d} className={`${f.actLine} chartGlow`} style={{ stroke: ACT, strokeWidth: CHART.stroke, filter: glow(ACT) }} vectorEffect="non-scaling-stroke" />
+          <path
+            key={`ga-${seg.from}`}
+            d={`${seg.d} L${seg.pts[seg.pts.length - 1].x},${padT + plotH} L${seg.pts[0].x},${padT + plotH} Z`}
+            style={{ fill: `url(#cmb-${gid})`, stroke: 'none' }}
+          />
         )))}
-        {physSegs.map((seg) => (!seg.single ? (
-          <path key={`ps-${seg.from}`} d={seg.d} className={`${f.physLine} chartGlow`} style={{ stroke: PHYS, strokeWidth: CHART.stroke, filter: glow(PHYS) }} vectorEffect="non-scaling-stroke" />
-        ) : (
-          /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул цэгээр */
-          <circle key={`ps-${seg.from}`} cx={seg.pts[0].x} cy={seg.pts[0].y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+        {givenSegs.map((seg) => (seg.single ? null : (
+          <path key={`gs-${seg.from}`} d={seg.d} className={f.actLine} style={{ stroke: ACT, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
         )))}
+        {/* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй; цэгийг доорх ЦЭГҮҮД давхарга зурна */}
+        {physSegs.map((seg) => (seg.single ? null : (
+          <path
+            key={`ps-${seg.from}`}
+            d={seg.d}
+            className={f.physLine}
+            style={{ stroke: PHYS, strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash, strokeLinecap: 'butt' }}
+            vectorEffect="non-scaling-stroke"
+          />
+        )))}
+
+        {/* ── HOVER — босоо шугам ──
+            ⚠️ 2026-10-23 (Environment `AreaChart`): crosshair нь `--data` 1px `2 2` .7; заасан сарын
+               7px тэмдэг (`SvgHoverMarker`) ХАСАГДСАН — цэг нь доорх давхаргад 1 тунгалагтай тодорно. */}
+        {hi != null && (
+          <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
+        )}
+
+        {/* ── ЦЭГҮҮД — Environment `AreaChart`: 5px + 2px `--surface` цагираг, ҮРГЭЛЖ харагдана
+            (.5; заасан сар 1, бусад .15; томруулахгүй). ⚠️ Биет нь зөвхөн ХЭМЖИГДСЭН сард (null ≠ 0). */}
+        {rows.map((r, i) => (i <= lastGiven ? (
+          <circle
+            key={`gd-${i}`}
+            cx={xFor(i)}
+            cy={yFor(r.givenCum)}
+            r={CHART.markerR + CHART.ring / 2}
+            className={f.sDot}
+            style={{ fill: ACT, strokeWidth: CHART.ring, opacity: dotOp(i) }}
+          />
+        ) : null))}
+        {rows.map((r, i) => (i <= lastPhys && r.physPct != null ? (
+          <circle
+            key={`pd-${i}`}
+            cx={xFor(i)}
+            cy={yPhys(r)}
+            r={CHART.markerR + CHART.ring / 2}
+            className={f.sDot}
+            style={{ fill: PHYS, strokeWidth: CHART.ring, opacity: dotOp(i) }}
+          />
+        ) : null))}
 
         {/* ── ЦЭГ БҮР ДЭЭР УТГА ──
             ⚠️ Зөвхөн эцсийн утга үзүүлэх нь БУРУУ байв: 12 сарын урт графикийг
@@ -636,15 +708,15 @@ export function ComboChart({
                утга нүдэнд харагдах ёстой.
             ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: олголт нь муруйнхаа ДООР, биет нь
                түүнээс илүү доор бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй. */}
-        {/* ⚠️ 2026-10-09 (лавлах CRM загвар): шошготой цэгийн ТЭМДЭГ нуугдсан (бичиг хэвээр);
-            тэмдэг нь зөвхөн заасан сард (`SvgHoverMarker`), тэр сарын бичиг pill-д шилжинэ. */}
+        {/* ⚠️ 2026-10-23 (Environment `AreaChart`): бичиг 10px/400 `--ink-2` (заасан сард `--ink`),
+            halo-гүй; заасан сарын бичиг ч ҮЛДЭНЭ (pill хасагдсан). */}
         {rows.map((r, i) => {
-          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i) || i === hi) return null;
+          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i)) return null;
           const x = xFor(i);
           const y = yFor(r.givenCum);
           return (
             <g key={`gv-${i}`}>
-              <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
+              <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={`${f.ptVal} ${i === hi ? f.ptValOn : ''}`} textAnchor={anchorFor(i)}>
                 {num(r.givenCum)}
               </text>
             </g>
@@ -652,80 +724,75 @@ export function ComboChart({
         })}
         {rows.map((r, i) => {
           // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
-          if (i > lastPhys || r.physPct == null || !physLbl.has(i) || i === hi) return null;
+          if (i > lastPhys || r.physPct == null || !physLbl.has(i)) return null;
           const x = xFor(i);
           const y = yPhys(r);
           return (
             <g key={`ph-${i}`}>
-              <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
+              <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={`${f.ptVal} ${i === hi ? f.ptValOn : ''}`} textAnchor={anchorFor(i)}>
                 {pct(r.physPct, 1)}
               </text>
             </g>
           );
         })}
 
-        {/* ── HOVER — босоо шугам + цуваа бүрийн цэг ── */}
-        {hi != null && (
-          <g>
-            <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
-            {/* ⚠️ 2026-10-09 (лавлах CRM загвар): r 4.5 + гало (`SvgHoverMarker`) */}
-            {hi <= lastGiven && <SvgHoverMarker cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} color={ACT} />}
-            {hi <= lastPhys && rows[hi].physPct != null && <SvgHoverMarker cx={xFor(hi)} cy={yPhys(rows[hi])} color={PHYS} />}
-          </g>
-        )}
-
         {/* ── X тэнхлэг — ЗӨВХӨН он сар. Хоёр хувийн мөр tooltip руу шилжсэн:
             тэдгээр нь харьцуулах биш, лавлах тоо тул байнга харагдах шаардлагагүй
             бөгөөд график доор гурван мөр эзэлж, муруйд өгөх зайг иддэг байв. */}
         {rows.map((r, i) => (axisLbl.has(i) ? (
-          <text key={r.label} x={xFor(i)} y={H - 10} className={f.axisX} textAnchor={anchorFor(i)}>
+          <text key={r.label} x={xFor(i)} y={H - 10} className={`${f.axisX} ${i === hi ? f.axisXOn : ''}`} textAnchor={anchorFor(i)}>
             {r.label}
           </text>
         ) : null))}
       </svg>
 
-      {/* ⚠️ 2026-10-09 (лавлах CRM загвар): заасан сарын УТГЫН PILL — олголт цэгийнхээ ДЭЭР, биет
-          ДООР (хоёр цуваа ойртсон ч давхцахгүй). `viewBox` = бодит px тул SVG-ийн цэгтэй ЯГ
-          давхцана. Задаргаа (бүтэн ₮) нь доорх tooltip-д хэвээр. */}
-      {pt && hi != null && (
-        <>
-          {hi <= lastGiven && pt.givenCum > 0 && (
-            <PointCallout
-              x={xFor(hi)}
-              y={yFor(pt.givenCum)}
-              text={num(pt.givenCum)}
-              color={ACT}
-              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
-            />
-          )}
-          {hi <= lastPhys && pt.physPct != null && (
-            <PointCallout
-              x={xFor(hi)}
-              y={yPhys(pt)}
-              text={pct(pt.physPct, 1)}
-              color={PHYS}
-              below
-              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
-            />
-          )}
-        </>
-      )}
-
-      {/* ── TOOLTIP — задаргаа бүхэлдээ энд ── */}
-      {pt && (
-        <div
-          className={f.tip}
-          /* ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
+      {/* ── TOOLTIP — задаргаа бүхэлдээ энд ──
+          ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
              муруйн цэгтэй яг давхцана; урьд нь wrap-ийн %-оор тул `padL`-ийн хэрээр зүүн тийш зөрдөг байв.
-             ⚠️ 2026-10-09 (лавлах CRM загвар): 10 → 34px — утгын pill-тэй давхцахгүй. */
-          style={{ left: xFor(hi!), transform: `translateX(${hi! < N / 2 ? '34px' : 'calc(-100% - 34px)'})` }}
-        >
-          <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>
-          {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
-            {tr('Биет гүйцэтгэл')}<b className="num">{pct(pt.physPct, 1)}</b></p>}
-        </div>
-      )}
+          ⚠️ 2026-10-23 (Environment `AreaChart` Tooltip): курсорын дээд талд биш ЦЭГИЙН дэргэд —
+             t < .22 зүүнээс, > .78 баруунаас, бусад голлуулна; цэг дээд 45%-д бол ДООР, эс бөгөөс ДЭЭР
+             (10px зай). Утгын pill (`PointCallout`) ХАСАГДСАН — утга нь энд 17px-ээр. */}
+      {pt && hi != null && (() => {
+        /* Түшиц цэг — олголт (байвал), эс бөгөөс хэмжигдсэн биет, эс бөгөөс ёроол */
+        const ty = hi <= lastGiven ? yFor(pt.givenCum)
+          : hi <= lastPhys && pt.physPct != null ? yPhys(pt) : padT + plotH;
+        const t = (xFor(hi) - padL) / Math.max(1, plotW);
+        const shift = t < 0.22 ? '0%' : t > 0.78 ? '-100%' : '-50%';
+        const below = (ty / H) * 100 < 45;
+        /* Сарын олголт = өссөн дүнгийн өөрчлөлт (Environment-ийн ▲/▼ мөр) */
+        const d = hi > 0 ? pt.it.given : null;
+        return (
+          <div
+            className={f.tip}
+            style={{ left: xFor(hi), top: ty, transform: `translate(${shift}, ${below ? '10px' : 'calc(-100% - 10px)'})` }}
+          >
+            <div className={f.tipHd}>
+              <span className={f.tipDot} style={{ background: ACT }} />
+              <span className="num">{pt.label}</span>
+            </div>
+            <div className={f.tipBody}>
+              <div className={f.tipMain}>
+                <span className={`num ${f.tipBig}`} style={{ color: ACT }}>{pt.givenCum > 0 ? num(pt.givenCum) : '—'}</span>
+                <span className={f.tipUnit}>₮ · {tr('Олгосон санхүүжилт')}</span>
+              </div>
+              {d != null && pt.givenCum > 0 && (
+                <div className={f.tipMeta}>
+                  <span className="num" style={{ color: d !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
+                    {d > 0 ? '▲' : d < 0 ? '▼' : '='} {num(Math.abs(d))} ₮
+                  </span>
+                </div>
+              )}
+              {!hidePhys && (
+                <p className={f.tipRow}>
+                  <i className={f.tipSwDash} />
+                  {/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
+                  {tr('Биет гүйцэтгэл')}<b className="num">{pct(pt.physPct, 1)}</b>
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

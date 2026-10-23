@@ -14,8 +14,10 @@
    (`--line`) болж, өнгө нь зөвхөн УТГА заах дүрэм хэвээр хадгалагдана. */
 /* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
    100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
-/* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
-   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+/* ⚠️ 2026-08-17: KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
+   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), тоо доор.
+   ⚠️ 2026-10-23: Environment `.analytics-stat` — 13px булан, --line, --surface,
+   шошго 10px ink-3, утга 600 жин. Тооны 13px (доорх ⚠️) хэвээр — мөнгөн дүн багтах ёстой. */
 .tile {
   display: flex;
   flex-direction: column;
@@ -23,10 +25,10 @@
   justify-content: space-between;
   gap: 5px;
   text-align: left;
-  padding: 8px 12px;
+  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-xl);
 }
 
 .tileLabel { order: -1; }
@@ -47,17 +49,17 @@
    богиносгохгүй, тайрахгүй. */
 .tileVal b {
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
-/* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
-.tileLabel { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+/* eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
+.tileLabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.3; color: var(--ink-3); }
 
 /* ── Багцын давхцсан үлдсэн нэгж талбарын мөр (BlocksCard, 2026-08-21) —
       блокийн жагсаалтаас ИЛТ зааглагдсан хайрцаг ── */
@@ -70,19 +72,19 @@
   padding: 6px 9px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--ink-3);
-  border-radius: var(--r-sm, 6px);
-  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+  border-radius: var(--r);
+  background: var(--surface-2);
   font-size: 12px;
   color: var(--ink-2);
 }
 
-.ovStrip b { font-size: 13px; color: var(--ink); }
+.ovStrip b { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 
 /* Давхцсан талбар БАЙГАА — шар аяс: газар чөлөөлөгдөөгүй саад гэсэн дохио */
 .ovStripOn {
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
   border-left-color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  background: color-mix(in oklab, var(--warn) var(--tint), var(--surface));
 }
 
 /**
@@ -100,7 +102,7 @@
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 .ovStripBtn:hover {
-  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  background: color-mix(in oklab, var(--warn) 18%, var(--surface));
 }
 .ovStripBtn:focus-visible {
   outline: 2px solid var(--warn);
@@ -109,8 +111,8 @@
 
 /* Сонгогдсон — газрын зураг энэ талбар дээр тодруулсан байна */
 .ovStripSel {
-  border-color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  border-color: color-mix(in oklab, var(--warn) 60%, transparent);
+  background: color-mix(in oklab, var(--warn) 22%, var(--surface));
 }
 
 /* Доорх мөрүүд «блокууд» гэдгийг нэрлэх жижиг зааглагч гарчиг */
@@ -118,7 +120,8 @@
   margin: 0 0 6px;
   font-size: 10.5px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   color: var(--ink-3);
 }
