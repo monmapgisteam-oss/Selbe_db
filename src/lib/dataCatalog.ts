@@ -38,7 +38,6 @@ import {
 import { HYANALT } from '@/lib/hyanalt';
 import { URL as ZOV_URL } from '@/lib/zovshoorol';
 import { HUVAARI_OBYEM } from '@/lib/huvaariObyem';
-import { QAQC_TABLE, QAQC_SERVICES } from '@/lib/qaqc';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
 import { BUTETS_PACKS, PACK_OF_LAYER } from '@/lib/butetsPacks';
@@ -398,7 +397,7 @@ function registryEntries(): CatEntry[] {
 
 const BAGTS_VIEWS: ViewKey[] = [
   'gdash', 'dashboard', 'pkgProg', 'huvaari', 'huvaariBatlah', 'ajilBatlah',
-  'tailan', 'finance', 'guitsetgel', 'qaqc',
+  'tailan', 'finance', 'guitsetgel',
 ];
 
 function bagtsEntries(): CatEntry[] {
@@ -724,61 +723,7 @@ function huvaariEntries(): CatEntry[] {
   ];
 }
 
-/* ══════════════════ Чанар ══════════════════ */
-
-function chanarEntries(): CatEntry[] {
-  const pkgLabel = (k: string) => PKGS.find((p) => p.key === k)?.label ?? k;
-  const qaqc: CatEntry[] = Object.entries(QAQC_TABLE).map(([k, ref]) => {
-    const url = `${QAQC_SERVICES[ref.svc]}/${ref.id}`;
-    return {
-      id: `qaqc:${k}`,
-      name: tr('QAQC — {0}', pkgLabel(k)),
-      service: ref.svc,
-      layer: String(ref.id),
-      url,
-      kind: 'table' as const,
-      group: 'chanar' as const,
-      aliases: [k],
-      styleSrc: [],
-      views: sortViews(['qaqc']),
-      purpose: () => tr('Inspection Test Plan — ажил бүрийн М-акт · FIC · MA · MIR баримтын дугаар, огноо.'),
-      chain: () => [
-        S(tr('Чанарын ажилтан (qaqc) бөглөнө')),
-        S(tr('Ноорог (Selbe_QAQC_Draft)'), 'qaqc-draft'),
-        S(tr('«Хадгалах» → мөрийг байрандаа засна (архивгүй)')),
-        S(tr('Чанар (QAQC)')),
-      ],
-      editors: () => [
-        { cap: 'qaqc', text: tr('QAQC — Inspection Test Plan') },
-        { cap: '__qaqc__', text: tr('Багцын хуваарилалт') },
-      ],
-    };
-  });
-  return [
-    ...qaqc,
-    {
-      id: 'qaqc-draft',
-      name: tr('QAQC-ийн ноорог'),
-      service: 'Selbe_QAQC_Draft',
-      layer: 'drafts',
-      url: null,
-      kind: 'table',
-      group: 'chanar',
-      aliases: [],
-      styleSrc: [],
-      views: sortViews(['qaqc']),
-      purpose: () => tr('Хадгалаагүй QAQC актын хуулбар — өөр төхөөрөмж дээр үргэлжлүүлэхэд.'),
-      chain: () => [
-        S(tr('Бөглөж буй акт (localStorage)')),
-        S(tr('энэ хүснэгт (хэрэглэгч|багц мөр)')),
-        S(tr('«Хадгалах»'), 'qaqc:b1_9f'),
-      ],
-      editors: () => [{ cap: 'qaqc', text: tr('QAQC — Inspection Test Plan') }],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
-    },
-    /* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН — каталогийн мөр ч хасагдав. */
-  ];
-}
+/* ⚠️ 2026-10-23: «Чанар (QAQC)» (QAQC · QAQC2 · Selbe_QAQC_Draft) каталогийн мөрүүд ХАСАГДСАН — харагдац системээс устсан. */
 
 /* ══════════════════ Зөвшөөрөл · ХАБЭА · Эрх ══════════════════ */
 
@@ -903,7 +848,6 @@ function otherEntries(): CatEntry[] {
         { key: '<хэрэглэгч>', text: tr('Үүрэг ба харагдах харагдацууд') },
         { key: '__flow__:', text: tr('Гүйцэтгэлийн урсгалын томилгоо — шат ба багц') },
         { key: '__cap__:', text: tr('Нэмэлт эрхүүд (finEdit, plan, gazar …)') },
-        { key: '__qaqc__:', text: tr('QAQC-ийн багцын хуваарилалт') },
         { key: '__huvaari__:', text: tr('Хуваарийн багцын хуваарилалт') },
         { key: '__obyem__:', text: tr('Инженерийн обьёмын багцын хуваарилалт') },
         { key: '__chanar__:', text: tr('Чанарын баримтын багцын хуваарилалт') },
@@ -1021,7 +965,6 @@ export function dataCatalog(): CatEntry[] {
     ...guitsEntries(),
     ...finEntries(),
     ...huvaariEntries(),
-    ...chanarEntries(),
     ...otherEntries(),
     ...registryEntries(),
     ...imgEntries(),

@@ -75,7 +75,8 @@ export const PL_OVER = 8;
  * ⚠️ ДООД ХЯЗГААР нь 6px: түүнээс нарийсвал 1–2 хоногийн ажлын зурвас чирэх
  *    хоёр бариулаасаа нарийн болж, дундуур нь чирж ЗӨӨХ газар үлдэхгүй.
  */
-export const ZOOM: Record<'day' | 'week' | 'month', number> = { day: 20, week: 7, month: 2.6 };
+/* ⚠️ 2026-10-23 (хэрэглэгч: «жилээр харахыг нэм»): `year` — 0.7 px/хоног (сар ≈ 21px, жил ≈ 255px) */
+export const ZOOM: Record<'day' | 'week' | 'month' | 'year', number> = { day: 20, week: 7, month: 2.6, year: 0.7 };
 export type Zoom = keyof typeof ZOOM;
 
 export type DragMode = 'new' | 'move' | 'l' | 'r';

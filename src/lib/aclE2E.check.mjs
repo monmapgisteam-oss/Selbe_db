@@ -13,7 +13,7 @@
  *
  * ХЭСГҮҮД (даалгаврын дугаараар):
  *   §7  түгжээ — remote уншигдаагүй үед op татгалзана (эхэнд, `initRemote`-оос өмнө)
- *   §1  «бүх багц» / ил жагсаалт / сүүлийн багц — 5 систем × үүрэг бүр · QAQC · 6 шат
+ *   §1  «бүх багц» / ил жагсаалт / сүүлийн багц — 5 систем × үүрэг бүр · 6 шат (2026-10-23: QAQC хасагдсан)
  *   §2  нэмэх — шинэ · байгаа · «бүх багц» (no-op) · шат шилжүүлэх · super татгалзал
  *   §3  нэг системд олон үүрэг · §4 хуваалцсан `chanarReview`
  *   §5  энгийн эрх (`capDirectOp`) · super-ийн хязгаарлалт · өнчин эрх
@@ -37,7 +37,7 @@ const OPS = await import('@/lib/aclOps.ts');
 /* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
 OPS.setHeldByReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
-const QA = await import('@/lib/qaqcAcl.ts');
+/* ⚠️ 2026-10-23: QAQC хасагдсан */
 const HV = await import('@/lib/huvaariAcl.ts');
 const OB = await import('@/lib/obyemAcl.ts');
 const AJ = await import('@/lib/ajilAcl.ts');
@@ -136,7 +136,6 @@ function hostIs(u, cap, on, tag) {
   const before = fake.edits;
   for (const op of [
     OPS.scopedCellOp('huvaari', u, 'author', PKG_GROUPS[0], true),
-    OPS.qaqcCellOp(u, PKG_GROUPS[0], true),
     OPS.flowCellOp(u, 'engineer', PKG_GROUPS[0], true),
     OPS.capDirectOp(u, 'zovshoorol', true),
   ]) {
@@ -224,42 +223,7 @@ for (const [sys, d] of Object.entries(SYS)) {
 }
 console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бүх багц»-аас нэгийг хасахад бусад нь ил жагсаалтаар үлдэв; [P1,P2]→[P2]; сүүлийнх → мөр · эрх · харагдац хасагдав; round-trip тэнцүү`);
 
-/* §1 QAQC — үүрэггүй систем */
-{
-  const tag = '§1 qaqc';
-  const px = PKG_GROUPS[2];
-  const rest = PKG_GROUPS.filter((x) => x !== px);
-  const qIs = (u, want, t) => {
-    const local = QA.listQaqcAssigns().find((a) => a.user === u)?.bagts ?? null;
-    const remote = fake.json('__qaqc__:', u)?.bagts ?? null;
-    eq(local && sorted(local), want && sorted(want), `${t} ${u}: локал`);
-    eq(remote && sorted(remote), want && sorted(want), `${t} ${u}: ArcGIS`);
-    eq(QA.qaqcScope(u) === null ? null : sorted(QA.qaqcScope(u)), want?.includes('*') ? null : sorted(want ?? []), `${t} ${u}: qaqcScope`);
-  };
-  const ua = mkUser();
-  const w = QA.setQaqcAssign(ua, ['*']);
-  await w.sync; await settle();
-  qIs(ua, ['*'], tag);
-  capIs(ua, 'qaqc', true, tag);
-  let r = await run(OPS.qaqcCellOp(ua, px, false));
-  ok(r.ok && r.confirms.length === 1 && /ил жагсаалт/.test(r.confirms[0]), `${tag}: «бүх багц» → ил жагсаалт асуулт`);
-  await both((t) => { qIs(ua, rest, `${tag} ${t}`); capIs(ua, 'qaqc', true, `${tag} ${t}`); hostIs(ua, 'qaqc', true, `${tag} ${t}`); });
-
-  const ub = mkUser();
-  ok((await run(OPS.qaqcCellOp(ub, PKG_GROUPS[0], true))).ok, `${tag}: шинэ`);
-  ok((await run(OPS.qaqcCellOp(ub, PKG_GROUPS[1], true))).ok, `${tag}: P2`);
-  r = await run(OPS.qaqcCellOp(ub, PKG_GROUPS[0], false));
-  ok(r.ok && r.confirms.length === 0, `${tag}: P1 хасах асуулгагүй`);
-  await both((t) => { qIs(ub, [PKG_GROUPS[1]], `${tag} ${t}`); capIs(ub, 'qaqc', true, `${tag} ${t}`); });
-  r = await run(OPS.qaqcCellOp(ub, PKG_GROUPS[1], false));
-  ok(r.ok && r.confirms.length === 1, `${tag}: сүүлийн багц → асууна`);
-  await both((t) => {
-    qIs(ub, null, `${tag} ${t}`);
-    capIs(ub, 'qaqc', false, `${tag} ${t}`);
-    hostIs(ub, 'qaqc', false, `${tag} ${t}`);
-  });
-  console.log('✅ §1 QAQC: «бүх багц»-аас нэгийг хасахад бусад нь үлдэв; [P1,P2]→[P2]; сүүлийнх → эрх · харагдац буцав');
-}
+/* ⚠️ 2026-10-23: QAQC хасагдсан */
 
 /* §1 Гүйцэтгэлийн урсгал — 6 шат */
 {
@@ -326,7 +290,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await run(OPS.setRoleAllOp('huvaari', ua, 'approver'));
   eq(OPS.scopedCellOp('huvaari', ua, 'approver', p3, true), null, `${tag}: «бүх багц»-тай → null`);
   grantIs('huvaari', ua, 'approver', '*', tag);
-  eq(OPS.qaqcCellOp(ua, p3, true) !== null, true, `${tag}: өөр систем (QAQC) хамаагүй`);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* урсгал: өөр шатанд байгаа → шилжүүлэх асуулт, хуучин багц ба «Зөвхөн харна» арилна */
   const uf = mkUser();
   await run(OPS.flowCellOp(uf, 'engineer', p1, true));
@@ -353,7 +317,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   /* super — хуваарилалт татгалзана (хязгаар үйлчилдэггүй) */
   for (const op of [
     OPS.scopedCellOp('chanar', SUPER, 'author', p1, true),
-    OPS.qaqcCellOp(SUPER, p1, true),
     OPS.flowCellOp(SUPER, 'engineer', p1, true),
   ]) {
     r = await run(op);
@@ -490,7 +453,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   /* Бүх төрлийн хуваарилалттай хүн */
   const u = mkUser();
   await run(OPS.flowCellOp(u, 'engineer', p1, true));
-  await run(OPS.qaqcCellOp(u, p1, true));
   await run(OPS.scopedCellOp('huvaari', u, 'author', p1, true));
   await run(OPS.scopedCellOp('butets', u, 'editor', BUTETS_PACKS[0].key, true));
   await run(OPS.capDirectOp(u, 'gazar', true));
@@ -553,14 +515,13 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     ok(!P.resolveAccess(u).views.includes('gdash'), `${tag} ${w}: картаас хаасан харагдац хаагдана`);
     ok(P.resolveAccess(u).views.includes('huvaari'), `${tag} ${w}: «plan» эрхийн «Хуваарь» хадгалалтаас үл хамааран нээлттэй`);
-    ok(P.resolveAccess(u).views.includes('qaqc'), `${tag} ${w}: «qaqc» эрхийн харагдац нээлттэй`);
     eq(acl(), aclBefore, `${tag} ${w}: setUser хуваарилалт хөндөхгүй`);
   });
 
   /* УСТГАХ — `UserAdmin.saveAll`-ийн `remove` салааны ЯГ дараалал */
   const del = async (name) => {
     const rs = [
-      await FL.purgeAssign(name), await QA.purgeQaqcAssign(name), await HV.purgeHuvaariAssign(name),
+      await FL.purgeAssign(name), await HV.purgeHuvaariAssign(name),
       await OB.purgeObyemAssign(name), await CH.purgeChanarAssign(name), await AJ.purgeAjilAssign(name),
       await BT.purgeButetsAssign(name), await CAPS.setCaps(name, []), await P.removeUser(name),
     ];
@@ -622,16 +583,15 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const all = await Promise.all([
     OPS.runOp(OPS.scopedCellOp('obyem', v, 'editor', p1, true), () => {}),
     OPS.runOp(OPS.scopedCellOp('ajil', v, 'approver', p1, true), () => {}),
-    OPS.runOp(OPS.qaqcCellOp(v, p1, true), () => {}),
     OPS.runOp(OPS.capDirectOp(v, 'zovshoorol', true), () => {}),
     OPS.runOp(OPS.capDirectOp(v, 'finRow', true), () => {}),
   ]);
-  ok(all.every(Boolean), `${tag}: 5 зэрэг бичилт`);
+  ok(all.every(Boolean), `${tag}: 4 зэрэг бичилт`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
   await settle();
   fake.latency = 0;
   await both((w) => {
     grantIs('huvaari', u, 'approver', [p1, p2, p3], `${tag} ${w}`);
-    for (const cap of ['obyemEdit', 'ajilApprove', 'qaqc', 'zovshoorol', 'finRow']) capIs(v, cap, true, `${tag} ${w}`);
+    for (const cap of ['obyemEdit', 'ajilApprove', 'zovshoorol', 'finRow']) capIs(v, cap, true, `${tag} ${w}`);
   });
   /* унасан бичилт → «ArcGIS-т хадгалагдсангүй», `failed` тэмдэг, дараагийн уншилт локалыг арчихгүй */
   const f = mkUser();
@@ -651,7 +611,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
  *        ДАХИН үүсгэдэг байв → ижил нэрийг дахин нэмэхэд «хуучин засах эрх үлдсэн» гэж түгждэг;
  *    (б) super-ийн хуучин мөрийн НЭГ багцыг хасахад `setGrants`/`setAssign` super-ийг татгалзаж ✕ ҮРГЭЛЖ
  *        унадаг (мөрийг арилгах зам алга);
- *    (в) super-ийн мөрийг бүхэлд нь хасахад түүнд ШУУД олгосон эрх (`plan` · `qaqc`) буцдаг байв
+ *    (в) super-ийн мөрийг бүхэлд нь хасахад түүнд ШУУД олгосон эрх (`plan` · `gazar`) буцдаг байв
  *        (`aclOps.revokeGoneRoles` · `scopedAcl.syncCaps`). */
 {
   const tag = '§9';
@@ -660,15 +620,13 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(S2 && S2 !== SUPER.toLowerCase(), `${tag}: хоёр дахь хатуу super`);
   const ghost = 'e2e_ghost_deleted';
   const G = (grants) => JSON.stringify({ roles: [...new Set(grants.map((g) => g.role))], bagts: [...new Set(grants.flatMap((g) => g.bagts))], grants });
-  const directCaps = ['plan', 'obyemApprove', 'qaqc', 'zovshoorol'];
+  const directCaps = ['plan', 'obyemApprove', 'gazar', 'zovshoorol']; /* ⚠️ 2026-10-23: QAQC хасагдсан */
   fake.seed([
     { username: `__huvaari__:${ghost}`, views: G([{ role: 'author', bagts: [p1, p2] }]) },
     { username: `__obyem__:${ghost}`, views: G([{ role: 'editor', bagts: ['*'] }]) },
-    { username: `__qaqc__:${ghost}`, views: JSON.stringify({ bagts: [p1, p2] }) },
     { username: `__flow__:${ghost}`, views: JSON.stringify({ stage: 'engineer', bagts: [p1, p2] }) },
     { username: `__huvaari__:${S2}`, views: G([{ role: 'author', bagts: [p1, p2] }]) },
     { username: `__obyem__:${S2}`, views: G([{ role: 'approver', bagts: [p1] }]) },
-    { username: `__qaqc__:${S2}`, views: JSON.stringify({ bagts: [p1] }) },
     { username: `__flow__:${S2}`, views: JSON.stringify({ stage: 'manager', bagts: [p1, p2] }) },
     { username: `__cap__:${S2}`, views: JSON.stringify(directCaps) },
   ]);
@@ -681,15 +639,11 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(r.ok && r.confirms.length === 0, `${tag}: ghost huvaari ✕ асуулгагүй («${r.err}»)`);
   r = await run(OPS.scopedCellOp('obyem', ghost, 'editor', p3, false));
   ok(r.ok && r.confirms.length === 0, `${tag}: ghost obyem «бүх багц» ✕ — ил жагсаалт болгохыг асуухгүй`);
-  r = await run(OPS.qaqcCellOp(ghost, p1, false));
-  ok(r.ok && r.confirms.length === 0, `${tag}: ghost qaqc ✕`);
   r = await run(OPS.flowCellOp(ghost, 'engineer', p2, false));
   ok(r.ok && r.confirms.length === 0, `${tag}: ghost урсгал ✕`);
   await both((w) => {
     rowGone('huvaari', ghost, `${tag} ${w}`);
     rowGone('obyem', ghost, `${tag} ${w}`);
-    ok(!QA.listQaqcAssigns().some((a) => a.user === ghost), `${tag} ${w}: ghost qaqc мөр алга`);
-    eq(fake.find(`__qaqc__:${ghost}`), [], `${tag} ${w}: ghost qaqc ArcGIS мөр алга`);
     eq(FL.stageOfUser(ghost), null, `${tag} ${w}: ghost урсгалгүй`);
     eq(fake.find(`__flow__:${ghost}`), [], `${tag} ${w}: ghost урсгалын ArcGIS мөр алга`);
     noGhostCaps(w);
@@ -698,8 +652,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   /* (б)+(в) хатуу super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх ХЭВЭЭР */
   r = await run(OPS.scopedCellOp('huvaari', S2, 'author', p1, false));
   ok(r.ok && r.confirms.length === 0, `${tag}: super huvaari ✕ (олон багц) бүтэх ёстой («${r.err}»)`);
-  r = await run(OPS.qaqcCellOp(S2, p1, false));
-  ok(r.ok && r.confirms.length === 0, `${tag}: super qaqc ✕ («${r.err}»)`);
   r = await run(OPS.flowCellOp(S2, 'manager', p1, false));
   ok(r.ok && r.confirms.length === 0, `${tag}: super урсгал ✕ (олон багц) бүтэх ёстой («${r.err}»)`);
   /* хуучин op (`dropRoleOp` → `revokeGoneRoles`) ба lib-ийн анхдагч revoke (`syncCaps`) ч super-ийн эрхийг хөндөхгүй */
@@ -708,17 +660,12 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     rowGone('huvaari', S2, `${tag} ${w}`);
     rowGone('obyem', S2, `${tag} ${w}`);
-    ok(!QA.listQaqcAssigns().some((a) => a.user === S2), `${tag} ${w}: super qaqc мөр алга`);
     eq(fake.find(`__flow__:${S2}`), [], `${tag} ${w}: super урсгалын мөр алга`);
     /* ⚠️ 2026-10-12: `capsOf(super)` = бүх эрх (кодоос); хадгалагдсан мөр (`capsStored`/ArcGIS) хөндөгдөхгүй */
     eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: super-ийн хадгалагдсан __cap__ хэвээр`);
     eq(sorted(fake.json('__cap__:', S2)), sorted(directCaps), `${tag} ${w}: ArcGIS __cap__ хэвээр`);
     ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(S2).includes(c)), `${tag} ${w}: super бүх эрхтэй`);
   });
-  fake.seed([{ username: `__qaqc__:${S2}`, views: JSON.stringify({ bagts: [p2] }) }]);
-  await roundTrip();
-  await QA.removeQaqcAssign(S2).sync; await settle();
-  await both((w) => eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: removeQaqcAssign(revoke) super-ийн хадгалагдсан мөрийг хөндөхгүй`));
   console.log('✅ §9 цэвэрлэх мөр: устгагдсан аккаунтын ✕ — мөр бүхэлдээ, эрх үүсэхгүй · super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх хэвээр');
 }
 
@@ -908,13 +855,11 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(r.ok, `${tag}: урсгалд томилох («${r.err}»)`);
   r = await run(OPS.flowCellOp(T, 'manager', p2, true));
   ok(r.ok, `${tag}: урсгал хоёр дахь багц («${r.err}»)`);
-  r = await run(OPS.qaqcCellOp(T, p1, true));
-  ok(r.ok, `${tag}: qaqc («${r.err}»)`);
   await both((w) => {
     hvAuthor([p1, p2]);
     eq(FL.stageOfUser(T), 'manager', `${tag} ${w}: шат`);
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (grantFlowAccess мөрийг хөндөхгүй)`);
-    ok((fake.json('__cap__:', T) ?? []).includes('plan') && (fake.json('__cap__:', T) ?? []).includes('qaqc'), `${tag} ${w}: __cap__ мөр синклэгдсэн`);
+    ok((fake.json('__cap__:', T) ?? []).includes('plan'), `${tag} ${w}: __cap__ мөр синклэгдсэн`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
     eq(HV.huvaariScope(T, 'author'), null, `${tag} ${w}: super байхад хүрээ хязгааргүй`);
   });
   /* ✕ нэг багц — мөр бүхэлдээ арилахгүй (цэвэрлэх мөр биш), асуухгүй */
@@ -928,13 +873,10 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр`);
   });
   /* сүүлийн багц — асууж (цэвэрлэх мөр биш) эрх буцаана; super мөр хэвээр */
-  r = await run(OPS.qaqcCellOp(T, p1, false));
-  ok(r.ok && r.confirms.length === 1, `${tag}: qaqc сүүлийн багц — асууна («${r.err}»)`);
   r = await run(OPS.flowCellOp(T, 'manager', p2, false));
   ok(r.ok && r.confirms.length === 1, `${tag}: урсгалын сүүлийн багц — асууна («${r.err}»)`);
   await both((w) => {
     eq(FL.stageOfUser(T), null, `${tag} ${w}: урсгалгүй`);
-    ok(!(fake.json('__cap__:', T) ?? []).includes('qaqc'), `${tag} ${w}: qaqc эрх хадгалагдсан мөрөөс буцсан`);
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (revokeFlowAccess мөрийг арчихгүй)`);
     ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(T).includes(c)), `${tag} ${w}: super байхад бүх эрх`);
   });
@@ -945,7 +887,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(SV.roleForUser(T), null, `${tag} ${w}: super хасагдсан`);
     grantIs('huvaari', T, 'author', [p2], `${tag} ${w}: доошлуулсны дараа хуваарь хэвээр`);
     capIs(T, 'plan', true, `${tag} ${w}`);
-    eq(CAPS.capsOf(T).includes('qaqc'), false, `${tag} ${w}: хассан qaqc эргэж ирэхгүй`);
   });
   WHO9.setCurrentUser(null);
   console.log('✅ §9b хүснэгтийн super: хуваарилалт энгийн мөр — ✕ нэг багц · сүүлийнх асууна · эрх синк · super мөр хөндөгдөхгүй · доошлуулсны дараа хэвээр');

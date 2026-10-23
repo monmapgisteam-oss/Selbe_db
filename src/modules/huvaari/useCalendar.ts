@@ -105,7 +105,26 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   const rangeRef = useRef(range);
   useEffect(() => { if (!drag) rangeRef.current = range; }, [drag, range]);
   const { from, to } = drag ? rangeRef.current : range;
-  const px = ZOOM[zoom];
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «жил дарахад баруун талд хоосон зай гарч байна — ашиглаж сунга»): ЖИЛ горимд хуанли
+     хэвтээ зайг БҮРЭН дүүргэнэ — px = max(0.7, боломжит өргөн ÷ хоногийн тоо). Боломжит өргөн = гүйлгэх хүрээ − зүүн
+     жагсаалт (`gWrap`-ийн эхний хүүхэд); хэмжээ өөрчлөгдөхөд (`ResizeObserver`) дахин бодно. Бусад горим тогтмол. */
+  const [avail, setAvail] = useState(0);
+  useEffect(() => {
+    if (zoom !== 'year') return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const side = el.firstElementChild as HTMLElement | null;
+      setAvail(Math.max(0, el.clientWidth - (side?.offsetWidth ?? 0) - 2));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [zoom, plan.length]);
+  const days = Math.round((to - from) / DAY) + 1;
+  const px = zoom === 'year' && avail > 0 ? Math.max(ZOOM.year, avail / days) : ZOOM[zoom];
   /* ⚠️ `from` ӨӨРЧЛӨГДӨХӨД ХАРАГДАЦ ҮСРЭХГҮЙ (2026-10-01): чирэлт/popup хамгийн
      эрт ажлыг өмнөх сар руу зөөхөд `from` сараар эрт болж бүх зурвас баруун тийш
      шилжиж, дэлгэц ~1 сар «үсэрдэг» байв. Зөрүүг `scrollLeft`-д нөхнө.
@@ -247,6 +266,13 @@ function calTicks(from: number, total: number, zoom: Zoom, px: number) {
     const ms = from + k * DAY;
     const d = new Date(ms);
     const isFirst = d.getUTCDate() === 1;
+    /* ⚠️ 2026-10-23: жилээр харахад сар бүрийн дээд шошго багтахгүй (≈21px) — дээд мөрөнд ЖИЛ (1-р сарын 1), доод
+       мөрөнд сарын дугаар */
+    if (zoom === 'year') {
+      if (isFirst && d.getUTCMonth() === 0) months.push({ at: ms, lab: String(d.getUTCFullYear()) });
+      if (isFirst) ticks.push({ at: ms, lab: msToDay(ms).slice(5, 7), big: d.getUTCMonth() === 0 });
+      continue;
+    }
     if (isFirst) months.push({ at: ms, lab: msToDay(ms).slice(0, 7) });
     /* ⚠️ Ганц тоо («21», «28») нь ямар сарынх нь тодорхойгүй. Сарын нэр
        ДЭЭД мөрөнд тусдаа, хоногийн шошго нь «сар-өдөр» хэлбэрээр доор. */
@@ -262,7 +288,7 @@ function calTicks(from: number, total: number, zoom: Zoom, px: number) {
    * үлдэнэ — зөвхөн ТЕКСТИЙГ нь авна.
    */
   {
-    const MIN = 40;
+    const MIN = zoom === 'year' ? 18 : 40;
     let lastLab = -Infinity;
     for (const tk of ticks) {
       const x = ((tk.at - from) / DAY) * px;

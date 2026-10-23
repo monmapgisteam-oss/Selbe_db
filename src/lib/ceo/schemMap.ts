@@ -52,7 +52,6 @@ export const KPI_FINE: Record<string, FineId> = {
   land: 'gazLeft',
   schedule: 'huv',
   variance: 'bar',
-  qaqc: 'barOk',
   iot: 'ers',
   workforce: 'hab',
   safety: 'habInc',

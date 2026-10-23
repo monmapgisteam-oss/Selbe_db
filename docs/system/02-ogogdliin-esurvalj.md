@@ -226,11 +226,9 @@ PostgreSQL-ийн нэрийн 63 байтын хязгаар): `tolovloltiin_in
 `tolovloltiin_injener_butsaasan_ognoo` · `tolovloltiin_injener_ilgeesen_ognoo`
 (огноо). Үйлчилгээнд гараар (notebook) нэмнэ — дутуу бол тэр шат хаалттай.
 
-### 6.2 Чанар (`QAQC` · `QAQC2`)
+### 6.2 Чанар (QAQC) — хасагдсан
 
-10 багцын чанарын хяналтын хүснэгт. Багц бүрд тусдаа хүснэгт.
-
-Хэн бичдэг: «Чанар» дэлгэц — тусгай эрхтэй хэрэглэгч
+2026-10-23: «Чанар (QAQC)» харагдац системээс бүрэн хасагдсан (хэрэглэгчийн шийдвэр).
 
 ### 6.3 ХАБЭА (`HABEA`)
 
@@ -324,14 +322,13 @@ AGOL дээр засах эрхийг хязгаарлах ёстой ([08 §8](
 | `TD` · `INFRA_SVC` (`ET` · `ET_PKG` — зөвхөн загварын түлхүүр) | газрын зурагтай бүх харагдац | — (дэд бүтцээс бусад) |
 | `HO_IPC` | pkgFin · finance · gdash · tailan · KPI | холбоосыг автоматаар |
 | `CASHFLOW_NEW` | finance · pkgFin · gdash | Мөнгөн урсгалын төлөвлөгөө |
-| `BAGTS_SHEET` | pkgProg · guitsetgel · huvaari · qaqc · dashboard | **Гүйцэтгэл бөглөх** |
+| `BAGTS_SHEET` | pkgProg · guitsetgel · huvaari · dashboard | **Гүйцэтгэл бөглөх** |
 | `BAGTS_NEGTGEL` | gdash · pkgProg · tailan | батлах урсгал |
 | `PARCEL_LEFT` | gazar · plan · gdash · dashboard | Газар чөлөөлөлт |
 | `BUILDING` | pkgFin · irged · dashboard | — |
 | `HABEA` | habea · gdash · KPI | Survey123 маягт |
 | `HYANALT` | guitsetgel · schem · KPI | Гүйцэтгэлийн хяналт |
 | `ZOVSHOOROL` | zovshoorol · schem · KPI | Зөвшөөрөл |
-| `QAQC` · `QAQC2` | qaqc · KPI | Чанар |
 | `IOT_LAYERS` | iot · KPI | — (мэдрэгчээс автоматаар) |
 
 ---

@@ -33,8 +33,7 @@ function srcText(x: WfSource): string {
   const pane = paneLabel(paneOfSys(x.sys, x.cap));
   if (x.sys === 'cap') return `${pane} · ${x.cap ? capLabelShort(x.cap) : x.role} · ${tr('шууд олгосон')}`;
   const role = x.sys === 'flow' ? STAGE_LABEL[x.role as Stage]
-    : x.sys === 'qaqc' ? ''
-      : roleLabel(x.sys, x.role);
+    : roleLabel(x.sys, x.role);
   /* ⚠️ Дэд бүтцийн эрх урсгалтай харагдац нээдэггүй (`CAP_HOST_VIEW.butets` = dedButets) — багц нь `PKG_GROUPS` */
   return [pane, role, bagtsText(x.bagts), x.viewOnly ? tr('зөвхөн харна') : ''].filter(Boolean).join(' · ');
 }

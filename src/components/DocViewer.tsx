@@ -5,11 +5,13 @@ import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
 import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { Icon } from './Icon';
-import { ENT_KEY, EntDocFrame, EntDocsSide } from './EntDocs';
+import { ENT_KEY, EntDocFrame } from './EntDocs';
+import { DocLibSide } from './DocLibSide';
 import s from './docviewer.module.css';
 
 /**
- * ТЭЗҮ БА СУДАЛГААНЫ БАРИМТ — глобал popup (модал).
+ * БАРИМТ БИЧГИЙН САН — глобал popup (модал). ⚠️ 2026-10-23: бүлэглэсэн сан (`DocLibSide`, `lib/docLib.ts`) —
+ * хуучин «ТЭЗҮ-БОНУ» жагсаалт «ТЭЗҮ-БОНУ» бүлэгт шилжсэн.
  *
  * Навбарын «ТЭЗҮ» товчоор нээгдэж, порталын аль ч харагдац дээр давхарлана
  * (`position: fixed`). Зүүн талд баримтын жагсаалт (солих хэсэг), баруун талд
@@ -78,37 +80,18 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={tr('ТЭЗҮ ба судалгааны баримт бичиг')}
+        aria-label={tr('Баримт бичгийн сан')}
       >
         <header className={s.head}>
           <span className={s.headIcon}><Icon name="file" size={17} /></span>
-          <h2 className={s.title}>{tr('ТЭЗҮ ба судалгааны баримт бичиг')}</h2>
+          <h2 className={s.title}>{tr('Баримт бичгийн сан')}</h2>
           <button type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
         </header>
 
         <div className={s.body}>
           {/* Зүүн — баримт солих жагсаалт */}
           <nav className={s.side} aria-label={tr('Баримтууд')}>
-            {DOCS.map((d) => {
-              const on = d.key === active;
-              return (
-                <button
-                  key={d.key}
-                  type="button"
-                  aria-current={on}
-                  className={`${s.item} ${on ? s.itemOn : ''}`}
-                  onClick={() => setActive(d.key)}
-                >
-                  <span className={s.itemIcon}><Icon name="file" size={15} /></span>
-                  <span className={s.itemText}>
-                    <span className={s.itemTitle}>{d.title}</span>
-                    <span className={s.itemSub}>{d.sub}</span>
-                  </span>
-                </button>
-              );
-            })}
-
-            <EntDocsSide active={active} onPick={setActive} />
+            <DocLibSide active={active} onPick={setActive} />
 
             {doc && (
               <a

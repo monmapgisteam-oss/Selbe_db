@@ -23,7 +23,7 @@ import { VIEWS, type ViewKey } from '@/lib/services';
 
 /** Хажуугийн цэсний засах эрхийн хуудас — `UserAdmin`-ы `pane` id */
 export type ErhPane =
-  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'qaqc' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral' | 'habea' | 'sys';
+  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral' | 'habea' | 'sys';
 
 /**
  * ХУУДАС → ЭРХҮҮД. Дараалал = хажуугийн цэсний дараалал («Гүйцэтгэлийн урсгалын
@@ -36,7 +36,6 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   ajil: ['addRow', 'ajilApprove'],
   obyem: ['obyemEdit', 'obyemApprove'],
   chanar: ['chanarAuthor', 'chanarReview'],
-  qaqc: ['qaqc'],
   butets: ['butets'],
   zovshoorol: ['zovshoorol'],
   fin: ['finEdit', 'finRow'],
@@ -46,7 +45,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   /* ⚠️ 2026-10-08: ХАБЭА-ийн бүртгэл — тусдаа хуудас, батлагчгүй */
   habea: ['habeaData'],
   /* ⚠️ 2026-10-19: «Систем түр хаах» — тусдаа хуудас (хамгийн сүүлд), аккаунтаар, харагдац нээхгүй */
-  sys: ['sysClose'],
+  sys: ['sysClose', 'docsUpload', 'docsGroups'],
 };
 
 /** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 10 */
@@ -80,7 +79,6 @@ export const paneLabel = (p: ErhPane): string => {
   if (p === 'ajil') return tr('Нэмэлт ажлын эрх');
   if (p === 'obyem') return tr('Инженерийн обьёмын эрх');
   if (p === 'chanar') return tr('Чанарын баримтын эрх');
-  if (p === 'qaqc') return tr('Чанарын (QAQC) эрх');
   if (p === 'butets') return tr('Инженерийн дэд бүтцийн засварын эрх');
   if (p === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (p === 'fin') return tr('Санхүүгийн бүртгэлийн эрх');
@@ -104,7 +102,6 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'obyemApprove') return tr('Инженерийн обьём батлах');
   if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх');
   if (k === 'chanarReview') return tr('Чанарын баримт хянах');
-  if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
   if (k === 'butets') return tr('Инженерийн дэд бүтцийн засвар');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
@@ -114,6 +111,8 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'hamaaral') return tr('Багцын хамаарал засах');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл оруулах');
   if (k === 'sysClose') return tr('Систем түр хаах');
+  if (k === 'docsUpload') return tr('Баримт бичгийн сан — PDF оруулах');
+  if (k === 'docsGroups') return tr('Баримт бичгийн сан — бүлэг үүсгэх');
   return k;
 };
 
@@ -130,7 +129,6 @@ const paneSummary = (p: ErhPane): string => {
   if (p === 'ajil') return tr('Багц тус бүрд шинэ ажлын мөр нэмэгч ба батлагч аккаунтыг томилно.');
   if (p === 'obyem') return tr('Багц тус бүрд инженерийн төлөвлөсөн обьём засварлагч ба батлагч аккаунтыг томилно.');
   if (p === 'chanar') return tr('Багц тус бүрд чанарын баримт (MS · QMP · PRC · MA · MIR · FIC) ирүүлэгч ба ТУХ · Чанар · ХАБЭА · ТУГ · ЧХ инженер хянагчийг томилно.');
-  if (p === 'qaqc') return tr('Багц тус бүрд Inspection Test Plan (М-акт · FIC · MA · MIR) бөглөх аккаунтыг томилно.');
   if (p === 'butets') return tr('Багц тус бүрд инженерийн шугамын атрибут (урт, бүс, баримт) засах аккаунтыг томилно.');
   if (p === 'zovshoorol') return tr('Зөвшөөрөл нэмэх, засах, устгах эрх — аккаунтаар олгоно.');
   /* ⚠️ 2026-10-04: IPC нь гүйцэтгэлийн батлалтаас автоматаар (`ipcAutoWrite`) — эрхээр засагдахгүй */
@@ -170,9 +168,6 @@ export const paneNote = (p: ErhPane): string => {
     /* ⚠️ 6 төрөл ирүүлнэ (`chanarMs.KINDS`); хянагч төрлөөр өөр (`REVIEWERS_OF` · `SEQUENTIAL_KINDS`) */
     return tr('Ирүүлэгч ажлын аргачлал (MS), чанарын удирдлагын төлөвлөгөө (QMP), процедур (PRC), материал баталгаажуулалт (MA), материалын/талбайн үзлэг (MIR · FIC) боловсруулж хянуулахаар илгээнэ; үл тохиролд (NCR) залруулгын тайлан илгээнэ. Хянагч A / AN / R шийдвэр өгнө; төрөл бүрийн хянагч өөр: MS · QMP · PRC — ТУХ · Чанар · ХАБЭА зэрэг; MA — ЧХ инженер, дараа нь Чанар, дараа нь ТУГ (дараалсан); MIR · FIC — ТУХ, дараа нь Чанар; NCR — захиалагч (ТУХ · Чанар) нээж, залруулгын дараа ТУХ · Чанар · ТУГ хаана. Таван үүрэг нэг «Чанарын баримт хянах» эрхийг хуваалцана.');
   }
-  if (p === 'qaqc') {
-    return tr('«Чанар (QAQC)» харагдац дээр Inspection Test Plan-ийн баганыг бөглөнө. Гүйцэтгэлийн урсгалаас тусдаа: гүйцэтгэл зөвшөөрөх эрх дагалдахгүй.');
-  }
   if (p === 'butets') {
     return tr('Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө. Багц хуваарилаагүй бол нэг ч давхарга засахгүй.');
   }
@@ -204,6 +199,12 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'habeaData') {
     return tr('ХАБЭА хуудасны «Бусад үзүүлэлт» (талбайн зааварчилгаа, сануулах хуудас, хариуцлага тооцох) ба «Хог хаягдал» картад шинэ бүртгэл нэмэх, үзлэгийн тайланг (PDF, Excel) татах. Батлагч байхгүй — хадгалсан бүртгэл шууд тоонд орно. Эрхгүй хүн карт энгийн харна, «Үзлэгийн тайлан татах» товч харагдахгүй.');
+  }
+  if (k === 'docsUpload') {
+    return tr('Цэсний «Баримт бичгийн сан» цонхонд байгаа бүлэгт PDF оруулах, өөрийн оруулсан PDF-ийг устгах, өөр бүлэгт шилжүүлэх. PDF нь Enterprise геопорталд хадгалагдаж байгууллагад хуваалцагдана. Бүлэг үүсгэх нь тусдаа эрх. Харах нь нэвтэрсэн бүх хэрэглэгчид нээлттэй.');
+  }
+  if (k === 'docsGroups') {
+    return tr('Цэсний «Баримт бичгийн сан» цонхонд бүлэг нэмэх, нэр солих, хоосон бүлгийг устгах. PDF оруулах нь тусдаа «Баримт оруулах» эрх.');
   }
   if (k === 'sysClose') {
     /* ⚠️ 2026-10-19: хаалттай үед ЭНЭ эрхтэй хүн ба кодын super л нэвтэрнэ (`permissions.canBypassClosed`) */

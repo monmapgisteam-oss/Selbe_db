@@ -34,7 +34,7 @@ export function FillRows({
   backChgDates = EMPTY_KEYS,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null, extra = [], clearLocked,
+  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -65,6 +65,8 @@ export function FillRows({
   pastePrev?: PastePrev | null;
   /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн баганууд (`extraCols.ts`); `SheetHead`-тэй ИЖИЛ массив */
   extra?: ExtraCol[];
+  /** ⚠️ 2026-10-23: ХУРААНГУЙ харагдац — `SheetHead`-тэй ИЖИЛ дүрэм (№ · Ажил · Обьём · Инж. обьём · блокийн нүд ба хувь л) */
+  compact?: boolean;
   /** ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдний илгээгээгүй утгыг буцаах (`useCellEdit.clearLocked`) */
   clearLocked?: CellT['clearLocked'];
 }) {
@@ -116,6 +118,7 @@ export function FillRows({
                       {workTxt}
                       {/* ⚠️ Бүлгийн «+» ба шинэ мөрийн «×» ХАСАГДАВ (2026-09-24) — «Хуваарь»-д. */}
                     </td>
+                    {!compact && (<>
                     <td className={cls("right c-w")} style={cw("wc", "w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
                     <td className={cls("right c-w")} style={cw("wd", "w")} {...ro(RO.wD)} title={full(c.D)}>{wt(c.D)}</td>
                     {/* Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл — гүйцэтгэл
@@ -127,6 +130,7 @@ export function FillRows({
                     <td className={cls("right c-w calc")} style={cw("now", "now")} {...ro(RO.wE)} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
+                    </>)}
                     {/* ОБЬЁМ — ЭХ ӨГӨГДЛИЙН тоо хэмжээ. Эх хүснэгтэд
                         оруулагдана; энэ хуудас зөвхөн уншина. Түүнээс Мөнгөн
                         дүн, тэндээс хуудсын БҮХ хувийн жин бодогддог тул энд
@@ -170,6 +174,7 @@ export function FillRows({
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
+                    {!compact && (<>
                     <td className={cls("right c-vol calc")} style={cw("vsum", "vol")} {...ro(RO.obyemSum)}>
                       {qty(c.obyemSum)}
                       {!r.group && c.obyemSum != null && negjOf(r.work) && (
@@ -181,6 +186,7 @@ export function FillRows({
                     <td className={cls("num c-calc calc")} style={cw("ci", "calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("cj", "calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("ck", "calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
+                    </>)}
 
                     {/* ГҮЙЦЭТГЭЛИЙН НҮД — обьём ба хувь НЭГ нүдэнд.
                           дээд мөр (том тоо) = бөглөсөн ОБЬЁМ — ЭНЭ Л бичигдэнэ
@@ -596,7 +602,7 @@ export function FillRows({
 
                     {/* Эхлэх/Дуусах огноо — календараар засагдана (ажлын мөрд).
                         Бүлгийн мөрд дэд мөрүүдийн MIN/MAX тул зөвхөн харагдана. */}
-                    {sc.bld.map((b, bi) =>
+                    {!compact && sc.bld.map((b, bi) =>
                       (["s", "e"] as const).map((k) => {
                         const key = `${r.oid}:${bi}:${k}`;
                         const fld = k === "s" ? sc.start[bi] : sc.end[bi];
@@ -666,7 +672,7 @@ export function FillRows({
                     )}
                     {/* Шинэчлэгдсэн огноо — зөвхөн эхний мөрд бичигддэг.
                         Хэрэгслийн мөрний сонгогчтой нэг утга. */}
-                    {
+                    {!compact && (
                       <td
                         style={cw("asof", "date")}
                         className={cls(
@@ -697,7 +703,7 @@ export function FillRows({
                       >
                         {i === 0 ? dt(asOf) : ""}
                       </td>
-                    }
+                    )}
                     {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — ЗӨВХӨН УНШИХ (засах зам ҮГҮЙ), сүүлийн жаазны ЭНЭ мөрийн
                         хадгалсан утга (`r.raw`). Хоосон бол хоосон (null ≠ 0). Товшвол шалтгааныг хэлнэ. */}
                     {extra.map((x, xi) => {

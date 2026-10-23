@@ -30,10 +30,8 @@ import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow } from './schedule';
 import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
-import { loadQaqcLoaded, summarizePkg } from './qaqc';
-import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
-  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
+  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, totalOf, blockZoneScores,
   type Dim, type DimScore, type WorkScore, type PlanInput, type Inspection,
 } from './scorecard';
 
@@ -147,7 +145,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
    * ⚠️ 2026-09-21 (дахин аудит): газрын мөр «Багц ажил» БИШ тул жагсаалт, тоолол
    *    («Нийт 74 багц ажил»), `statusCounts`-д ОРОХГҮЙ — `WorkScore.isLandWork`
    *    тэмдэгтэй, `CeoScorecard` хасна. Түүнд ЗӨВХӨН `land` (газар чөлөөлөлтийн
-   *    салаа) ба `perf` бодогдоно; `fin`·`permit`·`hse`·`qual`·`plan` = null.
+   *    салаа) ба `perf` бодогдоно; `fin`·`permit`·`hse`·`plan` = null.
    */
   const scored = cf.filter((r) => r.isWork || r.sec === FIN_XL_LAND_CODE);
   /* ⚠️ 2026-10-06: БАГЦЫН ТҮВШНИЙ бүлгүүд (зөвшөөрөл · ХАБЭА · чанар · ерөнхий төлөвлөгөө) нь
@@ -284,53 +282,7 @@ export const loadScoreLand = cached(async (): Promise<LandExtra> => {
   /* ⚠️ 2026-10-01: хэсэгчилсэн огтлолцлыг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
 }, 5 * 60_000, ['PARCEL_LEFT'], (x) => !x.failed);
 
-export type QualExtra = Map<string, { total: number; empty: number; partial: number; flat?: number }> & {
-  /** ⚠️ 2026-09-25: уншигдаагүй хуудсууд (`Pkg.label`) — дэлгэц «Татагдсангүй»-д нэмж болно */
-  failed: string[];
-  /** ⚠️ 2026-10-11 (аудит №7): мод холбогдоогүй (`flat`) хуудсууд (`Pkg.label`) — нийлбэрт ОРООГҮЙ, оноо ХАГАС */
-  flat: string[];
-};
-
-/**
- * Чанар — багцын бүлэг бүрийн QAQC бөглөлтийн нийлбэр.
- * ⚠️ 2026-09-25: (1) `flat` (мод холбогдоогүй) хуудас НИЙЛБЭРТ ОРОХГҮЙ —
- *    `computeQaqc`-ийн `counted` дүрэмтэй ижил; бүлгийн мөрүүд навчтай
- *    холилдож тоо хөөрөгддөг байв. (2) Хуудас нь УНШИГДААГҮЙ бүлэг Map-д
- *    ОРОХГҮЙ (оноо «мэдэхгүй») — урьд нь үлдсэн хуудсаар ХАГАС нийлбэр гарч
- *    бүрэн мэт оноо авдаг байв; уналт `failed`-ээр ил.
- */
-export const loadScoreQual = cached(async (): Promise<QualExtra> => {
-  const { ok, failed, keys } = await loadQaqcLoaded();
-  const failedGroups = new Set(failed.map((label) => {
-    const p = PKGS.find((x) => x.label === label);
-    return bagtsKey(p ? keys[p.key] ?? p.group : label);
-  }));
-  const m = new Map<string, { total: number; empty: number; partial: number; flat?: number }>();
-  /* ⚠️ 2026-10-11 (аудит №7): `flat` хуудсыг `failed`-ийн адил НЭРЭЭР цуглуулж, бүлгийн утгад `flat` тоог
-     бичнэ — урьд нь чимээгүй алгасдаг тул Багц 3.3 (9 давхар flat, 12 давхар холбогдсон) бүрэн оноотой
-     мэт харагддаг байв. `scoreQual` «хагас» гэж ил хэлнэ. */
-  const flat: string[] = [];
-  for (const l of ok) {
-    const k = bagtsKey(keys[l.pkg.key] ?? l.pkg.group);
-    const a = m.get(k) ?? { total: 0, empty: 0, partial: 0 };
-    if (l.flat) {
-      flat.push(l.pkg.label);
-      a.flat = (a.flat ?? 0) + 1;
-      m.set(k, a);
-      continue;
-    }
-    const s = summarizePkg(l.pkg, l.rows, l.flat);
-    a.total += s.total;
-    a.empty += s.empty;
-    a.partial += s.partial;
-    m.set(k, a);
-  }
-  for (const k of failedGroups) m.delete(k);
-  return Object.assign(m, { failed: [...failed], flat });
-  /* ⚠️ 2026-10-01: уншигдаагүй хуудастай үр дүнг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
-  /* ⚠️ 2026-10-21 (кэшийн аудит): `'QAQC'` — «Чанар» харагдацын `saveQaqc`-ийн дараа; `ceo/qaqc.loadQaqcLoaded`-тэй
-     ЯГ ИЖИЛ таг — ах дүү ачаалагч өөр тагтай байвал нэг нь шинэчлэгдээд нөгөө нь хоцорно. */
-}, 5 * 60_000, ['QAQC', 'BAGTS_SHEET'], (x) => x.failed.length === 0);
+/* ⚠️ 2026-10-23: «Чанар» (QAQC) хэмжүүрийн ачаалагч (`loadScoreQual`) ХАСАГДСАН. */
 
 /**
  * Ерөнхий төлөвлөгөө — блок бүрийн байрлах бүсийн тохиромжтой байдлын оноо.
@@ -395,7 +347,6 @@ export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> =>
 
 export type Extras = {
   land: LandExtra | null;
-  qual: Map<string, { total: number; empty: number; partial: number; flat?: number }> | null;
   plan: Map<string, PlanInput> | null;
 };
 
@@ -420,11 +371,10 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
         overlapFailed: ov != null && ov < 0,
       }),
       /* ⚠️ 2026-09-21: газрын мөрд ерөнхий төлөвлөгөө/чанарын оноо АВАХГҮЙ (багц ажил биш) */
-      /* ⚠️ 2026-10-06: plan · qual — ЗӨВХӨН багцын төлөөлөгч мөрд (`BaseWork.pkgRep`) */
+      /* ⚠️ 2026-10-06: plan — ЗӨВХӨН багцын төлөөлөгч мөрд (`BaseWork.pkgRep`) */
       plan: w.cancelled || w.isLandWork || !x.plan || !w.key || !w.pkgRep ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
       permit: w.permit,
       hse: w.hse,
-      qual: w.cancelled || w.isLandWork || !x.qual || !w.key || !w.pkgRep ? none : scoreQual({ qaqc: x.qual.get(w.key) ?? null }),
     };
     /* ⚠️ `isLandWork` `WorkScore`-д ҮЛДЭНЭ — `CeoScorecard` жагсаалт/тоололоос хасахад хэрэгтэй */
     const { perf: _p, fin: _f, hse: _h, permit: _z, pkgRep: _r, ...rest } = w;

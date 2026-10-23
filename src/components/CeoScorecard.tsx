@@ -35,7 +35,7 @@ import {
   type WorkStatus, type DimStatus, type ScoreFilter,
 } from '@/lib/ceo/scorecard';
 import {
-  loadScoreBase, loadScoreLand, loadScoreQual, loadScorePlan, assemble, type Extras,
+  loadScoreBase, loadScoreLand, loadScorePlan, assemble, type Extras,
 } from '@/lib/ceo/scorecardLoad';
 import { KpiDetail, type Slot } from './CeoBoard';
 import { shortError } from '@/lib/ceo/review';
@@ -262,28 +262,25 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const baseReady = baseQ.state === 'ready';
   /* ⚠️ Хүнд бүлгүүд суурийн ДАРАА, нэг нэгээр шатлана */
   const landQ = useAsync(() => (baseReady ? loadScoreLand() : never<Awaited<ReturnType<typeof loadScoreLand>>>()), [baseReady]);
-  const qualQ = useAsync(() => (landQ.state !== 'loading' ? loadScoreQual() : never<Awaited<ReturnType<typeof loadScoreQual>>>()), [landQ.state]);
-  const planQ = useAsync(() => (qualQ.state !== 'loading' ? loadScorePlan() : never<Awaited<ReturnType<typeof loadScorePlan>>>()), [qualQ.state]);
+  const planQ = useAsync(() => (landQ.state !== 'loading' ? loadScorePlan() : never<Awaited<ReturnType<typeof loadScorePlan>>>()), [landQ.state]);
 
   const loadingDims = useMemo(() => new Set<Dim>(
-    ([['land', landQ], ['qual', qualQ], ['plan', planQ]] as [Dim, Async<unknown>][])
+    ([['land', landQ], ['plan', planQ]] as [Dim, Async<unknown>][])
       .filter(([, q]) => q.state === 'loading').map(([d]) => d),
-  ), [landQ, qualQ, planQ]);
-  const failedDims = ([['land', landQ], ['qual', qualQ], ['plan', planQ]] as [Dim, Async<unknown>][])
+  ), [landQ, planQ]);
+  const failedDims = ([['land', landQ], ['plan', planQ]] as [Dim, Async<unknown>][])
     .filter(([, q]) => q.state === 'error').map(([d]) => defs[d].title);
 
   const allWorks = useMemo<WorkScore[] | null>(() => {
     if (!baseReady) return null;
     const x: Extras = {
       land: landQ.state === 'ready' ? landQ.data : null,
-      qual: qualQ.state === 'ready' ? qualQ.data : null,
       plan: planQ.state === 'ready' ? planQ.data : null,
     };
     return assemble(baseQ.data, x);
-  }, [baseReady, baseQ, landQ, qualQ, planQ]);
+  }, [baseReady, baseQ, landQ, planQ]);
   const partFailed = [
     ...(baseQ.data?.failed ?? []),
-    ...(qualQ.state === 'ready' ? qualQ.data.failed : []),
     ...(landQ.state === 'ready' && landQ.data.failed ? [tr('Газрын давхцал (хэсэгчлэн)')] : []),
   ];
   /**

@@ -29,8 +29,30 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «дээд хэрэглүүрийн хэмжээ, бүтэц, зай талбайн хуваарилалтыг сайжруул»): мөр хоорондын
+     зай 8px, элемент хоорондын 10px; БҮХ удирдлага (товч · сонгогч) ИЖИЛ өндөр (`--ctl-h`) — урьд нь 24–34px холилдож
+     мөр шаталсан харагддаг байв. */
+  --ctl-h: 30px;
+  gap: 8px 10px;
 }
+.toolbar :is(.fullBtn, .fullBtnOn, .layerBtn, .select, .publishBtn) {
+  box-sizing: border-box;
+  height: var(--ctl-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.toolbar .select { padding: 0 9px; }
+.toolbar :is(.fullBtn, .fullBtnOn, .layerBtn) { padding: 0 12px; white-space: nowrap; }
+.toolbar .publishBtn { padding: 0 16px; }
+/* Бүлэг хоорондын босоо зураас · мөрийн баруун зах руу түлэх зай · 2-р мөрийн эхлэл (2026-10-23) */
+.tbSep { flex: none; width: 1px; height: 20px; background: var(--line); }
+.tbGrow { flex: 1 1 0; min-width: 0; }
+.tbBreak { flex-basis: 100%; height: 0; }
+/* Шошго нь удирдлагаасаа бүдэг, жижиг — сонгосон утга нь тод харагдана */
+.toolbar .field { gap: 6px; font-size: 0.74rem; color: var(--ink-3); }
 
 .field {
   display: inline-flex;
@@ -54,7 +76,7 @@
 }
 /* Бүлгийн сонгогч — нэрс урт (догол мөртэй «1.1 Суурь ухлагын ажил») тул
    өргөнийг нь тусад нь өгнө, гэхдээ хэрэгслийн мөрийг эзлэхгүйгээр. */
-.selectWide { max-width: 260px; }
+.selectWide { width: 200px; max-width: 200px; }
 
 .select:hover { border-color: var(--line-strong); }
 .select:focus-visible { border-color: var(--hue); }
@@ -75,13 +97,6 @@
 .publishBtn:hover:not(:disabled) { filter: brightness(1.06); }
 .publishBtn:disabled { opacity: 0.4; cursor: default; }
 
-/**
- * БӨГЛӨХ ГОРИМ — ОБЬЁМ ↔ ХУВЬ (2026-09-06).
- *
- * ⚠️ Хоёр шошго ҮРГЭЛЖ ХАРАГДАНА, идэвхтэй нь л тодорно. Ганц шошготой
- * (одоогийн горимыг л бичдэг) товч нь «энэ товч юу хийх вэ» гэдгийг
- * хэлдэггүй — хэрэглэгч дарж үзэж байж мэднэ.
- */
 /*
  * БҮТЭН ДЭЛГЭЦИЙН ГОРИМ (2026-09-09, хэрэглэгчийн хүсэлт).
  *
@@ -134,90 +149,29 @@
 }
 .fullBtnOn:hover { border-color: var(--data); }
 
-/* ЗАСВАР НЭЭХ товч — «Бүтэн дэлгэц»-ээс ӨӨР өнгө: нэг нь ХАРАГДАЦ,
-   нөгөө нь ӨГӨГДӨЛ хөнддөг тул нүдээр ялгагдах ёстой. */
-.editBtn,
-.editBtnOn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.editBtn {
-  color: var(--ink-2);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-}
-.editBtn:hover { color: var(--good-ink, var(--good)); border-color: var(--good); }
-/* Засвар НЭЭЛТТЭЙ — ногоон: «одоо бичиж болно» */
-.editBtnOn {
-  color: var(--good-ink, var(--good));
-  background: color-mix(in srgb, var(--good) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--good) 55%, transparent);
-}
-
 /*
- * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — хэрэгслийн мөрөнд, ХОЁР тоо.
- * ⚠️ Батлагдсан нь ТОД, батлагдаагүй нь НОГООН — ноорогийн нүдний
- *    ногоон хүрээтэй ижил өнгө: «энэ бол миний илгээгээгүй ажил» гэдэг
- *    хоёр газарт НЭГ өнгөөр уншигдана.
+ * БАГЦЫН ГҮЙЦЭТГЭЛ — хэрэгслийн 2-р мөрөнд ТУСДАА хайрцагнууд (2026-10-23, хэрэглэгч: «тусад нь салгаж ойлгомжтой»).
+ * ⚠️ Батлагдсан нь ТОД, «Илгээвэл болох» нь НОГООН — ноорогийн нүдний ногоон хүрээтэй ижил өнгө («миний илгээгээгүй
+ *    ажил»); нөгөө хувилбар нь БҮДЭГ (лавлах).
  */
-.pkgPct {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 0.76rem;
-  font-variant-numeric: tabular-nums;
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-}
-.pkgPctLab { color: var(--ink-3); font-size: 0.7rem; }
-.pkgPctNow { color: var(--ink); font-weight: 700; }
-.pkgPctNew {
-  color: var(--good-ink, var(--good));
-  font-weight: 700;
-  font-size: 0.72rem;
-}
-.pkgPctGap { font-style: normal; opacity: 0.75; font-size: 0.6875rem; }
-
-/* НӨГӨӨ хувилбарын гүйцэтгэл — БҮДЭГ, лавлах зорилготой */
-.pkgPctOther {
-  color: var(--ink-3);
-  font-size: 0.7rem;
-  padding-left: 6px;
-  border-left: 1px solid var(--line);
-}
-.pkgPctOther b { color: var(--ink-2); font-weight: 700; }
-
-.modeBtn {
+.pctStat {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--ink-2);
-  background: var(--surface);
+  gap: 8px;
+  height: var(--ctl-h, 30px);
+  box-sizing: border-box;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: 5px 10px;
-  cursor: pointer;
-  transition: border-color 0.15s;
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.modeBtn:hover:not(:disabled) { border-color: var(--line-strong); }
-.modeBtn:disabled { opacity: 0.4; cursor: default; }
-
-/* Идэвхтэй тал — өгөгдлийн ганц өнгө; идэвхгүй нь бүдэг бэх */
-.modeOn { color: var(--data-ink); }
-.modeOff { color: var(--ink-3); }
-.modeSep { color: var(--ink-3); font-weight: 400; }
+.pctStatLab { display: inline-flex; align-items: baseline; gap: 6px; font-size: 0.72rem; color: var(--ink-2); }
+.pctStatVal { font-size: 0.86rem; font-weight: 700; color: var(--ink); }
+.pctStatOther .pctStatVal { color: var(--ink-2); font-weight: 600; }
+.pctStatMain { border-color: var(--line-strong); }
+.pctStatMain .pctStatVal { color: var(--data-ink); }
 
 .layerBtns { display: inline-flex; gap: 3px; }
 .layerBtn {
@@ -1406,54 +1360,6 @@
   min-height: 0;
 }
 
-/* ── Өгөгдөл оруулах порталын толгой (таб хасагдсаны оронд) ── */
-.portalHead {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: none;
-  /* .wrap-ийн padding-тай (18px 24px) эгнэнэ — карт ирмэгт наалдахгүй */
-  margin: 18px 24px 0;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.portalIcon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--hue) 14%, transparent);
-  color: var(--data-ink);
-}
-.portalText { min-width: 0; }
-.portalTitle {
-  margin: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink);
-}
-.portalDesc { margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
-/*
- * ГУРВАН АЛХМЫН ЗААВАР — шинэ гүйцэтгэгчид (2026-09-15-ны хэрэглээний
- * аудит). Тайлбараас ЯЛГАРАХ ёстой тул бага зэрэг тод, зүүн акцент шугамтай.
- */
-.portalSteps {
-  margin: 6px 0 0;
-  padding: 5px 9px;
-  border-left: 3px solid var(--data);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
 /* ── ХЯНАГЧИЙН ТЭМДЭГЛЭГЭЭ ─────────────────────────────────────────────
    ⚠️ `border` БИШ `box-shadow: inset` — `border-collapse: collapse` дээр
       энгийн хүрээ нь хөрш нүдний шугамтай уралдаж, зарим тал нь алга
@@ -1731,4 +1637,13 @@
   margin-top: 4px;
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+/* ⚠️ 2026-10-23: хэрэглүүрийн бүлэг — хувийн хайрцгуудын БАРУУН талд, багтахгүй бол бүлэг дотроо баруун тийш ороно */
+.tbTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  min-width: 0;
 }

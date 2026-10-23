@@ -1,5 +1,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
+/** ⚠️ 2026-10-23: FIC · М-актын PDF item-ийн таг — баримт бичгийн сангаас ялгана (`docLib.isFmPdf`) */
+export const FM_TAG = 'selbe-fm';
 import { ENT_DATA } from '@/lib/services/entMap';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
 import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
@@ -296,7 +298,9 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} оруулах боломжгүй.', a.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
   const title = `${a.kind === 'FIC' ? 'FIC' : 'М-акт'} · ${a.docNo || a.file.name.replace(/\.pdf$/i, '')} · ${a.maNo}`;
-  const { item, warn } = await entUploadPdf(a.file, title);
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд»): FIC → «FIC pdf», М-акт → «m-akt pdf» хавтас; `selbe-fm` таг —
+     баримт бичгийн сан (`docLib.listPdfs`) эдгээрийг ялгаж ХАРУУЛАХГҮЙ */
+  const { item, warn } = await entUploadPdf(a.file, title, [FM_TAG], a.kind === 'FIC' ? 'FIC pdf' : 'm-akt pdf');
   /* ⚠️ 2026-10-09 (аудит №6): ОРОН НУТГИЙН шөнө дунд (`fromDateInput`) — урьд нь `T00:00:00Z` (UTC) тул
      бусад чанарын огноотой (`chanarUi`) 8 цагаар зөрж, өдөр хойшилж харагддаг байв. */
   const dd = fromDateInput(a.docDate);

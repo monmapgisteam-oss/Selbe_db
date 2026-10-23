@@ -136,7 +136,8 @@ export const ROLE_ACCESS: Record<
    *    бодит харагдац нь админы тохируулсан загвараас (`roleTypes.roleAccess`).
    */
   taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
-  chanar: { views: ["qaqc", "ma"], docs: false, home: "qaqc" },
+  /* ⚠️ 2026-10-23: «Чанар (QAQC)» харагдац хасагдсан — чанарын үүрэг MA-тай л */
+  chanar: { views: ["ma"], docs: false, home: "ma" },
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
 };
 

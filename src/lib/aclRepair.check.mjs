@@ -37,9 +37,9 @@ const ok = (c, m) => { assert.ok(c, m); checks += 1; };
 const eq = (a, b, m) => { assert.deepEqual(a, b, m); checks += 1; };
 const sorted = (x) => [...x].sort();
 
-/* ⚠️ Аккаунт бүрд ХАДГАЛСАН урсгалтай харагдац («Гүйцэтгэл» · «Чанар (QAQC)») — үл тоологдох ёстой */
+/* ⚠️ Аккаунт бүрд ХАДГАЛСАН урсгалтай харагдац («Гүйцэтгэл») — үл тоологдох ёстой (⚠️ 2026-10-23: QAQC хасагдсан) */
 const POOL = Array.from({ length: 30 }, (_, i) => `rp_u${String(i + 1).padStart(2, '0')}`);
-fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash', 'guitsetgel', 'qaqc']), docs: 0 })));
+fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash', 'guitsetgel']), docs: 0 })));
 let next = 0;
 const mkUser = () => POOL[next++];
 
@@ -77,11 +77,10 @@ const [g1, g2] = PKG_GROUPS;
 
   ok((await run(OPS.flowCellOp(u, 'engineer', g1, true))).ok, `${tag}: урсгал`);
   ok((await run(OPS.scopedCellOp('huvaari', u, 'author', g1, true))).ok, `${tag}: хуваарь зохиогч`);
-  ok((await run(OPS.qaqcCellOp(u, g2, true))).ok, `${tag}: QAQC`);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   const rows = Object.fromEntries(rowsOf(u).map((r) => [r.view, r]));
   eq(rows.guitsetgel.sources.map((s) => [s.sys, s.role, s.bagts]), [['flow', 'engineer', [g1]]], `${tag}: «Гүйцэтгэл» ← урсгал`);
   eq(rows.huvaari.sources.map((s) => [s.sys, s.role, s.cap, s.granted]), [['huvaari', 'author', 'plan', true]], `${tag}: «Хуваарь» ← Хуваарийн эрх · Зохиогч`);
-  eq(rows.qaqc.sources.map((s) => [s.sys, s.bagts, s.granted]), [['qaqc', [g2], true]], `${tag}: «Чанар (QAQC)» ← QAQC`);
   ok(!rows.huvaariBatlah.open && !rows.ajilBatlah.open, `${tag}: бусад хаалттай`);
   agree(u, tag);
   await roundTrip();

@@ -12,7 +12,7 @@
  *   2. `analysis/data.ts`-ийн `loadAnalysisCached` автобусад бүртгэлгүй — толгойн «Шинэчлэх» хүрдэггүй байв.
  *   3. `scorecardLoad.loadScorePlan` TTL-гүй; `Dashboard.loadSources` TTL-гүй · таггүй байв.
  *   4. `hyanaltStore.badgeRows` автобусад бүртгэлгүй — хяналтын шийдвэрийн дараа цэсний тэмдэг 3 мин хуучин.
- *   5. `saveQaqc` ямар ч DataKey хүчингүй болгодоггүй; CEO QAQC ачаалагчид зөвхөн `BAGTS_SHEET` тагтай байв.
+ *   5. (2026-10-23: QAQC хасагдсан — `QAQC` түлхүүр ба ачаалагчид устсаныг л шалгана.)
  *   6. ХАБЭА-ийн poll TTL-тэй яг тэнцүү — эхний tick бүр кэшээс буцдаг байв (`HABEA_POLL_MS` > `HABEA_TTL_MS`).
  */
 import assert from 'node:assert/strict';
@@ -63,19 +63,10 @@ console.log('✅ 2. analysis/data.ts — register(…, [])');
 assert.match(code('src/lib/hyanaltStore.ts'), /register\(\(\) => \{ badgeRows = null; \}, \['HYANALT'\]\)/, 'hyanaltStore: badgeRows HYANALT-д бүртгэгдээгүй');
 console.log('✅ 4. hyanaltStore.badgeRows — HYANALT');
 
-/* ── 5. QAQC түлхүүр ── */
+/* ── 5. QAQC түлхүүр ── ⚠️ 2026-10-23: QAQC хасагдсан — DataKey-д үлдэх ёсгүй */
 {
-  const q = code('src/lib/qaqc.ts');
-  const fn = /export async function saveQaqc\([\s\S]*?\n\}\n/.exec(q);
-  assert.ok(fn, 'saveQaqc олдсонгүй');
-  assert.match(fn[0], /finally \{\s*if \(touched\) invalidate\('QAQC'\);/, 'saveQaqc: хүснэгт өөрчлөгдсөн үед invalidate(QAQC)');
-  assert.match(fn[0], /if \(isLostWrite\(e\)\) touched = true;/, 'saveQaqc: хариу алдагдсан үед ч хүчингүй болгоно');
-  assert.match(fn[0], /done \+= res\.length;\s*touched = true;/, 'saveQaqc: амжилттай багцын дараа touched');
-  for (const [f, name] of [['src/lib/ceo/qaqc.ts', 'loadQaqcLoaded'], ['src/lib/ceo/qaqc.ts', 'loadQaqcKpi'], ['src/lib/ceo/scorecardLoad.ts', 'loadScoreQual']]) {
-    assert.ok(segment(code(f), name).includes("['QAQC', 'BAGTS_SHEET']"), `${f}: ${name} нь ['QAQC', 'BAGTS_SHEET'] тагтай байх ёстой`);
-  }
-  assert.match(code('src/lib/dataBus.ts'), /\|\s*'QAQC'/, "dataBus.DataKey-д 'QAQC' алга");
-  console.log('✅ 5. saveQaqc → invalidate(QAQC); CEO QAQC ачаалагчид [QAQC, BAGTS_SHEET]');
+  assert.doesNotMatch(code('src/lib/dataBus.ts'), /\|\s*'QAQC(_DRAFT)?'/, "dataBus.DataKey-д 'QAQC' үлдсэн");
+  console.log('✅ 5. QAQC түлхүүр хасагдсан');
 }
 
 /* ── 6. ХАБЭА poll > TTL ── */

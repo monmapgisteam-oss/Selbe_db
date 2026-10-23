@@ -39,7 +39,6 @@ import {
 } from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
-import { QaqcAcl } from '@/modules/QaqcAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
 import { ChanarAcl } from '@/modules/ChanarAcl';
@@ -55,7 +54,6 @@ import { listHuvaariAssigns, purgeHuvaariAssign, subscribeHuvaariAcl } from '@/l
 import { listObyemAssigns, purgeObyemAssign, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { listAjilAssigns, purgeAjilAssign, subscribeAjilAcl } from '@/lib/ajilAcl';
 import { listButetsAssigns, purgeButetsAssign, subscribeButetsAcl } from '@/lib/butetsAcl';
-import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import {
   purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
@@ -223,7 +221,7 @@ export type Draft = {
  * байхгүй тул «хагас тохируулсан» төлөв үүсэхгүй.
  */
 /** Бүтэн өргөнтэй хуудсууд — «Эрхийн төрөл» ба «багц × үүрэг/шат» хүснэгттэй 7 хуудас (2026-09-30) */
-const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets']);
+const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets']);
 
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
@@ -476,9 +474,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const [, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
-  /* ⚠️ Чанарын хуваарилалт ч бас ӨӨР хадгалалттай — QAQC унтраалга нь түүнийг
-     дагуулдаг тул захиалахгүй бол дарсан унтраалга буцаж унтарсан харагдана. */
-  useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
@@ -707,11 +702,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (drop && !(await confirmDropGuits())) return;
     putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
   };
-  const flipDocs = (u: UserPerm) => {
-    if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
-    const d = draftOf(u);
-    putDraft(u, { ...d, clear: false, docs: !d.docs });
-  };
+  /* ⚠️ 2026-10-23: `flipDocs` («ТЭЗҮ-БОНУ» унтраалга) ХАСАГДСАН — баримт бичгийн сан бүх хэрэглэгчид нээлттэй */
   /*
    * ⚠️ `flipCap` · `markCap` · `dropOrphan` УСТСАН (2026-09-30, хэрэглэгчийн
    *    шийдвэр). Урьд нь картын «Нэмэлт эрх» унтраалга энгийн дөрвөн эрхийг
@@ -855,9 +846,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const r = await removeUser(uname);
           if (!r) { fail += 1; failed.push(uname); continue; }
           const flowOk = await purgeAssign(uname);
-          /* ⚠️ Чанарын хуваарилалт нь ӨӨР мөр (`__qaqc__:`) — тусад нь арилгана,
-             эс бөгөөс тэр нэрийг дахин нэмэхэд чанарын багц өөрөө эргэж ирнэ. */
-          const qaqcOk = await purgeQaqcAssign(uname);
           const hvOk = await purgeHuvaariAssign(uname);
           /* ⚠️ Обьёмын хуваарилалт нь ӨӨР мөр (`__obyem__:`) — тусад нь арилгана */
           const obOk = await purgeObyemAssign(uname);
@@ -869,7 +857,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const btOk = await purgeButetsAssign(uname);
           /* ⚠️ 2026-10-09 (аудит №6): АБСОЛЮТ устгал — нэгтгэлгүй `capRemove` (`caps.setCaps`-ийн `absolute` ⚠️) */
           const capOk = await setCaps(uname, [], { absolute: true });
-          if (flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (flowOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         /*
@@ -886,7 +874,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           if (!roleForUser(uname)) {
             // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
             if (!(await purgeAssign(uname))) bad = true;
-            if (!(await purgeQaqcAssign(uname))) bad = true;
             if (!(await purgeHuvaariAssign(uname))) bad = true;
             if (!(await purgeObyemAssign(uname))) bad = true;
             if (!(await purgeChanarAssign(uname))) bad = true;
@@ -1043,7 +1030,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     /* ⚠️ 2026-09-30: хуудасны нэр = урсгалын хуудас (`capText.paneLabel`) */
     const orphan: [boolean, string][] = [
-      [listQaqcAssigns().some((a) => a.user === key), paneLabel('qaqc')],
       [listHuvaariAssigns().some((a) => a.user === key), paneLabel('huvaari')],
       [listObyemAssigns().some((a) => a.user === key), paneLabel('obyem')],
       [listAjilAssigns().some((a) => a.user === key), paneLabel('ajil')],
@@ -1173,7 +1159,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onRole: (role) => { void applyRole(u, role); },
       onFlipView: (k) => { void flipView(u, k); },
       onAllViews: (v) => { void setAllViews(u, v); },
-      onFlipDocs: () => flipDocs(u),
       onFlipRemove: () => flipRemove(u),
       onClear: () => markClear(u),
       onGoFlow: () => goPane('guits'),
@@ -1326,7 +1311,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               : pane === 'huvaari' ? <HuvaariAcl />
                 : pane === 'obyem' ? <ObyemAcl />
                   : pane === 'chanar' ? <ChanarAcl />
-                    : pane === 'qaqc' ? <QaqcAcl />
                       : pane === 'butets' ? <DedButetsAcl />
                         : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
           </>

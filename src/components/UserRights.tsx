@@ -40,13 +40,12 @@ export type UserRightsProps = {
   hasView: (views: ViewKey[] | 'all', k: ViewKey) => boolean;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
-  onFlipDocs: () => void;
   /** ⚠️ 2026-10-12: хатуу super — бүх унтраалга асаалттай, түгжээтэй (эрх нь кодоос) */
   superUser?: boolean;
 };
 
 export function UserRights(props: UserRightsProps) {
-  const { d, capViews, caps, hasView, onFlipView, onAllViews, onFlipDocs } = props;
+  const { d, capViews, caps, hasView, onFlipView, onAllViews } = props;
   const superUser = !!props.superUser;
 
   /** Энэ харагдацыг нээсэн эрхүүдийн ХУУДАСНЫ нэр (хажуугийн цэс) */
@@ -134,25 +133,7 @@ export function UserRights(props: UserRightsProps) {
             </div>
           );
         })}
-        <div className={s.topicRow}>
-          <span className={s.topicName}>
-            <span className={s.topicIcon}><Icon name="file" size={14} /></span>
-            {tr('ТЭЗҮ-БОНУ')}
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={superUser || d.docs}
-            aria-disabled={superUser || undefined}
-            aria-label={tr('ТЭЗҮ-БОНУ')}
-            title={superUser ? tr('Админ (super) — кодоор нээлттэй') : undefined}
-            className={`${s.sw} ${superUser || d.docs ? s.swOn : ''} ${superUser ? s.swImplied : ''}`}
-            style={superUser ? { cursor: 'not-allowed' } : undefined}
-            onClick={superUser ? undefined : () => onFlipDocs()}
-          >
-            <span className={s.swKnob} />
-          </button>
-        </div>
+        {/* ⚠️ 2026-10-23: «ТЭЗҮ-БОНУ» унтраалга ХАСАГДСАН — баримт бичгийн сан нэвтэрсэн бүх хэрэглэгчид нээлттэй (`docLib`) */}
       </div>
     </>
   );

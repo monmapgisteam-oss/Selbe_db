@@ -110,7 +110,7 @@ import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, Submit
 import { FillNotices, NoticeToast, StickyNotice } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
 import { FillRows } from "./fill/FillRows";
-import { extraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
+import { fullExtraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
 import { FillDatePicker } from "./fill/FillDatePicker";
 /* ⚠️ 2026-10-12: «Excel татах» — одоогийн харагдацыг .xlsx болгоно (цэвэр модуль, бусад төлөвт нөлөөгүй) */
 import { downloadFillXlsx } from "./fill/sheetXlsx";
@@ -406,17 +406,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     resumedOid, setResumedOid, returnedStaged, returnInfo, reviewStage, inReview, flowRef, today, reviewSoidsKey,
   } = useFlow({ pkg, view, stagedOid: staged?.oid ?? null });
   /**
-   * Өнөөдөр архивт жааз үүссэн үү — ЗӨВХӨН дэлгэцийн мэдээлэл.
-   *
-   * ⚠️ Энэ нь «БАТЛАГДСАН» гэсэн үг — «ИЛГЭЭГДСЭН» гэсэн үг БИШ. Хоёрыг
-   *    андуурсан нь өмнөх хоёр алдааны эх үндэс байсан.
-   * ⚠️ 2026-09-04: архивт жааз одоо ЗӨВХӨН газрын даргын (6-р шат) батламжаар
-   *    үүсдэг тул энэ нь «энэ багцын өмнөх мөчлөг өнөөдөр батлагдсан» гэсэн
-   *    утгатай болов. ЯМАР Ч ТҮГЖЭЭНД хэрэглэгдэхгүй — илгээх хоригийн
-   *    цорын ганц шалгуур нь `inReview`.
-   */
-  const publishedToday = !!snapDay && snapDay === today;
-  /**
    * Засах эрхгүй — харах л боломжтой.
    *
    * ⚠️ «ӨДӨРТ НЭГ УДАА» ТҮГЖЭЭ ХАСАГДСАН (2026-09-03, хэрэглэгчийн шууд
@@ -674,24 +663,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Хөтөчид сонголтыг санана — өдөр бүр нэг горимоор ажилладаг хүн товчийг
    * дахин дахин дарахгүй.
    */
-  const [fillMode, setFillMode] = useState<"obyem" | "pct">(() => {
-    try {
-      return localStorage.getItem("selbe-fill-mode") === "pct" ? "pct" : "obyem";
-    } catch { return "obyem"; }
-  });
-  const toggleFill = useCallback(() => {
-    setFillMode((m) => {
-      const n = m === "obyem" ? "pct" : "obyem";
-      try { localStorage.setItem("selbe-fill-mode", n); } catch { /* хаалттай орчин */ }
-      return n;
-    });
-    /* ⚠️ Нээлттэй нүдийг ХААНА: оролтын `defaultValue` нь горимын дагуу
-       бэлдэгддэг тул нээлттэй хэвээр үлдвэл өмнөх горимын тоо харагдсаар
-       байгаад буруу нэгжээр бичигдэнэ. */
-    setEdit(null);
-    /* ⚠️ 2026-10-01: `setEdit` тогтвортой (useState) — React Compiler түүнийг хамаарал гэж
-       тооцдог тул жагсаалтад (preserve-manual-memoization); `[]`-тэй ЯГ ижил. */
-  }, [setEdit]);
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «обьём ↔ хувь солилтыг бүрэн устгаж зөвхөн обьёмоор бөглөдөг болго»): горим солих товч
+     ба хадгалсан сонголт (`selbe-fill-mode`) ХАСАГДСАН — ҮРГЭЛЖ обьёмоор. Обьёмын талбаргүй блокийн хувийн нүд
+     (`pctOnly`) хуучнаараа. Төрөл нь холбоотой модулиудад (`FillRows` · `useCellEdit` · `sheetXlsx`) хэвээр. */
+  const fillMode = "obyem" as "obyem" | "pct";
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
   // ("" = хоосон болгох). Зөвхөн «Нийтлэх» дархад үйлчилгээнд бичигдэнэ.
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -742,18 +717,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    санана (`selbe-fill-extra:<нэр>`, localStorage нь try/catch-тай). Нэвтрэлт хожуу ирэхэд түлхүүр
    *    солигдож тэр хэрэглэгчийн сонголт уншигдана (`extraSet.k` таарахгүй бол хадгалснаас).
    */
+  /* ⚠️ 2026-10-23 (хэрэглэгч): «Бусад талбар» товчны оронд «БҮТЭН / ХУРААНГУЙ» харагдац. `showExtra` = БҮТЭН
+     (хуучин «Бусад талбар асаалттай»-тай ижил хадгалалт — сонголт хэрэглэгч тус бүрд, анхдагч БҮТЭН).
+     · Бүтэн — бүх үндсэн багана + мөрийн түвшний бусад БҮХ талбар (`fullExtraCols`, ArcGIS-ийн автоматгүй).
+     · Хураангуй — № · Ажил · Обьём · Инж. төлөвлөсөн обьём · блок бүрийн бөглөх нүд ба төлөвлөгөөт хувь л. */
   const extraKey = extraPrefKey(user?.username);
   const extraSaved = useMemo(() => readExtraPref(extraKey), [extraKey]);
   const [extraSet, setExtraSet] = useState<{ k: string; on: boolean } | null>(null);
   const showExtra = extraSet?.k === extraKey ? extraSet.on : extraSaved;
-  const toggleExtra = useCallback(() => {
-    const on = !showExtra;
+  const setFullView = useCallback((on: boolean) => {
     setExtraSet({ k: extraKey, on });
     writeExtraPref(extraKey, on);
-  }, [showExtra, extraKey]);
-  /** Энэ үйлчилгээнд БАЙГАА баганууд л (талбаргүй бол алгасна) */
-  const extraAll = useMemo(() => extraCols(sc), [sc]);
-  const extra = useMemo(() => (showExtra ? extraAll : []), [showExtra, extraAll]);
+  }, [extraKey]);
 
   // ── Crosshair — React state БИШ ──
   // Урьд нь нүд бүрийн mouseenter hover state солиж «Бүгд» горимд ~80k нүдийг
@@ -1487,6 +1462,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      ЯГ `rows` (серверийн мөр + давхарласан илгээлтийн сөрөг oid-той мөр). */
   const rowsAll = rows;
   const addedOids = useAddedOids(pkg, rowsAll);
+  /** Бүтэн горимын нэмэлт баганууд (`showExtra`-ийн ⚠️) — Excel татахад харагдацаас үл хамааран бүтнээр */
+  const extraAll = useMemo(() => fullExtraCols(sc, rowsAll), [sc, rowsAll]);
+  const extra = useMemo(() => (showExtra ? extraAll : []), [showExtra, extraAll]);
+  const compact = !showExtra;
+  /** Хүснэгтийн баганын тоо — хоосон/чигжээсийн мөрийн `colSpan` */
+  const nCols = compact ? 4 + nBld * 2 : 14 + nBld * 4 + extra.length;
 
   /* ── ХУВААРИЙН САРЫН ЗАДАРГАА (`huvaari_obyem`) ──────────────────────
    * ⚠️ Задаргаатай ажлын ТӨЛӨВЛӨГӨӨТ хувь нь сарын обьёмоос (S-муруй)
@@ -2156,6 +2137,39 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хяналтын бүртгэл үүснэ. Архивт бичих цорын ганц зам —
    *    `hyanaltStore.apply` (газрын даргын батламж).
    */
+  /*
+   * ⚠️ 2026-10-23 (хэрэглэгч: «Дуусгах дарахад илгээхэд бүх зүйл бэлэн эсэхийг шалгаад Илгээх товч идэвхтэй болно;
+   *    Дуусгах дарахаас нааш Илгээх дарж болохгүй»): БЭЛЭН БАЙДЛЫН ШАЛГАЛТ. «Дуусгах» (`finishEdit`) нээлттэй нүдийг
+   *    хүлээн авч, доорх `readyIssue`-ээр `publish`-ийн хоригуудыг (гаднын нөлөөгүйгээр) урьдчилан шалгана. Бэлэн бол
+   *    засвар хаагдаж «Илгээх» идэвхжинэ; үгүй бол шалтгааныг хэлж засвар нээлттэй үлдэнэ. Бэлэн тэмдэг (`readyAt`) нь
+   *    багц · өдөр · өөрчлөлтийн тоонд уягдсан — дахин «Бөглөх» дарах эсвэл ноорог өөрчлөгдөхөд хүчингүй.
+   * ⚠️ Өөрчлөлтгүй дахин илгээх (`resendAsIs`, `dirtyCount === 0`) энэ хаалтад ОРОХГҮЙ — бөглөх зүйл байхгүй.
+   */
+  const readySig = `${pkg.key}|${todayFillMs}|${dirtyCount}`;
+  const [readyAt, setReadyAt] = useState<string | null>(null);
+  const sendReady = dirtyCount === 0 || (!editing && readyAt === readySig);
+  const readyIssue = useCallback((): string | null => {
+    if (dirtyCount === 0) return tr('Илгээх өөрчлөлт алга — нүдэнд обьём бичсэний дараа «Дуусгах» дарна уу.');
+    if (noEdit) return RO.viewOnly;
+    if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) return noPerfWhy ?? RO.noPerf;
+    if (restoringUi) return RO.restoring;
+    if (staged && !staged.done && (hyLoading || !!hyErr)) {
+      return hyErr
+        ? tr('Хяналтын жагсаалтыг татаж чадсангүй — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгах боломжгүй тул илгээсэнгүй. Дахин ачаалж байна; хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.')
+        : tr('Хяналтын жагсаалт ачаалагдаж байна — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгахаас өмнө илгээхгүй. Хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.');
+    }
+    const okBadN = Object.keys(pending).filter((k) => {
+      const c = k.indexOf(':');
+      return c > 0 && okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)));
+    }).length;
+    if (okBadN) return tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд өөрчлөлт байна — тэр нүд засагдахгүй тул утгыг нь буцаагаад «Дуусгах»-ыг дахин дарна уу.', okBadN);
+    const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
+    if (off.length) return tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length);
+    if (!canSubmitNow) return tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', '));
+    if (tgtMismatch && draftTgt) return tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаасан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1]));
+    return null;
+  }, [dirtyCount, noEdit, canPerf, pending, pendDate, asOf, asOfOrig, noPerfWhy, restoringUi, staged, hyLoading, hyErr,
+    okLockAt, offTgtKeys, canSubmitNow, waitingOn, tgtMismatch, draftTgt]);
   /* ⚠️ 2026-10-23 (UX аудит F1): `publish`-ийн давхар асуултын хамгаалалт (асуулт нээлттэй үед) */
   const pubAskRef = useRef(false);
   const publish = useCallback(async () => {
@@ -2174,6 +2188,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      */
     if (noEdit) {
       setErr(RO.viewOnly);
+      return;
+    }
+    /* ⚠️ 2026-10-23: «Дуусгах» дарж бэлэн байдлыг шалгуулаагүй бол илгээхгүй (`readyIssue`-ийн ⚠️) — товч саарал ч энд ч хаана */
+    if (!sendReady) {
+      warn(tr('Эхлээд «Дуусгах» товчийг дарна уу — илгээхэд бүх зүйл бэлэн эсэхийг шалгасны дараа «Илгээх» идэвхжинэ.'));
       return;
     }
     // ⚠️ Гүйцэтгэлийн өөрчлөлт (обьём/огноо/шинэчлэгдсэн огноо) зөвхөн томилогдсон
@@ -3100,7 +3119,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       pubEpochRef.current += 1;
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
@@ -3292,6 +3311,41 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const publishBtn = useCallback(async () => {
     if (flushEditRef.current()) setPublishQueued(true);
   }, []);
+  /* ⚠️ 2026-10-23: «ДУУСГАХ» — нээлттэй нүдийг хүлээн авч (`flushEditRef`), төлөвт тусмагц бэлэн байдлыг шалгана
+     (`readyIssue`-ийн ⚠️). Бэлэн → засвар хаагдаж «Илгээх» идэвхжинэ; үгүй → шалтгаан, засвар нээлттэй үлдэнэ. */
+  const [finishQueued, setFinishQueued] = useState(false);
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «бөглөх дараад засвар хийгээгүй дуусгахад илгээх идэвхжиж байна»): «Бөглөх» дарсан агшны
+     ноорогийн гарын үсэг (`editSig`). «Дуусгах» дээр ижил хэвээр (энэ удаад ЗАСВАР ХИЙГЭЭГҮЙ) бол «Илгээх» идэвхжихгүй —
+     засвар хаагдаж, өмнөх (сэргэсэн) ноорог байгааг л хэлнэ. */
+  const draftSig = useMemo(
+    () => JSON.stringify([pending, pendDate, asOf]),
+    [pending, pendDate, asOf],
+  );
+  const editSigRef = useRef<string | null>(null);
+  const startEdit = useCallback(() => {
+    editSigRef.current = draftSig;
+    setEditing(true);
+  }, [draftSig, setEditing]);
+  const finishEdit = useCallback(() => {
+    if (flushEditRef.current()) setFinishQueued(true);
+  }, []);
+  useEffect(() => {
+    if (!finishQueued || edit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-23: «Дуусгах»-ын дараалал — нээлттэй нүдний утга төлөвт тусмагц шалгана (`publishQueued`-тэй ижил)
+    setFinishQueued(false);
+    if (editSigRef.current != null && editSigRef.current === draftSig) {
+      editSigRef.current = null;
+      setEditing(false);
+      setReadyAt(null);
+      warn(tr('Засвар хийгдээгүй тул «Илгээх» идэвхжсэнгүй — «Бөглөх» дарж нүдэнд обьём бичээд «Дуусгах» дарна уу.'));
+      return;
+    }
+    const why = readyIssue();
+    if (why) { warn(why); return; }
+    editSigRef.current = null;
+    setEditing(false);
+    setReadyAt(readySig);
+  }, [finishQueued, edit, readyIssue, warn, setEditing, readySig, draftSig]);
 
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
 
@@ -3315,17 +3369,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       `${tr('Бүлэг')}: ${grpAOpts.find((o) => o.oid === grpA)?.label.trim() ?? tr('Бүгд')}`,
       `${tr('Дэд бүлэг')}: ${grpBOpts.find((o) => o.oid === grpBEff)?.label.trim() ?? tr('Бүгд')}`,
       `${tr('Хуваарийн дагуу')}: ${yn(byPlan)}`,
-      ...(extraAll.length ? [`${tr('Бусад талбар')}: ${yn(showExtra)}`] : []),
     ].join(' · ');
+    /* ⚠️ 2026-10-23: Excel нь харагдацаас (Бүтэн/Хураангуй) үл хамааран ҮРГЭЛЖ бүтэн хүснэгт (`extraAll`) */
     downloadFillXlsx({
       pkg: { label: pkg.label, group: pkg.group, floors: pkg.floors },
-      sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, extra,
+      sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, extra: extraAll,
       pvPend, pvPreview, pending, pendDate, backChg, backOk, backChgDates,
       viewChanged: view?.changed, viewOk: view?.ok,
       info: { day: view?.day ?? today, snapDay, filters, user: user?.username ?? '', locked },
     });
-  }, [sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, extra, pvPend, pvPreview, pending, pendDate,
-    backChg, backOk, backChgDates, view, pkg, today, snapDay, user, locked, grpAOpts, grpA, grpBOpts, grpBEff, byPlan, extraAll, showExtra]);
+  }, [sc, bands, rowsAll, calc, vis, fillMode, asOf, asOfOrig, pvPend, pvPreview, pending, pendDate,
+    backChg, backOk, backChgDates, view, pkg, today, snapDay, user, locked, grpAOpts, grpA, grpBOpts, grpBEff, byPlan, extraAll]);
 
   // ⚠️ Үйлчилгээнд ХАДГАЛАГДСАН огноо тайлангийн жагсаалтад байхгүй байж болно
   // (жишээ нь 2026-07-05). Түүнийг сонголт болгож нэмэхгүй бол `<select>`
@@ -3361,6 +3415,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   return (
     <div className={`${st.wrap} ${wide ? st.wrapFull : ""}`} ref={wrapRef}>
       <div className={st.toolbar}>
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «хувь харуулалт ба хэрэглүүрийг тусад нь салга — нэг мөрөнд, хувь ЗҮҮН, хэрэглүүр БАРУУН»):
+            1-р мөр — гүйцэтгэлийн хувь (12F · 9F · багц) зүүн, `tbGrow`, хэрэглүүрүүд баруун; 2-р мөр — илгээх · төлөв. */}
+        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} />
+        <span className={st.tbGrow} aria-hidden />
+        {/* ⚠️ 2026-10-23: хэрэглүүрүүд НЭГ бүлэгт (`tbTools`) — багтахгүй бол бүлэг дотроо баруун тийш эгнэж ороно, хувиас салахгүй */}
+        <div className={st.tbTools}>
         {/*
           * БӨГЛӨХ ГОРИМ — хүснэгтийг бүтэн дэлгэц болгоно.
           * ⚠️ Хэрэгслийн мөрийн ЭХЭНД: бөглөгч хуудсаа нээмэгц эхлээд
@@ -3389,29 +3449,31 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           *    `canPerf`-гүйд гардаггүй тул тэр хүн тэр баганыг ХЭЗЭЭ Ч засаж чаддаггүй байв.
           *    Гүйцэтгэлийн нүд `noPerf = … || !canPerf` хэвээр түгжээтэй.
           */}
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «нэг товч дээр солигдож ажиллана — зэрэгцээ 2 товч буруу»): НЭГ шилжүүлэгч товч —
+            засвар хаалттай бол «Бөглөх» (нээнэ), нээлттэй бол «Дуусгах» (хаана, нүд дахин түгжигдэнэ). */}
         {!locked && (canPerf || canObyemEdit) && (
           <button
             type="button"
-            className={editing ? st.editBtnOn : st.editBtn}
-            onClick={() => setEditing((v) => !v)}
+            className={editing ? `${st.layerBtn} ${st.layerBtnOn}` : st.layerBtn}
+            onClick={editing ? finishEdit : startEdit}
             aria-pressed={editing}
             title={editing
-              ? tr('Засварыг хаана — нүд дахин түгжигдэнэ')
+              ? tr('Засварыг дуусгана — илгээхэд бэлэн эсэхийг шалгаж, бэлэн бол «Илгээх» идэвхжинэ')
               : canPerf
                 ? tr('Нүд засах горимыг нээнэ. Хаалттай үед санамсаргүй товшилтоор тоо өөрчлөгдөхгүй.')
                 : tr('Зөвхөн «Инж. төлөвлөсөн обьём» баганыг засах горимыг нээнэ — гүйцэтгэлийн нүд таны эрхэд хаалттай.')}
           >
-            <span aria-hidden>{editing ? '🔓' : '✎'}</span>
-            {editing ? tr('Засаж байна') : tr('Бөглөх')}
+            {editing ? tr('Дуусгах') : tr('Бөглөх')}
           </button>
         )}
+        <span className={st.tbSep} aria-hidden />
         <FilterBar
-          locked={locked} busy={busy} noPerf={noPerf} fillMode={fillMode} toggleFill={toggleFill}
+          locked={locked} busy={busy} noPerf={noPerf}
           pkg={pkg} setPkg={setPkg} confirmSwitch={confirmSwitch} groupOpts={groupOpts} floorOpts={floorOpts}
           asOf={asOf} setAsOf={setAsOfUser} dateOpts={dateOpts}
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
-          extraN={extraAll.length} showExtra={showExtra} toggleExtra={toggleExtra}
+          fullView={showExtra} setFullView={setFullView}
           restoring={restoringUi}
         />
         {/* ⚠️ 2026-10-12: «EXCEL ТАТАХ» — шүүлтийн ХАЖУУД (шүүлт · эвхэлт · горим хэрэгжсэн ЯГ энэ харагдац татагдана
@@ -3429,6 +3491,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             <span aria-hidden>⤓</span> {tr('Excel татах')}
           </button>
         )}
+        </div>
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «зай талбайн хуваарилалт, бүтцийг сайжруул»): 2-р мөр — илгээх · төлөв (`tbBreak`) */}
+        <span className={st.tbBreak} aria-hidden />
         {/* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүнд «Илгээх»/«Дуусгасан» ОГТ гарахгүй —
             урьд нь «Дуусгасан» дарж оролцогч болж бусдын «Илгээх»-ийг түгждэг байв. Шалтгааныг ил хэлнэ. */}
         {canPerf ? (
@@ -3437,6 +3502,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): тасарсан жааз (`frameTrunc`) үед ч товч хаалттай — `notices.tsx`-ийн
                «„Илгээх“ хаалттай» мэдэгдэлтэй нийцнэ (урьд нь зөвхөн `publish` дотор хориглодог байв) */
             locked={locked} canSubmitNow={canSubmitNow} publish={publishBtn} busy={busy || restoringUi || !!frameTrunc} noEdit={noEdit}
+            sendReady={sendReady}
             dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
             waitingLast={waitingLast}
             resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
@@ -3456,24 +3522,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             баннерууд ЭНД БАЙХГҮЙ (2026-09-24) — нэмэлт ажлын урсгал «Хуваарь»-д. */}
 
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
-        {/* ⚠️ ХЭЗЭЭНИЙ ӨГӨГДӨЛ ХАРАГДАЖ БАЙГААГ хэлнэ — зөвхөн МЭДЭЭЛЭЛ.
-            ⚠️ «суурь жааз» гэж бичдэг байсныг болив (2026-09-06, хэрэглэгч:
-            «арай илүү утгатай нэр өг — юун суурь жааз вэ»). «Жааз» нь
-            архивын нэг агшны бүтэн хуулбарыг заасан ДОТООД нэр бөгөөд
-            бөглөгчид ямар ч утгагүй байв. Хэрэглэгчийн асуулт нь энгийн:
-            «миний харж байгаа тоо хэзээнийх вэ, миний бичсэн нь юун дээр
-            нэмэгдэх вэ». Шошго яг түүнд хариулна. */}
-        {!locked && snapDay && (
-          <span
-            className={st.muted}
-            title={publishedToday
-              ? tr('Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ. Энэ бүртгэл өнөөдөр үүссэн.')
-              : tr('Хүснэгтэд харагдаж буй тоо нь ЭНЭ өдрийн батлагдсан бүртгэлийнх. Таны засвар түүн дээр нэмэгдэж илгээгдэнэ.')}
-          >
-            {tr('өгөгдөл: {0}-ны байдлаар', snapDay)}
-          </span>
-        )}
-        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} dirtyCount={dirtyCount} otherPct={otherPct} />
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): «өгөгдөл: YYYY-MM-DD-ны байдлаар» шошго ХАСАГДСАН — буцааж нэмэхгүй. */}
+        {/* ⚠️ 2026-10-23: ноорог/ArcGIS-ийн төлөв мөрийн БАРУУН захад */}
+        <span className={st.tbGrow} aria-hidden />
         <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
           restoring={restoringUi} offline={offline} localFail={localFail}
           /* ⚠️ 2026-10-09 (аудит №3): хориг (`reviewLock`) нь ТҮР — томилогдсон гүйцэтгэгч ноорогоо устгаж чадна */
@@ -3643,14 +3694,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             onMouseLeave={hideColHl}
             data-rep-total={vis.length}
           >
-            <SheetHead sc={sc} nBld={nBld} bands={bands} grip={grip} extra={extra} />
+            <SheetHead sc={sc} nBld={nBld} bands={bands} grip={grip} extra={extra} compact={compact} />
             <tbody ref={tbodyRef}>
               {/* ⚠️ ХООСОН ТӨЛӨВ. Хуваарийн шүүлт нэг өдөрт 4 мөр үлдээж
                   болно (Багц 2·9F) — тайлбаргүй бол «хүснэгт эвдэрсэн» гэж
                   уншигдаж, хэрэглэгч товчийг унтраахаа мэдэхгүй. */}
               {vis.length === 0 && byPlan && (
                 <tr>
-                  <td colSpan={14 + nBld * 4 + extra.length} className={st.hint} style={{ padding: "14px 10px" }}>
+                  <td colSpan={nCols} className={st.hint} style={{ padding: "14px 10px" }}>
                     {tr("Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.", today)}
                   </td>
                 </tr>
@@ -3658,7 +3709,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowH }}>
-                  <td colSpan={14 + nBld * 4 + extra.length} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={nCols} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               <FillRows
@@ -3672,7 +3723,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}
                 nextBlockEditable={nextBlockEditable} pendDate={pendDate} setPick={setPick} asOf={asOf} asOfOrig={asOfOrig}
                 warn={warn}
-                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra} clearLocked={clearLocked}
+                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra} compact={compact} clearLocked={clearLocked}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (
@@ -3680,7 +3731,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowH }}
                 >
-                  <td colSpan={14 + nBld * 4 + extra.length} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={nCols} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>

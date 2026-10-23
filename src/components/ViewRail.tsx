@@ -223,16 +223,16 @@ export function ViewRail({
     <button
       type="button"
       aria-pressed={docsActive}
-      aria-label={tr('ТЭЗҮ-БОНУ баримт бичиг')}
-      title={collapsed ? undefined : tr('ТЭЗҮ ба судалгааны баримт бичиг')}
+      aria-label={tr('Баримт бичгийн сан')}
+      title={collapsed ? undefined : tr('Баримт бичгийн сан')}
       className={`${s.item} ${s.docItem} ${docsActive ? s.itemOn : ''}`}
-      {...tipProps(tr('ТЭЗҮ-БОНУ'), tr('ТЭЗҮ ба судалгааны баримт бичиг'))}
+      {...tipProps(tr('Баримт бичгийн сан'), tr('Бүлэглэсэн PDF баримтууд'))}
       onClick={guardClick(onDocs)}
     >
       {!header && <span className={s.no} aria-hidden />}
       <span className={s.icon}><Icon name="file" /></span>
       <span className={s.text}>
-        <span className={s.title}>{tr('ТЭЗҮ-БОНУ')}</span>
+        <span className={s.title}>{tr('Баримт бичгийн сан')}</span>
       </span>
     </button>
   ) : null;

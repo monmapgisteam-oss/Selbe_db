@@ -79,15 +79,6 @@
 @dyn components/ui.tsx  tr(label)
 @dyn components/ui.tsx  tr(sl.label)
 
-# [const] QAQC_COLS.short / .label · QAQC_GROUPS.label · QAQC_BAND (lib/qaqc.ts —
-#         тодорхойлолтдоо tr(); латин «FIC», «MIR», «Inspection Test Plan» орчуулгагүй)
-@dyn lib/ceo/qaqc.ts  tr(m)
-
-@dyn modules/Qaqc.tsx  tr(c.label)
-@dyn modules/Qaqc.tsx  tr(c.short)
-@dyn modules/Qaqc.tsx  tr(dc.label)
-@dyn modules/Qaqc.tsx  tr(g.label)
-
 # [data] газар чөлөөлөлтийн төлөв (Tuluv: Бүрэн чөлөөлсөн · Зөвшилцөх · Маргаантай ·
 #        Гэрээлсэн · Татгалзсан · Үлдэх саналтай · Үнийн дүн зөвшөөрөөгүй · Дүйцүүлсэн ·
 #        Тодорхойгүй) — enData.ts (том/жижиг үсгийн хоёр хувилбар)
@@ -229,7 +220,6 @@
 @dyn modules/Huvaari.tsx  tr(g)
 @dyn modules/Huvaari.tsx  tr(pkg.group)
 @dyn modules/HuvaariBatlah.tsx  tr(g)
-@dyn modules/Qaqc.tsx  tr(g)
 @dyn modules/sheet/fill/toolbar.tsx  tr(g)
 
 # [data] бүсийн нэр (zoneCanon) — «Багц-1…4.2» enData.ts, бусад нь латин код (D-8.1 …) (2026-10-04)

@@ -254,3 +254,25 @@
   color: var(--bad, #c0392b);
   overflow-wrap: anywhere;
 }
+
+/* ── БАРИМТ БИЧГИЙН САНГИЙН БҮЛЭГ (2026-10-23, `DocLibSide`) ── */
+.grp { display: flex; flex-direction: column; gap: 2px; }
+.grpHead { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.grpToggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 6px;
+  border-radius: var(--r-sm); text-align: left; font-size: 0.74rem; font-weight: 700; color: var(--ink-2);
+}
+.grpToggle:hover { background: var(--surface-2); color: var(--ink); }
+.grpTitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.03em; }
+.grpN { font-size: 0.68rem; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.grpAct {
+  flex: none; padding: 2px 6px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-size: 0.68rem; font-weight: 700; color: var(--ink-2); background: var(--surface);
+}
+.grpAct:hover:not(:disabled) { border-color: var(--hue); color: var(--ink); }
+.grpAct:disabled { opacity: 0.5; cursor: default; }
+.grpBody { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; }
+.docRow { display: flex; align-items: center; gap: 4px; }
+.docRow > .item { flex: 1; min-width: 0; }
+.docActs { display: flex; align-items: center; gap: 4px; flex: none; }
+.docMove { max-width: 84px; font-size: 0.66rem; padding: 2px 4px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }

@@ -201,16 +201,17 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.ok(!et.views.includes('guitsetgel') && !et.views.includes('huvaari'), `selbe_et: хуваарилалтгүй урсгалтай харагдац нээгдэв (${et.views})`);
   assert.ok(et.views.includes('plan'), 'selbe_et: урсгалгүй харагдац хэвээр');
   /* (б) override-д хадгалсан урсгалтай харагдац — тооцогдохгүй */
-  await P.setUser('wf_user', { views: ['gdash', 'guitsetgel', 'qaqc', 'chanar', 'huvaariBatlah'], docs: false }, 'taniltsah');
+  await P.setUser('wf_user', { views: ['gdash', 'guitsetgel', 'chanar', 'huvaariBatlah'], docs: false }, 'taniltsah');
   assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хадгалсан урсгалтай харагдац хүчингүй');
   assert.deepEqual(P.workflowViewsOf('wf_user'), [], 'хуваарилалтгүй');
   /* (в) урсгалын томилгоо → «Гүйцэтгэл» («Зөвхөн харна» ч) */
   FL._syncRemoteAssigns([{ user: 'wf_user', stage: 'engineer', bagts: ['*'], viewOnly: true }]);
   assert.deepEqual(P.workflowViewsOf('wf_user'), ['guitsetgel']);
   assert.ok(P.resolveAccess('wf_user').views.includes('guitsetgel'), 'томилгоо → «Гүйцэтгэл» нээгдэнэ');
-  /* (г) эрхийн гэр харагдац → «Чанар (QAQC)»; planApprove → «Хуваарь батлах» + «Хуваарь» */
-  CAPS._syncRemoteCaps([{ user: 'wf_user', caps: ['qaqc', 'planApprove'] }]);
-  assert.deepEqual([...P.workflowViewsOf('wf_user')].sort(), ['guitsetgel', 'huvaari', 'huvaariBatlah', 'qaqc']);
+  /* (г) эрхийн гэр харагдац: planApprove → «Хуваарь батлах» + «Хуваарь» */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  CAPS._syncRemoteCaps([{ user: 'wf_user', caps: ['planApprove'] }]);
+  assert.deepEqual([...P.workflowViewsOf('wf_user')].sort(), ['guitsetgel', 'huvaari', 'huvaariBatlah']);
   assert.ok(!P.resolveAccess('wf_user').views.includes('chanar'), '«Чанарын баримт» эрхгүй тул хаалттай');
   /* дараалал — `VIEWS`-ийн дараалал */
   const { VIEWS } = await import('./services.ts');

@@ -151,13 +151,16 @@ export function entSignOut(): void {
 
 /** `access`: порталын хуваалцалт ('private' · 'shared' · 'org' · 'public'); `null` = тодорхойгүй.
  * ⚠️ 2026-10-09 (аудит): `pending` — item ҮҮССЭН ч дэлгэрэнгүйг татаж чадаагүй (одоо `warn`-аар мэдэгддэг; хуучин дуудагчид). */
-export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; access: string | null; pending?: boolean };
+export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; access: string | null; pending?: boolean;
+  /** ⚠️ 2026-10-23: item-ийн тагууд — баримтын сангийн бүлэг (`docLib.GROUP_TAG`) эндээс */
+  tags?: string[] };
 
-type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string };
+type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string; tags?: string[] };
 const toPdf = (x: ItemJson): EntPdf => ({
   id: x.id, title: x.title || x.id, owner: x.owner ?? '', modified: x.modified ?? 0,
   size: typeof x.size === 'number' && x.size >= 0 ? x.size : null,
   access: x.access ?? null,
+  tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === 'string') : [],
 });
 
 /** Хайлтын нэг хуудас (порталын `num`-ийн дээд хязгаар 100) */
@@ -219,7 +222,32 @@ async function exactUser(s: Sess): Promise<string> {
 /** Нэвтэрсэн хэрэглэгчийн ПОРТАЛЫН ЯГ нэр (`content/users/{u}/…` замд) — `ficMakt.createTable` ч ашиглана */
 export const entExactUser = (): Promise<string> => exactUser(need());
 
-export async function entUploadPdf(file: File, title?: string): Promise<{ item: EntPdf; warn?: string }> {
+/**
+ * ЭЗНИЙ ГЕОПОРТАЛЫН ХАВТАС (⚠️ 2026-10-23, хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд») — нэрээр нь (том/жижиг
+ * үсэг үл хамаарна) олно, байхгүй бол ҮҮСГЭНЭ. Хавтас нь хэрэглэгч тус бүрийнх (порталын дүрэм) — оруулагч бүр өөрийн
+ * ижил нэртэй хавтсанд хадгална. Сешн тутамд кэшлэнэ.
+ */
+const folderCache = new Map<string, string>();
+async function folderId(s: Sess, owner: string, title: string): Promise<string> {
+  const ck = `${owner.toLowerCase()}|${title.toLowerCase()}`;
+  const hit = folderCache.get(ck);
+  if (hit) return hit;
+  const u = encodeURIComponent(owner);
+  const j = await post<{ folders?: { id?: string; title?: string }[] }>(`content/users/${u}`, new URLSearchParams({ f: 'json', token: s.token, num: '1' }));
+  const found = (j.folders ?? []).find((x) => (x.title ?? '').trim().toLowerCase() === title.trim().toLowerCase());
+  let id = found?.id ?? '';
+  if (!id) {
+    const c = await post<{ success?: boolean; folder?: { id?: string } }>(`content/users/${u}/createFolder`, new URLSearchParams({ f: 'json', token: s.token, title }));
+    id = c.folder?.id ?? '';
+    if (!c.success || !id) throw new Error(tr('«{0}» хавтас үүссэнгүй.', title));
+  }
+  folderCache.set(ck, id);
+  return id;
+}
+
+/* ⚠️ 2026-10-23: `extraTags` — баримтын сангийн бүлгийн таг (`docLib.GROUP_TAG + id`); `folder` — эзний геопорталын хавтасны
+   НЭР (байхгүй бол үүснэ, `folderId`); хоосон бол үндсэн (root) хавтас — хуучин дуудагчид хэвээр. */
+export async function entUploadPdf(file: File, title?: string, extraTags: readonly string[] = [], folder = ''): Promise<{ item: EntPdf; warn?: string }> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
   const owner = await exactUser(s);
@@ -229,10 +257,11 @@ export async function entUploadPdf(file: File, title?: string): Promise<{ item: 
   fd.append('token', s.token);
   fd.append('type', 'PDF');
   fd.append('title', ttl);
-  fd.append('tags', ENT_TAG);
+  fd.append('tags', [ENT_TAG, ...extraTags].join(','));
   fd.append('typeKeywords', ENT_TAG);
   fd.append('file', file, file.name);
-  const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(owner)}/addItem`, fd);
+  const fid = folder.trim() ? await folderId(s, owner, folder) : '';
+  const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(owner)}${fid ? `/${encodeURIComponent(fid)}` : ''}/addItem`, fd);
   if (!j.success || !j.id) throw new Error(tr('PDF item үүссэнгүй.'));
   const id = j.id;
   const user = encodeURIComponent(owner);
@@ -282,3 +311,24 @@ export async function entPdfBlob(id: string): Promise<Blob> {
 
 /** Порталын item хуудас (порталд нэвтэрсэн хөтчид нээгдэнэ) — токенгүй */
 export const entItemPage = (id: string) => `${ENT_PORTAL}/home/item.html?id=${encodeURIComponent(id)}`;
+
+/**
+ * PDF ITEM-ИЙГ УСТГАНА (⚠️ 2026-10-23, баримт бичгийн сан). `content/users/{эзэн}/items/{id}/delete` — порталд ЗӨВХӨН
+ * эзэн эсвэл порталын админ устгаж чадна; бусдад портал өөрөө татгалзана (алдаа ил гарна). Буцаах боломжгүй.
+ */
+export async function entDeletePdf(id: string, owner: string): Promise<void> {
+  const s = need();
+  const j = await post<{ success?: boolean }>(`content/users/${encodeURIComponent(owner)}/items/${encodeURIComponent(id)}/delete`,
+    new URLSearchParams({ f: 'json', token: s.token }));
+  if (!j.success) throw new Error(tr('PDF устгагдсангүй.'));
+}
+
+/**
+ * ITEM-ИЙН ТАГИЙГ СОЛИНО (⚠️ 2026-10-23, баримтыг өөр бүлэгт шилжүүлэх). Зөвхөн эзэн/порталын админ.
+ */
+export async function entSetTags(id: string, owner: string, tags: readonly string[]): Promise<void> {
+  const s = need();
+  const j = await post<{ success?: boolean }>(`content/users/${encodeURIComponent(owner)}/items/${encodeURIComponent(id)}/update`,
+    new URLSearchParams({ f: 'json', token: s.token, tags: tags.join(',') }));
+  if (!j.success) throw new Error(tr('Бүлэг солигдсонгүй.'));
+}

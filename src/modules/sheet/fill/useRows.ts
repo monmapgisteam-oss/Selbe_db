@@ -166,7 +166,11 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
    *    тайлангийн огноо алга (`asOf === null`) ЭСВЭЛ хуваарьтай навч мөр 0 (`planCount.on`)
    *    бол шүүлтийг алгасна. Бусад үед товч хэвээр ажиллана.
    */
-  const planOff = asOf === null || planCount.on === 0;
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр, дээрх 2026-10-09-ний дүрмийг ДАРНА): товч асаалттай бол шүүлт ҮРГЭЛЖ ажиллана —
+     хуваарьтай мөр 0 үед хүснэгт хоосон болж «Өнөөдөр (…) хуваарьтай ажил алга … унтраа» мэдэгдэл гарна (`FillNew`).
+     Урьд нь 0 үед шүүлт чимээгүй алгасагдаж, товч асаалттай атлаа юу ч шүүгдэхгүй тул «ажиллахгүй байна» гэж уншигддаг байв. */
+  const planOff = false;
+  void asOf;
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
   /**
@@ -530,7 +534,8 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
       sum += cell.overall; n += 1;
     }
     if (!all) return null;
-    return { pct: sum / all, blocks: n, label: `${others[0].floors}F` };
+    /* ⚠️ 2026-10-23: `total` — нөгөө хувилбарын БҮХ блок (хуваарь) — «Багцын гүйцэтгэл» (хоёр хувилбарын блокийн дундаж)-д */
+    return { pct: sum / all, blocks: n, total: all, floors: others[0].floors, label: `${others[0].floors}F` };
   }, [bp, uni, pkg.group, pkg.key, sc]);
 
   const pkgPct = useMemo(() => {
@@ -560,7 +565,8 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
       /* ⚠️ 2026-10-09: `synthetic` — блокгүй багцын J = L (`computeAll`-ийн ⚠️); энд `act` уншдаг тул тоо ижил */
       ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct, "abs", !!sc?.synthetic))
       : draft;
-    return { saved, draft, blocks };
+    /* ⚠️ 2026-10-23: `total` — энэ хуудасны БҮХ блок (хуваарь) — «Багцын гүйцэтгэл»-ийн жин */
+    return { saved, draft, blocks, total: nBld };
   }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc]);
   return { otherPct, pkgPct };
 }

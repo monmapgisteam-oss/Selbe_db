@@ -390,12 +390,14 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
   /* Эх код: FillNew-ийн colSpan бүгд extra-г тооцно · сонголт хэрэглэгч тус бүрд, try/catch */
   const fn = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  ok(!/colSpan=\{14 \+ nBld \* 4\}/.test(fn) && (fn.match(/colSpan=\{14 \+ nBld \* 4 \+ extra\.length\}/g) ?? []).length === 3, '9f: FillNew-ийн 3 colSpan «Бусад талбар»-ыг тооцно');
+  /* ⚠️ 2026-10-23: «Бүтэн / Хураангуй» — colSpan нь нэг `nCols`-оос (хураангуй 4 + n×2, бүтэн 14 + n×4 + нэмэлт) */
+  ok(!/colSpan=\{14 \+ nBld \* 4/.test(fn) && (fn.match(/colSpan=\{nCols\}/g) ?? []).length === 3
+    && /const nCols = compact \? 4 \+ nBld \* 2 : 14 \+ nBld \* 4 \+ extra\.length;/.test(fn), '9f: FillNew-ийн 3 colSpan харагдацын баганын тоог (`nCols`) тооцно');
   ok((fn.match(/extra=\{extra\}/g) ?? []).length === 2 && /extraPrefKey\(user\?\.username\)/.test(fn), '9f: SheetHead/FillRows ИЖИЛ массив · хэрэглэгч тус бүрийн түлхүүр');
   const xc = readFileSync(new URL('./fill/extraCols.ts', import.meta.url), 'utf8');
   ok((xc.match(/try \{\s*(return )?localStorage/g) ?? []).length === 2, '9f: localStorage унших/бичих хоёулаа try/catch-тай');
   const tb = readFileSync(new URL('./fill/toolbar.tsx', import.meta.url), 'utf8');
-  ok(/aria-pressed=\{showExtra\}/.test(tb) && /onClick=\{toggleExtra\}/.test(tb), '9f: «Бусад талбар» товч (aria-pressed)');
+  ok(/<Switch\s+checked=\{fullView\}\s+onChange=\{setFullView\}/.test(tb), '9f: «Хураангуй / Дэлгэрэнгүй» нийтлэг унтраалга (components/Switch)');
   const fr = readFileSync(new URL('./fill/FillRows.tsx', import.meta.url), 'utf8');
   const xBlock = fr.slice(fr.indexOf('extra.map('));
   ok(!/onChange|<input|setPending|setPendDate|setPick/.test(xBlock.slice(0, xBlock.indexOf('</tr>'))), '9f: «Бусад талбар» нүдэнд засах зам ҮГҮЙ');
@@ -414,7 +416,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(B.head.includes('style="width:var(--w-x-aS, var(--w-xd));min-width:var(--w-x-aS, var(--w-xd));max-width:var(--w-x-aS, var(--w-xd))"'), '9h: толгойн inline өргөн (төрлийн анхдагч руу унана)');
   ok(B.body.includes('style="width:var(--w-x-aE, var(--w-xd));min-width:var(--w-x-aE, var(--w-xd));max-width:var(--w-x-aE, var(--w-xd))"'), '9h: нүдний inline өргөн толгойтой ижил');
 
-  /* ⚠️ 2026-10-09: ХУВААРИЙН ШҮҮЛТ — хуваарьтай мөр 0 эсвэл `asOf === null` бол хүснэгт ХООСОН болохгүй */
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр): ХУВААРИЙН ШҮҮЛТ — товч асаалттай бол ҮРГЭЛЖ ажиллана; хуваарьтай мөр 0 бол хүснэгт хоосон (мэдэгдэлтэй) */
   const { useRowFilter } = await import('./fill/useRows.ts');
   const run = (rows, calc, asOf, byPlan = true) => {
     let res = null;
@@ -425,13 +427,13 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const fr2 = [mk(scB, 1, {}), mk(scB, 2, {})];
   const noDates = [{ start: [null], end: [null] }, { start: [null], end: [null] }];
   const r0 = run(fr2, noDates, undefined);
-  ok(r0.planCount.on === 0 && r0.planOff && r0.vis.length === 2, `9i: хуваарьтай мөр 0 — шүүлт алгасагдана (${r0.vis.length}/2)`);
+  ok(r0.planCount.on === 0 && !r0.planOff && r0.vis.length === 0, `9i: хуваарьтай мөр 0 — шүүлт ажиллаж хүснэгт хоосон (${r0.vis.length}/2)`);
   const oneOn = [{ start: [D('2026-10-01')], end: [D('2026-10-31')] }, { start: [D('2026-01-01')], end: [D('2026-02-01')] }];
   const r1 = run(fr2, oneOn, D('2026-10-01'));
   ok(!r1.planOff && r1.vis.join(',') === '0', `9i: хуваарьтай үед шүүлт ажиллана (${r1.vis})`);
   ok(run(fr2, oneOn, D('2026-10-01'), false).vis.length === 2, '9i: товч унтраавал бүгд');
   const r2 = run(fr2, oneOn, null);
-  ok(r2.planOff && r2.vis.length === 2, '9i: asOf === null — шүүлт алгасагдана');
+  ok(!r2.planOff && r2.vis.join(',') === '0', '9i: asOf === null ч шүүлт ажиллана (өнөөдрөөр)');
   ok(!run(fr2, oneOn, undefined).planOff, '9i: asOf дамжуулаагүй (undefined) — шүүлт хэвээр');
 }
 

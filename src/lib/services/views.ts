@@ -46,7 +46,6 @@ export type ViewKey =
   | "hesegET"
   | "zovshoorol"
   | "guitsetgel"
-  | "qaqc"
   | "ma"
   | "schem"
   | "sysdoc";
@@ -494,30 +493,7 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
-  {
-    /**
-     * ЧАНАР (QAQC) — Inspection Test Plan-ийн баримт бичиг.
-     *
-     * ⚠️ «Гүйцэтгэл»-ЭЭС ТУСДАА (2026-09-03, хэрэглэгчийн шийдвэр). Урьд нь
-     *    М-акт · FIC · MA · MIR-ийн 9 багана «Гүйцэтгэл бөглөх» хуудасны 60
-     *    баганын хажууд сууж, тэр хуудасны нийтлэх мөчлөгт баригддаг байв —
-     *    гэтэл өгөгдөл нь БҮРЭН ӨӨР үйлчилгээнд (`QAQC`/`QAQC2`), архивгүй,
-     *    мөр нь байрандаа засагддаг. Хоёр өөр амьдралын мөчлөгийг нэг
-     *    хуудсанд шахсан нь: чанарын инженер 60 баганын дундуур 9 нүд хайж,
-     *    гүйцэтгэлийн «өдөрт нэг удаа» түгжээнд саатдаг байлаа.
-     *
-     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — QAQC хүснэгтүүд геометргүй (table) тул давхарга
-     *    нэмэх зүйл алга. `standalone: true` + хоосон `layers`.
-     */
-    key: "qaqc",
-    get title() { return tr('Чанар (QAQC)'); },
-    get desc() { return tr('Ажил бүрийн чанарын шалгалт, туршилтын баримт бүрдсэн эсэхийг тэмдэглэх хүснэгт (баримтыг батлах урсгал нь «Чанарын баримт»-д)'); },
-    icon: "clipboard",
-    hue: "#d97706",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
+  /* ⚠️ 2026-10-23: «Чанар (QAQC)» (`qaqc`) харагдац ХАСАГДСАН (хэрэглэгчийн шийдвэр: «системээс бүрэн устга»). */
   /* ⚠️ 2026-10-20: «Чанарын баримт» (`chanar`, `Selbe_Chanar_Barimt`) харагдац ХАСАГДСАН (хэрэглэгчийн шийдвэр: «системээс бүрэн хас»).
      Чанарын эрхийн систем (`chanarAcl` · `chanarAuthor`/`chanarReview`) нь MA · FIC-д хэрэглэгдсээр. */
   /**
@@ -629,7 +605,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -646,20 +622,20 @@ export const HOME_SECTIONS: {
  * ⚠️ `system` бүлэг нь цэсний «Систем» хөлд (эрх тохируулах, гарах-ын хамт)
  *    зурагдана — `ViewRail`-ийг үз.
  */
-export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "money" | "report" | "system";
+export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "qaqc"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
     /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» — «Ерөнхий төлөвлөгөө»-ний ЯГ ДАРАА (цэсэнд 14-т) */
-    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets"],
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «хяналт хэсэгрүү оруул»): «Санхүү» бүлгийн «Багцын санхүү» · «Санхүүжилт» ЭНД шилжив */
+    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets", "pkgFin", "finance"],
   },
   /* ⚠️ 2026-10-12 (хэрэглэгч: «ухаалаг хот гэсэн тусдаа бүлэг болго»): IoT · эрсдэл · иргэдийн хүртээмж ·
      тохиромжтой байдал — «Хяналт»-аас салгав */
   { id: "smart", get title() { return tr('Ухаалаг хот'); }, views: ["iot", "ersdel", "irged", "analysis"] },
-  { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
   { id: "report", get title() { return tr('Тайлан'); }, views: ["tailan", "schem"] },
   { id: "system", get title() { return tr('Систем'); }, views: ["sysdoc"] },
 ];

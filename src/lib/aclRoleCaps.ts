@@ -39,11 +39,8 @@ export const ROLE_CAPS = {
 export type ScopedSys = keyof typeof ROLE_CAPS;
 export const SCOPED_SYSTEMS: readonly ScopedSys[] = ['huvaari', 'obyem', 'ajil', 'chanar', 'butets'];
 
-/** QAQC — ҮҮРЭГГҮЙ систем, ганц эрх (`qaqcAcl.soleCap`) */
-export const QAQC_CAP = 'qaqc' as const satisfies CapKey;
-
-/** Хуваарилалтаас гардаг эрхийн систем */
-export type DerivedSys = ScopedSys | 'qaqc';
+/** Хуваарилалтаас гардаг эрхийн систем — ⚠️ 2026-10-23: QAQC (үүрэггүй систем) хасагдсан */
+export type DerivedSys = ScopedSys;
 
 /**
  * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
@@ -52,11 +49,11 @@ export type DerivedSys = ScopedSys | 'qaqc';
  */
 /* ⚠️ 2026-10-08: `habeaData` (ХАБЭА-ийн бүртгэл оруулах) — батлагчгүй, багцаар хуваарилагдахгүй. */
 /* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») — аккаунтаар, харагдац нээхгүй (`caps.ts`-ийн ⚠️). */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose'];
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups'];
+/* ⚠️ 2026-10-23: `docsUpload` (баримт бичгийн сан — оруулах/устгах) — аккаунтаар, харагдац нээхгүй. */
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {
-  if (cap === QAQC_CAP) return 'qaqc';
   for (const sys of SCOPED_SYSTEMS) {
     if ((Object.values(ROLE_CAPS[sys]) as string[]).includes(cap)) return sys;
   }
@@ -69,7 +66,7 @@ export const isDerivedCap = (cap: CapKey): boolean => capSystem(cap) !== null;
 /** Тухайн эрх рүү заадаг үүргүүд (Чанарын `chanarReview` → гурван хянагч) */
 export function rolesOfCap(cap: CapKey): string[] {
   const sys = capSystem(cap);
-  if (!sys || sys === 'qaqc') return [];
+  if (!sys) return [];
   return Object.entries(ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>)
     .filter(([, c]) => c === cap)
     .map(([r]) => r);

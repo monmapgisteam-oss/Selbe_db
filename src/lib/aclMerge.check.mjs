@@ -27,10 +27,11 @@ const eq = (a, b, m) => { assert.deepEqual(a, b, m); checks += 1; };
 const sorted = (x) => [...x].sort();
 
 /* ── Цэвэр дүрэм ── */
-eq(sorted(CAPS.mergeCapDelta(['addRow'], ['addRow', 'qaqc'], ['addRow', 'finRow'])), sorted(['addRow', 'finRow', 'qaqc']),
+/* ⚠️ 2026-10-23: QAQC хасагдсан — `qaqc` эрхийн оронд `gazar` */
+eq(sorted(CAPS.mergeCapDelta(['addRow'], ['addRow', 'gazar'], ['addRow', 'finRow'])), sorted(['addRow', 'finRow', 'gazar']),
   'нэмэлт: нөгөө админы finRow хадгалагдана');
-eq(sorted(CAPS.mergeCapDelta(['addRow', 'qaqc'], ['addRow'], ['addRow', 'qaqc', 'finRow'])), sorted(['addRow', 'finRow']),
-  'хасалт: зөвхөн qaqc хасагдана');
+eq(sorted(CAPS.mergeCapDelta(['addRow', 'gazar'], ['addRow'], ['addRow', 'gazar', 'finRow'])), sorted(['addRow', 'finRow']),
+  'хасалт: зөвхөн gazar хасагдана');
 eq(CAPS.mergeCapDelta(['addRow'], [], []), [], 'бүгдийг хассан, remote хоосон');
 eq(mergeGrantDelta([{ role: 'a', bagts: ['P1'] }], [{ role: 'a', bagts: ['P1', 'P2'] }], [{ role: 'a', bagts: ['P1', 'P3'] }]),
   [{ role: 'a', bagts: ['P1', 'P3', 'P2'] }], 'багц нэмэлт: нөгөөгийн P3 хадгалагдана');
@@ -53,14 +54,14 @@ await settle();
 /* Нөгөө админ (энэ сешний кэш мэдэхгүй) finRow нэмэв */
 const capRow = fake.find('__cap__:' + U)[0];
 capRow.views = JSON.stringify(['addRow', 'finRow']);
-/* Энэ сешн хуучин кэшээсээ qaqc нэмнэ — finRow алга болох ЁСГҮЙ */
-assert.ok(await CAPS.toggleCap(U, 'qaqc', true));
+/* Энэ сешн хуучин кэшээсээ gazar нэмнэ — finRow алга болох ЁСГҮЙ */
+assert.ok(await CAPS.toggleCap(U, 'gazar', true));
 await settle();
-eq(sorted(fake.json('__cap__:', U)), sorted(['addRow', 'finRow', 'qaqc']), 'ArcGIS: хоёр админы эрх хоёулаа');
-eq(sorted(CAPS.capsStored(U)), sorted(['addRow', 'finRow', 'qaqc']), 'локал кэш шинэ утгаар');
-/* Нөгөө админ addRow хассан; энэ сешн qaqc хасна — addRow сэргэх ЁСГҮЙ */
-fake.find('__cap__:' + U)[0].views = JSON.stringify(['finRow', 'qaqc']);
-assert.ok(await CAPS.toggleCap(U, 'qaqc', false));
+eq(sorted(fake.json('__cap__:', U)), sorted(['addRow', 'finRow', 'gazar']), 'ArcGIS: хоёр админы эрх хоёулаа');
+eq(sorted(CAPS.capsStored(U)), sorted(['addRow', 'finRow', 'gazar']), 'локал кэш шинэ утгаар');
+/* Нөгөө админ addRow хассан; энэ сешн gazar хасна — addRow сэргэх ЁСГҮЙ */
+fake.find('__cap__:' + U)[0].views = JSON.stringify(['finRow', 'gazar']);
+assert.ok(await CAPS.toggleCap(U, 'gazar', false));
 await settle();
 eq(fake.json('__cap__:', U), ['finRow'], 'ArcGIS: хасагдсан addRow сэргээгүй');
 

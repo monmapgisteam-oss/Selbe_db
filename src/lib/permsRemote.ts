@@ -72,14 +72,7 @@ export type FlowRow = {
  */
 export type CapRow = { user: string; caps: string[] };
 
-/**
- * ЧАНАРЫН (QAQC) багцын хуваарилалтын нэг мөр — `__qaqc__:` угтвартай.
- *
- * ⚠️ Урсгалын `FlowRow`-оос ТУСДАА: тэнд `stage` байдаг, энд БАЙХГҮЙ. Чанарын
- * хяналт нь дөрвөн шатны аль нь ч биш тул шат зүүвэл тэр хүн гүйцэтгэлийг
- * зөвшөөрөх эрхтэй болно (`qaqcAcl.ts`-ийн толгойн тайлбарыг үз).
- */
-export type QaqcRow = { user: string; bagts: string[] };
+/* ⚠️ 2026-10-23: `QaqcRow` хасагдсан — «Чанар (QAQC)» системээс устсан (хуучин `__qaqc__:` мөр уншилтад алгасагдана). */
 
 /**
  * ХУВААРИЙН хуваарилалтын нэг мөр — `__huvaari__:` угтвартай.
@@ -569,7 +562,7 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
 export async function fetchAll(
   canCreate = false,
 ): Promise<{
-  perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
+  perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
   butets: ButetsRow[]; types: TypeRow[];
   /** ⚠️ 2026-10-19: задлагдаагүй (алгассан) мөрүүд — админы тоймд */
@@ -601,8 +594,6 @@ export async function fetchAll(
      * (мөрүүд OBJECTID ASC ирдэг).
      */
     const capsBy = new Map<string, CapRow>();
-    /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
-    const qaqcBy = new Map<string, QaqcRow>();
     /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
     const huvaariBy = new Map<string, HuvaariRow>();
     const obyemBy = new Map<string, ObyemRow>();
@@ -689,17 +680,9 @@ export async function fetchAll(
         continue rowLoop;
       }
 
-      /* ── Чанарын (QAQC) багцын хуваарилалтын мөр ── */
-      const qUser = strip(lu, QAQC_PREFIX);
-      if (qUser != null) {
-        if (!qUser || UNSAFE_KEY.has(qUser)) { bad(raw, 'user'); continue; }
-        try {
-          const d = JSON.parse(a.views || '{}') as { bagts?: string[] };
-          if (!d || typeof d !== 'object') { bad(raw, 'json'); continue; }
-          qaqcBy.set(qUser, { user: qUser, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
-        } catch { bad(raw, 'json'); /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
-        continue;
-      }
+      /* ⚠️ 2026-10-23: хуучин Чанарын (QAQC) хуваарилалтын мөр (`__qaqc__:`) — систем хасагдсан, ЗӨВХӨН алгасна
+         (хэрэглэгчийн мөр гэж андуурахгүй). */
+      if (strip(lu, QAQC_PREFIX) != null) continue;
 
       /* ── Нэмэлт эрхийн мөр ── */
       const cUser = strip(lu, CAP_PREFIX);
@@ -766,7 +749,6 @@ export async function fetchAll(
       perms,
       flow: [...flowBy.values()],
       caps: [...capsBy.values()],
-      qaqc: [...qaqcBy.values()],
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
       chanar: [...chanarBy.values()],
@@ -1058,7 +1040,7 @@ export async function capRead(user: string): Promise<string[] | null> {
 /** `scopedAcl`-ийн систем бүрийн угтвар */
 const SCOPED_PREFIX = {
   huvaari: HUVAARI_PREFIX, obyem: OBYEM_PREFIX, chanar: CHANAR_PREFIX,
-  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX, qaqc: QAQC_PREFIX,
+  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX,
 } as const;
 export type ScopedKind = keyof typeof SCOPED_PREFIX;
 
@@ -1147,24 +1129,6 @@ export function flowRemove(user: string): Promise<boolean> {
   return removeByKey(FLOW_PREFIX + user.trim().toLowerCase());
 }
 
-/**
- * Чанарын (QAQC) багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- *
- * ⚠️ `{ bagts }` объектоор бичнэ, массиваар БИШ: `__cap__:` мөр нь массив
- * хадгалдаг тул хэлбэрээр нь ялгаж болохгүй, гэхдээ ирээдүйд талбар нэмэхэд
- * (жишээ нь тайлбар) хэлбэр өөрчлөгдөхгүй байх нь чухал. `__flow__:`-тэй ижил.
- */
-export function qaqcUpsert(user: string, bagts: string[]): Promise<boolean> {
-  const key = QAQC_PREFIX + user.trim().toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify({ bagts }),
-    docs: 0,
-  });
-}
-
-/** Чанарын багцын хуваарилалтыг арилгах */
 /** Эрхийн төрлийн загварыг бичих — нэг төрөл нэг мөр */
 export function typeUpsert(role: string, tpl: unknown): Promise<boolean> {
   const key = TYPE_PREFIX + role.trim().toLowerCase();
@@ -1191,8 +1155,32 @@ export async function sysRead(): Promise<{ state: SysState | null } | null> {
   return { state: v === null ? null : parseSysState(v) };
 }
 
-export function qaqcRemove(user: string): Promise<boolean> {
-  return removeByKey(QAQC_PREFIX + user.trim().toLowerCase());
+/**
+ * БАРИМТ БИЧГИЙН САНГИЙН БҮЛГҮҮД (⚠️ 2026-10-23) — `__sys__:docgroups` нэг мөр, `views` нь `[{ id, title }]` JSON.
+ * ⚠️ `fetchAll` танигдахгүй `__sys__:` түлхүүрийг чимээгүй алгасдаг тул эрхийн уншилтад нөлөөгүй.
+ * ⚠️ Эрхийн шалгалт дуудагчид (`docLib.saveGroups` → `docsUpload`).
+ */
+const DOC_GROUPS = 'docgroups';
+export type DocGroupRow = { id: string; title: string };
+/** @returns `undefined` = уншиж чадсангүй; `null` = мөр алга (анхдагч бүлгүүд) */
+export async function docGroupsRead(): Promise<DocGroupRow[] | null | undefined> {
+  const v = await readViewsByKey(SYS_PREFIX + DOC_GROUPS);
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  try {
+    const a = JSON.parse(v) as unknown;
+    if (!Array.isArray(a)) return null;
+    return a
+      .filter((x): x is DocGroupRow => !!x && typeof x === 'object' && typeof (x as DocGroupRow).id === 'string' && typeof (x as DocGroupRow).title === 'string')
+      .map((x) => ({ id: x.id.trim(), title: x.title.trim() }))
+      .filter((x) => x.id && x.title && !UNSAFE_KEY.has(x.id));
+  } catch {
+    return null;
+  }
+}
+export function docGroupsWrite(list: readonly DocGroupRow[]): Promise<boolean> {
+  const key = SYS_PREFIX + DOC_GROUPS;
+  return upsertByKey(key, { username: key, role: null, views: JSON.stringify(list), docs: 0 });
 }
 
 /**

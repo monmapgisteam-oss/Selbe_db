@@ -621,14 +621,7 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
     console.error('[selbe] нэмэлт эрхийн (caps) синк амжилтгүй:', e);
   }
 
-  // 5) Чанарын (QAQC) багцын хуваарилалт (`__qaqc__:`) → qaqcAcl.ts
-  //    ⚠️ Урсгалынхаас ТУСДАА — чанарын хяналт нь дөрвөн шатны аль нь ч биш.
-  try {
-    const q = await import('./qaqcAcl');
-    q._syncRemoteQaqc(remote.qaqc);
-  } catch (e) {
-    console.error('[selbe] QAQC хуваарилалтын синк амжилтгүй:', e);
-  }
+  // 5) ⚠️ 2026-10-23: Чанарын (QAQC) хуваарилалт (`__qaqc__:`) ХАСАГДСАН — «Чанар (QAQC)» системээс устсан.
 
   // 6) Хуваарийн хуваарилалт (`__huvaari__:`) → huvaariAcl.ts
   //    ⚠️ Урсгалынхаас ТУСДАА — хуваарь нь төлөвлөгөө, гүйцэтгэл биш.

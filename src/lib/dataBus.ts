@@ -53,7 +53,6 @@ export type DataKey =
   | 'HUVAARI_BATLAH'  // Selbe_Huvaari_Batlah  — huvaariBatlah.ts
   | 'OBYEM_BATLAH'    // Selbe_Obyem_Batlah    — obyemBatlah.ts
   | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts
-  | 'QAQC_DRAFT'      // Selbe_QAQC_Draft      — qaqcDraftRemote.ts
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХУВААРИЙН САРЫН ОБЬЁМ (`huvaari_20260906/193`,
      `huvaariObyem.HUVAARI_OBYEM` — `services.ts`-д экспорт байхгүй). `applyPlanEdits`
      бичсэний дараа хүчингүй болгоно — төлөвлөгөөт муруй (`planProgress`) уншина. Урьд нь
@@ -63,12 +62,7 @@ export type DataKey =
      (`negtgelEdit.publishNegEdits`); `loadNegtgelFull` (таб · дашбоард · тайлан) хүчингүй болно. */
   | 'TUSUL_NEGTGEL'
   /* ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ (`material_noots`) — `materialNoots.syncNoots` бичсэний дараа */
-  | 'MATERIAL_NOOTS'
-  /* ⚠️ 2026-10-21 (кэшийн аудит): QAQC ХҮСНЭГТҮҮД (`QAQC`/`QAQC2` үйлчилгээний 10 хүснэгт, `qaqc.ts`) — «Чанар»
-     харагдацын `saveQaqc` бичсэний дараа. Урьд нь түлхүүргүй тул CEO «Чанар» карт · Нүүрний чанарын оноо өөрийн
-     бичилтийн дараа 5 мин хуучин, харин хамааралгүй `BAGTS_SHEET` бичилт бүрд 10 QAQC хүснэгт дэмий дахин татагддаг
-     байв (`ceo/qaqc.ts` · `scorecardLoad.loadScoreQual` одоо `['QAQC', 'BAGTS_SHEET']`). */
-  | 'QAQC';
+  | 'MATERIAL_NOOTS';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */

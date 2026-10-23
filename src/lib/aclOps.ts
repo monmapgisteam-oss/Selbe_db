@@ -47,13 +47,10 @@ import { planCellAdd, planCellRemove } from './guitsetgelGrid';
 import * as hv from './huvaariBatlah';
 import * as ob from './obyemBatlah';
 import * as aj from './ajilBatlah';
-import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
+import { planGrantAdd, planGrantRemove } from './aclGrid';
 import {
   flowAclReady, flowFailedUsers, listAssigns, removeAssign, retryFlow, setAssign, setViewOnly,
 } from './guitsetgelAcl';
-import {
-  listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, retryQaqcAssign, setQaqcAssign,
-} from './qaqcAcl';
 import {
   huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, retryHuvaariAssign,
   setHuvaariGrants, type PlanRole,
@@ -156,7 +153,7 @@ export function subscribeAclPending(fn: () => void): () => void {
  *    бүх мөрийг нэг багцаар дарж бичнэ (панелуудын 2026-09-23 · 24 ⚠️).
  */
 export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && flowAclReady()
-  && qaqcAclReady() && huvaariAclReady() && obyemAclReady() && chanarAclReady()
+  && huvaariAclReady() && obyemAclReady() && chanarAclReady()
   && ajilAclReady() && butetsAclReady();
 
 /** Түгжээний зурвас — панелуудын ЯГ ижил текст */
@@ -328,7 +325,6 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
 export function liveErhSource(): ErhSource {
   const users = listUsers().map((u) => u.username);
   const flow = listAssigns();
-  const qaqc = listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts }));
   const huvaari = listHuvaariAssigns();
   const obyem = listObyemAssigns();
   const chanar = listChanarAssigns();
@@ -336,7 +332,7 @@ export function liveErhSource(): ErhSource {
   const butets = listButetsAssigns();
   /* ⚠️ 2026-09-30: хуваарилалттай атлаа порталд алга (устгагдсан) — гацааны шалгуурт тоологдохгүй (`ErhSource.gone`) */
   const known = new Set(users.map((u) => u.toLowerCase()));
-  const rows: { user: string }[][] = [flow, qaqc, huvaari, obyem, chanar, ajil, butets];
+  const rows: { user: string }[][] = [flow, huvaari, obyem, chanar, ajil, butets];
   /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунт (`portalPresence`) ч
      «устгагдсан»-тай адил эзэн БИШ — урьд нь «gone» = зөвхөн «хүснэгтэд мөргүй» тул `selbe_redesign` (порталд алга) нь
      «Гүйцэтгэгч компани» шатны цорын ганц эзэн мэт тоологдож 21 багцын гацаа ХЭЗЭЭ Ч гардаггүй байв. Мэдэхгүй бол «байгаа». */
@@ -357,7 +353,6 @@ export function liveErhSource(): ErhSource {
     absent: users.filter((u) => portalMissing(u)),
     typeStage,
     flow,
-    qaqc,
     huvaari,
     obyem,
     chanar,
@@ -554,53 +549,7 @@ export function scopedCellOp(
   }
 }
 
-/* ══════════════════════ QAQC (үүрэггүй, `soleCap`) ══════════════════════ */
-
-const qaqcRow = (u: string) => listQaqcAssigns().find((a) => a.user === u);
-
-/** Хуваарилалтаас бүрэн хасах — `QaqcAcl`-ийн ✕ (устгагдсан аккаунтад `revoke=false`, асуухгүй) */
-export function qaqcDropOp(user: string): AclOp {
-  const u = norm(user);
-  if (!qaqcRow(u)) return null;
-  /* ⚠️ 2026-09-30: super-ийн хуучин мөр ч (`isCleanup`) — `revoke=true` нь түүнд шууд олгосон `qaqc`-ийг буцаадаг байв */
-  if (isCleanup(u)) return { user: u, run: () => removeQaqcAssign(u, false) };
-  return {
-    user: u,
-    confirm: [tr('«{0}»-г чанарын хуваарилалтаас хасах уу? «QAQC — Inspection Test Plan» эрх ба «Чанар (QAQC)» харагдац нь мөн буцаагдана.', u)],
-    run: () => removeQaqcAssign(u),
-  };
-}
-
-/**
- * QAQC ХҮСНЭГТИЙН НҮД (`QaqcAcl`, 2026-09-30) — мөр = багц, ганц багана.
- * ⚠️ Шийдвэр `aclGrid.planList*`-д. Шинэ мөр → эрх олгоно (`qaqcAddOp`-той ижил);
- *    багц солих → `grant=false`; сүүлийн багц → `qaqcDropOp` (асууж эрх буцаана,
- *    «бүх багц» руу БУЦАХГҮЙ); «бүх багц»-ыг нэг мөрөөс → бусад багцын ил жагсаалт (асууна).
- */
-export function qaqcCellOp(user: string, pkg: string, add: boolean): AclOp {
-  const u = norm(user);
-  if (!u) return null;
-  const cur = qaqcRow(u)?.bagts;
-  const p = add ? planListAdd(cur, pkg) : planListRemove(cur, pkg, PKG_GROUPS);
-  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`);
-     super-т `set` нь `setGrants`-ийн татгалзлаар ҮРГЭЛЖ унадаг байв */
-  if (!add && p.kind !== 'none' && isCleanup(u)) return qaqcDropOp(u);
-  switch (p.kind) {
-    case 'none': return null;
-    case 'create': return { user: u, run: () => setQaqcAssign(u, p.bagts) };
-    case 'set': return add
-      ? { user: u, run: () => setQaqcAssign(u, p.bagts, false) }
-      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`); QAQC-д гацаа үүсэхгүй */
-      : {
-        user: u,
-        undo: () => qaqcCellOp(user, pkg, true),
-        done: tr('«{0}» «{1}»-оос хасагдлаа.', u, pkg),
-        run: () => setQaqcAssign(u, p.bagts, false),
-      };
-    case 'narrow': return { user: u, confirm: [narrowMsg(u, pkg, p.bagts.length)], run: () => setQaqcAssign(u, p.bagts, false) };
-    case 'drop': return qaqcDropOp(u);
-  }
-}
+/* ⚠️ 2026-10-23: QAQC-ийн хуваарилалтын үйлдлүүд (`qaqcDropOp` · `qaqcCellOp`) ХАСАГДСАН — «Чанар (QAQC)» системээс устсан. */
 
 /* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай) ══════════════════════ */
 
@@ -751,8 +700,8 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
 
 /* ═══════════ Засвар: дахин илгээх · дахин олгох · устгагдсаны үлдэгдэл (2026-10-01) ═══════════ */
 
-/** Хуваарилалттай систем — урсгал · QAQC · үүрэгтэй тав */
-export type RepairSys = 'flow' | 'qaqc' | ScopedSys;
+/** Хуваарилалттай систем — урсгал · үүрэгтэй тав (2026-10-23: QAQC хасагдсан) */
+export type RepairSys = 'flow' | ScopedSys;
 
 /** Бүх `Write`-ыг нэгтгэнэ — аль нэг нь `ok:false` бол түүнийг; `sync`/`granted` бүгд үнэн бол үнэн */
 function combine(ws: Write[]): Write {
@@ -766,14 +715,12 @@ function combine(ws: Write[]): Write {
 /** Системийн дахин илгээх бичилт — `grant` бол эрхийг ч дахин олгоно */
 function retryWrite(sys: RepairSys, u: string, grant: boolean): Write {
   if (sys === 'flow') return asWrite(retryFlow(u, grant));
-  if (sys === 'qaqc') return retryQaqcAssign(u, grant);
   return SCOPED_SYS[sys].retry(u, grant);
 }
 
 /** ArcGIS бичилт нь унасан хэрэглэгчид (энэ сешн) — `failed` тэмдэг */
 export function failedUsersOf(sys: RepairSys): string[] {
   if (sys === 'flow') return flowFailedUsers();
-  if (sys === 'qaqc') return qaqcFailedUsers();
   return SCOPED_SYS[sys].failedUsers();
 }
 
@@ -808,7 +755,7 @@ export function regrantOp(user: string, caps: readonly CapKey[]): AclOp {
   for (const c of caps) {
     const sys = capSystem(c);
     if (!sys) continue;
-    const has = sys === 'qaqc' ? !!qaqcRow(u) : SCOPED_SYS[sys].list().some((a) => a.user === u);
+    const has = SCOPED_SYS[sys].list().some((a) => a.user === u);
     if (has) systems.add(sys);
   }
   if (!systems.size) return null;
@@ -826,8 +773,7 @@ export type GoneItem = {
 
 /** Системийн хуваарилалттай хэрэглэгчид */
 const rowUsers = (sys: RepairSys): string[] => (sys === 'flow' ? listAssigns().map((a) => a.user)
-  : sys === 'qaqc' ? listQaqcAssigns().map((a) => a.user)
-    : SCOPED_SYS[sys].list().map((a) => a.user));
+  : SCOPED_SYS[sys].list().map((a) => a.user));
 
 /**
  * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — эрхийн хуудас бүрд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
@@ -877,8 +823,7 @@ export function goneCleanupOp(sys: RepairSys | null, caps: readonly CapKey[], us
         if (sys === 'flow') {
           const cur = flowRow(u);
           if (cur) w = asWrite(removeAssign(u, cur.stage, false));
-        } else if (sys === 'qaqc') w = removeQaqcAssign(u, false);
-        else w = SCOPED_SYS[sys].removeNoRevoke(u);
+        } else w = SCOPED_SYS[sys].removeNoRevoke(u);
       }
       if (!w.ok) return w;
       const sync = (w.sync ?? Promise.resolve(true)).then(async (ok) => {

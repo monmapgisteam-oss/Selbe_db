@@ -62,7 +62,6 @@ export type UserRowProps = {
   onRole: (role: Role) => void;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
-  onFlipDocs: () => void;
   onFlipRemove: () => void;
   onClear: () => void;
   onGoFlow: () => void;
@@ -80,7 +79,6 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   hasView: p.hasView,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
-  onFlipDocs: p.onFlipDocs,
   superUser: p.superUser,
 });
 
