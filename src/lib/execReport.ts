@@ -454,7 +454,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       blocks: lvKeys.size, households: bld.households,
       /* ⚠️ 2026-10-22: өрх нь газрын зургийн полигон (111)-оос — БҮГД хоосон бол «—» (`householdsLabel`) хэвээр байхаар
          хуваарийг шинэ блокийн тоонд (`lvKeys`) тааруулна */
-      householdsMissing: bld.blocks > 0 && bld.householdsMissing >= bld.blocks ? lvKeys.size : bld.householdsMissing,
+      /* ⚠️ 2026-10-23: ПОЛИГОНГҮЙ блок (`lvKeys`-д бий, газрын зурагт алга) ч өрхийн мэдээлэлгүй — урьд нь зөвхөн
+         `AIL_TOO` хоосон полигоныг тоолдог тул 113 блокийн 2 нь өрхгүй атал «дутуу» гэж хэлэхгүй байв. */
+      householdsMissing: bld.blocks > 0 && bld.householdsMissing >= bld.blocks ? lvKeys.size
+        : householdsMissingOf(lvKeys, uniqueBlocks(bld.rows).map((b) => b.key), bld.householdsMissing),
       noData: lvNoData, asOf: physAsOf,
       actual, planned, gap,
       actualLag: lagNow.actual, planExcluded: lagNow.excluded,
@@ -805,6 +808,17 @@ export function execFindingBrief(x: ExecReport): string[] {
  * ⚠️ 2026-10-09 (аудит №6): null ≠ 0 — бүх блок өрхгүй бол «—», заримд нь бол «N (дутуу)»; урьд нь
  *    `num(households)` дутуу нийлбэрийг бүрэн мэт хэвлэдэг байв.
  */
+/**
+ * ӨРХИЙН МЭДЭЭЛЭЛГҮЙ БЛОКИЙН ТОО (цэвэр — тест) — `AIL_TOO` хоосон полигон (`polyMissing`) + блокийн олонлогт
+ * (`keys`) бий атлаа газрын зурагт ПОЛИГОНГҮЙ блок. ⚠️ 2026-10-23: дээд хязгаар нь блокийн тоо.
+ */
+export function householdsMissingOf(keys: ReadonlySet<string>, polyKeys: readonly string[], polyMissing: number): number {
+  const poly = new Set(polyKeys);
+  let noPoly = 0;
+  keys.forEach((k) => { if (!poly.has(k)) noPoly += 1; });
+  return Math.min(keys.size, polyMissing + noPoly);
+}
+
 export const householdsLabel = (p: { blocks: number; households: number; householdsMissing: number }): string =>
   p.blocks > 0 && p.householdsMissing >= p.blocks ? '—'
     : p.householdsMissing > 0 ? `${num(p.households)} (${tr('дутуу')})` : num(p.households);

@@ -105,6 +105,13 @@ export type ErhSource = {
    *    томилгооноос. Тиймээс урсгалын төрөлтэй атлаа шатгүй/өөр шаттай хүнийг `typeStageGaps` ил гаргана. СОНГОМОЛ.
    */
   typeStage?: Record<string, Stage>;
+  /**
+   * ⚠️ 2026-10-23: ЗӨВХӨН ХАРАХ ТӨРӨЛТЭЙ аккаунтууд («Ерөнхий захирал», `zahiral`). Урсгалын мөртэй байсан ч ШИЙДВЭРЛЭДЭГГҮЙ
+   *    (`hyanaltStore.authz` · `submission.companyDeny` хориглоно) тул шатны ЭЗЭН биш — «зөвхөн харна» томилгоотой адил
+   *    (`pkgErh` → `flowViewers`); урьд нь эзэн гэж тоологдож гацааны анхааруулгыг нууж байв. Мөртэй бол `typeStageGaps`
+   *    (`want: null`) ил гаргана. СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
+   */
+  viewRoles?: string[];
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -225,10 +232,18 @@ export function userErh(src: ErhSource, user: string): UserErh {
  * ⚠️ Зөвхөн АНХААРУУЛГА: шат нь томилгооноос гардаг (`resolveFlowStage`) тул зөрөө нь заримдаа санаатай байж болно.
  *    Устгагдсан/порталд алга (`gone` · `absent`) ба super-ийг алгасна. «Зөвхөн харна» томилгоо ч шат гэж тооцогдоно.
  */
-export type TypeStageGap = { user: string; want: Stage; have: Stage | null };
+/* ⚠️ 2026-10-23: `want === null` — ЗӨВХӨН ХАРАХ төрөл («Ерөнхий захирал», `ErhSource.viewRoles`) атлаа урсгалын мөртэй
+   (`have` нь тэр мөрийн шат): мөр нь шийдвэрлэх эрх олгодоггүй, эзэн биш — цэвэрлэх ёстой. */
+export type TypeStageGap = { user: string; want: Stage | null; have: Stage | null };
 export function typeStageGaps(src: ErhSource): TypeStageGap[] {
   const skip = new Set([...(src.gone ?? []), ...(src.absent ?? []), ...(src.supers ?? [])].map(norm));
   const out: TypeStageGap[] = [];
+  for (const k of src.viewRoles ?? []) {
+    const key = norm(k);
+    if (skip.has(key)) continue;
+    const have = src.flow.find((x) => norm(x.user) === key)?.stage ?? null;
+    if (have) out.push({ user: src.users.find((u) => norm(u) === key) ?? key, want: null, have });
+  }
   for (const [k, want] of Object.entries(src.typeStage ?? {})) {
     const key = norm(k);
     if (skip.has(key)) continue;
@@ -298,18 +313,21 @@ const covers = (b: string[], g: string): boolean =>
  *    зогсохоос ӨМНӨ ил гаргана.
  */
 export function pkgErh(src: ErhSource, bagts: string): PkgErh {
+  /* ⚠️ 2026-10-23: зөвхөн харах ТӨРӨЛ («Ерөнхий захирал») — мөр нь «зөвхөн харна» томилгоотой адил (`ErhSource.viewRoles`) */
+  const viewRole = new Set((src.viewRoles ?? []).map(norm));
+  const noDecide = (x: FlowRow): boolean => !!x.viewOnly || viewRole.has(norm(x.user));
   const flow = Object.fromEntries(
     STAGE_ORDER.map((st) => [
       st,
       /* ⚠️ `viewOnly` томилгоо шатны эзэн БИШ (2026-09-24) — `canReview: false`
          тул тэр шатанд илгээлт зогсоно; эзний жагсаалт ба `flowGap`-д оруулахгүй */
-      src.flow.filter((x) => x.stage === st && !x.viewOnly && covers(x.bagts, bagts)).map((x) => x.user),
+      src.flow.filter((x) => x.stage === st && !noDecide(x) && covers(x.bagts, bagts)).map((x) => x.user),
     ]),
   ) as Record<Stage, string[]>;
   const flowViewers = Object.fromEntries(
     STAGE_ORDER.map((st) => [
       st,
-      src.flow.filter((x) => x.stage === st && x.viewOnly && covers(x.bagts, bagts)).map((x) => x.user),
+      src.flow.filter((x) => x.stage === st && noDecide(x) && covers(x.bagts, bagts)).map((x) => x.user),
     ]),
   ) as Record<Stage, string[]>;
 

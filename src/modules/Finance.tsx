@@ -3351,8 +3351,10 @@ function FullTable({
         const opts = c.choices.includes(cur) || cur === '' ? c.choices : [cur, ...c.choices];
         return (
           <td key={key} style={sty} className={`${f.cellEdit} ${mark} ${extra}`}>
+            {/* ⚠️ 2026-10-23: `data-rep-skip` — нүдний ЗАСВАР, шүүлт биш (`viewReport.readFilters`) */}
             <select
               className={f.cellPick}
+              data-rep-skip=""
               value={cur}
               onChange={(ev) => onEdit(ev.target.value)}
             >
@@ -4384,6 +4386,7 @@ function FullTable({
                     {SERVER_RO.test(c.name) || CALC_RO.has(c.name) ? null : c.choices?.length ? (
                       <select
                         className={f.cellPick}
+                        data-rep-skip=""
                         value={a[c.name] ?? ''}
                         onChange={(ev) => put(c.name, ev.target.value)}
                       >
@@ -4633,7 +4636,7 @@ function FullTable({
                   if (DATE_TYPES.has(c.type)) return dateEdit(cur, put);
                   if (c.choices?.length) {
                     return (
-                      <select className={f.cellPick} value={cur} onChange={(ev) => put(ev.target.value)}>
+                      <select className={f.cellPick} data-rep-skip="" value={cur} onChange={(ev) => put(ev.target.value)}>
                         <option value="">—</option>
                         {c.choices.map((o) => <option key={o} value={o}>{o}</option>)}
                       </select>

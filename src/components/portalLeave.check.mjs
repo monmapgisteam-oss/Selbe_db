@@ -135,10 +135,16 @@ console.log('\n4. force — хадгалаагүй засварын асуулт
   for (const p of files) {
     const s = readFileSync(join(root, p), 'utf8');
     for (const m of s.matchAll(/setNavDirty\('([\w-]+-(?:send|apply))', true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[1], label: m[2] });
+    /* ⚠️ 2026-10-23: түлхүүр нь хувьсагч (`const guardKey = \`hyanalt-apply:${work.key}\``) — угтвараар нь таньж нэрийг авна */
+    for (const m of s.matchAll(/const (\w+) = `([\w-]+-(?:send|apply)):\$\{[^`]+\}`;\s*setNavDirty\(\1, true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[2], label: m[3] });
   }
   ok('явж буй бичилтийн туг ≥ 3 олдлоо (fillnew-send · hyanalt-apply · ajil-apply)',
     ['fillnew-send', 'hyanalt-apply', 'ajil-apply'].every((k) => flags.some((f) => f.key === k)), JSON.stringify(flags.map((f) => f.key)));
   for (const f of flags) ok(`«${f.key}» (${f.p}) нэр navBusyLabels-д`, nb.includes(`tr('${f.label}')`), f.label);
+  /* ⚠️ 2026-10-23: «Батлах ажил»-ын `Item` бүр ӨӨРИЙН түлхүүртэй — нэг түлхүүр хуваалцвал эхэлж дууссан шийдвэр нөгөөгийн тугийг унтраана */
+  const G = readFileSync(join(root, 'modules/Guitsetgel.tsx'), 'utf8');
+  ok('hyanalt-apply туг ажил бүрд (work.key)',
+    G.includes('const guardKey = `hyanalt-apply:${work.key}`;') && G.includes('setNavDirty(guardKey, false);') && !G.includes("setNavDirty('hyanalt-apply'"));
 }
 
 console.log(`\nportalLeave: ${pass} шалгалт амжилттай.`);

@@ -150,8 +150,12 @@ export function BagtsHamaaral() {
      зурагдалтын `busy === false`) барьдаг тул 6 с-д өөр хадгалалт эхэлсэн үед буцаахад `saveWorkLinks`-ийн хоёр
      уншиж-бичих дуудлага зэрэг явж нэг өөрчлөлт чимээгүй алдагдах байв. */
   const busyRef = useRef(false);
-  const save = useCallback(async (dep: WNode, change: RefChange): Promise<boolean> => {
-    if (!g || busyRef.current) return false;
+  const save = useCallback(async (dep: WNode, change: RefChange, undo = false): Promise<boolean> => {
+    /* ⚠️ 2026-10-23: «↶ Буцаах» (`undo`) завгүй үед ЧИМЭЭГҮЙ бүтэлгүйтдэг байв — товч идэвхгүй биш (мэдэгдэл) тул ил хэлнэ */
+    if (!g || busyRef.current) {
+      if (undo) setErr(tr('Буцааж чадсангүй — дахин нэмнэ үү'));
+      return false;
+    }
     busyRef.current = true;
     setBusy(true);
     setErr('');
@@ -425,7 +429,7 @@ function WorkPicker({ g, p, q, sel, onSel, flt }: {
 function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }: {
   g: WorkGraph; n: WNode; canWrite: boolean; busy: boolean;
   pB: string; setPB: (p: string) => void;
-  onSave: (dep: WNode, c: RefChange) => Promise<boolean>;
+  onSave: (dep: WNode, c: RefChange, undo?: boolean) => Promise<boolean>;
   onOpen: (id: NodeId) => void;
   /** ⚠️ 2026-10-23 (P8): хадгалаагүй сонголтын тоо — эцэг асуулт/`navGuard`-д */
   onDirty: (n: number) => void;
@@ -472,7 +476,7 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }
                            ⚠️ 2026-10-23 (UX аудит P7): асуултын ОРОНД «↶ Буцаах» мэдэгдэл — устгаад, буцаавал ИЖИЛ холбоог
                               (`e.ref`) дахин нэмнэ. Хамгаалалтын зорилго хэвээр, нэг товшилт илүү. */
                         if (!(await onSave(n, { add: [], remove: [e.ref] }))) return;
-                        void toastUndo(tr('«{0}» холбоо устгагдлаа.', label), () => { void onSave(n, { add: [e.ref], remove: [] }); });
+                        void toastUndo(tr('«{0}» холбоо устгагдлаа.', label), () => { void onSave(n, { add: [e.ref], remove: [] }, true); });
                       }}>✕</button>
                   )}
                 </span>
@@ -515,7 +519,7 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }
 
 function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
   g: WorkGraph; n: WNode; p: string; busy: boolean;
-  onSave: (dep: WNode, c: RefChange) => Promise<boolean>;
+  onSave: (dep: WNode, c: RefChange, undo?: boolean) => Promise<boolean>;
   onDirty: (n: number) => void;
 }) {
   const [q, setQ] = useState('');

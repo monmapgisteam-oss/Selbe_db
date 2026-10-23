@@ -173,10 +173,19 @@ export function sumAreaM2(parcels: readonly LandParcel[]): number | null {
 /** Шалтгаанаар бүлэглэл — тоогоор буурах, тэнцвэл га-гаар буурах */
 export function byReason(parcels: readonly LandParcel[]): LandReason[] {
   const acc = new Map<string, { n: number; m2: number | null }>();
+  /* ⚠️ 2026-10-23: ХУВААГДСАН нэгж талбарын талбай НЭГ л удаа — `sumAreaM2`-ийн ЯГ дүрэм (`parcelNo|areaM2`). Урьд нь
+     полигон бүрийг нэмдэг тул шалтгааны га-ийн нийлбэр нийт үлдсэн га-аас ИХ гардаг байв. Тоо (`n`) хэвээр (мөр бүр). */
+  const seen = new Set<string>();
   for (const p of parcels) {
     const g = acc.get(p.reason) ?? { n: 0, m2: null };
     g.n += 1;
-    if (p.areaM2 != null) g.m2 = (g.m2 ?? 0) + p.areaM2;
+    let dup = false;
+    if (p.areaM2 != null && p.parcelNo && p.areaM2 > 0) {
+      const k = `${p.parcelNo}|${p.areaM2}`;
+      dup = seen.has(k);
+      seen.add(k);
+    }
+    if (p.areaM2 != null && !dup) g.m2 = (g.m2 ?? 0) + p.areaM2;
     acc.set(p.reason, g);
   }
   return [...acc.entries()]

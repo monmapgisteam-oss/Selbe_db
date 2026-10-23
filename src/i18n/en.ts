@@ -7303,6 +7303,17 @@ const en: Record<string, string> = {
   "+{0} зөвхөн харна": "+{0} view only",
   "админ батлах боломжтой": "an admin can approve",
   "Админ (super) — одоо бүх эрхтэй; энэ нь хадгалагдсан эрх (админ эрхийг хасахад үлдэнэ)": "Admin (super) — currently has all rights; this is a stored right (it stays when admin rights are removed)",
+  "«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.": "«{0}» is assigned in the performance workflow — the CEO can only view. Remove the workflow assignment first.",
+  "Энэ хэрэглэгч гүйцэтгэлийн урсгалын «{0}» шатанд томилгоотой — Ерөнхий захирал бөглөж, батлахгүй тул томилгоо ХАСАГДАНА.": "This user is assigned to the «{0}» stage of the performance workflow — the CEO does not fill in or approve, so the assignment will be REMOVED.",
+  "Урсгалын томилгоо хасагдсангүй (ArcGIS) — төрөл солигдсонгүй, дахин оролдоно уу.": "The workflow assignment was not removed (ArcGIS) — the type was not changed, please try again.",
+  "Ерөнхий захирал урсгалын шатанд томилогдохгүй — бүх багцыг зөвхөн ХАРНА. Эхлээд эрхийн төрлийг солино уу.": "The CEO cannot be assigned to a workflow stage — they only VIEW all packages. Change the permission type first.",
+  "Гүйцэтгэлийн урсгалын эрх уншигдаагүй — дахин ачаална уу.": "Performance workflow permissions are not loaded — please reload.",
+  "Ерөнхий захирал гүйцэтгэлийг зөвхөн ХАРНА — бөглөх, илгээх боломжгүй.": "The CEO can only VIEW performance — filling in and submitting are not available.",
+  "«{0}»: «Ерөнхий захирал» (зөвхөн харна) атлаа «{1}» шатанд томилгоотой — шийдвэрлэх эрхгүй тул шатны эзэн биш. Томилгоог хасна уу.": "«{0}»: «CEO» (view only) but assigned to the «{1}» stage — has no decision rights, so is not a stage owner. Remove the assignment.",
+  "Буцааж чадсангүй — дахин нэмнэ үү": "Could not undo — please add it again",
+  "Буцааж чадсангүй — хадгалалт дуусаагүй байна. Дууссаны дараа дахин оролдоно уу.": "Could not undo — saving is still in progress. Please try again once it finishes.",
+  "Буцааж чадсангүй — хуваарь батлуулахаар илгээгдсэн тул засвар түгжигдсэн.": "Could not undo — the schedule has been submitted for approval, so editing is locked.",
+  "Буцааж чадсангүй — чирэлт дуусаагүй байна.": "Could not undo — dragging is not finished yet.",
 };
 
 export default en;

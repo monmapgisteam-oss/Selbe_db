@@ -668,6 +668,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       setAddErr(tr('Super эрхийг зөвхөн super админ олгож, хасна.'));
       return;
     }
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» зөвхөн харна — урсгалын томилгоотой хүнд ноорогоор тавихгүй (`roleTypeApply.applyType`-ийн
+       дүрэм; картын «Эрхийн төрөл» томилгоог хасахыг асууж хэрэгжүүлнэ). */
+    if (role === 'zahiral' && stageOfUser(u.username)) {
+      setAddErr(tr('«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.', u.username));
+      return;
+    }
     /* ⚠️ 2026-10-23 (UX аудит A1): SUPER ОЛГОХ нь мөрийн сонгогчоос асуулгүй ноорогт ордог байв — super нь БҮХ хуудас,
        БҮХ засах эрх (санхүүгийн мөр устгах, эрх удирдах) авна. Үр дагаврыг нэрлэж ТУСДАА асууна (хатуу super-ийг
        дахин сонгоход биш — аль хэдийн super бол асуухгүй). */
@@ -726,6 +732,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const flipRemove = (u: UserPerm) => {
     const d = draftOf(u);
+    /* ⚠️ 2026-10-23: ХАДГАЛААГҮЙ ШИНЭ аккаунтыг «устгах» = нэмэхээ болих — ноорогийг шууд хаяна, ArcGIS-т юу ч бичихгүй.
+       Урьд нь `remove` туг тавиад «Хадгалах» дээр `removeUser` дуудагдаж, хэзээ ч байгаагүй аккаунтад TOMBSTONE бичдэг тул
+       тэр нэрийг дараа нэмэхэд «устгагдсан» гэж татгалздаг байв (`saveAll`-д ч давхар хамгаалалт). */
+    if (d.isNew && !users.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+      const key = u.username.toLowerCase();
+      setDrafts((prev) => { const m = new Map(prev); m.delete(key); return m; });
+      setSaved(null);
+      return;
+    }
     putDraft(u, { ...d, remove: !d.remove });
   };
   /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): `markClear` («Сэргээх») УСТСАН — товч нь хэзээ ч гардаггүй байсан ч `saveAll`-ийн
@@ -859,6 +874,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         // ⚠️ revoke:false — аккаунт бүхэлдээ устгагдах тул эрх буцаалтын
         //    бичилт tombstone-той уралдах ёсгүй.
         if (d.remove) {
+          /* ⚠️ 2026-10-23: хадгалаагүй ШИНЭ аккаунт (хүснэгтэд мөргүй) — бичилтгүй, ноорог нь доор арилна (`flipRemove`-ийн ⚠️) */
+          if (d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) continue;
           /*
            * ⚠️ 2026-08-29: урсгалын томилгоо ба нэмэлт эрхийг remote-оос ХАМТ
            * арилгаж, үр дүнг нь ХҮЛЭЭНЭ. Урьд нь `removeAssign` fire-and-forget,

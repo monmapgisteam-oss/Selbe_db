@@ -180,8 +180,9 @@ export function AjilMatTab({ tick }: { tick: number }) {
     }
   };
 
-  const f = filter.trim().toLowerCase();
-  const shown = f ? rows.filter((r) => `${r.no} ${r.work} ${matsOf(r).join(' ')}`.toLowerCase().includes(f)) : rows;
+  /* ⚠️ 2026-10-23: хайлтыг ДЭЛГЭЦТЭЙ ижил (`fixCyr`: є→ө, ї→ү) хэвийншүүлнэ — хоёр талд; зөвхөн хайлтад (түлхүүр/бичилтэд биш) */
+  const f = fixCyr(filter.trim().toLowerCase());
+  const shown = f ? rows.filter((r) => fixCyr(`${r.no} ${r.work} ${matsOf(r).join(' ')}`).toLowerCase().includes(f)) : rows;
 
   return (
     <div className={s.block}>

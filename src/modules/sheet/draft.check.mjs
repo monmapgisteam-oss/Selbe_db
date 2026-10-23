@@ -588,8 +588,9 @@ console.log('✅ өнчин илгээлт хуудас дахин нээхэд 
   /* (2) хориг идэвхтэй ч «ноорог устгах» */
   assert.ok(SRC.includes('{(!noPerf || canDrop) && (') && SRC.includes('canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit}'), 'хоригтой үед ноорог устгах боломжгүй');
   /* (5) байнгын шалтгаан хоригоос ӨМНӨ */
-  const why = between('const noPerfWhy = reviewerOnly ? RO.reviewerView', ';');
-  assert.ok(why.indexOf('RO.perfViewOnly') < why.indexOf('!permPerf') && why.indexOf('!permPerf') < why.indexOf('RO.reviewLock'), 'шалтгааны дараалал буруу');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`isZahiral`) хамгийн эхэнд — байнгын, бүх багцад */
+  const why = between('const noPerfWhy = isZahiral ? RO.zahiralView', ';');
+  assert.ok(why.indexOf('RO.reviewerView') < why.indexOf('RO.perfViewOnly') && why.indexOf('RO.perfViewOnly') < why.indexOf('!permPerf') && why.indexOf('!permPerf') < why.indexOf('RO.reviewLock'), 'шалтгааны дараалал буруу');
   assert.ok(SRC.includes('const canPerf = permPerf && !reviewLock;'), 'canPerf байнгын эрхийг хоригоос салгаагүй');
   /* (6) гүйцэтгэгчийн товч батлагчид харагдахгүй, батлагч тойрог нээхгүй */
   assert.ok(SRC.includes('canAct={permPerf && !reviewerOnly}'), 'мэдэгдлийн товчны эрх дамжихгүй байна');
@@ -604,3 +605,30 @@ console.log('✅ өнчин илгээлт хуудас дахин нээхэд 
   assert.ok(!/<span className=\{st\.negj\}>\{negjOf\(/.test(SRC) && SRC.includes('negj={unitLabel(negjOf(r.work)) || null}'), 'нэгж түүхий монголоор гарч байна');
 }
 console.log('✅ аудит №3 — зорилтын шүүлт · хадгалсан ноорогийн шалгалт · ногоон нүд · шалтгаан · батлагчийн товч · сэргээлтийн хаалт · нэгж');
+
+/* ── ⚠️ 2026-10-23: «Илгээх»-ийн асуулт нээлттэй үед ТАТАХ МӨЧЛӨГ ба засвар ЗОГСОНО (`busy`) ──
+   Урьд нь асуулт нээлттэй байхад нөгөө бөглөгчийн засвар `pending`-д нийлүүлэгдэж `lastMergedRef` урагшилдаг тул «Тийм»
+   дарахад хуучин `pending`-ээр илгээж, `sentAt` tombstone нөгөөгийн шинэ засварыг хасдаг байв. */
+{
+  const pub = between('const publish = useCallback(async () => {', 'const landInflight = (inf: Inflight)');
+  const ask = pub.indexOf('yes = await askConfirm(');
+  const before = pub.lastIndexOf('setBusy(true);', ask);
+  assert.ok(ask > 0 && before > pub.indexOf('pubAskRef.current = true;') && before < ask, 'асуултын ӨМНӨ setBusy(true) алга');
+  assert.ok(/finally \{\s*pubAskRef\.current = false;\s*if \(!yes\) setBusy\(false\);\s*\}\s*if \(!yes\) return;/.test(pub), 'цуцлахад busy суллагдахгүй');
+  assert.ok(pub.indexOf('const sentAt = new Map') > ask, 'sentAt асуултын ДАРАА бодогдох ёстой');
+  /* татах мөчлөг `busy` үед эхлэхгүй (цэвэрлэгээ нь явж буй тойргийг `alive = false`-оор хаяна) */
+  const pull = between('if (busy || noEdit || !canPerf || !sc || !rows.length) return;', 'return () => { alive = false;');
+  assert.ok(pull.includes('if (!alive) return;'), 'татах мөчлөг цуцлагдсан тойргийн хариуг хаядаггүй');
+}
+console.log('✅ «Илгээх» асуулт — busy-гаар татах мөчлөг/засвар зогсоно, цуцлахад суллагдана');
+
+/* ── ⚠️ 2026-10-23: «Ерөнхий захирал» — бүх багцыг ХАРНА, хэзээ ч БӨГЛӨХГҮЙ ── */
+{
+  assert.ok(SRC.includes('() => !unrestricted && roleOf(user?.username) === "zahiral"'), 'isZahiral тодорхойлолт алга');
+  const mb = between('const myBagts = useMemo(() => {', 'const groupOpts');
+  assert.ok(mb.includes('if (unrestricted || isZahiral) return null;'), 'захиралд бүх багцын харах хүрээ (null) алга');
+  const pp = between('const permPerf = useMemo(() => {', 'const canPerf');
+  assert.ok(pp.indexOf('if (isZahiral) return false;') > 0 && pp.indexOf('if (isZahiral) return false;') < pp.indexOf('bagtsFor(user?.username, "company")'), 'захирал company томилгоогоор бөглөж чадна');
+  assert.ok(SRC.includes('get zahiralView()'), 'RO.zahiralView алга');
+}
+console.log('✅ «Ерөнхий захирал» — бүх багц харна, permPerf үргэлж худал');

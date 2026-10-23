@@ -39,7 +39,7 @@ import { AclGrid, type GridHolder } from './AclGrid';
 import { flowCellOp, flowViewOnlyOp } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { isCodeSuper, roleForUser } from '@/lib/services';
 import { portalMissing } from '@/lib/portalPresence';
@@ -143,7 +143,8 @@ export function GuitsetgelAcl() {
            «эзэнтэй» мэт харуулдаг байв; «зөвхөн харна»-г хаалтанд (`GridCol.more`) */
         cols={STAGE_ORDER.map((st) => {
           const live = assignsOf(st).filter((a) => known.has(a.user) && !portalMissing(a.user));
-          const vo = live.filter((a) => a.viewOnly).length;
+          /* ⚠️ 2026-10-23: «Ерөнхий захирал» — «зөвхөн харна»-тай адил (эзэн биш) */
+          const vo = live.filter((a) => a.viewOnly || roleOf(a.user) === 'zahiral').length;
           return { key: st, label: STAGE_LABEL[st], count: live.length - vo, more: vo ? tr('+{0} зөвхөн харна', String(vo)) : undefined };
         })}
         holders={cell}
@@ -152,7 +153,8 @@ export function GuitsetgelAcl() {
            ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) ч тоологдохгүй — нэвтэрч чадахгүй. */
         /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — урьд нь `selbe_redesign` (порталд алга) нь
            «Гүйцэтгэгч компани» баганыг 21 багцад «эзэнтэй» харуулж, гацаа ХЭЗЭЭ Ч гардаггүй байв. */
-        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !h.absent && !rowOf.get(h.user)?.viewOnly)}
+        /* ⚠️ 2026-10-23: «Ерөнхий захирал» (хуучин томилгоотой) ч эзэн биш — шийдвэрлэдэггүй (`erhOverview.pkgErh`-тэй нэг дүрэм) */
+        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !h.absent && !rowOf.get(h.user)?.viewOnly && roleOf(h.user) !== 'zahiral')}
         stuckTitle={() => tr('Энэ багцын энэ шатанд шийдвэрлэх аккаунт алга — ажил энд гацна')}
         /*
          * ⚠️ Сонгогчид ЗӨВХӨН өөрчлөлт хийх аккаунт: аль хэдийн хамарсан
@@ -160,8 +162,9 @@ export function GuitsetgelAcl() {
          *    нь санал болгогдоно — сонговол ШИЛЖҮҮЛЭХИЙГ асууна (шошгонд ил).
          */
         /* ⚠️ 2026-10-23: порталд алга гэж батлагдсан аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+        /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) санал болгохгүй — зөвхөн харна, урсгалд томилогдохгүй (`setAssign` татгалзана) */
         candidates={(pkg, st) => accounts
-          .filter((u) => !portalMissing(u) && planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
+          .filter((u) => !portalMissing(u) && roleOf(u) !== 'zahiral' && planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
           .map((u) => {
             const cur = rowOf.get(u.toLowerCase());
             const name = roleForUser(u) === 'super' ? `${u} (${tr('админ')})` : u;

@@ -35,7 +35,7 @@ if (!g.navigator) g.navigator = {};
 g.fetch = () => Promise.reject(new Error('execReport.ui.check: сүлжээгүй'));
 process.on('unhandledRejection', noop);
 
-const { negtgelProjectPlan, execFindings, execFacts } = await import('./execReport.ts');
+const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf } = await import('./execReport.ts');
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
@@ -128,6 +128,16 @@ ok('§3 эгнээ: бодит нь зөрүүний тал, дутуу хамр
 ok('ангилал: «Инженерийн дэд бүтэц» өөрийн биет хувьтай (`typePhysNow`)', () => {
   assert.match(ER, /const infra = typePhysNow\(fin, cf, INFRA_TYPE, nowYm\);/);
   assert.match(ER, /if \(infra\) catPct\.set\(INFRA_TYPE, infra\.pct\);/);
+});
+
+/* ── ⚠️ 2026-10-23: полигонгүй блок ч өрхийн мэдээлэлгүйд тоологдоно ── */
+ok('householdsMissingOf: AIL_TOO хоосон полигон + полигонгүй блок, дээд хязгаар нь блокийн тоо', () => {
+  const keys = new Set(['Б1|1', 'Б1|2', 'Б1|3', 'Б2|1']);
+  assert.equal(householdsMissingOf(keys, ['Б1|1', 'Б1|2', 'Б1|3', 'Б2|1'], 0), 0, 'бүгд полигонтой, өрхтэй');
+  assert.equal(householdsMissingOf(keys, ['Б1|1', 'Б1|2'], 0), 2, 'полигонгүй 2 блок');
+  assert.equal(householdsMissingOf(keys, ['Б1|1', 'Б1|2'], 1), 3, 'хоосон 1 + полигонгүй 2');
+  assert.equal(householdsMissingOf(keys, [], 9), 4, 'дээд хязгаар — блокийн тоо');
+  assert.ok(ER.includes('householdsMissingOf(lvKeys, uniqueBlocks(bld.rows).map((b) => b.key), bld.householdsMissing)'), 'prog.householdsMissing полигонгүй блокийг тоолно');
 });
 
 console.log(`execReport.ui.check: ${n} шалгуур ✅`);

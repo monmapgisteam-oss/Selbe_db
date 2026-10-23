@@ -1159,5 +1159,83 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §14 «Ерөнхий захирал»: хүчинтэй төрөл · эрхгүй · шат биш · «Гүйцэтгэл» зөвхөн харна · гацаа/зөрөө үүсгэхгүй');
 }
 
+/* ══════════ §15. 2026-10-23-ны засварууд — захирал урсгалд биш · «Буцаах»-ын retry · урагш нийцтэй бичилт ══════════
+ * (а) «Ерөнхий захирал»: `setAssign` татгалзана; томилгоотой хүнд `applyType('zahiral')` татгалзана (`flowStage`);
+ *     хуучин томилгоотой захирал — тэмдэгт 0, шатны эзэн биш (`pkgErh`), төрөл↔шат зөрөөнд (`want: null`);
+ * (б) «Буцаах»-ын бичилт унасан → retry tombstone-ыг ЗОРИУД дарна (`DirtyItem.revive`);
+ * (в) танигдахгүй үүрэг (шинэ build) — бичихэд remote-ын утга хэвээр; танигдахгүй шаттай мөрийг хасалт устгахгүй. */
+{
+  const tag = '§15';
+  const WHO = await import('@/lib/who.ts');
+  const ERH = await import('@/lib/erhOverview.ts');
+  const HS = await import('@/lib/hyanaltStore.ts');
+  const [p1] = PKG_GROUPS;
+  WHO.setCurrentUser(SUPER);
+  /* (а) */
+  const Z = mkUser();
+  let res = await RTA.applyType(Z, 'zahiral'); await settle();
+  ok(res.ok, `${tag}: захирал төрөл (${res.errors})`);
+  const w = FL.setAssign(Z, 'engineer', [p1]);
+  ok(!w.ok && /Ерөнхий захирал/.test(w.error ?? ''), `${tag}: захиралыг урсгалд томилохгүй («${w.error}»)`);
+  await settle();
+  ok(!FL.listAssigns().some((a) => a.user === Z) && fake.find('__flow__:' + Z).length === 0, `${tag}: локал/ArcGIS-т урсгалын мөр үүсээгүй`);
+  const Y = mkUser();
+  let r = await run(OPS.flowCellOp(Y, 'engineer', p1, true));
+  ok(r.ok, `${tag}: Y томилох («${r.err}»)`);
+  res = await RTA.applyType(Y, 'zahiral'); await settle();
+  ok(!res.ok && res.flowStage === 'engineer' && P.roleOf(Y) !== 'zahiral', `${tag}: томилгоотой хүнийг захирал болгохгүй (${res.errors})`);
+  /* хуучин өгөгдөл: томилгоотой атлаа төрөл нь захирал (төрөл шууд бичигдсэн) */
+  ok(await P.setUser(Y, { views: ['gdash'], docs: false }, 'zahiral'), `${tag}: Y-ийн төрлийг шууд бичих`);
+  await settle();
+  await both((ww) => {
+    eq(P.roleOf(Y), 'zahiral', `${tag} ${ww}: Y захирал`);
+    const src = OPS.liveErhSource();
+    ok((src.viewRoles ?? []).includes(Y), `${tag} ${ww}: viewRoles-д`);
+    const pe = ERH.pkgErh(src, p1);
+    ok(!pe.flow.engineer.includes(Y) && pe.flowViewers.engineer.includes(Y), `${tag} ${ww}: захирал шатны эзэн биш (харагч)`);
+    ok(ERH.typeStageGaps(src).some((g) => g.user === Y && g.want === null && g.have === 'engineer'), `${tag} ${ww}: төрөл↔шат зөрөөнд гарна`);
+  });
+  eq(await HS.countReviewPending(Y), 0, `${tag}: захиралын хянах тэмдэг 0`);
+  /* (б) */
+  const D = mkUser();
+  ok(await P.removeUser(D), `${tag}: устгах`);
+  await settle();
+  fake.failWrites = true;
+  ok(!(await P.restoreUser(D)), `${tag}: «Буцаах» бичилт унав`);
+  fake.failWrites = false;
+  await settle();
+  ok(P.dirtyKeys().includes(D), `${tag}: сэргээлт dirty-д`);
+  const left = await P.retryDirty(false); await settle();
+  ok(!P.dirtyKeys().includes(D), `${tag}: retry сэргээлтийг бичив (үлдсэн ${left})`);
+  await both((ww) => {
+    eq(P.hasAccess(D), true, `${tag} ${ww}: retry-ийн дараа сэргээгдсэн аккаунт нэвтэрнэ`);
+    ok(fake.find(D).every((x) => x.views !== 'removed'), `${tag} ${ww}: ArcGIS-т tombstone арилсан`);
+  });
+  /* (в) танигдахгүй үүрэг */
+  const U = mkUser();
+  fake.find(U)[0].role = 'future_role';
+  await roundTrip();
+  eq(P.roleOf(U), null, `${tag}: танигдахгүй үүрэг уншихад null (fail-closed)`);
+  ok(await P.setUser(U, { views: ['gdash', 'plan'], docs: false }, null), `${tag}: U-ийн харагдац засах`);
+  await settle();
+  eq(fake.find(U)[0].role, 'future_role', `${tag}: хуучирсан клиент танигдахгүй үүргийг арчсангүй`);
+  ok(JSON.parse(fake.find(U)[0].views).includes('plan'), `${tag}: харагдацын засвар бичигдэв`);
+  /* (в) танигдахгүй шат — хасалт мөрийг устгахгүй */
+  const V = mkUser();
+  r = await run(OPS.flowCellOp(V, 'engineer', p1, true));
+  ok(r.ok, `${tag}: V томилох («${r.err}»)`);
+  const fr = fake.find('__flow__:' + V)[0];
+  fr.views = JSON.stringify({ ...JSON.parse(fr.views), stage: 'future_stage' });
+  await FL.removeAssign(V, 'engineer', false).sync; await settle();
+  eq(fake.json('__flow__:', V)?.stage, 'future_stage', `${tag}: шинэ шатны томилгоо хуучирсан клиентийн хасалтаар устсангүй`);
+  /* (г) UserAdmin: хадгалаагүй шинэ аккаунтыг «устгах» = ноорог хаях (tombstone бичихгүй) — эх код */
+  const UA = (await import('node:fs')).readFileSync('src/components/UserAdmin.tsx', 'utf8');
+  const fr2 = UA.slice(UA.indexOf('const flipRemove = (u: UserPerm) => {'), UA.indexOf('putDraft(u, { ...d, remove: !d.remove });'));
+  ok(fr2.includes('if (d.isNew && !users.some('), `${tag}: flipRemove шинэ аккаунтын ноорогийг шууд хаяхгүй байна`);
+  ok(UA.includes('if (d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) continue;'), `${tag}: saveAll шинэ аккаунтад tombstone бичиж болзошгүй`);
+  WHO.setCurrentUser(null);
+  console.log('✅ §15 захирал урсгалд биш · «Буцаах» retry tombstone-ыг дарна · танигдахгүй үүрэг/шат хадгалагдана · шинэ аккаунтын устгал бичилтгүй');
+}
+
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');
 console.log(`✅ aclE2E: ${checks} шалгалт — бүгд давлаа (ArcGIS бичилт ${fake.edits}, хуурамч хүснэгтэд)`);

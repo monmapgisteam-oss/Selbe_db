@@ -485,8 +485,10 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
         </div>
         <div className={s.hdR}>
           <label className={s.sortLbl} htmlFor="ipc-sort">{tr('Эрэмбэ')}</label>
+          {/* ⚠️ 2026-10-23: `data-rep-skip` — ЭРЭМБЭ, шүүлт биш (`viewReport.readFilters`) */}
           <select
             id="ipc-sort"
+            data-rep-skip=""
             className={s.sel}
             value={sort}
             onChange={(e) => setSort(e.target.value as SortKey)}

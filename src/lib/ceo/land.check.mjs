@@ -74,6 +74,11 @@ assert.equal(parcels[7].areaM2, null, 'area=0, нөөцгүй → null (0 БИШ
   ]);
   assert.equal(split.length, 3, 'хүснэгтэд полигон бүр хэвээр');
   assert.equal(sumAreaM2(split), 785, '685 давхар тоологдохгүй');
+  /* ⚠️ 2026-10-23: шалтгааны бүлэглэл ч ИЖИЛ дүрмээр — га нийт үлдсэн га-тай тэнцэнэ, тоо нь полигон бүрээр */
+  const sr = byReason(split);
+  assert.equal(sr.length, 1);
+  assert.equal(sr[0].n, 3, 'тоо — мөр бүр');
+  assert.equal(sr[0].ha, 785 / 10_000, 'byReason: хуваагдсан талбай давхар тоологдохгүй');
   /* Зориулалт: landuse_de бүтэн ?? Zoriulalt (тасархайг бүтэн нэрээр нөхнө) */
   const [u1, u2, u3] = parseParcels([
     raw(50, 'зөвшилцөх', 1, { [F.landuseFull]: 'Худалдаа, нийтийн үйлчилгээний газар, төв, цогцолбор', [F.landuse]: ' ' }),

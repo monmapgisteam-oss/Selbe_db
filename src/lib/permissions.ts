@@ -43,7 +43,7 @@ import { currentUser, requireCap } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 /* ⚠️ 2026-10-01: урсгалтай харагдацын эх сурвалж (`workflowViewsOf`). Статик импорт аюулгүй —
    `guitsetgelAcl` энэ файлыг ЗӨВХӨН динамикаар (`await import('./permissions')`) дууддаг. */
-import { stageOfUser } from './guitsetgelAcl';
+import { _setRoleReader, stageOfUser } from './guitsetgelAcl';
 import type { SysState } from './permsRemote';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
@@ -98,7 +98,9 @@ type Store = Record<string, Entry>;
  */
 /* ⚠️ 2026-10-11 (аудит №7): `revive` — «Буцаах»-ийн устгал (`clearOverride(…, { revive: true })`):
    retry-д remote tombstone олдсон ч устгалыг ҮРГЭЛЖЛҮҮЛНЭ (сэргээх зорилго). Энгийн `e: null`
-   («Сэргээх»/`removeUser`) tombstone дээр урьдын адил хаягдана. */
+   («Сэргээх»/`removeUser`) tombstone дээр урьдын адил хаягдана.
+   ⚠️ 2026-10-23: `restoreUser`-ийн ЖИРИЙН мөр (`e !== null`) ч `revive`-тэй — урьд нь зөвхөн `null`-д тугтай тул унасан
+   сэргээлтийн retry/«Дахин илгээх» remote tombstone-ыг «өөр админ устгасан» гэж үзэж сэргээлтийг ЧИМЭЭГҮЙ хаядаг байв. */
 type DirtyItem = { by: string; e: Entry | null; revive?: boolean };
 type DirtyMap = Record<string, DirtyItem>;
 
@@ -219,6 +221,13 @@ const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
  *    дээр ШИДЭЖ тэр хэрэглэгчийн портал бүхэлдээ унадаг байв.
  */
 const VALID_ROLES = new Set<string>(Object.keys(ROLE_ACCESS));
+/**
+ * ⚠️ 2026-10-23 (урагш нийцтэй): ТАНИГДАХГҮЙ үүрэг (шинэ build-ийн шинэ төрөл) — бичихэд хадгална (`setUser`-ийн ⚠️).
+ *    Уншилтад хэвээр `null` (fail-closed, `sanitizeEntry`) — зөвхөн хуучирсан клиент түүнийг АРЧИХГҮЙ. Хоосон/танигдах
+ *    утга → `null` (тэр нь `out.role`-оор аль хэдийн шийдэгдсэн). `super` ХЭЗЭЭ Ч (VALID_ROLES-д байгаа тул энд хүрэхгүй).
+ */
+const unknownRole = (raw: string | null): Role | null =>
+  raw && raw.trim() && raw.length <= 32 && !VALID_ROLES.has(raw) && !UNSAFE_KEY.has(raw) ? (raw as Role) : null;
 const sanitizeEntry = (e: Entry): Entry => ({
   ...e,
   views: sanitizeViews(e.views),
@@ -289,7 +298,7 @@ function loadDirty(): DirtyMap {
         by: typeof item.by === 'string' ? item.by : '',
         e: item.e ?? null,
         /* ⚠️ 2026-10-11 (аудит №7): «Буцаах»-ийн зорилго retry хүртэл хадгалагдана (ЗӨВХӨН яг `true`) */
-        ...(item.revive === true && item.e === null ? { revive: true } : {}),
+        ...(item.revive === true ? { revive: true } : {}),
       };
     }
     return out;
@@ -319,7 +328,8 @@ function trackWrite(key: string, intended: Entry | null, ok: boolean, revive = f
   } else {
     /* ⚠️ Бичсэн хүн + ЭНЭ runtime-ийн тэмдэг (`mine`) — автомат retry-ийн шалгуур */
     /* ⚠️ 2026-10-11 (аудит №7): `revive` — «Буцаах»-ийн устгал tombstone-ыг зориуд арилгана (`DirtyItem`) */
-    d[key] = { by: currentUser() ?? '', e: intended, ...(revive && intended === null ? { revive: true } : {}) };
+    /* ⚠️ 2026-10-23: жирийн мөрийн сэргээлт (`restoreUser`) ч тугтай — `DirtyItem`-ийн ⚠️ */
+    d[key] = { by: currentUser() ?? '', e: intended, ...(revive ? { revive: true } : {}) };
     mine.set(key, ser(intended));
   }
   saveDirty(d);
@@ -449,12 +459,16 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
         console.warn(`[selbe] «${key}»: өмнөх сешний super олголтыг илгээсэнгүй — шаардлагатай бол самбараас дахин олгоно уу`);
         return;
       }
-      const revive = e === null && item.revive === true;
+      /* ⚠️ 2026-10-23: `restoreUser`-ийн жирийн мөр ч (`e !== null`) — tombstone-ыг ЗОРИУД дарна (`DirtyItem`-ийн ⚠️) */
+      const revive = item.revive === true && !e?.removed;
       /* ⚠️ 2026-10-21: зөвхөн КОДЫН super-т tombstone үйлчлэхгүй — хүснэгтийн super-ийн мөр энгийн мөр */
+      /* ⚠️ 2026-10-23 (урагш нийцтэй): remote-ын танигдахгүй үүргийг хадгална (`unknownRole`-ийн ⚠️) */
+      let rawRole: string | null = null;
       if (!e?.removed && !revive && !isCodeSuper(key)) {
         let fresh: Awaited<ReturnType<typeof m.userRead>> = null;
         try { fresh = await m.userRead(key); } catch { fresh = null; }
         if (!fresh) return; // уншиж чадсангүй — dirty хэвээр, дараагийн retry
+        rawRole = typeof fresh.row?.role === 'string' ? fresh.row.role : null;
         if (fresh.row?.removed) {
           dropDirty(key, want);
           done[key] = sanitizeEntry({ views: [], docs: false, role: null, removed: true });
@@ -466,7 +480,7 @@ async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry |
       try {
         ok = e === null
           ? await m.remove(key)
-          : await m.upsert({ username: key, role: e.role, views: e.views, docs: e.docs, removed: e.removed });
+          : await m.upsert({ username: key, role: e.role ?? (e.removed ? null : unknownRole(rawRole)), views: e.views, docs: e.docs, removed: e.removed });
       } catch {
         ok = false;
       }
@@ -1007,6 +1021,8 @@ export function roleOf(username?: string | null): Role | null {
      `resolveBaseAccess`-ийн тайлбар (localStorage-д өөртөө `role:'super'` бичих зам). */
   return (remoteLoaded ? ov?.role : null) ?? roleForUser(username);
 }
+/* ⚠️ 2026-10-23: `guitsetgelAcl.setAssign` «Ерөнхий захирал»-ыг СИНХРОН татгалзана — тойрог импортгүйгээр уншигч бүртгэнэ */
+_setRoleReader(roleOf);
 
 /** Панелийн жагсаалт — хатуу тохиргооны бүх хэрэглэгч + override-той шинэ хэрэглэгч */
 export function listUsers(): UserPerm[] {
@@ -1125,7 +1141,8 @@ export async function restoreUser(username: string): Promise<boolean> {
   const role: Role = kept ?? NEW_ACCOUNT_ROLE;
   const a = roleAccess(role);
   const views: ViewKey[] = (a.views === 'all' ? VIEWS.map((v) => v.key) : a.views).filter((v) => !isWorkflowView(v));
-  return setUser(username, { views, docs: a.docs }, role);
+  /* ⚠️ 2026-10-23: `revive` — унасан бичилтийн dirty тэмдэг сэргээх зорилгыг хадгална (`DirtyItem`-ийн ⚠️) */
+  return setUser(username, { views, docs: a.docs }, role, undefined, { revive: true });
 }
 
 /**
@@ -1136,6 +1153,8 @@ export async function restoreUser(username: string): Promise<boolean> {
  */
 export function setUser(
   username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
+  /** ⚠️ 2026-10-23: `revive` — ЗӨВХӨН `restoreUser`: remote tombstone-ыг зориуд дарна (унасан бол dirty тугтай) */
+  opts: { revive?: boolean } = {},
 ): Promise<boolean> {
   /* ⚠️ 2026-10-19 (аудит): trim + жижиг үсэг — `permsRemote.fetchAll`/`upsert`-тэй НЭГ түлхүүр */
   const key = username.trim().toLowerCase();
@@ -1154,7 +1173,7 @@ export function setUser(
   const boot = role === 'super' ? bootstrapOnlySuper() : null;
   if (boot && boot !== key) {
     return setUser(boot, { views: 'all', docs: true }, 'super')
-      .then((own) => (own ? setUser(username, access, role, baseOf) : false));
+      .then((own) => (own ? setUser(username, access, role, baseOf, opts) : false));
   }
   const entry: Entry = { views: sanitizeViews(access.views), docs: access.docs, role };
   /*
@@ -1182,6 +1201,9 @@ export function setUser(
   return serialWrite(key, async () => {
     let out = entry;
     let ok = false;
+    let revive = opts.revive === true;
+    /* remote мөрийн ТҮҮХИЙ үүрэг (шүүгээгүй) — доорх `unknownRole`-ийн ⚠️ */
+    let rawRole: string | null = null;
     try {
       const m = await import('./permsRemote');
       /*
@@ -1198,11 +1220,16 @@ export function setUser(
          `upsert` явж, нөгөө админы ДӨНГӨЖ тавьсан tombstone-ыг дарж устгагдсан хүнийг амилуулдаг
          байв — `retryDirtyOnce`-ийн ижил цоорхой. Хатуу super-т tombstone үйлчилдэггүй. */
       const wasDirty = key in loadDirty();
+      /* ⚠️ 2026-10-23: сэргээлтийн зорилго — энэ дуудлага (`restoreUser`) эсвэл өмнөх унасан сэргээлтийн dirty тэмдэг.
+         Сэргээлт retry-гээ хүлээж байхад тэр хүнийг дахин засвал (шинэ `setUser`) зорилго алдагдаж tombstone дээр
+         хаягдахаас сэргийлнэ. */
+      revive = opts.revive === true || loadDirty()[key]?.revive === true;
       /* ⚠️ 2026-10-21: зөвхөн кодын super-т tombstone үйлчлэхгүй (`isCodeSuper`) */
       const hard = isCodeSuper(username);
       if (!wasDirty || !hard) {
         const fresh = await m.userRead(username);
-        if (!fresh) { trackWrite(key, entry, false); return false; }
+        if (!fresh) { trackWrite(key, entry, false, revive); return false; }
+        rawRole = typeof fresh.row?.role === 'string' ? fresh.row.role : null;
         const fr = fresh.row
           ? sanitizeEntry({
             views: fresh.row.views, docs: fresh.row.docs, role: fresh.row.role,
@@ -1219,7 +1246,7 @@ export function setUser(
          * ⚠️ 2026-10-09 (аудит №6): өмнөх унасан бичилтийн dirty тэмдгийг ч хаяна (`dropDirty`) —
          *    эс бөгөөс `retryDirtyOnce`/`mineDirty` тэр хуучин зорилгыг tombstone дээр давхарлана.
          */
-        if (fr?.removed && !base?.removed && !hard) {
+        if (fr?.removed && !base?.removed && !hard && !revive) {
           dropDirty(key, ser(loadDirty()[key]?.e ?? null));
           const s = { ...loadStore() };
           s[key] = fr;
@@ -1237,13 +1264,16 @@ export function setUser(
           saveStore(s);
         }
       }
-      ok = await m.upsert({ username, role: out.role, views: out.views, docs: out.docs });
+      /* ⚠️ 2026-10-23 (урагш нийцтэй): remote мөрийн үүрэг ЭНЭ клиентэд ТАНИГДАХГҮЙ (шинэ build-ийн шинэ төрөл) бол
+         `sanitizeEntry` түүнийг `null` болгодог (fail-closed уншилт) тул бичихэд `null` очиж хуучирсан клиент шинэ төрлийг
+         АРЧДАГ байв. Энэ бичилт үүрэг тавиагүй (`out.role === null`) бол remote-ын утгыг ХЭВЭЭР бичнэ. */
+      ok = await m.upsert({ username, role: out.role ?? unknownRole(rawRole), views: out.views, docs: out.docs });
     } catch {
       ok = false;
     }
     /* ⚠️ 2026-10-22: super тэмдэг ЗӨВХӨН бичигдсэн утгаар (`mergeUserDelta` үүргийг өөрчилж болно) — дээрх ⚠️ */
     if (ok) _markTableSuper(key, out.role === 'super');
-    trackWrite(key, out, ok);
+    trackWrite(key, out, ok, revive);
     return ok;
   });
 }

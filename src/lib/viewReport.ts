@@ -503,7 +503,8 @@ const ALL_RE = /^(бүгд|бүх(\s|$)|all(\s|$)|—$)/i;
  *    бичигддэг тул он/сар/улирал, багц, таб, чартын сонголтоор нарийссан тайлан «Шүүлтгүй — бүх өгөгдөл» гэж худал
  *    гарч байв. 26 харагдацын төлөв модуль дотроо (файлын толгойн ⚠️ ЯАГААД DOM-ООС) тул:
  *    (1) `data-rep-filter="Нэр: утга"` — модуль өөрөө зарласан шүүлт (хамгийн үнэн);
- *    (2) `<select>` — анхдагч биш (эхний сонголт биш, «Бүх…» биш) утга, нэр нь aria-label/label/title;
+ *    (2) `<select>` — «Бүх…»/хоосон биш утга (эхний сонголт ч тооцогдоно — 2026-10-23), нэр нь aria-label/label/title;
+ *        `data-rep-skip` атрибуттай (эсвэл түүний дотор) сонгогч шүүлт БИШ — алгасна;
  *    (3) сегментлэсэн товчны бүлэг (≥2 ах дүү, ЯГ НЭГ нь pressed/selected) — «Бүгд» биш бол; бүлгийн нэр нь
  *        эцгийн aria-label эсвэл бүлгийн өмнөх богино шошго («ЖИЛ»).
  *    Тайлангийн удирдлага нуух (`hideControls`) -аас ӨМНӨ уншина.
@@ -522,16 +523,19 @@ export function readFilters(rs: Element[] = roots()): string[] {
     for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el)) add(el.getAttribute('data-rep-filter') || '');
     for (const el of r.querySelectorAll('select')) {
       const sel = el as HTMLSelectElement;
-      if (!visible(sel) || sel.selectedIndex <= 0) continue;
+      /* ⚠️ 2026-10-23: ЭХНИЙ сонголтыг алгасахгүй — «Багц 1» г.м. эхний сонголт нь бодит шүүлт байж болно (урьд нь
+         `selectedIndex <= 0` тул «Шүүлтгүй» гэж худал бичигддэг байв). Зөвхөн хоосон/`all` утга · «Бүгд/Бүх…»-ийг алгасна.
+         `data-rep-skip` — шүүлт БИШ сонгогч (эрэмбэ, нүдний засвар) өөрөө зарлана. */
+      if (!visible(sel) || sel.selectedIndex < 0 || sel.closest('[data-rep-skip]')) continue;
       const v = oneLine(sel.selectedOptions[0]?.text || '');
-      if (!v || ALL_RE.test(v)) continue;
+      if (!v || sel.value === '' || /^all$/i.test(sel.value) || ALL_RE.test(v)) continue;
       const name = labelOf(sel);
       add(name ? `${name}: ${v}` : v);
     }
     const seen = new Set<Element>();
     for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"]')) {
       const p = el.parentElement;
-      if (!p || seen.has(p) || !visible(el)) continue;
+      if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip]')) continue;
       seen.add(p);
       const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected'));
       const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true');

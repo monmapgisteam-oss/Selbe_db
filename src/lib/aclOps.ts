@@ -382,6 +382,8 @@ export function liveErhSource(): ErhSource {
     const st = r ? ROLE_STAGE[r] : undefined;
     if (st) typeStage[u.toLowerCase()] = st;
   }
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын мөртэй байсан ч шатны эзэн биш (`ErhSource.viewRoles`) */
+  const viewRoles = users.filter((u) => roleOf(u) === 'zahiral');
   return {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
@@ -391,6 +393,7 @@ export function liveErhSource(): ErhSource {
     gone,
     absent: users.filter((u) => portalMissing(u)),
     typeStage,
+    viewRoles,
     flow,
     qaqc,
     huvaari,

@@ -69,6 +69,7 @@ import { parseOkCells, resolveOk, rowSids } from "@/lib/hyanaltOkCells";
 import { useAuth } from "@/components/AuthGate";
 import { bagtsFor, bagtsScope, isViewOnly, stageOfUser, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
+import { roleOf } from "@/lib/permissions";
 import { hasCap, subscribeCaps } from "@/lib/caps";
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { userError } from '@/components/ui';
@@ -357,8 +358,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    багцдаа л ажиллаж чаддаг байв (урсгалгүй бол жагсаалт хоосон). Тэр багцад ЗӨВХӨН обьёмын үйлдэл нээгдэнэ
    *    (`canObyemEdit`/`canObyemApprove` — өөрийн хүрээгээр); гүйцэтгэл бөглөх нь `permPerf` (company томилгоо) хэвээр.
    */
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — бүх багцыг ЗӨВХӨН ХАРАХ хүрээ (`permissions.allowedViews`-ийн ⚠️:
+     «Гүйцэтгэл»-ийг томилгоогүйгээр харна). Урьд нь хүрээ нь урсгалын томилгооноос (`bagtsScope`) тул томилгоогүй
+     захиралд «Гүйцэтгэл бөглөх» таб ХООСОН байв. ⚠️ Зөвхөн ХАРАХ — `permPerf` түүнд ҮРГЭЛЖ худал (доор). */
+  const isZahiral = useMemo(
+    () => !unrestricted && roleOf(user?.username) === "zahiral",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, unrestricted, aclN],
+  );
   const myBagts = useMemo(() => {
-    if (unrestricted) return null;
+    if (unrestricted || isZahiral) return null;
     const flowSc = bagtsScope(user?.username);
     if (flowSc === null) return null;
     const out = new Set(flowSc);
@@ -370,7 +379,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     return [...out];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, unrestricted, aclN, obN, capN]);
+  }, [user, unrestricted, isZahiral, aclN, obN, capN]);
   const groupOpts = useMemo(
     () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
     [myBagts],
@@ -480,10 +489,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const permPerf = useMemo(() => {
     if (unrestricted) return true;
     if (viewOnlyAcl) return false;
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» хэзээ ч бөглөхгүй — урсгалын company томилгоо (хуучин/алдаатай) үлдсэн ч */
+    if (isZahiral) return false;
     const cb = bagtsFor(user?.username, "company");
     return cb === null || cb.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, unrestricted, viewOnlyAcl, aclN, pkg.group]);
+  }, [user, unrestricted, viewOnlyAcl, isZahiral, aclN, pkg.group]);
   const canPerf = permPerf && !reviewLock;
   /**
    * ⚠️ 2026-10-09 (хэрэглэгч: «бүх батлагчид засвар хийх эрхгүйгээр орж харах»): хянагчийн шатны
@@ -500,7 +511,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /* ⚠️ 2026-10-09 (аудит №3): БАЙНГЫН шалтгаан ТҮР хоригоос ӨМНӨ — хориг дуусахад ч бөглөж чадахгүй хүнд «6-р шат
      батлаж архивласны дараа шинээр бөглөнө» гэж хэлэх нь худал. Томилгоогүй бол `null` — дуудагчийн ерөнхий
      мессеж (`RO.noPerf` · «Танд энэ багцыг бөглөх эрхгүй»). */
-  const noPerfWhy = reviewerOnly ? RO.reviewerView
+  const noPerfWhy = isZahiral ? RO.zahiralView
+    : reviewerOnly ? RO.reviewerView
     : viewOnlyAcl ? RO.perfViewOnly
     : !permPerf ? null
     : reviewLock ? RO.reviewLock(reviewLockDays.join(', ')) : null;
@@ -2278,13 +2290,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      */
     if (pubAskRef.current) return;
     pubAskRef.current = true;
+    /*
+     * ⚠️ 2026-10-23: АСУУЛТ НЭЭЛТТЭЙ ХООРОНД `busy` — татах мөчлөг (`useDraftSync`-ийн 3 с-ийн тойрог) ба засварын бүх
+     *    зам ХААЛТТАЙ. Урьд нь асуулт нээлттэй байхад `busy` худал тул нөгөө бөглөгчийн хожуу засвар `pending`-д нийлүүлэгдэж
+     *    `lastMergedRef` урагшилдаг байв; «Тийм» дарахад энэ функц ХУУЧИН (дарах агшны) `pending`/`canSubmitNow`-оор
+     *    илгээж, доорх `sentAt` tombstone нь нөгөөгийн ШИНЭ засварыг «илгээгдсэн» гэж хасдаг байв (`pullNow` ч
+     *    `lastMergedRef` урагшилсан тул «same» буцаана). Одоо асуултын хугацаанд төлөв хөдлөхгүй — дарах агшны төлөв
+     *    = илгээх төлөв. Татахын явж буй тойрог эффектийн цэвэрлэгээгээр (`alive = false`) хаягдана. Цуцалбал буцааж нээнэ.
+     */
+    setBusy(true);
     let yes = false;
     try {
       yes = await askConfirm(
         tr('{0} өөрчлөлтийг хянагчид илгээх үү?\n\nИлгээсний дараа 7 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.', dirtyCount),
         { ok: tr('Илгээх'), title: pkg.label },
       );
-    } finally { pubAskRef.current = false; }
+    } finally {
+      pubAskRef.current = false;
+      if (!yes) setBusy(false);
+    }
     if (!yes) return;
     /*
      * ⚠️ 2026-10-04 аудит (#4): доорх `sentAt` нь одоо TOMBSTONE-ийн агшин БИШ — илгээлтийн

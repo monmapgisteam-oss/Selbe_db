@@ -57,6 +57,24 @@ const FLOW_ROLES = new Set<Role>(Object.values(STAGE_ROLE));
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
 export const ALL_BAGTS = '*';
 
+/**
+ * ⚠️ 2026-10-23: ЭРХИЙН ТӨРЛИЙН СИНХРОН УНШИГЧ — `permissions.roleOf`. `permissions` энэ файлыг СТАТИКААР импортолдог тул
+ *    эндээс статик импорт хийвэл тойрог болно; `permissions` ачаалагдахдаа өөрөө бүртгэнэ (`_setRoleReader`).
+ *    Бүртгэгдээгүй (тусдаа Node тест) бол `null` — `setAssign`-ийн async шалгалт (`isZahiralNow`) нөөц болно.
+ */
+let roleReader: ((u: string) => Role | null) | null = null;
+export function _setRoleReader(fn: (u: string) => Role | null): void { roleReader = fn; }
+/** «Ерөнхий захирал» урсгалд томилогдохгүй (зөвхөн харна) — `setAssign`-ийн татгалзлын мессеж */
+const ZAHIRAL_NO_FLOW = () => tr('Ерөнхий захирал урсгалын шатанд томилогдохгүй — бүх багцыг зөвхөн ХАРНА. Эхлээд эрхийн төрлийг солино уу.');
+async function isZahiralNow(u: string): Promise<boolean> {
+  try {
+    const { roleOf } = await import('./permissions');
+    return roleOf(u) === 'zahiral';
+  } catch {
+    return false;
+  }
+}
+
 /** Нэг томилгоо: нэг аккаунт, нэг шат, багцуудын жагсаалт */
 export type Assign = {
   /** ArcGIS-ийн хэрэглэгчийн нэр (ЖИЖИГ үсгээр хадгална) */
@@ -311,6 +329,13 @@ async function pushFlow(user: string, delta?: FlowDelta): Promise<boolean> {
           ...(fresh.row.autoRole === true ? { autoRole: true as const } : {}),
         }
         : null;
+      /* ⚠️ 2026-10-23 (урагш нийцтэй): remote мөрийн шат ЭНЭ клиентэд ТАНИГДАХГҮЙ (шинэ build-ийн шинэ шат) — ХАСАЛТ
+         (`next === null`) түүнийг устгахгүй: `mergeFlowDelta`-ийн «fresh ӨӨР шатанд бол хэвээр» дүрэм. Урьд нь `fr = null`
+         тул хуучирсан клиент шинэ шатны томилгоог `flowRemove`-оор арчдаг байв. Локалаас л хасна. */
+      if (!delta.next && fresh.row && !fr) {
+        save(load().filter((x) => x.user !== user));
+        return true;
+      }
       const merged = mergeFlowDelta(delta.base, delta.next, fr);
       const cur = load();
       /* Байрлалыг хадгална — нэгтгэсэн мөр жагсаалтын төгсгөл рүү үсрэхгүй */
@@ -391,6 +416,9 @@ export function setAssign(
     return { ok: false, error: tr('Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй') };
   }
   if (!bagts.length) return { ok: false, error: tr('Багц сонгоно уу') };
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — урсгалын томилгоо авбал `grantFlowAccess` төрлийг нь хадгалсаар
+     (урсгалын бус төрөл) шат/хүрээ олгож, захирал бөглөгч/батлагчаар тоологдож, хянагчийн тэмдэгт ордог байв. */
+  if (roleReader?.(u) === 'zahiral') return { ok: false, error: ZAHIRAL_NO_FLOW() };
 
   const list = load();
   /* ⚠️ 2026-10-05: энэ дуудлагын ӨМНӨХ мөр — remote бичилтэд зөвхөн ялгааг давхарлана (`pushFlow`) */
@@ -428,6 +456,12 @@ export function setAssign(
     if (grant && (await isTombstoned(u))) {
       save(load().filter((a) => a.user !== u));
       await pushFlow(u);
+      return { ok: false, g: false };
+    }
+    /* ⚠️ 2026-10-23: синхрон шалгалтын нөөц (`roleReader` бүртгэгдээгүй) — локалыг ӨМНӨХ мөрөөр (`base`) буцаана, remote-д бичихгүй */
+    if (!roleReader && (await isZahiralNow(u))) {
+      const rest = load().filter((a) => a.user !== u);
+      save(base ? [...rest, base] : rest);
       return { ok: false, g: false };
     }
     /* ⚠️ 2026-10-23: эрхийн төрлийг энэ томилгоо автоматаар тавих эсэх (`Assign.autoRole`) — `grantFlowAccess`-ээс ӨМНӨ

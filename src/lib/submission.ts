@@ -1309,6 +1309,13 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
  * ⚠️ Хэрэглэгч нь `currentUser()` — дуудагчийн өгсөн нэрт итгэхгүй.
  * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах мессеж
  */
+/** ⚠️ 2026-10-23: «Ерөнхий захирал» эсэх — `permissions` нь хөтчийн дэлгүүр тул динамик импорт (энэ модуль Node тестэд ч ачаалагдана) */
+async function isZahiralUser(me: string): Promise<boolean> {
+  const { roleOf } = await import('./permissions');
+  return roleOf(me) === 'zahiral';
+}
+const ZAHIRAL_DENY = () => tr('Ерөнхий захирал гүйцэтгэлийг зөвхөн ХАРНА — бөглөх, илгээх боломжгүй.');
+
 export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
@@ -1323,6 +1330,9 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
      шийдвэрт (`hyanaltStore.authz`) үйлчилдэг байв. Туг нь эрхийг ХАСДАГ (утгыг өөрчлөхгүй) тул
      энд ч мөн хориглоно. `super` ба нэвтрэлт унтраалттай (`!AUTH.appId`) — дээр аль хэдийн чөлөөлөгдсөн. */
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) зөвхөн ХАРНА — урсгалын томилгоо (хуучин/алдаатай) үлдсэн ч илгээхгүй
+     (`FillNew.permPerf` · `hyanaltStore.authz`-тай нэг дүрэм; консол/Ctrl+S-ийн зам энд хаагдана). */
+  if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const cb = bagtsFor(me, 'company');
   if (cb === null || cb.includes(group)) return null;
   if (allowChief) {
@@ -1348,6 +1358,8 @@ export async function chiefDeny(group: string): Promise<string | null> {
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
   if (roleForUser(me) === 'super') return null;
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — `companyDeny`-ийн ⚠️ */
+  if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const ch = bagtsFor(me, 'chief');
   if (ch === null || ch.includes(group)) return null;
   return tr('Та «{0}» багцын эцсийн шатны батлагчаар томилогдоогүй тул үлдэгдэл илгээлт бичих эрхгүй.', group);

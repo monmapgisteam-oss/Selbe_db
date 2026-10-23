@@ -112,6 +112,20 @@ ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэр�
     assert.ok(az.includes("if (roleOf(u) === 'zahiral') return tr("), 'authz-д захиралын хориг алга');
     assert.ok(az.indexOf("roleOf(u) === 'zahiral'") < az.indexOf('stageOfUser(u) !== stage'), 'хориг томилгооны шалгалтаас ӨМНӨ байх ёстой');
   });
+  ok('countReviewPending: захирал 0 · шаттай super-т хүрээ хязгааргүй (2026-10-23)', () => {
+    const fn = S.slice(S.indexOf('export async function countReviewPending('), S.indexOf('const blocked = await selfBlocks(ws, me, stage);'));
+    assert.ok(/if \(role === 'zahiral'\) return 0;/.test(fn), 'захиралыг батлагчаар тоолж байна');
+    assert.ok(fn.includes("const sc = role === 'super' ? null : bagtsFor(me, stage);"), 'super-ийн тэмдэг зөвхөн томилсон багцыг тоолж байна (жагсаалтаас зөрнө)');
+  });
+  const SUB = (await import('node:fs')).readFileSync('src/lib/submission.ts', 'utf8').replace(/\r\n/g, '\n');
+  ok('companyDeny · chiefDeny: «Ерөнхий захирал» илгээхгүй (томилгоотой байсан ч) — 2026-10-23', () => {
+    for (const name of ['companyDeny', 'chiefDeny']) {
+      const at = SUB.indexOf(`export async function ${name}(`);
+      const fn = SUB.slice(at, SUB.indexOf('\n}\n', at));
+      const z = fn.indexOf('if (await isZahiralUser(me)) return ZAHIRAL_DENY();');
+      assert.ok(z > 0 && z < fn.indexOf('bagtsFor(me,'), `${name}: захиралын хориг томилгооны шалгалтаас ӨМНӨ алга`);
+    }
+  });
   ok('selfBlocks: super-т ч өөрийгөө батлах тэмдэг (2026-10-23)', () => {
     const fn = S.slice(S.indexOf('export async function selfBlocks('), S.indexOf('export async function selfBlocks(') + 600);
     assert.ok(!fn.includes("roleForUser(me) === 'super'"), 'super selfBlocks-оос чөлөөтэй хэвээр');

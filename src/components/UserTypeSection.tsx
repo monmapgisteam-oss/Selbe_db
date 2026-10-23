@@ -22,6 +22,7 @@ import { roleForUser, tableSuperUsers } from '@/lib/services';
 import { currentUser } from '@/lib/who';
 import type { CapKey } from '@/lib/caps';
 import { allAclReady, liveErhSource } from '@/lib/aclOps';
+import { removeAssign, stageOfUser } from '@/lib/guitsetgelAcl';
 import { userErh } from '@/lib/erhOverview';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { capLabelShort } from '@/modules/erhLabels';
@@ -114,10 +115,21 @@ export function UserTypeSection({
         /* ⚠️ 2026-10-23: үлдэх эрхийг нэрээр (`superDemoteMsg`) */
         ? superDemoteMsg(user, typeLabel(type))
         : tr('«{0}»-г «{1}» төрлөөр тохируулах уу? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', user, typeLabel(type));
-    if (!(await askConfirm(q, toSuper || fromSuper ? { danger: true, ok: toSuper ? tr('Админ эрх олгох') : tr('Админ эрх хасах') } : { ok: tr('Тохируулах') }))) return;
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» зөвхөн харна — урсгалын томилгоотой бол ХАСАГДАХЫГ нэрлэж асууна (`applyType` томилгоотой хүнд татгалздаг) */
+    const flowSt = type === 'zahiral' ? stageOfUser(user) : null;
+    const q2 = flowSt
+      ? q + '\n\n' + tr('Энэ хэрэглэгч гүйцэтгэлийн урсгалын «{0}» шатанд томилгоотой — Ерөнхий захирал бөглөж, батлахгүй тул томилгоо ХАСАГДАНА.', STAGE_LABEL[flowSt])
+      : q;
+    if (!(await askConfirm(q2, toSuper || fromSuper || flowSt ? { danger: true, ok: toSuper ? tr('Админ эрх олгох') : fromSuper ? tr('Админ эрх хасах') : tr('Тохируулах') } : { ok: tr('Тохируулах') }))) return;
     setBusy(true); setErr(''); setMsg('');
     /* ⚠️ 2026-09-25: try/finally — шидвэл товч үүрд «Тохируулж байна…» дээр үлдэхгүй */
     try {
+      /* ⚠️ 2026-10-23: томилгоог ЭНД хасна (`applyType` хуваарилалт бичихгүй — 2026-09-30) — `revoke=false`: дараагийн
+         `applyType`-ийн `setUser` төрөл/харагдацыг бичнэ, буцаалт (`revokeFlowAccess`) түүнтэй уралдана. Унавал төрөл солихгүй. */
+      if (flowSt && !(await removeAssign(user, flowSt, false).sync)) {
+        setErr(tr('Урсгалын томилгоо хасагдсангүй (ArcGIS) — төрөл солигдсонгүй, дахин оролдоно уу.'));
+        return;
+      }
       const r = await applyType(user, type);
       if (r.ok) setMsg(tr('Тохируулагдлаа.'));
       else setErr(r.errors.join('\n'));

@@ -912,7 +912,12 @@ export async function countReviewPending(username: string | null | undefined): P
     const stage = stageOfUser(me);
     if (!stage) return null;
     if (isViewOnly(me)) return 0;
-    const sc = bagtsFor(me, stage);
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» батлагч БИШ (`authz`-ийн хориг) — урсгалын мөр (хуучин/алдаатай) үлдсэн ч 0 */
+    const role = roleOf(me);
+    if (role === 'zahiral') return 0;
+    /* ⚠️ 2026-10-23: шаттай super — «Батлах ажил» жагсаалт нь БҮХ багцыг харуулдаг атал тэмдэг зөвхөн томилсон багцыг
+       тоолдог тул зөрдөг байв («2» · жагсаалтад «5»). super-т хүрээ хязгааргүй (`null`). */
+    const sc = role === 'super' ? null : bagtsFor(me, stage);
     if (Array.isArray(sc) && sc.length === 0) return 0;
     let rows: Row[];
     if (loaded) rows = ROWS;

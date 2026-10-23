@@ -1305,7 +1305,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
        тасарвал хагас жааз үлдэж багцыг түгжинэ. Бусад шийдвэр (буцаах · дахин шалгах) мөн бичилт
        тул бүгдийг хамгаална. (2) `fn()` шидвэл урьд нь `busy` үүрд үнэн үлдэж, алдаа огт
        харагддаггүй байв — `catch`-д харуулж `finally`-д ЗААВАЛ суллана. */
-    setNavDirty('hyanalt-apply', true, tr('Гүйцэтгэлийн шийдвэр хадгалж байна'));
+    /* ⚠️ 2026-10-23: түлхүүр АЖИЛ БҮРД (`work.key`) — урьд нь бүх `Item` НЭГ 'hyanalt-apply' түлхүүр хуваалцдаг тул
+       хоёр ажлын шийдвэр зэрэг явж байхад эхэлж дууссаных нь `finally` тугийг унтрааж, нөгөөгийн бичилт хамгаалалтгүй
+       (F5/таб хаах асуулгүй) үлддэг байв. Нэр (label) нь ижил — Portal-ын `navBusyLabels` нэрээр шүүнэ. */
+    const guardKey = `hyanalt-apply:${work.key}`;
+    setNavDirty(guardKey, true, tr('Гүйцэтгэлийн шийдвэр хадгалж байна'));
     let r: Awaited<ReturnType<typeof fn>>;
     try {
       r = await fn();
@@ -1314,7 +1318,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
       setWarn('');
       return;
     } finally {
-      setNavDirty('hyanalt-apply', false);
+      setNavDirty(guardKey, false);
       setBusy(false);
     }
     /* ⚠️ Агуулга өөрчлөгдсөн бол ШИНЭЭР татна (дээрх `reloadKey`-ийн ⚠️) */

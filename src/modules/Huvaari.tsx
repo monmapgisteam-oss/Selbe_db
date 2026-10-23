@@ -2228,7 +2228,10 @@ export function Huvaari({
              гарна. Цэвэрлэх нь хадгалах/хаях (`obDraft` хоосрох) ба сервертэй тэнцэх үед. Арилгах (`sp` null) нь
              санаатай устгал — санахгүй. Updater-т ref бичих нь давтагдсан ч ижил үр дүн (нийлүүлэлт). */
           const pre0 = orig ?? cur;
-          if (sp && val.size < pre0.size) obFullRef.current.set(key, new Map([...(obFullRef.current.get(key) ?? []), ...pre0]));
+          /* ⚠️ 2026-10-23: АРИЛГАХАД (`sp` null) өмнөх бүтэн хуулбарыг УСТГАНА — урьд нь зүгээр л санахгүй байсан тул
+             хуучин хуулбар үлдэж, дахин огноо тавихад (`fullMonths`) арилгасан сарын обьём эргэж гардаг байв. */
+          if (!sp) obFullRef.current.delete(key);
+          else if (val.size < pre0.size) obFullRef.current.set(key, new Map([...(obFullRef.current.get(key) ?? []), ...pre0]));
           /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ (эсвэл хоёулаа хоосон) задаргааг НООРОГТ
              ҮЛДЭЭХГҮЙ (2026-09-21): задаргаагүй ажлыг чирэхэд
              `keepMonths(sp, ∅) = ∅` obDraft-д орж, «Батлуулах» нь «задаргаа
@@ -2271,7 +2274,9 @@ export function Huvaari({
             ? (inDrag && back && orig ? new Map(orig) : keepRes(sp, orig ?? cur))
             : new Map<string, MonthRes>();
           const pre0 = orig ?? cur;
-          if (sp && val.size < pre0.size) obResFullRef.current.set(key, new Map([...(obResFullRef.current.get(key) ?? []), ...pre0]));
+          /* ⚠️ 2026-10-23: арилгахад бүтэн хуулбарыг устгана — обьёмын дүрэмтэй ижил */
+          if (!sp) obResFullRef.current.delete(key);
+          else if (val.size < pre0.size) obResFullRef.current.set(key, new Map([...(obResFullRef.current.get(key) ?? []), ...pre0]));
           if (sameRes(val, srv)) { next.delete(key); obResFullRef.current.delete(key); }
           else next.set(key, val);
           touched = true;
@@ -2435,7 +2440,11 @@ export function Huvaari({
   const undoLast = useCallback(() => {
     const u = undoSnap;
     /* ⚠️ 2026-10-21: чирэлтийн ЯВЦАД буцаахгүй — урьд нь Ctrl+Z чирэлтийн агшинг хасаж, цонх хаагдахад `popUndo` өөр (хуучин) агшинг хасдаг байв */
-    if (!u || busy || locked || !canEdit || drag) return;
+    /* ⚠️ 2026-10-23: хаалттай үед ЧИМЭЭГҮЙ алгасдаг байв (ялангуяа «↶ Буцаах» мэдэгдлээс) — шалтгааныг хэлнэ */
+    if (!u || !canEdit) return;
+    if (busy) { setNote(tr('Буцааж чадсангүй — хадгалалт дуусаагүй байна. Дууссаны дараа дахин оролдоно уу.')); return; }
+    if (locked) { setNote(tr('Буцааж чадсангүй — хуваарь батлуулахаар илгээгдсэн тул засвар түгжигдсэн.')); return; }
+    if (drag) { setNote(tr('Буцааж чадсангүй — чирэлт дуусаагүй байна.')); return; }
     const inv = invOf(u);
     applySnap(u);
     setUndoSnap((s) => ({ u: s.u.slice(0, -1), r: [...s.r, inv].slice(-UNDO_MAX) }));
@@ -2645,7 +2654,7 @@ export function Huvaari({
             const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
             for (const [k, v] of mine) f.set(k, v);
             obFullRef.current.set(key, f);
-          }
+          } else if (!bsp) obFullRef.current.delete(key); // ⚠️ 2026-10-23: огноо арилгасан блок — хуучин хуулбар эргэж гарахгүй
           setObDraft((m) => {
             const next = new Map(m);
             if (sameMonths(mine, obPlan.get(des)?.get(blok))) next.delete(key);
@@ -2660,7 +2669,7 @@ export function Huvaari({
             const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
             for (const [k, v] of mine) f.set(k, v);
             obResFullRef.current.set(key, f);
-          }
+          } else if (!bsp) obResFullRef.current.delete(key); // ⚠️ 2026-10-23: обьёмын дүрэмтэй ижил
           setObResDraft((m) => {
             const next = new Map(m);
             if (sameRes(mine, obRes.get(des)?.get(blok))) next.delete(key);
@@ -5274,7 +5283,10 @@ export function Huvaari({
     if (!s) return;
     const exact = plan.find((r) => r.des != null && String(r.des) === s) ?? plan.find((r) => r.no.toLowerCase() === s);
     if (exact) { setJumpHit({ q: s, at: 0, n: 1 }); goToRow(exact.oid); return; }
-    const hits = plan.filter((r) => r.no.toLowerCase().startsWith(s) || r.work.toLowerCase().includes(s));
+    /* ⚠️ 2026-10-23: нэрийг ДЭЛГЭЦТЭЙ ижил (`fixCyr`: є→ө, ї→ү) хэвийншүүлж хайна — урьд нь түүхий нэр (є) ба
+       хэрэглэгчийн бичсэн «ө» таарахгүй байв. Зөвхөн хайлтад; түлхүүр/бичилтэд хөндөхгүй. */
+    const sq = fixCyr(s);
+    const hits = plan.filter((r) => r.no.toLowerCase().startsWith(s) || fixCyr(r.work).toLowerCase().includes(sq));
     if (!hits.length) { setJumpHit(null); setNote(tr('«{0}» олдсонгүй.', q.trim())); return; }
     const cur = sel != null ? plan.findIndex((r) => r.oid === sel) : -1;
     const k = dir > 0

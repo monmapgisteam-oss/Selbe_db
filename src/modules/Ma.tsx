@@ -545,6 +545,10 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const [reason, setReason] = useState<Record<number, string>>({});
   /* ⚠️ 2026-10-23 (UX аудит Q2): амжилтын мэдэгдэл — урьд нь шийдвэр/PDF хадгалагдсаныг юу ч хэлдэггүй байв */
   const [okMsg, setOkMsg] = useState('');
+  /* ⚠️ 2026-10-23: хуваалцалтын анхааруулга ТУСДАА (`EntDocs`-ийн дүрэм) — урьд нь улаан алдаа болж амжилтын мэдэгдлийг нууж байв */
+  const [warnMsg, setWarnMsg] = useState('');
+  /* ⚠️ 2026-10-23: шийдвэрийн асуулт НЭЭЛТТЭЙ үед дахин товшилт хоёр дахь асуулт дараалуулахгүй (`busy` асуултын ДАРАА л асдаг) */
+  const askingRef = useRef(false);
   const [fileName, setFileName] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const locked = state === 'locked';
@@ -564,11 +568,11 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const upload = async () => {
     const f = fileRef.current?.files?.[0];
     if (!f) { setErr(tr('PDF файл сонгоно уу.')); return; }
-    setBusy(true); setErr(''); setOkMsg('');
+    setBusy(true); setErr(''); setOkMsg(''); setWarnMsg('');
     try {
       const { warn } = await addFm({ kind, maNo, docNo: docNo.trim(), docDate: date, file: f });
       setDocNo(''); setDate(''); setFileName(''); if (fileRef.current) fileRef.current.value = '';
-      if (warn) setErr(warn);
+      if (warn) setWarnMsg(warn);
       setOkMsg(tr('PDF оруулагдлаа — хянагч шийднэ.'));
       onChanged();
     } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
@@ -583,11 +587,17 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const decide = async (row: FmRow, v: Verdict) => {
     const why = (reason[row.oid] ?? '').trim();
     if (v !== 'A' && !why) { setErr(v === 'AN' ? tr('AN шийдвэрт саналаа бичнэ үү.') : tr('Буцаах шалтгаанаа бичнэ үү.')); return; }
-    if (!(await askConfirm(
-      tr('«{0}» баримтад «{1}» шийдвэр гаргах уу? Шийдвэрийг дараа нь өөрчлөх, буцаах боломжгүй.', d0(row), verdictLabel(v)),
-      { danger: v === 'R', ok: tr('Шийдвэрлэх') },
-    ))) return;
-    setBusy(true); setErr(''); setOkMsg('');
+    if (askingRef.current) return;
+    askingRef.current = true;
+    let yes = false;
+    try {
+      yes = await askConfirm(
+        tr('«{0}» баримтад «{1}» шийдвэр гаргах уу? Шийдвэрийг дараа нь өөрчлөх, буцаах боломжгүй.', d0(row), verdictLabel(v)),
+        { danger: v === 'R', ok: tr('Шийдвэрлэх') },
+      );
+    } finally { askingRef.current = false; }
+    if (!yes) return;
+    setBusy(true); setErr(''); setOkMsg(''); setWarnMsg('');
     try {
       await decideFm(row, v, why);
       setReason((m) => { const n = { ...m }; delete n[row.oid]; return n; });
@@ -659,6 +669,7 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
         </div>
       )}
       {okMsg && !err && <p className={s.okNote} role="status">{okMsg}</p>}
+      {warnMsg && <p className={s.failNote} role="status">{warnMsg}</p>}
       {err && <p className={s.errNote} role="alert">{err}</p>}
     </div>
   );
@@ -737,13 +748,19 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
     if (!files.length) { setErr(tr('Файл сонгоно уу.')); return; }
     setBusy(true); setErr('');
     const errs: string[] = [];
+    let okN = 0;
     for (const f of files) {
       try {
         await addMaAtt(oid, f, { type, title: title || undefined, no: certLike ? no : undefined, std: certLike ? std : undefined, valid: type === 'conf' || type === 'qual' ? valid : undefined });
+        okN += 1;
       } catch (e) { errs.push(`${f.name}: ${userError(e)}`); }
     }
-    if (fileRef.current) fileRef.current.value = '';
-    setTitle(''); setNo(''); setStd(''); setValid(''); setPicked(0);
+    /* ⚠️ 2026-10-23: маягтыг ЗӨВХӨН ≥1 файл орсон үед цэвэрлэнэ — бүгд унасан бол бөглөсөн мэдээлэл · сонгосон файл
+       хэвээр (дахин оролдоно); урьд нь бүгд унасан ч цэвэрлэгдэж дахин бөглүүлдэг байв. */
+    if (okN > 0) {
+      if (fileRef.current) fileRef.current.value = '';
+      setTitle(''); setNo(''); setStd(''); setValid(''); setPicked(0);
+    }
     await reload();
     if (errs.length) setErr(errs.join('\n'));
     setBusy(false);

@@ -27,6 +27,7 @@ import { listUsers, remoteReady, setUser } from './permissions';
 import { currentUser } from './who';
 import { roleAccess, typesReady } from './roleTypes';
 import { WORKFLOW_VIEWS } from './caps';
+import { flowAclReady, stageOfUser } from './guitsetgelAcl';
 
 /* ══════════════════════ Түгжээ · ноорог (2026-09-25) ══════════════════════ */
 
@@ -57,8 +58,18 @@ export function setTypeDraftUsers(keys: Iterable<string>): void {
 
 /* ══════════════════════ Хэрэгжүүлэлт ══════════════════════ */
 
-export type ApplyResult = { ok: boolean; errors: string[] };
+export type ApplyResult = {
+  ok: boolean; errors: string[];
+  /** ⚠️ 2026-10-23: «Ерөнхий захирал» болгоход хэрэглэгч урсгалын шатанд томилгоотой — дуудагч асууж томилгоог хасаад дахин дуудна */
+  flowStage?: string;
+};
 
+/**
+ * ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — урсгалын томилгоотой хүнд ТАТГАЛЗАНА (`flowStage`). Захирал зөвхөн ХАРНА;
+ *   томилгоо үлдвэл `grantFlowAccess` төрлийг хадгалсаар шат/хүрээ олгож, бөглөгч/батлагчаар тоологдож, гацааны
+ *   анхааруулгыг нуудаг байв. Энэ модуль хуваарилалт БИЧИХГҮЙ (2026-09-30-ны шийдвэр) тул томилгоог дуудагч хасна —
+ *   карт (`UserTypeSection`) асууж хасаад дахин дуудна; бөөнөөр хэрэгжүүлэлт алгасаж алдаанд нэрлэнэ.
+ */
 export async function applyType(user: string, role: Role): Promise<ApplyResult> {
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, errors: [tr('Аккаунтын нэрээ бичнэ үү')] };
@@ -92,6 +103,19 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   }
   if (userLocks.has(u)) {
     return { ok: false, errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };
+  }
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» ба урсгалын томилгоо — `opts.dropFlow`-ийн ⚠️ */
+  /* Урсгалын томилгоо уншигдаагүй бол «томилгоогүй» гэж дүгнэхгүй (fail-closed) */
+  if (role === 'zahiral' && !flowAclReady()) {
+    return { ok: false, errors: [tr('Гүйцэтгэлийн урсгалын эрх уншигдаагүй — дахин ачаална уу.')] };
+  }
+  const flowStage = role === 'zahiral' ? stageOfUser(u) : null;
+  if (flowStage) {
+    return {
+      ok: false,
+      errors: [tr('«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.', u)],
+      flowStage,
+    };
   }
   userLocks.add(u);
   emit(LOCK_EVENT);
