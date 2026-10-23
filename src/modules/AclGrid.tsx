@@ -216,11 +216,14 @@ function Chip({ h, off, flag, onRemove }: {
     h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид') : '',
     h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин илгээх»') : '',
   ].filter(Boolean);
-  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.absent || h.admin ? s.ggChipOdd : '', h.failed || h.dirty || h.absent ? s.ggChipBad : '']
+  /* ⚠️ 2026-10-23 (хэрэглэгч): админыг зураасаар БИШ, нэрийн ард «админ» шошгоор — зураас нь «хүчингүй» мэт буруу
+     харагддаг байв. Зураас зөвхөн устгагдсан / порталд алга аккаунтад. */
+  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.absent ? s.ggChipOdd : '', h.failed || h.dirty || h.absent ? s.ggChipBad : '']
     .filter(Boolean).join(' ');
   return (
     <span className={cls} title={[h.user, ...notes].join(' · ')}>
       <span className={s.ggName}>{h.user}</span>
+      {h.admin && <span className={s.ggTag}>{tr('админ')}</span>}
       {h.viaAll && <span className={s.ggTag}>{tr('бүх')}</span>}
       {h.absent && <span className={s.ggTag}>{tr('порталд алга')}</span>}
       {(h.failed || h.dirty) && <span className={s.ggWarn} aria-label={notes.join(' · ')}>!</span>}
