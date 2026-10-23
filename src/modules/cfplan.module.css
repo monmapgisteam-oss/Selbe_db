@@ -58,10 +58,10 @@
   flex: 1;
   min-height: 0;
 }
-/* Шатлалын зурвас — гэрээний бүртгэлтэй ижил бараан цэнхэр */
+/* Шатлалын зурвас — гэрээний бүртгэлтэй ижил (⚠️ 2026-10-23: системийн токен, тогтмол хөх БИШ) */
 .band {
-  background: #2f5597;
-  color: #fff;
+  background: color-mix(in srgb, var(--data) 10%, var(--surface));
+  color: var(--ink);
   font-size: 11px;
   font-weight: 700;
   padding: 5px 10px;

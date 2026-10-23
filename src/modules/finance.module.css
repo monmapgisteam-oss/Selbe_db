@@ -1363,17 +1363,21 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * -тэй адилтгах гол шинж нь алга болно. Бичвэр нь цагаан тул хоёулаа хангалттай
  * тодрол өгнө.
  */
+/* ⚠️ 2026-10-23 (хэрэглэгч: «хүснэгтийн өнгийг системтэй нийцтэй болго»): Excel-ийн тогтмол
+   хөх (#203864/#2e75b6/#2f5597) өнгийг СИСТЕМИЙН ТОКЕН руу шилжүүлэв — дээрх «токен БИШ»
+   шийдвэрийг дарав. Хоёр блокийн ялгаа хэвээр: ердийн багана = surface-2, «Захирамжийн дүн»
+   блок = --data-аар бага зэрэг тинттэй. Бүх дэвсгэр БҮРЭН бүглээ (царцсан нүдэнд нэвт харагдахгүй). */
 .xlTbl thead th.xlHdr1,
 .xlTbl thead th.xlHdr2 {
-  color: #fff;
+  color: var(--ink-2);
   /* ⚠️ Excel-д толгой нь ТОМООР бичигдээгүй — CSS-ийн `uppercase`-ийг энд
      хаана, эс бөгөөс «Дугаар» ба «ДУГААР» хоёр ялгагдахгүй болно. */
   text-transform: none;
-  border-right-color: rgba(255, 255, 255, 0.22);
-  border-bottom-color: rgba(255, 255, 255, 0.22);
+  border-right-color: var(--line);
+  border-bottom-color: var(--line);
 }
-.xlTbl thead th.xlHdr1 { background: #203864; }
-.xlTbl thead th.xlHdr2 { background: #2e75b6; }
+.xlTbl thead th.xlHdr1 { background: var(--surface-2); }
+.xlTbl thead th.xlHdr2 { background: color-mix(in srgb, var(--data) 14%, var(--surface-2)); color: var(--ink); }
 
 /*
  * БҮЛГИЙН ЗУРВАС — «Захирамжийн дүн», «Хөрөнгө оруулалтын эх үүсвэр» г.м.
@@ -1397,8 +1401,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 }
 /* ⚠️ `.xlFz`-ийн `max-width: 0` нь зурвасыг бүрэн хумина — colSpan-тай нүдэнд
    тэр хязгаар утгагүй тул суллана. */
-.xlTbl thead th.xlBand.xlFz { max-width: none; background: #203864; }
-.xlTbl thead th.xlBand.xlFz.xlHdr2 { background: #2e75b6; }
+.xlTbl thead th.xlBand.xlFz { max-width: none; background: var(--surface-2); }
+.xlTbl thead th.xlBand.xlFz.xlHdr2 { background: color-mix(in srgb, var(--data) 14%, var(--surface-2)); }
 
 /*
  * БОСОО НЭГТГЭСЭН НҮД — Excel-ийн `B6:B12` merge.
@@ -1447,10 +1451,11 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * ⚠️ ТООН нүд ХЭВЭЭР баруун талдаа — мөнгөн дүн баганаараа зэрэгцэж
  * уншигдах ёстой.
  */
+/* ⚠️ 2026-10-23: тогтмол #2f5597 → системийн токен (--data-аар тинттэй, бүрэн бүглээ) */
 .xlSec td,
 .xlGrp td {
-  background: #2f5597 !important;
-  color: #fff !important;
+  background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important;
+  color: var(--ink) !important;
   font-weight: 700;
   font-size: 0.74rem;
   letter-spacing: 0.04em;
@@ -1460,14 +1465,14 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-right-color: rgba(255, 255, 255, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  border-right-color: var(--line);
+  border-bottom: 1px solid var(--line-strong);
 }
 /* 1-р түвшин арай тод — зураг дээрх шиг эхний хоёр мөр илүү хүчтэй */
-.xlSec td { font-weight: 800; }
+.xlSec td { font-weight: 800; background: color-mix(in srgb, var(--data) 16%, var(--surface)) !important; }
 /* ⚠️ Зурвас нь мөрийн өнгө солигдоход ч тогтвортой — hover-ыг хаана */
-.xlTbl tr.xlSec:hover td,
-.xlTbl tr.xlGrp:hover td { background: #2f5597 !important; }
+.xlTbl tr.xlGrp:hover td { background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important; }
+.xlTbl tr.xlSec:hover td { background: color-mix(in srgb, var(--data) 16%, var(--surface)) !important; }
 /* ⚠️ Зурвасын ТООН нүд баруун талдаа — мөнгөн дүн зэрэгцэж уншигдана */
 .xlTbl tr.xlSec td.cellNum,
 .xlTbl tr.xlGrp td.cellNum { text-align: right; }
@@ -1553,9 +1558,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * ⚠️ Наалдмал ДООД талд БИШ: Excel-д ч тэр нь толгойн дор суудаг бөгөөд
  * хүснэгттэйгээ хамт гүйдэг.
  */
+/* ⚠️ 2026-10-23: тогтмол #203864 → системийн токен; нийт дүн хамгийн тод тинттэй хэвээр */
 .xlTot td {
-  background: #203864 !important;
-  color: #fff;
+  background: color-mix(in srgb, var(--data) 22%, var(--surface)) !important;
+  color: var(--ink);
   font-weight: 750;
   font-size: 0.76rem;
   height: 28px;
@@ -1563,10 +1569,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-right-color: rgba(255, 255, 255, 0.2);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.35);
+  border-right-color: var(--line);
+  border-bottom: 2px solid var(--line-strong);
 }
-.xlTbl tr.xlTot:hover td { background: #203864 !important; }
+.xlTbl tr.xlTot:hover td { background: color-mix(in srgb, var(--data) 22%, var(--surface)) !important; }
 
 /*
  * ⚠️ ЗУРВАС/НИЙТ мөрийн ТООН нүд нь баруун талдаа — мөнгөн дүн зэрэгцэж
