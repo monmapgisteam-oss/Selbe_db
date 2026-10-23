@@ -50,7 +50,7 @@ ok('approvedStagesOf — зөвхөн ЗӨВШӨӨРСӨН (approve · recheck-o
   assert.deepEqual(approvedStagesOf(h, 'dorj'), ['director']);
   assert.deepEqual(approvedStagesOf('эвдэрсэн', 'bat'), []);
 });
-ok('инженерээр баталсан данс шат шилжээд ерөнхий менежер (director) болж ДАХИН батлахгүй (аудит №5)', () => {
+ok('инженерээр баталсан данс шат шилжээд төлөвлөлтийн ахлах инженер (director) болж ДАХИН батлахгүй (аудит №5)', () => {
   const h = H(ev('engineer', 'approve', 'bat', 1), ev('manager', 'approve', 'dorj', 2));
   assert.equal(typeof selfApprovalDeny('director', 'bat', h), 'string');
   assert.match(selfApprovalDeny('director', 'bat', h), /хоёр шатанд/);

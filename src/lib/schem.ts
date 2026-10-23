@@ -151,7 +151,7 @@ export const NODES: readonly SchemNode[] = [
   {
     id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Гүйцэтгэлийн хяналт'); },
-    get desc() { return tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга'); },
+    get desc() { return tr('Гүйцэтгэгч → инженер → багцын ахлах инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга'); },
   },
   {
     id: 'habea', col: 3, row: 2, view: 'habea', icon: 'flame',
@@ -670,7 +670,7 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
     if (!owner) continue;
     /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд ч, аль ч шатны гар
        дээр ч тоологдохгүй. `OWNER[transferred]` нь `director` тул шүүхгүй
-       бол дууссан ажлууд «ерөнхий менежерийн гар дээр» гэж хуримтлагдана. */
+       бол дууссан ажлууд «төлөвлөлтийн ахлах инженерийн гар дээр» гэж хуримтлагдана. */
     if (st === STATUS.transferred) { done += 1; continue; }
     byStage[owner] += 1;
     pending += 1;

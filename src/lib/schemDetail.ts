@@ -817,9 +817,9 @@ export function cardStat(
     case 'hyEng':
       return statOf(tr('Инженер дээр'), rc ? rc.byStage.engineer : null, 'count', known(rc ? rc.byStage.engineer : null));
     case 'hyMgr':
-      return statOf(tr('Багцын менежер дээр'), rc ? rc.byStage.manager : null, 'count', known(rc ? rc.byStage.manager : null));
+      return statOf(tr('Багцын ахлах инженер дээр'), rc ? rc.byStage.manager : null, 'count', known(rc ? rc.byStage.manager : null));
     case 'hyDir':
-      return statOf(tr('Ерөнхий менежер дээр'), rc ? rc.byStage.director : null, 'count', known(rc ? rc.byStage.director : null));
+      return statOf(tr('Төлөвлөлтийн ахлах инженер дээр'), rc ? rc.byStage.director : null, 'count', known(rc ? rc.byStage.director : null));
     case 'hyHead':
       return statOf(tr('Хэлтсийн дарга дээр'), rc ? rc.byStage.head : null, 'count', known(rc ? rc.byStage.head : null));
     case 'hyChief':

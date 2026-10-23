@@ -182,19 +182,19 @@ export const FINE_NODES: readonly FineNode[] = [
   },
   {
     id: 'hyMgr', group: 'hyanalt', col: 6, row: 2, view: 'guitsetgel', icon: 'pen',
-    get title() { return tr('Багцын менежер'); },
+    get title() { return tr('Багцын ахлах инженер'); },
     get desc() { return tr('Багцын хэмжээнд баталгаажуулах ГУРАВ дахь шат — буцаавал инженер рүү очно'); },
   },
   {
     id: 'hyDir', group: 'hyanalt', col: 6, row: 3, view: 'guitsetgel', icon: 'pen',
-    get title() { return tr('Ерөнхий менежер'); },
-    get desc() { return tr('Дөрөв дэх шат — буцаавал багцын менежер рүү очно; дараа нь хэлтсийн, газрын дарга батална'); },
+    get title() { return tr('Төлөвлөлтийн ахлах инженер'); },
+    get desc() { return tr('Дөрөв дэх шат — буцаавал багцын ахлах инженер рүү очно; дараа нь хэлтсийн, газрын дарга батална'); },
   },
   /* ⚠️ 2026-09-23: 5 ба 6 дахь шат — хэлтсийн дарга, газрын дарга (ЭЦСИЙН) */
   {
     id: 'hyHead', group: 'hyanalt', col: 6, row: 4, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Хэлтсийн дарга'); },
-    get desc() { return tr('Тав дахь шат — буцаавал ерөнхий менежер рүү очно'); },
+    get desc() { return tr('Тав дахь шат — буцаавал төлөвлөлтийн ахлах инженер рүү очно'); },
   },
   {
     id: 'hyChief', group: 'hyanalt', col: 6, row: 5, view: 'guitsetgel', icon: 'pen',

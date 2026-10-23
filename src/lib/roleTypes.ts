@@ -60,8 +60,8 @@ export const NEW_ACCOUNT_ROLE: Role = 'taniltsah';
 export function typeLabel(r: Role): string {
   if (r === 'guitsetgegch') return tr('Гүйцэтгэгч компани');
   if (r === 'injener') return tr('Хяналтын инженер');
-  if (r === 'menejer') return tr('Багцын менежер');
-  if (r === 'eronhii') return tr('Ерөнхий менежер');
+  if (r === 'menejer') return tr('Багцын ахлах инженер');
+  if (r === 'eronhii') return tr('Төлөвлөлтийн ахлах инженер');
   if (r === 'heltsiin') return tr('Хэлтсийн дарга');
   if (r === 'gazriin') return tr('Газрын дарга');
   if (r === 'taniltsah') return tr('Мэдээлэл танилцах');

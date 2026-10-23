@@ -67,16 +67,16 @@ export { STAGE_LABEL };
  * ⚠️ Төлөвийн УТГА нь өгөгдөл (ArcGIS-д монголоор хадгалагдана) — дэлгэцэд
  * гаргахдаа л орчуулна. Түлхүүр нь шууд бичигдсэн байх ёстой, эс бөгөөс
  * `i18n-extract` олохгүй.
- * ⚠️ 2026-10-23 (UX аудит R6): дэлгэцэд «Менежер» БИШ «Багцын менежер» — «Ерөнхий менежер»-тэй андуурагддаг байв.
+ * ⚠️ 2026-10-23 (UX аудит R6): дэлгэцэд «Менежер» БИШ «Багцын ахлах инженер» — «Төлөвлөлтийн ахлах инженер»-тэй андуурагддаг байв.
  *    Өгөгдлийн утга (`STATUS.managerReview` = «Менежер хянаж байна») ХЭВЭЭР, зөвхөн шошго.
  */
 const STATUS_LABEL: Record<Status, string> = {
   get [STATUS.engineerReview]() { return tr('Инженер хянаж байна'); },
   get [STATUS.engineerReturned]() { return tr('Инженер буцаасан'); },
-  get [STATUS.managerReview]() { return tr('Багцын менежер хянаж байна'); },
-  get [STATUS.managerReturned]() { return tr('Багцын менежер буцаасан'); },
-  get [STATUS.directorReview]() { return tr('Ерөнхий менежер хянаж байна'); },
-  get [STATUS.directorReturned]() { return tr('Ерөнхий менежер буцаасан'); },
+  get [STATUS.managerReview]() { return tr('Багцын ахлах инженер хянаж байна'); },
+  get [STATUS.managerReturned]() { return tr('Багцын ахлах инженер буцаасан'); },
+  get [STATUS.directorReview]() { return tr('Төлөвлөлтийн ахлах инженер хянаж байна'); },
+  get [STATUS.directorReturned]() { return tr('Төлөвлөлтийн ахлах инженер буцаасан'); },
   get [STATUS.headReview]() { return tr('Хэлтсийн дарга хянаж байна'); },
   get [STATUS.headReturned]() { return tr('Хэлтсийн дарга буцаасан'); },
   get [STATUS.chiefReview]() { return tr('Газрын дарга хянаж байна'); },
@@ -86,15 +86,15 @@ const STATUS_LABEL: Record<Status, string> = {
 
 /** Шатны ХЭНД илгээх үйл үг — зөвшөөрөх товч ба түүхийн мөрөнд */
 const APPROVE_LABEL: Record<ReviewStage, string> = {
-  get engineer() { return tr('Зөвшөөрч багцын менежерт илгээх'); },
-  get manager() { return tr('Зөвшөөрч ерөнхий менежерт илгээх'); },
+  get engineer() { return tr('Зөвшөөрч багцын ахлах инженерт илгээх'); },
+  get manager() { return tr('Зөвшөөрч төлөвлөлтийн ахлах инженерт илгээх'); },
   get director() { return tr('Зөвшөөрч хэлтсийн даргад илгээх'); },
   get head() { return tr('Зөвшөөрч газрын даргад илгээх'); },
   get chief() { return tr('Баталж архивт бүртгэх'); },
 };
 const SENT_VERB: Record<ReviewStage, string> = {
-  get engineer() { return tr('шалгаж багцын менежерт илгээв'); },
-  get manager() { return tr('зөвшөөрч ерөнхий менежерт илгээв'); },
+  get engineer() { return tr('шалгаж багцын ахлах инженерт илгээв'); },
+  get manager() { return tr('зөвшөөрч төлөвлөлтийн ахлах инженерт илгээв'); },
   get director() { return tr('зөвшөөрч хэлтсийн даргад илгээв'); },
   get head() { return tr('зөвшөөрч газрын даргад илгээв'); },
   get chief() { return tr('баталж бүртгэв'); },
@@ -102,28 +102,28 @@ const SENT_VERB: Record<ReviewStage, string> = {
 const RETURN_VERB: Record<ReviewStage, string> = {
   get engineer() { return tr('компанид буцаав'); },
   get manager() { return tr('инженерт буцаав'); },
-  get director() { return tr('багцын менежерт буцаав'); },
-  get head() { return tr('ерөнхий менежерт буцаав'); },
+  get director() { return tr('багцын ахлах инженерт буцаав'); },
+  get head() { return tr('төлөвлөлтийн ахлах инженерт буцаав'); },
   get chief() { return tr('хэлтсийн даргад буцаав'); },
 };
 /** Дахин шалгагчийн товч · placeholder — «дээшээ» ба «доошоо» */
 const RECHECK_UP: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  get engineer() { return tr('Дахин шалгасан — асуудалгүй, багцын менежерт илгээх'); },
-  get manager() { return tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх'); },
+  get engineer() { return tr('Дахин шалгасан — асуудалгүй, багцын ахлах инженерт илгээх'); },
+  get manager() { return tr('Дахин шалгасан — асуудалгүй, төлөвлөлтийн ахлах инженерт илгээх'); },
   get director() { return tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'); },
   get head() { return tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'); },
 };
 const RECHECK_DOWN: Record<Exclude<ReviewStage, 'chief'>, string> = {
   get engineer() { return tr('Асуудал байна — компанид буцаах'); },
   get manager() { return tr('Асуудал байна — инженерт буцаах'); },
-  get director() { return tr('Асуудал байна — багцын менежерт буцаах'); },
-  get head() { return tr('Асуудал байна — ерөнхий менежерт буцаах'); },
+  get director() { return tr('Асуудал байна — багцын ахлах инженерт буцаах'); },
+  get head() { return tr('Асуудал байна — төлөвлөлтийн ахлах инженерт буцаах'); },
 };
 const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (багцын менежерийн бичвэр компанид харагдахгүй)'); },
+  get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (багцын ахлах инженерийн бичвэр компанид харагдахгүй)'); },
   get manager() { return tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
-  get director() { return tr('Багцын менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
-  get head() { return tr('Ерөнхий менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get director() { return tr('Багцын ахлах инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get head() { return tr('Төлөвлөлтийн ахлах инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
 };
 
 /* ⚠️ 2026-10-23 (UX аудит E11): гүйцэтгэлийн илгээлтийн мөрийн нэр «Гүйцэтгэл · 2026.10.14 · …» (`hyanaltSubmit.dayTagOf`)
@@ -143,7 +143,7 @@ const badgeClass = (st: Status, stage: Stage) => {
   // ⚠️ Компанид «Менежер буцаасан» улаанаар ч харагдах ёсгүй — тэр ажил
   //    хараахан компанид ирээгүй, инженер дээр байгаа.
   /* ⚠️ 2026-10-12 (R6): «Менежер буцаасан»-ы тусгай салбар ХАСАГДАВ — тэр нь компаниас бусад БҮХ шатанд
-     (ерөнхий менежер · хэлтсийн · газрын дарга) улаан гаргаж доорх «зөвхөн буцаасан ба хүлээн авсан шат» дүрэмтэй
+     (төлөвлөлтийн ахлах инженер · хэлтсийн · газрын дарга) улаан гаргаж доорх «зөвхөн буцаасан ба хүлээн авсан шат» дүрэмтэй
      зөрдөг байв. Ерөнхий дүрэм (RETURNER/OWNER) нь менежер (буцаасан) ба инженер (хүлээн авсан)-д улаан,
      компани ба бусад шатанд «хүлээгдэж буй» — дээрх ⚠️ хадгалагдана. */
   // ⚠️ Дээд шатны буцаалт нь НЭГ АЛХАМ доош очно — зөвхөн буцаасан ба хүлээн
@@ -206,8 +206,8 @@ type Step = {
 /** ⚠️ 2026-10-01: логийн үйл явдлын нэрийн өмнөх шатны шошго (`stepsOf`-той ижил) */
 const STAGE_WHO: Record<ReviewStage, string> = {
   get engineer() { return tr('Инженер'); },
-  get manager() { return tr('Багцын менежер'); },
-  get director() { return tr('Ерөнхий менежер'); },
+  get manager() { return tr('Багцын ахлах инженер'); },
+  get director() { return tr('Төлөвлөлтийн ахлах инженер'); },
   get head() { return tr('Хэлтсийн дарга'); },
   get chief() { return tr('Газрын дарга'); },
 };
@@ -262,7 +262,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     out.push({
       who: eng,
       // Компани менежерийн тухай сонсох ёсгүй тул үйл үгийг нь өөрчилнө
-      verb: seesManager(stage) ? tr('шалгаж багцын менежерт илгээв') : tr('хүлээн авав'),
+      verb: seesManager(stage) ? tr('шалгаж багцын ахлах инженерт илгээв') : tr('хүлээн авав'),
       at: r[F.engineerSent],
       reason: '',
       kind: 'ok',
@@ -283,10 +283,10 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
   }
 
   if (seesManager(stage)) {
-    const mgr = `${tr('Багцын менежер')} ${r[F.manager]}`.trim();
+    const mgr = `${tr('Багцын ахлах инженер')} ${r[F.manager]}`.trim();
     const mgrOv = overwritten(r[F.managerSent], r[F.managerReturned]);
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
+      out.push({ who: mgr, verb: tr('зөвшөөрч төлөвлөлтийн ахлах инженерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -302,7 +302,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
 
     /* ⚠️ 4·5·6-р шат — нэг загвараар (2026-09-23) */
     const upper: { st: ReviewStage; label: string; who: string; sent: string | null; ret: string | null; why: string }[] = [
-      { st: 'director', label: tr('Ерөнхий менежер'), who: r[F.director], sent: r[F.directorSent], ret: r[F.directorReturned], why: r[F.directorReason] },
+      { st: 'director', label: tr('Төлөвлөлтийн ахлах инженер'), who: r[F.director], sent: r[F.directorSent], ret: r[F.directorReturned], why: r[F.directorReason] },
       { st: 'head', label: tr('Хэлтсийн дарга'), who: r[F.head], sent: r[F.headSent], ret: r[F.headReturned], why: r[F.headReason] },
       { st: 'chief', label: tr('Газрын дарга'), who: r[F.chief], sent: r[F.chiefSent], ret: r[F.chiefReturned], why: r[F.chiefReason] },
     ];
@@ -632,7 +632,7 @@ function Submitted({
         <span className={s.subMeta}>
           {/*
             * ⚠️ Хараахан АРХИВЛААГҮЙ илгээлтийг «архивлав» гэж ХЭЛЭХГҮЙ
-            *    (2026-09-04). Гүйцэтгэл нь ерөнхий менежер баталтал үндсэн
+            *    (2026-09-04). Гүйцэтгэл нь төлөвлөлтийн ахлах инженер баталтал үндсэн
             *    өгөгдөлд ОРООГҮЙ; «архивлав» гэвэл хянагч аль хэдийн
             *    бүртгэгдсэн баримт хараад байна гэж эндүүрнэ.
             */}
@@ -705,7 +705,7 @@ function Submitted({
             *   Урьд нь `changes` нь ЗӨВХӨН обьёмын нүднээс бүтдэг байсан тул
             *   хуваарийн огнооны засвар ба `asOf` нь хянагчид ОГТ харагдахгүй,
             *   «өөрчлөгдсөн нүд: 0» гэж бичээд зөвшөөрөх товч ямар ч
-            *   тэмдэглэлгүй нээлттэй байв. Ерөнхий менежер батлахад тэр `asOf`
+            *   тэмдэглэлгүй нээлттэй байв. Төлөвлөлтийн ахлах инженер батлахад тэр `asOf`
             *   нь БҮХ мөрийн төлөвлөгөөт хувийг дахин бодуулна — хэн ч
             *   хараагүй өөрчлөлт.
             * ⚠️ Зөвшөөрлийн ГАРЦ болгохгүй (`allOk`-д ордоггүй): огнооны нүд
@@ -1027,7 +1027,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
      байсан тул метадата татагдах хүртэлх завсарт (эсвэл сүлжээ удаан үед) товч
      ИДЭВХТЭЙ үлдэж, талбар үнэхээр дутуу бол `applyEdits` танихгүй талбарыг
      чимээгүй алгасаж «хэн батласан» бүртгэлгүй үлддэг байв. Уншилт дуустал
-     ХААЛТТАЙ; ерөнхий менежерийн шат биш бол ил `[]` тавина. */
+     ХААЛТТАЙ; төлөвлөлтийн ахлах инженерийн шат биш бол ил `[]` тавина. */
   /** «Дахин шалгах» — тоолуур ахих бүрд эффект дахин ажиллана. */
   const [lackTry, setLackTry] = useState(0);
   /* ⚠️ 4·5·6-р шат — AGOL-д гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`) */
@@ -1775,7 +1775,7 @@ export function Guitsetgel() {
    * БӨГЛӨХ ТАБ ХЭНД ГАРАХ ВЭ.
    *
    * ⚠️ Гүйцэтгэгчээс гадна «Мөр нэмэх» эрх авсан хүнд ЗААВАЛ нээгдэнэ. Эс
-   * бөгөөс тэр эрх УТГАГҮЙ болно: Ерөнхий менежер мөр нэмэх эрхтэй атлаа
+   * бөгөөс тэр эрх УТГАГҮЙ болно: Төлөвлөлтийн ахлах инженер мөр нэмэх эрхтэй атлаа
    * хуудас руу орох замгүй байв.
    *
    * ⚠️ 2026-09-03: урьд нь `qaqc` (Inspection Test Plan) эрх ч энэ табыг
@@ -1909,7 +1909,7 @@ export function Guitsetgel() {
   const [sweepTick, setSweepTick] = useState(0);
   /** «Дахин оролдох» дарагдсан — дараагийн НЭГ дуудлагын үр дүн шар мөрийг шинэчилнэ (тэг ч) */
   const sweepRetryRef = useRef(false);
-  /* ⚠️ 2026-10-12 (дарааллын аудит, №5): ДЭЭД гурван шат (`UPPER_SWEEP` — хэлтсийн дарга · ерөнхий менежер ·
+  /* ⚠️ 2026-10-12 (дарааллын аудит, №5): ДЭЭД гурван шат (`UPPER_SWEEP` — хэлтсийн дарга · төлөвлөлтийн ахлах инженер ·
      газрын дарга) бүгд нөхнө; урьд нь зөвхөн `chief`/супер тул бусдад шар мөр ч харагддаггүй байв. Эрхийн
      жинхэнэ шалгуур store дотор (`authz` — томилогдсон багцаар). `who` — гацсан мөрийн төлөв нөхөхөд (№1). */
   useEffect(() => {
@@ -2102,7 +2102,7 @@ export function Guitsetgel() {
               дугаарласан хэлхээ (2026-09-23). */}
           <div className={s.sub}>
             {seesManager(stage)
-              ? tr('гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга')
+              ? tr('гүйцэтгэгч → хяналтын инженер → багцын ахлах инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга')
               : tr('гүйцэтгэгч → 2-р шат → 3-р шат → 4-р шат → 5-р шат → 6-р шат')}
           </div>
         </div>

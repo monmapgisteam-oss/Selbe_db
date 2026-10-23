@@ -25,7 +25,7 @@ export type Work = {
   /** ⚠️ Шийдвэрийн баганаас тоолно — `Төлөв` явцын туршид өөрчлөгддөг */
   engineerReturns: number;
   managerReturns: number;
-  /** Ерөнхий менежерийн (4-р шат) буцаалт — дээд шатанд гацсан ажлыг дээш нь гаргана */
+  /** Төлөвлөлтийн ахлах инженерийн (4-р шат) буцаалт — дээд шатанд гацсан ажлыг дээш нь гаргана */
   directorReturns: number;
   /** Хэлтсийн · газрын даргын буцаалт (2026-09-23, 6 шат) */
   headReturns: number;
@@ -122,8 +122,8 @@ const DAY = 86_400_000;
 export const STAGE_LABEL: Record<Stage, string> = {
   get company() { return tr('Гүйцэтгэгч компани'); },
   get engineer() { return tr('Хяналтын инженер'); },
-  get manager() { return tr('Багцын менежер'); },
-  get director() { return tr('Ерөнхий менежер'); },
+  get manager() { return tr('Багцын ахлах инженер'); },
+  get director() { return tr('Төлөвлөлтийн ахлах инженер'); },
   get head() { return tr('Хэлтсийн дарга'); },
   get chief() { return tr('Газрын дарга'); },
 };
