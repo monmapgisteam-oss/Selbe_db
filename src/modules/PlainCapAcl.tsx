@@ -9,9 +9,12 @@
  *    эрх (Зөвшөөрөл · Санхүү — утга · Санхүү — мөр · Газар, `PLAIN_CAPS`) тус
  *    бүр өөрийн цэстэй болж, ЭНЭ панел тэднийг аккаунтын жагсаалтаар олгоно.
  * ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): `superOnly` хэсэг («Админ (super) — шууд олгоно»)
- *    ХАСАГДСАН — хатуу super бүх эрхтэй (`caps.capsOf`), хуудас бүрд нэг бүрчлэн олгохгүй;
- *    жагсаалтад super орохгүй. Бусдад гаргалгаатай эрх энд олгогдохгүй
- *    (`aclOps.capDirectOp` татгалзана).
+ *    ХАСАГДСАН — хатуу super бүх эрхтэй (`caps.capsOf`), хуудас бүрд нэг бүрчлэн олгохгүй.
+ *    Бусдад гаргалгаатай эрх энд олгогдохгүй (`aclOps.capDirectOp` татгалзана).
+ * ⚠️ 2026-10-23 (хэрэглэгчийн ШИНЭ шийдвэр — 2026-10-12-ны «жагсаалтад super орохгүй»-г СОЛИНО): ХҮСНЭГТИЙН super
+ *    жагсаалтад «админ» шошготой гарч, тоологдоно; эрх нь ХАДГАЛАГДСАН жагсаалтаас (`capsStored` — доошлуулахад үлдэх
+ *    эрх), олгож/хасаж болно. Урьд нь `tolovlolt_ahlah_eng` (super, `__cap__` finEdit · finRow · hamaaral …) «Санхүүгийн
+ *    бүртгэл» · «Багцын хамаарал засах» жагсаалтад харагддаггүй байв. Зөвхөн КОДЫН (тестийн) super нуугдана.
  * ⚠️ ТҮГЖЭЭ `QaqcAcl`-тай ИЖИЛ: `remoteReady() && capsRemoteReady()` — remote
  *    уншигдаагүй бол `[] ∪ {cap}` бичилт remote-ийн бүтэн жагсаалтыг дарна
  *    (2026-09-21). Жагсаалт нь тэр үед кэшнээс (`capsStored`) гэж ил тэмдэглэгдэнэ.
@@ -27,7 +30,8 @@ import {
   capsOf, capsRemoteReady, capsStored, dirtyCapKeys, subscribeCaps, type CapKey,
 } from '@/lib/caps';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
+import { portalMissing } from '@/lib/portalPresence';
 import { capDirectOp } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
 import { capLabel, capNote } from './capText';
@@ -46,14 +50,18 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
   const off = locked || busy;
 
   /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно (`QaqcAcl`-ийн ⚠️).
-     ⚠️ 2026-10-12: super жагсаалтад ОРОХГҮЙ — бүх эрх нь кодоос (`caps.capsOf`). */
+     ⚠️ 2026-10-23: зөвхөн КОДЫН super нуугдана (толгойн ⚠️); хүснэгтийн super «админ» шошготой. */
   const users = listUsers()
     .map((u) => u.username)
-    .filter((u) => roleForUser(u) !== 'super');
+    .filter((u) => !isCodeSuper(u));
+  const isAdmin = (u: string): boolean => roleForUser(u) === 'super';
+  /* ⚠️ 2026-10-23: super-т ХАДГАЛАГДСАН жагсаалт — `capsOf` super-т бүх эрх өгдөг */
+  const stored = (u: string): CapKey[] | null => (isAdmin(u) ? capsStored(u) : null);
   /* ⚠️ Remote-гүй бол кэш (`capsStored`) — `capsOf` [] тул худал «эрхгүй» дүр зурна (2026-09-21) */
-  const has = (u: string): boolean => (locked ? capsStored(u) : capsOf(u)).includes(cap);
+  const has = (u: string): boolean => (stored(u) ?? (locked ? capsStored(u) : capsOf(u))).includes(cap);
   const holders = users.filter(has);
-  const free = users.filter((u) => !has(u));
+  /* ⚠️ 2026-10-23: сонгогчид Enterprise порталд алга гэж батлагдсан аккаунт гарахгүй */
+  const free = users.filter((u) => !has(u) && !portalMissing(u));
   const dirtyCaps = new Set(dirtyCapKeys());
   const dirtyPerms = new Set(dirtyKeys());
 
@@ -88,7 +96,7 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
             >
               {/* ⚠️ 2026-10-23 (UX аудит A2): хоосон бол ЯАГААД — шинэ (хадгалаагүй) аккаунт энд гарахгүй */}
               <option value="">{free.length ? tr('Аккаунт сонгох…') : tr('Чөлөөтэй аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
-              {free.map((a) => <option key={a} value={a}>{a}</option>)}
+              {free.map((a) => <option key={a} value={a}>{isAdmin(a) ? `${a} (${tr('админ')})` : a}</option>)}
             </select>
             <button type="button" className={s.aclBtn} onClick={push} disabled={off || !add.trim()}>
               {tr('Нэмэх')}
@@ -105,6 +113,12 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
           {holders.map((u) => (
             <div key={u} className={s.aclUser}>
               <span className={s.aclName} title={u}>{u}</span>
+              {isAdmin(u) && (
+                <span className={s.aclMarkTag} title={tr('Админ (super) — одоо бүх эрхтэй; энэ нь хадгалагдсан эрх (админ эрхийг хасахад үлдэнэ)')}>{tr('админ')}</span>
+              )}
+              {portalMissing(u) && (
+                <span className={s.aclMarkTag} title={tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу')}>{tr('порталд алга')}</span>
+              )}
               {dirtyCaps.has(u.toLowerCase()) && (
                 <span className={s.aclErr} title={tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид')}>⚠️</span>
               )}

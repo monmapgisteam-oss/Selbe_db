@@ -41,6 +41,8 @@ const TPL_VIEWS = VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key));
 /** Сонгох 11 төрөл (⚠️ 2026-10-23: `tolovloltiin` нэмэгдэв) — дараалал нь урсгалын шат, дараа нь урсгалын бус, эцэст нь super */
 export const TYPE_ORDER: readonly Role[] = [
   'guitsetgegch', 'injener', 'menejer', 'tolovloltiin', 'eronhii', 'heltsiin', 'gazriin',
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — удирдлагын (урсгалын долоон шат) дараа; зөвхөн харах, урсгалын шат биш */
+  'zahiral',
   'taniltsah', 'chanar', 'gazar', 'super',
 ];
 
@@ -66,6 +68,7 @@ export function typeLabel(r: Role): string {
   if (r === 'eronhii') return tr('Төлөвлөлтийн ахлах инженер');
   if (r === 'heltsiin') return tr('Хэлтсийн дарга');
   if (r === 'gazriin') return tr('Газрын дарга');
+  if (r === 'zahiral') return tr('Ерөнхий захирал');
   if (r === 'taniltsah') return tr('Мэдээлэл танилцах');
   if (r === 'chanar') return tr('Чанар');
   if (r === 'gazar') return tr('Газар чөлөөлөлт');
@@ -162,6 +165,8 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   eronhii: { on: LEADER, home: 'gdash' },
   heltsiin: { on: LEADER, home: 'gdash' },
   gazriin: { on: LEADER, home: 'gdash' },
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — удирдлагын бүх харагдац (зөвхөн харах); «Гүйцэтгэл» нь `permissions.workflowViewsOf`-оос */
+  zahiral: { on: LEADER, home: 'gdash' },
   taniltsah: {
     on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgProg', 'tailan', 'schem', 'sysdoc', 'gazar'), 'docs'],
     home: 'gdash',

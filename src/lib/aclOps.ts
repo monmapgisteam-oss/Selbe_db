@@ -34,13 +34,13 @@ import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
 import { portalMissing } from './portalPresence';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
-import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
+import { capUsers, capsOf, capsRemoteReady, capsStored, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
 import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
-import { capLabelShort, issueText } from '@/modules/erhLabels';
+import { capLabelShort, draftFlowMsg, issueText, newAccountMsg, removeMarkedMsg } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
 /* ⚠️ 2026-10-12 (дарааллын аудит): `pendingHeldBy` — зөвхөн уншигчид (нэрийн орон зайгаар, тойрог импортгүй) */
@@ -102,6 +102,11 @@ export type AclOp = {
    */
   undo?: () => AclOp;
   done?: string;
+  /**
+   * ⚠️ 2026-10-23: УРСГАЛЫН op — томилгоо нь хэрэглэгчийн ЭРХИЙН МӨРИЙГ бичдэг (`grantFlowAccess`/`revokeFlowAccess`)
+   *    тул «Хэрэглэгчид»-ийн хадгалаагүй ноорогтой хүнд хориглоно (`draftGuard`).
+   */
+  flow?: boolean;
 } | { error: string } | null;
 
 /** Эрхийн зургийг op-ын дараах байдал руу хувиргана — цэвэр */
@@ -162,6 +167,34 @@ export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && 
 /** Түгжээний зурвас — панелуудын ЯГ ижил текст */
 export const lockMsg = (): string => tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
+/* ══════════════ «Хэрэглэгчид»-ийн хадгалаагүй ноорогийн хамгаалалт (⚠️ 2026-10-23) ══════════════ */
+
+/**
+ * «ХЭРЭГЛЭГЧИД» САМБАРЫН НООРОГ — `UserAdmin` бүртгэнэ (`setAclDrafts`), `runOp` бүх эрхийн хуудсанд шалгана.
+ * ⚠️ ЯАГААД («хэрэглэгч: бүгдийг зас»): энэ хамгаалалт урьд нь ЗӨВХӨН тоймын матрицад (`ErhCellEditor.guard`) байв —
+ *    «Гүйцэтгэлийн урсгалын эрх» · багцын хуудсууд · QAQC · энгийн эрхийн хуудсаар (`GuitsetgelAcl` · `ScopedAclPanel` ·
+ *    `QaqcAcl` · `PlainCapAcl`) шинэ (хадгалаагүй) · устгахаар тэмдэглэсэн аккаунтад хуваарилалт бичигдэж, урсгалын
+ *    томилгоо ноорогтой хүний эрхийн мөрийг бичиж дараагийн «Хадгалах»-тай уралддаг байв. Одоо ГАНЦ газар.
+ */
+type DraftMark = { remove?: boolean; isNew?: boolean };
+let adminDrafts = new Map<string, DraftMark>();
+export function setAclDrafts(entries: Iterable<[string, DraftMark]>): void {
+  adminDrafts = new Map([...entries].map(([k, d]) => [k.trim().toLowerCase(), { remove: !!d.remove, isNew: !!d.isNew }]));
+}
+/**
+ * Ноорогийн хамгаалалтын зурвас (`null` = чөлөөтэй): шинэ аккаунт · устгахаар тэмдэглэсэн → бүх op;
+ * хадгалаагүй ноорогтой → урсгалын op (`flow`). Текст `erhLabels`-д (матрицын ижил үг).
+ */
+export function draftGuard(user: string, flow: boolean): string | null {
+  const d = adminDrafts.get(user.trim().toLowerCase());
+  if (!d) return null;
+  if (d.isNew) return newAccountMsg();
+  if (d.remove) return removeMarkedMsg();
+  return flow ? draftFlowMsg() : null;
+}
+/** Урсгалын op гэж тэмдэглэнэ (`AclOp.flow`) */
+const asFlow = (op: AclOp): AclOp => (op && !('error' in op) ? { ...op, flow: true } : op);
+
 /* ══════════════ Хасагдсан үүргийн эрхийг буцаах (панелаас шилжсэн) ══════════════ */
 
 /**
@@ -174,7 +207,7 @@ export const lockMsg = (): string => tr('Эрхийн хүснэгт уншиг�
  *    ДАРАА зөвхөн хасагдсан үүргүүдийн эрхийг буцаана.
  * ⚠️ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА: дараалалд хүлээх хооронд дахин
  *    хуваарилагдсан үүргийн эрхийг буцаахгүй; нэг эрх рүү заадаг ӨӨР үүрэг
- *    үлдсэн бол (Чанарын гурван хянагч → `chanarReview`) мөн буцаахгүй.
+ *    үлдсэн бол (Чанарын таван хянагч → `chanarReview`) мөн буцаахгүй.
  * ⚠️ 2026-09-25: `ScopedAclPanel.tsx`-ээс ЭНД шилжсэн — карт ба матриц ч
  *    хэрэглэдэг болсон тул UI файлд байх ёсгүй. Логик ӨӨРЧЛӨГДӨӨГҮЙ.
  */
@@ -221,7 +254,7 @@ const rolesOfUser = <R extends string>(list: () => Row<R>[], u: string) =>
 /**
  * `sync` дууссаны ДАРАА `had`-д байсан, одоо алга болсон үүргүүдийн эрхийг
  * буцаана — хоёр замын (бүтэн · хэсэгчилсэн хасалт) НИЙТЛЭГ логик.
- * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын гурван хянагч →
+ * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын таван хянагч →
  *    `chanarReview`) тэр эрхийг буцаахгүй.
  */
 function revokeGoneRoles(
@@ -353,6 +386,8 @@ export function liveErhSource(): ErhSource {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
     supers: users.filter((u) => roleForUser(u) === 'super'),
+    /* ⚠️ 2026-10-23: КОДЫН (тестийн) super — өнчин/дутуу эрхийн шалгалтаас ЗӨВХӨН тэд чөлөөтэй (`erhOverview.orphanCaps`) */
+    codeSupers: users.filter((u) => isCodeSuper(u)),
     gone,
     absent: users.filter((u) => portalMissing(u)),
     typeStage,
@@ -363,7 +398,10 @@ export function liveErhSource(): ErhSource {
     chanar,
     ajil,
     butets,
-    caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
+    /* ⚠️ 2026-10-23: хүснэгтийн super-ийн ХАДГАЛАГДСАН эрх (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул тойм ·
+       өнчин/дутуу эрх · эрхийн хуудсууд super-ийн бодит (доошлуулахад үлдэх) эрхийг харуулдаггүй байв. Кодын super хэвээр. */
+    caps: Object.fromEntries(users.map((u) => [u.toLowerCase(),
+      roleForUser(u) === 'super' && !isCodeSuper(u) ? capsStored(u) : capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
       const a = resolveAccess(u);
       const open = a ? (a.views === 'all' ? VIEWS.length : a.views.length) : 0;
@@ -622,6 +660,9 @@ const moveMsg = (u: string, from: Stage, to: Stage, pkg: string): string =>
 
 /** Томилгооноос хасах — `GuitsetgelAcl`-ийн ✕ (устгагдсан аккаунтад `revoke=false`, асуухгүй) */
 export function flowDropOp(user: string): AclOp {
+  return asFlow(flowDropOpRaw(user));
+}
+function flowDropOpRaw(user: string): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
   if (!cur) return null;
@@ -642,6 +683,9 @@ export function flowDropOp(user: string): AclOp {
  *    UI-аас дуудагдахгүй; хүснэгт `flowCellOp(…, ALL_BAGTS, true)`-оор бичнэ.
  */
 export function flowStageOp(user: string, stage: Stage | null): AclOp {
+  return asFlow(flowStageOpRaw(user, stage));
+}
+function flowStageOpRaw(user: string, stage: Stage | null): AclOp {
   const u = norm(user);
   if (!u) return null;
   const cur = flowRow(u);
@@ -676,7 +720,11 @@ export function flowViewOnlyOp(user: string, on: boolean): AclOp {
  *    хэрэглэгчийн шаардлага (2026-09-30). Матриц ч мөн энэ дүрмээр (2026-09-30, `ErhCellEditor`).
  * @param pkg багцын нэр эсвэл `ALL_BAGTS` («Бүх багц» мөр)
  */
+/* ⚠️ 2026-10-23: урсгалын op (`asFlow`) — ноорогийн хамгаалалт `runOp`-д (`draftGuard`) */
 export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
+  return asFlow(flowCellOpRaw(user, stage, pkg, add));
+}
+function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
   const cur = flowRow(u);
@@ -736,8 +784,11 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super-ийн ХАДГАЛАГДСАН мөр (`capsStored`) засагдана
      (өнчин/хуучин эрхийг цэвэрлэх — `CapOrphanNote`); `capsOf` super байхад нь бүх эрх өгсөөр тул олгох нь no-op хэвээр. */
   if (isCodeSuper(u)) return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
-  if (capsOf(u).includes(cap) === on) return null;
-  if (on && isDerivedCap(cap) && roleForUser(u) !== 'super') {
+  /* ⚠️ 2026-10-23: хүснэгтийн super-т ХАДГАЛАГДСАН жагсаалтаар (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул олголт
+     үргэлж «аль хэдийн бий» (no-op) болж super-т эрх хадгалах зам алга байв (доошлуулсны дараа үлдэх эрх). */
+  const tableSuper = roleForUser(u) === 'super';
+  if ((tableSuper ? capsStored(u) : capsOf(u)).includes(cap) === on) return null;
+  if (on && isDerivedCap(cap) && !tableSuper) {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };
   }
   const confirm = on ? [] : [
@@ -788,7 +839,8 @@ export function failedUsersOf(sys: RepairSys): string[] {
 export function retryOp(sys: RepairSys, user: string): AclOp {
   const u = norm(user);
   if (!u) return null;
-  return { user: u, run: () => retryWrite(sys, u, !isCleanup(u)) };
+  const op: AclOp = { user: u, run: () => retryWrite(sys, u, !isCleanup(u)) };
+  return sys === 'flow' ? asFlow(op) : op;
 }
 
 /**
@@ -1087,6 +1139,9 @@ export async function runOp(
   if (!op) return false;
   if (!ready()) { setErr(lockMsg()); return false; }
   if ('error' in op) { setErr(op.error); return false; }
+  /* ⚠️ 2026-10-23: «Хэрэглэгчид»-ийн ноорогийн хамгаалалт — бүх эрхийн хуудсанд нэг дүрэм (`draftGuard`-ийн ⚠️) */
+  const dg = op.user ? draftGuard(op.user, op.flow === true) : null;
+  if (dg) { setErr(dg); return false; }
   /*
    * ⚠️ 2026-10-05: ГАЦААГ АСУУЛТАД НЬ ХЭЛНЭ. Урьд нь «батлагчгүй» · «өөрөө өөрийгөө батална» ·
    *    «урсгалын шат хоосон» анхааруулга зөвхөн ХАССАНЫ ДАРАА «Тойм»-д улайж гардаг байв —

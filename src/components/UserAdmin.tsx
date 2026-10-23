@@ -13,7 +13,7 @@ import {
   listRemoved,
   removeUser,
   setUser,
-  clearOverride,
+  restoreUser,
   subscribe,
   dirtyKeys,
   foreignDirty,
@@ -28,7 +28,7 @@ import { permsOwnerMismatch, permsTableOrgEditable, permsTablePublic, takeWriteE
 import { userError } from '@/components/ui';
 /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд аппын дотоод асуулт (хөтөч цонхыг хаасан бол чимээгүй `false` байв) */
 import { askConfirm } from '@/lib/confirm';
-import { superGrantMsg } from './UserTypeSection';
+import { lastSuperWarn, superDemoteMsg, superGrantMsg } from './UserTypeSection';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
@@ -57,10 +57,10 @@ import { listAjilAssigns, purgeAjilAssign, subscribeAjilAcl } from '@/lib/ajilAc
 import { listButetsAssigns, purgeButetsAssign, subscribeButetsAcl } from '@/lib/butetsAcl';
 import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import {
-  purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
+  purgeAssign, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import {
-  allAclReady, flowWaitingFor, flowWaitingText, heldByText, pendingHeldBy, removalBlockingText, subscribeAclPending,
+  allAclReady, flowWaitingFor, flowWaitingText, heldByText, pendingHeldBy, removalBlockingText, setAclDrafts, subscribeAclPending,
 } from '@/lib/aclOps';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — самбар нээгдэхэд нэг удаа тулгана (`portalPresence`-ийн ⚠️) */
 import { checkPortalPresence, subscribePortalPresence } from '@/lib/portalPresence';
@@ -191,9 +191,6 @@ export type Draft = {
    *    суурь БИШ: тэгвэл өөр админы завсрын өөрчлөлт «энэ админ хассан» гэж уншигдана.
    */
   base?: UserBase;
-  /** undefined = урсгалын шат хөндөгдөөгүй · null = шатгүй болгох */
-  /** «Сэргээх» — хадгалахад override-ыг бүрмөсөн устгаж хатуу тохиргоонд буцаана */
-  clear?: boolean;
   /** «Устгах» — хадгалахад аккаунтыг жагсаалтаас хасаж нэвтрэлтийг нь хаана */
   remove?: boolean;
   /** Панелаас ШИНЭЭР нэмсэн, хараахан хадгалаагүй аккаунт */
@@ -494,6 +491,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      алгасна (`roleTypeApply.setTypeDraftUsers`); эс бөгөөс дараагийн «Хадгалах»
      ХУУЧИН ноорогоор загварын харагдацыг дарна. */
   useEffect(() => { setTypeDraftUsers(drafts.keys()); }, [drafts]);
+  /* ⚠️ 2026-10-23: ноорогийн бичих хориг бүх эрхийн хуудсанд (`aclOps.draftGuard`) — шинэ · устгахаар тэмдэглэсэн ·
+     ноорогтой хүн; самбар хаагдахад (unmount) цэвэрлэнэ */
+  useEffect(() => { setAclDrafts(drafts.entries()); }, [drafts]);
+  useEffect(() => () => setAclDrafts([]), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   /* ⚠️ `users` санаатай — `listRemoved()` гадаад төлөвөөс уншдаг тул жагсаалт
@@ -625,8 +626,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ 2026-10-05: суурийг ЭХНИЙ засварт л тогтооно (`Draft.base`) — `d` нь байгаа ноорогоос
        ирсэн бол суурь нь аль хэдийн дотор нь; шинэ бол `u` (одоо хадгалагдсан утга). */
     const next = { ...d, base: d.base ?? { views: u.views, docs: u.docs, role: u.role } };
-    const same = !next.clear
-      && !next.remove
+    const same = !next.remove
       && !next.isNew
       && next.role === u.role
       && next.docs === u.docs
@@ -673,13 +673,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        дахин сонгоход биш — аль хэдийн super бол асуухгүй). */
     if (role === 'super' && draftOf(u).role !== 'super' && roleForUser(u.username) !== 'super' && !confirmed
       && !(await askConfirm(superGrantMsg(u.username), { danger: true, ok: tr('Админ эрх олгох') }))) return;
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): SUPER-ИЙГ ДООШЛУУЛАХ нь асуулгүй ноорогт ордог байв — үлдэх эрхийг нэрлэж,
+       сүүлчийн өөр админ бол анхааруулж асууна (`superDemoteMsg`). Бөөнөөр засах зам super-ийг алгасдаг (`bulkRole`). */
+    if (role !== 'super' && roleForUser(u.username) === 'super' && draftOf(u).role === 'super'
+      && !(await askConfirm(superDemoteMsg(u.username, typeLabel(role)), { danger: true, ok: tr('Админ эрх хасах') }))) return;
     const a = roleAccess(role);
     const d = draftOf(u);
     const drop = a.views !== 'all' && dropsGuits(u, d.views, keepWorkflow(d.views, a.views));
     if (drop && !confirmed && !(await confirmDropGuits())) return;
     /* ⚠️ Загвар урсгалтай харагдацгүй (2026-09-30) — хадгалагдсаныг нь хэвээр үлдээнэ */
     putDraft(u, {
-      ...d, clear: false, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
+      ...d, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
       ...(drop ? { touchedGuits: true } : null),
     });
   };
@@ -696,7 +700,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const next = toggled(d.views, k);
     if (dropsGuits(u, d.views, next) && !(await confirmDropGuits())) return;
     const touched = k === 'guitsetgel' ? { touchedGuits: true } : null;
-    putDraft(u, { ...d, ...touched, clear: false, views: next });
+    putDraft(u, { ...d, ...touched, views: next });
   };
   const setAllViews = async (u: UserPerm, on: boolean) => {
     if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
@@ -705,12 +709,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const next: ViewKey[] = keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : []);
     const drop = dropsGuits(u, d.views, next);
     if (drop && !(await confirmDropGuits())) return;
-    putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
+    putDraft(u, { ...d, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
   };
   const flipDocs = (u: UserPerm) => {
     if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
     const d = draftOf(u);
-    putDraft(u, { ...d, clear: false, docs: !d.docs });
+    putDraft(u, { ...d, docs: !d.docs });
   };
   /*
    * ⚠️ `flipCap` · `markCap` · `dropOrphan` УСТСАН (2026-09-30, хэрэглэгчийн
@@ -724,12 +728,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const d = draftOf(u);
     putDraft(u, { ...d, remove: !d.remove });
   };
-  const markClear = (u: UserPerm) => {
-    // Сэргээх = хатуу тохиргооны суурь руу. Суурьгүй (панелаас нэмсэн) хэрэглэгч
-    // жагсаалтаас бүрмөсөн хасагдана — урьдчилан харуулах суурьгүй тул одоогийн
-    // утгыг нь үлдээгээд clear тэмдэг тавина.
-    putDraft(u, { ...draftOf(u), clear: true });
-  };
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): `markClear` («Сэргээх») УСТСАН — товч нь хэзээ ч гардаггүй байсан ч `saveAll`-ийн
+     `d.clear` салаа мөр · хуваарилалт · эрхийг бүгдийг арилгадаг эрсдэлтэй үхмэл зам байв (`UserRow`-ийн ⚠️). */
 
   /* ── Бөөнөөр засах ──
    * ⚠️ БҮРЭН жагсаалтаас (`allRows`) — хайлтын шүүлтээс ХАМААРАХГҮЙ. Урьд нь
@@ -740,8 +740,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const a = roleAccess(role);
     /* ⚠️ 2026-09-30: хатуу super-ийг ИЛ алгасна (`applyRole`-ийн дүрэм, `bulkRemove`-той ижил зурвас) */
     /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` олгохыг ч алгасна (`grantsSuperToPlain`) */
-    const skipped = selRows.filter((u) => (roleForUser(u.username) === 'super' && role !== 'super' && (isCodeSuper(u.username) || u.username.toLowerCase() === myName)) || grantsSuperToPlain(u.username, role));
-    const rows = selRows.filter((u) => !skipped.includes(u));
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): бөөнөөр засах нь SUPER-ИЙГ ОГТ ХӨНДӨХГҮЙ — урьд нь өөр super-ийг асуулгүй,
+       нэг товчоор доошлуулдаг байв. Super-ийн төрлийг картаас/мөрөөс нэг бүрчлэн (асуулттай — `applyRole`) солино. */
+    const isSup = (u: UserPerm): boolean => roleForUser(u.username) === 'super' || draftOf(u).role === 'super';
+    const supSkipped = selRows.filter(isSup);
+    const skipped = selRows.filter((u) => !isSup(u) && grantsSuperToPlain(u.username, role));
+    const rows = selRows.filter((u) => !isSup(u) && !skipped.includes(u));
     // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
     /* ⚠️ 2026-09-30: `applyRole`-той ИЖИЛ илэрхийлэл (`keepWorkflow`). Урьд нь загварын харагдацтай
        (урсгалтай харагдацгүй) ШУУД харьцуулдаг тул шатанд томилогдсон ХҮН БҮРД «хасагдана» гэсэн
@@ -752,7 +756,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ `confirmed=true` — `applyRole` асуухгүй тул await-гүй синхрон гүйцэтгэгдэнэ */
     rows.forEach((u) => { void applyRole(u, role, true); });
     setSel(new Set());
-    if (skipped.length) setAddErr(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.map((u) => u.username).join(', ')));
+    const msgs: string[] = [];
+    if (supSkipped.length) msgs.push(tr('{0} админ (super) аккаунт алгасагдлаа — тэдний төрлийг нэг бүрчлэн солино: {1}', String(supSkipped.length), supSkipped.map((u) => u.username).join(', ')));
+    if (skipped.length) msgs.push(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.map((u) => u.username).join(', ')));
+    if (msgs.length) setAddErr(msgs.join(' '));
   };
   const bulkRemove = () => {
     /* ⚠️ Өөрийгөө ба хатуу super-ийг алгасна — гэхдээ ЧИМЭЭГҮЙ биш (2026-09-23):
@@ -761,11 +768,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       /* ⚠️ 2026-10-21: хүснэгтийн super устгагдана (өөр super админ) — ӨӨРИЙГӨӨ ба кодын (тестийн) super-ийг л алгасна */
       .filter((u) => u.username.toLowerCase() === myName || isCodeSuper(u.username))
       .map((u) => u.username);
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): бөөнөөр устгах нь хүснэгтийн super-ийг ч АЛГАСНА — super-ийг нэг бүрчлэн
+       (мөрийн «Устгах», хадгалахад сүүлчийн админы анхааруулгатай) устгана. Хэд алгассаныг хэлнэ. */
+    const supSkipped = selRows
+      .filter((u) => !skipped.includes(u.username) && roleForUser(u.username) === 'super')
+      .map((u) => u.username);
     selRows
-      .filter((u) => !skipped.includes(u.username))
+      .filter((u) => !skipped.includes(u.username) && !supSkipped.includes(u.username))
       .forEach((u) => { if (!draftOf(u).remove) flipRemove(u); });
     setSel(new Set());
-    if (skipped.length) setAddErr(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.join(', ')));
+    const msgs: string[] = [];
+    if (supSkipped.length) msgs.push(tr('{0} админ (super) аккаунт алгасагдлаа — тэднийг нэг бүрчлэн устгана: {1}', String(supSkipped.length), supSkipped.join(', ')));
+    if (skipped.length) msgs.push(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.join(', ')));
+    if (msgs.length) setAddErr(msgs.join(' '));
   };
 
   /**
@@ -790,7 +805,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    (`regrantFlowAccess` false). Зөвхөн харагдац/үүргийн ноорог хэвээр —
      *    тэр нь `permissions`-ийн өөрийн dirty-overlay-тай.
      */
-    if (capsLocked && [...drafts.values()].some((d) => d.remove || d.clear)) {
+    if (capsLocked && [...drafts.values()].some((d) => d.remove)) {
       setAddErr(LOCK_MSG);
       return;
     }
@@ -809,6 +824,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
          21 багцын урсгал чимээгүй тасарч, шатанд нь хүлээж буй илгээлт ч тоологддоггүй байв. Хориглохгүй — админ шийднэ. */
       const [held, flowHeld] = await Promise.all([pendingHeldBy(gone), flowWaitingFor(gone)]);
       const parts = [
+        /* ⚠️ 2026-10-23: сүүлчийн өөр админ (super) устгагдах бол анхааруулна (`lastSuperWarn`) */
+        lastSuperWarn(gone),
         removalBlockingText(gone),
         flowHeld == null || flowHeld.length ? flowWaitingText(flowHeld) : '',
         held == null || held.length ? heldByText(held) : '',
@@ -881,33 +898,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
          *    хамгаалалт энд байгаагүй. Хатуу аккаунтыг сэргээх бол «Буцаах» товч.
          */
         if (!d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) { gone.push(uname); continue; }
-        if (d.clear) {
-          let bad = false;
-          if (!roleForUser(uname)) {
-            // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
-            if (!(await purgeAssign(uname))) bad = true;
-            if (!(await purgeQaqcAssign(uname))) bad = true;
-            if (!(await purgeHuvaariAssign(uname))) bad = true;
-            if (!(await purgeObyemAssign(uname))) bad = true;
-            if (!(await purgeChanarAssign(uname))) bad = true;
-            if (!(await purgeAjilAssign(uname))) bad = true;
-            if (!(await purgeButetsAssign(uname))) bad = true;
-            /* ⚠️ 2026-10-09 (аудит №6): абсолют устгал (дээрх устгах замтай ижил) */
-            if (!(await setCaps(uname, [], { absolute: true }))) bad = true;
-          }
-          const r = await clearOverride(uname);
-          /*
-           * ⚠️ Хатуу тохиргоотой, урсгалд томилогдсон хүн: суурь эрхэд нь
-           * `guitsetgel` байхгүй бол (tolovlolt) хуудасгүй үлдэнэ — томилгоо
-           * хэвээр тул урсгалын эрхийг нь дахин дагуулна.
-           */
-          /* ⚠️ `stageOfUser`-оор УРЬДЧИЛЖ шүүхгүй (2026-09-21): тэр нь тугтай тул
-             remote-гүй бол null → дуудлага алгасаж «амжилттай» гэдэг байв.
-             `regrantFlowAccess` өөрөө томилгоогүй бол true, remote-гүй бол false. */
-          if (r && !(await regrantFlowAccess(uname))) bad = true;
-          if (r && !bad) ok += 1; else { fail += 1; failed.push(uname); }
-          continue;
-        }
+        /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): «Сэргээх» (`d.clear`) салаа УСТСАН — товч нь хэзээ ч гардаггүй
+           (`ROLE_BY_USER` production-д хоосон) атлаа суурьгүй аккаунтын мөр · бүх хуваарилалт · эрхийг арилгадаг эрсдэлтэй
+           үхмэл зам байв. Устгагдсан аккаунтыг сэргээх нь «Буцаах» (`permissions.restoreUser`). */
 
         /*
          * ЗӨВХӨН ХАРАГДАЦ ба ҮҮРЭГ — урсгалын ШАТ томилох нь «Гүйцэтгэлийн
@@ -1175,7 +1168,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onAllViews: (v) => { void setAllViews(u, v); },
       onFlipDocs: () => flipDocs(u),
       onFlipRemove: () => flipRemove(u),
-      onClear: () => markClear(u),
       onGoFlow: () => goPane('guits'),
       /* ⚠️ 2026-10-21: түгжээ ӨӨРИЙН super мөрөнд (өөрийгөө доошлуулахгүй/устгахгүй) ба кодын (тестийн) super-т */
       superUser: roleForUser(u.username) === 'super' && (key === myName || isCodeSuper(u.username)),
@@ -1280,7 +1272,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         ))}
       </aside>
 
-      {/* ⚠️ 2026-09-30: «Гүйцэтгэлийн урсгалын эрх» нь 6 шатны «багц × шат» хүснэгт — 860px-д багтахгүй тул өргөн.
+      {/* ⚠️ 2026-09-30: «Гүйцэтгэлийн урсгалын эрх» нь 7 шатны (2026-10-23) «багц × шат» хүснэгт — 860px-д багтахгүй тул өргөн.
           Багцаар олгодог бусад 6 хуудас ч ИЖИЛ хүснэгт (`AclGrid`) болсон тул мөн өргөн; `PlainCapAcl`-ийн
           (аккаунтаар) хуудас хэвээр нарийн. */}
       <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
@@ -1503,17 +1495,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                       /* ⚠️ 2026-09-30: remote уншигдаагүй бол жагсаалт нь кэш — хуучирсан tombstone-оор бодит мөрийг устгахгүй (`putDraft`-ийн ⚠️) */
                       if (!remoteReady()) { setAddErr(LOCK_MSG); return; }
                       /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
-                      void askConfirm(tr('«{0}» аккаунтыг сэргээх үү? Хатуу тохиргооны эрх нь буцна.', k), { ok: tr('Сэргээх') }).then((yes) => {
+                      /* ⚠️ 2026-10-23: аккаунт өмнөх эрхийн төрөл (super биш) ба түүний харагдацтай буцна — хуваарилалт ба засах
+                         эрхийг устгахад арилгасан тул дахин олгоно (`permissions.restoreUser`) */
+                      void askConfirm(tr('«{0}» аккаунтыг сэргээх үү? Өмнөх эрхийн төрөл ба түүний харагдац буцна (админ эрх буцахгүй); багц, засах эрхийг дахин олгоно.', k), { ok: tr('Сэргээх') }).then((yes) => {
                         if (!yes) return;
-                        /* ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН энэ товч `revive` — tombstone-ыг зориуд арилгана
-                           (`clearOverride`-ийн ⚠️); «Сэргээх»/`d.clear` зам revive хийхгүй */
-                        void clearOverride(k, { revive: true }).then((okRes) => {
+                        /* ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН энэ товч tombstone-ыг зориуд арилгана. 2026-10-23: панелаас нэмсэн
+                           аккаунт мөргүй үлдэж нэвтэрч чадахгүй байсныг засав — жирийн мөр бичнэ (`restoreUser`). */
+                        void restoreUser(k).then((okRes) => {
                           setUsers(listUsers());
                           if (!okRes) setAddErr(tr('«{0}» сэргээгдсэнгүй — ArcGIS-т бичигдээгүй, дахин оролдоно уу.', k));
                         });
                       });
                     }}
-                    title={tr('Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана')}
+                    title={tr('Аккаунтыг сэргээж өмнөх эрхийн төрлийг нь буцаана')}
                   >
                     {tr('Буцаах')}
                   </button>

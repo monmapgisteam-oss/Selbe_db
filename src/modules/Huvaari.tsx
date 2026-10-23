@@ -29,7 +29,7 @@ import { type PointerEvent as PEvt, useCallback, useDeferredValue, useEffect, us
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
-import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { hasPlanRole, huvaariAclReady, huvaariScope, planAdminCanApprove, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
 import { dayKey, fixCyr, num } from '@/lib/format';
@@ -6997,6 +6997,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const appr = planApproversOf(pkg.group).filter((u) => u.trim().toLowerCase() !== auth0);
             /* ⚠️ ACL ачаалагдаагүй бол (`huvaariAclReady`) «томилоогүй» гэж худал хэлэхгүй — юу ч бичихгүй (null ≠ хоосон) */
             if (appr.length) parts.push(tr('батлагч: {0}', appr.slice(0, 5).join(', ') + (appr.length > 5 ? ` (+${num(appr.length - 5)})` : '')));
+            /* ⚠️ 2026-10-23: энгийн батлагч алга ч админ (super) батлах боломжтой бол «томилоогүй» гэж айлгахгүй (`planAdminCanApprove`) */
+            else if (huvaariAclReady() && planAdminCanApprove(pending.author)) parts.push(tr('админ батлах боломжтой'));
             else if (huvaariAclReady()) parts.push(tr('батлагч томилоогүй — админ «Хуваарийн эрх» хэсгээс нэмнэ'));
             return parts.length ? ` ${parts.join(' · ')}.` : '';
           })()}

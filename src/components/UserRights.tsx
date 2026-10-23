@@ -72,7 +72,8 @@ export function UserRights(props: UserRightsProps) {
         */}
       <div className={s.topicHead}>
         <span className={s.topicHeadLabel}>{tr('Харагдац')}</span>
-        <span className={s.saveHint}>{superUser ? tr('кодоор — засагдахгүй') : tr('ноорог — «Хадгалах»')}</span>
+        {/* ⚠️ 2026-10-23: «кодоор» хуучирсан — super 2026-10-21-ээс эрхийн хүснэгтийн мөр (админ эрх) */}
+        <span className={s.saveHint}>{superUser ? tr('админ эрхээр — засагдахгүй') : tr('ноорог — «Хадгалах»')}</span>
         {/* ⚠️ 2026-10-12 (super жигд биш): хатуу super-т «Бүгдийг асаах/унтраах» алга — эрх нь кодоос */}
         {!superUser && (
           <>
@@ -87,7 +88,7 @@ export function UserRights(props: UserRightsProps) {
       </div>
       <div className={s.capNote}>
         {superUser
-          ? tr('Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ кодоор нээлттэй; самбараас засагдахгүй.')
+          ? tr('Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ админ эрхээр нээлттэй; энд засагдахгүй (төрлийг өөр super админ солино).')
           : tr('Урсгалтай хуудсууд ({0}) урсгалын эрхийн хуудсаар нээгдэнэ — хуваарилалт олгоход нээгдэж, хасахад хаагдана.', workflowNames)}
       </div>
       {!superUser && capViews.some((k) => !WORKFLOW_VIEWS.includes(k)) && (
@@ -121,7 +122,7 @@ export function UserRights(props: UserRightsProps) {
                 aria-disabled={locked || undefined}
                 aria-label={v.title}
                 title={superUser
-                  ? tr('Админ (super) — кодоор нээлттэй')
+                  ? tr('Админ (super) — админ эрхээр нээлттэй')
                   : implied
                     ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
                     : undefined}
@@ -145,7 +146,7 @@ export function UserRights(props: UserRightsProps) {
             aria-checked={superUser || d.docs}
             aria-disabled={superUser || undefined}
             aria-label={tr('ТЭЗҮ-БОНУ')}
-            title={superUser ? tr('Админ (super) — кодоор нээлттэй') : undefined}
+            title={superUser ? tr('Админ (super) — админ эрхээр нээлттэй') : undefined}
             className={`${s.sw} ${superUser || d.docs ? s.swOn : ''} ${superUser ? s.swImplied : ''}`}
             style={superUser ? { cursor: 'not-allowed' } : undefined}
             onClick={superUser ? undefined : () => onFlipDocs()}

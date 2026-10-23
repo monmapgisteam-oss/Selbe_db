@@ -1043,5 +1043,121 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §12c «Дахин синк»: тарьсан super мөрийг бичихгүй — хаяж, анхааруулна');
 }
 
+/* ══════════ §13. «Хэрэглэгчийн эрх тохируулах» засварууд (⚠️ 2026-10-23, хэрэглэгч: «бүгдийг зас») ══════════
+ * (а) ноорогийн хамгаалалт БҮХ хуудсанд (`aclOps.draftGuard` — урьд нь матрицад л);
+ * (б) шатнаас хасахад админы ИЛ төрөл үлдэнэ, зөвхөн автоматаар тавьсан төрөл арилна (`Assign.autoRole`);
+ * (в) хүснэгтийн super-т шууд эрх ХАДГАЛАГДАНА (`capDirectOp` — `capsStored`), тоймд хадгалсан эрх (`liveErhSource`);
+ * (г) устгасан аккаунт tombstone-тай — урсгалын томилгоо түүнийг амилуулахгүй. */
+{
+  const tag = '§13';
+  const ERL = await import('@/modules/erhLabels.ts');
+  const WHO = await import('@/lib/who.ts');
+  const [p1] = PKG_GROUPS;
+  WHO.setCurrentUser(SUPER);
+  /* (а) */
+  const N = mkUser();
+  OPS.setAclDrafts([[N, { isNew: true }]]);
+  let r = await run(OPS.scopedCellOp('huvaari', N, 'author', p1, true));
+  ok(!r.ok && r.err === ERL.newAccountMsg(), `${tag}: шинэ (хадгалаагүй) аккаунтад хуваарь бичихгүй («${r.err}»)`);
+  r = await run(OPS.qaqcCellOp(N, p1, true));
+  ok(!r.ok && r.err === ERL.newAccountMsg(), `${tag}: QAQC ч хориглоно`);
+  r = await run(OPS.capDirectOp(N, 'zovshoorol', true));
+  ok(!r.ok && r.err === ERL.newAccountMsg(), `${tag}: энгийн эрх ч хориглоно`);
+  OPS.setAclDrafts([[N, { remove: true }]]);
+  r = await run(OPS.flowCellOp(N, 'engineer', p1, true));
+  ok(!r.ok && r.err === ERL.removeMarkedMsg(), `${tag}: устгахаар тэмдэглэсэнд урсгал бичихгүй`);
+  OPS.setAclDrafts([[N, {}]]);
+  r = await run(OPS.scopedCellOp('huvaari', N, 'author', p1, true));
+  ok(r.ok, `${tag}: энгийн ноорогтой хүнд хуваарь бичигдэнэ («${r.err}»)`);
+  r = await run(OPS.flowCellOp(N, 'engineer', p1, true));
+  ok(!r.ok && r.err === ERL.draftFlowMsg(), `${tag}: ноорогтой хүнд урсгалын томилгоо хориглоно`);
+  OPS.setAclDrafts([]);
+  r = await run(OPS.flowCellOp(N, 'engineer', p1, true));
+  ok(r.ok, `${tag}: ноорог алга — урсгал бичигдэнэ («${r.err}»)`);
+  eq(fake.json('__flow__:', N)?.autoRole, undefined, `${tag}: урсгалын бус төрөл (taniltsah) — автомат төрөл БИШ`);
+  /* (б) ил төрөл (injener) → инженер шат → хасах: төрөл ҮЛДЭНЭ */
+  const X = mkUser();
+  let res = await RTA.applyType(X, 'injener'); await settle();
+  ok(res.ok, `${tag}: ил төрөл (${res.errors})`);
+  r = await run(OPS.flowCellOp(X, 'engineer', p1, true));
+  ok(r.ok, `${tag}: X томилох («${r.err}»)`);
+  eq(fake.json('__flow__:', X)?.autoRole, undefined, `${tag}: ил төрөлтэй — autoRole тугагүй`);
+  r = await run(OPS.flowCellOp(X, 'engineer', p1, false));
+  ok(r.ok, `${tag}: X хасах («${r.err}»)`);
+  await both((w) => eq(P.roleOf(X), 'injener', `${tag} ${w}: админы ил төрөл шатнаас хасахад хэвээр`));
+  /* өөр урсгалын төрөл (menejer) → инженер шат: төрөл автоматаар солигдоно → хасахад арилна */
+  const Z = mkUser();
+  res = await RTA.applyType(Z, 'menejer'); await settle();
+  ok(res.ok, `${tag}: Z төрөл (${res.errors})`);
+  r = await run(OPS.flowCellOp(Z, 'engineer', p1, true));
+  ok(r.ok, `${tag}: Z томилох («${r.err}»)`);
+  await both((w) => {
+    eq(P.roleOf(Z), 'injener', `${tag} ${w}: томилгоо төрлийг автоматаар солив`);
+    eq(fake.json('__flow__:', Z)?.autoRole, true, `${tag} ${w}: autoRole туг ArcGIS-т`);
+    eq(FL.listAssigns().find((a) => a.user === Z)?.autoRole, true, `${tag} ${w}: autoRole туг локалд`);
+  });
+  r = await run(OPS.flowCellOp(Z, 'engineer', p1, false));
+  ok(r.ok, `${tag}: Z хасах («${r.err}»)`);
+  await both((w) => eq(P.roleOf(Z), null, `${tag} ${w}: автоматаар тавьсан төрөл арилав`));
+  /* (в) хүснэгтийн super-т шууд эрх хадгалагдана; тоймд хадгалсан эрх */
+  const S = mkUser();
+  res = await RTA.applyType(S, 'super'); await settle();
+  ok(res.ok && SV.roleForUser(S) === 'super', `${tag}: хүснэгтийн super (${res.errors})`);
+  r = await run(OPS.capDirectOp(S, 'finRow', true));
+  ok(r.ok, `${tag}: super-т finRow хадгалах («${r.err}»)`);
+  await both((w) => {
+    ok((fake.json('__cap__:', S) ?? []).includes('finRow'), `${tag} ${w}: ArcGIS __cap__ finRow`);
+    eq(OPS.liveErhSource().caps[S], ['finRow'], `${tag} ${w}: тоймд super-ийн ХАДГАЛСАН эрх (бүх эрх биш)`);
+    ok(!(OPS.liveErhSource().codeSupers ?? []).includes(S), `${tag} ${w}: кодын super биш`);
+  });
+  eq(await run(OPS.capDirectOp(S, 'finRow', true)).then((x) => x.ok), false, `${tag}: аль хэдийн хадгалсан — no-op`);
+  /* (г) устгасан панелийн аккаунт — tombstone; урсгалын олголт амилуулахгүй */
+  const D = mkUser();
+  ok(await P.removeUser(D), `${tag}: устгах`);
+  await settle();
+  eq(fake.find(D).map((x) => x.views), ['removed'], `${tag}: ArcGIS-т tombstone`);
+  ok(P.listRemoved().includes(D), `${tag}: «Устгагдсан аккаунтууд»-д`);
+  const w = FL.setAssign(D, 'engineer', [p1]);
+  await w.sync; await settle();
+  await both((ww) => eq(P.hasAccess(D), false, `${tag} ${ww}: урсгалын томилгоо устгагдсан аккаунтыг амилуулахгүй`));
+  ok(await P.restoreUser(D), `${tag}: «Буцаах»`);
+  await both((ww) => {
+    eq(P.hasAccess(D), true, `${tag} ${ww}: сэргээгдсэн аккаунт нэвтэрнэ`);
+    eq(P.roleOf(D), 'taniltsah', `${tag} ${ww}: өмнөх төрөл буцав`);
+  });
+  WHO.setCurrentUser(null);
+  console.log('✅ §13 эрх тохируулах: ноорогийн хамгаалалт бүх хуудсанд · ил төрөл шатнаас хасахад үлдэнэ · super-т хадгалсан эрх · tombstone + «Буцаах»');
+}
+
+/* ══════════ §14. «ЕРӨНХИЙ ЗАХИРАЛ» (`zahiral`) — зөвхөн харах удирдлага (⚠️ 2026-10-23) ══════════
+ * Хүчинтэй төрөл · засах/батлах эрхгүй · урсгалын шат биш (гацаа/төрөл↔шат зөрөө үүсгэхгүй) · «Гүйцэтгэл»-ийг зөвхөн харна. */
+{
+  const tag = '§14';
+  const WHO = await import('@/lib/who.ts');
+  const ERH = await import('@/lib/erhOverview.ts');
+  WHO.setCurrentUser(SUPER);
+  const Zh = mkUser();
+  const res = await RTA.applyType(Zh, 'zahiral'); await settle();
+  ok(res.ok, `${tag}: төрөл хэрэгжив (${res.errors})`);
+  ok(RT.TYPE_ORDER.includes('zahiral') && RT.typeLabel('zahiral') === 'Ерөнхий захирал', `${tag}: төрлийн жагсаалт · шошго`);
+  ok(!Object.values(SV.STAGE_ROLE).includes('zahiral') && SV.ROLE_STAGE.zahiral === undefined, `${tag}: урсгалын шат биш`);
+  await both((w) => {
+    eq(P.roleOf(Zh), 'zahiral', `${tag} ${w}: хүчинтэй үүрэг (fail-closed шүүлтэд хаягдахгүй)`);
+    eq(CAPS.capsOf(Zh), [], `${tag} ${w}: засах/батлах эрхгүй`);
+    const a = P.resolveAccess(Zh);
+    ok(a && a.views !== 'all' && a.views.includes('guitsetgel') && a.views.includes('gdash') && a.views.includes('finance'), `${tag} ${w}: удирдлагын харагдац + «Гүйцэтгэл» (${a && a.views})`);
+    eq(a.docs, true, `${tag} ${w}: ТЭЗҮ-БОНУ`);
+    const fs = FL.resolveFlowStage(Zh, 'zahiral');
+    ok(fs.viewAll === true && fs.canReview === false && fs.canPick === false && fs.scope === null && fs.stage === 'chief', `${tag} ${w}: «Гүйцэтгэл» бүх багц, шийдвэргүй`);
+    eq(FL.resolveFlowStage(Zh, 'zahiral', 'engineer').stage, 'engineer', `${tag} ${w}: шат сонгож харна`);
+    const src = OPS.liveErhSource();
+    eq(src.typeStage?.[Zh], undefined, `${tag} ${w}: төрлөөс хүлээгдэх шат алга`);
+    ok(!ERH.typeStageGaps(src).some((g) => g.user === Zh), `${tag} ${w}: төрөл↔шат зөрөөний анхааруулга гарахгүй`);
+    ok(!src.flow.some((f) => f.user === Zh), `${tag} ${w}: урсгалын томилгоогүй`);
+  });
+  WHO.setCurrentUser(null);
+  console.log('✅ §14 «Ерөнхий захирал»: хүчинтэй төрөл · эрхгүй · шат биш · «Гүйцэтгэл» зөвхөн харна · гацаа/зөрөө үүсгэхгүй');
+}
+
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');
 console.log(`✅ aclE2E: ${checks} шалгалт — бүгд давлаа (ArcGIS бичилт ${fake.edits}, хуурамч хүснэгтэд)`);

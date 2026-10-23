@@ -61,6 +61,8 @@ export type FlowRow = {
   user: string; stage: string; bagts: string[];
   /** ХАРНА, ШИЙДВЭРЛЭХГҮЙ — хуучин мөрд `undefined` = жирийн томилгоо */
   viewOnly?: boolean;
+  /** ⚠️ 2026-10-23: эрхийн төрлийг ЭНЭ томилгоо автоматаар тавьсан (`guitsetgelAcl.Assign.autoRole`) — хуучин мөрд `undefined` */
+  autoRole?: boolean;
 };
 
 /**
@@ -720,7 +722,7 @@ export async function fetchAll(
         if (!fUser || UNSAFE_KEY.has(fUser)) { bad(raw, 'user'); continue; }
         try {
           const d = JSON.parse(a.views || '{}') as {
-            stage?: string; bagts?: string[]; viewOnly?: boolean;
+            stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean;
           };
           if (d && typeof d === 'object' && d.stage) {
             flowBy.set(fUser, {
@@ -729,6 +731,8 @@ export async function fetchAll(
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
               /* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ (2026-09-09) */
               ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+              /* ⚠️ 2026-10-23: ЗӨВХӨН ЯГ `true` — эргэлзээтэй бол админы ил төрөл гэж үзнэ (хасахад төрөл хэвээр) */
+              ...(d.autoRole === true ? { autoRole: true as const } : {}),
             });
           } else bad(raw, 'stage');
         } catch { bad(raw, 'json'); /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
@@ -996,7 +1000,7 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
   if (v === undefined) return null;
   if (v === null) return { row: null };
   try {
-    const d = JSON.parse(v || '{}') as { stage?: string; bagts?: string[]; viewOnly?: boolean };
+    const d = JSON.parse(v || '{}') as { stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean };
     if (!d.stage) return { row: null };
     return {
       row: {
@@ -1004,6 +1008,7 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
         stage: d.stage,
         bagts: Array.isArray(d.bagts) ? d.bagts : [],
         ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+        ...(d.autoRole === true ? { autoRole: true as const } : {}),
       },
     };
   } catch {
@@ -1115,13 +1120,16 @@ export function remove(username: string): Promise<boolean> {
  *    тэр туг эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул анхдагч нь аюулгүй.
  */
 export function flowUpsert(
-  user: string, stage: string, bagts: string[], viewOnly = false,
+  user: string, stage: string, bagts: string[], viewOnly = false, autoRole = false,
 ): Promise<boolean> {
   const key = FLOW_PREFIX + user.trim().toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify(viewOnly ? { stage, bagts, viewOnly: true } : { stage, bagts }),
+    /* ⚠️ 2026-10-23: `autoRole` ч ЗӨВХӨН `true` үед (`viewOnly`-тэй ижил — хуучин мөр талбаргүй) */
+    views: JSON.stringify({
+      stage, bagts, ...(viewOnly ? { viewOnly: true } : {}), ...(autoRole ? { autoRole: true } : {}),
+    }),
     docs: 0,
   });
 }

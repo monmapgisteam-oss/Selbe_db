@@ -350,7 +350,12 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
       all: ['plan'],
     },
   };
-  assert.deepEqual(orphanCaps(userErh(src, 'boss')), [], 'super-т өнчин эрх гарах ёсгүй');
+  /* ⚠️ 2026-10-23: ХҮСНЭГТИЙН super-ийн хадгалагдсан эрх энгийн хүнийх шиг шалгагдана; зөвхөн КОДЫН super чөлөөтэй */
+  assert.deepEqual(orphanCaps(userErh(src, 'boss')), ['plan', 'qaqc'], 'хүснэгтийн super-ийн хадгалсан өнчин эрх харагдах ёстой');
+  const codeSrc = { ...src, codeSupers: ['boss'] };
+  assert.deepEqual(orphanCaps(userErh(codeSrc, 'boss')), [], 'кодын super-т өнчин эрх гарах ёсгүй');
+  assert.equal(userErh(codeSrc, 'boss').codeSuper, true);
+  assert.equal(userErh(src, 'boss').codeSuper, false);
   assert.deepEqual(orphanCaps(userErh(src, 'rv')), ['chanarAuthor'],
     'chanarReview нь ХАБЭА үүргээр эх сурвалжтай; chanarAuthor өнчин');
   assert.deepEqual(orphanCaps(userErh(src, 'qa')), [], 'qaqc нь QAQC мөрөөр эх сурвалжтай; энгийн эрх өнчин биш');
@@ -370,7 +375,11 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
   /* Эсрэг тохиолдол: хуваарилалт бий, эрх алга */
   const miss = { ...empty(), users: ['m'], huvaari: [{ user: 'm', grants: [{ role: 'approver', bagts: [G0] }] }], caps: {} };
   assert.deepEqual(missingCaps(userErh(miss, 'm')), ['planApprove']);
-  assert.deepEqual(missingCaps(userErh(src, 'boss')), [], 'super-т анхааруулахгүй');
+  assert.deepEqual(missingCaps(userErh(src, 'boss')), [], 'хуваарилалтгүй super-т дутуу эрх алга');
+  /* ⚠️ 2026-10-23: хүснэгтийн super — хуваарилалт бий атлаа хадгалсан эрх алга → анхааруулна; кодын super → үгүй */
+  const supMiss = { ...empty(), users: ['sa'], supers: ['sa'], huvaari: [{ user: 'sa', grants: [{ role: 'approver', bagts: [G0] }] }], caps: { sa: [] } };
+  assert.deepEqual(missingCaps(userErh(supMiss, 'sa')), ['planApprove'], 'хүснэгтийн super-ийн дутуу эрх');
+  assert.deepEqual(missingCaps(userErh({ ...supMiss, codeSupers: ['sa'] }, 'sa')), [], 'кодын super-т анхааруулахгүй');
 }
 console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх');
 

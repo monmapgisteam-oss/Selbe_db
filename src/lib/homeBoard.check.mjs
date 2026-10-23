@@ -35,7 +35,11 @@ console.log('✅ самбар: super · урсгалтай бус бүх хар�
 
 const root = readFileSync(new URL('../components/Root.tsx', import.meta.url), 'utf8');
 const ag = readFileSync(new URL('../components/AuthGate.tsx', import.meta.url), 'utf8');
-ok(root.includes('boardAllowed={boardAllowedFor(allowed, isSuper)}'), 'Root: самбар `boardAllowedFor`-оор');
+/* ⚠️ 2026-10-23: + үүрэг («Ерөнхий захирал» — самбар үргэлж) */
+ok(root.includes('boardAllowed={boardAllowedFor(allowed, isSuper, roleOf(user?.username))}'), 'Root: самбар `boardAllowedFor`-оор');
+ok(boardAllowedFor([], false, 'zahiral'), '«Ерөнхий захирал» → самбартай (харагдац хумигдсан ч)');
+ok(boardAllowedFor(roleAccess('zahiral').views === 'all' ? 'all' : roleAccess('zahiral').views, false), '«Ерөнхий захирал»-ын загвар — удирдлагын бүх харагдац');
+ok(!boardAllowedFor([], false, 'gazar'), 'бусад үүрэг харагдацгүй бол самбаргүй');
 ok(root.includes("const frozen = scope && ((accessLost && status === 'denied') || viewsLost || (sysClosed && status === 'signed-in')) ? lastPortal : null;"),
   'Root: сүүлийн харагдацаа алдсан үед Portal хөлдөнө (lastPortal)');
 ok(root.includes("const viewsLost = !!scope && authorized && noAccess && noViewsNow && !(status === 'signed-in' && !remoteReady());"),

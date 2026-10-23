@@ -16,6 +16,7 @@
  * ⚠️ КАРТЫН ХАМГААЛАЛТ МАТРИЦАД Ч (2026-09-25): шинэ/устгах тэмдэгтэй аккаунтыг
  *    санал болгохгүй, тэдэнд бичихгүй; урсгалыг хадгалаагүй ноорогтой хүнд
  *    бичихгүй (`grantFlowAccess` эрхийн мөрийг бичиж ноорогтой уралдана).
+ *    ⚠️ 2026-10-23: бичих хориг `aclOps.runOp`-д (`draftGuard`); энд зөвхөн санал болгохгүй.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -33,7 +34,6 @@ import type { ScopedSys } from '@/lib/aclRoleCaps';
 import {
   flowCellOp, lockMsg, qaqcCellOp, scopedCellOp, type AclOp,
 } from '@/lib/aclOps';
-import { draftFlowMsg, newAccountMsg, removeMarkedMsg } from './erhLabels';
 import s from './guitsetgel.module.css';
 
 /** Засах нүдний багана — матрицын 19 (`MATRIX_COLS`) + дэд бүтцийн «Засварлагч» */
@@ -98,16 +98,10 @@ export function ErhCellEditor({
     return !!d && (!!d.remove || !!d.isNew);
   };
   /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
-  const free = all.filter((a) => !isCodeSuper(a) && !taken.has(a.toLowerCase()) && !frozen(a));
-
-  /** Картын хамгаалалт — op бүтээхээс ӨМНӨ (`runOp` `error`-ийг зурвас болгоно) */
-  const guard = (u: string, op: () => AclOp): AclOp => {
-    const d = drafts.get(u.toLowerCase());
-    if (d?.isNew) return { error: newAccountMsg() };
-    if (d?.remove) return { error: removeMarkedMsg() };
-    if (col.sys === 'flow' && d) return { error: draftFlowMsg() };
-    return op();
-  };
+  /* ⚠️ 2026-10-23: порталд алга гэж батлагдсан аккаунтыг санал болгохгүй */
+  const free = all.filter((a) => !isCodeSuper(a) && !portalMissing(a) && !taken.has(a.toLowerCase()) && !frozen(a));
+  /* ⚠️ 2026-10-23: ноорогийн бичих хориг (шинэ · устгахаар тэмдэглэсэн · урсгал × ноорог) `aclOps.runOp`-д ШИЛЖСЭН
+     (`draftGuard`) — бүх эрхийн хуудсанд нэг дүрэм; энд зөвхөн санал болгохгүй (`frozen`). */
   /** Бичээд фокусыг popover руу буцаана — Esc барих хүрээнд үлдэнэ */
   const exec = async (op: AclOp) => {
     await run(op);
@@ -134,9 +128,10 @@ export function ErhCellEditor({
 
   /** Урсгалын сонголтод одоогийн шатыг харуулна — шилжүүлэхээс өмнө мэдэгдэнэ */
   const optLabel = (a: string): string => {
-    if (col.sys !== 'flow') return a;
+    const name = roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a;
+    if (col.sys !== 'flow') return name;
     const st = stageOfUser(a);
-    return st ? `${a} (${STAGE_LABEL[st]})` : a;
+    return st ? `${name} (${STAGE_LABEL[st]})` : name;
   };
 
   const off = locked || busy;
@@ -153,14 +148,14 @@ export function ErhCellEditor({
         <span className={s.aclMarkTag} title={tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу')}>{tr('порталд алга')}</span>
       )}
       {known.has(u.toLowerCase()) && roleForUser(u) === 'super' && (
-        <span className={s.aclMarkTag} title={tr('админ — багцын хязгаар үйлчлэхгүй')}>{tr('админ')}</span>
+        <span className={s.aclMarkTag} title={tr('админ (super) — одоо бүх багцад шийдвэр гаргана (багцын хязгаар үйлчлэхгүй, өөрийгөө батлах дүрэм үйлчилнэ); энэ томилгоо админ эрхийг хасахад үлдэнэ')}>{tr('админ')}</span>
       )}
       <button
         type="button"
         className={s.aclX}
         title={tr('Энэ багцаас хасах')} aria-label={tr('Энэ багцаас хасах')}
         disabled={off}
-        onClick={() => { void exec(guard(u, () => rmOp(u))); }}
+        onClick={() => { void exec(rmOp(u)); }}
       >
         ✕
       </button>
@@ -201,7 +196,7 @@ export function ErhCellEditor({
           type="button"
           className={s.aclBtn}
           disabled={off || !add.trim()}
-          onClick={() => { const u = add; setAdd(''); void exec(guard(u, () => addOp(u))); }}
+          onClick={() => { const u = add; setAdd(''); void exec(addOp(u)); }}
         >
           {tr('Нэмэх')}
         </button>

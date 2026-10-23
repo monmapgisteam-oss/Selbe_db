@@ -38,7 +38,7 @@ import {
   type ViewKey,
 } from './services';
 import { capViewsOf, capsRemoteReady, capsStored, hasCap, isWorkflowView, UNSAFE_KEY } from './caps';
-import { _typesMark, roleAccess } from './roleTypes';
+import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
 import { currentUser, requireCap } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 /* ⚠️ 2026-10-01: урсгалтай харагдацын эх сурвалж (`workflowViewsOf`). Статик импорт аюулгүй —
@@ -893,6 +893,10 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
   if (!username) return [];
   const out = new Set<ViewKey>(capViewsOf(username).filter(isWorkflowView));
   if (stageOfUser(username)) out.add('guitsetgel');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — «Гүйцэтгэл»-ийг томилгоогүйгээр ЗӨВХӨН ХАРАНА (бүх багц, бүх шат —
+     `guitsetgelAcl.resolveFlowStage` → `viewAll`, `canReview: false`). `roleOf` нь remote уншигдаагүй бол override-ын
+     үүргийг үл тооцдог тул fail-closed хэвээр. */
+  if (roleOf(username) === 'zahiral') out.add('guitsetgel');
   return [...out];
 }
 
@@ -1066,11 +1070,9 @@ export function listRemoved(): string[] {
 }
 
 /**
- * Аккаунтыг УСТГАХ.
- * · Хатуу тохиргоотой (`ROLE_BY_USER`) хэрэглэгч — tombstone бичнэ (жагсаалтаас
- *   нуугдаж, нэвтрэлт нь татгалзагдана; «Буцаах»-аар сэргээгдэнэ).
- * · Панелаас нэмсэн хэрэглэгч — мөрийг бүрмөсөн арилгана (`clearOverride`-той ижил).
- * · Хатуу SUPER — ТАТГАЛЗАНА: код өөрчлөхөөс өөр замаар super хасагдахгүй.
+ * Аккаунтыг УСТГАХ — tombstone бичнэ (жагсаалтаас нуугдаж, нэвтрэлт нь татгалзагдана; «Буцаах»-аар
+ * сэргээгдэнэ — `restoreUser`). ⚠️ 2026-10-23: панелаас нэмсэн ба хүснэгтийн super-т ч tombstone (доорх ⚠️).
+ * · Кодын (тестийн) SUPER — ТАТГАЛЗАНА; өөрийн super-ийг өөрөө устгахгүй.
  */
 export function removeUser(username: string): Promise<boolean> {
   /* ⚠️ 2026-10-21: КОДЫН (тестийн) super л халдашгүй; ХҮСНЭГТИЙН super-ийн мөрийг өөр super админ арилгана
@@ -1081,18 +1083,49 @@ export function removeUser(username: string): Promise<boolean> {
   const key = username.trim().toLowerCase();
   const role = roleForUser(username);
   if (role === 'super' && key === (currentUser() ?? '').trim().toLowerCase()) return Promise.resolve(false);
-  if (role && role !== 'super') {
-    const entry: Entry = { views: [], docs: false, role: null, removed: true };
-    const store = { ...loadStore() };
-    store[key] = entry;
-    saveStore(store);
-    /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
-    return serialWrite(key, () => import('./permsRemote')
-      .then((m) => m.upsert({ username, role: null, views: [], docs: false, removed: true }))
-      .catch(() => false)
-      .then((ok) => { trackWrite(key, entry, ok); return ok; }));
-  }
-  return clearOverride(username);
+  /*
+   * ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): КОДЫН super-ээс БУСАД БҮХ аккаунтад TOMBSTONE бичнэ. Урьд нь зөвхөн
+   *    `ROLE_BY_USER`-ийн (production-д ХООСОН) энгийн хэрэглэгчид tombstone бичиж, панелаас нэмсэн аккаунт ба хүснэгтийн
+   *    super-ийн мөрийг бүрмөсөн УСТГАДАГ (`clearOverride`) байв — мөр алга тул хуучин ноорог · `grantFlowAccess` ·
+   *    «Дахин илгээх» (dirty retry) тэр нэрийг ЖИРИЙН мөрөөр дахин үүсгэж устгагдсан хүнийг амилуулдаг, «Устгагдсан
+   *    аккаунтууд / Буцаах» жагсаалтад ч гардаггүй байв. Tombstone дээр бүх бичих зам аль хэдийн татгалздаг.
+   * ⚠️ Өмнөх ЭРХИЙН ТӨРЛИЙГ (super-ээс бусад) tombstone-д хадгална — «Буцаах» (`restoreUser`) түүгээр сэргээнэ. Super
+   *    хэзээ ч хадгалагдахгүй (устгагдсан super «Буцаах»-аар super болж буцахгүй); `supersIn` · `roleOf` · `hasAccess`
+   *    `removed` мөрийн үүргийг үл тооцно.
+   */
+  const prevRole = roleOf(username);
+  const keepRole: Role | null = prevRole && prevRole !== 'super' ? prevRole : null;
+  const entry: Entry = { views: [], docs: false, role: keepRole, removed: true };
+  const store = { ...loadStore() };
+  store[key] = entry;
+  saveStore(store);
+  _markTableSuper(key, false);
+  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
+  return serialWrite(key, () => import('./permsRemote')
+    .then((m) => m.upsert({ username, role: keepRole, views: [], docs: false, removed: true }))
+    .catch(() => false)
+    .then((ok) => { trackWrite(key, entry, ok); return ok; }));
+}
+
+/**
+ * УСТГАГДСАН АККАУНТЫГ СЭРГЭЭХ — «Устгагдсан аккаунтууд / Буцаах» (⚠️ 2026-10-23).
+ * · Кодын суурьтай (`ROLE_BY_USER`, зөвхөн тест) — tombstone-ыг арилгана (`clearOverride(revive)`), суурь эрх буцна.
+ * · Бусад (панелаас нэмсэн · хуучин хүснэгтийн super) — tombstone-ын оронд ЖИРИЙН мөр бичнэ: tombstone-д хадгалсан
+ *   төрөл (байхгүй бол шинэ аккаунтын төрөл `NEW_ACCOUNT_ROLE`) ба тэр төрлийн загварын (урсгалгүй) харагдац.
+ *   ⚠️ Урьд нь «Буцаах» зөвхөн мөрийг устгадаг тул панелаас нэмсэн аккаунт мөргүй үлдэж НЭВТЭРЧ ЧАДАХГҮЙ байв.
+ *   ⚠️ Super хэзээ ч сэргэхгүй; хуваарилалт · засах эрх устгахад арилсан тул дахин олгоно.
+ *   ⚠️ `setUser` нь локалд tombstone байгааг (`base.removed`) мэдэж байж л мөрийг дарна — энэ ил үйлдэл.
+ */
+export async function restoreUser(username: string): Promise<boolean> {
+  const key = username.trim().toLowerCase();
+  if (!key || isCodeSuper(key)) return false;
+  const tomb = loadStore()[key];
+  if (Object.hasOwn(ROLE_BY_USER, key)) return clearOverride(username, { revive: true });
+  const kept = tomb?.removed && tomb.role && tomb.role !== 'super' && VALID_ROLES.has(tomb.role) ? tomb.role : null;
+  const role: Role = kept ?? NEW_ACCOUNT_ROLE;
+  const a = roleAccess(role);
+  const views: ViewKey[] = (a.views === 'all' ? VIEWS.map((v) => v.key) : a.views).filter((v) => !isWorkflowView(v));
+  return setUser(username, { views, docs: a.docs }, role);
 }
 
 /**

@@ -175,7 +175,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         viaAll: held === 'all',
         gone: !known.has(a.user),
         absent: portalMissing(a.user),
-        /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
+        /* ⚠️ 2026-10-23: super-ийн томилгоо — «админ» тэмдэг; хүснэгтийн super-ийн мөр энгийн (✕ нэг багцыг хасна), кодын super-ийнх цэвэрлэгдэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
@@ -236,7 +236,8 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         cols={spec.roles.map((r) => ({
           key: r,
           label: spec.roleLabel(r),
-          count: rows.filter((a) => a.grants.some((g) => g.role === r)).length,
+          /* ⚠️ 2026-10-23: тоо = ШИЙДВЭРЛЭХ эзэд л — устгагдсан · порталд алга аккаунтын үлдсэн мөр тоологдохгүй */
+          count: rows.filter((a) => a.grants.some((g) => g.role === r) && known.has(a.user) && !portalMissing(a.user)).length,
         }))}
         holders={holdersOf}
         /* ⚠️ Гацаа нь БАТЛАГЧИЙН нүдэнд: батлагчгүй, эсвэл зохиогч өөрөө л батлагч.
@@ -246,7 +247,9 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
         candidates={(g, role) => {
           const list = holdersOf(g, role).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(g, role, u) => addTo(g, role as R, u)}
         onRemove={(g, role, h) => removeFrom(g, role as R, h.user)}

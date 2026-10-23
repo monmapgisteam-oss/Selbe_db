@@ -139,7 +139,13 @@ export function GuitsetgelAcl() {
       <AclGrid
         corner={tr('Багц')}
         rows={PKG_GROUPS.map((g) => ({ key: g, label: g }))}
-        cols={STAGE_ORDER.map((st) => ({ key: st, label: STAGE_LABEL[st], count: assignsOf(st).length }))}
+        /* ⚠️ 2026-10-23: тоо = ШИЙДВЭРЛЭХ эзэд л (устгагдсан · порталд алга · «зөвхөн харна» биш) — урьд нь бүгдийг тоолж
+           «эзэнтэй» мэт харуулдаг байв; «зөвхөн харна»-г хаалтанд (`GridCol.more`) */
+        cols={STAGE_ORDER.map((st) => {
+          const live = assignsOf(st).filter((a) => known.has(a.user) && !portalMissing(a.user));
+          const vo = live.filter((a) => a.viewOnly).length;
+          return { key: st, label: STAGE_LABEL[st], count: live.length - vo, more: vo ? tr('+{0} зөвхөн харна', String(vo)) : undefined };
+        })}
         holders={cell}
         /* ⚠️ ХООСОН НҮД = шийдвэрлэх хүнгүй (зөвхөн «харна» хүмүүс ч тоогдохгүй) —
            тэр багцын ажил энэ шатанд ГАЦНА.
@@ -153,11 +159,13 @@ export function GuitsetgelAcl() {
          *    (энэ багц эсвэл «бүх багц») хүнийг санал болгохгүй. Өөр шатных
          *    нь санал болгогдоно — сонговол ШИЛЖҮҮЛЭХИЙГ асууна (шошгонд ил).
          */
+        /* ⚠️ 2026-10-23: порталд алга гэж батлагдсан аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
         candidates={(pkg, st) => accounts
-          .filter((u) => planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
+          .filter((u) => !portalMissing(u) && planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
           .map((u) => {
             const cur = rowOf.get(u.toLowerCase());
-            return { value: u, label: cur && cur.stage !== st ? tr('{0} (одоо: {1} — шилжинэ)', u, STAGE_LABEL[cur.stage]) : u };
+            const name = roleForUser(u) === 'super' ? `${u} (${tr('админ')})` : u;
+            return { value: u, label: cur && cur.stage !== st ? tr('{0} (одоо: {1} — шилжинэ)', name, STAGE_LABEL[cur.stage]) : name };
           })}
         onAdd={(pkg, st, u) => act(flowCellOp(u, st as Stage, pkg, true))}
         onRemove={(pkg, st, h) => act(flowCellOp(h.user, st as Stage, pkg, false))}

@@ -73,6 +73,7 @@ const { ErhCellEditor } = await import('@/modules/ErhCellEditor.tsx');
 const { UserAdmin } = await import('@/components/UserAdmin.tsx');
 const { UserHeadActions } = await import('@/components/UserRow.tsx');
 const RT = await import('@/lib/roleTypes.ts');
+const ERL = await import('@/modules/erhLabels.ts');
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks += 1; };
@@ -579,6 +580,11 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m.render();
   rowOf(u).onFlipView('gdash'); m.render();
   ok(rowOf(u).dirty, `${tag}: ноорог`);
+  /* ⚠️ 2026-10-23: ноорогтой хүний урсгалын op-ыг БҮХ хуудсанд `runOp` хориглоно (`aclOps.draftGuard` — урьд нь матрицад л) */
+  const blocked = await run(OPS.flowCellOp(u, 'engineer', g, false));
+  ok(!blocked.ok && blocked.err === ERL.draftFlowMsg() && stored(u).includes('guitsetgel'), `${tag}: ноорогтой хүний урсгалын хасалт хориглогдов (${blocked.err})`);
+  /* Хасалт ӨӨР таб/админаас ирсэн мэт (энэ самбарын ноорогийн бүртгэлгүй) — хуучин ноорог «Гүйцэтгэл»-ийг буцааж нээхгүй */
+  OPS.setAclDrafts([]);
   const rm = await run(OPS.flowCellOp(u, 'engineer', g, false));
   ok(rm.ok && !stored(u).includes('guitsetgel'), `${tag}: томилгоо хасагдахад «Гүйцэтгэл» хаагдав`);
   m.render(); save();
@@ -632,7 +638,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   await idle(); m.render();
   await P.initRemote(false, true); await idle();
   eq(P.hasAccess(u3), false, `${tag}: устгагдсан панелийн аккаунт амилахгүй`);
-  eq(fake.find(u3), [], `${tag}: ArcGIS-т мөр дахин үүсэхгүй`);
+  /* ⚠️ 2026-10-23: панелаас нэмсэн аккаунтад ч TOMBSTONE (`permissions.removeUser`) — мөр нь ЗӨВХӨН `removed` (амьд мөр биш) */
+  eq(fake.find(u3).map((r) => r.views), ['removed'], `${tag}: ArcGIS-т амьд мөр дахин үүсэхгүй (зөвхөн tombstone)`);
   ok(P.listRemoved().includes(hard) && !P.hasAccess(hard), `${tag}: tombstone хэвээр`);
   ok(alerts(m).some((a) => a.includes(u3)), `${tag}: алгассаныг ил хэлнэ`);
   eq(findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled, true, `${tag}: ноорог үлдэхгүй`);
@@ -666,7 +673,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const props = (over) => ({
     u: { username: 'x_user', role: 'tolovlolt', views: [], docs: false, overridden: true },
     rowKey: 'x_user', d: { views: [], docs: false, role: 'tolovlolt' }, dirty: false, myName: null,
-    rolePresets: presets, onRole: noop, onClear: noop, onFlipRemove: noop, superUser: false, ...over,
+    rolePresets: presets, onRole: noop, onFlipRemove: noop, superUser: false, ...over,
   });
   let m = mount(React.createElement(UserHeadActions, { p: props({}) }));
   let sel = findAll(m.tree, (n) => n.type === 'select')[0].el;

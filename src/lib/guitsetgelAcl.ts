@@ -51,7 +51,7 @@ import { roleAccess } from './roleTypes';
  *    огт нээж чадахгүй.
  */
 
-/** Урсгалын дөрвөн үүрэг — «энэ хүний ажил зөвхөн урсгал» гэж таних олонлог */
+/** Урсгалын долоон шатны үүрэг (2026-10-23: 7 шат) — «энэ хүний ажил зөвхөн урсгал» гэж таних олонлог */
 const FLOW_ROLES = new Set<Role>(Object.values(STAGE_ROLE));
 
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
@@ -87,6 +87,15 @@ export type Assign = {
    *    Энэ туг нь эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул хуучин мөр аюулгүй.
    */
   viewOnly?: boolean;
+  /**
+   * ЭРХИЙН ТӨРЛИЙГ ЭНЭ ТОМИЛГОО АВТОМАТААР ТАВЬСАН (⚠️ 2026-10-23, хэрэглэгч: «бүгдийг зас»).
+   * ⚠️ ЯАГААД: шатнаас хасахад (`revokeFlowAccess`) хүний төрөл шатны үүрэгтэй таарвал ҮРГЭЛЖ арилдаг байв — админ
+   *    картаас ИЛ сонгосон төрөл («Газрын дарга» г.м.) ч чимээгүй алга болдог. Одоо `grantFlowAccess` төрлийг өөрөө
+   *    тавьсан/сольсон үед л (`autoRoleFor`) энэ туг асна; хасахад ЗӨВХӨН тугтай бол төрөл арилна.
+   * ⚠️ Хуучин мөр (туггүй) = админы ил төрөл гэж үзнэ (хасахад төрөл ХЭВЭЭР) — төрлийг устгахаас хадгалах нь аюулгүй;
+   *    шатгүй үлдсэн төрлийг «Тойм» (`erhOverview.typeStageGaps`) анхааруулна.
+   */
+  autoRole?: boolean;
 };
 
 const KEY = 'selbe-guitsetgel-acl-v1';
@@ -122,7 +131,7 @@ function load(): Assign[] {
        хүрч шиддэг/буруу хүрээ өгдөг байв (05-erh-batlah §2 «мөр эвдэрсэн → эрхгүй»). */
     cache = Array.isArray(raw) ? raw.flatMap((a): Assign[] => {
       if (!a || typeof a !== 'object') return [];
-      const r = a as { user?: unknown; stage?: unknown; bagts?: unknown; viewOnly?: unknown };
+      const r = a as { user?: unknown; stage?: unknown; bagts?: unknown; viewOnly?: unknown; autoRole?: unknown };
       if (typeof r.user !== 'string' || !r.user.trim() || typeof r.stage !== 'string' || !STAGES.has(r.stage)) return [];
       if (!Array.isArray(r.bagts)) return [];
       return [{
@@ -130,6 +139,7 @@ function load(): Assign[] {
         stage: r.stage as Stage,
         bagts: r.bagts.filter((b): b is string => typeof b === 'string'),
         ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
+        ...(r.autoRole === true ? { autoRole: true as const } : {}),
       }];
     }) : [];
   } catch {
@@ -179,7 +189,7 @@ const STAGES = new Set<string>(STAGE_ORDER);
  * уншигдаж, бичилттэй зөрдөг байв).
  */
 export function _syncRemoteAssigns(
-  rows: { user: string; stage: string; bagts: string[]; viewOnly?: boolean }[],
+  rows: { user: string; stage: string; bagts: string[]; viewOnly?: boolean; autoRole?: boolean }[],
 ): void {
   const byUser = new Map<string, Assign>();
   for (const r of rows) {
@@ -195,6 +205,7 @@ export function _syncRemoteAssigns(
       /* ⚠️ ЗӨВХӨН ЯГ `true` — «1», «yes» гэх мэт утга эрх ХАСАХГҮЙ. Тугийн
          утга нь эргэлзээтэй бол ЖИРИЙН томилгоо гэж үзнэ (хуучин мөр). */
       ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
+      ...(r.autoRole === true ? { autoRole: true as const } : {}),
     });
   }
   /*
@@ -297,6 +308,7 @@ async function pushFlow(user: string, delta?: FlowDelta): Promise<boolean> {
           stage: fresh.row.stage as Stage,
           bagts: fresh.row.bagts.filter((b) => typeof b === 'string'),
           ...(fresh.row.viewOnly === true ? { viewOnly: true as const } : {}),
+          ...(fresh.row.autoRole === true ? { autoRole: true as const } : {}),
         }
         : null;
       const merged = mergeFlowDelta(delta.base, delta.next, fr);
@@ -307,7 +319,7 @@ async function pushFlow(user: string, delta?: FlowDelta): Promise<boolean> {
         : cur.filter((x) => x.user !== user));
     }
     const a = load().find((x) => x.user === user);
-    return a ? m.flowUpsert(a.user, a.stage, a.bagts, a.viewOnly === true) : m.flowRemove(user);
+    return a ? m.flowUpsert(a.user, a.stage, a.bagts, a.viewOnly === true, a.autoRole === true) : m.flowRemove(user);
   } catch {
     return false;
   }
@@ -348,6 +360,8 @@ export function mergeFlowDelta(base: Assign | null, next: Assign | null, fresh: 
     stage: next.stage,
     bagts: bagts.length ? bagts : next.bagts,
     ...(viewOnly ? { viewOnly: true as const } : {}),
+    /* ⚠️ 2026-10-23: `autoRole` — энэ бичилтийн мэдлэг (`next`): төрөл нь хүн бүрд НЭГ тул сүүлийн бичигчийнх үнэн */
+    ...(next.autoRole === true ? { autoRole: true as const } : {}),
   };
 }
 
@@ -384,7 +398,7 @@ export function setAssign(
   const exists = list.some((a) => a.stage === stage && a.user === u);
   /*
    * ⚠️ НЭГ АККАУНТ ЗӨВХӨН НЭГ ШАТАНД. Нэг хүн бөглөгч ба хянагч хоёулаа
-   *    байвал өөрийнхөө ажлыг өөрөө батлах зам нээгдэж, дөрвөн шатны
+   *    байвал өөрийнхөө ажлыг өөрөө батлах зам нээгдэж, долоон шатны
    *    хяналт бүхэлдээ утгагүй болно. Тиймээс өмнөх шатнаас нь ХАСНА.
    */
   const cleaned = list.filter((a) => !(a.user === u && a.stage !== stage));
@@ -416,7 +430,19 @@ export function setAssign(
       await pushFlow(u);
       return { ok: false, g: false };
     }
-    const ok = await pushFlow(u, { base, next: next.find((a) => a.user === u) ?? null });
+    /* ⚠️ 2026-10-23: эрхийн төрлийг энэ томилгоо автоматаар тавих эсэх (`Assign.autoRole`) — `grantFlowAccess`-ээс ӨМНӨ
+       (тэр төрлийг солино) бодож мөрөнд хадгална; хасахад зөвхөн тугтай бол төрөл арилна (`revokeFlowAccess`). */
+    let mine = next.find((a) => a.user === u) ?? null;
+    if (grant && mine) {
+      const auto = await autoRoleFor(u, stage, base);
+      if ((mine.autoRole === true) !== auto) {
+        const row: Assign = { ...mine };
+        if (auto) row.autoRole = true; else delete row.autoRole;
+        save(load().map((a) => (a.user === u && a.stage === stage ? row : a)));
+        mine = row;
+      }
+    }
+    const ok = await pushFlow(u, { base, next: mine });
     const g = grant ? await grantFlowAccess(u, stage) : true;
     return { ok, g };
   });
@@ -486,7 +512,8 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
      *    томилгоогүй атлаа «Гүйцэтгэл» харагдацаа хадгалж үлдэнэ — `qaqc`,
      *    `huvaari`, `obyem` гуравт 2026-09-08-нд зассан ЯГ ИЖИЛ алдаа.
      */
-    const g = revoke && !stageOfUser(u) ? await revokeFlowAccess(u, stage).catch(() => false) : true;
+    /* ⚠️ 2026-10-23: хасагдсан мөрийн `autoRole` — төрлийг ЗӨВХӨН автоматаар тавьсан бол арилгана (`revokeFlowAccess`) */
+    const g = revoke && !stageOfUser(u) ? await revokeFlowAccess(u, stage, base?.autoRole === true).catch(() => false) : true;
     markResult(u, ok && g);
     return ok && g;
   });
@@ -561,7 +588,7 @@ export function setViewOnly(
   }
   const nextRow: Assign = viewOnly
     ? { ...cur, viewOnly: true }
-    : { user: cur.user, stage: cur.stage, bagts: cur.bagts };
+    : { user: cur.user, stage: cur.stage, bagts: cur.bagts, ...(cur.autoRole === true ? { autoRole: true as const } : {}) };
   save(list.map((a) => (a.user === u ? nextRow : a)));
   const sync = enqueue(u, async () => {
     /* ⚠️ 2026-10-05: ялгаа — тугийг л өөрчилнө, нөгөө админы багцын засварыг дарахгүй (`pushFlow`) */
@@ -600,6 +627,28 @@ async function isTombstoned(user: string): Promise<boolean> {
   try {
     const { listRemoved } = await import('./permissions');
     return listRemoved().includes(user.trim().toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `grantFlowAccess` эрхийн төрлийг АВТОМАТААР тавих/солих уу (⚠️ 2026-10-23, `Assign.autoRole`).
+ * · super · урсгалын БУС төрөл (админы ил сонголт — хэзээ ч солигдохгүй) → `false`;
+ * · төрөлгүй, эсвэл ӨӨР урсгалын төрөлтэй (шилжилтэд дагаж солигдоно) → `true`;
+ * · аль хэдийн тэр шатны төрөлтэй: өмнөх мөр (ижил хүн) тугтай байсан бол `true` (өмнө нь автоматаар тавигдсан),
+ *   эс бөгөөс `false` — админ төрлийг ӨМНӨ нь ил сонгосон.
+ * ⚠️ Уншиж чадахгүй бол `false` (төрлийг хасахгүй тал — аюулгүй).
+ */
+async function autoRoleFor(user: string, stage: Stage, prev: Assign | null): Promise<boolean> {
+  try {
+    if (roleForUser(user) === 'super') return false;
+    const { roleOf } = await import('./permissions');
+    const cur = roleOf(user);
+    if (cur == null) return true;
+    if (!FLOW_ROLES.has(cur)) return false;
+    if (cur !== STAGE_ROLE[stage]) return true;
+    return prev?.autoRole === true;
   } catch {
     return false;
   }
@@ -666,7 +715,7 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
  * ҮЛДСЭН байж болно. `qaqc`/`huvaari`/`obyem`-ийн `syncCaps` нь үр дүнгээ
  * буцаадаг — энэ модуль тэдэнтэй тэнцэв.
  */
-async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
+async function revokeFlowAccess(user: string, stage: Stage, autoRole = false): Promise<boolean> {
   const { resolveBaseAccess, roleOf, setUser, clearOverride } = await import('./permissions');
   const cur = resolveBaseAccess(user);
   /*
@@ -697,7 +746,9 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
   const baseViews = keepBase ? roleAccess(keepBase).views : null;
   const keepGuits = baseViews === 'all' || (Array.isArray(baseViews) && baseViews.includes('guitsetgel'));
   const views = cur.views === 'all' || keepGuits ? cur.views : cur.views.filter((v) => v !== 'guitsetgel');
-  const role = curRole === STAGE_ROLE[stage] ? null : curRole;
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): төрлийг ЗӨВХӨН энэ томилгоо автоматаар тавьсан бол (`autoRole`) арилгана —
+     урьд нь шатны үүрэгтэй таарсан төрөл (админы картаас ИЛ сонгосон ч) үргэлж `null` болдог байв. */
+  const role = curRole === STAGE_ROLE[stage] && autoRole ? null : curRole;
   if (base) {
     const b = roleAccess(base);
     if (role === base && cur.docs === b.docs && viewsEqual(views, b.views)) {
@@ -814,17 +865,21 @@ export type FlowStage = {
   canPick: boolean;
   /** Багцын хүрээ: `null` = хязгааргүй, `[]` = нэг ч багц */
   scope: string[] | null;
+  /**
+   * ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — БҮХ багц, БҮХ шатыг ЗӨВХӨН ХАРНА: шат сонгогч харахад л (`canPick`
+   *    биш — super-ийн `bypass`/турших эрх өгөхгүй), шийдвэрийн товч гарахгүй (`canReview: false`).
+   */
+  viewAll?: boolean;
 };
 
 /**
  * ХЭРЭГЛЭГЧИЙН УРСГАЛЫН ШАТ — ГАНЦ ЭХ СУРВАЛЖ (2026-08-29).
  *
  * Дүрэм:
- *   1. Хатуу тохиргооны `super` (кодын `ROLE_BY_USER`) эсвэл нэвтрэлт
- *      унтраалттай дев орчин → сонгогчоор дурын шат, БҮХ багц. Панелаас
- *      «Супер» preset авсан override-super энд ОРОХГҮЙ: тэр нь зөвхөн
- *      харагдацын багц; хянах эрх нь томилгооноос л гарна (урьд нь panel-ийн
- *      «Супер» дөрвөн шатанд дурын багц батлах зам нээдэг байв).
+ *   1. `super` (2026-10-21-ээс эрхийн хүснэгтийн `role:'super'` мөр · кодын тестийн super) эсвэл нэвтрэлт
+ *      унтраалттай дев орчин → сонгогчоор дурын шат, БҮХ багц (админы аврах эрх). ⚠️ 2026-10-23: анхдагч шат =
+ *      super-ийн өөрийн томилгоо (`stageOfUser`), үгүй бол инженер; өөрийгөө батлах дүрэм super-т ч үйлчилнэ
+ *      (`hyanaltStore.authz`).
  *   2. Томилогдсон → тэр шат, тэр багцууд. Үүрэг нь юу ч байсан (beginner,
  *      tolovlolt, урсгалын үүрэг) — томилгоо ДАВАМГАЙЛНА.
  *   3. Томилогдоогүй → зөвхөн харна (fail-closed): урсгалын үүрэгтэй бол
@@ -840,7 +895,13 @@ export function resolveFlowStage(
   authOff = false,
 ): FlowStage {
   if (authOff || roleForUser(user) === 'super') {
-    return { stage: picked ?? 'engineer', canReview: true, canPick: true, scope: null };
+    /* ⚠️ 2026-10-23: сонгоогүй бол super-ийн ӨӨРИЙН томилгооны шат (`stageOfUser`), үгүй бол инженер */
+    return { stage: picked ?? stageOfUser(user) ?? 'engineer', canReview: true, canPick: true, scope: null };
+  }
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын шат БИШ (`STAGE_ROLE`-д алга): томилгооноос ҮЛ ХАМААРАН (санамсаргүй
+     томилсон ч) зөвхөн харна, бүх багц; анхдагч шат = хамгийн дээд (газрын дарга), сонгогчоор бусад шатыг харна. */
+  if (role === 'zahiral') {
+    return { stage: picked ?? 'chief', canReview: false, canPick: false, scope: null, viewAll: true };
   }
   const st = stageOfUser(user);
   if (st) {

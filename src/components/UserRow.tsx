@@ -22,7 +22,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { ROLE_STAGE, isCodeSuper, roleForUser, type ViewKey, type Role } from '@/lib/services';
+import { ROLE_STAGE, isCodeSuper, type ViewKey, type Role } from '@/lib/services';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын тэмдэг (`portalPresence`) */
 import { portalMissing } from '@/lib/portalPresence';
 import { flowAclReady } from '@/lib/guitsetgelAcl';
@@ -64,7 +64,6 @@ export type UserRowProps = {
   onAllViews: (on: boolean) => void;
   onFlipDocs: () => void;
   onFlipRemove: () => void;
-  onClear: () => void;
   onGoFlow: () => void;
   /** ⚠️ 2026-10-21: ӨӨРИЙН super мөр — үүрэг сонгогч · устгах · «Төрлөөр тохируулах» түгжээтэй (өөр super өөрчилнө) */
   superUser: boolean;
@@ -151,9 +150,9 @@ export function UserHeadBadges({ p }: { p: UserRowProps }) {
   );
 }
 
-/** Үүргийн preset · Сэргээх · Устгах (мөр ба карт) — бүгд НООРОГ */
+/** Үүргийн preset · Устгах (мөр ба карт) — бүгд НООРОГ */
 export function UserHeadActions({ p }: { p: UserRowProps }) {
-  const { u, rowKey: key, d, dirty, myName, rolePresets, onRole, onClear, onFlipRemove } = p;
+  const { u, rowKey: key, d, myName, rolePresets, onRole, onFlipRemove } = p;
   return (
     <div className={s.presets}>
       {/* ⚠️ 2026-09-30: 10 чип бүгд ил байхад мөр бүр 2 мөр зай эзэлдэг байв
@@ -183,19 +182,9 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
           <option key={r.key} value={r.key}>{r.label}</option>
         ))}
       </select>
-      {/* ⚠️ Зөвхөн хатуу суурьтай хэрэглэгчид — панелаас нэмсэн аккаунтад
-          «сэргээх» = чимээгүй устгах байв; тэдэнд «Устгах» л байна */}
-      {/* ⚠️ 2026-10-21: хүснэгтийн super-т «Сэргээх» байхгүй — мөр нь өөрөө эрхийн эх, арилгавал super хасагдана */}
-      {roleForUser(u.username) && roleForUser(u.username) !== 'super' && (u.overridden || dirty) && !d.remove && !d.isNew && (
-        <button
-          type="button"
-          className={s.reset}
-          onClick={() => onClear()}
-          title={tr('Хатуу тохиргоо руу сэргээх (хадгалахад үйлчилнэ)')}
-        >
-          {tr('Сэргээх')}
-        </button>
-      )}
+      {/* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): «Сэргээх» товч ХАСАГДСАН — `ROLE_BY_USER` production-д хоосон тул ХЭЗЭЭ Ч
+          гардаггүй байсан ч `UserAdmin.saveAll`-ийн `d.clear` салаа нь мөр · хуваарилалт · эрхийг бүгдийг арилгадаг эрсдэлтэй үхмэл зам
+          байв. Устгагдсан аккаунтыг сэргээх нь «Устгагдсан аккаунтууд → Буцаах» (`permissions.restoreUser`). */}
       {/* ⚠️ 2026-10-21: super нь эрхийн тохиргоо — ӨӨРИЙГӨӨ л устгахгүй (бүх super-ийг хасвал анхны админ
           `BOOTSTRAP_SUPER` буцаж идэвхжинэ — `roles.ts`). Урьд super устгагдахгүй (хасах зам = код) байв. */}
       {key !== myName && !isCodeSuper(u.username) && (

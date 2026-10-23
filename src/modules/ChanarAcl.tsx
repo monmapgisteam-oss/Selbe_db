@@ -170,7 +170,8 @@ export function ChanarAcl() {
         cols={CHANAR_ROLES.map((r) => ({
           key: r,
           label: chanarRoleLabel(r),
-          count: rows.filter((a) => a.grants.some((g) => g.role === r)).length,
+          /* ⚠️ 2026-10-23: устгагдсан · порталд алга аккаунтын мөр тоологдохгүй */
+          count: rows.filter((a) => a.grants.some((g) => g.role === r) && known.has(a.user) && !portalMissing(a.user)).length,
         }))}
         holders={holdersOf}
         /* ⚠️ Гацаа: зохиогчоос өөр хянагчгүй үүрэг, эсвэл нэг хүн хоёр үүрэгт давхцсан үүрэг */
@@ -184,7 +185,9 @@ export function ChanarAcl() {
         /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
         candidates={(g, role) => {
           const list = holdersOf(g, role).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(g, role, u) => addTo(g, role as ChanarRole, u)}
         onRemove={(g, role, h) => removeFrom(g, role as ChanarRole, h.user)}

@@ -134,7 +134,8 @@ export function QaqcAcl() {
       <AclGrid
         corner={tr('Багц')}
         rows={PKG_GROUPS.map((g) => ({ key: g, label: g }))}
-        cols={[{ key: 'qaqc', label: tr('Чанарын хяналт'), count: rows.length }]}
+        /* ⚠️ 2026-10-23: устгагдсан · порталд алга аккаунтын мөр тоологдохгүй */
+        cols={[{ key: 'qaqc', label: tr('Чанарын хяналт'), count: rows.filter((r) => known.has(r.user) && !portalMissing(r.user)).length }]}
         holders={(g) => holdersOf(g)}
         /* ⚠️ Хоосон багц гацаа биш — QAQC хуудас батлах шатгүй (хэн ч бөглөөгүй л болно) */
         stuck={() => false}
@@ -142,7 +143,9 @@ export function QaqcAcl() {
         /* Аль хэдийн хамарсан («бүх багц»-аар ч) аккаунтыг санал болгохгүй */
         candidates={(g) => {
           const list = holdersOf(g).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(g, _c, u) => act(qaqcCellOp(u, g, true))}
         /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false, асуухгүй) —

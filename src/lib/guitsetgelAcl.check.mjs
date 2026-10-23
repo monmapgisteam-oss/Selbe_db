@@ -136,6 +136,28 @@ assert.equal(resolveFlowStage(superName, 'super', 'director').stage, 'director')
 r = resolveFlowStage(null, null, null, true); // дев — нэвтрэлт унтраалттай
 assert.equal(r.canPick, true);
 assert.equal(r.scope, null);
+/* ⚠️ 2026-10-23: шатанд томилогдсон (хүснэгтийн) super-ийн АНХДАГЧ шат = өөрийн томилгоо; сонговол сонгосон шат */
+{
+  const RL = await import('./services/roles.ts');
+  RL._setTableSupers(['tsup_flow']);
+  _syncRemoteAssigns([{ user: 'tsup_flow', stage: 'director', bagts: ['Багц 2'] }]);
+  r = resolveFlowStage('tsup_flow', 'super');
+  assert.equal(r.stage, 'director', 'super-ийн анхдагч шат — өөрийн томилгоо');
+  assert.equal(r.canPick, true);
+  assert.equal(r.scope, null, 'super — бүх багц (аврах эрх)');
+  assert.equal(resolveFlowStage('tsup_flow', 'super', 'manager').stage, 'manager', 'сонгосон шат давамгайлна');
+  RL._setTableSupers(null);
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — томилгоотой байсан ч зөвхөн харна, бүх багц, super-ийн сонгогч/bypass БИШ */
+  _syncRemoteAssigns([{ user: 'zah_flow', stage: 'engineer', bagts: ['Багц 2'] }]);
+  r = resolveFlowStage('zah_flow', 'zahiral');
+  assert.equal(r.canReview, false, 'захирал шийдвэр гаргахгүй (санамсаргүй томилгоотой ч)');
+  assert.equal(r.canPick, false, 'захиралд super-ийн сонгогч (bypass) олгохгүй');
+  assert.equal(r.viewAll, true);
+  assert.equal(r.scope, null, 'бүх багцыг харна');
+  assert.equal(r.stage, 'chief');
+  assert.equal(resolveFlowStage('zah_flow', 'zahiral', 'manager').stage, 'manager', 'шат сонгож харна');
+  assert.equal(resolveFlowStage('zah_none', 'zahiral').canReview, false);
+}
 /* дараа ирсэн томилгоо шууд үйлчилнэ — кэшлэхгүй */
 _syncRemoteAssigns([]);
 assert.equal(resolveFlowStage('late', 'beginner').stage, null);

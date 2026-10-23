@@ -324,7 +324,8 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
   const ops = readCode('src/lib/aclOps.ts');
   const co = ops.slice(ops.indexOf('export function capDirectOp('), ops.indexOf('export async function runOp('));
   /* (a) гаргалгаатай эрх super-ээс бусдад ШУУД олгогдохгүй — хуваарилалтын хоёр дахь эх сурвалж болохгүй */
-  assert.ok(co.includes("if (on && isDerivedCap(cap) && roleForUser(u) !== 'super')"),
+  /* ⚠️ 2026-10-23: `tableSuper` = `roleForUser(u) === 'super'` (хадгалагдсан эрхийн жагсаалтад ч хэрэглэгдэнэ) */
+  assert.ok(co.includes("const tableSuper = roleForUser(u) === 'super';") && co.includes('if (on && isDerivedCap(cap) && !tableSuper)'),
     'capDirectOp: гаргалгаатай эрх super-ээс бусдад шууд олгогдож байна');
   /* (b) хасалт баталгаажуулалттай; addRow-д «Бөглөх» таб хаагдахыг ил хэлнэ */
   assert.ok(co.includes("cap === 'addRow'"), 'capDirectOp: addRow хасахад «Бөглөх» таб хаагдах анхааруулга алга');
@@ -512,7 +513,8 @@ console.log('\naclParity.check: ok');
   assert.ok(ga.includes('markResult(u, ok && g)'),
     'guitsetgelAcl.removeAssign: эрх БУЦААЛТЫН үр дүн шалгагдахгүй байна');
   /* `revokeFlowAccess` нь үр дүнгээ буцаана — `void` бол дуудагч мэдэхгүй */
-  assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean>'),
+  /* ⚠️ 2026-10-23: + `autoRole` (төрлийг зөвхөн автоматаар тавьсан бол арилгана) */
+  assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage, autoRole = false): Promise<boolean>'),
     'guitsetgelAcl: revokeFlowAccess нь Promise<boolean> байх ёстой (үр дүнгээ хаяхгүй)');
 
   /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй.
@@ -665,8 +667,9 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   }
   assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
     'UserAdmin: remote-гүй бол эрхээр нээгдсэн харагдацын тэмдэг кэшнээс (`capsStored`) харагдах ёстой');
-  assert.ok(/if \(r && !\(await regrantFlowAccess\(uname\)\)\) bad = true;/.test(ua),
-    'UserAdmin.saveAll: regrantFlowAccess-ийг stageOfUser-оор урьдчилж шүүж байна (remote-гүй бол алгасна)');
+  /* ⚠️ 2026-10-23: «Сэргээх» (`d.clear`) үхмэл зам УСТСАН — мөр · хуваарилалт · эрхийг арилгадаг салаа буцаж орохгүй */
+  assert.ok(!ua.includes('if (d.clear)') && !ua.includes('markClear'), 'UserAdmin.saveAll: устгасан «Сэргээх» (d.clear) зам буцаж орсон');
+  assert.ok(ua.includes('restoreUser(k)'), 'UserAdmin: «Буцаах» нь permissions.restoreUser-ээр сэргээх ёстой');
   /* ⚠️ 2026-09-30: энгийн эрхийн хуудас (`PlainCapAcl`) — QaqcAcl-тай ИЖИЛ түгжээ */
   const pc = readCode('src/modules/PlainCapAcl.tsx');
   assert.ok(pc.includes('const ready = () => remoteReady() && capsRemoteReady();'),

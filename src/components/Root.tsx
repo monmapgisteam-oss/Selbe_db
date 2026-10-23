@@ -547,7 +547,7 @@ export default function Root() {
            */
           /* ⚠️ 2026-10-22 (аудит): 2026-10-01-ээс super биш хүнд `allowed` ХЭЗЭЭ Ч 'all' биш тул удирдлага самбаргүй болсон —
              урсгалтай бус бүх харагдацтай бол нээнэ (`homeBoard.boardAllowedFor`) */
-          boardAllowed={boardAllowedFor(allowed, isSuper)}
+          boardAllowed={boardAllowedFor(allowed, isSuper, roleOf(user?.username))}
           homeView={roleHome}
         />
       ) : (

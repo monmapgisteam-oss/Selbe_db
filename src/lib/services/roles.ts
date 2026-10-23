@@ -33,7 +33,11 @@ export type Role =
   /* ⚠️ 2026-09-25: урсгалын БУС гурван төрөл — «Эрхийн төрөл» (`roleTypes.ts`) */
   | "taniltsah"
   | "chanar"
-  | "gazar";
+  | "gazar"
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр): «ЕРӨНХИЙ ЗАХИРАЛ» — ЗӨВХӨН ХАРАХ удирдлага. Урсгалын шат БИШ (`STAGE_ROLE`-д
+     ОРОХГҮЙ — шийдвэр гаргахгүй), засах/батлах эрхгүй; «Гүйцэтгэл»-ийг бүх багц/шатаар зөвхөн харна
+     (`permissions.workflowViewsOf` · `guitsetgelAcl.resolveFlowStage` → `viewAll`). */
+  | "zahiral";
 
 /**
  * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
@@ -138,6 +142,15 @@ export const ROLE_ACCESS: Record<
   taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
   chanar: { views: ["qaqc", "ma"], docs: false, home: "qaqc" },
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — удирдлагын (Газрын дарга г.м.) бүх 20 харагдац + «Гүйцэтгэл» (зөвхөн харах);
+     нүүр = удирдлагын самбар. «Гүйцэтгэл» нь урсгалтай харагдац тул хадгалалтаас биш `workflowViewsOf`-оос нээгдэнэ
+     (энд бичсэн нь зөвхөн баримт/нарийн нөөцөд — `roleTypes.narrowTpl` урсгалтайг хаядаг). */
+  zahiral: {
+    views: ["gdash", "dashboard", "plan", "hesegET", "pkgFin", "pkgProg", "gazar", "analysis", "irged", "tailan", "tuh",
+      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "sysdoc", "guitsetgel"],
+    docs: true,
+    home: "gdash",
+  },
 };
 
 /**

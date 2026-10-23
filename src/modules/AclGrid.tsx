@@ -23,8 +23,12 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import s from './guitsetgel.module.css';
 
-/** Багана — үүрэг эсвэл шат */
-export type GridCol = { key: string; label: string; count?: number };
+/**
+ * Багана — үүрэг эсвэл шат.
+ * ⚠️ 2026-10-23: `count` = ШИЙДВЭРЛЭХ эзэд л (устгагдсан · порталд алга · «зөвхөн харна» тоологдохгүй — дуудагч бодно);
+ *    `more` — тоологдоогүйн тайлбар («+1 зөвхөн харна»), тооны хажууд бүдэг.
+ */
+export type GridCol = { key: string; label: string; count?: number; more?: string };
 
 /** Мөр — багц. `warn` нь мөрийн гацааны анхааруулгууд (толгойд ⚠, хүснэгтийн доор бүтэн) */
 export type GridRow = { key: string; label: string; warn?: string[] };
@@ -41,7 +45,10 @@ export type GridHolder = {
    *    тул шийдвэрлэгч биш (дуудагчийн `stuck` тоолохгүй). ✕ нь энгийн хасалт (эрх буцаана), устгагдсаных шиг цэвэрлэгээ БИШ.
    */
   absent?: boolean;
-  /** Хатуу super — багцын хязгаар үйлчлэхгүй (remote-ийн хуучин мөр) */
+  /**
+   * Админ (super) — ⚠️ 2026-10-23: хүснэгтийн super-ийн ЭНГИЙН томилгоо (2026-10-21-ээс); super байх хугацаандаа багцын
+   *    хязгаар түүнд үйлчлэхгүй (бүх багц), харин өөрийгөө батлах дүрэм үйлчилнэ.
+   */
   admin?: boolean;
   /** ArcGIS бичилт унасан */
   failed: boolean;
@@ -171,7 +178,7 @@ export function AclGrid({
               {cols.map((c) => (
                 <th key={c.key} className={s.ggHead} title={c.label}>
                   <span>{c.label}</span>
-                  {c.count !== undefined && <span className={s.aclCount}>{c.count}</span>}
+                  {c.count !== undefined && <span className={s.aclCount} title={c.more ? `${c.count} (${c.more})` : undefined}>{c.count}{c.more ? ` (${c.more})` : ''}</span>}
                 </th>
               ))}
             </tr>
@@ -211,7 +218,8 @@ function Chip({ h, off, flag, onRemove }: {
     h.gone ? tr('устгагдсан аккаунт — томилгоог ✕-ээр цэвэрлэнэ үү') : '',
     /* ⚠️ 2026-10-22 (аудит): порталд алга — ил шошготой (доор), админ ✕-ээр хасаж өөр хүн томилно */
     h.absent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
-    h.admin ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
+    /* ⚠️ 2026-10-23: одоогийн утга — super байхад бүх багцад ажиллана (томилгоо нь доошлуулахад үлдэнэ), өөрийгөө батлахгүй */
+    h.admin ? tr('админ (super) — одоо бүх багцад шийдвэр гаргана (багцын хязгаар үйлчлэхгүй, өөрийгөө батлах дүрэм үйлчилнэ); энэ томилгоо админ эрхийг хасахад үлдэнэ') : '',
     /* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «синк» → «хөтөч» · «Дахин илгээх» */
     h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид') : '',
     h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин илгээх»') : '',

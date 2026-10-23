@@ -79,6 +79,12 @@ export type ErhSource = {
    */
   supers?: string[];
   /**
+   * ⚠️ 2026-10-23: КОДЫН (тестийн) super-ууд — `supers`-ийн дэд олонлог. Өнчин/дутуу эрхийн шалгалтаас (`orphanCaps` ·
+   *    `missingCaps`) ЗӨВХӨН тэд чөлөөтэй; хүснэгтийн super-ийн ХАДГАЛАГДСАН эрх (`caps`) энгийн хүнийх шиг шалгагдана
+   *    (доошлуулахад үлдэх эрх). СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
+   */
+  codeSupers?: string[];
+  /**
    * ⚠️ 2026-09-30: ПОРТАЛД БАЙХГҮЙ (устгагдсан) аккаунтууд — хуваарилалтын хуучин мөр нь
    *    үлдсэн. СОНГОМОЛ (дуудагч `aclOps.liveErhSource` өгнө). Тэд нэвтэрч чадахгүй тул
    *    гацааны шалгуурт (`pkgIssues`) ЭЗЭН гэж тоологдохгүй — урьд нь устгагдсан батлагчийн
@@ -120,6 +126,8 @@ export type UserErh = {
   flow: { stage: Stage; bagts: string[] | null; viewOnly: boolean } | null;
   /** Хатуу super — бүх багц, бүх шат; хуваарилалт түүнд үйлчилдэггүй */
   superUser: boolean;
+  /** ⚠️ 2026-10-23: кодын (тестийн) super — өнчин/дутуу эрхийн шалгалтаас чөлөөтэй (`ErhSource.codeSupers`) */
+  codeSuper: boolean;
   qaqc: string[] | null;
   /**
    * QAQC мөр БАЙГАА эсэх (2026-09-25). ⚠️ `qaqc`-ийн `null` нь ХОЁР утгатай
@@ -175,6 +183,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
   const superUser = (src.supers ?? []).some((x) => norm(x) === k);
+  const codeSuper = (src.codeSupers ?? []).some((x) => norm(x) === k);
   /* ⚠️ 2026-10-19 (аудит): `grants[]`-ээс гадна ХУУЧИН дээд түвшний `bagts` (`ScopedRow.bagts`-ийн ⚠️) */
   const rawGrants = (rows: ScopedRow[]): (readonly string[])[] => {
     const r = rows.find((x) => norm(x.user) === k);
@@ -190,6 +199,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
     user,
     flow: f ? { stage: f.stage, bagts: bagtsOf(f.bagts), viewOnly: f.viewOnly === true } : null,
     superUser,
+    codeSuper,
     qaqc: q ? bagtsOf(q.bagts) : null,
     qaqcAssigned: !!q,
     huvaari,
@@ -451,7 +461,7 @@ function pkgIssues(
     out.push({ tone: 'bad', key: 'ajilSelfApprove', args: [bagts, aB.join(', ')], cols: ['ajil:editor', 'ajil:approver'] });
   }
 
-  /* ── Гүйцэтгэлийн урсгал — зургаан шат бүрэн байх ёстой ── */
+  /* ── Гүйцэтгэлийн урсгал — долоон шат бүрэн байх ёстой (2026-10-23: + төлөвлөлтийн инженер) ── */
   const gaps = STAGE_ORDER.filter((st) => flow[st].length === 0);
   if (gaps.length && gaps.length < STAGE_ORDER.length) {
     /* ⚠️ ЗАРИМ нь хоосон бол илгээлт тэр шатанд ЗОГСОНО. */
@@ -460,7 +470,7 @@ function pkgIssues(
     /* ⚠️ 2026-10-19 (аудит): БҮГД хоосон — урьд нь «урсгал эхлээгүй» гэж ЧИМЭЭГҮЙ байв. Гэвч тэр багцын гүйцэтгэлийг
        хэн ч бөглөж, батлах боломжгүй тул админд ил хэлнэ. `warn` (`bad` биш): шинэ/идэвхгүй багцад хэвийн байж
        болох тул «шинэ гацаа» асуултад (`aclOps.newBlockingText`, зөвхөн `bad`) орохгүй. */
-    /* ⚠️ `cols` ЗААВАЛ (матрицын инвариант — issue бүр баганатай): урсгалын 6 нүд шар */
+    /* ⚠️ `cols` ЗААВАЛ (матрицын инвариант — issue бүр баганатай): урсгалын 7 нүд шар */
     out.push({ tone: 'warn', key: 'flowEmpty', args: [bagts], cols: gaps.map((st) => `flow:${st}`) });
   }
 
@@ -486,7 +496,7 @@ export type MatrixSys = 'flow' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'qaqc
 export type MatrixCol = { id: string; sys: MatrixSys; role: string };
 
 /**
- * АРВАН ЕСӨН БАГАНА: урсгал ×6 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
+ * ХОРИН БАГАНА (2026-10-23: урсгал 7 шаттай): урсгал ×7 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
  * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер) · QAQC ×1.
  * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` (25), `PKG_GROUPS` биш;
  *    тусдаа хүснэгтэд (`butetsRows`).
@@ -582,14 +592,15 @@ const backed = (u: UserErh, cap: CapKey): boolean => {
 
 /**
  * ӨНЧИН ЭРХ — асаалттай атлаа тэр системд түүн рүү заадаг үүрэг алга.
- * ⚠️ Хатуу super-т ХЭЗЭЭ Ч үгүй: түүнд хуваарилалт үйлчилдэггүй тул эрхийг
- *    шууд унтраалгаар олгодог (`setGrants` super-ийг татгалздаг).
+ * ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): ЗӨВХӨН КОДЫН super-т үгүй. Хүснэгтийн super-ийн ХАДГАЛАГДСАН эрхийг
+ *    (`caps` — `aclOps.liveErhSource`) энгийн хүнийх шиг шалгана: урьд нь super бүхэлдээ чөлөөтэй тул доошлуулахад
+ *    үлдэх өнчин/дутуу эрх хаана ч харагддаггүй байв.
  * ⚠️ Энгийн дөрвөн эрх өнчин болохгүй — тэдгээр нь хуваарилалтгүй.
  * ⚠️ UI нь ЗӨВХӨН бүх ACL уншигдсаны дараа харуулна — эс бөгөөс `[]`
  *    жагсаалтаас ХУДАЛ өнчин гарна. Автоматаар ЮУ Ч хасахгүй.
  */
 export function orphanCaps(u: UserErh): CapKey[] {
-  if (u.superUser) return [];
+  if (u.codeSuper) return [];
   return (u.caps as CapKey[]).filter((c) => capSystem(c) !== null && !backed(u, c));
 }
 
@@ -598,7 +609,8 @@ export function orphanCaps(u: UserErh): CapKey[] {
  * ⚠️ Зөвхөн АНХААРУУЛГА: засах зам нь хуваарилалтыг дахин хадгалах (`syncCaps`).
  */
 export function missingCaps(u: UserErh): CapKey[] {
-  if (u.superUser) return [];
+  /* ⚠️ 2026-10-23: зөвхөн кодын super чөлөөтэй (`orphanCaps`-ийн ⚠️) */
+  if (u.codeSuper) return [];
   const out = new Set<CapKey>();
   if (u.qaqcAssigned && !u.caps.includes(QAQC_CAP)) out.add(QAQC_CAP);
   for (const sys of SCOPED_SYSTEMS) {

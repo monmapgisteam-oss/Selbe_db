@@ -66,7 +66,7 @@ export function capSystem(cap: CapKey): DerivedSys | null {
 /** Хуваарилалтаас гардаг эрх мөн эсэх */
 export const isDerivedCap = (cap: CapKey): boolean => capSystem(cap) !== null;
 
-/** Тухайн эрх рүү заадаг үүргүүд (Чанарын `chanarReview` → гурван хянагч) */
+/** Тухайн эрх рүү заадаг үүргүүд (Чанарын `chanarReview` → таван хянагч, 2026-09-28-аас) */
 export function rolesOfCap(cap: CapKey): string[] {
   const sys = capSystem(cap);
   if (!sys || sys === 'qaqc') return [];

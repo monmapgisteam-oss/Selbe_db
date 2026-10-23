@@ -397,4 +397,41 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   P._markRemoteLoaded(false);
 }
 
-console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах · super = хүснэгт');
+/* ── 13. УСТГАЛ = TOMBSTONE (кодын super-ээс бусад БҮХ аккаунт) · «Буцаах» (`restoreUser`) — ⚠️ 2026-10-23 ──
+   Урьд нь панелаас нэмсэн аккаунт ба хүснэгтийн super-ийн мөр бүрмөсөн устдаг тул хуучин ноорог / урсгалын олголт /
+   dirty retry түүнийг амилуулж, «Устгагдсан аккаунтууд» жагсаалтад ч гардаггүй байв. Энд ArcGIS алга — локал төлөвөөр. */
+{
+  const R = await import('./services/roles.ts');
+  const WHO = await import('./who.ts');
+  P._markRemoteLoaded();
+  R._setTableSupers(['tbl_del_sup']);
+  WHO.setCurrentUser(superName);
+  /* панелаас нэмсэн (кодод алга) аккаунт — төрөлтэй */
+  await P.setUser('panel_del', { views: ['gdash', 'plan'], docs: true }, 'gazar');
+  assert.equal(P.hasAccess('panel_del'), true);
+  await P.removeUser('panel_del');
+  assert.equal(P.hasAccess('panel_del'), false, 'устгагдсан панелийн аккаунт нэвтрэхгүй');
+  assert.ok(P.listRemoved().includes('panel_del'), 'панелийн аккаунт «Устгагдсан аккаунтууд»-д (tombstone)');
+  assert.ok(!P.listUsers().some((u) => u.username.toLowerCase() === 'panel_del'));
+  const tomb = JSON.parse(mem.get('selbe-perms-v1'))['panel_del'];
+  assert.ok(tomb && tomb.removed === true && tomb.role === 'gazar', 'tombstone өмнөх төрлийг хадгална (super биш)');
+  /* хүснэгтийн super-ийг өөр super устгавал — tombstone, super хасагдана, super төрөл хадгалагдахгүй */
+  await P.removeUser('tbl_del_sup');
+  assert.equal(R.roleForUser('tbl_del_sup'), null);
+  assert.ok(P.listRemoved().includes('tbl_del_sup'), 'устгагдсан super «Буцаах» жагсаалтад');
+  assert.equal(JSON.parse(mem.get('selbe-perms-v1'))['tbl_del_sup'].role, null, 'super төрөл tombstone-д хадгалагдахгүй');
+  /* «Буцаах» — жирийн мөр, өмнөх төрөл · загварын харагдац; super буцахгүй */
+  await P.restoreUser('panel_del');
+  assert.ok(!P.listRemoved().includes('panel_del'), 'сэргээгдсэн — жагсаалтаас гарна');
+  assert.equal(P.hasAccess('panel_del'), true, 'сэргээгдсэн аккаунт нэвтэрнэ (урьд нь мөргүй үлдэж нэвтэрч чаддаггүй байв)');
+  assert.equal(P.roleOf('panel_del'), 'gazar', 'өмнөх төрөл буцна');
+  await P.restoreUser('tbl_del_sup');
+  assert.equal(P.hasAccess('tbl_del_sup'), true);
+  assert.notEqual(P.roleOf('tbl_del_sup'), 'super', 'устгагдсан super «Буцаах»-аар super болохгүй');
+  for (const u of ['panel_del', 'tbl_del_sup']) await P.clearOverride(u);
+  WHO.setCurrentUser(null);
+  R._setTableSupers(null);
+  P._markRemoteLoaded(false);
+}
+
+console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах · super = хүснэгт · устгал = tombstone · «Буцаах»');

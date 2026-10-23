@@ -1765,7 +1765,9 @@ export function Guitsetgel() {
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
   /** Админы сонгогчоор сонгосон шат — зөвхөн `canPick` үед утгатай */
-  const [picked, setPicked] = useState<Stage>('engineer');
+  /* ⚠️ 2026-10-23: анхдагч `null` — super-т урсгалын томилгоо байвал ТЭР шат (`resolveFlowStage`), үгүй бол инженер.
+     Урьд нь үргэлж 'engineer' тул «Төлөвлөлтийн ахлах инженер» шатанд томилогдсон super инженерийн шатнаас эхэлдэг байв. */
+  const [picked, setPicked] = useState<Stage | null>(null);
   const flow = useMemo(
     () => resolveFlowStage(user?.username, role, picked, authStatus === 'off'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1773,7 +1775,8 @@ export function Guitsetgel() {
   );
   const stage: Stage = flow.stage ?? 'engineer';
   /** Түгжигдсэн шат (толгойн тэмдэг) — сонгогчтой админд байхгүй */
-  const fixed = flow.canPick ? undefined : flow.stage;
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`flow.viewAll`) — шат сонгогчтой (зөвхөн харах), тогтмол шатны шошгогүй */
+  const fixed = flow.canPick || flow.viewAll ? undefined : flow.stage;
   /**
    * ХЯНАХ ЭРХ — урсгалын шатанд томилогдсон, эсвэл системийн админ.
    *
@@ -1801,7 +1804,8 @@ export function Guitsetgel() {
      байж, илгээж ч чаддаг байв (`companyDeny` тугийг шалгадаггүй байсан — одоо lib-д хаагдсан).
      Туг нь эрхийг ХАСДАГ тул company шатны бөглөх орцыг нууна; «Мөр нэмэх» (`addRow`) эрх нь
      тусдаа олголт тул хэвээр. `aclN`-ээр дахин зурагдана (томилгоо өөрчлөгдөхөд). */
-  const companyViewOnly = stage === 'company' && !flow.canPick && authStatus !== 'off' && isViewOnly(user?.username);
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`viewAll`) company шатыг сонгосон ч бөглөхгүй — зөвхөн харна */
+  const companyViewOnly = stage === 'company' && !flow.canPick && authStatus !== 'off' && (isViewOnly(user?.username) || !!flow.viewAll);
   /**
    * ⚠️ 2026-10-09 (хэрэглэгч: «гүйцэтгэл батлах хэсгийн бүх батлагчид гүйцэтгэлийн хүснэгт рүү засвар
    *    хийх эрхгүйгээр орж харах боломжтой болго, гэхдээ батлах шатлал хэвээр»): хянагчийн шатанд
@@ -2036,7 +2040,7 @@ export function Guitsetgel() {
   const mineOk = mine.filter((w) => !blocked.has(w.key));
   const mineBlocked = mine.filter((w) => blocked.has(w.key));
   /* ⚠️ Табын тоо = цэсний тэмдэг (`countReviewPending`): зөвхөн харах томилгоо → 0, өөрийгөө батлах хоригтой нь хасагдана */
-  const tabCount = !flow.canPick && authStatus !== 'off' && isViewOnly(user?.username)
+  const tabCount = !flow.canPick && authStatus !== 'off' && (isViewOnly(user?.username) || !!flow.viewAll)
     ? 0 : myQueue.filter((w) => !blocked.has(w.key)).length;
   /* ⚠️ 2026-10-23 (UX аудит R2): шийдвэрлэх боломжгүй болсон ажлын ноорог (`REVIEW_DRAFTS`) хаягдана — эс бөгөөс F5 дээр
      хөтөч дэмий асууна */
@@ -2122,10 +2126,11 @@ export function Guitsetgel() {
         <span className={s.spacer} />
         {/* Хэн болох нь — үүргээс. Солих товч ЗӨВХӨН үүрэггүй (дев/super) үед. */}
         {fixed && <span className={s.roleBadge}>{STAGE_LABEL[fixed]}</span>}
+        {flow.viewAll && <span className={s.roleBadge}>{tr('Ерөнхий захирал · зөвхөн харна')}</span>}
         <Flow
           counts={Object.fromEntries(STAGE_ORDER.map((x) => [x, countFor(x)])) as Record<Stage, number>}
           stage={stage}
-          pick={flow.canPick ? (x) => { setPicked(x); setStatus(ALL); } : undefined}
+          pick={flow.canPick || flow.viewAll ? (x) => { setPicked(x); setStatus(ALL); } : undefined}
         />
       </header>
 
@@ -2276,7 +2281,13 @@ export function Guitsetgel() {
               {/* ⚠️ 2026-10-09 (хэрэглэгч: «бүгдийг ногоон болгосон ч батлах хэсэг алга»): шийдвэрийн
                   эрхгүй (`canReview: false` — `viewOnly` томилгоо г.м.) үед батлах/буцаах товч
                   `Item.mine`-аар НУУГДДАГ ч ямар ч тайлбаргүй байв. Шат бүрд ижил тул энд нэг удаа. */}
-              {!canReview && stage !== 'company' && mine.length > 0 && (
+              {/* ⚠️ 2026-10-23: «Ерөнхий захирал» — бүх шат/багцыг зөвхөн харна (томилгооны зааврын оронд) */}
+              {flow.viewAll && (
+                <div className={s.blockedWhy} role="note">
+                  {tr('Ерөнхий захирал — бүх багц, бүх шатны гүйцэтгэлийг зөвхөн ХАРНА; батлах/буцаах товч гарахгүй. Дээрх шатыг сонгож бусад шатыг харна.')}
+                </div>
+              )}
+              {!canReview && !flow.viewAll && stage !== 'company' && mine.length > 0 && (
                 <div className={s.blockedWhy} role="note">
                   {tr('Танд «{0}» шатанд зөвхөн ХАРАХ эрх байна — батлах/буцаах товч гарахгүй. Шийдвэр гаргах бол админаар «Гүйцэтгэлийн урсгал» хэсэгт энэ шатанд (зөвхөн харах тэмдэггүй) томилуулна уу.', STAGE_LABEL[stage])}
                 </div>

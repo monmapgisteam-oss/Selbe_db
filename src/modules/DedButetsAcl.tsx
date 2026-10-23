@@ -122,14 +122,16 @@ export function DedButetsAcl() {
       <AclGrid
         corner={tr('Багц')}
         rows={BUTETS_PACKS.map((p) => ({ key: p.key, label: p.name }))}
-        cols={[{ key: ROLE, label: tr('Засварлагч'), count: rows.filter((a) => a.grants.some((g) => g.role === ROLE)).length }]}
+        cols={[{ key: ROLE, label: tr('Засварлагч'), count: rows.filter((a) => a.grants.some((g) => g.role === ROLE) && known.has(a.user) && !portalMissing(a.user)).length }]}
         holders={(pack) => holdersOf(pack)}
         /* ⚠️ Хоосон багц гацаа биш — засвар батлах шатгүй, зөвхөн super засна */
         stuck={() => false}
         stuckTitle={() => ''}
         candidates={(pack) => {
           const list = holdersOf(pack).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(pack, _c, u) => addTo(pack, u)}
         onRemove={(pack, _c, h) => removeFrom(pack, h.user)}
