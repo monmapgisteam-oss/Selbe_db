@@ -92,16 +92,18 @@
   min-width: 84px;
   max-width: 84px;
   padding: 6px 6px;
-  background: #dbe5ef; /* ⚠️ 2026-09-25: цайвар горимд СААРАЛ БИШ — бүдэг хөх (хэрэглэгчийн заавар) */
-  color: #1b2b3a;
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «системтэй нийцүүл»): тогтмол хөх (#dbe5ef / dark #122236) → системийн
+     токен, гэрээний бүртгэлийн хүснэгттэй ижил. Харанхуй горимын тусдаа дүрэм хэрэггүй болов. */
+  background: var(--surface-2);
+  color: var(--ink-2);
   font-size: 0.75rem; /* ⚠️ 2026-09-25: толгой томорсон — хэрэглэгчийн заавар */
   font-weight: 700;
   line-height: 1.25;
   text-align: center;
   vertical-align: middle;
   white-space: normal;
-  border-right: 1px solid rgba(0, 0, 0, 0.22);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-strong);
 }
 /* ⚠️ «Гүйцэтгэлийн хувь»-ийн ногоон толгой ХАСАГДСАН (2026-09-25, хэрэглэгчийн заавар) */
 
@@ -121,7 +123,8 @@
   letter-spacing: 0.02em;
   padding: 7px 10px;
   /* ⚠️ Хүснэгт дэлгэцээс өргөн тул бичиг зүүн ирмэгтээ наалдана (нэг нүд хэвтээ sticky байж чадахгүй) */
-  background: #c9d8e8;
+  background: color-mix(in srgb, var(--data) 14%, var(--surface-2));
+  color: var(--ink);
 }
 /* Гарчгийн бичиг — ХАРАГДАЖ БУЙ хэсгийн ГОЛД, хэвтээ гүйлгэхэд ХӨДӨЛГӨӨНГҮЙ (2026-10-14, хэрэглэгч: «голлуулаад
    зүгээр хөдөлдөггүй болго»). Sticky `left: 50%` нь гүйлгэх хүрээний өргөнөөс бодогдож зүүн ирмэгийг голд
@@ -142,7 +145,7 @@
   position: sticky;
   top: var(--nhh, 0px);
   z-index: 2;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+  border-bottom: 2px solid var(--line-strong);
 }
 .tbl .totalRow td.fz { z-index: 3; }
 
@@ -162,7 +165,7 @@
  */
 .fz { position: sticky; z-index: 1; }
 .tbl th.fz { z-index: 4; }
-.fzEdge { box-shadow: 2px 0 0 rgba(0, 0, 0, 0.2); }
+.fzEdge { box-shadow: 2px 0 0 var(--line-strong); }
 
 /* Өргөсгөх бариул — толгойн баруун ирмэг */
 .rsz {
@@ -228,28 +231,15 @@
  * хөх — шатлал нь ижил (үе шат хамгийн бараан, навч цагаан). Excel-ийн
  * жинхэнэ өнгө нь зөвхөн ХАРАНХУЙ горимд.
  */
-.stage td { background: #d3dfeb; color: #16324f; font-weight: 700; }
-.l2 td { background: #e2eaf3; color: #1b2b3a; font-weight: 700; }
-.prep td { background: #ebf1f7; color: #1b2b3a; font-weight: 600; }
-.work td { background: #cfdae6; color: #16324f; font-weight: 700; }
-.workSub td { background: #e8ecf0; color: #1b2b3a; font-weight: 600; }
-.grp td { background: #f0f4f8; color: #1b2b3a; font-weight: 600; }
-
-/* ⚠️ ХАРАНХУЙ горим (2026-09-25, «dark болохгүй байна»): Excel-ийн тод өнгө
-   харанхуй дэвсгэр дээр хурц гэрэлтэж байсан тул бараан хөхийн шатлал.
-   Толгой ч саарал биш — харанхуй. */
-:global([data-theme='dark']) .tbl th {
-  background: #122236;
-  color: #dbe4ee;
-  border-right-color: rgba(255, 255, 255, 0.1);
-  border-bottom-color: rgba(255, 255, 255, 0.16);
-}
-:global([data-theme='dark']) .stage td { background: #1f3b5c; color: #eef4fb; }
-:global([data-theme='dark']) .l2 td { background: #1e2935; color: #dbe4ee; } /* ⚠️ 2026-09-25: толгойтой өнгөө солилцов — хэрэглэгчийн заавар */
-:global([data-theme='dark']) .prep td { background: #172b42; color: #dde6ef; }
-:global([data-theme='dark']) .work td { background: #1c3551; color: #eef4fb; }
-:global([data-theme='dark']) .workSub td { background: #222b35; color: #dde3ea; }
-:global([data-theme='dark']) .grp td { background: #16273a; color: #dde6ef; }
+/* ⚠️ 2026-10-23 (хэрэглэгч: «системтэй нийцүүл»): тогтмол хөх шатлал (цайвар + харанхуйн тусдаа
+   :global дүрэм) → системийн токен. Шатлал хэвээр — үе шат хамгийн тод, навч энгийн; --data-аар
+   тинттэй, --surface-тэй холиод БҮРЭН бүглээ (царцсан нүдэнд нэвт харагдахгүй). Хоёр горимд автоматаар. */
+.stage td { background: color-mix(in srgb, var(--data) 22%, var(--surface)); color: var(--ink); font-weight: 700; }
+.work td { background: color-mix(in srgb, var(--data) 16%, var(--surface)); color: var(--ink); font-weight: 700; }
+.l2 td { background: color-mix(in srgb, var(--data) 10%, var(--surface)); color: var(--ink); font-weight: 700; }
+.prep td { background: color-mix(in srgb, var(--data) 6%, var(--surface)); color: var(--ink); font-weight: 600; }
+.grp td { background: color-mix(in srgb, var(--data) 4%, var(--surface)); color: var(--ink); font-weight: 600; }
+.workSub td { background: var(--surface-2); color: var(--ink); font-weight: 600; }
 
 
 /* Хэмжилтгүй нүд — 0 гэж БҮҮ ойлгуул */
