@@ -457,7 +457,7 @@ const LIST_ORDER: string[] = [
   /* 1 · Газар чөлөөлөлт — барилга эхлэх урьдчилсан нөхцөл */
   'land',
   /* 2 · Багцын гүйцэтгэл — хуваарь, обьём, хяналт, чанар */
-  'schedule', 'variance', 'review', 'qaqc',
+  'schedule', 'variance', 'review',
   /* 3 · Багцын санхүү — акт, гэрээ, төсөв */
   'ipc', 'contractGap', 'uncontracted',
   /* Цаашид: нөхцөл ба аюулгүй байдал */

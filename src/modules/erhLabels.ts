@@ -46,7 +46,6 @@ export const bagtsText = (b: string[] | null): string =>
 /** Системийн гарчиг */
 export const sysTitle = (sys: DerivedSys | 'flow'): string => {
   if (sys === 'flow') return tr('Гүйцэтгэлийн урсгал');
-  if (sys === 'qaqc') return tr('Чанар (QAQC)');
   if (sys === 'huvaari') return tr('Хуваарь');
   if (sys === 'obyem') return tr('Инженерийн обьём');
   if (sys === 'ajil') return tr('Нэмэлт ажил');
@@ -57,13 +56,11 @@ export const sysTitle = (sys: DerivedSys | 'flow'): string => {
 /** Матрицын баганын шошго */
 export const colLabel = (c: MatrixCol): string => {
   if (c.sys === 'flow') return STAGE_LABEL[c.role as Stage];
-  if (c.sys === 'qaqc') return tr('QAQC');
   return roleLabel(c.sys, c.role);
 };
 
 export const capLabelShort = (k: CapKey): string => {
   if (k === 'addRow') return tr('Мөр нэмэх');
-  if (k === 'qaqc') return tr('QAQC');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл');
   if (k === 'finEdit') return tr('Санхүү — утга');
   if (k === 'finRow') return tr('Санхүү — мөр');
@@ -82,6 +79,8 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
   /* ⚠️ 2026-10-19: «Систем түр хаах» — `aclParity` CapKey бүрийг энд тулгана */
   if (k === 'sysClose') return tr('Систем хаах');
+  if (k === 'docsUpload') return tr('Баримт оруулах');
+  if (k === 'docsGroups') return tr('Баримтын бүлэг');
   return k;
 };
 

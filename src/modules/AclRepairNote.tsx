@@ -34,7 +34,7 @@ import s from './guitsetgel.module.css';
 /** Хуудас → хуваарилалтын систем (`null` — аккаунтаар олгодог энгийн эрхийн хуудас) */
 export const repairSysOf = (pane: ErhPane): RepairSys | null => {
   if (pane === 'guits') return 'flow';
-  if (pane === 'qaqc' || pane === 'huvaari' || pane === 'ajil' || pane === 'obyem' || pane === 'chanar' || pane === 'butets') return pane;
+  if (pane === 'huvaari' || pane === 'ajil' || pane === 'obyem' || pane === 'chanar' || pane === 'butets') return pane;
   return null;
 };
 

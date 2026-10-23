@@ -362,7 +362,8 @@ export default function Root() {
   const [lastPortal, setLastPortal] = useState<{ navScope: 'all' | ViewKey[]; docsAllowed: boolean; key: string } | null>(null);
   if (scope && authorized && !noAccess) {
     const navScope = clamped as 'all' | ViewKey[];
-    const docsAllowed = access?.docs ?? false;
+    /* ⚠️ 2026-10-23: баримт бичгийн сан нэвтэрсэн БҮХ хэрэглэгчид (`docLib`) — хуучин ТЭЗҮ-БОНУ-гийн `docs` туг үл тооцогдоно */
+    const docsAllowed = !!access;
     const key = `${navScope === 'all' ? 'all' : navScope.join(',')}|${docsAllowed ? 1 : 0}`;
     if (lastPortal?.key !== key) setLastPortal({ navScope, docsAllowed, key });
   }
@@ -524,7 +525,7 @@ export default function Root() {
           <Portal
             onHome={goHome}
             navScope={clamped as 'all' | ViewKey[]}
-            docsAllowed={access?.docs ?? false}
+            docsAllowed={!!access}
             isSuper={isSuper}
           />
         )
@@ -535,7 +536,7 @@ export default function Root() {
           onEnterView={enterView}
           /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
              хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
-          docsAllowed={access?.docs ?? false}
+          docsAllowed={!!access}
           isSuper={isSuper}
           /*
            * ⚠️ УДИРДЛАГЫН САМБАР — «бүх харагдац» эрхтэй хүнд ч нээгдэнэ

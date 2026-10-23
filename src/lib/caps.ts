@@ -47,7 +47,6 @@ import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
 export type CapKey =
   | 'addRow'
-  | 'qaqc'
   | 'zovshoorol'
   | 'finEdit'
   | 'finRow'
@@ -62,7 +61,9 @@ export type CapKey =
   | 'chanarReview'
   | 'hamaaral'
   | 'habeaData'
-  | 'sysClose';
+  | 'sysClose'
+  | 'docsUpload'
+  | 'docsGroups';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -74,19 +75,7 @@ export type CapKey =
  */
 export const CAPS: { key: CapKey; icon: string }[] = [
   { key: 'addRow', icon: 'plus' },
-  /**
-   * QAQC — Inspection Test Plan (М-акт · FIC · MA · MIR баримтын 9 багана)
-   * бөглөх эрх.
-   *
-   * ⚠️ Гүйцэтгэлийн хувь бөглөхөөс ТУСДАА: чанарын баримт бичгийг барилгын
-   * гүйцэтгэгч биш, чанарын хяналтын ажилтан хөтөлдөг. Нэг эрхэнд нийлүүлбэл
-   * обьём бөглөх бүрд баримтын багана нээгдэж, хэн юуг баталсан нь замхарна.
-   *
-   * ⚠️ 2026-09-04: өгөгдөл нь «Гүйцэтгэл бөглөх»-өөс гарч «Чанар (QAQC)»
-   *    тусдаа харагдацад (`src/modules/Qaqc.tsx`, `src/lib/qaqc.ts`) шилжсэн.
-   *    Эрх нь тэр харагдацыг автоматаар нээнэ (`CAP_HOST_VIEW`).
-   */
-  { key: 'qaqc', icon: 'shield' },
+  /* ⚠️ 2026-10-23: `qaqc` эрх ХАСАГДСАН — «Чанар (QAQC)» харагдац системээс устсан (хэрэглэгчийн шийдвэр). */
   /**
    * ЗӨВШӨӨРӨЛ — «Зөвшөөрөл» харагдац дээр зөвшөөрөл нэмэх, засах, устгах.
    *
@@ -211,6 +200,17 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'sysClose', icon: 'bolt' },
   /**
+   * БАРИМТ БИЧГИЙН САН (⚠️ 2026-10-23, хэрэглэгч: «баримт бичгийн сан болгож бүлэглэн PDF оруулах») — бүлэг нэмэх,
+   * нэр солих, устгах; PDF оруулах, устгах (`lib/docLib.ts`). Харах нь нэвтэрсэн БҮХ хэрэглэгчид — энэ эрх зөвхөн засвар.
+   * ⚠️ Харагдац НЭЭХГҮЙ (`CAP_HOST_VIEW` хоосон) — сан нь цэсний «Баримт» товчны цонх. Нэрээр олгоно (`PLAIN_CAPS`).
+   */
+  { key: 'docsUpload', icon: 'file' },
+  /**
+   * БАРИМТ БИЧГИЙН САНГИЙН БҮЛЭГ (⚠️ 2026-10-23, хэрэглэгч: «бүлэг үүсгэх, баримт оруулахыг тусдаа эрхийн тохиргоотой болго») —
+   * бүлэг нэмэх · нэр солих · (хоосон) устгах. PDF оруулах нь ТУСДАА `docsUpload`. Харагдац нээхгүй (`CAP_HOST_VIEW` хоосон).
+   */
+  { key: 'docsGroups', icon: 'grid' },
+  /**
    * ЧАНАРЫН БАРИМТ — АРГАЧЛАЛ ИРҮҮЛЭХ (гүйцэтгэгч). Зураглалын 1 · 2 · 6 · 9
    * алхам: боловсруулж ирүүлнэ, буцаагдвал сайжруулж дахин ирүүлнэ.
    *
@@ -256,10 +256,6 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
      нэмэгч (хуваарийн эрхгүй) хүнд «Хуваарь» хуудас огт нээгддэггүй — эрх нь чимээгүй утгагүй байв.
      «Гүйцэтгэл бөглөх»-д мөр нэмэх UI БАЙХГҮЙ (`FillNew`-ийн ⚠️). */
   addRow: ['huvaari'],
-  /* ⚠️ 2026-09-03: «Гүйцэтгэл»-ээс ӨӨРИЙН харагдац руу шилжив. Эрх нь энэ
-     харагдацыг автоматаар нээнэ — эс бөгөөс QAQC эрх олгосон инженер
-     чанарын хуудас руу орох замгүй үлдэнэ. */
-  qaqc: ['qaqc'],
   zovshoorol: ['zovshoorol'],
   finEdit: ['finance'],
   finRow: ['finance'],
@@ -288,12 +284,14 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   /* ⚠️ 2026-10-19: ХООСОН — «Систем түр хаах» нь харагдац биш, цэсний товч (`ViewRail.onSysClose`). Массив хэлбэр
      ЗААВАЛ (`capViewsOf`-ын `flatMap`-ийн ⚠️). */
   sysClose: [],
+  docsUpload: [],
+  docsGroups: [],
 };
 
 /**
  * УРСГАЛТАЙ ХАРАГДАЦУУД — хэрэглэгчийн картын «Харагдац» унтраалгад ОРОХГҮЙ
  * (2026-09-30, хэрэглэгчийн шийдвэр): Гүйцэтгэл · Хуваарь · Хуваарь батлах ·
- * Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC) · Материал баталгаажуулалт
+ * Нэмэлт ажил батлах · Чанарын баримт · Материал баталгаажуулалт (2026-10-23: «Чанар (QAQC)» хасагдсан)
  * (`ma`, 2026-10-09 аудит №6: `chanarAuthor/chanarReview`-д орсон — нийт 7). Тэдгээр нь урсгалын
  * хуваарилалтаар (эрх → `CAP_HOST_VIEW`, урсгалын шат → `grantFlowAccess`)
  * автоматаар нээгдэж, хуваарилалт хасахад буцаагдана.
@@ -310,7 +308,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
  *    утга хөндөгдөхгүй» байсан тул хуваарилалтгүй хүнд хуудас нээлттэй үлддэг байв.
  */
 const WORKFLOW_CAPS: readonly CapKey[] = [
-  'addRow', 'ajilApprove', 'plan', 'planApprove', 'obyemEdit', 'obyemApprove', 'chanarAuthor', 'chanarReview', 'qaqc',
+  'addRow', 'ajilApprove', 'plan', 'planApprove', 'obyemEdit', 'obyemApprove', 'chanarAuthor', 'chanarReview',
 ];
 export const WORKFLOW_VIEWS: readonly ViewKey[] = [...new Set(WORKFLOW_CAPS.flatMap((c) => CAP_HOST_VIEW[c]))];
 export const isWorkflowView = (v: ViewKey): boolean => WORKFLOW_VIEWS.includes(v);

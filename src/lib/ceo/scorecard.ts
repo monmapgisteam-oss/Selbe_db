@@ -38,7 +38,8 @@ import { coverageOk } from '@/lib/planProgress';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
-export type Dim = 'perf' | 'fin' | 'land' | 'plan' | 'permit' | 'hse' | 'qual';
+/* ⚠️ 2026-10-23: «Чанар» (`qual`, QAQC баримтын бөглөлт) хэмжүүр ХАСАГДСАН — «Чанар (QAQC)» системээс устсан */
+export type Dim = 'perf' | 'fin' | 'land' | 'plan' | 'permit' | 'hse';
 
 /**
  * ⚠️ 2026-09-17: «Зөвшөөрөл» ДОЛОО ДАХЬ бүлэг болж нэмэгдэв (хэрэглэгч).
@@ -46,7 +47,7 @@ export type Dim = 'perf' | 'fin' | 'land' | 'plan' | 'permit' | 'hse' | 'qual';
  *    хүснэгтийн багана, хавтан, задаргаанд сүүлд харагдана; асуудлын эрэмбэд ч
  *    (`workIssues`) ижил зэрэгтэй бусад бүлгийн ДАРАА орно.
  */
-export const DIMS: readonly Dim[] = ['perf', 'fin', 'land', 'permit', 'hse', 'qual', 'plan'];
+export const DIMS: readonly Dim[] = ['perf', 'fin', 'land', 'permit', 'hse', 'plan'];
 
 /** Асуудлын эрэмбэд доогуур бүлгүүд */
 const LOW_PRIORITY: ReadonlySet<Dim> = new Set<Dim>(['plan']);
@@ -100,12 +101,6 @@ export const dimDefs = (): Record<Dim, {
     kpis: [],
     rule: tr('Ажлын байрны үзлэгийн нийцлийн хувь: нийцсэн ÷ (нийцсэн + ноцтой + бага зэргийн үл нийцэл). ≥90 ногоон · 70–89 улбар шар · <70 улаан'),
     view: 'habea',
-  },
-  qual: {
-    title: tr('Чанар'), short: tr('Чанар'), icon: 'target',
-    kpis: ['qaqc'],
-    rule: tr('QAQC баримтын бөглөлт — бүрэн мөр 1, хэсэгчилсэн 0.5, хоосон 0'),
-    view: 'qaqc',
   },
 });
 
@@ -552,53 +547,6 @@ export function scoreHse(i: HseInput): DimScore {
     issues.push({ tone: lv, text: tr('Үзлэгийн нийцэл {0} — {1}%-иас доош', pct(score, 1), HSE_GOOD) });
   }
   return { score, facts, issues };
-}
-
-/* ── 7. Чанар ── */
-
-export type QualInput = {
-  /**
-   * QAQC хүснэгтийн нийлбэр — хүснэгтгүй бол null.
-   * ⚠️ 2026-10-11 (аудит №7): `flat` — мод холбогдоогүй тул нийлбэрт ОРООГҮЙ хуудасны тоо
-   *    (`scorecardLoad.loadScoreQual`); > 0 бол оноо ХАГАС өгөгдлөөр — баримт/асуудалд ил.
-   */
-  qaqc: { total: number; empty: number; partial: number; flat?: number } | null;
-};
-
-export function scoreQual(i: QualInput): DimScore {
-  const q = i.qaqc;
-  if (!q) return NONE;
-  const flatN = q.flat ?? 0;
-  const flatFact = flatN > 0 ? [fact(tr('Хагас — мод холбогдоогүй хуудас'), num(flatN))] : [];
-  const flatIssue: DimIssue[] = flatN > 0
-    ? [{ tone: 'info', text: tr('{0} хуудас бөглөх хуудастай холбогдоогүй тул чанарын оноо ХАГАС өгөгдлөөр', num(flatN)) }]
-    : [];
-  /* ⚠️ Бүх хуудас нь flat (ажлын мөр 0) — оноогүй ч шалтгааныг ил хэлнэ */
-  if (q.total <= 0) return flatN > 0 ? { score: null, facts: flatFact, issues: flatIssue } : NONE;
-  const full = Math.max(0, q.total - q.empty - q.partial);
-  const facts = [
-    fact(tr('Хяналтын ажлын мөр'), num(q.total)),
-    fact(tr('Баримт бүрэн'), num(full)),
-    fact(tr('Дутуу'), num(q.partial)),
-    fact(tr('Хоосон'), num(q.empty)),
-    ...flatFact,
-  ];
-  /* ⚠️ НЭГ Ч баримт оруулаагүй — «0 оноо» БИШ, дата хүлээгдэж буй (DimScore.pending) */
-  if (full === 0 && q.partial === 0) {
-    return {
-      score: null, facts, pending: true,
-      issues: [{ tone: 'info', text: tr('QAQC баримт огт оруулаагүй ({0} ажлын мөр)', num(q.total)) }, ...flatIssue],
-    };
-  }
-  const score = clamp(((full + q.partial * 0.5) / q.total) * 100);
-  const tone = toneOf(score);
-  return {
-    score, facts,
-    issues: [
-      ...(tone ? [{ tone, text: tr('{0} ажлын QAQC баримт хоосон, {1} нь дутуу', num(q.empty), num(q.partial)) }] : []),
-      ...flatIssue,
-    ],
-  };
 }
 
 /* ══════════════ Нэгтгэл ══════════════ */

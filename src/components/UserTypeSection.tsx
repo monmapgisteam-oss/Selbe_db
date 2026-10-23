@@ -59,7 +59,7 @@ export function superRemainText(user: string): string {
   if (e.flow) parts.push(tr('гүйцэтгэлийн шат: {0}{1}', STAGE_LABEL[e.flow.stage], e.flow.viewOnly ? ` (${tr('зөвхөн харна')})` : ''));
   const panes = ([
     ['huvaari', e.huvaari.length], ['obyem', e.obyem.length], ['ajil', e.ajil.length],
-    ['chanar', e.chanar.length], ['butets', e.butets.length], ['qaqc', e.qaqcAssigned ? 1 : 0],
+    ['chanar', e.chanar.length], ['butets', e.butets.length],
   ] as const).filter(([, n]) => n > 0).map(([p]) => paneLabel(p));
   if (panes.length) parts.push(tr('багцын хуваарилалт: {0}', panes.join(', ')));
   return parts.length

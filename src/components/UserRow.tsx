@@ -62,7 +62,6 @@ export type UserRowProps = {
   onRole: (role: Role) => void;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
-  onFlipDocs: () => void;
   onFlipRemove: () => void;
   onGoFlow: () => void;
   /** ⚠️ 2026-10-21: ӨӨРИЙН super мөр — үүрэг сонгогч · устгах · «Төрлөөр тохируулах» түгжээтэй (өөр super өөрчилнө) */
@@ -79,7 +78,6 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   hasView: p.hasView,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
-  onFlipDocs: p.onFlipDocs,
   superUser: p.superUser,
 });
 

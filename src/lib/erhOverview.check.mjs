@@ -39,7 +39,7 @@ const G1 = PKG_GROUPS[1];
 
 /** Хоосон эх сурвалж */
 const empty = () => ({
-  users: [], flow: [], qaqc: [], huvaari: [], obyem: [], chanar: [], caps: {}, views: {},
+  users: [], flow: [], huvaari: [], obyem: [], chanar: [], caps: {}, views: {},
 });
 
 /* ── 1. ЭРХГҮЙ хүн — `any: false` ── */
@@ -48,7 +48,6 @@ const empty = () => ({
   const u = userErh(src, 'hen_ch');
   assert.equal(u.any, false, 'эрхгүй хүн any:true гарав');
   assert.equal(u.flow, null);
-  assert.equal(u.qaqc, null);
   assert.deepEqual(u.huvaari, []);
   assert.deepEqual(u.caps, []);
 }
@@ -59,17 +58,16 @@ console.log('✅ эрхгүй аккаунт ялгагдана');
   const src = {
     ...empty(),
     users: ['buh'],
-    qaqc: [{ user: 'buh', bagts: ['*'] }],
     huvaari: [{ user: 'buh', grants: [{ role: 'author', bagts: ['*'] }] }],
   };
   const u = userErh(src, 'buh');
-  assert.equal(u.qaqc, null, '«*» нь null (бүх багц) болох ёстой');
-  assert.equal(u.huvaari[0].bagts, null);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.equal(u.huvaari[0].bagts, null, '«*» нь null (бүх багц) болох ёстой');
   assert.equal(u.any, true);
 
   /* Бүх багцад тоологдоно */
   for (const g of PKG_GROUPS) {
-    assert.deepEqual(pkgErh(src, g).qaqc, ['buh'], `${g}: «*»-тай хүн тоологдсонгүй`);
+    assert.deepEqual(pkgErh(src, g).huvaari.author, ['buh'], `${g}: «*»-тай хүн тоологдсонгүй`);
   }
 }
 console.log('✅ «*» = бүх багц, багц бүрд тоологдоно');
@@ -79,11 +77,12 @@ console.log('✅ «*» = бүх багц, багц бүрд тоологдоно
   const src = {
     ...empty(),
     users: ['Batbayar'],
-    qaqc: [{ user: '  BATBAYAR  ', bagts: [G0] }],
+    /* ⚠️ 2026-10-23: QAQC хасагдсан */
+    huvaari: [{ user: '  BATBAYAR  ', grants: [{ role: 'author', bagts: [G0] }] }],
     caps: { batbayar: ['gazar'] },
   };
   const u = userErh(src, 'Batbayar');
-  assert.deepEqual(u.qaqc, [G0], 'үсгийн хэлбэр/зайнаас болж олдсонгүй');
+  assert.deepEqual(u.huvaari[0].bagts, [G0], 'үсгийн хэлбэр/зайнаас болж олдсонгүй');
   assert.deepEqual(u.caps, ['gazar']);
 }
 console.log('✅ үсгийн хэлбэр · зай тэсвэртэй');
@@ -253,15 +252,16 @@ console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar �
 
 /* ══════════════════ 9. МАТРИЦ ба ГАРГАЛГААТАЙ ЭРХ (2026-09-25) ══════════════════ */
 {
-  /* 20 багана: урсгал 7 (2026-10-23) · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 · QAQC 1 */
-  assert.equal(MATRIX_COLS.length, 20, 'матриц 20 баганатай байх ёстой');
+  /* 19 багана: урсгал 7 (2026-10-23) · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.equal(MATRIX_COLS.length, 19, 'матриц 19 баганатай байх ёстой');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:tug'), '2026-09-28: ТУГ багана');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:cheng'), '2026-09-28: ЧХ инженер багана');
   assert.equal(MATRIX_COLS.filter((c) => c.sys === 'flow').length, STAGE_ORDER.length);
-  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 20, 'баганын id давхцав');
+  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 19, 'баганын id давхцав');
   assert.equal(pkgMatrix(empty()).length, PKG_GROUPS.length, 'мөр = PKG_GROUPS');
 }
-console.log('✅ матриц — 20 багана, багц бүр мөр');
+console.log('✅ матриц — 19 багана, багц бүр мөр');
 
 /* ── 9a. Issue бүр ӨӨРИЙН баганыг улаан болгоно ── */
 {
@@ -340,35 +340,30 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
     users: ['boss', 'rv', 'qa', 'orph', 'all'],
     supers: ['boss'],
     chanar: [{ user: 'rv', grants: [{ role: 'habea', bagts: [G0] }] }],
-    qaqc: [{ user: 'qa', bagts: [G1] }],
+    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     huvaari: [{ user: 'all', grants: [{ role: 'author', bagts: ['*'] }] }],
     caps: {
-      boss: ['plan', 'qaqc', 'finRow'],
+      boss: ['plan', 'finRow'],
       rv: ['chanarReview', 'chanarAuthor'],
-      qa: ['qaqc', 'zovshoorol'],
+      qa: ['zovshoorol'],
       orph: ['butets', 'gazar'],
       all: ['plan'],
     },
   };
   /* ⚠️ 2026-10-23: ХҮСНЭГТИЙН super-ийн хадгалагдсан эрх энгийн хүнийх шиг шалгагдана; зөвхөн КОДЫН super чөлөөтэй */
-  assert.deepEqual(orphanCaps(userErh(src, 'boss')), ['plan', 'qaqc'], 'хүснэгтийн super-ийн хадгалсан өнчин эрх харагдах ёстой');
+  assert.deepEqual(orphanCaps(userErh(src, 'boss')), ['plan'], 'хүснэгтийн super-ийн хадгалсан өнчин эрх харагдах ёстой');
   const codeSrc = { ...src, codeSupers: ['boss'] };
   assert.deepEqual(orphanCaps(userErh(codeSrc, 'boss')), [], 'кодын super-т өнчин эрх гарах ёсгүй');
   assert.equal(userErh(codeSrc, 'boss').codeSuper, true);
   assert.equal(userErh(src, 'boss').codeSuper, false);
   assert.deepEqual(orphanCaps(userErh(src, 'rv')), ['chanarAuthor'],
     'chanarReview нь ХАБЭА үүргээр эх сурвалжтай; chanarAuthor өнчин');
-  assert.deepEqual(orphanCaps(userErh(src, 'qa')), [], 'qaqc нь QAQC мөрөөр эх сурвалжтай; энгийн эрх өнчин биш');
+  assert.deepEqual(orphanCaps(userErh(src, 'qa')), [], 'энгийн эрх өнчин биш');
   assert.deepEqual(orphanCaps(userErh(src, 'orph')), ['butets'], 'хуваарилалтгүй butets өнчин, gazar энгийн');
 
   assert.equal(capBacking(userErh(src, 'all'), 'plan'), null, 'ALL → null (бүх багц)');
   assert.deepEqual(capBacking(userErh(src, 'rv'), 'chanarReview'), [G0]);
-  assert.deepEqual(capBacking(userErh(src, 'qa'), 'qaqc'), [G1]);
-  /* ⚠️ QAQC «бүх багц» → null, мөргүй → [] (UserErh.qaqc-ийн null хоёр утгатай) */
-  const qa2 = { ...empty(), users: ['qall'], qaqc: [{ user: 'qall', bagts: ['*'] }], caps: { qall: ['qaqc'] } };
-  assert.equal(capBacking(userErh(qa2, 'qall'), 'qaqc'), null, 'QAQC ALL → null');
-  assert.deepEqual(orphanCaps(userErh(qa2, 'qall')), [], 'QAQC ALL өнчин биш');
-  assert.deepEqual(capBacking(userErh(src, 'orph'), 'qaqc'), [], 'QAQC мөргүй → []');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.deepEqual(capBacking(userErh(src, 'orph'), 'butets'), [], 'хуваарилалтгүй → []');
   assert.deepEqual(capBacking(userErh(src, 'qa'), 'zovshoorol'), [], 'энгийн эрх → []');
 
@@ -428,12 +423,11 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
   const partial = { ...empty(), flow: [{ user: 'a', stage: STAGE_ORDER[0], bagts: [G0] }] };
   assert.ok(!pkgErh(partial, G0).issues.some((i) => i.key === 'flowEmpty'), 'хэсэгчилсэн цоорхой flowEmpty биш');
 
-  /* (б) танигдаагүй багц — урсгал · QAQC · хуваарь · обьём · чанар · нэмэлт ажил; «*» ба зөв нэр орохгүй */
+  /* (б) танигдаагүй багц — урсгал · хуваарь · обьём · чанар · нэмэлт ажил; «*» ба зөв нэр орохгүй (2026-10-23: QAQC хасагдсан) */
   const src = {
     ...empty(),
     users: ['u1', 'u2', 'u3'],
     flow: [{ user: 'u1', stage: STAGE_ORDER[1], bagts: [G0, 'Багц 99 (хуучин)'] }],
-    qaqc: [{ user: 'u2', bagts: ['*'] }],
     huvaari: [{ user: 'u2', grants: [{ role: 'author', bagts: ['Хуучин нэр'] }] }],
     ajil: [{ user: 'U3', grants: [{ role: 'editor', bagts: [G1] }] }],
   };

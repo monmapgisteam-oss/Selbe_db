@@ -28,7 +28,7 @@ import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { STAGE_ORDER, type Stage } from './hyanalt';
 import { ALL_BAGTS } from './scopedAcl';
 import type { CapKey } from './caps';
-import { QAQC_CAP, ROLE_CAPS, SCOPED_SYSTEMS, capSystem, rolesOfCap } from './aclRoleCaps';
+import { ROLE_CAPS, SCOPED_SYSTEMS, capSystem, rolesOfCap } from './aclRoleCaps';
 import { reviewerClashes, type Reviewer } from './chanarMs';
 
 /* ── Тоймд хэрэгтэй хэмжээгээр нь эх сурвалжийг тодорхойлно ──
@@ -57,8 +57,6 @@ export type ErhSource = {
   /** Порталын БҮХ аккаунт (жижиг үсгээр биш, харагдах хэлбэрээр) */
   users: string[];
   flow: FlowRow[];
-  /** ⚠️ Чанар нь ҮҮРЭГГҮЙ — grant биш, шууд багцын жагсаалт */
-  qaqc: { user: string; bagts: string[] }[];
   huvaari: ScopedRow[];
   obyem: ScopedRow[];
   /** Чанарын баримт — 6 үүрэг (author · tuh · chanar · habea · tug · cheng), 2026-09-28 */
@@ -135,12 +133,6 @@ export type UserErh = {
   superUser: boolean;
   /** ⚠️ 2026-10-23: кодын (тестийн) super — өнчин/дутуу эрхийн шалгалтаас чөлөөтэй (`ErhSource.codeSupers`) */
   codeSuper: boolean;
-  qaqc: string[] | null;
-  /**
-   * QAQC мөр БАЙГАА эсэх (2026-09-25). ⚠️ `qaqc`-ийн `null` нь ХОЁР утгатай
-   *    (мөргүй · «бүх багц») тул өнчин эрхийн шалгуур үүнийг хэрэглэнэ.
-   */
-  qaqcAssigned: boolean;
   huvaari: RoleLine[];
   obyem: RoleLine[];
   chanar: RoleLine[];
@@ -174,7 +166,6 @@ const unknownOf = (lists: (readonly string[] | null | undefined)[]): string[] =>
 export function userErh(src: ErhSource, user: string): UserErh {
   const k = norm(user);
   const f = src.flow.find((x) => norm(x.user) === k);
-  const q = src.qaqc.find((x) => norm(x.user) === k);
 
   const lines = (rows: ScopedRow[]): RoleLine[] => {
     const r = rows.find((x) => norm(x.user) === k);
@@ -198,7 +189,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
     return [...(r.grants ?? []).map((g) => g.bagts), ...(Array.isArray(r.bagts) ? [r.bagts] : [])];
   };
   const unknownBagts = unknownOf([
-    f?.bagts, q?.bagts,
+    f?.bagts,
     ...rawGrants(src.huvaari), ...rawGrants(src.obyem), ...rawGrants(src.chanar), ...rawGrants(src.ajil ?? []),
   ]);
 
@@ -207,8 +198,6 @@ export function userErh(src: ErhSource, user: string): UserErh {
     flow: f ? { stage: f.stage, bagts: bagtsOf(f.bagts), viewOnly: f.viewOnly === true } : null,
     superUser,
     codeSuper,
-    qaqc: q ? bagtsOf(q.bagts) : null,
-    qaqcAssigned: !!q,
     huvaari,
     obyem,
     chanar,
@@ -217,7 +206,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
     caps,
     views,
     /* ⚠️ super нь бүх эрхтэй — «эрх олгоогүй» гэж харуулахгүй (2026-09-24) */
-    any: superUser || !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
+    any: superUser || !!f || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
     unknownBagts,
   };
@@ -268,7 +257,6 @@ export type PkgErh = {
    * `flowGap`-д хоосон гэж тоологдоно — илгээлт тэнд зогсоно.
    */
   flowViewers: Record<Stage, string[]>;
-  qaqc: string[];
   /** Үүрэг → эзэд */
   huvaari: Record<string, string[]>;
   obyem: Record<string, string[]>;
@@ -331,8 +319,6 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
     ]),
   ) as Record<Stage, string[]>;
 
-  const qaqc = src.qaqc.filter((x) => covers(x.bagts, bagts)).map((x) => x.user);
-
   const byRole = (rows: ScopedRow[]): Record<string, string[]> => {
     const out: Record<string, string[]> = {};
     for (const r of rows) {
@@ -376,7 +362,7 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
     !i.key.endsWith('SelfApprove') && i.key !== 'chanarOneManRoles' && !!i.cols?.length
     && i.cols.every((c) => colUsers(c).every((u) => supers.has(norm(u))));
   return {
-    bagts, flow, flowViewers, qaqc, huvaari, obyem, chanar, ajil,
+    bagts, flow, flowViewers, huvaari, obyem, chanar, ajil,
     issues: supers.size ? issues.map((i) => (noPlain(i) ? { ...i, superOnly: true } : i)) : issues,
   };
 }
@@ -508,14 +494,14 @@ export const allUserErh = (src: ErhSource): UserErh[] =>
 /* ══════════════════ БАГЦ × СИСТЕМИЙН МАТРИЦ (2026-09-25) ══════════════════ */
 
 /** Матрицын нэг баганы систем */
-export type MatrixSys = 'flow' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'qaqc';
+export type MatrixSys = 'flow' | 'huvaari' | 'obyem' | 'ajil' | 'chanar';
 
 /** Матрицын багана — `id` нь `PkgIssue.cols`-той таарна */
 export type MatrixCol = { id: string; sys: MatrixSys; role: string };
 
 /**
- * ХОРИН БАГАНА (2026-10-23: урсгал 7 шаттай): урсгал ×7 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
- * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер) · QAQC ×1.
+ * АРВАН ЕСӨН БАГАНА (2026-10-23: урсгал 7 шаттай): урсгал ×7 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
+ * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер). ⚠️ 2026-10-23: QAQC багана хасагдсан.
  * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` (25), `PKG_GROUPS` биш;
  *    тусдаа хүснэгтэд (`butetsRows`).
  * ⚠️ Шошго ЭНД БИШ — `tr()` зурагдах агшинд (React талд).
@@ -524,7 +510,6 @@ export const MATRIX_COLS: MatrixCol[] = [
   ...STAGE_ORDER.map((st): MatrixCol => ({ id: `flow:${st}`, sys: 'flow', role: st })),
   ...(['huvaari', 'obyem', 'ajil', 'chanar'] as const).flatMap((sys) =>
     Object.keys(ROLE_CAPS[sys]).map((role): MatrixCol => ({ id: `${sys}:${role}`, sys, role }))),
-  { id: 'qaqc:', sys: 'qaqc', role: '' },
 ];
 
 /** Матрицын нэг нүд */
@@ -550,8 +535,7 @@ export function pkgMatrix(src: ErhSource): MatrixRow[] {
     const cells: Record<string, MatrixCell> = {};
     for (const c of MATRIX_COLS) {
       const owners = c.sys === 'flow' ? p.flow[c.role as Stage]
-        : c.sys === 'qaqc' ? p.qaqc
-          : (p[c.sys][c.role] ?? []);
+        : (p[c.sys][c.role] ?? []);
       const viewers = c.sys === 'flow' ? p.flowViewers[c.role as Stage] : [];
       const hit = p.issues.filter((i) => i.cols?.includes(c.id));
       const tone = hit.some((i) => i.tone === 'bad') ? 'bad' : hit.length ? 'warn' : null;
@@ -594,7 +578,6 @@ const linesOf = (u: UserErh, sys: (typeof SCOPED_SYSTEMS)[number]): RoleLine[] =
 export function capBacking(u: UserErh, cap: CapKey): string[] | null {
   const sys = capSystem(cap);
   if (!sys) return [];
-  if (sys === 'qaqc') return u.qaqcAssigned ? u.qaqc : [];
   const roles = rolesOfCap(cap);
   const lines = linesOf(u, sys).filter((l) => roles.includes(l.role));
   if (lines.some((l) => l.bagts === null)) return null;
@@ -603,7 +586,6 @@ export function capBacking(u: UserErh, cap: CapKey): string[] | null {
 
 /** Эх сурвалж (хуваарилалт) байгаа эсэх */
 const backed = (u: UserErh, cap: CapKey): boolean => {
-  if (cap === QAQC_CAP) return u.qaqcAssigned;
   const b = capBacking(u, cap);
   return b === null || b.length > 0;
 };
@@ -630,7 +612,6 @@ export function missingCaps(u: UserErh): CapKey[] {
   /* ⚠️ 2026-10-23: зөвхөн кодын super чөлөөтэй (`orphanCaps`-ийн ⚠️) */
   if (u.codeSuper) return [];
   const out = new Set<CapKey>();
-  if (u.qaqcAssigned && !u.caps.includes(QAQC_CAP)) out.add(QAQC_CAP);
   for (const sys of SCOPED_SYSTEMS) {
     const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;
     for (const l of linesOf(u, sys)) {

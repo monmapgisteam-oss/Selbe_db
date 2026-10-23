@@ -31,7 +31,6 @@ import { askConfirm } from '@/lib/confirm';
 import { remoteMalformed, subscribe } from '@/lib/permissions';
 import { subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
 import { subscribeAcl } from '@/lib/guitsetgelAcl';
-import { subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { subscribeObyemAcl } from '@/lib/obyemAcl';
 import { subscribeChanarAcl } from '@/lib/chanarAcl';
@@ -63,7 +62,6 @@ export function ErhOverview({
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeCaps(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeAcl(() => tick((n) => n + 1)), []);
-  useEffect(() => subscribeQaqcAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => tick((n) => n + 1)), []);
@@ -299,15 +297,6 @@ export function ErhOverview({
                   bagts: l.bagts?.map((k) => BUTETS_PACKS.find((x) => x.key === k)?.name ?? k) ?? null,
                 }))}
               />
-
-              {/* ⚠️ `qaqcAssigned` (2026-09-25): `qaqc === null` нь «бүх багц»-ийг ч
-                  илэрхийлдэг тул урьд нь бүх багцтай QAQC хүн энд харагддаггүй байв */}
-              {u.qaqcAssigned && (
-                <div className={s.aclRole}>
-                  <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
-                  <div className={s.aclName}>{bagtsText(u.qaqc)}</div>
-                </div>
-              )}
 
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>

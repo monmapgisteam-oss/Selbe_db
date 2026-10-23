@@ -37,8 +37,9 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
   assert.deepEqual(bad, [], `засах эрхийн мөр загварт буцаж ирэв: ${bad.join(', ')}`);
   /* ⚠️ 2026-09-30: урсгалтай 6 харагдац загварт ОРОХГҮЙ — урсгалын хуваарилалтаар нээгдэнэ */
   /* ⚠️ 2026-10-09: + «ma» (MA — чанарын эрхийн гэр харагдац, «chanar»-тай адил урсгалтай) */
-  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma', 'qaqc'],
-    'WORKFLOW_VIEWS ≠ урсгалтай 6 харагдац (2026-10-20: «Чанарын баримт» хасагдсан)');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma'],
+    'WORKFLOW_VIEWS ≠ урсгалтай 5 харагдац (2026-10-20: «Чанарын баримт», 2026-10-23: «Чанар (QAQC)» хасагдсан)');
   /* ⚠️ 2026-09-30 (merge irgediin-hurteemj): «ТУХ» нэмэгдэж 24 болсон — тоог хатуу бичихгүй.
      Шалгуурын утга: урсгалтай харагдац VIEWS-ээс ХАСАГДААГҮЙ (зөвхөн унтраалгаас шүүгдэнэ). */
   for (const k of WORKFLOW_VIEWS) assert.ok(VIEWS.some((v) => v.key === k), `VIEWS-ээс урсгалтай харагдац хасагдсан: ${k}`);
@@ -47,7 +48,7 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
     else assert.ok(ids.includes(`view:${v.key}`), `view:${v.key} каталогт алга`);
   }
   assert.ok(ids.includes('docs') && ids.includes('admin'), 'docs · admin мөр алга');
-  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 2, 'каталог = харагдац − урсгалтай 6 + docs + admin');
+  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 2, 'каталог = харагдац − урсгалтай 5 + docs + admin');
   /* хадгалсан хуучин загварын урсгалтай харагдац хаягдана; roleAccess ч агуулахгүй */
   assert.ok(!cleanTpl('injener', { on: ['view:gdash', 'view:guitsetgel', 'view:huvaari'], home: 'gdash' }).on.includes('view:guitsetgel'));
   for (const r of TYPE_ORDER) {

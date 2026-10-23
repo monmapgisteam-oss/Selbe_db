@@ -173,7 +173,8 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   },
   chanar: {
     on: V('gdash', 'plan', 'hesegET', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
-    home: 'qaqc',
+    /* ⚠️ 2026-10-23: «Чанар (QAQC)» хасагдсан — гэр нь «Материал баталгаажуулалт» */
+    home: 'ma',
   },
   gazar: {
     on: V('gazar', 'gdash', 'plan', 'hesegET', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),

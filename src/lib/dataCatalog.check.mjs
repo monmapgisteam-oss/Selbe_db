@@ -11,14 +11,13 @@
  *  3. ҮХСЭН ХОЛБООС. `ref` нь байхгүй id руу заавал дархад юу ч болохгүй.
  *  4. ХААЛТТАЙ ҮЙЛЧИЛГЭЭ (499) тугаа алдах — CLAUDE.md-ийн «хаалттай 2
  *     үйлчилгээ»: `Selbe_guitsetgel_consolidated`, `Selbe_ET_20260721`.
- *  5. `Bagts_*` 18 хуудас ба `QAQC_TABLE` бүр мөртэй эсэх.
+ *  5. `Bagts_*` хуудас бүр мөртэй эсэх (2026-10-23: QAQC хасагдсан).
  */
 
 import assert from 'node:assert/strict';
 import { dataCatalog, CAT_GROUPS, CLOSED_SERVICES, CLOSED_WITH_ROWS, searchText } from './dataCatalog.ts';
 import { LAYERS, VIEWS } from './services.ts';
 import { PKGS } from '../modules/sheet/bagts.pkg.ts';
-import { QAQC_TABLE } from './qaqc.ts';
 
 const cat = dataCatalog();
 assert.ok(cat.length > 50, `каталог хэт цөөн: ${cat.length}`);
@@ -34,11 +33,12 @@ const covered = new Set(cat.flatMap((e) => e.aliases));
 const missing = LAYERS.map((l) => l.id).filter((id) => !covered.has(id));
 assert.deepEqual(missing, [], `каталогт ороогүй LAYERS id: ${missing.join(', ')}`);
 
-/* ── 5. Bagts_* ба QAQC ── */
+/* ── 5. Bagts_* ── */
 for (const p of PKGS) assert.ok(byId.has(`bagts:${p.key}`), `Bagts хуудас дутуу: ${p.key}`);
 /* ⚠️ 2026-10-12: 18 → 24 — 6 блокгүй багц нэмэгдсэн (6.3 · 6.5 · 6.6 · 6.7 · 6.8 · 7.1) */
 assert.equal(PKGS.length, 24, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
-for (const k of Object.keys(QAQC_TABLE)) assert.ok(byId.has(`qaqc:${k}`), `QAQC хүснэгт дутуу: ${k}`);
+/* ⚠️ 2026-10-23: QAQC хасагдсан */
+assert.ok(![...byId.keys()].some((id) => id.startsWith('qaqc')), 'QAQC мөр каталогт үлдсэн');
 
 /* ── 3. шатлалын холбоос ── */
 const groups = new Set(CAT_GROUPS.map((g) => g.key));

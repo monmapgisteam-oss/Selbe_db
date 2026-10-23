@@ -180,7 +180,7 @@ const CASES = [
   { name: 'Finance', load: () => import('@/modules/Finance'), pick: (m) => m.Finance, props: {}, expect: ['Санхүүжилтийн бүртгэл'] },
   { name: 'IpcTable', load: () => import('@/modules/IpcTable'), pick: (m) => m.IpcTable, props: { contracts: [] } },
   { name: 'Guitsetgel', load: () => import('@/modules/Guitsetgel'), pick: (m) => m.Guitsetgel, props: {} },
-  { name: 'Qaqc', load: () => import('@/modules/Qaqc'), pick: (m) => m.Qaqc, props: {}, expect: ['Багц 3.2', 'Хадгалах'] },
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   { name: 'Zovshoorol', load: () => import('@/modules/Zovshoorol'), pick: (m) => m.Zovshoorol, props: {} },
   { name: 'Tailan', load: () => import('@/modules/Tailan'), pick: (m) => m.Tailan, props: {}, expect: ['Удирдлагын тайлан'] },
   { name: 'ExecReport', load: () => import('@/modules/ExecReport'), pick: (m) => m.ExecReport, props: {} },
@@ -198,8 +198,7 @@ const CASES = [
      Багцаар олгодог 7 хуудас «багц × үүрэг» хүснэгт (`AclGrid`) — «Багц» булан ба багцын мөр зурагдах ёстой */
   { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false,
     expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА', 'Багц 1'] },
-  { name: 'QaqcAcl', load: () => import('@/modules/QaqcAcl'), pick: (m) => m.QaqcAcl, props: {}, map: false,
-    expect: ['Чанарын хяналт', 'Багц 1'] },
+  /* ⚠️ 2026-10-23: QAQC хасагдсан (QaqcAcl) */
   { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false,
     expect: ['Зохиогч', 'Батлагч', 'Багц 1'] },
   { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false,

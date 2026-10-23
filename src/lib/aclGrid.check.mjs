@@ -89,7 +89,8 @@ assert.deepEqual(planListRemove(null, P2, PK), { kind: 'none' });
    «window/ArcGIS шаардана» гэж үзэж байсан ч гурвуулаа Node-д (ts-alias loader) импортлогддог.
    Regex-ийн 2-р хувилбар (`export { … ALL_BAGTS … }` дахин экспорт) утгыг ОГТ тулгалгүй
    давуулдаг байв — одоо БОДИТ утгыг тулгана. */
-for (const [f, name] of [['@/lib/scopedAcl', 'ALL_BAGTS'], ['@/lib/qaqcAcl', 'ALL_BAGTS'], ['@/lib/guitsetgelGrid', 'GRID_ALL']]) {
+/* ⚠️ 2026-10-23: QAQC хасагдсан (`qaqcAcl` устсан) */
+for (const [f, name] of [['@/lib/scopedAcl', 'ALL_BAGTS'], ['@/lib/guitsetgelGrid', 'GRID_ALL']]) {
   const m = await import(f);
   assert.equal(typeof m[name], 'string', `${f}: ${name} экспорт олдсонгүй`);
   assert.equal(GRID_ALL, m[name], `${f}: GRID_ALL нь ${name}-тай ижил байх ёстой`);

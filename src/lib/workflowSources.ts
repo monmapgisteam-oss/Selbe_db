@@ -15,18 +15,18 @@
  */
 
 import { CAP_HOST_VIEW, WORKFLOW_VIEWS, type CapKey } from './caps';
-import { QAQC_CAP, ROLE_CAPS, SCOPED_SYSTEMS, type ScopedSys } from './aclRoleCaps';
+import { ROLE_CAPS, SCOPED_SYSTEMS, type ScopedSys } from './aclRoleCaps';
 import type { UserErh } from './erhOverview';
 import type { ViewKey } from './services';
 
 /** Нэг эх сурвалж */
 export type WfSource = {
   /**
-   * `flow` — урсгалын томилгоо · `qaqc` · үүрэгтэй тав — хуваарилалт ·
+   * `flow` — урсгалын томилгоо · үүрэгтэй тав — хуваарилалт (2026-10-23: QAQC хасагдсан) ·
    * `cap` — хуваарилалтгүй ШУУД олгосон эрх (хатуу super-ийн шууд олголт / өнчин эрх)
    */
-  sys: 'flow' | 'qaqc' | ScopedSys | 'cap';
-  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `qaqc`-д — ''; `cap`-д — эрхийн түлхүүр */
+  sys: 'flow' | ScopedSys | 'cap';
+  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр */
   role: string;
   /** Багцууд — `null` = бүх багц; `cap`-д `null` (хязгааргүй) */
   bagts: string[] | null;
@@ -63,11 +63,6 @@ export function workflowRows(u: UserErh): WfRow[] {
       sys: 'flow', role: u.flow.stage, bagts: u.flow.bagts, cap: null, granted: true,
       ...(u.flow.viewOnly ? { viewOnly: true } : {}),
     });
-  }
-  if (u.qaqcAssigned) {
-    explained.add(QAQC_CAP);
-    const granted = u.caps.includes(QAQC_CAP);
-    for (const v of hosts(QAQC_CAP)) push(v, { sys: 'qaqc', role: '', bagts: u.qaqc, cap: QAQC_CAP, granted });
   }
   for (const sys of SCOPED_SYSTEMS) {
     const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;

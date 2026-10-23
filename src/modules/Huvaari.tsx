@@ -25,7 +25,7 @@
  * АРХИВТ ШИНЭ АГШИН ҮҮСГЭХГҮЙ: хуваарь нь хэмжилт биш, төлөвлөгөө.
  */
 
-import { type PointerEvent as PEvt, useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
@@ -102,6 +102,7 @@ import { FlowBox } from './huvaari/FlowBox';
 import { AddBox, BlockRow, HowtoHint, TaskRow, type CellVia } from './huvaari/TaskRow';
 import { PlanModal } from './huvaari/PlanModal';
 import { LinkModal } from './huvaari/LinkModal';
+import { Segmented, Switch, Toggle } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
 
@@ -408,10 +409,18 @@ export function Huvaari({
   /* ⚠️ ХЯНАЛТЫН ГОРИМД (`review`) ЗАСВАР ХААЛТТАЙ — батлагч саналыг ХАРНА,
      өөрчлөхгүй. `save()` нь `canEdit`-ийг шалгадаггүй тул батлах гинж хэвээр
      ажиллана (агуулга ноорогт буугаад бичигдэнэ). */
+  /*
+   * ⚠️ 2026-10-23 (хэрэглэгч: «бодит батлагдсан хуваарь ба ноорог хувилбар 2-ыг солиж харах»): ХАРАГДАЦЫН СОНГОЛТ.
+   *    `viewSaved` — серверт хадгалагдсан (батлагдсан) хуваарийг НООРОГГҮЙГЭЭР харуулна (`plan` = `base`); тэр үед
+   *    засвар ХААЛТТАЙ (`canEdit`) — ноорог хөндөгдөхгүй, «Ноорог» руу буцахад хэвээр. Хяналтын горимд (`review`)
+   *    үйлчлэхгүй (батлагч саналыг харна).
+   */
+  const [viewSaved, setViewSaved] = useState(false);
+  const savedView = viewSaved && !review;
   const canEdit = useMemo(
-    () => !review && (status === 'off' || inScope(huvaariScope(user?.username, 'author'), pkg.group)),
+    () => !review && !savedView && (status === 'off' || inScope(huvaariScope(user?.username, 'author'), pkg.group)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, status, hvN, pkg.group, review],
+    [user, status, hvN, pkg.group, review, savedView],
   );
 
   /**
@@ -853,10 +862,6 @@ export function Huvaari({
   const [chips, setChips] = useState<Set<Chip>>(() => new Set());
   /** «Өөрчлөлт N» хажуугийн самбар нээлттэй эсэх (2026-10-08) */
   const [chgOpen, setChgOpen] = useState(false);
-  /** «Үсрэх» оролтын текст (2026-10-08) — шүүхгүй, зөвхөн мөр олж сонгоно */
-  const [jumpQ, setJumpQ] = useState('');
-  /** ⚠️ 2026-10-09: «Үсрэх»-ийн сүүлийн тааралт — `at`/`n` тоолуур («2/7»); текст солигдоход арилна */
-  const [jumpHit, setJumpHit] = useState<{ q: string; at: number; n: number } | null>(null);
   /* ⚠️ 2026-10-08: «хоцорсон» чипт өнөөдөр — `useCalendar`-ийн `now` нь `visible`-ээс ХОЙНО тодорхойлогддог
      (TDZ) тул энд lazy initializer-ээр (render дотор `Date` дуудахгүй — react-hooks/purity).
      ⚠️ 2026-10-09: `useToday` — шөнө дунд шинэчлэгдэнэ (урьд нь хуудас нээсэн өдрөөр үлддэг байв); ЭНЭ утга
@@ -996,6 +1001,9 @@ export function Huvaari({
    *    эхлэх» гэж ХОСЛУУЛЖ шүүнэ. Нэг радио жагсаалт байсан бол зөвхөн нэгийг.
    */
   const [filter, setFilter] = useState<'all' | 'has' | 'none' | 'partial'>('all');
+  /** ⚠️ 2026-10-23: «Хуваарьгүй» шүүлтэд бүлгийн мөрийн огноо · зурвас нуугдана — харагдах ажлууд бүгд хуваарьгүй тул
+      нуугдсан хуваарьтай ажлуудаас бодогдсон бүлгийн муж «бүлэг хуваарьтай» мэт төөрөгдүүлдэг байв. Зөвхөн ХАРАГДАЦ. */
+  const grpNoSpan = filter === 'none';
   const [fYear, setFYear] = useState('all');
   /**
    * БҮЛГЭЭР ШҮҮХ — сонгосон бүлэг ба ДОТОРХ бүх ажлыг л үлдээнэ.
@@ -1396,7 +1404,8 @@ export function Huvaari({
     return m;
   }, [refBase]);
   const plan = useMemo(() => {
-    if (!draft.size && !ham.size && !aDraft.size && !resDraft.size) return base;
+    /* ⚠️ 2026-10-23: «Батлагдсан» харагдац — ноорог давхарлахгүй (`viewSaved`-ийн ⚠️) */
+    if (savedView || (!draft.size && !ham.size && !aDraft.size && !resDraft.size)) return base;
     return base.map((r) => {
       const s = draft.get(r.oid);
       const t = ham.get(r.oid);
@@ -1414,7 +1423,7 @@ export function Huvaari({
         mashin: rd ? rd.mashin : r.mashin,
       };
     });
-  }, [base, draft, ham, aDraft, resDraft]);
+  }, [base, draft, ham, aDraft, resDraft, savedView]);
 
   /** Ажлын код → мөрийн индекс — уялдааны бодолт, сум, зөрчилд нэг эх сурвалж */
   const byCode = useMemo(() => codeIndex(plan), [plan]);
@@ -1712,30 +1721,6 @@ export function Huvaari({
     }
     return true;
   }, [chips, dirtyOids, unbalRows, today, kind, plan, byCode]);
-  /**
-   * Чип бүрийн тоо (навч мөрөөр) — товчны хажууд.
-   * ⚠️ 2026-10-09 (гүйцэтгэл): ХОЙШЛУУЛСАН утгаар (`useDeferredValue`) — чирэлтийн кадр бүрд ~1,400 мөр × уялдааны
-   *    `requiredStart` бодогддог байв. React шинэ кадрыг түрүүлж зурж, тоог сул үед (чирэлт зогсоход) гүйцээнэ.
-   *    `byCode`-ийг хойшлуулсан `plan`-аас — индекс нь тэр массивынх байх ёстой.
-   */
-  const chipPlan = useDeferredValue(plan);
-  const chipDirty = useDeferredValue(dirtyOids);
-  const chipCounts = useMemo(() => {
-    let dirty = 0, late = 0, viol = 0;
-    const bc = kind === 'plan' ? codeIndex(chipPlan) : null;
-    for (const r of chipPlan) {
-      if (r.group) continue;
-      if (chipDirty.has(r.oid)) dirty += 1;
-      const sp = r.spans[blk] ?? null;
-      if (!sp) continue;
-      if (statusOf(sp, r.act?.[blk], today) === 'late') late += 1;
-      if (bc && r.deps.length) {
-        const need = requiredStart(chipPlan, bc, r.i, blk);
-        if (need != null && sp.start < need) viol += 1;
-      }
-    }
-    return { dirty, late, viol };
-  }, [chipPlan, chipDirty, blk, today, kind]);
   /** Шүүлт (таб · жил · чип) — чипүүд блок `b`-ээр (`chipOkAt`-ийн ⚠️) */
   const matchAt = useCallback((r: PlanRow, b: number) => {
     if (r.group) return true;
@@ -1917,7 +1902,7 @@ export function Huvaari({
   );
   /* ── ХУАНЛИЙН ГЕОМЕТР — «өнөөдөр» · хүрээ · хоног↔px · цонхлолт · шошго (`useCalendar`) ── */
   const {
-    now, from, to, px, total, W, xOf, dayAt, msAt, trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months, goToday,
+    now, from, to, px, W, xOf, dayAt, msAt, trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
   } = useCalendar({ plan, drag: !!drag, zoom, visible: disp, sel, pin: !!drag || (cellEdit != null && cellEdit === sel), jumpedRef, now: today });
 
   /* ── Ноорог ── */
@@ -5274,28 +5259,6 @@ export function Huvaari({
     scrollToOid.current = { oid, blk: b };
   }, [plan, blk, visible, collapsed, fGrp, scoped, match, setNote]);
   /**
-   * «ҮСРЭХ» (2026-10-08) — код яг таарвал тэр мөр; үгүй бол № эсвэл нэрийн хэсгээр, сонгосон мөрөөс
-   * ХОЙШХИ эхний таарал (давтан Enter дараагийн руу). Шүүлт БИШ — мод хэвээр (2026-09-02).
-   */
-  /* ⚠️ 2026-10-09: ТААРАЛТЫН ТООЛУУР «2/7» + ‹ › (`jumpHit`) — `dir` 1 = дараах, −1 = өмнөх (давтан Enter = дараах) */
-  const jumpTo = useCallback((q: string, dir: 1 | -1 = 1) => {
-    const s = q.trim().toLowerCase();
-    if (!s) return;
-    const exact = plan.find((r) => r.des != null && String(r.des) === s) ?? plan.find((r) => r.no.toLowerCase() === s);
-    if (exact) { setJumpHit({ q: s, at: 0, n: 1 }); goToRow(exact.oid); return; }
-    /* ⚠️ 2026-10-23: нэрийг ДЭЛГЭЦТЭЙ ижил (`fixCyr`: є→ө, ї→ү) хэвийншүүлж хайна — урьд нь түүхий нэр (є) ба
-       хэрэглэгчийн бичсэн «ө» таарахгүй байв. Зөвхөн хайлтад; түлхүүр/бичилтэд хөндөхгүй. */
-    const sq = fixCyr(s);
-    const hits = plan.filter((r) => r.no.toLowerCase().startsWith(s) || fixCyr(r.work).toLowerCase().includes(sq));
-    if (!hits.length) { setJumpHit(null); setNote(tr('«{0}» олдсонгүй.', q.trim())); return; }
-    const cur = sel != null ? plan.findIndex((r) => r.oid === sel) : -1;
-    const k = dir > 0
-      ? Math.max(0, hits.findIndex((r) => r.i > cur))
-      : (() => { let j = -1; hits.forEach((r, x) => { if (r.i < cur) j = x; }); return j >= 0 ? j : hits.length - 1; })();
-    setJumpHit({ q: s, at: k, n: hits.length });
-    goToRow(hits[k].oid);
-  }, [plan, sel, goToRow, setNote]);
-  /**
    * НҮДНЭЭС ЗЭРГЭЛДЭЭ МӨР РҮҮ (2026-10-08, `TaskRow.onNextRow`): Enter/↓/↑ → харагдаж буй дараагийн/өмнөх
    * ЭХ мөрийн ижил нүд (`[data-oid] [data-col]`). Цонхлолтоос гадуур бол гүйлгээд, мөр зурагдмагц
    * (`slice` эффект) фокуслана. Нүд байхгүй (бүлэг · эрхгүй) бол фокус хөдлөхгүй, сонголт л шилжинэ.
@@ -5783,7 +5746,7 @@ export function Huvaari({
    * ⚠️ Эх мөр: бүх блокийн НЭГДЭЛ (`d.sp`) — ажилд саарал `plBarAll` (төлөв нь блок
    *    тус бүрийнх тул нэгдэлд өнгөлөхгүй), бүлэгт урьдын `plBarG`.
    * ⚠️ Дэд мөр: тэр блокийн муж — төлөвийн өнгө `statusOf(sp, act[b])` (энгийн зурвастай
-   *    ИЖИЛ дүрэм), бүлэгт `plBarG`. Бодит муж (`plAct`) мөн тэр блокийнх.
+   *    ИЖИЛ дүрэм), бүлэгт `plBarG`. (Бодит мужийн шугам 2026-10-23-нд хасагдсан.)
    * ⚠️ `onDown`/`startLink`/бариул ОГТ ХОЛБОГДОХГҮЙ — чирэлт/холбоос/popup үүсэхгүй.
    *    Дэд мөр дээр дарахад тэр блок руу орж засна (`pickBlk`), эх мөрд зөвхөн сонголт.
    * ⚠️ Хуучин (батлагдсан) зурвас · «Зэрэг» лавлагаа ЭНД ЗУРАГДАХГҮЙ — хяналтын горимд
@@ -5795,11 +5758,6 @@ export function Huvaari({
     const who = sub ? (sc?.bld[b] ?? '') : tr('Бүх блок');
     const st: Status = sub && sp && !r.group ? statusOf(sp, r.act?.[b], now) : 'none';
     const cls = r.group ? h.plBarG : sub ? ST_CLASS[st] : h.plBarAll;
-    let act: { start: number | null; end: number | null } | null = null;
-    if (hasActual) {
-      const x = r.group ? effRow(r) : r;
-      act = sub ? { start: x.aStart?.[b] ?? null, end: x.aEnd?.[b] ?? null } : actUnion(x.aStart, x.aEnd);
-    }
     const w = sp ? spanDays(sp) * px : 0;
     return (
       <div key={sub ? `${r.oid}@${b}` : r.oid}
@@ -5818,17 +5776,7 @@ export function Huvaari({
           if (sub) pickBlk(r.oid, b); else setSel(r.oid);
         }}
       >
-        {act?.start != null && (() => {
-          const as0 = act.start;
-          const ae0 = act.end;
-          const to2 = ae0 ?? Math.max(as0, now);
-          return (
-            <div
-              className={`${h.plAct} ${ae0 == null ? h.plActOpen : ''}`}
-              style={{ left: xOf(as0), width: Math.max(4, spanDays({ start: as0, end: to2 }) * px - 1) }}
-            />
-          );
-        })()}
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): бодит мужийн цэнхэр шугам ХАСАГДСАН — бодит огноо popup/баганад хэвээр. */}
         {sp && (
           <div
             className={`${h.plBar} ${sub ? h.plBarSub : ''} ${cls} ${sel === r.oid && (!sub || b === blk) ? h.tlBarOn : ''}`}
@@ -6083,18 +6031,19 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
             <span className={h.tbSep} aria-hidden />
 
-            {([
-              ['all', tr('Бүгд'), plan.filter((r) => !r.group).length],
-              ['has', tr('Хуваарьтай'), cov.planned],
-              ['none', tr('Хуваарьгүй'), cov.tasks - cov.planned],
-              ['partial', tr('Дутуу'), cov.partial],
-            ] as const).map(([k, label, cnt]) => (
-              <button key={k} type="button"
-                className={`${h.tab} ${filter === k ? h.tabOn : ''}`}
-                onClick={() => setFilter(k)}>
-                {label} <b>{num(cnt)}</b>
-              </button>
-            ))}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «нийлүүлээд шүүлтүүр хэрэглүүр болго»): дөрвөн тусдаа товчны оронд НЭГ капсул
+                (`components/Switch` · `Segmented`) — сонголт бүр тоотойгоо */}
+            <Segmented<typeof filter>
+              value={filter}
+              onChange={setFilter}
+              label={tr('Хуваарийн шүүлт')}
+              options={[
+                { value: 'all', label: `${tr('Бүгд')} ${num(plan.filter((r) => !r.group).length)}` },
+                { value: 'has', label: `${tr('Хуваарьтай')} ${num(cov.planned)}` },
+                { value: 'none', label: `${tr('Хуваарьгүй')} ${num(cov.tasks - cov.planned)}` },
+                { value: 'partial', label: `${tr('Дутуу')} ${num(cov.partial)}` },
+              ]}
+            />
 
             {/* ⚠️ 2026-10-04: огноо УРВУУ ажил — төлөвлөгөөт хувь, муруйд хуваарьгүй гэж тооцогдоно
                 (`bagtsSheet.planAt`); урьд нь чимээгүй «100%» алхам болдог байв */}
@@ -6123,10 +6072,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </select>
 
             {/* ⚠️ 2026-10-08: ЧИП ШҮҮЛТ — байгаа шүүлттэй БА-аар (`chipOk`); бүлгийн мөр хэвээр гарна */}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): «Ноорогтой · Зөрчилтэй · Хоцорсон» чип, «Үсрэх» оролт, «Цэвэрлэх» ХАСАГДСАН.
+                Зөвхөн «Тэнцээгүй» (илгээхээс өмнөх сарын обьёмын анхааруулга) үлдэв. */}
             {([
-              ['dirty', tr('Ноорогтой'), chipCounts.dirty],
-              ['viol', tr('Зөрчилтэй'), chipCounts.viol],
-              ['late', tr('Хоцорсон'), chipCounts.late],
               /* ⚠️ 2026-10-09: «Тэнцээгүй» — сарын обьём тэнцээгүй мөр (`unbalRows`); байхгүй (ба асаагаагүй) үед нуугдана */
               /* ⚠️ 2026-10-12: АСААЛТТАЙ бол табаас үл хамааран ЗУРАГДАНА — нуугдсан идэвхтэй шүүлт мөрийг бүгдийг нуудаг байв */
               ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
@@ -6143,40 +6091,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </button>
             ))}
 
-            {/* ⚠️ 2026-10-08: «ҮСРЭХ» — шүүхгүй, мөр олж сонгоно (`jumpTo`); модыг хавтгайруулахгүй (2026-09-02) */}
-            <input className={h.jumpBox} value={jumpQ} aria-label={tr('Үсрэх')}
-              placeholder={tr('Үсрэх: код · № · нэр')}
-              title={tr('Код, № эсвэл нэрийн хэсгийг бичээд Enter — мөр рүү үсэрнэ (шүүхгүй); давтан Enter дараагийн таарал руу')}
-              onChange={(e) => { setJumpQ(e.target.value); setJumpHit(null); }}
-              /* ⚠️ 2026-10-09: Esc — текстийг цэвэрлэнэ, хяналт/бүтэн дэлгэцийг ХААХГҮЙ (`stopPropagation`) */
-              /* ⚠️ 2026-10-09: Shift+Enter — өмнөх таарал */
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); jumpTo(jumpQ, e.shiftKey ? -1 : 1); }
-                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setJumpQ(''); setJumpHit(null); }
-              }} />
-            {/* ⚠️ 2026-10-09: ТААРАЛТЫН ТООЛУУР «2/7» ба ‹ › — олон тааралтад л */}
-            {jumpHit && jumpHit.n > 1 && jumpHit.q === jumpQ.trim().toLowerCase() && (
-              <>
-                <button type="button" className={h.tab} aria-label={tr('Өмнөх')} title={tr('Өмнөх')}
-                  onClick={() => jumpTo(jumpQ, -1)}>‹</button>
-                <span className={h.jumpN} aria-live="polite">{num(jumpHit.at + 1)}/{num(jumpHit.n)}</span>
-                <button type="button" className={h.tab} aria-label={tr('Дараах таарал')} title={tr('Дараах таарал')}
-                  onClick={() => jumpTo(jumpQ, 1)}>›</button>
-              </>
-            )}
-
             {/* ⚠️ 2026-10-09: хөлдсөн (засварласан) мөрүүдийг шүүлтээр дахин шүүх (`sticky`-ийн ⚠️) */}
             {stickyN > 0 && (
               <button type="button" className={h.tab}
                 title={tr('Засварласан мөрүүд шүүлтэд таарахгүй ч засвар дуустал харагдсаар байна — дарж шүүлтийг дахин хэрэглэнэ')}
                 onClick={() => setSticky(new Set())}>
                 {tr('Шүүлтийг шинэчлэх ({0})', num(stickyN))}
-              </button>
-            )}
-            {(filter !== 'all' || fYear !== 'all' || fGrp !== 'all' || chips.size > 0) && (
-              <button type="button" className={h.tab}
-                onClick={() => { setFilter('all'); setFYear('all'); setFGrp('all'); setChips(new Set()); }}>
-                {tr('Цэвэрлэх')}
               </button>
             )}
 
@@ -6224,29 +6144,36 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               * ⚠️ Ноорогтой үед эхлээд хадгална (`askSwitch`) — санах ой цэвэрлэгдэх ч
               *    хуваалцсан ноорог үлдэж, буцаж ирэхэд сэргэнэ (2026-10-01).
               */}
-            <div className={h.tlZoom}>
-              {([
-                ['plan', tr('Төлөвлөгөө')],
-                ['geree', tr('Гэрээ')],
-              ] as [PlanKind, string][]).map(([k, label]) => (
-                <button key={k} type="button"
-                  className={`${h.tlZoomB} ${kind === k ? h.tlZoomOn : ''}`}
-                  aria-pressed={kind === k}
-                  title={k === 'geree'
-                    ? tr('Гэрээнд заасан огноог засна.')
-                    : tr('Ажлын төлөвлөсөн огноог засна.')}
-                  /* ⚠️ `busy` үед ТҮГЖИНЭ (2026-09-11-ний аудит): `save`-ийн
-                     таван await-ийн зуур төрөл солигдвол `[kind]` эффект
-                     ноорогийг цэвэрлэж, «хадгалагдлаа» гэсэн мэдэгдэл ӨӨР
-                     төрлийн хуанли дээр гарна. Багцын сонгогч аль хэдийн
-                     ингэж түгжигддэг. */
-                  /* ⚠️ Хяналтын горимд төрөл нь илгээлтийнх — солиход санал цэвэрлэгдэнэ */
-                  disabled={busy || switching || !!review}
-                  onClick={() => { if (kind !== k) runSwitch(() => setKind(k)); }}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* ⚠️ 2026-10-23 (хэрэглэгч): «Батлагдсан / Ноорог» — хадгалсан хуваарь ба ноорогтой хувилбарыг солиж харах (`viewSaved`) */}
+            {!review && (
+              <Switch
+                checked={!viewSaved}
+                onChange={(v) => setViewSaved(!v)}
+                off={tr('Батлагдсан')}
+                on={tr('Ноорог')}
+                title={viewSaved
+                  ? tr('Серверт хадгалагдсан (батлагдсан) хуваарь — засвар хаалттай. «Ноорог» руу шилжиж засна.')
+                  : tr('Хадгалаагүй засвартай (ноорог) хувилбар. «Батлагдсан» руу шилжиж хадгалсан хуваарийг харна.')}
+              />
+            )}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «switch button»): хоёр товчны оронд НИЙТЛЭГ унтраалга (`components/Switch`) —
+                зүүн «Төлөвлөгөө», баруун «Гэрээ». */}
+            <Switch
+              checked={kind === 'geree'}
+              onChange={(v) => { const k: PlanKind = v ? 'geree' : 'plan'; if (kind !== k) runSwitch(() => setKind(k)); }}
+              off={tr('Төлөвлөгөө')}
+              on={tr('Гэрээ')}
+              title={kind === 'geree'
+                ? tr('Гэрээнд заасан огноог засна.')
+                : tr('Ажлын төлөвлөсөн огноог засна.')}
+              /* ⚠️ `busy` үед ТҮГЖИНЭ (2026-09-11-ний аудит): `save`-ийн
+                 таван await-ийн зуур төрөл солигдвол `[kind]` эффект
+                 ноорогийг цэвэрлэж, «хадгалагдлаа» гэсэн мэдэгдэл ӨӨР
+                 төрлийн хуанли дээр гарна. Багцын сонгогч аль хэдийн
+                 ингэж түгжигддэг. */
+              /* ⚠️ Хяналтын горимд төрөл нь илгээлтийнх — солиход санал цэвэрлэгдэнэ */
+              disabled={busy || switching || !!review}
+            />
 
             {/*
               * ЗЭРЭГ ХАРАХ — нөгөө төрлийн огноог мөр бүрийн ДООД зурвасаар
@@ -6258,55 +6185,33 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               *    ноорогт хоёр төрөл холилдоно (2026-09-11-ний аудитын S1).
               * ⚠️ Анхдагчаар УНТРААЛТТАЙ: дангаар нь харах нь үндсэн байдал.
               */}
-            <button type="button"
-              className={`${h.tlZoomB} ${showRef ? h.tlZoomRef : ''}`}
-              aria-pressed={showRef}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «switch button»): нийтлэг асаах/унтраах товч (`components/Switch` · `Toggle`) */}
+            <Toggle
+              checked={showRef}
+              onChange={setShowRef}
+              label={tr('Зэрэг')}
               title={showRef
                 ? tr('Нөгөө огноог нуана.')
                 : (kind === 'geree'
                   ? tr('Төлөвлөсөн огноог мөр бүрийн доор нэмж харуулна.')
                   : tr('Гэрээний огноог мөр бүрийн доор нэмж харуулна.'))}
-              onClick={() => setShowRef((v) => !v)}>
-              {tr('Зэрэг')}
-            </button>
+            />
 
-            {/*
-              * ТАЙЛБАР — зөвхөн лавлагаа АСААЛТТАЙ үед.
-              *
-              * ⚠️ Унтраалттай үед тайлбар үлдвэл байхгүй зурвасыг тайлбарлана.
-              */}
-            {showRef && (
-              <span className={h.plRefKey}
-                title={kind === 'geree'
-                  ? tr('Мөр бүрийн ДООД зурвас нь ТӨЛӨВЛӨСӨН огноо — зөвхөн харуулна, засагдахгүй.')
-                  : tr('Мөр бүрийн ДООД зурвас нь ГЭРЭЭНИЙ огноо — зөвхөн харуулна, засагдахгүй.')}>
-                <span className={h.plRefSwatch} />
-                {kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')}
-              </span>
-            )}
-            {/* Бодит мужийн тайлбар (2026-09-23) — талбартай багцад л */}
-            {hasActual && (
-              <span className={h.plRefKey}
-                title={tr('Мөр бүрийн доод захын нарийн зурвас нь БОДИТ эхэлсэн → дууссан огноо (дуусаагүй бол өнөөдөр хүртэл, тасархай). Popup-аас бүртгэнэ; гинж, төлөвлөгөөнд нөлөөлөхгүй.')}>
-                <span className={h.plActSwatch} />
-                {tr('Бодит')}
-              </span>
-            )}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «харагдахгүй болно»): «Гэрээ/Төлөвлөгөө» ба «Бодит» зурвасны тайлбар ХАСАГДСАН. */}
 
-            <div className={h.tlZoom}>
-              {(['day', 'week', 'month'] as Zoom[]).map((z) => (
-                <button key={z} type="button"
-                  className={`${h.tlZoomB} ${zoom === z ? h.tlZoomOn : ''}`}
-                  onClick={() => setZoom(z)}>
-                  {z === 'day' ? tr('хоног') : z === 'week' ? tr('7 хоног') : tr('сар')}
-                </button>
-              ))}
-            </div>
-            {/* ⚠️ 2026-10-09: «Өнөөдөр» — өнөөдрийг хуанлийн төвд гүйлгэнэ (`useCalendar.goToday`); томруулалт төвөө хадгална */}
-            <button type="button" className={h.tlZoomB} onClick={goToday}
-              title={tr('Өнөөдөр рүү гүйлгэх')}>
-              {tr('Өнөөдөр')}
-            </button>
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «загварыг сайжруул»): томруулалт — нийтлэг капсул (`components/Switch` · `Segmented`) */}
+            <Segmented<Zoom>
+              value={zoom}
+              onChange={setZoom}
+              label={tr('Хуанлийн масштаб')}
+              options={[
+                { value: 'day', label: tr('хоног') },
+                { value: 'week', label: tr('7 хоног') },
+                { value: 'month', label: tr('сар') },
+                { value: 'year', label: tr('жил') },
+              ]}
+            />
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «бүрэн устга»): «Өнөөдөр» (өнөөдөр рүү гүйлгэх) товч ХАСАГДСАН. */}
             {/* ⚠️ 2026-10-08: гарын товчлуурын заавар (`TaskRow.HowtoHint`) */}
             <HowtoHint />
           </>
@@ -6314,29 +6219,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
         <span className={h.spacer} />
 
-        {sc && rows.length > 0 && (
-          <span className={h.flowNote}>
-            {msToDay(from)} → {msToDay(to)} · {num(total)} {tr('хоног')}
-            {/* ⚠️ 2026-09-29 аудит: `dirtyRows` (ялгаатай мөр) — `dirtyN` нь сарын нүд бүрийг тоолдог
-                тул хэрэглэгчийн засварын тооноос их гардаг байв (илгээлтийн `rowCount`-тай ижил).
-                ⚠️ 2026-10-08: `rollUpGroups`-оор автоматаар орсон бүлгийн мөрийг `dirtyOids` өөрөө
-                хасна (өмнө нь энэ тайлбар тэгж бичсэн ч код тоолдог байв). */}
-            {/* ⚠️ 2026-10-08: дарахад өөрчлөлтийн жагсаалт (`chgPanel`) — мөр рүү үсрэх */}
-            {/* ⚠️ 2026-10-12 (аудит №8): урьдчилан харах / илгээсэн хуваарь харах үед НУУНА — ноорог нь САНАЛ (хадгалах зүйл биш);
-                «хадгалаагүй N» гэж харуулбал батлагч/зохиогч өөрийн засвар мэт андуурдаг байв. */}
-            {dirtyN && !previewing ? (
-              <>
-                {' · '}
-                <button type="button" className={h.dirtyTag} aria-pressed={chgOpen}
-                  title={tr('Батлуулахаар илгээгээгүй өөрчлөлтийн жагсаалт — мөр рүү үсэрнэ')}
-                  onClick={() => setChgOpen((v) => !v)}>
-                  {/* ⚠️ 2026-10-23 (UX аудит P4): «хадгалаагүй» биш — ноорог автоматаар хадгалагддаг, энэ нь ИЛГЭЭГЭЭГҮЙ тоо */}
-                  {tr('илгээгээгүй')} {num(dirtyRows)}
-                </button>
-              </>
-            ) : null}
-          </span>
-        )}
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): хуанлийн хүрээ («2025-07-01 → … · N хоног») ба «илгээгээгүй N» товч
+            ХАСАГДСАН — илгээх тоо «Батлуулах (N)» товчинд хэвээр. */}
         {/* ⚠️ 2026-10-08: НЭГ ТҮВШНИЙ БУЦААЛТ — Ctrl+Z-тэй ижил (`undoLast`) */}
         {canEdit && !locked && undoSnap && !previewing && (
           <button type="button" className={`${h.discard} ${h.undoBtn}`} disabled={busy}
@@ -6420,13 +6304,19 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           </span>
         )}
         {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}
-        {(hdLabel || hdUsers.length > 0) && (
-          <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' ? h.hdWarn : ''}`} role="status">
-            {hdLabel}
-            {hdLabel && hdUsers.length > 0 ? ' · ' : ''}
-            {hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : ''}
+        {/* ⚠️ 2026-10-23 (хэрэглэгч: «"Ноорог хадгалагдсан" гээд ногоон check — одоогийнх хэт урт»): хадгалагдсан үед
+            ЗӨВХӨН «✓ Ноорог хадгалагдсан»; цаг ба хамт бичигчид tooltip-д. Бусад төлөв (хадгалж байна · алдаа) хэвээр. */}
+        {hdSt.st === 'saved' ? (
+          <span className={`${h.flowNote} ${h.hdOk}`} role="status"
+            title={[hdLabel, hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : ''].filter(Boolean).join(' · ')}>
+            <span aria-hidden>✓</span> {tr('Ноорог хадгалагдсан')}
           </span>
-        )}
+        ) : hdLabel ? (
+          <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' ? h.hdWarn : ''}`} role="status"
+            title={hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : undefined}>
+            {hdLabel}
+          </span>
+        ) : null}
 
         {/* ⚠️ Урьдчилан харж байхад ЭНЭ товч гарахгүй — ноорог нь батлагчийн
             ӨӨРИЙН засвар БИШ, илгээгдсэн санал. Түүнийг «Харахыг болих»-оор
@@ -7198,6 +7088,38 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   : `${pkg.label}${dirtyN ? ` · ${tr('өөрчлөлт')} ${num(dirtyRows)}` : ''}`}
               </span>
             )}
+            {/* ⚠️ 2026-10-23 (хэрэглэгч: «нэг мөрөнд оруулж жижигрүүл»): «Олон блок сонгох» нь «Бүтэн дэлгэц»-тэй НЭГ мөрөнд, жижиг */}
+            {canEdit && !locked && sc.bld.length > 1 && (
+              <div className={h.gBlks} role="group" aria-label={tr('Олон блок сонгох')}>
+                <span className={h.gBlksLabel}>{tr('Олон блок сонгох')}</span>
+                {sc.bld.map((b, k) => {
+                  const on = k === blk || gBlks.has(k);
+                  return (
+                    <button type="button" key={b}
+                      className={`${h.gChip} ${on ? h.gChipOn : ''} ${k === blk ? h.gChipAct : ''}`}
+                      aria-pressed={on}
+                      title={k === blk
+                        ? tr('Идэвхтэй блок — хуанли дээр энэ блок харагдана (дээрх «Блок» сонгогчоор солино)')
+                        : tr('Энэ блокт зэрэг төлөвлөх')}
+                      onClick={() => {
+                        if (k === blk) return;
+                        setGBlks((s0) => { const m = new Set(s0); if (m.has(k)) m.delete(k); else m.add(k); return m; });
+                      }}>
+                      {b}
+                    </button>
+                  );
+                })}
+                <button type="button" className={h.tlZoomB}
+                  onClick={() => setGBlks(new Set(sc.bld.map((_, k) => k)))}>{tr('Бүгд')}</button>
+                <button type="button" className={h.tlZoomB} disabled={gBlks.size === 0 || (gBlks.size === 1 && gBlks.has(blk))}
+                  onClick={() => setGBlks(new Set())}>{tr('Цэвэрлэх')}</button>
+                {new Set([blk, ...gBlks]).size > 1 && (
+                  <span className={h.gBlksNote}>
+                    {tr('{0} блокт зэрэг төлөвлөнө — ажлын цонхонд «Тавих» дарахад сонгосон бүх блокт ижил огноо тавигдана', num(new Set([blk, ...gBlks]).size))}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {/* ⚠️ Хяналтын заавар — «Батлах» яагаад хаалттайг ИЛ хэлнэ */}
           {review && (
@@ -7205,50 +7127,14 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               {tr('Өөрчлөгдсөн мөр улаан хүрээтэй · хуучин огноо нь зурвасын доор бүдгээр · ажлын кодын ✕ дээр дарж зөвшөөрнө (ногоон ✓) · нэр дээр дарж дэлгэрэнгүйг харна · бүгд ногоон болсны дараа «Батлах» идэвхжинэ')}
             </p>
           )}
-          {canEdit && !locked && sc.bld.length > 1 && (
-            <div className={h.gBlks} role="group" aria-label={tr('Олон блок сонгох')}>
-              <span className={h.gBlksLabel}>{tr('Олон блок сонгох')}</span>
-              {sc.bld.map((b, k) => {
-                const on = k === blk || gBlks.has(k);
-                return (
-                  <button type="button" key={b}
-                    className={`${h.gChip} ${on ? h.gChipOn : ''} ${k === blk ? h.gChipAct : ''}`}
-                    aria-pressed={on}
-                    title={k === blk
-                      ? tr('Идэвхтэй блок — хуанли дээр энэ блок харагдана (дээрх «Блок» сонгогчоор солино)')
-                      : tr('Энэ блокт зэрэг төлөвлөх')}
-                    onClick={() => {
-                      if (k === blk) return;
-                      setGBlks((s0) => { const m = new Set(s0); if (m.has(k)) m.delete(k); else m.add(k); return m; });
-                    }}>
-                    {b}
-                  </button>
-                );
-              })}
-              <button type="button" className={h.tlZoomB}
-                onClick={() => setGBlks(new Set(sc.bld.map((_, k) => k)))}>{tr('Бүгд')}</button>
-              <button type="button" className={h.tlZoomB} disabled={gBlks.size === 0 || (gBlks.size === 1 && gBlks.has(blk))}
-                onClick={() => setGBlks(new Set())}>{tr('Цэвэрлэх')}</button>
-              {new Set([blk, ...gBlks]).size > 1 && (
-                <span className={h.gBlksNote}>
-                  {tr('{0} блокт зэрэг төлөвлөнө — ажлын цонхонд «Тавих» дарахад сонгосон бүх блокт ижил огноо тавигдана', num(new Set([blk, ...gBlks]).size))}
-                </span>
-              )}
-            </div>
-          )}
           {allOn ? (
             /* ⚠️ «Бүх блок» горим — зөвхөн харах; засах зам нь блокийн мөр (2026-10-04) */
             <p className={h.plHint}>
               {tr('Бүх блок — зөвхөн харах. Ажлын зурвас нь бүх блокийн нийт муж; доорх мөрүүд блок бүрийнх. Блокийн мөр дээр дарж тэр блок руу орж засна.')}
             </p>
-          ) : canEdit && (
-            <p className={h.plHint}>
-              {tr('Ажлын нэр дээр дарж хуанлиар оруулна · мөрийн ард чирж муж татна · зурвасын голоос чирж зөөнө · ирмэгээс татаж уртасгана')}
-              {kind === 'plan' && ` · ${tr('баруун цэгээс чирж холбоно · сум дээр дарж засна')}`}
-              {/* ⚠️ 2026-10-09: хуваарьтай мөрийг дахин зурах нь Alt-тай (`useDragPlan.onDown`-ийн ⚠️) */}
-              {` · ${tr('хуваарьтай мөрийг дахин зурах бол Alt + чирнэ')}`}
-            </p>
-          )}
+          ) : null}
+          {/* ⚠️ 2026-10-23 (хэрэглэгч: «тайлбар текстийг устга»): засварын заавар («Ажлын нэр дээр дарж хуанлиар оруулна ·
+              … · Alt + чирнэ») ХАСАГДСАН — гарын товчлуурын заавар «?» (`HowtoHint`)-д хэвээр. */}
 
           {/* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн мод + баруун хуанли ── */}
           {/* ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): хуваалцсан ноорог сэргэж
@@ -7433,8 +7319,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                        муж) байсан тул блокгүй багцын бүлэгт «—», хажууд нь бүтэн
                        зурвас гардаг байв. */
                     /* ⚠️ «Бүх блок» горимд — бүх блокийн НЭГДЭЛ (`d.sp` · `refSpanOf(…, -1)`), 2026-10-04 */
-                    geree={allOn ? (kind === 'geree' ? d.sp : refSpanOf(r.oid, -1)) : kind === 'geree' ? rowSpanAt(r) : refSpanAt(r.oid)}
-                    tolov={allOn ? (kind === 'geree' ? refSpanOf(r.oid, -1) : d.sp) : kind === 'geree' ? refSpanAt(r.oid) : rowSpanAt(r)}
+                    /* ⚠️ 2026-10-23 (хэрэглэгч: «ажлууд нь хуваарьгүй байхад бүлэг хуваарьтай байгаа юм уу — зас»): «Хуваарьгүй»
+                       шүүлтэд бүлгийн огноо (нуугдсан хуваарьтай ажлуудаас бодогддог) ХАРАГДАХГҮЙ — «—» (`grpNoSpan`) */
+                    geree={grpNoSpan && r.group ? null : allOn ? (kind === 'geree' ? d.sp : refSpanOf(r.oid, -1)) : kind === 'geree' ? rowSpanAt(r) : refSpanAt(r.oid)}
+                    tolov={grpNoSpan && r.group ? null : allOn ? (kind === 'geree' ? refSpanOf(r.oid, -1) : d.sp) : kind === 'geree' ? refSpanAt(r.oid) : rowSpanAt(r)}
                     /* ⚠️ Уялдааг нүдэнд ШУУД бичих зам (`HamCell`). Түгжээтэй
                        (батлагдахыг хүлээж буй илгээлт) үед ч засагдахгүй —
                        `applyHamText` дотор `locked` шалгагдана. */
@@ -7549,7 +7437,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       /* ⚠️ БҮЛГИЙН ЗУРВАС нь ХҮҮХДҮҮДЭЭСЭЭ бодогдоно
                          (`effSpan`) — хадгалагдсан хуучин огноо нь
                          тэдэнтэй зөрж байсан ч ЗӨВ мужийг харуулна. */
-                      const sp = r.group ? effAt(r.i) : r.spans[blk];
+                      /* ⚠️ 2026-10-23: «Хуваарьгүй» шүүлтэд бүлгийн зурвас зурагдахгүй (`grpNoSpan`) */
+                      const sp = r.group ? (grpNoSpan ? null : effAt(r.i)) : r.spans[blk];
                       const st = sp ? statusOf(sp, r.act?.[blk], now) : 'none';
                       /* Уялдааны зөрчил — шаардлагаас ӨМНӨ эхэлсэн зурвасыг
                          улаан хүрээгээр тэмдэглэнэ (хориглохгүй) */
@@ -7603,29 +7492,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               />
                             );
                           })()}
-                          {/*
-                            * БОДИТ МУЖ (2026-09-23) — мөрийн ХАМГИЙН ДООД захад 3px нарийн
-                            * зурвас: бодит эхэлсэн → бодит дууссан (дуусаагүй бол → өнөөдөр,
-                            * тасархай хэлбэрээр — «үргэлжилж байна»). `plRef`-ийн ижил ёс:
-                            * `pointer-events: none`, чирэгдэхгүй, засагдахгүй (popup-аас).
-                            * ⚠️ Төлөвлөгөөт зурвастай ЗЭРЭГЦЭНЭ — зөрүү нь хэвтээ шилжилтээр
-                            *    уншигдана. Бодит огноогүй бол ЮУ Ч зурахгүй (`null ≠ 0`).
-                            * ⚠️ Бүлгийн мөрд хүүхдийн MIN/MAX (`aggExtra`).
-                            */}
-                          {hasActual && (() => {
-                            const x = r.group ? effRow(r) : r;
-                            const as0 = x.aStart?.[blk] ?? null;
-                            if (as0 == null) return null;
-                            const ae0 = x.aEnd?.[blk] ?? null;
-                            const to2 = ae0 ?? Math.max(as0, now);
-                            return (
-                              <div
-                                className={`${h.plAct} ${ae0 == null ? h.plActOpen : ''}`}
-                                style={{ left: xOf(as0), width: Math.max(4, spanDays({ start: as0, end: to2 }) * px - 1) }}
-                                title={`${tr('Бодит')}: ${msToDay(as0)} → ${ae0 != null ? msToDay(ae0) : tr('үргэлжилж байна')}`}
-                              />
-                            );
-                          })()}
+                          {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): бодит мужийн цэнхэр шугам ХАСАГДСАН. */}
                           {/* ⚠️ 2026-10-09: ЧИРЭЛТИЙН ШОШГО — чирж буй зурвасын дээр «эхлэх → дуусах · Nх» (жижиг зурвас
                               шошгогүй, сарын томруулалтад огноо харагдахгүй байсан тул хэдэн өдөр рүү тавьж буйг мэдэхгүй байв) */}
                           {drag && drag.oid === r.oid && sp && (

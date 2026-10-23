@@ -77,7 +77,6 @@ const LOAD = {
   analysis: () => import('@/modules/analysis/Suitability').then((m) => m.Suitability),
   finance: () => import('@/modules/Finance').then((m) => m.Finance),
   guitsetgel: () => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel),
-  qaqc: () => import('@/modules/Qaqc').then((m) => m.Qaqc),
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
   /* ⚠️ ТУХ нь санхүү · хуваарь · чанар · ХАБЭА-гийн ачаалагчдыг дагуулдаг тул зөвхөн нээгдэх үедээ. */
@@ -137,7 +136,6 @@ const DedButets = dynamic(() => LOAD.dedButets(), { ssr: false, loading: ViewLoa
 const Suitability = dynamic(() => LOAD.analysis(), { ssr: false, loading: ViewLoading });
 const Finance = dynamic(() => LOAD.finance(), { ssr: false, loading: ViewLoading });
 const Guitsetgel = dynamic(() => LOAD.guitsetgel(), { ssr: false, loading: ViewLoading });
-const Qaqc = dynamic(() => LOAD.qaqc(), { ssr: false, loading: ViewLoading });
 const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewLoading });
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
@@ -229,7 +227,6 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   dedButets: ({ dim, setDim }) => <DedButets dim={dim} setDim={setDim} />,
   zovshoorol: () => <Zovshoorol />,
   guitsetgel: () => <Guitsetgel />,
-  qaqc: () => <Qaqc />,
   ma: () => <Ma />,
   /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд хэрэгтэй. URL-аар тойрч
      болохгүй — энэ функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */

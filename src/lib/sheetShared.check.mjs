@@ -58,8 +58,8 @@ assert.match(SRC, /register\(\(\) => \{ sheetCache\.clear\(\); \}, \['BAGTS_SHEE
 assert.match(SRC, /fillSchema\(pkg\)/, 'бүдүүвч нь fillSchema (зөрүүний 2026-10-09-ний шийдвэр)');
 assert.match(SRC, /await Promise\.resolve\(\);\s*\n\s*want\.sealed = true;/, 'битүүмжлэл нэг microtask-ийн дараа (зэрэг ирсэн уншигчийг цуглуулна)');
 assert.match(readFileSync('src/lib/execTriage.ts', 'utf8'), /loadSheetShared\(pkg, 'variance'\)/, 'execTriage: variance төрөл');
-assert.match(readFileSync('src/lib/ceo/qaqc.ts', 'utf8'), /loadSheetShared\(pkg, 'tree'\)/, 'ceo/qaqc: tree төрөл');
-for (const f of ['src/lib/execTriage.ts', 'src/lib/ceo/qaqc.ts']) {
+/* ⚠️ 2026-10-23: QAQC хасагдсан — `ceo/qaqc.ts` (tree уншигч) устсан */
+for (const f of ['src/lib/execTriage.ts']) {
   assert.doesNotMatch(readFileSync(f, 'utf8'), /[^\w.]loadRows\s*\(/, `${f}: \`loadRows\`-ийг шууд дуудахгүй`);
 }
 console.log('sheetShared.check: OK');

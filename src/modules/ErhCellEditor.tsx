@@ -32,12 +32,12 @@ import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
 import {
-  flowCellOp, lockMsg, qaqcCellOp, scopedCellOp, type AclOp,
+  flowCellOp, lockMsg, scopedCellOp, type AclOp,
 } from '@/lib/aclOps';
 import s from './guitsetgel.module.css';
 
 /** Засах нүдний багана — матрицын 19 (`MATRIX_COLS`) + дэд бүтцийн «Засварлагч» */
-export type EditCol = { sys: 'flow' | 'qaqc' | ScopedSys; role: string };
+export type EditCol = { sys: 'flow' | ScopedSys; role: string };
 
 export function ErhCellEditor({
   pkg, title, col, owners, viewers, locked, busy, err, run, onClose, drafts,
@@ -120,11 +120,9 @@ export function ErhCellEditor({
    *    Урсгалын баганад ШАТЫГ нь (`col.role`) дамжуулна — `flowRemoveOp` шатгүй байв.
    */
   const addOp = (u: string): AclOp => (col.sys === 'flow' ? flowCellOp(u, col.role as Stage, pkg, true)
-    : col.sys === 'qaqc' ? qaqcCellOp(u, pkg, true)
-      : scopedCellOp(col.sys, u, col.role, pkg, true));
+    : scopedCellOp(col.sys, u, col.role, pkg, true));
   const rmOp = (u: string): AclOp => (col.sys === 'flow' ? flowCellOp(u, col.role as Stage, pkg, false)
-    : col.sys === 'qaqc' ? qaqcCellOp(u, pkg, false)
-      : scopedCellOp(col.sys, u, col.role, pkg, false));
+    : scopedCellOp(col.sys, u, col.role, pkg, false));
 
   /** Урсгалын сонголтод одоогийн шатыг харуулна — шилжүүлэхээс өмнө мэдэгдэнэ */
   const optLabel = (a: string): string => {

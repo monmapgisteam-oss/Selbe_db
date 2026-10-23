@@ -58,7 +58,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/CashflowPlan.tsx',
     'modules/DedButets.tsx', 'modules/DedButetsBatch.tsx', 'modules/DedButetsEdit.tsx', 'modules/Finance.tsx',
     'modules/Gazar.tsx', 'modules/GazarEdit.tsx', 'modules/Guitsetgel.tsx', 'modules/Huvaari.tsx',
-    'modules/HuvaariBatlah.tsx', 'modules/Qaqc.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx',
+    'modules/HuvaariBatlah.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx', /* ⚠️ 2026-10-23: QAQC хасагдсан */
   ]) assert.ok(!RAW.test(src(f)), `${f}: түүхий e.message дэлгэцэнд`);
   for (const f of ['modules/Habea.tsx', 'modules/habeaUzleg.tsx', 'components/PackLayers.tsx', 'modules/DedButets.tsx']) {
     assert.ok(!/\{0\}', (q|weekScores|totals)\.error\.message\)/.test(src(f)), `${f}: friendlyError`);
@@ -99,7 +99,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
   assert.match(src('components/ZoneFilter.tsx'), /\{zoneLabel\(z\)\}/, 'бүсийн нэр орчуулагдана');
   assert.match(pt, /zonesLabel\(zone\.split/);
-  for (const f of ['modules/Huvaari.tsx', 'modules/Qaqc.tsx']) {
+  for (const f of ['modules/Huvaari.tsx']) { /* ⚠️ 2026-10-23: QAQC хасагдсан */
     /* ⚠️ 2026-10-12: Хуваарь нь шинэ шийдвэртэй багцад « ●» залгана — `{tr(g)}`-ээр эхлэх нь хангалттай */
     assert.ok(src(f).includes('<option key={g} value={g}>{tr(g)}'), `${f}: багцын нэр англиар`);
   }

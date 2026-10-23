@@ -312,6 +312,9 @@ console.log('✅ бичигчийн зөвшөөрлийн жагсаалт ху
 
 /** Автобусын бүртгэл ШААРДЛАГАГҮЙ гараар бичсэн кэшүүд — шалтгаантайгаар. */
 const GARAAR_ZOVSHOOROGDSON = new Map([
+  ['src/lib/entDocs.ts',
+    '2026-10-23: `folderCache` нь эзний геопорталын ХАВТАСНЫ ID (баримт бичгийн сан · FIC · М-акт; нэг удаа олдож/үүсгэгдэнэ) — '
+    + 'өгөгдөл БИШ; хавтасны id ажиллах үед солигддоггүй тул хуучрахгүй.'],
   ['src/lib/services/entMap.ts',
     'Талбарын нэрийн толь (`dictCache`) — build үеийн тогтмол `ENT_FIELDS`-ээс тооцсон, сүлжээгүй, өгөгдөл биш (2026-10-20).'],
   ['src/lib/ficMakt.ts',
@@ -504,9 +507,7 @@ const STORE_KEYS = new Map([
   ['src/lib/huvaariBatlah.ts', 'HUVAARI_BATLAH'],
   ['src/lib/obyemBatlah.ts', 'OBYEM_BATLAH'],
   ['src/lib/ajilBatlah.ts', 'AJIL_BATLAH'],
-  ['src/lib/qaqcDraftRemote.ts', 'QAQC_DRAFT'],
-  /* ⚠️ 2026-10-21 (кэшийн аудит): QAQC хүснэгтийн бичигч (`saveQaqc`) — CEO «Чанар» · Нүүрний оноо энэ хүснэгтийг кэшлэдэг */
-  ['src/lib/qaqc.ts', 'QAQC'],
+  /* ⚠️ 2026-10-23: QAQC хасагдсан — `qaqcDraftRemote.ts` (QAQC_DRAFT) · `qaqc.ts` (QAQC) устсан */
 ]);
 
 /**

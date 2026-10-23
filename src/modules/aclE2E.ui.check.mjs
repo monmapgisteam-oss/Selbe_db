@@ -18,9 +18,9 @@
  *
  * ХЭСГҮҮД:
  *   §A `AclGrid` — нүд бүрийн чипийн ✕ ба «+» сонгогч ТЭР нүдний (мөр, багана, аккаунт)-ийг дамжуулна
- *   §B Долоон хуудас (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц · QAQC · Урсгал):
+ *   §B Зургаан хуудас (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц · Урсгал; 2026-10-23: QAQC хасагдсан):
  *      «бүх багц»-тай хүний бүдэг чипийн ✕ → зөвхөн тэр багц хасагдана; «+» → нэмэгдэнэ
- *   §C МАТРИЦ (`ErhCellEditor`) — 20 багана бүрд «бүх багц»-тай хүнийг нэг нүднээс ✕ → бусад үлдэнэ
+ *   §C МАТРИЦ (`ErhCellEditor`) — 19 багана + дэд бүтэц бүрд «бүх багц»-тай хүнийг нэг нүднээс ✕ → бусад үлдэнэ
  *      (МЭДЭЭЛСЭН АЛДАА — засвараас өмнө УНАДАГ)
  *   §D Гацааны анхааруулга — зохиогч=батлагч · батлагчгүй · Чанарт «нэг хүн хоёр үүрэгт» · хянагч дутуу
  *   §E «Хэрэглэгчид» самбар (`UserAdmin`) — урсгалтай харагдац унтраалгагүй, хадгалахад бичигдэхгүй ·
@@ -48,7 +48,6 @@ OPS.setHeldByReader(async () => []);
 /* ⚠️ 2026-10-22 (аудит): устгах асуултын гүйцэтгэлийн уншилт (`flowWaitingFor`) ч амьд хүснэгт — хуурамцаар */
 OPS.setFlowWorksReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
-const QA = await import('@/lib/qaqcAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
 const OB = await import('@/lib/obyemAcl.ts');
 const AJ = await import('@/lib/ajilAcl.ts');
@@ -67,7 +66,6 @@ const { ObyemAcl } = await import('@/modules/ObyemAcl.tsx');
 const { AjilAcl } = await import('@/modules/AjilAcl.tsx');
 const { ChanarAcl } = await import('@/modules/ChanarAcl.tsx');
 const { DedButetsAcl } = await import('@/modules/DedButetsAcl.tsx');
-const { QaqcAcl } = await import('@/modules/QaqcAcl.tsx');
 const { GuitsetgelAcl } = await import('@/modules/GuitsetgelAcl.tsx');
 const { ErhCellEditor } = await import('@/modules/ErhCellEditor.tsx');
 const { UserAdmin } = await import('@/components/UserAdmin.tsx');
@@ -351,25 +349,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
       n += 1;
     }
   }
-  /* QAQC */
-  {
-    const tag = '§B qaqc';
-    const u = mkUser();
-    await QA.setQaqcAssign(u, ['*']).sync; await idle();
-    const m = panelGrid(QaqcAcl);
-    const px = PKG_GROUPS[3];
-    takeConfirms();
-    clickX(m, px, 'qaqc', u);
-    await idle();
-    eq(takeConfirms().length, 1, `${tag}: асуулт`);
-    eq(sorted(QA.listQaqcAssigns().find((a) => a.user === u).bagts), sorted(PKG_GROUPS.filter((x) => x !== px)), `${tag}: зөвхөн ${px}`);
-    ok(CAPS.capsOf(u).includes('qaqc'), `${tag}: эрх хэвээр`);
-    m.render();
-    clickAdd(m, px, 'qaqc', u);
-    await idle();
-    ok(QA.listQaqcAssigns().find((a) => a.user === u).bagts.includes(px), `${tag}: «+»`);
-    n += 1;
-  }
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* Урсгал — 6 шат */
   for (const st of STAGE_ORDER) {
     const tag = `§B flow.${st}`;
@@ -389,7 +369,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     ok(FL.bagtsFor(u, st).includes(px), `${tag}: «+»`);
     n += 1;
   }
-  console.log(`✅ §B ${n} багана (5 систем × үүрэг · QAQC · 6 шат): «бүх»-ийн бүдэг чипийн ✕ → зөвхөн тэр багц хасагдав, эрх хэвээр; «+» → буцааж нэмэгдэв`);
+  console.log(`✅ §B ${n} багана (5 систем × үүрэг · 6 шат): «бүх»-ийн бүдэг чипийн ✕ → зөвхөн тэр багц хасагдав, эрх хэвээр; «+» → буцааж нэмэгдэв`);
 }
 
 /* ══════════ §C. МАТРИЦ — `ErhCellEditor` (МЭДЭЭЛСЭН АЛДАА) ══════════ */
@@ -402,7 +382,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     const universe = col.sys === 'butets' ? BUTETS_PACKS.map((p) => p.key) : PKG_GROUPS;
     /* «бүх багц» олгох */
     if (col.sys === 'flow') ok((await run(OPS.flowStageOp(u, col.role))).ok, tag);
-    else if (col.sys === 'qaqc') { await QA.setQaqcAssign(u, ['*']).sync; await idle(); }
     else ok((await run(OPS.setRoleAllOp(col.sys, u, col.role))).ok, tag);
     const px = universe[4 % universe.length];
     const src = OPS.liveErhSource();
@@ -429,7 +408,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     const rest = sorted(universe.filter((k) => k !== px));
     let got;
     if (col.sys === 'flow') got = FL.bagtsFor(u, col.role);
-    else if (col.sys === 'qaqc') got = QA.listQaqcAssigns().find((a) => a.user === u)?.bagts;
     else got = OPS.SCOPED_SYS[col.sys].list().find((a) => a.user === u)?.grants.find((g) => g.role === col.role)?.bagts;
     eq(got && sorted(got), rest, `${tag}: матрицын ✕ → зөвхөн ${px} хасагдаж, бусад ${rest.length} багц ҮЛДЭНЭ`);
     n += 1;
@@ -482,7 +460,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const g = PKG_GROUPS[0];
   await run(OPS.flowCellOp(u, 'engineer', g, true));
   await run(OPS.scopedCellOp('huvaari', u, 'author', g, true));
-  await run(OPS.qaqcCellOp(u, g, true));
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   await run(OPS.capDirectOp(u, 'zovshoorol', true));
   const acl = () => fake.rows.filter((r) => r.username.startsWith('__') && r.username.endsWith(`:${u}`))
     .map((r) => `${r.username}=${r.views}`).sort();
@@ -520,7 +498,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag}: томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
   eq(P.roleOf(u), 'chanar', `${tag}: үүрэг солигдов`);
   eq(acl(), aclBefore, `${tag}: карт хадгалахад хуваарилалт/эрх хөндөгдөөгүй`);
-  ok(P.resolveAccess(u).views.includes('huvaari') && P.resolveAccess(u).views.includes('qaqc'), `${tag}: эрхээр нээгдсэн харагдац хэвээр`);
+  ok(P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхээр нээгдсэн харагдац хэвээр`);
   /* устгах → «Хадгалах» (асуулт) → бүх хуваарилалт ба эрх цэвэрлэгдэнэ */
   m.render();
   rowOf().onFlipRemove(); m.render();
