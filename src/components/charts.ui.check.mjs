@@ -45,7 +45,14 @@ const sr = renderToStaticMarkup(h(Series, { items: [
   { key: '2', label: '2', value: null },
   { key: '3', label: '3', value: 5, color: 'var(--c2)' },
 ] }));
-assert.equal((sr.match(/height:0%/g) || []).length, 1, '0 → 0 өндөр (Environment — 1.5% stub хасагдсан)');
+/* ⚠️ 2026-10-23: хэмжсэн 0 → 2px суурь зураас (>8 баганад шошго нуугдах тул null-аас ялгагдана) */
+assert.equal((sr.match(/height:0%/g) || []).length, 0, '0 → 0% өндөр биш');
+assert.equal((sr.match(/height:2px/g) || []).length, 1, '0 → 2px суурь зураас');
+{
+  const many = renderToStaticMarkup(h(Series, { items: Array.from({ length: 12 }, (_, i) => ({ key: String(i), label: String(i), value: i === 3 ? null : i === 5 ? 0 : 4 })) }));
+  assert.equal((many.match(/height:2px/g) || []).length, 1, '>8 багана: 0 нь 2px зураастай');
+  assert.equal((many.match(/seriesBar/g) || []).length, 11, '>8 багана: null нь баганагүй');
+}
 assert.match(sr, />0</, '0 утга баганын дээр бичигдэнэ (≤8 багана)');
 assert.equal((sr.match(/seriesBar/g) || []).length, 2, 'null → баганагүй');
 assert.ok(sr.includes('--tone:var(--c2)'), 'items[].color хүндэтгэнэ');

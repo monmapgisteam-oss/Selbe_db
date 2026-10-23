@@ -438,7 +438,9 @@ function PortalContent(
   //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
   // ⚠️ 2026-10-23: Environment — дахин чирэгддэг ЗҮҮН БАГАНА (`ResizableColumns`, хэрэглэгчийн шийдвэр:
   //    «KPI мөр + 3 багана»). Нээх/хаах төлөв (энэ `catalog`) ба бүх товч хуучнаараа.
-  const [catalog, setCatalog] = useState(true);
+  /* ⚠️ 2026-10-23 (UX аудит S14): УТСАН дээр (≤620px) давхаргын жагсаалт газрын зургийн ~75%-ийг бүрхэж нээгддэг байв —
+     хумигдсан эхэлнэ (≤1180px-д багана нэг мөрөнд овоордог, жагсаалт ЭХЭНД — merge-д алдагдсаныг сэргээв) */
+  const [catalog, setCatalog] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 620px)').matches);
   const [layer, setLayer] = useState<string | null>(initialLayer);
   /**
    * «ХЭСЭГЧИЛСЭН ЕТ» (`hesegET`) — гурван хэсэг (2026-10-13, хэрэглэгчийн заавар):

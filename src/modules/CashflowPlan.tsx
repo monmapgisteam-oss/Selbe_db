@@ -23,7 +23,9 @@ import { mnt, num } from '@/lib/format';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
 import { awaitingReload } from '@/lib/finEdit';
-import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
+import { CASHFLOW_NEW, CF_MONTH, CF_MONTH_WHERE, CF_WORK_WHERE } from '@/lib/services';
+import { queryFeatures } from '@/lib/query';
+import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts } from '@/lib/financePublish';
 import { cfStartKeyOf } from '@/lib/gdash';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
 import c from '@/modules/cfplan.module.css';
@@ -260,13 +262,8 @@ export function CashflowPlan({
     setErr(null);
     setMsg(null);
     try {
-      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн */
-      const costById = new Map<number, number | null>();
-      for (const w of works) {
-        /* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажил `0`-д ХО дүнгээ бичихгүй (`idOf`) */
-        const wid = idOf(w[CF_MONTH.id]);
-        if (wid != null) costById.set(wid, costOf(w));
-      }
+      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн — ⚠️ 2026-10-23: доор ШИНЭ уншилтаар (`recomputeFinanceAmounts`;
+         дугааргүй эцэг `Cashflow_ID`-гүй тул ХО дүн бичигдэхгүй — 2026-09-29-ний дүрэм хэвээр) */
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
 
@@ -316,24 +313,48 @@ export function CashflowPlan({
         ))) return;
       }
 
+      /*
+       * ⚠️ 2026-10-23: «Cashflow» хүснэгтийн нийтлэлтэй (`Finance` FullTable) НЭГ зам — эцэг ба сарыг серверээс ШИНЭЭР
+       *    уншиж (`loadFinancePublishInputs`), өөр хэрэглэгчийн засвартай зөрвөл татгалзана (`FinancePublishConflict`),
+       *    `Cashflow_dun`-г ШИНЭ `ho_dun_geree`-ээр бодно (`recomputeFinanceAmounts`), бичихийн өмнө дахин шалгана
+       *    (`publishFinanceBatch`). Урьд нь хуудас нээх үеийн `works`/`months`-оор шууд `applyAll` хийдэг тул нөгөө
+       *    хэрэглэгчийн хувийг чимээгүй дарж, хуучин ХО дүнгээр мөнгөн дүн бичдэг байв.
+       * ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй; гэрээний дүнгүй бол ч `null` — `amountOf`-ийн дүрэм.
+       */
+      const upd = new Map<number, Row>(Object.entries(pend).map(([k, v]) => {
+        const oid = Number(k);
+        return [oid, { [oidField]: oid, [CF_MONTH.pct]: nOf(v) }];
+      }));
+      const financeInputs = await loadFinancePublishInputs({
+        updates: upd, parents: works, months, oidField,
+        read: async ({ parentOids, monthOids, ids }) => {
+          const parentWhere = [
+            ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
+            ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+          ];
+          const monthWhere = [
+            ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
+            ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+          ];
+          const [parents, freshMonths] = await Promise.all([
+            parentWhere.length ? queryFeatures(CASHFLOW_NEW.url, {
+              where: `(${CF_WORK_WHERE}) AND (${parentWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+            }) : Promise.resolve([]),
+            monthWhere.length ? queryFeatures(CASHFLOW_NEW.url, {
+              where: `(${CF_MONTH_WHERE}) AND (${monthWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+            }) : Promise.resolve([]),
+          ]);
+          return { parents, months: freshMonths };
+        },
+      });
+      recomputeFinanceAmounts({
+        updates: upd, parents: financeInputs?.parents ?? works, months: financeInputs?.months ?? months, oidField, deletes: [],
+      });
       /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */
       let noCost = 0;
-      const updates = Object.entries(pend).map(([k, v]) => {
-        const oid = Number(k);
-        const pct = nOf(v);
-        const mid = idOf(mById.get(oid)?.[CF_MONTH.id]);
-        const cost = mid == null ? null : costById.get(mid) ?? null;
-        if (pct != null && cost == null) noCost += 1;
-        return {
-          [oidField]: oid,
-          [CF_MONTH.pct]: pct,
-          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй — «бөглөөгүй»
-             ба «энэ сард гүйцэтгэл байхгүй» хоёр ӨӨР мэдэгдэл.
-             ⚠️ Гэрээний дүнгүй бол ч `null` — `0 ₮` гэж худал бичихгүй. */
-          [CF_MONTH.amount]: pct == null || cost == null ? null : (cost * pct) / 100,
-        };
-      });
-      const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates }, { cap: 'finEdit' });
+      for (const u of upd.values()) if (u[CF_MONTH.pct] != null && u[CF_MONTH.amount] == null) noCost += 1;
+      const { n } = await publishFinanceBatch(financeInputs, () =>
+        applyAll(CASHFLOW_NEW.url, oidField, { updates: [...upd.values()] }, { cap: 'finEdit' }));
       invalidate('CASHFLOW_NEW');
       /* ⚠️ 2026-10-21: `setPend({})` БИШ — шинэ `months` ирэх хүртэл бичсэн утга харагдана (`pubFrom`) */
       setPubFrom(months);

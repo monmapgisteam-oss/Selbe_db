@@ -671,7 +671,7 @@
 /* ══ Эх сурвалж ══ */
 
 .dSrc { margin: 12px 0 0; font-size: 11px; color: var(--ink-3); }
-.dSrcBad { color: var(--bad-ink-ink); }
+.dSrcBad { color: var(--bad-ink); }
 
 /* Зөвхөн дэлгэц уншигчид — өнгө/тэмдгийн үгэн хувилбар (WCAG 1.4.1) */
 .sr {

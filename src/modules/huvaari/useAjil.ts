@@ -99,7 +99,7 @@ export function useAjil({
   const [ajErr, setAjErr] = useState('');
   const [ajNote, setAjNote] = useState('');
   /** Буцаагдсан — зохиогчид шалтгаантай нь (⚠️ 2026-10-23, P1: `oid` — хаасныг санахад, `at` — шийдвэрийн огноо) */
-  const [ajBack, setAjBack] = useState<{ oid: number; n: number; by: string; reason: string; at: number | null } | null>(null);
+  const [ajBack, setAjBack] = useState<{ oid: number; n: number | null; by: string; reason: string; at: number | null } | null>(null);
   /** ⚠️ 2026-10-23 (UX аудит P1): буцаалтын мэдэгдлийг «×»-ээр хаавал энэ хөтөч санана (`adds.hideAjBack`) — дахин гарахгүй */
   const dismissAjBack = useCallback(() => {
     setAjBack((b) => { if (b) hideAjBack(pkg.key, b.oid); return null; });

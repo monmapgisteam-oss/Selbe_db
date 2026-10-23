@@ -144,8 +144,8 @@ export type ObyemSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах */
-  cellCount: number;
+  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `nud_too` = мэдэгдэхгүй (`null`), 0 биш */
+  cellCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
 };
@@ -366,7 +366,8 @@ function toSubmission(a: Attrs): ObyemSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    cellCount: Number(a[F.cellCount]) || 0,
+    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
+    cellCount: a[F.cellCount] == null || a[F.cellCount] === '' || !Number.isFinite(Number(a[F.cellCount])) ? null : Number(a[F.cellCount]),
     payload: String(a[F.payload] ?? ''),
   };
 }

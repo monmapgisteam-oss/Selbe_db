@@ -22,13 +22,13 @@ import { roleForUser, tableSuperUsers } from '@/lib/services';
 import { currentUser } from '@/lib/who';
 import type { CapKey } from '@/lib/caps';
 import { allAclReady, liveErhSource } from '@/lib/aclOps';
-import { removeAssign, stageOfUser } from '@/lib/guitsetgelAcl';
+import { listAssigns, removeAssign, setAssign, setViewOnly, stageOfUser } from '@/lib/guitsetgelAcl';
 import { userErh } from '@/lib/erhOverview';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { capLabelShort } from '@/modules/erhLabels';
 import { paneLabel } from '@/modules/capText';
 import { TYPE_ORDER, isTypeRole, typeLabel } from '@/lib/roleTypes';
-import { applyType, typeApplyBusy } from '@/lib/roleTypeApply';
+import { applyType, applyTypePrecheck, typeApplyBusy } from '@/lib/roleTypeApply';
 import { askConfirm } from '@/lib/confirm';
 import { userError } from '@/components/ui';
 import s from './userAdmin.module.css';
@@ -114,7 +114,7 @@ export function UserTypeSection({
       : fromSuper
         /* ⚠️ 2026-10-23: үлдэх эрхийг нэрээр (`superDemoteMsg`) */
         ? superDemoteMsg(user, typeLabel(type))
-        : tr('«{0}»-г «{1}» төрлөөр тохируулах уу? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', user, typeLabel(type));
+        : tr('«{0}»-г «{1}» төрлөөр тохируулах уу? Харагдац нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', user, typeLabel(type));
     /* ⚠️ 2026-10-23: «Ерөнхий захирал» зөвхөн харна — урсгалын томилгоотой бол ХАСАГДАХЫГ нэрлэж асууна (`applyType` томилгоотой хүнд татгалздаг) */
     const flowSt = type === 'zahiral' ? stageOfUser(user) : null;
     const q2 = flowSt
@@ -124,6 +124,11 @@ export function UserTypeSection({
     setBusy(true); setErr(''); setMsg('');
     /* ⚠️ 2026-09-25: try/finally — шидвэл товч үүрд «Тохируулж байна…» дээр үлдэхгүй */
     try {
+      /* ⚠️ 2026-10-23: томилгоог хасахаас ӨМНӨ `applyType`-ийн бүх шалгалт (асуулт нээлттэй байх зуур түгжээ · ноорог · super
+         дүрэм өөрчлөгдсөн байж болно) — урьд нь томилгоо хасагдсаны дараа төрөл солигдохгүй үлдэж, хүн шатгүй болдог байв */
+      const pre = applyTypePrecheck(user, type, { ignoreFlow: true });
+      if (pre) { setErr(pre.errors.join('\n')); return; }
+      const old = flowSt ? listAssigns().find((a) => a.user === user.trim().toLowerCase()) ?? null : null;
       /* ⚠️ 2026-10-23: томилгоог ЭНД хасна (`applyType` хуваарилалт бичихгүй — 2026-09-30) — `revoke=false`: дараагийн
          `applyType`-ийн `setUser` төрөл/харагдацыг бичнэ, буцаалт (`revokeFlowAccess`) түүнтэй уралдана. Унавал төрөл солихгүй. */
       if (flowSt && !(await removeAssign(user, flowSt, false).sync)) {
@@ -132,7 +137,19 @@ export function UserTypeSection({
       }
       const r = await applyType(user, type);
       if (r.ok) setMsg(tr('Тохируулагдлаа.'));
-      else setErr(r.errors.join('\n'));
+      else if (flowSt && old) {
+        /* ⚠️ 2026-10-23: төрөл солигдоогүй (ArcGIS бичилт унасан г.м.) — хассан томилгоог БУЦААН сэргээнэ (`grant=false`:
+           төрөл/харагдац хуучнаараа тул дахин олгох шаардлагагүй) */
+        const back = setAssign(user, old.stage, old.bagts, false);
+        let restored = back.ok && !!(await (back.sync ?? Promise.resolve(false)));
+        if (restored && old.viewOnly) {
+          const vo = setViewOnly(user, true);
+          restored = vo.ok && !!(await (vo.sync ?? Promise.resolve(false)));
+        }
+        setErr([...r.errors, restored
+          ? tr('Урсгалын томилгоо буцаан сэргээгдлээ.')
+          : tr('Урсгалын томилгоо хасагдсан хэвээр — «Гүйцэтгэлийн урсгалын эрх»-ээс дахин томилно уу.')].join('\n'));
+      } else setErr(r.errors.join('\n'));
     } catch (e) {
       /* ⚠️ 2026-10-23 (UX аудит X3): түүхий `String(e)` («TypeError: …») биш — ойлгомжтой текст */
       setErr(userError(e));
@@ -168,7 +185,7 @@ export function UserTypeSection({
         </button>
         {hardSuper && <span className={s.saveHint}>{tr('Өөрийн super эрх — өөр super админ өөрчилнө')}</span>}
       </div>
-      <div className={s.capNote}>{tr('Загвар зөвхөн харагдац · ТЭЗҮ-БОНУ · нүүр цонхыг тохируулна — засах эрх тус тусын хуудаснаас.')}</div>
+      <div className={s.capNote}>{tr('Загвар зөвхөн харагдац · нүүр цонхыг тохируулна — засах эрх тус тусын хуудаснаас.')}</div>
       {msg && <div className={s.capNote} role="status">{msg}</div>}
       {err && <div className={s.capErr} role="alert" style={{ whiteSpace: 'pre-line' }}>{err}</div>}
     </section>

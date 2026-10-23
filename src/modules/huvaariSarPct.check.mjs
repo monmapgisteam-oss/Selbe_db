@@ -150,7 +150,10 @@ ok('pct() хэрэглэгдээгүй — хувийг өөрөө бодно');
 
 /* ── 4. ХАРАГДАЦ — сарын шошгын ДОР хоёр дахь мөр ──────────────────── */
 assert.match(TSX, /h\.plMonPct/, 'сарын хувийн класс хэрэглэгдсэн байх ёстой');
-assert.match(TSX, /const pc = monLab\(m\.lab\);/, 'months.map нь monLab-ыг дуудах ёстой');
+/* ⚠️ 2026-10-23: жилээр харахад дээд мөр нь «YYYY» — хувь нь сарын шошгон дээр ('YYYY-MM' түлхүүрээр) */
+assert.match(TSX, /const pc = zoom === 'year' \? null : monLab\(m\.lab\);/, 'months.map нь monLab-ыг дуудах ёстой (жилээс бусад үед)');
+assert.match(TSX, /const pc = zoom === 'year' && tk\.lab \? monLab\(msToDay\(tk\.at\)\.slice\(0, 7\)\) : null;/,
+  'жилээр харахад сарын шошго monLab-ыг YYYY-MM түлхүүрээр дуудах ёстой');
 assert.match(TSX, /title=\{pc\?\.tip\}/, 'бүтэн утга title-д байх ёстой (73px-д багтахгүй)');
 ok('сарын нүдэнд хоёр дахь мөр + hover дээр бүтэн утга');
 

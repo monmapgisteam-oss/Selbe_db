@@ -227,7 +227,7 @@
 .fHint { font-size: 11px; color: var(--ink-3); }
 /* ⚠️ Алдаа нь сануулгаас ӨНГӨӨРӨӨ ялгарна — хоёул жижиг саарал байвал
    хэрэглэгч алдааг зөвлөмж гэж уншаад цааш үргэлжлүүлнэ. */
-.fErr { font-size: 11.5px; color: var(--bad-ink-ink, var(--bad)); }
+.fErr { font-size: 11.5px; color: var(--bad-ink, var(--bad)); }
 
 /* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px; focus moss */
 .input {
@@ -265,7 +265,7 @@
   border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
   border-radius: var(--r);
   background: color-mix(in oklab, var(--bad) 8%, transparent);
-  color: var(--bad-ink-ink, var(--bad));
+  color: var(--bad-ink, var(--bad));
   font-size: 12px;
   line-height: 1.45;
 }

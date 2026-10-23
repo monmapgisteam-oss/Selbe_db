@@ -70,21 +70,29 @@ export type ApplyResult = {
  *   анхааруулгыг нуудаг байв. Энэ модуль хуваарилалт БИЧИХГҮЙ (2026-09-30-ны шийдвэр) тул томилгоог дуудагч хасна —
  *   карт (`UserTypeSection`) асууж хасаад дахин дуудна; бөөнөөр хэрэгжүүлэлт алгасаж алдаанд нэрлэнэ.
  */
-export async function applyType(user: string, role: Role): Promise<ApplyResult> {
+/**
+ * `applyType`-ийн бичихээс өмнөх БҮХ шалгалт — алдаа (`errors` · `flowStage`) эсвэл `null` (бичиж болно).
+ * ⚠️ 2026-10-23: карт (`UserTypeSection`) «Ерөнхий захирал» сонгоход урсгалын томилгоог ХАСАХААС ӨМНӨ үүнийг дуудна
+ *    (`ignoreFlow` — томилгоо удахгүй хасагдана). Урьд нь томилгоо хасагдсаны ДАРАА `applyType` татгалзаж (`typesReady` ·
+ *    super дүрэм · ноорог · түгжээ) хүн төрлөө хадгалсаар шатгүй үлддэг байв.
+ */
+export function applyTypePrecheck(
+  user: string, role: Role, opts: { ignoreFlow?: boolean } = {},
+): { errors: string[]; flowStage?: string } | null {
   const u = user.trim().toLowerCase();
-  if (!u) return { ok: false, errors: [tr('Аккаунтын нэрээ бичнэ үү')] };
+  if (!u) return { errors: [tr('Аккаунтын нэрээ бичнэ үү')] };
   /* ⚠️ 2026-09-25: синкээс өмнө `tplOf` нь нарийн нөөц — түүнийг тараавал хүний эрх хумигдана */
-  if (!typesReady()) return { ok: false, errors: [tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')] };
-  if (!remoteReady()) return { ok: false, errors: [tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')] };
+  if (!typesReady()) return { errors: [tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')] };
+  if (!remoteReady()) return { errors: [tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')] };
   /* ⚠️ 2026-09-30: УСТГАГДСАН аккаунтад бичихгүй — `setUser` tombstone-ыг жирийн мөрөөр дарж
      устгагдсан хүн дахин нэвтэрдэг (`guitsetgelAcl.grantFlowAccess`-ийн 2026-09-25 ⚠️). Бөөнөөр
      хэрэгжүүлэлтийн явцад өөр админ устгасан, эсвэл хуучин жагсаалтаас дуудагдсан үед. */
   if (!listUsers().some((x) => x.username.toLowerCase() === u)) {
-    return { ok: false, errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
+    return { errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
   }
   /* ⚠️ Кодын (тестийн) super-ийг самбараас доошлуулахгүй — мөр нь бичигдэхгүй тул өөрчлөлт худал болно */
   if (isCodeSuper(u) && role !== 'super') {
-    return { ok: false, errors: [tr('Кодонд бүртгэлтэй админыг (super) өөр төрөлд шилжүүлэх боломжгүй.')] };
+    return { errors: [tr('Кодонд бүртгэлтэй админыг (super) өөр төрөлд шилжүүлэх боломжгүй.')] };
   }
   /* ⚠️ 2026-10-21: SUPER = эрхийн тохиргоо. Олгох/хасах нь ЗӨВХӨН super админд (нэвтэрсэн хэрэглэгч — `who.currentUser`,
      тодорхойгүй бол ТАТГАЛЗАНА, fail-closed); өөрийн super-ийг өөрөө хасахгүй (сүүлчийн админ түгжигдэхээс сэргийлнэ —
@@ -93,30 +101,36 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   const adminSuper = !!me && roleForUser(me) === 'super';
   const wasSuper = roleForUser(u) === 'super';
   if ((role === 'super' || wasSuper) && !adminSuper) {
-    return { ok: false, errors: [tr('Super эрхийг зөвхөн super админ олгож, хасна.')] };
+    return { errors: [tr('Super эрхийг зөвхөн super админ олгож, хасна.')] };
   }
   if (wasSuper && role !== 'super' && u === me) {
-    return { ok: false, errors: [tr('Өөрийн super эрхийг өөрөө хасах боломжгүй — өөр super админ хасна.')] };
+    return { errors: [tr('Өөрийн super эрхийг өөрөө хасах боломжгүй — өөр super админ хасна.')] };
   }
   if (draftUsers.has(u)) {
-    return { ok: false, errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Болих» дарна уу.')] };
+    return { errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Болих» дарна уу.')] };
   }
   if (userLocks.has(u)) {
-    return { ok: false, errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };
+    return { errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };
   }
   /* ⚠️ 2026-10-23: «Ерөнхий захирал» ба урсгалын томилгоо — `opts.dropFlow`-ийн ⚠️ */
   /* Урсгалын томилгоо уншигдаагүй бол «томилгоогүй» гэж дүгнэхгүй (fail-closed) */
   if (role === 'zahiral' && !flowAclReady()) {
-    return { ok: false, errors: [tr('Гүйцэтгэлийн урсгалын эрх уншигдаагүй — дахин ачаална уу.')] };
+    return { errors: [tr('Гүйцэтгэлийн урсгалын эрх уншигдаагүй — дахин ачаална уу.')] };
   }
-  const flowStage = role === 'zahiral' ? stageOfUser(u) : null;
+  const flowStage = role === 'zahiral' && !opts.ignoreFlow ? stageOfUser(u) : null;
   if (flowStage) {
     return {
-      ok: false,
       errors: [tr('«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.', u)],
       flowStage,
     };
   }
+  return null;
+}
+
+export async function applyType(user: string, role: Role): Promise<ApplyResult> {
+  const u = user.trim().toLowerCase();
+  const pre = applyTypePrecheck(u, role);
+  if (pre) return { ok: false, ...pre };
   userLocks.add(u);
   emit(LOCK_EVENT);
   try {

@@ -635,7 +635,7 @@
 }
 .aclBtn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 .aclBtn:disabled { opacity: 0.4; }
-.aclErr { color: var(--bad-ink-ink); font-size: 11.5px; }
+.aclErr { color: var(--bad-ink); font-size: 11.5px; }
 .aclEmpty { color: var(--ink-3); font-size: 12px; padding: 4px 0; }
 .aclUser { display: flex; align-items: center; gap: 8px; }
 .aclName { flex: 1; min-width: 0; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
@@ -882,7 +882,7 @@
 .ggChipBad { border-color: var(--bad); }
 .ggName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ggTag { font-size: 11px; color: var(--ink-3); padding: 0 3px; }
-.ggWarn { color: var(--bad-ink-ink); font-weight: 600; padding: 0 3px; }
+.ggWarn { color: var(--bad-ink); font-weight: 600; padding: 0 3px; }
 .ggVo, .ggX {
   flex: none;
   min-width: 22px;

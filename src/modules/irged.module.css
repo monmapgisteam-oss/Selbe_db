@@ -431,7 +431,7 @@
 .chainEnd .chainIcon {
   background: color-mix(in oklab, var(--bad) var(--tint), transparent);
   border-color: color-mix(in oklab, var(--bad) 35%, transparent);
-  color: var(--bad-ink-ink);
+  color: var(--bad-ink);
 }
 .chainEnd .chainVal { color: var(--bad-ink); }
 

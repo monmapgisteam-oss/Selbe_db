@@ -269,7 +269,9 @@ function calTicks(from: number, total: number, zoom: Zoom, px: number) {
     /* ⚠️ 2026-10-23: жилээр харахад сар бүрийн дээд шошго багтахгүй (≈21px) — дээд мөрөнд ЖИЛ (1-р сарын 1), доод
        мөрөнд сарын дугаар */
     if (zoom === 'year') {
-      if (isFirst && d.getUTCMonth() === 0) months.push({ at: ms, lab: String(d.getUTCFullYear()) });
+      /* ⚠️ 2026-10-23: эхний багана (`from` — үргэлж сарын 1) 1-р сар биш бол ч ЖИЛ тавина — эс бөгөөс дараагийн 1-р сар
+         хүртэлх саруудад жил огт харагддаггүй байв */
+      if (isFirst && (d.getUTCMonth() === 0 || k === 0)) months.push({ at: ms, lab: String(d.getUTCFullYear()) });
       if (isFirst) ticks.push({ at: ms, lab: msToDay(ms).slice(5, 7), big: d.getUTCMonth() === 0 });
       continue;
     }

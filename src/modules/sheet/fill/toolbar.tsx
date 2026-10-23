@@ -353,7 +353,7 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
         {canObyemEdit && !pvSub && pvReturned && (
           <span className={st.lockNote} role="status">
             {tr('Обьёмын илгээлт буцаасан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
-              String(pvReturned.cellCount),
+              num(pvReturned.cellCount),
               /* ⚠️ 2026-10-06 аудит: `'mn-MN'` хатуу байсан — англи горимд ч монгол огноо гардаг байв */
               [pvReturned.approver ?? '', pvReturned.approverAt ? fmtDate(pvReturned.approverAt) : ''].filter(Boolean).join(' · ') || '—',
               pvReturned.reason ?? '—')}
@@ -378,7 +378,7 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
         {/* Хүлээгдэж буй илгээлт — БҮХ хүнд харагдана (ил тод байдал) */}
         {pvSub && (
           <span className={st.muted}>
-            {tr('Обьём батлуулахаар илгээгдсэн: {0} нүд · {1}', String(pvSub.cellCount), pvSub.author)}
+            {tr('Обьём батлуулахаар илгээгдсэн: {0} нүд · {1}', num(pvSub.cellCount), pvSub.author)}
           </span>
         )}
         {/* ⚠️ 2026-10-04: ӨӨРИЙН хүлээгдэж буй илгээлтээ татаж авах — батлагч ирэхгүй бол гацдаг байв.
@@ -401,7 +401,7 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
               onClick={async () => {
                 /* ⚠️ 2026-10-04: баталгаажуулалт — батлахад утга ШУУД үндсэн өгөгдөлд бичигдэнэ */
                 /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — `window.confirm` хаагдсан хөтөчид товч чимээгүй юу ч хийдэггүй байв */
-                if (!(await askConfirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', String(pvSub.cellCount)), { ok: tr('Обьём батлах') }))) return;
+                if (!(await askConfirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', num(pvSub.cellCount)), { ok: tr('Обьём батлах') }))) return;
                 void decideObyemHere(true);
               }}
               disabled={pvBusy}
@@ -517,8 +517,8 @@ function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
 }
 
 /** Багцын бодит гүйцэтгэл — батлагдсан · батлагдаагүй · нөгөө хувилбар */
-export function PkgPctBadge({ pkgPct, pkg, otherPct }: {
-  pkgPct: RowsT['pkgPct']; pkg: Pkg; otherPct: RowsT['otherPct'];
+export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false }: {
+  pkgPct: RowsT['pkgPct']; pkg: Pkg; otherPct: RowsT['otherPct']; otherPending?: boolean;
 }) {
   if (pkgPct?.saved == null) return null;
   /*
@@ -540,7 +540,8 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct }: {
   const allBlocks = variants.reduce((n, v) => n + v.total, 0);
   const pkgAll = variants.length > 1 && allBlocks > 0
     ? variants.reduce((n, v) => n + v.pct * v.total, 0) / allBlocks
-    : pkgPct.saved;
+    /* ⚠️ 2026-10-23: нөгөө хувилбарын тоо ирээгүй (ачаалж буй · унасан) бол «—» — энэ хуудасны дундажийг багцынх гэж харуулахгүй */
+    : otherPending ? null : pkgPct.saved;
   return (
     <>
       {variants.length > 1 && variants.map((v) => (

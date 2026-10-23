@@ -1644,7 +1644,8 @@ export function Series({
    * ⚠️ 2026-10-09: `value: null` = МЭДЭЭЛЭЛГҮЙ — багана ЗУРАГДАХГҮЙ (цоорхой), муруй
    *    тасарна. `color` — тухайн баганын өнгө (`color` prop-ыг дарна; AgentChart).
    * ⚠️ 2026-10-23: Environment `BarChart` — 0 нь ТЭГ өндөр (урьдын 1.5% «stub» хасагдсан);
-   *    утга нь баганын дээр «0» гэж бичигдэх тул өгөгдөлгүйтэй андуурагдахгүй.
+   *    утга нь баганын дээр «0» гэж бичигдэх тул өгөгдөлгүйтэй андуурагдахгүй. Шошго нуугдсан (>8 багана) үед
+   *    ч 2px суурь зураастай (баганын ⚠️).
    */
   items: { key: string; label: string; value: number | null; display?: string; color?: string }[];
   color?: string;
@@ -1736,7 +1737,12 @@ export function Series({
   /* ══════════ МУРУЙН ГОРИМ — Environment `AreaChart` ══════════ */
   if (line) {
     const H = height;
-    const pad = showValues ? 15 : 3;
+    /* ⚠️ 2026-10-23: муруйн горимд Y тэнхлэг · толгойн тоо ХАСАГДСАН тул утгын шошго АНХДАГЧААР асаалттай (`labelKeep` давхцлыг
+       сийрүүлнэ) — урьд нь `showValues` дамжуулаагүй бүх дуудагч (Dashboard · BuildingPanel · Ersdel · AgentChart) тоогүй муруй
+       зурж, утга зөвхөн хулганы hover-т гардаг байв (мэдрэгч дэлгэц · хэвлэл · Word-д огт үгүй). Нүцгэн муруй хэрэгтэй бол
+       `showValues={false}`. */
+    const sv = showValues ?? true;
+    const pad = sv ? 15 : 3;
     const allVals = (multi ? lines!.flatMap((l) => l.values) : items.map((it) => it.value)).filter(isNum);
     const max = Math.max(1, ...allVals);
     const px = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
@@ -1858,7 +1864,7 @@ export function Series({
                     />
                   );
                 }))}
-                {showValues && ln.values.map((v, i) => {
+                {sv && ln.values.map((v, i) => {
                   if (!isNum(v) || !keep(i)) return null;
                   const edge = n > 1 && i === 0 ? '0%' : n > 1 && i === n - 1 ? '-100%' : '-50%';
                   return (
@@ -1973,7 +1979,9 @@ export function Series({
                   <>
                     <span
                       className={`${s.seriesBar} ${outline ? s.seriesBarOutline : ''}`}
-                      style={{ height: `${h}%`, opacity: activeCol ? CHART.colOpacity : CHART.colDim }}
+                      /* ⚠️ 2026-10-23: ХЭМЖСЭН 0 — 2px суурь зураас (null нь багана огт зурахгүй). 8-аас олон баганад утгын шошго
+                         (`showV`) нуугддаг тул «0»-ийн шошгоор ялгах боломжгүй, 0 ба өгөгдөлгүй адилхан харагддаг байв (null ≠ 0) */
+                      style={{ height: h > 0 ? `${h}%` : '2px', opacity: activeCol ? CHART.colOpacity : CHART.colDim }}
                     />
                     {showV && (
                       <span className={`${s.seriesVal} num`} style={{ bottom: `calc(${h}% + 5px)`, opacity: activeCol ? 1 : CHART.dim }}>
@@ -2175,7 +2183,8 @@ export function Trend({
   unit = '%',
   fmt,
   visible,
-  showValues = false,
+  /* ⚠️ 2026-10-23: анхдагч ON — Y тэнхлэг/толгойн тоо хасагдсан тул (Series муруйн горимын ⚠️) */
+  showValues = true,
   alert,
   smooth = false,
 }: {

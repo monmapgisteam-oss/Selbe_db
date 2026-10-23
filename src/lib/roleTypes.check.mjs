@@ -47,8 +47,9 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
     if (WORKFLOW_VIEWS.includes(v.key)) assert.ok(!ids.includes(`view:${v.key}`), `view:${v.key} — урсгалтай харагдац загварт буцаж ирэв`);
     else assert.ok(ids.includes(`view:${v.key}`), `view:${v.key} каталогт алга`);
   }
-  assert.ok(ids.includes('docs') && ids.includes('admin'), 'docs · admin мөр алга');
-  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 2, 'каталог = харагдац − урсгалтай 5 + docs + admin');
+  /* ⚠️ 2026-10-23: `docs` мөр хасагдсан — баримтын сан бүх хэрэглэгчид нээлттэй (roleTypes.settingGroups-ийн ⚠️) */
+  assert.ok(!ids.includes('docs') && ids.includes('admin'), 'docs мөр буцаж ирэв эсвэл admin мөр алга');
+  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 1, 'каталог = харагдац − урсгалтай 5 + admin');
   /* хадгалсан хуучин загварын урсгалтай харагдац хаягдана; roleAccess ч агуулахгүй */
   assert.ok(!cleanTpl('injener', { on: ['view:gdash', 'view:guitsetgel', 'view:huvaari'], home: 'gdash' }).on.includes('view:guitsetgel'));
   for (const r of TYPE_ORDER) {

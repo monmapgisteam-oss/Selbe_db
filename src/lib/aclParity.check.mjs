@@ -965,11 +965,13 @@ console.log('✅ aclOps зан төлөв — шат шилжүүлэх · сү�
   assert.deepEqual(CAP_HOST_VIEW.ajilApprove, ['ajilBatlah'], '№1: ajilApprove-ийн гэр харагдац «Нэмэлт ажил батлах»');
 
   const hv = readCode('src/modules/Huvaari.tsx');
-  const go = hv.slice(hv.indexOf('const groupOpts = useMemo('), hv.indexOf('const canEdit = useMemo('));
+  const go = hv.slice(hv.indexOf('const groupOpts = useMemo('), hv.indexOf('const canEditRole = useMemo('));
   assert.ok(/hasCap\(user\?\.username, 'addRow'\) \? ajilScope\(user\?\.username, 'editor'\)/.test(go), '№1: Huvaari.groupOpts нэмэлт ажлын хүрээг нэгтгэхгүй байна');
   assert.ok(hv.indexOf('const [capN, setCapN]') < hv.indexOf('const groupOpts = useMemo('), '№1: capN groupOpts-оос ӨМНӨ зарлагдах ёстой (TDZ)');
-  /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад (`savedView`) засвар хаалттай — хүрээний дүрэм хэвээр */
-  assert.ok(/const canEdit = useMemo\(\s*\(\) => !review && (?:!savedView && )?\(status === 'off' \|\| inScope\(huvaariScope\(user\?\.username, 'author'\)/.test(hv), '№1: огноо засах эрх хуваарийн хүрээгээр хэвээр');
+  /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад (`savedView`) засвар хаалттай — ЭРХ (`canEditRole`) нь хүрээний дүрэм хэвээр,
+     `canEdit = canEditRole && !savedView` */
+  assert.ok(/const canEdit = canEditRole && !savedView;/.test(hv), '№1: canEdit = эрх && !savedView');
+  assert.ok(/const canEditRole = useMemo\(\s*\(\) => !review && \(status === 'off' \|\| inScope\(huvaariScope\(user\?\.username, 'author'\)/.test(hv), '№1: огноо засах эрх хуваарийн хүрээгээр хэвээр');
 
   const gu = readCode('src/modules/Guitsetgel.tsx');
   const cf = gu.slice(gu.indexOf('const canFill ='), gu.indexOf('\n', gu.indexOf('const canFill =')));

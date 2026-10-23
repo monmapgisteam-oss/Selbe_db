@@ -591,8 +591,11 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
   }
   /* ⚠️ Retry нь snapshot-ын ДАРАА бичсэн тул тэр утгууд snapshot-од байхгүй */
   applyDone(s, done);
+  /* ⚠️ 2026-10-23: БАТАЛГААЖСАН төлөв (remote + амжилттай retry) — super-ийн жагсаалт ЗӨВХӨН эндээс (доорх ⚠️) */
+  const conf: Store = { ...s };
+  const dirtyNow = trusted ? mineDirty() : {};
   if (trusted) {
-    for (const [k, intended] of Object.entries(mineDirty())) {
+    for (const [k, intended] of Object.entries(dirtyNow)) {
       if (intended === null) delete s[k];
       else s[k] = sanitizeEntry(intended);
     }
@@ -609,8 +612,21 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
   cache = s;
   remoteLoaded = true;
   /* ⚠️ 2026-10-21: SUPER = эрхийн хүснэгтийн `role:'super'` мөр (устгагдаагүй) — `roles._setTableSupers`-ийн ⚠️.
-     Уншилт бүрд дахин тавина (өөр админ super олгосон/хассан бол 5 минутын poll-д хүрнэ). */
-  _setTableSupers(supersIn(s));
+     Уншилт бүрд дахин тавина (өөр админ super олгосон/хассан бол 5 минутын poll-д хүрнэ).
+     ⚠️ 2026-10-23: давхарласан `s`-ээс БИШ, баталгаажсан `conf`-оос — унасан (`mineDirty`) эсвэл явж буй (`keep`) super олголт
+     хүснэгтийн super болж тоологдвол анхны админ (`bootstrapOnlySuper`) өөрийн мөрийг бичихээ алгасаж, дахин ачаалахад
+     түгжигддэг байв (`setUser`-ийн 2026-10-22 ⚠️: олголт ЗӨВХӨН амжилттай бичилтийн дараа). Хасалт шууд тусна. */
+  const prevSup = tableSuperUsers();
+  const sup = new Set(supersIn(conf));
+  for (const [k, intended] of Object.entries(dirtyNow)) {
+    if (!intended || intended.role !== 'super' || intended.removed) sup.delete(k);
+  }
+  if (prevSup) {
+    /* явж буй / snapshot-ын дараах түлхүүр — `setUser` · retry-гийн тавьсан тэмдгийг хадгална */
+    const prev = new Set(prevSup);
+    for (const k of keep) { if (prev.has(k)) sup.add(k); else sup.delete(k); }
+  }
+  _setTableSupers(sup);
   saveLocal(s);
 
   // 3) Урсгалын томилгоо → guitsetgelAcl (динамик — SSR/гогцооноос сэргийлнэ)

@@ -1631,7 +1631,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     Object.keys(pendDate).length +
     (asOf !== asOfOrig ? 1 : 0);
 
-  const { otherPct, pkgPct } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
+  const { otherPct, pkgPct, otherPending } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
   /* ⚠️ 2026-10-01: `setPv*` — ачаалах эффектээс ДЭЭРХ `obyemSt`-ээс (`useObyemState`-ийн ⚠️) */
   const {
     pvPend, pvSub, pvPreview, pvBusy, pvErr, pvNote,
@@ -2160,25 +2160,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const readySig = `${pkg.key}|${todayFillMs}|${dirtyCount}`;
   const [readyAt, setReadyAt] = useState<string | null>(null);
   const sendReady = dirtyCount === 0 || (!editing && readyAt === readySig);
-  const readyIssue = useCallback((): string | null => {
-    if (dirtyCount === 0) return tr('Илгээх өөрчлөлт алга — нүдэнд обьём бичсэний дараа «Дуусгах» дарна уу.');
-    if (noEdit) return RO.viewOnly;
-    if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) return noPerfWhy ?? RO.noPerf;
-    if (restoringUi) return RO.restoring;
+  /* ⚠️ 2026-10-23: `keepOpen` — зөвхөн хэрэглэгч НҮДЭЭ засаж шийддэг асуудал (ногоон ✓ нүдний өөрчлөлт) дээр засвар
+     нээлттэй үлдэнэ. Бусад (хамтран бөглөгч дуусгаагүй · хяналтын жагсаалт · сэргээлт · эрх · буцаасан илгээлт) нь
+     хэрэглэгчийн гараас гадуур — засвар хаагдаж нүд түгжигдэнэ, «Илгээх» идэвхгүй хэвээр (урьд нь «Дуусгах» дарах бүрд
+     анхааруулга давтагдаж, засвараас гарах арга байгаагүй). */
+  const readyIssue = useCallback((): { msg: string; keepOpen: boolean } | null => {
+    const out = (msg: string, keepOpen = false) => ({ msg, keepOpen });
+    if (dirtyCount === 0) return out(tr('Илгээх өөрчлөлт алга — нүдэнд обьём бичсэний дараа «Дуусгах» дарна уу.'));
+    if (noEdit) return out(RO.viewOnly);
+    if (!canPerf && (Object.keys(pending).length || Object.keys(pendDate).length || asOf !== asOfOrig)) return out(noPerfWhy ?? RO.noPerf);
+    if (restoringUi) return out(RO.restoring);
     if (staged && !staged.done && (hyLoading || !!hyErr)) {
-      return hyErr
-        ? tr('Хяналтын жагсаалтыг татаж чадсангүй — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгах боломжгүй тул илгээсэнгүй. Дахин ачаалж байна; хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.')
-        : tr('Хяналтын жагсаалт ачаалагдаж байна — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгахаас өмнө илгээхгүй. Хэсэг хүлээгээд «Илгээх»-ийг дахин дарна уу.');
+      return out(hyErr
+        ? tr('Хяналтын жагсаалтыг татаж чадсангүй — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгах боломжгүй. Дахин ачаалж байна; хэсэг хүлээгээд «Бөглөх» → «Дуусгах»-ыг дахин дарна уу.')
+        : tr('Хяналтын жагсаалт ачаалагдаж байна — хянагчийн зөвшөөрсөн (ногоон ✓) нүдийг тулгаагүй байна. Хэсэг хүлээгээд «Бөглөх» → «Дуусгах»-ыг дахин дарна уу.'));
     }
     const okBadN = Object.keys(pending).filter((k) => {
       const c = k.indexOf(':');
       return c > 0 && okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)));
     }).length;
-    if (okBadN) return tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд өөрчлөлт байна — тэр нүд засагдахгүй тул утгыг нь буцаагаад «Дуусгах»-ыг дахин дарна уу.', okBadN);
+    if (okBadN) return out(tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд өөрчлөлт байна — тэр нүд засагдахгүй тул утгыг нь буцаагаад «Дуусгах»-ыг дахин дарна уу.', okBadN), true);
     const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
-    if (off.length) return tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length);
-    if (!canSubmitNow) return tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', '));
-    if (tgtMismatch && draftTgt) return tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаасан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1]));
+    if (off.length) return out(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
+    if (!canSubmitNow) return out(tr('Таны хэсэг дууссан бол «Дуусгасан» дарна уу — илгээхийн өмнө {0} дуусгах ёстой.', waitingOn.join(', ')));
+    if (tgtMismatch && draftTgt) return out(tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаасан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
     return null;
   }, [dirtyCount, noEdit, canPerf, pending, pendDate, asOf, asOfOrig, noPerfWhy, restoringUi, staged, hyLoading, hyErr,
     okLockAt, offTgtKeys, canSubmitNow, waitingOn, tgtMismatch, draftTgt]);
@@ -3336,7 +3341,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (flushEditRef.current()) setPublishQueued(true);
   }, []);
   /* ⚠️ 2026-10-23: «ДУУСГАХ» — нээлттэй нүдийг хүлээн авч (`flushEditRef`), төлөвт тусмагц бэлэн байдлыг шалгана
-     (`readyIssue`-ийн ⚠️). Бэлэн → засвар хаагдаж «Илгээх» идэвхжинэ; үгүй → шалтгаан, засвар нээлттэй үлдэнэ. */
+     (`readyIssue`-ийн ⚠️). Бэлэн → засвар хаагдаж «Илгээх» идэвхжинэ; үгүй → шалтгаан, засвар зөвхөн `keepOpen` үед
+     нээлттэй үлдэнэ (бусад үед хаагдаж «Илгээх» идэвхгүй). */
   const [finishQueued, setFinishQueued] = useState(false);
   /* ⚠️ 2026-10-23 (хэрэглэгч: «бөглөх дараад засвар хийгээгүй дуусгахад илгээх идэвхжиж байна»): «Бөглөх» дарсан агшны
      ноорогийн гарын үсэг (`editSig`). «Дуусгах» дээр ижил хэвээр (энэ удаад ЗАСВАР ХИЙГЭЭГҮЙ) бол «Илгээх» идэвхжихгүй —
@@ -3353,23 +3359,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const finishEdit = useCallback(() => {
     if (flushEditRef.current()) setFinishQueued(true);
   }, []);
+  /* ⚠️ 2026-10-23: энэ сешнд бэлэн байдлын шалгалтыг ДАВСАН ноорогийн гарын үсэг. «Засвар хийгээгүй» хориг нь зөвхөн ЭНЭ
+     ноорогт хамаарна — сэргээсэн (F5 · өдөр солигдсон · хамтран бөглөгчийн нэгтгэл) ноорог хэзээ ч шалгагдаагүй тул
+     урьд нь «Илгээх» огт идэвхжихгүй мухардалд ордог байв (аппын өөрийн «сэргээгээд дахин Илгээх» заавар ч тэнд хүргэдэг). */
+  const verifiedSigRef = useRef<string | null>(null);
   useEffect(() => {
     if (!finishQueued || edit) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-23: «Дуусгах»-ын дараалал — нээлттэй нүдний утга төлөвт тусмагц шалгана (`publishQueued`-тэй ижил)
     setFinishQueued(false);
-    if (editSigRef.current != null && editSigRef.current === draftSig) {
-      editSigRef.current = null;
-      setEditing(false);
+    const close = () => { editSigRef.current = null; setEditing(false); };
+    /* ⚠️ 2026-10-23: зөвхөн обьём засагч (`!canPerf`) эсвэл зөвхөн «Инж. төлөвлөсөн обьём» зассан — засвар нь `pvPend`-д
+       («Обьём батлуулах» зам), «Илгээх» хэрэглэхгүй тул бэлэн байдлын шалгалт ба «засвар хийгдээгүй» анхааруулга ХАМААРАХГҮЙ */
+    if (!canPerf || (dirtyCount === 0 && pvDirty > 0)) { close(); setReadyAt(null); return; }
+    const check = () => {
+      const why = readyIssue();
+      if (why) {
+        warn(why.msg);
+        if (!why.keepOpen) { close(); setReadyAt(null); }
+        return;
+      }
+      verifiedSigRef.current = draftSig;
+      close();
+      setReadyAt(readySig);
+    };
+    const noChange = editSigRef.current != null && editSigRef.current === draftSig;
+    if (noChange && verifiedSigRef.current === draftSig) {
+      close();
       setReadyAt(null);
       warn(tr('Засвар хийгдээгүй тул «Илгээх» идэвхжсэнгүй — «Бөглөх» дарж нүдэнд обьём бичээд «Дуусгах» дарна уу.'));
       return;
     }
-    const why = readyIssue();
-    if (why) { warn(why); return; }
-    editSigRef.current = null;
-    setEditing(false);
-    setReadyAt(readySig);
-  }, [finishQueued, edit, readyIssue, warn, setEditing, readySig, draftSig]);
+    if (noChange && dirtyCount > 0) {
+      /* сэргээсэн, шалгагдаагүй ноорог — чимээгүй идэвхжүүлэхгүй (хэрэглэгчийн дүрэм), харин АСУУНА */
+      void askConfirm(tr('Сэргээсэн {0} өөрчлөлтийг илгээхэд бэлэн болгох уу?', dirtyCount), { ok: tr('Бэлэн болгох') })
+        .then((yes) => { if (yes) check(); else { close(); setReadyAt(null); } });
+      return;
+    }
+    check();
+  }, [finishQueued, edit, readyIssue, warn, setEditing, readySig, draftSig, canPerf, dirtyCount, pvDirty]);
 
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
 
@@ -3441,7 +3468,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       <div className={st.toolbar}>
         {/* ⚠️ 2026-10-23 (хэрэглэгч: «хувь харуулалт ба хэрэглүүрийг тусад нь салга — нэг мөрөнд, хувь ЗҮҮН, хэрэглүүр БАРУУН»):
             1-р мөр — гүйцэтгэлийн хувь (12F · 9F · багц) зүүн, `tbGrow`, хэрэглүүрүүд баруун; 2-р мөр — илгээх · төлөв. */}
-        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} />
+        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} otherPending={otherPending} />
         <span className={st.tbGrow} aria-hidden />
         {/* ⚠️ 2026-10-23: хэрэглүүрүүд НЭГ бүлэгт (`tbTools`) — багтахгүй бол бүлэг дотроо баруун тийш эгнэж ороно, хувиас салахгүй */}
         <div className={st.tbTools}>

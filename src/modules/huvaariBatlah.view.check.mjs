@@ -286,7 +286,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   const H = strip(readHv());
   assert.ok(/review\?:\s*HuvaariReview/.test(H), 'Huvaari: `review` prop алга');
   /* Засвар хаалттай: canEdit нь review-д худал */
-  assert.ok(/const canEdit = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H),
+  /* ⚠️ 2026-10-23: эрх (`canEditRole`) ба «Батлагдсан» харагдацын хаалт тусдаа — `canEdit = canEditRole && !savedView` */
+  assert.ok(/const canEditRole = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H) && /const canEdit = canEditRole && !savedView;/.test(H),
     'Huvaari: хяналтын горимд засвар хаагдаагүй (`canEdit`)');
   /* Батлах товч allOk-оор хаалттай */
   const b0 = H.indexOf('{review && (');

@@ -126,8 +126,8 @@ export type AjilSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах */
-  rowCount: number;
+  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `mor_too` = мэдэгдэхгүй (`null`), 0 биш */
+  rowCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
 };
@@ -368,7 +368,8 @@ function toSubmission(a: Attrs): AjilSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    rowCount: Number(a[F.rowCount]) || 0,
+    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
+    rowCount: a[F.rowCount] == null || a[F.rowCount] === '' || !Number.isFinite(Number(a[F.rowCount])) ? null : Number(a[F.rowCount]),
     payload: String(a[F.payload] ?? ''),
   };
 }

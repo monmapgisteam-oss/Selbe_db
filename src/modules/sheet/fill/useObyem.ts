@@ -24,6 +24,7 @@ import { t as tr } from "@/lib/i18nCore";
 import { userError } from '@/components/ui';
 /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд апп доторх асуулт */
 import { askConfirm } from '@/lib/confirm';
+import { num } from '@/lib/format';
 
 /**
  * ⚠️ 2026-10-09: алгассан нүдний тэмдэглэлийн угтвар — илгээлтийн `tailbar`-д хадгалагдах
@@ -563,7 +564,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
    */
   const withdrawObyemHere = useCallback(async () => {
     if (!pvSub || pvBusy) return;
-    if (!(await askConfirm(tr('Обьёмын илгээлтээ ({0} нүд) татаж авах уу? Батлагч үүнийг цаашид харахгүй; засаад дахин илгээж болно.', String(pvSub.cellCount)), { ok: tr('Илгээлтээ татаж авах') }))) return;
+    if (!(await askConfirm(tr('Обьёмын илгээлтээ ({0} нүд) татаж авах уу? Батлагч үүнийг цаашид харахгүй; засаад дахин илгээж болно.', num(pvSub.cellCount)), { ok: tr('Илгээлтээ татаж авах') }))) return;
     const want = pkg.key;
     setPvBusy(true); setPvErr(""); setPvNote("");
     try {

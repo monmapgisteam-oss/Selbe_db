@@ -520,13 +520,13 @@ export function readFilters(rs: Element[] = roots()): string[] {
     return lab ? oneLine((lab as HTMLElement).innerText || '').replace(/:$/, '') : '';
   };
   for (const r of rs) {
-    for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el)) add(el.getAttribute('data-rep-filter') || '');
+    for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el) && !el.closest('[data-report-skip]')) add(el.getAttribute('data-rep-filter') || '');
     for (const el of r.querySelectorAll('select')) {
       const sel = el as HTMLSelectElement;
       /* ⚠️ 2026-10-23: ЭХНИЙ сонголтыг алгасахгүй — «Багц 1» г.м. эхний сонголт нь бодит шүүлт байж болно (урьд нь
          `selectedIndex <= 0` тул «Шүүлтгүй» гэж худал бичигддэг байв). Зөвхөн хоосон/`all` утга · «Бүгд/Бүх…»-ийг алгасна.
          `data-rep-skip` — шүүлт БИШ сонгогч (эрэмбэ, нүдний засвар) өөрөө зарлана. */
-      if (!visible(sel) || sel.selectedIndex < 0 || sel.closest('[data-rep-skip]')) continue;
+      if (!visible(sel) || sel.selectedIndex < 0 || sel.closest('[data-rep-skip],[data-report-skip]')) continue;
       const v = oneLine(sel.selectedOptions[0]?.text || '');
       if (!v || sel.value === '' || /^all$/i.test(sel.value) || ALL_RE.test(v)) continue;
       const name = labelOf(sel);
@@ -535,7 +535,9 @@ export function readFilters(rs: Element[] = roots()): string[] {
     const seen = new Set<Element>();
     for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"]')) {
       const p = el.parentElement;
-      if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip]')) continue;
+      /* ⚠️ 2026-10-23: `data-report-skip` (газрын зургийн хэрэгсэл · 2D/3D/BIM · давхаргын жагсаалт) ч шүүлт БИШ — merge-ийн
+         дараа тэдгээр үргэлж DOM-д байх болсон тул «Давхарга · Газрын зургийн харагдац: 2D» шүүлт гэж бичигддэг байв */
+      if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip],[data-report-skip]')) continue;
       seen.add(p);
       const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected'));
       const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true');

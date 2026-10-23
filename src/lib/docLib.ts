@@ -36,11 +36,25 @@ export async function loadGroups(): Promise<DocGroup[]> {
   return r.some((g) => g.id === TEZU_GROUP) ? r : [...defaultGroups(), ...r];
 }
 
-export async function saveGroups(list: readonly DocGroup[]): Promise<void> {
+/**
+ * Бүлгийн жагсаалтыг хадгална — `apply` нь ШИНЭЭР уншсан жагсаалт дээр ЗӨВХӨН энэ үйлдлийн өөрчлөлтийг (нэмэх · нэр
+ * солих · устгах) хийнэ; бичигдсэн жагсаалтыг буцаана.
+ * ⚠️ 2026-10-23: өмнө нь цонх нээхэд уншсан ХУУЧИН жагсаалтаар `__sys__:docgroups` мөрийг бүхэлд нь дарж бичдэг байв —
+ * зэрэг засварлавал нөгөө хүний бүлэг алга болж, тэр бүлгийн PDF-үүд чимээгүй «ТЭЗҮ-БОНУ» руу шилждэг байв.
+ */
+export async function saveGroups(apply: (cur: DocGroup[]) => DocGroup[]): Promise<DocGroup[]> {
   /* ⚠️ 2026-10-23: бүлэг засах нь ТУСДАА эрх (`docsGroups`) — PDF оруулах (`docsUpload`)-аас салгав */
   requireCap('docsGroups');
-  if (!(await docGroupsWrite(list))) throw new Error(tr('Баримтын бүлгийг хадгалж чадсангүй — дахин оролдоно уу.'));
+  const next = apply(await loadGroups());
+  if (!(await docGroupsWrite(next))) throw new Error(tr('Баримтын бүлгийг хадгалж чадсангүй — дахин оролдоно уу.'));
+  return next;
 }
+
+/** `groupId` бүлгийн ТАГтай PDF байна уу — устгахын өмнөх шалгалт (`groupOf` үл мэдэгдэх id-г ТЭЗҮ руу унагадаг) */
+export const hasGroupTag = (list: readonly EntPdf[], groupId: string): boolean => {
+  const tag = (GROUP_TAG + groupId).toLowerCase();
+  return list.some((d) => (d.tags ?? []).some((t) => t.toLowerCase() === tag));
+};
 
 /** Шинэ бүлгийн тогтвортой id (нэрнээс хамааралгүй — нэр солиход PDF-ийн таг хөндөгдөхгүй) */
 export const newGroupId = (): string => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;

@@ -16,7 +16,7 @@ import compareStyle from './hesegCompare.module.css';
  * ангилаад унтрааж асаадаг болго»).
  *
  * ⚠️ ArcGIS-ийн `view.ui` (баруун дээд булан) руу ШУУД нэмнэ — суурь зургийн
- *    галерейн (`MapCanvas` §bmExpand, индекс 0) ЯГ ДООР (`index: 1`). Агуулгыг
+ *    галерейн (`MapCanvas` §bmExpand, `expandIcon: 'basemap'`) ЯГ ДООР (индекс нь тэр Expand-ийнхаас +1). Агуулгыг
  *    React portal-аар зурна.
  * ⚠️ Зөвхөн ХАРАГДАХ эсэхийг удирдана (`hidden` → Portal `visible`-ээс хасна);
  *    давхцлын тооцоо (`planOverlap.ts`) давхаргыг унтраасан ч ХЭВЭЭР.
@@ -108,7 +108,12 @@ export function DetailLayerMenu({
     if (!view) return;
     const el = document.createElement('div');
     el.className = s.lyrHost;
-    view.ui.add(el, { position: 'top-right', index: 1 });
+    /* ⚠️ 2026-10-23: индексийг ОДООГИЙН бүрэлдэхүүнээс — суурь зургийн галерейн ЯГ ДООР. Тогтмол `index: 1` нь `zoom`
+       баруун дээд 0-д шилжсэнээс хойш ойртуулах ба галерейн ХООРОНД орж, бүлгийн зай (`globals.css` `.esri-zoom:has(+ .esri-expand)`)
+       алга болдог байв */
+    const controls = view.ui.getComponents('top-right');
+    const bm = controls.findIndex((x) => (x as { expandIcon?: string }).expandIcon === 'basemap');
+    view.ui.add(el, { position: 'top-right', index: bm < 0 ? controls.length : bm + 1 });
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ portal-ын сав нь ArcGIS-ийн `view.ui`-д НЭМЭГДСЭНИЙ дараа л бий болно (гаднын DOM)
     setHost(el);
     return () => {

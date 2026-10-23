@@ -567,7 +567,10 @@ export function SuitMap({
     // ⚠️ Виджетүүд MapView|SceneView хоёуланг хүлээж авдаг ч төрлийн
     //    тодорхойлолт нь MapView-г л заадаг тул нэг удаа cast хийнэ.
     const anyView = view as MapView;
-    view.ui.move('zoom', 'top-right');
+    /* ⚠️ 2026-10-23: 3D/BIM-д луужин · чиглэл солих товч ч баруун дээд (`MapCanvas`-тай ижил) — `MapTools`-ийн 3D өргөлт
+       (`lift`) хасагдсан тул зүүн дээд буланд үлдвэл хэрэгслийн зурвас (top 12px) тэднийг бүрхэж дарагдахгүй болдог байв */
+    (view.type === '3d' ? ['zoom', 'compass', 'navigation-toggle'] : ['zoom'])
+      .forEach((id, index) => view.ui.move(id, { position: 'top-right', index } as never));
     view.ui.add(new Home({ view: anyView }), 'top-right');
     view.ui.add(new ScaleBar({ view: anyView, unit: 'metric', style: 'line' }), 'bottom-right');
     // Суурь зургийн галерей — Expand дотор (товч дарж дэлгэнэ).

@@ -5,7 +5,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { DOCS } from '@/lib/docs';
 import { ENT_PORTAL, type EntPdf } from '@/lib/entDocs';
 import {
-  TEZU_GROUP, deletePdf, groupOf, listPdfs, loadGroups, movePdf, newGroupId, saveGroups, uploadPdf, type DocGroup,
+  TEZU_GROUP, defaultGroups, deletePdf, groupOf, hasGroupTag, listPdfs, loadGroups, movePdf, newGroupId, saveGroups, uploadPdf,
+  type DocGroup,
 } from '@/lib/docLib';
 import { hasCap } from '@/lib/caps';
 import { currentUser } from '@/lib/who';
@@ -41,26 +42,34 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   /** Бүлгийн нэр бичих мөр — `id: null` = шинэ бүлэг (хөтчийн prompt биш, апп доторх оролт) */
   const [edit, setEdit] = useState<{ id: string | null; title: string } | null>(null);
 
-  const reload = useCallback(async () => {
-    setErr('');
-    try {
-      const [g, l] = await Promise.all([loadGroups(), sess ? listPdfs() : Promise.resolve([] as EntPdf[])]);
-      setGroups(g);
-      setItems(l);
-    } catch (e) {
-      setErr(userError(e));
-      setGroups((g) => g ?? []);
-      setItems((l) => l ?? []);
-    }
+  /** Бүлгийн мөрийг уншиж чадаагүй — харуулж буй нь анхдагч жагсаалт тул бүлэг засахыг ХААНА (дарж бичихгүй) */
+  const [groupsFailed, setGroupsFailed] = useState(false);
+  /** PDF-ийн жагсаалт энэ сешнд амжилттай уншигдсан эсэх — үгүй бол бүлэг «хоосон» гэдгийг мэдэхгүй */
+  const [listOk, setListOk] = useState(false);
+
+  /**
+   * ⚠️ 2026-10-23: хоёр уншилт ТУСДАА (`allSettled`) — өмнө нь `Promise.all` байсан тул PDF-ийн жагсаалт (Enterprise
+   * хайлт) унахад бүлгүүд `[]` болж, статик ТЭЗҮ-БОНУ баримтууд ч хамт алга болдог байв.
+   */
+  const loadAll = useCallback(async (isAlive: () => boolean = () => true) => {
+    const [g, l] = await Promise.allSettled([loadGroups(), sess ? listPdfs() : Promise.resolve(null)]);
+    if (!isAlive()) return;
+    const errs: string[] = [];
+    if (g.status === 'fulfilled') { setGroups(g.value); setGroupsFailed(false); }
+    else { setGroups((prev) => prev ?? defaultGroups()); setGroupsFailed(true); errs.push(userError(g.reason)); }
+    if (l.status === 'fulfilled') { setItems(l.value ?? []); setListOk(l.value != null); }
+    else { setItems((prev) => prev ?? []); setListOk(false); errs.push(userError(l.reason)); }
+    setErr(errs.join('\n'));
   }, [sess]);
+
+  const reload = useCallback(() => loadAll(), [loadAll]);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([loadGroups(), sess ? listPdfs() : Promise.resolve([] as EntPdf[])])
-      .then(([g, l]) => { if (alive) { setGroups(g); setItems(l); } })
-      .catch((e) => { if (alive) { setErr(userError(e)); setGroups((g) => g ?? []); setItems((l) => l ?? []); } });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-23: гаднын (Enterprise · эрхийн хүснэгт) уншилт — төлөв зөвхөн `await`-ийн ДАРАА тавигдана
+    void loadAll(() => alive);
     return () => { alive = false; };
-  }, [sess]);
+  }, [loadAll]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setErr(''); setNote('');
@@ -69,14 +78,19 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
 
   const saveEdit = () => run(async () => {
     const title = edit?.title.trim() ?? '';
-    if (!edit || !title || !groups) { setEdit(null); return; }
-    if (groups.some((x) => x.id !== edit.id && x.title.toLowerCase() === title.toLowerCase())) {
-      throw new Error(tr('«{0}» нэртэй бүлэг аль хэдийн бий.', title));
-    }
-    const next = edit.id == null
-      ? [...groups, { id: newGroupId(), title }]
-      : groups.map((x) => (x.id === edit.id ? { ...x, title } : x));
-    await saveGroups(next);
+    if (!edit || !title || !groups || groupsFailed) { setEdit(null); return; }
+    /* ⚠️ 2026-10-23: шинээр уншсан жагсаалт дээр зөвхөн ЭНЭ өөрчлөлтийг хийнэ (`saveGroups`-ийн ⚠️) */
+    const next = await saveGroups((cur) => {
+      if (cur.some((x) => x.id !== edit.id && x.title.toLowerCase() === title.toLowerCase())) {
+        throw new Error(tr('«{0}» нэртэй бүлэг аль хэдийн бий.', title));
+      }
+      if (edit.id != null && !cur.some((x) => x.id === edit.id)) {
+        throw new Error(tr('Энэ бүлгийг өөр хэрэглэгч устгасан байна — «Шинэчлэх» дарна уу.'));
+      }
+      return edit.id == null
+        ? [...cur, { id: newGroupId(), title }]
+        : cur.map((x) => (x.id === edit.id ? { ...x, title } : x));
+    });
     setGroups(next);
     setEdit(null);
   });
@@ -92,10 +106,14 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   );
 
   const removeGroup = (g: DocGroup) => run(async () => {
-    if (!groups) return;
+    if (!groups || groupsFailed || !sess) return;
     if (!(await askConfirm(tr('«{0}» бүлгийг устгах уу?', g.title), { ok: tr('Устгах') }))) return;
-    const next = groups.filter((x) => x.id !== g.id);
-    await saveGroups(next);
+    /* ⚠️ 2026-10-23: «хоосон» эсэхийг ШИНЭ жагсаалтаар — хуучин/ачаалагдаагүй жагсаалтаар устгавал тэр бүлгийн PDF-үүд
+       чимээгүй «ТЭЗҮ-БОНУ» руу шилждэг байв (`groupOf`) */
+    const fresh = await listPdfs();
+    /* хайлтын индекс хоцордог тул саяхан оруулсан (зөвхөн локал `items`-д буй) PDF-ийг ч тооцно */
+    if (hasGroupTag([...fresh, ...(items ?? [])], g.id)) throw new Error(tr('«{0}» бүлэгт PDF байгаа тул устгах боломжгүй.', g.title));
+    const next = await saveGroups((cur) => cur.filter((x) => x.id !== g.id));
     setGroups(next);
   });
 
@@ -147,10 +165,10 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
 
   return (
     <>
-      {ENT_PORTAL && <EntSignIn onSignedOut={() => setItems(null)} />}
+      {ENT_PORTAL && <EntSignIn onSignedOut={() => { setItems(null); setListOk(false); }} />}
       {(canEdit || canGroups) && (
         <div className={s.entRow}>
-          {canGroups && <button type="button" className={s.entBtn} disabled={busy || !groups} onClick={() => setEdit({ id: null, title: '' })}>
+          {canGroups && <button type="button" className={s.entBtn} disabled={busy || !groups || groupsFailed} onClick={() => setEdit({ id: null, title: '' })}>
             {tr('+ Бүлэг нэмэх')}
           </button>}
           <button type="button" className={s.entLink} disabled={busy} onClick={() => { void run(reload); }}>
@@ -179,11 +197,13 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Энэ бүлэгт PDF оруулах')}
                   onClick={() => pickUpload(g.id)}>{tr('PDF +')}</button>
               )}
-              {canGroups && (
+              {canGroups && !groupsFailed && (
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Нэр солих')}
                   onClick={() => setEdit({ id: g.id, title: g.title })}>✎</button>
               )}
-              {canGroups && g.id !== TEZU_GROUP && n === 0 && (
+              {/* ⚠️ 2026-10-23: PDF-ийн жагсаалт энэ сешнд АМЖИЛТТАЙ уншигдсан үед л «хоосон» гэж үзнэ (гарсан · уншилт
+                  унасан үед n=0 нь «мэдэхгүй» гэсэн үг) — `removeGroup` дахин шинэ жагсаалтаар шалгана */}
+              {canGroups && !groupsFailed && sess && listOk && items != null && g.id !== TEZU_GROUP && n === 0 && (
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Хоосон бүлгийг устгах')}
                   onClick={() => { void removeGroup(g); }}>✕</button>
               )}

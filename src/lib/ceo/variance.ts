@@ -17,7 +17,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
-import { mnt, num } from '@/lib/format';
+import { fixCyr, mnt, num } from '@/lib/format';
 import { loadVariance, type Variance, type VarianceWork } from '@/lib/execTriage';
 import { VAR_BAD_MNT } from '@/lib/kpiLevels';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
@@ -56,7 +56,8 @@ function workRow(w: VarianceWork): Cell[] {
     cell(w.sheet),
     /* ⚠️ `no` хоосон байж болно (`String(r.no ?? '')`) — тэр үед «—» */
     cell(w.no || null),
-    cell(w.work),
+    /* ⚠️ 2026-10-23 (UX аудит S15): хуудсын нэрний є/ї → ө/ү — ЗӨВХӨН харуулалт, түлхүүр хөндөгдөхгүй */
+    cell(fixCyr(w.work)),
     cell(w.vol),
     cell(w.sum),
     /* Хэтрэлт — блок бүрээр (`VarianceWork.over`, 2026-10-21); хуучин хэлбэрийн мөрд бөглөсөн − төлөвлөгдсөн */

@@ -568,5 +568,8 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     /* ⚠️ 2026-10-23: `total` — энэ хуудасны БҮХ блок (хуваарь) — «Багцын гүйцэтгэл»-ийн жин */
     return { saved, draft, blocks, total: nBld };
   }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc]);
-  return { otherPct, pkgPct };
+  /* ⚠️ 2026-10-23: нөгөө хувилбартай багцад `blockProgress` ачаалагдаж байгаа/унасан — «Багцын гүйцэтгэл»-ийг ЭНЭ хуудасны
+     дунджаар орлуулахгүй (`PkgPctBadge`, null ≠ буруу тоо) */
+  const otherPending = !bp && pkgFloors(pkg.group).some((x) => x.key !== pkg.key);
+  return { otherPct, pkgPct, otherPending };
 }

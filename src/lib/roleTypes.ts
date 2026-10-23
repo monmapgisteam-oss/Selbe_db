@@ -98,7 +98,9 @@ export function settingGroups(): SettingGroup[] {
       title: tr('Харах цонх'),
       rows: [
         ...TPL_VIEWS.map((v) => ({ id: `view:${v.key}`, label: v.title })),
-        { id: 'docs', label: tr('ТЭЗҮ · ДБОНҮ баримт үзэх') },
+        /* ⚠️ 2026-10-23: «ТЭЗҮ · ДБОНҮ баримт үзэх» мөр ХАСАГДСАН — баримт бичгийн сан нэвтэрсэн БҮХ хэрэглэгчид нээлттэй
+           (`docLib`, `Root.docsAllowed = !!access`); чекбокс юу ч хийдэггүй байсан. `docs` нь `KNOWN` · `DEFAULT_TPL` ·
+           `cleanTpl`-д хадгалагдсан загвартай нийцэхийн тулд үлдэнэ. */
       ],
     },
     {
