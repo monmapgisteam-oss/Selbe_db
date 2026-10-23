@@ -4,8 +4,8 @@
    ⚠️ 2026-08-25-ны шийдвэрийн дагуу (нэгдсэн `overview.module.css`-ийг сэдэв
    тус бүрээр БҮРЭН салгав) энэ цонх ч өөрийн бүрхүүлтэй: картын хэмжээ,
    тайлбарын байрлалыг энд өөрчлөхөд бусад харагдацад ОГТ нөлөөлөхгүй.
-   Загварын хэл нь `irgedOv.module.css`-тэй ижил envhub Box (surface +
-   hairline, сүүдэргүй) — хуулбар БИШ, тусдаа амьдрал.
+   Загварын хэл нь `irgedOv.module.css`-тэй ижил Environment карт (surface +
+   1px --line, 12px булан, сүүдэргүй) — хуулбар БИШ, тусдаа амьдрал.
    ══════════════════════════════════════════════════════════ */
 
 /* ══════════════════ Карт ══════════════════ */
@@ -16,7 +16,8 @@
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  /* ⚠️ 2026-10-23: Environment — карт 12px булан, сүүдэргүй */
+  border-radius: var(--r-lg);
 }
 
 /* Картын БИЕ — толгойн доор, ӨӨРӨӨ гүйнэ. Урт жагсаалт нь бүхэл баганыг
@@ -26,7 +27,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 10px 12px;
-  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 
 .panelHead {
@@ -35,7 +36,7 @@
   justify-content: space-between;
   gap: 8px;
   flex: none;
-  padding: 6px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -46,7 +47,7 @@
 .panelTitle {
   min-width: 0;
   font-size: 12px;
-  line-height: 1.25;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -74,8 +75,8 @@
   gap: 6px 12px;
   max-width: calc(100% - 24px);
   padding: 7px 10px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
@@ -99,7 +100,7 @@
 
 .legendMore {
   font-size: 0.69rem;
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--mono);
   color: var(--ink-3);
 }
@@ -118,7 +119,7 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }

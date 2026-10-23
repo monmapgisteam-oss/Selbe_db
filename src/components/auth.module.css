@@ -1,4 +1,7 @@
-/* ── Нэвтрэлтийн дэлгэц ── */
+/* ── Нэвтрэлтийн дэлгэц ──
+   ⚠️ 2026-10-23: Environment — карт 12px · --line-strong; гол товч .action-primary
+   (--workspace-accent, 8px, 12px/600), хоёрдогч .pe-ghost, оролт .pe-field,
+   төлвийн зурвас tone 8% / хүрээ tone 35% (badge хэл). Жин ≤600. */
 .screen {
   position: fixed;
   inset: 0;
@@ -23,49 +26,67 @@
   max-width: 380px;
   padding: 32px 30px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
   text-align: center;
 }
 
 .logo { width: 52px; height: 52px; margin: 0 auto 18px; display: block; }
 
-.title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
-.sub { font-size: 0.82rem; line-height: 1.55; color: var(--ink-3); margin-bottom: 24px; }
+.title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.sub { font-size: 12.5px; line-height: 1.55; color: var(--ink-3); margin-bottom: 24px; }
 /* ⚠️ 2026-10-05: «сешн дууссан» цонхны ХОЁР догол мөрийн эхнийх — завсар багатай */
 .subTight { margin-bottom: 10px; }
 /* ⚠️ 2026-10-05: идэвхгүй товч (шалгаж/чиглүүлж байхад) — давхар даралтаас */
-.btn:disabled, .btnGhost:disabled { opacity: 0.55; cursor: default; }
+.btn:disabled, .btnGhost:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ⚠️ Бэх нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan (#67d7e4)
-   тул цагаан бичиг 1.69:1 л өгч, нэвтрэх дэлгэцийн ЦОРЫН ГАНЦ товчны бичиг
-   бараг үл ялгардаг байв (WCAG AA 4.5:1). Цайвар горимд токен нь #fff хэвээр. */
+/* ⚠️ Бэх нь ТОВЧНЫ ӨӨРИЙН бэхний токен — харанхуй горимд дэвсгэр нь цайвар
+   тул цагаан бичиг бараг үл ялгардаг байв (WCAG AA 4.5:1). 2026-10-23-аас
+   Environment-ийн `--workspace-accent` / `--workspace-accent-ink` хос
+   (бараанд лайм дээр бараан бэх, цайварт moss дээр цайвар бэх). */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
-  padding: 11px 18px;
-  font-size: 0.9rem;
+  min-height: 42px;
+  padding: 0 18px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--hue-ink);
-  background: var(--hue);
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
   border-radius: var(--r);
-  transition: filter 0.14s;
+  transition: background 0.16s;
 }
-.btn:hover { filter: brightness(1.08); }
+.btn:hover:not(:disabled) { background: var(--workspace-accent-hover); }
 
 .btnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   margin-top: 12px;
   width: 100%;
-  padding: 9px 18px;
-  font-size: 0.82rem;
-  font-weight: 550;
+  min-height: 36px;
+  padding: 0 18px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: var(--r);
   transition: background 0.14s;
 }
-.btnGhost:hover { background: var(--sunken); }
+.btnGhost:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 
 /* Хэрэглэгчийн мэдээлэл (татгалзсан дэлгэц дээр) */
 .user {
@@ -76,15 +97,16 @@
   margin-bottom: 20px;
   padding: 10px 14px;
   background: var(--surface-2);
+  border: 1px solid var(--line);
   border-radius: var(--r);
 }
 .avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--sunken); }
-.userName { font-size: 0.84rem; font-weight: 600; color: var(--ink); }
-.userSub { font-size: 0.72rem; color: var(--ink-3); }
+.userName { font-size: 13px; font-weight: 600; color: var(--ink); }
+.userSub { font-size: 11px; color: var(--ink-3); }
 
 .error {
   margin-top: 16px;
-  font-size: 0.76rem;
+  font-size: 12px;
   color: var(--bad-ink);
 }
 
@@ -97,7 +119,7 @@
 .sysState {
   margin: 8px 0 16px;
   padding: 10px 12px;
-  font-size: 0.82rem;
+  font-size: 12.5px;
   line-height: 1.5;
   border-radius: var(--r);
   border: 1px solid var(--line);
@@ -105,23 +127,37 @@
   color: var(--ink-2);
 }
 .sysStateOn {
-  border-color: var(--bad);
-  background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  background: color-mix(in oklab, var(--bad) var(--tint), var(--surface));
   color: var(--bad-ink);
 }
-.sysLabel { display: block; margin: 10px 0 4px; font-size: 0.76rem; font-weight: 600; color: var(--ink-2); }
+.sysLabel {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
 .sysInput {
   width: 100%;
-  padding: 8px 10px;
+  min-height: 32px;
+  padding: 7px 9px;
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 12.5px;
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
   resize: vertical;
 }
-.sysDanger { background: var(--bad); color: #fff; }
+.sysInput:focus {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+/* .pe-danger — --clay дэвсгэр, цагаан бичиг */
+.sysDanger { background: var(--clay); color: #fff; }
+.sysDanger:hover:not(:disabled) { background: color-mix(in oklab, var(--clay) 88%, #000); }
 /* Хаалттай үед нэвтэрч буй (эрхтэй) хэрэглэгчийн шар зурвас — мартахаас сэргийлнэ */
 .sysStrip {
   position: fixed;
@@ -130,14 +166,15 @@
   transform: translateX(-50%);
   z-index: 5000;
   max-width: calc(100vw - 32px);
-  padding: 5px 14px;
-  font-size: 0.76rem;
+  padding: 5px 12px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.4;
   color: var(--warn-ink);
-  background: color-mix(in srgb, var(--warn) 22%, var(--surface));
-  border: 1px solid var(--warn);
-  border-radius: 999px;
-  box-shadow: var(--shadow-lg);
+  background: color-mix(in oklab, var(--warn) 16%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -8,6 +8,10 @@
 
    Газрын зургийн бүтэц «Ерөнхий мэдээлэл»-тэй ЯГ ИЖИЛ —
    pill toolbar, каталог, тунгалаг, легенд нь overview.module.css-ээс.
+
+   ⚠️ 2026-10-23: Environment — KPI хавтан 13px булан, карт/зураг 12px, хөвөгч гадарга --line-strong +
+   --shadow, хүрээ 1px. Капсул чип/сонгогч (.incChip/.pill, 999px) ба дүүргэгдсэн идэвхтэй сегмент нь
+   доорх ⚠️ шийдвэрүүдээр САНААТАЙ — хэлбэр нь хэвээр, зөвхөн хүрээ/өнгө токенд шилжив.
    ══════════════════════════════════════════════════════════ */
 
 .shell {
@@ -228,7 +232,7 @@
      дүрсүүд ч хасагдсан. */
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-xl);
 }
 /* ⚠️ 2026-10-08 (хэрэглэгч: «дээш нь жоохон шах»): дүрс ба шошго ЗЭРЭГЦЭЭ — дүрсний
    мөр (26px + 6px) хэмнэгдэж тоо дээш гарна */
@@ -250,7 +254,7 @@
   min-height: 2.6em; /* ⚠️ 2026-10-08 (хэрэглэгч: «зургийг дээш шах»): 3 → 2 мөр */
   /* ⚠️ 2026-10-08 (хэрэглэгч): 10px → 9px */
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -280,7 +284,7 @@
 /* ⚠️ `clamp` — 6 нүд нэг мөрөнд багтах нарийн өргөнд «2,309,416» хальж тасрахгүй */
 .ktVal b {
   font-size: clamp(15px, 1.15vw, 18px);
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.05;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -321,7 +325,7 @@
 }
 /* ⚠️ 2026-10-01: хуучирсан тайлангийн анхааруулга («Сүүлийн тайлан: … · N хоног») */
 .ktSubWarn {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-weight: 600;
 }
 /* ⚠️ 2026-10-01: Section-ийн тайлбар доторх холбоос маягийн товч («бүгдийг харах») */
@@ -354,7 +358,7 @@
   padding: 10px 10px 11px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 /* Бүлэг — гарчиг + агуулга. Хоёр бүлгийн хооронд нарийн зураас: «аль
@@ -371,6 +375,7 @@
 }
 .fltHead {
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -418,7 +423,7 @@
   align-items: baseline;
   gap: 8px;
 }
-.regHead { padding-bottom: 4px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.regHead { padding-bottom: 4px; font-size: 11px; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .regHead span:not(:first-child) { text-align: right; }
 /* ⚠️ 2026-10-09: `.regRow`/`.regLabel`/`.regBar` УСТГАВ — мөрүүд порталын `Bars` болсон
    (зам нь `--line` биш `--chart-track`, hover `useTip`). */
@@ -464,7 +469,7 @@
 .mixRowDim { opacity: 0.35; }
 .mixPct {
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--c2);
   white-space: nowrap;
@@ -484,19 +489,21 @@
 .stepNote { white-space: nowrap; }
 
 /* Сегментчилсэн товч — хоёр сонголт НЭГ хүрээнд */
+/* ⚠️ 2026-10-23: Environment .view-switch хэлбэр (1px --line зам, 8px/5px булан); идэвхтэй нь
+   доорх ⚠️-ийн дагуу ДҮҮРГЭГДСЭН хэвээр. */
 .seg {
   display: inline-flex;
   flex: none;
-  padding: 1px;
-  background: var(--surface-2);
+  padding: 2px;
+  background: transparent;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r);
 }
 .segBtn {
   padding: 2px 9px;
   border: none;
   background: none;
-  border-radius: 999px;
+  border-radius: 5px;
   cursor: pointer;
   font: inherit;
   font-size: 11px;
@@ -515,7 +522,8 @@
 .segOn,
 .segOn:hover {
   background: var(--accent);
-  color: var(--surface);
+  color: var(--bg);
+  box-shadow: 0 1px 5px #00000012;
 }
 
 
@@ -531,8 +539,8 @@
   align-items: center;
   gap: 9px;
   padding: 5px 12px 5px 10px;
-  background: var(--surface-2);
-  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
   cursor: pointer;
   text-align: left;
@@ -553,8 +561,8 @@
 }
 
 .incChip:hover {
-  background: var(--surface);
-  border-color: var(--accent);
+  background: var(--surface-2);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
   color: var(--accent);
 }
 .incChip:hover::before { border-color: var(--accent); }
@@ -588,7 +596,7 @@
 .incChipVal {
   flex: none;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -615,27 +623,28 @@
   gap: 7px;
   min-width: 0;
   padding: 3px 5px 3px 11px;
-  background: var(--surface-2);
-  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
 }
-.pill:hover { background: var(--surface); border-color: var(--accent); }
+.pill:hover { background: var(--surface-2); }
 /* Дотоод select фокуслахад капсул бүхэлдээ хүрээгээ өгнө */
-.pill:focus-within { border-color: var(--accent); }
+.pill:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent); }
 
 /* ── СОНГОГДСОН — ослын чипний идэвхтэй байдалтай ижил дохио, гэхдээ
    ДҮҮРГЭХГҮЙ: доторх унжих жагсаалтын текст уншигдахаа болино. Оронд нь
    хүрээ ба шошго нь өнгө авна. ── */
 .pillOn {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
 .pillLabel {
   flex: none;
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -689,7 +698,7 @@
 .pill select option:checked {
   background-color: color-mix(in oklab, var(--accent) 24%, var(--surface));
   color: var(--ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ⚠️ `.filtersLabel` нь ХЭРЭГЛЭГДЭХЭЭ БОЛИВ (2026-09-06): нэр нь одоо
@@ -698,6 +707,7 @@
 .filtersLabel {
   flex: none;
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -781,6 +791,7 @@
   min-width: 0;
   padding: 2px 2px 0;
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -827,7 +838,7 @@
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 
@@ -878,11 +889,11 @@
   flex: none;
   padding: 5px 10px;
   border: 0;
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-3);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -912,7 +923,7 @@
 /* Картын доорх нэг мөр тайлбар (кран: дундаж өндөр/сум) */
 .mini {
   margin-top: 6px;
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--ink-3);
 }
 
@@ -940,13 +951,13 @@
 .incType {
   flex: 1;
   min-width: 0;
-  font-size: 0.76rem;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
 .incDate {
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--ink-3);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -954,7 +965,7 @@
 .incSub {
   margin-top: 2px;
   padding-left: 15px;
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--ink-3);
   line-height: 1.35;
 }
@@ -966,8 +977,8 @@
   padding: 8px 10px;
   /* envhub гадаргуу: карт var(--surface) → дотогш var(--surface-2) */
   background: var(--surface-2);
-  border-radius: var(--r-sm);
-  font-size: 0.7rem;
+  border-radius: var(--r);
+  font-size: 11.5px;
   line-height: 1.5;
   color: var(--ink-2);
 }
@@ -993,10 +1004,10 @@
   /* ⚠️ 2026-10-23 (UX аудит S3): баруун хагаст л — дээд голын 2D/3D табыг (MapTools, z 10) бүрхдэг байв */
   max-width: calc(50% - 40px);
   padding: 6px;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
 }
 
 /* ⚠️ 2026-10-23 (засвар): өргөн хязгаартай (`max-width` дээр) капсул 720px-ээс өргөн зурагт ОЛОН МӨРӨНД ороход 999px
@@ -1008,7 +1019,7 @@
 }
 /* Нарийн зурагт капсулууд босоо — хэвтээ дараалал зургийг бүрхэнэ */
 @media (max-width: 720px) {
-  .mapFilter { border-radius: var(--r-sm); flex-direction: column; align-items: flex-end; }
+  .mapFilter { border-radius: var(--r-lg); flex-direction: column; align-items: flex-end; }
 }
 
 .pick {
@@ -1021,11 +1032,11 @@
   max-height: 62%;
   overflow-y: auto;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-lg);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .pickHead {
   display: flex;
@@ -1034,7 +1045,7 @@
   gap: 8px;
   margin-bottom: 6px;
 }
-.pickHead b { font-size: 0.78rem; color: var(--ink); }
+.pickHead b { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .pickHead button {
   border: 0;
   background: none;
@@ -1053,7 +1064,7 @@
 .pickRows > div {
   display: flex;
   gap: 8px;
-  font-size: 0.7rem;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 .pickRows dt { flex: none; width: 86px; font-weight: 600; color: var(--ink-3); }
@@ -1084,7 +1095,7 @@
 .photos a:hover { border-color: var(--data); }
 .photoNote {
   margin-top: 6px;
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--ink-3);
 }
 
@@ -1101,15 +1112,15 @@
   height: 56px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: transparent;
   color: var(--ink-2);
   font-size: 1.15rem;
   line-height: 1;
   cursor: pointer;
 }
-.slideNav:hover:enabled { color: var(--ink); border-color: var(--data); }
+.slideNav:hover:enabled { color: var(--ink); background: var(--surface-2); }
 .slideNav:disabled { opacity: 0.35; cursor: default; }
 .slideImg {
   flex: 1;
@@ -1124,7 +1135,7 @@
   /* envhub: картын доторх гүн = var(--surface-2) давхарга */
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 .slideImg:hover img { border-color: var(--data); }
 .slideCap {
@@ -1133,7 +1144,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: 5px;
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--ink-3);
 }
 .slideCapText {
@@ -1148,17 +1159,19 @@
 .slideCap b { flex: none; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 
 /* Алдааны «дахин оролдох» товч — query.ts-ийн дүрэм: алдааг нуухгүй, гарц өгнө */
+/* ⚠️ 2026-10-23: Environment .pe-ghost — 32px, 8px булан */
 .retry {
-  padding: 7px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 0.78rem;
-  font-weight: 600;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.retry:hover { background: var(--surface-2); }
+.retry:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ── Нарийн дэлгэц — босоо цуваа ── */
 /* Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). */
@@ -1189,43 +1202,55 @@
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  gap: 6px;
+  gap: 2px;
   flex: 1 1 auto;
   min-height: 0;
   padding: 2px 0;
 }
 /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): нэр|зурвас|утга нэг эгнээний grid →
-   порталын `Bars` мөр: дээр нэр + утга, доор 2px зам (ui.module.css `.barRow`-тэй ижил тоо). */
+   порталын `Bars` мөр: дээр нэр + утга, доор 2px зам (ui.module.css `.barRow`-тэй ижил тоо).
+   ⚠️ 2026-10-23: Environment `RowChart` — мөр нь товч: padding 3/6/4 ҮРГЭЛЖ, 1px тунгалаг
+   хүрээ, булан 8, хооронд 2px; hover `--surface-2`; сонгогдсон = moss 25% хүрээ + moss 7%
+   дэвсгэр; бүдэг .35 (`CHART.dim`). Онооны шатны өнгө (`scoreColor`, 2026-10-08 хэрэглэгчийн
+   хүсэлт) ба ✓▲! тэмдэг, 90%-ийн зорилт ХЭВЭЭР. */
 .scoreCol {
   display: flex;
   flex-direction: column;
   gap: 3px;
   width: 100%;
-  padding: 2px 0;
+  padding: 3px 6px 4px;
   font: inherit;
   color: inherit;
   text-align: left;
   background: none;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
+  transition: background 150ms, opacity 150ms;
 }
-.scoreCol:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
-.scoreTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.scoreCol:hover { background: var(--surface-2); }
+.scoreCol[aria-pressed='true'] {
+  border-color: color-mix(in oklab, var(--moss) 25%, transparent);
+  background: color-mix(in oklab, var(--moss) 7%, var(--surface));
+}
+.scoreCol:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 8px; }
+.scoreTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+/* ⚠️ 2026-10-23: Environment — нэр 11.5/1.3 `--ink-2`, БҮТЭН ороно (тайралтгүй) */
 .scoreName {
   min-width: 0;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.3;
   color: var(--ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
-/* ⚠️ 2026-10-09: 12px → 2px зам (`--chart-track`), радиус 1px */
+/* ⚠️ 2026-10-09: 12px → 2px зам (`--chart-track`), радиус 1px
+   ⚠️ 2026-10-23: Environment `.row-chart-track-inner` — 5px, булан 4 */
 .scoreTrack {
   position: relative;
   display: block;
   width: 100%;
-  height: 2px;
-  border-radius: 1px;
+  height: 5px;
+  border-radius: 4px;
   background: var(--chart-track);
 }
 /* ⚠️ 2026-10-09: 2026-10-08-ны «дүүргэлт 50% + хүрээ» нь 12px зурвасных байв — 2px-д
@@ -1233,27 +1258,29 @@
 .scoreBar {
   display: block;
   height: 100%;
-  border-radius: 1px;
+  border-radius: 4px;
   background: var(--c);
-  transition: width 0.25s;
+  transition: width 200ms;
 }
-/* Зорилтот 90% — зурвасаас ±4px сунана (`CHART.planTickOut`) */
+/* Зорилтот 90% — зурвасаас ±4px сунана (`CHART.planTickOut`)
+   ⚠️ 2026-10-23: Environment `.row-chart-guide` — 1px тасархай `--ink-2` */
 .scoreTarget {
   position: absolute;
   top: -4px;
   bottom: -4px;
   width: 0;
-  border-left: 1.5px dashed var(--ink-2);
-  opacity: 0.8;
+  border-left: 1px dashed var(--ink-2);
   pointer-events: none;
 }
+/* ⚠️ 2026-10-23: Environment — утга 11.5/600 `--ink` tabular */
 .scoreVal {
   flex: none;
   white-space: nowrap;
   font-size: 11.5px;
-  font-weight: 400;
-  color: var(--ink-2);
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
-.scoreMark { display: inline-block; min-width: 1em; margin-right: 2px; text-align: center; }
+.scoreMark { display: inline-block; min-width: 1em; margin-right: 2px; text-align: center; font-weight: 400; }
 @media (prefers-reduced-motion: reduce) { .scoreBar { transition: none; } }

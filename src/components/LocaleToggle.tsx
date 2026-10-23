@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { useLocale } from '@/lib/i18n';
 import {
   t as tr, loadLocaleDict, subscribeDict, getLocaleSwitchState, getServerLocaleSwitchState, clearLocaleSwitchError,
@@ -94,9 +95,10 @@ export function LocaleToggle({ className }: { className?: string }) {
         aria-label={label}
         title={busy ? tr('Хэлний толь ачаалж байна…') : label}
       >
-        <span className={s.code} aria-hidden>
-          {busy ? '…' : next.toUpperCase()}
-        </span>
+        {/* ⚠️ 2026-10-23: Environment — завгүй үед lucide Loader2 эргэнэ (урьд нь «…») */}
+        {busy
+          ? <LoaderCircle size={16} strokeWidth={1.6} className={s.spin} aria-hidden />
+          : <span className={s.code} aria-hidden>{next.toUpperCase()}</span>}
       </button>
       {sw === 'error' && (
         <span className={s.err} role="status">

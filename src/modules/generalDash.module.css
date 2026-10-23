@@ -7,6 +7,10 @@
  *
  * ⚠️ Хуудас БҮХЭЛДЭЭ гүйхгүй — багана тус бүр дотроо гүйнэ. Эс бөгөөс газрын
  * зураг дэлгэцээс гараад, хэрэглэгч чарт үзэхийн тулд зургаа алддаг.
+ *
+ * ⚠️ 2026-10-23: Environment — карт/зураг 12px булан, сүүдэргүй; картын толгойн радиал
+ * гэрэл (glow) ХАСАГДАВ; сегмент .view-switch; шошго 6px; тор/заагийн зураас 1px тасархай
+ * --line. S-муруйн олон өнгө (--tl-*) нь доорх ⚠️ шийдвэрээр САНААТАЙ — хэвээр.
  */
 .shell {
   /*
@@ -191,9 +195,10 @@
      багтах ёстой. Өндөр хязгаар нь namхан дэлгэц дээр муруйг шахахгүй байх
      доод хамгаалалт төдий. */
   min-height: 200px;
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   overflow: hidden;
-  background: var(--sunken, var(--surface-2));
+  background: var(--sunken);
 }
 
 /* ── Хугацааны шүүлт ── */
@@ -228,7 +233,7 @@
   gap: 0 18px;
   padding: 4px 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   background: var(--surface);
 }
 
@@ -242,6 +247,7 @@
 .fGrpLbl {
   margin-right: 2px;
   font-size: 11px;
+  line-height: 1.3;
   white-space: nowrap;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -263,19 +269,19 @@
   line-height: 1.5;
   white-space: nowrap;
   color: var(--ink-2);
-  background: var(--surface-2, transparent);
+  background: transparent;
   border: 1px solid var(--line-strong);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
-.fPill:hover { color: var(--ink); border-color: var(--data); }
+.fPill:hover { color: var(--ink); background: var(--surface-2); }
 /* ⚠️ 2026-10-23 (UX аудит S13): мэдрэгч дэлгэцэд 20×19 px товч хуруугаар онох боломжгүй байв */
 @media (pointer: coarse) { .fPill { min-width: 32px; min-height: 32px; } }
 /* ⚠️ СОНГОГДСОН нь ДҮҮРГЭЛТТЭЙ — зөвхөн ирмэгээр тэмдэглэвэл 12 шахмалын
    дунд аль нь идэвхтэй болох нь харагдахгүй. */
 .fPillOn {
-  color: var(--on-data, #04121e);
+  color: var(--bg);
   background: var(--data);
   border-color: var(--data);
   font-weight: 600;
@@ -290,10 +296,10 @@
   color: var(--ink-3);
   background: transparent;
   border: 1px solid var(--line-strong);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
-.fClear:hover { color: var(--bad-ink, var(--ink)); border-color: var(--bad); }
+.fClear:hover { color: var(--bad-ink); border-color: var(--bad); }
 
 /*
  * ⚠️ ЗУРГИЙН ЗҮҮН ИРМЭГТ (2026-09-15, хэрэглэгчийн заавар). Товчны багана нь
@@ -315,13 +321,14 @@
   z-index: 6;
   overflow: auto;
   background: var(--surface);
-  box-shadow: 2px 0 12px rgb(0 0 0 / 22%);
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
 }
 
 .kpis {
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-xl);
   background: var(--surface);
 }
 
@@ -335,6 +342,7 @@
 .sub {
   margin: 12px 0 5px;
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -422,14 +430,15 @@
  * ⚠️ `--tone` ЭНД ТОДОРХОЙЛОГДООГҮЙ (`Stat` нь өөрөө inline тавьдаг) тул
  * `--data`-г ШУУД бичнэ; `var(--tone, …)` гэвэл эцгээсээ санамсаргүй өнгө
  * өвлөж, карт бүр өөр өнгөтэй болох эрсдэлтэй.
+ *
+ * ⚠️ 2026-10-23: Environment — радиал гэрэл + өнгөт давхарга ХАСАГДАВ (glow/градиент
+ * чимэглэл хориотой). Толгой нь хавтгай: 1px --line доод зураас, тунгалаг дэвсгэр.
  */
 .shell :global(.secHead) {
   margin: -12px -12px 8px;
-  padding: 6px 10px;
-  border-bottom-color: color-mix(in srgb, var(--data) 32%, var(--line));
-  background:
-    radial-gradient(130% 140% at 0% 0%, color-mix(in srgb, var(--data) 12%, transparent), transparent 55%),
-    color-mix(in srgb, var(--data) 5%, var(--surface));
+  padding: 9px 12px;
+  border-bottom-color: var(--line);
+  background: transparent;
 }
 .shell :global(.secTitle) {
   font-size: 11px;
@@ -483,7 +492,7 @@
   border-left: 1px solid var(--line);
   cursor: pointer;
 }
-.fClear:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.fClear:hover { color: var(--ink); background: var(--surface-2); }
 
 /*
  * ⚠️ 2026-10-09 (хэрэглэгчийн сонголт «хэвтээ багана НИМГЭН 2px»): энд байсан
@@ -527,7 +536,7 @@
 /* ⚠️ СОНГОСОН ҮЕ. `g.tlColOn` нь CSS-д БАЙХГҮЙ байсныг 2026-09-07-ны
    аудит илрүүлэв: хулганаар заасан үе огт тодордоггүй, зөвхөн шошго нь
    солигддог тул «аль баганы тоо вэ» гэдэг тодорхойгүй байлаа. */
-.tlColOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
+.tlColOn { background: color-mix(in oklab, var(--data) 12%, transparent); }
 /* Багананы утга — түүний ДЭЭД талд, багана намхан үед ч уншигдана */
 /*
  * ОЛГОСОН ДҮНГИЙН БАГАНА.
@@ -596,7 +605,7 @@
    палитраас гадуур hex бичихгүй — сэдэв солиход дагаж тохирно.
    ⚠️ 2026-10-09: өнгө/зузаан/тасархайг JSX `style` давамгайлна (`CHART`, `--chart-plan`) —
    энд үлдсэн нь `style` алга болсон үеийн нөөц. */
-.tlLine { stroke: var(--tl-curve); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1 5; }
+.tlLine { stroke: var(--tl-curve); stroke-width: 2; stroke-linecap: butt; stroke-dasharray: 4 4; }
 /* ⚠️ IPC-ийн муруй — төлөвлөгөөнийхтэй ИЖИЛ зузаан, ӨӨР өнгө. Тасархай
    болговол «таамаг» гэж уншигдана, гэтэл энэ нь хамгийн БОДИТ хэмжилт. */
 .tlLineIpc { stroke: var(--tl-ipc); stroke-width: 2; stroke-linecap: round; }
@@ -664,16 +673,20 @@
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px dashed var(--line-strong);
+  /* ⚠️ 2026-10-23: Environment — тор/зааг 1px тасархай --line */
+  border-left: 1px dashed var(--line);
 }
 
 /* Заагуурын зураас — hover хийсэн үе. Жилийн заагаас ӨНГӨӨРӨӨ ялгарна. */
+/* ⚠️ 2026-10-23: Environment `AreaChart` crosshair — tone (`--data`) 1px, `2 2` тасархай, .7.
+   `border-style: dashed` нь тасархайн уртыг удирдахгүй тул 1px өргөн градиент судлаар. */
 .tlCursor {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 0;
-  border-left: 1px dashed var(--tl-curve);
+  width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--data) 0 2px, transparent 2px 4px);
+  opacity: 0.7;
 }
 
 /* ⚠️ SVG-ТЭЙ ЯГ ИЖИЛ `inset` — цэг ба муруй нэг хуваарьт байх цорын ганц арга */
@@ -691,13 +704,20 @@
 /* Цэгийн хувь — муруйн ӨНГӨӨР, багананы дүнтэй андуурагдахгүй */
 :global([data-theme='dark']) .shell { --tl-lbl: #fff; }
 
+/*
+ * ⚠️ 2026-10-23: Environment `AreaChart labels` — 10px/400 tabular `--ink-2` (заасан нь `--ink`),
+ *    цэгээс 6px дээр, ГАЛО/chip-гүй. Доорх `--tl-lbl` (цагаан) ба 8 зүгийн гало нь ХУУЧИН
+ *    (2026-09-06/07) шийдвэр — Env дизайныг бүрэн дуурайх шийдвэрээр ОРЛОГДОВ (`.tlDot b` төгсгөл).
+ *    «Бүх шошгыг харуул» (2026-09-07) ба хоёр эгнээ (`.tlDotUp`) ХЭВЭЭР — дунд цэгүүдийн утга алдагдахгүй.
+ */
 .tlDot b {
   position: absolute;
-  bottom: 9px;
+  bottom: 8.5px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 400;
+  line-height: 1;
   /*
    * ⚠️ СЭДВЭЭС ХАМААРНА, хатуу #fff БИШ (2026-09-07). Хар сэдэвт цагаан
    * (хэрэглэгчийн 2026-09-06-ны заавар) хэвээр, гэвч ЦАЙВАР сэдэвт цагаан
@@ -719,26 +739,26 @@
    * түүнийг үл үзэгдэх болгоно. Гало нь одоо шошгыг багана/муруйнаас
    * тусгаарлах үүрэгтэй.
    */
-  text-shadow:
-    1px 1px 0 var(--surface), -1px 1px 0 var(--surface),
-    1px -1px 0 var(--surface), -1px -1px 0 var(--surface),
-    1px 0 0 var(--surface), -1px 0 0 var(--surface),
-    0 1px 0 var(--surface), 0 -1px 0 var(--surface);
+  /* ⚠️ 2026-10-23: Environment — өнгө `--ink-2`, гало ХАСАГДАВ (дээрх тайлбарыг үз) */
+  color: var(--ink-2);
+  text-shadow: none;
 }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цэг АНХДАГЧААР НУУГДМАЛ (хувийн бичиг нь
-   хэвээр — 2026-09-07-ны «бүх шошгыг харуул»); тэмдэг нь зөвхөн заасан үед (`.tlDotOn`). */
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): цэг АНХДАГЧААР НУУГДМАЛ байв.
+   ⚠️ 2026-10-23: Environment `AreaChart` — 5px цэг + 2px `--surface` цагираг, анхдагчаар .5
+   ХАРАГДАНА; заасан нь 1 (томруулахгүй), бусад нь .15 (`.tlDotDim`). */
 .tlDot::before {
   content: '';
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   margin: 0 auto;
   border-radius: 99px;
   background: var(--tl-curve);
   box-shadow: 0 0 0 2px var(--surface);
-  opacity: 0;
-  transition: opacity 0.12s;
+  opacity: 0.5;
+  transition: opacity 0.15s;
 }
+.tlDotDim::before { opacity: 0.15; }
 .tlAxis { display: flex; gap: 4px; }
 .tlAxis span {
   display: flex;
@@ -758,7 +778,9 @@
   overflow: visible;
   white-space: nowrap;
 }
-.tlAxis b { font-weight: 500; }
+/* ⚠️ 2026-10-23: Environment — тэнхлэгийн шошго 10px/400 tabular `--ink-3` */
+.tlAxis b { font-weight: 400; font-variant-numeric: tabular-nums; line-height: 1; }
+.tlAxis { margin-top: 6px; }
 .tlAxis i {
   font-size: 11px;
   font-style: normal;
@@ -786,10 +808,10 @@
  * ⚠️ `overflow: visible` ЗААВАЛ — эс бөгөөс налсан бичвэр нүдэндээ хайчлагдана.
  */
 .tlAxisTilt {
-  /* ⚠️ 52 → 22px (2026-09-07): шошго нь «2026-05»-аас «05» болж БОГИНОСССОН
-     (он нь доорх зурваст) тул 45°-т ердөө ~16px эзэлнэ. 52px үлдээвэл сар ба
-     оны хооронд хоосон зурвас бий болно. */
-  height: 22px;
+  /* ⚠️ 52 → 22px (2026-09-07): шошго нь «2026-05»-аас «05» болж БОГИНОСССОН.
+     ⚠️ 2026-10-23: Environment `AreaChart` — налуу мөр 28px (`h-7`), дээд зай 8px (`mt-2`). */
+  height: 28px;
+  margin-top: 8px;
   align-items: flex-start;
   overflow: visible;
 }
@@ -799,23 +821,19 @@
   overflow: visible;
 }
 /*
- * ⚠️ ДООШ НАЛНА (2026-09-07). Урьд нь `rotate(-45deg)` + баруун дээд тулгуур
- * байсан тул бичвэр нь тулгуураас ДЭЭШ, ЗҮҮН тийш сунаж, хэвтээ тэнхлэгээс
- * ДЭЭГҮҮР — зурвасын дотор буудаг байв. Одоо зүүн дээд тулгуураас баруун
- * ДООШ явна: бүх бичвэр тэнхлэгийн ДООР үлдэнэ.
+ * ⚠️ ДООШ НАЛНА (2026-09-07): бүх бичвэр тэнхлэгийн ДООР үлдэнэ.
+ * ⚠️ 2026-10-23: Environment `AreaChart` — −60° (`origin-top-right -translate-x-1/2
+ *    -rotate-[60deg]`): хагас өргөнөөр зүүн тийш шилжүүлж БАРУУН ДЭЭД булан нүдний голд
+ *    суугаад бичвэр зүүн доош унжина. 60° нь 45°-аас хэвтээ ул мөр бага (давхцахгүй).
  */
 .tlAxisTilt b {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  transform: rotate(45deg);
-  transform-origin: 0 0;
+  max-width: none;
+  transform: translateX(-50%) rotate(-60deg);
+  transform-origin: 100% 0;
   white-space: nowrap;
-  /* ⚠️ ХЭМЖЭЭГ ИЛ ЗАРЛАНА: эцгийн `font-size`-ыг өвлөвөл нүд нарийсахад
-     хамт агшдаггүй ч, тодорхой утга байхгүй үед хөтчүүд өөр өөрөөр тооцдог
-     байв (шошго тэгш бус хэмжээтэй харагдана). */
+  /* ⚠️ ХЭМЖЭЭГ ИЛ ЗАРЛАНА: эцгийн `font-size`-ыг өвлөвөл хөтчүүд өөр өөрөөр тооцдог байв. */
   font-size: 11px;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 /*
@@ -838,7 +856,7 @@
 }
 .tlHeadPct {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   /* ⚠️ Цэгийн шошготой ИЖИЛ токен (`--tl-lbl`): хатуу `#fff` байсан тул
      ЦАЙВАР сэдэвт цагаан дэвсгэр дээр үл үзэгдэх болж байв (2026-09-07).
@@ -869,39 +887,12 @@
    ⚠️ 2026-10-09 (лавлах CRM загвар): r 4.5 + 2px гадаргуун цагираг + r 9 гало (25%) — `CHART.hoverR/haloR/haloA`;
    хувийн бичиг нь ӨНГӨТ PILL болно (ui `PointCallout`-тай нэг хэл: дэвсгэр = муруйн өнгө,
    цайварт `--chart-callout-shade`-ээр харлуулсан, бичиг `--hue-ink`, доош сумтай). */
-.tlDotOn::before {
-  width: 9px;
-  height: 9px;
-  opacity: 1;
-  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4.5px color-mix(in srgb, var(--tl-curve) 25%, transparent);
-}
-.tlDotOn b {
-  z-index: 2;
-  bottom: 14px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: color-mix(in oklab, var(--tl-curve), #000 var(--chart-callout-shade, 0%));
-  color: var(--hue-ink);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-shadow: none;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--tl-curve) var(--chart-glow, 40%), transparent);
-}
-.tlDotOn b::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-left: -4px;
-  border: 4px solid transparent;
-  border-bottom-width: 0;
-  border-top-color: color-mix(in oklab, var(--tl-curve), #000 var(--chart-callout-shade, 0%));
-}
-@media print {
-  .tlDotOn b { box-shadow: none; }
-}
-.tlAxisOn { color: var(--ink); font-weight: 600; }
+/* ⚠️ 2026-10-23: Environment — заасан цэг ТОМРОХГҮЙ, гало/PILL ХАСАГДАВ (r 4.5 + сумтай
+   өнгөт pill байв); зөвхөн тунгалаг 1, шошго `--ink`. */
+.tlDotOn::before { opacity: 1; }
+.tlDotOn b { z-index: 2; color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — идэвхтэй тэнхлэгийн шошго зөвхөн `--ink` (жин өөрчлөгдөхгүй) */
+.tlAxisOn { color: var(--ink); }
 
 /*
  * ЗУМЫН ЗУРВАС — ArcGIS дашбоардын хугацааны гулсуур.
@@ -914,40 +905,95 @@
  * өндөр хулгайлдаг байв. 8px нь чирэхэд хангалттай бөгөөд бариулууд нь
  * зурваснаас өргөн (9px) тул хулганаар барихад хялбар хэвээр.
  */
+/*
+ * ⚠️ 2026-10-23: Environment `YearRange` (globals.css `.range-thumb`) — 16px өндөр хит-талбай,
+ *    дундуур нь 3px зам (`--paper-hi`, булан 1), сонгосон муж 3px `--data`; бариул 12px
+ *    дөрвөлжин, булан 2, `--surface` дэвсгэр, 1.5px moss хүрээ (дарахад moss дүүргэлт).
+ *    Чирэлтийн гурван горим ХЭВЭЭР — зөвхөн харагдац.
+ */
+.tlRange { margin-top: 6px; }
+.tlRangeHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.tlRangePill {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tlRangeRule { flex: 1 1 0; height: 1px; background: var(--line); }
+.tlRangeSpan { flex-shrink: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 .tlZoom {
   position: relative;
-  height: 8px;
-  margin-top: 2px;
-  border-radius: 8px;
-  background: var(--chart-track, var(--surface-2));
+  height: 16px;
   cursor: crosshair;
   touch-action: none;
-  overflow: hidden;
+}
+.tlZoom::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--paper-hi);
 }
 .tlZoomWin {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--tl-curve) 34%, transparent);
-  box-shadow: inset 0 0 0 1px var(--tl-curve);
   cursor: grab;
   touch-action: none;
 }
+.tlZoomWin::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--data);
+}
 .tlZoomWin:active { cursor: grabbing; }
-/* Ирмэгийн бариул — цонх нарийсахад ч барьж болохуйц өргөн */
+/* Ирмэгийн бариул — 12px дөрвөлжин, мужийн ирмэг дээр ГОЛЛОНО */
 .tlZoomGrip {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -3px;
-  width: 9px;
-  border-radius: 8px;
-  background: var(--tl-curve);
+  top: 2px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 2px;
+  border: 1.5px solid var(--data);
+  background: var(--surface);
   cursor: ew-resize;
   touch-action: none;
 }
-.tlZoomGripR { left: auto; right: -3px; }
+.tlZoomGrip:active { background: var(--data); }
+.tlZoomGripR { left: auto; right: -6px; }
+/* Үе бүрийн зураас — бариул хаана байгааг ойлгоход (Env «жил бүрийн зураас») */
+.tlRangeTicks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  padding: 0;
+}
+.tlRangeTicks i { width: 1px; height: 4px; background: var(--line-strong); }
+.tlRangeTicks i.tlRangeTickOn { background: var(--data); opacity: 0.8; }
 
 /* «Бүтэн харах» — зөвхөн зумтай үед гарна */
 .tlReset {
@@ -958,7 +1004,7 @@
   color: var(--ink-2);
   background: transparent;
   border: 1px solid var(--line-strong);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .tlReset:hover { color: var(--ink); border-color: var(--tl-curve); }
@@ -986,29 +1032,32 @@
      бусад хэсгээсээ тод гардаг байв. */
 }
 
-/* ── ЧАРТ / ХҮСНЭГТ СЭЛГҮҮР ── */
+/* ── ЧАРТ / ХҮСНЭГТ СЭЛГҮҮР ──
+   ⚠️ 2026-10-23: Environment .view-switch (3px дотоод зай, 1px --line зам; дарагдсан = --surface-2 + сүүдэр) */
 .tlTabs {
   display: inline-flex;
+  gap: 2px;
+  padding: 2px;
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 .tlTab {
   padding: 2px 10px;
   font: inherit;
   font-size: 11px;
-  color: var(--ink-2);
+  color: var(--ink-3);
   background: transparent;
   border: none;
-  border-left: 1px solid var(--line);
+  border-radius: 5px;
   cursor: pointer;
 }
 .tlTabs > .tlTab:first-child { border-left: none; }
-.tlTab:hover { background: color-mix(in srgb, var(--data) 10%, transparent); }
+.tlTab:hover { color: var(--ink); }
 .tlTabOn {
   color: var(--ink);
-  background: color-mix(in srgb, var(--data) 14%, transparent);
-  box-shadow: inset 0 -2px 0 var(--data);
+  background: var(--surface-2);
+  box-shadow: 0 1px 5px #00000012;
 }
 
 /*
@@ -1046,7 +1095,8 @@
   z-index: 1;
   padding: 0;
   font-weight: 600;
-  background: var(--surface-2, var(--surface));
+  background: var(--surface);
+  border-bottom-color: var(--line-strong);
 }
 /* Толгойн товч — бүтэн нүдийг эзэлнэ, дарахад эрэмбэлнэ */
 .tlSort {
@@ -1054,16 +1104,19 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px 8px;
+  padding: 4px 8px;
   font: inherit;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--ink-3);
   background: transparent;
   border: none;
   cursor: pointer;
 }
-.tlSort:hover { color: var(--ink); background: color-mix(in srgb, var(--data) 10%, transparent); }
+.tlSort:hover { color: var(--ink); background: var(--surface-2); }
 .tlSort i { font-size: 11px; font-style: normal; color: var(--data-ink); }
 /* ⚠️ ТОЛГОЙ нь БҮГД ЗҮҮН ТИЙШ (2026-09-07, хэрэглэгчийн заавар): нүдний утга
    баруун тийш жигдэрсэн ч гарчиг нь тэгвэл багана бүрийн нэр өөр өөр
@@ -1082,8 +1135,8 @@
    TypeScript үүнийг барьдаггүй (`.module.css` нь Record<string,string>). */
 .tlThNum { text-align: right; }
 /* Ээлжилсэн дэвсгэр — урт мөрийг нүд алдахгүй дагана */
-.tlTbl tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
-.tlTbl tbody tr:hover { background: color-mix(in srgb, var(--data) 12%, transparent); }
+.tlTbl tbody tr:nth-child(even) { background: color-mix(in oklab, var(--ink) 3%, transparent); }
+.tlTbl tbody tr:hover { background: color-mix(in oklab, var(--data) 12%, transparent); }
 
 /*
  * «БАГЦ 74» — давхаргын каталогийн доод хэсгийн ажлын жагсаалт (2026-09-15).
@@ -1136,7 +1189,7 @@
 .pkgRow:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 /* ⚠️ Давхаргагүй ажлыг НУУХГҮЙ, зөвхөн бүдгэрүүлнэ (JSX-ийн тайлбарыг үз) */
 .pkgRow:disabled { opacity: 0.45; cursor: default; }
-.pkgRowOn { background: color-mix(in srgb, var(--data) 16%, transparent); color: var(--ink); }
+.pkgRowOn { background: color-mix(in oklab, var(--data) 12%, transparent); color: var(--ink); box-shadow: inset 3px 0 0 var(--data); }
 .pkgBagts {
   flex: none;
   min-width: 66px;

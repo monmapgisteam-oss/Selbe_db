@@ -53,7 +53,7 @@ import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { Icon } from '@/components/Icon';
 /* ⚠️ 2026-10-23 (UX аудит X3): алдааг `userError`-оор — серверийн түүхий англи мөр хэрэглэгчид гарахгүй (монгол мессеж хэвээр) */
 import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip, userError } from '@/components/ui';
-import { CHART, lineSegments } from '@/lib/chartStyle';
+import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 
 import { useAsync } from '@/lib/useAsync';
@@ -266,7 +266,11 @@ type Info = {
    · `null`/NaN алхам = ХЭМЖИГДЭЭГҮЙ → шугам ТАСАРНА (0 гэж зурахгүй, CLAUDE.md null ≠ 0);
    · цэг нь тэг урттай зураас (round cap + non-scaling) — `preserveAspectRatio="none"`
      `<circle>`-ийг ЗУУВАН болгодог байв;
-   · `<title>`-ийн оронд порталын `useTip`. */
+   · `<title>`-ийн оронд порталын `useTip`.
+   ⚠️ 2026-10-23: Environment `Sparkline` (ui/data.tsx) — 1.25px ШУЛУУН шугам (монотон биш),
+   хуваарь min–max (дээд/доод 3px зай), доор нь tone 12% дүүргэлт; заагуурын зураас/цэг ХАСАГДАВ.
+   `at` нь hover-ын утгад (tooltip) хэвээр. null/NaN цоорхой (шугам ба дүүргэлт ТАСАРНА) ХЭВЭЭР;
+   ганц цэгтэй хэсэг нь бөөрөнхий зураас — хэмжилт алга болохгүй. */
 function Spark({
   vals, at, color, unit, label,
 }: { vals: readonly (number | null)[]; at: number; color: string; unit: string; label: string }) {
@@ -275,13 +279,13 @@ function Spark({
   const H = 34;
   const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
   const peak = Math.max(...vals.filter(ok), 0.0001);
+  const low = Math.min(...vals.filter(ok), peak);
+  const span = peak - low || 1;
   const n = vals.length;
   const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2);
-  const y = (v: number) => H - (v / peak) * H;
-  const segs = lineSegments(vals.map((v, i) => (ok(v) ? { x: x(i), y: y(v) } : null)));
+  const y = (v: number) => H - ((v - low) / span) * (H - 6) - 3;
+  const segs = lineSegments(vals.map((v, i) => (ok(v) ? { x: x(i), y: y(v) } : null)), { smooth: false });
   const cur = vals[at];
-  const cx = x(at);
-  const cy = ok(cur) ? y(cur) : null;
   return (
     <>
       <svg
@@ -293,23 +297,20 @@ function Spark({
           hint: `${tr('дээд')} ${num(peak, 2)} ${unit}`,
         })}
       >
+        {segs.map((sg) => {
+          const fill = areaPath(sg, H);
+          return fill ? (
+            <path key={`a${sg.from}`} d={fill}
+              style={{ fill: `color-mix(in oklab, ${color} 12%, transparent)`, stroke: 'none' }} />
+          ) : null;
+        })}
         {segs.map((sg) => (
           <path key={sg.from} d={sg.d} vectorEffect="non-scaling-stroke"
             style={{
-              fill: 'none', stroke: color, strokeWidth: sg.single ? CHART.markerR * 2 : CHART.stroke,
-              strokeLinejoin: 'round', strokeLinecap: 'round',
+              fill: 'none', stroke: color, strokeWidth: sg.single ? CHART.markerR * 2 : 1.25,
+              strokeLinejoin: 'round', strokeLinecap: sg.single ? 'round' : 'butt',
             }} />
         ))}
-        <line x1={cx} y1={0} x2={cx} y2={H} vectorEffect="non-scaling-stroke"
-          style={{ stroke: 'var(--ink-3)', strokeWidth: 1, strokeDasharray: '3 2' }} />
-        {cy != null && (
-          <>
-            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--surface)', strokeWidth: (CHART.markerR + CHART.ring) * 2, strokeLinecap: 'round' }} />
-            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
-              style={{ stroke: color, strokeWidth: CHART.markerR * 2, strokeLinecap: 'round' }} />
-          </>
-        )}
       </svg>
       {tip.node}
     </>

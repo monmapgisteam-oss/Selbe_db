@@ -5,6 +5,11 @@
  * ⚠️ ХОЁР ТАЛТ байх шалтгаан: сонголт ба оролт нэг дэлгэцэнд ЗЭРЭГ харагдах
  * ёстой. Модаль цонх болговол хүн ажил бүрийн дараа хааж, дахин хайх болно —
  * 78 ажилд 78 удаа.
+ *
+ * ⚠️ 2026-10-23: Environment — карт 12px · --line · --surface; толгой uppercase
+ * 10.5px/600; хүснэгт .pe-table (11.5px, 10px толгой); оролт .pe-field (28px нягт,
+ * 7px, --line-strong, bg --bg, moss focus); товч .pe-primary/.pe-ghost (32px, 8px,
+ * 12px/600); сонгогдсон мөр moss 12% + inset 3px; тодорхойгүй `--ink-1` → `--ink`.
  */
 .wrap {
   display: grid;
@@ -23,7 +28,7 @@
   min-height: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 .sideHd {
@@ -31,13 +36,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 12px 16px;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
   border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
 }
 .legend {
   display: flex;
@@ -63,7 +70,8 @@
   background: color-mix(in srgb, var(--data) 10%, var(--surface));
   color: var(--ink);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.3;
   padding: 5px 10px;
   white-space: nowrap;
   overflow: hidden;
@@ -79,16 +87,17 @@
   border: 0;
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 11.5px;
   text-align: left;
   cursor: pointer;
 }
 .work:hover { background: var(--surface-2); }
 .workOn {
-  background: var(--surface-2);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
   box-shadow: inset 3px 0 0 var(--data);
-  color: var(--ink-1);
+  color: var(--ink);
 }
+.workOn:hover { background: color-mix(in oklab, var(--data) 12%, transparent); }
 .pkg {
   flex: 0 0 auto;
   min-width: 72px;
@@ -112,8 +121,8 @@
  */
 .dot {
   flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   display: inline-block;
 }
@@ -130,28 +139,38 @@
   min-height: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: var(--r-lg);
+  padding: 12px 16px;
   overflow: auto;
 }
-.hd h3 { margin: 0; font-size: 14px; color: var(--ink-1); }
+.hd h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
 .sub { margin: 4px 0 12px; font-size: 11px; color: var(--ink-3); }
-.hint { margin: 0; padding: 24px 4px; font-size: 12px; color: var(--ink-3); }
+.hint {
+  margin: 0;
+  padding: 24px 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+}
 
-.tbl { border-collapse: collapse; width: 100%; max-width: 520px; }
+.tbl { border-collapse: separate; border-spacing: 0; width: 100%; max-width: 520px; font-size: 11.5px; }
 .tbl th {
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
   text-align: left;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
+  padding: 7px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
 }
 .tbl td {
-  padding: 3px 8px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11.5px;
   color: var(--ink-2);
   border-bottom: 1px solid var(--line);
 }
@@ -163,30 +182,35 @@
 
 .inp {
   width: 88px;
-  padding: 3px 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--ink-1);
-  font-size: 12px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 12.5px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  outline: none;
 }
-.inp:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.inp:focus {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
 
 .tbl tfoot td {
-  font-weight: 700;
-  color: var(--ink-1);
-  border-top: 2px solid var(--line-strong);
+  font-weight: 600;
+  color: var(--ink);
+  border-top: 1px solid var(--line-strong);
   border-bottom: none;
 }
 /* Нийлбэрийн мөр — төлөвөө өнгөөр хэлнэ */
-.tbl tfoot tr.done td { color: var(--good); }
-.tbl tfoot tr.part td { color: var(--warn); }
+.tbl tfoot tr.done td { color: var(--good-ink); }
+.tbl tfoot tr.part td { color: var(--warn-ink); }
 .tbl tfoot tr.none td { color: var(--ink-3); }
 .tbl tfoot tr.over td { color: var(--bad-ink); }
 
-.warn { margin: 8px 0 0; font-size: 11px; color: var(--warn); max-width: 520px; }
+.warn { margin: 8px 0 0; font-size: 11px; color: var(--warn-ink); max-width: 520px; }
 
 .bar {
   display: flex;
@@ -195,20 +219,27 @@
   gap: 10px;
   margin-top: auto;
   padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
-.err { font-size: 11px; color: var(--bad-ink); }
-.ok { font-size: 11px; color: var(--good); }
+.err { font-size: 11px; color: var(--bad-ink-ink); }
+.ok { font-size: 11px; color: var(--good-ink); }
 .save {
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--data);
-  background: var(--data);
-  color: var(--hue-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  border: 0;
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.save:disabled { opacity: 0.45; cursor: default; }
+.save:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.save:disabled { opacity: 0.4; cursor: not-allowed; }
 
 @media (max-width: 900px) {
   /* ⚠️ Нарийн дэлгэцэнд ХООРОНДОО — хоёр багана 280px-ээс доош шахагдвал
@@ -226,13 +257,19 @@
  * хадгалахтай ижил жинтэй харагдвал санамсаргүй дарагдана.
  */
 .clear {
-  padding: 6px 12px;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
   border: 1px solid var(--line-strong);
   background: transparent;
   color: var(--ink-2);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.clear:hover:not(:disabled) { border-color: var(--bad); color: var(--bad-ink); }
+.clear:hover:not(:disabled) { border-color: color-mix(in oklab, var(--bad-ink) 45%, transparent); color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 8%, transparent); }
 .clear:disabled { opacity: 0.4; cursor: default; }

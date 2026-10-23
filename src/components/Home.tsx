@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { t as tr } from '@/lib/i18nCore';
 import { LocaleToggle } from '@/components/LocaleToggle';
 import { useAuth } from './AuthGate';
@@ -200,7 +201,7 @@ export function Home({
                     }}
                   >
                     {g.title}
-                    <span className={`${s.caret} ${on ? s.caretOn : ''}`} aria-hidden>▾</span>
+                    <span className={`${s.caret} ${on ? s.caretOn : ''}`} aria-hidden><ChevronDown size={13} strokeWidth={1.75} /></span>
                   </button>
 
                   {/* ⚠️ 2026-09-30: `role="menu"`/`menuitem` ХАСАГДАВ — тэдгээр нь
@@ -262,14 +263,14 @@ export function Home({
               {/* Нэвтэрсэн хэрэглэгч порталд ОРОХ — эс бөгөөс нүүр хуудсанд гацна */}
               <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
                 {tr('Порталд орох')}
-                <span className={s.signInArrow} aria-hidden>→</span>
+                <span className={s.signInArrow} aria-hidden><ArrowRight size={14} strokeWidth={1.75} /></span>
               </button>
               <button type="button" className={s.signBtn} onClick={signOut}>{tr('Гарах')}</button>
             </>
           ) : (
             <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>
               {tr('Нэвтрэх')}
-              <span className={s.signInArrow} aria-hidden>→</span>
+              <span className={s.signInArrow} aria-hidden><ArrowRight size={14} strokeWidth={1.75} /></span>
             </button>
           )}
         </div>
@@ -280,16 +281,33 @@ export function Home({
       {(boardAllowed ?? isSuper) && (
       <main className={s.board}>
         <header className={s.boardHead}>
-          <div>
-            {/* ⚠️ Эх текст нь ЕРДИЙН бичиглэлтэй — `.title` нь
-                `text-transform: uppercase` тул дэлгэцэд «СЭЛБЭ УХААЛАГ ХОТ»
-                болж гарна. Түлхүүрийг том үсгээр бичвэл толь бусад мөрүүдээсээ
-                салж, дараа нь хайхад хэцүү болно. */}
-            <h1 className={s.title}>{tr('Сэлбэ ухаалаг хот')}</h1>
+          <div className={s.intro}>
+            {/* ⚠️ 2026-10-23: Environment hero (`.section-kicker` · `.intro-copy h1` · `.intro-actions`) —
+                гарчгийн 2 дахь мөр moss. Эх текст ердийн бичиглэлтэй (uppercase ХАСАГДСАН). */}
+            <p className={s.kicker}><span aria-hidden />{tr('Улаанбаатар хотын Сэлбэ дэд төв')}</p>
+            <h1 className={s.title}>
+              {tr('Сэлбэ ухаалаг хот')}
+              <br />
+              <span className={s.titleSub}>Digital Twin Platform</span>
+            </h1>
             {/* ⚠️ Албан ёсны үг хэллэг — бүтэн өгүүлбэр, үйл үгээр төгсөнө */}
             <p className={s.lede}>
               {tr('Төслийн үндсэн үзүүлэлтийг ArcGIS мэдээллийн сангаас шууд нэгтгэн харуулав.')}
             </p>
+            {/* Толгойн зурвасын «Порталд орох» / «Баримт бичиг»-тэй ИЖИЛ үйлдэл, ИЖИЛ нөхцөл (нэвтэрсэн ·
+                `docsAllowed`) — Environment-ийн `.action-primary` + `.action-text` */}
+            {status === 'signed-in' && user && (
+              <div className={s.actions}>
+                <button type="button" className={s.actionPrimary} onClick={onEnterAll}>
+                  {tr('Порталд орох')} <ArrowRight size={17} strokeWidth={1.75} aria-hidden />
+                </button>
+                {docsAllowed && (
+                  <button type="button" className={s.actionText} onClick={() => setDocs(true)}>
+                    {tr('Баримт бичиг')} <ArrowUpRight size={17} strokeWidth={1.75} aria-hidden />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           {/* ⚠️ 2026-08-24: «Нийт гүйцэтгэл» зурвас ЭНДЭЭС ХАСАГДАВ. Тэр нь
               `loadProjectProgress().actual`-ыг харуулдаг байсан бөгөөд доорх
@@ -328,7 +346,7 @@ export function Home({
         ) : (
           <div className={s.boardGate}>
             <p>{tr('Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.')}</p>
-            <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>{tr('Нэвтрэх')} →</button>
+            <button type="button" className={s.actionPrimary} onClick={onEnterAll}>{tr('Нэвтрэх')} →</button>
           </div>
         )}
       </main>
@@ -345,8 +363,13 @@ export function Home({
       {!(boardAllowed ?? isSuper) && groups.length > 0 && (
         <main className={s.board}>
           <header className={s.boardHead}>
-            <div>
-              <h1 className={s.title}>{tr('Сэлбэ ухаалаг хот')}</h1>
+            <div className={s.intro}>
+              <p className={s.kicker}><span aria-hidden />{tr('Улаанбаатар хотын Сэлбэ дэд төв')}</p>
+              <h1 className={s.title}>
+                {tr('Сэлбэ ухаалаг хот')}
+                <br />
+                <span className={s.titleSub}>Digital Twin Platform</span>
+              </h1>
               <p className={s.lede}>{tr('Танд нээлттэй хэсгүүд. Ажиллах хэсгээ сонгоод «Орох» дарна уу.')}</p>
             </div>
           </header>
@@ -372,7 +395,7 @@ export function Home({
                           onClick={() => onEnterView(v.key)}
                           aria-label={tr('«{0}» хэсэгт орох', v.title)}
                         >
-                          {tr('Орох')} <span aria-hidden>→</span>
+                          {tr('Орох')} <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden />
                         </button>
                       </li>
                     );

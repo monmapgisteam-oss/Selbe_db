@@ -2,6 +2,10 @@
    БАГЦ АЖЛЫН ОНОО — нүүрний удирдлагын самбар.
    Гэрлэн дохио нь `--h` (kpiLevels LEVEL_TONE) — `ceoBoard.module.css`-тэй
    нэг хэл: өнгө + тоо (өнгө ганцаараа утга дамжуулахгүй).
+   ⚠️ 2026-10-23: Environment — карт 12px · --line · --surface (сүүдэргүй), KPI
+   хавтан 13px (.analytics-stat), хүснэгт .pe-table (10px uppercase толгой, 6/10px
+   мөр, сонголт moss 12% + inset 3px), badge 6px (tone 35% хүрээ / 8–16% дэвсгэр),
+   товч .pe-ghost (32px/28px, 8px), жин ≤600. `--h` гэрлэн дохионы өнгө хэвээр.
    ═══════════════════════════════════════════════════════════ */
 
 .board { width: 100%; min-width: 0; }
@@ -15,41 +19,45 @@
 
 /* ══ Толгой ══ */
 .head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
-.title { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--ink); }
-.counts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.74rem; }
-.counts b { font-weight: 650; white-space: nowrap; }
+.title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.counts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; }
+.counts b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cBad { color: var(--bad-ink, var(--bad)); }
 .cWarn { color: var(--warn-ink, var(--warn)); }
 .cGood { color: var(--good-ink, var(--good)); }
 .cNone { color: var(--ink-3); font-weight: 500 !important; }
-.legend { margin-left: auto; font-size: 0.6875rem; color: var(--ink-3); }
+.legend { margin-left: auto; font-size: 11px; color: var(--ink-3); }
 
-.err { font-size: 0.8rem; color: var(--bad-ink, var(--bad)); }
+.err { font-size: 12px; color: var(--bad-ink, var(--bad)); }
 .errMsg { color: var(--ink-3); }
 .retry {
-  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
-  background: var(--surface); color: var(--ink); font-size: 0.75rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 28px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--r);
+  background: transparent; color: var(--ink-2); font-size: 12px; font-weight: 500; cursor: pointer;
 }
-.warnLine { margin: 0 0 8px; font-size: 0.72rem; color: var(--warn-ink, var(--warn)); }
+.retry:hover { background: var(--surface-2); color: var(--ink); }
+.warnLine { margin: 0 0 8px; font-size: 11.5px; color: var(--warn-ink, var(--warn)); }
 
 /* ══ Оноо ══ */
 .score {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 34px; padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 0.74rem; font-weight: 700;
+  border-radius: var(--r-sm);
+  font-size: 11.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: color-mix(in srgb, var(--h) 22%, transparent);
-  border: 1px solid color-mix(in srgb, var(--h) 55%, transparent);
+  background: color-mix(in oklab, var(--h) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--h) 45%, transparent);
   white-space: nowrap;
 }
-.scoreBig { min-width: 52px; padding: 4px 10px; font-size: 1.05rem; border-radius: 8px; }
+.scoreBig { min-width: 52px; padding: 4px 10px; font-size: 17px; letter-spacing: -0.04em; border-radius: var(--r); }
 /* «Дата хүлээгдэж буй» — өнгөгүй, тасархай хүрээ: оноо ч биш, эрсдэл ч биш */
 .pending {
-  font-size: 0.6875rem; font-weight: 600; color: var(--ink-3);
-  background: transparent; border: 1px dashed var(--ink-3);
+  font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--ink-3);
+  background: transparent; border: 1px dashed var(--line-strong);
 }
-.scoreBig.pending { font-size: 0.78rem; }
+.scoreBig.pending { font-size: 12px; }
 
 /* ══ Төслийн нийт ══ */
 .summary {
@@ -62,18 +70,22 @@
 @media (max-width: 640px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sumTile {
   display: grid; gap: 6px; justify-items: start; align-content: start;
-  padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-xl);
   background: var(--surface);
   text-align: left; color: var(--ink); font: inherit; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
 }
-.sumTile:hover { border-color: var(--ink-3); }
+.sumTile:hover { border-color: var(--line-strong); background: var(--surface-2); }
 .sumTile:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .sumTotal { cursor: default; background: var(--surface-2, var(--surface)); }
-.sumTotal:hover { border-color: var(--line); }
-.sumOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); }
-.sumLabel { display: inline-flex; align-items: center; gap: 5px; font-size: 0.74rem; font-weight: 650; }
-.sumSub { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); }
+.sumTotal:hover { border-color: var(--line); background: var(--surface-2, var(--surface)); }
+.sumOn, .sumOn:hover {
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 12%, var(--surface));
+}
+.sumLabel { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+.sumSub { font-size: 11px; line-height: 1.35; color: var(--ink-3); }
 
 /* ══ Жагсаалт + задаргаа ══ */
 .stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 12px; align-items: start; }
@@ -83,43 +95,50 @@
 
 .tableWrap {
   overflow-x: auto;
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg);
   background: var(--surface);
 }
-.tbl { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
-.tbl th, .tbl td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11.5px; }
+.tbl th, .tbl td { padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--ink-2); }
 .tbl thead th {
   position: sticky; top: 0; z-index: 1;
-  background: var(--surface-2, var(--surface));
-  font-size: 0.6875rem; font-weight: 700; color: var(--ink-3); text-align: center;
+  padding-top: 7px; padding-bottom: 7px;
+  background: var(--surface);
+  border-bottom-color: var(--line-strong);
+  font-size: 11px; font-weight: 600; line-height: 1.3; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-3); text-align: center;
 }
 .thName { text-align: left !important; min-width: 220px; }
 .thDim { width: 58px; }
 .thOn { color: var(--data-ink) !important; }
-.thBtn { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+.thBtn { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; text-transform: inherit; letter-spacing: inherit; }
+.thBtn:hover { color: var(--ink); }
 .thBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .cell { text-align: center; }
 .loadingRow { padding: 18px !important; text-align: center; color: var(--ink-3); }
 
-.groupRow { background: color-mix(in srgb, var(--data) 7%, var(--surface)); cursor: pointer; }
-.groupRow:hover { background: color-mix(in srgb, var(--data) 13%, var(--surface)); }
-.groupOpen th, .groupOpen td { border-bottom-color: var(--data); }
+.groupRow { background: var(--surface-2); cursor: pointer; }
+.groupRow:hover { background: var(--paper-hi); }
+.groupOpen th, .groupOpen td { border-bottom-color: var(--line-strong); }
 .groupName { text-align: left; }
 .groupBtn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: none; padding: 0; cursor: pointer;
-  font: inherit; font-size: 0.78rem; font-weight: 700; color: var(--ink); text-align: left;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink); text-align: left;
 }
 .groupBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .caret { color: var(--ink-3); width: 10px; }
 .groupCount {
-  font-size: 0.6875rem; font-weight: 600; color: var(--ink-3);
-  border: 1px solid var(--line); border-radius: 999px; padding: 0 6px;
+  font-size: 11px; font-weight: 500; color: var(--ink-3);
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 0 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .workRow { cursor: pointer; }
 .workRow:hover { background: var(--surface-2, var(--surface)); }
-.workOn { background: color-mix(in srgb, var(--data) 12%, var(--surface)) !important; }
+.workOn { background: color-mix(in oklab, var(--data) 12%, var(--surface)) !important; }
+.workOn > :first-child { box-shadow: inset 3px 0 0 var(--data); }
+.workOn td, .workOn th { color: var(--ink); }
 .cancelled { opacity: 0.55; }
 .workName { max-width: 340px; }
 .workBtn {
@@ -129,13 +148,13 @@
 }
 .workBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .wName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wPkg { font-size: 0.6875rem; color: var(--ink-3); }
+.wPkg { font-size: 11px; color: var(--ink-3); }
 
 /* ══ Задаргаа ══ */
 .detail {
   position: sticky; top: 8px;
-  padding: 12px;
-  border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
   background: var(--surface);
   min-width: 0;
 }
@@ -143,103 +162,110 @@
 /* ⚠️ 2026-10-06 (аудит): сонголтын дараа фокус тийш шилждэг (`togglePick`) — гараар ирсэн үед л хүрээ */
 .detail:focus { outline: none; }
 .detail:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.note { margin: 0; font-size: 0.78rem; color: var(--ink-3); }
-.dHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.note { margin: 0; font-size: 12px; color: var(--ink-3); }
+.dHead { display: flex; align-items: flex-start; gap: 10px; margin: -12px -16px 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .dTitleBox { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.dEyebrow { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-.dTitle { font-size: 0.9rem; line-height: 1.3; color: var(--ink); }
-.dTotal { display: grid; justify-items: center; gap: 2px; font-size: 0.6875rem; color: var(--ink-3); }
+.dEyebrow { font-size: 11px; font-weight: 600; line-height: 1.3; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-3); }
+.dTitle { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink); }
+.dTotal { display: grid; justify-items: center; gap: 2px; font-size: 11px; color: var(--ink-3); }
 .dClose {
-  flex: none; width: 26px; height: 26px; border-radius: 6px;
-  border: 1px solid var(--line); background: var(--surface); color: var(--ink-3);
-  font-size: 1rem; line-height: 1; cursor: pointer;
+  flex: none; display: grid; place-items: center;
+  width: 28px; height: 28px; padding: 0; border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-3);
+  font-size: 15px; line-height: 1; cursor: pointer;
 }
-.dClose:hover { color: var(--ink); border-color: var(--ink-3); }
+.dClose:hover { color: var(--ink); background: var(--surface-2); }
 .dClose:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 
 .meta {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px;
-  margin: 0 0 6px; padding: 8px 10px;
-  border-radius: 8px; background: var(--surface-2, var(--surface));
+  margin: 0 0 6px; padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface-2, var(--surface));
 }
 .meta div { display: grid; gap: 1px; min-width: 0; }
-.meta dt { font-size: 0.6875rem; color: var(--ink-3); }
-.meta dd { margin: 0; font-size: 0.76rem; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
-.hint { margin: 0 0 10px; font-size: 0.6875rem; line-height: 1.4; color: var(--ink-3); }
+.meta dt { font-size: 11px; color: var(--ink-3); }
+.meta dd { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.hint { margin: 0 0 10px; font-size: 11px; line-height: 1.4; color: var(--ink-3); }
 
 .dims { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 520px) { .dims { grid-template-columns: 1fr; } }
 .dim {
   display: grid; gap: 5px; width: 100%;
-  padding: 8px 9px;
-  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: var(--r);
   background: var(--surface-2, var(--surface));
   font: inherit; text-align: left; color: var(--ink); cursor: pointer;
 }
-.dim:hover { border-color: var(--ink-3); border-left-color: var(--h); }
+.dim:hover { border-color: var(--line-strong); border-left-color: var(--h); }
 .dim:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.dimOn { box-shadow: inset 0 0 0 1px var(--data); }
-.dimHead { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; }
-.dimHead b { flex: 1; font-weight: 650; }
+.dimOn { background: color-mix(in oklab, var(--data) 12%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--data) 45%, transparent); }
+.dimHead { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.dimHead b { flex: 1; font-weight: 600; }
 /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 4px → порталын хэвтээ баганын 2px,
    зам `--chart-track` (ui.module.css `.barTrack`-тэй ижил тоо). */
 .bar { display: block; height: 2px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 1px; background: var(--h); }
-.facts { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); }
-.measure { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); font-style: italic; }
+.facts { font-size: 11px; line-height: 1.35; color: var(--ink-3); }
+.measure { font-size: 11px; line-height: 1.35; color: var(--ink-3); font-style: italic; }
 .dimPending { border-left-style: dashed; }
-.pendingNote { font-size: 0.6875rem; line-height: 1.35; color: var(--ink-2); }
+.pendingNote { font-size: 11px; line-height: 1.35; color: var(--ink-2); }
 .factList { display: grid; gap: 2px; margin: 2px 0 0; }
-.factList div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.6875rem; }
+.factList div { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
 .factList dt { color: var(--ink-3); }
-.factList dd { margin: 0; font-weight: 650; color: var(--ink); text-align: right; }
+.factList dd { margin: 0; font-weight: 600; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
 
 .kpiHead {
   display: grid; gap: 3px;
   margin: 6px 0 8px; padding-top: 10px;
   border-top: 1px solid var(--line);
-  font-size: 0.8rem; font-weight: 700; color: var(--ink);
+  font-size: 12.5px; font-weight: 600; color: var(--ink);
 }
-.kpiRule { font-size: 0.6875rem; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
+.kpiRule { font-size: 11px; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
 
 /* Эх сурвалжийн тайлбар — холбогдох CEO үзүүлэлтгүй бүлэгт (ХАБЭА) */
 .srcBox {
   display: grid; gap: 8px; justify-items: start;
   padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: var(--surface-2, var(--surface));
+  border: 1px dashed var(--line-strong); border-radius: var(--r-lg);
+  background: transparent;
 }
-.srcBox p { margin: 0; font-size: 0.72rem; line-height: 1.45; color: var(--ink-2); }
+.srcBox p { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-2); }
 .srcGo {
-  border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px 10px;
-  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--r);
+  background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
 }
-.srcGo:hover { border-color: var(--ink-3); }
+.srcGo:hover { background: var(--surface-2); color: var(--ink); }
 .srcGo:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 
 /* ══ Заавал шийдвэрлэх асуудал ══ */
 .issues {
-  margin: 0 0 12px; padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bad) 4%, var(--surface));
+  margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--bad) 4%, var(--surface));
 }
-.issuesHead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+.issuesHead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .issuesCount {
-  min-width: 20px; padding: 0 6px; border-radius: 999px;
-  background: var(--bad); color: #fff; font-size: 0.6875rem; text-align: center;
+  min-width: 20px; padding: 0 6px; border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
+  color: var(--bad-ink); font-size: 11px; font-weight: 500; text-align: center;
+  font-variant-numeric: tabular-nums;
 }
-.issuesNone { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
+.issuesNone { margin: 0; font-size: 11.5px; color: var(--ink-3); }
 .issueList { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 .issue {
   --h: var(--ink-3);
   display: flex; align-items: flex-start; gap: 8px; width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: var(--r);
   background: var(--surface);
   font: inherit; text-align: left; color: var(--ink); cursor: pointer;
 }
-.issue:hover { border-color: var(--ink-3); border-left-color: var(--h); }
+.issue:hover { border-color: var(--line-strong); border-left-color: var(--h); background: var(--surface-2); }
 .issue:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .tone_bad { --h: var(--bad); }
 .tone_warn { --h: var(--warn); }
@@ -247,22 +273,22 @@
 .issueNo {
   flex: none; width: 20px; height: 20px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--h) 20%, transparent);
-  font-size: 0.6875rem; font-weight: 700;
+  background: color-mix(in oklab, var(--h) 16%, transparent);
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .issueBody { display: grid; gap: 1px; min-width: 0; }
-.issueMeta { font-size: 0.6875rem; color: var(--ink-3); }
-.issueMeta b { color: var(--h); font-weight: 700; }
-.issueText { font-size: 0.74rem; line-height: 1.4; color: var(--ink); }
+.issueMeta { font-size: 11px; color: var(--ink-3); }
+.issueMeta b { color: var(--h); font-weight: 600; }
+.issueText { font-size: 12px; line-height: 1.4; color: var(--ink); }
 
 /* ══ Багц ажлын төлөв (шүүлт) — нягт 4 карт ══ */
 .status {
-  margin-bottom: 10px; padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  margin-bottom: 10px; padding: 12px 16px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface);
 }
 .statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-.statusHead b { font-size: 0.84rem; color: var(--ink); }
-.statusHead span { font-size: 0.6875rem; color: var(--ink-3); }
+.statusHead b { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.statusHead span { font-size: 11px; color: var(--ink-3); }
 /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Stack` (ui.module.css .stack) —
    8px, радиус 4px, суурь `--chart-track`, хэсэг хооронд 2px ГАДАРГУУН зай (`box-shadow` —
    өргөнийг өөрчлөхгүй тул харьцаа ЯГ хэвээр). Урьд нь 1px `gap` байв. */
@@ -277,29 +303,33 @@
 .statusCards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 900px) { .statusCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stCard {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--line); border-left: 4px solid var(--h); border-radius: 10px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: var(--r-xl);
   background: var(--surface);
   font: inherit; text-align: left; color: var(--ink); cursor: pointer;
-  transition: opacity 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.stCard:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--h); }
+.stCard:hover:not(:disabled) { border-color: var(--line-strong); border-left-color: var(--h); background: var(--surface-2); }
 .stCard:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.stCard:disabled { cursor: default; opacity: 0.5; }
-.stOn { background: color-mix(in srgb, var(--h) 14%, var(--surface)); box-shadow: 0 0 0 2px var(--h); }
+.stCard:disabled { cursor: default; opacity: 0.4; }
+.stOn, .stOn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--h) 12%, var(--surface));
+  border-color: color-mix(in oklab, var(--h) 45%, transparent);
+  border-left-color: var(--h);
+}
 .stDot {
   flex: none; width: 18px; height: 18px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 2px solid var(--h); color: var(--h); font-size: 0.6875rem; font-weight: 800;
+  border: 1.5px solid var(--h); color: var(--h); font-size: 11px; font-weight: 600;
 }
 .stOn .stDot { background: var(--h); color: var(--surface); }
 .stBody { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.stName { font-size: 0.78rem; font-weight: 650; }
-.stRule { font-size: 0.6875rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stName { font-size: 12px; font-weight: 600; }
+.stRule { font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stNums { display: grid; justify-items: end; gap: 0; }
-.stNum { font-size: 1.35rem; line-height: 1.1; font-weight: 750; }
-.stPct { font-size: 0.6875rem; color: var(--ink-3); }
+.stNum { font-size: 23px; line-height: 1.1; font-weight: 600; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.stPct { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* «Багц ажил» жагсаалтын «Төлөв» багана */
 .thStatus { min-width: 150px; width: 22%; text-align: left !important; }
@@ -313,7 +343,8 @@
   border: 0; padding: 0; cursor: pointer;
   box-shadow: inset -2px 0 0 var(--surface);
   background: var(--h); color: var(--hue-ink);
-  font: inherit; font-size: 0.6875rem; font-weight: 700;
+  font: inherit; font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
   transition: opacity 0.15s;
 }
 .gSeg:hover { filter: brightness(1.1); }
@@ -322,10 +353,10 @@
 .gSegOn, .gSegOn:last-child { box-shadow: inset 0 0 0 2px var(--ink); }
 .stPill {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 1px 8px; border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--h) 60%, transparent);
-  background: color-mix(in srgb, var(--h) 16%, transparent);
-  font-size: 0.6875rem; font-weight: 600; color: var(--ink); white-space: nowrap;
+  padding: 1px 7px; border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--h) 35%, transparent);
+  background: color-mix(in oklab, var(--h) 8%, transparent);
+  font-size: 11px; font-weight: 500; color: var(--ink); white-space: nowrap;
 }
 
 /* Бүлгийн хавтан доторх тархалт */
@@ -333,29 +364,33 @@
 .dimBar { display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
 .dimBar i { flex-basis: 0; background: var(--h); box-shadow: inset -2px 0 0 var(--surface); }
 .dimBar i:last-child { box-shadow: none; }
+/* ⚠️ Судал = «мэдээлэл хүлээгдэж буй» (.hatch хэл) — чимэглэл биш, хэвээр */
 .dimBar i.segPending { background: repeating-linear-gradient(90deg, var(--ink-3) 0 3px, transparent 3px 5px); }
-.sumProblem { font-size: 0.6875rem; color: var(--ink-3); }
+.sumProblem { font-size: 11px; color: var(--ink-3); }
 .sumProblem b { color: var(--bad-ink, var(--bad)); }
 
 /* Идэвхтэй шүүлт */
 .filterBar {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   margin: 0 0 8px; padding: 6px 10px;
-  border: 1px dashed var(--data); border-radius: 10px;
-  background: color-mix(in srgb, var(--data) 6%, var(--surface));
-  font-size: 0.72rem;
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent); border-radius: var(--r);
+  background: color-mix(in oklab, var(--data) 8%, var(--surface));
+  font-size: 11.5px;
 }
-.filterLabel { font-weight: 700; color: var(--ink-2); }
+.filterLabel { font-weight: 600; color: var(--ink-2); }
 .filterChip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--h); background: color-mix(in srgb, var(--h) 12%, var(--surface));
-  color: var(--ink); font: inherit; font-size: 0.7rem; cursor: pointer;
+  padding: 2px 8px; border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--h) 45%, transparent);
+  background: color-mix(in oklab, var(--h) 12%, var(--surface));
+  color: var(--ink); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
 }
 .filterChip:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.filterCount { margin-left: auto; color: var(--ink-3); }
+.filterCount { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .filterClear {
-  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
-  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.7rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 24px; padding: 0 8px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-2); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
 }
-.filterClear:hover { border-color: var(--ink-3); }
+.filterClear:hover { background: var(--surface-2); color: var(--ink); }

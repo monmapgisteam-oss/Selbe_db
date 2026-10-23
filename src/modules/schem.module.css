@@ -28,7 +28,8 @@
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  /* ⚠️ 2026-10-23: Environment — карт/самбар 12px булан, --line, --surface, сүүдэргүй */
+  border-radius: var(--r-lg);
 }
 .title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
 .sub { margin: 0; font-size: 11.5px; color: var(--ink-3); }
@@ -40,14 +41,21 @@
   font-size: 12px;
   color: var(--ink-2);
 }
+/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px */
 .select {
   font: inherit;
-  font-size: 12px;
-  padding: 4px 8px;
+  font-size: 12.5px;
+  height: 32px;
+  padding: 0 9px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
+}
+.select:focus {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
 }
 
 /* ⚠️ УНАСАН ЭХ СУРВАЛЖИЙГ НЭРЛЭЖ ХЭЛНЭ. Гурван зураастай схем тайлбаргүй бол
@@ -58,9 +66,9 @@
   padding: 6px 10px;
   font-size: 11.5px;
   color: var(--warn-ink);
-  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--warn) var(--tint), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--r);
 }
 
 /* ── Тайлбар (легенд) ── */
@@ -92,7 +100,7 @@
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 /* Масштаблалт бүхэлдээ — зангилааны дотоод хэмжээ хэвээр, харьцаа эвдрэхгүй */
 .stage { position: relative; flex: none; transform-origin: center center; }
@@ -194,10 +202,11 @@
  * ба хар цагаан хэвлэлтэд бүрэн алдагдана. Ялангуяа «Мэдээлэлгүй» нь ногоонтой
  * андуурагдвал БҮРЭН тасалдал «эрүүл төсөл» мэт харагдана.
  */
+/* ⚠️ 2026-10-23: Environment badge — булан 6px */
 .tag {
   padding: 1px 6px;
   font-size: 11px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   color: var(--ink-3);
   white-space: nowrap;
@@ -208,9 +217,9 @@
 .legBad { background: var(--bad); }
 .legNone { background: var(--line-strong); }
 
-.hGood { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); color: var(--good-ink); }
-.hWarn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn-ink); }
-.hBad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--bad-ink); }
+.hGood { border-color: color-mix(in oklab, var(--good) 35%, transparent); color: var(--good-ink); }
+.hWarn { border-color: color-mix(in oklab, var(--warn) 35%, transparent); color: var(--warn-ink); }
+.hBad { border-color: color-mix(in oklab, var(--bad) 35%, transparent); color: var(--bad-ink); }
 .hNone { border-color: var(--line); color: var(--ink-3); }
 
 .bGood { border-left-color: var(--good); }
@@ -282,8 +291,8 @@
   flex: none;
   padding: 0 5px;
   font-size: 11px;
-  font-weight: 700;
-  border-radius: 2px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
   border-width: 1px;
   border-style: solid;
   white-space: nowrap;
@@ -301,10 +310,10 @@
   gap: 6px;
   margin-top: 3px;
   padding: 2px 5px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   border-width: 1px;
   border-style: solid;
-  background: var(--sunken);
+  background: var(--surface-2);
 }
 .statLabel {
   font-size: 11px;
@@ -373,9 +382,9 @@
   padding: 6px 10px;
   font-size: 11.5px;
   color: var(--bad-ink);
-  background: color-mix(in srgb, var(--bad) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--bad) var(--tint), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  border-radius: var(--r);
 }
 
 /* ── Тэмдэглэл ──
@@ -434,7 +443,7 @@
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 .panelHead { display: flex; align-items: center; gap: 6px; }
@@ -449,20 +458,25 @@
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--r-sm);
 }
+/* ⚠️ 2026-10-23: Environment — жижиг дүрсэн товч 28px дөрвөлжин, булан 6px */
 .xBtn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
   font: inherit;
   font-size: 12px;
   line-height: 1;
-  padding: 3px 6px;
+  padding: 0;
   color: var(--ink-3);
   background: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   cursor: pointer;
 }
-.xBtn:hover { color: var(--ink); border-color: var(--line-strong); }
+.xBtn:hover { color: var(--ink); background: var(--surface-2); }
 
 /* ⚠️ ЭХ СУРВАЛЖИЙН ТӨЛӨВ. «—» гэсэн тоо нь үйлчилгээ унаснаас уу, эсвэл
    үнэхээр өгөгдөл байхгүйгээс үү — үүнгүйгээр хоёул ЯГ адилхан харагдана. */
@@ -470,14 +484,15 @@
 .srcTag {
   padding: 1px 6px;
   font-size: 11px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   white-space: nowrap;
 }
 .srcOk { color: var(--ink-3); }
 .srcBad {
   color: var(--bad-ink);
-  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
 }
 
 .pSec { display: flex; flex-direction: column; gap: 5px; }
@@ -486,6 +501,7 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  line-height: 1.3;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -518,7 +534,16 @@
   text-align: left;
   border-bottom: 1px solid var(--line);
 }
-.pTable th { color: var(--ink-3); font-weight: 600; }
+/* ⚠️ 2026-10-23: Environment `.pe-table` толгой — 10px uppercase ink-3 */
+.pTable th {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  border-bottom-color: var(--line-strong);
+}
 .pTable td { color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 .pIssues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
@@ -531,22 +556,26 @@
   white-space: normal;
   border: 1px solid var(--line);
   border-left-width: 2px;
-  border-radius: 2px;
+  border-radius: var(--r-sm);
 }
 
+/* ⚠️ 2026-10-23: Environment `.pe-primary` — 32px · булан 8px · 12px/600 · --workspace-accent */
 .goBtn {
   margin-top: auto;
+  flex: none;
+  height: 32px;
   font: inherit;
-  font-size: 11.5px;
-  padding: 6px 10px;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 14px;
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
+  border: 0;
+  border-radius: var(--r);
   cursor: pointer;
 }
-.goBtn:hover:enabled { border-color: var(--hue); }
-.goBtn:disabled { cursor: default; opacity: 0.6; color: var(--ink-3); border-color: var(--line); }
+.goBtn:hover:enabled { background: var(--workspace-accent-hover); }
+.goBtn:disabled { cursor: not-allowed; opacity: 0.4; }
 
 /* Сонгогдсон зангилаа — самбар алийг нь үзүүлж байгаа нь тодорхой байна */
 .sel { outline: 2px solid var(--hue); outline-offset: 1px; }
@@ -566,18 +595,20 @@
    `STEP_NOTE_H`-ТЭЙ ЯГ ТЭНЦҮҮ БАЙХ ЁСТОЙ. `layout()` мөрийн өндрийг тэдгээр
    тоогоор урьдчилан тооцдог — зөрвөл задарсан зангилаа доод мөрөө ДАРНА. */
 
-.modes { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+/* ⚠️ 2026-10-23: Environment `.view-switch` — 3px padding, 1px --line зам; дарагдсан = тод гадарга + зөөлөн сүүдэр */
+.modes { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); }
 .mode {
   font: inherit;
-  font-size: 11.5px;
-  padding: 4px 10px;
+  font-size: 12px;
+  padding: 5px 10px;
   color: var(--ink-3);
-  background: var(--surface-2);
+  background: transparent;
   border: 0;
+  border-radius: 5px;
   cursor: pointer;
 }
-.mode + .mode { border-left: 1px solid var(--line); }
-.modeOn { color: var(--ink); background: var(--surface); font-weight: 600; }
+.mode:hover { color: var(--ink); }
+.modeOn { color: var(--ink); background: var(--surface-2); box-shadow: 0 1px 5px #00000012; }
 
 /* ── Нарийн схемийн карт ──
    ⚠️ 24 карт нэг дэлгэцэнд багтах ёстой тул үсэг жижиг, зай нягт. Гэхдээ

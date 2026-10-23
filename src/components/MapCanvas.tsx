@@ -2600,6 +2600,11 @@ export const MapCanvas = memo(function MapCanvas({
     viewRef.current = view;
     /* «Тайлан татах»-ын газрын зургийн агшин (`mapShots.ts`) */
     registerMapView(view);
+    /* ⚠️ 2026-10-23 (хэрэглэгчийн баталсан санал): Esri-ийн удирдлага (ойртуулах · луужин · чиглэл солих)
+       БАРУУН ДЭЭД НЭГ БАГАНЫН эхэнд — дараа нь суурь зураг · бүтэн дэлгэц, дараа нь 3D хэрэгслүүд
+       (бүлгийн зай: `globals.css` §ArcGIS «бүлэг»). Зүүн дээд булан «Давхарга» зурвасынх. */
+    (view.type === '3d' ? ['zoom', 'compass', 'navigation-toggle'] : ['zoom'])
+      .forEach((id, index) => view.ui.move(id, { position: 'top-right', index } as never));
     /** Энэ эффектийн `view.ui`-д нэмсэн зүйлс — хадгалах (park) үед гараар хасна,
         эс бөгөөс дахин авсан view дээр товчнууд давхардана (`view.destroy()` л цэвэрлэдэг байв) */
     const ownUi: (__esri.Widget | HTMLElement)[] = [];
@@ -2715,7 +2720,8 @@ export const MapCanvas = memo(function MapCanvas({
      * `fs` төлвийг удирдана (`toggleFsRef` — click үргэлж сүүлийн callback-ыг дуудна).
      */
     const fsBtn = document.createElement('div');
-    fsBtn.className = 'esri-widget--button esri-widget';
+    /* ⚠️ 2026-10-23: `selbe-grpEnd` — баруун багана (б) бүлгийн төгсгөл (`globals.css` §ArcGIS бүлэг) */
+    fsBtn.className = 'esri-widget--button esri-widget selbe-grpEnd';
     fsBtn.dataset.mapControl = 'fullscreen';
     fsBtn.setAttribute('role', 'button');
     fsBtn.setAttribute('tabindex', '0');

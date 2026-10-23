@@ -17,64 +17,94 @@
  * ⚠️ 2026-10-09: хэрэглэгчийн сонголт — хэвтээ багана НИМГЭН 2px; S-муруйд
  *    төлөвлөгөө тасархай + 0/25/50/75/100% тор. CSS талд ижил тоог
  *    (`ui.module.css`) гараар бичсэн — энд өөрчилбөл тэнд ч өөрчил.
+ * ⚠️ 2026-10-23: Environment — хэрэглэгчийн шийдвэр «Environment-ийн дизайныг БҮРЭН
+ *    дуурай, график НЭГ өнгө (--data)». Тоонууд нь Environment-ийн `charts.tsx` ба
+ *    `workspace.css`-ээс: мөрийн зам 5px, багана max 44px · дээд булан 5px · .88,
+ *    талбай .22→.02, 5px цэг, гэрэлтэлтгүй (`glowBlur` 0), donut дотоод = .72×гадаад.
+ *    Дээрх 2026-10-09-ний «2px · CRM загвар»-ын утгуудыг ОРЛОВ.
  */
 export const CHART = {
   /** Шугамын зузаан (px) — бүх шугам/талбай/S-муруй */
   stroke: 2,
-  /** Цэгийн радиус (px) — диаметр 6 */
-  markerR: 3,
+  /** Цэгийн радиус (px) — диаметр 5 (Environment `size-[5px]`) */
+  markerR: 2.5,
   /** Цэгийн эргэн тойрны гадаргуун цагираг (px) — шугамтай огтлолцоход цэг ялгарна */
   ring: 2,
   /** Сонгоогүй/hover-оос гадуурх элементийн тунгалаг — БҮХ төрөлд нэг утга */
   dim: 0.35,
+  /** Сонголтоор БҮДГЭРСЭН дүүргэлт (donut-ын зүсмэг) — Environment `PieChart`-ын .12 */
+  dimFill: 0.12,
   /**
    * Ганц цувааны талбайн градиент — дээд/доод тунгалаг.
    * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): 0.24→0.02 байсныг 0.32→0 — шугамын
    *    дор өтгөн, суурь дээр бүрэн уусна (лавлах «area chart»-ын хэл).
+   * ⚠️ 2026-10-23: Environment — `AreaChart`-ын .22 → .02.
    */
-  areaTop: 0.32,
-  areaBottom: 0,
+  areaTop: 0.22,
+  areaBottom: 0.02,
   /**
-   * ОЛОН цувааны талбай — цуваа БҮР өөрийн тунгалаг давхаргатай (0.16 → 0).
+   * ОЛОН цувааны талбай — цуваа БҮР өөрийн тунгалаг давхаргатай (0.12 → .02).
    * ⚠️ 2026-10-09 (лавлах CRM загвар): урьд нь олон цуваанд дүүргэлтгүй байв. Бага
    *    тунгалагтай тул давхцсан хэсэг нь «давхарласан» мэт уншигдана, холилдож
    *    нэг өнгө болохгүй.
+   * ⚠️ 2026-10-23: Environment — ганц цувааныхаас (.22) бага, .16 → .12.
    */
-  areaMultiTop: 0.16,
+  areaMultiTop: 0.12,
   /** Төлөвлөгөө ↔ бодит хоорондох зөрүүний дүүргэлт (ногоон/улаан) */
   gapFill: 0.12,
   /**
-   * Төлөвлөгөөний ЦЭГЭН шугам (`stroke-dasharray`) — round cap-тай 2px шугамд
-   * «1 5» нь бөөрөнхий цэгүүдийн цуваа болно.
-   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): '5 4' тасархай → цэгэн.
-   *    Шугам нь ЗААВАЛ `stroke-linecap: round` байна — эс бөгөөс 1px зураас болно.
+   * Төлөвлөгөөний ТАСАРХАЙ шугам (`stroke-dasharray`), өнгө `--chart-plan`.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): '5 4' тасархай → цэгэн '1 5'.
+   * ⚠️ 2026-10-23: Environment — буцаад ТАСАРХАЙ ('4 4', `butt` үзүүр). Round cap-тай
+   *    дуудагчид зураас нь 6/2 болно — уншигдах байдал хэвээр.
    */
-  planDash: '1 5',
-  /** Шугамын зөөлөн гэрэлтэлт (drop-shadow blur, px) — `glow()` */
-  glowBlur: 4,
+  planDash: '4 4',
   /**
-   * HOVER/ФОКУСЫН ТЭМДЭГ — r 4.5 дүүргэлт + 2px гадаргуун цагираг + r 9 гало (25%).
-   * ⚠️ 2026-10-09 (лавлах CRM загвар): шугаман графикт цэг АНХДАГЧААР НУУГДАНА —
-   *    зөвхөн заасан цэг дээр гарна (ганц цэгтэй хэсэг, босго давсан цэг үргэлж харагдана).
+   * Шугамын зөөлөн гэрэлтэлт (drop-shadow blur, px) — `glow()`.
+   * ⚠️ 2026-10-23: Environment — гэрэлтэлт ХАСАГДСАН (0). `glow()`-г дуудсан хуучин
+   *    модулиуд эвдрэхгүй — 0px сүүдэр нь харагдахгүй (`--chart-glow` ч 0%).
    */
-  hoverR: 4.5,
-  haloR: 9,
-  haloA: 0.25,
-  /** Босоо баганын өргөн — слотын хувь (`Series`) ба оройн радиус (px) */
-  colW: 0.45,
-  colRadius: 4,
-  /** Donut-ын зүсмэг хоорондын зай (px, нумын дагуу) ба дотор хувь бичих доод хязгаар */
-  donutGap: 3,
+  glowBlur: 0,
+  /**
+   * HOVER/ФОКУСЫН ТЭМДЭГ — r 3.5 дүүргэлт + 2px гадаргуун цагираг.
+   * ⚠️ 2026-10-09 (лавлах CRM загвар): r 4.5 + r 9 гало (25%) байв.
+   * ⚠️ 2026-10-23: Environment — гало ХАСАГДСАН (`haloR` 0 үед зурахгүй); цэгүүд
+   *    анхдагчаар .5 тунгалагтай ХАРАГДАНА (Environment `AreaChart`), заасан нь 1.
+   */
+  hoverR: 3.5,
+  haloR: 0,
+  haloA: 0,
+  /**
+   * Босоо баганын өргөн — слотын хувь (`Series`), дээд хязгаар (px), оройн радиус (px), тунгалаг.
+   * ⚠️ 2026-10-23: Environment `.bar-chart-fill` — баганын нүдний 80% (нүднүүд 8px завсартай),
+   *    max 44px, `5px 5px 0 0`, opacity .88 (өөр нь сонгогдсон үед .18 — `colDim`); градиент БАЙХГҮЙ.
+   */
+  colW: 0.8,
+  colMaxW: 44,
+  colRadius: 5,
+  colOpacity: 0.88,
+  /** Өөр багана сонгогдсон үеийн баганын тунгалаг (Environment `BarChart`) */
+  colDim: 0.18,
+  /**
+   * Donut — зүсмэг хоорондын `--surface` тусгаарлагч (px), дотоод радиусын харьцаа,
+   * ба дотор хувь бичих доод хязгаар.
+   * ⚠️ 2026-10-23: Environment `PieChart` — бөөрөнхий нумаас annular-sector руу буцав:
+   *    дотоод = .72 × гадаад, 2px `--surface` зах.
+   */
+  donutGap: 2,
+  donutInner: 0.72,
   donutLabelMin: 0.08,
   /** S-муруйн хэвтээ тор (%) */
   grid: [0, 25, 50, 75, 100] as readonly number[],
-  /** Хэвтээ баганын зузаан (px) — `Bars` */
-  barH: 2,
-  /** 100% давхарласан зурвасын зузаан (px) ба сегмент хоорондын зай — `Stack` */
-  stackH: 8,
-  stackGap: 2,
-  /** Хэмжигчийн зузаан (px) — `Meter`; `wide` хувилбар нь 8 */
-  meterH: 2,
+  /** Хэвтээ баганын зузаан (px) — `Bars` (⚠️ 2026-10-23: Environment `row-chart-track` 5px) */
+  barH: 5,
+  /** 100% давхарласан зурвасын зузаан (px) ба сегмент хоорондын зай — `Stack`
+      (⚠️ 2026-10-23: Environment `stacked-chart-track` 10px, 1px завсар) */
+  stackH: 10,
+  stackGap: 1,
+  /** Хэмжигчийн зузаан (px) — `Meter`; `wide` хувилбар нь 8
+      (⚠️ 2026-10-23: Environment `Meter` — `h-1.5` = 6px, булан 6px) */
+  meterH: 6,
   meterWideH: 8,
   /** Хэмжигчийн төлөвлөгөөний тэмдэг — зурвасаас дээш/доош сунах (px) */
   planTickOut: 4,
@@ -82,16 +112,32 @@ export const CHART = {
 
 /**
  * Дугуй диаграмын (Donut) 3 хэмжээ — [диаметр, цагирагийн зузаан].
+ * ⚠️ 2026-10-23: Environment `PieChart` — суурь нь 112px (`md`), sm/lg нь урьдын харьцаагаараа
+ *    (96/132 · 150/132). Геометр: гадаад R = size/2 − 4, дотоод = .72R (`donutGeom`) — зузаан
+ *    ≈ .28R (энд бүхэлчилсэн; `ui.Donut` нь `width` өгөөгүй үед ЯГ геометрээр зурна).
  * ⚠️ 2026-10-09: урьд нь 110/120/128/132/… гэж дуудагч бүр өөрийн тоотой байв.
  * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): зузаан ~15% → ~20% (14/20/24 → 19/26/30) —
  *    бөөрөнхий үзүүртэй зүсмэг ба дотор нь бичих хувь (10px) багтана.
+ * ⚠️ 2026-10-23: Environment — дотоод радиус = .72 × гадаад (`CHART.donutInner`) тул
+ *    зузаан = радиусын 28% ≈ диаметрийн 14%: 13/18/21. Зүсмэг дотор хувь бичихгүй болсон.
  */
 export const DONUT_SIZES = {
-  sm: [96, 19],
-  md: [132, 26],
-  lg: [150, 30],
+  sm: [82, 10],
+  md: [112, 15],
+  lg: [128, 17],
 } as const satisfies Record<string, readonly [number, number]>;
 export type DonutSize = keyof typeof DONUT_SIZES;
+
+/**
+ * Environment `PieChart`-ын цагиргийн геометр — гадаад R = size/2 − 4, дотоод r = R − width
+ * (`width` өгөөгүй бол .72R). Ring ч (ганц утгат PieChart) үүнийг хэрэглэнэ.
+ */
+export function donutGeom(size: number, width?: number): { c: number; R: number; r: number } {
+  const c = size / 2;
+  const R = Math.max(1, c - 4);
+  const r = width != null && Number.isFinite(width) && width > 0 ? Math.max(0, R - width) : R * 0.72;
+  return { c, R, r };
+}
 
 /**
  * Хувийн цагирагийн (Ring) 3 хэмжээ — диаметр. Зузаан = `ringStroke(size)`.
@@ -104,13 +150,21 @@ export const RING_SIZES = {
 } as const;
 export type RingSize = keyof typeof RING_SIZES;
 
-/** Цагирагийн зузаан — диаметрийн 10% (бүхэл px) */
-export const ringStroke = (size: number): number => Math.max(1, Math.round(size * 0.1));
+/** Цагирагийн зузаан (бүхэл px).
+ *  ⚠️ 2026-10-23: Environment — диаметрийн 10% БИШ, PieChart-ын геометр (`donutGeom`: R − .72R). */
+export const ringStroke = (size: number): number => {
+  const { R, r } = donutGeom(size);
+  return Math.max(1, Math.round(R - r));
+};
 
 /* ══════════════════════ Лавлах CRM загвар (2026-10-09) ══════════════════════ */
 
 /**
  * ЗӨӨЛӨН ГЭРЭЛТЭЛТ — CSS `filter` утга (шугам, цагираг, онцолсон зүсмэг).
+ *
+ * ⚠️ 2026-10-23: Environment — `ui.tsx`/Finance/GeneralDash энийг ДУУДАХАА БОЛИВ
+ *    (гэрэлтэлтгүй). Хуучин дуудагчид (PkgProg · CeoScorecard …) эвдрэхгүйн тулд
+ *    функц үлдсэн; `CHART.glowBlur` 0 тул харагдах нөлөөгүй.
  *
  * ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): өнгө нь ЦУВААНЫ ӨӨРИЙН токен
  *    (`var(--c2)`, `var(--chart-plan)` …) — шинэ өнгө нэмэхгүй. Хүч нь
@@ -182,13 +236,17 @@ export function stepDecimals(ticks: readonly number[]): number {
  *    · сөрөг/NaN утга 0; нийлбэр 0 бол бүгд 0.
  *    · утга > 0 атал бүхэл нь 0 бол дуудагч «<1%» бичнэ (Donut/Stack-ийн урьдын дүрэм).
  */
-export function roundPctsTo100(values: readonly number[], total?: number): number[] {
+export function roundPctsTo100(values: readonly number[], total?: number, decimals = 0): number[] {
+  /* ⚠️ 2026-10-23: Environment — `decimals` (жиш. 1 → «33.4 · 33.3 · 33.3») — Donut-ын тайлбар
+     Environment шиг НЭГ оронтой хувь бичдэг болсон; нийлбэр нь ЯГ 100.0 хэвээр (их үлдэгдлийн арга
+     0.1-ийн нэгжээр). Анхдагч 0 — урьдын бүхэл хувь. */
+  const k = 10 ** Math.max(0, Math.min(3, Math.floor(decimals)));
   const vals = values.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
   const sum = total != null && Number.isFinite(total) && total > 0
     ? total
     : vals.reduce((a, b) => a + b, 0);
   if (!(sum > 0)) return vals.map(() => 0);
-  const raw = vals.map((v) => (v / sum) * 100);
+  const raw = vals.map((v) => (v / sum) * 100 * k);
   const base = raw.map((v) => Math.floor(v));
   let left = Math.round(raw.reduce((a, b) => a + b, 0)) - base.reduce((a, b) => a + b, 0);
   const order = raw.map((v, i) => [v - base[i], i] as const).sort((p, q) => q[0] - p[0]);
@@ -197,7 +255,7 @@ export function roundPctsTo100(values: readonly number[], total?: number): numbe
     base[i] += 1;
     left -= 1;
   }
-  return base;
+  return k === 1 ? base : base.map((v) => v / k);
 }
 
 /**

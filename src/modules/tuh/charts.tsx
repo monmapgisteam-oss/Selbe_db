@@ -10,6 +10,9 @@
  *      · Гантт — «Хуваарь»-ийн зурвас (`huvaari.plBar` · `tlDone/Run/Late/Todo/None`):
  *        төлвөөр БҮРЭН будагдсан 3px булантай зурвас, дотроо цагаан шошго,
  *        сарын толгой, ээлжилсэн мөр.
+ * ⚠️ 2026-10-23: Environment — тайлбар нь `.stacked-chart-legend` (8px дөрвөлжин, 10.5px
+ *    `--ink-2`); Гантт зурвас нь `RowChart`-ын зам (5px, булан 4, `--chart-track` дэвсгэр),
+ *    хувь нь зурвасын ГАДНА. Төлвийн `--gantt-*` өнгө (хэрэглэгчийн шаардлага) ХЭВЭЭР.
  *    S-муруй, санхүүжилтийн муруй, хүн хүч — системийн `ProgChart` · `ComboChart` ·
  *    `ui.Series` ШУУД (ТУХ өөрийн хувилбар зурахгүй).
  * ⚠️ Хэв маягийг CSS-ээр ХУУЛБАРЛАСАН (`tuh.module.css`) — харагдацууд CSS
@@ -27,7 +30,7 @@ import s from '../tuh.module.css';
 
 /* ══════════════════════ Тайлбар ══════════════════════ */
 
-/** Графикийн тайлбар — «Гүйцэтгэлийн явц»-ийн легендтэй ижил хэлбэр */
+/** Графикийн тайлбар — Environment `.stacked-chart-legend` хэлбэр (⚠️ 2026-10-23) */
 export function Legend({ items }: {
   items: { key: string; label: string; color: string; kind?: 'line' | 'dash' | 'box' | 'hatch' | 'diamond' }[];
 }) {
@@ -156,14 +159,22 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
                      дэлгэц уншигчаар хүрэх аргагүй байв — `role="img"` + `aria-label`. */
                   role="img"
                   aria-label={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${pct(r.progress, 1)}` : ''}`}
-                >
-                  {r.progress != null && w > 4 && <span className={s.ganttBarLab}>{pct(r.progress, r.progress < 10 ? 1 : 0)}</span>}
-                </span>
+                />
               )}
-              {!r.heading && has && r.progress != null && w <= 4 && (
-                <em className={s.ganttPct} style={{ left: `calc(${pos(r.end!)}% + 4px)` } as CSSProperties}>
-                  {pct(r.progress, r.progress < 10 ? 1 : 0)}
-                </em>
+              {/* ⚠️ 2026-10-23: Environment `RowChart` — 5px зурваст бичиг багтахгүй тул хувь ҮРГЭЛЖ
+                  зурвасын ГАДНА: төгсгөлийн баруунд, баруун ирмэгт (>88%) ойр бол эхлэлийн зүүнд. */}
+              {!r.heading && has && r.progress != null && (
+                pos(r.end!) > 88 && pos(r.start!) > 12
+                  ? (
+                    <em className={`${s.ganttPct} ${s.ganttPctL}`} style={{ left: `calc(${pos(r.start!)}% - 4px)` } as CSSProperties}>
+                      {pct(r.progress, r.progress < 10 ? 1 : 0)}
+                    </em>
+                  )
+                  : (
+                    <em className={s.ganttPct} style={{ left: `calc(${pos(r.end!)}% + 4px)` } as CSSProperties}>
+                      {pct(r.progress, r.progress < 10 ? 1 : 0)}
+                    </em>
+                  )
               )}
               {!r.heading && r.thin && r.thin.start != null && r.thin.end != null && (
                 <span className={s.ganttThin}

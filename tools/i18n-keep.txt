@@ -72,8 +72,9 @@
 # [pass] ui.tsx-ийн ерөнхий график/донат/легенд — шошго нь ДУУДАГЧААС ирнэ
 #        (Dashboard · GeneralDash · Gazar · PkgFin …); дуудагч бүр өөрийн
 #        шошгоо tr()-ээр өгдөг (доорх цэгүүд) тул энд давхар дамжуулалт.
-@dyn components/ui.tsx  tr(cur.label)
-@dyn components/ui.tsx  tr(h.label)
+@dyn components/ui.tsx  tr(items[i].label)
+@dyn components/ui.tsx  tr(slices[i].label)
+@dyn components/ui.tsx  tr(p.label)
 @dyn components/ui.tsx  tr(i.label)
 @dyn components/ui.tsx  tr(it.label)
 @dyn components/ui.tsx  tr(label)

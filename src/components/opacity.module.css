@@ -1,5 +1,8 @@
 /* Тунгалаг тохируулах хөвөгч цонх — газрын зургийн дээд талд (mapTools-ын доор).
-   «Тунгалаг» товчоор нээж/хаана; ил давхаргууд тус бүрдээ гулсууртай. */
+   «Тунгалаг» товчоор нээж/хаана; ил давхаргууд тус бүрдээ гулсууртай.
+   ⚠️ 2026-10-23: Environment — газрын зургийн удирдлага: paper 94% + blur,
+   --line-strong хүрээ, 12px, --shadow; толгой .eyebrow; товч 28px/6px;
+   гулсуурын зам --chart-track; хоосон төлөв тасархай хүрээ. */
 /* ⚠️ 2026-08-23: голоос ЗҮҮН тийш. `MapTools` нь 176px өргөнтэй босоо багана
    болж зүүн ирмэгт шилжсэн тул энэ цонх түүний БАРУУН талаас (200px) эхэлнэ —
    ирмэгээс эхэлбэл зурвасыг бүрхэж, «Тунгалаг» товч руу хүрэхгүй болно.
@@ -21,11 +24,12 @@
   max-height: min(60vh, 520px);
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-lg);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow);
   animation: panelIn 0.28s var(--ease) both;
 }
 /* ⚠️ `translate(-50%)` ХАСАГДСАН: цонх голд байхаа больсон. `both` fill-mode нь
@@ -45,52 +49,61 @@
 }
 .title {
   flex: 1;
-  font-size: 0.6875rem;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.15em;
   color: var(--ink-3);
 }
 .reset {
   flex: none;
-  padding: 3px 9px;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 500;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   color: var(--ink-2);
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background 0.12s, color 0.12s;
 }
-.reset:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line-strong); }
+.reset:hover { background: var(--surface-2); color: var(--ink); }
 .close {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: none;
-  font-size: 1.05rem;
+  font-size: 16px;
   line-height: 1;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
 .close:hover { background: var(--surface-2); color: var(--ink); }
 
-.body { flex: 1; overflow-y: auto; padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
-.empty { font-size: 0.75rem; color: var(--ink-3); text-align: center; padding: 14px 4px; }
+.body { flex: 1; overflow-y: auto; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.empty {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+  padding: 14px 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+}
 
 .row { display: flex; flex-direction: column; gap: 5px; }
 .rowTop { display: flex; align-items: center; gap: 8px; }
 .name {
   flex: 1;
   min-width: 0;
-  font-size: 0.73rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-.pct { flex: none; font-size: 0.6875rem; font-weight: 600; color: var(--tone); }
+.pct { flex: none; font-size: 11px; font-weight: 600; color: var(--tone); font-variant-numeric: tabular-nums; }
 
 /* Гулсуур — замыг өнгөт (--tone), товчийг цагаан */
 .slider {
@@ -98,8 +111,8 @@
   appearance: none;
   width: 100%;
   height: 5px;
-  border-radius: 99px;
-  background: var(--sunken);
+  border-radius: 999px;
+  background: var(--chart-track);
   outline: none;
   cursor: pointer;
 }
@@ -163,3 +176,18 @@
   z-index: 9;
   max-height: min(42%, 320px);
 }
+/*
+ * ⚠️ 2026-10-23 (хэрэглэгч: «давхардалгүй хоёулаа нээгдэх ёстой»): дээрх дүрэм тунгалагийг каталогийн
+ *    ДЭЭР (z 9) доод хэсэгт тавьдаг тул каталогийн доод хагас (жагсаалтын төгсгөл) ДАРАГДАЖ байв.
+ *    Одоо каталог тунгалагийн хавтангийн ДЭЭД ирмэгээс 10px дээр ДУУСНА (дээд 88px + тунгалаг
+ *    min(42%, 320px) + доод 16px + 10px зай) — хоёулаа бүтэн харагдаж, каталогийн жагсаалт дотроо гүйнэ.
+ *    Нислэгийн зурвастай 3D (`bottom: 72px`) — `map.module.css` §НИСЛЭГ × ТУНГАЛАГ.
+ */
+*:has(> .panel) > *:has(> :global(.mapCatalog)),
+*:has(> .panel) > :global(.mapCatalog) {
+  max-height: calc(100% - 88px - min(42%, 320px) - 26px);
+  overflow: hidden;
+}
+/* Сав нь flex багана болж, каталог (`.drawer` — дотроо `.body` гүйдэг) үлдсэн өндрийг дүүргэнэ */
+*:has(> .panel) > *:has(> :global(.mapCatalog)) { display: flex; flex-direction: column; }
+*:has(> .panel) > *:has(> :global(.mapCatalog)) > :global(.mapCatalog) { flex: 1 1 auto; min-height: 0; }

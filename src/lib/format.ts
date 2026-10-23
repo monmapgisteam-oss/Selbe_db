@@ -275,8 +275,8 @@ export const tint = (hex: string, frac: number): string =>
 
 /** Цайвар горимын слотууд (гадаргуу #ffffff дээр баталгаажсан) */
 export const CAT_LIGHT = [
-  '#0b8ba0', '#e2683a', '#3b5fd9', '#3f9142',
-  '#e07ba8', '#d69b1a', '#8a3fd0', '#d8413f',
+  '#17895b', '#b1582b', '#4076b9', '#598332',
+  '#ab517f', '#926f00', '#8062b0', '#b84d49',
 ] as const;
 /**
  * ХЭВЛЭЛ / PDF / ИНФОГРАФИКИЙН ӨНГӨ — `globals.css`-ийн ЦАЙВАР сэдвийн
@@ -292,22 +292,24 @@ export const CAT_LIGHT = [
  *    `huvaariPdf`-ийн #14181c) нь цаасны санаатай шийдвэр — энд оруулаагүй.
  */
 export const PRINT_COLORS = {
-  /** --ink */ ink: '#1e293b',
-  /** --ink-2 */ ink2: '#475569',
-  /** --ink-3 */ ink3: '#5a6a80',
-  /** --data — ганц цувааны үндсэн өнгө */ data: '#2e7f8b',
-  /** --good */ good: '#147c3b',
-  /** --warn */ warn: '#9a5d07',
-  /** --bad */ bad: '#dc2626',
-  /** --chart-track */ track: '#e3eaf1',
-  /** --chart-plan (= --c3) */ plan: CAT_LIGHT[2],
-  /** --chart-actual (= --c2) */ actual: CAT_LIGHT[1],
+  /* ⚠️ 2026-10-23: Environment-ийн цайвар токенууд (globals.css) — printColors.check тулгана */
+  /** --ink */ ink: '#142132',
+  /** --ink-2 */ ink2: '#3a4a5e',
+  /** --ink-3 */ ink3: '#56677c',
+  /** --data (Сэлбэ логоны хөх) — ганц цувааны үндсэн өнгө */ data: '#3a5d83',
+  /** --good */ good: '#2f7d55',
+  /** --warn (ochre) */ warn: '#d39b35',
+  /** --bad (clay) */ bad: '#d35d5d',
+  /** --water — гантын «явж буй» */ water: '#3b82f6',
+  /** --chart-track (paper-hi) */ track: '#e6edf5',
+  /** --chart-plan (= --ink-3) */ plan: '#56677c',
+  /** --chart-actual (= --data) */ actual: '#3a5d83',
 } as const;
 
 /** Харанхуй горимын слотууд (гадаргуу #102330 дээр баталгаажсан) */
 export const CAT_DARK = [
-  '#17a2b8', '#d96a35', '#6f86ee', '#3fae52',
-  '#d9689a', '#b8861c', '#a86ee0', '#ec5f5d',
+  '#38c789', '#f78955', '#65adff', '#87be53',
+  '#f080b8', '#d2a408', '#ba93fb', '#fb817a',
 ] as const;
 
 /**

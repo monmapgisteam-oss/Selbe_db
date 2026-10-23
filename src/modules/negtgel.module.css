@@ -26,16 +26,23 @@
 .search {
   flex: 0 1 280px;
   min-width: 160px;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  /* ⚠️ 2026-10-23: Environment — `.pe-field` (32px · булан 7px · --line-strong · bg --bg · 12.5px) */
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--ink);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12.5px;
+  outline: none;
+}
+.search:focus {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
 }
 .spacer { flex: 1 1 auto; }
-.total { color: var(--ink-3); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.total { color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* Гүний товч — Excel-ийн outline «1 2 3 4»-тэй ижил санаа */
 .levels { display: flex; gap: 3px; }
@@ -48,15 +55,16 @@
   background: var(--surface);
   color: var(--ink-2);
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
-.levels button:hover { border-color: var(--data); color: var(--ink); }
+.levels button:hover { background: var(--surface-2); color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — сонгогдсон түвшин: moss 14% дэвсгэр · moss бичиг · moss 45% хүрээ */
 .lvOn {
-  background: var(--data) !important;
-  border-color: var(--data) !important;
-  color: var(--hue-ink) !important;
+  background: color-mix(in oklab, var(--moss) 14%, var(--surface)) !important;
+  border-color: color-mix(in oklab, var(--moss) 45%, transparent) !important;
+  color: var(--moss) !important;
 }
 
 .scroll {
@@ -82,7 +90,7 @@
   /* ⚠️ Хүснэгт хавтангаа ДҮҮРГЭНЭ — баруун талд хоосон цагаан зай үлдэхгүй */
   width: max-content;
   min-width: 100%;
-  font-size: 0.76rem;
+  font-size: 11.5px; /* ⚠️ 2026-10-23: Environment — `.pe-table` нягт 11.5px */
 }
 .tbl th {
   position: sticky;
@@ -97,8 +105,8 @@
   background: var(--surface-2);
   color: var(--ink-2);
   font-size: 0.75rem; /* ⚠️ 2026-09-25: толгой томорсон — хэрэглэгчийн заавар */
-  font-weight: 700;
-  line-height: 1.25;
+  font-weight: 600;
+  line-height: 1.3;
   text-align: center;
   vertical-align: middle;
   white-space: normal;
@@ -138,7 +146,7 @@
 }
 .tbl .thGrp {
   z-index: 3;
-  font-weight: 700;
+  font-weight: 600;
 }
 .tbl .thSub { font-weight: 600; }
 .tbl .totalRow td {
@@ -213,12 +221,12 @@
   vertical-align: middle;
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   color: inherit;
   background: transparent;
   border: 1px solid currentColor;
-  border-radius: 3px;
+  border-radius: 4px;
   opacity: .75;
   cursor: pointer;
 }
@@ -233,10 +241,11 @@
  */
 /* ⚠️ 2026-10-23 (хэрэглэгч: «системтэй нийцүүл»): тогтмол хөх шатлал (цайвар + харанхуйн тусдаа
    :global дүрэм) → системийн токен. Шатлал хэвээр — үе шат хамгийн тод, навч энгийн; --data-аар
-   тинттэй, --surface-тэй холиод БҮРЭН бүглээ (царцсан нүдэнд нэвт харагдахгүй). Хоёр горимд автоматаар. */
-.stage td { background: color-mix(in srgb, var(--data) 22%, var(--surface)); color: var(--ink); font-weight: 700; }
-.work td { background: color-mix(in srgb, var(--data) 16%, var(--surface)); color: var(--ink); font-weight: 700; }
-.l2 td { background: color-mix(in srgb, var(--data) 10%, var(--surface)); color: var(--ink); font-weight: 700; }
+   тинттэй, --surface-тэй холиод БҮРЭН бүглээ (царцсан нүдэнд нэвт харагдахгүй). Хоёр горимд автоматаар.
+   tezu-bonu (Environment): жин ≤600. */
+.stage td { background: color-mix(in srgb, var(--data) 22%, var(--surface)); color: var(--ink); font-weight: 600; }
+.work td { background: color-mix(in srgb, var(--data) 16%, var(--surface)); color: var(--ink); font-weight: 600; }
+.l2 td { background: color-mix(in srgb, var(--data) 10%, var(--surface)); color: var(--ink); font-weight: 600; }
 .prep td { background: color-mix(in srgb, var(--data) 6%, var(--surface)); color: var(--ink); font-weight: 600; }
 .grp td { background: color-mix(in srgb, var(--data) 4%, var(--surface)); color: var(--ink); font-weight: 600; }
 .workSub td { background: var(--surface-2); color: var(--ink); font-weight: 600; }
@@ -253,7 +262,7 @@
 .note {
   margin: 0;
   color: var(--ink-3);
-  font-size: 0.74rem;
+  font-size: 11.5px;
   line-height: 1.4;
 }
 
@@ -271,24 +280,31 @@
   gap: 6px 12px;
   margin: 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--warn) var(--tint), var(--surface));
   color: var(--warn-ink);
-  font-size: 0.8rem;
+  font-size: 12px;
   line-height: 1.4;
 }
+/* ⚠️ 2026-10-23: Environment — `.pe-ghost` (32px · булан 8px · 12px/500 · --line-strong) */
 .syncNote button {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--ink);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-2);
   font: inherit;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.syncNote button:disabled { opacity: 0.6; cursor: default; }
-.syncRows { flex-basis: 100%; color: var(--ink-2); font-size: 0.74rem; }
+.syncNote button:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.syncNote button:disabled { opacity: 0.4; cursor: not-allowed; }
+.syncRows { flex-basis: 100%; color: var(--ink-2); font-size: 11.5px; }
 
 /* ═══════════ ЗАСАХ · НИЙТЛЭХ (2026-10-15) ═══════════ */
 /* Товчнууд — хэрэгслийн мөрийн баруун талд */
@@ -332,10 +348,10 @@
  *    `f.cellDirty`-ийн `box-shadow` түүнийг дардаг. Хоёр сүүдрийг НЭГ дор тавина.
  */
 .tbl td.edCell.fzEdge {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--data) 45%, transparent), 2px 0 0 rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--data) 45%, transparent), 2px 0 0 var(--line-strong);
 }
 .tbl td.dirty.fzEdge {
-  box-shadow: inset 0 0 0 1.5px var(--good), 2px 0 0 rgba(0, 0, 0, 0.2) !important;
+  box-shadow: inset 0 0 0 1.5px var(--good), 2px 0 0 var(--line-strong) !important;
 }
 /* Татгалзсан оролт (`TusulNegtgel.EditInput`) — утга буцсан, шалтгаан нь `title`-д; дахин бичтэл улаан */
 .edIn.edBad,
@@ -347,7 +363,7 @@
 .edWhy {
   align-self: center;
   max-width: 420px;
-  font-size: 0.74rem;
+  font-size: 11.5px;
   color: var(--ink-2);
 }
 .msgOk { color: var(--good-ink); }

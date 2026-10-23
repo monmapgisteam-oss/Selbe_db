@@ -4,7 +4,10 @@
    ⚠️ envhub дизайны хэл («Газар чөлөөлөлт»-тэй ижил): картууд ХАВТГАЙ — сүүдэр,
    градиент, өнгөт хүрээ байхгүй; гүнийг bg → surface → surface-2 давхарга ба
    1px hairline л өгнө. ӨНГӨ = УТГА: улаан нь ЗӨВХӨН хохирол, цэнхэр нь ус,
-   улбар шар нь агаар. Багана нь байрлал, гарчгаараа ялгарна. */
+   улбар шар нь агаар. Багана нь байрлал, гарчгаараа ялгарна.
+   ⚠️ 2026-10-23: Environment — карт 12px булан, толгой 9px 12px / 12px гарчиг; сонголт moss 12% / 45%;
+   товч .pe-primary/.pe-ghost (32px, 8px), шошго 6px badge; газрын зургийн давхарга surface 94% + blur.
+   Растерын өнгөний шатлал (rampBar/rampSpeed/rampHazard/rampArrival) нь ӨГӨГДЛИЙН өнгө — ХЭВЭЭР. */
 
 .frame {
   /* Талын багануудын өргөн — `SplitGrip`-ээр чирж тохируулна */
@@ -55,7 +58,7 @@
   display: flex;
   min-height: 0;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 
@@ -67,7 +70,7 @@
   min-height: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 /* Хохирлын нэгтгэл — ГАНЦ онцлох карт. ⚠️ Өнгөт дэвсгэр БИШ, зөвхөн дээд ирмэг:
@@ -81,14 +84,14 @@
   justify-content: space-between;
   gap: 10px;
   flex: none;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 .panelTitle {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13.5px;
+  font-size: 12px;
   line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
@@ -122,17 +125,17 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  padding: 7px 9px;
+  padding: 8px 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 .metricHd { display: flex; align-items: baseline; gap: 6px; }
 .metricName {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.35;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -148,6 +151,7 @@
   flex: none;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -155,9 +159,10 @@
   display: flex;
   align-items: baseline;
   gap: 3px;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -185,17 +190,18 @@
   padding: 6px 8px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
   text-align: left;
   color: var(--ink-2);
   font: inherit;
   font-size: 12px;
 }
-.stRow:hover { border-color: var(--line-2, var(--line)); color: var(--ink); }
+.stRow:hover { border-color: var(--line-strong); color: var(--ink); }
 /* Сонголт — «сонгогдсон» нь envhub-д зөвшөөрөгдсөн ганц акцент (var(--data)) */
 .stRowOn {
-  border-color: var(--data);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 12%, var(--surface));
   color: var(--ink);
 }
 .stDot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
@@ -211,7 +217,7 @@
   padding: 14px 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 /* ⚠️ 2026-10-01: АЧИ-ийн цагирагийн CSS заль (`.aqiRing`, `--aqi-text`) ХАСАГДАВ —
    `Ring`-ийн `text` проп тоог шууд бичнэ (`Ersdel.tsx`). */
@@ -248,17 +254,17 @@
   padding: 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
   text-align: left;
   color: var(--ink-3);
   font: inherit;
 }
-.pick:hover { color: var(--ink-2); }
+.pick:hover { color: var(--ink-2); border-color: var(--line-strong); }
 .pickOn {
-  border-color: var(--data);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
   color: var(--ink);
-  background: var(--surface);
+  background: color-mix(in oklab, var(--data) 12%, var(--surface));
 }
 .pickTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .pickDesc {
@@ -289,7 +295,7 @@
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-left: 3px solid transparent;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
   text-align: left;
   color: var(--ink-2);
@@ -343,32 +349,37 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 9px 12px;
-  border: 1px solid var(--accent, var(--data));
-  border-radius: var(--r-sm);
-  background: var(--accent, var(--data));
-  color: #fff;
+  /* ⚠️ 2026-10-23: Environment .pe-primary — 32px, 8px булан, --workspace-accent / -ink */
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--workspace-accent);
+  border-radius: var(--r);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.runBtn:disabled { opacity: 0.5; cursor: default; }
+.runBtn:hover:not(:disabled) { background: var(--workspace-accent-hover); border-color: var(--workspace-accent-hover); }
+.runBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 .clearBtn {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
   color: var(--ink-2);
   font: inherit;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.clearBtn:hover { color: var(--ink); }
+.clearBtn:hover { color: var(--ink); background: var(--surface-2); }
 
 /* ── Хохирлын дүн ── */
 .costBox {
@@ -379,7 +390,7 @@
   padding: 10px 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 .costLabel {
   font-size: 11px;
@@ -403,17 +414,18 @@
   font-variant-numeric: tabular-nums;
 }
 .table th {
-  padding: 5px 6px;
+  padding: 6px 8px;
   text-align: left;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-strong);
 }
 .table td {
-  padding: 5px 6px;
+  padding: 6px 8px;
   color: var(--ink-2);
   border-bottom: 1px solid var(--line);
   vertical-align: top;
@@ -426,6 +438,7 @@
   margin-top: 2px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--warn-ink);
@@ -450,15 +463,16 @@
 .legend {
   position: absolute;
   left: 10px;
-  bottom: 10px;
+  /* ⚠️ 2026-10-23: Esri-ийн доод бичгийн ДЭЭР */
+  bottom: 24px;
   z-index: 5;
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
   max-width: min(560px, calc(100% - 20px));
   padding: 7px 10px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   font-size: 11px;
@@ -487,8 +501,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   font-size: 11.5px;
@@ -505,13 +519,14 @@
 /* ⚠️ ТАТАГДААГҮЙ давхарга — шар, ⚠ тэмдэгтэй (өнгө ганцаараа мэдээлэл
    дамжуулахгүй). «Мэдээлэлгүй»-г «эрсдэлгүй»-ээс ялгах цорын ганц дохио. */
 .chipWarn {
-  padding: 1px 7px;
-  border-radius: 99px;
-  font-size: 0.6875rem;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--warn-ink, var(--warn));
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent);
+  color: var(--warn-ink);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
 }
 
 /* Нарийн дэлгэц — талын багана хумигдаж, зураг бүтэн өргөнөө авна */
@@ -553,17 +568,20 @@
 .info {
   position: absolute;
   right: 10px;
-  bottom: 10px;
+  bottom: 24px;
   z-index: 6;
   width: min(300px, calc(100% - 20px));
   /* Урт атрибутын жагсаалт хайрцаг ДОТРОО гүйнэ — зургийг халихгүй */
   max-height: min(52%, 380px);
   overflow-y: auto;
+  /* ⚠️ 2026-10-23: Environment — газрын зургийн tooltip/popup: 6px булан, дээд 2px --data зурвас */
   padding: 9px 11px 10px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  border-top: 2px solid var(--data);
   border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
   font-size: 11.5px;
   color: var(--ink-2);
 }
@@ -655,19 +673,19 @@
 }
 .playBtn {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
+  background: transparent;
   color: var(--ink);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
 }
-.playBtn:hover { border-color: var(--data); color: var(--data-ink); }
+.playBtn:hover { background: var(--surface-2); color: var(--data-ink); }
 .timeRange {
   flex: 1 1 auto;
   min-width: 0;
@@ -696,6 +714,7 @@
   gap: 8px;
   margin: 6px 0 2px;
   font-size: 11px;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-3);
@@ -731,7 +750,7 @@
   padding: 9px 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 .windHd {
   display: flex;
@@ -739,6 +758,7 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--ink-3);
@@ -757,7 +777,7 @@
   line-height: 1;
   color: var(--data-ink);
 }
-.windVal { font-size: 20px; font-weight: 500; color: var(--ink); line-height: 1; }
+.windVal { font-size: 20px; font-weight: 600; letter-spacing: -0.04em; color: var(--ink); line-height: 1.1; }
 .windVal i { font-size: 11px; font-style: normal; color: var(--ink-3); margin-left: 2px; }
 .windDir { font-size: 11.5px; color: var(--ink-2); }
 .windNote { margin: 0; font-size: 11px; line-height: 1.4; font-weight: 600; }
@@ -783,19 +803,19 @@
   font-weight: 600;
   padding: 4px 10px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
-.flowBtn:hover { color: var(--ink); border-color: var(--line-strong); }
+.flowBtn:hover { color: var(--ink); background: var(--surface-2); }
 
 /* Асаалттай — өгөгдлийн өнгөөр (`--data`), аюулын улаан гэр бүлээс ЗАЙДУУ */
 .flowOn {
-  color: var(--ink);
-  border-color: var(--data);
-  background: color-mix(in srgb, var(--data) 18%, transparent);
+  color: var(--data-ink);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
 }
 
 .flowHour {
@@ -824,10 +844,10 @@
  * «үсэрч» харагдана.
  */
 .heroNum {
-  font-size: 38px;
-  line-height: 1;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.04em;
   color: var(--bad-ink);
   font-variant-numeric: tabular-nums;
 }
@@ -952,9 +972,9 @@
   font-size: 11px;
   line-height: 1.45;
   color: var(--ink);
-  background: color-mix(in srgb, var(--data) 10%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
   border-left: 2px solid var(--data);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
 }
 
 /*

@@ -1,6 +1,8 @@
 /* ══════════════════════════════════════════════════════════
    САР БҮРИЙН IPC БАРИМТ — татах цонх (2026-09-29).
    ⚠️ Зөвхөн энэ цонх — «Багцын санхүү»-гийн хэв маягт хүрэхгүй.
+   ⚠️ 2026-10-23: Environment — хөвөгч цонх (--line-strong, 12px, --shadow),
+   оролт .pe-field, товч .pe-primary/.pe-ghost.
    ══════════════════════════════════════════════════════════ */
 .back {
   position: fixed; inset: 0; z-index: 80;
@@ -12,50 +14,66 @@
   width: min(560px, 100%);
   max-height: calc(100vh - 32px);
   overflow: auto;
-  display: grid; gap: 10px;
+  display: grid; gap: 12px;
   padding: 16px;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-md, 10px);
-  box-shadow: 0 12px 40px color-mix(in srgb, #000 25%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
-.head { display: flex; align-items: center; gap: 8px; }
-.head b { font-size: 14px; flex: 1; }
-.x { font: inherit; font-size: 18px; line-height: 1; padding: 2px 8px; color: var(--ink-2); background: none; border: 0; cursor: pointer; }
+.head { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.head b { font-size: 13px; font-weight: 600; flex: 1; }
+.x {
+  display: grid; place-items: center;
+  width: 28px; height: 28px; padding: 0;
+  font: inherit; font-size: 16px; line-height: 1;
+  color: var(--ink-3); background: none; border: 0; border-radius: var(--r-sm); cursor: pointer;
+}
+.x:hover { background: var(--surface-2); color: var(--ink); }
 .sub { margin: 0; font-size: 12px; color: var(--ink-2); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
 @media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
-.field { display: grid; gap: 3px; font-size: 11px; color: var(--ink-2); }
+.field { display: grid; gap: 4px; font-size: 11px; font-weight: 500; color: var(--ink-3); }
 .field input, .field select {
-  font: inherit; font-size: 12px;
-  padding: 5px 8px;
+  font: inherit; font-size: 12.5px; font-weight: 400;
+  height: 32px;
+  padding: 0 9px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
+}
+.field input:focus, .field select:focus {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
 }
 .wide { grid-column: 1 / -1; }
 .sum {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
-  padding: 8px; font-size: 11px;
-  background: var(--surface-2); border-radius: var(--r-sm);
+  padding: 10px 12px; font-size: 11px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r);
 }
-.sum span { display: grid; gap: 2px; color: var(--ink-2); }
-.sum b { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.note { margin: 0; font-size: 11px; color: var(--warn); }
-.err { margin: 0; font-size: 12px; color: var(--bad, #dc2626); }
+.sum span { display: grid; gap: 2px; color: var(--ink-3); }
+.sum b { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.note { margin: 0; font-size: 11px; color: var(--warn-ink); }
+.err { margin: 0; font-size: 12px; color: var(--bad-ink); }
 .sig { font-size: 12px; }
-.sig summary { cursor: pointer; font-weight: 700; margin-bottom: 6px; }
-.foot { display: flex; justify-content: flex-end; gap: 8px; }
+.sig summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+.foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .btn {
-  font: inherit; font-size: 12px; font-weight: 700;
-  padding: 7px 14px;
-  color: var(--ink);
-  background: var(--surface-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px;
+  font: inherit; font-size: 12px; font-weight: 500;
+  padding: 0 14px;
+  color: var(--ink-2);
+  background: transparent;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.btn:disabled { opacity: 0.45; cursor: default; }
-.pri { color: var(--hue-ink); background: var(--data); border-color: var(--data); }
+.btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pri { font-weight: 600; color: var(--workspace-accent-ink); background: var(--workspace-accent); border-color: transparent; }
+.pri:hover:not(:disabled) { color: var(--workspace-accent-ink); background: var(--workspace-accent-hover); }

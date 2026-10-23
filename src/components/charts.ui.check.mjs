@@ -3,14 +3,16 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/charts.ui.check.mjs
  *
  * ⚠️ Барьдаг дүрмүүд: `Meter` null → «—» + aria-valuenow-гүй (null ≠ 0), role="meter", pct() 1 орон;
- *    `Bars` display-гүй утга num(), null → дүүргэлтгүй «—»; `Series` null → баганагүй, 0 → 1.5%,
- *    items[].color; `Donut`/`Ring` хэмжээний стандарт (chartStyle), өнгөгүй зүсмэг cat(i).
+ *    `Bars` display-гүй утга num(), null → дүүргэлтгүй «—»; `Series` null → баганагүй, 0 → 0 өндөр,
+ *    items[].color; `Donut`/`Ring` хэмжээний стандарт (chartStyle).
+ * ⚠️ 2026-10-23: Environment — уугуул `title` (багана/мөр/зүсмэг), «Дээд: X» pill-гүй, дүрсгүй хоосон
+ *    төлөв, Donut-ын тайлбар 1 оронтой хувь, `BarChart` тэнхлэг/тор.
  */
 import assert from 'node:assert/strict';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { monotonePath } from '@/lib/chartStyle';
-import { Meter, Bars, Series, Donut, Ring, Trend, Stack, monotonePath as uiMonotone } from '@/components/ui';
+import { Meter, Bars, Series, Donut, Ring, Trend, Stack, Empty, monotonePath as uiMonotone } from '@/components/ui';
 
 assert.equal(uiMonotone, monotonePath, 'ui.tsx-ийн monotonePath нь chartStyle-ийн дахин экспорт');
 
@@ -32,6 +34,10 @@ const b = renderToStaticMarkup(h(Bars, { items: [
 assert.ok(b.includes('20,162,536,361'), 'түүхий тоо биш num()');
 assert.match(b, />—</);
 assert.equal((b.match(/chartFill/g) || []).length, 1, 'null мөрд дүүргэлт зурахгүй');
+/* ⚠️ 2026-10-23: Environment RowChart — уугуул title, шүүх заавар хэвээр */
+const bSel = renderToStaticMarkup(h(Bars, { items: [{ key: 'a', label: 'A', value: 3 }], onSelect: () => {} }));
+assert.match(bSel, /title="A · 3\nДарж газрын зурагт шүүнэ"/, 'Bars: title = нэр · утга + заавар');
+assert.ok(renderToStaticMarkup(h(Bars, { items: [] })).includes('Үзүүлэлт байхгүй'), 'Bars: хоосон → .chart-empty');
 
 /* ── ui.tsx: Series — null багана зурахгүй, 0 нь хамгийн бага багана ── */
 const sr = renderToStaticMarkup(h(Series, { items: [
@@ -39,7 +45,8 @@ const sr = renderToStaticMarkup(h(Series, { items: [
   { key: '2', label: '2', value: null },
   { key: '3', label: '3', value: 5, color: 'var(--c2)' },
 ] }));
-assert.equal((sr.match(/height:1\.5%/g) || []).length, 1, '0 → 1.5% багана');
+assert.equal((sr.match(/height:0%/g) || []).length, 1, '0 → 0 өндөр (Environment — 1.5% stub хасагдсан)');
+assert.match(sr, />0</, '0 утга баганын дээр бичигдэнэ (≤8 багана)');
 assert.equal((sr.match(/seriesBar/g) || []).length, 2, 'null → баганагүй');
 assert.ok(sr.includes('--tone:var(--c2)'), 'items[].color хүндэтгэнэ');
 
@@ -53,7 +60,7 @@ const ml = renderToStaticMarkup(h(Series, {
     { key: 'b', label: 'B', color: 'var(--c2)', values: [3, 1, 2, 2] },
   ],
 }));
-const areas = ml.match(/fill:url\(#seriesAreas[^)]*\)/g) || [];
+const areas = ml.match(/fill:url\(#seriesArea[^)]*\)/g) || [];
 assert.equal(areas.length, 2, `шугам бүрд талбай (ганц цэгтэй хэсэгт биш): ${areas.length}`);
 assert.equal(new Set(areas).size, 2, 'шугам бүр өөрийн градиенттай');
 
@@ -63,32 +70,41 @@ const pathDs = (html) => [...html.matchAll(/<path[^>]* d="([^"]+)"/g)].map((m) =
 assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp }))).every((d) => !d.includes('C')), 'анхдагч Trend зөөлрүүлэхгүй');
 assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp, smooth: true }))).some((d) => d.includes('C')), 'smooth ил дамжуулбал муруй');
 
-/* ── ui.tsx: Donut / Ring — хэмжээний стандарт, өнгө cat(i) ── */
+/* ── ui.tsx: Donut / Ring — хэмжээний стандарт ──
+   ⚠️ 2026-10-23: Environment — өнгөгүй зүсмэг `cat(i)` БИШ, НЭГ `--data` + тунгалгийн шат (.92, .7) */
 const dn = renderToStaticMarkup(h(Donut, { items: [{ key: 'x', label: 'X', value: 3 }, { key: 'y', label: 'Y', value: 1 }], size: 'sm' }));
-assert.match(dn, /width="96"/);
-assert.ok(dn.includes('var(--c1)') && dn.includes('var(--c2)'), 'өнгөгүй зүсмэг → cat(i)');
+assert.match(dn, /width="82"/, 'sm = 82 (Environment 112-ын харьцаа)');
+assert.ok(dn.includes('fill:var(--data)') && !dn.includes('var(--c1)'), 'өнгөгүй зүсмэг → --data');
+assert.ok(dn.includes('fill-opacity:0.92') && dn.includes('fill-opacity:0.7'), 'тунгалгийн шат .92 − i×.22');
 const rg = renderToStaticMarkup(h(Ring, { value: 50, size: 'md' }));
 assert.match(rg, /width="120"/);
-assert.match(rg, /stroke-width="12"/, 'зузаан = 10%');
+assert.match(rg, /stroke-width="15\.6\d*"/, 'зузаан = R − .72R (Environment PieChart)');
 
 /* ── 2026-10-09 (лавлах CRM загвар — өнгө хэвээр) ── */
-/* Series: бүдэг тор + зүүн тэнхлэгийн тоо; багана 0..niceTop хуваарьт (5 → тэнхлэг 0..6) */
-assert.ok(sr.includes('gridH') && sr.includes('axisYLbl'), 'Series: тор + тэнхлэг');
-assert.ok(/height:83\.3+\d*%/.test(sr), 'Series: 5 / 6 (niceTicks-ийн дээд) ≈ 83.3%');
-/* Series line: цэг анхдагчаар нуугдмал, ДЭЭД цэгт «Дээд: X» pill; null → цоорхой хэвээр */
+/* ⚠️ 2026-10-23: Environment BarChart — тор + 34px тэнхлэг; масштаб = өгөгдлийн max (дээр нь утгын зай) */
+assert.ok(sr.includes('gridLine') && sr.includes('barAxis'), 'Series: тор + тэнхлэг');
+assert.ok(/height:84\.6\d*%/.test(sr), 'Series: 5 / 5 × (100 − 15.4) ≈ 84.6%');
+assert.match(sr, /title="3 · 5"/, 'Series: уугуул title');
+assert.ok(renderToStaticMarkup(h(Series, { items: [] })).includes('Үзүүлэлт байхгүй'), 'Series: хоосон → .chart-empty');
+/* Series line (AreaChart): «Дээд: X» pill БАЙХГҮЙ; null → цоорхой хэвээр */
 const sl = renderToStaticMarkup(h(Series, { line: true, items: [
   { key: 'a', label: 'a', value: 3 }, { key: 'b', label: 'b', value: 68 }, { key: 'c', label: 'c', value: null }, { key: 'd', label: 'd', value: 10 },
 ] }));
-assert.match(sl, /Дээд: 68/, 'showMax → «Дээд: 68»');
-assert.ok(sl.includes('chartGlow'), 'шугам гэрэлтэлттэй (хэвлэхэд унтрах класс)');
+assert.ok(!sl.includes('Дээд'), 'Environment: «Дээд: X» pill хасагдсан');
+assert.ok(!sl.includes('callout') && !sl.includes('hmark'), 'PointCallout / HoverMarker графикт байхгүй');
+assert.ok(!sl.includes('chartGlow') && !sl.includes('drop-shadow'), 'шугам гэрэлтэлтгүй (2026-10-23: Environment)');
 assert.ok(sl.includes('seriesLineDot'), 'ганц цэгтэй хэсэг (d) цэгээр харагдана');
-assert.ok(!renderToStaticMarkup(h(Series, { line: true, showMax: false, items: [{ key: 'a', label: 'a', value: 3 }, { key: 'b', label: 'b', value: 5 }] })).includes('Дээд'), 'showMax=false');
-/* Donut: хөндий цагираган тэмдэг + ≥8% зүсмэгт дотор хувь (их үлдэгдлийн арга — 75/25) */
-assert.ok(dn.includes('legendRing'), 'тайлбарын тэмдэг цагираг');
-assert.ok(dn.includes('donutPctIn') && dn.includes('>75%<') && dn.includes('>25%<'), 'зурвас дотор хувь');
-assert.ok(dn.includes('stroke-linecap:round'), 'бөөрөнхий үзүүр');
-/* Ring: зам нь нимгэн 2px */
-assert.match(rg, /ringTrack[^>]*stroke-width="2"/, 'Ring-ийн зам 2px');
+/* Donut (2026-10-23: Environment): 7px цул тэмдэг, хувь нь ТАЙЛБАРТ (зүсмэг дотор биш),
+   2px `--surface` зах, голд «НИЙТ» */
+assert.ok(dn.includes('legendSwatch'), 'тайлбарын тэмдэг цул');
+assert.ok(!dn.includes('donutPctIn') && dn.includes('>75.0%<') && dn.includes('>25.0%<'), 'хувь тайлбарт, 1 оронтой (75.0/25.0)');
+assert.match(dn, /<title>X · 3 · 75\.0%<\/title>/, 'зүсмэг: уугуул <title>');
+assert.ok(renderToStaticMarkup(h(Donut, { items: [{ key: 'z', label: 'Z', value: 0 }] })).includes('Үзүүлэлт байхгүй'), 'нийт 0 → .chart-empty («0» цагираг биш)');
+assert.ok(dn.includes('stroke:var(--surface)') && !dn.includes('stroke-linecap:round'), '2px гадаргуун зах, бөөрөнхий үзүүргүй');
+assert.ok(dn.includes('НИЙТ'), 'голын шошго «НИЙТ»');
+/* Ring: зам нь нумтай ИЖИЛ зузаан (2026-10-23: Environment) */
+assert.match(rg, /ringTrack[^>]*stroke-width="15\.6\d*"/, 'Ring-ийн зам = нумын зузаан');
+assert.ok(!rg.includes('stroke-linecap'), 'Ring: шулуун үзүүр (Environment)');
 
 /* ── ⚠️ 2026-10-09 (аудит №6): хувийн нийлбэр ЯГ 100 — Stack · Donut (тайлбар + aria) нэг арга ── */
 const three = [{ key: 'a', label: 'A', value: 1 }, { key: 'b', label: 'B', value: 1 }, { key: 'c', label: 'C', value: 1 }];
@@ -96,7 +112,7 @@ const stk = renderToStaticMarkup(h(Stack, { items: three, legend: true }));
 const stkPcts = [...stk.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => Number(m[1]));
 assert.deepEqual(stkPcts, [34, 33, 33], `Stack тайлбар 100% (их үлдэгдэл): ${stkPcts}`);
 const dn3 = renderToStaticMarkup(h(Donut, { items: three, size: 'sm' }));
-assert.match(dn3, /A 34%, B 33%, C 33%/, 'Donut aria тойм тайлбартай ижил тоо (99% биш)');
+assert.match(dn3, /A 33\.4%, B 33\.3%, C 33\.3%/, 'Donut aria тойм тайлбартай ижил тоо (нийлбэр 100.0)');
 const stkT = renderToStaticMarkup(h(Stack, { items: [{ key: 'a', label: 'A', value: 25 }, { key: 'b', label: 'B', value: 25 }], total: 100, legend: true }));
 assert.deepEqual([...stkT.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => m[1]), ['25', '25'], '`total` өгвөл 100 болгож сунгахгүй');
 
@@ -108,4 +124,15 @@ assert.ok(tMoney.includes('2,000,000,000,000 ₮'), 'босгын шошго ч 
 const tPct = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 26.3 }, { label: '2', value: 20 }], unit: '%' }));
 assert.ok(tPct.includes('26.3%'), 'хувийн дуудагч «26.3%» хэвээр');
 
-console.log('✅ ui графикууд: Meter · Bars · Series · Donut · Ring — нэгдсэн стандарт + лавлах CRM загвар');
+/* ── ⚠️ 2026-10-23: Environment — хоосон төлөв дүрсгүй; Stack (legend) = Composition; Meter уугуул title ── */
+const em = renderToStaticMarkup(h(Empty, { label: 'Хоосон', icon: 'chart' }));
+assert.ok(!em.includes('<svg') && em.includes('Хоосон'), 'Empty: дүрсгүй');
+assert.ok(stk.includes('compBar'), 'Stack legend → Composition зурвас');
+assert.ok(!renderToStaticMarkup(h(Stack, { items: three, legend: false })).includes('compBar'), 'Stack legend=false → 10px зам');
+assert.match(m1, /title="Гүйцэтгэл · 42\.3%\nТөлөвлөгөө: 50\.0%"/, 'Meter: уугуул title + төлөвлөгөө');
+/* Trend: уншилтын мөр / Y тэнхлэг байхгүй; тор бүгд тасархай (4 шугам) */
+const tr4 = renderToStaticMarkup(h(Trend, { points: tp }));
+assert.ok(!tr4.includes('trendHead') && !tr4.includes('trendYAxis'), 'Trend: readout ба Y тэнхлэг хасагдсан');
+assert.equal((tr4.match(/class="trendGrid"/g) || []).length, 4, 'Trend: тор [.25 .5 .75 1]');
+
+console.log('✅ ui графикууд: Meter · Bars · Series · Donut · Ring · Stack · Empty — Environment стандарт');

@@ -6,6 +6,11 @@
    Өнгө = утга: гурван цуваа cat(2)/cat(0)/cat(1) слотоо tsx-ээс inline авна,
    төлөв (хоцрогдол) нь --bad/--warn. Бусад бүх бэх --ink шатлал.
 
+   ⚠️ 2026-10-23: Environment — карт 12px булан; хүснэгт .pe-table (11.5px мөр, 10px UPPERCASE
+   --surface толгой, --line-strong доод зураас); оролт .pe-field (32px); сегмент .view-switch;
+   badge 6px; tooltip --surface 95% + blur, --line-strong, 12px; график тор 1px тасархай --line.
+   Excel-ийн толгой/зурвасын хатуу өнгө (#203864/#2e75b6/#2f5597) — 2026-10-23-нд системийн токен руу шилжсэн (доорх ⚠️).
+
    ⚠️ «Барилгын цогц хяналт» (Tsogts.tsx) энэ файлаас `lagBadge/lagRed/lagYellow`
    болон ComboChart-ын бүх классыг хэрэглэдэг — устгахаас өмнө түүнийг шалга.
    ═══════════════════════════════════════════════════════════ */
@@ -54,10 +59,10 @@
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
-/* Картын толгой — envhub Head: 13.5px/600 гарчиг + hairline доод зураас,
+/* Картын толгой — envhub Head: 13.5px/600 гарчиг (⚠️ 2026-10-23: Environment — 12px, 9px 12px) + hairline доод зураас,
    баруун талд 11.5px тайлбар */
 .regHd {
   flex: none;
@@ -65,11 +70,11 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 .regHd h2 {
-  font-size: 13.5px;
+  font-size: 12px;
   line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
@@ -93,23 +98,23 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 .tbl thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  /* Дотогш давхарга — envhub surface-2 (өнгөт тинт БИШ) */
-  background: var(--surface-2);
+  /* ⚠️ 2026-10-23: Environment .pe-table — толгой --surface, доод зураас --line-strong */
+  background: var(--surface);
   color: var(--ink-3);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-align: left;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line-strong);
 }
 .tbl td {
   padding: 6px 10px;
@@ -121,25 +126,26 @@
 .cellNum { text-align: right; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
 /* ── Хоцрогдлын статус pill (Tsogts-ын панелийн гарчигт) ──
-   Өнгө = УТГА: --bad/--warn токен. 999px нь жижиг pill badge тул зөвшөөрөгдөнө. */
+   Өнгө = УТГА: --bad/--warn токен.
+   ⚠️ 2026-10-23: Environment badge — 6px булан, tone 35% хүрээ, tone 8% дэвсгэр. */
 .lagBadge {
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   border: 1px solid var(--line);
 }
 .lagRed {
   color: var(--bad-ink);
-  background: color-mix(in oklab, var(--bad) 12%, var(--surface));
-  border-color: color-mix(in oklab, var(--bad) 40%, var(--line));
+  background: color-mix(in oklab, var(--bad) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
 }
 .lagYellow {
   color: var(--warn-ink);
-  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
-  border-color: color-mix(in oklab, var(--warn) 40%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
 }
 
 /* ── Комбо график (ComboChart — Tsogts хэрэглэнэ) ── */
@@ -148,19 +154,21 @@
 /* ⚠️ Тор нь ЗАДГАЙ БАРИМЖАА: өгөгдлөөс илүү анхаарал татах ёсгүй тул маш
    бүдэг, 4 шугам. Урьд нь 5 шугам, тод өнгөтэй байв. */
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): хэвтээ + БОСОО тор, бүрэн `--chart-grid` (токен өөрөө hairline) */
-.curveGrid { stroke: var(--chart-grid); stroke-width: 1; }
-.curveCursor { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
+/* ⚠️ 2026-10-23: Environment `AreaChart` — тор 1px ТАСАРХАЙ `3 4` --line, квартал бүр (ёроол ч —
+   урьдын `3 3` ба бүтэн ёроолын зөрүү засагдсан). Crosshair нь цувааны өнгө `--data`, `2 2`, .7. */
+.curveGrid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.curveCursor { stroke: var(--data); stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.7; }
 
-/* Он сар — доод ГАНЦ мөр (хувиуд tooltip руу шилжсэн) */
+/* Он сар — доод ГАНЦ мөр (хувиуд tooltip руу шилжсэн); заасан сар `--ink` (Environment) */
 .axisX { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.axisX.axisXOn { fill: var(--ink); }
 
-/* Y тэнхлэгийн ₮ — торны ДЭЭР сууна: тусдаа багана эзлүүлбэл муруйн талбай
-   нарийсдаг. Тиймээс маш бүдэг, жижиг — уншихад хангалттай, саад биш. */
+/* Y тэнхлэгийн ₮ — тусдаа багана (`padL`).
+   ⚠️ 2026-10-23: Environment — 9px tabular ink-3, БҮТЭН тунгалаг (урьд 10px .75). */
 .sAxisY {
   fill: var(--ink-3);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  opacity: 0.75;
 }
 
 /* ── ЗӨРҮҮГИЙН ТАЛБАЙ ──
@@ -190,32 +198,36 @@
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+/* ⚠️ 2026-10-23: Environment — биет = `--chart-plan` ТАСАРХАЙ `4 4` (`CHART.planDash`, butt үзүүр);
+   tsx-ээс inline давхар өгдөг. */
 .physLine {
   fill: none;
   stroke-width: 2;
+  stroke-dasharray: 4 4;
   stroke-linejoin: round;
-  stroke-linecap: round;
+  stroke-linecap: butt;
 }
 
-.sDot { stroke: var(--surface); stroke-width: 2; }
+/* ⚠️ 2026-10-23: Environment `AreaChart` — цэг 5px (r 3.5 − 2px цагираг) + 2px `--surface` цагираг;
+   тунгалгийг tsx өгнө (.5 / заасан 1 / бусад .15), томруулахгүй. */
+.sDot { stroke: var(--surface); stroke-width: 2; transition: opacity 150ms; }
 
-/* Цэг бүрийн утга — цувааныхаа өнгөөр. Жижиг, tabular тул баганалж уншигдана.
-   ⚠️ Хэт тод болговол муруй бүрхэгдэнэ: жин 600, өнгө нь цувааных. */
+/* Цэг бүрийн утга. Жижиг, tabular тул баганалж уншигдана.
+   ⚠️ 2026-10-23: Environment `AreaChart` — 10px/400 `--ink-2` (заасан сард `--ink`), halo-ГҮЙ;
+      урьд 600 жинтэй, цувааны өнгөтэй, `--surface` контуртай байв. */
 .ptVal {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  paint-order: stroke;
-  stroke: var(--surface);
-  stroke-width: 3px;
-  stroke-linejoin: round;
+  fill: var(--ink-2);
 }
+.ptVal.ptValOn { fill: var(--ink); }
 
 /* Сүүлийн цэгийн шошго — графикийн ЦОРЫН ГАНЦ тогтмол тоо. Цувааныхаа
    өнгөөр бичигдэнэ (tsx-ээс inline fill) тул аль шугамынх нь эргэлзээгүй. */
 .endVal {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -241,26 +253,51 @@
   .barBlinkRed, .barBlinkYellow { animation: none; }
 }
 
-/* Tooltip — ЖИНХЭНЭ хөвөгч элемент тул сүүдэр энд Л зөвшөөрөгдөнө */
+/* Tooltip — ЖИНХЭНЭ хөвөгч элемент тул сүүдэр энд Л зөвшөөрөгдөнө
+   ⚠️ 2026-10-23: Environment `AreaChart` Tooltip — ЦЭГИЙН дэргэд (байрлалыг tsx: left/top/transform),
+   min 140, булан 12, `--line-strong` хүрээ, `--surface` 95% + blur; толгой 8×4 `--data` 10% дэвсгэр,
+   доод зураас, 6px цэг, 11.5/500; бие 8×6: утга 17/500 цувааны өнгөөр + нэгж 10.5 ink-3, ▲/▼ мөр. */
 .tip {
   position: absolute;
-  top: 8px;
   z-index: 4;
-  min-width: 160px;
-  padding: 9px 11px;
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  min-width: 140px;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   pointer-events: none;
+  white-space: nowrap;
 }
-.tipHd { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
-.tipRow { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-2); line-height: 1.7; }
-.tipRow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.tipRow b { margin-left: auto; font-weight: 600; color: var(--ink); }
-/* Өнгөт дөрвөлжингүй мөр (лавлах тоонууд) — цэгтэй мөрүүдтэй зэрэгцүүлнэ */
-.tipRow:not(:has(i)) { padding-left: 16px; }
+.tipHd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 10%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.tipDot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.tipBody { padding: 6px 8px; }
+.tipMain { display: flex; align-items: baseline; gap: 4px; }
+.tipBig { font-size: 17px; line-height: 1; font-weight: 500; }
+.tipUnit { font-size: 11px; color: var(--ink-3); }
+.tipMeta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--ink-3); }
+.tipRow { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
+.tipRow b { margin-left: auto; padding-left: 12px; font-weight: 500; color: var(--ink-2); }
+/* Цувааны тэмдэг — шугамын ХЭЛБЭРИЙГ давтана: тасархай `4 4` (`CHART.planDash`) `--chart-plan` */
+.tipSwDash {
+  width: 12px;
+  height: 2px;
+  flex: none;
+  background: repeating-linear-gradient(90deg, var(--chart-plan) 0 4px, transparent 4px 8px);
+}
 .tipGap { margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line); }
+
 /* ⚠️ 2026-10-09: ComboChart-ын фокус — ProgChart-тай ижил гарын удирдлага; хүрээ нь зөвхөн гараар */
 .chartWrap:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: var(--r-sm); }
 /* Дэлгэц уншигчийн `aria-live` мөр — нүдэнд харагдахгүй */
@@ -281,30 +318,31 @@
    эдгээр дүрэм хүснэгтийн ердийн харагдацад нөлөөлөхгүй. */
 
 /* «Засах» · «Нийтлэх» · «Болих» — толгойн баруун талд */
+/* ⚠️ 2026-10-23: Environment .pe-ghost — картын толгойд суудаг тул 28px (толгойг өндөрсгөхгүй), 8px булан */
 .editBtn {
   flex: none;
-  padding: 4px 11px;
+  height: 28px;
+  padding: 0 12px;
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
   /* ⚠️ ТУНГАЛАГ (2026-09-04): урьд нь дүүргэсэн `--surface-2` байсан бөгөөд
      hover/идэвхтэй үед БҮТЭН цэнхэр болдог тул хажуудах «+ Мөр нэмэх»-тэй
      (тунгалаг) хоёр өөр хэлээр ярьж байв. Одоо гурвуулаа — Засах, Нийтлэх,
      Мөр нэмэх — нэг зарчим: тунгалаг дэвсгэр, өнгө нь зөвхөн утгыг заана. */
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border: 1px solid color-mix(in oklab, var(--ink) 22%, transparent);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   cursor: pointer;
 }
 .editBtn:hover:not(:disabled) {
-  color: var(--data-ink);
-  background: color-mix(in srgb, var(--data) 16%, transparent);
-  border-color: color-mix(in srgb, var(--data) 55%, transparent);
+  color: var(--ink);
+  background: var(--surface-2);
 }
 /* ⚠️ Идэвхгүй товчийг БҮДГЭРҮҮЛНЭ, нуухгүй: «Нийтлэх (0)» гэж харагдах нь
    «засвар алга» гэдгийг хэлж байгаа хэрэг. */
-.editBtn:disabled { opacity: 0.45; cursor: default; }
+.editBtn:disabled { opacity: 0.4; cursor: default; }
 
 .editErr,
 .editOk {
@@ -315,8 +353,8 @@
   line-height: 1.45;
   border-bottom: 1px solid var(--line);
 }
-.editErr { color: #b91c1c; background: color-mix(in oklab, #b91c1c 10%, transparent); }
-.editOk { color: var(--ink-2); background: color-mix(in oklab, var(--data) 12%, transparent); }
+.editErr { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 8%, transparent); }
+.editOk { color: var(--ink-2); background: color-mix(in oklab, var(--data) 8%, transparent); }
 
 /* Нүдний оролт — хүснэгтийн нүдийг БҮТНЭЭР эзэлнэ, өргөн нь баганаас хамаарна */
 .cellEdit { padding: 0; }
@@ -356,7 +394,7 @@
   border-radius: 4px;
   cursor: pointer;
 }
-.rowBtn:hover { color: #b91c1c; background: color-mix(in oklab, #b91c1c 14%, transparent); }
+.rowBtn:hover { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) var(--tint), transparent); }
 
 /* ⚠️ Устгахаар ТЭМДЭГЛЭСЭН мөр — шууд алга болгохгүй, зураастай харуулна:
    алдаж дарсныг буцаах боломж («↩») харагдаж байх ёстой. */
@@ -378,21 +416,24 @@
    цорын ганц дохио (2026-09-04-нд «Болих» товч хасагдсан). */
 .editBtnOn {
   color: var(--data-ink);
-  background: color-mix(in srgb, var(--data) 28%, transparent);
-  border-color: var(--data);
+  background: color-mix(in oklab, var(--data) 14%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  font-weight: 600;
 }
-.editBtnOn:hover:not(:disabled) { filter: brightness(1.08); }
+.editBtnOn:hover:not(:disabled) { color: var(--data-ink); background: color-mix(in oklab, var(--data) 20%, transparent); }
 
 /* ══════════ ХҮСНЭГТ СОЛИХ ТАБ (Cashflow ↔ IPC) ══════════
    ⚠️ Хоёр хүснэгт нэг мөчид НЭГ л зурагдана. Урьд нь дараалж зурагдаж,
    хуудас гурван өөр гүйлгэлттэй болдог байв. */
+/* ⚠️ 2026-10-23: Environment .view-switch — 3px дотоод зай, 1px --line зам, 8px/5px булан */
 .tabs {
   flex: none;
   display: flex;
-  gap: 4px;
+  gap: 2px;
   padding: 3px;
-  background: var(--sunken);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 .tab {
   padding: 4px 14px;
@@ -402,14 +443,14 @@
   color: var(--ink-3);
   background: transparent;
   border: none;
-  border-radius: 999px;
+  border-radius: 5px;
   cursor: pointer;
   white-space: nowrap;
 }
 .tab:hover { color: var(--ink); }
-/* Идэвхтэй таб — дүүргэлттэй «шахмал» (envhub segmented control) */
+/* Идэвхтэй таб — дарагдсан = --surface + жижиг сүүдэр */
 .tabOn,
-.tabOn:hover { color: var(--hue-ink); background: var(--data); }
+.tabOn:hover { color: var(--ink); background: var(--surface); box-shadow: 0 1px 5px #00000012; }
 
 /* ══════════ ЗАСВАРЫН БҮТЭН ДЭЛГЭЦ ══════════
    ⚠️ Хажуугийн цэс (`z-index: 10`) ба дээд толгой (`z-index: 20`) дээгүүр
@@ -447,41 +488,50 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
 }
+/* ⚠️ 2026-10-23: Environment .pe-field — 32px, 7px булан, --line-strong хүрээ, moss focus */
 .finSearch {
   flex: 1 1 200px;
   min-width: 160px;
   max-width: 300px;
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   background: var(--bg);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 12.5px;
 }
-.finSearch:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.finSearch:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .finSel {
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   background: var(--bg);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 12.5px;
   max-width: 190px;
 }
-.finSel:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.finSel:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 /* Сонголт хийгдсэн select — «аль шүүлт асаалттай вэ» нь нэг харцаар */
-.finSelOn { border-color: var(--data); color: var(--ink); }
+.finSelOn { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 12%, var(--bg)); color: var(--data-ink); }
 /* Асаалт/унтраалттай товч (бүлэглэх · баганын шүүлт) */
 .finTgl {
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg);
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
   color: var(--ink-2);
   font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
-.finTglOn { background: var(--data); border-color: var(--data); color: var(--hue-ink); }
+.finTgl:hover { background: var(--surface-2); color: var(--ink); }
+.finTglOn,
+.finTglOn:hover { background: color-mix(in oklab, var(--data) 12%, transparent); border-color: color-mix(in oklab, var(--data) 45%, transparent); color: var(--data-ink); font-weight: 600; }
 /* Тоолол — ҮРГЭЛЖ харагдана: шүүсэн эсэхээ мэдэхгүй үлдэх нь гол эрсдэл */
 .finCount { margin-left: auto; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .finClear { font-size: 11.5px; color: var(--data-ink); padding: 4px 2px; white-space: nowrap; }
@@ -508,16 +558,16 @@
   width: 100%;
   min-width: 0;
   padding: 3px 5px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: var(--bg);
   color: var(--ink);
   font-size: 11px;
   font-weight: 400;
 }
-.fCell:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.fCell:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 /* Шүүлттэй багана — толгой нь тодорно */
-.fCellOn { border-color: var(--data); }
+.fCellOn { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 12%, var(--bg)); }
 .thOn { color: var(--data-ink); }
 
 /* ── Багцын зурвасын дотоод хэсгүүд (`.bName` товчны дотор) ── */
@@ -571,7 +621,7 @@
 .bBox {
   flex: none;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--surface);
 }
@@ -582,21 +632,21 @@
   align-items: baseline;
   gap: 6px;
   width: 100%;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--data) 10%, var(--surface-2));
+  padding: 9px 12px;
+  background: var(--surface-2);
   border-bottom: 1px solid var(--line);
   color: var(--ink);
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
   text-align: left;
   cursor: pointer;
 }
-.bName:hover { background: color-mix(in srgb, var(--data) 18%, var(--surface-2)); }
+.bName:hover { background: var(--paper-hi); }
 /* ⚠️ Товч БИШ `div` хэлбэрээр ч хэрэглэгддэг («Хадгалаагүй шинэ мөр» блок —
    хураах утгагүй тул дарагдахгүй) — заагч сумыг зөвхөн ДАРАГДАХ хувилбарт. */
 div.bName { cursor: default; }
-div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-2)); }
+div.bName:hover { background: var(--surface-2); }
 
 /* Хэвтээ гүйлт — ХҮСНЭГТ ДОТРОО. Паспортын тор нь мөрөө таслан багтдаг тул
    гүйдэггүй; зөвхөн хуваарь/актын хүснэгт өөрөө гүйнэ. */
@@ -631,7 +681,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   white-space: normal;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 /* БИЧЛЭГИЙН баганын толгой — дугаар + устгах товч */
@@ -681,6 +731,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .pf { background: var(--surface); padding: 7px 12px; min-width: 0; }
 .pf dt {
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -701,7 +752,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .sTotal td {
   background: var(--surface-2);
   color: var(--ink);
-  font-weight: 650;
+  font-weight: 600;
   border-top: 1px solid var(--line);
 }
 .cellStrong { color: var(--ink); font-weight: 600; }
@@ -709,6 +760,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 /* САР биш үеийн мөрийн төрөл (ӨМНӨХ ШИЛЖҮҮЛСЭН) — сарын нүдэнд жижгээр */
 .rowKind {
   font-size: 11px;
+  line-height: 1.3;
   letter-spacing: 0.05em;
   color: var(--ink-3);
   text-transform: uppercase;
@@ -716,18 +768,18 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 }
 
 /* IPC — төлөвийн чип: өнгө = утга */
+/* ⚠️ 2026-10-23: Environment badge — 6px, 11px/500, tone 35% хүрээ, tone 8% дэвсгэр */
 .chip {
   display: inline-block;
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 8px;
+  font-weight: 500;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
   color: var(--ink-2);
 }
-.chipOk { color: var(--good-ink); border-color: var(--good-ink); }
-.chipWarn { color: var(--warn-ink); border-color: var(--warn-ink); }
+.chipOk { color: var(--good-ink); border-color: color-mix(in oklab, var(--good) 35%, transparent); background: color-mix(in oklab, var(--good) 8%, transparent); }
+.chipWarn { color: var(--warn-ink); border-color: color-mix(in oklab, var(--warn) 35%, transparent); background: color-mix(in oklab, var(--warn) 8%, transparent); }
 
 /* IPC — мөр дэлгэх: үлдсэн бүх талбар паспортын торонд гарна */
 .xpCell { width: 26px; padding: 0 4px; text-align: center; }
@@ -748,7 +800,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
    бүрэн байдлыг finCard.check-ийн бүлэглэлтийн шалгуур баталгаажуулна. */
 
 .cHead2 { padding: 10px 14px 8px; border-bottom: 1px solid var(--line); }
-.cName { font-size: 13.5px; font-weight: 650; color: var(--ink); line-height: 1.35; }
+.cName { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.35; }
 .cSub { margin-top: 2px; font-size: 11.5px; color: var(--ink-3); }
 
 /* KPI зурвас — гол дүнгүүд hairline-аар тусгаарлагдана; утгагүй хавтан огт байхгүй */
@@ -763,6 +815,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .kpiL {
   display: block;
   font-size: 11px;
+  line-height: 1.4;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -772,7 +825,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.kpiV { display: block; font-size: 14.5px; font-weight: 650; color: var(--ink); white-space: nowrap; }
+.kpiV { display: block; font-size: 15px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
 .kpiV i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ink-3); }
 
 /* Хуваарийн хэсэг */
@@ -780,7 +833,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .secLbl {
   padding: 8px 14px 0;
   font-size: 11px;
-  font-weight: 650;
+  line-height: 1.3;
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -809,7 +863,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   flex: none;
   width: 120px;
   font-size: 11px;
-  font-weight: 650;
+  line-height: 1.3;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -839,7 +894,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   border-spacing: 0;
   width: max-content;
   min-width: 100%;
-  font-size: 0.78rem;
+  font-size: 11.5px;
 }
 .xlTbl th {
   position: sticky;
@@ -862,13 +917,13 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   /* ⚠️ Толгой олон мөр болж мурийдаг тул БОСОО голлоно — `bottom` байсан үед
      нэг мөрт нэр нь доод ирмэг дээр наалдаж, эгнээ нь тэгширдэггүй байв. */
   vertical-align: middle;
-  line-height: 1.25;
-  font-size: 0.6875rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  line-height: 1.3;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-2);
-  background: var(--surface-2);
+  color: var(--ink-3);
+  background: var(--surface);
   border-right: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line-strong);
 }
@@ -889,7 +944,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   border-right: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line);
 }
-.xlTbl tr:hover td { background: color-mix(in srgb, var(--data) 6%, transparent); }
+.xlTbl tr:hover td { background: color-mix(in oklab, var(--data) 6%, transparent); }
 /* Мөрийн дугаар — Excel-ийн зүүн багана шиг наалдана */
 .xlNo {
   position: sticky;
@@ -919,7 +974,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   background: color-mix(in srgb, var(--good) 16%, transparent) !important;
   box-shadow: inset 0 0 0 1.5px var(--good);
 }
-.cellDirty input { font-weight: 650; color: var(--good-ink); }
+.cellDirty input { font-weight: 600; color: var(--good-ink); }
 
 /* ═══════════ ЦАРЦСАН ЭХНИЙ 4 БАГАНА ═══════════
    ⚠️ `position: sticky` дангаараа хангалтгүй — багана бүрийн `left` нь
@@ -961,7 +1016,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 }
 /* ⚠️ Толгойн царцсан нүд нь мөрийн царцсан нүд БОЛОН энгийн толгойгоос ДЭЭР.
    Инлайн `z-index` нь мөрийн нүдэнд үйлчилнэ; толгойд энэ дүрэм давамгайлна. */
-.xlTbl thead .xlFz { z-index: 25; background: var(--surface-2); }
+.xlTbl thead .xlFz { z-index: 25; background: var(--surface); }
 /*
  * СҮҮЛИЙН ЦАРЦСАН БАГАНЫ ХИЛ — «эндээс цааш гүйнэ» гэдгийг заана.
  *
@@ -1019,17 +1074,17 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .cellPick {
   width: 100%;
   padding: 2px 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: var(--bg);
   color: var(--ink);
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 11.5px;
   cursor: pointer;
 }
-.cellPick:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.cellPick:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 /* ⚠️ Урт сонголтууд нүдийг сунгахгүй — жагсаалт нээгдэхэд л бүтнээр харагдана */
-.cellPick option { font-size: 0.8rem; }
+.cellPick option { font-size: 12px; }
 
 /* ═══════════ ДЭЛГЭСЭН НҮД ═══════════
    ⚠️ `max-width`-ийг л суллана, `width`-ийг БИШ: багана бүхэлдээ өргөсвөл
@@ -1053,7 +1108,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   border-color: color-mix(in srgb, var(--good) 55%, transparent);
   background: color-mix(in srgb, var(--good) 16%, transparent);
   color: var(--good-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 .pubBtn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--good) 26%, transparent);
@@ -1121,14 +1176,14 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   background: transparent !important;
   box-shadow: none !important;
   color: var(--good-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* Сонголтын нүд — тунгалаг болгож ногоон дэвсгэрийг нэвт харуулна */
 .xlTbl td.cellDirty .cellPick {
   background: transparent !important;
   color: var(--good-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /*
@@ -1209,7 +1264,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  */
 .xlTbl tbody tr.rowDraft .xlFz { z-index: 10 !important; }
 .xlTbl tbody tr.rowDraft .xlNo { z-index: 11; }
-.rowDraft td:first-child { color: var(--data-ink); font-weight: 700; text-align: center; }
+.rowDraft td:first-child { color: var(--data-ink); font-weight: 600; text-align: center; }
 .rowDraft .cellInput::placeholder { color: var(--ink-3); font-style: italic; }
 .xlTbl tbody tr.rowDraft:focus-within td {
   background: color-mix(in srgb, var(--data) 14%, var(--surface));
@@ -1222,8 +1277,10 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * саарал унтраалга, энэ нь мөр нэмдэг үйлдэл. Дүүргэсэн, бөөрөнхий, тод —
  * ижил төрхтэй байвал хүн санамсаргүй дарж хоосон мөр үүсгэнэ.
  */
+/* ⚠️ 2026-10-23: Environment — 32px, 8px булан (тунгалаг дүүргэлт нь доорх ⚠️-ээр хэвээр) */
 .finAdd {
-  padding: 5px 12px;
+  height: 32px;
+  padding: 0 14px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -1232,16 +1289,16 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
      дүүргэсэн элемент болж, хажуудах шүүлтүүдээс хэт хашгирч байв. Одоо
      дэвсгэр нь нэвт харагдаж, өнгө нь зөвхөн «энэ бол үйлдэл» гэдгийг заана. */
   color: var(--data-ink);
-  background: color-mix(in srgb, var(--data) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--data) 45%, transparent);
-  border-radius: 999px;
+  background: color-mix(in oklab, var(--data) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent);
+  border-radius: var(--r);
   cursor: pointer;
 }
 .finAdd:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--data) 26%, transparent);
+  background: color-mix(in oklab, var(--data) 20%, transparent);
   border-color: var(--data);
 }
-.finAdd:disabled { opacity: 0.45; cursor: default; }
+.finAdd:disabled { opacity: 0.4; cursor: default; }
 
 /* ═══════════ ТОЛГОЙН ЦЭС — БАРУУН ТОВШИЛТООР ═══════════ */
 /* Шүүлт ТАВИГДСАН багана — толгойгоос шууд уншигдана */
@@ -1264,13 +1321,15 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .thMenuHead {
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--ink-2);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--line);
@@ -1304,7 +1363,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 }
 .thMenuCols button:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--data) 14%, transparent);
+  background: var(--surface-2);
 }
 
 /*
@@ -1340,7 +1399,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   padding: 2px 0;
   font: inherit;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   color: var(--data-ink);
   background: transparent;
@@ -1395,8 +1454,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.6875rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.03em;
 }
 /* ⚠️ `.xlFz`-ийн `max-width: 0` нь зурвасыг бүрэн хумина — colSpan-тай нүдэнд
@@ -1456,7 +1515,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .xlGrp td {
   background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important;
   color: var(--ink) !important;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.74rem;
   letter-spacing: 0.04em;
   height: 26px;
@@ -1469,7 +1528,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   border-bottom: 1px solid var(--line-strong);
 }
 /* 1-р түвшин арай тод — зураг дээрх шиг эхний хоёр мөр илүү хүчтэй */
-.xlSec td { font-weight: 800; background: color-mix(in srgb, var(--data) 16%, var(--surface)) !important; }
+.xlSec td { font-weight: 600; background: color-mix(in srgb, var(--data) 16%, var(--surface)) !important; }
 /* ⚠️ Зурвас нь мөрийн өнгө солигдоход ч тогтвортой — hover-ыг хаана */
 .xlTbl tr.xlGrp:hover td { background: color-mix(in srgb, var(--data) 10%, var(--surface)) !important; }
 .xlTbl tr.xlSec:hover td { background: color-mix(in srgb, var(--data) 16%, var(--surface)) !important; }
@@ -1526,7 +1585,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .lvLbl {
   margin-right: 5px;
   color: var(--ink-3);
-  font-size: 0.74rem;
+  font-size: 11.5px;
 }
 .lvBar button {
   width: 22px;
@@ -1534,20 +1593,20 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
   padding: 0;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--surface);
+  background: transparent;
   color: var(--ink-2);
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
-.lvBar button:hover { border-color: var(--data); color: var(--ink); }
+.lvBar button:hover { background: var(--surface-2); color: var(--ink); }
 /* ⚠️ Идэвхтэй товч — хэрэглэгч гараар нэг бүлэг хумивал АЛЬ Ч товч тодрохгүй
    (`lvl = 0`): дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй. */
 .lvOn {
   background: var(--data) !important;
   border-color: var(--data) !important;
-  color: var(--hue-ink) !important;
+  color: var(--bg) !important;
 }
 
 /*
@@ -1562,7 +1621,7 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
 .xlTot td {
   background: color-mix(in srgb, var(--data) 22%, var(--surface)) !important;
   color: var(--ink);
-  font-weight: 750;
+  font-weight: 600;
   font-size: 0.76rem;
   height: 28px;
   padding: 5px 10px;
@@ -1598,8 +1657,8 @@ div.bName:hover { background: color-mix(in srgb, var(--data) 10%, var(--surface-
  * `--surface` руу холино — өнгө нь ижил, гэхдээ бүрэн бүглээ.
  */
 .xlTbl tbody tr.xlMonth td {
-  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
-  font-size: 0.72rem;
+  background: color-mix(in oklab, var(--surface-2) 60%, var(--surface));
+  font-size: 11px;
 }
 /* ⚠️ Зүүн тэмдэг ба царцаалтын баруун ирмэг ХОЁУЛАНГ нь — ганцхан
    `box-shadow` бичвэл `.xlFz`-ийн ирмэг арилж, царцаалтын зааг алга болно */

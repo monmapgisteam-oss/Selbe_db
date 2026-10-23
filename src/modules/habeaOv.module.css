@@ -13,7 +13,9 @@
 /* ⚠️ 2026-08-12: «Барилгын хяналт» (tsogts)-ын Operations Dashboard индикатортой
    100% ижил — ГОЛЛУУЛСАН том тоо дээр, ЖИЖИГ uppercase шошго доор. */
 /* ⚠️ 2026-08-17: envhub-ийн KPI нүд — ЗҮҮН зэрэгцүүлсэн, eyebrow шошго ДЭЭР
-   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор. */
+   (`order: -1` нь DOM хөндөхгүйгээр дээш гаргана), 17px/500 тоо доор.
+   ⚠️ 2026-10-23: Environment — .analytics-stat хавтан (13px булан, --surface, сүүдэргүй,
+   10px ink-3 шошго, 600 жинтэй tabular тоо). Тооны 13px хэмжээ (2026-09-01) ХЭВЭЭР. */
 .tile {
   display: flex;
   flex-direction: column;
@@ -21,10 +23,10 @@
   justify-content: space-between;
   gap: 5px;
   text-align: left;
-  padding: 8px 12px;
+  padding: 12px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-xl);
 }
 
 .tileLabel { order: -1; }
@@ -45,9 +47,9 @@
    богиносгохгүй, тайрахгүй. */
 .tileVal b {
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -55,7 +57,7 @@
 .tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
 /* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
-.tileLabel { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.25; color: var(--ink-3); }
+.tileLabel { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; line-height: 1.4; color: var(--ink-3); }
 
 /* ⚠️ Урьд нь энд .bars/.barRow/.barTrack гэсэн ӨӨРИЙН бар диаграм байв —
    SuitDetail одоо порталын бусад дашбоардтай ижил `ui.tsx`-ийн Bars хэрэглэдэг
@@ -70,8 +72,9 @@
   gap: 12px;
   max-width: calc(100% - 24px);
   padding: 7px 10px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(6px);
+  /* ⚠️ 2026-10-23: Environment — газрын зургийн удирдлага: surface 94% + blur, 6px булан */
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
@@ -88,7 +91,7 @@
 
 .legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 
-.legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
+.legendMore { font-size: 0.69rem; font-weight: 600; font-family: var(--mono); color: var(--ink-3); }
 
 /* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
 /* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
@@ -118,8 +121,9 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч хавтан: --line-strong хүрээ + --shadow */
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }
@@ -144,27 +148,28 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  padding: 5px 6px 5px 11px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  font-size: 0.78rem;
+  /* ⚠️ 2026-10-23: Environment — сонгогдсон шүүлт: moss 12% дэвсгэр, moss 45% хүрээ, 6px булан */
+  padding: 4px 5px 4px 10px;
+  background: color-mix(in oklab, color-mix(in oklab, var(--data) 12%, var(--surface)) 94%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
 }
 
-.filterLabel { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.filterLabel { font-weight: 600; color: var(--data-ink); overflow-wrap: anywhere; }
 
 .filterClear {
   display: grid;
   place-items: center;
-  width: 19px;
-  height: 19px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  border-radius: 50%;
-  font-size: 1.12rem;
+  border-radius: 4px;
+  font-size: 1rem;
   line-height: 1;
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
 
-.filterClear:hover { background: var(--sunken); color: var(--ink); }
+.filterClear:hover { background: var(--paper-hi); color: var(--ink); }

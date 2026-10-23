@@ -130,6 +130,8 @@ const C = {
      хуулбар байв. Бэх (ink/ink2) нь цаасны #14181c хэвээр (`reportPdf`-тэй ижил). */
   good: PRINT_COLORS.good,
   data: PRINT_COLORS.data,
+  /* ⚠️ 2026-10-23: «явж буй» = --gantt-run = --water (Environment-д moss = дууссан/акцент) */
+  water: PRINT_COLORS.water,
   bad: PRINT_COLORS.bad,
   overlap: '#a21caf',
   /* ⚠️ ТӨЛӨВЛӨСӨН (эхлээгүй · гүйцэтгэл хэмжигдээгүй) — ЦЭНХЭР, саарал БИШ
@@ -141,7 +143,7 @@ const C = {
   plan: '#3b6fd0',
 };
 const ST_FILL: Record<Status, string> = {
-  done: C.good, run: C.data, late: C.bad, todo: C.todo, none: C.none,
+  done: C.good, run: C.water, late: C.bad, todo: C.todo, none: C.none,
 };
 /* ⚠️ 2026-10-09 (аудит №6): `ST_DARK` хасав — бүх төлөв `true` (бүх дүүргэлт бараан) тул үхмэл; бичвэрийн өнгө
    доор `!r.group && !partial`-аар шууд. */

@@ -29,9 +29,10 @@
      · дотоод зай 6–9px, хүрээ 1px, радиус жижиг — Grafana/Metabase-ийн хэл.
    ══════════════════════════════════════════════════════════════════ */
 /* ── Карт: нимгэн толгой, нягт бие ── */
-.shell[data-detail='1'] .panel { border-radius: 4px; }
+/* ⚠️ 2026-10-23: Environment — нягт горимд ч карт 12px булантай (шатлал 6/8/12/13) */
+.shell[data-detail='1'] .panel { border-radius: var(--r-lg); }
 
-.shell[data-detail='1'] .panelHead { padding: 5px 9px; }
+.shell[data-detail='1'] .panelHead { padding: 7px 10px; }
 
 .shell[data-detail='1'] .panelTitle {
   font-size: 11px;
@@ -56,6 +57,7 @@
 /* ══════════════════ Баруун — дэлгэрэнгүй ══════════════════ */
 /* ── Хавтан (баганын дотор) ── */
 /**
+ * ⚠️ 2026-10-23: Environment — 12px булан, --line хүрээ, --surface, сүүдэргүй; толгой 9px 12px.
  * ⚠️ 2026-08-17: envhub-ийн `Box`+`Head` хэлээр — картын толгой нь бүтэн
  * өргөний hairline зурвас (px-3 py-2), бие нь 12px зайтай бөгөөд ӨӨРӨӨ гүйнэ.
  * (`Environment/src/components/wells/dashboard.tsx` → `Box`, `Head`, ба
@@ -79,7 +81,7 @@
    */
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 /* Картын БИЕ — толгойн доор, ӨӨРӨӨ гүйнэ (envhub: `min-h-0 flex-1
@@ -93,7 +95,7 @@
      шаардлагагүй болгох нягтралын нэг хэсэг. */
   padding: 10px;
   /* Радиусын таслалт нь одоо ЭНД (карт өөрөө overflow-гүй болсон) */
-  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 
 .panelHead {
@@ -102,13 +104,13 @@
   justify-content: space-between;
   gap: 8px;
   flex: none;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 
 .panelTitle {
-  font-size: 13.5px;
-  line-height: 1;
+  font-size: 12px;
+  line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -143,7 +145,8 @@
 .legend {
   position: absolute;
   left: 12px;
-  bottom: 12px;
+  /* ⚠️ 2026-10-23: Esri-ийн доод бичгийн (≈16px) ДЭЭР — давхцахгүй */
+  bottom: 24px;
   z-index: 5;
   display: flex;
   /* Олон нүд багтахгүй бол шинэ мөрөнд бууна — хэвтээ гүйлт үүсгэхгүй */
@@ -152,8 +155,9 @@
   gap: 6px 12px;
   max-width: calc(100% - 24px);
   padding: 7px 10px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(6px);
+  /* ⚠️ 2026-10-23: Environment — газрын зургийн удирдлага: surface 94% + blur, 6px булан */
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
@@ -181,7 +185,7 @@
 
 .legendItem i { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 
-.legendMore { font-size: 0.69rem; font-weight: 700; font-family: var(--mono); color: var(--ink-3); }
+.legendMore { font-size: 0.69rem; font-weight: 600; font-family: var(--mono); color: var(--ink-3); }
 
 /* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */
 /* ⚠️ Баруун ДЭЭД буланд — GIS аппуудын ердийн байрлал. Зүүн дээд нь бүсийн
@@ -211,8 +215,9 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч хавтан: --line-strong хүрээ + --shadow */
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }

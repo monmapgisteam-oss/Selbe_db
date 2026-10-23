@@ -1,3 +1,5 @@
+/* ⚠️ 2026-10-23: Environment — газрын зураг дээр хөвөгч шошго: paper 94% + blur,
+   --line-strong хүрээ, 8px булан, жижиг сүүдэр. */
 .labels {
   position: absolute;
   inset: auto 58px 28px;
@@ -9,11 +11,13 @@
 .label {
   max-width: 46%;
   padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--ink);
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
   box-shadow: var(--shadow-sm);
