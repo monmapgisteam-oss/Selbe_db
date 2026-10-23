@@ -20,7 +20,7 @@
  */
 
 import { cached } from '@/lib/live';
-import { queryAll } from '@/lib/hyanalt';
+import { queryAll, STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { toRow } from '@/lib/hyanaltStore';
 import { groupWorks, pendingAging, STAGE_LABEL, type Pending } from '@/lib/hyanaltGroup';
 import { loadBlockHistory, loadInfraHistory, type BlockHistory } from '@/lib/blockProgress';
@@ -139,9 +139,9 @@ export type ReviewInput = {
   failedSources: string[];
 };
 
-/** Буцаалтын нийт тоо — гурван шатны буцаалтын нийлбэр */
+/** Буцаалтын нийт тоо — хянах бүх шатны буцаалтын нийлбэр (⚠️ 2026-10-23: төлөвлөлтийн инженер ч) */
 const returnsOf = (p: Pending): number =>
-  p.work.engineerReturns + p.work.managerReturns + p.work.directorReturns
+  p.work.engineerReturns + p.work.managerReturns + p.work.plannerReturns + p.work.directorReturns
   + p.work.headReturns + p.work.chiefReturns;
 
 /**
@@ -158,7 +158,8 @@ export function computeReview(input: ReviewInput): KpiResult {
   /* ── А. Хүлээгдэл ── */
   const worstDays: number | null = pending == null ? null : (pending[0]?.days ?? 0);
   const stale = pending?.filter((p) => p.days > REVIEW_STALE_DAYS) ?? [];
-  const byStage = { company: 0, engineer: 0, manager: 0, director: 0, head: 0, chief: 0 };
+  /* ⚠️ 2026-10-23: шатны жагсаалт `STAGE_ORDER`-оос — шат нэмэгдэхэд энд хоцрохгүй (долоон шат) */
+  const byStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
   for (const p of pending ?? []) byStage[p.work.owner] += 1;
 
   /* ── Б. Бөглөлт ── */
@@ -181,7 +182,7 @@ export function computeReview(input: ReviewInput): KpiResult {
        байдаг тул гурван шатны нийлбэр нийт хүлээгдэлтэй таарахгүй байсан. */
     /* ⚠️ 2026-09-23: шатны нэр `STAGE_LABEL`-ээс (ганц эх) — «ЕМ · ХД · ГД»
        товчлол уншигчид ойлгомжгүй байв. */
-    facts.push(tr('шатаар: {0}', (['company', 'engineer', 'manager', 'director', 'head', 'chief'] as const)
+    facts.push(tr('шатаар: {0}', STAGE_ORDER
       .map((s) => `${STAGE_LABEL[s]} ${byStage[s]}`).join(' · ')));
   }
   if (oldest) facts.push(tr('бөглөлт хамгийн хуучин {0} хоног ({1})', oldest.ageDays, oldest.pkg));

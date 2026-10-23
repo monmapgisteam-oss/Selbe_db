@@ -569,7 +569,7 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
             {pkgPct.draft != null && (dirtyCount > 0 || Math.abs(pkgPct.draft - pkgPct.saved) > 1e-9) && (
               <b
                 className={st.pkgPctNew}
-                title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 6 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
+                title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 7 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
               >
                 {tr('батлагдаагүй')} {pct(pkgPct.draft, 2)}
                 <i className={st.pkgPctGap}>

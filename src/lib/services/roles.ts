@@ -23,6 +23,10 @@ export type Role =
   | "guitsetgegch"
   | "injener"
   | "menejer"
+  /* ⚠️ 2026-10-23: ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕР (`planner` шат). `tolovloltiin` — ХУУЧИН `tolovlolt`
+     («Төлөвлөлт (хуучин)», урсгалын бус) -тэй БҮҮ андуур: хадгалагдсан мөрүүд тэр утгатай тул нэрийг
+     нь дахин ашиглавал хуучин аккаунтууд урсгалын шатанд чимээгүй орно. */
+  | "tolovloltiin"
   | "eronhii"
   | "heltsiin"
   | "gazriin"
@@ -34,8 +38,9 @@ export type Role =
 /**
  * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
  *
- * ⚠️ ЗУРГААН шат. `menejer` нь БАГЦЫН менежер, `eronhii` нь ЕРӨНХИЙ менежер —
- *    сүүлийнх нь зөвшөөрснөөр л гүйцэтгэл эх хүснэгтэд бүртгэгдсэнд тооцно.
+ * ⚠️ ДОЛООН шат (2026-10-23; урьд нь зургаа). `menejer` нь багцын ахлах инженер, `tolovloltiin` нь
+ *    төлөвлөлтийн инженер, `eronhii` нь төлөвлөлтийн ахлах инженер; эцэст нь газрын дарга (`gazriin`)
+ *    зөвшөөрснөөр л гүйцэтгэл эх хүснэгтэд бүртгэгдсэнд тооцно.
  *
  * ⚠️ 2026-08-29: урьд нь энэ хүснэгт ХОЁР газар (энд `ROLE_STAGE`,
  *    `guitsetgelAcl.ts`-д `STAGE_ROLE`) гараар урвуулж бичигдсэн байв — нэг нь
@@ -47,8 +52,10 @@ export const STAGE_ROLE: Record<Stage, Role> = {
   company: "guitsetgegch",
   engineer: "injener",
   manager: "menejer",
+  /* ⚠️ 2026-10-23: 4 дэх шат — төлөвлөлтийн инженер (хэлтсийн · газрын дарга 6 ба 7 болов) */
+  planner: "tolovloltiin",
   director: "eronhii",
-  /* ⚠️ 2026-09-23: 5 ба 6 дахь шат — хэлтсийн дарга, газрын дарга */
+  /* ⚠️ 2026-09-23: хэлтсийн дарга, газрын дарга (2026-10-23-наас 6 ба 7 дахь шат) */
   head: "heltsiin",
   chief: "gazriin",
 };
@@ -119,6 +126,8 @@ export const ROLE_ACCESS: Record<
   guitsetgegch: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   injener: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   menejer: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  /* ⚠️ 2026-10-23: төлөвлөлтийн инженер — бусад урсгалын үүрэгтэй ижил */
+  tolovloltiin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   eronhii: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   heltsiin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   gazriin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },

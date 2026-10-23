@@ -9,7 +9,7 @@
  *      Эдгээр нь одоо ЗӨВХӨН ажил зогссоны дараа мэдэгддэг.
  *   3. Бүх шат хоосон нь ГАЦАА БИШ (`flowGap` биш) — 2026-10-19-нөөс тусдаа `flowEmpty` (`warn`) анхааруулга.
  *   4. Том/жижиг үсэг, зайг тэсвэрлэнэ (`trim().toLowerCase()`).
- *   5. Матриц (2026-09-25): 19 багана (2026-09-28: + ТУГ, + ЧХ инженер), issue бүр өөрийн багана, viewOnly эзэн
+ *   5. Матриц (2026-09-25): 20 багана (2026-09-28: + ТУГ, + ЧХ инженер; 2026-10-23: + төлөвлөлтийн инженер), issue бүр өөрийн багана, viewOnly эзэн
  *      биш, өнчин эрх (super-т үгүй), эрхийн эх сурвалж (ALL → null).
  */
 import assert from 'node:assert/strict';
@@ -253,15 +253,15 @@ console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar �
 
 /* ══════════════════ 9. МАТРИЦ ба ГАРГАЛГААТАЙ ЭРХ (2026-09-25) ══════════════════ */
 {
-  /* 19 багана: урсгал 6 · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 · QAQC 1 */
-  assert.equal(MATRIX_COLS.length, 19, 'матриц 19 баганатай байх ёстой');
+  /* 20 багана: урсгал 7 (2026-10-23) · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 · QAQC 1 */
+  assert.equal(MATRIX_COLS.length, 20, 'матриц 20 баганатай байх ёстой');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:tug'), '2026-09-28: ТУГ багана');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:cheng'), '2026-09-28: ЧХ инженер багана');
   assert.equal(MATRIX_COLS.filter((c) => c.sys === 'flow').length, STAGE_ORDER.length);
-  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 19, 'баганын id давхцав');
+  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 20, 'баганын id давхцав');
   assert.equal(pkgMatrix(empty()).length, PKG_GROUPS.length, 'мөр = PKG_GROUPS');
 }
-console.log('✅ матриц — 19 багана, багц бүр мөр');
+console.log('✅ матриц — 20 багана, багц бүр мөр');
 
 /* ── 9a. Issue бүр ӨӨРИЙН баганыг улаан болгоно ── */
 {

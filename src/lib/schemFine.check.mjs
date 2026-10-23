@@ -75,7 +75,8 @@ for (const n of FINE_NODES) {
  * ⚠️ ХЯНАЛТЫН ГИНЖ БЭХЛЭГДСЭН. Дөрвөн шат нь ЯГ дараалсан `main` ирмэгтэй,
  * буцаалт нь НЭГ АЛХМААР ухардаг (`hyanalt.ts`-ийн баримтжуулсан дүрэм).
  */
-const CHAIN = ['hyCo', 'hyEng', 'hyMgr', 'hyDir', 'hyHead', 'hyChief'];
+/* ⚠️ 2026-10-23: төлөвлөлтийн инженер (`hyPlan`) нэмэгдэв — 7 шат */
+const CHAIN = ['hyCo', 'hyEng', 'hyMgr', 'hyPlan', 'hyDir', 'hyHead', 'hyChief'];
 for (let i = 0; i + 1 < CHAIN.length; i += 1) {
   assert.ok(
     FINE_EDGES.some((e) => e.from === CHAIN[i] && e.to === CHAIN[i + 1] && e.kind === 'main'),
@@ -87,7 +88,7 @@ for (let i = 0; i + 1 < CHAIN.length; i += 1) {
   );
 }
 const backs = FINE_EDGES.filter((e) => e.kind === 'back');
-assert.equal(backs.length, 5, 'буцаалт ЯГ тав — шат бүрээс нэг алхам ухарна (6 шат)');
+assert.equal(backs.length, 6, 'буцаалт ЯГ зургаа — шат бүрээс нэг алхам ухарна (7 шат)');
 for (const e of backs) {
   const a = CHAIN.indexOf(e.from); const b = CHAIN.indexOf(e.to);
   assert.ok(a >= 0 && b >= 0, `хяналтаас гадуур буцаалт: ${e.from} → ${e.to}`);

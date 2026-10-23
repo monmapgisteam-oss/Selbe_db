@@ -1345,7 +1345,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             <header className={s.head}>
               <h2 className={s.title}>{tr('Гүйцэтгэлийн урсгалын эрх')}</h2>
               <p className={s.subtitle}>
-                {tr('Зургаан шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
+                {tr('Долоон шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
               </p>
             </header>
             {/* ⚠️ 2026-10-01: «Дахин илгээх» · устгагдсан аккаунтын үлдэгдэл (`AclRepairNote`) */}

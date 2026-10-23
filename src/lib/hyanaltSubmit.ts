@@ -195,9 +195,10 @@ export function needsRegistration(
     const t = typeof v === 'string' && v ? Date.parse(v) : NaN;
     return Number.isFinite(t) ? t : 0;
   };
-  const RET = [F.engineerReturned, F.managerReturned, F.directorReturned, F.headReturned, F.chiefReturned];
+  /* ⚠️ 2026-10-23: төлөвлөлтийн инженерийн огноо ч (долоон шат) */
+  const RET = [F.engineerReturned, F.managerReturned, F.plannerReturned, F.directorReturned, F.headReturned, F.chiefReturned];
   /* ⚠️ 2026-10-05: «Шилжүүлсэн» мөрийн эцсийн зөвшөөрлийн агшин — огноогүй (0) бол дүгнэхгүй */
-  const SENT = [F.engineerSent, F.managerSent, F.directorSent, F.headSent, F.chiefSent];
+  const SENT = [F.engineerSent, F.managerSent, F.plannerSent, F.directorSent, F.headSent, F.chiefSent];
   return cur.some((r) => {
     const st = String(r[F.status] ?? '') as Status;
     if (st === STATUS.transferred) {
@@ -345,7 +346,7 @@ export function reviewLockBlocks(st: ReviewLockState, fillMs: number): boolean {
  *    илгээлт ч байж болно, буцаагдсан засвар ч өөр өдрийн хоригт хаагддаг байв.
  */
 export const reviewLockMsg = (days: string) =>
-  tr('Хяналтад явж буй илгээлт ({0}) 6 шатаа бүрэн дуусаагүй байна — 6-р шат батлаж архивласны дараа шинээр бөглөж илгээнэ. Буцаасан илгээлтийг засаж дахин илгээх боломжтой.', days);
+  tr('Хяналтад явж буй илгээлт ({0}) 7 шатаа бүрэн дуусаагүй байна — 7-р шат батлаж архивласны дараа шинээр бөглөж илгээнэ. Буцаасан илгээлтийг засаж дахин илгээх боломжтой.', days);
 
 /**
  * Шинэ илгээлтийн ДОМЭЙН хориг (`reviewLockState`-ийн ⚠️) — `saveSubmission` бичихээс ӨМНӨ дууддаг.

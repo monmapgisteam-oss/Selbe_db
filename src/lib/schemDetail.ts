@@ -469,9 +469,9 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
    * ⚠️ `groupWorks`-ээр НЭГ ажил = НЭГ мөр. Түүхий мөрөөр жагсаавал 8 ажил 30
    *    мөр болж, зангилааны тоотой зөрнө.
    */
-  /* ⚠️ 2026-09-23: 6 шат — хэлтсийн, газрын даргын буцаалт ч орно */
+  /* ⚠️ 2026-09-23: 6 шат — хэлтсийн, газрын даргын буцаалт ч орно; 2026-10-23: 7 шат — төлөвлөлтийн инженерийнх ч */
   const back = (w: (typeof works)[number]) => (
-    w.engineerReturns + w.managerReturns + w.directorReturns + w.headReturns + w.chiefReturns
+    w.engineerReturns + w.managerReturns + w.plannerReturns + w.directorReturns + w.headReturns + w.chiefReturns
   );
   const stuck = works.filter((w) => back(w) > 0).sort((a, b) => back(b) - back(a));
   if (stuck.length) {
@@ -818,6 +818,9 @@ export function cardStat(
       return statOf(tr('Инженер дээр'), rc ? rc.byStage.engineer : null, 'count', known(rc ? rc.byStage.engineer : null));
     case 'hyMgr':
       return statOf(tr('Багцын ахлах инженер дээр'), rc ? rc.byStage.manager : null, 'count', known(rc ? rc.byStage.manager : null));
+    /* ⚠️ 2026-10-23: шинэ 4-р шат — төлөвлөлтийн инженер */
+    case 'hyPlan':
+      return statOf(tr('Төлөвлөлтийн инженер дээр'), rc ? rc.byStage.planner : null, 'count', known(rc ? rc.byStage.planner : null));
     case 'hyDir':
       return statOf(tr('Төлөвлөлтийн ахлах инженер дээр'), rc ? rc.byStage.director : null, 'count', known(rc ? rc.byStage.director : null));
     case 'hyHead':

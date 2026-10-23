@@ -45,7 +45,7 @@ export type FineId =
   | 'huv'
   | 'bar' | 'barOk' | 'barNo'
   | 'ers' | 'hab' | 'habInc'
-  | 'hyCo' | 'hyEng' | 'hyMgr' | 'hyDir' | 'hyHead' | 'hyChief' | 'hyDone'
+  | 'hyCo' | 'hyEng' | 'hyMgr' | 'hyPlan' | 'hyDir' | 'hyHead' | 'hyChief' | 'hyDone'
   | 'finBudget' | 'finContract' | 'finPaid'
   | 'tailan';
 
@@ -169,7 +169,7 @@ export const FINE_NODES: readonly FineNode[] = [
     get desc() { return tr('ХАБЭА-д бүртгэгдсэн осол ба аюулгүй байдлын зөрчлийн тоо'); },
   },
 
-  /* ── ХЯНАЛТЫН 6 ШАТ — цорын ганц жинхэнэ төлөвийн машин; буцаалт НЭГ алхам ухарна ── */
+  /* ── ХЯНАЛТЫН 7 ШАТ (2026-10-23; урьд нь 6) — цорын ганц жинхэнэ төлөвийн машин; буцаалт НЭГ алхам ухарна ── */
   {
     id: 'hyCo', group: 'hyanalt', col: 6, row: 0, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Гүйцэтгэгч компани'); },
@@ -185,26 +185,32 @@ export const FINE_NODES: readonly FineNode[] = [
     get title() { return tr('Багцын ахлах инженер'); },
     get desc() { return tr('Багцын хэмжээнд баталгаажуулах ГУРАВ дахь шат — буцаавал инженер рүү очно'); },
   },
+  /* ⚠️ 2026-10-23: шинэ 4 дэх шат — төлөвлөлтийн инженер; доорх гурав нэг мөрөөр доош шилжив */
   {
-    id: 'hyDir', group: 'hyanalt', col: 6, row: 3, view: 'guitsetgel', icon: 'pen',
+    id: 'hyPlan', group: 'hyanalt', col: 6, row: 3, view: 'guitsetgel', icon: 'pen',
+    get title() { return tr('Төлөвлөлтийн инженер'); },
+    get desc() { return tr('Дөрөв дэх шат — буцаавал багцын ахлах инженер рүү очно; дараа нь төлөвлөлтийн ахлах инженер батална'); },
+  },
+  {
+    id: 'hyDir', group: 'hyanalt', col: 6, row: 4, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Төлөвлөлтийн ахлах инженер'); },
-    get desc() { return tr('Дөрөв дэх шат — буцаавал багцын ахлах инженер рүү очно; дараа нь хэлтсийн, газрын дарга батална'); },
+    get desc() { return tr('Тав дахь шат — буцаавал төлөвлөлтийн инженер рүү очно; дараа нь хэлтсийн, газрын дарга батална'); },
   },
-  /* ⚠️ 2026-09-23: 5 ба 6 дахь шат — хэлтсийн дарга, газрын дарга (ЭЦСИЙН) */
+  /* ⚠️ 2026-09-23: хэлтсийн дарга, газрын дарга (ЭЦСИЙН) — 2026-10-23-наас 6 ба 7 дахь шат */
   {
-    id: 'hyHead', group: 'hyanalt', col: 6, row: 4, view: 'guitsetgel', icon: 'pen',
+    id: 'hyHead', group: 'hyanalt', col: 6, row: 5, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Хэлтсийн дарга'); },
-    get desc() { return tr('Тав дахь шат — буцаавал төлөвлөлтийн ахлах инженер рүү очно'); },
+    get desc() { return tr('Зургаа дахь шат — буцаавал төлөвлөлтийн ахлах инженер рүү очно'); },
   },
   {
-    id: 'hyChief', group: 'hyanalt', col: 6, row: 5, view: 'guitsetgel', icon: 'pen',
+    id: 'hyChief', group: 'hyanalt', col: 6, row: 6, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Газрын дарга'); },
-    get desc() { return tr('ЭЦСИЙН зургаа дахь шат. Зөвшөөрсний дараа л ажил эх хүснэгтэд бүртгэгдэнэ'); },
+    get desc() { return tr('ЭЦСИЙН долоо дахь шат. Зөвшөөрсний дараа л ажил эх хүснэгтэд бүртгэгдэнэ'); },
   },
   {
     id: 'hyDone', group: 'hyanalt', col: 7, row: 0, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Шилжүүлсэн'); },
-    get desc() { return tr('Зургаан шатыг бүрэн давж баталгаажсан ажил — хяналтад хүлээгдэхээ больсон'); },
+    get desc() { return tr('Долоон шатыг бүрэн давж баталгаажсан ажил — хяналтад хүлээгдэхээ больсон'); },
   },
 
   /* ── Санхүү — ХЭМЖҮҮР, дараалал БИШ ── */
@@ -260,7 +266,9 @@ export const FINE_EDGES: readonly FineEdge[] = [
   { from: 'barOk', to: 'hyCo', kind: 'main' },
   { from: 'hyCo', to: 'hyEng', kind: 'main' },
   { from: 'hyEng', to: 'hyMgr', kind: 'main' },
-  { from: 'hyMgr', to: 'hyDir', kind: 'main' },
+  /* ⚠️ 2026-10-23: багцын ахлах инженер → төлөвлөлтийн инженер → төлөвлөлтийн ахлах инженер */
+  { from: 'hyMgr', to: 'hyPlan', kind: 'main' },
+  { from: 'hyPlan', to: 'hyDir', kind: 'main' },
   { from: 'hyDir', to: 'hyHead', kind: 'main' },
   { from: 'hyHead', to: 'hyChief', kind: 'main' },
   { from: 'hyChief', to: 'hyDone', kind: 'main' },
@@ -271,7 +279,8 @@ export const FINE_EDGES: readonly FineEdge[] = [
    */
   { from: 'hyEng', to: 'hyCo', kind: 'back', get label() { return tr('Буцаасан'); } },
   { from: 'hyMgr', to: 'hyEng', kind: 'back' },
-  { from: 'hyDir', to: 'hyMgr', kind: 'back' },
+  { from: 'hyPlan', to: 'hyMgr', kind: 'back' },
+  { from: 'hyDir', to: 'hyPlan', kind: 'back' },
   { from: 'hyHead', to: 'hyDir', kind: 'back' },
   { from: 'hyChief', to: 'hyHead', kind: 'back' },
 

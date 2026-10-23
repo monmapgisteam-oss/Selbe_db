@@ -32,9 +32,9 @@ const J = JSON.stringify;
 const G0 = PKG_GROUPS[0];
 const G1 = PKG_GROUPS[1];
 
-/* Урсгалын 6 шат бүгд «бүх багц»-аар бүрэн + төрлийн зөрөөтэй хоёр + хоёр дахь инженер (§3) */
-const STAGE_USER = { company: 'gp_comp', engineer: 'gp_eng', manager: 'gp_man', director: 'gp_dir', head: 'gp_head', chief: 'gp_chief' };
-const STAGE_TYPE = { company: 'guitsetgegch', engineer: 'injener', manager: 'menejer', director: 'eronhii', head: 'heltsiin', chief: 'gazriin' };
+/* Урсгалын 7 шат (2026-10-23) бүгд «бүх багц»-аар бүрэн + төрлийн зөрөөтэй хоёр + хоёр дахь инженер (§3) */
+const STAGE_USER = { company: 'gp_comp', engineer: 'gp_eng', manager: 'gp_man', planner: 'gp_plan', director: 'gp_dir', head: 'gp_head', chief: 'gp_chief' };
+const STAGE_TYPE = { company: 'guitsetgegch', engineer: 'injener', manager: 'menejer', planner: 'tolovloltiin', director: 'eronhii', head: 'heltsiin', chief: 'gazriin' };
 fake.seed([
   ...STAGE_ORDER.flatMap((st) => [
     { username: STAGE_USER[st], role: STAGE_TYPE[st], views: J(['plan']), docs: 0 },

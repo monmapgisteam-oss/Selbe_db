@@ -23,7 +23,7 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
     key: `${bagts}|${ajil}|К`,
     bagts, ajil, company: 'Компани ' + ajil,
     status: '', owner, cycles: [], current: {},
-    engineerReturns: 0, managerReturns: 0, directorReturns: 0, headReturns: 0, chiefReturns: 0,
+    engineerReturns: 0, managerReturns: 0, plannerReturns: 0, directorReturns: 0, headReturns: 0, chiefReturns: 0,
     ...extra,
   },
   days,
@@ -49,7 +49,7 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
   assert.deepEqual(r.failedSources, []);
   assert.ok(r.facts.includes('1 ажил 7 хоногоос дээш'), r.facts);
   assert.ok(r.facts.includes('хүлээгдэж буй 3 ажил'), r.facts);
-  assert.ok(r.facts.includes('шатаар: Гүйцэтгэгч компани 1 · Хяналтын инженер 1 · Багцын ахлах инженер 1 · Төлөвлөлтийн ахлах инженер 0 · Хэлтсийн дарга 0 · Газрын дарга 0'), r.facts);
+  assert.ok(r.facts.includes('шатаар: Гүйцэтгэгч компани 1 · Хяналтын инженер 1 · Багцын ахлах инженер 1 · Төлөвлөлтийн инженер 0 · Төлөвлөлтийн ахлах инженер 0 · Хэлтсийн дарга 0 · Газрын дарга 0'), r.facts);
   assert.ok(r.facts.includes('бөглөлт хамгийн хуучин 36 хоног (Багц 1)'), r.facts);
 
   assert.equal(r.tables.length, 2);

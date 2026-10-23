@@ -30,7 +30,7 @@ ok('инженер илгээгч биш → зөвшөөрнө', () => {
   assert.equal(submitterDeny('engineer', 'bat', ['dorj']), null);
 });
 ok('2026-10-19: инженерээс бусад шатанд ч илгээгч → татгалзана (super компани болж илгээсэн ч)', () => {
-  for (const st of ['manager', 'director', 'head', 'chief']) {
+  for (const st of ['manager', 'planner', 'director', 'head', 'chief']) {
     assert.equal(typeof submitterDeny(st, 'bat', ['bat']), 'string', st);
     assert.equal(submitterDeny(st, 'bat', ['dorj']), null, st);
   }
@@ -68,20 +68,25 @@ ok('цэвэр дүрэм хэнийг ч ялгахгүй — нэг данса
   /* ⚠️ 2026-10-19 (хэрэглэгчийн шийдвэр): хатуу super-ийг энэ дүрмээс `authz`-ийн bypass салаа ЧӨЛӨӨЛНӨ (функцийг
      дуудахгүй — эх кодоор доор). Энд зөвхөн цэвэр функц: дуудагдвал данс хэн ч байсан татгалзана. */
   const h = H(ev('engineer', 'approve', 'boss', 1));
-  for (const st of ['manager', 'director', 'head', 'chief']) assert.equal(typeof selfApprovalDeny(st, 'boss', h), 'string', st);
+  for (const st of ['manager', 'planner', 'director', 'head', 'chief']) assert.equal(typeof selfApprovalDeny(st, 'boss', h), 'string', st);
   assert.equal(typeof selfApprovalDeny('engineer', 'boss', H(), undefined, ['boss']), 'string', 'илгээгч өөрөө батлах');
 });
 ok('буцаах чиглэл (hist undefined) — зөвхөн илгээгчийн дүрэм', () => {
   assert.equal(selfApprovalDeny('chief', 'bat', undefined), null);
 });
 ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэрээр нөөц — ӨМНӨХ ба ТҮҮНЭЭС ДООШ', () => {
+  /* ⚠️ 2026-10-23: багцын ахлах инженерийн ДАРААХ шат нь төлөвлөлтийн инженер (`planner`) — «өмнөх шат» тэнд */
   const row = { [SF.engineer.who]: 'Бат', [SF.manager.who]: 'Дорж', [F.history]: '' };
-  assert.match(selfApprovalDeny('director', 'x', '', { row, who: ' бат ' }), /хоёр шатанд/, 'инженерийн нэр');
-  assert.match(selfApprovalDeny('director', 'x', '', { row, who: 'Дорж' }), /Өмнөх шатыг/, 'менежерийн нэр');
-  assert.equal(selfApprovalDeny('director', 'x', '', { row, who: 'Цэцэг' }), null);
+  assert.match(selfApprovalDeny('planner', 'x', '', { row, who: ' бат ' }), /хоёр шатанд/, 'инженерийн нэр');
+  assert.match(selfApprovalDeny('planner', 'x', '', { row, who: 'Дорж' }), /Өмнөх шатыг/, 'менежерийн нэр');
+  assert.equal(selfApprovalDeny('planner', 'x', '', { row, who: 'Цэцэг' }), null);
   /* `u`-тай зөвшөөрөл байгаа шатанд нэрээр шалгахгүй (нэр давхцах эрсдэлгүй) */
   const h = H(ev('engineer', 'approve', 'bat2', 1));
-  assert.equal(selfApprovalDeny('director', 'x', h, { row, who: 'Бат' }), null);
+  assert.equal(selfApprovalDeny('planner', 'x', h, { row, who: 'Бат' }), null);
+  /* ⚠️ 2026-10-23: төлөвлөлтийн АХЛАХ инженерийн «өмнөх шат» = төлөвлөлтийн инженер */
+  const row2 = { ...row, [SF.planner.who]: 'Сараа' };
+  assert.match(selfApprovalDeny('director', 'x', '', { row: row2, who: 'Сараа' }), /Өмнөх шатыг/, 'төлөвлөлтийн инженерийн нэр');
+  assert.match(selfApprovalDeny('director', 'x', '', { row: row2, who: 'Дорж' }), /хоёр шатанд/, 'менежерийн нэр (доод)');
 });
 {
   /* ⚠️ Эх кодоор. 2026-10-19 (ХЭРЭГЛЭГЧИЙН ШИЙДВЭР): хатуу super (bypass) гүйцэтгэлийн бүх шатыг ганцаараа

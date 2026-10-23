@@ -46,7 +46,7 @@ import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import { Loading, userError } from '@/components/ui';
 import s from './guitsetgel.module.css';
 
-/* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат) — энд давхар жагсаавал зөрнө */
+/* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат; 2026-10-23-наас 7) — энд давхар жагсаавал зөрнө */
 const STAGES: Stage[] = STAGE_ORDER;
 /** ⚠️ 2026-10-06: буцаалт хүрэх ДООД шатны нэр (баталгаажуулах асуултад) — `STAGE_ORDER`-оос */
 const lowerLabel = (x: Stage): string => STAGE_LABEL[STAGE_ORDER[Math.max(0, STAGE_ORDER.indexOf(x) - 1)]];
@@ -75,6 +75,9 @@ const STATUS_LABEL: Record<Status, string> = {
   get [STATUS.engineerReturned]() { return tr('Инженер буцаасан'); },
   get [STATUS.managerReview]() { return tr('Багцын ахлах инженер хянаж байна'); },
   get [STATUS.managerReturned]() { return tr('Багцын ахлах инженер буцаасан'); },
+  /* ⚠️ 2026-10-23: долоон шат — төлөвлөлтийн инженер */
+  get [STATUS.plannerReview]() { return tr('Төлөвлөлтийн инженер хянаж байна'); },
+  get [STATUS.plannerReturned]() { return tr('Төлөвлөлтийн инженер буцаасан'); },
   get [STATUS.directorReview]() { return tr('Төлөвлөлтийн ахлах инженер хянаж байна'); },
   get [STATUS.directorReturned]() { return tr('Төлөвлөлтийн ахлах инженер буцаасан'); },
   get [STATUS.headReview]() { return tr('Хэлтсийн дарга хянаж байна'); },
@@ -87,14 +90,17 @@ const STATUS_LABEL: Record<Status, string> = {
 /** Шатны ХЭНД илгээх үйл үг — зөвшөөрөх товч ба түүхийн мөрөнд */
 const APPROVE_LABEL: Record<ReviewStage, string> = {
   get engineer() { return tr('Зөвшөөрч багцын ахлах инженерт илгээх'); },
-  get manager() { return tr('Зөвшөөрч төлөвлөлтийн ахлах инженерт илгээх'); },
+  /* ⚠️ 2026-10-23: багцын ахлах инженерийн дараа төлөвлөлтийн инженер */
+  get manager() { return tr('Зөвшөөрч төлөвлөлтийн инженерт илгээх'); },
+  get planner() { return tr('Зөвшөөрч төлөвлөлтийн ахлах инженерт илгээх'); },
   get director() { return tr('Зөвшөөрч хэлтсийн даргад илгээх'); },
   get head() { return tr('Зөвшөөрч газрын даргад илгээх'); },
   get chief() { return tr('Баталж архивт бүртгэх'); },
 };
 const SENT_VERB: Record<ReviewStage, string> = {
   get engineer() { return tr('шалгаж багцын ахлах инженерт илгээв'); },
-  get manager() { return tr('зөвшөөрч төлөвлөлтийн ахлах инженерт илгээв'); },
+  get manager() { return tr('зөвшөөрч төлөвлөлтийн инженерт илгээв'); },
+  get planner() { return tr('зөвшөөрч төлөвлөлтийн ахлах инженерт илгээв'); },
   get director() { return tr('зөвшөөрч хэлтсийн даргад илгээв'); },
   get head() { return tr('зөвшөөрч газрын даргад илгээв'); },
   get chief() { return tr('баталж бүртгэв'); },
@@ -102,27 +108,32 @@ const SENT_VERB: Record<ReviewStage, string> = {
 const RETURN_VERB: Record<ReviewStage, string> = {
   get engineer() { return tr('компанид буцаав'); },
   get manager() { return tr('инженерт буцаав'); },
-  get director() { return tr('багцын ахлах инженерт буцаав'); },
+  get planner() { return tr('багцын ахлах инженерт буцаав'); },
+  /* ⚠️ 2026-10-23: төлөвлөлтийн ахлах инженер буцаавал ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕРТ (`OWNER`) */
+  get director() { return tr('төлөвлөлтийн инженерт буцаав'); },
   get head() { return tr('төлөвлөлтийн ахлах инженерт буцаав'); },
   get chief() { return tr('хэлтсийн даргад буцаав'); },
 };
 /** Дахин шалгагчийн товч · placeholder — «дээшээ» ба «доошоо» */
 const RECHECK_UP: Record<Exclude<ReviewStage, 'chief'>, string> = {
   get engineer() { return tr('Дахин шалгасан — асуудалгүй, багцын ахлах инженерт илгээх'); },
-  get manager() { return tr('Дахин шалгасан — асуудалгүй, төлөвлөлтийн ахлах инженерт илгээх'); },
+  get manager() { return tr('Дахин шалгасан — асуудалгүй, төлөвлөлтийн инженерт илгээх'); },
+  get planner() { return tr('Дахин шалгасан — асуудалгүй, төлөвлөлтийн ахлах инженерт илгээх'); },
   get director() { return tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'); },
   get head() { return tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'); },
 };
 const RECHECK_DOWN: Record<Exclude<ReviewStage, 'chief'>, string> = {
   get engineer() { return tr('Асуудал байна — компанид буцаах'); },
   get manager() { return tr('Асуудал байна — инженерт буцаах'); },
-  get director() { return tr('Асуудал байна — багцын ахлах инженерт буцаах'); },
+  get planner() { return tr('Асуудал байна — багцын ахлах инженерт буцаах'); },
+  get director() { return tr('Асуудал байна — төлөвлөлтийн инженерт буцаах'); },
   get head() { return tr('Асуудал байна — төлөвлөлтийн ахлах инженерт буцаах'); },
 };
 const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
   get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (багцын ахлах инженерийн бичвэр компанид харагдахгүй)'); },
   get manager() { return tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
-  get director() { return tr('Багцын ахлах инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get planner() { return tr('Багцын ахлах инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get director() { return tr('Төлөвлөлтийн инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
   get head() { return tr('Төлөвлөлтийн ахлах инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
 };
 
@@ -207,6 +218,7 @@ type Step = {
 const STAGE_WHO: Record<ReviewStage, string> = {
   get engineer() { return tr('Инженер'); },
   get manager() { return tr('Багцын ахлах инженер'); },
+  get planner() { return tr('Төлөвлөлтийн инженер'); },
   get director() { return tr('Төлөвлөлтийн ахлах инженер'); },
   get head() { return tr('Хэлтсийн дарга'); },
   get chief() { return tr('Газрын дарга'); },
@@ -286,7 +298,8 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     const mgr = `${tr('Багцын ахлах инженер')} ${r[F.manager]}`.trim();
     const mgrOv = overwritten(r[F.managerSent], r[F.managerReturned]);
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч төлөвлөлтийн ахлах инженерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
+      /* ⚠️ 2026-10-23: үйл үг `SENT_VERB`-ээс — дараагийн шат нь төлөвлөлтийн инженер */
+      out.push({ who: mgr, verb: SENT_VERB.manager, at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -300,8 +313,9 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       });
     }
 
-    /* ⚠️ 4·5·6-р шат — нэг загвараар (2026-09-23) */
+    /* ⚠️ 4·5·6·7-р шат — нэг загвараар (2026-09-23; 2026-10-23-нд төлөвлөлтийн инженер нэмэгдэв) */
     const upper: { st: ReviewStage; label: string; who: string; sent: string | null; ret: string | null; why: string }[] = [
+      { st: 'planner', label: tr('Төлөвлөлтийн инженер'), who: r[F.planner], sent: r[F.plannerSent], ret: r[F.plannerReturned], why: r[F.plannerReason] },
       { st: 'director', label: tr('Төлөвлөлтийн ахлах инженер'), who: r[F.director], sent: r[F.directorSent], ret: r[F.directorReturned], why: r[F.directorReason] },
       { st: 'head', label: tr('Хэлтсийн дарга'), who: r[F.head], sent: r[F.headSent], ret: r[F.headReturned], why: r[F.headReason] },
       { st: 'chief', label: tr('Газрын дарга'), who: r[F.chief], sent: r[F.chiefSent], ret: r[F.chiefReturned], why: r[F.chiefReason] },
@@ -1030,8 +1044,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
      ХААЛТТАЙ; төлөвлөлтийн ахлах инженерийн шат биш бол ил `[]` тавина. */
   /** «Дахин шалгах» — тоолуур ахих бүрд эффект дахин ажиллана. */
   const [lackTry, setLackTry] = useState(0);
-  /* ⚠️ 4·5·6-р шат — AGOL-д гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`) */
-  const lackNeeded = stage === 'director' || stage === 'head' || stage === 'chief';
+  /* ⚠️ 4·5·6·7-р шат — үйлчилгээнд гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`).
+     ⚠️ 2026-10-23: төлөвлөлтийн инженер (`planner`) ч — түүний 5 талбарыг notebook-оор нэмнэ. */
+  const lackNeeded = stage === 'planner' || stage === 'director' || stage === 'head' || stage === 'chief';
   /*
    * ⚠️ 2026-09-30 (eslint `set-state-in-effect`): урьд нь эффект эхэндээ `setLack([])`/
    *    `setLack(null)` синхроноор дууддаг байв. Одоо уншилтын үр дүнг ТҮЛХҮҮРТЭЙ
@@ -1512,10 +1527,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
                       {upperOfMe ? STATUS_LABEL[RETURNED_STATUS[upperOfMe]] : ''}:{' '}
                     </span>
                     <span className={s.reasonText}>
-                      {upperOfMe === 'manager' ? cur[F.managerReason]
-                        : upperOfMe === 'director' ? cur[F.directorReason]
-                          : upperOfMe === 'head' ? cur[F.headReason]
-                            : upperOfMe === 'chief' ? cur[F.chiefReason] : ''}
+                      {/* ⚠️ 2026-10-23: шат бүрд гараар салаалахгүй — `SF`-ээс (төлөвлөлтийн инженер ч орно) */}
+                      {upperOfMe ? String((cur as Record<string, unknown>)[SF[upperOfMe].reason] ?? '') : ''}
                     </span>
                   </div>
                   <textarea
@@ -2049,7 +2062,7 @@ export function Guitsetgel() {
    *   1. `mine`      — буцаагдсан, ЗАСАХ шаардлагатай (дээд талд)
    *   2. `inReview`  — илгээгдсэн, ХЯНАГДАЖ байна (мөр бүр дээр `Track` нь
    *                    яг аль шатанд байгааг харуулна)
-   *   3. `done`      — зургаан шат (инженер → … → газрын дарга) өнгөрч ШИЛЖҮҮЛСЭН
+   *   3. `done`      — долоон шат (инженер → … → газрын дарга) өнгөрч ШИЛЖҮҮЛСЭН
    *
    * ⚠️ Зөвхөн гүйцэтгэгчид хамаарна: хянагчийн хувьд «бусад» нь үнэхээр
    * бусдын ажил тул хуучин бүлэглэлт хэвээр.
@@ -2102,8 +2115,8 @@ export function Guitsetgel() {
               дугаарласан хэлхээ (2026-09-23). */}
           <div className={s.sub}>
             {seesManager(stage)
-              ? tr('гүйцэтгэгч → хяналтын инженер → багцын ахлах инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга')
-              : tr('гүйцэтгэгч → 2-р шат → 3-р шат → 4-р шат → 5-р шат → 6-р шат')}
+              ? tr('гүйцэтгэгч → хяналтын инженер → багцын ахлах инженер → төлөвлөлтийн инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга')
+              : tr('гүйцэтгэгч → 2-р шат → 3-р шат → 4-р шат → 5-р шат → 6-р шат → 7-р шат')}
           </div>
         </div>
         <span className={s.spacer} />

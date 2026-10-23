@@ -69,6 +69,21 @@ export const F = {
   managerSent: 'Менежер_илгээсэн_огноо',
 
   /**
+   * ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕР — дөрөв дэх шат (багцын ахлах инженерийн ДАРАА,
+   * төлөвлөлтийн ахлах инженерийн ӨМНӨ).
+   * ⚠️ 2026-10-23 (хэрэглэгч: «Төлөвлөлтийн инженер» шат нэмнэ — нийт ДОЛООН шат).
+   *    ЛАТИН ЖИЖИГ үсгээр: PostgreSQL-ийн нэрийн 63 байтын хязгаар (кирилл 2 байт) —
+   *    кирилл нэр хэтэрнэ; жижиг латин нэр Enterprise-д толины (`entMap`) мөргүйгээр
+   *    яг ижил буцна. Талбаруудыг хэрэглэгч notebook-оор нэмнэ — дутуу бол
+   *    `DIRECTOR_FIELDS`-ийн шалгуур товчийг хаана.
+   */
+  planner: 'tolovloltiin_injener',
+  plannerDecision: 'tolovloltiin_injeneriin_shiidver',
+  plannerReason: 'tolovloltiin_injener_butsaasan_shaltgaan',
+  plannerReturned: 'tolovloltiin_injener_butsaasan_ognoo',
+  plannerSent: 'tolovloltiin_injener_ilgeesen_ognoo',
+
+  /**
    * ЕРӨНХИЙ МЕНЕЖЕР — дөрөв дэх, ЭЦСИЙН шат.
    * ⚠️ Эдгээр талбарыг үйлчилгээнд ГАРААР нэмэх шаардлагатай (`DIRECTOR_FIELDS`).
    *    Байхгүй үед програм нь дөрөв дэх шатыг ХААЖ, шалтгааныг ил хэлнэ —
@@ -140,13 +155,16 @@ export const STATUS = {
   engineerReturned: 'Инженер буцаасан',
   managerReview: 'Менежер хянаж байна',
   managerReturned: 'Менежер буцаасан',
+  /* ⚠️ 2026-10-23: долоон шат — төлөвлөлтийн инженер (шинэ утга; бусад хадгалагдсан утга ХЭВЭЭР) */
+  plannerReview: 'Төлөвлөлтийн инженер хянаж байна',
+  plannerReturned: 'Төлөвлөлтийн инженер буцаасан',
   directorReview: 'Ерөнхий менежер хянаж байна',
   directorReturned: 'Ерөнхий менежер буцаасан',
   headReview: 'Хэлтсийн дарга хянаж байна',
   headReturned: 'Хэлтсийн дарга буцаасан',
   chiefReview: 'Газрын дарга хянаж байна',
   chiefReturned: 'Газрын дарга буцаасан',
-  /** ЭЦСИЙН төлөв — зургаан шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
+  /** ЭЦСИЙН төлөв — долоон шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
   transferred: 'Шилжүүлсэн',
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
@@ -155,21 +173,23 @@ export const DECISION = { approve: 'Зөвшөөрсөн', return: 'Буцаас
 export type Decision = (typeof DECISION)[keyof typeof DECISION];
 
 /**
- * Шат — ЗУРГАА (2026-09-23). Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
- *   гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер
- *   → хэлтсийн дарга → газрын дарга
+ * Шат — ДОЛОО (2026-10-23; 2026-09-23-нд зургаа). Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
+ *   гүйцэтгэгч → хяналтын инженер → багцын ахлах инженер → төлөвлөлтийн инженер
+ *   → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга
+ * ⚠️ 2026-10-23: `planner` (төлөвлөлтийн инженер) нь `manager` ба `director`-ийн ДУНД.
  * ⚠️ Газрын дарга зөвшөөрсний ДАРАА л эх хүснэгтэд бүртгэгдсэнд тооцно
  *    (`Шилжүүлсэн`). Завсрын шатанд зогсоовол хяналт дутуу үлдэнэ.
  */
-export type Stage = 'company' | 'engineer' | 'manager' | 'director' | 'head' | 'chief';
+export type Stage = 'company' | 'engineer' | 'manager' | 'planner' | 'director' | 'head' | 'chief';
 
 /** Шатны ДАРААЛАЛ — нэг эх сурвалж. Буцах чиглэл нь энэ жагсаалтын урвуу.
  *  ⚠️ 2026-09-23: ерөнхий менежерийн ДАРАА хэлтсийн дарга (`head`), газрын
- *  дарга (`chief`) нэмэгдэв — нийт 6 шат; «Шилжүүлсэн» нь газрын даргынх. */
-export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'director', 'head', 'chief'];
+ *  дарга (`chief`) нэмэгдэв — нийт 6 шат; «Шилжүүлсэн» нь газрын даргынх.
+ *  ⚠️ 2026-10-23: багцын ахлах инженерийн ДАРАА төлөвлөлтийн инженер (`planner`) — нийт 7 шат. */
+export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'planner', 'director', 'head', 'chief'];
 
 /** ХЯНАХ шатууд (компаниас бусад) — шийдвэрийн талбар · төлөв нь ЭНЭ хүснэгтээс. */
-export const REVIEW_STAGES = ['engineer', 'manager', 'director', 'head', 'chief'] as const;
+export const REVIEW_STAGES = ['engineer', 'manager', 'planner', 'director', 'head', 'chief'] as const;
 export type ReviewStage = (typeof REVIEW_STAGES)[number];
 
 /**
@@ -180,6 +200,7 @@ export type ReviewStage = (typeof REVIEW_STAGES)[number];
 export const SF: Record<ReviewStage, { who: string; decision: string; reason: string; returned: string; sent: string }> = {
   engineer: { who: F.engineer, decision: F.engineerDecision, reason: F.engineerReason, returned: F.engineerReturned, sent: F.engineerSent },
   manager: { who: F.manager, decision: F.managerDecision, reason: F.managerReason, returned: F.managerReturned, sent: F.managerSent },
+  planner: { who: F.planner, decision: F.plannerDecision, reason: F.plannerReason, returned: F.plannerReturned, sent: F.plannerSent },
   director: { who: F.director, decision: F.directorDecision, reason: F.directorReason, returned: F.directorReturned, sent: F.directorSent },
   head: { who: F.head, decision: F.headDecision, reason: F.headReason, returned: F.headReturned, sent: F.headSent },
   chief: { who: F.chief, decision: F.chiefDecision, reason: F.chiefReason, returned: F.chiefReturned, sent: F.chiefSent },
@@ -189,6 +210,7 @@ export const SF: Record<ReviewStage, { who: string; decision: string; reason: st
 export const REVIEW_STATUS: Record<ReviewStage, Status> = {
   engineer: STATUS.engineerReview,
   manager: STATUS.managerReview,
+  planner: STATUS.plannerReview,
   director: STATUS.directorReview,
   head: STATUS.headReview,
   chief: STATUS.chiefReview,
@@ -198,6 +220,7 @@ export const REVIEW_STATUS: Record<ReviewStage, Status> = {
 export const RETURNED_STATUS: Record<ReviewStage, Status> = {
   engineer: STATUS.engineerReturned,
   manager: STATUS.managerReturned,
+  planner: STATUS.plannerReturned,
   director: STATUS.directorReturned,
   head: STATUS.headReturned,
   chief: STATUS.chiefReturned,
@@ -224,9 +247,13 @@ export const OWNER: Record<Status, Stage> = {
   [STATUS.engineerReturned]: 'company',
   [STATUS.managerReview]: 'manager',
   [STATUS.managerReturned]: 'engineer',
+  // ⚠️ 2026-10-23: төлөвлөлтийн инженер буцаавал БАГЦЫН АХЛАХ ИНЖЕНЕРТ (нэг алхам)
+  [STATUS.plannerReview]: 'planner',
+  [STATUS.plannerReturned]: 'manager',
   [STATUS.directorReview]: 'director',
-  // ⚠️ Ерөнхий менежер буцаавал БАГЦЫН МЕНЕЖЕРТ — тэр дахин шалгана
-  [STATUS.directorReturned]: 'manager',
+  // ⚠️ 2026-10-23: төлөвлөлтийн АХЛАХ инженер буцаавал ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕРТ — тэр дахин шалгана
+  //    (урьд нь багцын ахлах инженерт очдог байв; дунд шат нэмэгдсэн)
+  [STATUS.directorReturned]: 'planner',
   [STATUS.headReview]: 'head',
   // ⚠️ Хэлтсийн дарга буцаавал ЕРӨНХИЙ МЕНЕЖЕРТ (нэг алхам)
   [STATUS.headReturned]: 'director',
@@ -255,6 +282,11 @@ export type Row = {
   [F.managerReason]: string;
   [F.managerReturned]: string | null;
   [F.managerSent]: string | null;
+  [F.planner]: string;
+  [F.plannerDecision]: Decision | '';
+  [F.plannerReason]: string;
+  [F.plannerReturned]: string | null;
+  [F.plannerSent]: string | null;
   [F.director]: string;
   [F.directorDecision]: Decision | '';
   [F.directorReason]: string;
@@ -285,9 +317,12 @@ export type Row = {
  *    үүсээгүй байна гэсэн үг.
  */
 export const DIRECTOR_FIELDS = [
+  /* ⚠️ 2026-10-23: төлөвлөлтийн инженерийн 5 талбар (notebook-оор нэмнэ) — дутуу бол 4-р шатны
+     шийдвэр чимээгүй алдагдах тул ижил шалгуурт; товч хаагдаж, дутууг ил хэлнэ. */
+  F.planner, F.plannerDecision, F.plannerReason, F.plannerReturned, F.plannerSent,
   F.director, F.directorDecision, F.directorReason, F.directorReturned, F.directorSent,
   /* ⚠️ 2026-09-23: хэлтсийн · газрын даргын 10 талбар ч ижил шалгуурт — дутуу
-     бол 4·5·6-р шатны шийдвэр чимээгүй алдагдана. */
+     бол 5·6·7-р шатны шийдвэр чимээгүй алдагдана (2026-10-23-наас дугаар нэгээр шилжсэн). */
   F.head, F.headDecision, F.headReason, F.headReturned, F.headSent,
   F.chief, F.chiefDecision, F.chiefReason, F.chiefReturned, F.chiefSent,
 ] as const;

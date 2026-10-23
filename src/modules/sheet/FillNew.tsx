@@ -2281,7 +2281,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     let yes = false;
     try {
       yes = await askConfirm(
-        tr('{0} өөрчлөлтийг хянагчид илгээх үү?\n\nИлгээсний дараа 6 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.', dirtyCount),
+        tr('{0} өөрчлөлтийг хянагчид илгээх үү?\n\nИлгээсний дараа 7 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.', dirtyCount),
         { ok: tr('Илгээх'), title: pkg.label },
       );
     } finally { pubAskRef.current = false; }

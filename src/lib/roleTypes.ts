@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ЭРХИЙН ТӨРӨЛ — 10 төрөл × ХАРАХ тохиргоо (2026-09-25 · 2026-09-30).
+ * ЭРХИЙН ТӨРӨЛ — 11 төрөл (2026-10-23-нд 10-аас — «Төлөвлөлтийн инженер» нэмэгдэв) × ХАРАХ тохиргоо (2026-09-25 · 2026-09-30).
  *
  * ⚠️ ЯАГААД (хэрэглэгчийн шийдвэр). Урьд нь хэрэглэгчийн «үүрэг» нь гурван
  *    preset (Супер · Энгийн · Төлөвлөлт) байж, харагдацыг хүн бүрд тусад нь
@@ -38,9 +38,9 @@ import { WORKFLOW_VIEWS } from './caps';
  */
 const TPL_VIEWS = VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key));
 
-/** Сонгох 10 төрөл — дараалал нь урсгалын шат, дараа нь урсгалын бус, эцэст нь super */
+/** Сонгох 11 төрөл (⚠️ 2026-10-23: `tolovloltiin` нэмэгдэв) — дараалал нь урсгалын шат, дараа нь урсгалын бус, эцэст нь super */
 export const TYPE_ORDER: readonly Role[] = [
-  'guitsetgegch', 'injener', 'menejer', 'eronhii', 'heltsiin', 'gazriin',
+  'guitsetgegch', 'injener', 'menejer', 'tolovloltiin', 'eronhii', 'heltsiin', 'gazriin',
   'taniltsah', 'chanar', 'gazar', 'super',
 ];
 
@@ -61,6 +61,8 @@ export function typeLabel(r: Role): string {
   if (r === 'guitsetgegch') return tr('Гүйцэтгэгч компани');
   if (r === 'injener') return tr('Хяналтын инженер');
   if (r === 'menejer') return tr('Багцын ахлах инженер');
+  /* ⚠️ 2026-10-23: шинэ шат — ХУУЧИН `tolovlolt` («Төлөвлөлт (хуучин)») биш */
+  if (r === 'tolovloltiin') return tr('Төлөвлөлтийн инженер');
   if (r === 'eronhii') return tr('Төлөвлөлтийн ахлах инженер');
   if (r === 'heltsiin') return tr('Хэлтсийн дарга');
   if (r === 'gazriin') return tr('Газрын дарга');
@@ -149,6 +151,11 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
     home: 'guitsetgel',
   },
   menejer: {
+    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol', 'finance'), 'docs'],
+    home: 'gdash',
+  },
+  /* ⚠️ 2026-10-23: төлөвлөлтийн инженер — багцын ахлах инженертэй ижил анхдагч */
+  tolovloltiin: {
     on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol', 'finance'), 'docs'],
     home: 'gdash',
   },
