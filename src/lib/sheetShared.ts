@@ -23,10 +23,12 @@
  * ⚠️ `rows` массив ХУВААЛЦАГДАНА — уншигчид өөрчлөхгүй (зөрүү зөвхөн уншина; `attachTree` шинэ массив үүсгэнэ).
  * ⚠️ React импортлохгүй — `sheetShared.check.mjs` Node дээр ачаална.
  */
-import { fillSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
+import { fillSchema, PKGS, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { register } from './dataBus';
-import { SESSION_TTL_MS } from './live';
+import { SESSION_TTL_MS, cached } from './live';
+import { bagtsKey } from './services';
+import { constructionObyem, sumObyemParts, uniqueBlockCounts, type ObyemPair } from './blockProgress';
 
 /** Уншилтын төрөл — `'tree'` (QAQC-ийн мод: 4 багана) ⊂ `'variance'` (зөрүү: + обьём · нэгж · огноо · блокийн обьём) */
 export type SheetKind = 'tree' | 'variance';
@@ -87,3 +89,43 @@ export function loadSheetShared(pkg: Pkg, kind: SheetKind): Promise<SharedSheet>
   p.catch(() => { if (sheetCache.get(pkg.key) === entry) sheetCache.delete(pkg.key); });
   return p;
 }
+
+/** Багцын АМЬД обьём — `null` = багцын аль нэг хуудас уншигдсангүй (дуудагч нэгтгэлийн `/190` руу буцна) */
+export type PkgObyem = { key: string; label: string } & ObyemPair;
+
+/**
+ * БАГЦ БҮРИЙН ОБЬЁМ — бөглөх хуудасны СҮҮЛИЙН жаазны навч мөрүүдээс (`blockProgress.constructionObyem` · `sumObyemParts`).
+ *
+ * ⚠️ 2026-10-23 (аудит): дашбоардын «Обьёмын биелэлт» · «Ажлын обьём» самбар урьд нь ЗӨВХӨН нэгтгэлийн (`/190`) обьёмоос
+ *    уншдаг байв — тэр нь «Б.» бүлгийн хоосон нүднээс бичигддэг тул 25/25 мөрд хоосон, самбар үргэлж «Обьём
+ *    бүртгэгдээгүй». Одоо `negtgelWrite.summaryOf`-той НЭГ дүрмээр амьд хуудаснаас: хуудсууд PKGS-ийн дарааллаар,
+ *    жин `uniqueBlockCounts` (Багц 4-2·12F давхардал орохгүй), `fillDate` талбаргүй хуудас орохгүй.
+ * ⚠️ Уншилт нь `loadSheetShared(…, 'variance')` — CEO-гийн обьёмын зөрүүний картын ЯГ ТЭР татлага (сешнд нэг, хөтчийн
+ *    кэштэй); нэмэлт хүсэлт үүсгэхгүй. Дашбоард зөвхөн самбар нээгдэхэд дуудна.
+ * ⚠️ Багцын аль нэг хуудас унавал тэр багц `null` (хагас нийлбэрийг бүтэн мэт харуулахгүй) — бусад багц хэвээр.
+ */
+export const loadPkgObyem = cached<Map<string, PkgObyem | null>>(async () => {
+  const groups = new Map<string, { label: string; pkgs: Pkg[] }>();
+  for (const p of PKGS) {
+    const k = bagtsKey(p.group);
+    const g = groups.get(k) ?? { label: p.group, pkgs: [] };
+    g.pkgs.push(p);
+    groups.set(k, g);
+  }
+  const out = new Map<string, PkgObyem | null>();
+  await Promise.all([...groups].map(async ([key, g]) => {
+    try {
+      const sheets = (await Promise.all(g.pkgs.map((p) => loadSheetShared(p, 'variance'))))
+        .filter((s) => !!s.sc.f.fillDate);
+      if (!sheets.length) { out.set(key, { key, label: g.label, volume: null, volumePlan: null }); return; }
+      const w = uniqueBlockCounts(sheets.map((s) => s.sc.bld));
+      const sum = sumObyemParts(sheets.map((s, i) => ({ n: w[i], ...constructionObyem(s.rows, s.sc.obyem) })));
+      out.set(key, { key, label: g.label, ...sum });
+    } catch (e) {
+      console.warn(`[selbe] багцын обьём: ${g.label} — бөглөх хуудас уншигдсангүй`, e);
+      out.set(key, null);
+    }
+  }));
+  return out;
+  /* ⚠️ Хэсэгчилсэн үр дүн (аль нэг багц `null`) кэшлэгдэхгүй — дараагийн дуудалт дахин оролдоно (`live.cached`-ийн `keep`) */
+}, SESSION_TTL_MS, ['BAGTS_SHEET'], (m) => ![...m.values()].some((v) => v == null));

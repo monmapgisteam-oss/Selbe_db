@@ -610,3 +610,48 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal(compute(noSheet, today).has(k), false, 'хуудасны түлхүүргүй мөр — хуучин дүрэм');
   console.log('negtgel 2026-10-12: ok — давхардалгүй жин · blendSheets · compute хуудас хоорондын null');
 }
+
+/* ══════════════ ⚠️ 2026-10-23 (аудит): обьём «Б.» бүлгийн хоосон нүднээс БИШ, навч мөрүүдээс ══════════════
+   Нэгтгэлийн (`/190`) обьём 25/25 мөрд хоосон, дашбоардын 2 самбар «Обьём бүртгэгдээгүй» байв. */
+{
+  const { constructionObyem, sumObyemParts } = await import('./blockProgress.ts');
+  const { readFileSync } = await import('node:fs');
+  const R = (no, depth, vol, obyem, group = false) => ({ no, depth, vol, obyem, group });
+  const rows = [
+    R('А.', 0, null, [null, null], true),
+    R('1', 1, 10, [99, 99]), // «А.» доорх — ОРОХГҮЙ
+    R('Б. БАРИЛГА УГСРАЛТЫН АЖИЛ', 0, null, [null, null], true),
+    R('Б1', 1, null, [null, null], true),
+    R('1.1', 2, 100, [40, null]),
+    R('1.2', 2, 50, [null, 25]),
+    R('Б2', 1, null, [null, null], true),
+    R('2.1', 2, 0, [5, null]), // Обьём 0 — төлөвлөгөөнд орохгүй, бодит нэмэгдэнэ
+    R('2.2', 2, 20, [null, null]),
+    R('В.', 0, null, [null, null], true),
+    R('3', 1, 7, [7, 7]), // «Б.»-ээс гадна — ОРОХГҮЙ
+  ];
+  assert.deepEqual(constructionObyem(rows, ['o1', 'o2']), { volume: 70, volumePlan: 340 },
+    'бодит = навчийн утгатай нүд (40+25+5); төлөвлөгөө = Обьём × обьёмтой блок ((100+50+20)×2)');
+  assert.deepEqual(constructionObyem(rows, ['o1', null]), { volume: 45, volumePlan: 170 }, 'обьёмын талбаргүй блок тоологдохгүй');
+  const empty = rows.map((r) => ({ ...r, obyem: r.obyem.map(() => null) }));
+  assert.deepEqual(constructionObyem(empty, ['o1', 'o2']), { volume: null, volumePlan: 340 }, 'бөглөөгүй → бодит null (0 БИШ)');
+  assert.deepEqual(constructionObyem(rows.filter((r) => !r.no.startsWith('Б')), ['o1']), { volume: null, volumePlan: null }, '«Б.» алга → null');
+  assert.deepEqual(constructionObyem([R('Б', 0, null, [null], true), R('1', 1, 30, [12])], ['obyem_sum']),
+    { volume: 12, volumePlan: 30 }, 'блокгүй багц (синтетик блок, цэггүй «Б»)');
+  assert.deepEqual(sumObyemParts([{ n: 14, volume: 10, volumePlan: 100 }, { n: 0, volume: 99, volumePlan: 99 }]),
+    { volume: 10, volumePlan: 100 }, 'бүрэн давхардсан хуудас (4-2·12F) орохгүй');
+  assert.deepEqual(sumObyemParts([{ n: 4, volume: null, volumePlan: 50 }, { n: 6, volume: 3, volumePlan: 60 }]),
+    { volume: 3, volumePlan: 110 });
+  assert.deepEqual(sumObyemParts([{ n: 0, volume: 1, volumePlan: 2 }, { n: 0, volume: 5, volumePlan: 5 }]),
+    { volume: 1, volumePlan: 2 }, 'жингүй бүх хуудас → эхнийх');
+  /* Эх кодын баталгаа: бичих зам ба дашбоард НЭГ функц, «Б.» мөрийн обьём уншихаа больсон */
+  const NW = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8');
+  assert.match(NW, /constructionObyem\(rows, fsc\.obyem\)/, 'negtgelWrite обьём = навч мөрүүд');
+  assert.match(NW, /sumObyemParts\(/, 'negtgelWrite нийлбэр = sumObyemParts');
+  assert.doesNotMatch(NW, /a\[sc\.f\.obyemSum\]|a\[sc\.f\.vol\]/, '«Б.» бүлгийн хоосон нүднээс обьём уншихгүй');
+  const SS = readFileSync(new URL('./sheetShared.ts', import.meta.url), 'utf8');
+  assert.match(SS, /constructionObyem\(s\.rows, s\.sc\.obyem\)/, 'дашбоардын амьд обьём = навч мөрүүд');
+  const DB = readFileSync(new URL('../modules/Dashboard.tsx', import.meta.url), 'utf8');
+  assert.equal((DB.match(/<Data q=\{vq\}/g) ?? []).length, 2, 'обьёмын 2 самбар volAsync-аас (амьд хуудас, нөөц /190)');
+  console.log('negtgel 2026-10-23: ok — обьём навч мөрүүдээс · null ≠ 0 · давхардсан хуудас орохгүй');
+}

@@ -24,6 +24,8 @@
  */
 import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows, sheetBlockKeys, sheetBlocklessKeys } from '@/modules/sheet/sheetRows';
+import { childIndexes, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
 
@@ -101,6 +103,73 @@ export function uniqueBlockCounts(blds: readonly (readonly string[])[]): number[
     }
     return n;
   });
+}
+
+/** Багцын/хуудасны обьёмын хос — бодит (хуримтлагдсан) ба төлөвлөгөөт. `null` = мэдээлэлгүй (0 БИШ). */
+export type ObyemPair = { volume: number | null; volumePlan: number | null };
+
+/**
+ * Обьёмын тооцоонд хэрэгтэй баганууд (`loadRows`-ийн `fields`) — `sheetShared.sharedFields(sc, 'variance')`-ийн дэд олонлог.
+ * ⚠️ `oid` · `no` · `work` · `gun` · `fillDate` нь жааз ба модыг (`childIndexes`) барихад ЗААВАЛ (`loadRows`-ийн ⚠️).
+ */
+export const obyemFields = (sc: Schema): string[] => [...new Set([
+  sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.fillDate, sc.f.vol, ...sc.obyem,
+].filter((x): x is string => !!x))];
+
+/**
+ * ХУУДАСНЫ ОБЬЁМ — «Б.» (барилга угсралт) мөрийн доорх НАВЧ ажлуудаас (цэвэр функц, `negtgel.check` тулгана).
+ *
+ * ⚠️ 2026-10-23 (аудит): «Б.» мөр нь БҮЛЭГ — түүний `obyem_sum` ба `Обьём` нүд бөглөх хуудсанд ХЭЗЭЭ Ч бичигддэггүй
+ *    (`computeAll`: бүлгийн блокийн обьём `null`; амьдаар 24/24 хуудсанд хоосон). Урьд нь `negtgelWrite.bRowOf` обьёмыг
+ *    яг тэр мөрөөс уншдаг тул нэгтгэлийн (`/190`) обьём 25/25 мөрд хоосон, дашбоардын «Обьёмын биелэлт» · «Ажлын обьём»
+ *    самбар үргэлж «Обьём бүртгэгдээгүй» гэж гардаг байв. Одоо обьём бөглөгддөг НАВЧ мөрүүдээс:
+ *    · `volume` — навч мөрийн обьёмын талбартай блок бүрийн хуримтлагдсан обьём (`computeAll.obyemSum`-тай нэг дүрэм:
+ *      зөвхөн утгатай нүд нэмэгдэнэ);
+ *    · `volumePlan` — навч мөрийн `Обьём` (НЭГ блокийнх — `cellObyem`/`act = обьём ÷ Обьём`) × обьёмын талбартай
+ *      блокийн тоо (`execTriage.loadVariance`-ийн `vol × блок`-той нэг).
+ *    Нэг ч утга алга бол `null` («бүртгэгдээгүй»), 0 БИШ. Нэгж нь холимог (м³ · м² · ш) — `summaryOf`-ийн ⚠️: зөвхөн
+ *    өөртэйгөө (бодит ÷ төлөвлөгөө) харьцуулна.
+ * @param hasObyem блок бүрийн обьёмын талбар (`Schema.obyem`) — синтетик блокт `[obyem_sum]` (`fillSchema`)
+ */
+export function constructionObyem(rows: readonly SheetRow[], hasObyem: readonly unknown[]): ObyemPair {
+  const bi = rows.findIndex((r) => isConstructionNo(r.no));
+  if (bi < 0) return { volume: null, volumePlan: null };
+  const kids = childIndexes(rows as SheetRow[]);
+  let volume: number | null = null;
+  let volumePlan: number | null = null;
+  const stack = [...kids[bi]];
+  while (stack.length) {
+    const i = stack.pop()!;
+    if (kids[i].length) { stack.push(...kids[i]); continue; }
+    const r = rows[i];
+    if (r.group) continue;
+    for (let b = 0; b < hasObyem.length; b += 1) {
+      if (!hasObyem[b]) continue;
+      const o = r.obyem[b];
+      if (o != null && Number.isFinite(o)) volume = (volume ?? 0) + o;
+      if (r.vol != null && r.vol > 0) volumePlan = (volumePlan ?? 0) + r.vol;
+    }
+  }
+  return { volume, volumePlan };
+}
+
+/**
+ * БАГЦЫН ОБЬЁМ — хуудсуудын нийлбэр (цэвэр). `n` = `uniqueBlockCounts`-ийн жин (PKGS-ийн дарааллаар).
+ * ⚠️ 2026-10-21-ний дүрэм (`negtgelWrite.summaryOf`-оос гаргав, 2026-10-23): бүрэн давхардсан хуудас (`n === 0`,
+ *    Багц 4-2·12F) нийлбэрт ОРОХГҮЙ; жинтэй хуудас огт үгүй (блокгүй багц) бол эхнийх. Бүгд `null` бол `null`.
+ *    Нэгтгэлийн бичилт (`negtgelWrite`) ба дашбоардын амьд тооцоо (`sheetShared.loadPkgObyem`) НЭГ функц.
+ */
+export function sumObyemParts(parts: readonly ({ n: number } & ObyemPair)[]): ObyemPair {
+  const use = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
+  const add = (pick: (x: ObyemPair) => number | null): number | null => {
+    let s: number | null = null;
+    for (const x of use) {
+      const v = pick(x);
+      if (v != null) s = (s ?? 0) + v;
+    }
+    return s;
+  };
+  return { volume: add((x) => x.volume), volumePlan: add((x) => x.volumePlan) };
 }
 
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */

@@ -63,7 +63,7 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_LEFT,
+  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
@@ -72,7 +72,7 @@ import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
-import { isClearedStatus, statusKey } from '@/lib/land';
+import { isClearedStatus, loadLandStatus } from '@/lib/land';
 import {
   finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
 } from '@/lib/finExcelLayout';
@@ -472,24 +472,19 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
      (`Selbe_parcel_20260906`) `Tuluv`/`явцын_мэдээ` талбаргүй — хатуу нэрээр
      асуувал ArcGIS 400 («'outFields' parameter is invalid») буцааж, тайлан
      БҮХЭЛДЭЭ («Тайлангийн 1 эх сурвалж татагдсангүй: газар») унадаг байв. */
-  const F = PARCEL_LEFT.fields;
-  const rows = await queryFeatures(d.url, {
-    outFields: [F.status, d.qty?.field ?? F.area],
-  });
-
-  const tally = (field: string, skipEmpty: boolean) => {
-    const m = new Map<string, number>();
-    rows.forEach((r) => {
-      /* ⚠️ 2026-10-06: `land.statusKey` — «Бүрэн чөлөөлсөн»-ийн бүх бичиглэл НЭГ бүлэг, хоосон/«—» →
-         «Тодорхойгүй» (`land.ts`-ийн бүлэглэлтэй нэг). Урьд нь `str()` тул хувилбар бүр тусдаа мөр. */
-      const k = statusKey(r[field]);
-      if (!k && skipEmpty) return;
-      m.set(k || tr('Тодорхойгүй'), (m.get(k || tr('Тодорхойгүй')) ?? 0) + 1);
-    });
-    return [...m.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
-  };
-
-  const byStatus = tally(F.status, false);
+  /*
+   * ⚠️ 2026-10-23 (аудит): ТООЛОЛ БА ТАЛБАЙ нь `land.loadLandStatus`-аас — «Газар чөлөөлөлт» · дашбоард · удирдлагын
+   *    тайлантай НЭГ тооцоо (`parcelAreaOf`: `area_m2 = 0`/хоосон мөрд `Талб_1` эсвэл полигоны талбай; `parcelAreasDeduped`:
+   *    хуваагдсан нэгж талбар нэг удаа). Урьд нь энд `SUM(area_m2)`-ийг шууд нэмдэг байсан тул 2026-10-22-ны хоёр дүрэм
+   *    хамрагдаагүй — амьдаар тайлан 953,987 м², бусад бүх харагдац 961,303 м² гэж зөрдөг байв.
+   *    Төлөвийн бүлэглэл ч (`statusKey` → «Тодорхойгүй») `buildLandStatus`-ийн `labelOf`-той ижил тул тэндээс авна.
+   *    (2026-08-21-ний «зөвхөн тоолдог талбар» дүрэм хадгалагдана — `loadParcelAreaRows` нь хувийн мэдээлэл татдаггүй.)
+   */
+  const st = await loadLandStatus();
+  const byStatus = st.byStatus
+    .map(({ label, n }) => ({ label, n }))
+    .filter((s) => s.n > 0)
+    .sort((a, b) => b.n - a.n);
   /*
    * ⚠️ ХУВЬ нь ДАШБОАРДТАЙ НЭГ ЭХ СУРВАЛЖААС (2026-08-29). Урьд нь энд
    * «нийт − үлдсэн» гэж боддог байсан бол дашбоард/«Газар чөлөөлөлт» нь
@@ -500,8 +495,8 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
   const clearance = await loadClearance();
 
   return {
-    parcels: rows.length,
-    areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? F.area]), 0),
+    parcels: st.total,
+    areaM2: st.areaM2,
     pct: clearance.pct,
     byStatus,
     /* ⚠️ 2026-09-06: шинэ эхэд ТӨЛӨВ ба ШАЛТГААН нэг талбар — «Бүрэн чөлөөлсөн»-өөс

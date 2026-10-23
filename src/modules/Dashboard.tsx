@@ -50,6 +50,7 @@ import {
   cached,
   type Headline, type SocialLive, type Budget, type PkgProgressRow,
 } from '@/lib/live';
+import { loadPkgObyem, type PkgObyem } from '@/lib/sheetShared';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import o from './dashboardOv.module.css';
 import { HeadKpi, ERR_MARK, dots, hVal, FailVal, type AsyncLike, type Dots } from './HeadKpi';
@@ -328,6 +329,11 @@ type DashData = {
    */
   pkgProg: Async<PkgProgressRow[]>;
   /**
+   * ⚠️ 2026-10-23 (аудит): багц бүрийн АМЬД обьём (`sheetShared.loadPkgObyem` — бөглөх хуудасны навч мөрүүд).
+   *    Зөвхөн 02/04 хэсэг нээгдэхэд татна (хаалттай үед `null`) — обьёмын хоёр самбарын эх (`volAsync`).
+   */
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
+  /**
    * 05 «Шугам сүлжээ»-ийн багц бүрийн ТОО ба ХЭМЖЭЭ (урт/талбай).
    *
    * ⚠️ ЯАГААД ХЭМЖЭЭ, ГҮЙЦЭТГЭЛ БИШ: сүлжээний багцууд (5.1–5.4, 7, 10–15) нь
@@ -561,10 +567,13 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const netTotals = usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS);
   const powTotals = usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS);
   const socTotals = usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS);
+  /* ⚠️ 2026-10-23: обьёмын самбартай хэсэг (02 · 04) нээгдэхэд л 24 хуудсыг уншина (`usePlanTotals`-ийн адил залхуу) */
+  const volOpen = open[0] === 'schedule' || open[0] === 'bagts';
+  const pkgVol = useAsync<Map<string, PkgObyem | null> | null>(() => (volOpen ? loadPkgObyem() : Promise.resolve(null)), [volOpen]);
   const d: DashData = useMemo(() => ({
-    bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+    bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone,
-  }), [bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+  }), [bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone]);
   const { setHighlight } = useMap();
 
@@ -881,8 +890,8 @@ function Detail({ k, d, flt, onFlt }: {
 } & FltProps) {
   switch (k) {
     case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
-    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg });
-    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, fin: d.fin, flt, onFlt });
+    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg, pkgVol: d.pkgVol });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, pkgVol: d.pkgVol, fin: d.fin, flt, onFlt });
     case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
     case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, zone: d.zone, flt, onFlt });
     case 'power': return PowerDetail({ sources: d.sources, prog: d.prog, powTotals: d.powTotals, flt, onFlt });
@@ -1938,6 +1947,40 @@ const SRC_SHEET = () => tr('эх: бөглөх хуудас');
 /** `note` + эх сурвалж. Функц дуудалт — хэлээ сольсны дараа дахин орчуулагдана */
 const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
 
+/** Обьёмын самбарын мөр — амьд хуудас (`PkgObyem`) эсвэл нэгтгэлийн (`/190`) нөөц */
+type VolRow = { key: string; label: string; volume: number | null; volumePlan: number | null };
+type VolData = { rows: VolRow[]; fallback: boolean };
+
+/**
+ * ОБЬЁМЫН ХОЁР САМБАРЫН ЭХ («Обьёмын биелэлт» · «Ажлын обьём»).
+ * ⚠️ 2026-10-23 (аудит): урьд нь ЗӨВХӨН нэгтгэлийн (`/190`) сүүлийн мөр — түүний обьём «Б.» бүлгийн хоосон нүднээс
+ *    бичигддэг тул 25/25 мөрд хоосон, хоёр самбар үргэлж «Обьём бүртгэгдээгүй» байв (`blockProgress.constructionObyem`).
+ *    Одоо АМЬД бөглөх хуудас (`sheetShared.loadPkgObyem`, навч мөрүүд); хуудас нь уншигдаагүй багцад л `/190`-ийн
+ *    сүүлийн мөр (`fallback` → эх шошго «багцын нэгтгэл»). `null` хэвээр — «бүртгэгдээгүй» нь ЖИНХЭНЭ хоосонд л.
+ * ⚠️ ЭНГИЙН ФУНКЦ (hook биш) — `ScheduleDetail`/`BagtsDetail` hook хэрэглэдэггүй (2026-10-11-ний ⚠️).
+ */
+function volAsync(vol: Async<Map<string, PkgObyem | null> | null>, neg: Async<PkgProgressRow[]>): Async<VolData> {
+  const loading: Async<VolData> = { state: 'loading', data: null, error: null };
+  const negRows = (): VolRow[] => (neg.state === 'ready' ? latestPkgProgress(neg.data) : [])
+    .map((x) => ({ key: x.key, label: x.label, volume: x.volume, volumePlan: x.volumePlan }));
+  if (vol.state === 'loading' || (vol.state === 'ready' && vol.data == null)) return loading;
+  if (vol.state === 'error') {
+    if (neg.state === 'ready') return { state: 'ready', data: { rows: negRows(), fallback: true }, error: null };
+    return neg.state === 'error' ? { state: 'error', data: null, error: vol.error, retry: vol.retry } : loading;
+  }
+  const back = new Map(negRows().map((x) => [x.key, x]));
+  const rows: VolRow[] = [];
+  let fallback = false;
+  for (const [k, v] of vol.data!) {
+    if (v) { rows.push(v); continue; }
+    const n = back.get(k);
+    if (n) { rows.push(n); fallback = true; }
+  }
+  return { state: 'ready', data: { rows, fallback }, error: null };
+}
+/** Обьёмын самбарын эх шошго — нөөц (`/190`) орсон бол түүнийг ил хэлнэ */
+const volSrc = (q: Async<VolData>) => (q.state === 'ready' && q.data.fallback ? SRC_NEGTGEL : SRC_SHEET);
+
 /**
  * 02 · ХЭРЭГЖИЛТИЙН ЕРӨНХИЙ ГРАФИК.
  *
@@ -1967,13 +2010,16 @@ const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
  * Хоёулаа «Гүйцэтгэл бөглөх» цонхоор ПОРТАЛААС бөглөгддөг тул тоо нь
  * бүртгэлтэй нэг агшинд таарна.
  */
-function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
+function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   bagts: Async<BagtsRow[]>;
   pkgProg: Async<PkgProgressRow[]>;
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
 }) {
   const f = fin.state === 'ready' ? fin.data : null;
+  /* ⚠️ 2026-10-23: обьёмын самбарын эх — амьд хуудас, нөөц нь `/190` (`volAsync`) */
+  const vq = volAsync(pkgVol, pkgProg);
   /* ⚠️ 2026-10-11 (аудит №7): ЭНД HOOK ХЭРЭГЛЭХГҮЙ — `ScheduleDetail` нь `detailPanels()`-оос
      ЭНГИЙН ФУНКЦ байдлаар дуудагддаг (JSX биш) тул доторх `useMemo` нь эцэг `Dashboard`-ын hook
      дараалалд орж, 02-р хэсэг нээх/хаахад hook-ийн тоо өөрчлөгдөж React унадаг байв (аудит №6-д
@@ -2404,10 +2450,10 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           эзлэхүүн нь БИЕТ хэмжигдэхүүн (м³, м²). Хоёр нь зөрвөл аль нэг нь
           буруу бүртгэгдсэн гэсэн үг — тиймээс тусад нь харуулах нь хяналтын
           утга. */}
-      <Panel title={tr('Обьёмын биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт обьём'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const rows = latestPkgProgress(list)
+      <Panel title={tr('Обьёмын биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт обьём'), volSrc(vq))}>
+        <Data q={vq} loading={tr('Татаж байна…')}>
+          {({ rows: list }) => {
+            const rows = list
               .filter((x) => (x.volumePlan ?? 0) > 0)
               .map((x) => ({
                 key: x.key,
@@ -2710,15 +2756,18 @@ const FAMILY_LABEL: Record<PkgFamily, string> = {
 const familyPacks = (f: PkgFamily): string[] =>
   [...new Set((PKG_BY_FAMILY[f] ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)))].filter(Boolean);
 
-function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
+function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
   q: Async<BagtsRow[]>;
   /** 2026-10-04: «Төлөвлөгөө vs бодит — багцаар» — PkgProg/ТУХ-тай нэг эх (`pkgLagRows`) */
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   hist: Async<BlockHistory>;
   pkgProg: Async<PkgProgressRow[]>;
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
 } & FltProps) {
   const sel = flt?.sec === 'bagts' ? flt.key : null;
+  /* ⚠️ 2026-10-23: «Ажлын обьём» самбарын эх — амьд хуудас, нөөц нь `/190` (`volAsync`) */
+  const vq = volAsync(pkgVol, pkgProg);
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
   //    эс бөгөөс доторх `Panel`-ууд компонентын дээд түвшинд гарахгүй тул
   //    `detailPanels` тэднийг дөрвөн бүсэд хуваарилж чадахгүй (бүгд нэг
@@ -2968,10 +3017,10 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           тоог нэг шкалд, хамгийн их утгаар будаж, нэгжгүй харуулдаг байв —
           багц хооронд харьцуулах боломжгүй (06 §5). Түүхий тоо зөвхөн шошгонд,
           тухайн багцын дотор. Төлөвлөгөөгүй багц % бодогдохгүй → саарал. */}
-      <Panel title={tr('Ажлын обьём — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const withVol = latestPkgProgress(list)
+      <Panel title={tr('Ажлын обьём — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), volSrc(vq))}>
+        <Data q={vq} loading={tr('Татаж байна…')}>
+          {({ rows: list }) => {
+            const withVol = list
               .filter((x) => (x.volume ?? 0) > 0 || (x.volumePlan ?? 0) > 0)
               .map((x) => ({
                 ...x,

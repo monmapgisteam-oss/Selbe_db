@@ -26,8 +26,9 @@ import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
 import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
 import { invalidate } from './dataBus';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { uniqueBlockCounts } from './blockProgress';
+import { PKGS, loadSchema, fillSchema } from '@/modules/sheet/bagts.pkg';
+import { loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { uniqueBlockCounts, constructionObyem, sumObyemParts, obyemFields, type ObyemPair } from './blockProgress';
 
 const F = BAGTS_NEGTGEL.fields;
 
@@ -179,8 +180,32 @@ async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
   return headNo !== '' && headNo === h.no;
 }
 
-/** «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1) */
-type BRow = { act: number | null; plan: number | null; volume: number | null; volumePlan: number | null };
+/**
+ * «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1).
+ * ⚠️ 2026-10-23 (аудит): обьём ЭНД БАЙХГҮЙ БОЛСОН — «Б.» бүлгийн `obyem_sum`/`Обьём` нүд үргэлж хоосон
+ *    (`blockProgress.constructionObyem`-ийн ⚠️); обьём нь навч мөрүүдээс (`sheetObyem`). `at` = тэр жаазны
+ *    `fillDate` (ms) — обьёмыг ЯГ ТЭР агшны мөрүүдээс уншихад.
+ */
+type BRow = { act: number | null; plan: number | null; at: number | null };
+
+/**
+ * Нэг хуудасны обьём — `at` агшны (өдрийн сүүлийн бүтэн жааз, `loadRows`-ийн `dayFilter` · `lastFrame` — хянагчийн
+ * харагдацтай нэг зам) навч мөрүүдээс (`constructionObyem`). `at == null` (тэр хүртэл нийтлэгдээгүй хуудас) бол
+ * одоогийн (суурь) жааз — төлөвлөгөөт обьём нь багцын дүнд орно, бодит нь `null`.
+ * ⚠️ 2026-10-23: `fillSchema` — блокгүй багцын синтетик блокийн обьём `obyem_sum` (`loadSchema`-д `obyem = []`).
+ * ⚠️ Уншиж ЧАДАХГҮЙ бол `null` (дуудагч багцын обьёмыг бүхэлд нь `null` болгоно — хагас нийлбэрийг бүтэн мэт бичихгүй);
+ *    обьём нь туслах багана тул гүйцэтгэлийн бүртгэлийг (хувь) ХААХГҮЙ.
+ */
+async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> {
+  try {
+    const fsc = await fillSchema(p);
+    const { rows } = await loadRows(p, fsc, at == null ? undefined : msToDay(at), obyemFields(fsc));
+    return constructionObyem(rows, fsc.obyem);
+  } catch (e) {
+    console.warn(`[selbe] нэгтгэлийн обьём: ${p.label} — бөглөх хуудас уншигдсангүй, обьём бичихгүй`, e);
+    return null;
+  }
+}
 
 /**
  * Нэг хуудасны «Б.» мөр — `dateWhere`-д таарах ХАМГИЙН СҮҮЛИЙН жаазнаас.
@@ -203,7 +228,7 @@ type BRow = { act: number | null; plan: number | null; volume: number | null; vo
  *    хоёуланг БУУРАХААР эрэмбэлж, сүүлийн жаазны мөрийг авна.
  */
 async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
-  const cols = [sc.f.no, sc.f.act, sc.f.plan, sc.f.vol, sc.f.obyemSum]
+  const cols = [sc.f.no, sc.f.act, sc.f.plan, fill]
     .filter(Boolean) as string[];
   const q = (await post(`${p.url}/query`, {
     where: `${dateWhere} AND ${constructionWhere(sc.f.no)}`,
@@ -217,8 +242,7 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
   return {
     act: num(a[sc.f.act]),
     plan: num(a[sc.f.plan]),
-    volume: sc.f.obyemSum ? num(a[sc.f.obyemSum]) : null,
-    volumePlan: num(a[sc.f.vol]),
+    at: num(a[fill]),
   };
 }
 
@@ -352,7 +376,7 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       else if (sc.act.some(Boolean)) {
         parts.push({
           n: sc.bld.length,
-          r: { act: 0, plan: r?.plan ?? null, volume: r?.volume ?? null, volumePlan: r?.volumePlan ?? null },
+          r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null },
           p, sc, real: false,
         });
       }
@@ -376,23 +400,21 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
   /* ⚠️ 2026-10-21 (аудит): бүрэн давхардсан хуудас (`n === 0`, Багц 4-2·12F) обьёмын нийлбэрт ч ОРОХГҮЙ —
      хувийн зам (`blendSheets`)-тай нэг олонлог; урьд нь 12F-ийн F6_x-ийн обьём 9F-ийнхтэй ДАВХАР нэмэгддэг байв.
      Жинтэй хуудас огт үгүй (блокгүй багц — бүх `bld` хоосон) бол `blendSheets`-ийн адил эхнийх. */
+  /* ⚠️ 2026-10-23 (аудит): нийлбэрийн дүрэм `blockProgress.sumObyemParts` руу (дашбоардын амьд тооцоотой нэг);
+     хуудас бүрийн обьём «Б.» мөрөөс БИШ навч мөрүүдээс (`sheetObyem`). Нийлбэрт орох хуудсаа л уншина. */
   const volParts = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
-  const sum = (pick: (r: BRow) => number | null): number | null => {
-    let s: number | null = null;
-    for (const x of volParts) {
-      const v = pick(x.r);
-      if (v != null) s = (s ?? 0) + v;
-    }
-    return s;
-  };
+  const vols = await Promise.all(volParts.map((x) => sheetObyem(x.p, x.p.key === one.p.key ? at : x.r.at)));
+  const vol: ObyemPair = vols.some((v) => v == null)
+    ? { volume: null, volumePlan: null }
+    : sumObyemParts(volParts.map((x, i) => ({ n: x.n, ...(vols[i] as ObyemPair) })));
 
   return {
     at,
     /* ⚠️ 0–1 → 0–100 (`toPct`) — нэгтгэлийн багана ХУВЬ хүлээдэг */
     progress: toPct(own.act == null ? null : mean((r) => r.act)),
     planned: toPct(mean((r) => r.plan)),
-    volume: sum((r) => r.volume),
-    volumePlan: sum((r) => r.volumePlan),
+    volume: vol.volume,
+    volumePlan: vol.volumePlan,
     parts,
   };
 }
