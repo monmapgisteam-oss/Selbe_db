@@ -1,24 +1,20 @@
 /**
- * ДАВХАРГЫН ХАЯГ ХААГДСАН ҮЙЛЧИЛГЭЭ РҮҮ ЗААХГҮЙ (2026-10-09, аудит №3).
+ * ДАВХАРГЫН ХАЯГ — Enterprise-ийн БОДИТ хаяг, хаагдсан үйлчилгээ рүү ЗААХГҮЙ (2026-10-09, аудит №3; 2026-10-26 шинэчлэв).
  *
- * ⚠️ ЯАГААД: `pkg.ts`-ийн `PKG_LAYERS` нь `pkg:*` мөр бүрд `url = ${ET_PKG}/n`
- *    (`Selbe_ET_20260725` — ХААГДСАН) гэж бүтээдэг бөгөөд үүнийг ЗӨВХӨН
- *    `layers.ts`-ийн TD_LAYER давталт `${TD}/…` болгож дарж бичдэг. TD_LAYER-т
- *    бүртгэлгүй ШИНЭ `pkg:*` мөр нэмбэл тэр давхарга хаагдсан үйлчилгээ рүү
- *    хандаж, зурагт ЧИМЭЭГҮЙ хоосон гарна (ArcGIS-ийн алдаа 200-аар ирдэг).
- *    `layerUrl` нь зөвхөн `url` ХООСОН үед унадаг — буруу хаягийг барьдаггүй.
+ * ⚠️ 2026-10-26 (хэрэглэгч: «хөрвүүлэх хүснэгт огт ашиглахгүй, бодит датаг шууд ашиглана»): AGOL түлхүүр → Enterprise
+ *    хаягийн зураглал (`entMap`) ба `TD_LAYER`/`styleUrl` ХАСАГДСАН. Давхарга бүр `url`-даа Enterprise-ийн
+ *    `${ENT_HOSTED}/<үйлчилгээ>/FeatureServer/<№>` бодит хаягийг агуулна; webmap-загварын снапшот
+ *    (`public/webmap-style.json`) давхаргын ID-аар түлхүүрлэгдсэн.
  *
- * Энэ шалгуур нь `LAYERS`-ийн давхарга бүрийн ШИЙДЭГДСЭН хаяг (`layerUrl`)
- * доорх хаагдсан/устгагдсан үйлчилгээний аль нэг рүү заахгүйг баталгаажуулна.
- * ⚠️ `styleUrl`-ийг ХААГДСАН үйлчилгээний жагсаалтаар ШАЛГАХГҮЙ — тэр нь webmap-загварын хайлтын
- *    түлхүүр л (хуучин ET хаяг санаатай; `env.ts`-ийн `ET`-ийн ⚠️). Харин 2026-10-11 (аудит №7)-оос
- *    `styleUrl` бүр `public/webmap-style.json` снапшотод (эсвэл `plan2d`-ийн өөрийн/alias загварт)
- *    ОЛДОХЫГ батална — олдохгүй түлхүүр нь үхмэл тохиргоо (`layers.ts` §NO_WEBMAP_STYLE).
+ * Энэ шалгуур:
+ *   · `LAYERS`-ийн давхарга бүр хаягтай (`layerUrl` шиддэггүй);
+ *   · ФИЧЕР давхарга бүр Enterprise-ийн hosted суурь дор (AGOL/хаагдсан үйлчилгээ рүү заахгүй);
+ *   · `pkg:*` · `infra:*` давхарга `Bagts_ajluud` үйлчилгээнд;
+ *   · webmap-загварын снапшотын түлхүүр бүр бодит давхаргын ID (үхмэл түлхүүргүй).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const { LAYERS, layerUrl, TD } = await import('@/lib/services.ts');
-const { PLAN2D_LAYERS, PLAN2D_ALIASED } = await import('@/lib/plan2d.ts');
+const { LAYERS, layerUrl, ENT_HOSTED, BAGTS_AJLUUD } = await import('@/lib/services.ts');
 
 /** Хаагдсан (499/400) эсвэл устгагдсан үйлчилгээнүүд — шинээр хаагдвал ЭНД нэм */
 const DEAD = [
@@ -30,6 +26,7 @@ const DEAD = [
   'busiin_medeelel_final',
   'Tuluvlult_talbai',
   'Selbe_barilga_last',
+  'SELBE_ALL_DATA_last_0917',
   'A', // ⚠️ 2026-10-09 (аудит №6): CLAUDE.md-ийн 9 дэх устгагдсан үйлчилгээ
 ];
 
@@ -58,31 +55,36 @@ ok('ямар ч давхарга хаагдсан үйлчилгээ рүү за
     const hit = DEAD.find((d) => u.includes(`/${d}/`));
     if (hit) bad.push(`${l.id} → ${u}`);
   }
-  assert.deepEqual(bad, [],
-    `хаагдсан үйлчилгээ рүү заасан давхарга (TD_LAYER-т бүртгэ эсвэл бүтэн url өг):\n  ${bad.join('\n  ')}`);
+  assert.deepEqual(bad, [], `хаагдсан үйлчилгээ рүү заасан давхарга:\n  ${bad.join('\n  ')}`);
 });
 
-ok('pkg:* давхарга бүр TD руу дарж бичигдсэн (TD_LAYER-т бүртгэлтэй)', () => {
-  const pkg = LAYERS.filter((l) => l.id.startsWith('pkg:'));
-  assert.ok(pkg.length > 0, 'pkg:* давхарга олдсонгүй — шалгуурыг шинэчил');
-  const bad = pkg.filter((l) => !layerUrl(l).startsWith(`${TD}/`)).map((l) => `${l.id} → ${layerUrl(l)}`);
-  assert.deepEqual(bad, [], `TD_LAYER-т бүртгэлгүй pkg:* давхарга:\n  ${bad.join('\n  ')}`);
+ok('фичер давхарга бүр Enterprise-ийн hosted суурь дор (AGOL хаяг БАЙХГҮЙ)', () => {
+  const bad = LAYERS.map((l) => layerUrl(l))
+    .filter((u) => /\/FeatureServer\//.test(u) && !u.startsWith(`${ENT_HOSTED}/`));
+  assert.deepEqual(bad, [], `Enterprise-ээс гадуурх хаяг:\n  ${bad.join('\n  ')}`);
 });
 
-/* ⚠️ 2026-10-11 (аудит №7): `webmapStyle.ts`-ийн `norm`-тай ИЖИЛ хэлбэржүүлэлт (decode + төгсгөлийн `/` + жижиг үсэг) */
-const styleKey = (u) => { try { return decodeURIComponent(u).replace(/\/+$/, '').toLowerCase(); } catch { return u.toLowerCase(); } };
-ok('styleUrl бүр webmap снапшотод (эсвэл plan2d загварт) олдоно', () => {
+ok('pkg:* · infra:* давхарга бүр Bagts_ajluud үйлчилгээнд', () => {
+  const pkg = LAYERS.filter((l) => l.id.startsWith('pkg:') || l.id.startsWith('infra:'));
+  assert.ok(pkg.length > 90, `pkg/infra давхарга хэт цөөн (${pkg.length}) — шалгуурыг шинэчил`);
+  const bad = pkg.filter((l) => !/^\/\d+$/.test(layerUrl(l).slice(BAGTS_AJLUUD.length)) || !layerUrl(l).startsWith(BAGTS_AJLUUD))
+    .map((l) => `${l.id} → ${layerUrl(l)}`);
+  assert.deepEqual(bad, [], `Bagts_ajluud-д биш pkg/infra:\n  ${bad.join('\n  ')}`);
+  const seen = new Map();
+  for (const l of pkg) {
+    const u = layerUrl(l);
+    if (seen.has(u)) assert.fail(`${l.id} ба ${seen.get(u)} НЭГ давхарга руу заасан: ${u}`);
+    seen.set(u, l.id);
+  }
+});
+
+ok('webmap-загварын снапшотын түлхүүр бүр бодит давхаргын ID', () => {
   const snap = JSON.parse(readFileSync('public/webmap-style.json', 'utf8'));
-  const keys = new Set(Object.keys(snap).map(styleKey));
-  const plan2d = JSON.parse(readFileSync('public/plan2d-style.json', 'utf8'));
-  /* `sb:*` ба alias-тай давхарга (`et:24`→`sb:4`, `dugui`→`sb:15` …) MapCanvas-д `plan2dStyleOf`-оор зурагдана */
-  const viaPlan2d = (id) => (plan2d[id] != null && PLAN2D_LAYERS.some((p) => p.id === id)) || PLAN2D_ALIASED.has(id);
-  const withStyle = LAYERS.filter((l) => l.styleUrl);
-  assert.ok(withStyle.length > 20, `styleUrl-тэй давхарга хэт цөөн (${withStyle.length})`);
-  const bad = withStyle
-    .filter((l) => !keys.has(styleKey(l.styleUrl)) && !viaPlan2d(l.id))
-    .map((l) => `${l.id} → ${norm(l.styleUrl)}`);
-  assert.deepEqual(bad, [], `снапшотод түлхүүргүй styleUrl (layers.ts §NO_WEBMAP_STYLE-д нэм эсвэл снапшотыг шинэчил):\n  ${bad.join('\n  ')}`);
+  const ids = new Set(LAYERS.map((l) => l.id));
+  const keys = Object.keys(snap);
+  assert.ok(keys.length > 20, `снапшот хэт цөөн (${keys.length})`);
+  const bad = keys.filter((k) => !ids.has(k));
+  assert.deepEqual(bad, [], `давхаргагүй (үхмэл) загварын түлхүүр:\n  ${bad.join('\n  ')}`);
 });
 
 console.log(`layerUrls: ${n} шалгалт ✓ (${LAYERS.length} давхарга)`);

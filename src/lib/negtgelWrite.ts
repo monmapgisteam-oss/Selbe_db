@@ -288,7 +288,7 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
     if (!sc?.f.fillDate) continue;
 
     const head = (await post(`${p.url}/query`, {
-      where: `OBJECTID = ${sheetOid}`,
+      where: `objectid = ${sheetOid}`,
       outFields: [sc.f.fillDate, sc.f.no].join(','),
       returnGeometry: 'false',
     })) as { features?: { attributes: Record<string, unknown> }[] };

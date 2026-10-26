@@ -320,7 +320,7 @@ function laborState(rows: Row[]): {
 } {
   const ZERO = { ajiltan: 0, tehnik: 0 };
   if (!rows.length) return { rows: [], asOf: null, cum: ZERO };
-  const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['CreationDate']);
+  const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['created_date']);
   /**
    * ⚠️ «Хамгийн сүүлийн тайлан»-г ЗӨВХӨН огноо БҮХИЙ мөрөөс сонгоно.
    *
@@ -808,7 +808,7 @@ function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [stri
        зөвхөн test_data-гийн хуулбарын үлдэгдэл байв. */
     [tr('Сумны урт'), meters(a[C.sunUrt])],
   ];
-  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), meters(a['BUFF_DIST'])]);
+  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), meters(a['buff_dist'])]);
   return rows.filter(([, v]) => v !== '—');
 }
 

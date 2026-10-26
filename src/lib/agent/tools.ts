@@ -109,7 +109,7 @@ export const AGENT_TOOLS: ToolDef[] = [
           items: { type: 'string' },
           get description() { return tr('Жагсаалт горимд буцаах талбарууд. Заавал зааж өг — бүгдийг татах нь үрэлгэн.'); },
         },
-        orderBy: { type: 'string', get description() { return tr('Эрэмбэ, жиш. "Population DESC" (жагсаалт горимд)'); } },
+        orderBy: { type: 'string', get description() { return tr('Эрэмбэ, жиш. "population DESC" (жагсаалт горимд)'); } },
         limit: { type: 'number', get description() { return tr('Мөрийн тоо (дээд тал нь {0})', MAX_ROWS); } },
       },
       required: ['id'],

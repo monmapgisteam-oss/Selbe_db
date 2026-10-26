@@ -24,7 +24,7 @@ import type { MirRow } from '@/lib/mir';
  *     эсвэл GUID (`mirIdIssue`). Бичих эрх lib-д (`requireSyncCap`), хүчингүй болголт зөвхөн бичилт оролдсон үед.
  *   · MIR/MA хожим засагдвал (тоо хэмжээ · нэгж · R болсон) мөр нь дагаж шинэчлэгдэж/хасагдана. `mir_id`-гүй (гараар
  *     нэмсэн) мөрийг ХӨНДӨХГҮЙ.
- * ⚠️ Талбарын нэр Enterprise-д жижиг үсгээр — энэ хүснэгт entMap-ийн толинд байхгүй тул шууд жижиг үсгээр бичнэ.
+ * ⚠️ Талбарын нэр Enterprise-д жижиг үсгээр — кодод бодит (жижиг) нэрээр бичнэ.
  * ⚠️ ArcGIS алдаа HTTP 200-аар `{error}` — `arcgisPost` шиднэ; `applyEdits`-ийн мөр бүрийн `success`-ийг шалгана.
  */
 export const NOOTS_SVC = `${ENT_HOSTED}/material_noots/FeatureServer`;
@@ -54,7 +54,7 @@ export const guidKey = (v: unknown): string => str(v).replace(/[{}]/g, '').toLow
 
 export function nootsRowOf(a: Record<string, unknown>): NootsRow {
   return {
-    oid: Number(a[NF.oid] ?? a.OBJECTID),
+    oid: Number(a[NF.oid] ?? a.objectid),
     name: str(a[NF.name]),
     inQty: num(a[NF.inQty]),
     usedQty: num(a[NF.usedQty]),

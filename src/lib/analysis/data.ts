@@ -25,8 +25,7 @@ import type Geometry from '@arcgis/core/geometry/Geometry';
  */
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
-import { TD, layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
-import { remapUrl } from '@/lib/services/entMap';
+import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType, SELBE_ET } from '@/lib/services';
 import { register } from '@/lib/dataBus';
 import { classifyBuilding, buildingTrips } from './transport';
 import {
@@ -70,14 +69,14 @@ async function fetchAll(u: string, outFields: string[], returnGeometry = false):
        *    зай буруу гарна. `buildings.ts` ба `roadNet.ts`-д яг энэ эрсдэлийг
        *    2026-09-07-нд зассан ч энэ файлд хүрээгүй байв.
        */
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
       start,
       num: PAGE,
     });
     /* ⚠️ 2026-10-20: AGOL түлхүүрийн хаяг (`TD/118`) → Enterprise. JS API-ийн `executeQueryJSON` нь `query.ts`-ийн
        цөмөөр явдаггүй тул зураглал ЭНД — урьд нь AGOL руу шууд явж 499 → «Тохиромжтой байдал» нээхэд AGOL-ын нэвтрэх
        цонх гардаг байв. Талбарын нэр (`Shape__Area` · `RefName_12` · `OBJECTID`) `lib/entInterceptor.ts` хөрвүүлнэ. */
-    const res = await query.executeQueryJSON(remapUrl(u), q);
+    const res = await query.executeQueryJSON(u, q);
     out.push(...(res.features as unknown as Feat[]));
     if (res.features.length === 0) break;
     if (res.features.length < PAGE && !res.exceededTransferLimit) break;
@@ -370,13 +369,13 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    `RefName_1`, `TOROL` → `Angilal`) энэ жагсаалт чимээгүй хоосон утга буцаана.
   const Z = ZONE_FIELDS;
   const zoneFeats0 = await fetchAll(url(SRC.zones), [
-    Z.id, Z.type, Z.areaHa, 'Shape__Area', Z.far, Z.farPct, Z.bcr,
+    Z.id, Z.type, Z.areaHa, 'SHAPE__Area', Z.far, Z.farPct, Z.bcr,
     Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
   /* ⚠️ 2026-10-21 (аудит): давхардсан код (X-13) — нэг бүс. ⚠️ 2026-10-22: бусад бүстэй давхцалгүй / нүхтэй хуулбар
      (`dedupeZoneFeats`-ийн ⚠️) — давхцлыг ЗӨВХӨН давхардсан кодын хуулбаруудад бодно (хямд). */
   const ringsOf = (f: Feat) => ((f.geometry as Polygon | null)?.rings ?? []) as number[][][];
-  const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.Shape__Area), {
+  const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.SHAPE__Area), {
     holesOf: (f) => interiorRingCount(ringsOf(f)),
     overlapOf: (f, others) => {
       const g = f.geometry as GeomArg | null;
@@ -397,7 +396,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
   onProgress(tr('Барилга байгууламж…'), 22);
   const buildings = await fetchAll(url(SRC.buildings), [
-    'OBJECTID', 'ZONE_ID', BF.population, BF.capacity, BF.households, BF.status,
+    'objectid', 'zone_id', BF.population, BF.capacity, BF.households, BF.status,
     BF.gfa, BF.purpose, BF.foot,
   ], true);
 
@@ -416,8 +415,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    `nogoon_baiguulamj_analysis`/118 руу шилжив. Обьект 807 = 807, талбай
   //    55 га = 55 га, `RefName_12`/`Angilal`/`Area_hec` талбар бүрэн адил.
   /* ⚠️ 2026-09-17: MUST → monmap `SELBE_ALL_DATA_last_0917` (ижил дугаар 118). */
-  const GREEN_DATA_URL = `${TD}/118`;
-  const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
+  const GREEN_DATA_URL = `${SELBE_ET}/114`;
+  const green = await fetchAll(GREEN_DATA_URL, ['refname_12', 'SHAPE__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);
   /* ⚠️ 2026-09-30: уналт ҮРГЭЛЖИЛНЭ (хагас дүн нь хоосноос дээр) ч НЭРЭЭР нь бүртгэнэ — `failed` */
@@ -428,13 +427,13 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     return [];
   };
   const [bus, lrt] = await Promise.all([
-    fetchAll(url(SRC.busStops), ['OBJECTID'], true).catch(soft(tr('Автобусны буудал'))),
-    fetchAll(url(SRC.lrtStops), ['OBJECTID'], true).catch(soft(tr('LRT буудал'))),
+    fetchAll(url(SRC.busStops), ['objectid'], true).catch(soft(tr('Автобусны буудал'))),
+    fetchAll(url(SRC.lrtStops), ['objectid'], true).catch(soft(tr('LRT буудал'))),
   ]);
 
   onProgress(tr('Инженерийн дэд бүтэц…'), 72);
   const engResults = await Promise.all(
-    ENGINEERING_IDS.map((id) => fetchAll(url(id), ['OBJECTID'], true).catch(soft(tr('Инженерийн дэд бүтэц')))),
+    ENGINEERING_IDS.map((id) => fetchAll(url(id), ['objectid'], true).catch(soft(tr('Инженерийн дэд бүтэц')))),
   );
 
   onProgress(tr('Орон зайн үзүүлэлт…'), 84);
@@ -463,7 +462,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const greenCats = new Set<string>();
   for (const f of green) {
     const a = f.attributes;
-    const zid = resolveZoneId(a.RefName_12, zoneIds);
+    const zid = resolveZoneId(a.refname_12, zoneIds);
     if (!zid) continue;
     // ⚠️ Ангилалгүй эх сурвалж — бүгд `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ
     //    (ЯГ таарах ёстой, эс бөгөөс `computeRaw`-ын `activeGreen` шүүлт 0 болгоно).
@@ -473,7 +472,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     const cat = GREEN_CATEGORIES[0].key;
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
-    bucket[cat] = (bucket[cat] ?? 0) + n(a.Shape__Area);
+    bucket[cat] = (bucket[cat] ?? 0) + n(a.SHAPE__Area);
     greenByZone.set(zid, bucket);
   }
 
@@ -488,8 +487,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     // ТАЛБАЙ — `Area` (га) нь бүсийн албан ёсны, зам/нийтийн эзэмшил хассан
     // цэвэр талбай. Санхүүд энэ, нягтшилд полигоны БОДИТ талбай хэрэглэнэ:
     // хүн ам бүсийн бүтэн газар нутаг дээр амьдардаг.
-    const areaHa = n(a[Z.areaHa]) > 0 ? n(a[Z.areaHa]) : n(a.Shape__Area) / 10_000;
-    const polyHa = n(a.Shape__Area) > 0 ? n(a.Shape__Area) / 10_000 : areaHa;
+    const areaHa = n(a[Z.areaHa]) > 0 ? n(a[Z.areaHa]) : n(a.SHAPE__Area) / 10_000;
+    const polyHa = n(a.SHAPE__Area) > 0 ? n(a.SHAPE__Area) / 10_000 : areaHa;
 
     // ⚠️ `FAR` талбар 52 бүсийн 22-т ЭВДЭРСЭН: утга таслагдаж 1.15-ын оронд
     //    0.01, 8.43-ын оронд 0.08 гэж бичигджээ. `FAR_HUVI` (хувиар) нь бүрэн
@@ -562,7 +561,7 @@ function locationPts(buildings: Feat[]): LocationPt[] {
     const pop = n(a[BF.population]);
     const cap = n(a[BF.capacity]);
     out.push({
-      oid: n(a.OBJECTID),
+      oid: n(a.objectid),
       purpose,
       group: buildingPurposeKey(purpose),
       zone: (a._zone as string | undefined) ?? null,

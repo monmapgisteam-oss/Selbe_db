@@ -57,7 +57,7 @@ export const NUMERIC_TYPES = new Set([
  * ЗАСАХ БОЛОМЖГҮЙ талбарууд — серверийн удирддаг багана.
  * ⚠️ `tableWrite.ts` эдгээрийг илгээхийн өмнө ч шүүдэг (давхар хамгаалалт).
  */
-export const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+export const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)/i;
 
 /**
  * ОРОН НУТГИЙН «YYYY-MM-DD» — `format.dayKey`-тэй ЯГ ИЖИЛ (тэр файл `@/…`
@@ -220,7 +220,8 @@ export type FinanceDraft = {
 /* ⚠️ 2026-10-21 (аудит): v3 — `fractionFields` (`FIN_XL_FRACTION`: үнэт цаасны хувь + `urdchilgaa_huvi`) БҮГД ×100
    нэгжээр хадгалагдана. v2 ноорогт зөвхөн `shareField` ×100 байсан тул бусад бутархай талбарын текстийг л үржүүлнэ
    (хувийг дахин үржихгүй); хувилбаргүй ноорогт бүгдийг. Хуучин алдаатай текст (`legacyShareInvalid`) хэвээр. */
-export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string, fractionFields: readonly string[] = []): FinanceDraft | null {
+export function upgradeFinanceDraft(draft0: FinanceDraft, shareField: string, fractionFields: readonly string[] = []): FinanceDraft | null {
+  const draft = lowerDraftFields(draft0);
   if (draft.v === 3) return draft;
   if (draft.v !== undefined && draft.v !== 2) return null;
   const scaledFields = new Set(draft.v === 2
@@ -248,6 +249,25 @@ export function upgradeFinanceDraft(draft: FinanceDraft, shareField: string, fra
     return next;
   });
   return { ...draft, v: 3, pend, adds, ...(invalid.size ? { legacyShareInvalid: [...invalid] } : {}) };
+}
+
+/**
+ * ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap`) хасагдсанаас ӨМНӨ хадгалсан ноорог талбарын AGOL үсгээр
+ *    (`7:Cashflow_huwi`) түлхүүрлэгдсэн байж болно; одоо код Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэрээр ажилладаг тул
+ *    сэргээхдээ талбарын хэсгийг жижиг үсэг болгоно (санхүүгийн хүснэгтийн бүх засагдах талбар жижиг үсэгтэй). Өөрчлөлтгүй
+ *    бол ЭХ объектоо буцаана.
+ */
+function lowerDraftFields(draft: FinanceDraft): FinanceDraft {
+  const lowKey = (k: string): string => { const i = k.indexOf(':'); return i < 0 ? k : k.slice(0, i + 1) + k.slice(i + 1).toLowerCase(); };
+  const pendKeys = Object.keys(draft.pend);
+  const pendChanged = pendKeys.some((k) => lowKey(k) !== k);
+  const addsChanged = draft.adds.some((row) => Object.keys(row).some((k) => k.toLowerCase() !== k));
+  if (!pendChanged && !addsChanged) return draft;
+  return {
+    ...draft,
+    pend: pendChanged ? Object.fromEntries(Object.entries(draft.pend).map(([k, v]) => [lowKey(k), v])) : draft.pend,
+    adds: addsChanged ? draft.adds.map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase(), v]))) : draft.adds,
+  };
 }
 
 /** Legacy ambiguous/malformed text keeps its original validation until the user corrects it. */

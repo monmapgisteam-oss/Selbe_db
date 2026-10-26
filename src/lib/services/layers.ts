@@ -1,7 +1,6 @@
-import { remapUrl } from './entMap';
 import { PLAN2D_LAYERS } from '../plan2d';
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_HOSTED, ET, HABEA_SVC, HJ, SOURCE_FS, TD } from './env';
+import { BAGTS_AJLUUD, ENT_HOSTED, HAB_KRAN, HABEA_SVC, HET, SELBE_ET, SOURCE_FS } from './env';
 import { OID, ZONE_FIELD } from './layerDef';
 import type { LayerDef } from './layerDef';
 import { BUILT_STATUS, M, M2, ZONE_CHART_TYPES, ZONE_MAP_TYPES, ZONE_TYPE_EMPTY, zoneType } from './palette';
@@ -31,7 +30,7 @@ const TD_ONLY_LAYERS: LayerDef[] = [
   {
     id: "dugui:line",
     n: 40,
-    url: `${TD}/40`,
+    url: `${SELBE_ET}/138`,
     get title() { return tr('Дугуйн зам — тэнхлэг'); },
     topic: "plan",
     geom: "line",
@@ -50,7 +49,7 @@ const TD_ONLY_LAYERS: LayerDef[] = [
   {
     id: "usan-san",
     n: 89,
-    url: `${TD}/89`,
+    url: `${SELBE_ET}/123`,
     get title() { return tr('Усан сан'); },
     topic: "plan",
     geom: "area",
@@ -58,13 +57,13 @@ const TD_ONLY_LAYERS: LayerDef[] = [
     fill: 0.35,
     width: 1,
     noZone: true,
-    qty: { field: "Shape__Area", unit: 'м²' },
+    qty: { field: "SHAPE__Area", unit: 'м²' },
   },
   /* ── Гэрлэн дохио. Геометр нь ШУГАМ (уулзварын хэсэг), цэг БИШ. ── */
   {
     id: "gerlen-dohio",
     n: 103,
-    url: `${TD}/103`,
+    url: `${SELBE_ET}/103`,
     get title() { return tr('Гэрлэн дохио'); },
     topic: "plan",
     geom: "line",
@@ -87,7 +86,7 @@ const TD_ONLY_LAYERS: LayerDef[] = [
 export const BOUNDARY = {
   plan: {
     // test_data [97] selbe_boundry — 2026-08-13 шилжив (khil1/khil2 мөн энд)
-    url: `${TD}/97`,
+    url: `${SELBE_ET}/115`,
     get title() { return tr('Төлөвлөлтийн талбай'); },
   },
 } as const;
@@ -105,7 +104,11 @@ export const BOUNDARY = {
  * ирнэ (`plan2dStyleOf` → `buildLayers`), каталогийн swatch нь fallback `hue`.
  * Талбай/уртыг нийлбэрт тооцуулахаар `qty` тохируулав.
  */
-const SB_BASE = `${HJ}/selbe_3D__0804_WFL1/FeatureServer`;
+/** sb давхарга бүрийн Enterprise хаяг (`selbe_ET/<№>`) — «2D map 0804»-ийн давхаргын дэд дугаар (`sub`) → БОДИТ давхарга.
+    ⚠️ 2026-10-21 (аудит): sb:5 нь `color` талбартай үндсэн хуулбар (selbe_ET/140) — TD/38-д `color` алга байсан. */
+const SB_ENT: Record<number, number> = {
+  0: 144, 1: 146, 2: 130, 3: 124, 4: 99, 5: 140, 7: 117, 8: 118, 10: 109, 11: 111, 13: 120, 14: 122, 15: 139, 16: 134,
+};
 /**
  * ⚠️ `ZONE_ID` талбартай sb давхаргууд — үйлчилгээнээс нэг бүрчлэн шалгасан
  * (2026-08-10): ЗӨВХӨН Явган зам (3) ба Барилга (4). Бусад 12 нь CAD-гаралтай
@@ -118,7 +121,7 @@ const SB_ZONED = new Set([3, 4]);
 const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   id: l.id,
   n: l.sub,
-  url: `${SB_BASE}/${l.sub}`,
+  url: `${SELBE_ET}/${SB_ENT[l.sub]}`,
   get title() { return l.title; },
   topic: "plan" as const,
   geom: l.geom,
@@ -127,9 +130,9 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
   width: 1,
   ...(SB_ZONED.has(l.sub) ? {} : { noZone: true as const }),
   ...(l.geom === "area"
-    ? { qty: { field: "Shape__Area", unit: 'м²' } }
+    ? { qty: { field: "SHAPE__Area", unit: 'м²' } }
     : l.geom === "line"
-    ? { qty: { field: "Shape__Length", unit: 'м' } }
+    ? { qty: { field: "SHAPE__Length", unit: 'м' } }
     : {}),
 }));
 
@@ -219,6 +222,8 @@ const REDESIGN_ZONE_HUES: Record<string, string> = {
  * ⚠️ `noZone` — `ZONE_ID` талбаргүй (CAD/OSM гаралтай).
  * ⚠️ Каталогийн бүлэгт (`GROUP_LAYERS`) ОРООГҮЙ — зөвхөн «Detail»-д ашиглагдана.
  */
+/** rd давхарга (`n` = хэрэглэгчийн «Redesign» дугаар, id-д хэвээр) → Enterprise `HET`-ийн давхаргын дугаар */
+const RD_ENT: Record<number, number> = { 0: 196, 1: 207, 2: 214, 6: 213, 7: 212, 8: 211, 9: 210, 11: 205, 12: 204, 13: 203, 18: 197 };
 const REDESIGN_LAYERS: LayerDef[] = ([
   { n: 1,  title: () => tr('Шинээр төлөвлөж буй барилга'),           hue: "#e11d48" },
   { n: 0,  title: () => tr('Автозам (шинэчлэгдсэн)'),           hue: "#64748b" },
@@ -248,10 +253,10 @@ const REDESIGN_LAYERS: LayerDef[] = ([
   hue: x.hue,
   fill: x.fill ?? 0.45,
   width: x.width ?? 0.8,
-  url: `${HJ}/Redesign/FeatureServer/${x.n}`,
+  url: `${HET}/${RD_ENT[x.n]}`,
   noZone: true as const,
-  oid: "FID",
-  qty: { field: "Shape__Area", unit: 'м²' },
+  oid: "objectid",
+  qty: { field: "SHAPE__Area", unit: 'м²' },
   ...(x.svc ? { serviceStyle: x.svc } : {}),
   ...(x.zonePaint ? {
     paint: {
@@ -283,7 +288,7 @@ export const LAYERS: LayerDef[] = [
      * зохиомол нэгж үнэ дээр тогтсон өртгийн загвар БҮХЭЛДЭЭ хасагдсан тул
      * одоо энэ талбарыг хаанаас ч уншихгүй.
      */
-    url: `${HJ}/Selbe_barilga_last/FeatureServer/0`,
+    url: `${SELBE_ET}/99`,
     get title() { return tr('Барилга'); },
     topic: "plan",
     geom: "area",
@@ -299,17 +304,17 @@ export const LAYERS: LayerDef[] = [
     width: 1.4,
     // ⚠️ `Барилгажсан_талбай` нь давхраар үржсэн НИЙТ шалны талбай (152 га) тул
     //    каталогийн талбайд барилгын бодит ХӨЛ (геометрийн Shape__Area, 21 га).
-    qty: { field: "Shape__Area", unit: 'м²' },
+    qty: { field: "SHAPE__Area", unit: 'м²' },
     get note() { return tr('төлөв, зориулалт, өрх, хүн ам'); },
     facets: [
-      { field: "Barilga_ty", get label() { return tr('Барилгын төлөв'); } },
-      { field: "Зориулалт_m", get label() { return tr('Зориулалт'); } },
+      { field: "barilga_ty", get label() { return tr('Барилгын төлөв'); } },
+      { field: "зориулалт_m", get label() { return tr('Зориулалт'); } },
       { field: "zoriulalt", get label() { return tr('Дэлгэрэнгүй зориулалт'); } },
-      { field: "TOROL", get label() { return tr('Бүсийн төрөл'); } },
-      { field: "Bar_comp", get label() { return tr('Барилгын компани'); } },
+      { field: "torol", get label() { return tr('Бүсийн төрөл'); } },
+      { field: "bar_comp", get label() { return tr('Барилгын компани'); } },
     ],
     paint: {
-      field: "Barilga_ty",
+      field: "barilga_ty",
       values: Object.fromEntries(BUILT_STATUS.map((x) => [x.value, x.hue])),
       get emptyLabel() { return tr('Тодорхойгүй'); },
     },
@@ -320,7 +325,7 @@ export const LAYERS: LayerDef[] = [
     id: "mon:building",
     /* ⚠️ 2026-08-24: нэгтгэсэн `data`/112 — `BUILDING` тогтмолын тайлбарыг үз. */
     n: 112,
-    url: `${TD}/112`,
+    url: `${BAGTS_AJLUUD}/0`,
     get title() { return tr('Барилгын блок (гүйцэтгэл)'); },
     topic: "monitor",
     geom: "area",
@@ -329,7 +334,7 @@ export const LAYERS: LayerDef[] = [
     width: 1.4,
     noZone: true,
     detail: "building",
-    oid: "OBJECTID",
+    oid: "objectid",
     get note() { return tr('Гүйцэтгэл «Гүйцэтгэл бөглөх» хүснэгтээс амьд'); },
     /* ⚠️ `breaks` (GUITS_HV) 2026-08-13-нд ХАСАГДАВ: давхаргын GUITS_HV талбар
        ХУУЧИРСАН (5–14 нэгж зөрдөг) бөгөөд эхний зураглалт болон каталогийн
@@ -344,7 +349,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:buffer",
     n: 51,
-    url: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/51`,
+    url: `${HAB_KRAN}/195`,
     get title() { return tr('Цамхагт краны аюултай бүс'); }, // ⚠️ 2026-10-08 (хэрэглэгч): «Аюулгүйн бүс» биш — краны хүрээ нь АЮУЛТАЙ бүс
     topic: "monitor",
     geom: "area",
@@ -352,11 +357,11 @@ export const LAYERS: LayerDef[] = [
     fill: 0.1,
     width: 1,
     noZone: true,
-    oid: "OBJECTID",
+    oid: "objectid",
     /* ⚠️ 2026-10-08 (хэрэглэгч): «Буусан» краны бүс САРААЛ — цэг [50]-тай ЯГ ижил палитр.
        Бүс [51] нь цэгийн буфер (`ORIG_FID`) тул `Tuluv` талбарыг өвлөсөн (попап нь уншдаг). */
     paint: {
-      field: "Tuluv",
+      field: "tuluv",
       values: { "Одоо байгаа": "#dc2626", "Шинээр нэмэгдсэн": "#dc2626", "Буусан": "#9ca3af" },
       /* ⚠️ ЗӨВХӨН «Буусан» саарал — бусад/хоосон төлөв улаан хэвээр */
       defaultHue: "#dc2626",
@@ -367,7 +372,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:crane",
     n: 50,
-    url: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/50`,
+    url: `${HAB_KRAN}/194`,
     get title() { return tr('Цамхагт кран'); },
     topic: "monitor",
     geom: "point",
@@ -375,11 +380,11 @@ export const LAYERS: LayerDef[] = [
     marker: "circle",
     size: 7, // ⚠️ 2026-10-08 (хэрэглэгч): 11 → 7, жижиг цэг
     noZone: true,
-    oid: "OBJECTID",
+    oid: "objectid",
     /* ⚠️ 2026-10-08 (хэрэглэгч): «Буусан» кран зураг ба чарт дээр САРААЛ (`Habea.CRANE_HUE`-тэй
        ижил). `force` — webmap-ын снапшот нэг өнгөөр зурдаг тул давамгайлна. */
     paint: {
-      field: "Tuluv",
+      field: "tuluv",
       values: { "Одоо байгаа": "#dc2626", "Шинээр нэмэгдсэн": "#dc2626", "Буусан": "#9ca3af" },
       /* ⚠️ ЗӨВХӨН «Буусан» саарал — бусад/хоосон төлөв улаан хэвээр */
       defaultHue: "#dc2626",
@@ -614,7 +619,7 @@ export const LAYERS: LayerDef[] = [
     width: 0.5,
     noZone: true,
     // ⚠️ qty (area_m2) test_data [96]-д устсан — системийн Shape__Area-г ашиглана
-    qty: { field: "Shape__Area", unit: 'м²' },
+    qty: { field: "SHAPE__Area", unit: 'м²' },
     facets: [
       { field: GAZAR_BUILDING.fields.type, get label() { return tr('Төрөл'); } },
       { field: GAZAR_BUILDING.fields.material, get label() { return tr('Материал'); } },
@@ -631,6 +636,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:11",
     n: 11,
+    url: `${SELBE_ET}/132`,
     get title() { return tr('Гадна дулаан — цэнхэр шугам'); },
     topic: "plan",
     geom: "line",
@@ -652,6 +658,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:15",
     n: 15,
+    url: `${SELBE_ET}/142`,
     get title() { return tr('Инженерийн бэлтгэл арга хэмжээ'); },
     topic: "plan",
     geom: "line",
@@ -661,7 +668,7 @@ export const LAYERS: LayerDef[] = [
     qty: M,
     // ⚠️ Нэг мөр биш, огт өөр арга хэмжээнүүд (хашаа, тэгшилгээ, далан…) нэг
     //    давхаргад багтдаг тул `Layer`-ээр ЗААВАЛ задална.
-    facets: [{ field: "Layer", get label() { return tr('Арга хэмжээний төрөл'); } }],
+    facets: [{ field: "layer", get label() { return tr('Арга хэмжээний төрөл'); } }],
     // Каталогт төрлөөрөө задарна — энэ давхарга нэг мөр биш, багц арга хэмжээ
     catalogFacet: true,
   },
@@ -676,6 +683,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:29",
     n: 29,
+    url: `${SELBE_ET}/130`,
     get title() { return tr('Зам (талбай)'); },
     topic: "plan",
     geom: "area",
@@ -688,6 +696,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:5",
     n: 5,
+    url: `${SELBE_ET}/102`,
     get title() { return tr('Замын тэнхлэг'); },
     topic: "plan",
     geom: "line",
@@ -714,6 +723,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:27",
     n: 27,
+    url: `${SELBE_ET}/124`,
     get title() { return tr('Явган хүний зам'); },
     topic: "plan",
     geom: "area",
@@ -723,9 +733,9 @@ export const LAYERS: LayerDef[] = [
     fill: 0.7,
     width: 0.6,
     qty: M2,
-    facets: [{ field: "Code", get label() { return tr('Төрөл'); } }],
+    facets: [{ field: "code", get label() { return tr('Төрөл'); } }],
     paint: {
-      field: "Code",
+      field: "code",
       values: {
         /* Явган хүний зам — дулаахан элсэн өнгө */
         "1": "#d6b48a",
@@ -753,7 +763,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "dugui",
     n: 1,
-    url: `${HJ}/dugui_zam_20260731/FeatureServer/1`,
+    url: `${SELBE_ET}/139`,
     get title() { return tr('Дугуйн зам'); },
     topic: "plan",
     geom: "area",
@@ -765,12 +775,13 @@ export const LAYERS: LayerDef[] = [
        (`dugui: 39`) энэ `url`-ыг `data`/39 руу шилжүүлж (энэ `url` нь `styleUrl` болно),
        `TD_FORCE_NOZONE` нь `zoneField`-ийг УСТГАЖ `noZone` болгодог (/39-д `RefName_1` алга). Бүсийн
        шүүлтэд дугуйн зам ОРОХГҮЙ. Энд үлдээсэн нь шилжүүлэгчийг хасвал сэргээх хэлбэр. */
-    zoneField: "RefName_1",
-    qty: { field: "Shape__Area", unit: 'м²' },
+    zoneField: "refname_1",
+    qty: { field: "SHAPE__Area", unit: 'м²' },
   },
   {
     id: "et:12",
     n: 12,
+    url: `${SELBE_ET}/135`,
     get title() { return tr('Гүүрэн байгууламж'); },
     topic: "plan",
     geom: "line",
@@ -784,6 +795,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:6",
     n: 6,
+    url: `${SELBE_ET}/128`,
     get title() { return tr('Автобусны чиглэл'); },
     topic: "plan",
     geom: "line",
@@ -796,6 +808,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:2",
     n: 2,
+    url: `${SELBE_ET}/127`,
     get title() { return tr('Автобусны буудал'); },
     topic: "plan",
     geom: "point",
@@ -806,6 +819,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "et:1",
     n: 1,
+    url: `${SELBE_ET}/112`,
     get title() { return tr('LRT/BRT зогсоол'); },
     topic: "plan",
     geom: "point",
@@ -825,8 +839,8 @@ export const LAYERS: LayerDef[] = [
   {
     id: "zone",
     n: 0,
-    url: `${HJ}/busiin_medeelel_final/FeatureServer/0`,
-    oid: "FID",
+    url: `${SELBE_ET}/100`,
+    oid: "objectid",
     get title() { return tr('Хот төлөвлөлтийн бүс'); },
     topic: "plan",
     geom: "area",
@@ -834,20 +848,20 @@ export const LAYERS: LayerDef[] = [
     hue: "#f97316",
     fill: 0.3,
     width: 1,
-    qty: { field: "GAZAR_M2", unit: 'м²' },
+    qty: { field: "gazar_m2", unit: 'м²' },
     // ⚠️ Бүсийн ӨӨРИЙН кодын талбар — `ZONE_ID` БИШ. Бүсийн шүүлт үүн дээр тогтоно.
-    zoneField: "RefName_1",
+    zoneField: "refname_1",
     get note() { return tr('FAR, BCR, зогсоолын үзүүлэлттэй'); },
     facets: [
       /* ⚠️ 2026-10-21 (аудит): `canon: zoneType` — каталогийн facet англи горимд 8-ын 7 нь монголоор үлддэг байв
          (өгөгдөл жижиг үсэг, толь каноник); ZoneFilter-тэй ижил каноник нэр, `where` түүхий хэвээр. */
-      { field: "Angilal", get label() { return tr('Бүсийн ангилал'); }, canon: zoneType },
+      { field: "angilal", get label() { return tr('Бүсийн ангилал'); }, canon: zoneType },
       { field: "zoriulalt", get label() { return tr('Зориулалт'); } },
     ],
     // ⚠️ Зурагт зөвхөн орон сууц/олон нийт улаанаар — бусад нь жигд суурь өнгө
     // ⚠️ Зурагт 2 өнгө (чухал ↔ суурь), диаграмд ангилал бүр өөрийн өнгөтэй.
     paint: {
-      field: "Angilal",
+      field: "angilal",
       values: ZONE_MAP_TYPES,
       chartValues: ZONE_CHART_TYPES,
       get emptyLabel() { return ZONE_TYPE_EMPTY(); },
@@ -910,7 +924,7 @@ export const LAYERS: LayerDef[] = [
     id: "source:eh",
     n: 7,
     url: SOURCE_FS.url,
-    oid: "OBJECTID",
+    oid: "objectid",
     get title() { return tr('Эх үүсвэр'); },
     topic: "plan",
     geom: "area",
@@ -956,7 +970,7 @@ export const LAYERS: LayerDef[] = [
     /* ⚠️ `url` ил өгсөн тул `n` нь ашиглагддаггүй — төрлийн шаардлага */
     n: 105,
     url: SOURCE_FS.url,
-    oid: "OBJECTID",
+    oid: "objectid",
     get title() { return tr(type); },
     topic: "plan",
     geom: "area",
@@ -990,15 +1004,15 @@ export const LAYERS: LayerDef[] = [
        `TD_FORCE_NOZONE`-оор ҮХМЭЛ болж /35 (нэгтгэсэн ганц полигон, бүсгүй)
        руу дарагдаж байсныг засав — тэнд тайлбартай. Загвар (`plan2dStyleOf`
        alias → `sb:1`) url-аас хамаарахгүй тул зураг дээрх төрх ХЭВЭЭР. */
-    url: `${TD}/118`,
+    url: `${SELBE_ET}/114`,
     get title() { return tr('Ногоон байгууламж'); },
     topic: "plan",
     geom: "area",
     hue: "#8ebd00",
     fill: 0.34,
     width: 0.8,
-    zoneField: "RefName_12",
-    qty: { field: "Shape__Area", unit: 'м²' },
+    zoneField: "refname_12",
+    qty: { field: "SHAPE__Area", unit: 'м²' },
   },
   /* ⚠️ 2026-08-24: `et:26` «Цэцэрлэгт хүрээлэн, ногоон алхалт» УСТГАГДАВ —
      эзэмшигчийн шийдвэрээр угаасаа хэрэггүй өгөгдөл байсан. Ногоон
@@ -1029,7 +1043,7 @@ export const LAYERS: LayerDef[] = [
        алга). Тиймээс цэгийн SVG/3D дүрс (`toglRenderer`, `tgl3d`) ажиллахгүй —
        MapCanvas тэдгээрийг `geom === 'point'` үед л хэрэглэнэ; одоо энгийн
        талбайн давхарга. */
-    url: `${TD}/140`,
+    url: `${SELBE_ET}/148`,
     get title() { return tr('Хүүхдийн тоглоом'); },
     topic: "plan",
     geom: "area",
@@ -1042,7 +1056,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "road",
     n: 193,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/193`,
+    url: `${SELBE_ET}/102`,
     get title() { return tr('Авто зам'); },
     topic: "plan",
     geom: "line",
@@ -1055,7 +1069,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "roadOld",
     n: 194,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/194`,
+    url: `${SELBE_ET}/113`,
     get title() { return tr('Одоо байгаа зам'); },
     topic: "plan",
     geom: "line",
@@ -1074,7 +1088,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "bm146",
     n: 146,
-    url: `${HJ}/${encodeURIComponent('Бусад_мэдээлэл_20260724')}/FeatureServer/146`,
+    url: `${SELBE_ET}/136`,
     get title() { return tr('Дамбадаржаа дулааны станц'); },
     topic: "plan",
     geom: "line",
@@ -1097,7 +1111,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "khil1",
     n: 2,
-    url: `${HJ}/Tuluvlult_talbai/FeatureServer/2`,
+    url: `${SELBE_ET}/115`,
     get title() { return tr('Сэлбэ 1 хил'); },
     topic: "plan",
     geom: "area",
@@ -1126,30 +1140,20 @@ export const LAYERS: LayerDef[] = [
  * `bm128`/`bm145`/`bm87` давхаргууд нь ЭНД биш, `LAYERS`-ээс БҮРМӨСӨН
  * устгагдсан (давхардсан эсвэл хэрэггүй өгөгдөл байв).
  */
-const TD_LAYER: Record<string, number> = {
-  /* sb — «2D map 0804» webmap давхаргууд */
-  "sb:0": 36, "sb:1": 35, "sb:2": 85, "sb:3": 88, "sb:4": 108, /* sb:5 — 2026-10-21 (аудит): TD/38-д `color` талбар алга (plan2d рендерер цагаан тасархай/бүтэн зураасыг түүгээр ялгадаг → 3465 шугам саарал) — үндсэн `selbe_3D__0804_WFL1/5` (→ selbe_ET/140, `color`-той, ижил 3465 мөр) хэвээр */
-  "sb:7": 93, "sb:8": 92, "sb:10": 101, "sb:11": 100, "sb:13": 91, "sb:14": 90,
-  "sb:15": 39, "sb:16": 43,
-  /* et — ерөнхий төлөвлөгөө */
-  /* ⚠️ 2026-09-17 (2): `et:3 4 7 8 9 10 16 17 18 19 23` ХАСАГДАВ — эх давхарга
+/* ⚠️ 2026-10-26 (хөрвүүлэх хүснэгтгүй болгосон): `TD_LAYER` (id → `SELBE_ALL_DATA_last_0917` дугаар) ХАСАГДАВ —
+   давхарга бүр Enterprise-ийн БОДИТ хаягаа өөрийн `url`-д агуулна. Доорх нь тэр хүснэгтийн түүхэн шийдвэрүүд. */
+/* sb — «2D map 0804» webmap давхаргууд */
+/* sb:5 — 2026-10-21 (аудит): TD/38-д `color` талбар алга (plan2d рендерер цагаан тасархай/бүтэн зураасыг түүгээр ялгадаг → 3465 шугам саарал) — үндсэн `selbe_3D__0804_WFL1/5` (→ selbe_ET/140, `color`-той, ижил 3465 мөр) хэвээр */
+/* et — ерөнхий төлөвлөгөө */
+/* ⚠️ 2026-09-17 (2): `et:3 4 7 8 9 10 16 17 18 19 23` ХАСАГДАВ — эх давхарга
      нь `SELBE_ALL_DATA_last_0917`-д устгагдсан (`infra:*`-ээр солигдсон).
      `et:12` → 141 (`Гүүр`, шинэ CAD давхарга). */
-  "et:1": 99, "et:2": 87, "et:5": 104, "et:6": 86,
-  "et:11": 51, "et:12": 141,
-  "et:15": 37,
-  "et:24": 108, "et:27": 88, "et:29": 85,
-  /* pkg — дэд бүтцийн багцууд */
-  /* ⚠️ 2026-10-09: `pkg:33…43` · `pkg:93…108` · `pkg:147…157` (27 бичлэг) ХАСАГДАВ — `PKG_TABLE`-д
+/* pkg — дэд бүтцийн багцууд */
+/* ⚠️ 2026-10-09: `pkg:33…43` · `pkg:93…108` · `pkg:147…157` (27 бичлэг) ХАСАГДАВ — `PKG_TABLE`-д
      (тиймээс `LAYERS`-д) тэр id-тай давхарга АЛГА (инженерийн шугамууд `infra:*` болсон) тул доорх
      гогцоо тэдэнд хэзээ ч хүрдэггүй, үхмэл тохиргоо байв. */
-  "pkg:195": 31, "pkg:198": 50, "pkg:201": 30, "pkg:203": 49, "pkg:205": 48,
-  "pkg:206": 29, "pkg:209": 28, "pkg:210": 47, "pkg:213": 46, "pkg:214": 27,
-  "pkg:217": 26, "pkg:218": 45, "pkg:221": 25, "pkg:222": 44,
-  "pkg:226": 4, "pkg:228": 10, "pkg:230": 12, "pkg:232": 11, "pkg:234": 3,
-  "pkg:235": 2, "pkg:236": 1, "pkg:237": 0, "pkg:242": 142, "pkg:243": 22,
-  /* бусад тусдаа үйлчилгээнээс нэгдсэн */
-  /* ⚠️ 2026-09-21: `nogoon: 35` ХАСАГДАВ. Энэ бичлэг LayerDef-ийн `url`
+/* бусад тусдаа үйлчилгээнээс нэгдсэн */
+/* ⚠️ 2026-09-21: `nogoon: 35` ХАСАГДАВ. Энэ бичлэг LayerDef-ийн `url`
      (/118) ба `zoneField: "RefName_12"`-ийг чимээгүй дарж `data`/35 руу
      онооход амьд шалгалт: /35 = `Ногоон_байгууламж_0813` — 807 хэсгийг
      НЭГТГЭСЭН ГАНЦ полигон (1 мөр, 587,555 м², `RefName_12` АЛГА) = `sb:1`-ийн
@@ -1158,15 +1162,13 @@ const TD_LAYER: Record<string, number> = {
      үлдэж, «Ногоон байгууламж» тоо бүсээс хамаарахгүй байв. Одоо LayerDef
      хэвээр /118 (бүсийн хилээр тайрагдсан тул нийт 4.2 га бага — бүсээс
      ГАДУУРХ ногоон энд байхгүй, `sb:1` суурь давхаргад харагдсаар). */
-  /* ⚠️ 2026-10-11 (аудит №7): `tgl: 102` ХАСАГДАВ — LayerDef-ийн 2026-09-17-ны огноотой шийдвэр
+/* ⚠️ 2026-10-11 (аудит №7): `tgl: 102` ХАСАГДАВ — LayerDef-ийн 2026-09-17-ны огноотой шийдвэр
      (`url: ${TD}/140`, `geom: "area"`)-ийг энэ бичлэг чимээгүй дарж /102 руу онооход, амьд баталгаажуулалт
      (2026-10-11, админ токеноор зөвхөн унших тандалт): /102 = `huuhdiin_togloom_0813` — хуучин ЦЭГЭН
      хуулбар, esriGeometryPoint, 111 цэг, 7 талбар; /140 = `Тоглоомын_талбай` — esriGeometryPolygon,
      54 полигон, 25 талбар. Талбайн дүүргэлттэй LayerDef-д /140 л тохирно; /102-ыг дахин хэрэглэх бол
      амьд үйлчилгээгээр баталгаажуулах. */
-  dugui: 39, zone: 106, khil1: 97,
-  road: 104, roadOld: 98, bm146: 41,
-  /* ⚠️ 2026-09-04: `khil2: 97` ХАСАГДАВ. Үхсэн `Tuluvlult_talbai`-аас нэгтгэсэн
+/* ⚠️ 2026-09-04: `khil2: 97` ХАСАГДАВ. Үхсэн `Tuluvlult_talbai`-аас нэгтгэсэн
      `data` руу шилжүүлэх үед «Сэлбэ 2 хил» нь «Сэлбэ 1 хил»-ийн мөрийг хамт
      дараад авчихсан байв — хоёулаа `data`/97 руу зааж, каталогт нэг полигон
      хоёр нэрээр гарч, «Сэлбэ 2 хил»-ийг асаахад Сэлбэ 1-ийн полигон ЯГАНААР
@@ -1175,11 +1177,10 @@ const TD_LAYER: Record<string, number> = {
      Амьд хэмжилт (2026-09-04): `data`/97 = `selbe_boundry_0813`, 1 обьект,
      Shape__Area 159.5684 га; `Сэлбэ_2_khil`/0 = «Сэлбэ-2», 2 обьект,
      Shape__Area 21.7593 га — өөр талбай, өөр обьектын тоо, өөр oid (`FID`). */
-  /* ⚠️ `land:left` ЭНД БАЙХГҮЙ: 2026-08-19-нд өөрийн шинэ үйлчилгээ рүү
+/* ⚠️ `land:left` ЭНД БАЙХГҮЙ: 2026-08-19-нд өөрийн шинэ үйлчилгээ рүү
      (`selbe_parcel_last0731`) шилжсэн. Энд буцааж нэмбэл миграцийн гогцоо
      `PARCEL_LEFT.url`-ыг test_data [94] руу дарж бичиж, шинэчлэл замхарна. */
-  "gazar:parcel": 95, "gazar:building": 96,
-  /* ⚠️ `habea:crane` (8) ба `habea:buffer` (7) ЭНДЭЭС ХАСАГДАВ (2026-09-04,
+/* ⚠️ `habea:crane` (8) ба `habea:buffer` (7) ЭНДЭЭС ХАСАГДАВ (2026-09-04,
      хэрэглэгчийн хүсэлт). Тэдгээр нь одоо ӨӨРИЙН үйлчилгээ рүү шууд ханддаг:
      `Цамхагт_кран/FeatureServer/50` ба `/51` (LayerDef-ийн `url` аль хэдийн
      тийш заасан байсан — зөвхөн энэ шилжүүлэгч дарж бичиж байв).
@@ -1190,7 +1191,6 @@ const TD_LAYER: Record<string, number> = {
      хуулбар дээр «ажиллаж байгаа» мэт харагддаг байсан. `Habea.tsx`-ийн
      «идэвхтэй N/N» гэсэн заалт яг ЭНЭ шалтгаанаар (§967, §1167) ганц тоо
      болж хураагдсан — эх сурвалж руу буцсанаар тэр ялгаа сэргэнэ. */
-};
 
 /** `talbai_m2` атрибут нь [id]-д устсан — системийн Shape__Area-д буулгана */
 const TD_QTY_SYS_AREA = new Set([
@@ -1201,7 +1201,7 @@ const TD_QTY_SYS_AREA = new Set([
 /* ⚠️ `et:12` (`Гүүр` 141) — CAD давхарга, `urt_m` алга (2026-09-17). */
 const TD_QTY_SYS_LENGTH = new Set(["et:5", "et:12"]);
 /** qty-ийн талбар нь ӨӨР нэрээр хадгалагдсан давхаргууд */
-const TD_QTY_FIELD: Record<string, string> = { "pkg:237": "Area_m2" };
+const TD_QTY_FIELD: Record<string, string> = { "pkg:237": "area_m2" };
 /** Бүсийн талбар нь test_data-д устсан — нэгдсэн шүүлтээс гаргана */
 /* ⚠️ `et:12`(141) · `pkg:242`(142) — шинэ CAD давхаргад `ZONE_ID` алга (2026-09-17). */
 /* ⚠️ 2026-09-21: `nogoon` ХАСАГДАВ — `TD_LAYER`-ийн тайлбарыг үз (/118 нь
@@ -1214,7 +1214,7 @@ const TD_FORCE_NOZONE = new Set(["dugui", "pkg:234", "et:12", "pkg:242"]);
  * OBJECTID болсон» гэсэн ХУДАЛ баримт үлдээж байв. Амьд шалгалт:
  * `Сэлбэ_2_khil`/0-ийн `objectIdField` = `FID` (LayerDef-д ил бичигдсэн).
  */
-const TD_OID: Record<string, string> = { zone: "OBJECTID" };
+const TD_OID: Record<string, string> = { zone: "objectid" };
 /** catalogFacet-ийн ангиллын талбар нь устсан — задаргааг авна */
 const TD_DROP_FACETS = new Set(["et:15"]);
 
@@ -1225,23 +1225,10 @@ const TD_DROP_FACETS = new Set(["et:15"]);
  * zoneField/oid) давхарга бүрд аюулгүй болгоно — эс бөгөөс байхгүй талбараар
  * query явж давхарга бүхэлдээ унана.
  */
-/**
- * ⚠️ 2026-10-11 (аудит №7): `styleUrl` нь `public/webmap-style.json`-д ТҮЛХҮҮРГҮЙ давхаргууд — хуучин
- *    хаяг нь снапшотод хэзээ ч байгаагүй (`gazar:*` = TD/95·96, `et:11`/`et:5` ET-д загваргүй,
- *    `bm146` = Бусад_мэдээлэл/146 (снапшотод зөвхөн 193·194), `khil1` = Tuluvlult_talbai/2).
- *    Үхмэл түлхүүр тавихгүй — `webmapStyleOf(layerUrl)` мөн олохгүй тул каталогийн загвар хэвээр,
- *    зурагт өөрчлөлтгүй. `layerUrls.check.mjs` үлдсэн бүх `styleUrl` снапшотод (эсвэл `plan2d`-д)
- *    олдохыг батална.
- */
-const NO_WEBMAP_STYLE = new Set(["gazar:parcel", "gazar:building", "et:11", "et:5", "bm146", "khil1"]);
 
 for (const l of LAYERS) {
-  const n = TD_LAYER[l.id];
-  if (n == null) continue;
-  if (!NO_WEBMAP_STYLE.has(l.id)) l.styleUrl = l.url ?? `${ET}/${l.n}`;
-  l.url = `${TD}/${n}`;
-  if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "Shape__Area", unit: 'м²' };
-  if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "Shape__Length", unit: 'м' };
+  if (l.qty && TD_QTY_SYS_AREA.has(l.id)) l.qty = { field: "SHAPE__Area", unit: 'м²' };
+  if (l.qty && TD_QTY_SYS_LENGTH.has(l.id)) l.qty = { field: "SHAPE__Length", unit: 'м' };
   const qf = TD_QTY_FIELD[l.id];
   if (l.qty && qf) l.qty = { ...l.qty, field: qf };
   if (TD_FORCE_NOZONE.has(l.id)) {
@@ -1323,9 +1310,7 @@ export const layerUrl = (l: LayerDef) => {
       `Хуучин ET нөөц зам хаагдсан үйлчилгээ рүү зааж байсан тул устгав.`,
     );
   }
-  /* ⚠️ 2026-10-20: Enterprise зураглал (`entMap.remapUrl`) — JS API давхарга ба үүгээр асуудаг бүх зам.
-     `styleUrl` зураглагдахгүй (хаяг биш, webmap-загварын түлхүүр). */
-  return remapUrl(l.url);
+  return l.url;
 };
 
 /* ⚠️ 2026-08-24: `costSource()` УСТГАГДАВ — `LayerDef.cost`/`costSrc` талбарууд
@@ -1347,16 +1332,16 @@ export const BUILT_LAYER = LAYER_BY_ID["et:24"];
 
 /** Барилгын давхаргын онцлох талбарууд */
 export const BUILT_FIELDS = {
-  status: "Barilga_ty",
-  purpose: 'Зориулалт_m',
-  floorArea: 'Барилгын_нийт_талбай_m2',
-  usable: 'Барилгажсан_талбай',
-  households: "Urhiin_too",
-  population: "Total_population",
-  parking: "Parking",
-  floors: 'Давхрын_тоо_max',
-  block: 'Блокы',
-  company: "Bar_comp",
+  status: "barilga_ty",
+  purpose: 'зориулалт_m',
+  floorArea: 'барилгын_нийт_талбай_m2',
+  usable: 'барилгажсан_талбай',
+  households: "urhiin_too",
+  population: "total_population",
+  parking: "parking",
+  floors: 'давхрын_тоо_max',
+  block: 'блокы',
+  company: "bar_comp",
 } as const;
 
 /**
@@ -1373,23 +1358,23 @@ export const BUILT_FIELDS = {
  * хэвээр бодогдоно.
  */
 export const ZONE_FIELDS = {
-  id: "RefName_1",
-  type: "Angilal",
+  id: "refname_1",
+  type: "angilal",
   purpose: "zoriulalt",
-  landM2: "GAZAR_M2",
-  landHa: "GAZAR_GA",
-  builtM2: "BAR_M2",
-  far: "FAR",
+  landM2: "gazar_m2",
+  landHa: "gazar_ga",
+  builtM2: "bar_m2",
+  far: "far",
   /** FAR хувиар — түүхий `FAR` талбар зарим бүст таслагдсан тул үүнийг эрхэмлэнэ */
-  farPct: "FAR_HUVI",
-  bcr: "BCR",
-  households: "URH_TOO",
+  farPct: "far_huvi",
+  bcr: "bcr",
+  households: "urh_too",
   /** Албан ёсны цэвэр талбай (га) — зам, нийтийн эзэмшил хассан */
-  areaHa: "Area",
-  parkNorm: "NORM_ZOGS",
-  parkPlanOpen: "GADNA_ZOG",
-  parkPlanUnder: "DUL_ZOG",
-  coverage: "HURTEEMJ",
+  areaHa: "area",
+  parkNorm: "norm_zogs",
+  parkPlanOpen: "gadna_zog",
+  parkPlanUnder: "dul_zog",
+  coverage: "hurteemj",
   /** Газар чөлөөлөлт дуусаагүй бүс (1/0) */
   landPending: "ga_ch_dut",
 } as const;

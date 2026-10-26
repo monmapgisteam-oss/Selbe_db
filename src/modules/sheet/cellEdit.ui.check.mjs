@@ -28,7 +28,7 @@ const { useCellEdit: makeCellEdit } = await import('./fill/useCellEdit.ts');
 const { computeAll } = await import('./bagtsSheet.ts');
 
 /** Нэг блоктой бүдүүвч (обьёмын талбартай) */
-const sc = { bld: ['5/1', '5/2'], obyem: ['F5_1_obyem', 'F5_2_obyem'], act: ['F5_1', 'F5_2'] };
+const sc = { bld: ['5/1', '5/2'], obyem: ['f5_1_obyem', 'f5_2_obyem'], act: ['F5_1', 'F5_2'] };
 const row = (oid, vol, obyem, act) => ({
   oid, no: String(oid), work: `Ажил ${oid}`, group: false, depth: 1,
   wC: null, wD: null, money: null,
@@ -291,18 +291,18 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const { seriesBands } = await import('./bagts.bands.ts');
   const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
   const common = [
-    F('ObjectID', 'esriFieldTypeOID'), F('GlobalID', 'esriFieldTypeGlobalID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
-    F('Хувийн_жин'), F('Хувийн_жин1'), F('Хувийн_жин__Одоо_байгаа'), F('Обьём'), F('Нэгж_өртөг'), F('Мөнгөн_дүн'),
-    F('Төлөвлөгөөт_гүйцэтгэл'), F('Бодит_гүйцэтгэл'), F('Төлөвлөгөө_биелэлт'),
-    F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
-    F('Des_dugaar', 'esriFieldTypeInteger'), F('Hamaaral', 'esriFieldTypeString'), F('Инженерийн_төлөвлөсөн_обьём'),
+    F('objectid', 'esriFieldTypeOID'), F('globalid', 'esriFieldTypeGlobalID'), F('f_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('хувийн_жин'), F('хувийн_жин1'), F('хувийн_жин__одоо_байгаа'), F('Обьём'), F('нэгж_өртөг'), F('мөнгөн_дүн'),
+    F('төлөвлөгөөт_гүйцэтгэл'), F('бодит_гүйцэтгэл'), F('төлөвлөгөө_биелэлт'),
+    F('шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
+    F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'), F('инженерийн_төлөвлөсөн_обьём'),
     F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
-    F('obyem_sum'), F('CreationDate', 'esriFieldTypeDate'), F('Creator', 'esriFieldTypeString'),
-    F('EditDate', 'esriFieldTypeDate'), F('Editor', 'esriFieldTypeString'),
+    F('obyem_sum'), F('created_date', 'esriFieldTypeDate'), F('created_user', 'esriFieldTypeString'),
+    F('last_edited_date', 'esriFieldTypeDate'), F('last_edited_user', 'esriFieldTypeString'),
   ];
   /* Блокгүй (Bagts_6_1 · 2026-10-09-ний амьд бүтэц) */
-  const blokgui = [...common, F('Ажил_гүйцэтгэл'), F('Төлөвлөгөөт_гүйцэтгэл1'),
-    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
+  const blokgui = [...common, F('ажил_гүйцэтгэл'), F('төлөвлөгөөт_гүйцэтгэл1'),
+    F('төлөвлөгөөт_хуваарь__эхлэх', 'esriFieldTypeDate'), F('төлөвлөгөөт_хуваарь__дуусах', 'esriFieldTypeDate'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
     F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate')];
   /* Барилгын (2 блок, мөрийн түвшний geree/bodit/L/M АЛГА — блокийн F…_geree_* «Хуваарь»-д) */
@@ -362,10 +362,10 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     `9a: блокгүй — зөвхөн Бодит эхэлсэн/дууссан (${exB.map((x) => x.key)})`);
   ok(!exB.some((x) => /^(ObjectID|GlobalID)$/i.test(x.field)), '9a: ObjectID/GlobalID харуулахгүй');
   const rawB = {
-    Des_dugaar: 17, Hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
+    des_dugaar: 17, hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
     geree_ehleh: D('2026-03-01'), geree_duusah: D('2026-09-30'), bodit_ehleh: D('2026-03-05'), bodit_duusah: null,
-    buglusun_ognoo: D('2026-10-08'), 'Ажил_гүйцэтгэл': 0.253, 'Төлөвлөгөөт_гүйцэтгэл1': 0,
-    CreationDate: Date.UTC(2026, 9, 8, 3, 0), Creator: 'monmap_admin', EditDate: null, Editor: 'tumenjargal.g',
+    buglusun_ognoo: D('2026-10-08'), 'ажил_гүйцэтгэл': 0.253, 'төлөвлөгөөт_гүйцэтгэл1': 0,
+    created_date: Date.UTC(2026, 9, 8, 3, 0), created_user: 'monmap_admin', last_edited_date: null, last_edited_user: 'tumenjargal.g',
   };
   const B = render(scB, [mk(scB, 1, rawB), mk(scB, 2, {})], exB);
   /* ⚠️ 2026-10-08: синтетик толгой 2 мөр (бүлэг → баганын нэр + Эхлэх/Дуусах) — хоосон зурвасгүй */
@@ -386,7 +386,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   /* ⚠️ 2026-10-08: барилгын багцад мөрийн түвшний bodit_* талбар алга → «Бусад талбар» хоосон */
   ok(exK.length === 0, `9d: барилгын — мөрийн бодит огноогүй тул багана алга (${exK.map((x) => x.key)})`);
   ok(!exK.some((x) => /^F\d/.test(x.field)), '9d: блокийн F…_geree/bodit «Бусад талбар»-т ОРОХГҮЙ');
-  const K = render(scK, [mk(scK, 1, { Des_dugaar: 3 })], exK);
+  const K = render(scK, [mk(scK, 1, { des_dugaar: 3 })], exK);
   const wantK = 14 + K.nBld * 4 + exK.length;
   ok(K.trs.length === 4 && K.trs.every((t) => /<th/.test(t)), '9d: барилгын толгой — ХООСОН <tr> алга');
   ok(K.widths.every((w) => w === wantK) && K.tds === wantK, `9d: толгой ${K.widths} == бие ${K.tds} == ${wantK}`);

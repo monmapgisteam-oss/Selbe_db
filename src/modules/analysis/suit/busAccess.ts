@@ -48,8 +48,8 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
    */
   for (let off = 0; ; ) {
     const q = new URLSearchParams({
-      where: '1=1', outFields: 'OBJECTID', returnGeometry: 'true',
-      outSR: '3857', orderByFields: 'OBJECTID ASC',
+      where: '1=1', outFields: 'objectid', returnGeometry: 'true',
+      outSR: '3857', orderByFields: 'objectid ASC',
       resultOffset: String(off), resultRecordCount: '2000', f: 'json',
     });
     /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот · 429 backoff) */
@@ -60,7 +60,7 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
     for (const f of got) {
       const g = f.geometry;
       if (!g || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
-      out.push({ oid: Number(f.attributes?.OBJECTID ?? 0), x: g.x, y: g.y });
+      out.push({ oid: Number(f.attributes?.objectid ?? 0), x: g.x, y: g.y });
     }
     if (!r.exceededTransferLimit || got.length === 0) break;
     off += got.length;

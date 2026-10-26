@@ -74,8 +74,8 @@ import { userError } from '@/components/ui';
  * ⚠️ Эдгээр нь `meta.readOnly`-д ирдэг ч жагсаалтаар нь зурвал «Shape__Length»
  *    гэсэн техникийн нэр гарна; хүн уншихаар нэрлээд НЭГЖТЭЙ нь харуулна.
  */
-const GEOM_LEN = 'Shape__Length';
-const GEOM_AREA = 'Shape__Area';
+const GEOM_LEN = 'SHAPE__Length';
+const GEOM_AREA = 'SHAPE__Area';
 
 /**
  * ГАРААР БИЧИГДСЭН УРТЫН талбарууд — эдгээр нь порталын БҮХ уртын нийлбэрийн

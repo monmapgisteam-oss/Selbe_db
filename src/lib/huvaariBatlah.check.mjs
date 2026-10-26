@@ -33,6 +33,17 @@ const {
   encodePayload,
 } = await import('@/lib/huvaariBatlah.ts');
 
+/* ⚠️ 2026-10-26: батлах хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/192`) — урьд нэгж тестэд зураглал унтраалттай
+   (`SELBE_ENT_OFF`) байхад «хүснэгт олдсонгүй» замаар сүлжээнд хүрдэггүй байв. Одоо Enterprise-ийн хаяг руу явах бүх
+   хүсэлтэд ХООСОН хариу (амьд ArcGIS руу юу ч явахгүй) — «хүснэгт олдсонгүй»-н оронд «илгээлт олдсонгүй». */
+{
+  const ENT = String(process.env.NEXT_PUBLIC_ENT_DATA ?? '').replace(/\/+$/, '');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, init) => (String(u).startsWith(`${ENT}/`)
+    ? new Response(JSON.stringify({ features: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : realFetch(u, init));
+}
+
 /* ── 1. Төлөвийн утгууд — өгөгдөл тул ОРЧУУЛАГДАХГҮЙ ── */
 assert.equal(PLAN_STATUS.pending, 'Хүлээгдэж буй');
 assert.equal(PLAN_STATUS.approved, 'Батлагдсан');
@@ -216,9 +227,18 @@ console.log('✅ буцаахад шалтгаан заавал');
   assert.equal(r2.ok, false);
   assert.match(r2.error, /зөрж байна/, `өөр нэрээр түгжих өнгөрөв: ${r2.error}`);
   WHO.setCurrentUser('batlagch_b');
-  const noTable = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
+  /* ⚠️ 2026-10-26: хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/192`) — «хүснэгт олдсонгүй» зам байхгүй.
+     Сүлжээг хуурамчаар (хоосон хариу) сольж «илгээлт олдсонгүй» хүртэл явахыг шалгана — амьд ArcGIS руу хүрэхгүй. */
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ features: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  let noTable;
+  try {
+    noTable = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
   assert.equal(noTable.ok, false);
-  assert.match(noTable.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${noTable.error}`);
+  assert.match(noTable.error, /олдсонгүй/, `буруу шалтгаан: ${noTable.error}`);
   WHO.setCurrentUser(null);
 }
 console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараалал');
@@ -238,7 +258,7 @@ console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараал�
      зохиогч өөрийн илгээлтээ татна. Нэвтэрсэн нэр ба серверийн зохиогчийн шалгалт хэвээр (доор). */
   r = await withdrawPlan({ oid: 1, me: 'zohiogch_a' });
   assert.equal(r.ok, false);
-  assert.match(r.error, /хүснэгт олдсонгүй/, `эрхгүй зохиогч: эрхийн шалтгаанаар унав — ${r.error}`);
+  assert.match(r.error, /олдсонгүй/, `эрхгүй зохиогч: эрхийн шалтгаанаар унав — ${r.error}`);
   r = await withdrawPlan({ oid: 1, me: 'batlagch_b' });
   assert.equal(r.ok, false, 'эрхгүй үед ч өөр нэрээр татах өнгөрөв');
   assert.match(r.error, /илгээсэн хүн өөрөө/, `буруу шалтгаан: ${r.error}`);
@@ -251,7 +271,7 @@ console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараал�
   assert.match(r.error, /илгээсэн хүн өөрөө/, `буруу шалтгаан: ${r.error}`);
   r = await withdrawPlan({ oid: 1, me: 'zohiogch_a' });
   assert.equal(r.ok, false);
-  assert.match(r.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
+  assert.match(r.error, /олдсонгүй/, `буруу шалтгаан: ${r.error}`);
   CAPS._syncRemoteCaps([]);
   WHO.setCurrentUser(null);
 }
@@ -479,7 +499,7 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
 {
   const { casClaim, approveGuard } = await import('@/lib/huvaariBatlah.ts');
   const NOW = 1_000_000_000_000;
-  const mk = (o) => ({ OBJECTID: 1, toloh: PLAN_STATUS.pending, batlagch: null, shiidver_ognoo: null, ...o });
+  const mk = (o) => ({ objectid: 1, toloh: PLAN_STATUS.pending, batlagch: null, shiidver_ognoo: null, ...o });
   /** Хуурамч хүснэгт — `write` нь мөрийг шинэчилнэ; `race` бол бичсэний дараа өөр хүн дарна */
   const io = (row, { race = null, failWrite = false } = {}) => {
     const st = { row: { ...row }, writes: 0, reads: 0 };

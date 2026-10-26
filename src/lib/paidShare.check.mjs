@@ -28,7 +28,7 @@ const near = (a, b, msg) => assert.ok(a != null && b != null && Math.abs(a - b) 
    HO: Багц-1 200 + 100, Багц-2 300, Багц-3 50 (гэрээгүй багц), «Багц-1-4» 40 (диапазон),
        `dun` хоосон мөр (алгасна). HO-ийн гэрээт дүн (gereet_tosov_niit) нь Cashflow-оос ӨӨР. */
 const CF = (o) => ({
-  OBJECTID: o.oid, bagts: o.pkg, bagts2: o.pkg2 ?? null, bagts_tuvshin1: o.sec ?? '2',
+  objectid: o.oid, bagts: o.pkg, bagts2: o.pkg2 ?? null, bagts_tuvshin1: o.sec ?? '2',
   ho_dungiin_tailbar: o.note ?? '', geree_dun: o.contract ?? null, ho_dun_geree: o.cost ?? null,
 });
 const cf = [
@@ -38,7 +38,7 @@ const cf = [
   CF({ oid: 4, pkg: 'БАГЦ-9', note: CONTRACTED, contract: 999, sec: '5' }),
 ];
 const HO = (o) => ({
-  OBJECTID: o.oid, geree_kod: o.code, bagts: o.pkg, dun: o.dun, ipc_dugaar: o.no ?? null,
+  objectid: o.oid, geree_kod: o.code, bagts: o.pkg, dun: o.dun, ipc_dugaar: o.no ?? null,
   tulult_turul: 'Гүйцэтгэл', gereet_tosov_niit: o.ct ?? null, tosov_niit: null, guilgee_ognoo: null,
 });
 const ho = [

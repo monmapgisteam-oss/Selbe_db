@@ -45,7 +45,7 @@ assert.deepEqual(rankOverlapZones([
   { oid: '10', lengthM: 5, count: 1 }, { oid: '3', lengthM: 5, count: 2 }, { oid: '2', lengthM: 5, count: 1 },
 ]).map((zone) => zone.oid), ['3', '2', '10'], 'Урт тэнцүү бол объектын тоо, дараа нь тогтвортой тоон OID-оор эрэмбэлнэ');
 
-assert.deepEqual(individualZoneIdentity({ OBJECTID: 8, zone: 'Commercial' }, 'objectid'), { id: 'rd:2:8', oid: '8', label: 'Commercial' });
-assert.deepEqual(individualZoneIdentity({ OBJECTID: 9 }, 'OBJECTID'), { id: 'rd:2:9', oid: '9', label: '' });
-assert.throws(() => individualZoneIdentity({ zone: 'Commercial' }, 'OBJECTID'));
+assert.deepEqual(individualZoneIdentity({ objectid: 8, zone: 'Commercial' }, 'objectid'), { id: 'rd:2:8', oid: '8', label: 'Commercial' });
+assert.deepEqual(individualZoneIdentity({ objectid: 9 }, 'objectid'), { id: 'rd:2:9', oid: '9', label: '' });
+assert.throws(() => individualZoneIdentity({ zone: 'Commercial' }, 'objectid'));
 console.log('Бүсийн давхцал: давхардалгүй урт, тусдаа OID, 0 бүс, тайрсан геометр, хамтарсан шүүлт — OK');

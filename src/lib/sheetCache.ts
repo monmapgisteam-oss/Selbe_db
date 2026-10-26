@@ -150,7 +150,10 @@ export function decodeFeats(e: Enc | null | undefined): Feature[] | null {
 /* ══════════════════ Сан ══════════════════ */
 
 const DB_NAME = 'selbe-sheet-frames';
-const DB_VER = 1;
+/* ⚠️ 2026-10-26: 1 → 2 — хөрвүүлэх хүснэгт (`entMap`) хасагдаж мөрийн түлхүүр Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэр
+   болсон; хуучин хувилбарын жааз AGOL үсгээр (`Ажил_гүйцэтгэл`) хадгалагдсан тул тэмдэг таарсан ч уншигдахгүй —
+   `onupgradeneeded` санг устгаж дахин үүсгэнэ (нэг удаагийн бүтэн ачаалал). */
+const DB_VER = 2;
 const OS = 'frames';
 
 /** IndexedDB сан — байхгүй бол `null`. Алдаа бүр чимээгүй `null`/no-op (кэшгүй зам) */

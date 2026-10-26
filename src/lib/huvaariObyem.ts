@@ -26,7 +26,7 @@
  */
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилтийг ялгах (`lostWrite`-ийн ⚠️) */
@@ -38,7 +38,7 @@ import { ArcGISError } from './query';
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
  * ⚠️ Давхаргын дугаар нь `0` БИШ `193` (CSV-ээс нийтлэхэд ArcGIS өөрөө өгсөн).
  */
-export const HUVAARI_OBYEM = `${HJ}/huvaari_20260906/FeatureServer/193`;
+export const HUVAARI_OBYEM = `${GUITS}/186`;
 
 /** Мөрийн төрөл — одоо зөвхөн төлөвлөгөө; хожим бодит гүйцэтгэл нэмэгдэж болно. */
 export const TURUL_PLAN = 'tolovlolt';
@@ -433,7 +433,7 @@ export function indexOids(
   const dups: number[] = [];
   for (const f of feats) {
     const k = String(f.attributes.dkey ?? '');
-    const o = f.attributes.OBJECTID;
+    const o = f.attributes.objectid;
     if (!k || o == null) continue;
     const was = oids.get(k);
     if (was != null) dups.push(was);
@@ -534,7 +534,7 @@ export function buildEdits(
     const oid = oids.get(key);
     if (oid == null) { out.adds.push({ attributes: attrs(sar, v) }); continue; }
     if (prev.get(sar) === v && !resChanged(sar)) continue;   // өөрчлөгдөөгүй (обьём ∧ нөөц)
-    out.updates.push({ attributes: { OBJECTID: oid, ...attrs(sar, v) } });
+    out.updates.push({ attributes: { objectid: oid, ...attrs(sar, v) } });
   }
   for (const sar of prev.keys()) {
     if (months.has(sar)) continue;
@@ -559,7 +559,7 @@ export function buildEdits(
 
 /* ⚠️ 2026-10-22 (аудит №2): `sar` (DateOnly) ч уншина — `sar_txt` хоосон мөрийн нөөц (`sarKeyOf`) */
 const FIELDS = [
-  'OBJECTID', 'dkey', 'des_dugaar', 'blok', 'sar', 'sar_txt', 'obyem', 'niit_obyem',
+  'objectid', 'dkey', 'des_dugaar', 'blok', 'sar', 'sar_txt', 'obyem', 'niit_obyem',
 ];
 
 /**
@@ -622,7 +622,7 @@ export async function loadPkgPlan(
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
       where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_PLAN}'`,
       outFields,
-      orderByFields: 'OBJECTID ASC',
+      orderByFields: 'objectid ASC',
       resultOffset: String(off),
       resultRecordCount: '2000',
       returnGeometry: 'false',

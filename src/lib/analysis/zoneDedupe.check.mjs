@@ -9,10 +9,10 @@
 import assert from 'node:assert/strict';
 import { dedupeZoneFeats } from '@/lib/analysis/data';
 
-const F = (oid, id, area) => ({ attributes: { OBJECTID: oid, RefName_1: id, Shape__Area: area } });
-const idOf = (a) => String(a.RefName_1 ?? '').replace(/\s+/g, '');
-const areaOf = (a) => Number(a.Shape__Area) || 0;
-const oids = (r) => r.feats.map((f) => f.attributes.OBJECTID);
+const F = (oid, id, area) => ({ attributes: { objectid: oid, refname_1: id, SHAPE__Area: area } });
+const idOf = (a) => String(a.refname_1 ?? '').replace(/\s+/g, '');
+const areaOf = (a) => Number(a.SHAPE__Area) || 0;
+const oids = (r) => r.feats.map((f) => f.attributes.objectid);
 
 /* 1. X-13: 12 (12,442) ба 47 (20,347) — том нь үлдэнэ, эхний мөрийн БАЙРЛАЛД */
 const r = dedupeZoneFeats([F(1, 'A-1', 100), F(12, 'X-13', 12442), F(3, 'B-2', 50), F(47, 'X-13', 20347)], idOf, areaOf);
@@ -47,16 +47,16 @@ assert.equal(inp.length, 2);
   assert.equal(interiorRingCount([outer]), 0);
   assert.equal(interiorRingCount([outer, hole]), 1);
   assert.equal(interiorRingCount(null), 0);
-  const G = (oid, id, area, rings) => ({ attributes: { OBJECTID: oid, RefName_1: id, Shape__Area: area }, rings });
+  const G = (oid, id, area, rings) => ({ attributes: { objectid: oid, refname_1: id, SHAPE__Area: area }, rings });
   const k6 = G(30, 'K-6', 7905, [hole]);
   const x47 = G(47, 'X-13', 20347, [outer]);
   const x12 = G(12, 'X-13', 12442, [outer, hole]);
   /* Давхцал: нүхгүй хуулбар K-6-г бүтнээр агуулна (7,905 м²), нүхтэй нь 0 */
-  const overlapOf = (f, others) => (others.some((o) => o.attributes.RefName_1 === 'K-6') && interiorRingCount(f.rings) === 0 ? 7905 : 0);
+  const overlapOf = (f, others) => (others.some((o) => o.attributes.refname_1 === 'K-6') && interiorRingCount(f.rings) === 0 ? 7905 : 0);
   const holesOf = (f) => interiorRingCount(f.rings);
   for (const order of [[x12, k6, x47], [x47, k6, x12]]) {
     const r6 = dedupeZoneFeats(order, idOf, areaOf, { holesOf, overlapOf });
-    assert.deepEqual(r6.feats.map((f) => f.attributes.OBJECTID).filter((o) => o !== 30), [12], `давхцалгүй хуулбар (дараалал ${order.map((f) => f.attributes.OBJECTID)})`);
+    assert.deepEqual(r6.feats.map((f) => f.attributes.objectid).filter((o) => o !== 30), [12], `давхцалгүй хуулбар (дараалал ${order.map((f) => f.attributes.objectid)})`);
     assert.deepEqual(r6.dups, ['X-13']);
   }
   /* Давхцлын callback-гүй ч нүхтэй нь ялна; нүх ч тэнцүү бол том нь (хуучин дүрэм) */

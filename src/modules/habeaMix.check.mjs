@@ -21,28 +21,28 @@ const key = (iso) => ubDayKey(day(iso));
 
 /* 1. Бүх тайлан өгсөн компани задаргаатай → өдөр задаргаатай */
 {
-  const full = { Ognoo: day('2026-09-01'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 5, [NBG.mongol]: 5 };
+  const full = { ognoo: day('2026-09-01'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 5, [NBG.mongol]: 5 };
   const mix = mixByDay([full], null);
   assert.deepEqual(mix.get(key('2026-09-01')), { mongol: 12, gadaad: 3 });
 }
 
 /* 2. ⚠️ Нэг компани задаргаагүй (ажилтантай) → өдөр ЗАДАРГААГҮЙ (Map-д орохгүй) — Нийт муруйд үлдэнэ */
 {
-  const part = { Ognoo: day('2026-09-02'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 5 };
+  const part = { ognoo: day('2026-09-02'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 5 };
   const mix = mixByDay([part], null);
   assert.equal(mix.has(key('2026-09-02')), false, 'НБГ задаргаагүй → тэр өдөр хоёр муруйгаар зурахгүй (НБГ-ийн 5 хүн алга болохгүй)');
   /* Зөвхөн МК-г сонгосон бол НБГ хамаарахгүй → задаргаатай */
   assert.deepEqual(mixByDay([part], ['MK']).get(key('2026-09-02')), { mongol: 7, gadaad: 3 });
   /* Задаргаагүй компанийн ажилтан монгол+гадаад-аар нөхөгдсөн (Niit 0, m/g бий) → задаргаатай */
-  const viaSplit = { Ognoo: day('2026-09-03'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 0, [NBG.mongol]: 4, [NBG.gadaad]: 1 };
+  const viaSplit = { ognoo: day('2026-09-03'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 0, [NBG.mongol]: 4, [NBG.gadaad]: 1 };
   assert.deepEqual(mixByDay([viaSplit], null).get(key('2026-09-03')), { mongol: 11, gadaad: 4 });
 }
 
 /* 3. Зөвхөн техниктэй компани (ажилтангүй) задаргаа шаардахгүй; тайлан өгөөгүй компани алгасна */
 {
-  const r = { Ognoo: day('2026-09-04'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 0, [NBG.niitTehnik]: 2 };
+  const r = { ognoo: day('2026-09-04'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 0, [NBG.niitTehnik]: 2 };
   assert.deepEqual(mixByDay([r], null).get(key('2026-09-04')), { mongol: 7, gadaad: 3 });
-  const none = { Ognoo: day('2026-09-05'), [MK.niitAjiltan]: 10, [NBG.niitAjiltan]: 0 };
+  const none = { ognoo: day('2026-09-05'), [MK.niitAjiltan]: 10, [NBG.niitAjiltan]: 0 };
   assert.equal(mixByDay([none], null).size, 0, 'задаргаа огт байхгүй → хоосон');
   assert.equal(mixByDay([{ [MK.niitAjiltan]: 10, [MK.mongol]: 10 }], null).size, 0, 'огноогүй мөр орохгүй');
 }

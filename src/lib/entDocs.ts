@@ -107,7 +107,7 @@ async function post<T>(path: string, body: FormData | URLSearchParams): Promise<
 }
 
 /**
- * ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН үйлчилгээ (`entMap.ENT_DATA`) org-only хуваалцсан бол JS API-ийн
+ * ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН үйлчилгээ (`services/env.ENT_HOSTED`) org-only хуваалцсан бол JS API-ийн
  *    давхарга (газрын зураг · ноорог/эрхийн FeatureLayer) ч энэ токеноор уншина — IdentityManager-т
  *    бүртгэнэ. REST зам (`query.ts`) нь `entSession()`-ийг өөрөө ашигладаг тул үүнээс хамаарахгүй.
  * ⚠️ 2026-10-22 (гүйцэтгэл, `AuthGate`-ийн замтай ИЖИЛ): серверийн үндэс нь `entInterceptor.ENT_SERVER` — interceptor

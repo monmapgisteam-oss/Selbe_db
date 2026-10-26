@@ -54,7 +54,7 @@ const F = {
   progress: 'bagts_guitsetgel_huvi_1',
   planned: 'tolovlogoot_huvi',
   volume: 'bodit_obyom_1',
-  volumePlan: 'Tolovlogoot_obyom_1',
+  volumePlan: 'tolovlogoot_obyom_1',
 };
 
 const post = async (path, body) => {

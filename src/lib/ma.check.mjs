@@ -139,10 +139,10 @@ console.log('✅ MIR — мөр · MA-аар бүлэглэх · олон ача
 {
   const { fmRowOf, fmByMa, fmVerdictFor } = await import('@/lib/ficMakt.ts');
   const { chainOf, ipcReady } = await import('@/lib/ma.ts');
-  const f = (o) => fmRowOf({ OBJECTID: 1, kind: 'FIC', ma_no: 'M1', pdf_item: 'x', status: 'pending', uploaded_by: 'a', ...o });
+  const f = (o) => fmRowOf({ objectid: 1, kind: 'FIC', ma_no: 'M1', pdf_item: 'x', status: 'pending', uploaded_by: 'a', ...o });
   assert.equal(f({ status: 'bogus' }).status, 'pending');
   assert.equal(f({ kind: 'makt' }).kind, 'MAKT');
-  const map = fmByMa([f({ OBJECTID: 1, status: 'R' }), f({ OBJECTID: 4, status: 'pending' }), f({ OBJECTID: 2, kind: 'MAKT', status: 'A' }), f({ OBJECTID: 9, ma_no: '' })]);
+  const map = fmByMa([f({ objectid: 1, status: 'R' }), f({ objectid: 4, status: 'pending' }), f({ objectid: 2, kind: 'MAKT', status: 'A' }), f({ objectid: 9, ma_no: '' })]);
   const e = map.get('M1');
   assert.deepEqual(e.FIC.map((x) => x.oid), [4, 1]);
   assert.equal(map.has(''), false);
@@ -230,8 +230,8 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
     const dependencies = {
       '@/lib/i18nCore': { t: tr },
       '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user },
-      /* ⚠️ 2026-10-21: `ENT_DATA` хоосон — шууд хаягаар хайхгүй, хайлтаар (энэ хуурамч сервер) олно */
-      '@/lib/services/entMap': { ENT_DATA: '' },
+      /* ⚠️ 2026-10-21: Enterprise суурь хоосон — шууд хаягаар хайхгүй, хайлтаар (энэ хуурамч сервер) олно */
+      '@/lib/services/env': { ENT_HOSTED: '' },
       '@/lib/ma': { ...ma, loadMa: async () => [rowOf(attrs({ resp_no: 'M1' }))] },
       '@/lib/mir': { ...mir, loadMir: async () => [{ oid: 1, maNo: 'M1', verdict: 'A' }] },
       '@/lib/chanarAcl': {}, '@/lib/who': { currentUser: () => user, requireCap: () => {} },

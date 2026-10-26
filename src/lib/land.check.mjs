@@ -101,7 +101,7 @@ assert.equal(empty.pct, null, '0 хуваарьт хувь null — 0% БИШ');
 {
   const { parcelAreaOf, parcelGroupRows, landuseText } = await import('./land.ts');
   const F = PARCEL_LEFT.fields;
-  const R = (status, area, alt, shape, no = '') => ({ [S]: status, [F.area]: area, [F.areaAlt]: alt, Shape__Area: shape, [F.parcelNo]: no });
+  const R = (status, area, alt, shape, no = '') => ({ [S]: status, [F.area]: area, [F.areaAlt]: alt, SHAPE__Area: shape, [F.parcelNo]: no });
   assert.equal(parcelAreaOf(R(PARCEL_CLEARED, 0, 0, 336.4)), 336.4, 'area_m2=0 ба Талб_1=0 → полигон (24 мөр, амьдаар)');
   assert.equal(parcelAreaOf(R(PARCEL_CLEARED, null, 120, 99)), 120, 'area хоосон → Талб_1');
   assert.equal(parcelAreaOf(R(PARCEL_CLEARED, 278, 0, 277.6)), 278);

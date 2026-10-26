@@ -721,9 +721,9 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   /* ⚠️ 2026-10-19: зайтай мөрийг OID-оор устгана — өөр нэр зөрвөл устгахгүй */
   const { removeMalformedRow } = await import('./permsRemote.ts');
   ok(!(await removeMalformedRow(spacedRow.oid, 'өөр нэр')), `${tag}: нэр зөрсөн ч устгав`);
-  ok(fake.rows.some((r) => r.OBJECTID === spacedRow.oid), `${tag}: нэр зөрсөн мөр устсан`);
+  ok(fake.rows.some((r) => r.objectid === spacedRow.oid), `${tag}: нэр зөрсөн мөр устсан`);
   ok(await removeMalformedRow(spacedRow.oid, spacedRow.key), `${tag}: зайтай мөрийг OID-оор устгаж чадсангүй`);
-  ok(!fake.rows.some((r) => r.OBJECTID === spacedRow.oid), `${tag}: зайтай мөр хүснэгтэд үлдэв`);
+  ok(!fake.rows.some((r) => r.objectid === spacedRow.oid), `${tag}: зайтай мөр хүснэгтэд үлдэв`);
   /* цэвэрлэсний дараа жагсаалтаас арилна */
   fake.rows = fake.rows.filter((r) => !['__flow__:bad_json_u', '__flow__:no_stage_u', '__cap__:bad_cap_u', '__huvaari__:'].includes(r.username));
   await roundTrip();

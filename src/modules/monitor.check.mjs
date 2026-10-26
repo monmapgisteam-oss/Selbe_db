@@ -29,9 +29,9 @@ if (process.env.SELBE_LIVE_SKIP) {
    Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
    `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй. */
 /* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) нь `query.ts`-ээр Enterprise руу зураглагдаж, талбарын нэр эх хэлбэрээрээ ирнэ. */
-const { TD } = await import('@/lib/services.ts');
+const { BAGTS_AJLUUD } = await import('@/lib/services.ts');
 const { queryFeatures } = await import('@/lib/query.ts');
-const BLDG = `${TD}/112`;
+const BLDG = `${BAGTS_AJLUUD}/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -44,13 +44,13 @@ async function query(url, params) {
 
 /* 1 — Барилгын давхарга ↔ гүйцэтгэлийн түлхүүр */
 
-const blocks = await query(BLDG, { where: '1=1', outFields: 'OBJECTID,BAGTS,BLOK' });
+const blocks = await query(BLDG, { where: '1=1', outFields: 'objectid,bagts,blok' });
 assert.ok(blocks.length > 0, 'барилгын давхарга хоосон');
 
 const prog = await loadBlockProgress();
 assert.ok(prog.size > 0, 'бөглөх хуудсуудаас нэг ч блок уншигдсангүй — шугам тасарсан');
 
-const matched = blocks.filter((b) => prog.has(buildingKey(b.BAGTS, b.BLOK)));
+const matched = blocks.filter((b) => prog.has(buildingKey(b.bagts, b.blok)));
 /* ⚠️ ХАТУУ ХУВЬ ТАВИХГҮЙ: бөглөх хуудсууд НИЙТЛЭГДСЭН үедээ л өгөгдөл өгдөг
    бөгөөд 2026-08-27-нд 7 багцаас 2 нь нийтлэгдсэн. «>50% таарна» гэж шаардвал
    тест байнга улаан байж, ЖИНХЭНЭ эвдрэлийг далдална. Гол шалгуур нь ЧИГЛЭЛ:
@@ -61,8 +61,8 @@ assert.ok(matched.length > 0,
 /* 2 — Шатлал бүтэн бөгөөд № -тэй зөрөхгүй */
 
 const one = matched[0];
-const mine = await loadSheetRows({ group: one.BAGTS, block: blockKey(one.BLOK) });
-assert.ok(mine.length > 0, `«${one.BLOK}» блокийн мөр олдсонгүй`);
+const mine = await loadSheetRows({ group: one.bagts, block: blockKey(one.blok) });
+assert.ok(mine.length > 0, `«${one.blok}» блокийн мөр олдсонгүй`);
 
 for (const r of mine) {
   assert.ok(r.level == null || (r.level >= 1 && r.level <= 5),
@@ -180,6 +180,6 @@ for (let i = 0; i < monthly.length; i++) {
 
 console.log(
   `monitor.check: ok — ${matched.length}/${blocks.length} блок таарсан · `
-  + `«${one.BAGTS} ${one.BLOK}» ${leaves}/${allLeaves} ажил (${done}/${going}/${idle}) · `
+  + `«${one.bagts} ${one.blok}» ${leaves}/${allLeaves} ажил (${done}/${going}/${idle}) · `
   + `цуваа ${daily.length} өдөр / ${monthly.length} сар, төгсгөл ${ring.toFixed(2)}%`,
 );

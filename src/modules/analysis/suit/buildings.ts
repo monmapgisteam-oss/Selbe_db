@@ -85,7 +85,7 @@ const pageQuery = (offset: number) => new URLSearchParams({
    * давхарга 2,000-аас хэтрэх өдөр л мэдэгдэнэ. Тиймээс одоо бэхлэв.
    * `OBJECTID` нь `outFields`-д аль хэдийн ирдэг (`a.OBJECTID`).
    */
-  orderByFields: 'OBJECTID ASC',
+  orderByFields: 'objectid ASC',
   resultOffset: String(offset),
   resultRecordCount: String(PAGE),
   f: 'json',
@@ -134,7 +134,7 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
       const capacity = num(a[F.capacity]);
       const trips = buildingTrips(cat, population, capacity);
       out.push({
-        oid: num(a.OBJECTID),
+        oid: num(a.objectid),
         purpose,
         cat,
         population,

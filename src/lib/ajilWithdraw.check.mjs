@@ -7,32 +7,20 @@
  *      бие биеэ дардаг байв. Одоо эхлээд `claimAjil` (CAS) — өөр хүний хүчинтэй түгжээ байвал татгалзана.
  *   2. ХАРИУ АЛДАГДСАН — «Татсан» серверт суусан ч алдаа буцааж зохиогчийн мөрүүд хуудсанд буцдаггүй байв. Одоо
  *      дахин уншиж «Татсан» бол амжилт; хүлээгдсэн хэвээр бол алдаа; дахин уншилт ч унавал `unsure`.
- * ⚠️ `fetch`-ийг бүрэн сольдог — бодит ArcGIS руу ОГТ хүрэхгүй (Enterprise зураглалыг зөвхөн хаяг гаргахад асаана).
+ * ⚠️ `fetch`-ийг бүрэн сольдог — бодит ArcGIS руу ОГТ хүрэхгүй. Хүснэгт Enterprise-ийн БОДИТ хаягаар (`${GUITS}/189`).
  */
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-
-/* Enterprise хаягаар (`entDirect`) хүснэгтийн URL гарна. ⚠️ `entMap` нь loader-ийн (`test-users.mjs`) үед аль хэдийн
-   `SELBE_ENT_OFF=1`-ээр ачаалагддаг тул энд солих нь хангалтгүй — өөрийгөө `SELBE_ENT_OFF=0`-тэй дэд процесст дахин
-   ажиллуулна (`fetch` доор БҮРЭН солигдоно — сүлжээ рүү хүрэхгүй). */
-if (process.env.SELBE_ENT_OFF !== '0') {
-  const r = spawnSync(process.execPath, [...process.execArgv, process.argv[1]], {
-    env: { ...process.env, SELBE_ENT_OFF: '0' }, stdio: 'inherit',
-  });
-  process.exit(r.status ?? 1);
-}
 const { registerIdentity } = await import('@/lib/authToken.ts');
 const { AUTH } = await import('@/lib/services.ts');
 registerIdentity({ findCredential: () => ({ token: 'FAKE', userId: 'author_a' }) }, `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
-const { entDirect } = await import('@/lib/services/entMap.ts');
+const { GUITS } = await import('@/lib/services/env.ts');
 const AB = await import('@/lib/ajilBatlah.ts');
-const URLT = entDirect('Selbe_Ajil_Batlah_csv', 219);
-assert.ok(URLT, 'Enterprise зураглал алга — тест ажиллах боломжгүй');
+const URLT = `${GUITS}/189`;
 
 let row;
 const reset = (o = {}) => {
   row = {
-    OBJECTID: 1, bagts_key: 'b1_9f', bagts_group: 'Багц 1', toloh: AB.AJIL_STATUS.pending, zohiogch: 'author_a',
+    objectid: 1, bagts_key: 'b1_9f', bagts_group: 'Багц 1', toloh: AB.AJIL_STATUS.pending, zohiogch: 'author_a',
     ilgeesen_ognoo: Date.now() - 60_000, batlagch: null, shiidver_ognoo: null, butsaasan_shaltgaan: null,
     tailbar: null, mor_too: 1, aguulga: '{"v":1,"pkgKey":"b1_9f","adds":[]}', ...o,
   };
@@ -55,7 +43,7 @@ globalThis.fetch = async (url, init) => {
   if (u.endsWith('/applyEdits')) {
     const ups = JSON.parse(p.updates ?? '[]');
     for (const x of ups) {
-      for (const [k0, v] of Object.entries(x.attributes)) { const k = key(k0); if (k && k !== 'OBJECTID') row[k] = v; }
+      for (const [k0, v] of Object.entries(x.attributes)) { const k = key(k0); if (k && k !== 'objectid') row[k] = v; }
       hook.afterCommit?.(x.attributes);
     }
     return json({ updateResults: ups.map(() => ({ objectId: 1, success: true })) });

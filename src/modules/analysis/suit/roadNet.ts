@@ -85,7 +85,7 @@ const pageQuery = (offset: number, count = PAGE) => new URLSearchParams({
    * ОНОЛЫН биш: хуудас бүр тусдаа хүсэлт бөгөөд серверийн дотоод дараалал
    * хүсэлт хооронд өөрчлөгдөж болно.
    */
-  orderByFields: 'OBJECTID ASC',
+  orderByFields: 'objectid ASC',
   resultOffset: String(offset),
   resultRecordCount: String(count),
   f: 'json',

@@ -630,10 +630,10 @@ export const IRGED_LAYER_IDS: string[] = [
  */
 export const IRGED_SOC = {
   fields: {
-    capacity: "Huchin_chadal",
-    floorArea: 'Барилгын_нийт_талбай_m2',
+    capacity: "huchin_chadal",
+    floorArea: 'барилгын_нийт_талбай_m2',
     purpose: "zoriulalt",
-    parking: "Parking",
+    parking: "parking",
     zone: ZONE_FIELD,
   },
   /**
@@ -653,7 +653,7 @@ export const IRGED_SOC = {
    * хасагдав — `IRGED_SOC`-ийг одоо код уншдаггүй; давхаргын схемийн баримт
    * болгож үлдээв (сэргээх бол `git` түүх).
    */
-  floorFields: ['Давхрын_тоо_max', 'Давхрын_тоо_min'] as const,
+  floorFields: ['давхрын_тоо_max', 'давхрын_тоо_min'] as const,
   /**
    * Зориулалтаар БҮЛЭГЛЭХ — `zoriulalt` талбарын АМЬД утга (2026-09-06-нд
    * хэмжсэн: «Сургуулийн барилга» ×3 · «Цэцэрлэгийн барилга» ×5 ·

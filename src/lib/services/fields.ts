@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { HJ, TD } from './env';
+import { BAGTS_AJLUUD, GUITS, GAZAR_CH } from './env';
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
 /* ⚠️ 2026-09-17: Талбайн хяналтын Survey123 (`selbe_site_monitoring`,
@@ -25,17 +25,17 @@ import { HJ, TD } from './env';
  */
 export const GAZAR_BUILDING = {
   // test_data [96] selbe_gadna_building — 2026-08-13 шилжив (oid FID→OBJECTID)
-  url: `${TD}/96`,
-  oid: "OBJECTID",
+  url: `${GAZAR_CH}/150`,
+  oid: "objectid",
   fields: {
     /** Барилгын нийт үнэлгээ (₮) */
-    value: "NIIT_UNE",
+    value: "niit_une",
     /** 1 м²-ийн үнэ (₮) */
-    unitPrice: "MKV_UNE",
-    floors: "DAVHAR_TOO",
-    rooms: "OROO_TOO",
-    type: "TOROL",
-    material: "MATERIAL",
+    unitPrice: "mkv_une",
+    floors: "davhar_too",
+    rooms: "oroo_too",
+    type: "torol",
+    material: "material",
     name: "building_n",
     // ⚠️ area (area_m2) test_data [96]-д БАЙХГҮЙ болсон — талбайн нийлбэр хасагдав
   },
@@ -44,8 +44,8 @@ export const GAZAR_BUILDING = {
 /** Кадастрын нэгж талбар — полигон доторх нэгжийн тоо/талбай/зориулалт */
 export const GAZAR_PARCEL = {
   // test_data [95] Selbe_gadna_parcel — 2026-08-13 шилжив
-  url: `${TD}/95`,
-  oid: "OBJECTID",
+  url: `${GAZAR_CH}/151`,
+  oid: "objectid",
   fields: {
     area: "area_m2",
     /** Газрын зориулалт (нэр) */
@@ -78,15 +78,15 @@ export const GAZAR_PARCEL = {
  * хэрэглээнээс гарсан.
  */
 export const BUILDING = {
-  url: `${TD}/112`,
-  oid: "OBJECTID",
+  url: `${BAGTS_AJLUUD}/0`,
+  oid: "objectid",
   fields: {
-    bagts: "BAGTS",
-    block: "BLOK",
-    contractor: "BAR_COMP",
-    floors: "DAVHAR",
-    households: "AIL_TOO",
-    type: "TOROL",
+    bagts: "bagts",
+    block: "blok",
+    contractor: "bar_comp",
+    floors: "davhar",
+    households: "ail_too",
+    type: "torol",
   },
 } as const;
 
@@ -154,8 +154,8 @@ export const BUILDING = {
  * гүйцэтгэл 216.86) = гэрээнд эзлэх 26.5%.
  */
 export const HO_IPC = {
-  url: `${HJ}/HO_guitsetgel_arcgis_csv/FeatureServer/196`,
-  oid: "OBJECTID",
+  url: `${GUITS}/185`,
+  oid: "objectid",
   /** `tulult_turul`-ийн утгууд. ⚠️ 2 мөрд хоосон — «ангилагдаагүй» */
   kinds: { advance: "Урьдчилгаа төлбөр", work: "Гүйцэтгэл" },
   /**
@@ -312,8 +312,8 @@ export const hoSaving = (r: Row): number | null => {
  * мөрд эх сурвалж байхгүй тул ХООСОН (0 БИШ).
  */
 export const CASHFLOW_NEW = {
-  url: `${HJ}/Cashflow_0909/FeatureServer/0`,
-  oid: "OBJECTID",
+  url: `${GUITS}/182`,
+  oid: "objectid",
   fields: {
     /**
      * ТӨРӨЛ — задаргааны 2-р түвшин («ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт»).
@@ -408,25 +408,25 @@ export const CASHFLOW_NEW = {
  * ⚠️ CASHFLOW_NEW-г УНШИХ БҮХ ГАЗАРТ ЗААВАЛ тавина. Мартвал нийт төсөв,
  * багцын тоо, шатлалын зурвас, чарт БҮГД чимээгүйхэн эвдэрнэ.
  */
-export const CF_WORK_WHERE = 'Cashflow_start IS NULL';
+export const CF_WORK_WHERE = 'cashflow_start IS NULL';
 
 /**
  * САРЫН МӨР Л — S-Curve-ийн задаргаа.
  * ⚠️ `CF_WORK_WHERE`-ийн ЯГ эсрэг тал: хоёулаа нийлээд хүснэгтийг бүрэн
  * хуваана, огтлолцохгүй.
  */
-export const CF_MONTH_WHERE = 'Cashflow_start IS NOT NULL';
+export const CF_MONTH_WHERE = 'cashflow_start IS NOT NULL';
 
 /** Сарын задаргааны талбарууд — `Cashflow_final` дотор */
 export const CF_MONTH = {
   /** Эцэг ажлын дугаар — ажлын мөрийн `Cashflow_ID`-тэй тэнцүү */
-  id: "Cashflow_ID",
-  start: "Cashflow_start",
-  end: "Cashflow_end",
+  id: "cashflow_id",
+  start: "cashflow_start",
+  end: "cashflow_end",
   /** Тухайн сард төлөвлөсөн гүйцэтгэлийн хувь — ажил тус бүрд нийлбэр 100 */
-  pct: "Cashflow_huwi",
+  pct: "cashflow_huwi",
   /** `pct` × ажлын `ho_dun_geree` / 100 */
-  amount: "Cashflow_dun",
+  amount: "cashflow_dun",
 } as const;
 
 /**
@@ -458,48 +458,48 @@ export const CF_MONTH = {
  *    «YYYY-MM-DD» БИЧВЭР.
  */
 export const TUSUL_NEGTGEL = {
-  url: `${HJ}/Negtgel_guitsetgel_1013/FeatureServer/199`,
-  oid: "OBJECTID",
+  url: `${GUITS}/187`,
+  oid: "objectid",
   /** Хувийн талбаруудын масштаб — 100 = 0–100 хадгалагдсан */
   scale: 100,
   /** ⚠️ Query-only үйлчилгээ — автомат синк бичихгүй (`negtgelAuto.syncNegtgel`) */
   readOnly: true,
   fields: {
     /** Д/Д — ажлын задаргааны код («5.2.1.1»), нийт мөрд «0» */
-    code: "WBS_ID",
+    code: "wbs_id",
     /** Багцын дугаар — «Багц-1», «БАГЦ - 19.1» */
-    bagts: "PKG_CODE",
-    name: "NAME",
+    bagts: "pkg_code",
+    name: "name",
     /** Урьдчилсан төсөвт өртөг, ₮ */
-    budget: "BUDGET",
+    budget: "budget",
     /** Хэсэгт эзлэх — эцэг доторх жин (0–100) — Excel F */
-    inSection: "SHARE_SEC",
+    inSection: "share_sec",
     /** Төсөлд эзлэх хувь (0–100) — Excel G */
-    inProject: "SHARE_PRJ",
+    inProject: "share_prj",
     /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (ms) — Excel H · I */
-    ctStart: "CT_START",
-    ctEnd: "CT_END",
+    ctStart: "ct_start",
+    ctEnd: "ct_end",
     /** Гүйцэтгэгч — төлөвлөгөөт эхлэх/дуусах («YYYY-MM-DD») — Excel J · K */
-    exStart: "EX_START",
-    exEnd: "EX_END",
+    exStart: "ex_start",
+    exEnd: "ex_end",
     /** ОСНАУГ/Газар чөлөөлөлт/хуулийн маргаан/Өндөржилт нөлөөлөл — бодит эхлэх/дуусах — Excel L · M */
-    actStart: "ACT_START",
-    actEnd: "ACT_END",
+    actStart: "act_start",
+    actEnd: "act_end",
     /** Төлөвлөгөөт хувь (0–100) — гэрээ · гэрээ ГЧ · гүйцэтгэгч · дараа долоо хоног · өмнөх долоо хоног — Excel N…R */
-    planGeree: "PLN_CT",
-    planGch: "PLN_CT_ADJ",
-    planGuits: "PLN_EX",
-    planNextWk: "PLN_NEXTWK",
-    planPrevWk: "PLN_PREVWK",
+    planGeree: "pln_ct",
+    planGch: "pln_ct_adj",
+    planGuits: "pln_ex",
+    planNextWk: "pln_nextwk",
+    planPrevWk: "pln_prevwk",
     /** Гүйцэтгэлийн хувь (0–100) — Excel S */
-    actPct: "ACT_PCT",
+    actPct: "act_pct",
     /** Төлөвлөгөө биелэлт (0–100) — гэрээ · гэрээ ГЧ · гүйцэтгэгч · долоо хоногийн — Excel T…W */
-    perfGeree: "PERF_CT",
-    perfGch: "PERF_CTADJ",
-    perfGuits: "PERF_EX",
-    perfWk: "PERF_WK",
+    perfGeree: "perf_ct",
+    perfGch: "perf_ctadj",
+    perfGuits: "perf_ex",
+    perfWk: "perf_wk",
     /** Үе шат (1-р түвшний нэр) — нийт мөрд хоосон */
-    phase: "PHASE",
+    phase: "phase",
   },
 } as const;
 
@@ -601,8 +601,8 @@ export function cfMonthAxis(now: Date = new Date()): string[] {
  * түүний хэрэглэгчид (`live.ts`, `datasets.ts`) энэ рүү шилжив.
  */
 export const BAGTS_NEGTGEL = {
-  url: `${HJ}/selbe_bagts_guitsetgel_negtgel/FeatureServer/169`,
-  oid: "OBJECTID",
+  url: `${GUITS}/190`,
+  oid: "objectid",
   fields: {
     /** Агшны огноо — түүхийн тэнхлэг. Багц бүрийн СҮҮЛИЙН мөрийг үүгээр сонгоно */
     date: "burtgesen_ognoo",
@@ -615,7 +615,7 @@ export const BAGTS_NEGTGEL = {
     /** Гүйцэтгэсэн обьём */
     volume: "bodit_obyom_1",
     /** Төлөвлөгөөт обьём */
-    volumePlan: "Tolovlogoot_obyom_1",
+    volumePlan: "tolovlogoot_obyom_1",
   },
 } as const;
 
@@ -629,7 +629,7 @@ export const BAGTS_NEGTGEL = {
  * үйлчилгээ рүү хүсэлт бичнэ — тиймээс бүрмөсөн хасав.
  */
 export const TASK_SHEET = {
-  oid: "OBJECTID",
+  oid: "objectid",
   /** Барилга угсралтын ажлын үе шатын № — нийт гүйцэтгэлийн мөр */
   constructionNo: 'Б.',
   /**
@@ -825,9 +825,9 @@ export const PARCEL_LEFT = {
    *    засварласан: хэн · хэзээ»-г метадатын `editFieldsInfo`-оос уншина. Зөвхөн СҮҮЛИЙН засварыг
    *    хадгална (бүрэн түүх биш).
    */
-  url: `${HJ}/Selbe_parcel_20260906/FeatureServer/121`,
+  url: `${GAZAR_CH}/152`,
   /** ⚠️ `OBJECTID` БИШ — дээрх тайлбарыг үз. */
-  oid: "FID",
+  oid: "objectid",
   fields: {
     /**
      * ТӨЛӨВ ба ШАЛТГААН — НЭГ талбар (`status` ба `progress` хоёулаа энэ).
@@ -852,24 +852,24 @@ export const PARCEL_LEFT = {
      * Гараар бичсэн талбай — `area_m2` хоосон мөрийг НӨХНӨ (140/2,088).
      * ⚠️ `Талба` (суурь бүлэг, 31 мөр) БИШ `Талб_1` — дээрх бүлгийн тайлбарыг үз.
      */
-    areaAlt: 'Талб_1',
+    areaAlt: 'талб_1',
     /**
      * Блок — ⚠️ ЗӨВХӨН 31 мөрд бөглөгдсөн (хуучин эхэд 196). Шинэ эх нь энэ
      * баганыг `_1` бүлэгт АВААГҮЙ тул блокоор бүлэглэсэн задаргаа ХООСОРНО.
      */
-    block: 'Блок',
+    block: 'блок',
     /** Кадастрын нэгж талбарын дугаар (2,063/2,088) */
     parcelNo: "parcel_id",
     /** Эзэмшигчийн овог нэр — `_1` бүлэг (143/2,088) */
-    owner: 'Овог_1',
+    owner: 'овог_1',
     /** Хаяг — `_1` бүлэг (143/2,088) */
-    address: 'Хаяг_1',
+    address: 'хаяг_1',
     /**
      * Газрын зориулалт. ⚠️ Хуучин `Төрөл` (текст) АЛГА; шинэ эхэд `Turul` нь
      * ТООН код (" "/1/2/3/4) тул хүнд уншигдахгүй. `Zoriulalt` нь текст
      * («Гэр, орон сууцны хашааны га» 575 …) тул түүнийг авав.
      */
-    landuse: "Zoriulalt",
+    landuse: "zoriulalt",
     /**
      * Газрын зориулалтын БҮТЭН нэр (кадастр).
      * ⚠️ 2026-10-22 (аудит): `Zoriulalt` нь 582 мөрд 50 байтаар ТАСАРСАН («Гэр, орон сууцны хашааны га»), `landuse_de` нь
@@ -877,7 +877,7 @@ export const PARCEL_LEFT = {
      */
     landuseFull: "landuse_de",
     /** Чөлөөлөлтийн тэмдэглэл — `_1` бүлэг (143/2,088) */
-    note: 'Тайл_1',
+    note: 'тайл_1',
   },
 } as const;
 
@@ -909,7 +909,7 @@ export const parcelLeftWhere = () =>
  * ⚠️ ЗААВАЛ `PARCEL_LEFT.oid` (`FID`) — хатуу «OBJECTID» БИЧИЖ БОЛОХГҮЙ.
  * `Selbe_parcel_20260906/121`-д `OBJECTID` нэртэй ЭНГИЙН Integer багана
  * мөн байгаа бөгөөд БҮХ мөрд утга нь 0 (амьдаар батлагдсан) — тиймээс
- * `OBJECTID IN (…)` нь ҮРГЭЛЖ 0 мөр буцааж, «Саад — багцаар»-аас багц
+ * `objectid IN (…)` нь ҮРГЭЛЖ 0 мөр буцааж, «Саад — багцаар»-аас багц
  * сонгоход давхцсан талбар зурагт ОГТ гарахгүй, зураг ч тэднийг зааж
  * томрохгүй байв. `overlapLeftParcels` нь `returnIdsOnly`-оор давхаргын
  * ЖИНХЭНЭ OID-г (=`FID`) буцаадаг тул энд мөн түүгээр асуух ёстой.

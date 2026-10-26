@@ -37,11 +37,11 @@ const P = HO_IPC.payFields;
  * дарж, бүх багц хоосон болно. Навчны утгыг (дэд байвал түүнийг) НЭГ УДАА бичнэ.
  */
 const cf = (oid, pkg, pkg2, year, o = {}) => ({
-  OBJECTID: oid, [CF.pkg2]: pkg2 || pkg, [CF.orderDate]: year, ...o,
+  objectid: oid, [CF.pkg2]: pkg2 || pkg, [CF.orderDate]: year, ...o,
 });
 /* ⚠️ HO-д ДЭД БАГЦЫН тусдаа талбар БАЙХГҮЙ — `bagts` ГАНЦААРАА («Багц-3.1»
    гэсэн дэд түвшнийг өөрөө агуулна). Тиймээс хуурамч мөр ч ганц талбартай. */
-const ho = (oid, bagts, o = {}) => ({ OBJECTID: oid, [C.pkg]: bagts, ...o });
+const ho = (oid, bagts, o = {}) => ({ objectid: oid, [C.pkg]: bagts, ...o });
 const total = (out) => out.reduce((a, p) => a + p.count, 0);
 
 /* ── 1. Мөр АЛДАГДАХГҮЙ, дэд багц салангид, ЭХ дараалал ── */
@@ -110,7 +110,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
      `HO_IPC.contractFields.pkg` (`bagts`)-тай НЭР ДАВХЦСАН тул тэр талбараар
      шалгах нь утгагүй болов — HO-гийн ЖИНХЭНЭ багц гэж уншигдана. Cashflow-д Л
      байдаг `pkg74` (`bagts_74`) талбараар санааг хэвээр барина. */
-  const wrong = buildGroups([{ OBJECTID: 9, [CF.pkg74]: 'БАГЦ-4' }], 'ho');
+  const wrong = buildGroups([{ objectid: 9, [CF.pkg74]: 'БАГЦ-4' }], 'ho');
   assert.equal(wrong[0].key, NO_PKG);
 }
 

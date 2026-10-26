@@ -215,13 +215,13 @@ try {
       return { count: 0 };
     };
     let v0 = dataVersion();
-    await R.addRegister(35, { Огноо: 1 }, gid, { autoSeq: 'F_' });
+    await R.addRegister(35, { Огноо: 1 }, gid, { autoSeq: 'f_' });
     const e = edits()[0];
     assert.equal(e.p.useGlobalIds, 'true');
     assert.equal(e.p.token, 'ENT_TOK', 'Enterprise токен POST биеэр');
     const att = JSON.parse(e.p.adds)[0].attributes;
     assert.equal(att.globalid, gid);
-    assert.equal(att.F_, 42, 'санал болгосон дугаар бичихийн ӨМНӨ дахин бодогдоно');
+    assert.equal(att.f_, 42, 'санал болгосон дугаар бичихийн ӨМНӨ дахин бодогдоно');
     assert.ok(dataVersion() > v0, 'амжилтад invalidate');
 
     /* хариу алдагдсан → GlobalID-аар асууна; олдвол амжилт, ДАХИН ИЛГЭЭХГҮЙ */

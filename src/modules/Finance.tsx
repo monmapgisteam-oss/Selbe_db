@@ -850,7 +850,7 @@ const loadCfMonthRows = cached(
     outFields: ['*'],
     /* ⚠️ 2026-10-06 (аудит): oid-ийн tiebreak ЗААВАЛ — ижил (ID, start)-тай мөр (давхардсан
        сар) хуудас хооронд дараалал нь тогтворгүй тул давхардах/алгасагдах эрхтэй. */
-    orderBy: `Cashflow_ID ASC, Cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
+    orderBy: `cashflow_id ASC, cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
     /* ⚠️ 2026-10-05: `limit: 8000` ХАСАГДАВ — 8000-аас давсан сарын мөр ЧИМЭЭГҮЙ тайрагдаж,
        тайрагдсан ажлын сарууд «байхгүй» мэт харагдан хугацаа засахад дахин нэмэгдэх
        эрсдэлтэй байв. `queryFeatures` нь `orderBy`-той үед бүх хуудсыг өөрөө татна. */
@@ -1681,7 +1681,7 @@ export const lagLevelOf = (lag: { gap: number; coverage?: number | null } | null
  * ⚠️ Талбар БАЙХГҮЙ ч байж болно (Editor Tracking унтраасан үйлчилгээ) —
  * тэр үед тэмдэглэгээ зүгээр л гарахгүй, хүснэгт хэвийн ажиллана.
  */
-const ET_FIELDS = { editor: 'Editor', editDate: 'EditDate' } as const;
+const ET_FIELDS = { editor: 'last_edited_user', editDate: 'last_edited_date' } as const;
 
 type EditStamp = { who: string; ms: number } | null;
 
@@ -1708,7 +1708,7 @@ const PLAIN_INT = new Set<string>([
      болж гардаг байв (`summable` нь `PLAIN_INT`-ийг хасдаг). `Cashflow_ID` нь
      тоон (сарын мөрийн холбоос); `dugaar2`, `bagts_74` нь дугаар/кодын багана —
      тоон биш бол энэ жагсаалт тэдэнд нөлөөгүй. */
-  'Cashflow_ID',
+  'cashflow_id',
   'dugaar2',
   'bagts_74',
 ]);
@@ -1740,7 +1740,7 @@ const PLAIN_INT = new Set<string>([
 const isSkip = (name: string, type: string, oidField: string): boolean =>
   type === 'esriFieldTypeGlobalID'
   || /globalid/i.test(name)
-  || /^(creationdate|creator|editdate|editor)$/i.test(name)
+  || /^(creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i.test(name)
   || name === oidField;
 /* ⚠️ 2026-09-09: «Гэрээний код» баганыг НУУХАА БОЛИВ. Хуучин `IPC02` нь
    G01…G76 гэсэн ДОТООД танигч байсан тул нуугддаг байв; шинэ `geree_kod` нь
@@ -1831,7 +1831,7 @@ const parseCell = (s: string, type: string, label: string, pct = false): unknown
  */
 /* ⚠️ 2026-10-21: бутархай хувийн талбарууд (`FIN_XL_FRACTION`: «Үнэт цаас %» · «Урьдчилгаа → Хувь») ч — засвар нь
    ×100 нэгжээр (`editTextF`) тул 0–100 муж шалгана */
-const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);
+const isPctField = (f: string): boolean => f === 'cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);
 
 /**
  * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
@@ -1848,7 +1848,7 @@ const EMPTY_HIDE: string[] = [];
  *    (`publish` бодно). Гараар засуулбал дараагийн хувь/ХО засварт чимээгүй
  *    дарагдаж, тэр хооронд хувьтайгаа зөрсөн дүн хадгалагдана.
  */
-const CALC_RO = new Set<string>(['Cashflow_dun']);
+const CALC_RO = new Set<string>(['cashflow_dun']);
 
 /**
  * `Cashflow_ID` — хоосон бол `null`.
@@ -2052,7 +2052,7 @@ function FullTable({
     const m = new Map<number, Row[]>();
     for (const r of months) {
       /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → алгасна (`cfIdOf`-ийн ⚠️) */
-      const id = cfIdOf(r.Cashflow_ID);
+      const id = cfIdOf(r.cashflow_id);
       if (id == null) continue;
       const arr = m.get(id) ?? [];
       arr.push(r);
@@ -2061,7 +2061,7 @@ function FullTable({
     /* ⚠️ Огноогоор эрэмбэлнэ — үйлчилгээний дараалалд найдахгүй
        (2000 мөрийн хуудаслалт дараалал алдагдуулж болно). */
     for (const arr of m.values()) {
-      arr.sort((a, b) => Number(a.Cashflow_start ?? 0) - Number(b.Cashflow_start ?? 0));
+      arr.sort((a, b) => Number(a.cashflow_start ?? 0) - Number(b.cashflow_start ?? 0));
     }
     return m;
   }, [months]);
@@ -2415,11 +2415,11 @@ function FullTable({
           read: async ({ parentOids, monthOids, ids }) => {
             const parentWhere = [
               ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
-              ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+              ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
             ];
             const monthWhere = [
               ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
-              ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+              ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
             ];
             const [parents, freshMonths] = await Promise.all([
               parentWhere.length ? queryFeatures(url, {
@@ -2440,7 +2440,7 @@ function FullTable({
            зөрдөг байв. Хуучирсан `monthBy` руу УНАХГҮЙ — шинэ уншилт л үнэн (устгасан сар сэргэхгүй). */
         const publishMonthBy = new Map<number, Row[]>();
         for (const month of publishMonths) {
-          const id = cfIdOf(month.Cashflow_ID);
+          const id = cfIdOf(month.cashflow_id);
           if (id == null) continue;
           const list = publishMonthBy.get(id) ?? [];
           list.push(month);
@@ -2525,16 +2525,16 @@ function FullTable({
         }
         for (const o of newRows) rangeCheck(o, undefined);
 
-        if (byName.has('Cashflow_ID')) {
-          const lackNew = newRows.filter((o) => cfIdOf(o.Cashflow_ID) == null);
+        if (byName.has('cashflow_id')) {
+          const lackNew = newRows.filter((o) => cfIdOf(o.cashflow_id) == null);
           const lackOld = [...upd.entries()].filter(([oid, a]) => ('ehleh_ognoo' in a || 'duusah_ognoo' in a)
-            && cfIdOf(a.Cashflow_ID) == null && cfIdOf(rowByOid.get(oid)?.Cashflow_ID) == null);
+            && cfIdOf(a.cashflow_id) == null && cfIdOf(rowByOid.get(oid)?.cashflow_id) == null);
           if (lackNew.length || lackOld.length) {
             const all = await loadCashflowNewRows();
             let next = 1 + Math.max(0, ...[...all, ...rows, ...months, ...newRows]
-              .map((r) => cfIdOf(r.Cashflow_ID) ?? 0));
-            for (const o of lackNew) { o.Cashflow_ID = next; cfAssigned.add(next); next += 1; }
-            for (const [oid, a] of lackOld) { a.Cashflow_ID = next; cfAssigned.add(next); cfAssignedOld.push(oid); next += 1; }
+              .map((r) => cfIdOf(r.cashflow_id) ?? 0));
+            for (const o of lackNew) { o.cashflow_id = next; cfAssigned.add(next); next += 1; }
+            for (const [oid, a] of lackOld) { a.cashflow_id = next; cfAssigned.add(next); cfAssignedOld.push(oid); next += 1; }
           }
         }
 
@@ -2543,7 +2543,7 @@ function FullTable({
           const r = rowByOid.get(oid);
           /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → 0 БИШ (`cfIdOf`); дээр
              оноосон шинэ дугаар (`a.Cashflow_ID`) давамгайлна. */
-          const id = cfIdOf(a.Cashflow_ID) ?? cfIdOf(r?.Cashflow_ID);
+          const id = cfIdOf(a.cashflow_id) ?? cfIdOf(r?.cashflow_id);
           if (id == null) continue;
           const st = dateOf(a, r, 'ehleh_ognoo');
           const en = dateOf(a, r, 'duusah_ognoo');
@@ -2557,14 +2557,14 @@ function FullTable({
 
           const have = new Map<string, Row>();
           for (const mr of publishMonthBy.get(id) ?? []) {
-            const t = Number(mr.Cashflow_start);
+            const t = Number(mr.cashflow_start);
             if (Number.isFinite(t)) have.set(startKeyOf(t), mr);
           }
 
           /* Шинээр гарсан сар — нэмнэ (хувь нь ХООСОН, хүн бөглөнө) */
           for (const [k, v] of want) {
             if (have.has(k)) continue;
-            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
+            monthAdds.push({ cashflow_id: id, cashflow_start: v.s, cashflow_end: v.e });
           }
           /* Мужаас гарсан сар — ЗӨВХӨН хоосныг устгана */
           for (const [k, mr] of have) {
@@ -2575,8 +2575,8 @@ function FullTable({
                хүн сард 10 гэж бичээд тэр дороо `duusah_ognoo`-г богиносгоход
                мөр нь `deletes` ба `updates` ХОЁУЛАНД орж, бичсэн утга чимээгүй
                алга болдог байв. */
-            const pv = upd.get(moid)?.Cashflow_huwi;
-            const filled = (mr.Cashflow_huwi != null && String(mr.Cashflow_huwi).trim() !== '')
+            const pv = upd.get(moid)?.cashflow_huwi;
+            const filled = (mr.cashflow_huwi != null && String(mr.cashflow_huwi).trim() !== '')
               || (pv != null && String(pv).trim() !== '');
             if (filled) { keptOut += 1; continue; }
             if (Number.isFinite(moid)) {
@@ -2594,13 +2594,13 @@ function FullTable({
            эцэгтэйгээ OID-оор БИШ `Cashflow_ID`-аар холбогддог (дээр оноосон) тул нэг
            applyEdits-д шууд нэмж болно. Шинэ мөрд одоо байгаа сар байхгүй. */
         for (const o of newRows) {
-          const id = cfIdOf(o.Cashflow_ID);
+          const id = cfIdOf(o.cashflow_id);
           if (id == null) continue;
           const st = dateOf(o, undefined, 'ehleh_ognoo');
           const en = dateOf(o, undefined, 'duusah_ognoo');
           if (st == null || en == null) continue;
           for (const v of monthsOf(st, en).values()) {
-            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
+            monthAdds.push({ cashflow_id: id, cashflow_start: v.s, cashflow_end: v.e });
           }
         }
 
@@ -2613,28 +2613,28 @@ function FullTable({
            Уншилт унавал нийтлэл ЗОГСОНО (таамгаар устгахгүй). Хассаныг мэдэгдэлд хэлнэ. */
         if (affected.size && (monthAdds.length || monthDels.length)) {
           const fresh = await queryFeatures(url, {
-            where: `(${CF_MONTH_WHERE}) AND Cashflow_ID IN (${[...affected].join(',')})`,
-            outFields: [oidField, 'Cashflow_ID', 'Cashflow_start', 'Cashflow_huwi', 'Cashflow_dun'],
+            where: `(${CF_MONTH_WHERE}) AND cashflow_id IN (${[...affected].join(',')})`,
+            outFields: [oidField, 'cashflow_id', 'cashflow_start', 'cashflow_huwi', 'cashflow_dun'],
             orderBy: `${oidField} ASC`,
           });
           const freshByOid = new Map(fresh.map((r) => [Number(r[oidField]), r]));
           const freshKeys = new Set<string>();
           for (const r of fresh) {
-            const fid = cfIdOf(r.Cashflow_ID);
-            const t = Number(r.Cashflow_start);
-            if (fid != null && r.Cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${startKeyOf(t)}`);
+            const fid = cfIdOf(r.cashflow_id);
+            const t = Number(r.cashflow_start);
+            if (fid != null && r.cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${startKeyOf(t)}`);
           }
           const has = (v: unknown) => v != null && String(v).trim() !== '';
           const dels = monthDels.filter((moid) => {
             const fr = freshByOid.get(moid);
             if (!fr) return false; // өөр хүн аль хэдийн устгасан — дахин устгахгүй
-            if (has(fr.Cashflow_huwi) || has(fr.Cashflow_dun)) { skipDel += 1; return false; }
+            if (has(fr.cashflow_huwi) || has(fr.cashflow_dun)) { skipDel += 1; return false; }
             return true;
           });
           monthDels.length = 0;
           monthDels.push(...dels);
           const addsKept = monthAdds.filter((a) => {
-            const k = `${Number(a.Cashflow_ID)}|${keyOf(new Date(Number(a.Cashflow_start)))}`;
+            const k = `${Number(a.cashflow_id)}|${keyOf(new Date(Number(a.cashflow_start)))}`;
             if (freshKeys.has(k)) { skipAdd += 1; return false; }
             return true;
           });
@@ -2686,7 +2686,7 @@ function FullTable({
         try {
           for (let round = 0; ; round += 1) {
             const [w, m] = await Promise.all([loadCashflowNewRows(), loadCfMonthRows()]);
-            const idRows = [...w, ...m].map((r) => ({ oid: Number(r[oidField]), id: cfIdOf(r.Cashflow_ID) }));
+            const idRows = [...w, ...m].map((r) => ({ oid: Number(r[oidField]), id: cfIdOf(r.cashflow_id) }));
             const hit = collidedIds(idRows, mine, cfAssigned);
             if (!hit.length) break;
             if (round >= 2) {
@@ -2696,7 +2696,7 @@ function FullTable({
             const plan = renumberPlan(idRows, hit);
             const fix = idRows
               .filter((r) => mine.has(r.oid) && r.id != null && plan.has(r.id))
-              .map((r) => ({ [oidField]: r.oid, Cashflow_ID: plan.get(r.id as number) }));
+              .map((r) => ({ [oidField]: r.oid, cashflow_id: plan.get(r.id as number) }));
             if (fix.length) await applyAll(url, oidField, { updates: fix }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
             for (const [a, b] of plan) { cfAssigned.delete(a); cfAssigned.add(b); }
             invalidate(dataKey);
@@ -4373,7 +4373,7 @@ function FullTable({
                 * Сар нь «Сар эхлэх» баганаас уншигдана.
                 */}
               {/* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажилд `0`-ийн сар наалдахгүй (`cfIdOf`) */}
-              {!rowHid && monthOn && ((cfIdOf(p.row.Cashflow_ID) == null ? null : monthBy.get(cfIdOf(p.row.Cashflow_ID) as number)) ?? []).map((mr) => (
+              {!rowHid && monthOn && ((cfIdOf(p.row.cashflow_id) == null ? null : monthBy.get(cfIdOf(p.row.cashflow_id) as number)) ?? []).map((mr) => (
                 <tr key={`m${mr[oidField]}`} className={f.xlMonth}>
                   {!xlView && (
                     <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />

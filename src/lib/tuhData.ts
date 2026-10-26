@@ -232,7 +232,7 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
     const cost = numOf(r[F.budget]);
     const cur = byKey.get(key);
     const order = s(r[F.orderNo]) ? { no: s(r[F.orderNo]), date: dateOf(r[F.orderDate]) } : null;
-    const cfId = numOf(r.Cashflow_ID);
+    const cfId = numOf(r.cashflow_id);
     if (cur) {
       cur.rows.push(r);
       if (cost != null) cur.cost = (cur.cost ?? 0) + cost;
@@ -383,7 +383,7 @@ export function cfPlanPctAt(
 
 /** Багцын гэрээнүүд → `cfPlanPctAt`-ийн оролт */
 export const cfItemsOf = (p: TuhPkg): { id: number; cost: number }[] => p.rows
-  .map((r) => ({ id: numOf(r.Cashflow_ID) ?? -1, cost: numOf(r[CASHFLOW_NEW.fields.budget]) ?? 0 }))
+  .map((r) => ({ id: numOf(r.cashflow_id) ?? -1, cost: numOf(r[CASHFLOW_NEW.fields.budget]) ?? 0 }))
   .filter((x) => x.id > 0);
 
 /* ══════════════════════ 7 ХОНОГИЙН АХИЦ ══════════════════════ */

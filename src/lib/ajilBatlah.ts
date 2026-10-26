@@ -42,7 +42,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
-import { entDirect } from '@/lib/services/entMap';
+import { GUITS } from '@/lib/services/env';
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
@@ -189,7 +189,7 @@ const LAYER_ID = 219;
  *    хүснэгт тэр файлаас нийтлэгдсэн.
  */
 export const F = {
-  oid: 'OBJECTID',
+  oid: 'objectid',
   pkgKey: 'bagts_key',
   pkgGroup: 'bagts_group',
   status: 'toloh',
@@ -288,9 +288,9 @@ async function findTableUrl(token: string): Promise<string | null> {
  */
 async function tableUrl(): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
-     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
-  const direct = entDirect(TITLE, LAYER_ID);
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/189) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/189`;
   if (direct) {
     tableUrlCache = direct;
     return direct;

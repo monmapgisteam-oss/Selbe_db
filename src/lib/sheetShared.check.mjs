@@ -18,10 +18,10 @@ import { sharedFields, decide } from './sheetShared.ts';
 
 const sc = {
   f: {
-    oid: 'OBJECTID', no: 'F_', work: 'Ажил', gun: 'gun', vol: 'Обьём', unit: 'Нэгж_өртөг',
-    asOf: 'Шинэчлэгдсэн_огноо', fillDate: 'buglusun_ognoo', des: 'Des_dugaar', money: 'Мөнгөн_дүн', wD: 'Хувийн_жин1',
+    oid: 'objectid', no: 'f_', work: 'Ажил', gun: 'gun', vol: 'Обьём', unit: 'нэгж_өртөг',
+    asOf: 'шинэчлэгдсэн_огноо', fillDate: 'buglusun_ognoo', des: 'des_dugaar', money: 'мөнгөн_дүн', wD: 'хувийн_жин1',
   },
-  obyem: ['F5_1_9obyem', null, 'F5_3_9obyem'],
+  obyem: ['f5_1_9obyem', null, 'f5_3_9obyem'],
 };
 const tree = sharedFields(sc, 'tree');
 const variance = sharedFields(sc, 'variance');

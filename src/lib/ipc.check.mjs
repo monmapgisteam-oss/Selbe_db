@@ -36,7 +36,7 @@ const P = HO_IPC.payFields;
 const { advance, work } = HO_IPC.kinds;
 
 /** Төлбөрийн мөр үүсгэгч — гэрээний талбар нь мөр БҮРД давтагдана */
-const row = (oid, o = {}) => ({ OBJECTID: oid, ...o });
+const row = (oid, o = {}) => ({ objectid: oid, ...o });
 const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   [C.code]: code, [C.pkg]: pkg,
   [P.kind]: kind, [P.amount]: dun, ...extra,
@@ -239,9 +239,9 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   // Хэтрэлт (сөрөг) нь ЗӨВ утга — таслахгүй
   assert.equal(hoSaving({ [C.budgetTotal]: 90, [C.contractTotal]: 100 }), -10);
 
-  const g = groupHo([{ OBJECTID: 1, [C.code]: 'Г', ...r, [P.amount]: 1 }]);
+  const g = groupHo([{ objectid: 1, [C.code]: 'Г', ...r, [P.amount]: 1 }]);
   assert.equal(g[0].saving, 84_488);
-  assert.equal(hoTotals([{ OBJECTID: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
+  assert.equal(hoTotals([{ objectid: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
 }
 
 /* ══ 8-Б. AUTO МӨР — гэрээний талбарыг ХООСРУУЛАХГҮЙ (2026-09-11) ══
@@ -320,7 +320,7 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   ];
   assert.deepEqual(groupHo(rows).map((c) => c.code), ['Б', 'А', 'В'],
     '⚠️ Эхний тааралдсан дараалал — цагаан толгойгоор ЭРЭМБЭЛЭХГҮЙ');
-  assert.deepEqual(groupHo(rows)[0].pays.map((r) => r.OBJECTID), [1, 3],
+  assert.deepEqual(groupHo(rows)[0].pays.map((r) => r.objectid), [1, 3],
     'бүлэг доторх мөрийн дараалал хадгалагдана');
 }
 

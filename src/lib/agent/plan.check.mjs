@@ -59,9 +59,9 @@ console.log('\n3. Telegram — төлөвлөгөө ХАСАГДАНА');
 
 console.log('\n4. Схемд зохицох — ойролцоо талбарын нэр');
 {
-  const known = ['on_', 'ZONE_ID', 'guits_dun', 'OBJECTID', 'Shape__Area'];
+  const known = ['on_', 'zone_id', 'guits_dun', 'objectid', 'SHAPE__Area'];
   ok('дагаврын зөрүү (`on` → `on_`)', nearFields('on', known)[0] === 'on_');
-  ok('том/жижиг үсэг', nearFields('zone_id', known)[0] === 'ZONE_ID');
+  ok('том/жижиг үсэг', nearFields('zone_id', known)[0] === 'zone_id');
   ok('доогуур зураасны зөрүү', nearFields('guitsdun', known)[0] === 'guits_dun');
   ok('огт таарахгүй бол хоосон', nearFields('xyzxyz', known).length === 0);
   ok('дээд тал нь 3 санал', nearFields('o', ['o1', 'o2', 'o3', 'o4', 'o5']).length === 3);

@@ -25,7 +25,7 @@
  * шаардах бөгөөд тэр нь админуудын засварлах чадварыг таслана.
  */
 
-import { entDirect } from '@/lib/services/entMap';
+import { GUITS } from '@/lib/services/env';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, ROLE_BY_USER } from './services';
 import { arcgisPost } from '@/lib/query';
@@ -152,9 +152,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08).
            ⚠️ Урьд нь «хэрэглэгч|багц» байсан: хүн бүр өөрийн мөртэй тул нэг
               багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ
@@ -188,9 +188,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 export async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
-     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
-  const direct = entDirect(TITLE, 0);
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/191) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/191`;
   if (direct) {
     tableUrlCache = direct;
     return direct;
@@ -321,9 +321,9 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
       /* ⚠️ ЗӨВХӨН `at` — `payload` НЭМЭХГҮЙ, тэр нь энэ функцийн бүх утга учир */
-      outFields: ['OBJECTID', 'at'],
+      outFields: ['objectid', 'at'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const last = res.features[res.features.length - 1]?.attributes as { at?: number } | undefined;
     if (!last || !Number.isFinite(last.at)) return null;
@@ -351,9 +351,9 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: legacyWhere(pkgKey),
-      outFields: ['OBJECTID', 'at', 'payload', 'dkey', 'usr'],
+      outFields: ['objectid', 'at', 'payload', 'dkey', 'usr'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const out: LegacyDraft[] = [];
     for (const f of res.features) {
@@ -381,10 +381,10 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: legacyWhere(pkgKey),
-      outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
+      outFields: ['objectid'], returnGeometry: false, orderByFields: ['objectid ASC'],
     });
     const oids = res.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     if (!oids.length) return true;
     const r = await fl.applyEdits(
@@ -408,10 +408,10 @@ async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
-      outFields: ['OBJECTID', 'at', 'payload'],
+      outFields: ['objectid', 'at', 'payload'],
       returnGeometry: false,
       /* Давхардсан мөр (зэрэгцээ бичилтийн race) — СҮҮЛИЙНХ нь ялна */
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const last = res.features[res.features.length - 1]?.attributes as
       { at?: number; payload?: string } | undefined;
@@ -524,12 +524,12 @@ export async function saveRemoteDraft(
     const dkey = keyOf(pkgKey);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(dkey)}`,
-      outFields: ['OBJECTID', 'at'],
+      outFields: ['objectid', 'at'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const oids = found.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     const target = oids.length ? oids[oids.length - 1] : null;
     if (opt && opt.expectAt !== undefined) {
@@ -544,7 +544,7 @@ export async function saveRemoteDraft(
     const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at, payload };
     const edit = {
       ...(target != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+        ? { updateFeatures: [{ attributes: { objectid: target, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
@@ -574,9 +574,9 @@ export async function saveRemoteDraft(
       try {
         const chk = await fl.queryFeatures({
           where: `dkey = ${sqlStr(dkey)}`,
-          outFields: ['OBJECTID', 'at'],
+          outFields: ['objectid', 'at'],
           returnGeometry: false,
-          orderByFields: ['OBJECTID ASC'],
+          orderByFields: ['objectid ASC'],
         });
         const got = Number(chk.features[chk.features.length - 1]?.attributes?.at);
         if (Number.isFinite(got) && got > 0 && got !== at) {
@@ -613,11 +613,11 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
     const fl = await layer(url);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
-      outFields: ['OBJECTID'],
+      outFields: ['objectid'],
       returnGeometry: false,
     });
     const oids = found.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     if (!oids.length) return true;
     const r = await fl.applyEdits(

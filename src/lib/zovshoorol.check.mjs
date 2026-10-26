@@ -2,11 +2,8 @@ import assert from 'node:assert/strict';
 import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL_KEY } from '@/lib/zovshoorol.ts';
 import { arcgisPost } from '@/lib/query.ts';
 
-/* ⚠️ 2026-10-21: метадатаг АППТАЙ ИЖИЛ замаар (`arcgisPost`) уншина. `URL` нь AGOL-ын ТҮЛХҮҮР
-   (`services/agolKey.ts`) — `arcgisPost` түүнийг Enterprise руу хөрвүүлж (`entMap.remapUrl`), Enterprise-ийн
-   жижиг үсгийн талбарыг (`objectid`) кодын нэр (`OBJECTID`) рүү буцааж орчуулдаг. Урьд нь түүхий `fetch`
-   хийдэг байсан тул Enterprise шилжилтийн дараа AGOL руу явж 499 авдаг, хөрвүүлбэл орчуулаагүй `objectid`-ийг
-   кодын `OBJECTID`-тэй жишиж хуурамчаар унадаг байв. */
+/* ⚠️ 2026-10-21: метадатаг АППТАЙ ИЖИЛ замаар (`arcgisPost`) уншина. ⚠️ 2026-10-26: `URL` нь Enterprise-ийн БОДИТ хаяг
+   (`${GUITS}/171`), талбарын нэр бодит (`objectid`) — хөрвүүлэх хүснэгт (`entMap`) хасагдсан. */
 const zovMetaRaw = () => arcgisPost(ZURL_KEY, {});
 
 /* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */

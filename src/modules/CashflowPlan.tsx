@@ -330,11 +330,11 @@ export function CashflowPlan({
         read: async ({ parentOids, monthOids, ids }) => {
           const parentWhere = [
             ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
-            ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+            ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
           ];
           const monthWhere = [
             ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
-            ...(ids.length ? [`Cashflow_ID IN (${ids.join(',')})`] : []),
+            ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
           ];
           const [parents, freshMonths] = await Promise.all([
             parentWhere.length ? queryFeatures(CASHFLOW_NEW.url, {

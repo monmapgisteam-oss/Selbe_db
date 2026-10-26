@@ -31,7 +31,7 @@
  *    (уншилт org-д хэвээр: реле `hasPortalRow` хэрэглэгчийн токеноор мөрөө уншина); `probeEntExposure` илрүүлж улаанаар хэлнэ.
  */
 
-import { entDirect } from '@/lib/services/entMap';
+import { SYS_PERMS } from '@/lib/services/env';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { arcgisPost } from '@/lib/query';
@@ -343,7 +343,7 @@ export const permsTablePublic = (): boolean => tablePublic;
 
 /**
  * ⚠️ 2026-10-21 (аудит): ENTERPRISE ЗАМД хүснэгтийн ИЛ БАЙДЛЫГ шалгана. `tablePublic` зөвхөн AGOL-ын item хайлтад
- *    (`findTableUrl`) тавигддаг тул `entDirect` замд (2026-10-20-оос бүх өгөгдөл) ХЭЗЭЭ Ч ажиллахгүй байв. Super нь
+ *    (`findTableUrl`) тавигддаг тул Enterprise-ийн шууд хаягийн замд (2026-10-20-оос бүх өгөгдөл) ХЭЗЭЭ Ч ажиллахгүй байв. Super нь
  *    одоо энэ хүснэгтийн мөр (`roles._setTableSupers`) — давхарга org-даяар засагдах (`capabilities`-д Editing/Create/
  *    Update/Delete, item `access` org/public) бол байгууллагын засах эрхтэй ЯМАР Ч аккаунт өөрийн токеноор `applyEdits`-ээр
  *    өөртөө `role:'super'` бичиж (шинэ мөр их OID-той тул `fetchAll`-д ялна — мөрийн эзэмшлийн хязгаар ч хамгаалахгүй),
@@ -457,9 +457,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         { name: 'username', type: 'esriFieldTypeString', length: 256, nullable: false, editable: true },
         { name: 'role', type: 'esriFieldTypeString', length: 32, nullable: true, editable: true },
         { name: 'views', type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
@@ -491,9 +491,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   //    алдаа/индексжилтийн хоцрогдолтой үед «олдсонгүй» сешн даяар тогтмолжиж,
   //    remote эрх огт уншигдахгүй байв; одоо дараагийн дуудлагад дахин хайна.
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
-     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
-  const direct = entDirect(TITLE, 0);
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (SYS_Selbe_Permissions/230) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${SYS_PERMS}/230`;
   if (direct) {
     tableUrlCache = direct;
     /* ⚠️ 2026-10-21 (аудит): ил байдлын шалгалт — зөвхөн хөтөчид (тест/Node-д сүлжээ хөндөхгүй), нэг удаа (`probeEntExposure`-ийн ⚠️) */
@@ -530,7 +530,7 @@ async function layer(url: string): Promise<FeatureLayerInst> {
   return new FeatureLayer({ url });
 }
 
-type RawAttrs = { OBJECTID?: number; username?: string; role?: string; views?: string; docs?: number };
+type RawAttrs = { objectid?: number; username?: string; role?: string; views?: string; docs?: number };
 
 /**
  * БҮХ мөрийг хуудаслаж татна.
@@ -542,7 +542,7 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
   for (let offset = 0; ; ) {
     const res = await fl.queryFeatures({
       where, outFields: ['*'], returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+      orderByFields: ['objectid ASC'], start: offset, num: 2000,
     });
     out.push(...res.features.map((f) => f.attributes as RawAttrs));
     if (!res.exceededTransferLimit || res.features.length === 0) break;
@@ -634,7 +634,7 @@ export async function fetchAll(
       const raw = String(a.username);
       const lu = raw.trim().toLowerCase();
       if (!lu) continue;
-      curOid = typeof a.OBJECTID === 'number' ? a.OBJECTID : undefined;
+      curOid = typeof a.objectid === 'number' ? a.objectid : undefined;
       /* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ МӨР — эрх ОЛГОХГҮЙ, цэвэрлэгээнд (`MalformedRow.space`-ийн ⚠️). Бичих тал бүр
          (`upsert*`) зайгүй түлхүүр бичдэг тул ийм мөр зөвхөн ГАРААР засагдсан хүснэгтээс гарна. */
       if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
@@ -784,11 +784,11 @@ async function findOids(fl: FeatureLayerInst, username: string): Promise<number[
   const out: number[] = [];
   for (let offset = 0; ; ) {
     const found = await fl.queryFeatures({
-      where, outFields: ['OBJECTID'], returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+      where, outFields: ['objectid'], returnGeometry: false,
+      orderByFields: ['objectid ASC'], start: offset, num: 2000,
     });
     out.push(...found.features
-      .map((x) => x.attributes?.OBJECTID as number)
+      .map((x) => x.attributes?.objectid as number)
       .filter((x) => typeof x === 'number'));
     if (!found.exceededTransferLimit || found.features.length === 0) break;
     offset += found.features.length;
@@ -868,7 +868,7 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
     const dupes = oids.slice(0, -1);
     const edit = {
       ...(target != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+        ? { updateFeatures: [{ attributes: { objectid: target, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
@@ -921,7 +921,7 @@ export async function removeMalformedRow(oid: number, expectKey: string): Promis
     const url = await tableUrl(false);
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
-    const rows = await queryAllRows(fl, `OBJECTID = ${oid}`);
+    const rows = await queryAllRows(fl, `objectid = ${oid}`);
     if (!rows.length) return true; // аль хэдийн устгагдсан
     if (String(rows[0].username ?? '') !== expectKey) {
       noteWriteError(tr('Мөр өөрчлөгдсөн байна — хуудсыг шинэчлээд дахин оролдоно уу.'));

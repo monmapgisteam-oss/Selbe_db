@@ -578,7 +578,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       if (!fill) continue;
 
       const head = (await post(p.url, {
-        where: `OBJECTID = ${sheetOid}`,
+        where: `objectid = ${sheetOid}`,
         outFields: fill,
         returnGeometry: 'false',
       })) as { features?: { attributes: Record<string, unknown> }[] };
@@ -681,7 +681,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, ...obs, ...acts]
             .filter(Boolean) as string[];
           /*
-           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`OBJECTID ASC`). Эрэмбийг
+           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`objectid ASC`). Эрэмбийг
            *    обьёмоор солибол бүлэг ба ажлын шатлал холилдож, хүснэгт нь
            *    «Гүйцэтгэл бөглөх»-тэй танигдахаа болино.
            * ⚠️ 2,000-ийн хязгаараас давдаг тул хуудаслана.
@@ -692,7 +692,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               where: w2,
               outFields: [...new Set(cols)].join(','),
               returnGeometry: 'false',
-              orderByFields: 'OBJECTID ASC',
+              orderByFields: 'objectid ASC',
               resultOffset: String(off),
               resultRecordCount: '2000',
             })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
@@ -793,7 +793,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
                   where: `${fill} = ${ts(prevAt)}`,
                   outFields: [sc.f.no, sc.f.work, ...obs].join(','),
                   returnGeometry: 'false',
-                  orderByFields: 'OBJECTID ASC',
+                  orderByFields: 'objectid ASC',
                   resultOffset: String(off),
                   resultRecordCount: '2000',
                 })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };

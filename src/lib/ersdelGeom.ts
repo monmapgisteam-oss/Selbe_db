@@ -32,7 +32,7 @@ import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 import type FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 
-import { LAYER_BY_ID, layerUrl, oidOf, TD } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, oidOf, SELBE_ET } from '@/lib/services';
 import { mapLayer } from '@/components/lazyLayers';
 import { t as tr } from '@/lib/i18nCore';
 import {
@@ -80,7 +80,7 @@ export type Band = {
 /** Голын давхаргын URL — каталогт байвал түүнээс, эс бөгөөс шууд [43] */
 const RIVER_URL = (): string => {
   const def = LAYER_BY_ID['sb:16'];
-  return def ? layerUrl(def) : `${TD}/43`;
+  return def ? layerUrl(def) : `${SELBE_ET}/134`;
 };
 
 let riverCache: Polygon | null = null;

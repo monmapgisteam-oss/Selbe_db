@@ -380,7 +380,7 @@ export type EntryField = {
   options?: { code: string; name: string }[];
 };
 
-const SYS_FIELD = /^(objectid|fid|globalid|creationdate|creator|editdate|editor)$/i;
+const SYS_FIELD = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i;
 /** Урт текстийн талбар — `textarea` */
 const LONG_RE = /агуулга|тайлбар/i;
 
@@ -392,7 +392,7 @@ const LONG_RE = /агуулга|тайлбар/i;
  *    Хайлт ТОМ/ЖИЖИГ үсэг ҮЛ ХАМААРНА (`LABEL_LC`) — хоёр схемд ажиллана.
  */
 const FIELD_LABEL: Record<string, () => string> = {
-  F_: () => tr('№'),
+  f_: () => tr('№'),
   'д_д': () => tr('д/д'),
   'Огноо': () => tr('Огноо'),
   'Баримтын_дугаар': () => tr('Баримтын дугаар'),

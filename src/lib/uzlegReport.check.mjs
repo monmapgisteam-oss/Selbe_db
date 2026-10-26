@@ -91,7 +91,7 @@ assert.equal(rep.counts.na, 1);
 const head = new Map(rep.header);
 assert.equal(head.get('Төслийн талбайн нэр'), 'Багц 3.2', 'домэйн нэрээр');
 assert.equal(head.get('Гүйцэтгэгч компани'), '"Морин сувд" ХХК');
-assert.ok(!head.has('ObjectID'), 'системийн талбар толгойд орохгүй');
+assert.ok(!head.has('objectid'), 'системийн талбар толгойд орохгүй');
 assert.ok(![...head.keys()].some((k) => /оноо|Бага$/.test(k)), 'оноо/тоолуур толгойд орохгүй');
 assert.equal(rep.signatures.length, 2, 'нэрийн мөр + гарын үсгийн зураг');
 assert.equal(rep.signatures[0].value, 'Ч.Алтаннавч');
@@ -245,15 +245,15 @@ console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) ·
 {
   const fi = [...fields, F('inspector', 'Үзлэг хийсэн ажилтан', 'esriFieldTypeString', new Map([['dagiiranz', 'Б.Дагийранз ХАБЭА-н инженер']]))];
   const M = { pkg: '', company: '', date: 0 };
-  const old = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', Creator: 'tumenjargal_selbe', CreationDate: Date.UTC(2026, 9, 19) }, 11, [], (id) => `u/${id}`, M);
+  const old = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', created_user: 'tumenjargal_selbe', created_date: Date.UTC(2026, 9, 19) }, 11, [], (id) => `u/${id}`, M);
   assert.equal(old.submitter, 'Б.Дагийранз ХАБЭА-н инженер', 'шилжүүлсэн мөр: домэйны нэр, код биш');
   assert.equal(old.submitted, row.insp_datetime, 'шилжүүлсэн мөр: үзлэгийн огноо');
-  const fresh = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', Creator: 'dagiiranz_selbe', CreationDate: Date.UTC(2026, 9, 22) }, 12, [], (id) => `u/${id}`, M);
+  const fresh = buildUzReport('X', fi, { ...row, inspector: 'dagiiranz', created_user: 'dagiiranz_selbe', created_date: Date.UTC(2026, 9, 22) }, 12, [], (id) => `u/${id}`, M);
   assert.equal(fresh.submitter, 'Б.Дагийранз ХАБЭА-н инженер', 'шинэ мөр: ижил нэрлэлт');
   assert.equal(fresh.submitted, Date.UTC(2026, 9, 22), 'шинэ мөр: илгээсэн огноо Creator-ынх');
-  const noInsp = buildUzReport('X', fi, { ...row, inspector: null, Creator: 'guest_user', CreationDate: Date.UTC(2026, 9, 22) }, 13, [], (id) => `u/${id}`, M);
+  const noInsp = buildUzReport('X', fi, { ...row, inspector: null, created_user: 'guest_user', created_date: Date.UTC(2026, 9, 22) }, 13, [], (id) => `u/${id}`, M);
   assert.equal(noInsp.submitter, 'guest_user', 'үзлэгчгүй мөр: Creator');
-  const unknownCode = buildUzReport('X', fi, { ...row, inspector: 'newbie', CreationDate: Date.UTC(2026, 9, 22) }, 14, [], (id) => `u/${id}`, M);
+  const unknownCode = buildUzReport('X', fi, { ...row, inspector: 'newbie', created_date: Date.UTC(2026, 9, 22) }, 14, [], (id) => `u/${id}`, M);
   assert.equal(unknownCode.submitter, 'newbie', 'домэйнд байхгүй код хэвээр');
   console.log('✅ Илгээсэн — inspector домэйны нэрээр (2026-10-21)');
 }

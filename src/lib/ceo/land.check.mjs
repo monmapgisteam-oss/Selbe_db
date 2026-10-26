@@ -59,9 +59,9 @@ assert.equal(parcels[6].areaM2, 500, 'area хоосон → areaAlt');
 assert.equal(parcels[7].areaM2, null, 'area=0, нөөцгүй → null (0 БИШ)');
 {
   const [z1, z2, z3] = parseParcels([
-    raw(30, 'зөвшилцөх', 0, { [F.areaAlt]: 0, Shape__Area: 336.4 }),
+    raw(30, 'зөвшилцөх', 0, { [F.areaAlt]: 0, SHAPE__Area: 336.4 }),
     raw(31, 'зөвшилцөх', 0, { [F.areaAlt]: 120 }),
-    raw(32, 'зөвшилцөх', 278, { Shape__Area: 277.6 }),
+    raw(32, 'зөвшилцөх', 278, { SHAPE__Area: 277.6 }),
   ]);
   assert.equal(z1.areaM2, 336.4, 'area=0 ба Талб_1=0 → полигоны талбай');
   assert.equal(z2.areaM2, 120, 'area=0 → Талб_1');
@@ -200,10 +200,10 @@ assert.equal(tp.rows.at(-1).length, 7, 'тасалсан мөр багана т�
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): Editor Tracking асаалттай — `asOf` = хамгийн сүүлийн
    EditDate; талбар алга (метадатад `editFieldsInfo` байхгүй) бол `null` хэвээр */
 {
-  const rowsEd = [{ EditDate: Date.UTC(2026, 8, 1) }, { EditDate: Date.UTC(2026, 8, 20) }, { EditDate: null }];
-  assert.equal(lastEditOf(rowsEd, 'EditDate'), Date.UTC(2026, 8, 20));
+  const rowsEd = [{ last_edited_date: Date.UTC(2026, 8, 1) }, { last_edited_date: Date.UTC(2026, 8, 20) }, { last_edited_date: null }];
+  assert.equal(lastEditOf(rowsEd, 'last_edited_date'), Date.UTC(2026, 8, 20));
   assert.equal(lastEditOf(rowsEd, null), null, 'Editor Tracking унтраалттай — null');
-  assert.equal(lastEditOf([{ EditDate: null }], 'EditDate'), null, 'хоосон огноо 0 БИШ');
+  assert.equal(lastEditOf([{ last_edited_date: null }], 'last_edited_date'), null, 'хоосон огноо 0 БИШ');
   const withAsOf = computeLand({ clearance, parcels, overlaps, failed: [], asOf: Date.UTC(2026, 8, 20) });
   assert.equal(withAsOf.asOf, Date.UTC(2026, 8, 20));
 }

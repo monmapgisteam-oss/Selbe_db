@@ -15,7 +15,7 @@ import { seriesBands } from './bagts.bands.ts';
 import { buildXlsx } from '../../lib/xlsx.ts';
 
 /* ── Хуурамч өгөгдөл — 2 блок (5/1 · 6/1 → хоёр цуваа), 1 бүлэг + 2 ажил ── */
-const sc = { bld: ['5/1', '6/1'], synthetic: false, f: { plannedVol: 'Инженерийн_төлөвлөсөн_обьём' }, obyem: ['a', 'b'], act: ['x', 'y'], start: ['s1', 's2'], end: ['e1', 'e2'] };
+const sc = { bld: ['5/1', '6/1'], synthetic: false, f: { plannedVol: 'инженерийн_төлөвлөсөн_обьём' }, obyem: ['a', 'b'], act: ['x', 'y'], start: ['s1', 's2'], end: ['e1', 'e2'] };
 const row = (oid, no, work, group, depth, o = {}) => ({
   oid, no, des: null, ham: null, work, depth, group, wC: null, wD: null, vol: null, plannedVol: null, unit: null, money: null,
   act: [null, null], obyem: [null, null], raw: {}, start: [null, null], end: [null, null],

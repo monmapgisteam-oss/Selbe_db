@@ -42,8 +42,18 @@ r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([]) });
 assert.equal(r.ok, false); assert.match(r.error, /мөр алга/, `хоосон агуулга: ${r.error}`);
 r = await updateAjil({ oid: 1, me: 'batlagch_b', payload: pay([row]) });
 assert.equal(r.ok, false); assert.match(r.error, /илгээсэн хүн өөрөө/, `өөр нэрээр засах өнгөрөв: ${r.error}`);
-r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([row]) });
-assert.equal(r.ok, false); assert.match(r.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
+/* ⚠️ 2026-10-26: хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/189`) — «хүснэгт олдсонгүй» зам байхгүй болсон.
+   Сүлжээг хуурамчаар (хоосон хариу) сольж «илгээлт олдсонгүй» хүртэл явахыг шалгана — амьд ArcGIS руу хүрэхгүй. */
+{
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ features: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([row]) });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+assert.equal(r.ok, false); assert.match(r.error, /Илгээлт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
 CAPS._syncRemoteCaps([]);
 WHO.setCurrentUser(null);
 console.log('✅ updateAjil — эрх → нэр → агуулга → сүлжээ');

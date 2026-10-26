@@ -16,8 +16,7 @@ const realFetch = globalThis.fetch;
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 const URL_ = 'https://x/arcgis/rest/services/A/FeatureServer/0';
 /* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана — токены шалгуурууд байгууллагын хаягаар явна.
-   ⚠️ 2026-10-20: байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`); `SELBE_ENT_OFF`-той тестэд зураглал унтраалттай ч
-   `query.isOrgUrl` хувьсагчийг шууд уншдаг тул токен залгагдана. */
+   ⚠️ 2026-10-20: байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`); `query.isOrgUrl` хувьсагчийг шууд уншдаг тул токен залгагдана. */
 const HJ = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '');
 assert.ok(HJ, 'NEXT_PUBLIC_ENT_DATA хоосон — .env ачаалагдаагүй');
 const ORG = `${HJ}/A/FeatureServer/0`;
@@ -377,7 +376,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
     if (calls === 1) return { ok: false, status: 503 };
     return ok({ addResults: [{ objectId: committedRows, success: true }] });
   };
-  await assert.rejects(applyAll(URL_, 'OBJECTID', { adds: [{ amount: 55 }] }), (e) => e instanceof ArcGISError && e.status === 503);
+  await assert.rejects(applyAll(URL_, 'objectid', { adds: [{ amount: 55 }] }), (e) => e instanceof ArcGISError && e.status === 503);
   assert.equal(calls, 1);
   assert.equal(committedRows, 1, '503 after commit duplicated the added row');
   console.log('✅ tableWrite commit → 503: one committed row, error returned for reconciliation');

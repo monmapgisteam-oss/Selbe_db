@@ -279,7 +279,7 @@ assert.equal(
  */
 const cyc = (st, ergelt, oid) => ({
   [HF.status]: st, [HF.bagts]: 'Багц 1', [HF.ajil]: 'Суурийн бетон',
-  [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: ergelt, OBJECTID: oid,
+  [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: ergelt, objectid: oid,
 });
 const cycles = [
   cyc(STATUS.engineerReturned, 1, 11),

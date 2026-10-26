@@ -116,7 +116,7 @@ export function toSafetyRow(r: Row, dom: CodedMaps = {}): SafetyRow {
   const I = HABEA.incident.fields;
   /* ⚠️ Survey123 давхаргын OID нь жижиг үсгээр `objectid` (Habea.tsx-тэй ижил);
      өөр нэртэй ирвэл ч алдахгүй — зөвхөн тодорхойлоход хэрэглэнэ. */
-  const oidRaw = r.objectid ?? r.OBJECTID ?? r.ObjectID ?? null;
+  const oidRaw = r.objectid ?? null;
   const oid = oidRaw == null ? null : Number(oidRaw);
   return {
     oid: oid != null && Number.isFinite(oid) ? oid : null,

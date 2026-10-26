@@ -60,12 +60,12 @@ const near = (a, b, msg) => assert.ok(a != null && Math.abs(a - b) < 1e-6, `${ms
 
 /* ══ Хуурамч өгөгдөл ══ */
 const CR = (o) => ({
-  OBJECTID: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
+  objectid: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
   ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
   /* ⚠️ 2026-10-01: гэрээлсэн дүн — `paidShare.paidShareOf`-ийн хуваарь (Cashflow, CONTRACTED) */
   geree_dun: o.contract ?? null,
-  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, Cashflow_ID: o.cf ?? null,
+  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, cashflow_id: o.cf ?? null,
 });
 const HOUSING = 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт';
 const INFRA = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт';

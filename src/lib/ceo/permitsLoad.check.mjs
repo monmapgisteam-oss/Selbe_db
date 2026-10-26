@@ -22,8 +22,8 @@ globalThis.fetch = async () => {
     ? { error: { code: 400, message: 'Invalid query', details: [] } }
     : {
       features: [
-        { attributes: { OBJECTID: 1, bagts: 'Багц 1', shat: 1, zovshoorol_ner: 'Барилгын зөвшөөрөл', tolov: 'Зөвшөөрсөн' } },
-        { attributes: { OBJECTID: 2, bagts: 'Багц 2', shat: 1, zovshoorol_ner: 'Газрын зөвшөөрөл', tolov: 'Зөвшөөрсөн' } },
+        { attributes: { objectid: 1, bagts: 'Багц 1', shat: 1, zovshoorol_ner: 'Барилгын зөвшөөрөл', tolov: 'Зөвшөөрсөн' } },
+        { attributes: { objectid: 2, bagts: 'Багц 2', shat: 1, zovshoorol_ner: 'Газрын зөвшөөрөл', tolov: 'Зөвшөөрсөн' } },
       ],
       exceededTransferLimit: false,
     };

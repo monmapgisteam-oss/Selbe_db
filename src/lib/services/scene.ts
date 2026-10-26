@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_HOSTED, HABEA_SVC, HJ, TD } from './env';
+import { ENT_HOSTED, HABEA_SVC, SELBE_ET, HAB_KRAN, IRGED } from './env';
 import type { LayerDef } from './layerDef';
 import { LAYER_BY_ID } from './layers';
 
@@ -129,7 +129,7 @@ export const IRGED_TOILET = {
   /* ⚠️ 2026-08-24: monmap-ын `selbe_UB_toilet_all`-аас нэгтгэсэн `toilet`
      үйлчилгээ рүү шилжив. Обьект 1675 = 1675, талбарууд бүрэн адил. */
   /* ⚠️ 2026-09-17: тусдаа `toilet` үйлчилгээ → `SELBE_ALL_DATA_0917`/115 (ижил дугаар). */
-  url: `${TD}/115`,
+  url: `${IRGED}/218`,
   /**
    * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
    *
@@ -201,9 +201,9 @@ export const IRGED_BUILT = {
   /* ⚠️ `HJ` (services.arcgis.com/HJzgwvlNIXssnQar) — үндсэн байгууллагын org.
      (2026-09-17-оос өмнө `GAZAR_FS` нь ӨӨР org байсан тул тэндээс хайвал
      404 буцаана. */
-  url: `${HJ}/Irgeded_hureh_ur_uguuj/FeatureServer/0`,
+  url: `${IRGED}/217`,
   /** Ангиллын талбар — ЗӨВХӨН хоёр утгатай */
-  typeField: "Type",
+  typeField: "type",
   types: { house: "Байшин", ger: "Гэр" },
   /**
    * ⚠️ `Shape__Area` — СИСТЕМИЙН талбар, `Shape_Leng` БИШ. Үйлчилгээний SR нь
@@ -211,7 +211,7 @@ export const IRGED_BUILT = {
    * Байшин 225,151 м² (дундаж 38.3) · Гэр 58,308 м² (дундаж 77.2).
    * ⚠️ `Confidence` талбарыг ХЭРЭГЛЭХГҮЙ (дээрх тайлбарыг үз).
    */
-  areaField: "Shape__Area",
+  areaField: "SHAPE__Area",
 } as const;
 
 /**
@@ -466,7 +466,7 @@ export const USAN_SAN = {
   id: "d3:usan_san",
   get title() { return tr('Усан сан'); },
   // test_data [89] usan_san_5 — 2026-08-13 шилжив (6 объект)
-  url: `${TD}/89`,
+  url: `${SELBE_ET}/123`,
   /** Эх веб зургийн `5_n_usan_san` симбол — дүүргэлт 25%, хүрээ бүтэн */
   hue: "#003399",
 } as const;
@@ -493,10 +493,10 @@ export const HABEA = {
      * `laborCompanyFields(sfx)`-ээр компани тус бүрээс уншина.
      */
     fields: {
-      ognoo: "Ognoo",
-      niitAjiltan: "Niit_ajiltan",
-      hunTsag: "Hun_tsag",
-      niitTehnik: "Niit_tehnik",
+      ognoo: "ognoo",
+      niitAjiltan: "niit_ajiltan",
+      hunTsag: "hun_tsag",
+      niitTehnik: "niit_tehnik",
     },
     /**
      * ӨРГӨН схем: маягтын НЭГ бүртгэл = өдрийн нэгдсэн тайлан бөгөөд ГҮЙЦЭТГЭГЧ
@@ -553,17 +553,17 @@ export const HABEA = {
    * `habea:crane`/`habea:buffer` мөн хасагдсан.)
    */
   crane: {
-    url: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/50`,
-    bufferUrl: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/51`,
+    url: `${HAB_KRAN}/194`,
+    bufferUrl: `${HAB_KRAN}/195`,
     fields: {
-      dugaar: 'Краны_дугаар', blok: 'Блок', bagts: 'Багц',
+      dugaar: 'краны_дугаар', blok: 'блок', bagts: 'багц',
       /**
        * ⚠️ Эх үйлчилгээнд ЦЭГ [50] ба БҮС [51] ХОЁУЛАА «суны» гэж бичдэг —
        * test_data-гийн хуулбарт цэг нь «сумны» байсан тул хоёр нэрийг
        * зэрэг унших нэмэлт зам (`sunUrtBuf`) хэрэгтэй байв. Одоо ганц нэр.
        */
-      sunUrt: 'Краны_суны_урт_m',
-      undur: 'Краны_өндөр_m', tuluv: "Tuluv",
+      sunUrt: 'краны_суны_урт_m',
+      undur: 'краны_өндөр_m', tuluv: "tuluv",
       /**
        * ⚠️ КРАН ↔ БҮС ↔ ЧАРТ ХОЛБООСЫН ТҮЛХҮҮР (2026-09-06, амьдаар батлагдсан).
        * `Краны_дугаар` нь түлхүүр болж ЧАДАХГҮЙ: 50 краны 21-д NULL, мөн 1–7
@@ -573,8 +573,8 @@ export const HABEA = {
        * цэг [50]-ийн `OBJECTID` = бүс [51]-ийн `ORIG_FID` (50/50 таарсан,
        * зөрсөн 0, бүсгүй цэг 0).
        */
-      oid: 'OBJECTID',
-      bufferLink: 'ORIG_FID',
+      oid: 'objectid',
+      bufferLink: 'orig_fid',
       /**
        * ⚠️ 2026-10-21 (аудит): Enterprise-д шилжүүлэхэд цэг [50]-ийн OBJECTID 1–50 болж ДАХИН ДУГААРЛАГДСАН, AGOL-ын
        * эх OBJECTID нь шинэ `orig_oid` талбарт үлдсэн; бүс [51]-ийн `ORIG_FID` хуучин дугаараа заасаар (orig_oid-той
@@ -784,14 +784,18 @@ export const HABEA = {
  * хэв маяг (`MNG_ajiltani_too_<SFX>` г.м). `Bagts_<SFX>` нь зөвхөн багц
  * заасан 7 гүйцэтгэгчид бий; бусдад нь байхгүй талбар уншихад undefined → 0.
  */
-export const laborCompanyFields = (sfx: string) => ({
-  bagts: `Bagts_${sfx}`,
-  mongol: `MNG_ajiltani_too_${sfx}`,
-  gadaad: `G_ajiltanii_too_${sfx}`,
-  niitAjiltan: `Niit_ajiltan_${sfx}`,
-  // ⚠️ Шинэ маягтад техник нь `Tehnik_<SFX>` (`Niit_tehnik_<SFX>` БИШ).
-  niitTehnik: `Tehnik_${sfx}`,
-});
+export const laborCompanyFields = (sfx: string) => {
+  /* ⚠️ 2026-10-26: Enterprise-ийн БОДИТ нэр ЖИЖИГ үсгээр (`niit_ajiltan_hhdmgk`) — код (`HHDMGK`) нь гүйцэтгэгчийн таних тэмдэг */
+  const s = sfx.toLowerCase();
+  return {
+    bagts: `bagts_${s}`,
+    mongol: `mng_ajiltani_too_${s}`,
+    gadaad: `g_ajiltanii_too_${s}`,
+    niitAjiltan: `niit_ajiltan_${s}`,
+    // ⚠️ Шинэ маягтад техник нь `tehnik_<sfx>` (`niit_tehnik_<sfx>` БИШ).
+    niitTehnik: `tehnik_${s}`,
+  };
+};
 
 /**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).

@@ -16,7 +16,7 @@ import { requireCap } from './who';
 import type { CapKey } from './caps';
 
 /** Сервер өөрөө удирддаг талбарууд — БИЧИХГҮЙ (илгээвэл хүсэлт бүхэлдээ унана) */
-const SERVER_FIELDS = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+const SERVER_FIELDS = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)/i;
 
 export type EditResult = {
   /** Амжилттай бичигдсэн мөрийн тоо (нэмсэн + зассан + устгасан) */

@@ -80,7 +80,7 @@ console.log('\n3. ХАСАГДСАН БАГАНА — хуучирсан тек�
 check('FIN_XL_DROP = tusuld_ezleh_huvi', FIN_XL_DROP.join(',') === 'tusuld_ezleh_huvi');
 check('FIN_XL_HIDE-д байхгүй (нуугдсан биш, огт багана биш)', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi'));
 check('FIN_XL_ORDER-т ХЭВЭЭР (эрэмбийн хувилбар хөдлөхгүй)', FIN_XL_ORDER.includes('tusuld_ezleh_huvi'));
-check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('Cashflow_ID'));
+check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('cashflow_id'));
 check('тоон ихэр нуугдахгүй', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi_dun') && !FIN_XL_DROP.includes('tusuld_ezleh_huvi_dun'));
 
 console.log('\n4. Finance.tsx — бутархай хувийн ЗАМ §2-ын функцүүдэд холбогдсон (дотоод хуулбаргүй)');
@@ -96,7 +96,7 @@ console.log('\n4. Finance.tsx — бутархай хувийн ЗАМ §2-ын 
   check('sumText → finXlIsMean · finXlWeightedMean', src.includes('if (finXlIsMean(c.name)) {')
     && src.includes('finXlWeightedMean(rows.map((p) => p.row), c.name)'));
   check('×100 · жигнэлтийн ДОТООД хуулбар алга', !src.includes('pct(x * 100') && !src.includes('toPrecision(12)') && !/top \+= g \* v/.test(src));
-  check('isPctField 0–100 мужийн шалгалт', src.includes("f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);"));
+  check('isPctField 0–100 мужийн шалгалт', src.includes("f === 'cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);"));
   check('нийтлэл: pend ба adds хоёулаа parseFinanceShare (÷100)',
     (src.match(/FIN_XL_FRACTION\.includes\(fld\)\s*\?\s*parseFinanceShare\(v, typeOf\(fld\), labelOf\(fld\), legacyShareInvalidRef\.current, PARSE_MSG\)/g) ?? []).length === 2);
   check('sumText: үнэт цаасны хувийн зурвас хоосон хэвээр (дунджаас ӨМНӨ)',

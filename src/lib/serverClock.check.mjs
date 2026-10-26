@@ -38,7 +38,8 @@ assert.ok(!clockOffsetOk(Number.POSITIVE_INFINITY));
 {
   const src = readFileSync('src/lib/serverClock.ts', 'utf8');
   const meas = src.slice(src.indexOf('export async function measureServerTime('), src.indexOf('export async function syncServerClock('));
-  assert.ok(/const ent = isEntDataUrl\(remapUrl\(base\)\);/.test(meas), 'measureServerTime: Enterprise хаягийг зураглалын дараах хаягаар танихгүй');
+  /* ⚠️ 2026-10-26: хаяг ҮРГЭЛЖ Enterprise-ийн бодит хаяг (хуучин `entMap.remapUrl` хасагдсан) */
+  assert.ok(/const ent = base\.startsWith\(`\$\{ENT_HOSTED\}\/`\);/.test(meas), 'measureServerTime: Enterprise хаягийг танихгүй');
   assert.ok(/if \(!ent\) \{\s*try \{[\s\S]*?onStatisticField: 'CURRENT_TIMESTAMP'/.test(meas), 'measureServerTime: Enterprise-д outStatistics замыг алгасахгүй');
   assert.ok(/returnCountOnly: 'true'/.test(meas), 'measureServerTime: хоёртын хайлт алга');
   const sync = src.slice(src.indexOf('export async function syncServerClock('));

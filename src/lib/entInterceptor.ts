@@ -1,33 +1,27 @@
 /**
- * ENTERPRISE — JS API ХҮСЭЛТИЙН ХӨРВҮҮЛЭГЧ (2026-10-20, `services/entMap.ts`-ийн ⚠️ «ТАЛБАРЫН НЭР»).
+ * ENTERPRISE — JS API ХҮСЭЛТИЙН INTERCEPTOR (2026-10-20; 2026-10-26-нд талбарын нэрийн хөрвүүлэлт ХАСАГДСАН).
  *
  * ⚠️ ЯАГААД: газрын зургийн давхарга (FeatureLayer), ноорог/эрхийн хүснэгтийн `FeatureLayer.queryFeatures`/
- *    `applyEdits` нь `query.ts`-ийн цөмөөр БИШ, JS API-ийн өөрийн `esri/request`-ээр явдаг. Enterprise-ийн
- *    жижиг үсэгтэй талбар дээр `outFields: ['BAGTS']` → 500, хариултын `attributes.bagts` → код `attributes.BAGTS`
- *    гэж уншиж хоосон болно. `esriConfig.request.interceptors` нь JS API-ийн БҮХ хүсэлтэд (давхаргын мета ·
- *    асуулга · layerView-ийн worker-ийн татлага · applyEdits) ажилладаг (2026-10-20-нд puppeteer-оор батлав):
- *      · `before`: outFields · orderByFields · outStatistics · where (нэр өөрчлөгдсөн) · adds/updates → Enterprise нэр;
- *      · `after`:  давхаргын МЕТА (`fields[].name` · `objectIdField` · `editFieldsInfo`) ба асуулгын хариу
- *        (`features[].attributes` · `fields`) → эх нэр; метан дээр `supportedQueryFormats = 'JSON'` — эс бөгөөс
- *        JS API PBF-ээр асууж, хоёртын хариуг хөрвүүлэх боломжгүй (толь байхгүй давхаргад PBF хэвээр).
- *    Ингэснээр JS API-ийн давхарга (fields · fieldsIndex · popup · renderer · graphic.attributes) AGOL-ынхтай
- *    ЯГ ИЖИЛ, эх нэртэй харагдана — 23 модулийн кодыг хөндөхгүй.
- * ⚠️ Талбарын хөрвүүлэлт зөвхөн `NEXT_PUBLIC_ENT_DATA`-ийн дор буй хаягт (`isEntDataUrl`). Нэг л удаа суулгана (`installing`).
+ *    `applyEdits` нь `query.ts`-ийн цөмөөр БИШ, JS API-ийн өөрийн `esri/request`-ээр явдаг. `esriConfig.request.interceptors`
+ *    нь JS API-ийн БҮХ хүсэлтэд (давхаргын мета · асуулга · layerView-ийн worker-ийн татлага · applyEdits) ажилладаг.
+ * ⚠️ 2026-10-26 (хэрэглэгч: «хөрвүүлэх хүснэгт огт ашиглахгүй, бодит датаг шууд ашиглана»): урьд энд талбарын нэрийг
+ *    (`BAGTS` ↔ `bagts`) хоёр чиглэлд хөрвүүлдэг байв (`entMap` толь). Одоо код Enterprise-ийн БОДИТ (жижиг үсэгтэй)
+ *    нэрээр бичигдсэн тул хөрвүүлэлт БАЙХГҮЙ. Үлдсэн нь нэр өөрчилдөггүй:
+ *      · импортын агшны мөшгөлтийн утгын засвар (`editTrack.fixImportStamps` — асуулгын хариунд);
+ *      · хуучин мөшгөлтийн баганатай давхаргын метад `supportedQueryFormats = 'JSON'` (PBF хариунд утгын засвар
+ *        хийх боломжгүй — урьдын зан төлөв хэвээр; бусад давхарга PBF-ээр).
  * ⚠️ Дуудах цэг: `AuthGate` (аппын эхэнд, нэвтрэлтээс үл хамааран) · `MapCanvas`/`SuitMap` (view үүсгэхээс өмнө) ·
- *    FeatureLayer кэштэй lib-үүд (`draftRemote` · `permsRemote` · `qaqcDraftRemote`). Node-д (тест) JS API
- *    ачаалагдахгүй тул чимээгүй алгасна.
- * ⚠️ 2026-10-22 (гүйцэтгэл): ЭНЭ НЭГ interceptor ГУРВАН үүрэгтэй — JS API `request` нь `urls`-тэй ТААРСАН ЭХНИЙ
+ *    FeatureLayer кэштэй lib-үүд (`draftRemote` · `permsRemote`). Node-д (тест) JS API ачаалагдахгүй тул чимээгүй алгасна.
+ * ⚠️ 2026-10-22 (гүйцэтгэл): ЭНЭ НЭГ interceptor ОЛОН үүрэгтэй — JS API `request` нь `urls`-тэй ТААРСАН ЭХНИЙ
  *    interceptor-ыг л ажиллуулдаг (`core/urlUtils.getInterceptor`), тусдаа interceptor нэмбэл давхцсан хаягт аль нэг нь
- *    ХЭЗЭЭ Ч ажиллахгүй. Дараалал — `before`: (1) серверийн итгэмжлэл (`ensureCred`) → (2) талбарын нэр (`entJsBefore`) →
- *    (3) метагийн кэш (`metaCache`); `after`: (2) хөрвүүлээд → (3) ХӨРВҮҮЛСЭН хариуг хадгална. Кэшийн хит `before`-оос
- *    буцахад JS API `after`-ыг ДУУДДАГГҮЙ (`request.js`) — тиймээс хадгалсан нь аль хэдийн хөрвүүлэгдсэн байх ёстой.
+ *    ХЭЗЭЭ Ч ажиллахгүй. Дараалал — `before`: (1) серверийн итгэмжлэл (`ensureCred`) → (2) метагийн кэш (`metaCache`);
+ *    `after`: утгын засвар → кэшид хадгална. Кэшийн хит `before`-оос буцахад JS API `after`-ыг ДУУДДАГГҮЙ (`request.js`)
+ *    — тиймээс хадгалсан нь аль хэдийн засагдсан байх ёстой.
  *    `urls` = Enterprise серверийн бүх үйлчилгээ (`ENT_SERVER`, ортофото MapServer/ImageServer ч) + бусад хостын
  *    метагийн хаяг (`META_URL_RE` — суурь зураг); бусад хүсэлт энэ interceptor-оор огт орохгүй.
  */
-import {
-  ENT_DATA, entDict, entRequestWith, entResponseWith, isEntDataUrl, isLayerMeta, requestedFields, type EntDict,
-} from '@/lib/services/entMap';
-import { AUTH } from '@/lib/services/env';
+import { AUTH, ENT_HOSTED } from '@/lib/services/env';
+import { fixImportStamps } from '@/lib/editTrack';
 import {
   META_URL_RE, clearMetaCache, metaCache, metaKey, mutatesData, type MetaCache, type Ticket,
 } from '@/lib/metaCache';
@@ -37,8 +31,6 @@ type ReqOpts = { query?: Query; authMode?: unknown; signal?: AbortSignal | null 
 type Before = { url: string; requestOptions: ReqOpts };
 type After = { url: string; data?: unknown; requestOptions?: ReqOpts };
 
-/** Хүсэлтээс хариу руу дуудагчийн `outFields`-ийн үсгийг дамжуулах түлхүүр (requestOptions дээр) */
-const REQ_KEY = '__selbeEntOut';
 /** Метагийн кэшийн эзэн хүсэлтийн тасалбар (requestOptions дээр — `after`/`error` хүртэл) */
 const META_REQ = '__selbeMeta';
 
@@ -46,31 +38,22 @@ const META_REQ = '__selbeMeta';
  * Enterprise-ийн ФЕДЕРАЦИЙН серверийн үйлчилгээний үндэс (`…/map/rest/services`) — `ENT_DATA`-аас (`…/Hosted`).
  * `AuthGate` итгэмжлэлээ үүгээр бэлддэг, `entDocs` тусдаа нэвтрэлтийн токеноо үүнд бүртгэдэг; '' = Enterprise байхгүй (тест).
  */
-export const ENT_SERVER = ENT_DATA ? ENT_DATA.replace(/\/rest\/services\/.*$/i, '/rest/services').replace(/\/+$/, '') : '';
+export const ENT_SERVER = ENT_HOSTED ? ENT_HOSTED.replace(/\/rest\/services\/.*$/i, '/rest/services').replace(/\/+$/, '') : '';
 
-/** Массив параметрийг (JS API заримдаа массив өгдөг) мөр болгож, мөрүүдийг л хөрвүүлнэ (цэвэр — тест) */
-export function entJsBefore(query: Query, d: EntDict | null): { query: Query; requested: string[] } {
-  const strs: Record<string, string> = {};
-  for (const [k, v] of Object.entries(query)) {
-    if (typeof v === 'string') strs[k] = v;
-    else if (Array.isArray(v) && ['outFields', 'orderByFields', 'groupByFieldsForStatistics'].includes(k)) strs[k] = v.join(',');
-    /* ⚠️ 2026-10-22 (аудит №4): JS API `returnDistinctValues`-ийг BOOLEAN `true`, `outStatistics`-ийг заримдаа массиваар өгдөг —
-       мөр биш тул хуулагдахгүй байж `entRequestWith` distinct/статистик асуулгыг таньдаггүй, ORDER BY-д CASE илэрхийлэл
-       (`trackOrderExpr`) орж Enterprise 500 «Database error» (амьдаар Bagts_ajluud/0,1,10,11) өгдөг байв. Мөр болгож хуулна. */
-    else if (typeof v === 'boolean' && (k === 'returnDistinctValues' || k === 'returnCountOnly' || k === 'returnIdsOnly')) strs[k] = String(v);
-    else if (k === 'outStatistics' && v && typeof v === 'object') strs[k] = JSON.stringify(v);
-  }
-  const requested = requestedFields(strs);
-  const mapped = entRequestWith(strs, d);
-  return { query: { ...query, ...mapped }, requested };
-}
+/** Хуучин мөшгөлтийн (gdb-ээс хуулсан, AGOL-ын эх утгатай) баганатай давхаргын мета уу — `editTrack.ts`-ийн ⚠️ */
+const hasStampCols = (b: Record<string, unknown>): boolean =>
+  Array.isArray(b.fields) && typeof b.type === 'string'
+  && (b.fields as { name?: unknown }[]).some((f) => typeof f?.name === 'string' && /^(creationdate|editdate)(_1)?$/.test(f.name));
 
-/** Хариуг хөрвүүлнэ; мета бол PBF-ийг хаана (цэвэр — тест) */
-export function entJsAfter(data: unknown, d: EntDict | null, requested: readonly string[]): unknown {
+/**
+ * Хариуны УТГЫН засвар (нэр хөндөхгүй; цэвэр — тест): асуулгын мөрүүдийн импортын агшны мөшгөлт, хуучин мөшгөлтийн
+ * баганатай давхаргын метад PBF-ийг хаана (PBF хариунд засвар хийх боломжгүй).
+ */
+export function entJsAfter(data: unknown): unknown {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
   const body = data as Record<string, unknown>;
-  entResponseWith(body, d, requested);
-  if (d && isLayerMeta(body) && typeof body.supportedQueryFormats === 'string') body.supportedQueryFormats = 'JSON';
+  fixImportStamps(body);
+  if (hasStampCols(body) && typeof body.supportedQueryFormats === 'string') body.supportedQueryFormats = 'JSON';
   return body;
 }
 
@@ -83,9 +66,8 @@ export type IdLike = {
 export type EntInterceptorDeps = {
   /** `ENT_SERVER` — итгэмжлэлийн урьдчилсан бэлтгэл ба бичилтийн илрүүлэлт энэ угтвартай хаягт л */
   entServer: string;
-  /** Талбарын нэрийн хөрвүүлэлт хэнд (`isEntDataUrl`) */
+  /** Утгын засвар хэнд (Enterprise-ийн hosted өгөгдлийн хаяг) */
   isEntData: (url: string) => boolean;
-  dictOf: (url: string) => EntDict | null;
   /** IdentityManager (ачаалагдаагүй бол `null`) */
   id: () => IdLike | null;
   /** «Нэвтэрсэн» гэж таних хаягууд — порталын `/sharing` ба серверийн үндэс (`entDocs`-ийн тусдаа нэвтрэлт) */
@@ -157,11 +139,6 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
       /* ⚠️ Бичилт (ил POST/бие — `mutatesData`) → мета (extent · `editingInfo` · схем) хуучирч болзошгүй — урьдчилж
          хаяна, `after`/`error`-т ДАХИН (бичилтийн явцад эхэлсэн мета татлага кэшид суухгүй). */
       if (server && mutatesData(ro)) d.cache.clear();
-      if (d.isEntData(url) && ro.query) {
-        const { query, requested } = entJsBefore(ro.query, d.dictOf(url));
-        ro.query = query;
-        ro[REQ_KEY] = requested;
-      }
       const key = metaKey(url, ro, cred ? (cred.userId || 'cred') : '');
       if (!key) return undefined;
       const c = d.cache.claim(key);
@@ -186,13 +163,10 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
       const m = ro?.[META_REQ] as { key: string; ticket: Ticket } | undefined;
       let ok = false;
       try {
-        if (d.isEntData(r.url)) {
-          const requested = (ro?.[REQ_KEY] as string[] | undefined) ?? [];
-          r.data = entJsAfter(r.data, d.dictOf(r.url), requested);
-        }
+        if (d.isEntData(r.url)) r.data = entJsAfter(r.data);
         ok = true;
       } finally {
-        /* ⚠️ Хөрвүүлэлт унасан бол хөрвүүлээгүй хариуг ХАДГАЛАХГҮЙ — гэхдээ хүлээгчдийг заавал чөлөөлнө */
+        /* ⚠️ Засвар унасан бол засаагүй хариуг ХАДГАЛАХГҮЙ — гэхдээ хүлээгчдийг заавал чөлөөлнө */
         if (m) d.cache.settle(m.key, m.ticket, ok ? r.data : undefined);
         if (onServer(r.url) && mutatesData(ro)) d.cache.clear();
       }
@@ -214,7 +188,7 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
 let installing: Promise<void> | null = null;
 /** `esriConfig.request.interceptors`-т нэг удаа суулгана — JS API байхгүй (Node) бол юу ч хийхгүй */
 export function installEntInterceptor(): Promise<void> {
-  if (!ENT_DATA) return Promise.resolve();
+  if (!ENT_HOSTED) return Promise.resolve();
   if (!installing) {
     installing = doInstall().catch(() => {
       /* Импорт унавал (Node/тест) кэшийг суллаж, дараагийн дуудлагад дахин оролдоно */
@@ -234,8 +208,7 @@ async function doInstall(): Promise<void> {
   const portal = AUTH.portalUrl.trim().replace(/\/+$/, '');
   esriConfig.request.interceptors.push(makeEntInterceptor({
     entServer: ENT_SERVER,
-    isEntData: isEntDataUrl,
-    dictOf: entDict,
+    isEntData: (u: string) => u.startsWith(`${ENT_HOSTED}/`),
     id: () => esriId,
     sessionUrls: [portal ? `${portal}/sharing` : '', ENT_SERVER].filter(Boolean),
     cache: metaCache,

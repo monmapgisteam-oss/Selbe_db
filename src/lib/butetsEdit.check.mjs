@@ -37,15 +37,15 @@ const meta = {
   layerId: 'et:124',
   title: 'Багц 1 цахилгааны шугам',
   url: 'https://example.invalid/FeatureServer/59',
-  oidField: 'OBJECTID',
+  oidField: 'objectid',
   geom: 'esriGeometryPolyline',
   canUpdate: true,
   canCreate: true,
   canDelete: true,
   draw: 'polyline',
   fields: [
-    { name: 'DocName', alias: 'DocName', kind: 'text', length: 255, nullable: true, codes: null },
-    { name: 'ZONE_ID', alias: 'ZONE_ID', kind: 'text', length: 100, nullable: true, codes: null },
+    { name: 'docname', alias: 'DocName', kind: 'text', length: 255, nullable: true, codes: null },
+    { name: 'zone_id', alias: 'ZONE_ID', kind: 'text', length: 100, nullable: true, codes: null },
     { name: 'urt_m', alias: 'urt_m', kind: 'number', length: null, nullable: true, codes: null },
     { name: 'ner', alias: 'Нэр', kind: 'text', length: 50, nullable: false, codes: null },
     {
@@ -58,20 +58,20 @@ const meta = {
     },
   ],
   readOnly: [
-    { name: 'OBJECTID', alias: 'OBJECTID', kind: 'number', length: null, nullable: false, codes: null },
-    { name: 'Shape__Length', alias: 'Shape__Length', kind: 'number', length: null, nullable: true, codes: null },
+    { name: 'objectid', alias: 'OBJECTID', kind: 'number', length: null, nullable: false, codes: null },
+    { name: 'SHAPE__Length', alias: 'Shape__Length', kind: 'number', length: null, nullable: true, codes: null },
   ],
 };
 
 const row = {
-  OBJECTID: 12,
-  DocName: 'Зураг-1',
-  ZONE_ID: 'Багц-1',
+  objectid: 12,
+  docname: 'Зураг-1',
+  zone_id: 'Багц-1',
   urt_m: 1234.5,
   ner: 'Шугам А',
   turul: 'a',
-  Shape__Length: 1240.117,
-  GlobalID: '{ABC}',
+  SHAPE__Length: 1240.117,
+  globalid: '{ABC}',
 };
 
 /* ══════════════ 1. Ноорог — зөвхөн засагдах талбарууд ══════════════ */
@@ -79,13 +79,13 @@ const row = {
 const base = rowToPatch(meta, row);
 assert.deepEqual(
   Object.keys(base).sort(),
-  ['DocName', 'ZONE_ID', 'ner', 'turul', 'urt_m'],
+  ['docname', 'ner', 'turul', 'urt_m', 'zone_id'],
   'ноорогт ЗӨВХӨН засагдах талбарууд орно',
 );
 assert.equal(base.urt_m, '1234.5', 'тоо ТЕКСТЭЭР авагдана — форматлалт алдагдахгүй');
-assert.ok(!('OBJECTID' in base), 'системийн талбар ноорогт орох ёсгүй');
-assert.ok(!('Shape__Length' in base), 'геометрийн хэмжээ ноорогт орох ёсгүй');
-assert.ok(!('GlobalID' in base), 'GlobalID ноорогт орох ёсгүй');
+assert.ok(!('objectid' in base), 'системийн талбар ноорогт орох ёсгүй');
+assert.ok(!('SHAPE__Length' in base), 'геометрийн хэмжээ ноорогт орох ёсгүй');
+assert.ok(!('globalid' in base), 'GlobalID ноорогт орох ёсгүй');
 
 /* ══════════════ 2. Өөрчлөлтгүй бол ХООСОН ══════════════ */
 
@@ -94,16 +94,16 @@ assert.deepEqual(diffRow(meta, row, base), {}, 'юу ч зассангүй бо�
 /* ══════════════ 3. Зөвхөн өөрчлөгдсөн талбар ══════════════ */
 
 assert.deepEqual(
-  diffRow(meta, row, { ...base, DocName: 'Зураг-2' }),
-  { DocName: 'Зураг-2' },
+  diffRow(meta, row, { ...base, docname: 'Зураг-2' }),
+  { docname: 'Зураг-2' },
   'нэг талбар зассан бол НЭГ л талбар илгээгдэнэ',
 );
 
 /* ══════════════ 4. Хоосон нь `null` — `""` БИШ ══════════════ */
 
-const cleared = diffRow(meta, row, { ...base, DocName: '' });
-assert.ok('DocName' in cleared, 'хоослосон талбар илгээгдэх ёстой');
-assert.equal(cleared.DocName, null, 'хоосон мөр нь NULL болно — `""` бол IS NULL шүүлтэд орохгүй');
+const cleared = diffRow(meta, row, { ...base, docname: '' });
+assert.ok('docname' in cleared, 'хоослосон талбар илгээгдэх ёстой');
+assert.equal(cleared.docname, null, 'хоосон мөр нь NULL болно — `""` бол IS NULL шүүлтэд орохгүй');
 
 /* ══════════════ 5. Тоо — текстээс тоо болж хөрвөнө ══════════════ */
 
@@ -125,7 +125,7 @@ assert.equal(diffRow(meta, row, { ...base, urt_m: '' }).urt_m, null);
 /* ══════════════ 6. Түүхий утга ХЭВЭЭР — trim хийхгүй ══════════════ */
 
 assert.equal(
-  diffRow(meta, row, { ...base, DocName: 'Зураг-2 ' }).DocName,
+  diffRow(meta, row, { ...base, docname: 'Зураг-2 ' }).docname,
   'Зураг-2 ',
   'арын зайг чимээгүй авахгүй — бодит өгөгдөлд ийм бичиглэл байдаг',
 );
@@ -139,7 +139,7 @@ assert.ok(
   'nullable биш талбарыг хоослоход алдаа',
 );
 assert.ok(
-  !validateRow(meta, { ...base, DocName: '' }).DocName,
+  !validateRow(meta, { ...base, docname: '' }).docname,
   'nullable талбарыг хоослох нь ЗӨВ — алдаа болгож болохгүй',
 );
 assert.ok(
@@ -159,11 +159,11 @@ assert.ok(validateRow(meta, { ...base, urt_m: '1e3' }).urt_m, '«1e3» тоо б
 assert.ok(validateRow(meta, { ...base, urt_m: '0x10' }).urt_m, '«0x10» тоо биш');
 assert.ok(validateRow(meta, { ...base, urt_m: '-50' }).urt_m, 'уртын талбарт сөрөг тоо байж болохгүй');
 assert.ok(
-  validateRow(meta, { ...base, ZONE_ID: 'x'.repeat(101) }).ZONE_ID,
+  validateRow(meta, { ...base, zone_id: 'x'.repeat(101) }).zone_id,
   'уртаас хэтэрсэн текст — сервер унахаас өмнө барина',
 );
 assert.ok(
-  !validateRow(meta, { ...base, ZONE_ID: 'x'.repeat(100) }).ZONE_ID,
+  !validateRow(meta, { ...base, zone_id: 'x'.repeat(100) }).zone_id,
   'яг хязгаар дээрх урт нь ЗӨВ',
 );
 assert.ok(
@@ -196,7 +196,7 @@ assert.ok(
    заавал талбарт хоосон) нь ӨӨР талбарын засварыг хаадаггүй — `validateChanged` */
 {
   const legacy = { ...row, turul: 'хуучин', ner: null };
-  const p = { ...rowToPatch(meta, legacy), DocName: 'Шинэ нэр' };
+  const p = { ...rowToPatch(meta, legacy), docname: 'Шинэ нэр' };
   assert.ok(validateRow(meta, p).turul && validateRow(meta, p).ner, 'бүтэн шалгуур хөндөөгүйг барьдаг');
   assert.deepEqual(validateChanged(meta, legacy, p), {}, 'хөндөөгүй талбар засварыг хаах ёсгүй');
   /* өөрчилсөн талбар нь шалгагдсаар */
@@ -211,9 +211,9 @@ assert.equal(meta.canUpdate, true);
 
 /* ══════════════ 9. SQL ══════════════ */
 
-assert.equal(oidWhere(meta, 12), 'OBJECTID = 12');
+assert.equal(oidWhere(meta, 12), 'objectid = 12');
 /* ⚠️ Бутархай OID нь SQL-д орох ёсгүй — `Math.trunc` таслана */
-assert.equal(oidWhere(meta, 12.9), 'OBJECTID = 12');
+assert.equal(oidWhere(meta, 12.9), 'objectid = 12');
 assert.equal(
   oidWhere({ ...meta, oidField: 'FID' }, 7), 'FID = 7',
   'OID нэр давхарга бүрт ижил БИШ — бүртгэлээс уншигдана',
@@ -241,7 +241,7 @@ assert.equal(
 const blank = emptyPatch(meta);
 assert.deepEqual(
   Object.keys(blank).sort(),
-  ['DocName', 'ZONE_ID', 'ner', 'turul', 'urt_m'],
+  ['docname', 'ner', 'turul', 'urt_m', 'zone_id'],
   'хоосон ноорогт засагдах талбар БҮГД байна',
 );
 assert.ok(Object.values(blank).every((v) => v === ''), 'бүгд хоосон мөр');
@@ -335,7 +335,7 @@ assert.equal(
   asked.body.get('outSR'), '102100',
   'зураг Web Mercator — үйлчилгээний UTM 48N-ээс хөрвүүлэхгүй бол өөр газар буулгана',
 );
-assert.equal(asked.body.get('where'), 'OBJECTID = 12');
+assert.equal(asked.body.get('where'), 'objectid = 12');
 assert.deepEqual(got.paths, LINE.paths, 'геометр бүтнээрээ ирнэ');
 assert.deepEqual(
   got.spatialReference, SR,
@@ -362,7 +362,7 @@ assert.equal(ups.length, 1);
 assert.deepEqual(ups[0].geometry.paths, LINE.paths, 'геометр `geometry` талбарт явна');
 assert.deepEqual(ups[0].geometry.spatialReference, SR, 'SR хэвээр');
 assert.deepEqual(
-  ups[0].attributes, { OBJECTID: 12 },
+  ups[0].attributes, { objectid: 12 },
   'ЗӨВХӨН OID — атрибут дагуулбал өөр хүний засварыг дарна',
 );
 assert.ok(!('geometry' in ups[0].attributes), 'геометр АТРИБУТ болж явж БОЛОХГҮЙ');
@@ -377,7 +377,7 @@ await assert.rejects(
 /* ⚠️ Геометргүй засвар нь хэлбэрийг ХӨНДӨХГҮЙ — `diffRow`-ийн үр дүнд
    `geometry` түлхүүр ер нь үүсэхгүй байх ёстой. */
 assert.ok(
-  !('geometry' in diffRow(meta, row, { ...base, DocName: 'Зураг-3' })),
+  !('geometry' in diffRow(meta, row, { ...base, docname: 'Зураг-3' })),
   'атрибут засварт геометр орж ирвэл хэлбэрийг санамсаргүй дарж бичнэ',
 );
 
@@ -400,22 +400,22 @@ assert.ok(
  *    байх нь хамгийн сүүлийн хамгаалалт.
  */
 
-const patched = { ...base, DocName: 'Зураг-9', urt_m: '999', ZONE_ID: '' };
+const patched = { ...base, docname: 'Зураг-9', urt_m: '999', zone_id: '' };
 const back = revertAttrs(meta, row, patched);
 assert.deepEqual(
-  Object.keys(back).sort(), ['DocName', 'ZONE_ID', 'urt_m'],
+  Object.keys(back).sort(), ['docname', 'urt_m', 'zone_id'],
   'ЗӨВХӨН өөрчлөгдсөн талбар буцаана',
 );
-assert.equal(back.DocName, 'Зураг-1', 'текстийн хуучин утга');
+assert.equal(back.docname, 'Зураг-1', 'текстийн хуучин утга');
 assert.equal(back.urt_m, 1234.5, 'тоо нь ТОО болж буцна');
 assert.equal(typeof back.urt_m, 'number');
-assert.equal(back.ZONE_ID, 'Багц-1', 'хоослосон талбар хуучин утгаараа сэргэнэ');
+assert.equal(back.zone_id, 'Багц-1', 'хоослосон талбар хуучин утгаараа сэргэнэ');
 assert.deepEqual(revertAttrs(meta, row, base), {}, 'өөрчлөлтгүй бол буцаах зүйл алга');
 
 /* Хуучин нь ХООСОН байсан талбар → null */
-const rowBlank = { ...row, DocName: null };
+const rowBlank = { ...row, docname: null };
 assert.equal(
-  revertAttrs(meta, rowBlank, { ...base, DocName: 'шинэ' }).DocName, null,
+  revertAttrs(meta, rowBlank, { ...base, docname: 'шинэ' }).docname, null,
   'хоосон байсан талбар NULL-ээр сэргэнэ — "" бол IS NULL шүүлтэд орохгүй',
 );
 
@@ -435,7 +435,7 @@ try {
 const backUps = JSON.parse(back1.body.get('updates'));
 assert.deepEqual(
   backUps[0].attributes,
-  { DocName: 'Зураг-1', urt_m: 1234.5, ZONE_ID: 'Багц-1', OBJECTID: 12 },
+  { docname: 'Зураг-1', urt_m: 1234.5, zone_id: 'Багц-1', objectid: 12 },
   'буцаалт нь OID + зөвхөн буцаах талбаруудыг илгээнэ',
 );
 assert.ok(!('geometry' in backUps[0]), 'атрибут буцаахад хэлбэрийг хөндөхгүй');
@@ -482,16 +482,16 @@ assert.equal(
   const im = {
     ...meta,
     fields: [
-      { name: 'Cap_Count', alias: 'Cap_Count', kind: 'number', length: null, nullable: true, codes: null, int: 'small' },
+      { name: 'cap_count', alias: 'Cap_Count', kind: 'number', length: null, nullable: true, codes: null, int: 'small' },
       { name: 'N', alias: 'N', kind: 'number', length: null, nullable: true, codes: null, int: 'int' },
-      { name: 'Urt_m', alias: 'Urt_m', kind: 'number', length: null, nullable: true, codes: null, int: null },
+      { name: 'urt_m', alias: 'Urt_m', kind: 'number', length: null, nullable: true, codes: null, int: null },
     ],
   };
-  assert.deepEqual(validateRow(im, { Cap_Count: '3', N: '-5', Urt_m: '2.5' }), {}, 'бүхэл ба бутархай зөв');
-  assert.ok(validateRow(im, { Cap_Count: '2.5', N: '', Urt_m: '' }).Cap_Count, 'бүхэл талбарт 2.5 татгалзана');
-  assert.ok(validateRow(im, { Cap_Count: '40000', N: '', Urt_m: '' }).Cap_Count, 'SmallInteger хязгаараас гарсан');
-  assert.ok(validateRow(im, { Cap_Count: '', N: '3000000000', Urt_m: '' }).N, 'Integer хязгаараас гарсан');
-  assert.ok(validateRow(im, { Cap_Count: 'x', N: '', Urt_m: '' }).Cap_Count, 'тоо биш');
+  assert.deepEqual(validateRow(im, { cap_count: '3', N: '-5', urt_m: '2.5' }), {}, 'бүхэл ба бутархай зөв');
+  assert.ok(validateRow(im, { cap_count: '2.5', N: '', urt_m: '' }).cap_count, 'бүхэл талбарт 2.5 татгалзана');
+  assert.ok(validateRow(im, { cap_count: '40000', N: '', urt_m: '' }).cap_count, 'SmallInteger хязгаараас гарсан');
+  assert.ok(validateRow(im, { cap_count: '', N: '3000000000', urt_m: '' }).N, 'Integer хязгаараас гарсан');
+  assert.ok(validateRow(im, { cap_count: 'x', N: '', urt_m: '' }).cap_count, 'тоо биш');
 }
 
 /* ── loadLayerMeta: SR, атом бичилтийн дэмжлэг, бүхэл төрөл (метадатаас) ── */
@@ -500,15 +500,15 @@ assert.equal(
   globalThis.fetch = async () => ({
     ok: true,
     json: async () => ({
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       geometryType: 'esriGeometryPolyline',
       capabilities: 'Query,Update',
       extent: { spatialReference: { wkid: 32648, latestWkid: 32648 } },
       supportsRollbackOnFailureParameter: false,
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID' },
-        { name: 'Cap_Count', type: 'esriFieldTypeSmallInteger', nullable: true },
-        { name: 'Urt_m', type: 'esriFieldTypeDouble', nullable: true },
+        { name: 'objectid', type: 'esriFieldTypeOID' },
+        { name: 'cap_count', type: 'esriFieldTypeSmallInteger', nullable: true },
+        { name: 'urt_m', type: 'esriFieldTypeDouble', nullable: true },
       ],
     }),
   });
@@ -516,8 +516,8 @@ assert.equal(
     const m = await loadLayerMeta('infra:6');
     assert.equal(m.wkid, 32648, 'давхаргын SR');
     assert.equal(m.rollback, false, 'supportsRollbackOnFailureParameter: false танигдана');
-    assert.equal(m.fields.find((f) => f.name === 'Cap_Count').int, 'small');
-    assert.equal(m.fields.find((f) => f.name === 'Urt_m').int, null);
+    assert.equal(m.fields.find((f) => f.name === 'cap_count').int, 'small');
+    assert.equal(m.fields.find((f) => f.name === 'urt_m').int, null);
   } finally {
     globalThis.fetch = realF;
   }
@@ -536,15 +536,15 @@ assert.equal(
     return {
       ok: true,
       json: async () => ({
-        updateResults: ups.map((u) => (u.attributes.OBJECTID === 2
+        updateResults: ups.map((u) => (u.attributes.objectid === 2
           ? { objectId: 2, success: false, error: { description: 'locked' } }
-          : { objectId: u.attributes.OBJECTID, success: true })),
+          : { objectId: u.attributes.objectid, success: true })),
       }),
     };
   };
   try {
     await assert.rejects(
-      () => saveRows(nm, [1, 2, 3], { DocName: 'x', Shape__Length: 5 }),
+      () => saveRows(nm, [1, 2, 3], { docname: 'x', SHAPE__Length: 5 }),
       (e) => {
         assert.deepEqual(e.done, [1, 3], 'БИЧИГДСЭН мөрүүд (дундаас нь унасан ч)');
         assert.equal(e.failed.length, 1);
@@ -555,11 +555,11 @@ assert.equal(
     );
     assert.equal(bodies.length, 1 + 3, 'багц унасны дараа мөр бүрээр (3) тогтооно');
     const ups = JSON.parse(bodies[0].get('updates'));
-    assert.deepEqual(ups[0].attributes, { OBJECTID: 1, DocName: 'x' }, 'серверийн талбар хасагдана');
+    assert.deepEqual(ups[0].attributes, { objectid: 1, docname: 'x' }, 'серверийн талбар хасагдана');
 
     /* Буцаалт — шидэхгүй, { done, failed } буцаана */
     const r = await revertRows(nm, [
-      { oid: 1, attrs: { DocName: 'a' } }, { oid: 2, attrs: { DocName: 'b' } }, { oid: 3, attrs: { DocName: 'c' } },
+      { oid: 1, attrs: { docname: 'a' } }, { oid: 2, attrs: { docname: 'b' } }, { oid: 3, attrs: { docname: 'c' } },
     ]);
     assert.deepEqual(r.done, [1, 3]);
     assert.deepEqual(r.failed.map((x) => x.oid), [2]);
@@ -580,14 +580,14 @@ assert.equal(
     throw new TypeError('fetch failed');
   };
   try {
-    await assert.rejects(() => saveRows(nm, [1, 2, 3], { DocName: 'x' }), (e) => {
+    await assert.rejects(() => saveRows(nm, [1, 2, 3], { docname: 'x' }), (e) => {
       assert.ok(isLostResponse(e), 'алдагдсан хариу хэвээр дамжина');
       assert.deepEqual(e.done, [], 'өмнөх багц алга');
       return true;
     });
     assert.equal(sent, 1, 'мөр бүрээр дахин илгээгээгүй');
     sent = 0;
-    const r = await revertRows(nm, [{ oid: 1, attrs: { DocName: 'a' } }, { oid: 2, attrs: { DocName: 'b' } }]);
+    const r = await revertRows(nm, [{ oid: 1, attrs: { docname: 'a' } }, { oid: 2, attrs: { docname: 'b' } }]);
     assert.equal(sent, 1, 'буцаалт ч мөрөөр дахин илгээхгүй');
     assert.deepEqual(r.done, []);
     assert.deepEqual(r.failed.map((x) => x.oid), [1, 2], 'тодорхойгүй мөрүүд failed — дахин буцаах боломжтой');
@@ -605,12 +605,12 @@ assert.equal(
   globalThis.fetch = async () => ({
     ok: true,
     json: async () => ({
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       geometryType: 'esriGeometryPolyline',
       capabilities: 'Query,Update',
       extent: { spatialReference: { wkid: 102100, latestWkid: 3857 } },
       ...(withSource ? { sourceSpatialReference: { wkid: 32648, latestWkid: 32648 } } : {}),
-      fields: [{ name: 'OBJECTID', type: 'esriFieldTypeOID' }],
+      fields: [{ name: 'objectid', type: 'esriFieldTypeOID' }],
     }),
   });
   try {
@@ -632,7 +632,7 @@ assert.equal(
     ok: true, json: async () => ({ updateResults: [{ objectId: 7, success: false, error: { description: 'x' } }] }),
   });
   try {
-    const r = await revertRows(meta, [{ oid: 7, attrs: { DocName: 'z' } }]);
+    const r = await revertRows(meta, [{ oid: 7, attrs: { docname: 'z' } }]);
     assert.deepEqual(r.done, []);
     assert.deepEqual(r.failed.map((x) => x.oid), [7]);
   } finally {
@@ -650,19 +650,19 @@ assert.equal(
     if (u.includes('/query')) {
       if (queryFails) throw new TypeError('fetch failed');
       return { ok: true, json: async () => ({ features: [
-        { attributes: { OBJECTID: 1, DocName: 'new' } },   // манай бичсэн → буцаана
-        { attributes: { OBJECTID: 2, DocName: 'other' } }, // өөр хүн өөрчилсөн → алгасна
-        { attributes: { OBJECTID: 3, DocName: 'old' } },   // бичигдээгүй (хуучин) → буцаана (идемпотент)
+        { attributes: { objectid: 1, docname: 'new' } },   // манай бичсэн → буцаана
+        { attributes: { objectid: 2, docname: 'other' } }, // өөр хүн өөрчилсөн → алгасна
+        { attributes: { objectid: 3, docname: 'old' } },   // бичигдээгүй (хуучин) → буцаана (идемпотент)
       ] }) };
     }
     const body = new URLSearchParams(String(init?.body ?? ''));
     const ups = JSON.parse(body.get('updates') ?? '[]');
-    sentUpdates.push(...ups.map((x) => x.attributes.OBJECTID));
-    return { ok: true, json: async () => ({ updateResults: ups.map((x) => ({ objectId: x.attributes.OBJECTID, success: true })) }) };
+    sentUpdates.push(...ups.map((x) => x.attributes.objectid));
+    return { ok: true, json: async () => ({ updateResults: ups.map((x) => ({ objectId: x.attributes.objectid, success: true })) }) };
   };
   try {
-    const rows = [1, 2, 3, 4].map((oid) => ({ oid, attrs: { DocName: 'old' }, wrote: { DocName: 'new' } }));
-    rows.push({ oid: 5, attrs: { DocName: 'x' } }); // `wrote`-гүй — CAS-гүй, ердийнхөөрөө
+    const rows = [1, 2, 3, 4].map((oid) => ({ oid, attrs: { docname: 'old' }, wrote: { docname: 'new' } }));
+    rows.push({ oid: 5, attrs: { docname: 'x' } }); // `wrote`-гүй — CAS-гүй, ердийнхөөрөө
     const r = await revertRows(meta, rows);
     assert.deepEqual([...sentUpdates].sort(), [1, 3, 5], 'зөвхөн манай/хуучин утгатай мөрүүд буцаагдана');
     assert.deepEqual([...r.skipped].sort(), [2, 4], 'өөрчлөгдсөн (2) ба олдоогүй (4) мөр алгасагдана');
@@ -704,13 +704,13 @@ console.log('✅ revertRows CAS (wrote) — өөр хэрэглэгчийн ут
   const realF = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const ups = JSON.parse(new URLSearchParams(String(init.body)).get('updates'));
-    sent.push(ups.map((u) => u.attributes.OBJECTID));
+    sent.push(ups.map((u) => u.attributes.objectid));
     if (ups.length > 1) return { ok: true, json: async () => ({ error: { code: 400, message: 'bad' } }) };
-    if (ups[0].attributes.OBJECTID === 2) return { ok: false, status: 502, json: async () => ({}) };
-    return { ok: true, json: async () => ({ updateResults: [{ objectId: ups[0].attributes.OBJECTID, success: true }] }) };
+    if (ups[0].attributes.objectid === 2) return { ok: false, status: 502, json: async () => ({}) };
+    return { ok: true, json: async () => ({ updateResults: [{ objectId: ups[0].attributes.objectid, success: true }] }) };
   };
   try {
-    await assert.rejects(() => saveRows(nm, [1, 2, 3], { DocName: 'x' }), (e) => {
+    await assert.rejects(() => saveRows(nm, [1, 2, 3], { docname: 'x' }), (e) => {
       assert.deepEqual(e.done, [1]);
       assert.deepEqual(e.unknown, [2], 'алдагдсан мөр буцаалтад орно');
       assert.deepEqual(e.failed.map((f) => f.oid), [2, 3]);

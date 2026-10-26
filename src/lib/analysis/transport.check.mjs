@@ -25,16 +25,16 @@ if (process.env.SELBE_LIVE_SKIP) {
  *     et:2  «Автобусны буудал» → data/87
  */
 /* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана (POST · токен · талбарын нэр эх хэлбэрээр). */
-const { TD } = await import('@/lib/services.ts');
+const { SELBE_ET } = await import('@/lib/services.ts');
 const { arcgisPost } = await import('@/lib/query.ts');
-const URL = `${TD}/108`;
+const URL = `${SELBE_ET}/99`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
-const ROAD_URL = `${TD}/104`;
+const ROAD_URL = `${SELBE_ET}/102`;
 /** «Автобус_буудал» — `busAccess.ts`-ийн эх сурвалж (et:2) */
-const BUS_URL = `${TD}/87`;
+const BUS_URL = `${SELBE_ET}/127`;
 
 /* ── transport.ts-ийн хуулбар логик ── */
-const F = { purpose: 'Зориулалт_m', population: 'Population', capacity: 'Huchin_chadal' };
+const F = { purpose: 'зориулалт_m', population: 'population', capacity: 'huchin_chadal' };
 
 const CATS = ['residential', 'school', 'kindergarten', 'hospital', 'office', 'service', 'other'];
 const CAT_LABEL = {
@@ -130,7 +130,7 @@ async function fetchRoads() {
 
 /** Автобусны буудлууд — Web Mercator цэг (`busAccess.loadBusStops`-ийн хуулбар) */
 async function fetchStops() {
-  const j = await arcgisPost(`${BUS_URL}/query`, { where: '1=1', outFields: 'OBJECTID', returnGeometry: 'true', outSR: '3857', resultRecordCount: '2000' });
+  const j = await arcgisPost(`${BUS_URL}/query`, { where: '1=1', outFields: 'objectid', returnGeometry: 'true', outSR: '3857', resultRecordCount: '2000' });
   if (j.error) throw new Error(JSON.stringify(j.error));
   return (j.features ?? [])
     .map((f) => f.geometry)

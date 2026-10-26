@@ -358,7 +358,7 @@ console.log('\nshareDraft.check: ok');
     'draftRemote: хямд `at` шалгалт алга — мөчлөг бүрд 80KB татна');
   const ai = DR.indexOf('export async function readRemoteDraftAt');
   const ab = DR.slice(ai, ai + 1200);
-  assert.ok(ab.includes("outFields: ['OBJECTID', 'at']"),
+  assert.ok(ab.includes("outFields: ['objectid', 'at']"),
     'readRemoteDraftAt: `payload` татаж байна — хямд байхаа больсон');
   assert.ok(!ab.includes("'payload'"), 'readRemoteDraftAt: payload огт татагдах ёсгүй');
   assert.ok(DR.includes('const layerCache = new Map'),

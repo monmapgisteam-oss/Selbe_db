@@ -8,7 +8,7 @@
  */
 
 import { agsFetch } from '@/modules/sheet/ags';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
@@ -20,7 +20,7 @@ import { isLostWrite } from '@/lib/lostWrite';
  * бичвэл огт өөр хүснэгт уншина.
  */
 export const URL =
-  `${HJ}/bagts_ajliin_zovshoorliin_burtgel/FeatureServer/171`;
+  `${GUITS}/181`;
 
 /** Талбарын нэрс — CSV-ийн толгойтой ЯГ ижил. */
 export const F = {
@@ -52,7 +52,7 @@ export const F = {
    * энэ ангиллын алдаанаас сэргийлдэг). Хатуу мөр үлдээвэл дараагийн
    * үйлчилгээ өөр үсгийн бичлэгтэй байхад дахин давтагдана.
    */
-  oid: 'OBJECTID',
+  oid: 'objectid',
 } as const;
 
 /**

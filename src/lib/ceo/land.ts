@@ -45,6 +45,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, text } from '@/lib/format';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
+import { trackStatOf } from '@/lib/editTrack';
 import { PARCEL_LEFT, parcelLeftWhere } from '@/lib/services';
 import { isClearedStatus, parcelAreaOf, landuseText, PARCEL_SHAPE_AREA } from '@/lib/land';
 import { cached, loadClearance, type Clearance } from '@/lib/live';
@@ -303,11 +304,13 @@ export function computeLand(input: LandInput): KpiResult {
  * ⚠️ 2026-10-01: асаагүй, метадата уншигдаагүй эсвэл талбар жагсаалтад алга бол `null` —
  *    тэр үед асуулгад ОРОХГҮЙ (байхгүй талбар `outFields`-д бол ArcGIS 400).
  */
-async function editDateFieldOf(url: string): Promise<string | null> {
+async function editDateFieldOf(url: string): Promise<{ ed: string; stat: string | null } | null> {
   try {
     const j = await arcgisPost<{ editFieldsInfo?: { editDateField?: string } | null; fields?: { name?: string }[] }>(url, { f: 'json' });
     const f = j?.editFieldsInfo?.editDateField;
-    return f && (j.fields ?? []).some((x) => x.name === f) ? f : null;
+    const names = (j.fields ?? []).map((x) => String(x.name));
+    /* ⚠️ 2026-10-26: импортын агшны засварын хос багана (`editTrack.ts`-ийн ⚠️) — ил `outFields`-д өөрөө нэмнэ */
+    return f && names.includes(f) ? { ed: f, stat: trackStatOf(names, f) } : null;
   } catch {
     return null;
   }
@@ -328,14 +331,15 @@ export function lastEditOf(rows: readonly Row[], field: string | null): number |
 async function fetchParcels(): Promise<{ parcels: LandParcel[]; asOf: number | null }> {
   const F = PARCEL_LEFT.fields;
   /* ⚠️ 2026-10-01: Editor Tracking асаалттай бол `EditDate`-ийг хамт татна (`asOf`) */
-  const ed = await editDateFieldOf(PARCEL_LEFT.url);
+  const edf = await editDateFieldOf(PARCEL_LEFT.url);
+  const ed = edf?.ed ?? null;
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
     /* ⚠️ 2026-10-22 (аудит): полигоны талбай (`area = 0`-ийн нөөц) ба бүтэн зориулалт (`landuse_de`) — `parseParcels`-ийн ⚠️ */
     outFields: [
       PARCEL_LEFT.oid, F.parcelNo, F.owner, F.address, F.status,
       F.area, F.areaAlt, F.note, F.landuse, F.landuseFull, PARCEL_SHAPE_AREA,
-      ...(ed ? [ed] : []),
+      ...(edf ? [edf.ed, ...(edf.stat ? [edf.stat] : [])] : []),
     ],
     // ⚠️ 2000-аас цөөн ч эрэмбэ өгнө — хуудаслалт хэзээ нэгэн цагт хэрэг болбол
     //    OID-гүй offset тогтворгүй (`query.ts`-ийн тайлбар)

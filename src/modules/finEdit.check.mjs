@@ -77,7 +77,7 @@ check('хувь БИШ талбарт «8,333» → тодорхойгүй (2026
   check('Finance нийтлэлийн parseCell 2 газар хоёулаа isPctField дамжуулна',
     calls.length === 2 && calls.every((m) => /,\s*isPctField\(fld$/.test(m[1])));
   check('isPctField нь Cashflow_huwi · FIN_XL_PCT · FIN_XL_FRACTION-г хамарна',
-    /const isPctField = \(f: string\): boolean => f === 'Cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\) \|\| FIN_XL_FRACTION\.includes\(f\);/.test(fin));
+    /const isPctField = \(f: string\): boolean => f === 'cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\) \|\| FIN_XL_FRACTION\.includes\(f\);/.test(fin));
 }
 
 console.log('\n3. БУРУУ утга — ЧИМЭЭГҮЙ 0 болгохгүй, алдаа шиднэ');
@@ -117,7 +117,7 @@ check('таслалтай текст ТООД хөрвөхгүй', parseCell('1,
 check('null → хоосон текст', editText(null, S) === '');
 
 console.log('\n6. Серверийн талбар — засагдахгүй');
-for (const n of ['OBJECTID', 'GlobalID', 'Shape__Area', 'CreationDate', 'Editor', 'EditDate'])
+for (const n of ['objectid', 'globalid', 'SHAPE__Area', 'created_date', 'last_edited_user', 'last_edited_date'])
   assert.ok(SERVER_RO.test(n), '✗ ' + n);
 check('серверийн 6 талбар хаагдсан', true);
 for (const n of ['CF006', 'IPC35', 'bagts_ner'])
@@ -126,8 +126,8 @@ check('өгөгдлийн талбар нээлттэй хэвээр', true);
 
 console.log('\nX. ⚠️ 2026-10-01: нийтлэлийн дараах дахин ачаалалт дуустал ДАХИН нийтлэхгүй');
 {
-  const rowsA = [{ OBJECTID: 1 }];
-  const rowsB = [{ OBJECTID: 1 }];
+  const rowsA = [{ objectid: 1 }];
+  const rowsB = [{ objectid: 1 }];
   check('нийтлээгүй үед хаалтгүй', awaitingReload(null, rowsA) === false);
   check('нийтэлсний дараа ижил (хуучин) rows — хаалттай', awaitingReload(rowsA, rowsA) === true);
   check('шинэ rows ирмэгц нээгдэнэ (агуулга ижил ч лавлагаа өөр)', awaitingReload(rowsA, rowsB) === false);

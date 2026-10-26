@@ -18,20 +18,19 @@
 import { invalidate } from './dataBus';
 import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { collidesBelow, idNum, renumberPlan, type IdRow } from './idUnique';
-import { entDict, entFieldName, isEntDataUrl, remapUrl } from './services/entMap';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
      29/29 талбар, 22 мөр ижил. */
-  url: `${HJ}/guitsetgel_bugluh_hyanalt/FeatureServer/205`,
-  oid: 'OBJECTID',
+  url: `${GUITS}/183`,
+  oid: 'objectid',
 } as const;
 
 /** Хяналтын үйлчилгээний талбарууд — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
-  id: 'Бүртгэлийн_дугаар',
+  id: 'бүртгэлийн_дугаар',
   /**
    * ХОЛБООС ЭХ АГУУЛГА РУУ — утга нь 2026-09-04-нд ӨӨРЧЛӨГДСӨН.
    *
@@ -47,33 +46,33 @@ export const F = {
    *    хэвээр ажиллаж байна — `hyanaltDetail` ба `hyanaltStore` хоёулаа
    *    гурван замыг барина.
    */
-  sheetOid: 'Эх_мөрийн_дугаар',
-  ergelt: 'Хэддэх_удаа',
-  bagts: 'Багц',
-  ajil: 'Ажлын_нэр',
+  sheetOid: 'эх_мөрийн_дугаар',
+  ergelt: 'хэддэх_удаа',
+  bagts: 'багц',
+  ajil: 'ажлын_нэр',
 
-  company: 'Гүйцэтгэгч_компани',
-  companySent: 'Компани_илгээсэн_огноо',
+  company: 'гүйцэтгэгч_компани',
+  companySent: 'компани_илгээсэн_огноо',
 
-  engineer: 'Талбайн_инженер',
-  engineerDecision: 'Инженерийн_шийдвэр',
-  engineerReason: 'Инженер_буцаасан_шалтгаан',
-  engineerReturned: 'Инженер_буцаасан_огноо',
-  engineerSent: 'Инженер_илгээсэн_огноо',
+  engineer: 'талбайн_инженер',
+  engineerDecision: 'инженерийн_шийдвэр',
+  engineerReason: 'инженер_буцаасан_шалтгаан',
+  engineerReturned: 'инженер_буцаасан_огноо',
+  engineerSent: 'инженер_илгээсэн_огноо',
 
   /** БАГЦЫН менежер — гурав дахь шат */
-  manager: 'Менежер',
-  managerDecision: 'Менежерийн_шийдвэр',
-  managerReason: 'Менежер_буцаасан_шалтгаан',
-  managerReturned: 'Менежер_буцаасан_огноо',
-  managerSent: 'Менежер_илгээсэн_огноо',
+  manager: 'менежер',
+  managerDecision: 'менежерийн_шийдвэр',
+  managerReason: 'менежер_буцаасан_шалтгаан',
+  managerReturned: 'менежер_буцаасан_огноо',
+  managerSent: 'менежер_илгээсэн_огноо',
 
   /**
    * ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕР — дөрөв дэх шат (багцын ахлах инженерийн ДАРАА,
    * төлөвлөлтийн ахлах инженерийн ӨМНӨ).
    * ⚠️ 2026-10-23 (хэрэглэгч: «Төлөвлөлтийн инженер» шат нэмнэ — нийт ДОЛООН шат).
    *    ЛАТИН ЖИЖИГ үсгээр: PostgreSQL-ийн нэрийн 63 байтын хязгаар (кирилл 2 байт) —
-   *    кирилл нэр хэтэрнэ; жижиг латин нэр Enterprise-д толины (`entMap`) мөргүйгээр
+   *    кирилл нэр хэтэрнэ; жижиг латин нэр Enterprise-д
    *    яг ижил буцна. Талбаруудыг хэрэглэгч notebook-оор нэмнэ — дутуу бол
    *    `DIRECTOR_FIELDS`-ийн шалгуур товчийг хаана.
    */
@@ -89,27 +88,27 @@ export const F = {
    *    Байхгүй үед програм нь дөрөв дэх шатыг ХААЖ, шалтгааныг ил хэлнэ —
    *    чимээгүй унахаас сэргийлнэ.
    */
-  director: 'Ерөнхий_менежер',
-  directorDecision: 'Ерөнхий_менежерийн_шийдвэр',
-  directorReason: 'Ерөнхий_менежер_буцаасан_шалтгаан',
-  directorReturned: 'Ерөнхий_менежер_буцаасан_огноо',
-  directorSent: 'Ерөнхий_менежер_илгээсэн_огноо',
+  director: 'ерөнхий_менежер',
+  directorDecision: 'ерөнхий_менежерийн_шийдвэр',
+  directorReason: 'ерөнхий_менежер_буцаасан_шалтгаан',
+  directorReturned: 'ерөнхий_менежер_буцаасан_огноо',
+  directorSent: 'ерөнхий_менежер_илгээсэн_огноо',
 
   /**
    * ХЭЛТСИЙН ДАРГА — тав дахь шат, ГАЗРЫН ДАРГА — зургаа дахь, ЭЦСИЙН шат
    * (2026-09-23, хэрэглэгч: «Хэлтсийн дарга · Газрын дарга 2 шат нэмнэ»,
    * ерөнхий менежерийн ДАРАА). AGOL-д 10 талбар нэмэгдсэн (`UPPER_FIELDS`).
    */
-  head: 'Хэлтсийн_дарга',
-  headDecision: 'Хэлтсийн_даргын_шийдвэр',
-  headReason: 'Хэлтсийн_дарга_буцаасан_шалтгаан',
-  headReturned: 'Хэлтсийн_дарга_буцаасан_огноо',
-  headSent: 'Хэлтсийн_дарга_илгээсэн_огноо',
-  chief: 'Газрын_дарга',
-  chiefDecision: 'Газрын_даргын_шийдвэр',
-  chiefReason: 'Газрын_дарга_буцаасан_шалтгаан',
-  chiefReturned: 'Газрын_дарга_буцаасан_огноо',
-  chiefSent: 'Газрын_дарга_илгээсэн_огноо',
+  head: 'хэлтсийн_дарга',
+  headDecision: 'хэлтсийн_даргын_шийдвэр',
+  headReason: 'хэлтсийн_дарга_буцаасан_шалтгаан',
+  headReturned: 'хэлтсийн_дарга_буцаасан_огноо',
+  headSent: 'хэлтсийн_дарга_илгээсэн_огноо',
+  chief: 'газрын_дарга',
+  chiefDecision: 'газрын_даргын_шийдвэр',
+  chiefReason: 'газрын_дарга_буцаасан_шалтгаан',
+  chiefReturned: 'газрын_дарга_буцаасан_огноо',
+  chiefSent: 'газрын_дарга_илгээсэн_огноо',
 
   /**
    * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрийн JSON массив.
@@ -133,7 +132,7 @@ export const F = {
    *    гэдэг ГАНЦ хариулт. Гурван талбар болговол аль нь хүчинтэйг уншигч
    *    бүр өөрөө шийдэх шаардлагатай болно.
    */
-  okCells: 'Zovshoorson_nud',
+  okCells: 'zovshoorson_nud',
 
   /**
    * ШИЙДВЭРИЙН ТҮҮХ (ЛОГ) — `{stage, who, at, act, reason}` үйл явдлын JSON массив
@@ -145,9 +144,9 @@ export const F = {
    *    `hasHistoryField()`-ээр илрүүлж, БАЙВАЛ л бичнэ; байхгүй бол урьдын зан.
    * ⚠️ ЛАТИН нэр — `okCells`-ийн ⚠️-тэй ижил шалтгаан (`N'…'` шаардлагагүй).
    */
-  history: 'Shiidveriin_tuuh',
+  history: 'shiidveriin_tuuh',
 
-  status: 'Төлөв',
+  status: 'төлөв',
 } as const;
 
 export const STATUS = {
@@ -727,9 +726,6 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
     }
     clauses.push(value === 0 ? `(${field} IS NULL OR ${field} = 0)` : `${field} = ${value}`);
   }
-  const target = remapUrl(HYANALT.url);
-  const enterprise = isEntDataUrl(target);
-  const dict = enterprise ? entDict(target) : null;
   const changes = Object.entries(patch).filter(([field]) => field !== HYANALT.oid);
   if (!changes.length || changes.some(([field, value]) => !fields.has(field)
     || (value !== null && typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))))) {
@@ -739,7 +735,7 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
     const result = await post('/calculate', {
       where: clauses.join(' AND '),
       calcExpression: JSON.stringify(changes.map(([field, value]) => ({
-        field: enterprise ? entFieldName(field, dict) : field, value,
+        field, value,
       }))),
       sqlFormat: 'standard',
     });

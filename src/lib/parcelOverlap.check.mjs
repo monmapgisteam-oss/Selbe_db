@@ -33,16 +33,16 @@ const BLD = 'mon:building';
 const bldFeats = [
   ...Array.from({ length: 40 }, (_, i) => {
     const k = i + 1;
-    return { attributes: { OBJECTID: k }, geometry: { rings: k % 2 === 0 ? sq(20 * k + 2, 2, 5) : sq(20 * k, 500, 5) } };
+    return { attributes: { objectid: k }, geometry: { rings: k % 2 === 0 ? sq(20 * k + 2, 2, 5) : sq(20 * k, 500, 5) } };
   }),
-  { attributes: { OBJECTID: 41 }, geometry: { rings: sq(20 * 41 + 10, 0, 5) } },
+  { attributes: { objectid: 41 }, geometry: { rings: sq(20 * 41 + 10, 0, 5) } },
 ];
 const infraIds = [...new Set(Object.values(PKG_BY_BAGTS).flat())].filter((id) => LAYER_BY_ID[id] && id !== BLD).slice(0, 10);
 assert.equal(infraIds.length, 10, 'дэд бүтцийн давхарга хангалтгүй');
 /* Дэд бүтэц j (0…9): тэгш j — хэвтээ шугам нэгж талбар 45+j-г огтолно; сондгой — цэг 45+j дотор */
 const infraFeats = (j) => (j % 2 === 0
-  ? [{ attributes: { OBJECTID: 1 }, geometry: { paths: [[[20 * (45 + j) - 3, 5], [20 * (45 + j) + 4, 5]]] } }]
-  : [{ attributes: { OBJECTID: 1 }, geometry: { x: 20 * (45 + j) + 5, y: 5 } }]);
+  ? [{ attributes: { objectid: 1 }, geometry: { paths: [[[20 * (45 + j) - 3, 5], [20 * (45 + j) + 4, 5]]] } }]
+  : [{ attributes: { objectid: 1 }, geometry: { x: 20 * (45 + j) + 5, y: 5 } }]);
 const byUrl = new Map([[LAYER_BY_ID[BLD].url, () => bldFeats], ...infraIds.map((id, j) => [LAYER_BY_ID[id].url, () => infraFeats(j)])]);
 let broken = null; // энэ URL унана (5-р шалгалт)
 let variant = new Set(); // эдгээр FID-ийн төлөв «бүрэн  Чөлөөлсөн.» (6-р шалгалт)
@@ -63,7 +63,7 @@ globalThis.fetch = async (url, init) => {
   let body;
   if (!u.endsWith('/query')) {
     kinds.meta += 1;
-    body = { objectIdField: base === PARCEL_LEFT.url ? 'FID' : 'OBJECTID', extent: { spatialReference: { wkid: WK } }, advancedQueryCapabilities: { supportsPagination: true } };
+    body = { objectIdField: base === PARCEL_LEFT.url ? 'objectid' : 'objectid', extent: { spatialReference: { wkid: WK } }, advancedQueryCapabilities: { supportsPagination: true } };
   } else if (base === PARCEL_LEFT.url && p.objectIds) {
     kinds.parcels += 1;
     body = { features: p.objectIds.split(',').map(Number).map((id) => ({
@@ -81,7 +81,7 @@ globalThis.fetch = async (url, init) => {
     else {
       let fs = byUrl.get(base)?.() ?? [];
       const m = /IN \(([\d,]+)\)/.exec(p.where ?? '');
-      if (m) { const ids = new Set(m[1].split(',').map(Number)); fs = fs.filter((f) => ids.has(f.attributes.OBJECTID)); }
+      if (m) { const ids = new Set(m[1].split(',').map(Number)); fs = fs.filter((f) => ids.has(f.attributes.objectid)); }
       body = { features: fs.map((f) => (p.outFields ? f : { geometry: f.geometry })), exceededTransferLimit: false };
     }
   }
@@ -89,8 +89,8 @@ globalThis.fetch = async (url, init) => {
 };
 
 /* ── Ажлууд — `execTriage.loadOverlaps`-ийн хэлбэр: барилгын багц бүр OID IN, дэд бүтэц давхаргаар ── */
-const bldJobs = Array.from({ length: 20 }, (_, i) => [{ layerId: BLD, where: `OBJECTID IN (${2 * i + 1},${2 * i + 2})` }]);
-bldJobs.push([{ layerId: BLD, where: 'OBJECTID IN (41)' }]);
+const bldJobs = Array.from({ length: 20 }, (_, i) => [{ layerId: BLD, where: `objectid IN (${2 * i + 1},${2 * i + 2})` }]);
+bldJobs.push([{ layerId: BLD, where: 'objectid IN (41)' }]);
 const infraJobs = infraIds.map((id) => [{ layerId: id, where: null }]);
 const jobs = [...bldJobs, ...infraJobs];
 const allBld = [{ layerId: BLD, where: null }];
@@ -179,8 +179,8 @@ await ok('эхний хэсэг гадна, 2-р хэсэг эх полигон 
   PARCELS.set(159, [...sq(20 * 59, 900), ...sq(781, 501, 2)]);
   const F = await import('./parcelOverlap.ts?multipart');
   const [r1, r2] = await Promise.all([
-    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (39)' }]),
-    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (40)' }]),
+    F.overlapLeftParcels([{ layerId: BLD, where: 'objectid IN (39)' }]),
+    F.overlapLeftParcels([{ layerId: BLD, where: 'objectid IN (40)' }]),
   ]);
   PARCELS.set(159, sq(20 * 59, 0));
   assert.deepEqual(r1.oids, [159]);
@@ -191,7 +191,7 @@ console.log('\n8. Нэгж талбарын засвар (`PARCEL_LEFT`) — э�
 await ok('invalidate(PARCEL_LEFT): геометрийн хүсэлт 0, огтлолцол дахин явж үр дүн ижил', async () => {
   const { invalidate } = await import('./dataBus.ts');
   const G = await import('./parcelOverlap.ts?parcelEdit');
-  const srcs = [[{ layerId: BLD, where: 'OBJECTID IN (1,2)' }], [{ layerId: infraIds[0], where: null }], [{ layerId: infraIds[1], where: null }]];
+  const srcs = [[{ layerId: BLD, where: 'objectid IN (1,2)' }], [{ layerId: infraIds[0], where: null }], [{ layerId: infraIds[1], where: null }]];
   const r1 = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
   calls = 0;
   const same = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
@@ -212,14 +212,14 @@ await ok('хил дагуу шугам · хил давхцсан полигон
   const save = bldFeats.splice(0, bldFeats.length);
   const P = 600;
   bldFeats.push(
-    { attributes: { OBJECTID: 1 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P, 10], [P, 0], [P - 5, 0]]] } },   // хил давхцсан хөрш
-    { attributes: { OBJECTID: 2 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 0.05, 10], [P + 0.05, 0], [P - 5, 0]]] } }, // 5 см шуугиан
-    { attributes: { OBJECTID: 3 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 2, 10], [P + 2, 0], [P - 5, 0]]] } }, // 2 м давхцал
-    { attributes: { OBJECTID: 4 }, geometry: { rings: sq(P, 0) } },                                                           // ижил дүрс
-    { attributes: { OBJECTID: 5 }, geometry: { rings: [[[P - 20, -20], [P - 20, 30], [P + 30, 30], [P + 30, -20], [P - 20, -20]], [[P, 0], [P + 10, 0], [P + 10, 10], [P, 10], [P, 0]]] } }, // нүх = талбар
+    { attributes: { objectid: 1 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P, 10], [P, 0], [P - 5, 0]]] } },   // хил давхцсан хөрш
+    { attributes: { objectid: 2 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 0.05, 10], [P + 0.05, 0], [P - 5, 0]]] } }, // 5 см шуугиан
+    { attributes: { objectid: 3 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 2, 10], [P + 2, 0], [P - 5, 0]]] } }, // 2 м давхцал
+    { attributes: { objectid: 4 }, geometry: { rings: sq(P, 0) } },                                                           // ижил дүрс
+    { attributes: { objectid: 5 }, geometry: { rings: [[[P - 20, -20], [P - 20, 30], [P + 30, 30], [P + 30, -20], [P - 20, -20]], [[P, 0], [P + 10, 0], [P + 10, 10], [P, 10], [P, 0]]] } }, // нүх = талбар
   );
   const H = await import('./parcelOverlap.ts?interior');
-  const one = async (k) => (await H.overlapLeftParcels([{ layerId: BLD, where: `OBJECTID IN (${k})` }])).oids.filter((id) => id === 130);
+  const one = async (k) => (await H.overlapLeftParcels([{ layerId: BLD, where: `objectid IN (${k})` }])).oids.filter((id) => id === 130);
   const got = [await one(1), await one(2), await one(3), await one(4), await one(5)];
   bldFeats.splice(0, bldFeats.length, ...save);
   assert.deepEqual(got, [[], [], [130], [130], []], 'хүрэлцэх · шуугиан · гүн · ижил · нүхэн дотор');

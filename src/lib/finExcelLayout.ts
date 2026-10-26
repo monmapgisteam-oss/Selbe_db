@@ -83,11 +83,11 @@ export const FIN_XL_ORDER: readonly string[] = [
   'zahiramj_borluulalt',
   /* ⚠️ САРЫН ЗАДАРГААНЫ талбарууд — ЗӨВХӨН сарын мөрд утгатай. Ажлын
      мөрд үргэлж хоосон тул хамгийн эцэст. */
-  'Cashflow_ID',
-  'Cashflow_start',
-  'Cashflow_end',
-  'Cashflow_huwi',
-  'Cashflow_dun',
+  'cashflow_id',
+  'cashflow_start',
+  'cashflow_end',
+  'cashflow_huwi',
+  'cashflow_dun',
 ];
 const lzGeree_dun14 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
 
@@ -206,11 +206,11 @@ export const FIN_XL_LEAF: Record<string, string> = {
   get urdchilgaa_zh_zardal() { return tr('Суутгасан ЗХ зардал'); },
   get dugaar2() { return tr('Дугаар 2'); },
   get bagts_74() { return tr('Багц 74'); },
-  get Cashflow_ID() { return tr('Cashflow дугаар'); },
-  get Cashflow_start() { return tr('Сар эхлэх'); },
-  get Cashflow_end() { return tr('Сар дуусах'); },
-  get Cashflow_huwi() { return tr('Сарын төлөвлөгөө, %'); },
-  get Cashflow_dun() { return tr('Сарын дүн'); },
+  get cashflow_id() { return tr('Cashflow дугаар'); },
+  get cashflow_start() { return tr('Сар эхлэх'); },
+  get cashflow_end() { return tr('Сар дуусах'); },
+  get cashflow_huwi() { return tr('Сарын төлөвлөгөө, %'); },
+  get cashflow_dun() { return tr('Сарын дүн'); },
 };
 
 /**
@@ -256,11 +256,11 @@ export const FIN_XL_WIDTH: Record<string, number> = {
   urdchilgaa_zh_zardal: 190,
   dugaar2: 76,
   bagts_74: 110,
-  Cashflow_ID: 96,
-  Cashflow_start: 108,
-  Cashflow_end: 108,
-  Cashflow_huwi: 132,
-  Cashflow_dun: 150,
+  cashflow_id: 96,
+  cashflow_start: 108,
+  cashflow_end: 108,
+  cashflow_huwi: 132,
+  cashflow_dun: 150,
 };
 
 /**

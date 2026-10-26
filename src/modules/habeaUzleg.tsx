@@ -375,7 +375,7 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
   };
   const sevKnown = sevHas.major && sevHas.minor && sevHas.obs && sevHas.conf;
   return {
-    oid: nn(r.objectid ?? r.OBJECTID),
+    oid: nn(r.objectid),
     kind,
     site,
     /* ⚠️ 2026-10-09: огнооноос (ISO, UB); огноогүй бол '' — чарт/KPI-д ОРОХГҮЙ (`UzlegRow.week`) */
