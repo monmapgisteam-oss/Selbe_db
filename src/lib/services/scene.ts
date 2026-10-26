@@ -62,9 +62,10 @@ export const ORTHO_FLIGHTS: Record<MeshVer, { key: string; title: string; url: s
     { key: "ortho11", get title() { return tr('Ортофото — нислэг 1 (1)'); }, url: `${ENT_REST}/Ortho_nisleg_1_1_tif/MapServer` },
     { key: "ortho12", get title() { return tr('Ортофото — нислэг 1 (2)'); }, url: `${ENT_REST}/Ortho_nisleg_1_2_tif/MapServer` },
   ],
+  /* ⚠️ 2026-10-26 (хэрэглэгч): хоёр хэсэг (`Ortho_nisleg_2_1C` · `Ortho_nisleg_2_2C`) → НЭГДСЭН `Ortho_nisleg_2`.
+     Түлхүүр `ortho21` хэвээр (давхаргын id `imagery:f:new:ortho21` тогтвортой). */
   new: [
-    { key: "ortho21", get title() { return tr('Ортофото — нислэг 2 (1)'); }, url: `${ENT_REST}/Ortho_nisleg_2_1C/MapServer` },
-    { key: "ortho22", get title() { return tr('Ортофото — нислэг 2 (2)'); }, url: `${ENT_REST}/Ortho_nisleg_2_2C/MapServer` },
+    { key: "ortho21", get title() { return tr('Ортофото — нислэг 2'); }, url: `${ENT_REST}/Ortho_nisleg_2/MapServer` },
   ],
 };
 
@@ -419,15 +420,12 @@ export const MESH_VERSIONS = {
   new: {
     get title() { return tr('Нислэг 2 (2026-09-17)'); },
     layers: [
+      /* ⚠️ 2026-10-26 (хэрэглэгч): хоёр хэсэг (`Mesh_nisleg_2_1` · `Mesh_nisleg_2_2`) → НЭГДСЭН `Mesh_nisleg_2`.
+         Түлхүүр `mesh0917` хэвээр (`scene:mesh0917` id-г MapCanvas/каталог мэддэг). */
       {
         key: "mesh0917",
-        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17), 1'); },
-        url: `${ENT_HOSTED}/Mesh_nisleg_2_1/SceneServer`,
-      },
-      {
-        key: "mesh0917b",
-        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17), 2'); },
-        url: `${ENT_HOSTED}/Mesh_nisleg_2_2/SceneServer`,
+        get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17)'); },
+        url: `${ENT_HOSTED}/Mesh_nisleg_2/SceneServer`,
       },
     ],
   },
