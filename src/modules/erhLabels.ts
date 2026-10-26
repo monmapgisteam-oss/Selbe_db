@@ -81,6 +81,8 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'sysClose') return tr('Систем хаах');
   if (k === 'docsUpload') return tr('Баримт оруулах');
   if (k === 'docsGroups') return tr('Баримтын бүлэг');
+  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл');
+  if (k === 'cfSwitch') return tr('Сарын мөнгө → Хуваарь');
   return k;
 };
 

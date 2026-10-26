@@ -144,6 +144,11 @@ export type TuhModel = {
   statusCount: Map<TuhStatus, number>;
   /** Уншигдаагүй эх сурвалжууд — дэлгэц дээр ил хэлнэ */
   failed: string[];
+  /**
+   * Гэрээний сарын төлөвлөгөөний ЦООРХОЙ (`gdash.cfGapsText`) — 'huvaari' эхтэй гэрээ тооцоологдоогүй тул «Гэрээний
+   * төлөвлөгөө» ДУТУУ. null = цоорхойгүй. ⚠️ 2026-10-26 (хяналт №2): урьд нь чимээгүй (null ≠ 0).
+   */
+  cfGaps: string | null;
   /** Ачаалж буй эх сурвалжууд — `lz` «…» харуулна */
   loading: ReadonlySet<TuhSrc>;
   /**
@@ -229,6 +234,8 @@ export function buildModel(input: {
   deps?: readonly PkgDep[] | null;
   contractedNote: string;
   failed: string[];
+  /** `TuhModel.cfGaps` (байхгүй бол null) */
+  cfGaps?: string | null;
   /** Ачаалж буй эх сурвалжууд (байхгүй бол хоосон) */
   loading?: ReadonlySet<TuhSrc>;
   /** Хуваарийн муруй бүхэлдээ УНАСАН (`planQ.state === 'error'`) — `TuhModel.planFailed` = -1 */
@@ -460,6 +467,7 @@ export function buildModel(input: {
     paid: { total: tot.paid, pct: share.pct, ipcCount, pays: tot.pays, other: fin.pays.length ? share.paidOther : null },
     statusCount,
     failed: input.failed,
+    cfGaps: input.cfGaps ?? null,
     loading: input.loading ?? new Set<TuhSrc>(),
     planFailed: input.planError ? -1 : plan ? plan.failed.length : 0,
     deps: input.deps ?? null,

@@ -63,7 +63,9 @@ export type CapKey =
   | 'habeaData'
   | 'sysClose'
   | 'docsUpload'
-  | 'docsGroups';
+  | 'docsGroups'
+  | 'zuragEdit'
+  | 'cfSwitch';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -191,6 +193,13 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * Батлагчгүй, багцаар хуваарилагдахгүй — шууд ArcGIS-д. Эрхгүй хүн карт ЭНГИЙН харна.
    */
   { key: 'habeaData', icon: 'shield' },
+  /** ТЭЗҮ · ЗУРАГ ТӨСӨЛ ЗАСАХ (⚠️ 2026-10-26) — навч мөрийн огноо, явц; батлагчгүй, аккаунтаар. */
+  { key: 'zuragEdit', icon: 'pen' },
+  /**
+   * САРЫН МӨНГӨ ГАРААР → ХУВААРЬ (⚠️ 2026-10-26) — гэрээний гараар оруулсан сарын мөрийг УСТГАЖ Хуваарийн обьём × нэгж
+   * өртгөөр тооцох (`monthlyMoney.switchToHuvaari`). Буцаахгүй — «Төлөвлөлтийн ахлах инженер»-т олгоно.
+   */
+  { key: 'cfSwitch', icon: 'calendar' },
   /**
    * СИСТЕМ ТҮР ХААХ (⚠️ 2026-10-19, нийслэлийн дата төв рүү шилжүүлэх) — порталыг бусад бүх хэрэглэгчид
    * «Систем түр хаагдсан» цонхоор хааж, дахин нээх (`permissions.setSystemClosed`, `__sys__:maintenance` мөр).
@@ -286,6 +295,8 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   sysClose: [],
   docsUpload: [],
   docsGroups: [],
+  zuragEdit: ['zuragTosol'],
+  cfSwitch: ['finance'],
 };
 
 /**

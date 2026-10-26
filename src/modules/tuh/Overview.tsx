@@ -348,6 +348,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           </span>
         </div>
       </div>
+      {/* ⚠️ 2026-10-26 (хяналт №2): гэрээний сарын төлөвлөгөөний цоорхой (`TuhModel.cfGaps`) */}
+      {m.cfGaps && <p className={s.failNote} role="status">{m.cfGaps}</p>}
       {m.failed.length > 0 && (
         <p className={s.failNote} role="alert">
           {tr('Уншигдаагүй эх сурвалж: {0} — холбогдох тоо «—» харагдана.', m.failed.join(', '))}

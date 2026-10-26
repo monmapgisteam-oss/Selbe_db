@@ -148,7 +148,9 @@ export const ROLE_ACCESS: Record<
      (энд бичсэн нь зөвхөн баримт/нарийн нөөцөд — `roleTypes.narrowTpl` урсгалтайг хаядаг). */
   zahiral: {
     views: ["gdash", "dashboard", "plan", "hesegET", "pkgFin", "pkgProg", "gazar", "analysis", "irged", "tailan", "tuh",
-      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "sysdoc", "guitsetgel"],
+      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "sysdoc", "guitsetgel",
+      /* ⚠️ 2026-10-26: + ТЭЗҮ · зураг төсөл, 6 түвшний хуваарь (хэрэглэгч: «эрх олго») */
+      "zuragTosol", "tuvshin6"],
     docs: true,
     home: "gdash",
   },

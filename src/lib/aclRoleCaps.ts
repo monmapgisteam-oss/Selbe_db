@@ -49,7 +49,8 @@ export type DerivedSys = ScopedSys;
  */
 /* ⚠️ 2026-10-08: `habeaData` (ХАБЭА-ийн бүртгэл оруулах) — батлагчгүй, багцаар хуваарилагдахгүй. */
 /* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») — аккаунтаар, харагдац нээхгүй (`caps.ts`-ийн ⚠️). */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups'];
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
+/* ⚠️ 2026-10-26: `zuragEdit` (ТЭЗҮ · зураг төсөл) · `cfSwitch` (сарын мөнгө гараар → Хуваарь) — аккаунтаар. */
 /* ⚠️ 2026-10-23: `docsUpload` (баримт бичгийн сан — оруулах/устгах) — аккаунтаар, харагдац нээхгүй. */
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */

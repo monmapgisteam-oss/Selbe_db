@@ -83,6 +83,9 @@ const LOAD = {
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
   /* ⚠️ Багцын хамаарал — санхүүгийн ачаалагчийг (`loadFinData`) дагуулдаг тул нээгдэх үедээ (tezu-bonu). */
   bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
+  /* ⚠️ 2026-10-26: ТЭЗҮ/зураг төсөл ба 6 түвшний хуваарь — cashflow + Хуваарь татдаг тул нээгдэх үедээ */
+  zuragTosol: () => import('@/modules/ZuragTosol').then((m) => m.ZuragTosol),
+  tuvshin6: () => import('@/modules/LevelPlan').then((m) => m.LevelPlan),
   /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
      нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
   huvaari: () => import('@/modules/Huvaari').then((m) => m.Huvaari),
@@ -140,6 +143,8 @@ const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewL
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
 const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false, loading: ViewLoading });
+const ZuragTosol = dynamic(() => LOAD.zuragTosol(), { ssr: false, loading: ViewLoading });
+const LevelPlan = dynamic(() => LOAD.tuvshin6(), { ssr: false, loading: ViewLoading });
 const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false, loading: ViewLoading });
 const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading: ViewLoading });
 const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false, loading: ViewLoading });
@@ -218,6 +223,8 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
     />
   ),
   bagtsHamaaral: () => <BagtsHamaaral />,
+  zuragTosol: () => <ZuragTosol />,
+  tuvshin6: () => <LevelPlan />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,
   habea: ({ dim, setDim }) => <Habea dim={dim} setDim={setDim} />,

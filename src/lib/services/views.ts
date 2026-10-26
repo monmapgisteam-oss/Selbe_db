@@ -37,6 +37,8 @@ export type ViewKey =
   | "tailan"
   | "tuh"
   | "bagtsHamaaral"
+  | "zuragTosol"
+  | "tuvshin6"
   | "finance"
   | "habea"
   | "irged"
@@ -364,6 +366,33 @@ export const VIEWS: {
     standalone: true,
   },
   /**
+   * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ (⚠️ 2026-10-26) — cashflow-ийн ТЭЗҮ / Ажлын зураг төсөл үе шатын навч мөрийн огноо, явц.
+   * Засах нь `zuragEdit` эрхээр; эрхгүй хүн харна.
+   */
+  {
+    key: "zuragTosol",
+    get title() { return tr('ТЭЗҮ · Ажлын зураг төсөл'); },
+    get desc() { return tr('ТЭЗҮ ба ажлын зураг төслийн навч мөрийн хугацаа, явцыг шинэчлэх, багцад дэд шат нэмэх'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * 6 ТҮВШНИЙ ХУВААРЬ (⚠️ 2026-10-26) — docs/Level planning_261021-ийн L1–L6; `projectPlan` + Хуваарь + бөглөх хуудас.
+   */
+  {
+    key: "tuvshin6",
+    get title() { return tr('6 түвшний хуваарь'); },
+    get desc() { return tr('Төслийн мастер хуваариас өдрийн ажил хүртэл 6 түвшинд'); },
+    icon: "calendar",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
    * САНХҮҮЖИЛТ — гэрээний бүртгэл (`CASHFLOW_NEW`) + гүйцэтгэлийн
    * олгосон санхүүжилтийн лог (`HO_IPC`). Геометргүй хоёр хүснэгт тул порталын
    * зураг/каталогийг ашиглахгүй, өөрийн бүтэцтэй → `standalone`.
@@ -604,8 +633,8 @@ export const HOME_SECTIONS: {
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
-  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -624,7 +653,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",
