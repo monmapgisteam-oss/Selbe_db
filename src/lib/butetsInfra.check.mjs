@@ -63,7 +63,7 @@ if (kind === 'webmerc' || kind === 'geographic') {
 assert.equal(m6.geometryType, 'esriGeometryPolyline', 'infra:6 — шугам');
 
 /* ── 2. infra:69 = бохирын худаг ── */
-const MANHOLE = ['Diameter', 'Cap_Level', 'Bottom_Level', 'Cap_Count'];
+const MANHOLE = ['diameter', 'cap_level', 'bottom_level', 'cap_count'];
 const names = (m) => new Set((m.fields ?? []).map((f) => f.name));
 for (const f of MANHOLE) {
   assert.ok(names(m1).has(f), `infra:1 (Бохир худаг) — ${f}`);

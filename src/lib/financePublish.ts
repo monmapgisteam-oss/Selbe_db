@@ -17,9 +17,9 @@ const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
 /* ⚠️ 2026-10-21 (аудит): `Cashflow_ID` (эцэг↔сарын холбоос) ч ОРОЛТ — дугаар солиход шинэ дугаарын сарууд энэ эцгийн
    ХО дүнгээр, хуучин дугаарынх шинэ эзнээрээ дахин бодогдох ёстой. Урьд нь энд байгаагүй тул уншилт ч, тооцоо ч явахгүй,
    сарын `Cashflow_dun` хуучин эцгийн дүнгээр үлдэж S-муруй худал болдог байв. */
-const SOURCE_FIELDS = ['ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo', 'Cashflow_huwi', 'Cashflow_ID'];
-const PARENT_INPUTS = ['Cashflow_ID', 'ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo'];
-const MONTH_INPUTS = ['Cashflow_ID', 'Cashflow_start', 'Cashflow_end', 'Cashflow_huwi', 'Cashflow_dun'];
+const SOURCE_FIELDS = ['ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo', 'cashflow_huwi', 'cashflow_id'];
+const PARENT_INPUTS = ['cashflow_id', 'ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo'];
+const MONTH_INPUTS = ['cashflow_id', 'cashflow_start', 'cashflow_end', 'cashflow_huwi', 'cashflow_dun'];
 
 export class FinancePublishConflict extends Error {
   constructor() {
@@ -57,10 +57,10 @@ export async function loadFinancePublishInputs(opts: {
     if (parent) parentOids.add(oid);
     else if (month) monthOids.add(oid);
     else throw new FinancePublishConflict();
-    const id = idOf((parent ?? month)?.Cashflow_ID);
+    const id = idOf((parent ?? month)?.cashflow_id);
     if (id != null) ids.add(id);
     /* ⚠️ 2026-10-21: ШИНЭ дугаарын эцэг ба сарууд ч хамрах хүрээнд — тэр дугаарын сар дахин бодогдоно, давхардал илэрнэ */
-    const nextId = own(change, 'Cashflow_ID') ? idOf(change.Cashflow_ID) : null;
+    const nextId = own(change, 'cashflow_id') ? idOf(change.cashflow_id) : null;
     if (nextId != null) ids.add(nextId);
   }
   if (!parentOids.size && !monthOids.size) return undefined;
@@ -69,17 +69,17 @@ export async function loadFinancePublishInputs(opts: {
   const freshByOid = new Map([...fresh.parents, ...fresh.months].map((r) => [Number(r[oidField]), r]));
   const oldByOid = new Map([...parents, ...months].map((r) => [Number(r[oidField]), r]));
   for (const id of ids) {
-    if (parents.some((r) => idOf(r.Cashflow_ID) === id)
-      && !fresh.parents.some((r) => idOf(r.Cashflow_ID) === id)) throw new FinancePublishConflict();
+    if (parents.some((r) => idOf(r.cashflow_id) === id)
+      && !fresh.parents.some((r) => idOf(r.cashflow_id) === id)) throw new FinancePublishConflict();
   }
 
   // An intentional local edit may replace the old value, but must not erase a remote edit.
   for (const oid of [...parentOids, ...monthOids]) {
     const before = oldByOid.get(oid)!;
     const now = freshByOid.get(oid);
-    if (!now || !same(before.Cashflow_ID, now.Cashflow_ID)) throw new FinancePublishConflict();
+    if (!now || !same(before.cashflow_id, now.cashflow_id)) throw new FinancePublishConflict();
     for (const [field, value] of Object.entries(updates.get(oid)!)) {
-      if (field === oidField || field === 'Cashflow_dun') continue;
+      if (field === oidField || field === 'cashflow_dun') continue;
       if (!same(before[field], now[field]) && !same(value, now[field])) throw new FinancePublishConflict();
     }
   }
@@ -120,7 +120,7 @@ export function recomputeFinanceAmounts(opts: {
   const parentByOid = new Map(parents.map((r) => [Number(r[oidField]), r]));
   const monthByOid = new Map(months.map((r) => [Number(r[oidField]), r]));
   for (const [oid, change] of updates) {
-    delete change.Cashflow_dun;
+    delete change.cashflow_dun;
     if (Object.keys(change).length <= 1) updates.delete(oid);
   }
   /* ⚠️ 2026-10-21 (аудит): холбоосыг ЗАСВАРТАЙ нь уншина (`linkIdOf`) — `Cashflow_ID` энэ нийтлэлд солигдож болно.
@@ -129,11 +129,11 @@ export function recomputeFinanceAmounts(opts: {
   const linkIdOf = (row: Row | undefined): number | null => {
     if (!row) return null;
     const change = updates.get(Number(row[oidField]));
-    return idOf(change && own(change, 'Cashflow_ID') ? change.Cashflow_ID : row.Cashflow_ID);
+    return idOf(change && own(change, 'cashflow_id') ? change.cashflow_id : row.cashflow_id);
   };
   const editedIds = new Set<number>();
   for (const change of updates.values()) {
-    const id = own(change, 'Cashflow_ID') ? idOf(change.Cashflow_ID) : null;
+    const id = own(change, 'cashflow_id') ? idOf(change.cashflow_id) : null;
     if (id != null) editedIds.add(id);
   }
   const parentById = new Map<number, Row>();
@@ -161,10 +161,10 @@ export function recomputeFinanceAmounts(opts: {
       ? null : cost * value / 100;
   };
   for (const [oid, change] of updates) {
-    if (!own(change, 'Cashflow_huwi')) continue;
+    if (!own(change, 'cashflow_huwi')) continue;
     const id = linkIdOf(monthByOid.get(oid));
     rejectDuplicate(id);
-    change.Cashflow_dun = amountOf(change.Cashflow_huwi, costOf(id == null ? undefined : parentById.get(id)));
+    change.cashflow_dun = amountOf(change.cashflow_huwi, costOf(id == null ? undefined : parentById.get(id)));
   }
   /* ⚠️ 2026-10-21: ДАХИН БОДОХ сарууд — (а) ХО дүн нь засагдсан эцгийн (шинэ дугаартай) бүх сар; (б) дугаар нь солигдсон
      эцгийн ХУУЧИН ба ШИНЭ дугаарын бүх сар (хуучин дугаар эзэнгүй үлдвэл тэр саруудын дүн `null` — эцэггүй хувь дүн
@@ -180,13 +180,13 @@ export function recomputeFinanceAmounts(opts: {
         rejectDuplicate(id);
         if (id != null) touchedIds.add(id);
       }
-      if (own(change, 'Cashflow_ID')) {
-        for (const id of [idOf(parent.Cashflow_ID), idOf(change.Cashflow_ID)]) {
+      if (own(change, 'cashflow_id')) {
+        for (const id of [idOf(parent.cashflow_id), idOf(change.cashflow_id)]) {
           rejectDuplicate(id);
           if (id != null) touchedIds.add(id);
         }
       }
-    } else if (own(change, 'Cashflow_ID') && monthByOid.has(oid)) {
+    } else if (own(change, 'cashflow_id') && monthByOid.has(oid)) {
       touchedMonths.add(oid);
     }
   }
@@ -196,12 +196,12 @@ export function recomputeFinanceAmounts(opts: {
     if (!touchedMonths.has(moid) && (id == null || !touchedIds.has(id))) continue;
     if (!Number.isFinite(moid) || deletes.includes(moid)) continue;
     const pending = updates.get(moid) ?? { [oidField]: moid };
-    if (own(pending, 'Cashflow_huwi')) continue;
+    if (own(pending, 'cashflow_huwi')) continue;
     rejectDuplicate(id);
-    const next = amountOf(month.Cashflow_huwi, costOf(id == null ? undefined : parentById.get(id)));
-    const previous = month.Cashflow_dun == null ? null : Number(month.Cashflow_dun);
+    const next = amountOf(month.cashflow_huwi, costOf(id == null ? undefined : parentById.get(id)));
+    const previous = month.cashflow_dun == null ? null : Number(month.cashflow_dun);
     if (next === previous) continue;
-    pending.Cashflow_dun = next;
+    pending.cashflow_dun = next;
     updates.set(moid, pending);
   }
 }

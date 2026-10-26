@@ -112,7 +112,7 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
       advancedQueryCapabilities?: { supportsPagination?: boolean };
     }>(url, {})
       .then((m) => ({
-        oid: m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID',
+        oid: m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'objectid',
         paging: m?.advancedQueryCapabilities?.supportsPagination !== false,
       }))
       .catch(() => {
@@ -121,7 +121,7 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
            `failed` болдог байв. Энэ амлалт өөрөө кэшэд байгаа үед л устгана (дараагийн
            дуудлага шинээр асууна); энэ удаад fallback-аар үргэлжилнэ. */
         if (oidCache.get(url) === p) oidCache.delete(url);
-        return { oid: 'OBJECTID', paging: true };
+        return { oid: 'objectid', paging: true };
       });
     oidCache.set(url, p);
   }

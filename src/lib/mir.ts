@@ -68,7 +68,7 @@ export function mirRowOf(a: Record<string, unknown>): MirRow {
     /* ⚠️ 2026-10-22 (аудит): `uniquerowid || globalid` — Enterprise руу шилжүүлсэн Survey123 маягтад `uniquerowid` NULL
        болж хүүхэд хүснэгт эцгийн `globalid`-ийг заадаг («Аюулыг илрүүлэх үзлэг» 61/61, `uzlegReport.parentKeys`).
        Урьд нь ийм MIR-ийн зураг ОГТ олдохгүй, нөөцийн бүртгэлд (`materialNoots`, rowId-гүй) ч орохгүй байв. */
-    rowId: guidBraced(a.uniquerowid) || guidBraced(a.globalid ?? a.GlobalID),
+    rowId: guidBraced(a.uniquerowid) || guidBraced(a.globalid),
     docNo: str(a.doc_no),
     date: num(a.insp_date),
     pkg: str(a.pkg),

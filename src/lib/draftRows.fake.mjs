@@ -136,7 +136,7 @@ export function makeFake(url, opt = {}) {
     }
     if (/\/query$/.test(u) && params.objectIds) {
       const ids = params.objectIds.split(',').map(Number);
-      return { features: ids.filter((o) => opt.sheet?.has(o)).map((o) => ({ attributes: { OBJECTID: o, ...opt.sheet.get(o) } })) };
+      return { features: ids.filter((o) => opt.sheet?.has(o)).map((o) => ({ attributes: { objectid: o, ...opt.sheet.get(o) } })) };
     }
     return fail(`хүлээгээгүй хүсэлт: ${u}`);
   }

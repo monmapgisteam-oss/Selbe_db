@@ -36,7 +36,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
-import { entDirect } from '@/lib/services/entMap';
+import { GUITS } from '@/lib/services/env';
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
@@ -155,7 +155,7 @@ const TABLE_NAME = 'obyem_batlah';
 
 /** Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
-  oid: 'OBJECTID',
+  oid: 'objectid',
   pkgKey: 'bagts_key',
   pkgGroup: 'bagts_group',
   status: 'toloh',
@@ -277,9 +277,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         { name: F.pkgKey, type: 'esriFieldTypeString', length: 64, nullable: false, editable: true },
         { name: F.pkgGroup, type: 'esriFieldTypeString', length: 128, nullable: true, editable: true },
         { name: F.status, type: 'esriFieldTypeString', length: 32, nullable: false, editable: true },
@@ -309,9 +309,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise зураглалд (`services/entMap`) байвал порталын хайлт/үүсгэлтгүй ШУУД —
-     AGOL-ын item хайлт Enterprise-д утгагүй, хуучин AGOL хүснэгт рүү бичих эрсдэлтэй. */
-  const direct = entDirect(TITLE, 0);
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/193) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/193`;
   if (direct) {
     tableUrlCache = direct;
     return direct;

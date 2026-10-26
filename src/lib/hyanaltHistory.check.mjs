@@ -80,7 +80,7 @@ assert.deepEqual(parseHistory('{"a":1}'), []);
 /* ── 4. Эх кодын гэрээ ── */
 {
   const H = fs.readFileSync('src/lib/hyanalt.ts', 'utf8');
-  assert.ok(H.includes("history: 'Shiidveriin_tuuh'"), 'hyanalt: F.history талбар алга');
+  assert.ok(H.includes("history: 'shiidveriin_tuuh'"), 'hyanalt: F.history талбар алга');
   assert.ok(H.includes('export async function hasHistoryField()'), 'hyanalt: талбарыг илрүүлэх функц алга');
   const S = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(/if \(has !== true\) return \{\};/.test(S), 'historyPatch: талбаргүй/мэдэхгүй үед бичихгүй байх ёстой');

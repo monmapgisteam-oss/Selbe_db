@@ -132,7 +132,6 @@ console.log('✅ hyanaltDetail — огноогүй хэлтэрхий (нэмэ
 /* Approved archive identity (2026-10-21): run the actual reader against fake
    ArcGIS SDK/fetch, including two real sheets whose OBJECTIDs overlap.
    Standalone, offline: node --experimental-transform-types src/lib/hyanaltDetail.check.mjs */
-process.env.SELBE_ENT_OFF = '1';
 process.env.NEXT_PUBLIC_ENT_DATA = 'https://archive.test/rest/services/Hosted';
 process.env.NEXT_PUBLIC_PORTAL_URL = 'https://archive.test/portal';
 process.env.NEXT_PUBLIC_ALLOWED_ORG_ID = 'archive-test';
@@ -145,15 +144,16 @@ Object.assign(process.env, {
 });
 register('../../tools/ts-alias-hooks.mjs', import.meta.url);
 
-const TABLE = 'https://archive.test/rest/services/Selbe_Guitsetgel_Draft/FeatureServer';
+/* ⚠️ 2026-10-26: нооргийн хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/191`, порталын хайлтгүй) */
+const TABLE_TAIL = '/Guitsetgel_talbe/FeatureServer/191';
 const state = { sub: null, failRead: false, sheets: new Map(), reads: [], unexpected: [] };
 globalThis.__hyanaltDetailFeatureLayer = class {
-  constructor({ url }) { assert.equal(url, `${TABLE}/0`); }
+  constructor({ url }) { assert.ok(String(url).endsWith(TABLE_TAIL), `нооргийн хүснэгт: ${url}`); }
   async load() { return this; }
   async queryFeatures(q) {
     if (state.failRead) throw new Error('submission read failed');
-    const oid = Number(/^OBJECTID = (\d+)$/.exec(q.where)?.[1]);
-    return { features: state.sub?.OBJECTID === oid ? [{ attributes: state.sub }] : [] };
+    const oid = Number(/^objectid = (\d+)$/.exec(q.where)?.[1]);
+    return { features: state.sub?.objectid === oid ? [{ attributes: state.sub }] : [] };
   }
 };
 globalThis.__hyanaltDetailIdentity = {
@@ -174,30 +174,28 @@ const realFetch = globalThis.fetch;
 const json = (v) => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
 const { PKGS } = await import('../modules/sheet/bagts.pkg.ts');
 const { TREES } = await import('../modules/sheet/bagts.trees.ts');
-const { ROLE_BY_USER, HJ } = await import('./services.ts');
+const { ROLE_BY_USER, GUITS } = await import('./services.ts');
 const owner = Object.keys(ROLE_BY_USER).find((k) => ROLE_BY_USER[k] === 'super');
 assert.ok(owner, 'draft table has a recognized owner');
 const byUrl = new Map(PKGS.map((p) => [p.url, p]));
 const frame = (key, oid, day, value = 12) => {
   const pkg = PKGS.find((p) => p.key === key);
   const block = pkg.floors === 12 ? 'F6_1' : 'F5_1';
-  const fields = ['OBJECTID', 'F_', 'Ажил', 'Обьём', 'obyem_sum', 'gun', 'buglusun_ognoo',
-    'Шинэчлэгдсэн_огноо', 'Хувийн_жин', 'Хувийн_жин1', `${block}_obyem`, `${block}_гүйцэтгэл`, `${block}_төлөвлөгөөт`]
+  const fields = ['objectid', 'f_', 'Ажил', 'Обьём', 'obyem_sum', 'gun', 'buglusun_ognoo',
+    'шинэчлэгдсэн_огноо', 'хувийн_жин', 'хувийн_жин1', `${block}_obyem`, `${block}_гүйцэтгэл`, `${block}_төлөвлөгөөт`]
     .map((name) => ({ name, type: name.includes('огноо') || name === 'buglusun_ognoo' ? 'esriFieldTypeDate' : 'esriFieldTypeDouble' }));
   const features = Array.from({ length: TREES[key].length }, (_, i) => ({ attributes: {
-    OBJECTID: oid + i, F_: String(i + 1), Ажил: `${key} work ${i}`, Обьём: 100,
-    obyem_sum: value, gun: 0, buglusun_ognoo: day, Шинэчлэгдсэн_огноо: day,
-    Хувийн_жин: 1, Хувийн_жин1: 1, [`${block}_obyem`]: value, [`${block}_гүйцэтгэл`]: value / 100,
+    objectid: oid + i, f_: String(i + 1), Ажил: `${key} work ${i}`, Обьём: 100,
+    obyem_sum: value, gun: 0, buglusun_ognoo: day, шинэчлэгдсэн_огноо: day,
+    хувийн_жин: 1, хувийн_жин1: 1, [`${block}_obyem`]: value, [`${block}_гүйцэтгэл`]: value / 100,
   } }));
   state.sheets.set(key, { fields, features });
 };
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   const body = new URLSearchParams(init?.body);
-  if (url.endsWith('/sharing/rest/search'))
-    return json({ results: [{ title: 'Selbe_Guitsetgel_Draft', url: TABLE, owner }] });
-  if (url === `${HJ}/huvaari_20260906/FeatureServer/193`) return json({ fields: [] });
-  if (url === `${HJ}/huvaari_20260906/FeatureServer/193/query`) return json({ features: [] });
+  if (url === `${GUITS}/186`) return json({ fields: [] });
+  if (url === `${GUITS}/186/query`) return json({ features: [] });
   const query = url.endsWith('/query');
   const pkg = byUrl.get(query ? url.slice(0, -6) : url);
   if (!pkg) {
@@ -208,9 +206,9 @@ globalThis.fetch = async (input, init) => {
   const sheet = state.sheets.get(pkg.key) ?? { fields: [{ name: 'buglusun_ognoo' }], features: [] };
   if (!query) return json({ fields: sheet.fields });
   const where = body.get('where') ?? '';
-  const oid = /^OBJECTID = (\d+)$/.exec(where);
+  const oid = /^objectid = (\d+)$/.exec(where);
   let features = sheet.features;
-  if (oid) features = features.filter((f) => f.attributes.OBJECTID === Number(oid[1]));
+  if (oid) features = features.filter((f) => f.attributes.objectid === Number(oid[1]));
   else if (where === 'buglusun_ognoo IS NULL' || /buglusun_ognoo < timestamp/.test(where)) features = [];
   if (body.get('returnCountOnly') === 'true') return json({ count: features.length });
   if (body.has('outStatistics')) {
@@ -230,7 +228,7 @@ const payload = (extra = {}) => ({ v: 1, pkgKey: 'b1_12f', user: 'archive-test',
   fillMs: DAY_12, base: null, asOf: null, cells: [], dates: [], adds: [], rowKeys: [], ...extra });
 const submission = (extra = {}, done = true, oid = 44) => {
   const pl = payload(extra);
-  state.sub = { OBJECTID: oid, dkey: `${done ? 'done' : 'sub'}|${pl.pkgKey}|${oid}`, payload: JSON.stringify(pl) };
+  state.sub = { objectid: oid, dkey: `${done ? 'done' : 'sub'}|${pl.pkgKey}|${oid}`, payload: JSON.stringify(pl) };
   state.reads = [];
 };
 

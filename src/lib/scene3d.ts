@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { HJ, LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, SELBE_ET } from '@/lib/services';
 /**
  * SCENE3D — Web Scene 'selbe_3D_ 0804' (572442952bcd47d3a2adf68199f62d24)-ээс
  * АВТОМАТААР хуулсан 3D давхаргууд + тэдгээрийн ЯГ scene-ийн renderer (style).
@@ -32,7 +32,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:16",
     get "title"() { return tr('Гол'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/16`,
+    "url": `${SELBE_ET}/133`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -60,7 +60,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:15",
     get "title"() { return tr('Дугуйн зам'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/15`,
+    "url": `${SELBE_ET}/137`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -100,7 +100,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:14",
     "title": "Suudrevch_polygon",
     get "group"() { return tr('Сүүдрэвч'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/14`,
+    "url": `${SELBE_ET}/121`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -140,7 +140,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:13",
     "title": "Suudrevch_line",
     get "group"() { return tr('Сүүдрэвч'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/13`,
+    "url": `${SELBE_ET}/119`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -175,7 +175,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:11",
     "title": "Huuhdiin_togloom_polygon",
     get "group"() { return tr('Хүүхдийн тоглоом'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/11`,
+    "url": `${SELBE_ET}/110`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -215,7 +215,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:10",
     "title": "huuhdiin_togloom_line",
     get "group"() { return tr('Хүүхдийн тоглоом'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/10`,
+    "url": `${SELBE_ET}/108`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -250,7 +250,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:8",
     get "title"() { return tr('Спорт талбай'); },
     get "group"() { return tr('Спорт талбай'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/8`,
+    "url": `${SELBE_ET}/147`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -290,7 +290,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:7",
     "title": "sport_area_line",
     get "group"() { return tr('Спорт талбай'); },
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/7`,
+    "url": `${SELBE_ET}/116`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -358,7 +358,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
            *    9→32 · 12→42 · 16→56 м. Зөрүү хамгийн ихдээ 0.5 м.
            */
           "type": "sizeInfo",
-          "valueExpression": "$feature['Давхрын_тоо_max'] * 3.5",
+          "valueExpression": "$feature['давхрын_тоо_max'] * 3.5",
           "valueUnit": "meters"
         }
       ],
@@ -384,7 +384,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:3",
     get "title"() { return tr('Явган зам'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/3`,
+    "url": `${SELBE_ET}/149`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -424,7 +424,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:2",
     get "title"() { return tr('Автозам'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/2`,
+    "url": `${SELBE_ET}/129`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -464,7 +464,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:1",
     get "title"() { return tr('Ногоон байгууламж'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/1`,
+    "url": `${SELBE_ET}/145`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -507,7 +507,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:5",
     get "title"() { return tr('Замын цагаан зураас'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/5`,
+    "url": `${SELBE_ET}/140`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -883,7 +883,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     "id": "scene3d:0",
     get "title"() { return tr('Мод'); },
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/0`,
+    "url": `${SELBE_ET}/143`,
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -893,7 +893,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
         "lengthUnit": "meters"
       },
       "type": "uniqueValue",
-      "valueExpression": "Text($feature.OBJECTID % 6)",
+      "valueExpression": "Text($feature.objectid % 6)",
       get "valueExpressionTitle"() { return tr('Модны төрөл'); },
       "defaultSymbol": {
         "type": "PointSymbol3D",

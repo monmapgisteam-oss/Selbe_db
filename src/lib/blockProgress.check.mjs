@@ -23,9 +23,9 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 /* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана; талбарын нэр эх хэлбэрээр.
    ⚠️ 2026-08-24: `data`/112 — 113 блок, `BAGTS`/`BLOK` талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
-const { TD } = await import('@/lib/services.ts');
+const { BAGTS_AJLUUD } = await import('@/lib/services.ts');
 const { arcgisPost } = await import('@/lib/query.ts');
-const BLDG = `${TD}/112`;
+const BLDG = `${BAGTS_AJLUUD}/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -65,8 +65,8 @@ for (const [key, cell] of prog) {
 
 // 3. ТҮЛХҮҮР-ТААРУУЛАЛТ — гол чиглэл нь ГҮЙЦЭТГЭЛ → ДАВХАРГА.
 //    Гүйцэтгэл гарсан блок давхаргад БАЙХГҮЙ бол зурагт будагдах юмгүй болно.
-const blds = await q(BLDG, { where: '1=1', outFields: 'BAGTS,BLOK', resultRecordCount: '2000' });
-const layerKeys = new Set(blds.map((b) => buildingKey(b.BAGTS, b.BLOK)));
+const blds = await q(BLDG, { where: '1=1', outFields: 'bagts,blok', resultRecordCount: '2000' });
+const layerKeys = new Set(blds.map((b) => buildingKey(b.bagts, b.blok)));
 /*
  * ⚠️ МЭДЭГДЭЖ БУЙ зөрүүний жагсаалт (2026-08-29). «БАГЦ2|5/8»-д гүйцэтгэл
  * нийтлэгдсэн ч /112-т 5/8 footprint алга (5/6 хоёр удаа — нэг нь магадгүй
@@ -104,7 +104,7 @@ console.log(`давхарга ${blds.length} барилга · гүйцэтгэ�
 const KNOWN_DUP = new Set(['БАГЦ1|29/1', 'БАГЦ2|5/6']);
 const keyCount = new Map();
 for (const b of blds) {
-  const k = buildingKey(b.BAGTS, b.BLOK);
+  const k = buildingKey(b.bagts, b.blok);
   keyCount.set(k, (keyCount.get(k) ?? 0) + 1);
 }
 const dups = [...keyCount].filter(([, n]) => n > 1).map(([k]) => k);

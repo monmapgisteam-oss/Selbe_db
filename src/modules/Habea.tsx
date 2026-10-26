@@ -60,6 +60,7 @@ import { UzlegExportButton } from './UzlegExport';
 import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
+import { HseActionPanel } from './HabeaAction';
 
 /** «Хог хаягдал» донат — `HABEA.waste.kinds`-д байхгүй төрлийн нөөц өнгө (өгөгдлийн дарааллаар) */
 const WASTE_EXTRA = ['#7c3aed', '#0ea5e9', '#14b8a6', '#f97316', '#a3e635', '#ec4899', '#64748b', '#eab308'];
@@ -319,7 +320,7 @@ function laborState(rows: Row[]): {
 } {
   const ZERO = { ajiltan: 0, tehnik: 0 };
   if (!rows.length) return { rows: [], asOf: null, cum: ZERO };
-  const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['CreationDate']);
+  const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['created_date']);
   /**
    * ⚠️ «Хамгийн сүүлийн тайлан»-г ЗӨВХӨН огноо БҮХИЙ мөрөөс сонгоно.
    *
@@ -807,7 +808,7 @@ function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [stri
        зөвхөн test_data-гийн хуулбарын үлдэгдэл байв. */
     [tr('Сумны урт'), meters(a[C.sunUrt])],
   ];
-  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), meters(a['BUFF_DIST'])]);
+  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), meters(a['buff_dist'])]);
   return rows.filter(([, v]) => v !== '—');
 }
 
@@ -1122,7 +1123,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const laborOpen = focus === null || laborFocus;
   const uzlegKind: UzlegKind | null =
     /* ⚠️ 2026-10-21: осол, хүн хүчнээс бусад фокус БҮГД үзлэгийн маягт (8 шинэ маягт нэмэгдэв) */
-    focus && focus !== 'inc' && focus !== 'labor' ? focus : null;
+    /* ⚠️ 2026-10-26 (хэрэглэгч): «Захиалагчийн ажлын байрны үзлэг» чип (`v11` түлхүүр) одоо ЗӨВХӨН захиалагчийн
+       маягт — V1.1 энэ фокусаас хасагдав; баруун талд `HSE_Action` (`zFocus`). */
+    focus === 'v11' ? 'zahialagch' : focus && focus !== 'inc' && focus !== 'labor' ? focus : null;
+  /** Захиалагчийн үзлэгийн фокус — зүүнд маягтын чартууд, баруунд үл нийцлийн арилгалт (`HseActionPanel`) */
+  const zFocus = focus === 'v11';
   /* ⚠️ Залхуу ачаалалт: фокус үзлэг рүү орсон үед л татна */
   const uz = useUzleg(uzlegKind);
   /**
@@ -1134,7 +1139,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Чартын СОНГОЛТ (`uzSel`) хоёр талд НЭГ: зэрэг, ээлж, долоо хоног дарахад
    * хоёр маягт ИЖИЛ нөхцлөөр шүүгдэж шууд харьцуулагдана.
    */
-  const dual = focus === 'v11';
+  /* ⚠️ 2026-10-26: хоёр маягтын зэрэгцээ горим УНТАРСАН (V1.1 хасагдсан — `zFocus`). Код хэвээр, дахин асаах бол энд. */
+  const dual = false as boolean;
   const uz2 = useUzleg(dual ? 'zahialagch' : null);
   /** Зүүн багана агуулгатай эсэх — торны баганын тоог шийднэ */
   /**
@@ -2299,8 +2305,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             /* ⚠️ Бүгд 0 үед донат зурахгүй (хоосон цагираг «алдаа» мэт) — гэхдээ «өгөгдөл алга» биш,
                бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). Хэмжилтгүй бол «Бүртгэл алга». */
             : wasteMeasured
-              ? <Empty label={tr('Бүртгэгдсэн рейс {0} — {1}-р долоо хоног', num(0), num(waste.data.weekNo))} />
-              : <Empty label={tr('Бүртгэл алга')} hint={canEnter ? tr('«+ Нэмэх» товчоор энэ долоо хоногийн рейсийг бүртгэнэ.') : undefined} />)}
+              ? <Empty label={tr('Бүртгэгдсэн {0} — {1}-р долоо хоног', num(0), num(waste.data.weekNo))} />
+              : <Empty label={tr('Бүртгэл алга')} hint={canEnter ? tr('«+ Нэмэх» товчоор энэ долоо хоногийн хог хаягдлыг бүртгэнэ.') : undefined} />)}
         </Section>
         )}
         {/* ⚠️ 2026-10-09: `onSaved → retry` ХАСАГДАВ — бичилт `invalidate('HABEA')` хийдэг тул автобус
@@ -2378,6 +2384,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             photos={!dual}
           />
         )}
+        {/* ⚠️ 2026-10-26: захиалагчийн фокуст «гүйцэтгэгчээр» ЗҮҮН баганад — баруун нь `HseActionPanel` */}
+        {zFocus && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
         {dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
         {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.v11.url} sel={uzSel} />}
         {incOpen && (<>
@@ -2713,7 +2721,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
 
-        {uzlegKind && !dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {uzlegKind && !dual && !zFocus && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {zFocus && <HseActionPanel pkgs={pkgs} onPkg={togglePkg} now={now} />}
         {/* ⚠️ Хоёр маягтын горимд БАРУУН багана = захиалагчийн маягтын, зүүнтэй
             ЯГ ИЖИЛ чартууд (зэрэг · ээлж · зураг · гүйцэтгэгчээр). */}
         {dual && (<>
@@ -2895,10 +2904,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             aStep === 'day'
               ? (byDay.length ? tr("{0} · {1} өдөр", coLabel ?? tr("бүх компани"), num(byDay.length)) : null)
               : (byMonth.length ? `${tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(byMonth.length))}${monthNote(byMonth)}` : null))}
+          /* ⚠️ 2026-10-26 (хэрэглэгч): картыг томруулахад чарт дүүргэнэ (`habea.module.css .dayScrollFill`) */
+          fill
         >
           {(aStep === 'day' ? byDay : byMonth).length
             ? (
-              <div className={h.dayScroll} ref={dayScroll}>
+              <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={dayScroll}>
                 <div style={{ minWidth: `${Math.max(100, (ajItems.length / SERIES_VISIBLE) * 100)}%` }}>
                   <Series
                     items={ajItems}
@@ -2907,6 +2918,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     unit={aStep === 'day' ? tr("ажилтан") : tr("хүн-өдөр")}
                     line
                     showValues
+                    grow
                     selected={aStep === 'day' ? sel.day : sel.month}
                     onSelect={(k) => toggleDim(aStep === 'day' ? 'day' : 'month', k)}
                   />
@@ -2925,10 +2937,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                  нэгжгүй бичвэл «12,000 техник» гэж уншигддаг байв. */
               ? (techDay.length ? tr("{0} · {1} нэгж-өдөр", coLabel ?? tr("бүх компани"), num(totalTech)) : null)
               : (techMonth.length ? `${tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(techMonth.length))}${monthNote(techMonth)}` : null))}
+          fill
         >
           {(tStep === 'day' ? techDay : techMonth).length
             ? (
-              <div className={h.dayScroll} ref={techScroll}>
+              <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={techScroll}>
                 <div style={{ minWidth: `${Math.max(100, ((tStep === 'day' ? techDay : techMonth).length / SERIES_VISIBLE) * 100)}%` }}>
                   <Series
                     items={tStep === 'day' ? techDay : techMonth}
@@ -2936,6 +2949,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     unit={tStep === 'day' ? tr("нэгж") : tr("нэгж-өдөр")}
                     line
                     showValues
+                    grow
                     selected={tStep === 'day' ? sel.day : sel.month}
                     onSelect={(k) => toggleDim(tStep === 'day' ? 'day' : 'month', k)}
                   />

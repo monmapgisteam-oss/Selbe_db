@@ -85,8 +85,8 @@ export function statusRawsWhere(field: string, raws: Iterable<string>, unknown: 
 export const parcelAltAreaWhere = (): string =>
   `${PARCEL_LEFT.fields.area} IS NULL AND ${PARCEL_LEFT.fields.areaAlt} IS NOT NULL`;
 
-/** Полигоны (системийн) талбайн талбар — Enterprise-д `SHAPE__Area` (entMap хөрвүүлнэ) */
-export const PARCEL_SHAPE_AREA = 'Shape__Area';
+/** Полигоны (системийн) талбайн талбар — Enterprise-д `SHAPE__Area` (ТОМ `SHAPE`, бодит нэр) */
+export const PARCEL_SHAPE_AREA = 'SHAPE__Area';
 
 const posOrNull = (v: unknown): number | null => {
   if (v == null || v === '') return null;
@@ -101,7 +101,7 @@ const posOrNull = (v: unknown): number | null => {
  */
 export function parcelAreaOf(r: Row): number | null {
   const F = PARCEL_LEFT.fields;
-  return posOrNull(r[F.area]) ?? posOrNull(r[F.areaAlt]) ?? posOrNull(r[PARCEL_SHAPE_AREA] ?? r.SHAPE__Area ?? r.shape__area);
+  return posOrNull(r[F.area]) ?? posOrNull(r[F.areaAlt]) ?? posOrNull(r[PARCEL_SHAPE_AREA]);
 }
 
 /**

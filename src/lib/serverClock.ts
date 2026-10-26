@@ -68,19 +68,19 @@ const tsLiteral = (ms: number): string => new Date(ms).toISOString().slice(0, 19
  *    Харин `where`-д `CURRENT_TIMESTAMP > timestamp '…'` ажилладаг тул ХОЁРТЫН ХАЙЛТ: ±12 цагийн мужийг
  *    `returnCountOnly`-оор 1 с хүртэл нарийсгана (~17 хүсэлт, ~0.2 с; 10 минут тутам нэг удаа). Хүснэгт хоосон
  *    бол (count үргэлж 0) хэмжихгүй. AGOL-д `outStatistics` зам хэвээр эхэлж оролдоно; Enterprise хаягт
- *    (`isEntDataUrl`) оролдохгүй — доорх ⚠️ 2026-10-21 (аудит №2).
+ *    (`ENT_HOSTED` дор) оролдохгүй — доорх ⚠️ 2026-10-21 (аудит №2).
  */
 export async function measureServerTime(
   base: string,
   oidField: string,
 ): Promise<{ srv: number; t0: number; t1: number } | null> {
   const { arcgisPost } = await import('./query');
-  const { isEntDataUrl, remapUrl } = await import('./services/entMap');
+  const { ENT_HOSTED } = await import('./services/env');
   const salt = () => `${oidField} > -${1 + Math.floor(Math.random() * 1e9)}`;
-  /* ⚠️ 2026-10-21 (аудит №2): Enterprise хаягт (зураглалын ДАРААХ хаягаар — `base` нь AGOL түлхүүр байж болно)
+  /* ⚠️ 2026-10-21 (аудит №2): Enterprise хаягт (2026-10-26-оос `base` нь ҮРГЭЛЖ бодит Enterprise хаяг)
      `outStatistics` max(CURRENT_TIMESTAMP) замыг ОРОЛДОХГҮЙ — тэнд ҮРГЭЛЖ 500 тул хэмжилт бүрд нэг дэмий алдааны
      хүсэлт серверийн логт бичигдэж, хоёртын хайлт нэг RTT хожимддог байв. AGOL/бусад хаягт нэг хүсэлтийн зам хэвээр. */
-  const ent = isEntDataUrl(remapUrl(base));
+  const ent = base.startsWith(`${ENT_HOSTED}/`);
   if (!ent) {
     try {
       const t0 = Date.now();
@@ -143,7 +143,7 @@ export async function syncServerClock(url?: string): Promise<void> {
     try {
       const base = url ?? (await import('./hyanalt')).HYANALT.url;
       if (!base) return;
-      const m = await measureServerTime(base, 'OBJECTID');
+      const m = await measureServerTime(base, 'objectid');
       if (!m) return;
       const off = clockOffsetOf(m.srv, m.t0, m.t1);
       /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг хүлээн авахгүй (дээрх ⚠️) */

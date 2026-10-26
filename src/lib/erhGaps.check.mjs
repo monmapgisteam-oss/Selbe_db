@@ -1,6 +1,6 @@
 /**
  * АДМИН САМБАРЫН ГАЦААНЫ ЦООРХОЙНУУД — хуурамч ArcGIS хүснэгт дээр (⚠️ 2026-10-22, аудит).
- *   SELBE_ENT_OFF=1 node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/erhGaps.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/erhGaps.check.mjs
  *
  * Хамгаалж буй алдаанууд (амьд аудитаар батлагдсан):
  *   §1 ПОРТАЛД АЛГА аккаунт (хүснэгтэд мөртэй) «Гүйцэтгэгч компани» шатны цорын ганц эзэн мэт тоологдож 21 багцын

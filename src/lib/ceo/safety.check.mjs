@@ -75,15 +75,15 @@ const row = (o = {}) => ({
   assert.equal(toSafetyRow({}).oid, null);
 
   // ⚠️ 2026-10-09: CreationDate нөөц зам ХАСАГДСАН — Habea.tsx normIncident-тэй ижил (`d: nn(ognoo)`)
-  assert.equal(toSafetyRow({ field_22: null, CreationDate: NOW - 5 * DAY }).ognoo, null,
+  assert.equal(toSafetyRow({ field_22: null, created_date: NOW - 5 * DAY }).ognoo, null,
     'field_22 хоосон → null (CreationDate руу унахгүй)');
-  assert.equal(toSafetyRow({ field_22: 0, CreationDate: NOW - 5 * DAY }).ognoo, null,
+  assert.equal(toSafetyRow({ field_22: 0, created_date: NOW - 5 * DAY }).ognoo, null,
     'field_22 = 0 → null');
-  assert.equal(toSafetyRow({ field_22: NOW - 9 * DAY, CreationDate: NOW }).ognoo, NOW - 9 * DAY,
+  assert.equal(toSafetyRow({ field_22: NOW - 9 * DAY, created_date: NOW }).ognoo, NOW - 9 * DAY,
     'field_22 байвал түүгээр');
 
   // Огноогүй мөр «сүүлийн 30 хоногт» тоологдохгүй — ХАБЭА хуудастай ижил
-  const viaCreated = toSafetyRow({ field_22: null, CreationDate: NOW - 2 * DAY, field_7: 'Зөрчил', field_6: 'Багц 4' });
+  const viaCreated = toSafetyRow({ field_22: null, created_date: NOW - 2 * DAY, field_7: 'Зөрчил', field_6: 'Багц 4' });
   const a = aggregateSafety([viaCreated], NOW);
   assert.equal(a.recent, 0);
   assert.equal(a.last, null);
@@ -216,7 +216,7 @@ assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хох�
 /* ⚠️ Survey123-д эхлүүлээд бөглөөгүй маягт (төрөл · багц · огноо гурвуулаа хоосон) осол БИШ.
    Нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл — хасахгүй. ХАБЭА хуудас ч энэ функцээр. */
 {
-  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, CreationDate: NOW }), true,
+  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, created_date: NOW }), true,
     'CreationDate байсан ч гурвуулаа хоосон бол ноорог');
   assert.equal(isBlankIncident({ field_7: '  ', field_6: '', field_22: 0 }), true, 'зай/хоосон мөр/0 огноо = хоосон');
   assert.equal(isBlankIncident({}), true);

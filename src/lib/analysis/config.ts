@@ -752,9 +752,9 @@ export const GREEN_SOURCES: { key: GreenSource; label: string; short: string }[]
 
 /** Барилгын талбарууд — кирилл тул тогтмолоор */
 export const BF = {
-  gfa: 'Барилгын_нийт_талбай_m2',
-  purpose: 'Зориулалт_m',
-  status: 'Barilga_ty',
+  gfa: 'барилгын_нийт_талбай_m2',
+  purpose: 'зориулалт_m',
+  status: 'barilga_ty',
   /**
    * ОРШИН СУУГЧ — эх өгөгдөлд ЗӨВХӨН орон сууцны барилгад бөглөгддөг.
    *
@@ -764,12 +764,12 @@ export const BF = {
    * байгаа тул тоо ӨӨРЧЛӨГДӨХГҮЙ, харин ангилал нь regex-ээс хамаарахаа болино
    * (》«Үйлчилгээтэй орон сууц» мэт хилийн утга дээр эх өгөгдөл өөрөө шийднэ).
    */
-  population: 'Population',
+  population: 'population',
   /** ХҮЧИН ЧАДАЛ (суудал, ор, ажлын байр) — орон сууц БУС барилгад */
-  capacity: 'Huchin_chadal',
+  capacity: 'huchin_chadal',
   /** `Population + Huchin_chadal`-ын нийлбэр — задлаагүй нийт дүн хэрэгтэй үед */
-  totalPop: 'Total_population',
-  households: 'Urhiin_too',
+  totalPop: 'total_population',
+  households: 'urhiin_too',
   /**
    * ХӨЛ ТАЛБАЙ — барилгын полигоны БОДИТ талбай (м²).
    *
@@ -778,7 +778,7 @@ export const BF = {
    * нь 25,768 м²). Мөн бүсийн `BCR` талбар ч зөрдөг (E-5: BCR 40% атлаа бодит
    * барилгажилт 11%). Геометрийн талбай нь эргэлзээгүй.
    */
-  foot: 'Shape__Area',
+  foot: 'SHAPE__Area',
 } as const;
 
 /**

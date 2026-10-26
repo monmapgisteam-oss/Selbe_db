@@ -34,7 +34,7 @@ const NOW = Date.UTC(2026, 8, 6);
 
 /** CASHFLOW_NEW-ийн түүхий мөр — талбарын нэрс `services.ts`-тэй ижил */
 const row = (o = {}) => ({
-  OBJECTID: 1,
+  objectid: 1,
   ajil_tuvshin2: 'БАРИЛГА УГСРАЛТ',
   ajil_tuvshin1: 'Төсөл',
   /* ⚠️ Cashflow_0909-д багцын багана НЭГ — хуучин Bagts/Ded_bagts нэгдсэн */
@@ -92,18 +92,18 @@ const CN = 'Гэрээлсэн дүн';
 }
 
 /* ── 2. Бүтэн тооцоо — холимог мөрүүд ── */
-const A = row({ OBJECTID: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, ehleh_ognoo: NOW - 10 * DAY });
-const B = row({ OBJECTID: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, ehleh_ognoo: NOW + 30 * DAY });
-const C = row({ OBJECTID: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
-const D = row({ OBJECTID: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E = row({ OBJECTID: 5, ajil_uilchilgee: 'E дүнтэй', geree_dun: 50, ho_dun_geree: 60 });
+const A = row({ objectid: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, ehleh_ognoo: NOW - 10 * DAY });
+const B = row({ objectid: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, ehleh_ognoo: NOW + 30 * DAY });
+const C = row({ objectid: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
+const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E = row({ objectid: 5, ajil_uilchilgee: 'E дүнтэй', geree_dun: 50, ho_dun_geree: 60 });
 /* ⚠️ 2026-10-22 (аудит): «дутуу бүртгэл» нь ГЭРЭЭТЭЙ (тайлбараар) мөр — G ба E2 «Гэрээлсэн дүн» тайлбартай */
-const G = row({ OBJECTID: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: 70, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E2 = row({ OBJECTID: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', geree_dun: 50, ho_dun_geree: 60, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: 70, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', geree_dun: 50, ho_dun_geree: 60, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 /* Багц 5.3 · 5.4-ийн хэлбэр — тайлбартай атлаа дүн, гүйцэтгэгчгүй: ГЭРЭЭТЭЙ, эсрэг зөрүүний жагсаалтад */
-const N = row({ OBJECTID: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', ho_dun_geree: 300, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const H = row({ OBJECTID: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, ehleh_ognoo: NOW - 40 * DAY, duusah_ognoo: NOW + 100 * DAY });
-const I = row({ OBJECTID: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, ehleh_ognoo: NOW });
+const N = row({ objectid: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', ho_dun_geree: 300, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const H = row({ objectid: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, ehleh_ognoo: NOW - 40 * DAY, duusah_ognoo: NOW + 100 * DAY });
+const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, ehleh_ognoo: NOW });
 {
   const k = computeUncontracted([A, B, C, D, E, G, H, I, E2, N], NOW);
   /* ⚠️ 2026-10-22: E (дүнтэй, тайлбаргүй) — порталын дүрмээр ГЭРЭЭГҮЙ; N (тайлбартай, дүнгүй) — гэрээтэй */
@@ -169,13 +169,13 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 {
   const NOTE = 'Төслийн хөрөнгө оруулалтаас хасах. Хийгдэхгүй болсон ажил';
   /* гэрээгүй + эхлэх хугацаа өнгөрсөн + том төсөв — хасагдсан тул bad болох ёсгүй */
-  const X = row({ OBJECTID: 10, ajil_uilchilgee: 'X хасагдсан', ho_dun_geree: 20000, ehleh_ognoo: NOW - 5 * DAY, ho_dungiin_tailbar: NOTE });
+  const X = row({ objectid: 10, ajil_uilchilgee: 'X хасагдсан', ho_dun_geree: 20000, ehleh_ognoo: NOW - 5 * DAY, ho_dungiin_tailbar: NOTE });
   /* гүйцэтгэгчтэй ч дүнгүй (дутуу) + хасуулах — 2-р хүснэгтэд орох ёсгүй */
-  const Y = row({ OBJECTID: 11, ajil_uilchilgee: 'Y хасуулах', ho_dun_geree: 30, guitsetgegch: 'Ү ХХК', ho_dungiin_tailbar: NOTE_76 });
+  const Y = row({ objectid: 11, ajil_uilchilgee: 'Y хасуулах', ho_dun_geree: 30, guitsetgegch: 'Ү ХХК', ho_dungiin_tailbar: NOTE_76 });
   /* гэрээ бүрэн + «хийгдэхгүй» — энэ картын хамрах хүрээнд огт биш */
-  const Z = row({ OBJECTID: 12, ajil_uilchilgee: 'Z гэрээтэй', geree_dun: 900, guitsetgegch: 'З ХХК', ho_dungiin_tailbar: 'хийгдэхгүй' });
+  const Z = row({ objectid: 12, ajil_uilchilgee: 'Z гэрээтэй', geree_dun: 900, guitsetgegch: 'З ХХК', ho_dungiin_tailbar: 'хийгдэхгүй' });
   /* гэрээгүй + эхэлсэн + ганц «хасах» үгтэй тайлбар — ХАСАГДСАН БИШ, ердийн гэрээгүй хэвээр (bad) */
-  const W = row({ OBJECTID: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, ehleh_ognoo: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
+  const W = row({ objectid: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, ehleh_ognoo: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
 
   const k = computeUncontracted([B, E, X, Y, Z], NOW);
   /* ⚠️ 2026-10-22 (аудит): E (дүнтэй, тайлбаргүй) — порталын дүрмээр гэрээгүй; Z (дүн+гүйцэтгэгчтэй, тайлбар
@@ -212,7 +212,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 
 /* ── 3. Σ төсөв: бүгд төсөвгүй → факт байхгүй (0 ₮ гэж хэвлэхгүй) ── */
 {
-  const k = computeUncontracted([C, row({ OBJECTID: 9 })], NOW);
+  const k = computeUncontracted([C, row({ objectid: 9 })], NOW);
   assert.equal(k.value, '2');
   assert.equal(k.level, 'warn');
   assert.ok(!k.facts.some((f) => f.includes('төсөв')), `төсөв факт гарах ёсгүй: ${k.facts}`);
@@ -243,7 +243,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 
 /* ── 5. Хязгаар — тасалсан тоо ИЛ ── */
 {
-  const many = Array.from({ length: ROW_CAP + 25 }, (_, i) => row({ OBJECTID: i + 1, ajil_uilchilgee: `Ажил ${i}`, ho_dun_geree: i }));
+  const many = Array.from({ length: ROW_CAP + 25 }, (_, i) => row({ objectid: i + 1, ajil_uilchilgee: `Ажил ${i}`, ho_dun_geree: i }));
   const k = computeUncontracted(many, NOW);
   assert.equal(k.value, String(ROW_CAP + 25));
   const t1 = k.tables[0];

@@ -28,13 +28,7 @@
  */
 
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
-import {
-  LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF,
-  IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM,
-  ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL,
-  HABEA, HJ, layerUrl,
-  type LayerDef, type ViewKey,
-} from '@/lib/services';
+import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
 import { HYANALT } from '@/lib/hyanalt';
 import { URL as ZOV_URL } from '@/lib/zovshoorol';
 import { HUVAARI_OBYEM } from '@/lib/huvaariObyem';
@@ -333,11 +327,17 @@ function viewsOf(ids: string[]): ViewKey[] {
   return sortViews(out);
 }
 
-type RawSrc = { id: string; url: string; title: string; geom: LayerDef['geom'] | '3d'; styleUrl?: string };
+type RawSrc = { id: string; url: string; title: string; geom: LayerDef['geom'] | '3d' };
+
+/**
+ * УСТГАГДСАН AGOL үйлчилгээнүүдийн ХАРУУЛАХ хаяг (`closed: true` мөрүүд) — хүсэлт ХЭЗЭЭ Ч явахгүй (2026-10-26:
+ * AGOL түлхүүрийн суурь `HJ` хасагдсан тул энд зөвхөн баримтын мөр).
+ */
+const GONE_AGOL = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
 
 function registryEntries(): CatEntry[] {
   const raw: RawSrc[] = [
-    ...LAYERS.map((l) => ({ id: l.id, url: layerUrl(l), title: l.title, geom: l.geom, styleUrl: l.styleUrl })),
+    ...LAYERS.map((l) => ({ id: l.id, url: layerUrl(l), title: l.title, geom: l.geom })),
     { id: IRGED_TOILET_DEF.id, url: layerUrl(IRGED_TOILET_DEF), title: IRGED_TOILET_DEF.title, geom: IRGED_TOILET_DEF.geom },
     { id: IRGED_BUILT_DEF.id, url: layerUrl(IRGED_BUILT_DEF), title: IRGED_BUILT_DEF.title, geom: IRGED_BUILT_DEF.geom },
     { id: 'ersdel:sample', url: ERSDEL_FS.url, title: tr('Жишээ харуулын цэгүүд'), geom: 'point' },
@@ -359,10 +359,8 @@ function registryEntries(): CatEntry[] {
     const ids = sorted.map((r) => r.id);
     const titles = [...new Set(sorted.map((r) => r.title))];
     const p = parseUrl(main.url);
-    const styleSrc = [...new Set(sorted
-      .map((r) => r.styleUrl)
-      .filter((u): u is string => !!u && keyOfUrl(u) !== keyOfUrl(main.url))
-      .map((u) => shortRef(parseUrl(u))))];
+    /* ⚠️ 2026-10-26: загварын эх (хуучин AGOL хаягийн түлхүүр `styleUrl`) ХАСАГДСАН — снапшот давхаргын id-аар */
+    const styleSrc: string[] = [];
     const allScene = sorted.every((r) => r.geom === '3d');
     /* ⚠️ 2026-10-20: захиалагчийн үзлэг · IoT · бусад бүх давхарга `NEXT_PUBLIC_ENT_DATA`-гийн дор (тусдаа хувьсагч хасагдсан) */
     const envOf = main.id.startsWith('habea:osol') ? 'NEXT_PUBLIC_HABEA_INCIDENT_SVC'
@@ -444,7 +442,7 @@ function guitsEntries(): CatEntry[] {
   const tn = parseUrl(TUSUL_NEGTGEL.url);
   /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `SysDoc`-ийн мөрөнд
      ХАРУУЛАХ (`closed: true`, «устгагдсан (400)» тэмдэг); энэ хаягаар хүсэлт явдаггүй. */
-  const cons = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
+  const cons = `${GONE_AGOL}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
   return [
     {
       id: 'draft',
@@ -736,8 +734,8 @@ function otherEntries(): CatEntry[] {
   const zv = parseUrl(ZOV_URL);
   const lb = parseUrl(HABEA.labor.url);
   /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `et-closed` мөрөнд
-     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. Загварын түлхүүр нь `env.ts`-ийн `ET`. */
-  const et = `${HJ}/Selbe_ET_20260721/FeatureServer`;
+     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. */
+  const et = `${GONE_AGOL}/Selbe_ET_20260721/FeatureServer`;
   return [
     {
       id: 'zovshoorol',
@@ -875,7 +873,7 @@ function otherEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: [],
-      purpose: () => tr('Одоо зөвхөн газрын зургийн загварын (webmap-style) түлхүүр — өгөгдөл SELBE_ALL_DATA_last_0917-оос уншигдана.'),
+      purpose: () => tr('Устгагдсан үйлчилгээ — өгөгдөл Enterprise-ийн selbe_ET-ээс уншигдана.'),
       chain: () => [S(tr('Устгагдсан (400)')), S(tr('SELBE_ALL_DATA_last_0917 руу шилжсэн'), 'lyr:et:24')],
       editors: NONE,
       closed: true,

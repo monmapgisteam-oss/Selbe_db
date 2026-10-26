@@ -76,7 +76,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
 
   const l = LAYER_BY_ID['mon:building'];
   const [rows, prog, uni, housing] = await Promise.all([
-    queryFeatures(layerUrl(l), { outFields: ['BAGTS', 'BLOK', 'AIL_TOO', 'BAR_COMP'] }),
+    queryFeatures(layerUrl(l), { outFields: ['bagts', 'blok', 'ail_too', 'bar_comp'] }),
     loadBlockProgress(),
     loadBlockUniverse(),
     /* ⚠️ ДИНАМИК импорт — `Finance.tsx` нь React модуль (`ceo/contractGap`-ийн ⚠️).
@@ -98,11 +98,11 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
   const feat = new Map<string, { ail: number; company: string }>();
   const nameOf = new Map<string, string>();
   for (const r of rows) {
-    const bagts = String(r.BAGTS ?? '');
-    const k = buildingKey(bagts, String(r.BLOK ?? ''));
+    const bagts = String(r.bagts ?? '');
+    const k = buildingKey(bagts, String(r.blok ?? ''));
     if (bagts) nameOf.set(bagtsKey(bagts), bagts);
     if (feat.has(k)) continue;
-    feat.set(k, { ail: Number(r.AIL_TOO ?? 0), company: String(r.BAR_COMP ?? '') });
+    feat.set(k, { ail: Number(r.ail_too ?? 0), company: String(r.bar_comp ?? '') });
   }
   const pkgOf = (key: string) => { const c = key.indexOf('|'); return c < 0 ? key : key.slice(0, c); };
   const label = (pk: string) => nameOf.get(pk) ?? pk;

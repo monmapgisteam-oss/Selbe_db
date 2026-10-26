@@ -44,7 +44,7 @@ const sc = {
   f: {
     no: 'no', work: 'work', wC: 'wC', wD: 'wD', wE: 'wE', vol: 'vol', obyemSum: 'osum',
     unit: 'unit', money: 'money', plan: 'plan', act: 'act', ratio: 'ratio', asOf: 'asof',
-    fillDate: 'fill', gun: 'gun', des: null, ham: null, hunHuch: 'hun_huch', mashin: 'mashin_mehanizm', oid: 'OBJECTID',
+    fillDate: 'fill', gun: 'gun', des: null, ham: null, hunHuch: 'hun_huch', mashin: 'mashin_mehanizm', oid: 'objectid',
   },
 };
 const hasObyem = sc.obyem.map((f) => !!f);
@@ -58,7 +58,7 @@ const row = (oid, no, work, depth, group, extra = {}) => ({
   act: [null, null], obyem: [null, null], start: [null, null], end: [null, null],
   gStart: [null, null], gEnd: [null, null],
   aStart: [null, null], aEnd: [null, null], hun: null, mashin: null,
-  raw: { OBJECTID: oid, no, work },
+  raw: { objectid: oid, no, work },
   ...extra,
 });
 
@@ -403,7 +403,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const add = fr.find((a) => a.work === 'Арматур');
   assert.ok(add && add.fill === fillMs && add.gun === 3, 'нэмсэн мөр жаазанд бүрэн');
   assert.ok(add.wC != null, 'шинэ мөрд жин бодогдож бичигдэв');
-  assert.equal(fr[i3].OBJECTID, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
+  assert.equal(fr[i3].objectid, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
   // fillDate байхгүй → throw
   assert.throws(
     () => buildFrame(ov.rows, { ...sc, f: { ...sc.f, fillDate: null } }, nBld, asOf, hasObyem, fillMs),
@@ -427,13 +427,13 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
  */
 {
   /* des/ham/money талбартай бүдүүвч — 10/10 багцын бодит хэлбэр */
-  const sc2 = { ...sc, f: { ...sc.f, des: 'Des_dugaar', ham: 'Hamaaral' } };
+  const sc2 = { ...sc, f: { ...sc.f, des: 'des_dugaar', ham: 'hamaaral' } };
   const base = [
-    row(300, '1', 'БАРИЛГА', 0, true, { des: 1, raw: { OBJECTID: 300, Des_dugaar: 1, Hamaaral: null } }),
-    row(301, '1.1', 'Ухах', 1, true, { des: 2, raw: { OBJECTID: 301, Des_dugaar: 2, Hamaaral: null } }),
+    row(300, '1', 'БАРИЛГА', 0, true, { des: 1, raw: { objectid: 300, des_dugaar: 1, hamaaral: null } }),
+    row(301, '1.1', 'Ухах', 1, true, { des: 2, raw: { objectid: 301, des_dugaar: 2, hamaaral: null } }),
     row(302, '1', 'Шороо', 2, false, {
       vol: 100, unit: 10, des: 3, ham: '2FS0',
-      raw: { OBJECTID: 302, Des_dugaar: 3, Hamaaral: '2FS0' },
+      raw: { objectid: 302, des_dugaar: 3, hamaaral: '2FS0' },
     }),
   ];
   const s = sub({
@@ -443,20 +443,20 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const fr = buildFrame(ov.rows, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
   const add = fr.find((a) => a.work === 'Бетон');
   const root = fr[0];
-  const leaf = fr.find((a) => a.OBJECTID === 302);
+  const leaf = fr.find((a) => a.objectid === 302);
 
   assert.equal(leaf.money, 1000, 'навчийн Мөнгөн дүн = Обьём × Нэгж өртөг');
   assert.equal(add.money, 100, 'НЭМСЭН мөрд Мөнгөн дүн бичигдэв (өмнө нь хоосон үлддэг байв)');
   assert.equal(root.money, 1100, 'ӨВӨГ бүлгийн Мөнгөн дүн нэмсэн мөрийг АГУУЛНА');
   assert.ok(add.wD != null && add.wD > 0, 'нэмсэн мөрд «үе шатанд эзлэх» жин бичигдэв');
-  assert.equal(add.Hamaaral, null, 'уялдааны талбар жаазанд ЗААВАЛ байна (шинэ мөрд хоосон)');
-  assert.equal(leaf.Hamaaral, '2FS0', 'байгаа уялдаа ХЭВЭЭР');
-  assert.equal(add.Des_dugaar, 4, 'шинэ мөр ХАМГИЙН ИХ + 1 код авна');
-  assert.equal(fr[0].Des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
-  assert.equal(leaf.Des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
+  assert.equal(add.hamaaral, null, 'уялдааны талбар жаазанд ЗААВАЛ байна (шинэ мөрд хоосон)');
+  assert.equal(leaf.hamaaral, '2FS0', 'байгаа уялдаа ХЭВЭЭР');
+  assert.equal(add.des_dugaar, 4, 'шинэ мөр ХАМГИЙН ИХ + 1 код авна');
+  assert.equal(fr[0].des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
+  assert.equal(leaf.des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
 
   /* ⚠️ `null ≠ 0`: бодогдох боломжгүй мөнгөн дүнг 0 болгож ДАРАХГҮЙ */
-  const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { OBJECTID: 400, money: 777 } })];
+  const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { objectid: 400, money: 777 } })];
   const fr2 = buildFrame(noMoney, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
   assert.equal(fr2[0].money, 777, 'бодогдохгүй үед хадгалагдсан Мөнгөн дүн ХЭВЭЭР');
 }
@@ -690,7 +690,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
 
   /* 9i. ⚠️ 2026-10-09: БЛОКГҮЙ багцын (синтетик блок) Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) —
      inc нэмэлт ХАЯГДАНА: `obyem_sum` нь L-гүй архивлагдахгүй, `cellKeys`/`unmoved`-д ч орохгүй. */
-  const scS = { ...sc, bld: ['—'], act: ['Ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
+  const scS = { ...sc, bld: ['—'], act: ['ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
     gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], synthetic: true };
   const one = (oid, vol, ob, act) => row(oid, String(oid), `W${oid}`, 0, false, {
     vol, obyem: [ob], act: [act], start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null] });

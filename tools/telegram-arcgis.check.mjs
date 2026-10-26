@@ -1,6 +1,6 @@
 /**
  * TELEGRAM БОТЫН ArcGIS УНШИЛТЫН ТОКЕН — тохиргоо · үүсгэлт/шинэчлэлт · `query.ts`-ийн замд залгалт (⚠️ 2026-10-22, аудит).
- *   SELBE_ENT_OFF=1 node --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-arcgis.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-arcgis.check.mjs
  *
  * ⚠️ ЯАГААД: бот Node-д `authToken()` ҮРГЭЛЖ `null` тул Organization-only бүх эх сурвалж «Token Required» авч, хэрэглэгч
  *    «түр хүлээгээд дахин оролдоно уу» гэсэн ХУДАЛ мессеж хардаг байв. Энд:

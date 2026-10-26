@@ -256,7 +256,7 @@ function dayOf(r: Row, at: number, oid: number | null, rowsInDay: number): Workf
  * ⚠️ Survey123 давхаргад `editFieldsInfo.editDateField = 'EditDate'`,
  *    `objectIdField = 'objectid'` (жижиг үсэг) — 2026-09-06-нд амьдаар баталсан.
  */
-export const EDIT_DATE_FIELD = 'EditDate';
+export const EDIT_DATE_FIELD = 'last_edited_date';
 export const OID_FIELD = 'objectid';
 
 type DayPick = { r: Row; at: number; edited: number; oid: number; n: number };

@@ -151,7 +151,7 @@ async function main() {
   check('«АНДУУРЧ БОЛОХГҮЙ» хэсэг үүссэн', prompt.includes('АНДУУРЧ БОЛОХГҮЙ'));
   check(
     '`Total_population`-ыг хориглосон анхааруулга бий',
-    prompt.includes('Total_population') && prompt.includes('АШИГЛАХГҮЙ'),
+    prompt.includes('total_population') && prompt.includes('АШИГЛАХГҮЙ'),
   );
   check('эх сурвалж заах дүрэм бий', prompt.includes('ЭХ СУРВАЛЖИЙГ'));
   // ⚠️ Удирдлагад `GUITS_HV` гэдэг утгагүй — хариултын биед техникийн нэр гарах ёсгүй
@@ -237,9 +237,9 @@ async function main() {
     {
       id: 'et:24',
       stats: [
-        { op: 'count', field: 'OBJECTID', as: 'n' },
-        { op: 'sum', field: 'Population', as: 'pop' },
-        { op: 'sum', field: 'Huchin_chadal', as: 'cap' },
+        { op: 'count', field: 'objectid', as: 'n' },
+        { op: 'sum', field: 'population', as: 'pop' },
+        { op: 'sum', field: 'huchin_chadal', as: 'cap' },
       ],
     },
     'all',
@@ -255,7 +255,7 @@ async function main() {
   check('`describe_feature` бодит талбаруудыг татав', fields.length > 10, `${fields.length}`);
   check(
     'талбарын утга манай тайлбараар солигдсон',
-    fields.find((f) => f.name === 'Population')?.meaning?.includes('орон сууц') ?? false,
+    fields.find((f) => f.name === 'population')?.meaning?.includes('орон сууц') ?? false,
   );
 
   // Өгөгдлийн эх сурвалж ч ижил замаар ажиллана
@@ -352,7 +352,7 @@ async function main() {
         type: 'tool_use',
         id: 'toolu_1',
         name: 'query_feature',
-        input: { id: 'et:24', stats: [{ op: 'count', field: 'OBJECTID', as: 'n' }] },
+        input: { id: 'et:24', stats: [{ op: 'count', field: 'objectid', as: 'n' }] },
       },
     ],
     [{ type: 'text', text: 'Нийт 363 барилга байна. Эх сурвалж: `et:24`' }],

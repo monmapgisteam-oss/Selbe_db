@@ -5,9 +5,7 @@ import {
 } from '@/lib/authToken';
 /* ⚠️ 2026-10-06: бичилтийн үе (`shared`-ийн ⚠️). `dataBus` нь зөвхөн `i18nCore`-ийг импортлодог — мөчлөггүй. */
 import { writeEpoch } from '@/lib/dataBus';
-import {
-  isEntDataUrl, isAgolUrl, remapUrl, entDict, entRequestWith, entResponseWith, requestedFields,
-} from '@/lib/services/entMap';
+import { fixImportStamps } from '@/lib/editTrack';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -273,14 +271,12 @@ async function attemptRequest(
   /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
      горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ.
      ⚠️ 2026-10-01: `'always'` ч ЗӨВХӨН org/портал хост руу (дээрх `ArcgisReqOpts`-ийн ⚠️). */
-  /* ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт, `services/entMap.ts`): Enterprise ӨГӨГДЛИЙН хаяг
-     (`NEXT_PUBLIC_ENT_DATA`) нь байгууллагын үйлчилгээ — нэвтэрсэн хэрэглэгчийн (Enterprise портал,
-     `AUTH.portalUrl`) токен явна. Хүсэлтийн талбарын нэрийг Enterprise-ийн жижиг үсэг рүү, хариуг
-     кодын эх нэр рүү ЭНД хөрвүүлнэ (`entRequestWith` · `entResponseWith` — `entMap.ts`-ийн ⚠️). */
-  const ent = isEntDataUrl(full);
-  const dict = ent ? entDict(full) : null;
-  const p = ent ? entRequestWith(params, dict) : params;
-  const hostOk = ent || (always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full));
+  /* ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН хаяг (`NEXT_PUBLIC_ENT_DATA` дор — `isOrgUrl`) нь байгууллагын үйлчилгээ —
+     нэвтэрсэн хэрэглэгчийн (Enterprise портал, `AUTH.portalUrl`) токен явна.
+     ⚠️ 2026-10-26: талбарын нэрийн хөрвүүлэлт (хуучин `entMap.entRequestWith`/`entResponseWith`) ХАСАГДСАН — код
+     Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэрээр асууж, хариуг тэр нэрээр нь уншина. */
+  const p = params;
+  const hostOk = always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full);
   const userTok = hostOk ? tokenParam() : {};
   if (always && !hostOk) warnForeignHost(full);
   const body = always
@@ -404,22 +400,15 @@ async function attemptRequest(
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
     throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details, sessionExpired);
   }
-  /* ⚠️ 2026-10-20: Enterprise хариултын жижиг үсэгтэй түлхүүр → кодын эх нэр (дуудагчийн `outFields`-ийн үсэг → толь) */
-  return ent ? entResponseWith(json, dict, requestedFields(params)) : json;
+  /* ⚠️ 2026-10-26: импортын агшны засварын мөшгөлт (`editTrack.ts`-ийн ⚠️) — нэр биш, утгын засвар */
+  return isOrgUrl(full) ? fixImportStamps(json) : json;
 }
 
 /** Слот авч (эсвэл авалгүй) нэг хүсэлт гүйцэтгэнэ — `ensureFreshToken` хүсэлтийн ӨМНӨ */
 async function run(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
-  /* ⚠️ 2026-10-20: Enterprise зураглал — БҮХ REST хүсэлтийн ганц цөм тул AGOL (түлхүүрийн) хаягийг ЭНД
-     солино (`services/entMap.remapUrl`). Зураглагдаагүй AGOL хаяг → ИЛ АЛДАА: AGOL руу чимээгүй хандах зам
-     байхгүй (хэрэглэгч 2026-10-20: «AGOL датаг бүрэн хая»); `entMap.data.ts`-д тэр давхаргыг нэмнэ. */
-  const target = remapUrl(full);
-  if (isAgolUrl(target)) {
-    /* ⚠️ 2026-10-23 (UX аудит S16): хэрэглэгчид ЭНГИЙН үгээр — «entMap.data.ts», «AGOL» гэх хөгжүүлэгчийн
-       нэр томьёо дэлгэц дээр гардаг байв. Засах дэлгэрэнгүй (хаяг, файл) нь консолд ба алдааны `url`-д үлдэнэ. */
-    console.error(`[selbe] AGOL хаяг Enterprise зураглалд алга — entMap.data.ts-д нэмнэ үү: ${full.replace(/\?.*$/, '')}`);
-    throw new ArcGISError(tr('Энэ давхарга серверт холбогдоогүй — админд мэдэгдэнэ үү.'), full);
-  }
+  /* ⚠️ 2026-10-26: AGOL → Enterprise хаягийн зураглал (`entMap.remapUrl`) ХАСАГДСАН — код Enterprise-ийн БОДИТ
+     хаягаар (`services/env` · `${GUITS}/183` г.м.) шууд асууна. */
+  const target = full;
   await ensureFreshToken();
   if (o.slot === false) return attemptRequest(target, params, o, 0);
   await acquire();

@@ -375,7 +375,7 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
   };
   const sevKnown = sevHas.major && sevHas.minor && sevHas.obs && sevHas.conf;
   return {
-    oid: nn(r.objectid ?? r.OBJECTID),
+    oid: nn(r.objectid),
     kind,
     site,
     /* ⚠️ 2026-10-09: огнооноос (ISO, UB); огноогүй бол '' — чарт/KPI-д ОРОХГҮЙ (`UzlegRow.week`) */
@@ -1825,13 +1825,15 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
             : (recent.length
               ? `${tr('сүүлийнх: {0}', date(recent[0].d))}${monPartial ? ` · ${tr('{0} явагдаж буй сар (дутуу)', CUR_MONTH_MARK)}` : ''}`
               : null))}
+        /* ⚠️ 2026-10-26 (хэрэглэгч): картыг чирж томруулахад доор хоосон зай үлдэхгүй — чарт картаа дүүргэнэ */
+        fill
       >
         {series.length
           ? (
-            <div className={h.dayScroll} ref={scroll}>
+            <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={scroll}>
               <div style={{ minWidth: `${Math.max(100, (series.length / SERIES_VISIBLE) * 100)}%` }}>
                 <Series
-                  items={series} height={110} unit={tr('үзлэг')} line showValues
+                  items={series} height={110} unit={tr('үзлэг')} line showValues grow
                   selected={step === 'day' ? sel.day : sel.month}
                   onSelect={(k) => onPick(step === 'day' ? 'day' : 'month', k)}
                 />
@@ -1855,13 +1857,14 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
         note={wk.items.length
           ? (wk.score ? tr('авсан / боломжит оноо') : tr('оноо бүртгэгддэггүй · үзлэгийн тоо'))
           : undefined}
+        fill
       >
         {wk.items.length
           ? (
-            <div className={h.dayScroll} ref={wkScroll}>
+            <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={wkScroll}>
               <div style={{ minWidth: `${Math.max(100, (wk.items.length / SERIES_VISIBLE) * 100)}%` }}>
                 <Series
-                  items={wk.items} height={110} line showValues
+                  items={wk.items} height={110} line showValues grow
                   color={wk.score ? 'var(--good)' : undefined}
                   selected={sel.week} onSelect={(k) => onPick('week', k)}
                 />

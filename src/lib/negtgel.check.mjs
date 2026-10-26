@@ -411,7 +411,7 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12, 13, 14], '0.30 → 0.90 мөр ба өвгөд нь хамгаалалтад');
   assert.deepEqual(gp.ups.map((u) => u[OID]).sort(), [15, 16], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
   assert.equal(gp.ups.find((u) => u[OID] === 16)[ACT], 15, 'бичих утга хүснэгтийн масштабаар (0–100)');
-  assert.ok(gp.ups.every((u) => !('SHARE_SEC' in u) && !('SHARE_PRJ' in u)), 'жин бичигдэхгүй');
+  assert.ok(gp.ups.every((u) => !('share_sec' in u) && !('share_prj' in u)), 'жин бичигдэхгүй');
   assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 14), 'force — бүгд');
 
   /* 16 — нийтийн хамгаалалт */

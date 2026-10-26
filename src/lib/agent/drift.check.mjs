@@ -65,9 +65,7 @@ async function pool(items, worker) {
   return out;
 }
 
-const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
-/* ⚠️ 2026-10-21: Enterprise-ийн зураглал ба талбарын толь — ӨӨРӨӨ дахин бичихгүй, кодын замтай ИЖИЛ функц */
-const { remapUrl, entDict, entFieldName, isAgolUrl } = await import('./../services/entMap.ts');
+const { LAYERS, layerUrl, oidOf, ENT_HOSTED } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
 
@@ -82,31 +80,29 @@ function declaredFields(l) {
   for (const x of l.facets ?? []) f.add(x.field);
   for (const k of Object.keys(AGENT_NOTES[l.id]?.fields ?? {})) f.add(k);
   // ⚠️ ZONE_ID нь `noZone` тэмдэглэгээгүй БҮХ давхаргад байх ёстой гэж код үздэг
-  if (!l.noZone && !l.zoneField) f.add('ZONE_ID');
+  if (!l.noZone && !l.zoneField) f.add('zone_id');
   return [...f];
 }
 
-const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'OBJECTID', ...Object.keys(d.fields ?? {})])];
+const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'objectid', ...Object.keys(d.fields ?? {})])];
 
 /* ── 1–2. Эх сурвалж бүрийг шалгах ── */
 
 console.log(`Шалгаж байна: ${LAYERS.length} давхарга + ${DATASETS.length} өгөгдлийн эх сурвалж…\n`);
 
 /*
- * ⚠️ 2026-10-21: хаяг БҮРИЙГ `remapUrl`-аар. `DATASETS`-ийн `url` нь AGOL-ын ТҮЛХҮҮР хаяг (`services.arcgis.com/…`)
- *    хэвээр — кодын `query.run` зураглаж асуудаг ч энэ шалгуур шууд fetch хийдэг тул «Token Required» гэж
- *    худал унадаг байв. `layerUrl` аль хэдийн зураглагдсан — давхар дуудахад хэвээр.
+ * ⚠️ 2026-10-26: хаяг БҮР Enterprise-ийн БОДИТ хаяг (хөрвүүлэх хүснэгт `entMap` хасагдсан) — шууд fetch.
  */
 const targets = [
-  ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: remapUrl(layerUrl(l)), want: declaredFields(l) })),
-  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: remapUrl(d.url), want: declaredDatasetFields(d) })),
+  ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: layerUrl(l), want: declaredFields(l) })),
+  ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: d.url, want: declaredDatasetFields(d) })),
 ];
 
 let checked = 0;
 await pool(targets, async (t) => {
   let meta;
-  if (isAgolUrl(t.url)) {
-    FAIL.push(`\`${t.id}\` «${t.title}» — Enterprise зураглалд АЛГА (AGOL түлхүүр хэвээр): ${t.url}`);
+  if (/\/FeatureServer\//.test(t.url) && !t.url.startsWith(`${ENT_HOSTED}/`)) {
+    FAIL.push(`\`${t.id}\` «${t.title}» — Enterprise-ээс гадуурх хаяг: ${t.url}`);
     return;
   }
   try {
@@ -120,19 +116,15 @@ await pool(targets, async (t) => {
     return;
   }
   /*
-   * ⚠️ 2026-10-21: Enterprise-д талбарын нэр ЖИЖИГ үсгээр (`OBJECTID`→`objectid`, `BAGTS`→`bagts`), зарим нь
-   *    НЭР СОЛИГДСОН (`EditDate`→`last_edited_date`, толины `ren`), геометрийн систем `SHAPE__Area`. Кодод AGOL-ын
-   *    эх нэр үлддэг тул урьд нь том/жижиг үсгийг ялгаж жишээд OBJECTID · Shape__Area г.м. ~160 худал зөрчил
-   *    гардаг байв. Одоо кодын нэрийг `entFieldName`-ээр (= `entRequestWith`-ийн хөрвүүлэлт) Enterprise нэр
-   *    болгоод ЖИЖИГ үсгээр жишнэ — кодын асуулга яг энэ нэрээр явдаг тул «байгаа» нь бодит баталгаа.
+   * ⚠️ 2026-10-26: код Enterprise-ийн БОДИТ нэрээр (жижиг үсэг · `SHAPE__Area`) бичигдсэн тул нэрийг ЯГ (үсгийн
+   *    ялгаатай) жишнэ — `outFields` · `orderByFields` · `applyEdits` Enterprise-д үсэг ялгадаг (буруу бол 500).
    */
-  const have = new Set((meta.fields ?? []).map((f) => String(f.name).toLowerCase()));
-  const dict = entDict(t.url);
+  const have = new Set((meta.fields ?? []).map((f) => String(f.name)));
   if (!have.size) {
     FAIL.push(`\`${t.id}\` «${t.title}» — талбар огт ирсэнгүй (устсан эсвэл төрөл нь өөр байж магадгүй)`);
     return;
   }
-  const missing = t.want.filter((f) => !have.has(entFieldName(f, dict).toLowerCase()));
+  const missing = t.want.filter((f) => !have.has(f));
   if (missing.length) {
     FAIL.push(`\`${t.id}\` «${t.title}» — кодод нэрлэсэн талбар АЛГА: ${missing.join(', ')}`);
   }
@@ -142,7 +134,7 @@ await pool(targets, async (t) => {
 
 /* ── 3. Үйлчилгээнд байгаа ч бүртгэлд ОРООГҮЙ давхаргууд ── */
 
-const knownUrls = new Set(LAYERS.map((l) => remapUrl(layerUrl(l))));
+const knownUrls = new Set(LAYERS.map((l) => layerUrl(l)));
 
 /**
  * ⚠️ НЭРЭЭР Ч жишнэ. Зарим давхарга ЕТ-д хуучин хувилбараараа үлдсэн ч бүртгэл
@@ -183,40 +175,20 @@ const IGNORED = new Set([
  * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
  */
 /*
- * ⚠️ 2026-10-21: `TD` нь AGOL-ын ТҮЛХҮҮР (`SELBE_ALL_DATA_last_0917`, устсан → «Token Required»). Enterprise-д
- *    түүний давхаргууд НЭГ үйлчилгээ биш — `Bagts_ajluud` · `selbe_ET` · `Gazar_choloololt` … руу ТАРСАН
- *    (`ENT_MAP`-д `SELBE_ALL_DATA_last_0917/*` түлхүүр байхгүй тул `remapUrl(TD)` хэвээр AGOL хаяг буцаана,
- *    `agolLayerId` ч дугаарыг хэвээр өгнө). Тиймээс `ENT_MAP`-аас TD-ийн давхаргууд очдог Enterprise үйлчилгээ
- *    бүрийн каталогийг уншина. `Bagts_ajluud` нь SELBE_ALL_DATA + инженерийн давхаргууд (198) ӨӨР дугаартай —
- *    Enterprise давхарга бүрийг `ENT_MAP`-ийн урвуугаар AGOL түлхүүр рүү буцааж:
- *      · TD-ээс ирсэн → `<AGOL №>:<нэр>` (кодын түлхүүртэй ижил дугаар) — бүртгэлд алга бол санамж;
- *      · ӨӨР AGOL үйлчилгээнээс (инженерийн `infra:N` г.м.) → энд алгасна (тэд өөрийн бүртгэлээр дээр шалгагдсан);
- *      · ямар ч AGOL түлхүүргүй → Enterprise дээр ШИНЭ нэмэгдсэн давхарга `ent:<№>:<нэр>` — санамж.
+ * ⚠️ 2026-10-26: бүртгэлийн давхаргуудын ашигладаг Enterprise үйлчилгээ БҮРИЙН каталогийг уншина (хөрвүүлэх хүснэгтгүй) —
+ *    бүртгэлд байхгүй давхарга `ent:<№>:<нэр>` санамж болно.
  */
-const { ENT_MAP } = await import('./../services/entMap.data.ts');
-const { ENT_DATA } = await import('./../services/entMap.ts');
-const tdSvc = decodeURIComponent(TD.replace(/\/FeatureServer$/i, '').split('/').pop());
-/** Enterprise `<үйлчилгээ>/<№>` → AGOL `<үйлчилгээ>/<№>` */
-const entToAgol = new Map(Object.entries(ENT_MAP).filter(([k]) => !k.endsWith('/*')).map(([k, v]) => [v, k]));
-const entSvcs = remapUrl(TD) !== TD
-  ? [remapUrl(TD).replace(/\/FeatureServer$/i, '').split('/').pop()].map(decodeURIComponent)
-  : [...new Set(Object.entries(ENT_MAP)
-    .filter(([k]) => k.startsWith(`${tdSvc}/`))
-    .map(([, v]) => v.slice(0, v.lastIndexOf('/'))))];
+const entSvcs = [...new Set(LAYERS.map((l) => layerUrl(l))
+  .filter((u) => u.startsWith(`${ENT_HOSTED}/`) && /\/FeatureServer\/\d+$/.test(u))
+  .map((u) => decodeURIComponent(u.slice(ENT_HOSTED.length + 1).replace(/\/FeatureServer\/\d+$/, ''))))];
 
-for (const svc of ENT_DATA ? entSvcs : []) {
-  const base = `${ENT_DATA}/${encodeURIComponent(svc)}/FeatureServer`;
+for (const svc of entSvcs) {
+  const base = `${ENT_HOSTED}/${encodeURIComponent(svc)}/FeatureServer`;
   try {
     const root = await getJson(`${base}?f=json`);
     const extra = (root.layers ?? [])
-      .map((x) => {
-        const agol = entToAgol.get(`${svc}/${x.id}`);
-        if (!agol) return { ...x, label: `ent:${x.id}` };
-        if (!agol.startsWith(`${tdSvc}/`)) return null;
-        return { ...x, label: agol.slice(tdSvc.length + 1) };
-      })
-      .filter((x) => x
-        && !knownUrls.has(`${base}/${x.id}`)
+      .map((x) => ({ ...x, label: `ent:${x.id}` }))
+      .filter((x) => !knownUrls.has(`${base}/${x.id}`)
         && !knownNames.has(norm(x.name))
         && !IGNORED.has(norm(x.name)))
       .map((x) => `${x.label}:${x.name}`);

@@ -53,34 +53,34 @@ export const AGENT_NOTES: Record<string, AgentNote> = {
   "et:24": {
     get synonyms() { return lzSynonyms1(); },
     fields: {
-      get Barilga_ty() { return tr('Барилгын төлөв (баригдсан / төлөвлөсөн …)'); },
-      get Зориулалт_m() { return tr('Зориулалт (орон сууц, сургууль, үйлчилгээ …)'); },
-      get Барилгын_нийт_талбай_m2() { return tr('Нийт талбай, м²'); },
-      get Барилгажсан_талбай() { return tr('Ашигтай (шалны) талбай, м²'); },
-      get Shape__Area() { return tr('Барилгын хөл — геометрийн бодит талбай, м²'); },
-      get Urhiin_too() { return tr('Өрхийн тоо'); },
-      get Population() { return tr('Хүн ам — ЗӨВХӨН орон сууцны барилгад'); },
-      get Huchin_chadal() { return tr('Хүчин чадал — сургууль/цэцэрлэг/эмнэлэг/үйлчилгээний БАГТААМЖ'); },
-      get Total_population() { return tr('Population + Huchin_chadal-ын механик нийлбэр'); },
-      get Давхрын_тоо_max() { return tr('Давхрын тоо'); },
-      get Parking() { return tr('Зогсоолын тоо'); },
-      get Bar_comp() { return tr('Барилгын компани'); },
+      get barilga_ty() { return tr('Барилгын төлөв (баригдсан / төлөвлөсөн …)'); },
+      get зориулалт_m() { return tr('Зориулалт (орон сууц, сургууль, үйлчилгээ …)'); },
+      get барилгын_нийт_талбай_m2() { return tr('Нийт талбай, м²'); },
+      get барилгажсан_талбай() { return tr('Ашигтай (шалны) талбай, м²'); },
+      get SHAPE__Area() { return tr('Барилгын хөл — геометрийн бодит талбай, м²'); },
+      get urhiin_too() { return tr('Өрхийн тоо'); },
+      get population() { return tr('Хүн ам — ЗӨВХӨН орон сууцны барилгад'); },
+      get huchin_chadal() { return tr('Хүчин чадал — сургууль/цэцэрлэг/эмнэлэг/үйлчилгээний БАГТААМЖ'); },
+      get total_population() { return tr('population + huchin_chadal-ын механик нийлбэр'); },
+      get давхрын_тоо_max() { return tr('Давхрын тоо'); },
+      get parking() { return tr('Зогсоолын тоо'); },
+      get bar_comp() { return tr('Барилгын компани'); },
     },
-    get warn() { return tr('`Population` (орон сууцны оршин суугч) ба `Huchin_chadal` (facility-ийн багтаамж) нь ӨӨР төрлийн үзүүлэлт — шууд нийлүүлж болохгүй. ') +
-      tr('`Total_population` бол тэдгээрийн механик нийлбэр тул ТООЦООНД АШИГЛАХГҮЙ. ') +
-      tr('Хэрэглэгч «хүн ам» гэвэл `Population`-ыг ав. Хэрэв нийлбэр үнэхээр хэрэгтэй бол ЗААВАЛ лавлаж асуу — өөрөө шийдэхгүй.'); },
+    get warn() { return tr('`population` (орон сууцны оршин суугч) ба `huchin_chadal` (facility-ийн багтаамж) нь ӨӨР төрлийн үзүүлэлт — шууд нийлүүлж болохгүй. ') +
+      tr('`total_population` бол тэдгээрийн механик нийлбэр тул ТООЦООНД АШИГЛАХГҮЙ. ') +
+      tr('Хэрэглэгч «хүн ам» гэвэл `population`-ыг ав. Хэрэв нийлбэр үнэхээр хэрэгтэй бол ЗААВАЛ лавлаж асуу — өөрөө шийдэхгүй.'); },
   },
 
   zone: {
     get synonyms() { return lzSynonyms2(); },
     fields: {
-      get RefName_1() { return tr('Бүсийн код («Багц -1» — зураас/зайн бичиглэл зөрдөг)'); },
-      get Angilal() { return tr('Бүсийн ангилал'); },
-      get GAZAR_GA() { return tr('Газрын талбай, га'); },
-      get GAZAR_M2() { return tr('Газрын талбай, м²'); },
-      get BAR_M2() { return tr('Барилгажилтын талбай, м²'); },
-      get FAR_HUVI() { return tr('Барилгажилтын нягтрал (FAR), хувиар'); },
-      get URH_TOO() { return tr('Өрхийн тоо'); },
+      get refname_1() { return tr('Бүсийн код («Багц -1» — зураас/зайн бичиглэл зөрдөг)'); },
+      get angilal() { return tr('Бүсийн ангилал'); },
+      get gazar_ga() { return tr('Газрын талбай, га'); },
+      get gazar_m2() { return tr('Газрын талбай, м²'); },
+      get bar_m2() { return tr('Барилгажилтын талбай, м²'); },
+      get far_huvi() { return tr('Барилгажилтын нягтрал (FAR), хувиар'); },
+      get urh_too() { return tr('Өрхийн тоо'); },
     },
     get warn() { return tr('Бүсийн кодын талбар нь `ZONE_ID` БИШ, `RefName_1`. Мөн `GAZAR_GA`-ийн нийлбэр (≈131 га) нь төслийн албан ёсны талбай БИШ — ') +
       tr('төслийн нийт талбайг хилийн давхаргын (ds:boundary) Hec_area талбараас асууж ав — хатуу тогтмол байхгүй.'); },
@@ -94,12 +94,12 @@ export const AGENT_NOTES: Record<string, AgentNote> = {
   "mon:building": {
     get synonyms() { return lzSynonyms3(); },
     fields: {
-      get BAGTS() { return tr('Багц («Багц 3.2» хэлбэрээр)'); },
-      get BLOK() { return tr('Блокийн дугаар («5/9»)'); },
-      get BAR_COMP() { return tr('Барилгын компани (гүйцэтгэгч)'); },
-      get DAVHAR() { return tr('Давхрын тоо'); },
-      get AIL_TOO() { return tr('Айлын тоо (өрх) — төслийн нийт 8,575'); },
-      get TOROL() { return tr('Барилгын төрөл'); },
+      get bagts() { return tr('Багц («Багц 3.2» хэлбэрээр)'); },
+      get blok() { return tr('Блокийн дугаар («5/9»)'); },
+      get bar_comp() { return tr('Барилгын компани (гүйцэтгэгч)'); },
+      get davhar() { return tr('Давхрын тоо'); },
+      get ail_too() { return tr('Айлын тоо (өрх) — төслийн нийт 8,575'); },
+      get torol() { return tr('Барилгын төрөл'); },
       /* ⚠️ 2026-08-24: `GUITS_HV`, `GUITS_OGN`, `B_BARILGA` ба `BUILDING_STAGES`-ийн
          16 үе шатын талбар ЭНДЭЭС ХАСАГДАВ — нэгтгэсэн `data`/112-т тэдгээр
          байхгүй. Агентад тайлбарлавал байхгүй талбарыг асууж HTTP 400 авна.

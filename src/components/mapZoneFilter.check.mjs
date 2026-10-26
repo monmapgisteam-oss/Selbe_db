@@ -51,7 +51,7 @@ console.log('✅ MapCanvas: layerWhere-д алга/null давхарга бүс�
   assert.match(gd, /if \(zid && zid !== zoneCanon\(ZONE_NONE\)\) setZone\(zid\);/);
   assert.ok(!/setZone\(String\(attrs\[ZONE_FIELD\]/.test(gd) && !/if \(zid && zid !== ZONE_NONE\.trim\(\)\) setZone\(zid\);/.test(gd), 'хуучин түүхий `ZONE_ID` зам буцав');
   /* бүсийн давхаргын талбар нь `RefName_1` — `ZONE_ID` биш */
-  assert.equal(ZONE_FIELDS.id, 'RefName_1');
+  assert.equal(ZONE_FIELDS.id, 'refname_1');
   assert.equal(ZONE_LAYER.id, 'zone');
   /* түүхий бичиглэл → чипийн каноник */
   assert.equal(zoneCanon('E-5-1'), 'E-5.1');

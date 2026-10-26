@@ -39,19 +39,19 @@ const DAY = 86_400_000;
 function row(ognoo, comp = {}, header = {}, allNull = false, sys = {}) {
   const r = {
     objectid: sys.oid ?? null,
-    EditDate: sys.edit ?? null,
-    Ognoo: ognoo,
-    Niit_ajiltan: header.workers ?? null,
-    Hun_tsag: header.manHours ?? null,
-    Niit_tehnik: header.technik ?? null,
+    last_edited_date: sys.edit ?? null,
+    ognoo: ognoo,
+    niit_ajiltan: header.workers ?? null,
+    hun_tsag: header.manHours ?? null,
+    niit_tehnik: header.technik ?? null,
   };
   for (const s of SFX) {
     const c = comp[s];
-    r[`Niit_ajiltan_${s}`] = allNull ? null : (c?.w ?? 0);
-    r[`MNG_ajiltani_too_${s}`] = c?.m ?? null;
-    r[`G_ajiltanii_too_${s}`] = c?.g ?? null;
-    r[`Tehnik_${s}`] = c?.t ?? null;
-    if (BAGTS[s]) r[`Bagts_${s}`] = BAGTS[s];
+    r[`niit_ajiltan_${s.toLowerCase()}`] = allNull ? null : (c?.w ?? 0);
+    r[`mng_ajiltani_too_${s.toLowerCase()}`] = c?.m ?? null;
+    r[`g_ajiltanii_too_${s.toLowerCase()}`] = c?.g ?? null;
+    r[`tehnik_${s.toLowerCase()}`] = c?.t ?? null;
+    if (BAGTS[s]) r[`bagts_${s.toLowerCase()}`] = BAGTS[s];
   }
   return r;
 }
@@ -235,7 +235,7 @@ const ROWS = [
   assert.ok(k3.facts.includes('техник 0'));
   // Толин тусгал: зөвхөн Tehnik_ бөглөгдсөн, ажилтны талбар бүгд хоосон → ажилтан null, техник тоо
   const onlyT = row(D3, {}, {}, true);
-  onlyT.Tehnik_MK = 4;
+  onlyT.tehnik_mk = 4;
   const k4 = computeWorkforce([onlyT, ROWS[1]], ub(2026, 9, 4));
   assert.equal(k4.detail.workersLatest, null, 'ажилтны талбаргүй → null');
   assert.equal(k4.detail.technik, 4, 'техник тусдаа тугаар тоо');
@@ -369,7 +369,7 @@ const ROWS = [
     // оролтын дараалал хадгалагдана
     assert.deepEqual(out, input.filter((r) => r !== first));
     // нийлбэр 389 + 300 — 636 + 300 БИШ
-    const sum = out.reduce((s, r) => s + (Number(r.Niit_ajiltan_MK) || 0), 0);
+    const sum = out.reduce((s, r) => s + (Number(r.niit_ajiltan_mk) || 0), 0);
     assert.equal(sum, 689);
   }
   // groupDays-тай НЭГ дүрэм: сонгогдсон мөрийн oid ижил

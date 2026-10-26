@@ -631,7 +631,7 @@ const nextOf = (over = {}) => {
   assert.deepEqual(p2.archiving, { ...base, rootNo: 'A', probe: pr }, 'дээж уншигдана, n-ээс гадуур/эвдэрсэн хаягдана');
 
   const SB3 = fs.readFileSync('src/lib/submission.ts', 'utf8');
-  assert.ok(SB3.includes('attributes: { OBJECTID: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) }'), 'markArchiving at-ийг payload-тай нэг бичилтээр бичнэ (7) — 2026-10-26: хэлбэр хэвээр (headRaw)');
+  assert.ok(SB3.includes('attributes: { objectid: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) }'), 'markArchiving at-ийг payload-тай нэг бичилтээр бичнэ (7) — 2026-10-26: хэлбэр хэвээр (headRaw)');
   assert.ok(/const res2 = await fl\.queryFeatures/.test(SB3), 'markArchiving бичсэний дараа дахин уншиж батална (7)');
   const HY3 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(HY3.includes('return matchArchivedFrame(rows, mark, sc.f.oid, sc.f.no, dateFields);') && HY3.includes('hitOid = await probeArchivedFrame(pkg.key, am);') && !HY3.includes('hit.n >= am.n'), 'дахин батлалт жаазыг ЯГ таньна (R2-c)');

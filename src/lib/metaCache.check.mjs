@@ -16,7 +16,6 @@ import {
   metaKey, sharedCopy, mutatesData, createMetaCache, META_URL_RE,
 } from './metaCache.ts';
 import { makeEntInterceptor } from './entInterceptor.ts';
-import { entDictFor } from './services/entMap.ts';
 import { registerIdentity, primeServerCredential } from './authToken.ts';
 
 const SRV = 'https://gis.example.mn/map/rest/services';
@@ -141,7 +140,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 }
 
 /* ══════════ makeEntInterceptor ══════════ */
-const D = entDictFor({ oid: 'OBJECTID', f: ['OBJECTID', 'BAGTS'] });
 const svcOf = (u) => u.replace(/\/(FeatureServer|MapServer|ImageServer|VectorTileServer)\b.*$/i, '/$1');
 
 function fakeId({ portal = true, server = false, fail = false, hang = false } = {}) {
@@ -169,7 +167,7 @@ function setup(opts = {}, extra = {}) {
   let t = 10_000;
   const cache = createMetaCache({ now: () => t });
   const ic = makeEntInterceptor({
-    entServer: SRV, isEntData: (u) => u.startsWith(`${ENT}/`), dictOf: () => D, id: () => st.id,
+    entServer: SRV, isEntData: (u) => u.startsWith(`${ENT}/`), id: () => st.id,
     sessionUrls: [PORTAL_SHARING, SRV], cache, now: () => t, ...extra,
   });
   const net = [];
@@ -193,7 +191,7 @@ function setup(opts = {}, extra = {}) {
 }
 
 const rawMeta = () => ({
-  type: 'Feature Layer', fields: [{ name: 'objectid' }, { name: 'bagts' }], objectIdField: 'objectid',
+  type: 'Feature Layer', fields: [{ name: 'objectid' }, { name: 'bagts' }, { name: 'editdate' }], objectIdField: 'objectid',
   supportedQueryFormats: 'JSON, geoJSON, PBF', editingInfo: { lastEditDate: 1_792_485_847_539 },
 });
 const L3 = `${ENT}/Svc/FeatureServer/3`;
@@ -260,19 +258,19 @@ const Q = { query: { f: 'json' }, responseType: 'json' };
   const { net, request } = setup();
   const first = await request(L3, Q, rawMeta);
   assert.equal(first.cached, false);
-  assert.deepEqual(first.data.fields.map((f) => f.name), ['OBJECTID', 'BAGTS']);
-  assert.equal(first.data.objectIdField, 'OBJECTID');
+  assert.deepEqual(first.data.fields.map((f) => f.name), ['objectid', 'bagts', 'editdate']);
+  assert.equal(first.data.objectIdField, 'objectid');
   assert.equal(first.data.supportedQueryFormats, 'JSON');
   assert.equal(first.data.editingInfo.lastEditDate, 1_792_485_847_539);
   const second = await request(L3, Q, rawMeta);
   assert.equal(second.cached, true);
   assert.equal(net.length, 1, 'хоёр дахь нь сүлжээгүй');
-  assert.deepEqual(second.data.fields.map((f) => f.name), ['OBJECTID', 'BAGTS'], 'кэш — аль хэдийн хөрвүүлсэн');
+  assert.deepEqual(second.data.fields.map((f) => f.name), ['objectid', 'bagts', 'editdate'], 'кэш — аль хэдийн засагдсан');
   assert.equal(second.data.supportedQueryFormats, 'JSON');
   assert.equal(second.data.editingInfo.lastEditDate, null);
   // эзний объектыг JS API засварлавал кэш хөндөгдөхгүй
   first.data.fields.push({ name: 'X' });
-  assert.equal((await request(L3, Q, rawMeta)).data.fields.length, 2);
+  assert.equal((await request(L3, Q, rawMeta)).data.fields.length, 3);
 }
 {
   // ЗЭРЭГ хүсэлтүүд → нэг татлага; хүлээгчид хуваалцсан хуулбар (итгэмжлэл бэлэн — дуудсан дарааллаар эзэн тодорно)
@@ -291,7 +289,7 @@ const Q = { query: { f: 'json' }, responseType: 'json' };
   assert.ok(r2.cached && r3.cached);
   assert.notEqual(r2.data, r3.data, 'тус бүр өөрийн хуулбар');
   assert.equal(r2.data.editingInfo.lastEditDate, null);
-  assert.equal(r2.data.fields[1].name, 'BAGTS');
+  assert.equal(r2.data.fields[1].name, 'bagts');
 }
 {
   // эзэн УНАСАН → хүлээгч өөрөө татна, алдаа кэшлэгдэхгүй
@@ -347,12 +345,12 @@ const Q = { query: { f: 'json' }, responseType: 'json' };
   assert.equal(net.length, 2);
 }
 {
-  // асуулга кэшлэгдэхгүй, талбарын нэрийн хөрвүүлэлт урьдын адил
+  // асуулга кэшлэгдэхгүй; 2026-10-26: талбарын нэрийн хөрвүүлэлт БАЙХГҮЙ — хүсэлт/хариу хэвээр
   const { net, request } = setup();
-  const r = await request(`${L3}/query`, { query: { f: 'json', outFields: ['BAGTS'], where: '1=1' } },
-    (p) => { assert.equal(p.requestOptions.query.outFields, 'bagts'); return { features: [{ attributes: { bagts: 'B1' } }] }; });
-  assert.equal(r.data.features[0].attributes.BAGTS, 'B1');
-  await request(`${L3}/query`, { query: { f: 'json', outFields: ['BAGTS'], where: '1=1' } }, () => ({ features: [] }));
+  const r = await request(`${L3}/query`, { query: { f: 'json', outFields: ['bagts'], where: '1=1' } },
+    (p) => { assert.deepEqual(p.requestOptions.query.outFields, ['bagts']); return { features: [{ attributes: { bagts: 'B1' } }] }; });
+  assert.equal(r.data.features[0].attributes.bagts, 'B1');
+  await request(`${L3}/query`, { query: { f: 'json', outFields: ['bagts'], where: '1=1' } }, () => ({ features: [] }));
   assert.equal(net.length, 2);
 }
 {

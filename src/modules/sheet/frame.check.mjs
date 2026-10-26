@@ -473,11 +473,11 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   assert.ok(r.err && addsLost(r.err) === false, 'applyAdds: тодорхой false = татгалзал хэвээр');
   r = await run({ addResults: [{ success: true, objectId: 1 }] }, () => applyAdds(pkg, [{ a: 1 }]));
   assert.deepEqual(r.out, { added: 1, firstOid: 1 }, 'applyAdds: амжилт хэвээр');
-  r = await run({ updateResults: [{ objectId: 5 }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  r = await run({ updateResults: [{ objectId: 5 }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
   assert.ok(r.err && isLostWrite(r.err) === true, 'applyUpdates: success-гүй = тодорхойгүй (lost)');
-  r = await run({ updateResults: [{ success: false }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  r = await run({ updateResults: [{ success: false }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
   assert.ok(r.err && isLostWrite(r.err) === false, 'applyUpdates: тодорхой false = татгалзал хэвээр');
-  r = await run({ updateResults: [{ success: true }] }, () => applyUpdates(pkg, [{ OBJECTID: 5 }]));
+  r = await run({ updateResults: [{ success: true }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
   assert.ok(!r.err, 'applyUpdates: амжилт хэвээр');
   console.log('✅ applyAdds/applyUpdates — success !== true');
 }

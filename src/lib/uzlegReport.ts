@@ -123,7 +123,7 @@ const isAnswerDomain = (dom: Map<string, string> | null): boolean => {
   return cls.has('conf') && (cls.has('minor') || cls.has('major') || cls.has('na'));
 };
 
-const SYSTEM_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|shape(__|_).*|shape)$/i;
+const SYSTEM_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date|shape(__|_).*|shape)$/i;
 const SUMMARY_RE = /^(cnt|sc)_/i;
 const BLK_RE = /_blk$|_block$/i;
 const NUM_RE = /double|integer|single|small/i;
@@ -202,7 +202,7 @@ export const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}\s]/g
  */
 export function parentKeys(r: Record<string, unknown>): string[] {
   const out: string[] = [];
-  for (const v of [r.uniquerowid, r.globalid ?? r.GlobalID ?? r.GLOBALID]) {
+  for (const v of [r.uniquerowid, r.globalid]) {
     const k = guidKey(v);
     if (k && !out.includes(k)) out.push(k);
   }
@@ -244,7 +244,7 @@ export function groupFindings(
     const level = String(r.f_level ?? '');
     const blk = r.f_blk === 'other' ? String(r.f_blk_other ?? '') : String(r.f_blk ?? '');
     const action = r.f_action == null || r.f_action === '' ? [] : [String(r.f_action)];
-    const oid = Number(r.objectid ?? r.OBJECTID);
+    const oid = Number(r.objectid);
     const url = opts.photoUrl;
     const photos = Number.isFinite(oid) && opts.atts && url
       ? (opts.atts.get(oid) ?? []).filter((a) => a.contentType.startsWith('image/')).map((a) => uzPhotoRef(a, url(oid, a.id)))
@@ -451,12 +451,12 @@ export function buildUzReport(
      урьд нь код хэвээр гарч, толгойн «Үзлэг хийсэн ажилтан» (домэйны нэр) ба шинэ мөрийн Creator (ArcGIS нэр)-тэй
      нэг баганад гурван нэрлэлт болдог байв. Одоо үзлэгчтэй мөр БҮРД домэйны нэр (`fieldText`), үзлэгчгүй мөрд л
      Creator; огноо нь шилжүүлгийн өмнөх мөрд үзлэгийн огноо хэвээр. */
-  const inspField = byName.get('inspector') ?? byName.get('Inspector');
-  const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? r.Inspector ?? '').trim();
-  const creator: unknown = inspector || (r.Creator ?? r.creator);
-  let created = numOrNull(r.CreationDate ?? r.creationdate);
+  const inspField = byName.get('inspector');
+  const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? '').trim();
+  const creator: unknown = inspector || (r.created_user ?? r.creator);
+  let created = numOrNull(r.created_date ?? r.creationdate);
   if (created != null && created < Date.UTC(2026, 9, 21)) {
-    const at = numOrNull(r.insp_datetime ?? r.Insp_datetime);
+    const at = numOrNull(r.insp_datetime);
     if (at != null) created = at;
   }
   return {
@@ -525,7 +525,7 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
       );
       const oidF = j.objectIdFieldName ?? 'objectid';
       for (const ft of j.features ?? []) {
-        const id = Number(ft.attributes?.[oidF] ?? ft.attributes?.OBJECTID ?? ft.attributes?.objectid);
+        const id = Number(ft.attributes?.[oidF] ?? ft.attributes?.objectid ?? ft.attributes?.objectid);
         const { x, y } = ft.geometry ?? {};
         if (Number.isFinite(id) && typeof x === 'number' && typeof y === 'number') out.set(id, `${y.toFixed(6)}, ${x.toFixed(6)}`);
       }
@@ -1180,7 +1180,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, fai
  * ObjectID · толгой · асуулт бүр 4 багана · дүн · гарын үсэг · илгээсэн хэрэглэгч/огноо.
  */
 function tableSheet(reports: UzReport[], name: string, failed: ReadonlySet<string>): XSheet {
-  const head: string[] = ['ObjectID'];
+  const head: string[] = ['objectid'];
   const headerKeys: string[] = [];
   for (const r of reports) for (const [k] of r.header) if (!headerKeys.includes(k)) headerKeys.push(k);
   head.push(...headerKeys);

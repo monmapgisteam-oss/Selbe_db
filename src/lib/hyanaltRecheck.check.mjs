@@ -50,7 +50,7 @@ globalThis.fetch = async (input, init) => {
     return json({ features: st.rows.map((a) => ({ attributes: { ...a } })), exceededTransferLimit: false });
   }
   if (path === '/calculate') {
-    const result = calculateRows(st.rows, body, (patch, row) => st.updates.push({ OBJECTID: row.OBJECTID, ...patch }));
+    const result = calculateRows(st.rows, body, (patch, row) => st.updates.push({ objectid: row.objectid, ...patch }));
     if (result.updatedFeatureCount) st.wrote = true;
     return json(result);
   }
@@ -63,7 +63,7 @@ globalThis.fetch = async (input, init) => {
         st.deletes.push(id);
         /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): устгал УНАДАГ горим (`failDelete`) — ихэр үлдэх тохиолдол (7) */
         if (st.failDelete) return { objectId: id, success: false };
-        const i = st.rows.findIndex((x) => x.OBJECTID === id);
+        const i = st.rows.findIndex((x) => x.objectid === id);
         if (i >= 0) st.rows.splice(i, 1);
         return { objectId: id, success: i >= 0 };
       });
@@ -74,7 +74,7 @@ globalThis.fetch = async (input, init) => {
       const arr = JSON.parse(body.get('adds'));
       const res = arr.map((f) => {
         const oid = st.next++;
-        st.rows.push({ ...f.attributes, OBJECTID: oid });
+        st.rows.push({ ...f.attributes, objectid: oid });
         st.adds.push(f.attributes);
         return { objectId: oid, success: true };
       });
@@ -83,10 +83,10 @@ globalThis.fetch = async (input, init) => {
     if (body.has('updates')) {
       const arr = JSON.parse(body.get('updates'));
       const res = arr.map((f) => {
-        const r = st.rows.find((x) => x.OBJECTID === f.attributes.OBJECTID);
+        const r = st.rows.find((x) => x.objectid === f.attributes.objectid);
         if (r) Object.assign(r, f.attributes);
         st.updates.push(f.attributes);
-        return { objectId: f.attributes.OBJECTID, success: !!r };
+        return { objectId: f.attributes.objectid, success: !!r };
       });
       return json({ updateResults: res });
     }
@@ -97,7 +97,7 @@ globalThis.fetch = async (input, init) => {
 
 /** «Менежер буцаасан» мөр — инженер дахин шалгах ёстой */
 const returnedRow = () => ({
-  OBJECTID: 1,
+  objectid: 1,
   [F.id]: 'G-000001',
   [F.sheetOid]: 500,
   [F.ergelt]: 1,
@@ -163,7 +163,7 @@ st.onQuery = (q) => {
   if (q !== 2) return;
   st.rows.push({
     ...returnedRow(),
-    OBJECTID: 2,
+    objectid: 2,
     [F.id]: 'G-000002',
     [F.ergelt]: 2,
     [F.engineer]: 'Инженер Б',
@@ -225,7 +225,7 @@ reset();
 reset();
 st.onQuery = (q) => {
   if (q !== 2) return;
-  st.rows.push({ ...returnedRow(), OBJECTID: 2, [F.id]: 'G-000002', [F.ergelt]: 2, [F.status]: STATUS.managerReview });
+  st.rows.push({ ...returnedRow(), objectid: 2, [F.id]: 'G-000002', [F.ergelt]: 2, [F.status]: STATUS.managerReview });
 };
 {
   const r = await back('Инженер В', 'хэмжилт дутуу');
@@ -237,7 +237,7 @@ st.onQuery = (q) => {
 reset();
 st.beforeAdd = () => {
   /* нөгөө хянагчийн мөр манай `adds`-ын яг өмнө суусан (бага OID) */
-  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+  st.rows.push({ ...returnedRow(), objectid: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
     [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
   st.beforeAdd = null;
 };
@@ -245,14 +245,14 @@ st.beforeAdd = () => {
   const r = await ok('Инженер В');
   check(r.ok === false && /Инженер Б/.test(r.error ?? ''), `6: давхар тойрог — татгалзаж, нөгөө хянагчийг нэрлэнэ (${r.error ?? ''})`);
   check(st.deletes.length === 1 && st.deletes[0] === 100, `6: ӨӨРИЙН (их OID) мөрийг устгана (${JSON.stringify(st.deletes)})`);
-  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.OBJECTID === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
+  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.objectid === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
 }
 
 /* ── 7. «ok» — ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ: чимээгүй биш — `ok:true` + ихэр OID-ийг нэрлэсэн `warn` (2026-10-12) ── */
 reset();
 st.failDelete = true;
 st.beforeAdd = () => {
-  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+  st.rows.push({ ...returnedRow(), objectid: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
     [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
   st.beforeAdd = null;
 };

@@ -121,7 +121,7 @@ export const CF = {
    * `OBJECTID` нь мөр устгаад дахин нэмэхэд өөрчлөгддөг, `Cashflow_ID` нь
    * хүний оноосон ТОГТВОРТОЙ дугаар («50 дугаар ажил»).
    */
-  cfId: 'Cashflow_ID',
+  cfId: 'cashflow_id',
 } as const;
 
 /** Захирамжийн дүнгийн ЭХ ҮҮСВЭРҮҮД — 3-р чартын ангилал (Category) */
@@ -289,7 +289,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [
-      'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
+      'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
       'ajil_tuvshin3',
@@ -302,7 +302,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
        хүснэгт өсөхөд шинэ мөрийг ЧИМЭЭГҮЙ хаядаг. `queryFeatures` өөрөө OID эрэмбээр хуудаслана. */
   });
   return rows.map((r: Row): CfRow => ({
-    oid: nOf(r.OBJECTID),
+    oid: nOf(r.objectid),
     /* ⚠️ ЧАРТЫН ангилал — 7 бүлэг (`finXlChartCat`-ийн тайлбарыг үз).
        Талбараас ШУУД биш, ХОЁР ТҮВШНЭЭС бодогдоно. */
     type: finXlChartCat(r) || tr('Тодорхойгүй'),
@@ -1641,8 +1641,8 @@ export const loadBuildPkgs = cached<Map<string, string>>(async () => {
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {
-  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['OBJECTID', CF.contract] });
-  return new Map(rows.map((r) => [nOf(r.OBJECTID), nOf(r[CF.contract])]));
+  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['objectid', CF.contract] });
+  return new Map(rows.map((r) => [nOf(r.objectid), nOf(r[CF.contract])]));
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 /* ══════════════════════ ХАБ — ӨНӨӨДРИЙН БАЙДЛААР ══════════════════════ */

@@ -5,8 +5,7 @@ import esriRequest from '@arcgis/core/request';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import { fromJSON as geomFromJSON } from '@arcgis/core/geometry/support/jsonUtils';
-import { LAYER_BY_ID, layerUrl, oidOf, INFRA_SVC } from '@/lib/services';
-import { remapUrl, isEntDataUrl, agolLayerId } from '@/lib/services/entMap';
+import { LAYERS, LAYER_BY_ID, layerUrl, oidOf, INFRA_SVC } from '@/lib/services';
 import { num, km } from '@/lib/format';
 import { register } from '@/lib/dataBus';
 import { subscribeTotals } from '@/lib/totals';
@@ -112,11 +111,9 @@ type Geom = __esri.GeometryUnion;
  */
 const PAGE_TIMEOUT_MS = 45_000;
 export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
-  /* ⚠️ 2026-10-20: AGOL түлхүүрийн хаяг → Enterprise (`entMap.remapUrl`). JS API-ийн `executeQuery*` нь `query.ts`-ийн
-     цөмөөр явдаггүй тул зураглал ЭНД — урьд нь `Инженерийн_дэд_бүтэц…` AGOL руу шууд явж 499 → AGOL-ын нэвтрэх цонх
-     гардаг байв. Enterprise-д ЗӨВХӨН JSON: талбарын нэрийн хөрвүүлэгч (`lib/entInterceptor.ts`) хоёртын PBF хариуг
-     хөрвүүлж чадахгүй (`attributes.objectid` жижиг үсгээр ирж OID олдохгүй болно). */
-  const target = remapUrl(u);
+  /* ⚠️ 2026-10-20: Enterprise-д ЗӨВХӨН JSON (урьдын зан төлөв — PBF-ийн нөөц зам нь AGOL-ын үед л байв).
+     ⚠️ 2026-10-26: хаяг аль хэдийн Enterprise-ийн БОДИТ хаяг (хуучин `entMap.remapUrl` хасагдсан). */
+  const target = u;
   const run = (fn: typeof query.executeQueryPBF): Promise<__esri.FeatureSet> => {
     const ac = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -125,8 +122,7 @@ export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
     });
     return Promise.race([fn(target, q, { signal: ac.signal, authMode: 'no-prompt' }), late]).finally(() => clearTimeout(timer));
   };
-  if (isEntDataUrl(target)) return run(query.executeQueryJSON);
-  return run(query.executeQueryPBF).catch(() => run(query.executeQueryJSON));
+  return run(query.executeQueryJSON);
 }
 
 /** Давхаргын бүх геометрийг ХУУДАСЛАЖ татна (`analysis/data.ts` §fetchAll-ийн ⚠️ — OID эрэмбэ заавал) */
@@ -209,13 +205,19 @@ export const infraIdsOfType = (type: string): string[] =>
 
 export function loadInfra() {
   infraCache ??= (async () => {
-    /* ⚠️ 2026-10-20: үйлчилгээний мета Enterprise-ээс (`remapUrl`). Тэнд энэ үйлчилгээ `Bagts_ajluud`-ын НЭГ ХЭСЭГ
-       (198 давхаргын 74 нь) бөгөөд давхаргын дугаар ӨӨР → Enterprise дугаарыг AGOL дугаар (`infra:N` — LAYER_BY_ID ·
-       groups.ts · MapCanvas-ийн түлхүүр) руу буцааж, энэ үйлчилгээнд хамаарахгүй давхаргыг АЛГАСНА (`agolLayerId`).
-       Давхаргын хүсэлт (`fetchObjects` → `queryPageSafe`) AGOL дугаартай хаягаа өөрөө зураглана. */
-    const meta = await esriRequest(remapUrl(INFRA_SVC), { query: { f: 'json' }, responseType: 'json' });
+    /* ⚠️ 2026-10-20: инженерийн давхаргууд Enterprise-ийн `Bagts_ajluud` үйлчилгээний НЭГ ХЭСЭГ (98 давхаргын 74).
+       ⚠️ 2026-10-26: хөрвүүлэх хүснэгтгүй — давхарга бүрийн БОДИТ хаяг `infra:N` LayerDef-ийн `url`-д (`pkg.ts` INFRA_TABLE);
+       үйлчилгээний метаас зөвхөн НЭР (`classify`) авна, `infra:*`-д хамаарахгүй давхаргыг алгасна. `infra:N`-ийн N нь
+       тогтвортой id (LAYER_BY_ID · groups.ts · MapCanvas · эрхийн түлхүүр) — Enterprise-ийн дугаар биш. */
+    const infraByEnt = new Map<number, { id: string; url: string }>();
+    for (const d of LAYERS) {
+      if (!d.id.startsWith('infra:')) continue;
+      const url = layerUrl(d);
+      infraByEnt.set(Number(url.slice(url.lastIndexOf('/') + 1)), { id: d.id.slice('infra:'.length), url });
+    }
+    const meta = await esriRequest(INFRA_SVC, { query: { f: 'json' }, responseType: 'json' });
     const layers = ((meta.data as { layers?: { id: number; name: string }[] }).layers ?? [])
-      .flatMap((l) => { const id = agolLayerId(INFRA_SVC, l.id); return id == null ? [] : [{ id, name: l.name }]; });
+      .flatMap((l) => { const d = infraByEnt.get(l.id); return d ? [{ id: d.id, url: d.url, name: l.name }] : []; });
     const failed: string[] = [];
     const parts = await Promise.all(layers.map(async (l) => {
       const type = classify(l.name);
@@ -223,8 +225,8 @@ export function loadInfra() {
       try {
         /* OID — бүртгэлтэй бол `infra:N`-ийн `oidOf`, үгүй бол үйлчилгээний анхдагч */
         const def = LAYER_BY_ID[`infra:${l.id}`];
-        const oid = def ? oidOf(def) : 'OBJECTID';
-        return (await fetchObjects(`${INFRA_SVC}/${l.id}`, oid)).map(({ geometry: geom, attributes }) => {
+        const oid = def ? oidOf(def) : 'objectid';
+        return (await fetchObjects(l.url, oid)).map(({ geometry: geom, attributes }) => {
           const objectId = Object.entries(attributes).find(([key]) => key.toLowerCase() === oid.toLowerCase())?.[1];
           if (objectId == null) throw new Error(`${l.name}: OBJECTID олдсонгүй`);
           return { feature: `infra:${l.id}:${objectId}`, type, layer: l.name, geom, ext: geom.extent };

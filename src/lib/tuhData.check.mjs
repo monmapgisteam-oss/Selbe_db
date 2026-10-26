@@ -36,11 +36,11 @@ const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
 const okA = async (name, fn) => { await fn(); n += 1; console.log('  ✓', name); };
 
 const CR = (o) => ({
-  OBJECTID: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
+  objectid: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: o.t1 ?? '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
   ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
   guitsetgegch: o.contractor ?? '', guitsetgel_huvi: o.prog ?? null,
-  ehleh_ognoo: o.start ?? null, duusah_ognoo: o.end ?? null, Cashflow_ID: o.cf ?? null,
+  ehleh_ognoo: o.start ?? null, duusah_ognoo: o.end ?? null, cashflow_id: o.cf ?? null,
   tezu: o.tezu ?? null, ajliin_zurag_tusul: o.az ?? null,
 });
 
@@ -84,7 +84,7 @@ const rows = [
   CR({ oid: 78, pkg: '', code: '7' }),
 ];
 const pk = buildTuhPkgs(rows, 'Гэрээлсэн дүн');
-ok('бонд хасагдана', () => assert.ok(!pk.some((p) => p.rows.some((r) => r.OBJECTID === 78))));
+ok('бонд хасагдана', () => assert.ok(!pk.some((p) => p.rows.some((r) => r.objectid === 78))));
 ok('ТЭЗҮ ба барилгын 7.1 ТУСДАА (мөнгө холилдохгүй)', () => {
   const d = pk.find((p) => p.group === 'design');
   const b = pk.find((p) => p.pkgKey === 'БАГЦ71' && p.group !== 'design');

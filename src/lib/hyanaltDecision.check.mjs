@@ -8,7 +8,7 @@ import { calculateRows, whereMatches } from './hyanaltDecision.fake.mjs';
 
 const mode = process.argv.find((a) => a.startsWith('--case='))?.slice(7) ?? 'main';
 const enterprise = mode === 'enterprise';
-process.env.SELBE_ENT_OFF = enterprise ? '0' : '1';
+/* ⚠️ 2026-10-26: хаяг/талбар Enterprise-ийн БОДИТ нэрээр (жижиг үсэг) — `enterprise` горим нь үндсэн горимтой ижил хаяг/нэр (зураглалын унтраалга хасагдсан) */
 process.env.NEXT_PUBLIC_ENT_DATA = 'https://decision.test/rest/services/Hosted';
 process.env.NEXT_PUBLIC_PORTAL_URL = 'https://decision.test/portal';
 process.env.NEXT_PUBLIC_ALLOWED_ORG_ID = 'decision-test';
@@ -27,7 +27,7 @@ const T0 = Date.UTC(2026, 9, 21, 6);
 const priorHistory = JSON.stringify([{ stage: 'manager', who: "O'Brien", at: T0 - 1000,
   act: 'return', reason: "Check AND (slot = 'x')", u: 'prior_reviewer' }]);
 const original = () => ({
-  OBJECTID: 1, [F.id]: 'G-000001', [F.sheetOid]: null, [F.ergelt]: 1, [F.bagts]: 'Audit package',
+  objectid: 1, [F.id]: 'G-000001', [F.sheetOid]: null, [F.ergelt]: 1, [F.bagts]: 'Audit package',
   [F.ajil]: 'Audit work', [F.company]: 'Company', [F.companySent]: T0,
   ...Object.fromEntries(Object.values(SF).flatMap((f) => [[f.who, ''], [f.decision, ''], [f.reason, ''], [f.sent, null], [f.returned, null]])),
   [F.okCells]: '', [F.history]: priorHistory, [F.status]: STATUS.engineerReview,
@@ -48,7 +48,7 @@ globalThis.fetch = async (input, init) => {
   if (url === target || url === `${target}/`) {
     if (mode === 'metadata-error') return json({ error: { code: 403, message: 'metadata denied' } });
     if (mode === 'metadata-malformed') return json({ supportsCalculate: true });
-    return json({ supportsCalculate: mode !== 'unsupported', fields: ['OBJECTID', ...Object.values(F)].map((name) => ({
+    return json({ supportsCalculate: mode !== 'unsupported', fields: ['objectid', ...Object.values(F)].map((name) => ({
       name: wireName(name), type: 'esriFieldTypeString', length: 10000,
     })) });
   }
@@ -83,7 +83,7 @@ globalThis.fetch = async (input, init) => {
   state.unexpected.push(url);
   throw new Error('Unexpected endpoint in offline decision regression');
 };
-const patch = (extra = {}) => ({ OBJECTID: 1, [F.status]: STATUS.managerReview, [F.engineer]: 'New reviewer', ...extra });
+const patch = (extra = {}) => ({ objectid: 1, [F.status]: STATUS.managerReview, [F.engineer]: 'New reviewer', ...extra });
 const snapshot = () => JSON.stringify(state.rows);
 const unchangedRejection = async (fn, matcher) => {
   const before = snapshot();
@@ -122,10 +122,10 @@ try {
     console.log('✅ hyanaltDecision: actual Enterprise URL, metadata, SQL guard and calculation field translation');
   } else {
     // Interpreter sanity: precedence and escaped text are evaluated independently.
-    assert.equal(whereMatches("OBJECTID = 1 AND (x IS NULL OR x = '') AND who = N'O''Brien AND (x = 2)'",
-      { OBJECTID: 1, x: null, who: "O'Brien AND (x = 2)" }), true);
-    assert.equal(whereMatches("OBJECTID = 2 AND (x IS NULL OR x = '')", { OBJECTID: 1, x: '' }), false);
-    assert.throws(() => whereMatches('OBJECTID = 1; DROP TABLE X', { OBJECTID: 1 }));
+    assert.equal(whereMatches("objectid = 1 AND (x IS NULL OR x = '') AND who = N'O''Brien AND (x = 2)'",
+      { objectid: 1, x: null, who: "O'Brien AND (x = 2)" }), true);
+    assert.equal(whereMatches("objectid = 2 AND (x IS NULL OR x = '')", { objectid: 1, x: '' }), false);
+    assert.throws(() => whereMatches('objectid = 1; DROP TABLE X', { objectid: 1 }));
 
     for (const first of [DECISION.approve, DECISION.return]) {
       reset();
@@ -170,7 +170,7 @@ try {
       await unchangedRejection(() => updateDecision(toRow(row), patch()), HyanaltConflict);
     }
     reset();
-    state.rows.push({ ...wire(original()), OBJECTID: 2 });
+    state.rows.push({ ...wire(original()), objectid: 2 });
     await updateDecision(toRow(original()), patch());
     assert.equal(state.rows[1][F.status], STATUS.engineerReview, 'OID guard protects a sibling with identical decision values');
     assert.equal(state.writes, 1);
@@ -198,7 +198,7 @@ try {
       await unchangedRejection(() => updateDecision(toRow(original()), patch()), /calculate denied|calculation cancelled|calculation connection lost/);
       assert.equal(state.requests.length, 1, 'failed/cancelled conditional write is never replayed');
     }
-    for (const invalid of [patch({ OBJECTID: 2 }), { OBJECTID: 1 }, patch({ Unknown: 'x' }),
+    for (const invalid of [patch({ objectid: 2 }), { objectid: 1 }, patch({ Unknown: 'x' }),
       patch({ [F.engineer]: {} }), patch({ [F.engineer]: undefined }), patch({ [F.engineerSent]: Number.NaN })]) {
       reset();
       await unchangedRejection(() => updateDecision(toRow(original()), invalid), HyanaltError);

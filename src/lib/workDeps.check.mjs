@@ -229,7 +229,7 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
 /* ── Бүдүүвч ба архивын жааз: талбар таних, ДАМЖИХ ── */
 {
   const F = (name, type = 'esriFieldTypeString') => ({ name, type });
-  const base = [F('ObjectID', 'esriFieldTypeOID'), F('F_'), F('Ажил'), F('hamaaral'), F('buglusun_ognoo', 'esriFieldTypeDate')];
+  const base = [F('objectid', 'esriFieldTypeOID'), F('f_'), F('Ажил'), F('hamaaral'), F('buglusun_ognoo', 'esriFieldTypeDate')];
   assert.equal(resolveSchema(base).f.bham, null, 'талбаргүй → null (зөвхөн харах)');
   const sc = resolveSchema([...base, F('bagts_hamaaral')]);
   assert.equal(sc.f.bham, 'bagts_hamaaral');
@@ -239,7 +239,7 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   const row = {
     oid: 1, no: '1', des: 1, ham: null, work: 'Шороо', depth: 0, group: false, wC: 1, wD: 1, vol: null, plannedVol: null,
     unit: null, money: null, act: [], obyem: [], start: [], end: [], gStart: [], gEnd: [], aStart: [], aEnd: [], hun: null, mashin: null,
-    raw: { ObjectID: 1, F_: '1', Ажил: 'Шороо', bagts_hamaaral: json },
+    raw: { objectid: 1, f_: '1', Ажил: 'Шороо', bagts_hamaaral: json },
   };
   const fr = buildFrame([row], sc, 0, null, [], Date.UTC(2026, 9, 22));
   assert.equal(fr[0].bagts_hamaaral, json);

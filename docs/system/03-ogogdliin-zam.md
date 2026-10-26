@@ -223,19 +223,23 @@ sequenceDiagram
 `…/map/rest/services/Hosted`)-ээс уншина: 225 давхарга/хүснэгт, BIM, меш, ортофото, IoT, ХАБЭА, замын тайл.
 ArcGIS Online (AGOL) ба UBHUB бүрмөсөн хасагдсан — тэдгээр хост руу хүсэлт явахгүй.
 
-**Хаягийн зураглал.** Кодын ~90 давхарга AGOL-ын хуучин хаягаар (`${HJ}/<үйлчилгээ>/FeatureServer/<№>`,
-`src/lib/services/agolKey.ts` — сүлжээний хаяг БИШ, ТҮЛХҮҮР) бичигдсэн хэвээр; `src/lib/services/entMap.data.ts`
-(`tools/entMap-build.mjs` үүсгэнэ — экспортын тайлан + Enterprise мета + `tools/agol-fields.py`) нь
-`<AGOL үйлчилгээ>/<№>` → `<Enterprise үйлчилгээ>/<№>` зураглал. `entMap.remapUrl` нь REST-ийн ганц цөм (`query.run`),
-газрын зургийн давхарга (`layerUrl`) ба порталын хайлтаар олддог байсан хүснэгтүүдэд (`entDirect`: эрх · ноорог · батлах)
-хэрэглэгдэнэ. Зураглалгүй AGOL хаяг → ил алдаа (чимээгүй AGOL руу буцах зам байхгүй).
+**Хаяг — ШУУД, хөрвүүлэх хүснэгтгүй (2026-10-26).** Код давхарга/хүснэгт бүрийг Enterprise-ийн БОДИТ хаягаар
+бичнэ: `src/lib/services/env.ts`-ийн үйлчилгээний суурь (`BAGTS_AJLUUD` · `SELBE_ET` · `HET` · `GUITS` · `GAZAR_CH` ·
+`HAB_KRAN` · `IRGED` · `SYS_PERMS` · `IOT_EX` = `${NEXT_PUBLIC_ENT_DATA}/<үйлчилгээ>/FeatureServer`) + давхаргын бодит
+дугаар (жиш. `${GUITS}/183` хяналт, `${BAGTS_AJLUUD}/0` барилгын блок). Хуучин AGOL түлхүүр (`HJ` · `TD` · `ET` ·
+`ET_PKG`), зураглалын хүснэгт (`entMap.data.ts` · `tools/entMap-build.mjs`), `remapUrl` · `entDirect` ХАСАГДСАН
+(хэрэглэгчийн шийдвэр: «хөрвүүлэх хүснэгт огт ашиглахгүй, бодит датаг шууд ашиглана»). Инженерийн шугам (`infra:N`) ба
+дэд бүтцийн багц (`pkg:N`) нь `Bagts_ajluud` үйлчилгээнд — давхарга бүрийн Enterprise дугаар `pkg.ts`-ийн
+`PKG_TABLE`/`INFRA_TABLE`-ийн сүүлийн баганад; `N` нь зөвхөн тогтвортой id (каталог · эрх · хадгалсан тохиргоо).
+Webmap-загварын снапшот (`public/webmap-style.json`) давхаргын ID-аар түлхүүрлэгдсэн.
 
-**Талбарын нэр.** Enterprise (PostgreSQL) нийтлэхдээ талбарын нэрийг ЖИЖИГ үсэг болгосон (`BAGTS` → `bagts`);
-геометрийн системийн талбар `SHAPE__Area` / `SHAPE__Length`. Код эх нэрээрээ ханддаг тул `entMap.ts` хүсэлтийн
-`outFields` · `orderByFields` · `applyEdits`-ийг Enterprise нэр рүү, хариуг эх нэр рүү (дуудагчийн `outFields`-ийн үсэг →
-`ENT_FIELDS` толь) хөрвүүлнэ — REST-д `query.attemptRequest`, JS API-ийн давхаргад `lib/entInterceptor.ts`
-(`esriConfig.request.interceptors`; мета дээр PBF-ийг хааж JSON-оор асуулгана). OID (`FID`/`OBJECTID` → `objectid`) ба
-засварын мөшгөлт (`EditDate` → `last_edited_date`) мөн зураглагдана.
+**Талбарын нэр — БОДИТ нэр.** Enterprise (PostgreSQL) талбарын нэр ЖИЖИГ үсэгтэй (`bagts`, `ажил_гүйцэтгэл`,
+`objectid`); геометрийн системийн талбар `SHAPE__Area` / `SHAPE__Length` (ТОМ `SHAPE`); засварын мөшгөлт
+`created_date` · `created_user` · `last_edited_date` · `last_edited_user`. Код ЭДГЭЭР нэрээр бичигдсэн — ажиллах үед
+нэр хөрвүүлэхгүй (`outFields` · `orderByFields` · `applyEdits`-ийн түлхүүр Enterprise-д үсэг ялгадаг; КИРИЛЛ талбар
+`where`-д ч яг жижиг үсгээр). Нэрээр хөрвүүлэлт биш, зөвхөн УТГЫН засвар үлдсэн: gdb-ээс ачаалсан давхаргын импортын
+агшны мөшгөлтийг (2026-10-20 08:4x) хуучин `creationdate`/`editdate` (`*_1`) баганын утгаар солих (`lib/editTrack.ts` —
+REST-д `query.attemptRequest`, JS API-д `lib/entInterceptor.ts`).
 
 **Нэвтрэлт.** Enterprise геопортал (`NEXT_PUBLIC_PORTAL_URL` = `…/geoportal`, OAuth апп `NEXT_PUBLIC_AUTH_APP_ID`,
 `NEXT_PUBLIC_ALLOWED_ORG_ID` = порталын id). Ижил токен өгөгдөл, ХАБЭА-ийн бичилт, PDF баримтад (`entDocs.entSession`).

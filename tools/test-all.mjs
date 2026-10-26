@@ -56,22 +56,9 @@ const LIVE = new Set([
   'src/lib/butetsInfra.check.mjs',
 ]);
 
-/**
- * ТОКЕН БАЙВАЛ АМЬД УНШДАГ шалгуурууд — анхдагч ажиллагаанд ОРНО (`LIVE`-ээс ялгаатай), токенгүй үед
- * өөрсдөө `SELBE_LIVE_SKIP`-ээр алгасна.
- * ⚠️ 2026-10-21: эдгээрт Enterprise зураглалыг АСААЛТТАЙ (`SELBE_ENT_OFF=0`) үлдээнэ. Урьд нь нэгж тестийн
- *    `SELBE_ENT_OFF=1`-ийг авдаг байсан тул хүчинтэй Enterprise токентой үед хүсэлт нь зураглагдахгүй AGOL руу
- *    (`agolKey.ts` — түлхүүр, сүлжээний хаяг биш) явж 499 авч, бөглөх хуудас «хоосон» гэж унадаг байв
- *    (series · bagts · negj · gun · zovshoorol). Дангаар нь ажиллуулахад (`SELBE_ENT_OFF` тавигдахгүй) давдаг байв.
- * ⚠️ Шинэ ийм шалгуур (`SELBE_LIVE_SKIP`-ээр алгасдаг, амьд Enterprise уншдаг) нэмбэл ЭНД бүртгэнэ.
- */
-const LIVE_OPT = new Set([
-  'src/lib/series.check.mjs',
-  'src/lib/zovshoorol.check.mjs',
-  'src/modules/bagts.check.mjs',
-  'src/modules/sheet/negj.check.mjs',
-  'src/modules/sheet/gun.check.mjs',
-]);
+/* ⚠️ 2026-10-26: ТОКЕН БАЙВАЛ АМЬД УНШДАГ шалгуурууд (series · zovshoorol · bagts · negj · gun) анхдагч ажиллагаанд ОРНО,
+   токенгүй үед өөрсдөө `SELBE_LIVE_SKIP`-ээр алгасна. Урьд тэдэнд зураглалын унтраалга (`SELBE_ENT_OFF`)-ыг асаалттай
+   үлдээдэг `LIVE_OPT` жагсаалт байв — хөрвүүлэх хүснэгт хасагдсан тул хэрэггүй болж устгагдав. */
 
 /* ── Аргументууд ── */
 const argv = process.argv.slice(2);
@@ -131,12 +118,11 @@ if (process.env.SELBE_LIVE_PROBED !== '1') {
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 
 /* ── Ажиллуулах ── */
-/* ⚠️ 2026-10-20: Enterprise зураглалыг НЭГЖ тестэд УНТРААНА (`services/entMap.ts`-ийн `SELBE_ENT_OFF` ⚠️) — хуурамч
-   хүснэгт/fetch нь AGOL хэлбэрийн хаягаар бичигдсэн. АМЬД (`LIVE` · `LIVE_OPT`) шалгуур Enterprise руу бодитоор ханддаг тул асаалттай.
-   Зураглалын функцүүд `entMap.check.mjs`-д тусдаа. */
+/* ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap`) ба түүний нэгж тестийн унтраалга (`SELBE_ENT_OFF`) ХАСАГДСАН — хуурамч
+   хүснэгт/fetch нь Enterprise-ийн БОДИТ хаяг · жижиг үсэгтэй талбараар бичигдсэн. */
 const run = (file) => runCheck(file, {
   args: LOADER, timeoutMs: timeoutS * 1000,
-  env: { ...process.env, ...liveEnv, SELBE_ENT_OFF: LIVE.has(file) || LIVE_OPT.has(file) ? '0' : (process.env.SELBE_ENT_OFF ?? '1') },
+  env: { ...process.env, ...liveEnv },
 });
 
 const results = [];

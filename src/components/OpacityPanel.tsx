@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
-import { LAYER_BY_ID, REFERENCE_IDS, layerUrl } from '@/lib/services';
+import { LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
 import { webmapStyleOf } from '@/lib/webmapStyle';
 import { plan2dStyleOf } from '@/lib/plan2d';
 import s from './opacity.module.css';
@@ -13,12 +13,12 @@ import s from './opacity.module.css';
  * ⚠️ 2026-10-21: урьд нь гулсуур `?? 1` (100%) харуулдаг байсан ч зураг дээр давхарга эх webmap-ийн
  *    opacity-оор (жиш. 60%) явдаг — «100%» худал, «Сэргээх» ч гарахгүй. `MapCanvas`-ийн давхарга
  *    үүсгэх дүрэмтэй ЯГ ижил: план2d загвартай бол webmap-ийн opacity-г тавихгүй (1), эс бөгөөс
- *    `webmapStyleOf(styleUrl ?? layerUrl).opacity ?? 1`. Тэр дүрмийг өөрчилбөл энд ч дагуулна.
+ *    `webmapStyleOf(id).opacity ?? 1`. Тэр дүрмийг өөрчилбөл энд ч дагуулна.
  */
 function baseOpacity(id: string): number {
   const d = LAYER_BY_ID[id];
   if (!d || plan2dStyleOf(id)) return 1;
-  return webmapStyleOf(d.styleUrl ?? layerUrl(d))?.opacity ?? 1;
+  return webmapStyleOf(d.id)?.opacity ?? 1;
 }
 
 /**

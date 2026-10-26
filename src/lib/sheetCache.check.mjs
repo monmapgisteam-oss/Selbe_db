@@ -72,11 +72,11 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 /* ── 3. Кодлол — ЯГ сэргээнэ ── */
 {
   const feats = [
-    { attributes: { Обьём: 12.5, objectid: 7, F_: 'Б.', Ажил: 'Барилга угсралт', gun: 0, d: null } },
-    { attributes: { Обьём: null, objectid: 8, F_: '1', Ажил: '', gun: 1, d: 1790553600000 } },
+    { attributes: { Обьём: 12.5, objectid: 7, f_: 'Б.', Ажил: 'Барилга угсралт', gun: 0, d: null } },
+    { attributes: { Обьём: null, objectid: 8, f_: '1', Ажил: '', gun: 1, d: 1790553600000 } },
   ];
   const e = encodeFeats(feats);
-  assert.deepEqual(e.keys, ['Обьём', 'objectid', 'F_', 'Ажил', 'gun', 'd'], 'серверийн түлхүүрийн ДАРААЛАЛ хадгалагдана');
+  assert.deepEqual(e.keys, ['Обьём', 'objectid', 'f_', 'Ажил', 'gun', 'd'], 'серверийн түлхүүрийн ДАРААЛАЛ хадгалагдана');
   const back = decodeFeats(structuredClone(e));
   assert.deepEqual(back, feats);
   for (let i = 0; i < feats.length; i += 1) {
@@ -102,9 +102,9 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
     clear: async () => { m.clear(); },
   });
   const URL = 'https://x/Hosted/Guitsetgel_talbe/FeatureServer/155';
-  const FIELDS = ['objectid', 'F_', 'Ажил'];
+  const FIELDS = ['objectid', 'f_', 'Ажил'];
   let server = { n: 3, lo: 1, hi: 3, le: 100, mx: 50 };
-  let rows = [{ attributes: { objectid: 1, F_: 'Б.', Ажил: 'a' } }, { attributes: { objectid: 2, F_: '1', Ажил: 'b' } }];
+  let rows = [{ attributes: { objectid: 1, f_: 'Б.', Ажил: 'a' } }, { attributes: { objectid: 2, f_: '1', Ажил: 'b' } }];
   const events = [];
   const probe = async () => { events.push('probe'); return sigFrom(server, true); };
   const load = async (s) => { events.push(`load:${s ? s.mx : 'null'}`); return { where: `W${server.mx}`, feats: structuredClone(rows) }; };
@@ -130,7 +130,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
   /* газар дээрх засвар (le) → дахин татна, шинэ өгөгдөл */
   server = { ...server, le: 101 };
-  rows = [{ attributes: { objectid: 1, F_: 'Б.', Ажил: 'A2' } }, { attributes: { objectid: 2, F_: '1', Ажил: 'b' } }];
+  rows = [{ attributes: { objectid: 1, f_: 'Б.', Ажил: 'A2' } }, { attributes: { objectid: 2, f_: '1', Ажил: 'b' } }];
   events.length = 0;
   const r3 = await persistedFrame(URL, FIELDS, probe, load);
   assert.deepEqual(events, ['probe', 'load:50']);
@@ -142,7 +142,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
   /* 2. тандалт ба татлагын ХООРОНД засвар орвол — хуучин тэмдэг + шинэ өгөгдөл хадгалагдаж, дараагийнх нь дахин татна */
   server = { ...server, le: 102 };
-  const sneaky = async (s) => { server = { ...server, le: 103 }; rows = [{ attributes: { objectid: 1, F_: 'Б.', Ажил: 'A4' } }]; return load(s); };
+  const sneaky = async (s) => { server = { ...server, le: 103 }; rows = [{ attributes: { objectid: 1, f_: 'Б.', Ажил: 'A4' } }]; return load(s); };
   await persistedFrame(URL, FIELDS, probe, sneaky);
   await tick();
   assert.equal(m.get(frameKey(URL, FIELDS)).sig.le, 102, 'татлагаас ӨМНӨХ тэмдэг');

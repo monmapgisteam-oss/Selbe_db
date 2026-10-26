@@ -55,7 +55,6 @@ import {
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
   type LayerDef,
 } from '@/lib/services';
-import { remapUrl } from '@/lib/services/entMap';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
 /* ⚠️ 2026-10-22 (гүйцэтгэл): давхаргыг Map-д ХЭРЭГТЭЙ үед нь л нэмнэ — `lazyLayers.ts`-ийн ⚠️ */
@@ -724,7 +723,7 @@ const paintValue = (v: string): string | number => (
 
 const zoneTypeRenderer = (d: LayerDef) => ({
   type: 'unique-value',
-  field: d.paint?.field ?? 'Angilal',
+  field: d.paint?.field ?? 'angilal',
   defaultSymbol: symbolOf(d, d.paint?.defaultHue ?? ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint?.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint?.values ?? {}).map(([value, hue]) => ({
@@ -1393,7 +1392,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: IRGED_TOILET.id,
     title: IRGED_TOILET.title,
-    url: remapUrl(IRGED_TOILET.url),
+    url: IRGED_TOILET.url,
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -1444,7 +1443,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: IRGED_BUILT.id,
     title: IRGED_BUILT.title,
-    url: remapUrl(IRGED_BUILT.url),
+    url: IRGED_BUILT.url,
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -1462,7 +1461,7 @@ function buildLayers(uniform = false): Layer[] {
   L.push(new FeatureLayer({
     id: TOILET_PIN_ID,
     title: IRGED_TOILET.title,
-    url: remapUrl(IRGED_TOILET.url),
+    url: IRGED_TOILET.url,
     visible: false,
     listMode: 'hide',
     popupEnabled: false,
@@ -1483,9 +1482,8 @@ function buildLayers(uniform = false): Layer[] {
      * кадастр г.м. webmap-д байхгүй) доорх каталогийн загвараа хэрэглэнэ.
      * Снапшотыг `node tools/webmap_style.mjs`-ээр шинэчилнэ.
      */
-    // ⚠️ styleUrl — test_data руу шилжсэн ч webmap-снапшотын ХУУЧИН түлхүүрээр
-    //    хайж, зураг дээрх загварыг 1:1 хадгална (2026-08-13).
-    const web = webmapStyleOf(d.styleUrl ?? layerUrl(d));
+    // ⚠️ 2026-10-26: снапшот давхаргын ID-аар түлхүүрлэгдсэн (хуучин AGOL хаягийн түлхүүр — `styleUrl` — хасагдсан).
+    const web = webmapStyleOf(d.id);
     /**
      * ӨНГӨНИЙ OVERRIDE (`MAP_HUE_OVERRIDES`, 2026-07-31): барилгын снапшотын
      * шар (#ffb700, 20% дүүргэлт) нь ортофото дээр ялгарахгүй байсан тул
@@ -3514,7 +3512,7 @@ export const MapCanvas = memo(function MapCanvas({
         }
         map.add(new FeatureLayer({
           id: s.id,
-          url: remapUrl(s.url),
+          url: s.url,
           title: s.title,
           opacity: s.opacity,
           popupEnabled: false,
@@ -5715,7 +5713,7 @@ export const MapCanvas = memo(function MapCanvas({
  * байдаг тул хулганы товч цонхыг дүүргэж, бодит атрибутыг доош түлхэнэ.
  * «Хэн зассан» нь засварын маягт ба ArcGIS-ийн өөрийн хэрэгслээр харагдана.
  */
-const TIP_SKIP = /^(objectid|globalid|se_anno|creationdate|creator|editdate|editor)$/i;
+const TIP_SKIP = /^(objectid|globalid|se_anno|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i;
 const TIP_SKIP_PREFIX = /^shape(__|_|$)/i;
 
 /**

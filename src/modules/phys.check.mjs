@@ -112,7 +112,12 @@ import { cfMonthAxis } from '../lib/services.ts';
   console.log('phys.check: блокийн хуваарь ok (тайлагнаагүй блок/багц 0%)');
 }
 
-/* ── 1+. АМЬД ӨГӨГДӨЛ ── */
+/* ── 1+. АМЬД ӨГӨГДӨЛ ──
+   ⚠️ 2026-10-26 (CI уналт f26c7f9): Enterprise хүрэгдэхгүй / амьд шалгалт алгасагдсан (`SELBE_LIVE_SKIP`) үед энэ
+   хэсгийг алгасна — урьд нь хүсэлт устгагдсан AGOL руу явж хурдан алдаа авдаг тул анзаарагддаггүй байв. */
+if (process.env.SELBE_LIVE_SKIP === '1') {
+  console.log(`⏭ phys.check: амьд хэсэг алгасав (${process.env.SELBE_LIVE_SKIP_REASON || 'Enterprise хүрэгдэхгүй'})`);
+} else {
 const AXIS = cfMonthAxis();
 const hist = await loadBlockHistory();
 const now = new Date();
@@ -167,3 +172,4 @@ console.log(
   `phys.check: ok — ${withData}/${phys.size} багц хэмжигдсэн · ${points} цэг`
   + ` · жинхэнэ 0% ${zeroMeasured} (эдгээр нь ХЭМЖИЛТ, null-аас ялгаатай)`,
 );
+}

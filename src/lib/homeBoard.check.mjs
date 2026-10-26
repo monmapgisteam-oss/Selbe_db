@@ -1,6 +1,6 @@
 /**
  * НҮҮРИЙН САМБАР ба «СҮҮЛИЙН ХАРАГДАЦАА АЛДСАН» ХӨЛДӨӨЛТ — ⚠️ 2026-10-22 (аудит).
- *   SELBE_ENT_OFF=1 node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/homeBoard.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/homeBoard.check.mjs
  *
  *   1. `boardAllowedFor`: 2026-10-01-ээс super биш хүнд `allowed` ХЭЗЭЭ Ч 'all' биш тул удирдлага (Төлөвлөлтийн ахлах инженер ·
  *      Хэлтсийн · Газрын дарга) самбарыг хардаггүй байв — урсгалтай БУС бүх харагдацтай бол нээгдэнэ.

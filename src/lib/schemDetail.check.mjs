@@ -221,7 +221,7 @@ const cyc = (ergelt, oid, over) => ({
   [HF.ajil]: 'Суурийн бетон',
   [HF.company]: 'Гүйцэтгэгч',
   [HF.ergelt]: ergelt,
-  OBJECTID: oid,
+  objectid: oid,
   ...over,
 });
 

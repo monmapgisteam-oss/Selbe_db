@@ -2,7 +2,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
 /** ⚠️ 2026-10-23: FIC · М-актын PDF item-ийн таг — баримт бичгийн сангаас ялгана (`docLib.isFmPdf`) */
 export const FM_TAG = 'selbe-fm';
-import { ENT_DATA } from '@/lib/services/entMap';
+import { ENT_HOSTED } from '@/lib/services/env';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
 import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
 import { isAuthorFor, reviewerRolesFor } from '@/lib/chanarAcl';
@@ -60,7 +60,7 @@ export function fmRowOf(a: Record<string, unknown>): FmRow {
   const k = str(a[F.kind]).toUpperCase();
   const s = str(a[F.status]);
   return {
-    oid: Number(a.OBJECTID ?? a.objectid),
+    oid: Number(a.objectid),
     kind: k === 'MAKT' ? 'MAKT' : 'FIC',
     maNo: str(a[F.maNo]),
     docNo: str(a[F.docNo]),
@@ -136,8 +136,8 @@ let urlCache: string | null = null;
  *    алдаа авдаг байв. Шууд хаяг олдохгүй (404 · хуучин нэртэй) бол хайлт руу шилжинэ.
  */
 async function directTable(): Promise<string | null> {
-  if (!ENT_DATA) return null;
-  const url = `${ENT_DATA}/${FM_TITLE}/FeatureServer/0`;
+  if (!ENT_HOSTED) return null;
+  const url = `${ENT_HOSTED}/${FM_TITLE}/FeatureServer/0`;
   try {
     const m = await post<{ fields?: unknown[] }>(url, {});
     return Array.isArray(m.fields) ? url : null;

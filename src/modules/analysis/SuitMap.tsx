@@ -200,7 +200,7 @@ const bldFocusFill = (c: number[]) => ({
   outline: { color: [255, 255, 255, 0.95], width: ow(1.2) },
 });
 const buildingRenderer = (focus = false) => ({
-  type: 'unique-value', field: 'Barilga_ty',
+  type: 'unique-value', field: 'barilga_ty',
   defaultSymbol: focus ? bldFocusFill([203, 213, 225]) : bldFill([203, 213, 225], BLD_ALPHA_DIM),
   defaultLabel: tr('Бусад'),
   uniqueValueInfos: Object.entries(STATUS_COLORS).map(([value, c]) => ({
@@ -649,7 +649,7 @@ export function SuitMap({
           const onBld = cb.current.onBldClick;
           const bld = hit.results.find((r) => r.type === 'graphic' && r.graphic.layer === bldRef.current);
           if (bld && bld.type === 'graphic' && onBld) {
-            const oid = (bld.graphic.attributes as Record<string, unknown>)?.OBJECTID;
+            const oid = (bld.graphic.attributes as Record<string, unknown>)?.objectid;
             if (oid != null) { onBld(Number(oid)); return; }
           }
           onBld?.(null);
@@ -707,7 +707,7 @@ export function SuitMap({
             if (tipHtml !== null) { key = k; html = tipHtml === '' ? null : tipHtml; }
           } else if (bld && bld.type === 'graphic') {
             const a = bld.graphic.attributes as Record<string, unknown>;
-            key = `b${a.OBJECTID}`;
+            key = `b${a.objectid}`;
             if (key !== lastKey) html = cb.current.buildingTip(a);
           } else if (zone && zone.type === 'graphic') {
             const id = (zone.graphic.attributes as { zoneId: string }).zoneId;

@@ -24,7 +24,7 @@ import { housingPct } from './gdash.ts';
 import { buildingKey } from './services.ts';
 import { pkgProgressOf } from './blockProgress.ts';
 
-const row = (bagts, block, ail, comp = 'Гүйцэтгэгч') => ({ BAGTS: bagts, BLOK: block, AIL_TOO: ail, BAR_COMP: comp });
+const row = (bagts, block, ail, comp = 'Гүйцэтгэгч') => ({ bagts: bagts, blok: block, ail_too: ail, bar_comp: comp });
 const cell = (overall) => ({ overall, date: '2026-09-01', phases: [] });
 /** Бөглөх хуудасны блокийн хуваарь — `blockProgress.BlockUniverse` (`bagtsKey` → `buildingKey`[]) */
 const uniOf = (obj) => new Map(Object.entries(obj).map(([g, bs]) => [

@@ -130,17 +130,17 @@ assert.equal(geomAreaM2(null), null);
 }
 
 /* ══════════ 6. Уртын талбар ба нэгж ══════════ */
-assert.equal(lenFieldUnit('Urt_m', null), 'm');
+assert.equal(lenFieldUnit('urt_m', null), 'm');
 assert.equal(lenFieldUnit('urt_km', null), 'km');
 assert.equal(lenFieldUnit('Length_km', { field: 'Length_km', unit: 'км' }), 'km');
-assert.equal(lenFieldUnit('Shugam_Urt', { field: 'Shugam_Urt', unit: 'м' }), 'm', 'давхаргын qty.field');
-assert.equal(lenFieldUnit('Shugam_Urt', { field: 'Shugam_Urt', unit: 'км' }), 'km');
-assert.equal(lenFieldUnit('Shape__Length', { field: 'Shape__Length', unit: 'м' }), null, 'Shape__* бол засагдахгүй');
-assert.equal(lenFieldUnit('Diameter', { field: 'Urt_m', unit: 'м' }), null);
+assert.equal(lenFieldUnit('shugam_urt', { field: 'shugam_urt', unit: 'м' }), 'm', 'давхаргын qty.field');
+assert.equal(lenFieldUnit('shugam_urt', { field: 'shugam_urt', unit: 'км' }), 'km');
+assert.equal(lenFieldUnit('SHAPE__Length', { field: 'SHAPE__Length', unit: 'м' }), null, 'Shape__* бол засагдахгүй');
+assert.equal(lenFieldUnit('diameter', { field: 'urt_m', unit: 'м' }), null);
 /* 2026-10-09: урт БИШ хэмжээний талбар (ш · м²) уртын талбар гэж танигдахгүй */
 assert.equal(lenFieldUnit('Too_shirheg', { field: 'Too_shirheg', unit: 'ш' }), null, 'ширхэг');
 assert.equal(lenFieldUnit('Talbai', { field: 'Talbai', unit: 'м²' }), null, 'талбай');
-assert.equal(lenFieldUnit('Urt_m', { field: 'Urt_m', unit: 'ш' }), 'm', 'нэрээр урт бол нэгжээс үл хамаарна');
+assert.equal(lenFieldUnit('urt_m', { field: 'urt_m', unit: 'ш' }), 'm', 'нэрээр урт бол нэгжээс үл хамаарна');
 assert.equal(lenFieldValue(1234.5678, 'm'), '1234.57');
 assert.equal(lenFieldValue(1234.5678, 'km'), '1.235');
 assert.equal(lenFieldValue(1234.5678, 'm', true), '1235', 'бүхэл талбарт бүхэлчилнэ');

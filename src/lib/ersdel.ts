@@ -31,7 +31,7 @@
  */
 
 import { arcgisPost } from '@/lib/query';
-import { TD } from '@/lib/services';
+import { IOT_EX } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 
 /* ══════════════════════ Харуулын эх сурвалж ══════════════════════ */
@@ -43,9 +43,9 @@ import { t as tr } from '@/lib/i18nCore';
 export const ERSDEL_FS = {
   /* ⚠️ 2026-09-17: MUST `Example_data` → `SELBE_ALL_DATA_last_0917`/123 (`Exampledata_iot`,
      ижил 12 цэг · OBJECTID/GlobalID/Torol). Тусдаа env/fallback-гүй — `TD`-ийн давхарга. */
-  url: `${TD}/123`,
+  url: `${IOT_EX}/240`,
   /** Төрлийн талбар — «Усны харуул» / «Агаарын чанар» */
-  typeField: 'Torol',
+  typeField: 'torol',
 } as const;
 
 /** Харуулын ТӨРӨЛ — `Torol` талбарын түүхий утгаас */
@@ -89,7 +89,7 @@ export async function loadStations(): Promise<Station[]> {
      `no-store`-ын утга хэвээр; токен биеэр, timeout/слот/200-алдаа цөмд). */
   const body = await arcgisPost<{ features?: Feat[] }>(`${ERSDEL_FS.url}/query`, {
     where: '1=1',
-    outFields: `OBJECTID,${ERSDEL_FS.typeField}`,
+    outFields: `objectid,${ERSDEL_FS.typeField}`,
     returnGeometry: 'true',
     outSR: '4326',
   });
@@ -105,14 +105,14 @@ export async function loadStations(): Promise<Station[]> {
   const unknown = new Set<string>();
   const out = feats
     .filter((f) => f.geometry)
-    .sort((a, b) => Number(a.attributes.OBJECTID ?? 0) - Number(b.attributes.OBJECTID ?? 0))
+    .sort((a, b) => Number(a.attributes.objectid ?? 0) - Number(b.attributes.objectid ?? 0))
     .flatMap((f): Station[] => {
       const torol = String(f.attributes[ERSDEL_FS.typeField] ?? '').trim();
       const kind: StationKind | undefined = KIND_BY_TOROL[torol];
       if (!kind) { unknown.add(torol || '∅'); return []; }
       seq[kind] = (seq[kind] ?? 0) + 1;
       return [{
-        oid: Number(f.attributes.OBJECTID ?? 0),
+        oid: Number(f.attributes.objectid ?? 0),
         torol,
         kind,
         name: kind === 'water'

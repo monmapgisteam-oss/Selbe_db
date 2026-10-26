@@ -174,7 +174,7 @@ console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓
   assert.equal(e.adds[0].attributes.negj, 'м³');
 
   assert.equal(e.updates.length, 1, 'ЗӨВХӨН өөрчлөгдсөн сар шинэчлэгдэнэ');
-  assert.equal(e.updates[0].attributes.OBJECTID, 12);
+  assert.equal(e.updates[0].attributes.objectid, 12);
   assert.equal(e.updates[0].attributes.obyem, 500);
 
   assert.deepEqual(e.deletes, [13], 'хуваариас гарсан сар УСТАНА');
@@ -200,10 +200,10 @@ console.log('huvaariObyem.check: ok — бичилтийн багц ✓');
   const k1 = dkeyOf('b1_9f', 412, '5/1', '2025-10');
   const k2 = dkeyOf('b1_9f', 412, '5/1', '2025-11');
   const feats = [
-    { attributes: { OBJECTID: 11, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 100 } },
-    { attributes: { OBJECTID: 12, dkey: k2, des_dugaar: 412, blok: '5/1', sar_txt: '2025-11', obyem: 200 } },
+    { attributes: { objectid: 11, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 100 } },
+    { attributes: { objectid: 12, dkey: k2, des_dugaar: 412, blok: '5/1', sar_txt: '2025-11', obyem: 200 } },
     /* давхардсан — ХОЁР ДАХЬ бичилтээс үүссэн */
-    { attributes: { OBJECTID: 13, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 150 } },
+    { attributes: { objectid: 13, dkey: k1, des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 150 } },
   ];
   const { oids, dups } = indexOids(feats);
   assert.equal(oids.size, 2, 'ижил dkey нэг л оролт эзэлнэ');
@@ -269,7 +269,7 @@ console.log('huvaariObyem.check: ok — давхардсан dkey ✓');
     fields,
   });
   assert.equal(e1.updates.length, 1, 'зөвхөн нөөц өөрчлөгдөхөд ч update');
-  assert.equal(e1.updates[0].attributes.OBJECTID, 11);
+  assert.equal(e1.updates[0].attributes.objectid, 11);
   assert.equal(e1.updates[0].attributes.hun_huch, 15);
   assert.equal(e1.updates[0].attributes.mashin_mehanizm, 2);
   assert.equal(e1.updates[0].attributes.obyem, 420);

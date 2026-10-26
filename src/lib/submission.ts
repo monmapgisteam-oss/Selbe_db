@@ -575,7 +575,7 @@ export type StagedSubmission = { oid: number; at: number; done: boolean; payload
  *    өмнө шинэ жааз орвол хоёр мөрийн блокийн утга СОЛИГДОЖ `unmoved = 0`-оор
  *    архивт бичигддэг байлаа.
  * ⚠️ oid өсөх = хуудасны дараалал: жааз бүхэлдээ хуудасны дарааллаар нэмэгддэг
- *    ба `loadRows` ч `OBJECTID ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
+ *    ба `loadRows` ч `objectid ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
  *    нь `movePayload`-оор одоогийн жаазанд зөөгддөг тул нэг payload-ын rowKeys
  *    НЭГ жаазных. Сөрөг (түр) oid байвал эерэгүүдийн ДАРАА — эерэгийн
  *    харьцангуй дарааллыг хөндөхгүй.
@@ -1068,7 +1068,7 @@ const errMsg = (e: unknown): string => {
   return String(e ?? 'ArcGIS error');
 };
 
-type RowAttrs = { OBJECTID?: number; dkey?: string; at?: number; payload?: string };
+type RowAttrs = { objectid?: number; dkey?: string; at?: number; payload?: string };
 
 /**
  * ХАРИУ — «олдсонгүй» ба «уншиж чадсангүй» хоёрыг ЯЛГАНА.
@@ -1098,24 +1098,24 @@ export type SubRead =
  *     боловч уншигдсангүй — legacy гэж үзвэл гүйцэтгэл алга болно)
  */
 async function readRow(a: RowAttrs | undefined, rowsOf?: ReadonlyMap<number, Attrs[]>): Promise<SubRead> {
-  if (!a || typeof a.OBJECTID !== 'number') return { ok: true, sub: null };
+  if (!a || typeof a.objectid !== 'number') return { ok: true, sub: null };
   const dkey = String(a.dkey ?? '');
   if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
   const h = a.payload ? parseHead(String(a.payload)) : null;
-  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.OBJECTID) };
+  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
   /* ⚠️ 2026-10-26: `gens`-тэй толгой — нүд нь `n:sub:<OBJECTID>` мөрөөс (MVCC); уншиж чадаагүй бол АЛДАА (fail-closed) */
   let payload = h.p;
   if (h.gens) {
     try {
-      payload = await assemble(a.OBJECTID, h, rowsOf?.get(a.OBJECTID));
+      payload = await assemble(a.objectid, h, rowsOf?.get(a.objectid));
     } catch (e) {
-      return { ok: false, error: tr('Илгээлт №{0}-ийн мөрүүд уншигдсангүй: {1}', a.OBJECTID, errMsg(e)) };
+      return { ok: false, error: tr('Илгээлт №{0}-ийн мөрүүд уншигдсангүй: {1}', a.objectid, errMsg(e)) };
     }
   }
   /* Мөрийн `at` талбар нь payload.at-тай адил боловч хуучин/эвдэрсэн мөрд
      байхгүй байж болно — payload-оос нөхнө. */
   const at = isFin(a.at) ? Number(a.at) : payload.at;
-  return { ok: true, sub: { oid: a.OBJECTID, at, done: dkey.startsWith(DONE_PREFIX), payload } };
+  return { ok: true, sub: { oid: a.objectid, at, done: dkey.startsWith(DONE_PREFIX), payload } };
 }
 
 /**
@@ -1253,20 +1253,20 @@ export function assembleRows(h: SubHead, all: readonly Attrs[]): SubmissionPaylo
 
 /** Толгойн МЕТА л (нүд угсрахгүй) — «архивлаж байна» тэмдгийн шалгалтад (`archivingBusy`) */
 function headRow(a: RowAttrs | undefined): SubRead {
-  if (!a || typeof a.OBJECTID !== 'number') return { ok: true, sub: null };
+  if (!a || typeof a.objectid !== 'number') return { ok: true, sub: null };
   const dkey = String(a.dkey ?? '');
   if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
   const h = a.payload ? parseHead(String(a.payload)) : null;
-  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.OBJECTID) };
-  return { ok: true, sub: { oid: a.OBJECTID, at: isFin(a.at) ? Number(a.at) : h.p.at, done: dkey.startsWith(DONE_PREFIX), payload: h.p } };
+  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
+  return { ok: true, sub: { oid: a.objectid, at: isFin(a.at) ? Number(a.at) : h.p.at, done: dkey.startsWith(DONE_PREFIX), payload: h.p } };
 }
 
 /** Олон толгойн мөрийг НЭГ дор (`gens`-тэйг л) — жагсаалтын уншилтад */
 async function rowsFor(as: readonly (RowAttrs | undefined)[]): Promise<Map<number, Attrs[]>> {
   const oids: number[] = [];
   for (const a of as) {
-    if (!a || typeof a.OBJECTID !== 'number' || !a.payload || !String(a.payload).includes('"gens"')) continue;
-    oids.push(a.OBJECTID);
+    if (!a || typeof a.objectid !== 'number' || !a.payload || !String(a.payload).includes('"gens"')) continue;
+    oids.push(a.objectid);
   }
   return oids.length ? subRowsFor(oids) : new Map();
 }
@@ -1277,7 +1277,7 @@ async function rowsFor(as: readonly (RowAttrs | undefined)[]): Promise<Map<numbe
    ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбарууд (`loadActiveSubmission` ·
    `loadSubmissionByOid`) ч 2026-10-09-нд (аудит №6) дуудагчгүй тул хасагдсан — зөвхөн `read*` үлдэнэ. */
 
-const OUT_FIELDS = ['OBJECTID', 'dkey', 'at', 'payload'];
+const OUT_FIELDS = ['objectid', 'dkey', 'at', 'payload'];
 
 /**
  * Уншихад бэлэн хүснэгтийн URL — `SubRead`-ийн ёсоор.
@@ -1327,7 +1327,7 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
       where: `dkey IN (${keys.map(sqlStr).join(', ')})`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     const feats = res.features.map((f) => f.attributes as RowAttrs | undefined);
     /* Тэр ӨДРИЙН мөр байвал ТЭР нь ялна — хуучин мөр байсан ч. */
@@ -1385,7 +1385,7 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
       where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     const out: StagedSubmission[] = [];
     /* ⚠️ 2026-10-26: `gens`-тэй толгойн мөрийг НЭГ дор (уншиж чадаагүй бол тэр толгой алгасагдана — харагдацын зам) */
@@ -1430,7 +1430,7 @@ export async function findNonce(pkgKey: string, nonce: string, since: number): P
       where: `pkg = ${sqlStr(pkgKey)} AND at >= ${Math.floor(since)} AND (dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} OR dkey LIKE ${sqlStr(`${DONE_PREFIX}%`)})`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     let hit: StagedSubmission | null = null;
     for (const f of res.features) {
@@ -1474,7 +1474,7 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
     if (!u.url) return { ok: true, sub: null };
     const fl = await layer(u.url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${oid}`,
+      where: `objectid = ${oid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
@@ -1726,11 +1726,11 @@ async function saveSubmissionInner(
      */
     const found = await fl.queryFeatures({
       where: `dkey IN (${[dkey, legacyK].map(sqlStr).join(', ')})`,
-      outFields: ['OBJECTID', 'dkey', 'at', 'payload'],
+      outFields: ['objectid', 'dkey', 'at', 'payload'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
-    const all = found.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
+    const all = found.features.filter((f) => typeof f.attributes?.objectid === 'number');
     const feats = all.filter((f) => {
       const k = String(f.attributes.dkey ?? '');
       if (k === dkey) return true;
@@ -1739,7 +1739,7 @@ async function saveSubmissionInner(
       const p = parseHead(String(f.attributes.payload ?? ''))?.p;
       return !!p && p.fillMs === payload.fillMs;
     });
-    const oids = feats.map((f) => f.attributes.OBJECTID as number);
+    const oids = feats.map((f) => f.attributes.objectid as number);
     const target = oids.length ? oids[oids.length - 1] : null;
     const dupes = oids.slice(0, -1);
     /* ⚠️ СУУРИЙН ТУЛГАЛТ — дээрх `expect`-ийн тайлбар. Зөрсөн бол ЮУ Ч
@@ -1886,7 +1886,7 @@ async function saveSubmissionInner(
     const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at: payload.at, payload: raw2 };
     const edit = {
       ...(tgt != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: tgt, ...attrs } }] }
+        ? { updateFeatures: [{ attributes: { objectid: tgt, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
@@ -1951,15 +1951,15 @@ async function saveSubmissionInner(
     try {
       const back = await fl.queryFeatures({
         where: `dkey = ${sqlStr(dkey)}`,
-        outFields: ['OBJECTID', 'usr', 'at'],
+        outFields: ['objectid', 'usr', 'at'],
         returnGeometry: false,
-        orderByFields: ['OBJECTID ASC'],
+        orderByFields: ['objectid ASC'],
       });
-      const rowsB = back.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
-      const mineB = rowsB.find((f) => f.attributes.OBJECTID === oid);
+      const rowsB = back.features.filter((f) => typeof f.attributes?.objectid === 'number');
+      const mineB = rowsB.find((f) => f.attributes.objectid === oid);
       const lost = tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.');
       /* ⚠️ 2026-10-26: мөрийн горимд толгойг ЭХЛЭЭД нэмсэн (`created`) ч «шинэ мөр» — ижил уралдааны дүрэм; ялагдвал мөрийг ч устгана */
-      if (mineB && (target == null || created) && (rowsB[0].attributes.OBJECTID as number) < oid) {
+      if (mineB && (target == null || created) && (rowsB[0].attributes.objectid as number) < oid) {
         const del = await fl.applyEdits({ deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0]);
         const dr = del.deleteFeatureResults ?? [];
         if (rowsOn) void subDropAll(oid).catch(() => undefined);
@@ -2012,7 +2012,7 @@ export async function closeSubmission(
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${oid}`,
+      where: `objectid = ${oid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
@@ -2048,7 +2048,7 @@ export async function closeSubmission(
     const edit = {
       updateFeatures: [{
         /* ⚠️ 2026-10-26: payload-ын ХЭЛБЭР хэвээр (`headRaw` — `gens`-тэй бол давхар/мета, эс бөгөөс хуучин) */
-        attributes: { OBJECTID: oid, dkey: doneKey(pkgKey, oid), payload: headRaw(next, head.gens, head.meta) },
+        attributes: { objectid: oid, dkey: doneKey(pkgKey, oid), payload: headRaw(next, head.gens, head.meta) },
       }],
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
@@ -2094,7 +2094,7 @@ export async function markArchiving(
     const url = await tableUrl(false);
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
-    const res = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
     const a = res.features[0]?.attributes as RowAttrs | undefined;
     if (!a) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
     const dkey = String(a.dkey ?? '');
@@ -2144,11 +2144,11 @@ export async function markArchiving(
        бичилтийн ДАРАА өөр бичилт орсон) `changed` — дуудагч архивлахгүй. ArcGIS-д CAS байхгүй тул
        унших → бичих хоорондох мс-ийн цонх хэвээр (`closeSubmission`-ийн ⚠️). */
     const r = await fl.applyEdits({
-      updateFeatures: [{ attributes: { OBJECTID: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) } }],
+      updateFeatures: [{ attributes: { objectid: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
     const err = updOk(r);
     if (err) return { ok: false, error: err };
-    const res2 = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const res2 = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
     const a2 = res2.features[0]?.attributes as RowAttrs | undefined;
     const p2 = a2 ? parseHead(String(a2.payload ?? ''))?.p ?? null : null;
     const at2 = a2 && isFin(a2.at) ? Number(a2.at) : p2?.at;
@@ -2185,7 +2185,7 @@ export async function archivingBusy(
     where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} AND payload LIKE '%"archiving"%'`,
     outFields: OUT_FIELDS,
     returnGeometry: false,
-    orderByFields: ['OBJECTID ASC'],
+    orderByFields: ['objectid ASC'],
   });
   /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`markFresh`-ийн ⚠️) */
   const now = serverNow();
@@ -2224,7 +2224,7 @@ export async function markRegistered(sheetOid: number): Promise<{ ok: true } | {
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${sheetOid}`,
+      where: `objectid = ${sheetOid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
@@ -2238,7 +2238,7 @@ export async function markRegistered(sheetOid: number): Promise<{ ok: true } | {
     const next: SubmissionPayload = { ...payload };
     delete next.regPending;
     const r = await fl.applyEdits({
-      updateFeatures: [{ attributes: { OBJECTID: sheetOid, payload: headRaw(next, head.gens, head.meta) } }],
+      updateFeatures: [{ attributes: { objectid: sheetOid, payload: headRaw(next, head.gens, head.meta) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
     const err = updOk(r);
     return err ? { ok: false, error: err } : { ok: true };
@@ -2264,7 +2264,7 @@ export async function listRegPending(): Promise<StagedSubmission[]> {
       where: `dkey LIKE 'done|%' AND payload LIKE '%"regPending":true%'`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const out: StagedSubmission[] = [];
     const rmap = await rowsFor(res.features.map((f) => f.attributes as RowAttrs | undefined));
@@ -2289,7 +2289,7 @@ async function headAt(oid: number): Promise<{ fl: Awaited<ReturnType<typeof laye
   const url = await tableUrl(false);
   if (!url) return null;
   const fl = await layer(url);
-  const res = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+  const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
   const a = res.features[0]?.attributes as RowAttrs | undefined;
   return a ? { fl, a } : null;
 }
@@ -2351,7 +2351,7 @@ export async function migrateSubmissionRow(oid: number): Promise<{ ok: true; mig
     /* ⚠️ `at`-ийн CAS (уншсанаас хойш дахин илгээгдсэн бол бичихгүй — шинэ агуулгыг хуучин үеэр солихгүй) */
     const again = await headAt(oid);
     if (!again || String(again.a.payload ?? '') !== raw) return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
-    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { OBJECTID: oid, payload: next } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
+    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { objectid: oid, payload: next } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
     const err = updOk(r);
     if (err) return { ok: false, error: err };
     await setHeaderCols(oid, { mur_turul: 'tolgoi', mur_key: 'h', noorog_turul: 'ilgeelt', huvilbar: ROW_VERSION, huuchin_at: p.at }).catch(() => undefined);
@@ -2385,7 +2385,7 @@ export async function stripSubmissionPayload(oid: number): Promise<{ ok: true } 
     if (head.p.archiving?.prev && head.p.archiving.prevGen == null) return { ok: false, error: tr('Илгээлт №{0} архивлагдаж буй — дараа хасна', oid) };
     const p = await assemble(oid, head);
     if (!sameContent(p, head.p)) return { ok: false, error: tr('Илгээлт №{0}-ийн мөр payload-аас зөрсөн — хасаагүй', oid) };
-    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { OBJECTID: oid, payload: headRaw(p, head.gens, true) } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
+    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { objectid: oid, payload: headRaw(p, head.gens, true) } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
     const err = updOk(r);
     return err ? { ok: false, error: err } : { ok: true };
   } catch (e) {

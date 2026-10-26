@@ -377,7 +377,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const vals = zoneVals(publicZoneIds);
       parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
       if (LOCATION_EXCLUDE_OIDS.size) {
-        parts.push(`OBJECTID NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
+        parts.push(`objectid NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
       }
     }
 
@@ -840,20 +840,20 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [tCtx, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
-    const st = String(a.Barilga_ty ?? '').trim();
-    const purpose = String(a['Зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
+    const st = String(a.barilga_ty ?? '').trim();
+    const purpose = String(a['зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
     /* ⚠️ 2026-10-09 (аудит №6): өнгийг `BUILDING_STATUS_COLORS`-оос угсарна — урьд энд
        `rgb(...)` ДАВХАР бичигдэж, зураг/legend-тэй зөрөх эрсдэлтэй байв. */
     const colors: Record<string, string> = Object.fromEntries(
       Object.entries(BUILDING_STATUS_COLORS).map(([k, c]) => [k, `rgb(${c.join(',')})`]),
     );
-    const pop = Number(a.Total_population ?? 0);
+    const pop = Number(a.total_population ?? 0);
     const isRes = /орон сууц|house/i.test(purpose);
     const dt = (k: string, v: string | number | null) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
     /* ⚠️ 2026-10-21 (аудит): талбайгүй барилгад «0 м²» бичигддэг байв — хоосон/0 бол мөр ОРОХГҮЙ (null ≠ 0) */
-    const areaM2 = Number(a['Барилгын_нийт_талбай_m2']);
+    const areaM2 = Number(a['барилгын_нийт_талбай_m2']);
     const area = Number.isFinite(areaM2) && areaM2 > 0 ? tr('{0} м²', nf(areaM2)) : null;
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), area), dt(tr('Давхар'), Number(a['Давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.Urhiin_too ?? 0) ? nf(Number(a.Urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.Parking ?? 0) ? nf(Number(a.Parking)) : null), dt(tr('Бүс'), esc(a.ZONE_ID ?? '—')));
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), area), dt(tr('Давхар'), Number(a['давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.urhiin_too ?? 0) ? nf(Number(a.urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.parking ?? 0) ? nf(Number(a.parking)) : null), dt(tr('Бүс'), esc(a.zone_id ?? '—')));
   }, []);
 
   /* ⚠️ Сонгосон бүс оноололоос гарсан (`scored` false — «Бүсийн ангилал»-аас

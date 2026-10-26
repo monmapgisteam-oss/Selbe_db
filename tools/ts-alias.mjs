@@ -94,6 +94,23 @@ if (IS_CHECK && process.env.SELBE_LIVE_PROBED === '1') {
   if (st.tokOff) liveTok = '';
   if (st.skip) liveSkip(st.reason);
 }
+/* ⚠️ 2026-10-26 (CI уналт f26c7f9): хөрвүүлэх хүснэгт хасагдсанаар нэгж тестийн хүсэлт урьдынх шиг устгагдсан AGOL руу
+   (хурдан 4xx) биш БОДИТ Enterprise руу явдаг болсон. Enterprise хүрэгдэхгүй (CI) эсвэл амьд шалгалт алгасагдсан үед
+   холболт хугацаа дуустал (≥180 с) өлгөөтэй үлдэж тест гацдаг байв. Тэр үед Enterprise хост руу явах хүсэлтийг ШУУД
+   «сүлжээ унасан» алдаагаар буцаана — урьдын хурдан уналттай ижил зан; амьд шалгалт хүрэгдэх үед нөлөөгүй. */
+if (IS_CHECK && process.env.SELBE_LIVE_SKIP === '1' && ENT) {
+  const entHost = (() => { try { return new URL(ENT).host; } catch { return ''; } })();
+  const prev = globalThis.fetch;
+  if (entHost && prev) {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url;
+      let host = '';
+      try { host = new URL(String(url)).host; } catch { /* харьцангуй хаяг — хөндөхгүй */ }
+      if (host === entHost) throw new TypeError('fetch failed (тест: Enterprise хүрэгдэхгүй — амьд шалгалт алгасагдсан)');
+      return prev(input, init);
+    };
+  }
+}
 if (IS_CHECK && liveTok) {
   const orig = globalThis.fetch;
   globalThis.fetch = async (input, init) => {

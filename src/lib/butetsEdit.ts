@@ -139,7 +139,7 @@ export type LayerMeta = {
  * хамгаалалт САНААТАЙ: энд хасах нь маягтад ХАРАГДАХГҮЙ болгож,
  * тэнд хасах нь дурын дуудагчийн хүсэлт унахаас сэргийлнэ.
  */
-const SERVER_FIELD = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor|se_anno)/i;
+const SERVER_FIELD = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor|se_anno|created_user|created_date|last_edited_user|last_edited_date)/i;
 
 /** ArcGIS-ийн талбарын төрөл → маягтын төрөл. Тохирохгүйг `null` (алгасна). */
 function kindOf(esriType: string): FieldKind | null {
