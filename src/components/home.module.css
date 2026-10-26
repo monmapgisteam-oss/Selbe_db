@@ -340,6 +340,18 @@
   box-shadow: var(--shadow);
   animation: dropIn 0.16s ease-out both;
 }
+/* ⚠️ 2026-10-26 (хэрэглэгч: «hover үед доор гарах цэс рүү cursor очиход алга болж байна»): товч ба цэсний
+   хоорондох 10px зайд хулгана `.menuRow`-ээс ГАРСАН гэж тооцогдож (`onPointerLeave`) цэс хаагддаг байв.
+   Харагдахгүй «гүүр» — цэсний дээд ирмэгээс товч хүртэлх зайг (10px + хүрээ) дүүргэнэ; цэсний хүүхэд тул
+   хулгана түүн дээр байхад pointerleave гарахгүй. */
+.dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
+}
 @keyframes dropIn {
   from { opacity: 0; transform: translate(-50%, -4px); }
   to { opacity: 1; transform: translate(-50%, 0); }
