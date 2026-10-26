@@ -795,7 +795,13 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
 
   /* (5) «Эрхийн төрөл» — seen-гүй хадгалсан загварт «ТУХ» шинэ */
   fake.seed([{ username: '__type__:injener', views: JSON.stringify({ on: ['view:gdash'], home: 'gdash' }) }]);
-  await P.initRemote(false, true); await idle();
+  /* ⚠️ 2026-10-26 (CI уналт 80450cc): өмнөх алхмын НИСЛЭГТ БАЙГАА синк (seed-ээс өмнө эхэлсэн) `initRemote`-ийн
+     хүчээр дуудлагыг хуучин агшингаар дуусгаж болдог — удаан CI машинд л илэрдэг уралдаан. Шинэ мөр танигдтал
+     дахин синклэнэ (хязгаартай); жинхэнэ алдааг нуухгүй — доорх `eq` хэвээр шалгана. */
+  for (let i = 0; i < 5; i++) {
+    await P.initRemote(false, true); await idle();
+    if (RT.unseenViews('injener').length > 0) break;
+  }
   eq(RT.unseenViews('injener'), ['tuh'], `${tag}: хадгалсан загвар ТУХ-ыг мэдэхгүй`);
   m = mount(React.createElement(ErhTypes), new Set(['ErhTypes', 'Group']));
   const badge = btn(m, /шинэ хуудас — загварт тохируулаагүй/);
