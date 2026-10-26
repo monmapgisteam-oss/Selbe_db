@@ -30,7 +30,7 @@ import {
 import { dropWorkCache, loadWorkData, saveWorkLinks, sheetsOfPkgKey } from '@/lib/workDepsRemote';
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
-import { friendlyError, userError } from '@/components/ui';
+import { friendlyError, userError, Loading } from '@/components/ui';
 /* ⚠️ 2026-10-23 (UX аудит X1/P7/P8): аппын дотоод асуулт · «↶ Буцаах» · харагдацаас гарахад асуух */
 import { askConfirm, toastUndo } from '@/lib/confirm';
 import { setNavDirty } from '@/lib/navGuard';
@@ -199,7 +199,7 @@ export function BagtsHamaaral() {
     setQA('');
   }, [g, sel, guard]);
 
-  if (dataQ.state === 'loading') return <div className={s.wrap}><p className={s.loading}>{tr('Ачаалж байна…')}</p></div>;
+  if (dataQ.state === 'loading') return <div className={s.wrap}><Loading /></div>;
   if (dataQ.state === 'error') {
     return (
       <div className={s.wrap}>

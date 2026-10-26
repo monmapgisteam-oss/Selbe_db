@@ -653,6 +653,33 @@ export function Tabs({
   return plain ? list : <div className={s.tabsBar}>{list}</div>;
 }
 
+/**
+ * ГАРААР БИЧСЭН `role="tablist"`-ийн сумны удирдлага — ГАРААР ИДЭВХЖҮҮЛЭХ (manual activation, 2026-10-26, UX U8).
+ * ←/→ (`vertical` бол ↑/↓) · Home · End нь ЗӨВХӨН фокусыг шилжүүлнэ; сонголт нь Enter/Space (товчны ердийн click).
+ *
+ * ⚠️ `Tabs`-аас САНААТАЙ ӨӨР (тэр нь сумаар шууд сонгоно): эдгээр табыг солих нь өгөгдөл ачаалах (Finance
+ * `switchTab` — асинхрон, хадгалаагүй засварын асуулттай) эсвэл симуляц асаах тул сум дарах бүрд ажиллуулахгүй.
+ * ⚠️ Roving tabindex-ийг дуудагч өгнө (`rovingTab`): идэвхтэй нь 0, бусад −1; идэвхтэй БАЙХГҮЙ үед (suit
+ * самбаруудын `muted`) эхнийх нь 0 — эс бөгөөс Tab-аар огт орох аргагүй болно.
+ */
+export function tabFocusNav(e: React.KeyboardEvent<HTMLElement>, vertical = false) {
+  const keys = vertical ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+  const tabs = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)')];
+  const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (i < 0 || !tabs.length) return;
+  let next = -1;
+  if (e.key === keys[0]) next = (i - 1 + tabs.length) % tabs.length;
+  else if (e.key === keys[1]) next = (i + 1) % tabs.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = tabs.length - 1;
+  if (next < 0) return;
+  e.preventDefault();
+  tabs[next].focus({ preventScroll: true });
+}
+
+/** `tabFocusNav`-ийн roving tabindex: идэвхтэй таб 0; аль нь ч идэвхгүй бол ЭХНИЙХ нь 0 */
+export const rovingTab = (on: boolean, index: number, anyOn: boolean): 0 | -1 => (on || (!anyOn && index === 0) ? 0 : -1);
+
 /* ── Үзүүлэлт ── */
 
 export function Stats({ cols = 2, children }: { cols?: 1 | 2 | 3 | 4; children: ReactNode }) {

@@ -208,8 +208,20 @@ export async function settle(extra = () => false) {
   /* ⚠️ 2026-10-01: давталтын тоогоор биш ХУГАЦААГААР хязгаарлана (≤10 с) — GitHub runner дээр
      2000 удаагийн 0мс хүлээлт бичилт дуусахаас ӨМНӨ дуусаж, тест л CI-д унадаг байв. */
   const until = Date.now() + 10_000;
-  for (let i = 0; idle < 6 && (i < 2000 || Date.now() < until); i += 1) {
-    await new Promise((r) => setTimeout(r, fake.latency ? 2 : 0));
+  /* ⚠️ 2026-10-26 (аудит T6): `latency === 0` үед сул тойрог `setImmediate` — Windows дээр `setTimeout(0)` ~15 мс
+     (цагийн нарийвчлал) тул settle бүр ≥90 мс, `aclE2E.check` ~500 settle-ээр ~49 с идэж байв. `setImmediate` тойрог
+     бүр microtask дарааллыг бүрэн шавхаж event loop-ийн бүтэн эргэлт (timers фаз ч) хийнэ — promise гинжээр явдаг
+     бичилт/уншилтыг өмнөхтэй адил хүлээнэ. Апп өөрөө `setTimeout(…, 0)` тавьсан бол тэр нь ~1–15 мс-ийн дараа л
+     боловсорно — тиймээс 6 сул тойргийн ДАРАА НЭГ `setTimeout(0)` хүлээж ДАХИН шалгана; тэр зуур ажил гарвал
+     тоолуур тэглэгдэж үргэлжилнэ (утга нь өмнөхтэй ижил: «0 мс-ийн таймер ч дуусав»). Хоцролттой (`latency`) горим хэвээр. */
+  const tick = () => new Promise((r) => (fake.latency ? setTimeout(r, 2) : setImmediate(r)));
+  for (let i = 0; i < 2000 || Date.now() < until; i += 1) {
+    await tick();
     idle = fake.inflight === 0 && !extra() ? idle + 1 : 0;
+    if (idle < 6) continue;
+    if (fake.latency) break;
+    await new Promise((r) => setTimeout(r, 0));
+    if (fake.inflight === 0 && !extra()) break;
+    idle = 0;
   }
 }

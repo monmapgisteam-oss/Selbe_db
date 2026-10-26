@@ -282,9 +282,15 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
     assert.ok(scopedList.includes(`[${pfx}, `), `fetchAll: ${pfx} нийтлэг (grants уншдаг) задлалаар явахгүй байна`);
   }
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
+  /* ⚠️ 2026-10-26 (A6): таван хуулбар НЭГ туслахаар (`scopedUpsert(kind)`) — бичилт ЯГ нэг газар, таван систем
+     бүгд түүгээр явна (хуулбар биш тул зөрөх боломжгүй; уншилтын `scoped`-той ижил загвар). */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
-  assert.equal(grantsWrites, 5,
-    `upsert: grants бичилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsWrites}`);
+  assert.equal(grantsWrites, 1, `upsert: grants бичилт НЭГ туслахад (scopedUpsert) байх ёстой, олдсон: ${grantsWrites}`);
+  assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ roles, bagts, grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
+  for (const k of ['huvaari', 'obyem', 'chanar', 'ajil', 'butets']) {
+    assert.ok(src.includes(`return scopedUpsert('${k}', user, roles, bagts, grants);`), `${k}Upsert: scopedUpsert-ээр явахгүй байна`);
+    assert.ok(src.includes(`return scopedRemove('${k}', user);`), `${k}Remove: scopedRemove-ээр явахгүй байна`);
+  }
   /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
      салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
   for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow', 'AjilRow']) {

@@ -146,7 +146,7 @@ export function ErhCellEditor({
         <span className={s.aclMarkTag} title={tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу')}>{tr('порталд алга')}</span>
       )}
       {known.has(u.toLowerCase()) && roleForUser(u) === 'super' && (
-        <span className={s.aclMarkTag} title={tr('админ (super) — одоо бүх багцад шийдвэр гаргана (багцын хязгаар үйлчлэхгүй, өөрийгөө батлах дүрэм үйлчилнэ); энэ томилгоо админ эрхийг хасахад үлдэнэ')}>{tr('админ')}</span>
+        <span className={s.aclMarkTag} title={tr('админ (super) — одоо бүх багцад, дараалсан шатуудад ч шийдвэр гаргана (багцын хязгаар, өөрийгөө батлах дүрэм үйлчлэхгүй); энэ томилгоо админ эрхийг хасахад үлдэнэ')}>{tr('админ')}</span>
       )}
       <button
         type="button"

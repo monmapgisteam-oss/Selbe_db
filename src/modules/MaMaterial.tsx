@@ -15,7 +15,7 @@ import { askConfirm } from '@/lib/confirm';
 import { useAsync } from '@/lib/useAsync';
 import { fixCyr, num } from '@/lib/format';
 import { useAuth } from '@/components/AuthGate';
-import { friendlyError, userError } from '@/components/ui';
+import { friendlyError, userError, Loading } from '@/components/ui';
 import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { setNavDirty } from '@/lib/navGuard';
 import { loadNoots, nootsSummary, TOLOV, type SyncResult } from '@/lib/materialNoots';
@@ -65,7 +65,7 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
         </span>
       </div>
       {sync.state === 'error' && <p className={s.errNote} role="alert">{tr('Нөөцийн автомат бүртгэл амжилтгүй: {0}', sync.error)}</p>}
-      {q.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+      {q.state === 'loading' ? <Loading />
         : q.state === 'error' ? (
           <p className={s.failNote} role="alert">
             {friendlyError(q.error)}
@@ -207,7 +207,7 @@ export function AjilMatTab({ tick }: { tick: number }) {
       {nq.state === 'error' && <p className={s.errNote} role="alert">{tr('Материалын нөөц ачаалагдсангүй: {0}', friendlyError(nq.error))}</p>}
       {msg && <p className={msg.kind === 'err' ? s.errNote : s.note} role={msg.kind === 'err' ? 'alert' : undefined}>{msg.text}</p>}
 
-      {sheet.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+      {sheet.state === 'loading' ? <Loading />
         : sheet.state === 'error' ? (
           <p className={s.failNote} role="alert">
             {friendlyError(sheet.error)}

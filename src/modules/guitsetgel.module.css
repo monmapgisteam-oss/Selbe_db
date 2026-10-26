@@ -38,14 +38,14 @@
 }
 .search {
   flex: 1; min-width: 190px; max-width: 340px;
-  height: 32px; box-sizing: border-box;
+  height: var(--ctl-h-form); box-sizing: border-box;
   padding: 0 10px;
   border: 1px solid var(--line-strong); border-radius: 7px;
   background: var(--bg); color: var(--ink); font-size: 12.5px;
 }
 .search:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .select {
-  height: 32px; box-sizing: border-box;
+  height: var(--ctl-h-form); box-sizing: border-box;
   padding: 0 9px;
   border: 1px solid var(--line-strong); border-radius: 7px;
   background: var(--bg); color: var(--ink-2); font-size: 12.5px;
@@ -160,7 +160,7 @@
 .bad { background: var(--bad); color: var(--bg); }
 
 .field {
-  width: 100%; padding: 7px 9px; min-height: 32px; box-sizing: border-box;
+  width: 100%; padding: 7px 9px; min-height: var(--ctl-h-form); box-sizing: border-box;
   border: 1px solid var(--line-strong); border-radius: 7px;
   background: var(--bg); color: var(--ink);
   font-size: 12.5px; resize: vertical;
@@ -613,7 +613,7 @@
 .aclInput {
   flex: 1;
   min-width: 0;
-  height: 32px;
+  height: var(--ctl-h-form);
   box-sizing: border-box;
   padding: 0 9px;
   border: 1px solid var(--line-strong);
@@ -624,7 +624,7 @@
 }
 .aclInput:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .aclBtn {
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r);

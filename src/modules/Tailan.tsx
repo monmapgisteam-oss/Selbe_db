@@ -60,6 +60,7 @@ import {
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
 import { ReportContents, ReportHero } from './ReportContents';
+import { Segmented } from '@/components/Switch';
 import r from './report.module.css';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
@@ -289,16 +290,11 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     <div ref={hostRef} className={`${r.tailan} ${side.hostClass}`} style={side.style}>
       <SplitGrip {...side.right} />
       <div className={r.content}>
-        {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр */}
+        {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр.
+            ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): хоёулаа нийтлэг `Segmented` капсул — ижил хэлбэр хэвээр */}
         <div className={r.filters}>
-          <div className={r.seg} role="group" aria-label={tr('Тайлангийн горим')}>
-            <button type="button" aria-pressed={mode === 'exec'} className={r.segBtn} onClick={() => setMode('exec')}>
-              {tr('Удирдлагын тайлан')}
-            </button>
-            <button type="button" aria-pressed={mode === 'full'} className={r.segBtn} onClick={() => setMode('full')}>
-              {tr('Дэлгэрэнгүй тайлан')}
-            </button>
-          </div>
+          <Segmented value={mode} onChange={setMode} label={tr('Тайлангийн горим')}
+            options={[{ value: 'exec', label: tr('Удирдлагын тайлан') }, { value: 'full', label: tr('Дэлгэрэнгүй тайлан') }]} />
         </div>
         {/* ⚠️ 2026-10-06 (аудит): горим солиход `ExecReport` unmount болж AI дүгнэлт (минут
             шаардсан) алга болдог байв. Одоо НЭГ УДАА нээгдсэн горим mount хэвээр, идэвхгүй нь

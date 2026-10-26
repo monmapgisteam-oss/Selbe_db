@@ -48,7 +48,8 @@ const envRead = loadPublicEnv(process.env);
    гаралтад ч учир нь шууд харагдана. */
 if (!envRead && !HAD_HJ) {
   process.stderr.write('⚠️ .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env)\n');
-} else if (envRead && !process.env.NEXT_PUBLIC_ENT_DATA) {
+} else if (envRead && (!process.env.NEXT_PUBLIC_ENT_DATA || (!process.env.NEXT_PUBLIC_AUTH_APP_ID && process.env.NEXT_PUBLIC_AUTH_OFF !== '1'))) {
+  /* ⚠️ 2026-10-26 (аудит G5): `.env.example`-д ENT_DATA урьдчилан бөглөгдсөн — AUTH_APP_ID хоосон ч ижил унал */
   /* ⚠️ 2026-10-11 (аудит №7): `.env` байгаа ч утгууд хоосон (загварыг хуулаад бөглөөгүй) — ижил унал, өөр шалтгаан */
   process.stderr.write('⚠️ .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
 }

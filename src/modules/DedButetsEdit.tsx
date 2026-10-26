@@ -67,7 +67,7 @@ export type UndoInfo =
   /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
   | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] };
 import d from './dedButets.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 /**
  * ГЕОМЕТРЭЭС ГАРАХ СИСТЕМИЙН ХЭМЖЭЭ — толгойн тодорхойлолтод.
@@ -538,7 +538,7 @@ export function DedButetsEdit({
         </div>
 
         {load ? (
-          <p className={d.modalMsg}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : !meta || !p || (!isNew && !before) ? (
           <p className={d.modalMsg}>{fail || tr('Объект олдсонгүй.')}</p>
         ) : (

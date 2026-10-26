@@ -4,7 +4,10 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { AUTH, BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services';
+/* ⚠️ 2026-10-26 (гүйцэтгэл P9): `@/lib/services` barrel БИШ — шаардлагатай дэд модулиудаас шууд (page chunk-д
+   barrel-ийн бүх давхарга/үзэгдэл/бүлэг зэрэгцэн орохгүй). Root нь barrel-ийг тэр дор нь татдаг тул хэмнэлт бага. */
+import { AUTH } from '@/lib/services/env';
+import { BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services/roles';
 import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
 import { subscribeCaps } from '@/lib/caps';
 import type { SysState } from '@/lib/permsRemote';

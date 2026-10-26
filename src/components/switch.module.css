@@ -127,3 +127,14 @@
 .segOpt:hover { color: var(--ink); }
 .segOpt:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
 .segOn, .segOn:hover { color: var(--hue-ink); background: var(--hue); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+/* ⚠️ 2026-10-26: `wrap` — олон/урт сонголт мөр шилжинэ (ТУХ-ын бүлэг · журмын төрөл). Сонголт бүрийн өндөр нь
+   капсулын нэг мөрийнхтэй ИЖИЛ (`--ctl-h` − хүрээ 2 − дотор зай 6); булан нь олон мөрөнд хэт дугуйрахгүй 15px. */
+.segWrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--ctl-h, 30px);
+  max-width: 100%;
+  border-radius: 15px;
+}
+.segWrap .segOpt { height: calc(var(--ctl-h, 30px) - 8px); }

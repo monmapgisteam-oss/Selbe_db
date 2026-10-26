@@ -59,7 +59,7 @@ import {
  *    царцсан Gantt хүрээнд зориулагдсан, жагсаалтад тохирохгүй.
  */
 import s from './guitsetgel.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт */
 import { askConfirm } from '@/lib/confirm';
 
@@ -640,7 +640,7 @@ export function HuvaariBatlah({
         )}
 
         {st.k === 'loading' ? (
-          <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+          <Loading />
         ) : st.k !== 'ready' ? null : (
           <>
             <div className={s.list}>
@@ -908,7 +908,7 @@ function Row({
           )}
 
           {detail?.k === 'loading' && (
-            <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+            <Loading />
           )}
           {detail?.k === 'fail' && (
             /* ⚠️ Задарсангүй нь АЛДАА (хоосон `spans`-аас ЯЛГААТАЙ, доор).

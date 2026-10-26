@@ -46,7 +46,7 @@ import {
 } from '@/lib/butetsEdit';
 import { FieldInput, type UndoInfo } from './DedButetsEdit';
 import d from './dedButets.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
 
@@ -333,7 +333,7 @@ export function DedButetsBatch({
     }
   };
 
-  if (load && !meta) return <p className={d.modalMsg}>{tr('Ачаалж байна…')}</p>;
+  if (load && !meta) return <Loading />;
   if (!meta) return <p className={d.modalMsg}>{fail || tr('Схем татагдсангүй.')}</p>;
 
   return (

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { ReactElement } from 'react';
+import { memo, type ReactElement } from 'react';
 import type { Dim } from '@/components/MapCanvas';
 import type { ViewKey } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
@@ -257,6 +257,10 @@ export function renderView(view: ViewKey, ctx: ViewCtx): ReactElement | null {
  *    тэмдэглэдэг. JSX проп нь үйл явдлын зам гэж тооцогдоно — урьдын
  *    `setView={setView}` хэлбэртэй ижил.
  */
-export function ViewSlot({ view, ctx }: { view: ViewKey; ctx: ViewCtx }) {
+/* ⚠️ 2026-10-26 (гүйцэтгэл P8): `memo` — `ctx` нь Portal-д `useMemo`-тэй (`slotCtx`) ч ЭНЭ нь memo-гүй байсан тул
+   Portal-ын рендер бүр (3 мин тутмын тэмдэг · сүлжээ · цонх нээх/хаах) бүтэн дэлгэцийн модулийг дээрээс доош дахин
+   зурдаг байв. ⚠️ Сэдэв (theme) солиход дахин зурагдах ёстой (JS-ээр `getComputedStyle` уншдаг модуль — Layout ·
+   habeaPanes · useRows) — тиймээс Portal `slotCtx`-ийн deps-д `theme`-ийг оруулсан. Хэл солих нь remount (key). */
+export const ViewSlot = memo(function ViewSlot({ view, ctx }: { view: ViewKey; ctx: ViewCtx }) {
   return renderView(view, ctx);
-}
+});

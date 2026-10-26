@@ -143,14 +143,28 @@ export const mirCheckLabel = (i: number): string => MIR_CHECKS[i]?.() ?? String(
 
 export type MirPhoto = { rowOid: number; attId: number; name: string; note: string };
 
-type ArcErr = { error?: { code?: number; message?: string } };
+type ArcErr = { error?: { code?: number; message?: string; details?: string[] } };
+/* ⚠️ 2026-10-26 (A5): `ma.arc` · `ficMakt.post` · `entDocs.post`-той ИЖИЛ загвар — урьд нь 60 с, хугацаа/сүлжээний
+   алдааг барьдаггүй (хөтчийн түүхий «Failed to fetch» / AbortError), JSON биш хариуд `r.json()` унаж, `details`-ийг
+   хаядаг байв. 498/499 (токен хүчингүй/шаардлагатай) — `entStamp` илгээхийн өмнө шинэчилсэн ч дунд нь дуусвал
+   ойлгомжтой «дахин нэвтэрнэ үү» мессеж. */
+const TIMEOUT = 120_000;
 async function postJson<T>(url: string, body: URLSearchParams): Promise<T> {
   const s = entSession(); if (s) body.set('token', s.token);
   await entStamp(body);
-  const r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(60_000) });
+  let r: Response;
+  try { r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) }); } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
+    throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));
+  }
   if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
-  const j = (await r.json()) as T & ArcErr;
-  if (j?.error) throw new Error(j.error.message || tr('Enterprise алдаа'));
+  let j: T & ArcErr;
+  try { j = await r.json(); } catch { throw new Error(tr('Enterprise JSON биш хариу буцаав.')); }
+  if (j?.error) {
+    if (j.error.code === 498 || j.error.code === 499) throw new Error(tr('Enterprise-д нэвтрээгүй эсвэл сешн дууссан — дахин нэвтэрнэ үү.'));
+    const det = j.error.details?.filter(Boolean).join(' · ');
+    throw new Error(`${j.error.message || tr('Enterprise алдаа')}${det ? ` — ${det}` : ''}`);
+  }
   return j;
 }
 
@@ -175,7 +189,7 @@ export async function mirPhotoBlob(p: MirPhoto): Promise<Blob> {
   const body = new URLSearchParams();
   const s = entSession(); if (s) body.set('token', s.token);
   await entStamp(body);
-  const r = await fetch(`${MIR_PHOTOS_URL}/${p.rowOid}/attachments/${p.attId}`, { method: 'POST', body, signal: AbortSignal.timeout(60_000) });
+  const r = await fetch(`${MIR_PHOTOS_URL}/${p.rowOid}/attachments/${p.attId}`, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) });
   if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
   if ((r.headers.get('content-type') ?? '').includes('json')) throw new Error(tr('Зураг татагдсангүй.'));
   return r.blob();

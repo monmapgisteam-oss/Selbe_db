@@ -22,6 +22,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { NAV_GROUPS, VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, roleForUser, type ViewKey } from '@/lib/services';
 import { resolveFlowStage } from '@/lib/guitsetgelAcl';
+import { buildLabel } from '@/lib/buildInfo';
 import { Icon } from './Icon';
 import s from './help.module.css';
 
@@ -272,6 +273,8 @@ export function HelpPanel({
           <p className={s.foot}>
             {tr('Эрх хүрэхгүй хэсэг хэрэгтэй бол админд хандана уу. Цэсний улаан тоо нь таныг хүлээж буй зүйлийн тоо.')}
           </p>
+          {/* ⚠️ 2026-10-26 (аудит G3): build-ийн commit (`lib/buildInfo.ts`) — алдааны мэдээллийг commit-той холбоход */}
+          <p className={s.foot}>{tr('Хувилбар: {0}', buildLabel())}</p>
         </div>
       </div>
     </div>

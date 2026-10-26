@@ -33,7 +33,7 @@ import { loadPkgDeps } from '@/lib/workDepsRemote';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import { loadFinData } from '@/modules/Finance';
-import { friendlyError } from '@/components/ui';
+import { friendlyError, Loading } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
 import { Overview } from './tuh/Overview';
@@ -188,7 +188,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       <SplitGrip {...side.right} />
       <div ref={contentRef} className={s.content}>
         {finQ.state === 'loading' ? (
-          <p className={s.loading}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : finQ.state === 'error' ? (
           <p className={s.failNote} role="alert">
             {tr('Санхүүгийн өгөгдөл татагдсангүй')}: {friendlyError(finQ.error)}

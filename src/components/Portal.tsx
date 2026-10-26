@@ -1084,7 +1084,10 @@ function PortalContent(
      харагдацын модуль Portal-ын рендер бүрд (тэмдэг, сүлжээ, өгөгдлийн цаг) дахин зурагддаг байв. */
   const slotCtx = useMemo(
     () => ({ dim, setDim, zone, setZone, navScope, setView: ctxSetView, planJump, setPlanJump, clearPlanJump }),
-    [dim, zone, navScope, ctxSetView, planJump, clearPlanJump],
+    /* ⚠️ 2026-10-26 (P8): `theme` — объектод ОРООГҮЙ ч deps-д ЗОРИУД: `ViewSlot` memo болсон тул сэдэв солиход
+       модуль дахин зурагдах цорын ганц зам (JS-ээр өнгө уншдаг модулиуд — `viewRegistry.ViewSlot`-ын ⚠️). */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme зориуд (дээрх ⚠️)
+    [dim, zone, navScope, ctxSetView, planJump, clearPlanJump, theme],
   );
   // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;

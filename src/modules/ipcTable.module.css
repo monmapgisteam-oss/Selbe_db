@@ -29,7 +29,7 @@
 
 .sel, .btn {
   font: inherit; font-size: 12px; color: var(--ink-2);
-  height: 32px; box-sizing: border-box;
+  height: var(--ctl-h-form); box-sizing: border-box;
   border: 1px solid var(--line-strong);
   padding: 0 12px; cursor: pointer;
 }

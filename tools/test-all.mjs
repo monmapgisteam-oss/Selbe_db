@@ -7,6 +7,8 @@
  *   node tools/test-all.mjs --verbose  — давсан шалгуурын гаралтыг ч хэвлэнэ
  *   node tools/test-all.mjs --timeout 300 — нэг шалгуурын дээд хугацаа, сек
  *                                         (анхдагч 180; env TEST_TIMEOUT_S ч болно)
+ *   node tools/test-all.mjs --require-live — амьд шалгуур алгасагдах байвал (токен хүчингүй ·
+ *                                         Enterprise хүрэгдэхгүй) УНАНА (`npm run test:strict`)
  *
  * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ШАЛГУУР БҮР ХУГАЦААНЫ ХЯЗГААРТАЙ —
  *    гацсан нэг тест `npm test`-ийг (тэгэхээр deploy-г) үүрд түгжихгүй, «⏱ ГАЦСАН»
@@ -35,7 +37,7 @@
  * Гаралт: давсан файлын гаралтыг НУУНА (--verbose-гүй бол), унасан файлынхыг
  * төгсгөлд БҮТНЭЭР хэвлэнэ. Нэг ч унавал exit 1.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { runCheck, resolveTimeoutS } from './testRun.mjs';
 import { loadPublicEnv, adminToken, liveStatus, liveEnvOf } from './liveEnv.mjs';
@@ -68,7 +70,20 @@ let jobs = 4;
 const jIdx = argv.indexOf('-j');
 if (jIdx >= 0) jobs = Math.max(1, Number(argv[jIdx + 1]) || 4);
 const timeoutS = resolveTimeoutS(argv, process.env);
+/* ⚠️ 2026-10-26 (аудит T1): `--require-live` = `SELBE_LIVE_REQUIRED=1` (`ts-alias-hooks.mjs`) — алгасалт УНАЛТ болно.
+   Урьд энэ туг байсан ч ямар ч скрипт/workflow асаадаггүй тул токен хүчингүй (498) үед `npm test` ногоон давдаг байв.
+   ⚠️ GitHub-ийн deploy/test job-д ХЭЗЭЭ Ч БҮҮ асаа — runner Enterprise-д хүрдэггүй тул deploy бүр унана; зөвхөн
+   Enterprise хүрэгддэг орчинд (локал · merge-ийн өмнө) `npm run test:strict`. */
+const requireLive = argv.includes('--require-live') || process.env.SELBE_LIVE_REQUIRED === '1';
+if (requireLive) process.env.SELBE_LIVE_REQUIRED = '1';
 const filters = argv.filter((a, i) => !a.startsWith('-') && argv[i - 1] !== '-j' && argv[i - 1] !== '--timeout');
+
+/* ⚠️ 2026-10-26 (аудит T10): CI ба `engines` нь Node 22 — өөр мажор (жиш. локал 24) дээр давсан тест CI-д унаж болно.
+   Зөвхөн АНХААРУУЛГА (унагахгүй): `engine-strict` нь энэ машины `npm ci`-г бүхэлд нь хаадаг тул сонгоогүй. */
+const nodeMajor = Number(process.versions.node.split('.')[0]);
+if (nodeMajor !== 22) {
+  console.warn(`⚠️ test-all: Node ${process.versions.node} — CI ба package.json engines нь Node 22; энд давсан нь CI-д унаж болно (.nvmrc)\n`);
+}
 
 /* ── Файл олох ── */
 const norm = (p) => p.split(sep).join('/');
@@ -98,7 +113,8 @@ if (!files.length) {
 if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ENT_DATA) {
   console.warn('⚠️ test-all: .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env); эс бөгөөс NEXT_PUBLIC_* шаарддаг шалгуурууд унана\n');
 } else if (!process.env.NEXT_PUBLIC_ENT_DATA && existsSync('.env')
-  && !/^\s*NEXT_PUBLIC_ENT_DATA\s*=\s*\S/m.test(readFileSync('.env', 'utf8'))) {
+  /* ⚠️ 2026-10-26 (аудит G5): `.env.example`-д ENT_DATA урьдчилан бөглөгдсөн тул AUTH_APP_ID-г ч шалгана */
+  && !['NEXT_PUBLIC_ENT_DATA', 'NEXT_PUBLIC_AUTH_APP_ID'].every((k) => new RegExp(`^\\s*${k}\\s*=\\s*\\S`, 'm').test(readFileSync('.env', 'utf8')))) {
   /* ⚠️ 2026-10-11 (аудит №7): `.env.example`-ийг хуулсан ч УТГУУДЫГ бөглөөгүй (бүгд хоосон) — «.env алга»-тай
      ижил ~28 шалгуур унадаг атал дээрх анхааруулга чимээгүй байв. */
   console.error('⚠️ test-all: .env-ийн утгууд хоосон — бөглөнө үү (хоосон бол ~28 шалгуур унана)\n');
@@ -114,6 +130,12 @@ if (process.env.SELBE_LIVE_PROBED !== '1') {
   loadPublicEnv(pub);
   const ent = String(pub.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '');
   if (ent) liveEnv = liveEnvOf(await liveStatus({ ent, tok: adminToken(), warn: (m) => console.warn(m) }));
+}
+/* ⚠️ 2026-10-26 (аудит T1): заавал горимд тандалт «алгас» гэж шийдсэн бол ЭНД НЭГ мөрөөр зогсоно — шалгуур бүр тусдаа
+   ⛔ шидэхийг хүлээхгүй (шалтгаан нь нэг: токен/сүлжээ). Токен ХЭЗЭЭ Ч хэвлэгдэхгүй — зөвхөн шалтгаан. */
+if (requireLive && liveEnv.SELBE_LIVE_SKIP === '1') {
+  console.error(`⛔ test-all --require-live: амьд шалгуур алгасагдах байсан — ${liveEnv.SELBE_LIVE_SKIP_REASON || '?'}. ARCGIS_ADMIN_TOKEN-оо шинэчилнэ үү (.env.development.local).`);
+  process.exit(1);
 }
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 
@@ -176,10 +198,21 @@ if (skippedLive.length) {
   }
 }
 const total = results.reduce((s, r) => s + r.ms, 0);
-console.log(
-  `\ntest-all: ${results.length - failed.length}/${results.length} давлаа` +
+const summary =
+  `test-all: ${results.length - failed.length}/${results.length} давлаа` +
   ` · нийт ${(total / 1000).toFixed(0)}с CPU` +
   (skippedLive.length ? ` · амьд алгассан ${skippedLive.length}` : '') +
-  (failed.length ? ` · УНАСАН: ${failed.map((r) => r.file).join(', ')}` : ''),
-);
+  (failed.length ? ` · УНАСАН: ${failed.map((r) => r.file).join(', ')}` : '');
+console.log(`\n${summary}`);
+/* ⚠️ 2026-10-26 (аудит T7): GitHub Actions-ийн ажлын ХУРААНГУЙД (`GITHUB_STEP_SUMMARY`) — `::warning::` нь annotation-ы
+   жагсаалтад л харагддаг тул «ногоон» ажлын нүүрэнд амьд шалгуур ажиллаагүй нь анзаарагддаггүй байв. Токен/нууц
+   агуулахгүй: дүн, файлын нэр, алгасалтын шалтгаан л. Бичиж чадахгүй бол чимээгүй (дүн нь логт аль хэдийн). */
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const md = [`### ${failed.length ? '❌' : '✅'} ${summary}`];
+  if (skippedLive.length) {
+    md.push('', `> ⚠️ **Амьд шалгуур ажиллаагүй (${skippedLive.length})** — ${SKIP_RE.exec(skippedLive[0].out)?.[1] ?? '?'}`, '');
+    for (const r of skippedLive) md.push(`- ⏭ \`${r.file}\``);
+  }
+  try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${md.join('\n')}\n`); } catch { /* хураангуй заавал биш */ }
+}
 process.exit(failed.length ? 1 : 0);

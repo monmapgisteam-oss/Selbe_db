@@ -9,9 +9,10 @@
   "scripts": {
     "dev": "next dev -p 8123",
     "build": "next build",
-    "lint": "eslint src tools agent-proxy",
+    "lint": "eslint src tools agent-proxy --max-warnings 11",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.mjs",
+    "test:strict": "node tools/test-all.mjs --require-live",
     "test:obyem": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/obyem.check.mjs",
     "test:agent": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/agent.check.mjs",
     "test:drift": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/drift.check.mjs",

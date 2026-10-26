@@ -1188,14 +1188,16 @@ export function docGroupsWrite(list: readonly DocGroupRow[]): Promise<boolean> {
 }
 
 /**
- * Хуваарийн хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * Багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр (`scopedAcl`-ийн таван систем).
+ * ⚠️ 2026-10-26 (A6): урьд нь таван ижил `*Upsert` ба таван `*Remove` функц (зөвхөн угтвар өөр) байв —
+ *    одоо НЭГ туслах `SCOPED_PREFIX[kind]`-ээр; экспортын нэрс доор нимгэн бүрхүүлээр хэвээр (дуудагч өөрчлөгдөхгүй).
  * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- *    тээвэрлэнэ (`huvaariAcl` танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
+ *    тээвэрлэнэ (`huvaariAcl` · `obyemAcl` … танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
  */
-export function huvaariUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
+export function scopedUpsert(
+  kind: ScopedKind, user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
-  const key = HUVAARI_PREFIX + user.trim().toLowerCase();
+  const key = SCOPED_PREFIX[kind] + user.trim().toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
@@ -1212,100 +1214,25 @@ export function huvaariUpsert(
   });
 }
 
-/**
- * Инженерийн төлөвлөсөн обьёмын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- *    тээвэрлэнэ (`obyemAcl` танигдахгүйг нь хаяна).
- */
-export function obyemUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = OBYEM_PREFIX + user.trim().toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    /*
-     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
-     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
-     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
-     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
-     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
-     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
-     */
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
+/** Багцын хуваарилалтыг арилгах (`scopedUpsert`-ийн эсрэг) */
+export function scopedRemove(kind: ScopedKind, user: string): Promise<boolean> {
+  return removeByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase());
 }
 
-/**
- * Чанарын баримтын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `huvaariUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function chanarUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = CHANAR_PREFIX + user.trim().toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Чанарын баримтын хуваарилалтыг арилгах */
-export function chanarRemove(user: string): Promise<boolean> {
-  return removeByKey(CHANAR_PREFIX + user.trim().toLowerCase());
-}
-
-/**
- * Нэмэлт ажлын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function ajilUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = AJIL_PREFIX + user.trim().toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Нэмэлт ажлын хуваарилалтыг арилгах */
-export function ajilRemove(user: string): Promise<boolean> {
-  return removeByKey(AJIL_PREFIX + user.trim().toLowerCase());
-}
-
-/**
- * Дэд бүтцийн засварын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function butetsUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = BUTETS_PREFIX + user.trim().toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Дэд бүтцийн засварын хуваарилалтыг арилгах */
-export function butetsRemove(user: string): Promise<boolean> {
-  return removeByKey(BUTETS_PREFIX + user.trim().toLowerCase());
-}
-
-/** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */
-export function obyemRemove(user: string): Promise<boolean> {
-  return removeByKey(OBYEM_PREFIX + user.trim().toLowerCase());
-}
-
-/** Хуваарийн хуваарилалтыг арилгах */
-export function huvaariRemove(user: string): Promise<boolean> {
-  return removeByKey(HUVAARI_PREFIX + user.trim().toLowerCase());
-}
+/* ⚠️ 2026-10-26 (A6): нимгэн бүрхүүлүүд `function` зарлалаар (`const` биш) — `*Acl.ts` модулиуд `remove: xRemove`-ыг
+   модулийн түвшинд уншдаг тул импортын тойрогт `const`-ийн TDZ алдаа гарахгүй (hoisting). */
+/** Хуваарийн хуваарилалт — бичих / арилгах */
+export function huvaariUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('huvaari', user, roles, bagts, grants); }
+export function huvaariRemove(user: string): Promise<boolean> { return scopedRemove('huvaari', user); }
+/** Инженерийн төлөвлөсөн обьёмын хуваарилалт — бичих / арилгах */
+export function obyemUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('obyem', user, roles, bagts, grants); }
+export function obyemRemove(user: string): Promise<boolean> { return scopedRemove('obyem', user); }
+/** Чанарын баримтын хуваарилалт — бичих / арилгах */
+export function chanarUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('chanar', user, roles, bagts, grants); }
+export function chanarRemove(user: string): Promise<boolean> { return scopedRemove('chanar', user); }
+/** Нэмэлт ажлын хуваарилалт — бичих / арилгах */
+export function ajilUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('ajil', user, roles, bagts, grants); }
+export function ajilRemove(user: string): Promise<boolean> { return scopedRemove('ajil', user); }
+/** Дэд бүтцийн засварын хуваарилалт — бичих / арилгах */
+export function butetsUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('butets', user, roles, bagts, grants); }
+export function butetsRemove(user: string): Promise<boolean> { return scopedRemove('butets', user); }

@@ -186,29 +186,6 @@
 .cmpTbl td small { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
 .val > small { font-size: 11px; color: var(--ink-3); }
 
-/* 03 — «Төрлөөр / Бүсээр» солигч (2026-10-13) — .view-switch */
-.modes {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: transparent;
-}
-.mode {
-  height: 26px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--ink-3);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.mode:hover { color: var(--ink); }
-.mode:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
-.modeOn, .modeOn:hover { background: var(--surface-2); color: var(--ink); box-shadow: 0 1px 5px #00000012; }
+/* 03 — «Төрлөөр / Бүсээр» солигч (2026-10-13).
+   ⚠️ 2026-10-26: нийтлэг `Segmented` (components/Switch.tsx); энд зөвхөн бүтэн өргөн, тэнцүү баганууд */
+.modes > [role='radiogroup'] { display: grid; width: 100%; grid-template-columns: 1fr 1fr; }

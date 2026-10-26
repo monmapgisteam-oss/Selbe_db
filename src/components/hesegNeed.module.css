@@ -56,4 +56,5 @@
 .legend span { display: flex; align-items: center; gap: 5px; }
 /* ⚠️ Зураг дээрх шугамын өнгө (#0891b2) — газрын зургийн утга, токен болгохгүй. */
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 1.3px solid #0891b2; }
+.legend .trunk { border-top-style: solid; }
 .legend .branch { border-top-style: dashed; }

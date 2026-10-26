@@ -52,7 +52,7 @@ import { cached } from '@/lib/live';
    (`huvaariBatlah.serverNow`-ийн ⚠️: хоёр машины цаг зөрвөл амьд түгжээг «дууссан» гэж дардаг байв);
    `sameClaimAt` — нэг батлагчийн ХОЁР цонхны түгжээг ялгах ±1 с тулгалт. `huvaariBatlah` энэ модулийг
    импортолдоггүй тул тойрог импорт үүсэхгүй. */
-import { REASON_MAX, sameClaimAt, serverNow } from './huvaariBatlah';
+import { REASON_MAX, sameClaimAt, serverNow, syncServerClock } from './huvaariBatlah';
 
 /** Илгээлтийн төлөв */
 export const OBYEM_STATUS = {
@@ -400,6 +400,10 @@ async function query(where: string, outFields: string, strict = false): Promise<
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
+  /* ⚠️ 2026-10-26 (A3): түгжээний TTL-ийн шүүлт серверийн цагаар — урьд нь энд синк БАЙГААГҮЙ тул `serverNow` нь
+     хуваарь/ажлын query өмнө нь явсан үед л залруулагддаг, эс бөгөөс хөтчийн цаг байв (`huvaariBatlah.query`-тай
+     ижил; ихэвчлэн кэшээс шууд буцна, алдааг залгина). */
+  await syncServerClock(url);
   const out: Attrs[] = [];
   /* ⚠️ 2026-10-06 аудит: `off += 1000` · `fs.length < 1000` нь серверийн `maxRecordCount` 1000-аас
      бага үед эхний хуудсаар зогсож, үлдсэн мөрийг ЧИМЭЭГҮЙ хаядаг байв — `ajilBatlah`-ийн загвар:

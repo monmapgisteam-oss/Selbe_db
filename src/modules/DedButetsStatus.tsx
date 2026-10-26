@@ -29,6 +29,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/query';
 import { loadLayerMeta, type FieldDef, type LayerMeta } from '@/lib/butetsEdit';
 import { Section } from '@/components/ui';
+import { Segmented } from '@/components/Switch';
 import d from './dedButets.module.css';
 
 export type StatusPick = 'off' | 'all' | 'yes' | 'no';
@@ -382,13 +383,11 @@ export function StatusBar({
             өнгө) · «Гүйцэтгэлээр» (гүйцэтгэлийн төлөвийн өнгө). Тайлбар нь ЗӨВХӨН «Гүйцэтгэлээр»-т —
             шүүлтүүрийн доорх тайлбарыг хэрэглэгч хасуулсан тул тэнд биш. */}
         {onPerf && (
-          <div className={d.stView} role="radiogroup" aria-label={tr('Газрын зургийн харагдац')}>
-            {([[false, tr('Инженер')], [true, tr('Гүйцэтгэл')]] as const).map(([v, l]) => (
-              <button key={String(v)} type="button" role="radio" aria-checked={perf === v}
-                className={`${d.stViewBtn} ${perf === v ? d.stViewOn : ''}`} onClick={() => onPerf(v)}>
-                {l}
-              </button>
-            ))}
+          /* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул (бүтэн өргөн — `.stView`) */
+          <div className={d.stView}>
+            <Segmented value={perf ? 'perf' : 'eng'} onChange={(v) => onPerf(v === 'perf')}
+              label={tr('Газрын зургийн харагдац')}
+              options={[{ value: 'eng', label: tr('Инженер') }, { value: 'perf', label: tr('Гүйцэтгэл') }]} />
           </div>
         )}
         {perf && statOptions.length > 0 && (

@@ -7,9 +7,9 @@
  *    `residual.at ≥ unclosed.at`, түгжээний TTL) нь ӨӨР хөтчийн цагаар явдаг байв. Хоёр компьютерын цаг
  *    хэдэн минут зөрвөл (2026-10-12-нд энэ машин AGOL-оос ~100 с түрүүлж байв) амьд тэмдэг «хуучирсан»,
  *    хуучирсан нь «амьд» гэж уншигдана. Нэг эх сурвалж — серверийн цаг.
- * ⚠️ `huvaariBatlah.ts`-д ижил логиктой `serverNow`/`syncServerClock` (2026-10-12-ны өглөө) БАЙГАА — тэр файлд
- *    өөр агент зэрэг ажиллаж байгаа тул ХӨНДӨӨГҮЙ; дараа нь энэ модульд нэгтгэнэ (`huvaariBatlah` өөрийн
- *    хувилбарыг устгаж эндээс импортлоно). Томьёо (`clockOffsetOf`) ба дүрэм нь ТЭНДЭЭС хуулсан:
+ * ⚠️ `huvaariBatlah.ts`-ийн `serverNow`/`syncServerClock` (2026-10-12-ны өглөө) 2026-10-26-нд (A3) ЭНЭ модульд
+ *    нэгтгэгдсэн — тэр нь өөрийн төлөвгүй, эндээс дахин экспортолж өөрийн хүснэгтээр синк хийнэ. Томьёо
+ *    (`clockOffsetOf`) ба дүрэм нь ТЭНДЭЭС хуулсан:
  *      · Editor Tracking (`EditDate`) — хүснэгтийг код өөрөө үүсгэдэг, засварын бүртгэл асаагүй → хэрэглэхгүй;
  *      · Хариуны `Date` толгой — AGOL `Access-Control-Expose-Headers`-т оруулдаггүй → хөтчийн JS уншиж чадахгүй;
  *      · ҮЛДСЭН нь `outStatistics` max(`CURRENT_TIMESTAMP`) — hosted давхаргад ажилладаг (2026-10-12-нд амьд шалгав).
@@ -130,10 +130,13 @@ export async function measureServerTime(
 /**
  * Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина.
  * @param url хэмжих hosted хүснэгтийн REST хаяг; өгөөгүй бол хяналтын хүснэгт (`hyanalt.HYANALT.url`).
+ * @param oidField `url` хүснэгтийн OID талбар (`huvaariBatlah.F.oid`) — анхдагч `objectid` (⚠️ 2026-10-26: Enterprise жижиг үсэг).
  * ⚠️ `arcgisPost` ба `HYANALT` динамик импорт — энэ модуль нь `submission.ts` · `hyanaltSubmit.ts` ·
  *    `hyanaltStore.ts` гурваас уншигддаг тул модулийн тойрог үүсгэхгүй, Node-д ч ачаалагдана.
+ * ⚠️ 2026-10-26 (A3): `huvaariBatlah` (→ `ajilBatlah` · `obyemBatlah`) ч ЭНЭ функцээр, ӨӨРИЙН хүснэгтээр синк хийнэ —
+ *    зөрүү (`clockOff`) НЭГ, бүгд нэг Enterprise серверийнх тул аль хүснэгтээр хэмжсэн нь хамаагүй.
  */
-export async function syncServerClock(url?: string): Promise<void> {
+export async function syncServerClock(url?: string, oidField = 'objectid'): Promise<void> {
   const t = Date.now();
   if (clockAt && t - clockAt < CLOCK_TTL) return;
   if (clockFlight) return clockFlight;
@@ -143,7 +146,7 @@ export async function syncServerClock(url?: string): Promise<void> {
     try {
       const base = url ?? (await import('./hyanalt')).HYANALT.url;
       if (!base) return;
-      const m = await measureServerTime(base, 'objectid');
+      const m = await measureServerTime(base, oidField);
       if (!m) return;
       const off = clockOffsetOf(m.srv, m.t0, m.t1);
       /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг хүлээн авахгүй (дээрх ⚠️) */

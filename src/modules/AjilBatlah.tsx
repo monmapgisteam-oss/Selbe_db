@@ -60,7 +60,7 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
  *    хөндөнө. Өөрийн хуулбар үүсгэвэл дөрөв салж, нэг нь чимээгүй хоцорно.
  */
 import s from './guitsetgel.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 import { setNavDirty } from '@/lib/navGuard';
 import { REASON_MAX, serverNow } from '@/lib/huvaariBatlah';
 /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (хөтөч «дахин асуухгүй» гэвэл чимээгүй `false` буцаадаг) */
@@ -663,7 +663,7 @@ export function AjilBatlah() {
         )}
 
         {st.k === 'loading' ? (
-          <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+          <Loading />
         ) : st.k !== 'ready' ? null : (
           <>
             <div className={s.list}>
@@ -903,7 +903,7 @@ function Row({
           )}
 
           {detail?.k === 'loading' && (
-            <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+            <Loading />
           )}
           {detail?.k === 'fail' && (
             /* ⚠️ Задарсангүй нь АЛДАА. Батлах хаагдана — юу батлахаа харж

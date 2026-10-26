@@ -362,7 +362,10 @@ function authz(
      дүрэм (`selfApprovalDeny`: нэг илгээлтийг нэг хүн хоёр шатанд / дараалсан шатанд, илгээгч өөрөө) super-т Ч
      үйлчилнэ — нэг данс долоон шатыг ганцаараа батлах нь хяналтыг утгагүй болгоно. Нэвтрэлтгүй дев (`!AUTH.appId`,
      хэн болох нь тодорхойгүй) л бүрэн чөлөөтэй хэвээр. */
-  if (by) return AUTH.appId && u ? selfApprovalDeny(stage, u, hist, same, submitters) : null;
+  /* ⚠️ 2026-10-26 (хэрэглэгчийн ШИЙДВЭР, дээрх 2026-10-23-ийг БУЦААВ: «super дараалан батлах чадвартай байх ёстой»): super
+     (bypass) өөрийгөө батлах дүрмээс (`selfApprovalDeny`) ЧӨЛӨӨТЭЙ — нэг илгээлтийн бүх шатыг дараалан батална. Энгийн
+     хэрэглэгчид дүрэм бүрэн хэвээр (доор). */
+  if (by) return null;
   if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
   if (isViewOnly(u)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — шийдвэр гаргах боломжгүй.');
   /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын шат биш, томилгоо (санамсаргүй) байсан ч шийдвэр гаргахгүй (`resolveFlowStage`-ийн ⚠️) */
@@ -462,7 +465,11 @@ async function submittersFor(
   /* ⚠️ 2026-10-19 (аудит): БҮХ шатанд уншина (`selfApprovalDeny`-ийн ⚠️) — урьд нь зөвхөн инженер шатанд. Super-ийнх ч
      (2026-10-23, доорх ⚠️). Нэвтрэлт унтраалттай дев (`!AUTH.appId`) — хэн болох нь тодорхойгүй тул алгасна. */
   if (typeof window === 'undefined' || !AUTH.appId || !meOf(me)) return { ok: true };
-  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр): super-ийн илгээгчийг ч УНШИНА — өөрийгөө батлах дүрэм super-т ч үйлчилнэ
+  /* ⚠️ 2026-10-26: super (bypass) — өөрийгөө батлах дүрэмгүй тул илгээгчийг уншихгүй (`authz`-ийн ⚠️).
+     ⚠️ ЗӨВХӨН хатуу super (`authz`-ийн `by`-тай ижил нөхцөл, 2026-10-19-ний аудит) — нүцгэн `_bypass` бол өөр замаар
+     үнэн болсон ЭНГИЙН хэрэглэгч илгээгчийн шалгалтгүй үлдэж өөрийн илгээлтээ батлах байв. */
+  if (_bypass && roleForUser(meOf(me)) === 'super') return { ok: true };
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр, 2026-10-26-нд super-т буцаагдсан): super-ийн илгээгчийг ч УНШИНА — өөрийгөө батлах дүрэм super-т ч үйлчилнэ
      (`authz`-ийн ⚠️). Урьд нь (2026-10-19) super ба `_bypass` чөлөөтэй байв; нэвтрэлтгүй дев дээр алгасагдсан. */
   const so = Number(row[F.sheetOid]);
   if (!Number.isInteger(so) || so <= 0) return { ok: true };
@@ -576,18 +583,6 @@ export function returnInfoOf(r: Row | null | undefined): ReturnInfo | null {
     at: r[F.engineerReturned] || null,
     stage: 'engineer',
   };
-}
-/**
- * Илгээлтийн OBJECTID (`Эх_мөрийн_дугаар`) + багцаар СҮҮЛИЙН тойргийг олж буцаалтын мэдээллийг өгнө —
- * `useFlow.otherDaysReturned`-ийн `{ day, soid }`-д. Сүүлийн тойрог буцаагдаагүй бол `null`.
- */
-export function returnInfoFor(rows: readonly Row[], bagts: string, sheetOid: number): ReturnInfo | null {
-  let last: Row | null = null;
-  for (const r of rows) {
-    if (r[F.bagts] !== bagts || Number(r[F.sheetOid]) !== sheetOid) continue;
-    if (!last || r.__oid > last.__oid) last = r;
-  }
-  return returnInfoOf(last);
 }
 
 /* ── Захиалагчид мэдэгдэх модулийн түвшний store ── */
@@ -965,6 +960,8 @@ export async function selfBlocks(
   const out = new Map<string, string>();
   const me = (username ?? '').trim().toLowerCase();
   if (!me || stage === 'company') return out;
+  /* ⚠️ 2026-10-26: super — өөрийгөө батлах тэмдэггүй (дараалан батална, `authz`-ийн ⚠️) */
+  if (roleForUser(me) === 'super') return out;
   const st = stage as ReviewStage;
   const pv = prevReview(st);
   const rest: Work[] = [];
@@ -1534,7 +1531,11 @@ async function archiveSubmission(
   }
 
   /* ⚠️ 2026-10-09 (R3): хянагчийн харсан агуулга мөн эсэх — `apply`-ийн тулгалттай ижил мессеж */
-  if (subAt != null && staged.at !== subAt)
+  /* ⚠️ 2026-10-26 (S3): `subAt` ЗААВАЛ — урьд нь `undefined` бол тулгалт алгасагдаж, хянагчийн ХАРААГҮЙ
+     нээлттэй илгээлт архивлагдах боломжтой байв. Энд хүрсэн = нээлттэй (`done|`/`archiveOid`-гүй) илгээлт
+     байгаа тул хувилбаргүй бол ТАТГАЛЗАНА (fail-closed). Хуучин замууд (илгээлтгүй мөр · `done|` · энэ
+     тойргийн үлдэгдэл) дээр аль хэдийн буцсан тул `subAt`-гүй ажилласаар. */
+  if (subAt == null || staged.at !== subAt)
     return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
 
   /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ
@@ -2404,6 +2405,8 @@ export async function apply(a: {
    *    ХАРААГҮЙ агуулга батлагдана. Өгвөл одоогийн илгээлтийн `at` зөрөх үед
    *    STALE-маягийн алдаагаар зогсоно; `undefined` = шалгахгүй (хуучин
    *    архивын зам — илгээлт байхгүй).
+   * ⚠️ 2026-10-26 (S3): ЗӨВШӨӨРӨХ үед `undefined` ч нээлттэй илгээлт байвал ТАТГАЛЗАНА (fail-closed) —
+   *    зөвхөн илгээлтгүй/архивласан мөрөнд «шалгахгүй» хэвээр.
    */
   subAt?: number;
   /** ArcGIS-д БИЧИГДЭХ дэлгэцийн нэр (өгөгдөл) */
@@ -2580,11 +2583,21 @@ export async function apply(a: {
     }
     /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ (дээрх `subAt`-ийн ⚠️) — нэг хямд
        уншилт; илгээлт олдохгүй/уншигдахгүй бол ХАДГАЛАХГҮЙ (fail-closed). */
-    if (a.subAt != null) {
+    /* ⚠️ 2026-10-26 (S3): ЗӨВШӨӨРӨХ замд `subAt` алга бол ч уншина — нээлттэй илгээлт байвал (хянагч
+       агуулгыг ачаалаагүй) ТАТГАЛЗАНА. Илгээлтгүй / архивласан (`done|` · `archiveOid`) хуучин мөр
+       `subAt`-гүй батлагдсаар; буцаалт нь хараагүй агуулгыг батлахгүй тул хөндөхгүй.
+       ⚠️ Node (тест, `tools/`) — хөтчийн сешн биш, нэвтрэлтгүй тул уншилт үргэлж унана → `subAt`-гүй үед
+       шалгахгүй (`companyDeny`-ийн загвар); `subAt` өгсөн бол Node-д ч урьдын адил тулгана. */
+    if (a.subAt != null || (!returning && typeof window !== 'undefined')) {
       const { readSubmissionByOid } = await import('./submission');
       const sr = await readSubmissionByOid(Number(cur[F.sheetOid]));
       if (!sr.ok) return { ok: false, error: sr.error };
-      if (!sr.sub || sr.sub.payload.at !== a.subAt) {
+      if (a.subAt == null) {
+        if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {
+          emit();
+          return { ok: false, error: tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй'), contentChanged: true };
+        }
+      } else if (!sr.sub || sr.sub.payload.at !== a.subAt) {
         emit();
         return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
       }
@@ -3093,11 +3106,18 @@ export async function recheck(
     if (deny) { emit(); return { ok: false, error: deny }; }
   }
   /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ — `apply`-тай ИЖИЛ (дээрх `subAt`) */
-  if (subAt != null) {
+  /* ⚠️ 2026-10-26 (S3): «ok» (дээш) үед `subAt` алга бол ч уншиж нээлттэй илгээлтийг ТАТГАЛЗАНА — `apply`-тай ижил
+     (Node-д `subAt`-гүй бол шалгахгүй — `apply`-ийн ⚠️) */
+  if (subAt != null || (verdict === 'ok' && typeof window !== 'undefined')) {
     const { readSubmissionByOid } = await import('./submission');
     const sr = await readSubmissionByOid(Number(prev[F.sheetOid]));
     if (!sr.ok) return { ok: false, error: sr.error };
-    if (!sr.sub || sr.sub.payload.at !== subAt) {
+    if (subAt == null) {
+      if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {
+        emit();
+        return { ok: false, error: tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй'), contentChanged: true };
+      }
+    } else if (!sr.sub || sr.sub.payload.at !== subAt) {
       emit();
       return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
     }

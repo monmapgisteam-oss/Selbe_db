@@ -2777,7 +2777,6 @@ const en: Record<string, string> = {
   "Open-Meteo алдаа": "Open-Meteo error",
   "Торны цэг дутуу ирлээ: {0}/{1}": "Incomplete grid returned: {0}/{1}",
   "Цагийн цуваа хоосон": "The hourly series is empty",
-  "Урсгал асаалттай": "Flow on",
   "Урсгал харуулах": "Show flow",
   "Салхины тор татаж байна…": "Fetching the wind grid…",
   "Салхины тор татагдсангүй.": "The wind grid could not be fetched.",
@@ -7111,7 +7110,7 @@ const en: Record<string, string> = {
   "админ эрхээр — засагдахгүй": "by admin rights — not editable",
   "Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ админ эрхээр нээлттэй; энд засагдахгүй (төрлийг өөр super админ солино).": "Admin (super) — all views and FS-DD documents are open by admin rights; not editable here (another super admin changes the type).",
   "Админ (super) — админ эрхээр нээлттэй": "Admin (super) — open by admin rights",
-  "Гүйцэтгэлийн бүх шатанд шийдвэр гаргах боломжтой (өөрийгөө батлах дүрэм үйлчилнэ).": "Can decide at every stage of the progress review (the self-approval rule applies).",
+  "Гүйцэтгэлийн бүх шатанд, дараалсан шатуудад ч өөрөө шийдвэр гаргах боломжтой.": "Can decide at every stage of the progress review, including consecutive stages on their own.",
   "Үлдэх эрхийг шалгаж чадсангүй — эрхийн хүснэгт уншигдаагүй.": "Could not check the remaining rights — the permissions table is not loaded.",
   "засах эрх: {0}": "edit rights: {0}",
   "гүйцэтгэлийн шат: {0}{1}": "review stage: {0}{1}",
@@ -7122,7 +7121,7 @@ const en: Record<string, string> = {
   "«{0}»-ийн Админ (super) эрхийг хасаж «{1}» төрөлтэй болгох уу? Бүх хуудас, админ портал ба шууд олгоогүй засах эрх хаагдана.": "Remove Admin (super) from «{0}» and set type «{1}»? All pages, the admin portal and edit rights not granted directly will close.",
   "Ерөнхий захирал гүйцэтгэлийг зөвхөн ХАРНА — шийдвэр гаргах боломжгүй.": "The Chief Executive can only VIEW progress — decisions are not possible.",
   "Ерөнхий захирал": "Chief Executive",
-  "админ (super) — одоо бүх багцад шийдвэр гаргана (багцын хязгаар үйлчлэхгүй, өөрийгөө батлах дүрэм үйлчилнэ); энэ томилгоо админ эрхийг хасахад үлдэнэ": "admin (super) — currently decides in all packages (package limits do not apply, the self-approval rule applies); this assignment stays when admin rights are removed",
+  "админ (super) — одоо бүх багцад, дараалсан шатуудад ч шийдвэр гаргана (багцын хязгаар, өөрийгөө батлах дүрэм үйлчлэхгүй); энэ томилгоо админ эрхийг хасахад үлдэнэ": "admin (super) — currently decides in all packages and at consecutive stages (package limits and the self-approval rule do not apply); this assignment stays when admin rights are removed",
   "хуваарилалтын мөр": "assignment row",
   "Устгагдсан «{0}» аккаунтын энэ хуудсанд үлдсэн {1}-ийг арилгах уу?": "Remove the remaining {1} of deleted account «{0}» on this page?",
   "«устгагдсан» — порталд байхгүй аккаунтын үлдсэн мөр (гацааны шалгуурт тоологдохгүй; тухайн эрхийн хуудсанд «Цэвэрлэх»). «админ» — super-ийн томилгоо: super байхад бүх багцад ажиллана, админ эрхийг хасахад үлдэнэ.": "«deleted» — leftover row of an account missing from the portal (not counted in blocking checks; «Clean up» on that rights page). «admin» — a super's assignment: while super it works in all packages, and it stays when admin rights are removed.",
@@ -7450,6 +7449,7 @@ const en: Record<string, string> = {
   "{0} нүдний обьём ₮-д ороогүй (нэгж өртөггүй / хуудсанд олдоогүй)": "Volume of {0} cells not counted in ₮ (no unit cost / not found in sheet)",
   "зарим эх уншигдсангүй": "some sources failed to load",
   "Төлөвлөгөөт муруй дутуу: {0}": "Planned curve incomplete: {0}",
+  "Хувилбар: {0}": "Version: {0}",
 };
 
 export default en;

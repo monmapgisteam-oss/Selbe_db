@@ -264,5 +264,20 @@ st.beforeAdd = () => {
   check(st.rows.filter((x) => x[F.ergelt] === 2).length === 2, '7: хоёр мөр хэвээр (устгал унасан)');
 }
 
+/* ── 8. `subAt` ЗААВАЛ (2026-10-26, S3) — хөтөчид `subAt`-гүй зөвшөөрөл нээлттэй илгээлтийг ТАТГАЛЗАНА (эх код;
+   Node-д нэвтрэлтгүй тул уншилт үргэлж унах тул энэ замыг хөтчөөр хязгаарласан — дээрх 1–7 `subAt`-гүй хуучин мөр) ── */
+{
+  const fs = await import('node:fs');
+  const L = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  const rc = L.slice(L.indexOf('export async function recheck('));
+  check(rc.includes("if (subAt != null || (verdict === 'ok' && typeof window !== 'undefined')) {"), '8: recheck «ok» subAt-гүй үед уншихгүй');
+  const ap = L.slice(L.indexOf('export async function apply('), L.indexOf('export async function recheck('));
+  check(ap.includes("if (a.subAt != null || (!returning && typeof window !== 'undefined')) {"), '8: apply зөвшөөрөл subAt-гүй үед уншихгүй');
+  for (const [nm, body] of [['apply', ap], ['recheck', rc]])
+    check(body.includes('if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {'), `8: ${nm} — нээлттэй илгээлтийг subAt-гүй татгалзахгүй`);
+  const ar = L.slice(L.indexOf('async function archiveSubmission('), L.indexOf('const seenKey = '));
+  check(ar.includes('if (subAt == null || staged.at !== subAt)'), '8: archiveSubmission — subAt-гүй нээлттэй илгээлтийг архивлана (fail-open)');
+}
+
 assert.deepEqual(st.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');
 console.log(`✅ hyanaltRecheck: ${n} шалгалт — бүгд давлаа`);

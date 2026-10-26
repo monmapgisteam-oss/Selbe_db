@@ -35,6 +35,7 @@ import { num, date, text, pct } from '@/lib/format';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
 import { LEVEL_MARK, LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
+import { Segmented } from '@/components/Switch';
 import h from './habea.module.css';
 
 /* ═════════════════ Төрөл ═════════════════ */
@@ -1745,25 +1746,10 @@ export const stepNote = (
   note: ReactNode,
 ) => (
   <span className={h.stepWrap}>
+    {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул */}
     {set && (
-    <span className={h.seg} role="group" aria-label={tr("Цувааны алхам")}>
-      <button
-        type="button"
-        className={`${h.segBtn} ${step === 'day' ? h.segOn : ''}`}
-        aria-pressed={step === 'day'}
-        onClick={() => set('day')}
-      >
-        {tr("Өдөр")}
-      </button>
-      <button
-        type="button"
-        className={`${h.segBtn} ${step === 'month' ? h.segOn : ''}`}
-        aria-pressed={step === 'month'}
-        onClick={() => set('month')}
-      >
-        {tr("Сар")}
-      </button>
-    </span>
+      <Segmented value={step} onChange={set} label={tr("Цувааны алхам")}
+        options={[{ value: 'day', label: tr("Өдөр") }, { value: 'month', label: tr("Сар") }]} />
     )}
     {note != null && <span className={h.stepNote}>{note}</span>}
   </span>

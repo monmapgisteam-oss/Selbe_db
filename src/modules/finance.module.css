@@ -487,6 +487,8 @@
   flex-wrap: wrap;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
+  /* ⚠️ 2026-10-26: `Toggle` нь хажуудах 32px талбаруудтай (`.finSearch` · `.finSel`) ижил өндөртэй */
+  --ctl-h: var(--ctl-h-form);
 }
 /* ⚠️ 2026-10-23: Environment .pe-field — 32px, 7px булан, --line-strong хүрээ, moss focus */
 .finSearch {
@@ -504,7 +506,7 @@
 }
 .finSearch:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .finSel {
-  height: 32px;
+  height: var(--ctl-h-form);
   box-sizing: border-box;
   padding: 0 8px;
   border: 1px solid var(--line-strong);
@@ -517,21 +519,7 @@
 .finSel:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 /* Сонголт хийгдсэн select — «аль шүүлт асаалттай вэ» нь нэг харцаар */
 .finSelOn { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 12%, var(--bg)); color: var(--data-ink); }
-/* Асаалт/унтраалттай товч (бүлэглэх · баганын шүүлт) */
-.finTgl {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.finTgl:hover { background: var(--surface-2); color: var(--ink); }
-.finTglOn,
-.finTglOn:hover { background: color-mix(in oklab, var(--data) 12%, transparent); border-color: color-mix(in oklab, var(--data) 45%, transparent); color: var(--data-ink); font-weight: 600; }
+/* Асаалт/унтраалттай товч (бүлэглэх · баганын шүүлт) — ⚠️ 2026-10-26: нийтлэг `Toggle` (components/Switch.tsx) */
 /* Тоолол — ҮРГЭЛЖ харагдана: шүүсэн эсэхээ мэдэхгүй үлдэх нь гол эрсдэл */
 .finCount { margin-left: auto; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .finClear { font-size: 11.5px; color: var(--data-ink); padding: 4px 2px; white-space: nowrap; }
@@ -1273,7 +1261,7 @@ div.bName:hover { background: var(--surface-2); }
 /*
  * «+ Мөр нэмэх» — ӨГӨГДӨЛ ҮҮСГЭДЭГ товч (шүүлтийн зурвасны баруун захад).
  *
- * ⚠️ `.finTgl`-ЭЭС САНААТАЙ ӨӨР: хажуудах товчнууд нь харагдац сэлгэдэг
+ * ⚠️ `Toggle`-ООС (хуучин `.finTgl`) САНААТАЙ ӨӨР: хажуудах товчнууд нь харагдац сэлгэдэг
  * саарал унтраалга, энэ нь мөр нэмдэг үйлдэл. Дүүргэсэн, бөөрөнхий, тод —
  * ижил төрхтэй байвал хүн санамсаргүй дарж хоосон мөр үүсгэнэ.
  */

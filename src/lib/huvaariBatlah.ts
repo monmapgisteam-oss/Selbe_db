@@ -42,6 +42,9 @@ import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
+/* ⚠️ 2026-10-26 (A3): серверийн цаг НЭГ эх сурвалжаас (`syncServerClock`-ийн ⚠️). `serverClock` нь цэвэр
+   (сүлжээний модулиудыг `import()`-оор) тул статик импорт тойрог үүсгэхгүй. */
+import { serverNow, clockOffsetOf, syncServerClock as syncClockAt } from './serverClock';
 
 /** Илгээлтийн төлөв */
 export const PLAN_STATUS = {
@@ -723,45 +726,23 @@ function errText(e: unknown): string {
  *    хуучин зан) хэвээр, 60 с-ийн дараа дахин оролдоно. 10 с-ээс урт хүсэлтийг хэмжилтэд авахгүй.
  * ⚠️ Хүснэгт ХООСОН бол max нь `null` — түгжээ ч байхгүй тул зөрүү хамааралгүй.
  */
-let clockOff = 0;
-let clockAt = 0;
-let clockTryAt = 0;
-let clockFlight: Promise<void> | null = null;
-const CLOCK_TTL = 10 * 60_000;
-const CLOCK_RETRY = 60_000;
-/** Серверийн одоогийн агшин (ms) — сүүлийн хэмжсэн зөрүүгээр (`syncServerClock`) */
-export function serverNow(): number {
-  return Date.now() + clockOff;
-}
-/** Зөрүүг бодох цэвэр томьёо — `srv` (серверийн агшин), `t0`/`t1` (хүсэлтийн өмнө/дараах хөтчийн цаг) */
-export function clockOffsetOf(srv: number, t0: number, t1: number): number {
-  return Math.round(srv - (t0 + t1) / 2);
-}
-/** Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина */
-export async function syncServerClock(): Promise<void> {
-  const t = Date.now();
-  if (clockAt && t - clockAt < CLOCK_TTL) return;
-  if (clockFlight) return clockFlight;
-  if (clockTryAt && t - clockTryAt < CLOCK_RETRY) return;
-  clockTryAt = t;
-  clockFlight = (async () => {
-    try {
-      const url = await tableUrl(false);
-      if (!url) return;
-      /* ⚠️ 2026-10-21: хэмжилт `serverClock.measureServerTime` (Enterprise-д outStatistics CURRENT_TIMESTAMP 500 → хоёртын хайлт) */
-      const { measureServerTime, clockOffsetOk, warnClockOff } = await import('./serverClock');
-      const m = await measureServerTime(url, F.oid);
-      if (!m) return;
-      const off = clockOffsetOf(m.srv, m.t0, m.t1);
-      /* ⚠️ 2026-10-21 (аудит №2): 15 мин-ээс их зөрүүг хүлээн авахгүй — `serverClock.MAX_CLOCK_OFF`-ийн ⚠️ */
-      if (!clockOffsetOk(off)) { warnClockOff(off); clockAt = m.t1; return; }
-      clockOff = off;
-      clockAt = m.t1;
-    } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {
-      clockFlight = null;
-    }
-  })();
-  return clockFlight;
+/* ⚠️ 2026-10-26 (A3): ӨӨРИЙН `clockOff` төлөвийг УСТГАВ — `serverClock`-ийн НЭГ зөрүүг хэрэглэнэ (тэр файлын
+   толгойн 2026-10-12-ны төлөвлөгөө). Урьд нь хоёр тусдаа зөрүү байсан тул зөвхөн нэг нь синк хийгдсэн агшинд
+   хуваарь/ажил/обьём ба хяналтын хүснэгт өөр цагаар бичиж болдог байв. Хэмжилт · 15 мин хязгаар · TTL бүгд
+   `serverClock`-оос; энд зөвхөн ЭНЭ модулийн хүснэгтийн хаяг (`tableUrl`) ба `F.oid`-ыг дамжуулна.
+   `serverNow`/`clockOffsetOf`-ыг дахин экспортолно — `ajilBatlah` · `obyemBatlah` эндээс импортолдог. */
+export { serverNow, clockOffsetOf };
+/**
+ * Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина.
+ * @param url хэмжих хүснэгт; өгөөгүй бол хуваарийн батлах хүснэгт (`tableUrl`). `obyemBatlah` өөрийнхөө хүснэгтийг өгнө.
+ */
+export async function syncServerClock(url?: string): Promise<void> {
+  /* ⚠️ `tableUrl` (порталын хайлт) шидэж болно — урьд нь синкийн try дотор байсан; «алдааг залгина» гэрээ
+     хэвээр (`ajilBatlah.query` url-гүй дууддаг, query-г хэзээ ч унагахгүй) */
+  let u: string | null | undefined = url;
+  if (!u) { try { u = await tableUrl(false); } catch { return; } }
+  if (!u) return;
+  return syncClockAt(u, F.oid);
 }
 
 /**
