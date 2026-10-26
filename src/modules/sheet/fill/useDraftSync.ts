@@ -7,9 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type { Pkg, Schema } from "../bagts.pkg";
 import { editPct, fmtInc, isPctEdit, parseInc, type SheetRow } from "../bagtsSheet";
 import {
-  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
+/* ⚠️ 2026-10-26: алсын ноорог ХАДГАЛАЛТЫН ДАВХАРГААР (`fillStore`) — 191-д эх хуудасны бүтцээр мөр (`rows`) эсвэл хуучин JSON
+   (`blob`, notebook-ийн баганагүй үед). Функцийн хэлбэр ЯГ хэвээр; хэмжээний хязгаар зөвхөн JSON-д (`remoteMax`). */
+import {
+  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, setFillFrame,
+} from "@/lib/fillStore";
 import { t as tr } from "@/lib/i18nCore";
 import { fixCyr } from "@/lib/format";
 /* ⚠️ 2026-10-23 (UX аудит X1 · X3): апп доторх асуулт · хэрэглэгчид ойлгомжтой алдаа */
@@ -449,7 +453,9 @@ export function useDraftSync(p: {
     for (const r of rows) if (r.oid >= 0 && r.oid < m) m = r.oid;
     minOidRef.current = Number.isFinite(m) ? m : null;
     if (Number.isFinite(m) && frameSeenRef.current?.[0] !== m) frameSeenRef.current = [m, Date.now()];
-  }, [rows]);
+    /* ⚠️ 2026-10-26: мөрийн хадгалалтад жааз (oid ↔ `des_dugaar` · № · нэр, блокийн нэр) — `rows`-д СУУСАН багцаар (`loadedPkgRef`) */
+    if (loadedPkgRef.current && rows.length) setFillFrame(loadedPkgRef.current, rows, sc?.bld ?? []);
+  }, [rows, sc, loadedPkgRef]);
   /**
    * ЛОКАЛ ХАДГАЛАЛТ УНАСАН (сан дүүрсэн/хаалттай) — 2026-10-04 аудит (#9). Урьд нь `saveDraftLS`
    * алдааг залгиж «ноорог хадгалагдав» гэж ХУДАЛ баталдаг байв.
@@ -2438,7 +2444,7 @@ export function useDraftSync(p: {
         const outDraft: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at != null ? at + 1 : 0) };
         const outBody = JSON.stringify(outDraft);
         /* ⚠️ 2026-10-06: солигдсон багцад ч чимээгүй биш — `staleWarn` */
-        if (outBody.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
+        if (outBody.length > remoteMax()) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
         /*
          * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
          * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно
@@ -2797,7 +2803,7 @@ export function useDraftSync(p: {
           { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
         const out: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at0 != null ? at0 + 1 : 0) };
         const body = JSON.stringify(out);
-        if (body.length > REMOTE_MAX) return { ok: false, why: tr('ноорог хэт том') };
+        if (body.length > remoteMax()) return { ok: false, why: tr('ноорог хэт том') };
         const r = await saveRemoteDraft(want, out.t, body, { expectAt: at0 });
         if (r.ok) return { ok: true };
         if (!('conflict' in r && r.conflict)) return { ok: false, why: r.error };

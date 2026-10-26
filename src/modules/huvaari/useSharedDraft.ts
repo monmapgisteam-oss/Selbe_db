@@ -7,12 +7,12 @@ import type { Schema } from '@/modules/sheet/bagts.pkg';
 import type { PlanRow } from '@/lib/plan';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import type { PlanSubmission } from '@/lib/huvaariBatlah';
-import {
-  readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
-} from '@/lib/draftRemote';
+import { REMOTE_MAX } from '@/lib/draftRemote';
+/* ⚠️ 2026-10-26: хадгалалт ДАВХАРГААР (`huvaariStore`) — 191-д эх хуудасны бүтцээр мөр (`n:plan:…`) эсвэл хуучин JSON; hook-ийн утга зүй хэвээр */
+import { blobStore, legacyPending, prepareStore, type HDStore, type HDStoreMode } from '@/lib/huvaariStore';
 import {
   applyClear, cellsToMaps, coversMark, dropCleared, hdClearMarkKey, hdKey, hdLocalKey, hlcNext, identityRemap, isEmpty as hdIsEmpty,
-  mapsToCells, maxStamp, merge as hdMerge, mergeMark, parse as hdParse, parseKey, parseMark, remapDraft as hdRemapDraft, sameVal,
+  mapsToCells, maxStamp, merge as hdMerge, mergeMark, parse as hdParse, parseKey, parseMark, remapDraft as hdRemapDraft, rowIdentity, sameVal,
   serialize as hdSerialize, serializeMark, sig as hdSig, users as hdUsersOf,
   type HDApply, type HDCell, type HDClearMark, type HDCtx, type HDDraft, type HDEntries, type HDEntry, type HDRowBase, type HDRowKey,
 } from '@/lib/huvaariDraft';
@@ -103,7 +103,7 @@ export function useSharedDraft({
    */
   const hdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hdFlushRef = useRef<() => Promise<void>>(async () => {});
-  const hdClearRef = useRef<(key: string, mark?: HDClearMark | null) => Promise<void>>(async () => {});
+  const hdClearRef = useRef<(key: string, mark?: HDClearMark | null, submitOid?: number | null) => Promise<void>>(async () => {});
   /** Хүлээгдэж буй алсын цэвэрлэлт (`hdRunClear`) — товлолт/сэргээлтээс (2026-10-04) */
   const hdRunClearRef = useRef<(key: string) => Promise<boolean>>(async () => true);
   /** Хуудас нуух/хаах/unmount-ын синхрон бичилт (`flushNow`) — 2026-10-04 */
@@ -192,7 +192,8 @@ export function useSharedDraft({
    *    (товлолт хүлээгдэж эсвэл алсын уншилт удааширч байна). Урьд нь энэ завсарт толгой
    *    өмнөх «хадгалагдсан HH:MM»-ийг харуулсаар байв — уншилт гацвал худал.
    */
-  type HdStatus = { st: 'idle' | 'pending' | 'saving' | 'saved' | 'err' | 'big'; at?: number; err?: string };
+  /* ⚠️ 2026-10-26: `local` — хадгалалтын горим алсад бичихгүй (`rows-wait`: 191-ийн баганыг шалгаж чадсангүй) — засвар зөвхөн энэ компьютерт */
+  type HdStatus = { st: 'idle' | 'pending' | 'saving' | 'saved' | 'err' | 'big' | 'local'; at?: number; err?: string };
   const [hdSt, setHdSt] = useState<HdStatus>({ st: 'idle' });
   /** Ноорогт нүд бичсэн БУСАД хүмүүс — толгойн «ноорогт: …» */
   const [hdUsers, setHdUsers] = useState<string[]>([]);
@@ -212,15 +213,22 @@ export function useSharedDraft({
   const hdCtx = useMemo<HDCtx>(() => {
     const m = new Map<number, HDRowBase>();
     const byOid = new Map(rows.map((r) => [r.oid, r]));
+    /* ⚠️ 2026-10-26: бүтцийн танихуун (эцэг бүлгийн зам · дээд бүлэг · дэс дугаар) — 191-ийн мөрийн ноорог (`etseg_zam` · `mur_dav`) ба `identityRemap` */
+    const ids = rowIdentity(rows);
     for (const r of base) {
       const sr = byOid.get(r.oid);
       if (!sr) continue;
       /* ⚠️ 2026-10-09: танихуун (`des` · № · нэр) — шинэ жаазад зөөхөд (`identityRemap`) */
-      m.set(r.oid, { spans: r.spans, ham: sr.ham, aStart: sr.aStart, aEnd: sr.aEnd, hun: sr.hun, mashin: sr.mashin, des: sr.des, no: sr.no, work: sr.work });
+      const id = ids.get(r.oid);
+      m.set(r.oid, {
+        spans: r.spans, ham: sr.ham, aStart: sr.aStart, aEnd: sr.aEnd, hun: sr.hun, mashin: sr.mashin, des: sr.des, no: sr.no, work: sr.work,
+        ...(id ? { path: id.path, top: id.top, occ: id.occ, occN: id.occN } : {}),
+      });
     }
     const known = obState === 'ok';
     return {
       n,
+      bld: sc?.bld ?? [],
       rows: m,
       months: (k) => {
         if (!known) return undefined;
@@ -233,8 +241,21 @@ export function useSharedDraft({
         return obRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1)) ?? new Map<string, MonthRes>();
       },
     };
-  }, [base, rows, n, obPlan, obRes, obState]);
+  }, [base, rows, n, obPlan, obRes, obState, sc]);
   const hdCtxRef = useLatest(hdCtx);
+  /**
+   * ⚠️ 2026-10-26: ХАДГАЛАЛТ (`huvaariStore`) — сэргээлт бүрд тухайн түлхүүрт бэлдэгдэнэ (`prepareStore`: хүснэгтийн
+   *    төлөв · залхуу шилжүүлэлт). `hdStoreKey` нь бэлдсэн түлхүүр — өөр бол мөчлөг/бичилт хүлээнэ. `hdStoreNote` — super-т
+   *    (`blob`: «notebook ажиллуулна уу») эсвэл засагч бүрд (`rows-wait`: шалгаж чадсангүй) харуулах тайлбар.
+   */
+  const hdStore = useRef<HDStore>(blobStore);
+  const hdStoreKey = useRef('');
+  /** ⚠️ 2026-10-26 (шүүлт): түр/зөвхөн-унших горимыг дахин шалгасан агшин (мөчлөгийн ⚠️) */
+  const hdRecheckAt = useRef(0);
+  /** ⚠️ 2026-10-26: хуучин табын JSON бичилтийг хэрэглэгчид хэлсэн хувилбар (`legacyPending`) — ижил хувилбарт давтахгүй */
+  const hdLegacyNoted = useRef<number | null>(null);
+  const [hdStoreMode, setHdStoreMode] = useState<HDStoreMode>('blob');
+  const [hdStoreNote, setHdStoreNote] = useState('');
   const hdMapsRef = useLatest({ draft, ham, aDraft, resDraft, obDraft, obRes: obResDraft });
   /** Нүд → хэн хэзээ (локал мета) */
   const hdMeta = useRef(new Map<string, { at: number; user: string }>());
@@ -355,7 +376,7 @@ export function useSharedDraft({
     if (hdTimer.current) clearTimeout(hdTimer.current);
     hdTimer.current = setTimeout(() => { hdTimer.current = null; void hdFlushRef.current(); }, ms);
     /* ⚠️ 2026-10-04: бичилт хүлээгдэж байна — «хадгалагдсан» гэж харуулахгүй (алдаа/хэт том хэвээр) */
-    setHdSt((s) => (s.st === 'err' || s.st === 'big' || s.st === 'pending' || s.st === 'saving' ? s : { st: 'pending' }));
+    setHdSt((s) => (s.st === 'err' || s.st === 'big' || s.st === 'local' || s.st === 'pending' || s.st === 'saving' ? s : { st: 'pending' }));
   }, []);
   /** Бичих зүйлгүй (алсынхтай ижил) — «хадгалагдсан» төлөвт буцаана */
   const hdMarkSynced = useCallback(() => {
@@ -524,7 +545,9 @@ export function useSharedDraft({
       const p = parseKey(k);
       if (!p || p.type === 'm' || p.type === 'n' || rk.has(p.oid)) continue;
       const r = ctxRows.get(p.oid);
-      const id = r ? { des: r.des ?? null, no: r.no ?? '', work: r.work ?? '' } : hdRk.current.get(p.oid);
+      const id = r
+        ? { des: r.des ?? null, no: r.no ?? '', work: r.work ?? '', ...(r.path ? { path: r.path, top: r.top, occ: r.occ, occN: r.occN } : {}) }
+        : hdRk.current.get(p.oid);
       if (id) rk.set(p.oid, id);
     }
     return {
@@ -747,12 +770,18 @@ export function useSharedDraft({
     const cur = () => key === hdKeyRef.current;
     let err = '';
     try {
+      /* ⚠️ 2026-10-26: хадгалалт (`huvaariStore`) — одоогийн түлхүүрийнх, эс бөгөөс бэлдэнэ. `rows-wait` (191-ийг шалгаж
+         чадсангүй — түр) бол алсад бичихгүй: тэмдэг localStorage-д үлдэж, дахин бэлдэхэд (сэргээлт · мөчлөг) хэрэглэгдэнэ. */
+      const store = key === hdStoreKey.current ? hdStore.current : await prepareStore(key, { canWrite: canEditRef.current, ctx: null });
+      if (store.mode === 'rows-wait') return false;
+      const blob = store.mode === 'blob';
       for (let i = 0; i < 3; i += 1) {
         const mk = hdReadMark(key);
         if (!mk) return true;
-        const rr = await readRemoteDraft(key);
+        /* ⚠️ 2026-10-26: одоогийн жааз (`ctx`) — мөрийн нүдийг кодоор одоогийн oid руу (`huvaariStore.alignToFrame`) */
+        const rr = await store.read(key, cur() ? { ctx: hdCtxRef.current } : undefined);
         if (!rr.ok) { err = rr.error; break; }
-        const remote = rr.draft ? hdParse(rr.draft.payload) : null;
+        const remote = rr.draft;
         hdSee(remote);
         /* Энэ түлхүүр нээлттэй, сэргээгдсэн бол цэвэрлэлтээс хойшхи өөрийн засвар (tombstone) ч хамт */
         const mine = cur() && hdReady.current === key ? hdLocal() : null;
@@ -768,16 +797,17 @@ export function useSharedDraft({
            Хэтэрсэн хэвээр бол шалтгаан нь ЭНЭ клиентийн бусад (илгээгээгүй, алсад хэзээ ч хүрээгүй «хэт том») нүд байж болно —
            тэр үед ЗӨВХӨН алсын мөрийг цэвэрлэнэ (`remote` + тэмдэг): цэвэрлэлт заавал бууна, миний бусад нүд санах ой ба
            локал хуулбарт хэвээр, ердийн бичилт (`hdFlush` — `hdLastSeenAt` хөдлөөгүй тул дахин уншиж нийлүүлнэ) авч явна. */
-        let body = hdSerialize(d, REMOTE_MAX);
-        if (body.length > REMOTE_MAX && mine) {
+        /* ⚠️ 2026-10-26: хэмжээний хязгаар ЗӨВХӨН хуучин JSON-д (`blob`) — 191-ийн мөрийн горимд хязгааргүй */
+        let body = blob ? hdSerialize(d, REMOTE_MAX) : '';
+        if (blob && body.length > REMOTE_MAX && mine) {
           d = cleared(remote);
           body = hdSerialize(d, REMOTE_MAX);
         }
-        if (body.length > REMOTE_MAX) {
+        if (blob && body.length > REMOTE_MAX) {
           err = tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(body.length), String(REMOTE_MAX));
           break;
         }
-        const r = await saveRemoteDraft(key, t, body, { expectAt: rr.draft?.at ?? null });
+        const r = await store.save(key, d, { expectAt: rr.at ?? null, ctx: cur() ? hdCtxRef.current : null });
         if (r.ok) {
           hdSettleMark(key, d);
           if (cur()) {
@@ -812,11 +842,21 @@ export function useSharedDraft({
    *    `cleared` ЗӨВХӨН энд тавигдана (энгийн хоосролт `hdFlush`-ээр, тамгагүй).
    * ⚠️ Дуудагч Map-уудыг ЗААВАЛ хоосолно (`hdExpectEmpty`).
    */
-  const hdClear = useCallback(async (key: string, mark0?: HDClearMark | null) => {
+  const hdClear = useCallback(async (key: string, mark0?: HDClearMark | null, submitOid?: number | null) => {
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
     const isCur = key === hdKeyRef.current;
     const mark = mark0 ?? (isCur ? hdSnapshot() : null);
     if (!mark) return;
+    /*
+     * ⚠️ 2026-10-26: ИЛГЭЭХ АГШНЫ ХУУЛБАР (`rows` горим) — цэвэрлэхээс ӨМНӨХ нүдээс (тэмдгийн хүрээнд) 191-ийн
+     *    `n:hsub:<илгээлтийн OBJECTID>` мөрүүд (`noorog_turul='huvaari_ilgeelt'`). Самбар батлагдаагүй хуваарийг ноорог
+     *    цэвэрлэгдсэний дараа ч харна. Best effort — унавал `planSyncSubmitted` илгээлтийн агуулгаас нөхнө.
+     */
+    if (submitOid != null && isCur && statusRef.current !== 'off' && hdStoreKey.current === key && hdStore.current.submitted) {
+      const loc = hdLocal();
+      const sub: HDDraft = { ...loc, entries: new Map([...loc.entries].filter(([k]) => mark.keys.has(k))), del: new Map() };
+      await hdStore.current.submitted(key, sub, hdCtxRef.current, submitOid).catch(() => false);
+    }
     hdGen.current += 1;
     hdClearSeq.current += 1;
     /* Илгээх явцад зогсоосон бичилт цэвэрлэлтэд шингэсэн — дахин товлохгүй (түгжээнд «хүлээгдэж буй» шошго гацахгүй) */
@@ -844,7 +884,7 @@ export function useSharedDraft({
     hdClearTries.current.delete(key);
     if (isCur) setHdSt({ st: 'saving' });
     await hdRunClear(key);
-  }, [hdSnapshot, hdLocal, hdWriteLocal, hdReadMark, hdPutMark, hdRunClear, hdKeyRef, statusRef]);
+  }, [hdSnapshot, hdLocal, hdWriteLocal, hdReadMark, hdPutMark, hdRunClear, hdKeyRef, statusRef, hdCtxRef]);
 
   /**
    * ИЛГЭЭХИЙН ӨМНӨ (2026-10-04 аудит, HIGH) — мөчлөг · бичилтийг зогсоож (`hdHold`), сүүлийн
@@ -894,7 +934,10 @@ export function useSharedDraft({
       /* ⚠️ 2026-10-04 аудит: ЛОКАЛ ХУУЛБАР ЭХЛЭЭД — алсын уншилт унасан/гацсан ч засвар энэ
          компьютерт үлдэнэ. Урьд нь уншилт амжилттай болсны ДАРАА л бичигддэг байв. */
       hdWriteLocal(key, hdLocal());
-      const at0 = await readRemoteDraftAt(key);
+      /* ⚠️ 2026-10-26: сэргээлтэд бэлдсэн хадгалалт (`huvaariStore`) — түлхүүр зөрвөл (бэлдэж байна) дараа */
+      if (hdStoreKey.current !== key && statusRef.current !== 'off') { hdAgain.current = true; return; }
+      const store = hdStore.current;
+      const at0 = await store.readAt(key);
       if (!live()) return;
       if (at0 === undefined) {
         setHdSt({ st: 'err', err: tr('алсын ноорогийг шалгаж чадсангүй') });
@@ -902,19 +945,20 @@ export function useSharedDraft({
         return;
       }
       if ((at0 ?? 0) !== hdLastSeenAt.current) {
-        const rr = await readRemoteDraft(key);
+        const rr = await store.read(key, { ctx: hdCtxRef.current });
         if (!live()) return;
         if (!rr.ok) { setHdSt({ st: 'err', err: rr.error }); hdRetry(); return; }
         /* ⚠️ 2026-10-04 (шүүлт): уншилтын завсарт «Ноорог хаях»/илгээлтийн цэвэрлэлт болсон бол
            цэвэрлэлтээс ӨМНӨХ уншилтыг нийлүүлэхгүй — дахин товлож шинээр уншина. */
         if (cs !== hdClearSeq.current) { hdAgain.current = true; return; }
         const local0 = hdLocal();
-        const merged = hdMerge(rr.draft ? hdParse(rr.draft.payload) : null, local0) ?? local0;
+        const merged = hdMerge(rr.draft, local0) ?? local0;
         hdApply(merged);
         hdLastSeenAt.current = at0 ?? 0;
       }
       const local = hdLocal();
-      const body = hdSerialize(local, REMOTE_MAX);
+      /* ⚠️ 2026-10-26: хэмжээний хязгаар зөвхөн хуучин JSON-д (`blob`) */
+      const body = store.mode === 'blob' ? hdSerialize(local, REMOTE_MAX) : '';
       const s = hdSig(local);
       /* ⚠️ Локал хуулбар БҮХ оролдлогод — алс унасан ч энэ компьютерт үлдэнэ */
       hdWriteLocal(key, local);
@@ -935,23 +979,30 @@ export function useSharedDraft({
       /* ⚠️ 2026-09-29 аудит: optimistic lock — дээрх уншилтаас хойш өөр хүн бичсэн бол
          юу ч дарахгүй, дахин уншиж нийлүүлнэ (`conflict`). 2026-10-04: бичсэний дараа
          дарагдсан нь илэрвэл ч (`draftRemote`-ийн баталгаа) мөн `conflict`. */
-      const r = await saveRemoteDraft(key, local.t, body, { expectAt: hdLastSeenAt.current });
+      const r = await store.save(key, local, { expectAt: hdLastSeenAt.current, ctx: hdCtxRef.current });
       /* ⚠️ Бичилт явж байхад ЦЭВЭРЛЭСЭН бол (2026-09-24) энэ бичилт хаясан нүдийг
          амилуулсан байж болно — тэр даруй дахин цэвэрлэнэ. 2026-10-04: зөвхөн цэвэрлэлтийн
          үеэр (`hdClearSeq` — сэргээлт/түлхүүр солих нь цэвэрлэлт БИШ) ба тэмдгээр
          (read-merge-write) — урьд нь бүх нүдийг уншилтгүй tombstone болгодог байв. */
       if ((r.ok || r.written) && cs !== hdClearSeq.current) { void hdRunClearRef.current(key); return; }
-      if (!r.ok && r.conflict) { if (live()) hdAgain.current = true; return; }
+      /* ⚠️ 2026-10-26 (шүүлт): зөрчил = ДАХИН УНШИЖ нийлүүлэх — толгой хөдлөөгүй ч (мөрийн зураг хуучирсан — `planSave`-ийн
+         ⚠️) `hdLastSeenAt`-ыг тэглэж дараагийн бичилт заавал уншина. Урьд нь толгой ижил тул уншилтгүй дахин бичиж, нийлүүлээгүй
+         зурагтай харьцуулдаг байв. */
+      if (!r.ok && r.conflict) { if (live()) { hdLastSeenAt.current = -1; hdAgain.current = true; } return; }
       if (gen !== hdGen.current || !live()) return;
       if (r.ok) {
         hdLastSig.current = s;
         /* ⚠️ Бичсэн `t`-г тавина — сервер яг тэр утгыг хадгалдаг; завсарт өөр
-           хүн бичсэн бол `at0` зөрж дараагийн шалгалтад дахин уншина */
-        hdLastSeenAt.current = local.t;
+           хүн бичсэн бол `at0` зөрж дараагийн шалгалтад дахин уншина.
+           ⚠️ 2026-10-26: мөрийн горимд дифф хоосон бол толгой хөдлөхгүй — серверийн утгыг (`r.at`) */
+        hdLastSeenAt.current = r.at ?? local.t;
         hdBackoff.current = 3000;
         hdLastOkAt.current = Date.now();
         hdSettleMark(key, local, true);
         setHdSt(hdTimer.current ? { st: 'pending' } : { st: 'saved', at: hdLastOkAt.current });
+      } else if (r.local) {
+        /* ⚠️ 2026-10-26: алсад бичихгүй горим — давтахгүй, засвар localStorage-д (дээр бичигдсэн) */
+        setHdSt({ st: 'local', err: r.error });
       } else {
         setHdSt({ st: 'err', err: r.error });
         hdRetry();
@@ -960,7 +1011,7 @@ export function useSharedDraft({
       hdBusy.current = false;
       if (hdAgain.current) { hdAgain.current = false; hdSchedule(300); }
     }
-  }, [hdLocal, hdApply, hdWriteLocal, hdMarkSynced, hdSettleMark, hdSchedule, hdRetry, hdKeyRef, hdWritableRef, draggingRef, setNote]);
+  }, [hdLocal, hdApply, hdWriteLocal, hdMarkSynced, hdSettleMark, hdSchedule, hdRetry, hdKeyRef, hdWritableRef, draggingRef, setNote, statusRef, hdCtxRef]);
   /* ⚠️ 2026-09-30: commit-ийн дараа (`useLayoutEffect`) — уншигчид нь товлолт (setTimeout) ба
      async урсгал тул зурагдалтын дунд бичсэнтэй ижил утга. */
   useLayoutEffect(() => { hdFlushRef.current = hdFlush; hdClearRef.current = hdClear; hdRunClearRef.current = hdRunClear; });
@@ -1012,6 +1063,8 @@ export function useSharedDraft({
     hdLastSeenAt.current = 0; hdLastSig.current = ''; hdAgain.current = false; hdBackoff.current = 3000;
     hdGen.current += 1;
     hdSkipUnlockOnce.current = false;
+    /* ⚠️ 2026-10-26: хадгалалт түлхүүр бүрд дахин бэлдэгдэнэ (`prepareStore`) */
+    hdStoreKey.current = '';
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
     setHdSt({ st: 'idle' }); setHdUsers([]);
     /* ⚠️ Батлах явцад · урьдчилан харахад · илгээлт хүлээгдэж байхад ЭХЛЭХГҮЙ */
@@ -1034,6 +1087,18 @@ export function useSharedDraft({
        *    дахин оролдоно. Унасан ч тэмдгийг доор алсын/локал ноорогт хэрэглэнэ — хуучин
        *    ноорог Map-д орж буцаагдсан саналын автомат буулгалтыг (`dirtyN > 0`) хаахгүй.
        */
+      /*
+       * ⚠️ 2026-10-26: ХАДГАЛАЛТЫГ БЭЛДЭНЭ — 191-д мөрийн багана байгаа эсэх (`rowsReady`), ноорог шилжсэн эсэх; засагч бол залхуу
+       *    шилжүүлэлт (191-ийн JSON → мөр, баталгаатай). Багана нэмэгдээгүй бол хуучин JSON (`blob`) — өнөөгийн зам.
+       */
+      if (status !== 'off') {
+        const store = await prepareStore(key, { canWrite: canEditRef.current, ctx: hdCtxRef.current });
+        if (!alive) return;
+        hdStore.current = store;
+        hdStoreKey.current = key;
+        setHdStoreMode(store.mode);
+        setHdStoreNote(store.note ?? '');
+      }
       let mk = hdReadMark(key);
       if (mk && status !== 'off' && canEditRef.current) {
         await hdRunClear(key);
@@ -1041,11 +1106,11 @@ export function useSharedDraft({
         mk = hdReadMark(key);
       }
       if (status !== 'off') {
-        const rr = await readRemoteDraft(key);
+        const rr = await hdStore.current.read(key, { full: true, ctx: hdCtxRef.current });
         if (!alive) return;
         if (rr.ok) {
-          remote = rr.draft ? hdParse(rr.draft.payload) : null;
-          if (rr.draft) hdLastSeenAt.current = rr.draft.at;
+          remote = rr.draft;
+          if (rr.at != null) hdLastSeenAt.current = rr.at;
         } else readErr = rr.error;
       }
       hdSee(remote);
@@ -1261,24 +1326,55 @@ export function useSharedDraft({
       /* ⚠️ Мөргүй/задаргаагүй суурьтай (багц солигдож, мөр шинэчлэгдэж байгаа)
          тулгавал нүд хуучирна эсвэл суурьгүй орно */
       if (hdCtxRef.current.rows.size === 0 || obStateRef.current === 'loading') return;
+      /* ⚠️ 2026-10-26: хадгалалт энэ түлхүүрт бэлдэгдээгүй бол хүлээнэ */
+      if (hdStoreKey.current !== key) return;
+      const store = hdStore.current;
       hdBusy.current = true;
       /* ⚠️ 2026-10-04 (шүүлт): уншилтын завсарт цэвэрлэсэн (`hdClearSeq`) бол үр дүнг хаяна —
          цэвэрлэлтээс ӨМНӨХ алсын ноорог; `hdLastSeenAt` хөдлөхгүй тул дараагийн мөчлөг дахин уншина. */
       const cs = hdClearSeq.current;
       try {
-        const at0 = await readRemoteDraftAt(key);
+        /*
+         * ⚠️ 2026-10-26 (шүүлт): ТҮР ГОРИМЫГ ДАХИН ШАЛГАНА (`rows-wait`, 30 с тутам) — `rows`/`blob` болмогц хуудас дахин
+         *    ачаалалгүй шилжинэ (`hdLastSeenAt = -1` → дараагийн мөчлөг уншиж нийлүүлнэ, `hdLastSig` хоосон → локал засвар
+         *    бичигдэнэ). Урьд нь сэргээлтэд л бэлддэг тул түр алдааны дараа таб сешн дуустал алсад бичихгүй байв.
+         */
+        if (store.mode === 'rows-wait') {
+          if (Date.now() - hdRecheckAt.current < 30_000) return;
+          hdRecheckAt.current = Date.now();
+          const nx = await prepareStore(key, { canWrite: canEditRef.current, ctx: hdCtxRef.current });
+          if (key !== hdKeyRef.current || hdStoreKey.current !== key || hdStore.current !== store || nx.mode === store.mode) return;
+          hdStore.current = nx;
+          setHdStoreMode(nx.mode);
+          setHdStoreNote(nx.note ?? '');
+          hdLastSeenAt.current = -1;
+          hdLastSig.current = '';
+          setHdSt((x) => (x.st === 'local' ? { st: 'pending' } : x));
+          if (hdWritableRef.current) hdAgain.current = true;
+          return;
+        }
+        const at0 = await store.readAt(key);
+        /*
+         * ⚠️ 2026-10-26: ХУУЧИН ТАБЫН JSON БИЧИЛТ (`rows` горим) — шинэчлээгүй таб 191-ийн JSON мөрөнд бичсэн бол мөрийн уншилт
+         *    түүнийг АЛЬ ХЭДИЙН нийлүүлнэ (`planRead`, `huuchin_at`-аас шинэ нүд); дараагийн бичилт мөрт хүргэнэ. Хуучин таб
+         *    мөрийн засварыг хардаггүй (нэг чиглэлтэй) тул хэрэглэгчид нэг удаа хэлнэ (`legacyPending` — ижил хувилбарт давтахгүй).
+         */
+        if (store.mode === 'rows' && legacyPending(at0) && hdLegacyNoted.current !== at0 && key === hdKeyRef.current) {
+          hdLegacyNoted.current = at0 as number;
+          hdSoftNote(tr('Хуучин хувилбартай таб ({0}) — дахин ачаална уу', tr('хамтрагч')));
+        }
         /* ⚠️ `await` бүрийн дараа ДАХИН шалгана (2026-09-24 аудит): уншилтын завсарт
            батлалт/урьдчилан харалт эхэлсэн бол `hdApply` Map-уудыг дарж, харж
            буй санал эсвэл бичигдэж буй ноорог солигддог байв. */
         if (!hdPollOkRef.current || hdHold.current) return;
         if (at0 === undefined || (at0 ?? 0) === hdLastSeenAt.current || key !== hdKeyRef.current) return;
-        const rr = await readRemoteDraft(key);
+        const rr = await store.read(key, { ctx: hdCtxRef.current });
         if (!hdPollOkRef.current || hdHold.current || draggingRef.current) return;
         if (key !== hdKeyRef.current || hdReady.current !== key || !rr.ok) return;
         if (cs !== hdClearSeq.current) return;
         /* ⚠️ 2026-10-04: `hdLocal` ОДООГИЙН Map-аар дифф хийнэ (`hdDiff`-ийн ⚠️) — сүүлийн
            чирэлтийн алхам нийлүүлэлтээр буцахгүй */
-        const remote = rr.draft ? hdParse(rr.draft.payload) : null;
+        const remote = rr.draft;
         const merged = hdMerge(remote, hdLocal());
         hdLastSeenAt.current = at0 ?? 0;
         if (!merged) return;
@@ -1292,7 +1388,10 @@ export function useSharedDraft({
           const loc = hdLocal();
           const ls = hdSig(remote ? { ...loc, base: remote.base } : loc);
           if (remote ? hdSig(remote) === ls : hdIsEmpty(loc)) { if (remote) hdLastSig.current = hdSig(loc); }
-          else hdAgain.current = true;
+          /* ⚠️ 2026-10-26 (шүүлт): алс локалаас ДУТУУ (жиш. мөрийн горимд зэрэг бичилтээр холилдсон сарын цуваа — `seriesRead`-ийн
+             ⚠️) — локал өөрчлөгдөөгүй ч ЗААВАЛ дахин бичнэ (`hdLastSig` хоосон); эс бөгөөс `hdFlush` «өмнө бичсэнтэй ижил» гэж алгасна.
+             Тойрог үүсэхгүй: өөрийн бичилтийн дараа толгой бидний агшинд тул дахин уншихгүй. */
+          else { hdLastSig.current = ''; hdAgain.current = true; }
         }
       } finally {
         hdBusy.current = false;
@@ -1325,19 +1424,22 @@ export function useSharedDraft({
       }
       if (hdHold.current) { hdHeldAgain.current = true; return; }
       if (hdBusy.current) { hdAgain.current = true; return; }
-      const body = hdSerialize(local, REMOTE_MAX);
-      if (body.length > REMOTE_MAX) return;
+      /* ⚠️ 2026-10-26: хадгалалт (`huvaariStore`) — бэлдээгүй бол локал хуулбар л; хэмжээ зөвхөн JSON-д */
+      if (statusRef.current === 'off' || hdStoreKey.current !== key) return;
+      const store = hdStore.current;
+      if (store.mode === 'blob' && hdSerialize(local, REMOTE_MAX).length > REMOTE_MAX) return;
       if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
       const gen = hdGen.current;
       const cs = hdClearSeq.current;
       hdBusy.current = true;
       /* ⚠️ 2026-09-29: уншилтгүй бичилт ч бусдын шинэ нүдийг дарахгүй (`expectAt`) —
          зөрвөл алгасна; локал хуулбар дээр бичигдсэн тул дараагийн нээлтэд нийлнэ. */
-      void saveRemoteDraft(key, local.t, body, { expectAt: hdLastSeenAt.current }).then((r) => {
+      void store.save(key, local, { expectAt: hdLastSeenAt.current, quick: true, ctx: hdCtxRef.current }).then((r) => {
         if ((r.ok || r.written) && cs !== hdClearSeq.current) { void hdRunClearRef.current(key); return; }
         if (gen !== hdGen.current || key !== hdKeyRef.current) return;
+        if (r.local) return;
         if (r.ok) {
-          hdLastSig.current = s; hdLastSeenAt.current = local.t;
+          hdLastSig.current = s; hdLastSeenAt.current = r.at ?? local.t;
           hdLastOkAt.current = Date.now();
           hdSettleMark(key, local, true);
           setHdSt(hdTimer.current ? { st: 'pending' } : { st: 'saved', at: hdLastOkAt.current });
@@ -1349,7 +1451,8 @@ export function useSharedDraft({
            `hdFlush` уншиж-нийлүүлж-бичнэ: зөрчил (`conflict`) бол бусдынхтай нийлнэ,
            бусад алдаанд backoff-той. Бусад товлолт явж байвал түүнийг дарахгүй. */
         if (hdTimer.current) return;
-        if (r.conflict) hdSchedule(1500); else hdRetry();
+        /* ⚠️ 2026-10-26 (шүүлт): зөрчил → дахин уншиж нийлүүлнэ (`hdFlush`-ийн ⚠️) */
+        if (r.conflict) { hdLastSeenAt.current = -1; hdSchedule(1500); } else hdRetry();
       }).finally(() => {
         hdBusy.current = false;
         if (hdAgain.current) { hdAgain.current = false; hdSchedule(300); }
@@ -1364,7 +1467,7 @@ export function useSharedDraft({
       document.removeEventListener('visibilitychange', vis);
       window.removeEventListener('pagehide', flushNow);
     };
-  }, [status, hdLocal, hdApply, hdWriteLocal, hdSettleMark, hdSchedule, hdRetry, hdCtxRef, hdKeyRef, hdPollOkRef, hdWritableRef, obStateRef, draggingRef]);
+  }, [status, hdLocal, hdApply, hdWriteLocal, hdSettleMark, hdSchedule, hdRetry, hdCtxRef, hdKeyRef, hdPollOkRef, hdWritableRef, obStateRef, draggingRef, statusRef, hdSoftNote, canEditRef]);
 
   /**
    * UNMOUNT — харагдац солиход хүлээгдэж буй бичилтийг ШУУД гүйцэтгэнэ (2026-10-04 аудит).
@@ -1387,6 +1490,7 @@ export function useSharedDraft({
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     })())
       : hdSt.st === 'big' ? tr('ноорог хэт том — зөвхөн энэ компьютерт')
+        : hdSt.st === 'local' ? tr('Ноорог зөвхөн энэ компьютерт — {0}', hdSt.err ?? '')
         : hdSt.st === 'err' ? tr('Ноорог алсад хадгалагдсангүй — {0}', hdSt.err ?? '')
           : '';
 
@@ -1467,7 +1571,7 @@ export function useSharedDraft({
            (`dirtyN > 0`) шаардана. Хоосон Map-ын алсад хүрээгүй tombstone нь локал хуулбарт СИНХРОН
            бичигдсэн (`hdWriteLocal`) тул гарахад алдагдахгүй — дараагийн нээлтэд алсад очно. */
         : hdSt.st === 'pending' || hdSt.st === 'saving' || (hdSt.st === 'err' && dirtyN > 0)
-          || (hdSt.st === 'big' && dirtyN > 0);
+          || ((hdSt.st === 'big' || hdSt.st === 'local') && dirtyN > 0);
 
   return {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef,
@@ -1478,5 +1582,9 @@ export function useSharedDraft({
     hdOrphan,
     /* 2026-10-04 аудит: илгээх · хаях · хадгалагдаагүй төлөв */
     hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced,
+    /* ⚠️ 2026-10-26: хадгалалтын горим ба тайлбар (`huvaariStore`) — super-т «notebook ажиллуулна уу» */
+    hdStoreMode, hdStoreNote,
+    /* ⚠️ 2026-10-26 (шүүлт): илгээлтийн хуулбарыг агуулгаас нөхөхөд (`planSyncSubmitted`) — одоогийн мөр/блок/серверийн муж */
+    hdCtxRef, hdReadyRef: hdReady,
   };
 }

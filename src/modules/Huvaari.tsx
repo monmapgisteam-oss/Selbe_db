@@ -100,6 +100,8 @@ import { ColGrip } from './huvaari/ColGrip';
 import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
+/* ⚠️ 2026-10-26: илгээх агшны хуулбар (191-ийн `n:hsub:<OBJECTID>` мөр) — шийдвэр/татлага/нээлтийн дараа тааруулна */
+import { planSyncSubmitted } from '@/lib/draftRowsRemote';
 import { orphanAddsMsg, useAjil } from './huvaari/useAjil';
 import {
   backMarkMapOf, buildPayloadOf, conflictMsg, conflictText, partialMsg, payloadToDrafts, reviewOidsOf, unknownMsg,
@@ -3121,6 +3123,7 @@ export function Huvaari({
   const {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdTimerRef, hdFlushRef, hdClearRef, hdSkipUnlockOnceRef,
     hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdRetryRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
+    hdStoreMode, hdStoreNote, hdCtxRef, hdReadyRef, hdKeyRef,
   } = useSharedDraft({
     /* ⚠️ 2026-10-23: ЭРХ (`canEditRole`) — «Батлагдсан» харагдацад ч ноорог хамгаалалт (`askSwitch` · `hdUnsynced`) ажиллана */
     kind, pkgKey: pkg.key, user, status, canEdit: canEditRole, locked, previewing, approving, pending,
@@ -3780,6 +3783,8 @@ export function Huvaari({
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
   /* ⚠️ `noRefetch` — дуудагч мөрийг дөнгөж серверээс татсан/татах бол (батлах гинж,
      татах) давхар ачаалахгүй (2026-09-25). */
+  /** ⚠️ 2026-10-26: илгээлтийн хуулбарыг тааруулах эрх (засах · батлах) — `refreshFlow`-ийн deps-ийг хөдөлгөхгүй ref */
+  const subSyncOkRef = useLatest(status !== 'off' && (canEditRole || canApprove));
   const refreshFlow = useCallback(async (opt?: { noRefetch?: boolean }) => {
     const my = ++flowSeq.current;
     const key = pkg.key;
@@ -3820,6 +3825,15 @@ export function Huvaari({
       if (!live()) return;
       setPending(p);
       setPendingOther(pOther);
+      /* ⚠️ 2026-10-26: 191-ийн илгээх агшны хуулбарыг (`n:hsub:<OBJECTID>` мөр) хүлээгдэж буй илгээлттэй тааруулна (батлах · буцаах · татах · нээх) — самбар
+         батлагдаагүй хуваарийг үүгээр уншина. Арын ажил, урсгалыг хүлээлгэхгүй; ижил төлөвт 5 мин дотор давтахгүй. */
+      /* ⚠️ 2026-10-26 (шүүлт): агуулгаас НӨХӨХ нь зөвхөн сэргээгдсэн ЭНЭ багц/төрлийн ctx-тэй (блокийн нэр · танихуун · серверийн
+         муж); бэлэн биш бол зөвхөн устгана, нөхөлтийг дараагийн мөчлөгт хойшлуулна (`planSyncSubmitted`-ийн ⚠️) */
+      if (both && subSyncOkRef.current) {
+        const dk = hdKey(kind, key);
+        const ctxOk = hdKeyRef.current === dk && hdReadyRef.current === dk;
+        void planSyncSubmitted(key, { known: both, ctxKind: kind, ...(ctxOk ? { ctx: hdCtxRef.current } : {}) });
+      }
       if (ready) setFlowReady(true);
       /*
        * ⚠️ ХҮЛЭЭГДЭЖ БАЙСАН ИЛГЭЭЛТ АЛГА БОЛОВ (2026-09-25 аудит) — өөр хүн
@@ -3870,7 +3884,7 @@ export function Huvaari({
       setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null));
       setLastDecision(null);
     }
-  }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, refetchBg]);
+  }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, refetchBg, subSyncOkRef, hdKeyRef, hdReadyRef, hdCtxRef]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshFlow` нь ArcGIS-ээс уншихын өмнө `flowReady=null` (ачаалж байна) тавьдаг — гадаад эх сурвалжтай синк, санаатай
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
@@ -4143,7 +4157,8 @@ export function Huvaari({
          ӨМНӨ: тэр `pending`-ийг тавьмагц бичих боломж хаагдаж, дифф→flush
          зам «цэвэрлэсэн» тэмдгийг хэзээ ч бичихгүй байв. */
       setProgress(tr('Ноорог цэвэрлэж байна…'));
-      await hdClearRef.current(hdKey(kind, pkg.key), hdMark);
+      /* ⚠️ 2026-10-26: илгээлтийн OBJECTID — 191-д илгээх агшны хуулбар (`n:hsub:<OBJECTID>`, `huvaari_ilgeelt`) */
+      await hdClearRef.current(hdKey(kind, pkg.key), hdMark, r.oid ?? null);
       setProgress(tr('Төлөв шинэчилж байна…'));
       await refreshFlow();
     } catch (e) {
@@ -4380,6 +4395,9 @@ export function Huvaari({
       setProgress(tr('Илгээлтийг татаж байна…'));
       const r = await withdrawPlan({ oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
+      /* ⚠️ 2026-10-26: татсан илгээлтийн хуулбарыг (`n:hsub:` мөр) ноорогт буулгахаас ӨМНӨ цэвэрлэнэ (хүлээнэ) — самбар
+         «хүлээгдэж буй» болон «ноорог» хоёуланд нэг ажлыг давхар харахгүй */
+      await planSyncSubmitted(pkg.key, { force: true }).catch(() => undefined);
       setProgress(tr('Хуудсыг дахин уншиж байна…'));
       /* ⚠️ УРСГАЛЫГ ЭХЛЭЭД шинэчилнэ (2026-09-24): `pending` → null болоход
          хуваалцсан ноорогийн «түгжээ тайлагдав» зам Map-уудыг хоосолдог тул
@@ -6388,11 +6406,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             <span aria-hidden>✓</span> {tr('Ноорог хадгалагдсан')}
           </span>
         ) : hdLabel ? (
-          <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' ? h.hdWarn : ''}`} role="status"
+          <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' || hdSt.st === 'local' ? h.hdWarn : ''}`} role="status"
             title={hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : undefined}>
             {hdLabel}
           </span>
         ) : null}
+        {/* ⚠️ 2026-10-26: ноорогийн хадгалалтын төлөв (191) — мөрийн багана нэмэгдээгүй (JSON горим) бол ЗӨВХӨН super-т
+            «notebook ажиллуулна уу»; 191-ийг шалгаж чадсангүй (`rows-wait`) бол засагч бүрд (засвар зөвхөн энэ компьютерт). */}
+        {hdStoreNote && canEditRole && (hdStoreMode === 'rows-wait' || roleForUser(user?.username) === 'super') && (
+          <span className={`${h.flowNote} ${h.hdWarn}`} role="status">{hdStoreNote}</span>
+        )}
 
         {/* ⚠️ Урьдчилан харж байхад ЭНЭ товч гарахгүй — ноорог нь батлагчийн
             ӨӨРИЙН засвар БИШ, илгээгдсэн санал. Түүнийг «Харахыг болих»-оор

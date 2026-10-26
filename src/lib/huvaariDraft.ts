@@ -66,8 +66,13 @@ export type HDDraft = {
   rk?: Map<number, HDRowKey>;
 };
 
-/** Мөрийн таних түлхүүр — жааз солигдоход хадгалагддаг талбарууд (2026-10-09) */
-export type HDRowKey = { des: number | null; no: string; work: string };
+/**
+ * Мөрийн таних түлхүүр — жааз солигдоход хадгалагддаг талбарууд (2026-10-09).
+ * ⚠️ 2026-10-26: `path` (эцэг бүлгийн зам › № ¦ нэр — `rowIdentity`), `top` (дээд бүлэг), `occ`/`occN` (ижил «№ ¦ нэр»-ийн
+ *    дэс дугаар / нийт) — 191-ийн мөрийн ноорогт (`draftRows.ts`: `etseg_zam` · `mur_dav` · `mur_dav_n`) ҮРГЭЛЖ хадгалагдаж, `identityRemap` кодгүй/давхардсан
+ *    мөрийг ч зөөнө. JSON ноорогт (`serialize`) бичигдэхгүй (хэмжээ) — сонголттой.
+ */
+export type HDRowKey = { des: number | null; no: string; work: string; path?: string; top?: string; occ?: number; occN?: number };
 
 export const HD_VERSION = 1;
 /** Tombstone-ийн амьдрах хугацаа */
@@ -189,6 +194,11 @@ export type HDRowBase = {
   des?: number | null;
   no?: string;
   work?: string;
+  /** ⚠️ 2026-10-26: эцэг бүлгийн зам · дээд бүлэг · ижил «№ ¦ нэр»-ийн дэс дугаар/нийт (`rowIdentity`) */
+  path?: string;
+  top?: string;
+  occ?: number;
+  occN?: number;
 };
 export type HDCtx = {
   n: number;
@@ -197,6 +207,8 @@ export type HDCtx = {
   months: (key: string) => ReadonlyMap<string, number> | undefined;
   /** `${код}|${блок}` → серверийн сарын НӨӨЦ (2026-09-24); `undefined` = мэдэгдэхгүй */
   monthsRes: (key: string) => ReadonlyMap<string, HDMonthRes> | undefined;
+  /** ⚠️ 2026-10-26: блокийн нэрс (`Schema.bld`) — 191-ийн мөрийн ноорогийн `blok` (блокийг НЭРЭЭР тааруулна); байхгүй бол нэргүй */
+  bld?: readonly string[];
 };
 export type HDMaps = {
   draft: Map<number, HDSpan[]>;
@@ -889,6 +901,33 @@ export function remapDraft(
 }
 
 /**
+ * МӨРИЙН БҮТЦИЙН ТАНИХУУН (2026-10-26) — `savePrep.remapOids`-ийн ИЖИЛ дүрмээр эцэг бүлгийн зам (`№ ¦ нэр › …`),
+ * дээд бүлгийн нэр, ижил «№ ¦ нэр»-ийн дэс дугаар (1-ээс) ба нийт тоо. «Ажил бүрд нэг мөр» хүснэгтэд үргэлж бичигдэж,
+ * жааз солигдоход (`identityRemap`) кодгүй/давхардсан мөрийг таних нөөц болно. React-гүй, цэвэр.
+ */
+export function rowIdentity(
+  rows: readonly { oid: number; no: string; work: string; depth: number; group: boolean }[],
+): Map<number, { path: string; top: string; occ: number; occN: number }> {
+  const out = new Map<number, { path: string; top: string; occ: number; occN: number }>();
+  const stack: { d: number; k: string; w: string }[] = [];
+  const cnt = new Map<string, number>();
+  const tmp: { oid: number; path: string; top: string; nw: string; occ: number }[] = [];
+  for (const r of rows) {
+    while (stack.length && stack[stack.length - 1].d >= r.depth) stack.pop();
+    const own = `${(r.no ?? '').trim()} ¦ ${(r.work ?? '').trim()}`;
+    const path = [...stack.map((x) => x.k), own].join(' › ');
+    const top = stack.length ? stack[0].w : '';
+    const nwk = `${(r.no ?? '').trim()}¦${(r.work ?? '').trim()}`;
+    const occ = (cnt.get(nwk) ?? 0) + 1;
+    cnt.set(nwk, occ);
+    tmp.push({ oid: r.oid, path, top, nw: nwk, occ });
+    if (r.group) stack.push({ d: r.depth, k: own, w: (r.work ?? '').trim() });
+  }
+  for (const x of tmp) out.set(x.oid, { path: x.path, top: x.top, occ: x.occ, occN: cnt.get(x.nw) ?? 1 });
+  return out;
+}
+
+/**
  * ТАНИХУУНААР ШИНЭ ЖААЗ РУУ ЗӨӨХ ЗУРАГЛАЛ (2026-10-09) — ноорогийн `s/h/a/r` нүдний oid нь одоогийн
  * мөрөнд (`ctx.rows`) байхгүй бол `rk`-ийн ажлын КОДООР (`des`, жааз солигдоход хадгалагддаг), код
  * байхгүй/давхардсан бол № + нэрээр — ЗӨВХӨН одоогийн мөрүүдэд ГАНЦ таарал байвал (`save`-ийн нөөц
@@ -912,10 +951,15 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
   };
   const byDes = new Map<number, number | null>();
   const byNw = new Map<string, number | null>();
+  /* ⚠️ 2026-10-26: эцэг бүлгийн зам (давтагдашгүй бол) ба «№ ¦ нэр» + дэс дугаар (нийт тоо ИЖИЛ үед л) */
+  const byPath = new Map<string, number | null>();
+  const byOcc = new Map<string, number>();
   for (const [oid, r] of ctx.rows) {
     if (r.des != null) byDes.set(r.des, byDes.has(r.des) ? null : oid);
     const k = nw(r.no, r.work);
     if (k) byNw.set(k, byNw.has(k) ? null : oid);
+    if (r.path) byPath.set(r.path, byPath.has(r.path) ? null : oid);
+    if (k && r.occ != null && r.occN != null) byOcc.set(`${k}#${r.occ}/${r.occN}`, oid);
   }
   /* ⚠️ 2026-10-09 (аудит): НЭГ-НЭГЭЭР ТАСАЛБАРЛАЛТ. Урьд нь `remapRowsFull`-ийн `used`-тэй адил шалгалтгүй тул
      хоёр хуучин oid (жиш. давхардсан код/№ + нэртэй хуучин мөрүүд) НЭГ одоогийн мөр рүү зөөгдөж, ноорог нь
@@ -928,7 +972,13 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
     if (!id) { unknown += 1; continue; }
     label.set(oid, `${id.no} ${id.work}`.trim() || (id.des != null ? String(id.des) : String(oid)));
     let to: number | null | undefined = id.des != null ? byDes.get(id.des) : undefined;
-    if (to == null) { const k = nw(id.no, id.work); to = k ? byNw.get(k) : undefined; }
+    /* ⚠️ 2026-10-26: код → эцэг бүлгийн зам → «№ ¦ нэр» (ганц) → «№ ¦ нэр» + дэс дугаар (нийт ижил) → олдсонгүй */
+    if (to == null && id.path) to = byPath.get(id.path);
+    if (to == null) {
+      const k = nw(id.no, id.work);
+      to = k ? byNw.get(k) : undefined;
+      if (to == null && k && id.occ != null && id.occN != null) to = byOcc.get(`${k}#${id.occ}/${id.occN}`);
+    }
     if (to != null) { cand.set(oid, to); hits.set(to, (hits.get(to) ?? 0) + 1); }
   }
   for (const [oid, lb] of label) {

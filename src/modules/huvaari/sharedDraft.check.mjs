@@ -10,6 +10,9 @@
  *   4. `saveRemoteDraft` бичсэний дараа баталгаажуулна; `RemoteSave` хэлбэр хэвээр.
  *   5. Мета/tombstone HLC-ээр (`hdStamp`), `Date.now()`-ээр БИШ.
  *   6. «Хуваарь» `navGuard`-д бүртгэлтэй, `dirtyN`-ээр БИШ `hdUnsynced`-ээр.
+ *   8. (2026-10-26) Алсын I/O ЗӨВХӨН хадгалалтын давхаргаар (`huvaariStore` — «ажил бүрд нэг мөр» хүснэгт эсвэл JSON);
+ *      `REMOTE_MAX` зөвхөн JSON горимд; илгээлтийн OBJECTID хуулбарт; `rows-wait` давтахгүй, засвартай бол анхааруулна;
+ *      алсын уншилт одоогийн жаазтай (`ctx`); хуучин 3 хүснэгтийн горим (`rows-missing`/`rows-ro`/`legacy`) үлдээгүй.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -32,10 +35,10 @@ const body = (src, name) => {
   assert.ok(/if \(hdHold\.current\) \{ hdHeldAgain\.current = true; return; \}/.test(fl), 'hdFlush илгээх явцад бичсээр');
   assert.ok(/hdHold\.current \|\| draggingRef\.current/.test(U), 'мөчлөг илгээх/чирэх явцад нийлүүлсээр');
   const rc = body(U, 'hdRunClear');
-  assert.ok(rc.includes('readRemoteDraft(key)') && rc.includes('applyClear(') && rc.includes('expectAt:'),
+  assert.ok(rc.includes('store.read(key') && rc.includes('applyClear(') && rc.includes('expectAt:'),
     'цэвэрлэлт read-merge-write (applyClear, expectAt) биш');
   /* ⚠️ 2026-10-22 (аудит №1): миний бусад нүдтэй хамт хэтэрвэл ЗӨВХӨН алсын мөрийг цэвэрлэнэ — цэвэрлэлт заавал бууна */
-  assert.ok(/if \(body\.length > REMOTE_MAX && mine\) \{\s*d = cleared\(remote\);\s*body = hdSerialize\(d, REMOTE_MAX\);/.test(rc),
+  assert.ok(/if \(blob && body\.length > REMOTE_MAX && mine\) \{\s*d = cleared\(remote\);\s*body = hdSerialize\(d, REMOTE_MAX\);/.test(rc),
     'хэт том үед зөвхөн алсын мөрийг цэвэрлэх нөөц зам алга');
   const cl = body(U, 'hdClear');
   assert.ok(!/saveRemoteDraft\(key, now, body\)/.test(cl), 'hdClear уншилтгүй (blind) бичсээр');
@@ -43,14 +46,14 @@ const body = (src, name) => {
   const sa = H.slice(H.indexOf('const sendForApproval = useCallback('), H.indexOf('const applyPayloadToDraft'));
   assert.ok(sa.indexOf('hdSubmitBegin()') >= 0 && sa.indexOf('hdSubmitBegin()') < sa.indexOf('buildPayload()'),
     'тэмдэг buildPayload-оос ӨМНӨ авагдаагүй');
-  assert.ok(/hdClearRef\.current\(hdKey\(kind, pkg\.key\), hdMark\)/.test(sa), 'илгээлтийн тэмдгээр цэвэрлэхгүй байна');
+  assert.ok(/hdClearRef\.current\(hdKey\(kind, pkg\.key\), hdMark, r\.oid \?\? null\)/.test(sa), 'илгээлтийн тэмдгээр (OBJECTID-тай) цэвэрлэхгүй байна');
   assert.ok(/finally \{[\s\S]*hdSubmitEnd\(\)/.test(sa), 'hdSubmitEnd finally-д алга — мөчлөг мөнхөд зогсоно');
 }
 /* 2. Локал хуулбар */
 {
   const fl = body(U, 'hdFlush');
   assert.ok(fl.indexOf('hdWriteLocal(key, hdLocal())') >= 0
-    && fl.indexOf('hdWriteLocal(key, hdLocal())') < fl.indexOf('readRemoteDraftAt(key)'), 'локал хуулбар алсын уншилтаас ӨМНӨ биш');
+    && fl.indexOf('hdWriteLocal(key, hdLocal())') < fl.indexOf('store.readAt(key)'), 'локал хуулбар алсын уншилтаас ӨМНӨ биш');
   const fn = U.slice(U.indexOf('const flushNow = () => {'), U.indexOf('hdFlushNowRef.current = flushNow;'));
   assert.ok(!/^\s*if \(!hdTimer\.current\) return;/m.test(fn), 'flushNow товлолтгүй үед локалд бичихгүй хэвээр');
   assert.ok(fn.includes('hdWriteLocal(key, local)') && fn.includes('hdBusy.current = true') && fn.includes('hdClearSeq.current'),
@@ -96,7 +99,7 @@ const body = (src, name) => {
   assert.ok(/hdPrev\.current = mapsToCells\(ap\.maps[\s\S]*hdExpectEmpty\.current = false;[\s\S]*setDraft\(ap\.maps\.draft\)/.test(ap),
     'hdApply hdExpectEmpty-г тэглэхгүй — хаясны дараа нийлсэн нүдтэй Map мөнхөд диффгүй');
   const fl = body(U, 'hdFlush');
-  const rd = fl.indexOf('await readRemoteDraft(key)');
+  const rd = fl.indexOf('await store.read(key');
   assert.ok(rd > 0 && fl.indexOf('cs !== hdClearSeq.current', rd) > rd
     && fl.indexOf('cs !== hdClearSeq.current', rd) < fl.indexOf('hdApply(merged)'), 'hdFlush цэвэрлэлтээс өмнөх уншилтыг нийлүүлсээр');
   const tk = U.slice(U.indexOf('const tick = async () => {'), U.indexOf('const id = setInterval('));
@@ -111,5 +114,34 @@ const body = (src, name) => {
   const apT = body(U, 'hdApply');
   assert.ok(/for \(const \[k, t\] of d\.del\)[\s\S]{0,300}hdPrev\.current\.has\(k\)[\s\S]{0,200}remote\.add\(k\);\s*meta\.set\(k, \{ at: t, user: delBy \}\)/.test(apT),
     'хамтрагчийн буцаалт (tombstone) буцаалтын агшныг хүчингүй болгохгүй байна');
+}
+/* 8. 2026-10-26: хадгалалтын давхарга (`huvaariStore`) */
+{
+  assert.ok(!/\b(readRemoteDraft|readRemoteDraftAt|saveRemoteDraft)\(/.test(U), 'hook draftRemote-ийг шууд дуудсаар (хадгалалтын давхаргаар биш)');
+  assert.ok(U.includes("import { blobStore, legacyPending, prepareStore, type HDStore, type HDStoreMode } from '@/lib/huvaariStore';"), 'huvaariStore импорт алга');
+  const fl = body(U, 'hdFlush');
+  assert.ok(fl.includes("const body = store.mode === 'blob' ? hdSerialize(local, REMOTE_MAX) : '';"), 'REMOTE_MAX мөрийн хүснэгтэд ч хэрэглэгдсээр');
+  assert.ok(fl.includes('hdLastSeenAt.current = r.at ?? local.t;'), 'дифф хоосон үед серверийн агшинг авахгүй');
+  assert.ok(/else if \(r\.local\) \{[\s\S]{0,200}setHdSt\(\{ st: 'local'/.test(fl), 'rows-wait горимд давталтгүй local төлөв алга');
+  const cl = body(U, 'hdClear');
+  assert.ok(cl.indexOf('hdStore.current.submitted(') > 0 && cl.indexOf('hdStore.current.submitted(') < cl.indexOf('hdGen.current += 1'),
+    'илгээлтийн хуулбар цэвэрлэлтээс ӨМНӨ бичигдэхгүй');
+  const rs = U.slice(U.indexOf('const store = await prepareStore(key, { canWrite: canEditRef.current, ctx: hdCtxRef.current });'));
+  assert.ok(rs.length > 100 && rs.indexOf('hdStoreKey.current = key;') < rs.indexOf('let mk = hdReadMark(key);'), 'сэргээлт хадгалалтыг цэвэрлэлтээс ӨМНӨ бэлдэхгүй');
+  assert.ok(/\(\(hdSt\.st === 'big' \|\| hdSt\.st === 'local'\) && dirtyN > 0\)/.test(U), 'local төлөвт гарах анхааруулга алга');
+  assert.ok(/void planSyncSubmitted\(key, \{ known: both, ctxKind: kind, \.\.\.\(ctxOk \? \{ ctx: hdCtxRef\.current \} : \{\}\) \}\)/.test(H),
+    'refreshFlow илгээлтийн хуулбарыг (сэргээгдсэн ctx-тэй) тааруулахгүй');
+  /* ⚠️ 2026-10-26 (шүүлт): зөрчил → дахин уншина; хуучин табыг хэлнэ (шингээлт нь уншилтад); түр горимыг дахин шалгана */
+  assert.ok(/if \(!r\.ok && r\.conflict\) \{ if \(live\(\)\) \{ hdLastSeenAt\.current = -1;/.test(fl), 'зөрчлийн дараа толгой хөдлөөгүй үед уншилтгүй бичсээр');
+  assert.ok(/legacyPending\(at0\) && hdLegacyNoted\.current !== at0/.test(U), 'хуучин табын JSON бичилтийг хэрэглэгчид хэлэхгүй (эсвэл давтана)');
+  assert.ok(/if \(store\.mode === 'rows-wait'\) \{[\s\S]{0,200}prepareStore\(key/.test(U), 'түр горимыг мөчлөгт дахин шалгахгүй');
+  /* ⚠️ 2026-10-26: хуучин 3 хүснэгтийн загварын үлдэгдэл/горим алга; алсын уншилт бүр одоогийн жаазтай (кодоор тааруулна) */
+  assert.ok(!/rows-missing|rows-ro|legacyAck|store\.legacy\b|Huvaari_noorog|hn_noorog|huvaariRows/.test(U + H), 'хуучин 3 хүснэгтийн үлдэгдэл');
+  assert.ok(!/\.read\(key, \{[^}]*bld:/.test(U)
+    && (U.match(/\.read\(key, (\{ (full: true, )?ctx: hdCtxRef\.current \}|cur\(\) \? \{ ctx: hdCtxRef\.current \} : undefined)\)/g) ?? []).length === 4,
+    'алсын уншилт одоогийн жаазгүй (кодоор тааруулахгүй)');
+  const wd = H.slice(H.indexOf('const r = await withdrawPlan({ oid, me:'));
+  assert.ok(wd.indexOf('await planSyncSubmitted(pkg.key, { force: true })') > 0
+    && wd.indexOf('await planSyncSubmitted(pkg.key, { force: true })') < wd.indexOf('applyPayloadToDraft('), 'татахад хуулбар ноорогт буулгахаас ӨМНӨ цэвэрлэгдэхгүй');
 }
 console.log('✅ sharedDraft: автомат хадгалалтын эх кодын шалгуур давлаа');

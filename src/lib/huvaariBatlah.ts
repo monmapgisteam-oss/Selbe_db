@@ -1426,7 +1426,8 @@ export async function submitPlan(args: {
   rowCount: number;
   note?: string;
   payload: PlanPayload;
-}): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ 2026-10-26: `oid` — шинэ илгээлтийн OBJECTID (`addResults`), 191-ийн илгээх агшны хуулбарын түлхүүр (`n:hsub:<OBJECTID>`) */
+}): Promise<{ ok: boolean; error?: string; oid?: number }> {
   /* ⚠️ 2026-09-29 аудит: `aguulga` 1,048,576 тэмдэгт — `base` нэмэгдсэнээс хойш
      том багцад (1,459 мөр × 22 блок) хэтэрч `applyEdits` шалтгаангүй унадаг байв.
      Цэвэр шалгуур тул эрх/сүлжээнээс ӨМНӨ. */
@@ -1534,7 +1535,7 @@ export async function submitPlan(args: {
     } catch {
       return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
     }
-    return { ok: true };
+    return Number.isFinite(mine) ? { ok: true, oid: mine } : { ok: true };
   } catch (e) {
     return { ok: false, error: errText(e) };
   }

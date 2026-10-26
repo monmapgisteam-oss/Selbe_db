@@ -294,6 +294,73 @@ export function HuvaariBatlah({
   /* ⚠️ Салсны дараа setState дуудахгүй (2026-09-16 аудит) — `toggle`-ийн
      async ачаалалт ба `reject`-ийн `finally` хоёулаа энэ тугийг шалгана. */
   const alive = useRef(true);
+  /**
+   * ⚠️ 2026-10-26: илгээх агшны хуулбар (191-ийн `n:hsub:<OBJECTID>` мөр) — буцаах · гацсаныг буцаах · татахын дараа
+   *    хүлээгдэхээ больсон хуулбарыг устгана (самбар). Арын ажил; динамик импорт (`draftRowsRemote` → `huvaariBatlah` тойрог үгүй).
+   */
+  const syncSubmitted = (pkgKey: string) => {
+    void import('@/lib/draftRowsRemote').then((m) => m.planSyncSubmitted(pkgKey, { force: true })).catch(() => undefined);
+  };
+  /**
+   * ⚠️ 2026-10-26: АДМИНЫ НООРОГИЙН ШИЛЖҮҮЛЭЛТ (зөвхөн super) — 191-ийн хуучин JSON ноорог (гүйцэтгэл `<багц>` · хуваарь
+   *    `plan:%`) ба илгээлтийг (`sub|`/`done|`) ЭХ ХУУДАСНЫ БҮТЦЭЭР мөр рүү НЭГ ДОР (хэн нэгэн нээхийг хүлээхгүй); JSON/payload
+   *    хэвээр (Phase A). «Тулгах» нь мөрөөс сэргээсэн ноорог = JSON эсэхийг тоолно; «Хуучин JSON-ыг цэвэрлэх» (Phase B) ЗӨВХӨН
+   *    тулгалт бүрэн зөв үед — буцаах боломжгүй.
+   */
+  const [migBusy, setMigBusy] = useState(false);
+  const [migProg, setMigProg] = useState('');
+  const [verified, setVerified] = useState<import('@/lib/draftRowsRemote').VerifyResult | null>(null);
+  const migrateAll = async () => {
+    if (migBusy || busy) return;
+    if (!(await askConfirm(tr('Бүх хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлэх үү? JSON хэвээр үлдэнэ.'), { ok: tr('Шилжүүлэх') }))) return;
+    setMigBusy(true); setErr(''); setNote(''); setVerified(null);
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const st0 = await m.rowsReady(true);
+      if (st0.mode !== 'rows') { setErr(tr('Ноорогийн хүснэгтэд (191) мөрийн баганууд нэмэгдээгүй — notebook ажиллуулна уу')); return; }
+      const r = await m.migrateAll((d, t) => { if (alive.current) setMigProg(`${num(d)}/${num(t)}`); });
+      if (!alive.current) return;
+      setNote(tr('Ноорог: {0}-аас {1} шилжив', num(r.total), num(r.migrated))
+        + (r.failed.length ? ` · ${tr('{0} унав: {1}', num(r.failed.length), r.failed.slice(0, 3).join('; '))}` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) { setMigBusy(false); setMigProg(''); }
+    }
+  };
+  const verifyAll = async () => {
+    if (migBusy || busy) return;
+    setMigBusy(true); setErr(''); setNote('');
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const r = await m.verifyAll();
+      if (!alive.current) return;
+      setVerified(r);
+      setNote(tr('Тулгалт: {0}-аас {1} ижил · {2} зөрсөн · {3} шилжээгүй', num(r.total), num(r.same), num(r.diff.length), num(r.pending.length))
+        + (r.diff.length ? ` (${r.diff.slice(0, 5).join(', ')})` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) setMigBusy(false);
+    }
+  };
+  const cleanupLegacy = async () => {
+    if (migBusy || busy || !verified || verified.diff.length || verified.pending.length) return;
+    if (!(await askConfirm(tr('Тулгалт бүрэн зөв. Хуучин JSON ноорогийг устгаж, илгээлтийн payload-аас нүдийг хасах уу? БУЦААХ БОЛОМЖГҮЙ.'), { ok: tr('Цэвэрлэх'), danger: true }))) return;
+    setMigBusy(true); setErr(''); setNote('');
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const r = await m.phaseB(verified);
+      if (!alive.current) return;
+      setVerified(null);
+      setNote(tr('Хуучин JSON: {0} мөр устав · {1} илгээлтийн payload цэвэрлэгдэв', num(r.deleted), num(r.stripped))
+        + (r.failed.length ? ` · ${tr('{0} унав: {1}', num(r.failed.length), r.failed.slice(0, 3).join('; '))}` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) setMigBusy(false);
+    }
+  };
   useEffect(() => () => { alive.current = false; }, []);
 
   /* ⚠️ 2026-10-08: түгжээний цагийн тик + чимээгүй дахин татах (`now`-ийн ⚠️) — `alive`-ийн ДАРАА */
@@ -394,6 +461,7 @@ export function HuvaariBatlah({
         reason: `${why.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, okRows: [],
       });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       /* ⚠️ 2026-10-12 (аудит №8): `warn` (жиш. тэмдэглэгээний талбар алга — ногоон/улаан хадгалагдсангүй) — урьд нь хаягддаг
          байв (`Huvaari.decide`-ийн ижил дүрэм: мэдэгдэлд залгана). */
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.') + (r.warn ? ` ${r.warn}` : ''));
@@ -424,6 +492,7 @@ export function HuvaariBatlah({
     try {
       const r = await returnStuckPlan({ oid: x.oid, approver: user?.username ?? '', reason: why });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       setNote(tr('Гацсан илгээлт буцаагдлаа — зохиогч бичигдсэн огноог харж засаад дахин илгээнэ.'));
       setReason((m) => { const n = new Map(m); n.delete(x.oid); return n; });
       setOpen(null);
@@ -450,6 +519,7 @@ export function HuvaariBatlah({
     try {
       const r = await withdrawPlan({ oid: x.oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд «Ноорогт буцаах»-аар сэргээж, засаад дахин илгээж болно.'));
       setOpen(null);
       /* ⚠️ Бүтэн дахин уншина (`reject`-тэй ижил шалтгаан). */
@@ -525,6 +595,24 @@ export function HuvaariBatlah({
           <button className={s.clear} disabled={busy} onClick={reload}>
             {tr('Шинэчлэх')}
           </button>
+        )}
+        {st.k === 'ready' && isSuper && (
+          <>
+            <button className={s.clear} disabled={busy || migBusy} onClick={() => { void migrateAll(); }}
+              title={tr('191-ийн хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлнэ (JSON хэвээр)')}>
+              {migBusy && migProg ? tr('Шилжүүлж байна… {0}', migProg) : tr('Бүх ноорогийг шилжүүлэх')}
+            </button>
+            <button className={s.clear} disabled={busy || migBusy} onClick={() => { void verifyAll(); }}
+              title={tr('Мөрөөс сэргээсэн ноорог хуучин JSON-тэй ижил эсэхийг тулгана')}>
+              {tr('Шилжүүлэлтийг тулгах')}
+            </button>
+            {verified && !verified.diff.length && !verified.pending.length && verified.total > 0 && (
+              <button className={s.clear} disabled={busy || migBusy} onClick={() => { void cleanupLegacy(); }}
+                title={tr('Тулгалт бүрэн зөв — хуучин JSON-ыг устгана (буцаах боломжгүй)')}>
+                {tr('Хуучин JSON-ыг цэвэрлэх')}
+              </button>
+            )}
+          </>
         )}
         {/* ⚠️ 2026-10-12 (аудит №8): ЖАГСААЛТАД ХАРАГДАЖ БУЙ нийт (шүүлтийн дараа · өөрийн · бүртгэлгүй орно) — нэрээр ялгана
             (`actionableN`-ийн ⚠️; цэсний тэмдэг нь толгойн «шийдвэрлэх боломжтой» тоо). */}
