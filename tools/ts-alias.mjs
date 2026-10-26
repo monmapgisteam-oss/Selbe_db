@@ -112,6 +112,35 @@ if (IS_CHECK && process.env.SELBE_LIVE_SKIP === '1' && ENT) {
     };
   }
 }
+/* ⚠️ 2026-10-26 (ОСОЛ: хүчинтэй токентой `npm test` SYS_Selbe_Permissions/230-д 9 тестийн мөр БИЧСЭН): шалгуур
+   (`*.check.mjs`) хэзээ ч БОДИТ ArcGIS-д БИЧИХГҮЙ. Бодит хост (Enterprise · arcgis.com) руу явах бичих endpoint-ыг
+   (applyEdits · add/update/deleteFeatures · calculate · createService · addToDefinition · addItem · share г.м.) токен
+   залгахаас ӨМНӨ шууд татгалзана — хуурамч хүснэгт (`*.fake.mjs`) өөрийн fetch-ээр ажилладаг тул нөлөөгүй; амьд шалгуур
+   зөвхөн УНШИНА. Энэ хаалт `liveTok` байсан ч, Enterprise хүрэгдэх ч ҮРГЭЛЖ асаалттай. */
+if (IS_CHECK) {
+  const realHost = (h) => /(^|\.)selbecity\.mn$|(^|\.)arcgis\.com$/i.test(h);
+  const WRITE_EP = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete)(\?|\/?$)/i;
+  const before = globalThis.fetch;
+  if (before) {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url;
+      let u = null;
+      try { u = new URL(String(url)); } catch { /* харьцангуй — хөндөхгүй */ }
+      /* Аппын төлөвийн хүснэгтүүд (эрх 230 · хяналт 183 · ноорог 191 · хуваарь/обьём батлалт 192/193): шалгуурт зөвхөн
+         МЕТА уншиж болно; query/бичилт нь токенгүй үеийнхтэй ИЖИЛ «Token Required» — нэгж шалгуур хуурамч хүснэгтээр л ажиллана. */
+      if (u && realHost(u.host) && /\/(SYS_Selbe_Permissions\/FeatureServer\/230|Guitsetgel_talbe\/FeatureServer\/(183|191|192|193))\/[a-z]/i.test(u.pathname)) {
+        return new Response(JSON.stringify({ error: { code: 499, message: 'Token Required', details: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u && realHost(u.host) && WRITE_EP.test(u.pathname)) {
+        /* ArcGIS-ийн «эрхгүй» хариутай ИЖИЛ хэлбэр (HTTP 200 + {error}) — токенгүй үеийн «бичилт бүтэлгүй» замаар явна */
+        return new Response(JSON.stringify({ error: { code: 403, message: 'Тест: бодит ArcGIS-д бичихийг хориглосон', details: [] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return before(input, init);
+    };
+  }
+}
 if (IS_CHECK && liveTok) {
   const orig = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
