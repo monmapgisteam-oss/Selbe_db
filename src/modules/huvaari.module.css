@@ -140,6 +140,22 @@
   border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
   border-radius: var(--r);
 }
+/* ⚠️ 2026-10-26: «Зөвхөн харах» тэмдэг — толгойн удирдлагатай ижил өндөр (`--ctl-h`), засварын товч биш гэдэг нь өнгөөр */
+.roBadge {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ctl-h, 30px);
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 999px;
+  cursor: help;
+}
 .note {
   margin: 0;
   padding: 8px 12px;

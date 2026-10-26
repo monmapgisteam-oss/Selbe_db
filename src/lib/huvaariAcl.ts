@@ -38,8 +38,12 @@ import { roleForUser } from './services';
 
 export { ALL_BAGTS };
 
-/** Хуваарийн хоёр үүрэг */
-export type PlanRole = 'author' | 'approver';
+/**
+ * Хуваарийн үүргүүд.
+ * ⚠️ 2026-10-26 (хэрэглэгч): `viewer` («Харагч») — тухайн багцын хуваарийг ЗӨВХӨН ХАРНА: эрх (`caps`) олгохгүй, засах/илгээх/
+ *    батлах замд ОРОХГҮЙ (`huvaariScope(…, 'author'|'approver')`-оор шүүгддэг). «Хуваарь» харагдацыг `huvaariView.huvaariViewScope` нээнэ.
+ */
+export type PlanRole = 'author' | 'approver' | 'viewer';
 
 /** Нэг аккаунтын хуваарийн хуваарилалт */
 export type HuvaariAssign = Assign<PlanRole>;
@@ -50,6 +54,8 @@ const acl = makeAcl<PlanRole>({
   /* ⚠️ ҮҮРЭГ → ЭРХ. `CAP_HOST_VIEW`-ээр хоёулаа «Хуваарь» харагдацыг нээнэ.
      ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25). */
   roleCaps: ROLE_CAPS.huvaari,
+  /* ⚠️ 2026-10-26: «Харагч» — эрхгүй үүрэг (`AclSpec.extraRoles`) */
+  extraRoles: ['viewer'],
   push: (user, roles, bagts, grants) => huvaariUpsert(user, roles, bagts, grants),
   remove: huvaariRemove,
   /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */

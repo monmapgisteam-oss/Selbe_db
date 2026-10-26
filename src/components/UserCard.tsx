@@ -39,7 +39,8 @@ export type UserCardProps = {
   hasDraft: boolean;
   onBack: () => void;
   /** Урсгалтай хуудасны эх сурвалжийн холбоос — тэр эрхийн хуудас руу (2026-10-01) */
-  onGo: (pane: ErhPane) => void;
+  /* ⚠️ 2026-10-26: `'types'` — «Хуваарь харах»-ын эх сурвалж эрхийн төрлийн хуудас */
+  onGo: (pane: ErhPane | 'types') => void;
 };
 
 export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {

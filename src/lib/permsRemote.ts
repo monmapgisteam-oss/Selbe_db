@@ -374,13 +374,9 @@ async function probeEntExposure(layerUrl: string): Promise<void> {
     const item = await arcgisPost<{ access?: unknown }>(`${restBase()}/content/items/${encodeURIComponent(itemId)}`, {});
     const access = String(item.access ?? '').toLowerCase();
     tablePublic = access === 'public';
+    /* ⚠️ 2026-10-26 (хэрэглэгч): console.error ба UserAdmin-ы улаан анхааруулга ХАСАГДСАН — org-ийн аккаунт бүгд
+       итгэмжлэгдсэн (хүлээн зөвшөөрсөн эрсдэл). Төлөвийг л тэмдэглэнэ. */
     tableOrgEditable = editable && (access === 'org' || access === 'public');
-    if (tableOrgEditable) {
-      console.error(
-        `[selbe] ${TITLE} хүснэгт байгууллагад засагдахаар нээлттэй (${caps.join(',')} · ${access}) — засах эрхтэй аккаунт бүр өөртөө super бичиж чадна.`,
-        'Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана уу (уншилт org-д хэвээр).',
-      );
-    }
   } catch {
     /* шалгаж чадсангүй — анхааруулгагүй (дээрх ⚠️) */
   }

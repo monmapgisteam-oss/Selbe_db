@@ -25,8 +25,8 @@ export type WfSource = {
    * `flow` — урсгалын томилгоо · үүрэгтэй тав — хуваарилалт (2026-10-23: QAQC хасагдсан) ·
    * `cap` — хуваарилалтгүй ШУУД олгосон эрх (хатуу super-ийн шууд олголт / өнчин эрх)
    */
-  sys: 'flow' | ScopedSys | 'cap';
-  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр */
+  sys: 'flow' | ScopedSys | 'cap' | 'type';
+  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр; `type`-д — «Хуваарь харах» утга (`all`/`own`, 2026-10-26) */
   role: string;
   /** Багцууд — `null` = бүх багц; `cap`-д `null` (хязгааргүй) */
   bagts: string[] | null;
@@ -68,6 +68,11 @@ export function workflowRows(u: UserErh): WfRow[] {
     const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;
     for (const l of u[sys]) {
       const cap = map[l.role];
+      /* ⚠️ 2026-10-26: «Хуваарийн эрх» → «Харагч» — эрхгүй үүрэг, «Хуваарь»-ыг тэр багцаар ЗӨВХӨН ХАРНА (`huvaariView`) */
+      if (!cap && sys === 'huvaari' && l.role === 'viewer') {
+        push('huvaari', { sys, role: l.role, bagts: l.bagts, cap: null, granted: true, viewOnly: true });
+        continue;
+      }
       if (!cap) continue;
       explained.add(cap);
       const granted = u.caps.includes(cap);
@@ -79,9 +84,17 @@ export function workflowRows(u: UserErh): WfRow[] {
     for (const v of hosts(c)) push(v, { sys: 'cap', role: c, bagts: null, cap: c, granted: true });
   }
 
+  /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Бүх багц», эсвэл «Өөрийн багц» (хуваарилалттай багц байвал л) */
+  if (u.hvType && (u.hvType.bagts === null || u.hvType.bagts.length > 0)) {
+    push('huvaari', { sys: 'type', role: u.hvType.scope, bagts: u.hvType.bagts, cap: null, granted: true, viewOnly: true });
+  }
+
   return WORKFLOW_VIEWS.map((view) => {
     const sources = by.get(view) ?? [];
-    return { view, sources, open: u.superUser || sources.some((s) => s.granted) };
+    /* ⚠️ 2026-10-26: «Хуваарь» — «Хуваарийн эрх»-ийн мөр (зохиогч · батлагч · харагч) эрх (`caps`) алга байсан ч тэр багцыг
+       ЗӨВХӨН ХАРАХ-аар нээнэ (`huvaariView.huvaariViewScope` — `resolveAccess`-тэй ижил дүрэм); «эрх олгогдоогүй» тэмдэг хэвээр */
+    const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari');
+    return { view, sources, open: u.superUser || viaPlan || sources.some((s) => s.granted) };
   });
 }
 

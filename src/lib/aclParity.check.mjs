@@ -225,8 +225,9 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
      2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`);
      2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`) */
   /* ⚠️ 2026-10-23: QAQC хасагдсан (`__qaqc__:` синк) → 8 */
-  assert.equal(logged.length, 8,
-    `initRemote-ийн 8 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+  /* ⚠️ 2026-10-26: + «Хуваарь харах» хүрээний модуль (`huvaariView`, уншигч бүртгэнэ) → 9 */
+  assert.equal(logged.length, 9,
+    `initRemote-ийн 8 ACL синк + хуваарь харах модуль бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');
@@ -536,7 +537,8 @@ console.log('\naclParity.check: ok');
       'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');
     /* «Хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгана — эс бөгөөс нэг үүрэг
        хасахад НӨГӨӨГИЙН эрх ч хасагдана (эсвэл эсрэгээр, хэзээ ч хасагдахгүй). */
-    assert.ok(/const none = roles\.length === 0;/.test(b),
+    /* ⚠️ 2026-10-26: эрхгүй үүрэг (Хуваарийн «Харагч», `extraRoles`) «үүрэг үлдсэн» гэж тоологдохгүй */
+    assert.ok(/const none = !roles\.some\(\(r\) => spec\.roleCaps\[r\] != null\);/.test(b),
       'scopedAcl: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой');
     assert.ok(/else if \(none\) next\.delete\(cap\);/.test(b),
       'scopedAcl: syncCaps нь эрхийг ЗӨВХӨН бүх үүрэг арилах үед хасах ёстой');

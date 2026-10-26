@@ -29,7 +29,12 @@ import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
   unseenViews, type TypeTpl,
+  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсэг — «Хуваарь харах» сонгогч ба «шийдсэн» тэмдэг */
+  HV_ROW, hvScopeOf, planViewDecided, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
 } from '@/lib/roleTypes';
+/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» МЭДЭЭЛЛИЙН мөр — тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн үүрэг бий */
+import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { isWorkflowView } from '@/lib/caps';
 import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
 /* ⚠️ 2026-10-22 (аудит): урсгалын төрлийг хэрэгжүүлсний дараа шатгүй үлдсэн хүмүүс (`erhOverview.typeStageGaps`) */
 import { ROLE_STAGE } from '@/lib/services';
@@ -64,7 +69,8 @@ export function ErhTypes({ remote, onDirty }: {
     const a = subscribeTypes(f);
     const b = subscribe(f);
     const c = subscribeBulk(f);
-    return () => { a(); b(); c(); };
+    const d = subscribeHuvaariAcl(f);
+    return () => { a(); b(); c(); d(); };
   }, []);
 
   const [drafts, setDrafts] = useState<Drafts>({});
@@ -94,7 +100,8 @@ export function ErhTypes({ remote, onDirty }: {
    */
   const put = (r: Role, t: TypeTpl) => {
     setMsg('');
-    const next = isStoredTpl(r) ? { ...t, seen: tplViewKeys() } : t;
+    /* ⚠️ 2026-10-26: + «Хуваарь харах» шийдсэн тэмдэг (`tplSeenKeys`) — хадгалсан баганыг засах = энэ утгыг ч харсан */
+    const next = isStoredTpl(r) ? { ...t, seen: tplSeenKeys() } : t;
     setDrafts((d) => ({ ...d, [r]: next }));
   };
   /** Хадгалсан загварт тохируулаагүй (хадгалсны дараа нэмэгдсэн) харагдацууд — ноорог тооцно */
@@ -111,7 +118,25 @@ export function ErhTypes({ remote, onDirty }: {
      уншдаггүй (`Root.hardSuper = roleForUser(...) === 'super'`, зөвхөн код). Урьд нь super баганад
      чеклэгддэг тул «загвараас админ самбар олгоно» гэсэн ХУДАЛ дүр зурдаг байв. Хадгалагдсан
      утга (`on`) хэвээр харагдана, өөрчлөгдөхгүй. */
-  const allowed = (_r: Role, id: string): boolean => id !== 'admin';
+  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсгийн id (`huvaari:*`) ЧЕКБОКС БИШ — «бүгд/арилгах» тэднийг хөндөхгүй (сонгогч · мэдээлэл) */
+  const allowed = (_r: Role, id: string): boolean => id !== 'admin' && !id.startsWith('huvaari:');
+  const hvIds = (r: Role): string[] => cur(r).on.filter((id) => id.startsWith('huvaari:'));
+  const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }); };
+  /** «Хуваарь харах» шийдэгдээгүй (энэ тохиргооноос ӨМНӨ хадгалсан) багана — анхдагч утга үйлчилж байна */
+  const hvUndecided = (r: Role): boolean => !planViewDecided(cur(r), isStoredTpl(r));
+  /** Тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн тэр үүрэг бий (уншигдаагүй бол `null`) */
+  const roleHolders = (r: Role, role: 'author' | 'approver'): number | null => {
+    if (!huvaariAclReady()) return null;
+    const mine = new Set(usersOf(r));
+    return listHuvaariAssigns().filter((a) => mine.has(a.user) && a.grants.some((g) => g.role === role)).length;
+  };
+  /** Нүүр цонхны сонголтын тэмдэг — тэр төрөлд загвараар нээгдэхгүй бол */
+  const homeNote = (r: Role, k: ViewKey): string => {
+    if (r === 'super') return '';
+    if (k === 'huvaari' && hvScopeOf(cur(r).on) !== 'none') return '';
+    if (isWorkflowView(k)) return ` · ${tr('хуваарилалтаар')}`;
+    return cur(r).on.includes(`view:${k}`) ? '' : ` · ${tr('хаалттай')}`;
+  };
 
   const usersOf = (r: Role): string[] => listUsers()
     .filter((u) => roleOf(u.username) === r)
@@ -216,7 +241,7 @@ export function ErhTypes({ remote, onDirty }: {
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: allIds.filter((id) => allowed(r, id)) })}>
+                        onClick={() => put(r, { ...cur(r), on: [...allIds.filter((id) => allowed(r, id)), ...hvIds(r)] })}>
                         {tr('бүгд')}
                       </button>
                       <button type="button" className={s.mini} disabled={busy}
@@ -251,14 +276,16 @@ export function ErhTypes({ remote, onDirty }: {
                   <select id={`tt-home-${r}`} className={s.sel} value={cur(r).home} disabled={busy}
                     aria-label={`${tr('Нэвтрэхэд нээгдэх цонх')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), home: e.target.value as ViewKey })}>
-                    {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}</option>)}
+                    {/* ⚠️ 2026-10-26: загвараар нээгдэхгүй цонхыг тэмдэглэнэ — нүүр нь нээгдэхгүй бол `Root.openEntry` эхний зөвшөөрөгдсөн руу */}
+                    {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}{homeNote(r, v.key)}</option>)}
                   </select>
                 </td>
               ))}
             </tr>
             {groups.map((g) => (
               <Group key={g.title} title={g.title} rows={g.rows} cur={cur} flip={flip} allowed={allowed} busy={busy}
-                isNew={(r, id) => id.startsWith('view:') && unseenOf(r).includes(id.slice(5) as ViewKey)} />
+                setHv={setHv} holders={roleHolders}
+                isNew={(r, id) => (id === HV_ROW ? hvUndecided(r) : id.startsWith('view:') && unseenOf(r).includes(id.slice(5) as ViewKey))} />
             ))}
           </tbody>
         </table>
@@ -284,10 +311,14 @@ export function ErhTypes({ remote, onDirty }: {
 }
 
 function Group({
-  title, rows, cur, flip, allowed, busy, isNew,
+  title, rows, cur, flip, allowed, busy, isNew, setHv, holders,
 }: {
   title: string;
-  rows: { id: string; label: string; hint?: string }[];
+  rows: SettingRow[];
+  /** ⚠️ 2026-10-26: «Хуваарь харах» сонгогч */
+  setHv: (r: Role, v: HvScope) => void;
+  /** ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» мэдээллийн тоо */
+  holders: (r: Role, role: 'author' | 'approver') => number | null;
   cur: (r: Role) => TypeTpl;
   flip: (r: Role, id: string, v: boolean) => void;
   allowed: (r: Role, id: string) => boolean;
@@ -302,15 +333,42 @@ function Group({
         <tr key={row.id}>
           <td className={s.lbl}>
             <span className={s.lblText}>{row.label}</span>
-            {TYPE_ORDER.some((r) => isNew(r, row.id)) && (
+            {TYPE_ORDER.some((r) => isNew(r, row.id)) && (row.select ? (
+              /* ⚠️ 2026-10-26: «Хуваарь харах» — энэ тохиргооноос ӨМНӨ хадгалсан загварт анхдагч утга үйлчилж байна */
+              <span className={s.newBadge} title={tr('Шар нүдэнд анхдагч утга үйлчилж байна — сонгоод «Хадгалах» дарж батална уу.')}>
+                {tr('шинэ тохиргоо — анхдагч утга')}
+              </span>
+            ) : (
               <span className={s.newBadge} title={tr('Зарим хадгалсан загварт энэ хуудас тохируулагдаагүй — шар нүдэнд чеклэх эсвэл баганын тэмдгийг дарна уу.')}>
                 {tr('шинэ хуудас — загварт тохируулаагүй')}
               </span>
-            )}
+            ))}
             {row.hint && <span className={s.lblHint}>{row.hint}</span>}
           </td>
           {TYPE_ORDER.map((r) => (
             <td key={r} className={isNew(r, row.id) ? s.cellNew : undefined}>
+              {row.select ? (
+                /* ⚠️ 2026-10-26: «Хуваарь харах» — Бүх багц / Өөрийн багц / Үгүй (`roleTypes.HvScope`) */
+                <select id={`tt-${r}-hv`} className={s.sel} value={hvScopeOf(cur(r).on)} disabled={busy}
+                  aria-label={`${row.label} — ${typeLabel(r)}`}
+                  onChange={(e) => setHv(r, e.target.value as HvScope)}>
+                  <option value="all">{tr('Бүх багц')}</option>
+                  <option value="own">{tr('Өөрийн багц')}</option>
+                  <option value="none">{tr('Үгүй')}</option>
+                </select>
+              ) : row.info ? (
+                /* ⚠️ 2026-10-26: МЭДЭЭЛЭЛ — засагдахгүй; «Хуваарийн эрх»-ээс багцаар (тоо = тэр төрлийн үүрэгтэй хүн) */
+                (() => {
+                  const n = holders(r, row.info);
+                  return (
+                    <span className={s.info} title={tr('«Хуваарийн эрх»-ээс багцаар оноогдоно')}>
+                      <input type="checkbox" className={s.cb} checked={!!n} disabled readOnly
+                        aria-label={`${row.label} — ${typeLabel(r)}`} />
+                      {n == null ? '…' : n > 0 ? String(n) : ''}
+                    </span>
+                  );
+                })()
+              ) : (
               <input
                 id={`tt-${r}-${row.id.replace(/[^a-zA-Z0-9]/g, '_')}`}
                 type="checkbox"
@@ -320,6 +378,7 @@ function Group({
                 aria-label={`${row.label} — ${typeLabel(r)}`}
                 onChange={(e) => flip(r, row.id, e.target.checked)}
               />
+              )}
             </td>
           ))}
         </tr>

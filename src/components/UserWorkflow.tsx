@@ -30,6 +30,11 @@ import s from './userAdmin.module.css';
 
 /** Эх сурвалжийн текст — «Хуваарийн эрх · Зохиогч · Багц 3.1» */
 function srcText(x: WfSource): string {
+  /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Эрхийн төрөл · Бүх багц · зөвхөн харна» */
+  if (x.sys === 'type') {
+    return [tr('Эрхийн төрөл'), x.role === 'all' ? tr('Бүх багц') : tr('Өөрийн багц'),
+      x.role === 'all' ? '' : bagtsText(x.bagts), tr('зөвхөн харна')].filter(Boolean).join(' · ');
+  }
   const pane = paneLabel(paneOfSys(x.sys, x.cap));
   if (x.sys === 'cap') return `${pane} · ${x.cap ? capLabelShort(x.cap) : x.role} · ${tr('шууд олгосон')}`;
   const role = x.sys === 'flow' ? STAGE_LABEL[x.role as Stage]
@@ -38,7 +43,8 @@ function srcText(x: WfSource): string {
   return [pane, role, bagtsText(x.bagts), x.viewOnly ? tr('зөвхөн харна') : ''].filter(Boolean).join(' · ');
 }
 
-export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPane) => void }) {
+/* ⚠️ 2026-10-26: `'types'` — эрхийн төрлийн эх сурвалж «Эрхийн төрөл» хуудас руу */
+export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPane | 'types') => void }) {
   const { busy, err, run } = useAclRunner();
   const ready = allAclReady();
   const head = (
@@ -105,7 +111,7 @@ export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPan
                     title={bad
                       ? tr('Хуваарилалт бий атлаа эрх олгогдоогүй — «Дахин олгох» дарна уу. Дарвал тэр хуудас руу очно.')
                       : tr('Тэр хуудас руу очих')}
-                    onClick={() => onGo(paneOfSys(x.sys, x.cap))}
+                    onClick={() => onGo(x.sys === 'type' ? 'types' : paneOfSys(x.sys, x.cap))}
                   >
                     {srcText(x)}{bad ? ` · ${tr('эрх олгогдоогүй')}` : ''}
                   </button>

@@ -33,6 +33,9 @@ import { listUsers, remoteReady, resolveAccess, roleOf } from './permissions';
 import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
 import { portalMissing } from './portalPresence';
+/* ⚠️ 2026-10-26: «Хуваарь харах» төрлийн хүрээ — урсгалтай хуудасны эх сурвалжид (`ErhSource.hvType`) */
+import { typeHuvaariScope } from './roleTypes';
+import { ownPkgScope } from './huvaariView';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, capsStored, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
@@ -315,7 +318,8 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
     setGrants: (u, g) => setHuvaariGrants(u, g as Grant<PlanRole>[]),
     removeNoRevoke: (u) => removeHuvaariAssign(u, false),
     retry: (u, g) => retryHuvaariAssign(u, g),
-    roleCaps: ROLE_CAPS.huvaari, roles: Object.keys(ROLE_CAPS.huvaari), universe: () => PKG_GROUPS,
+    /* ⚠️ 2026-10-26: + «Харагч» (`viewer`) — эрхгүй үүрэг (`huvaariAcl.PlanRole`) */
+    roleCaps: ROLE_CAPS.huvaari, roles: [...Object.keys(ROLE_CAPS.huvaari), 'viewer'], universe: () => PKG_GROUPS,
   },
   obyem: {
     list: listObyemAssigns, failedUsers: obyemFailedUsers, ready: obyemAclReady,
@@ -380,6 +384,13 @@ export function liveErhSource(): ErhSource {
   }
   /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын мөртэй байсан ч шатны эзэн биш (`ErhSource.viewRoles`) */
   const viewRoles = users.filter((u) => roleOf(u) === 'zahiral');
+  /* ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» («Үгүй»-гээс бусад) — `workflowSources`-ийн «Төрөл · Бүх багц» эх сурвалж */
+  const hvType: NonNullable<ErhSource['hvType']> = {};
+  for (const u of users) {
+    const t = typeHuvaariScope(roleOf(u));
+    if (t === 'all') hvType[u.toLowerCase()] = { scope: 'all', bagts: null };
+    else if (t === 'own') hvType[u.toLowerCase()] = { scope: 'own', bagts: ownPkgScope(u) };
+  }
   return {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
@@ -390,6 +401,7 @@ export function liveErhSource(): ErhSource {
     absent: users.filter((u) => portalMissing(u)),
     typeStage,
     viewRoles,
+    hvType,
     flow,
     huvaari,
     obyem,

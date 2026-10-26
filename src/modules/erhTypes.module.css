@@ -112,3 +112,5 @@ button.newBadge { cursor: pointer; }
 button.newBadge:disabled { opacity: 0.4; cursor: default; }
 .lbl .newBadge { margin: 2px 0 0 6px; }
 .cellNew { background: color-mix(in oklab, var(--warn) 8%, transparent); }
+/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» — МЭДЭЭЛЛИЙН нүд (идэвхгүй чекбокс + тэр төрлийн үүрэгтэй хүний тоо) */
+.info { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--ink-3); cursor: help; }

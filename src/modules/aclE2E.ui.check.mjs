@@ -205,6 +205,13 @@ const idle = () => settle(() => fake.inflight > 0
 /* ══════════ Аккаунтууд ба эхлэл ══════════ */
 const POOL = Array.from({ length: 80 }, (_, i) => `ui_u${String(i + 1).padStart(3, '0')}`);
 fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 })));
+
+/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
+   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
+{
+  const hvBase = RT._defaultTpl('taniltsah');
+  fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT.withHvScope(hvBase.on, 'none'), seen: RT.tplSeenKeys() }) }]);
+}
 let nextU = 0;
 const mkUser = () => POOL[nextU++];
 const run = async (op) => { takeConfirms(); let err = ''; const r = await OPS.runOp(op, (m) => { err = m; }); await idle(); return { ok: r, err, confirms: takeConfirms() }; };
@@ -735,7 +742,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m = mount(React.createElement(UserWorkflow, { user: u, onGo: noop }));
   const re = btn(m, /Дахин олгох/);
   ok(re.length === 1, `${tag}: эрх алга → «Дахин олгох»`);
-  ok(!P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед «Хуваарь» хаалттай`);
+  /* ⚠️ 2026-10-26: зохиогчийн мөр нь харах хүрээ (`huvaariView`) — эрх алга ч «Хуваарь» ЗӨВХӨН ХАРАХ-аар нээлттэй хэвээр */
+  ok(P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед ч «Хуваарь» зөвхөн харах-аар нээлттэй`);
   re[0].props.onClick({});
   await idle();
   ok(CAPS.capsOf(u).includes('plan') && P.resolveAccess(u).views.includes('huvaari'), `${tag}: «Дахин олгох» → эрх ба хуудас сэргэв`);

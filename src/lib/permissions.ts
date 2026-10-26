@@ -709,6 +709,14 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
     console.error('[selbe] эрхийн төрлийн загварын синк амжилтгүй:', e);
   }
 
+  // 11б) ⚠️ 2026-10-26: «Хуваарь харах» хүрээний уншигч (`_setHuvaariViewReader`) — модуль ачаалагдахдаа бүртгэнэ.
+  //      ACL-ууд (6–10) ба загвар (11) синклэгдсэний ДАРАА — эс бөгөөс хоосон хүрээгээр «Хуваарь» хаалттай үлдэнэ (fail-closed).
+  try {
+    await import('./huvaariView');
+  } catch (e) {
+    console.error('[selbe] хуваарь харах хүрээний модуль ачаалагдсангүй:', e);
+  }
+
   // 12) «Систем түр хаах» төлөв (`__sys__:maintenance`, ⚠️ 2026-10-19)
   //     ⚠️ ЗӨВХӨН амжилттай уншилтад шинэчлэгдэнэ — уншилт унавал (дээрх `!remote` эрт буцалт) СҮҮЛИЙН
   //        мэдэгдэж буй төлөв хэвээр (fail-open: ArcGIS-ийн түр саатал бүх хүнийг гаргахгүй, хаалттай байсныг ч
@@ -912,6 +920,14 @@ const VIEW_ORDER = new Map<string, number>(VIEWS.map((v, i) => [v.key, i]));
  * ⚠️ Хоёр эх сурвалж хоёулаа remote уншигдаагүй сешнд ХООСОН (fail-closed — `capsOf` ·
  *    `guitsetgelAcl.effective`): томилгоо уншигдтал урсгалтай хуудас хаалттай.
  */
+/**
+ * «ХУВААРЬ ХАРАХ» УНШИГЧ (⚠️ 2026-10-26) — `huvaariView.ts` ачаалагдахдаа бүртгэнэ (`_setRoleReader`-ийн загвар).
+ * ⚠️ ЯАГААД СТАТИК ИМПОРТ БИШ: тэр модуль `huvaariAcl` (→ `permsRemote`, `permissions`) · `ajilAcl` · `obyemAcl` ·
+ *    `butetsAcl`-ийг уншдаг — энэ файл ACL-уудыг ЗӨВХӨН динамикаар ачаалдаг (`initRemote`) тул тойрог импорт үүсгэхгүй.
+ */
+let hvViewReader: ((user: string) => boolean) | null = null;
+export function _setHuvaariViewReader(f: (user: string) => boolean): void { hvViewReader = f; }
+
 export function workflowViewsOf(username?: string | null): ViewKey[] {
   if (!username) return [];
   const out = new Set<ViewKey>(capViewsOf(username).filter(isWorkflowView));
@@ -920,6 +936,11 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
      `guitsetgelAcl.resolveFlowStage` → `viewAll`, `canReview: false`). `roleOf` нь remote уншигдаагүй бол override-ын
      үүргийг үл тооцдог тул fail-closed хэвээр. */
   if (roleOf(username) === 'zahiral') out.add('guitsetgel');
+  /* ⚠️ 2026-10-26 (хэрэглэгч): «ХУВААРЬ ХАРАХ» ХҮРЭЭ (төрлийн «Бүх/Өөрийн багц» ∪ «Харагч» · зохиогч · батлагчийн багц —
+     `huvaariView.huvaariViewScope`) хоосон биш бол «Хуваарь» ЗӨВХӨН ХАРАХ-аар нээгдэнэ. Засах/илгээх/батлах нь `huvaariScope`-оор
+     хэвээр хаалттай (`Huvaari.canEditRole` · `canApprove`, lib-ийн `submitPlan` · `decidePlan`). Уншигч бүртгэгдээгүй (ACL
+     уншигдаагүй) бол хаалттай — fail-closed (`_setHuvaariViewReader`). */
+  if (hvViewReader?.(username)) out.add('huvaari');
   return [...out];
 }
 

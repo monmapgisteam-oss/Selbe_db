@@ -61,6 +61,13 @@ const sorted = (x) => [...x].sort();
  *    хаагдахыг цэвэр ялгана. Хэрэглэгч бүр ТУСДАА (өмнөх хэсгийн үлдэгдэл нөлөөлөхгүй). */
 const POOL = Array.from({ length: 120 }, (_, i) => `e2e_u${String(i + 1).padStart(3, '0')}`);
 fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 })));
+
+/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
+   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
+{
+  const hvBase = RT._defaultTpl('taniltsah');
+  fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT.withHvScope(hvBase.on, 'none'), seen: RT.tplSeenKeys() }) }]);
+}
 let next = 0;
 const mkUser = () => POOL[next++];
 

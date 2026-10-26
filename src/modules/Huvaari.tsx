@@ -40,6 +40,13 @@ import { applyUpdates, loadRows, msToDay, type SheetRow } from '@/modules/sheet/
 import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
+/* ⚠️ 2026-10-26: «Хуваарь» ХАРАХ хүрээ (төрөл · «Харагч» · өөрийн багц) ба түүний эх сурвалжуудын дохио */
+import { huvaariViewScope } from '@/lib/huvaariView';
+import { subscribeTypes } from '@/lib/roleTypes';
+import { subscribe as subscribePerms } from '@/lib/permissions';
+import { subscribeAcl as subscribeFlowAcl } from '@/lib/guitsetgelAcl';
+import { subscribeObyemAcl } from '@/lib/obyemAcl';
+import { subscribeButetsAcl } from '@/lib/butetsAcl';
 import {
   DAY, endOf, spanDays, statusOf,
   type PlanRow, type Span, type Status,
@@ -372,6 +379,13 @@ export function Huvaari({
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
   const [ajN, setAjN] = useState(0);
   useEffect(() => subscribeAjilAcl(() => setAjN((x) => x + 1)), []);
+  /* ⚠️ 2026-10-26: харах хүрээ (`huvaariViewScope`) нь төрлийн загвар · үүрэг · урсгал · обьём · дэд бүтцийн хуваарилалтаас */
+  const [typesN, setTypesN] = useState(0);
+  useEffect(() => {
+    const f = () => setTypesN((x) => x + 1);
+    const offs = [subscribeTypes(f), subscribePerms(f), subscribeFlowAcl(f), subscribeObyemAcl(f), subscribeButetsAcl(f)];
+    return () => { for (const o of offs) o(); };
+  }, []);
   /*
    * ⚠️ 2026-10-19 (аудит): НЭМЭЛТ АЖЛЫН МӨР НЭМЭГЧИЙН хүрээ (`ajilScope(…, 'editor')` + `addRow` эрх) ч НЭГДЭЛД
    *    орно. Урьд нь зөвхөн хуваарийн хоёр үүрэг тул «Багц 1-д хуваарь зохиогч, Багц 5-д мөр нэмэгч» хүнд
@@ -379,22 +393,23 @@ export function Huvaari({
    *    ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: огноо засах = `canEdit` (хуваарийн зохиогчийн хүрээ), батлах = `canApprove`,
    *    мөр нэмэх = `canAddRow` (нэмэлт ажлын хүрээ) — бусад багцад зөвхөн ХАРНА.
    */
+  /*
+   * ⚠️ 2026-10-26 (хэрэглэгч: «харах хүрээг гараар — бүх багц эсвэл тодорхой багц»): СОНГОГЧ = «ХАРАХ ХҮРЭЭ»
+   *    (`huvaariView.huvaariViewScope` — төрлийн «Хуваарь харах» ∪ «Харагч» · зохиогч · батлагчийн багц) ∪ мөр нэмэгчийн
+   *    хүрээ. Урьдын «хуваарилалтгүй бол БҮХ багц» нөөц ХАСАГДСАН — хүрээгүй хүнд багц харагдахгүй (доорх `noScope` мэдэгдэл);
+   *    «Хуваарь» цэс ч тэр үед нээгдэхгүй (`permissions.workflowViewsOf`). ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: харах хүрээнээс гадна засах/
+   *    батлах/мөр нэмэх нь `canEditRole` · `canApprove` · `canAddRow`-оор хэвээр.
+   */
   const groupOpts = useMemo(() => {
     if (status === 'off') return PKG_GROUPS;
-    const a = huvaariScope(user?.username, 'author');
-    const b = huvaariScope(user?.username, 'approver');
+    const v = huvaariViewScope(user?.username);
     const e = hasCap(user?.username, 'addRow') ? ajilScope(user?.username, 'editor') : [];
-    /* ⚠️ `null` нь ХЯЗГААРГҮЙ — аль нэг үүрэг нь хязгааргүй бол бүгд */
-    if (a == null || b == null || e == null) return PKG_GROUPS;
-    const mine = new Set([...a, ...b, ...e]);
-    /* ⚠️ Хоёр үүрэгт ч томилогдоогүй бол ХУМИХГҮЙ (дээрх ⚠️) */
-    if (mine.size === 0) return PKG_GROUPS;
-    const list = PKG_GROUPS.filter((g) => mine.has(g));
-    /* ⚠️ Томилгоо нь одоо байхгүй багцыг заасан (нэр солигдсон) бол сонгогч
-       хоосорно — тэр үед бүгдийг үзүүлнэ, эс бөгөөс хуудас ашиглагдахгүй. */
-    return list.length ? list : PKG_GROUPS;
+    /* ⚠️ `null` нь ХЯЗГААРГҮЙ */
+    if (v == null || e == null) return PKG_GROUPS;
+    const mine = new Set([...v, ...e]);
+    return PKG_GROUPS.filter((g) => mine.has(g));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, status, hvN, capN, ajN]);
+  }, [user, status, hvN, capN, ajN, typesN]);
   /**
    * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
    * ⚠️ Нэг огноо солиход БҮХ багцын төлөвлөгөөт хувь, тайлан, хоцрогдлын
@@ -456,6 +471,12 @@ export function Huvaari({
     return sc0 === null || sc0.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, status, capN, ajN, pkg.group, review]);
+  /**
+   * ⚠️ 2026-10-26 (хэрэглэгч): ЗӨВХӨН ХАРАХ ГОРИМ — энэ багцад засах (зохиогч) · батлах · мөр нэмэх эрх АЛЬ НЬ Ч алга
+   *    («Харагч», төрлийн «Хуваарь харах», эсвэл өөр багцын зохиогч). Толгойд «Зөвхөн харах» тэмдэг; бичих зам бүр
+   *    эдгээр гурваар аль хэдийн хаалттай (`sendForApproval` · `decide` · `useSharedDraft.hdWritable` · `useAjil`).
+   */
+  const viewOnly = !review && status !== 'off' && !canEditRole && !canApprove && !canAddRow;
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ — байвал хуваарь ТҮГЖИГДЭНЭ.
@@ -3994,7 +4015,9 @@ export function Huvaari({
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
     /* ⚠️ Урьдчилан харж байхад ИЛГЭЭХГҮЙ (2026-09-25 аудит) — ноорог нь бусдын санал */
-    if (!dirtyN || busy || previewing) return;
+    /* ⚠️ 2026-10-26: ЗАСАХ ЭРХГҮЙ (харагч — хамтрагчийн хуваалцсан ноорог `dirtyN`-д орж болно) бол ИЛГЭЭХГҮЙ — товч
+       `canEdit`-ээр нуугдсан ч функцийн түвшинд ч хаана (lib-ийн `submitPlan` зохиогчийн хүрээг дахин шалгана). */
+    if (!dirtyN || busy || previewing || !canEdit) return;
     /* ⚠️ 2026-10-21: САРЫН ОБЬЁМЫН ХҮСНЭГТ уншигдаагүй (`obNotReady`) бол ИЛГЭЭХГҮЙ — `save()`-ийн хаалттай ижил. Урьд нь
        `loadPkgPlan` унасан үед ч илгээж, `base.obyem` хоосон тул батлахад блок БҮР «зэрэгцээ өөрчлөлт» болдог байв;
        хуваалцсан ноорогийн сэргээлт `fail` үед ч сарын нүдийг буулгадаг тул тэдгээрийн илгээлтийг энд хаана. */
@@ -4136,7 +4159,7 @@ export function Huvaari({
       setBusy(false);
       setProgress('');
     }
-  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
+  }, [dirtyN, dirtyRows, busy, previewing, canEdit, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
     hdSubmitBegin, hdSubmitEnd, setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks,
     unbalRows, obOut, obOutMsg, setErrList, setFlowBox, setProgress, obNotReady, obState, obResDraft, frameOld, orphanOb]);
 
@@ -5976,6 +5999,20 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     ? <span className={h.multiTag} title={tr('Нүдэнд бичсэн огноо сонгосон {0} блокт тавигдана', num(multiBlks.length))}>{tr('→ {0} блок', num(multiBlks.length))}</span>
     : null;
 
+  /* ⚠️ 2026-10-26 (хэрэглэгч): ХАРАХ ХҮРЭЭГҮЙ — сонгогч хоосон (`groupOpts`-ийн ⚠️). Урьд нь «бүх багц» руу унадаг байв;
+     одоо хүрээнээс гадуурх багцын хуваарийг ХАРУУЛАХГҮЙ. Бүх hook-ийн ДАРАА (hooks-ийн дараалал тогтвортой). */
+  if (!review && status !== 'off' && groupOpts.length === 0) {
+    return (
+      <div className={h.frame} data-huvaari-root="">
+        <p className={h.note} role="status">
+          {huvaariAclReady()
+            ? tr('Танд хуваарь харах багц оноогдоогүй байна. Админ «Эрхийн төрөл» → «Хуваарь харах», эсвэл «Хуваарийн эрх» → «Харагч»-аар багц олгоно.')
+            : tr('Эрх уншигдаж байна…')}
+        </p>
+      </div>
+    );
+  }
+
   return (
     /* ⚠️ 2026-10-09: `data-huvaari-root` — `window`-ын товчлуурын сонсогчид Хуваариас гадуурх үйл явдлыг хаяна (`keyIgnored`) */
     <div className={`${h.frame} ${isWide ? h.frameWide : ''}`} data-huvaari-root="">
@@ -6000,6 +6037,14 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}{!review && newsGroups.has(g) ? ' ●' : ''}</option>)}
           </select>
         </label>
+        {/* ⚠️ 2026-10-26 (хэрэглэгч): ЗӨВХӨН ХАРАХ тэмдэг — энэ багцад засах · илгээх · батлах · мөр нэмэх эрх алга
+            (`viewOnly`). Засварын бүх удирдлага `canEdit` · `canApprove` · `canAddRow`-оор аль хэдийн нуугдсан. */}
+        {viewOnly && (
+          <span className={h.roBadge} role="status"
+            title={tr('Энэ багцын хуваарийг зөвхөн харна — засах, илгээх, батлах эрх «Хуваарийн эрх»-ээс багцаар оноогдоно.')}>
+            {tr('Зөвхөн харах')}
+          </span>
+        )}
         {floors.length > 1 && (
           <label className={h.field}>
             {tr('Хувилбар')}{' '}

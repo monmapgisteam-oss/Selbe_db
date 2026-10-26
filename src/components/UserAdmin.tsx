@@ -24,7 +24,7 @@ import {
   type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
-import { permsOwnerMismatch, permsTableOrgEditable, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
+import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { userError } from '@/components/ui';
 /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд аппын дотоод асуулт (хөтөч цонхыг хаасан бол чимээгүй `false` байв) */
 import { askConfirm } from '@/lib/confirm';
@@ -1395,13 +1395,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. Порталд хүснэгтийн хуваалцах тохиргоог (Share) «Organization» болгоно уу.')}
             </div>
           )}
-          {/* ⚠️ 2026-10-21 (аудит): Enterprise замд хүснэгт org-даяар засагдах бол — super нь энэ хүснэгтийн мөр тул засах
-              эрхтэй аккаунт бүр өөртөө super бичиж чадна (`permsRemote.probeEntExposure`). Серверийн тохиргоо — кодоор засагдахгүй. */}
-          {permsTableOrgEditable() && (
-            <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгт (SYS_Selbe_Permissions) байгууллагад засагдахаар нээлттэй (Editing) — super нь энэ хүснэгтийн мөр тул засах эрхтэй аккаунт бүр өөртөө super бичиж чадна. Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана уу (уншилт байгууллагад хэвээр).')}
-            </div>
-          )}
+          {/* ⚠️ 2026-10-26 (хэрэглэгч: «ийм тэнэг анхааруулга устга»): «хүснэгт байгууллагад засагдахаар нээлттэй»
+              улаан анхааруулга ХАСАГДСАН — org-ийн бүх аккаунт итгэмжлэгдсэн, клиент талын эрхийг хүлээн зөвшөөрсөн шийдвэр. */}
         </header>
 
         {/*

@@ -110,6 +110,12 @@ export type ErhSource = {
    *    (`want: null`) ил гаргана. СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
    */
   viewRoles?: string[];
+  /**
+   * ⚠️ 2026-10-26: аккаунт (жижиг үсгээр) → ЭРХИЙН ТӨРЛИЙН «Хуваарь харах» (`roleTypes.typeHuvaariScope`), «Үгүй»-гээс бусад нь.
+   *    `bagts` — `all`-д `null`, `own`-д тухайн хүний хуваарилалтын багцууд (`huvaariView.ownPkgScope`). Зөвхөн ХАРАХ эх
+   *    сурвалж (`workflowSources`) — эрх/гацааны шалгуурт ОРОХГҮЙ. СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
+   */
+  hvType?: Record<string, { scope: 'all' | 'own'; bagts: string[] | null }>;
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -149,6 +155,8 @@ export type UserErh = {
    * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` түлхүүр (энэ цэвэр файл тэр жагсаалтыг импортлодоггүй).
    */
   unknownBagts: string[];
+  /** ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» (`ErhSource.hvType`) — `null` = «Үгүй» */
+  hvType: { scope: 'all' | 'own'; bagts: string[] | null } | null;
 };
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -209,6 +217,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
     any: superUser || !!f || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
     unknownBagts,
+    hvType: src.hvType?.[k] ?? null,
   };
 }
 
