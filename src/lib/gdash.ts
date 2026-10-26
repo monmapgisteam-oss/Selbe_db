@@ -359,7 +359,12 @@ export type CfPlanRow = {
  * ЖИГД ТАРААХ аргаараа ажиллана. Тиймээс энэ өгөгдөл нэмэгдэх нь ямар ч
  * харагдацыг эвдэхгүй, зөвхөн НАРИЙВЧЛАЛЫГ сайжруулна.
  */
-export const loadCfPlan = cached<CfPlanRow[]>(async () => {
+/**
+ * ГАРААР ОРУУЛСАН сарын мөрүүд л (`CF_MONTH_WHERE`) — `sar_mongo_eh`-ээс үл хамааран.
+ * ⚠️ 2026-10-26: `loadCfPlan` нь үүн дээр «Хуваарь» эхтэй гэрээний цувааг сольж өгнө (`monthlyMoney`); шууд
+ *    хэрэглэх нь зөвхөн гараар мөрийг засах/шилжүүлэх зам (`monthlyMoney.loadMonthlyMoney`).
+ */
+export const loadCfPlanManual = cached<CfPlanRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_MONTH_WHERE,
     outFields: [CF_MONTH.id, CF_MONTH.start, CF_MONTH.pct, CF_MONTH.amount],
@@ -378,6 +383,64 @@ export const loadCfPlan = cached<CfPlanRow[]>(async () => {
        хувь, чартад мөнгө хэрэгтэй бөгөөд хоёулаа зэрэг бөглөгддөггүй. */
     .filter((r) => r.id > 0 && r.start != null && (r.pct != null || r.amount != null));
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+
+/**
+ * ҮР ДҮНТЭЙ сарын төлөвлөгөө — `cashflowCurve` · ТУХ (`tuhData.cfPlanPctAt`) · ерөнхий дашбоард үүнийг уншина.
+ * ⚠️ 2026-10-26 (сарын мөнгөний эх, `monthlyMoney`-ийн толгой): `sar_mongo_eh` = 'huvaari' гэрээний гараар мөр
+ *    ХАСАГДАЖ, Хуваарийн сарын обьём × бөглөх хуудасны нэгж өртгөөр тооцоолсон мөр (₮; `pct` = дүн ÷ ХО дүн × 100)
+ *    орно. 'huvaari' гэрээ НЭГ Ч БАЙХГҮЙ бол `loadCfPlanManual`-ийн ЯГ ТЭР массив — 'garaar'-ын зан төлөв ӨӨРЧЛӨГДӨХГҮЙ.
+ * ⚠️ Динамик импорт — `monthlyMoney` нь `cfStartKeyOf`-ийг энэ файлаас статикаар импортолдог (тойрог үүсгэхгүй).
+ * ⚠️ Хуудас / мөнгөний мөр уншигдаагүй (`isPartialMoney`) үр дүнг КЭШЛЭХГҮЙ (`cached`-ын `keep`).
+ */
+let cfPlanPartial: ((v: object) => boolean) | null = null;
+let cfPlanGapsOf: ((v: object) => CfPlanGaps | null) | null = null;
+export const loadCfPlan = cached<CfPlanRow[]>(async () => {
+  const manual = await loadCfPlanManual();
+  const mm = await import('@/lib/monthlyMoney');
+  cfPlanPartial = mm.isPartialMoney;
+  cfPlanGapsOf = mm.moneyGapsOf;
+  return mm.withHuvaari(manual);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'HUVAARI_OBYEM', 'BAGTS_SHEET'], (v) => !(cfPlanPartial?.(v) ?? false));
+
+/**
+ * `loadCfPlan`-ын ЦООРХОЙ — S-муруйгаас дутсан 'huvaari' гэрээ (`monthlyMoney.MoneyGaps`-ийн хэлбэр).
+ *   partial — мөнгөний мөр / хуудас уншигдсангүй; failed — хуудас унасан гэрээ; missing — тооцоолсон сар гараагүй гэрээ;
+ *   noUnit / noRow — ₮-д ороогүй нүд.
+ */
+export type CfPlanGaps = { partial: boolean; failed: number[]; missing: number[]; noUnit: number; noRow: number };
+/**
+ * ⚠️ 2026-10-26 (хяналт): урьд нь дутуу нь зөвхөн кэшлэхгүй байхад ашиглагдаж, ерөнхий дашбоард · ТУХ төлөвлөгөөт
+ *    муруйг дутсан гэрээгүйгээр «бодит 0» шиг зурдаг байв (null ≠ 0). `loadCfPlan`-ын буцаасан массивыг өгвөл цоорхойг
+ *    буцаана; цоорхойгүй (эсвэл 'huvaari' гэрээгүй) бол null. Синхрон — массив ирсэн бол ачаалагч аль хэдийн тохирсон.
+ */
+export const cfPlanGaps = (rows: readonly CfPlanRow[] | null | undefined): CfPlanGaps | null =>
+  (rows && cfPlanGapsOf ? cfPlanGapsOf(rows) : null);
+
+/**
+ * ЦООРХОЙН АНХААРУУЛГА — S-муруйн доорх нэг мөр (ерөнхий дашбоард · ТУХ). Цоорхойгүй бол null.
+ * @param nameOf — `Cashflow_ID` → хүнд ойлгомжтой нэр (багц г.м.); олдохгүй бол «#ID»
+ * @param inScope — муруйн хүрээнд орох гэрээ (ерөнхий дашбоардын `inTotal`); өгөөгүй бол бүгд
+ * ⚠️ 2026-10-26 (хяналт №2): 'huvaari' гэрээ хуудас унасан / тооцоолсон саргүй / нэгж өртөггүй үед муруйгаас ЧИМЭЭГҮЙ
+ *    гардаг байв (null ≠ 0 — «бодит 0 төлөвлөгөө» биш, «тооцоологдоогүй»). Тоо ба эхний 3 нэрийг хэлнэ.
+ */
+export function cfGapsText(
+  gaps: CfPlanGaps | null | undefined,
+  nameOf: (id: number) => string | null | undefined = () => null,
+  inScope?: (id: number) => boolean,
+): string | null {
+  if (!gaps) return null;
+  const keep = (ids: readonly number[]) => (inScope ? ids.filter(inScope) : [...ids]);
+  const ids = [...keep(gaps.failed), ...keep(gaps.missing)];
+  const parts: string[] = [];
+  if (ids.length) {
+    const names = ids.slice(0, 3).map((id) => nameOf(id) || `#${id}`);
+    parts.push(tr('Хуваарь эхтэй {0} гэрээ ороогүй ({1})', ids.length, ids.length > 3 ? `${names.join(', ')}…` : names.join(', ')));
+  }
+  const cells = gaps.noUnit + gaps.noRow;
+  if (cells > 0) parts.push(tr('{0} нүдний обьём ₮-д ороогүй (нэгж өртөггүй / хуудсанд олдоогүй)', num(cells)));
+  if (gaps.partial && !gaps.failed.length) parts.push(tr('зарим эх уншигдсангүй'));
+  return parts.length ? tr('Төлөвлөгөөт муруй дутуу: {0}', parts.join(' · ')) : null;
+}
 
 
 /* ══════════════════════ ХУГАЦААНЫ ШҮҮЛТ ══════════════════════ */

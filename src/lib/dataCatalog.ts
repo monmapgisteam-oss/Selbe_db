@@ -610,7 +610,8 @@ function finEntries(): CatEntry[] {
       group: 'fin',
       aliases: [],
       styleSrc: [],
-      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem']),
+      /* ⚠️ 2026-10-26: + `zuragTosol` (ТЭЗҮ · зураг төслийн навч мөр засна) · `tuvshin6` (6-р түвшний төлөвлөгөө) */
+      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'tuvshin6']),
       purpose: () => tr('Гэрээ бүрийн төсөв, гэрээний дүн, шатны гүйцэтгэл ба сарын санхүүжилтийн төлөвлөгөө.'),
       chain: () => [
         S(tr('Санхүүгийн ажилтан (finEdit · finRow) засна')),
@@ -619,7 +620,13 @@ function finEntries(): CatEntry[] {
         { label: tr('Санхүүжилт · Багцын санхүү'), with: [{ label: tr('Нэгтгэл гүйцэтгэл (авто)'), ref: 'negtgel-tusul' }] },
         S(tr('Дашбоард · Тайлан')),
       ],
-      editors: finEditors,
+      /* ⚠️ 2026-10-26: `finEdit`/`finRow`-оос гадна `zuragEdit` (ТЭЗҮ · зураг төслийн огноо, явц, дэд шат) ба
+         `cfSwitch` (сарын мөнгө Гараар → Хуваарь) мөн энэ хүснэгтэд бичнэ. */
+      editors: () => [
+        ...finEditors(),
+        { cap: 'zuragEdit', text: tr('ТЭЗҮ, зураг төсөл засах') },
+        { cap: 'cfSwitch', text: tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх') },
+      ],
       note: () => tr('Устгасан мөрийг порталаас буцаах арга байхгүй (хувилбарын түүх асаагүй).'),
     },
     {

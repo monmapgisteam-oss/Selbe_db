@@ -360,6 +360,41 @@ export const CASHFLOW_NEW = {
     advanceDeduct: "urdchilgaa_zh_zardal", // ⚠️ String — суутгалын ТАЙЛБАР
     /** ⚠️ 0909-д Double (0904-д String байсан) */
     progressPct: "guitsetgel_huvi",
+    /*
+     * ⚠️ 2026-10-26: EXCEL-ИЙН ШАТЛАЛЫН ТАЛБАРУУД (Enterprise-д нэмэгдсэн, жижиг үсэг) — эх нь
+     *    `docs/Төсөл Гүйцэтгэл_…_261007 - V3.xlsx` → «Төсөл төлөвлөгөө биелэлт» (`tools/cashflow-import.mjs`).
+     *    Excel-ийн БҮХ мөр (мөнгөний + бүтцийн) эдгээрийг авна; сарын мөрд хоосон. ТОМЬЁОТОЙ нүд хоосон (null) —
+     *    систем Excel-ийн томьёогоор дахин бодно. Хувь (F · G) нь Excel шиг 0–1 БУТАРХАЙ.
+     */
+    /** Д/Д — Excel B («5.2.1.1») */
+    ddKod: "dd_kod",
+    /** Эцэг мөрийн Д/Д — Excel-ийн томьёоны модоор (`negtgelTree`) */
+    parentKod: "etseg_kod",
+    /** Шатлалын түвшин — 0 = үе шат (ТЭЗҮ · … · Барилга угсралт) */
+    level: "tuvshin",
+    /** Үе шатын нэр (0-р түвшний мөрийн D) */
+    phase: "uy_shat",
+    /** Блок («5/1», «29/3») — зөвхөн блокийн мөрд */
+    block: "blok",
+    /** Хэсэгт эзлэх — Excel F (0–1) */
+    wSection: "heseg_ezleh_huvi",
+    /** Төсөлд эзлэх — Excel G (0–1) */
+    wProject: "tusul_ezleh_huvi",
+    /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (Excel H · I) */
+    contractStart: "geree_ehleh",
+    contractEnd: "geree_duusah",
+    /** Гүйцэтгэгчийн төлөвлөгөөт эхлэх/дуусах */
+    contractorStart: "guits_ehleh",
+    contractorEnd: "guits_duusah",
+    /** Газар чөлөөлөлтийн эхлэх/дуусах */
+    landStart: "gazar_ehleh",
+    landEnd: "gazar_duusah",
+    /** Сонгон шалгаруулалтын огноо */
+    tenderDate: "songon_ognoo",
+    /** Ашиглалтад өгөх огноо */
+    handoverDate: "ashiglalt_ognoo",
+    /** Сарын мөнгөний эх — 'garaar' (анхдагч, гараар оруулсан сарын мөр) | 'huvaari' (Хуваарь-аас) */
+    monthSource: "sar_mongo_eh",
   },
   /**
    * ШАТНЫ ГҮЙЦЭТГЭЛ — гэрээ бүрийн бэлтгэл ажлын явц (0–100).
@@ -407,13 +442,22 @@ export const CASHFLOW_NEW = {
  *
  * ⚠️ CASHFLOW_NEW-г УНШИХ БҮХ ГАЗАРТ ЗААВАЛ тавина. Мартвал нийт төсөв,
  * багцын тоо, шатлалын зурвас, чарт БҮГД чимээгүйхэн эвдэрнэ.
+ *
+ * ⚠️ 2026-10-26: МӨРИЙН ГУРВАН ТӨРӨЛ — Excel-ийн бүх мөр (үе шатын толгой, бүлэг, блок, мөнгөгүй давтагдсан
+ *    багцын мөр) БҮТЦИЙН мөр болж ижил хүснэгтэд нэмэгдэнэ (`tools/cashflow-import.mjs`):
+ *      · САРЫН мөр     — `Cashflow_start IS NOT NULL` (`CF_MONTH_WHERE`);
+ *      · МӨНГӨНИЙ мөр  — `Cashflow_start IS NULL AND Cashflow_ID IS NOT NULL` (гэрээ/ажил, ЭНЭ шүүлт);
+ *      · БҮТЦИЙН мөр   — `Cashflow_start IS NULL AND Cashflow_ID IS NULL` (мөнгөгүй, зөвхөн Excel-ийн шатлал).
+ *    Урьдын `Cashflow_start IS NULL` нь бүтцийн мөрийг ч барьж нийт төсөв, гэрээний тоо (78 → 900+) хөөрнө.
+ *    Мөнгөний мөр бүр `Cashflow_ID`-тэй (одоогийн 78 = objectid; шинэ мөр — max + 1, `Finance` нийтлэлийн
+ *    `lackNew` дүрэм) тул тэдгээр нь хасагдахгүй. Excel шиг шатлалтай харагдац `dd_kod IS NOT NULL`-ээр уншина.
  */
-export const CF_WORK_WHERE = 'cashflow_start IS NULL';
+export const CF_WORK_WHERE = 'cashflow_start IS NULL AND cashflow_id IS NOT NULL';
 
 /**
  * САРЫН МӨР Л — S-Curve-ийн задаргаа.
- * ⚠️ `CF_WORK_WHERE`-ийн ЯГ эсрэг тал: хоёулаа нийлээд хүснэгтийг бүрэн
- * хуваана, огтлолцохгүй.
+ * ⚠️ `CF_WORK_WHERE`-тэй огтлолцохгүй. ⚠️ 2026-10-26: хоёулаа нийлээд хүснэгтийг БҮРЭН хуваахаа больсон —
+ * үлдсэн нь БҮТЦИЙН мөр (`Cashflow_start IS NULL AND Cashflow_ID IS NULL`, `CF_WORK_WHERE`-ийн ⚠️).
  */
 export const CF_MONTH_WHERE = 'cashflow_start IS NOT NULL';
 

@@ -247,7 +247,7 @@ REST-д `query.attemptRequest`, JS API-д `lib/entInterceptor.ts`).
 ---
 
 **Дараагийн алхам:** харагдац бүр юу харуулдгийг
-[04 · 25 харагдац](04-haragdac.md)-аас үзнэ үү.
+[04 · 27 харагдац](04-haragdac.md)-аас үзнэ үү.
 
 ---
 

@@ -1665,3 +1665,152 @@ div.bName:hover { background: var(--surface-2); }
 .xlTbl tbody tr.xlMonth td:first-child {
   box-shadow: inset 3px 0 0 var(--line-strong), inset -1px 0 0 var(--line-strong);
 }
+
+/*
+ * ТООЦООЛСОН ('huvaari') САРЫН МӨР — 5-р түвшин (2026-10-26, `monthlyMoney`).
+ * ⚠️ Гараар мөрөөс ялгарна: налуу бичвэр + өгөгдлийн өнгийн зүүн зураас — засагдахгүй, Хуваариас бодогдсон.
+ */
+.xlTbl tbody tr.xlMonthHuv td { font-style: italic; color: var(--ink-3); }
+.xlTbl tbody tr.xlMonthHuv td:first-child {
+  box-shadow: inset 3px 0 0 var(--data), inset -1px 0 0 var(--line-strong);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ТӨСӨЛ ТӨЛӨВЛӨГӨӨ БИЕЛЭЛТ — Excel-ийн шатлалтай үндсэн хуудас (2026-10-26)
+
+   ⚠️ Толгой нь `thead`-ээрээ наалдана (хоёр мөрт толгой — `th` тус бүрийг `top`-оор наавал хоёр дахь мөрийн
+   өндрийг таах хэрэгтэй болно). Зүүн 3 багана (Д/Д · Багц · Ажлын нэр) царцсан — өргөн ба `left` ТОГТМОЛ,
+   дэвсгэр БҮРЭН бүглээ (тунгалаг бол доогуур гүйх баганууд шагайна — `.xlMonth`-ийн ⚠️).
+   ═══════════════════════════════════════════════════════════ */
+.ppReg { min-height: 360px; }
+.ppBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ppBarLbl { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.ppBar .editErr,
+.ppBar .editOk { margin: 0; }
+.ppWarn {
+  flex: none;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--warn-ink);
+  background: color-mix(in oklab, var(--warn) 10%, var(--surface));
+  border-bottom: 1px solid var(--line);
+}
+.ppIssues { flex: none; padding: 4px 12px; font-size: 11px; color: var(--ink-3); border-bottom: 1px solid var(--line); }
+.ppIssues summary { cursor: pointer; }
+.ppIssues ul { margin: 4px 0 2px 16px; max-height: 140px; overflow: auto; }
+.ppWrap { flex: 1; min-height: 0; overflow: auto; }
+.ppTbl { width: max-content; min-width: 100%; }
+.ppTbl thead { position: sticky; top: 0; z-index: 3; }
+.ppTbl thead th { position: static; text-align: center; vertical-align: bottom; white-space: normal; line-height: 1.25; }
+.ppTbl th.ppHd { min-width: 84px; max-width: 120px; }
+.ppTbl th.ppGrp { border-bottom: 1px solid var(--line); }
+.ppTbl thead tr:first-child th.ppGrp { vertical-align: middle; }
+
+/* Царцсан баганууд */
+.ppTbl .ppNo { width: 72px; min-width: 72px; max-width: 72px; }
+.ppTbl .ppPkg { width: 86px; min-width: 86px; max-width: 86px; overflow: hidden; text-overflow: ellipsis; }
+.ppTbl .ppName { width: 320px; min-width: 320px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.ppTbl thead th.ppFz0,
+.ppTbl tbody td.ppFz0 { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.ppTbl thead th.ppFz1,
+.ppTbl tbody td.ppFz1 { position: sticky; left: 72px; z-index: 1; background: var(--surface); }
+.ppTbl thead th.ppFz2,
+.ppTbl tbody td.ppFz2 {
+  position: sticky;
+  left: 158px;
+  z-index: 1;
+  background: var(--surface);
+  text-align: left;
+  box-shadow: inset -1px 0 0 var(--line-strong);
+}
+/* ⚠️ 2026-10-26 (хяналт №2): ТОЛГОЙН царцсан нүд — хэвтээ гүйлгэхэд биеийн царцсан нүд (z 1) ба бусад толгойн
+   нүдний ДЭЭГҮҮР (z 2) зүүн талдаа наалдана. `top: auto` — босоо наалдалтыг sticky `thead` өөрөө хийнэ
+   (`.tbl thead th`-ийн `top: 0` давхар наалдалт үүсгэхгүй); дэвсгэр тунгалаг бол доогуурх нүд харагдана. */
+.ppTbl thead th.ppFz0,
+.ppTbl thead th.ppFz1,
+.ppTbl thead th.ppFz2 { position: sticky; top: auto; z-index: 2; background: var(--surface); }
+.ppTbl tbody td.ppNo { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 11px; }
+.ppTbl tbody td.ppPkg { text-align: center; }
+.ppTbl td.ppDate { font-size: 11px; }
+
+/* Мөрийн шатлал */
+.ppTbl tbody tr.ppTot td {
+  font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 16%, var(--surface));
+  border-bottom: 2px solid var(--line-strong);
+}
+.ppTbl tbody tr.ppL1 td {
+  font-weight: 600;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 9%, var(--surface));
+}
+.ppTbl tbody tr.ppL2 td { font-weight: 600; background: color-mix(in oklab, var(--surface-2) 70%, var(--surface)); }
+.ppTbl tbody tr.ppOut td { color: var(--ink-3); font-style: italic; }
+.ppTbl tbody tr.ppBlk td { font-size: 11px; }
+.ppTbl tbody tr:hover td { background: var(--surface-2); }
+.ppIndent { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ppCaret {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ppCaret:hover { color: var(--data-ink); border-color: var(--data); }
+.ppCaretSp { flex: none; display: inline-block; width: 16px; }
+
+/* Блокийн төлөв (S) */
+.ppDot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 999px; vertical-align: 1px; }
+.ppNot { background: var(--line-strong); }
+.ppOn { background: var(--warn); }
+.ppDone { background: var(--good); }
+
+/* Сарын мөнгөний эх */
+.ppTbl td.ppMoney { white-space: nowrap; }
+.ppSrc {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.ppSrcHuv {
+  color: var(--data-ink);
+  background: color-mix(in oklab, var(--data) 12%, var(--surface));
+  border-color: color-mix(in oklab, var(--data) 40%, transparent);
+}
+.ppSwitch {
+  margin-left: 6px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--bad-ink);
+  background: transparent;
+  border: 1px solid color-mix(in oklab, var(--bad) 45%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ppSwitch:hover:not(:disabled) { background: color-mix(in oklab, var(--bad) 10%, transparent); }
+.ppSwitch:disabled { opacity: 0.45; cursor: default; }
+.ppFoot { flex: none; margin: 0; padding: 6px 12px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--line); }

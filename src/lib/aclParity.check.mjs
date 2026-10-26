@@ -724,13 +724,13 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
       `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
   }
 
-  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 9 (2026-10-04: + hamaaral; 2026-10-08: + habeaData; 2026-10-19: + sysClose; 2026-10-23: + docsUpload, docsGroups) */
+  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 11 (2026-10-26: + zuragEdit, cfSwitch; 2026-10-04: + hamaaral; 2026-10-08: + habeaData; 2026-10-19: + sysClose; 2026-10-23: + docsUpload, docsGroups) */
   const { ROLE_CAPS, PLAIN_CAPS, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))); /* ⚠️ 2026-10-23: QAQC хасагдсан */
-  assert.equal(PLAIN_CAPS.length, 9, `энгийн эрх ЯГ 9 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
@@ -750,8 +750,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
   /* ⚠️ 2026-10-23: QAQC хасагдсан */
-  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea', 'sys'],
-    'capText.ERH_PANES: хажуугийн цэсний 11 хуудас (2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
+  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea', 'zurag', 'sys'],
+    'capText.ERH_PANES: хажуугийн цэсний 12 хуудас (2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
   /* ⚠️ 2026-10-19: «Систем түр хаах» — харагдац НЭЭХГҮЙ, ганцаараа өөрийн хуудсанд */
   /* ⚠️ 2026-10-23: «Систем» хуудсанд + `docsUpload` (баримт бичгийн сан) */
   assert.deepEqual(PANE_CAPS.sys, ['sysClose', 'docsUpload', 'docsGroups'], 'Систем хуудас: түр хаах · баримт оруулах · баримтын бүлэг');
@@ -762,7 +762,7 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const placed = Object.values(PANE_CAPS).flat();
   assert.deepEqual([...placed].sort(), [...all].sort(), 'PANE_CAPS: эрх бүр ЯГ нэг хуудсанд байх ёстой');
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow'], 'Санхүү: утга + мөр нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд'); /* ⚠️ 2026-10-26: + cfSwitch */
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
   /* ⚠️ 2026-10-09 (аудит №6): CapKey БҮР хоёр шошгоны хүснэгтэд (`capText.capLabel` · `erhLabels.capLabelShort`) —
      `hamaaral` · `habeaData` богино шошгоноос дутуу байж түлхүүр нь ил харагдаж байв */

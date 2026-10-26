@@ -22,7 +22,8 @@ import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { useAsync } from '@/lib/useAsync';
 import { readParam, writeParams } from '@/lib/urlState';
 import { loadBudget } from '@/lib/live';
-import { loadCfPlan, CONTRACTED } from '@/lib/gdash';
+import { loadCfPlan, cfPlanGaps, cfGapsText, CONTRACTED } from '@/lib/gdash';
+import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
@@ -113,6 +114,12 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (budgetQ.state === 'loading') loading.add('budget');
     if (depQ.state === 'loading') loading.add('deps');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
+    /* ⚠️ 2026-10-26 (хяналт №2): 'huvaari' эхтэй гэрээний цоорхой — «Гэрээний төлөвлөгөө» дутуу гэдгийг багцаар нэрлэнэ */
+    const gaps = cfPlanQ.state === 'ready' ? cfPlanGaps(cfPlanQ.data) : null;
+    const cfGaps = gaps ? cfGapsText(gaps, (id) => {
+      const r = finQ.data.contracts.find((c) => Number(c[CF_MONTH.id]) === id);
+      return r ? String(r[CASHFLOW_NEW.fields.pkg] ?? '').trim() || null : null;
+    }) : null;
     return buildModel({
       fin: finQ.data,
       plan: planQ.state === 'ready' ? planQ.data : null,
@@ -128,6 +135,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
       contractedNote: CONTRACTED,
       failed,
+      cfGaps,
       loading,
       /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
       planError: planQ.state === 'error',
@@ -145,7 +153,8 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const retryFailed = useCallback(() => {
     if (finQ.state === 'error') finQ.retry?.();
     if (planQ.state === 'error' || (planQ.state === 'ready' && planQ.data.failed.length)) planQ.retry?.();
-    if (cfPlanQ.state === 'error') cfPlanQ.retry?.();
+    /* ⚠️ 2026-10-26: хуудас/мөнгөний мөр уншигдаагүй (`partial`) цуваа кэшлэгдэхгүй тул дахин татахад засагдаж магадгүй */
+    if (cfPlanQ.state === 'error' || (cfPlanQ.state === 'ready' && cfPlanGaps(cfPlanQ.data)?.partial)) cfPlanQ.retry?.();
     if (histQ.state === 'error') histQ.retry?.();
     if (comQ.state === 'error' || (comQ.state === 'ready' && comQ.data.failed.length)) comQ.retry?.();
     if (wfQ.state === 'error') wfQ.retry?.();

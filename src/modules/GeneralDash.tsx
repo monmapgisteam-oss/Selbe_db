@@ -10,7 +10,7 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
+import { Section, Stats, Stat, Data, Empty, Bars, Note, TIP_RULE, friendlyError } from '@/components/ui';
 import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
@@ -56,7 +56,7 @@ import { sqlStr } from '@/lib/query';
 import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
+  loadCfPlan, cfPlanGaps, cfGapsText, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
   grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
@@ -366,6 +366,24 @@ export function GeneralDash({
     }
     return m;
   }, [housingNow, finD, cf]);
+  /**
+   * ⚠️ 2026-10-26 (хяналт №2): S-МУРУЙН ЦООРХОЙ — 'huvaari' эхтэй гэрээ хуудас унасан / тооцоолсон саргүй / нэгж
+   *    өртөггүй бол муруйгаас ЧИМЭЭГҮЙ гардаг байв (null ≠ 0). Зөвхөн муруйн хүрээнд (`inTotal`) орох гэрээг
+   *    нэрлэнэ; ажлын жагсаалт ирээгүй бол бүгдийг.
+   */
+  const cfGapsNote = useMemo(() => {
+    if (cfPlan.state !== 'ready') return null;
+    const gaps = cfPlanGaps(cfPlan.data);
+    if (!gaps) return null;
+    if (cf.state !== 'ready') return cfGapsText(gaps);
+    const byId = new Map<number, CfRow>();
+    for (const r of cf.data) if (r.cfId != null && !byId.has(r.cfId)) byId.set(r.cfId, r);
+    return cfGapsText(
+      gaps,
+      (id) => { const r = byId.get(id); return r ? (r.pkg || r.project || null) : null; },
+      (id) => byId.get(id)?.inTotal ?? false,
+    );
+  }, [cfPlan, cf]);
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlanInScope, cfTotal, grainOf(period), period, ipcByMonth,
@@ -892,6 +910,8 @@ export function GeneralDash({
               <Timeline points={cfCurve} grain={grainOf(period)} total={cfTotal} mode={cfMode} />
             ))}
           </Data>
+          {/* ⚠️ 2026-10-26 (хяналт №2): дутуу төлөвлөгөөг ИЛ хэлнэ (`cfGapsNote`-ийн ⚠️) */}
+          {cfGate.state === 'ready' && cfGapsNote && <div role="status"><Note>{cfGapsNote}</Note></div>}
         </Section>
       </div>
       </div>

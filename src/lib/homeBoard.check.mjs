@@ -26,9 +26,12 @@ ok(boardAllowedFor([...nonWf, 'guitsetgel'], false), 'нэмэлт урсгал�
 ok(!boardAllowedFor(nonWf.slice(1), false), 'нэг ч урсгалтай бус харагдац дутвал — самбаргүй');
 ok(!boardAllowedFor([], false), 'харагдацгүй → самбаргүй');
 ok(!boardAllowedFor(['guitsetgel', 'plan'], false), 'гүйцэтгэгч → самбаргүй');
-/* амьд `munkhbaatar`-ын (Газрын дарга) хадгалсан жагсаалт — урсгалтай бус бүгд */
+/* амьд `munkhbaatar`-ын (Газрын дарга) хадгалсан жагсаалт — урсгалтай бус бүгд
+   ⚠️ 2026-10-26: + `zuragTosol` · `tuvshin6` — шинэ харагдацын эрхийг удирдлагын хэрэглэгчдэд олгосон (хэрэглэгчийн шийдвэр) */
 ok(boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
-  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'sysdoc'], false), 'амьд «Газрын дарга» → самбартай');
+  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'sysdoc', 'zuragTosol', 'tuvshin6'], false), 'амьд «Газрын дарга» → самбартай');
+ok(!boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
+  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'sysdoc'], false), 'шинэ 2 харагдацгүй хуучин жагсаалт → самбаргүй (эрх олгоно)');
 /* ⚠️ Синкээс өмнөх нарийн нөөц загвар (`roleTypes.narrowTpl` — урсгалын төрөлд зөвхөн «Гүйцэтгэл») самбар нээхгүй — fail-closed */
 ok(!boardAllowedFor(roleAccess('gazriin').views === 'all' ? [] : roleAccess('gazriin').views, false), 'синкгүй нөөц загвар → самбаргүй');
 console.log('✅ самбар: super · урсгалтай бус бүх харагдац (удирдлага) → нээлттэй; дутуу → хаалттай');
