@@ -72,6 +72,7 @@ import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
+import { Segmented } from '@/components/Switch';
 import h from './habea.module.css';
 import o from './habeaOv.module.css';
 
@@ -102,9 +103,12 @@ const loadHabea = cached(async (): Promise<HabeaData> => {
      «Моторт тээврийн хэрэгсэлийн осо», «other») тул давхаргын метадатаас код → нэр толийг ЗЭРЭГ татна
      (`lib/codedDomain`). Мета унавал `{}` — код хэвээр харагдана, хуудас унахгүй. */
   const [res, incDom] = await Promise.all([Promise.allSettled([
-    queryFeatures(HABEA.labor.url, { outFields: ['*'] }),
-    queryFeatures(HABEA.incident.url, { outFields: ['*'] }),
-    queryFeatures(HABEA.crane.url, { outFields: ['*'] }),
+    /* ⚠️ 2026-10-26 (гүйцэтгэл P7): `orderBy` ИЛ — өгөхгүй бол 2000+ мөртэй хүснэгтэд `queryFeatures` эхний хуудсыг
+       хаяж OID-оор ЭХНЭЭС нь дахин татдаг (нэг илүү хүсэлт). Эрэмбэ нь тэр дахин татах үеийнхтэй ИЖИЛ (OID ASC) тул
+       мөрийн дараалал (`latestRowPerDay` г.м.) өөрчлөгдөхгүй. Survey123-ийн OID = `objectid`; кран = `fields.oid`. */
+    queryFeatures(HABEA.labor.url, { outFields: ['*'], orderBy: 'objectid ASC' }),
+    queryFeatures(HABEA.incident.url, { outFields: ['*'], orderBy: 'objectid ASC' }),
+    queryFeatures(HABEA.crane.url, { outFields: ['*'], orderBy: `${HABEA.crane.fields.oid} ASC` }),
   ]), loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul])]);
   const bad = res.flatMap((r, i) => (r.status === 'rejected' ? [i] : []));
   if (bad.length === res.length) throw (res[0] as PromiseRejectedResult).reason;
@@ -2417,12 +2421,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           title={tr('Ослын давтамж — 1 сая хүн-цагт')}
           note={(
             <span className={h.stepWrap}>
-              <span className={h.seg} role="group" aria-label={tr('Давтамжийн задаргаа')}>
-                <button type="button" className={`${h.segBtn} ${rateStep === 'pkg' ? h.segOn : ''}`}
-                  aria-pressed={rateStep === 'pkg'} onClick={() => setRateStep('pkg')}>{tr('Багц')}</button>
-                <button type="button" className={`${h.segBtn} ${rateStep === 'month' ? h.segOn : ''}`}
-                  aria-pressed={rateStep === 'month'} onClick={() => setRateStep('month')}>{tr('Сар')}</button>
-              </span>
+              {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул */}
+              <Segmented value={rateStep} onChange={setRateStep} label={tr('Давтамжийн задаргаа')}
+                options={[{ value: 'pkg', label: tr('Багц') }, { value: 'month', label: tr('Сар') }]} />
               <span className={h.stepNote}>
                 {rateStep === 'pkg'
                   ? tr('хүн-цаг нь ажилтны тоогоор хуваарилсан тооцоо')

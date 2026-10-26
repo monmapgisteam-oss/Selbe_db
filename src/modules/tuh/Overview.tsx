@@ -32,6 +32,7 @@ import { planScopeNote } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
 /* ⚠️ 2026-10-06 (аудит): pp-ийн хэлбэр нь «Гүйцэтгэл» (PkgProg)-тэй НЭГ функц — `pkgShared.pp` */
 import { pp } from '@/modules/pkgShared';
+import { Segmented } from '@/components/Switch';
 import s from '../tuh.module.css';
 
 /**
@@ -480,12 +481,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Багцууд ── */}
       <Section id="packages" title={tr('Багцууд')} lead={tr('Багц дээр «Энд нээх» дарж дэлгэрэнгүйг нээнэ; газрын зураг тэр багц руу томорно.')}>
         <div className={s.filters}>
-          <div className={s.seg} role="group" aria-label={tr('Бүлэг')}>
-            <button type="button" className={s.segBtn} aria-pressed={grp === 'all'} onClick={() => setGrp('all')}>{tr('Бүгд')}</button>
-            {TUH_GROUPS.map((g) => (
-              <button key={g.key} type="button" className={s.segBtn} aria-pressed={grp === g.key} onClick={() => setGrp(g.key)}>{g.label()}</button>
-            ))}
-          </div>
+          {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` (9 бүлэг — мөр шилжинэ) */}
+          <Segmented wrap value={grp} onChange={setGrp} label={tr('Бүлэг')}
+            options={[{ value: 'all' as const, label: tr('Бүгд') }, ...TUH_GROUPS.map((g) => ({ value: g.key, label: g.label() }))]} />
           <input
             className={s.search}
             type="search"
@@ -655,17 +653,15 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Журмууд ── */}
       <Section id="regulations" title={tr('Хүчин төгөлдөр мөрдөгдөж буй журмууд')} empty={!orders.length}>
         <div className={s.filters}>
-          <div className={s.seg} role="group" aria-label={tr('Төрөл')}>
-            {([
-              ['all', tr('Бүгд ({0})', num(orders.length))],
-              ['procedure', tr('Дотоод журам ({0})', num(0))],
-              ['law', tr('Хууль ({0})', num(0))],
-              ['terms', tr('Гэрээний жишиг нөхцөл ({0})', num(0))],
-              ['order', tr('Захирамж ({0})', num(orders.length))],
-            ] as const).map(([k, label]) => (
-              <button key={k} type="button" className={s.segBtn} aria-pressed={regType === k} onClick={() => setRegType(k)}>{label}</button>
-            ))}
-          </div>
+          {/* ⚠️ 2026-10-26: нийтлэг `Segmented` (5 урт сонголт — мөр шилжинэ) */}
+          <Segmented wrap value={regType} onChange={setRegType} label={tr('Төрөл')}
+            options={[
+              { value: 'all', label: tr('Бүгд ({0})', num(orders.length)) },
+              { value: 'procedure', label: tr('Дотоод журам ({0})', num(0)) },
+              { value: 'law', label: tr('Хууль ({0})', num(0)) },
+              { value: 'terms', label: tr('Гэрээний жишиг нөхцөл ({0})', num(0)) },
+              { value: 'order', label: tr('Захирамж ({0})', num(orders.length)) },
+            ]} />
         </div>
         <div className={s.tableWrap}>
           <table className={s.table}>

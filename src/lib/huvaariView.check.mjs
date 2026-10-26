@@ -24,7 +24,7 @@ const SUPER = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'super')[0];
 fake.owner = SUPER;
 
 const P = await import('@/lib/permissions.ts');
-const CAPS = await import('@/lib/caps.ts');
+await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
 OPS.setHeldByReader(async () => []);
 const HV = await import('@/lib/huvaariAcl.ts');

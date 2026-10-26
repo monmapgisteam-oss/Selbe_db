@@ -22,6 +22,10 @@
  */
 import type { ViewKey } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
+import { register } from '@/lib/dataBus';
+/* ⚠️ Зөвхөн ТӨРӨЛ — ma/mir модулиуд доор DYNAMIC (толгойн ⚠️) */
+import type { MaRow } from '@/lib/ma';
+import type { MirRow } from '@/lib/mir';
 import type { NavBadges } from './ViewRail';
 
 type Counter = (username: string | null) => Promise<number | null>;
@@ -57,6 +61,31 @@ async function countReviewWithStage(username: string | null): Promise<number | n
  * ⚠️ Нэвтрээгүй · Enterprise сешнгүй (`entSession` null — «MA» хуудас өөрөө ч уншиж чадахгүй) · уншилт унасан → `null`
  *    (тэмдэггүй, null ≠ 0). Хянагчийн эрхгүй → 0.
  */
+/**
+ * ⚠️ 2026-10-26 (гүйцэтгэл P5): MA · MIR хүснэгтийг ТЭМДГИЙН замд 60 с санана — урьд нь 3 мин тутам ба бичилт бүрийн
+ *    дараа (`subscribeData`) хоёр бүтэн хүснэгтийг дахин татдаг байв.
+ *    · ЗӨВХӨН MA · MIR: тэдгээрийг портал БИЧДЭГГҮЙ (Survey123-д шийдэгддэг) тул бичилтийн дараа хуучрах зам алга.
+ *      FIC · М-акт (`loadFm`) нь порталаас бичигддэг (`addFm`/`decideFm`) тул САНАХГҮЙ — шийдвэрийн дараа тэмдэг шууд.
+ *    · Түлхүүр = портал хэрэглэгч + Enterprise хэрэглэгч — хэрэглэгч солигдоход өмнөх хүний мөр ашиглагдахгүй.
+ *    · «MA · материал» хуудасны өөрийн уншилт (`Ma.tsx`) ҮҮНИЙГ АШИГЛАХГҮЙ — тэр үргэлж шинэ.
+ *    · Алдаа санагдахгүй (амлалт хаягдана) — дараагийн тэмдгийн шинэчлэлт дахин оролдоно.
+ *    · `register(…, [])` — «Шинэчлэх» / хэл солих (`invalidateAll`) үед хаягдана.
+ */
+const MA_BADGE_TTL_MS = 60_000;
+let maMirCache: { key: string; at: number; p: Promise<[MaRows, MirRows]> } | null = null;
+register(() => { maMirCache = null; }, []);
+type MaRows = MaRow[];
+type MirRows = MirRow[];
+function maMirForBadge(key: string, loadMa: () => Promise<MaRows>, loadMir: () => Promise<MirRows>): Promise<[MaRows, MirRows]> {
+  const c = maMirCache;
+  if (c && c.key === key && Date.now() - c.at < MA_BADGE_TTL_MS) return c.p;
+  const p = Promise.all([loadMa(), loadMir()]);
+  const slot = { key, at: Date.now(), p };
+  maMirCache = slot;
+  p.catch(() => { if (maMirCache === slot) maMirCache = null; });
+  return p;
+}
+
 async function countMaPending(username: string | null): Promise<number | null> {
   const me = (username ?? '').trim().toLowerCase();
   if (!me) return null;
@@ -69,7 +98,7 @@ async function countMaPending(username: string | null): Promise<number | null> {
   const [ma, mir, fm, acl, { PKGS }] = await Promise.all([
     import('@/lib/ma'), import('@/lib/mir'), import('@/lib/ficMakt'), import('@/lib/chanarAcl'), import('@/modules/sheet/bagts.pkg'),
   ]);
-  const [mas, mirs, fms] = await Promise.all([ma.loadMa(), mir.loadMir(), fm.loadFm()]);
+  const [[mas, mirs], fms] = await Promise.all([maMirForBadge(`${me}|${sess.user}`, ma.loadMa, mir.loadMir), fm.loadFm()]);
   if (!fms.length) return 0;
   const mirBy = mir.mirsByMa(mirs);
   const fmBy = fm.fmByMa(fms);

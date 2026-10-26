@@ -1374,7 +1374,8 @@ export function Huvaari({
        шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
        болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
-  }, [kind]);
+    /* `pendRef` нь `useLatest`-ийн тогтвортой ref — deps-д байх нь эффектийг дахин ажиллуулахгүй */
+  }, [kind, pendRef]);
 
   const n = sc?.bld.length ?? 0;
   /**
@@ -2309,7 +2310,7 @@ export function Huvaari({
       }
       return touched ? next : prev;
     });
-  }, [plan, base, n, sc, obPlan, obRes, drag, blk, kind, snapUndo, setDraft, setObDraft, setObResDraft, unbalRef, filtOn, setChainN, setChainSeq, setChainList, setSticky]);
+  }, [plan, base, n, sc, obPlan, obRes, drag, blk, kind, snapUndo, setDraft, setObDraft, setObResDraft, unbalRef, filtOn, setChainN, setChainSeq, setChainList, setSticky, setChainUnbal0]);
 
   /* ⚠️ 2026-10-08: чирэлт дуусмагц дараагийн чирэлт шинэ агшин авна */
   useEffect(() => { if (!drag) undoDragSeenRef.current = false; }, [drag]);
@@ -3008,7 +3009,7 @@ export function Huvaari({
     setSel(oid);
     setModal(oid);
     setModalFrom(oid);
-  }, []);
+  }, [setSel, setModal, setModalFrom]);
 
   /**
    * ⚠️ 2026-10-09: НҮДЭНД БИЧИХ ОЛОН БЛОК — «Олон блок сонгох» (`gBlks`) асаалттай бол идэвхтэй блок + сонгосон блокууд.
@@ -3725,7 +3726,7 @@ export function Huvaari({
       setProgress('');
     }
   }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, obState, base, dirtyN, busy, pkg, rows, kind, approving, user, xLockCheck,
-    setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft, setProgress]);
+    setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft, setProgress, setErrList, setUndoSnap, setChainN]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
    * ⚠️ Гүйцэтгэгч ЗОХИОНО → «Батлуулах» → батлагч БАТАЛНА → тэр үед л эх
@@ -4226,7 +4227,7 @@ export function Huvaari({
     /* ⚠️ 2026-10-08: ноорог бүхэлдээ солигдсон — буцаалтын агшин хүчингүй */
     setUndoSnap(null);
     return { ok: true, conflicts: ap.conflicts, unknown: ap.unknown };
-  }, [kind, n, obPlan, obRes, sc, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setErrList]);
+  }, [kind, n, obPlan, obRes, sc, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setErrList, setUndoSnap]);
 
   /**
    * СЕРВЕРИЙН ОДООГИЙН мөр ба сарын задаргааг татаж state-д тавина (2026-09-21).
@@ -4275,7 +4276,7 @@ export function Huvaari({
       }
       return { rows: freshRows, plan: obPlan, res: obRes };
     }
-  }, [sc, pkg, rows, obPlan, obRes, setObState, setRows, setObPlan, setObRes, setObOids, setObDups]);
+  }, [sc, pkg, rows, obPlan, obRes, setObState, setRows, setObPlan, setObRes, setObOids, setObDups, setFrameOld]);
 
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
   /* ⚠️ 2026-10-12 (аудит №8): `true` = санал хуанли дээр буусан — хяналтын горимын «Дахин оролдох» (`reviewRetry`) үүгээр */
@@ -4562,7 +4563,7 @@ export function Huvaari({
     /* ⚠️ Хуваалцсан нооргийг ДАХИН сэргээнэ (2026-09-24): харалт Map-уудыг
        дарсан тул алсад шинэ бичилт ирэх хүртэл ноорог харагдахгүй байв. */
     hdResetRestore();
-  }, [hdResetRestore, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, setNote]);
+  }, [hdResetRestore, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, setNote, setUndoSnap, setChgOpen]);
 
   /**
    * ИЛГЭЭСЭН (БАТЛАГДААГҮЙ) ХУВААРИЙГ ХАРАХ (2026-09-29, хэрэглэгч: «одоо байгаа батлагдсан
@@ -5156,6 +5157,73 @@ export function Huvaari({
      доорх эффект мөн зурагдалтад ХУУЧИН `blk`-ээр ажиллаж, хөндлөн гүйлгээ буруу блокийн
      зурвас руу очдог байв. Эффект `blk` тэр блок болтол хүлээнэ. */
   const scrollToOid = useRef<{ oid: number; blk: number } | null>(null);
+  /* ⚠️ 2026-10-26: доорх тэмдэглэгээ (`reviewSet` · `backOn` · `backMarkMap` · `marking`) · `pickBlk` · `goToRow` нь
+     `jumpNextBad`-аас ӨМНӨ зарлагдана — урьд нь зарлагдахаасаа өмнө хандагддаг байв (react-hooks/immutability).
+     Эффект биш цэвэр утга/callback тул зөөсөн нь эффектийн дарааллыг өөрчлөхгүй. */
+  /** Мөрийн тэмдэг: хяналтад — батлагчийн сонголт; гүйцэтгэгчид — буцаасан шийдвэр */
+  const reviewSet = useMemo(() => new Set(reviewOids), [reviewOids]);
+  /** Буцаасан тэмдэг ИДЭВХТЭЙ юу — яг тэр шийдвэр сүүлийнх, ноорог байгаа */
+  const backOn = !review && !!backMarks && dirtyN > 0 && lastDecision?.oid === backMarks.oid;
+  /*
+   * ⚠️ ТЭМДЭГ ЗӨВХӨН САНАЛД БАЙСАН, УТГА НЬ ХЭВЭЭР МӨРД (2026-09-25 аудит #3).
+   *    Урьд нь гүйцэтгэгчийн ОДООГИЙН ноорогтой тулгадаг тул засаж эхэлсэн
+   *    улаан мөр улаан хэвээр, саналд огт байгаагүй ШИНЭ засвар «зөвшөөрөөгүй»
+   *    улаан болж харагддаг байв. Одоо: мөр саналд байх + утга нь саналынхтай
+   *    ИЖИЛ (зохиогч хөндөөгүй блок/талбар — `base`-тэй ижил — тооцохгүй) бол
+   *    л тэмдэглэнэ; өөрчлөгдмөгц саармаг.
+   */
+  const backMarkMap = useMemo(
+    () => backMarkMapOf({ backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes }),
+    [backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes],
+  );
+  /* ⚠️ 2026-09-25 аудит: батлагч ЭНГИЙН хуудсанд урьдчилан харж байхад ч мөр бүрийг
+     ногоон болгоно — «Шийдвэрлэх»-ийн батлалт тэр дүрмээр хаалттай (`decide`). */
+  const marking = !!review || (previewing && pending != null && canApprove && !isOwnSubmission);
+  /**
+   * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
+   * хэрэглэгч шууд засах боломжтой. Мөр сонгогдож, доорх эффект түүн рүү гүйлгэнэ
+   * (энгийн горимын индексээр, блокийн зурвасын эхлэл рүү).
+   */
+  const pickBlk = (oid: number, b: number) => {
+    setBlk(b);
+    setAllBlk(false);
+    /* ⚠️ 2026-10-09: дэд мөрөөс засахаар гарсан — цонх хаагдмагц «Бүх блок» ӨӨРӨӨ буцаж асна (`allBackRef`).
+       «Бүх блок» зөвхөн харах дүрэм (2026-10-04) ХЭВЭЭР; хэрэглэгч горимоо дахин асаах шаардлагагүй болов. */
+    allBackRef.current = true;
+    setSel(oid);
+    scrollToOid.current = { oid, blk: b };
+  };
+  /**
+   * МӨР РҮҮ ОЧИХ (2026-10-08) — алдааны «→ ажил руу» · өөрчлөлтийн самбар · «Үсрэх» оролт нэг зам.
+   * ⚠️ МОДЫГ ХАВТГАЙРУУЛАХГҮЙ (2026-09-02-ны шийдвэр): эвхсэн ӨВӨГ бүлгүүдийг л дэлгэнэ; мөр шүүлтэд
+   *    (таб · жил · бүлэг · чип) нуугдсан бол тэдгээрийг цэвэрлэнэ (`jumpNextBad`-ийн дүрэм). Дараа нь
+   *    сонгож, `scrollToOid` эффект гүйлгэнэ (блок нь `b`).
+   */
+  const goToRow = useCallback((oid: number, b: number = blk) => {
+    const at = plan.findIndex((r) => r.oid === oid);
+    if (at < 0) return;
+    const r = plan[at];
+    if (b !== blk) setBlk(b);
+    if (!visible.some((v) => v.oid === oid)) {
+      const anc: number[] = [];
+      let d = r.depth;
+      for (let k = at - 1; k >= 0 && d > 0; k -= 1) {
+        if (plan[k].group && plan[k].depth < d) { anc.push(plan[k].oid); d = plan[k].depth; }
+      }
+      if (anc.some((o) => collapsed.has(o))) {
+        setLvl(0);
+        setCollapsed((s) => { const m = new Set(s); for (const o of anc) m.delete(o); return m; });
+      }
+      const inScoped = fGrp === 'all' || scoped.some((x) => x.oid === oid);
+      /* ⚠️ 2026-10-09: шүүлтийг цэвэрлэх нь ЧИМЭЭГҮЙ байв — хэрэглэгч шүүлт яагаад алга болсныг мэддэггүй; ил хэлнэ */
+      if (!inScoped || !match(r)) {
+        setFilter('all'); setFYear('all'); setFGrp('all'); setChips(new Set());
+        setNote(tr('Шүүлт цэвэрлэгдэв — мөр шүүлтэд нуугдсан байв.'));
+      }
+    }
+    setSel(oid);
+    scrollToOid.current = { oid, blk: b };
+  }, [plan, blk, visible, collapsed, fGrp, scoped, match, setNote, setLvl, setCollapsed, setFilter, setFYear, setFGrp, setChips, setSel]);
   /* ⚠️ 2026-10-09: ЗОХИОГЧИД ч (`backOn` — буцаагдсан саналын улаан мөр) — «Дараагийн улаан» · `]`. Урьд нь зөвхөн
      хяналтад ажилладаг тул зохиогч 1,400 мөрөөс ✕-ийг гүйлгэж хайдаг байв. */
   const jumpNextBad = () => {
@@ -5173,20 +5241,6 @@ export function Huvaari({
        Урьд нь энд чипийг (`chips`) цэвэрлэдэггүй тул «Дараагийн улаан/✕»-ийн мөр чипэд нуугдсан хэвээр, сонгогдсон атлаа
        харагддаггүй байв; мөн бүх модыг хавтгайруулдаг байв (2026-09-02-ны шийдвэртэй зөрнө). */
     goToRow(r.oid, bch >= 0 ? bch : blk);
-  };
-  /**
-   * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
-   * хэрэглэгч шууд засах боломжтой. Мөр сонгогдож, доорх эффект түүн рүү гүйлгэнэ
-   * (энгийн горимын индексээр, блокийн зурвасын эхлэл рүү).
-   */
-  const pickBlk = (oid: number, b: number) => {
-    setBlk(b);
-    setAllBlk(false);
-    /* ⚠️ 2026-10-09: дэд мөрөөс засахаар гарсан — цонх хаагдмагц «Бүх блок» ӨӨРӨӨ буцаж асна (`allBackRef`).
-       «Бүх блок» зөвхөн харах дүрэм (2026-10-04) ХЭВЭЭР; хэрэглэгч горимоо дахин асаах шаардлагагүй болов. */
-    allBackRef.current = true;
-    setSel(oid);
-    scrollToOid.current = { oid, blk: b };
   };
   /* Хяналт нээгдмэгц ЭХНИЙ өөрчлөлт рүү гүйлгэнэ — эхний гүйлгэлт «өнөөдөр» рүү
      явдаг тул өөрчлөгдсөн зурвас дэлгэцээс гадуур үлдэж, «юу өөрчлөгдсөн бэ» гэж
@@ -5222,8 +5276,6 @@ export function Huvaari({
       return m;
     });
   };
-  /** Мөрийн тэмдэг: хяналтад — батлагчийн сонголт; гүйцэтгэгчид — буцаасан шийдвэр */
-  const reviewSet = useMemo(() => new Set(reviewOids), [reviewOids]);
 
   /*
    * ⚠️ БУЦААСАН ТЭМДЭГЛЭГЭЭГ `lastDecision`-ООС ҮҮСГЭНЭ (2026-09-25 аудит #2).
@@ -5249,23 +5301,6 @@ export function Huvaari({
     }).catch(() => { /* тэмдэглэгээ нэмэлт — уншигдахгүй бол тэмдэггүй */ });
     return () => { dead = true; };
   }, [review, lastDecision, kind, backRef]);
-  /** Буцаасан тэмдэг ИДЭВХТЭЙ юу — яг тэр шийдвэр сүүлийнх, ноорог байгаа */
-  const backOn = !review && !!backMarks && dirtyN > 0 && lastDecision?.oid === backMarks.oid;
-  /*
-   * ⚠️ ТЭМДЭГ ЗӨВХӨН САНАЛД БАЙСАН, УТГА НЬ ХЭВЭЭР МӨРД (2026-09-25 аудит #3).
-   *    Урьд нь гүйцэтгэгчийн ОДООГИЙН ноорогтой тулгадаг тул засаж эхэлсэн
-   *    улаан мөр улаан хэвээр, саналд огт байгаагүй ШИНЭ засвар «зөвшөөрөөгүй»
-   *    улаан болж харагддаг байв. Одоо: мөр саналд байх + утга нь саналынхтай
-   *    ИЖИЛ (зохиогч хөндөөгүй блок/талбар — `base`-тэй ижил — тооцохгүй) бол
-   *    л тэмдэглэнэ; өөрчлөгдмөгц саармаг.
-   */
-  const backMarkMap = useMemo(
-    () => backMarkMapOf({ backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes }),
-    [backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes],
-  );
-  /* ⚠️ 2026-09-25 аудит: батлагч ЭНГИЙН хуудсанд урьдчилан харж байхад ч мөр бүрийг
-     ногоон болгоно — «Шийдвэрлэх»-ийн батлалт тэр дүрмээр хаалттай (`decide`). */
-  const marking = !!review || (previewing && pending != null && canApprove && !isOwnSubmission);
   const markOf = (r: PlanRow): 'ok' | 'bad' | undefined => {
     if (!reviewSet.has(r.oid)) return undefined;
     if (marking) return okRows.has(r.oid) ? 'ok' : 'bad';
@@ -5274,37 +5309,6 @@ export function Huvaari({
   };
 
   /* ══════════ 2026-10-08: ҮСРЭЛТ · ГАРААР ШИЛЖИХ · ӨӨРЧЛӨЛТИЙН ЖАГСААЛТ · БҮЛГИЙН ЗӨВШӨӨРӨЛ ══════════ */
-  /**
-   * МӨР РҮҮ ОЧИХ (2026-10-08) — алдааны «→ ажил руу» · өөрчлөлтийн самбар · «Үсрэх» оролт нэг зам.
-   * ⚠️ МОДЫГ ХАВТГАЙРУУЛАХГҮЙ (2026-09-02-ны шийдвэр): эвхсэн ӨВӨГ бүлгүүдийг л дэлгэнэ; мөр шүүлтэд
-   *    (таб · жил · бүлэг · чип) нуугдсан бол тэдгээрийг цэвэрлэнэ (`jumpNextBad`-ийн дүрэм). Дараа нь
-   *    сонгож, `scrollToOid` эффект гүйлгэнэ (блок нь `b`).
-   */
-  const goToRow = useCallback((oid: number, b: number = blk) => {
-    const at = plan.findIndex((r) => r.oid === oid);
-    if (at < 0) return;
-    const r = plan[at];
-    if (b !== blk) setBlk(b);
-    if (!visible.some((v) => v.oid === oid)) {
-      const anc: number[] = [];
-      let d = r.depth;
-      for (let k = at - 1; k >= 0 && d > 0; k -= 1) {
-        if (plan[k].group && plan[k].depth < d) { anc.push(plan[k].oid); d = plan[k].depth; }
-      }
-      if (anc.some((o) => collapsed.has(o))) {
-        setLvl(0);
-        setCollapsed((s) => { const m = new Set(s); for (const o of anc) m.delete(o); return m; });
-      }
-      const inScoped = fGrp === 'all' || scoped.some((x) => x.oid === oid);
-      /* ⚠️ 2026-10-09: шүүлтийг цэвэрлэх нь ЧИМЭЭГҮЙ байв — хэрэглэгч шүүлт яагаад алга болсныг мэддэггүй; ил хэлнэ */
-      if (!inScoped || !match(r)) {
-        setFilter('all'); setFYear('all'); setFGrp('all'); setChips(new Set());
-        setNote(tr('Шүүлт цэвэрлэгдэв — мөр шүүлтэд нуугдсан байв.'));
-      }
-    }
-    setSel(oid);
-    scrollToOid.current = { oid, blk: b };
-  }, [plan, blk, visible, collapsed, fGrp, scoped, match, setNote]);
   /**
    * НҮДНЭЭС ЗЭРГЭЛДЭЭ МӨР РҮҮ (2026-10-08, `TaskRow.onNextRow`): Enter/↓/↑ → харагдаж буй дараагийн/өмнөх
    * ЭХ мөрийн ижил нүд (`[data-oid] [data-col]`). Цонхлолтоос гадуур бол гүйлгээд, мөр зурагдмагц
@@ -5345,7 +5349,7 @@ export function Huvaari({
     }
     focusReq.current = { oid: t.oid, col, at: Date.now() };
     requestAnimationFrame(tryFocus);
-  }, [disp, scrollRef, tryFocus, blk]);
+  }, [disp, scrollRef, tryFocus, blk, setSel]);
   /**
    * ӨӨРЧЛӨЛТИЙН ЖАГСААЛТ (2026-10-08) — мөр · өөрчлөгдсөн блок · хуучин→шинэ (идэвхтэй эсвэл эхний
    * өөрчлөгдсөн блок) · шилжилт/үргэлжлэх зөрүү · уялдаа/обьём/нөөц/бодит тэмдэг. Хяналтад `reviewOids`,
@@ -6085,6 +6089,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   type="button"
                   className={lvl === -1 ? h.lvOn : ''}
                   title={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
+                  aria-label={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
                   onClick={() => setLevel(-1)}
                 >0</button>
                 {lvls.map((d) => {
@@ -6096,6 +6101,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       type="button"
                       className={lvl === nn ? h.lvOn : ''}
                       title={deepest
+                        ? tr('Бүх ажлын мөрийг дэлгэнэ')
+                        : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
+                      aria-label={deepest
                         ? tr('Бүх ажлын мөрийг дэлгэнэ')
                         : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
                       onClick={() => setLevel(nn)}

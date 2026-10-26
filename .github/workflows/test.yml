@@ -53,6 +53,8 @@ jobs:
       NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
+      # ⚠️ 2026-10-26 (аудит G3): build-ийн commit — UI-ийн хувилбарын тэмдэг (`lib/buildInfo.ts`). Нууц БИШ (нийтийн SHA).
+      NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
     steps:
       # ⚠️ 2026-10-09 (аудит №11): `actions/*`-ыг COMMIT SHA-аар бэхлэв — шошго (v4)-ийг
       #    хэн нэгэн зөөвөл бидний build өөр код ажиллуулах эрсдэлтэй. SHA-г `git ls-remote`-оор
@@ -67,7 +69,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      # ESLint (Next core-web-vitals + TS) — warning зөвшөөрнө, error унагана
+      # ESLint (Next core-web-vitals + TS) — error унагана; warning нь `--max-warnings`-ын хязгаар хүртэл (package.json)
       - run: npm run lint
       # ⚠️ 2026-09-25: i18n шалгуур (CLAUDE.md-ийн заавал давах 4 шалгалтын нэг).
       #    Урьд нь CI-д байгаагүй тул `tr('…')`-ийн эх текст засагдаж en.ts-ийн
@@ -76,14 +78,23 @@ jobs:
       # ⚠️ `test:agent`/`test:drift` (agent-proxy реле асаадаг) нь `npm test`-д
       #    БИШ, `test:live`-д байдаг — энэ workflow тэдгээрийг ажиллуулдаггүй тул
       #    agent-proxy-ийн тусдаа `npm ci` ХЭРЭГГҮЙ (2026-09-24-нд хасав).
-      # Нэгж шалгалтууд (series/bagts/floor/format/… — амьд ArcGIS хэсэг нь
-      #  ARCGIS_ADMIN_TOKEN-гүй бол алгасна)
+      # Нэгж шалгалтууд (series/bagts/floor/format/… — амьд ArcGIS хэсэг нь энд үргэлж алгасна)
+      # ⚠️ 2026-10-26 (аудит G2): `ARCGIS_ADMIN_TOKEN` secret-ийг ХАСАВ — runner Enterprise-д хүрдэггүй тул амьд
+      #    шалгуур (`LIVE_OPT`) токентой ч алгасдаг байсан; токен зөвхөн `npm test`-ийн гуравдагч кодод ил байв.
+      #    БУЦААЖ БҮҮ нэм. Амьд шалгуурыг Enterprise хүрэгддэг орчинд `npm run test:strict`-ээр.
       - run: npm test
-        env:
-          # ⚠️ Амьд өгөгдлийн 11 тест энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
-          #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
-          #    ⚠️ 2026-10-09: зөвхөн ЭНЭ алхамд (deploy.yml-тэй ижил) — build/npm ci хардаггүй.
-          ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
       # ⚠️ 2026-10-09: жинхэнэ `next build` (Node 22 — локал Node 24-ийн build worker 0xC0000005-оор
       #    санамсаргүй унадаг). `output: 'export'`-ийн алдаа (CSS-модулийн pure, prerender) зөвхөн энд илэрнэ.
+      # ⚠️ 2026-10-26 (аудит T7): `next build`-ийн webpack/SWC кэш (`.next/cache`) — lock + эх кодоор түлхүүрлэнэ;
+      #    эх өөрчлөгдсөн ч `restore-keys`-ээр хамгийн ойрын кэш сэргэнэ (Next өөрөө хүчингүйг хаяна). SHA-аар бэхлэв
+      #    (`git ls-remote` 2026-10-26: v4 → v4.3.0 хөнгөн шошго → шууд commit).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.mjs', 'tsconfig.json') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
+      # ⚠️ 2026-10-26 (аудит T4): `out/`-ын статик шалгалт — HTML-ийн заасан `/_next/static` файл бүр байна уу
+      #    (`tools/outVerify.mjs`-ийн ⚠️; хөтөчгүй, сүлжээгүй).
+      - run: node tools/outVerify.mjs out

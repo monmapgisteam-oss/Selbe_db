@@ -9,7 +9,7 @@ import { uniqueBlocks, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText } from '@/lib/totals';
 import {
-  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere,
+  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere, BLOCK_LAYER,
 } from '@/lib/services';
 import { mnt, num, pct, tint, NO_DATA } from '@/lib/format';
 import type { Overlap } from '@/lib/parcelOverlap';
@@ -44,7 +44,8 @@ const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
-export const BLOCK_LAYER = 'mon:building';
+// ⚠️ 2026-10-26 (P3): тодорхойлолт нь `lib/services/layers.ts`-д — энд зөвхөн дахин экспорт (дуудагчид хэвээр)
+export { BLOCK_LAYER };
 /**
  * Багцын БЛОКИЙН тоо — давхардсан feature (ижил `buildingKey`) НЭГ блок (2026-10-01,
  * «хэрэглэгч: бүгдийг зас»). `Pack.blocks` нь feature бүрийг хадгална (жагсаалт, OID);

@@ -1033,31 +1033,11 @@
 }
 
 /* ── ЧАРТ / ХҮСНЭГТ СЭЛГҮҮР ──
-   ⚠️ 2026-10-23: Environment .view-switch (3px дотоод зай, 1px --line зам; дарагдсан = --surface-2 + сүүдэр) */
+   ⚠️ 2026-10-26: сэлгүүр нь нийтлэг `Segmented` (components/Switch.tsx) — энд зөвхөн домог + капсулын мөр */
 .tlTabs {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
-  padding: 2px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-}
-.tlTab {
-  padding: 2px 10px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--ink-3);
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.tlTabs > .tlTab:first-child { border-left: none; }
-.tlTab:hover { color: var(--ink); }
-.tlTabOn {
-  color: var(--ink);
-  background: var(--surface-2);
-  box-shadow: 0 1px 5px #00000012;
 }
 
 /*

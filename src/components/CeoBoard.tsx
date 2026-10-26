@@ -33,6 +33,7 @@ import {
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
+import { Loading } from '@/components/ui';
 import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { CEO_KPIS, type CeoKpiDef } from '@/lib/ceo/registry';
@@ -370,7 +371,7 @@ export function KpiDetail({
           <span className={s.dErr}> {shortError(slot.error)}</span>
         </p>
       ) : !d ? (
-        <p className={s.dNote}>{tr('Ачаалж байна…')}</p>
+        <Loading />
       ) : (
         <>
           {d.facts.length > 0 && (
@@ -833,7 +834,7 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
                *    `SchemSources` дээр ажилладаг — шинэ хүсэлт үүсэхгүй.
                */
               srcQ.state === 'error' ? <p className={s.dNote}>{tr('Татагдсангүй.')}</p>
-                : !schemDetail ? <p className={s.dNote}>{tr('Ачаалж байна…')}</p>
+                : !schemDetail ? <Loading />
                   : (
                     <>
                       {schemDetail.metrics.length > 0 && (

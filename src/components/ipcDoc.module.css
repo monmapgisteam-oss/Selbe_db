@@ -37,7 +37,7 @@
 .field { display: grid; gap: 4px; font-size: 11px; font-weight: 500; color: var(--ink-3); }
 .field input, .field select {
   font: inherit; font-size: 12.5px; font-weight: 400;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 9px;
   color: var(--ink);
   background: var(--bg);
@@ -64,7 +64,7 @@
 .foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 32px;
+  height: var(--ctl-h-form);
   font: inherit; font-size: 12px; font-weight: 500;
   padding: 0 14px;
   color: var(--ink-2);

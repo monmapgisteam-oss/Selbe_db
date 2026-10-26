@@ -24,13 +24,6 @@ import { HABEA_TTL_MS, HABEA_POLL_MS } from './habeaTiming.ts';
 /* ⚠️ Эх файлууд CRLF — LF болгож нэгтгэнэ, эс бөгөөс мөр дамнасан regex таарахгүй */
 const read = (f) => readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 const code = (f) => read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '');
-/** `const <name>` -ээс дараагийн `export ` хүртэлх хэсэг (эсвэл файлын төгсгөл) */
-const segment = (s, name) => {
-  const i = s.indexOf(`const ${name}`);
-  assert.ok(i >= 0, `${name} олдсонгүй`);
-  const j = s.indexOf('\nexport ', i + 10);
-  return s.slice(i, j > 0 ? j : undefined);
-};
 
 /* ── 1. Дэд бүтцийн засвар → санах ойн кэш хаягдана ── */
 for (const f of ['src/lib/planOverlap.ts', 'src/lib/hesegNeed.ts', 'src/lib/pkgSaad.ts', 'src/lib/parcelOverlap.ts', 'src/lib/layerSummary.ts']) {

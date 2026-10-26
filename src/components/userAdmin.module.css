@@ -158,7 +158,7 @@
   gap: 7px;
   flex: 1.4;
   min-width: 0;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 9px;
   border-radius: 7px;
   border: 1px solid var(--line-strong);
@@ -312,7 +312,7 @@
 .linkBtn:hover { color: var(--data-ink); }
 .input {
   flex: 1;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 9px;
   border-radius: 7px;
   border: 1px solid var(--line-strong);
@@ -330,7 +330,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 14px;
   border-radius: var(--r);
   background: var(--workspace-accent);
@@ -380,7 +380,7 @@
 .userHead .presets { margin-left: auto; flex-wrap: nowrap; }
 .roleSelect {
   min-width: 180px;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 28px 0 9px;
   border-radius: 7px;
   font-size: 12.5px;
@@ -636,7 +636,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 14px;
   border-radius: var(--r);
   border: 1px solid var(--line-strong);
@@ -651,7 +651,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 18px;
   border-radius: var(--r);
   background: var(--workspace-accent);
@@ -757,7 +757,7 @@
   scroll-margin-top: 8px;
 }
 .cardSelect {
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 9px;
   border-radius: 7px;
   border: 1px solid var(--line-strong);

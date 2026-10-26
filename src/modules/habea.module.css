@@ -488,43 +488,9 @@
 /* Тайлбар бичиг — `ui.module.css .sectionNote`-ийн өнгийг өвлөнө */
 .stepNote { white-space: nowrap; }
 
-/* Сегментчилсэн товч — хоёр сонголт НЭГ хүрээнд */
-/* ⚠️ 2026-10-23: Environment .view-switch хэлбэр (1px --line зам, 8px/5px булан); идэвхтэй нь
-   доорх ⚠️-ийн дагуу ДҮҮРГЭГДСЭН хэвээр. */
-.seg {
-  display: inline-flex;
-  flex: none;
-  padding: 2px;
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-}
-.segBtn {
-  padding: 2px 9px;
-  border: none;
-  background: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.5;
-  color: var(--ink-3);
-  white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
-}
-.segBtn:hover { color: var(--accent); }
-.segBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-/* ⚠️ Идэвхтэй нь ДҮҮРГЭГДЭНЭ: хоёр товч ижил харагдвал аль нь одоо
-   үйлчилж байгаа нь уншигдахгүй — гарчгийн тоо нь өдөр/сар аль нь болох
-   ганц дохио болж үлдэнэ. */
-.segOn,
-.segOn:hover {
-  background: var(--accent);
-  color: var(--bg);
-  box-shadow: 0 1px 5px #00000012;
-}
+/* Сегментчилсэн товч — ⚠️ 2026-10-26: нийтлэг `Segmented` (components/Switch.tsx) болсон.
+   ⚠️ Идэвхтэй нь ДҮҮРГЭГДЭНЭ (хуучин шийдвэр хэвээр — `Segmented .segOn` дүүргэлттэй): хоёр товч
+   ижил харагдвал аль нь одоо үйлчилж байгаа нь уншигдахгүй. */
 
 
 /* ══ ОСЛЫН ЧАРТЫН ШҮҮЛТҮҮР — КАПСУЛ ЧИП ══

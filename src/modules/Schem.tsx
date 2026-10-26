@@ -49,6 +49,7 @@ import {
   type CardStat, type Cell, type Issue,
 } from '@/lib/schemDetail';
 import { loadSchemSources } from '@/lib/schemData';
+import { Segmented } from '@/components/Switch';
 import c from './schem.module.css';
 
 /* ══════════════════ Туслах ══════════════════ */
@@ -797,17 +798,10 @@ export function Schem({
           <p className={c.sub}>{tr('Төлөвлөхөөс тайлагнах хүртэлх урсгал — амьд тоогоор')}</p>
         </div>
         <span className={c.spacer} />
-        {/* ⚠️ Хоёр товчны бүлэг — checkbox биш: горим ХОЁУЛАА нэр төрөлтэй */}
-        <span className={c.modes} role="group" aria-label={tr('Нарийвчлал')}>
-          {([true, false] as const).map((d) => (
-            <button key={String(d)} type="button"
-              className={`${c.mode} ${fine === d ? c.modeOn : ''}`}
-              aria-pressed={fine === d}
-              onClick={() => setFine(d)}>
-              {d ? tr('Дэлгэрэнгүй') : tr('Ерөнхий')}
-            </button>
-          ))}
-        </span>
+        {/* ⚠️ Хоёр товчны бүлэг — checkbox биш: горим ХОЁУЛАА нэр төрөлтэй.
+            ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул (radiogroup — хоёр нэртэй сонголт) */}
+        <Segmented value={fine ? 'fine' : 'coarse'} onChange={(v) => setFine(v === 'fine')} label={tr('Нарийвчлал')}
+          options={[{ value: 'fine', label: tr('Дэлгэрэнгүй') }, { value: 'coarse', label: tr('Ерөнхий') }]} />
         <label className={c.field}>
           {tr('Багц')}{' '}
           <select className={c.select} value={pkgSel} onChange={(e) => setPkg(e.target.value)}>

@@ -18,7 +18,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty, Note, userError } from '@/components/ui';
+import { Data, Empty, Note, userError, tabFocusNav } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
@@ -106,6 +106,7 @@ import { invalidate, type DataKey } from '@/lib/dataBus';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
+import { Toggle } from '@/components/Switch';
 import f from './finance.module.css';
 
 /* ═══════════════════════════════════════════════════════════
@@ -4996,30 +4997,17 @@ function FullTable({
           {/* ⚠️ Бүлэглэлт нь АНХДАГЧААР асаалттай. Унтраах товчийг үлдээв:
               бүх мөрийг эх дараалалаар нь харах хэрэгцээ (жишээ нь OID-гоор
               зөрүү хайх) заримдаа гардаг. Гэрээний бүртгэлд УТГАГҮЙ тул алга. */}
+          {/* ⚠️ 2026-10-26 (UX U6): асаах/унтраах нь нийтлэг `Toggle` (ард талдаа унтраалгатай нэг товч) */}
           {!isFlat && (
-          <button
-            type="button"
-            className={`${f.finTgl} ${grouped ? f.finTglOn : ''}`}
-            aria-pressed={grouped}
-            title={tr('Багц бүрийг тусад нь, он merge нүдтэйгээр харуулна')}
-            onClick={() => setGrouped((v) => !v)}
-          >
-            {tr('Багцаар бүлэглэх')}
-          </button>
+            <Toggle checked={grouped} onChange={setGrouped} label={tr('Багцаар бүлэглэх')}
+              title={tr('Багц бүрийг тусад нь, он merge нүдтэйгээр харуулна')} />
           )}
           {/* ⚠️ Багана бүрийн шүүлт нь зөвхөн ХАВТГАЙ хүснэгтэд — картын
               загварт багана биш паспорт/хуваарь тул утгагүй. Багц·он·төрлийн
               нүүр ба чөлөөт хайлт картад ч үйлчилнэ. */}
           {!grouped && (
-          <button
-            type="button"
-            className={`${f.finTgl} ${colOpen ? f.finTglOn : ''}`}
-            aria-pressed={colOpen}
-            title={tr('Багана бүрд тусад нь шүүлт. Тоон баганад: >1000 · <=5e6 · 100..200')}
-            onClick={() => setColOpen((v) => !v)}
-          >
-            {tr('Багана бүрийн шүүлт')}
-          </button>
+            <Toggle checked={colOpen} onChange={setColOpen} label={tr('Багана бүрийн шүүлт')}
+              title={tr('Багана бүрд тусад нь шүүлт. Тоон баганад: >1000 · <=5e6 · 100..200')} />
           )}
           {/*
             * «+ Мөр нэмэх» — МӨРИЙН ТООНЫ УРД (2026-09-04, хэрэглэгчийн хүсэлт).
@@ -5044,7 +5032,7 @@ function FullTable({
             * элемент зурвасны баруун захад наалдана — байрлалыг гараар
             * тооцох шаардлагагүй.
             *
-            * ⚠️ `.finTgl` (саарал toggle) БИШ `.finAdd`: хажуудах «Багана
+            * ⚠️ `Toggle` (саарал унтраалга, хуучин `.finTgl`) БИШ `.finAdd`: хажуудах «Багана
             * бүрийн шүүлт» зэрэг нь ХАРАГДАЦ сэлгэдэг унтраалга, энэ нь
             * ӨГӨГДӨЛ үүсгэдэг үйлдэл. Ижил төрхтэй байвал хүн санамсаргүй
             * дарж хоосон мөр үүсгэнэ.
@@ -5299,10 +5287,13 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           * БАРУУН талд нь үлдээнэ.
           */}
         {/* Хүснэгт солих — идэвхтэй нь дүүргэлттэй */}
-        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }}>
+        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`) — `switchTab` асинхрон
+            (ачаалал · хадгалаагүй засварын асуулт) тул сонголт нь Enter/Space-ээр */}
+        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }} onKeyDown={(e) => tabFocusNav(e)}>
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'cf' ? 0 : -1}
             aria-selected={tab === 'cf'}
             className={`${f.tab} ${tab === 'cf' ? f.tabOn : ''}`}
             onClick={() => void switchTab('cf')}
@@ -5313,6 +5304,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'ipc' ? 0 : -1}
             aria-selected={tab === 'ipc'}
             className={`${f.tab} ${tab === 'ipc' ? f.tabOn : ''}`}
             onClick={() => void switchTab('ipc')}
@@ -5322,6 +5314,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'plan' ? 0 : -1}
             aria-selected={tab === 'plan'}
             className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
             onClick={() => void switchTab('plan')}

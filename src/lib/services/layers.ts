@@ -1260,6 +1260,13 @@ export const LAYER_BY_ID: Record<string, LayerDef> = Object.fromEntries(
   LAYERS.map((l) => [l.id, l]),
 );
 
+/**
+ * Орон сууцны БЛОКИЙН давхарга (багцын орон зайн хүрээ).
+ * ⚠️ 2026-10-26 (гүйцэтгэл P3): `modules/Bagts.tsx`-аас ЭНД шилжив — `GeneralDash` (анхдагч харагдац) зөвхөн энэ
+ *    тогтмолын төлөө Bagts + BuildingPanel-ийг бүхэлд нь chunk-даа чирдэг байв. Bagts дахин экспортолно.
+ */
+export const BLOCK_LAYER = 'mon:building';
+
 
 /**
  * Эх webmap-ийн снапшот загварыг хэрэглэхдээ ӨНГИЙГ нь каталогийн `hue`-ээр

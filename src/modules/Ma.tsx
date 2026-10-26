@@ -34,7 +34,8 @@ import { AjilMatTab, NootsTab, type NootsSync } from './MaMaterial';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
-import { friendlyError, userError } from '@/components/ui';
+import { friendlyError, userError, Loading } from '@/components/ui';
+import { Segmented } from '@/components/Switch';
 import s from './ma.module.css';
 
 
@@ -202,10 +203,14 @@ export function Ma() {
             <EntSignIn compact />
           </div>
         )}
-        <div className={`${s.seg} ${s.tabs}`} role="group" aria-label={tr('Харагдац')}>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'chain'} onClick={() => { void goTab('chain'); }}>{tr('Баталгаажуулалт')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'noots'} onClick={() => { void goTab('noots'); }}>{tr('Материалын нөөц')}</button>
-          <button type="button" className={s.segBtn} aria-pressed={tab === 'ajil'} onClick={() => { void goTab('ajil'); }}>{tr('Ажлын материал')}</button>
+        {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул; солих нь `goTab`-аар (navGuard асуулт) */}
+        <div className={s.tabs}>
+          <Segmented value={tab} onChange={(t) => { void goTab(t); }} label={tr('Харагдац')}
+            options={[
+              { value: 'chain', label: tr('Баталгаажуулалт') },
+              { value: 'noots', label: tr('Материалын нөөц') },
+              { value: 'ajil', label: tr('Ажлын материал') },
+            ]} />
         </div>
         {/* ⚠️ 2026-10-21 (аудит №2): автомат бүртгэл идэвхгүй (`mir_id`) — мэдэгдэл НЭГ удаа, бүх табд; MA харагдац ажилласаар */}
         {sync.state === 'disabled' && (
@@ -227,7 +232,7 @@ export function Ma() {
       ) : !MA_URL ? (
         <p className={s.failNote}>{tr('MA үйлчилгээ тохируулаагүй.')}</p>
       ) : q.state === 'loading' ? (
-        <div className={s.loading}>{tr('Ачаалж байна…')}</div>
+        <Loading />
       ) : q.state === 'error' ? (
         <p className={s.failNote} role="alert">
           {friendlyError(q.error)}
@@ -494,9 +499,11 @@ function DocSwitch({ info, sheet }: { info: React.ReactNode; sheet: () => Promis
   };
   return (
     <div className={s.block}>
-      <div className={s.seg} role="group" aria-label={tr('Харагдац')}>
-        <button type="button" className={s.segBtn} aria-pressed={mode === 'info'} onClick={() => setMode('info')}>{tr('Мэдээлэл')}</button>
-        <button type="button" className={s.segBtn} aria-pressed={mode === 'doc'} onClick={() => { void showDoc(); }}>{tr('Баримт (PDF)')}</button>
+      {/* ⚠️ 2026-10-26: нийтлэг `Segmented`; «Баримт» нь `showDoc`-оор (A4-ийг асинхрон бэлтгэнэ) */}
+      <div>
+        <Segmented value={mode} label={tr('Харагдац')}
+          onChange={(v) => { if (v === 'doc') void showDoc(); else setMode('info'); }}
+          options={[{ value: 'info', label: tr('Мэдээлэл') }, { value: 'doc', label: tr('Баримт (PDF)') }]} />
       </div>
       {mode === 'info' ? info : (
         <div className={s.block}>
@@ -506,9 +513,16 @@ function DocSwitch({ info, sheet }: { info: React.ReactNode; sheet: () => Promis
               <span className={s.note}>{tr('Хэвлэх цонхонд «Save as PDF» сонгож PDF болгоно.')}</span>
             </div>
           )}
-          {err ? <p className={s.errNote} role="alert">{err}</p>
+          {/* ⚠️ 2026-10-26: «Дахин оролдох» — урьд нь идэвхтэй «Баримт» товчийг ДАХИН дарахад `showDoc` давтагддаг байв;
+              `Segmented` идэвхтэй сонголтын дарааг алгасдаг тул давтах зам энд ил товчоор */}
+          {err ? (
+            <>
+              <p className={s.errNote} role="alert">{err}</p>
+              <button type="button" className={s.retryBtn} onClick={() => { void showDoc(); }}>{tr('Дахин оролдох')}</button>
+            </>
+          )
             : html ? <iframe className={s.sheet} srcDoc={html} title={tr('Баримт')} />
-              : <p className={s.note}>{tr('Ачаалж байна…')}</p>}
+              : <Loading />}
         </div>
       )}
     </div>
@@ -790,7 +804,7 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   return (
     <div className={s.block}>
       <h3 className={s.h3}>{tr('Хавсралт')}{list ? ` (${list.length})` : ''}</h3>
-      {list == null ? <p className={s.note}>{tr('Ачаалж байна…')}</p> : list.length === 0 ? (
+      {list == null ? <Loading /> : list.length === 0 ? (
         <p className={s.note}>{tr('Хавсралт алга.')}</p>
       ) : (
         <ul className={s.attList}>

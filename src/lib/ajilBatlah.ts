@@ -378,8 +378,9 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl();
   if (!url) return [];
   /* ⚠️ 2026-10-21: түгжээг уншиж/шүүх бүх зам серверийн цагтай (`huvaariBatlah`-ийн `loadRows`-тэй ижил) — ихэвчлэн
-     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. */
-  await syncServerClock();
+     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. Өөрийн хүснэгтийн url-ыг өгнө —
+     хуваарийн хүснэгтийг портал дээр дахин хайхгүй (2026-10-26). */
+  await syncServerClock(url);
   const out: Attrs[] = [];
   for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {

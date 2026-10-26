@@ -13,7 +13,7 @@ import { currentUser } from '@/lib/who';
 import { askConfirm } from '@/lib/confirm';
 import { EntSignIn, useEntSession } from './EntSignIn';
 import { ENT_KEY } from './EntDocs';
-import { userError } from './ui';
+import { Loading, userError } from './ui';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
 
@@ -180,7 +180,7 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple hidden
         onChange={(e) => { void upload(e.target.files); }} />
 
-      {groups == null ? <div className={s.entSub}>{tr('Ачаалж байна…')}</div> : gl.map((g) => {
+      {groups == null ? <Loading /> : gl.map((g) => {
         const pdfs = byGroup.get(g.id) ?? [];
         const statics = g.id === TEZU_GROUP ? DOCS : [];
         const n = pdfs.length + statics.length;
@@ -198,14 +198,14 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                   onClick={() => pickUpload(g.id)}>{tr('PDF +')}</button>
               )}
               {canGroups && !groupsFailed && (
-                <button type="button" className={s.grpAct} disabled={busy} title={tr('Нэр солих')}
+                <button type="button" className={s.grpAct} disabled={busy} title={tr('Нэр солих')} aria-label={tr('Нэр солих')}
                   onClick={() => setEdit({ id: g.id, title: g.title })}>✎</button>
               )}
               {/* ⚠️ 2026-10-23: PDF-ийн жагсаалт энэ сешнд АМЖИЛТТАЙ уншигдсан үед л «хоосон» гэж үзнэ (гарсан · уншилт
                   унасан үед n=0 нь «мэдэхгүй» гэсэн үг) — `removeGroup` дахин шинэ жагсаалтаар шалгана */}
               {canGroups && !groupsFailed && sess && listOk && items != null && g.id !== TEZU_GROUP && n === 0 && (
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Хоосон бүлгийг устгах')}
-                  onClick={() => { void removeGroup(g); }}>✕</button>
+                  aria-label={tr('Хоосон бүлгийг устгах')} onClick={() => { void removeGroup(g); }}>✕</button>
               )}
             </div>
             {edit?.id === g.id && editRow}
@@ -248,7 +248,7 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                             </select>
                           )}
                           <button type="button" className={s.grpAct} disabled={busy} title={tr('PDF устгах')}
-                            onClick={() => { void removePdf(d); }}>✕</button>
+                            aria-label={tr('PDF устгах')} onClick={() => { void removePdf(d); }}>✕</button>
                         </span>
                       )}
                     </div>

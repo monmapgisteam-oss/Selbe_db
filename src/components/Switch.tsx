@@ -73,17 +73,19 @@ export function Toggle({ checked, onChange, label, extra, title, disabled = fals
  * НИЙТЛЭГ ОЛОН СОНГОЛТТОЙ КАПСУЛ — `Switch`-тэй ижил загвар, 2+ сонголт (2026-10-23, хэрэглэгч: «загварыг сайжруул»).
  * Нэг нь идэвхтэй, гулсагч түүн рүү шилжинэ (`switch.module.css` `.seg`).
  */
-export function Segmented<T extends string>({ value, onChange, options, label, disabled = false }: {
+export function Segmented<T extends string>({ value, onChange, options, label, disabled = false, wrap = false }: {
   value: T;
   onChange: (v: T) => void;
   options: readonly { value: T; label: string; title?: string }[];
   /** Дэлгэц уншигчийн бүлгийн нэр */
   label?: string;
   disabled?: boolean;
+  /** Олон/урт сонголттой үед (жиш. ТУХ-ын 9 бүлэг) мөр шилжинэ — ⚠️ 2026-10-26: эс бөгөөс капсул дэлгэцээс халина */
+  wrap?: boolean;
 }) {
   const i = Math.max(0, options.findIndex((o) => o.value === value));
   return (
-    <span role="radiogroup" aria-label={label} className={s.seg}
+    <span role="radiogroup" aria-label={label} className={`${s.seg} ${wrap ? s.segWrap : ''}`}
       style={{ '--n': options.length, '--i': i } as React.CSSProperties}>
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={o.value === value}

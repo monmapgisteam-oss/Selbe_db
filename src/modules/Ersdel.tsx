@@ -92,6 +92,7 @@ import * as projectOperator from '@arcgis/core/geometry/operators/projectOperato
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
+import { Toggle } from '@/components/Switch';
 import e from './ersdel.module.css';
 
 /**
@@ -2333,15 +2334,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         * мужид ногдож, зураас олон бөгөөд тод болно.
                         */}
                       <div className={e.flowBar}>
-                        <button
-                          type="button"
-                          className={`${e.flowBtn} ${windFlow ? e.flowOn : ''}`}
-                          aria-pressed={windFlow}
-                          onClick={() => setWindFlow((v) => !v)}
-                          title={tr('Одоогийн салхины урсгалыг зураг дээр харуулна. Зум ойртуулахад нарийсна.')}
-                        >
-                          {windFlow ? tr('Урсгал асаалттай') : tr('Урсгал харуулах')}
-                        </button>
+                        {/* ⚠️ 2026-10-26 (UX U6): нийтлэг `Toggle` — асаалттай эсэхийг унтраалга өөрөө харуулна */}
+                        <Toggle checked={windFlow} onChange={setWindFlow} label={tr('Урсгал харуулах')}
+                          title={tr('Одоогийн салхины урсгалыг зураг дээр харуулна. Зум ойртуулахад нарийсна.')} />
                         {windFlow && windField?.times[windH] != null && (
                           <span className={`${e.flowHour} num`}>
                             {/* ⚠️ `getHours()` нь ХӨТЧИЙН бүсээр хөрвүүлнэ — цуваа UB-ынх

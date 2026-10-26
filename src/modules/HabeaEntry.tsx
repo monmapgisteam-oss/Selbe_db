@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
-import { friendlyError } from '@/components/ui';
+import { friendlyError, Loading } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import {
@@ -254,7 +254,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </div>
-      {!fields && !err && <p className={e.muted}>{tr('Ачаалж байна…')}</p>}
+      {!fields && !err && <Loading />}
       {fields && (
         <div className={e.grid}>
           {fields.map((f) => (

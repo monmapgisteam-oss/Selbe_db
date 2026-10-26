@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { entItemPage, entPdfBlob } from '@/lib/entDocs';
-import { userError } from './ui';
+import { Loading, userError } from './ui';
 import s from './docviewer.module.css';
 
 /**
@@ -44,7 +44,7 @@ export function EntDocFrame({ id, narrow }: { id: string; narrow: boolean }) {
   }, [id]);
 
   const cur = state?.id === id ? state : null;
-  if (!cur) return <div className={s.ext}><p className={s.pick}>{tr('Ачаалж байна…')}</p></div>;
+  if (!cur) return <div className={s.ext}><Loading /></div>;
   if (cur.err) {
     return (
       <div className={s.ext}>

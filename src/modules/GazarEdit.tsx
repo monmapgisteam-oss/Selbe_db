@@ -30,7 +30,7 @@ import {
   type FieldLens, type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 /** Төлөв ба явцын мэдээ НЭГ талбар уу (2026-09-21, `services.ts` `PARCEL_LEFT.fields`) */
 const SAME_FIELD = PARCEL_LEFT.fields.status === PARCEL_LEFT.fields.progress;
@@ -214,7 +214,7 @@ export function GazarEdit({
         </div>
 
         {load ? (
-          <p className={g.modalMsg}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : !before || !d ? (
           <p className={g.modalMsg}>{fail || tr('Нэгж талбар олдсонгүй.')}</p>
         ) : (

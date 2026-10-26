@@ -625,8 +625,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 
@@ -994,7 +994,7 @@
 .indCell { display: flex; flex-direction: column; padding: 14px 18px; background: var(--surface); min-width: 0; }
 
 /* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
-.indLabel { display: block; min-height: 28px; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
+.indLabel { display: block; min-height: 28px; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: var(--eyebrow-ls); text-transform: uppercase; color: var(--ink-3); }
 
 .indBottom { margin-top: auto; display: flex; align-items: center; gap: 8px; }
 
@@ -1182,15 +1182,15 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow) */
 .shell[data-detail='1'][data-sec='scope'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='scope'] .zTop :global(.barsList),
@@ -1280,8 +1280,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='schedule'] .zTop :global(.barsList),
@@ -1371,8 +1371,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='land'] .zTop :global(.barsList),
@@ -1461,8 +1461,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='bagts'] .zTop :global(.barsList),
@@ -1552,15 +1552,15 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow) */
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow) */
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.statTag) {
   width: 100%;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='network'] .zTop :global(.barsList),
@@ -1650,7 +1650,7 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow).
    ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
    тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.statTag) {
@@ -1659,8 +1659,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='power'] .zTop :global(.barsList),
@@ -1748,7 +1748,7 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow).
    ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
    тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.statTag) {
@@ -1757,8 +1757,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='source'] .zTop :global(.barsList),
@@ -1848,7 +1848,7 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow).
    ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
    тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.statTag) {
@@ -1857,8 +1857,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='finance'] .zTop :global(.barsList),
@@ -1948,7 +1948,7 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-/* Шошго — тоймын `.tileLabel` (10.5px uppercase, eyebrow).
+/* Шошго — тоймын `.tileLabel` (11px uppercase, eyebrow).
    ⚠️ Дэд станцын нэр урт тул хоёр мөрөнд БАГТАНА (`shortSrc` аль хэдийн
    тайрсан ч «Төгөл 35/10» гэх мэт нэр 1 мөрөнд багтахгүй өргөн байж болно). */
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.statTag) {
@@ -1957,8 +1957,8 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
+  letter-spacing: var(--eyebrow-ls);
+  line-height: var(--eyebrow-lh);
   color: var(--ink-3);
 }
 .shell[data-detail='1'][data-sec='benefit'] .zTop :global(.barsList),

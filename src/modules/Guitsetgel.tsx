@@ -21,7 +21,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { fixCyr } from '@/lib/format';
+import { dateTime, fixCyr } from '@/lib/format';
 import {
   DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, nextReview,
@@ -140,11 +140,9 @@ const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
 /* ⚠️ 2026-10-23 (UX аудит E11): гүйцэтгэлийн илгээлтийн мөрийн нэр «Гүйцэтгэл · 2026.10.14 · …» (`hyanaltSubmit.dayTagOf`)
    ArcGIS-д МОНГОЛООР хадгалагддаг (түлхүүр — өөрчлөхгүй) тул англи горимд угтварыг зөвхөн ДЭЛГЭЦЭНД орчуулна. */
 const ajilLabel = (a: string): string => (a.startsWith('Гүйцэтгэл · ') ? `${tr('Гүйцэтгэл')} · ${a.slice('Гүйцэтгэл · '.length)}` : a);
-const fmt = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('mn-MN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  }) : '—';
+/* ⚠️ 2026-10-26 (G7): шатны цаг нь нийтлэг `format.dateTime` («YYYY-MM-DD HH:mm», хоёр хэлэнд ижил). Урьд нь
+   `toLocaleString('mn-MN')` — англи горимд монгол хэлбэр, `mn` ICU-гүй хөтөчид «10/14/2026, 02:30 PM» (MM/DD) гардаг байв. */
+const fmt = (iso: string | null) => dateTime(iso);
 
 /** Компани менежерийн шатыг ОГТ харахгүй */
 const seesManager = (stage: Stage) => stage !== 'company';

@@ -595,20 +595,7 @@
    `STEP_NOTE_H`-ТЭЙ ЯГ ТЭНЦҮҮ БАЙХ ЁСТОЙ. `layout()` мөрийн өндрийг тэдгээр
    тоогоор урьдчилан тооцдог — зөрвөл задарсан зангилаа доод мөрөө ДАРНА. */
 
-/* ⚠️ 2026-10-23: Environment `.view-switch` — 3px padding, 1px --line зам; дарагдсан = тод гадарга + зөөлөн сүүдэр */
-.modes { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); }
-.mode {
-  font: inherit;
-  font-size: 12px;
-  padding: 5px 10px;
-  color: var(--ink-3);
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.mode:hover { color: var(--ink); }
-.modeOn { color: var(--ink); background: var(--surface-2); box-shadow: 0 1px 5px #00000012; }
+/* ⚠️ 2026-10-26: «Дэлгэрэнгүй / Ерөнхий» сэлгэгч нь нийтлэг `Segmented` (components/Switch.tsx) болсон */
 
 /* ── Нарийн схемийн карт ──
    ⚠️ 24 карт нэг дэлгэцэнд багтах ёстой тул үсэг жижиг, зай нягт. Гэхдээ

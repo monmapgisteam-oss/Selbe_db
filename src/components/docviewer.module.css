@@ -243,7 +243,7 @@
 .entRow { display: flex; align-items: center; gap: 8px; }
 .entInput {
   width: 100%;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 9px;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
@@ -261,7 +261,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
+  height: var(--ctl-h-form);
   padding: 0 14px;
   border-radius: var(--r);
   background: var(--workspace-accent);

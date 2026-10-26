@@ -30,7 +30,7 @@ import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
 /* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`).
    ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
-import { Section as Card, Series, Meter, type SeriesLineDef } from '@/components/ui';
+import { Section as Card, Series, Meter, Loading, type SeriesLineDef } from '@/components/ui';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
@@ -293,7 +293,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <div className={s.panels}>
           <div className={s.panel}>
             <h3>{tr('Гол үе шат')}</h3>
-            {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+            {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <Loading />
               : schedQ.state === 'error' ? schedFail
                 : derived && derived.milestones.length ? (
                   <ol className={s.milestones}>
@@ -382,7 +382,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <h3>{tr('Level 3 — Дэлгэрэнгүй хуваарь')}</h3>
         {!hasSheets ? <p className={s.note}>—</p>
-          : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+          : schedQ.state === 'loading' ? <Loading />
             : schedQ.state === 'error' ? schedFail
               : derived && derived.l3.length ? (
                 <Card>

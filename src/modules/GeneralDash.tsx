@@ -26,16 +26,18 @@ import { loadFillPkgProgress, loadHeadline, loadHousing } from '@/lib/live';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
-import { loadFinData, typePhysNow, INFRA_TYPE } from '@/modules/Finance';
+/* ⚠️ 2026-10-26 (гүйцэтгэл P3): `aggregateMonths` ч ЭНДЭЭС — урьд нь `@/modules/PkgProg` (→ pkgShared → Finance
+   дахин экспорт)-оор авдаг тул зөвхөн нэг функцийн төлөө PkgProg-ийн UI бүхэлдээ gdash chunk-д ордог байв. */
+import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 /* ⚠️ 2026-09-10: IPC муруйн эх — HO хүснэгтийн БҮХ мөр (`ipcByMonth`-ийн тайлбарыг үз) */
 import { loadHoRows } from '@/lib/ipc';
-import { aggregateMonths } from '@/modules/PkgProg';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
-/* ⚠️ Орон сууцны багцын орон зайн хүрээ — блокийн давхарга */
-import { BLOCK_LAYER } from '@/modules/Bagts';
 import {
+  /* ⚠️ Орон сууцны багцын орон зайн хүрээ — блокийн давхарга. ⚠️ 2026-10-26 (P3): `@/modules/Bagts`-аас БИШ
+     (Bagts + BuildingPanel-ийг chunk-д чирдэг байв) — `lib/services/layers.ts`. */
+  BLOCK_LAYER,
   /* ⚠️ `PKG_BY_FAMILY` нь ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын шугам
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
@@ -65,6 +67,7 @@ import {
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
+import { Segmented } from '@/components/Switch';
 import g from './generalDash.module.css';
 /* ⚠️ 2026-10-22 (аудит): «Багц 74»-ийн асаалт/унтраалтын дүрэм — цэвэр модуль (`generalDashLayers.check.mjs` шууд шалгана) */
 import { pkgWorkAdded, pkgWorkDrop, pkgWorkOn } from '@/modules/generalDashLayers';
@@ -836,22 +839,9 @@ export function GeneralDash({
                       нэг нэг мөр л нэмнэ. */}
                 </span>
               )}
-              <button
-                type="button"
-                aria-pressed={cfMode === 'chart'}
-                className={`${g.tlTab} ${cfMode === 'chart' ? g.tlTabOn : ''}`}
-                onClick={() => setCfMode('chart')}
-              >
-                {tr('График')}
-              </button>
-              <button
-                type="button"
-                aria-pressed={cfMode === 'table'}
-                className={`${g.tlTab} ${cfMode === 'table' ? g.tlTabOn : ''}`}
-                onClick={() => setCfMode('table')}
-              >
-                {tr('Хүснэгт')}
-              </button>
+              {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): хоёр тусдаа товч биш — нийтлэг `Segmented` капсул */}
+              <Segmented value={cfMode} onChange={setCfMode} label={tr('Харагдац')}
+                options={[{ value: 'chart', label: tr('График') }, { value: 'table', label: tr('Хүснэгт') }]} />
             </span>
           )}
         >

@@ -15,6 +15,7 @@ import { num } from '@/lib/format';
 import { placeTip } from '@/components/PlanOverlap';
 import { userError } from '@/components/ui';
 import { useElapsed } from '@/components/HesegChange';
+import { Segmented } from '@/components/Switch';
 import s from './heseg.module.css';
 import n from './hesegNeed.module.css';
 
@@ -179,19 +180,10 @@ export function NeedPanel() {
           })}
         </div>
       )}
-      {/* Жагсаалтын хэлбэр — төрлөөр / бүсээр */}
-      <div className={s.modes} role="group" aria-label={tr('Харах хэлбэр')}>
-        {(['type', 'zone'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={`${s.mode} ${u.mode === m ? s.modeOn : ''}`}
-            aria-pressed={u.mode === m}
-            onClick={() => setUi({ mode: m })}
-          >
-            {m === 'type' ? tr('Төрлөөр') : tr('Бүсээр')}
-          </button>
-        ))}
+      {/* Жагсаалтын хэлбэр — төрлөөр / бүсээр. ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` */}
+      <div className={s.modes}>
+        <Segmented value={u.mode} onChange={(m) => setUi({ mode: m })} label={tr('Харах хэлбэр')}
+          options={[{ value: 'type', label: tr('Төрлөөр') }, { value: 'zone', label: tr('Бүсээр') }]} />
       </div>
 
       {u.mode === 'zone' ? (

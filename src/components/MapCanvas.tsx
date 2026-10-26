@@ -32,11 +32,13 @@ import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
-import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
+/* ⚠️ 2026-10-26 (гүйцэтгэл P2): `SketchViewModel` ба `Swipe` СТАТИК БИШ — ховор 2D горимд л (`loadSketchMod` /
+   `loadSwipeMod` доор). Энд зөвхөн ТӨРӨЛ — `import type`-гүй бол webpack модулийг статик графт буцааж чирнэ. */
+import type SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
-import Swipe from '@arcgis/core/widgets/Swipe';
+import type Swipe from '@arcgis/core/widgets/Swipe';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -1151,6 +1153,33 @@ function quietCancel(svm: SketchViewModel | null | undefined, flag: { current: b
   flag.current = true;
   try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
   finally { flag.current = false; }
+}
+
+/**
+ * ⚠️ 2026-10-26 (гүйцэтгэл P2): ХОВОР 2D ХЭРЭГСЛИЙГ ХОЦРООЖ АЧААЛАХ — `lazy3d.ts`-ийн загвар.
+ *    `SketchViewModel` («Газар чөлөөлөлт»/«Дэд бүтэц»-ийн зураалт) ба `Swipe` (харьцуулалт) нь
+ *    MapCanvas-ийн СТАТИК графт байсан тул зурагт огт зураагүй хэрэглэгч ч татдаг байв.
+ * ⚠️ Эффектийн БИЕ СИНХРОН хэвээр: модуль хараахан ирээгүй бол эффект ачаалалтыг эхлүүлээд
+ *    буцна; ирмэгц `sketchTick`/`swipeTick` нэг удаа өсөж эффект (ба SVM-ээс хамаарах наалдалт,
+ *    vertex засварын эффект) ДАХИН ажиллана. Ингэснээр цуцлалт/устсан view-ийн хамгаалалт хэвээр,
+ *    `pendingDrawRef`-ийн дараалал ч өөрчлөгдөхгүй.
+ * ⚠️ Нэг удаа — амлалтыг хадгална; уналтад (сүлжээ) хаяж, дараагийн оролдлого дахин татна.
+ */
+let sketchMod: typeof SketchViewModel | null = null;
+let sketchP: Promise<void> | null = null;
+function loadSketchMod(): Promise<void> {
+  sketchP ??= import('@arcgis/core/widgets/Sketch/SketchViewModel')
+    .then((m) => { sketchMod = m.default; })
+    .catch((e: unknown) => { sketchP = null; throw e; });
+  return sketchP;
+}
+let swipeMod: typeof Swipe | null = null;
+let swipeP: Promise<void> | null = null;
+function loadSwipeMod(): Promise<void> {
+  swipeP ??= import('@arcgis/core/widgets/Swipe')
+    .then((m) => { swipeMod = m.default; })
+    .catch((e: unknown) => { swipeP = null; throw e; });
+  return swipeP;
 }
 
 /**
@@ -2311,6 +2340,10 @@ export const MapCanvas = memo(function MapCanvas({
   const [initToken, setInitToken] = useState(0);
   /** ⚠️ 2026-10-04: 3D/BIM модуль (`lazy3d`) анх ачаалагдаж дуусахад нэмэгдэнэ — view/давхаргын эффектийг сэрээнэ */
   const [m3Tick, setM3Tick] = useState(0);
+  /** ⚠️ 2026-10-26 (P2): `SketchViewModel`/`Swipe` модуль анх ирэхэд нэг удаа өснө (`loadSketchMod`-ийн тайлбар).
+      ⚠️ ТУСДАА хоёр утга — swipe ирэхэд зураалтын эффект дахин ажиллавал явж буй зураалт цуцлагдана. */
+  const [sketchTick, setSketchTick] = useState(0);
+  const [swipeTick, setSwipeTick] = useState(0);
   /** Хулганы доорх объектын товч мэдээлэл */
   /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ТӨЛӨВ НЬ `TipLayer`-Т. Урьд нь энд `useState` байсан тул
      `pointer-move`-ийн hitTest бүр (объект дээр байхад хулгана хөдлөх БҮРД) ~3,200 мөрийн MapCanvas-ийг
@@ -4385,6 +4418,13 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || !sketch || is3D(dim)) return;
+    /* ⚠️ 2026-10-26 (P2): модуль хараахан ирээгүй — татаад `sketchTick`-ээр дахин орно */
+    const SVM = sketchMod;
+    if (!SVM) {
+      loadSketchMod().then(() => setSketchTick((t) => t + 1))
+        .catch((e: unknown) => console.warn('[MapCanvas] SketchViewModel ачаалагдсангүй', e));
+      return;
+    }
 
     let gl = map.findLayerById('sketch') as GraphicsLayer | null;
     if (!gl) {
@@ -4393,7 +4433,7 @@ export const MapCanvas = memo(function MapCanvas({
     }
     const layer = gl;
 
-    const svm = new SketchViewModel({
+    const svm = new SVM({
       view: view as MapView,
       layer,
       /**
@@ -4510,7 +4550,7 @@ export const MapCanvas = memo(function MapCanvas({
       sketchVMRef.current = null;
       // ⚠️ Графикийг УСТГАХГҮЙ: 2D↔3D сольж эргэн ирэхэд зурсан полигон хэвээр.
     };
-  }, [sketch, dim, ready]);
+  }, [sketch, dim, ready, sketchTick]);
 
   /* ⚠️ 2026-10-14: НААЛДАЛТЫН эх сурвалж — зураг дээр ХАРАГДАЖ буй вектор давхаргууд (ArcGIS-ийн
      «Feature to snap to»). `visible` солигдох бүрд шинэчилнэ; нуугдсан давхарга руу наалдахгүй. */
@@ -4527,7 +4567,7 @@ export const MapCanvas = memo(function MapCanvas({
       (svm.snappingOptions as unknown as { featureSources: unknown }).featureSources =
         layers.map((layer) => ({ layer, enabled: true })) as never;
     } catch { /* хуучин SDK — наалдалтгүй хэвээр */ }
-  }, [visibleKey, sketch, ready, dim]);
+  }, [visibleKey, sketch, ready, dim, sketchTick]);
 
   /** Гадны «Полигон зурах» товч — шинэ полигон зурж эхэлнэ */
   useEffect(() => {
@@ -4576,7 +4616,9 @@ export const MapCanvas = memo(function MapCanvas({
     });
     gl.add(graphic);
     try { svm.update([graphic]); } catch { /* геометр танигдсангүй */ }
-  }, [reshapeToken]);
+    /* ⚠️ 2026-10-26 (P2): `sketchTick` — SVM модуль ХОЦРОЖ ирсэн бол тэр үед хүлээгдэж байсан засварыг тоглуулна
+       (модуль ирэхээс өмнө SVM огт үүсээгүй тул давхар тоглуулалт гарахгүй; tick нэг л удаа өснө) */
+  }, [reshapeToken, sketchTick]);
 
   /* ⚠️ 2026-10-14: баруун товшилт (`onMapContext`) — ref-ээр уншина (эффект дахин холбогдохгүй) */
   const onMapContextRef = useRef(onMapContext);
@@ -5370,10 +5412,17 @@ export const MapCanvas = memo(function MapCanvas({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || dim !== '2d' || !swipeKey) return;
+    /* ⚠️ 2026-10-26 (P2): модуль хараахан ирээгүй — татаад `swipeTick`-ээр дахин орно */
+    const SwipeC = swipeMod;
+    if (!SwipeC) {
+      loadSwipeMod().then(() => setSwipeTick((t) => t + 1))
+        .catch((e: unknown) => console.warn('[MapCanvas] Swipe ачаалагдсангүй', e));
+      return;
+    }
     const [lead, trail] = swipeKey.split('|').map((s) => s.split(',').filter(Boolean));
     const pick = (ids: string[]) =>
       ids.map((id) => map.layers.find((l) => l.id === id)).filter((l): l is __esri.Layer => !!l);
-    const w = new Swipe({
+    const w = new SwipeC({
       view: view as __esri.MapView,
       leadingLayers: pick(lead),
       trailingLayers: pick(trail),
@@ -5396,7 +5445,7 @@ export const MapCanvas = memo(function MapCanvas({
       view.ui.remove(w);
       w.destroy();
     };
-  }, [swipeKey, ready, dim]);
+  }, [swipeKey, ready, dim, swipeTick]);
 
   /**
    * `mon:building` давхаргыг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө — «Гүйцэтгэл бөглөх»-ийн

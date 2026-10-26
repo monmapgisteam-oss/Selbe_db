@@ -27,7 +27,7 @@
   font-size: 12.5px;
   width: 100%;
   box-sizing: border-box;
-  min-height: 32px;
+  min-height: var(--ctl-h-form);
   padding: 6px 9px;
   color: var(--ink);
   background: var(--bg);

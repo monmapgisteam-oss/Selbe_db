@@ -52,10 +52,10 @@
   padding: 2px 2px 0;
   font-size: 11px;
   /* ⚠️ 1 БИШ — кириллийн Й/Ё-гийн дээд тэмдэг тайрагдана */
-  line-height: 1.3;
+  line-height: var(--eyebrow-lh);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
+  letter-spacing: var(--eyebrow-ls);
   color: var(--ink-3);
 }
 
@@ -199,17 +199,17 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--eyebrow-ls);
   color: var(--ink-3);
 }
 
 /* Дэд гарчиг (диаграмын дээр) — envhub eyebrow */
 .subHead {
   font-size: 11px;
-  line-height: 1.3;
+  line-height: var(--eyebrow-lh);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--eyebrow-ls);
   color: var(--ink-3);
   margin: 2px 0 0;
 }
@@ -403,7 +403,7 @@
 
 .input {
   width: 100%;
-  height: 32px;
+  height: var(--ctl-h-form);
   box-sizing: border-box;
   padding: 0 9px;
   font: inherit;
@@ -660,7 +660,7 @@ div.catPanelRight:has(> :global(.mapCatalog)) {
 .editFind { display: flex; align-items: center; gap: 6px; }
 .editFindInput {
   width: 150px;
-  height: 32px;
+  height: var(--ctl-h-form);
   box-sizing: border-box;
   padding: 0 9px;
   font: inherit;

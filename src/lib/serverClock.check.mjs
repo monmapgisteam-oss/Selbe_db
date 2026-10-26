@@ -44,9 +44,14 @@ assert.ok(!clockOffsetOk(Number.POSITIVE_INFINITY));
   const sync = src.slice(src.indexOf('export async function syncServerClock('));
   assert.ok(/const off = clockOffsetOf\(m\.srv, m\.t0, m\.t1\);\s*(\/\*[\s\S]*?\*\/\s*)?if \(!clockOffsetOk\(off\)\) \{ warnClockOff\(off\); clockAt = m\.t1; return; \}/.test(sync), 'serverClock.syncServerClock: 15 мин хязгаар алга');
   const hb = readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
+  /* ⚠️ 2026-10-26 (A3): huvaariBatlah өөрийн зөрүүгүй — serverClock-ийн НЭГ төлөвийг (15 мин хязгаартай) хэрэглэнэ */
   const hsync = hb.slice(hb.indexOf('export async function syncServerClock('));
-  assert.ok(/if \(!clockOffsetOk\(off\)\) \{ warnClockOff\(off\); clockAt = m\.t1; return; \}/.test(hsync), 'huvaariBatlah.syncServerClock: 15 мин хязгаар алга');
-  assert.ok(/measureServerTime, clockOffsetOk, warnClockOff \} = await import\('\.\/serverClock'\)/.test(hsync), 'huvaariBatlah: serverClock-ийн нэг дүрмээр биш');
+  assert.ok(/import \{ serverNow, clockOffsetOf, syncServerClock as syncClockAt \} from '\.\/serverClock';/.test(hb), 'huvaariBatlah: serverClock-оос импортлоогүй');
+  assert.ok(!/let clockOff\b/.test(hb), 'huvaariBatlah: өөрийн `clockOff` төлөв үлдсэн (хоёр зөрүү)');
+  assert.ok(/return syncClockAt\(u, F\.oid\);/.test(hsync), 'huvaariBatlah.syncServerClock: serverClock руу дамжуулахгүй');
+  const ob = readFileSync('src/lib/obyemBatlah.ts', 'utf8');
+  const oq = ob.slice(ob.indexOf('async function query('));
+  assert.ok(/await syncServerClock\(url\);/.test(oq.slice(0, oq.indexOf('arcgisPost('))), 'obyemBatlah.query: серверийн цагийг синк хийхгүй');
 }
 
 console.log('serverClock.check: ok');

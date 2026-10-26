@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Tabs, Trend } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Trend } from '@/components/ui';
+import { Segmented } from '@/components/Switch';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
@@ -339,7 +340,9 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
   return (
     <Section title={tr('Барилга угсралтын явц')} note={tr('{0} хэмжилт', pts.length)}>
       <Col gap="md">
-        <Tabs value={grain} onChange={setGrain} items={GRAINS} />
+        {/* ⚠️ 2026-10-26 (UX U7): утга сонгогч — таб биш, нийтлэг `Segmented` капсул */}
+        <Segmented value={grain} onChange={setGrain} label={tr('Цувааны алхам')}
+          options={GRAINS.map((g) => ({ value: g.key, label: g.label }))} />
         <Trend
           color={HUE}
           points={pts.map((p) => ({
