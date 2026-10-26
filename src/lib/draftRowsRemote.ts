@@ -29,7 +29,7 @@ import {
 } from '@/lib/huvaariDraft';
 import { mergeDrafts, parseDraft, type Draft } from '@/modules/sheet/fill/draft';
 import {
-  absorbPerf, absorbPlan, buildFrame, COL, diffRows, KEY_MAX, groupsOf, gcCandidates, hsubDkey, perfDkey, perfFromRows, perfToRows,
+  absorbPerf, absorbPlan, buildFrame, COL, diffRows, KEY_MAX, groupsOf, seriesKey, gcCandidates, hsubDkey, perfDkey, perfFromRows, perfToRows,
   planDkeyOfLegacy, planFromRows, planToRows, ROW_FIELDS, ROW_TTL, ROW_VERSION, sameSubRow, stampRow, stampWant, subDkey, unitOf, viewOf,
   type Attrs, type Frame, type FrameRow, type NKind, type Op, type PlanCtx, type Stamps, type Want,
 } from '@/lib/draftRows';
@@ -363,7 +363,23 @@ async function writeDiff(
   const who = me();
   const base = { dkey, pkg, kind };
   const skipped: string[] = [];
-  const ops = diffRows(byKey(img), want, kind, base, { clearAt, me: who, now: Date.now(), keep: (k) => !img.seen.has(k), skipped });
+  let ops = diffRows(byKey(img), want, kind, base, { clearAt, me: who, now: Date.now(), keep: (k) => !img.seen.has(k), skipped });
+  /*
+   * ⚠️ 2026-10-26: САРЫН ЦУВААГ хөндөх бол (мөрийн CAS байхгүй) серверийн ОДООГИЙН цувааны агшныг уншаад диффийг дахин гаргана —
+   *    уншсанаас хойш хамтрагч шинэ үе бичсэн цувааг хуучин бичигч дарахгүй (`diffRows`-ийн ⚠️). Зургийг ХӨНДӨХГҮЙ (бусад бүлгийн
+   *    «зөвхөн өөрчлөгдсөн» дүрэм уншсан зурагтай жишдэг). Цуваа хөндөөгүй бичилтэд нэмэлт асуулга ҮГҮЙ.
+   */
+  if (ops.some((o) => seriesKey(o.k) != null)) {
+    const sa = new Map<string, number>();
+    const got = await queryAll(url, `${COL.dkey} = ${q(dkey)} AND ${COL.turul} IN ('sar_obyem', 'sar_noots')`, ['objectid', COL.key, COL.at]);
+    for (const a of got) {
+      const sk = typeof a[COL.key] === 'string' ? seriesKey(a[COL.key] as string) : null;
+      const t = num(a[COL.at]);
+      if (sk && t != null && t > (sa.get(sk) ?? -Infinity)) sa.set(sk, t);
+    }
+    skipped.length = 0;
+    ops = diffRows(byKey(img), want, kind, base, { clearAt, me: who, now: Date.now(), keep: (k) => !img.seen.has(k), skipped, seriesAt: sa });
+  }
   if (skipped.length) console.warn('[selbe] ноорогийн мөрийн түлхүүр хэт урт — алсад бичигдсэнгүй (локалд үлдэв):', skipped.slice(0, 5).join(', '));
   const hk = byKey(img).get('h') ?? [];
   const h0 = hk[0];
@@ -467,7 +483,9 @@ export async function planRead(key: string, opt: { full?: boolean; bld?: readonl
  * ⚠️ 2026-10-26: хоосон диффэд `expectAt`-ыг буцаахгүй бол мөрөнд илэрхийлэгдэхгүй (жиш. `val === bv`) нүдтэй локал ноорог
  *    «алс ≠ локал» → бичих → уншихын хязгааргүй тойрогт (3 с тутам) ордог байв.
  */
-export async function planSave(key: string, d: HDDraft, opt: { ctx: PlanCtx; extra?: ReadonlyMap<number, HDRowKey>; expectAt?: number | null }): Promise<RemoteSaveResult & { at?: number }> {
+export async function planSave(
+  key: string, d: HDDraft, opt: { ctx: PlanCtx; extra?: ReadonlyMap<number, HDRowKey>; expectAt?: number | null; cur?: ReadonlySet<number> },
+): Promise<RemoteSaveResult & { at?: number }> {
   if (draftWriteLocked()) return { ok: false, error: LOCKED() };
   const dkey = planDkeyOfLegacy(key);
   const meta = planMeta(key);
@@ -476,7 +494,7 @@ export async function planSave(key: string, d: HDDraft, opt: { ctx: PlanCtx; ext
     const url = await layerUrl();
     if (!url) return { ok: false, error: tr('ноорогийн хүснэгт олдсонгүй') };
     if (!img.loaded || img.needFull) await loadImg(url, dkey, meta.kind, true);
-    const w = planToRows(d, opt.ctx, meta.kind, { extra: opt.extra });
+    const w = planToRows(d, opt.ctx, meta.kind, { extra: opt.extra, cur: opt.cur });
     const r = await writeDiff(url, dkey, img, w.rows, w.hdr, meta.kind, meta.pkg, d.t || Date.now());
     if (!r.ok) return { ok: false, error: r.error };
     return !r.wrote && opt.expectAt != null ? { ok: true, at: opt.expectAt } : { ok: true };
@@ -740,11 +758,12 @@ export async function perfRead(pkg: string): Promise<RemoteDraftRead> {
  * ГҮЙЦЭТГЭЛИЙН НООРОГИЙГ БИЧНЭ — `payload` (hook-ийн нийлүүлсэн `Draft`) → мөр, дифф. Жааз бүртгэгдээгүй бол бичихгүй
  * (код ↔ oid мэдэгдэхгүй — hook 3 с-ийн дараа дахин оролдоно). Задрахгүй (хог) нүд локалд үлдэнэ.
  */
-export async function perfSave(pkg: string, payload: string): Promise<RemoteSaveResult> {
+export async function perfSave(pkg: string, payload: string, frameOverride?: Frame): Promise<RemoteSaveResult> {
   if (draftWriteLocked()) return { ok: false, error: LOCKED() };
   const dkey = perfDkey(pkg);
   const img = imgOf(dkey);
-  const frame = frames.get(pkg) ?? null;
+  /* ⚠️ 2026-10-26: админы шилжүүлэлтийн хэсэгчилсэн жааз (`lookupFrame`) ГЛОБАЛ `frames`-д орохгүй — дамжуулж л хэрэглэнэ */
+  const frame = frameOverride ?? frames.get(pkg) ?? null;
   if (!frame) return { ok: false, error: tr('хуудасны мөр хараахан ачаалагдаагүй — дахин оролдоно') };
   const d = parseDraft(payload, 'remote');
   if (!d) return { ok: false, error: tr('ноорог задарсангүй') };
@@ -884,7 +903,8 @@ async function lookupFrame(pkgKey: string, oids: readonly number[]): Promise<Fra
       rows.push({ oid, des: desK ? num(a[desK]) : null, no: noK && a[noK] != null ? String(a[noK]).trim() : '', work: workK && a[workK] != null ? String(a[workK]).trim() : '', depth: 0, group: false });
     }
   }
-  return rows.length ? buildFrame(rows, []) : null;
+  /* ⚠️ 2026-10-26: хэсэгчилсэн — блокийн нэр/тоо мэдэгдэхгүй (`blok` NULL бичигдэнэ, `'Ажил'` биш) */
+  return rows.length ? { ...buildFrame(rows, []), partial: true } : null;
 }
 
 export type MigrateResult = { total: number; migrated: number; failed: string[] };
@@ -913,11 +933,13 @@ export async function migrateAll(onProgress?: (done: number, total: number) => v
         const img = imgOf(planDkeyOfLegacy(k));
         if (!img.legacyAt) continue;
         if (!r.draft) continue;
-        const oids = [...r.draft.entries.keys(), ...r.draft.del.keys()].map((x) => Number(/^[shar]:(-?\d+)/.exec(x)?.[1])).filter((o) => Number.isInteger(o) && !r.draft!.rk?.has(o));
+        /* ⚠️ 2026-10-26: БҮХ oid-ыг хуудаснаас хайна — олдсон нь «одоогийн жааз» (`cur`): `planToRows` hook-ийн зөөлтийн
+           tombstone-ыг (жаазад алга oid) нүдийг устгах шийдвэр гэж бичихгүй. Танихууныг `rk`-гүй oid-д л нэмнэ */
+        const oids = [...r.draft.entries.keys(), ...r.draft.del.keys()].map((x) => Number(/^[shar]:(-?\d+)/.exec(x)?.[1])).filter((o) => Number.isInteger(o));
         const fr = await lookupFrame(planMeta(k).pkg, [...new Set(oids)]).catch(() => null);
         const extra = new Map<number, HDRowKey>();
-        for (const [o, x] of fr?.byOid ?? []) extra.set(o, { des: x.des, no: x.no, work: x.work });
-        const s = await planSave(k, { ...r.draft, t: Date.now() }, { ctx: null, extra });
+        for (const [o, x] of fr?.byOid ?? []) if (!r.draft.rk?.has(o)) extra.set(o, { des: x.des, no: x.no, work: x.work });
+        const s = await planSave(k, { ...r.draft, t: Date.now() }, { ctx: null, extra, cur: fr ? new Set(fr.byOid.keys()) : undefined });
         if (!s.ok) throw new Error(s.error);
         migrated += 1;
       } else if (pk.has(k)) {
@@ -927,12 +949,14 @@ export async function migrateAll(onProgress?: (done: number, total: number) => v
         if (!img.legacyAt || !r.draft) continue;
         const d = parseDraft(r.draft.payload, 'remote');
         if (!d) continue;
+        /* ⚠️ 2026-10-26: хэсэгчилсэн жааз ЛОКАЛ — глобал `frames`-д хадгалбал тухайн сешний дараагийн илгээлт/ноорог блокийн
+           нэргүй жаазаар бичигддэг байв */
+        let fr: Frame | undefined;
         if (!frames.has(k)) {
           const oids = [...d.cells, ...(d.dates ?? [])].map(([x]) => Number(x.slice(0, x.indexOf(':')))).filter((o) => Number.isInteger(o) && o >= 0);
-          const fr = await lookupFrame(k, [...new Set(oids)]).catch(() => null);
-          frames.set(k, fr ?? buildFrame([], []));
+          fr = (await lookupFrame(k, [...new Set(oids)]).catch(() => null)) ?? { ...buildFrame([], []), partial: true };
         }
-        const s = await perfSave(k, JSON.stringify({ ...d, t: Date.now() }));
+        const s = await perfSave(k, JSON.stringify({ ...d, t: Date.now() }), fr);
         if (!s.ok) throw new Error(s.error);
         migrated += 1;
       } else {
@@ -967,6 +991,8 @@ const migCut = (v: Ver): number => Math.max(v.huuchin ?? 0, (v.created ?? 0) + 6
 export async function verifyAll(): Promise<VerifyResult> {
   const url = await layerUrl();
   if (!url) throw new Error(tr('ноорогийн хүснэгт олдсонгүй'));
+  /* ⚠️ 2026-10-26: багана алга бол `mur_turul IS NULL` асуулга Enterprise-аас ойлгомжгүй алдаа авна — `migrateAll`-тай ижил хамгаалалт */
+  if ((await rowsReady(true)).mode !== 'rows') throw new Error(tr('ноорогийн багана нэмэгдээгүй — notebook ажиллуулна уу'));
   const { PKGS } = await import('@/modules/sheet/bagts.pkg');
   const pk = new Set(PKGS.map((p) => p.key));
   const legacy = await queryAll(url, `${COL.turul} IS NULL`, ['objectid', COL.dkey, COL.at, COL.payload]);
@@ -1036,6 +1062,7 @@ export async function phaseB(verified: VerifyResult): Promise<{ deleted: number;
   if (draftWriteLocked()) throw new Error(LOCKED());
   const url = await layerUrl();
   if (!url) throw new Error(tr('ноорогийн хүснэгт олдсонгүй'));
+  if ((await rowsReady(true)).mode !== 'rows') throw new Error(tr('ноорогийн багана нэмэгдээгүй — notebook ажиллуулна уу'));
   const bad = new Set([...verified.diff, ...verified.pending]);
   const { PKGS } = await import('@/modules/sheet/bagts.pkg');
   const pk = new Set(PKGS.map((p) => p.key));
@@ -1052,7 +1079,9 @@ export async function phaseB(verified: VerifyResult): Promise<{ deleted: number;
       if (!v.rows || v.huuchin == null || v.huuchin < (num(a[COL.at]) ?? 0)) { failed.push(`${k}: ${tr('тулгалтаас хойш хуучин JSON өөрчлөгдсөн — дахин тулгана уу')}`); continue; }
       del.push({ op: 'delete', k, unit: 'x', oid: num(a.objectid) ?? 0 });
     }
-    else if (/^(sub|done)\|/.test(k)) {
+    /* ⚠️ 2026-10-26: ЗӨВХӨН `done|` (хөлдсөн) толгойн payload-ыг хасна — идэвхтэй `sub|` толгойг хамтрагчийн `saveSubmission`-тай
+       уралдаж ХУУЧИН `gens`-ээр дарах эрсдэлтэй (ArcGIS-д нөхцөлт бичилт алга); `sub|` нь дараагийн илгээлтээр мета болно */
+    else if (k.startsWith('done|')) {
       const { stripSubmissionPayload } = await import('@/lib/submission');
       const r = await stripSubmissionPayload(num(a.objectid) ?? 0);
       if (r.ok) stripped += 1; else failed.push(`${k}: ${r.error}`);

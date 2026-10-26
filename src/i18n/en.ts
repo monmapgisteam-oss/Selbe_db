@@ -7267,6 +7267,8 @@ const en: Record<string, string> = {
   "нээлттэй / нийт · дарж шүүнэ": "open / total · click to filter",
   "Хэсгээр — үл нийцэл": "Non-conformances by section",
   "сүүлийн {0} хоног": "last {0} days",
+  "Илгээлт №{0} яг одоо бичигдэж байна — хэдэн секундын дараа дахин ачаална уу": "Submission #{0} is being written right now — reload in a few seconds",
+  "Энэ өдрийн илгээлтийг өөр хэрэглэгч яг одоо бичиж байна — хэдэн секундын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.": "Another user is writing this day's submission right now — reload the page in a few seconds and submit again. Nothing was submitted.",
 };
 
 export default en;

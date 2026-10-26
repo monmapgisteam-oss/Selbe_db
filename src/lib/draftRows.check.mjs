@@ -13,12 +13,14 @@
  *   6. Багана алга → JSON горим; хагас → JSON (+ алдаа); сүлжээ → хүлээх.
  *   7. Жааз солигдоход oid зөөлт — код (`des_dugaar`) → шинэ oid; код алга → `mur_oid` + `rowKeys` (hook зөөнө); хуваарь — `rk`.
  *   8. Enterprise-ийн занга — ≤500/хэсэг, толгой СҮҮЛД, 2000 мөрийн хуудаслалт, 200 + `success:false`, `where`-д кирилл үгүй.
+ *  13. Хянагчийн олдвор (2026-10-26) — хугацаа дууссан баримт устна (хуурамч баримт үгүй) · oid дахин ашиглагдсан жааз ·
+ *      зөөлтийн tombstone · tombstone-ын блокийн нэр · жааз үл мэдэгдэх блокийн нэр · бүлгээр хоосолох · цувааны CAS.
  */
 import assert from 'node:assert/strict';
 import { makeFake } from './draftRows.fake.mjs';
 import {
   addAttrs, buildFrame, cellToCols, colsToCell, COL, gcCandidates, groupsOf, perfFromRows, perfToRows, pickGeneration, planFromRows,
-  planToRows, ROW_FIELDS, seriesRead, stampWant, subFromRows, subToRows, viewOf, perfDkey, planDkey, subDkey,
+  planToRows, ROW_FIELDS, seriesRead, stampWant, subFromRows, subToRows, viewOf, perfDkey, planDkey, subDkey, diffRows, SYN_BASE,
 } from './draftRows.ts';
 import {
   rowsTestHooks, rowsReady, perfRead, perfSave, planRead, planReadAt, planSave, setFillFrame, migrateAll, verifyAll,
@@ -605,6 +607,87 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
   ok(s2.ok && warns.some((x) => x.includes('хэт урт')), 'урт түлхүүр — анхааруулж алгасна');
   ok(f.all().some((a) => a.dkey === planDkey('plan', 'b32_9f') && a.mur_key === 'w:d12') && f.all().every((a) => String(a.mur_key ?? '').length <= 160), 'бусад мөр бичигдэв, 160-аас урт түлхүүр алга');
   console.log('✅ 12. Тулгалт (засварын дараа) · Phase B дахин шалгалт · урт түлхүүр');
+}
+
+/* ══════════ 13. Хянагчийн олдворууд (2026-10-26) ══════════ */
+{
+  const base = { dkey: 'n:b1_9f', pkg: 'b1_9f', kind: 'guitsetgel' };
+  const imgOf = (attrs) => { const m = new Map(); for (const a of attrs) { const l = m.get(a.mur_key); if (l) l.push(a); else m.set(a.mur_key, [a]); } return m; };
+  /* 13a. 7 хоногоос хуучин баримт — мөр УСТНА; хоосолсон баримт уншилтад баримт биш; илгээгээгүй нүд үлдэнэ */
+  const d0 = { t: NOW, mode: 'inc', cells: [['101:0', '7']], dates: [], byAt: [['101:0', NOW - 2 * D]], rowKeys: [[101, '1.1 ¦ Ухалт']],
+    rcpt: packRcpt([['101:0', NOW - 8 * D, '5', NOW - 8 * D]]) };
+  const wOld = perfToRows(d0, frame1, new Map(), NOW - 8 * D + 1000);
+  ok(wOld.rows.has('r:v:d12:0'), 'баримт бичигдсэн (тэр үед шинэ)');
+  const wNow = perfToRows(d0, frame1, new Map(), NOW);
+  ok(!wNow.rows.has('r:v:d12:0'), 'ROW_TTL-ээс хуучин баримт хүсэгдэхгүй');
+  const ops = diffRows(imgOf(toAttrs(wOld.rows, base)), wNow.rows, 'guitsetgel', base, { clearAt: NOW, me: 'bat', now: NOW });
+  ok(ops.some((o) => o.op === 'delete' && o.k === 'r:v:d12:0') && !ops.some((o) => o.op === 'update' && o.k === 'r:v:d12:0'), 'хүсээгүй баримт УСТГАГДАНА (хоосолохгүй)');
+  const rRow = toAttrs(wOld.rows, base, 900).find((a) => a.mur_key === 'r:v:d12:0');
+  const cleared = { ...rRow, [COL.ob]: null, [COL.act]: null, [COL.niit]: null, [COL.sentAt]: null, at: NOW };
+  const rb = perfFromRows(null, viewOf([...toAttrs(wNow.rows, base), cleared], 'guitsetgel'), new Map(), frame1, NOW);
+  ok(!rb.rcpt || unpackRcpt(rb.rcpt).length === 0, 'хоосолсон баримт — хуурамч баримт үүсэхгүй');
+  ok(rb.cells.some(([k, v]) => k === '101:0' && v === '7'), 'илгээгээгүй шинэ нэмэлт үлдэнэ');
+  const bCleared = { objectid: 950, mur_key: 'b:s:d12:0', mur_turul: 'ajil', suuri: 1, [COL.oid]: 101, at: NOW };
+  const rb2 = perfFromRows(null, viewOf([...toAttrs(wNow.rows, base), bCleared], 'guitsetgel'), new Map(), frame1, NOW);
+  ok(!(rb2.datesB ?? []).length, "хоосолсон суурь — суурь '' биш, алга");
+
+  /* 13b. Хуудас дахин нийтлэгдэж oid дахин ашиглагдав: des 55 (oid 123) хасагдаж, oid 123 = des 77 */
+  const frA = buildFrame([{ oid: 123, no: '5', work: 'Хуучин ажил', des: 55, depth: 0, group: false }], []);
+  const dA = { t: NOW, mode: 'inc', cells: [['123:0', '4']], dates: [], byAt: [['123:0', NOW - 5]], rowKeys: [[123, '5 ¦ Хуучин ажил']] };
+  const wA = perfToRows(dA, frA, new Map(), NOW);
+  ok(wA.rows.has('w:d55:0'), 'жааз A — код 55');
+  const frB = buildFrame([{ oid: 123, no: '7', work: 'Шинэ', des: 77, depth: 0, group: false }], []);
+  const dB = { t: NOW, mode: 'inc', cells: [['123:0', '9']], dates: [], byAt: [['123:0', NOW - 3]], rowKeys: [[123, '7 ¦ Шинэ']] };
+  const wB = perfToRows(dB, frB, new Map(), NOW);
+  ok(wB.rows.has('w:d77:0'), 'жааз B — код 77 өөрийн нүдтэй');
+  const st = new Map();
+  const rd = perfFromRows(null, viewOf([...toAttrs(wA.rows, base), ...toAttrs(wB.rows, base, 50)], 'guitsetgel'), new Map(), frB, NOW, st);
+  const cm = new Map(rd.cells);
+  ok(cm.get('123:0') === '9', 'код 77-ийн нүд өөрийн oid-д (давхцаж алга болохгүй)');
+  const syn = [...cm.keys()].map((k) => Number(k.split(':')[0])).find((o) => o >= SYN_BASE);
+  ok(syn != null && cm.get(`${syn}:0`) === '4', 'код 55 — жаазад алга орлуулагч oid (өөр ажилд буухгүй)');
+  ok(rd.rowKeys.some(([o, l]) => o === syn && l === '5 ¦ Хуучин ажил'), 'өөрийн шошго — hook `mapOldOids` зөөнө/барина');
+  const wBack = perfToRows(rd, frB, st, NOW);
+  ok(wBack.rows.has('w:d55:0') && wBack.rows.get('w:d55:0').a[COL.oid] === 123 && wBack.rows.get('w:d77:0')?.a[COL.ob] === 9, 'дахин бичихэд ижил мөр, жинхэнэ `mur_oid`');
+  const wL = perfToRows(dA, frB, new Map(), NOW);
+  ok(wL.rows.has('w:o123:0') && !wL.rows.has('w:d77:0'), 'хуучин JSON-ы шошго жаазтай зөрвөл код 77 руу бичихгүй');
+  const rL = perfFromRows(null, viewOf(toAttrs(wL.rows, base), 'guitsetgel'), new Map(), frB, NOW, new Map());
+  ok(!rL.cells.some(([k]) => k === '123:0'), 'уншихад ч код 77-ийн oid-д буухгүй');
+
+  /* 13c. Хуваарь — hook-ийн зөөлтийн tombstone (жаазад алга oid, агшин = одоо) зөөгдсөн нүдийг устгахгүй */
+  const row5 = { spans: [null], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: 5, no: '1', work: 'А' };
+  const rk5 = new Map([[10, { des: 5, no: '1', work: 'А' }], [900, { des: 5, no: '1', work: 'А' }]]);
+  const dP = { t: NOW, kind: 'plan', pkg: 'bx', by: { user: 'a', at: NOW }, base: { at: 1, n: 1 }, rk: rk5,
+    entries: new Map([[kS(10, 0), { val: { start: 3 * D, end: 4 * D }, at: NOW - 1000, user: 'a' }]]), del: new Map([[kS(900, 0), NOW]]) };
+  const ctxP = { n: 1, rows: new Map([[10, row5]]), bld: [''] };
+  ok(!planToRows(dP, ctxP, 'plan').rows.has('x:s:d5:0'), 'ctx — зөөлтийн tombstone бичигдэхгүй');
+  ok(!planToRows(dP, null, 'plan', { cur: new Set([10]) }).rows.has('x:s:d5:0'), 'ctx-гүй (админы шилжүүлэлт) — хуудаснаас олдсон oid-оор');
+  const dP2 = { ...dP, entries: new Map([[kS(900, 0), { val: { start: 3 * D, end: 4 * D }, at: NOW - 1000, user: 'a' }]]), del: new Map([[kS(10, 0), NOW]]) };
+  ok(planToRows(dP2, ctxP, 'plan').rows.has('x:s:d5:0'), 'одоогийн oid дээрх ЖИНХЭНЭ устгал хэвээр');
+  /* 13d. Tombstone-ын блокийн нэр */
+  const ctx2 = { n: 2, rows: new Map([[10, { ...row5, spans: [null, null] }]]), bld: ['A', 'B'] };
+  const dP3 = { ...dP, base: { at: 1, n: 2 }, entries: new Map(), del: new Map([[kS(10, 1), NOW]]) };
+  eq(planToRows(dP3, ctx2, 'plan').rows.get('x:s:d5:1')?.a[COL.blk], 'B', 'tombstone `blok` нэртэй (блокийн дараалал солигдоход нэрээр)');
+  /* 13e. Жааз үл мэдэгдэх → `blok` NULL ('Ажил' биш) */
+  const sp = { cells: [['101:3', '5']], dates: [], rowKeys: [[101, '1.1 ¦ Ухалт']], asOf: null };
+  eq(subToRows(sp, null).get('w:o101:3')?.[COL.blk], null, 'жаазгүй — blok NULL');
+  eq(subToRows(sp, { ...frame1, partial: true }).get('w:o101:3')?.[COL.blk] ?? null, null, 'хэсэгчилсэн жааз — blok NULL');
+  eq(subToRows({ ...sp, cells: [['101:0', '5']] }, buildFrame(FR1, [])).get('w:d12:0')?.[COL.blk], 'Ажил', 'блокгүй бүрэн жааз — Ажил');
+  /* 13f. Хүсээгүй мөрийг ЗӨВХӨН зурагт байгаа бүлгээр хоосолно */
+  const pb = { dkey: 'n:plan:plan:bx', pkg: 'bx', kind: 'plan' };
+  const imgP = new Map([['w:d5:0', [{ objectid: 1, mur_key: 'w:d5:0', mur_turul: 'ajil', [COL.ps]: 3 * D, [COL.pe]: 4 * D, at: NOW - 10 }]]]);
+  const u = diffRows(imgP, new Map(), 'plan', pb, { clearAt: NOW, me: 'a', now: NOW }).find((o) => o.op === 'update');
+  ok(u && u.a[COL.ps] === null && u.a[COL.pe] === null && !(COL.as in u.a) && !(COL.ae in u.a), 'хамтрагчийн бодит огноо (зурагт алга) хөндөгдөхгүй');
+  /* 13g. Сарын цуваа — сервер/зураг шинэ бол хуучин бичигч дарахгүй */
+  const mk = (at, val) => planToRows({ ...dP, rk: undefined, entries: new Map([[kM('5|A'), { val, at, user: 'a' }]]), del: new Map() }, null, 'plan').rows;
+  const yRows = mk(NOW, [['2026-10', 3], ['2026-12', 1]]);
+  const xRows = mk(NOW - 100, [['2026-11', 4]]);
+  const imgY = imgOf(toAttrs(yRows, pb));
+  ok(!diffRows(imgY, xRows, 'plan', pb, { clearAt: NOW - 100, me: 'a', now: NOW }).some((o) => o.k.startsWith('m:')), 'зураг шинэ — цуваа хөндөгдөхгүй');
+  const imgX0 = imgOf(toAttrs(mk(NOW - 200, [['2026-11', 2]]), pb));
+  ok(!diffRows(imgX0, xRows, 'plan', pb, { clearAt: NOW - 100, me: 'a', now: NOW, seriesAt: new Map([['m:d5:A', NOW]]) }).some((o) => o.k.startsWith('m:')), 'сервер (`seriesAt`) шинэ — цуваа хөндөгдөхгүй');
+  ok(diffRows(imgX0, xRows, 'plan', pb, { clearAt: NOW - 100, me: 'a', now: NOW }).some((o) => o.k.startsWith('m:')), 'бичигч шинэ — цуваа бичигдэнэ');
+  console.log('✅ 13. Хянагчийн олдвор — баримт · oid дахин ашиглалт · зөөлтийн tombstone · блокийн нэр · бүлгээр хоосолох · цуваа');
 }
 
 console.log(`draftRows.check.mjs — БҮГД ТЭНЦЛЭЭ (${checks} шалгалт)`);

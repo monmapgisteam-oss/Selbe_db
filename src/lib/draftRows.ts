@@ -53,6 +53,8 @@ export const ROW_FIELDS: readonly string[] = [
 export const ROW_VERSION = 3;
 /** Tombstone · хоосон мөрийн амьдрах хугацаа (`DEL_TTL_MS`, `HD_DEL_TTL`-тэй ижил) */
 export const ROW_TTL = 7 * 24 * 3600 * 1000;
+/** Жаазтай зөрсөн нүдний орлуулагч oid-ын эхлэл (`perfFromRows`) — хуудасны OBJECTID хэзээ ч хүрэхгүй муж */
+export const SYN_BASE = 1_000_000_000_000;
 /** `mur_key`-ийн дээд урт — notebook-ийн `mur_key` String(160) */
 export const KEY_MAX = 160;
 
@@ -297,11 +299,31 @@ export function addAttrs(w: Want, base: { dkey: string; pkg: string; kind: NKind
 export function diffRows(
   img: ImgRows, want: ReadonlyMap<string, Want>, kind: NKind,
   base: { dkey: string; pkg: string; kind: NKind },
-  opt: { clearAt: number; me: string | null; now: number; gcMax?: number; keep?: (k: string) => boolean; skipped?: string[] },
+  opt: {
+    clearAt: number; me: string | null; now: number; gcMax?: number; keep?: (k: string) => boolean; skipped?: string[];
+    /** Серверийн сарын цувааны ДЭЭД агшин (`seriesKey` → `at`) — бичихийн өмнөх уншилтаас (`writeDiff`) */
+    seriesAt?: ReadonlyMap<string, number>;
+  },
 ): Op[] {
   const ops: Op[] = [];
   let gc = opt.gcMax ?? 200;
+  /*
+   * ⚠️ 2026-10-26: САРЫН ЦУВАА — мөрийн CAS байхгүй тул цуваа бүрд «серверийнх (зураг + `seriesAt`) энэ бичигчийнхээс ШИНЭ бол
+   *    ХӨНДӨХГҮЙ». Урьд нь хамтрагчийн шинэ үеийг хуучин бичигчийн шинэчлэл/цэвэрлэлт хэсэгчлэн дарж, ялсан цуваа дутуу болдог
+   *    байв (`seriesRead` → amax−1 — шинэ цувааны сарууд алдагдана). Хоцорсон бичигч дараагийн уншилтаар нийлүүлнэ.
+   */
+  const sAt = new Map<string, number>(opt.seriesAt ?? []);
+  for (const [k, phys] of img) {
+    const s = seriesKey(k);
+    if (!s) continue;
+    for (const r of phys) { const t = num(r[COL.at]); if (t != null && t > (sAt.get(s) ?? -Infinity)) sAt.set(s, t); }
+  }
+  const wAt = new Map<string, number>();
+  for (const [k, w] of want) { const s = seriesKey(k); if (s && w.at > (wAt.get(s) ?? -Infinity)) wAt.set(s, w.at); }
+  const staleSeries = (s: string): boolean => (sAt.get(s) ?? -Infinity) > (wAt.get(s) ?? opt.clearAt);
   for (const [k, w] of want) {
+    const ws = seriesKey(k);
+    if (ws && staleSeries(ws)) continue;
     /* ⚠️ 2026-10-26: `mur_key` 160 тэмдэгтээс урт бол Enterprise БҮХ хэсгийг (толгойтой нь) татгалзаж ноорог хэзээ ч
        хадгалагдахгүй — ийм мөрийг алгасаж (локалд үлдэнэ) дуудагчид мэдээлнэ */
     if (k.length > KEY_MAX) { opt.skipped?.push(k); continue; }
@@ -335,15 +357,41 @@ export function diffRows(
     const t = String(phys[0][COL.turul] ?? '');
     if (t === 'tolgoi') continue;
     const unit = unitOf(k);
-    if (t === 'ustgal') { for (const d of phys) ops.push({ op: 'delete', k, unit, oid: num(d.objectid) ?? 0 }); continue; }
+    /* ⚠️ 2026-10-26: хүсээгүй БАРИМТ (`barimt`) мөрийг ХООСЛОХГҮЙ, УСТГАНА — хоосолсон баримт уншилтад `[түлхүүр, clearAt, '',
+       clearAt]` шинэ баримт болж буцаж ирээд (7 хоногийн хугацаа дууссан/`compactDraft` хаясан баримт) `rcptApply` нь илгээгээгүй
+       шинэ нэмэлтийг ЧИМЭЭГҮЙ арчдаг байв (ажлын баримт мөр бүр ТУСДАА — устгахад хамтрагчийн бүлэг хөндөгдөхгүй) */
+    if (t === 'ustgal' || t === 'barimt') { for (const d of phys) ops.push({ op: 'delete', k, unit, oid: num(d.objectid) ?? 0 }); continue; }
+    const ss = seriesKey(k);
+    if (ss && staleSeries(ss)) continue;
     const live = phys.filter((r) => !isEmptyRow(r) || num(r[COL.too]) != null);
     if (live.length) {
-      const a: Attrs = {};
-      for (const c of VAL_COLS) a[c] = null;
-      /* ⚠️ `sar_too` ч арилна — цэвэрлэсэн сарын мөр/тэмдэг цувааны уншилтад (`seriesRead`) тооцогдохгүй */
-      a[COL.too] = null;
-      a[COL.empty] = null; a[COL.at] = opt.clearAt; a[COL.usr] = opt.me;
-      for (const r of live) ops.push({ op: 'update', k, unit, oid: num(r.objectid) ?? 0, a: { ...a } });
+      const series = t === 'sar_obyem' || t === 'sar_noots';
+      const gs = groupsOf(kind, t, k);
+      for (const r of live) {
+        const a: Attrs = {};
+        if (series) {
+          for (const c of VAL_COLS) a[c] = null;
+          /* ⚠️ `sar_too` ч арилна — цэвэрлэсэн сарын мөр/тэмдэг цувааны уншилтад (`seriesRead`) тооцогдохгүй */
+          a[COL.too] = null;
+          a[COL.empty] = null;
+        } else {
+          /* ⚠️ 2026-10-26: ЗӨВХӨН энэ клиентийн ЗУРАГТ байгаа бүлгийг хоосолно — уншсанаас хойш хамтрагчийн бичсэн өөр бүлэг
+             (жиш. бодит огноо) зурагт алга тул ХӨНДӨГДӨХГҮЙ (урьд нь бүх утгын багана null болж түүнийг арчдаг байв) */
+          const l = listedOf(r);
+          const rest = new Set(l);
+          for (const g of gs) {
+            if (!present(r, l, g)) continue;
+            for (const c of g) if (c !== COL.at && c !== COL.too) { a[c] = null; rest.delete(c); }
+          }
+          /* Бүлэгт хамаарахгүй үлдэгдэл утга (хуучин/гажуу) — мөр хэзээ ч «хоосон» болж GC-д орохгүй тул арилгана */
+          const inG = new Set(gs.flat());
+          for (const c of VAL_COLS) if (!inG.has(c) && nv(r[c]) != null) a[c] = null;
+          if (!Object.keys(a).length) continue;
+          a[COL.empty] = listStr(rest);
+        }
+        a[COL.at] = opt.clearAt; a[COL.usr] = opt.me;
+        ops.push({ op: 'update', k, unit, oid: num(r.objectid) ?? 0, a });
+      }
       continue;
     }
     for (const d of phys) {
@@ -360,6 +408,12 @@ export function unitOf(k: string): string {
   if (kk.startsWith('m:') || kk.startsWith('n:')) return `${kk[0]}:${seriesOf(kk)}`;
   return k;
 }
+/** Сарын цувааны түлхүүр (LWW-ийн нэгж) — `[b:]<m|n>:<id>:<блок>`; сарын мөр биш бол `null` */
+export function seriesKey(k: string): string | null {
+  const b = k.startsWith('b:');
+  const kk = b ? k.slice(2) : k;
+  return kk.startsWith('m:') || kk.startsWith('n:') ? `${b ? 'b:' : ''}${kk[0]}:${seriesOf(kk)}` : null;
+}
 /** Сарын мөрийн түлхүүр `m:<id>:<блок>:<YYYY-MM|->` → `<id>:<блок>` */
 const seriesOf = (kk: string): string => kk.slice(2, kk.lastIndexOf(':'));
 
@@ -367,7 +421,8 @@ const seriesOf = (kk: string): string => kk.slice(2, kk.lastIndexOf(':'));
 
 export type PlanCtx = { n: number; rows: ReadonlyMap<number, HDRowBase>; bld?: readonly string[] } | null;
 /** `bare` — хуучин `rowKeys` шошго « ¦ »-гүй (бүтэн шошго `f_`-д, `ажил` NULL, `hoosolson`-д `ажил` — R2) */
-type IdInfo = { id: string; des: number | null; no: string; work: string; path?: string; occ?: number; occN?: number; bare?: boolean };
+/** `oid0` — жаазны мөртэй зөрсөн (oid дахин ашиглагдсан) нүдний ЖИНХЭНЭ `mur_oid` (Draft-д орлуулагч oid-оор явна — `perfFromRows`) */
+type IdInfo = { id: string; des: number | null; no: string; work: string; path?: string; occ?: number; occN?: number; bare?: boolean; oid0?: number };
 /** Танихууны `hoosolson` тэмдэг — « ¦ »-гүй шошго */
 const idListed = (x: IdInfo): Set<string> => new Set(x.bare ? [COL.work] : []);
 /** Мөрөөс шошго — « ¦ »-гүй тэмдэгтэй бол `f_` бүтнээр, эс бөгөөс `<№> ¦ <ажил>` */
@@ -388,12 +443,19 @@ function planId(d: HDDraft, ctx: PlanCtx, oid: number, extra?: ReadonlyMap<numbe
   };
 }
 const idAttrs = (x: IdInfo, oid: number | null): Attrs => ({
-  [COL.des]: x.des, [COL.no]: str(x.no?.slice(0, 255)), [COL.work]: str(x.work?.slice(0, 255)), [COL.oid]: oid,
+  [COL.des]: x.des, [COL.no]: str(x.no?.slice(0, 255)), [COL.work]: str(x.work?.slice(0, 255)), [COL.oid]: x.oid0 ?? oid,
   [COL.dav]: x.occ ?? null, [COL.davN]: x.occN ?? null, [COL.path]: str(x.path?.slice(0, 1000)),
 });
+/**
+ * ⚠️ 2026-10-26: `n` = блокийн тоо; `0` = ЖААЗ ҮЛ МЭДЭГДЭХ (хянагчийн үлдэгдэл илгээлт · админы шилжүүлэлт — `lookupFrame`-ийн
+ *    хэсэгчилсэн жааз блокийн нэргүй). Тэр үед `blok` NULL — урьд нь блоктой багцын блок бүр `'Ажил'` гэж буруу нэрлэгдэж
+ *    самбарын `blok`-оор бүлэглэх асуулгыг төөрөгдүүлдэг байв (уншилт `blok_idx`-аар тул өгөгдөл хөндөгдөөгүй).
+ */
 const blkAttrs = (b: number | null, bld: readonly string[] | undefined, n: number): Attrs => ({
-  [COL.blkIdx]: b, [COL.blk]: b == null ? null : (str(bld?.[b]?.slice(0, 64)) ?? (n <= 1 ? 'Ажил' : null)),
+  [COL.blkIdx]: b, [COL.blk]: b == null ? null : (str(bld?.[b]?.slice(0, 64)) ?? (n === 1 ? 'Ажил' : null)),
 });
+/** Гүйцэтгэл/илгээлтийн блокийн тоо — жааз бүрэн мэдэгдэх үед л (`blkAttrs`-ийн ⚠️) */
+const frameN = (frame: Frame | null): number => (frame && !frame.partial ? Math.max(1, frame.bld.length) : 0);
 const blank = (cols: readonly string[]): Attrs => Object.fromEntries(cols.map((c) => [c, null]));
 /** Сарын түлхүүрийн код|блок → `<id>:<блок>` (код тоо бол `d<код>`) */
 const monthId = (mkey: string): { mid: string; des: number | null; label: string } => {
@@ -417,7 +479,10 @@ const monthKeyOf = (mid: string): string => {
  * ⚠️ Мөрийн агшин = бүлгүүдийн нүдний агшны ДЭЭД; tombstone — тусдаа `x:` мөр (агшин ЯГ).
  * @param extra танихууны нэмэлт эх (админы бүгдийг шилжүүлэх — хуудасны хүснэгтээс)
  */
-export function planToRows(d0: HDDraft, ctx: PlanCtx, kind: HDKind, opt: { now?: number; extra?: ReadonlyMap<number, HDRowKey>; nkind?: NKind } = {}): WantSet {
+export function planToRows(
+  d0: HDDraft, ctx: PlanCtx, kind: HDKind,
+  opt: { now?: number; extra?: ReadonlyMap<number, HDRowKey>; nkind?: NKind; cur?: ReadonlySet<number> } = {},
+): WantSet {
   const now = opt.now ?? Date.now();
   const d = hdMerge(d0, null, now) ?? d0;
   const nk: NKind = opt.nkind ?? kind;
@@ -454,7 +519,9 @@ export function planToRows(d0: HDDraft, ctx: PlanCtx, kind: HDKind, opt: { now?:
    * агшинтай бичигдэх эрсдэлтэй байв (`planMigrate` · `migrateAll` · `planSyncSubmitted` шууд дууддаг). Тэнцвэл одоогийн
    * жаазад (`ctx.rows`) байгаа oid давамгайлна. Tombstone-ыг тэр нүдний шинэ-эсвэл-тэнцүү амьд оролт байвал алгасна.
    */
-  const live = new Map<string, { k: string; at: number; cur: boolean }>();
+  const live = new Map<string, { k: string; at: number; cur: boolean; oid: number }>();
+  /** Одоогийн жаазад байгаа oid — `ctx` (засагч) эсвэл `opt.cur` (админы шилжүүлэлт — хуудаснаас хайсан) */
+  const curOf = (oid: number): boolean => (ctx ? ctx.rows.has(oid) : !!opt.cur?.has(oid));
   const logical = (type: string, oid: number, blk: number | null): string => {
     const x = planId(d, ctx, oid, opt.extra);
     return blk != null ? `${type}:${x.id}:${blk}` : `${type}:${x.id}`;
@@ -464,9 +531,9 @@ export function planToRows(d0: HDDraft, ctx: PlanCtx, kind: HDKind, opt: { now?:
     const p = parseKey(k);
     if (!p || p.type === 'm' || p.type === 'n') continue;
     const lk = logical(p.type, p.oid, p.type === 's' || p.type === 'a' ? p.blk : null);
-    const cur = !!ctx?.rows.has(p.oid);
+    const cur = curOf(p.oid);
     const o = live.get(lk);
-    if (!o || e.at > o.at || (e.at === o.at && cur && !o.cur)) live.set(lk, { k, at: e.at, cur });
+    if (!o || e.at > o.at || (e.at === o.at && cur && !o.cur)) live.set(lk, { k, at: e.at, cur, oid: p.oid });
   }
   const idAt = new Map<string, number>();
   /* Нүд */
@@ -524,8 +591,14 @@ export function planToRows(d0: HDDraft, ctx: PlanCtx, kind: HDKind, opt: { now?:
       const blk = p.type === 's' || p.type === 'a' ? p.blk : null;
       const lv = live.get(logical(p.type, p.oid, blk));
       if (lv && lv.at >= t) continue;
+      /* ⚠️ 2026-10-26 (`collapseCells`-ийн дүрэм ЭНД — бүх дуудагчид: `planMigrate` · `migrateAll` шууд дууддаг): нүд одоогийн
+         жаазны oid дээр амьд бол ЖААЗАД АЛГА oid-ын tombstone нь hook-ийн «хуучин түлхүүрээс зөөсөн» тэмдэг (`remapDraft`,
+         агшин = одоо), устгах шийдвэр БИШ — бичвэл уншилтад (`alignToFrame`) зөөгдсөн нүдээ устгадаг байв */
+      if (lv && lv.oid !== p.oid && lv.cur && !curOf(p.oid)) continue;
       tk = blk != null ? `x:${p.type}:${x.id}:${blk}` : `x:${p.type}:${x.id}`;
-      idA = { ...idAttrs(x, p.oid), [COL.blkIdx]: blk };
+      /* ⚠️ 2026-10-26: блокийн НЭР ч (`blok`) — блокийн дараалал солигдоход `planFromRows.blkOf` tombstone-ыг ч нэрээр зөөнө
+         (эс бөгөөс хуучин индексээр хөрш блокийн мужийг устгадаг байв) */
+      idA = { ...idAttrs(x, p.oid), ...blkAttrs(blk, bld, n) };
     }
     const w = ensure(tk, 'ustgal', idA, []);
     if (t >= w.at) { w.at = t; w.u = null; }
@@ -749,6 +822,8 @@ export type Frame = {
   byOid: ReadonlyMap<number, IdInfo>;
   /** Код → одоогийн oid (давтагдашгүй кодоор л) */
   byDes: ReadonlyMap<number, number>;
+  /** Хэсэгчилсэн (`lookupFrame` — зөвхөн хайсан oid-ууд, блокийн нэргүй) — блокийн нэр/тоо мэдэгдэхгүй */
+  partial?: boolean;
 };
 export function buildFrame(rows: readonly FrameRow[], bld: readonly string[]): Frame {
   const live = rows.filter((r) => Number.isInteger(r.oid) && r.oid >= 0);
@@ -795,8 +870,18 @@ export function perfToRows(
   const skipped: string[] = [];
   const rkMap = new Map<number, string>(d.rowKeys ?? []);
   const occMap = new Map<number, [number, number, number]>((d.rowOcc ?? []).map((e): [number, [number, number, number]] => [e[0], e]));
-  const idOf = (oid: number): IdInfo => frame?.byOid.get(oid) ?? stale.get(oid) ?? draftId(oid, rkMap.get(oid), occMap.get(oid));
-  const n = Math.max(1, frame?.bld.length ?? 1);
+  /*
+   * ⚠️ 2026-10-26: жаазны танихууныг ЗӨВХӨН ноорогийн шошго (`rowKeys`) түүнтэй ТААРВАЛ (эсвэл шошгогүй бол) — `subToRows`-ийн
+   *    ижил дүрэм. Хуудас дахин нийтлэгдэж oid дахин ашиглагдвал (хуучин JSON-ы шилжүүлэлт · хуучирсан ноорог) өөр ажлын
+   *    мөрөнд (`w:d<өөр код>`) буудаг байв; зөрвөл ноорогийн шошготой `o<oid>` мөр — уншилт `mapOldOids`-оор зөөнө/барина.
+   */
+  const idOf = (oid: number): IdInfo => {
+    const f = frame?.byOid.get(oid);
+    const lb = rkMap.get(oid);
+    if (f && (lb === undefined || lb === `${f.no} ¦ ${f.work}`)) return f;
+    return stale.get(oid) ?? draftId(oid, lb, occMap.get(oid));
+  };
+  const n = frameN(frame);
   const by = new Map<string, string>(d.by ?? []);
   const byAt = new Map<string, number>(d.byAt ?? []);
   const split = (k: string): { oid: number; b: number; g: 'v' | 's' | 'e' } | null => {
@@ -957,14 +1042,41 @@ export function perfFromRows(
   let asOf: number | null | undefined;
   let asOfAt: number | undefined;
   let asOfB: number | null | undefined;
+  /*
+   * ⚠️ 2026-10-26: OID ДАХИН АШИГЛАГДСАН (хуудас дахин нийтлэгдсэн) — мөрийн код (`d<код>`) жаазад алга бөгөөд `mur_oid` нь жаазад
+   *    ӨӨР ажлын (код/шошго зөрсөн) мөр бол тэр oid-ыг ХЭРЭГЛЭХГҮЙ: урьд нь нүд өөр ажилд буух (жаазын шошготой тул hook
+   *    зөөхгүй), эсвэл тэр ажлын өөрийн нүдтэй нэг түлхүүрт давхцаж нэг нь алга болдог байв. Оронд нь жаазад БАЙХГҮЙ тогтмол
+   *    орлуулагч oid (`SYN_BASE` + танихууны хэш) — мөрийн ӨӨРИЙН шошгоор hook-ийн `mapOldOids` зөөнө эсвэл барина; бичихэд
+   *    `staleOut`-оор ижил мөрөнд (жинхэнэ `mur_oid` — `oid0`).
+   */
+  const synUsed = new Map<number, string>();
+  const synOf = (id: string): number => {
+    let h = 2166136261;
+    for (let i = 0; i < id.length; i += 1) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0;
+    let o = SYN_BASE + h;
+    while ((synUsed.has(o) && synUsed.get(o) !== id) || frame?.byOid.has(o)) o += 1;
+    synUsed.set(o, id);
+    return o;
+  };
+  const clash = (f: IdInfo, a: Attrs, des: number | null): boolean => {
+    if (des != null) return f.des !== des;
+    const no = typeof a[COL.no] === 'string' ? a[COL.no] as string : '';
+    const work = typeof a[COL.work] === 'string' ? a[COL.work] as string : '';
+    return !!(no || work) && labelOf(a, no, work).label !== `${f.no} ¦ ${f.work}`;
+  };
   const oidOf = (k: string, a: Attrs): number | null => {
     const id = k.split(':')[k.startsWith('w:') ? 1 : 2] ?? '';
     const des = id.startsWith('d') ? Number(id.slice(1)) : null;
     const cur = des != null && Number.isFinite(des) ? frame?.byDes.get(des) : undefined;
-    const oid = cur ?? num(a[COL.oid]) ?? (id.startsWith('o') ? Number(id.slice(1)) : null);
+    let oid = cur ?? num(a[COL.oid]) ?? (id.startsWith('o') ? Number(id.slice(1)) : null);
     if (oid == null || !Number.isInteger(oid)) return null;
+    let oid0: number | undefined;
+    if (cur == null && frame) {
+      const f0 = frame.byOid.get(oid);
+      if (f0 && clash(f0, a, des != null && Number.isFinite(des) ? des : null)) { oid0 = oid; oid = synOf(id); }
+    }
     if (!rowKeys.has(oid)) {
-      const f = frame?.byOid.get(oid);
+      const f = oid0 != null ? undefined : frame?.byOid.get(oid);
       const no = f ? f.no : typeof a[COL.no] === 'string' ? a[COL.no] as string : '';
       const work = f ? f.work : typeof a[COL.work] === 'string' ? a[COL.work] as string : '';
       const lb = f ? { label: `${no} ¦ ${work}`, bare: false } : labelOf(a, no, work);
@@ -973,7 +1085,7 @@ export function perfFromRows(
       const occN = f ? f.occN : num(a[COL.davN]);
       if (occ != null && occN != null && occ >= 1 && occN >= occ) rowOcc.set(oid, [oid, occ - 1, occN]);
       if (!f && staleOut) {
-        staleOut.set(oid, { id, des: num(a[COL.des]), no, work, ...(str(a[COL.path]) ? { path: a[COL.path] as string } : {}), ...(occ != null ? { occ } : {}), ...(occN != null ? { occN } : {}), ...(lb.bare ? { bare: true } : {}) });
+        staleOut.set(oid, { id, des: num(a[COL.des]), no, work, ...(str(a[COL.path]) ? { path: a[COL.path] as string } : {}), ...(occ != null ? { occ } : {}), ...(occN != null ? { occN } : {}), ...(lb.bare ? { bare: true } : {}), ...(oid0 != null ? { oid0 } : {}) });
       }
     }
     return oid;
@@ -1003,6 +1115,9 @@ export function perfFromRows(
     }
     if (tt === 'barimt') {
       const p = /^r:([vse]):/.exec(k);
+      /* ⚠️ 2026-10-26: `ilgeesen_huvilbar`-гүй (хоосолсон — хуучин клиентийн цэвэрлэлт) баримт ЖИНХЭНЭ биш: серверийн баримт ч
+         илгээсэн агшинтай. Уншвал `[түлхүүр, clearAt, '', clearAt]` хуурамч баримт болж илгээгээгүй нүдийг арчина (`diffRows`) */
+      if (num(a[COL.sentAt]) == null) continue;
       const oid = p ? oidOf(k.replace(/^r:[vse]:/, 'w:'), a) : null;
       if (!p || oid == null) continue;
       const dk = `${oid}:${blkOf(k)}${p[1] === 'v' ? '' : `:${p[1]}`}`;
@@ -1016,6 +1131,8 @@ export function perfFromRows(
       const p = /^b:([se]):/.exec(k);
       const oid = p ? oidOf(k.replace(/^b:[se]:/, 'w:'), a) : null;
       if (!p || oid == null) continue;
+      /* ⚠️ 2026-10-26: хоосолсон суурь (утгагүй, жагсаалтгүй) — суурь '' биш, суурь АЛГА */
+      if (!present(a, listedOf(a), [p[1] === 's' ? COL.ps : COL.pe])) continue;
       const ms = num(a[p[1] === 's' ? COL.ps : COL.pe]);
       datesB.push([`${oid}:${blkOf(k)}:${p[1]}`, ms != null ? msToYmd(ms) : '']);
       continue;
@@ -1091,7 +1208,7 @@ export function subToRows(p: SubCells, frame: Frame | null): Map<string, Attrs> 
   const out = new Map<string, Attrs>();
   const rk = new Map<number, string>(p.rowKeys);
   const occ = new Map<number, [number, number, number]>((p.rowOcc ?? []).map((e): [number, [number, number, number]] => [e[0], e]));
-  const n = Math.max(1, frame?.bld.length ?? 1);
+  const n = frameN(frame);
   const idOf = (oid: number): IdInfo => {
     const f = frame?.byOid.get(oid);
     const x = draftId(oid, rk.get(oid), occ.get(oid));
