@@ -24,7 +24,7 @@ import {
 } from './draftRows.ts';
 import {
   rowsTestHooks, rowsReady, perfRead, perfSave, planRead, planReadAt, planSave, setFillFrame, migrateAll, verifyAll,
-  phaseB, subRowsFor, subWriteGen, resetRowsCache, planWriteSubmitted, planSyncSubmitted,
+  phaseB, subRowsFor, subWriteGen, resetRowsCache, planWriteSubmitted, planSyncSubmitted, legacyAndSubHeads,
 } from './draftRowsRemote.ts';
 import { prepareStore } from './huvaariStore.ts';
 import { parseHead, headRaw, assembleRows, archivedContent, SUBMISSION_MAX } from './submission.ts';
@@ -670,7 +670,20 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
   eq(planToRows(dP3, ctx2, 'plan').rows.get('x:s:d5:1')?.a[COL.blk], 'B', 'tombstone `blok` нэртэй (блокийн дараалал солигдоход нэрээр)');
   /* 13e. Жааз үл мэдэгдэх → `blok` NULL ('Ажил' биш) */
   const sp = { cells: [['101:3', '5']], dates: [], rowKeys: [[101, '1.1 ¦ Ухалт']], asOf: null };
-  eq(subToRows(sp, null).get('w:o101:3')?.[COL.blk], null, 'жаазгүй — blok NULL');
+  eq(subToRows(sp, null).get('w:o101:3')?.[COL.blk] ?? null, null, 'жаазгүй — blok NULL');
+  /* ⚠️ 2026-10-26: нэр үл мэдэгдэх → `blok` attrs-д ОРОХГҮЙ (шинэ мөрөнд NULL, байгаа мөрийн нэрийг дарахгүй) */
+  ok(!(COL.blk in subToRows(sp, null).get('w:o101:3')), 'жаазгүй — blok илгээгдэхгүй');
+  {
+    const rowsB = [
+      { objectid: 10, [COL.turul]: 'tolgoi', [COL.key]: 'h', [COL.at]: NOW, [COL.usr]: 'a', [COL.blkIdx]: 3 },
+      { objectid: 11, [COL.turul]: 'ajil', [COL.key]: 'w:d100:1', [COL.oid]: 5, [COL.des]: 100, [COL.no]: '1', [COL.work]: 'A', [COL.blkIdx]: 1, [COL.blk]: 'Блок Б', [COL.ps]: NOW, [COL.pe]: NOW + D, [COL.at]: NOW - D, [COL.usr]: 'a' },
+    ];
+    const vB = viewOf(rowsB, 'plan');
+    const dB = planFromRows(vB.get('h'), vB, new Map(), { kind: 'plan', pkg: 'b1' }, NOW);
+    const imgB = new Map([...vB].map(([k, a]) => [k, [a]]));
+    const opsB = diffRows(imgB, planToRows(dB, null, 'plan').rows, 'plan', { dkey: 'x', pkg: 'b1', kind: 'plan' }, { clearAt: NOW, me: 'b', now: NOW, keep: () => false });
+    ok(!opsB.some((o) => o.a && COL.blk in o.a), 'жаазгүй бичилт (дэлгэцэнд байхгүй түлхүүрийн цэвэрлэлт) — байгаа мөрийн `blok`-ыг NULL болгохгүй');
+  }
   eq(subToRows(sp, { ...frame1, partial: true }).get('w:o101:3')?.[COL.blk] ?? null, null, 'хэсэгчилсэн жааз — blok NULL');
   eq(subToRows({ ...sp, cells: [['101:0', '5']] }, buildFrame(FR1, [])).get('w:d12:0')?.[COL.blk], 'Ажил', 'блокгүй бүрэн жааз — Ажил');
   /* 13f. Хүсээгүй мөрийг ЗӨВХӨН зурагт байгаа бүлгээр хоосолно */
@@ -688,6 +701,67 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
   ok(!diffRows(imgX0, xRows, 'plan', pb, { clearAt: NOW - 100, me: 'a', now: NOW, seriesAt: new Map([['m:d5:A', NOW]]) }).some((o) => o.k.startsWith('m:')), 'сервер (`seriesAt`) шинэ — цуваа хөндөгдөхгүй');
   ok(diffRows(imgX0, xRows, 'plan', pb, { clearAt: NOW - 100, me: 'a', now: NOW }).some((o) => o.k.startsWith('m:')), 'бичигч шинэ — цуваа бичигдэнэ');
   console.log('✅ 13. Хянагчийн олдвор — баримт · oid дахин ашиглалт · зөөлтийн tombstone · блокийн нэр · бүлгээр хоосолох · цуваа');
+}
+
+/* ══════════ 14. Тулгалт/Phase B — ШИЛЖСЭН илгээлтийн толгой (2026-10-26) ══════════ */
+{
+  /* ⚠️ шилжсэн `sub|`/`done|` толгой `mur_turul='tolgoi'` болдог — урьд `IS NULL`-ээр л уншиж тулгалт/Phase B-ээс бүрэн гардаг байв */
+  const f = fresh();
+  f.seed({ dkey: 'b1_9f', usr: 'a', pkg: 'b1_9f', at: 1, payload: '{}' });
+  f.seed({ dkey: 'sub|b1_9f|x', usr: 'a', pkg: 'b1_9f', at: 2, payload: '{}' });
+  f.seed({ dkey: 'done|b1_9f|y', usr: 'a', pkg: 'b1_9f', at: 3, payload: '{}', mur_turul: 'tolgoi', noorog_turul: 'ilgeelt', mur_key: 'h' });
+  f.seed({ dkey: 'n:sub:9', usr: 'a', pkg: 'b1_9f', at: 4, mur_turul: 'tolgoi', noorog_turul: 'ilgeelt', mur_key: 'h' });
+  f.seed({ dkey: 'n:b1_9f', usr: 'a', pkg: 'b1_9f', at: 5, mur_turul: 'tolgoi', noorog_turul: 'guitsetgel', mur_key: 'h' });
+  const got = (await legacyAndSubHeads(URL, ['objectid', COL.dkey, COL.at])).map((a) => a[COL.dkey]).sort();
+  eq(got, ['b1_9f', 'done|b1_9f|y', 'sub|b1_9f|x'], 'хуучин JSON + шилжээгүй + ШИЛЖСЭН илгээлтийн толгой; үе (`n:sub:`) · мөрийн толгой орохгүй');
+  ok(f.queries.every((w) => !/payload/.test(w)), 'where-д payload алга');
+  console.log('✅ 14. Тулгалт/Phase B — шилжсэн илгээлтийн толгойг хамарна');
+}
+
+/* ══════════ 15. Хуваарийн бичилтийн хувилбарын тулгалт (`expectAt`, 2026-10-26) ══════════ */
+{
+  /* ⚠️ уншилтгүй бичилт (`flushNow`) хамтрагчийн шинэ нүдийг цэвэрлэж байв — `fillStore.saveRemoteDraft`-тай ижил тулгалт */
+  const f = fresh();
+  const A = new Map(); const B = new Map();
+  const key = hdKey('plan', 'b41_9f');
+  const ctx = { n: 1, rows: new Map([[101, { spans: [null], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: 12, no: '1.1', work: 'Ухалт' }]]), bld: [''] };
+  const hd = (entries) => ({ t: NOW, kind: 'plan', pkg: 'b41_9f', by: { user: 'x', at: NOW }, base: { at: 1, n: 1 }, entries: new Map(entries), del: new Map() });
+  asClient(A, 'a');
+  ok((await planSave(key, hd([[kS(101, 0), { val: { start: 1 * D, end: 2 * D }, at: NOW + 1, user: 'a' }]]), { ctx })).ok, 'A анх бичнэ');
+  const ra = await planRead(key, { bld: ctx.bld });
+  ok(ra.ok && ra.at != null, 'A уншина (хувилбартай)');
+  f.clock += 5_000;
+  asClient(B, 'b');
+  const rb = await planRead(key, { bld: ctx.bld });
+  ok((await planSave(key, merge(rb.draft, hd([[kS(101, 0), { val: { start: 5 * D, end: 6 * D }, at: NOW + 9, user: 'b' }]])), { ctx, expectAt: rb.at })).ok, 'B шинэ утга бичнэ');
+  asClient(A, 'a');
+  const n0 = f.edits.length;
+  const s = await planSave(key, hd([]), { ctx, expectAt: ra.at });
+  ok(!s.ok && s.conflict && f.edits.length === n0, 'A-ийн хуучин хувилбартай бичилт — conflict, юу ч бичигдэхгүй');
+  const rc = await planRead(key, { bld: ctx.bld });
+  ok(rc.ok && rc.draft.entries.get(kS(101, 0))?.val.start === 5 * D, 'B-ийн шинэ утга хэвээр');
+  ok((await planSave(key, rc.draft, { ctx, expectAt: rc.at })).ok, 'шинэ хувилбараар — бичнэ');
+  console.log('✅ 15. Хуваарийн бичилт — хувилбарын тулгалт (expectAt)');
+}
+
+/* ══════════ 16. Толгойн `tseverlesen_at` ухрахгүй (2026-10-26) ══════════ */
+{
+  const f = fresh();
+  const A = new Map(); const B = new Map();
+  const key = hdKey('plan', 'b42_9f');
+  const ctx = { n: 1, rows: new Map([[101, { spans: [null], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: 12, no: '1.1', work: 'Ухалт' }]]), bld: [''] };
+  const hd = (entries, extra = {}) => ({ t: NOW, kind: 'plan', pkg: 'b42_9f', by: { user: 'x', at: NOW }, base: { at: 1, n: 1 }, entries: new Map(entries), del: new Map(), ...extra });
+  asClient(A, 'a');
+  ok((await planSave(key, hd([[kH(101), { val: '1FS', at: NOW + 1, user: 'a' }]]), { ctx })).ok, 'A анх бичнэ');
+  asClient(B, 'b');
+  await planRead(key, { bld: ctx.bld });
+  const T = NOW + 50;
+  ok((await planSave(key, hd([], { cleared: T, t: T }), { ctx })).ok, 'B илгээж цэвэрлэнэ (tseverlesen_at = T)');
+  asClient(A, 'a');
+  ok((await planSave(key, hd([[kH(101), { val: '2FS', at: NOW + 60, user: 'a' }]], { t: NOW + 60 }), { ctx })).ok, 'A уншилтгүй бичнэ (хуучин зураг, cleared алга)');
+  const hRow = f.all().find((a) => a.dkey === planDkey('plan', 'b42_9f') && a.mur_key === 'h');
+  ok(hRow?.[COL.cleared] === T, `tseverlesen_at ухарсангүй (${hRow?.[COL.cleared]})`);
+  console.log('✅ 16. Толгойн tseverlesen_at — зөвхөн урагшилна');
 }
 
 console.log(`draftRows.check.mjs — БҮГД ТЭНЦЛЭЭ (${checks} шалгалт)`);

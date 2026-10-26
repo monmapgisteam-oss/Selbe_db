@@ -20,3 +20,40 @@ const vr = readFileSync(new URL('./viewReport.ts', import.meta.url), 'utf8');
 assert.ok(!vr.includes("getAttribute('aria-rowcount')"), 'aria-rowcount-ыг нийт тоо гэж уншихгүй');
 assert.ok(!/push\(cells\);\s*if \(rows\.length >= MAX_TABLE_ROWS\)/.test(vr), 'яг хязгаар дээр capped болохгүй (push-ийн ӨМНӨ шалгана)');
 console.log('✅ viewReport — тайрсан/виртуал хүснэгтийн тэмдэглэл');
+
+/* ⚠️ 2026-10-26: нийтлэг `Segmented` (role=radio + aria-checked) шүүлт тайланд бичигдэнэ — хамгийн бага хуурамч DOM */
+{
+  globalThis.getComputedStyle = () => ({ display: 'block' });
+  const mk = (tag, attrs = {}, kids = [], text = '') => {
+    const el = {
+      tagName: tag.toUpperCase(), attrs, children: kids, parentElement: null, innerText: text,
+      getAttribute: (k) => (k in attrs ? String(attrs[k]) : null), hasAttribute: (k) => k in attrs,
+      checkVisibility: () => true, getClientRects: () => [1],
+      closest: (sel) => (/data-rep-skip|data-report-skip/.test(sel) ? null : null),
+      querySelectorAll: (sel) => {
+        const out = [];
+        const walk = (n) => { for (const c of n.children) { if (matches(c, sel)) out.push(c); walk(c); } };
+        walk(el);
+        return out;
+      },
+    };
+    for (const k of kids) k.parentElement = el;
+    return el;
+  };
+  /* Сонгогчийн жижиг тайлбарлагч — зөвхөн `[a="v"]` / `[a]` хослол, таслалаар */
+  const matches = (n, sel) => sel.split(',').some((one) => {
+    const t = one.trim();
+    if (!t.startsWith('[')) return n.tagName === t.toUpperCase();
+    return [...t.matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)].every(([, a, v]) => (v === undefined ? n.hasAttribute(a) : n.getAttribute(a) === v));
+  });
+  const radio = (label, on) => mk('button', { role: 'radio', 'aria-checked': on ? 'true' : 'false' }, [], label);
+  const seg = (name, opts, sel) => mk('span', { role: 'radiogroup', 'aria-label': name }, opts.map((o) => radio(o, o === sel)));
+  const root = mk('div', {}, [
+    seg('Бүлэг', ['Бүгд', 'Сүлжээ', 'Барилга'], 'Сүлжээ'),
+    seg('Горим', ['График', 'Хүснэгт'], 'Хүснэгт'),
+    seg('Төрөл', ['Бүгд 12', 'Журам 4', 'Заавар 8'], 'Бүгд 12'),
+  ]);
+  const { readFilters } = await import('./viewReport.ts');
+  assert.deepEqual(readFilters([root]), ['Бүлэг: Сүлжээ'], 'Segmented шүүлт (≥3 сонголт); 2 сонголттой горим ба «Бүгд» шүүлт биш');
+  console.log('✅ viewReport — Segmented (role=radio) шүүлт тайланд');
+}

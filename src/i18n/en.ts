@@ -7450,6 +7450,7 @@ const en: Record<string, string> = {
   "зарим эх уншигдсангүй": "some sources failed to load",
   "Төлөвлөгөөт муруй дутуу: {0}": "Planned curve incomplete: {0}",
   "Хувилбар: {0}": "Version: {0}",
+  "«{0}» — Cashflow_ID-г арилгах боломжгүй: дугааргүй мөр гэрээний бүртгэл ба бүх нийлбэрээс алга болно.": "«{0}» — Cashflow_ID cannot be cleared: a row without an ID disappears from the contract register and all totals.",
 };
 
 export default en;

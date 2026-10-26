@@ -22,7 +22,8 @@ import { loadLandStatus } from '@/lib/land';
    архив) → бөглөх хуудасны АМЬД бөглөлт болов — `pkgPct`-ийн тайлбарыг үз.
    `loadPkgProgress`/`latestPkgProgress` энэ модулиас ХАСАГДСАН; тэдгээр нь
    бусад самбарт (газрын зураг, PkgProg) хэвээр хэрэглэгдэнэ. */
-import { loadFillPkgProgress, loadHeadline, loadHousing } from '@/lib/live';
+import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
+import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
@@ -3087,7 +3088,10 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
    */
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `loadHousing().blocks` — давхардсан feature
      (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок; урьд нь `count(OID)` тул хоёр тоологддог байв. */
-  const started = useAsync(async () => (await loadHousing()).blocks, []);
+  /* ⚠️ 2026-10-26: блокийн тоо = бөглөх хуудасны ХУВААРЬ (`loadBagtsRows` → `joinBagts.blocks`, 113) — Дашбоардын «Барилгын
+     блок», Тайлан §2/§6, удирдлагын тайлангийн `lvKeys`-тэй НЭГ олонлог. `loadHousing().blocks` нь газрын зургийн давхардалгүй
+     полигон (111 — полигонгүй 29/3, 5/8 ороогүй) тул ерөнхий дашбоард ганцаараа 2-оор бага харуулдаг байв. */
+  const started = useAsync(async () => (await loadBagtsRows()).reduce((a, r) => a + r.blocks, 0), []);
   /* ⚠️ 2026-09-22: «Нийт төлөвлөгдсөн барилга 368» нь ЕТ давхаргын (`et:24` =
      `BUILT_LAYER`) БҮХ барилга — одоо байгаа + шинэ. `loadHeadline().byStatus`
      (кэштэй, нэмэлт хүсэлтгүй) задаргааг нэрэнд ил бичнэ: «одоо N · шинэ M». */

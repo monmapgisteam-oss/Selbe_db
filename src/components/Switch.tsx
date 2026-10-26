@@ -84,11 +84,28 @@ export function Segmented<T extends string>({ value, onChange, options, label, d
   wrap?: boolean;
 }) {
   const i = Math.max(0, options.findIndex((o) => o.value === value));
+  /*
+   * ⚠️ 2026-10-26 (a11y): `role="radiogroup"` зарласан тул ARIA APG-ийн radio group-ийн гарын дүрэм — roving tabindex
+   *    (сонгогдсон нь 0, бусад −1 → бүлэг НЭГ Tab-ын зогсоол) ба ←/→/↑/↓ (тойрно) · Home · End нь СОНГОЖ фокусыг шилжүүлнэ.
+   *    Урьд нь сум юу ч хийдэггүй, сонголт бүр тусдаа Tab-ын зогсоол байв (merge-ээр aria-pressed бүлгүүд Segmented болов).
+   */
+  const onKey = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (disabled || !options.length) return;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % options.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + options.length) % options.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = options.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    if (options[next].value !== value) onChange(options[next].value);
+    e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus({ preventScroll: true });
+  };
   return (
     <span role="radiogroup" aria-label={label} className={`${s.seg} ${wrap ? s.segWrap : ''}`}
-      style={{ '--n': options.length, '--i': i } as React.CSSProperties}>
-      {options.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={o.value === value}
+      style={{ '--n': options.length, '--i': i } as React.CSSProperties} onKeyDown={onKey}>
+      {options.map((o, k) => (
+        <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={k === i ? 0 : -1}
           title={o.title} disabled={disabled}
           className={`${s.segOpt} ${o.value === value ? s.segOn : ''}`}
           onClick={() => { if (o.value !== value) onChange(o.value); }}>

@@ -62,7 +62,7 @@ for (const fn of ['setInterval', 'setTimeout']) {
 
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
-const { huvMonthRows, ProjectPlanTable } = await import('@/modules/Finance');
+const { huvMonthRows, ProjectPlanTable, isCfMonthCol } = await import('@/modules/Finance');
 const { assemblePlan } = await import('@/lib/projectPlanInputs');
 const { SRC_HUVAARI, SRC_MANUAL } = await import('@/lib/monthlyMoney');
 
@@ -90,6 +90,17 @@ check('huvMonthRows', () => {
   assert.equal(r7[0].objectid, undefined, 'OID-гүй — засагдахгүй');
   assert.equal(m.get(8)[0].cashflow_huwi, null, 'ХО дүнгүй → null (0 биш)');
   assert.equal(huvMonthRows(null).size, 0);
+});
+
+/* ⚠️ 2026-10-26: Enterprise-ийн жижиг үсгийн талбар — 'Cashflow_' (том C) шалгалт сарын мөрийг бүхэлд нь хоосолж байв */
+check('isCfMonthCol — сарын мөрийн нүд жижиг үсгийн талбарт утгатай', () => {
+  const r = huvMonthRows({ contracts: new Map([[7, { id: 7, source: SRC_HUVAARI, cost: 1000, months: new Map([['2026-03', 250]]) }]]) }).get(7)[0];
+  const shown = Object.keys(r).filter(isCfMonthCol).sort();
+  assert.deepEqual(shown, ['cashflow_dun', 'cashflow_end', 'cashflow_huwi', 'cashflow_id', 'cashflow_start']);
+  assert.equal(isCfMonthCol('Cashflow_huwi'), true, 'хуучин AGOL нэр ч таарна');
+  assert.equal(isCfMonthCol('ho_dun_geree'), false, 'эцгийн мөнгө давтагдахгүй');
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /startsWith('Cashflow_')/, 'том үсгийн угтвар шалгалт буцаж ирсэнгүй');
 });
 
 /* ══════════ §2 ProjectPlanTable ══════════ */
@@ -156,6 +167,27 @@ check('шилжүүлэлт — хоёр харагдац НЭГ урсгала�
     assert.match(src, /confirmAndSwitch\(\{/, `${name}: confirmAndSwitch`);
     assert.doesNotMatch(src, /switchToHuvaari\(/, `${name}: шууд switchToHuvaari дуудахгүй (preview-гүй зам)`);
   }
+});
+
+/* ⚠️ 2026-10-26: сарын задаргаа уншигдаагүй үед «Cashflow хувиарлах»-ын шилжүүлэлт хаалттай (ProjectPlanTable-тай ижил) */
+check('CashflowPlan — monthsError үед «Хуваарь руу шилжүүлэх» хаалттай', () => {
+  const cfp = readFileSync(new URL('./CashflowPlan.tsx', import.meta.url), 'utf8');
+  assert.match(cfp, /const doSwitch = async \(\) => \{[\s\S]{0,600}\|\| monthsError\) return;/, 'doSwitch-ийн хамгаалалт');
+  assert.match(cfp, /disabled=\{locked \|\| dirty > 0 \|\| !curSwitchable \|\| monthsError\}/, 'товч хаалттай');
+});
+
+/* ⚠️ 2026-10-26: CF_WORK_WHERE `cashflow_id IS NOT NULL` — дугаартай мөрийн ID-г арилгаж нийтлэхгүй */
+check('publish — cashflow_id арилгахыг татгалзана', () => {
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  assert.match(src, /if \(!\('cashflow_id' in a\) \|\| cfIdOf\(a\.cashflow_id\) != null\) continue;[\s\S]{0,300}throw new Error\(tr\('«\{0\}» — Cashflow_ID-г арилгах боломжгүй/);
+});
+
+/* ⚠️ 2026-10-26: «Төсөл төлөвлөгөө биелэлт» таб merge-ээр roving tabIndex-гүй үлдсэн (UX U8) */
+check('tablist — таб бүр roving tabIndex-тэй', () => {
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  const tabs = src.split('role="tab"').slice(1).map((s) => s.slice(0, 400));
+  assert.ok(tabs.length >= 4);
+  for (const t of tabs) assert.match(t, /^[\s\S]*?tabIndex=\{tab === '(\w+)' \? 0 : -1\}[\s\S]*?aria-selected=\{tab === '\1'\}/, t.slice(0, 160));
 });
 
 console.log(`financeProjectPlan: ${n} шалгуур давлаа`);

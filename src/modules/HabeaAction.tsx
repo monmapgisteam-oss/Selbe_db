@@ -74,14 +74,19 @@ const loadActions = cached(async (): Promise<ActionRow[]> => {
   return rows.map(toRow);
 }, 5 * 60_000, ['HABEA']);
 
-export function HseActionPanel({ pkgs, onPkg, now }: {
+export function HseActionPanel({ pkgs, onPkg, now, tick }: {
   /** Хуудасны «Багц» шүүлт (`habeaPkgKey`) — хоосон = бүгд */
   pkgs: string[];
   onPkg: (key: string) => void;
   /** Хугацаа хэтэрсэн эсэхийн цаг — дуудагчийн `now` (render-ийн `Date.now()` биш) */
   now: number;
+  /** Хуудасны давтан шинэчлэлийн тоолуур (`Habea`-ийн `tick`, HABEA_POLL_MS) */
+  tick: number;
 }) {
-  const st = useAsync(() => loadActions(), []);
+  /* ⚠️ 2026-10-26: бусад ХАБЭА-гийн ачаалагчтай ИЖИЛ `tick`-ээр дахин татна (Habea-ийн 2026-10-06-ны ⚠️) — HSE_Action-д
+     портал бичдэггүй тул dataBus-ийн invalidate ирэхгүй; урьд нээлттэй табд Workforce-ийн төлөв солигдсон ч тоо хуучин
+     үлдэж, `now` гулсахад хуучин өгөгдлөөс мөр хасагдсаар байв. 5 минутын кэш (`cached`) нь poll-оос богино. */
+  const st = useAsync(() => loadActions(), [tick], { keepOn: [tick] });
 
   const view = useMemo(() => {
     if (st.state !== 'ready') return null;

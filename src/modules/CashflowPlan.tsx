@@ -464,7 +464,10 @@ export function CashflowPlan({
    *    устаж, оронд нь юу ч гарахгүй байсан ч цонх энэ тухай хэлдэггүй байв.
    */
   const doSwitch = async () => {
-    if (!cur || sel == null || locked || dirty || !canSwitch || !curSwitchable) return;
+    /* ⚠️ 2026-10-26: сарын задаргаа уншигдаагүй (`monthsError`) бол ШИЛЖҮҮЛЭХГҮЙ — `curMonths` хоосон тул цонх «0 мөр (нийт —)
+       устана» гэж худал асууж, `switchToHuvaari` серверээс дахин уншаад БҮХ гараар мөрийг буцаалтгүй устгадаг байв
+       («Төсөл төлөвлөгөө биелэлт»-ийн ижил товч `ProjectPlanTable` үүгээр аль хэдийн хаагддаг) */
+    if (!cur || sel == null || locked || dirty || !canSwitch || !curSwitchable || monthsError) return;
     const name = sOf(cur.ajil_uilchilgee) || String(sel);
     setErr(null);
     setMsg(null);
@@ -730,8 +733,10 @@ export function CashflowPlan({
             <button
               type="button"
               className={c.clear}
-              disabled={locked || dirty > 0 || !curSwitchable}
-              title={!curPkgOk
+              disabled={locked || dirty > 0 || !curSwitchable || monthsError}
+              title={monthsError
+                ? tr('Сарын задаргаа уншигдсангүй — хуудсыг дахин ачаална уу')
+                : !curPkgOk
                 ? tr('Энэ гэрээний багцад Хуваарийн бөглөх хуудас алга')
                 : curPhaseWhy != null ? curPhaseWhy
                 : dirty > 0 ? tr('Эхлээд засвараа хадгална уу') : tr('Гараар сарын мөрийг устгаж, сарын мөнгийг Хуваарь-аас тооцоолно')}

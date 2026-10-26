@@ -25,6 +25,7 @@ import {
   type HDDraft, type HDEntries, type HDEntry, type HDRowBase, type HDRowKey,
 } from '@/lib/huvaariDraft';
 import { planMigrate, planRead, planReadAt, planSave, planWriteSubmitted, rowsReady } from '@/lib/draftRowsRemote';
+import { planSynOid } from '@/lib/draftRows';
 import { t as tr } from '@/lib/i18nCore';
 
 export type HDStoreMode = 'blob' | 'rows' | 'rows-wait';
@@ -83,8 +84,7 @@ const waiting = (note: string): HDStore => ({
  * эс бөгөөс хуучирсан нүд — `hdStale`) гэж үзнэ; `rk` код нь хадгалагдаж, бичихэд ижил мөр (`w:d<код>`) рүү буцна.
  * ⚠️ `mur_oid` (Integer) — int32-т багтана; нэмэлт ажлын түр oid (`adds.nextTmpOid`, ~−10¹⁰)-оос өөр муж.
  */
-const SYN_BASE = 1_000_000_000;
-export const synOid = (des: number): number => -(SYN_BASE + Math.abs(Math.trunc(des)));
+export const synOid = (des: number): number => planSynOid(des);
 
 type KeyParts = { type: 's' | 'a' | 'h' | 'r'; oid: number; blk: number | null };
 const cellOf = (k: string): KeyParts | null => {

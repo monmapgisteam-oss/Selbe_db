@@ -149,7 +149,10 @@ export const ROLE_ACCESS: Record<
   zahiral: {
     views: ["gdash", "dashboard", "plan", "hesegET", "pkgFin", "pkgProg", "gazar", "analysis", "irged", "tailan", "tuh",
       "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "sysdoc", "guitsetgel",
-      /* ⚠️ 2026-10-26: + ТЭЗҮ · зураг төсөл, 6 түвшний хуваарь (хэрэглэгч: «эрх олго») */
+      /* ⚠️ 2026-10-26: + ТЭЗҮ · зураг төсөл, 6 түвшний хуваарь (хэрэглэгч: «эрх олго»).
+         ⚠️ ЭНЭ ЖАГСААЛТ ЗӨВХӨН `roleTypes.narrowTpl`-ийн НӨӨЦ (синкээс өмнө / эвдэрсэн мөр) — `zahiral` төрлийн үүрэг тул бодит
+         эрх нь хадгалсан загвар/мөрөөс (`resolveBaseAccess` → `ov.views`). Амьд «Ерөнхий захирал»-ын мөрд эдгээр хоёр алга
+         (2026-10-26-нд уншиж шалгасан) — админ «Эрхийн төрөл» → «Ерөнхий захирал» → «Хэрэгжүүлэх» дарж мөрийг дахин бичнэ. */
       "zuragTosol", "tuvshin6"],
     docs: true,
     home: "gdash",

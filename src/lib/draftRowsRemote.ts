@@ -17,6 +17,8 @@
  * ⚠️ ХУВИЛБАР = СЕРВЕРИЙН ЦАГ: `max(last_edited_date)` (мс, клиентийн цагаас үл хамаарна) — хамтрагчийн аль ч бичилт (толгойг
  *    дарсан ч) хувилбарыг өөрчилнө, тиймээс CAS/бичсэний дараах баталгаа ХЭРЭГГҮЙ: бичилт зөвхөн ӨӨРИЙН өөрчилсөн бүлгийг
  *    илгээж, дараагийн мөчлөг бусдынхыг нийлүүлнэ.
+ * ⚠️ 2026-10-26: гэхдээ бичихийн ӨМНӨ хувилбарыг тулгана (`expectAt`, `planSave` · `fillStore.saveRemoteDraft`) — дифф нь
+ *    уншсан ч ноорогт алга мөрийг цэвэрлэдэг тул уншилтгүй бичилт хамтрагчийн шинэ нүдийг дарж болно.
  */
 
 import { arcgisPost } from '@/lib/query';
@@ -386,9 +388,20 @@ async function writeDiff(
   const hA: Attrs = {
     ...hdr, [COL.dkey]: dkey, [COL.pkg]: pkg, [COL.nturul]: kind, [COL.usr]: who,
     ...(img.legacyAt ? { [COL.legacy]: Math.max(img.legacyAt, num(h0?.[COL.legacy]) ?? 0) } : {}),
+    /* ⚠️ 2026-10-26 (хянагчийн олдвор): цэвэрлэлтийн агшин зөвхөн УРАГШИЛНА (`huuchin_at`-тай ижил) — дахин уншаагүй бичилт
+       (`flushNow`, эсвэл хамтрагчийн илгээлтийн цэвэрлэлттэй уралдсан мөчлөг) өөрийн хуучин/NULL `tseverlesen_at`-аар
+       илгээлтийн агшныг ухраавал дараа нээгчийн `dropCleared` илгээгдсэн хуучин локал нүдийг буцааж сэргээдэг байв. */
+    ...(COL.cleared in hdr ? { [COL.cleared]: Math.max(num(hdr[COL.cleared]) ?? 0, num(h0?.[COL.cleared]) ?? 0) || null } : {}),
   };
   const hChanged = !h0 || Object.keys(hA).some((c) => c !== COL.at && c !== COL.usr && (h0[c] ?? null) !== (hA[c] ?? null));
   if (!ops.length && !hChanged) return { ok: true, wrote: false };
+  /* ⚠️ 2026-10-26: зураг хуучирсан байж болно (уншилтгүй бичилт) — толгойн ОДООГИЙН `tseverlesen_at`-ыг жижиг асуулгаар уншиж
+     максимумд оруулна (хуваарийн бичилтэд л — `hdr`-д тэр багана байхад; цувааны `seriesAt`-тай ижил хязгаарлагдмал уншилт) */
+  if (COL.cleared in hdr) {
+    const live = await queryAll(url, `${COL.dkey} = ${q(dkey)} AND ${COL.key} = 'h'`, ['objectid', COL.cleared]);
+    const lc = Math.max(0, ...live.map((a) => num(a[COL.cleared]) ?? 0));
+    if (lc > (num(hA[COL.cleared]) ?? 0)) hA[COL.cleared] = lc;
+  }
   const hOp: Op = h0
     ? { op: 'update', k: 'h', unit: 'h', oid: num(h0.objectid) ?? 0, a: hA }
     : { op: 'add', k: 'h', unit: 'h', a: hA };
@@ -477,7 +490,12 @@ export async function planRead(key: string, opt: { full?: boolean; bld?: readonl
 }
 
 /**
- * ХУВААРИЙН НООРОГИЙГ БИЧНЭ — дифф (зөвхөн өөрчлөгдсөн бүлэг), толгой СҮҮЛД. Түгжээ (`expectAt`) ХЭРЭГГҮЙ (толгойн ⚠️).
+ * ХУВААРИЙН НООРОГИЙГ БИЧНЭ — дифф (зөвхөн өөрчлөгдсөн бүлэг), толгой СҮҮЛД.
+ * ⚠️ 2026-10-26: `expectAt` МӨРИЙН горимд ч ХҮЧИНТЭЙ (`fillStore.saveRemoteDraft`-тай ИЖИЛ) — бичихийн өмнө хувилбарыг
+ *    (`planReadAt`) дахин уншиж, hook-ийн уншсанаас зөрвөл ЮУ Ч БИЧИХГҮЙ (`conflict` → hook дахин уншиж нийлүүлнэ). ЯАГААД:
+ *    `diffRows` энэ клиентийн УНШСАН боловч ноорогт нь алга нүдний мөрийг цэвэрлэдэг тул уншилтгүй бичилт (`flushNow` —
+ *    таб нуух · `pagehide`) эсвэл `readAt`–`save`-ийн хооронд хамтрагчийн ШИНЭ утгыг null/хуучин утгаар дардаг байв.
+ *    `undefined` = шалгахгүй (`planMigrate` · `migrateAll`). Толгойн «Түгжээ ХЭРЭГГҮЙ» гэсэн хуучин заалт үүнд хамаарахгүй.
  * Буцаах `at`: бичсэн бол `undefined` — hook дараагийн мөчлөгт серверийн хувилбарыг уншиж нийлүүлнэ (өөрийн бичилт ч орно);
  * дифф ХООСОН (юу ч бичээгүй) бол дуудагчийн `expectAt` — hook-ийн мэдлэг ХЭВЭЭР.
  * ⚠️ 2026-10-26: хоосон диффэд `expectAt`-ыг буцаахгүй бол мөрөнд илэрхийлэгдэхгүй (жиш. `val === bv`) нүдтэй локал ноорог
@@ -493,6 +511,11 @@ export async function planSave(
   try {
     const url = await layerUrl();
     if (!url) return { ok: false, error: tr('ноорогийн хүснэгт олдсонгүй') };
+    if (opt.expectAt !== undefined) {
+      const cur = await planReadAt(key);
+      if (cur === undefined) return { ok: false, error: tr('алсын ноорогийг шалгаж чадсангүй') };
+      if (cur !== opt.expectAt) return { ok: false, conflict: true, error: tr('хооронд нь өөр хүн ноорог бичсэн — дахин уншиж нийлүүлнэ') };
+    }
     if (!img.loaded || img.needFull) await loadImg(url, dkey, meta.kind, true);
     const w = planToRows(d, opt.ctx, meta.kind, { extra: opt.extra, cur: opt.cur });
     const r = await writeDiff(url, dkey, img, w.rows, w.hdr, meta.kind, meta.pkg, d.t || Date.now());
@@ -985,6 +1008,21 @@ export type VerifyResult = { total: number; same: number; diff: string[]; pendin
 const migCut = (v: Ver): number => Math.max(v.huuchin ?? 0, (v.created ?? 0) + 60_000);
 
 /**
+ * Тулгалт/Phase B-ийн мөрүүд — хуучин JSON мөр (`mur_turul IS NULL`: `<багц>` · `plan:%` · шилжээгүй `sub|`/`done|`) +
+ * ШИЛЖСЭН илгээлтийн толгой (`sub|`/`done|`, `mur_turul='tolgoi'`).
+ * ⚠️ 2026-10-26: `migrateSubmissionRow`/`saveSubmission` шилжүүлсний дараа толгойд `mur_turul='tolgoi'` тавьдаг тул урьд
+ *    `IS NULL`-ээр л уншихад шилжсэн илгээлт тулгалтаас (тоо ч дутна) ба Phase B-ийн `done|` payload хасалтаас БҮРЭН
+ *    гардаг байв — зөвхөн шилжээгүй нь орж үргэлж «мөр рүү шилжээгүй» гэж унадаг байв. Толгойн payload-ыг (≈80KB) татахгүй —
+ *    `compareSubmissionRow`/`stripSubmissionPayload` өөрсдөө oid-оор уншина. `migrateAll` `IS NULL` хэвээр (шилжээгүйг л хайна).
+ */
+export async function legacyAndSubHeads(url: string, fields: readonly string[]): Promise<Attrs[]> {
+  const legacy = await queryAll(url, `${COL.turul} IS NULL`, fields);
+  const heads = await queryAll(url, `${COL.turul} = 'tolgoi' AND ${COL.nturul} = 'ilgeelt' AND ${COL.key} = 'h'`, fields.filter((f) => f !== COL.payload));
+  const seen = new Set(legacy.map((a) => num(a.objectid)));
+  return [...legacy, ...heads.filter((a) => /^(sub|done)\|/.test(String(a[COL.dkey] ?? '')) && !seen.has(num(a.objectid)))];
+}
+
+/**
  * ТУЛГАЛТ (Phase A → B) — шилжсэн ноорог бүрийг мөрөөс сэргээж хуучин JSON-тэй харьцуулна (цэвэр, баримтжуулсан хасагдах
  * талбаргүйгээр): хуваарь — `sig`; гүйцэтгэл — нүд/огнооны олонлог; илгээлт — нүд/огноо. `pending` = мөр рүү ороогүй.
  */
@@ -995,7 +1033,7 @@ export async function verifyAll(): Promise<VerifyResult> {
   if ((await rowsReady(true)).mode !== 'rows') throw new Error(tr('ноорогийн багана нэмэгдээгүй — notebook ажиллуулна уу'));
   const { PKGS } = await import('@/modules/sheet/bagts.pkg');
   const pk = new Set(PKGS.map((p) => p.key));
-  const legacy = await queryAll(url, `${COL.turul} IS NULL`, ['objectid', COL.dkey, COL.at, COL.payload]);
+  const legacy = await legacyAndSubHeads(url, ['objectid', COL.dkey, COL.at, COL.payload]);
   const out: VerifyResult = { total: 0, same: 0, diff: [], pending: [], edited: [] };
   for (const a of legacy) {
     const k = String(a[COL.dkey] ?? '');
@@ -1066,7 +1104,7 @@ export async function phaseB(verified: VerifyResult): Promise<{ deleted: number;
   const bad = new Set([...verified.diff, ...verified.pending]);
   const { PKGS } = await import('@/modules/sheet/bagts.pkg');
   const pk = new Set(PKGS.map((p) => p.key));
-  const legacy = await queryAll(url, `${COL.turul} IS NULL`, ['objectid', COL.dkey, COL.at]);
+  const legacy = await legacyAndSubHeads(url, ['objectid', COL.dkey, COL.at]);
   const del: Op[] = [];
   let stripped = 0;
   const failed: string[] = [];

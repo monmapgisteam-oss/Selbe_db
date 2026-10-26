@@ -38,6 +38,7 @@
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { monthDunFixes } from './cashflowMonthDun.mjs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { NEG_TREE, negTreeHash } from '../src/lib/negtgelTree.ts';
@@ -578,6 +579,9 @@ const structure = items.filter((t) => !moneyIdx.has(t.i)).map((t) => {
   if (t.sPct !== undefined) a.guitsetgel_huvi = t.sPct;
   return { t, a };
 });
+/* ⚠️ 2026-10-26: ХО дүн өөрчлөгдөх гэрээний ҮЛДЭХ сарын мөрийн `cashflow_dun`-ийг порталын дүрмээр (`recomputeFinanceAmounts`)
+   дахин бодно — эс бөгөөс S-муруй (`cashflowCurve`) хуучин ₮-ээр зурагдаж, хувь ба дүн зөрнө (`cashflowMonthDun.mjs`) */
+const monthDun = monthDunFixes(updates, months, new Set(deletes.flatMap((r) => monthsBy.get(r.cashflow_id)?.oids ?? [])));
 const delMonths = deletes.reduce((acc, r) => { const x = monthsBy.get(r.cashflow_id); return { n: acc.n + (x?.n ?? 0), sum: acc.sum + (x?.sum ?? 0) }; }, { n: 0, sum: 0 });
 
 /* Нийт */
@@ -633,6 +637,7 @@ P(`| Бүтцийн мөр — нэмэх | ${structure.length} | — |`);
 P(`| Бүтцийн мөр — хуучин (бичихэд устгаж дахин үүсгэнэ) | ${structOld.length} | — |`);
 P(`| ↳ Excel-д БАЙХГҮЙ (харагдацаар нэмсэн, жиш. дэд шат) — алга болно | ${viewOnlyOld.length} | — |`);
 P(`| Сарын мөр — хэвээр | ${months.length - delMonths.n} | — |`);
+P(`| ↳ cashflow_dun дахин бодох (ХО дүн өөрчлөгдсөн гэрээ) | ${monthDun.length} | ${bn(sumOf(monthDun, (x) => x.old))} → ${bn(sumOf(monthDun, (x) => x.cashflow_dun))} |`);
 P();
 P('## Нийт төсөв');
 P();
@@ -740,6 +745,7 @@ const planFile = opt('plan');
 if (planFile && planFile !== true) {
   writeFileSync(planFile, JSON.stringify({
     updates: updates.map((u) => u.a), adds: adds.map((x) => x.a), structure: structure.map((x) => x.a),
+    monthDun: monthDun.map(({ objectid, cashflow_dun }) => ({ objectid, cashflow_dun })),
     deleteMoney: delMoneyOids, deleteMonths: delMonthOids, deleteStructureOld: delStructOids, confirmDeletes: delToken,
   }, null, 1), 'utf8');
 }
@@ -775,6 +781,7 @@ console.log(`нөөц: ${backup}`);
 const onAdds = (_part, res) => { journal.added.push(...res.map((x) => x.objectId)); saveJournal(); };
 const steps = [
   ['мөнгөний мөр шинэчлэх', 'updates', updates.map((u) => u.a)],
+  ['сарын мөрийн дүн дахин бодох', 'updates', monthDun.map(({ objectid, cashflow_dun }) => ({ objectid, cashflow_dun }))],
   ['мөнгөний мөр нэмэх', 'adds', adds.map((x) => x.a)],
   ['хуучин бүтцийн мөр устгах', 'deletes', delStructOids],
   ['бүтцийн мөр нэмэх', 'adds', structure.map((x) => x.a)],

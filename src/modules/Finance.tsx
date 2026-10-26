@@ -1896,6 +1896,16 @@ const manualCfRows = (rows: readonly Row[]) => rows
   .filter((r) => r.id > 0 && r.start != null);
 
 /**
+ * 5-р түвшний сарын дэд мөрд утгаа харуулах багана мөн эсэх (`cashflow_*`).
+ *
+ * ⚠️ 2026-10-26: Enterprise-ийн талбарын нэр ЖИЖИГ үсэгтэй (`cashflow_huwi` · `cashflow_dun` ·
+ * `cashflow_start` …). entMap хасагдсаны (f26c7f9) дараа `startsWith('Cashflow_')` (том C) үргэлж
+ * худал болж, гараар ба тооцоолсон ('huvaari') сарын мөр бүхэлдээ хоосон нүдтэй гардаг байв —
+ * үсгийг харгалзахгүй харьцуулна.
+ */
+export const isCfMonthCol = (name: string): boolean => name.toLowerCase().startsWith('cashflow_');
+
+/**
  * Тооцоолсон сарын мөнгө → 5-р түвшний синтетик сарын мөр (гараар мөрийн талбарын нэрээр).
  * `Cashflow_huwi` = дүн ÷ ХО дүн × 100 (0–100, гараар мөрийн нэгж); ХО дүнгүй бол null («—», 0 биш).
  * `start`/`end` — тэр сарын 1 ба сүүлийн өдрийн UTC үд дунд (`publish`-ийн бичилтийн конвенц).
@@ -2595,6 +2605,19 @@ function FullTable({
           if ('ehleh_ognoo' in a || 'duusah_ognoo' in a) rangeCheck(a, rowByOid.get(oid));
         }
         for (const o of newRows) rangeCheck(o, undefined);
+
+        /* ⚠️ 2026-10-26 (merge-ийн дараах олдвор): дугаартай мөрийн `cashflow_id`-г АРИЛГАЖ нийтлэхгүй. `CF_WORK_WHERE` нь одоо
+           `cashflow_id IS NOT NULL` шаарддаг тул ID-гүй болсон мөнгөний мөр гэрээний бүртгэл · нийт төсөв · gdash · тайлан бүх
+           нийлбэрээс ЧИМЭЭГҮЙ алга болж (UI-аас буцааж сэргээх боломжгүй), сарын мөрүүд эзэнгүй үлдэж, `cashflow-import` түүнийг
+           бүтцийн мөр гэж устгана. Сарын мөрийн дугаарыг арилгавал мөн эзэнгүй болно. */
+        const monthByOid = new Map(publishMonths.map((r) => [Number(r[oidField]), r]));
+        for (const [oid, a] of upd) {
+          if (!('cashflow_id' in a) || cfIdOf(a.cashflow_id) != null) continue;
+          const r = rowByOid.get(oid) ?? monthByOid.get(oid);
+          if (cfIdOf(r?.cashflow_id) == null) continue;
+          const nm = String(r?.ajil_uilchilgee ?? '').trim() || String(r?.cashflow_id);
+          throw new Error(tr('«{0}» — Cashflow_ID-г арилгах боломжгүй: дугааргүй мөр гэрээний бүртгэл ба бүх нийлбэрээс алга болно.', nm));
+        }
 
         if (byName.has('cashflow_id')) {
           const lackNew = newRows.filter((o) => cfIdOf(o.cashflow_id) == null);
@@ -4446,7 +4469,7 @@ function FullTable({
                 *
                 * ⚠️ Эдгээр нь `list`-д БАЙХГҮЙ тул зурвасын нийлбэр, багцын
                 * нэгтгэл, № дугаарлалт бүгд хөндөгдөхгүй.
-                * ⚠️ ЗӨВХӨН `Cashflow_*` баганууд утгатай, БУСАД БҮГД ХООСОН.
+                * ⚠️ ЗӨВХӨН `cashflow_*` баганууд утгатай, БУСАД БҮГД ХООСОН (`isCfMonthCol`).
                 * Урьд нь «Ажил, үйлчилгээ» баганад сарыг («2026-03») бичдэг
                 * байсныг 2026-09-09-нд ХАСАВ (хэрэглэгчийн шүүмж: «ажил
                 * үйлчилгээ баганад яагаад date format явж байна»): тэр багана
@@ -4467,7 +4490,7 @@ function FullTable({
                   {cols.map((c, ci) => {
                     const oid = typeof mr[oidField] === 'number' ? (mr[oidField] as number) : null;
                     /* ⚠️ Эцгийн утгыг ДАВТАХГҮЙ — нэг мөнгө хоёр удаа уншигдана */
-                    if (!c.name.startsWith('Cashflow_')) {
+                    if (!isCfMonthCol(c.name)) {
                       return <td key={c.name} className={frz(ci)} style={colSty(c, ci)} />;
                     }
                     return xCell(mr, oid, false, c, frz(ci), colSty(c, ci));
@@ -5807,6 +5830,8 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           <button
             type="button"
             role="tab"
+            /* ⚠️ 2026-10-26: merge-ээр roving tabIndex-гүй үлдсэн (U8) — идэвхгүй үед Tab-ын 2 дахь зогсоол болдог байв */
+            tabIndex={tab === 'proj' ? 0 : -1}
             aria-selected={tab === 'proj'}
             className={`${f.tab} ${tab === 'proj' ? f.tabOn : ''}`}
             onClick={() => void switchTab('proj')}

@@ -533,14 +533,19 @@ export function readFilters(rs: Element[] = roots()): string[] {
       add(name ? `${name}: ${v}` : v);
     }
     const seen = new Set<Element>();
-    for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"]')) {
+    /* ⚠️ 2026-10-26: нийтлэг `Segmented` (`role="radio"` + `aria-checked`) ч шүүлт — bagts-ийн merge ТУХ-ын «Бүлэг», «Журмууд»-ын
+       төрөл, «Хуваарь»-ын шүүлтийг `aria-pressed`-ээс Segmented болгосноор тайлан шүүсэн хүснэгтийг «Шүүлтгүй — бүх өгөгдөл»
+       гэж хэвлэдэг байв. Бүлгийн нэр нь radiogroup-ийн `aria-label`; «≥3» дүрэм хэвээр (2 сонголттой горим шүүлт биш). */
+    const isRadio = (k: Element) => k.getAttribute('role') === 'radio' && k.hasAttribute('aria-checked');
+    for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"],[role="radio"][aria-checked="true"]')) {
       const p = el.parentElement;
       /* ⚠️ 2026-10-23: `data-report-skip` (газрын зургийн хэрэгсэл · 2D/3D/BIM · давхаргын жагсаалт) ч шүүлт БИШ — merge-ийн
          дараа тэдгээр үргэлж DOM-д байх болсон тул «Давхарга · Газрын зургийн харагдац: 2D» шүүлт гэж бичигддэг байв */
       if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip],[data-report-skip]')) continue;
       seen.add(p);
-      const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected'));
-      const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true');
+      const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected') || isRadio(k));
+      const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true'
+        || (isRadio(k) && k.getAttribute('aria-checked') === 'true'));
       /* ≥3: «График | Хүснэгт» зэрэг 2 товчтой ХАРАГДАХ ГОРИМ шүүлт биш */
       if (sib.length < 3 || on.length !== 1) continue;
       const v = oneLine((el as HTMLElement).innerText || '');

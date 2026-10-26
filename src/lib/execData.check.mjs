@@ -175,4 +175,24 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(ailTotal(rows).ail, 155);
 }
 
+/* ⚠️ 2026-10-26: хуваарьт байгаа ч полигонгүй блок өрхийн «дутуу»-д тоологдоно (`householdsMissingOf`-тэй нэг дүрэм) */
+{
+  const u = uniOf({ 'Багц 1': ['1', '2', '3'] });
+  const rs = joinBagts([row('Багц 1', '1', 10), row('Багц 1', '2', 20)], new Map(), u);
+  const b1 = rs[0];
+  assert.equal(b1.ail, 30);
+  assert.equal(b1.ailMissing, 1, 'полигонгүй блок (3) «дутуу»');
+  assert.equal(b1.ailBlocks, 3, 'ailBlocks = хуваарь');
+  const t = ailTotal(rs);
+  assert.equal(t.partial, true, 'полигонгүй блоктой нийлбэр «бүрэн» гэж гарав');
+  assert.equal(ailTotal(joinBagts([], new Map(), uniOf({ 'Багц 1': ['1'] }))).ail, 0, 'полигонгүй багц мөр үүсгэхгүй (хуучин зан)');
+}
+
+/* ⚠️ 2026-10-26: ерөнхий дашбоардын «Баригдаж эхэлсэн блок» — полигон (111) биш хуваарь (113, `joinBagts.blocks`) */
+{
+  const { readFileSync } = await import('node:fs');
+  const gd = readFileSync(new URL('../modules/GeneralDash.tsx', import.meta.url), 'utf8');
+  assert.match(gd, /const started = useAsync\(async \(\) => \(await loadBagtsRows\(\)\)\.reduce\(\(a, r\) => a \+ r\.blocks, 0\), \[\]\);/, 'PlanCard хуваарийн блокоор');
+}
+
 console.log('execData.check.mjs — БҮГД ТЭНЦЛЭЭ');

@@ -55,6 +55,11 @@ export const ROW_VERSION = 3;
 export const ROW_TTL = 7 * 24 * 3600 * 1000;
 /** Жаазтай зөрсөн нүдний орлуулагч oid-ын эхлэл (`perfFromRows`) — хуудасны OBJECTID хэзээ ч хүрэхгүй муж */
 export const SYN_BASE = 1_000_000_000_000;
+/**
+ * Хуваарийн ноорогт одоогийн жаазад ОЛДООГҮЙ кодын нүдийн орлуулах oid (`huvaariStore.synOid` — ЭНД тодорхойлогдож тэнд
+ * дахин экспортлогдоно, `planFromRows` ч хэрэглэнэ). Сөрөг, int32-т багтана (`mur_oid` Integer).
+ */
+export const planSynOid = (des: number): number => -(1_000_000_000 + Math.abs(Math.trunc(des)));
 /** `mur_key`-ийн дээд урт — notebook-ийн `mur_key` String(160) */
 export const KEY_MAX = 160;
 
@@ -451,9 +456,18 @@ const idAttrs = (x: IdInfo, oid: number | null): Attrs => ({
  *    хэсэгчилсэн жааз блокийн нэргүй). Тэр үед `blok` NULL — урьд нь блоктой багцын блок бүр `'Ажил'` гэж буруу нэрлэгдэж
  *    самбарын `blok`-оор бүлэглэх асуулгыг төөрөгдүүлдэг байв (уншилт `blok_idx`-аар тул өгөгдөл хөндөгдөөгүй).
  */
-const blkAttrs = (b: number | null, bld: readonly string[] | undefined, n: number): Attrs => ({
-  [COL.blkIdx]: b, [COL.blk]: b == null ? null : (str(bld?.[b]?.slice(0, 64)) ?? (n === 1 ? 'Ажил' : null)),
-});
+/*
+ * ⚠️ 2026-10-26 (хянагчийн олдвор): блоктой (n > 1) багцын нэр ҮЛ МЭДЭГДЭХ үед `blok`-ыг attrs-д ОГТ ОРУУЛАХГҮЙ — `diffRows`
+ *    ID баганыг (`c in w.a`) л илгээдэг тул байгаа мөрийн нэр ХЭВЭЭР үлдэнэ, шинэ мөрөнд NULL (дээрх дүрэм). Урьд нь `null`
+ *    илгээж, жаазгүй бичилт (`useSharedDraft.hdRunClear` — дэлгэцэнд байхгүй түлхүүрийн цэвэрлэлт: дахин оролдлогын таймер,
+ *    таб солигдсоны дараа дууссан илгээлт) тэр ноорогийн БҮХ мөрийн `blok`-ыг NULL болгож, блокийн дараалал солигдоход
+ *    `planFromRows` `blok_idx` руу буцаж огноог хөрш блокт тавьдаг байв.
+ */
+const blkAttrs = (b: number | null, bld: readonly string[] | undefined, n: number): Attrs => {
+  if (b == null) return { [COL.blkIdx]: null, [COL.blk]: null };
+  const nm = str(bld?.[b]?.slice(0, 64)) ?? (n === 1 ? 'Ажил' : null);
+  return nm == null ? { [COL.blkIdx]: b } : { [COL.blkIdx]: b, [COL.blk]: nm };
+};
 /** Гүйцэтгэл/илгээлтийн блокийн тоо — жааз бүрэн мэдэгдэх үед л (`blkAttrs`-ийн ⚠️) */
 const frameN = (frame: Frame | null): number => (frame && !frame.partial ? Math.max(1, frame.bld.length) : 0);
 const blank = (cols: readonly string[]): Attrs => Object.fromEntries(cols.map((c) => [c, null]));
@@ -734,6 +748,37 @@ export function planFromRows(
     return kind === 's' ? spanOf(b) : kind === 'a' ? pairOf(b, [COL.as, COL.ae]) : kind === 'h' ? hamOf(b) : pairOf(b, [COL.hun, COL.mash]);
   };
   const withBv = (e: HDEntry, bv: unknown): HDEntry => (bv === undefined ? e : { ...e, bv });
+  /*
+   * ⚠️ 2026-10-26 (хянагчийн олдвор): `rk` (oid → ажлын танихуун)-ийг УТГАТАЙ мөрөөс эхэлж авна — хоосон (цэвэрлэсэн) мөр
+   * ба `ustgal`-ийн танихууныг тэр oid-д утгатай мөр алга үед л. Урьд эхний (objectid ASC — хуучин жаазны) мөрийн танихуун
+   * авдаг байв: жааз oid-оо ДАХИН АШИГЛАВАЛ (153-ийн 2026-10-18-ны импорт) 7 хоног (`ROW_TTL`) үлддэг хуучин хоосон мөр
+   * (`w:d100:0`, mur_oid=5) шинэ ажлын (`w:d200:0`, mur_oid=5) нүдийг `alignToFrame`-ээр ӨӨР ажил руу зөөж, дараагийн
+   * хадгалалт тэр огноог буруу ажилд бичдэг байв.
+   */
+  const rkPri = new Map<number, number>();
+  for (const [k, a] of view) {
+    const t = String(a[COL.turul] ?? '');
+    if (t === 'tolgoi' || t === 'sar_obyem' || t === 'sar_noots' || k.startsWith('b:')) continue;
+    const oid = num(a[COL.oid]);
+    if (oid == null || (t !== 'ustgal' && !k.startsWith('w:'))) continue;
+    const id = rkOf(a);
+    if (!id) continue;
+    const pri = t === 'ustgal' ? 0 : isEmptyRow(a) ? 1 : 2;
+    if (pri > (rkPri.get(oid) ?? -1)) { rkPri.set(oid, pri); rk.set(oid, id); }
+  }
+  /*
+   * ⚠️ 2026-10-26: нэг `mur_oid`-ийг ӨӨР кодтой (`des_dugaar`) ажлууд хуваалцвал (oid дахин ашиглагдсан жааз) `rk`-ийг
+   * авч чадаагүй ажлын нүд/tombstone-ыг ӨӨРИЙН орлуулах oid-д (`planSynOid`) — хоёр ажлын нүд нэг түлхүүрт нийлж (`take`)
+   * нэг нь чимээгүй хаягдаж, эсвэл нөгөөгийнхөө tombstone-оор устахгүй. `alignToFrame` кодоор одоогийн oid руу зөөнө.
+   */
+  const cellOid = (oid: number, a: Attrs): number => {
+    const id = rkOf(a);
+    const win = rk.get(oid);
+    if (id?.des == null || win?.des == null || id.des === win.des) return oid;
+    const syn = planSynOid(id.des);
+    if (!rk.has(syn)) rk.set(syn, id);
+    return syn;
+  };
   for (const [k, a] of view) {
     const t = String(a[COL.turul] ?? '');
     if (t === 'tolgoi') continue;
@@ -747,7 +792,8 @@ export function planFromRows(
       if (l) l.push(a); else series.set(u, [a]);
       continue;
     }
-    const oid = num(a[COL.oid]);
+    const oid0 = num(a[COL.oid]);
+    const oid = oid0 == null ? null : cellOid(oid0, a);
     if (t === 'ustgal') {
       const at = num(a[COL.at]) ?? 0;
       const p = k.split(':');
@@ -757,16 +803,13 @@ export function planFromRows(
       else if (oid != null && (p[1] === 'h' || p[1] === 'r')) dk = `${p[1]}:${oid}`;
       if (dk && (del.get(dk) ?? -1) < at) del.set(dk, at);
       /* ⚠️ 2026-10-26 (R-H2): устгалын мөрөөс ч ажлын танихуун — өөр жаазны oid-оор хийсэн устгалыг `huvaariStore.alignToFrame`
-         одоогийн жаазны oid руу шилжүүлэхэд хэрэгтэй (эс бөгөөс хамтрагчийн устгал шинэ жаазтай хэрэглэгчид хүрэхгүй) */
-      const xid = rkOf(a);
-      if (xid && oid != null && !rk.has(oid)) rk.set(oid, xid);
+         одоогийн жаазны oid руу шилжүүлэхэд хэрэгтэй (эс бөгөөс хамтрагчийн устгал шинэ жаазтай хэрэглэгчид хүрэхгүй).
+         `rk`-ийг дээрх эхний давталт (утгатай мөр давамгай) бөглөнө. */
       continue;
     }
     if (oid == null || !k.startsWith('w:')) continue;
     const st = stamps.get(k);
     const l = listedOf(a);
-    const id = rkOf(a);
-    if (id && !rk.has(oid)) rk.set(oid, id);
     const id0 = k.split(':')[1];
     if (/^w:[^:]+:\d+$/.test(k)) {
       const blk = blkOf(a);

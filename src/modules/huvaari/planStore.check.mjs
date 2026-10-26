@@ -17,7 +17,7 @@
  */
 import assert from 'node:assert/strict';
 import { makeFake } from '../../lib/draftRows.fake.mjs';
-import { COL, planDkey } from '../../lib/draftRows.ts';
+import { COL, planDkey, planFromRows, planToRows, viewOf } from '../../lib/draftRows.ts';
 import { resetRowsCache, rowsReady, rowsTestHooks } from '../../lib/draftRowsRemote.ts';
 import { alignToFrame, collapseCells, legacyPending, prepareStore, rowStore, synOid } from '../../lib/huvaariStore.ts';
 import { applyClear, hdKey, kA, kH, kM, kR, kS, merge, serialize, sig } from '../../lib/huvaariDraft.ts';
@@ -249,5 +249,32 @@ const noAt = (x) => strip({ ...x, entries: new Map([...x.entries].map(([k, v]) =
 }
 
 function listed(a) { return new Set(String(a[COL.empty] ?? '').split(',').filter(Boolean)); }
+
+/* ══════════ 7. oid ДАХИН АШИГЛАГДСАН жааз — хоосон/устгалын хуучин мөр ӨӨР ажлын нүдийг зөөхгүй (2026-10-26) ══════════ */
+{
+  const at0 = NOW - 5 * D;
+  const W = (oid, k, des, extra = {}) => ({ objectid: oid, [COL.turul]: 'ajil', [COL.key]: k, [COL.oid]: 5, [COL.des]: des, [COL.no]: `${des}`, [COL.work]: `Ажил ${des}`, [COL.blkIdx]: 0, [COL.at]: at0, [COL.usr]: 'a', ...extra });
+  const H = { objectid: 1, [COL.turul]: 'tolgoi', [COL.key]: 'h', [COL.at]: NOW, [COL.usr]: 'a', [COL.blkIdx]: 1 };
+  const ctx = { n: 1, rows: new Map([[5, row(200, '200', 'Ажил 200')], [17, row(100, '100', 'Ажил 100')]]), bld: [''] };
+  const run = (rows) => {
+    const view = viewOf(rows, 'plan');
+    const d = planFromRows(view.get('h'), view, new Map(), { kind: 'plan', pkg: 'b71' }, NOW, ['']);
+    const a = alignToFrame(d, ctx);
+    return { d, a, want: [...planToRows(a, ctx, 'plan').rows.keys()].filter((k) => k.startsWith('w:')).sort() };
+  };
+  /* 7a. Хуучин жаазны ХООСОН мөр (A, код 100, oid 5) + шинэ жаазны амьд мөр (B, код 200, oid 5) */
+  const r1 = run([H, W(11, 'w:d100:0', 100), W(12, 'w:d200:0', 200, { [COL.ps]: 3 * D, [COL.pe]: 9 * D, [COL.at]: NOW - D })]);
+  ok(r1.d.rk.get(5)?.des === 200, 'rk — утгатай мөрөөс (хоосон хуучин мөр биш)');
+  eq([...r1.a.entries.keys()], [kS(5, 0)], 'B-ийн огноо oid 5-д үлдэнэ (A руу зөөгдөхгүй)');
+  eq(r1.want, ['w:d200:0'], 'бичилт B-ийн мөрөнд; w:d100:0 үүсэхгүй');
+  /* 7b. A-ийн устгалын мөр (oid 5) B-ийн нүдийг устгахгүй */
+  const r2 = run([H, { ...W(11, 'x:s:d100:0', 100), [COL.turul]: 'ustgal', [COL.at]: NOW }, W(12, 'w:d200:0', 200, { [COL.ps]: 3 * D, [COL.pe]: 9 * D })]);
+  ok(r2.a.entries.has(kS(5, 0)) && !r2.a.del.has(kS(5, 0)) && r2.a.del.has(kS(17, 0)), 'A-ийн tombstone A руу (17), B-ийн нүд амьд');
+  /* 7c. Хоёр АМЬД мөр нэг oid-той — хоёулаа үлдэж, тус бүр өөрийн ажилд */
+  const r3 = run([H, W(11, 'w:d100:0', 100, { [COL.ps]: 1 * D, [COL.pe]: 2 * D }), W(12, 'w:d200:0', 200, { [COL.ps]: 3 * D, [COL.pe]: 9 * D, [COL.at]: NOW - D })]);
+  ok(r3.a.entries.get(kS(17, 0))?.val.start === 1 * D && r3.a.entries.get(kS(5, 0))?.val.start === 3 * D, 'A → 17, B → 5 — нэг нь хаягдахгүй');
+  eq(r3.want, ['w:d100:0', 'w:d200:0'], 'хоёр мөр хоёулаа бичигдэнэ');
+  console.log('✅ 7. oid дахин ашиглагдсан жааз — хоосон/устгалын мөр өөр ажлыг зөөхгүй');
+}
 
 console.log(`planStore.check.mjs — БҮГД ТЭНЦЛЭЭ (${checks} шалгалт)`);

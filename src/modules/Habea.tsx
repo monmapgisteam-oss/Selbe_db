@@ -2723,7 +2723,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
 
         {uzlegKind && !dual && !zFocus && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
-        {zFocus && <HseActionPanel pkgs={pkgs} onPkg={togglePkg} now={now} />}
+        {zFocus && <HseActionPanel pkgs={pkgs} onPkg={togglePkg} now={now} tick={tick} />}
         {/* ⚠️ Хоёр маягтын горимд БАРУУН багана = захиалагчийн маягтын, зүүнтэй
             ЯГ ИЖИЛ чартууд (зэрэг · ээлж · зураг · гүйцэтгэгчээр). */}
         {dual && (<>
