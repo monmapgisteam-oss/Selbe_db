@@ -5881,7 +5881,7 @@ const en: Record<string, string> = {
   "Өөр хянагч": "Another reviewer",
   "«Архивлаж байна» тэмдэг өөр цонхных — арилгасангүй": "The “archiving” marker belongs to another window — not cleared",
   "Серверийн хариу алдагдсан: {0}-д {1}-р дараалалд таны мөр бичигдсэн боловч давхардал илэрлээ ({2}). Юуг ч устгаагүй — жагсаалтаас шалгаж илүүдлийг гараар устгана уу.": "The server response was lost: your row was written to {0}, sequence {1}, but a duplicate was found ({2}). Nothing was deleted — check the list and delete the extra row manually.",
-  "Бүртгэгдсэн рейс {0} — {1}-р долоо хоног": "{0} trips recorded — week {1}",
+  "Бүртгэгдсэн {0} — {1}-р долоо хоног": "{0} recorded — week {1}",
   "Тоо нь 0 ба түүнээс их байна.": "Values must be 0 or greater.",
   "хамтрагч": "collaborator",
   "Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн бодит огноо/нөөцийг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.": "Actual dates · resources are locked — the pending submission on the “{0}” tab contains the actual dates/resources of these rows: {1}. Try again after that submission is decided.",
@@ -6995,7 +6995,7 @@ const en: Record<string, string> = {
   "Нэмэх боломжгүй: «Хог хаягдал» үйлчилгээнд засварлах эрх хаалттай — админд мэдэгдэнэ үү.": "Cannot add: editing is disabled on the “Waste” service — please notify the administrator.",
   "Сонгосон шүүлтэд тохирох бүртгэл алга — дээрх шүүлтийн чипийг (×) арилгаж бүгдийг харна.": "No records match the selected filters — clear the filter chips above (×) to see everything.",
   "Шинэ бүртгэл орж ирэхэд энд автоматаар гарна.": "New records will appear here automatically.",
-  "«+ Нэмэх» товчоор энэ долоо хоногийн рейсийг бүртгэнэ.": "Use “+ Add” to record this week's trips.",
+  "«+ Нэмэх» товчоор энэ долоо хоногийн хог хаягдлыг бүртгэнэ.": "Use «+ Add» to record this week's waste.",
   "Сонгосон шүүлтэд тохирох үзлэг алга — сонголтоо арилгаж бүгдийг харна.": "No inspections match the selected filters — clear your selection to see everything.",
   "Сонгосон хугацаа, багцад энэ маягтаар үзлэг бүртгэгдээгүй.": "No inspections were recorded with this form for the selected period and packages.",
   "Хаяад шилжих": "Discard and switch",
@@ -7219,6 +7219,19 @@ const en: Record<string, string> = {
   "Эрх уншигдаж байна…": "Loading permissions…",
   "Энэ багцын хуваарийг зөвхөн харна — засах, илгээх, батлах эрх «Хуваарийн эрх»-ээс багцаар оноогдоно.": "You can only view this package’s schedule — editing, submitting and approving rights are assigned per package in “Schedule rights”.",
   "Зөвхөн харах": "View only",
+
+  "Хуваарилаагүй": "Unassigned",
+  "Хуваарилсан": "Assigned",
+  "Гүйцэтгэж байна": "In progress",
+  "Шалгуулах": "Submitted for review",
+  "Засвар шаардлагатай": "Rework required",
+  "{0} нээлттэй": "{0} open",
+  "Үл нийцлийн арилгалт": "Non-conformance close-out",
+  "Үл нийцлийн арилгалт — төлөв": "Non-conformance close-out — status",
+  "Багцаар — нээлттэй үл нийцэл": "Open non-conformances by package",
+  "нээлттэй / нийт · дарж шүүнэ": "open / total · click to filter",
+  "Хэсгээр — үл нийцэл": "Non-conformances by section",
+  "сүүлийн {0} хоног": "last {0} days",
 };
 
 export default en;

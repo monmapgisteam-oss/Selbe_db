@@ -678,6 +678,14 @@ export const HABEA = {
       { metric: 'Бохир соруулах', get label() { return tr('Бохир соруулах'); }, color: '#7c6fb0' },
     ],
   },
+  /**
+   * ҮЛ НИЙЦЛИЙН АРИЛГАЛТ — `HSE_Action` (2026-10-26, `modules/HabeaAction.tsx`). Нэг үйлчилгээнд V1.1 ба захиалагчийн
+   * маягтын үл нийцэл хоёулаа (`survey` талбараар ялгана). Давхарга 2 (0 БИШ — амьд метадата).
+   */
+  action: {
+    url: `${ENT_HOSTED}/HSE_Action/FeatureServer/2`,
+    survey: 'Захиалагчийн ажлын байрны үзлэг 2026',
+  },
   uzleg: {
     v11: {
       get title() { return tr('Ажлын байрны үзлэг V1.1'); },

@@ -920,6 +920,22 @@
   overscroll-behavior-x: contain;
 }
 
+/* ⚠️ 2026-10-26 (хэрэглэгч: «resize хийж томруулахад чартын доор хоосон зай үүсэх ёсгүй»): гүйлгэгч ба
+   түүний дотоод өргөн нь картын өндрийг ДАГАЖ сунана (`Section fill` → `Series grow`). Доод хязгаар нь
+   урьдын тогтмол 110px муруй + огнооны мөр — жижиг картад чарт багасахгүй. */
+.dayScrollFill {
+  display: flex;
+  flex-direction: column;
+  /* ⚠️ 2026-10-26: 170 → 130 — зурвасын доод хязгаар (`habeaPanes.fin` 200px)-д карт бүтэн багтана */
+  min-height: 130px;
+}
+.dayScrollFill > div {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* Картын доорх нэг мөр тайлбар (кран: дундаж өндөр/сум) */
 .mini {
   margin-top: 6px;
