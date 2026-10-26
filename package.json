@@ -31,7 +31,7 @@
     "test:all": "node tools/test-all.mjs --live"
   },
   "dependencies": {
-    "@arcgis/core": "^4.34.8",
+    "@arcgis/core": "^5.1.27",
     "lucide-react": "^1.61.0",
     "next": "^15.5.23",
     "pdfmake": "^0.3.11",
