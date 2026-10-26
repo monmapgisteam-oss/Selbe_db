@@ -1137,6 +1137,17 @@ export async function decideObyem(args: {
 
 /** `returnStuckObyem`-ийн шалтгааны угтвар — инженер «бичигдсэн обьём хэвээр» гэдгийг харна (2026-10-09) */
 export const OBYEM_STUCK_PREFIX = (): string => tr('Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.');
+/**
+ * ⚠️ 2026-10-26 (аудит): ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТ бичигдэнэ (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
+ *    2026-10-12-ны засвартай НЭГ загвар). Урьд нь `OBYEM_STUCK_PREFIX()` (орчуулсан) бичигдэж, англи горимын батлагчийн
+ *    буцаалт монгол инженерт англиар харагддаг байв. Дэлгэцэнд `displayObyemReason`-оор орчуулна.
+ */
+export const OBYEM_STUCK_PREFIX_SRC = 'Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.';
+/** Хадгалсан шалтгааныг дэлгэцэнд — системийн тогтмол мөрийг идэвхтэй хэлээр, хэрэглэгчийн текст ХЭВЭЭР (2026-10-26) */
+export function displayObyemReason(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw.split('\n').map((ln) => (ln.trim() === OBYEM_STUCK_PREFIX_SRC ? OBYEM_STUCK_PREFIX() : ln)).join('\n');
+}
 
 /**
  * ГАЦСАН (ХАГАС БИЧИГДСЭН) ОБЬЁМЫН ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (⚠️ 2026-10-09,
@@ -1210,7 +1221,8 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     return { ok: false, error: String((e as Error).message || e) };
   }
   invalidate('OBYEM_BATLAH');
-  const reason = `${OBYEM_STUCK_PREFIX()}\n${why}`.slice(0, REASON_MAX);
+  /* ⚠️ 2026-10-26: эх текстээр (`OBYEM_STUCK_PREFIX_SRC`) — дэлгэцэнд `displayObyemReason` */
+  const reason = `${OBYEM_STUCK_PREFIX_SRC}\n${why}`.slice(0, REASON_MAX);
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {

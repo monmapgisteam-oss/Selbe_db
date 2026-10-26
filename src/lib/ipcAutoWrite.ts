@@ -20,6 +20,7 @@ import { queryFeatures } from '@/lib/query';
 import { snapshotOf, LINK_FIELDS } from '@/lib/ipcLink';
 import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { isBlocklessBagts } from '@/lib/negtgelWrite';
+import { uniqueBlockCounts } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
@@ -70,9 +71,16 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        ⚠️ 2026-10-09 (аудит №6): хуудас бүрийн төлвийг цуглуулж шийдвэрийг цэвэр `sheetsVerdict`-д
        (`ipcAuto.ts`) өгнө — огт нийтлэгдээгүй хуудас (`unpublished`) тусдаа төлөв, дэлгэрэнгүй тэнд. */
     const reads: SheetRead[] = [];
+    /* ⚠️ 2026-10-26 (аудит): БҮРЭН ДАВХАРДСАН хуудас (Багц 4-2·12F — блок нь 9F-ийн F6_x-тэй ижил «6/1…6/8») IPC-д
+       ОРОХГҮЙ — нэгтгэл (`negtgelWrite` → `sumObyemParts`) ба дашбоардын (`loadPkgObyem`) НЭГ дүрэм: жин нь
+       `uniqueBlockCounts` (PKGS-ийн дараалал, эхнийх давамгайлна), 0 бол алгасна. Урьд нь 12F-ийн анхны батлагдсан
+       жаазаас хойш F6 блокийн обьём · мөнгө `obyem` · `guits_une`-д ДАВХАР орж, худал `guits_zoruu` HO_IPC-д бичигдэх байв. */
+    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p).catch(() => null)));
+    const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
-    for (const pkg of wanted) {
-      const sc: Schema | null = await loadSchema(pkg).catch(() => null);
+    for (const [i, pkg] of wanted.entries()) {
+      const sc = schemas[i];
+      if (sc && sc.bld.length > 0 && weights[i] === 0) continue;
       if (!sc?.f.fillDate) { reads.push('missing'); continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
       if (!cols.length) { reads.push('no-obyem'); continue; }

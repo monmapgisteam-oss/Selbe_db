@@ -24,6 +24,7 @@
  *    Map-д ордоггүй, null). Доорх хүлээгдэж буй утгууд шинэ дүрмээр (60 → 45, 12.5 → 6.25).
  */
 import assert from 'node:assert/strict';
+import { readFileSync as readSrc } from 'node:fs';
 
 /* ── Хөтөчийн хамгийн бага глобалууд (модулийн дээд түвшний шалгалтад) ── */
 const g = globalThis;
@@ -143,6 +144,17 @@ assert.equal(pk('БАГЦ2').progress, 6.25);
 assert.equal(pk('БАГЦ31').progress, 0, 'тайлагнаагүй багц 0% (урьд нь null)');
 assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ31').progress, null,
   'pkgPct-д байхгүй (хуваарьгүй) багц null — feature-ийн дундаж руу унахгүй');
+/* ⚠️ 2026-10-26 (аудит): бөглөх хуудасны «Багц 7.1» (БАГЦ71) → газрын зургийн БАГЦ7 (`MAP_PKG_ALIAS`) — «мэдээлэлгүй» биш */
+{
+  const p7 = buildPacks(rows, new Map([['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ7');
+  assert.equal(p7?.progress, 31.76, 'Багц 7: БАГЦ71-ийн гүйцэтгэл газрын зургийн БАГЦ7-д хүрсэнгүй');
+  assert.equal(buildPacks(rows, new Map([['БАГЦ7', 10], ['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ7').progress, 10,
+    'Багц 7: өөрийн түлхүүр давамгайлах ёстой');
+  assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ7').progress, null, 'Багц 7: хэмжилтгүй бол null');
+  const fin = readSrc(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  assert.ok(/for \(const \[src, \{ key \}\] of Object\.entries\(MAP_PKG_ALIAS\)\) \{\s*const pts = m\.get\(src\);\s*if \(pts && !m\.has\(key\)\) m\.set\(key, pts\);/.test(fin),
+    'pkgMonthsMap: газрын зургийн багцын түлхүүр (БАГЦ71 → БАГЦ7)');
+}
 assert.equal(pk('БАГЦ1').blocks.length, 3, 'блокийн жагсаалт (feature, OID-оор) хэвээр');
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ТОО нь түлхүүрээр — давхардсан «29/1» полигон НЭГ блок */
 assert.equal(blockCount(pk('БАГЦ1')), 2, 'давхардсан полигон блокийн тоонд хоёр орсон');

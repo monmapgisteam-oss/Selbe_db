@@ -706,7 +706,7 @@ export function GeneralDash({
 
       <aside className={g.left}>
         <Data q={cf} minH={520}>
-          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow?.pct ?? null} housingAt={housingNow?.at ?? null} />}
+          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow?.pct ?? null} housingAt={housingNow?.at ?? null} contracts={contracts.state === 'ready' ? contracts.data : null} />}
         </Data>
       </aside>
 
@@ -1635,9 +1635,11 @@ const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true 
 ];
 
 function FinCharts({
-  rows, period, xs, setXs, pkgPct, catPct, housingNow, housingAt,
+  rows, period, xs, setXs, pkgPct, catPct, housingNow, housingAt, contracts,
 }: {
   rows: CfRow[];
+  /** ⚠️ 2026-10-26 (аудит): OID → `geree_dun` (`loadContractSum`) — «Гэрээлсэн дүн» `KpiStrip`-тэй нэг эх; `null` = ачаалж буй */
+  contracts: Map<number, number> | null;
   period: Period;
   /** Багц → объёмоор бодогдсон гүйцэтгэл (`chartTypeCost`-ийн тайлбар) */
   pkgPct: Map<string, number>;
@@ -1761,7 +1763,7 @@ function FinCharts({
       }));
   }, [wbs, rows, housingNow]);
 
-  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct), [rType, pkgPct, catPct]);
+  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct, contracts), [rType, pkgPct, catPct, contracts]);
   const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
 
   return (

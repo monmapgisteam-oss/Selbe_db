@@ -40,7 +40,7 @@ import { applyUpdates, loadRows, msToDay, type SheetRow } from '@/modules/sheet/
 import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
-/* ⚠️ 2026-10-26: «Хуваарь» ХАРАХ хүрээ (төрөл · «Харагч» · өөрийн багц) ба түүний эх сурвалжуудын дохио */
+/* ⚠️ 2026-10-26: «Хуваарь» ХАРАХ хүрээ (төрөл · өөрийн багц) ба түүний эх сурвалжуудын дохио */
 import { huvaariViewScope } from '@/lib/huvaariView';
 import { subscribeTypes } from '@/lib/roleTypes';
 import { subscribe as subscribePerms } from '@/lib/permissions';
@@ -395,7 +395,7 @@ export function Huvaari({
    */
   /*
    * ⚠️ 2026-10-26 (хэрэглэгч: «харах хүрээг гараар — бүх багц эсвэл тодорхой багц»): СОНГОГЧ = «ХАРАХ ХҮРЭЭ»
-   *    (`huvaariView.huvaariViewScope` — төрлийн «Хуваарь харах» ∪ «Харагч» · зохиогч · батлагчийн багц) ∪ мөр нэмэгчийн
+   *    (`huvaariView.huvaariViewScope` — төрлийн «Хуваарь харах» ∪ зохиогч · батлагчийн багц) ∪ мөр нэмэгчийн
    *    хүрээ. Урьдын «хуваарилалтгүй бол БҮХ багц» нөөц ХАСАГДСАН — хүрээгүй хүнд багц харагдахгүй (доорх `noScope` мэдэгдэл);
    *    «Хуваарь» цэс ч тэр үед нээгдэхгүй (`permissions.workflowViewsOf`). ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: харах хүрээнээс гадна засах/
    *    батлах/мөр нэмэх нь `canEditRole` · `canApprove` · `canAddRow`-оор хэвээр.
@@ -473,7 +473,7 @@ export function Huvaari({
   }, [user, status, capN, ajN, pkg.group, review]);
   /**
    * ⚠️ 2026-10-26 (хэрэглэгч): ЗӨВХӨН ХАРАХ ГОРИМ — энэ багцад засах (зохиогч) · батлах · мөр нэмэх эрх АЛЬ НЬ Ч алга
-   *    («Харагч», төрлийн «Хуваарь харах», эсвэл өөр багцын зохиогч). Толгойд «Зөвхөн харах» тэмдэг; бичих зам бүр
+   *    (төрлийн «Хуваарь харах», эсвэл өөр багцын зохиогч). Толгойд «Зөвхөн харах» тэмдэг; бичих зам бүр
    *    эдгээр гурваар аль хэдийн хаалттай (`sendForApproval` · `decide` · `useSharedDraft.hdWritable` · `useAjil`).
    */
   const viewOnly = !review && status !== 'off' && !canEditRole && !canApprove && !canAddRow;
@@ -6006,7 +6006,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       <div className={h.frame} data-huvaari-root="">
         <p className={h.note} role="status">
           {huvaariAclReady()
-            ? tr('Танд хуваарь харах багц оноогдоогүй байна. Админ «Эрхийн төрөл» → «Хуваарь харах», эсвэл «Хуваарийн эрх» → «Харагч»-аар багц олгоно.')
+            ? tr('Танд хуваарь харах багц оноогдоогүй байна. Админ «Эрхийн төрөл» → «Хуваарь харах»-аар олгоно.')
             : tr('Эрх уншигдаж байна…')}
         </p>
       </div>

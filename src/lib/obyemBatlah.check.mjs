@@ -179,7 +179,9 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   /* ⚠️ 2026-10-09: гацсаныг буцаах (CAS-аар) · завгүй шалгалт fail-closed · хариу алдагдвал тэмдэг/түгжээ үлдэнэ · refresh seq */
   const rs = L.slice(L.indexOf('export async function returnStuckObyem('), L.indexOf('export function withdrawDeny('));
   assert.ok(rs.length > 0 && rs.indexOf('casObyemClaim(') > 0 && rs.indexOf('casObyemClaim(') < rs.indexOf('[F.status]: OBYEM_STATUS.returned'), 'returnStuckObyem: бичихээс өмнө CAS түгжээ алга');
-  assert.ok(rs.includes('partialBy(curStatus') && rs.includes('OBYEM_STUCK_PREFIX()'), 'returnStuckObyem: зөвхөн хагас бичигдсэнд · угтвартай шалтгаан');
+  /* ⚠️ 2026-10-26 (аудит): угтвар нь ЭХ текстээр (хэлнээс үл хамаарах) бичигдэнэ — дэлгэцэнд `displayObyemReason` */
+  assert.ok(rs.includes('partialBy(curStatus') && rs.includes('${OBYEM_STUCK_PREFIX_SRC}\\n${why}') && !rs.includes('OBYEM_STUCK_PREFIX()'),
+    'returnStuckObyem: зөвхөн хагас бичигдсэнд · эх текстийн угтвартай шалтгаан');
   const bz = L.slice(L.indexOf('export async function obyemBusyFor('), L.indexOf('export async function releaseObyemClaim('));
   assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
   /* ⚠️ 2026-10-11 (аудит №7): markObyemPartial — CAS (унш → pending · түгжээ = би → бич → дахин уншиж тэмдэг суусныг тулга),

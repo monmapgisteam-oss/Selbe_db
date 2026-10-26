@@ -21,8 +21,7 @@ export type ScopedKind = 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets';
 
 /** Үүргийн монгол нэр — дэд систем бүрд өөр */
 export const roleLabel = (kind: ScopedKind, role: string): string => {
-  /* ⚠️ 2026-10-26: + «Харагч» (`viewer`) — зөвхөн харах */
-  if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : role === 'viewer' ? tr('Харагч') : tr('Батлагч');
+  if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : tr('Батлагч');
   if (kind === 'ajil') return role === 'editor' ? tr('Мөр нэмэгч') : tr('Батлагч');
   if (kind === 'chanar') {
     if (role === 'author') return tr('Гүйцэтгэгч');

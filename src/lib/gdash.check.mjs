@@ -287,6 +287,12 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(c1[0].sub, 600);      // БАРИЛГА нь бүхэлдээ гэрээлсэн
   assert.equal(c1[1].count, 2);      // ажлын тоо
   assert.equal(c1[1].countSub, 1);   // тэдгээрээс гэрээтэй нь
+  /* ⚠️ 2026-10-26 (аудит): гэрээлсэн дүн `geree_dun`-ээс (`contracts`) — KPI-тай нэг эх; тэмдэглэгээтэй атлаа дүнгүй мөр 0
+     (амьд: БАГЦ-5.3 · 5.4), гэрээгүй мөрийн дүн үл тоологдоно */
+  const cc = chartTypeCost(rows, new Map(), new Map(), new Map([[1, 250], [2, 999]]));
+  assert.equal(cc.find((x) => x.key === 'ИНЖЕНЕР').sub, 250, 'гэрээлсэн дүн geree_dun-ээс');
+  assert.equal(cc.find((x) => x.key === 'БАРИЛГА').sub, 0, 'geree_dun хоосон → 0 (ho_dun_geree биш)');
+  assert.equal(cc.find((x) => x.key === 'БАРИЛГА').value, 600, 'төсвийн багана хэвээр ho_dun_geree');
 
   /* ⚠️ ГҮЙЦЭТГЭЛИЙН ХОЁР ХЭМЖҮҮР нь 2026-09-10-нд ЭНЭ чарт руу нэгдсэн
      (`chartTypeCount` хасагдав). `perf` нь объёмын эх сурвалж руу шилждэг,

@@ -1631,7 +1631,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     Object.keys(pendDate).length +
     (asOf !== asOfOrig ? 1 : 0);
 
-  const { otherPct, pkgPct, otherPending } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
+  const { otherPct, pkgPct, otherPending, pkgAll } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
   /* ⚠️ 2026-10-01: `setPv*` — ачаалах эффектээс ДЭЭРХ `obyemSt`-ээс (`useObyemState`-ийн ⚠️) */
   const {
     pvPend, pvSub, pvPreview, pvBusy, pvErr, pvNote,
@@ -3468,7 +3468,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       <div className={st.toolbar}>
         {/* ⚠️ 2026-10-23 (хэрэглэгч: «хувь харуулалт ба хэрэглүүрийг тусад нь салга — нэг мөрөнд, хувь ЗҮҮН, хэрэглүүр БАРУУН»):
             1-р мөр — гүйцэтгэлийн хувь (12F · 9F · багц) зүүн, `tbGrow`, хэрэглүүрүүд баруун; 2-р мөр — илгээх · төлөв. */}
-        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} otherPending={otherPending} />
+        <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} otherPending={otherPending} pkgAll={pkgAll} />
         <span className={st.tbGrow} aria-hidden />
         {/* ⚠️ 2026-10-23: хэрэглүүрүүд НЭГ бүлэгт (`tbTools`) — багтахгүй бол бүлэг дотроо баруун тийш эгнэж ороно, хувиас салахгүй */}
         <div className={st.tbTools}>

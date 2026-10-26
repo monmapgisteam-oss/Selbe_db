@@ -61,6 +61,7 @@ import {
   CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
 } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 /* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
    Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА тул
    гэрээний дүнг мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 дахин
@@ -1478,6 +1479,13 @@ export function pkgMonthsMap(fin: FinData): Map<string, MonthPt[]> {
       if (k && !m.has(k)) m.set(k, contractMonths(r, fin));
     });
   });
+  /* ⚠️ 2026-10-26 (аудит): газрын зургийн багцын түлхүүрээр (`MAP_PKG_ALIAS`, БАГЦ71 → БАГЦ7) — «Багцын гүйцэтгэл»-ийн
+     жагсаалт газрын зургийн багцаар хайдаг тул Багц 7-д «—», хоцрогдлын тэмдэггүй гарч байв. Өөрийн мөр байвал ДАВАМГАЙЛНА
+     (тиймээс түүхий түлхүүрүүдийн ДАРАА нэмнэ). `contractMonths` нь phys/given-ийг түүхий түлхүүрээр хайна. */
+  for (const [src, { key }] of Object.entries(MAP_PKG_ALIAS)) {
+    const pts = m.get(src);
+    if (pts && !m.has(key)) m.set(key, pts);
+  }
   return m;
 }
 

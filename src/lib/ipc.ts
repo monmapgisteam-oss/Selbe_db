@@ -320,7 +320,11 @@ export function unlinkedPays(rows: readonly Row[]): Row[] {
 export type HoTotals = {
   /** Гэрээний тоо (dedup хийсэн) */
   contracts: number;
-  /** Төлбөрийн мөрийн тоо */
+  /**
+   * Төлбөрийн тоо — ЗӨВХӨН `dun`-тай мөр (`ipcTable.payCount`-тай нэг дүрэм).
+   * ⚠️ 2026-10-26 (аудит): дүнгүй AUTO мөр (гүйцэтгэлийн тэмдэглэл) төлбөр БИШ — урьд нь бүх мөрийг тоолж CEO карт «64
+   *    төлбөр», IPC хуудас 43 гэж зөрдөг, `ipcLevel`-ийн `pays === 0` шалгалт AUTO мөртэй үед хэзээ ч биелдэггүй байв.
+   */
   pays: number;
   /** Σ `tosov_niit` — ⚠️ ГЭРЭЭ БҮРД НЭГ УДАА */
   budget: number | null;
@@ -367,7 +371,7 @@ export function hoTotals(rows: readonly Row[]): HoTotals {
   const paidC = acc((c) => (c.contractTotal != null ? c.paidTotal : null));
   return {
     contracts: cs.length,
-    pays: rows.length,
+    pays: rows.filter((r) => hoAmount(r) != null).length,
     budget: acc((c) => c.budgetTotal),
     contract,
     saving: acc((c) => c.saving),

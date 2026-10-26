@@ -1195,7 +1195,8 @@ export async function decideAjil(args: {
     [F.approver]: args.approver.toLowerCase(),
     [F.approverAt]: serverNow(),
     /* ⚠️ 2026-10-06 аудит: `decidePlan`-ийн ижил — UI-г тойрсон урт шалтгааныг тайрна */
-    [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
+    /* ⚠️ 2026-10-26: урьдчилж бөглөсөн системийн шалтгаан (`NO_PARENT_REASON`) эх текстээр (`ajilReasonSrc`) */
+    [F.reason]: args.approve ? null : (args.reason?.trim() ? ajilReasonSrc(args.reason.trim()).slice(0, REASON_MAX) : null),
   };
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
@@ -1352,6 +1353,35 @@ export async function withdrawAjil(args: {
 
 /** «Эцэг бүлэг олдсонгүй» буцаалтын стандарт шалтгаан (2026-10-04) */
 export const NO_PARENT_REASON = (): string => tr('Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.');
+/** «Багцын түлхүүр бүртгэлд алга» буцаалтын стандарт шалтгаан (2026-10-26) */
+export const NO_KEY_REASON = (): string => tr('Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.');
+/**
+ * ⚠️ 2026-10-26 (аудит): СИСТЕМИЙН ШАЛТГААН ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТЭЭР (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
+ *    загвар). Урьд нь `NO_PARENT_REASON()` (орчуулсан) батлагчийн хэлээр бичигдэж нэмэгчид тэр хэлээр л харагддаг байв.
+ *    Бичихдээ `ajilReasonSrc` (орчуулсан мөр → эх), дэлгэцэнд `displayAjilReason` (эх → идэвхтэй хэл).
+ */
+export const NO_PARENT_REASON_SRC = 'Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.';
+export const NO_KEY_REASON_SRC = 'Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.';
+const AJIL_SYS_REASONS: readonly (readonly [string, () => string])[] = [
+  [NO_PARENT_REASON_SRC, NO_PARENT_REASON],
+  [NO_KEY_REASON_SRC, NO_KEY_REASON],
+];
+/** Бичихийн өмнө — системийн мөр (аль ч хэлээр) эх текст болно; хэрэглэгчийн текст ХЭВЭЭР */
+export function ajilReasonSrc(text: string): string {
+  return text.split('\n').map((ln) => {
+    const t = ln.trim();
+    const hit = AJIL_SYS_REASONS.find(([src, show]) => t === src || t === show());
+    return hit ? hit[0] : ln;
+  }).join('\n');
+}
+/** Хадгалсан шалтгааныг дэлгэцэнд — системийн эх мөрийг идэвхтэй хэлээр */
+export function displayAjilReason(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw.split('\n').map((ln) => {
+    const hit = AJIL_SYS_REASONS.find(([src]) => ln.trim() === src);
+    return hit ? hit[1]() : ln;
+  }).join('\n');
+}
 
 /**
  * ГАЦСАН БАТЛАЛТЫГ БУЦААХ ДҮРЭМ — цэвэр (`ajilApply.check.mjs`, 2026-10-04).
@@ -1374,7 +1404,8 @@ export function returnStuckDeny(status: string | null, reason: string): string |
  */
 export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
   /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (`decideAjil`-тай ижил) */
-  const reason = (args.reason ?? NO_PARENT_REASON()).trim().slice(0, REASON_MAX);
+  /* ⚠️ 2026-10-26: системийн шалтгаан эх текстээр (`ajilReasonSrc`) */
+  const reason = ajilReasonSrc((args.reason ?? NO_PARENT_REASON_SRC).trim()).slice(0, REASON_MAX);
   if (typeof window !== 'undefined' && AUTH.appId) {
     const meNow = currentUser();
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };

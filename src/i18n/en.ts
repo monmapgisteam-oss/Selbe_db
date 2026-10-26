@@ -2358,7 +2358,7 @@ const en: Record<string, string> = {
   "Хуваарь төлөвлөх": "Plan the schedule",
   "Зохиогч": "Drafter",
   "Батлагч": "Approver",
-  "Багц тус бүрд Зохиогч, Батлагч, Харагч аккаунтыг тусад нь томилно. Харагч тэр багцын хуваарийг зөвхөн харна (засах, батлах эрхгүй). Нэг багцад хэдэн ч аккаунт байж болно.": "Assign Author, Approver and Viewer accounts separately for each package. A Viewer only sees that package’s schedule (no editing or approving). A package can have any number of accounts.",
+  "Багц тус бүрд Зохиогч ба Батлагч аккаунтыг тусад нь томилно. Нэг багцад хэдэн ч аккаунт байж болно.": "Assign Drafter and Approver accounts separately for each package. A package can have any number of accounts.",
   "Зохиогч томилоогүй": "No drafter assigned",
   "Батлагч томилоогүй": "No approver assigned",
   "устгагдсан аккаунт": "deleted account",
@@ -7212,17 +7212,15 @@ const en: Record<string, string> = {
   "Бэлэн болгох": "Mark ready",
   "Өөрийн багц": "Own packages",
   "Хуваарь харах": "View schedule",
-  "Зөвхөн харна (засах, илгээх, батлах эрхгүй). «Өөрийн багц» — тухайн хүнд аль нэг эрхийн хуудсанд оноогдсон багцууд. Нэг хүнд нэмэлт багцыг «Хуваарийн эрх» → «Харагч»-аар. Хадгалмагц үйлчилнэ.": "View only (no editing, submitting or approving). “Own packages” — the packages assigned to the person on any rights page. Give one person extra packages via “Schedule rights” → “Viewer”. Takes effect on save.",
+  "Зөвхөн харна (засах, илгээх, батлах эрхгүй). «Өөрийн багц» — тухайн хүнд аль нэг эрхийн хуудсанд оноогдсон багцууд. Хадгалмагц үйлчилнэ.": "View only (no editing, submitting or approving). “Own packages” — the packages assigned to the person on any rights page. Takes effect on save.",
   "«Хуваарийн эрх»-ээс багцаар оноогдоно": "Assigned per package in “Schedule rights”",
-  "Харагч": "Viewer",
   "хуваарилалтаар": "by assignment",
   "Шар нүдэнд анхдагч утга үйлчилж байна — сонгоод «Хадгалах» дарж батална уу.": "The yellow cells use the default value — choose a value and press “Save” to confirm.",
   "шинэ тохиргоо — анхдагч утга": "new setting — default value",
-  "Танд хуваарь харах багц оноогдоогүй байна. Админ «Эрхийн төрөл» → «Хуваарь харах», эсвэл «Хуваарийн эрх» → «Харагч»-аар багц олгоно.": "No schedule packages are assigned to you for viewing. An admin grants them via “Role types” → “View schedule”, or “Schedule rights” → “Viewer”.",
+  "Танд хуваарь харах багц оноогдоогүй байна. Админ «Эрхийн төрөл» → «Хуваарь харах»-аар олгоно.": "No schedule packages are assigned to you for viewing. An admin grants them via “Role types” → “View schedule”.",
   "Эрх уншигдаж байна…": "Loading permissions…",
   "Энэ багцын хуваарийг зөвхөн харна — засах, илгээх, батлах эрх «Хуваарийн эрх»-ээс багцаар оноогдоно.": "You can only view this package’s schedule — editing, submitting and approving rights are assigned per package in “Schedule rights”.",
   "Зөвхөн харах": "View only",
-  "Харагч томилоогүй": "No viewer assigned",
 };
 
 export default en;

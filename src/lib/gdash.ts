@@ -251,6 +251,9 @@ export type CfRow = {
   sec: string;
   /**
    * ЗАХИРАМЖИЙН ХО ТӨСӨВ (`ho_dun_zahiramj`, `CASHFLOW_NEW.fields.budgetOrder`), ₮ — хоосон бол null.
+   * ⚠️ 2026-10-26 (аудит): «гэрээтэй мөрд ЯГ тэнцүү» гэсэн таамаг амьдаар ҮНЭН БИШ — БАГЦ-5.3 · 5.4 «Гэрээлсэн дүн»
+   *    тэмдэглэгээтэй атлаа `geree_dun` хоосон (30.03 тэрбум зөрүү). Гэрээлсэн дүн ЗӨВХӨН `geree_dun`-ээс
+   *    (`loadContractSum` → `chartTypeCost`-ийн `contracts`).
    * ⚠️ 2026-10-06: `cost` (`ho_dun_geree`) нь гэрээтэй мөрд гэрээний дүнтэй ЯГ тэнцүү тул
    *    гэрээ ↔ төсвийн харьцуулалтад (`scorecard.scoreFin`) ЭНЭ талбарыг хэрэглэнэ —
    *    `contractGap.computeContractGap`-тэй нэг эх.
@@ -590,12 +593,19 @@ export function chartTypeCost(
    * самбарт хоёр өөр тоо харуулна.
    */
   catPct: Map<string, number> = new Map(),
+  /**
+   * ⚠️ 2026-10-26 (аудит): ГЭРЭЭЛСЭН ДҮН — OID → `geree_dun` (`loadContractSum`). KPI «Нийт гэрээлсэн дүн» (`KpiStrip`,
+   *    `execReport`-ийн `csum`) ЭНЭ эхээс бодогддог тул чарт/тайлангийн §1.2 хүснэгт ч мөн эндээс — урьд нь
+   *    `ho_dun_geree`-ээр бодож 5.3 · 5.4-ийн (тэмдэглэгээтэй атлаа `geree_dun` хоосон) 30.03 тэрбумаар KPI-аас зөрдөг байв.
+   *    `null` (ачаалж буй/хуучин дуудагч) — `ho_dun_geree` хэвээр.
+   */
+  contracts: Map<number, number> | null = null,
 ): SubBar[] {
   const bars = groupSum(
     rows,
     (r) => r.type,
     (r) => r.cost,
-    (r) => (isContracted(r) ? r.cost : 0),
+    (r) => (isContracted(r) ? (contracts ? contracts.get(r.oid) ?? 0 : r.cost) : 0),
   );
   const cnt = new Map<string, { n: number; c: number }>();
   /* ⚠️ 2026-09-29 (аудит 10): ангилал «Нийт төсөв»-т ордог уу — `SubBar.inTotal` */

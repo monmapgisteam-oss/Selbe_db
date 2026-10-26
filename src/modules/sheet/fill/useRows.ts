@@ -4,7 +4,7 @@
  *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { pkgFloors, type Pkg, type Schema } from "../bagts.pkg";
+import { loadSchema, pkgFloors, type Pkg, type Schema } from "../bagts.pkg";
 import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
 /*
  * ⚠️ НЭМЭЛТ АЖИЛ ЭНД НЭМЭГДЭХГҮЙ (2026-09-24, хэрэглэгчийн шийдвэр): бүлэгт «+»
@@ -15,9 +15,9 @@ import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
  *    `addedKeyOf`) үлдэнэ. `submitAjil`/`withdrawAjil`/`decideAjil` импортлохгүй.
  */
 import { loadAddedKeys as loadAjilAddedKeys, addedKeyOf, type AddedKey } from '@/lib/ajilBatlah';
-import { loadBlockProgress, loadBlockUniverse } from "@/lib/blockProgress";
+import { loadBlockProgress, loadBlockUniverse, pkgProgressOf } from "@/lib/blockProgress";
 import { useAsync } from "@/lib/useAsync";
-import { bagtsKey, isConstructionNo } from "@/lib/services";
+import { bagtsKey, buildingKey, isConstructionNo } from "@/lib/services";
 import { inputToMs, type Calc, type SheetView } from "./util";
 
 const NO_KEYS: AddedKey[] = [];
@@ -513,21 +513,36 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
   const uniQ = useAsync(loadBlockUniverse, []);
   const uni = uniQ.state === 'ready' ? uniQ.data : null;
 
+  /*
+   * ⚠️ 2026-10-26 (аудит): НӨГӨӨ ХУВИЛБАРЫН ӨӨРИЙН блокийн шошго (`Schema.bld`, кэштэй `loadSchema`). Урьд нь нөгөө
+   *    хувилбарыг «багцын түлхүүрээс ЭНЭ хуудасны шошгыг хассан үлдэгдэл» гэж тоолдог байсан тул ИЖИЛ шошготой Багц 4-2-ийн
+   *    12F хуудсанд (6/1…6/8 — 9F-ийн F6_x-тэй нэг түлхүүр) «9F гүйцэтгэл» нь зөвхөн 5/1…5/6-аар (14 биш 6 блок) бодогддог байв.
+   */
+  const otherPkg = useMemo(() => pkgFloors(pkg.group).find((x) => x.key !== pkg.key) ?? null, [pkg.group, pkg.key]);
+  const otherScQ = useAsync(
+    () => (otherPkg ? loadSchema(otherPkg) : Promise.resolve(null)),
+    [otherPkg?.key],
+  );
+  const otherBld = otherScQ.state === 'ready' ? otherScQ.data?.bld ?? null : null;
+
   const otherPct = useMemo(() => {
     const others = pkgFloors(pkg.group).filter((x) => x.key !== pkg.key);
-    if (!others.length || !bp) return null;
+    /* ⚠️ 2026-10-26: нөгөө хувилбарын бүдүүвч ирээгүй/унасан — «—» (буруу хуваарьтай тоо биш, null ≠ 0) */
+    if (!others.length || !bp || !otherBld) return null;
     const g = bagtsKey(pkg.group);
-    /* ЭНЭ хуудасны блокууд — нөгөөгийнхийг ялгахад хэрэгтэй */
-    const mine = new Set((sc?.bld ?? []).map((x) => String(x).trim()));
+    /* нөгөө хувилбарын ӨӨРИЙН блокууд — давхардсан шошго (4-2: 6/x) ч ОРНО */
+    const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));
+    /* ЗӨВХӨН ЭНЭ хуудсанд байгаа блокууд — нөгөөгийнхөөс хасна */
+    const onlyMine = new Set((sc?.bld ?? []).map((x) => buildingKey(pkg.group, x)).filter((k) => !theirs.has(k)));
     /* ⚠️ 2026-10-04: хуваарь = нөгөө хувилбарын БҮХ блок (бүдүүвч ∪ хэмжилт), тайлангүй 0% */
-    const keys = new Set<string>((uni?.get(g) ?? []).filter((k) => k.startsWith(`${g}|`)));
+    const keys = new Set<string>(theirs);
+    for (const k of uni?.get(g) ?? []) if (k.startsWith(`${g}|`)) keys.add(k);
     for (const key of bp.keys()) if (key.startsWith(`${g}|`)) keys.add(key);
     let sum = 0;
     let n = 0;
     let all = 0;
     for (const key of keys) {
-      const blok = key.slice(g.length + 1);
-      if (mine.has(blok)) continue;
+      if (onlyMine.has(key)) continue;
       all += 1;
       const cell = bp.get(key);
       if (cell == null || !Number.isFinite(cell.overall)) continue;
@@ -536,7 +551,19 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     if (!all) return null;
     /* ⚠️ 2026-10-23: `total` — нөгөө хувилбарын БҮХ блок (хуваарь) — «Багцын гүйцэтгэл» (хоёр хувилбарын блокийн дундаж)-д */
     return { pct: sum / all, blocks: n, total: all, floors: others[0].floors, label: `${others[0].floors}F` };
-  }, [bp, uni, pkg.group, pkg.key, sc]);
+  }, [bp, uni, pkg.group, pkg.key, sc, otherBld]);
+
+  /*
+   * ⚠️ 2026-10-26 (аудит): ОЛОН хувилбартай багцын «Багцын гүйцэтгэл» = `pkgProgressOf` — «Багцын гүйцэтгэл» дэлгэцтэй ЯГ
+   *    нэг тоо (давхардсан шошго нэг түлхүүр, бүрэн давхардсан 4-2·12F жин 0). Урьд нь хайрцгуудыг блокийн тоогоор жигнэдэг
+   *    байсан тул 4-2-д 6/x хоёр хуудсанд хуваагдаж дэлгэцээс зөрдөг байв. `undefined` = ганц хуудастай багц (энэ хуудасных),
+   *    `null` = ачаалж буй/унасан («—»).
+   */
+  const pkgAll = useMemo((): number | null | undefined => {
+    if (!otherPkg) return undefined;
+    if (!bp || uniQ.state === 'loading') return null;
+    return pkgProgressOf(bp, uni ?? new Map()).get(bagtsKey(pkg.group))?.pct ?? null;
+  }, [otherPkg, bp, uni, uniQ.state, pkg.group]);
 
   const pkgPct = useMemo(() => {
     if (!nBld || !rowsAll.length) return null;
@@ -571,5 +598,5 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
   /* ⚠️ 2026-10-23: нөгөө хувилбартай багцад `blockProgress` ачаалагдаж байгаа/унасан — «Багцын гүйцэтгэл»-ийг ЭНЭ хуудасны
      дунджаар орлуулахгүй (`PkgPctBadge`, null ≠ буруу тоо) */
   const otherPending = !bp && pkgFloors(pkg.group).some((x) => x.key !== pkg.key);
-  return { otherPct, pkgPct, otherPending };
+  return { otherPct, pkgPct, otherPending, pkgAll };
 }

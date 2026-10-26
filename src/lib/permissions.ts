@@ -936,7 +936,7 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
      `guitsetgelAcl.resolveFlowStage` → `viewAll`, `canReview: false`). `roleOf` нь remote уншигдаагүй бол override-ын
      үүргийг үл тооцдог тул fail-closed хэвээр. */
   if (roleOf(username) === 'zahiral') out.add('guitsetgel');
-  /* ⚠️ 2026-10-26 (хэрэглэгч): «ХУВААРЬ ХАРАХ» ХҮРЭЭ (төрлийн «Бүх/Өөрийн багц» ∪ «Харагч» · зохиогч · батлагчийн багц —
+  /* ⚠️ 2026-10-26 (хэрэглэгч): «ХУВААРЬ ХАРАХ» ХҮРЭЭ (төрлийн «Бүх/Өөрийн багц» ∪ зохиогч · батлагчийн багц —
      `huvaariView.huvaariViewScope`) хоосон биш бол «Хуваарь» ЗӨВХӨН ХАРАХ-аар нээгдэнэ. Засах/илгээх/батлах нь `huvaariScope`-оор
      хэвээр хаалттай (`Huvaari.canEditRole` · `canApprove`, lib-ийн `submitPlan` · `decidePlan`). Уншигч бүртгэгдээгүй (ACL
      уншигдаагүй) бол хаалттай — fail-closed (`_setHuvaariViewReader`). */

@@ -7,8 +7,10 @@
  *   хүрээ = НЭГДЭЛ(
  *     · эрхийн ТӨРЛИЙН «Хуваарь харах» (`roleTypes.typeHuvaariScope`): «Бүх багц» → бүгд; «Өөрийн багц» → тухайн хүний
  *       ЯМАР Ч хуваарилалтын багц (гүйцэтгэлийн урсгал · хуваарь · нэмэлт ажил · обьём · дэд бүтэц); «Үгүй» → юу ч биш,
- *     · «Хуваарийн эрх»-ийн «Харагч» (`viewer`) · «Зохиогч» · «Батлагч» багцууд )
+ *     · «Хуваарийн эрх»-ийн «Зохиогч» · «Батлагч» багцууд )
  *   хатуу super → бүгд. «Ерөнхий захирал» төрлийнхөө утгыг дагана.
+ *   ⚠️ 2026-10-26 (хэрэглэгч: «хэрэггүй»): «Хуваарийн эрх»-ийн «Харагч» (`viewer`) багана ХАСАГДСАН — хүрээнд ОРОХГҮЙ;
+ *      ArcGIS-д үлдсэн `viewer` grant-ыг `makeAcl` танигдахгүй үүрэг гэж чимээгүй хаяна.
  *
  * ⚠️ ЗӨВХӨН ХАРАХ: энэ хүрээ ЗАСАХ/ИЛГЭЭХ/БАТЛАХ/МӨР НЭМЭХ эрх ОЛГОХГҮЙ — тэдгээр нь `huvaariScope(…, 'author'|'approver')`
  *    ба `addRow`-оор хэвээр (`Huvaari.canEditRole` · `canApprove` · `canAddRow`, lib-ийн `submitPlan` · `decidePlan`).
@@ -50,7 +52,7 @@ export function ownPkgScope(user: string): Scope {
   const btPkgs: Scope = bt === null ? null : PKG_GROUPS.filter((g) => bt.includes(bagtsKey(g)));
   return union([
     bagtsScope(user),
-    huvaariScope(user, 'author'), huvaariScope(user, 'approver'), huvaariScope(user, 'viewer'),
+    huvaariScope(user, 'author'), huvaariScope(user, 'approver'),
     ajilScope(user, 'editor'), ajilScope(user, 'approver'),
     obyemScope(user, 'editor'), obyemScope(user, 'approver'),
     btPkgs,
@@ -66,7 +68,7 @@ export function huvaariViewScope(user: string | null | undefined): Scope {
   if (roleForUser(user) === 'super') return null;
   const t: HvScope = typeHuvaariScope(roleOf(user));
   if (t === 'all') return null;
-  const explicit = union([huvaariScope(user, 'viewer'), huvaariScope(user, 'author'), huvaariScope(user, 'approver')]);
+  const explicit = union([huvaariScope(user, 'author'), huvaariScope(user, 'approver')]);
   const all = t === 'own' ? union([explicit, ownPkgScope(user)]) : explicit;
   if (all === null) return null;
   /* ⚠️ Танигдахгүй (нэр солигдсон) багц хаягдана — сонгогчид ЗӨВХӨН байгаа багц */

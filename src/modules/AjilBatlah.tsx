@@ -48,7 +48,7 @@ import { roleForUser } from '@/lib/services';
 import { date, dayKey, fixCyr, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  NO_PARENT_REASON, ajilClaimHolder, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadAllReturned, loadPayloadStamped, returnStuckAjil, withdrawAjil,
+  NO_PARENT_REASON, NO_KEY_REASON, displayAjilReason, ajilClaimHolder, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadAllReturned, loadPayloadStamped, returnStuckAjil, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { roleOf } from '@/lib/permissions';
@@ -727,7 +727,7 @@ export function AjilBatlah() {
                     lastError={applyErr.get(x.oid)}
                     onReapply={kind === 'retry' && canReapply ? () => void reapply(x) : undefined}
                     onReturnStuck={kind === 'orphan' && canReapply
-                      ? () => void returnStuck(x, noParent.has(x.oid) ? NO_PARENT_REASON() : tr('Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.'))
+                      ? () => void returnStuck(x, noParent.has(x.oid) ? NO_PARENT_REASON() : NO_KEY_REASON())
                       : undefined}
                     ownWhy={kind === 'orphan'
                       ? (noParent.has(x.oid)
@@ -787,7 +787,8 @@ export function AjilBatlah() {
                       </span>
                       <div className={s.reasonBox}>
                         <div className={s.reasonLabel}>{tr('Буцаасан шалтгаан')}</div>
-                        {x.reason || '—'}
+                        {/* ⚠️ 2026-10-26: системийн эх текстийг идэвхтэй хэлээр (`displayAjilReason`) */}
+                        {displayAjilReason(x.reason) || '—'}
                       </div>
                     </div>
                   </div>

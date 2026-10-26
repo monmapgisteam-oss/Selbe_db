@@ -28,12 +28,30 @@ export const DOC_FOLDER = 'barimt bichig pdf';
 
 export const defaultGroups = (): DocGroup[] => [{ id: TEZU_GROUP, title: tr('ТЭЗҮ-БОНУ') }];
 
+/**
+ * ⚠️ 2026-10-26 (аудит): «ТЭЗҮ-БОНУ» бүлгийн нэр ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТЭЭР хадгалагдана
+ *    (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн сургамж) — дэлгэцэнд `tr()`-ээр. Урьд нь `defaultGroups()`-ийн ОРЧУУЛСАН нэр
+ *    анхны засварлагчийн хэлээр (англи горимд «Feasibility study & research») `__sys__:docgroups`-д бичигдэж, бусад бүх
+ *    хэрэглэгчид тэр хэлээр л харагдах байв. Гараар солисон нэр хэвээр.
+ */
+export const TEZU_TITLE_SRC = 'ТЭЗҮ-БОНУ';
+/** Анхдагч нэрийн хадгалагдаж болзошгүй хэлбэрүүд — эх ба (урьд нь бичигдсэн байж болох) англи орчуулга */
+const TEZU_TITLE_FORMS = new Set([TEZU_TITLE_SRC, 'Feasibility study & research']);
+const isTezuDefault = (g: DocGroup): boolean =>
+  g.id === TEZU_GROUP && (TEZU_TITLE_FORMS.has(g.title) || g.title === tr('ТЭЗҮ-БОНУ'));
+/** Хадгалах хэлбэр — анхдагч нэр нь эх текстээр */
+export const storeGroups = (gs: readonly DocGroup[]): DocGroup[] =>
+  gs.map((g) => (isTezuDefault(g) ? { ...g, title: TEZU_TITLE_SRC } : g));
+/** Харуулах хэлбэр — анхдагч нэр нь идэвхтэй хэлээр */
+export const showGroups = (gs: readonly DocGroup[]): DocGroup[] =>
+  gs.map((g) => (isTezuDefault(g) ? { ...g, title: tr('ТЭЗҮ-БОНУ') } : g));
+
 /** Бүлгүүд — уншиж чадаагүй бол алдаа шиднэ (хоосон жагсаалтаар дарж бичихгүйн тулд) */
 export async function loadGroups(): Promise<DocGroup[]> {
   const r = await docGroupsRead();
   if (r === undefined) throw new Error(tr('Баримтын бүлгүүдийг уншиж чадсангүй — дахин оролдоно уу.'));
   if (r === null || r.length === 0) return defaultGroups();
-  return r.some((g) => g.id === TEZU_GROUP) ? r : [...defaultGroups(), ...r];
+  return r.some((g) => g.id === TEZU_GROUP) ? showGroups(r) : [...defaultGroups(), ...r];
 }
 
 /**
@@ -46,7 +64,7 @@ export async function saveGroups(apply: (cur: DocGroup[]) => DocGroup[]): Promis
   /* ⚠️ 2026-10-23: бүлэг засах нь ТУСДАА эрх (`docsGroups`) — PDF оруулах (`docsUpload`)-аас салгав */
   requireCap('docsGroups');
   const next = apply(await loadGroups());
-  if (!(await docGroupsWrite(next))) throw new Error(tr('Баримтын бүлгийг хадгалж чадсангүй — дахин оролдоно уу.'));
+  if (!(await docGroupsWrite(storeGroups(next)))) throw new Error(tr('Баримтын бүлгийг хадгалж чадсангүй — дахин оролдоно уу.'));
   return next;
 }
 

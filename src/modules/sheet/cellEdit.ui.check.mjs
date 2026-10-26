@@ -179,6 +179,15 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(/usePkgPct\(\{[^}]*ovBase \}\)/.test(fill), '6: FillNew нь `ovBase`-ийг дамжуулна');
   const pub = fill.slice(fill.indexOf('const publish = useCallback'), fill.indexOf('// Ctrl+S'));
   ok((pub.match(/setOvBase\(/g) ?? []).length >= 2, '6: илгээсний дараа давхарлалтын суурь шинэчлэгдэнэ');
+  /* ⚠️ 2026-10-26 (аудит): нөгөө хувилбар = ӨӨРИЙН бүдүүвчийн блок (4-2: 6/x давхардсан шошго ч орно); багцын тоо = pkgProgressOf */
+  ok(rowsSrc.includes('const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));')
+    && rowsSrc.includes('if (onlyMine.has(key)) continue;') && !rowsSrc.includes('if (mine.has(blok)) continue;'),
+    '6b: нөгөө хувилбарын блок — өөрийн бүдүүвчээс (ижил шошго хасагдахгүй)');
+  ok(rowsSrc.includes('return pkgProgressOf(bp, uni ?? new Map()).get(bagtsKey(pkg.group))?.pct ?? null;'), '6b: «Багцын гүйцэтгэл» = pkgProgressOf');
+  const tb = readFileSync(new URL('./fill/toolbar.tsx', import.meta.url), 'utf8');
+  ok(tb.includes('const pkgAll = pkgAllLive !== undefined ? pkgAllLive : otherPending ? null : pkgPct.saved;')
+    && !tb.includes('v.pct * v.total'), '6b: PkgPctBadge блокийн тоогоор жигнэхгүй');
+  ok(/<PkgPctBadge [^>]*pkgAll=\{pkgAll\}/.test(fill), '6b: FillNew pkgAll-ийг дамжуулна');
 }
 
 /* ── 8. Мөрийн Обьёмгүй ажил — горим сольж бичихэд нөгөө хэсэг («%10» / «15») алга болохгүй ── */

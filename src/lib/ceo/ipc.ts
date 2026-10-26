@@ -185,7 +185,9 @@ export function summarize(rows: readonly Row[]): IpcSummary {
  *    хуучин картын «өгөгдлийн асуудлыг ИЛ байлгах» санааг ХАДГАЛАВ.
  */
 export function ipcLevel(s: IpcSummary): Level {
-  if (s.pays === 0) return 'unknown';
+  /* ⚠️ 2026-10-26 (аудит): `pays` = зөвхөн `dun`-тай мөр (`hoTotals`) — дүнгүй ЭНГИЙН мөр (`noAmount`) нь өгөгдлийн цоорхой
+     (`warn`), зөвхөн AUTO/хоосон бол «мэдээлэлгүй» */
+  if (s.pays === 0 && s.noAmount === 0) return 'unknown';
   if (s.noAmount > 0 || s.noCode > 0 || s.unlinked > 0) return 'warn';
   return 'good';
 }
@@ -349,7 +351,7 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
   return {
     value: mnt(s.paid),
     unit: tr('олгосон санхүүжилт'),
-    facts: s.pays === 0 ? [] : [
+    facts: s.pays === 0 && s.noAmount === 0 ? [] : [
       tr('{0} гэрээ · {1} төлбөр', s.contracts, s.pays),
       tr('урьдчилгаа {0}', mnt(s.advance)),
       tr('гүйцэтгэл {0}', mnt(s.work)),

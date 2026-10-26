@@ -32,6 +32,8 @@ import s from './userAdmin.module.css';
 function srcText(x: WfSource): string {
   /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Эрхийн төрөл · Бүх багц · зөвхөн харна» */
   if (x.sys === 'type') {
+    /* ⚠️ 2026-10-26: «Ерөнхий захирал» — «Гүйцэтгэл»-ийг төрлөөр бүх багцад зөвхөн харна */
+    if (x.role === 'zahiral') return [tr('Эрхийн төрөл'), tr('Ерөнхий захирал'), tr('зөвхөн харна')].join(' · ');
     return [tr('Эрхийн төрөл'), x.role === 'all' ? tr('Бүх багц') : tr('Өөрийн багц'),
       x.role === 'all' ? '' : bagtsText(x.bagts), tr('зөвхөн харна')].filter(Boolean).join(' · ');
   }

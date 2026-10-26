@@ -26,7 +26,7 @@ export type WfSource = {
    * `cap` — хуваарилалтгүй ШУУД олгосон эрх (хатуу super-ийн шууд олголт / өнчин эрх)
    */
   sys: 'flow' | ScopedSys | 'cap' | 'type';
-  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр; `type`-д — «Хуваарь харах» утга (`all`/`own`, 2026-10-26) */
+  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр; `type`-д — «Хуваарь харах» утга (`all`/`own`, 2026-10-26), эсвэл `zahiral` («Гүйцэтгэл»-ийг төрлөөр зөвхөн харна) */
   role: string;
   /** Багцууд — `null` = бүх багц; `cap`-д `null` (хязгааргүй) */
   bagts: string[] | null;
@@ -64,15 +64,15 @@ export function workflowRows(u: UserErh): WfRow[] {
       ...(u.flow.viewOnly ? { viewOnly: true } : {}),
     });
   }
+  /* ⚠️ 2026-10-26: «Ерөнхий захирал» төрөл «Гүйцэтгэл»-ийг томилгоогүйгээр ЗӨВХӨН ХАРНА (`permissions.workflowViewsOf`) —
+     эх сурвалжгүй бол карт «хаалттай · хуваарилалтгүй» гэж худал харуулж, татгалзах урсгалын хуудас руу заадаг байв */
+  if (u.viewRole && !u.flow) {
+    push('guitsetgel', { sys: 'type', role: 'zahiral', bagts: null, cap: null, granted: true, viewOnly: true });
+  }
   for (const sys of SCOPED_SYSTEMS) {
     const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;
     for (const l of u[sys]) {
       const cap = map[l.role];
-      /* ⚠️ 2026-10-26: «Хуваарийн эрх» → «Харагч» — эрхгүй үүрэг, «Хуваарь»-ыг тэр багцаар ЗӨВХӨН ХАРНА (`huvaariView`) */
-      if (!cap && sys === 'huvaari' && l.role === 'viewer') {
-        push('huvaari', { sys, role: l.role, bagts: l.bagts, cap: null, granted: true, viewOnly: true });
-        continue;
-      }
       if (!cap) continue;
       explained.add(cap);
       const granted = u.caps.includes(cap);
@@ -91,9 +91,11 @@ export function workflowRows(u: UserErh): WfRow[] {
 
   return WORKFLOW_VIEWS.map((view) => {
     const sources = by.get(view) ?? [];
-    /* ⚠️ 2026-10-26: «Хуваарь» — «Хуваарийн эрх»-ийн мөр (зохиогч · батлагч · харагч) эрх (`caps`) алга байсан ч тэр багцыг
+    /* ⚠️ 2026-10-26: «Хуваарь» — «Хуваарийн эрх»-ийн мөр (зохиогч · батлагч) эрх (`caps`) алга байсан ч тэр багцыг
        ЗӨВХӨН ХАРАХ-аар нээнэ (`huvaariView.huvaariViewScope` — `resolveAccess`-тэй ижил дүрэм); «эрх олгогдоогүй» тэмдэг хэвээр */
-    const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari');
+    /* ⚠️ 2026-10-26: танигдаагүй багц (`unknownBagts`) нь `huvaariViewScope`-д шүүгддэг тул ганцаараа нээхгүй */
+    const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari'
+      && (s.bagts === null || s.bagts.some((b) => !u.unknownBagts.includes(b))));
     return { view, sources, open: u.superUser || viaPlan || sources.some((s) => s.granted) };
   });
 }

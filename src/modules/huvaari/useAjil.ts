@@ -13,7 +13,7 @@ import type { PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import {
   AJIL_STATUS, loadApproved as loadAjilApproved, loadHead as loadAjilHead, loadHistory as loadAjilHistory,
   loadPayload as loadAjilPayload, loadPending as loadAjilPending, markRestored as markAjilRestored,
-  submitAjil, updateAjil, withdrawAjil, type AjilSubmission,
+  submitAjil, updateAjil, withdrawAjil, displayAjilReason, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 /* ⚠️ 2026-10-22 (аудит №3): эцэг бүлгийн хайлт — `sheetFrame.insertAdds`/`ajilApply` буулгалттай ЯГ НЭГ дүрэм */
 import { missingParents } from '@/lib/ajilApply';
@@ -224,7 +224,7 @@ export function useAjil({
         if (!live()) return;
         await markAjilRestored(h0.oid);
         if (!live()) return;
-        setAjBack({ oid: h0.oid, n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: h0.reason ?? '', at: h0.approverAt });
+        setAjBack({ oid: h0.oid, n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: displayAjilReason(h0.reason), at: h0.approverAt });
         backSet = true;
       }
       if (!live()) return;
@@ -237,7 +237,7 @@ export function useAjil({
       if (!backSet) {
         const last = hist.find((h0) => !authOn || h0.author === me);
         const show = !sub && last && last.status === AJIL_STATUS.restored && last.oid !== ajBackHidden(want);
-        setAjBack(show && last ? { oid: last.oid, n: last.rowCount, by: last.approver ?? '', reason: last.reason ?? '', at: last.approverAt } : null);
+        setAjBack(show && last ? { oid: last.oid, n: last.rowCount, by: last.approver ?? '', reason: displayAjilReason(last.reason), at: last.approverAt } : null);
       }
       /* ⚠️ Зөвхөн ДАГАЖ БУЙ илгээлтийг шийдсэн үед цэвэрлэнэ (2026-09-25 review):
          урьд нь `refreshAjil(null)` (илгээх · татах · effect) бүр `ajTrack`-ийг

@@ -157,6 +157,11 @@ export type UserErh = {
   unknownBagts: string[];
   /** ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» (`ErhSource.hvType`) — `null` = «Үгүй» */
   hvType: { scope: 'all' | 'own'; bagts: string[] | null } | null;
+  /**
+   * ⚠️ 2026-10-26: ЗӨВХӨН ХАРАХ ТӨРӨЛ («Ерөнхий захирал», `ErhSource.viewRoles`) — «Гүйцэтгэл»-ийг томилгоогүйгээр нээнэ
+   *    (`permissions.workflowViewsOf`). Карт үүнийг эх сурвалжаар харуулахгүй бол «хаалттай» гэж худал хэлдэг байв.
+   */
+  viewRole: boolean;
 };
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -218,6 +223,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
     unknownBagts,
     hvType: src.hvType?.[k] ?? null,
+    viewRole: (src.viewRoles ?? []).some((x) => norm(x) === k),
   };
 }
 

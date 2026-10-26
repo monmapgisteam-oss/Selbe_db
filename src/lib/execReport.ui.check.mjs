@@ -115,6 +115,9 @@ ok('§3 блокийн тоо — түвшний хүснэгтийн олонл
   assert.match(ER, /blocks: lvKeys\.size/);
   assert.ok(!/blocks: bld\.blocks/.test(ER), 'хуучин `bld.blocks` (полигон) буцав');
   assert.match(ER, /noData: lvNoData/, '«бөглөгдөөгүй» ч ТЭР олонлогоор');
+  /* ⚠️ 2026-10-26 (аудит): багц бүрийн блок ч ТЭР олонлогоор — мөрүүдийн нийлбэр = «Нийт» */
+  assert.match(ER, /blocks: lv \? lv\.size : blockCount\(p\)/, 'багцын блок — түвшний олонлогоос (полигон биш)');
+  assert.match(ER, /householdsMissing: lv \? householdsMissingOf\(lv, /, 'багцын «дутуу» өрх полигонгүй блокийг тоолно');
 });
 ok('толгой: «Төслийн гүйцэтгэл» өөрийн төлөвлөгөөтэй, «Төлөвлөсөн» хамралттай', () => {
   assert.match(UI, /x\.gdash\.progressPlan != null \? ` \(\$\{tr\('төлөвлөгөө \{0\}', pct\(x\.gdash\.progressPlan, 1\)\)\}\)`/);

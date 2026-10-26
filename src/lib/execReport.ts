@@ -315,7 +315,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
    * гарсаар байв. Мөнгө нь 0 тул нийлбэр хөндөгдөхгүй.
    */
   const shown = cf.filter((r) => !FIN_XL_ROW_HIDE.includes(r.sec));
-  const byType = chartTypeCost(shown, fillProg, catPct)
+  /* ⚠️ 2026-10-26 (аудит): гэрээлсэн дүн `geree_dun`-ээс (`contracts`) — §1-ийн KPI (`csum`)-тай нэг эх */
+  const byType = chartTypeCost(shown, fillProg, catPct, contracts)
     .map((b) => ({
       /* ⚠️ Эх үйлчилгээний БҮХ ТОМ ҮСЭГТ нэрийг уншигдахуйц болгоно
          (`sentenceCase` §тайлбар, 2026-09-17 хэрэглэгчийн заавар). */
@@ -435,6 +436,18 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     const v = bld.prog.get(key)?.overall;
     if (v == null || !Number.isFinite(v)) lvNoData += 1;
   });
+  /* ⚠️ 2026-10-26 (аудит): БАГЦ БҮРИЙН блокийн тоо ч ЭНЭ хуваариас (`lvKeys` — `pkgProgressOf`-ийн `total`, Тайлан §2-ийн
+     `joinBagts`-тэй нэг). Урьд нь `blockCount` (газрын зургийн полигон) тул хүснэгтийн мөрүүдийн нийлбэр 111, «Нийт» мөр
+     113 гарч, Багц 2-ыг 25 (Тайлан §2-д 26) гэж хэвлэдэг байв. Өрхийн тоо полигоноос хэвээр; «дутуу» нь полигонгүй
+     блокийг ч тоолно (`householdsMissingOf`, нийт мөрийн дүрэм). */
+  const lvByPkg = new Map<string, Set<string>>();
+  lvKeys.forEach((key) => {
+    const cut = key.indexOf('|');
+    const pk = cut < 0 ? key : key.slice(0, cut);
+    const s = lvByPkg.get(pk) ?? new Set<string>();
+    s.add(key);
+    lvByPkg.set(pk, s);
+  });
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
@@ -463,13 +476,18 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       actualLag: lagNow.actual, planExcluded: lagNow.excluded,
       planCoverage: lagNow.coverage,
       planFailed: plan.failed.length,
-      packs: packs.map((p) => ({
-        key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
-        households: p.households,
+      packs: packs.map((p) => {
+        const ub = uniqueBlocks(p.blocks);
         /* ⚠️ 2026-10-11 (аудит №7): давхардалгүй блокоор (`uniqueBlocks` — `blockCount`-тай нэг хуваарь) */
-        householdsMissing: uniqueBlocks(p.blocks).filter((b) => b.ailMissing).length,
-        progress: p.progress,
-      })),
+        const polyMissing = ub.filter((b) => b.ailMissing).length;
+        const lv = p.kind === 'build' ? lvByPkg.get(p.key) : undefined;
+        return {
+          key: p.key, name: p.name, kind: p.kind, blocks: lv ? lv.size : blockCount(p),
+          households: p.households,
+          householdsMissing: lv ? householdsMissingOf(lv, ub.map((b) => b.key), polyMissing) : polyMissing,
+          progress: p.progress,
+        };
+      }),
       levels: PROGRESS_LEVELS.map((l, i) => ({
         label: l.label, range: l.range, color: l.color,
         n: lvCounts[i],

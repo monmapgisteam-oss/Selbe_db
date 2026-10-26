@@ -39,11 +39,12 @@ import { roleForUser } from './services';
 export { ALL_BAGTS };
 
 /**
- * Хуваарийн үүргүүд.
- * ⚠️ 2026-10-26 (хэрэглэгч): `viewer` («Харагч») — тухайн багцын хуваарийг ЗӨВХӨН ХАРНА: эрх (`caps`) олгохгүй, засах/илгээх/
- *    батлах замд ОРОХГҮЙ (`huvaariScope(…, 'author'|'approver')`-оор шүүгддэг). «Хуваарь» харагдацыг `huvaariView.huvaariViewScope` нээнэ.
+ * Хуваарийн хоёр үүрэг.
+ * ⚠️ 2026-10-26 (хэрэглэгч: «Харагч хэрэггүй»): түр нэмэгдсэн `viewer` («Харагч») үүрэг ХАСАГДСАН. ArcGIS-ийн мөрөнд
+ *    `viewer` grant үлдсэн байвал `makeAcl` танигдахгүй үүрэг гэж ЧИМЭЭГҮЙ хаяна (эрх/хүрээ нээхгүй, анхааруулгагүй).
+ *    Хуваарь ХАРАХ хүрээ нь эрхийн төрлийн «Хуваарь харах» + зохиогч/батлагчийн багц (`huvaariView.huvaariViewScope`).
  */
-export type PlanRole = 'author' | 'approver' | 'viewer';
+export type PlanRole = 'author' | 'approver';
 
 /** Нэг аккаунтын хуваарийн хуваарилалт */
 export type HuvaariAssign = Assign<PlanRole>;
@@ -54,8 +55,6 @@ const acl = makeAcl<PlanRole>({
   /* ⚠️ ҮҮРЭГ → ЭРХ. `CAP_HOST_VIEW`-ээр хоёулаа «Хуваарь» харагдацыг нээнэ.
      ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25). */
   roleCaps: ROLE_CAPS.huvaari,
-  /* ⚠️ 2026-10-26: «Харагч» — эрхгүй үүрэг (`AclSpec.extraRoles`) */
-  extraRoles: ['viewer'],
   push: (user, roles, bagts, grants) => huvaariUpsert(user, roles, bagts, grants),
   remove: huvaariRemove,
   /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */

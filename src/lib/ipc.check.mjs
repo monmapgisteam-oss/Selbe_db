@@ -63,6 +63,10 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(t.paid, 60);
   assert.equal(t.contracts, 1);
   assert.equal(t.pays, 3);
+  /* ⚠️ 2026-10-26 (аудит): дүнгүй (AUTO) мөр төлбөрт ТООЛОГДОХГҮЙ — `ipcTable.payCount`-тай нэг дүрэм */
+  const withAuto = [...rows, pay(4, 'Багц-4.1', 'Багц-4.1', work, null, { [P.id]: 'AUTO|Багц-4.1|2026-10-01' })];
+  assert.equal(hoTotals(withAuto).pays, 3, 'дүнгүй AUTO мөр төлбөр биш');
+  assert.equal(hoTotals([pay(5, 'Багц-4.1', 'Багц-4.1', work, null)]).pays, 0, 'зөвхөн дүнгүй мөр → 0 төлбөр');
 }
 
 /* ══ 2. ДИАПАЗОН МӨР — багцад ОГТ наалдахгүй ══ */

@@ -318,8 +318,7 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
     setGrants: (u, g) => setHuvaariGrants(u, g as Grant<PlanRole>[]),
     removeNoRevoke: (u) => removeHuvaariAssign(u, false),
     retry: (u, g) => retryHuvaariAssign(u, g),
-    /* ⚠️ 2026-10-26: + «Харагч» (`viewer`) — эрхгүй үүрэг (`huvaariAcl.PlanRole`) */
-    roleCaps: ROLE_CAPS.huvaari, roles: [...Object.keys(ROLE_CAPS.huvaari), 'viewer'], universe: () => PKG_GROUPS,
+    roleCaps: ROLE_CAPS.huvaari, roles: Object.keys(ROLE_CAPS.huvaari), universe: () => PKG_GROUPS,
   },
   obyem: {
     list: listObyemAssigns, failedUsers: obyemFailedUsers, ready: obyemAclReady,
@@ -389,7 +388,11 @@ export function liveErhSource(): ErhSource {
   for (const u of users) {
     const t = typeHuvaariScope(roleOf(u));
     if (t === 'all') hvType[u.toLowerCase()] = { scope: 'all', bagts: null };
-    else if (t === 'own') hvType[u.toLowerCase()] = { scope: 'own', bagts: ownPkgScope(u) };
+    else if (t === 'own') {
+      /* ⚠️ 2026-10-26: `huvaariViewScope`-тэй адил ЗӨВХӨН `PKG_GROUPS` — танигдаагүй багц карт дээр «нээлттэй» гэж худал харуулна */
+      const s = ownPkgScope(u);
+      hvType[u.toLowerCase()] = { scope: 'own', bagts: s === null ? null : PKG_GROUPS.filter((g) => s.includes(g)) };
+    }
   }
   return {
     users,

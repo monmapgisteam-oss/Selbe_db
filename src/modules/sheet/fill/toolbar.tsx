@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { PKGS, pkgFloors, type Pkg } from "../bagts.pkg";
 import { date as fmtDate, dateLocale, num, pct } from "@/lib/format";
 import { REASON_MAX } from "@/lib/huvaariBatlah";
+import { displayObyemReason } from "@/lib/obyemBatlah";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { askConfirm } from "@/lib/confirm";
 import { LOCAL_DRAFT_TTL_MS } from "./draft";
@@ -356,7 +357,8 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
               num(pvReturned.cellCount),
               /* ⚠️ 2026-10-06 аудит: `'mn-MN'` хатуу байсан — англи горимд ч монгол огноо гардаг байв */
               [pvReturned.approver ?? '', pvReturned.approverAt ? fmtDate(pvReturned.approverAt) : ''].filter(Boolean).join(' · ') || '—',
-              pvReturned.reason ?? '—')}
+              /* ⚠️ 2026-10-26: системийн эх текстийг идэвхтэй хэлээр (`displayObyemReason`) */
+              displayObyemReason(pvReturned.reason) || '—')}
           </span>
         )}
         {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════
@@ -517,8 +519,10 @@ function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
 }
 
 /** Багцын бодит гүйцэтгэл — батлагдсан · батлагдаагүй · нөгөө хувилбар */
-export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false }: {
+export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAll: pkgAllLive }: {
   pkgPct: RowsT['pkgPct']; pkg: Pkg; otherPct: RowsT['otherPct']; otherPending?: boolean;
+  /** ⚠️ 2026-10-26: олон хувилбартай багцын `pkgProgressOf` (`usePkgPct.pkgAll`) — `undefined` = ганц хуудастай багц */
+  pkgAll?: number | null;
 }) {
   if (pkgPct?.saved == null) return null;
   /*
@@ -537,11 +541,10 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false }: {
     if (otherPct && otherPct.floors != null) variants.push({ key: 'other', floors: otherPct.floors, pct: otherPct.pct, blocks: otherPct.blocks, total: otherPct.total, mine: false });
     variants.sort((x, y) => y.floors - x.floors);
   }
-  const allBlocks = variants.reduce((n, v) => n + v.total, 0);
-  const pkgAll = variants.length > 1 && allBlocks > 0
-    ? variants.reduce((n, v) => n + v.pct * v.total, 0) / allBlocks
-    /* ⚠️ 2026-10-23: нөгөө хувилбарын тоо ирээгүй (ачаалж буй · унасан) бол «—» — энэ хуудасны дундажийг багцынх гэж харуулахгүй */
-    : otherPending ? null : pkgPct.saved;
+  /* ⚠️ 2026-10-26 (аудит): олон хувилбартай багц — «Багцын гүйцэтгэл» дэлгэцийн `pkgProgressOf` (хайрцгуудыг блокийн тоогоор
+     жигнэвэл Багц 4-2-ийн давхардсан 6/x шошго хоёр хуудсанд хуваагдаж зөрдөг байв); ирээгүй бол «—».
+     ⚠️ 2026-10-23: нөгөө хувилбарын тоо ирээгүй (ачаалж буй · унасан) бол «—» — энэ хуудасны дундажийг багцынх гэж харуулахгүй */
+  const pkgAll = pkgAllLive !== undefined ? pkgAllLive : otherPending ? null : pkgPct.saved;
   return (
     <>
       {variants.length > 1 && variants.map((v) => (

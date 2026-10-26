@@ -183,12 +183,7 @@ export type AclSpec<R extends string> = {
    * ҮҮРЭГ → ЭРХ. Хоосон объект = үүрэггүй систем (Чанар), тэр үед
    * `capsFor` нь ганц эрхийг заана.
    */
-  roleCaps: Readonly<Partial<Record<R, CapKey>>>;
-  /**
-   * ⚠️ 2026-10-26: ЭРХГҮЙ ҮҮРГҮҮД — хуваарилалтад танигдана (`ROLES`), гэвч эрх (`caps`) олгохгүй/буцаахгүй
-   *    (Хуваарийн «Харагч» — зөвхөн харах хүрээ, `huvaariView.ts`). `syncCaps`-ийн «үүрэг үлдээгүй» шалгалтад тоологдохгүй.
-   */
-  extraRoles?: readonly R[];
+  roleCaps: Readonly<Record<R, CapKey>>;
   /**
    * ҮҮРЭГГҮЙ системийн ганц эрх (Чанар). Үүрэгтэй системд `undefined`.
    * ⚠️ Хуваарилалт байвал олгоно, арилвал буцаана.
@@ -257,8 +252,7 @@ export type Acl<R extends string> = {
 };
 
 export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
-  /* ⚠️ 2026-10-26: + эрхгүй үүргүүд (`extraRoles`) */
-  const ROLES = new Set<string>([...Object.keys(spec.roleCaps), ...(spec.extraRoles ?? [])]);
+  const ROLES = new Set<string>(Object.keys(spec.roleCaps));
   const hasRoles = ROLES.size > 0;
 
   /** Танигдахгүй үүргийг хаяна — эвдэрсэн мөр эрх нээхгүй */
@@ -453,9 +447,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       const next = new Set(cur);
 
       if (hasRoles) {
-        /* ⚠️ 2026-10-26: эрхгүй үүрэг («Харагч») «үүрэг үлдсэн» гэж тоологдохгүй — эс бөгөөс зохиогчийг хасаад харагч
-           үлдээхэд `plan` эрх өнчирч үлдэнэ */
-        const none = !roles.some((r) => spec.roleCaps[r] != null);
+        const none = roles.length === 0;
         for (const [role, cap] of Object.entries(spec.roleCaps) as [R, CapKey][]) {
           if (roles.includes(role)) next.add(cap);
           else if (none) next.delete(cap);
