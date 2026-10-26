@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { clockOffsetOf, clockOffsetOk, MAX_CLOCK_OFF, serverNow } from '@/lib/serverClock.ts';
+import { clockOffsetOf, clockOffsetOk, MAX_CLOCK_OFF, serverNow, largeOffsetConfirmed } from '@/lib/serverClock.ts';
 
 /* ── Томьёо: сервер − хүсэлтийн хоёр үзүүрийн дундаж ── */
 assert.equal(clockOffsetOf(1000, 0, 200), 900);
@@ -27,6 +27,16 @@ assert.ok(!clockOffsetOk(8 * 3600_000), 'цагийн бүсийн зөрүү (8
 assert.ok(!clockOffsetOk(Number.NaN));
 assert.ok(!clockOffsetOk(Number.POSITIVE_INFINITY));
 
+/* ── 2026-10-26 (аудит): том зөрүү (7.4 ц түрүүлсэн компьютер) — хоёр богино, тохирох хэмжилтээр л ── */
+{
+  const h = -7.4 * 3600_000;
+  assert.ok(largeOffsetConfirmed(h, 150, h + 900, 200), 'хоёр хэмжилт ≤5 с таарвал авна');
+  assert.ok(!largeOffsetConfirmed(h, 150, h + 9_000, 200), '9 с зөрүүтэй бол авахгүй');
+  assert.ok(!largeOffsetConfirmed(h, 3_000, h, 200), 'урт RTT-тэй хэмжилтийг авахгүй');
+  assert.ok(!largeOffsetConfirmed(h, 150, Number.NaN, 200), 'хоёр дахь хэмжилт алга');
+  assert.ok(!largeOffsetConfirmed(13 * 3600_000, 100, 13 * 3600_000, 100), '±12 ц-ээс гадуур');
+}
+
 /* ── Синк хийгдээгүй (Node) — `serverNow` = `Date.now()` ── */
 {
   const a = Date.now();
@@ -43,7 +53,8 @@ assert.ok(!clockOffsetOk(Number.POSITIVE_INFINITY));
   assert.ok(/if \(!ent\) \{\s*try \{[\s\S]*?onStatisticField: 'CURRENT_TIMESTAMP'/.test(meas), 'measureServerTime: Enterprise-д outStatistics замыг алгасахгүй');
   assert.ok(/returnCountOnly: 'true'/.test(meas), 'measureServerTime: хоёртын хайлт алга');
   const sync = src.slice(src.indexOf('export async function syncServerClock('));
-  assert.ok(/const off = clockOffsetOf\(m\.srv, m\.t0, m\.t1\);\s*(\/\*[\s\S]*?\*\/\s*)?if \(!clockOffsetOk\(off\)\) \{ warnClockOff\(off\); clockAt = m\.t1; return; \}/.test(sync), 'serverClock.syncServerClock: 15 мин хязгаар алга');
+  /* ⚠️ 2026-10-26: 15 мин-ээс их зөрүү ЗӨВХӨН хоёр дахь хэмжилтээр батлагдвал (`largeOffsetConfirmed`) */
+  assert.ok(/let off = clockOffsetOf\(m\.srv, m\.t0, m\.t1\);[\s\S]*?if \(!clockOffsetOk\(off\)\) \{[\s\S]*?largeOffsetConfirmed\(off, m\.t1 - m\.t0, off2, m2\.t1 - m2\.t0\)\) \{ warnClockOff\(off\); clockAt = m\.t1; return; \}/.test(sync), 'serverClock.syncServerClock: 15 мин хязгаар/батлалт алга');
   const hb = readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
   /* ⚠️ 2026-10-26 (A3): huvaariBatlah өөрийн зөрүүгүй — serverClock-ийн НЭГ төлөвийг (15 мин хязгаартай) хэрэглэнэ */
   const hsync = hb.slice(hb.indexOf('export async function syncServerClock('));

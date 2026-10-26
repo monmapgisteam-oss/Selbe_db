@@ -5,7 +5,7 @@ import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync'
 import Polyline from '@arcgis/core/geometry/Polyline';
 import * as projectOperator from '@arcgis/core/geometry/operators/projectOperator';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
-import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneType } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneCanon, zoneType } from '@/lib/services';
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
 import { queryPageSafe } from '@/lib/planOverlap';
 import { register } from '@/lib/dataBus';
@@ -65,7 +65,7 @@ const KHIL_ID = 'khil1';
 const RD_ZONE = 'rd:2';
 
 type Geom = __esri.GeometryUnion;
-type Feat = { geom: Geom; zone: string | null; layer: string; oid: number };
+type Feat = { geom: Geom; zone: string | null; layer: string; oid: number; code?: string };
 
 /** Applied as real FeatureLayerView filters on each side of the comparison. */
 export type ChangeFilter = { ids: string[]; where?: string; geometry?: Geom };
@@ -135,7 +135,7 @@ export function compareChangeQuantity(r: Pick<ChangeRow, 'old' | 'nextCmp' | 'ol
   return { delta, percent: r.old > 0 ? delta / r.old * 100 : null, status: r.oldComplete && r.nextComplete ? 'complete' : 'partial' };
 }
 
-async function fetchFeats(id: string, zoneField: string | null): Promise<Feat[]> {
+async function fetchFeats(id: string, zoneField: string | null, codeField: string | null = null): Promise<Feat[]> {
   const def = LAYER_BY_ID[id];
   if (!def) throw new Error(`«${id}» давхарга бүртгэлгүй`);
   const u = layerUrl(def);
@@ -143,7 +143,7 @@ async function fetchFeats(id: string, zoneField: string | null): Promise<Feat[]>
   for (let start = 0; ; ) {
     const q = new Query({
       where: def.where ?? '1=1',
-      outFields: zoneField ? [oidOf(def), zoneField] : [oidOf(def)],
+      outFields: [oidOf(def), ...(zoneField ? [zoneField] : []), ...(codeField ? [codeField] : [])],
       returnGeometry: true,
       outSpatialReference: { wkid: WKID },
       orderByFields: [`${oidOf(def)} ASC`],
@@ -156,13 +156,31 @@ async function fetchFeats(id: string, zoneField: string | null): Promise<Feat[]>
     for (const f of res.features) {
       if (!f.geometry) continue;
       const z = zoneField ? f.attributes?.[zoneField] : null;
-      out.push({ geom: f.geometry as Geom, zone: typeof z === 'string' && z.trim() ? z.trim() : null, layer: id, oid: Number(f.attributes?.[oidOf(def)]) });
+      out.push({
+        geom: f.geometry as Geom, zone: typeof z === 'string' && z.trim() ? z.trim() : null, layer: id, oid: Number(f.attributes?.[oidOf(def)]),
+        ...(codeField ? { code: zoneCanon(f.attributes?.[codeField]) } : {}),
+      });
     }
     if (!res.features.length) break;
     if (res.features.length < 2000 && !res.exceededTransferLimit) break;
     start += res.features.length;
   }
   return out;
+}
+
+/**
+ * Хуучин ЕТ-ийн бүсийг КАНОНИК кодоор давхардалгүй (oid ASC — эхнийх үлдэнэ; кодгүй мөр тус бүр).
+ * ⚠️ 2026-10-26 (аудит): `selbe_ET/100`-д X-13 хоёр мөртэй (objectid 12 ба 47) — 01-ийн «бүсийн тоо» 58 гэж тоологддог байв
+ *    (анализ, бүсийн шүүлт 57). objectid 12 (нүхтэй) үлдэнэ — `analysis/data.dedupeZoneFeats`-ийн сонголттой нэг.
+ */
+export function dedupeZoneCodes<T extends { code?: string }>(fs: T[]): T[] {
+  const seen = new Set<string>();
+  return fs.filter((f) => {
+    if (!f.code) return true;
+    if (seen.has(f.code)) return false;
+    seen.add(f.code);
+    return true;
+  });
 }
 
 export const measureChangeGeometry = (g: Geom, m: Metric): number => {
@@ -296,14 +314,14 @@ export function computeChange(): Promise<ChangeResult> {
   const work = (async (): Promise<ChangeResult> => {
     const failed: string[] = [];
     const failedIds = new Set<string>();
-    const load = (id: string, zoneField: string | null = null) => fetchFeats(id, zoneField).catch((e) => {
+    const load = (id: string, zoneField: string | null = null, codeField: string | null = null) => fetchFeats(id, zoneField, codeField).catch((e) => {
       console.warn(`[selbe] хэсэгчилсэн ЕТ: «${id}» татагдсангүй:`, e);
       failed.push(LAYER_BY_ID[id]?.title ?? id);
       failedIds.add(id);
       return [] as Feat[];
     });
     const [zones, oldZonesAll, khilF] = await Promise.all([
-      load(RD_ZONE, ZONE_FIELD), load(ZONE_LAYER.id, ZONE_FIELDS.type), load(KHIL_ID),
+      load(RD_ZONE, ZONE_FIELD), load(ZONE_LAYER.id, ZONE_FIELDS.type, ZONE_FIELDS.id).then(dedupeZoneCodes), load(KHIL_ID),
     ]);
     /* ⚠️ 2026-10-19 (аудит): ТӨСЛИЙН ХҮРЭЭ — шинэ бүс + «Сэлбэ 1 хил»; хуучин талаас түүнээс хол объектыг хасна (`strayFree`) */
     const aoi = changeBoxUnion([...zones, ...khilF].map((f) => f.geom.extent));

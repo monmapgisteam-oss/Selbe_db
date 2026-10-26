@@ -111,15 +111,17 @@ export function HseActionPanel({ pkgs, onPkg, now, tick }: {
       .map(([key, v]) => ({ key, label: v.label, value: v.open, display: `${num(v.open)} / ${num(v.total)}` }))
       .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'mn'));
     const bySec = new Map<string, { open: number; total: number }>();
+    /* ⚠️ 2026-10-26 (аудит): хэсэггүй мөр (амьд 30 хоногт 90-ийн 23) ЧИМЭЭГҮЙ хаягдаж төлөвийн донаттай (90) тоо таардаггүй байв
+       (файлын ⚠️ «чимээгүй хаягдахгүй») — «Хэсэг заагаагүй» тусдаа баар (түлхүүр `''`). */
     for (const r of rows) {
-      if (!r.section) continue;
-      const cur = bySec.get(r.section) ?? { open: 0, total: 0 };
+      const sec = r.section || '';
+      const cur = bySec.get(sec) ?? { open: 0, total: 0 };
       cur.total += 1;
       if (r.status != null && r.status !== DONE) cur.open += 1;
-      bySec.set(r.section, cur);
+      bySec.set(sec, cur);
     }
     const secBars = [...bySec.entries()]
-      .map(([key, v]) => ({ key, label: key, value: v.total, display: `${num(v.total)} · ${tr('{0} нээлттэй', num(v.open))}` }))
+      .map(([key, v]) => ({ key: key || '__none__', label: key || tr('Хэсэг заагаагүй'), value: v.total, display: `${num(v.total)} · ${tr('{0} нээлттэй', num(v.open))}` }))
       .sort((a, b) => b.value - a.value);
     return { known: known.length, done, status, pkgBars, secBars };
   }, [st, pkgs, now]);

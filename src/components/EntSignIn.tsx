@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entSession, entSignIn, entSignOut, subscribeEnt } from '@/lib/entDocs';
+import { ENT_PORTAL, entIsShared, entSession, entSignIn, entSignOut, subscribeEnt } from '@/lib/entDocs';
 import { userError } from './ui';
 import s from './entSignIn.module.css';
 
@@ -32,7 +32,9 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
     return (
       <div className={`${s.row} ${compact ? s.compact : ''}`}>
         <span className={s.user}>{sess.user}</span>
-        <button type="button" className={s.link} onClick={() => { entSignOut(); onSignedOut?.(); }}>{tr('Гарах')}</button>
+        {/* ⚠️ 2026-10-26 (аудит): нэг порталын горимд сешн нь үндсэн нэвтрэлтийнх — «Гарах» юу ч хийдэггүй, харин
+            `onSignedOut` жагсаалтыг хоослож Enterprise PDF-үүдийг нуудаг байв. Гарах нь толгойн хэрэглэгчийн цэснээс. */}
+        {!entIsShared() && <button type="button" className={s.link} onClick={() => { entSignOut(); onSignedOut?.(); }}>{tr('Гарах')}</button>}
       </div>
     );
   }

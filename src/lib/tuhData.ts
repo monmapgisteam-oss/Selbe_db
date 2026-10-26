@@ -283,8 +283,16 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
  *    явцыг (амьдаар «БАГЦ 1-4» ТЭЗҮ мөрд 39.27 = барилгын хувь) эсвэл хоосон байдаг тул
  *    зураг төсөл бүгд «Эхлээгүй» эсвэл буруу хувьтай харагддаг байв.
  */
+/* ⚠️ 2026-10-26 (аудит): 2026-10-13-аас блокгүй багцын (5.x · 6.x · 7.1 · 10) 01-ийн батлагдсан гүйцэтгэл `fill`-д бий
+   (хэрэглэгчийн дүрэм: бүх гүйцэтгэл 01-ээс) — урьд нь зөвхөн орон сууцанд уншиж, дэд бүтцийн багцад Cashflow-ийн гар утга
+   авдаг тул нэг багц гурван дэлгэцэд өөр тоо (БАГЦ51 ТУХ 0% ↔ 36.27%) байв. Зураг төслөөс бусад бүлэгт 01-ийн утга
+   байвал ТҮҮНИЙГ, байхгүй бол Cashflow-ийн жигнэсэн дундаж руу унана. */
 export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null): number | null {
   if (p.group === 'housing') return fill?.get(p.pkgKey) ?? null;
+  if (p.group !== 'design' && p.pkgKey) {
+    const f = fill?.get(p.pkgKey);
+    if (f != null) return f;
+  }
   let top = 0;
   let base = 0;
   let plain: number | null = null;

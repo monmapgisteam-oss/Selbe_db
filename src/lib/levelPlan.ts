@@ -659,7 +659,11 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     if (son) {
       const v = res.values.get(son);
       const at = mk(son)?.tender ?? mk(pk.node)?.tender ?? v?.I ?? null;
-      rows.push({ t: 'ms', id: next(), name: tr('Сонгон шалгаруулалт (гэрээ байгуулсан)'), depth: 1, at, status: milestoneStatus(at, doneOf(v?.S), today) });
+      /* ⚠️ 2026-10-26 (аудит): milestone уншигдаагүй (`marks` = null) ба огноо алга бол «мэдээлэл байхгүй» — Захирамжийн дүрэм */
+      rows.push({
+        t: 'ms', id: next(), name: tr('Сонгон шалгаруулалт (гэрээ байгуулсан)'), depth: 1, at,
+        status: marks == null && at == null ? 'none' : milestoneStatus(at, doneOf(v?.S), today),
+      });
     }
     const zov = idx.get('zovshoorol')?.get(pk.key);
     if (zov) {
@@ -672,7 +676,11 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true }));
     rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: cv?.I ?? null, status: milestoneStatus(cv?.I ?? null, built, today) });
     const ho = mk(pk.node)?.handover ?? null;
-    rows.push({ t: 'ms', id: next(), name: tr('Ашиглалтад оруулах'), depth: 1, at: ho, status: milestoneStatus(ho, built, today) });
+    /* ⚠️ 2026-10-26 (аудит): уншилтын алдааг улаан «Огноо алга» гэж худал хэлэхгүй (дээрх Захирамжийн дүрэм) */
+    rows.push({
+      t: 'ms', id: next(), name: tr('Ашиглалтад оруулах'), depth: 1, at: ho,
+      status: marks == null && ho == null ? 'none' : milestoneStatus(ho, built, today),
+    });
   });
   return rows;
 }

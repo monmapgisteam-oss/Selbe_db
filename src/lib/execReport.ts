@@ -658,7 +658,7 @@ export function execFindings(x: ExecReport): ExecFinding[] {
       sev: 'warn',
       area: A_LAND,
       text: top
-        ? tr('Газар чөлөөлөлт {0}, {1} нэгж талбар чөлөөлөгдөөгүй. Гол шалтгаан «{2}» ({3} талбар).', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining), top.label, num(top.n))
+        ? tr('Газар чөлөөлөлт {0}, {1} нэгж талбар чөлөөлөгдөөгүй. Гол шалтгаан «{2}» ({3} талбар).', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining), tr(top.label), num(top.n))
         : tr('Газар чөлөөлөлт {0}, {1} нэгж талбар чөлөөлөгдөөгүй.', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining)),
       advice: tr('Үлдсэн талбаруудад зориулсан хэлэлцээрийн баг байгуулж, гол шалтгаан тус бүрээр шийдвэрлэх хугацаатай зорилт тавих.'),
     });
@@ -781,7 +781,8 @@ export function execAppendix(x: ExecReport, findings: readonly ExecFinding[]): E
     out.push({
       no: out.length + 1, kind: 'finZero',
       title: tr('Олголт эхлээгүй {0} гэрээт багц', num(zero.length)),
-      items: zero.map((r) => `${r.label} · ${num(r.plan)} ₮`),
+      /* ⚠️ 2026-10-26 (аудит): гэрээт атлаа `geree_dun` хоосон (БАГЦ-5.3 · 5.4) → «0 ₮» биш (null ≠ 0) — §4 хүснэгттэй ижил `plan > 0` дүрэм */
+      items: zero.map((r) => `${r.label} · ${r.plan > 0 ? `${num(r.plan)} ₮` : tr('гэрээний дүн бөглөгдөөгүй')}`),
     });
   }
   if (none.length) {
@@ -886,7 +887,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);
   for (const r of x.fin.rows) {
     L.push(r.contracted
-      ? `- ${cl(r.label)}: гэрээлсэн ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`
+      ? `- ${cl(r.label)}: гэрээлсэн ${r.plan > 0 ? `${num(r.plan)} ₮` : 'мэдээлэлгүй (гэрээний дүн бөглөгдөөгүй)'}, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`
       : `- ${cl(r.label)}: ГЭРЭЭ БАЙГУУЛААГҮЙ (төсөв ${num(r.budget)} ₮), олгосон ${num(r.given)} ₮`);
   }
   L.push(`## Зөвшөөрөл`);

@@ -91,6 +91,8 @@ function trimHistory(h: ApiMessage[]): void {
  * ⚠️ Агентын ЧАДВАРЫГ төлөөлүүлж сонгосон: нэгтгэл, ангиллын задаргаа, бүсийн
  * бүрэн тойм, санхүү — дөрөв нь дөрвөн өөр зам ажиллуулна.
  */
+/** `STARTERS` дахь санхүүгийн жишээний индекс — эрхээр шүүнэ */
+const FIN_STARTER = 3;
 const STARTERS = perLocale(() => [
   tr('Төсөлд нийт хэдэн барилга байгаа вэ?'),
   tr('Багц 1 мэдээллийг дэлгэрэнгүй харуулаач'),
@@ -430,7 +432,9 @@ export function AgentChat({
             Хэрэглэгч уншихаас илүү дарж эхэлдэг. */}
         {!log.length && (
           <div className={s.chips}>
-            {STARTERS().map((q) => (
+            {/* ⚠️ 2026-10-26 (аудит): санхүүгийн жишээ («…гэрээний дүн») ЗӨВХӨН санхүүгийн эрхтэй (`ds:cashflow2` = `pkgFin`) хүнд —
+                эрхгүй хүн дарахад «эрх алга» мухардалд хүрдэг байв */}
+            {STARTERS().filter((_q, i) => i !== FIN_STARTER || scope === 'all' || scope.includes('pkgFin')).map((q) => (
               <button key={q} type="button" className={s.chip} onClick={() => void send(q)} disabled={offline || busy}>
                 {q}
               </button>

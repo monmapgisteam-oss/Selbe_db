@@ -106,6 +106,11 @@ ok('гүйцэтгэл дүнгээр жигнэнэ, хоосон мөр жин
   const e = pk.find((p) => p.pkgKey === 'БАГЦ61');
   assert.equal(progressOf(e, null), 20);
 });
+ok('2026-10-26: дэд бүтцийн багц — 01-ийн гүйцэтгэл байвал ТҮҮНИЙГ, эс бөгөөс Cashflow', () => {
+  const e = pk.find((p) => p.pkgKey === 'БАГЦ61');
+  assert.equal(progressOf(e, new Map([['БАГЦ61', 0.84]])), 0.84, '01-ийн батлагдсан гүйцэтгэл давамгайлна');
+  assert.equal(progressOf(e, new Map()), 20, '01-д байхгүй бол Cashflow-ийн жигнэсэн дундаж');
+});
 ok('орон сууц — бөглөх хуудасны гүйцэтгэл; байхгүй бол null', () => {
   const h = pk.find((p) => p.key === 'БАГЦ1');
   assert.equal(progressOf(h, new Map([['БАГЦ1', 26.85]])), 26.85);

@@ -66,6 +66,12 @@ export type UserRowProps = {
   onGoFlow: () => void;
   /** ⚠️ 2026-10-21: ӨӨРИЙН super мөр — үүрэг сонгогч · устгах · «Төрлөөр тохируулах» түгжээтэй (өөр super өөрчилнө) */
   superUser: boolean;
+  /**
+   * ⚠️ 2026-10-26 (аудит): ХАРАГДАЦЫН унтраалгын түгжээ — АЛЬ Ч super мөр (хүснэгтийн super ч). `flipView`/`setAllViews` super-т
+   *    чимээгүй return хийдэг тул өөр super-ийн унтраалга дарагддаг мэт харагдах ч юу ч хийдэггүй байв. Үүрэг/устгалын түгжээ
+   *    `superUser`-ээр хэвээр (өөр super-ийг доошлуулах боломжтой).
+   */
+  viewsLocked?: boolean;
   /** Хэрэглэгчийн карт нээх */
   onOpenCard: () => void;
 };
@@ -78,7 +84,7 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   hasView: p.hasView,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
-  superUser: p.superUser,
+  superUser: p.superUser || !!p.viewsLocked,
 });
 
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */

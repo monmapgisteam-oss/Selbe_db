@@ -13,9 +13,10 @@ import { queryGroup, queryGroupEx, count, sum, groups, groupWhere, sqlStr, type 
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
-  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY, facetName,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
+import { zoneLabel } from '@/lib/zoneLabel';
 import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, useLazyTotals, type Totals } from '@/lib/totals';
 import { POPULATION_FIELD } from '@/lib/live';
 import { num, text, shade } from '@/lib/format';
@@ -843,7 +844,7 @@ function LayerTypeCharts({
       .filter((x) => x.values.q > 0)
       .map((x) => ({
         key: `${d.id}:q:${x.label}`,
-        label: x.label,
+        label: nameOf(x.label),
         value: d.qty!.unit === 'м²' ? x.values.q / 10_000 : d.qty!.unit === 'км' ? x.values.q : x.values.q / 1_000,
         display: qtyText(d, x.values.q) ?? '',
         color: colorOf(x.label),
@@ -1114,7 +1115,8 @@ function LayerDashboard({
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
                 const items = f.items.map((item) => ({
                   key: `${f.label}:${item.label}`,
-                  label: item.label,
+                  /* ⚠️ 2026-10-26 (аудит): харагдах нэр (`facetName`) — түлхүүр · өнгө · шүүлт түүхий утгаараа */
+                  label: facetName(d, f.field, item.label),
                   value: item.values.n,
                   // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс 1.8 км,
                   //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
@@ -1297,8 +1299,9 @@ function PickedZone({
   return (
     <Section title={tr('Сонгосон бүс')}>
       <div className={s.zoneHead} style={{ '--tone': ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE } as CSSProperties}>
-        <span className={s.zoneHeadId}>{id}</span>
-        <span className={s.zoneHeadType}>{type}</span>
+        {/* ⚠️ 2026-10-26 (аудит): англи горимд «Багц-3.1», «Олон нийтийн бүс» монголоор үлддэг байв — ZoneFilter-тэй нэг нэр */}
+        <span className={s.zoneHeadId}>{zoneLabel(id)}</span>
+        <span className={s.zoneHeadType}>{tr(type)}</span>
       </div>
 
       <Stats cols={3}>
@@ -1310,7 +1313,12 @@ function PickedZone({
       <div style={{ marginTop: 10 }}>
         <Rows
           items={[
-            { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
+            /* ⚠️ 2026-10-26 (аудит): BCR нь 0–1 бутархай (амьд 0.39987) — «Тохиромжтой байдал» хувиар (40%) харуулдаг тул нэг бүс
+               хоёр хэмжээстэй уншигддаг байв. `analysis/data.bcrToPct`-ийн дүрэм (≤1.5 бол ×100); 0 нь «—» (анализтай ижил). */
+            { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {(() => {
+              const b = n(F.bcr);
+              return b == null || b === 0 ? '—' : `${num(b <= 1.5 ? b * 100 : b, 0)}%`;
+            })()}</span> },
             // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
             //    ил + далдаас угсарна.
             /* ⚠️ 2026-09-30: ил ба далд ХОЁУЛАА хоосон бол «—» — урьд нь «… / 0» гэж хэмжилт мэт гардаг байв */
@@ -1480,7 +1488,7 @@ function PickedFeature({
                 onClick={() => apply(f.field, f.value)}
               >
                 <span className={s.filterKey}>{f.label}</span>
-                <span className={s.filterVal}>{text(f.value)}</span>
+                <span className={s.filterVal}>{facetName(def, f.field, text(f.value))}</span>
               </button>
             );
           })}

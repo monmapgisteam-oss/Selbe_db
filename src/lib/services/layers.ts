@@ -1060,6 +1060,9 @@ export const LAYERS: LayerDef[] = [
     get title() { return tr('Авто зам'); },
     topic: "plan",
     geom: "line",
+    /* ⚠️ 2026-10-26 (аудит): qty-гүй тул «Ерөнхий төлөвлөгөө» картын «Нийт замын урт» мөр ХЭЗЭЭ Ч гардаггүй байв.
+       selbe_ET/102 нь UTM 32648 (метр) — амьдаар 205 хэрчим ≈ 80.0 км. */
+    qty: { field: "SHAPE__Length", unit: 'м' },
     hue: "#ffffff",
     width: 1.56,
     dash: "solid",

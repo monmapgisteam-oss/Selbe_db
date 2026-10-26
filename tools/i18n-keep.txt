@@ -225,7 +225,29 @@
 @dyn modules/sheet/fill/toolbar.tsx  tr(g)
 
 # [data] бүсийн нэр (zoneCanon) — «Багц-1…4.2» enData.ts, бусад нь латин код (D-8.1 …) (2026-10-04)
-@dyn components/ZoneFilter.tsx  tr(z)
+# ⚠️ 2026-10-26: `ZoneFilter.zoneLabel` → `lib/zoneLabel.ts` (анализын модулиуд MapCanvas-гүй импортлоно)
+@dyn lib/zoneLabel.ts  tr(z)
+
+# ⚠️ 2026-10-26 (audit4full) — өгөгдлийн/тогтмолын утгыг харуулахдаа орчуулна (түлхүүр/WHERE түүхий хэвээр)
+# [data] ажлын төрлийн нэр (gdash.byType · sentenceCase) — en.ts-д («Орон сууцны хороолол» …); толинд байхгүй бол эх нэрээр
+@dyn lib/execInfographic.ts  tr(t.label)
+@dyn lib/execPdf.ts  tr(topType.label)
+@dyn lib/execPdf.ts  tr(t.label)
+@dyn modules/ExecReport.tsx  tr(t.label)
+# [data] газар чөлөөлөлтийн шалтгаан/төлөв — PARCEL_STATUS (enData) / шалтгааны түүхий утга
+@dyn lib/execReport.ts  tr(top.label)
+@dyn modules/GazarEdit.tsx  tr(s)
+@dyn lib/zovshoorol.ts  tr(d.tolov)
+# [const] давхаргын ангиллын нэр (`f.canon` → zoneType · `paint.labels`) — LayerCatalog.nameOf-той нэг (en.ts)
+@dyn lib/services/layerDef.ts  tr(name)
+# [data] бүсийн каноник төрөл (zoneType) — en.ts
+@dyn modules/ViewPanel.tsx  tr(type)
+# [const] PKGS.group / PKGS.name («Багц 1 · 9 давхар») ба Cashflow-ийн багц нэр («Багц 1») — en.ts/enData.ts; байхгүй бол эх
+@dyn modules/BagtsHamaaral.tsx  tr(p.group)
+@dyn modules/Guitsetgel.tsx  tr(rest.slice(i + 3))
+@dyn modules/Guitsetgel.tsx  tr(work.bagts)
+@dyn modules/Guitsetgel.tsx  tr(w.bagts)
+@dyn modules/Guitsetgel.tsx  tr(x)
 
 # ⚠️ 2026-10-23 (UX аудит) — бүлгүүдийн нэмсэн динамик түлхүүр
 # 2026-10-23 (UX аудит E11): Ерөнхий дашбоардын динамик ангилал/шалтгаан — `GeneralDash` Bars `tr(label)`

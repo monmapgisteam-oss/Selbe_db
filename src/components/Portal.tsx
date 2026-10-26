@@ -47,12 +47,12 @@ import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
-import { queryStats, count, sum } from '@/lib/query';
+import { queryStats, queryFeatures, count, sum, type Row } from '@/lib/query';
 import { loadHeadline, loadHousing, POPULATION_FIELD } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, LAYER_BY_ID, groupOf,
-  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER,
+  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, zoneCanon,
   PLAN_ALWAYS_ON_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS,
   type ViewKey,
 } from '@/lib/services';
@@ -649,7 +649,16 @@ function PortalContent(
   const viewNowRef = useRef(view);
   /** Порталын ерөнхий мэдэгдлийн тууз: эрх хумигдаж харагдац солигдсон (⚠️ 2026-10-06),
    *  хадгалаагүй ажлаас болж автомат шинэчлэл хойшилсон (⚠️ 2026-10-12, `onVis`) */
-  const [portalNotice, setPortalNotice] = useState<string | null>(null);
+  /* ⚠️ 2026-10-26 (аудит): URL-аар (`?v=` — Нүүрний «Харагдац руу орох» г.м.) ЭРХГҮЙ харагдац хүсэгдсэн бол
+     `clampView` чимээгүй `navScope[0]` руу оруулдаг тул хэрэглэгч товч эвдэрсэн гэж ойлгодог байв — шалтгааныг хэлнэ. */
+  const [portalNotice, setPortalNotice] = useState<string | null>(() => {
+    const asked = readParam('v');
+    const req = initialView();
+    const got = clampView(req, navScope);
+    return asked && req !== got
+      ? tr('«{0}» харагдац танд нээгдээгүй тул «{1}» руу орлоо.', VIEW_BY_KEY[req].title, VIEW_BY_KEY[got].title)
+      : null;
+  });
   /** ⚠️ 2026-10-12 (дарааллын аудит): таб буцахад хадгалаагүй ажлаас болж ХОЙШЛУУЛСАН шинэчлэл */
   const refreshDeferredRef = useRef(false);
   /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
@@ -1302,7 +1311,7 @@ function PortalContent(
 
             {/* ⚠️ 2026-09-30: ТУСЛАМЖ — хэрэглэгчийн эрхэнд байгаа хэсэг бүр юунд
                 зориулагдсан, хэн ашигладгийг тайлбарлана (`HelpPanel`). Анхны зөвлөмжийн
-                сум (`help.module.css` §tipArrow) толгойн баруун захыг заана. */}
+                сум нь «?» товчийн төвөөс хэмжигдэнэ (`HelpTip`, 2026-10-26). */}
             <button
               type="button"
               className={s.iconBtn}
@@ -1783,6 +1792,28 @@ function UserChip({ name, username, thumbnail, onSignOut }: {
  *    10px шошго, 23px утга) auto-fit сүлжээнд. Ачаалж байхад хавтангууд «…»-тэй (хоосон зурвас биш).
  *    Тоо, асуулга, null ≠ 0 дүрэм ӨӨРЧЛӨГДӨӨГҮЙ.
  */
+/** Бүсийн тоо/талбай/өрх — каноник кодоор ДАВХАРДАЛГҮЙ (кодгүй мөр тус бүр нэг); SUM-ын дүрмээр утгагүй бол `null` */
+function zoneTotals(rows: Row[]): { n: number; ga: number | null; ail: number | null } {
+  const Z = ZONE_FIELDS;
+  const seen = new Set<string>();
+  let n = 0; let ga: number | null = null; let ail: number | null = null;
+  const add = (acc: number | null, v: unknown) => {
+    const x = v == null || v === '' ? NaN : Number(v);
+    return Number.isFinite(x) ? (acc ?? 0) + x : acc;
+  };
+  for (const r of rows) {
+    const code = zoneCanon(r[Z.id]);
+    if (code) {
+      if (seen.has(code)) continue;
+      seen.add(code);
+    }
+    n += 1;
+    ga = add(ga, r[Z.landHa]);
+    ail = add(ail, r[Z.households]);
+  }
+  return { n, ga, ail };
+}
+
 function SummaryBar({ zone }: { zone: string | null }) {
   // ⚠️ Хоёр давхарга бүсээ ӨӨР талбар, ӨӨР бичиглэлээр агуулна — нэг WHERE-ийг
   //    хоёуланд нь тавьж болохгүй (`zoneWhere` давхарга бүрд нь угсарна).
@@ -1800,9 +1831,9 @@ function SummaryBar({ zone }: { zone: string | null }) {
        `Population` (`POPULATION_FIELD`) талбараар, айлыг /112-т бүсийн талбар
        байхгүй тул /106 `URH_TOO`-оор (бүсийн төлөвлөлтийн өрх) авна. */
     const [zones, built, headline, housing] = await Promise.all([
-      queryStats(layerUrl(ZONE_LAYER), [
-        count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
-      ], zoneQ),
+      /* ⚠️ 2026-10-26 (аудит): бүсийн давхаргад давхардсан мөр бий (X-13 — objectid 12 ба 47, `analysis/data.dedupeZoneFeats`-ийн ⚠️) —
+         `count`/`sum` нь «58 бүс», X-13 сонгоход «2 бүс · 2.49 га» гэдэг байв (анализ, бүсийн шүүлт 57). Каноник кодоор нэг удаа. */
+      queryFeatures(layerUrl(ZONE_LAYER), { where: zoneQ, outFields: [Z.id, Z.landHa, Z.households] }).then(zoneTotals),
       queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(POPULATION_FIELD, 'pop')], builtQ),
       loadHeadline(),
       loadHousing(),

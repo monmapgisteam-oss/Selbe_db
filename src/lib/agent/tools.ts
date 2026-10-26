@@ -32,7 +32,7 @@ import {
 import { resolveSource, type AgentScope, type AgentSource } from './registry';
 import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
-import { buildingProgress } from './compute';
+import { buildingProgress, landStatus } from './compute';
 import { financeSummary, pkgPlan } from './screenCompute';
 
 /** Anthropic-ийн tool тодорхойлолт (реле руу энэ хэлбэрээр явна) */
@@ -137,19 +137,21 @@ export const AGENT_TOOLS: ToolDef[] = [
     name: 'compute',
     get description() { return tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
       /* ⚠️ 2026-10-04: `housing` (ХО-жинтэй, дашбоардын толгой) ба `overall` (блокийн дундаж) ХОЁР өөр тоо — ил нэрлэнэ */
-      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: орон сууцны ХО-жинтэй хувь (`housing` — дашбоардын толгойн «Биет гүйцэтгэл»), блокийн дундаж (`overall`), багц бүрийн ') +
+      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны ХО-жинтэй хувь (`housing` — Дашбоардын «Биет гүйцэтгэл (багцаар)»), блокийн дундаж (`overall`), багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
       tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
       tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
       /* ⚠️ 2026-10-19: дэлгэцийн функцээр бодогддог хоёр шинэ төрөл (`screenCompute.ts`) */
       tr('`finance_summary` — төслийн нийт төсөвт өртөг, гэрээлсэн дүн, олгосон санхүүжилт, олгосон хувь (дашбоардын ЯГ тэр тоо). Санхүүгийн НИЙТ дүнг асуувал ЭНИЙГ ашигла — Cashflow/IPC-ийн мөрийг өөрөө нийлүүлэхгүй. ') +
-      tr('`pkg_plan` — багц бүрийн бодит ба хуваарийн төлөвлөгөөт гүйцэтгэл, хоцрогдол (нэгжээр), анхааруулгын түвшин («Багцын гүйцэтгэл»-ийн ЯГ тэр тоо). «Төлөвлөгөөнөөс хэр хоцорсон бэ» гэвэл ЭНИЙГ ашигла.'); },
+      tr('`pkg_plan` — багц бүрийн бодит ба хуваарийн төлөвлөгөөт гүйцэтгэл, хоцрогдол (нэгжээр), анхааруулгын түвшин («Багцын гүйцэтгэл»-ийн ЯГ тэр тоо). «Төлөвлөгөөнөөс хэр хоцорсон бэ» гэвэл ЭНИЙГ ашигла.') +
+      /* ⚠️ 2026-10-26 (аудит): газар чөлөөлөлт — порталын тоо (`compute.landStatus`) */
+      tr('`land` — газар чөлөөлөлтийн нийт/чөлөөлсөн/үлдсэн нэгж талбар, хувь (ТООГООР) ба талбай — порталын «Газар чөлөөлөлт»-ийн ЯГ тэр тоо. Газар чөлөөлөлтийн хувийг асуувал ЭНИЙГ ашигла.'); },
     input_schema: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
-          enum: ['building_progress', 'finance_summary', 'pkg_plan'],
+          enum: ['building_progress', 'finance_summary', 'pkg_plan', 'land'],
           get description() { return tr('Тооцооллын төрөл'); },
         },
       },
@@ -588,6 +590,7 @@ export async function runTool(
       if (kind === 'building_progress') return ok(await abortable(buildingProgress(scope), signal));
       if (kind === 'finance_summary') return ok(await abortable(financeSummary(scope), signal));
       if (kind === 'pkg_plan') return ok(await abortable(pkgPlan(scope), signal));
+      if (kind === 'land') return ok(await abortable(landStatus(scope), signal));
       return fail(tr('Танихгүй тооцоолол: {0}', kind));
     }
     return fail(tr('Танихгүй хэрэгсэл: {0}', name));

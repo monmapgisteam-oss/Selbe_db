@@ -28,7 +28,7 @@ import { VIEWS, type Role, type ViewKey } from '@/lib/services';
 import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
-  unseenViews, type TypeTpl,
+  unseenViews, roleAccess, type TypeTpl,
   /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсэг — «Хуваарь харах» сонгогч ба «шийдсэн» тэмдэг */
   HV_ROW, hvScopeOf, planViewDecided, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
 } from '@/lib/roleTypes';
@@ -141,6 +141,19 @@ export function ErhTypes({ remote, onDirty }: {
   const usersOf = (r: Role): string[] => listUsers()
     .filter((u) => roleOf(u.username) === r)
     .map((u) => u.username.toLowerCase());
+  /**
+   * Загварын (урсгалын бус) харагдацаас ДУТУУ харагдацтай хэрэглэгчид — хадгалсан мөрийн `views` загварын дэд олонлог биш.
+   * ⚠️ 2026-10-26 (аудит): хэрэглэгчийн бодит эрх нь ӨӨРИЙН мөрийн `views`; загвар (анхдагч ч) шинэ хуудастай болоход
+   *    («ТЭЗҮ · зураг төсөл», «6 түвшний хуваарь») «Хэрэгжүүлэх» дарахгүй бол тэдэнд нээгдэхгүй — анхдагч баганад ямар ч
+   *    тэмдэг байхгүй тул админ мэдэхгүй байв.
+   */
+  const driftOf = (r: Role): number => {
+    const tv = roleAccess(r).views;
+    if (tv === 'all') return 0;
+    const want = tv.filter((v) => !isWorkflowView(v));
+    return listUsers().filter((u) => roleOf(u.username) === r && Array.isArray(u.views)
+      && want.some((v) => !(u.views as ViewKey[]).includes(v))).length;
+  };
 
   const canSave = remoteReady() && !busy;
 
@@ -237,6 +250,12 @@ export function ErhTypes({ remote, onDirty }: {
                       >
                         {tr('шинэ хуудас — загварт тохируулаагүй')}
                       </button>
+                    )}
+                    {driftOf(r) > 0 && !isDirty(r) && (
+                      <span className={s.newBadge} role="note"
+                        title={tr('Эдгээр хэрэглэгчийн хадгалсан эрхэд загварын зарим хуудас алга — «Хэрэгжүүлэх» дарж загварыг хэрэгжүүлнэ.')}>
+                        {tr('{0} хэрэглэгч загвараас зөрсөн', String(driftOf(r)))}
+                      </span>
                     )}
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}

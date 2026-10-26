@@ -550,6 +550,8 @@ export default function Root() {
              урсгалтай бус бүх харагдацтай бол нээнэ (`homeBoard.boardAllowedFor`) */
           boardAllowed={boardAllowedFor(allowed, isSuper, roleOf(user?.username))}
           homeView={roleHome}
+          permsDown={permsDown}
+          onRetryPerms={() => { void recheckPerms(); }}
         />
       ) : (
         /*

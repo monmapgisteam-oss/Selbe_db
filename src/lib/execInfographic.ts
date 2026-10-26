@@ -444,7 +444,7 @@ export function buildInfographic(
   const nameW = 170, valW = 215;
   const trackW = colW - nameW - valW - 8;
   for (const t of g.byType.slice(0, 7)) {
-    P.hbar(R, yr, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
+    P.hbar(R, yr, colW, tr(t.label), top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
     /* ⚠️ 2026-09-29 (аудит 10): гэрээ > төсөв бол зурвас утгын багана дээр гарч байв — хязгаарлана */
     P.rect(R + nameW, yr, Math.min(trackW, top ? (trackW * t.contract) / top : 0), 14, DATA, 3);
     yr += 20;

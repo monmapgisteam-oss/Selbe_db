@@ -25,7 +25,7 @@ import {
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
-  isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote,
+  isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote, effectivePeriod, periodActive,
 } from './gdash.ts';
 
 /* ⚠️ 2026-10-09: «гэрээтэй» — порталын НЭГ предикат: түүхий мөр (`ho_dungiin_tailbar`) ба `CfRow` (`note`) */
@@ -712,6 +712,16 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.deepEqual(c.map((p) => p.ipcPct), [1, 1, 1, 4], 'IPC хуримтлал өөрийн хүрээнд урагш явна');
   assert.deepEqual(c.map((p) => p.amount), [100, 0, 0, 100], 'сарын мөнгө — хоосон сард нэмэгдэхгүй');
   assert.deepEqual(c.map((p) => p.physPct), [null, null, null, 20], 'биет явц эхний хэмжилтээс ӨМНӨ null (0 биш)');
+}
+
+/* ── 2026-10-26 (аудит): «Бүгд» (бүх утга чагттай) = шүүлтгүй — огноогүй ажил хасагдахгүй ── */
+{
+  const yrs = [2025, 2026, 2027];
+  assert.equal(periodActive(effectivePeriod({ years: [...yrs], quarters: [], months: [] }, yrs)), false, 'бүх жил = шүүлтгүй');
+  assert.equal(periodActive(effectivePeriod({ years: [], quarters: [1, 2, 3, 4], months: [] }, yrs)), false, 'бүх улирал = шүүлтгүй');
+  assert.equal(periodActive(effectivePeriod({ years: [], quarters: [], months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] }, yrs)), false, 'бүх сар = шүүлтгүй');
+  assert.deepEqual(effectivePeriod({ years: [2026], quarters: [1, 2, 3, 4], months: [] }, yrs), { years: [2026], quarters: [], months: [] }, 'хэсэгчилсэн жил хэвээр');
+  assert.equal(inPeriod({ start: null, end: null }, effectivePeriod({ years: [...yrs], quarters: [], months: [] }, yrs)), true, 'огноогүй ажил «Бүгд»-д орно');
 }
 
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

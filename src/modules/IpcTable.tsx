@@ -494,7 +494,8 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
             onChange={(e) => setSort(e.target.value as SortKey)}
           >
             <option value="paid">{tr('Олгосон дүнгээр')}</option>
-            <option value="pct">{tr('Гүйцэтгэлийн хувиар')}</option>
+            {/* ⚠️ 2026-10-26 (аудит): `paidPct` = олгосон ÷ гэрээт — «гүйцэтгэл» нь биет ажлын хувь гэж уншигддаг байв */}
+            <option value="pct">{tr('Олгосон хувиар')}</option>
             <option value="contract">{tr('Гэрээт төсвөөр')}</option>
             <option value="pkg">{tr('Багцын нэрээр')}</option>
           </select>

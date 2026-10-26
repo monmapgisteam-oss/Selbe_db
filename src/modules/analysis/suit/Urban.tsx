@@ -381,7 +381,9 @@ export function Parking({
      тодорхойгүй (`parkingNeed == null`) бүсийг хоёуланд нь хасна. Урьд нь
      нийлүүлэлт БҮХ бүсээс, хэрэгцээ нь null-ыг 0 гэж тоолж бодогддог тул
      хангалт хэт өндөр, «Илүүдэл» худал гардаг байв (null ≠ 0). */
-  const withNeed = rows.filter((r) => r.parkingNeed != null);
+  /* ⚠️ 2026-10-26 (аудит): төлөвлөлтийн бичлэггүй бүс (`planRecordMissing` → `parkingGap == null`, жиш. B-2) нийлүүлэлт нь 0
+     гэж орж хэрэгцээ (188) нь нийтэд нэмэгддэг байв — «дутагдалтай бүс» тоололтой ч зөрдөг. Нэг олонлог. */
+  const withNeed = rows.filter((r) => r.parkingNeed != null && r.parkingGap != null);
   const supply = withNeed.reduce((a, r) => a + r.parkingSupply, 0);
   const need: number | null = withNeed.length
     ? withNeed.reduce((a, r) => a + (r.parkingNeed as number), 0)
@@ -392,10 +394,10 @@ export function Parking({
   const short = withNeed.filter((r) => (r.parkingGap ?? 0) < 0).length;
   const pct = need != null && need > 0 ? (supply / need) * 100 : null;
 
-  const hh = rows.reduce((a, r) => a + r.households, 0);
+  const hh = withNeed.reduce((a, r) => a + r.households, 0);
   /* ⚠️ 2026-10-01: ОРШИН СУУГЧ (`Population`) — `data.parkingNeedOf`-тэй ижил
      (урьд нь `population` = оршин суугч + хүчин чадал байсан) */
-  const pop = rows.reduce((a, r) => a + r.residentPop, 0);
+  const pop = withNeed.reduce((a, r) => a + r.residentPop, 0);
   /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
   const needExpr = parking.source === 'households'
     ? <>{nf(hh)} {tr('өрх ×')} {parking.perHousehold.toFixed(2)} {tr('зогсоол')}</>

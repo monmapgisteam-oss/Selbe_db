@@ -16,7 +16,8 @@ import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date, fixCyr } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
-import { CASHFLOW_NEW, HO_IPC, PKG_BY_BAGTS, LAYER_BY_ID } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, LAYER_BY_ID } from '@/lib/services';
+import { mapPkgLayers } from '@/lib/pkgAlias';
 import { isContracted } from '@/lib/gdash';
 import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
 import { statusOf as planStatus } from '@/lib/plan';
@@ -151,7 +152,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   const elapsed = elapsedPct(r.p.start, r.p.end, now);
   /* ⚠️ 2026-10-09: үлдсэн хоног хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
   const left = calDaysBetween(now, r.p.end);
-  const layerTitles = (PKG_BY_BAGTS[r.p.pkgKey] ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
+  /* ⚠️ 2026-10-26 (аудит): газрын зургийн багцын холбоос (`mapPkgLayers`) — Багц 7.1 · 8 «GIS давхарга —» гардаг байв */
+  const layerTitles = (mapPkgLayers(r.p.pkgKey) ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь `hasDeps` хатуу `false`,
      урьдчилсан нөхцөлийн эгнээ «—», «хамаарал бүртгэгдээгүй» гэсэн ХУДАЛ бичигтэй байв.
      `null` = хамаарал ирээгүй (ачаалж/унасан). */

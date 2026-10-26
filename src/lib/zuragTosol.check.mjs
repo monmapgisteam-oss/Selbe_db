@@ -17,7 +17,7 @@ import { buildTree, computePlan } from './projectPlan.ts';
 import {
   buildEdits, conflicts, cmpKod, sortByKod, setEdit, textOf, pendingCount, dropAdd, effectiveRows,
   substageInfo, substageAdds, displayCodes, isEditable, parsePct, parseDay, dayOf, dateIn, toStored,
-  EMPTY_PENDING, DESIGN_SUBSTAGES, origText, substageWeight, weighAdds, zeroWeight,
+  EMPTY_PENDING, DESIGN_SUBSTAGES, origText, substageWeight, weighAdds, zeroWeight, rowPhase,
 } from './zuragTosol.ts';
 
 const NAMES = { oid: 'objectid', cfId: 'cashflow_id' };
@@ -89,6 +89,21 @@ const r23 = base.find((r) => r.objectid === 23);
   p = setEdit(p, r22, 'end', '2026-06-30');
   assert.equal(pendingCount(p), 0);
   assert.deepEqual(buildEdits(base, p, NAMES).updates, []);
+}
+
+/* ── 1б. 2026-10-26 (аудит): МӨНГӨНИЙ мөрийн явц шатны талбарт ДАВХАР (ТУХ/Нэгтгэлтэй нэг тоо); бүтцийн мөрд үгүй ── */
+{
+  const r11 = base.find((r) => r.objectid === 11);
+  assert.equal(rowPhase(base, r11), 'tezu');
+  assert.equal(rowPhase(base, { dd_kod: '2.1.9', etseg_kod: '2.1' }), 'zurag', 'эцгийн uy_shat');
+  assert.deepEqual(buildEdits(base, setEdit(EMPTY_PENDING, r11, 'pct', '60'), NAMES).updates,
+    [{ objectid: 11, guitsetgel_huvi: 60, tezu: 60 }]);
+  const money = base.map((r) => (r.objectid === 22 ? { ...r, cashflow_id: 9 } : r));
+  const m22 = money.find((r) => r.objectid === 22);
+  assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'pct', '35'), NAMES).updates,
+    [{ objectid: 22, guitsetgel_huvi: 35, ajliin_zurag_tusul: 35 }]);
+  assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'end', '2026-07-15'), NAMES).updates,
+    [{ objectid: 22, geree_duusah: d('2026-07-15') }], 'огноо засварт шатны талбар хөндөгдөхгүй');
 }
 
 /* ── 2. Явцыг арилгах → null (0 БИШ); 0 бичвэл 0 ── */

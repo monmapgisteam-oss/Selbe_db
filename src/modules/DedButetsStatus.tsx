@@ -80,6 +80,10 @@ export function valFieldOf(meta: LayerMeta, kind: ValKind): FieldDef | null {
     hit = hit.filter((f) => f.name !== st?.name);
   } else {
     hit = hit.filter((f) => !FIELD_RE.chg.test(f.name) && !FIELD_RE.chg.test(f.alias));
+    /* ⚠️ 2026-10-26 (аудит): дулаан/халуун усны 16 давхаргад `tolov` (alias «Төлөв», домэйн Өгөх/Буцах — шугамын ЧИГЛЭЛ) ба
+       `work_status` хоёулаа кодтой; эхнийх нь сонгогдож бүх объект «Төлөв ороогүй», «Дууссан» шүүлтэд бүгд нуугддаг байв.
+       Бүх код нь `NOT_STATUS` бол гүйцэтгэлийн төлөв БИШ. */
+    hit = hit.filter((f) => !(f.codes?.length && f.codes.every((c) => NOT_STATUS.test((c.label || c.code).trim()))));
   }
   return hit.find((f) => f.codes?.length) ?? hit[0] ?? null;
 }

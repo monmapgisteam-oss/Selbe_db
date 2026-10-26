@@ -74,7 +74,7 @@ import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } fro
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { isClearedStatus, loadLandStatus } from '@/lib/land';
 import {
-  finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
+  finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE,
 } from '@/lib/finExcelLayout';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -350,6 +350,12 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  *    ороомгуудыг дуудна тул «Тайлан» ба «Схем» хоёр НЭГ хүсэлт хуваалцана.
  */
 /* ⚠️ 2026-10-12 (дарааллын аудит): `BUILDING` — дотор нь `loadPkgLabels` (барилгын давхаргын `BAGTS`) */
+/**
+ * §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь — дэлгэц (`Tailan`) ба PDF/мэйл (`reportPdf`) НЭГ.
+ * ⚠️ 2026-10-26 (аудит): урьд нь зөвхөн дэлгэцэд (2026-10-11) байсан тул PDF нөхцөлгүй «их байна» гэж бичдэг байв.
+ */
+export const BAGTS_GAP_PTS = 20;
+
 export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING']);
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
@@ -756,7 +762,12 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const UNTYPED = tr('Төрөл тодорхойлоогүй');
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
   master.forEach((r) => {
-    const t0 = str(r[F.type]);
+    /* ⚠️ 2026-10-26 (аудит): FIN_XL_ROW_HIDE (7 — бондын хүү, «ажил биш») хүмүүст харагдахгүй — «Ажил» тоонд орж байв (мөнгө 0) */
+    if (FIN_XL_ROW_HIDE.includes(secOf(r))) return;
+    /* ⚠️ 2026-10-26 (аудит): 2-р түвшин хоосон бол 1-р түвшний нэр (`negtgel`-ийн ⚠️, `finExcelLayout`-ийн ангилалтай нэг) —
+       НИЙГМИЙН ДЭД БҮТЭЦ-ийн 14 мөр (192.5 тэрбум) «Төрөл тодорхойлоогүй» гардаг байв (удирдлагын горим нэрээр нь харуулдаг). */
+    const ty = str(r[F.type]);
+    const t0 = ty && ty !== '0' ? ty : str(r[F.project]);
     const t = !t0 || t0 === '0' ? UNTYPED : t0;
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;

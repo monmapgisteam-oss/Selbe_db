@@ -62,6 +62,14 @@ export function entSession(): Sess | null {
 }
 let shared: Sess | null = null;
 /**
+ * ⚠️ 2026-10-26 (аудит): идэвхтэй сешн нь ҮНДСЭН нэвтрэлтийн OAuth-оос (нэг портал) бол true — энэ үед
+ *    `entSignOut` юу ч хийхгүй (`entSession` дахин ижил `shared`-ийг буцаана) тул «Гарах» товчийг зурахгүй.
+ */
+export function entIsShared(): boolean {
+  const cur = entSession();
+  return !!cur && cur === shared && samePortal();
+}
+/**
  * ТОКЕН ШИНЭЧЛЭЭД БИЕД ДАХИН ДАРНА — Enterprise рүү ШУУД fetch хийдэг замууд (ma · mir · ficMakt · энэ модуль).
  * ⚠️ 2026-10-21 (аудит): эдгээр зам `query.ts`-ийн хамгаалалтыг (`ensureFreshToken` + 498 → шинэчлэх) тойрдог тул таб
  *    унтсаны дараа хугацаа нь дууссан токеноор явж эхний оролдлого 498-аар унадаг байв. Илгээхийн ӨМНӨ шинэчилж,

@@ -250,7 +250,10 @@ const stored = fx.rows.map((r) => ({
   assert.deepEqual(b1.map((r) => r.t), ['section', 'ms', 'bar', 'bar', 'ms', 'ms', 'bar', 'ms', 'ms'], 'Багц-1: захирамж · зураг · газар · сонгон · зөвшөөрөл · барилга · гэрээ · ашиглалт');
   assert.equal(b1[1].name, 'Захирамж');
   assert.equal(b1[1].status, 'none', 'milestone огноо уншигдаагүй (marks = null) → «алга» БИШ, мэдээлэлгүй');
-  assert.equal(b1[b1.length - 1].status, 'missing', 'ашиглалтын огноо алга → улаан');
+  /* ⚠️ 2026-10-26 (аудит): milestone уншигдаагүй үед ашиглалт ч «мэдээлэлгүй»; уншигдсан ч алга бол улаан */
+  assert.equal(b1[b1.length - 1].status, 'none', 'ашиглалт: marks = null → мэдээлэлгүй (алга БИШ)');
+  const l2e = buildL2(plan, pkgs.slice(0, 1), new Map(), TODAY);
+  assert.equal(l2e[l2e.length - 1].status, 'missing', 'ашиглалтын огноо уншигдсан ч алга → улаан');
   const l2m = buildL2(plan, pkgs.slice(0, 1), new Map([[pkgs[0].node.code, { tender: null, handover: D('2028-06-22'), order: D('2025-06-27'), orderNo: 'А/736' }]]), TODAY);
   assert.equal(l2m[l2m.length - 1].at, D('2028-06-22'));
   assert.equal(l2m[l2m.length - 1].status, 'upcoming');

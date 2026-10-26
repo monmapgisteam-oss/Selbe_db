@@ -76,6 +76,11 @@
   gap: 8px;
   margin: 0 0 10px;
 }
+/* ⚠️ 2026-10-26 (аудит): `KpiRow cols` — өргөн дэлгэцэд тогтмол багана, утсанд нэг */
+.kpisCols { grid-template-columns: repeat(var(--kpi-cols, 2), minmax(0, 1fr)); }
+@media (max-width: 620px) {
+  .kpisCols { grid-template-columns: minmax(0, 1fr); }
+}
 .kpi {
   display: flex;
   flex-direction: column;

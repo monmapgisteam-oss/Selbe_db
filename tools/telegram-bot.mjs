@@ -403,6 +403,9 @@ function userErrorText(e) {
   return msg.replace(/https?:\/\/\S+/g, '[хаяг]');
 }
 
+/* ⚠️ 2026-10-26 (аудит): санхүүгийн жишээ ЗӨВХӨН санхүүгийн эрхтэй (`pkgFin`) хүнд — «✅ Зөвшөөрөх» эрх (`FULL_VIEWS`) санхүүгүй
+   тул тэр жишээ «эрх алга» мухардалд хүргэдэг байв. `helpOf(scope)`. */
+const FIN_EXAMPLE = '  • Багц 6.1-ийн гэрээний дүн хэд вэ?';
 const HELP = [
   'Сэлбэ төслийн AI туслах.',
   '',
@@ -413,13 +416,17 @@ const HELP = [
   '  • Төсөлд хэдэн барилга байна вэ?',
   '  • Багц 1 мэдээллийг дэлгэрэнгүй харуулаач',
   '  • Барилгын төлөв бүрээр хэдэн барилга вэ?',
-  '  • Багц 6.1-ийн гэрээний дүн хэд вэ?',
+  FIN_EXAMPLE,
   '  • ХАБЭА-гийн сүүлийн тайлангаар хэдэн ажилтан байна?',
   '',
   'Тушаал:',
   '  /new  — яриаг шинээр эхлүүлэх',
   '  /help — энэ заавар',
 ].join('\n');
+
+const helpOf = (scope) => (scope === 'all' || (Array.isArray(scope) && scope.includes('pkgFin'))
+  ? HELP
+  : HELP.split('\n').filter((l) => l !== FIN_EXAMPLE).join('\n'));
 
 /* ⚠️ 2026-10-22 (аудит): админы тушаал — зөвхөн админд харагдана */
 const ADMIN_HELP = [
@@ -595,7 +602,7 @@ async function handle(msg) {
   }
 
   if (text === '/start' || text === '/help') {
-    await reply(chatId, ADMINS.has(userId) ? `${HELP}\n${ADMIN_HELP}` : HELP);
+    await reply(chatId, ADMINS.has(userId) ? `${helpOf(scope)}\n${ADMIN_HELP}` : helpOf(scope));
     return;
   }
   const chatKey = `${chatId}:${userId}`;

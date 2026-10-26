@@ -9,6 +9,7 @@ import { ChevronDown, ChevronsDownUp, ChevronsUpDown, EyeOff, Search, X } from '
 import { Icon } from './Icon';
 import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
+import { zonesLabel } from '@/lib/zoneLabel';
 import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
@@ -332,7 +333,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                 </>
               );
             })()}
-            {zone && <> · {zone}</>}
+            {zone && <> · {zonesLabel(zone.split(',').filter(Boolean))}</>}
           </span>
         </div>
         <button

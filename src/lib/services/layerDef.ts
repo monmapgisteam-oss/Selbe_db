@@ -239,3 +239,19 @@ export const ZONE_FIELD = "zone_id";
  *    (жишээ нь ViewPanel-ийн «Бүсэд хамаарахгүй»).
  */
 export const ZONE_NONE = ' Бүсийн мэдээлэл байхгүй ';
+
+/**
+ * АНГИЛЛЫН ТҮҮХИЙ УТГЫН ДЭЛГЭЦИЙН НЭР — `f.canon` (бүсийн ангилал) → `paint.labels` (кодтой талбар, «1» → «Явган хүний зам»),
+ * орчуулсан. ⚠️ 2026-10-26 (аудит): `LayerCatalog`/`LayerTypeCharts`-ийн `nameOf`-ыг НЭГ газар — давхаргын самбарын facet,
+ * «хэмжээгээр» чарт, hover, сонгосон объектын чип түүхий утга харуулж нэг ангилал нэг дэлгэцэд хоёр нэртэй байв.
+ * ЗӨВХӨН харагдах нэр: түлхүүр · өнгө · `where` түүхий утгаараа.
+ */
+export function facetName(d: Pick<LayerDef, 'facets' | 'paint'>, field: string, raw: string): string {
+  const f = d.facets?.find((x) => x.field === field);
+  const name = f?.canon
+    ? f.canon(raw)
+    : field === d.paint?.field
+      ? d.paint.labels?.[raw] ?? raw
+      : raw;
+  return tr(name);
+}

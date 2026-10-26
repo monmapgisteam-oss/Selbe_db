@@ -254,15 +254,18 @@ export function GazarEdit({
               </label>
 
               <div className={g.f}>
-                <span className={g.fLabel}>{tr('Төлөв')}</span>
-                <div className={g.radios}>
+                <span className={g.fLabel} id="gazar-edit-tolov">{tr('Төлөв')}</span>
+                {/* ⚠️ 2026-10-26 (аудит): сонгогдсон төлөв дэлгэц уншигчид (radiogroup · aria-checked — ZovshoorolEdit-тэй ижил);
+                    нэр орчуулсан (хадгалах утга монголоор хэвээр) */}
+                <div className={g.radios} role="radiogroup" aria-labelledby="gazar-edit-tolov">
                   {STATUS_LIST.map((s) => (
                     <button key={s} type="button" disabled={!canEdit || busy}
+                      role="radio" aria-checked={d.status === s}
                       className={`${g.radio} ${d.status === s ? g.radioOn : ''}`}
                       onClick={() => set('status', s)}>
                       {/* Өнгө нь газрын зурагтай ИЖИЛ эх сурвалжаас */}
                       <i className={g.dot} style={{ '--dot': PARCEL_STATUS_HUES[s] } as React.CSSProperties} />
-                      {s}
+                      {tr(s)}
                     </button>
                   ))}
                 </div>

@@ -508,6 +508,7 @@ export function CashflowPlan({
             <i className={`${c.dot} ${c.done}`} />{tr('100%')}
             <i className={`${c.dot} ${c.part}`} />{tr('дутуу')}
             <i className={`${c.dot} ${c.none}`} />{tr('хоосон')}
+            <i className={`${c.dot} ${c.over}`} />{tr('100%-иас их')}
           </span>
         </div>
         <ul className={c.list}>
@@ -717,8 +718,9 @@ export function CashflowPlan({
         )}
 
         <div className={c.bar}>
-          {err && <span className={c.err}>{err}</span>}
-          {msg && <span className={c.ok}>{msg}</span>}
+          {/* ⚠️ 2026-10-26 (аудит): дэлгэц уншигч хадгалалтын амжилт/алдааг зарлана (бусад модультай ижил) */}
+          {err && <span className={c.err} role="alert">{err}</span>}
+          {msg && <span className={c.ok} role="status">{msg}</span>}
           {/*
             * ЦЭВЭРЛЭХ — сонгосон ажлын БҮХ сарын хувийг хоослоно.
             *

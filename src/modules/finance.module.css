@@ -1726,6 +1726,13 @@ div.bName:hover { background: var(--surface-2); }
 .ppTbl thead th.ppFz0,
 .ppTbl thead th.ppFz1,
 .ppTbl thead th.ppFz2 { position: sticky; top: auto; z-index: 2; background: var(--surface); }
+/* ⚠️ 2026-10-26 (аудит): 478px царцсан хэсэг утсанд (375–430px) дэлгэцээс өргөн тул хэвтээ гүйлгэхэд E…W баганууд царцсан
+   нүдний доогуур орж ХЭЗЭЭ Ч харагддаггүй байв (гэрээний бүртгэлийн `.xlFz`-ийн 1180px дүрэм энд алга). Зөвхөн Д/Д царцна. */
+@media (max-width: 1180px) {
+  .ppTbl thead th.ppFz1, .ppTbl tbody td.ppFz1,
+  .ppTbl thead th.ppFz2, .ppTbl tbody td.ppFz2 { position: static; box-shadow: none; }
+  .ppTbl .ppName { width: 200px; min-width: 200px; max-width: 200px; }
+}
 .ppTbl tbody td.ppNo { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 11px; }
 .ppTbl tbody td.ppPkg { text-align: center; }
 .ppTbl td.ppDate { font-size: 11px; }

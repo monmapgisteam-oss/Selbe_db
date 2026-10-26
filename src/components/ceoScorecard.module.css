@@ -62,7 +62,8 @@
 /* ══ Төслийн нийт ══ */
 .summary {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  /* ⚠️ 2026-10-26 (аудит): «Нийт» + 6 бүлэг = 7 хавтан («Чанар» 10-23-нд хасагдсан) — 8 багана баруунд хоосон нүд үлдээдэг байв */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }

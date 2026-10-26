@@ -58,10 +58,14 @@ export async function resolve(specifier, context, next) {
 
   if (spec.startsWith('@/')) spec = SRC + spec.slice(2);
 
+  /* ⚠️ CSS-ийг файл байгаа эсэхээс үл хамааран стубална (`import './x.css'`
+     хажуугийн импорт ч, `import s from './x.module.css'` ч).
+     ⚠️ 2026-10-26 (аудит): UI горимоос ГАДНА ч — Node CSS-ийг хэзээ ч ачаалж чадахгүй (ERR_UNKNOWN_FILE_EXTENSION). Telegram
+     ботын (`npm run bot`) `compute` finance_summary/pkg_plan нь `@/modules/Finance`-ийг (→ `ui.module.css`) импортлоход ҮРГЭЛЖ
+     унаж, серверийн файлын зам загвар руу дамждаг байв. Зөвхөн CSS — arcgis/next/dynamic стуб UI горимд л. */
+  if (/\.css$/i.test(spec)) return { url: STUB_CSS, shortCircuit: true };
+
   if (ui) {
-    /* ⚠️ CSS-ийг файл байгаа эсэхээс үл хамааран стубална (`import './x.css'`
-       хажуугийн импорт ч, `import s from './x.module.css'` ч). */
-    if (/\.css$/i.test(spec)) return { url: STUB_CSS, shortCircuit: true };
     if (spec === 'next/dynamic') return { url: STUB_DYNAMIC, shortCircuit: true };
     if (spec === '@arcgis/core' || spec.startsWith('@arcgis/core/')) {
       let real = '';

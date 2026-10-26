@@ -36,7 +36,7 @@ import {
 } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
-import { finPkgKey } from '@/lib/pkgAlias';
+import { MAP_PKG_ALIAS, finPkgKey } from '@/lib/pkgAlias';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
   type BlockProgressMap, type BlockHistory,
@@ -906,6 +906,15 @@ function Detail({ k, d, flt, onFlt }: {
 /** ГАДНА ШУГАМ СҮЛЖЭЭНИЙ багцууд — дулаан/ус/татуурга (Багц 5.x, 7, 10–15) */
 const isNetworkPack = (bagts: string) => /^БАГЦ(5[1-4]|7|1[0-5])$/.test(bagtsKey(bagts));
 /**
+ * Бөглөх хуудасны (`phys`) түлхүүрийг ГАЗРЫН ЗУРГИЙН багц руу хөрвүүлж шалгана.
+ * ⚠️ 2026-10-26 (аудит): `phys`-ийн «Багц 7.1» = БАГЦ71 нь `isNetworkPack`-д таардаггүй тул rail-ийн «Шугам сүлжээ»-нд
+ *    7.1-ийн тайлан ОРДОГГҮЙ байв. `NET_PACK_IDS` / `infraPackList` нь газрын зургийн түлхүүрээр ХЭВЭЭР.
+ */
+const viaMap = (pred: (k: string) => boolean) => (k: string) => {
+  const key = bagtsKey(k);
+  return pred(key) || pred(MAP_PKG_ALIAS[key]?.key ?? '');
+};
+/**
  * 05-ын багц бүрийн ХЭМЖЭЭГ татах давхаргууд — `isNetworkPack`-тай ЯГ ижил
  * олонлог. Тусад нь бичвэл шинэ багц нэмэгдэхэд хоёр газар засах болно.
  */
@@ -988,41 +997,9 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
    * ⚠️ Эх нь TASK_SHEET («Гүйцэтгэл бөглөх») тул зурвасын тоо нь дэлгэрэнгүй
    * самбарынхтай ЯГ таарна — хоёулаа нэг хүснэгтээс уншина.
    */
-  const pkgPct = (match: (k: string) => boolean): number | null => {
-    if (!f) return null;
-    let w = 0; let n = 0;
-    f.phys.forEach((byMon, k) => {
-      if (!match(k)) return;
-      let last: number | null = null;
-      let lastMon = '';
-      [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-        /* ⚠️ `v > 0` БИШ: `phys` мап нь тухайн сард ЯДАЖ нэг блок хэмжигдсэн
-           үед л мөр үүсгэдэг (`Finance.loadFinData`, `if (cnt > 0)`) тул 0 нь
-           «мэдээлэлгүй» биш ХЭМЖИГДСЭН 0%. Урьд нь 0-ийг алгасдаг байсан тул
-           ажил эхлээгүй багц жигнэлтээс бүрмөсөн хасагдаж, төслийн дундаж
-           гүйцэтгэл хөөрөгдөж харагддаг байв (`aggregateMonths`, `lagOf`
-           хоёр аль хэдийн `!= null`-ыг барьдаг). */
-        if (m <= nowYm) { last = v; lastMon = m; }
-      });
-      if (last == null) return;
-      /*
-       * ⚠️ ЖИНГ УТГА АВСАН САРААС уншина (2026-09-15-ны аудит). Урьд нь
-       *    `physCnt.get(k)?.get(nowYm)` гэж ЗӨВХӨН ЭНЭ САРААС авдаг байсан
-       *    бөгөөд `last` нь ихэвчлэн ӨМНӨХ сарынх байдаг: тухайн багц энэ
-       *    сард тайлагнаагүй бол жин нь блокийн тооны оронд **1** болно.
-       *    Жишээ: 7-р сард сүүлд тайлагнасан 40 блоктой багц жин 1-ээр,
-       *    энэ сард тайлагнасан 6 блоктой багц жин 6-аар орж, «Биет
-       *    гүйцэтгэл» индикатор ~70%-ийн оронд ~19% гардаг байв.
-       */
-      const cntMap = f.physCnt.get(k);
-      /* ⚠️ 2026-10-09: жин (блокийн тоо) МЭДЭГДЭХГҮЙ бол багцыг дунджаас АЛГАСНА — урьд нь `?? 1`
-         нь 40 блоктой багцыг 1 блокийн жинтэй болгож дундажийг гажуудуулж болох байв (null ≠ 1). */
-      const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
-      if (cnt == null) return;
-      w += last * cnt; n += cnt;
-    });
-    return n ? w / n : null;
-  };
+  /* ⚠️ 2026-10-26 (аудит): дотоод жигнэлт `physN`-ийг (ОГТ тайлагнаагүй багц = 0%, 2026-10-01-ний дүрэм) алгасдаг тул сүлжээ/
+     цахилгааны rail хөөрөгддөг байв — `pkgPhys` (05/06-ийн дэлгэрэнгүйтэй нэг дүрэм) руу шилжүүлэв. */
+  const pkgPct = (match: (k: string) => boolean): number | null => pkgPhys(f, match).actual;
   /* ⚠️ 2026-09-25: «02» зурвас нь `physNow` — IndStrip · 05 · ExecReport-той
      НЭГ тоо. Урьд нь `pkgPct` (багц бүрийн ӨӨРИЙН сүүлийн сар) байсан тул
      дэлгэрэнгүй хэсгийн тооноос зөрдөг байв. `pkgPct` нь зөвхөн сүлжээ/
@@ -1100,7 +1077,7 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       // ⚠️ Урьд нь ЗӨВХӨН давхаргатай багцын ТОО (4) байсан — жагсаалтын бусад
       //    мөр бүгд гүйцэтгэл харуулж байхад энэ ганцаараа өөр төрлийн тоо байв.
       //    Одоо 11 сүлжээний багцын ЖИГНЭСЭН гүйцэтгэл (05·C1-тэй нэг тоо).
-      const nw = { actual: pkgPct((k) => isNetworkPack(k)) };
+      const nw = { actual: pkgPct(viaMap(isNetworkPack)) };
       const n = infraPackList(isNetworkPack).length;
       return {
         /* ⚠️ 2026-09-25: сүлжээ/цахилгааны багц бөглөх хүснэгтэд ихэвчлэн
@@ -1114,7 +1091,7 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
     case 'power': {
       // ⚠️ Мөн адил — «Гадна цахилгаан» ажлын 28 мөрийн жигнэсэн гүйцэтгэл
       //    (06·C2-той нэг тоо). `bagts_name` эдгээрт NULL тул `Ажлын_нэр`-ээр.
-      const pw = { actual: pkgPct((k) => isPowerPack(k)) };
+      const pw = { actual: pkgPct(viaMap(isPowerPack)) };
       const n = infraPackList(isPowerPack).length;
       return {
         /* ⚠️ 2026-09-25: `network`-ийн ⚠️-г үз — бэлэн ч утгагүй бол «—» */

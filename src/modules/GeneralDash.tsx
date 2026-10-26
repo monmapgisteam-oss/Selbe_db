@@ -49,20 +49,21 @@ import {
      нэр (`bagts`) → тухайн багцын давхаргууд. `pkgKeyOf` нь `bagtsKey` БИШ:
      «Багц 1-4» гэсэн ДИАПАЗОН бичиглэлийг `''` болгож, бодит «Багц 14»-ийн
      давхаргад наалдахаас сэргийлнэ. */
-  PKG_BY_BAGTS, pkgKeyOf,
+  pkgKeyOf,
   HO_IPC, hoAmount,
   /* ⚠️ 2026-09-10: сарын тэнхлэг — `housingMoneyByMonth` (жин нь 2026-09-30-аас `gdash.pkgCostWeight`) */
   cfMonthAxis,
   BUILT_STATUS,
 } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
+import { mapPkgKeySet, mapPkgLayers } from '@/lib/pkgAlias';
 import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
   loadCfPlan, cfPlanGaps, cfGapsText, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
-  grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
+  grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
   type Grain,
   NO_PERIOD, isContracted,
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
@@ -110,7 +111,8 @@ export function GeneralDash({
   zone: string | null;
   setZone: (z: string | null) => void;
 }) {
-  const [period, setPeriod] = useState<Period>(NO_PERIOD);
+  /* ⚠️ 2026-10-26 (аудит): `periodUi` — товчнуудын төлөв; ШҮҮЛТЭД `period` (`effectivePeriod`: бүх утга = шүүлтгүй) */
+  const [periodUi, setPeriod] = useState<Period>(NO_PERIOD);
   const [layerOpen, setLayerOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [layerSel, setLayerSel] = useState<string | null>(null);
@@ -171,6 +173,8 @@ export function GeneralDash({
      зөвхөн газрын зургийг шүүнэ (доорх «Бүс зөвхөн газрын зургийг шүүнэ» тэмдэглэл · тайлангийн шошго). */
   const totals = usePlanTotals(null, true, PLAN_CARD_IDS);
   const cf = useAsync(loadGdashCf, []);
+  const periodYears = useMemo(() => (cf.state === 'ready' ? yearsOf(cf.data) : []), [cf]);
+  const period = useMemo(() => effectivePeriod(periodUi, periodYears), [periodUi, periodYears]);
   /**
    * САРЫН ТӨЛӨВЛӨГӨӨ — S-муруйн нарийвчлал.
    *
@@ -538,7 +542,7 @@ export function GeneralDash({
       if (r.sec === FIN_XL_LAND_CODE) { land = true; continue; }
       const k = pkgKeyOf(r.pkg2);
       if (!k) continue;
-      const layers = PKG_BY_BAGTS[k];
+      const layers = mapPkgLayers(k);
       if (layers?.length) { for (const id of layers) ids.add(id); continue; }
       const house = byKey?.get(k);
       if (house) houses.add(house);
@@ -617,6 +621,9 @@ export function GeneralDash({
         setVisible(beforeReason.current);
         beforeReason.current = null;
       }
+      /* ⚠️ 2026-10-26 (аудит): Саад картын сэргээх цэг нь шалтгааны `[PARCEL_LAYER]` — цуцлахад ХҮЧИНГҮЙ болгоно, эс бөгөөс
+         тэр багцыг дахин дарахад хэрэглэгчийн асаасан давхаргууд устдаг байв (SaadCard-ийн сонголт ч тэглэгдэнэ). */
+      beforePkg.current = null;
       return;
     }
 
@@ -654,8 +661,14 @@ export function GeneralDash({
   }, [byReason, map, reason, setVisible, visible]);
 
   /* ⚠️ Шүүлт ИДЭВХГҮЙ бол `null` — `SaadCard`-ийн `keys` тайлбарыг үз */
+  /* ⚠️ 2026-10-26 (аудит): Cashflow → газрын зургийн түлхүүр (`mapPkgKeySet`); Cashflow-д ОГТ холбогдоогүй багц (БАГЦ21 г.м.)
+     шүүлтгүй үлдэнэ (`known`) — урьд нь 6 багцын давхцал хугацааны шүүлтэд ҮРГЭЛЖ алга болдог байв. */
+  const knownKeys = useMemo(
+    () => (cf.state === 'ready' ? mapPkgKeySet(activeSubPkgTypes(cf.data).keys()) : null),
+    [cf],
+  );
   const activeKeys = useMemo(
-    () => (periodActive(period) && active ? new Set(active.keys()) : null),
+    () => (periodActive(period) && active ? mapPkgKeySet(active.keys()) : null),
     [period, active],
   );
 
@@ -740,9 +753,9 @@ export function GeneralDash({
           * өөрийн удирдлагатай ч давхцаж байлаа.
           */}
         <PeriodBar
-          period={period}
+          period={periodUi}
           setPeriod={setPeriod}
-          years={cf.state === 'ready' ? yearsOf(cf.data) : []}
+          years={periodYears}
         />
         {/* ⚠️ 2026-10-23 (UX аудит E2): бүс сонгоход ЗӨВХӨН зураг шүүгдэнэ — үзүүлэлт, чартууд төслийн нийтээр
             хэвээр. Урьд нь дохиогүй тул хэрэглэгч KPI-г бүсийн тоо гэж уншдаг байв. */}
@@ -938,6 +951,7 @@ export function GeneralDash({
         />
         <SaadCard
           keys={activeKeys}
+          known={knownKeys}
           /* ⚠️ Шалтгаан сонгогдмогц энэ карт ТҮҮГЭЭР нарийсна */
           oids={reasonOids}
           /* ⚠️ `null` = мөрийг дахин дарж ТАЙЛСАН — асаасан давхаргаа буцаана */
@@ -1181,7 +1195,9 @@ function KpiStrip({
       ? sel.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0)
       : 0;
     const whole = !periodActive(period) && xs == null;
-    return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole };
+    /* ⚠️ 2026-10-26 (аудит): сонгосон ангиллын БҮХ мөр нийт төсвөөс гадуур (газар чөлөөлөлт · нийгмийн дэд бүтэц г.м.) */
+    const outOfTotal = sel.length > 0 && sel.every((r) => !r.inTotal);
+    return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole, outOfTotal };
   }, [rows, period, contracts, landPct, xs, wbsPct]);
   /** Шүүлтгүй ба нэгтгэл хараахан ирээгүй — «…» */
   const progWait = k.whole && wbsQ.state === 'loading';
@@ -1199,11 +1215,13 @@ function KpiStrip({
             дэвсгэр, өнгөт тоотой байхад тэр нь «СОНГОГДСОН» гэж уншигдаж
             байв — үнэндээ энэ зурвас дарагддаггүй, сонголтгүй. Ялгаа
             хэрэгтэй бол дараалал нь өөрөө хангалттай: нийт төсөв эхэнд. */}
-        <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
+        {/* ⚠️ 2026-10-26 (аудит): жинхэнэ 0 нь «—» (мэдээлэлгүй) биш «0 ₮» (null ≠ 0); нийт төсөвт ордоггүй ангилал
+            сонгогдсон бол тоо биш шалтгаан */}
+        <Stat icon="calc" value={k.outOfTotal ? tr('Нийт төсөвт ордоггүй') : kpiMnt(k.budget)} label={tr('Нийт төсөв')} />
         {/* ⚠️ 2026-09-25: алдаа ≠ ачаалалт — унасан бол «—», эс бөгөөс «…»
             үүрд эргэлдэж «удахгүй ирнэ» гэж худал хэлдэг байв. */}
         {/* ⚠️ 2026-10-05: унасан бол «—» (мэдээлэлгүйтэй ижил) биш «⚠» — `FailMark`-ийн ⚠️ */}
-        <Stat icon="file" value={contracts ? mntShort(k.contract) : contractsErr ? <FailMark /> : '…'} label={tr('Нийт гэрээлсэн дүн')} />
+        <Stat icon="file" value={contracts ? (k.outOfTotal ? tr('Нийт төсөвт ордоггүй') : kpiMnt(k.contract)) : contractsErr ? <FailMark /> : '…'} label={tr('Нийт гэрээлсэн дүн')} />
         {/*
           * ⚠️ МӨНГӨН ДҮН ТҮР ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар:
           * «851.0 тэрбум ₮ — үүнийг IPC-ээс авна, одоохондоо hide хий»).
@@ -1340,6 +1358,9 @@ const mntShort = (v: number): string => {
   if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
   return mnt(v);
 };
+
+/** KPI зурвасын дүн — жинхэнэ 0-ийг «0 ₮» (`mntShort`-ийн «—» нь чартын мөрүүдэд хэвээр) */
+const kpiMnt = (v: number): string => (v === 0 ? '0 ₮' : mntShort(v));
 
 /** МӨНГӨН чарт — мөрөнд «хувь · тоймлосон дүн», hover-т бүтэн задаргаа */
 const moneyBars = (
@@ -2680,7 +2701,7 @@ function PkgWorkList({
            = `БАГЦ14` нь БОДИТ Багц 14-ийн давхаргад наалдаж, ТЭЗҮ-ийн ажил дарахад
            «Дулаан хангамжийн нэвтрэх суваг» асдаг байв. Диапазон → `''` → бүдэг. */
         const key = pkgKeyOf(r.pkg2);
-        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: (key && PKG_BY_BAGTS[key]) || [] };
+        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: (key && mapPkgLayers(key)) || [] };
       })
       .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.name.localeCompare(b.name));
   }, [rows]);
@@ -2699,7 +2720,8 @@ function PkgWorkList({
         onClick={() => setOpen((v) => !v)}
       >
         <span className={g.pkgCaret}>{open ? '▾' : '▸'}</span>
-        <span className={g.pkgTitle}>{tr('Багц {0}', num(works.length))}</span>
+        {/* ⚠️ 2026-10-26 (аудит): «Багц {0}» нь ГАНЦ багцын нэр (BIM сонгогч · ХАБЭА) — жагсаалтын тоонд тусдаа түлхүүр */}
+        <span className={g.pkgTitle}>{tr('{0} багц', num(works.length))}</span>
         <span className={`${g.pkgCount} num`}>{onCount}/{works.length}</span>
       </button>
       {open && (
@@ -2951,6 +2973,7 @@ function LandCard({
 function SaadCard({
   onShowLayers,
   keys,
+  known,
   oids,
 }: {
   /** `null` = сонголт ТАЙЛАГДЛАА, давхаргыг өмнөх төлөвт нь буцаа */
@@ -2963,6 +2986,8 @@ function SaadCard({
    * бүтэн олонлогоор шүүвэл тэдгээр нь шүүлтгүй үед ч чимээгүй алга болно.
    */
   keys: Set<string> | null;
+  /** Cashflow-д холбогдох ажилтай БҮХ (газрын зургийн) түлхүүр — эндээс гадуурх багц шүүлтэд ХАСАГДАХГҮЙ */
+  known: Set<string> | null;
   /**
    * СОНГОСОН ШАЛТГААНЫ нэгж талбарууд. `null` = шалтгаан сонгоогүй (бүгд).
    *
@@ -2982,9 +3007,16 @@ function SaadCard({
    * байвал хэрэглэгч аль нь юуг цуцлахыг таамаглах хэрэгтэй болно.
    */
   const [sel, setSel] = useState<string | null>(null);
+  /* ⚠️ 2026-10-26 (аудит): шалтгаан солигдох/цуцлагдахад сонголт ТЭГЛЭГДЭНЭ (LandCard-ийн `prevReason` загвар) — эс бөгөөс
+     давхарга нь асаагүй атал мөр тодорч, дахин дарахад хуучирсан сэргээх цэгийг дууддаг байв. */
+  const [prevOids, setPrevOids] = useState(oids);
+  if (prevOids !== oids) {
+    setPrevOids(oids);
+    setSel(null);
+  }
   const rows = useMemo(() => {
     if (q.state !== 'ready') return [];
-    const byKey = keys ? q.data.filter((r) => keys.has(r.key)) : q.data;
+    const byKey = keys ? q.data.filter((r) => keys.has(r.key) || (known != null && !known.has(r.key))) : q.data;
     if (!oids) return byKey.map((r) => ({ ...r, hit: r.oids }));
     /* ⚠️ 2026-09-29 (аудит 10): татагдаагүй багц (`failed`, `oids: []`) шүүлтийн
        үед ч ҮЛДЭНЭ — хасвал «энэ шалтгаанд саадгүй» гэсэн худал уншилт болно */
@@ -2992,7 +3024,7 @@ function SaadCard({
       .map((r) => ({ ...r, hit: r.oids.filter((o) => oids.has(o)) }))
       .filter((r) => r.hit.length > 0 || r.failed)
       .sort((a, b) => b.hit.length - a.hit.length);
-  }, [q, keys, oids]);
+  }, [q, keys, known, oids]);
   /* ⚠️ 2026-09-29 (аудит 10): гарчгийн тоонд ЗӨВХӨН татагдсан багц — татагдаагүй
      нь «0 талбартай багц» биш, тоо нь МЭДЭГДЭХГҮЙ (`PkgOverlap.failed`) */
   const okRows = useMemo(() => rows.filter((r) => !r.failed), [rows]);
@@ -3116,10 +3148,12 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
             return d && q != null ? qtyText(d, q) : null;
           };
 
-          /* Шугам сүлжээний нийт урт — гэр бүлийн давхаргууд нь бүгд ижил
-             нэгжтэй (метр) тул нийлбэр нь утгатай. Аль нэг нь дутвал
-             нийлбэрт орохгүй — тоо БАГА гарна, ХУДАЛ гарахгүй. */
-          const netIds = [...new Set(NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []))];
+          /* Шугам сүлжээний нийт урт. Аль нэг нь дутвал нийлбэрт орохгүй — тоо БАГА гарна, ХУДАЛ гарахгүй.
+             ⚠️ 2026-10-26 (аудит): гэр бүлд 34 ШУГАМ (м) + 28 ТАЛБАЙ (м² — худаг, усан сан, станц) + qty-гүй 4 цэг
+             (ХТП РП A–D) бий — урьд нь бүгд «метр» гэж нийлж м²-ийг км болгон нэмдэг (157.1 ↔ бодит 123.3 км),
+             qty-гүй 4 нь «(дутуу: 4 давхарга)»-г ҮРГЭЛЖ гаргадаг байв. ЗӨВХӨН `qty.unit === 'м'` давхарга. */
+          const netIds = [...new Set(NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []))]
+            .filter((id) => LAYER_BY_ID[id]?.qty?.unit === 'м');
           const netM = netIds.reduce((s, id) => s + (t.get(id)?.q ?? 0), 0);
           /* ⚠️ 2026-10-09 (аудит №2): дээрх санаатай шийдвэр («тоо БАГА, худал биш») ХЭВЭЭР — гэхдээ
              дутуу нийлбэрийг ЧИМЭЭГҮЙ гаргахгүй: утгагүй давхаргын тоог «(дутуу: N давхарга)» гэж

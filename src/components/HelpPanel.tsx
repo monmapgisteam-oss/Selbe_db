@@ -17,7 +17,7 @@
  *    try/catch; уншиж чадахгүй бол зөвлөмж ХАРУУЛАХГҮЙ (давтан гарахаас сэргийлнэ).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { NAV_GROUPS, VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, roleForUser, type ViewKey } from '@/lib/services';
@@ -76,8 +76,10 @@ const HOWTO: { id: string; view: ViewKey; title: () => string; steps: (full: boo
     title: () => tr('Гүйцэтгэл бөглөж илгээх'),
     steps: () => [
       tr('«Гүйцэтгэл» хэсгийг нээж «Гүйцэтгэл бөглөх» табаас багцаа сонгоно.'),
-      tr('Нүдэнд гүйцэтгэлийн хувь эсвэл обьём бичнэ — ноорог автоматаар хадгалагдана, хуудсаа хаасан ч алдагдахгүй.'),
-      tr('Бэлэн болмогц «Илгээх» дарна. Илгээсний дараа хяналт дуустал тэр хуудсыг засах боломжгүй.'),
+      /* ⚠️ 2026-10-26 (аудит): 10-23-аас нүд түгжээтэй эхэлнэ («Бөглөх»), «Илгээх» нь «Дуусгах»-ын шалгалтын дараа л идэвхжинэ */
+      tr('«Бөглөх» дарж засах горимыг нээгээд нүдэнд гүйцэтгэлийн хувь эсвэл обьём бичнэ — ноорог автоматаар хадгалагдана, хуудсаа хаасан ч алдагдахгүй.'),
+      tr('Бөглөж дуусмагц «Дуусгах» дарж бэлэн байдлыг шалгуулна — ингэснээр «Илгээх» идэвхжинэ.'),
+      tr('«Илгээх» дарна. Илгээсний дараа хяналт дуустал тэр хуудсыг засах боломжгүй.'),
       tr('Хамтран бөглөгч байвал тэр «Дуусгасан» дарсны дараа илгээлт хяналтад орно.'),
     ],
   },
@@ -320,10 +322,28 @@ export function HelpTip({ onOpen }: { onOpen: () => void }) {
     try { localStorage.setItem(TIP_KEY, '1'); } catch { /* хувийн горим */ }
     if (hadFocus) document.querySelector<HTMLElement>('header button[aria-haspopup="dialog"]')?.focus();
   };
+  /* ⚠️ 2026-10-26 (аудит): 10-23-аас «?»-ийн БАРУУН талд хэрэглэгчийн чип нэмэгдсэн тул CSS-ийн тогтмол `right`
+     сум аватарыг заадаг байв. «?» товчийн төвөөс хэмжинэ (олдохгүй бол CSS-ийн утга хэвээр). */
+  const [arrowRight, setArrowRight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!show) return undefined;
+    const place = () => {
+      const q = document.querySelector<HTMLElement>('header button[aria-haspopup="dialog"]');
+      const tip = tipRef.current;
+      if (!q || !tip) { setArrowRight(null); return; }
+      const qr = q.getBoundingClientRect();
+      const tr0 = tip.getBoundingClientRect();
+      const r = tr0.right - (qr.left + qr.width / 2) - 6;
+      setArrowRight(Math.max(8, Math.min(tr0.width - 20, r)));
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [show]);
   if (!show) return null;
   return (
     <div ref={tipRef} className={s.tip} role="status">
-      <span className={s.tipArrow} aria-hidden />
+      <span className={s.tipArrow} style={arrowRight == null ? undefined : { right: arrowRight }} aria-hidden />
       <p className={s.tipText}>
         {tr('Шинээр орж байна уу? «?» товчоос хэсэг бүр юунд зориулагдсаныг харна уу.')}
       </p>

@@ -15,7 +15,7 @@
  * ⚠️ 2026-10-26: null ≠ 0. Хоосон оролт → `null` («мэдээлэлгүй»), 0 БИШ. Явц 0–100 (`pct()` үржүүлдэггүй).
  */
 import { parseDayInput } from './dateInput';
-import { saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 /* ══════════════════ Тогтмол ══════════════════ */
 
@@ -76,6 +76,26 @@ export type FieldKey = keyof typeof FIELD_OF;
 
 /** Мөр бүрийн засвар — ХЭРЭГЛЭГЧИЙН БИЧСЭН ТЕКСТ (задлалт хадгалахад) */
 export type RowEdit = Partial<Record<FieldKey, string>>;
+
+/**
+ * МӨНГӨНИЙ мөрийн (`cashflow_id` бий) явцыг ШАТНЫ талбарт ДАВХАР бичнэ — ТЭЗҮ → `tezu`, Ажлын зураг төсөл → `ajliin_zurag_tusul`.
+ * ⚠️ 2026-10-26 (аудит): ТУХ-ын «Зураг төсөл» (`tuhData.designPctOf`) ба Нэгтгэл (`negtgel.loadCfStages`) мөнгөний мөрийн эдгээр
+ *    шатны талбарыг уншдаг тул энд явц шинэчлэхэд тэнд юу ч өөрчлөгддөггүй, нэг гэрээ хоёр дэлгэцэд өөр % (55 ↔ 100) байв.
+ *    Уншигчдыг `guitsetgel_huvi` руу шилжүүлэх нь хэрэглэгчийн 10-01-ний шийдвэрийг өөрчлөх тул бичилтийг давхарлав.
+ *    БҮТЦИЙН мөрд (cashflow_id null) хамаарахгүй.
+ */
+export const STAGE_FIELD_OF: Partial<Record<PhaseKind, string>> = { tezu: 'tezu', zurag: 'ajliin_zurag_tusul' };
+
+/** Мөрийн үе шат — өөрийн `uy_shat`, байхгүй бол эцгүүдийнхээс (`etseg_kod`) */
+export function rowPhase(base: readonly PlanStoredRow[], r: PlanStoredRow): PhaseKind {
+  const byKod = new Map(base.map((x) => [x.dd_kod ?? '', x] as const));
+  let cur: PlanStoredRow | undefined = r;
+  for (let i = 0; cur && i < 20; i += 1) {
+    if (cur.uy_shat) return phaseKind(cur.uy_shat);
+    cur = cur.etseg_kod ? byKod.get(cur.etseg_kod) : undefined;
+  }
+  return 'other';
+}
 
 /** Хадгалаагүй бүх засвар: `edits` — мөрийн түлхүүрээр (`rowKey`), `adds` — шинэ дэд шатны мөрүүд */
 export type Pending = { edits: Record<string, RowEdit>; adds: PlanStoredRow[] };
@@ -363,6 +383,9 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     if (!ch || !Object.keys(ch).length) continue;
     const u: Record<string, unknown> = { [names.oid]: r.objectid };
     for (const f of Object.keys(ch) as FieldKey[]) u[FIELD_OF[f]] = ch[f];
+    /* ⚠️ 2026-10-26 (аудит): мөнгөний мөрийн явцыг шатны талбарт ч (`STAGE_FIELD_OF`-ийн ⚠️) */
+    const stage = 'pct' in ch && r.cashflow_id != null ? STAGE_FIELD_OF[rowPhase(base, r)] : undefined;
+    if (stage) u[stage] = ch.pct ?? null;
     updates.push(u);
   }
 

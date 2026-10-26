@@ -139,7 +139,16 @@ const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
 
 /* ⚠️ 2026-10-23 (UX аудит E11): гүйцэтгэлийн илгээлтийн мөрийн нэр «Гүйцэтгэл · 2026.10.14 · …» (`hyanaltSubmit.dayTagOf`)
    ArcGIS-д МОНГОЛООР хадгалагддаг (түлхүүр — өөрчлөхгүй) тул англи горимд угтварыг зөвхөн ДЭЛГЭЦЭНД орчуулна. */
-const ajilLabel = (a: string): string => (a.startsWith('Гүйцэтгэл · ') ? `${tr('Гүйцэтгэл')} · ${a.slice('Гүйцэтгэл · '.length)}` : a);
+/* ⚠️ 2026-10-26 (аудит): хуудасны нэрийг ч («Багц 1 · 9 давхар» — `hyanaltSubmit`: «Гүйцэтгэл · огноо · хуудас») орчуулна —
+   урьд нь зөвхөн угтвар орчуулагдаж «Performance · 2026.10.26 · Багц 1 · 9 давхар» гардаг байв. Хадгалах утга монголоор хэвээр. */
+const ajilLabel = (a: string): string => {
+  if (!a.startsWith('Гүйцэтгэл · ')) return a;
+  const rest = a.slice('Гүйцэтгэл · '.length);
+  const i = rest.indexOf(' · ');
+  return i < 0
+    ? `${tr('Гүйцэтгэл')} · ${rest}`
+    : `${tr('Гүйцэтгэл')} · ${rest.slice(0, i)} · ${tr(rest.slice(i + 3))}`;
+};
 /* ⚠️ 2026-10-26 (G7): шатны цаг нь нийтлэг `format.dateTime` («YYYY-MM-DD HH:mm», хоёр хэлэнд ижил). Урьд нь
    `toLocaleString('mn-MN')` — англи горимд монгол хэлбэр, `mn` ICU-гүй хөтөчид «10/14/2026, 02:30 PM» (MM/DD) гардаг байв. */
 const fmt = (iso: string | null) => dateTime(iso);
@@ -1400,8 +1409,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
       <button className={s.itemHead} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className={s.chev}>{open ? '▾' : '▸'}</span>
         <span className={s.who}>
-          <div className={s.ajil} title={ajilLabel(work.ajil)}>{ajilLabel(work.ajil)}</div>
-          <div className={s.meta} title={`${work.bagts} · ${work.company}`}>{work.bagts} · {work.company}</div>
+          {/* ⚠️ 2026-10-26 (аудит): button дотор зөвхөн phrasing агуулга — span (CSS нь -webkit-box тул блок хэвээр); багц орчуулна */}
+          <span className={s.ajil} title={ajilLabel(work.ajil)}>{ajilLabel(work.ajil)}</span>
+          <span className={s.meta} title={`${tr(work.bagts)} · ${work.company}`}>{tr(work.bagts)} · {work.company}</span>
         </span>
         <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>
@@ -2008,10 +2018,13 @@ export function Guitsetgel() {
     const needle = q.trim().toLowerCase();
     // ⚠️ Төлөвийн шүүлт нь ОЛОН төлөвийг нэгтгэж болно (компанийн харагдац)
     const want = statusList.find((o) => o.value === status)?.match;
+    /* ⚠️ 2026-10-26 (аудит): дэлгэцэд харагдах (орчуулсан) бичвэрээр ч хайна — англи горимд «Package 1» олдохгүй байв */
     return works.filter((w) =>
       (!needle
         || w.ajil.toLowerCase().includes(needle)
+        || ajilLabel(w.ajil).toLowerCase().includes(needle)
         || w.bagts.toLowerCase().includes(needle)
+        || tr(w.bagts).toLowerCase().includes(needle)
         || w.company.toLowerCase().includes(needle))
       && (!bagts || w.bagts === bagts)
       && (!company || w.company === company)
@@ -2197,20 +2210,21 @@ export function Guitsetgel() {
       ) : (
       <>
       <div className={s.bar}>
-        <input className={s.search} placeholder={tr('Ажил, багц, компаниар хайх…')}
+        {/* ⚠️ 2026-10-26 (аудит): хандалтын нэр (aria-label) — сонгогч «combo box» гэж л зарлагддаг байв */}
+        <input className={s.search} placeholder={tr('Ажил, багц, компаниар хайх…')} aria-label={tr('Ажил, багц, компаниар хайх…')}
           value={q} onChange={(e) => setQ(e.target.value)} />
 
-        <select className={s.select} value={bagts} onChange={(e) => setBagts(e.target.value)}>
+        <select className={s.select} value={bagts} onChange={(e) => setBagts(e.target.value)} aria-label={tr('Багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
-          {bagtsList.map((x) => <option key={x} value={x}>{x}</option>)}
+          {bagtsList.map((x) => <option key={x} value={x}>{tr(x)}</option>)}
         </select>
 
-        <select className={s.select} value={company} onChange={(e) => setCompany(e.target.value)}>
+        <select className={s.select} value={company} onChange={(e) => setCompany(e.target.value)} aria-label={tr('Компани')}>
           <option value={ALL}>{tr('Бүх компани')}</option>
           {companyList.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
 
-        <select className={s.select} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select className={s.select} value={status} onChange={(e) => setStatus(e.target.value)} aria-label={tr('Төлөв')}>
           <option value={ALL}>{tr('Бүх төлөв')}</option>
           {statusList.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>

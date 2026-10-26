@@ -384,14 +384,14 @@ export async function buildExecDoc(
         g.budget > 0 ? pct((g.contract / g.budget) * 100, 1) : '—',
         num(g.types),
         /* ⚠️ Шошгыг байгаагаар нь — `toLocaleLowerCase` нь товчлол (ИД, ХО…)-ыг эвддэг байв */
-        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', topType.label, money(topType.cost)) : '')),
+        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', tr(topType.label), money(topType.cost)) : '')),
       cap(tr('Ажлын төрлөөр төсвийн хэмжээ')),
-      barChart(g.byType.map((t) => ({ label: t.label, value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
+      barChart(g.byType.map((t) => ({ label: tr(t.label), value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
       cap(tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')),
       { table: { headerRows: 1, widths: ['*', 32, 36, 94, 94, 46], body: [
         [th(tr('Ажлын төрөл')), th(tr('Ажил'), true), th(tr('Гэрээт'), true), th(tr('Төсөв (төг)'), true), th(tr('Гэрээлсэн (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...g.byType.map((t): TableCell[] => [
-          td(t.label), td(num(t.n), true), td(num(t.contracted), true),
+          td(tr(t.label)), td(num(t.n), true), td(num(t.contracted), true),
           td(num(t.cost), true), td(t.contract > 0 ? num(t.contract) : '—', true),
           td(t.perf == null ? '—' : pct(t.perf, 1), true),
         ]),
@@ -636,7 +636,8 @@ export async function buildExecDoc(
           if (a.kind === 'finZero') {
             return [head, { table: { headerRows: 1, widths: ['*', 110, 100], body: [
               [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
-              ...finZero.map((r): TableCell[] => [td(r.label), td(num(r.plan), true), td(num(0), true)]),
+              /* ⚠️ 2026-10-26 (аудит): гэрээний дүн хоосон гэрээт багц «0» биш «—» (null ≠ 0) */
+              ...finZero.map((r): TableCell[] => [td(r.label), td(r.plan > 0 ? num(r.plan) : '—', true), td(num(0), true)]),
               [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(num(0), true)],
             ] }, layout: tableLayout }];
           }

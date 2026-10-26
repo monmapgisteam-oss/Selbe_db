@@ -77,6 +77,17 @@ export const FIN_XL_ORDER: readonly string[] = [
   'urdchilgaa_zh_zardal',
   'dugaar2',
   'bagts_74',
+  /* ⚠️ 2026-10-26 (аудит): Excel-ийн төлөвлөгөөний (ТЭЗҮ · зураг төсөл · 6 түвшин) шинэ багана — ЭНД байхгүй байсан тул
+     cashflow_*-ын АРД, анхдагчаар ХАРАГДАЖ (78 мөрд бүгд хоосон) байв. `guitsetgel_huvi`-ээс хойш тул нуугдана (`FIN_XL_HIDE`). */
+  'geree_ehleh',
+  'geree_duusah',
+  'guits_ehleh',
+  'guits_duusah',
+  'gazar_ehleh',
+  'gazar_duusah',
+  'songon_ognoo',
+  'ashiglalt_ognoo',
+  'sar_mongo_eh',
   /* ⚠️ Текстэн хуулбар — эрэмбэд ОРУУЛАХ шалтгаан: энд байхгүй
      талбар жагсаалтын ЭЦЭСТ унадаг тул дэлгэхэд сарын багануудын
      АРД гарч, «сарын 5 багана хамгийн ард» дүрэм эвдэрнэ. */

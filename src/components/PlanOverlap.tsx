@@ -16,6 +16,7 @@ import {
   type OverlapCat, type OverlapResult, type OverlapSide, type OverlapMapDisplay, type OverlapZone,
 } from '@/lib/planOverlap';
 import { num } from '@/lib/format';
+import { userError } from '@/components/ui';
 import { matchesOverlapFocus, overlapScopeFocus, type OverlapFocus } from '@/lib/planOverlapSelection';
 import s from './planOverlap.module.css';
 
@@ -84,7 +85,8 @@ function useOverlap(side: OverlapSide): State {
       p.then((result) => { if (alive) setSt({ side, result, step: '', error: null }); })
         .catch((e: unknown) => {
           console.error('[selbe] давхцлын тооцоо унав:', e);
-          if (alive) setSt({ side, result: null, step: '', error: e instanceof Error ? e.message : String(e) });
+          /* ⚠️ 2026-10-26 (аудит): түүхий алдаа (URL-тай «timeout 45s: https://…», англи ArcGIS мөр) — 01/03-тай ижил `userError` */
+          if (alive) setSt({ side, result: null, step: '', error: userError(e) });
         });
     }, delay);
     return () => { alive = false; clearTimeout(t); off(); };
@@ -103,7 +105,10 @@ function useOverlapDisplay(result: OverlapResult | null, shown: OverlapCat[], se
     let alive = true;
     computeOverlapDisplay(result, categories, selected)
       .then((data) => { if (alive) setState({ source: result, key, data, error: null }); })
-      .catch((error: unknown) => { if (alive) setState({ source: result, key, data: null, error: error instanceof Error ? error.message : String(error) }); });
+      .catch((error: unknown) => {
+        console.error('[selbe] давхцлын зураглал унав:', error);
+        if (alive) setState({ source: result, key, data: null, error: userError(error) });
+      });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key нь ангилал/төрөл/давхаргыг бүрэн агуулна; бүс солиход дахин бодохгүй.
   }, [result, key]);

@@ -294,7 +294,8 @@ export function buildModel(input: {
     const housing = p.group === 'housing';
     /** Энэ мөр түлхүүрийнхээ өгөгдлийн ЭЗЭН мөн эсэх (`keyOwners`) */
     const own = !!p.pkgKey && owner.get(p.pkgKey) === p.key;
-    const months = housing ? monthsBy.get(p.pkgKey) : undefined;
+    /* ⚠️ 2026-10-26 (аудит): 01-ийн сарын цэг дэд бүтцийн багцад ч (эзэн мөрд) — S-муруй хоосон байв (`progressOf`-ийн ⚠️) */
+    const months = housing || (own && p.group !== 'design') ? monthsBy.get(p.pkgKey) : undefined;
     const lag = months ? lagOf(months) : null;
     const series = housing ? plan?.byBagts.get(p.pkgKey) : undefined;
     /* ⚠️ 2026-10-08: `lagOf` null (муруйн кэш хараахан алга) үед ч ХЭМЖИЛТИЙН өдрөөр (`measDayOf`)

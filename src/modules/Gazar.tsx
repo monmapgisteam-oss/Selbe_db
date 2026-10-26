@@ -25,7 +25,7 @@ import { loadPkgOverlaps, type PkgOverlap } from '@/lib/pkgSaad';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
-import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
+import { PARCEL_OID, PARCEL_FIND_LIMIT, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
 import { statusKey, isClearedStatus, statusRawsWhere, loadParcelAreaRows, parcelGroupRows } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
@@ -811,8 +811,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       if (!list.length) setFindMsg(tr('«{0}» дугаартай нэгж талбар олдсонгүй', no));
       else if (list.length === 1) openParcel(list[0].oid);
       else {
-        setHits(list);
-        setFindMsg(tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
+        /* ⚠️ 2026-10-26 (аудит): хязгаараас олон таарвал (`findParcelsByNo`-ийн ⚠️) тоог бүтэн мэт хэлэхгүй */
+        const more = list.length > PARCEL_FIND_LIMIT;
+        setHits(more ? list.slice(0, PARCEL_FIND_LIMIT) : list);
+        setFindMsg(more
+          ? tr('Эхний {0} нь — дугаараа нарийсгана уу', num(PARCEL_FIND_LIMIT))
+          : tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
       }
     } catch (e) {
       if (seq !== findSeq.current) return;
@@ -1159,7 +1163,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      (ref уншдаг) дуудлагыг React Compiler render үеийн ref хандалт гэж үздэг байв. */
   const pickReason = (k: string) => {
     const r = d?.reasons.find((x) => x.key === k);
-    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', k), where: r.where, only: ['land:left'] });
+    /* ⚠️ 2026-10-26 (аудит): чипийн нэр орчуулсан (бартай ижил) — шүүлтийн түлхүүр/WHERE түүхий утгаар */
+    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', tr(r.label)), where: r.where, only: ['land:left'] });
   };
 
   /** Панелийн агуулгыг ачаалал/алдаа/хоосонтой хамт зурна */
@@ -1265,7 +1270,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   onSelect={(k) => {
                     // Шалтгааны шүүлттэй ижил — item-ийн урьдчилан угсарсан (түүхий утгат) WHERE-ийг авна
                     const it = d.statusAreaBy.find((x) => x.key === k);
-                    if (it) pickFlt({ grp: 'status', key: k, label: tr('Төлөв: {0}', k), where: it.where, only: ['land:left'] });
+                    /* ⚠️ 2026-10-26 (аудит): чипэнд бартай ижил (орчуулсан) нэр — «Status: зөвшилцөх» гардаг байв */
+                    if (it) pickFlt({ grp: 'status', key: k, label: tr('Төлөв: {0}', it.label), where: it.where, only: ['land:left'] });
                   }}
                 />
                 {d.reasons.length > 0 && (() => {

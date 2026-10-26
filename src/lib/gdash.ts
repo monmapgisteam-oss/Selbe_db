@@ -465,6 +465,20 @@ export const NO_PERIOD: Period = { years: [], quarters: [], months: [] };
 export const periodActive = (p: Period) =>
   p.years.length > 0 || p.quarters.length > 0 || p.months.length > 0;
 
+/**
+ * ҮЙЛЧЛЭХ ШҮҮЛТ — хэмжээсийн БҮХ утга сонгогдсон бол «шүүлтгүй» (`[]`).
+ * ⚠️ 2026-10-26 (аудит): «Бүгд» товч бүх утгыг ЧАГТалдаг (UI-д тайлж болохоор) — урьд нь тэр нь шүүлтийг ИДЭВХЖҮҮЛЖ
+ *    огноогүй 7 ажлыг хасдаг (KPI 74→67, гүйцэтгэл 38.9%→32.8%) байв, «Бүгд» өмнө нь ч дараа нь ч тод харагддаг тул
+ *    хэрэглэгч анзаардаггүй. «Юу ч сонгоогүй» = «бүгд» (`Period`-ийн ⚠️). `years` — жилийн сонголтуудын жагсаалт.
+ */
+export function effectivePeriod(p: Period, years: number[]): Period {
+  const full = (sel: number[], opts: number[]) => opts.length > 0 && opts.every((v) => sel.includes(v));
+  const y = full(p.years, years) ? [] : p.years;
+  const q = full(p.quarters, [1, 2, 3, 4]) ? [] : p.quarters;
+  const m = full(p.months, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) ? [] : p.months;
+  return y === p.years && q === p.quarters && m === p.months ? p : { years: y, quarters: q, months: m };
+}
+
 /** Сонголтод байгаа эсэх — хоосон олонлог нь БҮГДИЙГ хүлээн авна */
 const hit = (sel: number[], v: number) => sel.length === 0 || sel.includes(v);
 
@@ -1927,7 +1941,8 @@ export type SubPkg = {
  * тэдгээрт `pkg:*` давхарга байхгүй тул зурагт үзүүлэх зүйлгүй.
  */
 export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
-  const { PKG_BY_BAGTS, bagtsKey, isPkgRange } = await import('@/lib/services');
+  const { bagtsKey, isPkgRange } = await import('@/lib/services');
+  const { mapPkgLayers } = await import('@/lib/pkgAlias');
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [CF.pkg2, ...FIN_XL_CHART_FIELDS],
@@ -1944,7 +1959,7 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
     const raw = sOf(r[CF.pkg2]);
     if (!raw || isPkgRange(raw)) continue;
     const k = bagtsKey(raw);
-    if (!k || !PKG_BY_BAGTS[k]?.length) continue;
+    if (!k || !mapPkgLayers(k)?.length) continue;
     if (!seen.has(k)) seen.set(k, raw);
     const ty = finXlChartCat(r);
     if (ty) {
@@ -1956,7 +1971,7 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
     .map(([key, label]) => ({
       key,
       label,
-      layerIds: PKG_BY_BAGTS[key],
+      layerIds: mapPkgLayers(key) ?? [],
       types: [...(types.get(key) ?? [])],
     }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));

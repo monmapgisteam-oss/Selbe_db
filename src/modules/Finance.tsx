@@ -117,6 +117,28 @@ import type { PlanNode, PlanValues, BlockStatus } from '@/lib/projectPlan';
 import { Toggle } from '@/components/Switch';
 import f from './finance.module.css';
 
+/**
+ * `loadProjectPlan.failed`-ийн ДОТООД түлхүүрийг (`schedule:b1_9f` · `land:БАГЦ161` · `footprints`…) хүний нэр рүү.
+ * ⚠️ 2026-10-26 (аудит): анхааруулга кодын түлхүүрийг шууд харуулдаг тул аль эх уншигдаагүйг ойлгохгүй байв.
+ *    Дотоод түлхүүрүүд (`failedGroups` г.м.) ӨӨРЧЛӨГДӨХГҮЙ — зөвхөн харуулалт.
+ */
+function planFailedLabels(failed: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const k of failed) {
+    const [head, rest] = k.split(/:(.*)/s);
+    if (head === 'schedule') {
+      const p = rest ? PKGS.find((x) => x.key === rest) : undefined;
+      out.add(p ? tr('{0}: {1}', tr('Хуваарь'), p.label) : tr('Хуваарь'));
+    } else if (head === 'land') {
+      out.add(rest ? tr('{0}: {1}', tr('Газар чөлөөлөлт'), rest) : tr('Газар чөлөөлөлт'));
+    } else if (k === 'parcels') out.add(tr('Нэгж талбар'));
+    else if (k === 'footprints') out.add(tr('Барилгын давхарга'));
+    else if (k === 'blockProgress' || k === 'blockUniverse' || k === 'infraProgress' || k === 'actual') out.add(tr('Гүйцэтгэл'));
+    else out.add(k);
+  }
+  return [...out];
+}
+
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — CASHFLOW (төлөвлөгөө) + IPC (олгосон акт).
    МӨР (гэрээ/багц) БҮРД тусдаа график: сар бүр хэдэн хувьд гүйцэтгэж,
@@ -1863,7 +1885,9 @@ const EMPTY_HIDE: string[] = [];
  *    `finEdit`-тэй хэн ч эрх/цонхгүй шилжүүлж, сарын мөрүүд устгалгүй нуугдан (тооцоонд орохгүй) хүснэгтэд үлддэг;
  *    'garaar' руу буцааж бичвэл (шилжүүлэлт буцаагдахгүй — cf-wave2) гэрээ сарын мөргүй үлдэнэ.
  */
-const CALC_RO = new Set<string>(['cashflow_dun', CASHFLOW_NEW.fields.monthSource]);
+/* ⚠️ 2026-10-26 (аудит): `geree_ehleh`/`geree_duusah` — «ТЭЗҮ · Ажлын зураг төсөл» (ZuragTosol) эзэмшинэ: тэнд хос/дарааллын
+   шалгалт (`zuragEdit` эрх) бий, энд `finEdit`-ээр шалгалтгүй (дуусах < эхлэх) засагддаг байв. */
+const CALC_RO = new Set<string>(['cashflow_dun', CASHFLOW_NEW.fields.monthSource, 'geree_ehleh', 'geree_duusah']);
 
 /**
  * `Cashflow_ID` — хоосон бол `null`.
@@ -5585,7 +5609,7 @@ export function ProjectPlanTable({
       </div>
       {plan.failed.length > 0 && (
         <p role="status" className={f.ppWarn}>
-          {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', plan.failed.join(', '))}
+          {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', planFailedLabels(plan.failed).join(', '))}
         </p>
       )}
       {tree.issues.length > 0 && (

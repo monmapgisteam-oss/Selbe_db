@@ -109,7 +109,9 @@ const loadHabea = cached(async (): Promise<HabeaData> => {
     queryFeatures(HABEA.labor.url, { outFields: ['*'], orderBy: 'objectid ASC' }),
     queryFeatures(HABEA.incident.url, { outFields: ['*'], orderBy: 'objectid ASC' }),
     queryFeatures(HABEA.crane.url, { outFields: ['*'], orderBy: `${HABEA.crane.fields.oid} ASC` }),
-  ]), loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul])]);
+  /* ⚠️ 2026-10-26 (аудит): компани (`field_5`) ч домэйнтой — кодууд 30 тэмдэгтэд тасарсан («Хятадын хоёр дахь металлурги г»),
+     CEO самбар (`ceo/safety`) бүтэн нэрээр тайлдаг тул нэг компани хоёр дэлгэцэд өөр нэртэй байв. */
+  ]), loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul, I.company])]);
   const bad = res.flatMap((r, i) => (r.status === 'rejected' ? [i] : []));
   if (bad.length === res.length) throw (res[0] as PromiseRejectedResult).reason;
   for (const i of bad) console.warn(`[selbe] ХАБЭА · «${names[i]}» татагдсангүй:`, (res[i] as PromiseRejectedResult).reason);
@@ -251,6 +253,21 @@ const incDate = (d: number): string => (d > 0 ? date(d) : tr('огноогүй')
 
 /* ⚠️ 2026-10-21 (аудит): төрөл/шалтгааны төрөл домэйны НЭРЭЭР (`codedName`) — код тасархай («…хэрэгсэлийн осо»),
    «other» → «Бусад». Шүүлт (`sel.incType`/`sel.cause`), чарт, жагсаалт, попап бүгд энэ нэг нэрээр явна. */
+/**
+ * Кодлогдсон талбарын нэр — Survey123-ийн «Бусад» (`other`) сонголтод жинхэнэ бичвэр `<field>_other`-д.
+ * ⚠️ 2026-10-26 (аудит): урьд нь «Бусад»-ын бичвэр хаягдаж багц `other` (шүүлтэд таарахгүй), төрөл/шалтгаан зөвхөн «Бусад» гардаг байв
+ *    (`habeaUzleg.norm`-ийн `named`-тай ижил дүрэм).
+ */
+const incRaw = (r: Row, field: string): unknown => {
+  const v = r[field];
+  const o = r[`${field}_other`];
+  return String(v ?? '').trim().toLowerCase() === 'other' && o != null && String(o).trim() ? String(o).trim() : v;
+};
+const incNamed = (dom: CodedMaps, r: Row, field: string): string => {
+  const v = incRaw(r, field);
+  return v === r[field] ? codedName(dom[field], v) : String(v);
+};
+
 const normIncident = (r: Row, dom: CodedMaps): Inc => ({
   oid: nn(r['objectid']),
   /* ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17). Огноогүй маягт `d = 0`
@@ -258,11 +275,11 @@ const normIncident = (r: Row, dom: CodedMaps): Inc => ({
      бусад үед тоологдоно. ⚠️ 2026-09-21: `date(0)` нь «1970.01.01» гэж
      ХУДАЛ огноо зурдаг байсан тул огноог ЗӨВХӨН `incDate`-ээр харуулна. */
   d: nn(r[I.ognoo]),
-  bagtsRaw: text(r[I.bagts], '—'),
-  bagtsK: habeaPkgKey(r[I.bagts]),
-  company: clean(r[I.company]),
-  type: codedName(dom[I.turul], r[I.turul]) || '—',
-  cause: codedName(dom[I.shaltgaanTurul], r[I.shaltgaanTurul]) || '—',
+  bagtsRaw: text(incRaw(r, I.bagts), '—'),
+  bagtsK: habeaPkgKey(incRaw(r, I.bagts)),
+  company: clean(codedName(dom[I.company], r[I.company])),
+  type: incNamed(dom, r, I.turul) || '—',
+  cause: incNamed(dom, r, I.shaltgaanTurul) || '—',
   info: text(r[I.medeelel], '—'),
   reason: text(r[I.shaltgaan], '—'),
   action: text(r[I.argaHemjee], '—'),
@@ -788,7 +805,7 @@ function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [stri
       [tr('Огноо'), date(a[I.ognoo] as number)],
       [tr('Төрөл'), tr(codedName(dom[I.turul], a[I.turul]) || '—')],
       [tr('Багц'), text(a[I.bagts], '—')],
-      [tr('Компани'), clean(a[I.company])],
+      [tr('Компани'), clean(codedName(dom[I.company], a[I.company]))],
       [tr('Мэдээлэл'), text(a[I.medeelel], '—')],
       [tr('Шалтгаан'), text(a[I.shaltgaan], '—')],
       [tr('Арга хэмжээ'), text(a[I.argaHemjee], '—')],
@@ -1462,7 +1479,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ⚠️ OBJECTID нь маягт БҮРТ 1-ээс эхэлдэг — хоёр маягт зэрэг байхад
      «oid 5» аль маягтынх болохыг ДАВХАРГААР нь ялгана, эс бөгөөс V1.1-ийн
      цэг дарахад захиалагчийн маягтын 5-р үзлэг шүүгдэнэ. */
-  const pickUzZ = picked?.id === HABEA_UZLEG_LAYER_ID.zahialagch;
+  /* ⚠️ 2026-10-26 (аудит): ЗӨВХӨН хоёр маягт зэрэг (`dual`) үед — V1.1 хасагдсаны дараа «Захиалагчийн үзлэг» фокус нь ганц маягт
+     (`dual=false`, `uz2` идэвхгүй) тул цэг дарахад хоосон карт, шүүлтгүй болдог байв. */
+  const pickUzZ = dual && picked?.id === HABEA_UZLEG_LAYER_ID.zahialagch;
   /* ⚠️ 2026-10-21: үзлэгийн АЛЬ Ч давхарга (11 маягт) — `HABEA_UZLEG_LAYER_ID`-ийн утгаар */
   const pickUzOid = picked && (Object.values(HABEA_UZLEG_LAYER_ID) as string[]).includes(picked.id)
     ? nn(picked.attrs['objectid'])

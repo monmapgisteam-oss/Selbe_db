@@ -75,6 +75,8 @@ export function Home({
   isSuper = false,
   boardAllowed,
   homeView,
+  permsDown = false,
+  onRetryPerms,
 }: {
   /** «Нэвтрэх» / «Орох» — эрхийн дагуу орох цэгт хүргэнэ */
   onEnterAll: () => void;
@@ -114,6 +116,9 @@ export function Home({
    * хязгаарлагдмал хэрэглэгчийн картуудад «Таны үндсэн хэсэг» гэж тодруулна.
    */
   homeView?: ViewKey;
+  /** ⚠️ 2026-10-26 (аудит): эрхийн жагсаалт уншигдаагүй (`Root.permsDown`) — хоосон нүүрэнд шалтгааныг хэлнэ */
+  permsDown?: boolean;
+  onRetryPerms?: () => void;
 }) {
   const { status, user, signOut } = useAuth();
 
@@ -360,6 +365,23 @@ export function Home({
         *    хэсэг бүрийг энгийн тайлбартай карт болгож, үүргийнх нь үндсэн
         *    хэсгийг (`homeView`) эхэнд тодруулна.
         */}
+      {/* ⚠️ 2026-10-26 (аудит): НЭГ Ч харагдацгүй хэрэглэгч (шинэ бүртгэл · бүх харагдац хаагдсан · эрхийн жагсаалт
+          уншигдаагүй) урьд нь тайлбаргүй хоосон хуудас хардаг байв — шалтгаан нь зөвхөн «Порталд орох»-ын дараа гардаг. */}
+      {status === 'signed-in' && !(boardAllowed ?? isSuper) && groups.length === 0 && (
+        <main className={s.board}>
+          <div className={s.boardGate} role="status">
+            <p>{permsDown
+              ? tr('Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.')
+              : tr('Танд харагдац олгогдоогүй байна — админд хандана уу.')}</p>
+            <p>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+            {permsDown && onRetryPerms && (
+              <button type="button" className={s.actionPrimary} onClick={onRetryPerms}>{tr('Дахин оролдох')}</button>
+            )}
+            <button type="button" className={s.actionText} onClick={signOut}>{tr('Өөр бүртгэлээр нэвтрэх')}</button>
+          </div>
+        </main>
+      )}
+
       {!(boardAllowed ?? isSuper) && groups.length > 0 && (
         <main className={s.board}>
           <header className={s.boardHead}>

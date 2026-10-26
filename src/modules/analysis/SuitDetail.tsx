@@ -14,6 +14,7 @@ import { CHART } from '@/lib/chartStyle';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
 import { nf, zoneTypeLabel } from './suit/format';
+import { zoneLabel } from '@/lib/zoneLabel';
 import s from './suitability.module.css';
 
 /**
@@ -289,7 +290,8 @@ export function SuitDetail({
           {tot == null ? '—' : Math.round(tot)}
         </div>
         <div>
-          <h3>{r.id}</h3>
+          {/* ⚠️ 2026-10-26 (аудит): бүсийн код англи горимд («Багц-3.1» → «Package-3.1») */}
+          <h3>{zoneLabel(r.id)}</h3>
           {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
           {/* ⚠️ 2026-10-22 (аудит): хэмжсэн жин босгоос доош бол «өгөгдөлгүй» биш «хангалтгүй» гэж хувьтай нь (`urbanScore`) */}
           <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {tot == null && r.urbanReason === 'coverage' && r.coverage != null

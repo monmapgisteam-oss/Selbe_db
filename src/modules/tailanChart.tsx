@@ -30,6 +30,7 @@
  * харьцуулагдаж, шошго нь хувийг хэлнэ.
  */
 
+import type { CSSProperties } from 'react';
 import { num, pct } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { Bars, Meter } from '@/components/ui';
@@ -207,9 +208,11 @@ export function KpiRow({ items, cols }: {
 }) {
   if (!items.length) return null;
   return (
+    /* ⚠️ 2026-10-26 (аудит): баганын тоог CSS хувьсагчаар — inline `gridTemplateColumns` утсанд (360px) ч 2 багана тогтоож мөнгөн
+       дүн (≈170px) картаас халиж хөршөө дардаг байв; ≤620px-д нэг багана (`.kpisCols`). */
     <div
-      className={c.kpis}
-      style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}
+      className={cols ? `${c.kpis} ${c.kpisCols}` : c.kpis}
+      style={cols ? ({ '--kpi-cols': cols } as CSSProperties) : undefined}
     >
       {items.map((k, i) => (
         <div key={`${k.label}-${i}`} className={c.kpi}>

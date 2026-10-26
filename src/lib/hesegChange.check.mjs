@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Polygon from '@arcgis/core/geometry/Polygon.js';
 import Polyline from '@arcgis/core/geometry/Polyline.js';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine.js';
-import { measureChangeGeometry, sourceChangePieces, changeMeasurementState, compareChangeQuantity, CHANGE_ITEMS, strayFree, strayMargin, changeBoxUnion } from './hesegChange.ts';
+import { dedupeZoneCodes, measureChangeGeometry, sourceChangePieces, changeMeasurementState, compareChangeQuantity, CHANGE_ITEMS, strayFree, strayMargin, changeBoxUnion } from './hesegChange.ts';
 import { polygonCenterlines } from './polygonCenterline.ts';
 import { LAYER_BY_ID, layerUrl } from './services.ts';
 import { PLAN2D_LAYERS } from './plan2d.ts';
@@ -132,4 +132,6 @@ assert.equal(changeBoxUnion([]), null);
 const yAt = (lat) => 6378137 * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 close(strayMargin(5000, yAt(47.9)), 5000 / Math.cos((47.9 * Math.PI) / 180));
 close(strayMargin(5000, 0), 5000);
+// ⚠️ 2026-10-26 (аудит): давхардсан бүсийн мөр (X-13 — oid 12/47) нэг удаа; кодгүй мөр тус бүр үлдэнэ
+assert.deepEqual(dedupeZoneCodes([{ oid: 12, code: 'X-13' }, { oid: 20, code: 'K-6' }, { oid: 47, code: 'X-13' }, { oid: 5 }, { oid: 6 }]).map((f) => f.oid), [12, 20, 5, 6]);
 console.log('hesegChange: complete/partial deltas, missing-versus-zero measurements, centerline statistics, source maps, all zones and full old masterplan green comparison passed');

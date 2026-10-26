@@ -2038,6 +2038,14 @@ span.blkChip { cursor: default; }
 @media (max-width: 1180px) {
   .gSide.gSideEdP, .gSide.gSideEdG { flex-basis: calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)); }
 }
+/* ⚠️ 2026-10-26 (аудит): утсанд (375px) засагчийн самбар 410px болж `.gWrap`-ийг бүрэн эзэлдэг тул хуанли ХЭЗЭЭ Ч харагддаггүй,
+   чирч төлөвлөх боломжгүй байв — дор хаяж 120px хуанли үлдэнэ (огноог эхлэх/дуусах нүдээр эсвэл цонхоор засна). */
+@media (max-width: 640px) {
+  .gSide { flex-basis: min(calc(clamp(260px, 46%, 420px) + var(--col-extra-n, 0px)), calc(100% - 120px)); }
+  .gSide.gSideEdP, .gSide.gSideEdG {
+    flex-basis: min(calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)), calc(100% - 120px));
+  }
+}
 
 /* ⚠️ ОЛОН БЛОКТ БИЧИХ тэмдэг — засагдах эхлэх нүдний толгойд «→ N блок» (`Huvaari` `gBlks`) */
 .multiTag {

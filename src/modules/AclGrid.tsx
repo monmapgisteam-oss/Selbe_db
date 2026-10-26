@@ -139,8 +139,10 @@ export function AclGrid({
           {!hs.length && open !== key && <span className={s.ggDash}>—</span>}
           {open === key ? (
             /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно. */
+            /* ⚠️ 2026-10-26 (аудит): хандалтын нэр — «+»-ийн нэр (багц · үүрэг) select-д ч (WCAG 4.1.2) */
             <select
               className={s.ggSelect}
+              aria-label={addTitle(row, col)}
               autoFocus
               value=""
               disabled={off}

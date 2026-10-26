@@ -32,6 +32,7 @@ import { applyAll } from '@/lib/tableWrite';
 import { requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
 import { cached } from '@/lib/live';
+import { parcelAreaOf } from '@/lib/land';
 
 const F = PARCEL_LEFT.fields;
 
@@ -196,8 +197,10 @@ export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null
     owner: str(r[F.owner]),
     status: str(r[F.status]),
     progress: str(r[F.progress]),
-    /* ⚠️ Геометргүй 11 мөрд ЗӨВХӨН `Талбай` утгатай — нөхөх зам хэвээр */
-    areaM2: numOrNull(r[F.area]) ?? numOrNull(r[F.areaAlt]),
+    /* ⚠️ Геометргүй 11 мөрд ЗӨВХӨН `Талбай` утгатай — нөхөх зам хэвээр.
+       ⚠️ 2026-10-26 (аудит): `land.parcelAreaOf` (0 нь хэмжилт биш → SHAPE__Area) — area_m2 = 0 (амьд 24 мөр) маягтад «0 м²»
+       гардаг атал KPI тэдгээрт полигоны талбай авдаг тул нэг талбар хоёр өөр талбайтай байв. Зөвхөн харуулалт. */
+    areaM2: parcelAreaOf(r),
     address: str(r[F.address]),
     note: str(r[F.note]),
     editedBy: ef?.editor ? str(r[ef.editor]).trim() || null : null,
@@ -249,6 +252,8 @@ export const parcelNoLikeWhere = (no: string): string =>
  * хэсэгчилсэн таарцаар. ⚠️ Олон мөр буцааж болно — амьдаар нэг дугаар 2
  * мөрд байх тохиолдол бий (2026-10-01) тул дуудагч ЖАГСААЖ сонгуулна.
  * ⚠️ `orderBy` ЗААВАЛ (OID) — `limit`-тэй хуудаслалт эрэмбэгүй бол тогтворгүй.
+ * ⚠️ 2026-10-26 (аудит): `PARCEL_FIND_LIMIT + 1` мөр хүртэл буцаана — илүү мөр нь «тайрагдсан» гэсэн дохио (дуудагч эхний
+ *    `PARCEL_FIND_LIMIT`-ийг л жагсааж «нарийсгана уу» гэнэ). Урьд нь 951 таарсан ч «20 нэгж талбар олдлоо» гэж бүтэн мэт хэлдэг байв.
  */
 export async function findParcelsByNo(input: string): Promise<ParcelHit[]> {
   const no = input.trim();
@@ -257,7 +262,7 @@ export async function findParcelsByNo(input: string): Promise<ParcelHit[]> {
     where,
     outFields: [PARCEL_OID, F.parcelNo, F.owner, F.status],
     orderBy: `${PARCEL_OID} ASC`,
-    limit: PARCEL_FIND_LIMIT,
+    limit: PARCEL_FIND_LIMIT + 1,
   });
   let rows = await ask(parcelNoWhere(no));
   if (!rows.length && no.replace(/[%_[\]]/g, '').length >= PARCEL_FIND_MIN_LIKE) {

@@ -56,6 +56,7 @@ import {
      `cached()`-ээр ороосон тул энд дуудахад ШИНЭ HTTP хүсэлт ҮҮСЭХГҮЙ:
      `loadReportExtra` өөрөө яг эдгээр амлалтыг хуваалцаж байгаа. */
   loadOverall, loadProgress, loadFinance, loadLand, loadHabeaSummary,
+  BAGTS_GAP_PTS,
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
@@ -71,8 +72,7 @@ const bn = (v: number) => num(v);
  * гэж бичвэл «үнэгүй» мэт уншигдана — «—» болгоно.
  */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
-/** ⚠️ 2026-10-11 (аудит №7): §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь */
-const BAGTS_GAP_PTS = 20;
+/* ⚠️ 2026-10-11 (аудит №7): §2-ын «зөрүү их байна» босго — 2026-10-26-аас `reportData.BAGTS_GAP_PTS` (PDF-тэй нэг) */
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
 function Cap({ no, children }: { no: string; children: React.ReactNode }) {

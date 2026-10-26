@@ -117,7 +117,9 @@ console.log('✅ «N нэгж талбар хадгалагдлаа»');
   ]) assert.match(m[1], re, `Газар/openParcel: ${why}`);
   /* олон таарвал жагсааж сонгуулна — эхнийхийг чимээгүй нээхгүй */
   assert.match(src, /list\.length === 1\) openParcel\(list\[0\]\.oid\)/);
-  assert.match(src, /setHits\(list\)/, 'Газар: олон үр дүнг жагсаах ёстой');
+  /* ⚠️ 2026-10-26 (аудит): хязгаараас олон бол эхний PARCEL_FIND_LIMIT-ийг л жагсааж «нарийсгана уу» */
+  assert.match(src, /setHits\(more \? list\.slice\(0, PARCEL_FIND_LIMIT\) : list\)/, 'Газар: олон үр дүнг жагсаах ёстой');
+  assert.match(src, /Эхний \{0\} нь — дугаараа нарийсгана уу/, 'Газар: тайрагдсан хайлтыг хэлэх ёстой');
 }
 console.log('✅ Кадастрын дугаараар хайж, олдсон талбарыг нээнэ');
 

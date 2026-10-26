@@ -99,13 +99,16 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
         </div>
       )}
       <div className={s.bar}>
-        <div className={s.tabs} role="tablist" aria-label={tr('Түвшин')}>
+        {/* ⚠️ 2026-10-26 (аудит): tablist/tab загвар (tabpanel · сум) дутуу байсан тул энгийн товчны бүлэг + `aria-pressed`;
+            утсанд нэр нуугдсан ч хандалтын нэр бүтэн (`aria-label`) */}
+        <div className={s.tabs} role="group" aria-label={tr('Түвшин')}>
           {LEVELS.map((l) => (
             <button
               key={l}
               type="button"
-              role="tab"
-              aria-selected={lvl === l}
+              aria-pressed={lvl === l}
+              aria-label={`L${l} ${LEVEL_TEXT[l]()}`}
+              title={LEVEL_TEXT[l]()}
               className={`${s.tab} ${lvl === l ? s.tabOn : ''}`}
               onClick={() => setLvl(l)}
             >

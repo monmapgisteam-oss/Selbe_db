@@ -32,7 +32,7 @@ import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import { createBimPicker, type BimPicker } from '@/components/bimPicker';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import {
-  IMAGERY, IRGED_ROAD, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
+  IMAGERY, IRGED_ROAD, MESH_VERSIONS, DEFAULT_MESH_VER, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -781,7 +781,9 @@ export function SuitMap({
     const map = mapRef.current;
     if (!map) return;
 
-    for (const m of SCENE.layers) {
+    /* ⚠️ 2026-10-26 (аудит): урьд нь хуучирсан `SCENE` («Нислэг 1») — ортофото нь «Нислэг 2» (`IMAGERY`) тул нислэг холилдож,
+       Нислэг 2-ын хойд хэсэг мешгүй харагддаг байв. Меш ба ортофото ХАМТ (`scene.ts`-ийн ⚠️) — порталын анхдагч хувилбар. */
+    for (const m of MESH_VERSIONS[DEFAULT_MESH_VER].layers) {
       const id = `scene:${m.key}`;
       const existing = map.findLayerById(id);
       if (dim === '3d' && !existing) {

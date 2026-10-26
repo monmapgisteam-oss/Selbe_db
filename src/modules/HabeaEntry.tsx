@@ -322,8 +322,17 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   const kinds = useMemo(() => {
     const codes = dom?.map((c) => c.code) ?? [];
     if (!codes.length) return W.kinds.map((k) => ({ metric: k.metric, label: k.label }));
-    const card = W.kinds.filter((k) => codes.includes(k.metric)).map((k) => ({ metric: k.metric, label: k.label }));
-    const rest = (dom ?? []).filter((c) => !W.kinds.some((k) => k.metric === c.code)).map((c) => ({ metric: c.code, label: c.name }));
+    /* ⚠️ 2026-10-26 (аудит): домэйны кодууд нэгжгүй («Бетон », «Ахуйн хог ») атал `W.kinds`-ийн metric «Бетон (рейс)» тул
+       ЯГ тулгалтаар 14-ийн 2 л таарч, үлдсэн нь орчуулгагүй түүхий нэрээр гардаг байв. Habea.tsx-ийн `base`-тэй ижил
+       хэвшүүлэлтээр тулгана; БИЧИХ утга нь ҮРГЭЛЖ домэйны код (`W.kinds`-ийн metric домэйнд байхгүй). */
+    const base = (m: string) => m.replace(/\s*\((рейс|kg|кг|m3|м3)\)\s*$/i, '').trim().toLowerCase();
+    const used = new Set<string>();
+    const card: { metric: string; label: string }[] = [];
+    for (const k of W.kinds) {
+      const c = (dom ?? []).find((x) => !used.has(x.code) && base(x.code) === base(k.metric));
+      if (c) { used.add(c.code); card.push({ metric: c.code, label: k.label }); }
+    }
+    const rest = (dom ?? []).filter((c) => !used.has(c.code)).map((c) => ({ metric: c.code, label: c.name.trim() }));
     return [...card, ...rest];
   }, [dom, W.kinds]);
   const metricOk = kinds.some((k) => k.metric === metric);

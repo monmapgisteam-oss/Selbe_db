@@ -447,6 +447,8 @@ console.log('✅ нягт бичиглэл · хуучин хэлбэр унши
   const lite = serialize(d0, full.length - 1);
   assert.ok(lite.length < full.length && parse(lite).rk.get(10).des === 5 && parse(lite).rk.get(10).work === '', 'нэргүй танихуун');
   assert.equal(parse(serialize(d0, 10)).entries.size, 3, 'хэт бага max — нүд хэвээр');
+  /* ⚠️ 2026-10-26 (аудит): хэт бага max-д ч кодын танихуун ҮЛДЭНЭ (жааз солигдоход нүд өнчрөхгүй) */
+  assert.equal(parse(serialize(d0, 10)).rk.get(10).des, 5, 'танихуун (код) хэзээ ч хасагдахгүй');
   /* Одоогийн мөрүүд: код 5 → 210, «1.2 Арматур» → 211; код 9 алга */
   const ctx = {
     n: 2,

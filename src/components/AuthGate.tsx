@@ -894,7 +894,7 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
     }
   };
   return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-session-expired">
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-session-expired">
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title} id="selbe-session-expired">{tr('Нэвтрэлтийн хугацаа дууссан')}</div>
@@ -951,7 +951,7 @@ export function SystemClosed({ info, username, onRecheck, onSignOut }: {
     if (lastRefreshFail() === 'dead') reopenSessionDead();
   };
   return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-sys-closed">
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-sys-closed">
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title} id="selbe-sys-closed">{tr('Систем түр хаагдсан')}</div>
@@ -987,7 +987,7 @@ export function AccessLost({ username, onSignOut }: { username?: string; onSignO
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
   return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-access-lost">
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-access-lost">
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title} id="selbe-access-lost">{tr('Таны хандах эрх өөрчлөгдлөө')}</div>

@@ -35,6 +35,10 @@ import { pp } from '@/modules/pkgShared';
 import { Segmented } from '@/components/Switch';
 import s from '../tuh.module.css';
 
+/** Мөнгөн дүн — ЗӨВХӨН null үед «—» (0 нь «0 ₮»); `mnt` нь 0-ийг ч «—» болгодог (PkgDetail.mnt0-тэй ижил) */
+const mnt0 = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+
 /**
  * ⚠️ 2026-10-23 (UX аудит E4): урт мөнгөн дүнг ЗӨВХӨН мянгатын таслалын ДАРАА шилжүүлнэ (`<wbr>`).
  *    `.statValue`-ийн `overflow-wrap: anywhere` нь «2,009,768,762,9 / 35 ₮» гэж цифрийн дундуур тасалдаг байв.
@@ -457,7 +461,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       {ipc.paidOther != null && ipc.paidOther !== 0 && (
                         <small>{tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(ipc.paidOther))}</small>
                       )}
-                      <small>{tr('PV (гэрээ) {0} · EV {1}', lz(m, 'cfPlan')(mnt(r.ev.pvContract)), mnt(r.ev.ev))}</small>
+                      {/* ⚠️ 2026-10-26 (аудит): EV жинхэнэ 0 ₮ (гүйцэтгэл 0%) нь «—» биш — PkgDetail-ийн `mnt0`-тэй ижил (null ≠ 0) */}
+                      <small>{tr('PV (гэрээ) {0} · EV {1}', lz(m, 'cfPlan')(mnt(r.ev.pvContract)), mnt0(r.ev.ev))}</small>
                     </td>
                     <td className={s.num}>{num(ipc.ipcNos.length)}</td>
                     <td>{ipc.lastIpc != null ? `IPC-${ipc.lastIpc}` : '—'}<small>{ipc.lastPaidDate ?? '—'}</small></td>

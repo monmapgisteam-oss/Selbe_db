@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fixCyr } from "@/lib/format";
+import { serverNow, syncServerClock } from '@/lib/serverClock';
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
@@ -2781,12 +2782,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         const to = c > 0 ? oidMap.get(Number(k.slice(0, c))) : undefined;
         if (to != null) sentList.push([`${to}${k.slice(c)}`, v, sa]);
       }
+      /* ⚠️ 2026-10-26 (аудит): илгээлтийн хувилбар (`payload.at` → `subAt`) нь СЕРВЕРИЙН цагийн шатны огноотой (`approvedAt` ·
+         `okWrittenAt`) хүлцэлгүй жишигддэг — гүйцэтгэгчийн компьютерийн цаг зөрвөл «батласны дараа дахин илгээсэн» худал
+         анхааруулга гардаг/нуугддаг байв. Серверийн цагаар (давтагдашгүй, өсөх утга хэвээр — `expectAt` CAS ижил). */
+      await syncServerClock();
+      const sentStamp = serverNow();
       const payload = mergeSubmission(mergeBase, {
         /* ⚠️ НЭМЭЛТИЙН туг (2026-09-25) — хуучин суурь дээр нэгтгэхэд л туггүй (дээрх ⚠️) */
         ...(legacyBase ? {} : { mode: 'inc' as const }),
         pkgKey: pkg.key,
         user: user?.username ?? "",
-        at: Date.now(),
+        at: sentStamp,
         fillMs,
         /* ⚠️ Зөвхөн МЭДЭЭЛЭЛ: аль архивын агшин дээр бичсэнийг тэмдэглэнэ. */
         base: fresh0.snapshot ?? snapMs,
@@ -2873,7 +2879,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           if (sOids.has(r.oid) && !rkSeen.has(r.oid)) { rkSeen.add(r.oid); rk.push([r.oid, rowKeyOf(r)]); }
         }
         saveInflight(pkg.key, {
-          v: 1, nonce, fillMs, at: Date.now(), asOf: asOf !== asOfOrig ? asOf : null,
+          v: 1, nonce, fillMs, at: sentStamp, asOf: asOf !== asOfOrig ? asOf : null,
           sent: sentList,
           rk, occ: [...rowOccOf(pageRows, sOids), ...rowOccOf(freshRows, sOids)],
         });

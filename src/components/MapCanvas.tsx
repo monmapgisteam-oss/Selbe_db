@@ -54,7 +54,7 @@ import {
   IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, PARCEL_LEFT, buildingKey,
-  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
+  MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth, facetName,
   type LayerDef,
 } from '@/lib/services';
 import { installEntInterceptor } from '@/lib/entInterceptor';
@@ -5875,7 +5875,8 @@ function MapTip({
   } else {
     for (const f of (d.facets ?? []).slice(0, 3)) {
       if (attrs[f.field] == null || String(attrs[f.field]).trim() === '') continue;
-      rows.push({ k: f.label, v: text(attrs[f.field]) });
+      /* ⚠️ 2026-10-26 (аудит): кодтой/каноник утгыг хүний нэрээр (`facetName`) — «1»/«2», жижиг үсгийн ангилал биш */
+      rows.push({ k: f.label, v: facetName(d, f.field, text(attrs[f.field])) });
     }
     const zoneId = text(attrs[d.zoneField ?? ZONE_FIELD], '').trim();
     if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: tr('Бүс'), v: zoneId });

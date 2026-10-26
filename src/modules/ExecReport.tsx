@@ -324,7 +324,8 @@ export function ExecReport() {
                   title={tr('Ажлын төрөл бүрийн төсөв')}
                   fmt={money}
                   items={x.gdash.byType.map((t, i) => ({
-                    label: t.label, value: t.cost, hot: i === 0,
+                    /* ⚠️ 2026-10-26 (аудит): ажлын төрлийн нэр англи горимд орчуулагдана (эх үүсвэртэй ижил `tr`) */
+                    label: tr(t.label), value: t.cost, hot: i === 0,
                     text: `${money(t.cost)}${t.perf == null ? '' : ` · ${pct(t.perf, 1)}`}`,
                   }))}
                 />
@@ -334,7 +335,7 @@ export function ExecReport() {
                   <tbody>
                     {x.gdash.byType.map((t) => (
                       <tr key={t.label}>
-                        <td>{t.label}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
+                        <td>{tr(t.label)}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
                         <td className={r.num}>{num(t.cost)}</td><td className={r.num}>{t.contract > 0 ? num(t.contract) : '—'}</td>
                         <td className={r.num}>{t.perf == null ? '—' : pct(t.perf, 1)}</td>
                       </tr>
@@ -492,7 +493,11 @@ export function ExecReport() {
                           .filter(Boolean).join(' · ') || undefined,
                     },
                     /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол «хоцрогдол/түрүүлэлт/хуваарийн дагуу» гэж ДҮГНЭХГҮЙ */
-                    { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : !coverageOk(x.prog.planCoverage) ? tr('хуваарь дутуу — дүгнэхгүй') : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
+                    /* ⚠️ 2026-10-26 (аудит): хамралт < 95% бол УТГА ч «—» (PDF · инфографиктай нэг — «дэлгэц = PDF»); урьд нь «−9.6» тэмдэг
+                       өөрөө «хоцорсон» гэж дүгнэдэг байв */
+                    !coverageOk(x.prog.planCoverage)
+                      ? { label: tr('Зөрүү (нэгж хувь)'), value: '—', sub: coverageNote(x.prog.planCoverage) || tr('хуваарь дутуу — дүгнэхгүй') }
+                      : { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   {/* ⚠️ 2026-10-22 (аудит): хамралт < 95% бол төлөвлөгөөт зураас (ба түүгээр будах «хоцрогдол» өнгө) ГАРГАХГҮЙ */}
                   <PlanMeter value={x.prog.actual} plan={coverageOk(x.prog.planCoverage) ? x.prog.planned : null} label={tr('Орон сууцны барилга угсралт')} />

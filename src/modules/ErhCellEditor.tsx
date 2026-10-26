@@ -23,7 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
 import { useSyncRef } from '@/lib/useSyncRef';
-import { listUsers } from '@/lib/permissions';
+import { listUsers, roleOf } from '@/lib/permissions';
 import { isCodeSuper, roleForUser } from '@/lib/services';
 import { stageOfUser } from '@/lib/guitsetgelAcl';
 /* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын шошго (`portalPresence`) */
@@ -99,7 +99,10 @@ export function ErhCellEditor({
   };
   /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
   /* ⚠️ 2026-10-23: порталд алга гэж батлагдсан аккаунтыг санал болгохгүй */
-  const free = all.filter((a) => !isCodeSuper(a) && !portalMissing(a) && !taken.has(a.toLowerCase()) && !frozen(a));
+  /* ⚠️ 2026-10-26 (аудит): урсгалын нүдэнд «Ерөнхий захирал»-ыг санал болгохгүй — `setAssign` ZAHIRAL_NO_FLOW-оор татгалздаг
+     (GuitsetgelAcl-ийн сонгогчтой нэг дүрэм) */
+  const free = all.filter((a) => !isCodeSuper(a) && !portalMissing(a) && !taken.has(a.toLowerCase()) && !frozen(a)
+    && !(col.sys === 'flow' && roleOf(a) === 'zahiral'));
   /* ⚠️ 2026-10-23: ноорогийн бичих хориг (шинэ · устгахаар тэмдэглэсэн · урсгал × ноорог) `aclOps.runOp`-д ШИЛЖСЭН
      (`draftGuard`) — бүх эрхийн хуудсанд нэг дүрэм; энд зөвхөн санал болгохгүй (`frozen`). */
   /** Бичээд фокусыг popover руу буцаана — Esc барих хүрээнд үлдэнэ */
@@ -151,7 +154,7 @@ export function ErhCellEditor({
       <button
         type="button"
         className={s.aclX}
-        title={tr('Энэ багцаас хасах')} aria-label={tr('Энэ багцаас хасах')}
+        title={tr('Энэ багцаас хасах')} aria-label={`${tr('Энэ багцаас хасах')}: ${u}`}
         disabled={off}
         onClick={() => { void exec(rmOp(u)); }}
       >

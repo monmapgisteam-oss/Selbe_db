@@ -114,3 +114,10 @@ button.newBadge:disabled { opacity: 0.4; cursor: default; }
 .cellNew { background: color-mix(in oklab, var(--warn) 8%, transparent); }
 /* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» — МЭДЭЭЛЛИЙН нүд (идэвхгүй чекбокс + тэр төрлийн үүрэгтэй хүний тоо) */
 .info { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--ink-3); cursor: help; }
+
+/* ⚠️ 2026-10-26 (аудит): утсанд (≤760px — userAdmin-ийн цэгтэй нэг) 280px наалддаг шошго 328px гүйлгэх хүрээний ихэнхийг
+   эзэлж төрлийн баганад ~48px л үлддэг байв. */
+@media (max-width: 760px) {
+  .corner, .lbl { min-width: 140px; max-width: 160px; }
+  .lblHint { display: none; }
+}

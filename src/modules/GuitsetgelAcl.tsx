@@ -199,6 +199,8 @@ function ViewOnlyFlag({ a, off, onClick }: { a: Assign; off: boolean; onClick: (
       type="button"
       className={`${s.ggVo} ${a.viewOnly ? s.ggVoOn : ''}`}
       aria-pressed={!!a.viewOnly}
+      /* ⚠️ 2026-10-26 (аудит): нэр нь «○» л байсан — хэний туг болохыг хэлнэ */
+      aria-label={`${tr('Зөвхөн харна')}: ${a.user}`}
       disabled={off}
       title={tr('«Зөвхөн харна» ({0}) — асаавал гүйцэтгэлийг ХАРНА, батлах/буцаах товч идэвхгүй. Аккаунтын нэг тохиргоо: энд солиход «{1}»-ийн бүх багцад нэгэн адил үйлчилнэ.',
         a.viewOnly ? tr('асаалттай') : tr('унтраалттай'), a.user)}

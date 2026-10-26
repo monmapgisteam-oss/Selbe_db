@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import * as projection from '@arcgis/core/geometry/projection';
@@ -97,6 +98,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     return () => window.removeEventListener('online', retryLoad);
   }, [loadFailed, retryLoad]);
 
+  /* ⚠️ 2026-10-26 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаядаг ч энэ харагдац дахин ачаалдаггүй тул «Өгөгдөл: HH:MM»
+     шинэ цаг заасан ч оноо/эрэмбэ хуучин үлддэг байв (HesegChange · PlanOverlap-тэй ижил `refreshEpoch`). Шинэ нь иртэл хуучин үлдэнэ. */
+  const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
+  const hasDataRef = useRef(false);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -114,14 +119,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (!alive) return;
         setData(d);
         setGeoms(gm);
+        hasDataRef.current = true;
 
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
-        if (alive) setError(userError(e));
+        /* ⚠️ Шинэчлэлт унавал өмнөх өгөгдөл ХЭВЭЭР (алдааны дэлгэц зөвхөн өгөгдөлгүй үед) */
+        if (alive && !hasDataRef.current) setError(userError(e));
       }
     })();
     return () => { alive = false; };
-  }, [loadNonce]);
+  }, [loadNonce, epoch]);
 
   /* ── Загварын төлөв ── */
   // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
@@ -372,17 +379,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
      *    зураг НЭГ олонлогтой байх ёстой, эс бөгөөс жагсаалтад байхгүй барилга
      *    зурагт үлдэж, дарахад карт хоосон хариу өгнө.
      */
+    /* ⚠️ 2026-10-26 (аудит): `zone_id IN (...)` БИШ — жагсаалт (`locPts`) барилгыг ТӨВ ЦЭГЭЭР (100 м дотор хамгийн ойр) бүсэд
+       оноодог тул `zone_id` хоосон/зөрүүтэй барилга (155, 269 г.м.) жагсаалтад гарч зурагт нуугддаг байв. Нэг олонлог —
+       `locPts`-ийн objectid (`LOCATION_EXCLUDE_OIDS` аль хэдийн хасагдсан). */
     if (locPublicOnly) {
-      if (!publicZoneIds.length) return '1=0';
-      const vals = zoneVals(publicZoneIds);
-      parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
-      if (LOCATION_EXCLUDE_OIDS.size) {
-        parts.push(`objectid NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
-      }
+      if (!locPts.length) return '1=0';
+      parts.push(`objectid IN (${locPts.map((p) => p.oid).join(',')})`);
     }
 
     return parts.length ? parts.join(' AND ') : null;
-  }, [bldCats, bldOff, catOff, rows, locPublicOnly, publicZoneIds]);
+  }, [bldCats, bldOff, catOff, rows, locPublicOnly, locPts]);
 
   /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
   const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
@@ -976,7 +982,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <h1 title={tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
           </div>
         </div>
-        <nav className={s.tabs}>
+        {/* ⚠️ 2026-10-26 (аудит): идэвхтэй горим дэлгэц уншигчид ил (`aria-pressed`, CSS-ийн .view-switch загвар) */}
+        <nav className={s.tabs} aria-label={tr('Горим')}>
           {/* ⚠️ «Ерөнхий» (blend) ба «Эдийн засаг» (econ) табууд ХАСАГДСАН.
               Тэдгээрийн `mode` салаанууд кодод үлдсэн — дахин нээх бол зөвхөн
               энэ жагсаалтад мөрөө нэмнэ. */}
@@ -990,6 +997,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 key={k}
                 type="button"
                 className={mode === k ? s.tabActive : undefined}
+                aria-pressed={mode === k}
                 onClick={() => setMode(k)}
               >
                 {label}

@@ -5734,7 +5734,8 @@ export function Huvaari({
         /* ⚠️ 2026-10-09: ноорог/саналын шошго (`HvPdfInput.draftLabel`-ийн ⚠️) — баримт батлагдсан мэт харагдахгүй */
         draftLabel: previewing
           ? tr('САНАЛ (урьдчилан харалт)')
-          : dirtyRows > 0 ? tr('НООРОГ — батлагдаагүй {0} мөр', num(dirtyRows)) : undefined,
+          /* ⚠️ 2026-10-26 (аудит): «Батлагдсан» харагдац (`savedView`) — мөрүүд батлагдсан хуваарийнх тул «НООРОГ» шошгогүй */
+          : !savedView && dirtyRows > 0 ? tr('НООРОГ — батлагдаагүй {0} мөр', num(dirtyRows)) : undefined,
       /* ⚠️ 2026-09-30: файлын нэрийн өдөр ОРОН НУТГИЙН (`dayKey`) — `msToDay` (UTC) нь
          УБ-д 00:00–07:59-д өчигдрийн огноо өгдөг байв (`format.dayKey`-ийн ⚠️). */
       }, `Huvaari_${pkg.key}_${kind}${allPdf ? '_buhblok' : ''}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${dayKey(Date.now())}.pdf`);
@@ -5744,7 +5745,7 @@ export function Huvaari({
       setPdfBusy(false);
     }
   }, [sc, pdfBusy, visibleAt, effRow, rowSpanAt, refSpanAt, refSpanOf, multiBlk, kind, plan, byCode, blk, now, showRef,
-    pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows]);
+    pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows, savedView]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */
   const linkRows = useMemo(() => {

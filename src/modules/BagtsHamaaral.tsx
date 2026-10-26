@@ -23,6 +23,7 @@ import { num } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { bagtsKey } from '@/lib/services';
 import {
   dependentsOf, legacyCovered, legacyPkgKey, nodeMatches, pkgPairs, refOf, sectionsOf,
   type Edge, type NodeId, type RefChange, type WNode, type WorkGraph,
@@ -35,6 +36,17 @@ import { friendlyError, userError, Loading } from '@/components/ui';
 import { askConfirm, toastUndo } from '@/lib/confirm';
 import { setNavDirty } from '@/lib/navGuard';
 import s from './bagtsHamaaral.module.css';
+
+/**
+ * Хуучин холбооны түлхүүрийн дэлгэцийн нэр — бөглөх хуудасны багцын бүлэг (`PKGS.group`), орчуулсан.
+ * ⚠️ 2026-10-26 (аудит): `legacyPkgKey`-ийн түүхий түлхүүр («БАГЦ1 → БАГЦ31») — «БАГЦ31» нь «Багц 3.1» атлаа байхгүй
+ *    «Багц 31» мэт уншигдаж, англи горимд кириллээр үлддэг байв. Тулгалт/хадгалалт түүхий түлхүүрээр хэвээр.
+ */
+const legacyLabel = (k: string): string => {
+  const key = legacyPkgKey(k);
+  const p = key ? PKGS.find((x) => bagtsKey(x.group) === key) : undefined;
+  return p ? tr(p.group) : (key || k);
+};
 
 const pkgLabel = (p: string): string => PKGS.find((x) => x.key === p)?.label ?? p;
 /* ⚠️ 2026-10-23 (UX аудит P6): хоосон нэр «» болж харагддаг байв (жиш. «А. Бэлтгэл ажил «» (8)») — бүлэгт «(нэргүй бүлэг)»,
@@ -288,7 +300,7 @@ export function BagtsHamaaral() {
               const ok = sheetsOfPkgKey(legacyPkgKey(d.from)).length > 0 && sheetsOfPkgKey(legacyPkgKey(d.to)).length > 0;
               return (
                 <li key={`${d.from}>${d.to}`} className={s.legacyRow}>
-                  <span><b>{legacyPkgKey(d.from) || d.from}</b> → <b>{legacyPkgKey(d.to) || d.to}</b></span>
+                  <span><b>{legacyLabel(d.from)}</b> → <b>{legacyLabel(d.to)}</b></span>
                   {!ok && <small className={s.mute}>{tr('бөглөх хуудасгүй багц — шилжүүлэх боломжгүй')}</small>}
                   {canEdit && ok && (
                     <button type="button" className={s.ghostBtn} onClick={() => void migrate(d)}>{tr('Шилжүүлэх')}</button>

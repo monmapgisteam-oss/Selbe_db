@@ -53,6 +53,19 @@ export const MAX_CLOCK_OFF = 15 * 60_000;
 export function clockOffsetOk(off: number): boolean {
   return Number.isFinite(off) && Math.abs(off) <= MAX_CLOCK_OFF;
 }
+/**
+ * ⚠️ 2026-10-26 (аудит): ТОМ ЗӨРҮҮГ ЧАНАРААР НЬ хүлээн авна. Амьд өгөгдөлд (183, мөр 47 — Багц 3.3) хөтчийн цаг ~7.4 ц
+ *    түрүүлсэн компьютер инженер/менежерийн шатны огноог ИРЭЭДҮЙД бичсэн нь батлагдсан: хоёртын хайлт (±12 ц) жинхэнэ
+ *    серверийн цагт нийлдэг атал 15 мин-ийн хязгаар үүнийг «хэмжилтийн алдаа» гэж хаяж, буруу хөтчийн цаг руу унадаг байв.
+ *    Одоо 15 мин-ээс их зөрүүг ХОЁР бие даасан хэмжилт тус бүр богино (≤ 2 с) сүүлийн хүсэлттэй, хоорондоо ≤ 5 с-ээр
+ *    таарч, ±12 ц дотор байвал хүлээн авна (цэвэр; тест).
+ */
+export const MAX_CONFIRM_RTT = 2_000;
+export const MAX_CONFIRM_DIFF = 5_000;
+export function largeOffsetConfirmed(off1: number, rtt1: number, off2: number, rtt2: number): boolean {
+  const ok = (o: number, r: number) => Number.isFinite(o) && Math.abs(o) <= 12 * 3600_000 && Number.isFinite(r) && r >= 0 && r <= MAX_CONFIRM_RTT;
+  return ok(off1, rtt1) && ok(off2, rtt2) && Math.abs(off1 - off2) <= MAX_CONFIRM_DIFF;
+}
 /** Хүлээн аваагүй зөрүүг ил хэлнэ — хоёр `syncServerClock` нэг мессеж */
 export function warnClockOff(off: number): void {
   console.warn(`serverClock: серверийн цагийн зөрүү ${Math.round(off / 1000)} с — ${MAX_CLOCK_OFF / 60_000} мин-ээс их тул хүлээн авсангүй (хэмжилтийн алдаа байж болзошгүй)`);
@@ -148,9 +161,16 @@ export async function syncServerClock(url?: string, oidField = 'objectid'): Prom
       if (!base) return;
       const m = await measureServerTime(base, oidField);
       if (!m) return;
-      const off = clockOffsetOf(m.srv, m.t0, m.t1);
-      /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг хүлээн авахгүй (дээрх ⚠️) */
-      if (!clockOffsetOk(off)) { warnClockOff(off); clockAt = m.t1; return; }
+      let off = clockOffsetOf(m.srv, m.t0, m.t1);
+      /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг шууд хүлээн авахгүй (дээрх ⚠️) —
+         ⚠️ 2026-10-26 (аудит): ХОЁР ДАХЬ бие даасан хэмжилтээр баталбал авна (`largeOffsetConfirmed`-ийн ⚠️) */
+      if (!clockOffsetOk(off)) {
+        const m2 = await measureServerTime(base, oidField);
+        const off2 = m2 ? clockOffsetOf(m2.srv, m2.t0, m2.t1) : Number.NaN;
+        if (!m2 || !largeOffsetConfirmed(off, m.t1 - m.t0, off2, m2.t1 - m2.t0)) { warnClockOff(off); clockAt = m.t1; return; }
+        console.warn(`serverClock: таны компьютерийн цаг серверээс ${Math.round(off2 / 60_000)} мин зөрүүтэй — серверийн цагаар бичнэ. Цагаа засна уу.`);
+        off = Math.round((off + off2) / 2);
+      }
       clockOff = off;
       clockAt = m.t1;
     } catch { /* сүүлийн мэдэгдсэн зөрүү хэвээр — CLOCK_RETRY-ийн дараа дахин */ } finally {

@@ -125,7 +125,8 @@ ok('толгой: «Төслийн гүйцэтгэл» өөрийн төлөв�
 });
 ok('§3 эгнээ: бодит нь зөрүүний тал, дутуу хамралтад «хоцрогдол/түрүүлэлт» биш', () => {
   assert.match(UI, /x\.prog\.planExcluded\.length \? x\.prog\.actualLag : x\.prog\.actual/);
-  assert.match(UI, /!coverageOk\(x\.prog\.planCoverage\) \? tr\('хуваарь дутуу — дүгнэхгүй'\)/);
+  /* ⚠️ 2026-10-26 (аудит): дутуу хамралтад УТГА ч «—» (PDF-тэй нэг) */
+  assert.match(UI, /!coverageOk\(x\.prog\.planCoverage\)\s*\? \{ label: tr\('Зөрүү \(нэгж хувь\)'\), value: '—', sub: coverageNote\(x\.prog\.planCoverage\) \|\| tr\('хуваарь дутуу — дүгнэхгүй'\) \}/);
   assert.match(UI, /plan=\{coverageOk\(x\.prog\.planCoverage\) \? x\.prog\.planned : null\}/, 'дутуу хамралтад PlanMeter «хоцрогдол» өнгөөр будахгүй');
 });
 ok('ангилал: «Инженерийн дэд бүтэц» өөрийн биет хувьтай (`typePhysNow`)', () => {

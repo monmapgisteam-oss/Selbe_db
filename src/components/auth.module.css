@@ -10,6 +10,10 @@
   place-items: center;
   padding: 24px;
   background: var(--bg);
+  /* ⚠️ 2026-10-26 (аудит): fixed элементийн илүүдэл гүйлгэгдэхгүй — утсан дээр карт таслагдаж доод
+     товчнууд («Түр хаах», «Гарах») хүрэгдэхгүй байв. Гүйлгээ + `.card`-ийн margin:auto (дээд хэсэг таслагдахгүй). */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* ⚠️ 2026-09-30: ажиллаж байхад эрх хасагдсан — Portal ДООР нь амьд үлдэнэ.
@@ -20,10 +24,15 @@
   background: color-mix(in srgb, var(--bg) 78%, transparent);
   backdrop-filter: blur(3px);
 }
+/* ⚠️ 2026-10-26 (аудит): нэвтрэлт/систем хаалт/эрх хасагдсан цонх (`AuthGate`) нь Portal-ын модалуудаас
+ *    (SystemCloseDialog · ViewLost — мөн 6000, DOM-д ДАРАА) ДЭЭР байх ёстой — эс бөгөөс доор нуугдаж, фокусын
+ *    урхи харагдахгүй цонхонд гацдаг. ConfirmHost (6500)-оос доор. */
+.screenAuth { z-index: 6200; }
 
 .card {
   width: 100%;
   max-width: 380px;
+  margin: auto;
   padding: 32px 30px;
   background: var(--surface);
   border: 1px solid var(--line-strong);

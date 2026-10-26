@@ -170,7 +170,10 @@ export function Ma() {
   const runSync = useCallback(() => {
     if (q.state !== 'ready' || mirQ.state !== 'ready') return;
     setSync({ state: 'running' });
-    syncNoots(q.data, mirQ.data)
+    /* ⚠️ 2026-10-26 (аудит): хуудас нээх агшны MA/MIR биш ШИНЭЭР уншсанаар — `planSync` тэр агшны receipts-д байхгүй `mir_id`-тай
+       мөрийг УСТГАДАГ тул таб нээлттэй байх хооронд өөр хүн нэмсэн мөр (гараар засварласан утгатай) устдаг байв. */
+    Promise.all([loadMa(), loadMir()])
+      .then(([ma, mir]) => syncNoots(ma, mir))
       .then((res) => setSync(res.disabled ? { state: 'disabled', reason: res.disabled } : { state: 'done', res }))
       .catch((e) => setSync({ state: 'error', error: userError(e) }))
       .finally(() => setNootsTick((n) => n + 1));
@@ -381,9 +384,11 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
       {link?.prev && (
         <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).', link.prev.respNo || tr('(дугааргүй)'))}</p>
       )}
-      <div className={s.strip} role="list" aria-label={tr('Чанарын шатлал')}>
+      {/* ⚠️ 2026-10-26 (аудит): `role="listitem"` нь button-ийн үүргийг дарж дэлгэц уншигч «товч» гэж зарладаггүй байв —
+          энгийн товчнууд нэртэй бүлэгт (`.stage + .stage` сумны загвар хэвээр) */}
+      <div className={s.strip} role="group" aria-label={tr('Чанарын шатлал')}>
         {chain.map((st, i) => (
-          <button key={st.key} type="button" role="listitem" onClick={() => setPop(st.key)}
+          <button key={st.key} type="button" onClick={() => setPop(st.key)}
             className={`${s.stage} ${s.stageBtn} ${unk.has(st.key) ? '' : s[`st_${st.state}`] ?? ''}`}>
             <span className={s.stageNo}>{i + 1}</span>
             <span className={s.stageText}>
@@ -394,7 +399,7 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
             </span>
           </button>
         ))}
-        <button type="button" role="listitem" onClick={() => setPop('IPC')}
+        <button type="button" onClick={() => setPop('IPC')}
           className={`${s.stage} ${s.stageBtn} ${ipc ? s.st_done : ipcWhy ? '' : s.st_locked}`}>
           <span className={s.stageNo}>₮</span>
           <span className={s.stageText}><b>{tr('IPC')}</b><small>{ipc ? tr('Олгож болно') : ipcWhy || tr('Олгохгүй')}</small><small className={s.stageDate}>{day(dateOf('IPC'))}</small></span>

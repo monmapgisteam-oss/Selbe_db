@@ -26,7 +26,7 @@ import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { CANCELLED_NOTE_RE } from './uncontracted';
 import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow } from './schedule';
-import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
+import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
@@ -146,7 +146,9 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
    *    тэмдэгтэй, `CeoScorecard` хасна. Түүнд ЗӨВХӨН `land` (газар чөлөөлөлтийн
    *    салаа) ба `perf` бодогдоно; `fin`·`permit`·`hse`·`plan` = null.
    */
-  const scored = cf.filter((r) => r.isWork || r.sec === FIN_XL_LAND_CODE);
+  /* ⚠️ 2026-10-26 (аудит): дээрх «бондын хүү (7) хэвээр орохгүй» дүрэм хэрэгжээгүй байв — `isWork` нь 7-р хэсгийг оруулдаг
+     тул «БОНДЫН ХҮҮ» (нэр/огноо/дүнгүй) бүлэг «Өгөгдөлгүй» төлөвтэй гардаг байв. `FIN_XL_ROW_HIDE` (ажил биш) хасна. */
+  const scored = cf.filter((r) => (r.isWork || r.sec === FIN_XL_LAND_CODE) && !FIN_XL_ROW_HIDE.includes(r.sec));
   /* ⚠️ 2026-10-06: БАГЦЫН ТҮВШНИЙ бүлгүүд (зөвшөөрөл · ХАБЭА · чанар · ерөнхий төлөвлөгөө) нь
      багцын түлхүүрээр нэг л утгатай. Урьд нь ИЖИЛ түлхүүртэй БҮХ мөрд (ТЭЗҮ, зураг төсөл,
      угсралт…) хуулагдаж, нэг багцын зөвшөөрөл/ХАБЭА нь жигнэсэн дунджид олон дахин орж,

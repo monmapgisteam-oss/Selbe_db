@@ -1174,6 +1174,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onGoFlow: () => goPane('guits'),
       /* ⚠️ 2026-10-21: түгжээ ӨӨРИЙН super мөрөнд (өөрийгөө доошлуулахгүй/устгахгүй) ба кодын (тестийн) super-т */
       superUser: roleForUser(u.username) === 'super' && (key === myName || isCodeSuper(u.username)),
+      viewsLocked: roleForUser(u.username) === 'super',
       onOpenCard: () => setCard({ user: key }),
     };
   };

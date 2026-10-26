@@ -6,6 +6,7 @@ import { SCORE_LEVELS, levelOf, NO_DATA_TONE, MIN_MEASURED_SHARE, type Indicator
 import { scoreTone, scoreInk } from '@/lib/analysis/score';
 import { useTheme } from '@/lib/theme';
 import { nf, zoneTypeLabel } from './format';
+import { zoneLabel } from '@/lib/zoneLabel';
 import { valueOf, type Mode, type Row } from './model';
 import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
 import { downloadText, fileDate } from '@/lib/csvFile';
@@ -106,7 +107,7 @@ export function Ranking({
       >
         <span className="rk">{ranks[i] ?? '—'}</span>
         {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) · хэмжсэн жингийн хувь (`MapRow.coverage`) */}
-        <span className="nm">{r.id}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', Math.round(r.coverage * 100))}</i>}</span>
+        <span className="nm">{zoneLabel(r.id)}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', Math.round(r.coverage * 100))}</i>}</span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,

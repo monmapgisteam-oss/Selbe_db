@@ -614,11 +614,15 @@ function coarsenDel(d: Pick<HDDraft, 'del' | 'entries'>, g: number): Map<string,
 
 /**
  * HDDraft → JSON мөр (алсын `payload`). Нүд бүр `[…, at, user, bv]`.
- * ⚠️ 2026-10-09: `max` өгвөл танихуун (`rk`) нь хэмжээг ХЭТРҮҮЛЭХ үед эхлээд нэргүй (`[oid, код]`),
- *    дараа нь бүрмөсөн хасагдана — нүд хэзээ ч танихууны төлөө алсаас хоцрохгүй.
+ * ⚠️ 2026-10-09: `max` өгвөл танихуун (`rk`) нь хэмжээг ХЭТРҮҮЛЭХ үед нэргүй (`[oid, код]`) болно.
+ *    ⚠️ 2026-10-26: бүрмөсөн хасахаа БОЛИВ (доорх ⚠️).
  * ⚠️ 2026-10-22 (аудит №1): tombstone нь ҮРГЭЛЖ нягт (`dz`); тэгээд ч хэтэрвэл танихуунгүй хувилбар дээр tombstone-ийн
  *    агшныг нарийнаас бүдүүн хүрээгээр бөөрөнхийлнө (`coarsenDel` — толгойн ⚠️). Санах ойн `d` ХӨНДӨГДӨХГҮЙ.
  */
+/* ⚠️ 2026-10-26 (аудит): танихууныг (`rk`) КОДЫН түвшинд (lvl 1, мөрд ~10 тэмдэгт) ХЭЗЭЭ Ч хасахгүй. Амьдаар b71 · b41_9f
+ *    ноорог хязгаарт хүрч rk-гүй хадгалагдсан; дараа нь шинэ агшинд жааз солигдоход (OBJECTID шинэ) локал хуулбаргүй
+ *    машин `identityRemap`-аар нүдийг шинэ мөрд зурж чадахгүй — 807 мужийн нүд өнчирсөн. Багтахгүй бол tombstone-ийг
+ *    бөөрөнхийлнэ; тэгээд ч хэтэрвэл хэтэрсэн мөр буцна → дуудагч алсад илгээхгүй («хэт том», локалд үлдэнэ). */
 export function serialize(d: HDDraft, max?: number): string {
   const full = serializeRk(d, 2);
   if (max == null || full.length <= max) return full;
@@ -626,12 +630,10 @@ export function serialize(d: HDDraft, max?: number): string {
   if (d.rk?.size) {
     s = serializeRk(d, 1);
     if (s.length <= max) return s;
-    s = serializeRk(d, 0);
-    if (s.length <= max) return s;
   }
   if (!d.del.size) return s;
   for (const g of COARSE_MS) {
-    s = serializeRk(d, 0, coarsenDel(d, g));
+    s = serializeRk(d, 1, coarsenDel(d, g));
     if (s.length <= max) return s;
   }
   return s;

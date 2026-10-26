@@ -26,7 +26,7 @@ import s from './docviewer.module.css';
 const kb = (n: number | null) =>
   n == null ? '' : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
-export function DocLibSide({ active, onPick }: { active: string | null; onPick: (key: string) => void }) {
+export function DocLibSide({ active, onPick }: { active: string | null; onPick: (key: string | null) => void }) {
   const sess = useEntSession();
   /* ⚠️ 2026-10-23: хоёр тусдаа эрх — PDF оруулах/устгах/шилжүүлэх (`docsUpload`) · бүлэг засах (`docsGroups`) */
   const canEdit = hasCap(currentUser(), 'docsUpload');
@@ -147,6 +147,9 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     if (!(await askConfirm(tr('«{0}» PDF-ийг Enterprise-ээс бүрмөсөн устгах уу? Буцаах боломжгүй.', d.title), { ok: tr('Устгах') }))) return;
     await deletePdf(d);
     setItems((prev) => (prev ?? []).filter((x) => x.id !== d.id));
+    /* ⚠️ 2026-10-26 (аудит): нээлттэй байсан PDF-ийг устгавал харагч устгагдсан item дээр үлдэж, дахин нээхэд «Геопорталд
+       нээх ↗» мухар холбоос гардаг байв — сонголтыг цэвэрлэнэ («жагсаалтаас сонгоно уу»). */
+    if (active === ENT_KEY + d.id) onPick(null);
   });
 
   const move = (d: EntPdf, gid: string) => run(async () => {
