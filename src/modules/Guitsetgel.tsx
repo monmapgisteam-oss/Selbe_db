@@ -149,6 +149,46 @@ const ajilLabel = (a: string): string => {
     ? `${tr('Гүйцэтгэл')} · ${rest}`
     : `${tr('Гүйцэтгэл')} · ${rest.slice(0, i)} · ${tr(rest.slice(i + 3))}`;
 };
+/* ⚠️ 2026-10-27 (хэрэглэгч: «огноог нэрнээс тусдаа, баруун талд»): мөрийн нэрээс огноог салгана — нэр «Гүйцэтгэл · Багц 1 ·
+   12 давхар», огноо (`workDay`) нь Track-ийн өмнө тусдаа баганад. Огноогүй нэр (хуучин бүртгэл) бол `ajilLabel` хэвээр. */
+const DAY_RE = /^\d{4}\.\d{2}\.\d{2}$/;
+const ajilName = (a: string): string => {
+  if (!a.startsWith('Гүйцэтгэл · ')) return a;
+  const rest = a.slice('Гүйцэтгэл · '.length);
+  const i = rest.indexOf(' · ');
+  const head = i < 0 ? rest : rest.slice(0, i);
+  if (!DAY_RE.test(head)) return ajilLabel(a);
+  return i < 0 ? tr('Гүйцэтгэл') : `${tr('Гүйцэтгэл')} · ${tr(rest.slice(i + 3))}`;
+};
+/** Ажлын өдөр «YYYY.MM.DD» — нэрээс (`dayTagOf`), эс бөгөөс компанийн илгээсэн огнооноос; аль нь ч алга бол '' */
+const workDay = (w: Work): string => {
+  const rest = w.ajil.startsWith('Гүйцэтгэл · ') ? w.ajil.slice('Гүйцэтгэл · '.length) : '';
+  const head = rest.split(' · ')[0];
+  if (DAY_RE.test(head)) return head;
+  const t = Date.parse(String(w.current?.[F.companySent] ?? ''));
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+};
+/**
+ * БАГЦААР БҮЛЭГЛЭНЭ (⚠️ 2026-10-27, хэрэглэгч: «багцаар бүлэглэ, хамгийн сүүлийн огноотой нь дээд талд»).
+ * Багц бүрийн дотор шинэ өдөр дээр; багцуудыг хамгийн сүүлийн өдрөөр нь эрэмбэлнэ. Өдөр ижил бол `groupWorks`-ийн
+ * дараалал (буцаалт ихтэй нь дээр) хэвээр — `sort` тогтвортой.
+ */
+const byBagts = (list: Work[]): { bagts: string; items: Work[] }[] => {
+  const m = new Map<string, Work[]>();
+  for (const w of list) {
+    const a = m.get(w.bagts) ?? [];
+    a.push(w);
+    m.set(w.bagts, a);
+  }
+  const groups = [...m].map(([bagts, items]) => {
+    const sorted = items.slice().sort((a, b) => workDay(b).localeCompare(workDay(a)));
+    return { bagts, items: sorted, last: workDay(sorted[0]) };
+  });
+  groups.sort((a, b) => b.last.localeCompare(a.last) || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true }));
+  return groups.map(({ bagts, items }) => ({ bagts, items }));
+};
 /* ⚠️ 2026-10-26 (G7): шатны цаг нь нийтлэг `format.dateTime` («YYYY-MM-DD HH:mm», хоёр хэлэнд ижил). Урьд нь
    `toLocaleString('mn-MN')` — англи горимд монгол хэлбэр, `mn` ICU-гүй хөтөчид «10/14/2026, 02:30 PM» (MM/DD) гардаг байв. */
 const fmt = (iso: string | null) => dateTime(iso);
@@ -1410,9 +1450,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
         <span className={s.chev}>{open ? '▾' : '▸'}</span>
         <span className={s.who}>
           {/* ⚠️ 2026-10-26 (аудит): button дотор зөвхөн phrasing агуулга — span (CSS нь -webkit-box тул блок хэвээр); багц орчуулна */}
-          <span className={s.ajil} title={ajilLabel(work.ajil)}>{ajilLabel(work.ajil)}</span>
+          <span className={s.ajil} title={ajilLabel(work.ajil)}>{ajilName(work.ajil)}</span>
           <span className={s.meta} title={`${tr(work.bagts)} · ${work.company}`}>{tr(work.bagts)} · {work.company}</span>
         </span>
+        {/* ⚠️ 2026-10-27: огноо нэрнээс тусдаа, баруун талд (`ajilName`/`workDay`-ийн ⚠️) */}
+        <span className={s.day}>{workDay(work)}</span>
         <Track status={st} stage={stage} />
         <span className={`${s.badge} ${badgeClass(st, stage)}`}>{statusLabel(st, stage)}</span>
       </button>
@@ -2125,6 +2167,19 @@ export function Guitsetgel() {
     setTab('fill');
   };
 
+  /* ⚠️ 2026-10-27: «Бусад ажил» · «Илгээсэн» · «Батлагдсан» жагсаалт багцаар бүлэглэгдэнэ (`byBagts`-ийн ⚠️) */
+  const grouped = (list: Work[]) => byBagts(list).map((g) => (
+    <Fragment key={g.bagts}>
+      <div className={s.bagtsHead}>
+        <span>{tr(g.bagts)}</span>
+        <span className={s.groupCount}>{g.items.length}</span>
+      </div>
+      {g.items.map((w) => (
+        <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
+      ))}
+    </Fragment>
+  ));
+
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -2384,9 +2439,7 @@ export function Guitsetgel() {
                       <span>{tr('Илгээсэн — хянагдаж байна')}</span>
                       <span className={s.groupCount}>{inReview.length}</span>
                     </div>
-                    {inReview.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
-                    ))}
+                    {grouped(inReview)}
                   </div>
                 )}
                 {done.length > 0 && (
@@ -2395,9 +2448,7 @@ export function Guitsetgel() {
                       <span>{tr('Батлагдсан — эх хүснэгтэд шилжсэн')}</span>
                       <span className={s.groupCount}>{done.length}</span>
                     </div>
-                    {done.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
-                    ))}
+                    {grouped(done)}
                   </div>
                 )}
               </>
@@ -2408,7 +2459,7 @@ export function Guitsetgel() {
                     <span>{tr('Бусад ажил')}</span>
                     <span className={s.groupCount}>{others.length}</span>
                   </div>
-                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)}
+                  {grouped(others)}
                 </div>
               )
             )}
