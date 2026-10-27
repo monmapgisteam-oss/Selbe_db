@@ -10,14 +10,18 @@
  *    текстэд тааралдвал Word файлыг «эвдэрсэн» гэж нээхгүй.
  */
 import { esc, zipStore } from './xlsx';
+import { chartDrawing, chartXml, type DocChartSpec } from './docxChart';
 
 export type DocCell = string;
 
 export type DocBlock =
   | { kind: 'h'; level: 1 | 2 | 3; text: string }
-  | { kind: 'p'; text: string; bold?: boolean; italic?: boolean; size?: number; color?: string; center?: boolean }
+  /** `keep` — дараагийн блоктой нэг хуудсанд (графикийн/хүснэгтийн нэр · тайлбар салахгүй) */
+  | { kind: 'p'; text: string; bold?: boolean; italic?: boolean; size?: number; color?: string; center?: boolean; keep?: boolean }
   | { kind: 'table'; head: DocCell[][]; rows: DocCell[][] }
-  | { kind: 'img'; png: Uint8Array; w: number; h: number; caption?: string };
+  | { kind: 'img'; png: Uint8Array; w: number; h: number; caption?: string }
+  /** Word-ийн жинхэнэ график (`docxChart`) — өнгө нь 6 оронтой HEX */
+  | { kind: 'chart'; spec: DocChartSpec; caption?: string };
 
 /* A4 босоо · 1.76 см захын зай (twip) */
 const PAGE_W = 11906;
@@ -26,7 +30,9 @@ const MARGIN = 1000;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
 /* twip → EMU (1 twip = 635 EMU) */
 const MAX_IMG_W = CONTENT_W * 635;
-const MAX_IMG_H = (PAGE_H - 2 * MARGIN) * 635 * 0.62;
+/* ⚠️ 2026-10-19 (хэрэглэгч: «page 1 сул зайг янзал»): 0.62 → 0.42 — өндөр зураг (газрын зураг) хуудасны
+   үлдсэн зайд багтахгүй бол Word дараагийн хуудас руу түлхэж, өмнөх хуудсанд том хоосон зай үлддэг байв */
+const MAX_IMG_H = (PAGE_H - 2 * MARGIN) * 635 * 0.42;
 const HDR_FILL = 'E2EAEE';
 const FONT = 'Times New Roman';
 
@@ -48,9 +54,10 @@ function run(text: string, o: { bold?: boolean; italic?: boolean; size?: number;
   ).join('');
 }
 
-function para(text: string, o: { bold?: boolean; italic?: boolean; size?: number; color?: string; center?: boolean; style?: string; right?: boolean; after?: number } = {}): string {
+function para(text: string, o: { bold?: boolean; italic?: boolean; size?: number; color?: string; center?: boolean; style?: string; right?: boolean; after?: number; keep?: boolean } = {}): string {
   const pPr = [
     o.style ? `<w:pStyle w:val="${o.style}"/>` : '',
+    o.keep ? '<w:keepNext/>' : '',
     o.after != null ? `<w:spacing w:before="0" w:after="${o.after}"/>` : '',
     o.center ? '<w:jc w:val="center"/>' : o.right ? '<w:jc w:val="right"/>' : '',
   ].join('');
@@ -87,14 +94,15 @@ function table(head: DocCell[][], rows: DocCell[][]): string {
     + para('', { after: 120 });
 }
 
-function image(rid: string, id: number, wPx: number, hPx: number): string {
+function image(rid: string, id: number, wPx: number, hPx: number, keep = false): string {
   /* px → EMU (96 dpi), хуудсанд багтаана */
   let cx = Math.round(wPx * 9525);
   let cy = Math.round(hPx * 9525);
   const k = Math.min(1, MAX_IMG_W / cx, MAX_IMG_H / cy);
   cx = Math.round(cx * k);
   cy = Math.round(cy * k);
-  return '<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing>'
+  /* `keep` — доорх тайлбартайгаа нэг хуудсанд (2026-10-19) */
+  return `<w:p><w:pPr>${keep ? '<w:keepNext/>' : ''}<w:spacing w:before="60" w:after="60"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing>`
     + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>`
     + `<wp:docPr id="${id}" name="Зураг ${id}"/>`
     + '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>'
@@ -119,11 +127,26 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   + '<w:pPr><w:keepNext/><w:spacing w:before="160" w:after="80"/><w:outlineLvl w:val="2"/></w:pPr><w:rPr><w:b/><w:color w:val="333333"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>'
   + '</w:styles>';
 
+/** Графикийн хэмжээ (EMU) — дугуй нь нарийн, багана/муруй бүтэн өргөн, хэвтээ багана мөрийн тоогоор */
+function chartSize(c: DocChartSpec): [number, number] {
+  const IN = 914400;
+  const w = Math.min(MAX_IMG_W, Math.round(6.4 * IN));
+  if (c.small) {
+    if (c.type === 'doughnut') return [Math.round(4.0 * IN), Math.round(2.2 * IN)];
+    if (c.type === 'bar') return [Math.round(4.8 * IN), Math.round(Math.min(3.6, Math.max(1.6, 0.5 + c.cats.length * 0.22)) * IN)];
+    return [Math.round(4.8 * IN), Math.round(2.4 * IN)];
+  }
+  if (c.type === 'doughnut') return [Math.round(5.2 * IN), Math.round(2.9 * IN)];
+  if (c.type === 'bar') return [w, Math.round(Math.min(7, Math.max(2.2, 0.75 + c.cats.length * 0.32)) * IN)];
+  return [w, Math.round(3.2 * IN)];
+}
+
 const enc = new TextEncoder();
 
 /** Блокуудыг .docx байт болгоно */
 export function buildDocx(blocks: DocBlock[]): Uint8Array {
   const media: { name: string; rid: string; data: Uint8Array }[] = [];
+  const charts: { name: string; rid: string; xml: string }[] = [];
   const body = blocks.map((b) => {
     switch (b.kind) {
       case 'h': return para(b.text, { style: `Heading${b.level}` });
@@ -133,7 +156,16 @@ export function buildDocx(blocks: DocBlock[]): Uint8Array {
         const n = media.length + 1;
         const rid = `rIdImg${n}`;
         media.push({ name: `image${n}.png`, rid, data: b.png });
-        return image(rid, n, b.w, b.h) + (b.caption ? para(b.caption, { italic: true, size: 17, center: true, color: '555555' }) : '');
+        return image(rid, n, b.w, b.h, !!b.caption) + (b.caption ? para(b.caption, { italic: true, size: 17, center: true, color: '555555' }) : '');
+      }
+      case 'chart': {
+        if (!b.spec.cats.length || !b.spec.series.length) return '';
+        const n = charts.length + 1;
+        const rid = `rIdChart${n}`;
+        charts.push({ name: `chart${n}.xml`, rid, xml: chartXml(b.spec) });
+        const [cx, cy] = chartSize(b.spec);
+        /* ⚠️ docPr id нь зурагтай давхцахгүй (зураг 1…N, график 1000+) */
+        return chartDrawing(rid, 1000 + n, cx, cy) + (b.caption ? para(b.caption, { italic: true, size: 17, center: true, color: '555555' }) : '');
       }
     }
   }).join('');
@@ -155,6 +187,7 @@ export function buildDocx(blocks: DocBlock[]): Uint8Array {
     + '<Default Extension="png" ContentType="image/png"/>'
     + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
     + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+    + charts.map((c) => `<Override PartName="/word/charts/${c.name}" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join('')
     + '</Types>';
   const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -164,6 +197,7 @@ export function buildDocx(blocks: DocBlock[]): Uint8Array {
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
     + '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
     + media.map((m) => `<Relationship Id="${m.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${m.name}"/>`).join('')
+    + charts.map((c) => `<Relationship Id="${c.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/${c.name}"/>`).join('')
     + '</Relationships>';
 
   return zipStore([
@@ -173,6 +207,7 @@ export function buildDocx(blocks: DocBlock[]): Uint8Array {
     { name: 'word/styles.xml', data: enc.encode(STYLES) },
     { name: 'word/_rels/document.xml.rels', data: enc.encode(docRels) },
     ...media.map((m) => ({ name: `word/media/${m.name}`, data: m.data })),
+    ...charts.map((c) => ({ name: `word/charts/${c.name}`, data: enc.encode(c.xml) })),
   ]);
 }
 

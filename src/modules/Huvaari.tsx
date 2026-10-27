@@ -98,6 +98,8 @@ import { useSideExtra } from './huvaari/useSideExtra';
 import { useColWidths } from './huvaari/useColWidths';
 import { ColGrip } from './huvaari/ColGrip';
 import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
+import { setReportSource } from '@/lib/reportSource';
+import { huvaariBlocks } from '@/lib/huvaariReport';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
 /* ⚠️ 2026-10-26: илгээх агшны хуулбар (191-ийн `n:hsub:<OBJECTID>` мөр) — шийдвэр/татлага/нээлтийн дараа тааруулна */
@@ -5681,35 +5683,49 @@ export function Huvaari({
       window.removeEventListener('keydown', key);
     };
   }, [pdfOpen]);
+  /* ⚠️ 2026-10-08: блок `b`-ээр параметржүүлэв («Бүх блок» — блок бүрд ижил дүрэм, `allBlockRows`-ийн
+     `blockSpan`); идэвхтэй блокт (`b === blk`) урьдын `rowSpanAt`/`refSpanAt`-тай ЯГ ИЖИЛ утга.
+     ⚠️ 2026-10-19: `savePdf`-ээс ГАРГАВ — толгойн «Тайлан» (.docx, `huvaariReport`) ижил мөрийг ашиглана. */
+  const rowFor = useCallback((r: PlanRow, b: number): HvPdfRow => {
+    const x = r.group ? effRow(r) : r;
+    const sp = b === blk ? rowSpanAt(r) : blockSpan(plan, r, b);
+    const need = sp && r.deps.length && kind === 'plan'
+      ? requiredStart(plan, byCode, r.i, b) : null;
+    const other = b === blk ? refSpanAt(r.oid) : refSpanOf(r.oid, b);
+    return {
+      des: r.des,
+      no: r.no,
+      work: r.work,
+      depth: r.depth,
+      group: r.group,
+      aStart: x.aStart?.[b] ?? null,
+      aEnd: x.aEnd?.[b] ?? null,
+      bar: sp,
+      st: sp ? statusOf(sp, r.act?.[b], now) : 'none',
+      viol: !!(sp && need != null && sp.start < need),
+      ref: showRef ? other : null,
+      /* ⚠️ 0–1 бутархай (хувь биш) — `huvaariPdf` × 100 хийнэ */
+      act: r.act?.[b] ?? null,
+    };
+  }, [effRow, blk, rowSpanAt, plan, kind, byCode, refSpanAt, refSpanOf, now, showRef]);
+
+  /* ⚠️ 2026-10-19 (хэрэглэгч: «ХУВААРЬ ТАЙЛАН зас»): толгойн «Тайлан» — DOM биш, PDF-тэй ижил мөрөөс
+     (идэвхтэй багц · таб · блок · шүүлт). Unmount болоход бүртгэл арилна (`reportSource`-ийн ⚠️). */
+  useEffect(() => setReportSource('huvaari', {
+    blocks: () => huvaariBlocks({ rows: visibleAt(blk).map((r) => rowFor(r, blk)), hasActual }),
+    filters: () => [
+      `${tr('Багц')}: ${pkg.label}`,
+      `${tr('Хуваарь')}: ${kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө')}`,
+      n > 1 && sc?.bld[blk] ? `${tr('Блок')}: ${sc.bld[blk]}` : '',
+      previewing ? tr('САНАЛ (урьдчилан харалт)') : !savedView && dirtyRows > 0 ? tr('Хадгалаагүй {0} мөр орсон', num(dirtyRows)) : '',
+    ].filter(Boolean),
+  }), [visibleAt, blk, rowFor, hasActual, pkg, kind, n, sc, previewing, dirtyRows, savedView]);
+
   const savePdf = useCallback(async () => {
     if (!sc || pdfBusy) return;
     setPdfBusy(true);
     setPdfOpen(false);
     try {
-      /* ⚠️ 2026-10-08: блок `b`-ээр параметржүүлэв («Бүх блок» — блок бүрд ижил дүрэм, `allBlockRows`-ийн
-         `blockSpan`); идэвхтэй блокт (`b === blk`) урьдын `rowSpanAt`/`refSpanAt`-тай ЯГ ИЖИЛ утга. */
-      const rowFor = (r: PlanRow, b: number): HvPdfRow => {
-        const x = r.group ? effRow(r) : r;
-        const sp = b === blk ? rowSpanAt(r) : blockSpan(plan, r, b);
-        const need = sp && r.deps.length && kind === 'plan'
-          ? requiredStart(plan, byCode, r.i, b) : null;
-        const other = b === blk ? refSpanAt(r.oid) : refSpanOf(r.oid, b);
-        return {
-          des: r.des,
-          no: r.no,
-          work: r.work,
-          depth: r.depth,
-          group: r.group,
-          aStart: x.aStart?.[b] ?? null,
-          aEnd: x.aEnd?.[b] ?? null,
-          bar: sp,
-          st: sp ? statusOf(sp, r.act?.[b], now) : 'none',
-          viol: !!(sp && need != null && sp.start < need),
-          ref: showRef ? other : null,
-          /* ⚠️ 0–1 бутархай (хувь биш) — `huvaariPdf` × 100 хийнэ */
-          act: r.act?.[b] ?? null,
-        };
-      };
       /* ⚠️ 2026-10-11 (аудит №7): PDF-д `sticky` (хөлдөөсөн шүүлтийн гишүүнчлэл) ОРОХГҮЙ — `visibleAt(blk)` (`keep`-гүй),
          `visible` биш: `visibleAt`-ийн ⚠️ («зөвхөн дэлгэцэд; PDF-д үгүй») ба «Бүх блок»-ийн блок бүрийн ижил дүрэм. Урьд нь
          идэвхтэй блок `visible` (sticky-тэй), бусад блок `visibleAt(b)` (sticky-гүй) тул нэг баримт хоёр өөр мөрийн олонлогтой байв. */
@@ -5744,7 +5760,7 @@ export function Huvaari({
     } finally {
       setPdfBusy(false);
     }
-  }, [sc, pdfBusy, visibleAt, effRow, rowSpanAt, refSpanAt, refSpanOf, multiBlk, kind, plan, byCode, blk, now, showRef,
+  }, [sc, pdfBusy, visibleAt, rowFor, multiBlk, kind, blk, now, showRef,
     pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows, savedView]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */

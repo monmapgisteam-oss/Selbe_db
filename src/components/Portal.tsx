@@ -67,6 +67,8 @@ import { ReportButton } from '@/components/ReportButton';
 import { askConfirm } from '@/lib/confirm';
 /* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх ба шар зурвас (жижиг, ArcGIS-гүй) */
 import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
+/** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Багцын хамаарал, Зөвшөөрөл */
+const NO_REPORT = new Set<string>(['finance', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'zovshoorol']);
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
  * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
@@ -1213,7 +1215,6 @@ function PortalContent(
             <ViewRail
               view={view}
               setView={railSelect}
-              catalogOpen={catOpen}
               navScope={navScope}
               collapsed={navMin}
               onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
@@ -1282,7 +1283,7 @@ function PortalContent(
 
             {/* ⚠️ 2026-10-15: «Тайлан» — идэвхтэй харагдацыг (1–26 бүгд) Word болгон татна (`ReportButton`).
                 ЗӨВХӨН super admin-д (хэрэглэгчийн заавар) — `isSuper` нь `AuthGate`-ийн hard role. */}
-            {isSuper && <ReportButton
+            {isSuper && !NO_REPORT.has(view) && <ReportButton
               viewKey={view}
               title={active.title}
               desc={active.desc}

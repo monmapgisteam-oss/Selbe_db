@@ -277,6 +277,24 @@ const xSrc = {
   near(A.projectTotal(out), 0.79 * 0.276 + 0.03 * 0.92 + 0.1 * 0.92, 'төслийн нийт = Σ G × S');
 }
 {
+  /* 2026-10-27: «Next week» (Q) — багцын мөр хуваарийн муруйгаас (орон сууц `bagtsKey`, блокгүй `no:<pkgNo>`),
+     өвгүүд Σ F × Q; муруйгүй багц (Багц 2, 5.2) Excel-ийн утга; хуваарьгүй салаа (13) хөндөгдөхгүй. */
+  const t = xTree().map((r) => ({ ...r, planNw: r.oid === 13 ? 0.5 : 0.1 }));
+  const out = A.computeNegAuto(t, { ...xSrc, planNext: new Map([[bagtsKey('Багц 1'), 60], ['no:5.1', 20]]) });
+  const by = (oid) => out.find((r) => r.oid === oid);
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 1e-9, `${m}: ${a} ≠ ${b}`);
+  near(by(4).planNw, 0.6, 'орон сууцны багц — хуваарийн муруйгаас');
+  near(by(5).planNw, 0.1, 'барилгын мөр Excel-ийн утга');
+  near(by(6).planNw, 0.1, 'муруйгүй багц Excel-ийн утга');
+  near(by(8).planNw, 0.2, 'блокгүй багц — pkgNo-оор');
+  near(by(3).planNw, 0.35, 'эцэг = 0.5×0.6 + 0.5×0.1');
+  near(by(7).planNw, 0.15, 'эцэг = 0.5×0.2 + 0.5×0.1');
+  near(by(2).planNw, 0.8 * 0.35 + 0.2 * 0.15, 'эцэг (Нийслэл төсөв хасагдсан)');
+  near(by(13).planNw, 0.5, 'хуваарьгүй салаа хөндөгдөхгүй');
+  /* Муруй байхгүй бол бүх Q Excel-ийнх */
+  assert.ok(A.computeNegAuto(t, xSrc).every((r, i) => r.planNw === t[i].planNw), 'planNext-гүй — Excel хэвээр');
+}
+{
   /* Системийн утга Excel-тэй ИЖИЛ бол юу ч дахин бодогдохгүй — мөр 2 (0.20 ≠ Σ 0.21) Excel-ийнхээрээ */
   const same = A.computeNegAuto(xTree(), {
     ...xSrc, land: 93, housing: new Map([[bagtsKey('Багц 1'), 30]]), infra: new Map([['5.1', 10]]),
@@ -406,13 +424,26 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   ];
   const gSrc = { ...xSrc, land: null, housing: new Map([[bagtsKey('Багц 1'), 90]]), infra: new Map([['5.1', 15]]) };
   const gCalc = A.computeNegAuto(gTree, gSrc);
-  const gp = A.planNegSync(gTree, gCalc);
+  /* Excel-ийн баганууд руу бичих зам (`readOnly` үед хэрэглэгдэхгүй) — хамгаалалтын логик */
+  const gp = A.planNegSync(gTree, gCalc, false, 'excel');
   assert.equal(gp.totalBlocked, false);
   assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12, 13, 14], '0.30 → 0.90 мөр ба өвгөд нь хамгаалалтад');
   assert.deepEqual(gp.ups.map((u) => u[OID]).sort(), [15, 16], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
   assert.equal(gp.ups.find((u) => u[OID] === 16)[ACT], 15, 'бичих утга хүснэгтийн масштабаар (0–100)');
   assert.ok(gp.ups.every((u) => !('share_sec' in u) && !('share_prj' in u)), 'жин бичигдэхгүй');
-  assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 14), 'force — бүгд');
+  assert.ok(A.planNegSync(gTree, gCalc, true, 'excel').ups.some((u) => u[OID] === 14), 'force — бүгд');
+
+  /* 16б — 2026-10-27: `sys_*` талбарууд (анхдагч) — Excel-ийн багана ОГТ бичигдэхгүй; хамгаалалт ижил */
+  const sp = A.planNegSync(gTree, gCalc);
+  assert.deepEqual([...new Set(sp.blocked.map((b) => b.oid))].sort(), [11, 12, 13, 14], 'sys: ижил хамгаалалт');
+  assert.deepEqual(sp.ups.map((u) => u[OID]).sort(), [15, 16, 17], 'sys: анх бичихэд өөрчлөгдөөгүй мөр (17) ч');
+  const SYS = new Set([OID, 'sys_guitsetgel', 'sys_next_week', 'sys_shinechilsen']);
+  assert.ok(sp.ups.every((u) => Object.keys(u).every((k) => SYS.has(k))), 'sys: зөвхөн sys_* талбар');
+  assert.equal(sp.ups.find((u) => u[OID] === 16).sys_guitsetgel, 15, 'sys: 0–100 масштаб');
+  assert.ok(sp.ups.every((u) => typeof u.sys_shinechilsen === 'number'), 'sys: шинэчилсэн огноо');
+  /* Өмнө бичсэн sys утгатай ижил бол дахин бичихгүй */
+  const gSaved = gTree.map((r, i) => ({ ...r, sysAct: gCalc[i].act, sysNw: gCalc[i].planNw }));
+  assert.equal(A.negSysDiff(gSaved, gCalc).length, 0, 'sys: өөрчлөлтгүй — бичихгүй');
 
   /* 16 — нийтийн хамгаалалт */
   const tTree = [
@@ -437,24 +468,25 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   const bus = await import('./dataBus.ts');
   let negDrops = 0;
   bus.register(() => { negDrops += 1; }, ['TUSUL_NEGTGEL']);
-  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — readOnly (хэрэглэгчийн шийдвэр; амьд capabilities 2026-10-21-ээс Editing)');
-  assert.equal((await A.syncNegtgel({}, { user: () => 'saruul_monmap' })).kind, 'off', 'зөвхөн уншигдах хүснэгт — super-т ч бичихгүй');
+  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Excel-ийн баганууд readOnly (хэрэглэгчийн шийдвэр)');
+  /* ⚠️ 2026-10-27: `sysWrite` — синк зөвхөн sys_* талбаруудад (16б); Excel-ийн багана руу бичих зам хаалттай хэвээр */
+  assert.equal(TUSUL_NEGTGEL.sysWrite, true, 'sys_* талбаруудад бичнэ');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
   assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
   assert.equal((await A.syncNegtgel()).kind, 'off', 'анхдагч (нэвтрээгүй Node) → бичихгүй');
   assert.equal(writes, 0);
   const st = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(st.kind, 'guard', 'super (тестийн бичигч) — хамгаалалтын төлөв ил');
-  assert.equal(st.n, 2);
-  assert.equal(writes, 2, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
+  assert.equal(st.n, 3);
+  assert.equal(writes, 3, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ (sys_*)');
   assert.equal(negDrops, 1, '2026-10-21: баталгаатай бичилт (n > 0) → TUSUL_NEGTGEL хүчингүй');
   const again = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(again, st, '10 минутын дотор дахин бичихгүй — сүүлийн төлөв');
-  assert.equal(writes, 2);
+  assert.equal(writes, 3);
   assert.equal(negDrops, 1, 'бичилтгүй дахин дуудалт — хүчингүй болгохгүй');
   const forced = await A.syncNegtgel({ force: true }, io('saruul_monmap'));
   assert.equal(forced.kind, 'ok', 'баталгаажуулсан бичилт');
-  assert.ok(writes > 2);
+  assert.ok(writes > 3);
   assert.equal(negDrops, 2, 'force бичилт → дахин хүчингүй');
   A._resetNegSync();
   {

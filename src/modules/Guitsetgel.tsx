@@ -43,6 +43,8 @@ import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetai
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
+import { setReportSource } from '@/lib/reportSource';
+import { guitsetgelBlocks } from '@/lib/guitsetgelReport';
 import { Loading, userError } from '@/components/ui';
 import s from './guitsetgel.module.css';
 
@@ -2217,6 +2219,19 @@ export function Guitsetgel() {
    */
   const inReview = others.filter((w) => w.status !== STATUS.transferred);
   const done = others.filter((w) => w.status === STATUS.transferred);
+
+  /* ⚠️ 2026-10-19: толгойн «Тайлан» — DOM биш, ДЭЛГЭЦИЙН шүүлттэй ажлуудаас шатаар задална
+     (`guitsetgelReport`). Unmount болоход бүртгэл арилна. */
+  const statusLabel = statusList.find((o) => o.value === status)?.label;
+  useEffect(() => setReportSource('guitsetgel', {
+    blocks: () => guitsetgelBlocks(filtered, Date.now()),
+    filters: () => [
+      bagts ? `${tr('Багц')}: ${bagts}` : '',
+      company ? `${tr('Гүйцэтгэгч компани')}: ${company}` : '',
+      statusLabel ? `${tr('Төлөв')}: ${statusLabel}` : '',
+      q.trim() ? `${tr('Хайлт')}: ${q.trim()}` : '',
+    ].filter(Boolean),
+  }), [filtered, bagts, company, statusLabel, q]);
 
   const countFor = (x: Stage) =>
     works.filter((w) => w.owner === x && w.status !== STATUS.transferred).length;

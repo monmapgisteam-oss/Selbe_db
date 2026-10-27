@@ -617,8 +617,8 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
  * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
  * ⚠️ Эх сурвалж (бөглөх хуудас, газар) УНАВАЛ хүснэгтийн (Excel-ийн) утгыг харуулна — хоосон дэлгэц/0% биш.
  * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
- * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», ЗӨВХӨН уншина) —
- *    синк (`syncNegtgel`) `off` буцаана.
+ * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», Excel-ийн баганууд ЗӨВХӨН уншина) —
+ *    2026-10-27-оос синк (`syncNegtgel`) бодсон утгыг ЗӨВХӨН `sys_*` талбаруудад бичнэ (`TUSUL_NEGTGEL.sysWrite`).
  */
 async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   const A = await import('@/lib/negtgelAuto');

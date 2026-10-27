@@ -33,6 +33,9 @@
  * ⚠️ Төлөвлөгөөт хувь (N…R) ба жин (F · G) — Excel-ийн утгаар (систем бодохгүй). 2026-10-13-аас өмнө
  *    гүйцэтгэгчийн төлөвлөгөөг «Хуваарь»-ийн муруйгаас, бусад шатыг Cashflow-оос бодож байсан — Excel V3 нь
  *    тэдгээрийг өөрөө агуулдаг тул ХАСАГДАВ.
+ * ⚠️ 2026-10-27 (хэрэглэгч: «төлөвлөгөөт хувь next week хуваарьтай холбо»): ЗӨВХӨН Q «Next week» — багцын мөр
+ *    «Хуваарь»-ийн муруйгаас (өнөөдөр + 7 хоног), өвгүүд Σ F × Q (`computeNegAuto`-ийн «NEXT WEEK» хэсэг). N · O · P · R
+ *    Excel-ийнх хэвээр.
  * ⚠️ Бүх утга дотооддоо 0–1 бутархай.
  */
 import { t as tr } from '@/lib/i18nCore';
@@ -97,6 +100,12 @@ export type NegRaw = NegVals & {
   /** Бодит эхлэх/дуусах («YYYY-MM-DD») — Excel L · M */
   actStart?: string;
   actEnd?: string;
+  /**
+   * `sys_guitsetgel` · `sys_next_week` (0–1) — өмнө нь БИЧСЭН системийн утга. ⚠️ Тооцооны суурь БИШ (суурь нь Excel-ийн
+   * `act` · `planNw`) — зөвхөн өөрчлөгдөөгүй утгыг дахин бичихгүйн тулд (`negSysDiff`).
+   */
+  sysAct?: number | null;
+  sysNw?: number | null;
 };
 
 /** Үйлчилгээний талбар ↔ `NegVals` түлхүүр */
@@ -260,6 +269,8 @@ export async function loadNegRaw(): Promise<NegRaw[]> {
       exEnd: txt(r[F.exEnd]),
       actStart: txt(r[F.actStart]),
       actEnd: txt(r[F.actEnd]),
+      sysAct: frac(r[F.sysAct]),
+      sysNw: frac(r[F.sysNextWk]),
     });
   });
   rootsOf.set(out, roots);
@@ -294,6 +305,12 @@ export type NegSources = {
    * ⚠️ 2026-10-13: хуваарийн муруй эх биш болсон. ⚠️ 2026-10-19: блокийн хуваарь (`blockUni`) унавал энд нэрлэгдэнэ.
    */
   partial?: string[];
+  /**
+   * «Төлөвлөгөөт хувь Next week» (Q) — «Хуваарь»-ийн төлөвлөгөөт муруйгаас, ӨНӨӨДРӨӨС 7 ХОНОГИЙН ДАРААХ өдрийн
+   * байдлаар: орон сууц `bagtsKey` · блокгүй багц `no:<pkgNo>` → 0–100 (`planProgress.planPctAt`). Муруйгүй/уншигдаагүй
+   * багц ОРОХГҮЙ → Excel-ийн утга.
+   */
+  planNext?: Map<string, number>;
 };
 
 /**
@@ -438,6 +455,23 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     console.warn('[negtgel] блокийн хуваарь уншигдсангүй — барилгын задаргаа Excel-ийн утгаар', e);
     return undefined;
   });
+  /* ⚠️ 2026-10-27 (хэрэглэгч: «төлөвлөгөөт хувь next week хуваарьтай холбо»): хуваарийн муруй унавал «Next week»
+     л Excel-ийн утгаар үлдэнэ — бүхэлд нь шидэхгүй (`partial`-д нэрлэнэ). Хагас уншигдсан муруйн унасан хуудасны
+     багц `byBagts`-д байхгүй (`PlanCurve.failed`-ийн ⚠️) тул тэр багц Excel-ийн утгаар. */
+  const { loadPlanCurveCached, planPctAt } = await import('@/lib/planProgress');
+  const curve = await loadPlanCurveCached().catch((e: unknown) => {
+    console.warn('[negtgel] хуваарийн муруй уншигдсангүй — «Next week» Excel-ийн утгаар', e);
+    return undefined;
+  });
+  const planNext = new Map<string, number>();
+  if (curve) {
+    const at = new Date(Date.now() + 7 * 86_400_000);
+    const day = `${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())}`;
+    for (const [k, pts] of curve.byBagts) {
+      const v = planPctAt(pts, day);
+      if (v != null) planNext.set(k, v);
+    }
+  }
   const infraP = settledValue(res[3]);
   const infra = new Map<string, number>();
   const infraPkgs = new Set<string>();
@@ -448,6 +482,12 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     const no = pkgNo(p.group);
     infraPkgs.add(no);
     if (v.blocks > 0) infra.set(no, v.pct);
+  }
+  /* Блокгүй багцын «Next week» — `pkgNo` түлхүүрээр (`planKeyOf`) */
+  for (const p of PKGS) {
+    if (p.floors != null) continue;
+    const v = planNext.get(bagtsKey(p.group));
+    if (v != null) planNext.set(`no:${pkgNo(p.group)}`, v);
   }
   return {
     land,
@@ -461,7 +501,11 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     /* ⚠️ 2026-10-19 (аудит): блокийн хуваарь унасан үед барилгын мөрүүд Excel-ийн S-ээр ЧИМЭЭГҮЙ үлддэг байв —
        одоо ХЭСЭГЧИЛСЭН гэж нэрлэнэ: таб «Хэсэгчлэн уншигдсан» мэдэгдэл гаргаж, `loadNegtgelFull` КЭШЛЭХГҮЙ
        (дараагийн нээлт дахин уншина). */
-    partial: blockUni ? [] : [tr('Блокийн хуваарь (барилгын задаргаа Excel-ийн утгаар)')],
+    partial: [
+      ...(blockUni ? [] : [tr('Блокийн хуваарь (барилгын задаргаа Excel-ийн утгаар)')]),
+      ...(curve && !curve.failed.length ? [] : [tr('Хуваарийн төлөвлөгөө («Next week» хэсэгчлэн Excel-ийн утгаар)')]),
+    ],
+    planNext,
   };
 }
 
@@ -506,6 +550,25 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
     return v == null ? null : { act: v, how: tr('Гүйцэтгэл бөглөх — батлагдсан биет хувь (блокгүй багц)') };
   }
   return null;
+}
+
+/**
+ * БАГЦЫН МӨРИЙН ХУВААРИЙН ТҮЛХҮҮР (`bagtsKey`) — «Next week»-ийн төлөвлөгөөт хувийг аль багцын муруйгаас авах.
+ * ⚠️ `liveAct`-ийн ЯГ ТЭР мөрүүд (5.2 салааны орон сууцны багцын мөр · блокгүй багцын мөр), гэхдээ гүйцэтгэл
+ *    хэмжигдсэн эсэхээс ҮЛ ХАМААРНА — тайлагнаагүй багц ч хуваарьтай байж болно.
+ */
+function planKeyOf(rows: NegRaw[], i: number, parent: number[], src: NegSources): string | null {
+  const r = rows[i];
+  if (!r.bagts) return null;
+  const chain: string[] = [];
+  for (let k = i; k >= 0; k = parent[k]) chain.push(nkey(rows[k].name));
+  if (!chain.includes(nkey('Барилга угсралт ажил'))) return null;
+  const p = parent[i];
+  const k = bagtsKey(r.bagts);
+  if (p >= 0 && nkey(rows[p].name) === nkey('Орон сууцны хороолол барилга угсралт') && src.housingPkgs?.has(k)) return k;
+  const no = pkgNo(r.bagts);
+  /* ⚠️ Блокгүй багц — `pkgNo`-оор (`bagtsKey` нь цэгийг хасдаг тул «1-4» ба «14» нийлнэ — `pkgNo`-ийн ⚠️) */
+  return no && src.infraPkgs?.has(no) ? `no:${no}` : null;
 }
 
 /**
@@ -626,6 +689,31 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     }
   }
 
+  /* «NEXT WEEK» (Q) — 2026-10-27 (хэрэглэгч: «хуваарьтай холбо»). Багцын мөр ХУВААРИЙН муруйгаас (`planKeyOf`),
+     өвгүүд нь гүйцэтгэлтэй ижил Excel-ийн томьёо Σ (F × Q) — зөвхөн өөрчлөгдсөн салаа.
+     ⚠️ Орон сууцны багцын доорх барилгын мөрүүд Excel-ийн утгаар (муруй нь багцаар, блокоор биш) — багцын мөр
+        ТОГТООГДОНО, хүүхдүүдээс нь дахин бодогдохгүй. */
+  if (src.planNext?.size) {
+    const pinP = new Array<boolean>(rows.length).fill(false);
+    const dirtyP = new Array<boolean>(rows.length).fill(false);
+    rows.forEach((_, i) => {
+      const key = planKeyOf(rows, i, parent, src);
+      const v = key == null ? undefined : src.planNext?.get(key);
+      if (v == null) return;
+      pinP[i] = true;
+      const nv = r6(v / 100);
+      if (nv == null || (out[i].planNw != null && Math.abs(nv - (out[i].planNw as number)) <= 1e-6)) return;
+      out[i].planNw = nv;
+      for (let k = parent[i]; k >= 0; k = parent[k]) dirtyP[k] = true;
+    });
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      if (!dirtyP[i] || pinP[i]) continue;
+      const use = kids[i].filter((k) => !rows[k].outside);
+      if (!use.some((k) => out[k].planNw != null)) continue;
+      out[i].planNw = r6(use.reduce((a, k) => a + (rows[k].w ?? 0) * (out[k].planNw ?? 0), 0));
+    }
+  }
+
   /* БИЕЛЭЛТ — гүйцэтгэл өөрчлөгдсөн мөрд л (бусад нь Excel-ийн утга) */
   const perf = (act: number | null, plan: number | null) => (plan == null || act == null ? null : plan ? r6(act / plan) : 0);
   out.forEach((o, i) => {
@@ -680,6 +768,25 @@ export function negDiff(stored: NegRaw[], calc: NegCalcRow[]): Record<string, un
   return ups;
 }
 
+/**
+ * СИСТЕМИЙН ТАЛБАРУУДЫН ЗАСВАР (2026-10-27) — `sys_guitsetgel` · `sys_next_week` · `sys_shinechilsen`.
+ * ⚠️ Excel-ийн баганыг ХЭЗЭЭ Ч бичихгүй. Бодсон утга (`calc`) нь өмнө бичсэн `sys_*`-ээс ялгаатай мөрд л; `null`-оор
+ *    дарахгүй (null ≠ 0). Огноо нь тухайн мөрийн аль нэг утга шинэчлэгдсэн үед л.
+ */
+export function negSysDiff(stored: NegRaw[], calc: NegCalcRow[], now: number = Date.now()): Record<string, unknown>[] {
+  const ups: Record<string, unknown>[] = [];
+  const diff = (nv: number | null, ov: number | null | undefined) => nv != null && (ov == null || Math.abs(nv - ov) > 1e-6);
+  stored.forEach((s, i) => {
+    const c = calc[i];
+    const u: Record<string, unknown> = {};
+    if (diff(c.act, s.sysAct)) u[F.sysAct] = r6((c.act as number) * SCALE);
+    if (diff(c.planNw, s.sysNw)) u[F.sysNextWk] = r6((c.planNw as number) * SCALE);
+    if (!Object.keys(u).length) return;
+    ups.push({ [TUSUL_NEGTGEL.oid]: s.oid, ...u, [F.sysAt]: now });
+  });
+  return ups;
+}
+
 /* ═══════════════ АВТОМАТ ШИНЭЧЛЭЛТ (хүснэгт рүү бичих) ═══════════════ */
 
 /** Нэг мөрийн нэг талбар нэг дор ИНГЭЭС их (0–1 нэгжээр = 20 нэгж) өөрчлөгдвөл бичихгүй */
@@ -707,11 +814,15 @@ export type NegSyncPlan = {
  * ХАМГААЛАЛТТАЙ ЗАСВАРУУД — мөр бүр ба нийтэд ±0.2; алгассан мөрийн ӨВӨГ ДЭЭДЭС ч бичигдэхгүй
  * (тэдний утга алгассан мөрийн ШИНЭ утгаар бодогдсон). `force` — super-ийн нэг удаагийн баталгаа.
  */
-export function planNegSync(stored: NegRaw[], calc: NegCalcRow[], force = false): NegSyncPlan {
+export function planNegSync(
+  stored: NegRaw[], calc: NegCalcRow[], force = false,
+  /** `sys` — зөвхөн `sys_*` талбаруудад (`negSysDiff`); `excel` — Excel-ийн баганууд (`negDiff`, `readOnly` үед хэрэглэгдэхгүй) */
+  mode: 'sys' | 'excel' = TUSUL_NEGTGEL.sysWrite ? 'sys' : 'excel',
+): NegSyncPlan {
   const a = projectTotal(stored);
   const b = projectTotal(calc);
   const total = a != null && b != null ? { from: a, to: b } : null;
-  const all = negDiff(stored, calc);
+  const all = mode === 'sys' ? negSysDiff(stored, calc) : negDiff(stored, calc);
   if (force) return { ups: all, blocked: [], total, totalBlocked: false };
   const totalBlocked = total != null && Math.abs(total.to - total.from) > TOTAL_GAP;
   const blocked: NegGuardRow[] = [];
@@ -789,13 +900,15 @@ const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
 /**
  * БОДСОН УТГЫГ ХҮСНЭГТ РҮҮ БИЧНЭ — хүн оролцохгүй.
  *
- * ⚠️⚠️ 2026-10-13: одоогийн хүснэгт (`Negtgel_guitsetgel_1013`) ЗӨВХӨН уншигддаг (`TUSUL_NEGTGEL.readOnly`) —
- *    амьд бичигчтэй (`io.write` өгөөгүй) дуудлага ҮРГЭЛЖ `off`. Бодсон утга дэлгэцэнд л харагдана.
+ * ⚠️⚠️ 2026-10-13: одоогийн хүснэгтийн Excel-ийн баганууд (`Negtgel_guitsetgel_1013`) ЗӨВХӨН уншигддаг (`readOnly`).
+ * ⚠️ 2026-10-27 (хэрэглэгч: «хуучин утгыг дарж бичихгүйгээр шинэ field»): бодсон гүйцэтгэл ба «Next week» нь
+ *    ТУСДАА `sys_guitsetgel` · `sys_next_week` (+ `sys_shinechilsen`) талбаруудад бичигдэнэ (`TUSUL_NEGTGEL.sysWrite`).
  * ⚠️ ЭРХ: ЗӨВХӨН super. ШИНЭ өгөгдлөөр (кэшгүй эх) бодож зөвхөн ӨӨРЧЛӨГДСӨН талбарыг бичнэ. Хамгаалалт:
  *    `planNegSync`. Нэг хөтөчөөс 10 минутад ≤1 (`force` давна).
  */
 export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}): Promise<NegSyncState> {
-  if (TUSUL_NEGTGEL.readOnly && !io.write) return Promise.resolve({ kind: 'off' });
+  /* ⚠️ 2026-10-27: Excel-ийн баганууд `readOnly` хэвээр, гэвч `sysWrite` — синк зөвхөн `sys_*`-д бичнэ (`planNegSync`) */
+  if (TUSUL_NEGTGEL.readOnly && !TUSUL_NEGTGEL.sysWrite && !io.write) return Promise.resolve({ kind: 'off' });
   if (!canSyncNegtgel((io.user ?? currentUser)())) return Promise.resolve({ kind: 'off' });
   /* ⚠️ 2026-09-25: `force` явж буй ЭНГИЙН синкийн үр дүнд ЗАЛГИГДАХГҮЙ — дуустал хүлээгээд дахин ажиллуулна */
   if (syncing) {
