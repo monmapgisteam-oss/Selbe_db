@@ -43,15 +43,14 @@ assert.deepEqual([...renumberPlan(rows, [11, 12], [20]).entries()], [[11, 21], [
 console.log('✅ idUnique: илрүүлэлт · дахин дугаарлалт · тэнцүүлэгч');
 
 /* Эх код: бичсэний дараах шалгалт холбогдсон */
-const fin = readFileSync(new URL('../modules/Finance.tsx', import.meta.url), 'utf8');
-assert.ok(/collidedIds\(idRows, mine, cfAssigned\)/.test(fin), 'Finance.publish: Cashflow_ID-ийн бичсэний дараах шалгалт алга');
+/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 const hy = readFileSync(new URL('./hyanalt.ts', import.meta.url), 'utf8');
 assert.ok(hy.includes("collidesBelow(idRows, oid, cur)"), 'hyanalt.ensureUniqueId: тэнцүүлэгч (бага OBJECTID ялна) алга');
 const sub = readFileSync(new URL('./hyanaltSubmit.ts', import.meta.url), 'utf8');
 assert.ok(sub.includes('ensureUniqueId(addedOid(res), id)'), 'hyanaltSubmit: дугаарын шалгалт алга');
 const store = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
 assert.ok(store.includes('ensureUniqueId(addedOid(res)'), 'hyanaltStore.recheck: дугаарын шалгалт алга');
-console.log('✅ idUnique: Finance · hyanaltSubmit · hyanaltStore холбогдсон');
+console.log('✅ idUnique: hyanaltSubmit · hyanaltStore холбогдсон');
 
 /* ── 2026-10-09: sweepDupIds ↔ ensureUniqueId — нэг дараалал, ачаалалт дууссаны дараа ── */
 {

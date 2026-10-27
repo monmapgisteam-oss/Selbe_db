@@ -918,5 +918,60 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   return assemblePlan(rows, { actual, sched, land }, today, failed);
 }
 
+/* ══════════════════ 5. Гэрээний АМЬД гүйцэтгэл (дашбоард · ТУХ · Нэгтгэл) ══════════════════ */
+
+/** Нэг гэрээний (cashflow_id) амьд гүйцэтгэл — 0–100, хэмжилтгүй null (0 БИШ) */
+export type LiveProgress = {
+  /** Мөрийн өөрийн S: барилга угсралт = гүйцэтгэл бөглөх (блок/багц), газар = газар чөлөөлөлт, бусад = порталд засагдсан утга (дэд мөртэй бол Σ F·X) */
+  S: number | null;
+  /** Үе шат бүрийн хувь — түлхүүр `CASHFLOW_NEW.stages`-ийн талбарын нэр; тухайн багцын тэр үе шатны ДЭЭД мөрийн S, `build` = өөрийн S */
+  stages: Record<string, number | null>;
+};
+
+/**
+ * cashflow_id → амьд гүйцэтгэл — «Төсөл төлөвлөгөө биелэлт»-ийн S (`computePlan`), цэвэр (тестлэгдэнэ).
+ * ⚠️ 2026-10-27 (хэрэглэгч: «cashflow-ийн явц үргэлж системээс амьд уншигддаг болго, Excel-ийн тоо хэрэггүй»):
+ *    дашбоард (`gdash.loadGdashCf`) · ТУХ (`tuhData.progressOf`) · Нэгтгэл (`negtgel.loadCfStages`) гэрээний явц ба
+ *    үе шатны хувийг ЭНДЭЭС авна. Хүснэгтийн `guitsetgel_huvi` · `tezu` · `ajliin_zurag_tusul` · `gazar_chuluulult` ·
+ *    `zuwshuurul` · `songon_shalgaruulalt` (Excel-ийн импортын агшин) тэнд УНШИГДАХГҮЙ — `guitsetgel_huvi` нь зөвхөн
+ *    computePlan-ийн гар оролт (ТЭЗҮ · зураг төсөл · зөвшөөрөл · сонгон). Хэсэгт/төсөлд эзлэх (F · G) хэвээр хадгалсан жин.
+ * ⚠️ Үе шатын мөрийг багцаар `bagtsKey`-ээр (диапазон мөр ч өөртэйгөө таарна) — pre-order тул хамгийн гүехэн нь эхэнд.
+ */
+export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
+  const ST = CASHFLOW_NEW.stages;
+  const PHASE_FIELD: [string, string][] = [
+    ['tezu', ST.tezu], ['zurag', ST.design], ['gazar', ST.land], ['zovshoorol', ST.permit], ['songon', ST.tender],
+  ];
+  const sOf = (n: PlanNode): number | null => {
+    const v = plan.result.values.get(n)?.S;
+    return v == null || !Number.isFinite(v) ? null : v;
+  };
+  const top = new Map<string, PlanNode>();
+  for (const n of plan.tree.nodes) {
+    const pk = bagtsKey(n.pkg);
+    if (!pk) continue;
+    const k = `${n.phase}|${pk}`;
+    const cur = top.get(k);
+    if (!cur || n.depth < cur.depth) top.set(k, n);
+  }
+  const out = new Map<number, LiveProgress>();
+  for (const n of plan.tree.nodes) {
+    const id = n.row?.cashflow_id;
+    if (id == null || out.has(id)) continue;
+    const S = sOf(n);
+    const pk = bagtsKey(n.pkg);
+    const stages: Record<string, number | null> = { [ST.build]: S };
+    for (const [ph, f] of PHASE_FIELD) {
+      const t = pk ? top.get(`${ph}|${pk}`) : undefined;
+      stages[f] = t ? sOf(t) : null;
+    }
+    out.set(id, { S, stages });
+  }
+  return out;
+}
+
+/** Амьд гүйцэтгэл — `loadProjectPlan` (хэсгүүд нь сешний кэштэй, `BAGTS_SHEET` · `CASHFLOW_NEW` invalidate-аар шинэчлэгдэнэ) */
+export const loadLiveProgress = (): Promise<Map<number, LiveProgress>> => loadProjectPlan().then(liveProgressOf);
+
 /* Тест/дотоод хэрэглээнд */
 export const __test = { cleanSpan, interiorPoint, properCross, strictlyIn, attrOf };

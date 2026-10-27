@@ -28,8 +28,9 @@
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey } from '@/lib/format';
 import {
-  CASHFLOW_NEW, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, hoAmount, pkgKeyOf,
+  CASHFLOW_NEW, CF_MONTH, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, hoAmount, pkgKeyOf,
 } from '@/lib/services';
+import type { LiveProgress } from '@/lib/projectPlanInputs';
 import { finXlChartCat, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import type { HoContract } from '@/lib/ipc';
@@ -271,23 +272,20 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
     || a.code.localeCompare(b.code, 'mn', { numeric: true }));
 }
 
+/** Гэрээний АМЬД гүйцэтгэл (`projectPlanInputs.loadLiveProgress`) — cashflow_id → S · үе шат */
+export type LiveMap = ReadonlyMap<number, LiveProgress>;
+
 /**
  * Багцын биет гүйцэтгэл (0–100).
- * ⚠️ Орон сууц — багцын БОДИТ гүйцэтгэл (`Finance.physLatest` · `pkgMonthsMap`,
- *    «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн жагсаалттай ИЖИЛ эх; 2026-09-30 merge —
- *    урьд `loadFillPkgProgress`); бусад — гэрээний `guitsetgel_huvi` (дүнгээр
- *    жигнэсэн, хэмжигдээгүй мөр жинд орохгүй).
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗУРАГ ТӨСЛИЙН мөр — `designPctOf` (ТЭЗҮ ба
- *    ажлын зураг төслийн ШАТНЫ талбар, `CASHFLOW_NEW.stages`). Урьд нь барилгын
- *    `guitsetgel_huvi`-г уншдаг байв — тэр нь зураг төслийн мөрд холбоотой барилгын
- *    явцыг (амьдаар «БАГЦ 1-4» ТЭЗҮ мөрд 39.27 = барилгын хувь) эсвэл хоосон байдаг тул
- *    зураг төсөл бүгд «Эхлээгүй» эсвэл буруу хувьтай харагддаг байв.
+ * ⚠️ Орон сууц — багцын БОДИТ гүйцэтгэл (`Finance.physLatest` · `pkgMonthsMap`, «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн
+ *    жагсаалттай ИЖИЛ эх; 2026-09-30 merge). Бусад — 01-ийн батлагдсан гүйцэтгэл (`fill`, 2026-10-26: блокгүй багц ч
+ *    01-ээс — нэг багц гурван дэлгэцэд нэг тоо) байвал ТҮҮНИЙГ, эс бөгөөс гэрээний мөрүүдийн АМЬД явц (`rowProgress`)
+ *    дүнгээр жигнэсэн; хэмжилтгүй мөр жинд орохгүй.
+ * ⚠️ 2026-10-27 (хэрэглэгч: «cashflow-ийн явц үргэлж системээс амьд, Excel-ийн тоо хэрэггүй»): Cashflow-ийн хадгалсан
+ *    `guitsetgel_huvi` · `tezu` · `ajliin_zurag_tusul` (Excel-ийн импортын агшин) ЭНД УНШИГДАХГҮЙ — `live` алга бол null
+ *    («Мэдээлэлгүй», 0 БИШ). Урьд (2026-10-01) зураг төслийн мөр шатны талбараас (`designPctOf`), бусад `guitsetgel_huvi`-аас.
  */
-/* ⚠️ 2026-10-26 (аудит): 2026-10-13-аас блокгүй багцын (5.x · 6.x · 7.1 · 10) 01-ийн батлагдсан гүйцэтгэл `fill`-д бий
-   (хэрэглэгчийн дүрэм: бүх гүйцэтгэл 01-ээс) — урьд нь зөвхөн орон сууцанд уншиж, дэд бүтцийн багцад Cashflow-ийн гар утга
-   авдаг тул нэг багц гурван дэлгэцэд өөр тоо (БАГЦ51 ТУХ 0% ↔ 36.27%) байв. Зураг төслөөс бусад бүлэгт 01-ийн утга
-   байвал ТҮҮНИЙГ, байхгүй бол Cashflow-ийн жигнэсэн дундаж руу унана. */
-export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null): number | null {
+export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null, live: LiveMap | null = null): number | null {
   if (p.group === 'housing') return fill?.get(p.pkgKey) ?? null;
   if (p.group !== 'design' && p.pkgKey) {
     const f = fill?.get(p.pkgKey);
@@ -297,7 +295,7 @@ export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null):
   let base = 0;
   let plain: number | null = null;
   for (const r of p.rows) {
-    const v = rowProgress(p.group, r);
+    const v = rowProgress(r, live);
     if (v == null) continue;
     const w = numOf(r[CASHFLOW_NEW.fields.budget]) ?? 0;
     if (w > 0) { top += w * v; base += w; } else plain ??= v;
@@ -306,26 +304,13 @@ export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null):
 }
 
 /**
- * ЗУРАГ ТӨСЛИЙН ГЭРЭЭНИЙ ГҮЙЦЭТГЭЛ (0–100) — шатны талбараас.
- *
- * ⚠️ 2026-10-01: ажлын нэр аль шатыг заахаар талбараа сонгоно — «ТЭЗҮ»/«судалгаа» →
- *    `tezu`, «зураг» → `ajliin_zurag_tusul`; хоёулаа (жиш. «ТЭЗҮ, техникийн зураг
- *    төсөл») эсвэл аль нь ч биш бол хоёр талбарын УТГАТАЙ нь(ий) энгийн дундаж.
- * ⚠️ Бүх сонгосон талбар хоосон бол `null` («—», Мэдээлэлгүй) — 0 БИШ (`null ≠ 0`).
+ * Гэрээний НЭГ мөрийн гүйцэтгэл (0–100) — «Төсөл төлөвлөгөө биелэлт»-ийн амьд S (барилга = гүйцэтгэл бөглөх, газар =
+ * газар чөлөөлөлт, ТЭЗҮ/зураг төсөл = порталд засагдсан утга, дэд мөртэй бол Σ F·X). `cashflow_id`-гүй мөр / `live` алга → null.
  */
-export function designPctOf(row: Row): number | null {
-  const ST = CASHFLOW_NEW.stages;
-  const name = s(row[CASHFLOW_NEW.fields.detail]).toLowerCase();
-  const tezu = /тэзү|судалгаа/.test(name);
-  const draw = /зураг/.test(name);
-  const fields = tezu || draw ? [...(tezu ? [ST.tezu] : []), ...(draw ? [ST.design] : [])] : [ST.tezu, ST.design];
-  const xs = fields.map((f) => numOf(row[f])).filter((x): x is number => x != null);
-  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
-}
-
-/** Гэрээний НЭГ мөрийн гүйцэтгэл — зураг төсөлд шатны талбар, бусдад `guitsetgel_huvi` */
-export const rowProgress = (group: TuhGroup, row: Row): number | null =>
-  group === 'design' ? designPctOf(row) : numOf(row[CASHFLOW_NEW.fields.progressPct]);
+export const rowProgress = (row: Row, live: LiveMap | null): number | null => {
+  const id = numOf(row[CF_MONTH.id]);
+  return id == null ? null : live?.get(id)?.S ?? null;
+};
 
 /* ══════════════════════ ГЭРЭЭНИЙ ТӨЛӨВЛӨГӨӨ ══════════════════════ */
 

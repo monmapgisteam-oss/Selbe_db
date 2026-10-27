@@ -14,7 +14,6 @@
  *    regex-ээр тулгадаг байв — бүтээгдэхүүний дүрэм өөрчлөгдсөн ч ногоон хэвээр үлдэнэ. §4 нь зөвхөн холболт.
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import {
   FIN_XL_PCT, FIN_XL_FRACTION, FIN_XL_DROP, FIN_XL_HIDE, FIN_XL_ORDER, FIN_XL_PCT_WEIGHT,
   finXlIsFraction, finXlScale, finXlFractionText, finXlEditText, finXlIsMean, finXlWeightedMean,
@@ -83,27 +82,6 @@ check('FIN_XL_ORDER-т ХЭВЭЭР (эрэмбийн хувилбар хөдл�
 check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('cashflow_id'));
 check('тоон ихэр нуугдахгүй', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi_dun') && !FIN_XL_DROP.includes('tusuld_ezleh_huvi_dun'));
 
-console.log('\n4. Finance.tsx — бутархай хувийн ЗАМ §2-ын функцүүдэд холбогдсон (дотоод хуулбаргүй)');
-{
-  /* ⚠️ 2026-10-22 (аудит): дүрмийг өөрийг нь §2 шалгана; энд зөвхөн `Finance.tsx` тэдгээрийг дуудаж, ДАХИН бичээгүйг
-     тайлбаргүй эх кодоор тулгана. */
-  const src = readFileSync(new URL('../modules/Finance.tsx', import.meta.url), 'utf8')
-    .replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-  check('fmtCell → finXlFractionText', /if \(finXlIsFraction\(name\)\) return \{ text: finXlFractionText\(x\), num: true \};/.test(src)
-    && !src.includes('if (name === CASHFLOW_NEW.fields.share) return'));
-  check('shareScale (тоон шүүлт) → finXlScale', src.includes('const shareScale = finXlScale;'));
-  check('editTextF (засварын текст) → finXlEditText', src.includes('finXlEditText(v, name) ?? editText(v, type)'));
-  check('sumText → finXlIsMean · finXlWeightedMean', src.includes('if (finXlIsMean(c.name)) {')
-    && src.includes('finXlWeightedMean(rows.map((p) => p.row), c.name)'));
-  check('×100 · жигнэлтийн ДОТООД хуулбар алга', !src.includes('pct(x * 100') && !src.includes('toPrecision(12)') && !/top \+= g \* v/.test(src));
-  check('isPctField 0–100 мужийн шалгалт', src.includes("f === 'cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);"));
-  check('нийтлэл: pend ба adds хоёулаа parseFinanceShare (÷100)',
-    (src.match(/FIN_XL_FRACTION\.includes\(fld\)\s*\?\s*parseFinanceShare\(v, typeOf\(fld\), labelOf\(fld\), legacyShareInvalidRef\.current, PARSE_MSG\)/g) ?? []).length === 2);
-  check('sumText: үнэт цаасны хувийн зурвас хоосон хэвээр (дунджаас ӨМНӨ)',
-    src.includes("if (c.name === CASHFLOW_NEW.fields.share) return '';")
-    && src.indexOf("if (c.name === CASHFLOW_NEW.fields.share) return '';") < src.indexOf('if (finXlIsMean(c.name)) {'));
-  check('ноорог v3 — FIN_XL_FRACTION-аар сэргээнэ', src.includes('upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share, FIN_XL_FRACTION)'));
-  check('allCols: FIN_XL_DROP багана болохгүй', src.includes('...FIN_XL_CODE, ...FIN_XL_DROP,'));
-}
+/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 
 console.log(`\n✅ finExcelLayout.check: ${ok} шалгуур давлаа`);

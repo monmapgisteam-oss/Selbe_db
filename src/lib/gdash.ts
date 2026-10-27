@@ -28,6 +28,14 @@ import {
   FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
   FIN_XL_WORK_SKIP,
 } from '@/lib/finExcelLayout';
+import type { LiveProgress } from '@/lib/projectPlanInputs';
+
+/* ⚠️ 2026-10-27 (хэрэглэгч: «cashflow-ийн явц үргэлж системээс амьд, Excel-ийн тоо хэрэггүй»): гэрээний явц ба үе шатны
+   хувь — «Төсөл төлөвлөгөө биелэлт»-ийн амьд тооцоо (`projectPlanInputs.loadLiveProgress`). Хадгалсан `guitsetgel_huvi` ·
+   `tezu` … (Excel-ийн импортын агшин) ЭНД УНШИГДАХГҮЙ. ДИНАМИК импорт — projectPlanInputs → live → gdash мөчлөг ба
+   газар/хуваарийн код энэ модулийг импортлогч бүрд татагдахгүй. Унавал null → явц «хэмжигдээгүй» (0 БИШ). */
+const loadLiveProgressLazy = (): Promise<ReadonlyMap<number, LiveProgress> | null> =>
+  import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress()).catch(() => null);
 
 /**
  * `Cashflow_start` (сарын мөрийн эхлэл, epoch мс) → «YYYY-MM» — порталын НЭГ дүрэм.
@@ -189,7 +197,7 @@ export type CfRow = {
   /**
    * Гүйцэтгэлийн хувь, 0–100.
    *
-   * ⚠️ Үйлчилгээнд ТЕКСТ талбар («19.01») тул `Number()`-ээр хөрвүүлнэ.
+   * ⚠️ 2026-10-27: АМЬД — «Төсөл төлөвлөгөө биелэлт»-ийн S (`loadLiveProgressLazy`), хадгалсан `guitsetgel_huvi` БИШ.
    * ⚠️ `null` ба `0` ХОЁР ӨӨР: «хэмжигдээгүй» ба «огт эхлээгүй». Хоёуланг
    * нь 0 болговол дундаж чимээгүй доошилно.
    */
@@ -286,22 +294,25 @@ const dOf = (v: unknown): number | null => {
 };
 
 export const loadGdashCf = cached<CfRow[]>(async () => {
-  const rows = await queryFeatures(CF.url, {
+  const [rows, live] = await Promise.all([queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [
       'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
       'ajil_tuvshin3',
-      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress, CF.pkg2,
+      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.pkg2,
       CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
       ...CF_SOURCES.map((s) => s.field),
-      ...Object.values(CASHFLOW_NEW.stages),
     ],
     /* ⚠️ 2026-10-05: `limit` ХАСАГДАВ (энэ файлын бүх `queryFeatures`) — эрэмбэгүй хатуу хязгаар нь
        хүснэгт өсөхөд шинэ мөрийг ЧИМЭЭГҮЙ хаядаг. `queryFeatures` өөрөө OID эрэмбээр хуудаслана. */
-  });
-  return rows.map((r: Row): CfRow => ({
+  }), loadLiveProgressLazy()]);
+  return rows.map((r: Row): CfRow => {
+    const cfId = dOf(r[CF.cfId]);
+    /* ⚠️ Гэрээний амьд явц/үе шат — `cashflow_id`-аар; ирээгүй бол null (хэмжигдээгүй) */
+    const lp = live && cfId != null ? live.get(cfId) ?? null : null;
+    return {
     oid: nOf(r.objectid),
     /* ⚠️ ЧАРТЫН ангилал — 7 бүлэг (`finXlChartCat`-ийн тайлбарыг үз).
        Талбараас ШУУД биш, ХОЁР ТҮВШНЭЭС бодогдоно. */
@@ -315,14 +326,11 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     end: dOf(r[CF.end]),
     share: nOf(r[CF.share]),
     decree: nOf(r[CF.decree]),
-    progress: pOf(r[CF.progress]),
+    progress: lp ? lp.S : null,
     src: CF_SOURCES.map((s) => nOf(r[s.field])),
-    /* ⚠️ `Guitsetgel_huwi` нь ТЕКСТ, бусад нь тоо — `pOf` хоёуланг зөв уншина */
-    stage: Object.fromEntries(
-      Object.values(CASHFLOW_NEW.stages).map((f) => [f, pOf(r[f])]),
-    ),
+    stage: Object.fromEntries(Object.values(CASHFLOW_NEW.stages).map((f) => [f, lp ? lp.stages[f] ?? null : null])),
     inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
-    cfId: dOf(r[CF.cfId]),
+    cfId,
     lvl3: sOf(r.ajil_tuvshin3),
     /* ⚠️ КОДООР шүүнэ, нэрээр БИШ — нэр засагдаж болно (`finXlInTotal`) */
     isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
@@ -330,8 +338,10 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     sec: sOf(r[CF.code1]),
     /* ⚠️ 2026-10-06: хоосон → null (0 БИШ) — гэрээ ↔ төсвийн харьцуулалтад */
     budgetOrder: nnOf(r[CASHFLOW_NEW.fields.budgetOrder]),
-  }));
-}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+    };
+  });
+/* ⚠️ 2026-10-27: `BAGTS_SHEET` ч — гүйцэтгэл бөглөхөд амьд явц дагаж шинэчлэгдэнэ */
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'BAGTS_SHEET']);
 
 /* ══════════════════════ САРЫН ТӨЛӨВЛӨГӨӨ (S-МУРУЙ) ══════════════════════ */
 
@@ -571,7 +581,7 @@ export type SubBar = {
    */
   perf?: number | null;
   /**
-   * САНХҮҮЖСЭН ГҮЙЦЭТГЭЛ — ЗӨВХӨН `guitsetgel_huvi`-ийн жигнэсэн дундаж.
+   * ТӨЛӨВЛӨГӨӨНИЙ БИЕЛЭЛТ — гэрээний амьд явцын (`CfRow.progress`, 2026-10-27; урьд `guitsetgel_huvi`) жигнэсэн дундаж.
    *
    * ⚠️ `perf`-ЭЭС ЯЛГААТАЙ: тэр нь барилга угсралтад объёмын эх сурвалж
    * руу шилждэг бол энэ нь ҮРГЭЛЖ санхүүжсэн талбараас. Хоёуланг зэрэг

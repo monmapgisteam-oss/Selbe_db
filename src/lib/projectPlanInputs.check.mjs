@@ -17,7 +17,7 @@ import {
   toStoredRow, compareDdKod, sortPlanRows,
   blockActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf,
   makeParcelIndex, parcelHits, landPctOf, landPctMap, landKeyOf, landKeysOf, landOf, landLayerIdsOf, EMPTY_AREA_PCT,
-  assemblePlan, emptyPlan, planMonths, __test,
+  assemblePlan, emptyPlan, planMonths, liveProgressOf, __test,
 } from './projectPlanInputs.ts';
 import { buildTree, ubToday } from './projectPlan.ts';
 import { planCurve } from '@/modules/sheet/bagtsSheet.ts';
@@ -280,6 +280,31 @@ const srow = (o) => ({
   near(ser[iDec], sched.at('Багц 1', '5/1', p.months[iDec]), 1e-12, 'сарын цуваа = Хуваарь');
   assert.ok(p.monthly.get(p.tree.root).some((x) => x != null), 'үндсэн мөрийн цуваа бодогдсон');
   console.log('✅ 5. нэгтгэл — хоосон төлөв, фикстур дээр адаптерууд урсана');
+
+  /* ══════════ 6. Гэрээний АМЬД гүйцэтгэл — liveProgressOf (2026-10-27) ══════════ */
+  {
+    const iB = find((n) => n.phase === 'barilga' && n.sub === 'barilga' && n.pkg === 'Багц-1' && !n.blok && n.children.length > 0);
+    const iG = find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && !n.blok && n.children.length > 0);
+    assert.ok(iB >= 0 && iG >= 0, 'Багц-1-ийн барилга · газрын багцын мөр');
+    tree.nodes[iB].row.cashflow_id = 11;
+    tree.nodes[iG].row.cashflow_id = 12;
+    /* давхар cashflow_id — pre-order-ийн ЭХНИЙХ (багцын мөр) ялна, блок биш */
+    tree.nodes[bi].row.cashflow_id = 11;
+    const p2 = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land }, today);
+    const lv = liveProgressOf(p2);
+    assert.deepEqual([...lv.keys()].sort(), [11, 12], 'зөвхөн cashflow_id-тай мөр');
+    const vB = p2.result.values.get(p2.tree.nodes[iB]);
+    const vG = p2.result.values.get(p2.tree.nodes[iG]);
+    assert.equal(lv.get(11).S, vB.S, 'S = мөрийн computePlan S (блокуудын Σ F·X: 5/1 = 50, 5/2 = 0)');
+    assert.ok(vB.S != null && vB.S > 0 && vB.S < 50, 'багцын S блокуудын жигнэлт');
+    assert.equal(lv.get(11).stages.guitsetgel_huvi, vB.S, 'build = өөрийн S');
+    assert.equal(lv.get(11).stages.gazar_chuluulult, vG.S, 'газар = багцын газрын ДЭЭД мөрийн S');
+    assert.equal(lv.get(11).stages.tezu, null, 'Багц-1-д ТЭЗҮ-ийн мөргүй → null (0 биш)');
+    assert.equal(lv.get(12).S, vG.S);
+    assert.equal(lv.get(12).stages.guitsetgel_huvi, vG.S);
+    assert.equal(liveProgressOf(emptyPlan(today)).size, 0, 'хоосон төлөв → хоосон');
+    console.log('✅ 6. liveProgressOf — cashflow_id → амьд S · үе шатны хувь');
+  }
 }
 
 console.log('projectPlanInputs.check: бүгд ✅');

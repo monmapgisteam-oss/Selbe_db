@@ -70,15 +70,7 @@ check('хувь 0 ба 100 зөвшөөрөгдөнө', parseCell('0', D, 'x', u
 check('хувь «8.333» → 8.333', parseCell('8.333', D, 'x', undefined, true) === 8.333);
 assert.throws(() => parseCell('8,333', D, 'x'), /тодорхойгүй/);
 check('хувь БИШ талбарт «8,333» → тодорхойгүй (2026-10-05; урьд нь 8333)', true);
-{
-  /* Нийтлэх зам (`Finance.tsx`) хувийн талбарт `pct`-ийг ЗААВАЛ дамжуулна */
-  const fin = (await import('node:fs')).readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  const calls = [...fin.matchAll(/[:=]\s*parseCell\(v, typeOf\(fld\), labelOf\(fld\)([^)]*)\)/g)];
-  check('Finance нийтлэлийн parseCell 2 газар хоёулаа isPctField дамжуулна',
-    calls.length === 2 && calls.every((m) => /,\s*isPctField\(fld$/.test(m[1])));
-  check('isPctField нь Cashflow_huwi · FIN_XL_PCT · FIN_XL_FRACTION-г хамарна',
-    /const isPctField = \(f: string\): boolean => f === 'cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\) \|\| FIN_XL_FRACTION\.includes\(f\);/.test(fin));
-}
+/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 
 console.log('\n3. БУРУУ утга — ЧИМЭЭГҮЙ 0 болгохгүй, алдаа шиднэ');
 assert.throws(() => parseCell('гурав', D, 'Төсөв'), /тоо буруу/);
@@ -132,16 +124,6 @@ console.log('\nX. ⚠️ 2026-10-01: нийтлэлийн дараах дахи�
   check('нийтэлсний дараа ижил (хуучин) rows — хаалттай', awaitingReload(rowsA, rowsA) === true);
   check('шинэ rows ирмэгц нээгдэнэ (агуулга ижил ч лавлагаа өөр)', awaitingReload(rowsA, rowsB) === false);
 }
-{
-  /* Finance.tsx-ийн «Гэрээний бүртгэл» товч хаалтыг ашиглаж, «Хадгалж байна…» гэж харуулна */
-  const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  check('publish нь awaitingReload-оор хаагдана', /if \(reloading \|\| awaitingReload\(pubFromRef\.current, rows\)\) return;/.test(src));
-  check('товч: saving (busy || reloading) үед идэвхгүй, «Хадгалж байна…»',
-    (src.match(/disabled=\{saving \|\| dirty === 0\}/g) ?? []).length === 2
-    && (src.match(/\{saving \? tr\('Хадгалж байна…'\)/g) ?? []).length === 2);
-  check('амжилттай нийтлэлийн дараа rows-ийг тэмдэглэнэ', src.includes('pubFromRef.current = rows;') && src.includes('setPubFrom(rows);'));
-}
 
 console.log('\nXI. Хуучин санхүүгийн ноорог — хувийн нэгжийг алдагдалгүй сэргээнэ');
 {
@@ -194,14 +176,6 @@ console.log('\nXI. Хуучин санхүүгийн ноорог — хувий
   check('хувилбаргүй ноорог: хувь 0.09 → 9, urdchilgaa_huvi «0,2» → 20', v0.v === 3 && v0.pend[key] === '9' && v0.pend[`7:${adv}`] === '20');
   check('сэргээгдсэн urdchilgaa_huvi 20 дахин нийтлэхэд 0.2 (÷100)', parseFinanceShare(v3.pend[`7:${adv}`], D, adv) === 0.2);
   check('fractionFields-гүй дуудлага хувийг л үржүүлнэ', upgradeFinanceDraft({ pend: { [`7:${adv}`]: '0.2' }, adds: [], at: 0 }, share).pend[`7:${adv}`] === '0.2');
-}
-{
-  const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  check('Finance v3 ноорог бичиж, сэргээхэд FIN_XL_FRACTION-аар шалгана', src.includes('JSON.stringify({ v: 3, pend, adds,')
-    && src.includes('upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share, FIN_XL_FRACTION)'));
-  check('pend ба adds хоёул хуучин алдааны тэмдэгтэй хувийг шалгана',
-    (src.match(/parseFinanceShare\(v, typeOf\(fld\), labelOf\(fld\), legacyShareInvalidRef\.current, PARSE_MSG\)/g) ?? []).length === 2);
 }
 
 console.log('\n✅ Санхүүгийн засварын ' + ok + ' шалгуур давлаа');

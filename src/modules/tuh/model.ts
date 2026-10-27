@@ -23,7 +23,7 @@ import type { Pack } from '@/modules/Bagts';
 import { upstreamOf, downstreamOf, type PkgDep } from '@/lib/workDeps';
 import { sheetsOf } from './tuhSchedule';
 import {
-  buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
+  buildTuhPkgs, progressOf, statusOf, type LiveMap, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, calDaysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
   lastReportOf, reportAge,
   type TuhPkg, type TuhStatus, type TuhIpc, type CommissionPartial,
@@ -35,7 +35,7 @@ export type DocCount = { total: number; approved: number; review: number; return
  * ТУХ-ын эх сурвалжууд — `Tuh.tsx`-ийн ачаалагч бүр. Санхүү (`loadFinData`) энд ОРОХГҮЙ:
  * түүнгүйгээр загвар огт бүрдэхгүй.
  */
-export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps';
+export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps' | 'live';
 
 /**
  * «—» → «…» — тухайн эх сурвалж ХАРААХАН АЧААЛАГДАЖ БАЙГАА бол.
@@ -167,6 +167,8 @@ export type TuhModel = {
    *    багцын түлхүүр (`pkgKey` = `bagtsKey`); `depRows` түлхүүрийн ЭЗЭН мөрөөр (`own`) тулгана.
    */
   deps: readonly PkgDep[] | null;
+  /** ⚠️ 2026-10-27: гэрээний мөрийн АМЬД явц (`tuhData.LiveMap`) — ирээгүй/унасан бол null; `PkgDetail` мөр бүрд `rowProgress` */
+  live: LiveMap | null;
 };
 
 /**
@@ -240,11 +242,14 @@ export function buildModel(input: {
   loading?: ReadonlySet<TuhSrc>;
   /** Хуваарийн муруй бүхэлдээ УНАСАН (`planQ.state === 'error'`) — `TuhModel.planFailed` = -1 */
   planError?: boolean;
+  /** ⚠️ 2026-10-27: гэрээний мөрийн амьд явц (`projectPlanInputs.loadLiveProgress`) — `progressOf`-ийн эх */
+  live?: LiveMap | null;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
   const nowYm = monthKey();
   const pkgs = buildTuhPkgs(fin.contracts, input.contractedNote);
+  const live = input.live ?? null;
 
   /*
    * Гэрээний мөр → сарын цэгүүд (`lagOf`-ийн оролт) — багцын түлхүүрээр.
@@ -290,7 +295,7 @@ export function buildModel(input: {
   };
 
   const rows: TuhRow[] = pkgs.map((p) => {
-    const progress = progressOf(p, actual);
+    const progress = progressOf(p, actual, live);
     const housing = p.group === 'housing';
     /** Энэ мөр түлхүүрийнхээ өгөгдлийн ЭЗЭН мөн эсэх (`keyOwners`) */
     const own = !!p.pkgKey && owner.get(p.pkgKey) === p.key;
@@ -470,6 +475,7 @@ export function buildModel(input: {
     failed: input.failed,
     cfGaps: input.cfGaps ?? null,
     loading: input.loading ?? new Set<TuhSrc>(),
+    live,
     planFailed: input.planError ? -1 : plan ? plan.failed.length : 0,
     deps: input.deps ?? null,
   };

@@ -359,9 +359,9 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                 const C = CASHFLOW_NEW.fields;
                 const F = { pkg: C.pkg, name: C.detail, contractor: C.contractor, cost: C.budget, end: C.endDate, note: C.amountNote };
                 const one = r.p.rows.length === 1;
-                /* ⚠️ 2026-10-01: зураг төслийн мөрд шатны талбар (`tuhData.rowProgress`) — барилгын
-                   `guitsetgel_huvi` биш; хоосон бол «Мэдээлэлгүй» (`statusOf`-ийн `nullAs`) */
-                const pr = one ? r.progress : rowProgress(r.p.group, c);
+                /* ⚠️ 2026-10-27: мөр бүрийн АМЬД явц (`tuhData.rowProgress` · `m.live`) — хадгалсан `guitsetgel_huvi`/шатны
+                   талбар биш; хоосон бол «Мэдээлэлгүй» (`statusOf`-ийн `nullAs`) */
+                const pr = one ? r.progress : rowProgress(c, m.live);
                 const st = one ? r.status : tuhStatus({
                   /* ⚠️ 2026-10-09: порталын НЭГ дүрэм (`gdash.isContracted` — дотоод зай нэгтгэнэ) */
                   contracted: isContracted(c), progress: pr, gap: null,

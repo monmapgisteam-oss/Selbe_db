@@ -26,7 +26,7 @@ const {
   groupOf, statusOf, buildTuhPkgs, progressOf, cfPlanPctAt, weekDelta, earned,
   rowSpan, commissionOf, milestonesOf, resourcesOf, daysBetween, calDaysBetween, elapsedPct,
   ipcOf, keyOwners, assignHo, isDesignHo, mergeCommission, measDayOf, firstFilled,
-  searchNorm, matchesSearch, lateFirst, designPctOf, rowProgress, pendingAutoOf,
+  searchNorm, matchesSearch, lateFirst, rowProgress, pendingAutoOf,
   pickCommission, keyedCache, lastReportOf, reportAge, heatWinterYear, TUH_STATUS,
 } = await import('./tuhData.ts');
 
@@ -79,8 +79,8 @@ const rows = [
   CR({ oid: 56, pkg: 'БАГЦ-7.1', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', t3: 'Инженерийн бэлтгэл ажил', cost: 22.9e9, note: 'Гэрээлсэн дүн', prog: 0 }),
   CR({ oid: 11, pkg: 'БАГЦ-1', t2: 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт', cost: 373e9, note: 'Гэрээлсэн дүн', start: 1, end: 100, cf: 7 }),
   CR({ oid: 18, pkg: 'БАГЦ 1- 4', t2: 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт', cost: 82e9, note: 'Урьдчилсан дүн' }),
-  CR({ oid: 34, pkg: 'БАГЦ-6.1', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', t3: 'Гадна цахилгаан холбоо', cost: 4e9, prog: 20, note: 'Гэрээлсэн дүн' }),
-  CR({ oid: 99, pkg: 'БАГЦ-6.1', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', t3: 'Гадна цахилгаан холбоо', cost: 1e9, prog: null, note: '' }),
+  CR({ oid: 34, cf: 34, pkg: 'БАГЦ-6.1', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', t3: 'Гадна цахилгаан холбоо', cost: 4e9, prog: 20, note: 'Гэрээлсэн дүн' }),
+  CR({ oid: 99, cf: 99, pkg: 'БАГЦ-6.1', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', t3: 'Гадна цахилгаан холбоо', cost: 1e9, prog: null, note: '' }),
   CR({ oid: 78, pkg: '', code: '7' }),
 ];
 const pk = buildTuhPkgs(rows, 'Гэрээлсэн дүн');
@@ -102,14 +102,17 @@ ok('ижил багцын хоёр гэрээ нийлнэ, гэрээлсэн �
   assert.equal(e.cost, 5e9);
   assert.equal(e.contracted, true);
 });
-ok('гүйцэтгэл дүнгээр жигнэнэ, хоосон мөр жинд орохгүй', () => {
+/* ⚠️ 2026-10-27: гэрээний явц АМЬД (`live`: cashflow_id → S) — хадгалсан `guitsetgel_huvi` уншигдахгүй */
+const LV = new Map([[34, { S: 20, stages: {} }], [99, { S: null, stages: {} }]]);
+ok('амьд явцыг дүнгээр жигнэнэ, хоосон мөр жинд орохгүй; live алга → null', () => {
   const e = pk.find((p) => p.pkgKey === 'БАГЦ61');
-  assert.equal(progressOf(e, null), 20);
+  assert.equal(progressOf(e, null, LV), 20);
+  assert.equal(progressOf(e, null), null, 'хадгалсан guitsetgel_huvi 20 БИШ');
 });
-ok('2026-10-26: дэд бүтцийн багц — 01-ийн гүйцэтгэл байвал ТҮҮНИЙГ, эс бөгөөс Cashflow', () => {
+ok('2026-10-26: дэд бүтцийн багц — 01-ийн гүйцэтгэл байвал ТҮҮНИЙГ, эс бөгөөс амьд явц', () => {
   const e = pk.find((p) => p.pkgKey === 'БАГЦ61');
-  assert.equal(progressOf(e, new Map([['БАГЦ61', 0.84]])), 0.84, '01-ийн батлагдсан гүйцэтгэл давамгайлна');
-  assert.equal(progressOf(e, new Map()), 20, '01-д байхгүй бол Cashflow-ийн жигнэсэн дундаж');
+  assert.equal(progressOf(e, new Map([['БАГЦ61', 0.84]]), LV), 0.84, '01-ийн батлагдсан гүйцэтгэл давамгайлна');
+  assert.equal(progressOf(e, new Map(), LV), 20, '01-д байхгүй бол амьд явцын жигнэсэн дундаж');
 });
 ok('орон сууц — бөглөх хуудасны гүйцэтгэл; байхгүй бол null', () => {
   const h = pk.find((p) => p.key === 'БАГЦ1');
@@ -267,7 +270,7 @@ console.log('\n9. Бусад харагдацтай нэг эх');
   const model = readFileSync(new URL('../modules/tuh/model.ts', import.meta.url), 'utf8');
   const view = readFileSync(new URL('../modules/Tuh.tsx', import.meta.url), 'utf8');
   ok('model: сарын цэг pkgMonthsMap-аас', () => assert.ok(/const monthsBy = pkgMonthsMap\(fin\)/.test(model)));
-  ok('model: орон сууцны хувь physLatest-ээс', () => assert.ok(/physLatest\(m\)/.test(model) && /progressOf\(p, actual\)/.test(model)));
+  ok('model: орон сууцны хувь physLatest-ээс', () => assert.ok(/physLatest\(m\)/.test(model) && /progressOf\(p, actual, live\)/.test(model)));
   ok('ТУХ loadFillPkgProgress-ийг ачаалахгүй (блокийн жингүй дундаж — өөр хэмжигдэхүүн)',
     () => {
       /* тайлбарт нэр нь үлдэж болно — зөвхөн импорт/дуудлагыг шалгана */
@@ -441,23 +444,19 @@ ok('nullAs: зураг төслийн хэмжигдээгүй → «unknown»; 
   assert.ok(TUH_STATUS.some((x) => x.key === 'unknown' && x.label() === 'Мэдээлэлгүй'));
 });
 
-console.log('\n16. Зураг төслийн гүйцэтгэл — шатны талбар (guitsetgel_huvi биш)');
-ok('нэрээр талбар сонгоно; хоёулаа бол дундаж', () => {
-  assert.equal(designPctOf(CR({ oid: 4, name: 'Хөрсний ус ажлын зураг төсөл', tezu: 100, az: 40, prog: 99 })), 40);
-  assert.equal(designPctOf(CR({ oid: 4, name: 'ТЭЗҮ боловсруулах', tezu: 70, az: 10 })), 70);
-  assert.equal(designPctOf(CR({ oid: 8, name: 'ТЭЗҮ, техникийн зураг төсөл', tezu: 100, az: 0 })), 50);
-  assert.equal(designPctOf(CR({ oid: 1, name: 'Орон сууцжуулах төсөл', tezu: 100, az: 60 })), 80, 'аль нь ч биш → хоёулаа');
-  assert.equal(designPctOf(CR({ oid: 1, name: 'Орон сууцжуулах төсөл', tezu: null, az: 60 })), 60, 'хоосон нь жинд орохгүй');
+console.log('\n16. Гэрээний мөрийн гүйцэтгэл — АМЬД (projectPlanInputs.loadLiveProgress), хадгалсан талбар биш');
+ok('rowProgress — cashflow_id-аар live S; live/дугааргүй → null (0 биш)', () => {
+  const LV2 = new Map([[9, { S: 55, stages: {} }]]);
+  assert.equal(rowProgress(CR({ oid: 9, cf: 9, prog: 20, tezu: 100 }), LV2), 55, 'хадгалсан 20 · tezu 100 БИШ');
+  assert.equal(rowProgress(CR({ oid: 9, cf: 9, prog: 20 }), null), null);
+  assert.equal(rowProgress(CR({ oid: 9, prog: 20 }), LV2), null, 'cashflow_id-гүй мөр');
 });
-ok('бүгд хоосон → null (0 биш); progressOf → «Мэдээлэлгүй»', () => {
-  const pk3 = buildTuhPkgs([CR({ oid: 5, pkg: 'БАГЦ-7.2', code: '1', name: 'Үерийн ус ажлын зураг', prog: 39.27, note: 'Гэрээлсэн дүн' })], 'Гэрээлсэн дүн');
+ok('зураг төслийн багц — live алга → null → «Мэдээлэлгүй»; live байвал түүнийх', () => {
+  const pk3 = buildTuhPkgs([CR({ oid: 5, cf: 5, pkg: 'БАГЦ-7.2', code: '1', name: 'Үерийн ус ажлын зураг', prog: 39.27, note: 'Гэрээлсэн дүн' })], 'Гэрээлсэн дүн');
   assert.equal(pk3[0].group, 'design');
-  assert.equal(progressOf(pk3[0], null), null, 'барилгын 39.27 БИШ');
+  assert.equal(progressOf(pk3[0], null), null, 'хадгалсан 39.27 БИШ');
   assert.equal(statusOf({ contracted: true, progress: progressOf(pk3[0], null), gap: null, nullAs: 'unknown' }), 'unknown');
-});
-ok('rowProgress — бусад бүлэгт guitsetgel_huvi хэвээр', () => {
-  assert.equal(rowProgress('energy', CR({ oid: 9, prog: 20, tezu: 100 })), 20);
-  assert.equal(rowProgress('design', CR({ oid: 9, name: 'ТЭЗҮ', prog: 20, tezu: 100 })), 100);
+  assert.equal(progressOf(pk3[0], null, new Map([[5, { S: 40, stages: {} }]])), 40);
 });
 
 console.log('\n17. HO «ТЭЗҮ,Судалгаа» → зураг төслийн мөр');

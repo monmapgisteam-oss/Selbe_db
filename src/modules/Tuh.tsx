@@ -36,6 +36,11 @@ import { loadFinData } from '@/modules/Finance';
 import { friendlyError, Loading } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
+import type { LiveMap } from '@/lib/tuhData';
+
+/* ⚠️ 2026-10-27: гэрээний мөрийн АМЬД явц — «Төсөл төлөвлөгөө биелэлт»-ийн тооцоо (`projectPlanInputs.loadLiveProgress`);
+   ДИНАМИК импорт (Finance.tsx-ийн `loadProjectPlanLazy`-тай ижил шалтгаан — газар/хуваарийн код энд татагдахгүй) */
+const loadLiveProgressLazy = (): Promise<LiveMap> => import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress());
 import { Overview } from './tuh/Overview';
 import { PkgDetail } from './tuh/PkgDetail';
 import { TuhMap, type MapSel } from './tuh/TuhMap';
@@ -65,6 +70,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
      «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
      ХУДАЛ бичигтэй байв. */
   const depQ = useAsync(loadPkgDeps, []);
+  const liveQ = useAsync(loadLiveProgressLazy, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
   /*
@@ -103,6 +109,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (planQ.state === 'ready' && planQ.data.failed.length) failed.push(`${tr('Хуваарийн төлөвлөгөө')} (${planQ.data.failed.join(', ')})`);
     if (budgetQ.state === 'error') failed.push(tr('Гэрээний нийт дүн'));
     if (depQ.state === 'error') failed.push(tr('Багцын хамаарал'));
+    if (liveQ.state === 'error') failed.push(tr('Гэрээний амьд гүйцэтгэл'));
     /* ⚠️ 2026-10-01: ачаалж буй эх сурвалж — тэдгээрийн тоо «—» биш «…» (`model.lz`-ийн ⚠️) */
     const loading = new Set<TuhSrc>();
     if (planQ.state === 'loading') loading.add('plan');
@@ -113,6 +120,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (bq.state === 'loading') loading.add('packs');
     if (budgetQ.state === 'loading') loading.add('budget');
     if (depQ.state === 'loading') loading.add('deps');
+    if (liveQ.state === 'loading') loading.add('live');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
     /* ⚠️ 2026-10-26 (хяналт №2): 'huvaari' эхтэй гэрээний цоорхой — «Гэрээний төлөвлөгөө» дутуу гэдгийг багцаар нэрлэнэ */
     const gaps = cfPlanQ.state === 'ready' ? cfPlanGaps(cfPlanQ.data) : null;
@@ -133,6 +141,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       workforce: wf,
       docs: null,
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
+      live: liveQ.state === 'ready' ? liveQ.data : null,
       contractedNote: CONTRACTED,
       failed,
       cfGaps,
@@ -140,7 +149,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
       planError: planQ.state === 'error',
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:

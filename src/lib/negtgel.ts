@@ -30,8 +30,14 @@
  * тааралгүй үлдснийг `how` талбар хэлнэ.
  */
 import { queryFeatures, queryStats, count } from '@/lib/query';
+import type { LiveProgress } from '@/lib/projectPlanInputs';
+
+/* ⚠️ 2026-10-27: гэрээний үе шатны хувь — АМЬД (`projectPlanInputs.loadLiveProgress`), хадгалсан `tezu` … `guitsetgel_huvi`
+   (Excel-ийн импортын агшин) биш. Динамик импорт (`gdash.loadLiveProgressLazy`-тай ижил шалтгаан); унавал null. */
+const loadLiveProgressLazy = (): Promise<ReadonlyMap<number, LiveProgress> | null> =>
+  import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress()).catch(() => null);
 import {
-  TUSUL_NEGTGEL, CASHFLOW_NEW, PARCEL_LEFT, parcelClearedWhere,
+  CF_MONTH, TUSUL_NEGTGEL, CASHFLOW_NEW, PARCEL_LEFT, parcelClearedWhere,
   CF_WORK_WHERE,
 } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
@@ -124,30 +130,25 @@ export type CfStageRow = {
 };
 
 export async function loadCfStages(): Promise<CfStageRow[]> {
-  const rows = await queryFeatures(CASHFLOW_NEW.url, {
+  const [rows, live] = await Promise.all([queryFeatures(CASHFLOW_NEW.url, {
     where: CF_WORK_WHERE,
-    outFields: [
-      CF.type, CF.project, CF.pkg2, CF.detail, CF.budget,
-      ST.tezu, ST.design, ST.land, ST.permit, ST.tender, ST.build,
-    ],
+    outFields: [CF.type, CF.project, CF.pkg2, CF.detail, CF.budget, CF_MONTH.id],
     orderBy: CASHFLOW_NEW.oid,
+  }), loadLiveProgressLazy()]);
+  const FIELDS = [ST.tezu, ST.design, ST.land, ST.permit, ST.tender, ST.build];
+  return rows.map((r) => {
+    const id = numOrNull(r[CF_MONTH.id]);
+    const lp = live && id != null ? live.get(id) ?? null : null;
+    return {
+      /* ⚠️ 2-р түвшин хоосон бол 1-р түвшнээр — нийгмийн дэд бүтэц, бондын хүү */
+      turul: String(r[CF.type] ?? '') || String(r[CF.project] ?? ''),
+      pkg2: String(r[CF.pkg2] ?? ''),
+      detail: String(r[CF.detail] ?? ''),
+      budget: Number(r[CF.budget] ?? 0) || 0,
+      /* ⚠️ 2026-10-27: шат бүр амьд (`LiveProgress.stages`); ирээгүй бол null (0 БИШ) */
+      pct: Object.fromEntries(FIELDS.map((f) => [f, lp ? lp.stages[f] ?? null : null])),
+    };
   });
-  return rows.map((r) => ({
-    /* ⚠️ 2-р түвшин хоосон бол 1-р түвшнээр — нийгмийн дэд бүтэц, бондын хүү */
-    turul: String(r[CF.type] ?? '') || String(r[CF.project] ?? ''),
-    pkg2: String(r[CF.pkg2] ?? ''),
-    detail: String(r[CF.detail] ?? ''),
-    budget: Number(r[CF.budget] ?? 0) || 0,
-    pct: {
-      [ST.tezu]: numOrNull(r[ST.tezu]),
-      [ST.design]: numOrNull(r[ST.design]),
-      [ST.land]: numOrNull(r[ST.land]),
-      [ST.permit]: numOrNull(r[ST.permit]),
-      [ST.tender]: numOrNull(r[ST.tender]),
-      /* ⚠️ `Guitsetgel_huwi` нь МӨР (String) — «39.27» гэж ирнэ */
-      [ST.build]: numOrNull(r[ST.build]),
-    },
-  }));
 }
 
 /** ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ЯВЦ — «Газар чөлөөлөлт» хэсэгтэй ЯГ ижил тоо.

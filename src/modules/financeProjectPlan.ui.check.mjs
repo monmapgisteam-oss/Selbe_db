@@ -153,17 +153,15 @@ check('шилжүүлэх товч — эрхтэй, зөвхөн гараар �
 });
 
 /* ══════════ §3 Эх кодын хамгаалалт ══════════ */
-check('publish — huvaari гэрээний сарыг нийцүүлэхгүй', () => {
+/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
+check('CashflowPlan — canSwitch · money дамжина', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  assert.match(src, /if \(monthSourceOf\(r\?\.\[CASHFLOW_NEW\.fields\.monthSource\]\) === SRC_HUVAARI\) continue;/);
-  assert.match(src, /<FullTable[\s\S]{0,600}huv=\{huv\}/, 'гэрээний бүртгэлд тооцоолсон сар');
   assert.match(src, /<CashflowPlan[\s\S]{0,400}canSwitch=\{canSwitch\}[\s\S]{0,60}money=\{money\}/);
 });
 
 check('шилжүүлэлт — хоёр харагдац НЭГ урсгалаар (preview · 2 цонх · expect)', () => {
-  const fin = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   const cfp = readFileSync(new URL('./CashflowPlan.tsx', import.meta.url), 'utf8');
-  for (const [name, src] of [['Finance', fin], ['CashflowPlan', cfp]]) {
+  for (const [name, src] of [['CashflowPlan', cfp]]) {
     assert.match(src, /confirmAndSwitch\(\{/, `${name}: confirmAndSwitch`);
     assert.doesNotMatch(src, /switchToHuvaari\(/, `${name}: шууд switchToHuvaari дуудахгүй (preview-гүй зам)`);
   }
@@ -176,17 +174,12 @@ check('CashflowPlan — monthsError үед «Хуваарь руу шилжүү�
   assert.match(cfp, /disabled=\{locked \|\| dirty > 0 \|\| !curSwitchable \|\| monthsError\}/, 'товч хаалттай');
 });
 
-/* ⚠️ 2026-10-26: CF_WORK_WHERE `cashflow_id IS NOT NULL` — дугаартай мөрийн ID-г арилгаж нийтлэхгүй */
-check('publish — cashflow_id арилгахыг татгалзана', () => {
-  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  assert.match(src, /if \(!\('cashflow_id' in a\) \|\| cfIdOf\(a\.cashflow_id\) != null\) continue;[\s\S]{0,300}throw new Error\(tr\('«\{0\}» — Cashflow_ID-г арилгах боломжгүй/);
-});
 
 /* ⚠️ 2026-10-26: «Төсөл төлөвлөгөө биелэлт» таб merge-ээр roving tabIndex-гүй үлдсэн (UX U8) */
 check('tablist — таб бүр roving tabIndex-тэй', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   const tabs = src.split('role="tab"').slice(1).map((s) => s.slice(0, 400));
-  assert.ok(tabs.length >= 4);
+  assert.ok(tabs.length >= 3);
   for (const t of tabs) assert.match(t, /^[\s\S]*?tabIndex=\{tab === '(\w+)' \? 0 : -1\}[\s\S]*?aria-selected=\{tab === '\1'\}/, t.slice(0, 160));
 });
 

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts, FinancePublishConflict, FinanceDuplicateId } from './financePublish.ts';
 
 // Pure injected reads/writes: never load credentials or call a production service.
@@ -188,13 +187,5 @@ check('missing parent conflicts instead of silently clearing the monthly amount'
   }
 }
 
-{
-  const source = readFileSync(new URL('../modules/Finance.tsx', import.meta.url), 'utf8');
-  check('Finance publish calls the tested refresh, recomputation and final write wrapper', () => {
-    assert.match(source, /financeInputs = await loadFinancePublishInputs\(/);
-    assert.match(source, /recomputeFinanceAmounts\(\{\s*updates: upd, parents: publishRows, months: publishMonths/);
-    assert.match(source, /await publishFinanceBatch\(financeInputs, \(\) => \{\s*addsInFlight = [^;]+;\s*return applyAll\(/);
-    assert.match(source, /for \(const mr of publishMonthBy\.get\(id\)/);
-  });
-}
+/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 console.log(`financePublish: ${checks} checks passed; production mutations0. Final read/write is not server-atomic.`);
