@@ -7475,6 +7475,14 @@ const en: Record<string, string> = {
   "Эдгээр хэрэглэгчийн хадгалсан эрхэд загварын зарим хуудас алга — «Хэрэгжүүлэх» дарж загварыг хэрэгжүүлнэ.": "Some template pages are missing from these users’ saved access — press “Apply” to apply the template.",
   "{0} хэрэглэгч загвараас зөрсөн": "{0} users differ from the template",
   "Зөвхөн харна": "View only",
+  "«{0}» шатны {1} ажлыг бүгдийг баталж архивт бүртгэх үү? Архив болон нэгтгэлд бичигдэж, үндсэн өгөгдөлд орно.": "Approve all {1} works at the «{0}» stage and register them in the archive? They will be written to the archive and summary and enter the master data.",
+  "«{0}» шатны {1} ажлыг бүгдийг зөвшөөрч дараагийн шат руу илгээх үү?": "Approve all {1} works at the «{0}» stage and send them to the next stage?",
+  "{0} нүдийг хуудсанд буулгаж чадаагүй — гараар шалгана уу": "{0} cells could not be applied to the sheet — review manually",
+  "{0} нүдний нэмэлт нийт дүнг сөрөг болгоно — гараар шалгана уу": "{0} cells would make the total negative — review manually",
+  "{0} ажил батлагдаж архивт бүртгэгдлээ.": "{0} works approved and registered in the archive.",
+  "{0} ажил — {1} руу илгээгдлээ.": "{0} works sent to {1}.",
+  "Зөвшөөрч байна… {0}/{1}": "Approving… {0}/{1}",
+  "Дараах {0} ажил зөвшөөрөгдсөнгүй:": "The following {0} works were not approved:",
 };
 
 export default en;
