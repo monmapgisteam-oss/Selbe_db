@@ -24,20 +24,17 @@ if (process.env.SELBE_LIVE_SKIP) {
  *     et:5  «Замын тэнхлэг»    → data/104
  *     et:2  «Автобусны буудал» → data/87
  */
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
-   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
-   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай (урьд HJ-ээр залгаж байв). */
-const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
-if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const TD = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer`;
-const URL = `${TD}/108`;
+/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана (POST · токен · талбарын нэр эх хэлбэрээр). */
+const { SELBE_ET } = await import('@/lib/services.ts');
+const { arcgisPost } = await import('@/lib/query.ts');
+const URL = `${SELBE_ET}/99`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
-const ROAD_URL = `${TD}/104`;
+const ROAD_URL = `${SELBE_ET}/102`;
 /** «Автобус_буудал» — `busAccess.ts`-ийн эх сурвалж (et:2) */
-const BUS_URL = `${TD}/87`;
+const BUS_URL = `${SELBE_ET}/127`;
 
 /* ── transport.ts-ийн хуулбар логик ── */
-const F = { purpose: 'Зориулалт_m', population: 'Population', capacity: 'Huchin_chadal' };
+const F = { purpose: 'зориулалт_m', population: 'population', capacity: 'huchin_chadal' };
 
 const CATS = ['residential', 'school', 'kindergarten', 'hospital', 'office', 'service', 'other'];
 const CAT_LABEL = {
@@ -84,10 +81,10 @@ async function fetchAll() {
   for (;;) {
     // ⚠️ Полигоны оронд ТӨВ ЦЭГ (`returnCentroid`) — замд хуваарилахад л хэрэгтэй.
     //    Web Mercator (3857)-оор авна: замын геометртэй нэг систем.
-    const q = `${URL}/query?where=1%3D1&outFields=${encodeURIComponent(`${F.purpose},${F.population},${F.capacity}`)}` +
-      `&returnGeometry=false&returnCentroid=true&outSR=3857&resultOffset=${offset}&resultRecordCount=2000&f=json`;
-    const r = await fetch(q);
-    const j = await r.json();
+    const j = await arcgisPost(`${URL}/query`, {
+      where: '1=1', outFields: `${F.purpose},${F.population},${F.capacity}`, returnGeometry: 'false', returnCentroid: 'true',
+      outSR: '3857', resultOffset: String(offset), resultRecordCount: '2000',
+    });
     if (j.error) throw new Error(JSON.stringify(j.error));
     const feats = j.features ?? [];
     // Төв цэгийг атрибутын хажууд `__x/__y`-ээр авч явна (доорх код `a[F...]` уншина)
@@ -115,11 +112,11 @@ async function fetchRoads() {
   const out = [];
   let offset = 0;
   for (;;) {
-    const q = `${ROAD_URL}/query?where=1%3D1&geometry=${encodeURIComponent(geometry)}` +
-      '&geometryType=esriGeometryEnvelope&inSR=32648&spatialRel=esriSpatialRelIntersects' +
-      '&outFields=&returnGeometry=true&outSR=3857&maxAllowableOffset=1.5&geometryPrecision=1' +
-      `&resultOffset=${offset}&resultRecordCount=2000&f=json`;
-    const j = await fetch(q).then((x) => x.json());
+    const j = await arcgisPost(`${ROAD_URL}/query`, {
+      where: '1=1', geometry, geometryType: 'esriGeometryEnvelope', inSR: '32648', spatialRel: 'esriSpatialRelIntersects',
+      outFields: '', returnGeometry: 'true', outSR: '3857', maxAllowableOffset: '1.5', geometryPrecision: '1',
+      resultOffset: String(offset), resultRecordCount: '2000',
+    });
     if (j.error) throw new Error(JSON.stringify(j.error));
     const feats = j.features ?? [];
     for (const f of feats) {
@@ -133,8 +130,7 @@ async function fetchRoads() {
 
 /** Автобусны буудлууд — Web Mercator цэг (`busAccess.loadBusStops`-ийн хуулбар) */
 async function fetchStops() {
-  const q = `${BUS_URL}/query?where=1%3D1&outFields=OBJECTID&returnGeometry=true&outSR=3857&resultRecordCount=2000&f=json`;
-  const j = await fetch(q).then((x) => x.json());
+  const j = await arcgisPost(`${BUS_URL}/query`, { where: '1=1', outFields: 'objectid', returnGeometry: 'true', outSR: '3857', resultRecordCount: '2000' });
   if (j.error) throw new Error(JSON.stringify(j.error));
   return (j.features ?? [])
     .map((f) => f.geometry)

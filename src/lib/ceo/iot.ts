@@ -287,7 +287,10 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
           const h = hitOf(sn, m, m.latest, m.alert.value, age, st);
           if (IOT_HIGHER_IS_GOOD.has(`${sn.key}:${m.key}`)) {
             // ⚠️ Урвуу чиглэл: босгоос ДООШ нь асуудал (хуурай); дээш нь хэвийн
-            if (m.latest < m.alert.value) { dry.push(h); rank = RANK.dry; }
+            /* ⚠️ 2026-10-21 (аудит): ХУУЧИРСАН (> IOT_STALE_H) заалтыг хуурайд ТООЛОХГҮЙ — хэдэн өдрийн өмнөх
+               чийг өнөөдрийн хөрсийг хэлэхгүй (хэтрэлтийн «одоогийн»/`staleExceed` ялгаатай нэг зарчим);
+               тэр хэмжигдэхүүн `stale` тоолуур ба `RANK.stale`-д аль хэдийн орж шар болно. */
+            if (!st && m.latest < m.alert.value) { dry.push(h); rank = RANK.dry; }
           } else if (m.latest >= m.alert.value) {
             if (st) { staleExceed.push(h); rank = RANK.staleExceed; }
             else { exceed.push(h); hitFresh = true; rank = RANK.exceed; }

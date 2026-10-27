@@ -7,10 +7,18 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type { Pkg, Schema } from "../bagts.pkg";
 import { editPct, fmtInc, isPctEdit, parseInc, type SheetRow } from "../bagtsSheet";
 import {
-  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
+/* ⚠️ 2026-10-26: алсын ноорог ХАДГАЛАЛТЫН ДАВХАРГААР (`fillStore`) — 191-д эх хуудасны бүтцээр мөр (`rows`) эсвэл хуучин JSON
+   (`blob`, notebook-ийн баганагүй үед). Функцийн хэлбэр ЯГ хэвээр; хэмжээний хязгаар зөвхөн JSON-д (`remoteMax`). */
+import {
+  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, setFillFrame,
+} from "@/lib/fillStore";
 import { t as tr } from "@/lib/i18nCore";
+import { fixCyr } from "@/lib/format";
+/* ⚠️ 2026-10-23 (UX аудит X1 · X3): апп доторх асуулт · хэрэглэгчид ойлгомжтой алдаа */
+import { askConfirm } from "@/lib/confirm";
+import { userError } from "@/components/ui";
 import {
   type Draft, LOCAL_DRAFT_TTL_MS, REMOTE_DEBOUNCE_MS, REMOTE_CAP_MS, REMOTE_RETRY_MS, DEL_TTL_MS,
   parseDraft, mergeDrafts, readDraft, saveDraftLS, clearDraftLS, marksOf, doneOfMarks, type Mark,
@@ -147,6 +155,11 @@ export function useDraftSync(p: {
    */
   soft?: (msg: string) => void;
   /**
+   * ⚠️ 2026-10-23 (UX аудит F3): НААЛДСАН анхааруулга (`useNotice.stick`) — сэргээгдээгүй нүдний ЖАГСААЛТ 4 сек-д алга
+   *    болохгүй. Байхгүй бол `show('warn')`.
+   */
+  stick?: (msg: string) => void;
+  /**
    * ⚠️ 2026-10-09: татах мөчлөгийн нийлүүлэлт ШИНЭ илгээлтийн баримт авчирсан (`draft.newReceipts`) —
    *    дуудагч илгээлтийг (`staged`) ба давхарлалтыг дахин уншина. `at` = хамгийн шинэ баримтын агшин.
    */
@@ -170,10 +183,10 @@ export function useDraftSync(p: {
    * ⚠️ 2026-10-09: дуудагчийн callback-ууд REF-д — `pickDraft` (тогтвортой хамааралтай) ба татах мөчлөг
    *    тэдгээрийг хамааралгүйгээр дуудна (тоолуур дахин эхлэхгүй).
    */
-  const cbRef = useRef({ soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys, okLock: p.okLock });
+  const cbRef = useRef({ soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys, okLock: p.okLock, stick: p.stick });
   useEffect(() => {
-    cbRef.current = { soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys, okLock: p.okLock };
-  }, [p.soft, p.onReceipts, p.flashCells, p.visibleKeys, p.okLock]);
+    cbRef.current = { soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys, okLock: p.okLock, stick: p.stick };
+  }, [p.soft, p.onReceipts, p.flashCells, p.visibleKeys, p.okLock, p.stick]);
   /**
    * ⚠️ 2026-10-09 (аудит №3): ОДООГИЙН зорилт REF-д — `pickDraft` (тогтвортой хамааралтай) ба `offTgtKeys`
    *    («Илгээх»-ийн шалгалт) уншина. Сэргээх эффектээс ӨМНӨ зарлагдсан тул нэг commit-д шинэ утгыг харна.
@@ -440,7 +453,9 @@ export function useDraftSync(p: {
     for (const r of rows) if (r.oid >= 0 && r.oid < m) m = r.oid;
     minOidRef.current = Number.isFinite(m) ? m : null;
     if (Number.isFinite(m) && frameSeenRef.current?.[0] !== m) frameSeenRef.current = [m, Date.now()];
-  }, [rows]);
+    /* ⚠️ 2026-10-26: мөрийн хадгалалтад жааз (oid ↔ `des_dugaar` · № · нэр, блокийн нэр) — `rows`-д СУУСАН багцаар (`loadedPkgRef`) */
+    if (loadedPkgRef.current && rows.length) setFillFrame(loadedPkgRef.current, rows, sc?.bld ?? []);
+  }, [rows, sc, loadedPkgRef]);
   /**
    * ЛОКАЛ ХАДГАЛАЛТ УНАСАН (сан дүүрсэн/хаалттай) — 2026-10-04 аудит (#9). Урьд нь `saveDraftLS`
    * алдааг залгиж «ноорог хадгалагдав» гэж ХУДАЛ баталдаг байв.
@@ -859,8 +874,9 @@ export function useDraftSync(p: {
       return;
     }
     if (!r.ok) {
+      /* ⚠️ 2026-10-23 (UX аудит X3): серверийн түүхий алдаа биш — `userError` */
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
-        iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), r.error));
+        iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), userError(r.error)));
     }
   }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp, canPerf]);
 
@@ -1060,6 +1076,14 @@ export function useDraftSync(p: {
     const okDrop: string[] = [];
     const next: Record<string, string> = {};
     let dropped = 0;
+    /**
+     * ⚠️ 2026-10-23 (UX аудит F3): СЭРГЭЭГДЭЭГҮЙ нүдний НЭР («блок · ажил») — урьд нь зөвхөн тоо («N нүд хуучирсан
+     *    (агшин солигдсон)») ногоон амжилтын мэдэгдлээр гардаг, өөр анхааруулга байвал огт гардаггүй тул хэрэглэгч аль
+     *    ажлаа дахин бөглөхөө мэддэггүй байв.
+     */
+    const dropNames: string[] = [];
+    const dropName = (oid: number, b: number, se?: string) =>
+      `${sc.bld[b] ?? `#${b}`} · ${fixCyr(byOid.get(oid)?.work) ?? `#${oid}`}${se === 's' ? ` · ${tr('Эхлэх огноо')}` : se === 'e' ? ` · ${tr('Дуусах огноо')}` : ''}`;
     /** Хадгалагдсантайгаа ИЖИЛ тул сэргээгээгүй нүд/огноо (хуучирсан БИШ) */
     let sameN = 0;
     // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ — дээрх `if (!sc || !canPerf) return res;`
@@ -1126,6 +1150,7 @@ export function useDraftSync(p: {
       }
       if (incV == null) {
         dropped++;
+        dropNames.push(dropName(oid, b));
         /* ⚠️ 2026-10-04 дахин аудит (#7): хуучирсан нүд — ТЭМДЭГЛЭЖ хадгална (хугацаатай, «хаях» товчтой) */
         holdIt(key, v, 'drop', key0);
         continue;
@@ -1164,7 +1189,7 @@ export function useDraftSync(p: {
       const b = Number(bS);
       const r2 = byOid.get(Number(oidS));
       const fld = k === "s" ? sc.start[b] : k === "e" ? sc.end[b] : null;
-      if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; holdIt(key, v, 'drop', key0); continue; }
+      if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; dropNames.push(dropName(Number(oidS), b, k)); holdIt(key, v, 'drop', key0); continue; }
       const srv = dt(k === "s" ? r2.start[b] : r2.end[b]);
       /* ⚠️ Хадгалагдсантай ИЖИЛ огноо сэргээхгүй — дээрх нүдний ⚠️, `commitDate`-ийн `sameDate` */
       if (v === srv) { sameN++; if (key === key0) noop.push(key0); continue; }
@@ -1490,7 +1515,7 @@ export function useDraftSync(p: {
       if (fresh.srv) warns.push(tr('Ноорогийн {0} огноо/утга ноорог бичигдсэнээс хойш серверт өөрчлөгдсөн тул хуучин утгаар дарсангүй — шалгаад шаардлагатай бол дахин оруулна уу.', fresh.srv));
       if (fresh.old) warns.push(tr('Энэ компьютерт 7 хоногоос удаан ArcGIS-т хуулагдаагүй үлдсэн {0} нүдийг сэргээсэнгүй — тэр хооронд илгээгдсэн байж болох тул автоматаар нэмбэл ДАВХАР тоологдоно. Шалгаад шаардлагатай бол гараар дахин бөглөнө үү.', fresh.old));
       /* ⚠️ 2026-10-09 (аудит №3): зорилтоор хойшлуулсан ба зөвшөөрөгдсөн нүдийг ил хэлнэ (нэг удаа) */
-      if (fresh.tgt) warns.push(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаагдсан илгээлтийн засварт нийлүүлсэнгүй — ноорогт хадгалагдсан хэвээр, засвар дууссаны дараа буцаж гарна.', fresh.tgt));
+      if (fresh.tgt) warns.push(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засварт нийлүүлсэнгүй — ноорогт хадгалагдсан хэвээр, засвар дууссаны дараа буцаж гарна.', fresh.tgt));
       {
         let nOk = 0;
         for (const k of okDrop) {
@@ -1501,6 +1526,14 @@ export function useDraftSync(p: {
       }
       if (fresh.ambig || fresh.srv || fresh.old) warns.push(tr('Тэмдэглэсэн нүд 7 хоногийн дараа автоматаар хаягдана — «Тэмдэглэсэн нүдийг хаях» товчоор одоо хаяж болно.'));
       if (warns.length) show('warn', warns.join(' '));
+    }
+    /* ⚠️ 2026-10-23 (UX аудит F3): СЭРГЭЭГДЭЭГҮЙ нүд — ШАР, НЭРЛЭЖ, бусад анхааруулгаас ҮЛ ХАМААРАН (урьд нь `!warns.length`
+       үед л ногоон «амжилт»-аар). Зөвхөн сэргээлтэд (`poll` биш — татах мөчлөг бүрд давтахгүй). Тэр нүд ноорогт 7 хоног
+       тэмдэглэгдсэн хэвээр (`holdIt('drop')` · «Тэмдэглэсэн нүдийг хаях»). */
+    if (dropped && !opts?.poll) {
+      const shown = dropNames.slice(0, 12).join('; ') + (dropNames.length > 12 ? ` … (+${dropNames.length - 12})` : '');
+      const msg = tr('Ноорогийн {0} нүдийг сэргээж чадсангүй — хүснэгт шинэчлэгдсэн тул тэр мөр/блок олдсонгүй эсвэл одоо бичигдэхгүй: {1}. Шаардлагатай бол дахин бөглөнө үү.', dropped, shown || '—');
+      (cbRef.current.stick ?? ((m: string) => show('warn', m)))(msg);
     }
     /* ⚠️ 2026-10-09 (аудит №3): зорилтоор хойшлуулсан нүд (`tgtHeld`) ч «хадгалсан» — ноорог устахгүй */
     const kept = dropped + ambig + srvChanged + tgtHeld;
@@ -1579,7 +1612,7 @@ export function useDraftSync(p: {
          харин цонх нээхгүй (2026-09-06): зөвхөн мэдэгдэнэ. */
       /* (анхааруулга гарсан бол түүнийг дарахгүй — нэг мэдэгдэл, `warns`-ийн ⚠️) */
       /* ⚠️ 2026-10-09: зөвхөн сэргээлтэд, салаа мэдэгдлээр (`soft`-ийн ⚠️) */
-      if (dropped && !warns.length && !opts?.poll) soft(tr('Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).', dropped));
+      /* ⚠️ 2026-10-23 (UX аудит F3): сэргээгдээгүй нүдийг дээр НААЛДСАН анхааруулгаар нэрлэсэн (`dropNames`) */
       return res;
     }
     /* ⚠️ Юу сэргээхийг ЗҮЙЛЧЛЭН хэлнэ — «12 засвар» гэдэг юу байсныг
@@ -1625,9 +1658,8 @@ export function useDraftSync(p: {
         : tr('энэ компьютерээс');
     /* (анхааруулга гарсан бол түүнийг дарахгүй — `warns`-ийн ⚠️) */
     /* ⚠️ 2026-10-09: ЗӨВХӨН сэргээлтэд (`poll` биш), салаа мэдэгдлээр — дээрх `soft`-ийн ⚠️ */
-    if (!warns.length && !opts?.poll) soft(dropped
-      ? tr('Ноорог сэргээв ({0}): {1}. {2} нүд хуучирсан тул орхигдов.', from, parts.join(' · '), dropped)
-      : tr('Ноорог сэргээв ({0}): {1}. Ногоон нүд = илгээгээгүй.', from, parts.join(' · ')));
+    /* ⚠️ 2026-10-23 (UX аудит F3): орхигдсон нүд дээрх наалдсан анхааруулгад нэрээрээ — энд давхарлахгүй */
+    if (!warns.length && !opts?.poll) soft(tr('Ноорог сэргээв ({0}): {1}. Ногоон нүд = илгээгээгүй.', from, parts.join(' · ')));
     return res;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf]);
@@ -1839,7 +1871,7 @@ export function useDraftSync(p: {
    * ⚠️ Локал БА алсын хуулбар ХОЁУЛАА устана — эс бөгөөс дараагийн
    * ачаалалтад «устгасан ажил» буцаж ирнэ.
    */
-  const dropDraft = useCallback(() => {
+  const dropDraft = useCallback(async () => {
     /*
      * ⚠️ ХУВААЛЦСАН НООРОГ — БУСДЫН АЖИЛ ч устана (2026-09-08). Ноорог одоо
      * БАГЦЫНХ тул `clearRemoteDraft` нь бүх оролцогчийн бөглөлтийг арчина.
@@ -1850,12 +1882,13 @@ export function useDraftSync(p: {
     /* ⚠️ ҮРГЭЛЖ баталгаажуулна (2026-09-23) — ганцаараа бөглөж байхад ч нэг
        товшилтоор `dirtyCount` нүд сэргээх аргагүй арилдаг байв. */
     const nCell = String(dirtyCount);
-    if (!window.confirm(others.length
+    /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — буцаах боломжгүй тул `danger` (фокус «Болих» дээр) */
+    if (!(await askConfirm(others.length
       ? tr(
         'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна ({1} нүд). Үргэлжлүүлэх үү?',
         others.sort().join(', '), nCell,
       )
-      : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell))) return;
+      : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell), { ok: tr('Ноорог устгах'), danger: true }))) return;
     /* ⚠️ УСТГАСАН НҮД БҮРД TOMBSTONE (2026-09-25-ны аудит). Урьд нь алсын мөрийг
        шууд устгаж `delRef`-ийг тэглэдэг тул бусад оролцогч/төхөөрөмжид «устгасан»
        гэсэн баримт хүрэхгүй: Б-гийн дэлгэц дээрх `pending` дараагийн засвараар
@@ -2411,7 +2444,7 @@ export function useDraftSync(p: {
         const outDraft: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at != null ? at + 1 : 0) };
         const outBody = JSON.stringify(outDraft);
         /* ⚠️ 2026-10-06: солигдсон багцад ч чимээгүй биш — `staleWarn` */
-        if (outBody.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
+        if (outBody.length > remoteMax()) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
         /*
          * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
          * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно
@@ -2770,7 +2803,7 @@ export function useDraftSync(p: {
           { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
         const out: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at0 != null ? at0 + 1 : 0) };
         const body = JSON.stringify(out);
-        if (body.length > REMOTE_MAX) return { ok: false, why: tr('ноорог хэт том') };
+        if (body.length > remoteMax()) return { ok: false, why: tr('ноорог хэт том') };
         const r = await saveRemoteDraft(want, out.t, body, { expectAt: at0 });
         if (r.ok) return { ok: true };
         if (!('conflict' in r && r.conflict)) return { ok: false, why: r.error };

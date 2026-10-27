@@ -28,6 +28,7 @@ import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
 import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
+import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
 
@@ -204,6 +205,12 @@ export async function buildExecDoc(
   const topReason = g.land.reasons[0];
   const bestPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))[0];
   const worstPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (a.progress ?? 0) - (b.progress ?? 0))[0];
+  /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
+     «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
+  const paceText = bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
+    ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
+      bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
+    : '';
 
   return {
     pageSize: 'A4',
@@ -377,14 +384,14 @@ export async function buildExecDoc(
         g.budget > 0 ? pct((g.contract / g.budget) * 100, 1) : '—',
         num(g.types),
         /* ⚠️ Шошгыг байгаагаар нь — `toLocaleLowerCase` нь товчлол (ИД, ХО…)-ыг эвддэг байв */
-        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', topType.label, money(topType.cost)) : '')),
+        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', tr(topType.label), money(topType.cost)) : '')),
       cap(tr('Ажлын төрлөөр төсвийн хэмжээ')),
-      barChart(g.byType.map((t) => ({ label: t.label, value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
+      barChart(g.byType.map((t) => ({ label: tr(t.label), value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
       cap(tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')),
       { table: { headerRows: 1, widths: ['*', 32, 36, 94, 94, 46], body: [
         [th(tr('Ажлын төрөл')), th(tr('Ажил'), true), th(tr('Гэрээт'), true), th(tr('Төсөв (төг)'), true), th(tr('Гэрээлсэн (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...g.byType.map((t): TableCell[] => [
-          td(t.label), td(num(t.n), true), td(num(t.contracted), true),
+          td(tr(t.label)), td(num(t.n), true), td(num(t.contracted), true),
           td(num(t.cost), true), td(t.contract > 0 ? num(t.contract) : '—', true),
           td(t.perf == null ? '—' : pct(t.perf, 1), true),
         ]),
@@ -461,22 +468,34 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'before' },
       ...h2('prog',
         tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))), // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
-      lead(tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
-        p.actual == null ? '—' : pct(p.actual, 1),
-        p.planned == null ? '—' : pct(p.planned, 1),
-        gapText,
-        /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
-           «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
-        bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
-          ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
-            bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
-          : '')),
+      /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар, `execFindings`-ийн ⚠️) —
+         хуваарьгүй багц хасагдсан үед бүх багцын `actual`-ийг зөрүүний хажууд тавьвал тоо нийлэхгүй. */
+      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүний өгүүлбэр БИШ — шалтгааны өгүүлбэр (дүгнэхгүй) */
+      lead(!coverageOk(p.planCoverage) && p.gap != null
+        ? tr('Орон сууцны барилга угсралтын хуваарь {0} хамарсан тул хоцрогдлыг дүгнэсэнгүй (төлөвлөгөө {1}, бодит {2}).',
+          p.planCoverage == null ? '—' : pct(p.planCoverage, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          p.actualLag == null ? '—' : pct(p.actualLag, 1)) + paceText
+        : p.planExcluded.length
+        ? tr('Барилга угсралтын нийт биет гүйцэтгэл {0}; хуваарьтай багцаар бодит {1}, төлөвлөсөн {2}-тэй харьцуулахад {3} нэгж хувийн зөрүүтэй байна.{4}',
+          p.actual == null ? '—' : pct(p.actual, 1),
+          p.actualLag == null ? '—' : pct(p.actualLag, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          gapText, paceText)
+        : tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
+          p.actual == null ? '—' : pct(p.actual, 1),
+          p.planned == null ? '—' : pct(p.planned, 1),
+          gapText, paceText)),
       kpiRow([
         { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
         /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «(хуваарьтай багцаар)» */
         { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: p.planExcluded.length ? tr('(хуваарьтай багцаар)') : tr('хуваариас') },
         /* ⚠️ 2026-10-09 (аудит №2): `gdash.gapPts` — порталын нэг хэлбэр */
-        { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
+        /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүг ДҮГНЭХГҮЙ — «—» + хамралт (`planProgress.coverageOk`,
+           дэлгэцийн удирдлагын тайлантай нэг дүрэм) */
+        coverageOk(p.planCoverage)
+          ? { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') }
+          : { label: tr('Зөрүү'), value: '—', sub: coverageNote(p.planCoverage) || undefined },
       ]),
       ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
@@ -617,7 +636,8 @@ export async function buildExecDoc(
           if (a.kind === 'finZero') {
             return [head, { table: { headerRows: 1, widths: ['*', 110, 100], body: [
               [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
-              ...finZero.map((r): TableCell[] => [td(r.label), td(num(r.plan), true), td(num(0), true)]),
+              /* ⚠️ 2026-10-26 (аудит): гэрээний дүн хоосон гэрээт багц «0» биш «—» (null ≠ 0) */
+              ...finZero.map((r): TableCell[] => [td(r.label), td(r.plan > 0 ? num(r.plan) : '—', true), td(num(0), true)]),
               [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(num(0), true)],
             ] }, layout: tableLayout }];
           }

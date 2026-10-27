@@ -45,15 +45,17 @@ import {
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { mapLayer } from '@/components/lazyLayers';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { Icon } from '@/components/Icon';
-import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip } from '@/components/ui';
-import { CHART, lineSegments } from '@/lib/chartStyle';
+/* ⚠️ 2026-10-23 (UX аудит X3): алдааг `userError`-оор — серверийн түүхий англи мөр хэрэглэгчид гарахгүй (монгол мессеж хэвээр) */
+import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend, useTip, userError } from '@/components/ui';
+import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
+
 import { useAsync } from '@/lib/useAsync';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
@@ -90,6 +92,7 @@ import * as projectOperator from '@arcgis/core/geometry/operators/projectOperato
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
+import { Toggle } from '@/components/Switch';
 import e from './ersdel.module.css';
 
 /**
@@ -264,7 +267,11 @@ type Info = {
    · `null`/NaN алхам = ХЭМЖИГДЭЭГҮЙ → шугам ТАСАРНА (0 гэж зурахгүй, CLAUDE.md null ≠ 0);
    · цэг нь тэг урттай зураас (round cap + non-scaling) — `preserveAspectRatio="none"`
      `<circle>`-ийг ЗУУВАН болгодог байв;
-   · `<title>`-ийн оронд порталын `useTip`. */
+   · `<title>`-ийн оронд порталын `useTip`.
+   ⚠️ 2026-10-23: Environment `Sparkline` (ui/data.tsx) — 1.25px ШУЛУУН шугам (монотон биш),
+   хуваарь min–max (дээд/доод 3px зай), доор нь tone 12% дүүргэлт; заагуурын зураас/цэг ХАСАГДАВ.
+   `at` нь hover-ын утгад (tooltip) хэвээр. null/NaN цоорхой (шугам ба дүүргэлт ТАСАРНА) ХЭВЭЭР;
+   ганц цэгтэй хэсэг нь бөөрөнхий зураас — хэмжилт алга болохгүй. */
 function Spark({
   vals, at, color, unit, label,
 }: { vals: readonly (number | null)[]; at: number; color: string; unit: string; label: string }) {
@@ -273,13 +280,13 @@ function Spark({
   const H = 34;
   const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
   const peak = Math.max(...vals.filter(ok), 0.0001);
+  const low = Math.min(...vals.filter(ok), peak);
+  const span = peak - low || 1;
   const n = vals.length;
   const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2);
-  const y = (v: number) => H - (v / peak) * H;
-  const segs = lineSegments(vals.map((v, i) => (ok(v) ? { x: x(i), y: y(v) } : null)));
+  const y = (v: number) => H - ((v - low) / span) * (H - 6) - 3;
+  const segs = lineSegments(vals.map((v, i) => (ok(v) ? { x: x(i), y: y(v) } : null)), { smooth: false });
   const cur = vals[at];
-  const cx = x(at);
-  const cy = ok(cur) ? y(cur) : null;
   return (
     <>
       <svg
@@ -291,23 +298,20 @@ function Spark({
           hint: `${tr('дээд')} ${num(peak, 2)} ${unit}`,
         })}
       >
+        {segs.map((sg) => {
+          const fill = areaPath(sg, H);
+          return fill ? (
+            <path key={`a${sg.from}`} d={fill}
+              style={{ fill: `color-mix(in oklab, ${color} 12%, transparent)`, stroke: 'none' }} />
+          ) : null;
+        })}
         {segs.map((sg) => (
           <path key={sg.from} d={sg.d} vectorEffect="non-scaling-stroke"
             style={{
-              fill: 'none', stroke: color, strokeWidth: sg.single ? CHART.markerR * 2 : CHART.stroke,
-              strokeLinejoin: 'round', strokeLinecap: 'round',
+              fill: 'none', stroke: color, strokeWidth: sg.single ? CHART.markerR * 2 : 1.25,
+              strokeLinejoin: 'round', strokeLinecap: sg.single ? 'round' : 'butt',
             }} />
         ))}
-        <line x1={cx} y1={0} x2={cx} y2={H} vectorEffect="non-scaling-stroke"
-          style={{ stroke: 'var(--ink-3)', strokeWidth: 1, strokeDasharray: '3 2' }} />
-        {cy != null && (
-          <>
-            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--surface)', strokeWidth: (CHART.markerR + CHART.ring) * 2, strokeLinecap: 'round' }} />
-            <path d={`M${cx},${cy} h0`} vectorEffect="non-scaling-stroke"
-              style={{ stroke: color, strokeWidth: CHART.markerR * 2, strokeLinecap: 'round' }} />
-          </>
-        )}
       </svg>
       {tip.node}
     </>
@@ -645,7 +649,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
 
   /* ── Горим ба хувилбар ── */
   const [mode, setMode] = useState<'now' | 'model'>('now');
@@ -838,7 +843,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         if (alive) { setFlood(d); setSimPct(1); setSimEta(null); }
       })
       .catch((err: unknown) => {
-        if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
+        if (alive) setFloodErr(userError(err));
       });
     return () => { alive = false; release(); };
   }, [wantFlood, level, area, runSim]);
@@ -933,7 +938,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
            үлдэж, загварчлал өөр (өмнөх) талбай дээр явдаг байв. */
         const stray = gl.graphics.filter((x) => x !== applied).toArray();
         if (stray.length) gl.removeMany(stray);
-        setFloodErr(err instanceof Error ? err.message : String(err));
+        setFloodErr(userError(err));
       });
     });
     svm.on('update', (ev) => {
@@ -954,7 +959,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         setArea((prev) => (prev && sameRings(prev, next) ? prev : next));
       }, (err: unknown) => {
         if (mine !== areaSeq || view.destroyed) return;
-        setFloodErr(err instanceof Error ? err.message : String(err));
+        setFloodErr(userError(err));
       });
     });
     areaLayerRef.current = gl;
@@ -1402,7 +1407,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       }
     } catch (err) {
       if (stale()) return;
-      setRunErr(err instanceof Error ? err.message : String(err));
+      setRunErr(userError(err));
       setResult(null);
     } finally {
       /* ⚠️ Хуучирсан нислэг ШИНЭ нислэгийн «ажиллаж байна» төлөвийг унтраахгүй */
@@ -1503,7 +1508,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     } catch (err) {
       if (seq !== cmpSeq.current) return;
       if (err instanceof Error && err.name === 'AbortError') return;
-      setCmp((c) => (c ? { ...c, busy: null, err: err instanceof Error ? err.message : String(err) } : c));
+      setCmp((c) => (c ? { ...c, busy: null, err: userError(err) } : c));
     }
   }, [view, area, activeIds, getSim]);
 
@@ -1521,6 +1526,21 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    */
   const info = hazInfo ?? featInfo;
 
+  /** Даралтын дугаар — тайлбар нь доор (§pickSeq, `onMapPick`-ийн дээр) */
+  const pickSeq = useRef(0);
+  /**
+   * МЭДЭЭЛЛИЙН ХАЙРЦГИЙГ ХААХ ГАНЦ ЗАМ (⚠️ 2026-10-21, аудит): `pickSeq`-ийг өсгөж нислэгт яваа даралтын
+   * хариуг хүчингүй болгоод хайрцаг · усны замыг арилгана. Урьд нь `setHazInfo(null)` гурван газарт
+   * (цэвэрлэх · таб/түвшин солих · ×) тус тусдаа бичигдэж, аль нэг нь `pickSeq`-гүй үлдвэл хоцорсон
+   * `queryFeatures` хаасан хайрцгийг буцааж нээдэг байв — `onMapPick`-ээс гадуур хайрцгийг ЭНД л хаана.
+   */
+  const closeInfo = useCallback(() => {
+    pickSeq.current++;
+    setHazInfo(null);
+    setFeatInfo(null);
+    setPath(null);
+  }, []);
+
   const clear = useCallback(() => {
     /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно — эс бөгөөс «Цэвэрлэх» дарсны
        дараа хоцорсон хариу ирж, устгасан үр дүн буцаж гарна (2026-09-21) */
@@ -1529,14 +1549,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     setResult(null);
     setRunErr(null);
     /* ⚠️ Мэдээллийн хайрцгийг ч хаана — эс бөгөөс устгасан үр дүнгийн мужийн
-       гүн/агууламж зурган дээр үлдэж, «юу ч байхгүй атал тоо байна» болно. */
-    setHazInfo(null);
-    setFeatInfo(null);
-    /* ⚠️ УСНЫ ЗАМ ч арилна (2026-09-21): урьд нь зөвхөн хайрцгийн × дээр
-       тэглэгддэг байсан тул цэвэрлэсний дараа ч хуучин нүдний зам зурагт
-       үлддэг байв. */
-    setPath(null);
-  }, []);
+       гүн/агууламж зурган дээр үлдэж, «юу ч байхгүй атал тоо байна» болно.
+       ⚠️ УСНЫ ЗАМ ч арилна (2026-09-21): урьд нь зөвхөн хайрцгийн × дээр тэглэгддэг байсан тул
+       цэвэрлэсний дараа ч хуучин нүдний зам зурагт үлддэг байв. Хоёулаа `closeInfo` (⚠️ 2026-10-21). */
+    closeInfo();
+  }, [closeInfo]);
 
   const liveRef = useRef(live);
   useSyncRef(liveRef, live);
@@ -1572,8 +1589,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * ⚠️ Тоолуурыг функцын ЭХЭНД өсгөнө: шинэ даралт нь ямар ч төрлийнх
    * (харуул, үерийн нүд, муж, `null`) байсан нислэгт яваа хуучин хүсэлтийг
    * хүчингүй болгох ёстой.
+   * ⚠️ 2026-10-21: зарлалт нь `clear`-ийн дээр (хайрцаг хаах бүрд мөн өсгөнө).
    */
-  const pickSeq = useRef(0);
 
   /** Аюулын даралт — харуул / өртсөн объект / муж */
   const onMapPick = useCallback(async (p: Pick) => {
@@ -1735,7 +1752,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       rows: p.band && !isFlood ? [bandRow(p.band)] : [],
     };
     setHazInfo(head);
-    const fl = viewRef.current?.map?.findLayerById(p.layerId) as __esri.FeatureLayer | undefined;
+    /* ⚠️ 2026-10-22: `mapLayer` — шинжилсэн давхарга нуугдмал (Map-д ороогүй, `lazyLayers.ts`) байж болно */
+    const fl = mapLayer(viewRef.current?.map, p.layerId) as __esri.FeatureLayer | null;
     if (!fl || p.oid == null || typeof fl.queryFeatures !== 'function') return;
     try {
       /* ⚠️ Геометрийг ҮЕРТ л татна (WM-д) — footprint-ийн гүнд хэрэгтэй */
@@ -1810,13 +1828,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       setBusy(false);
       setResult(null);
       setRunErr(null);
-      setHazInfo(null);
-      setFeatInfo(null);
-      /* ⚠️ Усны зам ХУУЧИН загварчлалын нүднийх — таб/түвшин солиход
-         арилна (2026-09-21) */
-      setPath(null);
+      /* ⚠️ 2026-10-21: хоцорсон даралтын хариу хайрцгийг сэргээхгүй (§pickSeq); усны зам ХУУЧИН
+         загварчлалын нүднийх — таб/түвшин солиход арилна (2026-09-21). Хоёулаа `closeInfo`. */
+      closeInfo();
     }
-  }, [hazard, level, mode, area]);
+  }, [hazard, level, mode, area, closeInfo]);
 
   /* ── Хохирлын нэгтгэл ── */
   const sum = useMemo(() => {
@@ -2096,7 +2112,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                               />
                               {wind!.cached ? (
                                 <p className={e.windSrc}>
-                                  {tr('Кэшнээс — сүлжээ татагдсангүй')}
+                                  {tr('Түр санах ойгоос — сүлжээнээс татагдсангүй')}
                                 </p>
                               ) : null}
                             </>
@@ -2318,15 +2334,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         * мужид ногдож, зураас олон бөгөөд тод болно.
                         */}
                       <div className={e.flowBar}>
-                        <button
-                          type="button"
-                          className={`${e.flowBtn} ${windFlow ? e.flowOn : ''}`}
-                          aria-pressed={windFlow}
-                          onClick={() => setWindFlow((v) => !v)}
-                          title={tr('Одоогийн салхины урсгалыг зураг дээр харуулна. Зум ойртуулахад нарийсна.')}
-                        >
-                          {windFlow ? tr('Урсгал асаалттай') : tr('Урсгал харуулах')}
-                        </button>
+                        {/* ⚠️ 2026-10-26 (UX U6): нийтлэг `Toggle` — асаалттай эсэхийг унтраалга өөрөө харуулна */}
+                        <Toggle checked={windFlow} onChange={setWindFlow} label={tr('Урсгал харуулах')}
+                          title={tr('Одоогийн салхины урсгалыг зураг дээр харуулна. Зум ойртуулахад нарийсна.')} />
                         {windFlow && windField?.times[windH] != null && (
                           <span className={`${e.flowHour} num`}>
                             {/* ⚠️ `getHours()` нь ХӨТЧИЙН бүсээр хөрвүүлнэ — цуваа UB-ынх
@@ -2346,7 +2356,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         </Note>
                       )}
                       {windFlow && windField?.cached && (
-                        <p className={e.windSrc}>{tr('Кэшнээс — сүлжээ татагдсангүй')}</p>
+                        <p className={e.windSrc}>{tr('Түр санах ойгоос — сүлжээнээс татагдсангүй')}</p>
                       )}
                     </div>
                   </>
@@ -2660,7 +2670,6 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           <div className={o.catPanel}>
             <LayerCatalog
               view="ersdel"
-              totals={catTotals}
               visible={visible}
               setVisible={setVisibleUser}
               selected={layerSel}
@@ -2842,7 +2851,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               <button
                 type="button"
                 className={e.infoClose}
-                onClick={() => { setHazInfo(null); setFeatInfo(null); setPath(null); }}
+                /* ⚠️ 2026-10-21: `closeInfo` — `pickSeq` өсгөнө, хоцорсон хариу хаасан хайрцгийг сэргээхгүй */
+                onClick={closeInfo}
                 aria-label={tr('Хаах')}
               >
                 ×
@@ -2935,7 +2945,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         <Trend
                           unit={m.unit}
                           height={132}
-                          visible={10}
+                          /* ⚠️ 2026-10-23 (UX аудит E5): 10 → 6 цэг — нарийн баганад 10 шошго («10-22 15:00»)
+                             бие биеэ дарж, эхнийх нь тайрагддаг байв; үлдсэнийг хэвтээ гүйлгэж харна. */
+                          visible={6}
                           points={m.points.map((p) => ({ label: axisLabel(p.t), value: p.v }))}
                         />
                       </div>
@@ -3084,7 +3096,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     )}
                     <Note>
                       {result.hazard === 'air'
-                        ? tr('Өртөлтөөр: ЗӨВХӨН барилгын талбайгаас — {0} м²-д 1 оршин суугч, хүн тутамд өдрийн {1} ₮ зардлын таамгаар. Эмнэлгийн бодит бүртгэлээс уншаагүй.',
+                        /* ⚠️ 2026-10-22 (аудит): өртсөн хүн — барилгын хүн амаас (`ersdel.buildingPeople`), хөлийн талбай ÷ 35 биш */
+                        ? tr('Өртөлтөөр: ЗӨВХӨН барилгаас — барилгын хүн ам (оршин суугч + хүчин чадал) × мужид орсон хувь; хүн амгүй барилгад шалны {0} м²-д 1 хүн. Хүн тутамд өдрийн {1} ₮ зардлын таамгаар. Эмнэлгийн бодит бүртгэлээс уншаагүй.',
                           num(EXPOSURE.m2PerPerson), num(EXPOSURE.costPerPersonDay))
                         : tr('Нэгж үнэлгээ нь объектын АНГИЛЛААС: барилга {0} {1} · хатуу хучилт {2} {3} · ногоон {4} {5} · мод {6} {7}. Гэрээний бодит үнээс уншаагүй — ТААМАГ.',
                           num(DAMAGE_RATE.building.rate), DAMAGE_RATE.building.unit,

@@ -23,7 +23,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import {
   butetsAclReady, butetsFailedUsers, listButetsAssigns, subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
@@ -31,6 +31,8 @@ import { scopedCellOp } from '@/lib/aclOps';
 import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 const ROLE: ButetsRole = 'editor';
@@ -42,7 +44,8 @@ export function DedButetsAcl() {
 
   /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно; super-ийг санал болгохгүй */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = listButetsAssigns();
@@ -91,6 +94,7 @@ export function DedButetsAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        absent: portalMissing(a.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
@@ -111,21 +115,23 @@ export function DedButetsAcl() {
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
 
       <AclGrid
         corner={tr('Багц')}
         rows={BUTETS_PACKS.map((p) => ({ key: p.key, label: p.name }))}
-        cols={[{ key: ROLE, label: tr('Засварлагч'), count: rows.filter((a) => a.grants.some((g) => g.role === ROLE)).length }]}
+        cols={[{ key: ROLE, label: tr('Засварлагч'), count: rows.filter((a) => a.grants.some((g) => g.role === ROLE) && known.has(a.user) && !portalMissing(a.user)).length }]}
         holders={(pack) => holdersOf(pack)}
         /* ⚠️ Хоосон багц гацаа биш — засвар батлах шатгүй, зөвхөн super засна */
         stuck={() => false}
         stuckTitle={() => ''}
         candidates={(pack) => {
           const list = holdersOf(pack).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(pack, _c, u) => addTo(pack, u)}
         onRemove={(pack, _c, h) => removeFrom(pack, h.user)}

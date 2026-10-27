@@ -26,7 +26,7 @@
  */
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve as resolvePath } from 'node:path';
+import { dirname, relative, resolve as resolvePath, sep } from 'node:path';
 import { readFileSync } from 'node:fs';
 
 const TOOLS = dirname(fileURLToPath(import.meta.url));
@@ -58,10 +58,14 @@ export async function resolve(specifier, context, next) {
 
   if (spec.startsWith('@/')) spec = SRC + spec.slice(2);
 
+  /* ⚠️ CSS-ийг файл байгаа эсэхээс үл хамааран стубална (`import './x.css'`
+     хажуугийн импорт ч, `import s from './x.module.css'` ч).
+     ⚠️ 2026-10-26 (аудит): UI горимоос ГАДНА ч — Node CSS-ийг хэзээ ч ачаалж чадахгүй (ERR_UNKNOWN_FILE_EXTENSION). Telegram
+     ботын (`npm run bot`) `compute` finance_summary/pkg_plan нь `@/modules/Finance`-ийг (→ `ui.module.css`) импортлоход ҮРГЭЛЖ
+     унаж, серверийн файлын зам загвар руу дамждаг байв. Зөвхөн CSS — arcgis/next/dynamic стуб UI горимд л. */
+  if (/\.css$/i.test(spec)) return { url: STUB_CSS, shortCircuit: true };
+
   if (ui) {
-    /* ⚠️ CSS-ийг файл байгаа эсэхээс үл хамааран стубална (`import './x.css'`
-       хажуугийн импорт ч, `import s from './x.module.css'` ч). */
-    if (/\.css$/i.test(spec)) return { url: STUB_CSS, shortCircuit: true };
     if (spec === 'next/dynamic') return { url: STUB_DYNAMIC, shortCircuit: true };
     if (spec === '@arcgis/core' || spec.startsWith('@arcgis/core/')) {
       let real = '';
@@ -178,7 +182,22 @@ export async function load(url, context, next) {
   if (liveSkip && /\.check\.mjs$/.test(url) && r.source != null) {
     const src = typeof r.source === 'string' ? r.source : Buffer.from(r.source).toString('utf8');
     if (src.includes('SELBE_LIVE_SKIP')) {
-      const msg = '⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
+      /* ⚠️ 2026-10-21 (аудит): шалтгаан `ts-alias.mjs`-ээс (`SELBE_LIVE_SKIP_REASON`); `SELBE_LIVE_REQUIRED=1` бол
+         алгасахын оронд УНАНА (GitHub Actions-д `::error::` тэмдэглэлтэй) — амьд шалгуурыг заавал гэж шийдсэн CI-д.
+         Анхдагч: ⏭ мөр (`test-all.mjs` тоолж `::warning::` нэгтгэнэ). */
+      const why = process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
+      /* ⚠️ 2026-10-22 (аудит): `::error file=` — репогийн ҮНДСЭЭС харьцангуй, `/`-тэй зам. Урьд `file:///`-ийг хайчилдаг
+         тул Linux runner дээр эхний `/` алдагдаж («home/runner/…»), %-кодлогдсон, бүтэн зам гардаг — GitHub тэмдэглэлийг
+         файлд холбож чаддаггүй байв. */
+      let file = url;
+      try { file = relative(process.cwd(), fileURLToPath(url)).split(sep).join('/'); } catch { /* file: биш — URL-ээрээ */ }
+      if (process.env.SELBE_LIVE_REQUIRED === '1') {
+        const msg = `⛔ SELBE_LIVE_REQUIRED=1: амьд шалгуур алгасагдах байсан — ${why}`;
+        const ann = process.env.GITHUB_ACTIONS === 'true'
+          ? `console.log(${JSON.stringify(`::error file=${file},title=Сэлбэ амьд шалгуур::${msg}`)});\n` : '';
+        return { ...r, source: `${ann}throw new Error(${JSON.stringify(msg)});\n` };
+      }
+      const msg = `⏭ амьд шалгуур алгасав — ${why}`;
       return { ...r, source: `console.log(${JSON.stringify(msg)});\nexport {};\n` };
     }
   }

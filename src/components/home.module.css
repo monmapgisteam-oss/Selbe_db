@@ -10,26 +10,19 @@
 
    Одоо порталтай ИЖИЛ токен (`--bg`/`--surface`/`--ink`) — нүүр нь порталын
    үргэлжлэл мэт бөгөөд цайвар/харанхуй хоёр горимд адилхан ажиллана.
+
+   ⚠️ 2026-10-23: Environment (`workspace.css` §workspace-header · §command-home ·
+   §intro-copy · §action-primary · §department-entry) — 80px наалдсан толгой
+   (blur 16, доод зураас), 1600px өргөн, Manrope hero гарчиг (2 дахь мөр moss),
+   46px `.actionPrimary` + `.actionText`, хавтгай карт (12px булан, `--line`, сүүдэргүй).
+   Агуулга, холбоос, эрхийн шалгалт ХЭВЭЭР.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/*
- * НҮҮРИЙН ДЭВСГЭР — төслийн шөнийн агаараас харсан дүрслэл.
- *
- * ⚠️ Зураг нь `position: fixed` тул гүйлгэхэд ХӨДӨЛӨХГҮЙ, зөвхөн агуулга нь
- * дээгүүр нь гулсана. `z-index: -1` + `isolation: isolate` хосолсноор дэвсгэр
- * нь дотоод элементүүдийн ард үлдэж, гадагшаа «мандахгүй».
- *
- * ⚠️ ХӨШИГ (scrim) нь `--bg`-ээс `color-mix`-ээр УРГАНА. Тиймээс цайвар
- * горимд цайвар, харанхуйд харанхуй болж ӨӨРӨӨ дасна — хоёр өөр зураг эсвэл
- * хатуу бичсэн өнгө хэрэггүй. Дээд тал нь нимгэн (зураг харагдана), доошлох
- * тусам өтгөрч, KPI-ийн нягт бичвэр бүрэн уншигдана.
- */
 .home {
   /*
-   * ⚠️ Навигацийн ӨНДӨР. Дэвсгэр зураг ҮҮНЭЭС ДООШ эхэлнэ — эс бөгөөс зургийн
-   * дээд хэсэг (чухал элементүүд) зурвасын дор далдарна.
+   * ⚠️ Навигацийн ӨНДӨР — Environment `--head-h` (80px).
    */
-  --nav-h: 56px;
+  --nav-h: var(--head, 80px);
   position: relative;
   isolation: isolate;
   /*
@@ -50,16 +43,11 @@
  * ДЭВСГЭР — ПОРТАЛЫН ӨӨРИЙН ГАДАРГУУ, ЗУРАГГҮЙ.
  *
  * ⚠️ 2026-09-06 (хэрэглэгчийн шийдвэр, ХОЁР ДАХЬ УДАА): агаарын зураг
- * (`/home-bg.webp`, 444KB) БҮРМӨСӨН ХАСАГДАВ. Учир нь 2026-08-18-нд
- * бичигдсэнтэй ижил:
- *   (а) 444KB нь эхний зурагтыг удаашруулна;
- *   (б) бүдгэрсэн зураг дээрх хагас тунгалаг бичвэр нь ТООГ уншихад муу —
- *       удирдлагын самбарын гол зорилго нь яг тэр тоог уншуулах;
- *   (в) порталын дотоод дүр төрхөөс тэс өөр тул орох үед харагдац үсэрнэ.
+ * (`/home-bg.webp`, 444KB) БҮРМӨСӨН ХАСАГДАВ (а) эхний зурагт удаашрал,
+ * (б) тоо уншихад муу, (в) порталаас тэс өөр.
  *
- * ⚠️ Оронд нь ХОЁР бүдэг радиал толбо: зүүн дээд буланд акцент, баруун доор
- * бүлээн саарал. Эдгээр нь token-оос гардаг тул гэрэл/харанхуй горим
- * хоёуланд дагана — тогтмол hex бичвэл нэг горимд бохир харагдана.
+ * ⚠️ 2026-10-23: Environment — радиал толбо ХАСАГДАВ (брифийн «радиал градиент ХАСНА»):
+ * гүнийг сүүдэр/толбо биш paper шат, 1px зураас өгнө. Цул `--bg`.
  */
 .home::before {
   content: '';
@@ -67,78 +55,74 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(1100px 620px at 12% -8%,
-      color-mix(in srgb, var(--accent, var(--data)) 12%, transparent) 0%,
-      transparent 62%),
-    radial-gradient(900px 700px at 96% 108%,
-      color-mix(in srgb, var(--ink) 6%, transparent) 0%,
-      transparent 60%),
-    var(--bg);
+  background: var(--bg);
 }
 
-/* ══════════════ Дээд зурвас ══════════════ */
+/* ══════════════ Дээд зурвас — Environment `.workspace-header` ══════════════ */
 
-/*
- * ⚠️ Зурвас ЖААХАН ТУНГАЛАГ (82%) — дэвсгэр зураг доогуур нь бүдэг мэдэгдэнэ.
- *
- * ⚠️ Тиймээс зураг дахин ДЭЭДЭЭС нь эхэлдэг болов (`inset: 0`). Урьд нь зургийн
- * дээд хэсэг зурвасын дор далдарч байсан гомдлыг БҮРХЭГ болгож биш, ТУНГАЛАГ
- * болгож шийдэв — ингэснээр тэр хэсэг бүдэг ч гэсэн харагдана.
- */
 .navbar {
   position: sticky;
   top: 0;
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 12px 24px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  gap: 20px;
+  padding: 0 clamp(20px, 2.4vw, 48px);
+  background: color-mix(in oklab, var(--bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line);
-  /* ⚠️ Өндрийг ТОГТМОЛ барина — `--nav-h`-тай зөрвөл зураг доогуур нь цухуйна */
+  /* ⚠️ Өндрийг ТОГТМОЛ барина */
   min-height: var(--nav-h);
   box-sizing: border-box;
 }
 .brand { display: flex; align-items: center; gap: 14px; flex: none; }
-.logo { height: 30px; width: auto; flex: none; }
+.logo { height: 40px; width: auto; flex: none; }
 .brandDivider {
   width: 1px;
-  height: 26px;
-  background: var(--line);
+  height: 28px;
+  background: var(--line-strong);
 }
 .brandText {
   display: flex;
   flex-direction: column;
-  line-height: 1.25;
-  font-size: 0.82rem;
-  letter-spacing: 0.01em;
+  gap: 3px;
+  line-height: 1.35;
+  font-size: 13px;
+  color: var(--ink-2);
   white-space: nowrap;
 }
-.brandText b { font-weight: 800; letter-spacing: 0.06em; }
+/* Брэнд бичиг — Manrope 700 (Environment `.workspace-wordmark`; 700 зөвхөн брэндэд) */
+.brandText b {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
 .brandTag {
-  font-size: 0.64rem;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
 }
 .spacer { flex: 1; }
 
-.auth { display: flex; align-items: center; gap: 12px; flex: none; }
+.auth { display: flex; align-items: center; gap: 10px; flex: none; }
 .userChip {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 4px 12px 4px 4px;
+  height: 40px;
+  padding: 0 14px 0 5px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: var(--surface-2);
+  background: transparent;
 }
 .avatar,
 .avatarFallback {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   flex: none;
 }
@@ -146,56 +130,52 @@
 .avatarFallback {
   display: grid;
   place-items: center;
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: var(--hue-ink);
-  background: var(--hue);
-}
-.userName { font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
-.signBtn {
-  padding: 8px 16px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink-2);
-  font-size: 0.8rem;
+  font-size: 11px;
   font-weight: 600;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--moss);
+  background: var(--surface-2);
 }
-.signBtn:hover { background: var(--surface-2); color: var(--ink); }
-/* Гол нэвтрэх товч — цул акцент.
-   ⚠️ Бэх нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan тул цагаан
-   бичиг 1.69:1 л өгдөг (mapTools.module.css:85-88-тай ижил дүрэм). */
-.signIn {
+.userName { font-size: 12px; font-weight: 500; white-space: nowrap; }
+
+/* Ghost товч — Environment `.pe-ghost`: 32px, 8px булан, `--line-strong` хүрээ */
+.signBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 8px 18px;
-  border-color: transparent;
-  background: var(--hue);
-  color: var(--hue-ink);
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
 }
-.signIn:hover { background: var(--hue); color: var(--hue-ink); filter: brightness(1.08); }
-.signInArrow { font-size: 0.95rem; transition: transform 0.16s var(--ease); }
+.signBtn:hover { background: var(--surface-2); color: var(--ink); }
+/* Primary — Environment `.pe-primary`: `--workspace-accent` (бараанд лайм), бичиг `--workspace-accent-ink` */
+.signIn {
+  border-color: transparent;
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+}
+.signIn:hover { background: var(--workspace-accent-hover); color: var(--workspace-accent-ink); }
+.signInArrow { display: inline-flex; transition: transform 0.16s var(--ease); }
 .signIn:hover .signInArrow { transform: translateX(3px); }
 
-/* ══════════════ Дашбоардын их бие ══════════════ */
+/* ══════════════ Их бие — Environment `.command-home` (1600px) ══════════════ */
 
-/*
- * ⚠️ Өргөнийг 1320px → 1680px болгов. 1920 дэлгэц дээр хоёр талдаа ~300px
- * хоосон зай үлдэж, самбар төв рүүгээ бөөгнөрч харагдаж байв. Дэлгэцийг БҮТЭН
- * авахгүй байгаа шалтгаан: хэт өргөн мөрийг нүд дагахад хүндэрдэг.
- */
 .board {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   width: 100%;
-  max-width: 1680px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 22px 32px 44px;
+  padding: 24px clamp(20px, 2.4vw, 48px) 48px;
 }
 
 .boardHead {
@@ -204,85 +184,145 @@
   justify-content: space-between;
   gap: 24px;
   flex-wrap: wrap;
+  padding: 12px 0 26px;
+  border-bottom: 1px solid var(--line-strong);
 }
-/*
- * ТОМ ҮСГЭЭР — удирдлагын самбарын толгой.
- *
- * ⚠️ Том үсэг нь үсэг хоорондын зайг НАРИЙСГАЖ харагдуулдаг тул `letter-spacing`
- * СӨРӨГ биш ЭЕРЭГ байна. Сөрөг зайтай том үсэг нь шахагдаж, уншихад хүндэрнэ.
- */
-.title {
+.intro { min-width: 0; }
+/* Environment `.section-kicker` — 10px/600/0.12em, өмнө нь 6px moss цэг */
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-family: var(--cond);
-  font-size: clamp(1.15rem, 2vw, 1.48rem);
-  font-weight: 750;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1.7;
   text-transform: uppercase;
-  letter-spacing: 0.11em;
-  line-height: 1.15;
-  color: var(--ink);
-}
-/* Гарчгийн өмнөх богино зурвас — самбарын «техник» хэв маягийг үргэлжлүүлнэ */
-.title::before {
-  content: '';
-  display: inline-block;
-  width: 22px;
-  height: 2px;
-  margin: 0 11px 5px 0;
-  vertical-align: middle;
-  background: var(--data);
-}
-.lede {
-  margin: 7px 0 0;
-  max-width: 620px;
-  font-size: 0.82rem;
-  line-height: 1.5;
   color: var(--ink-3);
 }
+.kicker > span {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--moss);
+}
+/*
+ * HERO ГАРЧИГ — Environment `.intro-copy h1`: Manrope clamp(34–64px)/600/−0.055em, мөр 1.18;
+ * ХОЁР ДАХЬ мөр (`.titleSub`) moss.
+ * ⚠️ 2026-10-23: урьдын UPPERCASE + эерэг letter-spacing хасагдав — Environment-ийн гарчиг
+ * жижиг үсэгтэй, сөрөг зайтай. Эх текст хэвээр ердийн бичиглэлтэй.
+ */
+.title {
+  margin: 22px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 3.9vw, 64px);
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 1.18;
+  color: var(--ink);
+}
+.titleSub { color: var(--data-ink); }
+.lede {
+  margin: 18px 0 0;
+  max-width: 620px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+/* Environment `.intro-actions` */
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 26px;
+}
+/* Environment `.action-primary` — 46px, 8px булан, accent, 12px/600 */
+.actionPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 46px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s;
+}
+.actionPrimary:hover { background: var(--workspace-accent-hover); }
+/* Environment `.action-text` */
+.actionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color 0.16s;
+}
+.actionText:hover { color: var(--moss); }
 
 /* ⚠️ 2026-08-24: ашиглагдахаа больсон `.progress*` (нийт гүйцэтгэлийн зурвас)
-   ба `.kpi*` (нүүрийн өөрийн KPI нүднүүд) бүлгүүд устгав — `Home.tsx`-ээс
-   «Нийт гүйцэтгэл» зурвас хасагдаж, KPI-ууд `ExecKpi`-д бүрэн шилжсэн. */
+   ба `.kpi*` (нүүрийн өөрийн KPI нүднүүд) бүлгүүд устгав. */
 
 /* ══════════════ Сэдвийн цэс (navbar дотор) + dropdown ══════════════ */
 
 /**
- * Сонгодог хэвтээ цэс — ЛОГО · ЦЭС · НЭВТРЭЛТ нэг зурваст. Дэвсгэр, хүрээгүй
- * ЭНГИЙН ТЕКСТ; идэвхтэйг нь ДООГУУР ЗУРААС заана.
+ * Сонгодог хэвтээ цэс — ЛОГО · ЦЭС · НЭВТРЭЛТ нэг зурваст.
+ * ⚠️ 2026-10-23: Environment — 12px/500 бичиг, 8px булан; нээлттэй = moss 12% + moss бичиг
+ * (брифийн «сонгогдсон шүүлт»). Доогуурх 2px зураас хасагдав.
  */
 .menuRow {
   display: flex;
   align-items: center;
-  gap: clamp(4px, 1.4vw, 20px);
+  gap: clamp(2px, 0.6vw, 8px);
   flex: none;
 }
 
 /* ⚠️ `position: relative` — dropdown-ыг ЯГ энэ цэсний дор зангидна */
 .menuItem { position: relative; }
 
-/**
- * ⚠️ Доогуурх зураас нь `border-bottom` дээр ҮРГЭЛЖ байна (тунгалаг өнгөтэй) —
- * зөвхөн өнгө нь солигдоно. Ингэснээр hover хийхэд текст доош/дээш үсэрдэггүй.
- */
 .menuBtn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 2px;
-  border: none;
-  border-bottom: 2px solid transparent;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
   background: none;
   color: var(--ink-2);
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-.menuBtn:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
-.menuBtnOn { color: var(--ink); border-bottom-color: var(--hue); }
-.caret { font-size: 0.62rem; transition: transform 0.18s var(--ease); }
+.menuBtn:hover { color: var(--ink); background: var(--paper-hi); }
+.menuBtnOn,
+.menuBtnOn:hover {
+  color: var(--moss);
+  background: color-mix(in oklab, var(--moss) 12%, transparent);
+  border-color: color-mix(in oklab, var(--moss) 45%, transparent);
+}
+.caret { display: inline-flex; color: var(--ink-3); transition: transform 0.18s var(--ease); }
+.menuBtnOn .caret { color: inherit; }
 .caretOn { transform: rotate(180deg); }
 
+/* Хөвөгч цэс — `--surface`, `--line-strong` хүрээ, 12px булан, `--shadow` (хөвөгч гадарга) */
 .dropdown {
   position: absolute;
   top: calc(100% + 10px);
@@ -295,13 +335,25 @@
   gap: 2px;
   padding: 6px;
   border-radius: var(--r-lg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  animation: dropIn 0.18s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+  box-shadow: var(--shadow);
+  animation: dropIn 0.16s ease-out both;
+}
+/* ⚠️ 2026-10-26 (хэрэглэгч: «hover үед доор гарах цэс рүү cursor очиход алга болж байна»): товч ба цэсний
+   хоорондох 10px зайд хулгана `.menuRow`-ээс ГАРСАН гэж тооцогдож (`onPointerLeave`) цэс хаагддаг байв.
+   Харагдахгүй «гүүр» — цэсний дээд ирмэгээс товч хүртэлх зайг (10px + хүрээ) дүүргэнэ; цэсний хүүхэд тул
+   хулгана түүн дээр байхад pointerleave гарахгүй. */
+.dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
 }
 @keyframes dropIn {
-  from { opacity: 0; transform: translate(-50%, -6px); }
+  from { opacity: 0; transform: translate(-50%, -4px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -315,7 +367,7 @@
 .viewBtn {
   display: flex;
   align-items: center;
-  padding: 7px 10px;
+  padding: 8px 10px;
   text-align: left;
   border-radius: var(--r-sm);
   border: none;
@@ -325,44 +377,43 @@
   transition: background 0.14s, box-shadow 0.14s;
 }
 .viewBtn:hover {
-  background: var(--surface-2);
-  box-shadow: inset 3px 0 0 var(--hue);
+  background: var(--paper-hi);
+  box-shadow: inset 3px 0 0 var(--moss);
 }
 .viewBtn:focus-visible {
-  outline: 2px solid var(--hue);
+  outline: 2px solid var(--moss);
   outline-offset: -2px;
 }
 
 .viewText {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 .viewTitle {
-  font-size: 0.79rem;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--ink);
 }
 /* Тайлбар нэг мөрөнд — урт бол «…». Бүтнээр нь `title` (tooltip) харуулна. */
 .viewDesc {
-  font-size: 0.66rem;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ── Ачаалах үеийн зөөлөн хөдөлгөөн (stagger) ── */
+/* ── Ачаалах үеийн зөөлөн хөдөлгөөн ── */
 .boardHead {
   opacity: 0;
-  animation: rise 0.5s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
+  animation: rise 0.4s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
   animation-delay: 0.02s;
 }
 @keyframes rise {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -371,30 +422,15 @@
 
 /* ── Нарийн дэлгэц ── */
 /*
- * ⚠️ 820 → 1180px (2026-09-07-ны медиа аудит).
- *
- * `.navbar` нь `flex-wrap` ЗӨВХӨН 820px-ээс доош асдаг байсан тул
- * 821–1180px хооронд (iPad хэвтээ 1024, 1366 дэлгэц 125% масштаб) лого +
- * 5 цэс + хэл + «Нэвтрэх» бүгд НЭГ мөрөнд шахагдаж, баруун ирмэгээс
- * ГАРЧ ТАСАРДАГ байв — хэмжсэн: 1024px дээр «Нэвтрэх» товч 116px-ээр
- * хальж, хэрэглэгч нэвтэрч ЧАДАХГҮЙ болно.
- *
- * 1180px нь `globals.css`-ийн `--bp-split` — газрын зураг босоо өрөлтөд
- * шилждэг ГОЛ босго. Навигаци ч тэр цэгээс эвхэгдэх нь тогтолцоотой.
+ * ⚠️ 820 → 1180px (2026-09-07-ны медиа аудит): 821–1180px хооронд лого + 5 цэс +
+ * хэл + «Нэвтрэх» НЭГ мөрөнд шахагдаж «Нэвтрэх» баруун ирмэгээс гарч тасардаг байв.
+ * 1180px нь `globals.css`-ийн `--bp-split`.
  */
 @media (max-width: 1180px) {
   /*
-   * ⚠️ `align-items` ба `min-height`-ыг ЗААВАЛ ХАМТ дарна (2026-09-07-нд
-   * хэмжсэн). Үндсэн `.navbar` нь `align-items: center` + `min-height:
-   * var(--nav-h)` = 56px — тэр хоёр нь НЭГ мөрийн зурвасд зориулагдсан.
-   *
-   * `flex-wrap: wrap` асаахад `.menuRow` ХОЁР ДАХЬ мөрөнд буудаг ч зурвас
-   * 56px хэвээр үлдэж, цэсний мөр (top 62 → bottom 96px) зурвасны ГАДНА,
-   * доорх агуулгын ДЭЭР унжина. 620–1180px-ийн БҮХ өргөнд хэмжигдсэн:
-   * 1180 · 1024 · 900 · 768px дээр `.menuRow` 40px-ээр халина.
-   *
-   * `align-items: flex-start` — эвхэгдсэн мөрүүд өөрсдийн өндрөө эзэлнэ;
-   * `min-height: auto` — зурвас тэдгээрийн НИЙЛБЭР болж ургана.
+   * ⚠️ `align-items` ба `min-height`-ыг ЗААВАЛ ХАМТ дарна (2026-09-07-нд хэмжсэн):
+   * `flex-wrap` асаахад `.menuRow` 2-р мөрөнд буудаг ч тогтмол өндөр хэвээр үлдвэл
+   * цэсний мөр зурвасны ГАДНА унжина.
    */
   .navbar {
     gap: 12px;
@@ -417,12 +453,8 @@
   .spacer { display: none; }
 
   /**
-   * ⚠️ ХЭВТЭЭ тайралт: ширээний dropdown нь товчны төвд зангидагддаг
-   * (`left: 50%; translateX(-50%); min-width: 268px`). Нарийн дэлгэцэд `.menuRow`
-   * ЗҮҮН ирмэгээс эхэлдэг тул эхний товчны зүүн ирмэг ≈16px байхад цэсний зүүн
-   * тал −73px дээр гарч, `globals.css`-ийн `body { overflow-x: hidden }` дор
-   * бүрмөсөн тайрагддаг байв. Тиймээс энд зангилаагаа товчноос МӨРӨНД шилжүүлж,
-   * бүтэн өргөнөөр буулгана — 268px-ийн доод хязгаарыг ч цуцална.
+   * ⚠️ ХЭВТЭЭ тайралт: нарийн дэлгэцэд товчны төвд зангидсан dropdown зүүн ирмэгээс
+   * гарч тайрагддаг байв — зангилаагаа МӨРӨНД шилжүүлж бүтэн өргөнөөр буулгана.
    */
   .menuItem { position: static; }
   .menuRow { position: relative; }
@@ -432,27 +464,19 @@
     transform: none;
     min-width: 0;
     width: auto;
-    /* ⚠️ Анимацийн `translate(-50%, …)` энд дахин 50% зүүн тийш чирнэ — тул
-       хэвтээ шилжилтгүй хувилбарыг хэрэглэнэ. */
+    /* ⚠️ Анимацийн `translate(-50%, …)` энд дахин 50% зүүн тийш чирнэ */
     animation-name: dropInFlat;
   }
   @keyframes dropInFlat {
-    from { opacity: 0; transform: translateY(-6px); }
+    from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
   }
 }
 
 /*
  * ═══ УТАС (--bp-phone) — 2026-09-07-ны медиа аудит ═══
- *
- * ⚠️ ЭНЭ ШАТЛАЛ ОГТ БАЙСАНГҮЙ. 1180px-ийн дүрэм нь `.navbar`-ыг эвхдэг ч
- * тэр нь `position: sticky` тул эвхэгдсэн ХОЁР-ГУРВАН мөр доорх агуулгыг
- * ДАРНА. Хэмжсэн (430px): «Нэвтрэх» товч ба цэсний мөр «СЭЛБЭ УХААЛАГ ХОТ»
- * гарчгийн ДЭЭР давхарлаж, гарчгийн эхний хагас уншигдахгүй байв.
- *
- * Шийдэл: утсан дээр навигаци НААЛДАХАА болино (`position: static`) —
- * дээшээ гүйлгэхэд алга болно, гэхдээ агуулга хэзээ ч дарагдахгүй. Мөн
- * цэс, брэндийг илүү нягт болгож нэг мөрийн өндрийг хэмнэнэ.
+ * ⚠️ Утсан дээр навигаци НААЛДАХАА болино (`position: static`) — эвхэгдсэн олон мөр
+ * доорх агуулгыг дарахгүй.
  */
 @media (max-width: 620px) {
   .navbar {
@@ -462,44 +486,51 @@
     padding: 10px 12px;
     row-gap: 6px;
     /*
-     * ⚠️ `min-height: 0` ТАВЬЖ БОЛОХГҮЙ (2026-09-07-нд хэмжсэн).
-     *
-     * `.navbar` нь `align-items: center`-тэй flex — тогтмол өндрийг нь
-     * цуцлахад мөрүүд НУРААД хайрцгийн өндөр 21px болж, лого · цэс ·
-     * «Нэвтрэх» гурвуулаа хайрцгаас ГАДАГШ халин доорх гарчгийн ДЭЭР
-     * зурагдана. DOM-д давхцал ХАРАГДАХГҮЙ (`getBoundingClientRect` нь
-     * 21px гэж хэлнэ) тул зөвхөн нүдээр л илэрнэ.
-     *
-     * Оронд нь өндрийг АГУУЛГААР нь тодорхойлуулна: `min-height: auto` +
-     * `align-items: flex-start` — мөр бүр өөрийн өндрөө эзэлж, хайрцаг
-     * тэдгээрийн НИЙЛБЭР болно.
+     * ⚠️ `min-height: 0` ТАВЬЖ БОЛОХГҮЙ (2026-09-07-нд хэмжсэн): мөрүүд нураад
+     * лого · цэс · «Нэвтрэх» хайрцгаас гадагш халина. Өндрийг АГУУЛГААР нь.
      */
     min-height: auto;
     align-items: flex-start;
   }
   .brandDivider { display: none; }
-  .brandText { font-size: 0.74rem; }
-  .logo { height: 24px; }
-  .board { padding: 12px 12px 24px; }
-  /* ⚠️ Гарчиг ба тайлбар нарийн дэлгэцэд хэт том — clamp-ийн доод хязгаар
-     1.15rem нь 360px дээр хоёр мөр болж зайг иднэ. */
-  .title { font-size: 1.02rem; }
+  .brandText { font-size: 12px; }
+  .brandText b { font-size: 14px; }
+  .logo { height: 30px; }
+  .board { padding: 12px 16px 24px; }
+  .boardHead { padding: 4px 0 20px; }
   /* Товчнууд гар хүрэхэд 44px өндөртэй байх (WCAG 2.5.8) */
-  .signBtn, .signIn { padding: 10px 14px; }
+  .signBtn, .signIn { height: 44px; padding: 0 14px; }
+  .actions { gap: 16px; }
 }
 
-/* Нэвтрээгүй үеийн үзүүлэлтийн хаалт (2026-09-17) */
-.boardGate { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 16px; color: var(--ink-2); font-size: 14px; text-align: center; }
+/* Нэвтрээгүй үеийн үзүүлэлтийн хаалт (2026-09-17) — Environment хоосон төлөв: тасархай хүрээ, төвд ink-3 */
+.boardGate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+.boardGate p { margin: 0; }
 
 /* ══════════════ Хязгаарлагдмал хэрэглэгчийн хэсгийн картууд (2026-09-30) ══════════════
    ⚠️ Удирдлагын самбаргүй хэрэглэгчид — эрхэнд нь байгаа хэсэг бүр карт.
-   Үүргийн үндсэн хэсэг (`homeView`) акцент хүрээтэй, эхэнд. */
-.cardGroup { display: flex; flex-direction: column; gap: 10px; }
+   Үүргийн үндсэн хэсэг (`homeView`) акцент хүрээтэй, эхэнд.
+   ⚠️ 2026-10-23: Environment `.as-grid .department-entry` — 12px булан, `--line`, `--surface`,
+   сүүдэргүй; hover-т гарчиг moss. */
+.cardGroup { display: flex; flex-direction: column; gap: 12px; }
+/* Environment `.section-kicker` */
 .cardGroupTitle {
   margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -509,34 +540,46 @@
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 .viewCard {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 16px;
+  padding: 20px;
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
   background: var(--surface);
+  transition: border-color 0.16s;
 }
+.viewCard:hover { border-color: var(--line-strong); }
+.viewCard:hover .viewCardTitle { color: var(--moss); }
+/* Үндсэн хэсэг — сонгогдсон төлөв: moss 45% хүрээ, moss 6% дэвсгэр */
 .viewCardMain {
-  border-color: var(--hue);
-  box-shadow: 0 0 0 1px var(--hue) inset;
-  background: color-mix(in oklab, var(--hue) 6%, var(--surface));
+  border-color: color-mix(in oklab, var(--moss) 45%, transparent);
+  background: color-mix(in oklab, var(--moss) 6%, var(--surface));
 }
+/* Badge — 6px булан, 11px/500, tone бичиг, tone 35% хүрээ, tone 8% дэвсгэр */
 .viewCardTag {
   align-self: flex-start;
   padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--hue-ink);
-  background: var(--hue);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--moss) 35%, transparent);
+  background: color-mix(in oklab, var(--moss) 8%, transparent);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--moss);
 }
-.viewCardTitle { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
-.viewCardDesc { margin: 0; flex: 1; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
-.viewCardBtn { align-self: flex-start; margin-top: 6px; display: inline-flex; gap: 8px; align-items: center; }
+.viewCardTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  transition: color 0.16s;
+}
+.viewCardDesc { margin: 0; flex: 1; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
+.viewCardBtn { align-self: flex-start; margin-top: 8px; }
 @media (max-width: 620px) {
   .cardGrid { grid-template-columns: 1fr; }
 }

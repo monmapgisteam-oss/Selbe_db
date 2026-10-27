@@ -914,7 +914,18 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
  * (`live.ts`-ийн KPI-ууд нь өдөрт нэг л өөрчлөгддөг тул тэнд мөнхийн кэш зөв —
  * энэ файлын өгөгдөл ӨӨР шинжтэй.)
  */
-function cached<T>(fn: () => Promise<T>, ttlMs = 5 * 60_000): () => Promise<T> {
+function cached<T>(
+  fn: () => Promise<T>,
+  ttlMs = 5 * 60_000,
+  /**
+   * ⚠️ 2026-10-21 (KPI аудит): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ (`live.cached`-ийн `keep`-тэй ижил). `loadOne` нэг
+   * мэдрэгчийн алдааг ӨӨРӨӨ барьж `error` болгож АМЖИЛТТАЙ буцаадаг тул урьд нь нэг мэдрэгчийн түр уналт (HTTP 500 ·
+   * timeout) 5 мин турш «унасан» хэвээр кэшлэгдэж, IoT харуул ба CEO карт (`ceo/iot` өөрөө `kpiComplete`-ээр
+   * кэшлэхгүй ч ЭНЭ давхаргаас хуучнаа авдаг) дахин оролдох боломжгүй байв. Одоо `keep(v) === false` бол утга
+   * одоогийн дуудагчдад хүрнэ (унасан мэдрэгч ил), харин ДАРААГИЙН дуудалт шинээр татна.
+   */
+  keep?: (v: T) => boolean,
+): () => Promise<T> {
   let p: Promise<T> | null = null;
   let at = 0;
   /* ⚠️ 2026-10-09: автобусад БҮРТГЭНЭ (хоосон `reads` — хүснэгтийн бичилт хөндөхгүй), тэгснээр
@@ -928,10 +939,15 @@ function cached<T>(fn: () => Promise<T>, ttlMs = 5 * 60_000): () => Promise<T> {
       p = mine;
       /* ⚠️ Зөвхөн ӨӨРИЙГӨӨ цэвэрлэнэ (`live.ts`-ийн 2026-09-08-ны засвар) */
       mine.catch(() => { if (p === mine) p = null; });
+      /* ⚠️ 2026-10-21: хэсэгчилсэн үр дүн — мөн ӨӨРӨӨ идэвхтэй үед л хаяна (дээрх хаалт) */
+      if (keep) void mine.then((v) => { if (!keep(v) && p === mine) p = null; }, () => {});
     }
     return p;
   };
 }
+
+/** БҮРЭН үр дүн — нэг ч мэдрэгч `error`-гүй (`cached`-ийн `keep`, 2026-10-21). Хоосон жагсаалт бүрэн. */
+export const sensorsComplete = (xs: readonly Pick<SensorLive, 'error'>[]): boolean => xs.every((s) => !s.error);
 
 /**
  * Таван мэдрэгчийг ЗЭРЭГ ачаална.
@@ -949,7 +965,8 @@ const byRange = new Map<RangeKey, () => Promise<SensorLive[]>>();
 export function loadSensors(range: RangeKey = '7d'): Promise<SensorLive[]> {
   let f = byRange.get(range);
   if (!f) {
-    f = cached<SensorLive[]>(() => Promise.all(SENSORS.map((d) => loadOne(d, range))));
+    /* ⚠️ 2026-10-21 (KPI аудит): унасан мэдрэгчтэй үр дүнг кэшлэхгүй (`sensorsComplete` — `cached`-ийн `keep`) */
+    f = cached<SensorLive[]>(() => Promise.all(SENSORS.map((d) => loadOne(d, range))), undefined, sensorsComplete);
     byRange.set(range, f);
   }
   return f();

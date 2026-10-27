@@ -8,6 +8,9 @@
  * мэт харагдуулдаг байв. Одоо IoT нь энгийн 12 баганат сүлжээтэй, элемент бүр
  * ИЛ заасан багана эзэлнэ — автомат байрлуулагч огт оролцохгүй.
  *
+ * ⚠️ 2026-10-23: Environment — карт 12px булан (--r-lg), толгой 9px 12px / 12px гарчиг,
+ * үзүүлэлтийн нүд 13px булантай .analytics-stat хэв, сегмент .view-switch.
+ *
  * ⚠️ 2026-08-18: envhub дизайны хэл рүү БҮРЭН шилжив. Хасагдсан: градиент толгой
  * хавтан (heroA/heroB), 14px дугуй ирмэг, өнгөт tint-үүд (CAT_LIGHT), сүүдэр.
  * Одоогийн хэл: гадаргуу нь surface + 1px hairline + var(--r-sm); гүнийг зөвхөн
@@ -41,7 +44,7 @@
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 .cardHd {
   display: flex;
@@ -49,13 +52,13 @@
   justify-content: space-between;
   gap: 10px;
   flex: none;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 /* ⚠️ line-height 1 БИШ — кирилл том Й/Ё-гийн дээд тэмдэг тайрагдана */
 .cardTitle {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 12px;
   line-height: 1.3;
   font-weight: 600;
   text-transform: uppercase;
@@ -120,10 +123,10 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  padding: 8px 9px;
+  padding: 10px 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-xl);
 }
 /* Өгөгдлийн цэг — бүх нүдэнд НЭГ өнгө var(--data), ангиллын өнгө байхгүй */
 .metricDot {
@@ -140,23 +143,23 @@
    бууна (тасрахгүй); 2 мөрөөс хэтэрвэл л «…». */
 .metricName {
   min-width: 0;
-  font-size: 9.5px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.35;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-2);
+  color: var(--ink-3);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   /* Хоёр мөрийн өндрийг ТОГТМОЛ барина — эс бөгөөс богино нэртэй нүд намсаж,
      эгнээний утгууд шатлан жигдрэхгүй болно. */
-  min-height: calc(2 * 1.3em);
+  min-height: calc(2 * 1.35em);
 }
 /* Нас — нүдний ёроолд. Өнгө нь шинэлэг байдлыг үүрнэ. */
 .metricAge {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -167,8 +170,9 @@
   gap: 3px;
   /* ⚠️ Утга нь нүдний ГОЛ мэдээлэл — нэрийн 9.5px-ээс ТОДООР ялгарна. */
   font-size: 17px;
-  font-weight: 500;
-  line-height: 1.05;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -219,12 +223,12 @@
   gap: 7px;
   padding: 6px 10px;
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
   border: 1px solid var(--line);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(12px);
 }
 
 
@@ -367,33 +371,35 @@
   margin-top: 5px;
   padding-top: 5px;
   border-top: 1px dashed var(--line);
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 .metricEta svg { flex: none; opacity: 0.75; }
 
-/* Хугацааны хүрээ — сегментчилсэн удирдлага (MapTools-ийн 2D/3D/BIM хэв маяг) */
+/* Хугацааны хүрээ — сегментчилсэн удирдлага
+   ⚠️ 2026-10-23: Environment — .view-switch (3px дотоод зай, 1px --line зам, 8px булан;
+   дарагдсан = --surface + 0 1px 5px #00000012) */
 .rangeBar {
   display: inline-flex;
   gap: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 3px;
+  border-radius: var(--r);
+  background: transparent;
   border: 1px solid var(--line);
 }
 .rangeBtn {
   padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.7rem;
+  border-radius: 5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-3);
   transition: background 0.14s, color 0.14s;
 }
-.rangeBtn:hover { color: var(--ink-2); }
+.rangeBtn:hover { color: var(--ink); }
 .rangeBtnOn {
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 1px 5px #00000012;
 }

@@ -46,7 +46,6 @@ export const bagtsText = (b: string[] | null): string =>
 /** Системийн гарчиг */
 export const sysTitle = (sys: DerivedSys | 'flow'): string => {
   if (sys === 'flow') return tr('Гүйцэтгэлийн урсгал');
-  if (sys === 'qaqc') return tr('Чанар (QAQC)');
   if (sys === 'huvaari') return tr('Хуваарь');
   if (sys === 'obyem') return tr('Инженерийн обьём');
   if (sys === 'ajil') return tr('Нэмэлт ажил');
@@ -57,13 +56,11 @@ export const sysTitle = (sys: DerivedSys | 'flow'): string => {
 /** Матрицын баганын шошго */
 export const colLabel = (c: MatrixCol): string => {
   if (c.sys === 'flow') return STAGE_LABEL[c.role as Stage];
-  if (c.sys === 'qaqc') return tr('QAQC');
   return roleLabel(c.sys, c.role);
 };
 
 export const capLabelShort = (k: CapKey): string => {
   if (k === 'addRow') return tr('Мөр нэмэх');
-  if (k === 'qaqc') return tr('QAQC');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл');
   if (k === 'finEdit') return tr('Санхүү — утга');
   if (k === 'finRow') return tr('Санхүү — мөр');
@@ -80,11 +77,25 @@ export const capLabelShort = (k: CapKey): string => {
      `aclParity` одоо CapKey бүр энд ба `capText.capLabel`-д байгааг тулгана. */
   if (k === 'hamaaral') return tr('Багцын хамаарал');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
+  /* ⚠️ 2026-10-19: «Систем түр хаах» — `aclParity` CapKey бүрийг энд тулгана */
+  if (k === 'sysClose') return tr('Систем хаах');
+  if (k === 'docsUpload') return tr('Баримт оруулах');
+  if (k === 'docsGroups') return tr('Баримтын бүлэг');
+  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл');
+  if (k === 'cfSwitch') return tr('Сарын мөнгө → Хуваарь');
   return k;
 };
 
 /** Цоорхойн мессеж — `erhOverview.pkgIssues`-ийн ⚠️ тайлбарын дагуу */
 export const issueText = (i: PkgIssue): string => {
+  /* ⚠️ 2026-10-19 (аудит): амьд хатуу super байвал гацаа нь «зөвхөн админ шийдвэрлэнэ» — анхааруулга хэвээр, ил хэлнэ */
+  const base = issueBase(i);
+  return i.superOnly
+    ? `${base} ${tr('(Одоогоор зөвхөн админ (super) шийдвэрлэх боломжтой — энгийн хариуцагч томилоогүй.)')}`
+    : base;
+};
+
+const issueBase = (i: PkgIssue): string => {
   if (i.key === 'huvaariNoApprover') {
     return tr('{0}: хуваарийн батлагч томилоогүй — илгээсэн хуваарийг хэн ч батлахгүй.', i.args[0]);
   }
@@ -112,6 +123,10 @@ export const issueText = (i: PkgIssue): string => {
   }
   if (i.key === 'flowGap') {
     return tr('{0}: гүйцэтгэлийн урсгалын {1} шат томилогдоогүй — илгээлт тэр шатанд зогсоно.', i.args[0], i.args[1]);
+  }
+  /* ⚠️ 2026-10-19 (аудит): бүх шат хоосон — урьд нь чимээгүй */
+  if (i.key === 'flowEmpty') {
+    return tr('{0}: гүйцэтгэлийн урсгалын долоон шат бүгд томилогдоогүй — энэ багцын гүйцэтгэлийг хэн ч бөглөж, батлахгүй.', i.args[0]);
   }
   return i.key;
 };

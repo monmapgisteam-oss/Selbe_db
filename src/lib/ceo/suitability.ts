@@ -49,11 +49,13 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { scoreLevel, type Level } from '@/lib/kpiLevels';
-import { cached } from '@/lib/live';
-import { INDICATORS, DENSITY_BY_TYPE, ASSUME_MET, PARKING, ACTIVATABLE_ZONE_TYPES, type Indicator } from '@/lib/analysis/config';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
+import {
+  INDICATORS, DENSITY_BY_TYPE, ASSUME_MET, PARKING, ACTIVATABLE_ZONE_TYPES, MIN_MEASURED_SHARE, type Indicator,
+} from '@/lib/analysis/config';
 import { normFor, passesNorm, normGap, normText, urbanScore } from '@/lib/analysis/score';
 import type { Zone } from '@/lib/analysis/data';
-import { cell, table, worstOf, type KpiResult, type KpiIssue, type DetailTable } from './kpi';
+import { cell, table, worstOf, kpiComplete, type KpiResult, type KpiIssue, type DetailTable } from './kpi';
 
 /* ══════════════ Төрлүүд ══════════════ */
 
@@ -91,6 +93,8 @@ export type SuitZoneScore = {
   type: string;
   /** `urbanScore(z.raw)` — 0–100; бодогдохгүй бол null */
   score: number | null;
+  /** Хэмжсэн жингийн хувь (0–1) — `urbanScore().coverage`. ⚠️ 2026-10-22 (аудит) */
+  coverage: number | null;
   /** Норм зөрчсөн үзүүлэлтийн тоо */
   fails: number;
 };
@@ -111,6 +115,11 @@ export type SuitComputed = {
   /** Дүгнэсэн үзүүлэлтээс `ASSUME_MET`-тэй нь (батлагдаагүй эх өгөгдөл) */
   assumedCount: number;
   avgScore: number | null;
+  /**
+   * Оноолдог бүсээс хэмжсэн жин нь босгоос доош (оноогүй) бүсийн тоо — ⚠️ 2026-10-22 (аудит): урьд нь `ASSUME_MET`-ийн
+   * таамгаар 100 оноо авч дундажийг 79.5 болгодог байв (хагасаас дээш хэмжигдсэн бүсүүдэд 53.5).
+   */
+  lowCoverage: number;
 };
 
 /** «Бүсийн оноо — хамгийн муу» хүснэгтийн мөрийн тоо */
@@ -187,12 +196,15 @@ export function computeSuitability(
 
   /* Оноо — execData:251 (`urbanScore(z.raw, INDICATORS, z.type)`), БҮХ бүсээр;
      хасагдсан бүсийн `raw` хоосон тул оноо нь null → дундажид орохгүй */
-  const scoredList: SuitZoneScore[] = zones.map((z) => ({
-    zone: z.id,
-    type: z.type,
-    score: urbanScore(z.raw, [...indicators], z.type).score,
-    fails: failsByZone.get(z.id) ?? 0,
-  }));
+  /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин `MIN_MEASURED_SHARE`-ээс доош бүс оноогүй (`urbanScore`) → дундажид ОРОХГҮЙ;
+     тоо нь `lowCoverage`-аар ил (зөвхөн оноолдог `live` бүсээс) */
+  const liveIds = new Set(live.map((z) => z.id));
+  let lowCoverage = 0;
+  const scoredList: SuitZoneScore[] = zones.map((z) => {
+    const u = urbanScore(z.raw, [...indicators], z.type);
+    if (u.reason === 'coverage' && liveIds.has(z.id)) lowCoverage += 1;
+    return { zone: z.id, type: z.type, score: u.score, coverage: u.coverage, fails: failsByZone.get(z.id) ?? 0 };
+  });
   const valid = scoredList.filter((z): z is SuitZoneScore & { score: number } => z.score != null);
   const zonesSorted = valid.sort((a, b) => a.score - b.score || b.fails - a.fails);
 
@@ -209,6 +221,7 @@ export function computeSuitability(
     assumedCount: byIndicator.filter((r) => r.assumed).length,
     /* ⚠️ null ≠ 0: оноотой бүс байхгүй бол дундаж null, 0 биш */
     avgScore: valid.length ? valid.reduce((a, z) => a + z.score, 0) / valid.length : null,
+    lowCoverage,
   };
 }
 
@@ -216,7 +229,7 @@ export function computeSuitability(
 
 const withUnit = (v: number, d: number, unit: string) => `${num(v, d)}${unit ? ` ${unit}` : ''}`;
 
-export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
+export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] = []): KpiResult {
   const loaded = c.byIndicator.some((r) => r.scored > 0);
   const decimalsOf = new Map(c.byIndicator.map((r) => [r.id, r.decimals]));
   const unitOf = new Map(c.byIndicator.map((r) => [r.id, r.unit]));
@@ -256,13 +269,15 @@ export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
   );
 
   /* (3) Бүсийн оноо — хамгийн муу N */
+  /* ⚠️ 2026-10-22 (аудит): «Хэмжсэн жин (%)» — оноо хэдэн хувь нь хэмжсэн өгөгдөлд тулгуурласныг ил */
   const t3 = table(
     tr('Бүсийн оноо — хамгийн муу'),
-    [tr('Бүс'), tr('Төрөл'), tr('Оноо'), tr('Зөрчсөн үзүүлэлт')],
+    [tr('Бүс'), tr('Төрөл'), tr('Оноо'), tr('Хэмжсэн жин (%)'), tr('Зөрчсөн үзүүлэлт')],
     c.zones.slice(0, WORST_ZONES_N).map((z) => [
       cell(z.zone),
       cell(z.type),
       cell(z.score == null ? null : Math.round(z.score), 'count'),
+      cell(z.coverage == null ? null : Math.round(z.coverage * 100), 'count'),
       cell(z.fails, 'count'),
     ]),
   );
@@ -283,6 +298,10 @@ export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
     /* ⚠️ «дундаж оноо» нь `en.ts`-д БАЙГАА түлхүүр — «дундаж оноо {0}» гэж
        шинэ түлхүүр зохиохгүй, тоог ард нь залгана */
     if (c.avgScore != null) facts.push(`${tr('дундаж оноо')} ${num(c.avgScore, 0)}`);
+    /* ⚠️ 2026-10-22 (аудит): оноогүй үлдсэн бүсийн тоо — дундаж хэдэн бүсээс бодогдсоныг ил */
+    if (c.lowCoverage > 0) {
+      facts.push(tr('{0} бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < {1}%)', c.lowCoverage, Math.round(MIN_MEASURED_SHARE * 100)));
+    }
     if (c.assumedCount > 0) facts.push(tr('{0} үзүүлэлт батлагдаагүй эх өгөгдөлтэй', c.assumedCount));
   }
 
@@ -302,7 +321,9 @@ export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
     issues,
     /* Төлөвлөлтийн давхаргад огнооны талбар байхгүй */
     asOf: null,
-    failedSources: [],
+    /* ⚠️ 2026-10-21 (кодын хяналт): `loadAnalysis`-ийн унасан эх (автобус · LRT · инженерийн давхарга) — урьд нь
+       `[]` гэж хатуу өгч дутуу өгөгдлөөр бодсон оноог анхааруулгагүй, сешн дуустал кэшилдэг байв. */
+    failedSources: [...failed],
   };
 }
 
@@ -320,5 +341,6 @@ export const loadSuitabilityKpi = cached(async (): Promise<KpiResult> => {
      түүнгүй бол тэдгээр бүсийн `raw` хоосорч, `computeSuitability` оруулсан ч
      утгагүй болно. */
   computeRaw(data.zones, defaultGreenCats(), PARKING, new Set(ACTIVATABLE_ZONE_TYPES));
-  return buildSuitabilityKpi(computeSuitability(data.zones));
-}, undefined, []);
+  return buildSuitabilityKpi(computeSuitability(data.zones), data.failed);
+  /* ⚠️ 2026-10-21: дутуу (failedSources) үр дүнг кэшлэхгүй — дараагийн нээлт дахин оролдоно (`kpiComplete`) */
+}, SESSION_TTL_MS, [], kpiComplete);

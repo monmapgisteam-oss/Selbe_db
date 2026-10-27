@@ -40,7 +40,8 @@ export function setNavDirty(key: string, on: boolean, label = key): void {
 
 /** Хадгалаагүй ажилтай хэсгүүдийн нэрс (хоосон = хамгаалах юм алга) */
 export function navDirtyLabels(): string[] {
-  return [...dirty.values()];
+  /* ⚠️ 2026-10-23: нэг нэртэй олон туг (жиш. ажил бүрийн `hyanalt-apply:<key>`) асуултад НЭГ удаа */
+  return [...new Set(dirty.values())];
 }
 
 /** Тест/гарах үед — бүх тугийг цэвэрлэнэ */

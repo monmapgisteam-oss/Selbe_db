@@ -23,13 +23,24 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { VIEWS, type Role, type ViewKey } from '@/lib/services';
 import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
-  unseenViews, type TypeTpl,
+  unseenViews, roleAccess, type TypeTpl,
+  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсэг — «Хуваарь харах» сонгогч ба «шийдсэн» тэмдэг */
+  HV_ROW, hvScopeOf, planViewDecided, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
 } from '@/lib/roleTypes';
+/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» МЭДЭЭЛЛИЙН мөр — тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн үүрэг бий */
+import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { isWorkflowView } from '@/lib/caps';
 import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
+/* ⚠️ 2026-10-22 (аудит): урсгалын төрлийг хэрэгжүүлсний дараа шатгүй үлдсэн хүмүүс (`erhOverview.typeStageGaps`) */
+import { ROLE_STAGE } from '@/lib/services';
+import { flowAclReady } from '@/lib/guitsetgelAcl';
+import { liveErhSource } from '@/lib/aclOps';
+import { typeStageGaps } from '@/lib/erhOverview';
 import ua from '@/components/userAdmin.module.css';
 import s from './erhTypes.module.css';
 
@@ -58,7 +69,8 @@ export function ErhTypes({ remote, onDirty }: {
     const a = subscribeTypes(f);
     const b = subscribe(f);
     const c = subscribeBulk(f);
-    return () => { a(); b(); c(); };
+    const d = subscribeHuvaariAcl(f);
+    return () => { a(); b(); c(); d(); };
   }, []);
 
   const [drafts, setDrafts] = useState<Drafts>({});
@@ -88,7 +100,8 @@ export function ErhTypes({ remote, onDirty }: {
    */
   const put = (r: Role, t: TypeTpl) => {
     setMsg('');
-    const next = isStoredTpl(r) ? { ...t, seen: tplViewKeys() } : t;
+    /* ⚠️ 2026-10-26: + «Хуваарь харах» шийдсэн тэмдэг (`tplSeenKeys`) — хадгалсан баганыг засах = энэ утгыг ч харсан */
+    const next = isStoredTpl(r) ? { ...t, seen: tplSeenKeys() } : t;
     setDrafts((d) => ({ ...d, [r]: next }));
   };
   /** Хадгалсан загварт тохируулаагүй (хадгалсны дараа нэмэгдсэн) харагдацууд — ноорог тооцно */
@@ -105,11 +118,42 @@ export function ErhTypes({ remote, onDirty }: {
      уншдаггүй (`Root.hardSuper = roleForUser(...) === 'super'`, зөвхөн код). Урьд нь super баганад
      чеклэгддэг тул «загвараас админ самбар олгоно» гэсэн ХУДАЛ дүр зурдаг байв. Хадгалагдсан
      утга (`on`) хэвээр харагдана, өөрчлөгдөхгүй. */
-  const allowed = (_r: Role, id: string): boolean => id !== 'admin';
+  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсгийн id (`huvaari:*`) ЧЕКБОКС БИШ — «бүгд/арилгах» тэднийг хөндөхгүй (сонгогч · мэдээлэл) */
+  const allowed = (_r: Role, id: string): boolean => id !== 'admin' && !id.startsWith('huvaari:');
+  const hvIds = (r: Role): string[] => cur(r).on.filter((id) => id.startsWith('huvaari:'));
+  const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }); };
+  /** «Хуваарь харах» шийдэгдээгүй (энэ тохиргооноос ӨМНӨ хадгалсан) багана — анхдагч утга үйлчилж байна */
+  const hvUndecided = (r: Role): boolean => !planViewDecided(cur(r), isStoredTpl(r));
+  /** Тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн тэр үүрэг бий (уншигдаагүй бол `null`) */
+  const roleHolders = (r: Role, role: 'author' | 'approver'): number | null => {
+    if (!huvaariAclReady()) return null;
+    const mine = new Set(usersOf(r));
+    return listHuvaariAssigns().filter((a) => mine.has(a.user) && a.grants.some((g) => g.role === role)).length;
+  };
+  /** Нүүр цонхны сонголтын тэмдэг — тэр төрөлд загвараар нээгдэхгүй бол */
+  const homeNote = (r: Role, k: ViewKey): string => {
+    if (r === 'super') return '';
+    if (k === 'huvaari' && hvScopeOf(cur(r).on) !== 'none') return '';
+    if (isWorkflowView(k)) return ` · ${tr('хуваарилалтаар')}`;
+    return cur(r).on.includes(`view:${k}`) ? '' : ` · ${tr('хаалттай')}`;
+  };
 
   const usersOf = (r: Role): string[] => listUsers()
     .filter((u) => roleOf(u.username) === r)
     .map((u) => u.username.toLowerCase());
+  /**
+   * Загварын (урсгалын бус) харагдацаас ДУТУУ харагдацтай хэрэглэгчид — хадгалсан мөрийн `views` загварын дэд олонлог биш.
+   * ⚠️ 2026-10-26 (аудит): хэрэглэгчийн бодит эрх нь ӨӨРИЙН мөрийн `views`; загвар (анхдагч ч) шинэ хуудастай болоход
+   *    («ТЭЗҮ · зураг төсөл», «6 түвшний хуваарь») «Хэрэгжүүлэх» дарахгүй бол тэдэнд нээгдэхгүй — анхдагч баганад ямар ч
+   *    тэмдэг байхгүй тул админ мэдэхгүй байв.
+   */
+  const driftOf = (r: Role): number => {
+    const tv = roleAccess(r).views;
+    if (tv === 'all') return 0;
+    const want = tv.filter((v) => !isWorkflowView(v));
+    return listUsers().filter((u) => roleOf(u.username) === r && Array.isArray(u.views)
+      && want.some((v) => !(u.views as ViewKey[]).includes(v))).length;
+  };
 
   const canSave = remoteReady() && !busy;
 
@@ -127,7 +171,8 @@ export function ErhTypes({ remote, onDirty }: {
         for (const r of dirtyRoles) if (!failed.includes(r)) delete n[r];
         return n;
       });
-      if (failed.length) setErr(tr('ArcGIS-т хадгалагдсангүй: {0}', failed.map(typeLabel).join(', ')));
+      /* ⚠️ 2026-10-23 (UX аудит X4): дараагийн алхмыг хэлнэ — унасан төрлийн ноорог дээр УСТГАГДАХГҮЙ тул үнэн */
+      if (failed.length) setErr(tr('Хадгалагдсангүй: {0} — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.', failed.map(typeLabel).join(', ')));
       else setMsg(tr('Хадгалагдлаа. Хэрэглэгчдэд тараахын тулд баганын «Хэрэгжүүлэх»-ийг дарна уу.'));
     } finally {
       setSaving(false);
@@ -140,7 +185,8 @@ export function ErhTypes({ remote, onDirty }: {
     if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
-    if (!window.confirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
+    if (!(await askConfirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)), { ok: tr('Хэрэгжүүлэх') }))) return;
     setErr(''); setMsg('');
     if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
   };
@@ -150,9 +196,16 @@ export function ErhTypes({ remote, onDirty }: {
   const bulkMsg = !bulk ? '' : bulk.running
     ? tr('«{0}»: хэрэгжүүлж байна… {1}/{2}', typeLabel(bulk.role), String(bulkDone), String(bulk.total))
     : tr('«{0}»: {1}/{2} хэрэглэгчид хэрэгжлээ.', typeLabel(bulk.role), String(bulk.ok), String(bulk.total));
+  /* ⚠️ 2026-10-22 (аудит): «Хэрэгжүүлэх» нь урсгалын ТӨРӨЛД ч зөвхөн үүрэг/харагдацыг бичдэг — шат, «Гүйцэтгэл» хуудас,
+     батлах эрх үүсэхгүй. Дууссаны дараа тэр төрлийн ШАТГҮЙ хүмүүсийг нэрээр нь хэлнэ (томилгоо — урсгалын хуудсанд). */
+  const bulkStage = bulk && !bulk.running ? ROLE_STAGE[bulk.role] : undefined;
+  const bulkNoStage = bulkStage && flowAclReady()
+    ? typeStageGaps(liveErhSource()).filter((g) => g.want === bulkStage && !g.have).map((g) => g.user)
+    : [];
   const bulkErr = !bulk ? '' : [
     ...(bulk.skipped.length ? [tr('Хадгалаагүй ноорогтой тул алгассан: {0}', bulk.skipped.join(', '))] : []),
     ...bulk.errors,
+    ...(bulkNoStage.length ? [tr('⚠️ «{0}» төрөл урсгалын шат олгодоггүй — шатанд томилогдоогүй: {1}. «Гүйцэтгэлийн урсгалын эрх» хуудсанд томилохгүй бол «Гүйцэтгэл» хуудас нээгдэхгүй, батлах боломжгүй.', typeLabel(bulk.role), bulkNoStage.join(', '))] : []),
   ].join('\n');
 
   if (!typesReady()) {
@@ -198,10 +251,16 @@ export function ErhTypes({ remote, onDirty }: {
                         {tr('шинэ хуудас — загварт тохируулаагүй')}
                       </button>
                     )}
+                    {driftOf(r) > 0 && !isDirty(r) && (
+                      <span className={s.newBadge} role="note"
+                        title={tr('Эдгээр хэрэглэгчийн хадгалсан эрхэд загварын зарим хуудас алга — «Хэрэгжүүлэх» дарж загварыг хэрэгжүүлнэ.')}>
+                        {tr('{0} хэрэглэгч загвараас зөрсөн', String(driftOf(r)))}
+                      </span>
+                    )}
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: allIds.filter((id) => allowed(r, id)) })}>
+                        onClick={() => put(r, { ...cur(r), on: [...allIds.filter((id) => allowed(r, id)), ...hvIds(r)] })}>
                         {tr('бүгд')}
                       </button>
                       <button type="button" className={s.mini} disabled={busy}
@@ -236,14 +295,16 @@ export function ErhTypes({ remote, onDirty }: {
                   <select id={`tt-home-${r}`} className={s.sel} value={cur(r).home} disabled={busy}
                     aria-label={`${tr('Нэвтрэхэд нээгдэх цонх')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), home: e.target.value as ViewKey })}>
-                    {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}</option>)}
+                    {/* ⚠️ 2026-10-26: загвараар нээгдэхгүй цонхыг тэмдэглэнэ — нүүр нь нээгдэхгүй бол `Root.openEntry` эхний зөвшөөрөгдсөн руу */}
+                    {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}{homeNote(r, v.key)}</option>)}
                   </select>
                 </td>
               ))}
             </tr>
             {groups.map((g) => (
               <Group key={g.title} title={g.title} rows={g.rows} cur={cur} flip={flip} allowed={allowed} busy={busy}
-                isNew={(r, id) => id.startsWith('view:') && unseenOf(r).includes(id.slice(5) as ViewKey)} />
+                setHv={setHv} holders={roleHolders}
+                isNew={(r, id) => (id === HV_ROW ? hvUndecided(r) : id.startsWith('view:') && unseenOf(r).includes(id.slice(5) as ViewKey))} />
             ))}
           </tbody>
         </table>
@@ -253,8 +314,9 @@ export function ErhTypes({ remote, onDirty }: {
           {dirtyRoles.length ? tr('Хадгалах ({0} төрөл)', String(dirtyRoles.length)) : tr('Хадгалах')}
         </button>
         {dirtyRoles.length > 0 && (
+          /* ⚠️ 2026-10-23 (UX аудит X7): болих товч порталд «Болих» (UserAdmin-ы хадгалах мөртэй ижил) */
           <button type="button" className={ua.cancelBtn} disabled={busy} onClick={() => setDrafts({})}>
-            {tr('Цуцлах')}
+            {tr('Болих')}
           </button>
         )}
         {!remoteReady() && <span className={s.err}>{tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')}</span>}
@@ -268,10 +330,14 @@ export function ErhTypes({ remote, onDirty }: {
 }
 
 function Group({
-  title, rows, cur, flip, allowed, busy, isNew,
+  title, rows, cur, flip, allowed, busy, isNew, setHv, holders,
 }: {
   title: string;
-  rows: { id: string; label: string; hint?: string }[];
+  rows: SettingRow[];
+  /** ⚠️ 2026-10-26: «Хуваарь харах» сонгогч */
+  setHv: (r: Role, v: HvScope) => void;
+  /** ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» мэдээллийн тоо */
+  holders: (r: Role, role: 'author' | 'approver') => number | null;
   cur: (r: Role) => TypeTpl;
   flip: (r: Role, id: string, v: boolean) => void;
   allowed: (r: Role, id: string) => boolean;
@@ -286,15 +352,42 @@ function Group({
         <tr key={row.id}>
           <td className={s.lbl}>
             <span className={s.lblText}>{row.label}</span>
-            {TYPE_ORDER.some((r) => isNew(r, row.id)) && (
+            {TYPE_ORDER.some((r) => isNew(r, row.id)) && (row.select ? (
+              /* ⚠️ 2026-10-26: «Хуваарь харах» — энэ тохиргооноос ӨМНӨ хадгалсан загварт анхдагч утга үйлчилж байна */
+              <span className={s.newBadge} title={tr('Шар нүдэнд анхдагч утга үйлчилж байна — сонгоод «Хадгалах» дарж батална уу.')}>
+                {tr('шинэ тохиргоо — анхдагч утга')}
+              </span>
+            ) : (
               <span className={s.newBadge} title={tr('Зарим хадгалсан загварт энэ хуудас тохируулагдаагүй — шар нүдэнд чеклэх эсвэл баганын тэмдгийг дарна уу.')}>
                 {tr('шинэ хуудас — загварт тохируулаагүй')}
               </span>
-            )}
+            ))}
             {row.hint && <span className={s.lblHint}>{row.hint}</span>}
           </td>
           {TYPE_ORDER.map((r) => (
             <td key={r} className={isNew(r, row.id) ? s.cellNew : undefined}>
+              {row.select ? (
+                /* ⚠️ 2026-10-26: «Хуваарь харах» — Бүх багц / Өөрийн багц / Үгүй (`roleTypes.HvScope`) */
+                <select id={`tt-${r}-hv`} className={s.sel} value={hvScopeOf(cur(r).on)} disabled={busy}
+                  aria-label={`${row.label} — ${typeLabel(r)}`}
+                  onChange={(e) => setHv(r, e.target.value as HvScope)}>
+                  <option value="all">{tr('Бүх багц')}</option>
+                  <option value="own">{tr('Өөрийн багц')}</option>
+                  <option value="none">{tr('Үгүй')}</option>
+                </select>
+              ) : row.info ? (
+                /* ⚠️ 2026-10-26: МЭДЭЭЛЭЛ — засагдахгүй; «Хуваарийн эрх»-ээс багцаар (тоо = тэр төрлийн үүрэгтэй хүн) */
+                (() => {
+                  const n = holders(r, row.info);
+                  return (
+                    <span className={s.info} title={tr('«Хуваарийн эрх»-ээс багцаар оноогдоно')}>
+                      <input type="checkbox" className={s.cb} checked={!!n} disabled readOnly
+                        aria-label={`${row.label} — ${typeLabel(r)}`} />
+                      {n == null ? '…' : n > 0 ? String(n) : ''}
+                    </span>
+                  );
+                })()
+              ) : (
               <input
                 id={`tt-${r}-${row.id.replace(/[^a-zA-Z0-9]/g, '_')}`}
                 type="checkbox"
@@ -304,6 +397,7 @@ function Group({
                 aria-label={`${row.label} — ${typeLabel(r)}`}
                 onChange={(e) => flip(r, row.id, e.target.checked)}
               />
+              )}
             </td>
           ))}
         </tr>

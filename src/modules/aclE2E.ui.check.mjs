@@ -18,9 +18,9 @@
  *
  * ХЭСГҮҮД:
  *   §A `AclGrid` — нүд бүрийн чипийн ✕ ба «+» сонгогч ТЭР нүдний (мөр, багана, аккаунт)-ийг дамжуулна
- *   §B Долоон хуудас (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц · QAQC · Урсгал):
+ *   §B Зургаан хуудас (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц · Урсгал; 2026-10-23: QAQC хасагдсан):
  *      «бүх багц»-тай хүний бүдэг чипийн ✕ → зөвхөн тэр багц хасагдана; «+» → нэмэгдэнэ
- *   §C МАТРИЦ (`ErhCellEditor`) — 20 багана бүрд «бүх багц»-тай хүнийг нэг нүднээс ✕ → бусад үлдэнэ
+ *   §C МАТРИЦ (`ErhCellEditor`) — 19 багана + дэд бүтэц бүрд «бүх багц»-тай хүнийг нэг нүднээс ✕ → бусад үлдэнэ
  *      (МЭДЭЭЛСЭН АЛДАА — засвараас өмнө УНАДАГ)
  *   §D Гацааны анхааруулга — зохиогч=батлагч · батлагчгүй · Чанарт «нэг хүн хоёр үүрэгт» · хянагч дутуу
  *   §E «Хэрэглэгчид» самбар (`UserAdmin`) — урсгалтай харагдац унтраалгагүй, хадгалахад бичигдэхгүй ·
@@ -45,8 +45,9 @@ const CAPS = await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
 /* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
 OPS.setHeldByReader(async () => []);
+/* ⚠️ 2026-10-22 (аудит): устгах асуултын гүйцэтгэлийн уншилт (`flowWaitingFor`) ч амьд хүснэгт — хуурамцаар */
+OPS.setFlowWorksReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
-const QA = await import('@/lib/qaqcAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
 const OB = await import('@/lib/obyemAcl.ts');
 const AJ = await import('@/lib/ajilAcl.ts');
@@ -65,12 +66,12 @@ const { ObyemAcl } = await import('@/modules/ObyemAcl.tsx');
 const { AjilAcl } = await import('@/modules/AjilAcl.tsx');
 const { ChanarAcl } = await import('@/modules/ChanarAcl.tsx');
 const { DedButetsAcl } = await import('@/modules/DedButetsAcl.tsx');
-const { QaqcAcl } = await import('@/modules/QaqcAcl.tsx');
 const { GuitsetgelAcl } = await import('@/modules/GuitsetgelAcl.tsx');
 const { ErhCellEditor } = await import('@/modules/ErhCellEditor.tsx');
 const { UserAdmin } = await import('@/components/UserAdmin.tsx');
 const { UserHeadActions } = await import('@/components/UserRow.tsx');
 const RT = await import('@/lib/roleTypes.ts');
+const ERL = await import('@/modules/erhLabels.ts');
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks += 1; };
@@ -204,6 +205,13 @@ const idle = () => settle(() => fake.inflight > 0
 /* ══════════ Аккаунтууд ба эхлэл ══════════ */
 const POOL = Array.from({ length: 80 }, (_, i) => `ui_u${String(i + 1).padStart(3, '0')}`);
 fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 })));
+
+/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
+   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
+{
+  const hvBase = RT._defaultTpl('taniltsah');
+  fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT.withHvScope(hvBase.on, 'none'), seen: RT.tplSeenKeys() }) }]);
+}
 let nextU = 0;
 const mkUser = () => POOL[nextU++];
 const run = async (op) => { takeConfirms(); let err = ''; const r = await OPS.runOp(op, (m) => { err = m; }); await idle(); return { ok: r, err, confirms: takeConfirms() }; };
@@ -348,25 +356,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
       n += 1;
     }
   }
-  /* QAQC */
-  {
-    const tag = '§B qaqc';
-    const u = mkUser();
-    await QA.setQaqcAssign(u, ['*']).sync; await idle();
-    const m = panelGrid(QaqcAcl);
-    const px = PKG_GROUPS[3];
-    takeConfirms();
-    clickX(m, px, 'qaqc', u);
-    await idle();
-    eq(takeConfirms().length, 1, `${tag}: асуулт`);
-    eq(sorted(QA.listQaqcAssigns().find((a) => a.user === u).bagts), sorted(PKG_GROUPS.filter((x) => x !== px)), `${tag}: зөвхөн ${px}`);
-    ok(CAPS.capsOf(u).includes('qaqc'), `${tag}: эрх хэвээр`);
-    m.render();
-    clickAdd(m, px, 'qaqc', u);
-    await idle();
-    ok(QA.listQaqcAssigns().find((a) => a.user === u).bagts.includes(px), `${tag}: «+»`);
-    n += 1;
-  }
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* Урсгал — 6 шат */
   for (const st of STAGE_ORDER) {
     const tag = `§B flow.${st}`;
@@ -386,7 +376,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     ok(FL.bagtsFor(u, st).includes(px), `${tag}: «+»`);
     n += 1;
   }
-  console.log(`✅ §B ${n} багана (5 систем × үүрэг · QAQC · 6 шат): «бүх»-ийн бүдэг чипийн ✕ → зөвхөн тэр багц хасагдав, эрх хэвээр; «+» → буцааж нэмэгдэв`);
+  console.log(`✅ §B ${n} багана (5 систем × үүрэг · 6 шат): «бүх»-ийн бүдэг чипийн ✕ → зөвхөн тэр багц хасагдав, эрх хэвээр; «+» → буцааж нэмэгдэв`);
 }
 
 /* ══════════ §C. МАТРИЦ — `ErhCellEditor` (МЭДЭЭЛСЭН АЛДАА) ══════════ */
@@ -399,7 +389,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     const universe = col.sys === 'butets' ? BUTETS_PACKS.map((p) => p.key) : PKG_GROUPS;
     /* «бүх багц» олгох */
     if (col.sys === 'flow') ok((await run(OPS.flowStageOp(u, col.role))).ok, tag);
-    else if (col.sys === 'qaqc') { await QA.setQaqcAssign(u, ['*']).sync; await idle(); }
     else ok((await run(OPS.setRoleAllOp(col.sys, u, col.role))).ok, tag);
     const px = universe[4 % universe.length];
     const src = OPS.liveErhSource();
@@ -426,7 +415,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
     const rest = sorted(universe.filter((k) => k !== px));
     let got;
     if (col.sys === 'flow') got = FL.bagtsFor(u, col.role);
-    else if (col.sys === 'qaqc') got = QA.listQaqcAssigns().find((a) => a.user === u)?.bagts;
     else got = OPS.SCOPED_SYS[col.sys].list().find((a) => a.user === u)?.grants.find((g) => g.role === col.role)?.bagts;
     eq(got && sorted(got), rest, `${tag}: матрицын ✕ → зөвхөн ${px} хасагдаж, бусад ${rest.length} багц ҮЛДЭНЭ`);
     n += 1;
@@ -465,9 +453,11 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   for (const role of CH.CHANAR_REVIEWERS) await run(OPS.scopedCellOp('chanar', r1, role, g, true));
   grid = withGrid(ChanarAcl);
   const w = grid.rows.find((r) => r.key === g).warn;
-  ok(w.some((x) => /Нэг хүн хоёр үүрэгт/.test(x)), `§D Чанар: нэг хүн хоёр үүрэгт (${w.join(' | ')})`);
+  /* ⚠️ 2026-10-21: «нэг хүн нэг үүрэг» дүрэм ХАСАГДСАН (`chanarMs.reviewerClashes` → []) — FIC/М-акт нэг
+     хянагчийн шийдвэрийг хүлээн авдаг (`ficMakt.decideFm`); анхааруулга гарахгүй байх ёстой. */
+  ok(!w.some((x) => /Нэг хүн хоёр үүрэгт/.test(x)), `§D Чанар: нэг хүн хоёр үүрэгт анхааруулга гарахгүй (${w.join(' | ')})`);
   ok(!w.some((x) => /хянагч томилоогүй/.test(x)), '§D Чанар: хянагч дутуу биш');
-  console.log('✅ §D гацаа: батлагчгүй · зохиогч=батлагч · өөр батлагч нэмэхэд арилна · Чанар: хянагч дутуу · нэг хүн хоёр үүрэгт');
+  console.log('✅ §D гацаа: батлагчгүй · зохиогч=батлагч · өөр батлагч нэмэхэд арилна · Чанар: хянагч дутуу · нэг хүн олон үүрэгт анхааруулгагүй');
 }
 
 /* ══════════ §E. «Хэрэглэгчид» самбар — UserAdmin ══════════ */
@@ -477,7 +467,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const g = PKG_GROUPS[0];
   await run(OPS.flowCellOp(u, 'engineer', g, true));
   await run(OPS.scopedCellOp('huvaari', u, 'author', g, true));
-  await run(OPS.qaqcCellOp(u, g, true));
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   await run(OPS.capDirectOp(u, 'zovshoorol', true));
   const acl = () => fake.rows.filter((r) => r.username.startsWith('__') && r.username.endsWith(`:${u}`))
     .map((r) => `${r.username}=${r.views}`).sort();
@@ -515,21 +505,27 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag}: томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
   eq(P.roleOf(u), 'chanar', `${tag}: үүрэг солигдов`);
   eq(acl(), aclBefore, `${tag}: карт хадгалахад хуваарилалт/эрх хөндөгдөөгүй`);
-  ok(P.resolveAccess(u).views.includes('huvaari') && P.resolveAccess(u).views.includes('qaqc'), `${tag}: эрхээр нээгдсэн харагдац хэвээр`);
+  ok(P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхээр нээгдсэн харагдац хэвээр`);
   /* устгах → «Хадгалах» (асуулт) → бүх хуваарилалт ба эрх цэвэрлэгдэнэ */
   m.render();
   rowOf().onFlipRemove(); m.render();
   takeConfirms();
+  /* ⚠️ 2026-10-22 (аудит): тэр хүний шатанд (инженер · g) хүлээгдэж буй гүйцэтгэл устгах асуултад тоологдоно */
+  OPS.setFlowWorksReader(async () => [{ bagts: g, owner: 'engineer', done: false }]);
   save().props.onClick({});
   /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
   await settle(() => { m.render(); return fake.inflight > 0 || acl().length > 0 || P.hasAccess(u); });
   await idle(); m.render();
-  ok(takeConfirms().some((c) => /УСТГАГДАНА/.test(c)), `${tag}: устгахыг асуусан`);
+  const delAsk = takeConfirms();
+  ok(delAsk.some((c) => /УСТГАГДАНА/.test(c)), `${tag}: устгахыг асуусан`);
+  ok(delAsk.some((c) => /УСТГАГДАНА/.test(c) && /шатанд 1 ажил хүлээгдэж байна/.test(c)), `${tag}: устгах асуултад шатанд хүлээгдэж буй гүйцэтгэл (${delAsk.join(' | ').slice(0, 300)})`);
+  OPS.setFlowWorksReader(async () => []);
   await P.initRemote(false, true); await idle();
   eq(acl(), [], `${tag}: устгасан аккаунтын ArcGIS хуваарилалт/эрхийн мөр үлдээгүй`);
   eq(P.hasAccess(u), false, `${tag}: нэвтрэхгүй`);
   /* хатуу аккаунт → tombstone → «Буцаах» */
-  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'injener')[0];
+  /* ⚠️ 2026-10-19: кодод урсгалын (жишээ) аккаунт алга — §0-д зөвхөн ноорог үүсдэг `beginner` */
+  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'beginner')[0];
   await run(OPS.scopedCellOp('obyem', hard, 'editor', g, true));
   m.render();
   findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === hard).el.props.onFlipRemove(); m.render();
@@ -569,6 +565,11 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m.render();
   rowOf(u).onFlipView('gdash'); m.render();
   ok(rowOf(u).dirty, `${tag}: ноорог`);
+  /* ⚠️ 2026-10-23: ноорогтой хүний урсгалын op-ыг БҮХ хуудсанд `runOp` хориглоно (`aclOps.draftGuard` — урьд нь матрицад л) */
+  const blocked = await run(OPS.flowCellOp(u, 'engineer', g, false));
+  ok(!blocked.ok && blocked.err === ERL.draftFlowMsg() && stored(u).includes('guitsetgel'), `${tag}: ноорогтой хүний урсгалын хасалт хориглогдов (${blocked.err})`);
+  /* Хасалт ӨӨР таб/админаас ирсэн мэт (энэ самбарын ноорогийн бүртгэлгүй) — хуучин ноорог «Гүйцэтгэл»-ийг буцааж нээхгүй */
+  OPS.setAclDrafts([]);
   const rm = await run(OPS.flowCellOp(u, 'engineer', g, false));
   ok(rm.ok && !stored(u).includes('guitsetgel'), `${tag}: томилгоо хасагдахад «Гүйцэтгэл» хаагдав`);
   m.render(); save();
@@ -622,7 +623,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   await idle(); m.render();
   await P.initRemote(false, true); await idle();
   eq(P.hasAccess(u3), false, `${tag}: устгагдсан панелийн аккаунт амилахгүй`);
-  eq(fake.find(u3), [], `${tag}: ArcGIS-т мөр дахин үүсэхгүй`);
+  /* ⚠️ 2026-10-23: панелаас нэмсэн аккаунтад ч TOMBSTONE (`permissions.removeUser`) — мөр нь ЗӨВХӨН `removed` (амьд мөр биш) */
+  eq(fake.find(u3).map((r) => r.views), ['removed'], `${tag}: ArcGIS-т амьд мөр дахин үүсэхгүй (зөвхөн tombstone)`);
   ok(P.listRemoved().includes(hard) && !P.hasAccess(hard), `${tag}: tombstone хэвээр`);
   ok(alerts(m).some((a) => a.includes(u3)), `${tag}: алгассаныг ил хэлнэ`);
   eq(findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled, true, `${tag}: ноорог үлдэхгүй`);
@@ -656,7 +658,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const props = (over) => ({
     u: { username: 'x_user', role: 'tolovlolt', views: [], docs: false, overridden: true },
     rowKey: 'x_user', d: { views: [], docs: false, role: 'tolovlolt' }, dirty: false, myName: null,
-    rolePresets: presets, onRole: noop, onClear: noop, onFlipRemove: noop, superUser: false, ...over,
+    rolePresets: presets, onRole: noop, onFlipRemove: noop, superUser: false, ...over,
   });
   let m = mount(React.createElement(UserHeadActions, { p: props({}) }));
   let sel = findAll(m.tree, (n) => n.type === 'select')[0].el;
@@ -740,7 +742,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m = mount(React.createElement(UserWorkflow, { user: u, onGo: noop }));
   const re = btn(m, /Дахин олгох/);
   ok(re.length === 1, `${tag}: эрх алга → «Дахин олгох»`);
-  ok(!P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед «Хуваарь» хаалттай`);
+  /* ⚠️ 2026-10-26: зохиогчийн мөр нь харах хүрээ (`huvaariView`) — эрх алга ч «Хуваарь» ЗӨВХӨН ХАРАХ-аар нээлттэй хэвээр */
+  ok(P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед ч «Хуваарь» зөвхөн харах-аар нээлттэй`);
   re[0].props.onClick({});
   await idle();
   ok(CAPS.capsOf(u).includes('plan') && P.resolveAccess(u).views.includes('huvaari'), `${tag}: «Дахин олгох» → эрх ба хуудас сэргэв`);
@@ -792,7 +795,13 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
 
   /* (5) «Эрхийн төрөл» — seen-гүй хадгалсан загварт «ТУХ» шинэ */
   fake.seed([{ username: '__type__:injener', views: JSON.stringify({ on: ['view:gdash'], home: 'gdash' }) }]);
-  await P.initRemote(false, true); await idle();
+  /* ⚠️ 2026-10-26 (CI уналт 80450cc): өмнөх алхмын НИСЛЭГТ БАЙГАА синк (seed-ээс өмнө эхэлсэн) `initRemote`-ийн
+     хүчээр дуудлагыг хуучин агшингаар дуусгаж болдог — удаан CI машинд л илэрдэг уралдаан. Шинэ мөр танигдтал
+     дахин синклэнэ (хязгаартай); жинхэнэ алдааг нуухгүй — доорх `eq` хэвээр шалгана. */
+  for (let i = 0; i < 5; i++) {
+    await P.initRemote(false, true); await idle();
+    if (RT.unseenViews('injener').length > 0) break;
+  }
   eq(RT.unseenViews('injener'), ['tuh'], `${tag}: хадгалсан загвар ТУХ-ыг мэдэхгүй`);
   m = mount(React.createElement(ErhTypes), new Set(['ErhTypes', 'Group']));
   const badge = btn(m, /шинэ хуудас — загварт тохируулаагүй/);

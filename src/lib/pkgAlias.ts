@@ -18,7 +18,7 @@
  *    нэг нь гэрээ, нөгөө нь багц. Гэрээний дүн хоёр эх сурвалжид ижил (22.868 = 22.868).
  */
 import type { Row } from '@/lib/query';
-import { HO_IPC, bagtsKey, hoAmount, isPkgRange, pkgKeyOf } from '@/lib/services';
+import { HO_IPC, PKG_BY_BAGTS, bagtsKey, hoAmount, isPkgRange, pkgKeyOf } from '@/lib/services';
 
 /** HO гэрээний багцын түлхүүр → Cashflow-ийн багцын түлхүүр (санхүүгийн НЭГ гэрээ) */
 export const HO_PKG_ALIAS: Readonly<Record<string, string>> = {
@@ -49,6 +49,32 @@ export const FIN_PKG_ALIAS: Readonly<Record<string, { key: string; label: string
   ...MAP_PKG_ALIAS,
   ...Object.fromEntries(Object.entries(HO_PKG_ALIAS).map(([ho, cf]) => [ho, MAP_PKG_ALIAS[cf] ?? { key: cf, label: cf }])),
 };
+
+/**
+ * Cashflow-ийн багцын түлхүүрийн ГАЗРЫН ЗУРГИЙН `pkg:*` давхаргууд (`MAP_PKG_ALIAS`-аар унана).
+ * ⚠️ 2026-10-26 (аудит): Ерөнхий дашбоард (`PkgWorkList` · `xsPick` · `loadSubPkgLayers`) `PKG_BY_BAGTS[pkgKeyOf]`-ийг
+ *    ШУУД уншдаг тул БАГЦ71 (зурагт БАГЦ7) · БАГЦ8 (зурагт БАГЦ82) «давхаргагүй» гардаг байв. `pkgKeyOf`-ийг ӨӨРЧЛӨХГҮЙ.
+ *    БАГЦ72 санаатай холбоогүй (PkgFin-ийн ⚠️ — өөр ажил).
+ */
+export const mapPkgLayers = (k: string): string[] | undefined =>
+  PKG_BY_BAGTS[k] ?? (MAP_PKG_ALIAS[k] ? PKG_BY_BAGTS[MAP_PKG_ALIAS[k].key] : undefined);
+
+/**
+ * Cashflow-ийн багцын түлхүүрүүд → ГАЗРЫН ЗУРГИЙН багцын түлхүүрүүд (`loadPkgOverlaps`-ийн `key`).
+ * ⚠️ 2026-10-26 (аудит): «Тулгамдаж буй асуудал» хугацааны шүүлттэй үед Cashflow-ийн түлхүүрээр шүүдэг тул БАГЦ7 ·
+ *    БАГЦ21 · БАГЦNХОЛБОО (6 багц) ҮРГЭЛЖ хасагддаг байв. Өөрөө + `MAP_PKG_ALIAS` + БАГЦ6N → БАГЦNХОЛБОО.
+ */
+export function mapPkgKeySet(keys: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const k of keys) {
+    out.add(k);
+    const a = MAP_PKG_ALIAS[k]?.key;
+    if (a) out.add(a);
+    const m = /^БАГЦ6([1-4])$/.exec(k);
+    if (m) out.add(`БАГЦ${m[1]}ХОЛБОО`);
+  }
+  return out;
+}
 
 /** HO/Cashflow-ийн багцын түлхүүрийг НЭГДСЭН санхүүгийн түлхүүр рүү (холбоосгүй бол өөрөө) */
 export const finPkgKey = (k: string): string => FIN_PKG_ALIAS[k]?.key ?? k;

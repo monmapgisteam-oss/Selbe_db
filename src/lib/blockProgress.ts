@@ -24,6 +24,8 @@
  */
 import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows, sheetBlockKeys, sheetBlocklessKeys } from '@/modules/sheet/sheetRows';
+import { childIndexes, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
 
@@ -103,6 +105,73 @@ export function uniqueBlockCounts(blds: readonly (readonly string[])[]): number[
   });
 }
 
+/** Багцын/хуудасны обьёмын хос — бодит (хуримтлагдсан) ба төлөвлөгөөт. `null` = мэдээлэлгүй (0 БИШ). */
+export type ObyemPair = { volume: number | null; volumePlan: number | null };
+
+/**
+ * Обьёмын тооцоонд хэрэгтэй баганууд (`loadRows`-ийн `fields`) — `sheetShared.sharedFields(sc, 'variance')`-ийн дэд олонлог.
+ * ⚠️ `oid` · `no` · `work` · `gun` · `fillDate` нь жааз ба модыг (`childIndexes`) барихад ЗААВАЛ (`loadRows`-ийн ⚠️).
+ */
+export const obyemFields = (sc: Schema): string[] => [...new Set([
+  sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.fillDate, sc.f.vol, ...sc.obyem,
+].filter((x): x is string => !!x))];
+
+/**
+ * ХУУДАСНЫ ОБЬЁМ — «Б.» (барилга угсралт) мөрийн доорх НАВЧ ажлуудаас (цэвэр функц, `negtgel.check` тулгана).
+ *
+ * ⚠️ 2026-10-23 (аудит): «Б.» мөр нь БҮЛЭГ — түүний `obyem_sum` ба `Обьём` нүд бөглөх хуудсанд ХЭЗЭЭ Ч бичигддэггүй
+ *    (`computeAll`: бүлгийн блокийн обьём `null`; амьдаар 24/24 хуудсанд хоосон). Урьд нь `negtgelWrite.bRowOf` обьёмыг
+ *    яг тэр мөрөөс уншдаг тул нэгтгэлийн (`/190`) обьём 25/25 мөрд хоосон, дашбоардын «Обьёмын биелэлт» · «Ажлын обьём»
+ *    самбар үргэлж «Обьём бүртгэгдээгүй» гэж гардаг байв. Одоо обьём бөглөгддөг НАВЧ мөрүүдээс:
+ *    · `volume` — навч мөрийн обьёмын талбартай блок бүрийн хуримтлагдсан обьём (`computeAll.obyemSum`-тай нэг дүрэм:
+ *      зөвхөн утгатай нүд нэмэгдэнэ);
+ *    · `volumePlan` — навч мөрийн `Обьём` (НЭГ блокийнх — `cellObyem`/`act = обьём ÷ Обьём`) × обьёмын талбартай
+ *      блокийн тоо (`execTriage.loadVariance`-ийн `vol × блок`-той нэг).
+ *    Нэг ч утга алга бол `null` («бүртгэгдээгүй»), 0 БИШ. Нэгж нь холимог (м³ · м² · ш) — `summaryOf`-ийн ⚠️: зөвхөн
+ *    өөртэйгөө (бодит ÷ төлөвлөгөө) харьцуулна.
+ * @param hasObyem блок бүрийн обьёмын талбар (`Schema.obyem`) — синтетик блокт `[obyem_sum]` (`fillSchema`)
+ */
+export function constructionObyem(rows: readonly SheetRow[], hasObyem: readonly unknown[]): ObyemPair {
+  const bi = rows.findIndex((r) => isConstructionNo(r.no));
+  if (bi < 0) return { volume: null, volumePlan: null };
+  const kids = childIndexes(rows as SheetRow[]);
+  let volume: number | null = null;
+  let volumePlan: number | null = null;
+  const stack = [...kids[bi]];
+  while (stack.length) {
+    const i = stack.pop()!;
+    if (kids[i].length) { stack.push(...kids[i]); continue; }
+    const r = rows[i];
+    if (r.group) continue;
+    for (let b = 0; b < hasObyem.length; b += 1) {
+      if (!hasObyem[b]) continue;
+      const o = r.obyem[b];
+      if (o != null && Number.isFinite(o)) volume = (volume ?? 0) + o;
+      if (r.vol != null && r.vol > 0) volumePlan = (volumePlan ?? 0) + r.vol;
+    }
+  }
+  return { volume, volumePlan };
+}
+
+/**
+ * БАГЦЫН ОБЬЁМ — хуудсуудын нийлбэр (цэвэр). `n` = `uniqueBlockCounts`-ийн жин (PKGS-ийн дарааллаар).
+ * ⚠️ 2026-10-21-ний дүрэм (`negtgelWrite.summaryOf`-оос гаргав, 2026-10-23): бүрэн давхардсан хуудас (`n === 0`,
+ *    Багц 4-2·12F) нийлбэрт ОРОХГҮЙ; жинтэй хуудас огт үгүй (блокгүй багц) бол эхнийх. Бүгд `null` бол `null`.
+ *    Нэгтгэлийн бичилт (`negtgelWrite`) ба дашбоардын амьд тооцоо (`sheetShared.loadPkgObyem`) НЭГ функц.
+ */
+export function sumObyemParts(parts: readonly ({ n: number } & ObyemPair)[]): ObyemPair {
+  const use = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
+  const add = (pick: (x: ObyemPair) => number | null): number | null => {
+    let s: number | null = null;
+    for (const x of use) {
+      const v = pick(x);
+      if (v != null) s = (s ?? 0) + v;
+    }
+    return s;
+  };
+  return { volume: add((x) => x.volume), volumePlan: add((x) => x.volumePlan) };
+}
+
 /** Дэд үе шат — «Б1 · Барилгын ажил · 24%» */
 export type SubPhase = { no: string; name: string; pct: number | null };
 export type BlockProgress = {
@@ -124,54 +193,107 @@ export type BlockProgressMap = Map<string, BlockProgress>;
  */
 export type BlockUniverse = ReadonlyMap<string, readonly string[]>;
 
+/* ─────────────────────── Нүдний ялагч — ГАНЦ дүрэм ─────────────────────── */
+
+/** Нэг нүдний (барилга × №) НЭГ хуудасны сүүлийн мөр; `seq` — мөрийн дараалал (OID-ийн орлуулагч, ижил огноонд) */
+type Cell = { pct: number | null; name: string; date: string; sheet: string; seq: number };
+/** Хуудас (`''` = хуудасны түлхүүргүй, хуучин кэш) → тэр хуудасны сүүлийн нүд */
+type CellState = Map<string, Cell>;
+
+/**
+ * ⚠️ 2026-10-21 (аудит): ЯЛАГЧИЙН ГАНЦ ДҮРЭМ — `compute` (зураг · жагсаалт) ба `history` (цуваа) ХОЁУЛАА ЭНДЭЭС.
+ *   1. Хуудас ДОТОР сүүлийн огноо ялна (ижил огноонд сүүлийн мөр — их OID); `null` = нүд цэвэрлэгдсэн.
+ *   2. Хуудас ХООРОНД: УТГАТАЙ хуудас `null`-тай хуудсыг огнооноос үл хамааран дарна; утгатай нь хэд байвал сүүлийн
+ *      огноо (2026-10-12-ны «өөр хуудасны null дарахгүй» дүрэм — Багц 4-2 «6/x»: 9F-ийн F6_x ба 12F-ийн F6_x,
+ *      `uniqueBlockCounts`-ийн ⚠️).
+ *   3. Хуудасны түлхүүргүй мөр (`''`, хуучин кэш) хуудас бүрийн ДОТООД дүрмээр (огноогоор) оролцоно — хуучин зан.
+ *   Урьд `compute` мөрийн ДАРААЛЛААС хамаардаг (өмнөх нүдтэй ХОС харьцуулалт: 12F-ийн мөр эхэнд ирвэл overall `null`),
+ *   `history` нь «өөр хуудас утгатай бол энэ хуудасны null цэгийг хая» гэсэн ӨӨР дүрэмтэй байв: 9F 40 (09-01) · 9F null
+ *   (10-10, ижил хуудсандаа цэвэрлэгдсэн) · 12F 30 (08-01) → зураг/жагсаалт 30, цувааны сүүлийн цэг 40. Одоо хоёулаа
+ *   30, мөрийн дарааллаас хамаарахгүй (`blockProgressCutoff.check` §2в).
+ */
+function pushCell(st: CellState, c: Cell): void {
+  const later = (p: Cell | undefined): boolean => !p || p.date <= c.date;
+  if (c.sheet === '') {
+    for (const [s, p] of st) if (later(p)) st.set(s, c);
+    if (!st.has('')) st.set('', c);
+    return;
+  }
+  const p = st.get(c.sheet) ?? st.get('');
+  if (later(p)) st.set(c.sheet, c);
+  else if (p && !st.has(c.sheet)) st.set(c.sheet, p);
+}
+
+/** Хуудас хоорондын ялагч (дээрх 2-р дүрэм); нүдгүй бол `null` */
+function winnerOf(st: CellState): Cell | null {
+  const named: Cell[] = [];
+  for (const [s, c] of st) if (s !== '') named.push(c);
+  const cands = named.length ? named : [...st.values()];
+  if (!cands.length) return null;
+  const valued = cands.filter((c) => c.pct != null);
+  const pool = valued.length ? valued : cands;
+  let w = pool[0];
+  for (const c of pool) if (c.date > w.date || (c.date === w.date && c.seq > w.seq)) w = c;
+  return w;
+}
+
+/** Мөр → нүд; огноо хүчингүй/ирээдүйн (`progressCutoff`-ийн ⚠️ 2026-10-01) бол `null` */
+function cellOf(r: Record<string, unknown>, seq: number, today: string): Cell | null {
+  const d = t(r[TS.date]);
+  if (!isValidDate(d) || isFutureDay(d, today)) return null;
+  return {
+    pct: r[TS.progress] == null ? null : Number(r[TS.progress]) * 100,
+    name: t(r[TS.work]),
+    date: d,
+    sheet: typeof r.sheet === 'string' ? r.sheet : '',
+    seq,
+  };
+}
+
+/** Ялагч нүд — дуудагчид (`seq`-гүй) */
+export type WinnerCell = { pct: number | null; name: string; date: string; sheet: string };
+
+/**
+ * Барилга → № → ялагч нүд (`compute`-ийн цөм; `history`-тэй НЭГ дүрэм — дээрх ⚠️). Мөрийн ДАРААЛЛААС ХАМААРАХГҮЙ.
+ * ⚠️ № -г ЭНД ч нормчилно: `sheetRows` аль хэдийн нормчилдог ч энэ функц түүхий мөр (хуучин кэш, өөр дуудагч)
+ *    хүлээж авах боломжтой тул нийт мөрийн түлхүүр («Б.») хоёр газарт ХОЁР янз бүтэх ёсгүй.
+ */
+export function winnerCells(
+  rows: Record<string, unknown>[], today: string = progressCutoff(),
+): Map<string, Map<string, WinnerCell>> {
+  /** барилга → (№ → хуудас → сүүлийн нүд) */
+  const st = new Map<string, Map<string, CellState>>();
+  rows.forEach((r, seq) => {
+    const c = cellOf(r, seq, today);
+    if (!c) return;
+    const no = normalizeTaskNo(r[TS.no]);
+    const k = buildingKey(r[TS.bagts], r[TS.block]);
+    const cells = st.get(k) ?? new Map<string, CellState>();
+    const s = cells.get(no) ?? new Map<string, Cell>();
+    pushCell(s, c);
+    cells.set(no, s);
+    st.set(k, cells);
+  });
+  const out = new Map<string, Map<string, WinnerCell>>();
+  for (const [k, cells] of st) {
+    const m = new Map<string, WinnerCell>();
+    for (const [no, s] of cells) {
+      const w = winnerOf(s);
+      if (w) m.set(no, { pct: w.pct, name: w.name, date: w.date, sheet: w.sheet });
+    }
+    out.set(k, m);
+  }
+  return out;
+}
+
 /**
  * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас.
  * ⚠️ Багц 3.1-ийн cashflow солилт (`ov`) ХАСАГДСАН — `loadBlockProgress`-ийн ⚠️.
+ * ⚠️ 2026-10-21 (аудит): нүдний ялагч `winnerCells` (дээрх ⚠️) — `history`-тэй НЭГ дүрэм.
  */
 export function compute(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockProgressMap {
-  /** барилга → (№ → сүүлийн мөр) */
-  const win = new Map<string, Map<string, { pct: number | null; name: string; date: string; sheet: string }>>();
-  for (const r of rows) {
-    const d = t(r[TS.date]);
-    if (!isValidDate(d)) continue;
-    /* ⚠️ 2026-10-01: ирээдүйн огноотой хэмжилт тооцохгүй (`progressCutoff`-ийн ⚠️) */
-    if (isFutureDay(d, today)) continue;
-    /* ⚠️ № -г ЭНД ч нормчилно: `sheetRows` аль хэдийн нормчилдог ч энэ функц
-     *    түүхий мөр (хуучин кэш, өөр дуудагч) хүлээж авах боломжтой тул нийт
-     *    мөрийн түлхүүр («Б.») хоёр газарт ХОЁР янз бүтэх ёсгүй. */
-    const no = normalizeTaskNo(r[TS.no]);
-    const k = buildingKey(r[TS.bagts], r[TS.block]);
-    const cells = win.get(k) ?? new Map();
-    const prev = cells.get(no);
-    const sheet = typeof r.sheet === 'string' ? r.sheet : '';
-    const inNull = r[TS.progress] == null;
-    // ⚠️ Нүд бүрээр сүүлийн огноо ялна; ИЖИЛ огноонд сүүлийн (их OID-той) мөр
-    //    ялна — history()-ийн «нэг өдөрт хоёр бичлэг — сүүлийнх ялна» дүрэмтэй
-    //    ижил, эс бөгөөс зураг/самбар нэг тоо, муруй өөр тоо заана.
-    if (prev) {
-      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): НЭГ түлхүүрт ХОЁР хуудасны нүд (Багц 4-2: 9F-ийн
-         F6_x ба 12F-ийн F6_x хоёулаа «6/x» — `uniqueBlockCounts`-ийн ⚠️). 12F нийтлэгдвэл түүний
-         хоосон (`null`) нүд сүүлийн огноотой болж 9F-ийн ХЭМЖИЛТИЙГ дарж, блок зурагт
-         «мэдээлэлгүй» болох байв. ӨӨР хуудасны `null` нүд утгатай нүдийг ДАРАХГҮЙ, утгатай нь
-         өөр хуудасны `null`-ыг огнооноос үл хамааран дарна. НЭГ хуудас дотор `null` нь урьдын
-         адил «нүд цэвэрлэгдсэн» (`history`/`progressSeries('latest')`-тэй нэг дүрэм хэвээр);
-         хуудасны түлхүүр мэдэгдэхгүй (хуучин кэш) мөр ч хуучин дүрмээр. */
-      const cross = sheet !== '' && prev.sheet !== '' && prev.sheet !== sheet;
-      if (cross && inNull !== (prev.pct == null)) {
-        if (inNull) continue;
-      } else if (prev.date > d) continue;
-    }
-    cells.set(no, {
-      pct: inNull ? null : Number(r[TS.progress]) * 100,
-      name: t(r[TS.work]),
-      date: d,
-      sheet,
-    });
-    win.set(k, cells);
-  }
-
   const out: BlockProgressMap = new Map();
-  for (const [k, cells] of win) {
+  for (const [k, cells] of winnerCells(rows, today)) {
     const total = cells.get(TASK_SHEET.constructionNo);
     // ⚠️ Нийт гүйцэтгэл бөглөгдөөгүй барилгыг ОРУУЛАХГҮЙ — зурагт «мэдээлэлгүй»
     //    саарлаар үлдэх ёстой, 0% гэж будвал «эхлээгүй» гэсэн ХУДАЛ мэдээлэл өгнө.
@@ -203,29 +325,45 @@ export type BlockHistory = Map<string, HistoryPoint[]>;
  * дээр л зурагдана. `pct: null` нь нүд ЦЭВЭРЛЭГДСЭН гэсэн үг (Pivot нь хоосон
  * нүдийг null мөрөөр бичдэг) тул тэр огнооноос хойш уг блок «бөглөгдөөгүй».
  * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): нэг түлхүүрт ХОЁР хуудасны нүд (Багц 4-2 «6/x» —
- *    `uniqueBlockCounts`-ийн ⚠️) энд огноогоор ХОЛИЛДСООР — `compute`-ийн «өөр хуудасны null
- *    дарахгүй» хамгаалалт цувааны цэг бүрд хуудасны мэдээлэл шаардах тул ЭНД ОРООГҮЙ; 12F
- *    хэзээ ч нийтлэгдээгүй тул одоогоор нөлөөгүй. 12F нийтлэгдвэл `HistoryPoint`-д хуудас
- *    нэмж `latest`-д ижил дүрэм хэрэгтэй.
+ *    `uniqueBlockCounts`-ийн ⚠️) энд огноогоор ХОЛИЛДОНО. ⚠️ 2026-10-21 (аудит): цэг бүр = тухайн
+ *    огнооны (тэр өдрийн бүх мөрийг оруулсны дараах) ЯЛАГЧ нүд — `compute`-тэй НЭГ дүрэм (`winnerOf`,
+ *    дээрх ⚠️). Ялагч нүд өөрчлөгдөөгүй огноонд (өөр хуудасны `null` г.м.) цэг үүсэхгүй; ижил
+ *    хуудасны `null` ялагчийг өөр хуудасны утга руу (эсвэл `null`) шилжүүлбэл ТЭР цэг болно —
+ *    сүүлийн цэг ҮРГЭЛЖ `compute`-ийн `overall`-тай тэнцүү (`blockProgressCutoff.check` §2б · §2в).
+ *    Урьд «өөр хуудас утгатай бол энэ хуудасны null цэгийг хая» гэсэн ӨӨР дүрэм энд байсан тул
+ *    зураг (`compute`) 30%, `progressSeries('latest')`/`finPhys` 40% заадаг тохиолдол үлдсэн байв.
  */
 export function history(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockHistory {
-  const out: BlockHistory = new Map();
-  for (const r of rows) {
+  /* барилга → нүднүүд (дараа нь огноо/дарааллаар эрэмбэлнэ) */
+  const byKey = new Map<string, Cell[]>();
+  rows.forEach((r, seq) => {
     /* ⚠️ Нормчлолын НЭГ дүрмээр — «Б» (цэггүй) багцуудын түүх алдагдах ёсгүй */
-    if (!isConstructionNo(r[TS.no])) continue;
-    const d = t(r[TS.date]);
-    if (!isValidDate(d)) continue;
-    /* ⚠️ 2026-10-01: `compute`-тэй ЯГ ИЖИЛ таслалт — зураг ба жагсаалт нэг тоо (`progressCutoff`) */
-    if (isFutureDay(d, today)) continue;
+    if (!isConstructionNo(r[TS.no])) return;
+    /* ⚠️ 2026-10-01: `compute`-тэй ЯГ ИЖИЛ таслалт — зураг ба жагсаалт нэг тоо (`progressCutoff`, `cellOf`) */
+    const c = cellOf(r, seq, today);
+    if (!c) return;
     const k = buildingKey(r[TS.bagts], r[TS.block]);
-    const arr = out.get(k) ?? [];
-    const pct = r[TS.progress] == null ? null : Number(r[TS.progress]) * 100;
-    const prev = arr.find((p) => p.date === d);
-    if (prev) prev.pct = pct; // нэг өдөрт хоёр бичлэг — сүүлийнх ялна
-    else arr.push({ date: d, pct });
-    out.set(k, arr);
+    const arr = byKey.get(k) ?? [];
+    arr.push(c);
+    byKey.set(k, arr);
+  });
+  const out: BlockHistory = new Map();
+  for (const [k, cells] of byKey) {
+    cells.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq));
+    const st: CellState = new Map();
+    const pts: HistoryPoint[] = [];
+    let prev: Cell | null = null;
+    cells.forEach((c, i) => {
+      pushCell(st, c);
+      /* нэг өдрийн бүх мөрийг оруулсны ДАРАА л ялагчийг авна — «нэг өдөрт хоёр бичлэг — сүүлийнх ялна» */
+      if (i + 1 < cells.length && cells[i + 1].date === c.date) return;
+      const w = winnerOf(st);
+      if (!w || w === prev) return;
+      prev = w;
+      pts.push({ date: c.date, pct: w.pct });
+    });
+    out.set(k, pts);
   }
-  for (const arr of out.values()) arr.sort((a, b) => (a.date < b.date ? -1 : 1));
   return out;
 }
 

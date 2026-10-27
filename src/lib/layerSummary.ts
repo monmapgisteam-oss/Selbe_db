@@ -46,7 +46,7 @@ export type LayerSummary = {
  * өөр утгатай тул «хамгийн олон утга» нь 72 ширхэг нэг удаагийн тоо болно —
  * мэдээлэл биш, шуугиан.
  */
-const HIDE = /^(OBJECTID|FID|GlobalID|Shape__\w+|CreationDate|Creator|EditDate|Editor|X|Y|X_48N|Y_48N)$/i;
+const HIDE = /^(objectid|fid|globalid|shape__\w+|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date|x|y|x_48n|y_48n)$/i;
 
 /** Уртын талбар — нийлбэр нь утгатай (метр) */
 const LENGTH = /^(urt_m|length_m|length_metr|shugam_urt)$/i;

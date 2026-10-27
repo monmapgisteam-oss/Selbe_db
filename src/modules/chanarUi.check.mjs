@@ -147,11 +147,6 @@ const mk = (o) => ({
   /* Гаднаас өөр жагсаалт ирсэн (өөр баримт) → солино */
   assert.equal(keepLinesText('хуучин', 'шинэ\nалхам'), 'шинэ\nалхам');
   assert.equal(keepLinesText('', ''), '');
-  /* NcrForm нь түүхий текстийг ОРОН НУТАГТ барина (эх кодын шалгуур) */
-  const fs = await import('node:fs');
-  const src = fs.readFileSync(new URL('./chanar/NcrForm.tsx', import.meta.url), 'utf8');
-  assert.ok(!/value=\{listToLines\(corr\.steps\)\}/.test(src), '⚠️ textarea-ийн утгыг цэвэрлэсэн жагсаалтаас ШУУД зурахгүй');
-  assert.ok(/<StepsArea/.test(src), 'NcrForm: StepsArea ашиглана');
 }
 console.log('✅ NCR алхмууд — зай ба шинэ мөр хадгалагдана');
 

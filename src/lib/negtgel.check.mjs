@@ -411,7 +411,7 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12, 13, 14], '0.30 → 0.90 мөр ба өвгөд нь хамгаалалтад');
   assert.deepEqual(gp.ups.map((u) => u[OID]).sort(), [15, 16], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
   assert.equal(gp.ups.find((u) => u[OID] === 16)[ACT], 15, 'бичих утга хүснэгтийн масштабаар (0–100)');
-  assert.ok(gp.ups.every((u) => !('SHARE_SEC' in u) && !('SHARE_PRJ' in u)), 'жин бичигдэхгүй');
+  assert.ok(gp.ups.every((u) => !('share_sec' in u) && !('share_prj' in u)), 'жин бичигдэхгүй');
   assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 14), 'force — бүгд');
 
   /* 16 — нийтийн хамгаалалт */
@@ -433,7 +433,11 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
     write: async (u) => { writes += u.length; return u.length; },
   });
   A._resetNegSync();
-  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Query-only');
+  /* ⚠️ 2026-10-21 (кэшийн аудит): баталгаатай бичилтийн (n > 0) дараа `TUSUL_NEGTGEL` хүчингүй; бичилтгүй/уналтад үгүй */
+  const bus = await import('./dataBus.ts');
+  let negDrops = 0;
+  bus.register(() => { negDrops += 1; }, ['TUSUL_NEGTGEL']);
+  assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — readOnly (хэрэглэгчийн шийдвэр; амьд capabilities 2026-10-21-ээс Editing)');
   assert.equal((await A.syncNegtgel({}, { user: () => 'saruul_monmap' })).kind, 'off', 'зөвхөн уншигдах хүснэгт — super-т ч бичихгүй');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
   assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
@@ -443,13 +447,23 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal(st.kind, 'guard', 'super (тестийн бичигч) — хамгаалалтын төлөв ил');
   assert.equal(st.n, 2);
   assert.equal(writes, 2, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
+  assert.equal(negDrops, 1, '2026-10-21: баталгаатай бичилт (n > 0) → TUSUL_NEGTGEL хүчингүй');
   const again = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(again, st, '10 минутын дотор дахин бичихгүй — сүүлийн төлөв');
   assert.equal(writes, 2);
+  assert.equal(negDrops, 1, 'бичилтгүй дахин дуудалт — хүчингүй болгохгүй');
   const forced = await A.syncNegtgel({ force: true }, io('saruul_monmap'));
   assert.equal(forced.kind, 'ok', 'баталгаажуулсан бичилт');
   assert.ok(writes > 2);
+  assert.equal(negDrops, 2, 'force бичилт → дахин хүчингүй');
   A._resetNegSync();
+  {
+    /* ⚠️ уналт/хариу алдагдсан → хүчингүй болгохгүй (ачаалагч доторх дахин ачаалал → дахин синкийн давталтаас сэргийлнэ) */
+    const failing = { ...io('saruul_monmap'), write: async () => { throw new TypeError('сүлжээ тасрав'); } };
+    assert.equal((await A.syncNegtgel({}, failing)).kind, 'error');
+    assert.equal(negDrops, 2, 'уналтад TUSUL_NEGTGEL хүчингүй болохгүй');
+    A._resetNegSync();
+  }
 
   /* 18 — (2026-09-25) `force` явж буй энгийн синкийн үр дүнд залгигдахгүй */
   {
@@ -544,7 +558,7 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
     'блокгүй алгасалт `s && s.progress == null` нөхцөлтэй');
   assert.ok(!/\(!s \|\| s\.progress == null\) && isBlocklessBagts/.test(W), 'хураангуй уншигдаагүй (`!s`) блокгүй багц `ok: true` болж чимээгүй алгасагдаж байна');
   const iSkip = W.indexOf('if (s && s.progress == null && isBlocklessBagts');
-  const iErr = W.indexOf("if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };");
+  const iErr = W.indexOf("if (!s) return { ok: false, error: tr('Бөглөх хуудасны хадгалсан хувилбар олдсонгүй') };");
   assert.ok(iSkip > 0 && iErr > iSkip, '`!s` → алдаа (блокгүй багцад ч)');
   console.log('negtgel 2026-10-09 (блокгүй !s): ok — уншигдаагүй хураангуй алдаа');
 }
@@ -595,4 +609,49 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   const noSheet = [row(undefined, '2026-09-01', 0.4), row(undefined, '2026-09-10', null)];
   assert.equal(compute(noSheet, today).has(k), false, 'хуудасны түлхүүргүй мөр — хуучин дүрэм');
   console.log('negtgel 2026-10-12: ok — давхардалгүй жин · blendSheets · compute хуудас хоорондын null');
+}
+
+/* ══════════════ ⚠️ 2026-10-23 (аудит): обьём «Б.» бүлгийн хоосон нүднээс БИШ, навч мөрүүдээс ══════════════
+   Нэгтгэлийн (`/190`) обьём 25/25 мөрд хоосон, дашбоардын 2 самбар «Обьём бүртгэгдээгүй» байв. */
+{
+  const { constructionObyem, sumObyemParts } = await import('./blockProgress.ts');
+  const { readFileSync } = await import('node:fs');
+  const R = (no, depth, vol, obyem, group = false) => ({ no, depth, vol, obyem, group });
+  const rows = [
+    R('А.', 0, null, [null, null], true),
+    R('1', 1, 10, [99, 99]), // «А.» доорх — ОРОХГҮЙ
+    R('Б. БАРИЛГА УГСРАЛТЫН АЖИЛ', 0, null, [null, null], true),
+    R('Б1', 1, null, [null, null], true),
+    R('1.1', 2, 100, [40, null]),
+    R('1.2', 2, 50, [null, 25]),
+    R('Б2', 1, null, [null, null], true),
+    R('2.1', 2, 0, [5, null]), // Обьём 0 — төлөвлөгөөнд орохгүй, бодит нэмэгдэнэ
+    R('2.2', 2, 20, [null, null]),
+    R('В.', 0, null, [null, null], true),
+    R('3', 1, 7, [7, 7]), // «Б.»-ээс гадна — ОРОХГҮЙ
+  ];
+  assert.deepEqual(constructionObyem(rows, ['o1', 'o2']), { volume: 70, volumePlan: 340 },
+    'бодит = навчийн утгатай нүд (40+25+5); төлөвлөгөө = Обьём × обьёмтой блок ((100+50+20)×2)');
+  assert.deepEqual(constructionObyem(rows, ['o1', null]), { volume: 45, volumePlan: 170 }, 'обьёмын талбаргүй блок тоологдохгүй');
+  const empty = rows.map((r) => ({ ...r, obyem: r.obyem.map(() => null) }));
+  assert.deepEqual(constructionObyem(empty, ['o1', 'o2']), { volume: null, volumePlan: 340 }, 'бөглөөгүй → бодит null (0 БИШ)');
+  assert.deepEqual(constructionObyem(rows.filter((r) => !r.no.startsWith('Б')), ['o1']), { volume: null, volumePlan: null }, '«Б.» алга → null');
+  assert.deepEqual(constructionObyem([R('Б', 0, null, [null], true), R('1', 1, 30, [12])], ['obyem_sum']),
+    { volume: 12, volumePlan: 30 }, 'блокгүй багц (синтетик блок, цэггүй «Б»)');
+  assert.deepEqual(sumObyemParts([{ n: 14, volume: 10, volumePlan: 100 }, { n: 0, volume: 99, volumePlan: 99 }]),
+    { volume: 10, volumePlan: 100 }, 'бүрэн давхардсан хуудас (4-2·12F) орохгүй');
+  assert.deepEqual(sumObyemParts([{ n: 4, volume: null, volumePlan: 50 }, { n: 6, volume: 3, volumePlan: 60 }]),
+    { volume: 3, volumePlan: 110 });
+  assert.deepEqual(sumObyemParts([{ n: 0, volume: 1, volumePlan: 2 }, { n: 0, volume: 5, volumePlan: 5 }]),
+    { volume: 1, volumePlan: 2 }, 'жингүй бүх хуудас → эхнийх');
+  /* Эх кодын баталгаа: бичих зам ба дашбоард НЭГ функц, «Б.» мөрийн обьём уншихаа больсон */
+  const NW = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8');
+  assert.match(NW, /constructionObyem\(rows, fsc\.obyem\)/, 'negtgelWrite обьём = навч мөрүүд');
+  assert.match(NW, /sumObyemParts\(/, 'negtgelWrite нийлбэр = sumObyemParts');
+  assert.doesNotMatch(NW, /a\[sc\.f\.obyemSum\]|a\[sc\.f\.vol\]/, '«Б.» бүлгийн хоосон нүднээс обьём уншихгүй');
+  const SS = readFileSync(new URL('./sheetShared.ts', import.meta.url), 'utf8');
+  assert.match(SS, /constructionObyem\(s\.rows, s\.sc\.obyem\)/, 'дашбоардын амьд обьём = навч мөрүүд');
+  const DB = readFileSync(new URL('../modules/Dashboard.tsx', import.meta.url), 'utf8');
+  assert.equal((DB.match(/<Data q=\{vq\}/g) ?? []).length, 2, 'обьёмын 2 самбар volAsync-аас (амьд хуудас, нөөц /190)');
+  console.log('negtgel 2026-10-23: ok — обьём навч мөрүүдээс · null ≠ 0 · давхардсан хуудас орохгүй');
 }

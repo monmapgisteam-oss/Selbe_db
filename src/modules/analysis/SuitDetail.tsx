@@ -13,7 +13,8 @@ import { cat, NO_DATA } from '@/lib/format';
 import { CHART } from '@/lib/chartStyle';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
-import { nf } from './suit/format';
+import { nf, zoneTypeLabel } from './suit/format';
+import { zoneLabel } from '@/lib/zoneLabel';
 import s from './suitability.module.css';
 
 /**
@@ -120,7 +121,8 @@ function Radar({ items, center, size = 300 }: {
       role="img" aria-label={tr('Үзүүлэлтүүдийн онооны профайл')}
     >
       {/* Тор — 25/50/75/100 онооны олон өнцөгт */}
-      {[0.25, 0.5, 0.75, 1].map((f) => <polygon key={f} className={s.radarGrid} points={ring(f)} />)}
+      {/* ⚠️ 2026-10-23: Environment — дотоод тор тасархай, гадна хүрээ бүтэн (CSS) */}
+      {[0.25, 0.5, 0.75, 1].map((f) => <polygon key={f} className={f === 1 ? `${s.radarGrid} ${s.radarGridOut}` : s.radarGrid} points={ring(f)} />)}
       {items.map((_, i) => {
         const p = at(i, 1);
         return <line key={i} className={s.radarSpoke} x1={c} y1={c} x2={p.x} y2={p.y} />;
@@ -145,11 +147,13 @@ function Radar({ items, center, size = 300 }: {
         //    өнцөгтөөс тусгаарлах гэрэлт хүрээ огт зурагддаггүй байлаа.
         /* ⚠️ 2026-10-09: цэг нь `CHART` (r=3 + 2px гадаргуун цагираг), өнгө токен
            (`scoreTone`, dark-тай), `<title>`-ийн оронд порталын `useTip`. */
+        /* ⚠️ 2026-10-23: Environment — график НЭГ өнгө: цэг `--data` (онооны шатны өнгө нь
+           зөвхөн tooltip-ийн тэмдэг ба `scoreLabel` бичигт үлдэнэ). */
         const c0 = scoreTone(it.score);
         return (
           <circle
             key={it.key} cx={p.x} cy={p.y} r={CHART.markerR}
-            style={{ fill: c0, stroke: 'var(--surface)', strokeWidth: CHART.ring }}
+            style={{ fill: 'var(--data)', stroke: 'var(--surface)', strokeWidth: CHART.ring }}
             {...tip.bind({ label: it.label, value: String(Math.round(it.score)), color: c0, hint: scoreLabel(it.score) })}
           />
         );
@@ -286,10 +290,16 @@ export function SuitDetail({
           {tot == null ? '—' : Math.round(tot)}
         </div>
         <div>
-          <h3>{r.id}</h3>
-          <p>{r.type} · {nf(r.areaHa, 2)} {tr('га ·')} {scoreLabel(tot)}</p>
+          {/* ⚠️ 2026-10-26 (аудит): бүсийн код англи горимд («Багц-3.1» → «Package-3.1») */}
+          <h3>{zoneLabel(r.id)}</h3>
+          {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
+          {/* ⚠️ 2026-10-22 (аудит): хэмжсэн жин босгоос доош бол «өгөгдөлгүй» биш «хангалтгүй» гэж хувьтай нь (`urbanScore`) */}
+          <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {tot == null && r.urbanReason === 'coverage' && r.coverage != null
+            ? tr('Өгөгдөл хангалтгүй — хэмжсэн жин {0}%', Math.round(r.coverage * 100))
+            : scoreLabel(tot)}</p>
         </div>
-        <button type="button" className={s.dClose} title={tr('Хаах')} onClick={onClose}>×</button>
+        {/* ⚠️ 2026-10-23 (S19): зөвхөн «×» тэмдэгтэй товч — нэр `aria-label`-д (title нь гар/хүрэлтэд хүрдэггүй) */}
+        <button type="button" className={s.dClose} title={tr('Хаах')} aria-label={tr('Хаах')} onClick={onClose}>×</button>
       </div>
 
       {urbanModes && (

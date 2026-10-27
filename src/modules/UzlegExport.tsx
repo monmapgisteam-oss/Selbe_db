@@ -12,9 +12,9 @@
  *    сольж болно — олон үзлэгийг ч НЭГ PDF-д (тайлан бүр шинэ хуудаснаас) гаргана.
  * ⚠️ PDF-д зураг ОРНО тул олон үзлэгийн PDF удаан (зураг бүр татагдана) — анхааруулна.
  * ⚠️ Өгөгдөл нь ХАБЭА хуудастай НЭГ ачаалагчаас (`loadUzlegBoth`) — кэш хуваалцана.
- * ⚠️ 2026-10-09: «Цуцлах» — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
+ * ⚠️ 2026-10-09: «Болих» (2026-10-23 хүртэл «Цуцлах», X7 нэр томьёо) — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
  *    fetch) цонхыг МӨНХӨД хаагдахгүй үлдээдэг байв. Одоо хавсралт бүр 30с (`ATT_TIMEOUT_MS`),
- *    «Цуцлах» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
+ *    «Болих» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
  * ⚠️ 2026-10-09: «Зураггүй» сонголт ба `UZ_IMG_WARN`-ээс олон зурагт баталгаажуулалт —
  *    мянга мянган зураг хөтчийн санах ойг дүүргэдэг.
  * ⚠️ 2026-10-09: фокусын урхи (`useFocusTrap`) — нээхэд фокус цонхонд, хаахад буцна.
@@ -22,6 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { HABEA, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID } from '@/lib/services';
@@ -31,19 +32,55 @@ import { renderPdfBase64, download } from '@/lib/emailReport';
 import {
   loadUzFields, loadUzAttachments, loadUzLocations, attUrl, buildUzReport, loadReportImages,
   buildUzPdf, buildUzXlsx, companyShort, countReportImages, fmtDate, reportTitle, UZ_IMG_WARN,
-  type UzImg, type UzReport,
+  groupFindings, guidKey, parentKeys,
+  type UzImg, type UzReport, type UzSection, type UzAttachment,
 } from '@/lib/uzlegReport';
-import { loadUzlegBoth, uzScoreLevel, type UzlegKind, type UzlegRow } from './habeaUzleg';
-import type { Row } from '@/lib/query';
+import { loadUzlegBoth, uzScoreLevel, UZLEG_SHORT, type UzlegKind, type UzlegRow } from './habeaUzleg';
+import { queryFeatures, type Row } from '@/lib/query';
 import x from './uzlegExport.module.css';
 
-const KINDS: UzlegKind[] = ['zahialagch', 'v11', 'guitsetgegch'];
+/* ⚠️ 2026-10-21: 8 шинэ маягт (`HABEA.uzleg`-ийн ⚠️) — тайлан татах цонхонд бүгд */
+const KINDS: UzlegKind[] = [
+  'zahialagch', 'v11', 'guitsetgegch',
+  'env', 'cold', 'fire', 'hazard', 'autocrane', 'pump', 'gondola', 'tower',
+];
 /** Файлын нэр ба Excel-ийн хуудасны гарчигт — «Морин сувд - Захиалагчийн үзлэг 2026-09-29» */
 const FORM_SHORT: Record<UzlegKind, string> = {
   zahialagch: 'Захиалагчийн үзлэг',
   v11: 'Ажлын байрны үзлэг V1.1',
   guitsetgegch: 'Гүйцэтгэгчийн үзлэг',
+  env: 'Байгаль орчны үзлэг',
+  cold: 'Хүйтний үеийн түр зогсолтын үзлэг',
+  fire: 'Галын аюулгүй байдлын үзлэг',
+  hazard: 'Аюулыг илрүүлэх үзлэг',
+  autocrane: 'Автокран шалгалт',
+  pump: 'Автопомп шалгалт',
+  gondola: 'Люльк шалгалт',
+  tower: 'Цамхагт кран шалгалт',
 };
+
+/**
+ * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ (2026-10-21). Маягт асуултгүй — илрүүлэлт бүр ХОЛБООТОЙ ХҮСНЭГТИЙН мөр
+ * (`HABEA.uzleg.hazardFindingsUrl`). Хүснэгт жижиг тул бүгдийг нэг удаа татаж эцгээр нь бүлэглэнэ (`groupFindings`).
+ * ⚠️ 2026-10-22 (аудит): холбоос `parentrowid` → эцгийн `uniquerowid || globalid` (`parentKeys`) — амьдаар 61/61 эцгийн
+ *    `uniquerowid` NULL, 345/345 илрүүлэлт `globalid`-ийг заадаг тул урьд нь тайланд илрүүлэлт ОГТ гардаггүй байв.
+ *    Илрүүлэлтийн зураг нь хүснэгтийн мөрийн хавсралт (`/1`) — сонгосон эцгүүдийн илрүүлэлтийнхийг л татна.
+ */
+async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection>> {
+  const url = HABEA.uzleg.hazardFindingsUrl;
+  const [rows, fields] = await Promise.all([
+    queryFeatures(url, { outFields: ['*'], orderBy: 'objectid' }),
+    loadUzFields(url),
+  ]);
+  const dom = fields.find((x) => x.name === 'f_level')?.dom ?? null;
+  const want = new Set(parents.flatMap((p) => parentKeys(p)));
+  const mine = rows.filter((r) => want.has(guidKey(r.parentrowid)));
+  const oids = mine.map((r) => Number(r.objectid)).filter(Number.isFinite);
+  const atts = oids.length ? await loadUzAttachments(url, oids) : new Map<number, UzAttachment[]>();
+  return groupFindings(parents, mine, {
+    title: tr('Илрүүлсэн аюул'), dom, atts, photoUrl: (oid, id) => attUrl(url, oid, id),
+  });
+}
 const PDF_MANY_WARN = 15;
 
 /**
@@ -222,10 +259,16 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       setBusy(tr('Хавсралтын жагсаалтыг уншиж байна…'));
       const [atts, locs] = await Promise.all([loadUzAttachments(url, oids), loadUzLocations(url, oids)]);
       if (!live()) return;
+      /* ⚠️ 2026-10-21: аюулыг илрүүлэх үзлэг — илрүүлэлтийн хүснэгт (`loadHazardFindings`-ийн ⚠️) */
+      const findings = kind === 'hazard' ? await loadHazardFindings(chosen.map((i) => ready.raw[i])) : null;
+      if (!live()) return;
       const reports: UzReport[] = chosen.map((i) => {
         const r = ready.rows[i];
+        /* ⚠️ 2026-10-22 (аудит): эцгийн ҮНДСЭН түлхүүрээр (`uniquerowid || globalid`) — `groupFindings`-ийн түлхүүртэй ижил */
+        const fnd = findings?.get(parentKeys(ready.raw[i])[0] ?? '');
         return buildUzReport(form, fields, ready.raw[i], r.oid, atts.get(r.oid) ?? [], (id) => attUrl(url, r.oid, id), {
           pkg: r.site, company: r.company, date: r.d, formShort: FORM_SHORT[kind], location: locs.get(r.oid) ?? '',
+          ...(fnd ? { extra: [fnd] } : {}),
         });
       });
       const one = reports.length === 1 ? reports[0] : null;
@@ -241,12 +284,17 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
         : xlsBase;
       /* ⚠️ 2026-10-09: олон зураг — санах ой/хугацааны анхааруулга, «Зураггүй»-г санал болгоно */
       const nImg = noPhotos ? 0 : countReportImages(reports);
+      /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид татах товч чимээгүй зогсдог
+         байв. Хариулах хооронд цонх хаагдсан/цуцлагдсан бол (`live`) юу ч хийхгүй. */
       if (nImg > UZ_IMG_WARN
-        && !window.confirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)))) {
+        && !(await askConfirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)),
+          { ok: tr('Татах') }))) {
+        if (!live()) return;
         ctlRef.current = null;
         setBusy(''); setProg(null);
         return;
       }
+      if (!live()) return;
       const { images: img, failed, heic } = noPhotos
         ? { images: new Map<string, UzImg>(), failed: [] as string[], heic: [] as string[] }
         : await loadReportImages(reports, {
@@ -315,12 +363,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
             <div className={x.forms} role="radiogroup" aria-label={tr('Асуумж')}>
               {KINDS.map((k) => {
                 const on = kind === k;
+                /* ⚠️ 2026-10-21 (хэрэглэгч): богино нэр (`UZLEG_SHORT`), бүтэн нэр hover-т — 11 хавтан нягт */
                 return (
                   <button key={k} type="button" role="radio" aria-checked={on} disabled={lock}
-                    className={`${x.form} ${on ? x.formOn : ''}`}
+                    className={`${x.form} ${on ? x.formOn : ''}`} title={HABEA.uzleg[k].title}
                     onClick={() => { if (!on) { setKind(k); setCos([]); resetPick(); } }}>
                     <span className={x.formDot} style={{ background: LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[k]]?.hue ?? 'var(--data)' }} aria-hidden />
-                    <span className={x.formName}>{HABEA.uzleg[k].title}</span>
+                    <span className={x.formName}>{UZLEG_SHORT[k]()}</span>
                     {on && ready && <span className={`${x.formCount} num`}>{tr('{0} үзлэг', num(ready.rows.length))}</span>}
                   </button>
                 );
@@ -484,7 +533,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
           {warn && !busy && <p className={x.err} role="alert">⚠ {warn}</p>}
           <div className={x.actions}>
             {lock
-              ? <button type="button" className={x.btn} onClick={cancel}>{tr('Цуцлах')}</button>
+              ? <button type="button" className={x.btn} onClick={cancel}>{tr('Болих')}</button>
               : <button type="button" className={x.btn} onClick={onClose}>{tr('Болих')}</button>}
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void run(); }}
               disabled={lock || !ready || !chosen.length}>

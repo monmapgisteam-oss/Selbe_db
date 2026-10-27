@@ -5,9 +5,14 @@
  */
 import { Fragment, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
-import { parseInc, type SheetRow } from "../bagtsSheet";
+import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
+/* ⚠️ 2026-10-22 (аудит): сөрөг нийтийн нэг дүрэм — хянагч (`hyanaltDetail`), «Илгээх» (`FillNew`) ба энэ хүснэгт */
+import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
 import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
+import { fixCyr } from "@/lib/format";
+/* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт */
+import { askConfirm, getConfirmSnapshot } from "@/lib/confirm";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
 import type { useCellEdit, PastePrev } from "./useCellEdit";
@@ -29,7 +34,7 @@ export function FillRows({
   backChgDates = EMPTY_KEYS,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null, extra = [], clearLocked,
+  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -60,6 +65,8 @@ export function FillRows({
   pastePrev?: PastePrev | null;
   /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн баганууд (`extraCols.ts`); `SheetHead`-тэй ИЖИЛ массив */
   extra?: ExtraCol[];
+  /** ⚠️ 2026-10-23: ХУРААНГУЙ харагдац — `SheetHead`-тэй ИЖИЛ дүрэм (№ · Ажил · Обьём · Инж. обьём · блокийн нүд ба хувь л) */
+  compact?: boolean;
   /** ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдний илгээгээгүй утгыг буцаах (`useCellEdit.clearLocked`) */
   clearLocked?: CellT['clearLocked'];
 }) {
@@ -73,7 +80,8 @@ export function FillRows({
                 const isNew = r.oid < 0 || addedOids.has(r.oid);
                 /* ⚠️ 2026-10-09: № нь бүтэн гарчиг (зайтай) бөгөөд Ажил хоосон бол нэрийг «Ажил» нүдэнд (доорх ⚠️) */
                 const noTitle = /\s/.test(r.no);
-                const workTxt = r.work || (noTitle ? r.no : "");
+                /* ⚠️ 2026-10-23 (UX аудит S15): өгөгдөлд «хєрс», «нїх» (є/ї) — ЗӨВХӨН харуулахдаа `fixCyr`; түлхүүрт түүхий нэр */
+                const workTxt = fixCyr(r.work || (noTitle ? r.no : ""));
                 return (
                   <Fragment key={r.oid}>
                   <tr
@@ -110,6 +118,7 @@ export function FillRows({
                       {workTxt}
                       {/* ⚠️ Бүлгийн «+» ба шинэ мөрийн «×» ХАСАГДАВ (2026-09-24) — «Хуваарь»-д. */}
                     </td>
+                    {!compact && (<>
                     <td className={cls("right c-w")} style={cw("wc", "w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
                     <td className={cls("right c-w")} style={cw("wd", "w")} {...ro(RO.wD)} title={full(c.D)}>{wt(c.D)}</td>
                     {/* Одоо байгаа = Хувийн жин × Бодит гүйцэтгэл — гүйцэтгэл
@@ -121,6 +130,7 @@ export function FillRows({
                     <td className={cls("right c-w calc")} style={cw("now", "now")} {...ro(RO.wE)} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
+                    </>)}
                     {/* ОБЬЁМ — ЭХ ӨГӨГДЛИЙН тоо хэмжээ. Эх хүснэгтэд
                         оруулагдана; энэ хуудас зөвхөн уншина. Түүнээс Мөнгөн
                         дүн, тэндээс хуудсын БҮХ хувийн жин бодогддог тул энд
@@ -164,6 +174,7 @@ export function FillRows({
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
+                    {!compact && (<>
                     <td className={cls("right c-vol calc")} style={cw("vsum", "vol")} {...ro(RO.obyemSum)}>
                       {qty(c.obyemSum)}
                       {!r.group && c.obyemSum != null && negjOf(r.work) && (
@@ -175,6 +186,7 @@ export function FillRows({
                     <td className={cls("num c-calc calc")} style={cw("ci", "calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("cj", "calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("ck", "calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>
+                    </>)}
 
                     {/* ГҮЙЦЭТГЭЛИЙН НҮД — обьём ба хувь НЭГ нүдэнд.
                           дээд мөр (том тоо) = бөглөсөн ОБЬЁМ — ЭНЭ Л бичигдэнэ
@@ -237,6 +249,42 @@ export function FillRows({
                         : !dirty && baseRow && totNow != null
                           ? tr('өмнөх: {0} · энэ удаа: {1} · нийт: {2}', fmtU(prevV) || '—', signed(totNow - (prevV ?? 0)), fmtU(totNow))
                           : '';
+                      /* ⚠️ 2026-10-22 (хэрэглэгч: «ийм алдаа дахин гарах эрсдэлийг бүрэн зас»): НИЙТ СӨРӨГ болох нэмэлт —
+                         хуудсанд байгаагаас их хасалт (жиш. хоосон нүдэнд −0.0017). Бичих АГШИНД улаанаар тэмдэглэж,
+                         шалтгааныг хэлнэ; ийм нүдтэй илгээлт `FillNew.publish`-д ХААГДАНА (хянагчид хүрч гацахгүй).
+                         Хүлцэл нь `incCell.below`-тай ижил (хөвөгч цэгийн чимээ сөрөг биш). */
+                      const negTot = incAmt != null ? (prevV ?? 0) + incAmt : null;
+                      const negNow = dirty && negTot != null && incAmt != null
+                        && negTot < -1e-9 * Math.max(1, Math.abs(prevV ?? 0), Math.abs(incAmt));
+                      /* ⚠️ 2026-10-22 (аудит): ИЛГЭЭСЭН (буцаагдсан/хянагдаж буй) нүдний нийт СӨРӨГ — ноорогийн биш, давхарлалтаас
+                         (`sheetFrame.negTotalAt`). Урьд нь зөвхөн бичих агшинд улаан болдог тул буцаагдсан илгээлтийн сөрөг нүд
+                         энгийн «өөрчлөгдсөн» мэт харагдаж, гүйцэтгэгч юу бичихээ мэддэггүй байв. */
+                      const negSent = !dirty && negTotalAt(r, bi);
+                      /* ⚠️ 2026-10-22 (аудит): нийтийг 0 болгох утга — бичсэн тоо ноорогийг ОРЛОНО (`useCellEdit.commit`) тул
+                         «ноорогүй нийт»-ийн эсрэг тоо, БҮТЭН нарийвчлалаар (дэлгэц 3 оронтой: −0.0017 → «−0.002»; харагдсаныг
+                         бичвэл 0 болохгүй). Буцаагдсан илгээлтэд «хоосон үлдээ» БУРУУ — өмнө илгээсэн хасалт үлддэг
+                         (`mergeSubmission` нийлүүлдэг). `null` — хувийн хэсэг / обьёмоор илэрхийлэх аргагүй (ерөнхий текст). */
+                      const hasF = !!sc.obyem[bi];
+                      const negFix = negNow
+                        ? hasF && (fillMode === "obyem" || volR != null)
+                          ? negFixText(fillMode === "pct" ? (r.obyem[bi] ?? 0) / (volR as number) : (r.obyem[bi] ?? 0), fillMode === "pct")
+                          : null
+                        : negSent ? negFixOf(r, bi, hasF, undefined, fillMode) : null;
+                      /** Сөрөг нийт — БҮТЭН нарийвчлалаар (обьём, эсвэл хувийн хэсэг сөрөг бол хувиар) */
+                      const negShow = negNow && negTot != null
+                        ? fillMode === "pct" ? `${fmtInc({ n: negTot * 100, p: 0 }) || "0"}%` : fmtInc({ n: negTot, p: 0 }) || "0"
+                        : (r.obyem[bi] ?? 0) < 0
+                          ? fmtInc({ n: r.obyem[bi] as number, p: 0 }) || "0"
+                          : `${fmtInc({ n: (r.act[bi] ?? 0) * 100, p: 0 }) || "0"}%`;
+                      const negTip = !(negNow || negSent)
+                        ? ''
+                        : view
+                          ? tr('Нийт сөрөг ({0}) — ийм нүдийг зөвшөөрөх боломжгүй; гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү.', negShow)
+                          : negFix == null
+                            ? tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу.', negShow)
+                            : negFix === ''
+                              ? tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Энэ нүдийг хоосон болгоно уу.', negShow)
+                              : tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Нийтийг 0 болгохын тулд энэ нүдэнд «{1}» гэж бичнэ үү.', negShow, negFix);
                       const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
                       /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
@@ -267,7 +315,12 @@ export function FillRows({
                       const okLock = !view && backChg.has(bk) && backOk.has(bk);
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
-                        if (locked) return changed && view?.onCell?.(i, b);
+                        /* ⚠️ 2026-10-22 (аудит): зөвшөөрөл татгалзвал (нийт сөрөг — `Guitsetgel.toggleOk`) шалтгааныг хэлнэ */
+                        if (locked) {
+                          const why = changed ? view?.onCell?.(i, b) : undefined;
+                          if (why) say(why);
+                          return;
+                        }
                         if (noEdit)
                           return say(
                             /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
@@ -279,9 +332,11 @@ export function FillRows({
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
                         /* ⚠️ 2026-10-09 (аудит №3): ногоон нүдэнд илгээгээгүй утга үлдсэн бол БУЦААХ л боломжтой (`clearLocked`) */
                         if (okLock) {
-                          if (dirty && clearLocked && editing && !busy && !restoring
-                            && window.confirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'))) {
-                            clearLocked(r, bi);
+                          /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — татгалзвал урьдын адил шалтгааныг хэлнэ.
+                             `clearLocked` өөрөө түгжээ ба ноорогт байгааг ДАХИН шалгана (асуулт нээлттэй хооронд өөрчлөгдсөн бол юу ч хийхгүй). */
+                          if (dirty && clearLocked && editing && !busy && !restoring) {
+                            void askConfirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'), { ok: tr('Утгыг арилгах') })
+                              .then((yes) => { if (yes) clearLocked(r, bi); else say(RO.okLocked); });
                             return;
                           }
                           return say(RO.okLocked);
@@ -341,7 +396,9 @@ export function FillRows({
                               /* 2026-10-01: буулгалтын урьдчилсан харагдац
                                  ⚠️ 2026-10-07: түлхүүр нь `key` (`cellKey(oid, ИНДЕКС)`) — урьд нь `bk` (`oid:ШОШГО`)
                                     хайдаг тул цэнхэр/улаан тодруулга ХЭЗЭЭ Ч гардаггүй байв. */
-                              (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : ""),
+                              (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : "") +
+                              /* ⚠️ 2026-10-22: нийт сөрөг болох нэмэлт — дээрх `negNow`-ийн ⚠️; илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) */
+                              (negNow || negSent ? " negTot" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
@@ -359,7 +416,9 @@ export function FillRows({
                             if (locked) {
                               if (changed && (e.key === "Enter" || e.key === " ")) {
                                 e.preventDefault();
-                                view?.onCell?.(i, b);
+                                /* ⚠️ 2026-10-22 (аудит): татгалзлын шалтгаан (`open`-ийн ⚠️) */
+                                const why = view?.onCell?.(i, b);
+                                if (why) say(why);
                               }
                               return;
                             }
@@ -369,6 +428,8 @@ export function FillRows({
                             }
                           }}
                           title={
+                            /* ⚠️ 2026-10-22: нийт сөрөг — хамгийн ЭХЭНД (илгээгдэхгүй шалтгаан); аудит: ЯГ бичих тоог хэлнэ (`negTip`) */
+                            (negTip ? negTip + '\n' : '') +
                             /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
                             (pastePrev?.rej.has(key) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(key) ?? '') + '\n' : '') +
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
@@ -383,7 +444,11 @@ export function FillRows({
                               : changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
-                                : tr('Өмнөх агшнаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
+                                /* ⚠️ 2026-10-22 (аудит): хянагчид сөрөг нүд зөвшөөрөгдөхгүй — «дарж зөвшөөрнө үү» гэж хэлэхгүй (`negTip`) */
+                                : negSent && view
+                                  ? ''
+                                  /* ⚠️ 2026-10-23 (UX аудит X3): «агшин» — дотоод нэр */
+                                  : tr('Өмнөх батлагдсан утгаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
                               : r.group
                               ? RO.groupAct
                               : !canVol
@@ -427,7 +492,9 @@ export function FillRows({
                                   /* ⚠️ 2026-10-07: blur-ийн commit НЯЦААГДВАЛ (асуултад «Цуцлах» · тоо биш) нүд
                                      нээлттэй үлддэг (`commit`-ийн 2026-10-06 ⚠️) ч фокус нь алга болж, дараагийн
                                      товшилт бичсэн текстийг арчдаг байв — оролтод буцааж фокуслана. */
-                                  if (!commit(r, bi, el.value) && el.isConnected) el.focus();
+                                  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт НЭЭЛТТЭЙ бол фокусыг БУЦААХГҮЙ — цонхны фокусыг
+                                     булаавал Esc/Enter оролтод очиж, цонх хариугүй үлдэнэ (`useCellEdit.asking`-ийн ⚠️) */
+                                  if (!commit(r, bi, el.value) && el.isConnected && !getConfirmSnapshot().req) el.focus();
                                 },
                                 /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
                                    нь нэг мөр текст л авдаг тул таслан авна. */
@@ -535,7 +602,7 @@ export function FillRows({
 
                     {/* Эхлэх/Дуусах огноо — календараар засагдана (ажлын мөрд).
                         Бүлгийн мөрд дэд мөрүүдийн MIN/MAX тул зөвхөн харагдана. */}
-                    {sc.bld.map((b, bi) =>
+                    {!compact && sc.bld.map((b, bi) =>
                       (["s", "e"] as const).map((k) => {
                         const key = `${r.oid}:${bi}:${k}`;
                         const fld = k === "s" ? sc.start[bi] : sc.end[bi];
@@ -605,7 +672,7 @@ export function FillRows({
                     )}
                     {/* Шинэчлэгдсэн огноо — зөвхөн эхний мөрд бичигддэг.
                         Хэрэгслийн мөрний сонгогчтой нэг утга. */}
-                    {
+                    {!compact && (
                       <td
                         style={cw("asof", "date")}
                         className={cls(
@@ -636,7 +703,7 @@ export function FillRows({
                       >
                         {i === 0 ? dt(asOf) : ""}
                       </td>
-                    }
+                    )}
                     {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — ЗӨВХӨН УНШИХ (засах зам ҮГҮЙ), сүүлийн жаазны ЭНЭ мөрийн
                         хадгалсан утга (`r.raw`). Хоосон бол хоосон (null ≠ 0). Товшвол шалтгааныг хэлнэ. */}
                     {extra.map((x, xi) => {

@@ -46,7 +46,7 @@ import {
 } from '@/lib/butetsEdit';
 import { FieldInput, type UndoInfo } from './DedButetsEdit';
 import d from './dedButets.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
 
@@ -264,16 +264,17 @@ export function DedButetsBatch({
       }
       return { oid, attrs: back };
     });
-    /* ⚠️ 2026-10-09: `unsure` — хариу АЛДАГДСАН мөрүүд. Тэдэнд манай бичсэн утгыг (`wrote`) хавсарна:
-       `revertRows` буцаахын ӨМНӨ дахин уншиж, одоогийн утга нь манай шинэ ч, хуучин ч биш (хооронд нь
-       өөр хэрэглэгч зассан) бол АЛГАСЧ мэдээлнэ (`butetsEdit.RevertRow`-ийн ⚠️). */
-    const undoOf = (written: number[], unsure: readonly number[] = []): UndoInfo | null => {
+    /* ⚠️ 2026-10-09: мөр бүрт манай бичсэн утгыг (`wrote`) хавсарна: `revertRows` буцаахын ӨМНӨ дахин уншиж,
+       одоогийн утга нь манай шинэ ч, хуучин ч биш (хооронд нь өөр хэрэглэгч зассан) бол АЛГАСЧ мэдээлнэ
+       (`butetsEdit.RevertRow`-ийн ⚠️). */
+    const undoOf = (written: number[]): UndoInfo | null => {
       const doneSet = new Set(written);
-      const unsureSet = new Set(unsure);
       const u = undoRows
         .filter((r) => doneSet.has(r.oid) && Object.keys(r.attrs).length)
         .map((r) => {
-          if (!unsureSet.has(r.oid)) return r;
+          /* ⚠️ 2026-10-21 (кодын аудит): `wrote`-ийг ҮРГЭЛЖ хавсарна — урьд нь зөвхөн хариу алдагдсан мөрт; амжилттай
+             бичигдсэн мөрийн буцаалт серверийг дахин уншдаггүй тул хооронд нь өөр хэрэглэгчийн хийсэн засварыг
+             хуучин утгаар ЧИМЭЭГҮЙ дардаг байв. */
           const wrote: Record<string, unknown> = {};
           for (const k of Object.keys(r.attrs)) wrote[k] = attrs[k];
           return { ...r, wrote };
@@ -308,7 +309,7 @@ export function DedButetsBatch({
       const undoable = [...(partial ?? []), ...unknownRows];
       /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
          давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
-      if (undoable.length) onPartial?.(undoOf(undoable, unknownRows));
+      if (undoable.length) onPartial?.(undoOf(undoable));
       /* ⚠️ 2026-10-01: АТОМ БУС давхарга (`supportsRollbackOnFailureParameter: false`) — мөр бүрийн
          үр дүн (`failed`) ирнэ: аль нь бичигдээгүйг тоогоор хэлнэ («эхний N» биш — дунд нь ч унаж болно). */
       const failedRows = (x as { failed?: { oid: number }[] }).failed;
@@ -332,7 +333,7 @@ export function DedButetsBatch({
     }
   };
 
-  if (load && !meta) return <p className={d.modalMsg}>{tr('Ачаалж байна…')}</p>;
+  if (load && !meta) return <Loading />;
   if (!meta) return <p className={d.modalMsg}>{fail || tr('Схем татагдсангүй.')}</p>;
 
   return (

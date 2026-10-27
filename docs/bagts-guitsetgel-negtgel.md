@@ -1,6 +1,6 @@
 # Багцын гүйцэтгэлийн нэгтгэл — `selbe_bagts_guitsetgel_negtgel`
 
-Зургаан шатны хяналт бүрэн өнгөрсөн **батлагдсан** гүйцэтгэлийн бүртгэл.
+Долоон шатны хяналт бүрэн өнгөрсөн **батлагдсан** гүйцэтгэлийн бүртгэл.
 
 ```
 https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/
@@ -65,7 +65,7 @@ https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/
 
 **Төслийн модны жин — Excel-ийн утга (2026-10-13).** Багцын хувь төслийн дүнд
 `TUSUL_NEGTGEL`-ийн (`Negtgel_guitsetgel_1013` — Excel V3 «Төсөл төлөвлөгөө биелэлт»)
-жингээр нийлнэ: «Хэсэгт эзлэх» F (`SHARE_SEC`) ба «Төсөлд эзлэх» G (`SHARE_PRJ`)
+жингээр нийлнэ: «Хэсэгт эзлэх» F (`share_sec`) ба «Төсөлд эзлэх» G (`share_prj`)
 Excel-ийнхээрээ — систем төсвөөс БОДОХГҮЙ. Мод нь Excel-ийн томьёоноос
 ([`src/lib/negtgelTree.ts`](../src/lib/negtgelTree.ts)). Орон сууцны багцын мөр
 (5.2.1.x) ба блокгүй багцын мөрөнд 01-ийн батлагдсан хувь орж, зөвхөн

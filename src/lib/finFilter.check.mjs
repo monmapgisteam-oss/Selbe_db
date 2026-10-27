@@ -52,10 +52,10 @@ const f = (over = {}) => ({ ...EMPTY_FILTER, ...over, facet: { ...EMPTY_FILTER.f
 const match = (r, flt) => rowMatches(r, CF_COLS, flt, CF, cellText, isNumeric);
 
 const rows = [
-  { OBJECTID: 1, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1', guitsetgegch: 'МКС', ho_dun_geree: 4058800000, zahiramj_ognoo: '2026-03-14' },
-  { OBJECTID: 2, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1 ', guitsetgegch: 'МКС', ho_dun_geree: 76000, zahiramj_ognoo: '2026-04-01' },
-  { OBJECTID: 3, ajil_tuvshin2: 'ЗАХИРАМЖ', bagts: 'Багц 4.2', guitsetgegch: 'АНУ', ho_dun_geree: null, zahiramj_ognoo: '2025-08-02' },
-  { OBJECTID: 4, ajil_tuvshin2: 'ГЭРЭЭ', bagts: '', guitsetgegch: '', ho_dun_geree: 0, zahiramj_ognoo: '' },
+  { objectid: 1, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1', guitsetgegch: 'МКС', ho_dun_geree: 4058800000, zahiramj_ognoo: '2026-03-14' },
+  { objectid: 2, ajil_tuvshin2: 'ГЭРЭЭ', bagts: 'Багц 4.1 ', guitsetgegch: 'МКС', ho_dun_geree: 76000, zahiramj_ognoo: '2026-04-01' },
+  { objectid: 3, ajil_tuvshin2: 'ЗАХИРАМЖ', bagts: 'Багц 4.2', guitsetgegch: 'АНУ', ho_dun_geree: null, zahiramj_ognoo: '2025-08-02' },
+  { objectid: 4, ajil_tuvshin2: 'ГЭРЭЭ', bagts: '', guitsetgegch: '', ho_dun_geree: 0, zahiramj_ognoo: '' },
 ];
 
 /* ── 1. numTest ── */
@@ -181,12 +181,27 @@ assert.deepEqual(distinct([{ a: 'x' }, { a: 'x ' }, { a: 'y' }], (r) => String(r
   const seen = [];
   const named = (v, t, n) => { seen.push(n); return n === 'zahiramj_unet_tsaas_huvi' && v != null ? `${(Number(v) * 100).toFixed(1)}%` : cellText(v, t); };
   const scale = (n) => (n === 'zahiramj_unet_tsaas_huvi' ? 100 : 1);
-  const r = { OBJECTID: 9, zahiramj_unet_tsaas_huvi: 0.09 };
+  const r = { objectid: 9, zahiramj_unet_tsaas_huvi: 0.09 };
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric, scale), true, '0.09 → 9% > 5');
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>50' } }), [], named, isNumeric, scale), false);
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '9.0%' } }), [], named, isNumeric, scale), true, 'харагдах текстээр');
   assert.ok(seen.includes('zahiramj_unet_tsaas_huvi'), 'cellText баганын нэр авна');
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric), false, 'хэмжээсгүй бол түүхий 0.09 (хуучин зан)');
+  /* ⚠️ 2026-10-21: 0.07 × 100 = 7.000000000000001 — тайрсны дараа `=7` таарна */
+  const r7 = { objectid: 10, zahiramj_unet_tsaas_huvi: 0.07 };
+  assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '=7' } }), [], named, isNumeric, scale), true, '0.07 → =7');
+  assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '<=7' } }), [], named, isNumeric, scale), true);
+  assert.equal(rowMatches({ objectid: 11, zahiramj_unet_tsaas_huvi: 0.125 }, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '=12,5' } }), [], named, isNumeric, scale), true, 'хувьд нэг таслал аравтын');
 }
+
+/* ── 13. 2026-10-21: таслал `finEdit.parseCell`-тэй НЭГ дүрмээр ── */
+assert.equal(numTest('=12,5')(12.5), true, '«12,5» → 12.5 (урьд нь 125)');
+assert.equal(numTest('=12,5')(125), false);
+assert.equal(numTest('>1,234.5')(1235), true, 'мянгат + аравтын цэг');
+assert.equal(numTest('=1.234,5')(1234.5), true, 'цэг мянгат, таслал аравтын');
+assert.equal(numTest('>1,000')(1001), true, 'тодорхойгүй «1,000» — мөнгөн шүүлтэд мянгат (хуучин зан)');
+assert.equal(numTest('=1,250', true)(1.25), true, 'хувьд нэг таслал аравтын');
+assert.equal(numTest('0,5..1,5')(1), true, 'муж аравтын таслалтай');
+assert.equal(numTest('>1,2,3'), null, 'буруу таслал — текстээр хайна');
 
 console.log('finFilter.check.mjs — БҮГД ТЭНЦЛЭЭ');

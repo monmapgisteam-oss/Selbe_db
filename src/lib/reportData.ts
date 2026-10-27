@@ -63,7 +63,7 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_LEFT,
+  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
@@ -72,9 +72,9 @@ import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
-import { isClearedStatus, statusKey } from '@/lib/land';
+import { isClearedStatus, loadLandStatus } from '@/lib/land';
 import {
-  finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
+  finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE,
 } from '@/lib/finExcelLayout';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -350,6 +350,12 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  *    ороомгуудыг дуудна тул «Тайлан» ба «Схем» хоёр НЭГ хүсэлт хуваалцана.
  */
 /* ⚠️ 2026-10-12 (дарааллын аудит): `BUILDING` — дотор нь `loadPkgLabels` (барилгын давхаргын `BAGTS`) */
+/**
+ * §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь — дэлгэц (`Tailan`) ба PDF/мэйл (`reportPdf`) НЭГ.
+ * ⚠️ 2026-10-26 (аудит): урьд нь зөвхөн дэлгэцэд (2026-10-11) байсан тул PDF нөхцөлгүй «их байна» гэж бичдэг байв.
+ */
+export const BAGTS_GAP_PTS = 20;
+
 export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING']);
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
@@ -472,24 +478,19 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
      (`Selbe_parcel_20260906`) `Tuluv`/`явцын_мэдээ` талбаргүй — хатуу нэрээр
      асуувал ArcGIS 400 («'outFields' parameter is invalid») буцааж, тайлан
      БҮХЭЛДЭЭ («Тайлангийн 1 эх сурвалж татагдсангүй: газар») унадаг байв. */
-  const F = PARCEL_LEFT.fields;
-  const rows = await queryFeatures(d.url, {
-    outFields: [F.status, d.qty?.field ?? F.area],
-  });
-
-  const tally = (field: string, skipEmpty: boolean) => {
-    const m = new Map<string, number>();
-    rows.forEach((r) => {
-      /* ⚠️ 2026-10-06: `land.statusKey` — «Бүрэн чөлөөлсөн»-ийн бүх бичиглэл НЭГ бүлэг, хоосон/«—» →
-         «Тодорхойгүй» (`land.ts`-ийн бүлэглэлтэй нэг). Урьд нь `str()` тул хувилбар бүр тусдаа мөр. */
-      const k = statusKey(r[field]);
-      if (!k && skipEmpty) return;
-      m.set(k || tr('Тодорхойгүй'), (m.get(k || tr('Тодорхойгүй')) ?? 0) + 1);
-    });
-    return [...m.entries()].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
-  };
-
-  const byStatus = tally(F.status, false);
+  /*
+   * ⚠️ 2026-10-23 (аудит): ТООЛОЛ БА ТАЛБАЙ нь `land.loadLandStatus`-аас — «Газар чөлөөлөлт» · дашбоард · удирдлагын
+   *    тайлантай НЭГ тооцоо (`parcelAreaOf`: `area_m2 = 0`/хоосон мөрд `Талб_1` эсвэл полигоны талбай; `parcelAreasDeduped`:
+   *    хуваагдсан нэгж талбар нэг удаа). Урьд нь энд `SUM(area_m2)`-ийг шууд нэмдэг байсан тул 2026-10-22-ны хоёр дүрэм
+   *    хамрагдаагүй — амьдаар тайлан 953,987 м², бусад бүх харагдац 961,303 м² гэж зөрдөг байв.
+   *    Төлөвийн бүлэглэл ч (`statusKey` → «Тодорхойгүй») `buildLandStatus`-ийн `labelOf`-той ижил тул тэндээс авна.
+   *    (2026-08-21-ний «зөвхөн тоолдог талбар» дүрэм хадгалагдана — `loadParcelAreaRows` нь хувийн мэдээлэл татдаггүй.)
+   */
+  const st = await loadLandStatus();
+  const byStatus = st.byStatus
+    .map(({ label, n }) => ({ label, n }))
+    .filter((s) => s.n > 0)
+    .sort((a, b) => b.n - a.n);
   /*
    * ⚠️ ХУВЬ нь ДАШБОАРДТАЙ НЭГ ЭХ СУРВАЛЖААС (2026-08-29). Урьд нь энд
    * «нийт − үлдсэн» гэж боддог байсан бол дашбоард/«Газар чөлөөлөлт» нь
@@ -500,8 +501,8 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
   const clearance = await loadClearance();
 
   return {
-    parcels: rows.length,
-    areaM2: rows.reduce((a, r) => a + nn(r[d.qty?.field ?? F.area]), 0),
+    parcels: st.total,
+    areaM2: st.areaM2,
     pct: clearance.pct,
     byStatus,
     /* ⚠️ 2026-09-06: шинэ эхэд ТӨЛӨВ ба ШАЛТГААН нэг талбар — «Бүрэн чөлөөлсөн»-өөс
@@ -761,7 +762,12 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const UNTYPED = tr('Төрөл тодорхойлоогүй');
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
   master.forEach((r) => {
-    const t0 = str(r[F.type]);
+    /* ⚠️ 2026-10-26 (аудит): FIN_XL_ROW_HIDE (7 — бондын хүү, «ажил биш») хүмүүст харагдахгүй — «Ажил» тоонд орж байв (мөнгө 0) */
+    if (FIN_XL_ROW_HIDE.includes(secOf(r))) return;
+    /* ⚠️ 2026-10-26 (аудит): 2-р түвшин хоосон бол 1-р түвшний нэр (`negtgel`-ийн ⚠️, `finExcelLayout`-ийн ангилалтай нэг) —
+       НИЙГМИЙН ДЭД БҮТЭЦ-ийн 14 мөр (192.5 тэрбум) «Төрөл тодорхойлоогүй» гардаг байв (удирдлагын горим нэрээр нь харуулдаг). */
+    const ty = str(r[F.type]);
+    const t0 = ty && ty !== '0' ? ty : str(r[F.project]);
     const t = !t0 || t0 === '0' ? UNTYPED : t0;
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;
@@ -1027,7 +1033,8 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
  * (grep: `loadZov` алга) тул оруулаагүй — хэрэггүй түлхүүр нь дэмий дахин таталт.
  */
 export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
-  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM']);
+  /* ⚠️ 2026-10-19: `TUSUL_NEGTGEL` — `loadNegtgelPct` нэгтгэлийн хүснэгтээс уншдаг (`execReport.loadExecReport`-тэй ижил) */
+  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   /*

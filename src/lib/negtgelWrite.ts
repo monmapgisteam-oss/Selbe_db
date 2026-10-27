@@ -3,7 +3,7 @@
 /**
  * БАТЛАГДСАН ГҮЙЦЭТГЭЛИЙГ НЭГТГЭЛД БҮРТГЭХ.
  *
- * Зургаан шатны хяналт (гүйцэтгэгч → инженер → багцын менежер → ерөнхий
+ * Зургаан шатны хяналт (гүйцэтгэгч → инженер → багцын ахлах инженер → ерөнхий
  * менежер → хэлтсийн дарга → газрын дарга; `REVIEW_STAGES`, 2026-10-09 аудит №6 —
  * урьд «дөрвөн шат» гэж бичигдсэн байв) БҮГД өнгөрсний ДАРАА л энэ бүртгэл үүснэ. Өөрөөр хэлбэл
  * `selbe_bagts_guitsetgel_negtgel` нь «хэн нэгний бөглөсөн зүйл» биш,
@@ -26,8 +26,9 @@ import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
 import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
 import { invalidate } from './dataBus';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { uniqueBlockCounts } from './blockProgress';
+import { PKGS, loadSchema, fillSchema } from '@/modules/sheet/bagts.pkg';
+import { loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { uniqueBlockCounts, constructionObyem, sumObyemParts, obyemFields, type ObyemPair } from './blockProgress';
 
 const F = BAGTS_NEGTGEL.fields;
 
@@ -117,7 +118,7 @@ export const blendBlocks = (xs: { n: number; v: number | null }[]): number | nul
  *    тоологдож, нэгтгэл дашбоардын `pkgProgressOf` (хуваарь = түлхүүрийн олонлог, 14)-оос
  *    0.636 дахин бага гардаг байв. Бүрэн давхардсан хуудас (жин 0) жигнэлтэд ОРОХГҮЙ; ялгаатай
  *    түлхүүртэй хуудсууд (Багц 1: 9F/12F) урьдын адил блокийн тоогоор. Эрэмбэ чухал: эхнийх
- *    (батлагдаж буй / сүүлийн мөрийн ӨДРӨӨС ӨМНӨ хэмжилттэй) давамгайлна.
+ *    давамгайлна — ⚠️ 2026-10-21: дуудагч (`summaryOf`) PKGS-ийн дарааллаар өгнө (`loadPlanCurve`-тэй нэг).
  * ⚠️ Жинтэй хуудас ганц (эсвэл блокгүй багц — бүх `bld` хоосон) бол ЭХНИЙХИЙН утга;
  *    жинтэй хуудсуудын аль нэг нь `null` бол `null` (`blendBlocks`-ийн дүрэм).
  */
@@ -179,8 +180,32 @@ async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
   return headNo !== '' && headNo === h.no;
 }
 
-/** «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1) */
-type BRow = { act: number | null; plan: number | null; volume: number | null; volumePlan: number | null };
+/**
+ * «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1).
+ * ⚠️ 2026-10-23 (аудит): обьём ЭНД БАЙХГҮЙ БОЛСОН — «Б.» бүлгийн `obyem_sum`/`Обьём` нүд үргэлж хоосон
+ *    (`blockProgress.constructionObyem`-ийн ⚠️); обьём нь навч мөрүүдээс (`sheetObyem`). `at` = тэр жаазны
+ *    `fillDate` (ms) — обьёмыг ЯГ ТЭР агшны мөрүүдээс уншихад.
+ */
+type BRow = { act: number | null; plan: number | null; at: number | null };
+
+/**
+ * Нэг хуудасны обьём — `at` агшны (өдрийн сүүлийн бүтэн жааз, `loadRows`-ийн `dayFilter` · `lastFrame` — хянагчийн
+ * харагдацтай нэг зам) навч мөрүүдээс (`constructionObyem`). `at == null` (тэр хүртэл нийтлэгдээгүй хуудас) бол
+ * одоогийн (суурь) жааз — төлөвлөгөөт обьём нь багцын дүнд орно, бодит нь `null`.
+ * ⚠️ 2026-10-23: `fillSchema` — блокгүй багцын синтетик блокийн обьём `obyem_sum` (`loadSchema`-д `obyem = []`).
+ * ⚠️ Уншиж ЧАДАХГҮЙ бол `null` (дуудагч багцын обьёмыг бүхэлд нь `null` болгоно — хагас нийлбэрийг бүтэн мэт бичихгүй);
+ *    обьём нь туслах багана тул гүйцэтгэлийн бүртгэлийг (хувь) ХААХГҮЙ.
+ */
+async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> {
+  try {
+    const fsc = await fillSchema(p);
+    const { rows } = await loadRows(p, fsc, at == null ? undefined : msToDay(at), obyemFields(fsc));
+    return constructionObyem(rows, fsc.obyem);
+  } catch (e) {
+    console.warn(`[selbe] нэгтгэлийн обьём: ${p.label} — бөглөх хуудас уншигдсангүй, обьём бичихгүй`, e);
+    return null;
+  }
+}
 
 /**
  * Нэг хуудасны «Б.» мөр — `dateWhere`-д таарах ХАМГИЙН СҮҮЛИЙН жаазнаас.
@@ -203,7 +228,7 @@ type BRow = { act: number | null; plan: number | null; volume: number | null; vo
  *    хоёуланг БУУРАХААР эрэмбэлж, сүүлийн жаазны мөрийг авна.
  */
 async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
-  const cols = [sc.f.no, sc.f.act, sc.f.plan, sc.f.vol, sc.f.obyemSum]
+  const cols = [sc.f.no, sc.f.act, sc.f.plan, fill]
     .filter(Boolean) as string[];
   const q = (await post(`${p.url}/query`, {
     where: `${dateWhere} AND ${constructionWhere(sc.f.no)}`,
@@ -217,8 +242,7 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
   return {
     act: num(a[sc.f.act]),
     plan: num(a[sc.f.plan]),
-    volume: sc.f.obyemSum ? num(a[sc.f.obyemSum]) : null,
-    volumePlan: num(a[sc.f.vol]),
+    at: num(a[fill]),
   };
 }
 
@@ -233,7 +257,7 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
 /**
  * Багцын дүнд орсон НЭГ хуудас. `real: false` = хэзээ ч нийтлэгдээгүй / «Б.» мөр нь
  * хэмжигдээгүй хуудас — блокууд нь 0% гэж орсон (`summaryOf`-ийн ⚠️ 2026-10-09).
- * ⚠️ 2026-10-12: `n` = ДАВХАРДАЛГҮЙ блокийн жин (`uniqueBlockCounts`, `parts`-ын эрэмбээр) —
+ * ⚠️ 2026-10-12: `n` = ДАВХАРДАЛГҮЙ блокийн жин (`uniqueBlockCounts`, `parts`-ын эрэмбээр — 2026-10-21-ээс PKGS-ийн дараалал) —
  *    `sc.bld.length` БИШ; 0 бол хуудас жигнэлтэд ороогүй (`blendSheets`).
  */
 type Part = { n: number; r: BRow; p: Pkg; sc: Schema; real: boolean };
@@ -264,7 +288,7 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
     if (!sc?.f.fillDate) continue;
 
     const head = (await post(`${p.url}/query`, {
-      where: `OBJECTID = ${sheetOid}`,
+      where: `objectid = ${sheetOid}`,
       outFields: [sc.f.fillDate, sc.f.no].join(','),
       returnGeometry: 'false',
     })) as { features?: { attributes: Record<string, unknown> }[] };
@@ -352,12 +376,18 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       else if (sc.act.some(Boolean)) {
         parts.push({
           n: sc.bld.length,
-          r: { act: 0, plan: r?.plan ?? null, volume: r?.volume ?? null, volumePlan: r?.volumePlan ?? null },
+          r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null },
           p, sc, real: false,
         });
       }
     }
   }
+  /* ⚠️ 2026-10-21 (аудит): `parts`-ыг PKGS-ийн дарааллаар (9F эхэнд) эрэмбэлнэ — `planProgress.loadPlanCurve`-тэй
+     НЭГ дүрэм. Урьд нь батлагдсан хуудас ЭХЭНД байсан тул давхардсан шошгыг аль хуудас авах нь (`uniqueBlockCounts`)
+     аль нь батлагдсанаас хамаардаг байв: Багц 4-2-т 9F батлавал [14, 0], 12F батлавал [8, 6] — нэг өдрийн нэгтгэл
+     батлах дарааллаас шалтгаалж өөр тоо гардаг байлаа. `own` (батлагдаж буй хуудасны «Б.») өөрчлөгдөхгүй. */
+  const pkgOrder = new Map(PKGS.map((x, i) => [x.key, i]));
+  parts.sort((a, b) => (pkgOrder.get(a.p.key) ?? 0) - (pkgOrder.get(b.p.key) ?? 0));
   uniqueBlockCounts(parts.map((x) => x.sc.bld)).forEach((w, i) => { parts[i].n = w; });
   const mean = (pick: (r: BRow) => number | null): number | null =>
     parts.length === 1 ? pick(own) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
@@ -367,22 +397,24 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
    *    харьцуулахдаа ЗӨВХӨН өөртэйгөө (төлөвлөгөөт vs бодит) харьцуулна.
    *    Хоёр хуудастай багцад хуудсуудын НИЙЛБЭР; бүгд хоосон бол `null`.
    */
-  const sum = (pick: (r: BRow) => number | null): number | null => {
-    let s: number | null = null;
-    for (const x of parts) {
-      const v = pick(x.r);
-      if (v != null) s = (s ?? 0) + v;
-    }
-    return s;
-  };
+  /* ⚠️ 2026-10-21 (аудит): бүрэн давхардсан хуудас (`n === 0`, Багц 4-2·12F) обьёмын нийлбэрт ч ОРОХГҮЙ —
+     хувийн зам (`blendSheets`)-тай нэг олонлог; урьд нь 12F-ийн F6_x-ийн обьём 9F-ийнхтэй ДАВХАР нэмэгддэг байв.
+     Жинтэй хуудас огт үгүй (блокгүй багц — бүх `bld` хоосон) бол `blendSheets`-ийн адил эхнийх. */
+  /* ⚠️ 2026-10-23 (аудит): нийлбэрийн дүрэм `blockProgress.sumObyemParts` руу (дашбоардын амьд тооцоотой нэг);
+     хуудас бүрийн обьём «Б.» мөрөөс БИШ навч мөрүүдээс (`sheetObyem`). Нийлбэрт орох хуудсаа л уншина. */
+  const volParts = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
+  const vols = await Promise.all(volParts.map((x) => sheetObyem(x.p, x.p.key === one.p.key ? at : x.r.at)));
+  const vol: ObyemPair = vols.some((v) => v == null)
+    ? { volume: null, volumePlan: null }
+    : sumObyemParts(volParts.map((x, i) => ({ n: x.n, ...(vols[i] as ObyemPair) })));
 
   return {
     at,
     /* ⚠️ 0–1 → 0–100 (`toPct`) — нэгтгэлийн багана ХУВЬ хүлээдэг */
     progress: toPct(own.act == null ? null : mean((r) => r.act)),
     planned: toPct(mean((r) => r.plan)),
-    volume: sum((r) => r.volume),
-    volumePlan: sum((r) => r.volumePlan),
+    volume: vol.volume,
+    volumePlan: vol.volumePlan,
     parts,
   };
 }
@@ -447,7 +479,7 @@ export type NegtgelResult = { ok: true; skipped?: 'blockless' } | { ok: false; e
  * БАТЛАГДСАН гүйцэтгэлийг нэгтгэлд нэмнэ.
  *
  * ⚠️ ДАВХАРДЛААС ХАМГААЛНА: тухайн багц·огноогоор мөр аль хэдийн байвал ШИНЭ
- *    мөр нэмэхгүй. Ерөнхий менежер хоёр удаа дарах, эсвэл сүлжээ тасарч
+ *    мөр нэмэхгүй. Төлөвлөлтийн ахлах инженер хоёр удаа дарах, эсвэл сүлжээ тасарч
  *    дахин илгээгдэх нь бодит тохиолдол.
  *
  * @param bagts    багцын нэр — хяналтын бүртгэл дэх бичлэгээр
@@ -478,7 +510,7 @@ export async function registerApproved(
        олдсонгүй · сүлжээ · үйлчилгээ унасан) нь барилгын багцтай адил АЛДАА — урьд нь блокгүй багцад
        `ok: true` буцааж бүртгэгдсэн гэж тэмдэглэгдэн дахин оролдлогогүй ЧИМЭЭГҮЙ алдагддаг байв. */
     if (s && s.progress == null && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };
-    if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };
+    if (!s) return { ok: false, error: tr('Бөглөх хуудасны хадгалсан хувилбар олдсонгүй') };
     /* ⚠️ 2026-10-09 (F12): ХУУДАС БҮРИЙН хувь 0–100-д (`toPct` нь 0–1 хүлээдэг — 0–100 бичигдсэн хуудас
        2,600% болно). Шинэ хуудас ±20-ийн жишилтээс хасагддаг тул энд, бичихээс ӨМНӨ. */
     for (const x of s.parts) {
@@ -703,7 +735,7 @@ export async function registerApproved(
         if (!dr || dr.success !== true)
           return {
             ok: false,
-            error: tr('Давхар нэгтгэлийн мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}', newOid, dr?.error?.description ?? ''),
+            error: tr('Давхар нэгтгэлийн мөр (бүртгэл №{0}) үлдлээ — админд мэдэгдэнэ үү (гараар устгах шаардлагатай): {1}', newOid, dr?.error?.description ?? ''),
           };
         return { ok: true };
       }

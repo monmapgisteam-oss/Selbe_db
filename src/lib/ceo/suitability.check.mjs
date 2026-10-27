@@ -73,9 +73,12 @@ const c = computeSuitability(Z);
   assert.ok(c.fails.every((f) => f.zone !== 'G-1'), 'хасагдсан бүс зөрчилд орохгүй');
   assert.ok(c.fails.every((f) => f.indId !== 'engineering'));
 
-  assert.equal(c.scoredZones, 3, 'G-1 (raw хоосон) оноогүй');
+  /* ⚠️ 2026-10-22 (аудит): Багц-2.1 зөвхөн ногоонтой (16/92 хэмжсэн жин) — урьд таамгийн 100-тай нийлж оноотой байв */
+  assert.equal(c.scoredZones, 2, 'G-1 (raw хоосон) ба Багц-2.1 (хэмжсэн жин 17%) оноогүй');
+  assert.equal(c.lowCoverage, 1, 'Багц-2.1 — өгөгдөл хангалтгүй (G-1 оноололд ордоггүй тул тоологдохгүй)');
   assert.equal(c.zones[0].zone, 'A-1', 'хамгийн муу оноо эхэнд');
   assert.equal(c.zones[0].fails, 5);
+  assert.ok(Math.abs(c.zones[0].coverage - 77 / 92) < 1e-9, 'хэмжсэн жин: таамаг (social/engineering) орохгүй');
   assert.ok(c.avgScore != null && c.avgScore > 0 && c.avgScore <= 100);
 }
 
@@ -84,14 +87,17 @@ const c = computeSuitability(Z);
   const k = buildSuitabilityKpi(c);
   assert.equal(k.value, '5');
   assert.equal(k.level, 'bad');
-  assert.equal(k.facts[0], '2 бүс / 3');
+  assert.equal(k.facts[0], '2 бүс / 2');
   assert.equal(k.facts[1], '6 зөрчил');
   assert.ok(k.facts.some((f) => f.startsWith('дундаж оноо ')));
+  assert.ok(k.facts.includes('1 бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < 50%)'), k.facts.join(' | '));
   assert.equal(k.facts.at(-1), '1 үзүүлэлт батлагдаагүй эх өгөгдөлтэй');
   assert.equal(k.tables.length, 3);
   assert.equal(k.tables[0].rows.length, 6, 'үзүүлэлт бүр');
   assert.equal(k.tables[1].rows.length, 6, 'зөрчил бүр');
-  assert.equal(k.tables[2].rows.length, 3, 'оноотой бүс бүр (≤15)');
+  assert.equal(k.tables[2].rows.length, 2, 'оноотой бүс бүр (≤15)');
+  assert.equal(k.tables[2].cols[3], 'Хэмжсэн жин (%)');
+  assert.equal(k.tables[2].rows[0][3].v, 84, 'A-1: 77/92');
   for (const t of k.tables) for (const r of t.rows) assert.equal(r.length, t.cols.length);
   const bcrRow = k.tables[0].rows.find((r) => r[0].v === 'BCR');
   assert.equal(bcrRow[4].v, null, 'зөрчилгүй → хамгийн муу бүс «—»');
@@ -147,7 +153,8 @@ const c = computeSuitability(Z);
 
 /* 6. ROW_CAP таслалт — тасалсан тоо ил мөр болно */
 {
-  const many = Array.from({ length: ROW_CAP + 50 }, (_, i) => zone(`M-${i}`, RES, { green: 1 }));
+  /* ⚠️ 2026-10-22: бүрэн хэмжигдсэн бүс (зөвхөн ногоонтой бүс одоо оноогүй — хэмжсэн жингийн босго) */
+  const many = Array.from({ length: ROW_CAP + 50 }, (_, i) => zone(`M-${i}`, RES, { green: 1, density: 350, far: 1, bcr: 30, parking: 100 }));
   const k = buildSuitabilityKpi(computeSuitability(many));
   assert.equal(k.tables[1].rows.length, ROW_CAP + 1);
   assert.match(String(k.tables[1].rows.at(-1)[0].v), /50/);

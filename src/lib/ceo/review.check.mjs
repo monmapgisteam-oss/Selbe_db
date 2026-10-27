@@ -23,7 +23,7 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
     key: `${bagts}|${ajil}|К`,
     bagts, ajil, company: 'Компани ' + ajil,
     status: '', owner, cycles: [], current: {},
-    engineerReturns: 0, managerReturns: 0, directorReturns: 0, headReturns: 0, chiefReturns: 0,
+    engineerReturns: 0, managerReturns: 0, plannerReturns: 0, directorReturns: 0, headReturns: 0, chiefReturns: 0,
     ...extra,
   },
   days,
@@ -49,7 +49,7 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
   assert.deepEqual(r.failedSources, []);
   assert.ok(r.facts.includes('1 ажил 7 хоногоос дээш'), r.facts);
   assert.ok(r.facts.includes('хүлээгдэж буй 3 ажил'), r.facts);
-  assert.ok(r.facts.includes('шатаар: Гүйцэтгэгч компани 1 · Хяналтын инженер 1 · Багцын менежер 1 · Ерөнхий менежер 0 · Хэлтсийн дарга 0 · Газрын дарга 0'), r.facts);
+  assert.ok(r.facts.includes('шатаар: Гүйцэтгэгч компани 1 · Хяналтын инженер 1 · Багцын ахлах инженер 1 · Төлөвлөлтийн инженер 0 · Төлөвлөлтийн ахлах инженер 0 · Хэлтсийн дарга 0 · Газрын дарга 0'), r.facts);
   assert.ok(r.facts.includes('бөглөлт хамгийн хуучин 36 хоног (Багц 1)'), r.facts);
 
   assert.equal(r.tables.length, 2);
@@ -58,7 +58,7 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
   assert.equal(t1.cols.length, 7);
   assert.deepEqual(t1.rows.map((row) => row[5].v), [12, 3, 0], 'хоног буурах эрэмбэ');
   assert.equal(t1.rows[0][6].v, 3, 'буцаалт = 1 + 2 + 0');
-  assert.equal(t1.rows[0][3].v, 'Багцын менежер', 'шатны нэр STAGE_LABEL-ээс');
+  assert.equal(t1.rows[0][3].v, 'Багцын ахлах инженер', 'шатны нэр STAGE_LABEL-ээс');
   assert.equal(t1.rows[2][4].v, 'дараалалд', 'хуваарилагдаагүй → дараалалд');
   assert.equal(t1.rows[0][5].kind, 'day');
   assert.equal(t2.cols.length, 3);

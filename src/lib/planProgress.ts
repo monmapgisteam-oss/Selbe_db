@@ -67,9 +67,10 @@
 import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
 import { t as tr } from './i18nCore';
+import { pct } from './format';
 import { bagtsKey, isConstructionNo } from './services';
 import { uniqueBlockCounts } from './blockProgress';
-import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
+import { countPlanRows, loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 import { register } from './dataBus';
 
 /** Нэг сарын цэг */
@@ -210,6 +211,29 @@ export const planFields = (sc: Schema): string[] => [...new Set([
   ...sc.start, ...sc.end,
 ].filter((x): x is string => !!x))];
 
+/**
+ * ЗАДАРГААНЫ ХҮСНЭГТ ХООСОН УУ — `countPlanRows()`-ийн 5 минутын кэш.
+ * ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): `HUVAARI_OBYEM` одоогоор 0 мөртэй тул доорх 10 хуудасны `loadPkgPlan` (мета +
+ *    10 асуулга, 65 хүсэлтийн 11 нь) бүгд хоосон буцдаг байв — одоо НЭГ тоолох асуулга, 0 бол багцаар асуухгүй. Муруйн
+ *    тоо ӨӨРЧЛӨГДӨХГҮЙ: `null` задаргаа ба хоосон `Map` хоёулаа `planPct = undefined` · `volByMonth` хоосон.
+ *    `HUVAARI_OBYEM` бичилтээр (`applyPlanEdits` → `invalidate`) шууд хаягдана; бусад хэрэглэгчийн бичилт 5 мин дотор
+ *    (`loadPlanCurveCached`-тай нэг TTL). Тоолж чадаагүй (`null`) бол «хоосон биш» гэж үзэж урьдын адил багцаар
+ *    асууна — тэр хариуг кэшлэхгүй (`obyemResFields`-ийн дүрэм).
+ */
+let planEmptyP: Promise<boolean> | null = null;
+let planEmptyAt = 0;
+register(() => { planEmptyP = null; }, ['HUVAARI_OBYEM']);
+function planTableEmpty(): Promise<boolean> {
+  if (!planEmptyP || Date.now() - planEmptyAt > 5 * 60_000) {
+    planEmptyAt = Date.now();
+    const raw = countPlanRows();
+    const mine = raw.then((c) => c === 0);
+    planEmptyP = mine;
+    void raw.then((c) => { if (c == null && planEmptyP === mine) planEmptyP = null; });
+  }
+  return planEmptyP;
+}
+
 export async function loadPlanCurve(): Promise<PlanCurve> {
   const sheets: Sheet[] = [];
   /** Уншигдаагүй хуудсууд — `PlanCurve.failed`-ийн ⚠️ */
@@ -224,6 +248,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       return fn();
     }
   };
+  /* ⚠️ 2026-10-21: нэг удаа, хуудсуудтай ЗЭРЭГ — багц бүр үүнийг хүлээгээд задаргаагаа асуух эсэхээ шийднэ */
+  const emptyP = planTableEmpty();
 
   await Promise.all(PKGS.map(async (pkg) => {
     let sc: Awaited<ReturnType<typeof loadSchema>>;
@@ -240,12 +266,15 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): задаргааг мөрийн ДАРАА биш ЗЭРЭГ эхлүүлнэ —
          хоёр бие даасан уншилт дараалсан шат (waterfall) болдог байв. Уналт нь урьдын адил
          ЧИМЭЭГҮЙ `null` (доорх ⚠️); мөр унавал үр дүнг нь ашиглахгүй (хаягдана). */
-      obP = loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+      /* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): хүснэгт ХООСОН бол багцаар асуухгүй (`planTableEmpty`-ийн ⚠️) */
+      obP = emptyP.then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan))).catch(() => null);
       /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): ЗӨВХӨН муруйд хэрэгтэй БАГАНУУД (`planFields`).
          Урьд нь `*` (~60+ багана: блок бүрийн гүйцэтгэл · обьём · бодит огноо …) — 10 хуудас
          нийлээд ~71 МБ JSON; одоо ~1/6. Тоо ӨӨРЧЛӨГДӨХГҮЙ: `planCurve`/`planPct`/муж нь зөвхөн
          эдгээр талбарыг уншдаг (`planFields`-ийн ⚠️), бусад нь `loadRows`-д `null` болно. */
-      r = await retry(() => loadRows(pkg, s, undefined, planFields(s)));
+      /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `persist` — хуудас өөрчлөгдөөгүй бол (НЭГ тандалт) мөрийг хөтчийн кэшээс
+         (`sheetCache`); дахин нээлт бүрд 10 хуудас · 22.5 МБ JSON татаж задлахгүй. Тоо ИЖИЛ (амьд тулгалт). */
+      r = await retry(() => loadRows(pkg, s, undefined, planFields(s), { persist: true }));
     } catch (e) {
       failed.push({ key: pkg.key, group: bagtsKey(pkg.group) });
       console.warn(`[selbe] төлөвлөгөөт муруй: ${pkg.key} уншигдсангүй — багц/төслийн муруй гаргахгүй`, e);
@@ -447,6 +476,10 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   /** төсөл → сар → обьёмын нийлбэр */
   const tVol = new Map<string, number>();
   for (const sh of sheets) {
+    /* ⚠️ 2026-10-21 (аудит): бүрэн давхардсан хуудас (`nUniq === 0`, Багц 4-2·12F) багц/төслийн обьёмд ч
+       ОРОХГҮЙ — хувийн нэгтгэлтэй (`gAcc`/`tAcc`) нэг олонлог; урьд нь F6_x-ийн сарын обьём давхар нэмэгддэг байв.
+       Хуудасны өөрийн цэгийн `vol` (`bySheet`) хэвээр. */
+    if (!sh.nUniq) continue;
     const g = gVol.get(sh.group) ?? new Map<string, number>();
     for (const [sar, v] of sh.volByMonth) {
       g.set(sar, (g.get(sar) ?? 0) + v);
@@ -537,6 +570,39 @@ export function planPctAt(
   if (p1 != null) return (p0 ?? 0) + (p1 - (p0 ?? 0)) * frac;
   return past ? past.pct : null;
 }
+
+/**
+ * ХУВААРИЙН ХАМРАЛТ (%) — төлөвлөгөөт муруйн ТӨГСГӨЛИЙН утга, 0–100 (цэвэр функц).
+ *
+ * ⚠️ 2026-10-22 (аудит): огноогүй ажил `bagtsSheet.planCurve`-д 0 гэж тоологддог боловч жин нь хуваарьт
+ *    ҮЛДДЭГ (`plan[k] ?? 0`) тул муруйн ТӨГСГӨЛ = мөнгөн жингийн ОГНООТОЙ хэсэг (хуваарийн хамралт). Хуваарь
+ *    дутуу багцын «Төлөвлөсөн %» хэт бага гарч, хоцорсон багц «Хэвийн», оноо 100 болдог байв (амьдаар төсөл
+ *    59.1% ХО жингээр, Багц 3.3 8.6%, 4.1 22.4%, 3.1 32.6%, 4.2 44.1%). НЭМЭЛТ ХҮСЭЛТГҮЙ — тухайн хувийг
+ *    гаргасан ЯГ ТЭР муруйн (багц → `byBagts`, төсөл → `projectPlanOf`) сүүлийн цэгээс.
+ * ⚠️ `null` = муруй алга (хамралт мэдэгдэхгүй) — 0 биш.
+ */
+export function planCoverage(series: ReadonlyArray<{ label: string; pct: number }> | null | undefined): number | null {
+  if (!series?.length) return null;
+  let last = series[0];
+  for (const p of series) if (p.label > last.label) last = p;
+  return Number.isFinite(last.pct) ? Math.max(0, Math.min(100, last.pct)) : null;
+}
+
+/**
+ * ⚠️ 2026-10-22 (аудит): ДҮГНЭХ ДООД ХАМРАЛТ (%) — хуваарь үүнээс бага хамарсан бол хоцорсон/хэвийн гэж
+ *    ДҮГНЭХГҮЙ, хуваарийн оноо тавихгүй (`null`, шалтгаантай). Төлөвлөсөн % нь хамралтын тэмдэглэлтэй хэвээр.
+ */
+export const PLAN_COVERAGE_MIN = 95;
+
+/** Хуваарь дүгнэхэд хангалттай хамарсан уу — мэдэгдэхгүй (`null`) бол ҮГҮЙ (2026-10-22) */
+export const coverageOk = (c: number | null | undefined): boolean => c != null && c >= PLAN_COVERAGE_MIN;
+
+/**
+ * «хуваарь X% хамарсан» — «Төлөвлөсөн %»-ийн хажууд (2026-10-22, аудит). Бүрэн (≥ 99.95) эсвэл
+ * мэдэгдэхгүй бол '' — бүрэн хуваарьт дуу чимээ нэмэхгүй.
+ */
+export const coverageNote = (c: number | null | undefined): string =>
+  (c == null || c >= 99.95 ? '' : tr('хуваарь {0} хамарсан', pct(c, 1)));
 
 /**
  * ХЭМЖИЛТИЙН ӨДӨР — төлөвлөгөөг (`planPctAt`) ЯМАР өдрөөр жишихийг сонгоно.

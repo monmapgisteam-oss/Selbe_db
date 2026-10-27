@@ -9,7 +9,7 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { usePlanTotals } from '@/lib/totals';
+
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading, Data, userError } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
@@ -17,16 +17,16 @@ import {
   type Aoi, type Row,
 } from '@/lib/query';
 import {
-  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelLeftWhere, parcelOidsWhere,
+  GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_CLEARED, parcelOidsWhere,
   PKG_FAMILY_BY_BAGTS,
-  layerUrl, ZONE_LAYER, ZONE_FIELDS, zoneType,
+  layerUrl, ZONE_LAYER, ZONE_FIELDS, zoneType, LAYER_BY_ID, zoneWhere,
 } from '@/lib/services';
 import { loadPkgOverlaps, type PkgOverlap } from '@/lib/pkgSaad';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
-import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
-import { statusKey, isClearedStatus, parcelAltAreaWhere, statusRawsWhere } from '@/lib/land';
+import { PARCEL_OID, PARCEL_FIND_LIMIT, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
+import { statusKey, isClearedStatus, statusRawsWhere, loadParcelAreaRows, parcelGroupRows } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
 import { num, text, cat, NO_DATA } from '@/lib/format';
@@ -397,7 +397,8 @@ function toItems(rows: Row[], field: string, valueKey: string, unit = tr('ш'), 
     key: grp.label || `#${i}`,
     label: grp.label,
     value: grp.values[valueKey] ?? 0,
-    display: `${num(grp.values[valueKey] ?? 0)} ${unit}`,
+    /* ⚠️ 2026-10-21 (аудит): харагдац `stats`-аас — хэмжилтгүй бүлэг «0» БИШ «—» (`query.Group.stats`; count-д null гарахгүй) */
+    display: grp.stats[valueKey] == null ? '—' : `${num(grp.stats[valueKey])} ${unit}`,
     color: PALETTE[i % PALETTE.length],
     where: groupWhere(field, grp),
   }));
@@ -469,6 +470,9 @@ type GazarData = {
   pUse: ReturnType<typeof toItems>;
 };
 
+/* ⚠️ 2026-10-23 (UX аудит E13): агуулга гарах хүртэл ~25 с — энэ удаа ӨӨРЧЛӨӨГҮЙ. Хөтөч · амьд сервергүй шатанд аль
+   асуулга удааширч буйг хэмжиж чадаагүй тул хэмжилтгүй хойшлуулалт (архитектурын өөрчлөлт) хийсэнгүй; дэлгэрэнгүйг
+   `GeneralDash`-ийн E12/E13 ⚠️-ээс үз. */
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
   /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
@@ -632,7 +636,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   /**
    * ⚠️ AOI-ийн ТҮҮХИЙ геометр — `pickFlt` (deps-гүй useCallback) дотор state
    * биш ref-ээс уншина. `setHighlight` нь тодруулгыг БҮРЭН орлуулдаг тул
@@ -789,25 +794,36 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     });
   }, [askDrop, setHighlight, zoomToWhere]);
 
+  /* ⚠️ 2026-10-21 (аудит): ХАЙЛТЫН ДУГААР — «Хаах» (`exitEdit`) дарсны дараа ирсэн хоцорсон хариу
+     `openParcel`-оор засах маягтыг дахин нээж, тодруулга тавьдаг байв (горим унтарсан атал маягт гарна).
+     Хайлт бүр шинэ дугаар авна; `exitEdit` ч өсгөнө — хуучин дугаартай хариу бүхэлдээ хаягдана. */
+  const findSeq = useRef(0);
   const findParcel = useCallback(async () => {
     const no = findNo.trim();
     if (!no) return;
+    const seq = ++findSeq.current;
     setFinding(true);
     setFindMsg('');
     setHits([]);
     try {
       const list = await findParcelsByNo(no);
+      if (seq !== findSeq.current) return;
       if (!list.length) setFindMsg(tr('«{0}» дугаартай нэгж талбар олдсонгүй', no));
       else if (list.length === 1) openParcel(list[0].oid);
       else {
-        setHits(list);
-        setFindMsg(tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
+        /* ⚠️ 2026-10-26 (аудит): хязгаараас олон таарвал (`findParcelsByNo`-ийн ⚠️) тоог бүтэн мэт хэлэхгүй */
+        const more = list.length > PARCEL_FIND_LIMIT;
+        setHits(more ? list.slice(0, PARCEL_FIND_LIMIT) : list);
+        setFindMsg(more
+          ? tr('Эхний {0} нь — дугаараа нарийсгана уу', num(PARCEL_FIND_LIMIT))
+          : tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
       }
     } catch (e) {
+      if (seq !== findSeq.current) return;
       /* ⚠️ Алдааг НУУХГҮЙ — «олдсонгүй» гэж худал хэлэхгүй */
       setFindMsg(userError(e));
     } finally {
-      setFinding(false);
+      if (seq === findSeq.current) setFinding(false);
     }
   }, [findNo, openParcel]);
 
@@ -822,6 +838,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
   const exitEdit = useCallback(() => {
     askDrop(() => {
+      /* ⚠️ 2026-10-21 (аудит): нислэгт яваа хайлтыг хүчингүй болгоно (`findSeq`-ийн ⚠️) — `finding` ч тэглэнэ,
+         эс бөгөөс дараагийн удаа орох үед хайлтын талбар идэвхгүй үлдэнэ */
+      findSeq.current++;
+      setFinding(false);
       setEditMode(false);
       setEditOid(null);
       setHighlight(null);
@@ -933,10 +953,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     () => (zonePick ? [...new Set([...mapVisible, ZONE_LAYER.id])] : mapVisible),
     [mapVisible, zonePick],
   );
-  const mapWhere = useMemo<Record<string, string | null> | undefined>(
-    () => (zonePick ? { ...(ovWhere ?? {}), [ZONE_LAYER.id]: zonePick.where } : ovWhere),
-    [ovWhere, zonePick],
-  );
+  /* ⚠️ 2026-10-22 (аудит): өөрийн WHERE-тэй давхаргад (багцын давхцал · бүсийн ангилал) БҮСИЙН шүүлтийг AND-аар нэмнэ —
+     `MapCanvas` өөрийн WHERE-ийг бүсийн шүүлтийн ОРОНД тавьдаг тул чарт/багц сонгоход сонгосон бүсээс гадуурх объект
+     зурагт гардаг байв. Жагсаалтад байхгүй давхаргад `MapCanvas` өөрөө бүсээр шүүнэ. */
+  const mapWhere = useMemo<Record<string, string | null> | undefined>(() => {
+    const own = zonePick ? { ...(ovWhere ?? {}), [ZONE_LAYER.id]: zonePick.where } : ovWhere;
+    if (!own || !zone) return own;
+    const out: Record<string, string | null> = {};
+    for (const [id, w] of Object.entries(own)) {
+      const d = LAYER_BY_ID[id];
+      const zw = w && d ? zoneWhere(d, zone) : null;
+      out[id] = w && zw ? `(${w}) AND (${zw})` : w;
+    }
+    return out;
+  }, [ovWhere, zonePick, zone]);
 
   const clear = useCallback(() => {
     keepAoiRef.current = false; // ⚠️ «Цэвэрлэх» нь AOI-г ЖИНХЭНЭ хаяна
@@ -957,18 +987,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const P = GAZAR_PARCEL;
     /* ⚠️ 2026-10-01: төлөв ба шалтгаан НЭГ талбар уу (`services.ts`-ийн 2026-09-06 шийдвэр) */
     const sameField = L.fields.status === L.fields.progress;
-    const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse, lAlt, lAltReason] = await Promise.all([
-      queryStats(L.url, [count(L.oid, 'n'), sum(L.fields.area, 'area')], '1=1', area),
-      // ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал
-      queryGroup(L.url, L.fields.status, [count(L.oid, 'n'), sum(L.fields.area, 'a')], '1=1', area),
-      /* ҮЛДСЭН талбарын ШАЛТГААН.
-         ⚠️ 2026-09-06: шинэ эхэд `status` ба `progress` нь НЭГ талбар тул энэ
-         асуулга нь «Бүрэн чөлөөлсөн»-өөс бусад мөрүүдийг өөрсдийнх нь утгаар
-         бүлэглэнэ — өөрөөр хэлбэл шалтгаан нь төлөв нь өөрөө. */
-      queryGroup(
-        L.url, L.fields.progress, [count(L.oid, 'n'), sum(L.fields.area, 'a')],
-        parcelLeftWhere(), area,
-      ),
+    /* ⚠️ 2026-10-22 (аудит): НЭГЖ ТАЛБАРЫН тоо/талбайг МӨРӨӨР (`land.loadParcelAreaRows` + `parcelGroupRows`) — дашбоардын эх
+       (`land.ts`)-тэй ЯГ НЭГ дүрэм: `area_m2 = 0` мөрд полигоны талбай, хуваагдсан нэгж талбарын талбай нэг удаа, `Талб_1`
+       нөхөлт багтсан. Урьд нь серверийн `SUM(area_m2)` (+ нөхөлтийн тусдаа асуулга) тул 24 мөрийн 9,015 м² дутуу, 3 нэгж
+       талбарын 1,699 м² давхар байв. Полигон (AOI) хэвээр үйлчилнэ. */
+    const [lRows, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
+      loadParcelAreaRows('1=1', area),
       // ⚠️ area_m2 талбар test_data [96]-д устсан тул талбайн нийлбэр асуухгүй
       queryStats(B.url, [
         count(B.oid, 'n'), sum(B.fields.value, 'val'),
@@ -979,22 +1003,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryStats(P.url, [count(P.oid, 'n'), sum(P.fields.area, 'area')], '1=1', area),
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
-      /*
-       * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ТАЛБАЙН НӨХӨЛТ — `area_m2 ?? Талб_1`.
-       * Урьд нь энэ харагдац ЗӨВХӨН `SUM(area_m2)` авдаг байсан бол дашбоардын эх
-       * (`land.ts`) гараар бичсэн `Талб_1`-ийг НӨХДӨГ тул «Нийт талбай» хоёр газар
-       * ЗӨРӨХ замтай байв. Одоо ИЖИЛ нөхцөлөөр (`parcelAltAreaWhere`) нэмнэ —
-       * нийт, төлөв бүр, шалтгаан бүрд. Полигон (AOI) ч мөн адил хэрэглэгдэнэ.
-       */
-      queryGroup(L.url, L.fields.status, [sum(L.fields.areaAlt, 'a')], parcelAltAreaWhere(), area),
-      /* Шалтгаан нь ТУСДАА талбар бол л тусад нь асууна — нэг талбар бол дээрхээс */
-      sameField
-        ? Promise.resolve(null)
-        : queryGroup(
-          L.url, L.fields.progress, [sum(L.fields.areaAlt, 'a')],
-          `${parcelLeftWhere()} AND ${parcelAltAreaWhere()}`, area,
-        ),
     ]);
+    /* ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал */
+    const lStatus = parcelGroupRows(lRows);
+    /* ҮЛДСЭН талбарын ШАЛТГААН. ⚠️ 2026-09-06: `status` ба `progress` НЭГ талбар — шалтгаан нь төлөв өөрөө.
+       ⚠️ 2026-10-22: «Бүрэн чөлөөлсөн»-ийн бүх бичиглэлийг хасна (`parcelLeftWhere` + `addReason`-ийн дүрэм) */
+    const lReason = parcelGroupRows(lRows.filter((r) => !isClearedStatus(r[L.fields.status])), L.fields.progress);
+    const lStat = { n: lRows.length, area: lStatus.reduce((s, r) => s + Number(r.a ?? 0), 0) };
+    /* `Талб_1` нөхөлт `parcelAreaOf`-д багтсан — тусдаа нөхөлтийн мөр алга (`sameField` хамаарахгүй) */
+    const lAlt: Row[] = [];
+    const lAltReason: Row[] | null = sameField ? null : [];
     /** Нөхөлтийн талбайг ТӨЛӨВӨӨР — `smap`-д нэмэхэд */
     const altArea = (r: Row) => Number(r.a ?? 0);
     // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).
@@ -1145,7 +1163,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      (ref уншдаг) дуудлагыг React Compiler render үеийн ref хандалт гэж үздэг байв. */
   const pickReason = (k: string) => {
     const r = d?.reasons.find((x) => x.key === k);
-    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', k), where: r.where, only: ['land:left'] });
+    /* ⚠️ 2026-10-26 (аудит): чипийн нэр орчуулсан (бартай ижил) — шүүлтийн түлхүүр/WHERE түүхий утгаар */
+    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', tr(r.label)), where: r.where, only: ['land:left'] });
   };
 
   /** Панелийн агуулгыг ачаалал/алдаа/хоосонтой хамт зурна */
@@ -1251,7 +1270,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   onSelect={(k) => {
                     // Шалтгааны шүүлттэй ижил — item-ийн урьдчилан угсарсан (түүхий утгат) WHERE-ийг авна
                     const it = d.statusAreaBy.find((x) => x.key === k);
-                    if (it) pickFlt({ grp: 'status', key: k, label: tr('Төлөв: {0}', k), where: it.where, only: ['land:left'] });
+                    /* ⚠️ 2026-10-26 (аудит): чипэнд бартай ижил (орчуулсан) нэр — «Status: зөвшилцөх» гардаг байв */
+                    if (it) pickFlt({ grp: 'status', key: k, label: tr('Төлөв: {0}', it.label), where: it.where, only: ['land:left'] });
                   }}
                 />
                 {d.reasons.length > 0 && (() => {
@@ -1331,7 +1351,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
         {/* ⚠️ ТАЛБАР ЗАСАХ ОРОХ ЦЭГ — 2026-09-15-нд хасагдаж, 2026-09-30-нд
             сэргээгдсэн (дээрх `editMode`-ийн тайлбарыг үз). */}
-        {editOid != null && (
+        {/* ⚠️ 2026-10-21 (аудит): `editMode` ч шаардана — горим хаагдсаны дараа хоцорсон `setEditOid` маягт нээхгүй */}
+        {editMode && editOid != null && (
           <GazarEdit
             /* ⚠️ 2026-10-06 (аудит): парсел солигдоход маягтыг ШИНЭЭР mount
                хийнэ — өмнөх парселийн ноорог/`dirty` үлдэхгүй (`GazarEdit`-ийн ⚠️) */
@@ -1393,7 +1414,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           >
             {/* ⚠️ Зурж байх үед ЦУЦЛАХ гэж хэлнэ — тэр товшилт нь зурахыг
                 эхлүүлэхгүй, буцаана (`startDraw`-ийн тайлбарыг үз). */}
-            {drawing ? tr('Цуцлах') : aoi ? tr('Дахин тооцоолох') : tr('Чөлөөлөлт тооцоолох')}
+            {drawing ? tr('Болих') : aoi ? tr('Дахин тооцоолох') : tr('Чөлөөлөлт тооцоолох')}
           </MapToolBtn>
           {aoi && <MapToolBtn onClick={clear}>{tr('Цэвэрлэх')}</MapToolBtn>}
           {/* ⚠️ Эрхгүй хүнд ОГТ харагдахгүй — идэвхгүй товч нь «яагаад
@@ -1482,7 +1503,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <div className={g.catPanelRight}>
             <LayerCatalog
               view="gazar"
-              totals={catTotals}
               visible={visible}
               setVisible={setVisible}
               selected={layerSel}
@@ -1519,7 +1539,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <div className={o.chipBar}>
             <div className={o.filterChip}>
               <span className={o.filterLabel}>{flt.label}</span>
-              <button type="button" className={o.filterClear} onClick={() => pickFlt(flt)} aria-label={tr('Цуцлах')}>×</button>
+              <button type="button" className={o.filterClear} onClick={() => pickFlt(flt)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
             </div>
           </div>
         )}

@@ -77,17 +77,23 @@ console.log('✅ Полигон зурж байхад засварын гори�
 }
 console.log('✅ «Бүрэн чөлөөлсөн»-ийн бичиглэлүүд дашбоардтай ижил бүлэглэгдэнэ');
 
-/* ── 5. Талбай: area_m2 ?? Талб_1 — дашбоардтай ИЖИЛ нөхөлт ── */
+/* ── 5. Талбай: дашбоардтай ИЖИЛ дүрэм ──
+   ⚠️ 2026-10-22 (аудит): серверийн `SUM(area_m2)` + `Талб_1` нөхөлтийн асуулга → МӨРӨӨР (`land.loadParcelAreaRows` +
+   `parcelGroupRows`): `area_m2 = 0` → полигоны талбай, хуваагдсан нэгж талбар нэг удаа, `Талб_1` нөхөлт багтсан. `land.ts`
+   ЯГ тэр хоёр функцийг хэрэглэх ёстой — эс бөгөөс «Нийт талбай» хоёр газар зөрнө. */
 {
-  assert.match(src, /parcelAltAreaWhere\(\)/, 'Газар: `Талб_1` нөхөлтийн асуулга алга');
-  assert.match(src, /sum\(L\.fields\.areaAlt,/, 'Газар: `areaAlt`-ийн нийлбэр асуугдах ёстой');
+  assert.match(src, /loadParcelAreaRows\('1=1', area\)/, 'Газар: нэгж талбарын мөрүүд (AOI-тай) `land.loadParcelAreaRows`-оор');
+  assert.match(src, /const lStatus = parcelGroupRows\(lRows\)/, 'Газар: төлөв бүрийн тоо/талбай `parcelGroupRows`-оор');
+  const landSrc = strip(fs.readFileSync('src/lib/land.ts', 'utf8'));
+  assert.match(landSrc, /loadParcelAreaRows\(\)\.then\(\(rows\) => buildLandStatus\(parcelGroupRows\(rows\), \[\]\)\)/,
+    'land.ts: дашбоардын эх ИЖИЛ функцээр');
   assert.match(src, /area:\s*Number\(lStat\.area \?\? 0\)\s*\+\s*altTotal/,
     'Газар: «Нийт талбай» нөхөлтийг агуулах ёстой (`land.ts`-ийн `areaM2`-тэй ижил)');
   /* нөхөлт төлөв ба шалтгаан бүрд нэмэгдэнэ */
   assert.match(src, /for \(const r of lAlt\)[^\n]*addStatus\(r, 0,/, 'Газар: төлөв бүрд нөхөлт');
   assert.match(src, /for \(const r of lAltReason \?\? lAlt\)[^\n]*addReason\(r, 0,/, 'Газар: шалтгаан бүрд нөхөлт');
 }
-console.log('✅ Газар ба дашбоард талбайг ИЖИЛ дүрмээр (area_m2 ?? Талб_1)');
+console.log('✅ Газар ба дашбоард талбайг ИЖИЛ дүрмээр (мөрөөр: area_m2 > 0 ?? Талб_1 ?? полигон, хуваагдсан нэг удаа)');
 
 /* ── 6. Хадгалсны мэдэгдэл нь НЭГЖ ТАЛБАР тоолно ── */
 {
@@ -111,7 +117,9 @@ console.log('✅ «N нэгж талбар хадгалагдлаа»');
   ]) assert.match(m[1], re, `Газар/openParcel: ${why}`);
   /* олон таарвал жагсааж сонгуулна — эхнийхийг чимээгүй нээхгүй */
   assert.match(src, /list\.length === 1\) openParcel\(list\[0\]\.oid\)/);
-  assert.match(src, /setHits\(list\)/, 'Газар: олон үр дүнг жагсаах ёстой');
+  /* ⚠️ 2026-10-26 (аудит): хязгаараас олон бол эхний PARCEL_FIND_LIMIT-ийг л жагсааж «нарийсгана уу» */
+  assert.match(src, /setHits\(more \? list\.slice\(0, PARCEL_FIND_LIMIT\) : list\)/, 'Газар: олон үр дүнг жагсаах ёстой');
+  assert.match(src, /Эхний \{0\} нь — дугаараа нарийсгана уу/, 'Газар: тайрагдсан хайлтыг хэлэх ёстой');
 }
 console.log('✅ Кадастрын дугаараар хайж, олдсон талбарыг нээнэ');
 
@@ -139,5 +147,25 @@ console.log('✅ GazarEdit: хөндөөгүй төлөв хадгалалтыг
   assert.match(src, /statusRawsWhere\(L\.fields\.status, s\.raws, value === 'Тодорхойгүй', value\)/, 'Gazar нь туслахыг хэрэглэнэ');
 }
 console.log('✅ Тодорхойгүй баганын WHERE: NULL · хоосон · «—» · зай');
+
+/* ⚠️ 2026-10-21 (аудит): `toItems` харагдац `query.Group.stats`-аас — хэмжилтгүй бүлэг «—», 0 биш */
+assert.match(src, /display: grp\.stats\[valueKey\] == null \? '—' : `\$\{num\(grp\.stats\[valueKey\]\)\} \$\{unit\}`/, 'toItems харагдац stats-аас биш');
+console.log('✅ toItems: хэмжилтгүй бүлэг «—»');
+
+/* ── ⚠️ 2026-10-21 (аудит): хоцорсон хайлтын хариу засах маягтыг нээхгүй ── */
+{
+  assert.match(src, /const findSeq = useRef\(0\);/, '`findSeq` тоолуур алга');
+  const m = /const findParcel = useCallback\(async \(\) => \{([\s\S]*?)\}, \[findNo, openParcel\]\);/.exec(src);
+  assert.ok(m, '`findParcel` олдсонгүй');
+  const body = m[1];
+  assert.match(body, /const seq = \+\+findSeq\.current;/, 'хайлт бүр шинэ дугаар авах ёстой');
+  assert.match(body, /await findParcelsByNo\(no\);\s*if \(seq !== findSeq\.current\) return;/, 'хариу ирмэгц дугаар тулгах ёстой');
+  assert.match(body, /if \(seq === findSeq\.current\) setFinding\(false\);/, 'хуучин хайлт шинийн `finding`-ийг тэглэх ёсгүй');
+  const ex = /const exitEdit = useCallback\(\(\) => \{([\s\S]*?)\}, \[setHighlight, askDrop\]\);/.exec(src);
+  assert.ok(ex, '`exitEdit` олдсонгүй');
+  assert.match(ex[1], /findSeq\.current\+\+;\s*setFinding\(false\);/, '«Хаах» нислэгт яваа хайлтыг хүчингүй болгох ёстой');
+  assert.match(src, /\{editMode && editOid != null && \(\s*<GazarEdit/, 'GazarEdit зөвхөн `editMode`-д зурагдах ёстой');
+}
+console.log('✅ Хоцорсон хайлт: `findSeq` · GazarEdit зөвхөн editMode-д');
 
 console.log('\ngazar.check: ok — засварын горим ба полигоны шүүлт зөрөхгүй');

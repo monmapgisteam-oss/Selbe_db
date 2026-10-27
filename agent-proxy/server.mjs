@@ -27,6 +27,7 @@ import {
   createLimiter, LIMITS, createBudget, budgetFromEnv, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
+  THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from "./rateLimit.mjs";
 
 /**
@@ -124,7 +125,10 @@ const clientIp = (req) => {
   }
   return peer;
 };
-const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").replace(/\/+$/, "");
+/* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
+const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://gis.selbecity.mn/geoportal").replace(/\/+$/, "");
+/* ⚠️ 2026-10-21 (аудит): порталын эрхийн хүснэгт — `hasPortalRow`-ийн ⚠️ (`worker.mjs`-тэй ижил анхдагч) */
+const ARCGIS_PERMS_URL = (process.env.ARCGIS_PERMS_URL || "https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230").replace(/\/+$/, "");
 /* ⚠️ 2026-09-30 (`worker.mjs`-тэй ижил): кэшийн дээд хэмжээ (хамгийн хуучныг хаяна) ба
    нэвтрэлт УНАСАН токеныг кэшээс шууд хасна — ArcGIS 498/401 хариулсан агшнаас тэр
    токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй. */
@@ -143,6 +147,34 @@ const verified = new Map();
 function verifiedUser(key) {
   const hit = verified.get(key);
   return hit && hit.until > Date.now() ? hit.username : null;
+}
+/** SQL мөрийн литерал — `'` → `''` */
+const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+/**
+ * ⚠️ 2026-10-21 (аудит): ПОРТАЛЫН ЭРХИЙН ХҮСНЭГТИЙН МӨР ЗААВАЛ — `worker.mjs`-ийн `hasPortalRow`-ийн ТОЛИН (тайлбар тэнд).
+ *    Нэг байгууллагатай Enterprise дээр `ARCGIS_ORG_ID` дангаараа «порталын хэрэглэгч» гэсэн баталгаа биш. Мөргүй/устгагдсан
+ *    (`views: 'removed'`) → 403; хүснэгт уншигдахгүй → 503 retryable (fail-closed). Токен POST биед, талбар жижиг үсгээр.
+ */
+async function hasPortalRow(token, username) {
+  const name = String(username ?? "").trim();
+  const lo = name.toLowerCase();
+  const where = lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`;
+  let data;
+  try {
+    const r = await fetch(`${ARCGIS_PERMS_URL}/query`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views", returnGeometry: "false", resultRecordCount: "5", token }).toString(),
+    });
+    data = await r.json();
+  } catch {
+    return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
+  }
+  if (!data || data.error || !Array.isArray(data.features)) {
+    return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
+  }
+  const live = data.features.some((f) => f?.attributes && String(f.attributes.views ?? "") !== "removed");
+  return live ? { ok: true } : { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
 }
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
@@ -168,6 +200,12 @@ async function checkArcGIS(token) {
   if (data.orgId !== ARCGIS_ORG_ID) {
     verified.delete(key);
     return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
+  }
+  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн мөр заавал (`hasPortalRow`) — байхгүй бол кэшлэхгүй */
+  const row = await hasPortalRow(token, data.username);
+  if (!row.ok) {
+    verified.delete(key);
+    return { ok: false, reason: row.reason, status: row.status };
   }
   verified.delete(key);
   while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
@@ -240,7 +278,7 @@ const ALLOWED = (
  * ⚠️ ЗАГВАР БА ТОХИРГООГ СЕРВЕР ТАЛ ТОГТООНО — browser-оос ирсэн утгыг ХЭРЭГЛЭХГҮЙ.
  * Эс бөгөөс хэн ч энэ релег дуудаж дурын үнэтэй тохиргоогоор токен зарцуулна.
  *
- * ⚠️ АНХДАГЧ нь `claude-opus-5` — хамгийн зөв дүгнэлт гаргана. ТУРШИЛТЫН үед
+ * ⚠️ АНХДАГЧ нь `claude-opus-5-5` (2026-10-19, өмнө `claude-opus-5`) — хамгийн зөв дүгнэлт гаргана. ТУРШИЛТЫН үед
  * зардал хэмнэхийг хүсвэл `AGENT_MODEL=claude-haiku-4-5` (≈5 дахин хямд).
  *
  * ⚠️ 2026-10-15: `effort` АНХДАГЧ нь 'medium' (өмнө 'low'). Шалтгаан: агент 175
@@ -251,8 +289,18 @@ const ALLOWED = (
  *
  * ⚠️ Claude Opus 5-д бодох (thinking) нь АНХНААСАА асаалттай бөгөөд `max_tokens`
  * нь бодолт + хариу ХОЁУЛАНГ хамарна — тиймээс хариултын уртаас хамаагүй өгөөмөр.
+ *
+ * ⚠️ 2026-10-19 — Claude Opus 5.5-ийн онцлог (README «Загвар»-ыг үз):
+ *   · бодолтыг УНТРААХ боломжгүй (`thinking: {type: 'disabled'}` → 400) — энд зөвхөн
+ *     `{type: 'adaptive', display: 'updates'}` (явцын тэмдэглэл, beta; `rateLimit.thinkingUpdatesFor`) илгээнэ;
+ *     гүнийг ЗӨВХӨН `effort`-оор (анхдагч нь загвар дээр 'medium' — энд ч ил 'medium' илгээнэ);
+ *   · албадсан `tool_choice` (`any`/`tool`) → 400 — энд илгээдэггүй;
+ *   · хэрэгслийн дуудлагын ХООРОНДЫН текст `thinking` блок болж ирж болно — клиент төлөвлөгөөг
+ *     текстээс эс олдвол бодолтын блокоос хайна (`client.ts` `planTextOf`);
+ *   · бодолтын блок ЯРИАНД холбогдсон — түүхийг дундаас нь засвал дараагийн хүсэлт 400 (`AgentChat.trimHistory`).
+ *   Хуучин загвар руу буцах бол `AGENT_MODEL=claude-opus-5`.
  */
-const MODEL = process.env.AGENT_MODEL || "claude-opus-5";
+const MODEL = process.env.AGENT_MODEL || "claude-opus-5-5";
 /* ⚠️ `worker.mjs`-ийн `DEFAULTS.MAX_TOKENS`-тай ЗААВАЛ ижил байна. 2026-09-15
    хүртэл 10000 vs 8000 гэж зөрж байсан тул локалд бүтэн гардаг урт хариулт
    байршуулсан Worker дээр таслагдаж, хөгжүүлэгч давтаж чаддаггүй байв. */
@@ -260,6 +308,8 @@ const MAX_TOKENS = 10000;
 const EFFORT = process.env.AGENT_EFFORT || "medium";
 /** `effort` дэмждэг эсэх — `worker.mjs`-тэй ижил дүрэм байх ёстой */
 const WITH_EFFORT = Boolean(EFFORT) && !/haiku/i.test(MODEL);
+/** ⚠️ 2026-10-19: явцын тэмдэглэл (`thinking.display: 'updates'`) — `rateLimit.thinkingUpdatesFor`-ийн ⚠️ */
+const WITH_UPDATES = thinkingUpdatesFor(MODEL);
 
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */
 const MAX_BODY = 2 * 1024 * 1024;
@@ -434,15 +484,25 @@ const server = createServer(async (req, res) => {
         ? `authfail:${ip}`
         : `authfail:${ip}:${tokenHash(token).slice(0, 16)}`;
       /* ⚠️ 2026-10-09: IP-ийн амжилтгүй нэвтрэлтийн ТАГ (`LIMITS.authFailIp`, `worker.mjs`-тэй ижил) */
-      if (limiter.full(failKey, LIMITS.authFail) || limiter.full(`authfailip:${ip}`, LIMITS.authFailIp)) {
+      /* ⚠️ 2026-10-21: `TRUSTED_PROXY` АЛГА үед loopback (127.0.0.1 · ::1) нь тунелийн БҮХ хэрэглэгчийн
+         хуваалцсан хаяг — нэг хүн минутад 100 санамсаргүй токен илгээхэд `authfailip:127.0.0.1` дүүрч,
+         ШИНЭ токентой бүх хэрэглэгч тэр минутад 429 авдаг байв. Тэр үед IP-ийн тагийг хэрэглэхгүй;
+         токен тус бүрийн `failKey` (20) ба IP-ийн ерөнхий таг (`ipcap`, 300) хэвээр үйлчилнэ. */
+      const ipFailCapped = Boolean(TRUSTED_PROXY) || !/^(127\.|::1$|::ffff:127\.)/.test(ip);
+      if (limiter.full(failKey, LIMITS.authFail) || (ipFailCapped && limiter.full(`authfailip:${ip}`, LIMITS.authFailIp))) {
         json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
         return;
       }
       const auth = await checkArcGIS(token);
       if (!auth.ok) {
-        limiter.hit(failKey, LIMITS.authFail);
-        limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
-        json(res, 401, { error: auth.reason, retryable: false });
+        /* ⚠️ 2026-10-21: 403 (порталд бүртгэлгүй) · 503 (эрхийн хүснэгт шалгагдсангүй, retryable) — `hasPortalRow`;
+           хүснэгтийн түр саатлыг амжилтгүй нэвтрэлтэд тоолохгүй (`worker.mjs`-тэй ижил) */
+        const status = auth.status ?? 401;
+        if (status !== 503) {
+          limiter.hit(failKey, LIMITS.authFail);
+          if (ipFailCapped) limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
+        }
+        json(res, status, { error: auth.reason, retryable: status === 503 });
         return;
       }
       caller = `user:${auth.username}`;
@@ -594,7 +654,9 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
         json(res, 502, UPSTREAM_AUTH);
         return;
       }
-      json(res, e.status, { error: e.message, retryable: e.retryable });
+      /* ⚠️ 2026-10-19: `upstream: true` — Claude Code аль хэдийн ажилласан байж болно; клиент өөр хост руу
+         давтахгүй (`client.ts` `relayFetch`-ийн ⚠️). */
+      json(res, e.status, { error: e.message, retryable: e.retryable, upstream: true });
     }
     return;
   }
@@ -606,6 +668,7 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
       // ⚠️ Haiku ЭНЭ ПАРАМЕТРИЙГ ДЭМЖДЭГГҮЙ — илгээвэл бүх хүсэлт
       //    «This model does not support the effort parameter» гэж унана.
       ...(WITH_EFFORT ? { output_config: { effort: EFFORT } } : {}),
+      ...(WITH_UPDATES ? { thinking: { type: "adaptive", display: "updates" } } : {}),
       // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
       //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
       system: system
@@ -613,7 +676,10 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
         : undefined,
       tools,
       messages,
-    }, { signal: ac.signal });
+    }, {
+      signal: ac.signal,
+      ...(WITH_UPDATES ? { headers: { "anthropic-beta": THINKING_UPDATES_BETA } } : {}),
+    });
 
     /* ⚠️ 2026-10-09: ТАТГАЛЗСАН хариу ч токен зарцуулсан — урьд нь төсөвт нэмэхээс ӨМНӨ буцдаг
        байсан тул татгалзуулах хүсэлтээр төсвийг тойрох боломжтой байв. */
@@ -668,16 +734,20 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
       return;
     }
 
+    /* ⚠️ 2026-10-19: `worker.mjs`-тэй толин — ЗӨВХӨН 429 · 529 (боловсруулагдаагүй нь баталгаатай). Бусад 5xx/холболтын
+       алдаа хэсэгчлэн боловсруулагдсан байж болох тул «дахин оролдож болно» гэж тэмдэглэхгүй. SDK өөрөө
+       (`maxRetries`) аль хэдийн давтсан. */
     const retryable =
       err instanceof Anthropic.RateLimitError ||
-      err instanceof Anthropic.InternalServerError ||
-      err instanceof Anthropic.APIConnectionError;
+      (err instanceof Anthropic.APIError && err.status === 529);
     /* ⚠️ 2026-10-09 (аудит №7): SDK-ийн түүхий мессеж (`msg`) зөвхөн дээрх логт — клиентэд
        статусаас ЕРӨНХИЙ мөр (`worker.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
     const status = err instanceof Anthropic.APIError ? (err.status ?? 502) : 500;
     json(res, status, {
       error: upstreamErrorText(err instanceof Anthropic.APIConnectionError ? 502 : status),
       retryable,
+      /* ⚠️ 2026-10-19: дээд үйлчилгээний хариу — клиент өөр хост руу шилжихгүй */
+      upstream: true,
     });
   }
 }

@@ -96,4 +96,48 @@ console.log('✅ талбайн нөхөлт: нийт ба төлөв бүрд,
 const empty = buildLandStatus([], []);
 assert.equal(empty.total, 0);
 assert.equal(empty.pct, null, '0 хуваарьт хувь null — 0% БИШ');
+
+/* ══════════════ 5. ⚠️ 2026-10-22 (аудит): мөрөөр бүлэглэх — area=0 → полигон, хуваагдсан нэгж талбар нэг удаа ══════════════ */
+{
+  const { parcelAreaOf, parcelGroupRows, landuseText } = await import('./land.ts');
+  const F = PARCEL_LEFT.fields;
+  const R = (status, area, alt, shape, no = '') => ({ [S]: status, [F.area]: area, [F.areaAlt]: alt, SHAPE__Area: shape, [F.parcelNo]: no });
+  assert.equal(parcelAreaOf(R(PARCEL_CLEARED, 0, 0, 336.4)), 336.4, 'area_m2=0 ба Талб_1=0 → полигон (24 мөр, амьдаар)');
+  assert.equal(parcelAreaOf(R(PARCEL_CLEARED, null, 120, 99)), 120, 'area хоосон → Талб_1');
+  assert.equal(parcelAreaOf(R(PARCEL_CLEARED, 278, 0, 277.6)), 278);
+  assert.equal(parcelAreaOf(R(PARCEL_CLEARED, 0, 0, 0)), null, 'бүгд алга → null');
+  const rows = [
+    R(PARCEL_CLEARED, 685, 0, 249, '1461802706'), R(PARCEL_CLEARED, 685, 0, 684, '1461802706'),
+    R(PARCEL_CLEARED, 0, 0, 336, ' '), R(PARCEL_CLEARED, 0, 0, 480, ' '),
+    R('зөвшилцөх', 100, null, 100, '1'), R(null, null, 50, 49, '2'),
+  ];
+  const g = Object.fromEntries(parcelGroupRows(rows).map((r) => [String(r[S]), r]));
+  assert.deepEqual([g[PARCEL_CLEARED].n, g[PARCEL_CLEARED].a], [4, 685 + 336 + 480], 'хуваагдсан 685 нэг удаа; дугааргүй 0-талбай мөр полигоноор');
+  assert.deepEqual([g['зөвшилцөх'].n, g['зөвшилцөх'].a], [1, 100]);
+  assert.deepEqual([g.null.n, g.null.a], [1, 50], 'төлөвгүй мөр тусдаа бүлэг');
+  const ls3 = buildLandStatus(parcelGroupRows(rows), []);
+  assert.equal(ls3.total, 6, 'мөрийн тоо өөрчлөгдөхгүй');
+  assert.equal(ls3.areaM2, 685 + 336 + 480 + 100 + 50);
+  /* Зориулалтын текст */
+  assert.equal(landuseText(' ', 'Гэр бүлийн хэрэгцээний зус'), 'Гэр бүлийн хэрэгцээний зуслангийн газар');
+  assert.equal(landuseText('Гэр, орон сууцны хашааны газар', 'X'), 'Гэр, орон сууцны хашааны газар');
+  assert.equal(landuseText(' ', ' '), null);
+  assert.equal(landuseText(null, 'ХАА-н үйлдвэрлэлийн цогцол'), 'ХАА-н үйлдвэрлэлийн цогцол', 'бүтэн нэр мэдэгдэхгүй — өөрөө');
+  console.log('✅ parcelGroupRows: area=0 → полигон · хуваагдсан нэг удаа · landuseText (2026-10-22)');
+}
+/* ══════════════ 6. ⚠️ 2026-10-23 (аудит): «Тайлан» (дэлгэц + PDF) нь НЭГ тооцоог (`loadLandStatus`) ашиглана ══════════════
+   Урьд нь `reportData.loadLandRaw` `area_m2`-ийг шууд нэмдэг тул 2026-10-22-ны дүрэм (`parcelAreaOf` · `parcelAreasDeduped`)
+   хамрагдаагүй — тайлан 953,987 м², бусад харагдац 961,303 м². Эх кодоор баталгаажуулна (функц нь сүлжээ шаарддаг). */
+{
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./reportData.ts', import.meta.url), 'utf8');
+  const a = src.indexOf('async function loadLandRaw(');
+  assert.ok(a >= 0, 'reportData.loadLandRaw олдсонгүй');
+  const body = src.slice(a, src.indexOf('\n}', a));
+  assert.match(body, /await loadLandStatus\(\)/, 'тайлангийн газар нь land.loadLandStatus-аас');
+  assert.match(body, /areaM2:\s*st\.areaM2/, 'тайлангийн нийт талбай = loadLandStatus().areaM2');
+  assert.match(body, /parcels:\s*st\.total/, 'тайлангийн нэгж талбарын тоо = loadLandStatus().total');
+  assert.doesNotMatch(body, /queryFeatures\(|\.reduce\(/, 'тайлан өөрөө талбай/тоо нэмэхгүй (зөрөх эх)');
+  console.log('✅ reportData.loadLandRaw → loadLandStatus (тайлан = Газар = дашбоард, 2026-10-23)');
+}
 console.log('\nland.check: ok — бичиглэл ✓ нийлбэр ✓ нөхөлт ✓ хоосон ✓');

@@ -30,6 +30,7 @@ import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendi
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
 import { progressSub, planScopeNote } from '@/lib/gdash';
+import { coverageOk, coverageNote } from '@/lib/planProgress';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
@@ -205,7 +206,7 @@ export function ExecReport() {
               `invalidateAll()`; урьд нь энэ горимд 5 минутын кэшийг хаях зам байгаагүй. Өгөгдөл
               солигдоход AI дүгнэлт цэвэрлэгдэнэ (дээрх 2026-09-23-ны ⚠️). */}
           <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={refresh}
-            title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}>
+            title={tr('Тайлангийн түр санах ойг хаяж өгөгдлийг дахин татна')}>
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
           </button>
@@ -228,8 +229,12 @@ export function ExecReport() {
           value={x?.prog.actual ?? null}
           plan={x?.prog.planned ?? null}
           loading={q.state === 'loading'}
+          /* ⚠️ 2026-10-22 (аудит): «Төлөвлөсөн» нь ОРОН СУУЦНЫ хуваарийнх (хамралттай), «Төслийн гүйцэтгэл» (нэгтгэл)
+             нь ӨӨРИЙН төлөвлөгөөтэй хамт — урьд нь 34.2% нь 38.9%-ийн төлөвлөгөө мэт уншигддаг байв (өөрийнх нь 71.9%). */
           note={x && <>
-            {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)} · {tr('Төслийн гүйцэтгэл')} {pct(x.gdash.progress, 1)}
+            {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)}{coverageNote(x.prog.planCoverage) ? ` (${coverageNote(x.prog.planCoverage)})` : ''}
+            {' · '}{tr('Төслийн гүйцэтгэл')} {pct(x.gdash.progress, 1)}
+            {x.gdash.progressPlan != null ? ` (${tr('төлөвлөгөө {0}', pct(x.gdash.progressPlan, 1))})` : ''}
           </>}
         />
 
@@ -319,7 +324,8 @@ export function ExecReport() {
                   title={tr('Ажлын төрөл бүрийн төсөв')}
                   fmt={money}
                   items={x.gdash.byType.map((t, i) => ({
-                    label: t.label, value: t.cost, hot: i === 0,
+                    /* ⚠️ 2026-10-26 (аудит): ажлын төрлийн нэр англи горимд орчуулагдана (эх үүсвэртэй ижил `tr`) */
+                    label: tr(t.label), value: t.cost, hot: i === 0,
                     text: `${money(t.cost)}${t.perf == null ? '' : ` · ${pct(t.perf, 1)}`}`,
                   }))}
                 />
@@ -329,7 +335,7 @@ export function ExecReport() {
                   <tbody>
                     {x.gdash.byType.map((t) => (
                       <tr key={t.label}>
-                        <td>{t.label}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
+                        <td>{tr(t.label)}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
                         <td className={r.num}>{num(t.cost)}</td><td className={r.num}>{t.contract > 0 ? num(t.contract) : '—'}</td>
                         <td className={r.num}>{t.perf == null ? '—' : pct(t.perf, 1)}</td>
                       </tr>
@@ -465,19 +471,36 @@ export function ExecReport() {
                   <KpiRow items={[
                     /* ⚠️ 2026-09-30: `prog.asOf` нь одоо «Бодит» гарсан ХЭМЖИЛТИЙН огноо
                        (`execReport` — `aggregateMonths().physAt`), барилгын сүүлийн огноо биш */
-                    { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
+                    /* ⚠️ 2026-10-22 (аудит): ЭНЭ эгнээний «Бодит» = зөрүүний бодит тал — хуваарьгүй багц хасагдсан бол
+                       `actualLag` (шошгонд «хуваарьтай багцаар»). Урьд нь бодит 23.1%, төлөвлөсөн 34.2%, зөрүү −9.6 (харагдахгүй
+                       24.55%-иас) гэж нэг эгнээ өөртэйгөө нийцдэггүй байв. */
+                    {
+                      label: tr('Бодит'),
+                      value: (x.prog.planExcluded.length ? x.prog.actualLag : x.prog.actual) == null
+                        ? '—' : pct(x.prog.planExcluded.length ? x.prog.actualLag : x.prog.actual, 1),
+                      sub: [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : '']
+                        .filter(Boolean).join(' · ') || undefined,
+                    },
                     /* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — «—»-ийн шалтгаан (`PkgProg.TsKpi`-тай ижил) */
                     /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «хуваарьтай багцаар» (`execReport.prog.planExcluded`) */
                     {
                       label: tr('Төлөвлөсөн'),
                       value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1),
+                      /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (`coverageNote`) — хуваарь дутуу бол төлөвлөгөө хэт бага */
                       sub: x.prog.planFailed > 0
                         ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed)
-                        : x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : undefined,
+                        : [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', coverageNote(x.prog.planCoverage)]
+                          .filter(Boolean).join(' · ') || undefined,
                     },
-                    { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
+                    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол «хоцрогдол/түрүүлэлт/хуваарийн дагуу» гэж ДҮГНЭХГҮЙ */
+                    /* ⚠️ 2026-10-26 (аудит): хамралт < 95% бол УТГА ч «—» (PDF · инфографиктай нэг — «дэлгэц = PDF»); урьд нь «−9.6» тэмдэг
+                       өөрөө «хоцорсон» гэж дүгнэдэг байв */
+                    !coverageOk(x.prog.planCoverage)
+                      ? { label: tr('Зөрүү (нэгж хувь)'), value: '—', sub: coverageNote(x.prog.planCoverage) || tr('хуваарь дутуу — дүгнэхгүй') }
+                      : { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
-                  <PlanMeter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
+                  {/* ⚠️ 2026-10-22 (аудит): хамралт < 95% бол төлөвлөгөөт зураас (ба түүгээр будах «хоцрогдол» өнгө) ГАРГАХГҮЙ */}
+                  <PlanMeter value={x.prog.actual} plan={coverageOk(x.prog.planCoverage) ? x.prog.planned : null} label={tr('Орон сууцны барилга угсралт')} />
                   {/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүүнээс хасагдсан хуваарьгүй багцыг нэрлэнэ */}
                   {x.prog.planExcluded.length > 0 && <p className={r.note}>{planScopeNote(x.prog.planExcluded)}</p>}
                   <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>

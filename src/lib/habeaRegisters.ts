@@ -18,6 +18,12 @@
  *    (эсвэл UTC-тэй машинаас) нээхэд долоо хоногийн хил үзлэгийн KPI-аас 8 цагаар зөрдөг байв.
  * ⚠️ Тоо нь серверийн `returnCountOnly` — мөр татахгүй.
  * ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — `arcgisPost` биеийг шалгаж шиднэ.
+ * ⚠️ 2026-10-19: БИЧИЛТ (`applyEdits`) Enterprise ТОКЕНТОЙ (`entDocs.entSession` — MA · FIC/М-актын ижил сешн).
+ *    Урьд нь Enterprise хост (`gis.selbecity.mn`) нь `query.isOrgUrl`/портал БИШ тул `arcgisPost` токен ОГТ
+ *    залгадаггүй — бичилт НЭРГҮЙ явдаг байв (үйлчилгээ одоогоор нэргүй засварыг зөвшөөрдөг; админ хаана).
+ *    Сешнгүй бол бичихгүй — `HabeaEntSignInRequired` (маягт `EntSignIn`-ийг харуулна); ГЭХДЭЭ
+ *    `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон бол урьдын адил нэргүй (`entAuth`-ийн ⚠️). Уншилт нэргүй хэвээр
+ *    (үйлчилгээ нийтэд нээлттэй үед); бичилтийн шалгалтын уншилт (GlobalID · тоо · дугаар) токентой.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/query';
@@ -27,12 +33,16 @@ import { currentUser, requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
 import { prevWeek } from '@/modules/habeaUzleg';
+import { ENT_PORTAL, entSession } from '@/lib/entDocs';
+import { HABEA_TTL_MS, HABEA_POLL_MS } from '@/lib/habeaTiming';
 
 export type RegisterRow = {
   key: string;
   label: string;
   /** Өмнөх бүтэн долоо хоногийн тоо — эх сурвалжгүй / тоо ирээгүй бол `null` */
   week: number | null;
+  /** ⚠️ 2026-10-19: `week === null`-ийн ШАЛТГААН (картын hover) — алга бол «эх сурвалж холбогдоогүй» */
+  hint?: string;
 };
 
 export type RegisterData = { rows: RegisterRow[]; weekNo: number; start: Date; end: Date };
@@ -49,28 +59,72 @@ const sqlTs = (d: Date) => `timestamp '${d.toISOString().slice(0, 19).replace('T
 /**
  * ⚠️ 2026-10-09: `count` ирээгүй бол `null` (урьд нь 0 — «бүртгэл алга» гэж ХУДАЛ уншигдана).
  */
-const countOf = async (url: string, where: string): Promise<number | null> => {
+const countOf = async (url: string, where: string, auth: Record<string, string> = {}): Promise<number | null> => {
   const j = await arcgisPost<{ count?: number }>(`${url}/query`, {
-    f: 'json', where, returnCountOnly: 'true',
-  });
+    f: 'json', where, returnCountOnly: 'true', ...auth,
+  }, { token: 'org' });
   return typeof j.count === 'number' && Number.isFinite(j.count) ? j.count : null;
 };
+
+/**
+ * ISO долоо хоногийн ОН — долоо хоногийн Пүрэв гараг (UB) аль онд байна (Даваа эхлэл + 3 хоног).
+ * ⚠️ 2026-10-19: 1-р сарын эхэн/12-р сарын сүүлийн долоо хоног өмнөх/дараагийн ISO онд харьяалагдаж болно.
+ */
+export const isoWeekYear = (start: Date): number => new Date(start.getTime() + 3 * 86_400_000 + 8 * 3_600_000).getUTCFullYear();
+
+/**
+ * «Сайжруулалт» (огноогүй хүснэгт) — тухайн долоо хоногийн `тоо`-ны НИЙЛБЭР (⚠️ 2026-10-19 засвар).
+ *  · Урьд нь `week = N` ОНГҮЙ тул ӨМНӨХ оны ижил дугаартай мөр нийлбэрт холилдож болдог байв;
+ *  · мөр алга бол 0 буцаадаг байв («0 сайжруулалт» ≠ «бүртгэл ирээгүй») → одоо `null` («—»).
+ * Он: хүснэгтэд `year` талбар (`it.year`) тохируулсан бол `AND year = Y`. Амьд схем (2026-10-19:
+ * objectid · week · тоо · globalid) ОН талбаргүй.
+ * ⚠️ 2026-10-19 (засвар): он талбаргүй үед тухайн ISO долоо хоногийн утгыг ХАРУУЛНА, «оны ялгаагүй» тэмдэглэлтэй
+ *    (hover) — урьд нь хүснэгтэд ≥ 8 долоо хоногоор хойших дугаар байвал (`isMultiYear`) `null` болгодог тул оны
+ *    ихэнх хугацаанд (өнгөрсөн оны сүүлийн долоо хоногууд үлдсэн л бол) карт «—» байв. `isMultiYear` одоо зөвхөн
+ *    тэмдэглэлийг хүчтэй болгоно. `null` нь ЗӨВХӨН тухайн долоо хоногт мөр алга үед.
+ *    `max(week)` асуулга унавал (`catch → null`) БҮХ бүртгэлийн ачаалалтыг унагахгүй — тэмдэглэл энгийн хэвээр.
+ */
+async function improvementSum(
+  it: { key: string; label: string; table: number | null; week?: string; sum?: string; year?: string },
+  w: { start: Date; no: number },
+): Promise<RegisterRow> {
+  const url = `${HABEA.registers.url}/${it.table}/query`;
+  const base = { key: it.key, label: it.label };
+  const where = it.year ? `${it.week} = ${w.no} AND ${it.year} = ${isoWeekYear(w.start)}` : `${it.week} = ${w.no}`;
+  const [j, wk] = await Promise.all([
+    arcgisPost<{ features?: { attributes?: { s?: number | null; n?: number | null } }[] }>(url, {
+      f: 'json', where,
+      outStatistics: JSON.stringify([
+        { statisticType: 'sum', onStatisticField: it.sum, outStatisticFieldName: 's' },
+        { statisticType: 'count', onStatisticField: it.sum, outStatisticFieldName: 'n' },
+      ]),
+    }),
+    /* Он талбаргүй үед л — хүснэгтийн долоо хоногийн дээд дугаар (олон оны өгөгдөл илрүүлэх) */
+    it.year ? Promise.resolve(null) : arcgisPost<{ features?: { attributes?: { m?: number | null } }[] }>(url, {
+      f: 'json', where: '1=1',
+      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: it.week, outStatisticFieldName: 'm' }]),
+    }).catch(() => null),
+  ]);
+  if (!Array.isArray(j.features)) return { ...base, week: null };
+  const a = j.features[0]?.attributes ?? {};
+  const v = numOrNull(a.s);
+  const n = numOrNull(a.n);
+  if (!n || v == null) return { ...base, week: null, hint: tr('Энэ долоо хоногт бүртгэл ирээгүй') };
+  if (it.year) return { ...base, week: v };
+  const maxWk = numOrNull(wk?.features?.[0]?.attributes?.m);
+  return {
+    ...base,
+    week: v,
+    hint: maxWk != null && isMultiYear([maxWk], w.no)
+      ? tr('Оны ялгаагүй — хүснэгтэд он талбар алга; өөр оны ижил долоо хоногийн мөр нийлбэрт орсон байж болзошгүй')
+      : tr('Оны ялгаагүй — хүснэгтэд он талбар алга (долоо хоногийн дугаараар)'),
+  };
+}
 
 async function fetchRegisters(w: { start: Date; end: Date; no: number }): Promise<RegisterData> {
   const rows = await Promise.all(HABEA.registers.items.map(async (it): Promise<RegisterRow> => {
     /* ⚠️ 2026-10-08: «Нийт» багана ХАСАГДАВ (хэрэглэгч: «зөвхөн сүүлийн долоо хоногийн мэдээ») */
-    if (it.table != null && it.week && it.sum) {
-      /* ⚠️ 2026-10-15: огноогүй хүснэгт («Сайжруулах») — тухайн ISO долоо хоногийн `тоо`-ны НИЙЛБЭР.
-         Мөр алга бол 0 (бүртгэл байгаа хүснэгт, тэр долоо хоногт хоосон), хариу ирээгүй бол `null`. */
-      const j = await arcgisPost<{ features?: { attributes?: { s?: number | null } }[] }>(
-        `${HABEA.registers.url}/${it.table}/query`,
-        { f: 'json', where: `${it.week} = ${w.no}`,
-          outStatistics: JSON.stringify([{ statisticType: 'sum', onStatisticField: it.sum, outStatisticFieldName: 's' }]) },
-      );
-      if (!Array.isArray(j.features)) return { key: it.key, label: it.label, week: null };
-      const v = Number(j.features[0]?.attributes?.s);
-      return { key: it.key, label: it.label, week: Number.isFinite(v) ? v : 0 };
-    }
+    if (it.table != null && it.week && it.sum) return improvementSum(it, w);
     if (it.table == null || !it.date) return { key: it.key, label: it.label, week: null };
     const week = await countOf(
       `${HABEA.registers.url}/${it.table}`,
@@ -92,11 +146,16 @@ async function fetchRegisters(w: { start: Date; end: Date; no: number }): Promis
  */
 let regCache: { k: number; load: () => Promise<RegisterData> } | null = null;
 
+/* ХАБЭА-ийн кэшийн TTL ба ХУУДАСНЫ POLL (2026-10-21, кэшийн аудит) — POLL нь TTL-ээс ЗААВАЛ УРТ (тайлбар `habeaTiming.ts`-д).
+   ⚠️ 2026-10-22 (аудит): тодорхойлолт `habeaTiming.ts`-д (импортгүй модуль — `cacheDrop.check.mjs` ТООГООР харьцуулна);
+   энд дахин экспортолно — `Habea.tsx` · `habeaRegisters.ui.check.mjs` эндээс авсаар. */
+export { HABEA_TTL_MS, HABEA_POLL_MS };
+
 /** Карт ачаалагч. ⚠️ Дуудагч `now`-оо өгнө (render-ийн `Date.now()` биш — react-hooks/purity). */
 export function loadHabeaRegisters(now = new Date()): Promise<RegisterData> {
   const w = prevWeek(now);
   const k = w.start.getTime();
-  if (!regCache || regCache.k !== k) regCache = { k, load: cached(() => fetchRegisters(w), 5 * 60_000, ['HABEA']) };
+  if (!regCache || regCache.k !== k) regCache = { k, load: cached(() => fetchRegisters(w), HABEA_TTL_MS, ['HABEA']) };
   return regCache.load();
 }
 
@@ -217,6 +276,50 @@ export async function loadHabeaWaste(now = new Date()): Promise<WasteData> {
 }
 
 /* ═════════════════ БИЧИЛТ — «habeaData» эрхтэй хэрэглэгч (2026-10-08) ═════════════════ */
+
+/**
+ * ⚠️ 2026-10-19: Enterprise-ийн сешн шаардлагатай — бичилт НЭРГҮЙ явахгүй (файлын толгойн ⚠️).
+ * Маягт (`HabeaEntry`) энэ алдааг таньж `EntSignIn`-ийг харуулна.
+ */
+export class HabeaEntSignInRequired extends Error {
+  constructor() {
+    super(tr('ХАБЭА-гийн бүртгэл Enterprise геопорталд хадгалагддаг — хадгалахын өмнө Enterprise-д нэвтэрнэ үү.'));
+    this.name = 'HabeaEntSignInRequired';
+  }
+}
+
+/** Enterprise токены эх — тестэд солих боломжтой (`setEntTokenSource`) */
+let entTokenSource: () => string | null = () => entSession()?.token ?? null;
+/** ⚠️ ЗӨВХӨН шалгуурт — Enterprise сешнийг дуурайна */
+export function setEntTokenSource(fn: () => string | null): void { entTokenSource = fn; }
+
+/** Enterprise геопорталын хаяг (`NEXT_PUBLIC_ENT_PORTAL_URL`) — тестэд солих боломжтой (`setEntPortal`) */
+let entPortal = ENT_PORTAL;
+/** ⚠️ ЗӨВХӨН шалгуурт */
+export function setEntPortal(url: string): void { entPortal = url; }
+/** Enterprise нэвтрэлт тохируулагдсан эсэх — хоосон бол бичилт урьдын адил НЭРГҮЙ (`entAuth`-ийн ⚠️) */
+export const habeaEntConfigured = (): boolean => !!entPortal;
+
+let warnedAnon = false;
+/**
+ * Бичилтийн токен (POST биеэр, `token: 'org'` горим — дуудагчийн `token` хэвээр) — сешнгүй бол ШИДНЭ.
+ * ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` ТОХИРУУЛААГҮЙ бол (`EntSignIn` юу ч зурахгүй → сешн хэзээ ч үүсэхгүй)
+ *    ӨМНӨХ зан — НЭРГҮЙ бичилт (`{}`), консолд нэг удаа анхааруулга; маягт тэмдэглэл харуулна
+ *    (`HabeaEntry.EntGate`). Эс тэгвээс production-д хувьсагч тавигдахаас өмнө ХАБЭА-гийн бүртгэл бүрмөсөн
+ *    хаагддаг байв. Тохируулсан үед сешн ЗААВАЛ.
+ */
+function entAuth(): Record<string, string> {
+  if (!entPortal) {
+    if (!warnedAnon) {
+      warnedAnon = true;
+      console.warn('[habea] NEXT_PUBLIC_ENT_PORTAL_URL тохируулаагүй — ХАБЭА-гийн бичилт Enterprise токенгүй (нэргүй) явна.');
+    }
+    return {};
+  }
+  const t = entTokenSource();
+  if (!t) throw new HabeaEntSignInRequired();
+  return { token: t };
+}
 /*
  * ⚠️ БАТЛАГЧГҮЙ — шууд ArcGIS-д. ⚠️ `requireCap('habeaData')` — UI-ийн товч нуугдсан ч консолоос бичихийг хаана.
  * ⚠️ `invalidate('HABEA')` нь `finally`-д — хариу алдагдсан ч (мөр сууссан байж магадгүй) карт шинэчлэгдэнэ.
@@ -261,31 +364,44 @@ export function newGlobalId(): string {
 
 /** Тухайн GlobalID-тай мөр сервер дээр байгаа юу — асуулга унавал ШИДНЭ (тодорхойгүй) */
 async function gidExists(url: string, gidField: string, gid: string): Promise<boolean> {
-  const n = await countOf(url, `${gidField} = '${gid.replace(/'/g, "''")}'`);
+  const n = await countOf(url, `${gidField} = '${gid.replace(/'/g, "''")}'`, entAuth());
   if (n == null) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
   return n > 0;
 }
 
-/** Хүснэгтийн бичих талбар — маягт угсрахад */
-export type EntryField = { name: string; alias: string; type: 'date' | 'number' | 'text' | 'long' };
+/**
+ * Хүснэгтийн бичих талбар — маягт угсрахад.
+ * ⚠️ 2026-10-19 (хэрэглэгч: «домэйн оруулсан талбар сонголтоор харагддаг байх»): `options` —
+ *    кодлогдсон домэйны {код, нэр} жагсаалт; байвал маягт `<select>` зурна (жиш. 40-ийн
+ *    «Талбайн зааварчилгаа өгсөн» — ХАБ ажилтнуудын нэрс).
+ */
+export type EntryField = {
+  name: string; alias: string; type: 'date' | 'number' | 'text' | 'long';
+  options?: { code: string; name: string }[];
+};
 
-const SYS_FIELD = /^(objectid|fid|globalid|creationdate|creator|editdate|editor)$/i;
+const SYS_FIELD = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i;
 /** Урт текстийн талбар — `textarea` */
 const LONG_RE = /агуулга|тайлбар/i;
 
 /**
  * Талбарын ДЭЛГЭЦИЙН нэр — метадатын alias нь орчуулагдахгүй тул НЭРЭЭР нь `tr()`.
- * ⚠️ 2026-10-09: талбарын нэрс амьд метадатаас (35 · 36 · 38). Шинэ талбар нэмэгдвэл alias-аараа
- *    (монголоор) гарна — энд мөр нэмнэ.
+ * ⚠️ 2026-10-09: талбарын нэрс амьд метадатаас. Шинэ талбар нэмэгдвэл alias-аараа (монголоор) гарна — энд мөр нэмнэ.
+ * ⚠️ 2026-10-19: түлхүүрүүд AGOL-ийн (`Сэлбэ_ХАБ1007`, «Огноо») нэрээр байсан; Enterprise (`Сэлбэ_ХАБ1015` —
+ *    37 · 40 · 42, PostgreSQL) талбарууд ЖИЖИГ үсэгтэй («огноо») тул англи шошго огт таардаггүй байв.
+ *    Хайлт ТОМ/ЖИЖИГ үсэг ҮЛ ХАМААРНА (`LABEL_LC`) — хоёр схемд ажиллана.
  */
 const FIELD_LABEL: Record<string, () => string> = {
-  F_: () => tr('№'),
+  f_: () => tr('№'),
   'д_д': () => tr('д/д'),
   'Огноо': () => tr('Огноо'),
   'Баримтын_дугаар': () => tr('Баримтын дугаар'),
   'Талбайн_зааварчилгаа_өгсөн_багц': () => tr('Талбайн зааварчилгаа өгсөн багц'),
   'Товч_агуулга': () => tr('Товч агуулга'),
   'Дуусах_хугацаа': () => tr('Дуусах хугацаа'),
+  /* ⚠️ 2026-10-26 (аудит): Enterprise хүснэгт 40-д ЛАТИН нэртэй (`duusah_hugatsaa`) — кирилл түлхүүрт таарахгүй тул alias-аар
+     (tr-гүй) англи горимд монголоор гардаг байв */
+  duusah_hugatsaa: () => tr('Дуусах хугацаа'),
   'Талбайн_зааварчилгаа_өгсөн': () => tr('Талбайн зааварчилгаа өгсөн'),
   'Компаний_нэр': () => tr('Компаний нэр'),
   'Байршил': () => tr('Байршил'),
@@ -299,13 +415,15 @@ const FIELD_LABEL: Record<string, () => string> = {
   'Сануулах_хуудас_бичсэн': () => tr('Сануулах хуудас бичсэн'),
   'Нэмэлт_тайлбар': () => tr('Нэмэлт тайлбар'),
 };
-export const entryFieldLabel = (f: EntryField): string => FIELD_LABEL[f.name]?.() ?? f.alias;
+const LABEL_LC = new Map(Object.entries(FIELD_LABEL).map(([k, v]) => [k.toLowerCase(), v]));
+export const entryFieldLabel = (f: EntryField): string => LABEL_LC.get(f.name.toLowerCase())?.() ?? f.alias;
 
-/** Бүртгэлийн хүснэгтийн талбарууд (35 · 38 · 36) — метадатаас, дарааллаар */
+/** Бүртгэлийн хүснэгтийн талбарууд (Enterprise 37 · 40 · 42 — ⚠️ 2026-10-19: урьд «35 · 38 · 36» AGOL) — метадатаас, дарааллаар */
 export async function loadEntryFields(table: number): Promise<EntryField[]> {
-  const j = await arcgisPost<{ fields?: { name?: string; alias?: string; type?: string; editable?: boolean }[] }>(
-    `${HABEA.registers.url}/${table}`, { f: 'json' },
-  );
+  const j = await arcgisPost<{ fields?: {
+    name?: string; alias?: string; type?: string; editable?: boolean;
+    domain?: { codedValues?: { code?: unknown; name?: unknown }[] } | null;
+  }[] }>(`${HABEA.registers.url}/${table}`, { f: 'json' });
   return (j.fields ?? [])
     .filter((f) => f.name && !SYS_FIELD.test(f.name) && f.editable !== false && !/OID|GlobalID/.test(f.type ?? ''))
     .map((f) => {
@@ -313,18 +431,69 @@ export async function loadEntryFields(table: number): Promise<EntryField[]> {
       const type: EntryField['type'] = /Date/.test(t) ? 'date'
         : /Double|Integer|Single/.test(t) ? 'number'
           : LONG_RE.test(String(f.alias ?? f.name)) ? 'long' : 'text';
-      return { name: String(f.name), alias: String(f.alias || f.name), type };
+      const cv = f.domain?.codedValues;
+      const options = cv?.length ? cv.map((c) => ({ code: String(c.code), name: String(c.name ?? c.code) })) : undefined;
+      return { name: String(f.name), alias: String(f.alias || f.name), type, ...(options ? { options } : {}) };
     });
 }
 
-/** Дугаарын (№ · д/д) дараагийн утга — хамгийн их + 1 (хүснэгт хоосон бол 1) */
+/**
+ * Дугаарын (№ · д/д) дараагийн утга — хамгийн их + 1 (хүснэгт хоосон бол 1).
+ * ⚠️ 2026-10-19: Enterprise сешн байвал токентой (бичилтийн өмнөх уншилт); маягтын санал (сешнгүй) нэргүй.
+ */
 export async function nextNumber(table: number, field: string): Promise<number> {
+  const t = entTokenSource();
   const j = await arcgisPost<{ features?: { attributes?: { m?: number | null } }[] }>(
     `${HABEA.registers.url}/${table}/query`,
-    { f: 'json', where: '1=1', outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: field, outStatisticFieldName: 'm' }]) },
+    { f: 'json', where: '1=1', outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: field, outStatisticFieldName: 'm' }]), ...(t ? { token: t } : {}) },
+    { token: 'org' },
   );
   const m = numOrNull(j.features?.[0]?.attributes?.m);
   return m != null ? m + 1 : 1;
+}
+
+/**
+ * ДУГААРЫН (№ · д/д) ДАВХАРДЛЫГ БИЧСЭНИЙ ДАРАА ЗАСНА — `hyanalt.ensureUniqueId`-ийн загвар.
+ * ⚠️ 2026-10-21 (аудит): `nextNumber` нь клиентэд max+1 тул хоёр хүн зэрэг хадгалбал ИЖИЛ дугаар авдаг
+ *    байв. Шинэ мөрийн (`oid`) дугаарыг ӨӨРӨӨС БАГА objectid-тай мөр эзэмшиж байвал ӨӨРИЙНХИЙГ шинэ
+ *    max+1 болгоно — ТЭНЦҮҮЛЭГЧ: зөвхөн ИХ objectid-тай тал шилжинэ (хоёр клиент ижил дүрмээр шийдэх тул
+ *    хоёулаа шилжиж дахин давхцахгүй). Гурав ба түүнээс олон зэрэг бичилтэд цөөн удаа давтана.
+ *    Дэлгэцийн дугаар тул алдаа нь хадгалалтыг УНАГАХГҮЙ (`console.warn`) — мөр аль хэдийн бичигдсэн.
+ *    `oid` мэдэгдэхгүй бол (хариунд `objectId` алга) клиентийн GlobalID-аар олно.
+ */
+async function ensureUniqueSeq(
+  table: number, field: string, oid: number, n: number, auth: Record<string, string>,
+  gid?: string,
+): Promise<void> {
+  const url = `${HABEA.registers.url}/${table}`;
+  let cur = n;
+  try {
+    let id = Number.isInteger(oid) && oid > 0 ? oid : 0;
+    if (!id && gid) {
+      const j = await arcgisPost<{ objectIds?: number[] | null }>(`${url}/query`, {
+        f: 'json', where: `${HABEA.registers.gidField} = '${gid.replace(/'/g, "''")}'`, returnIdsOnly: 'true', ...auth,
+      }, { token: 'org' });
+      id = Number(j.objectIds?.[0]) || 0;
+    }
+    if (!id) return;
+    for (let i = 0; i < 3; i += 1) {
+      const below = await countOf(url, `${field} = ${cur} AND objectid < ${id}`, auth);
+      if (below == null) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+      if (below === 0) return;
+      const next = await nextNumber(table, field);
+      const j = await arcgisPost<{ updateResults?: ApplyRes[] }>(`${url}/applyEdits`, {
+        f: 'json',
+        updates: JSON.stringify([{ attributes: { objectid: id, [field]: next } }]),
+        rollbackOnFailure: 'true',
+        ...auth,
+      }, { token: 'org' });
+      const r = j.updateResults ?? [];
+      if (r.length !== 1 || r[0].success !== true) throw new Error(r[0]?.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+      cur = next;
+    }
+  } catch (e) {
+    console.warn('[habea] бүртгэлийн дугаарын давхардлын шалгалт унав:', e);
+  }
 }
 
 /**
@@ -347,6 +516,8 @@ export async function addRegister(
   table: number, attrs: Record<string, unknown>, gid: string, opts: { autoSeq?: string; retry?: boolean } = {},
 ): Promise<void> {
   requireCap('habeaData');
+  /* ⚠️ 2026-10-19: Enterprise сешнгүй бол юу ч илгээхгүй (`invalidate`-ээс ӨМНӨ — карт хөндөгдөхгүй) */
+  const auth = entAuth();
   const R = HABEA.registers;
   const url = `${R.url}/${table}`;
   try {
@@ -360,7 +531,8 @@ export async function addRegister(
         adds: JSON.stringify([{ attributes: { ...a, [R.gidField]: gid } }]),
         useGlobalIds: 'true',
         rollbackOnFailure: 'true',
-      }));
+        ...auth,
+      }, { token: 'org' }));
     } catch (e) {
       if (!isLostWrite(e)) throw e;
       /* Хариу алдагдсан — ЗӨВХӨН уншина. Шалгалт өөрөө унавал «тодорхойгүй». */
@@ -368,10 +540,15 @@ export async function addRegister(
       if (found) return;
       throw new HabeaLostWrite(e, undefined, registerSig(attrs));
     }
-    if (res.success === false) {
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (`oneAdd` зөвхөн тоог шалгадаг) */
+    if (res.success !== true) {
       /* Давхар GlobalID (хоцорч суусан анхны бичилт) — мөр аль хэдийн байвал амжилт */
       if (await gidExists(url, R.gidField, gid).catch(() => false)) return;
       throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+    }
+    /* ⚠️ 2026-10-21 (аудит): зэрэг хадгалалтын ДАВХАР дугаар — бичсэний ДАРАА шалгаж засна (`ensureUniqueSeq`) */
+    if (opts.autoSeq && typeof a[opts.autoSeq] === 'number') {
+      await ensureUniqueSeq(table, opts.autoSeq, Number(res.objectId), a[opts.autoSeq] as number, auth, gid);
     }
   } finally {
     invalidate('HABEA');
@@ -380,16 +557,16 @@ export async function addRegister(
 
 type WasteMeta = {
   capabilities?: string;
-  fields?: { name?: string; domain?: { codedValues?: { code?: unknown }[] } | null }[];
+  fields?: { name?: string; domain?: { codedValues?: { code?: unknown; name?: unknown }[] } | null }[];
 };
 const wasteMeta = () => arcgisPost<WasteMeta>(HABEA.waste.url, { f: 'json' });
 
-/** «Хог хаягдал»-ын маягтын төрлүүд — домэйны кодууд (метадатаас) */
-export async function loadWasteMetrics(): Promise<string[]> {
+/** «Хог хаягдал»-ын маягтын төрлүүд — домэйны код ба нэр (метадатаас), домэйны дарааллаар */
+export async function loadWasteMetrics(): Promise<{ code: string; name: string }[]> {
   const W = HABEA.waste;
   const meta = await wasteMeta();
   const dom = meta.fields?.find((f) => f.name === W.fields.metric)?.domain?.codedValues ?? [];
-  return dom.map((c) => String(c.code));
+  return dom.map((c) => ({ code: String(c.code), name: String(c.name ?? c.code) }));
 }
 
 /**
@@ -455,15 +632,17 @@ export async function addWaste(
   requireCap('habeaData');
   const W = HABEA.waste;
   if (!isWeekNo(week)) throw new Error(tr('Долоо хоног 1–53 байна.'));
+  /* ⚠️ 2026-10-19: Enterprise токен — бичилт ба түүний шалгалтын тоолол (`addRegister`-ийн ⚠️) */
+  const auth = entAuth();
   const where = wasteWhere(week, metric, cols);
   try {
     let before: number | null;
     if (prior && prior.sig === where) {
-      const now = await countOf(W.url, where);
+      const now = await countOf(W.url, where, auth);
       if (now != null && now > prior.before) return;
       before = prior.before;
     } else {
-      before = await countOf(W.url, where);
+      before = await countOf(W.url, where, auth);
     }
     let res: ApplyRes;
     try {
@@ -471,14 +650,16 @@ export async function addWaste(
         f: 'json',
         adds: JSON.stringify([{ attributes: { [W.fields.week]: week, [W.fields.category]: 'Waste', [W.fields.metric]: metric, ...cols } }]),
         rollbackOnFailure: 'true',
-      }));
+        ...auth,
+      }, { token: 'org' }));
     } catch (e) {
       if (!isLostWrite(e)) throw e;
-      const after = await countOf(W.url, where).catch(() => null);
+      const after = await countOf(W.url, where, auth).catch(() => null);
       if (before != null && after != null && after > before) return;
       throw new HabeaLostWrite(e, before ?? undefined, where);
     }
-    if (res.success === false) throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (`oneAdd` зөвхөн тоог шалгадаг) */
+    if (res.success !== true) throw new Error(res.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
   } finally {
     invalidate('HABEA');
   }

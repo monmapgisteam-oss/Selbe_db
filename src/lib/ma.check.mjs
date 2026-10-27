@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  rowOf, splitMulti, toVerdict, maGateOf, latestPerRespNo, formatKeywords, parseKeywords, isExpired, isApproved,
+  rowOf, splitMulti, toVerdict, maGateOf, latestPerRespNo, formatKeywords, parseKeywords, isExpired, isApproved, resubmitLinks,
 } from '@/lib/ma.ts';
 
 const attrs = (o = {}) => ({
@@ -61,6 +61,21 @@ console.log('✅ maGateOf — none · ok · олон MA-гийн нэг нь R/�
   assert.equal(maGateOf('b1_9f:12', [old, nu]).gate, 'ok', 'хуучин R хувилбар тоологдохгүй');
 }
 console.log('✅ latestPerRespNo — сүүлийн хувилбар ялна · дугааргүй мөр тус бүр');
+
+/* 3б. ⚠️ 2026-10-23 (UX аудит Q10): буцаасан (R) MA-г шинэ дугаартай дахин ирүүлбэл холбоно — нэг багц + материал */
+{
+  const r1 = rowOf(attrs({ objectid: 10, resp_no: 'X1', material_name: 'Арматур', verdict: 'R' }));
+  const r2 = rowOf(attrs({ objectid: 12, resp_no: 'X2', material_name: '  арматур ', verdict: 'A' }));
+  const other = rowOf(attrs({ objectid: 11, resp_no: 'X3', material_name: 'Бетон', verdict: 'R' }));
+  const okOld = rowOf(attrs({ objectid: 13, resp_no: 'X4', material_name: 'Тоосго', verdict: 'A' }));
+  const okNew = rowOf(attrs({ objectid: 14, resp_no: 'X5', material_name: 'Тоосго', verdict: 'A' }));
+  const L = resubmitLinks([r2, other, r1, okOld, okNew]);
+  assert.equal(L.get(10)?.next?.oid, 12, 'R → дараагийн ижил материал');
+  assert.equal(L.get(12)?.prev?.oid, 10);
+  assert.equal(L.has(11), false, 'өөр материал холбогдохгүй');
+  assert.equal(L.has(13), false, 'R биш мөр дахин ирүүлэлт биш');
+}
+console.log('✅ resubmitLinks — R → дахин ирүүлсэн MA');
 
 /* 4. хавсралтын мета — keywords ↔ объект; `;` `=` утгаас хасагдана; хугацаа */
 {
@@ -124,10 +139,10 @@ console.log('✅ MIR — мөр · MA-аар бүлэглэх · олон ача
 {
   const { fmRowOf, fmByMa, fmVerdictFor } = await import('@/lib/ficMakt.ts');
   const { chainOf, ipcReady } = await import('@/lib/ma.ts');
-  const f = (o) => fmRowOf({ OBJECTID: 1, kind: 'FIC', ma_no: 'M1', pdf_item: 'x', status: 'pending', uploaded_by: 'a', ...o });
+  const f = (o) => fmRowOf({ objectid: 1, kind: 'FIC', ma_no: 'M1', pdf_item: 'x', status: 'pending', uploaded_by: 'a', ...o });
   assert.equal(f({ status: 'bogus' }).status, 'pending');
   assert.equal(f({ kind: 'makt' }).kind, 'MAKT');
-  const map = fmByMa([f({ OBJECTID: 1, status: 'R' }), f({ OBJECTID: 4, status: 'pending' }), f({ OBJECTID: 2, kind: 'MAKT', status: 'A' }), f({ OBJECTID: 9, ma_no: '' })]);
+  const map = fmByMa([f({ objectid: 1, status: 'R' }), f({ objectid: 4, status: 'pending' }), f({ objectid: 2, kind: 'MAKT', status: 'A' }), f({ objectid: 9, ma_no: '' })]);
   const e = map.get('M1');
   assert.deepEqual(e.FIC.map((x) => x.oid), [4, 1]);
   assert.equal(map.has(''), false);
@@ -147,11 +162,163 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   const L = readFileSync(new URL('./ficMakt.ts', import.meta.url), 'utf8');
   const fn = L.slice(L.indexOf('export async function decideFm('));
   const chain = fn.indexOf('chainOf(ma.verdict');
-  const fresh = fn.indexOf("queryFm(url, `OBJECTID = ${Number(row.oid)}`)");
+  /* ⚠️ 2026-10-21: Enterprise-ийн OID жижиг үсгээр (`objectid`) — `ficMakt.ts`-ийн ⚠️ */
+  const fresh = fn.indexOf("queryFm(url, `objectid = ${Number(row.oid)}`)");
   const write = fn.indexOf('await post<');
   assert.ok(chain > 0 && fresh > chain && write > fresh, 'decideFm: гинжийн шалгалт `pending` уншилт ба бичилтийн ӨМНӨ байх ёстой');
   assert.ok(/stage\.state === 'locked'\) \{\s*throw new Error/.test(fn.slice(chain, fresh)), 'decideFm: locked шатанд шиддэггүй');
   const add = L.slice(L.indexOf('export async function addFm('), L.indexOf('export async function decideFm('));
   assert.ok(/stage\.state === 'locked'/.test(add), 'addFm: locked шалгалт алга (хуучин дүрэм)');
   console.log('✅ 2026-10-12 — decideFm гинжийн locked шалгалт');
+}
+
+/* Actual FIC/М-акт module, with only its external services replaced. The fake
+ * server independently evaluates WHERE and applies each calculation atomically. */
+{
+  const [{ readFileSync }, vm, ts, ma, mir, { PKGS }, { calculateRows, whereMatches }] = await Promise.all([
+    import('node:fs'), import('node:vm'), import('typescript'), import('@/lib/ma.ts'), import('@/lib/mir.ts'),
+    import('@/modules/sheet/bagts.pkg'), import('./hyanaltDecision.fake.mjs'),
+  ]);
+  const source = readFileSync(new URL('./ficMakt.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const target = 'https://fm.test/rest/services/Hosted/FIC/FeatureServer/0';
+  const T0 = Date.UTC(2026, 9, 21, 6, 7, 8, 123);
+  const original = (kind = 'FIC') => ({
+    objectid: 1, kind, ma_no: 'M1', status: 'pending', reason: null,
+    uploaded_by: 'uploader', decided_by: null, decided_at: null,
+  });
+  const fields = ['objectid', 'kind', 'ma_no', 'status', 'reason', 'uploaded_by', 'decided_by', 'decided_at'];
+  const state = {};
+  const reset = (row = original()) => Object.assign(state, {
+    rows: [row], requests: [], writes: 0, fallback: 0, barrier: null,
+    metadata: { supportsCalculate: true, fields: fields.map((name) => ({ name })) },
+    response: undefined, failure: null, beforeCalculate: null,
+  });
+  const json = (value) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
+  // Preserve quoted strings while converting the fake server's UTC date literals
+  // to numeric epoch values. Production still sends the standard SQL timestamp.
+  const sqlForFake = (sql) => sql.replace(/N?'(?:''|[^'])*'|timestamp\s+'[^']*'/gi, (token) =>
+    /^timestamp/i.test(token) ? String(Date.parse(`${token.slice(token.indexOf("'") + 1, -1).replace(' ', 'T')}Z`)) : token);
+  const commit = (body) => {
+    const calculation = new URLSearchParams(body);
+    calculation.set('where', sqlForFake(body.get('where')));
+    return json(calculateRows(state.rows, calculation, () => { state.writes += 1; }));
+  };
+  const fetch = async (url, init) => {
+    const body = new URLSearchParams(init.body);
+    if (url.endsWith('/sharing/rest/search')) return json({ results: [{ title: 'Selbe_Chanar_FIC_MAKT', url: target.slice(0, -2) }] });
+    if (url === target) return json(state.metadata);
+    if (url === `${target}/query`) return json({ features: state.rows
+      .filter((row) => whereMatches(body.get('where'), row)).map((row) => ({ attributes: { ...row } })) });
+    if (url === `${target}/applyEdits`) { state.fallback += 1; throw new Error('unconditional write forbidden'); }
+    assert.equal(url, `${target}/calculate`, 'only the conditional writer may mutate');
+    state.requests.push(body);
+    state.beforeCalculate?.();
+    if (state.response !== undefined) return json(state.response);
+    if (state.failure === 'before') throw new TypeError('connection lost before write');
+    if (state.failure === 'after') { commit(body); throw new TypeError('committed response lost'); }
+    if (state.barrier) return new Promise((resolve) => {
+      state.barrier.pending.push({ body, resolve });
+      if (state.barrier.pending.length === 2) state.barrier.ready();
+    });
+    return commit(body);
+  };
+  const tr = (text, ...args) => text.replace(/\{(\d+)\}/g, (_, i) => String(args[i]));
+  const client = (user) => {
+    const dependencies = {
+      '@/lib/i18nCore': { t: tr },
+      '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user },
+      /* ⚠️ 2026-10-21: Enterprise суурь хоосон — шууд хаягаар хайхгүй, хайлтаар (энэ хуурамч сервер) олно */
+      '@/lib/services/env': { ENT_HOSTED: '' },
+      '@/lib/ma': { ...ma, loadMa: async () => [rowOf(attrs({ resp_no: 'M1' }))] },
+      '@/lib/mir': { ...mir, loadMir: async () => [{ oid: 1, maNo: 'M1', verdict: 'A' }] },
+      '@/lib/chanarAcl': {}, '@/lib/who': { currentUser: () => user, requireCap: () => {} },
+      '@/lib/services': { AUTH: { appId: '' } }, '@/modules/sheet/bagts.pkg': { PKGS },
+      '@/modules/chanar/chanarUi': {},
+    };
+    const exports = {};
+    vm.runInNewContext(compiled, {
+      exports, require: (name) => { assert.ok(Object.hasOwn(dependencies, name), name); return dependencies[name]; },
+      fetch, URLSearchParams, AbortSignal, Date, console,
+    }, { filename: 'ficMakt.ts' });
+    return exports;
+  };
+  const a = client('reviewer_a');
+  const b = client('reviewer_b');
+  for (const kind of ['FIC', 'MAKT']) {
+    for (const first of ['reviewer_a', 'reviewer_b']) {
+      reset(original(kind));
+      // М-акт also needs an approved FIC in its existing chain preflight.
+      if (kind === 'MAKT') state.rows.push({ ...original(), objectid: 2, status: 'A' });
+      let ready;
+      const arrived = new Promise((resolve) => { ready = resolve; });
+      const barrier = { pending: [], ready }; state.barrier = barrier;
+      const expected = a.fmRowOf(state.rows[0]);
+      const calls = [a.decideFm(expected, 'A', 'Approval'), b.decideFm(expected, 'R', "O'Brien's return")]
+        .map((p) => p.then(() => ({ ok: true }), (error) => ({ ok: false, error })));
+      await Promise.race([arrived, Promise.all(calls).then(() => {
+        assert.fail('both decisions finished before reaching the atomic calculation barrier');
+      })]);
+      assert.equal(barrier.pending.length, 2, 'both clients read pending before either UPDATE');
+      const winner = barrier.pending.find((x) => x.body.get('token') === first);
+      const loser = barrier.pending.find((x) => x !== winner);
+      winner.resolve(commit(winner.body));
+      assert.equal((await calls[first === 'reviewer_a' ? 0 : 1]).ok, true);
+      const completed = structuredClone(state.rows);
+      loser.resolve(commit(loser.body));
+      const outcomes = await Promise.all(calls);
+      assert.equal(outcomes.filter((x) => x.ok).length, 1);
+      assert.match(outcomes.find((x) => !x.ok).error.message, /Төлөв өөрчлөгдсөн/);
+      assert.deepEqual(state.rows, completed, 'a delayed loser cannot change the winning attribution, date or reason');
+      assert.equal(state.rows[0].decided_by, first);
+      assert.equal(state.rows[0].status, first === 'reviewer_a' ? 'A' : 'R');
+      assert.equal(state.rows[0].reason, first === 'reviewer_a' ? 'Approval' : "O'Brien's return");
+      assert.equal(state.writes, 1);
+      assert.equal(state.fallback, 0);
+    }
+  }
+  for (const metadata of [{}, { supportsCalculate: false }, { supportsCalculate: true },
+    { supportsCalculate: true, fields: fields.filter((x) => x !== 'status').map((name) => ({ name })) }]) {
+    reset(); state.metadata = metadata;
+    const before = structuredClone(state.rows);
+    await assert.rejects(a.decideFm(a.fmRowOf(state.rows[0]), 'A', ''), /дэмжигдээгүй/);
+    assert.deepEqual(state.rows, before);
+    assert.equal(state.requests.length, 0);
+    assert.equal(state.fallback, 0);
+  }
+  for (const field of ['reason', 'decided_by', 'decided_at', 'kind', 'ma_no', 'uploaded_by']) {
+    reset();
+    state.beforeCalculate = () => { state.rows[0][field] = field === 'decided_at' ? T0 : 'concurrent'; };
+    await assert.rejects(a.decideFm(a.fmRowOf(state.rows[0]), 'A', ''), /Төлөв өөрчлөгдсөн/);
+    assert.equal(state.writes, 0, `guarded metadata: ${field}`);
+    assert.equal(state.fallback, 0);
+  }
+  reset({ ...original(), reason: "O'Brien AND (status = 'A')", decided_by: 'old_reviewer', decided_at: T0 });
+  await a.decideFm(a.fmRowOf(state.rows[0]), 'AN', 'With notes');
+  assert.equal(state.writes, 1);
+  assert.ok(state.requests[0].get('where').includes("timestamp '2026-10-21 06:07:08.123'"), 'date predicates use UTC including milliseconds');
+  assert.equal(JSON.parse(state.requests[0].get('calcExpression')).find((x) => x.field === 'decided_at').value, state.rows[0].decided_at);
+  for (const response of [{}, { success: false, updatedFeatureCount: 0 }, { success: false, updatedFeatureCount: 1 }, { success: true },
+    { success: true, updatedFeatureCount: '1' }, { success: true, updatedFeatureCount: 2 }, { success: true, updatedFeatureCount: -1 }]) {
+    reset(); state.response = response;
+    await assert.rejects(a.decideFm(a.fmRowOf(state.rows[0]), 'A', ''), /үр дүн дутуу/);
+    assert.equal(state.requests.length, 1, 'malformed response is not replayed');
+    assert.equal(state.fallback, 0);
+  }
+  reset(); state.failure = 'before';
+  await assert.rejects(a.decideFm(a.fmRowOf(state.rows[0]), 'A', ''));
+  assert.equal(state.writes, 0);
+  assert.equal(state.requests.length, 1);
+  reset(); state.failure = 'after';
+  const stale = a.fmRowOf(state.rows[0]);
+  await assert.rejects(a.decideFm(stale, 'A', 'Committed approval'));
+  assert.equal(state.writes, 1);
+  assert.equal(state.requests.length, 1, 'lost write response never triggers a retry or cleanup write');
+  assert.equal(state.rows[0].decided_by, 'reviewer_a');
+  await assert.rejects(b.decideFm(stale, 'R', 'Late return'), /аль хэдийн шийдвэрлэгдсэн/);
+  assert.equal(state.writes, 1);
+  assert.equal(state.fallback, 0);
+  console.log('✅ FIC · М-акт — atomic WHERE · two race orders · guarded metadata · fail-closed · lost response');
 }

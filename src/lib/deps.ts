@@ -144,18 +144,59 @@ export function codeIndex(rows: PlanRow[]): Map<number, number> {
 }
 
 /**
- * `gi` бүлгийн доорх бүх НАВЧ мөрийн индексүүд (дам хүүхдүүдийг оруулаад).
- * ⚠️ ЭКСПОРТЛОГДОХГҮЙ (2026-09-06): зөвхөн `effSpan` дуудна. Гаднаас
- *    ашиглагдахгүй нэрийг экспортлох нь «хаа нэгтээ хэрэглэгддэг» гэсэн
- *    худал дохио өгч, устгах эсэхийг шийдэхэд саад болно.
+ * ⚠️ 2026-10-22 (аудит №5): ЭВДЭРСЭН ХУУЧИН ОГНОО ӨВӨГТ ТАРХАХГҮЙ — 2000–2100-аас гадуурх муж (Excel-ийн 0 сериал
+ *    1899-12-30, 1909, 1946 …) бүлгийн нэгтгэлд (`childAgg` → `effSpan` · `rollUpGroups`) «хуваарьгүй» гэж тооцогдоно.
+ *    `planProgress.sane`-ийн ИЖИЛ хязгаар (тэр файлаас импортлохгүй — `deps` нь цэвэр, хүнд хамааралгүй байх ёстой).
+ *    Урьд нь огноотой навчгүй дэд бүлгийн өөрийн 1899-12-30 муж өвөг бүлгүүдийн MIN эхлэх болж, нэг навчийг 1 хоног
+ *    зөөхөд «БАРИЛГЫН АЖИЛ» 1899-12-30..2027-05-21 болж ноорогт орж хадгалагддаг байв (b32_9f дээр давтагдсан).
+ *    Мөрийн ӨӨРИЙН муж хэвээр (харагдана, устахгүй) — зөвхөн дээш дамжихгүй.
  */
-function leafChildren(rows: PlanRow[], gi: number): number[] {
-  const out: number[] = [];
+const SANE_LO = Date.UTC(2000, 0, 1);
+const SANE_HI = Date.UTC(2100, 0, 1);
+const saneSpan = (s: Span | null | undefined): s is Span => !!s
+  && s.start >= SANE_LO && s.start <= SANE_HI && s.end >= SANE_LO && s.end <= SANE_HI;
+
+/**
+ * `gi` бүлгийн доорх ХҮҮХДҮҮДИЙН MIN эхлэх / MAX дуусах (блок `b`). Хүүхэд бүр
+ * `effSpan`-аараа оролцоно: навч — өөрийнх нь, дэд бүлэг — `effSpan(дэд бүлэг)`
+ * (огноотой навчтай бол тэдний MIN/MAX, үгүй бол өөрийн огноо). Хүүхэд огт
+ * хуваарьгүй бол `null`.
+ * ⚠️ ЭКСПОРТЛОГДОХГҮЙ (2026-09-06): зөвхөн `effSpan` · `rollUpGroups` дуудна.
+ *    Гаднаас ашиглагдахгүй нэрийг экспортлох нь «хаа нэгтээ хэрэглэгддэг» гэсэн
+ *    худал дохио өгч, устгах эсэхийг шийдэхэд саад болно.
+ * ⚠️ 2026-10-21: урьд нь `leafChildren` — зөвхөн НАВЧДЫН MIN/MAX. Огноотой навчгүй
+ *    дэд бүлгийн ӨӨРИЙН огноо орхигдож, G0 > {G1 03-01..03-31 (огноогүй навчтай),
+ *    L 02-01..02-10} үед `effSpan(G0)` = 02-01..02-10 → G0-оос FS хамаарагч 02-11-нд
+ *    эхэлж (G0 нь 03-31 хүртэл), `rollUpGroups` G0-ийг навчны мужаар дарж бичдэг байв.
+ *    Хүүхдийг `effSpan`-аар авснаар дэд бүлэг өөрийнхөө дэлгэцийн мужаар оролцоно;
+ *    огноотой навчтай дэд бүлэгт MIN/MAX нь ассоциатив тул үр дүн хуучинтай ижил.
+ */
+function childAgg(
+  rows: PlanRow[],
+  gi: number,
+  b: number,
+  spansOf: (i: number) => (Span | null)[],
+): Span | null {
+  let a: number | null = null;
+  let z: number | null = null;
   const d0 = rows[gi].depth;
-  for (let i = gi + 1; i < rows.length && rows[i].depth > d0; i++) {
-    if (!rows[i].group) out.push(i);
+  for (let i = gi + 1; i < rows.length && rows[i].depth > d0;) {
+    const s = effSpan(rows, i, b, spansOf);
+    /* ⚠️ 2026-10-22 (аудит №5): 2000–2100-аас гадуурх муж нэгтгэлд орохгүй (`saneSpan`-ийн ⚠️) */
+    if (saneSpan(s)) {
+      if (a == null || s.start < a) a = s.start;
+      if (z == null || s.end > z) z = s.end;
+    }
+    /* Дэд бүлгийн дам хүүхдүүд дээрх `effSpan`-д аль хэдийн орсон — алгасна.
+       Навчны доорх (гүн нь их) мөрүүдийг алгасахгүй: урьдын `leafChildren` шиг
+       тэд ч хүүхдээр тоологдоно. */
+    if (rows[i].group) {
+      const di = rows[i].depth;
+      i++;
+      while (i < rows.length && rows[i].depth > di) i++;
+    } else i++;
   }
-  return out;
+  return a == null || z == null ? null : { start: a, end: z };
 }
 
 /**
@@ -178,15 +219,7 @@ export function effSpan(
 ): Span | null {
   const own = spansOf(i)[b] ?? null;
   if (!rows[i].group) return own;
-  let a: number | null = null;
-  let z: number | null = null;
-  for (const c of leafChildren(rows, i)) {
-    const s = spansOf(c)[b];
-    if (!s) continue;
-    if (a == null || s.start < a) a = s.start;
-    if (z == null || s.end > z) z = s.end;
-  }
-  return a == null || z == null ? own : { start: a, end: z };
+  return childAgg(rows, i, b, spansOf) ?? own;
 }
 
 /**
@@ -203,13 +236,20 @@ export function effSpan(
  * ⚠️ Хүүхдүүд нь БҮГД хуваарьгүй бол бүлгийн огноог ХЭВЭЭР үлдээнэ —
  *    бодох зүйл байхгүй үед гараар оруулсан утгыг устгах нь мэдээлэл
  *    алдагдуулна (`effSpan` ч мөн адил тэр үед `own` руу буцдаг).
+ *    ⚠️ 2026-10-21: ЗӨВХӨН өмнөх MIN/MAX-аас зөрсөн (өөрийн) муж хэвээр; өмнөх
+ *    MIN/MAX-тай яг ижил (хүүхдээс бодогдсон) муж арилна — доорх ⚠️.
+ *    ⚠️ 2026-10-21 (аудит №2): тэр тулгалтыг `baseSpansOf` (СЕРВЕРИЙН муж) өгсөн бол ноорогтой
+ *    биш ТҮҮНТЭЙ хийнэ — доорх ⚠️.
  *
+ * @param baseSpansOf мөрийн СЕРВЕРИЙН (ноороггүй) муж — `Huvaari.applyChanges` `base`-ээс өгнө;
+ *   өгөөгүй бол `rows`-ын мужтай тулгана (`payload.ts`: тэнд `rows` нь өөрөө серверийн мөр).
  * @returns `ch`-ийн ХУУЛБАР дээр бүлгийн мөрүүдийг нэмсэн шинэ Map.
  */
 export function rollUpGroups(
   rows: PlanRow[],
   n: number,
   ch: Map<number, (Span | null)[]>,
+  baseSpansOf?: (i: number) => (Span | null)[],
 ): Map<number, (Span | null)[]> {
   if (!ch.size) return ch;
   const out = new Map(ch);
@@ -223,24 +263,51 @@ export function rollUpGroups(
     }
   }
   /* ⚠️ Гүн бүлгээс гүехэн рүү: гадна бүлэг нь дотоод бүлгийн ШИНЭ утгыг
-     ашиглах ёстой. `leafChildren` нь дам хүүхдийг бүгдийг авдаг тул
-     үр дүн нь дарааллаас хамаарахгүй ч, дараалал нь тодорхой байх нь
-     дараа алдаа хайхад хялбар. */
+     ашиглах ёстой. ⚠️ 2026-10-21: `childAgg` огноотой навчгүй дэд бүлгийн
+     ӨӨРИЙН (энэ давталтаар шинэчлэгдсэн байж болох) мужийг уншдаг тул дараалал
+     одоо ЗААВАЛ — дэд бүлэг (индекс нь их) эцгээсээ ӨМНӨ бодогдоно. */
   for (const gi of [...groups].sort((a, b) => b - a)) {
-    const leaves = leafChildren(rows, gi);
     const cur = spansOf(gi);
     const next = cur.slice();
     let moved = false;
     for (let b = 0; b < n; b++) {
-      let a: number | null = null;
-      let z: number | null = null;
-      for (const c of leaves) {
-        const s = spansOf(c)[b];
-        if (!s) continue;
-        if (a == null || s.start < a) a = s.start;
-        if (z == null || s.end > z) z = s.end;
+      /* ⚠️ 2026-10-21: навчдаар биш хүүхдийн `effSpan`-аар — `childAgg`-ийн ⚠️ */
+      const ag = childAgg(rows, gi, b, spansOf);
+      const a = ag?.start ?? null;
+      const z = ag?.end ?? null;
+      if (a == null || z == null) {
+        /* ⚠️ 2026-10-21: БҮХ НАВЧ ХУВААРЬГҮЙ БОЛСОН — бүлгийн муж нь ӨМНӨ НЬ ХҮҮХДЭЭС БОДОГДСОН (өөрчлөлтийн
+           өмнөх навчдын MIN/MAX-тай яг ижил) бол АРИЛГАНА: урьд нь хэвээр үлдэж «сүнс» огноо болон
+           `computeAll`-д төлөвлөгөөт хувь, `effSpan`-аар хамаарагчдыг хязгаарладаг байв. Тэр
+           MIN/MAX-аас ЗӨРСӨН муж = бүлгийн ӨӨРИЙН (гараар/гинжээр тавьсан) огноо → дээрх ⚠️-ийн дагуу ХЭВЭЭР.
+           ⚠️ Мөрөнд own/agg ялгах туг байхгүй тул энэ тулгалт л ялгах цорын ганц арга. */
+        const ov = cur[b] ?? null;
+        if (!ov) continue;
+        /* ⚠️ 2026-10-22 (аудит №4): ЗӨВХӨН өмнөх (ноорогийн) хүүхдийн MIN/MAX-тай ЯГ тэнцүү муж = хүүхдээс бодогдсон.
+           Бусад нь бүлгийн ӨӨРИЙН огноо — гинжээр (`propagate`, FS холбоос) шилжсэн ч — ХЭВЭЭР. Урьд нь `baseSpansOf`
+           салаа энэ нөхцөлгүй ажиллаж, огноотой навчгүй блокт бүлгийн гинжээр шилжсэн өөрийн мужийг серверийнх рүү
+           буцааж (холбоос тасарч, хамаарагчид нь аль хэдийн шилжсэн) анхааруулгагүй хадгалдаг байв. */
+        const pg = childAgg(rows, gi, b, (k) => rows[k].spans);
+        const pa = pg?.start ?? null;
+        const pz = pg?.end ?? null;
+        if (pa == null || pz == null || ov.start !== pa || ov.end !== pz) continue;
+        if (baseSpansOf) {
+          /* ⚠️ 2026-10-21 (аудит №2): ноорогтой (`rows[k].spans`) биш СЕРВЕРИЙН мужтай тулгана. Навчийг огноолоход
+             бүлгийн муж ноорогт навчны мужаар ДАРАГДСАН байдаг тул дараа нь навчийг арилгахад «өмнөх MIN/MAX» =
+             дарагдсан муж = тэр навчны муж болж, бүлгийн ӨӨРИЙН серверийн огноо (Excel/гараар тавьсан, жиш. 60..90)
+             null болж ХАДГАЛАГДДАГ байв (мэдээлэл алдагдал). Серверийн өөрийн муж (`bv`) серверийн хүүхдийн
+             MIN/MAX (`bg`)-тай ЯГ тэнцвэл (эсвэл байхгүй бол) сүнс → null; зөрвөл өөрийн огноо → серверийнхийг
+             СЭРГЭЭНЭ (`applyChanges`-ийн «серверийнхтэй ижил» дүрмээр ноорогоос хасагдана). */
+          const bv = baseSpansOf(gi)[b] ?? null;
+          const bg = childAgg(rows, gi, b, baseSpansOf);
+          const ghost = !bv || (!!bg && bv.start === bg.start && bv.end === bg.end);
+          const want = ghost ? null : bv;
+          if (!want || want.start !== ov.start || want.end !== ov.end) { next[b] = want; moved = true; }
+          continue;
+        }
+        next[b] = null; moved = true;
+        continue;
       }
-      if (a == null || z == null) continue;
       const nv: Span = { start: a, end: z };
       const ov = cur[b] ?? null;
       const same = (!nv && !ov)
@@ -512,6 +579,21 @@ export function propagate(
    *    тэнцээд алгасагдаж, мөр 1-р давалгааны (буруу) байранд үлддэг байв. Сүүлд бодсонтой ч тулгана.
    */
   const lastReq = new Map<string, number>();
+  /**
+   * ⚠️ 2026-10-22 (аудит №9): БҮЛЭГ ГИНЖЭЭР ШИЛЖИХЭД ДОТООД МӨРИЙН ӨӨРИЙН УЯЛДАА ДАХИН ШАЛГАГДАНА. Бүлгийн дэд мод
+   *    жигд шилжсэний дараа `enqueue` зөвхөн тэдний КОДЫГ (тэднээс хамаарагчдад) дараалалд оруулдаг тул дэд модны мөр
+   *    ГАДНЫ урьдчилагчтайгаа (жиш. L2 9FS X — X хөдлөөгүй) дахин тулгагддаггүй, L2 X-ээс өмнө эхэлсээр (зөрчил) үлддэг
+   *    байв. Одоо уялдаатай дотоод мөр бүрийг шууд дахин бодно (`recompute` — `reqMoved` нь «гинж хөдөлгөсөн блок»-ийг
+   *    таньдаг тул ромбоны 2026-10-08-ны дүрэм ижил: шилжилтээр хөдөлсөн навч өөрийн уялдаа руу буцна). Мөр бүрийн
+   *    20 удаагийн хаалт (`run`) энд ч үйлчилнэ — дугуй өгөгдөлд гацахгүй.
+   */
+  const rowQ: number[] = [];
+  const rowPending = new Set<number>();
+  const pushRow = (k: number) => {
+    if (rowPending.has(k)) return;
+    rowPending.add(k);
+    rowQ.push(k);
+  };
   const recompute = (i: number, all = false): boolean => {
     const r = rows[i];
     if (!r.deps.length) return false;
@@ -557,7 +639,13 @@ export function propagate(
         }
         changed = true;
       }
-      if (changed) for (const k of sub) enqueue(k);
+      if (changed) {
+        for (const k of sub) {
+          enqueue(k);
+          /* ⚠️ 2026-10-22 (аудит №9): өөрийн уялдаатай дотоод мөр — дахин шалгана (`rowQ`-ийн ⚠️) */
+          if (k !== i && rows[k].deps.length) pushRow(k);
+        }
+      }
       return changed;
     }
     for (let b = 0; b < nBlocks; b++) {
@@ -583,15 +671,24 @@ export function propagate(
      хэт бага тавьж болохгүй; хадгалагдсан дугуй хамаарал (UI таслана,
      гэхдээ талбарыг гаднаас засаж болно) ч төгсгөлгүй эргэхгүй. */
   const passes = new Map<number, number>();
-  while (q.length) {
+  const run = (i: number) => {
+    const n = (passes.get(i) ?? 0) + 1;
+    if (n > 20) return;
+    passes.set(i, n);
+    recompute(i);
+  };
+  while (q.length || rowQ.length) {
+    /* ⚠️ 2026-10-22 (аудит №9): бүлгийн шилжилтээр хөдөлсөн дотоод мөрийг ЭХЛЭЭД засна — тэднээс хамаарагчид
+       (кодын дараалал) зөрчилтэй байрлалаар бодогдохгүй, давалгаа цөөрнө (`rowQ`-ийн ⚠️). */
+    if (rowQ.length) {
+      const k = rowQ.shift()!;
+      rowPending.delete(k);
+      run(k);
+      continue;
+    }
     const code = q.shift()!;
     pending.delete(code); // ⚠️ сугалсны ДАРАА дахин шилжвэл дахин орох ёстой
-    for (const i of dependents.get(code) ?? []) {
-      const n = (passes.get(i) ?? 0) + 1;
-      if (n > 20) continue;
-      passes.set(i, n);
-      recompute(i);
-    }
+    for (const i of dependents.get(code) ?? []) run(i);
   }
   return out;
 }

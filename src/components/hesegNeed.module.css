@@ -1,37 +1,60 @@
+/* ⚠️ 2026-10-23: Environment — сонгогч .pe-field (32px, 7px булан, --line-strong,
+   bg --bg, moss focus), товч .pe-ghost, анхааруулга --warn токен. */
 .zoneControl select {
   min-width: 0;
   width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--ink);
   font: inherit;
+  font-size: 12.5px;
+  outline: none;
 }
-.zoneControl select:focus-visible { outline: 2px solid var(--hue); }
-.selection { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--ink-3); }
+.zoneControl select:focus-visible {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+.selection { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-3); }
 .selection span { flex: 1; min-width: 0; }
 .selection button {
   flex: none;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px 7px;
-  color: var(--ink);
-  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  padding: 0 10px;
+  color: var(--ink-2);
+  background: transparent;
   font: inherit;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-.subline, .priority { display: block; margin-top: 3px; font-size: 0.65rem; font-weight: 500; color: var(--ink-3); }
-.priority { color: var(--hue); font-weight: 650; }
-.check { display: flex; gap: 7px; align-items: center; font-size: 0.7rem; color: var(--ink-3); }
+.selection button:hover { background: var(--surface-2); color: var(--ink); }
+.subline, .priority { display: block; margin-top: 3px; font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.priority { color: var(--data-ink); font-weight: 600; }
+.check { display: flex; gap: 7px; align-items: center; font-size: 11px; color: var(--ink-3); }
 .check input { accent-color: var(--hue); }
-.routeStatus { display: flex; flex-direction: column; gap: 3px; font-size: 0.67rem; color: var(--ink-3); }
-.unresolved { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid #d9770655; border-radius: 6px; color: var(--ink-3); font-size: 0.68rem; }
-.unresolved b, .unresolvedCount { color: #d97706; }
-.unresolvedCount { font-size: 0.64rem; }
-.connectionLength { font-size: 0.7rem; font-weight: 650; color: var(--hue); white-space: nowrap; }
-.zoneDetails { display: flex; flex-direction: column; gap: 3px; padding: 0 10px 8px; font-size: 0.65rem; color: var(--ink-3); }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 0.67rem; color: var(--ink-3); }
+.routeStatus { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-3); }
+.unresolved {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  color: var(--ink-3); font-size: 11px;
+}
+.unresolved b, .unresolvedCount { color: var(--warn-ink); }
+.unresolvedCount { font-size: 11px; }
+.connectionLength { font-size: 11px; font-weight: 600; color: var(--data-ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.zoneDetails { display: flex; flex-direction: column; gap: 3px; padding: 0 10px 8px; font-size: 11px; color: var(--ink-3); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--ink-3); }
 .legend span { display: flex; align-items: center; gap: 5px; }
+/* ⚠️ Зураг дээрх шугамын өнгө (#0891b2) — газрын зургийн утга, токен болгохгүй. */
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 1.3px solid #0891b2; }
+.legend .trunk { border-top-style: solid; }
 .legend .branch { border-top-style: dashed; }

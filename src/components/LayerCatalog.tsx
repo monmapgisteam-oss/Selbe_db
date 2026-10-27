@@ -5,13 +5,15 @@ import {
   type CSSProperties, type Dispatch, type SetStateAction, type ReactNode,
   type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, EyeOff, Search, X } from 'lucide-react';
 import { Icon } from './Icon';
 import { t as tr } from '@/lib/i18nCore';
 import { LayerSwatch } from './LayerSwatch';
+import { zonesLabel } from '@/lib/zoneLabel';
 import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
-import { qtyText, whereFor, layerStats, totalsFailedOf, retryTotals } from '@/lib/totals';
+import { qtyText, whereFor, layerStats, totalsFailedOf, retryTotals, useLazyTotals } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroupEx, groups, groupWhere } from '@/lib/query';
 import {
@@ -30,6 +32,9 @@ import s from './catalog.module.css';
  *
  * ⚠️ Тоо, хэмжээг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
  * дамжуулна — самбарын дүнтэй зөрөх боломжгүй байх ёстой.
+ * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `totals` ӨГӨӨГҮЙ бол (Portal · «Ерөнхий дашбоард») НЭЭЛТТЭЙ бүлгийн мөрүүдийн
+ * тоог л өөрөө татна (`useLazyTotals`) — бүлгүүд хураалттай эхэлдэг тул урьд нь хэн ч хараагүй 158 давхаргын тоо
+ * (~156 хүсэлт) харагдац нээх бүрд явдаг байв. Самбартай зөрөхгүй: хоёулаа давхарга тус бүрийн НЭГ кэшээс.
  *
  * Мөр бүр ХОЁР үйлдэлтэй (2026-07-31, хэрэглэгчийн хүсэлт — чагт хасагдсан):
  *   · нэр — зурагт харуулах/нуух (багана нээлттэй хэвээр)
@@ -70,7 +75,11 @@ export const LayerCatalog = memo(function LayerCatalog({
    * булагдана (`catalogGroups`-ын тайлбарыг үз).
    */
   view: CatalogView;
-  totals: Async<Map<string, Totals>>;
+  /**
+   * Бүх мөрийн тоо/хэмжээ (дуудагч татсан). ⚠️ 2026-10-22: ӨГӨӨГҮЙ бол нээлттэй бүлгийнхийг л өөрөө татна
+   * (компонентын толгойн ⚠️).
+   */
+  totals?: Async<Map<string, Totals>>;
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   selected: string | null;
@@ -229,6 +238,30 @@ export const LayerCatalog = memo(function LayerCatalog({
     ...forcedAll.filter((id) => shown.includes(id)),
   ]).size;
 
+  /*
+   * ⚠️ 2026-10-22: ТОО/ХЭМЖЭЭ — дуудагчийн `totals` эсвэл (өгөөгүй бол) ЗӨВХӨН ДЭЛГЭЦЭД ГАРСАН мөрүүдийнх: нээлттэй
+   *    бүлэг (хайлт идэвхтэй бол таарсан бүх бүлэг — доорх `open`-той НЭГ дүрэм). Бүлэг нээхэд шинэ мөрүүд л татагдана,
+   *    ирсэн нь хэвээр (`useLazyTotals`). Доорх зураглал хоёр эх сурвалжид нэг хэлбэртэй (`tot`).
+   */
+  const lazyIds = totals ? [] : catGroups.flatMap((g) => (needle || !shut.has(g.key) ? g.ids.filter((id) => hit(id, g.title)) : []));
+  const lazy = useLazyTotals(zone, lazyIds, !totals);
+  const tot = totals
+    ? {
+      map: totals.state === 'ready' ? totals.data : null,
+      loading: totals.state === 'loading',
+      error: totals.state === 'error' ? totals : null,
+      /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л — доорх толгойн тоолуурын ⚠️ */
+      failed: totals.state === 'ready' ? totalsFailedOf(totals.data) : [],
+      rowLoading: (_id: string) => totals.state === 'loading',
+    }
+    : {
+      map: lazy.map,
+      loading: lazy.pending > 0,
+      error: null,
+      failed: lazy.failed,
+      rowLoading: (id: string) => !lazy.failed.includes(id),
+    };
+
   return (
     <aside data-report-skip="" className={`${s.drawer} ${embedded ? s.embedded : ''} mapCatalog`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
@@ -252,19 +285,19 @@ export const LayerCatalog = memo(function LayerCatalog({
           <span className={s.sub}>
             {num(shown.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
-            {totals.state === 'loading' && <> {tr('· тоолж байна…')}</>}
+            {tot.loading && <> {tr('· тоолж байна…')}</>}
             {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
                 дахин оролдох гарц өгнө. Товч нь текстэн холбоос маягтай тул
                 css модульд шинэ класс нэмэлгүй inline-аар зурав. */}
-            {totals.state === 'error' && (
+            {tot.error && (
               <>
                 {' · '}<em className={s.rowWarn}>{tr('тоо татагдсангүй')}</em>
-                {totals.retry && (
+                {tot.error.retry && (
                   <>
                     {' '}
                     <button
                       type="button"
-                      onClick={totals.retry}
+                      onClick={tot.error.retry}
                       style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
                     >
                       {tr('дахин оролдох')}
@@ -277,8 +310,14 @@ export const LayerCatalog = memo(function LayerCatalog({
                 «бэлэн» гэж буцаадаг тул унасан мөрүүд ЧИМЭЭГҮЙ «—» (мэдээлэлгүй мэт) харагддаг байв.
                 Тоог ил хэлж, дахин татах гарц өгнө (`totals.totalsFailedOf` · `retryTotals`). */}
             {(() => {
-              if (totals.state !== 'ready') return null;
-              const n = totalsFailedOf(totals.data).length;
+              if (!tot.failed.length) return null;
+              /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л, давхардалгүй — урьд нь `usePlanTotals`-ын
+                 бүх id-гаас (каталогт харагдахгүй ч хүссэн) тоолж «152 нийт · 153 давхарга татагдсангүй» гэж
+                 нийтээс ИХ тоо гардаг байв. */
+              const bad = new Set(tot.failed);
+              /* ⚠️ 2026-10-19 (review): ХАЙЛТААС ҮЛ ХАМААРНА — каталогийн БҮХ (шүүгээгүй) мөрөөс; урьд нь `shown`
+                 (хайлтаар шүүсэн) тул бичих бүрд уналтын тоо өөрчлөгдөж, хайлтад таараагүй уналт нуугддаг байв */
+              const n = new Set(catGroups.flatMap((g) => g.ids).filter((id) => bad.has(id))).size;
               if (!n) return null;
               return (
                 <>
@@ -294,7 +333,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                 </>
               );
             })()}
-            {zone && <> · {zone}</>}
+            {zone && <> · {zonesLabel(zone.split(',').filter(Boolean))}</>}
           </span>
         </div>
         <button
@@ -304,23 +343,30 @@ export const LayerCatalog = memo(function LayerCatalog({
           title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
           aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
-          {shut.size ? '▸' : '▾'}
+          {/* ⚠️ 2026-10-23: Environment — lucide дүрс (урьд нь «▸/▾» тэмдэгт) */}
+          {shut.size ? <ChevronsUpDown size={14} strokeWidth={1.6} aria-hidden /> : <ChevronsDownUp size={14} strokeWidth={1.6} aria-hidden />}
         </button>
         {!pinned && (
-          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>×</button>
+          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Жагсаалтыг хаах')}>
+            <X size={14} strokeWidth={1.6} aria-hidden />
+          </button>
         )}
       </header>
 
       <div className={s.body}>
-        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️) */}
-        <input
-          type="search"
-          className={s.search}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={tr('Давхарга хайх…')}
-          aria-label={tr('Давхарга хайх')}
-        />
+        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️).
+            ⚠️ 2026-10-23: Environment `.dataset-panel-search` — дүрстэй хайрцаг (оролт нь хэвээр). */}
+        <label className={s.searchBox}>
+          <Search size={13} strokeWidth={1.75} aria-hidden />
+          <input
+            type="search"
+            className={s.search}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={tr('Давхарга хайх…')}
+            aria-label={tr('Давхарга хайх')}
+          />
+        </label>
 
         {/* БҮХ ДАВХАРГЫГ УНТРААХ — жагсаалтын хамгийн дээд, тусдаа том товч
             (хэрэглэгчийн хүсэлт: шууд нүдэнд харагдахуйц). Унтраах юмгүй үед
@@ -333,7 +379,7 @@ export const LayerCatalog = memo(function LayerCatalog({
           disabled={visible.filter((id) => all.includes(id)).length === 0}
           onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
         >
-          <Icon name="layers" size={15} />
+          <EyeOff size={14} strokeWidth={1.6} aria-hidden />
           {tr('Бүх давхаргыг унтраах')}
           {onCount > 0 && <span className={`${s.allOffCount} num`}>{onCount}</span>}
         </button>
@@ -365,8 +411,7 @@ export const LayerCatalog = memo(function LayerCatalog({
          * мөр бүрд ирэх бүрд нь дүүрнэ (ачаалж байхад «…», алдвал «—»).
          */}
         {(() => {
-          const map = totals.state === 'ready' ? totals.data : null;
-          const loadingTotals = totals.state === 'loading';
+          const map = tot.map;
           return (
             <>
               {/* ⚠️ ХООСОН ХАЙЛТ (2026-09-23): нэг ч давхарга таарахгүй бол жагсаалт
@@ -425,7 +470,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                           setOpenState(g.key, on === 0);
                         }}
                       >
-                        <span className={s.groupIcon}><Icon name={g.icon} size={15} /></span>
+                        <span className={s.groupIcon}><Icon name={g.icon} size={16} /></span>
                         <span className={s.groupTitle}>{g.title}</span>
                         {/* Тоолуур — товч БИШ, зөвхөн төлөв заана */}
                         <span className={`${s.groupBtn} num`}>{on}/{ids.length}</span>
@@ -440,7 +485,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                         className={`${s.groupCaret} ${open ? s.groupCaretOpen : ''}`}
                         onClick={() => setOpenState(g.key, !open)}
                       >
-                        ▾
+                        <ChevronDown size={14} strokeWidth={1.6} aria-hidden />
                       </button>
                     </div>
 
@@ -479,7 +524,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                             >
                               <span className={s.rowTitle}>{d.title}</span>
                               <span className={`${s.rowMeta} num`}>
-                                {t ? tr('{0} ш', num(t.n)) : (loadingTotals ? '…' : '—')}
+                                {t ? tr('{0} ш', num(t.n)) : (tot.rowLoading(d.id) ? '…' : '—')}
                                 {q ? ` · ${q}` : ''}
                                 {zone && d.noZone && <em className={s.rowWarn}> {tr('· бүсгүй')}</em>}
                               </span>
@@ -494,7 +539,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                               className={s.rowChart}
                               onClick={() => onSelect(d.id)}
                             >
-                              <Icon name="chart" size={13} />
+                              <Icon name="chart" size={14} />
                             </button>
 
                             {/* Ангиллаараа задарсан давхарга — доор нь дэд мөрүүд */}
@@ -581,12 +626,25 @@ function FacetRows({
 
   if (q.state !== 'ready' || q.data.items.length < 2) return null;
 
+  /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15): «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ.
+     ⚠️ 2026-10-21 (аудит): `f.canon` (бүсийн ангилал → `zoneType`) — өгөгдлийн жижиг үсгийн утга толины каноник
+     түлхүүрт таардаггүй тул англи горимд монголоор үлддэг байв; ZoneFilter-тэй нэг нэр.
+     ⚠️ 2026-10-22 (аудит): НЭГ ГАЗРААС — мөр БА шүүлтийн чип (`Portal.ActiveFilterChip` нь `label`-ийг дахин
+     орчуулдаггүй) ижил орчуулсан нэр хэлнэ. Урьд нь чип рүү түүхий утга (`item.label`, «орон сууцны бүс») очиж англи
+     горимд монголоор үлддэг байв. Шүүлтийн түлхүүр/нөхцөл (`key` · `groupWhere`) түүхий утгаараа хэвээр. */
+  const nameOf = (label: string): string => tr(f.canon
+    ? f.canon(label)
+    : f.field === d.paint?.field
+      ? d.paint.labels?.[label] ?? label
+      : label);
+
   return (
     <div className={s.facetRows}>
       {q.data.items.map((item) => {
         const key = `cat:${d.id}:${item.label}`;
         const on = isOn(key);
-        const qty = qtyText(d, item.values.q);
+        const name = nameOf(item.label);
+        const qty = qtyText(d, item.stats.q ?? null); // ⚠️ 2026-10-21: `stats` — бүх утга хоосон бүлэг «0 м» БИШ хоосон (null ≠ 0)
         return (
           <button
             key={item.label}
@@ -597,7 +655,7 @@ function FacetRows({
               onNeedVisible();
               toggle({
                 key,
-                label: item.label,
+                label: name,
                 group: f.label,
                 where: groupWhere(f.field, item),
                 view,
@@ -607,13 +665,8 @@ function FacetRows({
               });
             }}
           >
-            {/* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15):
-                «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ. */}
-            <span className={s.facetName}>
-              {tr(f.field === d.paint?.field
-                ? d.paint.labels?.[item.label] ?? item.label
-                : item.label)}
-            </span>
+            {/* ⚠️ Нэр — дээрх `nameOf` (2026-09-15 · 2026-10-21 · 2026-10-22-ны ⚠️) */}
+            <span className={s.facetName}>{name}</span>
             <span className={`${s.facetMeta} num`}>
               {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}
             </span>

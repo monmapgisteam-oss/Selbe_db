@@ -60,12 +60,12 @@ const near = (a, b, msg) => assert.ok(a != null && Math.abs(a - b) < 1e-6, `${ms
 
 /* ══ Хуурамч өгөгдөл ══ */
 const CR = (o) => ({
-  OBJECTID: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
+  objectid: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
   ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
   /* ⚠️ 2026-10-01: гэрээлсэн дүн — `paidShare.paidShareOf`-ийн хуваарь (Cashflow, CONTRACTED) */
   geree_dun: o.contract ?? null,
-  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, Cashflow_ID: o.cf ?? null,
+  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, cashflow_id: o.cf ?? null,
 });
 const HOUSING = 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт';
 const INFRA = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт';
@@ -267,6 +267,29 @@ console.log('\n8. Зурагдах (SSR)');
     assert.ok(html.includes('aria-pressed="false"'));
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
     assert.ok(/<details[^>]*>\s*<summary><h2>Зураг<\/h2>/.test(hd));
+  });
+
+  /* ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн ХАМРАЛТ — муруй 70%-д дуусдаг (огноогүй ажлын жин 30%) */
+  console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');
+  ok('БАГЦ1: хамралт 70 → төлөв гэрээний төлөвлөгөөгөөр, SPI (гүйцэтгэгч) «—», hero-д «хуваарь 70.0% хамарсан»', () => {
+    assert.equal(h1.planCoverage, 70);
+    assert.notEqual(h1.statusBasis, 'contractor', 'дутуу хуваарьтай гүйцэтгэгчийн зөрүүгөөр төлөв тогтоохгүй');
+    assert.equal(h1.ev.spiContractor, null, 'хэт бага төлөвлөгөөнд хуваасан SPI «түрүүлсэн» мэт гарахгүй');
+    near(h1.planContractor, 15, 'төлөвлөгөөний ТОО хэвээр харагдана');
+    assert.equal(m.hero.planCoverage, 70);
+    assert.ok(html.includes('хуваарь 70.0% хамарсан'), 'hero — гүйцэтгэгчийн төлөвлөгөөний хажууд хамралт');
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('хуваарь 70.0% хамарсан — хуваарь дутуу — дүгнэхгүй'), 'дэлгэрэнгүй — дүгнэхгүй гэж ил');
+  });
+  ok('хамралт 100% — SPI (гүйцэтгэгч) бодогдоно, hero-д тэмдэглэлгүй', () => {
+    const full = [{ label: '2026-07', pct: 10, vol: null }, { label: '2026-08', pct: 41, vol: null }, { label: '2026-12', pct: 100, vol: null }];
+    const mf = buildModel(input({ plan: { ...plan, months: full, byBagts: new Map([['БАГЦ1', full]]) } }));
+    const r = mf.rows.find((x) => x.p.key === 'БАГЦ1');
+    assert.equal(r.planCoverage, 100);
+    assert.ok(r.ev.spiContractor != null, 'бүрэн хуваарьт SPI');
+    assert.equal(mf.hero.planCoverage, 100);
+    const hf = renderToStaticMarkup(React.createElement(Overview, { m: mf, contractTotal: null, onOpen: noop }));
+    assert.ok(!hf.includes('хамарсан'), 'бүрэн хуваарьт хамралтын тэмдэглэл нэмэхгүй');
   });
 }
 

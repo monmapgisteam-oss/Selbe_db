@@ -42,6 +42,15 @@ export function useNotice() {
   const done = useCallback((msg: string) => show('ok', msg), [show]);
   /** Үйлдэл БҮТСЭНГҮЙ ч алдаа биш (буулгах нүд таарсангүй г.м.) */
   const warn = useCallback((msg: string) => show('warn', msg), [show]);
+  /**
+   * ⚠️ 2026-10-23 (UX аудит F4): НААЛДСАН АНХААРУУЛГА — «Илгээх» хориглогдсон шалтгаан ба ЗАСАХ НҮДНИЙ ЖАГСААЛТ
+   *    (сөрөг · тулгагдаагүй нүд), сэргээгдээгүй ноорогийн нүд. Урьд нь `warn` (4 сек) байсан тул хэрэглэгч жагсаалтыг
+   *    уншиж амжилгүй, нүд хайх зуур алга болдог байв. Хугацаагүй — ✕ дарж хаана, эсвэл дараагийн «Илгээх»/багц солиход
+   *    (`tag` — дуудагч багцын түлхүүрээр шүүнэ) арилна. Товшилтын түр тайлбар (`ro`) ҮҮНИЙГ ДАРАХГҮЙ — тусдаа төлөв.
+   */
+  const [sticky, setSticky] = useState<{ msg: string; tag: string } | null>(null);
+  const stick = useCallback((msg: string, tag = '') => setSticky({ msg, tag }), []);
+  const unstick = useCallback(() => setSticky(null), []);
   useEffect(
     () => () => {
       if (noticeT.current) clearTimeout(noticeT.current);
@@ -53,5 +62,5 @@ export function useNotice() {
     title: msg,
     onClick: () => say(msg),
   });
-  return { notice, setNotice, show, say, done, warn, ro };
+  return { notice, setNotice, show, say, done, warn, ro, sticky, stick, unstick };
 }

@@ -15,7 +15,8 @@
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-md, 10px);
+  /* ⚠️ 2026-10-23: Environment — карт 12px булан */
+  border-radius: var(--r-lg);
   color: var(--ink-2);
   font-size: 13px;
   line-height: 1.55;
@@ -42,22 +43,28 @@
   gap: 12px;
   flex-wrap: wrap;
 }
-.title { margin: 0; color: var(--ink); font-size: 17px; font-weight: 700; line-height: 1.3; }
+.title { margin: 0; color: var(--ink); font-size: 17px; font-weight: 600; line-height: 1.3; }
 .count { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 .lead { margin: 0; color: var(--ink-3); font-size: 12.5px; }
 
+/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px; focus moss */
 .search {
   width: 100%;
   max-width: 520px;
-  padding: 7px 10px;
+  height: 32px;
+  padding: 0 9px;
   border: 1px solid var(--line-strong, var(--line));
   border-radius: 7px;
-  background: var(--surface-2);
+  background: var(--bg);
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
+  outline: none;
 }
-.search:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.search:focus-visible {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
+}
 
 .filters { display: flex; flex-wrap: wrap; gap: 5px; }
 .filter {
@@ -66,20 +73,21 @@
   gap: 5px;
   padding: 4px 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-2);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
-.filter:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
-.filter:disabled { opacity: 0.45; cursor: default; }
+.filter:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.filter:disabled { opacity: 0.4; cursor: default; }
 .filter:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+/* ⚠️ 2026-10-23: Environment — сонгогдсон шүүлт: moss 12–14% дэвсгэр · moss бичиг · moss 45% хүрээ */
 .filterOn {
-  border-color: color-mix(in srgb, var(--data) 55%, transparent);
-  background: color-mix(in srgb, var(--data) 15%, transparent);
-  color: var(--ink);
+  border-color: color-mix(in oklab, var(--moss) 45%, transparent);
+  background: color-mix(in oklab, var(--moss) 13%, transparent);
+  color: var(--moss);
   font-weight: 600;
 }
 .n { color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -99,14 +107,14 @@
   min-width: 0;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   /* ⚠️ Sticky толгойн доор нуугдахгүйн тулд үсрэлтийн зай */
   scroll-margin-top: 170px;
   transition: box-shadow 0.25s, border-color 0.25s;
 }
 .item:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
-.itemClosed { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.itemClosed { border-color: color-mix(in oklab, var(--bad) 35%, var(--line)); }
 /* Шатлалын холбоосоор үсэрсэн мөр — түр тодорно */
 .hl {
   border-color: var(--data);
@@ -114,22 +122,25 @@
 }
 
 .head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
-.name { margin: 0; color: var(--ink); font-size: 14px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.name { margin: 0; color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+/* ⚠️ 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8% */
 .kind {
   padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .closed {
   padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
   color: var(--bad-ink, var(--bad));
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .refLine { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
@@ -172,14 +183,14 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.stepHasRef { border-color: color-mix(in srgb, var(--data) 40%, var(--line)); }
+.stepHasRef { border-color: color-mix(in oklab, var(--data) 45%, transparent); }
 .with { display: inline-flex; align-items: center; gap: 4px; }
 .dot { color: var(--ink-3); }
 .stepLink {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--data);
+  color: var(--data-ink);
   font: inherit;
   text-align: left;
   text-decoration: underline;
@@ -187,7 +198,7 @@
   cursor: pointer;
 }
 .stepLink:hover { color: var(--ink); }
-.stepLink:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; border-radius: 3px; }
+.stepLink:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; border-radius: 4px; }
 
 /* ───────── Харагдац · эрх · мөрийн төрөл ───────── */
 
@@ -206,7 +217,7 @@
   gap: 5px;
   padding: 1px 7px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-2);
   font: inherit;
@@ -215,7 +226,7 @@
   overflow-wrap: anywhere;
 }
 .chipBtn { cursor: pointer; }
-.chipBtn:hover { background: color-mix(in srgb, var(--data) 12%, transparent); color: var(--ink); }
+.chipBtn:hover { background: color-mix(in oklab, var(--moss) 12%, transparent); color: var(--ink); }
 .chipBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 
 .rows { margin: 0; padding-left: 16px; font-size: 12px; }
@@ -231,7 +242,16 @@
   font-size: 12px;
 }
 
-.empty { margin: 0; padding: 24px 18px; color: var(--ink-3); }
+/* ⚠️ 2026-10-23: Environment хоосон төлөв — тасархай хүрээ, төвд ink-3 */
+.empty {
+  margin: 14px 18px;
+  padding: 24px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+}
 
 /* ───────── Утсан дэлгэц ───────── */
 @media (max-width: 620px) {

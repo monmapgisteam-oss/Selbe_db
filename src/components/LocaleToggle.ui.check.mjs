@@ -65,19 +65,20 @@ _resetNavDirty();
 
 console.log('\n2. confirmLocaleSwitch — хадгалаагүй үед л асууна');
 asked = [];
-ok('цэвэр → асуултгүй зөвшөөрнө', confirmLocaleSwitch() === true && asked.length === 0);
+/* ⚠️ 2026-10-23: async (`askConfirm` — хостгүй үед `window.confirm` руу унана) */
+ok('цэвэр → асуултгүй зөвшөөрнө', (await confirmLocaleSwitch()) === true && asked.length === 0);
 win.addEventListener('beforeunload', finance);
 answer = false;
-ok('бохир + «Цуцлах» → солихгүй', confirmLocaleSwitch() === false && asked.length === 1);
+ok('бохир + «Болих» → солихгүй', (await confirmLocaleSwitch()) === false && asked.length === 1);
 ok('асуулт нь хэл солихыг нэрлэнэ', /хэл солиход алдагдана/.test(asked[0] ?? ''), asked[0]);
 answer = true;
-ok('бохир + «OK» → солино', confirmLocaleSwitch() === true && asked.length === 2);
+ok('бохир + «OK» → солино', (await confirmLocaleSwitch()) === true && asked.length === 2);
 win.removeEventListener('beforeunload', finance);
 
 console.log('\n3. Холболт — товч ба SkipLink');
 const src = readFileSync(new URL('./LocaleToggle.tsx', import.meta.url), 'utf8');
 ok('товч setLocale-ийн ӨМНӨ confirmLocaleSwitch() асууна',
-  /onClick=\{\(\) => \{\s*if \(confirmLocaleSwitch\(\)\) setLocale\(next\);\s*\}\}/.test(src));
+  /onClick=\{async \(\) => \{\s*if \(await confirmLocaleSwitch\(\)\) setLocale\(next\);\s*\}\}/.test(src));
 const html = renderToStaticMarkup(createElement(LocaleToggle, {}));
 ok('товч зурагдана (mn → EN)', /<button[^>]*>/.test(html) && html.includes('EN'), html);
 const skip = readFileSync(new URL('./SkipLink.tsx', import.meta.url), 'utf8');

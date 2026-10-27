@@ -1,39 +1,49 @@
-/* ЭРХИЙН ТӨРӨЛ — 10 төрөл × тохиргооны хүснэгт (`ErhTypes.tsx`) */
+/* ЭРХИЙН ТӨРӨЛ — 10 төрөл × тохиргооны хүснэгт (`ErhTypes.tsx`)
+   ⚠️ 2026-10-23: Environment — .pe-table хэв (12px булан, 11.5px мөр, 10px UPPERCASE sticky толгой),
+   товч/сонгогч .pe-ghost/.pe-field, шошго 6px badge. */
 .wrap {
   max-width: 100%;
   overflow: auto;
   max-height: calc(100vh - 230px); /* ⚠️ 2026-09-30: бүтэн дэлгэц — өндрийг ч дээд зэргээр */
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
   background: var(--surface);
 }
-.tbl { border-collapse: separate; border-spacing: 0; font-size: 0.78rem; min-width: 100%; }
-.tbl th, .tbl td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: center; vertical-align: middle; }
+.tbl { border-collapse: separate; border-spacing: 0; font-size: 11.5px; min-width: 100%; }
+.tbl th, .tbl td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: center; vertical-align: middle; }
 .head {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: var(--surface-2);
-  color: var(--ink);
-  font-weight: 700;
-  font-size: 0.74rem;
+  background: var(--surface);
+  border-bottom-color: var(--line-strong) !important;
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   min-width: 104px;
 }
-.headNo { display: block; color: var(--ink-3); font-weight: 500; font-size: 0.68rem; }
+.headNo { display: block; color: var(--ink-3); font-weight: 500; font-size: 11px; letter-spacing: 0; text-transform: none; }
 .headBtns { display: flex; gap: 4px; justify-content: center; margin-top: 4px; flex-wrap: wrap; }
 .mini {
   font: inherit;
-  font-size: 0.66rem;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--hue, #0d9488);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-2);
   background: none;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm, 4px);
-  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
   cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
-.mini:disabled { opacity: 0.45; cursor: default; }
-.corner { position: sticky; top: 0; left: 0; z-index: 4; background: var(--surface-2); text-align: left; min-width: 280px; }
+.mini:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.mini:disabled { opacity: 0.4; cursor: default; }
+.corner { position: sticky; top: 0; left: 0; z-index: 4; background: var(--surface); text-align: left; min-width: 280px; }
 .lbl {
   position: sticky;
   left: 0;
@@ -44,34 +54,38 @@
   max-width: 360px;
 }
 .lblText { font-weight: 600; color: var(--ink); }
-.lblHint { display: block; color: var(--ink-3); font-size: 0.7rem; font-weight: 400; }
+.lblHint { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
 .sec td {
   background: var(--surface-2);
-  color: var(--ink-2);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: left;
 }
 .secLbl { position: sticky; left: 0; }
-.dirty { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); }
-.cb { width: 17px; height: 17px; cursor: pointer; accent-color: var(--hue, #0d9488); }
+.dirty { background: color-mix(in oklab, var(--warn) var(--tint), transparent); }
+.cb { width: 15px; height: 15px; cursor: pointer; accent-color: var(--data); }
 .cb:disabled { cursor: default; }
 .sel {
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 11.5px;
   max-width: 110px;
-  background: var(--surface);
+  height: 26px;
+  background: var(--bg);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm, 4px);
-  padding: 2px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 6px;
+  outline: none;
 }
+.sel:focus { border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
-.info { color: var(--ink-3); font-size: 0.78rem; }
-.err { color: var(--bad-ink); font-size: 0.78rem; white-space: pre-line; }
-.ok { color: var(--ink-2); font-size: 0.78rem; }
+.info { color: var(--ink-3); font-size: 11.5px; }
+.err { color: var(--bad-ink); font-size: 11.5px; white-space: pre-line; }
+.ok { color: var(--ink-2); font-size: 11.5px; }
 
 /* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг (2026-09-30: багцын чип хасагдсан) */
 .typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -82,17 +96,28 @@
   display: inline-block;
   margin: 3px auto 0;
   padding: 1px 6px;
-  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 55%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent);
-  color: var(--ink);
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  color: var(--warn-ink);
   font: inherit;
-  font-size: 0.62rem;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   line-height: 1.35;
   white-space: normal;
 }
 button.newBadge { cursor: pointer; }
-button.newBadge:disabled { opacity: 0.5; cursor: default; }
+button.newBadge:disabled { opacity: 0.4; cursor: default; }
 .lbl .newBadge { margin: 2px 0 0 6px; }
-.cellNew { background: color-mix(in srgb, var(--warn, #d97706) 12%, transparent); }
+.cellNew { background: color-mix(in oklab, var(--warn) 8%, transparent); }
+/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» — МЭДЭЭЛЛИЙН нүд (идэвхгүй чекбокс + тэр төрлийн үүрэгтэй хүний тоо) */
+.info { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--ink-3); cursor: help; }
+
+/* ⚠️ 2026-10-26 (аудит): утсанд (≤760px — userAdmin-ийн цэгтэй нэг) 280px наалддаг шошго 328px гүйлгэх хүрээний ихэнхийг
+   эзэлж төрлийн баганад ~48px л үлддэг байв. */
+@media (max-width: 760px) {
+  .corner, .lbl { min-width: 140px; max-width: 160px; }
+  .lblHint { display: none; }
+}

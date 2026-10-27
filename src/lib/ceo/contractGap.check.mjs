@@ -15,8 +15,9 @@
  *  6. Хүснэгт бүрэн бус — давсан мөр БҮР нэрээрээ орно; эрэмбэ буурах.
  *  7. «гэрээлсэн X / төсөв Y» ХОЁР ӨӨР популяцийг харьцуулах — төсөв БҮХ
  *     мөрөөс (гэрээгүй 43-ыг оруулаад) бол ~1.5 их наяд хуурамч «хэмнэлт».
- *     Хоёулаа ЗӨВХӨН гэрээтэй мөрөөс; contract − budget = Σover + Σunder
- *     (+ төсөвгүй гэрээний Σ дүн).
+ *     Хоёулаа ЗӨВХӨН гэрээтэй мөрөөс; contract − budget = Σover + Σunder.
+ *     ⚠️ 2026-10-21: төсөвгүй гэрээний Σ дүн `contractTotal`-д ОРОХГҮЙ (нэг популяци),
+ *     `noBudgetSum`-д тусдаа — урьд нь хоёр нийлбэр өөр олонлогоос байв.
  *  8. (2026-09-25) ГЭРЭЭТЭЙ = `note === CONTRACTED` — `geree_dun` бөглөгдсөн
  *     ГЭРЭЭГҮЙ мөр «гэрээ» болохгүй; CONTRACTED боловч дүнгүй мөр жагсаалтад
  *     орно, нийлбэрт орохгүй.
@@ -61,12 +62,13 @@ const row = (o) => ({
   assert.equal(g.over.count, 0);
   assert.equal(g.over.sum, null, 'хоосон нийлбэр null, 0 биш');
   assert.equal(g.under.sum, null);
-  assert.equal(g.contractTotal, 1000);
+  assert.equal(g.contractTotal, null, '⚠️ 2026-10-21: D/E төсөвгүй → budgetTotal-тай нэг популяци → null');
+  assert.equal(g.noBudgetSum, 1000, 'төсөвгүй гэрээний Σ дүн тусдаа');
   assert.equal(g.budgetTotal, null, 'гэрээгүй A/B/C-ийн 300 төсөв ОРОХГҮЙ; D/E төсөвгүй → null');
   const k = buildContractGapKpi(g);
   assert.equal(k.value, '—', 'давсан гэрээ алга → «—»');
   assert.equal(k.level, 'good');
-  assert.ok(k.facts.some((f) => f.includes('2 ') && f.includes('төсөвт өртөггүй')), k.facts.join(' | '));
+  assert.ok(k.facts.some((f) => f.includes('2 ') && f.includes('төсөвт өртөггүй') && f.includes('1,000 ₮')), k.facts.join(' | '));
   assert.equal(k.tables[0].rows.length, 0);
   assert.equal(k.tables[1].rows.length, 2);
 }
@@ -91,8 +93,9 @@ const row = (o) => ({
   assert.equal(g.over.sum, 550);
   assert.equal(g.under.count, 1);
   assert.equal(g.under.sum, -200);
-  assert.equal(g.contractTotal, 3560);
+  assert.equal(g.contractTotal, 3550, '⚠️ 2026-10-21: төсөвгүй «нэргүй» 10 орохгүй (нэг популяци)');
   assert.equal(g.budgetTotal, 3200);
+  assert.equal(g.noBudgetSum, 10);
   assert.equal(contractOverLevel(g), 'warn', 'давсан ч босгоос доош → шар');
 
   const k = buildContractGapKpi(g);
@@ -112,9 +115,9 @@ const row = (o) => ({
   assert.ok(k.issues[0].text.includes('их давсан') && k.issues[0].text.includes('БАГЦ-3.2') && k.issues[0].text.includes('500 ₮'), k.issues[0].text);
   assert.ok(k.facts[0].startsWith('2 '), k.facts[0]);
   assert.ok(k.facts[1].includes('1 ') && k.facts[1].includes('200 ₮'), k.facts[1]);
-  assert.ok(k.facts[2].includes('3,560 ₮') && k.facts[2].includes('3,200 ₮'), k.facts[2]);
+  assert.ok(k.facts[2].includes('3,550 ₮') && k.facts[2].includes('3,200 ₮'), k.facts[2]);
   assert.equal(k.facts.length, 4, '«нэргүй» төсөвгүй → 4 дэх баримт');
-  assert.ok(k.facts[3].includes('1 ') && k.facts[3].includes('төсөвт өртөггүй'), k.facts[3]);
+  assert.ok(k.facts[3].includes('1 ') && k.facts[3].includes('төсөвт өртөггүй') && k.facts[3].includes('10 ₮'), k.facts[3]);
   assert.equal(k.asOf, null);
   for (const t of k.tables) for (const r of t.rows) assert.equal(r.length, t.cols.length);
 }
@@ -129,11 +132,13 @@ const row = (o) => ({
   ]);
   assert.equal(g.noContract, 1);
   assert.equal(g.budgetTotal, 3000, 'зөвхөн гэрээтэй мөрийн төсөв (1,500,000 орохгүй)');
-  assert.equal(g.contractTotal, 3250);
-  /* тааруулалт: contract − budget = Σover + Σunder + төсөвгүй гэрээний Σ дүн */
-  assert.equal(g.contractTotal - g.budgetTotal, g.over.sum + g.under.sum + 50);
+  assert.equal(g.contractTotal, 3200, '⚠️ 2026-10-21: төсөвгүй 50 орохгүй');
+  /* тааруулалт: contract − budget = Σover + Σunder; төсөвгүй гэрээний Σ дүн ТУСДАА */
+  assert.equal(g.contractTotal - g.budgetTotal, g.over.sum + g.under.sum);
+  assert.equal(g.noBudgetSum, 50);
   const k = buildContractGapKpi(g);
-  assert.ok(k.facts[2].includes('3,250 ₮') && k.facts[2].includes('3,000 ₮'), k.facts[2]);
+  assert.ok(k.facts[2].includes('3,200 ₮') && k.facts[2].includes('3,000 ₮'), k.facts[2]);
+  assert.ok(k.facts[3].includes('50 ₮'), k.facts[3]);
   assert.ok(!k.facts[2].includes('1,503,000'), 'гэрээгүй төсөв баримтад орсон байна');
 }
 
@@ -173,6 +178,7 @@ const row = (o) => ({
   assert.equal(g.rows[1].diff, null, 'дүнгүй → зөрүү null');
   assert.equal(g.contractTotal, 1200, 'магадласан 900 орохгүй');
   assert.equal(g.budgetTotal, 1000, 'дүнгүй гэрээний төсөв нийлбэрт орохгүй (нэг популяци)');
+  assert.equal(g.noBudgetSum, null, 'төсөвгүй гэрээ алга → null (0 биш)');
   assert.equal(g.over.sum, 200);
 }
 

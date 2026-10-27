@@ -180,8 +180,7 @@ const CASES = [
   { name: 'Finance', load: () => import('@/modules/Finance'), pick: (m) => m.Finance, props: {}, expect: ['Санхүүжилтийн бүртгэл'] },
   { name: 'IpcTable', load: () => import('@/modules/IpcTable'), pick: (m) => m.IpcTable, props: { contracts: [] } },
   { name: 'Guitsetgel', load: () => import('@/modules/Guitsetgel'), pick: (m) => m.Guitsetgel, props: {} },
-  { name: 'Qaqc', load: () => import('@/modules/Qaqc'), pick: (m) => m.Qaqc, props: {}, expect: ['Багц 3.2', 'Хадгалах'] },
-  { name: 'Chanar', load: () => import('@/modules/Chanar'), pick: (m) => m.Chanar, props: {}, expect: ['Аргачлал', 'Үл тохирол'] },
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   { name: 'Zovshoorol', load: () => import('@/modules/Zovshoorol'), pick: (m) => m.Zovshoorol, props: {} },
   { name: 'Tailan', load: () => import('@/modules/Tailan'), pick: (m) => m.Tailan, props: {}, expect: ['Удирдлагын тайлан'] },
   { name: 'ExecReport', load: () => import('@/modules/ExecReport'), pick: (m) => m.ExecReport, props: {} },
@@ -199,8 +198,7 @@ const CASES = [
      Багцаар олгодог 7 хуудас «багц × үүрэг» хүснэгт (`AclGrid`) — «Багц» булан ба багцын мөр зурагдах ёстой */
   { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false,
     expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА', 'Багц 1'] },
-  { name: 'QaqcAcl', load: () => import('@/modules/QaqcAcl'), pick: (m) => m.QaqcAcl, props: {}, map: false,
-    expect: ['Чанарын хяналт', 'Багц 1'] },
+  /* ⚠️ 2026-10-23: QAQC хасагдсан (QaqcAcl) */
   { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false,
     expect: ['Зохиогч', 'Батлагч', 'Багц 1'] },
   { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false,
@@ -222,6 +220,14 @@ const CASES = [
     expect: ['Багц 1'] },
   { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false,
     expect: ['Засварлагч'] },
+  /* ⚠️ 2026-10-19: «Систем түр хаах» — хаалттай хэрэглэгчийн цонх (тогтмол текст + тайлбар + дахин нээгдэх) ба эрхийн хуудас */
+  { name: 'SystemClosed', load: () => import('@/components/AuthGate'), pick: (m) => m.SystemClosed, map: false,
+    props: { info: { on: true, note: 'Шилжүүлэлтийн тайлбар', until: '10-20 09:00', by: 'bat', at: Date.UTC(2026, 9, 19, 6) }, username: 'tester', onRecheck: async () => {}, onSignOut: noopFn },
+    expect: ['Систем түр хаагдсан', 'Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.', 'Шилжүүлэлтийн тайлбар', 'Дахин нээгдэх: 10-20 09:00', 'Дахин шалгах', 'Гарах', 'role="alertdialog"'] },
+  { name: 'SystemCloseDialog', load: () => import('@/components/SystemCloseDialog'), pick: (m) => m.SystemCloseDialog, map: false,
+    props: { open: true, onClose: noopFn }, expect: ['Систем түр хаах', 'Систем нээлттэй', 'Системийг хаах'] },
+  { name: 'PlainCapAcl:sysClose', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'sysClose' }, map: false,
+    expect: ['Систем түр хаах', 'шууд хадгалагдана'] },
 ];
 
 if (listOnly) { CASES.forEach((c) => console.log(`${c.skip ? '⏭' : '·'} ${c.name}${c.skip ? ' — ' + c.skip : ''}`)); process.exitCode = 0; }

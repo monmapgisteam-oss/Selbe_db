@@ -27,29 +27,33 @@
  */
 
 import { t as tr } from './i18nCore';
-import { listUsers, remoteReady, resolveAccess } from './permissions';
-import { roleForUser, VIEWS } from './services';
+/* ⚠️ 2026-10-23 (UX аудит X1 · A3): аппын дотоод асуулт ба «Буцаах» мэдэгдэл — `window.confirm`-ийн оронд */
+import { askConfirm, toastUndo } from './confirm';
+import { listUsers, remoteReady, resolveAccess, roleOf } from './permissions';
+import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
+import { portalMissing } from './portalPresence';
+/* ⚠️ 2026-10-26: «Хуваарь харах» төрлийн хүрээ — урсгалтай хуудасны эх сурвалжид (`ErhSource.hvType`) */
+import { typeHuvaariScope } from './roleTypes';
+import { ownPkgScope } from './huvaariView';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
-import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
+import { capUsers, capsOf, capsRemoteReady, capsStored, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
 import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
-import { capLabelShort, issueText } from '@/modules/erhLabels';
+import { capLabelShort, draftFlowMsg, issueText, newAccountMsg, removeMarkedMsg } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
 /* ⚠️ 2026-10-12 (дарааллын аудит): `pendingHeldBy` — зөвхөн уншигчид (нэрийн орон зайгаар, тойрог импортгүй) */
 import * as hv from './huvaariBatlah';
 import * as ob from './obyemBatlah';
 import * as aj from './ajilBatlah';
-import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
+import { planGrantAdd, planGrantRemove } from './aclGrid';
 import {
   flowAclReady, flowFailedUsers, listAssigns, removeAssign, retryFlow, setAssign, setViewOnly,
 } from './guitsetgelAcl';
-import {
-  listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, retryQaqcAssign, setQaqcAssign,
-} from './qaqcAcl';
 import {
   huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, retryHuvaariAssign,
   setHuvaariGrants, type PlanRole,
@@ -89,6 +93,20 @@ export type AclOp = {
    *    Зөвхөн АСУУЛТТАЙ хасах/шилжүүлэх op-д; нэмэх op-д байхгүй.
    */
   after?: After;
+  /**
+   * ⚠️ 2026-10-23 (UX аудит A3): АСУУЛТГҮЙ ХАСАЛТЫН «БУЦААХ». Нэг нүднээс ✕ (багцын жагсаалт багасах — `set`)
+   *    урьд нь нэг товшилтоор асуулгүй бичигдэж, буцаах замгүй байв. Асуулт НЭМЭХГҮЙ (`runOp`-ын «асуултын тоо
+   *    өөрчлөгдөхгүй» ⚠️) — оронд нь бичилт амжилттай болмогц «Буцаах» мэдэгдэл (`toastUndo`) гарч, дарвал энэ
+   *    эсрэг op (тэр нүдийг дахин нэмэх) ажиллана. Эсрэг op нь ДАРАХ агшинд шинэ мөрөөс бүтнэ (хооронд хийсэн
+   *    өөр засварыг дарахгүй). `done` — мэдэгдлийн текст.
+   */
+  undo?: () => AclOp;
+  done?: string;
+  /**
+   * ⚠️ 2026-10-23: УРСГАЛЫН op — томилгоо нь хэрэглэгчийн ЭРХИЙН МӨРИЙГ бичдэг (`grantFlowAccess`/`revokeFlowAccess`)
+   *    тул «Хэрэглэгчид»-ийн хадгалаагүй ноорогтой хүнд хориглоно (`draftGuard`).
+   */
+  flow?: boolean;
 } | { error: string } | null;
 
 /** Эрхийн зургийг op-ын дараах байдал руу хувиргана — цэвэр */
@@ -143,11 +161,39 @@ export function subscribeAclPending(fn: () => void): () => void {
  *    бүх мөрийг нэг багцаар дарж бичнэ (панелуудын 2026-09-23 · 24 ⚠️).
  */
 export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && flowAclReady()
-  && qaqcAclReady() && huvaariAclReady() && obyemAclReady() && chanarAclReady()
+  && huvaariAclReady() && obyemAclReady() && chanarAclReady()
   && ajilAclReady() && butetsAclReady();
 
 /** Түгжээний зурвас — панелуудын ЯГ ижил текст */
 export const lockMsg = (): string => tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+
+/* ══════════════ «Хэрэглэгчид»-ийн хадгалаагүй ноорогийн хамгаалалт (⚠️ 2026-10-23) ══════════════ */
+
+/**
+ * «ХЭРЭГЛЭГЧИД» САМБАРЫН НООРОГ — `UserAdmin` бүртгэнэ (`setAclDrafts`), `runOp` бүх эрхийн хуудсанд шалгана.
+ * ⚠️ ЯАГААД («хэрэглэгч: бүгдийг зас»): энэ хамгаалалт урьд нь ЗӨВХӨН тоймын матрицад (`ErhCellEditor.guard`) байв —
+ *    «Гүйцэтгэлийн урсгалын эрх» · багцын хуудсууд · энгийн эрхийн хуудсаар (`GuitsetgelAcl` · `ScopedAclPanel` ·
+ *    `PlainCapAcl`; 2026-10-23: QAQC хасагдсан) шинэ (хадгалаагүй) · устгахаар тэмдэглэсэн аккаунтад хуваарилалт бичигдэж, урсгалын
+ *    томилгоо ноорогтой хүний эрхийн мөрийг бичиж дараагийн «Хадгалах»-тай уралддаг байв. Одоо ГАНЦ газар.
+ */
+type DraftMark = { remove?: boolean; isNew?: boolean };
+let adminDrafts = new Map<string, DraftMark>();
+export function setAclDrafts(entries: Iterable<[string, DraftMark]>): void {
+  adminDrafts = new Map([...entries].map(([k, d]) => [k.trim().toLowerCase(), { remove: !!d.remove, isNew: !!d.isNew }]));
+}
+/**
+ * Ноорогийн хамгаалалтын зурвас (`null` = чөлөөтэй): шинэ аккаунт · устгахаар тэмдэглэсэн → бүх op;
+ * хадгалаагүй ноорогтой → урсгалын op (`flow`). Текст `erhLabels`-д (матрицын ижил үг).
+ */
+export function draftGuard(user: string, flow: boolean): string | null {
+  const d = adminDrafts.get(user.trim().toLowerCase());
+  if (!d) return null;
+  if (d.isNew) return newAccountMsg();
+  if (d.remove) return removeMarkedMsg();
+  return flow ? draftFlowMsg() : null;
+}
+/** Урсгалын op гэж тэмдэглэнэ (`AclOp.flow`) */
+const asFlow = (op: AclOp): AclOp => (op && !('error' in op) ? { ...op, flow: true } : op);
 
 /* ══════════════ Хасагдсан үүргийн эрхийг буцаах (панелаас шилжсэн) ══════════════ */
 
@@ -161,7 +207,7 @@ export const lockMsg = (): string => tr('Эрхийн хүснэгт уншиг�
  *    ДАРАА зөвхөн хасагдсан үүргүүдийн эрхийг буцаана.
  * ⚠️ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА: дараалалд хүлээх хооронд дахин
  *    хуваарилагдсан үүргийн эрхийг буцаахгүй; нэг эрх рүү заадаг ӨӨР үүрэг
- *    үлдсэн бол (Чанарын гурван хянагч → `chanarReview`) мөн буцаахгүй.
+ *    үлдсэн бол (Чанарын таван хянагч → `chanarReview`) мөн буцаахгүй.
  * ⚠️ 2026-09-25: `ScopedAclPanel.tsx`-ээс ЭНД шилжсэн — карт ба матриц ч
  *    хэрэглэдэг болсон тул UI файлд байх ёсгүй. Логик ӨӨРЧЛӨГДӨӨГҮЙ.
  */
@@ -208,7 +254,7 @@ const rolesOfUser = <R extends string>(list: () => Row<R>[], u: string) =>
 /**
  * `sync` дууссаны ДАРАА `had`-д байсан, одоо алга болсон үүргүүдийн эрхийг
  * буцаана — хоёр замын (бүтэн · хэсэгчилсэн хасалт) НИЙТЛЭГ логик.
- * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын гурван хянагч →
+ * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын таван хянагч →
  *    `chanarReview`) тэр эрхийг буцаахгүй.
  */
 function revokeGoneRoles(
@@ -221,7 +267,10 @@ function revokeGoneRoles(
   /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — хуучин (remote-д үлдсэн) хуваарилалтын
      мөрийг хасахад `__cap__:` мөрийг нь буцаадаг байв. 2026-10-12-оос super бүх эрхтэй
      (`caps.capsOf`), хадгалагдсан мөр нь үлдэгдэл — бичилтээр хөндөхгүй. */
-  if (!rr.ok || !rr.sync || roleForUser(u) === 'super') return rr;
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super (`isCodeSuper`). Хүснэгтийн super (`role:'super'` мөр — доошлуулж болно)
+     энгийн хэрэглэгч шиг: хадгалагдсан `__cap__:` мөр нь хуваарилалттайгаа хамт синклэгдэнэ (`capsOf` super байхад нь
+     бүх эрх өгсөөр), эс бөгөөс доошлуулсны дараа хуучин/дутуу эрхтэй үлдэнэ (`isCleanup`-ийн ⚠️). */
+  if (!rr.ok || !rr.sync || isCodeSuper(u)) return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
     const caps = new Set<CapKey>();
@@ -312,7 +361,6 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
 export function liveErhSource(): ErhSource {
   const users = listUsers().map((u) => u.username);
   const flow = listAssigns();
-  const qaqc = listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts }));
   const huvaari = listHuvaariAssigns();
   const obyem = listObyemAssigns();
   const chanar = listChanarAssigns();
@@ -320,21 +368,53 @@ export function liveErhSource(): ErhSource {
   const butets = listButetsAssigns();
   /* ⚠️ 2026-09-30: хуваарилалттай атлаа порталд алга (устгагдсан) — гацааны шалгуурт тоологдохгүй (`ErhSource.gone`) */
   const known = new Set(users.map((u) => u.toLowerCase()));
-  const rows: { user: string }[][] = [flow, qaqc, huvaari, obyem, chanar, ajil, butets];
-  const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))].filter((u) => !known.has(u.toLowerCase()));
+  const rows: { user: string }[][] = [flow, huvaari, obyem, chanar, ajil, butets];
+  /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунт (`portalPresence`) ч
+     «устгагдсан»-тай адил эзэн БИШ — урьд нь «gone» = зөвхөн «хүснэгтэд мөргүй» тул `selbe_redesign` (порталд алга) нь
+     «Гүйцэтгэгч компани» шатны цорын ганц эзэн мэт тоологдож 21 багцын гацаа ХЭЗЭЭ Ч гардаггүй байв. Мэдэхгүй бол «байгаа». */
+  const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))]
+    .filter((u) => !known.has(u.toLowerCase()) || portalMissing(u));
+  /* ⚠️ 2026-10-22 (аудит): төрлөөс хүлээгдэх урсгалын шат — `erhOverview.typeStageGaps` (төрөл ↔ томилгоо зөрөө) */
+  const typeStage: Record<string, Stage> = {};
+  for (const u of users) {
+    const r = roleOf(u);
+    const st = r ? ROLE_STAGE[r] : undefined;
+    if (st) typeStage[u.toLowerCase()] = st;
+  }
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын мөртэй байсан ч шатны эзэн биш (`ErhSource.viewRoles`) */
+  const viewRoles = users.filter((u) => roleOf(u) === 'zahiral');
+  /* ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» («Үгүй»-гээс бусад) — `workflowSources`-ийн «Төрөл · Бүх багц» эх сурвалж */
+  const hvType: NonNullable<ErhSource['hvType']> = {};
+  for (const u of users) {
+    const t = typeHuvaariScope(roleOf(u));
+    if (t === 'all') hvType[u.toLowerCase()] = { scope: 'all', bagts: null };
+    else if (t === 'own') {
+      /* ⚠️ 2026-10-26: `huvaariViewScope`-тэй адил ЗӨВХӨН `PKG_GROUPS` — танигдаагүй багц карт дээр «нээлттэй» гэж худал харуулна */
+      const s = ownPkgScope(u);
+      hvType[u.toLowerCase()] = { scope: 'own', bagts: s === null ? null : PKG_GROUPS.filter((g) => s.includes(g)) };
+    }
+  }
   return {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
     supers: users.filter((u) => roleForUser(u) === 'super'),
+    /* ⚠️ 2026-10-23: КОДЫН (тестийн) super — өнчин/дутуу эрхийн шалгалтаас ЗӨВХӨН тэд чөлөөтэй (`erhOverview.orphanCaps`) */
+    codeSupers: users.filter((u) => isCodeSuper(u)),
     gone,
+    absent: users.filter((u) => portalMissing(u)),
+    typeStage,
+    viewRoles,
+    hvType,
     flow,
-    qaqc,
     huvaari,
     obyem,
     chanar,
     ajil,
     butets,
-    caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
+    /* ⚠️ 2026-10-23: хүснэгтийн super-ийн ХАДГАЛАГДСАН эрх (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул тойм ·
+       өнчин/дутуу эрх · эрхийн хуудсууд super-ийн бодит (доошлуулахад үлдэх) эрхийг харуулдаггүй байв. Кодын super хэвээр. */
+    caps: Object.fromEntries(users.map((u) => [u.toLowerCase(),
+      roleForUser(u) === 'super' && !isCodeSuper(u) ? capsStored(u) : capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
       const a = resolveAccess(u);
       const open = a ? (a.views === 'all' ? VIEWS.length : a.views.length) : 0;
@@ -342,10 +422,6 @@ export function liveErhSource(): ErhSource {
     })),
   };
 }
-
-/** QAQC ба урсгалын бичилт унасан хэрэглэгчид — карт/матрицын ⚠️ тэмдэгт */
-export const qaqcFailed = qaqcFailedUsers;
-export const flowFailed = flowFailedUsers;
 
 /* ══════════════════════ Текстүүд ══════════════════════ */
 
@@ -383,7 +459,11 @@ const isKnown = (u: string): boolean => listUsers().some((x) => x.username.toLow
  *      унадаг (мөрийг арилгах зам алга), сүүлийн багц → бүтэн хасалт нь super-т ШУУД олгосон
  *      эрхийг (`plan` · `qaqc` г.м.) буцаадаг байв.
  */
-const isCleanup = (u: string): boolean => !isKnown(u) || roleForUser(u) === 'super';
+/* ⚠️ 2026-10-21 (аудит): «super-ийн хуучин мөр» = ЗӨВХӨН КОДЫН super (`isCodeSuper`). Хүснэгтийн super (2026-10-21-ээс
+   `role:'super'` мөр — доошлуулж болно) нь ЭНГИЙН мөр: ✕ нэг багцыг л хасна, сүүлийнх асууж эрх буцаана, эрх нь
+   хуваарилалттайгаа синклэгдэнэ (`revokeGoneRoles` · `scopedAcl.syncCaps`/`setGrants` · `guitsetgelAcl.setAssign`) —
+   урьд нь мөрийг бүхэлд нь асуулгагүй арилгаж, доошлуулсны дараа хуваарилалтгүй/хуучин эрхтэй аккаунт үлдээдэг байв. */
+const isCleanup = (u: string): boolean => !isKnown(u) || isCodeSuper(u);
 
 /* ══════════════ Үүрэгтэй таван систем (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц) ══════════════ */
 
@@ -502,7 +582,14 @@ export function scopedCellOp(
     case 'create': return { user: u, run: () => spec.setGrants(u, p.grants) };
     case 'set': return add
       ? { user: u, run: () => spec.setGrants(u, p.grants) }
-      : { user: u, run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps) };
+      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
+      : {
+        user: u,
+        after: afterGrants(sys, u, p.grants),
+        undo: () => scopedCellOp(sys, user, role, pkg, true, label),
+        done: tr('«{0}» «{1}»-оос хасагдлаа.', u, label),
+        run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps),
+      };
     case 'narrow': return {
       user: u,
       confirm: sys === 'butets' ? [] : [narrowMsg(u, label, p.left.length)],
@@ -518,45 +605,7 @@ export function scopedCellOp(
   }
 }
 
-/* ══════════════════════ QAQC (үүрэггүй, `soleCap`) ══════════════════════ */
-
-const qaqcRow = (u: string) => listQaqcAssigns().find((a) => a.user === u);
-
-/** Хуваарилалтаас бүрэн хасах — `QaqcAcl`-ийн ✕ (устгагдсан аккаунтад `revoke=false`, асуухгүй) */
-export function qaqcDropOp(user: string): AclOp {
-  const u = norm(user);
-  if (!qaqcRow(u)) return null;
-  /* ⚠️ 2026-09-30: super-ийн хуучин мөр ч (`isCleanup`) — `revoke=true` нь түүнд шууд олгосон `qaqc`-ийг буцаадаг байв */
-  if (isCleanup(u)) return { user: u, run: () => removeQaqcAssign(u, false) };
-  return {
-    user: u,
-    confirm: [tr('«{0}»-г чанарын хуваарилалтаас хасах уу? «QAQC — Inspection Test Plan» эрх ба «Чанар (QAQC)» харагдац нь мөн буцаагдана.', u)],
-    run: () => removeQaqcAssign(u),
-  };
-}
-
-/**
- * QAQC ХҮСНЭГТИЙН НҮД (`QaqcAcl`, 2026-09-30) — мөр = багц, ганц багана.
- * ⚠️ Шийдвэр `aclGrid.planList*`-д. Шинэ мөр → эрх олгоно (`qaqcAddOp`-той ижил);
- *    багц солих → `grant=false`; сүүлийн багц → `qaqcDropOp` (асууж эрх буцаана,
- *    «бүх багц» руу БУЦАХГҮЙ); «бүх багц»-ыг нэг мөрөөс → бусад багцын ил жагсаалт (асууна).
- */
-export function qaqcCellOp(user: string, pkg: string, add: boolean): AclOp {
-  const u = norm(user);
-  if (!u) return null;
-  const cur = qaqcRow(u)?.bagts;
-  const p = add ? planListAdd(cur, pkg) : planListRemove(cur, pkg, PKG_GROUPS);
-  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`);
-     super-т `set` нь `setGrants`-ийн татгалзлаар ҮРГЭЛЖ унадаг байв */
-  if (!add && p.kind !== 'none' && isCleanup(u)) return qaqcDropOp(u);
-  switch (p.kind) {
-    case 'none': return null;
-    case 'create': return { user: u, run: () => setQaqcAssign(u, p.bagts) };
-    case 'set': return { user: u, run: () => setQaqcAssign(u, p.bagts, false) };
-    case 'narrow': return { user: u, confirm: [narrowMsg(u, pkg, p.bagts.length)], run: () => setQaqcAssign(u, p.bagts, false) };
-    case 'drop': return qaqcDropOp(u);
-  }
-}
+/* ⚠️ 2026-10-23: QAQC-ийн хуваарилалтын үйлдлүүд (`qaqcDropOp` · `qaqcCellOp`) ХАСАГДСАН — «Чанар (QAQC)» системээс устсан. */
 
 /* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай) ══════════════════════ */
 
@@ -578,6 +627,9 @@ const moveMsg = (u: string, from: Stage, to: Stage, pkg: string): string =>
 
 /** Томилгооноос хасах — `GuitsetgelAcl`-ийн ✕ (устгагдсан аккаунтад `revoke=false`, асуухгүй) */
 export function flowDropOp(user: string): AclOp {
+  return asFlow(flowDropOpRaw(user));
+}
+function flowDropOpRaw(user: string): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
   if (!cur) return null;
@@ -598,6 +650,9 @@ export function flowDropOp(user: string): AclOp {
  *    UI-аас дуудагдахгүй; хүснэгт `flowCellOp(…, ALL_BAGTS, true)`-оор бичнэ.
  */
 export function flowStageOp(user: string, stage: Stage | null): AclOp {
+  return asFlow(flowStageOpRaw(user, stage));
+}
+function flowStageOpRaw(user: string, stage: Stage | null): AclOp {
   const u = norm(user);
   if (!u) return null;
   const cur = flowRow(u);
@@ -632,7 +687,11 @@ export function flowViewOnlyOp(user: string, on: boolean): AclOp {
  *    хэрэглэгчийн шаардлага (2026-09-30). Матриц ч мөн энэ дүрмээр (2026-09-30, `ErhCellEditor`).
  * @param pkg багцын нэр эсвэл `ALL_BAGTS` («Бүх багц» мөр)
  */
+/* ⚠️ 2026-10-23: урсгалын op (`asFlow`) — ноорогийн хамгаалалт `runOp`-д (`draftGuard`) */
 export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
+  return asFlow(flowCellOpRaw(user, stage, pkg, add));
+}
+function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
   const cur = flowRow(u);
@@ -648,7 +707,16 @@ export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean
       after: afterFlow(u, { stage: p.stage, bagts: p.bagts }),
       run: () => setAssign(u, p.stage, p.bagts),
     };
-    case 'set': return { user: u, run: () => setAssign(u, p.stage, p.bagts, false) };
+    case 'set': return add
+      ? { user: u, run: () => setAssign(u, p.stage, p.bagts, false) }
+      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
+      : {
+        user: u,
+        after: afterFlow(u, { stage: p.stage, bagts: p.bagts, viewOnly: cur?.viewOnly === true }),
+        undo: () => flowCellOp(user, p.stage, pkg, true),
+        done: tr('«{0}» {1} шатны «{2}»-оос хасагдлаа.', u, STAGE_LABEL[p.stage], scopeText(pkg)),
+        run: () => setAssign(u, p.stage, p.bagts, false),
+      };
     case 'narrow': return {
       user: u,
       confirm: [tr('«{0}» нь {1} шатанд БҮХ багцад томилогдсон. «{2}»-оос хасвал бусад {3} багцын ил жагсаалт болно (шинэ багц нэмэгдэхэд автоматаар хамрахгүй). Үргэлжлүүлэх үү?',
@@ -680,14 +748,20 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
   /* ⚠️ 2026-10-12: хатуу super бүх эрхтэй (`caps.capsOf`) — олгох нь no-op, хасах нь татгалзана */
-  if (roleForUser(u) === 'super') return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
-  if (capsOf(u).includes(cap) === on) return null;
-  if (on && isDerivedCap(cap) && roleForUser(u) !== 'super') {
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super-ийн ХАДГАЛАГДСАН мөр (`capsStored`) засагдана
+     (өнчин/хуучин эрхийг цэвэрлэх — `CapOrphanNote`); `capsOf` super байхад нь бүх эрх өгсөөр тул олгох нь no-op хэвээр. */
+  if (isCodeSuper(u)) return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
+  /* ⚠️ 2026-10-23: хүснэгтийн super-т ХАДГАЛАГДСАН жагсаалтаар (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул олголт
+     үргэлж «аль хэдийн бий» (no-op) болж super-т эрх хадгалах зам алга байв (доошлуулсны дараа үлдэх эрх). */
+  const tableSuper = roleForUser(u) === 'super';
+  if ((tableSuper ? capsStored(u) : capsOf(u)).includes(cap) === on) return null;
+  if (on && isDerivedCap(cap) && !tableSuper) {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };
   }
   const confirm = on ? [] : [
+    /* ⚠️ 2026-10-19 (аудит): мөр нэмэх «Хуваарь»-д (`CAP_HOST_VIEW.addRow`) — «Бөглөх» табыг ЭНЭ эрх нээдэггүй болсон */
     cap === 'addRow'
-      ? tr('«{0}»-ийн «{1}» эрхийг хасах уу? «Гүйцэтгэл бөглөх»-ийн «Бөглөх» таб мөн хаагдана (урсгалын гүйцэтгэгч шатнаас бусдад).', u, capLabelShort(cap))
+      ? tr('«{0}»-ийн «{1}» эрхийг хасах уу? «Хуваарь» хуудсанд шинэ ажлын мөр нэмэх боломж хаагдана (хуваарийн эрхгүй бол «Хуваарь» хуудас өөрөө хаагдана).', u, capLabelShort(cap))
       : tr('«{0}»-ийн «{1}» эрхийг хасах уу?', u, capLabelShort(cap)),
   ];
   return { user: u, confirm, run: () => ({ ok: true, sync: toggleCap(u, cap, on) }) };
@@ -695,8 +769,8 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
 
 /* ═══════════ Засвар: дахин илгээх · дахин олгох · устгагдсаны үлдэгдэл (2026-10-01) ═══════════ */
 
-/** Хуваарилалттай систем — урсгал · QAQC · үүрэгтэй тав */
-export type RepairSys = 'flow' | 'qaqc' | ScopedSys;
+/** Хуваарилалттай систем — урсгал · үүрэгтэй тав (2026-10-23: QAQC хасагдсан) */
+export type RepairSys = 'flow' | ScopedSys;
 
 /** Бүх `Write`-ыг нэгтгэнэ — аль нэг нь `ok:false` бол түүнийг; `sync`/`granted` бүгд үнэн бол үнэн */
 function combine(ws: Write[]): Write {
@@ -710,14 +784,12 @@ function combine(ws: Write[]): Write {
 /** Системийн дахин илгээх бичилт — `grant` бол эрхийг ч дахин олгоно */
 function retryWrite(sys: RepairSys, u: string, grant: boolean): Write {
   if (sys === 'flow') return asWrite(retryFlow(u, grant));
-  if (sys === 'qaqc') return retryQaqcAssign(u, grant);
   return SCOPED_SYS[sys].retry(u, grant);
 }
 
 /** ArcGIS бичилт нь унасан хэрэглэгчид (энэ сешн) — `failed` тэмдэг */
 export function failedUsersOf(sys: RepairSys): string[] {
   if (sys === 'flow') return flowFailedUsers();
-  if (sys === 'qaqc') return qaqcFailedUsers();
   return SCOPED_SYS[sys].failedUsers();
 }
 
@@ -732,7 +804,8 @@ export function failedUsersOf(sys: RepairSys): string[] {
 export function retryOp(sys: RepairSys, user: string): AclOp {
   const u = norm(user);
   if (!u) return null;
-  return { user: u, run: () => retryWrite(sys, u, !isCleanup(u)) };
+  const op: AclOp = { user: u, run: () => retryWrite(sys, u, !isCleanup(u)) };
+  return sys === 'flow' ? asFlow(op) : op;
 }
 
 /**
@@ -752,7 +825,7 @@ export function regrantOp(user: string, caps: readonly CapKey[]): AclOp {
   for (const c of caps) {
     const sys = capSystem(c);
     if (!sys) continue;
-    const has = sys === 'qaqc' ? !!qaqcRow(u) : SCOPED_SYS[sys].list().some((a) => a.user === u);
+    const has = SCOPED_SYS[sys].list().some((a) => a.user === u);
     if (has) systems.add(sys);
   }
   if (!systems.size) return null;
@@ -770,8 +843,7 @@ export type GoneItem = {
 
 /** Системийн хуваарилалттай хэрэглэгчид */
 const rowUsers = (sys: RepairSys): string[] => (sys === 'flow' ? listAssigns().map((a) => a.user)
-  : sys === 'qaqc' ? listQaqcAssigns().map((a) => a.user)
-    : SCOPED_SYS[sys].list().map((a) => a.user));
+  : SCOPED_SYS[sys].list().map((a) => a.user));
 
 /**
  * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — эрхийн хуудас бүрд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
@@ -821,8 +893,7 @@ export function goneCleanupOp(sys: RepairSys | null, caps: readonly CapKey[], us
         if (sys === 'flow') {
           const cur = flowRow(u);
           if (cur) w = asWrite(removeAssign(u, cur.stage, false));
-        } else if (sys === 'qaqc') w = removeQaqcAssign(u, false);
-        else w = SCOPED_SYS[sys].removeNoRevoke(u);
+        } else w = SCOPED_SYS[sys].removeNoRevoke(u);
       }
       if (!w.ok) return w;
       const sync = (w.sync ?? Promise.resolve(true)).then(async (ok) => {
@@ -930,6 +1001,90 @@ export function heldByText(items: HeldByUser[] | null): string {
   return items.map((x) => tr('«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).', x.user, String(x.pending), String(x.partial), String(x.locks))).join('\n');
 }
 
+/* ══════════════ Аккаунт УСТГАХ — «ажил гацах уу» урьдчилсан шалгалт (⚠️ 2026-10-22, аудит) ══════════════ */
+
+/**
+ * АККАУНТ УСТГАСНЫ ДАРААХ ЭРХИЙН ЗУРАГ — цэвэр. Устгагдах хүмүүсийг аккаунтын жагсаалтаас хасаж `gone`-д нэмнэ
+ * (`erhOverview.pkgErh` тэднийг эзэн гэж тоолохгүй — хуваарилалтын мөр нь `purge*` хүртэл хэвээр ч ажил гацна).
+ */
+const afterRemoveUsers = (users: readonly string[]): After => (src) => {
+  const drop = new Set(users.map(norm).filter(Boolean));
+  return {
+    ...src,
+    users: src.users.filter((u) => !drop.has(norm(u))),
+    supers: (src.supers ?? []).filter((u) => !drop.has(norm(u))),
+    gone: [...new Set([...(src.gone ?? []), ...drop])],
+  };
+};
+
+/**
+ * Аккаунт(ууд)-ыг УСТГАХАД шинээр үүсэх ажил ГАЦААХ цоорхойн текст (хоосон = үгүй) — ⚠️ 2026-10-22 (аудит).
+ * ⚠️ ЯАГААД: хүснэгтийн нүдний хасалт (`runOp` → `op.after`) энэ шалгалтыг 2026-10-05-наас хийдэг ч «Хэрэглэгчид»-ийн
+ *    «Устгах» хийдэггүй байв — цорын ганц хяналтын инженерийг устгахад 21 багцын урсгал чимээгүй тасарсан (аудитын
+ *    шалгалт). Дүрэм ДАХИН бичигдээгүй — `newBlockingText` (тойм · матрицын ижил `pkgIssues`).
+ */
+export function removalBlockingText(users: readonly string[]): string {
+  return users.length ? newBlockingText(afterRemoveUsers(users)) : '';
+}
+
+/**
+ * ГҮЙЦЭТГЭЛ — УСТГАГДАХ ХҮНИЙ ШАТАНД ХҮЛЭЭГДЭЖ БУЙ АЖИЛ (⚠️ 2026-10-22, аудит).
+ * ⚠️ ЯАГААД: устгах асуулт хуваарь · обьём · нэмэлт ажлын илгээлтийг л тоолдог (`pendingHeldBy`) — тэр хүний урсгалын
+ *    шатанд (жиш. инженер) ХҮЛЭЭГДЭЖ БУЙ гүйцэтгэлийн илгээлт тоологддоггүй тул устгасны дараа эзэнгүй гацдаг байв.
+ *   · `waiting`  — тэр хүний шат · багцын хүрээнд одоо хүлээгдэж буй ажил (ажлын СҮҮЛИЙН тойрог — `groupWorks`);
+ *   · `orphaned` — тэдгээрээс тухайн багцад тэр шатанд ӨӨР шийдвэрлэх эзэнгүй үлдэх нь (устгагдах · хүснэгтэд/порталд
+ *     алга · «Зөвхөн харна» тоологдохгүй) — устгасны дараа ШУУД гацна.
+ * ⚠️ «Зөвхөн харна» томилгоотой хүн шийдвэрлэдэггүй тул өөрийн мөр тоологдохгүй. Уншилт унавал/хугацаа хэтэрвэл `null`
+ *    (мэдэхгүй ≠ 0) — дуудагч «шалгаж чадсангүй» гэж хэлнэ.
+ * ⚠️ Уншигч СОЛИГДОНО (`setFlowWorksReader`) — Node-ийн шалгуур амьд хүснэгт рүү гарахгүй (`setHeldByReader`-ийн ⚠️).
+ */
+export type FlowWork = { bagts: string; owner: Stage; done: boolean };
+export type FlowWaiting = { user: string; stage: Stage; waiting: number; orphaned: number };
+export type FlowWorksReader = () => Promise<FlowWork[]>;
+async function readFlowWorks(): Promise<FlowWork[]> {
+  /* ⚠️ ДИНАМИК: `hyanaltStore` (React-тай том модуль) зөвхөн устгах асуултад — `runOp`-ын статик импортын дүрэм (дээрх
+     `pendingHeldBy`-ийн ⚠️) энд хамаарахгүй. Хөрвүүлэлт `toRow` нь ГАНЦ газар (тэр файлын ⚠️). */
+  const [H, S, G] = await Promise.all([import('./hyanalt'), import('./hyanaltStore'), import('./hyanaltGroup')]);
+  return G.groupWorks((await H.queryAll()).map(S.toRow))
+    .map((w) => ({ bagts: w.bagts, owner: w.owner, done: w.status === H.STATUS.transferred }));
+}
+let flowWorksReader: FlowWorksReader = readFlowWorks;
+export function setFlowWorksReader(fn: FlowWorksReader | null): void { flowWorksReader = fn ?? readFlowWorks; }
+const FLOW_WAIT_TIMEOUT_MS = 4000;
+export async function flowWaitingFor(users: readonly string[]): Promise<FlowWaiting[] | null> {
+  const drop = new Set(users.map(norm).filter(Boolean));
+  const mine = listAssigns().filter((a) => drop.has(norm(a.user)) && !a.viewOnly);
+  if (!mine.length) return [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<null>((r) => { timer = setTimeout(() => r(null), FLOW_WAIT_TIMEOUT_MS); (timer as { unref?: () => void }).unref?.(); });
+  let works: FlowWork[] | null;
+  try {
+    works = await Promise.race([flowWorksReader(), limit]);
+  } catch {
+    works = null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (!works) return null;
+  const covers = (b: readonly string[], g: string): boolean => b.includes(ALL_BAGTS) || b.includes(g);
+  /* Үлдэх шийдвэрлэгчид — устгагдах · хүснэгтэд алга · порталд алга · «зөвхөн харна»-аас бусад */
+  const others = listAssigns().filter((a) => {
+    const k = norm(a.user);
+    return !drop.has(k) && !a.viewOnly && isKnown(k) && !portalMissing(k);
+  });
+  return mine.map((a) => {
+    const open = works.filter((w) => !w.done && w.owner === a.stage && covers(a.bagts, w.bagts));
+    const orphaned = open.filter((w) => !others.some((o) => o.stage === a.stage && covers(o.bagts, w.bagts))).length;
+    return { user: norm(a.user), stage: a.stage, waiting: open.length, orphaned };
+  }).filter((x) => x.waiting > 0);
+}
+/** `flowWaitingFor`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-22) */
+export function flowWaitingText(items: FlowWaiting[] | null): string {
+  if (items == null) return tr('Гүйцэтгэлийн урсгалд хүлээгдэж буй ажлыг шалгаж чадсангүй — устгахаас өмнө «Гүйцэтгэл» хуудсыг шалгана уу.');
+  return items.map((x) => tr('«{0}»: Гүйцэтгэлийн «{1}» шатанд {2} ажил хүлээгдэж байна — {3} нь өөр шийдвэрлэгчгүй үлдэж гацна.',
+    x.user, STAGE_LABEL[x.stage], String(x.waiting), String(x.orphaned))).join('\n');
+}
+
 /**
  * Op-ыг гүйцэтгэнэ: түгжээ → асуултууд → бичилт → `sync` (+`granted`) хүлээнэ.
  *
@@ -947,6 +1102,9 @@ export async function runOp(
   if (!op) return false;
   if (!ready()) { setErr(lockMsg()); return false; }
   if ('error' in op) { setErr(op.error); return false; }
+  /* ⚠️ 2026-10-23: «Хэрэглэгчид»-ийн ноорогийн хамгаалалт — бүх эрхийн хуудсанд нэг дүрэм (`draftGuard`-ийн ⚠️) */
+  const dg = op.user ? draftGuard(op.user, op.flow === true) : null;
+  if (dg) { setErr(dg); return false; }
   /*
    * ⚠️ 2026-10-05: ГАЦААГ АСУУЛТАД НЬ ХЭЛНЭ. Урьд нь «батлагчгүй» · «өөрөө өөрийгөө батална» ·
    *    «урсгалын шат хоосон» анхааруулга зөвхөн ХАССАНЫ ДАРАА «Тойм»-д улайж гардаг байв —
@@ -967,7 +1125,15 @@ export async function runOp(
     const held = await heldByBounded([op.user]);
     if (held && held.length) confirms[confirms.length - 1] += `\n\n${heldByText(held)}`;
   }
-  for (const c of confirms) if (!window.confirm(c)) return false;
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → `askConfirm` — хөтөч цонхыг хаасан бол асуулгүй `false` болж
+     ✕/«+» ЧИМЭЭГҮЙ юу ч хийдэггүй байв. Хост алга (Node-ийн шалгуур) бол `window.confirm` руу буцна. */
+  for (const c of confirms) if (!(await askConfirm(c))) return false;
+  /* ⚠️ 2026-10-23 (засвар): асуулт async болсон — цонх нээлттэй байх зуур хүснэгтүүд алсын бэлэн байдлаа алдаж болно.
+     Бичихийн өмнө түгжээг ДАХИН шалгана (урьдын синхрон `window.confirm`-д шалгалт бичилттэй нэг агшинд байсан). */
+  if (!ready()) { setErr(lockMsg()); return false; }
+  /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалтын ШИНЭ гацааг БИЧИХЭЭС ӨМНӨ бодно — дараа нь бодвол «өмнөх» ба
+     «дараах» зураг ижил болж юу ч олдохгүй. Асуулт нэмэхгүй: «Буцаах» мэдэгдэл ба самбарын алдааны мөрөнд хэлнэ. */
+  const undoWarn = !confirms.length && op.undo && op.after ? newBlockingText(op.after) : '';
   const who = op.user ? norm(op.user) : '';
   /* ⚠️ `run`-аас ӨМНӨ тэмдэглэнэ — локал бичилтийн notify-аар дахин зурахад
      аль хэдийн «явагдаж буй» байх ёстой (эс бөгөөс нэг рендер худал өнчин). */
@@ -981,8 +1147,19 @@ export async function runOp(
       /* ⚠️ 2026-10-05: ТОДОРХОЙ шалтгаан байвал (`views` талбарын урт хэтэрсэн г.м.) түүнийг —
          ерөнхий «хадгалагдсангүй» нь админыг сүлжээгээ шалгахад хүргэдэг байв. */
       const why = await import('./permsRemote').then((m) => m.takeWriteError()).catch(() => '');
-      setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+      setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид'));
       return false;
+    }
+    /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт амжилттай — «Буцаах» мэдэгдэл; дарвал эсрэг op (`AclOp.undo`) мөн
+       `runOp`-оор (түгжээ · явагдаж буй тэмдэг · асуулт ижил). Гацаа үүссэн бол самбарт ҮЛДЭХ мөрөнд ч хэлнэ. */
+    if (!confirms.length && op.undo) {
+      const undo = op.undo;
+      if (undoWarn) setErr(undoWarn);
+      void toastUndo(
+        [op.done || tr('Хасагдлаа.'), undoWarn.replace(/\n+/g, ' ')].filter(Boolean).join(' '),
+        () => { void runOp(undo(), setErr, ready); },
+        undoWarn ? 10_000 : 6_000,
+      );
     }
     return true;
   } finally {

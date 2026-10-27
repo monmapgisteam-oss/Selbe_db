@@ -13,10 +13,12 @@ export function ChangeBoundary() {
   useEffect(() => {
     if (!view || view.destroyed || view.type !== '2d' || !view.map) return;
     const map = view.map;
-    const boundary = map.findLayerById('khil1');
-    if (!(boundary instanceof FeatureLayer)) return;
-    const previousRenderer = boundary.renderer;
-    const previousIndex = map.layers.indexOf(boundary);
+    /* ⚠️ 2026-10-19 (аудит): khil1 ЭНЭ АГШИНД байхгүй (давхарга дараа ачаалагддаг — MapCanvas-ийн дараалал, таб
+       солих) үед урьд нь шууд `return` хийж, хил хэзээ ч тодрохгүй байв. Одоо `map.layers`-ийн change-ийг ҮРГЭЛЖ
+       сонсож, анх ОЛДСОН инстанцаас эх загвар · индексийг нэг удаа авна. */
+    let previousRenderer: FeatureLayer['renderer'] = null;
+    let previousIndex = -1;
+    let captured = false;
     const renderer = new SimpleRenderer({
       symbol: new CIMSymbol({
         data: {
@@ -48,6 +50,7 @@ export function ChangeBoundary() {
           if (layer !== current) { restore(layer); styled.delete(layer); }
         }
         if (!(current instanceof FeatureLayer) || current.destroyed) return;
+        if (!captured) { captured = true; previousRenderer = current.renderer; previousIndex = map.layers.indexOf(current); }
         styled.add(current);
         if (current.renderer !== renderer) current.renderer = renderer;
         const top = map.layers.length - 1;
@@ -62,7 +65,7 @@ export function ChangeBoundary() {
       changes.remove();
       // Map түр хадгалагдсан ч эх дүрслэл, дарааллыг буцааж бусад хэсэгт нөлөөлөхгүй.
       for (const layer of styled) restore(layer);
-      if (!map.destroyed) {
+      if (captured && !map.destroyed) {
         // Collection-ийн change ирэхээс өмнө салахад ч шинээр солигдсон хуулбарыг олно.
         const current = map.findLayerById('khil1');
         if (current instanceof FeatureLayer) {

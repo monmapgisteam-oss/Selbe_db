@@ -13,7 +13,8 @@
  *     өөр огноо, «сүүлийн 30 хоногт» өөр тоо болно. Ирээдүйн огноо «сүүлийн 30»-д орохгүй.
  *  2. Хохирлын regex `execTriage.loadDamage`-аас зөрөх — нүүр самбар ба
  *     ХАБЭА хуудас өөр тоо харуулна.
- *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай.
+ *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай
+ *     (⚠️ 2026-10-21: хохирол ч СҮҮЛИЙН 30 хоногоор — хуучин хохирол түвшинд биш, баримтад л).
  *  4. Хүснэгт ТОО биш НЭРЭЭР: бүх бүртгэл мөр бүр гарна, шинэ нь эхэнд,
  *     огноогүй нь СҮҮЛД; баганын тоо мөр бүрд таарна.
  *  5. Анхааруулга: сүүлийн 30 хоногийнх улаан, хуучин хохирол шар, хуучин
@@ -74,15 +75,15 @@ const row = (o = {}) => ({
   assert.equal(toSafetyRow({}).oid, null);
 
   // ⚠️ 2026-10-09: CreationDate нөөц зам ХАСАГДСАН — Habea.tsx normIncident-тэй ижил (`d: nn(ognoo)`)
-  assert.equal(toSafetyRow({ field_22: null, CreationDate: NOW - 5 * DAY }).ognoo, null,
+  assert.equal(toSafetyRow({ field_22: null, created_date: NOW - 5 * DAY }).ognoo, null,
     'field_22 хоосон → null (CreationDate руу унахгүй)');
-  assert.equal(toSafetyRow({ field_22: 0, CreationDate: NOW - 5 * DAY }).ognoo, null,
+  assert.equal(toSafetyRow({ field_22: 0, created_date: NOW - 5 * DAY }).ognoo, null,
     'field_22 = 0 → null');
-  assert.equal(toSafetyRow({ field_22: NOW - 9 * DAY, CreationDate: NOW }).ognoo, NOW - 9 * DAY,
+  assert.equal(toSafetyRow({ field_22: NOW - 9 * DAY, created_date: NOW }).ognoo, NOW - 9 * DAY,
     'field_22 байвал түүгээр');
 
   // Огноогүй мөр «сүүлийн 30 хоногт» тоологдохгүй — ХАБЭА хуудастай ижил
-  const viaCreated = toSafetyRow({ field_22: null, CreationDate: NOW - 2 * DAY, field_7: 'Зөрчил', field_6: 'Багц 4' });
+  const viaCreated = toSafetyRow({ field_22: null, created_date: NOW - 2 * DAY, field_7: 'Зөрчил', field_6: 'Багц 4' });
   const a = aggregateSafety([viaCreated], NOW);
   assert.equal(a.recent, 0);
   assert.equal(a.last, null);
@@ -91,6 +92,12 @@ const row = (o = {}) => ({
   // Ирээдүйн огноо (буруу бөглөсөн) «сүүлийн 30 хоногт» орохгүй
   const future = toSafetyRow({ field_22: NOW + 3 * DAY, field_7: 'Зөрчил' });
   assert.equal(aggregateSafety([future], NOW).recent, 0, 'ирээдүйн огноо recent-д орохгүй');
+  // ⚠️ 2026-10-21: ирээдүйн огноо `last`/`daysSince`-д ч орохгүй (`recent`-тэй нэг дүрэм)
+  const past = toSafetyRow({ field_22: NOW - 2 * DAY, field_7: 'Зөрчил' });
+  const fa = aggregateSafety([future, past], NOW);
+  assert.equal(fa.last, NOW - 2 * DAY, 'ирээдүйн огноо last болохгүй');
+  assert.equal(fa.daysSince, 2);
+  assert.equal(aggregateSafety([future], NOW).last, null);
 }
 
 /* ══════════════ 3. Хохирлын regex — execTriage-тэй ижил дүрэм ══════════════ */
@@ -121,11 +128,22 @@ assert.equal(computeSafety(dated(INCIDENT_WARN_MAX, 0), NOW).level, 'warn', '30 
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 0), NOW).level, 'bad', '30 хоногт 6+ осол → Яаралтай');
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 100), NOW).level, 'good', 'хуучин 6+ осол (хохиролгүй) → 30 хоногт 0 → Сайн');
 assert.equal(computeSafety(dated(3, 100), NOW).value, '0', 'гол тоо = сүүлийн 30 хоног');
+/* ⚠️ 2026-10-21: хохирлын түвшин ч СҮҮЛИЙН 30 ХОНОГООР (`agg.damageRecent`) */
 assert.equal(
-  computeSafety(dated(DMG_BAD_N, 100, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
-  'хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
+  computeSafety(dated(DMG_BAD_N, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
+  '30 хоногт хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
 );
-assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'warn');
+assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'warn');
+{
+  const oldRows = dated(DMG_BAD_N, 100, { turul: 'Эд хөрөнгийн хохирол' });
+  const old = computeSafety(oldRows, NOW);
+  assert.equal(old.level, 'good', '100 хоногийн өмнөх хохирол → 30 хоногт 0 → Сайн (урьд нь мөнхөд bad)');
+  assert.ok(old.facts.includes(`${DMG_BAD_N} хохирол`), `бүх хугацааны хохирол баримтад хэвээр: ${old.facts}`);
+  const oa = aggregateSafety(oldRows, NOW);
+  assert.equal(oa.damage, DMG_BAD_N);
+  assert.equal(oa.damageRecent, 0);
+  assert.equal(aggregateSafety(dated(2, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).damageRecent, 2);
+}
 
 /* ══════════════ 5. Нэгтгэл, 30 хоногийн зааг, баримт ══════════════ */
 
@@ -140,6 +158,7 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
   const a = aggregateSafety(rows, NOW);
   assert.equal(a.total, 5);
   assert.equal(a.damage, 2);
+  assert.equal(a.damageRecent, 0, '⚠️ 2026-10-21: 1 мс хуучин ба огноогүй хохирол 30 хоногт орохгүй');
   assert.equal(a.last, NOW - 3 * DAY);
   assert.equal(a.daysSince, 3);
   assert.equal(a.recent, 2, 'яг 30 хоногийн зааг орно, 1 мс хуучин орохгүй');
@@ -197,7 +216,7 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
 /* ⚠️ Survey123-д эхлүүлээд бөглөөгүй маягт (төрөл · багц · огноо гурвуулаа хоосон) осол БИШ.
    Нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл — хасахгүй. ХАБЭА хуудас ч энэ функцээр. */
 {
-  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, CreationDate: NOW }), true,
+  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, created_date: NOW }), true,
     'CreationDate байсан ч гурвуулаа хоосон бол ноорог');
   assert.equal(isBlankIncident({ field_7: '  ', field_6: '', field_22: 0 }), true, 'зай/хоосон мөр/0 огноо = хоосон');
   assert.equal(isBlankIncident({}), true);
@@ -216,6 +235,24 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
 {
   const r = computeSafety([row({ ognoo: NOW + 3 * DAY, turul: 'Зөрчил', bagts: 'Багц 2' })], NOW);
   assert.equal(r.issues.filter((i) => i.tone === 'bad').length, 0, 'ирээдүйн огноо улаан анхааруулга үүсгэхгүй');
+}
+
+/* ══════════════ 3. ⚠️ 2026-10-22 (аудит): төрөл · шалтгаан · компани домэйны НЭРЭЭР (тасархай код биш) ══════════════ */
+{
+  const dom = {
+    field_7: new Map([['Моторт тээврийн хэрэгсэлийн осо', 'Моторт тээврийн хэрэгсэлийн осол зөрчил']]),
+    field_11: new Map([['Аюулгүй ажиллагааны дүрэм зөрчс', 'Аюулгүй ажиллагааны дүрэм зөрчсөн']]),
+    field_5: new Map([['"Хятадын хоёр дахь металлурги г', '"Хятадын хоёр дахь металлурги групп корпораци" ХХК']]),
+  };
+  const r = toSafetyRow({
+    field_7: 'Моторт тээврийн хэрэгсэлийн осо', field_11: 'Аюулгүй ажиллагааны дүрэм зөрчс',
+    field_5: '"Хятадын хоёр дахь металлурги г', objectid: 3,
+  }, dom);
+  assert.equal(r.turul, 'Моторт тээврийн хэрэгсэлийн осол зөрчил');
+  assert.equal(r.shaltgaanTurul, 'Аюулгүй ажиллагааны дүрэм зөрчсөн');
+  assert.equal(r.company, '"Хятадын хоёр дахь металлурги групп корпораци" ХХК');
+  assert.equal(toSafetyRow({ field_7: 'Шинэ код ' }, dom).turul, 'Шинэ код', 'толинд байхгүй — код (зайгүй)');
+  assert.equal(toSafetyRow({ field_5: 'X' }).company, 'X', 'тольгүй дуудлага — код');
 }
 
 console.log('safety.check.mjs — БҮГД ТЭНЦЛЭЭ');

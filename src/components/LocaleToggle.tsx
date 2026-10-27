@@ -1,10 +1,12 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { useLocale } from '@/lib/i18n';
 import {
   t as tr, loadLocaleDict, subscribeDict, getLocaleSwitchState, getServerLocaleSwitchState, clearLocaleSwitchError,
 } from '@/lib/i18nCore';
+import { askConfirm } from '@/lib/confirm';
 import s from './locale.module.css';
 
 /**
@@ -42,9 +44,16 @@ export function hasUnsavedWork(): boolean {
  * Хэл солихыг зөвшөөрөх үү — хадгалаагүй ажил байвал хэрэглэгчээс асууна.
  * `true` = солиход аюулгүй (эсвэл хэрэглэгч алдахыг зөвшөөрөв).
  */
-export function confirmLocaleSwitch(): boolean {
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд порталын `askConfirm` — хөтчийн «энэ хуудасны
+   асуултыг дахин бүү харуул» чагт тавигдсан үед `window.confirm` асуулгүй `false` буцааж, товч ЮУ Ч хийхгүй
+   мэт байв. Асуулт зөвхөн товшилтоос (синхрон хамгаалалт биш) тул async болгоход аюулгүй. Хост байхгүй (тест)
+   бол `askConfirm` өөрөө `window.confirm` руу унана. */
+export async function confirmLocaleSwitch(): Promise<boolean> {
   if (!hasUnsavedWork()) return true;
-  return window.confirm(tr('Хадгалаагүй өөрчлөлт байна — хэл солиход алдагдана. Солих уу?'));
+  return askConfirm(tr('Хадгалаагүй өөрчлөлт байна — хэл солиход алдагдана. Солих уу?'), {
+    ok: tr('Хэл солих'),
+    danger: true,
+  });
 }
 
 /**
@@ -78,7 +87,7 @@ export function LocaleToggle({ className }: { className?: string }) {
       <button
         type="button"
         className={className ?? s.btn}
-        onClick={() => { if (confirmLocaleSwitch()) setLocale(next); }}
+        onClick={async () => { if (await confirmLocaleSwitch()) setLocale(next); }}
         onPointerEnter={warm}
         onFocus={warm}
         disabled={busy}
@@ -86,9 +95,10 @@ export function LocaleToggle({ className }: { className?: string }) {
         aria-label={label}
         title={busy ? tr('Хэлний толь ачаалж байна…') : label}
       >
-        <span className={s.code} aria-hidden>
-          {busy ? '…' : next.toUpperCase()}
-        </span>
+        {/* ⚠️ 2026-10-23: Environment — завгүй үед lucide Loader2 эргэнэ (урьд нь «…») */}
+        {busy
+          ? <LoaderCircle size={16} strokeWidth={1.6} className={s.spin} aria-hidden />
+          : <span className={s.code} aria-hidden>{next.toUpperCase()}</span>}
       </button>
       {sw === 'error' && (
         <span className={s.err} role="status">

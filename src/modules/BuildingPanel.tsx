@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Tabs, Trend } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Trend } from '@/components/ui';
+import { Segmented } from '@/components/Switch';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
@@ -339,7 +340,9 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
   return (
     <Section title={tr('Барилга угсралтын явц')} note={tr('{0} хэмжилт', pts.length)}>
       <Col gap="md">
-        <Tabs value={grain} onChange={setGrain} items={GRAINS} />
+        {/* ⚠️ 2026-10-26 (UX U7): утга сонгогч — таб биш, нийтлэг `Segmented` капсул */}
+        <Segmented value={grain} onChange={setGrain} label={tr('Цувааны алхам')}
+          options={GRAINS.map((g) => ({ value: g.key, label: g.label }))} />
         <Trend
           color={HUE}
           points={pts.map((p) => ({
@@ -698,7 +701,8 @@ export function pickedBuilding(
  */
 export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
+    /* ⚠️ 2026-10-23 (UX аудит X6): хоосон төлөв ДАРААГИЙН алхмыг хэлнэ */
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} hint={tr('Газрын зураг дээрх барилга дээр дарж сонгоно уу.')} /></Section>;
   }
   return (
     <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
@@ -745,12 +749,12 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
  */
 export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} /></Section>;
+    return <Section><Empty label={tr('Барилга сонгоогүй байна.')} hint={tr('Газрын зураг дээрх барилга дээр дарж сонгоно уу.')} /></Section>;
   }
   return (
     <Data q={q} loading={tr('Ажлын гүйцэтгэл татаж байна…')}>
       {(d) => {
-        if (!d) return <Section title={tr('Гүйцэтгэл үе шатаар')}><Empty label={tr('Мэдээлэл алга.')} /></Section>;
+        if (!d) return <Section title={tr('Гүйцэтгэл үе шатаар')}><Empty label={tr('Мэдээлэл алга.')} hint={tr('Энэ барилгын ажлын гүйцэтгэл «Гүйцэтгэл бөглөх» хуудсанд хараахан бүртгэгдээгүй байна.')} /></Section>;
         return (
           <>
             {/* Энэ блокийн «Б.» мөрийн бүртгэл бүхэн — хэзээ хурдалсныг харуулна */}

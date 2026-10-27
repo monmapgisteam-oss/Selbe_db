@@ -23,10 +23,11 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   computeIot, buildIotKpi, iotLevel, IOT_STALE_H, IOT_ETA_NEAR_H, IOT_HIGHER_IS_GOOD,
 } from './iot.ts';
-import { RANGES, thin, parseTs, HIGHER_IS_GOOD, SENSORS, UB_OFFSET_MS } from '@/lib/sensors';
+import { RANGES, thin, parseTs, HIGHER_IS_GOOD, SENSORS, UB_OFFSET_MS, sensorsComplete } from '@/lib/sensors';
 
 const H = 3_600_000;
 const NOW = Date.UTC(2026, 8, 6, 9, 0, 0);
@@ -296,12 +297,29 @@ function sensor(key, label, series, error) {
   ], NOW);
   const k = buildIotKpi(s, ['Гэрэл']);
   for (const t of k.tables) for (const r of t.rows) assert.equal(r.length, t.cols.length, t.title);
-  assert.equal(k.tables[0].rows.length, 3, 'хэтэрсэн + хуучирсан хэтрэлт + хуурай = 3 мөр');
+  /* ⚠️ 2026-10-21: хуучирсан чийг хуурайд ОРОХГҮЙ — 2 мөр; `stale` тоолуурт хэвээр */
+  assert.equal(k.tables[0].rows.length, 2, 'хэтэрсэн + хуучирсан хэтрэлт = 2 мөр (хуучирсан чийг хуурай биш)');
   assert.equal(k.tables[0].rows[0][8].v, 'одоогийн');
   assert.equal(k.tables[0].rows[1][8].v, 'хуучирсан');
-  assert.equal(k.tables[0].rows[2][8].v, 'хуурай · хуучирсан');
+  assert.equal(s.dry.length, 0, '⚠️ 2026-10-21: хуучирсан заалт хуурайд тоологдохгүй');
   assert.equal(k.level, 'bad');
   assert.equal(k.facts[1], '1 унасан · 0 дуугүй · 2 хуучирсан');
+}
+
+/* ══════════════ 2026-10-21 (аудит): хуучирсан чийгийн заалт хуурайд ТООЛОГДОХГҮЙ ══════════════ */
+{
+  const s = computeIot([
+    sensor('soil', 'Хөрс', [metric('moisture', 'Хөрсний чийг', '%r.h.', 1, 5, IOT_STALE_H + 1, 15)]),
+  ], NOW);
+  assert.equal(s.dry.length, 0, '25 цагийн өмнөх 5% — хуурай гэж батлахгүй');
+  assert.equal(s.stale, 1, 'харин хуучирсанд тоологдоно');
+  assert.equal(s.states[0].state, 'stale');
+  assert.equal(iotLevel(s), 'warn', 'шар нь хуучирснаас');
+  assert.ok(!buildIotKpi(s, []).facts.some((f) => f.includes('хуурай')), 'хуурай баримт гарахгүй');
+  /* шинэ заалт — урьдын адил хуурай */
+  const fresh = computeIot([sensor('soil', 'Хөрс', [metric('moisture', 'Хөрсний чийг', '%r.h.', 1, 5, 1, 15)])], NOW);
+  assert.equal(fresh.dry.length, 1);
+  assert.equal(fresh.dry[0].stale, false);
 }
 
 /* ══════════════ 2026-10-04: ФИЗИК МУЖААС ГАДУУР = ГЭМТЭЛ · хуучирсан босго 24ц ══════════════ */
@@ -391,6 +409,19 @@ function sensor(key, label, series, error) {
     assert.ok(m.valid && (6553.5 > m.valid.max || 65535 > m.valid.max), `${sk}:${mk} — 0xFFFF мужид багтав`);
   }
   assert.ok(mt('waste', 'fill').rawValid.min > 0, 'хогийн сав 0мм нь «100%» биш — гэмтэл');
+}
+
+/* ══════════════ 2026-10-21 (KPI аудит): `sensors.sensorsComplete` — унасан мэдрэгчтэй үр дүн 5 мин кэшлэгдэхгүй ══════════════ */
+{
+  const ok = { error: undefined };
+  const down = { error: 'HTTP 500' };
+  assert.equal(sensorsComplete([ok, ok]), true, 'бүх мэдрэгч алдаагүй → бүрэн');
+  assert.equal(sensorsComplete([ok, down]), false, 'нэг мэдрэгч унасан → дутуу (кэш хаягдана, дараагийн дуудалт дахин татна)');
+  assert.equal(sensorsComplete([]), true, 'хоосон жагсаалт бүрэн');
+  /* ачаалагч `keep`-ээр дамжуулдаг эсэх — эх кодоос (`cached` энэ файлын дотоод функц тул импортлогдохгүй) */
+  const src = readFileSync(new URL('../sensors.ts', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(src, /cached<SensorLive\[\]>\(\(\) => Promise\.all\(SENSORS\.map\(\(d\) => loadOne\(d, range\)\)\), undefined, sensorsComplete\)/, 'loadSensors: cached(…, undefined, sensorsComplete)');
+  assert.match(src, /if \(keep\) void mine\.then\(\(v\) => \{ if \(!keep\(v\) && p === mine\) p = null; \}, \(\) => \{\}\);/, 'sensors.cached: keep(v) === false → зөвхөн өөрөө идэвхтэй үед хаяна');
 }
 
 console.log('iot.check: OK');

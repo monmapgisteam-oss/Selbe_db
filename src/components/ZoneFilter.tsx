@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
-import { t as tr, getLocale } from '@/lib/i18nCore';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { t as tr } from '@/lib/i18nCore';
+import { zoneLabel, zonesLabel } from '@/lib/zoneLabel';
 import { useMap } from './MapCanvas';
 import { Data } from './ui';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -38,17 +39,8 @@ import s from '@/modules/dashboard.module.css';
  * түүний баруун талд бие даан байрлана.
  */
 
-/**
- * БҮСИЙН НЭРИЙГ ДЭЛГЭЦЭНД (⚠️ 2026-10-04) — англи горимд «Багц-1…4.2» мэт монгол бүсийн
- * нэр орчуулагдалгүй гардаг байв. `enData`-д байгаа нэр `tr`-ээр; байхгүй «Багц…» угтварыг
- * «Package…» болгоно. ⚠️ ЗӨВХӨН харуулалт — `zone` төлөв/URL/`zoneWhere` монгол эх хэвээр.
- */
-export const zoneLabel = (z: string): string => {
-  const t = tr(z);
-  return getLocale() === 'en' ? t.replace(/^Багц/, 'Package') : t;
-};
-/** Олон бүс (таслалаар) — харуулах мөр */
-export const zonesLabel = (sel: string[]): string => sel.map(zoneLabel).join(', ');
+/** Бүсийн дэлгэцийн нэр — `lib/zoneLabel` (2026-10-26-нд салгав; хуучин импортууд хэвээр ажиллана) */
+export { zoneLabel, zonesLabel };
 
 type ZoneGroups = { type: string; hue: string; zones: string[] }[];
 
@@ -133,6 +125,14 @@ export function ZoneFilter({
   const [open, setOpen] = useState(false);
   const q = useZoneGroups();
 
+  /* ⚠️ 2026-10-23 (UX аудит S17): унжих жагсаалт Esc-ээр хаагдана (урьд нь зөвхөн «Хаах» товчоор) */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const sel = zone ? zone.split(',').filter(Boolean) : [];
   const toggle = (label: string) => {
     const next = sel.includes(label) ? sel.filter((x) => x !== label) : [...sel, label];
@@ -148,8 +148,9 @@ export function ZoneFilter({
           {sel.length > 0 && (
             <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
           )}
+          {/* ⚠️ 2026-10-23 (X7): сонголт АРИЛГАХ — «Цуцлах» нь «үйлдлийг болих» гэж уншигддаг байв */}
           {sel.length > 0 && (
-            <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
+            <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Арилгах')}</button>
           )}
         </div>
         <GroupedChips q={q} sel={sel} toggle={toggle} />
@@ -157,7 +158,10 @@ export function ZoneFilter({
     );
   }
 
-  /* ── БҮТЭН МӨР хувилбар — самбарын толгойн доор (өмнөх ZoneBar-ын байрлал) ── */
+  /* ── БҮТЭН МӨР хувилбар — самбарын толгойн доор (өмнөх ZoneBar-ын байрлал) ──
+     ⚠️ 2026-10-23 (UX аудит X7/S17): «Бүс» · «Бүх бүс» · «Бүс нэмэх/сонгох» САНААТАЙ ХЭВЭЭР — энэ шүүлт нь газрын
+     зургийн БҮС (`ZONE_LAYER`, `zoneType`) сонгодог, багц биш. «Багц» гэж нэрлэвэл багцын шүүлттэй андуурагдана;
+     аудитаас зөвхөн «Цуцлах» → «Арилгах» хэрэгжив. */
   return (
     <div className={s.zoneBar}>
       <span className={s.zoneBarLabel}>{tr('Бүс')}</span>
@@ -166,7 +170,7 @@ export function ZoneFilter({
         <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
       )}
       {sel.length > 0 && (
-        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Цуцлах')}</button>
+        <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Арилгах')}</button>
       )}
       <button type="button" className={s.zoneBarBtn} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {open ? tr('Хаах') : sel.length ? tr('Бүс нэмэх') : tr('Бүс сонгох')}

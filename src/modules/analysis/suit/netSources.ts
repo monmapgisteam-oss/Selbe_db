@@ -22,7 +22,7 @@
  * Дүрмийн (synthesize) ба OSM дохио ХАСАГДСАН — зөвхөн service-ээр шийднэ.
  */
 
-import { TD, LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, SELBE_ET } from '@/lib/services';
 import { arcgisPost, type ArcgisBody } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
@@ -114,7 +114,7 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     // ① Одоогийн бодит замын line (Monmap_zam_selbe, 113 feature, polyline).
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
     // test_data [98] monmap_road_simulation — 2026-08-13 шилжив (113 feature)
-    url: `${TD}/98`,
+    url: `${SELBE_ET}/113`,
     nodeIntersections: true, // ⚠️ урт шугам уулзвар гатална — таслахгүй бол сүлжээ бутарна
     directed: true, // ⚠️ line сумтай — машин зөвхөн тэр зүг явна
   },
@@ -126,7 +126,7 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     // ② Ерөнхий төлөвлөгөөний машин явах line (selbe_zam_tuluwlult, 205 feature).
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
     // test_data [104] ET_road_simulation — 2026-08-13 шилжив (205 feature)
-    url: `${TD}/104`,
+    url: `${SELBE_ET}/102`,
     nodeIntersections: true, // ⚠️ таслахгүй бол 3.7% холбогдоно; таславал 88.9%
     directed: true, // line сумтай — 141 мухар бүгд 60м дотор гарцтай (тасралтгүй)
   },
@@ -224,7 +224,7 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
 /** `gerlen_dohio` FeatureServer — уулзвар бүр 4 line (approach), code 1-4. */
 const SIGNAL_LAYER_URL =
   // test_data [103] gerlen_dohio — 2026-08-13 шилжив (талбарууд ижил)
-  `${TD}/103`;
+  `${SELBE_ET}/103`;
 
 let signalCache: Promise<SignalDef[]> | null = null;
 
@@ -269,7 +269,7 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
       outFields: 'uulzwar_name,gerlen_dohio_code',
       returnGeometry: 'true',
       outSR: '3857',
-      orderByFields: 'OBJECTID ASC',
+      orderByFields: 'objectid ASC',
       resultOffset: String(off),
       resultRecordCount: '2000',
       f: 'json',

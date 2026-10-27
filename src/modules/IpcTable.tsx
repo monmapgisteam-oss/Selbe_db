@@ -348,7 +348,7 @@ function PayCard({ r, ipcNo, onDoc, late }: {
       <footer className={s.cardFt}>{r.id}</footer>
       {late && late.length > 0 && (
         <p className={s.lateNote} role="note">
-          {tr('⚠ {0} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', late.join(', '))}
+          {tr('⚠ {0} хуудасны анхны батлагдсан гүйцэтгэл энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', late.join(', '))}
         </p>
       )}
       {onDoc && (
@@ -424,10 +424,28 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
      эрэмбэлсэн массивын индекс байсан тул эрэмбэ солиход хураасан төлөв ӨӨР
      гэрээнд шилждэг байв. `sortBlocks` объектыг хуулдаггүй тул лавлагаагаар
      олдоно. */
-  const baseIdx = useMemo(() => new Map(blocks.map((b, i) => [b, i])), [blocks]);
-  const keyOf = (b: ContractBlock) => `${b.code}#${baseIdx.get(b) ?? -1}`;
+  /* ⚠️ 2026-10-21: ТОГТВОРТОЙ түлхүүр — гэрээний код → (кодгүй бол) гэрээний дугаар → төлбөрийн мөрийн
+     хамгийн бага OBJECTID; ижил суурьтай хэд байвал л дарааллын дугаар. Урьд нь `код#индекс` (эрэмбэлээгүй
+     `blocks`-ийн) байсан тул дахин ачаалалтаар гэрээ нэмэгдэх/хасагдахад индекс шилжиж ӨӨР бүлэг хураагдаж,
+     `shut` нь хэзээ ч цэвэрлэгддэггүй тул `allShut` (size ≥ length) буруу тоолдог байв. */
+  const keyMap = useMemo(() => {
+    const m = new Map<ContractBlock, string>();
+    const seen = new Map<string, number>();
+    for (const b of blocks) {
+      const oids = b.rows.map((r) => r.oid).filter((x): x is number => x != null);
+      const base = b.code ? `c:${b.code}` : b.contractNo ? `n:${b.contractNo}` : oids.length ? `o:${Math.min(...oids)}` : `i:${b.rows[0]?.id ?? ''}`;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      m.set(b, n ? `${base}#${n}` : base);
+    }
+    return m;
+  }, [blocks]);
+  const keyOf = (b: ContractBlock) => keyMap.get(b) ?? `?:${b.code}`;
+  /* ⚠️ 2026-10-21: одоо БАЙХГҮЙ гэрээний түлхүүрийг тооцохгүй, дараагийн солилтод хаяна */
+  const liveKeys = useMemo(() => new Set(keyMap.values()), [keyMap]);
+  const prune = (p: Set<string>) => new Set([...p].filter((k) => liveKeys.has(k)));
 
-  const allShut = shut.size >= sorted.length;
+  const allShut = sorted.every((b) => shut.has(keyOf(b)));
   const toggleAll = () => {
     setShut(allShut ? new Set() : new Set(sorted.map((b) => keyOf(b))));
   };
@@ -467,14 +485,17 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
         </div>
         <div className={s.hdR}>
           <label className={s.sortLbl} htmlFor="ipc-sort">{tr('Эрэмбэ')}</label>
+          {/* ⚠️ 2026-10-23: `data-rep-skip` — ЭРЭМБЭ, шүүлт биш (`viewReport.readFilters`) */}
           <select
             id="ipc-sort"
+            data-rep-skip=""
             className={s.sel}
             value={sort}
             onChange={(e) => setSort(e.target.value as SortKey)}
           >
             <option value="paid">{tr('Олгосон дүнгээр')}</option>
-            <option value="pct">{tr('Гүйцэтгэлийн хувиар')}</option>
+            {/* ⚠️ 2026-10-26 (аудит): `paidPct` = олгосон ÷ гэрээт — «гүйцэтгэл» нь биет ажлын хувь гэж уншигддаг байв */}
+            <option value="pct">{tr('Олгосон хувиар')}</option>
             <option value="contract">{tr('Гэрээт төсвөөр')}</option>
             <option value="pkg">{tr('Багцын нэрээр')}</option>
           </select>
@@ -497,7 +518,7 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
                 b={b}
                 open={open}
                 onToggle={() => setShut((p) => {
-                  const n = new Set(p);
+                  const n = prune(p);
                   if (n.has(k)) n.delete(k); else n.add(k);
                   return n;
                 })}

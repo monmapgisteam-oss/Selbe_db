@@ -15,7 +15,7 @@
  *
  * ⚠️ ЯАГААД УРСГАЛЫН ТОМИЛГОО (`guitsetgelAcl`) ТОХИРОХГҮЙ ВЭ: тэнд «НЭГ
  * АККАУНТ ЗӨВХӨН НЭГ ШАТАНД» гэсэн дүрэм бий тул хуваарийн батлагчийг
- * томилохын тулд түүнийг гүйцэтгэлийн дөрвөн шатны аль нэгэнд оруулах
+ * томилохын тулд түүнийг гүйцэтгэлийн долоон шатны (2026-10-23) аль нэгэнд оруулах
  * шаардлагатай болж, тэр нь ГҮЙЦЭТГЭЛ зөвшөөрөх эрх дагуулна. Хуваарь бол
  * ТӨЛӨВЛӨГӨӨ — өөр асуулт, өөр хариуцлага.
  *
@@ -31,10 +31,19 @@ import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { huvaariUpsert, huvaariRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
+/* ⚠️ 2026-10-23: батлагчийн жагсаалтаас устгагдсан / порталд алга аккаунтыг хасахад (`planApproversOf`) */
+import { listUsers } from './permissions';
+import { portalMissing } from './portalPresence';
+import { roleForUser } from './services';
 
 export { ALL_BAGTS };
 
-/** Хуваарийн хоёр үүрэг */
+/**
+ * Хуваарийн хоёр үүрэг.
+ * ⚠️ 2026-10-26 (хэрэглэгч: «Харагч хэрэггүй»): түр нэмэгдсэн `viewer` («Харагч») үүрэг ХАСАГДСАН. ArcGIS-ийн мөрөнд
+ *    `viewer` grant үлдсэн байвал `makeAcl` танигдахгүй үүрэг гэж ЧИМЭЭГҮЙ хаяна (эрх/хүрээ нээхгүй, анхааруулгагүй).
+ *    Хуваарь ХАРАХ хүрээ нь эрхийн төрлийн «Хуваарь харах» + зохиогч/батлагчийн багц (`huvaariView.huvaariViewScope`).
+ */
 export type PlanRole = 'author' | 'approver';
 
 /** Нэг аккаунтын хуваарийн хуваарилалт */
@@ -105,13 +114,34 @@ export const huvaariScope = (user: string | null | undefined, role: PlanRole) =>
 /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
 export const hasPlanRole = acl.hasRole;
 
+/** Порталд БАЙГАА аккаунт уу — эрхийн жагсаалтад бий (устгагдаагүй) БА Enterprise порталд алга гэж батлагдаагүй */
+const liveAccount = (u: string): boolean => {
+  const k = u.trim().toLowerCase();
+  return !portalMissing(k) && listUsers().some((x) => x.username.trim().toLowerCase() === k);
+};
+
 /**
  * БАГЦЫН БАТЛАГЧИД (2026-10-09) — хуваарилалтаар «Батлагч» үүрэгтэй, тэр багц (эсвэл бүх багц) заасан
  * аккаунтууд, эрэмбэлсэн. ⚠️ Зөвхөн МЭДЭЭЛЭЛ («хүлээгдэж буй илгээлтийг хэн батлах вэ») — эрхийн шалгалт
- * биш (`huvaariScope`/`decidePlan`); super (хуваарилалтаас үл хамаарна) жагсаалтад орохгүй.
+ * биш (`huvaariScope`/`decidePlan`); super (хуваарилалтаас үл хамаарна) жагсаалтад орохгүй (`planAdminCanApprove`).
+ * ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): УСТГАГДСАН (эрхийн жагсаалтад алга) ба ПОРТАЛД АЛГА аккаунтыг хасна —
+ *    урьд нь тэдний үлдсэн мөр «батлагч: X» гэж харагдаж, зохиогч нэвтэрч чадахгүй хүнд хандахаар хүлээдэг байв.
  */
 export const planApproversOf = (group: string): string[] =>
   listHuvaariAssigns()
     .filter((a) => a.grants.some((g) => g.role === 'approver' && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(group))))
     .map((a) => a.user)
+    .filter(liveAccount)
     .sort();
+
+/**
+ * Энгийн батлагч алга үед АДМИН (super — хүрээ хязгааргүй, `huvaariScope` → `null`) батлах боломжтой юу (⚠️ 2026-10-23).
+ * Илгээсэн зохиогч (`author`) өөрийгөө батлахгүй тул тоологдохгүй; устгагдсан/порталд алга super ч тоологдохгүй.
+ */
+export const planAdminCanApprove = (author: string): boolean => {
+  const a = author.trim().toLowerCase();
+  return listUsers().some((x) => {
+    const k = x.username.trim().toLowerCase();
+    return k !== a && roleForUser(k) === 'super' && !portalMissing(k);
+  });
+};

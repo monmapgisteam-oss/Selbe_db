@@ -37,8 +37,9 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
   assert.deepEqual(bad, [], `засах эрхийн мөр загварт буцаж ирэв: ${bad.join(', ')}`);
   /* ⚠️ 2026-09-30: урсгалтай 6 харагдац загварт ОРОХГҮЙ — урсгалын хуваарилалтаар нээгдэнэ */
   /* ⚠️ 2026-10-09: + «ma» (MA — чанарын эрхийн гэр харагдац, «chanar»-тай адил урсгалтай) */
-  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'chanar', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma', 'qaqc'],
-    'WORKFLOW_VIEWS ≠ урсгалтай 7 харагдац');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma'],
+    'WORKFLOW_VIEWS ≠ урсгалтай 5 харагдац (2026-10-20: «Чанарын баримт», 2026-10-23: «Чанар (QAQC)» хасагдсан)');
   /* ⚠️ 2026-09-30 (merge irgediin-hurteemj): «ТУХ» нэмэгдэж 24 болсон — тоог хатуу бичихгүй.
      Шалгуурын утга: урсгалтай харагдац VIEWS-ээс ХАСАГДААГҮЙ (зөвхөн унтраалгаас шүүгдэнэ). */
   for (const k of WORKFLOW_VIEWS) assert.ok(VIEWS.some((v) => v.key === k), `VIEWS-ээс урсгалтай харагдац хасагдсан: ${k}`);
@@ -46,8 +47,16 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
     if (WORKFLOW_VIEWS.includes(v.key)) assert.ok(!ids.includes(`view:${v.key}`), `view:${v.key} — урсгалтай харагдац загварт буцаж ирэв`);
     else assert.ok(ids.includes(`view:${v.key}`), `view:${v.key} каталогт алга`);
   }
-  assert.ok(ids.includes('docs') && ids.includes('admin'), 'docs · admin мөр алга');
-  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 2, 'каталог = харагдац − урсгалтай 6 + docs + admin');
+  /* ⚠️ 2026-10-23: `docs` мөр хасагдсан — баримтын сан бүх хэрэглэгчид нээлттэй (roleTypes.settingGroups-ийн ⚠️) */
+  assert.ok(!ids.includes('docs') && ids.includes('admin'), 'docs мөр буцаж ирэв эсвэл admin мөр алга');
+  /* ⚠️ 2026-10-26: + «ХУВААРЬ» хэсгийн 3 мөр (харах сонгогч · зохиох · батлах мэдээлэл) */
+  assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 1 + 3, 'каталог = харагдац − урсгалтай 5 + admin + хуваарийн 3');
+  const hvRows = settingGroups().flatMap((g) => g.rows).filter((r) => r.id.startsWith('huvaari:'));
+  assert.deepEqual(hvRows.map((r) => [r.id, !!r.select, r.info ?? null]),
+    [['huvaari:scope', true, null], ['huvaari:author', false, 'author'], ['huvaari:approver', false, 'approver']],
+    '«ХУВААРЬ» хэсэг: харах (сонгогч) · зохиох · батлах (мэдээлэл)');
+  /* мэдээллийн мөр загварт хадгалагдахгүй */
+  assert.deepEqual(cleanTpl('injener', { on: ['huvaari:author', 'huvaari:approver', 'huvaari:scope'], home: 'gdash' }).on, [], 'мэдээллийн id загварт орох ёсгүй');
   /* хадгалсан хуучин загварын урсгалтай харагдац хаягдана; roleAccess ч агуулахгүй */
   assert.ok(!cleanTpl('injener', { on: ['view:gdash', 'view:guitsetgel', 'view:huvaari'], home: 'gdash' }).on.includes('view:guitsetgel'));
   for (const r of TYPE_ORDER) {
@@ -84,7 +93,8 @@ console.log('✅ cleanTpl — cap:* · chanar:* · flow:* · scope хаягда�
   assert.equal(roleAccess('super').views, 'all', 'super үргэлж бүх харагдац');
   for (const r of TYPE_ORDER) {
     const t = tplOf(r);
-    assert.ok(t.on.every((id) => /^view:|^docs$|^admin$/.test(id)), `${r}: анхдагч загварт харахаас өөр id байна`);
+    /* ⚠️ 2026-10-26: + «Хуваарь харах» (`huvaari:all` · `huvaari:own`) — зөвхөн харах хүрээ */
+    assert.ok(t.on.every((id) => /^view:|^docs$|^admin$|^huvaari:(all|own)$/.test(id)), `${r}: анхдагч загварт харахаас өөр id байна`);
   }
 }
 console.log('✅ roleAccess — зөвхөн views · docs · home; анхдагч загвар цэвэр');
@@ -133,7 +143,8 @@ console.log('✅ roleTypeApply — зөвхөн setUser; ErhTypes-д scope мө�
   /* saveTpl — сүлжээгүй тул унана (false), гэхдээ seen-ийг ЗААВАЛ бичих ёстой — эх кодоор */
   assert.equal(await saveTpl('injener', { on: ['view:gdash'], home: 'gdash' }), false, 'сүлжээгүй — false');
   const rt = fs.readFileSync('src/lib/roleTypes.ts', 'utf8');
-  assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: tplViewKeys() };'), 'saveTpl: seen = одоогийн каталог');
+  /* ⚠️ 2026-10-26: + «Хуваарь харах» шийдсэн тэмдэг (`tplSeenKeys`) */
+  assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: tplSeenKeys() };'), 'saveTpl: seen = одоогийн каталог + хуваарийн тэмдэг');
   /* ErhTypes — баганын/мөрийн тэмдэг */
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');
   assert.ok(ui.includes("tr('шинэ хуудас — загварт тохируулаагүй')") && ui.includes('unseenOf(r)'), 'ErhTypes: «шинэ хуудас» тэмдэг алга');

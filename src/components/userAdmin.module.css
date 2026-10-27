@@ -4,6 +4,10 @@
    болгов (хэрэглэгчийн шийдвэр). Толгой + хажуугийн цэс + агуулга.
    Өнгө нь ТОКЕН — хоёр горимд адил ажиллана (хуучин нь харанхуйд
    хатуу бэхлэгдсэн байв).
+   ⚠️ 2026-10-23: Environment — толгой --surface + доод зураас, цэсийн сонголт moss
+   12% + moss текст; товч .pe-primary/.pe-ghost/.pe-danger (32px, 8px, 12px/600);
+   оролт/хайлт .pe-field (32px, 7px, --line-strong, bg --bg, moss focus); badge 6px
+   (tone 35% хүрээ / 8% дэвсгэр); шошго uppercase lh 1.3; жин ≤600; унтраалга moss.
    ═══════════════════════════════════════════════════════════════ */
 
 .page {
@@ -38,21 +42,26 @@
   width: 30px;
   height: 30px;
   flex: none;
-  border-radius: var(--r-sm);
-  background: var(--hue);
-  color: #fff;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  color: var(--data-ink);
 }
-.pageBrandText { display: flex; flex-direction: column; line-height: 1.25; }
-.pageBrandText b { font-size: 0.82rem; font-weight: 700; }
-.pageBrandText small { font-size: 0.66rem; color: var(--ink-3); }
+.pageBrandText { display: flex; flex-direction: column; line-height: 1.3; }
+.pageBrandText b { font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+.pageBrandText small { font-size: 11px; color: var(--ink-3); }
 .back {
   flex: none;
-  padding: 7px 14px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
   color: var(--ink-2);
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   transition: background 0.14s, color 0.14s;
 }
 .back:hover { background: var(--surface-2); color: var(--ink); }
@@ -61,16 +70,17 @@
 .side {
   grid-area: aside;
   padding: 14px 10px;
-  background: var(--surface-2);
+  background: var(--surface);
   border-right: 1px solid var(--line);
   overflow-y: auto;
 }
 .sideHead {
   padding: 0 8px 8px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.15em;
   color: var(--ink-3);
 }
 .sideItem {
@@ -79,17 +89,17 @@
   gap: 9px;
   width: 100%;
   padding: 8px 10px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   text-align: left;
-  font-size: 0.78rem;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-2);
   transition: background 0.14s, color 0.14s;
 }
-.sideItem:hover { background: color-mix(in srgb, var(--hue) 8%, transparent); color: var(--ink); }
-.sideItemOn {
-  background: color-mix(in srgb, var(--hue) 13%, transparent);
-  color: var(--ink);
+.sideItem:hover { background: var(--surface-2); color: var(--ink); }
+.sideItemOn, .sideItemOn:hover {
+  background: color-mix(in oklab, var(--data) 13%, transparent);
+  color: var(--data-ink);
   font-weight: 600;
 }
 
@@ -130,8 +140,8 @@
 .mainWide { max-width: none; }
 
 .head { padding: 16px 0 12px; border-bottom: 1px solid var(--line); }
-.title { font-size: 1.05rem; font-weight: 700; margin: 0; }
-.subtitle { margin: 4px 0 0; font-size: 0.76rem; color: var(--ink-3); }
+.title { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+.subtitle { margin: 4px 0 0; font-size: 12px; color: var(--ink-3); }
 
 /* Хэрэглэгч нэмэх */
 .addRow {
@@ -148,42 +158,50 @@
   gap: 7px;
   flex: 1.4;
   min-width: 0;
-  padding: 0 11px;
-  border-radius: var(--r-sm);
+  height: var(--ctl-h-form);
+  padding: 0 9px;
+  border-radius: 7px;
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--ink-3);
 }
-.searchWrap:focus-within { border-color: var(--hue); }
+.searchWrap:focus-within {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
 .search {
   flex: 1;
   min-width: 0;
-  padding: 9px 0;
+  height: 100%;
+  padding: 0;
   background: none;
   border: none;
   color: var(--ink);
-  font-size: 0.86rem;
+  font-size: 12.5px;
 }
 .search:focus { outline: none; }
 .searchX {
   flex: none;
   padding: 2px 4px;
   color: var(--ink-3);
-  font-size: 0.8rem;
+  font-size: 12px;
   line-height: 1;
 }
 .searchX:hover { color: var(--ink); }
 .addErr {
   padding: 8px 0 0;
-  font-size: 0.76rem;
-  font-weight: 550;
+  font-size: 11.5px;
+  font-weight: 500;
   color: var(--bad-ink);
 }
 .empty {
-  padding: 26px 4px;
+  margin: 10px 0;
+  padding: 26px 12px;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: 12px;
   color: var(--ink-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
 }
 
 /* ══════════ БӨӨНӨӨР ЗАСАХ ЗУРВАС ══════════
@@ -194,21 +212,21 @@
   flex-wrap: wrap;
   gap: 7px;
   margin-top: 10px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  border: 1px solid color-mix(in srgb, var(--hue) 40%, transparent);
-  background: color-mix(in srgb, var(--hue) 7%, transparent);
+  padding: 8px 12px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
 }
 .bulkInfo {
   flex: 1;
   min-width: 0;
-  font-size: 0.76rem;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink);
 }
 
 /* ══════════ МӨРИЙН ТОЛГОЙ — сонгох · дэлгэх · шошго ══════════ */
-.pick { flex: none; width: 15px; height: 15px; accent-color: var(--hue); cursor: pointer; }
+.pick { flex: none; width: 15px; height: 15px; accent-color: var(--data); cursor: pointer; }
 .expand {
   display: inline-flex;
   align-items: center;
@@ -219,10 +237,10 @@
   color: inherit;
   text-align: left;
 }
-.expand:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.expand:hover { background: var(--surface-2); }
 .caret {
   flex: none;
-  font-size: 0.7rem;
+  font-size: 11px;
   color: var(--ink-3);
   transition: transform 0.16s;
 }
@@ -231,38 +249,41 @@
 /* Шошгууд — тоо, шат, төлөв. Өнгө нь МЭДЭЭЛЭЛ, чимэглэл БИШ. */
 .badges { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
 .countBadge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: transparent;
   color: var(--ink-3);
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 /* Товч болсон (2026-08-27) — дарахад урсгалын эрхийн хуудас руу очно */
 .stageBadge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--hue) 45%, transparent);
-  color: var(--ink-2);
-  font-size: 0.68rem;
-  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--data) 35%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
+  color: var(--data-ink);
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 .stageBadge:hover {
-  background: color-mix(in srgb, var(--hue) 16%, transparent);
-  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 16%, transparent);
 }
 .newBadge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--hue) 18%, transparent);
-  color: var(--ink);
-  font-size: 0.66rem;
-  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--data) 35%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
+  color: var(--data-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
 /* Харагдацын хэсгийн толгой — «бүгдийг асаах/унтраах» */
@@ -274,41 +295,52 @@
 }
 .topicHeadLabel {
   flex: 1;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
 .linkBtn {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
   color: var(--ink-3);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.linkBtn:hover { color: var(--hue); }
+.linkBtn:hover { color: var(--data-ink); }
 .input {
   flex: 1;
-  padding: 9px 13px;
-  border-radius: var(--r-sm);
+  height: var(--ctl-h-form);
+  padding: 0 9px;
+  border-radius: 7px;
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--ink);
-  font-size: 0.86rem;
+  font-size: 12.5px;
 }
-.input:focus { outline: none; border-color: var(--hue); }
+.input:focus {
+  outline: none;
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
 .addBtn {
-  padding: 9px 18px;
-  border-radius: var(--r-sm);
-  background: var(--hue);
-  color: #fff;
-  font-size: 0.84rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ctl-h-form);
+  padding: 0 14px;
+  border-radius: var(--r);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+  font-size: 12px;
   font-weight: 600;
-  transition: filter 0.15s, opacity 0.15s;
+  transition: background 0.15s, opacity 0.15s;
 }
-.addBtn:hover { filter: brightness(1.08); }
-.addBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.addBtn:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.addBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /*
  * Жагсаалт — «Хэрэглэгчдийн эрх удирдах» табын мөрүүд.
@@ -340,7 +372,7 @@
   flex-wrap: wrap;
   margin-bottom: 0;
 }
-.uname { font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; }
+.uname { font-size: 13px; font-weight: 600; }
 
 /* ⚠️ `flex-wrap` — нарийн дэлгэцэд preset товчнууд мөрөөс халихгүй (2026-09-23) */
 .presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -348,38 +380,47 @@
 .userHead .presets { margin-left: auto; flex-wrap: nowrap; }
 .roleSelect {
   min-width: 180px;
-  padding: 5px 28px 5px 10px;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  height: var(--ctl-h-form);
+  padding: 0 28px 0 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line-strong);
   cursor: pointer;
 }
-.roleSelect:hover, .roleSelect:focus-visible { border-color: var(--hue); outline: none; }
+.roleSelect:hover { border-color: var(--ink-3); }
+.roleSelect:focus-visible {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+  outline: none;
+}
 .roleSelect option { color: var(--ink); background: var(--bg); }
 .preset {
-  padding: 5px 11px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
   border: 1px solid var(--line-strong);
   color: var(--ink-2);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.preset:hover { border-color: var(--hue); color: var(--ink); }
-.presetOn {
-  background: color-mix(in srgb, var(--hue) 16%, transparent);
-  border-color: var(--hue);
-  color: var(--ink);
+.preset:hover { background: var(--surface-2); color: var(--ink); }
+.presetOn, .presetOn:hover {
+  background: color-mix(in oklab, var(--data) 13%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  color: var(--data-ink);
+  font-weight: 600;
 }
 .reset {
   margin-left: 4px;
-  padding: 5px 11px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-3);
   border: 1px dashed var(--line-strong);
 }
@@ -405,24 +446,25 @@
   border-radius: var(--r-sm);
   border-bottom: 1px solid var(--line);
 }
-.topicRow:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.topicRow:hover { background: var(--surface-2); }
 
 /* Нэмэлт эрхийн алсын бичилт унасан үеийн ИЛ анхааруулга */
 .capErr {
   margin: 4px 0 2px;
   padding: 6px 8px;
   border-radius: var(--r-sm);
-  font-size: 0.78rem;
+  font-size: 12px;
   line-height: 1.4;
-  color: var(--bad);
-  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad-ink);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
 }
 .topicName {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 0.78rem;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-2);
   overflow: hidden;
@@ -468,10 +510,10 @@
 @media (pointer: coarse) {
   .sw::after { display: block; }
 }
-.sw:hover { background: color-mix(in srgb, var(--ink) 28%, var(--line-strong)); }
-.swOn { background: var(--hue); }
-.swOn:hover { background: var(--hue); filter: brightness(1.08); }
-.sw:disabled { opacity: 0.45; cursor: not-allowed; }
+.sw:hover { background: color-mix(in oklab, var(--ink) 28%, var(--line-strong)); }
+.swOn { background: var(--data); }
+.swOn:hover { background: var(--data); filter: brightness(1.08); }
+.sw:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Нэмэлт эрхээр нээгдсэн харагдац — суурь жагсаалтад байхгүй */
 .swImplied { opacity: 0.7; }
 .swKnob {
@@ -481,8 +523,8 @@
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   transition: transform 0.16s;
 }
 .swOn .swKnob { transform: translateX(15px); }
@@ -495,14 +537,14 @@
   height: 7px;
   margin-left: 8px;
   border-radius: 50%;
-  background: var(--hue);
+  background: var(--data);
   vertical-align: middle;
 }
-.userDirty { background: color-mix(in srgb, var(--hue) 3%, transparent); }
+.userDirty { background: color-mix(in oklab, var(--data) 4%, transparent); }
 .unsynced {
   margin-left: 8px;
-  font-size: 0.68rem;
-  font-weight: 550;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--warn-ink);
 }
 
@@ -510,32 +552,35 @@
    Устгах нь ЦОРЫН ГАНЦ улаан өнгөтэй үйлдэл — аюултайг нь өнгөөрөө хэлнэ.
    Дарахад шууд устгахгүй: ноорогт тэмдэглэгдэж «Хадгалах»-аар үйлчилнэ. */
 .delBtn {
-  padding: 5px 11px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-3);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.delBtn:hover { color: var(--bad-ink); border-color: var(--bad); }
+.delBtn:hover { color: var(--bad-ink); border-color: color-mix(in oklab, var(--clay) 45%, transparent); background: color-mix(in oklab, var(--clay) 8%, transparent); }
 .delBtnOn {
   color: #fff;
-  background: var(--bad);
-  border-color: var(--bad);
+  background: var(--clay);
+  border-color: var(--clay);
+  font-weight: 600;
 }
-.delBtnOn:hover { color: #fff; filter: brightness(1.08); }
+.delBtnOn:hover { color: #fff; background: color-mix(in oklab, var(--clay) 88%, #000); }
 /* Устгагдахаар тэмдэглэгдсэн мөр — бүдэг + зурсан нэр */
 .userRemoving { opacity: 0.55; }
 .userRemoving .uname { text-decoration: line-through; }
 .removeBadge {
   margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--bad-ink);
-  border: 1px solid var(--bad);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
 }
 
 /* Устгагдсан аккаунтуудыг буцаах хэсэг */
@@ -543,12 +588,13 @@
   margin-top: 4px;
   padding: 10px 12px;
   border: 1px dashed var(--line-strong);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 .removedHead {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
   margin-bottom: 6px;
@@ -561,7 +607,7 @@
   padding: 4px 0;
 }
 .removedName {
-  font-size: 0.8rem;
+  font-size: 12.5px;
   color: var(--ink-3);
   text-decoration: line-through;
 }
@@ -578,41 +624,49 @@
   padding: 11px 24px;
   background: var(--surface);
   border-top: 1px solid var(--line-strong);
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.08);
 }
 .saveInfo {
   flex: 1;
   min-width: 0;
-  font-size: 0.76rem;
-  font-weight: 550;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
 }
 .cancelBtn {
-  padding: 8px 16px;
-  border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--ctl-h-form);
+  padding: 0 14px;
+  border-radius: var(--r);
   border: 1px solid var(--line-strong);
   color: var(--ink-2);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   transition: background 0.14s, color 0.14s;
 }
 .cancelBtn:hover { background: var(--surface-2); color: var(--ink); }
 .saveBtn {
-  padding: 8px 22px;
-  border-radius: var(--r-sm);
-  background: var(--hue);
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 650;
-  transition: filter 0.15s, opacity 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ctl-h-form);
+  padding: 0 18px;
+  border-radius: var(--r);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s, opacity 0.15s;
 }
-.saveBtn:hover { filter: brightness(1.08); }
-.saveBtn:disabled { opacity: 0.5; cursor: wait; }
+.saveBtn:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.saveBtn:disabled { opacity: 0.4; cursor: wait; }
 
 .note {
   margin: 0;
   padding: 12px 0 16px;
-  font-size: 0.72rem;
+  font-size: 11.5px;
   line-height: 1.45;
   color: var(--ink-3);
   border-top: 1px solid var(--line);
@@ -645,7 +699,7 @@
 /* Нэмэлт эрхийн бүлгийн тайлбар — харагдац автоматаар дагадаг гэдгийг сануулна */
 .capNote {
   margin: 6px 0 2px;
-  font-size: 0.74rem;
+  font-size: 11.5px;
   line-height: 1.4;
   color: var(--ink-3);
 }
@@ -658,20 +712,21 @@
   border-radius: var(--r-sm);
   color: inherit;
   text-align: left;
-  text-decoration: underline dotted color-mix(in srgb, var(--ink) 30%, transparent);
+  text-decoration: underline dotted color-mix(in oklab, var(--ink) 30%, transparent);
   text-underline-offset: 3px;
 }
-.unameBtn:hover { background: color-mix(in srgb, var(--hue) 10%, transparent); }
+.unameBtn:hover { background: color-mix(in oklab, var(--data) 10%, transparent); }
 
 /* «ноорог — Хадгалах» / «шууд хадгалагдана» — хэсэг бүрийн хадгалах дүрэм */
 .saveHint {
   margin-left: 6px;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--ink-3);
-  font-size: 0.64rem;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -695,19 +750,25 @@
   padding: 6px 0 10px;
   border-bottom: 1px solid var(--line);
 }
-.cardName { font-size: 1rem; font-weight: 700; letter-spacing: 0.01em; }
+.cardName { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .cardSec {
   padding: 4px 0 10px;
   border-bottom: 1px solid var(--line);
   scroll-margin-top: 8px;
 }
 .cardSelect {
-  padding: 5px 9px;
-  border-radius: var(--r-sm);
+  height: var(--ctl-h-form);
+  padding: 0 9px;
+  border-radius: 7px;
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--ink);
-  font-size: 0.8rem;
+  font-size: 12.5px;
+}
+.cardSelect:focus-visible {
+  outline: none;
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
 }
 
 /* ══════════ УРСГАЛТАЙ 6 ХУУДАС — картын ЗӨВХӨН ХАРУУЛАХ мөр (2026-10-01) ══════════
@@ -723,21 +784,21 @@
   padding: 6px 4px 6px 8px;
   border-bottom: 1px solid var(--line);
 }
-.wfName { display: inline-flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 600; color: var(--ink-2); }
-.wfState { padding: 1px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; background: var(--surface-2); color: var(--ink-3); }
-.wfOpen { background: color-mix(in srgb, var(--hue) 18%, transparent); color: var(--ink); }
+.wfName { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.wfState { padding: 1px 7px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); font-size: 11px; font-weight: 500; background: transparent; color: var(--ink-3); }
+.wfOpen { border-color: color-mix(in oklab, var(--data) 35%, transparent); background: color-mix(in oklab, var(--data) 8%, transparent); color: var(--data-ink); }
 .wfSrcs { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 .wfSrc {
   padding: 2px 8px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background: none;
   color: var(--ink-2);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 11.5px;
   text-align: left;
   cursor: pointer;
 }
-.wfSrc:hover { border-color: var(--hue); color: var(--ink); }
-.wfSrcBad { border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad-ink, var(--bad)); }
-.wfNone { font-size: 0.72rem; color: var(--ink-3); }
+.wfSrc:hover { background: var(--surface-2); color: var(--ink); }
+.wfSrcBad { border-color: color-mix(in oklab, var(--bad) 45%, transparent); color: var(--bad-ink, var(--bad)); }
+.wfNone { font-size: 11.5px; color: var(--ink-3); }

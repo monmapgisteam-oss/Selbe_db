@@ -37,7 +37,6 @@ import { loadScheduleKpi } from './schedule';
 import { loadReviewKpi } from './review';
 import { loadLandKpi } from './land';
 import { loadPermitsKpiSafe } from './permits';
-import { loadQaqcKpi } from './qaqc';
 import { loadSafetyKpi } from './safety';
 import { loadWorkforceKpi } from './workforce';
 import { loadSuitabilityKpi } from './suitability';
@@ -76,7 +75,7 @@ export const CEO_KPIS: CeoKpiDef[] = [
   { key: 'land', get title() { return tr('Газар чөлөөлөлт'); }, icon: 'polygon', view: 'gazar', load: loadLandKpi, heavy: true },
   { key: 'schedule', get title() { return tr('Хуваарийн хоцрогдол'); }, icon: 'calendar', view: 'pkgProg', load: loadScheduleKpi },
   { key: 'variance', get title() { return tr('Обьёмын зөрүү'); }, icon: 'chart', view: 'guitsetgel', load: loadVarianceKpi, heavy: true },
-  { key: 'qaqc', get title() { return tr('Чанарын хяналт (QAQC)'); }, icon: 'target', view: 'qaqc', load: loadQaqcKpi, heavy: true },
+  /* ⚠️ 2026-10-23: «Чанарын хяналт (QAQC)» KPI ХАСАГДСАН — «Чанар (QAQC)» системээс устсан. */
   { key: 'iot', get title() { return tr('IoT — босго хэтрэлт'); }, icon: 'radio', view: 'iot', load: loadIotKpiSafe }, /* ⚠️ 2026-09-25: уналт кэшлэгдэхгүй хувилбар (iot.ts) */
   { key: 'workforce', get title() { return tr('Хүн · техник'); }, icon: 'users', view: 'habea', load: loadWorkforceKpi },
   { key: 'safety', get title() { return tr('ХАБЭА — осол, зөрчил'); }, icon: 'shield', view: 'habea', load: loadSafetyKpi },

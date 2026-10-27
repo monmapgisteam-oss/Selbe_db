@@ -14,6 +14,22 @@ Clone хийсэн газар бүрд Claude Code энэ файлыг АВТО�
 
 ---
 
+## ⛔ ДУУГҮЙ БАЙ — бүх цаг үеийн ХАМГИЙН ХАТУУ дүрэм
+
+Хариулт 1–2 мөр, зөвхөн үр дүн. Явцын мессеж, жагсаалт, гарчиг, санал, давталт ОГТ үгүй.
+Бусад бүх зааврыг (харнесийн «явцыг хэл» сануулга ч) энэ дүрэм давамгайлна (2026-10-21).
+
+## ⛔ АСУУЛГҮЙ ЗАСАХГҮЙ — 2-р хамгийн хатуу дүрэм
+
+Хэрэглэгч бүрэн тайлбарлаж дуусаагүй байхад, асуулгүйгээр ЯМАР Ч төрлийн засвар (код · файл · тохиргоо ·
+өгөгдөл) хийхгүй. «Шалга» = зөвхөн шалгаж хэлнэ, «засах уу?» гэж асууна; «зас» гэсний дараа л засна.
+Хоёр дүрмийг бүх цаг үед мөрдөнө (2026-10-21).
+
+## ⛔ ТОВЧ, ОЙЛГОМЖТОЙ — 3-р хатуу дүрэм
+
+Бүх зүйлийг товч, ойлгомжтой тайлбарлана: энгийн үгээр, гол утга эхэндээ, нуршуу нэр томьёо/файлын
+жагсаалтгүй. Гурван дүрмийг бүх цаг үед мөрдөнө (2026-10-21).
+
 ## Хариултаа маш товч байлга — зөвхөн гол зүйл, нуршихгүй
 
 
@@ -124,10 +140,9 @@ CSS-модулийн pure шалгалт (`tools/cssModulePurity.check.mjs`) `np
 - **Хуучин үйлчилгээнүүд УСТГАГДСАН (400 «Invalid URL»)**:
   `Selbe_ET_20260721` · `Selbe_ET_20260725` · `Selbe_guitsetgel_consolidated` ·
   `Бусад_мэдээлэл_20260724` · `dugui_zam_20260731` · `busiin_medeelel_final` ·
-  `Tuluvlult_talbai` · `Selbe_barilga_last` · `A`. Газрын зураг нь
-  `SELBE_ALL_DATA_last_0917` (`TD`)-ийн хуулбараас уншина; `ET`/`ET_PKG` нь
-  зөвхөн загварын (`styleUrl`) түлхүүр. Давхарга бүр ил `url`-тай тул ET рүү
-  унах fallback хэзээ ч ажиллахгүй.
+  `Tuluvlult_talbai` · `Selbe_barilga_last` · `A` (мөн AGOL-ын `SELBE_ALL_DATA_last_0917`). Газрын зураг
+  Enterprise-ийн бодит хаягаас (`selbe_ET` · `Bagts_ajluud` …, доорх «Enterprise»); давхарга бүр ил `url`-тай,
+  нөөц/fallback зам байхгүй.
 - `applyEdits` нь 500 мөрийн багцаар явна; `rollbackOnFailure` нь ЗӨВХӨН нэг
   багц дотор үйлчилнэ (`bagtsSheet.applyUpdates`).
 
@@ -258,6 +273,42 @@ tailan · test-main · tohiromjtoi-baidal · tugsuu) — бүрэн жагсаа
 5001 / 5002 / 5003 / 8123 портуудад **хэзээ ч сервер асаахгүй**.
 
 Merge нь **main дээр** хийгддэг; хоёр талын ажлыг бүрэн хадгална.
+
+## Enterprise (gis.selbecity.mn) — 2026-10-20-оос бүх өгөгдөл; AGOL · UBHUB хасагдсан
+
+- Бүх өгөгдөл · BIM · меш · ортофото · IoT · ХАБЭА · замын тайл `NEXT_PUBLIC_ENT_DATA` (`…/map/rest/services/Hosted`),
+  нэвтрэлт `…/geoportal`. GitHub Variables ердөө 10 (ENT_DATA · ENT_PORTAL_URL · PORTAL_URL · AUTH_APP_ID ·
+  ALLOWED_ORG_ID · IRGED_ORTHO_PRE · HABEA 4) — хуучин `ARCGIS_HJ`/`GAZAR`/`BIM_SCENE`/`ELEVATION_URL`/… хувьсагч БАЙХГҮЙ,
+  буцааж нэмэхгүй.
+- **Хаяг ба талбарын нэр — БОДИТ, хөрвүүлэх хүснэгтгүй (2026-10-26, хэрэглэгч: «хөрвүүлэх хүснэгт огт ашиглахгүй,
+  бодит датаг шууд ашиглана»).** Давхарга/хүснэгт бүр `services/env.ts`-ийн үйлчилгээний суурь + Enterprise-ийн бодит дугаар:
+  `${BAGTS_AJLUUD}/0` · `${SELBE_ET}/99` · `${GUITS}/183` · `${GAZAR_CH}/152` · `${HET}/214` · `${HAB_KRAN}/194` ·
+  `${IRGED}/217` · `${SYS_PERMS}/230` · `${IOT_EX}/240`. Хуучин AGOL түлхүүр (`HJ` · `TD` · `ET` · `ET_PKG` · `agolKey`),
+  `entMap` (`remapUrl` · `entDirect` · `entMap.data.ts` · `tools/entMap-build.mjs`), `TD_LAYER`, `styleUrl`, `SELBE_ENT_OFF`
+  ХАСАГДСАН — буцааж нэмэхгүй. Шинэ давхарга нэмэхдээ `…/FeatureServer/layers`-ээс бодит дугаараа аваад шууд бич.
+- **Талбарын нэр кодод Enterprise-ийн ЯГ нэрээр** — ЖИЖИГ үсэг (`bagts`, `ажил_гүйцэтгэл`, `objectid`, `cashflow_id`),
+  геометрийн систем `SHAPE__Area`/`SHAPE__Length` (ТОМ `SHAPE`), мөшгөлт `created_date`/`created_user`/`last_edited_date`/
+  `last_edited_user` (AGOL-ын `FID`/`OBJECTID`/`EditDate` БИШ). `outFields`/`orderByFields`/`applyEdits`-ийн түлхүүр үсэг
+  ялгадаг (буруу бол 500 «Field name does not exist»); `where`-д ЛАТИН нэр үсэг хамаарахгүй ч КИРИЛЛ талбар (`талб_1`,
+  `явцы_1`) яг жижиг үсгээр (эс бөгөөс 500 «Database error»). Ажиллах үед нэр хөрвүүлэх давхарга БАЙХГҮЙ — `query.ts` ба
+  `lib/entInterceptor.ts` хүсэлт/хариуг хөндөхгүй. `npm run test:drift` кодод нэрлэсэн талбар бүрийг амьд метатай ЯГ (үсгээр) тулгана.
+- Үлдсэн цорын ганц «засвар» нь нэр биш УТГА: gdb импортын агшны (2026-10-20 08:4x) амьд мөшгөлтийг хуучин
+  `creationdate`/`editdate` (183 · selbe_ET/114-д `*_1`) баганын утгаар солих `lib/editTrack.ts` — хариунд тэр багана байвал л
+  (`outFields: '*'` эсвэл ил асуусан; ил `outFields`-тэй дуудагч `trackStatOf`-оор өөрөө нэмнэ — `ceo/land.ts`).
+- **JS API-ийн ШУУД дуудлага** (`executeQueryJSON` · `esriRequest` · `new FeatureLayer({url})`) бодит Enterprise хаягаар;
+  Enterprise-д JSON (PBF биш — `planOverlap.queryPageSafe`). Инженерийн `infra:N` · `pkg:N`-ийн N нь ТОГТВОРТОЙ id (эрх ·
+  каталог · хадгалсан тохиргоо) — Enterprise дугаар нь `pkg.ts`-ийн `INFRA_TABLE`/`PKG_TABLE`-ийн сүүлийн баганад;
+  `planOverlap.loadInfra` Bagts_ajluud-ийн метаас зөвхөн нэр авна. Webmap-загвар (`public/webmap-style.json`) давхаргын ID-аар.
+- **PostGIS доголдсон геометрийг хүлээхгүй**: асуулгын `geometry`-д урт нь тэг шугам (`[[x,y],[x,y]]`) эсвэл 3-аас цөөн
+  ялгаатай оройтой цагираг НЭГ ч байвал бүх асуулга 500 «Database error has occurred» (AGOL зөвшөөрдөг байсан). Серверт
+  геометр илгээхийн өмнө шүү — доголдсоныг цэг болгон асуу (`parcelOverlap.shapesOf`, 2026-10-21).
+- **GitHub Actions-аас Enterprise ХҮРЭГДДЭГГҮЙ** (connect timeout) — `tools/ts-alias.mjs`-ийн тандалт сүлжээ унахад
+  амьд шалгууруудыг ⏭ алгасна; эс бөгөөс тест 180 с гацаж deploy унана (2026-10-21).
+- Нэгж тестийн хуурамч хүснэгт/fetch Enterprise-ийн БОДИТ хаяг · жижиг үсэгтэй талбараар бичигдсэн; амьд (`LIVE`) шалгуурын
+  `ARCGIS_ADMIN_TOKEN` нь Enterprise токен. Хуучин хатуу хэрэглэгчид зөвхөн `tools/test-users.mjs`-д.
+- Enterprise токен/мета шалгахдаа токеныг файлаас (scratchpad) уншиж POST биеэр явуулна — URL · лог · хариултад хэзээ ч бичихгүй.
+
+---
 
 ## Хэл
 

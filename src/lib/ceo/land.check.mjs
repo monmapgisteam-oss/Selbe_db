@@ -45,7 +45,7 @@ const parcels = parseParcels([
   raw(5, 'татгалзсан', 700),
   raw(6, 'маргаантай', 361),
   raw(7, 'гэрээлсэн', null, { [F.areaAlt]: 500 }),   // areaAlt нөөц
-  raw(8, 'гэрээлсэн', 0),                            // хэмжсэн тэг
+  raw(8, 'гэрээлсэн', 0),                            // ⚠️ 2026-10-22: 0 = хэмжилт биш (полигонгүй тул null)
   raw(9, null, null),                                 // төлөвгүй, талбайгүй
 ]);
 const clearance = { cleared: 1945, remaining: 9, remainingHa: 1.4162, total: 1954, pct: 99.54 };
@@ -55,7 +55,40 @@ const overlaps = { total: 4, byPkg: [{ name: 'Багц 1 · 9 давхар', par
 
 assert.equal(parcels.length, 9);
 assert.equal(parcels[6].areaM2, 500, 'area хоосон → areaAlt');
-assert.equal(parcels[7].areaM2, 0, 'area=0 нь ТЭГ хэвээр, areaAlt руу унахгүй');
+/* ⚠️ 2026-10-22 (аудит): `area_m2 = 0` нь хэмжилт БИШ — Талб_1 > 0, эс бөгөөс полигоны талбай (`land.parcelAreaOf`) */
+assert.equal(parcels[7].areaM2, null, 'area=0, нөөцгүй → null (0 БИШ)');
+{
+  const [z1, z2, z3] = parseParcels([
+    raw(30, 'зөвшилцөх', 0, { [F.areaAlt]: 0, SHAPE__Area: 336.4 }),
+    raw(31, 'зөвшилцөх', 0, { [F.areaAlt]: 120 }),
+    raw(32, 'зөвшилцөх', 278, { SHAPE__Area: 277.6 }),
+  ]);
+  assert.equal(z1.areaM2, 336.4, 'area=0 ба Талб_1=0 → полигоны талбай');
+  assert.equal(z2.areaM2, 120, 'area=0 → Талб_1');
+  assert.equal(z3.areaM2, 278, 'area_m2 тэргүүнд');
+  /* Хуваагдсан нэгж талбар (ижил дугаар + ижил талбай, 2 полигон) — нийлбэрт НЭГ удаа */
+  const split = parseParcels([
+    raw(40, 'зөвшилцөх', 685, { [F.parcelNo]: '1461802706' }),
+    raw(41, 'зөвшилцөх', 685, { [F.parcelNo]: '1461802706' }),
+    raw(42, 'зөвшилцөх', 100),
+  ]);
+  assert.equal(split.length, 3, 'хүснэгтэд полигон бүр хэвээр');
+  assert.equal(sumAreaM2(split), 785, '685 давхар тоологдохгүй');
+  /* ⚠️ 2026-10-23: шалтгааны бүлэглэл ч ИЖИЛ дүрмээр — га нийт үлдсэн га-тай тэнцэнэ, тоо нь полигон бүрээр */
+  const sr = byReason(split);
+  assert.equal(sr.length, 1);
+  assert.equal(sr[0].n, 3, 'тоо — мөр бүр');
+  assert.equal(sr[0].ha, 785 / 10_000, 'byReason: хуваагдсан талбай давхар тоологдохгүй');
+  /* Зориулалт: landuse_de бүтэн ?? Zoriulalt (тасархайг бүтэн нэрээр нөхнө) */
+  const [u1, u2, u3] = parseParcels([
+    raw(50, 'зөвшилцөх', 1, { [F.landuseFull]: 'Худалдаа, нийтийн үйлчилгээний газар, төв, цогцолбор', [F.landuse]: ' ' }),
+    raw(51, 'зөвшилцөх', 1, { [F.landuseFull]: ' ', [F.landuse]: 'Гэр, орон сууцны хашааны га' }),
+    raw(52, 'зөвшилцөх', 1, { [F.landuseFull]: ' ', [F.landuse]: 'Амины орон сууц' }),
+  ]);
+  assert.equal(u1.landuse, 'Худалдаа, нийтийн үйлчилгээний газар, төв, цогцолбор');
+  assert.equal(u2.landuse, 'Гэр, орон сууцны хашааны газар', 'тасархай (50 байт) → бүтэн нэр');
+  assert.equal(u3.landuse, 'Амины орон сууц', 'бүтэн нэр мэдэгдэхгүй — өөрөө');
+}
 assert.equal(parcels[8].areaM2, null, 'хоёулаа хоосон → null');
 assert.equal(parcels[8].reason, NO_STATUS(), 'төлөвгүй мөр тусдаа шалтгаантай');
 assert.equal(parcels[0].landuse, null, '" " зориулалт → null («—»)');
@@ -167,10 +200,10 @@ assert.equal(tp.rows.at(-1).length, 7, 'тасалсан мөр багана т�
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): Editor Tracking асаалттай — `asOf` = хамгийн сүүлийн
    EditDate; талбар алга (метадатад `editFieldsInfo` байхгүй) бол `null` хэвээр */
 {
-  const rowsEd = [{ EditDate: Date.UTC(2026, 8, 1) }, { EditDate: Date.UTC(2026, 8, 20) }, { EditDate: null }];
-  assert.equal(lastEditOf(rowsEd, 'EditDate'), Date.UTC(2026, 8, 20));
+  const rowsEd = [{ last_edited_date: Date.UTC(2026, 8, 1) }, { last_edited_date: Date.UTC(2026, 8, 20) }, { last_edited_date: null }];
+  assert.equal(lastEditOf(rowsEd, 'last_edited_date'), Date.UTC(2026, 8, 20));
   assert.equal(lastEditOf(rowsEd, null), null, 'Editor Tracking унтраалттай — null');
-  assert.equal(lastEditOf([{ EditDate: null }], 'EditDate'), null, 'хоосон огноо 0 БИШ');
+  assert.equal(lastEditOf([{ last_edited_date: null }], 'last_edited_date'), null, 'хоосон огноо 0 БИШ');
   const withAsOf = computeLand({ clearance, parcels, overlaps, failed: [], asOf: Date.UTC(2026, 8, 20) });
   assert.equal(withAsOf.asOf, Date.UTC(2026, 8, 20));
 }

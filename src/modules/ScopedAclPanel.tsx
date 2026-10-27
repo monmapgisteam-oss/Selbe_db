@@ -44,12 +44,14 @@ import type { Grant } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
 import { scopedCellOp } from '@/lib/aclOps';
 import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 /*
@@ -107,7 +109,8 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    * ⚠️ Хатуу super-ийг САНАЛ БОЛГОХГҮЙ — түүнд хязгаар үйлчилдэггүй.
    */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = spec.list();
@@ -171,7 +174,8 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
-        /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
+        absent: portalMissing(a.user),
+        /* ⚠️ 2026-10-23: super-ийн томилгоо — «админ» тэмдэг; хүснэгтийн super-ийн мөр энгийн (✕ нэг багцыг хасна), кодын super-ийнх цэвэрлэгдэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
@@ -182,8 +186,9 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
   const state = new Map(PKG_GROUPS.map((g) => {
     /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) нэвтэрч чадахгүй — гацааны шалгуурт тоолохгүй
        (`erhOverview.ErhSource.gone`-той ижил); урьд нь түүний хуучин мөр «батлагчгүй» анхааруулгыг нууж байв */
-    const authors = holdersOf(g, authorRole).filter((h) => !h.gone).map((h) => h.user);
-    const approvers = holdersOf(g, approverRole).filter((h) => !h.gone).map((h) => h.user);
+    /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч нэвтэрч чадахгүй — тоолохгүй */
+    const authors = holdersOf(g, authorRole).filter((h) => !h.gone && !h.absent).map((h) => h.user);
+    const approvers = holdersOf(g, approverRole).filter((h) => !h.gone && !h.absent).map((h) => h.user);
     /**
      * ⚠️ ГАЦААНЫ АНХААРУУЛГА: зохиогч нь бий атлаа батлагч нь ЗӨВХӨН тэр өөрөө
      *    бол илгээсэн зүйлийг нь хэн ч батлах боломжгүй болно (батлах логик
@@ -214,7 +219,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
 
@@ -231,7 +236,8 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         cols={spec.roles.map((r) => ({
           key: r,
           label: spec.roleLabel(r),
-          count: rows.filter((a) => a.grants.some((g) => g.role === r)).length,
+          /* ⚠️ 2026-10-23: тоо = ШИЙДВЭРЛЭХ эзэд л — устгагдсан · порталд алга аккаунтын үлдсэн мөр тоологдохгүй */
+          count: rows.filter((a) => a.grants.some((g) => g.role === r) && known.has(a.user) && !portalMissing(a.user)).length,
         }))}
         holders={holdersOf}
         /* ⚠️ Гацаа нь БАТЛАГЧИЙН нүдэнд: батлагчгүй, эсвэл зохиогч өөрөө л батлагч.
@@ -241,7 +247,9 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
         candidates={(g, role) => {
           const list = holdersOf(g, role).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(g, role, u) => addTo(g, role as R, u)}
         onRemove={(g, role, h) => removeFrom(g, role as R, h.user)}

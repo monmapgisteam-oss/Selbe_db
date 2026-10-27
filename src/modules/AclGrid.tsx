@@ -23,8 +23,12 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import s from './guitsetgel.module.css';
 
-/** Багана — үүрэг эсвэл шат */
-export type GridCol = { key: string; label: string; count?: number };
+/**
+ * Багана — үүрэг эсвэл шат.
+ * ⚠️ 2026-10-23: `count` = ШИЙДВЭРЛЭХ эзэд л (устгагдсан · порталд алга · «зөвхөн харна» тоологдохгүй — дуудагч бодно);
+ *    `more` — тоологдоогүйн тайлбар («+1 зөвхөн харна»), тооны хажууд бүдэг.
+ */
+export type GridCol = { key: string; label: string; count?: number; more?: string };
 
 /** Мөр — багц. `warn` нь мөрийн гацааны анхааруулгууд (толгойд ⚠, хүснэгтийн доор бүтэн) */
 export type GridRow = { key: string; label: string; warn?: string[] };
@@ -36,7 +40,15 @@ export type GridHolder = {
   viaAll: boolean;
   /** Устгагдсан аккаунтын өнчин мөр — ✕-ээр цэвэрлэнэ */
   gone: boolean;
-  /** Хатуу super — багцын хязгаар үйлчлэхгүй (remote-ийн хуучин мөр) */
+  /**
+   * ⚠️ 2026-10-22 (аудит): эрхийн хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА (`portalPresence`) — нэвтэрч чадахгүй
+   *    тул шийдвэрлэгч биш (дуудагчийн `stuck` тоолохгүй). ✕ нь энгийн хасалт (эрх буцаана), устгагдсаных шиг цэвэрлэгээ БИШ.
+   */
+  absent?: boolean;
+  /**
+   * Админ (super) — ⚠️ 2026-10-23: хүснэгтийн super-ийн ЭНГИЙН томилгоо (2026-10-21-ээс); super байх хугацаандаа багцын
+   *    хязгаар ба өөрийгөө батлах дүрэм (2026-10-26-аас) түүнд үйлчлэхгүй (бүх багц, дараалсан шат).
+   */
   admin?: boolean;
   /** ArcGIS бичилт унасан */
   failed: boolean;
@@ -127,8 +139,10 @@ export function AclGrid({
           {!hs.length && open !== key && <span className={s.ggDash}>—</span>}
           {open === key ? (
             /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно. */
+            /* ⚠️ 2026-10-26 (аудит): хандалтын нэр — «+»-ийн нэр (багц · үүрэг) select-д ч (WCAG 4.1.2) */
             <select
               className={s.ggSelect}
+              aria-label={addTitle(row, col)}
               autoFocus
               value=""
               disabled={off}
@@ -139,11 +153,12 @@ export function AclGrid({
                 if (u) onAdd(row.key, col.key, u);
               }}
             >
-              <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга')}</option>
+              {/* ⚠️ 2026-10-23 (UX аудит A2): хоосон бол ЯАГААД — шинэ (хадгалаагүй) аккаунт энд гарахгүй */}
+              <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
               {cands.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           ) : (
-            <button type="button" className={s.ggAdd} disabled={off} title={addTitle(row, col)}
+            <button type="button" className={s.ggAdd} disabled={off} title={addTitle(row, col)} aria-label={addTitle(row, col)}
               onClick={() => { if (canOpen && !canOpen()) return; setOpen(key); }}>
               +
             </button>
@@ -165,7 +180,7 @@ export function AclGrid({
               {cols.map((c) => (
                 <th key={c.key} className={s.ggHead} title={c.label}>
                   <span>{c.label}</span>
-                  {c.count !== undefined && <span className={s.aclCount}>{c.count}</span>}
+                  {c.count !== undefined && <span className={s.aclCount} title={c.more ? `${c.count} (${c.more})` : undefined}>{c.count}{c.more ? ` (${c.more})` : ''}</span>}
                 </th>
               ))}
             </tr>
@@ -203,16 +218,24 @@ function Chip({ h, off, flag, onRemove }: {
   const notes = [
     h.viaAll ? tr('бүх багц') : '',
     h.gone ? tr('устгагдсан аккаунт — томилгоог ✕-ээр цэвэрлэнэ үү') : '',
-    h.admin ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
-    h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т') : '',
-    h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»') : '',
+    /* ⚠️ 2026-10-22 (аудит): порталд алга — ил шошготой (доор), админ ✕-ээр хасаж өөр хүн томилно */
+    h.absent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
+    /* ⚠️ 2026-10-23: одоогийн утга — super байхад бүх багцад ажиллана (томилгоо нь доошлуулахад үлдэнэ), өөрийгөө батлахгүй */
+    h.admin ? tr('админ (super) — одоо бүх багцад, дараалсан шатуудад ч шийдвэр гаргана (багцын хязгаар, өөрийгөө батлах дүрэм үйлчлэхгүй); энэ томилгоо админ эрхийг хасахад үлдэнэ') : '',
+    /* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «синк» → «хөтөч» · «Дахин илгээх» */
+    h.failed ? tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид') : '',
+    h.dirty ? tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин илгээх»') : '',
   ].filter(Boolean);
-  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.admin ? s.ggChipOdd : '', h.failed || h.dirty ? s.ggChipBad : '']
+  /* ⚠️ 2026-10-23 (хэрэглэгч): админыг зураасаар БИШ, нэрийн ард «админ» шошгоор — зураас нь «хүчингүй» мэт буруу
+     харагддаг байв. Зураас зөвхөн устгагдсан / порталд алга аккаунтад. */
+  const cls = [s.ggChip, h.viaAll ? s.ggChipAll : '', h.gone || h.absent ? s.ggChipOdd : '', h.failed || h.dirty || h.absent ? s.ggChipBad : '']
     .filter(Boolean).join(' ');
   return (
     <span className={cls} title={[h.user, ...notes].join(' · ')}>
       <span className={s.ggName}>{h.user}</span>
+      {h.admin && <span className={s.ggTag}>{tr('админ')}</span>}
       {h.viaAll && <span className={s.ggTag}>{tr('бүх')}</span>}
+      {h.absent && <span className={s.ggTag}>{tr('порталд алга')}</span>}
       {(h.failed || h.dirty) && <span className={s.ggWarn} aria-label={notes.join(' · ')}>!</span>}
       {flag}
       <button

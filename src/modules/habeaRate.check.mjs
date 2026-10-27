@@ -17,15 +17,15 @@ import {
 const day = (iso) => Date.parse(`${iso}T12:00:00+08:00`);
 /** Маягтын мөр — HHDMGK (Багц 1) ба MK (Багц 4.1) */
 const row = (iso, hours, w1, w2) => ({
-  Ognoo: day(iso), Hun_tsag: hours,
-  Niit_ajiltan_HHDMGK: w1, Niit_ajiltan_MK: w2,
+  ognoo: day(iso), hun_tsag: hours,
+  niit_ajiltan_hhdmgk: w1, niit_ajiltan_mk: w2,
 });
 
 const rows = [
   row('2026-08-10', 1000, 30, 70),
   row('2026-08-11', null, 30, 70), // хүн-цаг хоосон — ОРОХГҮЙ
   row('2026-09-02', 2000, 50, 50),
-  { Ognoo: null, Hun_tsag: 500 }, // огноогүй — ОРОХГҮЙ
+  { ognoo: null, hun_tsag: 500 }, // огноогүй — ОРОХГҮЙ
 ];
 const days = hoursByDay(rows);
 assert.equal(days.length, 2, 'хүн-цаг/огноогүй мөр хасагдана');
@@ -35,11 +35,11 @@ assert.ok(Math.abs(days[0].byCo.MK - 700) < 1e-9);
 
 /* Монгол/гадаадын задаргаагаар нөхөх (Niit 0/хоосон) — workforce.companyDay-ийн дүрэм */
 {
-  const d = hoursByDay([{ Ognoo: day('2026-08-01'), Hun_tsag: 100, Niit_ajiltan_MK: 0, MNG_ajiltani_too_MK: 3, G_ajiltanii_too_MK: 1 }]);
+  const d = hoursByDay([{ ognoo: day('2026-08-01'), hun_tsag: 100, niit_ajiltan_mk: 0, mng_ajiltani_too_mk: 3, g_ajiltanii_too_mk: 1 }]);
   assert.equal(d[0].byCo.MK, 100);
 }
 /* Ажилтан огт байхгүй — хуваарилах боломжгүй (byCo null), нийт хэвээр */
-assert.equal(hoursByDay([{ Ognoo: day('2026-08-01'), Hun_tsag: 100 }])[0].byCo, null);
+assert.equal(hoursByDay([{ ognoo: day('2026-08-01'), hun_tsag: 100 }])[0].byCo, null);
 
 const PKG_OF_CO = new Map([['HHDMGK', 'P1'], ['MK', 'P41']]);
 const ymOf = (ms) => new Date(ms).toISOString().slice(0, 7);
@@ -127,15 +127,15 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   assert.equal(isLtiType('Осолд дөхсөн тохиолдол'), false);
   assert.equal(isLtiType('Эд хөрөнгийн хохирол'), false);
   const lab = [
-    { Ognoo: day('2026-08-10'), Hun_tsag: 1000 },
-    { Ognoo: day('2026-08-11'), Hun_tsag: 500 },
-    { Ognoo: day('2026-08-12'), Hun_tsag: null },
-    { Ognoo: day('2026-08-13'), Hun_tsag: 300 },
+    { ognoo: day('2026-08-10'), hun_tsag: 1000 },
+    { ognoo: day('2026-08-11'), hun_tsag: 500 },
+    { ognoo: day('2026-08-12'), hun_tsag: null },
+    { ognoo: day('2026-08-13'), hun_tsag: 300 },
   ];
   assert.deepEqual(ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Эд хөрөнгийн хохирол' }], ub),
     { hours: 1800, since: null, undatedLti: false, futureLti: 0 }, 'LTI алга — бүх хүн-цаг');
   /* ⚠️ 2026-10-11 (аудит №7): огноогүй / ≤0 цагтай мөр LTI байгаа эсэхээс үл хамааран ОРОХГҮЙ (`hoursByDay`-тай нэг дүрэм) */
-  assert.equal(ltiFreeHours([...lab, { Ognoo: null, Hun_tsag: 400 }, { Ognoo: day('2026-08-14'), Hun_tsag: -5 }], [], ub).hours, 1800,
+  assert.equal(ltiFreeHours([...lab, { ognoo: null, hun_tsag: 400 }, { ognoo: day('2026-08-14'), hun_tsag: -5 }], [], ub).hours, 1800,
     'LTI-гүй үед ч огноогүй/сөрөг мөр хасагдана');
   const r = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }], ub);
   assert.equal(r.hours, 300, 'LTI-ийн ӨДРИЙН дараах хүн-цаг л (тэр өдөр ороогүй, null 0 биш алгасна)');
@@ -178,5 +178,33 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   assert.equal(isLtiType('Ноцтой осолд хүргэж болзошгүй'), false, 'үндсэн төрөл «болзошгүй»');
   assert.equal(isLtiType('Осол дөхсөн тохиолдол (ноцтой осол болох байсан)'), false, 'LTI үг зөвхөн дагалдах хэсэгт');
 }
+
+/* ══════════ 7. Ослын компани → гүйцэтгэгч (2026-10-22, аудит) ══════════
+   ⚠️ Амьд `field_5` домэйны 6 КОД (хуудас `clean()`-ээр хашилтыг хасна) — урьд нь 3 нь ямар ч гүйцэтгэгчтэй таардаггүй байв. */
+{
+  const { incCompanySfx } = await import('./habeaRate.ts');
+  const one = (s) => [...incCompanySfx([s])];
+  const clean = (s) => s.replace(/["“”]/g, '').trim();
+  const CODES = [
+    ['"Хятадын хоёр дахь металлурги г', 'HHDMGK'],
+    ['"Нутгын буян" групп', 'NBG'],
+    ['"Хятадын барилгын зургаа дугаар', 'HBZIT'],
+    ['"Moncon construction LLC"', 'MK'],
+    ['"Професионалстрой" ХХК', 'P'],
+    ['"Морин сувд констракшн" ХХК', 'MSK'],
+  ];
+  for (const [code, sfx] of CODES) {
+    assert.deepEqual(one(code), [sfx], `код ${code}`);
+    assert.deepEqual(one(clean(code)), [sfx], `хуудасны цэвэрлэсэн нэр ${clean(code)}`);
+  }
+  assert.deepEqual(one('"Хятадын барилгын зургаа дугаар инженерийн товчоо" ХХК'), ['HBZIT'], 'домэйны бүтэн НЭР');
+  assert.deepEqual([...incCompanySfx(CODES.map(([c]) => clean(c)))].sort(), ['HBZIT', 'HHDMGK', 'MK', 'MSK', 'NBG', 'P'], '6/6 таарна (урьд 3/6)');
+  /* Нөөц: бүртгэлгүй нэр — ойролцоо тулгалт; богино түлхүүр зөвхөн бүтэн үгээр («групп»-ийн «п» ≠ Професионалстрой) */
+  assert.deepEqual(one('Морин сувд констракшн ХХК'), ['MSK']);
+  assert.deepEqual(one('Шинэ групп ХХК'), [], '«п» үсэг Професионалстройг нэмэхгүй');
+  assert.deepEqual(one('Smart craft'), ['SC']);
+  assert.deepEqual(one(''), []);
+}
+console.log('✅ ослын компани → гүйцэтгэгч: ил зураглал 6/6 (2026-10-22)');
 
 console.log('habeaRate.check: OK');

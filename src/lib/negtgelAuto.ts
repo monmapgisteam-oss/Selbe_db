@@ -41,6 +41,7 @@ import { TUSUL_NEGTGEL, bagtsKey, buildingKey, roleForUser } from '@/lib/service
 import { negtgelDepth } from '@/lib/negtgel';
 import { NEG_TREE, negTreeHash } from '@/lib/negtgelTree';
 import { currentUser } from '@/lib/who';
+import { invalidate } from '@/lib/dataBus';
 
 const F = TUSUL_NEGTGEL.fields;
 /** Хүснэгтийн хувийн масштаб (100 = 0–100) */
@@ -207,10 +208,22 @@ export function excelTree(codes: string[], phases: string[]): { depth: number[];
   return { depth, outside: new Array<boolean>(codes.length).fill(false), source: 'code' };
 }
 
+/** «ТӨСЛИЙН НИЙТ» (гүн 0) мөр — утгууд 0–1 (`negRootOf`) */
+export type NegRootRow = NegVals & { oid: number; code: string };
+/**
+ * ⚠️ 2026-10-19 (аудит): «ТӨСЛИЙН НИЙТ» мөрүүд — `loadNegRaw`-ийн БУЦААСАН массив бүрд (ижил уншилтын агшин).
+ *    Засварын нийтлэлт (`negtgelEdit.publishNegEdits`) нийт мөрийг зэрэг засварын шалгалтад оруулж, тоо нь 1
+ *    биш бол мэдээлнэ. Массив руу талбар нэмэхгүй (дуудагч олон, `structuredClone`/spread-д алдагдана) — WeakMap.
+ */
+const rootsOf = new WeakMap<readonly NegRaw[], NegRootRow[]>();
+/** `loadNegRaw`-ийн тэр уншилтын нийт мөрүүд; `undefined` = массив `loadNegRaw`-ээс ирээгүй (тест · хуулбар) */
+export const negRootOf = (rows: readonly NegRaw[]): NegRootRow[] | undefined => rootsOf.get(rows);
+
 /**
  * Хүснэгтийг ХАДГАЛСАН (Excel-ийн) утгатай нь бүтнээр уншина.
  * ⚠️ OID-оор — мөрийн дараалал нь Excel-ийн мод; кодоор эрэмбэлбэл эвдэрнэ.
- * ⚠️ «ТӨСЛИЙН НИЙТ» (гүн 0) мөрийг БУЦААХГҮЙ — 1-р түвшний мөрүүдээс бодогдоно (`projectTotal`).
+ * ⚠️ «ТӨСЛИЙН НИЙТ» (гүн 0) мөрийг БУЦААХГҮЙ — 1-р түвшний мөрүүдээс бодогдоно (`projectTotal`). ⚠️ 2026-10-19:
+ *    харин `negRootOf(үр дүн)`-ээр ижил уншилтын нийт мөрийг авна.
  */
 export async function loadNegRaw(): Promise<NegRaw[]> {
   const raw = await queryFeatures(TUSUL_NEGTGEL.url, { outFields: ['*'], orderBy: TUSUL_NEGTGEL.oid });
@@ -220,10 +233,14 @@ export async function loadNegRaw(): Promise<NegRaw[]> {
   treeSource = t.source;
   if (t.source === 'code') console.warn('[negtgel] хүснэгт Excel-ийн модтой таарахгүй — кодоор угсарлаа (negtgelTree.ts-ийг дахин үүсгэнэ)');
   const out: NegRaw[] = [];
+  const roots: NegRootRow[] = [];
   raw.forEach((r, i) => {
-    if (t.depth[i] === 0) return;
     const v = {} as NegVals;
     for (const [k, f] of Object.entries(VAL_FIELD)) v[k as keyof NegVals] = frac(r[f]);
+    if (t.depth[i] === 0) {
+      roots.push({ ...v, oid: Number(r[TUSUL_NEGTGEL.oid] ?? 0), code: codes[i] });
+      return;
+    }
     out.push({
       ...v,
       oid: Number(r[TUSUL_NEGTGEL.oid] ?? 0),
@@ -245,6 +262,7 @@ export async function loadNegRaw(): Promise<NegRaw[]> {
       actEnd: txt(r[F.actEnd]),
     });
   });
+  rootsOf.set(out, roots);
   return out;
 }
 
@@ -273,7 +291,7 @@ export type NegSources = {
   blockUni?: ReadonlyMap<string, readonly string[]>;
   /**
    * ХЭСЭГЧЛЭН уншигдсан эхүүдийн нэр (2026-10-01) — дэлгэц нэрлэж, `loadNegtgelFull` КЭШЛЭХГҮЙ.
-   * ⚠️ 2026-10-13: хуваарийн муруй эх биш болсон тул одоогоор үргэлж хоосон.
+   * ⚠️ 2026-10-13: хуваарийн муруй эх биш болсон. ⚠️ 2026-10-19: блокийн хуваарь (`blockUni`) унавал энд нэрлэгдэнэ.
    */
   partial?: string[];
 };
@@ -440,7 +458,10 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     infraPkgs,
     blocks,
     blockUni,
-    partial: [],
+    /* ⚠️ 2026-10-19 (аудит): блокийн хуваарь унасан үед барилгын мөрүүд Excel-ийн S-ээр ЧИМЭЭГҮЙ үлддэг байв —
+       одоо ХЭСЭГЧИЛСЭН гэж нэрлэнэ: таб «Хэсэгчлэн уншигдсан» мэдэгдэл гаргаж, `loadNegtgelFull` КЭШЛЭХГҮЙ
+       (дараагийн нээлт дахин уншина). */
+    partial: blockUni ? [] : [tr('Блокийн хуваарь (барилгын задаргаа Excel-ийн утгаар)')],
   };
 }
 
@@ -765,9 +786,6 @@ const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
   }
 };
 
-/** Сүүлийн синкийн төлөв (энэ хөтөчид) */
-export const negSyncState = (): NegSyncState | null => lastState;
-
 /**
  * БОДСОН УТГЫГ ХҮСНЭГТ РҮҮ БИЧНЭ — хүн оролцохгүй.
  *
@@ -793,6 +811,14 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
       const calc = computeNegAuto(stored, src);
       const plan = planNegSync(stored, calc, !!opts.force);
       const n = plan.ups.length ? await (io.write ?? liveWrite)(plan.ups) : 0;
+      /* ⚠️ 2026-10-21 (кэшийн аудит): БАТАЛГААТАЙ бичилтийн дараа `TUSUL_NEGTGEL` хүчингүй — урьд нь зөвхөн
+         `dropNegtgelFull` (таб) тул «Тайлан» (`reportData.loadReportExtra`) · удирдлагын тайлан (`execReport`) ·
+         `negtgelEdit.capP` 5 мин хуучин нэгтгэл уншдаг байв (`negtgelEdit.publishNegEdits`-ийн 2026-10-19-ний ⚠️-тэй ижил).
+         ⚠️ ЗӨВХӨН `n > 0` — уналт/хариу алдагдсан үед ХҮЧИНГҮЙ БОЛГОХГҮЙ: энэ синк ачаалагч (`negtgel.loadNegtgelFullRaw`)
+         дотроос дуудагддаг, уналтад `lastSync = 0` тул хүчингүй болговол дахин ачаалал → дахин синк → дахин уналт
+         гэсэн давталт үүснэ. Амжилтад давталт байхгүй: дахин ачаалалтын синк `lastState`-ээ буцаана (`SYNC_GAP`).
+         Одоо `readOnly` тул зам унтраалттай (`fields.ts`-ийн ⚠️) — асаахад л нөлөөлнө. */
+      if (n > 0) invalidate('TUSUL_NEGTGEL');
       st = plan.blocked.length || plan.totalBlocked
         ? { kind: 'guard', n, at: Date.now(), blocked: plan.blocked, total: plan.total, totalBlocked: plan.totalBlocked }
         : { kind: 'ok', n, at: Date.now() };

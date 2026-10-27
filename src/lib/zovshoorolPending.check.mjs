@@ -74,16 +74,16 @@ console.log('✅ хураангуй: удаж буй тоо, alert өөрчлө�
 
 /* ══════════════ 6. Editor Tracking-ийн талбар — метадатагаас ══════════════ */
 const sf = sinceFieldsOf({
-  editFieldsInfo: { creationDateField: 'CreationDate', creatorField: 'Creator', editDateField: 'EditDate', editorField: 'Editor' },
+  editFieldsInfo: { creationDateField: 'created_date', creatorField: 'created_user', editDateField: 'last_edited_date', editorField: 'last_edited_user' },
 });
-assert.deepEqual(sf, { created: 'CreationDate', edited: 'EditDate' });
+assert.deepEqual(sf, { created: 'created_date', edited: 'last_edited_date' });
 assert.equal(sinceFieldsOf({ editFieldsInfo: null }), null, 'тохиргоо унтраалттай → null');
 assert.equal(sinceFieldsOf(null), null);
-assert.equal(sinceOf({ CreationDate: 100, EditDate: 200 }, sf), 100, 'ҮҮСГЭСЭН огноо давамгайлна');
-assert.equal(sinceOf({ CreationDate: null, EditDate: 200 }, sf), 200, 'үүсгэсэн алга → сүүлд зассан');
-assert.equal(sinceOf({ CreationDate: null, EditDate: null }, sf), null);
-assert.equal(sinceOf({ CreationDate: 0 }, sf), null, '0 тамга = огноо алга');
-assert.equal(sinceOf({ CreationDate: 100 }, null), null, 'метадатагүй → null');
+assert.equal(sinceOf({ created_date: 100, last_edited_date: 200 }, sf), 100, 'ҮҮСГЭСЭН огноо давамгайлна');
+assert.equal(sinceOf({ created_date: null, last_edited_date: 200 }, sf), 200, 'үүсгэсэн алга → сүүлд зассан');
+assert.equal(sinceOf({ created_date: null, last_edited_date: null }, sf), null);
+assert.equal(sinceOf({ created_date: 0 }, sf), null, '0 тамга = огноо алга');
+assert.equal(sinceOf({ created_date: 100 }, null), null, 'метадатагүй → null');
 console.log('✅ бүртгэгдсэн цаг: CreationDate → EditDate → null');
 
 /* ══════════════ 7. Харагдац — хоосон төлөв, шүүлт, тэмдэглэгээ (эх код) ══════════════ */
@@ -139,7 +139,7 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
     if (u.endsWith('/applyEdits') && lose && !p.deletes) throw new TypeError('fetch failed');
     if (u.endsWith('/applyEdits')) body = p.deletes ? { deleteResults: [{ success: true }] } : reply;
     else if (u.endsWith('/query')) body = { features: (queryQueue.length ? queryQueue.shift() : dupRows).map((a) => ({ attributes: a })) };
-    else body = { objectIdField: 'OBJECTID', fields: [] };
+    else body = { objectIdField: 'objectid', fields: [] };
     return { ok: true, status: 200, json: async () => structuredClone(body), text: async () => JSON.stringify(body) };
   };
   const draft = { bagts: 'Багц 1', shat: 3, ner: 'Шинэ', selbe: '', tolov: T.wait, ognoo: null,
@@ -180,40 +180,40 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
     reply = { updateResults: [{ success: true, objectId: 7 }] };
     assert.equal(await saveZov({ ...draft, oid: 7, dugaar: 'Z-9' }, before), 7);
     const ups = JSON.parse(edits()[0].p.updates);
-    assert.deepEqual(ups[0].attributes, { OBJECTID: 7, [F.dugaar]: 'Z-9' });
+    assert.deepEqual(ups[0].attributes, { objectid: 7, [F.dugaar]: 'Z-9' });
     assert.equal(calls.filter((c) => c.u.endsWith('/query')).length, 0, 'багц/шат өөрчлөгдөөгүй — давхардлын асуулга алга');
 
     /* 2026-10-09: засвараар шатыг солиход давхардлыг ӨӨРИЙГӨӨ хасаж асууна */
     calls.length = 0;
-    dupRows = [{ OBJECTID: 9, [F.ner]: 'Бусад' }];
+    dupRows = [{ objectid: 9, [F.ner]: 'Бусад' }];
     await assert.rejects(() => saveZov({ ...draft, oid: 7, shat: 4 }, before), /Бусад/);
-    assert.match(calls.find((c) => c.u.endsWith('/query')).p.where, /OBJECTID <> 7/);
+    assert.match(calls.find((c) => c.u.endsWith('/query')).p.where, /objectid <> 7/);
     assert.equal(edits().length, 0);
     dupRows = [];
 
     /* 2026-10-09: бичсэний ДАРАА зэрэгцээ давхардал — манай OID их → өөрийгөө устгаад мэдээлнэ */
     calls.length = 0;
     reply = { addResults: [{ success: true, objectId: 50 }] };
-    queryQueue.push([], [{ OBJECTID: 49, [F.ner]: 'Зэрэг' }, { OBJECTID: 50, [F.ner]: 'Шинэ' }]);
+    queryQueue.push([], [{ objectid: 49, [F.ner]: 'Зэрэг' }, { objectid: 50, [F.ner]: 'Шинэ' }]);
     await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === false && /Зэрэг/.test(e.message));
     assert.deepEqual(JSON.parse(edits().find((c) => c.p.deletes).p.deletes), [50], 'өөрийн мөрийг устгав');
     /* манай OID бага → үлдээнэ, kept=true */
     calls.length = 0;
     reply = { addResults: [{ success: true, objectId: 48 }] };
-    queryQueue.push([], [{ OBJECTID: 48, [F.ner]: 'Шинэ' }, { OBJECTID: 49, [F.ner]: 'Зэрэг' }]);
+    queryQueue.push([], [{ objectid: 48, [F.ner]: 'Шинэ' }, { objectid: 49, [F.ner]: 'Зэрэг' }]);
     await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === true && e.oid === 48);
     assert.equal(edits().filter((c) => c.p.deletes).length, 0, 'бага OID-тэй мөрийг устгахгүй');
 
     /* 2026-10-09: хариу АЛДАГДСАН нэмэлт — дахин илгээхгүй, уншиж тогтооно */
     calls.length = 0;
     lose = true;
-    queryQueue.push([], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }]);
+    queryQueue.push([], [{ objectid: 61, [F.ner]: 'Шинэ' }]);
     assert.equal(await saveZov(draft), 61, 'бичигдсэн мөрийг нэрээр нь таньж амжилт');
     assert.equal(edits().length, 1, 'бичилтийг ДАХИН илгээгээгүй');
     /* 2026-10-09: хариу алдагдсан + давхардал (ижил нэр 2 мөр + бусад) → ЮУГ Ч устгахгүй, kept=true,
        «манайх» = ижил нэртэйн ХАМГИЙН БАГА OID */
     calls.length = 0;
-    queryQueue.push([], [{ OBJECTID: 70, [F.ner]: 'Шинэ' }, { OBJECTID: 71, [F.ner]: 'Зэрэг' }, { OBJECTID: 72, [F.ner]: 'Шинэ' }]);
+    queryQueue.push([], [{ objectid: 70, [F.ner]: 'Шинэ' }, { objectid: 71, [F.ner]: 'Зэрэг' }, { objectid: 72, [F.ner]: 'Шинэ' }]);
     await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === true && e.oid === 70 && /Зэрэг/.test(e.message));
     assert.equal(edits().filter((c) => c.p.deletes).length, 0, 'алдагдсан хариуны замд устгахгүй');
     assert.equal(edits().length, 1, 'бичилтийг ДАХИН илгээгээгүй');

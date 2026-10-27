@@ -1,4 +1,7 @@
-/* ПОРТАЛЫН ТУСЛАМЖ — `HelpPanel.tsx` (2026-09-30) */
+/* ПОРТАЛЫН ТУСЛАМЖ — `HelpPanel.tsx` (2026-09-30)
+   ⚠️ 2026-10-23: Environment — хөвөгч цонх (--line-strong, 12px, --shadow),
+   бүлгийн гарчиг .eyebrow (11px/600/0.15em), сонгогдсон мөр moss 12% + 45% хүрээ,
+   «энд» тэмдэг 6px badge, зөвлөмж tooltip хэлээр (surface 95% + blur). */
 
 .backdrop {
   position: fixed;
@@ -17,9 +20,9 @@
   flex-direction: column;
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg, 12px);
-  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -27,32 +30,33 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 16px 18px 12px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--line);
 }
 .head > div { flex: 1; min-width: 0; }
-.title { margin: 0; font-size: 17px; font-weight: 700; }
-.lede { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-3); }
+.title { margin: 0; font-family: var(--font-display); font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+.lede { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
 .close {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   color: var(--ink-2);
 }
 .close:hover { background: var(--surface-2); color: var(--ink); }
 
-.body { overflow-y: auto; padding: 8px 18px 16px; }
+.body { overflow-y: auto; padding: 8px 16px 16px; }
 
 .group + .group { margin-top: 10px; }
 .groupTitle {
-  margin: 10px 0 6px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -70,34 +74,86 @@
   color: inherit;
 }
 .row:hover { background: var(--surface-2); border-color: var(--line); }
-.rowOn { border-color: color-mix(in oklab, var(--hue) 45%, transparent); background: color-mix(in oklab, var(--hue) 8%, transparent); }
+.rowOn { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 12%, transparent); }
 
 .icon {
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  color: var(--hue);
-  background: color-mix(in oklab, var(--hue) 12%, transparent);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r);
+  color: var(--data-ink);
+  background: var(--surface-2);
 }
 .icon svg { width: 15px; height: 15px; }
 
 .text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .here {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 1.3;
   padding: 1px 6px;
-  border-radius: 999px;
-  color: var(--hue);
-  background: color-mix(in oklab, var(--hue) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--data) 35%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--data-ink);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
 }
-.desc { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
-.who { font-size: 12px; color: var(--ink-3); }
+.desc { font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+.who { font-size: 11px; color: var(--ink-3); }
 
-.foot { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+.foot { margin: 14px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+
+/* ── «Хэрхэн хийх вэ» — алхам алхмаар заавар (⚠️ 2026-10-23, S18) ── */
+.howList { display: grid; gap: 4px; }
+.how {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.how[open] { background: var(--surface-2); }
+.howSum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.howSum::-webkit-details-marker { display: none; }
+.howSum::before {
+  content: '▸';
+  flex: none;
+  color: var(--data-ink);
+  transition: transform 0.15s var(--ease);
+}
+.how[open] > .howSum::before { transform: rotate(90deg); }
+.howSteps {
+  margin: 0;
+  padding: 0 14px 10px 34px;
+  list-style: decimal;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.howGo {
+  margin: 0 12px 12px 34px;
+  padding: 6px 12px;
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--data-ink);
+  background: var(--surface);
+}
+.howGo:hover { background: var(--bg); }
 
 /* ── Анхны оролтын зөвлөмж — толгойн «?» товчны доор ── */
 .tip {
@@ -107,27 +163,55 @@
   z-index: 2400;
   width: min(300px, calc(100vw - 32px));
   padding: 12px 14px;
-  border-radius: var(--r);
-  background: var(--ink);
-  color: var(--surface);
-  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ink);
+  box-shadow: var(--shadow);
 }
 .tipArrow {
   position: absolute;
-  top: -6px;
+  top: -7px;
   right: 13px;
   width: 12px;
   height: 12px;
-  background: var(--ink);
+  background: var(--surface);
+  border-top: 1px solid var(--line-strong);
+  border-left: 1px solid var(--line-strong);
   transform: rotate(45deg);
 }
-.tipText { margin: 0; font-size: 13px; line-height: 1.5; }
+.tipText { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
 .tipActions { display: flex; gap: 8px; margin-top: 10px; }
 .tipPrimary, .tipGhost {
-  padding: 6px 12px;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
   font-weight: 600;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
-.tipPrimary { background: var(--surface); color: var(--ink); }
-.tipGhost { color: var(--surface); border: 1px solid color-mix(in srgb, var(--surface) 40%, transparent); }
+.tipPrimary { background: var(--workspace-accent); color: var(--workspace-accent-ink); }
+.tipPrimary:hover { background: var(--workspace-accent-hover); }
+.tipGhost { font-weight: 500; color: var(--ink-2); border: 1px solid var(--line-strong); }
+.tipGhost:hover { background: var(--surface-2); color: var(--ink); }
+
+/* ⚠️ 2026-10-19: УТАС (≤480px) — зөвлөмж толгойн ДООР тогтмол 56px-ээр байрлаж, утсан дээр олон мөр болж
+   өндөрссөн толгойг (`--head` түүнийг дагадаггүй) ДАРЖ, навигацийн товчийг хааж байв. Одоо дэлгэцийн ДООД
+   талд нимгэн самбар (сум нь «?» руу заах боломжгүй тул нуугдана) — толгой бүхэлдээ ил. */
+@media (max-width: 480px) {
+  .tip {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    padding: 10px 12px;
+  }
+  .tipArrow { display: none; }
+  .tipText { font-size: 12px; line-height: 1.4; }
+  .tipActions { margin-top: 8px; justify-content: flex-end; }
+}

@@ -31,7 +31,7 @@
  */
 
 import { arcgisPost } from '@/lib/query';
-import { TD } from '@/lib/services';
+import { IOT_EX } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 
 /* ══════════════════════ Харуулын эх сурвалж ══════════════════════ */
@@ -43,9 +43,9 @@ import { t as tr } from '@/lib/i18nCore';
 export const ERSDEL_FS = {
   /* ⚠️ 2026-09-17: MUST `Example_data` → `SELBE_ALL_DATA_last_0917`/123 (`Exampledata_iot`,
      ижил 12 цэг · OBJECTID/GlobalID/Torol). Тусдаа env/fallback-гүй — `TD`-ийн давхарга. */
-  url: `${TD}/123`,
+  url: `${IOT_EX}/240`,
   /** Төрлийн талбар — «Усны харуул» / «Агаарын чанар» */
-  typeField: 'Torol',
+  typeField: 'torol',
 } as const;
 
 /** Харуулын ТӨРӨЛ — `Torol` талбарын түүхий утгаас */
@@ -89,7 +89,7 @@ export async function loadStations(): Promise<Station[]> {
      `no-store`-ын утга хэвээр; токен биеэр, timeout/слот/200-алдаа цөмд). */
   const body = await arcgisPost<{ features?: Feat[] }>(`${ERSDEL_FS.url}/query`, {
     where: '1=1',
-    outFields: `OBJECTID,${ERSDEL_FS.typeField}`,
+    outFields: `objectid,${ERSDEL_FS.typeField}`,
     returnGeometry: 'true',
     outSR: '4326',
   });
@@ -97,14 +97,22 @@ export async function loadStations(): Promise<Station[]> {
 
   /** Төрөл тус бүрийн дугаарлалт — «Усны харуул №1…8» */
   const seq: Record<string, number> = {};
-  return feats
+  /* ⚠️ 2026-10-21: (1) ДУГААРЛАХААС ӨМНӨ OID-оор эрэмбэлнэ — урьд нь серверийн буцаасан дарааллаар №N
+     олгож, эрэмбэлэлт ДАРАА нь хийгддэг тул нэг харуул ачаалал бүрд өөр дугаартай гарч болдог байв
+     (`orderByFields`-гүй). Клиентэд эрэмбэлэх нь Enterprise-ийн талбарын үсгээс хамаарахгүй.
+     (2) ТАНИГДАХГҮЙ `Torol`-ыг ЧИМЭЭГҮЙ «ус» болгохгүй — алгасаж консолд хэлнэ (буруу төрлийн цуваа,
+     дугаар зохиохгүй). */
+  const unknown = new Set<string>();
+  const out = feats
     .filter((f) => f.geometry)
-    .map((f) => {
+    .sort((a, b) => Number(a.attributes.objectid ?? 0) - Number(b.attributes.objectid ?? 0))
+    .flatMap((f): Station[] => {
       const torol = String(f.attributes[ERSDEL_FS.typeField] ?? '').trim();
-      const kind = KIND_BY_TOROL[torol] ?? 'water';
+      const kind: StationKind | undefined = KIND_BY_TOROL[torol];
+      if (!kind) { unknown.add(torol || '∅'); return []; }
       seq[kind] = (seq[kind] ?? 0) + 1;
-      return {
-        oid: Number(f.attributes.OBJECTID ?? 0),
+      return [{
+        oid: Number(f.attributes.objectid ?? 0),
         torol,
         kind,
         name: kind === 'water'
@@ -112,9 +120,11 @@ export async function loadStations(): Promise<Station[]> {
           : tr('Агаарын харуул №{0}', seq[kind]),
         lon: f.geometry!.x,
         lat: f.geometry!.y,
-      };
+      }];
     })
     .sort((a, b) => (a.kind === b.kind ? a.oid - b.oid : a.kind === 'water' ? -1 : 1));
+  if (unknown.size) console.warn('[ersdel] танигдаагүй харуулын төрөл (Torol) — алгасав:', [...unknown]);
+  return out;
 }
 
 /* ══════════════════════ Детерминист санамсаргүй ══════════════════════ */
@@ -173,6 +183,12 @@ export type Metric = {
   bad: number;
   /** Их утга САЙН уу (уусмал хүчилтөрөгч) — үнэлгээний чиглэл */
   higherBetter?: true;
+  /**
+   * ДООД хязгаар — хоёр талт хэвийн мужтай үзүүлэлтэд (pH 6.5–8.5). `warnLo`-оос доош «анхаарах»,
+   * `badLo`-оос доош «хэтэрсэн». ⚠️ 2026-10-21: урьд нь зөвхөн дээд хязгаар шалгадаг тул pH 5.0 «хэвийн» гардаг байв.
+   */
+  warnLo?: number;
+  badLo?: number;
   points: Point[];
   latest: number;
   min: number;
@@ -198,7 +214,11 @@ export type Grade = 'ok' | 'warn' | 'bad';
 
 export const gradeOf = (m: Metric, v = m.latest): Grade => {
   if (m.higherBetter) return v <= m.bad ? 'bad' : v <= m.warn ? 'warn' : 'ok';
-  return v >= m.bad ? 'bad' : v >= m.warn ? 'warn' : 'ok';
+  /* ⚠️ 2026-10-21: доод хязгаар (`warnLo`/`badLo`) — дээд хязгаартай ИЖИЛ хил (тэнцүү нь доошлуулна) */
+  if (m.badLo != null && v <= m.badLo) return 'bad';
+  if (v >= m.bad) return 'bad';
+  if (m.warnLo != null && v <= m.warnLo) return 'warn';
+  return v >= m.warn ? 'warn' : 'ok';
 };
 
 export const GRADE_COLOR: Record<Grade, string> = {
@@ -247,7 +267,8 @@ const WATER_METRICS = [
   {
     key: 'ph', get label() { return tr('pH'); }, unit: '', dp: 2,
     get note() { return tr('Хүчиллэг–шүлтлэг. MNS 4586:1998 — 6.5–8.5 хооронд.'); },
-    warn: 8.5, bad: 9,
+    /* ⚠️ 2026-10-21: ХОЁР ТАЛТ муж — доод хязгаар (6.5 / 6) дээдтэй тэгш хэмтэй (8.5 / 9) */
+    warn: 8.5, bad: 9, warnLo: 6.5, badLo: 6,
   },
   {
     key: 'wtemp', get label() { return tr('Усны температур'); }, unit: '°C', dp: 1,
@@ -757,18 +778,38 @@ export const SEVERITY: Record<LevelKey, number> = { 1: 0.25, 2: 0.55, 3: 1 };
 /**
  * АГААРЫН бохирдол нь БАРИЛГЫГ эвддэггүй — хохирол нь ЭРҮҮЛ МЭНДИЙН.
  * Тиймээс агаарын хувилбарт өртсөн барилгын м²-ээр биш, ӨРТӨЛТӨӨР үнэлнэ:
- * барилгын талбайгаас оршин суугчийн тоог тооцоолж (35 м²/хүн), хүн тутамд
+ * барилгын хүн амаас (`buildingPeople`) өртсөн хүнийг тооцоолж, хүн тутамд
  * ноогдох өдрийн эрүүл мэндийн зардлын таамгаар үржүүлнэ.
  *
  * ⚠️ Энэ нь ЭРҮҮЛ МЭНДИЙН ЭДИЙН ЗАСГИЙН бүдүүн таамаг (ДЭМБ-ын арга зүйн
  * зарчмаар «өртөлт × нэгж зардал») — эмнэлгийн бодит бүртгэлээс уншаагүй.
  */
 export const EXPOSURE = {
-  /** Нэг оршин суугчид ноогдох орон сууцны талбай (м²) */
+  /**
+   * Нэг хүнд ногдох ШАЛНЫ талбай (м²) — ЗӨВХӨН хүн амын талбаргүй барилгын НӨӨЦ (`buildingPeople`).
+   * ⚠️ 2026-10-22 (аудит): урьд нь барилгын ХӨЛ (нэг давхрын) талбайг 35-д хувааж бүх барилгад хэрэглэдэг байв — 35 м² нь
+   *    ШАЛНЫ талбай тул олон давхар барилгад өртсөн хүн ~11 дахин дутуу (төсөлд ~6,000 ↔ `Total_population` 68,326).
+   */
   m2PerPerson: 35,
   /** Өртсөн хүн тутмын нэг өдрийн эрүүл мэндийн зардлын таамаг (₮) */
   costPerPersonDay: 12_500,
 } as const;
+
+/**
+ * НЭГ БАРИЛГЫН ӨРТСӨН ХҮН — агаарын (мөн үерийн) хувилбарт.
+ *   · `pop` (`Total_population` = оршин суугч + хүчин чадал) байвал → `pop × share` (`share` = барилгын хөлийн мужид
+ *     орсон хувь, 0–1);
+ *   · хүн амын утга ХООСОН (null) бол → шалны талбай (`gfa`, м²) × `share` ÷ `EXPOSURE.m2PerPerson`;
+ *   · шалны талбай ч алга бол → мужид орсон ХӨЛИЙН талбай (`footM2`) ÷ `EXPOSURE.m2PerPerson` (хуучин доод тооцоо).
+ * ⚠️ 2026-10-22 (аудит): `EXPOSURE.m2PerPerson`-ийн ⚠️. null ≠ 0: `pop = 0` (зогсоол, дэд станц) нь бодит тэг — нөөц руу
+ *    унахгүй.
+ */
+export function buildingPeople(pop: number | null, gfa: number | null, share: number, footM2: number): number {
+  const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 1;
+  if (pop != null && Number.isFinite(pop) && pop >= 0) return pop * s;
+  if (gfa != null && Number.isFinite(gfa) && gfa > 0) return (gfa * s) / EXPOSURE.m2PerPerson;
+  return Math.max(0, footM2) / EXPOSURE.m2PerPerson;
+}
 
 /** Хувилбарын нэг мөрийн хураангуй — самбарын толгойд */
 export const scenarioNote = (h: HazardKey, lv: LevelKey): string => {
@@ -811,8 +852,18 @@ export async function queryRingsPaged(url: string, params: Record<string, string
   let order: string | null = null;
   let rings: number[][][] = [];
   let got = 0;
+  /* ⚠️ 2026-10-21: ТАЙРАГДСАН дүрсийг ЧИМЭЭГҮЙ буцаахгүй — шиднэ. Урьд нь (а) OID-гүй хариу
+     `exceededTransferLimit`-тэй ирвэл эхний хуудсаар, (б) 500 хуудасны хамгаалалт дуусвал хуримтлуулснаараа
+     буцаадаг тул голын нэг хэсэг алга болж буфер/үерийн загвар ДУТУУ гардаг байв (энэ функцийн толгойн ⚠️-тэй
+     ижил алдаа). Дуудагчид (`ersdelGeom.loadRiver` · `uyrSim.loadRiverRings`) амлалтаа кэшлэхгүй тул дахин
+     оролдоно. */
+  const truncated = (why: string): never => {
+    console.warn('[ersdel] queryRingsPaged — хариу тайрагдсан:', why, url);
+    throw new Error(tr('Полигоны геометр бүрэн татагдсангүй (сервер хариуг тайрсан) — дутуу дүрсээр тооцохгүй, дахин оролдоно уу.'));
+  };
   /* ⚠️ Хамгаалалт: 500 хуудас (~1 сая объект) — мөнхийн давталтаас гарна */
-  for (let guard = 0; guard < 500; guard++) {
+  for (let guard = 0; ; guard++) {
+    if (guard >= 500) truncated('500 хуудасны хязгаар');
     const page: Record<string, string> = { ...params };
     if (order) {
       page.orderByFields = order;
@@ -821,8 +872,8 @@ export async function queryRingsPaged(url: string, params: Record<string, string
     const body = await arcgisPost<Body>(`${url}/query`, page);
     const feats = body.features ?? [];
     if (!order && body.exceededTransferLimit) {
-      /* OID-гүй хариу — эрэмбэлж чадахгүй тул эхний хуудсаар (хуучин үйлдэл) */
-      if (!body.objectIdFieldName) return feats.flatMap((ft) => ft.geometry?.rings ?? []);
+      /* OID-гүй хариу — эрэмбэлж хуудаслах боломжгүй (⚠️ 2026-10-21: эхний хуудсаар буцаахгүй) */
+      if (!body.objectIdFieldName) truncated('objectIdFieldName алга');
       order = `${body.objectIdFieldName} ASC`;
       rings = [];
       got = 0;

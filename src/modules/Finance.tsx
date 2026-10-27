@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useId, Fragment, type MouseEvent, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -18,7 +18,8 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty, Note, userError, PointCallout, SvgHoverMarker, calloutAlign } from '@/components/ui';
+import { Data, Empty, Note, userError, tabFocusNav } from '@/components/ui';
+import { askConfirm } from '@/lib/confirm';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, ArcGISError } from '@/lib/query';
@@ -50,16 +51,17 @@ import { loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUnivers
  *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
-import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 /* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
    Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
-import { housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, cfStartKeyOf } from '@/lib/gdash';
+import { housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, cfStartKeyOf, HOUSING_PKGS } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
-  CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
+  CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, bagtsKey,
 } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 /* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
    Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА тул
    гэрээний дүнг мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 дахин
@@ -68,14 +70,18 @@ import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, localDay, parseCell as parseCellRaw, type ParseMsg,
-  setFinNavDirty, awaitingReload,
+  setFinNavDirty, awaitingReload, upgradeFinanceDraft, parseFinanceShare, type FinanceDraft,
 } from '@/lib/finEdit';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
   FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, FIN_XL_CODE,
   FIN_XL_HIDE, FIN_XL_TOTAL_LABEL, finXlInTotal, finXlRowHidden,
   FIN_XL_LVL_KEEP, finXlBandLabel,
-  FIN_XL_PCT, FIN_XL_PCT_WEIGHT, FIN_XL_ORDER_V,
+  FIN_XL_PCT, FIN_XL_ORDER_V, FIN_XL_FRACTION, FIN_XL_DROP,
+  /* ⚠️ 2026-10-22 (аудит): бутархай хувийн ×100 · жигнэсэн дундаж — цэвэр функцүүд (`finExcelLayout.check.mjs` шууд шалгана) */
+  finXlIsFraction, finXlScale, finXlFractionText, finXlEditText, finXlIsMean, finXlWeightedMean,
+  /* ⚠️ 2026-10-22 (аудит): Cashflow-ийн ТҮҮХИЙ мөрийн ангилал (`gdash.CfRow.type`-тай нэг) — `infraPhysNow` */
+  finXlChartCat,
 } from '@/lib/finExcelLayout';
 import { useColWidths } from '@/modules/sheet/colWidths';
 import { useSheetCols } from '@/modules/sheet/sheetCols';
@@ -88,18 +94,50 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
-import { mnt, num, pct, text, cat, date, monthKey, dayKey } from '@/lib/format';
+import { mnt, num, pct, text, date, monthKey, dayKey } from '@/lib/format';
 import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
-import { CHART, lineSegments, glow } from '@/lib/chartStyle';
+import { CHART, lineSegments } from '@/lib/chartStyle';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
+import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts, type FinancePublishInputs } from '@/lib/financePublish';
 import { collidedIds, renumberPlan } from '@/lib/idUnique';
 import { invalidate, type DataKey } from '@/lib/dataBus';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
+/* ⚠️ 2026-10-26: сарын мөнгөний эх («Гараар» / «Хуваарь») — CashflowPlan аль хэдийн статикаар импортолдог тул нэмэлт багц үгүй */
+import {
+  loadMonthlyMoney, monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
+} from '@/lib/monthlyMoney';
+/* ⚠️ 2026-10-26: «Төсөл төлөвлөгөө биелэлт» — ачаалагч нь ДИНАМИК импорт (`loadProjectPlanLazy`): Finance-ийг
+   execReport · Нүүр г.м. олон газар импортолдог тул газрын/хуваарийн тооцооны код тэдгээрт татагдахгүй. Энд зөвхөн төрөл. */
+import type { ProjectPlan } from '@/lib/projectPlanInputs';
+import type { PlanNode, PlanValues, BlockStatus } from '@/lib/projectPlan';
+import { Toggle } from '@/components/Switch';
 import f from './finance.module.css';
+
+/**
+ * `loadProjectPlan.failed`-ийн ДОТООД түлхүүрийг (`schedule:b1_9f` · `land:БАГЦ161` · `footprints`…) хүний нэр рүү.
+ * ⚠️ 2026-10-26 (аудит): анхааруулга кодын түлхүүрийг шууд харуулдаг тул аль эх уншигдаагүйг ойлгохгүй байв.
+ *    Дотоод түлхүүрүүд (`failedGroups` г.м.) ӨӨРЧЛӨГДӨХГҮЙ — зөвхөн харуулалт.
+ */
+function planFailedLabels(failed: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const k of failed) {
+    const [head, rest] = k.split(/:(.*)/s);
+    if (head === 'schedule') {
+      const p = rest ? PKGS.find((x) => x.key === rest) : undefined;
+      out.add(p ? tr('{0}: {1}', tr('Хуваарь'), p.label) : tr('Хуваарь'));
+    } else if (head === 'land') {
+      out.add(rest ? tr('{0}: {1}', tr('Газар чөлөөлөлт'), rest) : tr('Газар чөлөөлөлт'));
+    } else if (k === 'parcels') out.add(tr('Нэгж талбар'));
+    else if (k === 'footprints') out.add(tr('Барилгын давхарга'));
+    else if (k === 'blockProgress' || k === 'blockUniverse' || k === 'infraProgress' || k === 'actual') out.add(tr('Гүйцэтгэл'));
+    else out.add(k);
+  }
+  return [...out];
+}
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — CASHFLOW (төлөвлөгөө) + IPC (олгосон акт).
@@ -178,8 +216,11 @@ function ym(v: unknown): string | null {
 /* ⚠️ 2026-09-06: `PLAN` (индиго — төлөвлөгөөт муруй) ХАСАГДСАН, тэр цуваа
    өөрөө байхгүй болсон тул. Слот 1/2 нь CVD-ийн шалгуурт хамгийн сайн
    салгагдсан хос хэвээр. */
-const ACT = cat(0); // олгосон санхүүжилтийн өссөн ₮ — усан цэнхэр (аппын акцент)
-const PHYS = cat(1); // биет гүйцэтгэлийн % — улбар шар (муруй, хоёуланаас тодрох)
+/* ⚠️ 2026-10-23: Environment — график НЭГ өнгө (хэрэглэгчийн шийдвэр): `cat(0)`/`cat(1)` → бодит
+   (олголт) = `--data` БҮТЭН, биет = `--chart-plan` ТАСАРХАЙ (`CHART.planDash`). Хоёр цувааг өнгө биш
+   ХЭЛБЭР (бүтэн/тасархай) ялгана; PkgFin-ийн тайлбар (легенд) мөн ижил. */
+const ACT = 'var(--data)'; // олгосон санхүүжилтийн өссөн ₮ — бүтэн шугам
+const PHYS = 'var(--chart-plan)'; // биет гүйцэтгэлийн % — тасархай шугам
 
 type Row = Record<string, unknown>;
 
@@ -231,7 +272,8 @@ export type MonthPt = {
    * ⚠️ 2026-10-09 (аудит №2): ХОЦРОГДЛЫН «бодит» тал — ЗӨВХӨН хуваарьтай багцаар
    * (`gdash.planScope`), төлөвлөгөө (`projectPlanOf`)-тэй НЭГ олонлог. Зөвхөн
    * `aggregateMonths` (төслийн зам) бөглөнө; `undefined` бол `lagOf` `phys`-ийг авна.
-   * Толгойн «Биет гүйцэтгэл» (`physNow`) `phys`-ээс — бүх багцаар, ХӨНДӨГДӨХГҮЙ.
+   * Толгойн «Биет гүйцэтгэл» (`physNow`) `phys`-ээс, ХӨНДӨГДӨХГҮЙ.
+   * ⚠️ 2026-10-22 (аудит): `phys` нь одоо ОРОН СУУЦНЫ багцаар (`aggregateMonths`-ийн ⚠️) — «бүх багцаар» биш.
    */
   physLag?: number | null;
   /** `physLag`-ийн хэмжилтийн огноо — `physAt`-тай ижил утгатай */
@@ -325,6 +367,11 @@ export type FinData = {
 
 // ═══════════════════════════════════════════════════════════
 //  КОМБО ГРАФИК (envhub хэлээр) — градиентгүй, glow-гүй хавтгай дүрслэл.
+//  ⚠️ 2026-10-23: Environment — дахин glow-гүй (2026-10-09-ний гэрэлтэлт хасагдсан); тор нь
+//  хэвтээ квартал (0/¼/½/¾/1) БҮГД тасархай `3 4` (ёроол ч), босоо торгүй. Хоёр цуваа: олголт =
+//  `--data` бүтэн (доороо .22→.02 талбай), биет = `--chart-plan` тасархай — `cat(0)`/`cat(1)` ХАСАГДСАН.
+//  Цэг бүр үргэлж 5px (.5; заасан 1, бусад .15), шошго 10px/400 ink-2, tooltip нь Environment
+//  `AreaChart`-ынх шиг ЦЭГИЙН дэргэд; «PointCallout» pill · «SvgHoverMarker» ХАСАГДСАН.
 //  ГУРВАН шугам давхацна: төлөвлөгөө (PLAN) · олгосон санхүүжилт (ACT —
 //  нарийн, цэгтэй; 2026-08-21-нд багана байсныг шугам болгов) · биет (PHYS).
 //  X тэнхлэгт он сар + өссөн хувиуд цуваа өөрийн слотын өнгөөр.
@@ -368,6 +415,8 @@ export function ComboChart({
 }) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  /* Олголтын талбайн градиентийн id — нэг хуудсанд хэд хэдэн ComboChart байж болно */
+  const gid = useId().replace(/:/g, '');
   const N = items.length;
 
   /*
@@ -481,6 +530,8 @@ export function ComboChart({
     setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
   };
   const pt = hi != null ? rows[hi] : null;
+  /** Цэгийн тунгалаг — Environment `AreaChart`: энгийн .5, заасан 1, бусад .15 */
+  const dotOp = (i: number) => (hi == null ? 0.5 : i === hi ? 1 : 0.15);
 
   const anchorFor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
@@ -495,13 +546,22 @@ export function ComboChart({
    * ⚠️ Цуваа бүр ТУСДАА: олголт муруйнхаа дээр, биет доор бичигддэг тул
    *    хоорондоо мөргөлдөхгүй; нэг цувааны дотор л зай шалгах ёстой.
    */
+  /* ⚠️ 2026-10-23: Environment `AreaChart` — эхлээд ≥11% алхмаар сийрэгжүүлнэ (эхний ба сүүлчийнх
+     ҮРГЭЛЖ, сүүлчийнхтэй 11%-иас ойр завсрынх алгасна), дараа нь дээрх ⚠️-ийн ЖИНХЭНЭ пикселийн
+     багтаамж (`fitLabels`). Дунд цэгүүдийн утга харагдсаар (зөвхөн төгсгөл БИШ). */
+  const envThin = (i: number, last: number) => {
+    if (N <= 1 || i === 0 || i === last) return true;
+    const gap = 100 / (N - 1);
+    const step = Math.max(1, Math.ceil(11 / gap));
+    return i % step === 0 && (last - i) * gap >= 11;
+  };
   const fitFor = (last: number, valOf: (r: typeof rows[number]) => string) => new Set(
     fitLabels(rows.slice(0, last + 1).map((r, i) => ({
       i,
       x: xFor(i),
       w: textW(valOf(r)),
       anchor: anchorFor(i),
-    }))),
+    })).filter((l) => envThin(l.i, last))),
   );
   const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
   /* ⚠️ 2026-10-09: `pct(v, 1)` — диаграм ба tooltip НЭГ формат (урьд нь toFixed(0) vs toFixed(1)) */
@@ -562,11 +622,11 @@ export function ComboChart({
             (`padL`) гаргаж, баруун зэрэгцүүлэв. Мөн 5 биш 4 шугам — нягт тор
             нь өгөгдлөөс илүү анхаарал татдаг. */}
         {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — он·сарын шошготой сар бүрд
-            1px `--chart-grid`; хэвтээ 4 шугам (тэнхлэгийн тоо) хэвээр. */}
-        {rows.map((r, i) => (axisLbl.has(i) ? (
-          <line key={`vg-${r.label}`} x1={xFor(i)} x2={xFor(i)} y1={padT} y2={padT + plotH} className={f.curveGrid} />
-        ) : null))}
-        {[0, 1 / 3, 2 / 3, 1].map((t) => {
+            1px `--chart-grid`; хэвтээ 4 шугам (тэнхлэгийн тоо) хэвээр.
+            ⚠️ 2026-10-23: Environment — БОСОО тор ХАСАГДСАН; хэвтээ нь 1px ТАСАРХАЙ.
+            ⚠️ 2026-10-23 (Environment `AreaChart`): 4 шугам (⅓) → КВАРТАЛ 0/¼/½/¾/1, БҮГД тасархай `3 4`
+               (ёроол ч — урьдын бүтэн/`3 3` зөрүү засагдсан); Y шошго 9px бүтэн тунгалаг. */}
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
           const gy = yFor(t * yMax);
           return (
             <g key={t}>
@@ -613,16 +673,67 @@ export function ComboChart({
         {/* ── МУРУЙНУУД — олгосон санхүүжилт (зузаан, бүтэн) ба биет гүйцэтгэл ── */}
         {/* ⚠️ 2026-10-09: хоёр шугам 2px (`CHART.stroke`; урьд олголт 2.8).
             ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`;
-            хэвлэхэд `chartGlow` унтраана). Дээрх «градиентгүй, glow-гүй» envhub-ийн хэлийг ОРЛОНО. */}
+            хэвлэхэд `chartGlow` унтраана). Дээрх «градиентгүй, glow-гүй» envhub-ийн хэлийг ОРЛОНО.
+            ⚠️ 2026-10-23: Environment — гэрэлтэлт ХАСАГДСАН (2px цул шугам).
+            ⚠️ 2026-10-23 (Environment `AreaChart`): олголтын муруйн ДООР `--data` .22→.02 градиент
+               талбай; биет нь `--chart-plan` ТАСАРХАЙ (`CHART.planDash`, `butt` үзүүр) — нэг өнгөт
+               графикт хоёр цувааг хэлбэрээр ялгана. */}
+        <defs>
+          <linearGradient id={`cmb-${gid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style={{ stopColor: ACT, stopOpacity: CHART.areaTop }} />
+            <stop offset="100%" style={{ stopColor: ACT, stopOpacity: CHART.areaBottom }} />
+          </linearGradient>
+        </defs>
         {givenSegs.map((seg) => (seg.single ? null : (
-          <path key={`gs-${seg.from}`} d={seg.d} className={`${f.actLine} chartGlow`} style={{ stroke: ACT, strokeWidth: CHART.stroke, filter: glow(ACT) }} vectorEffect="non-scaling-stroke" />
+          <path
+            key={`ga-${seg.from}`}
+            d={`${seg.d} L${seg.pts[seg.pts.length - 1].x},${padT + plotH} L${seg.pts[0].x},${padT + plotH} Z`}
+            style={{ fill: `url(#cmb-${gid})`, stroke: 'none' }}
+          />
         )))}
-        {physSegs.map((seg) => (!seg.single ? (
-          <path key={`ps-${seg.from}`} d={seg.d} className={`${f.physLine} chartGlow`} style={{ stroke: PHYS, strokeWidth: CHART.stroke, filter: glow(PHYS) }} vectorEffect="non-scaling-stroke" />
-        ) : (
-          /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул цэгээр */
-          <circle key={`ps-${seg.from}`} cx={seg.pts[0].x} cy={seg.pts[0].y} r={CHART.markerR} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+        {givenSegs.map((seg) => (seg.single ? null : (
+          <path key={`gs-${seg.from}`} d={seg.d} className={f.actLine} style={{ stroke: ACT, strokeWidth: CHART.stroke }} vectorEffect="non-scaling-stroke" />
         )))}
+        {/* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй; цэгийг доорх ЦЭГҮҮД давхарга зурна */}
+        {physSegs.map((seg) => (seg.single ? null : (
+          <path
+            key={`ps-${seg.from}`}
+            d={seg.d}
+            className={f.physLine}
+            style={{ stroke: PHYS, strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash, strokeLinecap: 'butt' }}
+            vectorEffect="non-scaling-stroke"
+          />
+        )))}
+
+        {/* ── HOVER — босоо шугам ──
+            ⚠️ 2026-10-23 (Environment `AreaChart`): crosshair нь `--data` 1px `2 2` .7; заасан сарын
+               7px тэмдэг (`SvgHoverMarker`) ХАСАГДСАН — цэг нь доорх давхаргад 1 тунгалагтай тодорно. */}
+        {hi != null && (
+          <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
+        )}
+
+        {/* ── ЦЭГҮҮД — Environment `AreaChart`: 5px + 2px `--surface` цагираг, ҮРГЭЛЖ харагдана
+            (.5; заасан сар 1, бусад .15; томруулахгүй). ⚠️ Биет нь зөвхөн ХЭМЖИГДСЭН сард (null ≠ 0). */}
+        {rows.map((r, i) => (i <= lastGiven ? (
+          <circle
+            key={`gd-${i}`}
+            cx={xFor(i)}
+            cy={yFor(r.givenCum)}
+            r={CHART.markerR + CHART.ring / 2}
+            className={f.sDot}
+            style={{ fill: ACT, strokeWidth: CHART.ring, opacity: dotOp(i) }}
+          />
+        ) : null))}
+        {rows.map((r, i) => (i <= lastPhys && r.physPct != null ? (
+          <circle
+            key={`pd-${i}`}
+            cx={xFor(i)}
+            cy={yPhys(r)}
+            r={CHART.markerR + CHART.ring / 2}
+            className={f.sDot}
+            style={{ fill: PHYS, strokeWidth: CHART.ring, opacity: dotOp(i) }}
+          />
+        ) : null))}
 
         {/* ── ЦЭГ БҮР ДЭЭР УТГА ──
             ⚠️ Зөвхөн эцсийн утга үзүүлэх нь БУРУУ байв: 12 сарын урт графикийг
@@ -630,15 +741,15 @@ export function ComboChart({
                утга нүдэнд харагдах ёстой.
             ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: олголт нь муруйнхаа ДООР, биет нь
                түүнээс илүү доор бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй. */}
-        {/* ⚠️ 2026-10-09 (лавлах CRM загвар): шошготой цэгийн ТЭМДЭГ нуугдсан (бичиг хэвээр);
-            тэмдэг нь зөвхөн заасан сард (`SvgHoverMarker`), тэр сарын бичиг pill-д шилжинэ. */}
+        {/* ⚠️ 2026-10-23 (Environment `AreaChart`): бичиг 10px/400 `--ink-2` (заасан сард `--ink`),
+            halo-гүй; заасан сарын бичиг ч ҮЛДЭНЭ (pill хасагдсан). */}
         {rows.map((r, i) => {
-          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i) || i === hi) return null;
+          if (i > lastGiven || r.givenCum <= 0 || !givenLbl.has(i)) return null;
           const x = xFor(i);
           const y = yFor(r.givenCum);
           return (
             <g key={`gv-${i}`}>
-              <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={f.ptVal} style={{ fill: ACT }} textAnchor={anchorFor(i)}>
+              <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={`${f.ptVal} ${i === hi ? f.ptValOn : ''}`} textAnchor={anchorFor(i)}>
                 {num(r.givenCum)}
               </text>
             </g>
@@ -646,80 +757,75 @@ export function ComboChart({
         })}
         {rows.map((r, i) => {
           // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
-          if (i > lastPhys || r.physPct == null || !physLbl.has(i) || i === hi) return null;
+          if (i > lastPhys || r.physPct == null || !physLbl.has(i)) return null;
           const x = xFor(i);
           const y = yPhys(r);
           return (
             <g key={`ph-${i}`}>
-              <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={f.ptVal} style={{ fill: PHYS }} textAnchor={anchorFor(i)}>
+              <text x={x} y={Math.min(padT + plotH - 4, y + 28)} className={`${f.ptVal} ${i === hi ? f.ptValOn : ''}`} textAnchor={anchorFor(i)}>
                 {pct(r.physPct, 1)}
               </text>
             </g>
           );
         })}
 
-        {/* ── HOVER — босоо шугам + цуваа бүрийн цэг ── */}
-        {hi != null && (
-          <g>
-            <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={f.curveCursor} />
-            {/* ⚠️ 2026-10-09 (лавлах CRM загвар): r 4.5 + гало (`SvgHoverMarker`) */}
-            {hi <= lastGiven && <SvgHoverMarker cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} color={ACT} />}
-            {hi <= lastPhys && rows[hi].physPct != null && <SvgHoverMarker cx={xFor(hi)} cy={yPhys(rows[hi])} color={PHYS} />}
-          </g>
-        )}
-
         {/* ── X тэнхлэг — ЗӨВХӨН он сар. Хоёр хувийн мөр tooltip руу шилжсэн:
             тэдгээр нь харьцуулах биш, лавлах тоо тул байнга харагдах шаардлагагүй
             бөгөөд график доор гурван мөр эзэлж, муруйд өгөх зайг иддэг байв. */}
         {rows.map((r, i) => (axisLbl.has(i) ? (
-          <text key={r.label} x={xFor(i)} y={H - 10} className={f.axisX} textAnchor={anchorFor(i)}>
+          <text key={r.label} x={xFor(i)} y={H - 10} className={`${f.axisX} ${i === hi ? f.axisXOn : ''}`} textAnchor={anchorFor(i)}>
             {r.label}
           </text>
         ) : null))}
       </svg>
 
-      {/* ⚠️ 2026-10-09 (лавлах CRM загвар): заасан сарын УТГЫН PILL — олголт цэгийнхээ ДЭЭР, биет
-          ДООР (хоёр цуваа ойртсон ч давхцахгүй). `viewBox` = бодит px тул SVG-ийн цэгтэй ЯГ
-          давхцана. Задаргаа (бүтэн ₮) нь доорх tooltip-д хэвээр. */}
-      {pt && hi != null && (
-        <>
-          {hi <= lastGiven && pt.givenCum > 0 && (
-            <PointCallout
-              x={xFor(hi)}
-              y={yFor(pt.givenCum)}
-              text={num(pt.givenCum)}
-              color={ACT}
-              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
-            />
-          )}
-          {hi <= lastPhys && pt.physPct != null && (
-            <PointCallout
-              x={xFor(hi)}
-              y={yPhys(pt)}
-              text={pct(pt.physPct, 1)}
-              color={PHYS}
-              below
-              align={calloutAlign(((xFor(hi) - padL) / Math.max(1, plotW)) * 100)}
-            />
-          )}
-        </>
-      )}
-
-      {/* ── TOOLTIP — задаргаа бүхэлдээ энд ── */}
-      {pt && (
-        <div
-          className={f.tip}
-          /* ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
+      {/* ── TOOLTIP — задаргаа бүхэлдээ энд ──
+          ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
              муруйн цэгтэй яг давхцана; урьд нь wrap-ийн %-оор тул `padL`-ийн хэрээр зүүн тийш зөрдөг байв.
-             ⚠️ 2026-10-09 (лавлах CRM загвар): 10 → 34px — утгын pill-тэй давхцахгүй. */
-          style={{ left: xFor(hi!), transform: `translateX(${hi! < N / 2 ? '34px' : 'calc(-100% - 34px)'})` }}
-        >
-          <p className={`num ${f.tipHd}`}>{pt.label}</p>
-          <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>
-          {!hidePhys && <p className={f.tipRow}><i style={{ background: PHYS }} />{/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
-            {tr('Биет гүйцэтгэл')}<b className="num">{pct(pt.physPct, 1)}</b></p>}
-        </div>
-      )}
+          ⚠️ 2026-10-23 (Environment `AreaChart` Tooltip): курсорын дээд талд биш ЦЭГИЙН дэргэд —
+             t < .22 зүүнээс, > .78 баруунаас, бусад голлуулна; цэг дээд 45%-д бол ДООР, эс бөгөөс ДЭЭР
+             (10px зай). Утгын pill (`PointCallout`) ХАСАГДСАН — утга нь энд 17px-ээр. */}
+      {pt && hi != null && (() => {
+        /* Түшиц цэг — олголт (байвал), эс бөгөөс хэмжигдсэн биет, эс бөгөөс ёроол */
+        const ty = hi <= lastGiven ? yFor(pt.givenCum)
+          : hi <= lastPhys && pt.physPct != null ? yPhys(pt) : padT + plotH;
+        const t = (xFor(hi) - padL) / Math.max(1, plotW);
+        const shift = t < 0.22 ? '0%' : t > 0.78 ? '-100%' : '-50%';
+        const below = (ty / H) * 100 < 45;
+        /* Сарын олголт = өссөн дүнгийн өөрчлөлт (Environment-ийн ▲/▼ мөр) */
+        const d = hi > 0 ? pt.it.given : null;
+        return (
+          <div
+            className={f.tip}
+            style={{ left: xFor(hi), top: ty, transform: `translate(${shift}, ${below ? '10px' : 'calc(-100% - 10px)'})` }}
+          >
+            <div className={f.tipHd}>
+              <span className={f.tipDot} style={{ background: ACT }} />
+              <span className="num">{pt.label}</span>
+            </div>
+            <div className={f.tipBody}>
+              <div className={f.tipMain}>
+                <span className={`num ${f.tipBig}`} style={{ color: ACT }}>{pt.givenCum > 0 ? num(pt.givenCum) : '—'}</span>
+                <span className={f.tipUnit}>₮ · {tr('Олгосон санхүүжилт')}</span>
+              </div>
+              {d != null && pt.givenCum > 0 && (
+                <div className={f.tipMeta}>
+                  <span className="num" style={{ color: d !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
+                    {d > 0 ? '▲' : d < 0 ? '▼' : '='} {num(Math.abs(d))} ₮
+                  </span>
+                </div>
+              )}
+              {!hidePhys && (
+                <p className={f.tipRow}>
+                  <i className={f.tipSwDash} />
+                  {/* «—» = ХЭМЖИГДЭЭГҮЙ; жинхэнэ 0% нь «0.0%» гэж гарна */}
+                  {tr('Биет гүйцэтгэл')}<b className="num">{pct(pt.physPct, 1)}</b>
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -775,7 +881,7 @@ const loadCfMonthRows = cached(
     outFields: ['*'],
     /* ⚠️ 2026-10-06 (аудит): oid-ийн tiebreak ЗААВАЛ — ижил (ID, start)-тай мөр (давхардсан
        сар) хуудас хооронд дараалал нь тогтворгүй тул давхардах/алгасагдах эрхтэй. */
-    orderBy: `Cashflow_ID ASC, Cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
+    orderBy: `cashflow_id ASC, cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
     /* ⚠️ 2026-10-05: `limit: 8000` ХАСАГДАВ — 8000-аас давсан сарын мөр ЧИМЭЭГҮЙ тайрагдаж,
        тайрагдсан ажлын сарууд «байхгүй» мэт харагдан хугацаа засахад дахин нэмэгдэх
        эрсдэлтэй байв. `queryFeatures` нь `orderBy`-той үед бүх хуудсыг өөрөө татна. */
@@ -839,6 +945,17 @@ export function planCurveMissing(key?: string | null): boolean {
 }
 
 /**
+ * ТӨСЛИЙН «ОРОН СУУЦНЫ» НЭГТГЭЛИЙН БАГЦУУД — `gdash.HOUSING_PKGS` (`housingMoney`-тэй НЭГ олонлог).
+ * ⚠️ 2026-10-22 (аудит): 2026-10-13-нд блокгүй (дэд бүтцийн) багцууд `phys`-д орсноос хойш «Орон сууцны
+ *    гүйцэтгэл» шошготой `physNow`/`aggregateMonths` 21 багцаар бодогдож (23.10%) орон сууц дангаараа (24.55%)-аас
+ *    зөрж, төлөвлөгөө (хуваарьтай 7 багц) ба зөрүү өөр олонлогоос гардаг байв. Одоо төслийн нэгтгэл · төлөвлөгөө ·
+ *    хоцрогдол бүгд ЭНЭ олонлогоор; дэд бүтэц өөрийн ангилалд (`physNowOf`), багц бүрийн цуваа (`contractMonths`) хэвээр.
+ */
+const HOUSING_SET: ReadonlySet<string> = new Set(HOUSING_PKGS);
+const housingKeys = (fin: Pick<FinData, 'phys' | 'physN'>): string[] =>
+  [...new Set([...fin.phys.keys(), ...(fin.physN?.keys() ?? [])])].filter((k) => HOUSING_SET.has(k));
+
+/**
  * ТӨСЛИЙН ТӨЛӨВЛӨГӨӨТ ХУВИЙН ЦУВАА — бодит тал (`pkgShared.aggregateMonths`/`physNow`)-тай
  * ЯГ НЭГ жин (`gdash.pkgCostWeight` ← ижил `contracts`). PkgProg `TsKpi` + графикийн
  * төслийн муруй · удирдлагын тайлан · `lagOf` (Дашбоард, PkgFin) бүгд ЭНЭ функцээр.
@@ -847,8 +964,10 @@ export function projectPlanOf(fin: Pick<FinData, 'contracts' | 'phys' | 'physN'>
   /* ⚠️ 2026-10-09 (аудит): багцын олонлог бодит талтай (`phys` ∪ `physN`) НЭГ —
      `gdash.housingPlanSeries`-ийн `pkgs` ⚠️ (хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй)
      ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц байвал ХООСОН буцаахаа БОЛИВ — шугам
-     ХУВААРЬТАЙ багцаар; хоцрогдлын бодит тал ч ТЭР олонлогоор (`physLag`, `projectLagNow`). */
-  const pkgs = [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])];
+     ХУВААРЬТАЙ багцаар; хоцрогдлын бодит тал ч ТЭР олонлогоор (`physLag`, `projectLagNow`).
+     ⚠️ 2026-10-22 (аудит): бодит тал орон сууцаар (`housingKeys`) тул энд ч мөн — дэд бүтэц «хасагдсан
+     хуваарьгүй багц» болж «(хуваарьтай багцаар)» тэмдэглэл, тусдаа бодит (`physLag`) үүсгэхгүй. */
+  const pkgs = housingKeys(fin);
   return housingPlanSeries(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), pc.months, pkgs);
 }
 
@@ -862,8 +981,8 @@ export function projectPlanScope(
   pc: PlanCurve | null = planCurveCache,
 ): { keys: Set<string>; excluded: string[] } | null {
   if (!pc) return null;
-  const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)),
-    [...fin.phys.keys(), ...(fin.physN?.keys() ?? [])]);
+  /* ⚠️ 2026-10-22 (аудит): орон сууцны олонлог (`housingKeys`) — `projectPlanOf`-той нэг */
+  const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), housingKeys(fin));
   /* PKGS-д алга (дэд бүтэц г.м.) бол «БАГЦ14» → «Багц 14» */
   const name = (k: string) => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k.replace(/^БАГЦ/, 'Багц ');
   return { keys: sc.keys, excluded: sc.excluded.map(name) };
@@ -874,13 +993,15 @@ export function projectPlanScope(
  * (`physLag`) ХОЁУЛАА хуваарьтай багцаар (нэг олонлог). PkgProg `TsKpi` · удирдлагын тайлан ·
  * ТУХ-ийн нэг дүрэм. `actual` нь ХАРЬЦУУЛАЛТЫН тал — толгойн тоо (`physNow`) биш;
  * `excluded` хоосон бол хоёр ЯГ ижил. Хэмжилтийн өдөр — `measureDayOf` (`lagOf`-той нэг).
+ * ⚠️ 2026-10-22 (аудит): `coverage` — төлөвлөгөөний муруйн хуваарийн хамралт (`planCoverage`, ХО жингээр);
+ *    `coverageOk` биш бол дуудагч хоцорсон/хэвийн гэж ДҮГНЭХГҮЙ, төлөвлөсөн %-ийн хажууд `coverageNote`.
  */
 export function projectLagNow(
   fin: FinData,
   pc: PlanCurve | null,
   nowYm: string = monthKey(),
   today: string = dayKey(Date.now()),
-): { planned: number | null; actual: number | null; gap: number | null; measAt: string; physAsOf: string; excluded: string[] } {
+): { planned: number | null; actual: number | null; gap: number | null; measAt: string; physAsOf: string; excluded: string[]; coverage: number | null } {
   const sc = projectPlanScope(fin, pc);
   let last: { label: string; phys: number; physAt: string | null | undefined } | null = null;
   for (const m of aggregateMonths(fin, pc)) {
@@ -898,6 +1019,7 @@ export function projectLagNow(
     measAt,
     physAsOf: last ? (last.physAt ?? last.label) : '',
     excluded: sc?.excluded ?? [],
+    coverage: plan.length ? planCoverage(plan) : null,
   };
 }
 
@@ -928,9 +1050,12 @@ export function aggregateMonths(
    * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ — бүгд
    *    `gdash.housingPct` — нэг томьёо.
    * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`) ч 0%-иар орно.
+   * ⚠️ 2026-10-22 (аудит): ЗӨВХӨН орон сууцны багцаар (`HOUSING_SET`, `housingKeys`-ийн ⚠️) — «Орон сууцны
+   *    гүйцэтгэл» гэж нэрлэгддэг бүх тоо (physNow · TsKpi · ТУХ · удирдлагын тайлан · GeneralDash) дэд бүтцийг
+   *    агуулахаа болив. `given` (олголт) БҮХ багцаар хэвээр.
    */
   const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
-  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN);
+  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN, HOUSING_SET);
   /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй (ХО жинтэй) багц байвал хоцрогдлын бодит талыг
      ХУВААРЬТАЙ багцаар тусад нь (`physLag`) — төлөвлөгөө (`projectPlanOf`)-тэй нэг олонлог.
      `phys` (толгойн тоо) ХӨНДӨГДӨХГҮЙ. Хасагдсан багц алга бол `physLag` огт тавигдахгүй. */
@@ -977,6 +1102,63 @@ export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
   }
   byKey.set(key, actual);
   return actual;
+}
+
+/**
+ * БАГЦЫН ОЛОНЛОГИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `physNow`-той ЯГ НЭГ томьёо (`gdash.housingSeries`: ХО дүнгээр
+ * жигнэсэн, хуудастай боловч тайлагнаагүй багц 0%), зөвхөн `only` багцаар. Хэмжилтгүй бол `null` (0 биш).
+ * ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц» ангилал (GeneralDash · удирдлагын тайлан) ӨӨРИЙН батлагдсан
+ *    хувьтай болов — урьд нь орон сууцны тоонд холилдож, ангилал нь «Гүйцэтгэл хэмжигдээгүй» гэж гардаг байв
+ *    (5.1 · 5.2 · 7.1 батлагдсан хувьтай атал).
+ */
+export function physNowOf(d: FinData, only: ReadonlySet<string>, nowYm: string = monthKey()): { pct: number; at: string } | null {
+  if (!only.size) return null;
+  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
+  let out: { pct: number; at: string } | null = null;
+  for (const s of housingSeries(d.phys, d.physCnt, d.physAt, cost, cfMonthAxis(), d.physN, only)) {
+    if (s.label > nowYm) continue;
+    if (s.phys != null) out = { pct: s.phys, at: s.label };
+  }
+  return out;
+}
+
+/** Cashflow-ийн ажлын төрөл (`CfRow.type`) — инженерийн дэд бүтэц (2026-10-22, `typePhysNow`) */
+export const INFRA_TYPE = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ';
+
+/**
+ * АЖЛЫН ТӨРЛИЙН (ангиллын) БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — тэр төрлийн мөрүүдийн багцаар (`pkgKeyOf(pkg2)`) `physNowOf`.
+ * ⚠️ 2026-10-22 (аудит): GeneralDash «Төсөв, гэрээлсэн дүн» ба удирдлагын тайлангийн «Ажлын төрлөөр» хүснэгт
+ *    НЭГ функцээр — дэд бүтцийн ангилал «Гүйцэтгэл хэмжигдээгүй» биш, өөрийн батлагдсан хувьтай. Бөглөх хуудасгүй
+ *    багц (8, 7.2 г.м.) олонлогт ороод ч `phys`/`physN`-д алга тул тооцоонд ОРОХГҮЙ (null ≠ 0).
+ */
+export function typePhysNow(
+  d: FinData,
+  rows: Iterable<{ type: string; pkg2: string }>,
+  type: string,
+  nowYm: string = monthKey(),
+): { pct: number; at: string } | null {
+  const keys = new Set<string>();
+  for (const r of rows) {
+    if (r.type !== type) continue;
+    const k = pkgKeyOf(r.pkg2);
+    if (k && k !== '0') keys.add(k);
+  }
+  return physNowOf(d, keys, nowYm);
+}
+
+/**
+ * «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ»-ийн биет хувь `FinData.contracts`-аас (ТҮҮХИЙ мөр — ангилал `finXlChartCat`, `gdash.loadGdashCf`-ийн
+ * `CfRow.type`-тай НЭГ дүрэм) — «Гүйцэтгэл»-ийн «Төслийн төрөл» (2026-10-22, аудит). GeneralDash · удирдлагын тайлантай
+ * (`typePhysNow(…, CfRow[])`) ижил тоо.
+ */
+export function infraPhysNow(d: FinData, nowYm: string = monthKey()): { pct: number; at: string } | null {
+  const C = CASHFLOW_NEW.fields;
+  return typePhysNow(
+    d,
+    d.contracts.map((r) => ({ type: finXlChartCat(r), pkg2: String(r[C.pkg2] ?? '').trim() })),
+    INFRA_TYPE,
+    nowYm,
+  );
 }
 
 async function loadFinDataRaw(): Promise<FinData> {
@@ -1328,6 +1510,13 @@ export function pkgMonthsMap(fin: FinData): Map<string, MonthPt[]> {
       if (k && !m.has(k)) m.set(k, contractMonths(r, fin));
     });
   });
+  /* ⚠️ 2026-10-26 (аудит): газрын зургийн багцын түлхүүрээр (`MAP_PKG_ALIAS`, БАГЦ71 → БАГЦ7) — «Багцын гүйцэтгэл»-ийн
+     жагсаалт газрын зургийн багцаар хайдаг тул Багц 7-д «—», хоцрогдлын тэмдэггүй гарч байв. Өөрийн мөр байвал ДАВАМГАЙЛНА
+     (тиймээс түүхий түлхүүрүүдийн ДАРАА нэмнэ). `contractMonths` нь phys/given-ийг түүхий түлхүүрээр хайна. */
+  for (const [src, { key }] of Object.entries(MAP_PKG_ALIAS)) {
+    const pts = m.get(src);
+    if (pts && !m.has(key)) m.set(key, pts);
+  }
   return m;
 }
 
@@ -1346,6 +1535,9 @@ export function physLatest(months: MonthPt[] | null | undefined): number | null 
   for (const m of months) if (m.label <= nowYm && m.phys != null) v = m.phys;
   return v;
 }
+
+/** `lagOf`-ийн үр дүн — ⚠️ 2026-10-22 (аудит): `coverage` = тухайн муруйн хуваарийн хамралт (`planCoverage`, 0–100) */
+export type LagPoint = { month: string; planned: number; actual: number; gap: number; coverage: number | null };
 
 /**
  * ХОЦРОГДЛЫН ШАЛГАЛТ — БИЕТ гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
@@ -1371,8 +1563,11 @@ export function physLatest(months: MonthPt[] | null | undefined): number | null 
  *
  * ⚠️ ГАРЫН ҮСЭГ ХЭВЭЭР (`lagOf(months)`) — ExecKpi · PkgProg · PkgFin гурав
  *    үүнийг дууддаг. Багцын түлхүүр нь `MonthPt.pkg`-ээр цэг дотроо явна.
+ * ⚠️ 2026-10-22 (аудит): үр дүнд `coverage` (тухайн муруйн хуваарийн хамралт, `planCoverage`) НЭМЭГДЭВ —
+ *    огноогүй ажил төлөвлөгөөнд 0-ээр ордог тул хамралт бага муруйн `planned` хэт бага, `gap` нь «түрүүлсэн»
+ *    мэт гардаг. Дүгнэлт (`lagLevelOf`/`lagJudged`) зөвхөн `coverageOk` үед; тоо (`planned`) хэвээр.
  */
-export function lagOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number } | null {
+export function lagOf(months: MonthPt[]): LagPoint | null {
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   let mi = -1;
   months.forEach((m, i) => {
@@ -1424,11 +1619,12 @@ function lagPhysAt(m: MonthPt): string | null | undefined {
   return m.physLagAt !== undefined ? m.physLagAt : m.physAt;
 }
 
-function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; planned: number; actual: number; gap: number } | null {
+function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): LagPoint | null {
   const planned = planPctAt(series, measureDayOf(m.label, lagPhysAt(m), dayKey(Date.now())));
   if (planned == null || planned <= 0) return null;
   const actual = lagPhys(m) ?? 0;
-  return { month: m.label, planned, actual, gap: planned - actual };
+  /* ⚠️ 2026-10-22 (аудит): хамралт — ЯГ ЭНЭ муруйн төгсгөл (`lagOf`-ийн ⚠️) */
+  return { month: m.label, planned, actual, gap: planned - actual, coverage: planCoverage(series) };
 }
 
 /**
@@ -1438,11 +1634,11 @@ function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; 
  *    сараар» урьд нь `selbe_bagts_guitsetgel_negtgel`-ийн ТУРШИЛТЫН мөрөөс зурагддаг байв
  *    (сүүлийн мөр 09-09, Б3.1 алга, төлөвлөгөө буруу) — одоо PkgProg/ТУХ-тай нэг эх.
  */
-export function lagSeriesOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number }[] {
+export function lagSeriesOf(months: MonthPt[]): LagPoint[] {
   const series = lagSeriesCurve(months);
   if (!series) return [];
   const nowYm = monthKey();
-  const out: { month: string; planned: number; actual: number; gap: number }[] = [];
+  const out: LagPoint[] = [];
   for (const m of months) {
     if (m.label > nowYm || lagPhys(m) == null) continue;
     const p = lagPointAt(m, series);
@@ -1472,6 +1668,19 @@ export function lagReasonOf(months: MonthPt[]): 'ok' | 'no-phys' | 'no-curve' | 
 /** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
 export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
   gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null;
+
+/**
+ * ХОЦРОГДЛЫГ ДҮГНЭЖ БОЛОХ УУ — муруй хангалттай хамарсан (`planProgress.coverageOk`, ≥ 95%).
+ * ⚠️ 2026-10-22 (аудит): хамралт бага үед улаан/шар/«хэвийн», «хоцорсон/түрүүлсэн» үг, хуваарийн оноо ГАРАХГҮЙ —
+ *    хуваарьгүй ажлын жин төлөвлөгөөнд 0-ээр орж хоцорсон багцыг «Хэвийн» гэж харуулдаг байв. Төлөвлөсөн % нь
+ *    хамралтын тэмдэглэлтэй (`coverageNote`) харагдсаар.
+ */
+export const lagJudged = (lag: { coverage?: number | null } | null | undefined): boolean =>
+  !!lag && coverageOk(lag.coverage);
+
+/** `lagLevel` — ЗӨВХӨН дүгнэж болох хоцрогдолд (`lagJudged`), эс бөгөөс `null` (2026-10-22) */
+export const lagLevelOf = (lag: { gap: number; coverage?: number | null } | null | undefined): 'red' | 'yellow' | null =>
+  (lag && lagJudged(lag) ? lagLevel(lag.gap) : null);
 
 /* ═══════════════════════════════════════════════════════════
    САНХҮҮЖИЛТ — ХОЁР БҮРЭН ХҮСНЭГТ (Cashflow · IPC), ГРАФИКГҮЙ
@@ -1503,7 +1712,7 @@ export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
  * ⚠️ Талбар БАЙХГҮЙ ч байж болно (Editor Tracking унтраасан үйлчилгээ) —
  * тэр үед тэмдэглэгээ зүгээр л гарахгүй, хүснэгт хэвийн ажиллана.
  */
-const ET_FIELDS = { editor: 'Editor', editDate: 'EditDate' } as const;
+const ET_FIELDS = { editor: 'last_edited_user', editDate: 'last_edited_date' } as const;
 
 type EditStamp = { who: string; ms: number } | null;
 
@@ -1530,7 +1739,7 @@ const PLAIN_INT = new Set<string>([
      болж гардаг байв (`summable` нь `PLAIN_INT`-ийг хасдаг). `Cashflow_ID` нь
      тоон (сарын мөрийн холбоос); `dugaar2`, `bagts_74` нь дугаар/кодын багана —
      тоон биш бол энэ жагсаалт тэдэнд нөлөөгүй. */
-  'Cashflow_ID',
+  'cashflow_id',
   'dugaar2',
   'bagts_74',
 ]);
@@ -1562,7 +1771,7 @@ const PLAIN_INT = new Set<string>([
 const isSkip = (name: string, type: string, oidField: string): boolean =>
   type === 'esriFieldTypeGlobalID'
   || /globalid/i.test(name)
-  || /^(creationdate|creator|editdate|editor)$/i.test(name)
+  || /^(creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i.test(name)
   || name === oidField;
 /* ⚠️ 2026-09-09: «Гэрээний код» баганыг НУУХАА БОЛИВ. Хуучин `IPC02` нь
    G01…G76 гэсэн ДОТООД танигч байсан тул нуугддаг байв; шинэ `geree_kod` нь
@@ -1596,8 +1805,11 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
     if (PLAIN_INT.has(name)) return { text: String(Math.trunc(x)), num: true };
     /* ⚠️ 2026-10-06: «Үнэт цаас %» (`zahiramj_unet_tsaas_huvi`) нь 0–1 БУТАРХАЙ (`fields.ts`) — урьд нь
        «0.09» гэж түүхийгээр гардаг байв. `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул энд ×100. Зурвас/НИЙТ мөрд
-       хоосон хэвээр (`sumText`-ийн ⚠️). Засварын талбар (`editText`) түүхий утгаа хадгална. */
-    if (name === CASHFLOW_NEW.fields.share) return { text: pct(x * 100, 1), num: true };
+       хоосон хэвээр (`sumText`-ийн ⚠️). ⚠️ 2026-10-21: засварын талбар ч ×100 (`editTextF` · `shareFromEdit`).
+       ⚠️ 2026-10-21 (аудит): «Урьдчилгаа → Хувь» (`urdchilgaa_huvi`) ч 0–1 бутархай (амьд max 0.2) — нэг
+       жагсаалтаар (`FIN_XL_FRACTION`); урьд нь `FIN_XL_PCT` (0–100)-д байж «0.2» гэж гардаг байв. */
+    /* ⚠️ 2026-10-22 (аудит): дүрэм `finExcelLayout.finXlFractionText`-д (×100) */
+    if (finXlIsFraction(name)) return { text: finXlFractionText(x), num: true };
     const raw = String(x).split('.')[1]?.length ?? 0;
     const dec = Math.abs(x) >= 1000 ? 0 : Math.min(2, raw);
     return { text: num(x, dec), num: true };
@@ -1613,7 +1825,19 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
 const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text;
 const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
 /* ⚠️ 2026-10-11 (аудит №7): тоон шүүлтийн хэмжээс — `fmtCell`-ийн ×100 («Үнэт цаас %»)-тай НЭГ (`finFilter.rowMatches`) */
-const shareScale = (n: string): number => (n === CASHFLOW_NEW.fields.share ? 100 : 1);
+/* ⚠️ 2026-10-21 (аудит): `FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч ×100 */
+/* ⚠️ 2026-10-22 (аудит): дүрэм `finExcelLayout.finXlScale`-д (шалгуур шууд дууддаг) */
+const shareScale = finXlScale;
+/**
+ * ⚠️ 2026-10-21: «Үнэт цаас %» ЗАСВАРЫН талбар ч харагдацтай ИЖИЛ ×100 нэгжээр (0–100). Урьд нь
+ *    харагдац «9.0%» атал засвар түүхий 0.09-г харуулж, хэрэглэгч «9» бичихэд 9 хадгалагдаж
+ *    хүснэгтэд 900% гардаг байв. Хадгалахдаа `shareFromEdit` нь ÷100 (мужийг `isPctField` шалгана).
+ *    `toPrecision(12)` — 0.07 × 100 = 7.000000000000001 мэт хөвөгч сүүлийг хасна.
+ * ⚠️ 2026-10-21 (аудит): бүх бутархай хувийн талбарт (`FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч).
+ */
+/* ⚠️ 2026-10-22 (аудит): ×100 · `toPrecision(12)` дүрэм `finExcelLayout.finXlEditText`-д */
+const editTextF = (v: unknown, type: string, name: string): string =>
+  finXlEditText(v, name) ?? editText(v, type);
 
 /**
  * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
@@ -1636,7 +1860,9 @@ const parseCell = (s: string, type: string, label: string, pct = false): unknown
  * ⚠️ 2026-09-30: «8,333» (Excel-ийн аравтын таслал) мянгат гэж уншигдаж 8333% болж,
  *    `Cashflow_dun`-д гэрээний 83 дахин дүн бичигддэг байв.
  */
-const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f);
+/* ⚠️ 2026-10-21: бутархай хувийн талбарууд (`FIN_XL_FRACTION`: «Үнэт цаас %» · «Урьдчилгаа → Хувь») ч — засвар нь
+   ×100 нэгжээр (`editTextF`) тул 0–100 муж шалгана */
+const isPctField = (f: string): boolean => f === 'cashflow_huwi' || FIN_XL_PCT.includes(f) || FIN_XL_FRACTION.includes(f);
 
 /**
  * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
@@ -1653,7 +1879,15 @@ const EMPTY_HIDE: string[] = [];
  *    (`publish` бодно). Гараар засуулбал дараагийн хувь/ХО засварт чимээгүй
  *    дарагдаж, тэр хооронд хувьтайгаа зөрсөн дүн хадгалагдана.
  */
-const CALC_RO = new Set<string>(['Cashflow_dun']);
+/*
+ * ⚠️ 2026-10-26: `sar_mongo_eh` (`monthSource`) ч УНШИХ ЛУУГ — 'garaar' → 'huvaari' шилжүүлэлт ЗӨВХӨН
+ *    `switchToHuvaari`-аар (тусдаа `cfSwitch` эрх · батлуулах цонх · гараар сарын мөрийг УСТГАНА). Нүдээр бичвэл
+ *    `finEdit`-тэй хэн ч эрх/цонхгүй шилжүүлж, сарын мөрүүд устгалгүй нуугдан (тооцоонд орохгүй) хүснэгтэд үлддэг;
+ *    'garaar' руу буцааж бичвэл (шилжүүлэлт буцаагдахгүй — cf-wave2) гэрээ сарын мөргүй үлдэнэ.
+ */
+/* ⚠️ 2026-10-26 (аудит): `geree_ehleh`/`geree_duusah` — «ТЭЗҮ · Ажлын зураг төсөл» (ZuragTosol) эзэмшинэ: тэнд хос/дарааллын
+   шалгалт (`zuragEdit` эрх) бий, энд `finEdit`-ээр шалгалтгүй (дуусах < эхлэх) засагддаг байв. */
+const CALC_RO = new Set<string>(['cashflow_dun', CASHFLOW_NEW.fields.monthSource, 'geree_ehleh', 'geree_duusah']);
 
 /**
  * `Cashflow_ID` — хоосон бол `null`.
@@ -1666,6 +1900,60 @@ const cfIdOf = (v: unknown): number | null => {
   const x = Number(v);
   return Number.isFinite(x) ? x : null;
 };
+
+/* ═══ САРЫН МӨНГӨНИЙ ЭХ — «Гараар» / «Хуваарь» (2026-10-26, `monthlyMoney`-ийн толгой) ═══ */
+
+/** Тооцоолсон ('huvaari') сарын СИНТЕТИК мөрийн тэмдэг — OID-гүй, засагдахгүй */
+const HUV_ROW = '__huv';
+
+/** 'huvaari' гэрээнүүд ба тэдгээрийн тооцоолсон сарууд (`FullTable.huv`) */
+type HuvMonths = { ids: ReadonlySet<number>; rows: ReadonlyMap<number, Row[]> };
+
+/** Сарын мөр → `monthlyMoney`-ийн оролт (`gdash.CfPlanRow`) — `CashflowPlan.manualOf`-тэй ижил дүрэм */
+const manualCfRows = (rows: readonly Row[]) => rows
+  .map((r) => {
+    const amt = r[CF_MONTH.amount];
+    const pc = r[CF_MONTH.pct];
+    const numOr = (v: unknown) => (v == null || String(v).trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    return { id: cfIdOf(r[CF_MONTH.id]) ?? -1, start: cfIdOf(r[CF_MONTH.start]), pct: numOr(pc), amount: numOr(amt) };
+  })
+  .filter((r) => r.id > 0 && r.start != null);
+
+/**
+ * 5-р түвшний сарын дэд мөрд утгаа харуулах багана мөн эсэх (`cashflow_*`).
+ *
+ * ⚠️ 2026-10-26: Enterprise-ийн талбарын нэр ЖИЖИГ үсэгтэй (`cashflow_huwi` · `cashflow_dun` ·
+ * `cashflow_start` …). entMap хасагдсаны (f26c7f9) дараа `startsWith('Cashflow_')` (том C) үргэлж
+ * худал болж, гараар ба тооцоолсон ('huvaari') сарын мөр бүхэлдээ хоосон нүдтэй гардаг байв —
+ * үсгийг харгалзахгүй харьцуулна.
+ */
+export const isCfMonthCol = (name: string): boolean => name.toLowerCase().startsWith('cashflow_');
+
+/**
+ * Тооцоолсон сарын мөнгө → 5-р түвшний синтетик сарын мөр (гараар мөрийн талбарын нэрээр).
+ * `Cashflow_huwi` = дүн ÷ ХО дүн × 100 (0–100, гараар мөрийн нэгж); ХО дүнгүй бол null («—», 0 биш).
+ * `start`/`end` — тэр сарын 1 ба сүүлийн өдрийн UTC үд дунд (`publish`-ийн бичилтийн конвенц).
+ */
+export function huvMonthRows(money: MonthlyMoney | null | undefined): Map<number, Row[]> {
+  const out = new Map<number, Row[]>();
+  if (!money) return out;
+  for (const c of money.contracts.values()) {
+    if (c.source !== SRC_HUVAARI) continue;
+    out.set(c.id, [...c.months.keys()].sort().map((k) => {
+      const [y, mo] = k.split('-').map(Number);
+      const amount = c.months.get(k)!;
+      return {
+        [HUV_ROW]: true,
+        [CF_MONTH.id]: c.id,
+        [CF_MONTH.start]: Date.UTC(y, mo - 1, 1, 12),
+        [CF_MONTH.end]: Date.UTC(y, mo, 0, 12),
+        [CF_MONTH.pct]: c.cost != null ? (amount / c.cost) * 100 : null,
+        [CF_MONTH.amount]: amount,
+      };
+    }));
+  }
+  return out;
+}
 
 /**
  * Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар.
@@ -1686,8 +1974,14 @@ const cfIdOf = (v: unknown): number | null => {
  */
 function FullTable({
   title, subtitle, rows, fields, url, oidField, dataKey, facets, months = [], monthsError = false,
-  canEdit, canRow, onSaved, onDirty,
+  canEdit, canRow, onSaved, onDirty, huv,
 }: {
+  /**
+   * «ХУВААРЬ» ЭХТЭЙ ГЭРЭЭНИЙ ТООЦООЛСОН САРУУД (2026-10-26, `monthlyMoney`) — 5-р түвшинд гараар сарын мөрийн
+   * ОРОНД харагдана, ЗӨВХӨН УНШИХ (OID-гүй синтетик мөр → `xCell` засварын оролт гаргахгүй).
+   * ⚠️ `ids`-д байгаа гэрээний гараар мөр (шилжүүлэхэд устсан ч үлдсэн бол ч) ХАРАГДАХГҮЙ — тооцоонд ч ордоггүй.
+   */
+  huv?: HuvMonths;
   title: string;
   subtitle: string;
   rows: Row[];
@@ -1857,7 +2151,7 @@ function FullTable({
     const m = new Map<number, Row[]>();
     for (const r of months) {
       /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → алгасна (`cfIdOf`-ийн ⚠️) */
-      const id = cfIdOf(r.Cashflow_ID);
+      const id = cfIdOf(r.cashflow_id);
       if (id == null) continue;
       const arr = m.get(id) ?? [];
       arr.push(r);
@@ -1866,10 +2160,16 @@ function FullTable({
     /* ⚠️ Огноогоор эрэмбэлнэ — үйлчилгээний дараалалд найдахгүй
        (2000 мөрийн хуудаслалт дараалал алдагдуулж болно). */
     for (const arr of m.values()) {
-      arr.sort((a, b) => Number(a.Cashflow_start ?? 0) - Number(b.Cashflow_start ?? 0));
+      arr.sort((a, b) => Number(a.cashflow_start ?? 0) - Number(b.cashflow_start ?? 0));
+    }
+    /* ⚠️ 2026-10-26: 'huvaari' гэрээ — гараар мөрийг ТООЦООЛСОН сараар солино (`huv`-ийн ⚠️) */
+    for (const id of huv?.ids ?? []) {
+      const calc = huv?.rows.get(id);
+      if (calc?.length) m.set(id, calc);
+      else m.delete(id);
     }
     return m;
-  }, [months]);
+  }, [months, huv]);
 
   /**
    * МӨРИЙН ЭЦГҮҮДИЙН ЭВХЭЛТИЙН ТҮЛХҮҮР — гүехэнээс гүн рүү.
@@ -2063,7 +2363,8 @@ function FullTable({
    */
   const { user: me } = useAuth();
   const draftKey = me?.username ? `selbe.fin.draft:${me.username}:${dataKey}` : null;
-  type FinDraft = { pend: Record<string, string>; adds: Record<string, string>[]; at: number };
+  type FinDraft = FinanceDraft;
+  const legacyShareInvalidRef = useRef<string[]>([]);
   const [offer, setOffer] = useState<FinDraft | null>(null);
   useEffect(() => {
     let d: FinDraft | null = null;
@@ -2072,7 +2373,7 @@ function FullTable({
         const raw = localStorage.getItem(draftKey);
         const j = raw ? (JSON.parse(raw) as Partial<FinDraft>) : null;
         if (j && typeof j.pend === 'object' && j.pend && Array.isArray(j.adds)
-          && (Object.keys(j.pend).length + j.adds.length) > 0) d = { pend: j.pend, adds: j.adds, at: Number(j.at) || 0 };
+          && (Object.keys(j.pend).length + j.adds.length) > 0) d = { ...j, pend: j.pend, adds: j.adds, at: Number(j.at) || 0 };
       } catch { d = null; }
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-06: нээгдэх агшинд нөөцийг НЭГ удаа уншина (localStorage — гадаад эх сурвалж)
@@ -2081,21 +2382,27 @@ function FullTable({
   useEffect(() => {
     if (!draftKey || dirty === 0) return;
     const t = window.setTimeout(() => {
-      try { localStorage.setItem(draftKey, JSON.stringify({ pend, adds, at: Date.now() } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
+      /* ⚠️ 2026-10-21: v3 — `FIN_XL_FRACTION`-ийн бүх талбар ×100 нэгжээр (`upgradeFinanceDraft`-ийн ⚠️) */
+      try { localStorage.setItem(draftKey, JSON.stringify({ v: 3, pend, adds, at: Date.now(), legacyShareInvalid: legacyShareInvalidRef.current } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
       /* ⚠️ Санал болгосныг үл тоож шинээр засаж эхэлсэн — хуучин нөөц дарагдсан тул самбар хуучирна */
       setOffer(null);
     }, 800);
     return () => window.clearTimeout(t);
   }, [draftKey, dirty, pend, adds]);
   const dropDraft = () => {
+    legacyShareInvalidRef.current = [];
     if (draftKey) { try { localStorage.removeItem(draftKey); } catch { /* хаалттай — чимээгүй */ } }
     setOffer(null);
   };
   const restoreDraft = () => {
     if (!offer) return;
+    /* ⚠️ 2026-10-21: v2 ноорогт «Урьдчилгаа → Хувь» бутархай текст (0.2) хэвээр — `FIN_XL_FRACTION`-аар ×100 (20) */
+    const restored = upgradeFinanceDraft(offer, CASHFLOW_NEW.fields.share, FIN_XL_FRACTION);
+    if (!restored) { setErr(tr('Агуулга ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).')); return; }
+    legacyShareInvalidRef.current = restored.legacyShareInvalid ?? [];
     /* ⚠️ Эрхээр шүүнэ — нүдний утга `finEdit`, шинэ мөр `finRow` (`valEdit`-ийн ⚠️) */
-    if (canEdit) setPendRaw(offer.pend);
-    if (canRow) setAddsRaw(offer.adds);
+    if (canEdit) setPendRaw(restored.pend);
+    if (canRow) setAddsRaw(restored.adds);
     setEdit(true);
     setOffer(null);
   };
@@ -2139,7 +2446,11 @@ function FullTable({
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
         const a = upd.get(oid) ?? { [oidField]: oid };
-        a[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
+        /* ⚠️ 2026-10-21 (аудит): `FIN_XL_FRACTION` — «Урьдчилгаа → Хувь» ч ÷100 (`parseFinanceShare`); урьд нь
+           0–100 гэж шалгаад «20»-ийг шууд хадгалж 0.2 ба 20 холилддог байв. */
+        a[fld] = FIN_XL_FRACTION.includes(fld)
+          ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
+          : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         upd.set(oid, a);
       }
 
@@ -2151,7 +2462,9 @@ function FullTable({
           /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч илгээгдэхгүй —
              гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
           if (CALC_RO.has(fld)) continue;
-          o[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
+          o[fld] = FIN_XL_FRACTION.includes(fld)
+            ? parseFinanceShare(v, typeOf(fld), labelOf(fld), legacyShareInvalidRef.current, PARSE_MSG)
+            : parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         }
         return o;
       }).filter((o) => Object.keys(o).length > 0);
@@ -2198,8 +2511,47 @@ function FullTable({
       /** ⚠️ 2026-10-04: энэ нийтлэлд ОНООСОН `Cashflow_ID`-ууд ба тэдгээрийг авсан ХУУЧИН мөрийн oid — бичсэний дараах давхардлын шалгалтад */
       const cfAssigned = new Set<number>();
       const cfAssignedOld: number[] = [];
+      let financeInputs: FinancePublishInputs | undefined;
       if (dataKey === 'CASHFLOW_NEW') {
-        const rowByOid = new Map(rows.map((r) => [Number(r[oidField]), r]));
+        // Refresh both sides of the calculation before generating any dependent writes.
+        // A percentage-only edit also needs the current parent contract amount.
+        financeInputs = await loadFinancePublishInputs({
+          updates: upd, parents: rows, months, oidField,
+          read: async ({ parentOids, monthOids, ids }) => {
+            const parentWhere = [
+              ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
+              ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
+            ];
+            const monthWhere = [
+              ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
+              ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
+            ];
+            const [parents, freshMonths] = await Promise.all([
+              parentWhere.length ? queryFeatures(url, {
+                where: `(${CF_WORK_WHERE}) AND (${parentWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+              }) : Promise.resolve([]),
+              monthWhere.length ? queryFeatures(url, {
+                where: `(${CF_MONTH_WHERE}) AND (${monthWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+              }) : Promise.resolve([]),
+            ]);
+            return { parents, months: freshMonths };
+          },
+        });
+        const publishRows = financeInputs?.parents ?? rows;
+        const publishMonths = financeInputs?.months ?? months;
+        /* ⚠️ 2026-10-21 (аудит): `financeInputs.months` нь засварын ХУУЧИН ба ШИНЭ `Cashflow_ID`-ийн бүх сар
+           (`loadFinancePublishInputs`-ийн scope.ids — `Cashflow_ID` одоо SOURCE_FIELDS). Урьд нь зөвхөн хуучин дугаарынх
+           тул дугаар + хугацаа хамт засахад `have` хоосон гарч, мужаас гарсан хоосон сар устгагдахгүй, тооны мэдэгдэл
+           зөрдөг байв. Хуучирсан `monthBy` руу УНАХГҮЙ — шинэ уншилт л үнэн (устгасан сар сэргэхгүй). */
+        const publishMonthBy = new Map<number, Row[]>();
+        for (const month of publishMonths) {
+          const id = cfIdOf(month.cashflow_id);
+          if (id == null) continue;
+          const list = publishMonthBy.get(id) ?? [];
+          list.push(month);
+          publishMonthBy.set(id, list);
+        }
+        const rowByOid = new Map(publishRows.map((r) => [Number(r[oidField]), r]));
         /** Огнооны утга — засвартай бол ТҮҮНИЙГ, эс бөгөөс мөрийнхийг */
         const dateOf = (a: Record<string, unknown>, r: Row | undefined, fld: string) => {
           const v = fld in a ? a[fld] : r?.[fld];
@@ -2278,25 +2630,42 @@ function FullTable({
         }
         for (const o of newRows) rangeCheck(o, undefined);
 
-        if (byName.has('Cashflow_ID')) {
-          const lackNew = newRows.filter((o) => cfIdOf(o.Cashflow_ID) == null);
+        /* ⚠️ 2026-10-26 (merge-ийн дараах олдвор): дугаартай мөрийн `cashflow_id`-г АРИЛГАЖ нийтлэхгүй. `CF_WORK_WHERE` нь одоо
+           `cashflow_id IS NOT NULL` шаарддаг тул ID-гүй болсон мөнгөний мөр гэрээний бүртгэл · нийт төсөв · gdash · тайлан бүх
+           нийлбэрээс ЧИМЭЭГҮЙ алга болж (UI-аас буцааж сэргээх боломжгүй), сарын мөрүүд эзэнгүй үлдэж, `cashflow-import` түүнийг
+           бүтцийн мөр гэж устгана. Сарын мөрийн дугаарыг арилгавал мөн эзэнгүй болно. */
+        const monthByOid = new Map(publishMonths.map((r) => [Number(r[oidField]), r]));
+        for (const [oid, a] of upd) {
+          if (!('cashflow_id' in a) || cfIdOf(a.cashflow_id) != null) continue;
+          const r = rowByOid.get(oid) ?? monthByOid.get(oid);
+          if (cfIdOf(r?.cashflow_id) == null) continue;
+          const nm = String(r?.ajil_uilchilgee ?? '').trim() || String(r?.cashflow_id);
+          throw new Error(tr('«{0}» — Cashflow_ID-г арилгах боломжгүй: дугааргүй мөр гэрээний бүртгэл ба бүх нийлбэрээс алга болно.', nm));
+        }
+
+        if (byName.has('cashflow_id')) {
+          const lackNew = newRows.filter((o) => cfIdOf(o.cashflow_id) == null);
           const lackOld = [...upd.entries()].filter(([oid, a]) => ('ehleh_ognoo' in a || 'duusah_ognoo' in a)
-            && cfIdOf(a.Cashflow_ID) == null && cfIdOf(rowByOid.get(oid)?.Cashflow_ID) == null);
+            && cfIdOf(a.cashflow_id) == null && cfIdOf(rowByOid.get(oid)?.cashflow_id) == null);
           if (lackNew.length || lackOld.length) {
             const all = await loadCashflowNewRows();
             let next = 1 + Math.max(0, ...[...all, ...rows, ...months, ...newRows]
-              .map((r) => cfIdOf(r.Cashflow_ID) ?? 0));
-            for (const o of lackNew) { o.Cashflow_ID = next; cfAssigned.add(next); next += 1; }
-            for (const [oid, a] of lackOld) { a.Cashflow_ID = next; cfAssigned.add(next); cfAssignedOld.push(oid); next += 1; }
+              .map((r) => cfIdOf(r.cashflow_id) ?? 0));
+            for (const o of lackNew) { o.cashflow_id = next; cfAssigned.add(next); next += 1; }
+            for (const [oid, a] of lackOld) { a.cashflow_id = next; cfAssigned.add(next); cfAssignedOld.push(oid); next += 1; }
           }
         }
 
         for (const [oid, a] of upd) {
           if (!('ehleh_ognoo' in a) && !('duusah_ognoo' in a)) continue;
           const r = rowByOid.get(oid);
+          /* ⚠️ 2026-10-26 (сарын мөнгөний эх, `monthlyMoney`): 'huvaari' гэрээний сар нь Хуваариас ТООЦООЛОГДОНО —
+             гараар сарын мөрийг шилжүүлэхэд устгасан. Хугацаа засахад энд нэмбэл устгасан мөрүүд БУЦАЖ ирнэ
+             (тооцоонд ордоггүй ч хүснэгтэд хог үлдэнэ) — нэмэх/устгах аль алиныг АЛГАСНА. `r` нь шинэ уншилт. */
+          if (monthSourceOf(r?.[CASHFLOW_NEW.fields.monthSource]) === SRC_HUVAARI) continue;
           /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → 0 БИШ (`cfIdOf`); дээр
              оноосон шинэ дугаар (`a.Cashflow_ID`) давамгайлна. */
-          const id = cfIdOf(a.Cashflow_ID) ?? cfIdOf(r?.Cashflow_ID);
+          const id = cfIdOf(a.cashflow_id) ?? cfIdOf(r?.cashflow_id);
           if (id == null) continue;
           const st = dateOf(a, r, 'ehleh_ognoo');
           const en = dateOf(a, r, 'duusah_ognoo');
@@ -2309,15 +2678,15 @@ function FullTable({
           affected.add(id);
 
           const have = new Map<string, Row>();
-          for (const mr of monthBy.get(id) ?? []) {
-            const t = Number(mr.Cashflow_start);
+          for (const mr of publishMonthBy.get(id) ?? []) {
+            const t = Number(mr.cashflow_start);
             if (Number.isFinite(t)) have.set(startKeyOf(t), mr);
           }
 
           /* Шинээр гарсан сар — нэмнэ (хувь нь ХООСОН, хүн бөглөнө) */
           for (const [k, v] of want) {
             if (have.has(k)) continue;
-            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
+            monthAdds.push({ cashflow_id: id, cashflow_start: v.s, cashflow_end: v.e });
           }
           /* Мужаас гарсан сар — ЗӨВХӨН хоосныг устгана */
           for (const [k, mr] of have) {
@@ -2328,8 +2697,8 @@ function FullTable({
                хүн сард 10 гэж бичээд тэр дороо `duusah_ognoo`-г богиносгоход
                мөр нь `deletes` ба `updates` ХОЁУЛАНД орж, бичсэн утга чимээгүй
                алга болдог байв. */
-            const pv = upd.get(moid)?.Cashflow_huwi;
-            const filled = (mr.Cashflow_huwi != null && String(mr.Cashflow_huwi).trim() !== '')
+            const pv = upd.get(moid)?.cashflow_huwi;
+            const filled = (mr.cashflow_huwi != null && String(mr.cashflow_huwi).trim() !== '')
               || (pv != null && String(pv).trim() !== '');
             if (filled) { keptOut += 1; continue; }
             if (Number.isFinite(moid)) {
@@ -2347,13 +2716,13 @@ function FullTable({
            эцэгтэйгээ OID-оор БИШ `Cashflow_ID`-аар холбогддог (дээр оноосон) тул нэг
            applyEdits-д шууд нэмж болно. Шинэ мөрд одоо байгаа сар байхгүй. */
         for (const o of newRows) {
-          const id = cfIdOf(o.Cashflow_ID);
+          const id = cfIdOf(o.cashflow_id);
           if (id == null) continue;
           const st = dateOf(o, undefined, 'ehleh_ognoo');
           const en = dateOf(o, undefined, 'duusah_ognoo');
           if (st == null || en == null) continue;
           for (const v of monthsOf(st, en).values()) {
-            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
+            monthAdds.push({ cashflow_id: id, cashflow_start: v.s, cashflow_end: v.e });
           }
         }
 
@@ -2366,28 +2735,28 @@ function FullTable({
            Уншилт унавал нийтлэл ЗОГСОНО (таамгаар устгахгүй). Хассаныг мэдэгдэлд хэлнэ. */
         if (affected.size && (monthAdds.length || monthDels.length)) {
           const fresh = await queryFeatures(url, {
-            where: `(${CF_MONTH_WHERE}) AND Cashflow_ID IN (${[...affected].join(',')})`,
-            outFields: [oidField, 'Cashflow_ID', 'Cashflow_start', 'Cashflow_huwi', 'Cashflow_dun'],
+            where: `(${CF_MONTH_WHERE}) AND cashflow_id IN (${[...affected].join(',')})`,
+            outFields: [oidField, 'cashflow_id', 'cashflow_start', 'cashflow_huwi', 'cashflow_dun'],
             orderBy: `${oidField} ASC`,
           });
           const freshByOid = new Map(fresh.map((r) => [Number(r[oidField]), r]));
           const freshKeys = new Set<string>();
           for (const r of fresh) {
-            const fid = cfIdOf(r.Cashflow_ID);
-            const t = Number(r.Cashflow_start);
-            if (fid != null && r.Cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${startKeyOf(t)}`);
+            const fid = cfIdOf(r.cashflow_id);
+            const t = Number(r.cashflow_start);
+            if (fid != null && r.cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${startKeyOf(t)}`);
           }
           const has = (v: unknown) => v != null && String(v).trim() !== '';
           const dels = monthDels.filter((moid) => {
             const fr = freshByOid.get(moid);
             if (!fr) return false; // өөр хүн аль хэдийн устгасан — дахин устгахгүй
-            if (has(fr.Cashflow_huwi) || has(fr.Cashflow_dun)) { skipDel += 1; return false; }
+            if (has(fr.cashflow_huwi) || has(fr.cashflow_dun)) { skipDel += 1; return false; }
             return true;
           });
           monthDels.length = 0;
           monthDels.push(...dels);
           const addsKept = monthAdds.filter((a) => {
-            const k = `${Number(a.Cashflow_ID)}|${keyOf(new Date(Number(a.Cashflow_start)))}`;
+            const k = `${Number(a.cashflow_id)}|${keyOf(new Date(Number(a.cashflow_start)))}`;
             if (freshKeys.has(k)) { skipAdd += 1; return false; }
             return true;
           });
@@ -2399,82 +2768,27 @@ function FullTable({
          * ⚠️ `Cashflow_dun` нь ГАРААР бичигддэггүй: хувь × эцгийн ХО дүн.
          * Хоёуланг нь гараар бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
          */
-        const monthByOid = new Map(months.map((r) => [Number(r[oidField]), r]));
-        /* ⚠️ 2026-09-25: гараар оруулсан `Cashflow_dun` ХЭЗЭЭ Ч илгээгдэхгүй
-           (`CALC_RO`) — доор хувь × ХО дүнгээр л бичигдэнэ. */
-        for (const [k, a] of upd) {
-          delete a.Cashflow_dun;
-          if (Object.keys(a).length <= 1) upd.delete(k); // зөвхөн OID үлдсэн
-        }
-        /** Эцгийн ХО дүн — энэ нийтлэлд засагдсан бол ШИНЭ утга */
-        const costOf = (parent: Row | undefined): number | null => {
-          if (!parent) return null;
-          const pa = upd.get(Number(parent[oidField]));
-          const raw = pa && 'ho_dun_geree' in pa ? pa.ho_dun_geree : parent.ho_dun_geree;
-          /* ⚠️ 2026-09-25: эцгийн ХО дүн хоосон/0 бол `Number(null)` = 0 болж
-             `Cashflow_dun = 0 ₮` БИЧИГДДЭГ байв — «мэдээлэлгүй» нь «хэмжсэн тэг»
-             болж S-муруйд орно (null ≠ 0). «Cashflow хувиарлах» табын
-             `CashflowPlan.costOf`-той ИЖИЛ дүрэм: төгсгөлгүй эсвэл ≤0 бол `null`. */
-          const costN = Number(raw);
-          return raw != null && raw !== '' && Number.isFinite(costN) && costN > 0 ? costN : null;
-        };
-        /** Хувь (засвартай бол түүнийг) × ХО дүн. Хувь хоосон бол `null`, 0 БИШ */
-        const dunOf = (huwi: unknown, cost: number | null): number | null => {
-          const pct = Number(huwi);
-          return huwi == null || String(huwi).trim() === '' || !Number.isFinite(pct) || cost == null
-            ? null
-            : (cost * pct) / 100;
-        };
-        for (const [oid, a] of upd) {
-          if (!('Cashflow_huwi' in a)) continue;
-          const mr = monthByOid.get(oid);
-          /* ⚠️ 2026-09-29 (аудит 10): хоосон дугаар 0 === 0 болж ДУРЫН дугааргүй
-             ажилд наалддаг байв (`cfIdOf`-ийн ⚠️) — дугааргүй бол эцэггүй (`null` ₮). */
-          const mid = cfIdOf(mr?.Cashflow_ID);
-          const parent = mid == null ? undefined : rows.find((r) => cfIdOf(r.Cashflow_ID) === mid);
-          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
-          a.Cashflow_dun = dunOf(a.Cashflow_huwi, costOf(parent));
-        }
-        /* ⚠️ 2026-09-25: ЭЦГИЙН ХО ДҮН өөрчлөгдвөл түүний БҮХ сарын дүнг дахин
-           бодно — урьд нь зөвхөн хувь засагдсан сар л шинэчлэгдэж, бусад сар
-           ХУУЧИН ХО дүнгээр бодсон ₮-тэй үлдэн S-муруй гэрээний дүнтэй зөрдөг байв. */
-        for (const [oid, a] of upd) {
-          if (!('ho_dun_geree' in a)) continue;
-          const parent = rowByOid.get(oid);
-          const id = cfIdOf(parent?.Cashflow_ID); // ⚠️ 2026-09-29 (аудит 10): хоосон → 0 БИШ
-          if (id == null) continue;
-          const cost = costOf(parent);
-          for (const mr of monthBy.get(id) ?? []) {
-            const moid = Number(mr[oidField]);
-            if (!Number.isFinite(moid)) continue;
-            /* ⚠️ 2026-09-29 (аудит 10): дээр устгахаар тэмдэглэсэн сарыг `upd`-д
-               БУЦААЖ оруулахгүй (хугацаа ба ХО дүн нэг нийтлэлд засагдсан үед). */
-            if (monthDels.includes(moid)) continue;
-            const ma = upd.get(moid) ?? { [oidField]: moid };
-            if ('Cashflow_huwi' in ma) continue; // дээрх давталт аль хэдийн бодсон
-            const next = dunOf(mr.Cashflow_huwi, cost);
-            const prev = mr.Cashflow_dun == null ? null : Number(mr.Cashflow_dun);
-            if (next === prev) continue; // өөрчлөгдөөгүй — дэмий бичихгүй
-            ma.Cashflow_dun = next;
-            upd.set(moid, ma);
-          }
-        }
+        recomputeFinanceAmounts({
+          updates: upd, parents: publishRows, months: publishMonths, oidField, deletes: monthDels,
+        });
       }
-      addsInFlight = newRows.length + monthAdds.length > 0;
-      const { n, oids: addedOids } = await applyAll(url, oidField, {
-        updates: [...upd.values()],
-        adds: [...newRows, ...monthAdds],
-        /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
-           (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
-        deletes: monthDels,
-      /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
-         (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
-         «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг).
-         ⚠️ 2026-09-29 (аудит 10): СИСТЕМИЙН сарын мөр (`monthAdds`/`monthDels`) `finRow`
-         шаардахгүй — тэдгээр нь эх өгөгдөл БИШ, хугацаанаас бодогдсон хуваарь
-         (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
-         сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
-      }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+      const { n, oids: addedOids } = await publishFinanceBatch(financeInputs, () => {
+        addsInFlight = newRows.length + monthAdds.length > 0;
+        return applyAll(url, oidField, {
+          updates: [...upd.values()],
+          adds: [...newRows, ...monthAdds],
+          /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
+             (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
+          deletes: monthDels,
+          /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
+             (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
+             «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг).
+             ⚠️ 2026-09-29 (аудит 10): СИСТЕМИЙН сарын мөр (`monthAdds`/`monthDels`) `finRow`
+             шаардахгүй — тэдгээр нь эх өгөгдөл БИШ, хугацаанаас бодогдсон хуваарь
+             (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
+             сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
+        }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+      });
       addsInFlight = false;
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
@@ -2494,7 +2808,7 @@ function FullTable({
         try {
           for (let round = 0; ; round += 1) {
             const [w, m] = await Promise.all([loadCashflowNewRows(), loadCfMonthRows()]);
-            const idRows = [...w, ...m].map((r) => ({ oid: Number(r[oidField]), id: cfIdOf(r.Cashflow_ID) }));
+            const idRows = [...w, ...m].map((r) => ({ oid: Number(r[oidField]), id: cfIdOf(r.cashflow_id) }));
             const hit = collidedIds(idRows, mine, cfAssigned);
             if (!hit.length) break;
             if (round >= 2) {
@@ -2504,7 +2818,7 @@ function FullTable({
             const plan = renumberPlan(idRows, hit);
             const fix = idRows
               .filter((r) => mine.has(r.oid) && r.id != null && plan.has(r.id))
-              .map((r) => ({ [oidField]: r.oid, Cashflow_ID: plan.get(r.id as number) }));
+              .map((r) => ({ [oidField]: r.oid, cashflow_id: plan.get(r.id as number) }));
             if (fix.length) await applyAll(url, oidField, { updates: fix }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
             for (const [a, b] of plan) { cfAssigned.delete(a); cfAssigned.add(b); }
             invalidate(dataKey);
@@ -2598,8 +2912,15 @@ function FullTable({
      * ⚠️ КОДЫН талбарууд (`bagts_tuvshin*`) ч мөн адил — тэдгээр нь зурвасын
      * шошгын урд («4.1 · Гадна цахилгаан холбоо») гарна.
      */
+    /* ⚠️ 2026-10-21 (аудит): `FIN_XL_DROP` (`tusuld_ezleh_huvi` — хуучирсан текстэн хуулбар) ч багана болохгүй */
+    /* ⚠️ 2026-10-26: Excel-ийн ШАТЛАЛЫН талбарууд (`dd_kod` · `etseg_kod` · `tuvshin` · `uy_shat` · `blok` · F · G)
+       багана болохгүй — эзэн нь импорт (`tools/cashflow-import.mjs`). Засуулбал «Төсөл төлөвлөгөө биелэлт»-ийн мод
+       чимээгүй эвдэрнэ (давхар код, эцэггүй мөр, буруу нэгтгэл); F/G нь 0–1 бутархай тул 0–100 хувийн баганын
+       хажууд түүхий харагддаг байв. Утгыг тэр таб модоор нь харуулна. */
+    const CFN = CASHFLOW_NEW.fields;
     const STRUCT = new Set<string>([
-      FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, ...FIN_XL_CODE,
+      FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, ...FIN_XL_CODE, ...FIN_XL_DROP,
+      CFN.ddKod, CFN.parentKod, CFN.level, CFN.phase, CFN.block, CFN.wSection, CFN.wProject,
     ]);
     const noSec = base.filter((c) => !STRUCT.has(c.name));
     const rank = (n: string) => {
@@ -2925,7 +3246,7 @@ function FullTable({
           <button
             type="button"
             className={f.rowBtn}
-            title={tr('Мөр хасах')}
+            title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
             onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
           >×</button>
         </td>
@@ -3206,7 +3527,7 @@ function FullTable({
   ) => {
     const key = `${oid}:${c.name}`;
     if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
-      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
       /*
        * ⚠️ ЗАССАН НҮД НОГООН. `pend`-д байгаа эсэхээр л шийднэ: `onChange` нь
        * анхны утга руугаа буцсан оролтыг `pend`-ээс УСТГАДАГ тул «засаад
@@ -3219,7 +3540,7 @@ function FullTable({
       const onEdit = (v: string) => setPend((pv) => {
         const nx = { ...pv };
         /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-        if (v === editText(r[c.name], c.type)) delete nx[key];
+        if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
         else nx[key] = v;
         return nx;
       });
@@ -3233,8 +3554,10 @@ function FullTable({
         const opts = c.choices.includes(cur) || cur === '' ? c.choices : [cur, ...c.choices];
         return (
           <td key={key} style={sty} className={`${f.cellEdit} ${mark} ${extra}`}>
+            {/* ⚠️ 2026-10-23: `data-rep-skip` — нүдний ЗАСВАР, шүүлт биш (`viewReport.readFilters`) */}
             <select
               className={f.cellPick}
+              data-rep-skip=""
               value={cur}
               onChange={(ev) => onEdit(ev.target.value)}
             >
@@ -3348,10 +3671,10 @@ function FullTable({
   const passVal = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
     const key = `${oid}:${c.name}`;
     if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
-      const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+      const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
       const put = (v: string) => setPend((p) => {
         const nx = { ...p };
-        if (v === editText(r[c.name], c.type)) delete nx[key];
+        if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
         else nx[key] = v;
         return nx;
       });
@@ -3905,8 +4228,6 @@ function FullTable({
     const summable = (c: FieldDef) => (
       NUMERIC_TYPES.has(c.type) && !PLAIN_INT.has(c.name)
     );
-    /** Тухайн багана ХУВЬ мөн үү — нийлбэр биш, жигнэсэн дундаж */
-    const isPct = (name: string) => FIN_XL_PCT.includes(name);
 
     /**
      * Зурвасын нүдний ТЕКСТ — нийлбэр эсвэл жигнэсэн дундаж.
@@ -3922,17 +4243,13 @@ function FullTable({
          (`FIN_XL_PCT`-д санаатай БАЙХГҮЙ). Нийлбэрийн салаанд унаж зурвас ба
          НИЙТ мөрд «9.13» гэж гардаг байв — хувиудын нийлбэр утгагүй тул хоосон. */
       if (c.name === CASHFLOW_NEW.fields.share) return '';
-      if (isPct(c.name)) {
-        let w = 0;
-        let top = 0;
-        for (const p of rows) {
-          const v = num(p.row[c.name]);
-          const g = num(p.row[FIN_XL_PCT_WEIGHT]);
-          if (v == null || g == null || g <= 0) continue;
-          w += g;
-          top += g * v;
-        }
-        return w === 0 ? '' : fmtCell(top / w, c.type, c.name).text;
+      /* ⚠️ 2026-10-21 (аудит): «Урьдчилгаа → Хувь» (`FIN_XL_FRACTION`, 0–1) ч өртгөөр жигнэсэн дундаж —
+         `fmtCell` ×100 харуулна (урьд нь `FIN_XL_PCT`-д байж «0.18» гэж гардаг байв). */
+      /* ⚠️ 2026-10-22 (аудит): ХУВЬ (`FIN_XL_PCT`) ба бутархай багана — жигнэсэн дундаж `finExcelLayout.finXlWeightedMean`-д
+         (`null` ≠ 0, жингүй мөр орохгүй — дүрэм тэнд, шалгуур шууд дууддаг) */
+      if (finXlIsMean(c.name)) {
+        const m = finXlWeightedMean(rows.map((p) => p.row), c.name);
+        return m == null ? '' : fmtCell(m, c.type, c.name).text;
       }
       const sum = rows.reduce((a, p) => a + (num(p.row[c.name]) ?? 0), 0);
       return sum === 0 ? '' : fmtCell(sum, c.type, c.name).text;
@@ -4176,7 +4493,7 @@ function FullTable({
                 *
                 * ⚠️ Эдгээр нь `list`-д БАЙХГҮЙ тул зурвасын нийлбэр, багцын
                 * нэгтгэл, № дугаарлалт бүгд хөндөгдөхгүй.
-                * ⚠️ ЗӨВХӨН `Cashflow_*` баганууд утгатай, БУСАД БҮГД ХООСОН.
+                * ⚠️ ЗӨВХӨН `cashflow_*` баганууд утгатай, БУСАД БҮГД ХООСОН (`isCfMonthCol`).
                 * Урьд нь «Ажил, үйлчилгээ» баганад сарыг («2026-03») бичдэг
                 * байсныг 2026-09-09-нд ХАСАВ (хэрэглэгчийн шүүмж: «ажил
                 * үйлчилгээ баганад яагаад date format явж байна»): тэр багана
@@ -4184,15 +4501,20 @@ function FullTable({
                 * Сар нь «Сар эхлэх» баганаас уншигдана.
                 */}
               {/* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажилд `0`-ийн сар наалдахгүй (`cfIdOf`) */}
-              {!rowHid && monthOn && ((cfIdOf(p.row.Cashflow_ID) == null ? null : monthBy.get(cfIdOf(p.row.Cashflow_ID) as number)) ?? []).map((mr) => (
-                <tr key={`m${mr[oidField]}`} className={f.xlMonth}>
+              {/* ⚠️ 2026-10-26: тооцоолсон ('huvaari') сар OID-гүй — түлхүүр нь гэрээ + сар, өнгө нь `xlMonthHuv` */}
+              {!rowHid && monthOn && ((cfIdOf(p.row.cashflow_id) == null ? null : monthBy.get(cfIdOf(p.row.cashflow_id) as number)) ?? []).map((mr) => (
+                <tr
+                  key={mr[HUV_ROW] ? `mh${String(mr.cashflow_id)}:${String(mr.cashflow_start)}` : `m${mr[oidField]}`}
+                  className={mr[HUV_ROW] ? `${f.xlMonth} ${f.xlMonthHuv}` : f.xlMonth}
+                  title={mr[HUV_ROW] ? tr('Хуваарийн сарын обьём × нэгж өртгөөр тооцоолсон — засагдахгүй') : undefined}
+                >
                   {!xlView && (
                     <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />
                   )}
                   {cols.map((c, ci) => {
                     const oid = typeof mr[oidField] === 'number' ? (mr[oidField] as number) : null;
                     /* ⚠️ Эцгийн утгыг ДАВТАХГҮЙ — нэг мөнгө хоёр удаа уншигдана */
-                    if (!c.name.startsWith('Cashflow_')) {
+                    if (!isCfMonthCol(c.name)) {
                       return <td key={c.name} className={frz(ci)} style={colSty(c, ci)} />;
                     }
                     return xCell(mr, oid, false, c, frz(ci), colSty(c, ci));
@@ -4272,6 +4594,7 @@ function FullTable({
                     {SERVER_RO.test(c.name) || CALC_RO.has(c.name) ? null : c.choices?.length ? (
                       <select
                         className={f.cellPick}
+                        data-rep-skip=""
                         value={a[c.name] ?? ''}
                         onChange={(ev) => put(c.name, ev.target.value)}
                       >
@@ -4298,7 +4621,7 @@ function FullTable({
                     <button
                       type="button"
                       className={f.rowBtn}
-                      title={tr('Мөр хасах')}
+                      title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
                       onClick={() => setAdds((st) => st.filter((_, k) => k !== ai))}
                     >×</button>
                   )}
@@ -4490,7 +4813,7 @@ function FullTable({
                 <button
                   type="button"
                   className={f.rowBtn}
-                  title={tr('Мөр хасах')}
+                  title={tr('Мөр хасах')} aria-label={tr('Мөр хасах')}
                   onClick={() => setAdds((s) => s.filter((_, k) => k !== ai))}
                 >×</button>
               )}
@@ -4521,7 +4844,7 @@ function FullTable({
                   if (DATE_TYPES.has(c.type)) return dateEdit(cur, put);
                   if (c.choices?.length) {
                     return (
-                      <select className={f.cellPick} value={cur} onChange={(ev) => put(ev.target.value)}>
+                      <select className={f.cellPick} data-rep-skip="" value={cur} onChange={(ev) => put(ev.target.value)}>
                         <option value="">—</option>
                         {c.choices.map((o) => <option key={o} value={o}>{o}</option>)}
                       </select>
@@ -4557,7 +4880,7 @@ function FullTable({
           const key = `${oid}:${c.name}`;
           const editable = valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name);
           if (editable) {
-            const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
+            const cur = key in pend ? pend[key] : editTextF(r[c.name], c.type, c.name);
             return (
               <td key={c.name} className={f.cellEdit}>
                 <input
@@ -4568,7 +4891,7 @@ function FullTable({
                     setPend((p) => {
                       const nx = { ...p };
                       /* Анхны утга руугаа буцвал «засвар» гэж тоолохгүй */
-                      if (v === editText(r[c.name], c.type)) delete nx[key];
+                      if (v === editTextF(r[c.name], c.type, c.name)) delete nx[key];
                       else nx[key] = v;
                       return nx;
                     });
@@ -4632,8 +4955,10 @@ function FullTable({
         {(canEdit || canRow) && isFlat && (
           /*
            * ГЭРЭЭНИЙ БҮРТГЭЛИЙН ХЭРЭГСЛҮҮД — хоёр товч ҮРГЭЛЖ зэрэг харагдана.
-           * ⚠️ «Нийтлэх» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
+           * ⚠️ «Хадгалах» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
            * илүү ноцтой тул нүдэнд шууд ялгарах ёстой.
+           * ⚠️ 2026-10-23 (UX аудит X7, хэрэглэгч: «бүгдийг зас»): «Нийтлэх ({0})» → «Хадгалах ({0})» — CashflowPlan ·
+           *    TusulNegtgel-тэй НЭГ үг. Хоёр товчны зохиомж (Засах + хадгалах, «Болих»-гүй) ХЭВЭЭР.
            * ⚠️ «Засах» нь ДАРААХ товч (toggle) — «Болих» товчгүй болсон тул
            * засварыг цуцлах цорын ганц зам нь энэ.
            */
@@ -4644,18 +4969,23 @@ function FullTable({
               disabled={saving || dirty === 0}
               onClick={publish}
             >
-              {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+              {saving ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
             </button>
             <button
               type="button"
               className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
               aria-pressed={edit}
               disabled={busy}
-              onClick={() => {
+              onClick={async () => {
                 /* ⚠️ 2026-10-04: нийтлээгүй засвартай үед асуулгүй хаяхгүй — урьд нь «Засах»-ыг
                    дахин дармагц бүх нүдний засвар чимээгүй алга болдог байв. */
+                /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` — хөтөч «дахин бүү асуу»
+                   тэмдэглэсэн үед `window.confirm` чимээгүй false буцааж товч ажиллахаа больдог байв. */
                 if (edit) {
-                  if (dirty > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар бий — хаяж засварын горимоос гарах уу?', dirty))) return;
+                  if (dirty > 0 && !(await askConfirm(
+                    tr('Хадгалаагүй {0} засвар бий — хаяж засварын горимоос гарах уу?', dirty),
+                    { danger: true, ok: tr('Засварыг хаях') },
+                  ))) return;
                   reset();
                 }
                 setEdit((v) => !v);
@@ -4696,10 +5026,10 @@ function FullTable({
                   disabled={saving || dirty === 0}
                   onClick={publish}
                 >
-                  {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+                  {saving ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
                 </button>
                 {/* ⚠️ Гэрээний бүртгэлд «Болих» БАЙХГҮЙ — хэрэглэгч зөвхөн
-                    «Засах» ба «Нийтлэх» хоёрыг хүссэн. Засварыг цуцлах нь
+                    «Засах» ба «Нийтлэх» (2026-10-23-нөөс «Хадгалах») хоёрыг хүссэн. Засварыг цуцлах нь
                     хуудсыг дахин ачаалахтай тэнцүү. */}
                 {!isFlat && (
                 <button
@@ -4731,7 +5061,7 @@ function FullTable({
       {msg && !err && <p className={f.editOk} role="status" aria-live="polite">{msg}</p>}
       {offer && dirty === 0 && (canEdit || canRow) && (
         <p className={f.editOk} role="status">
-          {tr('Энэ хүснэгтэд өмнө нийтлээгүй {0} засвар үлдсэн байна.', Object.keys(offer.pend).length + offer.adds.length)}{' '}
+          {tr('Энэ хүснэгтэд өмнө хадгалаагүй {0} засвар үлдсэн байна.', Object.keys(offer.pend).length + offer.adds.length)}{' '}
           <button type="button" className={f.editBtn} disabled={busy} onClick={restoreDraft}>{tr('Хадгалаагүй засвар сэргээх')}</button>{' '}
           <button type="button" className={f.editBtn} disabled={busy} onClick={dropDraft}>{tr('Хаях')}</button>
         </p>
@@ -4799,30 +5129,17 @@ function FullTable({
           {/* ⚠️ Бүлэглэлт нь АНХДАГЧААР асаалттай. Унтраах товчийг үлдээв:
               бүх мөрийг эх дараалалаар нь харах хэрэгцээ (жишээ нь OID-гоор
               зөрүү хайх) заримдаа гардаг. Гэрээний бүртгэлд УТГАГҮЙ тул алга. */}
+          {/* ⚠️ 2026-10-26 (UX U6): асаах/унтраах нь нийтлэг `Toggle` (ард талдаа унтраалгатай нэг товч) */}
           {!isFlat && (
-          <button
-            type="button"
-            className={`${f.finTgl} ${grouped ? f.finTglOn : ''}`}
-            aria-pressed={grouped}
-            title={tr('Багц бүрийг тусад нь, он merge нүдтэйгээр харуулна')}
-            onClick={() => setGrouped((v) => !v)}
-          >
-            {tr('Багцаар бүлэглэх')}
-          </button>
+            <Toggle checked={grouped} onChange={setGrouped} label={tr('Багцаар бүлэглэх')}
+              title={tr('Багц бүрийг тусад нь, он merge нүдтэйгээр харуулна')} />
           )}
           {/* ⚠️ Багана бүрийн шүүлт нь зөвхөн ХАВТГАЙ хүснэгтэд — картын
               загварт багана биш паспорт/хуваарь тул утгагүй. Багц·он·төрлийн
               нүүр ба чөлөөт хайлт картад ч үйлчилнэ. */}
           {!grouped && (
-          <button
-            type="button"
-            className={`${f.finTgl} ${colOpen ? f.finTglOn : ''}`}
-            aria-pressed={colOpen}
-            title={tr('Багана бүрд тусад нь шүүлт. Тоон баганад: >1000 · <=5e6 · 100..200')}
-            onClick={() => setColOpen((v) => !v)}
-          >
-            {tr('Багана бүрийн шүүлт')}
-          </button>
+            <Toggle checked={colOpen} onChange={setColOpen} label={tr('Багана бүрийн шүүлт')}
+              title={tr('Багана бүрд тусад нь шүүлт. Тоон баганад: >1000 · <=5e6 · 100..200')} />
           )}
           {/*
             * «+ Мөр нэмэх» — МӨРИЙН ТООНЫ УРД (2026-09-04, хэрэглэгчийн хүсэлт).
@@ -4847,7 +5164,7 @@ function FullTable({
             * элемент зурвасны баруун захад наалдана — байрлалыг гараар
             * тооцох шаардлагагүй.
             *
-            * ⚠️ `.finTgl` (саарал toggle) БИШ `.finAdd`: хажуудах «Багана
+            * ⚠️ `Toggle` (саарал унтраалга, хуучин `.finTgl`) БИШ `.finAdd`: хажуудах «Багана
             * бүрийн шүүлт» зэрэг нь ХАРАГДАЦ сэлгэдэг унтраалга, энэ нь
             * ӨГӨГДӨЛ үүсгэдэг үйлдэл. Ижил төрхтэй байвал хүн санамсаргүй
             * дарж хоосон мөр үүсгэнэ.
@@ -4941,7 +5258,7 @@ function FullTable({
               <section className={f.bBox}>
                 <div className={f.bName}>
                   <span className={f.grpCaret}>+</span>
-                  {tr('Нийтлээгүй шинэ мөр')}
+                  {tr('Хадгалаагүй шинэ мөр')}
                   <span className={`${f.grpCnt} num`}>{tr('{0} мөр', num(adds.length))}</span>
                 </div>
                 <div className={f.tscroll}>
@@ -4999,6 +5316,375 @@ function FullTable({
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ТӨСӨЛ ТӨЛӨВЛӨГӨӨ БИЕЛЭЛТ — Excel (261007 V3)-ийн үндсэн хуудас (2026-10-26)
+
+   ⚠️ Тооцоо БҮГД `projectPlan.computePlan`-д (Excel-ийн томьёо = код) — энд ЗӨВХӨН зурна, дахин бодохгүй.
+   ⚠️ Бүх хувь 0–100 (`pct()` 100-аар үржүүлдэггүй); null → «—» (0 БИШ — мэдээлэлгүй блок 0% гэж харагдахгүй).
+   ⚠️ Excel-ийн «Д/Д» (B) давхардалтай (35 код) тул МОДНЫ БАЙРЛАЛААС үүсгэнэ (1 · 1.2 · 1.2.3) — `dd_kod` нь
+      эрэмбийн түлхүүр л (cf-wave2 «Тохиролцоо»).
+   ⚠️ Гэрээний бүртгэлийн хавтгай хүснэгт (`FullTable`) ХЭВЭЭР — зөвхөн мөнгөний мөр (`CF_WORK_WHERE`); энэ таб
+      Excel-ийн БҮХ мөрийг (`dd_kod IS NOT NULL`) уншина.
+   ═══════════════════════════════════════════════════════════ */
+
+/** Ачаалагч — динамик импорт (импортын ⚠️) */
+const loadProjectPlanLazy = (): Promise<ProjectPlan> =>
+  import('@/lib/projectPlanInputs').then((m) => m.loadProjectPlan());
+
+type PpKind = 'money' | 'w' | 'date' | 'pct';
+type PpCol = { k: Exclude<keyof PlanValues, 'status'>; label: string; kind: PpKind; title?: string };
+type PpGroup = { label: string | null; cols: PpCol[] };
+
+/**
+ * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь.
+ * ⚠️ ОГНООНЫ ХОС: хөдөлгүүрийн (`computePlan`) түлхүүр нь ХАДГАЛСАН ТАЛБАРААР — H/I = `geree_*`, J/K = `gazar_*`,
+ *    L/M = `guits_*` (O нь J/K-аас, P нь L/M-ээс).
+ * ⚠️ 2026-10-26: ХАРУУЛАХ дараалал нь Excel-ийн толгойгоор (cf-wave2 «Тохиролцоо»): Гэрээ (H/I) → «Гүйцэтгэгч»
+ *    төлөвлөгөөт (Excel J/K = `guits_*` → хөдөлгүүрийн L/M) → «ОСНАУГ/Газар чөлөөлөлт» бодит (Excel L/M = `gazar_*`
+ *    → хөдөлгүүрийн J/K). Урьд нь J/K-г «Газар чөлөөлөлт» гэж Excel-ийн гүйцэтгэгчийн огноог доор нь харуулж,
+ *    хоёр хос эсрэгээр байв. N/O/P · T/U/V нь утгаараа (O = газар чөлөөлөлт, P = гүйцэтгэгч).
+ * ⚠️ Импортын `DATE_COLS` (J/K → `guits_*`, L/M → `gazar_*`) тохиролцоотой нийцэх ёстой — эс бөгөөс өгөгдөл
+ *    буруу шошгон дор хадгалагдана.
+ */
+function ppGroups(): PpGroup[] {
+  const pctCol = (k: PpCol['k'], label: string, title?: string): PpCol => ({ k, label, kind: 'pct', title });
+  return [
+    { label: null, cols: [{ k: 'E', label: tr('Урьдчилсан төсөвт өртөг'), kind: 'money' }] },
+    { label: null, cols: [{ k: 'F', label: tr('Хэсэгт эзлэх'), kind: 'w' }] },
+    { label: null, cols: [{ k: 'G', label: tr('Төсөлд эзлэх'), kind: 'w' }] },
+    { label: tr('Гэрээ (хавсралт 5)'), cols: [{ k: 'H', label: tr('Эхлэх'), kind: 'date' }, { k: 'I', label: tr('Дуусах'), kind: 'date' }] },
+    { label: tr('Гүйцэтгэгч · төлөвлөгөөт'), cols: [{ k: 'L', label: tr('Эхлэх'), kind: 'date' }, { k: 'M', label: tr('Дуусах'), kind: 'date' }] },
+    { label: tr('ОСНАУГ / Газар чөлөөлөлт · бодит'), cols: [{ k: 'J', label: tr('Эхлэх'), kind: 'date' }, { k: 'K', label: tr('Дуусах'), kind: 'date' }] },
+    {
+      label: tr('Төлөвлөгөөт хувь'),
+      cols: [pctCol('N', tr('Гэрээ')), pctCol('O', tr('Газар чөлөөлөлт')), pctCol('P', tr('Гүйцэтгэгч'))],
+    },
+    { label: null, cols: [pctCol('Q', tr('Ирэх долоо хоног'), '+7')] },
+    { label: null, cols: [pctCol('R', tr('Өмнө долоо хоног'), '−7')] },
+    { label: null, cols: [pctCol('S', tr('Гүйцэтгэлийн хувь'))] },
+    {
+      label: tr('Биелэлт'),
+      cols: [
+        pctCol('T', tr('Гэрээ'), 'S / N'), pctCol('U', tr('Газар чөлөөлөлт'), 'S / O'),
+        pctCol('V', tr('Гүйцэтгэгч'), 'S / P'), pctCol('W', tr('Өмнө долоо хоног'), 'S / R'),
+      ],
+    },
+  ];
+}
+
+const ppFmt = (kind: PpKind, v: number | null): string => {
+  if (kind === 'money') return num(v);
+  if (kind === 'w') return pct(v, 2);
+  if (kind === 'date') return date(v);
+  return pct(v, 1);
+};
+
+const ppStatusText = (s: BlockStatus): string =>
+  s === 'done' ? tr('Дууссан') : s === 'started' ? tr('Эхэлсэн') : tr('Эхлээгүй');
+
+/**
+ * «Төсөл төлөвлөгөө биелэлт» таб — ачаалагч.
+ * ⚠️ `useAsync` автобусаар дахин татна: шилжүүлэлт (`switchToHuvaari`) `CASHFLOW_NEW`-ийг хүчингүй болгоход тэмдэг шинэчлэгдэнэ.
+ */
+function ProjectPlanView(props: {
+  works: Row[];
+  months: Row[];
+  monthsError: boolean;
+  canSwitch: boolean;
+  onSaved: () => void;
+}) {
+  const q = useAsync<ProjectPlan>(loadProjectPlanLazy, []);
+  return (
+    <section className={`${f.reg} ${f.ppReg}`}>
+      <Data q={q} loading={tr('Төсөл төлөвлөгөө тооцоолж байна…')}>
+        {(plan) => (plan.empty ? (
+          <Empty
+            label={tr('Төсөл төлөвлөгөөний өгөгдөл хараахан импортлогдоогүй')}
+            hint={tr('Excel-ийн «Төсөл төлөвлөгөө биелэлт» хуудсыг Cashflow хүснэгтэд импортлоход энд шатлалтай харагдана.')}
+          />
+        ) : <ProjectPlanTable plan={plan} {...props} />)}
+      </Data>
+    </section>
+  );
+}
+
+export function ProjectPlanTable({
+  plan, works, months, monthsError, canSwitch, onSaved,
+}: {
+  plan: ProjectPlan;
+  works: Row[];
+  months: Row[];
+  monthsError: boolean;
+  canSwitch: boolean;
+  onSaved: () => void;
+}) {
+  const { tree, result } = plan;
+  const groups = useMemo(() => ppGroups(), []);
+  const cols = useMemo(() => groups.flatMap((g) => g.cols), [groups]);
+
+  /** Д/Д — модны байрлалаас (толгойн ⚠️) */
+  const ddOf = useMemo(() => {
+    const m = new Map<PlanNode, string>();
+    const go = (n: PlanNode, pre: string) => n.children.forEach((c, i) => {
+      const s = pre ? `${pre}.${i + 1}` : String(i + 1);
+      m.set(c, s);
+      go(c, s);
+    });
+    go(tree.root, '');
+    return m;
+  }, [tree]);
+  const maxDepth = useMemo(() => tree.nodes.reduce((a, n) => Math.max(a, n.depth), 1), [tree]);
+
+  /**
+   * ЭВХЭЛТ — Excel-ийн outline: түвшин (`lvl`, тэр гүн хүртэл дэлгэнэ) + мөр бүрийн гар солилт (`tog`, `index`-ээр).
+   * ⚠️ Анхдагч 2 — үе шат ба тэдгээрийн шууд хэсэг/багц; ~905 мөрийг нэг дор зурахгүй. Түвшин солиход гар солилт арилна.
+   */
+  const [lvl, setLvl] = useState(2);
+  const [tog, setTog] = useState<Map<number, boolean>>(new Map());
+  const isOpen = (n: PlanNode) => tog.get(n.index) ?? n.depth < lvl;
+  const setLevel = (v: number) => { setLvl(v); setTog(new Map()); };
+  const toggle = (n: PlanNode) => setTog((m) => new Map(m).set(n.index, !isOpen(n)));
+
+  const vis: PlanNode[] = [];
+  const walk = (n: PlanNode) => {
+    for (const c of n.children) {
+      vis.push(c);
+      if (c.children.length && isOpen(c)) walk(c);
+    }
+  };
+  walk(tree.root);
+
+  /* ── Сарын мөнгөний эх — мөнгөний мөр (`cashflow_id`) бүрд ── */
+  const F = CASHFLOW_NEW.fields;
+  const workBy = useMemo(() => {
+    const m = new Map<number, Row>();
+    for (const w of works) {
+      const id = cfIdOf(w[CF_MONTH.id]);
+      if (id != null && !m.has(id)) m.set(id, w);
+    }
+    return m;
+  }, [works]);
+  /**
+   * Гэрээ бүрийн ГАРААР сарын мөрийн тоо ба нийт ₮ (`Cashflow_dun`) — батлуулах цонхны «N сарын мөр (нийт X) устана».
+   * ⚠️ `total` null = дүнтэй мөр алга (0 БИШ — `CashflowPlan.curManualTotal`-тэй нэг дүрэм).
+   */
+  const monthCnt = useMemo(() => {
+    const m = new Map<number, { n: number; total: number | null }>();
+    for (const r of months) {
+      const id = cfIdOf(r[CF_MONTH.id]);
+      if (id == null) continue;
+      const c = m.get(id) ?? { n: 0, total: null };
+      c.n += 1;
+      const raw = r[CF_MONTH.amount];
+      const v = raw == null || String(raw).trim() === '' ? null : Number(raw);
+      if (v != null && Number.isFinite(v)) c.total = (c.total ?? 0) + v;
+      m.set(id, c);
+    }
+    return m;
+  }, [months]);
+
+  const [busyId, setBusyId] = useState<number | null>(null);
+  /* ⚠️ `ref` — давхар товшилт `setBusyId`-ийн дахин зурагдалтаас ӨМНӨ хаагдана */
+  const busyRef = useRef(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  /**
+   * «ГАРААР → ХУВААРЬ» — гараар сарын мөр УСТАНА, буцаахгүй. Шалгалт (эрх · мөнгөний мөр ганц · багц хуудастай ·
+   * үе шат · атом бичилт · алдагдсан хариуг дахин уншиж батлах) бүгд `switchToHuvaari` дотор.
+   * ⚠️ 2026-10-26 (хяналт №2): `CashflowPlan`-тай НЭГ урсгал (`monthlyMoney.confirmAndSwitch`) — урьд нь энд
+   *    `previewSwitch`-гүй, нэг цонхоор шууд шилжүүлдэг тул устах ₮ / гарах тооцоог хэлдэггүй, хоосон тооцоог ч
+   *    ялгадаггүй байв. Одоо: шинэ тооцоо → устах ба тооцоолсон нийттэй цонх → дутуу бол 2-р цонх → батласан
+   *    дүгнэлттэй тулгаж бичнэ.
+   */
+  const doSwitch = async (id: number, w: Row) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    /* ⚠️ 2026-10-26: ГЭРЭЭГ нэрлэнэ — багцад олон мөнгөний мөр (≈10 багцад 78 гэрээ) байх тул «Багц-1» л гэвэл аль
+       гэрээний сарын мөр устахыг ялгахгүй, багц бүхэлдээ устах мэт ойлгогдоно; шилжүүлэлт ГАНЦ `Cashflow_ID`-д. */
+    const pkgText = String(w[F.pkg] ?? '').trim() || '—';
+    const ajil = String(w.ajil_uilchilgee ?? '').trim() || '—';
+    const mc = monthCnt.get(id);
+    setErr(null);
+    setMsg(null);
+    try {
+      const fl = await confirmAndSwitch({
+        cashflowId: id,
+        name: tr('{0} · {1} (Cashflow_ID {2})', pkgText, ajil, id),
+        pkg: pkgKeyOf(w[F.pkg]),
+        phase: w[F.phase],
+        manualRows: mc?.n ?? 0,
+        manualTotal: mc?.total ?? null,
+        money: mnt,
+        ask: askConfirm,
+        onBusy: (b) => setBusyId(b ? id : null),
+      });
+      if (fl.kind === 'refused') { setErr(fl.msg); return; }
+      if (fl.kind === 'cancel') return;
+      const r = fl.result;
+      setMsg(r.already ? tr('Аль хэдийн Хуваарь эхтэй') : tr('Хуваарь руу шилжүүлэв · {0} сарын мөр устгав', r.deleted));
+      onSaved();
+    } catch (e) {
+      setErr(userError(e));
+    } finally {
+      busyRef.current = false;
+      setBusyId(null);
+    }
+  };
+
+  const moneyCell = (n: PlanNode) => {
+    const id = n.row?.cashflow_id;
+    if (id == null) return <td className={f.ppMoney} />;
+    const w = workBy.get(id);
+    if (!w) {
+      return <td className={f.ppMoney} title={tr('Гэрээний бүртгэлд Cashflow_ID {0} мөр алга', id)}>—</td>;
+    }
+    const huv = monthSourceOf(w[F.monthSource]) === SRC_HUVAARI;
+    const srcText = huv ? tr('Хуваарь') : tr('Гараар');
+    const pkgOk = PKG_KEYS.has(pkgKeyOf(w[F.pkg]));
+    /* ⚠️ 2026-10-26 (хяналт №2): үе шат (`uy_shat`) ИЛ «Барилга угсралт» биш бол хаалттай — хоосон ч (`switchPhaseWhy`) */
+    const why = !pkgOk
+      ? tr('Энэ гэрээний багцад Хуваарийн бөглөх хуудас алга — шилжүүлэх боломжгүй')
+      : switchPhaseWhy(w[F.phase])
+        ?? (monthsError ? tr('Сарын задаргаа уншигдсангүй — хуудсыг дахин ачаална уу') : undefined);
+    return (
+      <td className={f.ppMoney}>
+        <span className={`${f.ppSrc} ${huv ? f.ppSrcHuv : ''}`} title={tr('Сарын мөнгө: {0}', srcText)}>{srcText}</span>
+        {canSwitch && !huv && (
+          <button
+            type="button"
+            className={f.ppSwitch}
+            disabled={busyId != null || !!why}
+            title={why}
+            onClick={() => void doSwitch(id, w)}
+          >
+            {busyId === id ? tr('Шилжүүлж байна…') : tr('Хуваарь руу шилжүүлэх')}
+          </button>
+        )}
+      </td>
+    );
+  };
+
+  const rowCls = (n: PlanNode): string => [
+    n.depth === 1 ? f.ppL1 : n.depth === 2 ? f.ppL2 : '',
+    n.blok ? f.ppBlk : '',
+    n.outside ? f.ppOut : '',
+  ].filter(Boolean).join(' ');
+
+  const valCells = (v: PlanValues | undefined, blk: boolean) => cols.map((c) => {
+    const x = v ? v[c.k] : null;
+    const st = c.k === 'S' && blk && v?.status ? v.status : null;
+    return (
+      <td key={c.k} className={`${f.cellNum} ${c.kind === 'date' ? f.ppDate : ''}`} title={st ? ppStatusText(st) : undefined}>
+        {st && <i className={`${f.ppDot} ${st === 'done' ? f.ppDone : st === 'started' ? f.ppOn : f.ppNot}`} aria-hidden />}
+        {ppFmt(c.kind, x)}
+      </td>
+    );
+  });
+
+  const rootV = result.values.get(tree.root);
+  return (
+    <>
+      <header className={f.regHd}>
+        <h2>{tr('Төсөл төлөвлөгөө биелэлт')}</h2>
+        <span>{tr('{0}-ний байдлаар · {1} мөр', date(result.today), num(tree.nodes.length))}</span>
+      </header>
+      <div className={f.ppBar}>
+        <span className={f.ppBarLbl}>{tr('Түвшин')}</span>
+        <div className={f.tabs} role="group" aria-label={tr('Түвшин')}>
+          {Array.from({ length: maxDepth }, (_, i) => i + 1).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={lvl === v && tog.size === 0}
+              className={`${f.tab} ${lvl === v && tog.size === 0 ? f.tabOn : ''}`}
+              onClick={() => setLevel(v)}
+            >
+              {v === maxDepth ? tr('Бүгд') : String(v)}
+            </button>
+          ))}
+        </div>
+        {err && <p role="alert" className={f.editErr}>{err}</p>}
+        {msg && <p role="status" className={f.editOk}>{msg}</p>}
+      </div>
+      {plan.failed.length > 0 && (
+        <p role="status" className={f.ppWarn}>
+          {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', planFailedLabels(plan.failed).join(', '))}
+        </p>
+      )}
+      {tree.issues.length > 0 && (
+        <details className={f.ppIssues}>
+          <summary>{tr('Бүтцийн анхааруулга: {0}', num(tree.issues.length))}</summary>
+          <ul>{tree.issues.slice(0, 200).map((s, i) => <li key={i}>{s}</li>)}</ul>
+        </details>
+      )}
+      <div className={f.ppWrap}>
+        <table className={`${f.tbl} ${f.ppTbl}`}>
+          <thead>
+            <tr>
+              <th rowSpan={2} className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
+              <th rowSpan={2} className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
+              <th rowSpan={2} className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
+              {groups.map((g, gi) => (g.label
+                ? <th key={gi} colSpan={g.cols.length} className={f.ppGrp}>{g.label}</th>
+                : <th key={gi} rowSpan={2} className={f.ppHd} title={g.cols[0].title}>{g.cols[0].label}</th>))}
+              <th rowSpan={2} className={f.ppHd}>{tr('Сарын мөнгө')}</th>
+            </tr>
+            <tr>
+              {groups.filter((g) => g.label).flatMap((g) => g.cols).map((c) => (
+                <th key={c.k} className={f.ppHd} title={c.title}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className={f.ppTot}>
+              <td className={`${f.ppFz0} ${f.ppNo}`} />
+              <td className={`${f.ppFz1} ${f.ppPkg}`} />
+              <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
+              {valCells(rootV, false)}
+              <td className={f.ppMoney} />
+            </tr>
+            {vis.map((n) => {
+              const r = n.row!;
+              const v = result.values.get(n);
+              const kids = n.children.length > 0;
+              const open = kids && isOpen(n);
+              return (
+                <tr key={n.index} className={rowCls(n)}>
+                  <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
+                  <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
+                  <td className={`${f.ppFz2} ${f.ppName}`} title={r.ajil_uilchilgee ?? undefined}>
+                    <span className={f.ppIndent} style={{ paddingLeft: (n.depth - 1) * 14 }}>
+                      {kids ? (
+                        <button
+                          type="button"
+                          className={f.ppCaret}
+                          aria-expanded={open}
+                          aria-label={open ? tr('Хумих') : tr('Дэлгэх')}
+                          onClick={() => toggle(n)}
+                        >{open ? '−' : '+'}</button>
+                      ) : <i className={f.ppCaretSp} aria-hidden />}
+                      {r.ajil_uilchilgee || '—'}
+                    </span>
+                  </td>
+                  {valCells(v, !!n.blok)}
+                  {moneyCell(n)}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className={f.ppFoot}>
+        {tr('Хувь 0–100; «—» = мэдээлэлгүй (0 биш). Гүйцэтгэгчийн төлөвлөгөө: блок → Хуваарь, бусад → огнооны хооронд жигд. Биелэлт = гүйцэтгэл ÷ төлөвлөгөө.')}
+      </p>
+    </>
+  );
+}
+
+/** Санхүүжилтийн табууд */
+type FinTab = 'cf' | 'ipc' | 'plan' | 'proj';
+
 /**
  * Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй).
  *
@@ -5025,6 +5711,34 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    */
   const canEdit = hasCap(user?.username, 'finEdit');
   const canRow = hasCap(user?.username, 'finRow');
+  /* ⚠️ 2026-10-26: «Гараар → Хуваарь» шилжүүлэх — тусдаа эрх (гараар сарын мөр УСТГАНА, буцаахгүй) */
+  const canSwitch = hasCap(user?.username, CF_SWITCH_CAP);
+
+  /**
+   * САРЫН МӨНГӨ — 'huvaari' гэрээний тооцоолсон сарууд (`monthlyMoney`).
+   * ⚠️ Тийм гэрээ НЭГ Ч БАЙХГҮЙ бол юу ч ачаалахгүй (`null`) — 'garaar'-ын зан төлөв ӨӨРЧЛӨГДӨХГҮЙ.
+   * ⚠️ Ачаалж байх/унасан үед `undefined` — CashflowPlan өөрөө ачаална, гэрээний бүртгэл 'huvaari' гэрээний сарыг
+   *    түр хоосон харуулна (гараар хуучин мөр «тооцоолсон» мэт харагдахгүй).
+   */
+  const srcField = CASHFLOW_NEW.fields.monthSource;
+  const huvIds = useMemo(() => {
+    const s = new Set<number>();
+    for (const w of d.cashflow) {
+      const id = cfIdOf(w[CF_MONTH.id]);
+      if (id != null && monthSourceOf(w[srcField]) === SRC_HUVAARI) s.add(id);
+    }
+    return s;
+  }, [d.cashflow, srcField]);
+  const hasHuv = huvIds.size > 0;
+  const moneyQ = useAsync<MonthlyMoney | null>(
+    () => (hasHuv ? loadMonthlyMoney(manualCfRows(d.cfMonths)) : Promise.resolve(null)),
+    [hasHuv, d.cfMonths],
+  );
+  const money: MonthlyMoney | null | undefined = !hasHuv ? null : moneyQ.state === 'ready' ? moneyQ.data : undefined;
+  const huv = useMemo<HuvMonths | undefined>(
+    () => (hasHuv ? { ids: huvIds, rows: huvMonthRows(money) } : undefined),
+    [hasHuv, huvIds, money],
+  );
 
   /**
    * ⚠️ ХОЁР ХҮСНЭГТ ДАРААЛЖ БИШ, СОЛИГДОЖ гарна.
@@ -5062,7 +5776,8 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * Тэнд бөглөх зам ХЭВЭЭР (5-р түвшин) — энэ нь түүнийг орлохгүй,
    * зэрэгцээ зам: нэг ажилдаа төвлөрсөн, өргөнөөр гүйлгэх шаардлагагүй.
    */
-  const [tab, setTab] = useState<'cf' | 'ipc' | 'plan'>('cf');
+  /* ⚠️ 2026-10-26: 'proj' — «Төсөл төлөвлөгөө биелэлт» (Excel-ийн шатлалтай үндсэн хуудас, `ProjectPlanView`) */
+  const [tab, setTab] = useState<FinTab>('cf');
   /* ⚠️ 2026-09-23: «Cashflow хувиарлах» хадгалаагүй засвартай байхад таб солибол
      компонент unmount болж засвар АЛГА БОЛДОГ байв — баталгаажуулалт асууна.
      `ref` (state биш): dirty солигдох бүрд энэ хуудсыг дахин зурах хэрэггүй. */
@@ -5074,12 +5789,14 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
      өөрийн `pend`/`adds`-тэй — таб солиход засвар нь чимээгүй алга болдог байв. */
   const cfDirty = useRef(false);
   const onCfDirty = useCallback((v: boolean) => { cfDirty.current = v; setFinNavDirty('cf', v); }, []);
-  const switchTab = (t: 'cf' | 'ipc' | 'plan') => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` (async) — `window.confirm` нь «дахин бүү асуу»-гийн дараа
+     чимээгүй false буцааж таб огт солигддоггүй байв. */
+  const switchTab = async (t: FinTab) => {
     if (t === tab) return;
     if (tab === 'plan' && planDirty.current
-      && !window.confirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+      && !(await askConfirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Таб солих') }))) return;
     if (tab === 'cf' && cfDirty.current
-      && !window.confirm(tr('Гэрээний бүртгэлд нийтлээгүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+      && !(await askConfirm(tr('Гэрээний бүртгэлд хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Таб солих') }))) return;
     setTab(t);
   };
 
@@ -5100,33 +5817,50 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           * БАРУУН талд нь үлдээнэ.
           */}
         {/* Хүснэгт солих — идэвхтэй нь дүүргэлттэй */}
-        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }}>
+        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`) — `switchTab` асинхрон
+            (ачаалал · хадгалаагүй засварын асуулт) тул сонголт нь Enter/Space-ээр */}
+        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }} onKeyDown={(e) => tabFocusNav(e)}>
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'cf' ? 0 : -1}
             aria-selected={tab === 'cf'}
             className={`${f.tab} ${tab === 'cf' ? f.tabOn : ''}`}
-            onClick={() => switchTab('cf')}
+            onClick={() => void switchTab('cf')}
           >
-            {tr('Cashflow')}
+            {/* ⚠️ 2026-10-23 (UX аудит E9): монгол горимд ч монгол нэр — «Cashflow/IPC» нь хаалтанд (хэрэглэгчдийн танил нэр) */}
+            {tr('Гэрээ (Cashflow)')}
           </button>
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'ipc' ? 0 : -1}
             aria-selected={tab === 'ipc'}
             className={`${f.tab} ${tab === 'ipc' ? f.tabOn : ''}`}
-            onClick={() => switchTab('ipc')}
+            onClick={() => void switchTab('ipc')}
           >
-            {tr('IPC')}
+            {tr('Төлбөрийн акт (IPC)')}
           </button>
           <button
             type="button"
             role="tab"
+            tabIndex={tab === 'plan' ? 0 : -1}
             aria-selected={tab === 'plan'}
             className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
-            onClick={() => switchTab('plan')}
+            onClick={() => void switchTab('plan')}
           >
             {tr('Cashflow хувиарлах')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            /* ⚠️ 2026-10-26: merge-ээр roving tabIndex-гүй үлдсэн (U8) — идэвхгүй үед Tab-ын 2 дахь зогсоол болдог байв */
+            tabIndex={tab === 'proj' ? 0 : -1}
+            aria-selected={tab === 'proj'}
+            className={`${f.tab} ${tab === 'proj' ? f.tabOn : ''}`}
+            onClick={() => void switchTab('proj')}
+          >
+            {tr('Төсөл төлөвлөгөө биелэлт')}
           </button>
         </div>
       </header>
@@ -5135,7 +5869,16 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           тул React instance-ыг ДАХИН АШИГЛАНА. Түлхүүргүй бол Cashflow-д
           тавьсан `CF006` шүүлт IPC-д үлдэж, тэнд тийм талбар байхгүй тул
           хүснэгт ХООСОН гарна — шалтгаан нь огт харагдахгүй. */}
-      {tab === 'plan' ? (
+      {tab === 'proj' ? (
+      <ProjectPlanView
+        key="proj"
+        works={d.cashflow}
+        months={d.cfMonths}
+        monthsError={d.cfMonthsError}
+        canSwitch={canSwitch}
+        onSaved={onSaved}
+      />
+      ) : tab === 'plan' ? (
       /* ⚠️ `key` нь ЗААВАЛ (доорх тайлбарыг үз) — гурван салаа НЭГ
          байрлалд сууна. */
       <CashflowPlan
@@ -5146,6 +5889,8 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         monthsError={d.cfMonthsError}
         onSaved={onSaved}
         onDirty={onPlanDirty}
+        canSwitch={canSwitch}
+        money={money}
       />
       ) : tab === 'cf' ? (
       <FullTable
@@ -5159,6 +5904,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         dataKey="CASHFLOW_NEW"
         months={d.cfMonths}
         monthsError={d.cfMonthsError}
+        huv={huv}
         facets={FIN_FACETS.CASHFLOW_NEW}
         canEdit={canEdit}
         canRow={canRow}

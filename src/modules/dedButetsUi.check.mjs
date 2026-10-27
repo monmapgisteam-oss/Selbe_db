@@ -79,6 +79,9 @@ assert.ok(src.includes('sel.ids.find(isLenLayer) ?? sel.ids[0]'));
 assert.ok(saad.includes('commonName(ids.map((id) => LAYER_BY_ID[id]?.title ?? id))'));
 assert.ok(!saad.includes('LAYER_BY_ID[ids[0]]?.title'));
 assert.ok(saad.includes('subscribeTotals(() => { ovCache = null; });'));
+/* ⚠️ 2026-10-21 (аудит): барилгын давхаргыг `limit: 2000`-гүй, OID-оор эрэмбэлж бүгдийг хуудаслан татна */
+assert.ok(!/^\s*limit:\s*2000,/m.test(saad), 'pkgSaad: limit 2000 — 2000-аас дээш блок чимээгүй хасагдана');
+assert.ok(saad.includes('orderBy: `${BUILDING.oid} ASC`,'), 'pkgSaad: OID эрэмбэ (тогтвортой хуудаслалт)');
 assert.ok(ovl.includes('subscribeTotals(() => { geomCache.clear(); resultCache.clear(); });'));
 
 /* ══════════ 9. 2026-10-01 (хэрэглэгч: бүгдийг зас) ══════════ */
@@ -91,7 +94,9 @@ assert.ok(src.includes("tr('{0} объект уртгүй — км-д ороог
 assert.ok(src.includes("const SEWER_WELL_EXTRA = ['infra:69'];"));
 assert.ok(DED_BUTETS_LAYER_IDS.includes('infra:69'), 'infra:69 инженерийн давхаргад бий');
 /* Хэсэгчилсэн буцаалт */
-assert.ok(src.includes('const r = await revertRows(meta, u.rows);') && src.includes('setUndoable({ ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) });'));
+assert.ok(src.includes('const r = await revertRows(meta, u.rows);') && src.includes('setUndoable(bad.size ? { ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) } : null);'));
+/* ⚠️ 2026-10-21: дан мөрийн буцаалт ч CAS (`wrote`) — бусдын засварыг сохроор дарахгүй */
+assert.ok(src.includes('await revertRows(meta, [{ oid: u.oid, attrs: u.attrs, wrote: u.wrote }])'), 'дан буцаалт CAS биш');
 /* Маягт: «Урт ← геометр», шинэ объект ба хэлбэр засварын дараах автомат бөглөлт */
 assert.ok(edit.includes("tr('Урт ← геометр')"));
 assert.ok(edit.includes('p0[lf.f.name] = lenFieldValue(len, lf.unit, !!lf.f.int);'), 'шинэ объектод бөглөнө');

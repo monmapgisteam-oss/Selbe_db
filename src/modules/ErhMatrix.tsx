@@ -64,6 +64,9 @@ export function ErhMatrix({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      /* ⚠️ 2026-10-23 (UX аудит A5): нүдний засварын дээр апп доторх асуулт (`askConfirm`) нээлттэй бол Esc нь ТЭР асуултынх —
+         эс бөгөөс энд залгигдаж, popover хаагдаад асуулт нээлттэй үлддэг байв */
+      if (document.querySelector('[role="alertdialog"]')) return;
       e.stopImmediatePropagation();
       e.preventDefault();
       setOpen(null);
@@ -85,21 +88,28 @@ export function ErhMatrix({
    *    super-ийн хуучин мөрийг жирийн хуваарилалт гэж ойлгох эрсдэлтэй байв.
    */
   const gone = new Set((src.gone ?? []).map((x) => x.toLowerCase()));
+  /* ⚠️ 2026-10-22 (аудит): порталд алга (`ErhSource.absent`) нь `gone`-д ч орсон (гацааны шалгуур) — шошгыг ЯЛГАНА:
+     хүснэгтэд мөртэй тул «устгагдсан» биш, «порталд алга» (админ хасаж/шилжүүлнэ) */
+  const absent = new Set((src.absent ?? []).map((x) => x.toLowerCase()));
   const adm = new Set(supers.map((x) => x.toLowerCase()));
   const person = (u: string, view: boolean) => {
     const k = u.toLowerCase();
-    const isGone = gone.has(k);
-    const isAdm = !isGone && adm.has(k);
+    const isAbsent = absent.has(k);
+    const isGone = !isAbsent && gone.has(k);
+    const isAdm = !isGone && !isAbsent && adm.has(k);
     const notes = [
       view ? tr('зөвхөн харна') : '',
       isGone ? tr('устгагдсан аккаунт — тухайн эрхийн хуудсанд «Цэвэрлэх»') : '',
-      isAdm ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
+      isAbsent ? tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу') : '',
+      /* ⚠️ 2026-10-23: одоогийн утга — `AclGrid.Chip`-ийн ижил текст */
+      isAdm ? tr('админ (super) — одоо бүх багцад, дараалсан шатуудад ч шийдвэр гаргана (багцын хязгаар, өөрийгөө батлах дүрэм үйлчлэхгүй); энэ томилгоо админ эрхийг хасахад үлдэнэ') : '',
     ].filter(Boolean);
-    const cls = [s.mxName, view ? s.mxView : '', isGone ? s.aclGoneName : '', isAdm ? s.aclAdminName : ''].filter(Boolean).join(' ');
+    const cls = [s.mxName, view ? s.mxView : '', isGone || isAbsent ? s.aclGoneName : '', isAdm ? s.aclAdminName : ''].filter(Boolean).join(' ');
     return (
       <span key={`${view ? 'v' : 'o'}-${u}`} className={cls} title={notes.join(' · ') || undefined}>
         {u}
         {isGone && <span className={s.aclMarkTag}>{tr('устгагдсан')}</span>}
+        {isAbsent && <span className={s.aclMarkTag}>{tr('порталд алга')}</span>}
         {isAdm && <span className={s.aclMarkTag}>{tr('админ')}</span>}
       </span>
     );
@@ -178,7 +188,8 @@ export function ErhMatrix({
       <p className={s.aclEmpty}>
         {tr('Улаан нүд — ажил гацна (дээрх «Анхаарах»). Саарал нэр — зөвхөн харна, шатны эзэн биш.')}
         {supers.length > 0 && <>{' '}{tr('Админ {0} — бүх багцад (хуваарилалт үйлчлэхгүй).', String(supers.length))}</>}
-        {' '}{tr('«устгагдсан» — порталд байхгүй аккаунтын үлдсэн мөр (гацааны шалгуурт тоологдохгүй; тухайн эрхийн хуудсанд «Цэвэрлэх»). «админ» — хатуу super-ийн хуучин мөр.')}
+        {/* ⚠️ 2026-10-23: «админ» = хүснэгтийн super-ийн ЭНГИЙН томилгоо (2026-10-21-ээс) — «хатуу super-ийн хуучин мөр» биш болсон */}
+        {' '}{tr('«устгагдсан» — порталд байхгүй аккаунтын үлдсэн мөр (гацааны шалгуурт тоологдохгүй; тухайн эрхийн хуудсанд «Цэвэрлэх»). «админ» — super-ийн томилгоо: super байхад бүх багцад ажиллана, админ эрхийг хасахад үлдэнэ.')}
       </p>
 
       <div className={s.mxWrap}>

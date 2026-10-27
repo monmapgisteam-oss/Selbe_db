@@ -36,6 +36,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
+import { GUITS } from '@/lib/services/env';
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
@@ -51,7 +52,7 @@ import { cached } from '@/lib/live';
    (`huvaariBatlah.serverNow`-ийн ⚠️: хоёр машины цаг зөрвөл амьд түгжээг «дууссан» гэж дардаг байв);
    `sameClaimAt` — нэг батлагчийн ХОЁР цонхны түгжээг ялгах ±1 с тулгалт. `huvaariBatlah` энэ модулийг
    импортолдоггүй тул тойрог импорт үүсэхгүй. */
-import { REASON_MAX, sameClaimAt, serverNow } from './huvaariBatlah';
+import { REASON_MAX, sameClaimAt, serverNow, syncServerClock } from './huvaariBatlah';
 
 /** Илгээлтийн төлөв */
 export const OBYEM_STATUS = {
@@ -143,8 +144,8 @@ export type ObyemSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах */
-  cellCount: number;
+  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `nud_too` = мэдэгдэхгүй (`null`), 0 биш */
+  cellCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
 };
@@ -154,7 +155,7 @@ const TABLE_NAME = 'obyem_batlah';
 
 /** Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
-  oid: 'OBJECTID',
+  oid: 'objectid',
   pkgKey: 'bagts_key',
   pkgGroup: 'bagts_group',
   status: 'toloh',
@@ -276,9 +277,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         { name: F.pkgKey, type: 'esriFieldTypeString', length: 64, nullable: false, editable: true },
         { name: F.pkgGroup, type: 'esriFieldTypeString', length: 128, nullable: true, editable: true },
         { name: F.status, type: 'esriFieldTypeString', length: 32, nullable: false, editable: true },
@@ -308,6 +309,13 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/193) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/193`;
+  if (direct) {
+    tableUrlCache = direct;
+    return direct;
+  }
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
@@ -358,7 +366,8 @@ function toSubmission(a: Attrs): ObyemSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    cellCount: Number(a[F.cellCount]) || 0,
+    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
+    cellCount: a[F.cellCount] == null || a[F.cellCount] === '' || !Number.isFinite(Number(a[F.cellCount])) ? null : Number(a[F.cellCount]),
     payload: String(a[F.payload] ?? ''),
   };
 }
@@ -391,6 +400,10 @@ async function query(where: string, outFields: string, strict = false): Promise<
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
+  /* ⚠️ 2026-10-26 (A3): түгжээний TTL-ийн шүүлт серверийн цагаар — урьд нь энд синк БАЙГААГҮЙ тул `serverNow` нь
+     хуваарь/ажлын query өмнө нь явсан үед л залруулагддаг, эс бөгөөс хөтчийн цаг байв (`huvaariBatlah.query`-тай
+     ижил; ихэвчлэн кэшээс шууд буцна, алдааг залгина). */
+  await syncServerClock(url);
   const out: Attrs[] = [];
   /* ⚠️ 2026-10-06 аудит: `off += 1000` · `fs.length < 1000` нь серверийн `maxRecordCount` 1000-аас
      бага үед эхний хуудсаар зогсож, үлдсэн мөрийг ЧИМЭЭГҮЙ хаядаг байв — `ajilBatlah`-ийн загвар:
@@ -576,7 +589,9 @@ export async function submitObyem(args: {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    /* ⚠️ 2026-10-23 (UX аудит X4): «ArcGIS-т хадгалагдсангүй.» нь дараагийн алхмыг хэлдэггүй байв — энэ файлын
+       бүх бичилтийн уналтад ижил мессеж (холболт шалгаад дахин). */
+    if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     invalidate('OBYEM_BATLAH');
     /*
      * ⚠️ 2026-10-05: ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (`huvaariBatlah.submitPlan`-ийн загвар). Дээрх
@@ -584,7 +599,7 @@ export async function submitObyem(args: {
      *    шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв. Бичсэний ДАРАА дахин уншиж,
      *    БАГА OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
      *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно.
-     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`.
+     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү».
      */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
     if (Number.isFinite(mine)) try {
@@ -595,18 +610,30 @@ export async function submitObyem(args: {
       const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
       if (first != null && first < mine) {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
           /* ⚠️ 2026-10-06: `DUP_MARK`-аар ялгана, `approverAt` ХООСОН — «сүүлийн шийдвэр» болохгүй
              (`isDupCancel`); урьд нь тэмдэггүй, `approverAt`-тай бичигдэж жинхэнэ татсантай ялгагдахгүй байв. */
-          await arcgisPost(`${url}/applyEdits`, {
+          const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: OBYEM_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
+          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
+             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
+             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
+             эрсдэлтэй байлаа. */
+          if (!editOk(upd?.updateResults)) {
+            invalidate('OBYEM_BATLAH');
+            return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
+          }
         }
         invalidate('OBYEM_BATLAH');
-        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
-    } catch { /* давхардлыг дараагийн уншилт шийднэ */ }
+    } catch {
+      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
+         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
+      return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -672,7 +699,7 @@ export async function casObyemClaim(
   const h = claimHolder(row, now());
   if (h && h !== me) return heldMsg(h);
   const at = now();
-  if (!(await io.write(at))) return tr('ArcGIS-т хадгалагдсангүй.');
+  if (!(await io.write(at))) return tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.');
   const back = await io.read();
   const who = back ? s(back[F.approver])?.toLowerCase() ?? null : null;
   const ok = !!back
@@ -683,6 +710,27 @@ export async function casObyemClaim(
   if (ok) return null;
   if (back && s(back[F.status]) !== OBYEM_STATUS.pending) return decidedMsg(who, s(back[F.status]));
   return who && who !== me ? heldMsg(who) : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.');
+}
+
+/**
+ * БАТЛАГЧИЙН ХҮРЭЭ ба ЗОХИОГЧ ≠ БАТЛАГЧ — `decideObyem`-ийн дүрмийг `claimObyem` · `markObyemPartial`-д ч НЭГ газраас
+ * (⚠️ 2026-10-21, аудит). Серверийн мөрөөр (`F.author` · `F.pkgGroup`); `null` = зөвшөөрнө.
+ * ⚠️ Хүрээ: `AUTH.appId` үед нэвтэрсэн хэрэглэгчээр (`obyemScope(…, 'approver')`, `null` = хязгааргүй); хөтөчид
+ *    нэвтрээгүй бол хаана. Зохиогч: `me === author` бол татгалзана (`decideObyem`-ийн 2-р шалгуур).
+ * ⚠️ ЯАГААД: түгжээ (`claimObyem`) ба хагас бичилтийн тэмдэг (`markObyemPartial`) урьд нь ЗӨВХӨН түгжээний эзэн/төлөв
+ *    шалгадаг тул хүрээний гаднах батлагч эсвэл зохиогч өөрөө `pending` мөрөө 10 минут түгжиж бусдын батлалтыг хаах,
+ *    `useObyem`-ийн `dryRun`-ийг тойрсон дуудлагаар хагас бичилтийн тэмдэг тавих (буцаалтыг хаах) боломжтой байв.
+ */
+function obyemAuthzDeny(cur: Attrs, me: string): string | null {
+  if (AUTH.appId) {
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+    const sc = obyemScope(meNow ?? me, 'approver');
+    if (sc !== null && !sc.includes(String(cur[F.pkgGroup] ?? ''))) return tr('Энэ багцын обьёмыг батлах эрхгүй.');
+  }
+  const author = s(cur[F.author])?.trim().toLowerCase() ?? '';
+  if (me && author && me === author) return tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.');
+  return null;
 }
 
 /**
@@ -703,6 +751,11 @@ export async function claimObyem(args: { oid: number; approver: string }): Promi
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
+    /* ⚠️ 2026-10-21 (аудит): `decideObyem`-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур ЭНД Ч (`obyemAuthzDeny`-ийн ⚠️) — түгжихээс ӨМНӨ */
+    const cur0 = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup}`))[0];
+    if (!cur0) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    const deny0 = obyemAuthzDeny(cur0, me);
+    if (deny0) return { ok: false, error: deny0 };
     let at0: number | undefined;
     const err = await casObyemClaim({
       read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
@@ -821,13 +874,17 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
-  const fields = `${CLAIM_FIELDS},${F.reason}`;
+  /* ⚠️ 2026-10-21 (аудит): `author` · `pkgGroup` — хүрээ/зохиогчийн шалгуурт (`obyemAuthzDeny`) */
+  const fields = `${CLAIM_FIELDS},${F.reason},${F.author},${F.pkgGroup}`;
   try {
     const cur = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!cur) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     const st = s(cur[F.status]);
     if (st === OBYEM_STATUS.withdrawn) return { ok: false, error: tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.') };
     if (st !== OBYEM_STATUS.pending) return { ok: false, error: decidedMsg(s(cur[F.approver]), st) };
+    /* ⚠️ 2026-10-21 (аудит): хүрээ ба зохиогч — `claimObyem`-тэй ижил (`obyemAuthzDeny`-ийн ⚠️) */
+    const deny = obyemAuthzDeny(cur, me);
+    if (deny) return { ok: false, error: deny };
     const h = claimHolder(cur);
     if (h !== me) {
       return { ok: false, error: h
@@ -842,7 +899,7 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: mark } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     invalidate('OBYEM_BATLAH');
     const back = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     if (!back || s(back[F.status]) !== OBYEM_STATUS.pending || claimHolder(back) !== me || (s(back[F.reason]) ?? '').trim() !== mark) {
@@ -1073,7 +1130,7 @@ export async function decideObyem(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') }; }
     invalidate('OBYEM_BATLAH');
     return { ok: true };
   } catch (e) {
@@ -1084,6 +1141,17 @@ export async function decideObyem(args: {
 
 /** `returnStuckObyem`-ийн шалтгааны угтвар — инженер «бичигдсэн обьём хэвээр» гэдгийг харна (2026-10-09) */
 export const OBYEM_STUCK_PREFIX = (): string => tr('Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.');
+/**
+ * ⚠️ 2026-10-26 (аудит): ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТ бичигдэнэ (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
+ *    2026-10-12-ны засвартай НЭГ загвар). Урьд нь `OBYEM_STUCK_PREFIX()` (орчуулсан) бичигдэж, англи горимын батлагчийн
+ *    буцаалт монгол инженерт англиар харагддаг байв. Дэлгэцэнд `displayObyemReason`-оор орчуулна.
+ */
+export const OBYEM_STUCK_PREFIX_SRC = 'Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.';
+/** Хадгалсан шалтгааныг дэлгэцэнд — системийн тогтмол мөрийг идэвхтэй хэлээр, хэрэглэгчийн текст ХЭВЭЭР (2026-10-26) */
+export function displayObyemReason(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw.split('\n').map((ln) => (ln.trim() === OBYEM_STUCK_PREFIX_SRC ? OBYEM_STUCK_PREFIX() : ln)).join('\n');
+}
 
 /**
  * ГАЦСАН (ХАГАС БИЧИГДСЭН) ОБЬЁМЫН ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (⚠️ 2026-10-09,
@@ -1157,7 +1225,8 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     return { ok: false, error: String((e as Error).message || e) };
   }
   invalidate('OBYEM_BATLAH');
-  const reason = `${OBYEM_STUCK_PREFIX()}\n${why}`.slice(0, REASON_MAX);
+  /* ⚠️ 2026-10-26: эх текстээр (`OBYEM_STUCK_PREFIX_SRC`) — дэлгэцэнд `displayObyemReason` */
+  const reason = `${OBYEM_STUCK_PREFIX_SRC}\n${why}`.slice(0, REASON_MAX);
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
@@ -1172,7 +1241,7 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     });
     if (!editOk(j.updateResults)) {
       await releaseObyemClaim({ oid: args.oid, approver: me });
-      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     }
     invalidate('OBYEM_BATLAH');
     return { ok: true };
@@ -1285,7 +1354,7 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approver]: null, [F.approverAt]: serverNow() } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { await release(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') }; }
     invalidate('OBYEM_BATLAH');
   } catch (e) {
     await release();

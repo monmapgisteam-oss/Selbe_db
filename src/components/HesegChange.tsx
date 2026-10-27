@@ -1,10 +1,12 @@
 'use client';
 
 import { t as tr } from '@/lib/i18nCore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { computeChange, compareChangeQuantity, CHANGE_ITEMS, type ChangeKey, type ChangeResult, type ChangeFilter, type ChangePiece, type ChangeRow, type ChangeGroup } from '@/lib/hesegChange';
 import { fmtLen } from '@/lib/planOverlap';
 import { num, ha } from '@/lib/format';
+import { userError } from '@/components/ui';
 import s from './heseg.module.css';
 import c from './hesegChange.module.css';
 
@@ -40,20 +42,66 @@ const fmt = (key: ChangeKey, v: number) => {
 
 /** Карт, хүснэгтэд ижил хэмжилтийн зөрүүг ижил тэмдэг, нэгжээр харуулна. */
 const deltaText = (key: ChangeKey, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${fmt(key, Math.abs(value))}`;
+/** Тоон зөрүү — «+3» · «−2» (ASCII «-» биш) */
+const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${num(Math.abs(v))}`;
+/** Талбайн зөрүү (га) — ⚠️ 2026-10-19 (аудит): сөрөг тэмдэг нь ASCII «-» биш «−» (`deltaText`-тэй ижил) */
+const haDelta = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${ha(Math.abs(value), 2)}`;
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E7): ХҮЛЭЭСЭН ХУГАЦАА (сек). Тооцоо ~30 с үргэлжилдэг ч явцын дохиогүй «Тооцоолж байна…»
+ *    нь гацсан мэт уншигддаг байв. Тооцооны lib (`hesegChange.computeChange`) алхмын мэдээ өгдөггүй тул секунд + хэвийн
+ *    хугацааг хэлнэ. Тоолуурыг ЗӨВХӨН таймерын callback-аас шинэчилнэ (`Tailan.useElapsed`-ийн eslint-ийн ⚠️).
+ */
+export function useElapsed(active: boolean): number {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t0 = Date.now();
+    const upd = () => setSecs(Math.round((Date.now() - t0) / 1000));
+    const first = setTimeout(upd, 0);
+    const id = setInterval(upd, 1000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, [active]);
+  return secs;
+}
+
+/** «Шинэчлэх»-ийн дараах дахин бодолтын саатал — дараалсан `invalidateAll`-ийг нэг тооцоо болгоно */
+const REFRESH_DEBOUNCE_MS = 400;
 
 export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: ChangePick) => void }) {
   const [st, setSt] = useState<{ res: ChangeResult | null; err: string | null }>({ res: null, err: null });
+  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна — дахин бодуулна; хуучин үр дүн үлдэнэ.
+     ⚠️ 2026-10-19 (review): `dataVersion` (хүснэгт бүрийн бичилт) биш `refreshEpoch` — кэш нь зөвхөн `invalidateAll`-д
+     хаягддаг; дахин бодолтыг сааруулна (`REFRESH_DEBOUNCE_MS`), өмнөх үеийн хариуг `alive`-аар үл тооно. */
+  const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
+  const mountEpoch = useRef(epoch);
+  const secs = useElapsed(!st.res && !st.err);
 
   useEffect(() => {
     let alive = true;
-    computeChange()
-      .then((res) => { if (alive) setSt({ res, err: null }); })
-      .catch((e: unknown) => { if (alive) setSt({ res: null, err: e instanceof Error ? e.message : String(e) }); });
-    return () => { alive = false; };
-  }, []);
+    const t = setTimeout(() => {
+      computeChange()
+        .then((res) => { if (alive) setSt({ res, err: null }); })
+        .catch((e: unknown) => {
+          /* ⚠️ 2026-10-23 (UX аудит X3): түүхий серверийн мөр биш — `userError` (монгол мессеж хэвээр, англи нь ойлгомжтой) */
+          console.error('[selbe] хэсэгчилсэн ЕТ — өөрчлөлт:', e);
+          if (alive) setSt({ res: null, err: userError(e) });
+        });
+    }, epoch === mountEpoch.current ? 0 : REFRESH_DEBOUNCE_MS);
+    return () => { alive = false; clearTimeout(t); };
+  }, [epoch]);
 
   if (st.err) return <p className={s.err}>{tr('Тооцоолж чадсангүй')}: {st.err}</p>;
-  if (!st.res) return <p className={s.wait}><span className={s.spin} aria-hidden />{tr('Тооцоолж байна…')}</p>;
+  if (!st.res) {
+    return (
+      <p className={s.wait}>
+        <span className={s.spin} aria-hidden />
+        {secs >= 3
+          ? tr('Тооцоолж байна… {0} с — ихэвчлэн 30 секунд хүртэл үргэлжилнэ.', num(secs))
+          : tr('Тооцоолж байна…')}
+      </p>
+    );
+  }
 
   return (
     <>
@@ -112,7 +160,8 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                           <span className={s.rowName}>{g.label ?? tr('Бүсээс гадуур')}</span>
                           <span className={s.rowVal}>
                             {fmt(it.key, g.value)}
-                            {r.next > 0 && <small> · {num((g.value / r.next) * 100, 0)}%</small>}
+                            {/* ⚠️ 2026-10-19 (аудит): талбай нэгтгэсэн полигоноор (`hesegChange.areaOf`) — 100%-иас давахгүй; бутархайн зөрүүг шахна */}
+                            {r.next > 0 && <small> · {num(Math.min(100, (g.value / r.next) * 100), 0)}%</small>}
                           </span>
                         </button>
                       </li>
@@ -178,9 +227,9 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     <div>{d == null ? it.old ? tr('Мэдээлэл дутуу') : tr('харьцуулахгүй')
                       : deltaText(it.key, d)}</div>
                     {d != null && percent != null && d !== 0 && <div><small>{`${d > 0 ? '+' : '−'}${num(Math.abs(percent), 1)}%`}</small></div>}
-                    {sourceCmp && r.oldN != null && <div><small>{tr('{0} объект', `${r.nextN - r.oldN > 0 ? '+' : ''}${num(r.nextN - r.oldN)}`)}</small></div>}
-                    {sourceCmp && r.oldLayersN != null && <div><small>{tr('{0} давхарга', `${r.nextLayersN - r.oldLayersN > 0 ? '+' : ''}${num(r.nextLayersN - r.oldLayersN)}`)}</small></div>}
-                    {sourceCmp && (it.metric === 'len' || it.key === 'zone') && r.oldArea != null && <div><small>{r.nextArea - r.oldArea > 0 ? '+' : ''}{ha(r.nextArea - r.oldArea, 2)} {tr('га')}</small></div>}
+                    {sourceCmp && r.oldN != null && <div><small>{tr('{0} объект', signed(r.nextN - r.oldN))}</small></div>}
+                    {sourceCmp && r.oldLayersN != null && <div><small>{tr('{0} давхарга', signed(r.nextLayersN - r.oldLayersN))}</small></div>}
+                    {sourceCmp && (it.metric === 'len' || it.key === 'zone') && r.oldArea != null && <div><small>{haDelta(r.nextArea - r.oldArea)} {tr('га')}</small></div>}
                     </>}
                   </td>
                 </tr>

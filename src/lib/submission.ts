@@ -10,7 +10,7 @@
  * (ҮНДСЭН ДАТА) шууд бүтэн жааз бичиж, хяналт нь ТЭР бичигдсэн жаазыг араас
  * нь харж байв — инженер буцаасан ч архивт жааз аль хэдийн үлдчихсэн.
  * Одоо «Нийтлэх» = ИЛГЭЭХ: зөвхөн diff нь `Selbe_Guitsetgel_Draft` хүснэгтийн
- * `sub|<pkgKey>` мөрөнд хадгалагдаж, ерөнхий менежер БАТЛАХАД л
+ * `sub|<pkgKey>` мөрөнд хадгалагдаж, төлөвлөлтийн ахлах инженер БАТЛАХАД л
  * (`hyanaltStore.apply`) архивт жааз үүснэ.
  *
  * ⚠️ `dkey`-ИЙН ЗАЙ — нэг хүснэгт, гурван төрлийн мөр:
@@ -62,6 +62,17 @@
  */
 
 import { getAuth, tableUrl, layer, sqlStr } from './draftRemote';
+/*
+ * ⚠️ 2026-10-26 (хэрэглэгчийн шийдвэр — БҮХ ноорог эх хуудасны бүтцээр 191-д): илгээлтийн НҮД нь `payload` JSON-д БИШ
+ *    `n:sub:<толгойн OBJECTID>` мөрүүдэд (ажил × блок бүрд нэг мөр, `obyem_sum` · `бодит_гүйцэтгэл` · огноо — `draftRows`).
+ *    Толгой (`sub|…`/`done|…` мөр, OBJECTID ХЭВЭЭР) нь зөвхөн ажлын урсгалын мета (`archiving` · `nonces` · `users` …) ба
+ *    БАТАЛГААЖСАН ҮЕҮДИЙН жагсаалт (`gens`) — уншигч `gens`-ийн хамгийн сүүлийн үеийн мөрийг авна (MVCC): хагас/унасан бичилт
+ *    ХЭЗЭЭ Ч харагдахгүй. `gens`-гүй (хуучин эсвэл хуучин табын бичсэн) payload-ын нүд нь эх сурвалж хэвээр.
+ * ⚠️ PHASE A: `SUB_DUAL` — payload-д v2 бүтэн хуулбар ч (≤ `SUBMISSION_MAX`) — шинэчлээгүй таб ажилласаар; хэтэрвэл v3 мета
+ *    (хуучин таб «агуулга задарсангүй» гэж зогсоно — fail-closed). Тулгалтын дараа (`draftRowsRemote.phaseB`) `false` болгоно.
+ */
+import { rowsReady, subRowsFor, subWriteGen, subGc, subDropAll, fillFrame, setHeaderCols } from './draftRowsRemote';
+import { cellToCols, colsToCell, pickGeneration, subFromRows, subToRows, ROW_VERSION, type Attrs, type Frame } from './draftRows';
 import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ Нэмэлтийн мөрийн ГАНЦ дүрэм `bagtsSheet`-д (2026-09-25) — энд давтаж бичвэл
    нэгтгэл ба overlay хоёр өөрөөр уншиж эхэлнэ. Цэвэр функцууд л. */
@@ -239,6 +250,11 @@ export type ArchivingMark = {
    *    өмнөх payload-ын нүд/мөрийн танигчийг хуулна. Байхгүй бол буусан жаазаас хасах боломжгүй → татгалзана.
    */
   prev?: ArchSnap;
+  /**
+   * ⚠️ 2026-10-26: `prev`-ийн МӨРИЙН ҮЕ (`n:sub:<OBJECTID>` — толгойн `gens`-ийн нэг) — v3 мета payload-д нүдний хуулбарын
+   *    ОРОНД бичигдэнэ; уншихад тэр үеийн мөрөөс `prev` дахин угсрагдана (`assemble`), GC тэр үеийг хадгална.
+   */
+  prevGen?: number;
 };
 /** Архивлаж буй агуулгын хуулбар — `residualAfterArchive`-д хэрэгтэй хэсэг л (`ArchivingMark.prev`) */
 export type ArchSnap = { cells: [string, string][]; rowKeys: [number, string][]; rowOcc?: [number, number, number][] };
@@ -429,6 +445,69 @@ export function truncatedFrameIds(
 }
 
 /**
+ * ХАРИУ АЛДАГДСАН БИЧИЛТИЙН ЦЭВЭРЛЭГЭЭ — ЭНЭ ЖААЗЫН МӨРҮҮД (⚠️ 2026-10-21, аудит; `ulsiinKomiss`-ийн 2026-10-21-ний
+ * «өдрөөр биш АГУУЛГААР таних» дүрмийн архивлалтын хувилбар).
+ *
+ * `hyanaltStore.archiveSubmission`-ийн `applyAdds` хариу алдагдсан (`addsLost`) үед тэмдгийн өдрийн `OID > maxOid0`
+ * мөрүүдээс (OID-оор эрэмбэлсэн) МАНАЙ жаазыг таньж устгах OID-уудыг буцаана. Урьд нь тэр өдрийн тэр мужийн БҮХ
+ * мөрийг устгадаг тул тэмдэг ба бичилтийн завсарт ижил өдрөөр бичигдсэн ӨӨР батлалтын (өөр `sub|` мөр) жааз ч
+ * устдаг байв.
+ *   · жааз = `rootNo`-оор эхэлж дараагийн тийм № (эсвэл төгсгөл) хүртэлх хэсэг (`matchArchivedFrame`-ийн дүрэм);
+ *   · БҮТЭН (ЯГ `n` мөр) эсвэл ТАСАРСАН (`n`-ээс богино, 500-ийн үржвэр — `applyAdds` 500-аар бичдэг) бөгөөд дээж
+ *     (`probe`) таарсан хэсэг л манайх; `written` (баталгаажсан OID) үргэлж орно;
+ *   · таарах хэсэг ОЛОН (хоёрдмол), дээж зөвхөн бөөрөнхийллөөр зөрсөн (`'near'`), эсвэл баталгаажсан OID танигдсан
+ *     хэсгийн ГАДНА (жааз холилдсон) → `null` (танигдсангүй — дуудагч зөвхөн `written`-ийг устгаж, үлдсэнийг ил
+ *     хэлнэ; fail-closed);
+ *   · таарах хэсэг алга → `[...written]`.
+ * Цэвэр функц — сүлжээг `hyanaltStore` хариуцна.
+ */
+export function lostFrameIds(
+  rows: Record<string, unknown>[],
+  mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
+  oidField: string,
+  noField: string,
+  dateFields?: readonly string[],
+  written?: readonly number[],
+): number[] | null {
+  const own = new Set((written ?? []).filter((x) => Number.isInteger(x) && x > 0));
+  if (!rows.length || mark.n <= 0) return [...own];
+  const dates = new Set(dateFields ?? []);
+  const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
+  const root = mark.rootNo ?? noOf(rows[0]);
+  const starts: number[] = [];
+  if (root) rows.forEach((r, i) => { if (noOf(r) === root) starts.push(i); });
+  else starts.push(0);
+  let hit: number[] | null = null;
+  for (let k = 0; k < starts.length; k += 1) {
+    const s = starts[k];
+    const end = root ? (k + 1 < starts.length ? starts[k + 1] : rows.length) : rows.length;
+    const len = end - s;
+    if (len !== mark.n && !(len < mark.n && len % 500 === 0)) continue;
+    let near = false;
+    let far = false;
+    for (const [i, f, v] of mark.probe ?? []) {
+      if (i >= len) continue;
+      const c = cmpArchVal(rows[s + i]?.[f], v, dates.has(f));
+      if (c === 'far') { far = true; break; }
+      if (c === 'near') near = true;
+    }
+    if (far) continue;
+    if (near || hit) return null;
+    hit = [];
+    for (const r of rows.slice(s, end)) {
+      const oid = Number(r[oidField]);
+      if (!Number.isInteger(oid) || oid <= 0) return null;
+      hit.push(oid);
+    }
+  }
+  if (hit) {
+    const hs = new Set(hit);
+    for (const w of own) if (!hs.has(w) && rows.some((r) => Number(r[oidField]) === w)) return null;
+  }
+  return [...new Set([...(hit ?? []), ...own])];
+}
+
+/**
  * ТЭМДГИЙН АРХИВЛАЖ БУЙ АГУУЛГА (2026-10-09) — тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бол payload өөрөө; ДАМЖСАН
  * (`mergeSubmission`) бол түүний хуулбар (`prev`) payload-ын хэлбэрээр; аль нь ч биш бол `null` (хасах боломжгүй).
  */
@@ -496,7 +575,7 @@ export type StagedSubmission = { oid: number; at: number; done: boolean; payload
  *    өмнө шинэ жааз орвол хоёр мөрийн блокийн утга СОЛИГДОЖ `unmoved = 0`-оор
  *    архивт бичигддэг байлаа.
  * ⚠️ oid өсөх = хуудасны дараалал: жааз бүхэлдээ хуудасны дарааллаар нэмэгддэг
- *    ба `loadRows` ч `OBJECTID ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
+ *    ба `loadRows` ч `objectid ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
  *    нь `movePayload`-оор одоогийн жаазанд зөөгддөг тул нэг payload-ын rowKeys
  *    НЭГ жаазных. Сөрөг (түр) oid байвал эерэгүүдийн ДАРАА — эерэгийн
  *    харьцангуй дарааллыг хөндөхгүй.
@@ -715,6 +794,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
       /* ⚠️ 2026-10-09: тавьсан хүн/сешн ба дамжсан агуулгын хуулбар — эвдэрсэн хэсгийг л хаяна */
       if (isStr(ar.by) && ar.by.length <= 128) mk.by = ar.by.toLowerCase();
       if (isStr(ar.sid) && ar.sid.length <= 64) mk.sid = ar.sid;
+      /* ⚠️ 2026-10-26: `prev`-ийн мөрийн үе (v3 мета) */
+      if (isFin(ar.prevGen)) mk.prevGen = ar.prevGen;
       const pv = ar.prev as Record<string, unknown> | undefined;
       if (pv && typeof pv === 'object' && Array.isArray(pv.cells) && Array.isArray(pv.rowKeys)) {
         const snap: ArchSnap = {
@@ -987,7 +1068,7 @@ const errMsg = (e: unknown): string => {
   return String(e ?? 'ArcGIS error');
 };
 
-type RowAttrs = { OBJECTID?: number; dkey?: string; at?: number; payload?: string };
+type RowAttrs = { objectid?: number; dkey?: string; at?: number; payload?: string };
 
 /**
  * ХАРИУ — «олдсонгүй» ба «уншиж чадсангүй» хоёрыг ЯЛГАНА.
@@ -1016,16 +1097,191 @@ export type SubRead =
  *   · илгээлтийн мөр атал payload задрахгүй → `{ok:false}` (ЭНЭ нь илгээлт мөн
  *     боловч уншигдсангүй — legacy гэж үзвэл гүйцэтгэл алга болно)
  */
-function readRow(a: RowAttrs | undefined): SubRead {
-  if (!a || typeof a.OBJECTID !== 'number') return { ok: true, sub: null };
+async function readRow(a: RowAttrs | undefined, rowsOf?: ReadonlyMap<number, Attrs[]>): Promise<SubRead> {
+  if (!a || typeof a.objectid !== 'number') return { ok: true, sub: null };
   const dkey = String(a.dkey ?? '');
   if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
-  const payload = a.payload ? parseSubmission(String(a.payload)) : null;
-  if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.OBJECTID) };
+  const h = a.payload ? parseHead(String(a.payload)) : null;
+  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
+  /* ⚠️ 2026-10-26: ТҮР толгой (`pending`) — агуулга хараахан баталгаажаагүй: ХООСОН илгээлт гэж буцаавал хянагч хоосныг харж,
+     хамтрагч хоосон суурь дээр нэгтгэж бичигчийн нүдийг дардаг байв. Шинэ бол «бичигдэж байна» (fail-closed); хугацаа хэтэрсэн
+     бол бичигч унасан — юу ч илгээгдээгүй (баталгаажаагүй толгой хяналтад хэзээ ч орохгүй) */
+  if (h.pending != null) {
+    if (Date.now() - h.pending < PENDING_TTL) return { ok: false, error: tr('Илгээлт №{0} яг одоо бичигдэж байна — хэдэн секундын дараа дахин ачаална уу', a.objectid) };
+    return { ok: true, sub: null };
+  }
+  /* ⚠️ 2026-10-26: `gens`-тэй толгой — нүд нь `n:sub:<OBJECTID>` мөрөөс (MVCC); уншиж чадаагүй бол АЛДАА (fail-closed) */
+  let payload = h.p;
+  if (h.gens) {
+    try {
+      payload = await assemble(a.objectid, h, rowsOf?.get(a.objectid));
+    } catch (e) {
+      return { ok: false, error: tr('Илгээлт №{0}-ийн мөрүүд уншигдсангүй: {1}', a.objectid, errMsg(e)) };
+    }
+  }
   /* Мөрийн `at` талбар нь payload.at-тай адил боловч хуучин/эвдэрсэн мөрд
      байхгүй байж болно — payload-оос нөхнө. */
   const at = isFin(a.at) ? Number(a.at) : payload.at;
-  return { ok: true, sub: { oid: a.OBJECTID, at, done: dkey.startsWith(DONE_PREFIX), payload } };
+  return { ok: true, sub: { oid: a.objectid, at, done: dkey.startsWith(DONE_PREFIX), payload } };
+}
+
+/**
+ * ТОЛГОЙН PAYLOAD (2026-10-26) — v1/v2 (нүдтэй, хуучин эсвэл PHASE A-ийн давхар хуулбар) эсвэл v3 (ЗӨВХӨН мета, нүдгүй).
+ * `gens` = баталгаажсан мөрийн үеүд (байвал мөр эх сурвалж); хуучин таб payload-ыг дахин бичихэд `gens` хаягдана — тэр
+ * үед payload-ын нүд эх сурвалж (шинэ бичигч дахин мөр болгоно). `meta` — v3 (нүд нь энд ХООСОН, мөрөөс угсрагдана).
+ */
+/**
+ * `pending` — ШИНЭ толгойн түр мета (`saveSubmissionInner`: v2 багтахгүй үед толгойг OBJECTID-ийн төлөө ЭХЛЭЭД нэмнэ) —
+ * баталгаажуулалт (`gens` + жинхэнэ payload) хүртэл агуулгагүй; уншигч ХООСОН илгээлт гэж ХАРАХГҮЙ (`readRow`).
+ */
+export type SubHead = { p: SubmissionPayload; gens: number[] | null; meta: boolean; pending?: number | null };
+/** Түр толгойн хугацаа — үүнээс хуучин бол бичигч унасан (баталгаажаагүй, агуулгагүй) гэж үзнэ */
+const PENDING_TTL = 15 * 60_000;
+export function parseHead(raw: string): SubHead | null {
+  let d: Record<string, unknown> | null;
+  try { d = JSON.parse(raw) as Record<string, unknown> | null; } catch { return null; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+  const gens = Array.isArray(d.gens) ? (d.gens as unknown[]).filter(isFin) : null;
+  if (d.v === 3) {
+    if (!gens) return null;
+    const inc = d.mode === 'inc';
+    /* ⚠️ 2026-10-26: `rowKeys`/`rowOcc` нь мета-д НҮДГҮЙ oid-ийнх л (`headRaw`-ийн ⚠️) — `assembleRows` мөрийнхтэй нийлүүлнэ */
+    const p = parseSubmission(JSON.stringify({
+      ...d, v: inc ? 2 : 1, cells: [], dates: [],
+      rowKeys: Array.isArray(d.rowKeys) ? d.rowKeys : [], rowOcc: Array.isArray(d.rowOcc) ? d.rowOcc : [],
+    }));
+    return p ? { p, gens, meta: true, pending: isFin(d.pending) ? d.pending : null } : null;
+  }
+  const p = parseSubmission(raw);
+  return p ? { p, gens, meta: false } : null;
+}
+/** PHASE A — payload-д v2 бүтэн хуулбар (шинэчлээгүй табд) багтвал; `false` = зөвхөн мета (тулгалтын дараа) */
+export const SUB_DUAL = true;
+/**
+ * Толгойн payload-ыг бичих хэлбэр: `gens`-гүй → хуучин (v1/v2) ЯГ; `gens`-тэй — нүд гарт байвал (`!meta`) ба багтвал v2 +
+ * `gens` (давхар хуулбар), эс бөгөөс v3 МЕТА (нүд · `rowKeys` · `rowOcc` · `archiving.prev` хасагдана; `prevGen` үлдэнэ).
+ */
+export function headRaw(p: SubmissionPayload, gens: readonly number[] | null, meta = false): string {
+  const full: Record<string, unknown> = p.mode === 'inc' ? { ...p, v: 2, mode: 'inc' } : { ...p, v: 1 };
+  if (!gens) return JSON.stringify(full);
+  if (!meta && SUB_DUAL) {
+    const s = JSON.stringify({ ...full, gens });
+    if (s.length <= SUBMISSION_MAX) return s;
+  }
+  const rest: Record<string, unknown> = { ...full };
+  for (const k of ['cells', 'dates', 'rowKeys', 'rowOcc']) delete rest[k];
+  /* ⚠️ 2026-10-26: НҮДГҮЙ oid-ийн `rowKeys`/`rowOcc` (жиш. дахин илгээлтээр нийлбэр нь тэг болж хасагдсан нүдний мөр) мөрөнд
+     илэрхийлэгдэхгүй тул мета-д үлдэнэ — `mergeSubmission` тэднийг хадгалдаг бөгөөд `residualAfterArchive` архивласан нүдийг
+     тэр шошгоор тулгадаг (алга бол «хасах боломжгүй» гэж батлалт зогсдог байв) */
+  const used = usedOids(p);
+  const xk = p.rowKeys.filter(([o]) => !used.has(o));
+  const xo = (p.rowOcc ?? []).filter(([o]) => !used.has(o));
+  if (xk.length) rest.rowKeys = xk;
+  if (xo.length) rest.rowOcc = xo;
+  const ar = p.archiving ? { ...p.archiving } : undefined;
+  /* ⚠️ 2026-10-26: хуулбарыг ЗӨВХӨН мөрийн үетэй (`prevGen`) бол хасна — үегүй бол мета-д ч үлдэнэ (эс бөгөөс
+     «архивлаж буй» агуулга алга болж `residualAfterArchive` хасах зүйлгүй — давхар тоолол) */
+  if (ar && ar.prevGen != null) delete ar.prev;
+  return JSON.stringify({ ...rest, v: 3, ...(ar ? { archiving: ar } : {}), gens });
+}
+
+/**
+ * МӨРИЙН КОДЛОГЧ АГУУЛГЫГ ЯГ СЭРГЭЭХ ҮҮ (⚠️ 2026-10-26, «өгөгдөл алдагдахгүй» — хэрэглэгчийн тэргүүн шаардлага). Нүд ·
+ * огноо ЯГ ижил, ашиглагдаж буй oid-ийн `rowKeys`/`rowOcc` ижил байх ёстой. ЯАГААД: хуучин НИЙТ (v1) илгээлтэд `''` ба
+ * `'%0'` нүд бий (амьд 191: `done|b1_9f|128` г.м.) — мөрийн баганад `'%0'` нь `'0'` болж (НИЙТ горимд хувь 0 ≠ обьём 0),
+ * `''` алга болдог байв. Алдагдалтай бол мөр рүү БИЧИХГҮЙ — payload эх сурвалж хэвээр (`saveSubmissionInner` ·
+ * `migrateSubmissionRow`).
+ */
+export function subRowsLossless(p: Pick<SubmissionPayload, 'cells' | 'dates' | 'rowKeys' | 'rowOcc'>, frame: Frame | null): boolean {
+  const want = subToRows({ cells: p.cells, dates: p.dates, rowKeys: p.rowKeys, ...(p.rowOcc ? { rowOcc: p.rowOcc } : {}), asOf: null }, frame);
+  const attrs: Attrs[] = [...want].map(([k, a], i): Attrs => ({ ...a, mur_key: k, at: 1, objectid: i + 1 }));
+  const c = subFromRows(pickGeneration(attrs, [1]));
+  if (cellSig(c) !== cellSig(p)) return false;
+  const used = usedOids(p);
+  const rk = (l: readonly [number, string][]) => JSON.stringify(l.filter(([o]) => used.has(o)).map(([o, s]) => `${o}=${s}`).sort());
+  const ro = (l: readonly [number, number, number][] | undefined) => JSON.stringify((l ?? []).filter(([o]) => used.has(o)).map((e) => e.join(',')).sort());
+  return rk(c.rowKeys) === rk(p.rowKeys) && ro(c.rowOcc) === ro(p.rowOcc);
+}
+/** Нүд/огноонд хэрэглэгдэж буй oid */
+function usedOids(p: Pick<SubmissionPayload, 'cells' | 'dates'>): Set<number> {
+  const s = new Set<number>();
+  for (const [k] of [...p.cells, ...p.dates]) { const o = Number(k.slice(0, k.indexOf(':'))); if (Number.isInteger(o)) s.add(o); }
+  return s;
+}
+/** Хоёр тоо бараг тэнцүү (мөрийн `Double` ↔ 12 оронтой бичлэг, `bagtsSheet.numStr`) */
+const close = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+/** Нэг нэмэлтийн нүдийг кодлогчийн хэлбэрт — утга (n, p) ИЖИЛ бол; тэг/хоосон нэмэлт → `null` (хасна) */
+function normInc(v: string): string | null {
+  const x = parseInc(v);
+  if (!x || (x.n === 0 && x.p === 0)) return null;
+  const c = cellToCols(v);
+  const s = c ? colsToCell(c.ob, c.act, c.niit, c.blank) : null;
+  const y = s != null ? parseInc(s) : null;
+  return s != null && y && close(x.n, y.n) && close(x.p, y.p) ? s : v;
+}
+/**
+ * НЭМЭЛТИЙН ГОРИМЫН НҮДИЙГ ХЭВШҮҮЛНЭ (⚠️ 2026-10-26) — УТГА (n, p) ӨӨРЧЛӨГДӨХГҮЙ: тэг/хоосон нэмэлтийг хасна
+ * (`mergeSubmission`-ий «тэг болсон нүдийг хаяна» ЯГ дүрэм — нэмэлт 0 нь юу ч нэмэхгүй), бичлэгийг мөрийн кодлогчийн хэлбэрт
+ * («15.50» → «15.5»). «Архивлаж буй» хуулбар (`archiving.prev`) ч адил. НИЙТ (v1) горимд ХӨНДӨХГҮЙ — тэнд `''`/`'%0'` нь утга.
+ */
+export function normIncCells(p: SubmissionPayload): SubmissionPayload {
+  if (p.mode !== 'inc') return p;
+  const norm = (l: readonly [string, string][]): [string, string][] => {
+    const out: [string, string][] = [];
+    for (const [k, v] of l) { const s = normInc(v); if (s != null) out.push([k, s]); }
+    return out;
+  };
+  const out: SubmissionPayload = { ...p, cells: norm(p.cells) };
+  if (p.archiving?.prev) out.archiving = { ...p.archiving, prev: { ...p.archiving.prev, cells: norm(p.archiving.prev.cells) } };
+  return out;
+}
+/** Хоёр агуулга ИЖИЛ үү — ЯГ, эсвэл нэмэлтийн горимд хэвшүүлсний дараа (`normIncCells`) */
+function sameContent(a: SubmissionPayload, b: SubmissionPayload): boolean {
+  if (cellSig(a) === cellSig(b)) return true;
+  return a.mode === 'inc' && b.mode === 'inc' && cellSig(normIncCells(a)) === cellSig(normIncCells(b));
+}
+
+/** `gens`-тэй толгойн бүтэн payload — мөрөөс (сүүлийн баталгаажсан үе), «архивлаж байна» тэмдгийн хуулбар `prevGen`-ээс */
+async function assemble(oid: number, h: SubHead, rows?: Attrs[]): Promise<SubmissionPayload> {
+  return assembleRows(h, rows ?? (await subRowsFor([oid])).get(oid) ?? []);
+}
+/** `assemble`-ийн цэвэр хэсэг (тест) */
+export function assembleRows(h: SubHead, all: readonly Attrs[]): SubmissionPayload {
+  const gens = h.gens ?? [];
+  const c = subFromRows(pickGeneration(all, gens));
+  /* ⚠️ 2026-10-26: толгойн `rowKeys`/`rowOcc` (мета — нүдгүй oid-ийнх; давхар хуулбар — бүгд) + мөрийнх (давамгай) */
+  const rk = new Map<number, string>(h.p.rowKeys);
+  for (const [o, l] of c.rowKeys) rk.set(o, l);
+  const occ = new Map<number, [number, number, number]>((h.p.rowOcc ?? []).map((e): [number, [number, number, number]] => [e[0], [e[0], e[1], e[2]]]));
+  for (const e of c.rowOcc ?? []) occ.set(e[0], [e[0], e[1], e[2]]);
+  const p: SubmissionPayload = { ...h.p, cells: c.cells, dates: c.dates, rowKeys: byPageOrder(rk) };
+  if (occ.size) p.rowOcc = [...occ.values()].sort((x, y) => x[0] - y[0]); else delete p.rowOcc;
+  const m = p.archiving;
+  if (m && m.prevGen != null && !m.prev) {
+    const pv = subFromRows(pickGeneration(all, gens, m.prevGen));
+    p.archiving = { ...m, prev: { cells: pv.cells, rowKeys: pv.rowKeys, ...(pv.rowOcc ? { rowOcc: pv.rowOcc } : {}) } };
+  }
+  return p;
+}
+
+/** Толгойн МЕТА л (нүд угсрахгүй) — «архивлаж байна» тэмдгийн шалгалтад (`archivingBusy`) */
+function headRow(a: RowAttrs | undefined): SubRead {
+  if (!a || typeof a.objectid !== 'number') return { ok: true, sub: null };
+  const dkey = String(a.dkey ?? '');
+  if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
+  const h = a.payload ? parseHead(String(a.payload)) : null;
+  if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
+  return { ok: true, sub: { oid: a.objectid, at: isFin(a.at) ? Number(a.at) : h.p.at, done: dkey.startsWith(DONE_PREFIX), payload: h.p } };
+}
+
+/** Олон толгойн мөрийг НЭГ дор (`gens`-тэйг л) — жагсаалтын уншилтад */
+async function rowsFor(as: readonly (RowAttrs | undefined)[]): Promise<Map<number, Attrs[]>> {
+  const oids: number[] = [];
+  for (const a of as) {
+    if (!a || typeof a.objectid !== 'number' || !a.payload || !String(a.payload).includes('"gens"')) continue;
+    oids.push(a.objectid);
+  }
+  return oids.length ? subRowsFor(oids) : new Map();
 }
 
 /* ⚠️ Хуучин `toStaged` (мөр → `StagedSubmission`, алдааг `null` болгодог)
@@ -1034,7 +1290,7 @@ function readRow(a: RowAttrs | undefined): SubRead {
    ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбарууд (`loadActiveSubmission` ·
    `loadSubmissionByOid`) ч 2026-10-09-нд (аудит №6) дуудагчгүй тул хасагдсан — зөвхөн `read*` үлдэнэ. */
 
-const OUT_FIELDS = ['OBJECTID', 'dkey', 'at', 'payload'];
+const OUT_FIELDS = ['objectid', 'dkey', 'at', 'payload'];
 
 /**
  * Уншихад бэлэн хүснэгтийн URL — `SubRead`-ийн ёсоор.
@@ -1084,7 +1340,7 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
       where: `dkey IN (${keys.map(sqlStr).join(', ')})`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     const feats = res.features.map((f) => f.attributes as RowAttrs | undefined);
     /* Тэр ӨДРИЙН мөр байвал ТЭР нь ялна — хуучин мөр байсан ч. */
@@ -1105,7 +1361,7 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
      */
     const legacy = feats.find((a) => String(a?.dkey ?? '') === legacyK);
     if (!legacy) return { ok: true, sub: null };
-    const r = readRow(legacy);
+    const r = await readRow(legacy);
     if (!r.ok || !r.sub) return r;
     if (fillMs != null && r.sub.payload.fillMs !== fillMs) return { ok: true, sub: null };
     return r;
@@ -1142,13 +1398,16 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
       where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     const out: StagedSubmission[] = [];
+    /* ⚠️ 2026-10-26: `gens`-тэй толгойн мөрийг НЭГ дор (уншиж чадаагүй бол тэр толгой алгасагдана — харагдацын зам) */
+    const rmap = await rowsFor(res.features.map((f) => f.attributes as RowAttrs | undefined)).catch(() => null);
     for (const f of res.features) {
       const a = f.attributes as RowAttrs | undefined;
       if (!String(a?.dkey ?? '').startsWith(SUB_PREFIX)) continue;
-      const r = readRow(a);
+      if (!rmap && a?.payload && String(a.payload).includes('"gens"')) continue;
+      const r = await readRow(a, rmap ?? undefined);
       /* ⚠️ Задраагүй мөрийг ЧИМЭЭГҮЙ алгасна — энэ функц зөвхөн ХАРАГДАЦ ба
          анхааруулгад хэрэглэгддэг, бичих шийдвэрт БИШ (`readActiveSubmission`
          тэр үүргийг гүйцэтгэнэ, алдаагаа ил гаргадаг). */
@@ -1184,12 +1443,18 @@ export async function findNonce(pkgKey: string, nonce: string, since: number): P
       where: `pkg = ${sqlStr(pkgKey)} AND at >= ${Math.floor(since)} AND (dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} OR dkey LIKE ${sqlStr(`${DONE_PREFIX}%`)})`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID DESC'],
+      orderByFields: ['objectid DESC'],
     });
     let hit: StagedSubmission | null = null;
     for (const f of res.features) {
-      const r = readRow(f.attributes as RowAttrs | undefined);
-      if (!r.ok || !r.sub || r.sub.payload.pkgKey !== pkgKey) continue;
+      /* ⚠️ 2026-10-26: танигчийг МЕТА-аас (нүд угсрахгүй); олдсон мөрийн угсралт унавал ТОДОРХОЙГҮЙ (`ok:false`) —
+         «буугаагүй» гэж дүгнэвэл дахин илгээж давхар тоолно */
+      const a = f.attributes as RowAttrs | undefined;
+      const h = a?.payload ? parseHead(String(a.payload)) : null;
+      if (!h || h.p.pkgKey !== pkgKey || !(h.p.nonces ?? []).includes(nonce)) continue;
+      const r = await readRow(a);
+      if (!r.ok) return r;
+      if (!r.sub || r.sub.payload.pkgKey !== pkgKey) continue;
       if (!(r.sub.payload.nonces ?? []).includes(nonce)) continue;
       if (!r.sub.done) return { ok: true, sub: r.sub };
       hit ??= r.sub;
@@ -1222,7 +1487,7 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
     if (!u.url) return { ok: true, sub: null };
     const fl = await layer(u.url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${oid}`,
+      where: `objectid = ${oid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
@@ -1246,6 +1511,13 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
  * ⚠️ Хэрэглэгч нь `currentUser()` — дуудагчийн өгсөн нэрт итгэхгүй.
  * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах мессеж
  */
+/** ⚠️ 2026-10-23: «Ерөнхий захирал» эсэх — `permissions` нь хөтчийн дэлгүүр тул динамик импорт (энэ модуль Node тестэд ч ачаалагдана) */
+async function isZahiralUser(me: string): Promise<boolean> {
+  const { roleOf } = await import('./permissions');
+  return roleOf(me) === 'zahiral';
+}
+const ZAHIRAL_DENY = () => tr('Ерөнхий захирал гүйцэтгэлийг зөвхөн ХАРНА — бөглөх, илгээх боломжгүй.');
+
 export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
@@ -1260,6 +1532,9 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
      шийдвэрт (`hyanaltStore.authz`) үйлчилдэг байв. Туг нь эрхийг ХАСДАГ (утгыг өөрчлөхгүй) тул
      энд ч мөн хориглоно. `super` ба нэвтрэлт унтраалттай (`!AUTH.appId`) — дээр аль хэдийн чөлөөлөгдсөн. */
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) зөвхөн ХАРНА — урсгалын томилгоо (хуучин/алдаатай) үлдсэн ч илгээхгүй
+     (`FillNew.permPerf` · `hyanaltStore.authz`-тай нэг дүрэм; консол/Ctrl+S-ийн зам энд хаагдана). */
+  if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const cb = bagtsFor(me, 'company');
   if (cb === null || cb.includes(group)) return null;
   if (allowChief) {
@@ -1267,6 +1542,29 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
     if (ch === null || ch.includes(group)) return null;
   }
   return tr('Та «{0}» багцын гүйцэтгэгчээр томилогдоогүй тул гүйцэтгэл илгээх эрхгүй.', group);
+}
+
+/**
+ * ҮЛДЭГДЭЛ БИЧИХ ЭРХ (⚠️ 2026-10-21, аудит) — `saveResidualSubmission`: тухайн багцад ЭЦСИЙН (`chief`) шатанд
+ * томилогдсон эсэх. Чөлөөлөлт `companyDeny`-тэй ижил (Node · нэвтрэлт унтраалттай · `super`); «зөвхөн харна» хориотой.
+ * ⚠️ Гүйцэтгэгчийн (`company`) томилгоо ХАНГАЛТГҮЙ — үлдэгдэл нь архивлалтын дараах хаалт, гүйцэтгэгчийн илгээлт биш;
+ *    урьд нь `companyDeny(grp, true)` хоёуланг зөвшөөрдөг тул `residual` туг гүйцэтгэгчийн бүх шалгалтыг тойрдог байв.
+ */
+export async function chiefDeny(group: string): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
+    import('./services'), import('./who'), import('./guitsetgelAcl'),
+  ]);
+  if (!AUTH.appId) return null;
+  const me = currentUser();
+  if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  if (roleForUser(me) === 'super') return null;
+  if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — `companyDeny`-ийн ⚠️ */
+  if (await isZahiralUser(me)) return ZAHIRAL_DENY();
+  const ch = bagtsFor(me, 'chief');
+  if (ch === null || ch.includes(group)) return null;
+  return tr('Та «{0}» багцын эцсийн шатны батлагчаар томилогдоогүй тул үлдэгдэл илгээлт бичих эрхгүй.', group);
 }
 
 /**
@@ -1299,6 +1597,40 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
 export async function saveSubmission(
   pkgKey: string,
   payload: SubmissionPayload,
+  expect?: { at: number; dropMark?: number } | null,
+): Promise<SaveSubmissionResult> {
+  /* ⚠️ 2026-10-21 (аудит): `residual`/`residualOf` ЗӨВХӨН архивлалтын дараах хаалт бичнэ (`saveResidualSubmission` ←
+     `hyanaltStore.closeAfterArchive`). Урьд нь клиентийн payload-д `residual: true` тавихад л илгээгчийн шалгалт
+     (`user` = нэвтэрсэн хүн) ба хяналтын хориг (`reviewLockDeny`) хоёулаа АЛГАСАГДДАГ байв — дурын нэрээр, хянагдаж буй
+     илгээлтийн дор нь бичих боломжтой. Серверийн мөрөөс уншихад (`parseSubmission`) туг хэвээр. */
+  if (payload.residual === true || payload.residualOf != null)
+    return { ok: false, error: tr('Үлдэгдлийн (residual) тэмдэгтэй илгээлтийг зөвхөн архивлалтын хаалт бичнэ — энэ замаар хүлээн авахгүй.') };
+  return saveSubmissionInner(pkgKey, payload, expect, false);
+}
+
+/** `saveSubmission` · `saveResidualSubmission`-ий үр дүн (`lost` — `saveSubmissionInner`-ийн ⚠️) */
+export type SaveSubmissionResult = { ok: true; oid: number } | { ok: false; error: string; lost?: true };
+
+/**
+ * ҮЛДЭГДЭЛ ИЛГЭЭЛТИЙГ ХАДГАЛНА (⚠️ 2026-10-21, аудит) — ЗӨВХӨН `hyanaltStore.closeAfterArchive` дуудна: батлах явцад
+ * дахин илгээснээс архивласан хэсгийг хассан үлдэгдэл (`residual: true` · `residualOf`). Бичигч нь тухайн багцын ЭЦСИЙН
+ * (`chief`) шатны томилгоотой байх ёстой (`chiefDeny`) — гүйцэтгэгчийн томилгоо хангалтгүй. Илгээгчийн шалгалт
+ * (агуулга гүйцэтгэгчийнх — `user`/`users` хэвээр) ба хяналтын хориг (үлдэгдэл = шинэ тойрог) энд ҮЙЛЧЛЭХГҮЙ.
+ */
+export async function saveResidualSubmission(
+  pkgKey: string,
+  payload: SubmissionPayload,
+  expect?: { at: number; dropMark?: number } | null,
+): Promise<SaveSubmissionResult> {
+  if (payload.residual !== true)
+    return { ok: false, error: tr('Үлдэгдлийн тэмдэггүй илгээлт — энэ зам зөвхөн үлдэгдэлд.') };
+  return saveSubmissionInner(pkgKey, payload, expect, true);
+}
+
+/** `saveSubmission`/`saveResidualSubmission`-ийн НЭГ бие — `residual` аргумент нь payload-ын тугийг ОРЛОНО (дуудагчид итгэхгүй) */
+async function saveSubmissionInner(
+  pkgKey: string,
+  payload: SubmissionPayload,
   /**
    * ХҮЛЭЭГДЭЖ БУЙ СУУРЬ (optimistic concurrency) — заавал биш.
    *   · `undefined` → шалгахгүй (хуучин зан төлөв);
@@ -1317,10 +1649,12 @@ export async function saveSubmission(
    *    (`resolveMark`) тул payload-д тэмдэггүй бичихийг зөвшөөрнө. Доорх тэмдгийн хамгаалалтыг үз.
    */
   expect?: { at: number; dropMark?: number } | null,
+  /** ⚠️ 2026-10-21 (аудит): `true` — ЗӨВХӨН `saveResidualSubmission`-аас (илгээгчийн шалгалт · хяналтын хориггүй, `chiefDeny`-тэй) */
+  residual = false,
   /* ⚠️ 2026-10-11 (аудит №7): `lost` — хариу АЛДАГДСАН (`isLostWrite`: timeout · сүлжээ · 5xx) тул илгээлт серверт
      буусан байж болно; дуудагч (FillNew) тэр үед л явж буй илгээлтийн тэмдгийг (`Inflight`) үлдээнэ, тодорхой
      татгалзалд арилгана. */
-): Promise<{ ok: true; oid: number } | { ok: false; error: string; lost?: true }> {
+): Promise<SaveSubmissionResult> {
   if (payload.pkgKey !== pkgKey) {
     /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
        руу орно — дуудагчийн алдааг ил зогсооно. */
@@ -1336,7 +1670,7 @@ export async function saveSubmission(
    *    хэвээр үлдээнэ (даргыг илгээгч гэж бүртгэвэл инженерийн шалгуур буруу хүнийг барина).
    */
   let body: SubmissionPayload = payload;
-  if (typeof window !== 'undefined' && payload.residual !== true) {
+  if (typeof window !== 'undefined' && !residual) {
     const [{ AUTH }, { currentUser }] = await Promise.all([import('./services'), import('./who')]);
     if (AUTH.appId) {
       const me = (currentUser() ?? '').trim().toLowerCase();
@@ -1347,7 +1681,10 @@ export async function saveSubmission(
     }
   }
   const raw = JSON.stringify(body.mode === 'inc' ? { ...body, v: 2, mode: 'inc' } : { ...body, v: 1 });
-  if (raw.length > SUBMISSION_MAX) {
+  /* ⚠️ 2026-10-26: мөрийн горимд (`rowsReady`) хэмжээний хязгааргүй — нүд `n:sub:<OBJECTID>` мөрөнд, payload-д мета (давхар
+     хуулбар зөвхөн багтвал). Хязгаар хэтэрсэн үед л горимыг асууна — сүлжээнээс ӨМНӨХ хуучин шалгалтын дараалал хэвээр. */
+  const rowsBig = raw.length > SUBMISSION_MAX ? (await rowsReady()).mode === 'rows' : false;
+  if (raw.length > SUBMISSION_MAX && !rowsBig) {
     /*
      * ⚠️ ЗААВАР ҮНЭН БАЙХ ЁСТОЙ (2026-09-04-ний аудит). Урьд нь «хэсэгчлэн
      *    илгээнэ үү» гэж заадаг байсан нь ХУДАЛ: `mergeSubmission` нь дараагийн
@@ -1367,13 +1704,14 @@ export async function saveSubmission(
     const { PKGS } = await import('@/modules/sheet/bagts.pkg');
     const grp = PKGS.find((p) => p.key === pkgKey)?.group;
     if (!grp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
-    const deny = await companyDeny(grp, payload.residual === true);
+    /* ⚠️ 2026-10-21 (аудит): үлдэгдэл → ЭЦСИЙН шатны томилгоо (`chiefDeny`); гүйцэтгэгчийн томилгоо хангалтгүй */
+    const deny = residual ? await chiefDeny(grp) : await companyDeny(grp);
     if (deny) return { ok: false, error: deny };
     /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): хуудсанд
        хяналтад явж буй илгээлт байвал шинэ илгээлт ч, тэрийг доор нь солих ч ХОРИГЛОНО
        (`hyanaltSubmit.reviewLockDays`-ийн ⚠️). Үлдэгдэл (`residual`) — газрын даргын архивын дараах
        ШИНЭ тойрог, хориг БИШ. ⚠️ Бичихээс ӨМНӨ — `submitForReview` агуулга бичигдсэний ДАРАА дуудагддаг. */
-    if (payload.residual !== true) {
+    if (!residual) {
       const pk = PKGS.find((p) => p.key === pkgKey);
       const others = PKGS.filter((p) => p.group === grp && p.key !== pkgKey).map((p) => p.name);
       const { reviewLockDeny } = await import('./hyanaltSubmit');
@@ -1401,22 +1739,31 @@ export async function saveSubmission(
      */
     const found = await fl.queryFeatures({
       where: `dkey IN (${[dkey, legacyK].map(sqlStr).join(', ')})`,
-      outFields: ['OBJECTID', 'dkey', 'at', 'payload'],
+      outFields: ['objectid', 'dkey', 'at', 'payload'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
-    const all = found.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
-    const feats = all.filter((f) => {
+    const all = found.features.filter((f) => typeof f.attributes?.objectid === 'number');
+    const feats0 = all.filter((f) => {
       const k = String(f.attributes.dkey ?? '');
       if (k === dkey) return true;
       if (k !== legacyK) return false;
       /* Хуучин мөр — ЗӨВХӨН ижил өдрийнх бол энэ илгээлтийн мөр гэж үзнэ. */
-      const p = parseSubmission(String(f.attributes.payload ?? ''));
+      const p = parseHead(String(f.attributes.payload ?? ''))?.p;
       return !!p && p.fillMs === payload.fillMs;
     });
-    const oids = feats.map((f) => f.attributes.OBJECTID as number);
+    /* ⚠️ 2026-10-26: ТҮР толгой (`SubHead.pending`) — өөр бичигч яг одоо бичиж байвал ЮУ Ч бичихгүй; хугацаа хэтэрсэн (бичигч
+       унасан, агуулгагүй) бол байхгүйд тооцож энэ бичилтээр устгана */
+    const pendOf = (x: (typeof feats0)[number]): number | null => parseHead(String(x.attributes.payload ?? ''))?.pending ?? null;
+    if (feats0.some((x) => { const pa = pendOf(x); return pa != null && Date.now() - pa < PENDING_TTL; })) {
+      return { ok: false, error: tr('Энэ өдрийн илгээлтийг өөр хэрэглэгч яг одоо бичиж байна — хэдэн секундын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.') };
+    }
+    const stalePend = feats0.filter((x) => pendOf(x) != null).map((x) => x.attributes.objectid as number);
+    const feats = feats0.filter((x) => pendOf(x) == null);
+    const oids = feats.map((f) => f.attributes.objectid as number);
     const target = oids.length ? oids[oids.length - 1] : null;
-    const dupes = oids.slice(0, -1);
+    const dupes = [...oids.slice(0, -1), ...stalePend];
+    for (const o of stalePend) void subDropAll(o).catch(() => undefined);
     /* ⚠️ СУУРИЙН ТУЛГАЛТ — дээрх `expect`-ийн тайлбар. Зөрсөн бол ЮУ Ч
        бичихгүй буцна: дуудагч хуудсаа дахин ачаалж, нөгөө хүний илгээлт
        дээр нэгтгэх ёстой. */
@@ -1439,8 +1786,9 @@ export async function saveSubmission(
      *    мөрд тэмдэг байхад payload ижил тэмдгийг (`startedAt`) дамжуулаагүй, дуудагч шийдээгүй (`dropMark`)
      *    бол ЮУ Ч бичихгүй.
      */
+    const curH = target != null ? parseHead(String(feats[feats.length - 1].attributes.payload ?? '')) : null;
     if (target != null) {
-      const curP = parseSubmission(String(feats[feats.length - 1].attributes.payload ?? ''));
+      const curP = curH?.p;
       const cm = curP?.archiving;
       if (cm && payload.archiving?.startedAt !== cm.startedAt && expect?.dropMark !== cm.startedAt) {
         return {
@@ -1451,37 +1799,192 @@ export async function saveSubmission(
         };
       }
     }
-    const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at: payload.at, payload: raw };
+    /*
+     * ⚠️ 2026-10-26: МӨРИЙН ГОРИМ (`rowsReady`) — НҮД `n:sub:<OBJECTID>` мөрөнд (MVCC):
+     *   1. шинэ толгой бол ЭХЛЭЭД нэмнэ (OBJECTID хэрэгтэй) — payload нь бүтэн v2 (уншигч payload-оос, тэр агшинд ч зөв),
+     *      хэт том бол v3 мета (`gens: []` — хоосон);
+     *   2. шинэ ҮЕИЙН мөр (`subWriteGen` — өөрчлөгдсөн түлхүүр л, баталгаажаагүй тул ҮЛ ҮЗЭГДЭНЭ);
+     *   3. толгойг (`gens` + үе) доорх ЯГ ӨНӨӨГИЙН шинэчлэл/баталгаагаар — энэ нь баталгаажуулалт (commit).
+     *   Мөр бичигдэхгүй бол юу ч баталгаажихгүй (шинээр нэмсэн толгойг устгана) — уншигч өмнөх үеийг харсаар.
+     * ⚠️ «архивлаж байна» тэмдгийн хуулбар (`prev`) анх дамжихад түүний ҮЕ (`prevGen` = өмнөх баталгаажсан үе) — GC хадгална.
+     */
+    let rowsOn = rowsBig || (await rowsReady()).mode === 'rows';
+    let tgt = target;
+    let created = false;
+    /** Шинээр нэмсэн толгойн payload бүтэн (v2) эсэх — тэгвэл баталгаажуулалт унасан ч агуулга толгойд бүрэн */
+    let createdFull = false;
+    let raw2 = raw;
+    let gens1: number[] | null = null;
+    let pins: number[] = [];
+    /** Шинээр нэмсэн толгойн payload — баталгаажуулалтын өмнөх тулгалтад */
+    let createdRaw: string | null = null;
+    /*
+     * ⚠️ 2026-10-26: АЛДАГДАЛГҮЙ ЭСЭХ (`subRowsLossless`) — нэмэлтийн горимд утгыг өөрчлөхгүйгээр хэвшүүлээд
+     *    (`normIncCells`) кодлогч ЯГ сэргээвэл л мөр рүү; эс бөгөөс ЯГ өнөөгийн JSON зам (payload эх сурвалж, `gens`-гүй —
+     *    уншигч payload-ыг авна). Багтахгүй бол өмнөх «хэт том» хариу (юу ч бичихгүй).
+     */
+    const fr = rowsOn ? fillFrame(pkgKey) : null;
+    const bodyR: SubmissionPayload = rowsOn ? normIncCells(body) : body;
+    if (rowsOn) {
+      const ap = bodyR.archiving?.prev;
+      const okRows = subRowsLossless(bodyR, fr) && (!ap || subRowsLossless({ ...ap, dates: [] }, fr));
+      if (!okRows) {
+        console.warn('[selbe] илгээлтийн агуулга мөрийн бүтцэд ЯГ буухгүй — JSON payload-аар хадгална:', dkey);
+        if (raw.length > SUBMISSION_MAX) {
+          return {
+            ok: false,
+            error: tr('Илгээлт хэт том ({0} тэмдэгт, дээд {1}). Хэсэгчлэн илгээх нь ТУСЛАХГҮЙ — дараагийн илгээлт өмнөхтэйгээ нэгтгэгддэг тул хэмжээ буурахгүй. Одоо илгээсэн хэсгээ хянагчаар батлуулсны дараа шинэ илгээлт цэвэр эхэлнэ.', raw.length, SUBMISSION_MAX),
+          };
+        }
+        rowsOn = false;
+      }
+    }
+    if (rowsOn) {
+      const gens0 = curH?.gens ?? [];
+      let bodyW: SubmissionPayload = bodyR;
+      if (tgt == null) {
+        const v2 = headRaw(bodyW, null);
+        createdFull = v2.length <= SUBMISSION_MAX;
+        /* ⚠️ 2026-10-26: мета (том) бол ТҮР тэмдэгтэй (`pending`) — баталгаажтал уншигч хоосон илгээлт харахгүй (`readRow`) */
+        const first = createdFull ? v2 : JSON.stringify({ ...(JSON.parse(headRaw(bodyW, [], true)) as Record<string, unknown>), pending: Date.now() });
+        createdRaw = first;
+        let r0: Awaited<ReturnType<typeof fl.applyEdits>>;
+        try {
+          r0 = await fl.applyEdits({ addFeatures: [{ attributes: { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at: payload.at, payload: first } }] } as Parameters<typeof fl.applyEdits>[0]);
+        } catch (e) {
+          return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)), ...(isLostWrite(e) ? { lost: true as const } : {}) };
+        }
+        const a0 = (r0.addFeatureResults ?? [])[0];
+        if (!a0 || a0.error != null || typeof a0.objectId !== 'number') {
+          return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(a0?.error ?? tr('серверээс хариу ирсэнгүй.'))) };
+        }
+        tgt = a0.objectId;
+        created = true;
+      }
+      const tOid = tgt as number;
+      /* ⚠️ 2026-10-26: БҮХ мөр (ямар ч үе) — үеийн дугаар ӨМНӨХ (баталгаажаагүй/хуучин табын) мөртэй ХЭЗЭЭ Ч давхцахгүй
+         (давхцвал тэр мөр шинэ үед «харагдаж» хог орно); харагдах төлөв зөвхөн баталгаажсан үеүдээс */
+      const allRows = created ? [] : (await subRowsFor([tOid])).get(tOid) ?? [];
+      const usedGen = new Set<number>([...gens0, ...allRows.map((a) => Number(a.at)).filter(Number.isFinite)]);
+      /** Үеийн дугаар — толгойн `at`-аас БАГА (самбарын «`at ≤ толгойн at`» дүрэм), 2^-12-ын үржвэр (Double-д ЯГ) */
+      const pickGen = (): number => {
+        for (;;) {
+          const g = payload.at - (1 + Math.floor(Math.random() * 3990)) / 4096;
+          if (!usedGen.has(g)) { usedGen.add(g); return g; }
+        }
+      };
+      let vis: ReadonlyMap<string, Attrs> = curH?.gens ? pickGeneration(allRows, gens0) : new Map<string, Attrs>();
+      const mid: number[] = [];
+      /*
+       * ⚠️ «АРХИВЛАЖ БУЙ» ХУУЛБАР (`archiving.prev`) — мөрийн үетэй байх ёстой (v3 мета-д хуулбар хасагдана, `prevGen`-ээс
+       *    угсрагдана). `markArchiving` үеийг тавьдаг; тавиагүй (хуучин толгой) бол:
+       *      · тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бөгөөд толгой үетэй → хуулбар = сүүлийн баталгаажсан үе;
+       *      · эс бөгөөс хуулбарыг ӨӨРИЙН үе болгож бичнэ (өмнөх → хуулбар → шинэ дарааллаар).
+       */
+      const am = bodyW.archiving;
+      const fail = async (err: string): Promise<SaveSubmissionResult> => {
+        if (created) {
+          await fl.applyEdits({ deleteFeatures: [{ objectId: tOid }] } as Parameters<typeof fl.applyEdits>[0]).catch(() => undefined);
+          void subDropAll(tOid).catch(() => undefined);
+        }
+        return { ok: false, error: tr('Илгээлтийн мөр хадгалагдсангүй: {0}', err) };
+      };
+      if (am?.prev && (am.prevGen == null || !gens0.includes(am.prevGen))) {
+        if (gens0.length && am.at === curH?.p.at) {
+          bodyW = { ...bodyW, archiving: { ...am, prevGen: gens0[gens0.length - 1] } };
+        } else {
+          const gp = pickGen();
+          const snap = subToRows({ cells: am.prev.cells, dates: [], rowKeys: am.prev.rowKeys, ...(am.prev.rowOcc ? { rowOcc: am.prev.rowOcc } : {}), asOf: null }, fr);
+          const wp = await subWriteGen(tOid, pkgKey, snap, vis, gp);
+          if (!wp.ok) return fail(wp.error);
+          vis = snap;
+          mid.push(gp);
+          bodyW = { ...bodyW, archiving: { ...am, prevGen: gp } };
+        }
+      }
+      const gen = pickGen();
+      const w = await subWriteGen(tOid, pkgKey, subToRows(bodyW, fr), vis, gen);
+      if (!w.ok) return fail(w.error);
+      gens1 = [...gens0, ...mid, gen];
+      pins = bodyW.archiving?.prevGen != null ? [bodyW.archiving.prevGen] : [];
+      raw2 = headRaw(bodyW, gens1);
+    }
+    /*
+     * ⚠️ 2026-10-26: БАТАЛГААЖУУЛАЛТЫН ӨМНӨ ТОЛГОЙГ ДАХИН ТУЛГАНА (мөрийн горим). `expect` нь урт бичилтийн дарааллын (мөрийн
+     *    уншилт · архивын үе · `subWriteGen` 500-аар) ӨМНӨ нэг удаа шалгагддаг тул тэр завсарт хамтрагч өөрийн үеийг
+     *    баталгаажуулбал энэ commit ХУУЧИН `gens`-ээр дарж түүний илгээсэн нэмэлтийг алга болгодог байв (хоёулын баталгааны
+     *    уншилт ч давна). Одоо уншсан `at` + payload ЯГ хэвээр биш бол юу ч баталгаажуулахгүй — бичсэн үеийн мөр үл үзэгдэнэ (GC).
+     *    Цонх нь нэг асуулга болж нарийсна (ArcGIS-д нөхцөлт бичилт алга).
+     */
+    if (rowsOn && tgt != null && (created ? createdRaw != null : target != null)) {
+      const expRaw = created ? (createdRaw as string) : String(feats[feats.length - 1].attributes.payload ?? '');
+      const expAt = created ? payload.at : Number(feats[feats.length - 1].attributes.at);
+      let cur: { at?: unknown; payload?: unknown } | undefined;
+      let readOk = true;
+      try {
+        const chk = await fl.queryFeatures({ where: `objectid = ${tgt}`, outFields: ['objectid', 'at', 'payload'], returnGeometry: false });
+        cur = chk.features[0]?.attributes as { at?: unknown; payload?: unknown } | undefined;
+      } catch (e) {
+        /* Шинэ толгой — өөрөө нэмсэн тул уншилт унасан ч үргэлжилнэ (өмнөх зан); байгаа толгойд шалгаж чадаагүй бол бичихгүй */
+        if (!created) return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)) };
+        readOk = false;
+      }
+      if (readOk && (!cur || String(cur.payload ?? '') !== expRaw || !isFin(cur.at) || Number(cur.at) !== expAt)) {
+        return { ok: false, error: tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.') };
+      }
+    }
+    const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at: payload.at, payload: raw2 };
     const edit = {
-      ...(target != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+      ...(tgt != null
+        ? { updateFeatures: [{ attributes: { objectid: tgt, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
     /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `lost` ЗӨВХӨН `applyEdits`-ийн уналтад — урьдчилсан `queryFeatures`
        (давхардал/тэмдгийн уншилт) унавал юу ч бичигдээгүй тул «алдагдсан» гэж тэмдэглэхгүй (гаднах catch). Урьд нь нэг
        try дотор байсан тул уншилтын timeout ч `lost` болж, дуудагч илгээлтийн тэмдгийг дэмий үлдээх байв. */
-    let r: Awaited<ReturnType<typeof fl.applyEdits>>;
+    /*
+     * ⚠️ 2026-10-26: ШИНЭЭР НЭМСЭН толгойн баталгаажуулалт (`gens`) унавал — толгойн payload БҮТЭН (v2) бол агуулга аль
+     *    хэдийн толгойд бүрэн (уншигч `gens`-гүй payload-ыг авна) тул илгээлт БУУСАН: мөр нь баталгаажаагүй (үл үзэгдэнэ,
+     *    GC). «Унасан» гэж буцаавал хэрэглэгч дахин илгээж `expect` зөрнө. Мета (том) толгой бол агуулгагүй — толгой ба
+     *    мөрийг устгаж алдаа буцаана.
+     */
+    let r: Awaited<ReturnType<typeof fl.applyEdits>> | null = null;
+    let commitErr: string | null = null;
+    let commitLost = false;
     try {
       r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     } catch (e) {
-      return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)), ...(isLostWrite(e) ? { lost: true as const } : {}) };
+      commitErr = errMsg(e);
+      commitLost = isLostWrite(e);
     }
-    const results = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
+    let results = r ? [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])] : [];
     /* ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит): `applyEdits` нь
        алдаагүй атлаа үр дүнгүй буцаж болно. Доорх OID шалгуур нь `add`-ыг
        барьдаг ч `update`-д `target` аль хэдийн мэдэгдэж байдаг тул барьдаггүй
        байв — тиймээс хариу ирсэн эсэхийг ЭНД шалгана. */
-    if (!results.length) {
-      return { ok: false, error: tr('Илгээлт хадгалагдсангүй: серверээс хариу ирсэнгүй.') };
+    if (!commitErr && !results.length) commitErr = tr('серверээс хариу ирсэнгүй.');
+    const bad0 = results.find((x) => x.error != null);
+    if (!commitErr && bad0) commitErr = errMsg(bad0.error);
+    if (commitErr && created) {
+      if (createdFull) {
+        console.warn('[selbe] илгээлтийн мөрийн баталгаажуулалт унав — толгойн бүтэн payload хүчинтэй:', commitErr);
+        results = [{ objectId: tgt as number, error: null } as (typeof results)[number]];
+        gens1 = null;
+        commitErr = null;
+      } else {
+        await fl.applyEdits({ deleteFeatures: [{ objectId: tgt as number }] } as Parameters<typeof fl.applyEdits>[0]).catch(() => undefined);
+        void subDropAll(tgt as number).catch(() => undefined);
+      }
     }
+    if (commitErr) return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', commitErr), ...(commitLost && !created ? { lost: true as const } : {}) };
     const bad = results.find((x) => x.error != null);
     if (bad) return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(bad.error)) };
-    const oid = target ?? results[0]?.objectId;
+    const oid = tgt ?? results[0]?.objectId;
     if (typeof oid !== 'number' || !(oid > 0)) {
       return { ok: false, error: tr('Илгээлт хадгалагдсангүй: серверээс мөрийн дугаар ирсэнгүй') };
     }
-    const badDel = (r.deleteFeatureResults ?? []).find((x) => x.error != null);
+    const badDel = (r?.deleteFeatureResults ?? []).find((x) => x.error != null);
     if (badDel) console.warn('[selbe] илгээлтийн давхардсан мөр устсангүй:', errMsg(badDel.error));
     /*
      * ⚠️ 2026-10-05: БИЧСЭНИЙ ДАРААХ БАТАЛГАА. Дээрх `expect` тулгалт ба `applyEdits` хоёрын
@@ -1498,22 +2001,29 @@ export async function saveSubmission(
     try {
       const back = await fl.queryFeatures({
         where: `dkey = ${sqlStr(dkey)}`,
-        outFields: ['OBJECTID', 'usr', 'at'],
+        outFields: ['objectid', 'usr', 'at'],
         returnGeometry: false,
-        orderByFields: ['OBJECTID ASC'],
+        orderByFields: ['objectid ASC'],
       });
-      const rowsB = back.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
-      const mineB = rowsB.find((f) => f.attributes.OBJECTID === oid);
+      const rowsB = back.features.filter((f) => typeof f.attributes?.objectid === 'number');
+      const mineB = rowsB.find((f) => f.attributes.objectid === oid);
       const lost = tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.');
-      if (mineB && target == null && (rowsB[0].attributes.OBJECTID as number) < oid) {
+      /* ⚠️ 2026-10-26: мөрийн горимд толгойг ЭХЛЭЭД нэмсэн (`created`) ч «шинэ мөр» — ижил уралдааны дүрэм; ялагдвал мөрийг ч устгана */
+      if (mineB && (target == null || created) && (rowsB[0].attributes.objectid as number) < oid) {
         const del = await fl.applyEdits({ deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0]);
         const dr = del.deleteFeatureResults ?? [];
+        if (rowsOn) void subDropAll(oid).catch(() => undefined);
         if (dr.length && dr.every((x) => x.error == null)) return { ok: false, error: lost };
       } else if (mineB && isFin(mineB.attributes.at) && (Number(mineB.attributes.at) !== payload.at
         || String(mineB.attributes.usr ?? '').toLowerCase() !== attrs.usr)) {
         return { ok: false, error: lost };
       }
     } catch { /* баталгааны уншилт унасан — бичилт батлагдсан хэвээр */ }
+    /* ⚠️ 2026-10-26: толгойн бүтцийн багана (самбарын шүүлт) ба хуучирсан үеийн мөрийн GC — best effort, хүлээхгүй */
+    if (rowsOn && gens1) {
+      void setHeaderCols(oid, { mur_turul: 'tolgoi', mur_key: 'h', noorog_turul: 'ilgeelt', huvilbar: ROW_VERSION, huuchin_at: payload.at }).catch(() => undefined);
+      void subGc(oid, gens1, pins).catch(() => 0);
+    }
     return { ok: true, oid };
   } catch (e) {
     /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): энд `applyEdits`-ээс ӨМНӨХ уналт л ирнэ (`lost`-гүй — дээрх ⚠️) */
@@ -1522,7 +2032,7 @@ export async function saveSubmission(
 }
 
 /**
- * ИЛГЭЭЛТИЙГ ХААНА — ерөнхий менежер баталж архивт бичсэний ДАРАА.
+ * ИЛГЭЭЛТИЙГ ХААНА — төлөвлөлтийн ахлах инженер баталж архивт бичсэний ДАРАА.
  * `dkey` → `done|<pkgKey>|<oid>`, payload-д `archiveOid`/`approvedAt` нэмнэ.
  *
  * ⚠️ Мөр аль хэдийн `done|` бол `ok:true` (idempotent) — батлах алхам
@@ -1552,7 +2062,7 @@ export async function closeSubmission(
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${oid}`,
+      where: `objectid = ${oid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
@@ -1561,8 +2071,10 @@ export async function closeSubmission(
     const dkey = String(a.dkey ?? '');
     if (dkey.startsWith(DONE_PREFIX)) return { ok: true };
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
-    const payload = parseSubmission(String(a.payload ?? ''));
-    if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; мөрийг ХӨДӨЛГӨХГҮЙ (OBJECTID ХЭВЭЭР — `n:sub:<OBJECTID>` дагана) */
+    const head = parseHead(String(a.payload ?? ''));
+    const payload = head?.p ?? null;
+    if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
     if (expectAt !== undefined) {
       /* `readRow`-ийн дүрэм: мөрийн `at` талбар, байхгүй бол payload-ынх */
       const curAt = isFin(a.at) ? Number(a.at) : payload.at;
@@ -1585,7 +2097,8 @@ export async function closeSubmission(
     if (regPending) next.regPending = true;
     const edit = {
       updateFeatures: [{
-        attributes: { OBJECTID: oid, dkey: doneKey(pkgKey, oid), payload: JSON.stringify(next) },
+        /* ⚠️ 2026-10-26: payload-ын ХЭЛБЭР хэвээр (`headRaw` — `gens`-тэй бол давхар/мета, эс бөгөөс хуучин) */
+        attributes: { objectid: oid, dkey: doneKey(pkgKey, oid), payload: headRaw(next, head.gens, head.meta) },
       }],
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
@@ -1631,13 +2144,15 @@ export async function markArchiving(
     const url = await tableUrl(false);
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
-    const res = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
     const a = res.features[0]?.attributes as RowAttrs | undefined;
     if (!a) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
     const dkey = String(a.dkey ?? '');
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, changed: true, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
-    const payload = parseSubmission(String(a.payload ?? ''));
-    if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; бичихдээ ХЭЛБЭР хэвээр (`headRaw`) */
+    const head = parseHead(String(a.payload ?? ''));
+    const payload = head?.p ?? null;
+    if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
     const curAt = isFin(a.at) ? Number(a.at) : payload.at;
     if (curAt !== expectAt)
       return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
@@ -1665,7 +2180,12 @@ export async function markArchiving(
       return { ok: false, error: tr('«Архивлаж байна» тэмдэг өөр цонхных — арилгасангүй') };
     }
     const next: SubmissionPayload = { ...payload };
-    if (mark) next.archiving = { ...mark, by: mark.by ?? me, sid: SESSION_ID }; else delete next.archiving;
+    /* ⚠️ 2026-10-26: мөртэй (`gens`) толгойд тэмдгийн агуулга = СҮҮЛИЙН баталгаажсан үе (`at` тулгагдсан) — `prevGen`
+       тавина: дараа нь дахин илгээхэд хуулбар (`prev`) мета-д хасагдсан ч тэр үеэс угсрагдана (`assembleRows`), GC
+       тэр үеийг хадгална. Мета толгойн `payload` нүдгүй тул хуулбарыг ЭНДЭЭС авах боломжгүй — үе нь цорын ганц зөв эх. */
+    const pg = head.gens?.length ? head.gens[head.gens.length - 1] : undefined;
+    if (mark) next.archiving = { ...mark, by: mark.by ?? me, sid: SESSION_ID, ...(pg != null && mark.prevGen == null ? { prevGen: pg } : {}) };
+    else delete next.archiving;
     /* ⚠️ 2026-10-09 (R2/7): `at` талбарыг payload-тай НЭГ бичилтээр (атом) бичнэ, дараа нь ДАХИН уншиж
        батална. Урьд нь зөвхөн payload бичдэг байв: унших → бичих завсарт гүйцэтгэгч дахин илгээвэл мөрийн
        `at` нь ШИНЭ, payload нь ХУУЧИН (+тэмдэг) болж зөрдөг — уншигч (`readRow`) мөрийн `at`-ийг түрүүлж
@@ -1674,13 +2194,13 @@ export async function markArchiving(
        бичилтийн ДАРАА өөр бичилт орсон) `changed` — дуудагч архивлахгүй. ArcGIS-д CAS байхгүй тул
        унших → бичих хоорондох мс-ийн цонх хэвээр (`closeSubmission`-ийн ⚠️). */
     const r = await fl.applyEdits({
-      updateFeatures: [{ attributes: { OBJECTID: oid, at: curAt, payload: JSON.stringify(next) } }],
+      updateFeatures: [{ attributes: { objectid: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
     const err = updOk(r);
     if (err) return { ok: false, error: err };
-    const res2 = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const res2 = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
     const a2 = res2.features[0]?.attributes as RowAttrs | undefined;
-    const p2 = a2 ? parseSubmission(String(a2.payload ?? '')) : null;
+    const p2 = a2 ? parseHead(String(a2.payload ?? ''))?.p ?? null : null;
     const at2 = a2 && isFin(a2.at) ? Number(a2.at) : p2?.at;
     if (!a2 || !p2 || !String(a2.dkey ?? '').startsWith(SUB_PREFIX) || at2 !== expectAt || p2.at !== expectAt
       || (mark ? p2.archiving?.at !== mark.at || p2.archiving?.startedAt !== mark.startedAt || p2.archiving?.sid !== SESSION_ID : p2.archiving != null))
@@ -1702,7 +2222,11 @@ export async function markArchiving(
  * ⚠️ Задраагүй мөрийг алгасна (тийм мөрийг архивлах боломжгүй — `readRow` ил алдаагаар зогсдог).
  * ⚠️ Серверт `payload LIKE '%"archiving"%'`-аар шүүнэ (`JSON.stringify` яг ийм бичдэг) — бүх payload-ыг татахгүй.
  */
-export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: number } | null> {
+export async function archivingBusy(
+  pkgKey: string,
+  /** ⚠️ 2026-10-21 (аудит): ӨӨРИЙН `sub|` мөрийг алгасна — `archiveSubmission` тэмдгээ тавьсны ДАРАА багцын БУСАД мөрийн тэмдгийг шалгана */
+  exceptOid?: number,
+): Promise<{ who: string; at: number } | null> {
   const u = await readUrl();
   if (!u.ok) throw new Error(u.error);
   if (!u.url) return null;
@@ -1711,14 +2235,16 @@ export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: 
     where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} AND payload LIKE '%"archiving"%'`,
     outFields: OUT_FIELDS,
     returnGeometry: false,
-    orderByFields: ['OBJECTID ASC'],
+    orderByFields: ['objectid ASC'],
   });
   /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`markFresh`-ийн ⚠️) */
   const now = serverNow();
   let best: { who: string; at: number } | null = null;
   for (const f of res.features) {
-    const r = readRow(f.attributes as RowAttrs | undefined);
+    /* ⚠️ 2026-10-26: зөвхөн МЕТА (тэмдэг) — нүд угсрахгүй (`headRow`) */
+    const r = headRow(f.attributes as RowAttrs | undefined);
     if (!r.ok || !r.sub || r.sub.done || r.sub.payload.pkgKey !== pkgKey) continue;
+    if (exceptOid != null && r.sub.oid === exceptOid) continue;
     const m = r.sub.payload.archiving;
     if (!m || !markFresh(m, now)) continue;
     if (!best || m.startedAt > best.at) best = { who: m.by ?? '', at: m.startedAt };
@@ -1748,19 +2274,21 @@ export async function markRegistered(sheetOid: number): Promise<{ ok: true } | {
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `OBJECTID = ${sheetOid}`,
+      where: `objectid = ${sheetOid}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
     });
     const a = res.features[0]?.attributes as RowAttrs | undefined;
     if (!a || !String(a.dkey ?? '').startsWith(DONE_PREFIX)) return { ok: true };
-    const payload = parseSubmission(String(a.payload ?? ''));
-    if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', sheetOid) };
+    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; ХЭЛБЭР хэвээр (`headRaw`) */
+    const head = parseHead(String(a.payload ?? ''));
+    const payload = head?.p ?? null;
+    if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', sheetOid) };
     if (payload.regPending !== true) return { ok: true };
     const next: SubmissionPayload = { ...payload };
     delete next.regPending;
     const r = await fl.applyEdits({
-      updateFeatures: [{ attributes: { OBJECTID: sheetOid, payload: JSON.stringify(next) } }],
+      updateFeatures: [{ attributes: { objectid: sheetOid, payload: headRaw(next, head.gens, head.meta) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
     const err = updOk(r);
     return err ? { ok: false, error: err } : { ok: true };
@@ -1786,15 +2314,145 @@ export async function listRegPending(): Promise<StagedSubmission[]> {
       where: `dkey LIKE 'done|%' AND payload LIKE '%"regPending":true%'`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const out: StagedSubmission[] = [];
+    const rmap = await rowsFor(res.features.map((f) => f.attributes as RowAttrs | undefined));
     for (const f of res.features) {
-      const r = readRow(f.attributes as RowAttrs | undefined);
+      const r = await readRow(f.attributes as RowAttrs | undefined, rmap);
       if (r.ok && r.sub && r.sub.done && r.sub.payload.regPending === true) out.push(r.sub);
     }
     return out;
   } catch {
     return [];
+  }
+}
+
+/* ══════════════ 2026-10-26: хуучин JSON илгээлтийг мөр рүү (админ) · тулгалт · Phase B ══════════════ */
+
+/** Нүд/огнооны олонлогийн гарын үсэг — тулгалтад (дараалал хамаарахгүй) */
+const cellSig = (p: Pick<SubmissionPayload, 'cells' | 'dates'>): string =>
+  JSON.stringify([...p.cells.map(([k, v]) => `c${k}=${v}`), ...p.dates.map(([k, v]) => `d${k}=${v}`)].sort());
+
+/** Толгойн мөр OBJECTID-оор (JS API давхарга) */
+async function headAt(oid: number): Promise<{ fl: Awaited<ReturnType<typeof layer>>; a: RowAttrs } | null> {
+  const url = await tableUrl(false);
+  if (!url) return null;
+  const fl = await layer(url);
+  const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+  const a = res.features[0]?.attributes as RowAttrs | undefined;
+  return a ? { fl, a } : null;
+}
+
+/**
+ * ХУУЧИН (v1/v2, `gens`-гүй) ИЛГЭЭЛТИЙГ МӨР РҮҮ — `n:sub:<OBJECTID>` үе бичээд payload-д ЗӨВХӨН `gens` (+ «архивлаж буй»
+ * хуулбарын `prevGen`) нэмнэ (нүд ХЭВЭЭР — Phase B хүртэл; хуучин таб уншсаар). `at` · `dkey` · OBJECTID хөдлөхгүй. Давтахад юу
+ * ч хийхгүй.
+ * ⚠️ 2026-10-26 (өгөгдөл алдагдахгүй): кодлогч агуулгыг ЯГ (эсвэл нэмэлтийн горимд утга ижилээр — `normIncCells`) сэргээхгүй
+ *    бол ШИЛЖҮҮЛЭХГҮЙ — payload эх сурвалж хэвээр, `ok:false` + шалтгаан (админд харагдана, тулгалтад `pending`).
+ * ⚠️ Үеийн дугаар өмнөх (унасан оролдлогын) мөртэй давхцахгүй; `«архивлаж буй» хуулбар` (`archiving.prev`) байвал түүнийг
+ *    ӨМНӨХ үе болгож бичнэ (`prevGen`) — v3 мета-д хуулбар хасагдахад тэр үеэс угсрагдана.
+ */
+export async function migrateSubmissionRow(oid: number): Promise<{ ok: true; migrated: boolean } | { ok: false; error: string }> {
+  try {
+    const h0 = await headAt(oid);
+    if (!h0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
+    const raw = String(h0.a.payload ?? '');
+    const head = parseHead(raw);
+    if (!head) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    if (head.gens) return { ok: true, migrated: false };
+    const fr = fillFrame(head.p.pkgKey);
+    const ok = (x: SubmissionPayload) => subRowsLossless(x, fr) && (!x.archiving?.prev || subRowsLossless({ ...x.archiving.prev, dates: [] }, fr));
+    let p = head.p;
+    if (!ok(p)) {
+      p = normIncCells(head.p);
+      if (p === head.p || !ok(p)) {
+        return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга мөрийн бүтцэд ЯГ буухгүй — JSON хэвээр үлдэв (өгөгдөл хөндөгдөөгүй)', oid) };
+      }
+    }
+    const old = (await subRowsFor([oid])).get(oid) ?? [];
+    const used = new Set<number>(old.map((a) => Number(a.at)).filter(Number.isFinite));
+    const pickGen = (): number => {
+      for (;;) {
+        const g = p.at - (1 + Math.floor(Math.random() * 3990)) / 4096;
+        if (!used.has(g)) { used.add(g); return g; }
+      }
+    };
+    const gens: number[] = [];
+    let vis: ReadonlyMap<string, Attrs> = new Map();
+    let prevGen: number | undefined;
+    const ap = p.archiving?.prev;
+    if (ap && p.archiving?.prevGen == null) {
+      prevGen = pickGen();
+      const snap = subToRows({ cells: ap.cells, dates: [], rowKeys: ap.rowKeys, ...(ap.rowOcc ? { rowOcc: ap.rowOcc } : {}), asOf: null }, fr);
+      const wp = await subWriteGen(oid, p.pkgKey, snap, vis, prevGen);
+      if (!wp.ok) return { ok: false, error: wp.error };
+      vis = snap;
+      gens.push(prevGen);
+    }
+    const gen = pickGen();
+    const w = await subWriteGen(oid, p.pkgKey, subToRows(p, fr), vis, gen);
+    if (!w.ok) return { ok: false, error: w.error };
+    gens.push(gen);
+    const obj = JSON.parse(raw) as Record<string, unknown>;
+    if (prevGen != null && obj.archiving && typeof obj.archiving === 'object') obj.archiving = { ...(obj.archiving as Record<string, unknown>), prevGen };
+    const next = JSON.stringify({ ...obj, gens });
+    if (next.length > 100_000) return { ok: false, error: tr('Илгээлт №{0}-ийн payload хэт урт', oid) };
+    /* ⚠️ `at`-ийн CAS (уншсанаас хойш дахин илгээгдсэн бол бичихгүй — шинэ агуулгыг хуучин үеэр солихгүй) */
+    const again = await headAt(oid);
+    if (!again || String(again.a.payload ?? '') !== raw || Number(again.a.at) !== Number(h0.a.at)) return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
+    /* ⚠️ 2026-10-26: уншсан `at`-ыг ХАМТ бичнэ — завсарт хамтрагч дахин илгээсэн бол түүний баталгааны уншилт (`mineB.at`) зөрөөг
+       барина; бичсэний дараа payload ЯГ манайх эсэхийг шалгана */
+    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { objectid: oid, payload: next, ...(isFin(h0.a.at) ? { at: h0.a.at } : {}) } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
+    const err = updOk(r);
+    if (err) return { ok: false, error: err };
+    const after = await headAt(oid).catch(() => null);
+    if (after && String(after.a.payload ?? '') !== next) return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
+    await setHeaderCols(oid, { mur_turul: 'tolgoi', mur_key: 'h', noorog_turul: 'ilgeelt', huvilbar: ROW_VERSION, huuchin_at: p.at }).catch(() => undefined);
+    void subGc(oid, gens, prevGen != null ? [prevGen] : []).catch(() => 0);
+    return { ok: true, migrated: true };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Тулгалт — мөрөөс угсарсан нүд = payload-ын нүд? (`pending` = мөр рүү ороогүй; v3 мета = харьцуулах JSON алга → `same`) */
+export async function compareSubmissionRow(oid: number): Promise<'same' | 'diff' | 'pending'> {
+  const h0 = await headAt(oid);
+  const head = h0 ? parseHead(String(h0.a.payload ?? '')) : null;
+  if (!head || !head.gens) return 'pending';
+  if (head.meta) return 'same';
+  const p = await assemble(oid, head);
+  /* ⚠️ 2026-10-26: нэмэлтийн горимд утга ижил (`normIncCells`) бол ижил — НИЙТ горимд ЯГ */
+  return sameContent(p, head.p) ? 'same' : 'diff';
+}
+
+/** PHASE B — мөр тулгагдсан (`gens`-тэй, нүд нь ижил) толгойн payload-аас нүдийг хасна (v3 мета) */
+export async function stripSubmissionPayload(oid: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const h0 = await headAt(oid);
+    const head = h0 ? parseHead(String(h0.a.payload ?? '')) : null;
+    if (!h0 || !head) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    if (!head.gens) return { ok: false, error: tr('Илгээлт №{0} мөр рүү шилжээгүй', oid) };
+    if (head.meta) return { ok: true };
+    /* «архивлаж байна» тэмдгийн хуулбар үегүй (`prevGen`) бол мета-д алдагдана — хасахгүй */
+    if (head.p.archiving?.prev && head.p.archiving.prevGen == null) return { ok: false, error: tr('Илгээлт №{0} архивлагдаж буй — дараа хасна', oid) };
+    const p = await assemble(oid, head);
+    if (!sameContent(p, head.p)) return { ok: false, error: tr('Илгээлт №{0}-ийн мөр payload-аас зөрсөн — хасаагүй', oid) };
+    /* ⚠️ 2026-10-26: угсралт (хэд хэдэн хүсэлт) хооронд толгой өөрчлөгдсөн бол (хамтрагчийн шинэ үе) ХУУЧИН `gens`/мета-гаар
+       дарахгүй — бичихийн ЯГ өмнө payload + `at` тулгаж, `at`-ыг хамт бичиж, дараа нь шалгана (`markArchiving`-ийн дүрэм) */
+    const again = await headAt(oid);
+    if (!again || String(again.a.payload ?? '') !== String(h0.a.payload ?? '') || Number(again.a.at) !== Number(h0.a.at)) {
+      return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
+    }
+    const next = headRaw(p, head.gens, true);
+    const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { objectid: oid, payload: next, ...(isFin(h0.a.at) ? { at: h0.a.at } : {}) } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
+    const err = updOk(r);
+    if (err) return { ok: false, error: err };
+    const after = await headAt(oid).catch(() => null);
+    if (after && String(after.a.payload ?? '') !== next) return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
   }
 }

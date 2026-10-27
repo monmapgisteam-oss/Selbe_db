@@ -79,7 +79,7 @@ const mock = createServer((req, res) => {
         id: `msg_test_${seen.length}`,
         type: 'message',
         role: 'assistant',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         stop_reason: blocks.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
         content: blocks,
@@ -151,7 +151,7 @@ async function main() {
   check('«АНДУУРЧ БОЛОХГҮЙ» хэсэг үүссэн', prompt.includes('АНДУУРЧ БОЛОХГҮЙ'));
   check(
     '`Total_population`-ыг хориглосон анхааруулга бий',
-    prompt.includes('Total_population') && prompt.includes('АШИГЛАХГҮЙ'),
+    prompt.includes('total_population') && prompt.includes('АШИГЛАХГҮЙ'),
   );
   check('эх сурвалж заах дүрэм бий', prompt.includes('ЭХ СУРВАЛЖИЙГ'));
   // ⚠️ Удирдлагад `GUITS_HV` гэдэг утгагүй — хариултын биед техникийн нэр гарах ёсгүй
@@ -237,9 +237,9 @@ async function main() {
     {
       id: 'et:24',
       stats: [
-        { op: 'count', field: 'OBJECTID', as: 'n' },
-        { op: 'sum', field: 'Population', as: 'pop' },
-        { op: 'sum', field: 'Huchin_chadal', as: 'cap' },
+        { op: 'count', field: 'objectid', as: 'n' },
+        { op: 'sum', field: 'population', as: 'pop' },
+        { op: 'sum', field: 'huchin_chadal', as: 'cap' },
       ],
     },
     'all',
@@ -255,7 +255,7 @@ async function main() {
   check('`describe_feature` бодит талбаруудыг татав', fields.length > 10, `${fields.length}`);
   check(
     'талбарын утга манай тайлбараар солигдсон',
-    fields.find((f) => f.name === 'Population')?.meaning?.includes('орон сууц') ?? false,
+    fields.find((f) => f.name === 'population')?.meaning?.includes('орон сууц') ?? false,
   );
 
   // Өгөгдлийн эх сурвалж ч ижил замаар ажиллана
@@ -352,7 +352,7 @@ async function main() {
         type: 'tool_use',
         id: 'toolu_1',
         name: 'query_feature',
-        input: { id: 'et:24', stats: [{ op: 'count', field: 'OBJECTID', as: 'n' }] },
+        input: { id: 'et:24', stats: [{ op: 'count', field: 'objectid', as: 'n' }] },
       },
     ],
     [{ type: 'text', text: 'Нийт 363 барилга байна. Эх сурвалж: `et:24`' }],
@@ -380,7 +380,18 @@ async function main() {
   /* ── Тест 6: реле рүү явсан хүсэлтийн бүтэц ── */
   console.log('\n6. Реле рүү явсан хүсэлт');
   const first = seen[0] ?? {};
-  check('загвар нь claude-opus-5', first.model === 'claude-opus-5', first.model);
+  /* ⚠️ 2026-10-19: релегийн загварыг ТЕСТИЙН процессын `AGENT_MODEL`-той ЖИШИХГҮЙ — реле өөрийн орчноо
+     (`.env.development.local`, хостын тохиргоо) уншдаг тул хоёр процесс өөр утгатай байж болно. Зөвхөн
+     Claude-ийн загварын id мөн эсэх. */
+  check('загвар нь Claude-ийн id', typeof first.model === 'string' && /^claude-[a-z0-9.-]+$/i.test(first.model), first.model);
+  /* ⚠️ 2026-10-19: Opus 5.5 дээр явцын тэмдэглэл (`display: 'updates'`), бусад загварт `thinking` ОГТ илгээхгүй */
+  check(
+    'thinking — зөвхөн Opus 5.5-д display: updates',
+    /^claude-opus-5-5(?![0-9])/i.test(first.model ?? '')
+      ? first.thinking?.type === 'adaptive' && first.thinking?.display === 'updates'
+      : first.thinking === undefined,
+    JSON.stringify(first.thinking),
+  );
   /* ⚠️ 2026-10-15: анхдагч 'low' → 'medium' (`server.mjs`-ийн ⚠️). Тогтмолыг хатуу
      бичихгүй — `AGENT_EFFORT`-оор солигддог; зөвхөн ЗӨВШӨӨРӨГДСӨН утга эсэхийг шалгана. */
   check('effort тохируулагдсан', ['low', 'medium', 'high'].includes(first.output_config?.effort));

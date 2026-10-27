@@ -50,7 +50,9 @@ g.confirm = (msg) => { confirms.push(String(msg)); return answer; };
 export const takeConfirms = () => confirms.splice(0, confirms.length);
 
 /* ══════════ 2. Хуурамч хүснэгт ══════════ */
-const TABLE = 'https://fake.arcgis.local/server/rest/services/Selbe_Permissions/FeatureServer';
+/* ⚠️ 2026-10-26: `permsRemote` хүснэгтийг Enterprise-ийн БОДИТ хаягаар шууд нээдэг (`${SYS_PERMS}/230`, порталын хайлтгүй) —
+   хуурамч FeatureLayer тэр хаягийг хүлээн авна (сүлжээ рүү юу ч явахгүй). */
+const TABLE = `${String(process.env.NEXT_PUBLIC_ENT_DATA ?? '').replace(/\/+$/, '')}/SYS_Selbe_Permissions/FeatureServer`;
 
 export const fake = {
   /** @type {{OBJECTID:number, username:string, role:string|null, views:string|null, docs:number}[]} */
@@ -69,13 +71,15 @@ export const fake = {
   /** Хүснэгтийн эзэн — хатуу super байх ёстой (`permsRemote.findTableUrl`) */
   owner: '',
   /**
-   * `true` бол хүснэгтийн хайлт ХООСОН буцаана — remote нэг ч удаа уншигдаагүй сешнийг
+   * `true` бол хүснэгтийн хайлт ХООСОН, уншилт ШИДНЭ (2026-10-26: хүснэгт шууд хаягаар нээгддэг тул) — remote нэг ч удаа уншигдаагүй сешнийг
    * дуурайна (`initRemote` → false). ⚠️ `permsRemote` зөвхөн ОЛДСОН URL-ыг кэшилдэг тул
    * анхны амжилттай уншилтаас ӨМНӨ л утгатай (2026-09-30).
    */
   searchDown: false,
+  /** ⚠️ 2026-10-19: `true` бол `queryFeatures` бүр ШИДНЭ — хүснэгт олдсоны ДАРААХ уншилтын уналт (`initRemote` → false; «Систем түр хаах»-ын fail-open §11) */
+  failReads: false,
   seed(rows) {
-    for (const r of rows) this.rows.push({ OBJECTID: this.oid++, role: null, docs: 0, ...r });
+    for (const r of rows) this.rows.push({ objectid: this.oid++, role: null, docs: 0, ...r });
   },
   /** Угтвар + хэрэглэгчийн мөрүүд (давхардлыг ч харуулна) */
   find(username) { return this.rows.filter((r) => r.username.toLowerCase() === username.toLowerCase()); },
@@ -90,9 +94,11 @@ export const fake = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const wait = async () => { if (fake.latency) await sleep(Math.random() * fake.latency); };
 
-/** `where` задлах — `permsRemote` хоёр л хэлбэр хэрэглэдэг */
+/** `where` задлах — `permsRemote`-ийн хэлбэрүүд (⚠️ 2026-10-19: + `OBJECTID = n` — `removeMalformedRow`) */
 function match(where) {
   if (where === '1=1') return () => true;
+  const o = /^objectid = (\d+)$/.exec(where);
+  if (o) return (r) => r.objectid === Number(o[1]);
   const m = /^LOWER\(username\) = '((?:[^']|'')*)'$/.exec(where);
   if (!m) throw new Error(`хуурамч FeatureLayer: танигдахгүй where «${where}»`);
   const key = m[1].replace(/''/g, "'");
@@ -108,7 +114,8 @@ class FakeFeatureLayer {
     fake.inflight += 1;
     try {
       await wait();
-      const hit = fake.rows.filter(match(q.where)).sort((a, b) => a.OBJECTID - b.OBJECTID);
+      if (fake.failReads || fake.searchDown) throw new Error('fake read failure');
+      const hit = fake.rows.filter(match(q.where)).sort((a, b) => a.objectid - b.objectid);
       const start = q.start ?? 0;
       const num = q.num ?? 2000;
       const page = hit.slice(start, start + num);
@@ -130,13 +137,13 @@ class FakeFeatureLayer {
       const out = { addFeatureResults: [], updateFeatureResults: [], deleteFeatureResults: [] };
       for (const f of e.addFeatures ?? []) {
         if (err) { out.addFeatureResults.push({ objectId: -1, error: err }); continue; }
-        const row = { role: null, docs: 0, ...f.attributes, OBJECTID: fake.oid++ };
+        const row = { role: null, docs: 0, ...f.attributes, objectid: fake.oid++ };
         fake.rows.push(row);
-        out.addFeatureResults.push({ objectId: row.OBJECTID, error: null });
+        out.addFeatureResults.push({ objectId: row.objectid, error: null });
       }
       for (const f of e.updateFeatures ?? []) {
-        const id = f.attributes.OBJECTID;
-        const row = fake.rows.find((r) => r.OBJECTID === id);
+        const id = f.attributes.objectid;
+        const row = fake.rows.find((r) => r.objectid === id);
         if (err || !row) { out.updateFeatureResults.push({ objectId: id, error: err ?? { code: 404 } }); continue; }
         Object.assign(row, f.attributes);
         out.updateFeatureResults.push({ objectId: id, error: null });
@@ -144,7 +151,7 @@ class FakeFeatureLayer {
       for (const d of e.deleteFeatures ?? []) {
         const id = d.objectId;
         if (err) { out.deleteFeatureResults.push({ objectId: id, error: err }); continue; }
-        fake.rows = fake.rows.filter((r) => r.OBJECTID !== id);
+        fake.rows = fake.rows.filter((r) => r.objectid !== id);
         out.deleteFeatureResults.push({ objectId: id, error: null });
       }
       return out;
@@ -182,6 +189,15 @@ g.fetch = async (input, init) => {
     };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
+  /* ⚠️ 2026-10-26: хүснэгтүүд Enterprise-ийн БОДИТ хаягаар шууд нээгддэг (порталын хайлтгүй) — урьд нэгж тестэд
+     зураглал унтраалттай байхад (`SELBE_ENT_OFF`) тэдгээр нь «хүснэгт олдсонгүй» замаар сүлжээнд хүрдэггүй байв.
+     Одоо: эрхийн хүснэгтийн мета (`permsRemote.probeEntExposure` — хөтчийн орчинд) ба батлах хүснэгтүүдийн
+     (`Guitsetgel_talbe/189·191·192·193`) асуулгад ХООСОН хариу — амьд сүлжээ рүү юу ч явахгүй. */
+  const json = (b) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (url === `${TABLE}/230` || url === TABLE) return json({ type: 'Table', fields: [] });
+  if (/\/Guitsetgel_talbe\/FeatureServer\/(189|191|192|193)\/query$/.test(url) && url.startsWith(TABLE.replace(/\/SYS_Selbe_Permissions\/FeatureServer$/, ''))) {
+    return json({ features: [] });
+  }
   fake.unexpected.push(`${init?.method ?? 'GET'} ${url}`);
   throw new TypeError(`aclE2E: сүлжээ хаалттай (${url})`);
 };
@@ -192,8 +208,20 @@ export async function settle(extra = () => false) {
   /* ⚠️ 2026-10-01: давталтын тоогоор биш ХУГАЦААГААР хязгаарлана (≤10 с) — GitHub runner дээр
      2000 удаагийн 0мс хүлээлт бичилт дуусахаас ӨМНӨ дуусаж, тест л CI-д унадаг байв. */
   const until = Date.now() + 10_000;
-  for (let i = 0; idle < 6 && (i < 2000 || Date.now() < until); i += 1) {
-    await new Promise((r) => setTimeout(r, fake.latency ? 2 : 0));
+  /* ⚠️ 2026-10-26 (аудит T6): `latency === 0` үед сул тойрог `setImmediate` — Windows дээр `setTimeout(0)` ~15 мс
+     (цагийн нарийвчлал) тул settle бүр ≥90 мс, `aclE2E.check` ~500 settle-ээр ~49 с идэж байв. `setImmediate` тойрог
+     бүр microtask дарааллыг бүрэн шавхаж event loop-ийн бүтэн эргэлт (timers фаз ч) хийнэ — promise гинжээр явдаг
+     бичилт/уншилтыг өмнөхтэй адил хүлээнэ. Апп өөрөө `setTimeout(…, 0)` тавьсан бол тэр нь ~1–15 мс-ийн дараа л
+     боловсорно — тиймээс 6 сул тойргийн ДАРАА НЭГ `setTimeout(0)` хүлээж ДАХИН шалгана; тэр зуур ажил гарвал
+     тоолуур тэглэгдэж үргэлжилнэ (утга нь өмнөхтэй ижил: «0 мс-ийн таймер ч дуусав»). Хоцролттой (`latency`) горим хэвээр. */
+  const tick = () => new Promise((r) => (fake.latency ? setTimeout(r, 2) : setImmediate(r)));
+  for (let i = 0; i < 2000 || Date.now() < until; i += 1) {
+    await tick();
     idle = fake.inflight === 0 && !extra() ? idle + 1 : 0;
+    if (idle < 6) continue;
+    if (fake.latency) break;
+    await new Promise((r) => setTimeout(r, 0));
+    if (fake.inflight === 0 && !extra()) break;
+    idle = 0;
   }
 }

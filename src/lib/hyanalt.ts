@@ -18,19 +18,19 @@
 import { invalidate } from './dataBus';
 import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { collidesBelow, idNum, renumberPlan, type IdRow } from './idUnique';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
      29/29 талбар, 22 мөр ижил. */
-  url: `${HJ}/guitsetgel_bugluh_hyanalt/FeatureServer/205`,
-  oid: 'OBJECTID',
+  url: `${GUITS}/183`,
+  oid: 'objectid',
 } as const;
 
 /** Хяналтын үйлчилгээний талбарууд — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
-  id: 'Бүртгэлийн_дугаар',
+  id: 'бүртгэлийн_дугаар',
   /**
    * ХОЛБООС ЭХ АГУУЛГА РУУ — утга нь 2026-09-04-нд ӨӨРЧЛӨГДСӨН.
    *
@@ -46,26 +46,41 @@ export const F = {
    *    хэвээр ажиллаж байна — `hyanaltDetail` ба `hyanaltStore` хоёулаа
    *    гурван замыг барина.
    */
-  sheetOid: 'Эх_мөрийн_дугаар',
-  ergelt: 'Хэддэх_удаа',
-  bagts: 'Багц',
-  ajil: 'Ажлын_нэр',
+  sheetOid: 'эх_мөрийн_дугаар',
+  ergelt: 'хэддэх_удаа',
+  bagts: 'багц',
+  ajil: 'ажлын_нэр',
 
-  company: 'Гүйцэтгэгч_компани',
-  companySent: 'Компани_илгээсэн_огноо',
+  company: 'гүйцэтгэгч_компани',
+  companySent: 'компани_илгээсэн_огноо',
 
-  engineer: 'Талбайн_инженер',
-  engineerDecision: 'Инженерийн_шийдвэр',
-  engineerReason: 'Инженер_буцаасан_шалтгаан',
-  engineerReturned: 'Инженер_буцаасан_огноо',
-  engineerSent: 'Инженер_илгээсэн_огноо',
+  engineer: 'талбайн_инженер',
+  engineerDecision: 'инженерийн_шийдвэр',
+  engineerReason: 'инженер_буцаасан_шалтгаан',
+  engineerReturned: 'инженер_буцаасан_огноо',
+  engineerSent: 'инженер_илгээсэн_огноо',
 
   /** БАГЦЫН менежер — гурав дахь шат */
-  manager: 'Менежер',
-  managerDecision: 'Менежерийн_шийдвэр',
-  managerReason: 'Менежер_буцаасан_шалтгаан',
-  managerReturned: 'Менежер_буцаасан_огноо',
-  managerSent: 'Менежер_илгээсэн_огноо',
+  manager: 'менежер',
+  managerDecision: 'менежерийн_шийдвэр',
+  managerReason: 'менежер_буцаасан_шалтгаан',
+  managerReturned: 'менежер_буцаасан_огноо',
+  managerSent: 'менежер_илгээсэн_огноо',
+
+  /**
+   * ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕР — дөрөв дэх шат (багцын ахлах инженерийн ДАРАА,
+   * төлөвлөлтийн ахлах инженерийн ӨМНӨ).
+   * ⚠️ 2026-10-23 (хэрэглэгч: «Төлөвлөлтийн инженер» шат нэмнэ — нийт ДОЛООН шат).
+   *    ЛАТИН ЖИЖИГ үсгээр: PostgreSQL-ийн нэрийн 63 байтын хязгаар (кирилл 2 байт) —
+   *    кирилл нэр хэтэрнэ; жижиг латин нэр Enterprise-д
+   *    яг ижил буцна. Талбаруудыг хэрэглэгч notebook-оор нэмнэ — дутуу бол
+   *    `DIRECTOR_FIELDS`-ийн шалгуур товчийг хаана.
+   */
+  planner: 'tolovloltiin_injener',
+  plannerDecision: 'tolovloltiin_injeneriin_shiidver',
+  plannerReason: 'tolovloltiin_injener_butsaasan_shaltgaan',
+  plannerReturned: 'tolovloltiin_injener_butsaasan_ognoo',
+  plannerSent: 'tolovloltiin_injener_ilgeesen_ognoo',
 
   /**
    * ЕРӨНХИЙ МЕНЕЖЕР — дөрөв дэх, ЭЦСИЙН шат.
@@ -73,27 +88,27 @@ export const F = {
    *    Байхгүй үед програм нь дөрөв дэх шатыг ХААЖ, шалтгааныг ил хэлнэ —
    *    чимээгүй унахаас сэргийлнэ.
    */
-  director: 'Ерөнхий_менежер',
-  directorDecision: 'Ерөнхий_менежерийн_шийдвэр',
-  directorReason: 'Ерөнхий_менежер_буцаасан_шалтгаан',
-  directorReturned: 'Ерөнхий_менежер_буцаасан_огноо',
-  directorSent: 'Ерөнхий_менежер_илгээсэн_огноо',
+  director: 'ерөнхий_менежер',
+  directorDecision: 'ерөнхий_менежерийн_шийдвэр',
+  directorReason: 'ерөнхий_менежер_буцаасан_шалтгаан',
+  directorReturned: 'ерөнхий_менежер_буцаасан_огноо',
+  directorSent: 'ерөнхий_менежер_илгээсэн_огноо',
 
   /**
    * ХЭЛТСИЙН ДАРГА — тав дахь шат, ГАЗРЫН ДАРГА — зургаа дахь, ЭЦСИЙН шат
    * (2026-09-23, хэрэглэгч: «Хэлтсийн дарга · Газрын дарга 2 шат нэмнэ»,
    * ерөнхий менежерийн ДАРАА). AGOL-д 10 талбар нэмэгдсэн (`UPPER_FIELDS`).
    */
-  head: 'Хэлтсийн_дарга',
-  headDecision: 'Хэлтсийн_даргын_шийдвэр',
-  headReason: 'Хэлтсийн_дарга_буцаасан_шалтгаан',
-  headReturned: 'Хэлтсийн_дарга_буцаасан_огноо',
-  headSent: 'Хэлтсийн_дарга_илгээсэн_огноо',
-  chief: 'Газрын_дарга',
-  chiefDecision: 'Газрын_даргын_шийдвэр',
-  chiefReason: 'Газрын_дарга_буцаасан_шалтгаан',
-  chiefReturned: 'Газрын_дарга_буцаасан_огноо',
-  chiefSent: 'Газрын_дарга_илгээсэн_огноо',
+  head: 'хэлтсийн_дарга',
+  headDecision: 'хэлтсийн_даргын_шийдвэр',
+  headReason: 'хэлтсийн_дарга_буцаасан_шалтгаан',
+  headReturned: 'хэлтсийн_дарга_буцаасан_огноо',
+  headSent: 'хэлтсийн_дарга_илгээсэн_огноо',
+  chief: 'газрын_дарга',
+  chiefDecision: 'газрын_даргын_шийдвэр',
+  chiefReason: 'газрын_дарга_буцаасан_шалтгаан',
+  chiefReturned: 'газрын_дарга_буцаасан_огноо',
+  chiefSent: 'газрын_дарга_илгээсэн_огноо',
 
   /**
    * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрийн JSON массив.
@@ -117,7 +132,7 @@ export const F = {
    *    гэдэг ГАНЦ хариулт. Гурван талбар болговол аль нь хүчинтэйг уншигч
    *    бүр өөрөө шийдэх шаардлагатай болно.
    */
-  okCells: 'Zovshoorson_nud',
+  okCells: 'zovshoorson_nud',
 
   /**
    * ШИЙДВЭРИЙН ТҮҮХ (ЛОГ) — `{stage, who, at, act, reason}` үйл явдлын JSON массив
@@ -129,9 +144,9 @@ export const F = {
    *    `hasHistoryField()`-ээр илрүүлж, БАЙВАЛ л бичнэ; байхгүй бол урьдын зан.
    * ⚠️ ЛАТИН нэр — `okCells`-ийн ⚠️-тэй ижил шалтгаан (`N'…'` шаардлагагүй).
    */
-  history: 'Shiidveriin_tuuh',
+  history: 'shiidveriin_tuuh',
 
-  status: 'Төлөв',
+  status: 'төлөв',
 } as const;
 
 export const STATUS = {
@@ -139,13 +154,16 @@ export const STATUS = {
   engineerReturned: 'Инженер буцаасан',
   managerReview: 'Менежер хянаж байна',
   managerReturned: 'Менежер буцаасан',
+  /* ⚠️ 2026-10-23: долоон шат — төлөвлөлтийн инженер (шинэ утга; бусад хадгалагдсан утга ХЭВЭЭР) */
+  plannerReview: 'Төлөвлөлтийн инженер хянаж байна',
+  plannerReturned: 'Төлөвлөлтийн инженер буцаасан',
   directorReview: 'Ерөнхий менежер хянаж байна',
   directorReturned: 'Ерөнхий менежер буцаасан',
   headReview: 'Хэлтсийн дарга хянаж байна',
   headReturned: 'Хэлтсийн дарга буцаасан',
   chiefReview: 'Газрын дарга хянаж байна',
   chiefReturned: 'Газрын дарга буцаасан',
-  /** ЭЦСИЙН төлөв — зургаан шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
+  /** ЭЦСИЙН төлөв — долоон шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
   transferred: 'Шилжүүлсэн',
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
@@ -154,21 +172,23 @@ export const DECISION = { approve: 'Зөвшөөрсөн', return: 'Буцаас
 export type Decision = (typeof DECISION)[keyof typeof DECISION];
 
 /**
- * Шат — ЗУРГАА (2026-09-23). Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
- *   гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер
- *   → хэлтсийн дарга → газрын дарга
+ * Шат — ДОЛОО (2026-10-23; 2026-09-23-нд зургаа). Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
+ *   гүйцэтгэгч → хяналтын инженер → багцын ахлах инженер → төлөвлөлтийн инженер
+ *   → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга
+ * ⚠️ 2026-10-23: `planner` (төлөвлөлтийн инженер) нь `manager` ба `director`-ийн ДУНД.
  * ⚠️ Газрын дарга зөвшөөрсний ДАРАА л эх хүснэгтэд бүртгэгдсэнд тооцно
  *    (`Шилжүүлсэн`). Завсрын шатанд зогсоовол хяналт дутуу үлдэнэ.
  */
-export type Stage = 'company' | 'engineer' | 'manager' | 'director' | 'head' | 'chief';
+export type Stage = 'company' | 'engineer' | 'manager' | 'planner' | 'director' | 'head' | 'chief';
 
 /** Шатны ДАРААЛАЛ — нэг эх сурвалж. Буцах чиглэл нь энэ жагсаалтын урвуу.
  *  ⚠️ 2026-09-23: ерөнхий менежерийн ДАРАА хэлтсийн дарга (`head`), газрын
- *  дарга (`chief`) нэмэгдэв — нийт 6 шат; «Шилжүүлсэн» нь газрын даргынх. */
-export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'director', 'head', 'chief'];
+ *  дарга (`chief`) нэмэгдэв — нийт 6 шат; «Шилжүүлсэн» нь газрын даргынх.
+ *  ⚠️ 2026-10-23: багцын ахлах инженерийн ДАРАА төлөвлөлтийн инженер (`planner`) — нийт 7 шат. */
+export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'planner', 'director', 'head', 'chief'];
 
 /** ХЯНАХ шатууд (компаниас бусад) — шийдвэрийн талбар · төлөв нь ЭНЭ хүснэгтээс. */
-export const REVIEW_STAGES = ['engineer', 'manager', 'director', 'head', 'chief'] as const;
+export const REVIEW_STAGES = ['engineer', 'manager', 'planner', 'director', 'head', 'chief'] as const;
 export type ReviewStage = (typeof REVIEW_STAGES)[number];
 
 /**
@@ -179,6 +199,7 @@ export type ReviewStage = (typeof REVIEW_STAGES)[number];
 export const SF: Record<ReviewStage, { who: string; decision: string; reason: string; returned: string; sent: string }> = {
   engineer: { who: F.engineer, decision: F.engineerDecision, reason: F.engineerReason, returned: F.engineerReturned, sent: F.engineerSent },
   manager: { who: F.manager, decision: F.managerDecision, reason: F.managerReason, returned: F.managerReturned, sent: F.managerSent },
+  planner: { who: F.planner, decision: F.plannerDecision, reason: F.plannerReason, returned: F.plannerReturned, sent: F.plannerSent },
   director: { who: F.director, decision: F.directorDecision, reason: F.directorReason, returned: F.directorReturned, sent: F.directorSent },
   head: { who: F.head, decision: F.headDecision, reason: F.headReason, returned: F.headReturned, sent: F.headSent },
   chief: { who: F.chief, decision: F.chiefDecision, reason: F.chiefReason, returned: F.chiefReturned, sent: F.chiefSent },
@@ -188,6 +209,7 @@ export const SF: Record<ReviewStage, { who: string; decision: string; reason: st
 export const REVIEW_STATUS: Record<ReviewStage, Status> = {
   engineer: STATUS.engineerReview,
   manager: STATUS.managerReview,
+  planner: STATUS.plannerReview,
   director: STATUS.directorReview,
   head: STATUS.headReview,
   chief: STATUS.chiefReview,
@@ -197,6 +219,7 @@ export const REVIEW_STATUS: Record<ReviewStage, Status> = {
 export const RETURNED_STATUS: Record<ReviewStage, Status> = {
   engineer: STATUS.engineerReturned,
   manager: STATUS.managerReturned,
+  planner: STATUS.plannerReturned,
   director: STATUS.directorReturned,
   head: STATUS.headReturned,
   chief: STATUS.chiefReturned,
@@ -223,9 +246,13 @@ export const OWNER: Record<Status, Stage> = {
   [STATUS.engineerReturned]: 'company',
   [STATUS.managerReview]: 'manager',
   [STATUS.managerReturned]: 'engineer',
+  // ⚠️ 2026-10-23: төлөвлөлтийн инженер буцаавал БАГЦЫН АХЛАХ ИНЖЕНЕРТ (нэг алхам)
+  [STATUS.plannerReview]: 'planner',
+  [STATUS.plannerReturned]: 'manager',
   [STATUS.directorReview]: 'director',
-  // ⚠️ Ерөнхий менежер буцаавал БАГЦЫН МЕНЕЖЕРТ — тэр дахин шалгана
-  [STATUS.directorReturned]: 'manager',
+  // ⚠️ 2026-10-23: төлөвлөлтийн АХЛАХ инженер буцаавал ТӨЛӨВЛӨЛТИЙН ИНЖЕНЕРТ — тэр дахин шалгана
+  //    (урьд нь багцын ахлах инженерт очдог байв; дунд шат нэмэгдсэн)
+  [STATUS.directorReturned]: 'planner',
   [STATUS.headReview]: 'head',
   // ⚠️ Хэлтсийн дарга буцаавал ЕРӨНХИЙ МЕНЕЖЕРТ (нэг алхам)
   [STATUS.headReturned]: 'director',
@@ -254,6 +281,11 @@ export type Row = {
   [F.managerReason]: string;
   [F.managerReturned]: string | null;
   [F.managerSent]: string | null;
+  [F.planner]: string;
+  [F.plannerDecision]: Decision | '';
+  [F.plannerReason]: string;
+  [F.plannerReturned]: string | null;
+  [F.plannerSent]: string | null;
   [F.director]: string;
   [F.directorDecision]: Decision | '';
   [F.directorReason]: string;
@@ -284,9 +316,12 @@ export type Row = {
  *    үүсээгүй байна гэсэн үг.
  */
 export const DIRECTOR_FIELDS = [
+  /* ⚠️ 2026-10-23: төлөвлөлтийн инженерийн 5 талбар (notebook-оор нэмнэ) — дутуу бол 4-р шатны
+     шийдвэр чимээгүй алдагдах тул ижил шалгуурт; товч хаагдаж, дутууг ил хэлнэ. */
+  F.planner, F.plannerDecision, F.plannerReason, F.plannerReturned, F.plannerSent,
   F.director, F.directorDecision, F.directorReason, F.directorReturned, F.directorSent,
   /* ⚠️ 2026-09-23: хэлтсийн · газрын даргын 10 талбар ч ижил шалгуурт — дутуу
-     бол 4·5·6-р шатны шийдвэр чимээгүй алдагдана. */
+     бол 5·6·7-р шатны шийдвэр чимээгүй алдагдана (2026-10-23-наас дугаар нэгээр шилжсэн). */
   F.head, F.headDecision, F.headReason, F.headReturned, F.headSent,
   F.chief, F.chiefDecision, F.chiefReason, F.chiefReturned, F.chiefSent,
 ] as const;
@@ -314,6 +349,7 @@ let missingCache: string[] | null = null;
  * кэшлэнэ; унавал `null` («мэдэхгүй»), кэшлэхгүй.
  */
 let fieldsCache: Set<string> | null = null;
+let calculateSupported = false;
 /**
  * ⚠️ 2026-10-12 (R1): МӨР ТАЛБАРЫН УРТ (`fields[].length`) — ижил уншилтаас. Урьд нь талбарын
  *    тодорхойлолтыг татаад ЗӨВХӨН нэрийг хадгалдаг тул шалтгаан (`SF[шат].reason`) ба
@@ -334,7 +370,7 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
      * ⚠️ 2026-09-30: `query.arcgisPost` — 200-алдаа, `res.ok`, timeout тэнд шидэгдэнэ
      *    (урьд нь GET + токен query string-д).
      */
-    const j = await arcgisPost<{ fields?: { name: string; type?: string; length?: number }[] }>(HYANALT.url, {});
+    const j = await arcgisPost<{ supportsCalculate?: boolean; fields?: { name: string; type?: string; length?: number }[] }>(HYANALT.url, {});
     if (!Array.isArray(j.fields)) {
       throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
     }
@@ -343,6 +379,7 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
       .filter((x) => (x.type == null || x.type === 'esriFieldTypeString') && typeof x.length === 'number' && x.length > 0)
       .map((x): [string, number] => [x.name, x.length as number]));
     fieldsCache = new Set(j.fields.map((x) => x.name));
+    calculateSupported = j.supportsCalculate === true;
     return fieldsCache;
   } catch {
     return null;
@@ -643,6 +680,74 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
 
 export const addRows = (rows: Attrs[]) => edit('adds', rows);
 export const updateRows = (rows: Attrs[]) => edit('updates', rows);
+
+/** A stale decision is a definite rejection, not an ambiguous transport failure. */
+export class HyanaltConflict extends HyanaltError {
+  constructor() {
+    super(tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу'));
+    this.name = 'HyanaltConflict';
+  }
+}
+
+/**
+ * Check the old decision and change it in ONE server-side UPDATE. A second browser
+ * cannot pass the same predicate after the first decision changes status/history.
+ * /calculate is supported by the Enterprise review layer (Update capability).
+ * Never fall back to an unconditional applyEdits when it is unavailable.
+ */
+export async function updateDecision(expected: Row, patch: Attrs): Promise<void> {
+  const oid = expected.__oid;
+  if (!Number.isSafeInteger(oid) || oid <= 0 || patch[HYANALT.oid] !== oid) {
+    throw new HyanaltError(tr('Бүртгэл олдсонгүй'));
+  }
+  const fields = await serviceFieldNames();
+  /* ⚠️ 2026-10-21 (аудит): мета уншилт ТҮР унасан (`null` — сүлжээ · 429 · 5xx · JSON биш; кэшлэгдэхгүй) ба үйлчилгээ
+     ҮНЭХЭЭР дэмжихгүй (`supportsCalculate:false`) хоёрыг салгана — урьд нь хоёулаа «админд мэдэгдэнэ үү» гэж хянагчийг
+     буруу чиглүүлдэг байв; түр унасан үед дахин дарахад бичилт бүтнэ. Хоёулаа fail-closed хэвээр (бичилтгүй). */
+  if (!fields) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй — дахин оролдоно уу'));
+  if (!calculateSupported) {
+    throw new HyanaltError(tr('Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.'));
+  }
+  const quote = (value: string) => `N'${value.replace(/'/g, "''")}'`;
+  const guarded = [F.status, F.history, F.okCells, F.bagts,
+    ...REVIEW_STAGES.flatMap((stage) => [SF[stage].who, SF[stage].decision, SF[stage].reason])];
+  if (!fields.has(F.status)) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+  const clauses = [`${HYANALT.oid} = ${oid}`];
+  for (const field of guarded) {
+    if (!fields.has(field)) continue;
+    const value = String((expected as unknown as Attrs)[field] ?? '');
+    clauses.push(value === '' ? `(${field} IS NULL OR ${field} = '')` : `${field} = ${quote(value)}`);
+  }
+  for (const field of [F.sheetOid, F.ergelt]) {
+    if (!fields.has(field)) continue;
+    const value = (expected as unknown as Attrs)[field];
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+      throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+    }
+    clauses.push(value === 0 ? `(${field} IS NULL OR ${field} = 0)` : `${field} = ${value}`);
+  }
+  const changes = Object.entries(patch).filter(([field]) => field !== HYANALT.oid);
+  if (!changes.length || changes.some(([field, value]) => !fields.has(field)
+    || (value !== null && typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))))) {
+    throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
+  }
+  try {
+    const result = await post('/calculate', {
+      where: clauses.join(' AND '),
+      calcExpression: JSON.stringify(changes.map(([field, value]) => ({
+        field, value,
+      }))),
+      sqlFormat: 'standard',
+    });
+    if (result.success !== true || !Number.isInteger(result.updatedFeatureCount)
+      || Number(result.updatedFeatureCount) < 0 || Number(result.updatedFeatureCount) > 1) {
+      throw new HyanaltError(tr('серверээс үр дүн дутуу ирлээ'));
+    }
+    if (result.updatedFeatureCount === 0) throw new HyanaltConflict();
+  } finally {
+    invalidate('HYANALT');
+  }
+}
 
 /**
  * `Бүртгэлийн_дугаар` ДАВХАРДЛЫГ БИЧСЭНИЙ ДАРАА ЗАСНА (2026-10-04, `idUnique`).

@@ -16,7 +16,7 @@
  * талбарт `__flow__:` угтвартай нөөц мөрөөр. Урьд нь тэр нь зөвхөн админы
  * browser-ийн localStorage-д байсан тул томилогдсон хүний ӨӨРИЙНХ нь
  * төхөөрөмж дээр томилгоо огт харагдахгүй — багцын хязгаарлалт хаана ч
- * биелдэггүй, Ерөнхий менежерийн эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв.
+ * биелдэггүй, Төлөвлөлтийн ахлах инженерийн эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв.
  * Угтвартай мөрүүд эрхийн уншилтад ОГТ ОРОХГҮЙ (`fetchAll` ялгаж буцаана).
  *
  * ⚠️ ХЯЗГААР (баримтжуулсан): бичих эрх нь ArcGIS item-sharing дээр л
@@ -25,8 +25,14 @@
  * доторх, бичих эрх бүхий хэн боловч REST-ээр шууд засаж чадна. Клиент талын
  * системд үүнээс чанга хамгаалалт байхгүй; нэвтрэлтийн түвшний эрсдэлийг
  * `permissions.hasAccess` (хатуу жагсаалт + remote баталгаажилт) барина.
+ * ⚠️ 2026-10-21 (аудит): SUPER = ЭНЭ ХҮСНЭГТИЙН `role:'super'` МӨР болсноос хойш (`roles._setTableSupers`) дээрх
+ *    хязгаар нь харагдац/cap биш АДМИН ЭРХИЙН асуудал: org-даяар засагдах хүснэгтэд бичих эрхтэй ямар ч аккаунт өөртөө
+ *    super бичиж чадна. Кодоор хаагдахгүй — Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана
+ *    (уншилт org-д хэвээр: реле `hasPortalRow` хэрэглэгчийн токеноор мөрөө уншина); `probeEntExposure` илрүүлж улаанаар хэлнэ.
  */
 
+import { SYS_PERMS } from '@/lib/services/env';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { arcgisPost } from '@/lib/query';
 import { ensureFreshToken } from '@/lib/authToken';
@@ -55,6 +61,8 @@ export type FlowRow = {
   user: string; stage: string; bagts: string[];
   /** ХАРНА, ШИЙДВЭРЛЭХГҮЙ — хуучин мөрд `undefined` = жирийн томилгоо */
   viewOnly?: boolean;
+  /** ⚠️ 2026-10-23: эрхийн төрлийг ЭНЭ томилгоо автоматаар тавьсан (`guitsetgelAcl.Assign.autoRole`) — хуучин мөрд `undefined` */
+  autoRole?: boolean;
 };
 
 /**
@@ -66,14 +74,7 @@ export type FlowRow = {
  */
 export type CapRow = { user: string; caps: string[] };
 
-/**
- * ЧАНАРЫН (QAQC) багцын хуваарилалтын нэг мөр — `__qaqc__:` угтвартай.
- *
- * ⚠️ Урсгалын `FlowRow`-оос ТУСДАА: тэнд `stage` байдаг, энд БАЙХГҮЙ. Чанарын
- * хяналт нь дөрвөн шатны аль нь ч биш тул шат зүүвэл тэр хүн гүйцэтгэлийг
- * зөвшөөрөх эрхтэй болно (`qaqcAcl.ts`-ийн толгойн тайлбарыг үз).
- */
-export type QaqcRow = { user: string; bagts: string[] };
+/* ⚠️ 2026-10-23: `QaqcRow` хасагдсан — «Чанар (QAQC)» системээс устсан (хуучин `__qaqc__:` мөр уншилтад алгасагдана). */
 
 /**
  * ХУВААРИЙН хуваарилалтын нэг мөр — `__huvaari__:` угтвартай.
@@ -183,9 +184,81 @@ const BUTETS_PREFIX = '__butets__:';
  *    тохируулах» дарахад л хуваарилалт болж бичигдэнэ (`roleTypeApply.ts`).
  */
 const TYPE_PREFIX = '__type__:';
+/**
+ * СИСТЕМИЙН ТӨЛӨВИЙН угтвар (⚠️ 2026-10-19) — `__sys__:maintenance` («Систем түр хаах»).
+ * ⚠️ Хэрэглэгчийн мөр БИШ: `fetchAll` энэ угтварыг хэрэглэгчийн салаа руу УНАХААС ӨМНӨ барина — эс бөгөөс
+ *    «__sys__:maintenance» нэртэй хий хэрэглэгч (буруу хэлбэртэй `views`) админы жагсаалтад гарч байв.
+ */
+const SYS_PREFIX = '__sys__:';
+/** Засварын (хаалтын) мөрийн түлхүүр — `SYS_PREFIX`-ийн ард */
+const SYS_MAINT = 'maintenance';
+
+/**
+ * СИСТЕМ ТҮР ХААХ ТӨЛӨВ (⚠️ 2026-10-19) — `__sys__:maintenance` мөрийн `views` JSON.
+ *   · `on`    — ЗӨВХӨН яг `true` бол хаалттай (эргэлзээтэй утга хаахгүй — fail-open, доорх ⚠️)
+ *   · `note`  — хаагчийн нэмэлт тайлбар (сонголттой)
+ *   · `until` — «Дахин нээгдэх: …» чөлөөт текст (сонголттой; цагийг шалгахгүй, зөвхөн харуулна)
+ *   · `by` · `at` — хэн, хэзээ (мс)
+ */
+export type SysState = { on: boolean; note?: string; until?: string; by: string; at: number };
+
+/**
+ * `__sys__:maintenance` мөрийн `views`-ийг задлана — ЦЭВЭР (`permissions.check` шалгана).
+ * ⚠️ 2026-10-19: ЭВДЭРСЭН мөр → `null` (= нээлттэй). Энэ нь эрхийн мөрийн «fail-closed»-оос САНААТАЙ эсрэг:
+ *    хаалт бол бүх хүнийг гаргах үйлдэл тул гараар эвдэрсэн/хагас бичигдсэн мөр бүх байгууллагыг түгжих ёсгүй.
+ *    Хаалт ЗӨВХӨН ил `on: true`-гээр.
+ */
+export function parseSysState(raw: string | null | undefined): SysState | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d.on !== 'boolean') return null;
+    const str = (v: unknown, max: number): string | undefined =>
+      (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+    const note = str(d.note, 500);
+    const until = str(d.until, 100);
+    return {
+      on: d.on === true,
+      ...(note ? { note } : {}),
+      ...(until ? { until } : {}),
+      by: typeof d.by === 'string' ? d.by : '',
+      at: typeof d.at === 'number' && Number.isFinite(d.at) ? d.at : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ЗАЙТАЙ ТҮЛХҮҮР (⚠️ 2026-10-19, `MalformedRow.space`-ийн ⚠️) — нэрийн захад эсвэл угтварын ДАРАА зай.
+ * Цэвэр функц (`permissions.check` шалгана). Том/жижиг үсэг хамаарахгүй (`LOWER()` олно).
+ */
+export function isSpacedKey(raw: string): boolean {
+  const lu = raw.trim().toLowerCase();
+  if (raw.toLowerCase() !== lu) return true;
+  /* ⚠️ 2026-10-19: + `SYS_PREFIX` («__sys__: maintenance» ч зайтай мөр) */
+  const pre = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX]
+    .find((p) => lu.startsWith(p));
+  return pre != null && lu.slice(pre.length) !== lu.slice(pre.length).trim();
+}
 
 /** Эрхийн төрлийн нэг загвар — `tpl` нь задлаагүй JSON (`roleTypes.cleanTpl` шүүнэ) */
 export type TypeRow = { role: string; tpl: unknown };
+
+/**
+ * ЗАДЛАГДААГҮЙ (АЛГАССАН) МӨР — 2026-10-19 (аудит). `key` нь хүснэгтийн `username` ЯГ хэвээр (админ хайж олно).
+ *   · `json`  — `views` JSON биш / хүлээгдсэн хэлбэр биш
+ *   · `stage` — урсгалын мөрөнд шат алга
+ *   · `user`  — угтварын дараа нэр хоосон эсвэл аюултай нэр (`__proto__` г.м.)
+ */
+/**
+ * ⚠️ 2026-10-19: `space` — нэр/угтварын ЗАХАД эсвэл угтварын ДАРАА зай («bat », «__cap__: bat»). Ийм мөр урьд нь
+ *    (trim-ээр) эрх ОЛГОДОГ атлаа `findOids`/`readRowByKey` (`LOWER(username) = 'trim-лэсэн'`) олдоггүй тул
+ *    хасах/засах боломжгүй «үхэшгүй» эрх болдог байв. Одоо эрх ОЛГОХГҮЙ (fail-closed), админы цэвэрлэгээнд
+ *    `oid`-оор нь устгана (`removeMalformedRow`).
+ * `oid` — устгах товчинд (OBJECTID).
+ */
+export type MalformedRow = { key: string; reason: 'json' | 'stage' | 'user' | 'space'; oid?: number };
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -269,6 +342,47 @@ let tablePublic = false;
 export const permsTablePublic = (): boolean => tablePublic;
 
 /**
+ * ⚠️ 2026-10-21 (аудит): ENTERPRISE ЗАМД хүснэгтийн ИЛ БАЙДЛЫГ шалгана. `tablePublic` зөвхөн AGOL-ын item хайлтад
+ *    (`findTableUrl`) тавигддаг тул Enterprise-ийн шууд хаягийн замд (2026-10-20-оос бүх өгөгдөл) ХЭЗЭЭ Ч ажиллахгүй байв. Super нь
+ *    одоо энэ хүснэгтийн мөр (`roles._setTableSupers`) — давхарга org-даяар засагдах (`capabilities`-д Editing/Create/
+ *    Update/Delete, item `access` org/public) бол байгууллагын засах эрхтэй ЯМАР Ч аккаунт өөрийн токеноор `applyEdits`-ээр
+ *    өөртөө `role:'super'` бичиж (шинэ мөр их OID-той тул `fetchAll`-д ялна — мөрийн эзэмшлийн хязгаар ч хамгаалахгүй),
+ *    5 минутын poll-оос админ самбар · бүх эрх авна. Зөвхөн УНШИЖ илрүүлнэ (бичихгүй, токен POST биед — `arcgisPost`);
+ *    серверийн тохиргоо тул кодоор засагдахгүй — админд улаанаар (`permsTableOrgEditable`): Enterprise дээр үйлчилгээний
+ *    засах эрхийг админ бүлгээр хязгаарлах (уншилт org-д хэвээр — реле `hasPortalRow`-д хэрэгтэй). Шалгаж чадаагүй бол
+ *    анхааруулгагүй (мэдэхгүй ≠ аюулгүй) — уншилтын замыг унагаахгүй; нэг сешнд нэг удаа, зөвхөн хөтөчид.
+ */
+let tableOrgEditable = false;
+/** Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй эсэх (Enterprise) — UserAdmin-ы анхааруулга */
+export const permsTableOrgEditable = (): boolean => tableOrgEditable;
+let exposureProbed = false;
+type LayerMetaLite = { capabilities?: unknown; serviceItemId?: unknown };
+async function probeEntExposure(layerUrl: string): Promise<void> {
+  if (exposureProbed) return;
+  exposureProbed = true;
+  try {
+    const meta = await arcgisPost<LayerMetaLite>(layerUrl, {}, { token: 'org' });
+    const caps = String(meta.capabilities ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const editable = ['editing', 'create', 'update', 'delete'].some((c) => caps.includes(c));
+    let itemId = typeof meta.serviceItemId === 'string' ? meta.serviceItemId : '';
+    if (!itemId) {
+      const svc = await arcgisPost<LayerMetaLite>(layerUrl.replace(/\/\d+\/?$/, ''), {}, { token: 'org' });
+      itemId = typeof svc.serviceItemId === 'string' ? svc.serviceItemId : '';
+    }
+    if (!itemId) return;
+    /* Порталын item — анхдагч `token: 'always'`: портал хост руу хэрэглэгчийн токен явна */
+    const item = await arcgisPost<{ access?: unknown }>(`${restBase()}/content/items/${encodeURIComponent(itemId)}`, {});
+    const access = String(item.access ?? '').toLowerCase();
+    tablePublic = access === 'public';
+    /* ⚠️ 2026-10-26 (хэрэглэгч): console.error ба UserAdmin-ы улаан анхааруулга ХАСАГДСАН — org-ийн аккаунт бүгд
+       итгэмжлэгдсэн (хүлээн зөвшөөрсөн эрсдэл). Төлөвийг л тэмдэглэнэ. */
+    tableOrgEditable = editable && (access === 'org' || access === 'public');
+  } catch {
+    /* шалгаж чадсангүй — анхааруулгагүй (дээрх ⚠️) */
+  }
+}
+
+/**
  * Хүснэгтийн URL олох — байгаа item-ээс.
  *
  * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
@@ -343,9 +457,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         { name: 'username', type: 'esriFieldTypeString', length: 256, nullable: false, editable: true },
         { name: 'role', type: 'esriFieldTypeString', length: 32, nullable: true, editable: true },
         { name: 'views', type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
@@ -377,6 +491,15 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   //    алдаа/индексжилтийн хоцрогдолтой үед «олдсонгүй» сешн даяар тогтмолжиж,
   //    remote эрх огт уншигдахгүй байв; одоо дараагийн дуудлагад дахин хайна.
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (SYS_Selbe_Permissions/230) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${SYS_PERMS}/230`;
+  if (direct) {
+    tableUrlCache = direct;
+    /* ⚠️ 2026-10-21 (аудит): ил байдлын шалгалт — зөвхөн хөтөчид (тест/Node-д сүлжээ хөндөхгүй), нэг удаа (`probeEntExposure`-ийн ⚠️) */
+    if (typeof document !== 'undefined') void probeEntExposure(direct);
+    return direct;
+  }
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
@@ -401,11 +524,13 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
 async function layer(url: string): Promise<FeatureLayerInst> {
+  /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
+  await installEntInterceptor();
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
 }
 
-type RawAttrs = { OBJECTID?: number; username?: string; role?: string; views?: string; docs?: number };
+type RawAttrs = { objectid?: number; username?: string; role?: string; views?: string; docs?: number };
 
 /**
  * БҮХ мөрийг хуудаслаж татна.
@@ -417,7 +542,7 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
   for (let offset = 0; ; ) {
     const res = await fl.queryFeatures({
       where, outFields: ['*'], returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+      orderByFields: ['objectid ASC'], start: offset, num: 2000,
     });
     out.push(...res.features.map((f) => f.attributes as RawAttrs));
     if (!res.exceededTransferLimit || res.features.length === 0) break;
@@ -435,9 +560,13 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
 export async function fetchAll(
   canCreate = false,
 ): Promise<{
-  perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
+  perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
   butets: ButetsRow[]; types: TypeRow[];
+  /** ⚠️ 2026-10-19: задлагдаагүй (алгассан) мөрүүд — админы тоймд */
+  malformed: MalformedRow[];
+  /** ⚠️ 2026-10-19: «Систем түр хаах» төлөв — `null` = мөр алга / эвдэрсэн (нээлттэй) */
+  sys: SysState | null;
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -463,8 +592,6 @@ export async function fetchAll(
      * (мөрүүд OBJECTID ASC ирдэг).
      */
     const capsBy = new Map<string, CapRow>();
-    /* ⚠️ QAQC мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР — flow-той ижил дүрэм */
-    const qaqcBy = new Map<string, QaqcRow>();
     /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
     const huvaariBy = new Map<string, HuvaariRow>();
     const obyemBy = new Map<string, ObyemRow>();
@@ -473,147 +600,121 @@ export async function fetchAll(
     const butetsBy = new Map<string, ButetsRow>();
     /* ⚠️ Эрхийн төрлийн загвар — НЭГ ТӨРӨЛ = НЭГ МӨР, их OID ялна */
     const typesBy = new Map<string, TypeRow>();
-    for (const a of rows) {
+    /*
+     * ⚠️ 2026-10-19 (аудит): ЭВДЭРСЭН МӨРИЙГ ЧИМЭЭГҮЙ АЛГАСАХГҮЙ — `malformed`-д цуглуулж админы тоймд
+     *    (`permissions.remoteMalformed` → `ErhOverview`) харуулна. Алгасах нь хэвээр (fail-closed — эрх нээхгүй), гэвч
+     *    урьд нь админ «томилсон атлаа ажиллахгүй» шалтгааныг хаана ч харахгүй байв.
+     * ⚠️ 2026-10-19 (аудит): УГТВАР ТОМ/ЖИЖИГ ҮСЭГ ҮЛ ХАМААРНА (`__FLOW__:` ч) · нэр `trim().toLowerCase()` — бичих тал
+     *    (`upsert*`) ижил хэлбэрээр бичдэг. Урьд нь `startsWith` том үсэгт мэдрэмтгий тул гараар засагдсан мөр ЭРХИЙН
+     *    мөр гэж уншигдаж, «__CAP__:bat» нэртэй хэрэглэгч үүсдэг байв; энгийн мөрийн түлхүүр зайтай үлддэг байв.
+     */
+    const malformed: MalformedRow[] = [];
+    /* ⚠️ 2026-10-19: системийн хаалтын төлөв — давхар мөрөөс их OID ялна (мөрүүд OBJECTID ASC) */
+    let sys: SysState | null = null;
+    /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (⚠️ 2026-10-19) */
+    let curOid: number | undefined;
+    const bad = (key: string, reason: MalformedRow['reason']) => {
+      malformed.push({ key, reason, ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
+    };
+    /** Угтвартай мөр бол угтваргүй нэр (trim · жижиг үсэг), үгүй бол `null` */
+    const strip = (lu: string, prefix: string): string | null =>
+      (lu.startsWith(prefix) ? lu.slice(prefix.length).trim() : null);
+    /** Үүрэгтэй/үүрэггүй багцын хуваарилалтын мөр — `{roles, bagts, grants}` */
+    const scoped = (d: ViewsJson, user: string) => ({
+      user,
+      roles: Array.isArray(d.roles) ? d.roles : [],
+      bagts: Array.isArray(d.bagts) ? d.bagts : [],
+      ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
+    });
+    const SCOPED: [string, Map<string, AjilRow | ButetsRow | ChanarRow | ObyemRow | HuvaariRow>][] = [
+      [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
+    ];
+    rowLoop: for (const a of rows) {
       if (!a.username) continue;
+      const raw = String(a.username);
+      const lu = raw.trim().toLowerCase();
+      if (!lu) continue;
+      curOid = typeof a.objectid === 'number' ? a.objectid : undefined;
+      /* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ МӨР — эрх ОЛГОХГҮЙ, цэвэрлэгээнд (`MalformedRow.space`-ийн ⚠️). Бичих тал бүр
+         (`upsert*`) зайгүй түлхүүр бичдэг тул ийм мөр зөвхөн ГАРААР засагдсан хүснэгтээс гарна. */
+      if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
+
+      /* ── Системийн төлөвийн мөр (⚠️ 2026-10-19, «Систем түр хаах») ──
+         ⚠️ Хэрэглэгчийн салаанаас ӨМНӨ — угтвар танигдахгүй бол доорх «Эрхийн мөр» түүнийг хий хэрэглэгч
+            болгодог. Танигдахгүй `__sys__:` түлхүүрийг (ирээдүйн тохиргоо) чимээгүй алгасна — эрх нээдэггүй.
+         ⚠️ Эвдэрсэн мөр → нээлттэй (`parseSysState`-ийн ⚠️), тоймд `json`. */
+      const sysKey = strip(lu, SYS_PREFIX);
+      if (sysKey != null) {
+        if (sysKey === SYS_MAINT) {
+          const st = parseSysState(a.views);
+          if (st) sys = st; else { sys = null; bad(raw, 'json'); }
+        }
+        continue;
+      }
 
       /* ── Эрхийн төрлийн загварын мөр (2026-09-25) ── */
-      if (a.username.startsWith(TYPE_PREFIX)) {
-        const role = a.username.slice(TYPE_PREFIX.length).toLowerCase();
+      const role = strip(lu, TYPE_PREFIX);
+      if (role != null) {
         try {
           const d = JSON.parse(a.views || '{}') as unknown;
           /* ⚠️ 2026-09-25: эвдэрсэн мөр → `tpl: null` — `roleTypes` нарийн нөөц (`ROLE_ACCESS`)
              өгнө; урьд нь алгасдаг байсан тул ӨРГӨН анхдагч загвар (`DEFAULT_TPL`) үйлчилж байв */
+          if (!d || typeof d !== 'object') bad(raw, 'json');
           typesBy.set(role, { role, tpl: d && typeof d === 'object' ? d : null });
-        } catch { typesBy.set(role, { role, tpl: null }); }
+        } catch { bad(raw, 'json'); typesBy.set(role, { role, tpl: null }); }
         continue;
       }
 
-      /* ── Нэмэлт ажлын хуваарилалтын мөр ── */
-      if (a.username.startsWith(AJIL_PREFIX)) {
-        const user = a.username.slice(AJIL_PREFIX.length).toLowerCase();
+      /* ── Багцын хуваарилалтын мөрүүд (нэмэлт ажил · дэд бүтэц · чанарын баримт · обьём · хуваарь) ── */
+      for (const [prefix, map] of SCOPED) {
+        const user = strip(lu, prefix);
+        if (user == null) continue;
+        if (!user || UNSAFE_KEY.has(user)) { bad(raw, 'user'); continue rowLoop; }
         try {
           const d = JSON.parse(a.views || '{}') as ViewsJson;
-          if (user) {
-            ajilBy.set(user, {
-              user,
-              roles: Array.isArray(d.roles) ? d.roles : [],
-              bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
-        continue;
+          if (!d || typeof d !== 'object') { bad(raw, 'json'); continue rowLoop; }
+          map.set(user, scoped(d, user));
+        } catch { bad(raw, 'json'); /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
+        continue rowLoop;
       }
 
-      /* ── Дэд бүтцийн засварын хуваарилалтын мөр ── */
-      if (a.username.startsWith(BUTETS_PREFIX)) {
-        const user = a.username.slice(BUTETS_PREFIX.length).toLowerCase();
-        try {
-          const d = JSON.parse(a.views || '{}') as ViewsJson;
-          if (user) {
-            butetsBy.set(user, {
-              user,
-              roles: Array.isArray(d.roles) ? d.roles : [],
-              bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
-        continue;
-      }
-
-      /* ── Чанарын баримтын хуваарилалтын мөр ── */
-      if (a.username.startsWith(CHANAR_PREFIX)) {
-        const user = a.username.slice(CHANAR_PREFIX.length).toLowerCase();
-        try {
-          const d = JSON.parse(a.views || '{}') as ViewsJson;
-          if (user) {
-            chanarBy.set(user, {
-              user,
-              roles: Array.isArray(d.roles) ? d.roles : [],
-              bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
-        continue;
-      }
-
-      /* ── Инженерийн төлөвлөсөн обьёмын хуваарилалтын мөр ── */
-      if (a.username.startsWith(OBYEM_PREFIX)) {
-        const user = a.username.slice(OBYEM_PREFIX.length).toLowerCase();
-        try {
-          const d = JSON.parse(a.views || '{}') as ViewsJson;
-          if (user) {
-            obyemBy.set(user, {
-              user,
-              roles: Array.isArray(d.roles) ? d.roles : [],
-              bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
-        continue;
-      }
-
-      /* ── Хуваарийн хуваарилалтын мөр ── */
-      if (a.username.startsWith(HUVAARI_PREFIX)) {
-        const user = a.username.slice(HUVAARI_PREFIX.length).toLowerCase();
-        try {
-          const d = JSON.parse(a.views || '{}') as ViewsJson;
-          if (user) {
-            huvaariBy.set(user, {
-              user,
-              roles: Array.isArray(d.roles) ? d.roles : [],
-              bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
-        continue;
-      }
-
-      /* ── Чанарын (QAQC) багцын хуваарилалтын мөр ── */
-      if (a.username.startsWith(QAQC_PREFIX)) {
-        const user = a.username.slice(QAQC_PREFIX.length).toLowerCase();
-        try {
-          const d = JSON.parse(a.views || '{}') as { bagts?: string[] };
-          if (user) {
-            qaqcBy.set(user, { user, bagts: Array.isArray(d.bagts) ? d.bagts : [] });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
-        continue;
-      }
+      /* ⚠️ 2026-10-23: хуучин Чанарын (QAQC) хуваарилалтын мөр (`__qaqc__:`) — систем хасагдсан, ЗӨВХӨН алгасна
+         (хэрэглэгчийн мөр гэж андуурахгүй). */
+      if (strip(lu, QAQC_PREFIX) != null) continue;
 
       /* ── Нэмэлт эрхийн мөр ── */
-      if (a.username.startsWith(CAP_PREFIX)) {
-        const user = a.username.slice(CAP_PREFIX.length).toLowerCase();
+      const cUser = strip(lu, CAP_PREFIX);
+      if (cUser != null) {
         /* ⚠️ 2026-10-11 (аудит №7): эрхийн мөрийн (доорх) ижил `UNSAFE_KEY` шүүлт — `caps._syncRemoteCaps`-ийн объектын түлхүүр */
-        if (UNSAFE_KEY.has(user)) continue;
+        if (!cUser || UNSAFE_KEY.has(cUser)) { bad(raw, 'user'); continue; }
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
-          if (user && Array.isArray(d)) capsBy.set(user, { user, caps: d as string[] });
-        } catch { /* эвдэрсэн мөр — алгасна (эрхгүйтэй ижил, fail-closed) */ }
+          if (Array.isArray(d)) capsBy.set(cUser, { user: cUser, caps: d as string[] });
+          else bad(raw, 'json');
+        } catch { bad(raw, 'json'); /* эвдэрсэн мөр — алгасна (эрхгүйтэй ижил, fail-closed) */ }
         continue;
       }
 
       /* ── Урсгалын томилгооны мөр ── */
-      if (a.username.startsWith(FLOW_PREFIX)) {
-        const user = a.username.slice(FLOW_PREFIX.length).toLowerCase();
+      const fUser = strip(lu, FLOW_PREFIX);
+      if (fUser != null) {
+        if (!fUser || UNSAFE_KEY.has(fUser)) { bad(raw, 'user'); continue; }
         try {
           const d = JSON.parse(a.views || '{}') as {
-            stage?: string; bagts?: string[]; viewOnly?: boolean;
+            stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean;
           };
-          if (user && d.stage) {
-            flowBy.set(user, {
-              user,
+          if (d && typeof d === 'object' && d.stage) {
+            flowBy.set(fUser, {
+              user: fUser,
               stage: d.stage,
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
               /* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ (2026-09-09) */
               ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+              /* ⚠️ 2026-10-23: ЗӨВХӨН ЯГ `true` — эргэлзээтэй бол админы ил төрөл гэж үзнэ (хасахад төрөл хэвээр) */
+              ...(d.autoRole === true ? { autoRole: true as const } : {}),
             });
-          }
-        } catch { /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
+          } else bad(raw, 'stage');
+        } catch { bad(raw, 'json'); /* эвдэрсэн мөр — алгасна (томилгоо байхгүйтэй ижил, fail-closed) */ }
         continue;
       }
 
@@ -627,14 +728,16 @@ export async function fetchAll(
         try {
           const v = a.views ? JSON.parse(a.views) : [];
           views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
-        } catch { views = []; }
+          if (v !== 'all' && !Array.isArray(v)) bad(raw, 'json');
+        } catch { views = []; bad(raw, 'json'); }
       }
       /* ⚠️ 2026-10-09: `__proto__` · `constructor` · `prototype` нэртэй мөрийг АЛГАСНА — хүснэгтэд
          бичих эрхтэй хүн ийм `username` бичвэл `perms[k] = …` нь энгийн объектын прототипыг солиж,
          бүртгэлгүй бүх нэрэнд «эрх» харагдах боломжтой байв (`caps.UNSAFE_KEY`). */
-      if (UNSAFE_KEY.has(a.username.toLowerCase())) continue;
-      perms[a.username.toLowerCase()] = {
-        username: a.username,
+      if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
+      /* ⚠️ 2026-10-19 (аудит): ТҮЛХҮҮР `trim().toLowerCase()` — `userRead`/`upsert`-тэй ижил (урьд нь зайтай үлддэг байв) */
+      perms[lu] = {
+        username: raw.trim(),
         role: (a.role as Role) || null,
         views,
         // ⚠️ FAIL-CLOSED: зөвхөн ТОДОРХОЙ 1 (эсвэл true) бол эрх нээнэ; null/хоосон → үгүй
@@ -646,13 +749,14 @@ export async function fetchAll(
       perms,
       flow: [...flowBy.values()],
       caps: [...capsBy.values()],
-      qaqc: [...qaqcBy.values()],
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
       chanar: [...chanarBy.values()],
       ajil: [...ajilBy.values()],
       butets: [...butetsBy.values()],
       types: [...typesBy.values()],
+      malformed,
+      sys,
     };
   } catch {
     return null;
@@ -674,15 +778,17 @@ async function findOids(fl: FeatureLayerInst, username: string): Promise<number[
    * уншилтад эргэн гарч ирнэ. `orderByFields`-гүй offset нь мөр алгасдаг тул
    * эрэмбийг ЗААВАЛ хадгална (CLAUDE.md-ийн ArcGIS занга).
    */
-  const where = `LOWER(username) = '${username.toLowerCase().replace(/'/g, "''")}'`;
+  /* ⚠️ 2026-10-19 (аудит): түлхүүр `trim()`-тэй (бичих тал бүр trim хийдэг). SQL-д TRIM хэрэглэхгүй — үйлчилгээний
+     SQL-ийн дэмжлэг шалгагдаагүй; хуучин зайтай мөр олдохгүй бол шинэ мөр (их OID) нэмэгдэж `fetchAll`-д ялна. */
+  const where = `LOWER(username) = '${username.trim().toLowerCase().replace(/'/g, "''")}'`;
   const out: number[] = [];
   for (let offset = 0; ; ) {
     const found = await fl.queryFeatures({
-      where, outFields: ['OBJECTID'], returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'], start: offset, num: 2000,
+      where, outFields: ['objectid'], returnGeometry: false,
+      orderByFields: ['objectid ASC'], start: offset, num: 2000,
     });
     out.push(...found.features
-      .map((x) => x.attributes?.OBJECTID as number)
+      .map((x) => x.attributes?.objectid as number)
       .filter((x) => typeof x === 'number'));
     if (!found.exceededTransferLimit || found.features.length === 0) break;
     offset += found.features.length;
@@ -762,7 +868,7 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
     const dupes = oids.slice(0, -1);
     const edit = {
       ...(target != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+        ? { updateFeatures: [{ attributes: { objectid: target, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
@@ -803,6 +909,36 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
 }
 
 /**
+ * ЭВДЭРСЭН (ЗАЙТАЙ г.м.) МӨРИЙГ OBJECTID-ООР УСТГАНА — админы «Эрхийн хүснэгтийн цэвэрлэгээ» (⚠️ 2026-10-19).
+ * ⚠️ `removeByKey` нь `LOWER(username) = '<trim>'` тул зайтай мөрийг ОЛДОГГҮЙ — энд OID-оор.
+ * ⚠️ Устгахын ӨМНӨ мөрийг дахин уншиж `username` нь харуулсан `expectKey`-тэй ЯГ тэнцүү эсэхийг шалгана — хүснэгт
+ *    хооронд өөрчлөгдсөн бол (өөр мөр тэр OID-д) устгахгүй.
+ * ⚠️ Эрхийн шалгалт нь дуудагчид (ErhOverview — super-ийн админ панел) ба хүснэгтийн ArcGIS эрхэд (бусад бичилттэй ижил).
+ */
+export async function removeMalformedRow(oid: number, expectKey: string): Promise<boolean> {
+  try {
+    if (!Number.isInteger(oid) || oid <= 0) return false;
+    const url = await tableUrl(false);
+    if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
+    const fl = await layer(url);
+    const rows = await queryAllRows(fl, `objectid = ${oid}`);
+    if (!rows.length) return true; // аль хэдийн устгагдсан
+    if (String(rows[0].username ?? '') !== expectKey) {
+      noteWriteError(tr('Мөр өөрчлөгдсөн байна — хуудсыг шинэчлээд дахин оролдоно уу.'));
+      return false;
+    }
+    const r = await fl.applyEdits({ deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0]);
+    const dr = r.deleteFeatureResults ?? [];
+    const good = dr.length === 1 && editOk(dr);
+    if (!good) noteWriteError(editErr(r.deleteFeatureResults) || tr('ArcGIS бичилтийг хүлээж авсангүй.'));
+    return good;
+  } catch (e) {
+    noteWriteError(e);
+    return false;
+  }
+}
+
+/**
  * НЭГ ТҮЛХҮҮРИЙН `views`-ИЙГ ШИНЭЭР УНШИНА — бичихийн ЯГ ӨМНӨ нэгтгэхэд (2026-10-04).
  * ⚠️ ЯАГААД: `caps.setCaps` · `scopedAcl.pushRow` нь ≤5 мин настай кэшээс БҮТЭН жагсаалт
  *    бичдэг тул хоёр админ нэг хэрэглэгчийг зэрэг засвал сүүлд бичсэн нь өмнөхийн
@@ -823,7 +959,7 @@ async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
     const url = await tableUrl(false);
     if (!url) return undefined;
     const fl = await layer(url);
-    const rows = await queryAllRows(fl, `LOWER(username) = '${key.toLowerCase().replace(/'/g, "''")}'`);
+    const rows = await queryAllRows(fl, `LOWER(username) = '${key.trim().toLowerCase().replace(/'/g, "''")}'`);
     return rows[rows.length - 1] ?? null;
   } catch {
     return undefined;
@@ -842,7 +978,7 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
   if (v === undefined) return null;
   if (v === null) return { row: null };
   try {
-    const d = JSON.parse(v || '{}') as { stage?: string; bagts?: string[]; viewOnly?: boolean };
+    const d = JSON.parse(v || '{}') as { stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean };
     if (!d.stage) return { row: null };
     return {
       row: {
@@ -850,6 +986,7 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
         stage: d.stage,
         bagts: Array.isArray(d.bagts) ? d.bagts : [],
         ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+        ...(d.autoRole === true ? { autoRole: true as const } : {}),
       },
     };
   } catch {
@@ -904,7 +1041,7 @@ export async function capRead(user: string): Promise<string[] | null> {
 /** `scopedAcl`-ийн систем бүрийн угтвар */
 const SCOPED_PREFIX = {
   huvaari: HUVAARI_PREFIX, obyem: OBYEM_PREFIX, chanar: CHANAR_PREFIX,
-  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX, qaqc: QAQC_PREFIX,
+  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX,
 } as const;
 export type ScopedKind = keyof typeof SCOPED_PREFIX;
 
@@ -935,8 +1072,11 @@ export async function scopedRead(
 
 /** Нэг хэрэглэгчийн эрхийн мөрийг нэмэх/шинэчлэх (upsert) */
 export function upsert(row: RemoteRow): Promise<boolean> {
-  return upsertByKey(row.username, {
-    username: row.username,
+  /* ⚠️ 2026-10-19 (аудит): түлхүүр `trim().toLowerCase()` — `fetchAll` ижил хэлбэрээр уншина; зайтай/том үсэгтэй нэр
+     хоёр өөр мөр (давхар эрх) үүсгэхгүй. Хадгалах `username` нь зайгүй (харагдах хэлбэр нь хэвээр). */
+  const key = row.username.trim().toLowerCase();
+  return upsertByKey(key, {
+    username: row.username.trim(),
     role: row.role ?? null,
     // Устгагдсан аккаунт — JSON биш `removed` шууд утга (RemoteRow-ийн тайлбарыг үз)
     views: row.removed ? 'removed' : JSON.stringify(row.views),
@@ -946,7 +1086,8 @@ export function upsert(row: RemoteRow): Promise<boolean> {
 
 /** Хэрэглэгчийн эрхийн мөрийг устгах */
 export function remove(username: string): Promise<boolean> {
-  return removeByKey(username);
+  /* ⚠️ 2026-10-19 (аудит): `upsert`-тэй ижил түлхүүр */
+  return removeByKey(username.trim().toLowerCase());
 }
 
 /**
@@ -957,20 +1098,23 @@ export function remove(username: string): Promise<boolean> {
  *    тэр туг эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул анхдагч нь аюулгүй.
  */
 export function flowUpsert(
-  user: string, stage: string, bagts: string[], viewOnly = false,
+  user: string, stage: string, bagts: string[], viewOnly = false, autoRole = false,
 ): Promise<boolean> {
-  const key = FLOW_PREFIX + user.toLowerCase();
+  const key = FLOW_PREFIX + user.trim().toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify(viewOnly ? { stage, bagts, viewOnly: true } : { stage, bagts }),
+    /* ⚠️ 2026-10-23: `autoRole` ч ЗӨВХӨН `true` үед (`viewOnly`-тэй ижил — хуучин мөр талбаргүй) */
+    views: JSON.stringify({
+      stage, bagts, ...(viewOnly ? { viewOnly: true } : {}), ...(autoRole ? { autoRole: true } : {}),
+    }),
     docs: 0,
   });
 }
 
 /** Нэмэлт эрхийг бичих — нэг хэрэглэгч нэг мөр (`__cap__:` угтвартай) */
 export function capUpsert(user: string, caps: string[]): Promise<boolean> {
-  const key = CAP_PREFIX + user.toLowerCase();
+  const key = CAP_PREFIX + user.trim().toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
@@ -981,51 +1125,79 @@ export function capUpsert(user: string, caps: string[]): Promise<boolean> {
 
 /** Нэмэлт эрхийг бүрмөсөн арилгах (эрхгүй болгох) */
 export function capRemove(user: string): Promise<boolean> {
-  return removeByKey(CAP_PREFIX + user.toLowerCase());
+  return removeByKey(CAP_PREFIX + user.trim().toLowerCase());
 }
 
 /** Урсгалын томилгоог арилгах */
 export function flowRemove(user: string): Promise<boolean> {
-  return removeByKey(FLOW_PREFIX + user.toLowerCase());
+  return removeByKey(FLOW_PREFIX + user.trim().toLowerCase());
 }
 
-/**
- * Чанарын (QAQC) багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- *
- * ⚠️ `{ bagts }` объектоор бичнэ, массиваар БИШ: `__cap__:` мөр нь массив
- * хадгалдаг тул хэлбэрээр нь ялгаж болохгүй, гэхдээ ирээдүйд талбар нэмэхэд
- * (жишээ нь тайлбар) хэлбэр өөрчлөгдөхгүй байх нь чухал. `__flow__:`-тэй ижил.
- */
-export function qaqcUpsert(user: string, bagts: string[]): Promise<boolean> {
-  const key = QAQC_PREFIX + user.toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify({ bagts }),
-    docs: 0,
-  });
-}
-
-/** Чанарын багцын хуваарилалтыг арилгах */
 /** Эрхийн төрлийн загварыг бичих — нэг төрөл нэг мөр */
 export function typeUpsert(role: string, tpl: unknown): Promise<boolean> {
-  const key = TYPE_PREFIX + role.toLowerCase();
+  const key = TYPE_PREFIX + role.trim().toLowerCase();
   return upsertByKey(key, { username: key, role: null, views: JSON.stringify(tpl), docs: 0 });
 }
 
-export function qaqcRemove(user: string): Promise<boolean> {
-  return removeByKey(QAQC_PREFIX + user.toLowerCase());
+/**
+ * «СИСТЕМ ТҮР ХААХ» ТӨЛӨВИЙГ БИЧНЭ (⚠️ 2026-10-19) — `__sys__:maintenance` нэг мөр (`typeUpsert`-ийн загвар).
+ * ⚠️ Эрхийн шалгалт нь дуудагчид (`permissions.setSystemClosed` → `who.requireCap('sysClose')`).
+ * ⚠️ `upsertByKey` нь ArcGIS-ийн 200-аар ирдэг алдааг (`error` бие) аль хэдийн барина; урт `assertViewsFit`.
+ */
+export function sysUpsert(state: SysState): Promise<boolean> {
+  const key = SYS_PREFIX + SYS_MAINT;
+  return upsertByKey(key, { username: key, role: null, views: JSON.stringify(state), docs: 0 });
 }
 
 /**
- * Хуваарийн хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- *    тээвэрлэнэ (`huvaariAcl` танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
+ * «Систем түр хаах» төлөвийг ШИНЭЭР уншина — бичсний дараа батлахад (`capRead`-ийн загвар).
+ * @returns `null` = уншиж чадсангүй; `{ state: null }` = мөр алга / эвдэрсэн (нээлттэй).
  */
-export function huvaariUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
+export async function sysRead(): Promise<{ state: SysState | null } | null> {
+  const v = await readViewsByKey(SYS_PREFIX + SYS_MAINT);
+  if (v === undefined) return null;
+  return { state: v === null ? null : parseSysState(v) };
+}
+
+/**
+ * БАРИМТ БИЧГИЙН САНГИЙН БҮЛГҮҮД (⚠️ 2026-10-23) — `__sys__:docgroups` нэг мөр, `views` нь `[{ id, title }]` JSON.
+ * ⚠️ `fetchAll` танигдахгүй `__sys__:` түлхүүрийг чимээгүй алгасдаг тул эрхийн уншилтад нөлөөгүй.
+ * ⚠️ Эрхийн шалгалт дуудагчид (`docLib.saveGroups` → `docsUpload`).
+ */
+const DOC_GROUPS = 'docgroups';
+export type DocGroupRow = { id: string; title: string };
+/** @returns `undefined` = уншиж чадсангүй; `null` = мөр алга (анхдагч бүлгүүд) */
+export async function docGroupsRead(): Promise<DocGroupRow[] | null | undefined> {
+  const v = await readViewsByKey(SYS_PREFIX + DOC_GROUPS);
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  try {
+    const a = JSON.parse(v) as unknown;
+    if (!Array.isArray(a)) return null;
+    return a
+      .filter((x): x is DocGroupRow => !!x && typeof x === 'object' && typeof (x as DocGroupRow).id === 'string' && typeof (x as DocGroupRow).title === 'string')
+      .map((x) => ({ id: x.id.trim(), title: x.title.trim() }))
+      .filter((x) => x.id && x.title && !UNSAFE_KEY.has(x.id));
+  } catch {
+    return null;
+  }
+}
+export function docGroupsWrite(list: readonly DocGroupRow[]): Promise<boolean> {
+  const key = SYS_PREFIX + DOC_GROUPS;
+  return upsertByKey(key, { username: key, role: null, views: JSON.stringify(list), docs: 0 });
+}
+
+/**
+ * Багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр (`scopedAcl`-ийн таван систем).
+ * ⚠️ 2026-10-26 (A6): урьд нь таван ижил `*Upsert` ба таван `*Remove` функц (зөвхөн угтвар өөр) байв —
+ *    одоо НЭГ туслах `SCOPED_PREFIX[kind]`-ээр; экспортын нэрс доор нимгэн бүрхүүлээр хэвээр (дуудагч өөрчлөгдөхгүй).
+ * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
+ *    тээвэрлэнэ (`huvaariAcl` · `obyemAcl` … танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
+ */
+export function scopedUpsert(
+  kind: ScopedKind, user: string, roles: string[], bagts: string[], grants?: Grant[],
 ): Promise<boolean> {
-  const key = HUVAARI_PREFIX + user.toLowerCase();
+  const key = SCOPED_PREFIX[kind] + user.trim().toLowerCase();
   return upsertByKey(key, {
     username: key,
     role: null,
@@ -1042,100 +1214,25 @@ export function huvaariUpsert(
   });
 }
 
-/**
- * Инженерийн төлөвлөсөн обьёмын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- *    тээвэрлэнэ (`obyemAcl` танигдахгүйг нь хаяна).
- */
-export function obyemUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = OBYEM_PREFIX + user.toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    /*
-     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
-     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
-     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
-     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
-     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
-     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
-     */
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
+/** Багцын хуваарилалтыг арилгах (`scopedUpsert`-ийн эсрэг) */
+export function scopedRemove(kind: ScopedKind, user: string): Promise<boolean> {
+  return removeByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase());
 }
 
-/**
- * Чанарын баримтын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `huvaariUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function chanarUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = CHANAR_PREFIX + user.toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Чанарын баримтын хуваарилалтыг арилгах */
-export function chanarRemove(user: string): Promise<boolean> {
-  return removeByKey(CHANAR_PREFIX + user.toLowerCase());
-}
-
-/**
- * Нэмэлт ажлын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function ajilUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = AJIL_PREFIX + user.toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Нэмэлт ажлын хуваарилалтыг арилгах */
-export function ajilRemove(user: string): Promise<boolean> {
-  return removeByKey(AJIL_PREFIX + user.toLowerCase());
-}
-
-/**
- * Дэд бүтцийн засварын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
- * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
- */
-export function butetsUpsert(
-  user: string, roles: string[], bagts: string[], grants?: Grant[],
-): Promise<boolean> {
-  const key = BUTETS_PREFIX + user.toLowerCase();
-  return upsertByKey(key, {
-    username: key,
-    role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
-    docs: 0,
-  });
-}
-
-/** Дэд бүтцийн засварын хуваарилалтыг арилгах */
-export function butetsRemove(user: string): Promise<boolean> {
-  return removeByKey(BUTETS_PREFIX + user.toLowerCase());
-}
-
-/** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */
-export function obyemRemove(user: string): Promise<boolean> {
-  return removeByKey(OBYEM_PREFIX + user.toLowerCase());
-}
-
-/** Хуваарийн хуваарилалтыг арилгах */
-export function huvaariRemove(user: string): Promise<boolean> {
-  return removeByKey(HUVAARI_PREFIX + user.toLowerCase());
-}
+/* ⚠️ 2026-10-26 (A6): нимгэн бүрхүүлүүд `function` зарлалаар (`const` биш) — `*Acl.ts` модулиуд `remove: xRemove`-ыг
+   модулийн түвшинд уншдаг тул импортын тойрогт `const`-ийн TDZ алдаа гарахгүй (hoisting). */
+/** Хуваарийн хуваарилалт — бичих / арилгах */
+export function huvaariUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('huvaari', user, roles, bagts, grants); }
+export function huvaariRemove(user: string): Promise<boolean> { return scopedRemove('huvaari', user); }
+/** Инженерийн төлөвлөсөн обьёмын хуваарилалт — бичих / арилгах */
+export function obyemUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('obyem', user, roles, bagts, grants); }
+export function obyemRemove(user: string): Promise<boolean> { return scopedRemove('obyem', user); }
+/** Чанарын баримтын хуваарилалт — бичих / арилгах */
+export function chanarUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('chanar', user, roles, bagts, grants); }
+export function chanarRemove(user: string): Promise<boolean> { return scopedRemove('chanar', user); }
+/** Нэмэлт ажлын хуваарилалт — бичих / арилгах */
+export function ajilUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('ajil', user, roles, bagts, grants); }
+export function ajilRemove(user: string): Promise<boolean> { return scopedRemove('ajil', user); }
+/** Дэд бүтцийн засварын хуваарилалт — бичих / арилгах */
+export function butetsUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('butets', user, roles, bagts, grants); }
+export function butetsRemove(user: string): Promise<boolean> { return scopedRemove('butets', user); }

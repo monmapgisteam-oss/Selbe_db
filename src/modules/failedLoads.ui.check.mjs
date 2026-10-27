@@ -55,23 +55,16 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 {
   const RAW = /String\(\(?(\w+)(?: as Error)?\)?\??\.message (?:\|\||\?\?) \1\)/;
   for (const f of [
-    'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/CashflowPlan.tsx', 'modules/Chanar.tsx',
+    'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/CashflowPlan.tsx',
     'modules/DedButets.tsx', 'modules/DedButetsBatch.tsx', 'modules/DedButetsEdit.tsx', 'modules/Finance.tsx',
     'modules/Gazar.tsx', 'modules/GazarEdit.tsx', 'modules/Guitsetgel.tsx', 'modules/Huvaari.tsx',
-    'modules/HuvaariBatlah.tsx', 'modules/Qaqc.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx',
+    'modules/HuvaariBatlah.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx', /* ⚠️ 2026-10-23: QAQC хасагдсан */
   ]) assert.ok(!RAW.test(src(f)), `${f}: түүхий e.message дэлгэцэнд`);
   for (const f of ['modules/Habea.tsx', 'modules/habeaUzleg.tsx', 'components/PackLayers.tsx', 'modules/DedButets.tsx']) {
     assert.ok(!/\{0\}', (q|weekScores|totals)\.error\.message\)/.test(src(f)), `${f}: friendlyError`);
   }
 
-  const ch = src('modules/Chanar.tsx');
-  assert.match(ch, /const listFailed = loadErr \|\|/);
-  assert.match(ch, /listFailed \? '—' : counts\[k\]/, 'Chanar: табын тоо');
-  assert.match(ch, /listFailed \? '—' : actionable\.length/, 'Chanar: «Миний хийх (N)»');
-  assert.match(ch, /heads\.length === 0 && !loading && !listFailed/, 'Chanar: хоосон төлөв');
-  assert.match(ch, /\{!listFailed && \(\s*<div className=\{s\.summary\}/, 'Chanar: хураангуй');
-  assert.match(ch, /setNcrFlagsErr\(nf == null\)/, 'Chanar: NCR туг унасан анхааруулга');
-  assert.match(src('lib/chanarStore.ts'), /countChanarActionable\(user: string \| null \| undefined\): Promise<number \| null>[\s\S]{0,300}if \(!st\.ok\) return null;[\s\S]{0,200}catch \{\s*return null;/, 'тэмдэг: алдаанд null');
+  /* ⚠️ 2026-10-20: `Chanar.tsx` · `chanarStore.ts` («Чанарын баримт») хасагдсан — тэдгээрийн шалгуур хасагдав. */
 
   const gs = src('modules/Guitsetgel.tsx');
   assert.match(gs, /const loadFailed = !!error && rows\.length === 0;/);
@@ -106,10 +99,18 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
   assert.match(src('components/ZoneFilter.tsx'), /\{zoneLabel\(z\)\}/, 'бүсийн нэр орчуулагдана');
   assert.match(pt, /zonesLabel\(zone\.split/);
-  for (const f of ['modules/Chanar.tsx', 'modules/Huvaari.tsx', 'modules/Qaqc.tsx']) {
+  for (const f of ['modules/Huvaari.tsx']) { /* ⚠️ 2026-10-23: QAQC хасагдсан */
     /* ⚠️ 2026-10-12: Хуваарь нь шинэ шийдвэртэй багцад « ●» залгана — `{tr(g)}`-ээр эхлэх нь хангалттай */
     assert.ok(src(f).includes('<option key={g} value={g}>{tr(g)}'), `${f}: багцын нэр англиар`);
   }
+}
+
+/* ── §4 (2026-10-21, аудит): Irged — нийгмийн үйлчилгээний амьд давхарга унавал алдаа + «Дахин оролдох»; алга давхарга «—» (0 биш) ── */
+{
+  const ir = src('modules/Irged.tsx');
+  assert.ok(ir.includes("{qSocial.state === 'error' && <Data q={qSocial}>{() => null}</Data>}"), 'Irged: qSocial алдаа → Data (шалтгаан + retry)');
+  assert.ok(ir.includes('total: missing ? null : headCount(r.now) + n'), 'Irged: давхарга алга → нийт null (одоо + 0 биш)');
+  assert.ok(ir.includes("r.failed || r.total == null ? '—' : r.total"), 'Irged: null нийт «—»');
 }
 
 console.log('✅ Унасан ачаалал: userError · тайлангийн огноо · тоо/хоосон төлөвийн хамгаалалт · retry · ачаалалтын дэлгэц');

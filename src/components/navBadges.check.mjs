@@ -38,7 +38,8 @@ import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
   const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
   assert.ok(H.includes('markPlanReturnedSeen(d.oid)'), 'Huvaari: буцаагдсан шийдвэрийг харсныг тэмдэглэхгүй');
   const V = fs.readFileSync('src/components/ViewRail.tsx', 'utf8');
-  assert.ok(V.includes("k === 'huvaari' ? tr('шинэ шийдвэр {0} (буцаагдсан · батлагдсан)', num(n))"), 'ViewRail: «Хуваарь» тэмдгийн утга «шинэ шийдвэр N» биш');
+  /* ⚠️ 2026-10-23 (X7): «буцаасан» нэр томьёо; бусад харагдацын шошго `badgeLabelFor`-оос */
+  assert.ok(V.includes("? tr('шинэ шийдвэр {0} (буцаасан · батлагдсан)', num(n))") && V.includes("badgeLabelFor(k, n, num)"), 'ViewRail: «Хуваарь» тэмдгийн утга «шинэ шийдвэр N» биш');
   console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан/батлагдсан');
 }
 
@@ -98,4 +99,19 @@ const deferred = () => {
   const refresh = makeBadgeRefresher(async () => { throw new Error('сүлжээ'); });
   assert.equal(await refresh(null, 'all'), null);
   console.log('✅ алдаа → null (тэмдэг чимээгүй)');
+}
+
+/* ── ⚠️ 2026-10-23 (UX аудит R5 · Q4): тэмдгийн шошго (`badgeLabelFor`) ба «MA» тоолуур ── */
+{
+  const { badgeLabelFor } = await import('@/components/navBadges');
+  assert.ok(BADGE_VIEWS.has('ma'), 'ma (FIC · М-акт) тэмдэггүй');
+  assert.equal(badgeLabelFor('guitsetgel', 0), null, '0 → шошгогүй');
+  assert.equal(badgeLabelFor('ajilBatlah', 3), null, 'бусад харагдац → ердийн шошго');
+  assert.match(badgeLabelFor('ma', 2) ?? '', /2/, 'ma шошгонд тоо');
+  const N = fs.readFileSync('src/components/navBadges.ts', 'utf8');
+  const mc = N.slice(N.indexOf('async function countMaPending('), N.indexOf('const SOURCES'));
+  assert.ok(mc.includes("d.status === 'pending'") && mc.includes('isOwnUpload(d.uploadedBy, me, sess.user)') && mc.includes("st.state === 'locked'"),
+    'countMaPending: decideFm-ийн шалгуур (pending · өөрийнх биш · хаалттай биш)');
+  assert.ok(mc.includes('if (!sess) return null;'), 'countMaPending: Enterprise сешнгүй → null (null ≠ 0)');
+  console.log('✅ тэмдгийн шошго · MA тоолуур');
 }

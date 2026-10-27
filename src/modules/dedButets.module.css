@@ -2,6 +2,10 @@
  * «Дэд бүтэц» — ОДООГИЙН СҮЛЖЭЭ · ЗУРАГ · ТӨЛӨВЛӨСӨН БАГЦ гурван багана,
  * зургийн дээр толгойн 4 үзүүлэлт.
  *
+ * ⚠️ 2026-10-23: Environment — товч .pe-primary/.pe-ghost (32px, 8px булан), оролт .pe-field,
+ * сегмент .view-switch, шошго 6px badge, хөвөгч гадарга (самбар, цонх, popover) --line-strong + --shadow.
+ * Тодорхойлогдоогүй `--accent` → `--data` (сонголтын moss өнгө).
+ *
  * ⚠️ Энд ЗӨВХӨН сүлжээ ба энэ цонхны жижиг зүйлс. Картын дүрслэл нь
  * `dedButetsOv.module.css`-д.
  */
@@ -58,7 +62,7 @@
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 /* Баруун багана — доторх хэсгүүд босоо өрөгдөж, шаардвал гүйнэ */
@@ -226,9 +230,9 @@
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(12px);
 }
 .editTitle { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 /* ⚠️ `min-width: 0` — эс бөгөөс урт зөвлөмж нь flex нүдийг агшихыг зогсоож,
@@ -244,15 +248,17 @@
 }
 .editClose {
   font: inherit;
+  height: 32px;
   font-size: 12px;
-  padding: 5px 12px;
+  font-weight: 500;
+  padding: 0 14px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.editClose:hover { color: var(--ink); border-color: var(--line-strong); }
+.editClose:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
 
 /* ⚠️ `.editSel` ХАСАГДСАН (2026-09-14) — 74 давхаргын `<select>` нь
    тэмплэйтийн самбараар (`.tplRow`) солигдсон. Тэр сонголт нь бүлэглэлгүй,
@@ -263,23 +269,26 @@
    Самбар доторх «Хэлбэр хадгалах» ч энэ загварыг хуваалцана. */
 .editAdd {
   font: inherit;
+  height: 32px;
   font-size: 12px;
   font-weight: 600;
-  padding: 5px 12px;
-  /* ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
+  padding: 0 14px;
+  /* ⚠️ 2026-10-23: Environment .pe-primary — --hue/--hue-ink → --workspace-accent/-ink
+     (цайварт moss/#fff, бараанд лайм/гүн ногоон — хоёуланд контраст хангана).
+     ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
      тул хатуу #06202a бэх 3.63:1 болж WCAG AA (4.5:1) давахгүй байв;
      --hue-ink (цайвар #fff) нь 4.64:1 болж давна, харанхуйд ч 9.95 → 10.67:1.
      globals.css:33-37 нь энэ токеныг ЯГ энэ зорилгоор («--hue дэвсгэр дээрх
      БҮХ текст #fff-ийн оронд ЭНИЙГ») үүсгэсэн. */
-  color: var(--hue-ink);
-  background: var(--hue);
-  border: 1px solid var(--hue);
-  border-radius: var(--r-sm);
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
+  border: 1px solid var(--workspace-accent);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.editAdd:hover { filter: brightness(1.08); }
-.editAdd:disabled { opacity: 0.45; cursor: default; filter: none; }
-.editClose:disabled { opacity: 0.45; cursor: default; }
+.editAdd:hover:not(:disabled) { background: var(--workspace-accent-hover); border-color: var(--workspace-accent-hover); }
+.editAdd:disabled { opacity: 0.4; cursor: not-allowed; }
+.editClose:disabled { opacity: 0.4; cursor: not-allowed; }
 
 
 /* ══ БАРУУН САМБАР — ArcGIS Experience Builder-ийн edit widget хэв ══
@@ -305,8 +314,8 @@
   flex-direction: column;
   overflow-y: auto;
   background: var(--surface);
-  border-left: 1px solid var(--line);
-  box-shadow: -10px 0 28px rgb(0 0 0 / 28%);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
 }
 
 /* ⚠️ Нарийн дэлгэцэд самбар нь зургийн ихэнхийг эзэлнэ — доод хагаст
@@ -319,8 +328,8 @@
     width: auto;
     max-height: 56%;
     border-left: 0;
-    border-top: 1px solid var(--line);
-    box-shadow: 0 -10px 28px rgb(0 0 0 / 28%);
+    border-top: 1px solid var(--line-strong);
+    box-shadow: var(--shadow);
   }
 }
 
@@ -334,8 +343,9 @@
 .tplHead {
   padding: 6px 2px 2px;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -354,20 +364,21 @@
   color: var(--ink-2);
   background: none;
   border: none;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
 }
 .tplRow:hover { background: var(--surface-2); color: var(--ink); }
-.tplRow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tplRow:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
 .tplName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ══ 2026-10-14: ArcGIS-ийн «Create features» шиг — геометрийн шошго, хураагддаг бүлэг ══ */
 .tplGeom {
   padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--ink-3);
-  background: var(--surface-2);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
 }
 details.tplGroup > summary {
   display: flex;
@@ -379,20 +390,20 @@ details.tplGroup > summary {
 details.tplGroup > summary::-webkit-details-marker { display: none; }
 details.tplGroup > summary::before {
   content: '▸';
-  font-size: 9px;
+  font-size: 11px;
   transition: transform 0.12s;
 }
 details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 .tplCount { margin-left: auto; font-weight: 600; letter-spacing: 0; color: var(--ink-3); }
 .geomBadge {
   margin-left: auto;
-  padding: 2px 8px;
-  font-size: 10.5px;
-  font-weight: 600;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
 }
 .drawSteps {
   display: grid;
@@ -412,20 +423,21 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   gap: 8px;
   padding: 10px 12px 12px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.32);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
-.coordHead { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.coordHead { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .coordSys {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
-  padding: 2px;
-  background: var(--surface-2);
+  padding: 3px;
+  background: transparent;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r);
 }
+/* ⚠️ 2026-10-23: Environment .view-switch — дарагдсан = --surface + жижиг сүүдэр */
 .coordSysBtn {
   padding: 4px 8px;
   font: inherit;
@@ -434,16 +446,16 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   color: var(--ink-3);
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
 }
 .coordSysBtn:hover { color: var(--ink); }
-.coordSysBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.coordSysOn, .coordSysOn:hover { color: #fff; background: var(--accent); }
+.coordSysBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.coordSysOn, .coordSysOn:hover { color: var(--ink); background: var(--surface-2); box-shadow: 0 1px 5px #00000012; }
 .coordForm { display: grid; gap: 8px; }
-.coordForm label { display: grid; gap: 3px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.coordForm label { display: grid; gap: 4px; font-size: 11px; font-weight: 500; color: var(--ink-3); }
 .coordForm .input { font-variant-numeric: tabular-nums; }
-.coordErr { margin: 0; font-size: 11.5px; color: var(--danger, #dc2626); }
+.coordErr { margin: 0; font-size: 11.5px; color: var(--bad-ink); }
 
 /* ── Геометрийн үйлдэл — маягтын доор ── */
 .geomBox {
@@ -458,8 +470,9 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 .geomTitle {
   width: 100%;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -469,19 +482,21 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
    ховор хэрэглэгдэх ёстой. */
 .geomDel {
   font: inherit;
+  height: 32px;
   font-size: 12px;
-  padding: 6px 12px;
+  font-weight: 500;
+  padding: 0 14px;
   color: var(--bad-ink);
   background: none;
-  border: 1px solid color-mix(in srgb, var(--bad-ink) 45%, transparent);
-  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--bad) 45%, transparent);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.geomDel:hover { background: color-mix(in srgb, var(--bad-ink) 14%, transparent); }
-.geomDel:disabled { opacity: 0.45; cursor: default; background: none; }
+.geomDel:hover:not(:disabled) { background: color-mix(in oklab, var(--bad) var(--tint), transparent); }
+.geomDel:disabled { opacity: 0.4; cursor: not-allowed; background: none; }
 
 /* «Шинэ объект» товч дарагдсан төлөв */
-.editAddOn { box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 55%, transparent); }
+.editAddOn { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--workspace-accent-ink) 45%, transparent); }
 
 /**
  * «Үйлдэл буцаах» — сэрэмжийн өнгө (`--warn`), дүүргэлтгүй.
@@ -493,16 +508,18 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
  */
 .editUndo {
   font: inherit;
+  height: 32px;
   font-size: 12px;
-  padding: 5px 12px;
-  color: var(--warn-ink, var(--ink));
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
-  border-radius: var(--r-sm);
+  font-weight: 500;
+  padding: 0 14px;
+  color: var(--warn-ink);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.editUndo:hover { background: color-mix(in srgb, var(--warn) 22%, transparent); }
-.editUndo:disabled { opacity: 0.45; cursor: default; }
+.editUndo:hover:not(:disabled) { background: color-mix(in oklab, var(--warn) var(--tint), transparent); }
+.editUndo:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Хадгалсны мэдэгдэл — зургийн зүүн доод буланд, 4 секунд */
 .saved {
@@ -517,15 +534,16 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   padding: 6px 12px;
   font-size: 11.5px;
   color: var(--ink);
-  background: color-mix(in srgb, var(--good) 16%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--good) var(--tint), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--good) 35%, transparent);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
 }
 /* ⚠️ АЛДАА — улаан, ӨӨРӨӨ арилахгүй (`DedButets.toast`-ийн тайлбар): ногоон
    «хадгалагдлаа»-тай ижил харагдаж 4 секундэд алга болдог байв. */
 .savedErr {
-  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
-  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  background: color-mix(in oklab, var(--bad) var(--tint), var(--surface));
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
 }
 .savedClose {
   font: inherit;
@@ -554,9 +572,9 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   font-size: 11.5px;
   color: var(--ink);
   background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
-  border-radius: var(--r-sm);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, var(--line-strong));
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .confirmMsg { flex: 1; min-width: 0; }
 
@@ -565,7 +583,7 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   font: inherit;
   font-size: 11px;
   padding: 0 2px;
-  color: var(--hue);
+  color: var(--data-ink);
   background: none;
   border: 0;
   text-decoration: underline;
@@ -588,10 +606,10 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   max-height: 84vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--surface);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+  box-shadow: var(--shadow);
 }
 
 .modalHead {
@@ -602,7 +620,7 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   border-bottom: 1px solid var(--line);
 }
 
-.modalTitle { flex: 1; font-size: 13px; font-weight: 700; color: var(--ink); }
+.modalTitle { flex: 1; font-size: 13px; font-weight: 600; color: var(--ink); }
 
 .modalNo {
   font-size: 11.5px;
@@ -612,7 +630,11 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 
 .close {
   font: inherit;
-  padding: 2px 8px;
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
   color: var(--ink-3);
   background: none;
   border: none;
@@ -639,30 +661,30 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   padding: 8px 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   font-size: 11.5px;
 }
 .ro dt { color: var(--ink-3); }
 .ro dd { margin: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 .f { display: grid; gap: 4px; }
-.fLabel { font-size: 11.5px; color: var(--ink-2); }
+.fLabel { font-size: 11px; font-weight: 500; color: var(--ink-3); }
 .fHint { font-size: 11px; color: var(--ink-3); }
 /* ⚠️ 2026-10-01: «Урт ← геометр» — талбарын тайлбар доторх жижиг товч */
 .lenBtn {
   padding: 1px 7px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in oklab, var(--data) 45%, transparent);
   border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
+  color: var(--data-ink);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 .lenBtn:hover:not(:disabled) { background: var(--surface-2); }
-.lenBtn:disabled { opacity: 0.5; cursor: default; }
+.lenBtn:disabled { opacity: 0.4; cursor: default; }
 /* ⚠️ 2026-10-01: олноор засах маягтын анхааруулга (уртын талбар, уншигдаагүй объект) */
-.fWarn { font-size: 11px; color: var(--warn); font-weight: 600; }
+.fWarn { font-size: 11px; color: var(--warn-ink); font-weight: 600; }
 /* ⚠️ 2026-10-01: «хуучин → шинэ» урьдчилан харах жагсаалт (олноор засахын асуулт) */
 .diffList { margin: 4px 0 0; padding: 0 0 0 16px; font-size: 11.5px; color: var(--ink-2); }
 .diffList li { margin: 1px 0; overflow-wrap: anywhere; }
@@ -675,22 +697,27 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 
 .input {
   width: 100%;
-  padding: 7px 10px;
+  height: var(--ctl-h-form);
+  box-sizing: border-box;
+  padding: 0 9px;
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
 }
-.input:focus { outline: 2px solid var(--hue); outline-offset: -1px; }
+textarea.input { height: auto; min-height: 62px; padding: 7px 9px; }
+.input:focus { border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .input:disabled { opacity: 0.55; cursor: default; }
 
 .formErr {
   padding: 8px 10px;
   font-size: 11.5px;
   color: var(--bad-ink);
-  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
   border-radius: var(--r-sm);
 }
 
@@ -701,8 +728,9 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink);
-  background: color-mix(in srgb, var(--hue) 16%, transparent);
-  border-left: 3px solid var(--hue);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--data) 35%, transparent);
+  border-left: 3px solid var(--data);
   border-radius: var(--r-sm);
 }
 
@@ -724,35 +752,44 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   padding: 8px 10px;
   font-size: 11.5px;
   color: var(--ink);
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line));
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--r);
 }
 .askMsg { flex: 1; min-width: 0; }
 .spacer { flex: 1; }
 
+/* ⚠️ 2026-10-23: Environment — .pe-ghost / .pe-primary (32px, 8px булан, 12px/600) */
 .btn, .primary {
   font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
   font-size: 12px;
-  padding: 7px 14px;
+  font-weight: 500;
+  padding: 0 14px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   cursor: pointer;
 }
+.btn:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
 .primary {
   /* ⚠️ 2026-09-08 — #06202a → var(--hue-ink). Цайвар горимд --hue = #2e7f8b
      тул хатуу #06202a бэх 3.63:1 болж WCAG AA (4.5:1) давахгүй байв;
      --hue-ink (цайвар #fff) нь 4.64:1 болж давна, харанхуйд ч 9.95 → 10.67:1.
      globals.css:33-37 нь энэ токеныг ЯГ энэ зорилгоор («--hue дэвсгэр дээрх
      БҮХ текст #fff-ийн оронд ЭНИЙГ») үүсгэсэн. */
-  color: var(--hue-ink);
-  background: var(--hue);
-  border-color: var(--hue);
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
+  border-color: var(--workspace-accent);
   font-weight: 600;
 }
-.btn:disabled, .primary:disabled { opacity: 0.5; cursor: default; }
+.primary:hover:not(:disabled) { background: var(--workspace-accent-hover); border-color: var(--workspace-accent-hover); }
+.btn:disabled, .primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД (Irged-тэй ижил шийдэл):
    absolute давхарга байхад бариул баганын ДОТОР тооцогдож картуудын ирмэг
@@ -813,41 +850,18 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   max-width: calc(100% - 24px);
   padding: 8px 10px;
   background: color-mix(in oklab, var(--surface) 94%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.22);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
   font-size: 11.5px;
 }
 /* ══ Хажуугийн самбарын карт (`StatusBar inline`) — шошго | сонгогч мөрүүд ══ */
 .stForm { display: grid; gap: 10px; }
-/* Газрын зургийн харагдацын сэлгэгч — хоёр тэнцүү товч */
-.stView {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  margin-bottom: 10px;
-  padding: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.stViewBtn {
-  padding: 5px 8px;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ink-3);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.stViewBtn:hover { color: var(--ink); }
-.stViewBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.stViewOn { color: #fff; background: var(--accent); }
-.stViewOn:hover { color: #fff; }
+/* Газрын зургийн харагдацын сэлгэгч — хоёр тэнцүү сонголт.
+   ⚠️ 2026-10-26: нийтлэг `Segmented` (components/Switch.tsx); энд зөвхөн бүтэн өргөн, тэнцүү хоёр багана */
+.stView { margin-bottom: 10px; }
+.stView > [role='radiogroup'] { display: grid; width: 100%; grid-template-columns: 1fr 1fr; }
 /* «Гүйцэтгэлээр» харагдацын өнгөний түлхүүр */
 .stKey {
   display: flex;
@@ -876,42 +890,45 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   height: 28px;
   padding: 0;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
-.stClear:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.stClear:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
 .stClear:disabled { opacity: 0.4; cursor: default; }
-.stClear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.stClear:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 .stField > span:first-child {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.stFieldOn > span:first-child { color: var(--accent); }
+.stFieldOn > span:first-child { color: var(--data-ink); }
 .stSel { position: relative; display: block; min-width: 0; }
 .stSel select {
   appearance: none;
   width: 100%;
+  height: var(--ctl-h-form);
   box-sizing: border-box;
-  padding: 5px 24px 5px 9px;
+  padding: 0 24px 0 9px;
   font: inherit;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
   border-radius: 7px;
   cursor: pointer;
   text-overflow: ellipsis;
   transition: border-color 0.12s;
 }
-.stSel select:hover { border-color: color-mix(in oklab, var(--accent) 60%, var(--line)); }
-.stSel select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 30%, transparent); }
-.stFieldOn .stSel select { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, var(--surface-2)); }
+.stSel select:hover { border-color: color-mix(in oklab, var(--data) 45%, var(--line-strong)); }
+.stSel select:focus-visible { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
+.stFieldOn .stSel select { color: var(--data-ink); border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 12%, var(--bg)); }
 .stSel select option { color: var(--ink); font-weight: 500; background: var(--surface); }
 .stSel select.stPlaceholder { color: var(--ink-3); font-weight: 400; }
 .stSel i {
@@ -919,7 +936,7 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   right: 9px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   color: var(--ink-3);
   pointer-events: none;
@@ -927,13 +944,13 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 .stLink {
   padding: 0;
   font: inherit;
-  color: var(--accent);
+  color: var(--data-ink);
   background: none;
   border: 0;
   cursor: pointer;
 }
 .stLink:hover { text-decoration: underline; }
-.stLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+.stLink:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; border-radius: 2px; }
 .stForm + .stLegend { margin-top: 10px; }
 .stRow { flex-direction: column; align-items: stretch; }
 .stBarInline .stPick { justify-content: space-between; }
@@ -951,27 +968,28 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 3px 6px 3px 11px;
-  background: var(--surface-2);
-  border: 1.5px solid color-mix(in oklab, var(--ink) 22%, transparent);
-  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   transition: border-color 0.12s, background 0.12s;
 }
-.stPick:hover { background: var(--surface); border-color: var(--accent); }
-.stPick:focus-within { border-color: var(--accent); }
+.stPick:hover { background: var(--surface-2); }
+.stPick:focus-within { border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
 .stPickOn {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
 }
 .stPickLabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.11em;
   color: var(--ink-3);
   white-space: nowrap;
 }
-.stPickOn .stPickLabel { color: var(--accent); }
+.stPickOn .stPickLabel { color: var(--data-ink); }
 .stPick select {
   appearance: none;
   min-width: 0;
@@ -990,7 +1008,7 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
 .stCaret {
   position: absolute;
   right: 9px;
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   color: var(--ink-3);
   pointer-events: none;
@@ -1003,11 +1021,11 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   color: var(--ink-3);
   background: transparent;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .stReset:hover { color: var(--ink); background: var(--surface-2); }
-.stReset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.stReset:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 /* Тайлбар — капсулуудын ДООР, нимгэн зураасаар тусгаарлана */
 .stLegend {
   display: flex;
@@ -1022,10 +1040,12 @@ details.tplGroup[open] > summary::before { transform: rotate(90deg); }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px 2px 6px;
+  padding: 1px 7px 1px 6px;
+  font-size: 11px;
   font-weight: 500;
-  background: var(--surface-2);
-  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
 }
 .stChip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
 .stLegend em { font-style: normal; font-size: 11px; color: var(--ink-3); }

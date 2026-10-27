@@ -17,11 +17,11 @@ import { t as tr } from '@/lib/i18nCore';
 
 /** et:24 барилгын давхаргын гол талбарууд */
 export const TRANSPORT_FIELDS = {
-  purpose: 'Зориулалт_m',
-  population: 'Population',
-  capacity: 'Huchin_chadal',
-  block: 'Блокы',
-  zone: 'ZONE_ID',
+  purpose: 'зориулалт_m',
+  population: 'population',
+  capacity: 'huchin_chadal',
+  block: 'блокы',
+  zone: 'zone_id',
 } as const;
 
 /* ══════════════════ Барилгын ангилал ══════════════════ */

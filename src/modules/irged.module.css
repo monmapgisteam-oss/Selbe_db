@@ -53,8 +53,9 @@
 }
 
 /**
- * ЗУРГИЙН ХҮРЭЭ — үзүүлэлтийн доорх үлдсэн бүх зай. Hairline хүрээ, 2px булан
- * ЭНД; картууд гадуур үлдэнэ. envhub: сүүдэр байхгүй — гүнийг hairline л өгнө.
+ * ЗУРГИЙН ХҮРЭЭ — үзүүлэлтийн доорх үлдсэн бүх зай. Hairline хүрээ, булан
+ * ЭНД; картууд гадуур үлдэнэ. Сүүдэр байхгүй — гүнийг hairline л өгнө.
+ * ⚠️ 2026-10-23: Environment — 12px булан (карттай ижил).
  *
  * ⚠️ `position: relative` нь ЧУХАЛ: toolbar, каталог, тайлбар гурав нь
  * `position: absolute` бөгөөд хамгийн ойрын `relative` эцгээсээ хэмжигддэг.
@@ -67,7 +68,7 @@
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 /* Хоёр талын багана — доторх хавтангууд босоо өрөгдөж, шаардвал гүйнэ */
@@ -328,7 +329,7 @@
  */
 .factVal {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -417,7 +418,7 @@
   align-items: baseline;
   gap: 5px;
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -428,11 +429,11 @@
 
 /* СҮҮЛЧИЙН алхам = үр дагавар, энэ картын хариулт — өнгөөр тодроно */
 .chainEnd .chainIcon {
-  background: color-mix(in srgb, var(--bad) 14%, transparent);
-  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
-  color: var(--bad);
+  background: color-mix(in oklab, var(--bad) var(--tint), transparent);
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  color: var(--bad-ink);
 }
-.chainEnd .chainVal { color: var(--bad); }
+.chainEnd .chainVal { color: var(--bad-ink); }
 
 /* Чартын доорх эх сурвалж/задаргааны мөр — чартаас бүдэг, жижиг */
 .chartNote {
@@ -463,9 +464,9 @@
 }
 .socTotal {
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
-  color: var(--data);
+  color: var(--data-ink);
   font-variant-numeric: tabular-nums;
 }
 .socName {
@@ -474,7 +475,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink);
-  line-height: 1.25;
+  line-height: 1.3;
   min-width: 0;
 }
 
@@ -490,11 +491,11 @@
   gap: 8px;
   padding: 2px 0;
 }
-.socWhen { font-size: 10.5px; color: var(--ink-3); }
+.socWhen { font-size: 11px; color: var(--ink-3); }
 .socDots { display: flex; gap: 3px; }
 .socDots i { display: block; width: 12px; height: 12px; border-radius: 2px; }
 .socOn { background: var(--data); }
-.socOff { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.socOff { background: var(--chart-track); box-shadow: inset 0 0 0 1px var(--line); }
 .socFact {
   display: flex;
   align-items: baseline;
@@ -506,7 +507,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.socFact b { font-size: 13px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.socFact b { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .socFact em { font-style: normal; }
 
 /* Нарийн баганад — шошгын багана хумигдана */
@@ -534,7 +535,7 @@
   height: 150px;
   margin-left: 3px;
   /* Тэнхлэгийн шугам — зүүн захад, бүтэн өндрөөр */
-  background: linear-gradient(var(--surface-2), var(--surface-2)) left top/4px 100% no-repeat;
+  background: linear-gradient(var(--chart-track), var(--chart-track)) left top/4px 100% no-repeat;
 }
 .walkFill {
   position: absolute;
@@ -543,9 +544,8 @@
   bottom: 0;
   width: 4px;
   border-radius: 2px;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--data) 60%, transparent),
-    color-mix(in srgb, var(--data) 10%, transparent));
+  /* ⚠️ 2026-10-23: Environment — градиент дүүргэлт ХАСАГДАВ, НЭГ өнгө --data */
+  background: color-mix(in oklab, var(--data) 55%, transparent);
 }
 
 /**
@@ -576,18 +576,18 @@
 }
 .walkStop b {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.walkStop em { font-style: normal; font-size: 9.5px; color: var(--ink-3); }
+.walkStop em { font-style: normal; font-size: 11px; color: var(--ink-3); }
 .walkTag { font-size: 11px; color: var(--ink-2); }
-.walkM { font-size: 9.5px; color: var(--ink-3); }
+.walkM { font-size: 11px; color: var(--ink-3); }
 
 /* Тэнхлэгийн төгсгөл — амлалтын хязгаар */
 .walkEnd {
   margin: 4px 0 0 16px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-3);
   letter-spacing: 0.03em;
 }

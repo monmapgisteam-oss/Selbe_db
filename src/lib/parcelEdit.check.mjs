@@ -182,9 +182,9 @@ console.log('✅ төлөв нь ӨӨРЧЛӨГДСӨН үед л шалгагд
 /* ══════════════ 9. Editor Tracking — метадатагаас (2026-10-01) ══════════════ */
 {
   const ef = editFieldsOf({
-    editFieldsInfo: { creationDateField: 'CreationDate', creatorField: 'Creator', editDateField: 'EditDate', editorField: 'Editor' },
+    editFieldsInfo: { creationDateField: 'created_date', creatorField: 'created_user', editDateField: 'last_edited_date', editorField: 'last_edited_user' },
   });
-  assert.deepEqual(ef, { editor: 'Editor', editDate: 'EditDate' });
+  assert.deepEqual(ef, { editor: 'last_edited_user', editDate: 'last_edited_date' });
   /* тохиргоо унтраалттай → null (мөр харагдахгүй) */
   assert.equal(editFieldsOf({ editFieldsInfo: null }), null);
   assert.equal(editFieldsOf({}), null);
@@ -196,11 +196,11 @@ console.log('✅ төлөв нь ӨӨРЧЛӨГДСӨН үед л шалгагд
   assert.equal(r2.editedBy, 'gazar_choloololt');
   assert.equal(r2.editedAt, 1790754747577);
   /* метадатагүй → null; утга алга → null (0 БИШ, 1970 он БИШ) */
-  assert.equal(rowToParcel({ ...row, EditDate: 1, Editor: 'x' }).editedAt, null, 'ef-гүй бол уншихгүй');
-  const r3 = rowToParcel({ ...row, EditDate: null, Editor: '  ' }, ef);
+  assert.equal(rowToParcel({ ...row, last_edited_date: 1, last_edited_user: 'x' }).editedAt, null, 'ef-гүй бол уншихгүй');
+  const r3 = rowToParcel({ ...row, last_edited_date: null, last_edited_user: '  ' }, ef);
   assert.equal(r3.editedAt, null);
   assert.equal(r3.editedBy, null);
-  assert.equal(rowToParcel({ ...row, EditDate: 0 }, ef).editedAt, null, '0 тамга = огноо алга');
+  assert.equal(rowToParcel({ ...row, last_edited_date: 0 }, ef).editedAt, null, '0 тамга = огноо алга');
 }
 console.log('✅ Editor Tracking: метадатагаас таньж, байхгүй бол чимээгүй алгасна');
 

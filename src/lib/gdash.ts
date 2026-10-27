@@ -121,7 +121,7 @@ export const CF = {
    * `OBJECTID` нь мөр устгаад дахин нэмэхэд өөрчлөгддөг, `Cashflow_ID` нь
    * хүний оноосон ТОГТВОРТОЙ дугаар («50 дугаар ажил»).
    */
-  cfId: 'Cashflow_ID',
+  cfId: 'cashflow_id',
 } as const;
 
 /** Захирамжийн дүнгийн ЭХ ҮҮСВЭРҮҮД — 3-р чартын ангилал (Category) */
@@ -251,6 +251,9 @@ export type CfRow = {
   sec: string;
   /**
    * ЗАХИРАМЖИЙН ХО ТӨСӨВ (`ho_dun_zahiramj`, `CASHFLOW_NEW.fields.budgetOrder`), ₮ — хоосон бол null.
+   * ⚠️ 2026-10-26 (аудит): «гэрээтэй мөрд ЯГ тэнцүү» гэсэн таамаг амьдаар ҮНЭН БИШ — БАГЦ-5.3 · 5.4 «Гэрээлсэн дүн»
+   *    тэмдэглэгээтэй атлаа `geree_dun` хоосон (30.03 тэрбум зөрүү). Гэрээлсэн дүн ЗӨВХӨН `geree_dun`-ээс
+   *    (`loadContractSum` → `chartTypeCost`-ийн `contracts`).
    * ⚠️ 2026-10-06: `cost` (`ho_dun_geree`) нь гэрээтэй мөрд гэрээний дүнтэй ЯГ тэнцүү тул
    *    гэрээ ↔ төсвийн харьцуулалтад (`scorecard.scoreFin`) ЭНЭ талбарыг хэрэглэнэ —
    *    `contractGap.computeContractGap`-тэй нэг эх.
@@ -286,7 +289,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [
-      'OBJECTID', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
+      'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
       'ajil_tuvshin3',
@@ -299,7 +302,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
        хүснэгт өсөхөд шинэ мөрийг ЧИМЭЭГҮЙ хаядаг. `queryFeatures` өөрөө OID эрэмбээр хуудаслана. */
   });
   return rows.map((r: Row): CfRow => ({
-    oid: nOf(r.OBJECTID),
+    oid: nOf(r.objectid),
     /* ⚠️ ЧАРТЫН ангилал — 7 бүлэг (`finXlChartCat`-ийн тайлбарыг үз).
        Талбараас ШУУД биш, ХОЁР ТҮВШНЭЭС бодогдоно. */
     type: finXlChartCat(r) || tr('Тодорхойгүй'),
@@ -356,7 +359,12 @@ export type CfPlanRow = {
  * ЖИГД ТАРААХ аргаараа ажиллана. Тиймээс энэ өгөгдөл нэмэгдэх нь ямар ч
  * харагдацыг эвдэхгүй, зөвхөн НАРИЙВЧЛАЛЫГ сайжруулна.
  */
-export const loadCfPlan = cached<CfPlanRow[]>(async () => {
+/**
+ * ГАРААР ОРУУЛСАН сарын мөрүүд л (`CF_MONTH_WHERE`) — `sar_mongo_eh`-ээс үл хамааран.
+ * ⚠️ 2026-10-26: `loadCfPlan` нь үүн дээр «Хуваарь» эхтэй гэрээний цувааг сольж өгнө (`monthlyMoney`); шууд
+ *    хэрэглэх нь зөвхөн гараар мөрийг засах/шилжүүлэх зам (`monthlyMoney.loadMonthlyMoney`).
+ */
+export const loadCfPlanManual = cached<CfPlanRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_MONTH_WHERE,
     outFields: [CF_MONTH.id, CF_MONTH.start, CF_MONTH.pct, CF_MONTH.amount],
@@ -375,6 +383,64 @@ export const loadCfPlan = cached<CfPlanRow[]>(async () => {
        хувь, чартад мөнгө хэрэгтэй бөгөөд хоёулаа зэрэг бөглөгддөггүй. */
     .filter((r) => r.id > 0 && r.start != null && (r.pct != null || r.amount != null));
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+
+/**
+ * ҮР ДҮНТЭЙ сарын төлөвлөгөө — `cashflowCurve` · ТУХ (`tuhData.cfPlanPctAt`) · ерөнхий дашбоард үүнийг уншина.
+ * ⚠️ 2026-10-26 (сарын мөнгөний эх, `monthlyMoney`-ийн толгой): `sar_mongo_eh` = 'huvaari' гэрээний гараар мөр
+ *    ХАСАГДАЖ, Хуваарийн сарын обьём × бөглөх хуудасны нэгж өртгөөр тооцоолсон мөр (₮; `pct` = дүн ÷ ХО дүн × 100)
+ *    орно. 'huvaari' гэрээ НЭГ Ч БАЙХГҮЙ бол `loadCfPlanManual`-ийн ЯГ ТЭР массив — 'garaar'-ын зан төлөв ӨӨРЧЛӨГДӨХГҮЙ.
+ * ⚠️ Динамик импорт — `monthlyMoney` нь `cfStartKeyOf`-ийг энэ файлаас статикаар импортолдог (тойрог үүсгэхгүй).
+ * ⚠️ Хуудас / мөнгөний мөр уншигдаагүй (`isPartialMoney`) үр дүнг КЭШЛЭХГҮЙ (`cached`-ын `keep`).
+ */
+let cfPlanPartial: ((v: object) => boolean) | null = null;
+let cfPlanGapsOf: ((v: object) => CfPlanGaps | null) | null = null;
+export const loadCfPlan = cached<CfPlanRow[]>(async () => {
+  const manual = await loadCfPlanManual();
+  const mm = await import('@/lib/monthlyMoney');
+  cfPlanPartial = mm.isPartialMoney;
+  cfPlanGapsOf = mm.moneyGapsOf;
+  return mm.withHuvaari(manual);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'HUVAARI_OBYEM', 'BAGTS_SHEET'], (v) => !(cfPlanPartial?.(v) ?? false));
+
+/**
+ * `loadCfPlan`-ын ЦООРХОЙ — S-муруйгаас дутсан 'huvaari' гэрээ (`monthlyMoney.MoneyGaps`-ийн хэлбэр).
+ *   partial — мөнгөний мөр / хуудас уншигдсангүй; failed — хуудас унасан гэрээ; missing — тооцоолсон сар гараагүй гэрээ;
+ *   noUnit / noRow — ₮-д ороогүй нүд.
+ */
+export type CfPlanGaps = { partial: boolean; failed: number[]; missing: number[]; noUnit: number; noRow: number };
+/**
+ * ⚠️ 2026-10-26 (хяналт): урьд нь дутуу нь зөвхөн кэшлэхгүй байхад ашиглагдаж, ерөнхий дашбоард · ТУХ төлөвлөгөөт
+ *    муруйг дутсан гэрээгүйгээр «бодит 0» шиг зурдаг байв (null ≠ 0). `loadCfPlan`-ын буцаасан массивыг өгвөл цоорхойг
+ *    буцаана; цоорхойгүй (эсвэл 'huvaari' гэрээгүй) бол null. Синхрон — массив ирсэн бол ачаалагч аль хэдийн тохирсон.
+ */
+export const cfPlanGaps = (rows: readonly CfPlanRow[] | null | undefined): CfPlanGaps | null =>
+  (rows && cfPlanGapsOf ? cfPlanGapsOf(rows) : null);
+
+/**
+ * ЦООРХОЙН АНХААРУУЛГА — S-муруйн доорх нэг мөр (ерөнхий дашбоард · ТУХ). Цоорхойгүй бол null.
+ * @param nameOf — `Cashflow_ID` → хүнд ойлгомжтой нэр (багц г.м.); олдохгүй бол «#ID»
+ * @param inScope — муруйн хүрээнд орох гэрээ (ерөнхий дашбоардын `inTotal`); өгөөгүй бол бүгд
+ * ⚠️ 2026-10-26 (хяналт №2): 'huvaari' гэрээ хуудас унасан / тооцоолсон саргүй / нэгж өртөггүй үед муруйгаас ЧИМЭЭГҮЙ
+ *    гардаг байв (null ≠ 0 — «бодит 0 төлөвлөгөө» биш, «тооцоологдоогүй»). Тоо ба эхний 3 нэрийг хэлнэ.
+ */
+export function cfGapsText(
+  gaps: CfPlanGaps | null | undefined,
+  nameOf: (id: number) => string | null | undefined = () => null,
+  inScope?: (id: number) => boolean,
+): string | null {
+  if (!gaps) return null;
+  const keep = (ids: readonly number[]) => (inScope ? ids.filter(inScope) : [...ids]);
+  const ids = [...keep(gaps.failed), ...keep(gaps.missing)];
+  const parts: string[] = [];
+  if (ids.length) {
+    const names = ids.slice(0, 3).map((id) => nameOf(id) || `#${id}`);
+    parts.push(tr('Хуваарь эхтэй {0} гэрээ ороогүй ({1})', ids.length, ids.length > 3 ? `${names.join(', ')}…` : names.join(', ')));
+  }
+  const cells = gaps.noUnit + gaps.noRow;
+  if (cells > 0) parts.push(tr('{0} нүдний обьём ₮-д ороогүй (нэгж өртөггүй / хуудсанд олдоогүй)', num(cells)));
+  if (gaps.partial && !gaps.failed.length) parts.push(tr('зарим эх уншигдсангүй'));
+  return parts.length ? tr('Төлөвлөгөөт муруй дутуу: {0}', parts.join(' · ')) : null;
+}
 
 
 /* ══════════════════════ ХУГАЦААНЫ ШҮҮЛТ ══════════════════════ */
@@ -398,6 +464,20 @@ export const NO_PERIOD: Period = { years: [], quarters: [], months: [] };
 
 export const periodActive = (p: Period) =>
   p.years.length > 0 || p.quarters.length > 0 || p.months.length > 0;
+
+/**
+ * ҮЙЛЧЛЭХ ШҮҮЛТ — хэмжээсийн БҮХ утга сонгогдсон бол «шүүлтгүй» (`[]`).
+ * ⚠️ 2026-10-26 (аудит): «Бүгд» товч бүх утгыг ЧАГТалдаг (UI-д тайлж болохоор) — урьд нь тэр нь шүүлтийг ИДЭВХЖҮҮЛЖ
+ *    огноогүй 7 ажлыг хасдаг (KPI 74→67, гүйцэтгэл 38.9%→32.8%) байв, «Бүгд» өмнө нь ч дараа нь ч тод харагддаг тул
+ *    хэрэглэгч анзаардаггүй. «Юу ч сонгоогүй» = «бүгд» (`Period`-ийн ⚠️). `years` — жилийн сонголтуудын жагсаалт.
+ */
+export function effectivePeriod(p: Period, years: number[]): Period {
+  const full = (sel: number[], opts: number[]) => opts.length > 0 && opts.every((v) => sel.includes(v));
+  const y = full(p.years, years) ? [] : p.years;
+  const q = full(p.quarters, [1, 2, 3, 4]) ? [] : p.quarters;
+  const m = full(p.months, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) ? [] : p.months;
+  return y === p.years && q === p.quarters && m === p.months ? p : { years: y, quarters: q, months: m };
+}
 
 /** Сонголтод байгаа эсэх — хоосон олонлог нь БҮГДИЙГ хүлээн авна */
 const hit = (sel: number[], v: number) => sel.length === 0 || sel.includes(v);
@@ -590,12 +670,19 @@ export function chartTypeCost(
    * самбарт хоёр өөр тоо харуулна.
    */
   catPct: Map<string, number> = new Map(),
+  /**
+   * ⚠️ 2026-10-26 (аудит): ГЭРЭЭЛСЭН ДҮН — OID → `geree_dun` (`loadContractSum`). KPI «Нийт гэрээлсэн дүн» (`KpiStrip`,
+   *    `execReport`-ийн `csum`) ЭНЭ эхээс бодогддог тул чарт/тайлангийн §1.2 хүснэгт ч мөн эндээс — урьд нь
+   *    `ho_dun_geree`-ээр бодож 5.3 · 5.4-ийн (тэмдэглэгээтэй атлаа `geree_dun` хоосон) 30.03 тэрбумаар KPI-аас зөрдөг байв.
+   *    `null` (ачаалж буй/хуучин дуудагч) — `ho_dun_geree` хэвээр.
+   */
+  contracts: Map<number, number> | null = null,
 ): SubBar[] {
   const bars = groupSum(
     rows,
     (r) => r.type,
     (r) => r.cost,
-    (r) => (isContracted(r) ? r.cost : 0),
+    (r) => (isContracted(r) ? (contracts ? contracts.get(r.oid) ?? 0 : r.cost) : 0),
   );
   const cnt = new Map<string, { n: number; c: number }>();
   /* ⚠️ 2026-09-29 (аудит 10): ангилал «Нийт төсөв»-т ордог уу — `SubBar.inTotal` */
@@ -1631,8 +1718,8 @@ export const loadBuildPkgs = cached<Map<string, string>>(async () => {
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {
-  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['OBJECTID', CF.contract] });
-  return new Map(rows.map((r) => [nOf(r.OBJECTID), nOf(r[CF.contract])]));
+  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['objectid', CF.contract] });
+  return new Map(rows.map((r) => [nOf(r.objectid), nOf(r[CF.contract])]));
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 /* ══════════════════════ ХАБ — ӨНӨӨДРИЙН БАЙДЛААР ══════════════════════ */
@@ -1854,7 +1941,8 @@ export type SubPkg = {
  * тэдгээрт `pkg:*` давхарга байхгүй тул зурагт үзүүлэх зүйлгүй.
  */
 export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
-  const { PKG_BY_BAGTS, bagtsKey, isPkgRange } = await import('@/lib/services');
+  const { bagtsKey, isPkgRange } = await import('@/lib/services');
+  const { mapPkgLayers } = await import('@/lib/pkgAlias');
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [CF.pkg2, ...FIN_XL_CHART_FIELDS],
@@ -1871,7 +1959,7 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
     const raw = sOf(r[CF.pkg2]);
     if (!raw || isPkgRange(raw)) continue;
     const k = bagtsKey(raw);
-    if (!k || !PKG_BY_BAGTS[k]?.length) continue;
+    if (!k || !mapPkgLayers(k)?.length) continue;
     if (!seen.has(k)) seen.set(k, raw);
     const ty = finXlChartCat(r);
     if (ty) {
@@ -1883,7 +1971,7 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
     .map(([key, label]) => ({
       key,
       label,
-      layerIds: PKG_BY_BAGTS[key],
+      layerIds: mapPkgLayers(key) ?? [],
       types: [...(types.get(key) ?? [])],
     }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));

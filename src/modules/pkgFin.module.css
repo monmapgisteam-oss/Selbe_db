@@ -37,10 +37,9 @@
   color: var(--ink);
 }
 
-/* ⚠️ 2026-08-18 (envhub шилжилт): картын хүрээ/гарчгийн локал override-ууд
-   ХАСАГДАВ — Section нь ui.module.css-ээс envhub Box+Head төрхөө (hairline,
-   var(--r-sm), 13.5px uppercase гарчиг) аль хэдийн авдаг тул энд давхарлах
-   шаардлагагүй. Cyan `--hue` hex мөн хасагдав — глобал `--hue: var(--data)`. */
+/* ⚠️ 2026-10-23: Environment — картын хүрээ/гарчгийн локал override БАЙХГҮЙ:
+   Section нь ui.module.css-ээс Environment картын төрхөө (12px булан, --line
+   хүрээ, --surface, сүүдэргүй) авдаг. `--hue` = глобал `--data` (moss). */
 
 /* ── Дээд KPI зурвас — envhub Indicator (нэг мөр хавтангууд) ── */
 .kpi {
@@ -54,12 +53,15 @@
    зүүн зэрэгцүүлэлт) авдаг — энд зөвхөн индикаторын ТОМ утгын хэмжээ:
    19–20px/500, var(--ink). Акцент өнгөөр будахгүй — гол утга байрлалаараа
    ялгарна (envhub Indicator дүрэм). */
-.kpi > div { border-radius: var(--r-sm); }
+/* ⚠️ 2026-10-23: Environment — `.analytics-stat` (булан 13px · утга compact 17px/600/-0.04em).
+   Мөнгөн дүн урт тул 23px биш compact хэмжээ. */
+.kpi > div { border-radius: var(--r-xl); }
 /* `:global(.num)` — зөвхөн утгын span (шошго ба Empty-д халдахгүй) */
 .kpi > div > :global(.num) {
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 1;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
   color: var(--ink);
 }
 
@@ -81,7 +83,7 @@
   text-align: left;
   padding: 7px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface);
   min-width: 0;
 }
@@ -90,7 +92,8 @@
      «2,660,000,000,000 ₮» нь 17 тэмдэгт — 16px-ээр нарийхан KPI нүднээс халж,
      `overflow-wrap: anywhere` нь ТООГ дундуур нь тасалдаг (уншигдахгүй). */
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
   /* nowrap байхад урт төгрөгийн дүн («1.18 их наяд ₮») нүднээсээ ДУУГҮЙ халж
@@ -106,12 +109,12 @@
 /* Шошго = eyebrow, утгын ДЭЭР (envhub Indicator-ын дараалал) */
 .finKpiLabel {
   order: -1;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--eyebrow-ls);
   color: var(--ink-3);
-  line-height: 1.25;
+  line-height: var(--eyebrow-lh);
 }
 
 /* ── Зүүн: багцын жагсаалт ── */
@@ -142,9 +145,10 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   overflow: hidden;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
+  background: var(--sunken);
 }
 
 /* ── Доод мөрийн ГОЛ үүр: санхүүгийн график — scroll-ГҮЙ, бүтэн харагдана ── */
@@ -164,7 +168,7 @@
   white-space: nowrap;
 }
 .totNote b {
-  color: var(--data);
+  color: var(--data-ink);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-size: 12.5px;
@@ -176,11 +180,11 @@
   flex-wrap: wrap;
   gap: 6px 18px;
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 11px; /* ⚠️ 2026-10-23: Environment-ийн графикийн тайлбар 10.5px ink-2 */
   color: var(--ink-2);
 }
 .finLegend span { display: inline-flex; align-items: center; gap: 6px; }
-.finLegend i { width: 9px; height: 9px; border-radius: 1px; display: inline-block; }
+.finLegend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
 /* ── УЛААН alert-ийн анивчилт (жагсаалтын ⚠ тэмдэг) ── */
 @keyframes tsAlertBlink {
@@ -233,24 +237,33 @@
 /* ══════════ 2026-08-18: багцын хоцрогдол ба задаргаа (хэрэглэгчийн хүсэлт) ══════════ */
 
 /* Хоцрогдлын тэмдэг — ⚠ + зөрүү% + төлөвлөсөн/бодит. Урьд нь зөвхөн ⚠ байв.
-   Жижиг pill (999px нь envhub-д badge-д зөвшөөрөгдсөн цорын ганц дугуй). */
+   ⚠️ 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8%. */
 .gapBadge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 2px 7px;
-  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.gapBadge small { font-size: 0.86em; font-weight: 600; opacity: 0.72; }
+.gapBadge small { font-size: 0.86em; font-weight: 500; opacity: 0.72; }
 /* Текстэд light горимд -ink хувилбар (4.5:1), dark-д fill өнгө нь өөрөө хүрэлцдэг */
-.gapRed { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad-ink, var(--bad)); }
-.gapYellow { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn-ink, var(--warn)); }
+.gapRed {
+  background: color-mix(in oklab, var(--bad) 8%, transparent);
+  border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  color: var(--bad-ink, var(--bad));
+}
+.gapYellow {
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
+  color: var(--warn-ink, var(--warn));
+}
 
 /* ⚠️ .packExpand / .packLegend ХАСАГДСАН (2026-08-25): жагсаалтын доторх
    жижиг график устгагдсан тул түүний бүрхүүл, легенд хэрэггүй болов. */
@@ -270,11 +283,12 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  line-height: 1.3;
   color: var(--ink-3);
   cursor: pointer;
 }
 .kpiToggle:hover { color: var(--ink); }
-.kpiCaret { font-size: 9px; line-height: 1; transition: transform 0.14s ease; }
+.kpiCaret { font-size: 11px; line-height: 1; transition: transform 0.14s ease; }
 .kpiCaretOff { transform: rotate(-90deg); }
 
 /* ── Санхүүгийн картын өндрийн чирэх бариул (2026-08-21) — картын дээд
@@ -375,7 +389,7 @@
   transition: background 0.14s var(--ease, ease);
 }
 .list section > header:hover {
-  background: color-mix(in srgb, var(--hue) 8%, transparent);
+  background: var(--surface-2);
 }
 
 /* Хаалттай карт — зөвхөн гарчиг үлдэх тул доод зай хэрэггүй */
@@ -388,7 +402,7 @@
 /* Сумыг томсгож, эргэлтийг зөөлрүүлэв — хаалттай/нээлттэй нь холоос танигдана */
 .list [data-ui='sec-caret'] {
   font-size: 11px;
-  color: var(--hue);
+  color: var(--data-ink);
   transition: transform 0.18s var(--ease, ease);
 }
 
@@ -406,33 +420,35 @@
 /* ── СОНГОСОН БАГЦ — жагсаалтад тод тэмдэглэгдэнэ ──
    ⚠️ Урьд нь сонголт зөвхөн баруун картаар мэдрэгддэг байсан тул хэрэглэгч
    жагсаалт руу буцахад аль мөр идэвхтэйг хайдаг байв. */
+/* ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12% + inset 3px moss зүүн зурвас */
 .list [aria-pressed='true'] {
-  background: color-mix(in srgb, var(--hue) 10%, transparent);
-  box-shadow: inset 2px 0 0 var(--hue);
+  background: color-mix(in oklab, var(--moss) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--moss);
 }
 
-/* Дээд KPI зурвасын доогуур нимгэн зурвас — аль горимд байгааг захаас нь
-   хэлнэ. Гарчиг уншихгүйгээр өнгө нь өөрөө ялгана. */
+/* Дээд KPI зурвасын доогуур нимгэн зааг.
+   ⚠️ 2026-10-23: Environment — өнгөт 2px зурвас биш 1px --line (гүнийг зураасаар). */
 .kpi {
   padding-bottom: 8px;
-  border-bottom: 2px solid color-mix(in srgb, var(--hue) 55%, transparent);
+  border-bottom: 1px solid var(--line);
 }
 
 /* ── ГРАФИКИЙН ЛЕГЕНД — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана ──
    ⚠️ Дөрвөлжин цэг нь «энэ өнгө» гэдгээс өөр юу ч хэлдэггүй байв. Одоо
    тасархай зураас = төлөвлөгөө (лавлагаа), бүтэн зузаан = бодит олголт —
    графикт харсан хэлбэрээ легендээс шууд таних боломжтой. */
+/* ⚠️ 2026-10-23: Environment — тэмдэг нь графикийн шугамтай ИЖИЛ 2px: бүтэн = олголт (`--data`),
+   тасархай `4 4` = биет (`--chart-plan`, ComboChart-ын `CHART.planDash`). Хөтчийн `border dashed`-ийн
+   хэв маяг нь `4 4`-тэй таардаггүй тул градиентээр зурна. */
 .finLegend i.legDash,
 .finLegend i.legSolid {
   width: 18px;
-  height: 3px;
-  border-radius: 2px;
+  height: 2px;
+  border-radius: 0;
+  flex: none;
 }
 .finLegend i.legDash {
-  height: 0;
-  border-top: 2px dashed;
-  background: none !important;
-  opacity: 0.85;
+  background: repeating-linear-gradient(90deg, var(--chart-plan) 0 4px, transparent 4px 8px);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -486,7 +502,7 @@
 /* Актын хамрах хугацаа — дүнгийн доор жижиг мөр */
 .actPeriod {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: var(--ink-3);
   white-space: nowrap;
@@ -499,11 +515,11 @@
   align-items: center;
   padding: 1px 7px;
   border: 1px dashed var(--line-strong, var(--line));
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   color: var(--ink-3);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   white-space: nowrap;
 }
 /*
@@ -515,7 +531,7 @@
 .srcNote {
   margin: 0 0 10px;
   padding: 7px 10px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface-2);
   border-left: 3px solid var(--warn);
   font-size: 11.5px;

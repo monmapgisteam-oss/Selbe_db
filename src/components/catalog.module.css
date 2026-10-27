@@ -1,74 +1,56 @@
-/* Давхаргын сонголт — газрын зургийн ЗҮҮН талын багана.
+/* Давхаргын сонголт — `LayerCatalog.tsx` (порталын зүүн багана · модулиудын хөвөгч хайрцаг).
    «Давхарга» товчоор нээж/хаана; layer-ийн нэр дарахад зурагт асна/унтарна,
-   баруун захын диаграм товчоор баруун самбарт дашбоард гарна. */
+   баруун захын диаграм товчоор баруун самбарт дашбоард гарна.
+
+   ⚠️ 2026-10-23: Environment `.dataset-panel` — толгой (12px UPPERCASE гарчиг + тоо), --bg дэвсгэртэй хайлт
+      (focus — moss хүрээ), 10px булантай мөрүүд; асаалттай мөр = moss 12% bg + moss 45% хүрээ + inset 3px зүүн
+      зурвас (`.pe-table` сонгогдсон мөр шиг). Бүлэг бүрийн өөрийн өнгийн туяа/градиент ХАСАГДАВ — нэг акцент
+      (--data). Давхаргын СИМБОЛ (`LayerSwatch`) газрын зурагтай ижил өнгөөрөө ХЭВЭЭР (утга агуулсан өнгө). */
 .drawer {
-  grid-area: cat;
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background: var(--surface);
   border-right: 1px solid var(--line);
   overflow: hidden;
 }
 
-/* ХӨВӨГЧ хувилбар — дашбоард/анализ дээр газрын зургийн хайрцагт хөвнө.
-   Grid-ийн багана биш тул `grid-area` үйлчлэхгүй, баруун ирмэгийн зураас илүүц. */
+/* Хүрээгүй хувилбар — эцэг нь өөрөө карт (порталын `.catCol`, модулиудын хөвөгч хайрцаг) */
 .embedded {
-  grid-area: auto;
   height: 100%;
   border-right: none;
 }
 
 /**
- * Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр.
- *
- * ⚠️ Баруун самбарын бариултай (`shell.module.css` → `.grip`) толин тусгал:
- * тэр нь зүүн ирмэгт (`left: 0`), энэ нь баруун ирмэгт. Grid-ийн тусдаа багана
- * биш, багана дотор `absolute` — эс бөгөөс `grid-template-areas`-ыг каталогтой
- * ба каталоггүй ХОЁУЛАНД нь зассан байх ёстой болно.
+ * Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (дуудагч `onResizeStart` өгсөн үед л).
+ * ⚠️ 2026-10-23: Environment — 1px зураас, hover/чирэлтэд --data (`ResizableColumns`-тай нэг хэл).
+ *    Порталын зүүн багана энэ бариулыг ХЭРЭГЛЭХГҮЙ — `ResizableColumns`-ийн бариул.
  */
 .grip {
   position: absolute;
   top: 0;
   bottom: 0;
   right: 0;
-  width: 6px;
+  width: 8px;
   z-index: 8;
   cursor: col-resize;
   touch-action: none;
-  transition: background 0.12s;
 }
-/* Analysis-ийн .resizer-тэй НЭГ хэл (2026-08-21) */
 .grip::before {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
-  width: 5px;
-  transform: translateX(-50%);
+  right: 0;
+  width: 1px;
   background: var(--line);
   transition: background 0.15s;
 }
-.grip::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 1px;
-  height: 26px;
-  transform: translate(-50%, -50%);
-  border-radius: 1px;
-  background: var(--line-strong);
-  z-index: 1;
-  transition: background 0.15s;
-}
 .grip:hover::before, .gripOn::before { background: var(--data); }
-.grip:hover::after, .gripOn::after { background: var(--bg); }
-/* Touch — 6px зурвас хуруунд хэт нарийн тул hit-талбайг тэлнэ */
 @media (pointer: coarse) {
-  .grip { width: 18px; right: -6px; }
+  .grip { width: 18px; }
 }
 
 .head {
@@ -76,22 +58,20 @@
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--hue) 5%, var(--surface));
+  padding: 12px;
 }
-.headText { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.headText { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
 .title {
-  font-size: 0.62rem;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.5;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  color: var(--ink);
 }
 .sub {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--ink-2);
+  font-size: 11px;
+  color: var(--ink-3);
   overflow-wrap: anywhere;
 }
 
@@ -101,67 +81,68 @@
   width: 26px;
   height: 26px;
   flex: none;
-  font-size: 1.1rem;
-  line-height: 1;
-  border-radius: var(--r-sm);
+  border-radius: 7px;
   border: 1px solid var(--line);
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
-.close:hover { background: var(--surface-2); color: var(--ink); }
+.close:hover { background: var(--paper-hi); color: var(--ink); }
 
-/* Бүх давхаргыг унтраах — жагсаалтын хамгийн дээд, ТУСДАА тод товч
-   (ортофото мөрийн дээр). Унтраах юмгүй үед бүдгэрч идэвхгүй болно. */
+/* Бүх давхаргыг унтраах — ghost товч (32px, --line-strong хүрээ); унтраах юмгүй үед .4 */
 .allOff {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 10px;
+  height: 32px;
+  padding: 0 10px;
   margin-bottom: 8px;
-  border: 1px solid color-mix(in srgb, var(--hue) 45%, var(--line));
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--hue) 10%, var(--surface));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
   color: var(--ink);
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
-  transition: background 0.14s, border-color 0.14s, opacity 0.14s;
+  transition: background 0.14s, opacity 0.14s;
 }
-.allOff:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--hue) 18%, var(--surface));
-  border-color: var(--hue);
-}
+.allOff:hover:not(:disabled) { background: var(--surface-2); }
 .allOff:disabled { opacity: 0.4; cursor: default; }
+/* Тоо — badge (6px булан, tone текст, tone 35% хүрээ, tone 8% bg) */
 .allOffCount {
-  padding: 1px 8px;
-  border-radius: 99px;
-  background: var(--hue);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--data) 35%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
+  color: var(--data-ink);
+  font-size: 11px;
+  font-weight: 500;
 }
 
-.body { flex: 1; overflow-y: auto; padding: 8px 8px 12px; }
+.body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 10px; }
 
-/* ── Ортофото — жагсаалтын хамгийн дээд мөр ── */
+/* ── Ортофото — жагсаалтын хамгийн дээд мөр (switch) ── */
 .ortho {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 8px 10px;
   margin-bottom: 8px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
+  border-radius: 10px;
+  background: transparent;
   color: var(--ink-2);
   text-align: left;
   cursor: pointer;
   transition: background 0.14s, border-color 0.14s, color 0.14s;
 }
-.ortho:hover { border-color: var(--line-strong); }
-.orthoOn { background: color-mix(in srgb, var(--hue) 10%, var(--surface)); border-color: var(--hue); color: var(--ink); }
+.ortho:hover { background: var(--surface-2); }
+.orthoOn {
+  background: color-mix(in oklab, var(--data) 12%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  color: var(--ink);
+}
 .orthoCheck {
   display: grid;
   place-items: center;
@@ -175,20 +156,15 @@
   transition: background 0.15s, border-color 0.15s;
 }
 .orthoCheck svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.15s; }
-.orthoOn .orthoCheck { background: var(--hue); border-color: var(--hue); }
+.orthoOn .orthoCheck { background: var(--data); border-color: var(--data); }
 .orthoOn .orthoCheck svg { opacity: 1; transform: scale(1); }
 
 /**
  * ДАВХАРГЫН МӨРИЙН ЧАГТ — `analysis/suit/LayerCatalog.tsx` (`c.check`).
  *
- * ⚠️ 2026-08-19: Энэ дүрэм ОГТ БАЙГААГҮЙ. Тэр компонент `className={c.check}`
- * гэж бичдэг ч `catalog.module.css`-д ийм класс байхгүй тул CSS-модуль
- * `undefined` буцааж, товч нь ЗАГВАРГҮЙ зурагддаг байв: хайрцаг/хүрээ алга, мөн
- * `svg { opacity: 0 }` дүрэм байхгүйгээс УНТРААЛТТАЙ давхаргын чагт ч тэмдэгтэй
- * харагдаж, аль нь асаалттай болох нь ялгагдахгүй байлаа.
- *
- * ⚠️ `.orthoCheck`-ийг ШУУД дахин ашиглах боломжгүй: түүний асаалттай төлөв нь
- * эцгийн `.orthoOn`-оос ирдэг бол энэ жагсаалт `.rowOn` хэрэглэдэг.
+ * ⚠️ 2026-08-19: Энэ дүрэм ОГТ БАЙГААГҮЙ үед товч ЗАГВАРГҮЙ зурагдаж, унтраалттай давхаргын чагт ч
+ * тэмдэгтэй харагддаг байв. `.orthoCheck`-ийг шууд дахин ашиглах боломжгүй: түүний асаалттай төлөв нь
+ * эцгийн `.orthoOn`-оос, энэ нь `.rowOn`-оос.
  */
 .check {
   display: grid;
@@ -196,128 +172,126 @@
   width: 15px;
   height: 15px;
   flex: none;
-  border-radius: var(--r-lg);
+  border-radius: 4px;
   border: 1.5px solid var(--line-strong);
   background: transparent;
-  /* Акцент дэвсгэр дээрх бэх — харанхуйд цагаан 1.7:1 л өгнө (globals.css) */
   color: var(--hue-ink);
   transition: background 0.15s, border-color 0.15s;
 }
 .check svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.15s; }
-.rowOn .check { background: var(--hue); border-color: var(--hue); }
+.rowOn .check { background: var(--data); border-color: var(--data); }
 .rowOn .check svg { opacity: 1; transform: scale(1); }
-.orthoLabel { flex: 1; min-width: 0; font-size: 0.78rem; font-weight: 600; }
-.orthoState { flex: none; font-size: 0.66rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.orthoLabel { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; }
+.orthoState { flex: none; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; line-height: 1.3; }
 
-/* ── Багц ──
-   Зүгээр нимгэн заагийн оронд бүлэг бүр КАРТ: хүрээ, булан, өөрийн өнгөний
-   (--tone) сүүмгэр туяа — бүлгүүд нэг нүдээр ялгарч, зааг нь «агуулагч» болно. */
+/* ── Багц — хүрээгүй бүлэг (Environment `.dataset-panel-group`), хүүхдүүд доголтой ── */
 .group {
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--hue) 4%, var(--surface-2));
-  padding: 5px 6px;
-  transition: border-color 0.14s;
+  border-radius: 10px;
+  padding: 2px 0;
 }
-.group:hover { border-color: color-mix(in srgb, var(--hue) 35%, var(--line)); }
-.group + .group { margin-top: 7px; }
+.group + .group { margin-top: 2px; }
 
-.groupHead { display: flex; align-items: center; gap: 8px; padding: 4px 4px 6px; }
-/* Бүлгийг асаах/унтраах товч — дүрс, нэр, тоолуур ГУРВЫГ бүхэлд нь эзэлнэ
-   (нэр дээр онож дарах шаардлагагүй, толгойн бүтэн өргөн дарагдана). */
+.groupHead { display: flex; align-items: center; gap: 4px; }
+/* Бүлгийг асаах/унтраах товч — дүрс, нэр, тоолуур ГУРВЫГ бүхэлд нь эзэлнэ */
 .groupToggle {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px;
-  margin: -4px -6px -4px -4px;
-  border-radius: var(--r-sm);
+  padding: 7px 8px;
+  border-radius: 10px;
   background: none;
   border: 0;
   color: inherit;
-  transition: background 0.12s;
+  transition: background 150ms;
 }
 .groupToggle:hover { background: var(--surface-2); }
-/* Хураах/дэлгэх — гарчгаас ТУСДАА товч (гарчиг нь багцыг сонгоно) */
+/* Хураах/дэлгэх — гарчгаас ТУСДАА товч */
 .groupCaret {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex: none;
-  border-radius: var(--r-sm);
-  font-size: 0.66rem;
+  border-radius: 7px;
   color: var(--ink-3);
-  transition: transform 0.22s var(--ease), background 0.12s, color 0.12s;
+  transition: transform 150ms, background 0.12s, color 0.12s;
 }
 .groupCaret:hover { background: var(--surface-2); color: var(--ink); }
-.groupCaretOpen { transform: rotate(180deg); color: var(--hue); }
+.groupCaretOpen { transform: rotate(180deg); color: var(--data-ink); }
+/* ⚠️ 2026-10-23 (UX аудит S13): утсан дээр 22×22 бариулыг хуруугаар онох хэцүү — хүрэх талбай 32px
+   (ойролцоох «асаах» товчийг дарчихгүйн тулд зөвхөн хүрэлтийн төхөөрөмжид). */
+@media (pointer: coarse) {
+  .groupCaret { width: 32px; height: 32px; }
+}
 .groupIcon {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  border-radius: var(--r-sm);
-  color: var(--hue);
-  background: color-mix(in srgb, var(--hue) 14%, transparent);
+  color: var(--ink-3);
 }
 .groupTitle {
   flex: 1;
   min-width: 0;
-  font-size: 0.74rem;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.4;
   color: var(--ink);
-  overflow-wrap: anywhere;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   text-align: left;
 }
-/* Тоолуур — товч БИШ, зөвхөн төлөв заана (сонголт нь гарчиг дээр шилжсэн).
-   Өнгө нь үндсэн текст (харанхуйд цагаан) — бүдэг саарал уншигдахгүй байсан. */
+/* Тоолуур — товч БИШ, зөвхөн төлөв (badge) */
 .groupBtn {
   flex: none;
-  padding: 2px 7px;
+  padding: 1px 6px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.63rem;
-  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 /* ── Давхаргын мөр ── */
-.rows { display: flex; flex-direction: column; gap: 1px; }
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 16px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
 
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 6px;
-  border-radius: var(--r-sm);
+  padding: 6px 6px 6px 8px;
+  border-radius: 10px;
   border: 1px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 150ms, border-color 150ms;
 }
 .row:hover { background: var(--surface-2); }
-/* Асаалттай давхарга — ТОД ялгарна: өнгөт дэвсгэр + хүрээ + зүүн ирмэгийн
-   зурвас (бүлгийн картын сүүмгэр туяанаас 7% нь ялгардаггүй байсан). */
+/* Асаалттай давхарга — moss 12% bg + moss 45% хүрээ + inset 3px зүүн зурвас */
 .rowOn {
-  background: color-mix(in srgb, var(--hue) 20%, transparent);
-  border-color: color-mix(in srgb, var(--hue) 55%, transparent);
-  box-shadow: inset 2.5px 0 0 var(--hue);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--data);
 }
-.rowOn:hover { background: color-mix(in srgb, var(--hue) 26%, transparent); }
+.rowOn:hover { background: color-mix(in oklab, var(--data) 16%, transparent); }
 
 /* ── Ангиллын дэд мөр ──
-   ⚠️ `.row` нь нэг мөрийн flex байсан. Дэд жагсаалт нь мөрийн ДООР бүтэн
-   өргөнөөр орох ёстой тул `flex-wrap` нэмж, дэд блокт `flex-basis: 100%`
-   өгнө — эс бөгөөс чагт, симбол, нэр гурвын хажууд шахагдана. */
+   ⚠️ `.row` нь нэг мөрийн flex. Дэд жагсаалт нь мөрийн ДООР бүтэн өргөнөөр орох ёстой тул `flex-wrap`
+   нэмж, дэд блокт `flex-basis` өгнө — эс бөгөөс симбол, нэрийн хажууд шахагдана. */
 .rowFacet { flex-wrap: wrap; }
 .facetRows {
   /**
-   * ⚠️ `flex-basis: 100%` дээр `margin-left` НЭМЭГДЭНЭ (хасагдахгүй) — блок нь
-   * баганаас 30px халина. Доголдлыг суурь өргөнөөс нь ХАСЧ бичнэ.
-   * Симбол (22px) + зай (8px) = 30px — дэд мөр эцэг мөрийн НЭРТЭЙ эгнэнэ
-   * (чагт хасагдсан тул эхний элемент нь симбол).
+   * ⚠️ `flex-basis: 100%` дээр `margin-left` НЭМЭГДЭНЭ (хасагдахгүй) — блок нь баганаас халина.
+   * Доголдлыг суурь өргөнөөс нь ХАСЧ бичнэ. Симбол (22px) + зай (8px) = 30px — дэд мөр эцэг мөрийн
+   * НЭРТЭЙ эгнэнэ.
    */
   flex-basis: calc(100% - 30px);
   min-width: 0;
@@ -325,8 +299,8 @@
   flex-direction: column;
   gap: 1px;
   margin: 5px 0 2px 30px;
-  padding-left: 9px;
-  border-left: 1.5px solid color-mix(in srgb, var(--hue) 30%, var(--line));
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
 }
 .facetRow {
   display: flex;
@@ -340,21 +314,20 @@
 }
 .facetRow:hover { background: var(--surface-2); }
 .facetRowOn {
-  background: color-mix(in srgb, var(--hue) 14%, transparent);
-  border-color: color-mix(in srgb, var(--hue) 45%, transparent);
+  background: color-mix(in oklab, var(--data) 12%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
 }
 .facetName {
   flex: 1;
   min-width: 0;
-  font-size: 0.68rem;
+  font-size: 11px;
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
-.facetRowOn .facetName { color: var(--ink); font-weight: 600; }
-.facetMeta { flex: none; font-size: 0.62rem; color: var(--ink-3); }
+.facetRowOn .facetName { color: var(--data-ink); font-weight: 600; }
+.facetMeta { flex: none; font-size: 11px; color: var(--ink-3); }
 
-/* Legend мөр — шүүлтгүй, зөвхөн газрын зурагтай ижил өнгийг тайлбарлана
-   (жиш. барилгын `Barilga_ty` төлөв). */
+/* Legend мөр — шүүлтгүй, зөвхөн газрын зурагтай ижил өнгийг тайлбарлана (жиш. барилгын төлөв) */
 .legendRow {
   display: flex;
   align-items: center;
@@ -371,76 +344,91 @@
   background: color-mix(in srgb, var(--hue) 30%, transparent);
 }
 .rowSel {
-  background: color-mix(in srgb, var(--hue) 12%, transparent);
-  border-color: color-mix(in srgb, var(--hue) 40%, transparent);
+  background: color-mix(in oklab, var(--data) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--data) 28%, transparent);
 }
 
 /* Дэлгэрэнгүй дашбоард нээх товч — мөрийн баруун захад (нэр нь давхаргыг асаадаг) */
 .rowChart {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--r-sm);
   color: var(--ink-3);
   transition: background 0.12s, color 0.12s;
 }
-.rowChart:hover { background: var(--surface-2); color: var(--ink); }
-.rowSel .rowChart, .rowChart[aria-pressed='true'] { color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.rowChart:hover { background: var(--paper-hi); color: var(--ink); }
+.rowSel .rowChart, .rowChart[aria-pressed='true'] { color: var(--data-ink); background: color-mix(in oklab, var(--data) 14%, transparent); }
 
 .rowMain {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   text-align: left;
 }
 .rowTitle {
-  font-size: 0.735rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
-.rowOn .rowTitle, .rowSel .rowTitle { color: var(--ink); }
+.rowOn .rowTitle { color: var(--data-ink); font-weight: 600; }
+.rowSel .rowTitle { color: var(--ink); }
 .rowMeta {
-  font-size: 0.645rem;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--ink-3);
   overflow-wrap: anywhere;
 }
 /* Бүсээр шүүгдэх боломжгүй давхарга — дүн нь төслийн бүхэлдээ */
 .rowWarn { font-style: normal; color: var(--warn-ink); }
 
-/* Дэлгэц бага үед багана нь босоо өрөлтөд ордог тул хүрээ нь дээрээс */
+/* Дэлгэц бага үед багана нь босоо өрөлтөд ордог */
 @media (max-width: 1180px) {
-  .drawer { border-right: none; border-top: 1px solid var(--line); }
+  .drawer { border-right: none; }
   .body { max-height: 50vh; }
   /* Босоо өрөлтөд багана бүтэн өргөнтэй — өргөн чирэх утгагүй */
   .grip { display: none; }
 }
 
 /*
- * ДАВХАРГЫН ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
- *
- * ⚠️ ~99 давхарга, 19 бүлэг бүгд хураагдсан эхэлдэг тул нэр нь мэдэгдэж
- *    байгаа давхаргыг олохын тулд бүлгүүдийг нэг нэгээр нээх шаардлагатай
- *    байв. Жагсаалтын хамгийн дээд талд, «бүгдийг унтраах»-аас ӨМНӨ.
+ * ДАВХАРГЫН ХАЙЛТ (2026-09-15-ны хэрэглээний аудит) — ~99 давхарга, 19 бүлэг бүгд хураагдсан эхэлдэг тул
+ * нэрээр нь олох цорын ганц зам. Жагсаалтын хамгийн дээд талд, «бүгдийг унтраах»-аас ӨМНӨ.
+ * ⚠️ 2026-10-23: Environment `.dataset-panel-search` — дүрстэй хайрцаг, --bg дэвсгэр, focus — moss хүрээ +
+ *    3px moss 18% цагираг (`.pe-field`).
  */
-.search {
-  width: 100%;
-  box-sizing: border-box;
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
   margin-bottom: 8px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--ink-3);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.searchBox:focus-within {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+.searchBox svg { flex: none; }
+.search {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
   color: var(--ink);
   font-size: 12.5px;
   line-height: 1.3;
 }
-.search:focus-visible {
-  outline: 2px solid var(--data);
-  outline-offset: -1px;
-}
+.search:focus-visible { outline: none; }
 .search::placeholder { color: var(--ink-3); }

@@ -30,22 +30,11 @@
  * харьцуулагдаж, шошго нь хувийг хэлнэ.
  */
 
+import type { CSSProperties } from 'react';
 import { num, pct } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { Bars, Meter } from '@/components/ui';
 import c from './tailanChart.module.css';
-
-/* ══════════════════ Туслах ══════════════════ */
-
-/** 0 хуваахаас хамгаална; хязгаараас гарсныг 0–1-д барина. */
-const frac = (v: number, top: number) =>
-  top > 0 && Number.isFinite(v) ? Math.max(0, Math.min(1, v / top)) : 0;
-
-/** График зурах утга байна уу — ⚠️ хоосон дээр «0» зурвал ХУДАЛ мэдээлэл
-    ⚠️ 2026-10-09 (аудит №6): `v !== 0` ХАСАГДАВ — бүх сар ХЭМЖСЭН 0 цуваа (хавтгай тэг шугам)
-    огт зурагдахгүй байв; хэмжсэн тэг ≠ хоосон (null). Хоосон = бүгд `null`. */
-const hasData = (vals: (number | null | undefined)[]) =>
-  vals.some((v) => v != null && Number.isFinite(v));
 
 export type BarItem = {
   label: string;
@@ -85,6 +74,7 @@ export function Fig({ no, children }: { no: string; children: React.ReactNode })
  *    `chartTrack`/`chartFill` глобал нэрээр). «Эмфазис» (`hot`) нь `selected` БИШ —
  *    тэр нь бусад мөрийн НЭРИЙГ ч 0.35 болгож тайлангийн уншигдахыг бууруулна; өнгөний
  *    нягтаар ялгана (бусад нь `--data`-ийн 60%).
+ * ⚠️ 2026-10-23: Environment — `ui.Bars`-ийн зам 5px болсон (2px биш); энд өөрчлөлтгүй.
  */
 export function RankBars({
   items,
@@ -101,7 +91,8 @@ export function RankBars({
 }) {
   const vals = items.map((i) => i.value);
   const valid = vals.filter((v): v is number => v != null && Number.isFinite(v));
-  if (!items.length || !valid.length) return <p className={c.note}>{tr('мэдээлэлгүй')}</p>;
+  /* ⚠️ 2026-10-23: Environment `.chart-empty` — тасархай хүрээ, төвд `--ink-3`, дүрсгүй */
+  if (!items.length || !valid.length) return <p className={c.empty}>{tr('мэдээлэлгүй')}</p>;
   // Keep a common baseline, including measured zeroes and values above 100%.
   const top = Math.max(max ?? 0, ...valid, 1);
 
@@ -142,85 +133,6 @@ export function RankBars({
 
 /* ══════════════════ Хугацааны цуваа ══════════════════ */
 
-/**
- * САР ТУТМЫН ЦУВАА — нэг цуваа тул ТАЛБАЙ (area), домог хэрэггүй.
- *
- * ⚠️ Хэмжилтгүй сарыг АЛГАСАХГҮЙ, харин ЦООРХОЙ үлдээнэ: 0 гэж зурвал
- * «тэр сард юу ч олгоогүй» гэсэн ХУДАЛ мэдээлэл болно.
- */
-export function TrendArea({
-  points,
-  fmt = (v) => num(v),
-  title,
-}: {
-  points: { label: string; value: number | null }[];
-  fmt?: (v: number) => string;
-  title: string;
-}) {
-  const vals = points.map((p) => p.value);
-  if (points.length < 2 || !hasData(vals)) return null;
-  /* ⚠️ 2026-10-09 (аудит №6): дээд нь 0 (бүгд хэмжсэн тэг) бол `return null` биш — `frac` 0 өгч
-     шугам ёроолд хавтгай зурагдана. */
-  const top = Math.max(...vals.map((v) => v ?? 0), 0);
-
-  const W = 100;
-  const H = 34;
-  const x = (i: number) => (points.length === 1 ? 0 : (i / (points.length - 1)) * W);
-  const y = (v: number) => H - frac(v, top) * H;
-
-  /* ⚠️ Цоорхойг таслана: `null` дээр шинэ сегмент эхэлнэ — эс тэгвээс шугам
-     хэмжилтгүй сарыг дамжин «шулуун» зурагдаж, байхгүй өгөгдөл зохиогдоно. */
-  const runs: { i: number; v: number }[][] = [];
-  let cur: { i: number; v: number }[] = [];
-  points.forEach((p, i) => {
-    if (p.value == null) { if (cur.length) runs.push(cur); cur = []; return; }
-    cur.push({ i, v: p.value });
-  });
-  if (cur.length) runs.push(cur);
-
-  const hi = points.reduce(
-    (best, p, i) => (p.value != null && p.value > (best.v ?? -Infinity) ? { i, v: p.value } : best),
-    { i: -1, v: null as number | null },
-  );
-
-  return (
-    <figure className={c.fig} role="img" aria-label={title}>
-      <svg className={c.spark} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
-        {runs.map((run, k) => (
-          <g key={k}>
-            {run.length > 1 && (
-              <path
-                className={c.area}
-                d={`M ${x(run[0].i)} ${H} ${run.map((p) => `L ${x(p.i)} ${y(p.v)}`).join(' ')} L ${x(run[run.length - 1].i)} ${H} Z`}
-              />
-            )}
-            <path
-              className={c.line}
-              /* ⚠️ `vector-effect` нь CSS-д: `preserveAspectRatio="none"` нь
-                 зурааст сунгалт үүсгэдэг тул шугамын өргөн гажина. */
-              d={`M ${run.map((p) => `${x(p.i)} ${y(p.v)}`).join(' L ')}`}
-            />
-          </g>
-        ))}
-      </svg>
-      <div className={c.axis}>
-        {points.map((p, i) => (
-          <span key={`${p.label}-${i}`} className={i === hi.i ? c.axHot : undefined}>
-            {/* ⚠️ Шошго нь ЗӨВХӨН эхэн, төгсгөл, оргилд — сар бүрд бичвэл
-                бие бие рүүгээ орж, аль аль нь уншигдахгүй. */}
-            {i === 0 || i === points.length - 1 || i === hi.i ? p.label : ''}
-          </span>
-        ))}
-      </div>
-      {hi.i >= 0 && hi.v != null && (
-        <p className={c.note}>
-          {tr('Оргил')}: <b>{points[hi.i].label}</b> — {fmt(hi.v)}
-        </p>
-      )}
-    </figure>
-  );
-}
-
 /* ══════════════════ Хэмжүүр ══════════════════ */
 
 /**
@@ -241,6 +153,7 @@ export { LATE_GAP };
  *    ШУУД (2px зам, төлөвлөгөөний зураас ±4px, hover = `useTip`). Энд зөвхөн тайлангийн
  *    ДҮРЭМ үлдэв: хоцрогдлын өнгө (`LATE_GAP`) ба 2 оронтой «Бодит · Төлөвлөгөө» бичвэр.
  *    Хэвлэлтийн өнгө `.meterBlock`-ийн `@media print`-д.
+ * ⚠️ 2026-10-23: Environment — `ui.Meter`-ийн зам 5px (`CHART.meterH`).
  */
 export function PlanMeter({
   value,
@@ -295,9 +208,11 @@ export function KpiRow({ items, cols }: {
 }) {
   if (!items.length) return null;
   return (
+    /* ⚠️ 2026-10-26 (аудит): баганын тоог CSS хувьсагчаар — inline `gridTemplateColumns` утсанд (360px) ч 2 багана тогтоож мөнгөн
+       дүн (≈170px) картаас халиж хөршөө дардаг байв; ≤620px-д нэг багана (`.kpisCols`). */
     <div
-      className={c.kpis}
-      style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}
+      className={cols ? `${c.kpis} ${c.kpisCols}` : c.kpis}
+      style={cols ? ({ '--kpi-cols': cols } as CSSProperties) : undefined}
     >
       {items.map((k, i) => (
         <div key={`${k.label}-${i}`} className={c.kpi}>

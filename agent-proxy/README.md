@@ -34,7 +34,7 @@ npm start
 Амжилттай бол:
 
 ```
-[agent-proxy] http://localhost:8787  загвар=claude-opus-5  effort=low
+[agent-proxy] http://localhost:8787  загвар=claude-opus-5-5  effort=medium
 ```
 
 > `.env.local` нь `.gitignore`-д орсон — репод хэзээ ч орохгүй.
@@ -43,10 +43,31 @@ npm start
 
 ## Тохиргоо
 
+### Claude Opus 5.5 (2026-10-19)
+
+Анхдагч загвар `claude-opus-5-5` (`server.mjs` · `worker.mjs` · `wrangler.toml` гурвуулаа ИЖИЛ;
+`AGENT_MODEL`-оор солино, буцаах бол `AGENT_MODEL=claude-opus-5`). Анхаарах зүйлс:
+
+- **Бодолтыг унтраах боломжгүй** — `thinking: {type: "disabled"}` → 400. Реле ЗӨВХӨН `claude-opus-5-5`
+  дээр `thinking: {type: "adaptive", display: "updates"}` + `anthropic-beta: thinking-display-updates-2026-08-18`
+  илгээнэ (явцын тэмдэглэл → «Төлөвлөгөө» карт; `rateLimit.thinkingUpdatesFor`), бусад загварт `thinking`-ийг огт
+  илгээдэггүй; хурд/гүнийг ЗӨВХӨН `AGENT_EFFORT`-оор (`low` · `medium` · `high`). Загварын өөрийн
+  анхдагч `medium` тул бид ч ил `medium` илгээнэ.
+- **Албадсан `tool_choice`** (`any` / `tool`) → 400 — реле илгээдэггүй.
+- **Хэрэгслийн дуудлагын хоорондын текст** `thinking` блок болж (хоосон агуулгатай) ирж болно. Порталын
+  «Төлөвлөгөө» карт текстээс олдохгүй бол бодолтын блокоос ```plan` хашилтыг хайна; аль алинд нь
+  алга бол карт зүгээр л харагдахгүй (алдаа гарахгүй) — `src/lib/agent/client.ts` `planTextOf`.
+- **Бодолтын блок ЯРИАНД холбогдсон** — түүхийн эхний эсвэл дунд эргэлтийг засах/хасахад дараагийн бүх
+  бодолтын блок хүчингүй (шинэ байгууллагад 400). Портал (`AgentChat.trimHistory`) түүхийг огтлохдоо
+  БҮТЭН эргэлтээр огтолж, үлдсэн түүхийн БҮХ бодолтын блокийг хасна (баримтжуулсан «strip» сэргээлт);
+  огтлоогүй үед түүх зөвхөн ард нь нэмэгддэг.
+- **529 (overloaded)** — клиент тусгай мессеж харуулна; 5xx хариуг өөр хост руу ДАВТАЖ илгээхгүй
+  (хариу дээд талд боловсруулагдсан байж болно — релей хариунд `upstream: true`).
+
 | Орчны хувьсагч | Анхдагч | Утга |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | **Заавал.** [console.anthropic.com](https://console.anthropic.com) |
-| `AGENT_MODEL` | `claude-opus-5` | Хямд туршилтад `claude-haiku-4-5` |
+| `AGENT_MODEL` | `claude-opus-5-5` | 2026-10-19-нөөс (өмнө `claude-opus-5`). Хямд туршилтад `claude-haiku-4-5`. Доорх «Claude Opus 5.5»-ыг үз |
 | `AGENT_EFFORT` | `medium` | `low` / `medium` / `high` — хурд ↔ гүн бодолт. 2026-10-15-наас `medium` (эх сурвалж сонголт, холбоосын дүрэм нарийссан) |
 | `PORT` | `8787` | Релений порт |
 | `ALLOW_ORIGIN` | `http://localhost:8123,…` | Зөвшөөрөх эх (таслалаар) |
@@ -287,6 +308,10 @@ Cloudflare дээр `selbecity.mn` бүсийг удирддаг бол `wrangle
 
 - Нэвтрээгүй бол: *«Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна»*
 - Өөр байгууллагынх бол: *«Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна»*
+- Порталын эрхийн хүснэгтэд (`SYS_Selbe_Permissions/230`) мөргүй/устгагдсан бол **403**
+  (⚠️ 2026-10-21: Enterprise нэг байгууллагатай тул байгууллагын шалгалт дангаараа хангалтгүй)
+- Эрхийн хүснэгт уншигдахгүй (сүлжээ · алдаа) бол **503** — түр хүлээгээд дахин оролдоно (fail-closed)
+- `ARCGIS_ORG_ID` хоосон бол **503** — зөвхөн `BOT_SECRET` таарсан бот л нэвтэрнэ (⚠️ 2026-10-21: урьд нь реле нээлттэй болдог байв)
 
 Шалгагдсан токеныг 5 минут кэшлэнэ — асуулт бүрд ArcGIS руу дахин очихгүй (хурд).
 
@@ -299,7 +324,7 @@ Cloudflare дээр `selbecity.mn` бүсийг удирддаг бол `wrangle
 |---|---|---|
 | `ANTHROPIC_API_KEY` | **Нууц** (`deploy:secret`) | Заавал |
 | `ALLOW_ORIGIN` | `wrangler.toml` | Зөвшөөрөх эх, таслалаар |
-| `ARCGIS_ORG_ID` | `wrangler.toml` | Хоосон бол нэвтрэлт **шаардахгүй** |
+| `ARCGIS_ORG_ID` | `wrangler.toml` | Заавал. Хоосон бол реле **503** (зөвхөн `BOT_SECRET`-тэй бот) |
 | `ARCGIS_PORTAL` | `wrangler.toml` | Порталын `AUTH.portalUrl`-тэй ижил байх ёстой |
 | `AGENT_MODEL` / `AGENT_EFFORT` | `wrangler.toml` | `server.mjs`-тэй ижил анхдагч |
 
@@ -309,7 +334,8 @@ Cloudflare дээр `selbecity.mn` бүсийг удирддаг бол `wrangle
 |---|---|---|
 | `DAILY_TOKEN_BUDGET` | `wrangler.toml` | Хэрэглэгч бүрийн өдрийн токены төсөв (анхдагч 300000, `0` = унтраалттай) |
 | `PROMPT_HMAC` | **Нууц** (`npx wrangler secret put PROMPT_HMAC`) | Системийн зааврын гарын үсэг (заавал биш) |
-| `RL_KV` | `wrangler.toml` `[[kv_namespaces]]` | KV холбосон бол хурдны хязгаар ба төсөв isolate ХООРОНД тоологдоно (ойролцоо). Холбоогүй бол isolate тус бүр |
+| `RL_KV` | `wrangler.toml` `[[kv_namespaces]]` | KV холбосон бол хурдны хязгаар ба төсөв isolate ХООРОНД тоологдоно (ойролцоо). Холбоогүй бол isolate тус бүр — **production-д ЗААВАЛ** (2026-10-21: холбоогүй бол Worker чанга анхааруулж isolate доторх төсвийг ½ болгоно) |
+| `ARCGIS_PERMS_URL` | `wrangler.toml` / `.env.local` | Порталын эрхийн хүснэгт (`SYS_Selbe_Permissions/230`). 2026-10-21: токен баталгаажсаны дараа хэрэглэгчийн өөрийн токеноор мөрийг нь асууна — мөргүй/устгагдсан → 403, хүснэгт уншигдахгүй → 503 (нэг байгууллагатай Enterprise дээр `ARCGIS_ORG_ID` дангаараа хангалтгүй). `ARCGIS_ORG_ID` хоосон Worker ботоос бусдад 503 |
 
 Telegram ботын нэмэлт хувьсагч (2026-10-09, заавал биш): `TELEGRAM_USER_PER_MIN`
 (10), `TELEGRAM_USER_PER_DAY` (150, админ чөлөөт), `TELEGRAM_MAX_PARALLEL` (4),

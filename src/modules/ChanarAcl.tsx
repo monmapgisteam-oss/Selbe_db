@@ -32,7 +32,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
 import {
   CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
@@ -41,6 +41,8 @@ import { grantHolds } from '@/lib/aclGrid';
 import { reviewerClashes } from '@/lib/chanarMs';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
@@ -59,7 +61,8 @@ export function ChanarAcl() {
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
 
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = listChanarAssigns();
@@ -101,6 +104,7 @@ export function ChanarAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        absent: portalMissing(a.user),
         /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
@@ -111,7 +115,8 @@ export function ChanarAcl() {
   /** Багц бүрийн гацаа — нэг удаа тооцоод мөр, нүд хоёуланд */
   const state = new Map(PKG_GROUPS.map((group) => {
     /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) гацааны шалгуурт тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
-    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone).map((h) => h.user)])) as Record<ChanarRole, string[]>;
+    /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
+    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone && !h.absent).map((h) => h.user)])) as Record<ChanarRole, string[]>;
     const authors = by.author;
     /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх.
        ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, `erhOverview.noOther` ба ScopedAclPanel
@@ -124,11 +129,18 @@ export function ChanarAcl() {
        тул тухайн төрлийн хоёр үүргийн ЦОРЫН ГАНЦ эзэн нэг хүн бол баримт гацна
        (`erhOverview`-ийн `chanarOneManRoles`-той НЭГ шалгуур — `reviewerClashes`). */
     const clashes = reviewerClashes(by, authors);
+    /* ⚠️ 2026-10-23 (UX аудит Q8): анхааруулгын ТЕКСТ одоогийн урсгалаар — MS · QMP · PRC · NCR-ийн «бүх хянагч
+       зөвшөөрнө» урсгал хасагдсан (`chanarMs`-ийн 2026-10-21 ⚠️). Одоо FIC · М-актыг багцын АЛЬ Ч хянагч (өөрийн
+       оруулснаас бусдыг) шийднэ (`ficMakt.decideFm`) — тиймээс зөвхөн ӨӨР хянагч НЭГ Ч үгүй үед л гацна. Үүрэг
+       дутуу/давхцлын тэмдэглэгээ (шар нүд, ⚠) хэвээр — томилгооны бүрэн бүтэн байдлын сануулга. */
+    const noReviewer = authors.some((a) => !(['tuh', 'chanar', 'habea', 'tug', 'cheng'] as const).some((r) => by[r].some((u) => u !== a)));
     const warn = [
-      missing.length > 0
-        ? tr('⚠️ {0} — зохиогчоос өөр хянагч томилоогүй. Тухайн төрлийн хянагч бүгд зөвшөөрөх ёстой тул энэ багцын баримт батлагдахгүй.', missing.map(chanarRoleLabel).join(' · '))
-        : '',
-      ...clashes.map((c) => tr('⚠️ Нэг хүн хоёр үүрэгт — баримт гацна ({0}): {1} нь {2} үүргийн цорын ганц хянагч. Нэг хүн зөвхөн нэг үүргээр хянадаг тул үүрэг тус бүрд өөр хүн томилно уу.',
+      noReviewer
+        ? tr('⚠️ Зохиогчоос өөр хянагч томилоогүй — энэ багцын FIC · М-актыг хэн ч шийдвэрлэж чадахгүй.')
+        : missing.length > 0
+          ? tr('⚠️ {0} — зохиогчоос өөр хүн томилоогүй. FIC · М-актыг бусад хянагч шийдвэрлэж чадна; үүргийг нөхөхийг зөвлөнө.', missing.map(chanarRoleLabel).join(' · '))
+          : '',
+      ...clashes.map((c) => tr('⚠️ Нэг хүн хоёр үүрэгт ({0}): {1} нь {2} үүргийн цорын ганц хянагч. Үүрэг тус бүрд өөр хүн томилохыг зөвлөнө.',
         c.kinds.join(', '), c.users.join(', '), c.roles.map(chanarRoleLabel).join(' · '))),
     ].filter(Boolean);
     return [group, { missing, clashed: new Set<string>(clashes.flatMap((c) => c.roles)), warn }] as const;
@@ -139,15 +151,16 @@ export function ChanarAcl() {
       <p className={s.aclNote}>
         {tr('Багц тус бүрд Гүйцэтгэгч ба таван хянагч (ТУХ · Чанар · ХАБЭА · ТУГ · Чанарын хяналтын инженер) аккаунтыг тусад нь томилно. Нэг үүрэгт хэдэн ч аккаунт байж болно.')}
         {' '}
-        {tr('MS · QMP · PRC: ТУХ · Чанар · ХАБЭА зэрэгцээ; MA: Чанарын хяналтын инженер → Чанар → ТУГ дараалсан; MIR/FIC: ТУХ, дараа нь Чанар; NCR: ТУХ · Чанар эсвэл ТУГ нээж, гүйцэтгэгчийн залруулгыг ТУХ · Чанар · ТУГ дүгнэнэ. Бүгд зөвшөөрвөл батлагдана, нэг нь татгалзвал буцаагдана.')}
+        {/* ⚠️ 2026-10-23 (UX аудит Q8): хасагдсан MS · QMP · PRC · NCR урсгалын тайлбарыг одоогийн MA → MIR → FIC → М-акт урсгалаар солив */}
+        {tr('Чанарын урсгал: MA · MIR — Survey123-аар бөглөж шийдвэрлэнэ (порталд харагдана, хавсралт нэмнэ). FIC · М-акт — гүйцэтгэгч PDF оруулж, энэ багцын аль нэг хянагч (өөрийн оруулснаас бусдыг) A · AN · R шийдвэрлэнэ. Дөрвөн шат батлагдвал IPC олгоно.')}
         {' '}
-        {tr('⚠️ QAQC (ITP бөглөх) ба гүйцэтгэлийн урсгалын эрхээс ТУСДАА: энд үүрэг олгосон нь тэдгээрийг өгөхгүй.')}
+        {tr('⚠️ Гүйцэтгэлийн урсгалын эрхээс ТУСДАА: энд үүрэг олгосон нь түүнийг өгөхгүй.')}
       </p>
       {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
 
@@ -157,7 +170,8 @@ export function ChanarAcl() {
         cols={CHANAR_ROLES.map((r) => ({
           key: r,
           label: chanarRoleLabel(r),
-          count: rows.filter((a) => a.grants.some((g) => g.role === r)).length,
+          /* ⚠️ 2026-10-23: устгагдсан · порталд алга аккаунтын мөр тоологдохгүй */
+          count: rows.filter((a) => a.grants.some((g) => g.role === r) && known.has(a.user) && !portalMissing(a.user)).length,
         }))}
         holders={holdersOf}
         /* ⚠️ Гацаа: зохиогчоос өөр хянагчгүй үүрэг, эсвэл нэг хүн хоёр үүрэгт давхцсан үүрэг */
@@ -166,12 +180,14 @@ export function ChanarAcl() {
           return !!st && (st.missing.includes(role as ChanarRole) || st.clashed.has(role));
         }}
         stuckTitle={(g, role) => (state.get(g)?.missing.includes(role as ChanarRole)
-          ? tr('Зохиогчоос өөр хянагч алга — энэ багцын баримт батлагдахгүй')
-          : tr('Нэг хүн хоёр үүрэгт — баримт гацна'))}
+          ? tr('Энэ үүрэгт зохиогчоос өөр хүн томилоогүй')
+          : tr('Нэг хүн хоёр үүрэгт — үүрэг тус бүрд өөр хүн томилохыг зөвлөнө'))}
         /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
         candidates={(g, role) => {
           const list = holdersOf(g, role).map((h) => h.user);
-          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+          return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
+            .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}
         onAdd={(g, role, u) => addTo(g, role as ChanarRole, u)}
         onRemove={(g, role, h) => removeFrom(g, role as ChanarRole, h.user)}

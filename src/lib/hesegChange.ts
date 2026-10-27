@@ -1,13 +1,14 @@
 import { t as tr } from '@/lib/i18nCore';
-import * as query from '@arcgis/core/rest/query';
 import Query from '@arcgis/core/rest/support/Query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import Polyline from '@arcgis/core/geometry/Polyline';
 import * as projectOperator from '@arcgis/core/geometry/operators/projectOperator';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
-import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneType } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneCanon, zoneType } from '@/lib/services';
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
+import { queryPageSafe } from '@/lib/planOverlap';
+import { register } from '@/lib/dataBus';
 
 /**
  * «ХЭСЭГЧИЛСЭН ЕТ» → 01 ЕРӨНХИЙ ТӨЛӨВЛӨГӨӨНИЙ ӨӨРЧЛӨЛТ (2026-10-13, хэрэглэгчийн заавар).
@@ -64,7 +65,7 @@ const KHIL_ID = 'khil1';
 const RD_ZONE = 'rd:2';
 
 type Geom = __esri.GeometryUnion;
-type Feat = { geom: Geom; zone: string | null; layer: string; oid: number };
+type Feat = { geom: Geom; zone: string | null; layer: string; oid: number; code?: string };
 
 /** Applied as real FeatureLayerView filters on each side of the comparison. */
 export type ChangeFilter = { ids: string[]; where?: string; geometry?: Geom };
@@ -134,7 +135,7 @@ export function compareChangeQuantity(r: Pick<ChangeRow, 'old' | 'nextCmp' | 'ol
   return { delta, percent: r.old > 0 ? delta / r.old * 100 : null, status: r.oldComplete && r.nextComplete ? 'complete' : 'partial' };
 }
 
-async function fetchFeats(id: string, zoneField: string | null): Promise<Feat[]> {
+async function fetchFeats(id: string, zoneField: string | null, codeField: string | null = null): Promise<Feat[]> {
   const def = LAYER_BY_ID[id];
   if (!def) throw new Error(`«${id}» давхарга бүртгэлгүй`);
   const u = layerUrl(def);
@@ -142,24 +143,44 @@ async function fetchFeats(id: string, zoneField: string | null): Promise<Feat[]>
   for (let start = 0; ; ) {
     const q = new Query({
       where: def.where ?? '1=1',
-      outFields: zoneField ? [oidOf(def), zoneField] : [oidOf(def)],
+      outFields: [oidOf(def), ...(zoneField ? [zoneField] : []), ...(codeField ? [codeField] : [])],
       returnGeometry: true,
       outSpatialReference: { wkid: WKID },
       orderByFields: [`${oidOf(def)} ASC`],
       start,
       num: 2000,
     });
-    const res = await query.executeQueryPBF(u, q).catch(() => query.executeQueryJSON(u, q));
+    /* ⚠️ 2026-10-19 (аудит): токенгүй `f=pbf` 400 → нэвтрэх цонх хүлээж `computeChange` ХЭЗЭЭ Ч шийдэгддэггүй байв
+       (01-ийн самбар үүрд эргэлддэг) — хугацаатай, цонхгүй PBF → JSON (`planOverlap.queryPageSafe`-ийн ⚠️). */
+    const res = await queryPageSafe(u, q);
     for (const f of res.features) {
       if (!f.geometry) continue;
       const z = zoneField ? f.attributes?.[zoneField] : null;
-      out.push({ geom: f.geometry as Geom, zone: typeof z === 'string' && z.trim() ? z.trim() : null, layer: id, oid: Number(f.attributes?.[oidOf(def)]) });
+      out.push({
+        geom: f.geometry as Geom, zone: typeof z === 'string' && z.trim() ? z.trim() : null, layer: id, oid: Number(f.attributes?.[oidOf(def)]),
+        ...(codeField ? { code: zoneCanon(f.attributes?.[codeField]) } : {}),
+      });
     }
     if (!res.features.length) break;
     if (res.features.length < 2000 && !res.exceededTransferLimit) break;
     start += res.features.length;
   }
   return out;
+}
+
+/**
+ * Хуучин ЕТ-ийн бүсийг КАНОНИК кодоор давхардалгүй (oid ASC — эхнийх үлдэнэ; кодгүй мөр тус бүр).
+ * ⚠️ 2026-10-26 (аудит): `selbe_ET/100`-д X-13 хоёр мөртэй (objectid 12 ба 47) — 01-ийн «бүсийн тоо» 58 гэж тоологддог байв
+ *    (анализ, бүсийн шүүлт 57). objectid 12 (нүхтэй) үлдэнэ — `analysis/data.dedupeZoneFeats`-ийн сонголттой нэг.
+ */
+export function dedupeZoneCodes<T extends { code?: string }>(fs: T[]): T[] {
+  const seen = new Set<string>();
+  return fs.filter((f) => {
+    if (!f.code) return true;
+    if (seen.has(f.code)) return false;
+    seen.add(f.code);
+    return true;
+  });
 }
 
 export const measureChangeGeometry = (g: Geom, m: Metric): number => {
@@ -172,6 +193,56 @@ const measure = measureChangeGeometry;
 
 const union = async (gs: Geom[]): Promise<Geom | null> =>
   gs.length === 0 ? null : gs.length === 1 ? gs[0] : ((await geometryEngineAsync.union(gs)) as Geom | null);
+
+/**
+ * ДАВХАРДАЛГҮЙ ТАЛБАЙ — полигонуудыг НЭГТГЭЭД геодезийн талбай.
+ * ⚠️ 2026-10-19 (аудит): урьд нь полигон бүрийн талбайг НЭМДЭГ байв — ногоон байгууламжийн зургаан давхарга (мөн
+ *    давхарга доторх) хоорондоо давхцдаг тул давхцсан хэсэг 2–3 дахин тоологдож, бүсийн задлалын хувь 100%-иас
+ *    давдаг байлаа. Уртын замын `centerlines` давхаргыг нэгтгэдэгтэй ижил дүрэм.
+ */
+const areaOf = async (fs: { geom: Geom }[]): Promise<number> => {
+  const u = await union(fs.map((f) => f.geom));
+  return u ? measureChangeGeometry(u, 'area') : 0;
+};
+
+/** Тэгш өнцөгт хүрээ (3857 нэгж) */
+export type ChangeBox = { xmin: number; ymin: number; xmax: number; ymax: number };
+/** Хүрээнүүдийн нэгдэл; хоосон бол `null`. Цэвэр функц. */
+export function changeBoxUnion(bs: ReadonlyArray<ChangeBox | null | undefined>): ChangeBox | null {
+  let out: ChangeBox | null = null;
+  for (const b of bs) {
+    if (!b || ![b.xmin, b.ymin, b.xmax, b.ymax].every(Number.isFinite)) continue;
+    out = out
+      ? { xmin: Math.min(out.xmin, b.xmin), ymin: Math.min(out.ymin, b.ymin), xmax: Math.max(out.xmax, b.xmax), ymax: Math.max(out.ymax, b.ymax) }
+      : { xmin: b.xmin, ymin: b.ymin, xmax: b.xmax, ymax: b.ymax };
+  }
+  return out;
+}
+/**
+ * ТӨСЛИЙН ХҮРЭЭНЭЭС ХОЛ («ТЭНЭСЭН») ОБЪЕКТЫГ ХАСНА — хүрээ нь `ref`-ийг `margin`-аар тэлсэнтэй огтлолцохгүй бол.
+ * Хүрээгүй (цэг г.м.) объект үлдэнэ; `ref` байхгүй бол юу ч хасахгүй. Цэвэр функц (тест).
+ * ⚠️ 2026-10-19 (аудит): хуучин ЕТ-ийн «Автозам» (TD/85) дотор Сэлбээс ХОЛ нэг полигон бий (`ChangeMapFocus`-ийн
+ *    2026-10-16-ны ⚠️ — зураг тивийн хэмжээнд холддог байв). Зураг үүнийг тойрсон ч хуучин талын ОБЪЕКТЫН ТОО ба
+ *    ТАЛБАЙ-д тоологдсоор байв. Одоо харьцуулалтад орохоос ӨМНӨ хасна.
+ */
+export function strayFree<T>(fs: readonly T[], boxOf: (f: T) => ChangeBox | null | undefined, ref: ChangeBox | null, margin: number): T[] {
+  if (!ref) return [...fs];
+  const r = { xmin: ref.xmin - margin, ymin: ref.ymin - margin, xmax: ref.xmax + margin, ymax: ref.ymax + margin };
+  return fs.filter((f) => {
+    const b = boxOf(f);
+    return !b || (b.xmax >= r.xmin && b.xmin <= r.xmax && b.ymax >= r.ymin && b.ymin <= r.ymax);
+  });
+}
+/** Төслийн хүрээний тэлэлт — ГАЗРЫН 5 км (`strayMargin`-аар 3857-ийн нэгж рүү хөрвүүлнэ) */
+const STRAY_GROUND_M = 5_000;
+/**
+ * Газрын `groundM` метр → EPSG:3857-ийн нэгж, `y` (3857-ийн өргөрөг) дээр. Цэвэр функц (тест).
+ * ⚠️ 2026-10-19 (review): урьд нь 3857-ийн 5 000 нэгжийг шууд хэрэглэдэг тул 47.9°N-д газар дээр ~3.35 км л байв
+ *    (3857-ийн масштаб 1/cos(өргөрөг) ≈ 1.49). Одоо `1/cos(φ) = cosh(y / R)` (`hesegNeed`-ийн `metersPerUnit`-тэй ижил).
+ */
+export function strayMargin(groundM: number, y: number): number {
+  return groundM * Math.cosh(y / 6378137);
+}
 
 /** The old registered road/roadOld services are simulation lines, not corresponding centerlines.
  * Derive all three road types from their supplied polygon layers by the same method. */
@@ -226,20 +297,37 @@ async function centerlines(fs: Feat[]): Promise<{ features: Feat[]; resolutionM:
 
 /** ⚠️ Модулийн кэш (статик төлөвлөгөөний өгөгдөл) — алдаа гарвал устгана */
 let changeCache: Promise<ChangeResult> | null = null;
+/* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) хаяна — урьд нь сешн дуустал үлддэг байв */
+register(() => { changeCache = null; }, []);
+/**
+ * ⚠️ 2026-10-19 (аудит): БҮХ ТООЦООНЫ ДЭЭД ХУГАЦАА — хуудас бүр `queryPageSafe`-ээр хугацаатай ч геометрийн worker
+ *    гацвал самбар үүрд эргэлдэхгүй, алдаа харуулж дараагийн нээлтэд дахин оролдоно.
+ */
+const CHANGE_TIMEOUT_MS = 4 * 60_000;
 
 export function computeChange(): Promise<ChangeResult> {
-  changeCache ??= (async (): Promise<ChangeResult> => {
+  if (changeCache) return changeCache;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(tr('Тооцоо хэт удаж байна ({0} мин) — дахин нээж оролдоно уу.', CHANGE_TIMEOUT_MS / 60_000))), CHANGE_TIMEOUT_MS);
+  });
+  const work = (async (): Promise<ChangeResult> => {
     const failed: string[] = [];
     const failedIds = new Set<string>();
-    const load = (id: string, zoneField: string | null = null) => fetchFeats(id, zoneField).catch((e) => {
+    const load = (id: string, zoneField: string | null = null, codeField: string | null = null) => fetchFeats(id, zoneField, codeField).catch((e) => {
       console.warn(`[selbe] хэсэгчилсэн ЕТ: «${id}» татагдсангүй:`, e);
       failed.push(LAYER_BY_ID[id]?.title ?? id);
       failedIds.add(id);
       return [] as Feat[];
     });
-    const [zones, oldZones, khilF] = await Promise.all([
-      load(RD_ZONE, ZONE_FIELD), load(ZONE_LAYER.id, ZONE_FIELDS.type), load(KHIL_ID),
+    const [zones, oldZonesAll, khilF] = await Promise.all([
+      load(RD_ZONE, ZONE_FIELD), load(ZONE_LAYER.id, ZONE_FIELDS.type, ZONE_FIELDS.id).then(dedupeZoneCodes), load(KHIL_ID),
     ]);
+    /* ⚠️ 2026-10-19 (аудит): ТӨСЛИЙН ХҮРЭЭ — шинэ бүс + «Сэлбэ 1 хил»; хуучин талаас түүнээс хол объектыг хасна (`strayFree`) */
+    const aoi = changeBoxUnion([...zones, ...khilF].map((f) => f.geom.extent));
+    const margin = aoi ? strayMargin(STRAY_GROUND_M, (aoi.ymin + aoi.ymax) / 2) : 0;
+    const near = (fs: Feat[]) => strayFree(fs, (f) => f.geom.extent, aoi, margin);
+    const oldZones = near(oldZonesAll);
     /* Автозамын харьцуулах хүрээ — «Сэлбэ 1 хил» */
     const khil = await union(khilF.map((f) => f.geom));
     /* Харьцуулалтын хүрээ — хуучин ЕТ-ийн «Олон нийтийн бүс»-үүдийн нэгдэл */
@@ -270,10 +358,12 @@ export function computeChange(): Promise<ChangeResult> {
 
     const rows = await Promise.all(CHANGE_ITEMS.map(async (it): Promise<ChangeRow> => {
       const [nowF, nextF] = await Promise.all([
-        it.key === 'zone' ? Promise.resolve(oldZones) : Promise.all(it.now.map((id) => load(id))).then((x) => x.flat()),
+        it.key === 'zone' ? Promise.resolve(oldZones) : Promise.all(it.now.map((id) => load(id))).then((x) => near(x.flat())),
         it.key === 'zone' ? Promise.resolve(zones) : Promise.all(it.next.map((id) => load(id))).then((x) => x.flat()),
       ]);
       const sum = (fs: Feat[]) => fs.reduce((a, f) => a + measure(f.geom, it.metric), 0);
+      /* ⚠️ 2026-10-19 (аудит): ТАЛБАЙ нь нэгтгэсэн полигоноор (`areaOf`-ийн ⚠️); тоо · урт хэвээр */
+      const total = (fs: Feat[]): Promise<number> => (it.metric === 'area' ? areaOf(fs) : Promise.resolve(sum(fs)));
       const area = it.old === 'khil' ? khil : it.old === 'red' ? red : null;
       // Object counts and areas continue to use source polygon records, not skeleton edges.
       const oldSource = it.old === 'all' ? nowF : it.old ? await inArea(nowF, 'area', area) : [];
@@ -300,7 +390,7 @@ export function computeChange(): Promise<ChangeResult> {
         /* ⚠️ 2026-10-14 (хэрэглэгч: «…тэнхлэг бүрэн тооцогдоогүй» анхааруулгыг хасуулсан) — самбарт
            харуулахгүй; давхарга ачаалагдаагүй зэрэг бусад алдаа `failed`-д хэвээр */
       }
-      const next = sum(nextFs);
+      const next = await total(nextFs);
       const oldSourceComplete = it.old !== null && !it.now.some((id) => failedIds.has(id))
         && (it.old === 'all' || (!failedIds.has(it.old === 'khil' ? KHIL_ID : ZONE_LAYER.id) && area !== null));
       const nextSourceComplete = !it.next.some((id) => failedIds.has(id))
@@ -348,7 +438,7 @@ export function computeChange(): Promise<ChangeResult> {
           const geometry = it.old === 'khil' && khil
             ? (await geometryEngineAsync.intersect(zg, khil)) as Geom | null : zg;
           const parts = await inArea(nextFs, it.metric, geometry);
-          const v = sum(parts);
+          const v = await total(parts);
           if (v > 0.5) groups.push({ label, value: v, geometry, ...await groupData(geometry) });
         }
         /* Measure actual outside portions; centerline lengths are now additive across disjoint zones. */
@@ -356,7 +446,7 @@ export function computeChange(): Promise<ChangeResult> {
           ? (await geometryEngineAsync.difference(nextFs.map((f) => f.geom), allZones)) as unknown as (Geom | null)[]
           : nextFs.map((f) => f.geom);
         const outsideFs = outside.flatMap((geom, i) => geom && measure(geom, it.metric) > 0 ? [{ ...nextFs[i], geom }] : []);
-        const rest = sum(outsideFs);
+        const rest = await total(outsideFs);
         if (rest > Math.max(1, next * 0.005)) {
           /* Зурагт эх полигоны бүсээс гадуурх хэсгээр шүүнэ — тэнхлэгийн геометрээр БИШ. */
           const sourceOutside = allZones && nextSource.length
@@ -370,21 +460,29 @@ export function computeChange(): Promise<ChangeResult> {
         }
       } else groups = [];
       groups.sort((a, b) => b.value - a.value);
-      /* ХУУЧИН/ШИНЭ харьцуулалт — дээрх ⚠️ */
+      /* ХУУЧИН/ШИНЭ харьцуулалт — дээрх ⚠️. Талбай — нэгтгэсэн полигоноор (`areaOf`) */
+      const [oldVal, oldArea, nextArea] = await Promise.all([
+        oldMeasurement.available ? oldRef != null ? Promise.resolve(oldRef) : total(oldFs) : Promise.resolve(null),
+        oldSourceComplete ? areaOf(oldSource) : Promise.resolve(null),
+        areaOf(nextSource),
+      ]);
       return {
-        key: it.key, next, nextCmp: next, old: oldMeasurement.available ? oldRef ?? sum(oldFs) : null,
+        key: it.key, next, nextCmp: next, old: oldVal,
         oldN: oldSourceComplete ? oldSource.length : null, nextN: nextSource.length,
         oldLayersN: oldSourceComplete ? new Set(oldSource.map((f) => f.layer)).size : null,
         nextLayersN: new Set(nextSource.map((f) => f.layer)).size,
-        oldArea: oldSourceComplete ? oldSource.reduce((a, f) => a + measure(f.geom, 'area'), 0) : null,
-        nextArea: nextSource.reduce((a, f) => a + measure(f.geom, 'area'), 0),
+        oldArea,
+        nextArea,
         oldComplete, nextComplete, oldSourceComplete, nextSourceComplete, oldScope: it.old, area, filters, pieces, groups, centerlineResolutionM, boundary,
         oldMeasurementAvailable: oldMeasurement.available, nextMeasurementAvailable: nextMeasurement.available,
       };
     }));
-    /* A transient failed fetch must be retryable on the next visit. */
-    if (failed.length) changeCache = null;
     return { rows, failed: [...new Set(failed)] };
-  })().catch((e) => { changeCache = null; throw e; });
-  return changeCache;
+  })();
+  const p = Promise.race([work, late]).finally(() => clearTimeout(timer));
+  changeCache = p;
+  /* A transient failed fetch must be retryable on the next visit. ⚠️ Зөвхөн ӨӨРИЙН кэш (дунд нь «Шинэчлэх» орж болно). */
+  p.then((r) => { if (r.failed.length && changeCache === p) changeCache = null; },
+    () => { if (changeCache === p) changeCache = null; });
+  return p;
 }

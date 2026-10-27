@@ -23,7 +23,7 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import { date } from '@/lib/format';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 import { ZovshoorolEdit } from './ZovshoorolEdit';
 import s from './zovshoorol.module.css';
 
@@ -257,7 +257,7 @@ export function Zovshoorol() {
      алдагдаж, дэлгэц анивчдаг байв. Дахин татах зуур хуучин жагсаалт үлдэж,
      толгойд жижиг «Ачаалж байна…» гарна; унавал доорх алдааны дэлгэц рүү шилжинэ
      («хуучин тоо чимээгүй үлдэхгүй»). */
-  if (busy && rows == null) return <div className={s.wrap}><div className={s.notice}>{tr('Ачаалж байна…')}</div></div>;
+  if (busy && rows == null) return <div className={s.wrap}><Loading /></div>;
 
   if (rows == null) {
     return (
@@ -321,7 +321,7 @@ export function Zovshoorol() {
             className={s.btn}
             onClick={() => setN((x) => x + 1)}
             disabled={busy}
-            title={tr('Дахин ачаалах')}
+            title={tr('Дахин ачаалах')} aria-label={tr('Дахин ачаалах')}
           >
             ↻
           </button>

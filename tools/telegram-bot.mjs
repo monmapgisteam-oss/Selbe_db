@@ -29,9 +29,15 @@
  */
 process.env.TZ ||= 'Asia/Ulaanbaatar';
 
-import { readFileSync, writeFileSync, existsSync, renameSync, copyFileSync } from 'node:fs';
-import { toHtml, stripHtml } from './telegram-format.mjs';
-import { botFullViews } from './telegram-views.mjs';
+import { readFileSync, existsSync } from 'node:fs';
+import { toHtmlChunks, stripHtml } from './telegram-format.mjs';
+import { botFullViews, grantWithin } from './telegram-views.mjs';
+/* ⚠️ 2026-10-22 (аудит): хэрэглэгчийн файл — гар засвар тусна, бичихдээ нэгтгэнэ; хасах эрх (`telegram-users.mjs`) */
+import { canRevoke, createUsersStore, writeAtomic } from './telegram-users.mjs';
+/* ⚠️ 2026-10-22 (аудит): серверийн уншилтын токен — Organization-only өгөгдөл (`telegram-arcgis.mjs`) */
+import {
+  BOT_TOKEN_MISSING_TEXT, BOT_TOKEN_REJECTED_TEXT, botAuthConfig, botAuthErrorText, createBotCredential,
+} from './telegram-arcgis.mjs';
 
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -110,64 +116,52 @@ if (!ADMINS.size) {
   process.exit(1);
 }
 
+/**
+ * ⚠️ 2026-10-22 (аудит): ArcGIS-ийн УНШИЛТЫН ТОКЕН (`telegram-arcgis.mjs`-ийн ⚠️) — `NEXT_PUBLIC_PORTAL_URL`-ын порталаас.
+ *    Тохируулаагүй (`none`) бол бот асна (админ хэрэглэгч удирдах боломжтой), харин асуулт бүрд ТОДОРХОЙ алдаа буцаана —
+ *    реле/AI-г дэмий дуудахгүй. Нууц ХЭЗЭЭ Ч логт гарахгүй.
+ */
+const BOT_AUTH = botAuthConfig(process.env);
+const arcgisAuth = createBotCredential(BOT_AUTH, { portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL ?? '' });
+
 /* ── Зөвшөөрөгдсөн хэрэглэгчид (файлд хадгалагдана) ── */
 
 /**
- * ⚠️ 2026-10-09: АТОМ БИЧИЛТ — эхлээд түр файлд бичээд `rename`-ээр солино. Урьд шууд
- *    `writeFileSync` хийдэг байсан тул бичих дундуур процесс унавал (контейнер зогсох, диск
- *    дүүрэх) файл ХАГАС үлдэж, дараагийн асалтад зөвшөөрөгдсөн бүх хэрэглэгч алдагддаг байв.
+ * ⚠️ 2026-10-22 (аудит): ФАЙЛ НЬ ҮНЭН — урьд нь асахдаа НЭГ удаа уншиж, хадгалах бүрд санах ойн хуулбараа бүтнээр нь дарж
+ *    бичдэг тул админы гар засвар (хүн хасах) дараагийн «✅ Зөвшөөрөх»-өөр буцаж, гараар хассан хүн ажиллаж буй ботод
+ *    эрхтэй хэвээр байв. Одоо `telegram-users.mjs`: эрхийн шалгалт бүрд файл өөрчлөгдсөн эсэхийг (`mtime`) харж дахин
+ *    уншина; бичихийн ӨМНӨ дахин уншаад ЗӨВХӨН тэр ID-г өөрчилнө (нэгтгэнэ). Эвдэрсэн файлыг ДАРЖ БИЧИХГҮЙ (2026-10-09-ний
+ *    дүрэм хэвээр: асахдаа эвдэрсэн бол хоосноор эхэлж нөөц хуулбар үлдээнэ).
  */
-function writeAtomic(file, text) {
-  const tmp = `${file}.tmp-${process.pid}`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, file);
-}
+const usersStore = createUsersStore(USERS_FILE);
+usersStore.load();
+
+/** Эцсийн эрх: админ (env) эсвэл зөвшөөрөгдсөн хэрэглэгч (файл — гар засвар шууд тусна) */
+const scopeOf = (id) => ADMINS.get(id) ?? usersStore.get(id)?.views ?? null;
 
 /**
- * Файл эвдэрсэн үед (уншигдсан ч задлагдаагүй) ДАРЖ БИЧИХГҮЙ — `true` бол `saveUsers` татгалзана.
- * ⚠️ 2026-10-09: урьд задлагдахгүй файлыг `{}` гэж эхлүүлээд дараагийн зөвшөөрөлд ХООСОН
- *    жагсаалтаар дарж бичдэг байсан тул бүх зөвшөөрөгдсөн хэрэглэгч чимээгүй устдаг байв.
- *    Одоо нөөц хуулбар (`*.corrupt-<агшин>`) үлдээж, логт хэлээд файлд хүрэхгүй.
+ * ЗӨВШӨӨРСӨН ХЭРЭГЛЭГЧИЙН ЭРХИЙГ ХАСАХ — `/revoke <id>` ба «❌» товч (⚠️ 2026-10-22, аудит).
+ * ⚠️ ЯАГААД: «✅»-ийн дараа хүсэлтийн мессеж товчгүй болж, `/revoke` байгаагүй тул ГАНЦ админ зөвшөөрсөн хүнээ хасах
+ *    замгүй байв (файлыг гараар засахаас өөр — тэр нь ч дарагддаг байв, дээрх ⚠️).
+ * ⚠️ Хүрээний дүрэм «✅ Зөвшөөрөх»-тэй ИЖИЛ (`canRevoke` ↔ `grantWithin`): хязгаартай админ зөвхөн өөрийн хүрээнд бүрэн
+ *    багтах хэрэглэгчийг хасна. `.env`-ийн админыг ботоор хасахгүй (тохиргооноос).
+ * @returns {string} админд хариулах текст
  */
-let usersFileBroken = false;
-
-/** `{ "<id>": { views: 'all'|string[], name: string, at: string } }` */
-function loadUsers() {
-  if (!existsSync(USERS_FILE)) return {};
-  try {
-    const data = JSON.parse(readFileSync(USERS_FILE, 'utf8'));
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('объект биш');
-    return data;
-  } catch (e) {
-    usersFileBroken = true;
-    const backup = `${USERS_FILE}.corrupt-${Date.now()}`;
-    try {
-      copyFileSync(USERS_FILE, backup);
-      console.error(`[bot] ⛔ ${USERS_FILE} уншигдсангүй: ${e.message} — нөөц: ${backup}. Файлыг ДАРЖ БИЧИХГҮЙ; засаад ботыг дахин асаана уу.`);
-    } catch (e2) {
-      console.error(`[bot] ⛔ ${USERS_FILE} уншигдсангүй: ${e.message}; нөөц хуулж чадсангүй: ${e2.message}. Файлыг ДАРЖ БИЧИХГҮЙ.`);
-    }
-    return {};
+function revokeUser(adminId, targetId) {
+  if (!/^\d+$/.test(targetId || '')) return 'Хэрэглээ: /revoke <Telegram ID> — ID-г /users-ээс харна.';
+  if (ADMINS.has(targetId)) return 'Энэ ID нь админ (TELEGRAM_ALLOWED) — ботоор хасагдахгүй, тохиргооноос хасна.';
+  const u = usersStore.get(targetId);
+  if (!u) return `${targetId}: зөвшөөрөгдсөн хэрэглэгчдийн жагсаалтад алга.`;
+  if (!canRevoke(ADMINS.get(adminId), u.views)) {
+    return `${targetId}: таны эрхийн хүрээнээс өргөн эрхтэй — зөвхөн бүх эрхтэй админ хасна.`;
   }
+  const saved = usersStore.update((d) => { delete d[targetId]; });
+  /* Хасагдсан хүний ярианы түүх (эрхээр нь татсан өгөгдөлтэй) үлдэхгүй */
+  for (const k of chats.keys()) if (k.endsWith(`:${targetId}`)) chats.delete(k);
+  void reply(targetId, 'Эрхийг хаслаа — хандалт хаагдлаа.').catch(() => {});
+  console.log(`[bot] ${adminId} → ${targetId}: эрхийг хаслаа${saved ? '' : ' (файлд хадгалагдсангүй)'}`);
+  return `Эрхийг хаслаа: ${targetId}${u.name ? ` · ${u.name}` : ''}${saved ? '' : ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)'}`;
 }
-const users = loadUsers();
-/** `false` — хадгалсангүй (файл эвдэрсэн эсвэл бичих алдаа) */
-function saveUsers() {
-  if (usersFileBroken) {
-    console.error(`[bot] ⛔ ${USERS_FILE} эвдэрсэн тул хадгалсангүй (өөрчлөлт зөвхөн санах ойд).`);
-    return false;
-  }
-  try {
-    writeAtomic(USERS_FILE, JSON.stringify(users, null, 2) + '\n');
-    return true;
-  } catch (e) {
-    console.error(`[bot] ${USERS_FILE} бичигдсэнгүй: ${e.message}`);
-    return false;
-  }
-}
-
-/** Эцсийн эрх: админ (env) эсвэл зөвшөөрөгдсөн хэрэглэгч (файл) */
-const scopeOf = (id) => ADMINS.get(id) ?? users[id]?.views ?? null;
 
 /* ── Telegram API ── */
 
@@ -191,10 +185,11 @@ async function tg(method, body) {
 const NO_PREVIEW = { link_preview_options: { is_disabled: true } };
 
 /** ⚠️ Telegram-ийн мессеж 4096 тэмдэгтээр хязгаартай — урт хариултыг хуваана */
+/* ⚠️ 2026-10-21 (аудит): HTML-ийг 3800-аар хайчлахаа болив — markdown-ийн мөрийн хил дээр хувааж, хэсэг бүрийг тусад нь
+   хөрвүүлнэ (`telegram-format.toHtmlChunks`): таг/entity дундуур таслагдахгүй, хүснэгт `<pre>` бүтэн. Доорх цэвэр
+   текстийн нөөц зам хэвээр (Telegram-ийн бусад 400-д). */
 async function reply(chatId, text, extra = {}) {
-  const html = toHtml(text);
-  for (let i = 0; i < html.length; i += 3800) {
-    const chunk = html.slice(i, i + 3800);
+  for (const chunk of toHtmlChunks(text)) {
     try {
       await tg('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'HTML', ...NO_PREVIEW, ...extra });
     } catch (e) {
@@ -397,6 +392,10 @@ async function withSlot(fn) {
  *    URL-ыг Telegram руу ГАРГАХГҮЙ — дэлгэрэнгүй нь зөвхөн консолын логт.
  */
 function userErrorText(e) {
+  /* ⚠️ 2026-10-22 (аудит): ТОКЕНЫ алдаа (499 «Token Required» · 498) нь түр саатал БИШ — тохируулаагүй/татгалзсан гэж
+     ТОДОРХОЙ хэлнэ (`telegram-arcgis.botAuthErrorText`). Урьд нь «түр хүлээгээд дахин оролдоно уу» гэж төөрөгдүүлдэг байв. */
+  const tok = botAuthErrorText(e, BOT_AUTH.mode);
+  if (tok) return tok;
   if (e?.name === 'ArcGISError' || (e && typeof e === 'object' && 'url' in e)) {
     return 'ArcGIS үйлчилгээ хариу өгсөнгүй — түр хүлээгээд дахин оролдоно уу.';
   }
@@ -404,6 +403,9 @@ function userErrorText(e) {
   return msg.replace(/https?:\/\/\S+/g, '[хаяг]');
 }
 
+/* ⚠️ 2026-10-26 (аудит): санхүүгийн жишээ ЗӨВХӨН санхүүгийн эрхтэй (`pkgFin`) хүнд — «✅ Зөвшөөрөх» эрх (`FULL_VIEWS`) санхүүгүй
+   тул тэр жишээ «эрх алга» мухардалд хүргэдэг байв. `helpOf(scope)`. */
+const FIN_EXAMPLE = '  • Багц 6.1-ийн гэрээний дүн хэд вэ?';
 const HELP = [
   'Сэлбэ төслийн AI туслах.',
   '',
@@ -414,12 +416,24 @@ const HELP = [
   '  • Төсөлд хэдэн барилга байна вэ?',
   '  • Багц 1 мэдээллийг дэлгэрэнгүй харуулаач',
   '  • Барилгын төлөв бүрээр хэдэн барилга вэ?',
-  '  • Багц 6.1-ийн гэрээний дүн хэд вэ?',
+  FIN_EXAMPLE,
   '  • ХАБЭА-гийн сүүлийн тайлангаар хэдэн ажилтан байна?',
   '',
   'Тушаал:',
   '  /new  — яриаг шинээр эхлүүлэх',
   '  /help — энэ заавар',
+].join('\n');
+
+const helpOf = (scope) => (scope === 'all' || (Array.isArray(scope) && scope.includes('pkgFin'))
+  ? HELP
+  : HELP.split('\n').filter((l) => l !== FIN_EXAMPLE).join('\n'));
+
+/* ⚠️ 2026-10-22 (аудит): админы тушаал — зөвхөн админд харагдана */
+const ADMIN_HELP = [
+  '',
+  'Админ:',
+  '  /users — зөвшөөрсөн хэрэглэгчид (ID · нэр · эрх)',
+  '  /revoke <ID> — хэрэглэгчийн эрхийг хасах',
 ].join('\n');
 
 /* ── Шинэ хэрэглэгчийн хүсэлт ── */
@@ -497,32 +511,43 @@ async function handleCallback(cb) {
   }
 
   let note;
+  /** ⚠️ 2026-10-22 (аудит): зөвшөөрсний дараа мессежид «❌ Эрхийг хасах» товч үлдэнэ (урьд нь товчгүй болдог байв) */
+  let keepRevoke = false;
   if (action === 'no') {
     pending.delete(targetId);
     saveAccess();
     /* ⚠️ 2026-10-11 (аудит №7): аль хэдийн ЗӨВШӨӨРӨГДСӨН хэрэглэгчид ❌ дарахад урьд нь зөвхөн `pending`
        цэвэрлэгдэж `users`-ийн мөр үлддэг тул эрх хасагддаггүй байв — одоо мөрийг устгаж хадгална. */
-    if (users[targetId]) {
-      delete users[targetId];
-      const saved = saveUsers();
-      note = 'Эрхийг хаслаа';
-      if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
-      await reply(targetId, 'Эрхийг хаслаа — хандалт хаагдлаа.').catch(() => {});
+    /* ⚠️ 2026-10-22 (аудит): `/revoke`-той НЭГ зам (`revokeUser`) — хүрээний дүрэм · файл нэгтгэх · түүх цэвэрлэх */
+    if (usersStore.get(targetId)) {
+      note = revokeUser(adminId, targetId);
+      keepRevoke = !note.startsWith('Эрхийг хаслаа');
     } else {
       note = 'Татгалзлаа';
       await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
     }
   } else {
-    const views = action === 'plan' ? PLAN_VIEWS : FULL_VIEWS;
+    /* ⚠️ 2026-10-21 (аудит): ХЯЗГААРТАЙ админ (`<id>:plan|pkgProg`) FULL_VIEWS бүхэлдээ олгодог байв — олгох харагдац ∩
+       админы ӨӨРИЙН хүрээ (`telegram-views.grantWithin`); хүрээнд нь нэг ч байхгүй бол татгалзана. */
+    const own = ADMINS.get(adminId);
+    const views = grantWithin(action === 'plan' ? PLAN_VIEWS : FULL_VIEWS, own);
+    if (!views.length) {
+      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Таны эрхийн хүрээнд олгох харагдац алга', show_alert: true });
+      return;
+    }
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
     // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
-    users[targetId] = { views, name: pending.get(targetId)?.name ?? '', at: new Date().toISOString() };
-    const saved = saveUsers();
+    /* ⚠️ 2026-10-22 (аудит): файлыг дахин уншаад ЗӨВХӨН энэ ID-г нэмнэ — гар засвар дарагдахгүй (`usersStore.update`) */
+    const entry = { views, name: pending.get(targetId)?.name ?? '', at: new Date().toISOString() };
+    const saved = usersStore.update((d) => { d[targetId] = entry; });
+    keepRevoke = true;
     pending.delete(targetId);
     repliedAt.delete(targetId);
     saveAccess();
-    note = action === 'plan' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө';
-    /* ⚠️ 2026-10-09: файлд хадгалагдаагүй бол админд ил хэлнэ (`saveUsers`-ийн ⚠️) — дахин асахад алга болно */
+    note = action === 'plan'
+      ? (own === 'all' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : `Төлөвлөлтийн эрхээр (таны хүрээний ${views.length}) зөвшөөрлөө`)
+      : (own === 'all' ? 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө' : `Таны хүрээний ${views.length} харагдацаар зөвшөөрлөө`);
+    /* ⚠️ 2026-10-09: файлд хадгалагдаагүй бол админд ил хэлнэ (`usersStore.update`-ийн ⚠️) — дахин асахад алга болно */
     if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
     await reply(
       targetId,
@@ -542,6 +567,8 @@ async function handleCallback(cb) {
       chat_id: chatId,
       message_id: messageId,
       text: `${cb.message.text ?? ''}\n\n➡️ ${note} (${adminId})`,
+      /* ⚠️ 2026-10-22 (аудит): зөвшөөрөгдсөн хэвээр бол хасах товч ҮЛДЭНЭ — ганц админ ч дараа нь хасаж чадна */
+      ...(keepRevoke ? { reply_markup: { inline_keyboard: [[{ text: '❌ Эрхийг хасах', callback_data: `no:${targetId}` }]] } } : {}),
     }).catch(() => {});
   }
   console.log(`[bot] ${adminId} → ${targetId}: ${note}`);
@@ -575,7 +602,7 @@ async function handle(msg) {
   }
 
   if (text === '/start' || text === '/help') {
-    await reply(chatId, HELP);
+    await reply(chatId, ADMINS.has(userId) ? `${helpOf(scope)}\n${ADMIN_HELP}` : helpOf(scope));
     return;
   }
   const chatKey = `${chatId}:${userId}`;
@@ -586,20 +613,38 @@ async function handle(msg) {
   }
   // Зөвхөн админд — хэн хандаж байгааг харах
   if (text === '/users' && ADMINS.has(userId)) {
+    /* ⚠️ 2026-10-22 (аудит): НЭРТЭЙ (зөвшөөрөх үед хадгалсан) — урьд нь зөвхөн ID байсан тул хэнийг хасахаа таньдаггүй байв;
+       жагсаалт файлаас (гар засвар тусна) */
+    const all = usersStore.all();
+    const views = (v) => (v === 'all' ? 'бүх' : Array.isArray(v) ? v.join(', ') : '—');
     const lines = [
       'Админ (.env.local):',
       ...[...ADMINS].map(([id, s]) => `  ${id} → ${s === 'all' ? 'бүх' : s.join(', ')}`),
       '',
       `Зөвшөөрсөн (${USERS_FILE}):`,
-      ...(Object.keys(users).length
-        ? Object.entries(users).map(([id, u]) => `  ${id} → ${u.views === 'all' ? 'бүх' : u.views.join(', ')}`)
+      ...(Object.keys(all).length
+        ? Object.entries(all).map(([id, u]) => `  ${id}${u?.name ? ` · ${u.name}` : ''} → ${views(u?.views)}`)
         : ['  (хоосон)']),
+      '',
+      'Эрх хасах: /revoke <ID>',
     ];
     await reply(chatId, lines.join('\n'));
     return;
   }
+  /* ⚠️ 2026-10-22 (аудит): `/revoke <id>` — зөвхөн админ, «✅»-ийн хүрээний дүрмээр (`revokeUser`-ийн ⚠️) */
+  if (/^\/revoke(@\w+)?(\s|$)/.test(text) && ADMINS.has(userId)) {
+    await reply(chatId, revokeUser(userId, text.split(/\s+/)[1] ?? ''));
+    return;
+  }
   if (text.startsWith('/')) {
     await reply(chatId, 'Танихгүй тушаал. /help бичээд заавар харна уу.');
+    return;
+  }
+
+  /* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн токен тохируулаагүй — өгөгдөл огт уншигдахгүй тул AI-г дуудахгүй, ТОДОРХОЙ хэлнэ
+     (урьд нь эх сурвалж бүр «Token Required» авч, «түр хүлээгээд дахин оролдоно уу» гэж төөрөгдүүлдэг байв) */
+  if (BOT_AUTH.mode === 'none') {
+    await reply(chatId, BOT_TOKEN_MISSING_TEXT);
     return;
   }
 
@@ -636,7 +681,10 @@ async function handle(msg) {
     /* ⚠️ 2026-10-09: `botUser` → реле `bot:<id>` (хэрэглэгч бүрийн хурд/төсөв); `withSlot` — нийт зэрэг таг */
     const res = await withSlot(() => ask({ question: text, history, scope, botUser: userId }));
     console.log(`[bot] ${userId}: "${text.slice(0, 60)}" → ${((Date.now() - t0) / 1000).toFixed(1)}с, ${res.turns} эргэлт`);
-    await reply(chatId, res.text);
+    /* ⚠️ 2026-10-22 (аудит): энэ асуултын явцад ArcGIS ботын токеныг татгалзсан бол (хэрэгслийн алдаа загварт л очдог)
+       хариуны доор ТОДОРХОЙ шалтгааныг нэмнэ — загварын «түр саатал» гэсэн тайлбарт итгэхгүй */
+    const authNote = arcgisAuth.rejectedSince(t0) ? `\n\n⚠️ ${BOT_TOKEN_REJECTED_TEXT}` : '';
+    await reply(chatId, `${res.text}${authNote}`);
   } catch (e) {
     // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хариулт хүлээсээр үлдэхгүй
     console.error(`[bot] алдаа: ${e?.message ?? e}`);
@@ -647,7 +695,15 @@ async function handle(msg) {
     await reply(chatId, `Алдаа гарлаа: ${userErrorText(e)}`);
   } finally {
     clearInterval(typing);
-    if (history.length > MAX_HISTORY) history.splice(0, trimCut(history, MAX_HISTORY));
+    /* ⚠️ 2026-10-19 (Claude Opus 5.5): эхнээс нь огтолсон бол үлдсэн бодолтын блокууд «өөр ярианых» болж 400
+       буцдаг — огтолсны ДАРАА бүгдийг хасна (`client.stripThinking`, `AgentChat.trimHistory`-тэй ижил). */
+    if (history.length > MAX_HISTORY) {
+      const cut = trimCut(history, MAX_HISTORY);
+      if (cut > 0) {
+        history.splice(0, cut);
+        stripThinking(history);
+      }
+    }
   }
 }
 
@@ -697,7 +753,15 @@ function dispatchMessage(msg) {
 /* ── Урт татах гогцоо (long polling) ── */
 
 process.env.NEXT_PUBLIC_AGENT_API ||= 'http://127.0.0.1:8787';
-const { ask, relayAlive, AGENT_API } = await import('../src/lib/agent/client.ts');
+/* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн уншилтын итгэмжлэлийг агентын цөмөөс ӨМНӨ бүртгэнэ — `query.ts` (`@/lib/authToken`) ба
+   энэ импорт НЭГ модуль (`src/lib/authToken.ts`) тул бүх эх сурвалжийн хүсэлтэд токен POST биеэр явна, хугацаа дуусахаас
+   өмнө/498-д шинэчлэгдэнэ (`telegram-arcgis.mjs`-ийн ⚠️). Хөтөчийн нэвтрэлт (`AUTH.appId`) унтраалттай хэвээр — реле рүү
+   ArcGIS токен ЯВАХГҮЙ (`client.arcgisToken`), ботын нууцаар батална. */
+if (BOT_AUTH.mode !== 'none') {
+  const { registerIdentity } = await import('../src/lib/authToken.ts');
+  registerIdentity(arcgisAuth, arcgisAuth.sharing);
+}
+const { ask, relayAlive, AGENT_API, stripThinking } = await import('../src/lib/agent/client.ts');
 
 async function main() {
   if (!(await relayAlive())) {
@@ -708,7 +772,21 @@ async function main() {
 
   const me = await tg('getMe', {});
   console.log(`[bot] @${me.username} асаалттай`);
-  console.log(`      админ ${ADMINS.size} · зөвшөөрсөн ${Object.keys(users).length}`);
+  console.log(`      админ ${ADMINS.size} · зөвшөөрсөн ${Object.keys(usersStore.all()).length}`);
+  /* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн токены төлөв — нууцгүй (горим · хугацаа · шалтгаан) */
+  if (BOT_AUTH.mode === 'none') {
+    console.error('[bot] ⚠️ ArcGIS-ийн уншилтын токен тохируулаагүй (ARCGIS_BOT_USERNAME + ARCGIS_BOT_PASSWORD эсвэл ARCGIS_BOT_TOKEN) — Organization-only өгөгдөл уншигдахгүй; асуулт бүрд тодорхой алдаа буцаана.');
+  } else if (!process.env.NEXT_PUBLIC_PORTAL_URL) {
+    console.error('[bot] ⚠️ NEXT_PUBLIC_PORTAL_URL алга — ArcGIS-ийн токен авах портал тодорхойгүй.');
+  } else {
+    try {
+      await arcgisAuth.init();
+      const s = arcgisAuth.status();
+      console.log(`      ArcGIS токен: ${BOT_AUTH.mode === 'password' ? 'нэр/нууц үгээр (автоматаар шинэчилнэ)' : 'тогтмол (ARCGIS_BOT_TOKEN)'}${s.expiresInS != null ? ` · ${Math.round(s.expiresInS / 60)} мин` : ''}`);
+    } catch (e) {
+      console.error(`[bot] ⚠️ ArcGIS-ийн токен авч чадсангүй: ${e?.message ?? e} — хүсэлт бүрд дахин оролдоно.`);
+    }
+  }
   for (const [id, sc] of ADMINS) console.log(`      ${id} → ${sc === 'all' ? 'бүх харагдац' : sc.join(', ')} (админ)`);
 
   let offset = 0;

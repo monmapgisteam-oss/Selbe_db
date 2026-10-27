@@ -181,6 +181,11 @@ console.log('✅ буцаасны дараа — бүтэн дахин унши�
   for (const { key } of CAPS) {
     assert.ok(Array.isArray(CAP_HOST_VIEW[key]),
       `caps.ts: CAP_HOST_VIEW.${key} нь массив биш — хоёрдмол хэлбэр capViewsOf-ыг эвдэнэ`);
+    /* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») САНААТАЙ харагдацгүй — удирдлага нь цэсний товч
+       (`ViewRail.onSysClose`), хуудас нээх утгагүй. Бусад эрх харагдацтай байх ёстой хэвээр. */
+    if (key === 'sysClose') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'sysClose: харагдацгүй байх ёстой'); continue; }
+    /* ⚠️ 2026-10-23: `docsUpload` (баримт бичгийн сан) САНААТАЙ харагдацгүй — сан нь цэсний «Баримт» товчны цонх */
+    if (key === 'docsUpload' || key === 'docsGroups') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'docsUpload: харагдацгүй байх ёстой'); continue; }
     assert.ok(CAP_HOST_VIEW[key].length > 0,
       `caps.ts: CAP_HOST_VIEW.${key} хоосон — эрх нь харагдацгүй, чимээгүй утгагүй`);
   }
@@ -281,7 +286,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   const H = strip(readHv());
   assert.ok(/review\?:\s*HuvaariReview/.test(H), 'Huvaari: `review` prop алга');
   /* Засвар хаалттай: canEdit нь review-д худал */
-  assert.ok(/const canEdit = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H),
+  /* ⚠️ 2026-10-23: эрх (`canEditRole`) ба «Батлагдсан» харагдацын хаалт тусдаа — `canEdit = canEditRole && !savedView` */
+  assert.ok(/const canEditRole = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H) && /const canEdit = canEditRole && !savedView;/.test(H),
     'Huvaari: хяналтын горимд засвар хаагдаагүй (`canEdit`)');
   /* Батлах товч allOk-оор хаалттай */
   const b0 = H.indexOf('{review && (');

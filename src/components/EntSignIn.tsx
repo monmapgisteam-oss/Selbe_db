@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entSession, entSignIn, entSignOut, subscribeEnt } from '@/lib/entDocs';
+import { ENT_PORTAL, entIsShared, entSession, entSignIn, entSignOut, subscribeEnt } from '@/lib/entDocs';
 import { userError } from './ui';
 import s from './entSignIn.module.css';
 
@@ -32,7 +32,9 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
     return (
       <div className={`${s.row} ${compact ? s.compact : ''}`}>
         <span className={s.user}>{sess.user}</span>
-        <button type="button" className={s.link} onClick={() => { entSignOut(); onSignedOut?.(); }}>{tr('Гарах')}</button>
+        {/* ⚠️ 2026-10-26 (аудит): нэг порталын горимд сешн нь үндсэн нэвтрэлтийнх — «Гарах» юу ч хийдэггүй, харин
+            `onSignedOut` жагсаалтыг хоослож Enterprise PDF-үүдийг нуудаг байв. Гарах нь толгойн хэрэглэгчийн цэснээс. */}
+        {!entIsShared() && <button type="button" className={s.link} onClick={() => { entSignOut(); onSignedOut?.(); }}>{tr('Гарах')}</button>}
       </div>
     );
   }
@@ -47,7 +49,8 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
   return (
     <form className={`${s.form} ${compact ? s.compact : ''}`} onSubmit={signIn}>
       <input className={s.input} value={user} onChange={(e) => setUser(e.target.value)}
-        placeholder={tr('Enterprise хэрэглэгчийн нэр')} autoComplete="username" disabled={busy} />
+        /* ⚠️ 2026-10-23 (UX аудит Q7): товч горимд урт placeholder тасардаг байв («…хэрэглэгчийн нэ») — богино бичиг, бүтэн нэр `aria-label`-д */
+        placeholder={tr('Геопорталын нэр')} aria-label={tr('Геопорталын нэр')} autoComplete="username" disabled={busy} />
       <input className={s.input} type="password" value={pass} onChange={(e) => setPass(e.target.value)}
         placeholder={tr('Нууц үг')} autoComplete="current-password" disabled={busy} />
       <button type="submit" className={s.btn} disabled={busy || !user.trim() || !pass}>

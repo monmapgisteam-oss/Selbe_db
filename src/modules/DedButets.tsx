@@ -40,14 +40,11 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import {
-  dropTotalsCache, missingQty, retryTotals, usePlanTotals, usePlanTotalsLive,
-  type LiveTotals, type Totals,
-} from '@/lib/totals';
+import { dropTotalsCache, missingQty, retryTotals, usePlanTotalsLive, type LiveTotals, type Totals } from '@/lib/totals';
 import { PackLayers, Swatch } from '@/components/PackLayers';
 import { List, ListItem, Note, Section, Stat, Stats, friendlyError, userError } from '@/components/ui';
 import {
-  CATALOG_LAYER_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
+  DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
   PKG_FAMILY_BY_BAGTS,
 } from '@/lib/services';
 import { buildPacks, type Pack } from './Bagts';
@@ -59,7 +56,7 @@ import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
 import { CoordPopup } from './DedButetsCoord';
-import { StatusBar, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
+import { StatusBar, statusValsChanged, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
 import {
   applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
   saveGeometry,
@@ -475,10 +472,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const [undoable, setUndoable] = useState<
     | { kind: 'add'; layerId: string; oid: number }
-    | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown> }
+    | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
     | { kind: 'geom'; layerId: string; oid: number; geometry: unknown }
     /* Олон мөрийн засвар — мөр бүр ӨӨРИЙН хуучин утгатай (`DedButetsBatch`) */
-    | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown> }[] }
+    | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] }
     | null
   >(null);
   const [undoBusy, setUndoBusy] = useState(false);
@@ -910,15 +907,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const st = useStatusClasses(stIds, stFill, stEdit, stStat, stBy, canEdit, stPerf);
   const mapStyle = useMemo(() => (st.style ? { ...dotStyle, ...st.style } : dotStyle), [dotStyle, st.style]);
 
-  /** Каталогийн багана — зөвхөн жагсаалт нээлттэй үед татна (Irged-тэй ижил) */
-  /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг
-     нуудаг (`allow`) атал нийлбэр нь БҮХ ~127 давхаргаас татагддаг байв —
-     дэмий хүсэлт, мөн нуусан багцын тоо сүлжээгээр ил явна. */
-  const catIds = useMemo(
-    () => (hidden ? CATALOG_LAYER_IDS.filter(allow) : CATALOG_LAYER_IDS),
-    [hidden, allow],
-  );
-  const catTotals = usePlanTotals(zone, layerOpen, catIds);
+  /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг нуудаг (`allow`) — нуусан багцын тоо
+     сүлжээгээр ил явахгүй. ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн тоог энд БҮГДИЙГ татахгүй — LayerCatalog `totals`-гүй үед
+     зөвхөн НЭЭЛТТЭЙ бүлгийн, `allow`-оор шүүсэн мөрүүдийн тоог өөрөө татна (`totals.useLazyTotals`) — хүрээ хэвээр. */
 
   /** Хоёр баганын урт ба тоо — ЭНЭ цонхны 30 орчим давхаргаар */
   /**
@@ -1185,7 +1176,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           try {
             const meta = await loadLayerMeta(layerId);
             await deleteRow(meta, oid);
-            refreshLayer(layerId);
+            refreshLayer(layerId); statusValsChanged(layerId);
             dropTotalsLater();
             /* ⚠️ Устгасны дараа сонголт ХООСОН — байхгүй мөрийн маягт нээлттэй
                үлдвэл дараагийн «Хадгалах» нь сервер дээр олдохгүй мөр рүү бичнэ. */
@@ -1217,7 +1208,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     try {
       const meta = await loadLayerMeta(reshape.layerId);
       await saveGeometry(meta, reshape.oid, reshaped);
-      refreshLayer(reshape.layerId);
+      refreshLayer(reshape.layerId); statusValsChanged(reshape.layerId);
       dropTotalsLater();
       /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
       setGeomRev((x) => x + 1);
@@ -1258,16 +1249,29 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       try {
         const meta = await loadLayerMeta(u.layerId);
         if (u.kind === 'add') await deleteRow(meta, u.oid);
+        else if (u.kind === 'attr' && u.wrote) {
+          /* ⚠️ 2026-10-21 (кодын аудит): CAS — `revertRows` серверийн одоогийн утгыг дахин уншиж, манай бичсэн
+             (`wrote`) ч хуучин ч биш бол (өөр хэрэглэгч зассан) ДАРАХГҮЙ. Урьд нь `applyAttrs` сохроор бичдэг байв. */
+          const r = await revertRows(meta, [{ oid: u.oid, attrs: u.attrs, wrote: u.wrote }]);
+          if (r.failed.length) {
+            /* Алгассан (бусад зассан) бол дахин оролдох утгагүй — буцаалтыг арилгана; бусад алдаанд үлдээнэ */
+            if (r.skipped?.length) setUndoable(null);
+            toast(tr('Буцаагдсангүй: {0}', r.failed[0].msg), 'err');
+            return;
+          }
+        }
         else if (u.kind === 'attr') await applyAttrs(meta, u.oid, u.attrs);
         else if (u.kind === 'batch') {
           /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭСЭГЧИЛСЭН буцаалт — унасан мөрүүдэд л
              «Үйлдэл буцаах»-ыг үлдээнэ (буцаагдсанг дахин бичихгүй), тоог ил хэлнэ. */
           const r = await revertRows(meta, u.rows);
           if (r.failed.length) {
-            const bad = new Set(r.failed.map((x) => x.oid));
-            refreshLayer(u.layerId);
+            /* ⚠️ 2026-10-21: өөр хэрэглэгч зассан тул АЛГАССАН мөрийг (`skipped`) дахин оролдлогод үлдээхгүй */
+            const skipped = new Set(r.skipped ?? []);
+            const bad = new Set(r.failed.map((x) => x.oid).filter((o) => !skipped.has(o)));
+            refreshLayer(u.layerId); statusValsChanged(u.layerId);
             dropTotalsLater();
-            setUndoable({ ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) });
+            setUndoable(bad.size ? { ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) } : null);
             toast(tr('{0}/{1} объект буцаагдсан, {2} объектод алдаа: {3}. «Үйлдэл буцаах»-аар дахин оролдоно уу.',
               num(r.done.length), num(u.rows.length), num(r.failed.length), r.failed[0].msg), 'err');
             return;
@@ -1278,7 +1282,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
           setGeomRev((x) => x + 1);
         }
-        refreshLayer(u.layerId);
+        refreshLayer(u.layerId); statusValsChanged(u.layerId);
         dropTotalsLater();
         /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
         preGeom.current = null;
@@ -1934,7 +1938,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             </aside>
           )}
           {editMode && awaitDraw && !pick && coordPop && (
+            /* ⚠️ 2026-10-19: `key` — координат/байрлал бүрд ШИНЭ инстанц. `CoordPopup` урьдчилан бөглөх цэгийг
+               (`start`) зөвхөн АНХ үүсэхэд хуулдаг тул нээлттэй цонхтой үед дахин баруун товшиход хуучин
+               координат үлддэг байв. */
             <CoordPopup
+              key={`${coordPop.start?.lat ?? ''},${coordPop.start?.lon ?? ''}|${coordPop.at?.x ?? ''},${coordPop.at?.y ?? ''}`}
               at={coordPop.at}
               start={coordPop.start}
               title={tr('Координатаар цэг тавих')}
@@ -2062,7 +2070,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   onPartial={(back) => {
                     const id = msel.layerId;
                     setUndoable(back ? { ...back, layerId: id } : null);
-                    refreshLayer(id);
+                    refreshLayer(id); statusValsChanged(id);
                     dropTotalsLater();
                   }}
                   onDone={(rows, fields, back) => {
@@ -2076,7 +2084,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     setUndoable(back ? { ...back, layerId: id } : null);
                     /* ⚠️ Дан маягттай ИЖИЛ: давхарга дахин уншуулж, уртын
                        нийлбэрийн кэшийг хаяна (`onDone`-ы тайлбар доор). */
-                    if (rows > 0) { refreshLayer(id); dropTotalsLater(); }
+                    if (rows > 0) { refreshLayer(id); statusValsChanged(id); dropTotalsLater(); }
                     toast(tr('{0} объектын {1} талбар хадгалагдлаа', num(rows), num(fields)));
                     /**
                      * ⚠️ ХАДГАЛСНЫ ДАРАА СОНГОЛТ ЦЭВЭРЛЭГДЭНЭ (2026-09-16).
@@ -2219,7 +2227,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                  * ⚠️ Уртын нийлбэрийн кэш нь тусдаа (`totals.ts`-ийн Map) —
                  * түүнийг хаяхгүй бол зүүн баганын км хуучин утгаараа үлдэнэ.
                  */
-                if (n > 0) { refreshLayer(id); dropTotalsLater(); }
+                if (n > 0) { refreshLayer(id); statusValsChanged(id); dropTotalsLater(); }
                 /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. Хоёрыг нэг
                    мессежээр хэлбэл «хадгалагдсангүй» гэж уншигдана. */
                 toast(created
@@ -2272,7 +2280,6 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 view="dedButets"
                 /* ⚠️ Бусад багцын давхарга каталогт ч гарахгүй (2026-09-23) */
                 allow={hidden ? allow : undefined}
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}

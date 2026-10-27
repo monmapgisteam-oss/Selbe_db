@@ -43,7 +43,7 @@ async function withFetch(reply, fn) {
 
 console.log('\n1. Хоосон засвар — сүлжээнд залгахгүй');
 {
-  const { sent, out } = await withFetch({}, () => applyAll(URL0, 'OBJECTID', {}));
+  const { sent, out } = await withFetch({}, () => applyAll(URL0, 'objectid', {}));
   ok('{ n: 0, oids: [] }', out.n === 0 && out.oids.length === 0);
   ok('хүсэлт явсангүй', sent.length === 0);
 }
@@ -57,12 +57,12 @@ console.log('\n2. Нэмэх · засах · устгах — НЭГ хүсэл
       updateResults: [{ success: true, objectId: 7 }],
       deleteResults: [{ success: true, objectId: 9 }, { success: true, objectId: 10 }],
     },
-    () => applyAll(URL0, 'OBJECTID', {
+    () => applyAll(URL0, 'objectid', {
       adds: [
-        { OBJECTID: 55, GlobalID: '{x}', Shape__Area: 3, ner: 'А', dun: 10, geometry: GEOM },
+        { objectid: 55, globalid: '{x}', SHAPE__Area: 3, ner: 'А', dun: 10, geometry: GEOM },
         { ner: 'Б', dun: 20 },
       ],
-      updates: [{ OBJECTID: 7, dun: 30, EditDate: 123 }],
+      updates: [{ objectid: 7, dun: 30, last_edited_date: 123 }],
       deletes: [9, 10],
     }),
   );
@@ -71,14 +71,14 @@ console.log('\n2. Нэмэх · засах · устгах — НЭГ хүсэл
   ok('`/applyEdits` руу', sent[0].url.endsWith('/applyEdits'), sent[0].url);
   ok('rollbackOnFailure=true', b.get('rollbackOnFailure') === 'true');
   const adds = JSON.parse(b.get('adds'));
-  ok('нэмэх мөрөөс серверийн талбар хасагдав', !('OBJECTID' in adds[0].attributes)
-    && !('GlobalID' in adds[0].attributes) && !('Shape__Area' in adds[0].attributes));
+  ok('нэмэх мөрөөс серверийн талбар хасагдав', !('objectid' in adds[0].attributes)
+    && !('globalid' in adds[0].attributes) && !('SHAPE__Area' in adds[0].attributes));
   ok('геометр АТРИБУТ биш, тусдаа түлхүүр', adds[0].geometry?.spatialReference?.wkid === 102100
     && !('geometry' in adds[0].attributes));
   ok('геометргүй мөрөнд `geometry` түлхүүр алга', !('geometry' in adds[1]));
   const upd = JSON.parse(b.get('updates'));
   ok('засах мөр OID-оо хадгална, серверийн EditDate хасагдав',
-    upd[0].attributes.OBJECTID === 7 && upd[0].attributes.dun === 30 && !('EditDate' in upd[0].attributes));
+    upd[0].attributes.objectid === 7 && upd[0].attributes.dun === 30 && !('last_edited_date' in upd[0].attributes));
   ok('устгах нь таслалаар', b.get('deletes') === '9,10');
   ok('n = 2 нэмсэн + 1 зассан + 2 устгасан = 5', out.n === 5, `${out.n}`);
   ok('oids = ЗӨВХӨН нэмсэн мөрүүд', out.oids.join(',') === '101,102', out.oids.join(','));
@@ -89,7 +89,7 @@ console.log('\n3. `success:false` мөр — HTTP 200 байсан ч АЛДАА
   await assert.rejects(
     () => withFetch(
       { updateResults: [{ success: true, objectId: 1 }, { success: false, error: { description: 'Field dun invalid' } }] },
-      () => applyAll(URL0, 'OBJECTID', { updates: [{ OBJECTID: 1, dun: 1 }, { OBJECTID: 2, dun: 2 }] }),
+      () => applyAll(URL0, 'objectid', { updates: [{ objectid: 1, dun: 1 }, { objectid: 2, dun: 2 }] }),
     ),
     /Field dun invalid/,
   );
@@ -97,7 +97,7 @@ console.log('\n3. `success:false` мөр — HTTP 200 байсан ч АЛДАА
   await assert.rejects(
     () => withFetch(
       { addResults: [{ success: false }] },
-      () => applyAll(URL0, 'OBJECTID', { adds: [{ ner: 'А' }] }),
+      () => applyAll(URL0, 'objectid', { adds: [{ ner: 'А' }] }),
     ),
   );
   ok('тайлбаргүй `success:false` ч шидэгдэнэ', true);
@@ -108,13 +108,13 @@ console.log('\n4. Дутуу/хоосон хариу — «бичигдээгү�
   await assert.rejects(
     () => withFetch(
       { addResults: [{ success: true, objectId: 1 }] },
-      () => applyAll(URL0, 'OBJECTID', { adds: [{ ner: 'А' }, { ner: 'Б' }] }),
+      () => applyAll(URL0, 'objectid', { adds: [{ ner: 'А' }, { ner: 'Б' }] }),
     ),
     /1\/2/,
   );
   ok('2 мөр илгээгээд 1 хариу → алдаа (1/2)', true);
   await assert.rejects(
-    () => withFetch({}, () => applyAll(URL0, 'OBJECTID', { deletes: [5] })),
+    () => withFetch({}, () => applyAll(URL0, 'objectid', { deletes: [5] })),
     /0\/1/,
   );
   ok('хоосон бие (`deleteResults` алга) → алдаа (0/1)', true);
@@ -125,7 +125,7 @@ console.log('\n5. 200-аар ирдэг `{error}` бие — амжилт БИШ
   await assert.rejects(
     () => withFetch(
       { error: { code: 400, message: 'Unable to complete operation.' } },
-      () => applyAll(URL0, 'OBJECTID', { adds: [{ ner: 'А' }] }),
+      () => applyAll(URL0, 'objectid', { adds: [{ ner: 'А' }] }),
     ),
   );
   ok('`{ error }` нь шидэгдэнэ', true);
@@ -135,7 +135,7 @@ console.log('\n6. OID-гүй засах мөр — сүлжээнд залгах
 {
   let sentN = -1;
   await assert.rejects(async () => {
-    const r = await withFetch({}, () => applyAll(URL0, 'OBJECTID', { updates: [{ dun: 1 }] }));
+    const r = await withFetch({}, () => applyAll(URL0, 'objectid', { updates: [{ dun: 1 }] }));
     sentN = r.sent.length;
   });
   ok('шидэв, хүсэлт явсангүй', sentN === -1);

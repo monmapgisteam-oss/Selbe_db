@@ -135,4 +135,16 @@ for (const lv of [1, 2, 3]) {
   assert.ok(!s.includes('оргил урсац'), s);
 }
 
+/* ⚠️ 2026-10-21 (аудит): мэдээллийн хайрцгийг хаах ГАНЦ зам `closeInfo` — `pickSeq` өсгөнө; `setHazInfo(null)`
+   нь `onMapPick`-ээс гадуур зөвхөн `closeInfo`-д (хоцорсон `queryFeatures` хаасан хайрцгийг сэргээхгүй) */
+{
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  assert.ok(/const closeInfo = useCallback\(\(\) => \{\s*pickSeq\.current\+\+;\s*setHazInfo\(null\);\s*setFeatInfo\(null\);\s*setPath\(null\);\s*\}, \[\]\);/.test(code), '`closeInfo` алга/дутуу');
+  const pick = code.slice(code.indexOf('const onMapPick = useCallback(async (p: Pick) => {'), code.indexOf('}, [', code.indexOf('const onMapPick = useCallback(async (p: Pick) => {')));
+  const outside = (code.match(/setHazInfo\(null\)/g) ?? []).length - (pick.match(/setHazInfo\(null\)/g) ?? []).length;
+  assert.equal(outside, 1, '`setHazInfo(null)` нь `onMapPick`-ээс гадуур зөвхөн `closeInfo`-д байх ёстой');
+  assert.ok(code.includes('onClick={closeInfo}'), '× товч `closeInfo`-оор');
+  assert.ok(/runSeq\.current\+\+;\s*setBusy\(false\);\s*setResult\(null\);\s*setRunErr\(null\);\s*closeInfo\(\);/.test(code), '`clear` ба таб/түвшин солилт `closeInfo`-оор');
+}
+
 console.log('ersdelUi.check: OK');

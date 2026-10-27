@@ -31,6 +31,7 @@
 
 import { LATE_GAP, householdsLabel, type ExecReport } from '@/lib/execReport';
 import { progressSub } from '@/lib/gdash';
+import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, PRINT_COLORS } from '@/lib/format';
 import { PARCEL_CLEARED } from '@/lib/services';
@@ -292,7 +293,9 @@ export function buildInfographic(
   const p = x.prog;
   P.text(L, yl, tr('Орон сууцны барилга угсралт (төлөвлөгөө ба бодит)'), { size: 12, fill: INK2 });
   yl += 10;
-  const late = p.gap != null && p.gap >= LATE_GAP;
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг дүгнэхгүй (улаан ч биш) — `planProgress.coverageOk` */
+  const judged = coverageOk(p.planCoverage);
+  const late = judged && p.gap != null && p.gap >= LATE_GAP;
   P.hbar(L, yl, colW, tr('Төлөвлөгөө'), p.planned == null ? null : p.planned / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
   yl += 20;
   P.hbar(L, yl, colW, tr('Бодит'), p.actual == null ? null : p.actual / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
@@ -300,7 +303,9 @@ export function buildInfographic(
   if (p.gap != null) {
     /* ⚠️ 2026-09-29 (аудит 10): `LATE_GAP`-аас доош зөрүүг «Хоцрогдол 0.0» гэж
        бичдэг байв — дэлгэц (`ExecReport`) ба PDF (`execPdf`) «хуваарийн дагуу» гэдэг */
-    const s = p.gap >= LATE_GAP
+    const s = !judged
+      ? coverageNote(p.planCoverage) || '—'
+      : p.gap >= LATE_GAP
       ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1))
       : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1)) : tr('хуваарийн дагуу');
     /* ⚠️ Хоцрогдол бол УЛААН, бусад тохиолдолд өнгөгүй (хэвийн байдлыг
@@ -439,7 +444,7 @@ export function buildInfographic(
   const nameW = 170, valW = 215;
   const trackW = colW - nameW - valW - 8;
   for (const t of g.byType.slice(0, 7)) {
-    P.hbar(R, yr, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
+    P.hbar(R, yr, colW, tr(t.label), top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
     /* ⚠️ 2026-09-29 (аудит 10): гэрээ > төсөв бол зурвас утгын багана дээр гарч байв — хязгаарлана */
     P.rect(R + nameW, yr, Math.min(trackW, top ? (trackW * t.contract) / top : 0), 14, DATA, 3);
     yr += 20;

@@ -6,23 +6,28 @@
 /* ⚠️ 2026-10-04: горим сэлгэгч (`.modes`/`.mode`) нь `report.module.css`-ийн
    `.seg`/`.segBtn` (ТУХ-ын сегмент) болж ШИЛЖСЭН. */
 
-/* Хоёрдогч товч — AI дүгнэлт. ТУХ-ын `ghostBtn` (`report.module.css`-ийн `.btn`-тэй ижил) */
+/* Хоёрдогч товч — AI дүгнэлт. ТУХ-ын `ghostBtn` (`report.module.css`-ийн `.btn`-тэй ижил)
+   ⚠️ 2026-10-23: Environment — .pe-ghost (32px, 8px булан, 12px/500, hover --surface-2) */
 .btn2 {
   all: unset;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   cursor: pointer;
-  padding: 4px 10px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  font-size: 0.74rem;
-  font-weight: 600;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
+  transition: background 0.12s, color 0.12s;
 }
-.btn2:hover:not(:disabled) { color: var(--data); border-color: var(--data); }
-.btn2 svg { width: 13px; height: 13px; }
-.btn2:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn2:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
+.btn2 svg { width: 14px; height: 14px; }
+.btn2:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* AI дүгнэлт — тэргүү хэсэгтэй ижил хүрээ, гэхдээ өөр зааг өнгө */
 .ai {
@@ -30,9 +35,9 @@
   padding: 12px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--data);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   background: var(--surface);
-  font-size: 0.8rem;
+  font-size: 12.5px;
   line-height: 1.6;
   color: var(--ink-2);
   white-space: pre-wrap;
@@ -43,7 +48,7 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -62,8 +67,8 @@
 }
 
 /* Төлөвийн өнгөт нүд */
-.warn { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 12%, transparent); }
-.bad { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.warn { color: var(--warn-ink); background: color-mix(in oklab, var(--warn) var(--tint), transparent); }
+.bad { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) var(--tint), transparent); }
 .good { color: var(--good-ink, var(--good)); font-weight: 600; }
 
 @media print {
@@ -104,9 +109,11 @@
 .findingArea {
   display: inline-block;
   margin-right: 8px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--tone, var(--ink-3));
   vertical-align: 1px;
 }
@@ -118,7 +125,7 @@
   padding: 0 0 0 16px;
   columns: 2;
   column-gap: 18px;
-  font-size: 0.8rem;
+  font-size: 12px;
   color: var(--ink-2);
 }
 .findingItems li { break-inside: avoid; margin-bottom: 5px; }
@@ -145,11 +152,11 @@
   margin: 16px 0 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
 }
-.appN { flex: none; font-size: 0.72rem; font-weight: 500; color: var(--ink-3); }
+.appN { flex: none; font-size: 11px; font-weight: 500; color: var(--ink-3); }
 
 /* ⚠️ 2026-10-04: A4 өргөнтэй цаас (`.paperA4`/`.narrow`, 2026-09-17) ХАСАГДСАН —
    дэлгэцэд ТУХ-ын агуулга шиг урсана (хэрэглэгч: «ТУХ хэсэгтэй бүрэн адилхан»).

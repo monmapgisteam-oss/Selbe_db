@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { F, HYANALT, STATUS, DECISION } from './hyanalt.ts';
 import { recheck } from './hyanaltStore.ts';
+import { calculateRows } from './hyanaltDecision.fake.mjs';
 
 /* ══════════ Хуурамч хяналтын хүснэгт ══════════ */
 const T0 = Date.UTC(2026, 8, 20, 2, 0, 0);
@@ -40,13 +41,18 @@ globalThis.fetch = async (input, init) => {
   /* ⚠️ 2026-10-01: давхаргын МЕТАДАТА (`serviceFieldNames`) — шийдвэрийн лог талбар
      (`Shiidveriin_tuuh`) БАЙГАА үйлчилгээ гэж үзнэ (`hasHistoryField`). */
   if (path === '' || path === '/') {
-    return json({ fields: Object.values(F).map((name) => ({ name })) });
+    return json({ supportsCalculate: true, fields: Object.values(F).map((name) => ({ name })) });
   }
   if (path === '/query') {
     st.queries += 1;
     st.onQuery?.(st.queries);
     if (st.failAfterWrite && st.wrote) return json({ error: { code: 400, message: 'Unable to complete operation.' } });
     return json({ features: st.rows.map((a) => ({ attributes: { ...a } })), exceededTransferLimit: false });
+  }
+  if (path === '/calculate') {
+    const result = calculateRows(st.rows, body, (patch, row) => st.updates.push({ objectid: row.objectid, ...patch }));
+    if (result.updatedFeatureCount) st.wrote = true;
+    return json(result);
   }
   if (path === '/applyEdits') {
     st.wrote = true;
@@ -57,7 +63,7 @@ globalThis.fetch = async (input, init) => {
         st.deletes.push(id);
         /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): устгал УНАДАГ горим (`failDelete`) — ихэр үлдэх тохиолдол (7) */
         if (st.failDelete) return { objectId: id, success: false };
-        const i = st.rows.findIndex((x) => x.OBJECTID === id);
+        const i = st.rows.findIndex((x) => x.objectid === id);
         if (i >= 0) st.rows.splice(i, 1);
         return { objectId: id, success: i >= 0 };
       });
@@ -68,7 +74,7 @@ globalThis.fetch = async (input, init) => {
       const arr = JSON.parse(body.get('adds'));
       const res = arr.map((f) => {
         const oid = st.next++;
-        st.rows.push({ ...f.attributes, OBJECTID: oid });
+        st.rows.push({ ...f.attributes, objectid: oid });
         st.adds.push(f.attributes);
         return { objectId: oid, success: true };
       });
@@ -77,10 +83,10 @@ globalThis.fetch = async (input, init) => {
     if (body.has('updates')) {
       const arr = JSON.parse(body.get('updates'));
       const res = arr.map((f) => {
-        const r = st.rows.find((x) => x.OBJECTID === f.attributes.OBJECTID);
+        const r = st.rows.find((x) => x.objectid === f.attributes.objectid);
         if (r) Object.assign(r, f.attributes);
         st.updates.push(f.attributes);
-        return { objectId: f.attributes.OBJECTID, success: !!r };
+        return { objectId: f.attributes.objectid, success: !!r };
       });
       return json({ updateResults: res });
     }
@@ -91,7 +97,7 @@ globalThis.fetch = async (input, init) => {
 
 /** «Менежер буцаасан» мөр — инженер дахин шалгах ёстой */
 const returnedRow = () => ({
-  OBJECTID: 1,
+  objectid: 1,
   [F.id]: 'G-000001',
   [F.sheetOid]: 500,
   [F.ergelt]: 1,
@@ -157,7 +163,7 @@ st.onQuery = (q) => {
   if (q !== 2) return;
   st.rows.push({
     ...returnedRow(),
-    OBJECTID: 2,
+    objectid: 2,
     [F.id]: 'G-000002',
     [F.ergelt]: 2,
     [F.engineer]: 'Инженер Б',
@@ -219,7 +225,7 @@ reset();
 reset();
 st.onQuery = (q) => {
   if (q !== 2) return;
-  st.rows.push({ ...returnedRow(), OBJECTID: 2, [F.id]: 'G-000002', [F.ergelt]: 2, [F.status]: STATUS.managerReview });
+  st.rows.push({ ...returnedRow(), objectid: 2, [F.id]: 'G-000002', [F.ergelt]: 2, [F.status]: STATUS.managerReview });
 };
 {
   const r = await back('Инженер В', 'хэмжилт дутуу');
@@ -231,7 +237,7 @@ st.onQuery = (q) => {
 reset();
 st.beforeAdd = () => {
   /* нөгөө хянагчийн мөр манай `adds`-ын яг өмнө суусан (бага OID) */
-  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+  st.rows.push({ ...returnedRow(), objectid: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
     [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
   st.beforeAdd = null;
 };
@@ -239,14 +245,14 @@ st.beforeAdd = () => {
   const r = await ok('Инженер В');
   check(r.ok === false && /Инженер Б/.test(r.error ?? ''), `6: давхар тойрог — татгалзаж, нөгөө хянагчийг нэрлэнэ (${r.error ?? ''})`);
   check(st.deletes.length === 1 && st.deletes[0] === 100, `6: ӨӨРИЙН (их OID) мөрийг устгана (${JSON.stringify(st.deletes)})`);
-  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.OBJECTID === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
+  check(st.rows.filter((x) => x[F.ergelt] === 2).length === 1 && st.rows.some((x) => x.objectid === 50), '6: тойрог 2 ганцхан (түрүүлсэн) мөртэй');
 }
 
 /* ── 7. «ok» — ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ: чимээгүй биш — `ok:true` + ихэр OID-ийг нэрлэсэн `warn` (2026-10-12) ── */
 reset();
 st.failDelete = true;
 st.beforeAdd = () => {
-  st.rows.push({ ...returnedRow(), OBJECTID: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
+  st.rows.push({ ...returnedRow(), objectid: 50, [F.id]: 'G-000002', [F.ergelt]: 2, [F.engineer]: 'Инженер Б',
     [F.managerDecision]: '', [F.managerReason]: '', [F.managerReturned]: null, [F.status]: STATUS.managerReview });
   st.beforeAdd = null;
 };
@@ -256,6 +262,21 @@ st.beforeAdd = () => {
   check(st.deletes.length === 1 && st.deletes[0] === 100, `7: устгалыг оролдсон (${JSON.stringify(st.deletes)})`);
   check(/Инженер Б/.test(r.warn ?? '') && /\b50\b/.test(r.warn ?? '') && /\b100\b/.test(r.warn ?? ''), `7: warn ихэр ба өөрийн OID-ийг нэрлэнэ (${r.warn ?? ''})`);
   check(st.rows.filter((x) => x[F.ergelt] === 2).length === 2, '7: хоёр мөр хэвээр (устгал унасан)');
+}
+
+/* ── 8. `subAt` ЗААВАЛ (2026-10-26, S3) — хөтөчид `subAt`-гүй зөвшөөрөл нээлттэй илгээлтийг ТАТГАЛЗАНА (эх код;
+   Node-д нэвтрэлтгүй тул уншилт үргэлж унах тул энэ замыг хөтчөөр хязгаарласан — дээрх 1–7 `subAt`-гүй хуучин мөр) ── */
+{
+  const fs = await import('node:fs');
+  const L = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  const rc = L.slice(L.indexOf('export async function recheck('));
+  check(rc.includes("if (subAt != null || (verdict === 'ok' && typeof window !== 'undefined')) {"), '8: recheck «ok» subAt-гүй үед уншихгүй');
+  const ap = L.slice(L.indexOf('export async function apply('), L.indexOf('export async function recheck('));
+  check(ap.includes("if (a.subAt != null || (!returning && typeof window !== 'undefined')) {"), '8: apply зөвшөөрөл subAt-гүй үед уншихгүй');
+  for (const [nm, body] of [['apply', ap], ['recheck', rc]])
+    check(body.includes('if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {'), `8: ${nm} — нээлттэй илгээлтийг subAt-гүй татгалзахгүй`);
+  const ar = L.slice(L.indexOf('async function archiveSubmission('), L.indexOf('const seenKey = '));
+  check(ar.includes('if (subAt == null || staged.at !== subAt)'), '8: archiveSubmission — subAt-гүй нээлттэй илгээлтийг архивлана (fail-open)');
 }
 
 assert.deepEqual(st.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

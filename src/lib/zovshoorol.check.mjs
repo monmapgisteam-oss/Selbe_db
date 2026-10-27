@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL } from '@/lib/zovshoorol.ts';
+import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL_KEY } from '@/lib/zovshoorol.ts';
+import { arcgisPost } from '@/lib/query.ts';
+
+/* ⚠️ 2026-10-21: метадатаг АППТАЙ ИЖИЛ замаар (`arcgisPost`) уншина. ⚠️ 2026-10-26: `URL` нь Enterprise-ийн БОДИТ хаяг
+   (`${GUITS}/171`), талбарын нэр бодит (`objectid`) — хөрвүүлэх хүснэгт (`entMap`) хасагдсан. */
+const zovMetaRaw = () => arcgisPost(ZURL_KEY, {});
 
 /* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
@@ -8,7 +13,7 @@ if (process.env.SELBE_LIVE_SKIP) {
 }
 const rows = await loadZov();
 assert.ok(rows, 'татаж чадсангүй');
-const meta0 = await (await fetch(`${ZURL}?f=json`)).json();
+const meta0 = await zovMetaRaw();
 assert.ok(rows.length > 0, 'мөр алга');
 console.log(`✅ ${rows.length} мөр уншигдав`);
 
@@ -25,7 +30,7 @@ const oids = rows.map((r) => r.oid);
 assert.equal(new Set(oids).size, oids.length, 'OBJECTID давхардав — таних чанараа алдсан');
 console.log(`✅ ${rows.length}/${rows.length} мөрийн oid > 0 ба давхардалгүй (${oids.join(', ')})`);
 
-const meta = await (await fetch(`${ZURL}?f=json`)).json();
+const meta = await zovMetaRaw();
 assert.ok(!meta.error, `метадата алдаа: ${JSON.stringify(meta.error)}`);
 assert.ok(/^objectid$/i.test(String(meta.objectIdField)),
   `метадатагийн objectIdField = ${meta.objectIdField}`);

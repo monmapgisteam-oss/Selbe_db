@@ -33,6 +33,8 @@ export type BimPicker = {
   select: (key: string | null, fly?: boolean) => void;
   /** Газрын зураг дээр дарсан цэгт BIM барилга байвал сонгоно — сонгосон бол `true` */
   pickAt: (e: __esri.ViewClickEvent) => Promise<boolean>;
+  /** Багц · горим · инстанц солигдсоны дараа сонголтыг одоогийн давхаргад дахин холбоно (`rebind`-ийн ⚠️) */
+  rebind: () => void;
   destroy: () => void;
 };
 
@@ -44,14 +46,21 @@ let lastKey: string | null = null;
 
 export function createBimPicker(opts: {
   view: SceneView;
-  layers: BuildingSceneLayer[];
+  /** ⚠️ 2026-10-19: функц өгвөл сонголт/товшилт бүрд ОДООГИЙН инстанцыг уншина (`render3d.manageBim`-ийн
+      `all`-тай ижил — `bimCache` унасныг сольсны дараа устгагдсан инстанцаар BuildingExplorer үүсгэхгүй) */
+  layers: BuildingSceneLayer[] | (() => BuildingSceneLayer[]);
   items: readonly BimItem[];
   Explorer: typeof BuildingExplorer;
 }): BimPicker {
   const { view, Explorer } = opts;
-  const byKey = new Map(opts.layers.map((l) => [l.id, l]));
+  const src = opts.layers;
+  const layersNow = (): BuildingSceneLayer[] =>
+    (typeof src === 'function' ? src() : src).filter((l) => !l.destroyed);
+  /** id → одоогийн (устгагдаагүй) инстанц */
+  const layerOf = (key: string): BuildingSceneLayer | undefined => layersNow().find((l) => l.id === key);
+  const keys = new Set(layersNow().map((l) => l.id));
   /* Зөвхөн Map-д БАЙГАА давхаргатай мөрүүд */
-  const items = opts.items.filter((it) => byKey.has(it.key));
+  const items = opts.items.filter((it) => keys.has(it.key));
 
   const el = document.createElement('div');
   el.className = 'esri-widget';
@@ -105,20 +114,24 @@ export function createBimPicker(opts: {
     cur = null;
   };
 
-  const select = (key: string | null, fly = true) => {
+  /** @param restore ⚠️ 2026-10-19: сешнээс СЭРГЭЭХ (виджет дахин үүсэх) — багцыг ХЭЗЭЭ Ч солихгүй */
+  const select = (key: string | null, fly = true, restore = false) => {
     if (disposed) return;
-    if (cur?.key === key) return;
+    if (cur?.key === key && !cur.layer.destroyed) return;
     release();
-    const layer = key ? byKey.get(key) : undefined;
+    const layer = key ? layerOf(key) : undefined;
     sel.value = layer && key ? key : '';
     hint.style.display = layer ? 'none' : '';
     lastKey = layer && key ? key : null;
     if (!layer || !key) return;
     /* ⚠️ 2026-10-14: «Нарийн»-д зөвхөн СОНГОСОН багцын BIM Map-д байдаг (`render3d.BimPkgState`) — өөр багцын
        барилга сонговол тэр багц руу шилжинэ (эс бөгөөс сонгосон барилга харагдахгүй). Барилга руу ойртох нь
-       доор (багц руу биш). */
+       доор (багц руу биш).
+       ⚠️ 2026-10-19: СЭРГЭЭЛТЭД (`restore`) биш — урьд нь 2D↔3D↔BIM · горим солих · «Дахин оролдох» бүрд
+       виджет дахин үүсэхэд `select(lastKey)` хуучин барилгын багц руу БУЦААЖ шилжүүлж, MapTools-оор
+       сонгосон багцыг дардаг байв. Багц нь хэрэглэгчийн ИЛ сонголт (MapTools · жагсаалт · 3D товшилт) л. */
     const kp = bimPkgOf(key);
-    if (getRender3d() === 'fine' && kp && kp !== getBimPkg().pkg) setBimPkg(kp);
+    if (!restore && getRender3d() === 'fine' && kp && kp !== getBimPkg().pkg) setBimPkg(kp);
     const node = document.createElement('div');
     host.append(node);
     const widget = new Explorer({ view, layers: [layer], container: node });
@@ -143,8 +156,8 @@ export function createBimPicker(opts: {
   const pickAt = async (e: __esri.ViewClickEvent): Promise<boolean> => {
     if (disposed || view.destroyed) return false;
     try {
-      const hit = await view.hitTest(e, { include: opts.layers });
-      const r = hit.results.find((x) => x.type === 'graphic' && byKey.has(String(x.graphic?.layer?.id ?? '')));
+      const hit = await view.hitTest(e, { include: layersNow() });
+      const r = hit.results.find((x) => x.type === 'graphic' && keys.has(String(x.graphic?.layer?.id ?? '')));
       const raw = r && r.type === 'graphic' ? r.graphic.layer?.id : undefined;
       const id = raw == null ? '' : String(raw);
       if (!id) return false;
@@ -155,12 +168,43 @@ export function createBimPicker(opts: {
     }
   };
 
-  if (lastKey && byKey.has(lastKey)) select(lastKey, false);
+  /* ⚠️ 2026-10-19: «Нарийн»-д сэргээх барилга ӨӨР багцынх бол (Map-д алга) сэргээхгүй — багцыг солихгүй
+     (`select`-ийн `restore` ⚠️); `lastKey` хадгалагдана — тэр багц руу буцахад дахин сэргэнэ. */
+  /**
+   * ДАХИН ХОЛБОХ — багц · горим · BIM инстанц («Дахин оролдох») солигдоход (MapCanvas-ийн эффект) ба үүсэх үед.
+   * ⚠️ 2026-10-19 (review): «Нарийн»-д багц ХАРААХАН сонгогдоогүй (`pkg === ''`) бол СЭРГЭЭХГҮЙ — `manageBim` удахгүй
+   *    өөрөө багц сонгоно (auto-pick); урьд нь энд хуучин барилгыг холбож, авто-сонголтын дараа Map-аас гарсан
+   *    давхаргад BuildingExplorer үлддэг байв. Сонгосон барилга идэвхтэй багцаас гарвал виджетийг салгана
+   *    (`lastKey` хадгалагдана — тэр багц руу буцахад дахин сэргэнэ); инстанц солигдсон бол шинээр холбоно.
+   *    Picker-ийг дахин ҮҮСГЭХГҮЙ — Expand хаагдаж, сонголтын ойртолт (`fly`) тасрах байсан.
+   */
+  const rebind = () => {
+    if (disposed) return;
+    const key = cur?.key ?? lastKey;
+    if (!key || !keys.has(key)) return;
+    const kp = bimPkgOf(key);
+    const pk = getBimPkg().pkg;
+    if (getRender3d() === 'fine' && (!pk || (kp && kp !== pk))) {
+      if (cur) {
+        const keep = lastKey;
+        release();
+        sel.value = '';
+        hint.style.display = '';
+        lastKey = keep;
+      }
+      return;
+    }
+    if (cur && cur.key === key && !cur.layer.destroyed && layerOf(key) === cur.layer) return;
+    release();
+    select(key, false, true);
+  };
+  rebind();
 
   return {
     el,
     select,
     pickAt,
+    rebind,
     destroy: () => {
       if (disposed) return;
       release();

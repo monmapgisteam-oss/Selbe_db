@@ -42,8 +42,18 @@ r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([]) });
 assert.equal(r.ok, false); assert.match(r.error, /мөр алга/, `хоосон агуулга: ${r.error}`);
 r = await updateAjil({ oid: 1, me: 'batlagch_b', payload: pay([row]) });
 assert.equal(r.ok, false); assert.match(r.error, /илгээсэн хүн өөрөө/, `өөр нэрээр засах өнгөрөв: ${r.error}`);
-r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([row]) });
-assert.equal(r.ok, false); assert.match(r.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
+/* ⚠️ 2026-10-26: хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/189`) — «хүснэгт олдсонгүй» зам байхгүй болсон.
+   Сүлжээг хуурамчаар (хоосон хариу) сольж «илгээлт олдсонгүй» хүртэл явахыг шалгана — амьд ArcGIS руу хүрэхгүй. */
+{
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ features: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    r = await updateAjil({ oid: 1, me: 'zohiogch_a', payload: pay([row]) });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+assert.equal(r.ok, false); assert.match(r.error, /Илгээлт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
 CAPS._syncRemoteCaps([]);
 WHO.setCurrentUser(null);
 console.log('✅ updateAjil — эрх → нэр → агуулга → сүлжээ');
@@ -57,6 +67,11 @@ console.log('✅ updateAjil — эрх → нэр → агуулга → сүл�
   assert.ok(/updates: JSON\.stringify/.test(body) && !/adds: JSON\.stringify/.test(body), 'updateAjil шинэ мөр нэмж байна');
   assert.ok(!/\[F\.status\]:/.test(body), 'updateAjil төлөвийг өөрчилж байна — `pending` хэвээр байх ёстой');
   assert.ok(/AJIL_STATUS\.pending/.test(body) && /const after = await query/.test(body), 'updateAjil бичсэний дараа төлөвийг дахин шалгахгүй');
+  /* ⚠️ 2026-10-21 (аудит): бичихээс ӨМНӨ серверийн түгжээ (`claimAjil`, pending), дараа нь тайлна (`releaseAjilClaim`) */
+  const iClaim = body.indexOf('await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending })');
+  const iUpd = body.indexOf('updates: JSON.stringify');
+  assert.ok(iClaim > 0 && iClaim < iUpd, 'updateAjil түгжээ авалгүй бичиж байна');
+  assert.ok(/finally \{\s*await releaseAjilClaim\(\{ oid: args\.oid, me \}\)/.test(body), 'updateAjil түгжээг тайлахгүй');
 }
 console.log('✅ updateAjil — ижил мөр, төлөв хэвээр, дараах шалгалт');
 
@@ -102,7 +117,7 @@ console.log('✅ updateAjil — ижил мөр, төлөв хэвээр, дар
     cred.refreshToken = async () => { n += 1; cred.token = 'c'; cred.expires = Date.now() + 3_600_000; };
     /* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана
        (`query.ts`) — байгууллагын (env HJ) хаягаар шалгана. */
-    const orgUrl = `${(process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '')}/A/FeatureServer/0/query`;
+    const orgUrl = `${(process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '')}/A/FeatureServer/0/query`;
     const j = await T.arcgisPost(orgUrl, { where: '1=1', token: 'хуучин' });
     assert.deepEqual(j, { ok: 1 });
     assert.deepEqual(seen, ['b', 'c'], 'дуудагчийн хуучин токен давамгайлсан эсвэл дахин оролдоогүй');

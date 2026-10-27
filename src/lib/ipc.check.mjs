@@ -36,7 +36,7 @@ const P = HO_IPC.payFields;
 const { advance, work } = HO_IPC.kinds;
 
 /** Төлбөрийн мөр үүсгэгч — гэрээний талбар нь мөр БҮРД давтагдана */
-const row = (oid, o = {}) => ({ OBJECTID: oid, ...o });
+const row = (oid, o = {}) => ({ objectid: oid, ...o });
 const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   [C.code]: code, [C.pkg]: pkg,
   [P.kind]: kind, [P.amount]: dun, ...extra,
@@ -63,6 +63,10 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(t.paid, 60);
   assert.equal(t.contracts, 1);
   assert.equal(t.pays, 3);
+  /* ⚠️ 2026-10-26 (аудит): дүнгүй (AUTO) мөр төлбөрт ТООЛОГДОХГҮЙ — `ipcTable.payCount`-тай нэг дүрэм */
+  const withAuto = [...rows, pay(4, 'Багц-4.1', 'Багц-4.1', work, null, { [P.id]: 'AUTO|Багц-4.1|2026-10-01' })];
+  assert.equal(hoTotals(withAuto).pays, 3, 'дүнгүй AUTO мөр төлбөр биш');
+  assert.equal(hoTotals([pay(5, 'Багц-4.1', 'Багц-4.1', work, null)]).pays, 0, 'зөвхөн дүнгүй мөр → 0 төлбөр');
 }
 
 /* ══ 2. ДИАПАЗОН МӨР — багцад ОГТ наалдахгүй ══ */
@@ -164,6 +168,37 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(noCode.budgetTotal, 533_100_000, '⚠️ төсөв нь чимээгүй алга болохгүй');
   assert.equal(noCode.key, '', 'багцгүй тул түлхүүр хоосон');
   assert.equal(hoTotals(rows).budget, 533_100_050, 'нийт төсөвт ҮЛДЭНЭ');
+
+  /* ⚠️ 2026-10-21 (аудит): ХОЁР кодгүй мөр — тус тусдаа гэрээ (OID-оор); төсөв нь нийлэхгүй, алдагдахгүй,
+     төлбөр/хувь нь холилдохгүй. Урьд нь нэг `''` гэрээ болж 100-ийн төсөв алга, paidPct (7+3)/500 болдог байв. */
+  const two = [
+    pay(1, 'Багц-1', 'Багц-1', work, 10, { [C.budgetTotal]: 50 }),
+    pay(2, null, null, work, 7, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 500 }),
+    pay(3, '', null, work, 3, { [C.budgetTotal]: 100, [C.contractTotal]: 100 }),
+  ];
+  const g2 = groupHo(two);
+  assert.equal(g2.length, 3, 'кодгүй мөр бүр ӨӨРИЙН гэрээ');
+  const nc = g2.filter((c) => c.code === '');
+  assert.equal(nc.length, 2, 'хоёулаа code \'\' хэвээр (дуудагчид «кодгүй» гэж таних)');
+  assert.deepEqual(nc.map((c) => c.budgetTotal), [533_100_000, 100], 'төсөв тус тусдаа');
+  assert.deepEqual(nc.map((c) => c.paidTotal), [7, 3]);
+  assert.deepEqual(nc.map((c) => c.paidPct), [(7 / 500) * 100, 3], 'хувь тус тусын гэрээт дүнгээр (нийлсэн бол (7+3)/500)');
+  assert.equal(hoTotals(two).budget, 533_100_150, 'хоёр дахь кодгүй гэрээний төсөв алдагдахгүй');
+  assert.equal(hoTotals(two).contracts, 3);
+  /* OID-гүй кодгүй мөр (зохиомол) — индексээр тусдаа, шидэхгүй */
+  const noOid = groupHo([{ [C.code]: null, [P.amount]: 1 }, { [C.code]: null, [P.amount]: 2 }]);
+  assert.equal(noOid.length, 2);
+
+  /* ⚠️ 2026-10-22 (аудит №4): НЭГ гэрээний (дугаар ижил) хоёр төлбөрийн кодгүй мөр — нэг гэрээ, төсөв давхардахгүй */
+  const sameNo = [
+    pay(1, null, null, work, 100, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
+    pay(2, null, null, work, 50, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
+  ];
+  const g3 = groupHo(sameNo);
+  assert.equal(g3.length, 1, 'ижил дугаартай кодгүй мөрүүд нэг гэрээ');
+  assert.equal(g3[0].code, '', 'кодгүй хэвээр');
+  assert.equal(g3[0].paidTotal, 150, 'төлбөрүүд нэг гэрээнд');
+  assert.equal(hoTotals(sameNo).budget, 533_100_000, 'төсөв давхардахгүй (урьд 1,066.2М)');
 }
 
 /* ══ 7. IPC ДУГААРЫН ДАРААЛАЛ ══ */
@@ -204,9 +239,9 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   // Хэтрэлт (сөрөг) нь ЗӨВ утга — таслахгүй
   assert.equal(hoSaving({ [C.budgetTotal]: 90, [C.contractTotal]: 100 }), -10);
 
-  const g = groupHo([{ OBJECTID: 1, [C.code]: 'Г', ...r, [P.amount]: 1 }]);
+  const g = groupHo([{ objectid: 1, [C.code]: 'Г', ...r, [P.amount]: 1 }]);
   assert.equal(g[0].saving, 84_488);
-  assert.equal(hoTotals([{ OBJECTID: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
+  assert.equal(hoTotals([{ objectid: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
 }
 
 /* ══ 8-Б. AUTO МӨР — гэрээний талбарыг ХООСРУУЛАХГҮЙ (2026-09-11) ══
@@ -285,7 +320,7 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   ];
   assert.deepEqual(groupHo(rows).map((c) => c.code), ['Б', 'А', 'В'],
     '⚠️ Эхний тааралдсан дараалал — цагаан толгойгоор ЭРЭМБЭЛЭХГҮЙ');
-  assert.deepEqual(groupHo(rows)[0].pays.map((r) => r.OBJECTID), [1, 3],
+  assert.deepEqual(groupHo(rows)[0].pays.map((r) => r.objectid), [1, 3],
     'бүлэг доторх мөрийн дараалал хадгалагдана');
 }
 

@@ -9,11 +9,12 @@ import { uniqueBlocks, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText } from '@/lib/totals';
 import {
-  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere,
+  BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere, BLOCK_LAYER,
 } from '@/lib/services';
 import { mnt, num, pct, tint, NO_DATA } from '@/lib/format';
 import type { Overlap } from '@/lib/parcelOverlap';
 import { commonName } from '@/lib/butetsPacks';
+import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 import o from './bagtsOv.module.css';
 
 /**
@@ -43,7 +44,8 @@ const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
-export const BLOCK_LAYER = 'mon:building';
+// ⚠️ 2026-10-26 (P3): тодорхойлолт нь `lib/services/layers.ts`-д — энд зөвхөн дахин экспорт (дуудагчид хэвээр)
+export { BLOCK_LAYER };
 /**
  * Багцын БЛОКИЙН тоо — давхардсан feature (ижил `buildingKey`) НЭГ блок (2026-10-01,
  * «хэрэглэгч: бүгдийг зас»). `Pack.blocks` нь feature бүрийг хадгална (жагсаалт, OID);
@@ -146,6 +148,10 @@ export function buildPacks(
    */
   const infra: Pack[] = Object.keys(PKG_BY_BAGTS).map((key) => {
     const layerIds = PKG_BY_BAGTS[key] ?? [];
+    /* ⚠️ 2026-10-26 (аудит): бөглөх хуудасны түлхүүр газрын зургийн багцаас ӨӨР байж болно — «Багц 7.1» хуудас → БАГЦ71,
+       газрын зураг БАГЦ7 (`MAP_PKG_ALIAS`). Урьд нь `pkgPct.get('БАГЦ7')` хоосон буцаж, хэмжсэн гүйцэтгэлтэй Багц 7
+       «Багцын гүйцэтгэл» · удирдлагын тайланд «мэдээлэлгүй» гарч байв. Өөрийн түлхүүр давамгайлна. */
+    const alias = Object.keys(MAP_PKG_ALIAS).find((k) => MAP_PKG_ALIAS[k].key === key);
     /* ⚠️ 2026-10-09 (аудит №6): `?.` — бүртгэлгүй id нь модуль ачаалах үед шидэж харагдацыг бүхэлд нь унагадаг байв. */
     const titles = layerIds.map((id) => LAYER_BY_ID[id]?.title ?? id);
     return {
@@ -158,7 +164,7 @@ export function buildPacks(
       households: 0,
       /* ⚠️ 2026-10-13: 01-ийн батлагдсан биет % (`loadBuildings().pkgPct` — блокгүй багц ч орсон);
          бөглөх хуудасгүй багц `null` («мэдээлэлгүй», 0 БИШ) */
-      progress: pkgPct?.get(key) ?? null,
+      progress: pkgPct?.get(key) ?? (alias ? pkgPct?.get(alias) : undefined) ?? null,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
 
@@ -371,7 +377,7 @@ export function BlocksCard({
    *    зураг тэр талбар руу ойртоно ГЭХДЭЭ давхарга дээр ТӨСЛИЙН БҮХ
    *    давхцсан талбар зурагдсан хэвээр үлдэнэ — хэрэглэгч аль нь тухайн
    *    багцынх болохыг ялгаж чадахгүй (2026-08-27-нд сүлжээний хүсэлтээр
-   *    баталсан: `OBJECTID IN (1821,814,1361,…)` бүтэн жагсаалт явж байв).
+   *    баталсан: `objectid IN (1821,814,1361,…)` бүтэн жагсаалт явж байв).
    */
   onOverlapPick?: (oids: number[] | null) => void;
   /**

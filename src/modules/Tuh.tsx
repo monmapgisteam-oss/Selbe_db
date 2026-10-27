@@ -22,16 +22,18 @@ import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { useAsync } from '@/lib/useAsync';
 import { readParam, writeParams } from '@/lib/urlState';
 import { loadBudget } from '@/lib/live';
-import { loadCfPlan, CONTRACTED } from '@/lib/gdash';
+import { loadCfPlan, cfPlanGaps, cfGapsText, CONTRACTED } from '@/lib/gdash';
+import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
-import { loadAllDocs } from '@/lib/chanarStore';
-import { loadDeps } from '@/lib/bagtsHamaaral';
+/* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН (хэрэглэгчийн шийдвэр) — MA/MIR баримтын тоо `docs: null` («—»). */
+/* ⚠️ 2026-10-22: багцын хамаарал нь АЖЛЫН холбоосоос (`bagts_hamaaral` талбар) — хуучин багц ↔ багц бүртгэл биш */
+import { loadPkgDeps } from '@/lib/workDepsRemote';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import { loadFinData } from '@/modules/Finance';
-import { friendlyError } from '@/components/ui';
+import { friendlyError, Loading } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
 import { Overview } from './tuh/Overview';
@@ -58,12 +60,11 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const histQ = useAsync(loadBlockHistory, []);
   const comQ = useAsync(loadCommissionDates, []);
   const wfQ = useAsync(loadWorkforceKpi, []);
-  const docQ = useAsync(loadAllDocs, []);
   const budgetQ = useAsync(loadBudget, []);
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь ТУХ огт уншдаггүй тул
      «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
      ХУДАЛ бичигтэй байв. */
-  const depQ = useAsync(loadDeps, []);
+  const depQ = useAsync(loadPkgDeps, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
   /*
@@ -96,7 +97,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (comQ.state === 'error') failed.push(tr('Улсын комиссын огноо'));
     if (comQ.state === 'ready' && comQ.data.failed.length) failed.push(tr('Улсын комиссын огноо ({0})', comQ.data.failed.join(', ')));
     if (wfQ.state === 'error') failed.push(tr('Хүн хүч (ХАБЭА)'));
-    if (docQ.state === 'error') failed.push(tr('MA/MIR баримт'));
     if (bq.state === 'error') failed.push(tr('Барилгын блок'));
     /* ⚠️ 2026-09-30: хагас уншигдсан хуваарь (`PlanCurve.failed`) — тэр багцын гүйцэтгэгчийн
        төлөвлөгөө «—» болно; шалтгааныг нэрлэнэ («Гүйцэтгэл»-ийн `TsKpi`-тэй ижил) */
@@ -110,11 +110,16 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (histQ.state === 'loading') loading.add('hist');
     if (comQ.state === 'loading') loading.add('commission');
     if (wfQ.state === 'loading') loading.add('workforce');
-    if (docQ.state === 'loading') loading.add('docs');
     if (bq.state === 'loading') loading.add('packs');
     if (budgetQ.state === 'loading') loading.add('budget');
     if (depQ.state === 'loading') loading.add('deps');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
+    /* ⚠️ 2026-10-26 (хяналт №2): 'huvaari' эхтэй гэрээний цоорхой — «Гэрээний төлөвлөгөө» дутуу гэдгийг багцаар нэрлэнэ */
+    const gaps = cfPlanQ.state === 'ready' ? cfPlanGaps(cfPlanQ.data) : null;
+    const cfGaps = gaps ? cfGapsText(gaps, (id) => {
+      const r = finQ.data.contracts.find((c) => Number(c[CF_MONTH.id]) === id);
+      return r ? String(r[CASHFLOW_NEW.fields.pkg] ?? '').trim() || null : null;
+    }) : null;
     return buildModel({
       fin: finQ.data,
       plan: planQ.state === 'ready' ? planQ.data : null,
@@ -126,15 +131,16 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
       commissionPartial: comQ.state === 'ready' ? comQ.data.partial : null,
       workforce: wf,
-      docs: docQ.state === 'ready' ? docQ.data : null,
+      docs: null,
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
       contractedNote: CONTRACTED,
       failed,
+      cfGaps,
       loading,
       /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
       planError: planQ.state === 'error',
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ, depQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:
@@ -147,15 +153,15 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const retryFailed = useCallback(() => {
     if (finQ.state === 'error') finQ.retry?.();
     if (planQ.state === 'error' || (planQ.state === 'ready' && planQ.data.failed.length)) planQ.retry?.();
-    if (cfPlanQ.state === 'error') cfPlanQ.retry?.();
+    /* ⚠️ 2026-10-26: хуудас/мөнгөний мөр уншигдаагүй (`partial`) цуваа кэшлэгдэхгүй тул дахин татахад засагдаж магадгүй */
+    if (cfPlanQ.state === 'error' || (cfPlanQ.state === 'ready' && cfPlanGaps(cfPlanQ.data)?.partial)) cfPlanQ.retry?.();
     if (histQ.state === 'error') histQ.retry?.();
     if (comQ.state === 'error' || (comQ.state === 'ready' && comQ.data.failed.length)) comQ.retry?.();
     if (wfQ.state === 'error') wfQ.retry?.();
-    if (docQ.state === 'error') docQ.retry?.();
     if (bq.state === 'error') bq.retry?.();
     if (budgetQ.state === 'error') budgetQ.retry?.();
     if (depQ.state === 'error') depQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, budgetQ, depQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);
@@ -182,7 +188,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       <SplitGrip {...side.right} />
       <div ref={contentRef} className={s.content}>
         {finQ.state === 'loading' ? (
-          <p className={s.loading}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : finQ.state === 'error' ? (
           <p className={s.failNote} role="alert">
             {tr('Санхүүгийн өгөгдөл татагдсангүй')}: {friendlyError(finQ.error)}

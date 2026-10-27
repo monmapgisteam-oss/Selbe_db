@@ -122,6 +122,55 @@ const enData: Record<string, string> = {
   "Багц 4-2": "Package 4-2",
   /* ⚠️ 2026-10-04: бүсийн ангилал (`ZONE_TYPES`) — `ZoneFilter` `tr(g.type)`-оор динамик */
   "Х бүс": "Zone X",
+  /* ⚠️ 2026-10-21 (аудит): Газар чөлөөлөлт (`Gazar_choloololt/152`) `zoriulalt` Enterprise-д 26–27 тэмдэгтээр
+     ТАСАРСАН (импортын эх утга; талбарын урт 50 хангалттай) — өгөгдөл засах эрх олдоогүй тул тасархай хувилбарыг
+     ч бүртгэнэ; эх утгаар дахин ачаалбал дээрх бүтэн түлхүүр өөрөө таарна. */
+  "Гэр бүлийн хэрэгцээний зус": "Family summer-house plot",
+  "Гэр, орон сууцны хашааны га": "Ger and housing yard plot",
+  "ХАА-н үйлдвэрлэлийн цогцол": "Agricultural production complex",
+  "Худалдаа, нийтийн үйлчилгэ": "Retail and public service premises",
+  /* ⚠️ 2026-10-21 (аудит): ХАБЭА ослын төрөл (`field_7`) ба шалтгааны төрөл (`field_11`) — домэйны КОД (31 тэмдэгтэд
+     тасарсан) ба бүтэн НЭР хоёулаа: `Habea.tsx` кодыг домэйны нэрээр тайлдаг (`lib/codedDomain`), мета унавал код. */
+  "Ноцтой осол": "Serious accident",
+  "Амь нас эрсдэж болзошгүй байсан осол": "Potentially life-threatening accident",
+  "Ноцтой байдалд хүргэж болзошгүй осол": "Potentially serious accident",
+  "Хөдөлмөрийн чадвар түр алдахад": "Illness causing temporary incapacity",
+  "Хөдөлмөрийн чадвар түр алдахад хүргэсэн өвчлөл": "Illness causing temporary incapacity for work",
+  "Хязгаарлалттай ажиллахад хүргэс": "Illness leading to restricted work",
+  "Хязгаарлалттай ажиллахад хүргэсэн өвчлөл": "Illness leading to restricted work",
+  "Эмнэлгийн тусламж авсан гэмтэл ба өвчлөл": "Injury or illness requiring medical treatment",
+  "Мэргэжлээс шалтгаалах өвчин": "Occupational disease",
+  "Байгаль орчны осол зөрчил": "Environmental incident",
+  "Моторт тээврийн хэрэгсэлийн осол зөрчил": "Motor vehicle accident",
+  "Аюулгүй ажиллагааны дүрэм зөрчсөн": "Safety rule breach",
+  /* ⚠️ 2026-10-21 (аудит): краны төлөв (`HAB_kran/194` `tuluv` домэйн) — «Одоо байгаа» en.ts-д */
+  "Буусан": "Dismantled",
+  "Шинээр нэмэгдсэн": "Newly added",
+  /* ⚠️ 2026-10-21 (аудит): хогийн төрөл (`Сэлбэ_ХАБ1015/43` `metric` домэйн — нэгжгүй код, хуучин мөр «… (рейс)») —
+     `HABEA.waste.kinds`-д байхгүй төрөл донатад өгөгдлийн нэрээрээ (`tr(sl.label)`) гарна */
+  "Барилгын хог хаягдал": "Construction waste",
+  "Бохир соруулах (рейс)": "Sewage pumping (trips)",
+  "Хүнсний хог": "Food waste",
+  "Хуванцар": "Plastic",
+  "Гялгар уут": "Plastic bags",
+  "Лааз": "Cans",
+  "Модны хог": "Wood waste",
+  "Бохирдсон хөрс": "Contaminated soil",
+  "Шатамхай шингэн хог": "Flammable liquid waste",
+  "Холилдсон ахуйн хог хаягдал": "Mixed household waste",
+  /* ⚠️ 2026-10-21 (аудит): «Ерөнхий төлөвлөгөө» бүс (`HET/214` `zone`, rd:2 paint.values) — ганц кирилл утга */
+  "Машины зогсоол": "Parking",
+  /* ⚠️ 2026-10-21 (аудит): ЕТ барилга/бүс (`selbe_ET/99`, `/100`) `zoriulalt` facet — амьд ялгаатай утгууд */
+  "Авто зогсоол, үйлчилгээ": "Parking and services",
+  "Авто үйлчилгээ": "Automotive services",
+  "Амины сууц, Таун хаус /зоорьтой/": "Detached houses and townhouses (with basement)",
+  "Үзвэр үйлчилгээ": "Entertainment venues",
+  "Үйлчилгээ, давхар зогсоол /хүнсний зах/": "Services and multi-storey parking (food market)",
+  "Үйлчилгээтэй орон сууц": "Housing with services",
+  "Худалдаа үйлчилгээ, давхар зогсоол": "Retail, services and multi-storey parking",
+  "Худалдаа, үйлчилгээ цогцолбор": "Retail and service complex",
+  "Үйлчилгээний барилга": "Service building",
+  "Бүсийн мэдээлэл байхгүй": "No zone data",
 };
 
 export default enData;

@@ -45,11 +45,12 @@ import { km, num } from '@/lib/format';
 import { LAYER_BY_ID } from '@/lib/services';
 import type { Row } from '@/lib/query';
 import {
-  createRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
+  createRow, diffRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
   isLostResponse, saveRow, validateChanged, validateRow,
   type FieldDef, type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
 import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } from '@/lib/butetsLen';
+import { statusValsChanged } from './DedButetsStatus';
 
 /**
  * ХАДГАЛСНЫ ДАРАА БУЦААХАД хэрэгтэй мэдээлэл.
@@ -61,19 +62,20 @@ import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } fro
  */
 export type UndoInfo =
   | { kind: 'add'; oid: number }
-  | { kind: 'attr'; oid: number; attrs: Record<string, unknown> }
+  /** ⚠️ 2026-10-21: `wrote` — манай БИЧСЭН утга (`butetsEdit.RevertRow`-ийн CAS); буцаахын өмнө серверийн одоогийн утгатай тулгана */
+  | { kind: 'attr'; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
   /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
-  | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown> }[] };
+  | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] };
 import d from './dedButets.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 /**
  * ГЕОМЕТРЭЭС ГАРАХ СИСТЕМИЙН ХЭМЖЭЭ — толгойн тодорхойлолтод.
  * ⚠️ Эдгээр нь `meta.readOnly`-д ирдэг ч жагсаалтаар нь зурвал «Shape__Length»
  *    гэсэн техникийн нэр гарна; хүн уншихаар нэрлээд НЭГЖТЭЙ нь харуулна.
  */
-const GEOM_LEN = 'Shape__Length';
-const GEOM_AREA = 'Shape__Area';
+const GEOM_LEN = 'SHAPE__Length';
+const GEOM_AREA = 'SHAPE__Area';
 
 /**
  * ГАРААР БИЧИГДСЭН УРТЫН талбарууд — эдгээр нь порталын БҮХ уртын нийлбэрийн
@@ -360,7 +362,10 @@ export function DedButetsEdit({
       })
       .catch(() => { /* мэдэгдэхгүй — «—» */ });
     return () => { alive = false; };
-  }, [meta, oid]);
+    /* ⚠️ 2026-10-21: `saved` — хадгалсны дараа дээрх ачаалах эффект `geoLen`/`geoArea`-г тэглэдэг, харин
+       `loadLayerMeta` КЭШТЭЙ (ижил `meta` лавлагаа) тул зөвхөн [meta, oid]-оор энэ эффект дахин ажиллахгүй,
+       маягт нээлттэй үлдэхэд геодезийн урт/талбайн мөр алга болдог байв. */
+  }, [meta, oid, saved]);
 
   const set = (name: string, v: string) => {
     dirty.current = true;
@@ -427,6 +432,7 @@ export function DedButetsEdit({
     try {
       if (isNew) {
         const newOid = await createRow(meta, geometry, p);
+        statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
         /* ⚠️ Шинэ объектод «хэдэн талбар бичигдсэн» гэдэг утгагүй — НЭГ МӨР
            нэмэгдсэн гэдгийг 1-ээр дамжуулна (дуудагч тал давхаргаа дахин
            уншуулах эсэхээ үүгээр шийднэ). */
@@ -436,7 +442,11 @@ export function DedButetsEdit({
       /* ⚠️ Буцаах утгуудыг БИЧИХЭЭС ӨМНӨ бэлдэнэ — дараа нь `before` нь
          хуучирсан хуулбар болох ч энэ объект аль хэдийн салангид. */
       const back = revertAttrs(meta, before as Row, p);
+      /* ⚠️ 2026-10-21 (кодын аудит): БИЧИХ утга (`saveRow`-ийн `diffRow`-тай ЯГ ижил) — буцаалт серверийн
+         одоогийн утгыг үүнтэй тулгаж, хооронд нь өөр хэрэглэгч зассан бол ДАРАХГҮЙ (`revertRows`). */
+      const wrote = diffRow(meta, before as Row, p);
       const n = await saveRow(meta, oid as number, before as Row, p);
+      if (n > 0) statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
       /* ⚠️ 2026-09-21: эцэг `onDone`-д маягтыг хаадаг ч хэрэглэгч хадгалаагүй
          хэлбэрийн засвараа хаяхаас татгалзвал (`DedButets.closeEdit` → `false`)
          маягт НЭЭЛТТЭЙ үлдэнэ. Тэр үед `before` хуучирч (дараагийн хадгалалт
@@ -445,7 +455,7 @@ export function DedButetsEdit({
          татна (`saved` тоолуур ачаалах эффектийг сэргээнэ); маягт салсан бол
          эдгээр setState нь хор хөнөөлгүй. */
       dirty.current = false;
-      onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back } : null);
+      onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back, wrote } : null);
       setSaved((x) => x + 1);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
@@ -528,7 +538,7 @@ export function DedButetsEdit({
         </div>
 
         {load ? (
-          <p className={d.modalMsg}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : !meta || !p || (!isNew && !before) ? (
           <p className={d.modalMsg}>{fail || tr('Объект олдсонгүй.')}</p>
         ) : (

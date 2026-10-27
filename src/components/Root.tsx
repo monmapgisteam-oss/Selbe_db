@@ -9,7 +9,11 @@ import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
-import { AuthNotice, useAuth } from './AuthGate';
+import { AccessLost, AuthNotice, useAuth } from './AuthGate';
+/* ⚠️ 2026-10-23: аппын дотоод асуулт/«Буцаах» мэдэгдэл — `window.confirm`-ийн оронд (`lib/confirm.ts`) */
+import { ConfirmHost } from './ConfirmHost';
+/* ⚠️ 2026-10-22 (аудит): удирдлагын самбарын шалгуур — урсгалтай бус бүх харагдац (`homeBoard`-ийн ⚠️) */
+import { boardAllowedFor } from '@/lib/homeBoard';
 import { remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import { roleAccess } from '@/lib/roleTypes';
 import {
@@ -108,7 +112,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, signOut, status, user, accessLost, recheckPerms } = useAuth();
+  const { authorized, signIn, signOut, status, user, accessLost, sysClosed, recheckPerms } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -358,11 +362,25 @@ export default function Root() {
   const [lastPortal, setLastPortal] = useState<{ navScope: 'all' | ViewKey[]; docsAllowed: boolean; key: string } | null>(null);
   if (scope && authorized && !noAccess) {
     const navScope = clamped as 'all' | ViewKey[];
-    const docsAllowed = access?.docs ?? false;
+    /* ⚠️ 2026-10-23: баримт бичгийн сан нэвтэрсэн БҮХ хэрэглэгчид (`docLib`) — хуучин ТЭЗҮ-БОНУ-гийн `docs` туг үл тооцогдоно */
+    const docsAllowed = !!access;
     const key = `${navScope === 'all' ? 'all' : navScope.join(',')}|${docsAllowed ? 1 : 0}`;
     if (lastPortal?.key !== key) setLastPortal({ navScope, docsAllowed, key });
   }
-  const frozen = scope && accessLost && status === 'denied' ? lastPortal : null;
+  /* ⚠️ 2026-10-19: «СИСТЕМ ТҮР ХААГДСАН» (`AuthCtx.sysClosed`) ч ИЖИЛ загвар — дотор байсан хэрэглэгчийн Portal
+     сүүлийн хүрээгээр амьд үлдэж, `AuthNotice`-ийн `SystemClosed` цонх дээр нь; хаалттай үед ШИНЭЭР нэвтэрсэн хүнд
+     `lastPortal` хоосон тул Portal ОГТ зурагдахгүй (`authorized` худал → нүүр/нээлтийн хуудас цонхны ард). */
+  /* ⚠️ 2026-10-22 (аудит): НҮҮР РҮҮ гарсан бол сүүлийн хүрээг мартана — дараа нь (харагдацгүй болсон хойно) «Порталд орох»
+     дарахад хуучин хүрээгээр Portal-ыг ДАХИН нээж «хөлдөөхгүй»: хөлдөөлт нь зөвхөн дотор нь байсаар эрх алдсан үед. */
+  if (!scope && lastPortal) setLastPortal(null);
+  /* ⚠️ 2026-10-22 (аудит): СҮҮЛИЙН ХАРАГДАЦАА ажиллаж байхдаа алдвал (админ бүгдийг хассан) — урьд нь Portal-ын оронд
+     «Танд харагдац олгогдоогүй…» дэлгэц гарч Portal unmount болж, хадгалаагүй ажил тайлбаргүй алга болдог байв. Одоо
+     эрх хасагдсан аккаунттай (`accessLost`) ИЖИЛ: сүүлийн хүрээгээр Portal амьд (`lastPortal`), дээр нь «Таны хандах эрх
+     өөрчлөгдлөө» цонх (`AccessLost`). Харагдац сэргэвэл цонх хаагдаж ажил үргэлжилнэ. Эрхийн хүснэгт уншигдаагүй
+     (`permsDown`) нь эрх хасалт БИШ — хуучин дэлгэц/«Дахин оролдох» хэвээр. */
+  const noViewsNow = Array.isArray(allowed) && !allowed.length;
+  const viewsLost = !!scope && authorized && noAccess && noViewsNow && !(status === 'signed-in' && !remoteReady());
+  const frozen = scope && ((accessLost && status === 'denied') || viewsLost || (sysClosed && status === 'signed-in')) ? lastPortal : null;
 
   /* Үүргийн нүүр харагдац — хязгаарлагдмал хэрэглэгчийн нүүрт тодруулна (`openEntry`-тэй ижил эх) */
   const roleHome = (() => {
@@ -412,6 +430,9 @@ export default function Root() {
   return (
     <>
       <AuthNotice />
+      <ConfirmHost />
+      {/* ⚠️ 2026-10-22 (аудит): сүүлийн харагдацаа ажиллаж байхдаа алдсан — Portal ард нь хөлдсөн (`viewsLost`-ийн ⚠️) */}
+      {frozen && viewsLost && <AccessLost username={user?.username} onSignOut={signOut} />}
       {/*
         * ⚠️ НЭВТРЭЛТ ШАЛГАГДАЖ БАЙХАД ЮУ Ч ШИЙДЭХГҮЙ. `checking` төлөвт
         * `authorized` нь `false` тул шууд `Landing` зурвал НЭВТЭРСЭН хэрэглэгч
@@ -504,7 +525,7 @@ export default function Root() {
           <Portal
             onHome={goHome}
             navScope={clamped as 'all' | ViewKey[]}
-            docsAllowed={access?.docs ?? false}
+            docsAllowed={!!access}
             isSuper={isSuper}
           />
         )
@@ -515,7 +536,7 @@ export default function Root() {
           onEnterView={enterView}
           /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
              хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
-          docsAllowed={access?.docs ?? false}
+          docsAllowed={!!access}
           isSuper={isSuper}
           /*
            * ⚠️ УДИРДЛАГЫН САМБАР — «бүх харагдац» эрхтэй хүнд ч нээгдэнэ
@@ -525,8 +546,12 @@ export default function Root() {
            *    зөвхөн УНШИХ бөгөөд бичих үйлдэлгүй тул нуух шалтгаангүй;
            *    `admin` товч нь `isSuper`-ээр ХЭВЭЭР хаагдсан.
            */
-          boardAllowed={isSuper || allowed === 'all'}
+          /* ⚠️ 2026-10-22 (аудит): 2026-10-01-ээс super биш хүнд `allowed` ХЭЗЭЭ Ч 'all' биш тул удирдлага самбаргүй болсон —
+             урсгалтай бус бүх харагдацтай бол нээнэ (`homeBoard.boardAllowedFor`) */
+          boardAllowed={boardAllowedFor(allowed, isSuper, roleOf(user?.username))}
           homeView={roleHome}
+          permsDown={permsDown}
+          onRetryPerms={() => { void recheckPerms(); }}
         />
       ) : (
         /*

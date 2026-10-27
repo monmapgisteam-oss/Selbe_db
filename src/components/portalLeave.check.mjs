@@ -17,7 +17,9 @@
  *      татгалзвал `all=1`-тэй URL-ыг буцааж бичнэ.
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8').split('\r\n').join('\n');
 const PORTAL = read('./Portal.tsx');
@@ -44,22 +46,30 @@ function bodyOf(src, startIdx) {
 console.log('\n1. confirmLeave — ерөнхий navGuard');
 const clAt = PORTAL.indexOf('const confirmLeave = useCallback(');
 ok('confirmLeave олдлоо', clAt > 0);
-const cl = bodyOf(PORTAL, clAt);
+/* ⚠️ 2026-10-23 (UX аудит X1): асуултын НӨХЦӨЛҮҮД синхрон `leaveAsks`-д (Back URL-аа асуултын өмнө сэргээх эсэхийг
+   мэдэхийн тулд), `confirmLeave` нь тэдгээрийг апп доторх `askConfirm`-оор (async) асууна. */
+const laAt = PORTAL.indexOf('const leaveAsks = useCallback(');
+ok('leaveAsks олдлоо (confirmLeave-ээс өмнө)', laAt > 0 && laAt < clAt);
+const cl = bodyOf(PORTAL, laAt);
 ok("navGuard-оос импортолно", /import \{[^}]*\bnavDirtyLabels\b[^}]*\} from '@\/lib\/navGuard'/.test(PORTAL));
 ok('planNavBusy · finNavDirty · navDirtyLabels гурвуулаа асуугдана',
   /planNavBusy\(\)/.test(cl) && /finNavDirty\(\)/.test(cl) && /navDirtyLabels\(\)/.test(cl));
 ok('хадгалаагүй хэсгийн нэрсийг асуултад дурдана',
   /tr\('\{0\}: хадгалаагүй засвар байна\. Гарвал алдагдана\. Гарах уу\?', labels\.join\(/.test(cl));
-ok('лого ба «Гарах» confirmLeave-ээр', (PORTAL.match(/if \(confirmLeave\(\)\)/g) ?? []).length >= 2);
+ok('лого ба «Гарах» confirmLeave-ээр (await)', (PORTAL.match(/if \(await confirmLeave\(\)\)/g) ?? []).length >= 2);
+ok('askConfirm-ийг @/lib/confirm-оос', /import \{ askConfirm \} from '@\/lib\/confirm';/.test(PORTAL));
+ok('Portal-д window.confirm ҮЛДЭЭГҮЙ', !/window\.confirm\(/.test(PORTAL));
 
 console.log('\n2. Back → нүүр: Portal асууна, Root хойшлуулна');
 const popAt = PORTAL.indexOf('const onPop = () =>');
 ok('Portal-ийн popstate олдлоо', popAt > 0);
 const pop = bodyOf(PORTAL, popAt);
-ok('порталаас гарах (URL-д хүрээ алга) → confirmLeave(), татгалзвал all=1-тэй URL сэргээнэ',
-  /if \(!inPortalUrl\(\)\) \{\s*if \(!confirmLeave\(\)\) restoreUrl\(\{ all: '1' \}\);\s*return;\s*\}/.test(pop));
+/* ⚠️ 2026-10-23: асуух зүйлтэй бол URL-ыг АСУУЛТЫН ӨМНӨ (синхрон) сэргээнэ — Root 0мс-д уншаад порталд үлдэнэ;
+   «Хаяад гарах» → onHome (логотой ижил) */
+ok('порталаас гарах (URL-д хүрээ алга) → асуулттай бол all=1-тэй URL-ыг ЭХЛЭЭД сэргээж, зөвшөөрвөл onHome',
+  /if \(!inPortalUrl\(\)\) \{\s*if \(!leaveAsks\(\)\.length\) return;\s*restoreUrl\(\{ all: '1' \}\);\s*void confirmLeave\(\)\.then\(\(ok\) => \{ if \(ok\) onHome\?\.\(\); \}\);\s*return;\s*\}/.test(pop));
 ok('харагдац хооронд → setView (хамгаалалттай), татгалзвал URL сэргээнэ',
-  /if \(!setView\(next\)\) \{\s*restoreUrl\(\);\s*return;\s*\}/.test(pop));
+  /void setView\(next\)\.then\(\(ok\) => \{\s*if \(!ok\) \{\s*restoreUrl\(\);\s*return;\s*\}/.test(pop));
 ok('restoreUrl нь PUSH (Back-ийн өмнөх бичлэг хэвээр)', /restoreUrl = [\s\S]*?writeParams\([\s\S]*?\{ push: true \}\)/.test(PORTAL));
 
 /* inPortalUrl ↔ Root.scopeFromUrl — ИЖИЛ гурван нөхцөл */
@@ -76,5 +86,65 @@ const rootPop = ROOT.slice(ROOT.lastIndexOf('useEffect(() => {', rpAt), rpAt);
 ok('Root popstate-ээ setTimeout-оор хойшлуулна (Portal-ийн баталгаанаас хойш)',
   /setTimeout\(\(\) => \{[^}]*setScope\(scopeFromUrl\(\)\)/.test(rootPop), rootPop.slice(0, 200));
 ok('Root popstate ШУУД setScope хийхгүй', !/const onPop = \(\) => setScope\(/.test(ROOT));
+
+/* ⚠️ 2026-10-21 (аудит): эрх хасагдсан харагдац — «Болих» дарсан ч эрхгүй агуулга ХАРАГДАХГҮЙ.
+   Урьд нь `setView(navScope[0])` → `confirmLeave` «Гарах уу?» (шалтгаангүй), «Болих» → харагдац бүрэн
+   зурагдсаар. Одоо: асуултад шалтгаан, рендерийн `viewAllowed` хамгаалалт (`inert` + `ViewLost`),
+   цонхны товч АСУУЛГҮЙ (`force`) шилжинэ. */
+console.log('\n3. Эрх хасагдсан харагдац — шалтгаантай асуулт, рендерийн хамгаалалт');
+/* ⚠️ 2026-10-22 (аудит): хоёр дахь параметр `busyOnly` (4-р хэсэг) */
+ok('confirmLeave шалтгаан авна (async)', /const confirmLeave = useCallback\(async \(reason\?: string, busyOnly = false\): Promise<boolean> => \{/.test(PORTAL));
+ok('асуулт бүр шалтгаанаар эхэлнэ', /askConfirm\(reason \? `\$\{reason\}\\n\\n\$\{q\}` : q,/.test(cl2()));
+ok('confirmLeave нь leaveAsks-ийн асуултуудыг асууна', /const qs = leaveAsks\(busyOnly\);/.test(cl2()));
+ok('setView: { reason, force } (async)', /const setView = useCallback\(async \(v: ViewKey, opts\?: \{ reason\?: string; force\?: boolean \}\): Promise<boolean> => \{/.test(PORTAL));
+/* ⚠️ 2026-10-22 (аудит): `force` нь ЗӨВХӨН хадгалаагүй засварын асуултыг алгасна (4-р хэсэг) — урьд нь `!opts?.force && …` */
+ok('force → busyOnly; бусад нь шалтгаантай бүрэн асуулт', /if \(!\(await confirmLeave\(opts\?\.reason, !!opts\?\.force\)\)\) return false;/.test(PORTAL));
+ok('force нь confirmLeave-ийг бүхэлд нь алгасахгүй', !/if \(!opts\?\.force && !confirmLeave\(/.test(PORTAL));
+ok('эрхийн хамгаалалтын эффект шалтгаан дамжуулна',
+  /void setView\(navScope\[0\], \{ reason: tr\('Таны эрх өөрчлөгдсөн тул «\{0\}» харагдац хаагдана\.', from\) \}\)\.then\(/.test(PORTAL));
+ok('viewAllowed рендерт тооцогдоно', /const viewAllowed = navScope === 'all' \|\| navScope\.includes\(view\);/.test(PORTAL));
+ok('порталын агуулга эрхгүй үед inert', /inert=\{!viewAllowed\}/.test(PORTAL));
+ok('ViewLost цонх эрхгүй үед зурагдана, товч нь force', /\{!viewAllowed && \(\s*<ViewLost[\s\S]*?onGo=\{\(\) => \{ void setView\(navScope\[0\], \{ force: true \}\); \}\}/.test(PORTAL));
+ok('ViewLost: alertdialog + фокусын урхи', /function ViewLost\([\s\S]*?useFocusTrap\(ref, true\);[\s\S]*?role="alertdialog" aria-modal="true"/.test(PORTAL));
+function cl2() { return bodyOf(PORTAL, PORTAL.indexOf('const confirmLeave = useCallback(')); }
+function la2() { return bodyOf(PORTAL, PORTAL.indexOf('const leaveAsks = useCallback(')); }
+
+/* ⚠️ 2026-10-22 (аудит): эрх хасагдсан цонхны товч (`force`) ЯВЖ БУЙ бичилтийг асуусаар — урьд нь `force` бүх
+   `confirmLeave`-ийг алгасаж, Хуваарийн save→decidePlan гинж (`planNavBusy`) ба илгээлт/шийдвэр/буулгалтын
+   (`fillnew-send` · `hyanalt-apply` · `ajil-apply`) дундуур модуль unmount болдог байв. */
+console.log('\n4. force — хадгалаагүй засварын асуултгүй, явж буй бичилтийг асууна');
+{
+  const c = la2();
+  const bo = c.indexOf('if (busyOnly) {');
+  ok('busyOnly салаа planNavBusy-ийн ДАРАА', bo > 0 && bo > c.indexOf('planNavBusy()'));
+  ok('busyOnly салаа хадгалаагүй засварын асуултаас (fin · navDirty · beforeunload) ӨМНӨ',
+    bo < c.indexOf('finNavDirty()') && bo < c.indexOf('navDirtyLabels()') && bo < c.indexOf('hasUnsavedWork()'));
+  ok('busyOnly: явж буй бичилтийн нэрсийг асууна',
+    /if \(busyOnly\) \{\s*const busyL = navBusyLabels\(\);\s*if \(busyL\.length\) qs\.push\(tr\('\{0\}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй\. Гарах уу\?', busyL\.join\(' · '\)\)\);\s*return qs;\s*\}/.test(c));
+  const nbAt = PORTAL.indexOf('const navBusyLabels = (): string[] =>');
+  ok('navBusyLabels олдлоо', nbAt > 0);
+  const nb = bodyOf(PORTAL, nbAt);
+  ok('navBusyLabels нь navDirtyLabels()-ээс шүүнэ', /return navDirtyLabels\(\)\.filter\(\(l\) => busy\.has\(l\)\);/.test(nb));
+  /* Явж буй бичилтийн туг бүрийн НЭР Portal-ийн жагсаалтад — зөрвөл `force` тэр бичилтийг чимээгүй алгасна.
+     Түлхүүрийн дүрэм: `-send` / `-apply` (setNavDirty-ийг бичилтийн өмнө асааж finally-д унтраадаг). */
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const files = readdirSync(root, { recursive: true })
+    .map(String)
+    .filter((p) => /\.tsx?$/.test(p) && !/\.check\./.test(p));
+  const flags = [];
+  for (const p of files) {
+    const s = readFileSync(join(root, p), 'utf8');
+    for (const m of s.matchAll(/setNavDirty\('([\w-]+-(?:send|apply))', true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[1], label: m[2] });
+    /* ⚠️ 2026-10-23: түлхүүр нь хувьсагч (`const guardKey = \`hyanalt-apply:${work.key}\``) — угтвараар нь таньж нэрийг авна */
+    for (const m of s.matchAll(/const (\w+) = `([\w-]+-(?:send|apply)):\$\{[^`]+\}`;\s*setNavDirty\(\1, true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[2], label: m[3] });
+  }
+  ok('явж буй бичилтийн туг ≥ 3 олдлоо (fillnew-send · hyanalt-apply · ajil-apply)',
+    ['fillnew-send', 'hyanalt-apply', 'ajil-apply'].every((k) => flags.some((f) => f.key === k)), JSON.stringify(flags.map((f) => f.key)));
+  for (const f of flags) ok(`«${f.key}» (${f.p}) нэр navBusyLabels-д`, nb.includes(`tr('${f.label}')`), f.label);
+  /* ⚠️ 2026-10-23: «Батлах ажил»-ын `Item` бүр ӨӨРИЙН түлхүүртэй — нэг түлхүүр хуваалцвал эхэлж дууссан шийдвэр нөгөөгийн тугийг унтраана */
+  const G = readFileSync(join(root, 'modules/Guitsetgel.tsx'), 'utf8');
+  ok('hyanalt-apply туг ажил бүрд (work.key)',
+    G.includes('const guardKey = `hyanalt-apply:${work.key}`;') && G.includes('setNavDirty(guardKey, false);') && !G.includes("setNavDirty('hyanalt-apply'"));
+}
 
 console.log(`\nportalLeave: ${pass} шалгалт амжилттай.`);

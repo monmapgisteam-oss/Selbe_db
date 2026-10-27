@@ -51,7 +51,8 @@ assert.ok(vp.includes('LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).map
 
 /* 5 */
 assert.ok(vp.includes('const allN = missing.length ? null :'));
-assert.ok(vp.includes("totals.state === 'ready' && !t ? ("));
+/* ⚠️ 2026-10-22: сонгосон давхаргын тоо давхарга тус бүрийн кэшээс (`useLazyTotals`) — унасан бол «…» мөнхөд БИШ, «татагдсангүй» */
+assert.ok(vp.includes('const one = useLazyTotals(zone, [d.id]);') && vp.includes('{one.failed.length > 0 ? ('), 'унасан давхарга — Empty');
 
 /* 6 */
 assert.ok(vp.includes("const selKey = `${d.id}|${zone ?? ''}`;"));
@@ -134,5 +135,11 @@ assert.ok(!vp.includes('`${num(c.sum, 1)} ${c.note}`'));
   /* Жагсаалтад алга багц ИЛ сонголт хэвээр (төслийн нийт мэт харагдахгүй) */
   assert.ok(sc.includes('{pkg && !pkgHit && <option value={pkg}>{pkg}</option>}'));
 }
+
+/* ⚠️ 2026-10-21 (аудит): бүсийн барилгын өрх/хүн ам — `query.Group.stats` (null ≠ 0): бүх бүлэг хэмжилтгүй бол «—», 0 биш */
+assert.ok(vp.includes("urh: sumStat('urh'),") && vp.includes("pop: sumStat('pop'),"), 'өрх/хүн амын нийлбэр stats-аас биш');
+assert.ok(/rows\.every\(\(r\) => r\.stats\[k\] == null\)\s*\?\s*null/.test(vp), 'бүх бүлэг null → null');
+assert.ok(!vp.includes('urh: rows.reduce((a, r) => a + r.values.urh, 0)'), 'хуучин values нийлбэр үлдэв');
+assert.ok((vp.match(/qtyText\(d, item\.stats\.q \?\? null\)/g) ?? []).length === 2, 'ангилал/бүсийн хэмжээ stats-аас');
 
 console.log('viewPanel.check: OK');

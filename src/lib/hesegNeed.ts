@@ -1,12 +1,13 @@
 import { t as tr } from '@/lib/i18nCore';
-import * as query from '@arcgis/core/rest/query';
 import Query from '@arcgis/core/rest/support/Query';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import Polyline from '@arcgis/core/geometry/Polyline';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import { LAYER_BY_ID, layerUrl, oidOf } from '@/lib/services';
-import { loadInfra } from '@/lib/planOverlap';
+import { loadInfra, queryPageSafe } from '@/lib/planOverlap';
+import { register } from '@/lib/dataBus';
+import { subscribeTotals } from '@/lib/totals';
 import { NEED_TYPES, UNASSIGNED_ZONE, type NeedType } from '@/lib/hesegNeedSummary';
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
 import { buildRoutingGraph, routeUtilityNetwork, type RouteFailure, type RouteSegment } from '@/lib/utilityRouting';
@@ -54,7 +55,8 @@ async function fetchPolys(id: string, field?: string): Promise<Polygon[]> {
       where: '1=1', outFields: field ? [field] : [], returnGeometry: true, outSpatialReference: { wkid: WKID },
       orderByFields: [`${oidOf(def)} ASC`], start, num: 2000,
     });
-    const res = await query.executeQueryPBF(u, q).catch(() => query.executeQueryJSON(u, q));
+    /* ⚠️ 2026-10-19 (аудит): хугацаатай, нэвтрэх цонхгүй PBF → JSON (`planOverlap.queryPageSafe`-ийн ⚠️) */
+    const res = await queryPageSafe(u, q);
     for (const f of res.features) {
       if (f.geometry?.type !== 'polygon') continue;
       const p = f.geometry as Polygon;
@@ -71,12 +73,73 @@ async function fetchPolys(id: string, field?: string): Promise<Polygon[]> {
 
 const yieldBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/** ⚠️ Модулийн кэш (статик өгөгдөл) — алдаа гарвал устгана */
+/**
+ * ⚠️ Модулийн кэш (статик өгөгдөл) — алдаа гарвал устгана.
+ * ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүнг (`failed`) КЭШЛЭХГҮЙ (`hesegChange`-ийн ⚠️-тэй ижил) — урьд нь түр уналт
+ *    сешн дуустал «өгөгдөл дутуу» хэвээр үлддэг байв; толгойн «Шинэчлэх» (`invalidateAll`) ч хаяна.
+ */
 let needCache: Promise<NeedResult> | null = null;
+register(() => { needCache = null; }, []);
+/* ⚠️ 2026-10-21 (кэшийн аудит): инженерийн шугамын засвар (`DedButets` → `dropTotalsCache`) — `planOverlap.loadInfra`-тай
+   ХАМТ хаягдана, эс бөгөөс хэрэгцээний тооцоо засварын өмнөх геометрээр үлдэнэ (`planOverlap.ts`-ийн ижил ⚠️). */
+subscribeTotals(() => { needCache = null; });
+
+/**
+ * ЯВЦЫН ТЕКСТ — тооцоог хүлээж буй БҮХ дуудагчид (самбар · зургийн давхарга), `planOverlap.onOverlapStep`-ийн загвар.
+ * ⚠️ 2026-10-19 (аудит): урьд нь `onStep` нь ЗӨВХӨН тооцоог ЭХЛҮҮЛСЭН дуудагчид очдог байв — 03-ийн самбар
+ *    (зургийн давхарга түрүүлж эхлүүлдэг) явцын текстгүй «Тооцоолж байна…» дээр зогсдог байлаа.
+ */
+/*
+ * ⚠️ 2026-10-19 (review): ЯВЦ НЬ ТООЦООНЫ ҮЕ (generation)-ЭЭР ТУСГААРЛАГДСАН — урьд нь нэг глобал жагсаалт байсан тул
+ *    «Шинэчлэх»-ийн дараа ХУУЧИН (хаягдсан) тооцоо үргэлжилсээр шинэ тооцооны хүлээгчдэд өөрийн явцыг илгээдэг байв.
+ *    Одоо тооцоо бүр өөрийн `gen`-тэй; захиалагч тодорхой амлалтын (эсвэл явагдаж буй) үед л холбогдоно.
+ */
+type StepGen = { subs: Set<(msg: string) => void>; last: string };
+const needGens = new Map<number, StepGen>();
+const needGenOf = new WeakMap<Promise<NeedResult>, number>();
+let needGenSeq = 0;
+/** Одоо явагдаж буй (хамгийн сүүлд эхэлсэн) тооцооны үе; 0 = алга */
+let needRunGen = 0;
+/**
+ * Явцын текстийг захиална — буцаасан функцээр цуцална (unmount). `p` өгвөл ЗӨВХӨН тэр тооцооны явц (`computeNeed`-ийн
+ * буцаасан амлалт); өгөөгүй бол одоо явагдаж буйнх. Тооцоо дууссан/явагдаагүй бол юу ч хийхгүй.
+ */
+export function onNeedStep(fn: (msg: string) => void, p?: Promise<NeedResult>): () => void {
+  const gen = p ? needGenOf.get(p) ?? 0 : needRunGen;
+  const g = needGens.get(gen);
+  if (!g) return () => {};
+  g.subs.add(fn);
+  if (g.last) fn(g.last);
+  return () => { g.subs.delete(fn); };
+}
+
+/**
+ * ⚠️ 2026-10-19 (review): БҮХ ТООЦООНЫ ДЭЭД ХУГАЦАА (`hesegChange.CHANGE_TIMEOUT_MS`-тэй ижил) — геометрийн worker гацвал
+ *    самбар үүрд эргэлдэхгүй, алдаа харуулж кэш хаягдана (дараагийн нээлтэд дахин оролдоно).
+ */
+const NEED_TIMEOUT_MS = 4 * 60_000;
 
 export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult> {
-  needCache ??= (async (): Promise<NeedResult> => {
-    onStep?.(tr('Инженерийн шугам татаж байна…'));
+  if (needCache) {
+    if (onStep) { const off = onNeedStep(onStep, needCache); void needCache.then(off, off); }
+    return needCache;
+  }
+  const gen = ++needGenSeq;
+  const sg: StepGen = { subs: new Set(), last: '' };
+  needGens.set(gen, sg);
+  needRunGen = gen;
+  /* ⚠️ Зөвхөн ӨӨРИЙН үеийн захиалагчид — хаягдсан тооцоо шинийхэд явц илгээхгүй */
+  const needStep = (msg: string) => {
+    if (!needGens.has(gen)) return;
+    sg.last = msg;
+    for (const fn of sg.subs) fn(msg);
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(tr('Тооцоо хэт удаж байна ({0} мин) — дахин нээж оролдоно уу.', NEED_TIMEOUT_MS / 60_000))), NEED_TIMEOUT_MS);
+  });
+  const work = (async (): Promise<NeedResult> => {
+    needStep(tr('Инженерийн шугам татаж байна…'));
     const failed: string[] = [];
     const [{ feats, failed: infraFailed }, builds, zonePolys, corridorPolys] = await Promise.all([
       loadInfra(),
@@ -106,15 +169,29 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
     await Promise.all([...byType].map(async ([k, gs]) => {
       typeGeom.set(k, gs.length === 1 ? gs[0] : ((await geometryEngineAsync.union(gs)) as Geom | null));
     }));
-    /** Барилгын бүс — төв цэг нь аль төрлийн бүсэд байна */
-    const buildZone = builds.map((b) => {
-      const c = b.centroid;
-      if (!c) return null;
-      for (const z of zonePolys) if (zoneOf(z) && geometryEngine.contains(z, c)) return zoneOf(z);
-      return null;
-    });
+    /**
+     * Барилгын бүс — төв цэг нь аль төрлийн бүсэд байна (эхний таарсан, бүсийн дарааллаар).
+     * ⚠️ 2026-10-19 (аудит): урьд нь барилга × бүс БҮРД синхрон `geometryEngine.contains` — хэдэн мянган барилгад
+     *    үндсэн урсгалыг секундээр түгжиж, зураг/самбар хөлддөг байв. Одоо бүсийн ХҮРЭЭ (extent)-ээр урьдчилан шүүж
+     *    (цэг хүрээнээс гадуур бол `contains` дуудахгүй) 200 барилга тутамд хөтөчид амсхийлгэнэ.
+     */
+    const zoneBoxes = zonePolys.map((z) => ({ z, label: zoneOf(z), e: z.extent }));
+    const buildZone: (string | null)[] = [];
+    for (let i = 0; i < builds.length; i += 1) {
+      if (i % 200 === 199) await yieldBrowser();
+      const c = builds[i].centroid;
+      let hit: string | null = null;
+      if (c) {
+        for (const { z, label, e } of zoneBoxes) {
+          if (!label) continue;
+          if (e && (c.x < e.xmin || c.x > e.xmax || c.y < e.ymin || c.y > e.ymax)) continue;
+          if (geometryEngine.contains(z, c)) { hit = label; break; }
+        }
+      }
+      buildZone.push(hit);
+    }
     failed.push(...infraFailed);
-    onStep?.(tr('Тооцоолж байна…'));
+    needStep(tr('Тооцоолж байна…'));
     const buildAll = builds.length
       ? ((await geometryEngineAsync.union(builds as Geom[])) as Geom | null)
       : null;
@@ -131,7 +208,7 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
       if (u?.type === 'polyline' && u.paths.some((path) => path.length > 1)) usable.set(t, u);
     }));
 
-    onStep?.(tr('Замын коридороор инженерийн трасс тооцоолж байна…'));
+    needStep(tr('Замын коридороор инженерийн трасс тооцоолж байна…'));
     const y = builds[0]?.centroid?.y ?? corridorPolys[0]?.centroid?.y ?? 0;
     const metersPerUnit = 1 / Math.cosh(y / 6378137);
     const routing = { resolutionM: 1.5, spacingM: 8, maxAccessM: 80, maxTieM: 60, warnings: [] as string[] };
@@ -221,6 +298,14 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
       unassignedBuildings: buildZone.filter((z) => z == null).length,
       links, segments, unresolved, zones, existingOutsideGeometry, availableTypes: [...usable.keys()], failed, routing,
     };
-  })().catch((e) => { needCache = null; throw e; });
-  return needCache;
+  })();
+  const p = Promise.race([work, late]).finally(() => clearTimeout(timer));
+  needGenOf.set(p, gen);
+  needCache = p;
+  if (onStep) { const off = onNeedStep(onStep, p); void p.then(off, off); }
+  /* ⚠️ Зөвхөн ӨӨРИЙН үе — «Шинэчлэх»-ийн дараа эхэлсэн шинэ тооцооны бүртгэлийг хуучин нь арилгахгүй */
+  const end = () => { needGens.delete(gen); if (needRunGen === gen) needRunGen = 0; };
+  p.then((r) => { end(); if (r.failed.length && needCache === p) needCache = null; },
+    () => { end(); if (needCache === p) needCache = null; });
+  return p;
 }

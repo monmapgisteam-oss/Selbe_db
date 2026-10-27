@@ -3,14 +3,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { Data, Trend, Note } from '@/components/ui';
+import { Data, Trend, Note, friendlyError } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
+
 import { useAsync } from '@/lib/useAsync';
 import {
   loadSensors, RANGES, SENSOR_STALE_H, withGaps, type RangeKey, type SensorLive, type MetricSeries,
@@ -127,12 +127,8 @@ const rateLabel = (m: MetricSeries, perHour: number): string => {
 
 type Card = { s: SensorLive; m: MetricSeries };
 
-/**
- * ⚠️ `MapCanvas` нь memo() — render бүрд шинэ `() => {}` дамжуулбал memo эвдэрч,
- * минут тутмын цагийн tick (`setNow`) бүрд 3000+ мөрт компонент дэмий дахин
- * ажиллана. Тиймээс модулийн түвшний ТОГТВОРТОЙ noop (Irged.tsx-ийн загвар).
- */
-const noop = () => {};
+/* ⚠️ 2026-10-21: модулийн `noop` (`onPick`-д) ХАСАГДСАН — `MapCanvas`-ын дуудлагын ⚠️-г үз. `onPick`
+   өгөхгүй тул memo-д шинэ функц орохгүй (memo-ийн хамгаалалт хэвээр). */
 
 /* ══════════════════ Жижиг бүрэлдэхүүн ══════════════════ */
 
@@ -311,7 +307,8 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   return (
@@ -334,7 +331,9 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             opacity={opacity}
             zone={zone}
             uniform
-            onPick={noop}
+            /* ⚠️ 2026-10-21: `onPick` ӨГӨХГҮЙ — `noop` нь MapCanvas-ын товшилтын атрибутын хайрцгийг
+               (`tipOnly = !pickRef.current`) унтрааж, мэдрэгчтэй дэлгэцэд цэг товшиход юу ч гардаггүй байв
+               (Irged 2026-10-06-нд ижил noop-ийг хассан). Буцааж бүү нэм. */
           />
 
           {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН «2D | 3D» байсан — Давхарга, Тунгалаг,
@@ -356,7 +355,6 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <div className={o.catPanel}>
               <LayerCatalog
                 view="iot"
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}
@@ -456,11 +454,20 @@ function Board({ all, range, setRange }: {
           {/* ⚠️ 2026-08-21: «Сүүлийн заалт» карт хасагдсан ч ДОТОРХ ХОЁР
               СЭРЭМЖЛҮҮЛГИЙГ энд авчрав. Эдгээргүй бол унасан үйлчилгээ ба
               задраагүй заалт нь ялгагдалгүй, чимээгүй хоосон нүд болж харагдана. */}
+          {/* ⚠️ 2026-10-23 (UX аудит E8/X3): серверийн түүхий англи алдааг ×N давтахгүй — НЭГ энгийн мөр (шалтгаан нь
+              `friendlyError`-оор, бүгд ижил бол нэг удаа), мэдрэгч бүрийн түүхий алдаа «Дэлгэрэнгүй» дотор хэвээр (доорх
+              2026-08-21-ний ⚠️ — аль мэдрэгч юунаас унасан нь харагдах ёстой). «decoder» гэх техник үгийг хасав. */}
           {failed.length > 0 && (
             <>
               <Note>
-                <b>{failed.length}</b> {tr('мэдрэгчийн үйлчилгээ татагдсангүй — доорх алдааг үзнэ үү. Энэ нь decoder-ийн хоцролт БИШ, хүсэлт өөрөө амжилтгүй болсон.')}
+                {tr('{0} мэдрэгчийн өгөгдөл татагдсангүй.', num(failed.length))}
+                {(() => {
+                  const why = [...new Set(failed.map((x) => friendlyError(x.error)))];
+                  return why.length === 1 ? <> {why[0]}</> : null;
+                })()}
               </Note>
+              <details>
+                <summary>{tr('Дэлгэрэнгүй')}</summary>
               {/* ⚠️ Дээрх «доорх алдааг үзнэ үү» амлалтын БИЕЛЭЛ. Мэдрэгч бүрийн
                   алдааны жагсаалт 2026-08-21-нд «Сүүлийн заалт» карттай ХАМТ
                   устсан тул аль мэдрэгч ямар шалтгаанаар унасан нь хаана ч
@@ -473,11 +480,12 @@ function Board({ all, range, setRange }: {
                   <span style={{ color: 'var(--bad-ink)' }}>{x.error}</span>
                 </Note>
               ))}
+              </details>
             </>
           )}
           {live.length + failed.length < all.length && (
             <Note>
-              <b>{all.length - live.length - failed.length}</b> {tr('мэдрэгчээс задарсан утга ирээгүй. Холбоо тасраагүй — түүхий өгөгдөл ирж байгаа ч Mononet-ийн decoder утгыг задлаагүй байна.')}
+              {tr('{0} мэдрэгчээс шинэ утга ирээгүй байна. Мэдрэгч холбогдсон — утга боловсруулагдахыг хүлээж байна.', num(all.length - live.length - failed.length))}
             </Note>
           )}
         </div>

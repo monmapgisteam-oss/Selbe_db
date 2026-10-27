@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
 /**
  * ЗҮҮН ЖАГСААЛТЫН ӨРГӨНИЙГ ЧИРЖ ТОМРУУЛАХ (2026-10-04, хэрэглэгч: «ажлууд ... болж бүрэн
@@ -32,6 +32,11 @@ export function useSideExtra() {
   const [limit, setLimit] = useState(MAX);
   const [dragging, setDragging] = useState(false);
   const el = useRef<HTMLDivElement | null>(null);
+  /* ⚠️ 2026-10-21: ИДЭВХТЭЙ ЧИРЭЛТИЙН цонхны сонсогчдыг салгагч — урьд нь зөвхөн `up` дотор салгадаг тул чирэх
+     зуур харагдац солигдож (unmount) бол сонсогчид үлдэж, салсан зангилаанд бичиж, унтарсан hook-д
+     `setDragging`/`commit` дуудагддаг байв. Unmount-д салгана (хадгалахгүй — чирэлт дуусаагүй). */
+  const dragOff = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragOff.current?.(), []);
   /** Үйлчилж буй нэмэлт — хүсэл ба чингэлгийн хязгаарын бага нь */
   const eff = Math.min(extra, limit);
 
@@ -73,21 +78,27 @@ export function useSideExtra() {
     /* ⚠️ Чирэлтийн эхэнд хязгаарыг шинээр хэмжинэ — чирэх явцад хэмжихгүй (layout гацна) */
     const lim = measure();
     let cur = base;
+    dragOff.current?.();
     setDragging(true);
     const mv = (ev: globalThis.PointerEvent) => {
       cur = clampX(base + ev.clientX - x0, lim);
       el.current?.style.setProperty('--side-extra', `${cur}px`);
     };
-    const up = () => {
+    const off = () => {
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      if (dragOff.current === off) dragOff.current = null;
+    };
+    const up = () => {
+      off();
       setDragging(false);
       commit(cur);
     };
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+    dragOff.current = off;
   }, [eff, commit, measure]);
 
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLButtonElement>) => {

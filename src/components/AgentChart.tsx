@@ -16,7 +16,6 @@
 
 import { Bars, Series, Donut, Trend, Stack, Ring } from '@/components/ui';
 import { parseChart } from '@/lib/agent/chart';
-import { cat } from '@/lib/format';
 import s from '@/components/agent.module.css';
 
 export function AgentChart({ raw }: { raw: string }) {
@@ -37,10 +36,12 @@ export function AgentChart({ raw }: { raw: string }) {
    *    бөгөөд хоёр горимд CVD-ээр баталгаажсан (`globals.css`).
    * ⚠️ 2026-10-09: өнгө нь ЗҮСМЭГ БҮРД дамжина (`cat(i)`), ганц цуваат
    *    bar/column/line нь бүгд НЭГ өнгө `--data` — ангиллын өнгө утга илэрхийлэхгүй.
+   * ⚠️ 2026-10-23: Environment — зүсмэгт өнгө ДАМЖУУЛАХГҮЙ: `Donut`/`Stack` өөрсдөө НЭГ
+   *    `--data`-ийн тунгалгийн шатаар (.92 − i×.22) ялгана (дашбоардын графиктай нэг хэл).
    */
   const slices = data.flatMap((d, i) => (d.value == null
     ? []
-    : [{ key: `${i}-${d.label}`, label: d.label, value: d.value, color: cat(i) }]));
+    : [{ key: `${i}-${d.label}`, label: d.label, value: d.value }]));
   const gauge = data[0].value;
 
   return (

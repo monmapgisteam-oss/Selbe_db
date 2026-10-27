@@ -22,7 +22,10 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { roleForUser, type ViewKey, type Role } from '@/lib/services';
+import { ROLE_STAGE, isCodeSuper, type ViewKey, type Role } from '@/lib/services';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунтын тэмдэг (`portalPresence`) */
+import { portalMissing } from '@/lib/portalPresence';
+import { flowAclReady } from '@/lib/guitsetgelAcl';
 import type { UserPerm } from '@/lib/permissions';
 import type { CapKey } from '@/lib/caps';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -59,12 +62,16 @@ export type UserRowProps = {
   onRole: (role: Role) => void;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
-  onFlipDocs: () => void;
   onFlipRemove: () => void;
-  onClear: () => void;
   onGoFlow: () => void;
-  /** Хатуу super — «Төрлөөр тохируулах»-д Super төрөл зөвхөн түүнд */
+  /** ⚠️ 2026-10-21: ӨӨРИЙН super мөр — үүрэг сонгогч · устгах · «Төрлөөр тохируулах» түгжээтэй (өөр super өөрчилнө) */
   superUser: boolean;
+  /**
+   * ⚠️ 2026-10-26 (аудит): ХАРАГДАЦЫН унтраалгын түгжээ — АЛЬ Ч super мөр (хүснэгтийн super ч). `flipView`/`setAllViews` super-т
+   *    чимээгүй return хийдэг тул өөр super-ийн унтраалга дарагддаг мэт харагдах ч юу ч хийдэггүй байв. Үүрэг/устгалын түгжээ
+   *    `superUser`-ээр хэвээр (өөр super-ийг доошлуулах боломжтой).
+   */
+  viewsLocked?: boolean;
   /** Хэрэглэгчийн карт нээх */
   onOpenCard: () => void;
 };
@@ -77,16 +84,44 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   hasView: p.hasView,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
-  onFlipDocs: p.onFlipDocs,
-  superUser: p.superUser,
+  superUser: p.superUser || !!p.viewsLocked,
 });
 
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */
 export function UserHeadBadges({ p }: { p: UserRowProps }) {
   const { d, dirty, st, on, allKeys, dirtyPerm, onGoFlow } = p;
+  /* ⚠️ 2026-10-22 (аудит): УРСГАЛЫН ТӨРӨЛ ↔ ШАТ. «Гүйцэтгэгч компани» … «Газрын дарга» төрөл (ноорог ч) зөвхөн үүрэг/харагдацыг
+     бичдэг — шат, «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ (`roleTypeApply.applyType`), анхааруулга ч байгаагүй (амьд:
+     `munkhbaatar` «Газрын дарга» атлаа томилгоогүй). Шатгүй/өөр шаттай бол урсгалын хуудас руу заах тэмдэг. */
+  const want = d.role ? ROLE_STAGE[d.role] : undefined;
+  /* ⚠️ Томилгоо уншигдтал (`flowAclReady`) `st` нь null — худал «шатгүй» гаргахгүй */
+  const typeGap = !d.remove && !!want && flowAclReady() && st !== want;
   return (
     <span className={s.badges}>
-      {d.isNew && <span className={s.newBadge}>{tr('шинэ')}</span>}
+      {/* ⚠️ 2026-10-23 (UX аудит A2): шинэ аккаунт «Хадгалах» хүртэл эрхийн хуудсанд сонгогдохгүй — шалтгааныг tooltip-д */}
+      {d.isNew && (
+        <span className={s.newBadge} title={tr('Хадгалаагүй шинэ аккаунт — «Хадгалах» дарсны дараа багц, засах эрх олгох хуудсуудад сонгогдоно.')}>
+          {tr('шинэ')}
+        </span>
+      )}
+      {/* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise порталд алга — нэвтэрч чадахгүй (`portalPresence`) */}
+      {portalMissing(p.u.username) && (
+        <span className={s.removeBadge} title={tr('Enterprise порталд энэ нэртэй аккаунт алга — нэвтэрч чадахгүй. Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл устгана уу.')}>
+          {tr('порталд алга')}
+        </span>
+      )}
+      {typeGap && want && (
+        <button
+          type="button"
+          className={s.stageBadge}
+          onClick={() => onGoFlow()}
+          title={st
+            ? tr('«{0}» төрөлтэй атлаа «{1}» шатанд томилогдсон — шат нь томилгооноос. Дарж «Гүйцэтгэлийн урсгалын эрх» руу очно.', STAGE_LABEL[want], STAGE_LABEL[st])
+            : tr('«{0}» төрөл урсгалын шат олгодоггүй — «Гүйцэтгэлийн урсгалын эрх» хуудсанд «{0}» шатанд томилохгүй бол «Гүйцэтгэл» хуудас нээгдэхгүй, батлахгүй. Дарж очно.', STAGE_LABEL[want])}
+        >
+          {st ? tr('⚠ төрөл ≠ шат') : tr('⚠ шатгүй')}
+        </button>
+      )}
       {d.remove && <span className={s.removeBadge}>{tr('хадгалахад устгагдана')}</span>}
       {!d.remove && (
         <span className={s.countBadge} title={tr('Нээлттэй харагдацын тоо')}>
@@ -109,18 +144,19 @@ export function UserHeadBadges({ p }: { p: UserRowProps }) {
       {dirtyPerm && (
         <span
           className={s.unsynced}
-          title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй. «Дахин синк» товчоор дахин илгээнэ.')}
+          /* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «синк» → «хөтөч» · «Дахин илгээх» (товчны шинэ нэр) */
+          title={tr('ArcGIS хүснэгтэд бичиж чадсангүй — өөрчлөлт бусад төхөөрөмжид үйлчлэхгүй. «Дахин илгээх» товчоор дахин илгээнэ.')}
         >
-          {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}
+          {tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид')}
         </span>
       )}
     </span>
   );
 }
 
-/** Үүргийн preset · Сэргээх · Устгах (мөр ба карт) — бүгд НООРОГ */
+/** Үүргийн preset · Устгах (мөр ба карт) — бүгд НООРОГ */
 export function UserHeadActions({ p }: { p: UserRowProps }) {
-  const { u, rowKey: key, d, dirty, myName, rolePresets, onRole, onClear, onFlipRemove } = p;
+  const { u, rowKey: key, d, myName, rolePresets, onRole, onFlipRemove } = p;
   return (
     <div className={s.presets}>
       {/* ⚠️ 2026-09-30: 10 чип бүгд ил байхад мөр бүр 2 мөр зай эзэлдэг байв
@@ -134,9 +170,9 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
         onChange={(e) => { if (e.target.value) onRole(e.target.value as Role); }}
         aria-label={tr('Үүрэг')}
         title={p.superUser
-          ? tr('Кодонд бүртгэлтэй админ')
+          ? tr('Өөрийн super эрх — өөр super админ өөрчилнө')
           : d.role === 'super'
-            ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
+            ? tr('Бүх харагдац ба админ портал нээгдэнэ — super эрх нь эрхийн тохиргооноос (өөр super админ олгоно/хасна).')
             : tr('Үүрэг')}
       >
         {!d.role && <option value="">{tr('Үүрэг сонгох…')}</option>}
@@ -150,21 +186,12 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
           <option key={r.key} value={r.key}>{r.label}</option>
         ))}
       </select>
-      {/* ⚠️ Зөвхөн хатуу суурьтай хэрэглэгчид — панелаас нэмсэн аккаунтад
-          «сэргээх» = чимээгүй устгах байв; тэдэнд «Устгах» л байна */}
-      {roleForUser(u.username) && (u.overridden || dirty) && !d.remove && !d.isNew && (
-        <button
-          type="button"
-          className={s.reset}
-          onClick={() => onClear()}
-          title={tr('Хатуу тохиргоо руу сэргээх (хадгалахад үйлчилнэ)')}
-        >
-          {tr('Сэргээх')}
-        </button>
-      )}
-      {/* ⚠️ Хатуу тохиргооны super устгагдахгүй — хуваалцсан хүснэгтээр
-          бүх админыг түгжих замыг хаана; хасах цор ганц зам = код. */}
-      {key !== myName && roleForUser(u.username) !== 'super' && (
+      {/* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): «Сэргээх» товч ХАСАГДСАН — `ROLE_BY_USER` production-д хоосон тул ХЭЗЭЭ Ч
+          гардаггүй байсан ч `UserAdmin.saveAll`-ийн `d.clear` салаа нь мөр · хуваарилалт · эрхийг бүгдийг арилгадаг эрсдэлтэй үхмэл зам
+          байв. Устгагдсан аккаунтыг сэргээх нь «Устгагдсан аккаунтууд → Буцаах» (`permissions.restoreUser`). */}
+      {/* ⚠️ 2026-10-21: super нь эрхийн тохиргоо — ӨӨРИЙГӨӨ л устгахгүй (бүх super-ийг хасвал анхны админ
+          `BOOTSTRAP_SUPER` буцаж идэвхжинэ — `roles.ts`). Урьд super устгагдахгүй (хасах зам = код) байв. */}
+      {key !== myName && !isCodeSuper(u.username) && (
         <button
           type="button"
           className={`${s.delBtn} ${d.remove ? s.delBtnOn : ''}`}

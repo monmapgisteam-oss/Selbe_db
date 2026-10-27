@@ -21,13 +21,15 @@
  */
 
 import { queryFeatures } from './query';
+import { loadCodedMaps, codedName } from './codedDomain';
 /* ⚠️ 2026-10-12 (дарааллын аудит): `register` → `cached` + `SESSION_TTL_MS` (гурван гар кэшийн ⚠️) */
 import { cached, SESSION_TTL_MS } from './live';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { t as tr } from './i18nCore';
 import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
-import { loadRows } from '@/modules/sheet/bagtsSheet';
+/* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): мөр нь QAQC-ийн мод · оноон самбартай ХУВААЛЦСАН нэг уншилтаас */
+import { loadSheetShared } from './sheetShared';
 
 /* ══════════════ 1. Обьёмын зөрүү (Гүйцэтгэлийн хяналт) ══════════════ */
 
@@ -49,13 +51,21 @@ export type VarianceWork = {
    */
   no: string;
   work: string;
-  /** Төлөвлөгдсөн Обьём (эх хүснэгт) */
+  /** Төлөвлөгдсөн Обьём — БҮХ блокийн (мөрийн «Обьём» × блокийн тоо; блокгүй багцад мөрийн «Обьём») */
   vol: number;
   /** Блокуудад бөглөсөн обьёмын нийлбэр — бодит гүйцэтгэлийн утга */
   sum: number;
+  /**
+   * Хэтрэлт — БЛОК БҮРЭЭР: Σ max(0, блокийн обьём − мөрийн «Обьём»).
+   * ⚠️ 2026-10-21 (аудит): мөрийн «Обьём» нь НЭГ блокийнх (`bagtsSheet.cellObyem`: 100% = `vol`). Урьд нь бүх блокийн
+   *    НИЙЛБЭРИЙГ нэг блокийн «Обьём»-той жишдэг тул 12 блок тус бүр 100% бөглөсөн ажил «11 дахин хэтэрсэн» болж,
+   *    CEO «Обьёмын зөрүү» 316 тэрбум ₮ · 1,443 ажил гэж хөөрөгдсөн байв (бодит нь ~177 мөр · 3.2 тэрбум ₮).
+   *    Нэг блокийн дутууг нөгөө блокийн хэтрэлтээр нөхөхгүй.
+   */
+  over?: number;
   /** Нэгж өртөг, ₮ */
   unit: number;
-  /** Зөрүүгийн мөнгөн дүн = (нийлбэр − Обьём) × нэгж өртөг, ₮ */
+  /** Зөрүүгийн мөнгөн дүн = хэтрэлт × нэгж өртөг, ₮ */
   mnt: number;
 };
 
@@ -122,28 +132,29 @@ export const loadVariance: () => Promise<Variance> = cached(
          ⚠️ Синтетик блокт `obyem = [null]` байж болно — уртаар биш, жинхэнэ нэрээр шалгана. */
       if (!sc.obyem.some(Boolean)) return null;
       /* Зөвхөн зөрүү бодоход хэрэгтэй талбарууд — бүтэн «*» татахад мөр ~60+
-         баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит) */
-      const need = [
-        sc.f.oid, sc.f.no, sc.f.work, sc.f.vol, sc.f.unit,
-        sc.f.asOf, sc.f.fillDate,
-        ...sc.obyem,
-      ].filter((x): x is string => Boolean(x));
-      const { rows } = await loadRows(pkg, sc, undefined, need);
+         баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит).
+         ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): талбарын жагсаалт одоо `sheetShared.sharedFields(sc, 'variance')` (зөрүүний
+         `oid·no·work·vol·unit·asOf·fillDate·obyem` + QAQC-ийн модны `gun`) — багц бүрийн 5 алхамт `loadRows`
+         CEO самбарт нэг л удаа явна (урьд нь зөрүү 122 хүсэлт / 11.5 МБ + QAQC тусдаа). `gun` нэмэгдсэнээр `gun` дүүрсэн
+         хуудас (Багц 3.3) `TREES` зэрэгцүүлэлтэд унахаа больж картад ОРДОГ болсон — `sheetShared.ts`-ийн ⚠️. */
+      const { rows } = await loadSheetShared(pkg, 'variance');
       const out: VarianceWork[] = [];
       for (const r of rows) {
         // Зөвхөн НАВЧ ажил — бүлгийн мөр нь нэгтгэл тул давхар тоологдоно
         if (r.group || r.vol == null || r.vol <= 0 || r.unit == null || r.unit <= 0) continue;
         const sum = r.obyem.reduce<number>((a, v) => a + (v ?? 0), 0);
+        /* ⚠️ 2026-10-21: хэтрэлт БЛОК БҮРЭЭР (`VarianceWork.over`-ийн ⚠️) */
+        const over = r.obyem.reduce<number>((a, v) => a + Math.max(0, (v ?? 0) - r.vol!), 0);
         /* ⚠️ 2026-09-25: ХӨВӨГЧ ТАСЛАЛЫН ЗӨВШӨӨРӨЛ. Блокуудын нийлбэр хөвөгч
            таслалаар бодогддог тул яг төлөвлөгөөгөөр бөглөсөн ажил (Обьём 3.3,
            3 блок × 1.1 → 3.3000000000000003) «хэтэрсэн» гэж тоологдож, CEO
            карт «1 ажил хэтэрсэн» гэж ХУДАЛ шар түвшин өгдөг байв. Харьцангуй
            1e-9 зөрүүгээс бага бол тэнцүү гэж үзнэ (бодит хэтрэлт хэзээ ч ийм
            жижиг байдаггүй). */
-        if (sum - r.vol <= Math.max(1e-9, Math.abs(r.vol) * 1e-9)) continue;
+        if (over <= Math.max(1e-9, Math.abs(r.vol) * 1e-9)) continue;
         out.push({
-          pkg: pkg.group, sheet: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol, sum,
-          unit: r.unit, mnt: (sum - r.vol) * r.unit,
+          pkg: pkg.group, sheet: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol * Math.max(1, r.obyem.length), sum,
+          over, unit: r.unit, mnt: over * r.unit,
         });
       }
       return out;
@@ -340,20 +351,23 @@ export type Damage = {
 export const loadDamage: () => Promise<Damage> = cached(
   async (): Promise<Damage> => {
     const I = HABEA.incident.fields;
-    const rows = await queryFeatures(HABEA.incident.url, {
-      outFields: [I.turul, I.ognoo, I.bagts, I.company],
-    });
+    /* ⚠️ 2026-10-22 (аудит): төрөл ба компани домэйны НЭРЭЭР (`ceo/safety.toSafetyRow`-ийн ⚠️) — жишээ мөрөнд тасархай
+       код («"Хятадын хоёр дахь металлурги г») гардаг байв. Мета унавал `{}` — код хэвээр. */
+    const [rows, dom] = await Promise.all([
+      queryFeatures(HABEA.incident.url, { outFields: [I.turul, I.ognoo, I.bagts, I.company] }),
+      loadCodedMaps(HABEA.incident.url, [I.turul, I.company]),
+    ]);
     /**
      * ⚠️ Төрлийг ЯГ таарцаар биш, «хохирол» агуулснаар шүүнэ — Survey123-ийн
      * сонголтод «Эд хөрөнгийн хохирол» гэж байгаа ч гараар бичсэн хувилбар
      * («эд хөрөнгийн хохирол учруулсан» г.м.) алдагдах ёсгүй.
      */
-    const dmg = rows.filter((r) => /хохирол/i.test(String(r[I.turul] ?? '')));
+    const dmg = rows.filter((r) => /хохирол/i.test(codedName(dom[I.turul], r[I.turul])));
     const dates = dmg.map((r) => Number(r[I.ognoo])).filter((x) => Number.isFinite(x) && x > 0);
     const sample = dmg
       .sort((a, b) => Number(b[I.ognoo] ?? 0) - Number(a[I.ognoo] ?? 0))
       .slice(0, 3)
-      .map((r) => [r[I.bagts], r[I.company]].map((v) => String(v ?? '').trim()).filter(Boolean).join(' · '))
+      .map((r) => [String(r[I.bagts] ?? '').trim(), codedName(dom[I.company], r[I.company])].filter(Boolean).join(' · '))
       .filter(Boolean);
     return { n: dmg.length, last: dates.length ? Math.max(...dates) : null, sample };
   },

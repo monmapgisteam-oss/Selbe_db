@@ -168,21 +168,14 @@ export function MapTools({
    */
   /* ⚠️ 2026-10-07 (хэрэглэгчийн хүсэлт: «эхний харагдац дээр хураагдсан байх»): АНХДАГЧ ХУРААГДСАН.
      Дээрх 2026-09-15-ны «нээлттэй» шийдвэрийг хэрэглэгч өөрөө сольсон — бариул (◂) нь нээх зам. */
-  const [barOn, setBarOn] = useState(false);
-  /* ⚠️ 2026-09-30: 2D/3D/BIM сонгогч АНХДАГЧААР НЭЭЛТТЭЙ — дээрх `barOn`-той
-     ижил шалтгаан: жижиг бариулын ард нуугдсан тул хэрэглэгч 3D/BIM горим
-     байгааг олж мэддэггүй байв. Хураах боломж бариулаар үлдэнэ. */
-  /* ⚠️ 2026-10-07: мөн АНХДАГЧ ХУРААГДСАН (дээрх `barOn`-той нэг хүсэлт) — бариул (▴) нь нээх зам */
-  const [dimsOn, setDimsOn] = useState(false);
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн баталсан санал): ◂/▴ ХУРААХ СУМ ХАСАГДАВ — зурвас ба 2D/3D/BIM ҮРГЭЛЖ харагдана
+     (дээрх/доорх анхдагч төлвийн шийдвэрүүд хүчингүй). */
+  const barOn = true;
   /* ⚠️ 2026-10-04: 3D/BIM зураглалын горим — MapCanvas ижил хадгалалтаас уншина (`render3d.ts`) */
   const r3 = useRender3d();
   /* ⚠️ 2026-10-14: «Нарийн»-ы BIM багц (`render3d.BimPkgState`) */
   const bimPkg = useBimPkg();
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
-  /* ⚠️ 2026-10-01: идэвхтэй шүүлт (`ActiveFilterChip`-тэй ижил дүрэм) — хураасан бариулын тэмдэгт */
-  const { active: activeFilter } = useFilter();
-  const { highlight } = useMap();
-  const filterOn = activeFilterLabel(activeFilter, highlight) != null;
 
   /**
    * Бүсийн хавтан ЖИНХЭНЭ ил үү.
@@ -198,35 +191,8 @@ export function MapTools({
    */
   const zoneShown = zoneOpen && !layersOpen && !opacityOpen && barOn;
 
-  /**
-   * 3D/BIM-д ЗУРВАСЫГ ДООШ ТАТНА (2026-09-25, хэрэглэгчийн зураг: «товчнууд
-   * маш их давхацсан»).
-   *
-   * ⚠️ SceneView зүүн дээд буланд zoom (+/−)-ийн ДООР чиглэл солих (2 товч) ба
-   *    луужин нэмдэг: 15 + 64 + 10 + 64 + 10 + 32 ≈ 195px. Зурвас 96px-ээс
-   *    эхэлдэг тул тэр хоёрыг бүрэн дарж, 3D-д эргүүлэх/луужин ашиглах
-   *    боломжгүй болж байв. 2D-д зөвхөн zoom (≈79px) тул хэвээр.
-   * ⚠️ INLINE `top` — харагдацын өөрийн `.shell :global(.mapToolsBar)
-   *    { top: … }` дарж бичих дүрмээс (generalDash) ДАВАМГАЙЛАХ ёстой.
-   *    `dock` зохиомж (зүүн хавтасны толгой) нь зургийн дээд ирмэгт наалддаг
-   *    тул хамаарахгүй.
-   * ⚠️ 2026-09-25: тогтмол 205px БИШ, `min(205px, 40%)` — намхан зурагт
-   *    (≈280px-ээс доош) 205px нь бариул ба зурвасыг зургийн ДООД ирмэгээс
-   *    гаргаж, `calc(100% − 279px)` нь сөрөг өндөр өгч зурвас алга болдог
-   *    байв. Намхан зурагт Esri-ийн луужинг хэсэгчлэн дарах нь товчнууд
-   *    бүрэн алга болсноос дээр. `maxHeight` нь доод талдаа 96px-ээс багасахгүй.
-   */
-  const lift = !dock && dim !== '2d';
-  const TOP_3D = 'min(205px, 40%)';
-  const barStyle = lift
-    ? { top: TOP_3D, maxHeight: `max(96px, calc(100% - ${TOP_3D} - 74px))` }
-    : undefined;
-  const topStyle = lift ? { top: TOP_3D } : undefined;
-  /* Бүсийн хавтан — зурвастай ижил `top`, өндөр нь зургийн доод ирмэгт багтана
-     (`.zonePanel`-ийн `calc(100% − 130px)` нь 96px-ийн `top`-д тооцоологдсон). */
-  const zoneStyle = lift
-    ? { top: TOP_3D, maxHeight: `max(120px, calc(100% - ${TOP_3D} - 20px))` }
-    : undefined;
+  /* ⚠️ 2026-10-23: 3D/BIM-ийн `lift` (205px доош) ХАСАГДАВ — Esri-ийн +/− · луужин · чиглэл солих баруун
+     дээд баганад шилжсэн (`MapCanvas` §ui.move) тул зүүн дээд булан энэ зурвасынх. */
 
   return (
     <>
@@ -241,26 +207,8 @@ export function MapTools({
       * баганын БАРУУН талаас эхэлдэг тул давхцахгүй (`shell.module.css`
       * §catPop, `generalDash.module.css` §catPanel).
       */}
-    <button
-      type="button"
-      aria-expanded={barOn}
-      className={[
-        s.tab,
-        dock ? s.tabDock : s.toolsTab,
-        barOn ? (dock ? s.tabDockOpen : s.toolsTabOpen) : '',
-      ].filter(Boolean).join(' ')}
-      title={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
-      aria-label={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
-      style={topStyle}
-      onClick={() => setBarOn((v) => !v)}
-    >
-      {barOn ? '◂' : '▸'}
-      {/* ⚠️ 2026-10-01: хураасан үед ч идэвхтэй шүүлт байгааг тэмдэглэнэ — дэлгэхэд ✕ чип гарна */}
-      {!barOn && filterOn && <span className={s.tabDot} aria-hidden />}
-    </button>
 
-    {barOn && (
-    <div data-report-skip="" className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`} style={barStyle}>
+    <div data-report-skip="" className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`}>
       {/* ⚠️ 2026-10-01: идэвхтэй шүүлт/тодруулга байвал ✕-тэй чип — ХАМГИЙН ДЭЭР */}
       <ActiveFilterChip />
       {onLayers && (
@@ -312,7 +260,6 @@ export function MapTools({
 
       {children}
     </div>
-    )}
 
     {/**
       * 2D ↔ 3D ↔ BIM — ЗУРВАСААС САЛГАЖ, ГОЛД (хэрэглэгчийн хүсэлт 2026-08-23).
@@ -320,18 +267,7 @@ export function MapTools({
       * нээгчидтэй нэг баганад байхаас илүү тусдаа, өмнөх байрлалдаа тохирно.
       */}
     {/* 2D/3D/BIM сегментийг хураах бариул — зурвасныхаа дор/дээр */}
-    <button
-      type="button"
-      aria-expanded={dimsOn}
-      className={`${s.tab} ${s.dimsTab} ${dimsOn ? s.dimsTabOpen : ''}`}
-      title={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
-      aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
-      onClick={() => setDimsOn((v) => !v)}
-    >
-      {dimsOn ? '▴' : '▾'}
-    </button>
 
-    {dimsOn && (
     <div data-report-skip="" className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
       {dims.map((d) => (
         <button
@@ -390,12 +326,17 @@ export function MapTools({
         </>
       )}
     </div>
-    )}
 
     {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
         байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
     {setZone && zoneShown && (
-      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`} style={zoneStyle}>
+      /* ⚠️ 2026-10-23 (UX аудит S17): хавтан Esc-ээр хаагдана (фокус дотор нь байх үед) */
+      <div
+        className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`}
+        role="region"
+        aria-label={tr('Бүсээр шүүх')}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setZoneOpen(false); } }}
+      >
         <header className={s.zoneHead}>
           <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
           <button
@@ -403,6 +344,7 @@ export function MapTools({
             className={s.zoneClose}
             onClick={() => setZoneOpen(false)}
             aria-label={tr('Хаах')}
+            title={tr('Хаах')}
           >
             ×
           </button>

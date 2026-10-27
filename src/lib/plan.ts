@@ -198,6 +198,13 @@ export function coverageOf(rows: readonly PlanRow[]): Coverage {
     if (r.spans.some((s) => s != null && s.end < s.start)) reversed += 1;
     for (const s of r.spans) {
       if (!s) continue;
+      /* ⚠️ 2026-10-21: урвуу муж (дуусах < эхлэх) нь `filled`-д ОРОХГҮЙ, `from`/`to`-г ТОГТООХГҮЙ —
+         `planAt`-д хуваарьгүй (null) тул «бөглөсөн» гэж тоолох нь хамралтыг хөөрөгдөж, урьд нь
+         `end` нь `to`-г сунгаж мужийг гажуудуулдаг байв. Тоог нь `reversed` хэлнэ.
+         ⚠️ 2026-10-21 (аудит №2): `any` (→ `planned` · `patterns`) ч урвуу мужийн ДАРАА — урьд нь өмнө нь
+         тавигддаг тул зөвхөн урвуу мужтай ажил «Хуваарьтай»-д тоологдож `filled` 0-той зөрж, засах
+         шаардлагатай ажлыг нуудаг байв. */
+      if (s.end < s.start) continue;
       any = true;
       filled += 1;
       if (from == null || s.start < from) from = s.start;
@@ -205,7 +212,8 @@ export function coverageOf(rows: readonly PlanRow[]): Coverage {
     }
     if (any) {
       planned += 1;
-      sig.add(r.spans.map((s) => (s ? `${s.start}:${s.end}` : '-')).join('|'));
+      /* урвуу муж хэв шинжид ч хуваарьгүй ('-') — дээрх ⚠️ */
+      sig.add(r.spans.map((s) => (s && s.end >= s.start ? `${s.start}:${s.end}` : '-')).join('|'));
     }
   }
   return { tasks, planned, cells: tasks * n, filled, from, to, patterns: sig.size, reversed };

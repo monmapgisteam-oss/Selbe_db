@@ -33,7 +33,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { bagtsKey, type ViewKey } from '@/lib/services';
 import {
-  HYANALT, OWNER, STAGE_ORDER, STATUS, F as HF,
+  HYANALT, OWNER, RETURNED_STATUS, STAGE_ORDER, STATUS, F as HF,
   type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
 import { groupWorks } from '@/lib/hyanaltGroup';
@@ -151,7 +151,7 @@ export const NODES: readonly SchemNode[] = [
   {
     id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
     get title() { return tr('Гүйцэтгэлийн хяналт'); },
-    get desc() { return tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга'); },
+    get desc() { return tr('Гүйцэтгэгч → инженер → багцын ахлах инженер → төлөвлөлтийн инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга'); },
   },
   {
     id: 'habea', col: 3, row: 2, view: 'habea', icon: 'flame',
@@ -670,15 +670,12 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
     if (!owner) continue;
     /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд ч, аль ч шатны гар
        дээр ч тоологдохгүй. `OWNER[transferred]` нь `director` тул шүүхгүй
-       бол дууссан ажлууд «ерөнхий менежерийн гар дээр» гэж хуримтлагдана. */
+       бол дууссан ажлууд «төлөвлөлтийн ахлах инженерийн гар дээр» гэж хуримтлагдана. */
     if (st === STATUS.transferred) { done += 1; continue; }
     byStage[owner] += 1;
     pending += 1;
-    if (st === STATUS.engineerReturned
-      || st === STATUS.managerReturned
-      || st === STATUS.directorReturned
-      || st === STATUS.headReturned
-      || st === STATUS.chiefReturned) {
+    /* ⚠️ 2026-10-23: буцаасан төлөвүүд `RETURNED_STATUS`-ээс — шат нэмэгдэхэд (төлөвлөлтийн инженер) энд хоцрохгүй */
+    if ((Object.values(RETURNED_STATUS) as Status[]).includes(st)) {
       returned += 1;
       returnedByStage[owner] += 1;
     }
@@ -686,7 +683,7 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
   return { byStage, returnedByStage, pending, returned, done };
 }
 
-/** `hyanalt` зангилааны дотоод зургаан цэгийн зурвас — гадуур экспортлоно */
+/** `hyanalt` зангилааны дотоод долоон цэгийн зурвас (2026-10-23) — гадуур экспортлоно */
 export function stageRail(src: SchemSources, pkg?: string | null): { stage: Stage; n: number }[] | null {
   if (!src.review) return null;
   const rows = pkg

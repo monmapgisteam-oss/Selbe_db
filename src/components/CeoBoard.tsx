@@ -33,6 +33,7 @@ import {
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
+import { Loading } from '@/components/ui';
 import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { CEO_KPIS, type CeoKpiDef } from '@/lib/ceo/registry';
@@ -370,7 +371,7 @@ export function KpiDetail({
           <span className={s.dErr}> {shortError(slot.error)}</span>
         </p>
       ) : !d ? (
-        <p className={s.dNote}>{tr('Ачаалж байна…')}</p>
+        <Loading />
       ) : (
         <>
           {d.facts.length > 0 && (
@@ -457,7 +458,7 @@ const LIST_ORDER: string[] = [
   /* 1 · Газар чөлөөлөлт — барилга эхлэх урьдчилсан нөхцөл */
   'land',
   /* 2 · Багцын гүйцэтгэл — хуваарь, обьём, хяналт, чанар */
-  'schedule', 'variance', 'review', 'qaqc',
+  'schedule', 'variance', 'review',
   /* 3 · Багцын санхүү — акт, гэрээ, төсөв */
   'ipc', 'contractGap', 'uncontracted',
   /* Цаашид: нөхцөл ба аюулгүй байдал */
@@ -833,7 +834,7 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
                *    `SchemSources` дээр ажилладаг — шинэ хүсэлт үүсэхгүй.
                */
               srcQ.state === 'error' ? <p className={s.dNote}>{tr('Татагдсангүй.')}</p>
-                : !schemDetail ? <p className={s.dNote}>{tr('Ачаалж байна…')}</p>
+                : !schemDetail ? <Loading />
                   : (
                     <>
                       {schemDetail.metrics.length > 0 && (

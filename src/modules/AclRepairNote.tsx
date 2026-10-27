@@ -11,7 +11,8 @@
  *   · УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — порталд алга аккаунтын энэ хуудасны хуваарилалтын мөр ба
  *     `__cap__:` эрх (`aclOps.goneRightsOf`). Энгийн эрхийн хуудас (Зөвшөөрөл · Санхүү · Газар)
  *     порталд БАЙГАА аккаунтыг л жагсаадаг тул тэдний эрх урьд нь ХАРАГДАХ ГАЗАРГҮЙ байв.
- *     Нэг товшилтоор цэвэрлэнэ (`goneCleanupOp`); «Бүгдийг цэвэрлэх» нэг удаа асууна.
+ *     «Цэвэрлэх» (`goneCleanupOp`) арилах мөр/эрхийг нэрлэж асууна (⚠️ 2026-10-23 — урьд нь асуулгүй); «Бүгдийг
+ *     цэвэрлэх» нэг удаа асууна.
  *
  * ⚠️ Бүх ACL уншигдтал (`allAclReady`) юу ч харуулахгүй — уншигдаагүй эх сурвалжийн `[]`-ээс
  *    худал «цэвэр» эсвэл худал «үлдэгдэл» гарна. Түгжээ нь `runOp` дарах агшинд ч дахин шалгагдана.
@@ -22,9 +23,10 @@
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  allAclReady, failedUsersOf, goneCleanupOp, goneRightsOf, retryOp, type AclOp, type RepairSys,
+  allAclReady, failedUsersOf, goneCleanupOp, goneRightsOf, retryOp, runOp, type AclOp, type RepairSys,
 } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
+import { askConfirm } from '@/lib/confirm';
 import { PANE_CAPS, type ErhPane } from './capText';
 import { capLabelShort } from './erhLabels';
 import s from './guitsetgel.module.css';
@@ -32,12 +34,12 @@ import s from './guitsetgel.module.css';
 /** Хуудас → хуваарилалтын систем (`null` — аккаунтаар олгодог энгийн эрхийн хуудас) */
 export const repairSysOf = (pane: ErhPane): RepairSys | null => {
   if (pane === 'guits') return 'flow';
-  if (pane === 'qaqc' || pane === 'huvaari' || pane === 'ajil' || pane === 'obyem' || pane === 'chanar' || pane === 'butets') return pane;
+  if (pane === 'huvaari' || pane === 'ajil' || pane === 'obyem' || pane === 'chanar' || pane === 'butets') return pane;
   return null;
 };
 
 export function AclRepairNote({ pane }: { pane: ErhPane }) {
-  const { busy, err, run } = useAclRunner();
+  const { busy, err, setErr, run } = useAclRunner();
   const [bulk, setBulk] = useState(false);
   if (!allAclReady()) return null;
 
@@ -48,11 +50,20 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
   if (!failed.length && !gone.length && !err) return null;
   const off = busy || bulk;
 
+  /* ⚠️ 2026-10-21: БАГЦЫН алдааг ХУРИМТЛУУЛНА — урьд нь op бүр `run`-ийн нэг `setErr`-ээр явж, дараагийн
+     амжилттай op-ын `setErr('')` өмнөх op-ын унасан шалтгааныг арчдаг байв. Op бүрийн алдааг цуглуулж
+     төгсгөлд нэг удаа бичнэ. `runOp`-ийг шууд — бүх товч `bulk`-аар хаалттай тул `run`-ийн түгжээ хэрэггүй. */
   const all = async (ops: (() => AclOp)[]) => {
     setBulk(true);
+    const errs: string[] = [];
     try {
-      for (const op of ops) await run(op());
+      for (const op of ops) {
+        let last = '';
+        await runOp(op(), (m) => { last = m; });
+        if (last) errs.push(last);
+      }
     } finally {
+      setErr([...new Set(errs)].join(' · '));
       setBulk(false);
     }
   };
@@ -61,7 +72,7 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
     <div className={s.aclWrap}>
       {failed.length > 0 && sys && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т хадгалагдаагүй хуваарилалт (бичилт унасан) — энэ browser-т л байна:')}
+          {tr('⚠️ ArcGIS-т хадгалагдаагүй хуваарилалт (бичилт унасан) — энэ хөтчид л байна:')}
           {' '}
           {failed.map((u) => (
             <span key={u}>
@@ -95,7 +106,12 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
               {') '}
               <button type="button" className={s.aclPkg} disabled={off}
                 title={tr('Энэ хуудасны хуваарилалт ба эрхийг нь арилгана')}
-                onClick={() => { void run(goneCleanupOp(sys, caps, g.user)); }}>
+                /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): асуулгүй устгадаг байв — арилах мөр/эрхийг нэрлэж асууна */
+                onClick={async () => {
+                  const what = [g.row ? tr('хуваарилалтын мөр') : '', ...g.caps.map(capLabelShort)].filter(Boolean).join(', ');
+                  if (!(await askConfirm(tr('Устгагдсан «{0}» аккаунтын энэ хуудсанд үлдсэн {1}-ийг арилгах уу?', g.user, what), { ok: tr('Цэвэрлэх') }))) return;
+                  void run(goneCleanupOp(sys, caps, g.user));
+                }}>
                 {tr('Цэвэрлэх')}
               </button>
               {' '}
@@ -103,9 +119,10 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
           ))}
           {gone.length > 1 && (
             <button type="button" className={s.aclPkg} disabled={off}
-              onClick={() => {
-                if (!window.confirm(tr('Устгагдсан {0} аккаунтын энэ хуудасны үлдсэн хуваарилалт ба эрхийг арилгах уу? {1}',
-                  String(gone.length), gone.map((g) => g.user).join(', ')))) return;
+              /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
+              onClick={async () => {
+                if (!(await askConfirm(tr('Устгагдсан {0} аккаунтын энэ хуудасны үлдсэн хуваарилалт ба эрхийг арилгах уу? {1}',
+                  String(gone.length), gone.map((g) => g.user).join(', ')), { ok: tr('Цэвэрлэх') }))) return;
                 void all(gone.map((g) => () => goneCleanupOp(sys, caps, g.user)));
               }}>
               {tr('Бүгдийг цэвэрлэх ({0})', String(gone.length))}

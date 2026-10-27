@@ -19,12 +19,12 @@
  * ⚠️ ЭНЭ МОДУЛЬ (`archiveSubmission`) нь `Bagts_*` АРХИВТ (ҮНДСЭН ДАТА) жааз
  * бичдэг ЦОРЫН ГАНЦ ГАЗАР болов (2026-09-04). Хэрэглэгчийн шаардлага:
  * «ноорог ҮНДСЭН ДАТАНД хадгалагдаж болохгүй — 4 шат дамжсаны дараа л дата
- * хүснэгт буюу үндсэн сервис рүү орно» (хэрэглэгчийн тухайн үеийн үг; одоо 6 шат —
+ * хүснэгт буюу үндсэн сервис рүү орно» (хэрэглэгчийн тухайн үеийн үг; одоо 7 шат (2026-10-23) —
  * `REVIEW_STAGES`, 2026-10-09 аудит №6). Урьд нь «Нийтлэх» дармагц
  * `FillNew.publish` өөрөө `applyAdds` дуудаж бүтэн жаазыг архивт бичдэг байв:
  * хянагч буцаасан ч, огт хараагүй ч тоо нь үндсэн өгөгдөлд аль хэдийн сууж
  * байлаа. Одоо «Нийтлэх» нь зөвхөн ИЛГЭЭЛТ (`Selbe_Guitsetgel_Draft`-ийн
- * `sub|<pkgKey>` мөр, diff) үүсгэнэ; архив руу энд, ерөнхий менежерийн
+ * `sub|<pkgKey>` мөр, diff) үүсгэнэ; архив руу энд, төлөвлөлтийн ахлах инженерийн
  * зөвшөөрлийн үед л бичигдэнэ. `applyAdds`-ыг өөр газраас БҮҮ дууд.
  *
  * ⚠️ ХОЁР ДАХЬ ДУУДАГЧ (2026-09-24): `ajilApply.materializeAdds` — НЭМЭЛТ АЖЛЫН
@@ -37,11 +37,14 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { t as tr } from './i18nCore';
 import {
-  addRows, addedOid, deleteRow, ensureUniqueId, fieldMaxLen, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig, updateRows,
+  addRows, addedOid, deleteRow, ensureUniqueId, fieldMaxLen, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig,
+  updateDecision, HyanaltConflict,
   DECISION, F, HYANALT, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview, prevReview,
-  type Attrs, type Decision, type ReviewStage, type Row, type Status,
+  type Attrs, type Decision, type ReviewStage, type Row, type Stage, type Status,
 } from './hyanalt';
+/* ⚠️ 2026-10-23: ЗӨВХӨН төрөл (`selfBlocks`) — модуль нь `countReviewPending`-д динамикаар хэвээр */
+import type { Work } from './hyanaltGroup';
 
 /**
  * `Zovshoorson_nud` (`F.okCells`) ТАЛБАРТ БИЧИХ PATCH — талбар үйлчилгээнд
@@ -72,7 +75,7 @@ async function okCellsPatch(okCells: string[] | undefined, strict = true): Promi
     console.warn(`[selbe] «${F.okCells}» талбар хяналтын үйлчилгээнд алга — зөвшөөрсөн нүд хадгалагдсангүй. AGOL дээр талбар нэмнэ үү.`);
     return {
       patch: {},
-      warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. AGOL дээр багана нэмнэ үү.', F.okCells),
+      warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. Админд мэдэгдэнэ үү.', F.okCells),
     };
   }
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗӨВХӨН ШИНЭ хэлбэр (`{v:2,c:[…]}` — мөрийн
@@ -83,12 +86,12 @@ async function okCellsPatch(okCells: string[] | undefined, strict = true): Promi
     if (!strict) {
       return {
         patch: {},
-        warn: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрсэн тул хадгалагдсангүй — шийдвэр хэвээр явлаа. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
+        warn: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрсэн тул хадгалагдсангүй — шийдвэр хэвээр явлаа. Баганын уртыг нэмүүлэхээр админд мэдэгдэнэ үү.', String(enc.length), F.okCells, String(max)),
       };
     }
     return {
       patch: {},
-      error: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. AGOL дээр баганын уртыг нэмүүлнэ үү.', String(enc.length), F.okCells, String(max)),
+      error: tr('Зөвшөөрсөн нүдний жагсаалт ({0} тэмдэгт) «{1}» баганын хэмжээнээс ({2}) хэтэрлээ — шийдвэр хадгалагдсангүй. Баганын уртыг нэмүүлэхээр админд мэдэгдэнэ үү.', String(enc.length), F.okCells, String(max)),
     };
   }
   return { patch: { [F.okCells]: enc } };
@@ -198,13 +201,15 @@ import { encodeOkCells } from './hyanaltOkCells';
 import type { ArchivingMark, StagedSubmission, SubmissionPayload } from './submission';
 /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey` — багцын нэрийг нормчилж жишнэ (`negtgelWrite.summaryOf`-той нэг дүрэм) */
 import { AUTH, bagtsKey, roleForUser } from './services';
+/* ⚠️ 2026-10-23: «Ерөнхий захирал» зөвхөн харах (`authz`) — `permissions` нь энэ файлыг импортлодоггүй (тойрог үгүй) */
+import { roleOf } from './permissions';
 import { currentUser } from './who';
 import { arcgisPost } from './query';
 import { isLostWrite } from './lostWrite';
 /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цаг — шатны огноо · лог · тэмдэг · `approvedAt` (`serverClock`-ийн ⚠️) */
 import { serverNow, syncServerClock } from './serverClock';
 /* ⚠️ 2026-10-12 (дарааллын аудит): эцсийн батлалтын гинжний кэш-мэдэгдлийг нэгтгэнэ (`batchInvalidate`-ийн ⚠️) */
-import { batchInvalidate, invalidate } from './dataBus';
+import { batchInvalidate, invalidate, register } from './dataBus';
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАДГАЛАГДАХ ДЭЛГЭЦИЙН НЭР (`who`) — нэвтэрсэн хэрэглэгчийнх мөн эсэх.
@@ -318,9 +323,8 @@ async function lostResult(e: unknown): Promise<Result> {
  *    `bypass` = хүссэн БӨГӨӨД зөвшөөрөгдсөн (нэвтрэлт унтраалттай эсвэл кодын хатуу
  *    `super` — `resolveFlowStage.canPick`-тэй ижил дүрэм). Node-д хуучин гэрээ (`meOf`).
  * ⚠️ 2026-10-06 (аудит #6): `hist` өгвөл ӨМНӨХ шатыг хамгийн сүүлд зөвшөөрсөн хүн
- *    (логийн `u`) энэ хэрэглэгч бол ТАТГАЛЗАНА — нэг хүн дараалсан хоёр шат. Хатуу
- *    super / дев нь `bypass`-аар чөлөөлөгдөнө (бүх урсгалыг турших — одоогийн бодлого,
- *    `Guitsetgel` «шат солигдоно» ⚠️). `u`-гүй (хуучин) лог → шалгахгүй.
+ *    (логийн `u`) энэ хэрэглэгч бол ТАТГАЛЗАНА — нэг хүн дараалсан хоёр шат. 2026-10-23-ноос
+ *    super-т Ч үйлчилнэ (зөвхөн нэвтрэлтгүй дев `bypass`-аар чөлөөлөгдөнө). `u`-гүй (хуучин) лог → шалгахгүй.
  * ⚠️ 2026-10-09 (R5): `u`-гүй (лог талбар алга — `historyPatch` `{}` буцаадаг, эсвэл хуучин
  *    лог) үед шалгуур ЧИМЭЭГҮЙ унтардаг байв. Одоо `same` өгвөл НӨӨЦ: өмнөх шатны
  *    `SF[prev].who` (дэлгэцийн нэр) = энэ шийдвэрийн `who` бол татгалзана. `u` байвал урьдын
@@ -350,9 +354,22 @@ function authz(
     }
     by = bypass && (!AUTH.appId || roleForUser(u) === 'super');
   }
+  /* ⚠️ 2026-10-19 (ХЭРЭГЛЭГЧИЙН ШИЙДВЭР, 2026-10-23-нд ХЭСЭГЧЛЭН СОЛИГДСОН — доорх ⚠️): `bypass` (хатуу super / нэвтрэлтгүй дев)
+     нь томилгоо · шат · багцын хүрээг чөлөөлдөг БА өөрийгөө батлах дүрмийг ч алгасдаг байв («super бүх шатыг турших»).
+     Энгийн хэрэглэгчид (`by` худал) `selfApprovalDeny` бүрэн хэвээр — тэр цэвэр функц өөрөө super-ийг ялгадаггүй. */
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн ШИНЭ шийдвэр, дээрх 2026-10-19-ийг ХЭСЭГЧЛЭН солино): super-ийн `bypass` нь томилгоо · шат ·
+     багцын хүрээг ЧӨЛӨӨЛСӨӨР (админы аврах эрх — жиш. 7.1 · 10-р багцад 3-р шатны менежер алга), харин ӨӨРИЙГӨӨ БАТЛАХ
+     дүрэм (`selfApprovalDeny`: нэг илгээлтийг нэг хүн хоёр шатанд / дараалсан шатанд, илгээгч өөрөө) super-т Ч
+     үйлчилнэ — нэг данс долоон шатыг ганцаараа батлах нь хяналтыг утгагүй болгоно. Нэвтрэлтгүй дев (`!AUTH.appId`,
+     хэн болох нь тодорхойгүй) л бүрэн чөлөөтэй хэвээр. */
+  /* ⚠️ 2026-10-26 (хэрэглэгчийн ШИЙДВЭР, дээрх 2026-10-23-ийг БУЦААВ: «super дараалан батлах чадвартай байх ёстой»): super
+     (bypass) өөрийгөө батлах дүрмээс (`selfApprovalDeny`) ЧӨЛӨӨТЭЙ — нэг илгээлтийн бүх шатыг дараалан батална. Энгийн
+     хэрэглэгчид дүрэм бүрэн хэвээр (доор). */
   if (by) return null;
   if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
   if (isViewOnly(u)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — шийдвэр гаргах боломжгүй.');
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын шат биш, томилгоо (санамсаргүй) байсан ч шийдвэр гаргахгүй (`resolveFlowStage`-ийн ⚠️) */
+  if (roleOf(u) === 'zahiral') return tr('Ерөнхий захирал гүйцэтгэлийг зөвхөн ХАРНА — шийдвэр гаргах боломжгүй.');
   if (stageOfUser(u) !== stage) {
     return tr('Та энэ шатны хянагчаар томилогдоогүй байна.');
   }
@@ -360,34 +377,78 @@ function authz(
   if (sc !== null && !sc.includes(bagts)) {
     return tr('Энэ багц танд хуваарилагдаагүй байна.');
   }
-  /* ⚠️ 2026-10-09 (аудит): өөрийн илгээсэн гүйцэтгэлийг өөрөө хянахгүй (`submitters`-ийн ⚠️) */
+  /* ⚠️ 2026-10-09 (аудит): өөрийн илгээсэн гүйцэтгэлийг өөрөө хянахгүй; 2026-10-19: аль ч шатанд, өөр шатанд
+     зөвшөөрсөн бол ч (`selfApprovalDeny`) */
+  return selfApprovalDeny(stage, u, hist, same, submitters);
+}
+
+const SAME_ROUND_MSG = (): string =>
+  tr('Энэ илгээлтийг та өөр шатанд аль хэдийн зөвшөөрсөн — нэг илгээлтийг нэг хүн хоёр шатанд шийдвэрлэх боломжгүй.');
+const PREV_STAGE_MSG = (): string =>
+  tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
+
+/**
+ * ӨӨРИЙГӨӨ БАТЛАХ ДҮРЭМ — ЦЭВЭР (`hyanaltAuthz.check.mjs`). `authz`-ийн томилгоо/хүрээний ДАРАА (2026-10-19, аудит).
+ * ⚠️ 2026-10-23: super-т Ч үйлчилнэ — `authz`-ийн `bypass` салаа (томилгоо/шат/хүрээг чөлөөлдөг) энэ функцийг дууддаг
+ *    (2026-10-19-нөөс 10-23 хүртэл super чөлөөтэй байв). Зөвхөн нэвтрэлтгүй дев дуудагдахгүй. Хэн болохыг ялгадаггүй.
+ *   1. Илгээгч (`submitters`) аль ч шатанд батлахгүй (`submitterDeny`).
+ *   2. `hist` өгвөл (зөвшөөрөх чиглэл): энэ тойргийн логт ӨӨР шатанд ЗӨВШӨӨРСӨН (`approve`/`recheck-ok`, `u`) бол
+ *      татгалзана — урьд нь зөвхөн ӨМНӨХ шатыг шалгадаг тул шат шилжүүлсэн хүн (инженерээр баталсны дараа
+ *      төлөвлөлтийн ахлах инженер болсон) нэг илгээлтийг хоёр удаа баталж чаддаг байв. Тойрог = хяналтын мөр (`ergelt` бүр
+ *      тусдаа мөр, лог нь мөрийнх). Ижил шатыг ДАХИН (дээд шат буцаасны дараа) батлах нь хэвийн.
+ *   3. Логт `u` алга (талбаргүй үйлчилгээ / хуучин лог — R5): ДООД шатуудын дэлгэцийн нэр (`SF[шат].who`) = энэ
+ *      шийдвэрийн `who` бол татгалзана. Зөвхөн доод шатууд — мөр тэдгээрийг давсан тул тэнд ЗӨВШӨӨРСӨН нэр л байна.
+ * ⚠️ `u` нь жижиг үсгээр (`meOf`). Буцаах чиглэлд дуудагч `hist`-ийг өгдөггүй (буцаалт ажлыг батлалтаас холдуулна).
+ */
+export function selfApprovalDeny(
+  stage: ReviewStage,
+  u: string,
+  hist?: unknown,
+  same?: { row: Row; who: string },
+  submitters?: readonly string[],
+): string | null {
   const sd = submitterDeny(stage, u, submitters);
   if (sd) return sd;
-  if (hist !== undefined) {
-    const pv = prevReview(stage);
-    const la = pv ? lastApprover(hist, pv) : '';
-    if (pv && la && la === u) {
-      return tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
-    }
-    /* ⚠️ 2026-10-09 (R5): логт `u` алга — өмнөх шатны дэлгэцийн нэрээр нөөц шалгалт */
-    if (pv && !la && same) {
-      const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+  if (hist === undefined) return null;
+  const pv0 = prevReview(stage);
+  const other = approvedStagesOf(hist, u).filter((st) => st !== stage);
+  if (other.length) return pv0 && other.includes(pv0) ? PREV_STAGE_MSG() : SAME_ROUND_MSG();
+  /* ⚠️ 2026-10-09 (R5): логт `u` алга — доод шатуудын дэлгэцийн нэрээр нөөц (тэр шатанд `u`-тай зөвшөөрөл байхгүй үед л) */
+  if (same) {
+    const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+    const me = norm(same.who);
+    for (let pv = pv0; pv; pv = prevReview(pv)) {
+      if (lastApprover(hist, pv)) continue;
       const pw = norm((same.row as Record<string, unknown>)[SF[pv].who]);
-      if (pw && pw === norm(same.who)) {
-        return tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
-      }
+      if (me && pw && pw === me) return pv === pv0 ? PREV_STAGE_MSG() : SAME_ROUND_MSG();
     }
   }
   return null;
 }
 
+/** Энэ тойргийн логт `u` ЗӨВШӨӨРСӨН (`approve`/`recheck-ok`) шатууд — давхардалгүй (2026-10-19) */
+export function approvedStagesOf(raw: unknown, u: string): ReviewStage[] {
+  const me = u.trim().toLowerCase();
+  if (!me) return [];
+  const out = new Set<ReviewStage>();
+  for (const e of rawHist(raw)) {
+    if (e.act !== 'approve' && e.act !== 'recheck-ok') continue;
+    if (typeof e.u !== 'string' || e.u.trim().toLowerCase() !== me) continue;
+    if ((REVIEW_STAGES as readonly unknown[]).includes(e.stage)) out.add(e.stage as ReviewStage);
+  }
+  return [...out];
+}
+
 /**
  * ⚠️ 2026-10-09 (аудит №2): `authz`-ийн илгээгчийн дүрмийг ЦЭВЭР функц болгон гаргав (Node шалгуур —
- *    `hyanaltAuthz.check.mjs`). Утга ӨӨРЧЛӨГДӨӨГҮЙ: зөвхөн инженер шатанд, `u` илгээгчдийн дунд бол татгалзана;
- *    `submitters` `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй. `u` нь жижиг үсгээр (`meOf`).
+ *    `hyanaltAuthz.check.mjs`). `submitters` `undefined`/хоосон (хуучин мөр, илгээлтгүй legacy зам) → шалгахгүй.
+ *    `u` нь жижиг үсгээр (`meOf`).
+ * ⚠️ 2026-10-19 (аудит): АЛЬ Ч ШАТАНД — урьд нь зөвхөн инженер шатанд шалгадаг тул компаниас дээд шат руу шилжсэн
+ *    (эсвэл super-ээр компани болж илгээсэн) данс өөрийн илгээлтийг менежер/дарга шатанд баталж чаддаг байв.
+ *    `stage` параметр гарын үсгийн нийцэлд хэвээр.
  */
-export function submitterDeny(stage: ReviewStage, u: string, submitters?: readonly string[]): string | null {
-  if (stage === 'engineer' && submitters?.includes(u)) {
+export function submitterDeny(_stage: ReviewStage, u: string, submitters?: readonly string[]): string | null {
+  if (submitters?.includes(u)) {
     return tr('Энэ гүйцэтгэлийг та өөрөө илгээсэн — өөрийн илгээлтийг хянах боломжгүй.');
   }
   return null;
@@ -399,10 +460,17 @@ export function submitterDeny(stage: ReviewStage, u: string, submitters?: readon
  *    Уншиж чадахгүй бол ТАТГАЛЗАНА (fail-closed, `subAt`-ийн уншилттай ижил); илгээлт алга (legacy) → шалгахгүй.
  */
 async function submittersFor(
-  stage: ReviewStage, row: Row, me: string | undefined, bypass: boolean,
+  _stage: ReviewStage, row: Row, me: string | undefined, _bypass: boolean,
 ): Promise<{ ok: true; list?: string[] } | { ok: false; error: string }> {
-  if (stage !== 'engineer' || typeof window === 'undefined') return { ok: true };
-  if (bypass && (!AUTH.appId || roleForUser(meOf(me)) === 'super')) return { ok: true };
+  /* ⚠️ 2026-10-19 (аудит): БҮХ шатанд уншина (`selfApprovalDeny`-ийн ⚠️) — урьд нь зөвхөн инженер шатанд. Super-ийнх ч
+     (2026-10-23, доорх ⚠️). Нэвтрэлт унтраалттай дев (`!AUTH.appId`) — хэн болох нь тодорхойгүй тул алгасна. */
+  if (typeof window === 'undefined' || !AUTH.appId || !meOf(me)) return { ok: true };
+  /* ⚠️ 2026-10-26: super (bypass) — өөрийгөө батлах дүрэмгүй тул илгээгчийг уншихгүй (`authz`-ийн ⚠️).
+     ⚠️ ЗӨВХӨН хатуу super (`authz`-ийн `by`-тай ижил нөхцөл, 2026-10-19-ний аудит) — нүцгэн `_bypass` бол өөр замаар
+     үнэн болсон ЭНГИЙН хэрэглэгч илгээгчийн шалгалтгүй үлдэж өөрийн илгээлтээ батлах байв. */
+  if (_bypass && roleForUser(meOf(me)) === 'super') return { ok: true };
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр, 2026-10-26-нд super-т буцаагдсан): super-ийн илгээгчийг ч УНШИНА — өөрийгөө батлах дүрэм super-т ч үйлчилнэ
+     (`authz`-ийн ⚠️). Урьд нь (2026-10-19) super ба `_bypass` чөлөөтэй байв; нэвтрэлтгүй дев дээр алгасагдсан. */
   const so = Number(row[F.sheetOid]);
   if (!Number.isInteger(so) || so <= 0) return { ok: true };
   return submittersOfRow(so, row[F.bagts]);
@@ -461,6 +529,12 @@ export function toRow(a: Attrs): Row {
     [F.managerReason]: str(a[F.managerReason]),
     [F.managerReturned]: toIso(a[F.managerReturned]),
     [F.managerSent]: toIso(a[F.managerSent]),
+    /* ⚠️ 2026-10-23: төлөвлөлтийн инженер — талбар үйлчилгээнд хараахан алга бол `''`/`null` */
+    [F.planner]: str(a[F.planner]),
+    [F.plannerDecision]: str(a[F.plannerDecision]) as Decision | '',
+    [F.plannerReason]: str(a[F.plannerReason]),
+    [F.plannerReturned]: toIso(a[F.plannerReturned]),
+    [F.plannerSent]: toIso(a[F.plannerSent]),
     [F.director]: str(a[F.director]),
     [F.directorDecision]: str(a[F.directorDecision]) as Decision | '',
     [F.directorReason]: str(a[F.directorReason]),
@@ -484,6 +558,33 @@ export function toRow(a: Attrs): Row {
   };
 }
 
+/**
+ * ⚠️ 2026-10-23 (UX аудит F2/R7): БУЦААЛТЫН МЭДЭЭЛЭЛ — бөглөх хуудасны «Буцаасан» баннерт шалтгаан · хэн · хэзээ.
+ *    Гүйцэтгэгчийн гар дээр ирэх цорын ганц буцаалт = «Инженер буцаасан» (`OWNER` — дээд шатны буцаалт инженерт
+ *    очдог), тиймээс инженерийн талбаруудаас уншина. Мөр буцаагдаагүй бол `null`. ЦЭВЭР функц — сүлжээ, React үгүй.
+ *    ⚠️ Гүйцэтгэгчид зөвхөн инженерийн нэр харагдана (`Guitsetgel.stepsOf`-ийн `seesManager` дүрэм) — энэ туслах
+ *    дээд шатны нэрийг санаатай буцаадаггүй.
+ */
+export type ReturnInfo = {
+  /** Буцаасан шалтгаан (хоосон байж болно — хуучин мөр) */
+  reason: string;
+  /** Буцаасан хянагчийн дэлгэцийн нэр (хоосон байж болно) */
+  by: string;
+  /** Буцаасан огноо — ISO мөр, эсвэл `null` */
+  at: string | null;
+  /** Үргэлж `'engineer'` (2-р шат) — шошгыг `STAGE_LABEL.engineer`-ээс */
+  stage: 'engineer';
+};
+export function returnInfoOf(r: Row | null | undefined): ReturnInfo | null {
+  if (!r || r[F.status] !== STATUS.engineerReturned) return null;
+  return {
+    reason: String(r[F.engineerReason] ?? '').trim(),
+    by: String(r[F.engineer] ?? '').trim(),
+    at: r[F.engineerReturned] || null,
+    stage: 'engineer',
+  };
+}
+
 /* ── Захиалагчид мэдэгдэх модулийн түвшний store ── */
 
 let ROWS: Row[] = [];
@@ -496,7 +597,7 @@ let loaded = false;
  *    `BAGTS_SHEET`-ийг шууд хүчингүй болгодог. Харин ӨӨР хэрэглэгч (газрын дарга өөр компьютерээс) эсвэл
  *    ӨӨР таб баталсныг энэ таб мэдэх зам БАЙГААГҮЙ — «Багцын гүйцэтгэл» · Ерөнхий дашбоард · «Багцын
  *    мэдээлэл» «Шинэчлэх» товч / табаа удаан нуугаад буцаах хүртэл хуучин тоогоо барьдаг байв.
- * ⚠️ ДҮРЭМ: «Шилжүүлсэн» (`STATUS.transferred` — зургаан шат бүгд өнгөрч архивт суусан) төлөвт ШИНЭЭР
+ * ⚠️ ДҮРЭМ: «Шилжүүлсэн» (`STATUS.transferred` — долоон шат бүгд өнгөрч архивт суусан) төлөвт ШИНЭЭР
  *    хүрсэн мөр илэрвэл гүйцэтгэлийн эх хүснэгтүүдийг хүчингүй болгоно → `useAsync`-ийн бүх дуудагч
  *    (12-ын зүүн самбар г.м.) өөрөө дахин татна. Эх: хямд `queryStatusSig` (oid:төлөв) — 60 с тутам,
  *    таб харагдаж байхад + таб/цонх идэвхжихэд (`startApprovalWatch`), мөн дарааллын `ROWS` уншилт бүр.
@@ -658,17 +759,17 @@ async function liveRow(oid: number): Promise<Row | undefined> {
 /**
  * Шат бүрд хүлээгдэх ЯГ тэр төлөв — өөр төлөвтэй мөрд шийдвэр бичихгүй.
  * ⚠️ `OWNER`-оор шалгавал «Менежер буцаасан» мөрд инженерийн зөвшөөрөл,
- *    «Шилжүүлсэн» мөрд ерөнхий менежерийн давхар баталгаа (нэгтгэлд давхар
+ *    «Шилжүүлсэн» мөрд төлөвлөлтийн ахлах инженерийн давхар баталгаа (нэгтгэлд давхар
  *    бүртгэл) нэвтэрнэ. Дахин шалгалт `recheck`-ээр ШИНЭ мөр үүсгэнэ.
  */
-/* ⚠️ `REVIEW_STATUS` нь `hyanalt.ts`-д (2026-09-23) — 6 шатны нэг эх сурвалж. */
+/* ⚠️ `REVIEW_STATUS` нь `hyanalt.ts`-д (2026-09-23) — шатны нэг эх сурвалж (2026-10-23-наас 7 шат). */
 
 const STALE = () => tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
 
 /**
- * БИЧИХИЙН ЯГ ӨМНӨ ДАХИН ШАЛГАНА — дунд шатны compare-and-set-маягийн хамгаалалт.
+ * Бичихийн өмнөх мэдээллийн шалгалт; атом нөхцөлийг `updateDecision` сервер дээр шалгана.
  *
- * ⚠️ 2026-09-30: ArcGIS-д CAS байхгүй. `apply`/`recheck` мөрийг эхэнд нэг удаа
+ * `apply`/`recheck` мөрийг эхэнд нэг удаа
  *    уншдаг ч түүнээс хойш эрх, илгээлтийн агуулга (`subAt`), `okCellsPatch`
  *    гэх мэт сүлжээний алхмууд явдаг тул нэг шатанд ХОЁР данс томилогдсон үед
  *    хоёулаа эхний шалгуурыг давж, сүүлд бичсэн нь өмнөхийн шийдвэрийг
@@ -792,6 +893,13 @@ function startPoll(): () => void {
  *    (22 орчим мөр, 60 с кэш).
  */
 let badgeRows: { at: number; rows: Row[] } | null = null;
+/* ⚠️ 2026-10-21 (кэшийн аудит): тэмдгийн кэшийг автобусад БҮРТГЭНЭ. Хяналтын шийдвэр (`hyanalt.updateDecision` →
+   `invalidate('HYANALT')`) `Guitsetgel`/Нүүр ачаалагдаагүй сешнд (localStorage-ийн сүүлийн харагдацаар шууд өөр
+   хуудсанд орсон) ямар ч `HYANALT` слот тааралгүй тул `dataBus` хувилбараа өсгөхгүй, React-д мэдэгдэхгүй — цэсний
+   «хүлээгдэж буй» тоо 3 мин (`Portal`-ын таймер) хуучин үлддэг байв. Энэ слот шийдвэр гаргах модульд өөрт нь байгаа
+   тул ҮРГЭЛЖ таарч, `Portal.refreshBadges` (`subscribeData`) шууд дахин тоолно; 60 с-ийн `POLL_MS` TTL бусдын
+   шийдвэрт хэвээр. */
+register(() => { badgeRows = null; }, ['HYANALT']);
 export async function countReviewPending(username: string | null | undefined): Promise<number | null> {
   try {
     const me = (username ?? '').trim().toLowerCase();
@@ -799,14 +907,19 @@ export async function countReviewPending(username: string | null | undefined): P
     const stage = stageOfUser(me);
     if (!stage) return null;
     if (isViewOnly(me)) return 0;
-    const sc = bagtsFor(me, stage);
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» батлагч БИШ (`authz`-ийн хориг) — урсгалын мөр (хуучин/алдаатай) үлдсэн ч 0 */
+    const role = roleOf(me);
+    if (role === 'zahiral') return 0;
+    /* ⚠️ 2026-10-23: шаттай super — «Батлах ажил» жагсаалт нь БҮХ багцыг харуулдаг атал тэмдэг зөвхөн томилсон багцыг
+       тоолдог тул зөрдөг байв («2» · жагсаалтад «5»). super-т хүрээ хязгааргүй (`null`). */
+    const sc = role === 'super' ? null : bagtsFor(me, stage);
     if (Array.isArray(sc) && sc.length === 0) return 0;
     let rows: Row[];
     if (loaded) rows = ROWS;
     else if (badgeRows && Date.now() - badgeRows.at < POLL_MS) rows = badgeRows.rows;
     else { rows = (await queryAll()).map(toRow); badgeRows = { at: Date.now(), rows }; }
     const { groupWorks } = await import('./hyanaltGroup');
-    let ws = groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
+    const ws = groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
       && (sc == null || sc.includes(w.bagts)));
     /*
      * ⚠️ 2026-10-12 (R9): ЭНЭ ХЭРЭГЛЭГЧ ЗӨВШӨӨРЧ ЧАДАХГҮЙ ажлыг тоолохгүй — `authz`-ийн ЯГ тэр хоёр дүрэм:
@@ -817,32 +930,67 @@ export async function countReviewPending(username: string | null | undefined): P
      *    (тэмдэг нь зөвлөмж; шийдвэрийн хамгаалалт `authz`-д хэвээр). Илгээгчдийн уншилт 60 с кэштэй.
      */
     /* ⚠️ `company` нь хяналтын шат биш — өмнөх хянагч байхгүй */
-    const pv = stage === 'company' ? null : prevReview(stage);
-    if (pv) ws = ws.filter((w) => lastApprover(w.current[F.history], pv) !== me);
-    if (stage === 'engineer' && ws.length) {
-      const lists = await Promise.all(ws.map(async (w): Promise<string[] | undefined> => {
-        const so = Number(w.current[F.sheetOid]);
-        if (!Number.isInteger(so) || so <= 0) return undefined;
-        const hit = badgeSubs.get(so);
-        if (hit && Date.now() - hit.at < POLL_MS) return hit.list;
-        try {
-          /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `submittersOfRow` — илгээлтийн багцыг мөрийн багцтай тулгана (legacy OID давхцал) */
-          const sr = await submittersOfRow(so, w.current[F.bagts]);
-          if (!sr.ok) return undefined;
-          const list = sr.list ?? [];
-          badgeSubs.set(so, { at: Date.now(), list });
-          return list;
-        } catch { return undefined; }
-      }));
-      ws = ws.filter((_, i) => !submitterDeny(stage, me, lists[i]));
-    }
-    return ws.length;
+    /* ⚠️ 2026-10-19 (аудит): `authz`-ийн шинэ дүрэм (`selfApprovalDeny`) — ӨӨР АЛЬ Ч шатанд зөвшөөрсөн, аль ч шатанд
+       өөрийн илгээлт. Урьд нь өмнөх шат ба инженер шатны илгээгч л. */
+    /* ⚠️ 2026-10-23: өөрийгөө батлах дүрэм super-т ч үйлчилнэ (`authz`-ийн ⚠️) — тэмдэг ч super-т шүүнэ (`selfBlocks`) */
+    /* ⚠️ 2026-10-23 (UX аудит R1): дүрэм `selfBlocks`-д — «Батлах ажил» таб ЯГ ТЭР функцээр шүүнэ (тэмдэг «2» · таб «3» зөрдөг байв) */
+    const blocked = await selfBlocks(ws, me, stage);
+    return ws.filter((w) => !blocked.has(w.key)).length;
   } catch {
     return null;
   }
 }
 /** ⚠️ 2026-10-12 (R9): тэмдгийн илгээгчдийн кэш — `илгээлтийн oid → { at, данснууд }` */
 const badgeSubs = new Map<number, { at: number; list: string[] }>();
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит R1): ЭНЭ ХЭРЭГЛЭГЧ ЗӨВШӨӨРЧ ЧАДАХГҮЙ ажлууд — `ажлын түлхүүр → шалтгаан`.
+ *    `countReviewPending` (цэсний тэмдэг) ба `Guitsetgel`-ийн «Батлах ажил» жагсаалт НЭГ дүрмээр: урьд нь жагсаалт
+ *    өөрийн илгээлт / өөр шатанд зөвшөөрсөн ажлыг ч «хүлээгдэж буй» гэж харуулж, татгалзал зөвхөн «Зөвшөөрөх» дарсны
+ *    ДАРАА (`authz`) гардаг байв. Дүрэм нь `authz`-ийн хоёр хэсэг (R9 ⚠️ дээр):
+ *      (1) энэ тойрогт ӨӨР шатанд өөрөө зөвшөөрсөн (`approvedStagesOf`) — мессеж `selfApprovalDeny`-тэй ижил;
+ *      (2) өөрийн илгээлт (`submitterDeny`) — илгээгчдийн уншилт 60 с кэштэй, уншигдахгүй бол ХААХГҮЙ (зөвлөмж;
+ *          жинхэнэ хамгаалалт `authz`-д хэвээр).
+ *    Компани шат · нэвтрээгүй → хоосон. ⚠️ 2026-10-23: super-т Ч тооцно (өөрийгөө батлах дүрэм super-т үйлчилнэ — `authz`).
+ * ⚠️ Зөвхөн ЗӨВШӨӨРӨХ чиглэл — буцаах замд (`apply` return · `recheck` back) `authz` эдгээрийг шалгадаггүй.
+ */
+export async function selfBlocks(
+  works: readonly Work[], username: string | null | undefined, stage: Stage,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const me = (username ?? '').trim().toLowerCase();
+  if (!me || stage === 'company') return out;
+  /* ⚠️ 2026-10-26: super — өөрийгөө батлах тэмдэггүй (дараалан батална, `authz`-ийн ⚠️) */
+  if (roleForUser(me) === 'super') return out;
+  const st = stage as ReviewStage;
+  const pv = prevReview(st);
+  const rest: Work[] = [];
+  for (const w of works) {
+    const other = approvedStagesOf(w.current[F.history], me).filter((x) => x !== st);
+    if (other.length) out.set(w.key, pv && other.includes(pv) ? PREV_STAGE_MSG() : SAME_ROUND_MSG());
+    else rest.push(w);
+  }
+  if (!rest.length) return out;
+  const lists = await Promise.all(rest.map(async (w): Promise<string[] | undefined> => {
+    const so = Number(w.current[F.sheetOid]);
+    if (!Number.isInteger(so) || so <= 0) return undefined;
+    const hit = badgeSubs.get(so);
+    if (hit && Date.now() - hit.at < POLL_MS) return hit.list;
+    try {
+      /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `submittersOfRow` — илгээлтийн багцыг мөрийн багцтай тулгана (legacy OID давхцал) */
+      const sr = await submittersOfRow(so, w.current[F.bagts]);
+      if (!sr.ok) return undefined;
+      const list = sr.list ?? [];
+      badgeSubs.set(so, { at: Date.now(), list });
+      return list;
+    } catch { return undefined; }
+  }));
+  rest.forEach((w, i) => {
+    const d = submitterDeny(st, me, lists[i]);
+    if (d) out.set(w.key, d);
+  });
+  return out;
+}
 
 /* ── Үйлдэл ── */
 
@@ -944,7 +1092,7 @@ function unclosedSet(subOid: number, v: { at: number } | null): void {
  *    амжилттай болсон үед тавигддаг (`done|` угтвар эсвэл `payload.archiveOid`).
  *    Хэрэв `applyAdds` амжилттай болсон АТЛАА `closeSubmission` БА `updateRows`
  *    хоёул унавал (сүлжээ) `apply` нь `{ok:false}` буцааж, хяналтын мөр
- *    «Ерөнхий менежер хянаж байна» хэвээр үлдэнэ — менежер дахин дарахад
+ *    «Төлөвлөлтийн ахлах инженер хянаж байна» хэвээр үлдэнэ — менежер дахин дарахад
  *    БҮТЭН ЖААЗ ХОЁР ДАХЬ УДАА бичигдэнэ. Архивт тийм давхардлын бодит ул мөр
  *    бий (Bagts_1_9f 2026-08-29 = 16 хуулбар, 21,920 мөр).
  *
@@ -958,7 +1106,7 @@ function unclosedSet(subOid: number, v: { at: number } | null): void {
  *    аудитын олдвор): `sub|` мөр нь ДАРААГИЙН илгээлтэд ЯГ ТЭР OBJECTID дээрээ
  *    дахин бичигддэг. Сүлжээ тасарч `closeSubmission` унасны дараа гүйцэтгэгч
  *    дутуу тоогоо нэмж ДАХИН илгээвэл ижил oid дээр ӨӨР агуулга тогтоно;
- *    зөвхөн oid-оор түлхүүрлэсэн үед ерөнхий менежер ТЭР Ж хөтчийн сешнд
+ *    зөвхөн oid-оор түлхүүрлэсэн үед төлөвлөлтийн ахлах инженер ТЭР Ж хөтчийн сешнд
  *    батлахад `{ok:true}` буцаж, ШИНЭ нүднүүд архивт ОГТ бичигдэлгүй хяналтын
  *    мөр «Шилжүүлсэн» болдог байв — хаана ч алдаа гарахгүй. `staged.at` нь
  *    илгээлт бүрд шинэчлэгддэг тул агуулгын хувилбарын үүрэг гүйцэтгэнэ.
@@ -1096,14 +1244,14 @@ export async function cleanupTruncatedFrame(pkgKey: string, mark: ArchivingMark)
   if (!rows.length) return { deleted: 0 };
   const dateFields = [...sc.start, ...sc.end].filter((f): f is string => !!f);
   const ids = truncatedFrameIds(rows, mark, sc.f.oid, sc.f.no, dateFields);
-  if (!ids) return { error: tr('тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, AGOL дээр админ шалгана уу', String(rows.length)) };
+  if (!ids) return { error: tr('тэмдгийн өдөрт {0} мөр байна — тасарсан жааз гэж танигдсангүй, админд мэдэгдэнэ үү', String(rows.length)) };
   /* ⚠️ 2026-10-12 (A2): тэргүүн хэсэг бүтэн жааз — тасарсан мөр алга (`truncatedFrameIds`-ийн `[]`) */
   if (!ids.length) return { deleted: 0 };
   let gone = 0;
   try { gone = await applyDeletes(pkg, ids); } catch (e) {
     return { error: tr('тасарсан жаазыг устгаж чадсангүй ({0})', String((e as Error)?.message ?? e)) };
   }
-  if (gone !== ids.length) return { error: tr('тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', String(ids.length), String(ids.length - gone)) };
+  if (gone !== ids.length) return { error: tr('тасарсан {0} мөрийн {1}-ийг устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай)', String(ids.length), String(ids.length - gone)) };
   console.warn(`[selbe] ${pkg.key}: хуучирсан тэмдгийн тасарсан ${gone} мөрийг архиваас цэвэрлэв (OID > ${mark.maxOid0}, ${msToDay(mark.fillMs)})`);
   return { deleted: gone };
 }
@@ -1265,7 +1413,7 @@ async function cleanupOtherStale(pkgKey: string, exceptOid: number): Promise<{ d
 }
 
 /**
- * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — ерөнхий менежер БАТЛАХАД л дуудагдана
+ * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — төлөвлөлтийн ахлах инженер БАТЛАХАД л дуудагдана
  * (дизайны дүрэм 5a–5e).
  *
  * Гурван зам:
@@ -1296,7 +1444,7 @@ async function archiveSubmission(
     return { ok: true, archiveOid: 0, empty: true, warn: tr('Хяналтын мөрд илгээлтийн дугаар алга (хуучин мөр) — архивт бичих, нэгтгэлд бүртгэх жааз байхгүй.') };
   /* ⚠️ `ARCHIVED`-ийн шалгуур нь ЭНД БИШ, илгээлтийг УНШСАНЫ ДАРАА (доор) —
      түлхүүрт `staged.at` (агуулгын хувилбар) орох ёстой. */
-  const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, markFresh, resolveMark, ARCHIVING_TTL_MS } = await import('./submission');
+  const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, markFresh, resolveMark, ARCHIVING_TTL_MS, archivingBusy, lostFrameIds } = await import('./submission');
   /*
    * ⚠️ АЛДААГ ЯЛГАДАГ ХУВИЛБАР (2026-09-04-ний аудитын CRITICAL олдвор).
    *    Урьд нь энд `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь
@@ -1383,7 +1531,11 @@ async function archiveSubmission(
   }
 
   /* ⚠️ 2026-10-09 (R3): хянагчийн харсан агуулга мөн эсэх — `apply`-ийн тулгалттай ижил мессеж */
-  if (subAt != null && staged.at !== subAt)
+  /* ⚠️ 2026-10-26 (S3): `subAt` ЗААВАЛ — урьд нь `undefined` бол тулгалт алгасагдаж, хянагчийн ХАРААГҮЙ
+     нээлттэй илгээлт архивлагдах боломжтой байв. Энд хүрсэн = нээлттэй (`done|`/`archiveOid`-гүй) илгээлт
+     байгаа тул хувилбаргүй бол ТАТГАЛЗАНА (fail-closed). Хуучин замууд (илгээлтгүй мөр · `done|` · энэ
+     тойргийн үлдэгдэл) дээр аль хэдийн буцсан тул `subAt`-гүй ажилласаар. */
+  if (subAt == null || staged.at !== subAt)
     return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
 
   /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ
@@ -1434,7 +1586,7 @@ async function archiveSubmission(
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -1534,7 +1686,7 @@ async function archiveSubmission(
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    if (!Number.isFinite(mx)) throw new Error(tr('Бүртгэлийн дугаарын дээд утга уншигдсангүй'));
     return mx;
   };
   let maxOid0: number;
@@ -1688,6 +1840,17 @@ async function archiveSubmission(
     };
   }
   /*
+   * ⚠️ 2026-10-21 (аудит): НИЙТ СӨРӨГ БОЛОХ НЭМЭЛТ (`incCell.neg` → `Overlay.negative`) — архивлахгүй, ИЛ зогсоно.
+   *    Урьд нь `max(0, …)`-оор чимээгүй 0 болгодог тул хоёр илгээлтийн БАТЛАЛТЫН ДАРААЛЛААС хамаарч өөр дүн гардаг
+   *    байв (суурь 0: +10 дараа −15 → 0, харин −15 дараа +10 → 10). Дэлгэцэд (FillNew · хянагч) 0-оор хаасан хэвээр.
+   */
+  if (ov.negative > 0) {
+    return {
+      ok: false,
+      error: tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) — архивт бичсэнгүй. Гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү: {1}', String(ov.negative), nameKeys(ov.negKeys)),
+    };
+  }
+  /*
    * ⚠️ `asOf` нь `computeAll`-ийн ЛАВЛАХ огноо. БАЙХГҮЙ БАЙЖ БОЛНО
    *    (2026-09-06): хэзээ ч нийтлэгдээгүй хуудсанд огноо тохируулаагүй
    *    бөгөөд бөглөгч түүнийг «Хуваарь» харагдацаар дараа тавина. Тэр үед
@@ -1696,10 +1859,13 @@ async function archiveSubmission(
    *
    * ⚠️ Урьд нь энд `asOf == null` бол архивлалтыг ЗОГСоодог байв: огноогоо
    *    хараахан тавиагүй багцын батлагдсан гүйцэтгэл үндсэн өгөгдөлд ХЭЗЭЭ Ч
-   *    орж чадахгүй, ерөнхий менежер шалтгааныг нь ойлгомжгүй алдаанаас л
+   *    орж чадахгүй, төлөвлөлтийн ахлах инженер шалтгааныг нь ойлгомжгүй алдаанаас л
    *    мэддэг байлаа.
    */
-  const asOf = ov.asOf ?? loaded.asOf;
+  /* ⚠️ 2026-10-22 (аудит): ХОЖУУ НЬ (`sheetFrame.laterAsOf`) — урьд нь `ov.asOf ?? loaded.asOf` тул ХУУЧИН өдрийн илгээлт
+     хожуу батлагдахад (10-12-ныхын дараа 10-10-ных) архивын «Шинэчлэгдсэн огноо» ухарч, БҮХ мөрийн төлөвлөгөөт хувь
+     буцаж бодогддог байв. Хянагчийн харагдац (`hyanaltDetail.loadStaged`) ЯГ энэ дүрмээр харуулна. */
+  const asOf = laterAsOf(ov.asOf, loaded.asOf);
 
   /*
    * БӨГЛӨСӨН ӨДӨР — илгээсэн өдөр (`payload.fillMs`).
@@ -1824,13 +1990,15 @@ async function archiveSubmission(
       .catch((x: unknown) => ({ ok: false as const, error: String((x as Error)?.message ?? x) }));
     return r.ok ? '' : ` · ${tr('«Архивлаж байна» тэмдгийг арилгаж чадсангүй ({0})', r.error ?? '')}`;
   };
+  /* ⚠️ 2026-10-09 (R2-c): жаазыг ДАРАА нь ЯГ таних дээж — эхний мөрийн № ба илгээлтээр өөрчлөгдсөн
+     нүднүүд (`frameProbe`, ачаалсан жаазтай OID-оор тулгана; шинэ мөр бүхэлдээ «өөрчлөгдсөн»).
+     ⚠️ 2026-10-21 (аудит): блокоос гаргав — доорх хариу алдагдсан цэвэрлэгээ (`lostFrameIds`) ч ИЖИЛ дээжээр таньна. */
+  const prevByOid = new Map(loaded.rows.map((r) => [r.oid, r.raw]));
+  const probeFields = [...sc.act, ...sc.obyem, ...sc.start, ...sc.end].filter((f): f is string => !!f);
+  const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
+  const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
+  const dateFields = [...sc.start, ...sc.end].filter((f): f is string => !!f);
   {
-    /* ⚠️ 2026-10-09 (R2-c): жаазыг ДАРАА нь ЯГ таних дээж — эхний мөрийн № ба илгээлтээр өөрчлөгдсөн
-       нүднүүд (`frameProbe`, ачаалсан жаазтай OID-оор тулгана; шинэ мөр бүхэлдээ «өөрчлөгдсөн»). */
-    const prevByOid = new Map(loaded.rows.map((r) => [r.oid, r.raw]));
-    const probeFields = [...sc.act, ...sc.obyem, ...sc.start, ...sc.end].filter((f): f is string => !!f);
-    const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
-    const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
     const mr = await markArchiving(staged.oid, staged.at, {
       /* ⚠️ 2026-10-12 (дарааллын аудит): `startedAt` серверийн цагаар — `markFresh` өөр хөтчид мөн серверийн цагаар жишнэ */
       at: staged.at, startedAt: serverNow(), maxOid0, fillMs, n: frame.length,
@@ -1854,6 +2022,21 @@ async function archiveSubmission(
      ⚠️ 2026-10-09: тэмдгийн ДАРАА (дээрх ⚠️) — зогсвол архив хөндөгдөөгүй тул өөрийн тэмдгийг арилгана. */
   /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): суурь жаазын мужийн `max(EditDate)` — бичихийн ӨМНӨХ суурь (A4-ийн `mx0`,
      `frameEditMax`-ийн ⚠️). `EditDate`-гүй үйлчилгээнд `null` — бичсэний дараа талбар бүрээр тулгана. */
+  /* ⚠️ 2026-10-21 (аудит): БАГЦЫН БУСАД `sub|` мөрийн ШИНЭ «архивлаж байна» тэмдэг — өөр өдрийн илгээлтийг өөр хянагч яг
+     одоо архивлаж байвал (нэг багцад хоёр батлалт зэрэг) ЗОГСОНО, өөрийн тэмдгийг арилгана. `markArchiving`-ийн claim нь
+     зөвхөн ӨӨРИЙН мөрөнд үйлчилдэг тул урьд нь хоёулаа бичиж, хоёр дахь нь эхнийхийн жаазыг булах эсвэл хариу алдагдсан
+     цэвэрлэгээгээр устгах боломжтой байв. Ажил нэмэх · обьём · Хуваарийн бичигчдийн ижил гэрээ (`archivingBusy`),
+     өөрийн мөрийг алгасна; уншиж чадахгүй бол бичихгүй (fail-closed). */
+  {
+    let otherArch: { who: string; at: number } | null;
+    try {
+      otherArch = await archivingBusy(pkg.key, staged.oid);
+    } catch (e) {
+      return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) + (await clearMark()) };
+    }
+    if (otherArch)
+      return { ok: false, error: tr('{0} энэ багцын өөр илгээлтийг яг одоо архивлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', otherArch.who || tr('Өөр хянагч')) + (await clearMark()) };
+  }
   let editMax0: number | null = null;
   {
     let stop = '';
@@ -1904,20 +2087,43 @@ async function archiveSubmission(
     if (addsLost(e)) {
       const ids = new Set(written);
       let strayErr = '';
-      if (sc.f.fillDate) {
-        try {
+      /* ⚠️ 2026-10-21 (аудит): ӨДРӨӨР биш АГУУЛГААР таньж устгана (`submission.lostFrameIds` — `matchArchivedFrame`/
+         `truncatedFrameIds`-ийн дүрэм, `ulsiinKomiss`-ийн 2026-10-21-ний засвартай ижил). Урьд нь тэмдгийн өдрийн
+         `OID > maxOid0` БҮХ мөрийг устгадаг тул тэмдэг ба бичилтийн завсарт ижил өдрөөр бичигдсэн ӨӨР батлалтын жааз ч
+         устдаг байв. Танигдаагүй (`unknown`) мөрийг хөндөхгүй; таньж чадаагүй бол (`matched` худал) тэдгээр манайх байж
+         болзошгүй гэж ил хэлнэ (fail-closed — зөвхөн баталгаажсан `written`). Огнооны талбаргүй багцад `OID > maxOid0`-оор. */
+      let matched = false;
+      let unknown = 0;
+      try {
+        const rows: Record<string, unknown>[] = [];
+        const outFields = [...new Set([sc.f.oid, sc.f.no, ...probe.map((p) => p[1])])].join(',');
+        for (let offset = 0; ; ) {
           const j = await agsFetch(`${pkg.url}/query`, {
-            where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
-            returnIdsOnly: 'true',
+            where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`,
+            outFields,
+            orderByFields: `${sc.f.oid} ASC`,
+            resultRecordCount: '2000',
+            resultOffset: String(offset),
+            returnGeometry: 'false',
           });
-          for (const x of (j?.objectIds ?? []) as unknown[]) if (Number.isInteger(x) && (x as number) > maxOid0) ids.add(x as number);
-        } catch (x) { strayErr = String((x as Error)?.message ?? x); }
-      }
+          const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
+          rows.push(...fs.map((f) => f.attributes));
+          if (!j?.exceededTransferLimit || fs.length === 0) break;
+          offset += fs.length;
+        }
+        const mine = lostFrameIds(rows, { n: frame.length, ...(rootNo && rootNo.length <= 64 ? { rootNo } : {}), ...(probe.length ? { probe } : {}) }, sc.f.oid, sc.f.no, dateFields, written);
+        if (mine) { matched = true; for (const x of mine) ids.add(x); }
+        unknown = rows.filter((r) => !ids.has(Number(r[sc.f.oid]))).length;
+      } catch (x) { strayErr = String((x as Error)?.message ?? x); }
       const gone = ids.size ? await applyDeletes(pkg, [...ids]) : 0;
       const left = ids.size - gone;
+      const maybeLeft = Math.max(left, 0) + (matched ? 0 : unknown);
+      const tail = maybeLeft > 0 || strayErr
+        ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — админд мэдэгдэнэ үү', String(maybeLeft))}${strayErr ? `: ${strayErr}` : ''})`
+        : unknown > 0 ? ` (${tr('тэр өдрийн өөр бичигчийн {0} мөрийг хөндөөгүй', String(unknown))})` : '';
       return {
         ok: false,
-        error: `${why} · ${tr('Архивын бичилтийн хариу алдагдсан — үр дүн тодорхойгүй. Энэ жаазны {0} мөрийг архиваас устгав{1}; «Архивлаж байна» тэмдэг үлдлээ — {2} минутын дараа дахин «Батлах» дарахад архивыг шалгаж шийднэ.', String(gone), left > 0 || strayErr ? ` (${tr('{0} мөр үлдсэн байж болзошгүй — AGOL дээр шалгана уу', String(Math.max(left, 0)))}${strayErr ? `: ${strayErr}` : ''})` : '', String(Math.round(ARCHIVING_TTL_MS / 60_000)))}`,
+        error: `${why} · ${tr('Архивын бичилтийн хариу алдагдсан — үр дүн тодорхойгүй. Энэ жаазны {0} мөрийг архиваас устгав{1}; «Архивлаж байна» тэмдэг үлдлээ — {2} минутын дараа дахин «Батлах» дарахад архивыг шалгаж шийднэ.', String(gone), tail, String(Math.round(ARCHIVING_TTL_MS / 60_000)))}`,
       };
     }
     if (written.length) {
@@ -1930,7 +2136,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай)', written.length, left)}`
           : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`) + markMsg,
       };
     }
@@ -1957,7 +2163,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, AGOL дээр гараар цэвэрлэнэ үү.', written.length, left)
+          ? tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)
           : tr('Бичих зуур хуудсанд өөр мөр орлоо (зэрэгцээ бичилт) — манай жаазыг архиваас буцааж устгав, дахин оролдоно уу.')) + markMsg,
       };
     }
@@ -1980,7 +2186,7 @@ async function archiveSubmission(
       return {
         ok: false,
         error: (left > 0
-          ? tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, AGOL дээр гараар цэвэрлэнэ үү.', written.length, left)
+          ? tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазын {0} мөрийн {1}-ийг устгаж чадсангүй, админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)
           : tr('Бичих зуур үндсэн жаазын мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — манай жаазыг архиваас буцааж устгав, дахин оролдоно уу.')) + markMsg,
       };
     }
@@ -2049,7 +2255,7 @@ async function closeAfterArchive(
    */
   by: { row: number; day: string },
 ): Promise<{ warns: string[]; reopen?: { fillMs: number; sheetOid: number; sheet: string }; hold?: string }> {
-  const { readSubmissionByOid, closeSubmission, saveSubmission, residualAfterArchive } = await import('./submission');
+  const { readSubmissionByOid, closeSubmission, saveResidualSubmission, residualAfterArchive } = await import('./submission');
   /** ⚠️ 2026-10-09: үлдэгдлийн бичилт — архив шийдэгдсэн тул «архивлаж байна» тэмдгийг АРИЛГАЖ (`dropMark` —
       `saveSubmission`-ий тэмдгийн хамгаалалт) бичнэ; урьд нь `residualAfterArchive` тэмдгийг дамжуулж үлдээдэг байв. */
   /* ⚠️ 2026-10-12 (A9): `residualOf` — хяналтын мөрийн `updateRows` унаж мөр эцсийн шатанд үлдвэл дахин «Батлах»
@@ -2058,7 +2264,9 @@ async function closeAfterArchive(
     /* ⚠️ 2026-10-12 (дарааллын аудит): `at` серверийн цагаар — `apply`-ийн `s0.at >= uc.at` жишилт өөр хөтчид явдаг */
     const body: SubmissionPayload = { ...rest, at: serverNow(), residual: true, residualOf: { row: by.row, archiveOid: firstOid, day: by.day } };
     delete body.archiving;
-    return saveSubmission(rest.pkgKey, body, { at: at0, ...(mark0 != null ? { dropMark: mark0 } : {}) });
+    /* ⚠️ 2026-10-21 (аудит): үлдэгдлийн тусгай зам (`saveResidualSubmission`, `chiefDeny`) — `saveSubmission` клиентийн
+       `residual` тугийг татгалздаг болсон (`submission.ts`-ийн ⚠️) */
+    return saveResidualSubmission(rest.pkgKey, body, { at: at0, ...(mark0 != null ? { dropMark: mark0 } : {}) });
   };
   const incPl = pl.mode === 'inc';
   const warns: string[] = [];
@@ -2164,7 +2372,7 @@ async function closeAfterArchive(
  * ХЯНАГЧИЙН ШИЙДВЭРИЙГ БҮРТГЭНЭ — гурван хянах шат тус бүрд.
  *
  * ⚠️ ЗӨВШӨӨРӨЛ нь ДАРААГИЙН шат руу, БУЦААЛТ нь ӨМНӨХ шат руу — нэг алхмаар.
- *    Эцсийн `Шилжүүлсэн` төлөвт ЗӨВХӨН ерөнхий менежер зөвшөөрснөөр хүрнэ:
+ *    Эцсийн `Шилжүүлсэн` төлөвт ЗӨВХӨН төлөвлөлтийн ахлах инженер зөвшөөрснөөр хүрнэ:
  *    гурав дахь шатанд «шилжүүлсэн» гэж тэмдэглэвэл дөрөв дэх хяналт
  *    хийгдээгүй атлаа бүртгэгдсэн болно.
  */
@@ -2197,6 +2405,8 @@ export async function apply(a: {
    *    ХАРААГҮЙ агуулга батлагдана. Өгвөл одоогийн илгээлтийн `at` зөрөх үед
    *    STALE-маягийн алдаагаар зогсоно; `undefined` = шалгахгүй (хуучин
    *    архивын зам — илгээлт байхгүй).
+   * ⚠️ 2026-10-26 (S3): ЗӨВШӨӨРӨХ үед `undefined` ч нээлттэй илгээлт байвал ТАТГАЛЗАНА (fail-closed) —
+   *    зөвхөн илгээлтгүй/архивласан мөрөнд «шалгахгүй» хэвээр.
    */
   subAt?: number;
   /** ArcGIS-д БИЧИГДЭХ дэлгэцийн нэр (өгөгдөл) */
@@ -2270,7 +2480,7 @@ export async function apply(a: {
     if (nx) {
       attrs[F.status] = REVIEW_STATUS[nx];
     } else {
-      // ЭЦСИЙН БАТАЛГАА — зургаан шат бүгд өнгөрлөө
+      // ЭЦСИЙН БАТАЛГАА — долоон шат бүгд өнгөрлөө (2026-10-23)
       attrs[F.status] = STATUS.transferred;
       registerNow = true;
       /* ⚠️ 2026-10-13: ЭНЭ табын батлалт — гинж өөрөө хүчингүй болгоно; харагч давхар ачаалахгүй (`SEEN_DONE`) */
@@ -2373,11 +2583,21 @@ export async function apply(a: {
     }
     /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ (дээрх `subAt`-ийн ⚠️) — нэг хямд
        уншилт; илгээлт олдохгүй/уншигдахгүй бол ХАДГАЛАХГҮЙ (fail-closed). */
-    if (a.subAt != null) {
+    /* ⚠️ 2026-10-26 (S3): ЗӨВШӨӨРӨХ замд `subAt` алга бол ч уншина — нээлттэй илгээлт байвал (хянагч
+       агуулгыг ачаалаагүй) ТАТГАЛЗАНА. Илгээлтгүй / архивласан (`done|` · `archiveOid`) хуучин мөр
+       `subAt`-гүй батлагдсаар; буцаалт нь хараагүй агуулгыг батлахгүй тул хөндөхгүй.
+       ⚠️ Node (тест, `tools/`) — хөтчийн сешн биш, нэвтрэлтгүй тул уншилт үргэлж унана → `subAt`-гүй үед
+       шалгахгүй (`companyDeny`-ийн загвар); `subAt` өгсөн бол Node-д ч урьдын адил тулгана. */
+    if (a.subAt != null || (!returning && typeof window !== 'undefined')) {
       const { readSubmissionByOid } = await import('./submission');
       const sr = await readSubmissionByOid(Number(cur[F.sheetOid]));
       if (!sr.ok) return { ok: false, error: sr.error };
-      if (!sr.sub || sr.sub.payload.at !== a.subAt) {
+      if (a.subAt == null) {
+        if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {
+          emit();
+          return { ok: false, error: tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй'), contentChanged: true };
+        }
+      } else if (!sr.sub || sr.sub.payload.at !== a.subAt) {
         emit();
         return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
       }
@@ -2442,10 +2662,12 @@ export async function apply(a: {
        «Шилжүүлсэн» байхад ч `updateRows` хийж түрүүлсний нэр · огноо · `Zovshoorson_nud`-ийг дардаг байв. Одоо
        `updateRows`-ийг алгасаж ил хэлнэ; нэгтгэл/IPC-ийн алхам хэвээр (idempotent). */
     let alreadyTransferred = false;
+    let writeBase = cur;
     if (registerNow) {
       try {
         const fresh = await liveRow(a.oid);
         if (fresh) {
+          writeBase = fresh;
           histBase = fresh[F.history];
           const fs0 = String(fresh[F.status] ?? '');
           if (fs0 === STATUS.transferred) {
@@ -2476,7 +2698,7 @@ export async function apply(a: {
 
     try {
       /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): өөр таб аль хэдийн шилжүүлсэн бол дарж бичихгүй (дээрх `alreadyTransferred`) */
-      if (!alreadyTransferred) await updateRows([attrs]);
+      if (!alreadyTransferred) await updateDecision(writeBase, attrs);
     } catch (e) {
       /*
        * ⚠️ ХАРИУ АЛДАГДСАН Ч СЕРВЕР ДЭЭР СУУСАН БАЙЖ БОЛНО (2026-09-25-ны
@@ -2494,6 +2716,7 @@ export async function apply(a: {
       /* ⚠️ 2026-10-09 (аудит): дунд шатанд хариу АЛДАГДСАН бол энгийн алдаа биш — үр дүн тодорхойгүй,
          жагсаалтыг дахин ачаална (`lostResult`-ийн ⚠️). Тодорхой татгалзал бол урьдын адил. */
       if (!registerNow) {
+        if (e instanceof HyanaltConflict) { await refreshQuiet(); return fail(e); }
         if (lostWrite(e)) return await lostResult(e);
         throw e;
       }
@@ -2567,7 +2790,7 @@ export async function apply(a: {
       /*
        * ── ГҮЙЦЭТГЭЛЭЭС IPC МӨР ──────────────────────────────────────────
        * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): «ho гүйцэтгэлийн дата
-       * гүйцэтгэл бөглөгдөхөд нэмэгдэх ёстой». ЗӨВХӨН энд — 6 шатын
+       * гүйцэтгэл бөглөгдөхөд нэмэгдэх ёстой». ЗӨВХӨН энд — 7 шатын (2026-10-23)
        * (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шат» гэж бичигдсэн байв)
        * хяналт дуусаж архивт бичигдсэний ДАРАА. Батлагдаагүй бөглөлтөөс
        * IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
@@ -2673,7 +2896,8 @@ export function resetRegSweep(): void {
   SWEPT.clear();
 }
 
-/** ⚠️ 2026-10-12 (дарааллын аудит, №5): хүлээгдэж буй бүртгэлийг нөхөж болох ДЭЭД шатнууд — `Guitsetgel`-ийн sweep-тэй нэг эх */
+/** ⚠️ 2026-10-12 (дарааллын аудит, №5): хүлээгдэж буй бүртгэлийг нөхөж болох ДЭЭД шатнууд — `Guitsetgel`-ийн sweep-тэй нэг эх
+ *  ⚠️ 2026-10-23: төлөвлөлтийн инженер (`planner`) САНААТАЙ ороогүй — хэвээр дээд гурван шат. */
 export const UPPER_SWEEP: readonly ReviewStage[] = ['director', 'head', 'chief'];
 
 /**
@@ -2687,7 +2911,7 @@ export const UPPER_SWEEP: readonly ReviewStage[] = ['director', 'head', 'chief']
  *    эрхгүйгээр унах байсан. `archiveSubmission` нь `done|` замаар ЮУ Ч бичихгүй (idempotent),
  *    `registerApproved` (багц·огноо) ба `syncIpcFromFill` (багц·өдөр — `ipcAuto`-гийн ⚠️) хоёулаа idempotent.
  * ⚠️ 2026-10-12 (дарааллын аудит, №5): урьд нь ЗӨВХӨН эцсийн шат (газрын дарга) / супер нөхдөг байв —
- *    хэлтсийн дарга · ерөнхий менежер хуудас нээхэд хүлээгдэж буй бүртгэл хэвтсээр, шар мөр ч тэдэнд
+ *    хэлтсийн дарга · төлөвлөлтийн ахлах инженер хуудас нээхэд хүлээгдэж буй бүртгэл хэвтсээр, шар мөр ч тэдэнд
  *    харагддаггүй. Нэгтгэл/IPC нь ШИЙДВЭР биш (архив аль хэдийн суусан) тул дээд гурван шатны аль нэгэнд
  *    томилогдсон хүн нөхөж болно (`Guitsetgel`-ийн `UPPER_SWEEP` ижил жагсаалт).
  * ⚠️ 2026-10-12 (дарааллын аудит, №1): АРХИВ СУУСАН Ч ТӨЛӨВ БИЧИГДЭЭГҮЙ МӨР. `apply`-д архив → `done|`
@@ -2767,7 +2991,7 @@ export async function retryPendingRegistrations(
                 reason: tr('Нөхөлт: архив суусан батлалтын төлөв бичигдээгүй байсныг нөхөв'),
               }, meOf(me))),
             };
-            await updateRows([fix]);
+            await updateDecision(live, fix);
             fixed += 1;
             cur = { ...live, ...fix } as Row;
           }
@@ -2833,8 +3057,8 @@ export async function recheck(
   who: string,
   /**
    * ХЭН дахин шалгаж байна.
-   * ⚠️ Хоёр газар давтагдана: менежер буцаахад ИНЖЕНЕР, ерөнхий менежер
-   *    буцаахад БАГЦЫН МЕНЕЖЕР. Логик нь ижил, зөвхөн талбар ба шат өөр.
+   * ⚠️ Хоёр газар давтагдана: менежер буцаахад ИНЖЕНЕР, төлөвлөлтийн ахлах инженер
+   *    буцаахад БАГЦЫН АХЛАХ ИНЖЕНЕР. Логик нь ижил, зөвхөн талбар ба шат өөр.
    */
   by: Exclude<ReviewStage, 'chief'> = 'engineer',
   /** ЭРХИЙН ШАЛГУУРЫН хэрэглэгчийн нэр — `who` (дэлгэцийн нэр) БИШ */
@@ -2882,11 +3106,18 @@ export async function recheck(
     if (deny) { emit(); return { ok: false, error: deny }; }
   }
   /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ — `apply`-тай ИЖИЛ (дээрх `subAt`) */
-  if (subAt != null) {
+  /* ⚠️ 2026-10-26 (S3): «ok» (дээш) үед `subAt` алга бол ч уншиж нээлттэй илгээлтийг ТАТГАЛЗАНА — `apply`-тай ижил
+     (Node-д `subAt`-гүй бол шалгахгүй — `apply`-ийн ⚠️) */
+  if (subAt != null || (verdict === 'ok' && typeof window !== 'undefined')) {
     const { readSubmissionByOid } = await import('./submission');
     const sr = await readSubmissionByOid(Number(prev[F.sheetOid]));
     if (!sr.ok) return { ok: false, error: sr.error };
-    if (!sr.sub || sr.sub.payload.at !== subAt) {
+    if (subAt == null) {
+      if (sr.sub && !sr.sub.done && sr.sub.payload.archiveOid == null) {
+        emit();
+        return { ok: false, error: tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй'), contentChanged: true };
+      }
+    } else if (!sr.sub || sr.sub.payload.at !== subAt) {
       emit();
       return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
     }
@@ -3018,7 +3249,7 @@ export async function recheck(
           }
           /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ихэр олдсон ч ӨӨРИЙН мөрийг устгаж ЧАДААГҮЙ — урьд нь чимээгүй `ok:true`
              буцаж ижил тойргийн ХОЁР мөр үлддэг байв. Шийдвэр суусан тул унагахгүй, ихэр OID-ийг нэрлэж `warn`. */
-          twinWarn = tr('Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (OBJECTID {1}) — таны мөрийг (OBJECTID {2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.', nm || tr('өөр хянагч'), String(lost.__oid), String(mine));
+          twinWarn = tr('Давхар тойрог үүслээ: {0} энэ ажлыг таныг шийдвэрлэж байх хооронд шийдвэрлэсэн (бүртгэл №{1}) — таны мөрийг (бүртгэл №{2}) устгаж чадсангүй, админаар нэгийг нь устгуулна уу.', nm || tr('өөр хянагч'), String(lost.__oid), String(mine));
         }
       }
       /* ⚠️ 2026-10-04: `nextId` max+1 уралдаан — бичсэний дараа давхардлыг засна (алдаа нь чимээгүй) */
@@ -3082,9 +3313,10 @@ export async function recheck(
   }
 
   try {
-    await updateRows([back]);
+    await updateDecision(prev, back);
   } catch (e) {
     /* ⚠️ 2026-10-09 (аудит): хариу алдагдсан бол буцаалт суусан байж болно — тодорхойгүй + дахин ачаална */
+    if (e instanceof HyanaltConflict) { await refreshQuiet(); return fail(e); }
     if (lostWrite(e)) return lostResult(e);
     return fail(e);
   }

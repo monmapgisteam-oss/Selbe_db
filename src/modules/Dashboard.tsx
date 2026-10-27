@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useState,
+  Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -18,7 +18,7 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { usePlanTotals, failedTotals, completeSum, retryTotals, type Totals } from '@/lib/totals';
-import { queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, queryGroup, count, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
@@ -31,24 +31,26 @@ import {
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
 import {
-  loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
+  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
   type FinData, type MonthPt,
 } from '@/modules/Finance';
+import { coverageNote } from '@/lib/planProgress';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
-import { finPkgKey } from '@/lib/pkgAlias';
+import { MAP_PKG_ALIAS, finPkgKey } from '@/lib/pkgAlias';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
-import { loadLandStatus, type LandStatus } from '@/lib/land';
-import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
+import { loadLandStatus, statusKey, statusRawsWhere, type LandStatus } from '@/lib/land';
+import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
   cached,
   type Headline, type SocialLive, type Budget, type PkgProgressRow,
 } from '@/lib/live';
+import { loadPkgObyem, type PkgObyem } from '@/lib/sheetShared';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import o from './dashboardOv.module.css';
 import { HeadKpi, ERR_MARK, dots, hVal, FailVal, type AsyncLike, type Dots } from './HeadKpi';
@@ -269,6 +271,12 @@ const loadSources = cached<Row[]>(
       ...SOURCE_FS.consumers.map((c) => c.field),
     ],
   }),
+  /* ⚠️ 2026-10-21 (кэшийн аудит): TTL-гүй · таггүй сешний кэш байсан — дээрх «хуучрал нэг жигд» амлалт 2026-10-05-оос
+     (бусад DashData ачаалагч 5 мин болсон) зөрж, «Эх үүсвэр» карт сешн дуустал анхны хариугаа барьдаг байв. Одоо
+     `SESSION_TTL_MS` + `SOURCE_FS` таг (`dataBus`-ийн энэ түлхүүр урьд нь уншигчгүй байв; порталаас бичдэггүй тул
+     гаднаас засварт л TTL-ээр шинэчлэгдэнэ). */
+  SESSION_TTL_MS,
+  ['SOURCE_FS'],
 );
 
 function useSources(): Async<Row[]> {
@@ -320,6 +328,11 @@ type DashData = {
    *    кодын өөрчлөлтгүй ажиллана.
    */
   pkgProg: Async<PkgProgressRow[]>;
+  /**
+   * ⚠️ 2026-10-23 (аудит): багц бүрийн АМЬД обьём (`sheetShared.loadPkgObyem` — бөглөх хуудасны навч мөрүүд).
+   *    Зөвхөн 02/04 хэсэг нээгдэхэд татна (хаалттай үед `null`) — обьёмын хоёр самбарын эх (`volAsync`).
+   */
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
   /**
    * 05 «Шугам сүлжээ»-ийн багц бүрийн ТОО ба ХЭМЖЭЭ (урт/талбай).
    *
@@ -374,6 +387,8 @@ export type MapFilter = {
   where?: string;
   only?: string[];
   layers?: string[];
+  /** Resolve the package group's raw spellings after selecting it immediately. */
+  bagtsRow?: BagtsRow;
 };
 
 /** SQL string literal — дан хашилтыг давхарлана (нэрэнд ' орсон ч эвдрэхгүй) */
@@ -402,10 +417,65 @@ const likePrefix = (field: string, v: string): string => {
  *    `= N'Тодорхойгүй'` гэж шүүвэл нэг ч талбар таарахгүй, зураг бүхэлдээ
  *    бүдгэрдэг байв — хоосон төлөвийг IS NULL/'' -ээр хайна.
  */
-const statusWhere = (label: string): string =>
-  label === tr('Тодорхойгүй')
-    ? `(${PL.status} IS NULL OR ${PL.status} = '')`
-    : `${PL.status} = N'${sq(label)}'`;
+/* ⚠️ 2026-10-21: чартын бүлэг нь `land.statusKey`-ээр (бичиглэлийн хувилбар · «—» · зөвхөн зай
+   НЭГ бүлэгт) — шүүлт ч ТЭР бүлгийн ТҮҮХИЙ утгуудаар (`land.statusRawsWhere`, Gazar.tsx-тэй нэг дүрэм).
+   Урьд нь `= N'шошго'` / `IS NULL OR = ''` тул «Бүрэн чөлөөлсөн.» мэт хувилбар ба «—» мөрүүд
+   баганад тоологдсон атлаа зурагт гардаггүй байв. Түүхий утгыг ачаалсан нэгж талбаруудаас
+   (`loadLeftParcels`, `status` багана) авна; ачаалагдаагүй бол хуучин нөхцөл (шошгоор). */
+const statusWhere = (label: string, rows: readonly Row[] | null): string => {
+  const unknown = label === tr('Тодорхойгүй');
+  const key = unknown ? '' : label;
+  const raws = new Set<string>();
+  for (const r of rows ?? []) {
+    const v = r[PL.status];
+    if (v != null && statusKey(v) === key) raws.add(String(v));
+  }
+  return statusRawsWhere(PL.status, raws, unknown, label);
+};
+
+/**
+ * БАРИЛГЫН `BAGTS`-ийн ТҮҮХИЙ утгууд (давхардалгүй) — багцын тодруулгын WHERE-д.
+ * ⚠️ 2026-10-21: багцын мөр `bagtsKey`-ээр бүлэглэгддэг («Багц 4.1» / «Багц 4-1» НЭГ мөр, хоосон →
+ *    «Тодорхойгүй»), харин тодруулга `= N'шошго'` байсан тул бичиглэлийн хувилбар ба хоосон
+ *    утгатай блокууд зурагт ТОДРОХГҮЙ байв. `BagtsRow`-д түүхий утга байхгүй тул энд бүлгийн
+ *    статистикаар (нэг жижиг хүсэлт, кэштэй) авна.
+ */
+/** Сүүлд татсан түүхий утгууд — дараагийн даралт СИНХРОН (`selectFlt`-ийн сэлгэлт хуучин `flt`-ээр уралдахгүй) */
+let bagtsRawsLast: unknown[] | null = null;
+const loadBagtsRaws = cached<unknown[]>(
+  async () => {
+    const v = (await queryGroup(BUILDING.url, BF.bagts, [count(BUILDING.oid, 'n')])).map((r) => r[BF.bagts]);
+    bagtsRawsLast = v;
+    return v;
+  },
+  SESSION_TTL_MS,
+  ['BUILDING'],
+);
+/** Багцын мөрийн бүлгийн БҮХ түүхий утгаар WHERE; түүхий утга алга бол хуучин нөхцөл (шошгоор) */
+const bagtsWhereFrom = (r: BagtsRow, raws: readonly unknown[]): string => {
+  const unknownLabel = tr('Тодорхойгүй');
+  const unknown = r.label === unknownLabel;
+  /* `joinBagts`-тэй ИЖИЛ бүлэглэлт: `text(v, «Тодорхойгүй»)` → `bagtsKey` */
+  const mine = raws.filter((v) => v != null && bagtsKey(text(v, unknownLabel)) === r.key).map(String);
+  const vals = [...new Set(mine.filter((v) => v !== ''))].map((v) => `N'${sq(v)}'`);
+  const parts = vals.length ? [`${BF.bagts} IN (${vals.join(', ')})`] : [];
+  if (unknown) parts.unshift(`${BF.bagts} IS NULL`, `${BF.bagts} = ''`);
+  if (!parts.length) return `${BF.bagts} = N'${sq(r.label)}'`;
+  return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
+};
+/** WHERE-ийг дуудагч руу — түүхий утга бэлэн бол тэр дороо, үгүй бол татаад (алдаанд шошгоор) */
+const withBagtsWhere = (r: BagtsRow, done: (where: string) => void): void => {
+  if (bagtsRawsLast) {
+    done(bagtsWhereFrom(r, bagtsRawsLast));
+    /* Кэш хүчингүй болсон (TTL / `invalidate('BUILDING')`) бол дараагийн даралтад шинэчилнэ */
+    loadBagtsRaws().catch(() => undefined);
+    return;
+  }
+  loadBagtsRaws().then(
+    (raws) => done(bagtsWhereFrom(r, raws)),
+    (e) => { console.warn('[selbe] багцын түүхий утга:', e); done(bagtsWhereFrom(r, [])); },
+  );
+};
 
 /* ⚠️ 2026-10-06: `ERR_MARK` · `AsyncLike` · `dots` · `hVal` · `FailVal` нь `./HeadKpi.tsx`-д
    (HeadKpi-тэй хамт нүүв) — дээд импортыг үз. */
@@ -497,21 +567,25 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const netTotals = usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS);
   const powTotals = usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS);
   const socTotals = usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS);
+  /* ⚠️ 2026-10-23: обьёмын самбартай хэсэг (02 · 04) нээгдэхэд л 24 хуудсыг уншина (`usePlanTotals`-ийн адил залхуу) */
+  const volOpen = open[0] === 'schedule' || open[0] === 'bagts';
+  const pkgVol = useAsync<Map<string, PkgObyem | null> | null>(() => (volOpen ? loadPkgObyem() : Promise.resolve(null)), [volOpen]);
   const d: DashData = useMemo(() => ({
-    bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+    bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone,
-  }), [bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+  }), [bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone]);
   const { setHighlight } = useMap();
 
   /** Чарт-шүүлт (бүх хэсэгт нэгдсэн) — аттрибутын тодруулгыг зурагт тусгана */
   const [flt, setFlt] = useState<MapFilter | null>(null);
+  const pickedFilter = useRef<MapFilter | null>(null);
   useEffect(() => { setHighlight(flt?.where ?? null, flt?.only); }, [flt, setHighlight]);
   /* ⚠️ 2026-09-29 (аудит 10): харагдац хаагдахад тодруулгыг ЗААВАЛ арилгана —
      `MapProvider.hl` порталын хэмжээнд амьдардаг тул чарт-шүүлт үлдвэл дараагийн
      харагдацын зурагт (dimOther) бүдгэрүүлэлт хэвээр гарна. `Bagts`/`ViewPanel`-ийн
      unmount-цэвэрлэлттэй ижил зарчим. */
-  useEffect(() => () => { setHighlight(null); }, [setHighlight]);
+  useEffect(() => () => { pickedFilter.current = null; setHighlight(null); }, [setHighlight]);
 
 
   /**
@@ -581,6 +655,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     const next: SecKey[] = open.includes(k) ? [] : [k];
     setOpen(next);
     // Хэсэг солигдоход чарт-шүүлт хүчингүй (өөр контекст) — цэвэрлэнэ.
+    pickedFilter.current = null;
     setFlt(null);
     // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `open`-оос деривативаар гарна.
   }, [open]);
@@ -594,10 +669,21 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * нээлттэй хэсгүүдийн анхдагч давхаргууд руу буцна.
    */
   const selectFlt = useCallback((next: MapFilter) => {
-    const off = !!flt && flt.sec === next.sec && flt.key === next.key;
+    const current = pickedFilter.current;
+    const off = !!current && current.sec === next.sec && current.key === next.key;
     // ⚠️ Давхаргыг ЭНД тавихгүй — `base` нь `flt`-ээс деривативаар гарна.
+    pickedFilter.current = off ? null : next;
     setFlt(off ? null : next);
-  }, [flt]);
+    if (!off && next.bagtsRow) {
+      withBagtsWhere(next.bagtsRow, (where) => {
+        // A section change, toggle, newer selection or unmount cancels this result.
+        if (pickedFilter.current !== next) return;
+        const resolved = { ...next, where };
+        pickedFilter.current = resolved;
+        setFlt(resolved);
+      });
+    }
+  }, []);
 
   /**
    * ХЭСГИЙН КАРТУУДЫГ БҮСЭД ХУВААРИЛАХ — картын ТООНООС хамаарна.
@@ -614,6 +700,8 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const zones = (() => {
     const empty = { top: null as ReactNode, left: [] as ReactNode[], right: [] as ReactNode[] };
     if (!open.length) return empty;
+    // Passed through to click handlers; detailPanels does not invoke selectFlt during render.
+    // eslint-disable-next-line react-hooks/refs
     const cards = detailPanels(open[0], d, flt, selectFlt);
     if (!cards.length) return empty;
     const rest = cards.slice(1);
@@ -731,13 +819,13 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
               {zone && (
                 <div className={o.filterChip}>
                   <span className={o.filterLabel}>{tr('Бүс:')} {zone}</span>
-                  <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label={tr('Цуцлах')}>×</button>
+                  <button type="button" className={o.filterClear} onClick={() => setZone(null)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
                 </div>
               )}
               {flt && (
                 <div className={o.filterChip}>
                   <span className={o.filterLabel}>{flt.label}</span>
-                  <button type="button" className={o.filterClear} onClick={() => selectFlt(flt)} aria-label={tr('Цуцлах')}>×</button>
+                  <button type="button" className={o.filterClear} onClick={() => selectFlt(flt)} aria-label={tr('Шүүлт арилгах')} title={tr('Шүүлт арилгах')}>×</button>
                 </div>
               )}
             </div>
@@ -802,8 +890,8 @@ function Detail({ k, d, flt, onFlt }: {
 } & FltProps) {
   switch (k) {
     case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
-    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg });
-    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, fin: d.fin, flt, onFlt });
+    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg, pkgVol: d.pkgVol });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, pkgVol: d.pkgVol, fin: d.fin, flt, onFlt });
     case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
     case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, zone: d.zone, flt, onFlt });
     case 'power': return PowerDetail({ sources: d.sources, prog: d.prog, powTotals: d.powTotals, flt, onFlt });
@@ -817,6 +905,15 @@ function Detail({ k, d, flt, onFlt }: {
 
 /** ГАДНА ШУГАМ СҮЛЖЭЭНИЙ багцууд — дулаан/ус/татуурга (Багц 5.x, 7, 10–15) */
 const isNetworkPack = (bagts: string) => /^БАГЦ(5[1-4]|7|1[0-5])$/.test(bagtsKey(bagts));
+/**
+ * Бөглөх хуудасны (`phys`) түлхүүрийг ГАЗРЫН ЗУРГИЙН багц руу хөрвүүлж шалгана.
+ * ⚠️ 2026-10-26 (аудит): `phys`-ийн «Багц 7.1» = БАГЦ71 нь `isNetworkPack`-д таардаггүй тул rail-ийн «Шугам сүлжээ»-нд
+ *    7.1-ийн тайлан ОРДОГГҮЙ байв. `NET_PACK_IDS` / `infraPackList` нь газрын зургийн түлхүүрээр ХЭВЭЭР.
+ */
+const viaMap = (pred: (k: string) => boolean) => (k: string) => {
+  const key = bagtsKey(k);
+  return pred(key) || pred(MAP_PKG_ALIAS[key]?.key ?? '');
+};
 /**
  * 05-ын багц бүрийн ХЭМЖЭЭГ татах давхаргууд — `isNetworkPack`-тай ЯГ ижил
  * олонлог. Тусад нь бичвэл шинэ багц нэмэгдэхэд хоёр газар засах болно.
@@ -900,41 +997,9 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
    * ⚠️ Эх нь TASK_SHEET («Гүйцэтгэл бөглөх») тул зурвасын тоо нь дэлгэрэнгүй
    * самбарынхтай ЯГ таарна — хоёулаа нэг хүснэгтээс уншина.
    */
-  const pkgPct = (match: (k: string) => boolean): number | null => {
-    if (!f) return null;
-    let w = 0; let n = 0;
-    f.phys.forEach((byMon, k) => {
-      if (!match(k)) return;
-      let last: number | null = null;
-      let lastMon = '';
-      [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-        /* ⚠️ `v > 0` БИШ: `phys` мап нь тухайн сард ЯДАЖ нэг блок хэмжигдсэн
-           үед л мөр үүсгэдэг (`Finance.loadFinData`, `if (cnt > 0)`) тул 0 нь
-           «мэдээлэлгүй» биш ХЭМЖИГДСЭН 0%. Урьд нь 0-ийг алгасдаг байсан тул
-           ажил эхлээгүй багц жигнэлтээс бүрмөсөн хасагдаж, төслийн дундаж
-           гүйцэтгэл хөөрөгдөж харагддаг байв (`aggregateMonths`, `lagOf`
-           хоёр аль хэдийн `!= null`-ыг барьдаг). */
-        if (m <= nowYm) { last = v; lastMon = m; }
-      });
-      if (last == null) return;
-      /*
-       * ⚠️ ЖИНГ УТГА АВСАН САРААС уншина (2026-09-15-ны аудит). Урьд нь
-       *    `physCnt.get(k)?.get(nowYm)` гэж ЗӨВХӨН ЭНЭ САРААС авдаг байсан
-       *    бөгөөд `last` нь ихэвчлэн ӨМНӨХ сарынх байдаг: тухайн багц энэ
-       *    сард тайлагнаагүй бол жин нь блокийн тооны оронд **1** болно.
-       *    Жишээ: 7-р сард сүүлд тайлагнасан 40 блоктой багц жин 1-ээр,
-       *    энэ сард тайлагнасан 6 блоктой багц жин 6-аар орж, «Биет
-       *    гүйцэтгэл» индикатор ~70%-ийн оронд ~19% гардаг байв.
-       */
-      const cntMap = f.physCnt.get(k);
-      /* ⚠️ 2026-10-09: жин (блокийн тоо) МЭДЭГДЭХГҮЙ бол багцыг дунджаас АЛГАСНА — урьд нь `?? 1`
-         нь 40 блоктой багцыг 1 блокийн жинтэй болгож дундажийг гажуудуулж болох байв (null ≠ 1). */
-      const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
-      if (cnt == null) return;
-      w += last * cnt; n += cnt;
-    });
-    return n ? w / n : null;
-  };
+  /* ⚠️ 2026-10-26 (аудит): дотоод жигнэлт `physN`-ийг (ОГТ тайлагнаагүй багц = 0%, 2026-10-01-ний дүрэм) алгасдаг тул сүлжээ/
+     цахилгааны rail хөөрөгддөг байв — `pkgPhys` (05/06-ийн дэлгэрэнгүйтэй нэг дүрэм) руу шилжүүлэв. */
+  const pkgPct = (match: (k: string) => boolean): number | null => pkgPhys(f, match).actual;
   /* ⚠️ 2026-09-25: «02» зурвас нь `physNow` — IndStrip · 05 · ExecReport-той
      НЭГ тоо. Урьд нь `pkgPct` (багц бүрийн ӨӨРИЙН сүүлийн сар) байсан тул
      дэлгэрэнгүй хэсгийн тооноос зөрдөг байв. `pkgPct` нь зөвхөн сүлжээ/
@@ -1012,7 +1077,7 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       // ⚠️ Урьд нь ЗӨВХӨН давхаргатай багцын ТОО (4) байсан — жагсаалтын бусад
       //    мөр бүгд гүйцэтгэл харуулж байхад энэ ганцаараа өөр төрлийн тоо байв.
       //    Одоо 11 сүлжээний багцын ЖИГНЭСЭН гүйцэтгэл (05·C1-тэй нэг тоо).
-      const nw = { actual: pkgPct((k) => isNetworkPack(k)) };
+      const nw = { actual: pkgPct(viaMap(isNetworkPack)) };
       const n = infraPackList(isNetworkPack).length;
       return {
         /* ⚠️ 2026-09-25: сүлжээ/цахилгааны багц бөглөх хүснэгтэд ихэвчлэн
@@ -1026,7 +1091,7 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
     case 'power': {
       // ⚠️ Мөн адил — «Гадна цахилгаан» ажлын 28 мөрийн жигнэсэн гүйцэтгэл
       //    (06·C2-той нэг тоо). `bagts_name` эдгээрт NULL тул `Ажлын_нэр`-ээр.
-      const pw = { actual: pkgPct((k) => isPowerPack(k)) };
+      const pw = { actual: pkgPct(viaMap(isPowerPack)) };
       const n = infraPackList(isPowerPack).length;
       return {
         /* ⚠️ 2026-09-25: `network`-ийн ⚠️-г үз — бэлэн ч утгагүй бол «—» */
@@ -1651,11 +1716,13 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               onSelect={(key) => {
                 const r = rows.find((x) => x.key === key);
                 if (!r) return;
+                /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
                 onFlt({
                   sec: 'scope',
                   key,
                   label: tr('Багц: {0}', r.label),
-                  where: `${BF.bagts} = N'${sq(r.label)}'`,
+                  where: bagtsWhereFrom(r, bagtsRawsLast ?? []),
+                  bagtsRow: r,
                   only: ['mon:building'],
                   // ⚠️ `layers` ЗААВАЛ: `SECTION_LAYERS.scope` нь ХООСОН тул 01
                   //    нээхэд `mon:building` зурагт байхгүй — where+only дангаараа
@@ -1857,6 +1924,40 @@ const SRC_SHEET = () => tr('эх: бөглөх хуудас');
 /** `note` + эх сурвалж. Функц дуудалт — хэлээ сольсны дараа дахин орчуулагдана */
 const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
 
+/** Обьёмын самбарын мөр — амьд хуудас (`PkgObyem`) эсвэл нэгтгэлийн (`/190`) нөөц */
+type VolRow = { key: string; label: string; volume: number | null; volumePlan: number | null };
+type VolData = { rows: VolRow[]; fallback: boolean };
+
+/**
+ * ОБЬЁМЫН ХОЁР САМБАРЫН ЭХ («Обьёмын биелэлт» · «Ажлын обьём»).
+ * ⚠️ 2026-10-23 (аудит): урьд нь ЗӨВХӨН нэгтгэлийн (`/190`) сүүлийн мөр — түүний обьём «Б.» бүлгийн хоосон нүднээс
+ *    бичигддэг тул 25/25 мөрд хоосон, хоёр самбар үргэлж «Обьём бүртгэгдээгүй» байв (`blockProgress.constructionObyem`).
+ *    Одоо АМЬД бөглөх хуудас (`sheetShared.loadPkgObyem`, навч мөрүүд); хуудас нь уншигдаагүй багцад л `/190`-ийн
+ *    сүүлийн мөр (`fallback` → эх шошго «багцын нэгтгэл»). `null` хэвээр — «бүртгэгдээгүй» нь ЖИНХЭНЭ хоосонд л.
+ * ⚠️ ЭНГИЙН ФУНКЦ (hook биш) — `ScheduleDetail`/`BagtsDetail` hook хэрэглэдэггүй (2026-10-11-ний ⚠️).
+ */
+function volAsync(vol: Async<Map<string, PkgObyem | null> | null>, neg: Async<PkgProgressRow[]>): Async<VolData> {
+  const loading: Async<VolData> = { state: 'loading', data: null, error: null };
+  const negRows = (): VolRow[] => (neg.state === 'ready' ? latestPkgProgress(neg.data) : [])
+    .map((x) => ({ key: x.key, label: x.label, volume: x.volume, volumePlan: x.volumePlan }));
+  if (vol.state === 'loading' || (vol.state === 'ready' && vol.data == null)) return loading;
+  if (vol.state === 'error') {
+    if (neg.state === 'ready') return { state: 'ready', data: { rows: negRows(), fallback: true }, error: null };
+    return neg.state === 'error' ? { state: 'error', data: null, error: vol.error, retry: vol.retry } : loading;
+  }
+  const back = new Map(negRows().map((x) => [x.key, x]));
+  const rows: VolRow[] = [];
+  let fallback = false;
+  for (const [k, v] of vol.data!) {
+    if (v) { rows.push(v); continue; }
+    const n = back.get(k);
+    if (n) { rows.push(n); fallback = true; }
+  }
+  return { state: 'ready', data: { rows, fallback }, error: null };
+}
+/** Обьёмын самбарын эх шошго — нөөц (`/190`) орсон бол түүнийг ил хэлнэ */
+const volSrc = (q: Async<VolData>) => (q.state === 'ready' && q.data.fallback ? SRC_NEGTGEL : SRC_SHEET);
+
 /**
  * 02 · ХЭРЭГЖИЛТИЙН ЕРӨНХИЙ ГРАФИК.
  *
@@ -1886,13 +1987,16 @@ const srcNote = (note: string, src: () => string) => `${note} · ${src()}`;
  * Хоёулаа «Гүйцэтгэл бөглөх» цонхоор ПОРТАЛААС бөглөгддөг тул тоо нь
  * бүртгэлтэй нэг агшинд таарна.
  */
-function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
+function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   bagts: Async<BagtsRow[]>;
   pkgProg: Async<PkgProgressRow[]>;
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
 }) {
   const f = fin.state === 'ready' ? fin.data : null;
+  /* ⚠️ 2026-10-23: обьёмын самбарын эх — амьд хуудас, нөөц нь `/190` (`volAsync`) */
+  const vq = volAsync(pkgVol, pkgProg);
   /* ⚠️ 2026-10-11 (аудит №7): ЭНД HOOK ХЭРЭГЛЭХГҮЙ — `ScheduleDetail` нь `detailPanels()`-оос
      ЭНГИЙН ФУНКЦ байдлаар дуудагддаг (JSX биш) тул доторх `useMemo` нь эцэг `Dashboard`-ын hook
      дараалалд орж, 02-р хэсэг нээх/хаахад hook-ийн тоо өөрчлөгдөж React унадаг байв (аудит №6-д
@@ -1936,8 +2040,12 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             /* ⚠️ 2026-10-09 (аудит №2): `lag.gap` — төлөвлөгөөтэй НЭГ багцын олонлогийн бодит
                (`physLag`); урьд нь `planned − physNow` (хуваарьгүй багцыг бодит талд л тоолж
                хоцрогдлыг хэтрүүлдэг) байв. Хасагдсан багц байвал шошгонд тэмдэглэнэ. */
-            value={lag ? gapPtsWord(lag.gap) : wait ? '…' : '—'}
-            label={scopeNote ? tr('Гүйцэтгэлийн зөрүү (хуваарьтай багцаар)') : tr('Гүйцэтгэлийн зөрүү')}
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүг ДҮГНЭХГҮЙ («—» + хамралт) — огноогүй ажлын
+               жин төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага гардаг тул хоцорсон багц «түрүүлж» харагддаг байв
+               (`Finance.lagJudged`, PkgProg · ТУХ · удирдлагын тайлантай нэг дүрэм). */
+            value={lag ? (lagJudged(lag) ? gapPtsWord(lag.gap) : '—') : wait ? '…' : '—'}
+            label={(scopeNote ? tr('Гүйцэтгэлийн зөрүү (хуваарьтай багцаар)') : tr('Гүйцэтгэлийн зөрүү'))
+              + (lag && !lagJudged(lag) && coverageNote(lag.coverage) ? ` · ${coverageNote(lag.coverage)}` : '')}
           />
           <Stat
             accent
@@ -2294,7 +2402,9 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             /* ⚠️ 2026-10-11 (аудит №7): тэнхлэг = «одоо» хүртэлх БҮХ сар; `lagSeriesOf` нь
                хэмжилтгүй сарыг АЛГАСДАГ тул Map-аар хайж, байхгүй сар `null` → цоорхой
                (урьд нь алгассан сар хоорондоо нийлж, нэг алхам мэт зурагддаг байв). */
-            const lagMap = new Map(lagSeries.map((x) => [x.month, x]));
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан сарын хоцрогдлыг ЗУРАХГҮЙ (цоорхой) — «Гүйцэтгэлийн зөрүү»-тэй
+               нэг дүрэм (`lagJudged`); «Төлөвлөгөө vs бодит» график тоогоо хамралтын тэмдэглэлтэй хэвээр харуулна. */
+            const lagMap = new Map(lagSeries.filter((x) => lagJudged(x)).map((x) => [x.month, x]));
             const pts = (months ?? []).filter((m) => m.label <= nowYm).map((m) => {
               const x = lagMap.get(m.label) ?? null;
               return {
@@ -2317,10 +2427,10 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           эзлэхүүн нь БИЕТ хэмжигдэхүүн (м³, м²). Хоёр нь зөрвөл аль нэг нь
           буруу бүртгэгдсэн гэсэн үг — тиймээс тусад нь харуулах нь хяналтын
           утга. */}
-      <Panel title={tr('Эзлэхүүний биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт эзлэхүүн'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const rows = latestPkgProgress(list)
+      <Panel title={tr('Обьёмын биелэлт — багцаар')} note={srcNote(tr('бодит / төлөвлөгөөт обьём'), volSrc(vq))}>
+        <Data q={vq} loading={tr('Татаж байна…')}>
+          {({ rows: list }) => {
+            const rows = list
               .filter((x) => (x.volumePlan ?? 0) > 0)
               .map((x) => ({
                 key: x.key,
@@ -2350,7 +2460,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                     : tr('{0} · {1} / {2}', pct(x.pct, 1), num(x.v), num(x.p)),
                 }))}
               />
-            ) : <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            ) : <Empty label={tr('Обьём бүртгэгдээгүй.')} />;
           }}
         </Data>
       </Panel>
@@ -2530,7 +2640,9 @@ function pkgLagRows(f: FinData, labelOf: (k: string) => string): PkgLagRow[] {
     const months = mm.get(k);
     if (!months) return;
     const lag = lagOf(months);
-    out.push({ key: k, label: labelOf(k), actual: physLatest(months), planned: lag ? lag.planned : null, months });
+    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан багцын төлөвлөгөөг хоцрогдлын/харьцуулалтын жагсаалтад
+       ОРУУЛАХГҮЙ (`planned: null` → доорх шүүлтүүрээр гарна) — хэт бага «төлөвлөсөн» нь хоцорсон багцыг «урд» харуулдаг */
+    out.push({ key: k, label: labelOf(k), actual: physLatest(months), planned: lag && lagJudged(lag) ? lag.planned : null, months });
   });
   return out.sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
@@ -2621,15 +2733,18 @@ const FAMILY_LABEL: Record<PkgFamily, string> = {
 const familyPacks = (f: PkgFamily): string[] =>
   [...new Set((PKG_BY_FAMILY[f] ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)))].filter(Boolean);
 
-function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
+function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
   q: Async<BagtsRow[]>;
   /** 2026-10-04: «Төлөвлөгөө vs бодит — багцаар» — PkgProg/ТУХ-тай нэг эх (`pkgLagRows`) */
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   hist: Async<BlockHistory>;
   pkgProg: Async<PkgProgressRow[]>;
+  pkgVol: Async<Map<string, PkgObyem | null> | null>;
 } & FltProps) {
   const sel = flt?.sec === 'bagts' ? flt.key : null;
+  /* ⚠️ 2026-10-23: «Ажлын обьём» самбарын эх — амьд хуудас, нөөц нь `/190` (`volAsync`) */
+  const vq = volAsync(pkgVol, pkgProg);
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —
   //    эс бөгөөс доторх `Panel`-ууд компонентын дээд түвшинд гарахгүй тул
   //    `detailPanels` тэднийг дөрвөн бүсэд хуваарилж чадахгүй (бүгд нэг
@@ -2667,9 +2782,10 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
   const pick = (key: string) => {
     const r = rows.find((x) => x.key === key);
     if (!r) return;
+    /* ⚠️ 2026-10-21: бүлгийн бүх ТҮҮХИЙ утгаар (`withBagtsWhere`) */
     onFlt({
       sec: 'bagts', key, label: tr('Багц: {0}', r.label),
-      where: `${BF.bagts} = N'${sq(r.label)}'`, only: ['mon:building'],
+      where: bagtsWhereFrom(r, bagtsRawsLast ?? []), bagtsRow: r, only: ['mon:building'],
     });
   };
   return (
@@ -2725,7 +2841,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           гэдгээс «дотор нь ЯМАР ажил хоцорсон» нь хамаагүй ашигтай. */}
       <Panel title={tr('Дэд үе шатын гүйцэтгэл (Б1–Б5)')}
              note={tr('тайлагнасан блокоор дундажлав')}>
-        {pm == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
+        {pm == null ? <Pending failed={prog.state === 'error'} label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
           // Багц сонгосон бол ТЭР багцаар (cross-filter), эс бөгөөс 7 багц бүгд.
           const scope = new Set(rows.filter((r) => !sel || r.key === sel).flatMap((r) => r.keys));
           const ph = [...pm].filter(([k]) => scope.has(k)).flatMap(([, c]) => c.phases);
@@ -2878,10 +2994,10 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           тоог нэг шкалд, хамгийн их утгаар будаж, нэгжгүй харуулдаг байв —
           багц хооронд харьцуулах боломжгүй (06 §5). Түүхий тоо зөвхөн шошгонд,
           тухайн багцын дотор. Төлөвлөгөөгүй багц % бодогдохгүй → саарал. */}
-      <Panel title={tr('Ажлын эзлэхүүн — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const withVol = latestPkgProgress(list)
+      <Panel title={tr('Ажлын обьём — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), volSrc(vq))}>
+        <Data q={vq} loading={tr('Татаж байна…')}>
+          {({ rows: list }) => {
+            const withVol = list
               .filter((x) => (x.volume ?? 0) > 0 || (x.volumePlan ?? 0) > 0)
               .map((x) => ({
                 ...x,
@@ -2891,7 +3007,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
                   : null,
               }))
               .sort((a, b) => (b.vp ?? -1) - (a.vp ?? -1));
-            if (!withVol.length) return <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            if (!withVol.length) return <Empty label={tr('Обьём бүртгэгдээгүй.')} />;
             const raw = (v: number | null) => (v == null ? tr('мэдээлэлгүй') : num(v));
             return (
               <Bars
@@ -3043,7 +3159,8 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
                      «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
                   label: tr('Төлөв: {0}', tr(label)),
-                  where: statusWhere(label),
+                  /* ⚠️ 2026-10-21: бүлгийн ТҮҮХИЙ утгуудаар (`statusWhere`-ийн ⚠️) */
+                  where: statusWhere(label, parcels.state === 'ready' ? parcels.data : null),
                   only: ['land:left'],
                 });
               }}
@@ -3177,7 +3294,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                       key: k,
                       /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
                       label: tr('Төлөв: {0}', tr(label)),
-                      where: statusWhere(label),
+                      where: statusWhere(label, parcels.state === 'ready' ? parcels.data : null),
                       only: ['land:left'],
                     });
                   }}
@@ -3330,7 +3447,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
           хэлнэ. Гэвч «Нийт 96.52 га» гэсэн тэмдэглэл дэх зөрүү яг эндээс
           гарна: 1,000 м²-ээс дээш талбарууд тоогоор цөөн ч талбайгаар
           хамаагүй их эзэлнэ. Тоо ба талбайг ЗЭРЭГЦҮҮЛЖ харуулна. */}
-      <Panel title={tr('Талбайн эзлэхүүн — хэмжээний бүлгээр')} note={tr('га · бүх талбар')}>
+      <Panel title={tr('Талбайн хэмжээ — бүлгээр')} note={tr('га · бүх талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const BUCKETS = [
@@ -4257,8 +4374,9 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                 <p className={o.note}>
                   {/* ⚠️ 7 БАГАНАН ЧАРТ ХИЙХГҮЙ: бүх блок 0% тул хоосон Bars нь
                       «эвдэрсэн» мэт харагдана. Тоог ил хэлэх нь зөв. */}
-                  {tr('Барилга дотрын цахилгаан, гэрэлтүүлгийн ажил')} {num(cells.length)} {tr('блокийн')}
-                  {' '}<b>{num(cells.length - started)}</b>{tr('-д хараахан эхлээгүй.')}
+                  {/* ⚠️ 2026-10-23 (UX аудит X8): нэг өгүүлбэр = нэг `tr()` (англид үгийн дараалал эвдэрдэг байв);
+                      «дотрын» → «доторх» (үсгийн алдаа) */}
+                  {tr('Барилга доторх цахилгаан, гэрэлтүүлгийн ажил {0} блокийн {1}-д хараахан эхлээгүй.', num(cells.length), num(cells.length - started))}
                 </p>
               </>
             );
@@ -5058,6 +5176,16 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
    давхаргуудын id-г аль хэдийн авчирдаг тул текст хайлт ОГТ хэрэггүй. */
 
 /**
+ * ⚠️ 2026-10-23 (UX аудит X5): «Татаж байна…»-г `Empty`-ээр (эргэлдэгчгүй, хоосон мэт) БИШ `Loading`-оор.
+ *    Эх нь унасан (`error`) бол мөнхийн «татаж байна» биш — шалтгаан ба дараагийн алхмыг хэлнэ.
+ */
+function Pending({ failed, label }: { failed: boolean; label?: string }) {
+  return failed
+    ? <Empty label={tr('Өгөгдөл татагдсангүй')} hint={tr('Толгойн «Шинэчлэх» (↻) товчоор дахин оролдоно уу.')} />
+    : <Loading label={label} />;
+}
+
+/**
  * БҮХ ТОО АМЬД. Илтгэлийн BENEFITS/PUBLIC_ZONE/SOCIAL хатуу мөрүүд хасагдаж,
  * үлдсэн нь үйлчилгээнээс бодогдоно (headline/social нь `d`-гээс).
  * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) дахин ашиглаж болохоор.
@@ -5200,7 +5328,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       </Panel>
 
       <Panel title={tr('Нийгмийн дэд бүтэц · шинээр')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (
           <Bars
             inline
             selected={selCat}
@@ -5221,7 +5349,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       {/* `capacity` нь өнөөдөр дээрх картын `display`-д ТЕКСТ л байдаг. 3 сургууль
           ба 3,780 суудал бол ӨӨР хоёр түүх — тусад нь зурна. */}
       <Panel title={tr('Хүчин чадал — суудал, орны тоо')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (() => {
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (() => {
           const withCap = soc.rows.filter((r) => r.capacity != null && r.capacity > 0);
           if (!withCap.length) return <Empty label={tr('Хүчин чадлын талбар бөглөгдөөгүй.')} />;
           return (
@@ -5302,7 +5430,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       <Panel title={tr('Нэг суудалд ногдох суурийн талбай')} note={tr('м² / суудал')}>
         <Data q={socQ} loading={tr('Татаж байна…')}>
           {() => {
-            if (soc == null) return <Empty label={tr('Татаж байна…')} />;
+            if (soc == null) return <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} />;
             /** Давхаргын гарчиг → хүчин чадал (`SocialRow.per`-ээс) */
             const capOf = new Map<string, number>();
             soc.rows.forEach((r) => r.per.forEach((x) => {
@@ -5391,8 +5519,13 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           Ногоон байгууламжийн «13.6 м²/хүн»-тэй ИЖИЛ логик. */}
       <Panel title={tr('1,000 хүнд ногдох хүчин чадал')} note={tr('шинэ орон сууцны хүн амаар')}>
         {(() => {
-          if (soc == null || h?.population == null || !h.population) {
-            return <Empty label={tr('Татаж байна…')} />;
+          /* ⚠️ 2026-10-23 (UX аудит X5/X6): ачаалал ба ЖИНХЭНЭ хоосныг салгана — хүн амын тоо 0/хоосон бол
+             «татаж байна» мөнхөд биш, шалтгааныг хэлнэ. */
+          if (soc == null || h == null) {
+            return <Pending failed={d.social.state === 'error' || d.headline.state === 'error'} label={tr('Татаж байна…')} />;
+          }
+          if (h.population == null || !h.population) {
+            return <Empty label={tr('Хүн амын тоо бүртгэгдээгүй')} hint={tr('Шинэ орон сууцны хүн ам бүртгэгдсэний дараа харьцаа бодогдоно.')} />;
           }
           const rows2 = soc.rows
             .filter((r) => (r.capacity ?? 0) > 0)
@@ -5471,7 +5604,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       {/* Барилга ТУС БҮРЭЭР — `loadSocial` давхарга тутамд count+sum аль хэдийн
           асуудаг байсныг (`SocialRow.per`) дүнг нь хаяхаа больж ил гаргав. */}
       <Panel title={tr('Барилга тус бүрээр — тоо, хүчин чадал')}>
-        {soc == null ? <Empty label={tr('Татаж байна…')} /> : (
+        {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (
           <Rows
             items={soc.rows.flatMap((r) => r.per.map((x) => ({
               key: x.title,

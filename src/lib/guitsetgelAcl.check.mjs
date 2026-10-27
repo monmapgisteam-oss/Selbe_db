@@ -30,7 +30,7 @@ globalThis.dispatchEvent = () => true;
    Доорх 0-р шалгуур: remote нэг ч удаа уншигдаагүй сешнд энэ мөр ХҮЧИНГҮЙ. */
 mem.set('selbe-guitsetgel-acl-v1', JSON.stringify([
   { user: 'offline_hack', stage: 'director', bagts: ['*'] },
-  { user: 'selbe_injener', stage: 'director', bagts: ['*'] },
+  { user: 'inj_offline', stage: 'director', bagts: ['*'] },
 ]));
 
 const {
@@ -44,24 +44,24 @@ const { roleAccess } = await import('@/lib/roleTypes.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];
 
 /* ══════════ 0. REMOTE АЧААЛАГДААГҮЙ → localStorage ҮЛ ТООЦНО (2026-09-21) ══════════
- * ⚠️ Хатуу жагсаалтын хэрэглэгч (`selbe_injener` — remote-гүй нэвтэрдэг)
+ * ⚠️ Урсгалын үүрэгтэй хэрэглэгч (`inj_offline`; 2026-10-19-нөөс хатуу жагсаалтад урсгалын аккаунт БАЙХГҮЙ)
  *    өөрийгөө `director` шатанд «бүх багц» гэж бичээд сүлжээгээ хаагаад
  *    нэвтэрвэл `canReview` давдаг байв. Одоо `_syncRemoteAssigns` ажиллаагүй
  *    бол ХАТУУ ТОХИРГООНЫ default: үүргийн шат (`ROLE_STAGE`), шийдвэргүй,
  *    багцгүй. */
 assert.equal(stageOfUser('offline_hack'), null, 'remote-гүй сешнд локал томилгоо ХҮЧИНГҮЙ');
 assert.deepEqual(bagtsFor('offline_hack', 'director'), []);
-assert.deepEqual(bagtsScope('selbe_injener'), []);
+assert.deepEqual(bagtsScope('inj_offline'), []);
 assert.equal(listAssigns().length, 0, 'жагсаалт ч хоосон');
 {
-  const f = resolveFlowStage('selbe_injener', 'injener');
+  const f = resolveFlowStage('inj_offline', 'injener');
   assert.equal(f.stage, 'engineer', 'хатуу үүргийн default шат');
   assert.equal(f.canReview, false, 'локал «director» мөрөөр шийдвэрлэх эрх авч болохгүй');
   assert.deepEqual(f.scope, []);
 }
 /* remote ачаалагдмагц — урьдын зан төлөв (remote = үнэн, локал мөр дарагдана) */
-_syncRemoteAssigns([{ user: 'selbe_injener', stage: 'engineer', bagts: ['Багц 1'] }]);
-assert.equal(stageOfUser('selbe_injener'), 'engineer');
+_syncRemoteAssigns([{ user: 'inj_offline', stage: 'engineer', bagts: ['Багц 1'] }]);
+assert.equal(stageOfUser('inj_offline'), 'engineer');
 assert.equal(stageOfUser('offline_hack'), null, 'remote-д байхгүй локал мөр амилахгүй');
 console.log('✅ remote-гүй сешнд localStorage-ийн томилгоо үл тооцно');
 
@@ -120,7 +120,7 @@ assert.equal(resolveFlowStage('x', 'menejer').stage, 'engineer', 'үүрэг з�
 r = resolveFlowStage('x', 'super'); // панелийн «Супер» preset — хатуу биш → томилгоо
 assert.equal(r.canPick, false, 'override-super сонгогчгүй');
 assert.equal(r.stage, 'engineer');
-r = resolveFlowStage('selbe_injener', 'injener'); // хатуу урсгалын үүрэг, томилгоогүй
+r = resolveFlowStage('inj_offline', 'injener'); // урсгалын үүрэг, томилгоогүй
 assert.equal(r.stage, 'engineer');
 assert.equal(r.canReview, false, 'томилгоогүй → зөвхөн харна');
 assert.deepEqual(r.scope, []);
@@ -136,6 +136,28 @@ assert.equal(resolveFlowStage(superName, 'super', 'director').stage, 'director')
 r = resolveFlowStage(null, null, null, true); // дев — нэвтрэлт унтраалттай
 assert.equal(r.canPick, true);
 assert.equal(r.scope, null);
+/* ⚠️ 2026-10-23: шатанд томилогдсон (хүснэгтийн) super-ийн АНХДАГЧ шат = өөрийн томилгоо; сонговол сонгосон шат */
+{
+  const RL = await import('./services/roles.ts');
+  RL._setTableSupers(['tsup_flow']);
+  _syncRemoteAssigns([{ user: 'tsup_flow', stage: 'director', bagts: ['Багц 2'] }]);
+  r = resolveFlowStage('tsup_flow', 'super');
+  assert.equal(r.stage, 'director', 'super-ийн анхдагч шат — өөрийн томилгоо');
+  assert.equal(r.canPick, true);
+  assert.equal(r.scope, null, 'super — бүх багц (аврах эрх)');
+  assert.equal(resolveFlowStage('tsup_flow', 'super', 'manager').stage, 'manager', 'сонгосон шат давамгайлна');
+  RL._setTableSupers(null);
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — томилгоотой байсан ч зөвхөн харна, бүх багц, super-ийн сонгогч/bypass БИШ */
+  _syncRemoteAssigns([{ user: 'zah_flow', stage: 'engineer', bagts: ['Багц 2'] }]);
+  r = resolveFlowStage('zah_flow', 'zahiral');
+  assert.equal(r.canReview, false, 'захирал шийдвэр гаргахгүй (санамсаргүй томилгоотой ч)');
+  assert.equal(r.canPick, false, 'захиралд super-ийн сонгогч (bypass) олгохгүй');
+  assert.equal(r.viewAll, true);
+  assert.equal(r.scope, null, 'бүх багцыг харна');
+  assert.equal(r.stage, 'chief');
+  assert.equal(resolveFlowStage('zah_flow', 'zahiral', 'manager').stage, 'manager', 'шат сонгож харна');
+  assert.equal(resolveFlowStage('zah_none', 'zahiral').canReview, false);
+}
 /* дараа ирсэн томилгоо шууд үйлчилнэ — кэшлэхгүй */
 _syncRemoteAssigns([]);
 assert.equal(resolveFlowStage('late', 'beginner').stage, null);
@@ -159,11 +181,11 @@ assert.equal(resolveFlowStage('selbe_redesign', P.roleOf('selbe_redesign')).stag
 console.log('✅ томилохдоо үүрэг хэвээр, харагдац нэмэгдэнэ');
 
 /* ── 8. Нэг аккаунт нэг шат: engineer → manager ── */
-w = setAssign('selbe_injener', 'engineer', ['Багц 1']); await w.sync;
-w = setAssign('selbe_injener', 'manager', ['Багц 2']); await w.sync;
-assert.deepEqual(listAssigns().filter((a) => a.user === 'selbe_injener').map((a) => a.stage), ['manager']);
-assert.deepEqual(bagtsFor('selbe_injener', 'engineer'), []);
-assert.equal(P.roleOf('selbe_injener'), 'menejer', 'урсгалын үүрэг шатаа дагана');
+w = setAssign('inj_move', 'engineer', ['Багц 1']); await w.sync;
+w = setAssign('inj_move', 'manager', ['Багц 2']); await w.sync;
+assert.deepEqual(listAssigns().filter((a) => a.user === 'inj_move').map((a) => a.stage), ['manager']);
+assert.deepEqual(bagtsFor('inj_move', 'engineer'), []);
+assert.equal(P.roleOf('inj_move'), 'menejer', 'урсгалын үүрэг шатаа дагана');
 console.log('✅ нэг аккаунт нэг шат');
 
 /* ── 9. Хатуу super томилогдохгүй; хоосон багц татгалзана ── */
@@ -177,7 +199,8 @@ w = setAssign('selbe_et', 'company', [ALL_BAGTS]); await w.sync;
 let rm = removeAssign('selbe_et', 'company'); await rm.sync;
 assert.equal(stageOfUser('selbe_et'), null);
 assert.ok(P.resolveBaseAccess('selbe_et').views.includes('finance'), 'админы нэмсэн харагдац алга болохгүй');
-assert.ok(P.resolveBaseAccess('selbe_et').views.includes('guitsetgel'), 'суурьд байгаа тул хэвээр');
+/* ⚠️ 2026-10-19: `beginner`-ийн суурьд «Гүйцэтгэл» БАЙХГҮЙ болсон (урсгалтай харагдац зөвхөн томилгоогоор) — олгосныг хасна */
+assert.ok(!P.resolveBaseAccess('selbe_et').views.includes('guitsetgel'), 'томилгоогоор олгосон «Гүйцэтгэл» хасагдах ёстой');
 assert.equal(P.roleOf('selbe_et'), 'beginner');
 console.log('✅ хасахад grant-тай тэгш хэмтэй');
 
@@ -188,11 +211,13 @@ assert.equal(P.listUsers().find((u) => u.username === 'selbe_redesign').overridd
 console.log('✅ олгосныг л хасна');
 
 /* ── 12. Tombstone: устгагдсан аккаунтын хуучин томилгоог хасахад амилахгүй ── */
-await P.removeUser('selbe_menejer');
-assert.equal(P.hasAccess('selbe_menejer'), false);
-_syncRemoteAssigns([{ user: 'selbe_menejer', stage: 'manager', bagts: [ALL_BAGTS] }]);
-rm = removeAssign('selbe_menejer', 'manager'); await rm.sync;
-assert.equal(P.hasAccess('selbe_menejer'), false, '⚠️ revoke нь tombstone-ыг арчихгүй');
+await P.setUser('men_gone', { views: ['guitsetgel'], docs: false }, 'menejer');
+assert.equal(P.hasAccess('men_gone'), true);
+await P.removeUser('men_gone');
+assert.equal(P.hasAccess('men_gone'), false);
+_syncRemoteAssigns([{ user: 'men_gone', stage: 'manager', bagts: [ALL_BAGTS] }]);
+rm = removeAssign('men_gone', 'manager'); await rm.sync;
+assert.equal(P.hasAccess('men_gone'), false, '⚠️ revoke нь tombstone-ыг арчихгүй');
 console.log('✅ tombstone халдашгүй');
 
 /* ── 13. Хасаад шууд дахин нэмэх — дараалал: сүүлийн үйлдэл ялна ── */
@@ -203,9 +228,33 @@ w = setAssign('comp_a', 'manager', ['Багц 2']);
 await Promise.all([rm.sync, w.sync]);
 assert.equal(stageOfUser('comp_a'), 'manager');
 assert.equal(P.roleOf('comp_a'), 'menejer', 'хойшилсон revoke шинэ grant-ыг дарахгүй');
-/* ⚠️ 2026-09-30: загвар урсгалтай харагдац (guitsetgel) агуулахгүй — урсгалын томилгоо нэмнэ */
-assert.deepEqual(P.resolveBaseAccess('comp_a').views, [...new Set([...roleAccess('menejer').views, 'guitsetgel'])]);
+/* ⚠️ 2026-09-30: загвар урсгалтай харагдац (guitsetgel) агуулахгүй — урсгалын томилгоо нэмнэ
+   ⚠️ 2026-10-19 (аудит №8): шат шилжихэд загварыг одоогийн харагдац дээр НЭГТГЭНЭ (солихгүй) */
+assert.deepEqual(new Set(P.resolveBaseAccess('comp_a').views),
+  new Set([...roleAccess('guitsetgegch').views, 'guitsetgel', ...roleAccess('menejer').views]));
 console.log('✅ хас→нэм дараалал');
+
+/* ── 13б. Томилох/шилжүүлэх нь ХУВИЙН тохиргоог (харагдац · docs · урсгалын бус төрөл) дарахгүй (2026-10-19, аудит №8) ── */
+{
+  await P.setUser('cust_a', { views: ['plan', 'finance'], docs: true }, null);
+  w = setAssign('cust_a', 'engineer', ['Багц 1']); await w.sync;
+  let a = P.resolveBaseAccess('cust_a');
+  assert.ok(a.views.includes('finance') && a.views.includes('plan'), `админы нэмсэн харагдац арилав: ${a.views}`);
+  assert.ok(a.views.includes('guitsetgel'));
+  assert.equal(a.docs, true, 'хадгалсан ТЭЗҮ-БОНУ загвараар дарагдав');
+  assert.equal(P.roleOf('cust_a'), 'injener', 'үүрэггүй хүн шатны үүрэг авна');
+  w = setAssign('cust_a', 'director', ['Багц 1']); await w.sync;
+  a = P.resolveBaseAccess('cust_a');
+  assert.ok(a.views.includes('finance'), 'шат шилжихэд хувийн харагдац арилав');
+  assert.equal(a.docs, true);
+  assert.equal(P.roleOf('cust_a'), 'eronhii', 'урсгалын үүрэг шатаа дагана');
+  /* урсгалын БУС ил төрөл — солигдохгүй */
+  await P.setUser('cust_b', { views: ['gdash'], docs: false }, 'taniltsah');
+  w = setAssign('cust_b', 'manager', ['Багц 2']); await w.sync;
+  assert.equal(P.roleOf('cust_b'), 'taniltsah', 'ил сонгосон урсгалын бус төрөл солигдов');
+  assert.deepEqual(new Set(P.resolveBaseAccess('cust_b').views), new Set(['gdash', 'guitsetgel']));
+}
+console.log('✅ томилгоо хувийн харагдац/docs/төрлийг дарахгүй (нэгтгэнэ)');
 
 /* ══════════════════════════════════════════════════════════════════════
  * 14. ХӨНДЛӨНГИЙН ХЯНАЛТ — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09)

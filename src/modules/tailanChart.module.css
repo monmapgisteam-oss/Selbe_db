@@ -11,15 +11,18 @@
    палитр (`--c1…--c8`, `format.ts`-ийн `cat()`) байсан. Хоёр систем зэрэг
    байвал тайлан нь дашбоард, «Багцын санхүү»-тэй өөр өнгөний хэлээр ярина.
    Тиймээс хэсэг-бүтэн зурвас нь `cat(i)`-ийг inline `background`-аар авна. */
-/* ⚠️ 2026-10-04: ТУХ-ын `.multiple` самбар (хэрэглэгч: «ТУХ хэсэгтэй бүрэн адилхан») */
-.fig { margin: 0 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); break-inside: avoid; }
+/* ⚠️ 2026-10-04: ТУХ-ын `.multiple` самбар (хэрэглэгч: «ТУХ хэсэгтэй бүрэн адилхан»)
+   ⚠️ 2026-10-23: Environment карт — булан 12px (`--r-lg`), `--line` хүрээ, сүүдэргүй, 10px 12px. */
+.fig { margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); break-inside: avoid; }
 
 /* ── Графикийн тайлбар — хүснэгтийн `Cap`-тай ижил хэмнэл ── */
 /* ТУХ-ын h3 хэмнэл */
+/* ⚠️ 2026-10-23: Environment — гарчиг 13px/600 (`.display`, -0.015em) */
 .cap {
   margin: 18px 0 8px;
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--ink);
 }
 .cap span { font-weight: 400; color: var(--ink-2); }
@@ -38,32 +41,20 @@
    үлдэв (2026-10-09-нөөс `ui.Meter tone="warn"`): хуваарьтайгаа харьцуулахад ард
    хоцорсныг ӨНГӨӨР анхааруулна. */
 
-/* ══════════ Хугацааны цуваа ══════════ */
-.spark { display: block; width: 100%; height: 64px; }
-.area { fill: color-mix(in srgb, var(--data) 18%, transparent); stroke: none; }
-.line {
-  fill: none;
-  stroke: var(--data);
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  /* ⚠️ `preserveAspectRatio="none"` нь тэнхлэг тус бүрээр өөр сунгадаг тул
-     зураас гажина — `non-scaling-stroke` нь өргөнийг нь тогтмол барина. */
-  vector-effect: non-scaling-stroke;
-}
-.axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  font-size: 10px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.axis > span { flex: 1; text-align: center; min-width: 0; }
-.axis > span:first-child { text-align: left; }
-.axis > span:last-child { text-align: right; }
-.axHot { color: var(--ink-2); font-weight: 600; }
+/* ══════════ Тайлбар ══════════
+   ⚠️ 2026-10-21: «Хугацааны цуваа» (`.spark · .area · .line · .axis · .axHot`) хасагдсан —
+   тэдгээрийг хэрэглэдэг `TrendArea` бүрэлдэхүүн кодонд хаана ч ашиглагдаагүй тул устгав. */
 .note { margin: 6px 0 0; font-size: 11px; color: var(--ink-3); }
+/* ⚠️ 2026-10-23: Environment `.chart-empty` — 24/12 зай, 1px тасархай `--line`, булан 10, 12px `--ink-3` төвд */
+.empty {
+  margin: 0 0 10px;
+  padding: 24px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
 .note b { color: var(--ink-2); }
 
 /* ══════════ Хэмжүүр ══════════
@@ -76,41 +67,46 @@
    багтахгүй бол өргөн/фонтоор шийднэ. */
 /* ⚠️ 2026-10-04: ТУХ-ын KPI мөр (`.stats`/`.stat`) — нэг хүрээтэй тор, нүд бүр
    баруун/доод зураасаар тусгаарлагдана. Минимум өргөн 210px+ хэвээр (дээрх ⚠️). */
+/* ⚠️ 2026-10-23: Environment `.analytics-stat` — НЭГ хүрээт тор БИШ, тусдаа хавтангууд (8px завсар,
+   14px 18px, булан 13px); шошго 10px ink-3, утга 600/-0.04em. Утга нь 17px (Environment
+   compact) — дээрх 210px-ийн ⚠️ (бүтэн мөнгөн дүн нэг мөрөнд) хэвээр биелнэ. */
 .kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
   margin: 0 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  overflow: hidden;
+}
+/* ⚠️ 2026-10-26 (аудит): `KpiRow cols` — өргөн дэлгэцэд тогтмол багана, утсанд нэг */
+.kpisCols { grid-template-columns: repeat(var(--kpi-cols, 2), minmax(0, 1fr)); }
+@media (max-width: 620px) {
+  .kpisCols { grid-template-columns: minmax(0, 1fr); }
 }
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
-  padding: 10px 12px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface);
 }
 .kpiLabel {
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--ink-3);
 }
 .kpiVal {
-  font-size: 1.2rem;
+  font-size: 17px;
   font-weight: 600;
-  line-height: 1.1;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   /* Мөнгөн дүн ба «₮» салж хоёр мөр болохгүй */
   white-space: nowrap;
 }
-.kpiSub { font-size: 0.72rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.kpiSub { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ⚠️ ХЭВЛЭХ: график нь хүснэгтийн ДАВХАРДАЛ биш НЭМЭЛТ тул хэвлэлтэд ч
    үлдэнэ. Зөвхөн дэвсгэрийг цайруулж бэх хэмнэнэ. */
@@ -120,7 +116,7 @@
 }
 @media print {
   .fig, .kpis { break-inside: avoid; }
-  .kpis, .fig { background: none; }
+  .kpi, .fig { background: none; }
   /* ⚠️ 2026-10-09: `ui.Bars`/`ui.Meter` — бэх ба замын ТОКЕНЫГ энэ хүрээнд цаасны утгаар
      дарна (харанхуй горимд хэвлэхэд --ink нь бараг цагаан — доорх 2026-09-08-ны ⚠️). */
   .fig, .meterBlock { --ink: #000; --ink-2: #222; --ink-3: #555; --chart-track: #e5e7eb; }
@@ -130,15 +126,13 @@
      нь бараг цагаан хэвээр үлдэж, хөтөч дэвсгэрийг хэвлэдэггүй ЦАГААН цаасан
      дээр тоо, нэр, тэнхлэг, тайлбар БҮГД үл үзэгдэх болдог байв. Хажуугийн
      report.module.css яг үүнийг өөрийн элементүүддээ аль хэдийн хийсэн. */
-  .kpiVal, .note b, .axHot { color: #000; }
+  .kpiVal, .note b { color: #000; }
   .cap { color: #222; }
-  .axis, .note, .kpiSub, .kpiLabel, .cap span { color: #555; }
+  .note, .empty, .kpiSub, .kpiLabel, .cap span { color: #555; }
   /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр.
      ⚠️ 2026-10-09 (аудит №3): `.fig :global(.chartFill) { background: #767676 }` БҮХ дүүргэлтийг
      нэг саарал болгож эмфазисыг (хуучин `.barHot` #333) устгасан. Одоо `RankBars`-ийн өнгө
      `var(--rank-hot/--rank-dim, …)` тул энд хоёр түвшний бэхийг л тавина. */
   .fig { --rank-hot: #333; --rank-dim: #767676; }
   .meterBlock :global(.chartFill) { background: #333; }
-  .line { stroke: #333; }
-  .area { fill: #d9d9d9; }
 }

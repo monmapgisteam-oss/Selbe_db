@@ -3,6 +3,80 @@
    Цайвар/харанхуй хоёр горим. Өнгө нь модулиас ирнэ (--hue).
    ══════════════════════════════════════════════════════════ */
 
+/* ⚠️ 2026-10-21: INTER — ЛОКАЛ (`public/fonts/inter/`; Google-ийн variable фонт wght 100–900, `layout.tsx`-ийн ⚠️).
+   `next/font/google`-ийн оронд — сүлжээнээс хамааралгүй. `--font-sans` нь урьдын адил бүх токены эх. */
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/inter-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/inter-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* ⚠️ 2026-10-23: MANROPE — ЛОКАЛ (`public/fonts/manrope/`, @fontsource-variable/manrope 5.3, wght 200–800).
+   Environment шиг ЗӨВХӨН брэнд бичиг ба том гарчигт (`--font-display`); бусад бүх текст Inter. */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/manrope/manrope-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/manrope/manrope-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/manrope/manrope-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/manrope/manrope-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+:root { --font-sans: 'Inter'; }
+
 /* 2026-08-10 UI шинэчлэл: хоёр горимын палитрыг зөөлөн ХӨХ СААРАЛ сүүдэрт
    нэгтгэж (цэвэр саарал → slate), сүүдрийг давхарласан зөөлөн болгов.
    Токен түвшинд тул бүх модульд нэг дор тусна. */
@@ -11,25 +85,33 @@
    сүүдэргүй: гүнийг paper → surface → chart-track шат + hairline л өгнө. */
 :root,
 [data-theme='light'] {
-  --bg: #f5f7fa;
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «Сэлбэтэй ойр өнгө»): ГОЛ ӨНГӨ = СЭЛБЭ ЛОГОНЫ ХӨХ (`public/logo.svg` #3a5d83).
+     Environment-ийн бүтэц (paper шат, line, dock) хэвээр — зөвхөн өнгө ногооноос хөх саарал руу.
+     `--moss`/`--moss-deep` НЭР хэвээр (акцентын токен), утга нь хөх. «Сайн» (`--good`) тусдаа ногоон. */
+  --bg: #f4f6f9;
   --surface: #ffffff;
-  --surface-2: #eef3f7;
-  --sunken: #e9eef4;
+  --surface-2: #eaeff5;
+  --sunken: #dfe6ef;
 
   /* Hairline — envhub шиг color-mix (хагас тунгалаг тул ямар ч дэвсгэрт зөөлөн) */
   --line: color-mix(in oklab, #1e293b 14%, transparent);
   --line-strong: color-mix(in oklab, #1e293b 26%, transparent);
 
-  --ink: #1e293b;
-  --ink-2: #475569;
+  --ink: #142132;
+  --ink-2: #3a4a5e;
   /* ⚠️ envhub-ийн light ink-3: жижиг (10px) бичигт зориулж палитрын сааралаас
      ЗОРИУД бараан — цагаан дээр 5.1:1 (WCAG AA-аас дээгүүр). */
-  --ink-3: #5a6a80;
+  --ink-3: #56677c;
 
   /* ГАНЦ өгөгдлийн өнгө — envhub-ийн гол дүрэм: цуваанууд өнгөөр БИШ, дараалал,
      хэмжээ, тунгалагаар ялгарна. #4FB3BF цагаан дээр 2.3:1 л өгдөг тул light-д
      гүн хувилбар. */
-  --data: #2e7f8b;
+  --data: #3a5d83;
+  /* ⚠️ 2026-10-23 (UX аудит S9): ТЕКСТЭД зориулсан `--data` — `color: var(--hue)` / `color: var(--data)` гэж бичихийн
+     оронд ЭНИЙГ хэрэглэнэ (дүүргэлт/хүрээ/график `--data`-аараа). Хуучин teal (#2e7f8b) цайвар гадаргуу дээр 3.98–4.32:1
+     байсан тул бараан #287079 байв; tezu-bonu-гийн Сэлбэ хөх (#3a5d83) өөрөө бүх цайвар гадаргуу дээр ≥5.4:1
+     (#fff 6.8 · --sunken 5.4) тул ижил утга. Палитр дахин цайвал ЭНД л бараан хувилбар өгнө. */
+  --data-ink: var(--data);
   /* АКЦЕНТ ДЭВСГЭР ДЭЭРХ бэх. Цайвар горимд акцент нь гүн teal тул цагаан;
      харанхуйд акцент нь ЦАЙВАР cyan (#67d7e4) тул цагаан текст 1.7:1 л өгдөг —
      тэнд бараан бэх хэрэгтэй. `var(--hue)`/`var(--data)`/төлвийн өнгөн дэвсгэр
@@ -43,14 +125,14 @@
        --good #147c3b: #fff 5.28 · --surface-2 4.73 · --bg 4.92 · --sunken 4.53
        --warn #9a5d07: #fff 5.33 · --surface-2 4.77 · --bg 4.96 · --sunken 4.57
      Дүүргэлт болгоход дээрх цагаан (`--hue-ink`) бичиг ч мөн 5.3:1 болно. Харанхуй горим ӨӨРЧЛӨГДӨӨГҮЙ. */
-  --good: #147c3b;
-  --warn: #9a5d07;
-  --bad: #dc2626;
+  --good: #2f7d55;
+  --warn: #d39b35;
+  --bad: #d35d5d;
   /* Төлөв — ТЕКСТЭД. Дээрхийг текст болгоход цагаан дээр 4.5:1 хүрэхгүй тул
      тусад нь бараан хувилбар. Харанхуй горимд дүүргэлтийн өнгө нь өөрөө хангалттай. */
-  --good-ink: #0d7a3e;
+  --good-ink: #1f6644;
   --warn-ink: #8a6510;
-  --bad-ink: #c02128;
+  --bad-ink: #b23b3b;
   /* Давхцлын онцлох өнгө — зурган дээрх #d946ef давхаргатай НЭГ утга.
      Цагаан дээр уншигдах бараандуу хувилбар (текстэд); зургийн давхарга нь
      ортофото дээр ялгарах учир неон hex-ээ хэвээр хадгална. */
@@ -78,14 +160,18 @@
 
      ⚠️ Слот бүр ХОЁУЛАН горимын блокт байх ёстой — эс бөгөөс `layout.tsx`-ийн
      hydration-ээс өмнөх скрипт dark тавихад эхний зурагт цайвар өнгө анивчина. */
-  --c1: #0b8ba0; /* Сэлбэ — усан ногоон-хөх */
-  --c2: #e2683a; /* улбар шар — тоосго */
-  --c3: #3b5fd9; /* индиго — тэнгэр */
-  --c4: #3f9142; /* ногоон — тал */
-  --c5: #e07ba8; /* ягаан */
-  --c6: #d69b1a; /* шар — шороо */
-  --c7: #8a3fd0; /* нил ягаан */
-  --c8: #d8413f; /* улаан */
+  /* ⚠️ 2026-10-23: Environment — ялгах өнгө OKLCH (L .56 / бараан .74, C ≈.12–.15)-ийн hex толь;
+     хэвлэлийн `CAT_LIGHT`/`CAT_DARK` (format.ts) ЯГ ижил байх ёстой (printColors.check).
+     Оноо (--score-*) нь ӨГӨГДЛИЙН шатлал — moss/clay акцентаас САНААТАЙ салангид, тогтмол hex;
+     гантын «явж буй» = --water (moss = дууссан/акцент тул ялгагдахгүй байв). */
+  --c1: #17895b; /* Сэлбэ — усан ногоон-хөх */
+  --c2: #b1582b; /* улбар шар — тоосго */
+  --c3: #4076b9; /* индиго — тэнгэр */
+  --c4: #598332; /* ногоон — тал */
+  --c5: #ab517f; /* ягаан */
+  --c6: #926f00; /* шар — шороо */
+  --c7: #8062b0; /* нил ягаан */
+  --c8: #b84d49; /* улаан */
 
   /* ── Чартын ТУСЛАХ бэх (өгөгдөл БИШ) ──
      envhub: ТОРГҮЙ, ТЭНХЛЭГГҮЙ. grid/baseline токен нь ганц crosshair болон
@@ -93,7 +179,7 @@
   --chart-grid: var(--line);
   --chart-baseline: var(--line-strong);
   --chart-axis-ink: var(--ink-3);
-  --chart-track: #e3eaf1; /* envhub paper-hi (light) */
+  --chart-track: #e6edf5; /* envhub paper-hi (light) */
 
   /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): S-муруй, санхүүжилт,
      гантын өнгө — модуль бүр өөрийн hex/хуулбартай байв (Хуваарь + ТУХ гант,
@@ -102,8 +188,8 @@
      нь `src/lib/chartStyle.ts`.
      ⚠️ Тайлбар дотор «*» ба «/»-г ЗЭРЭГЦҮҮЛЭН бичихгүй — тайлбарыг эрт хааж CSS-ийг
      задлахгүй болгодог (2026-10-09: dev «Unknown word» алдаа, tsc/eslint/тест барьдаггүй). */
-  --chart-plan: var(--c3); /* төлөвлөгөө — тасархай */
-  --chart-actual: var(--c2); /* бодит — бүтэн */
+  --chart-plan: var(--ink-3); /* төлөвлөгөө — тасархай */
+  --chart-actual: var(--data); /* бодит — бүтэн */
   /* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): ЗӨВХӨН хэв маягийн токен, шинэ өнгө БИШ.
      --chart-glow — шугам/цагирагийн гэрэлтэлтийн хүч (цувааны өөрийн өнгөний хувь);
        цайвар дэвсгэрт гэрэлтэлт «бохир сүүдэр» мэт харагддаг тул бага.
@@ -111,28 +197,49 @@
        цагаан бичиг (--hue-ink) улбар шар/ягаан слот дээр 3:1-ээс доош унадаг тул 18%
        харлуулж ≥4.5:1 болгоно; харанхуйд бараан бичиг тул харлуулахгүй.
      --chart-on-fill-halo — өнгөт дүүргэлт ДЭЭРХ жижиг бичгийн (donut-ын хувь) хүрээ. */
-  --chart-glow: 30%;
-  --chart-callout-shade: 18%;
+  --chart-glow: 0%;
+  --chart-callout-shade: 0%;
   --chart-on-fill-halo: rgb(0 0 0 / 0.3);
   --gantt-done: var(--good);
-  --gantt-run: var(--data);
+  --gantt-run: var(--water);
   --gantt-late: var(--bad);
   --gantt-todo: color-mix(in oklab, var(--ink-3) 45%, transparent);
   /* ДАРААЛСАН 5 шат (муу → сайн) — шинжилгээний `SCORE_LEVELS`, ХАБЭА-гийн оноо.
      ⚠️ Дунд шат нь ЦАЙВАР шар: light-ийн `--warn` (#9a5d07) нь текстэд зориулж
      бараан болсон тул дүүргэлтэд хэт харанхуй — шатлал «муу→сайн» гэж уншигдахгүй. */
-  --score-1: var(--bad);
-  --score-2: color-mix(in oklab, var(--bad) 30%, #f59e0b);
+  --score-1: #dc2626;
+  --score-2: #ef801b;
   --score-3: #facc15;
-  --score-4: color-mix(in oklab, #facc15 35%, var(--good));
-  --score-5: var(--good);
+  --score-4: #769939;
+  --score-5: #147c3b;
 
   /* Сүүдэр — ЗӨВХӨН хөвөгч зүйлст (tooltip, цэс). Картад хэрэглэхгүй. */
-  --shadow-sm: 0 1px 2px rgb(41 76 96 / 0.08);
-  --shadow: 0 8px 24px rgb(41 76 96 / 0.12);
+  --shadow-sm: 0 1px 5px rgb(0 0 0 / 0.07);
+  --shadow: 0 20px 40px rgb(41 76 96 / 0.16);
   --shadow-lg: 0 20px 40px rgb(41 76 96 / 0.16);
 
   color-scheme: light;
+  /* ⚠️ 2026-10-23: Environment (`E:/Baigali orchin/Environment`, globals.css + workspace.css)-ийн
+     нэмэлт токенууд — paper-hi (hover/track), moss/water/ochre/clay, dock, акцент. */
+  --paper-hi: #e6edf5;
+  --moss: #3a5d83;
+  --moss-deep: #27445f;
+  --water: #3b82f6;
+  --ochre: #d39b35;
+  --clay: #d35d5d;
+  --tint: 9%;
+  --workspace-accent: var(--moss);
+  --workspace-accent-ink: #fff;
+  --workspace-accent-hover: var(--moss-deep);
+  --dock-bg: var(--surface-2);
+  --dock-ink: var(--ink);
+  --dock-ink-2: var(--ink-2);
+  --dock-ink-3: var(--ink-3);
+  --dock-line: var(--line);
+  --dock-line-2: var(--line-strong);
+  --dock-hover: var(--paper-hi);
+  --dock-active-bg: var(--moss);
+  --dock-active-ink: #fff;
 }
 
 /* ⚠️ 2026-08-12: ArcGIS Operations Dashboard-ын CYAN-ХАР палитр — БҮХ аппад жигд
@@ -141,26 +248,28 @@
    горим хэвээр цагаан. */
 [data-theme='dark'] {
   /* envhub-ийн харанхуй paper давхарга — slate-цэнхэр гүн */
-  --bg: #0f1720;
-  --surface: #1b2733;
-  --surface-2: #18222d;
-  --sunken: #0b121a;
+  --bg: #0d1622;
+  --surface: #152231;
+  --surface-2: #111c29;
+  --sunken: #08101a;
 
   --line: color-mix(in oklab, #cbd5e1 13%, transparent);
   --line-strong: color-mix(in oklab, #cbd5e1 24%, transparent);
 
-  --ink: #f1f5f9;
-  --ink-2: #cbd5e1;
-  --ink-3: #94a3b8;
+  --ink: #edf2f8;
+  --ink-2: #c3cfdd;
+  --ink-3: #93a4b8;
 
   /* envhub-ийн cyan — харанхуйд гэрэлтэй хувилбар (карт дээр 6+:1) */
-  --data: #67d7e4;
+  --data: #8fb4dd;
+  /* ⚠️ 2026-10-23: харанхуйд `--data` өөрөө текстэд хангалттай — ЦАЙВАР блокийн тайлбарыг үз */
+  --data-ink: var(--data);
   /* Цайвар cyan акцент дээр бараан бэх (≈12:1) — цагаан байсан бол 1.7:1 */
-  --hue-ink: #0f1720;
+  --hue-ink: #0d1622;
 
-  --good: #34d399;
-  --warn: #fbbf24;
-  --bad: #f87171;
+  --good: #5fc79a;
+  --warn: #e5b75a;
+  --bad: #e47b7b;
   /* Харанхуй горимд дүүргэлтийн өнгө нь текстэд ч 4.5:1-ээс дээш (8.4/9.6/5.8) */
   --good-ink: var(--good);
   --warn-ink: var(--warn);
@@ -171,44 +280,64 @@
   /* Зэрэглэлийн палитр — ЦАЙВАР блок дахь тайлбарыг үзнэ үү.
      Эдгээр нь өөр палитр БИШ, ижил найман өнгийг #102330 гадаргууд тааруулсан
      алхмууд. Бүгд ≥3:1, зэргэлдээ хос CVD ΔE 8.5. */
-  --c1: #17a2b8;
-  --c2: #d96a35;
-  --c3: #6f86ee;
-  --c4: #3fae52;
-  --c5: #d9689a;
-  --c6: #b8861c;
-  --c7: #a86ee0;
-  --c8: #ec5f5d;
+  --c1: #38c789;
+  --c2: #f78955;
+  --c3: #65adff;
+  --c4: #87be53;
+  --c5: #f080b8;
+  --c6: #d2a408;
+  --c7: #ba93fb;
+  --c8: #fb817a;
 
   --chart-grid: var(--line);
   --chart-baseline: var(--line-strong);
   --chart-axis-ink: var(--ink-3);
   /* envhub paper-hi (dark) — харанхуйд track нь картаас ЦАЙВАР байдаг */
-  --chart-track: #2c3b48;
+  --chart-track: #1f3044;
 
   /* ⚠️ 2026-10-09: ЦАЙВАР блокийн тайлбарыг үз — ижил нэр, энэ горимын суурь токеноор */
-  --chart-plan: var(--c3);
-  --chart-actual: var(--c2);
+  --chart-plan: var(--ink-3);
+  --chart-actual: var(--data);
   /* ⚠️ 2026-10-09 (лавлах CRM загвар): ЦАЙВАР блокийн тайлбарыг үз — харанхуйд гэрэлтэлт
      илүү тод, pill харлуулахгүй (бичиг нь бараан --hue-ink), дүүргэлт дээрх бичигт хүрээгүй. */
-  --chart-glow: 55%;
+  --chart-glow: 0%;
   --chart-callout-shade: 0%;
   --chart-on-fill-halo: transparent;
   --gantt-done: var(--good);
-  --gantt-run: var(--data);
+  --gantt-run: var(--water);
   --gantt-late: var(--bad);
   --gantt-todo: color-mix(in oklab, var(--ink-3) 45%, transparent);
-  --score-1: var(--bad);
-  --score-2: color-mix(in oklab, var(--bad) 40%, var(--warn));
-  --score-3: var(--warn);
-  --score-4: color-mix(in oklab, var(--warn) 35%, var(--good));
-  --score-5: var(--good);
+  --score-1: #f87171;
+  --score-2: #fba252;
+  --score-3: #fbbf24;
+  --score-4: #97cf7d;
+  --score-5: #34d399;
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
-  --shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 5px rgb(0 0 0 / 0.3);
+  --shadow: 0 20px 40px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 20px 40px rgb(0 0 0 / 0.45);
 
   color-scheme: dark;
+  /* ⚠️ 2026-10-23: Environment-ийн нэмэлт токенууд (бараан) */
+  --paper-hi: #1f3044;
+  --moss: #8fb4dd;
+  --moss-deep: #4f7aa6;
+  --water: #5fa8ff;
+  --ochre: #e5b75a;
+  --clay: #e47b7b;
+  --tint: 13%;
+  --workspace-accent: #b9d3f0;
+  --workspace-accent-ink: #142a44;
+  --workspace-accent-hover: #a6c6ea;
+  --dock-bg: #16273b;
+  --dock-ink: #dbe5f1;
+  --dock-ink-2: #b9c8da;
+  --dock-ink-3: #93a6bd;
+  --dock-line: #ffffff12;
+  --dock-line-2: #ffffff16;
+  --dock-hover: #ffffff0c;
+  --dock-active-bg: #b9d3f0;
+  --dock-active-ink: #16273b;
 }
 
 /* ⚠️ Энэ блок нь ДЭЭРХ хоёр горимын блокоос ХОЙНО байна. Тодорхойлолтын жин
@@ -230,9 +359,20 @@
 
   /* ⚠️ 2026-08-17: envhub-ийн радиус — xs2 / sm3 / md4. `rounded-lg/xl` түвшин
      хориотой; дугуй pill-ууд 99px-ээ шууд бичдэг тул хэвээр. */
-  --r-sm: 2px;
-  --r: 3px;
-  --r-lg: 4px;
+  --r-sm: 6px;
+  --r: 8px;
+  --r-lg: 12px;
+
+  /* ⚠️ 2026-10-26 (аудит U5): МАЯГТЫН удирдлагын (input · select · хайлт · текст товч) нэг өндөр — Environment
+     `.pe-field`-ийн 32px. `--ctl-h`-ААС ТУСДАА: тэр нь хүрээтэй (scoped) 30px багажны токен (`sheet` · `huvaari
+     .head` ⚠️ 2026-10-23), `Switch`/`Toggle`/`Segmented` түүнийг (анхдагч 30px) уншина — энд ГЛОБАЛ болгохгүй.
+     Дүрсний дөрвөлжин (өргөн=өндөр 32), `pointer: coarse` хүрэлтийн бай, ⚠️-тай 32px тохирлууд ХЭВЭЭР тоогоор. */
+  --ctl-h-form: 32px;
+
+  /* Хэсгийн жижиг гарчиг (eyebrow) — ⚠️ 2026-10-26 (аудит U12): модуль бүрийн хуулбар нэг үсгийн зай/мөрийн
+     өндрийг эндээс уншина (`.eyebrow`-ийг доор үз). `*.module.css`-д `:global(.eyebrow)`/`composes` БОЛОХГҮЙ (pure). */
+  --eyebrow-ls: 0.15em;
+  --eyebrow-lh: 1.3;
 
   /* Зайн хуваарь — одоо кодод байгаа px утгуудаас гаргасан (2px тор) тул энэ нь
      ШИНЭ байрлал биш, байгаагийнхаа НЭР. Шинэ CSS эдгээрийг хэрэглэнэ. */
@@ -253,7 +393,7 @@
   --catalog: 296px;
   /* Баруун дашбоард — ХЭРЭГЛЭГЧ чирж өөрчилнө (Portal нь `.shell`-д inline тавина) */
   --panel: 360px;
-  --head: 56px;
+  --head: 80px;
   /* Доод хүрээ — нэгтгэсэн үзүүлэлтийн зурвас */
   --dashfoot: 76px;
   /* «Барилгын хяналт» — газрын зургийн доорх явцын муруйн зурвас */
@@ -266,6 +406,9 @@
      `var(--mono)`/`var(--cond)` хэрэглэдэг бүх CSS өөрчлөлтгүй. */
   --mono: var(--font-sans), system-ui, sans-serif;
   --cond: var(--font-sans), system-ui, sans-serif;
+  /* ⚠️ 2026-10-23: Environment — хавтан (KPI · dock холбоос) 13px; гарчгийн фонт Manrope */
+  --r-xl: 13px;
+  --font-display: 'Manrope', var(--font-sans), system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -284,6 +427,9 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
+  /* ⚠️ 2026-10-23: Environment — Inter-ийн «l» сүүлтэй (cv05), өөр «a» (ss01) */
+  font-feature-settings: "cv05", "ss01";
+  text-rendering: optimizeLegibility;
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -334,6 +480,15 @@ body {
  * тохиолдлууд: `iot` @1500 (12 баганат сүлжээг БҮТНЭЭР дахин заадаг),
  * `irged` @1320 (өмнө/дараа харьцуулалт зэрэгцээ багтах цэг), 560/640/760
  * (тухайн хүснэгт·маягтын багана бодитоор багтахаа болих цэгүүд).
+ *
+ * ⚠️ 2026-10-26 (аудит G6): шатлалаас ГАДУУР үлдсэн босгууд — бүгд ЖИЖИГ элементийн (нэг сүлжээ/картын)
+ * багана бодитоор багтахаа болих цэг, зохион байгуулалт солихгүй тул шатлал руу ЗӨӨГӨӨГҮЙ (зөөвөл тухайн
+ * өргөнд харагдац өөрчлөгдөнө — тус бүрийг нүдээр шалгаж байж л). Шинэ газар эдгээрийг ДАХИН ХЭРЭГЛЭХГҮЙ:
+ *   380 `ui` · 420 `shell` · 480 `help` `ipcDoc` `guitsetgel` `habeaEntry` · 520 `ceoScorecard` ·
+ *   600 `suitability` · 1023 `shell` / 1024 `dashboardOv` (⚠️ 1px зөрүүтэй ХОЁР өөр дүрэм — нэгтгэх нэр дэвшигч) ·
+ *   1100 `ceoScorecard` (+ `CeoScorecard.tsx` `matchMedia` — CSS-тэй ЗААВАЛ нэг тоо) · 1280 `dashboardOv` `ersdel` ·
+ *   1600 `dashboardOv`.
+ * ⚠️ min/max ХОС (1180/1181, 720/721) нь алдаа БИШ — нэг босгын хоёр тал (`max-width: N` ↔ `min-width: N+1`).
  */
 :root {
   /* ⚠️ ЗӨВХӨН БАРИМТ: `@media` эдгээрийг уншиж чадахгүй. JS-ээс лавлах
@@ -369,10 +524,10 @@ ul, ol { list-style: none; }
    ⚠️ line-height 1-ээс ИХ байх ёстой — кириллийн Й/Ё-гийн дээд тэмдэг тайрагдана. */
 .eyebrow {
   font-size: 11px;
-  line-height: 1.3;
+  line-height: var(--eyebrow-lh);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
+  letter-spacing: var(--eyebrow-ls);
   color: var(--ink-3);
 }
 
@@ -407,10 +562,11 @@ ul, ol { list-style: none; }
 }
 
 /* Гүйлгэх мөр */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+/* ⚠️ 2026-10-23: Environment — 4px нарийн гүйлгэгч, line-2 эрхий, ink-3 hover */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: content-box; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
 
 .skip {
   position: fixed;
@@ -419,7 +575,7 @@ ul, ol { list-style: none; }
   z-index: 999;
   padding: 10px 18px;
   background: var(--hue);
-  color: #fff;
+  color: var(--hue-ink);
   border-radius: 0 0 var(--r) var(--r);
   font-weight: 600;
   transition: top 0.15s;
@@ -436,6 +592,52 @@ ul, ol { list-style: none; }
   box-shadow: var(--shadow-sm) !important;
 }
 .esri-widget--button:hover { background: var(--surface-2) !important; }
+/* ⚠️ 2026-10-23 (хэрэглэгчийн баталсан санал): БАРУУН ДЭЭД БАГАНА — 3 бүлэг, товч бүр НЭГ хүрээ, ижил 34px.
+   (а) ойртуулах · луужин · чиглэл солих, (б) суурь зураг · бүтэн дэлгэц, (в) 3D хэрэгслүүд. Бүлэг доторх зай 4px,
+   бүлэг хооронд 12px. Zoom/луужин/чиглэл нь доороо calcite-button, Expand нь calcite-action — тэдний өөрийн
+   дэвсгэр/хүрээ гадна хүрээний ДОТОР хоёр дахь хайрцаг зурдаг байсныг тунгалаг болгоно. */
+.esri-ui-top-right .esri-component { margin-bottom: 4px; }
+.esri-ui-top-right .esri-zoom:has(+ .esri-expand),
+.esri-ui-top-right .esri-navigation-toggle,
+.esri-ui-top-right .selbe-grpEnd { margin-bottom: 12px; }
+.esri-ui .esri-component.esri-zoom,
+.esri-ui .esri-component.esri-compass,
+.esri-ui .esri-component.esri-navigation-toggle,
+.esri-ui .esri-component.esri-expand {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.esri-ui .esri-zoom calcite-button,
+.esri-ui .esri-compass calcite-button,
+.esri-ui .esri-navigation-toggle calcite-button {
+  --calcite-button-background-color: transparent;
+  --calcite-button-border-color: transparent;
+  --calcite-color-foreground-1: transparent;
+  --calcite-color-border-1: transparent;
+  --calcite-button-corner-radius: 0;
+  display: block;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.esri-ui .esri-zoom calcite-button + calcite-button,
+.esri-ui .esri-navigation-toggle calcite-button + calcite-button { border-top: 1px solid var(--line) !important; }
+.esri-ui .esri-expand .esri-expand__toggle,
+.esri-ui .esri-expand .esri-expand__toggle .esri-widget--button {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.esri-ui .esri-expand calcite-action { --calcite-action-background-color: transparent; }
+/* Гараар үүсгэсэн товч (бүтэн дэлгэц, харьцуулах г.м.) — Esri-ийн бүрэлдэхүүнтэй ИЖИЛ 34px, 6px булан */
+.esri-ui .esri-component.esri-widget--button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 6px !important;
+}
 
 /* ── SWIPE (харьцуулах) — «Ерөнхий төлөвлөгөө» → «Detail» (2026-10-13) ──
    ⚠️ Swipe-ийн үндэс нь `esri-swipe esri-widget` — ЗУРГИЙГ БҮТНЭЭР нь бүрхсэн
@@ -485,7 +687,7 @@ ul, ol { list-style: none; }
 .esri-attribution {
   background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
   color: var(--ink-3) !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   border: none !important;
 }
 .esri-zoom .esri-widget--button { border-radius: var(--r-sm) !important; }

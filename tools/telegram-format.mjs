@@ -84,7 +84,8 @@ function stripCharts(lines) {
   return out;
 }
 
-export function toHtml(md) {
+/** Markdown → Telegram HTML БЛОКУУД (мөр бүр = нэг блок, хүснэгт = нэг `<pre>` блок) — `toHtml` · `toHtmlChunks`-ийн суурь */
+export function toHtmlBlocks(md) {
   const lines = stripCharts(
     String(md).split('\n').filter((l) => !isSource(l)),
   );
@@ -126,7 +127,109 @@ export function toHtml(md) {
     );
     i++;
   }
-  return out.join('\n');
+  return out;
+}
+
+export function toHtml(md) {
+  return toHtmlBlocks(md).join('\n');
+}
+
+/** Telegram-ийн нэг мессежийн дээд хэмжээ 4096 — зайтай (хүснэгтийн `<pre>` таг, тоолуур) */
+export const TG_CHUNK_MAX = 3800;
+
+const TAG_RE = /^<\/?(b|code|pre)>$/i;
+const hasText = (s) => s.replace(/<[^>]+>/g, '').trim().length > 0;
+
+/**
+ * ХАТУУ ХАЙЧИЛТЫН ЦЭГ — `s`-ийг `[from, to)` хүртэл авахад entity (`&amp;` · `&lt;` · `&gt;`) ДУНДУУР орохгүй цэг.
+ * ⚠️ 2026-10-22 (аудит): `s` нь `esc()`-ээр зайлуулсан HTML тул `&` бүр entity-ийн эхлэл. Урьд зайгүй 3780-аас урт
+ *    «үг» (урт холбоос, `&&&…`) ба 3789-өөс урт хүснэгтийн мөрийг тогтмол урттай хайчилдаг тул `&am` | `p;` гэж хуваагдаж
+ *    Telegram 400 («can't parse entities») → нөөц зам ЦЭВЭР ТЕКСТ болдог байв. Цэгийн өмнөх хамгийн сүүлийн `&`-ийн
+ *    `;` нь цэгээс хойш байвал цэгийг тэр `&` руу ухраана (`from`-оос хойш л — ахиц заавал).
+ */
+const cutAt = (s, from, to) => {
+  if (to >= s.length) return s.length;
+  const amp = s.lastIndexOf('&', to - 1);
+  return amp > from && s.indexOf(';', amp) >= to ? amp : to;
+};
+
+/**
+ * Нэг ХЭТ УРТ энгийн мөрийг (inline `<b>` · `<code>` тагтай HTML) үгийн зайн дээр хуваана — хуваах цэгт нээлттэй тагийг
+ * ХААЖ, дараагийн хэсгийн эхэнд ДАХИН НЭЭНЭ: хэсэг бүр өөрөө хүчинтэй HTML.
+ */
+function splitHtmlLine(html, max) {
+  const out = [];
+  const open = [];
+  let cur = '';
+  const closeAll = () => open.slice().reverse().map((t) => `</${t}>`).join('');
+  const openAll = () => open.map((t) => `<${t}>`).join('');
+  const push = () => { if (hasText(cur)) out.push(cur + closeAll()); cur = openAll(); };
+  for (const tk of html.split(/(<\/?(?:b|code|pre)>)/i).filter(Boolean)) {
+    if (TAG_RE.test(tk)) {
+      const name = tk.replace(/[<>/]/g, '').toLowerCase();
+      if (tk.startsWith('</')) { const i = open.lastIndexOf(name); if (i >= 0) open.splice(i, 1); } else open.push(name);
+      cur += tk;
+      continue;
+    }
+    for (const w of tk.split(/(\s+)/)) {
+      if (!w) continue;
+      if (cur.length + w.length + closeAll().length > max && hasText(cur)) push();
+      if (w.length > max - 20) {
+        /* ганц «үг» (урт холбоос г.м.) хэсгээс урт — хайчилна */
+        /* ⚠️ 2026-10-22 (аудит): entity дундуур хайчлахгүй (`cutAt`-ийн ⚠️) */
+        for (let i = 0; i < w.length;) { const j = cutAt(w, i, i + max - 20); cur += w.slice(i, j); push(); i = j; }
+        continue;
+      }
+      cur += w;
+    }
+  }
+  if (hasText(cur)) out.push(cur + closeAll());
+  return out;
+}
+
+/** Хэт урт хүснэгтийн `<pre>` блокийг мөрөөр нь хувааж, хэсэг бүрийг `<pre>…</pre>`-д */
+function splitPre(block, max) {
+  const inner = block.slice('<pre>'.length, -'</pre>'.length).split('\n');
+  const out = [];
+  let cur = [];
+  let len = 0;
+  const flush = () => { if (cur.length) out.push(`<pre>${cur.join('\n')}</pre>`); cur = []; len = 0; };
+  for (const l of inner) {
+    if (len + l.length + 12 > max) flush();
+    /* ⚠️ 2026-10-22 (аудит): хэт урт мөрийн хайчилт entity дундуур орохгүй (`cutAt`-ийн ⚠️) */
+    if (l.length + 11 > max) {
+      for (let i = 0; i < l.length;) { const j = cutAt(l, i, i + max - 11); out.push(`<pre>${l.slice(i, j)}</pre>`); i = j; }
+      continue;
+    }
+    cur.push(l);
+    len += l.length + 1;
+  }
+  flush();
+  return out;
+}
+
+/**
+ * ⚠️ 2026-10-21 (аудит): урьд `telegram-bot.reply` бэлэн HTML-ийг 3800 тэмдэгтээр ХАЙЧИЛДАГ байв — таг (`<pre>` · `<b>`)
+ *    эсвэл entity (`&amp;`) дундуур таарвал Telegram 400 → нөөц зам ЦЭВЭР ТЕКСТ (тод/код/хүснэгтийн эгнээ алга).
+ *    Одоо markdown-ийн МӨРИЙН (блокийн) хил дээр хуваана: блок бүр тусдаа хөрвүүлэгдсэн хүчинтэй HTML, хүснэгт
+ *    `<pre>`-ээ бүтнээр авч явна; блок өөрөө хэтэрвэл `splitPre` / `splitHtmlLine` (таг хаагдана). Хэсгүүдийг
+ *    `'\n'`-ээр залгавал `toHtml(md)` (эхний хоосон мөрөөс бусад) — тест `telegram-format.check.mjs` §7.
+ */
+export function toHtmlChunks(md, max = TG_CHUNK_MAX) {
+  const parts = [];
+  for (const b of toHtmlBlocks(md)) {
+    if (b.length <= max) parts.push(b);
+    else if (b.startsWith('<pre>') && b.endsWith('</pre>')) parts.push(...splitPre(b, max));
+    else parts.push(...splitHtmlLine(b, max));
+  }
+  const chunks = [];
+  let cur = '';
+  for (const p of parts) {
+    if (cur && cur.length + 1 + p.length > max) { chunks.push(cur); cur = p; }
+    else cur = cur ? `${cur}\n${p}` : p;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
 }
 
 /** HTML таг арилгаж цэвэр текст болгоно — илгээлт унасан үеийн нөөц зам */

@@ -60,13 +60,9 @@ jobs:
       NEXT_PUBLIC_AUTH_APP_ID: ${{ vars.NEXT_PUBLIC_AUTH_APP_ID }}
       NEXT_PUBLIC_PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
       NEXT_PUBLIC_ALLOWED_ORG_ID: ${{ vars.NEXT_PUBLIC_ALLOWED_ORG_ID }}
-      NEXT_PUBLIC_ARCGIS_HJ: ${{ vars.NEXT_PUBLIC_ARCGIS_HJ }}
-      NEXT_PUBLIC_ARCGIS_GAZAR: ${{ vars.NEXT_PUBLIC_ARCGIS_GAZAR }}
-      NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
-      NEXT_PUBLIC_BIM_SCENE: ${{ vars.NEXT_PUBLIC_BIM_SCENE }}
-      NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
-      NEXT_PUBLIC_ARCGIS_IOT_SVC: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT_SVC }}
-      NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
+      NEXT_PUBLIC_ENT_DATA: ${{ vars.NEXT_PUBLIC_ENT_DATA }}
+      # ⚠️ 2026-10-19: Enterprise геопортал (`…/geoportal`) — ХАБЭА бичилтийн Enterprise нэвтрэлт; хоосон бол нэргүй бичилт (урьдын зан)
+      NEXT_PUBLIC_ENT_PORTAL_URL: ${{ vars.NEXT_PUBLIC_ENT_PORTAL_URL }}
       NEXT_PUBLIC_IRGED_ORTHO_PRE: ${{ vars.NEXT_PUBLIC_IRGED_ORTHO_PRE }}
       NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
       # ХАБЭА Survey123 үйлчилгээний нэрс (маягт дахин нийтлэхэд нэр солигддог)
@@ -74,10 +70,10 @@ jobs:
       NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
-      NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
-      # ⚠️ 2026-10-09 (аудит №11): `ARCGIS_ADMIN_TOKEN` JOB түвшнээс `npm test` АЛХАМ руу
-      #    шилжив — урьд `npm ci` (гуравдагчийн postinstall скрипт), lint, build бүгд АДМИН
-      #    токеныг орчинд хардаг байв. Одоо зөвхөн түүнийг хэрэглэдэг алхамд.
+      # ⚠️ 2026-10-26 (аудит G3): build-ийн commit — UI-ийн хувилбарын тэмдэг (`lib/buildInfo.ts`). Нууц БИШ (нийтийн SHA).
+      NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
+      # ⚠️ 2026-10-26 (аудит G2): `ARCGIS_ADMIN_TOKEN` ЭНЭ workflow-д БАЙХГҮЙ (2026-10-09-нд JOB → `npm test` алхам руу
+      #    шилжсэн, одоо бүр хасав) — runner Enterprise-д хүрдэггүй тул амьд шалгуур токентой ч алгасдаг. БУЦААЖ БҮҮ нэм.
     steps:
       # ⚠️ 2026-10-09 (аудит №11): `actions/*`-ыг COMMIT SHA-аар бэхлэв — шошго (v4)-ийг
       #    хэн нэгэн зөөвөл бидний build өөр код ажиллуулах эрсдэлтэй. SHA-г `git ls-remote`-оор
@@ -100,14 +96,25 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run i18n:check
+      # ⚠️ Амьд өгөгдлийн шалгуурууд энд SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА (runner Enterprise-д хүрдэггүй) —
+      #    тоо нь ажлын хураангуйд (`test-all.mjs`). `SELBE_LIVE_REQUIRED`-ийг ЭНД БҮҮ асаа: deploy бүр унана.
       - run: npm test
-        env:
-          # ⚠️ Амьд өгөгдлийн шалгуурууд энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
-          #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
-          ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
+
+      # ⚠️ 2026-10-26 (аудит T7): `next build`-ийн webpack/SWC кэш (`.next/cache`) — lock + эх кодоор түлхүүрлэнэ;
+      #    эх өөрчлөгдсөн ч `restore-keys`-ээр хамгийн ойрын кэш сэргэнэ (Next өөрөө хүчингүйг хаяна). SHA-аар бэхлэв
+      #    (`git ls-remote` 2026-10-26: v4 → v4.3.0 хөнгөн шошго → шууд commit).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.mjs', 'tsconfig.json') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       # next.config.mjs дахь output:'export' → out/ хавтас үүснэ (CNAME, .nojekyll нь public/-оос)
       - run: npm run build
+      # ⚠️ 2026-10-26 (аудит T4): `out/`-ын статик шалгалт — HTML-ийн заасан `/_next/static` файл бүр байна уу
+      #    (`tools/outVerify.mjs`-ийн ⚠️; хөтөчгүй, сүлжээгүй).
+      - run: node tools/outVerify.mjs out
 
       # ⚠️ 2026-10-09 (аудит): `enablement: true` ХАСАВ. Урьдын тайлбар «Pages унтраалттай бол
       #    workflow өөрөө асаана» гэж байсан нь БУРУУ — бэхэлсэн SHA-гийн action.yml-д

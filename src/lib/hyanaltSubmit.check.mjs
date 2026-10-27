@@ -158,8 +158,8 @@ assert.equal(openReviewRow([], 500, TAG), null);
   /* ⚠️ 2026-09-25: одоогийн тойрог ШИЛЖҮҮЛСЭН бол дарагдсан хуучин мөрөөс өвлөхгүй */
   assert.equal(
     hasOpenLegacy([
-      { ...legacy(500, STATUS.managerReturned), OBJECTID: 10, [F.ergelt]: 1 },
-      { ...legacy(500, STATUS.transferred), OBJECTID: 11, [F.ergelt]: 2 },
+      { ...legacy(500, STATUS.managerReturned), objectid: 10, [F.ergelt]: 1 },
+      { ...legacy(500, STATUS.transferred), objectid: 11, [F.ergelt]: 2 },
     ], BAGTS, COMP, TAG, 500), false,
     'recheck-ээр дарагдсан хуучин мөр ажлыг «нээлттэй» гэж харуулах ёсгүй',
   );
@@ -172,7 +172,7 @@ assert.equal(openReviewRow([], 500, TAG), null);
  * шинэ тойрог үүсэхгүй, ажил мөнхөд гацна.
  */
 {
-  const cyc = (oid, ergelt, st, id) => ({ ...row(500, st, TAG, id), OBJECTID: oid, [F.ergelt]: ergelt });
+  const cyc = (oid, ergelt, st, id) => ({ ...row(500, st, TAG, id), objectid: oid, [F.ergelt]: ergelt });
   assert.equal(
     openReviewRow([
       cyc(10, 1, STATUS.managerReturned, 'G-000020'),
@@ -199,7 +199,7 @@ assert.equal(openReviewRow([], 500, TAG), null);
   const hit = openReviewRow([rw(10, STATUS.engineerReturned, 'G-000030'), rw(11, STATUS.managerReview, 'G-000031')], 500, TAG);
   assert.equal(hit?.[F.id], 'G-000031', '`Row` оролт: `__oid` их (хянагчийн гар дээрх) мөр одоогийнх');
   /* `OBJECTID` ба `__oid` холимог — хоёулаа уншигдана */
-  const hit2 = openReviewRow([{ ...row(500, STATUS.engineerReturned, TAG, 'G-000040'), OBJECTID: 10, [F.ergelt]: 1 }, rw(11, STATUS.managerReview, 'G-000041')], 500, TAG);
+  const hit2 = openReviewRow([{ ...row(500, STATUS.engineerReturned, TAG, 'G-000040'), objectid: 10, [F.ergelt]: 1 }, rw(11, STATUS.managerReview, 'G-000041')], 500, TAG);
   assert.equal(hit2?.[F.id], 'G-000041', 'OBJECTID ба __oid холимог оролт');
   console.log('✅ currentRows — `Row` (`__oid`) оролт');
 }
@@ -237,7 +237,7 @@ assert.equal(openReviewRow([], 500, TAG), null);
 
 /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): `reviewLockDays` */
 {
-  const r = (oid, so, status, ajil) => ({ OBJECTID: oid, [F.sheetOid]: so, [F.status]: status, [F.bagts]: 'Багц 1', [F.ajil]: ajil });
+  const r = (oid, so, status, ajil) => ({ objectid: oid, [F.sheetOid]: so, [F.status]: status, [F.bagts]: 'Багц 1', [F.ajil]: ajil });
   const A = 'Гүйцэтгэл · 2026.10.04 · Багц 1 · 9 давхар';
   const B = 'Гүйцэтгэл · 2026.10.05 · Багц 1 · 12 давхар';
   const L = 'Гүйцэтгэл · 2026.09.01';

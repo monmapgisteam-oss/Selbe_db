@@ -30,7 +30,7 @@ import {
   type FieldLens, type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
 
 /** Төлөв ба явцын мэдээ НЭГ талбар уу (2026-09-21, `services.ts` `PARCEL_LEFT.fields`) */
 const SAME_FIELD = PARCEL_LEFT.fields.status === PARCEL_LEFT.fields.progress;
@@ -214,7 +214,7 @@ export function GazarEdit({
         </div>
 
         {load ? (
-          <p className={g.modalMsg}>{tr('Ачаалж байна…')}</p>
+          <Loading />
         ) : !before || !d ? (
           <p className={g.modalMsg}>{fail || tr('Нэгж талбар олдсонгүй.')}</p>
         ) : (
@@ -225,7 +225,8 @@ export function GazarEdit({
                 <dt>{tr('Кадастрын дугаар')}</dt>
                 <dd>{before.parcelNo || '—'}</dd>
                 <dt>{tr('Талбай')}</dt>
-                <dd>{before.areaM2 == null ? '—' : `${num(before.areaM2)} м²`}</dd>
+                {/* ⚠️ 2026-10-21 (аудит): нэгж tr()-ээр — англи горимд «1,234 м²» үлддэг байв (ViewPanel-тэй ижил `{0} м²`) */}
+                <dd>{before.areaM2 == null ? '—' : tr('{0} м²', num(before.areaM2))}</dd>
                 {/* ⚠️ 2026-10-01: ArcGIS Editor Tracking — давхаргад асаалттай үед л
                     (`parcelEdit.loadEditFields`). Утга алга бол мөр ОГТ гарахгүй:
                     «—» нь «хэн ч засаагүй» гэж худал уншигдана. Зөвхөн СҮҮЛИЙН
@@ -253,15 +254,18 @@ export function GazarEdit({
               </label>
 
               <div className={g.f}>
-                <span className={g.fLabel}>{tr('Төлөв')}</span>
-                <div className={g.radios}>
+                <span className={g.fLabel} id="gazar-edit-tolov">{tr('Төлөв')}</span>
+                {/* ⚠️ 2026-10-26 (аудит): сонгогдсон төлөв дэлгэц уншигчид (radiogroup · aria-checked — ZovshoorolEdit-тэй ижил);
+                    нэр орчуулсан (хадгалах утга монголоор хэвээр) */}
+                <div className={g.radios} role="radiogroup" aria-labelledby="gazar-edit-tolov">
                   {STATUS_LIST.map((s) => (
                     <button key={s} type="button" disabled={!canEdit || busy}
+                      role="radio" aria-checked={d.status === s}
                       className={`${g.radio} ${d.status === s ? g.radioOn : ''}`}
                       onClick={() => set('status', s)}>
                       {/* Өнгө нь газрын зурагтай ИЖИЛ эх сурвалжаас */}
                       <i className={g.dot} style={{ '--dot': PARCEL_STATUS_HUES[s] } as React.CSSProperties} />
-                      {s}
+                      {tr(s)}
                     </button>
                   ))}
                 </div>

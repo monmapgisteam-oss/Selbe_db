@@ -211,6 +211,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setD((p) => ({ ...p, tolov: t, ognoo }));
     setErr((p) => ({ ...p, tolov: undefined, ognoo: undefined }));
     setFail('');
+    /* ⚠️ 2026-10-21 (кодын аудит): `set()`-тэй ИЖИЛ — ирээдүйн огнооны асуулт нээлттэй байхад төлөв
+       солиход «Тийм» нь асуулт нээгдэх үеийн ХУУЧИН `d`-г (хуучин төлөв · огноо) хадгалж, сүүлийн засвар
+       чимээгүй алга болдог байв. */
+    setConfirmQ(null);
   };
 
   const submit = async () => {
@@ -226,7 +230,8 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
      *    Устгах нь хамгаалагдсан атлаа хадгалах нь хамгаалалтгүй үлдсэн байв.
      */
     if (editing && !d.oid) {
-      setFail(tr('Мөрийн OBJECTID уншигдаагүй тул засах боломжгүй.'));
+      /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» биш — энгийн үг ба дараагийн алхам */
+      setFail(tr('Мөрийн дугаар уншигдаагүй тул засах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
       return;
     }
     const e = validateZov(d, all);
@@ -302,7 +307,9 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
      *    үлдээв — нэг шалтгаан, нэг өгүүлбэр, i18n-д нэг түлхүүр).
      */
     if (!d.oid) {
-      setFail(tr('Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.'));
+      /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» биш. `zovshoorol.deleteZov`-ийн шидэх текст ЯГ ижил байх ёстой (дээрх ⚠️) —
+         тэр файлд мөн энэ түлхүүр рүү шилжүүлэх хүсэлт өгсөн. */
+      setFail(tr('Мөрийн дугаар уншигдаагүй тул устгах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
       return;
     }
     /* ⚠️ 2026-10-09 (аудит №6): `window.confirm` → самбарын асуулт (`danger` — «Тийм» улаан).
@@ -400,6 +407,9 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                      талбарын алдаа арилахгүй — зөвхөн `bagts`-ийнх. */
                   setD((p) => ({ ...p, bagts: b, shat: p.oid || !b ? p.shat : nextShat(b) }));
                   setErr((p) => ({ ...p, bagts: undefined }));
+                  setFail('');
+                  /* ⚠️ 2026-10-21 (кодын аудит): хүлээж буй асуулт хуучирна — `setTolov`-ийн ⚠️ */
+                  setConfirmQ(null);
                 }}
               >
                 <option value="">{tr('— сонгох —')}</option>

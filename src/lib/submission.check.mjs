@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, truncatedFrameIds, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
+import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, saveResidualSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame, truncatedFrameIds, lostFrameIds, resolveMark, archivedContent, claimConflict, markFresh, ARCHIVING_TTL_MS } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -549,7 +549,8 @@ const nextOf = (over = {}) => {
     'батлалт хуучин payload-ын давтамжийг суурь жаазаас нөхөхгүй байна — мөнхөд гацна');
   const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
   assert.ok(FN.includes('const mv = movePayload(await ensureFrameOcc(pkg, sc, resolvedBase ?? staged.payload, freshRows));'), 'дахин илгээх зам суурь жаазаас нөхөхгүй');
-  assert.ok(FN.includes('if (mv.lost.length && !window.confirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` */
+  assert.ok(FN.includes('if (mv.lost.length && !(await askConfirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
   /* #5: батлагдсан (`done|`) мөрөөс ч хайна */
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
   assert.ok(SB.includes('export async function findNonce(') && /dkey LIKE \$\{sqlStr\(`\$\{DONE_PREFIX\}%`\)\}/.test(SB), 'танигчийг done| мөрөөс хайхгүй байна');
@@ -630,13 +631,60 @@ const nextOf = (over = {}) => {
   assert.deepEqual(p2.archiving, { ...base, rootNo: 'A', probe: pr }, 'дээж уншигдана, n-ээс гадуур/эвдэрсэн хаягдана');
 
   const SB3 = fs.readFileSync('src/lib/submission.ts', 'utf8');
-  assert.ok(SB3.includes('attributes: { OBJECTID: oid, at: curAt, payload: JSON.stringify(next) }'), 'markArchiving at-ийг payload-тай нэг бичилтээр бичнэ (7)');
+  assert.ok(SB3.includes('attributes: { objectid: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) }'), 'markArchiving at-ийг payload-тай нэг бичилтээр бичнэ (7) — 2026-10-26: хэлбэр хэвээр (headRaw)');
   assert.ok(/const res2 = await fl\.queryFeatures/.test(SB3), 'markArchiving бичсэний дараа дахин уншиж батална (7)');
   const HY3 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(HY3.includes('return matchArchivedFrame(rows, mark, sc.f.oid, sc.f.no, dateFields);') && HY3.includes('hitOid = await probeArchivedFrame(pkg.key, am);') && !HY3.includes('hit.n >= am.n'), 'дахин батлалт жаазыг ЯГ таньна (R2-c)');
   assert.ok(HY3.includes('if (addsLost(e)) {') && HY3.includes("return { ok: false, error: why + (await clearMark()) };"), 'тодорхой татгалзалд л тэмдэг арилна (R2-a · засвар 4)');
   assert.ok(!HY3.includes('markArchiving(staged.oid, staged.at, null).catch(() => undefined)'), 'арилгалтын үр дүнг шалгана (R2-b)');
   console.log('✅ R2-a/b/c · 7 — архивлах тэмдэг');
+}
+
+/* ── 2026-10-21 (аудит): хариу алдагдсан бичилтийн цэвэрлэгээ — ЭНЭ жаазыг АГУУЛГААР таньж устгана (`lostFrameIds`) ── */
+{
+  const OIDF = 'oid';
+  const NOF = 'no';
+  const row = (oid, no, extra = {}) => ({ [OIDF]: oid, [NOF]: no, ...extra });
+  const mk = { n: 3, rootNo: 'A', probe: [[1, 'b', 9]] };
+  /* тэр өдөр ӨӨР батлалтын 5 мөрийн жааз (эхний № ижил) + манай 3 мөрийн жааз */
+  const other = [row(101, 'A'), row(102, 'x'), row(103, 'y'), row(104, 'z'), row(105, 'w')];
+  const ours = [row(106, 'A'), row(107, 'x', { b: 9 }), row(108, 'y')];
+  assert.deepEqual(lostFrameIds([...other, ...ours], mk, OIDF, NOF), [106, 107, 108], 'манай бүтэн жааз — өөр жаазыг хөндөхгүй (урьд нь өдрийн бүх мөр устдаг байв)');
+  assert.deepEqual(lostFrameIds(other, mk, OIDF, NOF), [], 'манай жааз алга — юу ч устгахгүй');
+  assert.deepEqual(lostFrameIds(other, mk, OIDF, NOF, undefined, [77]), [77], 'баталгаажсан OID (`written`) үргэлж орно');
+  const wrong = [row(106, 'A'), row(107, 'x', { b: 8 }), row(108, 'y')];
+  assert.deepEqual(lostFrameIds([...other, ...wrong], mk, OIDF, NOF), [], 'урт таарсан ч дээж зөрвөл — манайх биш');
+  assert.equal(lostFrameIds([row(106, 'A'), row(107, 'x', { b: 9 + 1e-8 }), row(108, 'y')], mk, OIDF, NOF), null, 'бөөрөнхийллийн зөрүү → тодорхойгүй (null)');
+  assert.equal(lostFrameIds([...other, ...ours], mk, OIDF, NOF, undefined, [103]), null, 'баталгаажсан OID танигдсан хэсгийн гадна — жааз холилдсон → null');
+  assert.deepEqual(lostFrameIds([], mk, OIDF, NOF, undefined, [5, 6]), [5, 6], 'хоосон архив — зөвхөн written');
+  assert.deepEqual(lostFrameIds([row(1, 'A'), row(2, 'x'), row(3, 'y')], { n: 3 }, OIDF, NOF), [1, 2, 3], 'хуучин тэмдэг (rootNo · дээжгүй) — урт + мөр 0-ийн №');
+  /* тасарсан (500-ийн үржвэр) — өөр жаазын АРД ч танигдана; 500-ийн үржвэр биш → устгахгүй; хоёр ижил хэсэг → null */
+  const half = Array.from({ length: 500 }, (_, i) => row(1000 + i, i === 0 ? 'A' : `r${i}`, { b: i === 1 ? 9 : 0 }));
+  const mkT = { n: 1471, rootNo: 'A', probe: [[1, 'b', 9], [1300, 'b', 5]] };
+  assert.equal(lostFrameIds([...other, ...half], mkT, OIDF, NOF)?.length, 500, 'өөр жаазын ард тасарсан манай 500 мөр');
+  assert.equal(lostFrameIds([...other, ...half], mkT, OIDF, NOF)?.[0], 1000, 'эхний OID манай тасарсан жаазынх');
+  assert.deepEqual(lostFrameIds(half.slice(0, 300), mkT, OIDF, NOF), [], '500-ийн үржвэр биш — танигдсангүй, устгахгүй');
+  assert.equal(lostFrameIds([...half, ...half.map((r) => ({ ...r, [OIDF]: r[OIDF] + 5000 }))], mkT, OIDF, NOF), null, 'хоёр ижил хэсэг — хоёрдмол → null');
+
+  /* `residual` тугийг КЛИЕНТЭЭС хүлээн авахгүй — сүлжээнээс ӨМНӨ татгалзана; үлдэгдлийн зам тугийг шаардана */
+  const rp = { ...valid(), residual: true };
+  const rs = await saveSubmission(rp.pkgKey, rp);
+  assert.equal(rs.ok, false); assert.match(rs.error, /residual/, `residual туг клиентээс өнгөрөв: ${rs.error}`);
+  const rs2 = await saveSubmission(valid().pkgKey, { ...valid(), residualOf: { row: 1, archiveOid: 0, day: '2026-10-21' } });
+  assert.equal(rs2.ok, false); assert.match(rs2.error, /residual/, `residualOf клиентээс өнгөрөв: ${rs2.error}`);
+  const rs3 = await saveResidualSubmission(valid().pkgKey, valid());
+  assert.equal(rs3.ok, false); assert.match(rs3.error, /тэмдэггүй/, `үлдэгдлийн зам туггүй payload авав: ${rs3.error}`);
+
+  /* эх код: hyanaltStore — агуулгаар таних · бусад мөрийн архивлалт · үлдэгдлийн тусгай зам; archivingBusy өөрийн мөрийг алгасна */
+  const HY4 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok(HY4.includes('lostFrameIds(rows, { n: frame.length'), 'хариу алдагдсан цэвэрлэгээ агуулгаар таньдаггүй');
+  assert.ok(!/returnIdsOnly: 'true',\s*\}\);\s*for \(const x of \(j\?\.objectIds/.test(HY4), 'хуучин «өдрийн бүх мөрийг устгах» зам үлдсэн');
+  assert.ok(HY4.includes('await archivingBusy(pkg.key, staged.oid)'), 'багцын бусад мөрийн архивлалтын шалгалт алга');
+  assert.ok(HY4.includes('saveResidualSubmission(rest.pkgKey, body'), 'closeAfterArchive үлдэгдлийг тусгай замаар бичдэггүй');
+  const SB4 = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB4.includes('exceptOid != null && r.sub.oid === exceptOid'), 'archivingBusy өөрийн мөрийг алгасдаггүй');
+  assert.ok(/const deny = residual \? await chiefDeny\(grp\) : await companyDeny\(grp\);/.test(SB4), 'үлдэгдэлд эцсийн шатны томилгоо шаарддаггүй');
+  console.log('✅ 2026-10-21 — хариу алдагдсан цэвэрлэгээ агуулгаар · бусад мөрийн архивлалт · residual зөвхөн архивлалтаас');
 }
 
 /* ── 2026-10-09 (засвар 1): тэмдэг дахин илгээлтэд ДАМЖИЖ, буусан жаазаас хасагдана (sim: base+15 → +5 → base+35 БИШ) ── */
@@ -680,7 +728,8 @@ const nextOf = (over = {}) => {
   assert.ok(FN2.includes('const rp = resolveMark(act.payload, hit != null);') && FN2.includes('dropMark: markDrop'), 'FillNew.publish тэмдгийг шийдэхгүй байна');
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
   assert.ok(SB.includes('payload.archiving?.startedAt !== cm.startedAt && expect?.dropMark !== cm.startedAt'), 'saveSubmission тэмдгийг чимээгүй арчиж болно');
-  assert.ok(SB.includes('export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: number } | null>'), 'archivingBusy гэрээ');
+  /* ⚠️ 2026-10-21 (аудит): `exceptOid` нэмэгдсэн (өөрийн мөрийг алгасах) — гэрээ (нэр · буцах төрөл) хэвээр */
+  assert.ok(/export async function archivingBusy\(\s*pkgKey: string,[\s\S]*?exceptOid\?: number,\s*\): Promise<\{ who: string; at: number \} \| null> \{/.test(SB), 'archivingBusy гэрээ');
   console.log('✅ засвар 1 — тэмдэг дамжиж, буусан жаазаас хасагдана');
 }
 
@@ -756,6 +805,83 @@ const nextOf = (over = {}) => {
   const HY = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(HY.includes('if (staged.payload.residual === true && ro && ro.row === cur.__oid) {'), 'archiveSubmission үлдэгдлийг шинэ тойрогт оруулахгүй байна (A9)');
   console.log('✅ A9 — residualOf');
+}
+
+/* ── 2026-10-26: илгээлтийн нүд 191-ийн МӨРӨНД (`n:sub:<OBJECTID>`) — алдагдалгүй хамгаалалт · хэвшүүлэлт · архивын үе ── */
+{
+  const SBX = await import('./submission.ts');
+  const DR = await import('./draftRows.ts');
+  const DRR = await import('./draftRowsRemote.ts');
+  const { makeFake } = await import('./draftRows.fake.mjs');
+  const inc = (cells, o = {}) => ({ ...valid(), v: 2, mode: 'inc', cells, dates: [], adds: [], rowKeys: [[12, '1 ¦ Ухалт'], [13, '2 ¦ Дүүргэлт']], ...o });
+
+  /* (а) Алдагдалгүй эсэх — ердийн нэмэлт · хуучин НИЙТ ('' · '%0') ЯГ; 255-аас урт шошго → мөр рүү бичихгүй (payload) */
+  assert.ok(SBX.subRowsLossless(inc([['12:0', '15 %10'], ['13:1', '-3']]), null), 'ердийн нэмэлт алдагдалгүй');
+  const v1 = { ...valid(), cells: [['12:0', ''], ['12:1', '%0'], ['13:0', '0'], ['13:1', '55']], rowKeys: [[12, '1 ¦ Ухалт'], [13, '2 ¦ Дүүргэлт']] };
+  assert.ok(SBX.subRowsLossless(v1, null), "НИЙТ горимын '' · '%0' · '0' ЯГ хадгалагдана (draftRows R1)");
+  const long = inc([['12:0', '5']], { rowKeys: [[12, `1 ¦ ${'а'.repeat(300)}`]] });
+  assert.equal(SBX.subRowsLossless(long, null), false, '255-аас урт шошго — мөр рүү бичихгүй (payload эх сурвалж хэвээр)');
+  assert.ok(SBX.subRowsLossless(inc([['12:0', '5'], ['13:0', '1']], { dates: [['12:0:s', '2026-10-01'], ['12:0:e', '']] }), null), "огноо ('' = цэвэрлэсэн) алдагдалгүй");
+
+  /* (б) Хэвшүүлэлт — УТГА өөрчлөгдөхгүй: тэг/хоосон нэмэлт хасагдана, бичлэг кодлогчийн хэлбэрт; НИЙТ горимд хөндөхгүй */
+  const n = SBX.normIncCells(inc([['12:0', '15.50'], ['12:1', ''], ['13:0', '%0'], ['13:1', '0 %0'], ['14:0', '-2 %5']], {
+    archiving: { at: 1000, startedAt: 1, maxOid0: 1, fillMs: FILL, n: 1, prev: { cells: [['12:0', '1.0'], ['12:1', '0']], rowKeys: [[12, '1 ¦ Ухалт']] } },
+  }));
+  assert.deepEqual(n.cells, [['12:0', '15.5'], ['14:0', '-2 %5']], 'тэг/хоосон хасагдаж, «15.50» → «15.5»');
+  assert.deepEqual(n.archiving.prev.cells, [['12:0', '1']], 'архивын хуулбар ч хэвшинэ');
+  assert.equal(SBX.normIncCells(v1), v1, 'НИЙТ горимд ХӨНДӨХГҮЙ');
+
+  /* (в) Мета (v3) толгой — хуулбарыг ЗӨВХӨН үетэй (`prevGen`) бол хасна */
+  const withPrev = inc([['12:0', '5']], { archiving: { at: 900, startedAt: 1, maxOid0: 1, fillMs: FILL, n: 1, prev: { cells: [['12:0', '2']], rowKeys: [[12, '1 ¦ Ухалт']] } } });
+  const m1 = JSON.parse(SBX.headRaw(withPrev, [1], true));
+  assert.ok(m1.v === 3 && m1.archiving.prev && !m1.cells, 'үегүй хуулбар мета-д ҮЛДЭНЭ (алдагдахгүй)');
+  const m2 = JSON.parse(SBX.headRaw({ ...withPrev, archiving: { ...withPrev.archiving, prevGen: 7 } }, [7, 9], true));
+  assert.ok(m2.archiving.prevGen === 7 && !m2.archiving.prev, 'үетэй бол хуулбар хасагдана (мөрөөс угсрагдана)');
+
+  /* (г) MVCC — өмнөх үе · «архивлаж буй» хуулбарын үе · шинэ үе (`saveSubmissionInner`-ийн дараалал), GC бэхэлсэн үеийг хадгална */
+  const URL = 'https://fake/ent/Guitsetgel_talbe/FeatureServer/191';
+  const f = makeFake(URL);
+  DRR.resetRowsCache();
+  DRR.rowsTestHooks({ post: f.post, url: URL, me: 'a', reset: true, imgs: new Map() });
+  const OID = 71;
+  const P0 = inc([['12:0', '5'], ['13:0', '2']]);
+  const g0 = 1000 - 1 / 4096;
+  assert.ok((await DRR.subWriteGen(OID, 'b1_9f', DR.subToRows(P0, null), new Map(), g0)).ok, 'үе 0');
+  const snap = DR.subToRows({ cells: [['12:0', '5'], ['13:0', '2']], dates: [], rowKeys: P0.rowKeys, asOf: null }, null);
+  const vis0 = DR.pickGeneration((await DRR.subRowsFor([OID])).get(OID), [g0]);
+  const gp = 2000 - 2 / 4096;
+  assert.ok((await DRR.subWriteGen(OID, 'b1_9f', snap, vis0, gp)).ok, 'хуулбарын үе');
+  const P1 = inc([['12:0', '8'], ['14:0', '1']], { at: 2000, archiving: { at: 1000, startedAt: 1, maxOid0: 1, fillMs: FILL, n: 1, prevGen: gp } });
+  const g1 = 2000 - 3 / 4096;
+  assert.ok((await DRR.subWriteGen(OID, 'b1_9f', DR.subToRows(P1, null), snap, g1)).ok, 'шинэ үе');
+  /* баталгаажаагүй (унасан оролдлогын) үе — ХЭЗЭЭ Ч харагдахгүй */
+  assert.ok((await DRR.subWriteGen(OID, 'b1_9f', DR.subToRows(inc([['12:0', '999']]), null), snap, 2000 - 9 / 4096)).ok, 'баталгаажаагүй үе');
+  const head = SBX.parseHead(SBX.headRaw(P1, [g0, gp, g1], true));
+  assert.ok(head.meta && head.gens.length === 3, 'мета толгой');
+  const all = (await DRR.subRowsFor([OID])).get(OID);
+  const got = SBX.assembleRows(head, all);
+  assert.deepEqual(Object.fromEntries(got.cells), { '12:0': '8', '14:0': '1' }, 'уншигч СҮҮЛИЙН баталгаажсан үеийг харна (хасагдсан 13:0 алга, 999 үл үзэгдэнэ)');
+  assert.deepEqual(Object.fromEntries(got.archiving.prev.cells), { '12:0': '5', '13:0': '2' }, '«архивлаж буй» хуулбар үеэсээ угсрагдана');
+  assert.deepEqual(Object.fromEntries(SBX.archivedContent(got).cells), { '12:0': '5', '13:0': '2' }, 'archivedContent — хасах агуулга ЯГ');
+  const rest = SBX.residualAfterArchive(got, SBX.archivedContent(got));
+  assert.ok(rest && Object.fromEntries(rest.cells)['12:0'] === '3', 'үлдэгдэл = шинэ − архивласан (8 − 5)');
+  const dead = DR.gcCandidates(all.map((a) => ({ ...a, last_edited_date: 0 })), [g0, gp, g1], [gp], 10 * 60 * 60_000, 15 * 60_000);
+  const deadSet = new Set(dead);
+  assert.ok(all.filter((a) => a.at === gp).every((a) => !deadSet.has(a.objectid)), 'GC бэхэлсэн (хуулбарын) үеийг хадгална');
+  assert.ok(all.filter((a) => a.at === 2000 - 9 / 4096).every((a) => deadSet.has(a.objectid)), 'GC баталгаажаагүй үеийг устгана');
+
+  /* (д) Эх кодын баталгаа — бичих замууд */
+  const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB.includes('const okRows = subRowsLossless(bodyR, fr)') && SB.includes('rowsOn = false;'), 'алдагдалтай агуулга мөр рүү бичигдэхгүй (JSON зам)');
+  assert.ok(SB.includes('...(pg != null && mark.prevGen == null ? { prevGen: pg } : {})'), 'markArchiving мөртэй толгойд prevGen тавина');
+  assert.ok(SB.includes('if (commitErr && created) {') && SB.includes('if (createdFull) {'), 'шинэ толгойн баталгаажуулалт унавал бүтэн payload хүчинтэй / мета бол устгана');
+  assert.ok(SB.includes('const usedGen = new Set<number>([...gens0, ...allRows.map((a) => Number(a.at)).filter(Number.isFinite)]);'), 'үеийн дугаар хуучин мөртэй давхцахгүй');
+  assert.ok(/if \(p === head\.p \|\| !ok\(p\)\) \{\s*return \{ ok: false, error: tr\('Илгээлт №\{0\}-ийн агуулга мөрийн бүтцэд ЯГ буухгүй/.test(SB), 'шилжүүлэлт алдагдалтай бол JSON хэвээр');
+  const FS = fs.readFileSync('src/lib/fillStore.ts', 'utf8');
+  assert.ok(FS.includes("if (cur !== opt.expectAt) return { ok: false, conflict: true,"), 'fillStore мөрийн горимд expectAt шалгана');
+  DRR.resetRowsCache();
+  DRR.rowsTestHooks({ url: undefined, me: undefined, reset: true });
+  console.log('✅ 2026-10-26 — илгээлтийн мөр: алдагдалгүй хамгаалалт · хэвшүүлэлт · архивын үе · GC');
 }
 
 console.log('submission.check ✓');

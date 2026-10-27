@@ -11,10 +11,10 @@
  * (алдаа 499) — блокийн давхарга нэгтгэсэн `data`/112 руу шилжсэн. Шинэ
  * давхаргад `GUITS_HV` ба 16 үе шатын талбар БАЙХГҮЙ: гүйцэтгэл, үе шат,
  * гүйцэтгэгчийн бүлгүүд одоо «Гүйцэтгэл бөглөх» хүснэгтээс КЛИЕНТ дээр
- * бодогдож, давхаргыг `OBJECTID IN (…)` жагсаалтаар шүүнэ
+ * бодогдож, давхаргыг `objectid IN (…)` жагсаалтаар шүүнэ
  * (`BuildingPanel.tsx`-ийн `oidWhere`). Тиймээс энд шалгах SQL хэлбэрүүд:
  *   · `BAGTS = '…'`        — багцын шүүлт (`Dashboard.tsx`)
- *   · `OBJECTID IN (…)`    — бүлгийн тодруулга
+ *   · `objectid IN (…)`    — бүлгийн тодруулга
  *   · `(…) AND (…)`        — 3D-ийн нийлүүлсэн definitionExpression
  *     (`MapCanvas.tsx`: хэсэг бүр хаалтад, ` AND `-ээр залгагдана)
  */
@@ -26,45 +26,30 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
-   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
-   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай — урьд HJ-ээр залгаж байсан тул GAZAR-ийг
-   env-ээр дарахад тест портал хэрэглэдгээс ӨӨР хост шалгадаг байв. */
-const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
-if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const TD_SVC = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer`;
-const URL_ = `${TD_SVC}/112/query`;
+/* ⚠️ 2026-10-26: Enterprise-ийн БОДИТ хаяг · жижиг үсэгтэй талбар (хөрвүүлэх хүснэгт `entMap` хасагдсан); токен залгагдана. */
+const { BAGTS_AJLUUD, SELBE_ET } = await import('@/lib/services.ts');
+const { arcgisPost } = await import('@/lib/query.ts');
+const URL_ = `${BAGTS_AJLUUD}/0/query`;
 
-const F = { bagts: 'BAGTS', contractor: 'BAR_COMP' };
+const F = { bagts: 'bagts', contractor: 'bar_comp' };
 const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 /** WHERE-ийг ЖИНХЭНЭ давхарга дээр гүйлгэнэ — зөвшөөрөгдөөгүй бол алдана. */
 async function count(where) {
-  const res = await fetch(URL_, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ where, returnCountOnly: 'true', f: 'json' }),
-  });
-  const j = await res.json();
+  const j = await arcgisPost(URL_, { where, returnCountOnly: 'true' }).catch((e) => ({ error: { message: e.message } }));
   assert.ok(!j.error, `SQL татгалзав «${where}»: ${j.error?.message || '(хоосон мессеж)'}`);
   return j.count;
 }
 
 const q = async (p) => {
-  const res = await fetch(URL_, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ returnGeometry: 'false', f: 'json', ...p }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message);
+  const j = await arcgisPost(URL_, { returnGeometry: 'false', ...p });
   return (j.features || []).map((f) => f.attributes);
 };
 
 const total = await count('1=1');
 const rows = await q({
   where: '1=1',
-  outFields: `OBJECTID,${F.bagts},${F.contractor}`,
+  outFields: `objectid,${F.bagts},${F.contractor}`,
   resultRecordCount: '2000',
 });
 assert.ok(total > 0 && rows.length === total, `давхарга дутуу: ${rows.length}/${total}`);
@@ -77,8 +62,8 @@ for (const b of new Set(rows.map((r) => r[F.bagts]))) {
 
 // 2. OID жагсаалт (`oidWhere`) — гүйцэтгэл/үе шат/гүйцэтгэгчийн бүлэг бүгд
 //    клиент дээр бодогдоод энэ хэлбэрээр шүүгддэг тул ЯГ тоогоо буцаах ёстой.
-const someOids = rows.slice(0, 25).map((r) => r.OBJECTID);
-const oidN = await count(`OBJECTID IN (${someOids.join(',')})`);
+const someOids = rows.slice(0, 25).map((r) => r.objectid);
+const oidN = await count(`objectid IN (${someOids.join(',')})`);
 assert.equal(oidN, someOids.length, `OID жагсаалт ${oidN} ≠ ${someOids.length}`);
 // Хоосон бүлгийн зам — `oidWhere([])` нь `1=0` буцаадаг.
 assert.equal(await count('1=0'), 0, '«1=0» шүүлт 0 биш');
@@ -96,7 +81,7 @@ await assert.rejects(() => count(`TRIM(${F.contractor}) = ''`), /татгалз�
 // 4. 3D-ийн НИЙЛҮҮЛСЭН хэлбэр: бүсийн шүүлт AND тодруулга нэг
 //    definitionExpression-д (`MapCanvas.tsx` — хэсэг бүр хаалтад).
 const bagts = rows[0][F.bagts];
-const merged = `(${F.bagts} = ${sqlStr(bagts)}) AND (OBJECTID IN (${someOids.join(',')}))`;
+const merged = `(${F.bagts} = ${sqlStr(bagts)}) AND (objectid IN (${someOids.join(',')}))`;
 const both = await count(merged);
 const only = await count(`${F.bagts} = ${sqlStr(bagts)}`);
 assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${only}`);
@@ -111,24 +96,16 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
    ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
    агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
    315 мөр, [106] zoriulalt 12 мөр. */
-const ET = TD_SVC;
-const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
+/* ⚠️ 2026-10-26: data/108 → selbe_ET/99 (барилга), data/106 → selbe_ET/100 (бүс) */
+const FACETS = [[`${SELBE_ET}/99`, 'zoriulalt'], [`${SELBE_ET}/99`, 'bar_comp'], [`${SELBE_ET}/100`, 'zoriulalt']];
 
-const post = async (url, p) => {
-  const res = await fetch(`${url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...p }),
-  });
-  return res.json();
-};
+const post = async (url, p) => arcgisPost(`${url}/query`, p).catch((e) => ({ error: { message: e.message } }));
 
 let checked = 0;
-for (const [n, field] of FACETS) {
-  const u = `${ET}/${n}`;
+for (const [u, field] of FACETS) {
   const g = await post(u, {
     where: '1=1', outFields: field, groupByFieldsForStatistics: field,
-    outStatistics: '[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"}]',
+    outStatistics: '[{"statisticType":"count","onStatisticField":"objectid","outStatisticFieldName":"c"}]',
   });
   const blanks = (g.features || []).map((f) => f.attributes)
     .filter((r) => r[field] == null || String(r[field]).trim() === '');

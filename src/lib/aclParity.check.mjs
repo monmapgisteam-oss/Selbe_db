@@ -37,6 +37,8 @@ const strip = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
+/** §14-ийн товч туслах (⚠️ 2026-10-19) */
+const ok14 = (c, m) => assert.ok(c, m);
 
 /**
  * `<scopeFn>(…) ?? []`  ба  `<scopeFn>(…) || []` хэв шинж.
@@ -111,7 +113,6 @@ console.log('✅ scopedAcl — set ба remove ижил хатуу шалгуу�
 const ACL_FILES = [
   ['src/lib/huvaariAcl.ts', 'huvaari'],
   ['src/lib/obyemAcl.ts', 'obyem'],
-  ['src/lib/qaqcAcl.ts', 'qaqc'],
   ['src/lib/chanarAcl.ts', 'chanar'],
   ['src/lib/butetsAcl.ts', 'butets'],
 ];
@@ -223,8 +224,10 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
      2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`);
      2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`);
      2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`) */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан (`__qaqc__:` синк) → 8 */
+  /* ⚠️ 2026-10-26: + «Хуваарь харах» хүрээний модуль (`huvaariView`, уншигч бүртгэнэ) → 9 */
   assert.equal(logged.length, 9,
-    `initRemote-ийн 9 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+    `initRemote-ийн 8 ACL синк + хуваарь харах модуль бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');
@@ -239,7 +242,8 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
  */
 {
   const src = readCode('src/lib/permsRemote.ts');
-  for (const m of ['flowBy', 'capsBy', 'qaqcBy', 'huvaariBy', 'obyemBy', 'ajilBy', 'butetsBy']) {
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  for (const m of ['flowBy', 'capsBy', 'huvaariBy', 'obyemBy', 'ajilBy', 'butetsBy']) {
     assert.ok(new RegExp(`const ${m} = new Map<`).test(src),
       `permsRemote: ${m} нь Map байх ёстой — давхар мөрөөс хассан эрх сэргэнэ`);
   }
@@ -270,12 +274,23 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
   const grantsReads = (fetchAllSrc.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
   assert.ok(/export async function scopedRead[\s\S]*?Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/.test(src),
     'scopedRead: grants-ыг fetchAll-тай ижил уншина');
-  assert.equal(grantsReads, 5,
-    `fetchAll: grants уншилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsReads}`);
+  /* ⚠️ 2026-10-19 (аудит №10): таван салаа НЭГ туслахаар (`scoped`) — хуулбар биш, тэгш хэм бүтцээр баталгаатай.
+     Шалгуур: туслах grants-ыг уншина (ЯГ нэг) ба таван угтвар бүгд түүгээр явна. */
+  assert.equal(grantsReads, 1, `fetchAll: grants уншилт нэг туслахад (scoped) байх ёстой, олдсон: ${grantsReads}`);
+  const scopedList = fetchAllSrc.slice(fetchAllSrc.indexOf('const SCOPED'), fetchAllSrc.indexOf('rowLoop:'));
+  for (const pfx of ['AJIL_PREFIX', 'BUTETS_PREFIX', 'CHANAR_PREFIX', 'OBYEM_PREFIX', 'HUVAARI_PREFIX']) {
+    assert.ok(scopedList.includes(`[${pfx}, `), `fetchAll: ${pfx} нийтлэг (grants уншдаг) задлалаар явахгүй байна`);
+  }
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
+  /* ⚠️ 2026-10-26 (A6): таван хуулбар НЭГ туслахаар (`scopedUpsert(kind)`) — бичилт ЯГ нэг газар, таван систем
+     бүгд түүгээр явна (хуулбар биш тул зөрөх боломжгүй; уншилтын `scoped`-той ижил загвар). */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
-  assert.equal(grantsWrites, 5,
-    `upsert: grants бичилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsWrites}`);
+  assert.equal(grantsWrites, 1, `upsert: grants бичилт НЭГ туслахад (scopedUpsert) байх ёстой, олдсон: ${grantsWrites}`);
+  assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ roles, bagts, grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
+  for (const k of ['huvaari', 'obyem', 'chanar', 'ajil', 'butets']) {
+    assert.ok(src.includes(`return scopedUpsert('${k}', user, roles, bagts, grants);`), `${k}Upsert: scopedUpsert-ээр явахгүй байна`);
+    assert.ok(src.includes(`return scopedRemove('${k}', user);`), `${k}Remove: scopedRemove-ээр явахгүй байна`);
+  }
   /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
      салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
   for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow', 'AjilRow']) {
@@ -301,7 +316,7 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
   assert.ok(!src.includes('const flipScoped'),
     'UserAdmin: `flipScoped` буцаж ирэв — хуваарилалтыг унтраалгаас бичих ёсгүй (aclOps-оор)');
   for (const fn of ['setHuvaariGrants', 'setObyemGrants', 'setAjilGrants', 'setChanarGrants',
-    'setButetsGrants', 'setQaqcAssign']) {
+    'setButetsGrants']) {
     assert.ok(!src.includes(fn),
       `UserAdmin: «${fn}» буцаж ирэв — хуваарилалтын бичилт зөвхөн aclOps-оор`);
   }
@@ -317,7 +332,8 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
   const ops = readCode('src/lib/aclOps.ts');
   const co = ops.slice(ops.indexOf('export function capDirectOp('), ops.indexOf('export async function runOp('));
   /* (a) гаргалгаатай эрх super-ээс бусдад ШУУД олгогдохгүй — хуваарилалтын хоёр дахь эх сурвалж болохгүй */
-  assert.ok(co.includes("if (on && isDerivedCap(cap) && roleForUser(u) !== 'super')"),
+  /* ⚠️ 2026-10-23: `tableSuper` = `roleForUser(u) === 'super'` (хадгалагдсан эрхийн жагсаалтад ч хэрэглэгдэнэ) */
+  assert.ok(co.includes("const tableSuper = roleForUser(u) === 'super';") && co.includes('if (on && isDerivedCap(cap) && !tableSuper)'),
     'capDirectOp: гаргалгаатай эрх super-ээс бусдад шууд олгогдож байна');
   /* (b) хасалт баталгаажуулалттай; addRow-д «Бөглөх» таб хаагдахыг ил хэлнэ */
   assert.ok(co.includes("cap === 'addRow'"), 'capDirectOp: addRow хасахад «Бөглөх» таб хаагдах анхааруулга алга');
@@ -339,7 +355,8 @@ console.log('✅ UserAdmin — flipScoped · flipCap устсан · set*Grants 
   assert.ok(i > 0, 'UserAdmin: add() олдсонгүй');
   const body = src.slice(i, i + 3000);
   assert.ok(/stageOfUser\(key\)/.test(body), 'add(): урсгалын өнчин шалгалт алга');
-  for (const fn of ['listQaqcAssigns', 'listHuvaariAssigns', 'listObyemAssigns']) {
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  for (const fn of ['listHuvaariAssigns', 'listObyemAssigns']) {
     assert.ok(body.includes(fn),
       `add(): ${fn} шалгалт алга — устгагдсан аккаунтын хуваарилалт шинэ нэрэнд ЧИМЭЭГҮЙ наалдана`);
   }
@@ -397,7 +414,8 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
     assert.ok(!src.includes(`export function ${dead}(`), `${f}: үхмэл op «${dead}» буцаж ирэв — нүд бүр *CellOp-оор`);
   }
   assert.ok(!src.includes('export function removeAllMsg('), `${f}: removeAllMsg экспортгүй байх ёстой (дуудагч зөвхөн энд)`);
-  const rm = src.slice(src.indexOf('export function scopedCellOp('), src.indexOf('export function qaqcDropOp('));
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  const rm = src.slice(src.indexOf('export function scopedCellOp('), src.indexOf('/* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай)'));
   assert.match(rm, /planGrantRemove\(cur, role, pkg, spec\.universe\(\)\)/,
     `${f}: scopedCellOp хасах шийдвэрээ aclGrid.planGrantRemove-оос авах ёстой`);
   assert.match(rm, /case 'narrow'/, `${f}: scopedCellOp-д ALL → ил жагсаалт (narrow) салаа алга`);
@@ -505,7 +523,8 @@ console.log('\naclParity.check: ok');
   assert.ok(ga.includes('markResult(u, ok && g)'),
     'guitsetgelAcl.removeAssign: эрх БУЦААЛТЫН үр дүн шалгагдахгүй байна');
   /* `revokeFlowAccess` нь үр дүнгээ буцаана — `void` бол дуудагч мэдэхгүй */
-  assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean>'),
+  /* ⚠️ 2026-10-23: + `autoRole` (төрлийг зөвхөн автоматаар тавьсан бол арилгана) */
+  assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage, autoRole = false): Promise<boolean>'),
     'guitsetgelAcl: revokeFlowAccess нь Promise<boolean> байх ёстой (үр дүнгээ хаяхгүй)');
 
   /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй.
@@ -524,6 +543,7 @@ console.log('\naclParity.check: ok');
       'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');
     /* «Хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгана — эс бөгөөс нэг үүрэг
        хасахад НӨГӨӨГИЙН эрх ч хасагдана (эсвэл эсрэгээр, хэзээ ч хасагдахгүй). */
+    /* ⚠️ 2026-10-26: Хуваарийн «Харагч» (эрхгүй үүрэг) хасагдсан тул анхны энгийн шалгалт буцав */
     assert.ok(/const none = roles\.length === 0;/.test(b),
       'scopedAcl: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой');
     assert.ok(/else if \(none\) next\.delete\(cap\);/.test(b),
@@ -577,13 +597,12 @@ console.log('\naclParity.check: ok');
  */
 {
   const SCOPE_FNS = [
-    'bagtsScope', 'qaqcScope', 'huvaariScope', 'obyemScope', 'chanarScope', 'bagtsFor',
+    'bagtsScope', 'huvaariScope', 'obyemScope', 'chanarScope', 'bagtsFor',
   ];
   const consumers = [
-    'src/modules/Qaqc.tsx',
+    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     'src/modules/Huvaari.tsx',
     'src/modules/HuvaariBatlah.tsx',
-    'src/modules/Chanar.tsx',
     'src/modules/Guitsetgel.tsx',
     'src/modules/sheet/FillNew.tsx',
     'src/lib/hyanaltStore.ts',
@@ -629,7 +648,7 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
      ⚠️ 2026-09-25: илэрхийлэл `aclOps.allAclReady`-д НЭГ газар — есөн туг бүгд тэнд. */
   const ops = readCode('src/lib/aclOps.ts');
   const ar = ops.slice(ops.indexOf('export const allAclReady'), ops.indexOf('export const lockMsg'));
-  for (const r of ['remoteReady', 'capsRemoteReady', 'flowAclReady', 'qaqcAclReady', 'huvaariAclReady',
+  for (const r of ['remoteReady', 'capsRemoteReady', 'flowAclReady', 'huvaariAclReady',
     'obyemAclReady', 'chanarAclReady', 'ajilAclReady', 'butetsAclReady']) {
     assert.ok(ar.includes(r + '()'), 'aclOps.allAclReady: ' + r + ' туг дутуу');
   }
@@ -659,8 +678,9 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   }
   assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
     'UserAdmin: remote-гүй бол эрхээр нээгдсэн харагдацын тэмдэг кэшнээс (`capsStored`) харагдах ёстой');
-  assert.ok(/if \(r && !\(await regrantFlowAccess\(uname\)\)\) bad = true;/.test(ua),
-    'UserAdmin.saveAll: regrantFlowAccess-ийг stageOfUser-оор урьдчилж шүүж байна (remote-гүй бол алгасна)');
+  /* ⚠️ 2026-10-23: «Сэргээх» (`d.clear`) үхмэл зам УСТСАН — мөр · хуваарилалт · эрхийг арилгадаг салаа буцаж орохгүй */
+  assert.ok(!ua.includes('if (d.clear)') && !ua.includes('markClear'), 'UserAdmin.saveAll: устгасан «Сэргээх» (d.clear) зам буцаж орсон');
+  assert.ok(ua.includes('restoreUser(k)'), 'UserAdmin: «Буцаах» нь permissions.restoreUser-ээр сэргээх ёстой');
   /* ⚠️ 2026-09-30: энгийн эрхийн хуудас (`PlainCapAcl`) — QaqcAcl-тай ИЖИЛ түгжээ */
   const pc = readCode('src/modules/PlainCapAcl.tsx');
   assert.ok(pc.includes('const ready = () => remoteReady() && capsRemoteReady();'),
@@ -670,13 +690,15 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
 
   /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
   const ag = readCode('src/components/AuthGate.tsx');
-  assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000"),
+  /* ⚠️ 2026-10-19: дунд нь «систем хаалттай → 30 с» салаа нэмэгдсэн (§14) — 15 с нь түрүүлж хэвээр */
+  assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000"),
     'AuthGate: signed-in + remote-гүй үед 5 мин хүлээж байна — 15 сек байх ёстой');
 
-  /* query.isOrgUrl: org сегмент зөвхөн *.arcgis.com хостод */
+  /* query.isOrgUrl: ⚠️ 2026-10-20 — байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер, startsWith); AGOL org сегмент хасагдсан */
   const q = readCode('src/lib/query.ts');
-  assert.ok(q.includes('ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`)'),
-    'query.isOrgUrl: org сегментийн шалгуур хост шалгалтгүй — гадны хост руу токен явна');
+  assert.ok(q.includes("const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim()") && q.includes('url.startsWith(`${ORG_BASE}/`)'),
+    'query.isOrgUrl: Enterprise суурийн (NEXT_PUBLIC_ENT_DATA) startsWith шалгуур алга — гадны хост руу токен явна');
+  assert.ok(!q.includes('ARCGIS_COM_HOST'), 'query.isOrgUrl: AGOL org сегментийн шалгуур буцаж ирсэн (AGOL 2026-10-20-нд хасагдсан)');
 }
 console.log('✅ remote-гүй сешн — toggleCap · syncCaps · regrant · UserAdmin capsLocked · AuthGate 15с · isOrgUrl хост');
 
@@ -699,7 +721,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
     const src = readCode(f);
     assert.ok(src.includes(`roleCaps: ${key},`), `${f}: roleCaps нь ${key} байх ёстой — гар хуулбар буцаж ирэв`);
   }
-  assert.ok(readCode('src/lib/qaqcAcl.ts').includes('soleCap: QAQC_CAP,'), 'qaqcAcl: soleCap нь QAQC_CAP байх ёстой');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* Панелуудад inline зураглал үлдээгүй */
   for (const f of ['src/modules/ChanarAcl.tsx', 'src/modules/DedButetsAcl.tsx', 'src/modules/ScopedAclPanel.tsx',
     'src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx', 'src/components/UserAdmin.tsx']) {
@@ -708,20 +730,20 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
       `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
   }
 
-  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 6 (2026-10-04: + hamaaral; 2026-10-08: + habeaData) */
-  const { ROLE_CAPS, PLAIN_CAPS, QAQC_CAP, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
+  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 11 (2026-10-26: + zuragEdit, cfSwitch; 2026-10-04: + hamaaral; 2026-10-08: + habeaData; 2026-10-19: + sysClose; 2026-10-23: + docsUpload, docsGroups) */
+  const { ROLE_CAPS, PLAIN_CAPS, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
-  const derived = new Set([QAQC_CAP, ...Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))]);
-  assert.equal(PLAIN_CAPS.length, 6, `энгийн эрх ЯГ 6 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+  const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
-  assert.equal(derived.size, 10, `гаргалгаатай эрх 10 байх ёстой, олдсон: ${derived.size}`);
+  assert.equal(derived.size, 9, `гаргалгаатай эрх 9 байх ёстой, олдсон: ${derived.size}`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
-console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 6 = CAPS');
+console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 9 ∪ энгийн 7 = CAPS');
 
 /* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
 /**
@@ -733,15 +755,20 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
 {
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
-  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea'],
-    'capText.ERH_PANES: хажуугийн цэсний 11 хуудас (2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл), энэ дарааллаар');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea', 'zurag', 'sys'],
+    'capText.ERH_PANES: хажуугийн цэсний 12 хуудас (2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
+  /* ⚠️ 2026-10-19: «Систем түр хаах» — харагдац НЭЭХГҮЙ, ганцаараа өөрийн хуудсанд */
+  /* ⚠️ 2026-10-23: «Систем» хуудсанд + `docsUpload` (баримт бичгийн сан) */
+  assert.deepEqual(PANE_CAPS.sys, ['sysClose', 'docsUpload', 'docsGroups'], 'Систем хуудас: түр хаах · баримт оруулах · баримтын бүлэг');
+  assert.deepEqual(CAP_HOST_VIEW.sysClose, [], 'sysClose: гэр харагдацгүй');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const placed = Object.values(PANE_CAPS).flat();
   assert.deepEqual([...placed].sort(), [...all].sort(), 'PANE_CAPS: эрх бүр ЯГ нэг хуудсанд байх ёстой');
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow'], 'Санхүү: утга + мөр нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд'); /* ⚠️ 2026-10-26: + cfSwitch */
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
   /* ⚠️ 2026-10-09 (аудит №6): CapKey БҮР хоёр шошгоны хүснэгтэд (`capText.capLabel` · `erhLabels.capLabelShort`) —
      `hamaaral` · `habeaData` богино шошгоноос дутуу байж түлхүүр нь ил харагдаж байв */
@@ -753,7 +780,9 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
     for (const c of all) assert.ok(lbody.includes(`k === '${c}'`), `${lf}: ${fn}-д «${c}» шошго алга`);
   }
   /* ⚠️ 2026-10-09: + «ma» (MA — материал баталгаажуулалт, чанарын эрхээр нээгдэнэ) → 7 */
-  assert.equal(new Set(WORKFLOW_VIEWS).size, 7, 'WORKFLOW_VIEWS 7 байх ёстой');
+  /* ⚠️ 2026-10-20: − «chanar» («Чанарын баримт» харагдац хасагдсан) → 6 */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан − «qaqc» → 5 */
+  assert.equal(new Set(WORKFLOW_VIEWS).size, 5, 'WORKFLOW_VIEWS 5 байх ёстой');
   for (const v of WORKFLOW_VIEWS) assert.ok(Object.values(CAP_HOST_VIEW).some((vs) => vs.includes(v)), `WORKFLOW_VIEWS: ${v} CAP_HOST_VIEW-д алга`);
 
   const ua = readCode('src/components/UserAdmin.tsx');
@@ -794,7 +823,7 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   globalThis.fetch = async () => { throw new Error('offline (aclParity)'); };
 
   const OPS = await import('@/lib/aclOps.ts');
-  const QA = await import('@/lib/qaqcAcl.ts');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   const FL = await import('@/lib/guitsetgelAcl.ts');
   const HV = await import('@/lib/huvaariAcl.ts');
   const BT = await import('@/lib/butetsAcl.ts');
@@ -807,8 +836,13 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   /* Порталд БАЙГАА (хатуу, super биш) аккаунт — `isKnown` үнэн, асуулт асуугдана */
   /* ⚠️ Хэрэглэгч бүр ТУСДАА: offline бичилт `failed`-д орж, дараагийн `_syncRemote*` тэр хүний
      ЛОКАЛ төлөвийг давамгайлуулдаг (`scopedAcl.syncRemote`-ийн ⚠️) — нэг нэрийг дахин бөглөж болохгүй. */
-  const K = Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase());
-  assert.ok(K.length >= 6, 'хатуу жагсаалтад 6+ энгийн аккаунт хэрэгтэй');
+  /* ⚠️ 2026-10-19 (аудит №9): кодын жишээ урсгалын 4 аккаунт хасагдсан — хатуу энгийн аккаунт (2) + панелийн
+     бүртгэлтэй (доорх `setUser`) нэрсээр 6 болгоно; аль аль нь «порталд байгаа» (`isKnown`) */
+  const K = [
+    ...Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase()),
+    'k_known_a', 'k_known_b', 'k_known_c', 'k_known_d',
+  ].slice(0, 6);
+  assert.ok(K.length >= 6, '6 энгийн аккаунт хэрэгтэй');
   const settle = async (w) => { await w.sync; await w.granted; };
   /* ⚠️ 2026-09-30: `aclOps.isCleanup` — порталд БАЙХГҮЙ нэрийг устгагдсан аккаунт гэж үзэж нүдний ✕ нь
      мөрийг бүхэлд нь (асуулгагүй, эрх хөндөхгүй) цэвэрлэнэ. Доорх зохиомол нэрс «порталд байгаа»
@@ -817,49 +851,12 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
     const P = await import('@/lib/permissions.ts');
     /* ⚠️ 2026-10-09 (аудит №6): + `b_all` — дэд бүтцийн ALL → ил жагсаалт шалгуур `scopedCellOp`-оор (доор) */
     for (const n of ['q_all2', 'c_all', 'c_new', 'c_ball', 'c_q', 'b_all']) void P.setUser(n, { views: [], docs: false }, null);
+    /* ⚠️ 2026-10-19: `K`-ийн панелийн нэрс (хатуу жагсаалтад урсгалын аккаунт алга болсон) */
+    for (const n of K) if (!ROLE_BY_USER[n]) void P.setUser(n, { views: [], docs: false }, null);
   }
 
-  /* ── QAQC: шинэ мөр grant=true · багц солих grant=false ──
-     ⚠️ 2026-10-09 (аудит №6): `qaqcAddOp` устсан — хүснэгтийн нүд `qaqcCellOp(…, true)` ижил гэрээтэй */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   CAPS._syncRemoteCaps([]);
-  QA._syncRemoteQaqc([]);
-  const add1 = OPS.qaqcCellOp('q_new', G0, true);
-  assert.ok(add1 && !add1.confirm, 'qaqcCellOp: шинэ мөр асуулгагүй');
-  const w1 = add1.run();
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_new').bagts, [G0]);
-  await settle(w1);
-  assert.ok(CAPS.capsStored('q_new').includes('qaqc'), 'qaqcCellOp: ШИНЭ мөрөнд эрх олгох ёстой (grant=true)');
-
-  CAPS._syncRemoteCaps([]);
-  const w2 = OPS.qaqcCellOp('q_new', G1, true).run();
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_new').bagts, [G0, G1]);
-  await settle(w2);
-  assert.ok(!CAPS.capsStored('q_new').includes('qaqc'), 'qaqcCellOp: багц солиход эрх дахин бичих ёсгүй (grant=false)');
-  assert.equal(OPS.qaqcCellOp('q_new', G1, true), null, 'qaqcCellOp: аль хэдийн байгаа багц → null');
-
-  /* qaqcCellOp (хүснэгтийн нүд, 2026-09-30 — хуучин qaqcAllOp/qaqcChipOp-ийн оронд):
-     шинэ → grant=true; «Бүх багц»-аас нэг мөр → бусад багцын ил жагсаалт; сүүлийн багц → ✕-ийн зам */
-  const w3 = OPS.qaqcCellOp('q_all', G0, true).run();
-  await settle(w3);
-  assert.ok(CAPS.capsStored('q_all').includes('qaqc'), 'qaqcCellOp: шинэ мөрөнд эрх олгох ёстой');
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, [G0]);
-  QA._syncRemoteQaqc([{ user: 'q_all2', bagts: ['*'] }]);
-  await settle(OPS.qaqcCellOp('q_all2', G1, false).run());
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all2').bagts, PKG_GROUPS.filter((g) => g !== G1),
-    'qaqcCellOp: ALL → бусад багцын ил жагсаалт');
-  QA._syncRemoteQaqc([{ user: K[0], bagts: [G0] }]);
-  const last = OPS.qaqcCellOp(K[0], G0, false);
-  assert.equal(last.confirm?.length, 1, 'qaqcCellOp: сүүлийн багц → асуух ёстой (✕-ийн зам)');
-  const wl = last.run();
-  assert.equal(QA.listQaqcAssigns().some((a) => a.user === K[0]), false, 'qaqcCellOp: сүүлийн багц → мөр хасагдах ёстой');
-  /* ⚠️ Дараалал дуустал хүлээнэ — эс бөгөөс дараагийн `_syncRemote*` локалыг давамгайлуулна */
-  await settle(wl);
-
-  /* qaqcCellOp (хасах): ALL → нэг асуулт (ил жагсаалт болгох); устгагдсан аккаунт → асуулгагүй
-     ⚠️ 2026-10-09 (аудит №6): `qaqcRemoveOp` (ALL → 2 асуулт, бүхэлд нь хасдаг) устсан — хүснэгтийн дүрэм */
-  QA._syncRemoteQaqc([{ user: K[1], bagts: ['*'] }, { user: 'gone_x', bagts: [G0] }]);
-  assert.equal(OPS.qaqcCellOp(K[1], G0, false).confirm?.length, 1, 'qaqcCellOp: ALL → ил жагсаалт болгохыг асууна');
-  assert.equal(OPS.qaqcCellOp('gone_x', G0, false).confirm, undefined, 'qaqcCellOp: устгагдсан аккаунт → асуулгагүй (revoke=false)');
 
   /* ── Урсгал: шат шилжүүлэх асууна, багц ба viewOnly арилна ──
      ⚠️ 2026-10-09 (аудит №6): `flowAddOp` · `flowStageOp` · `flowChipOp` · `flowRemoveOp` устсан — `flowCellOp` */
@@ -916,7 +913,7 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   assert.deepEqual(BT.listButetsAssigns().find((a) => a.user === 'b_all').grants[0].bagts, P.slice(1),
     'scopedCellOp(butets): ALL → бусад багцын ИЛ жагсаалт');
 
-  /* ── «Багц × үүрэг» хүснэгтийн нүд (2026-09-30): scopedCellOp · qaqcCellOp ── */
+  /* ── «Багц × үүрэг» хүснэгтийн нүд (2026-09-30): scopedCellOp ── */
   HV._syncRemoteHuvaari([{ user: 'c_all', grants: [{ role: 'author', bagts: ['*'] }, { role: 'approver', bagts: [G0] }] }]);
   assert.equal(OPS.scopedCellOp('huvaari', 'c_all', 'author', G1, true), null, 'scopedCellOp: ALL хамарсан → null');
   const cn = OPS.scopedCellOp('huvaari', 'c_all', 'author', G1, false);
@@ -938,19 +935,16 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   BT._syncRemoteButets([{ user: 'c_ball', grants: [{ role: 'editor', bagts: ['*'] }] }]);
   assert.equal(OPS.scopedCellOp('butets', 'c_ball', 'editor', P[0], false).confirm?.length ?? 0, 0,
     'scopedCellOp(butets): ALL → ил жагсаалт асуулгагүй (2026-09-23-ны дүрэм)');
-  QA._syncRemoteQaqc([{ user: 'c_q', bagts: ['*'] }]);
-  assert.equal(OPS.qaqcCellOp('c_q', G0, true), null, 'qaqcCellOp: ALL хамарсан → null');
-  assert.equal(OPS.qaqcCellOp('c_q', G0, false).confirm?.length, 1, 'qaqcCellOp: ALL → ил жагсаалт болгохыг асууна');
-  assert.equal(OPS.qaqcCellOp('c_qnew', G0, true).confirm, undefined, 'qaqcCellOp: шинэ аккаунт асуулгагүй');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
 
   /* Явагдаж буй бичилтийн тэмдэг — `runOp` дуусахад арилна */
   globalThis.confirm = () => true;
-  const pr = OPS.runOp(OPS.qaqcCellOp('p_user', G0, true), () => {}, () => true);
+  const pr = OPS.runOp(OPS.scopedCellOp('huvaari', 'p_user', 'author', G0, true), () => {}, () => true); /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.equal(OPS.aclPendingFor('p_user'), true, 'aclPendingFor: бичилтийн үед үнэн');
   await pr;
   assert.equal(OPS.aclPendingFor('p_user'), false, 'aclPendingFor: дууссаны дараа худал');
 }
-/* ⚠️ QAQC ба урсгалын панел ч op-оор бичнэ (2026-09-25) — карт ба матрицтай ИЖИЛ асуулт */
+/* ⚠️ Урсгалын панел ч op-оор бичнэ (2026-09-25) — карт ба матрицтай ИЖИЛ асуулт (2026-10-23: QAQC хасагдсан) */
 {
   const g = readCode('src/modules/GuitsetgelAcl.tsx');
   assert.doesNotMatch(g, /\b(setAssign|removeAssign|setViewOnly)\(/, 'GuitsetgelAcl: шууд бичилт буцаж ирэв — aclOps.flow*Op-оор');
@@ -962,10 +956,116 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   const cellOp = oc.slice(at, oc.indexOf('export function', at + 10));
   assert.ok(cellOp.includes("case 'drop': return flowDropOp(u)"), 'flowCellOp: бүхэлд нь хасах нь flowDropOp-ын зам байх ёстой');
   assert.ok(cellOp.includes('moveMsg('), 'flowCellOp: шат шилжүүлэх нь moveMsg асуух ёстой');
-  const q = readCode('src/modules/QaqcAcl.tsx');
-  assert.doesNotMatch(q, /\b(setQaqcAssign|removeQaqcAssign)\(/, 'QaqcAcl: шууд бичилт буцаж ирэв — aclOps.qaqc*Op-оор');
-  /* ⚠️ 2026-09-30: хүснэгт — нүд `qaqcCellOp`, устгагдсан аккаунтын өнчин мөр `qaqcDropOp` */
-  for (const op of ['qaqcCellOp(', 'qaqcDropOp(', '<AclGrid']) assert.ok(q.includes(op), 'QaqcAcl: ' + op + ' алга');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.ok(g.includes('<AclGrid'), 'GuitsetgelAcl: нийтлэг хүснэгт (AclGrid)-ээр зурах ёстой');
 }
-console.log('✅ aclOps зан төлөв — QAQC grant · шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');
+console.log('✅ aclOps зан төлөв — шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');
+
+/* ══════════ 13. 2026-10-19 АУДИТ — эрхийн гэр харагдац · хүрээний нэгдэл · super · шошго ══════════ */
+/**
+ * №1 мөр нэмэх «Хуваарь»-д (гэр харагдац ч тэнд), сонгогч = хуваарийн ∪ нэмэлт ажлын хүрээ; нэмэлт ажлын батлагч
+ *    «Нэмэлт ажил батлах»-д. №2 обьёмын үүрэг «Гүйцэтгэл бөглөх» табыг ба өөрийн багцуудыг нээнэ. №6 Нэгтгэл —
+ *    КОДЫН super. №7 хуваарийн тэмдэг/комисс — хүрээгээр. №11 FIC — AGOL нэр. №12 алдаанд эрхийн нэр.
+ */
+{
+  const { CAP_HOST_VIEW } = await import('@/lib/caps.ts');
+  assert.deepEqual(CAP_HOST_VIEW.addRow, ['huvaari'], '№1: addRow-ийн гэр харагдац «Хуваарь» байх ёстой');
+  assert.deepEqual(CAP_HOST_VIEW.ajilApprove, ['ajilBatlah'], '№1: ajilApprove-ийн гэр харагдац «Нэмэлт ажил батлах»');
+
+  const hv = readCode('src/modules/Huvaari.tsx');
+  const go = hv.slice(hv.indexOf('const groupOpts = useMemo('), hv.indexOf('const canEditRole = useMemo('));
+  assert.ok(/hasCap\(user\?\.username, 'addRow'\) \? ajilScope\(user\?\.username, 'editor'\)/.test(go), '№1: Huvaari.groupOpts нэмэлт ажлын хүрээг нэгтгэхгүй байна');
+  assert.ok(hv.indexOf('const [capN, setCapN]') < hv.indexOf('const groupOpts = useMemo('), '№1: capN groupOpts-оос ӨМНӨ зарлагдах ёстой (TDZ)');
+  /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад (`savedView`) засвар хаалттай — ЭРХ (`canEditRole`) нь хүрээний дүрэм хэвээр,
+     `canEdit = canEditRole && !savedView` */
+  assert.ok(/const canEdit = canEditRole && !savedView;/.test(hv), '№1: canEdit = эрх && !savedView');
+  assert.ok(/const canEditRole = useMemo\(\s*\(\) => !review && \(status === 'off' \|\| inScope\(huvaariScope\(user\?\.username, 'author'\)/.test(hv), '№1: огноо засах эрх хуваарийн хүрээгээр хэвээр');
+
+  const gu = readCode('src/modules/Guitsetgel.tsx');
+  const cf = gu.slice(gu.indexOf('const canFill ='), gu.indexOf('\n', gu.indexOf('const canFill =')));
+  assert.ok(!cf.includes("'addRow'") && cf.includes('obyemRole'), `№2: Guitsetgel.canFill (${cf})`);
+  assert.ok(/obyemScope\(user\?\.username, c === 'obyemEdit' \? 'editor' : 'approver'\)/.test(gu), '№2: obyemRole хүрээгээр');
+  assert.ok(gu.includes("roleForUser(user?.username) === 'super'") && !/const isSuperRole = role === 'super';/.test(gu), '№6: Нэгтгэл таб КОДЫН super-ээр');
+
+  const fn = readCode('src/modules/sheet/FillNew.tsx');
+  const mb = fn.slice(fn.indexOf('const myBagts = useMemo('), fn.indexOf('const groupOpts = useMemo('));
+  assert.ok(mb.includes('bagtsScope(user?.username)') && mb.includes('obyemScope(user?.username, role)'), '№2: FillNew.myBagts обьёмын хүрээг нэгтгэхгүй байна');
+
+  const ne = readCode('src/lib/negtgelEdit.ts');
+  assert.ok(ne.includes("roleForUser(user) === 'super'") && !ne.includes('roleOf(user)'), '№6: canEditNegtgel КОДЫН super');
+  const pm = readCode('src/lib/permissions.ts');
+  const ra = pm.slice(pm.indexOf('export function resolveAccess('), pm.indexOf('export function resolveBaseAccess('));
+  assert.ok(ra.includes('if (isHardSuper(username))') && !ra.includes("roleOf(username) === 'super'"), '№6: resolveAccess — зөвхөн хатуу super');
+
+  const hb = readCode('src/lib/huvaariBatlah.ts');
+  for (const f of ['countPlanPending', 'countPlanReturned', 'countPlanApproved']) {
+    const body = hb.slice(hb.indexOf(`export async function ${f}(`), hb.indexOf('\n}', hb.indexOf(`export async function ${f}(`)));
+    assert.ok(!body.includes('hasCap('), `№7: ${f} эрхээр биш хүрээгээр (decidePlan/submitPlan-тай ижил)`);
+  }
+  assert.ok(!readCode('src/lib/ulsiinKomiss.ts').includes("requireCap('plan')"), '№7: ensureKomissRow хүрээгээр');
+
+  const fm = readCode('src/lib/ficMakt.ts');
+  assert.ok(fm.includes('[F.uploadedBy]: actorOf(s)') && fm.includes('[F.decidedBy]: actor,') && fm.includes('isOwnUpload(fresh.uploadedBy, actor, s.user)'), '№11: FIC/М-акт өөрийгөө батлах шалгуур AGOL нэрээр');
+  const { isOwnUpload } = await import('@/lib/ficMakt.ts');
+  assert.equal(isOwnUpload('Bat_AGOL', 'bat_agol', 'ent_bat'), true);
+  assert.equal(isOwnUpload('ent_bat', 'bat_agol', 'ENT_BAT'), true, 'хуучин мөр (Enterprise нэр) ч тулгагдана');
+  assert.equal(isOwnUpload('dorj', 'bat_agol', 'ent_bat'), false);
+  assert.equal(isOwnUpload('', 'bat_agol', 'ent_bat'), false);
+
+  const who = readCode('src/lib/who.ts');
+  assert.ok(who.includes('capLabel(cap)'), '№12: requireCap алдаанд эрхийн нэр (capLabel)');
+  assert.ok(!readCode('src/lib/ma.ts').includes('«chanarAuthor»'), '№12: MA алдаанд түүхий түлхүүр');
+}
+console.log('✅ 2026-10-19 аудит — гэр харагдац · хүрээний нэгдэл · кодын super · хүрээгээр тэмдэг · AGOL нэр · эрхийн шошго');
+
+/* ══════════ 14. «СИСТЕМ ТҮР ХААХ» — AuthGate · Root · permsRemote эх кодын гэрээ (⚠️ 2026-10-19) ══════════
+ * ⚠️ Хаалтыг ажиллуулж шалгах нь `aclE2E` §11-д (хуурамч хүснэгт); энд UI давхаргын байрлал:
+ *    (а) `AuthNotice`-д `SystemClosed` нь сешн дууссан цонхны ДАРАА (дахин нэвтрэх зам), татгалзсан цонхноос өмнө;
+ *    (б) хаалттай хэрэглэгчийн poll 30 с; (в) хаалттай үед `who` хоосон (lib бичилт татгалзана);
+ *    (г) `authorized` худал ба `Root` Portal-ыг `frozen`-оор амьд үлдээнэ (хадгалаагүй ажил устахгүй);
+ *    (д) `fetchAll`-д `__sys__:` салаа хэрэглэгчийн мөрөөс ӨМНӨ (хий хэрэглэгч үүсгэхгүй). */
+{
+  const ag = readCode('src/components/AuthGate.tsx');
+  const an = ag.slice(ag.indexOf('export function AuthNotice('), ag.indexOf('function NoticeDialog('));
+  const iSys = an.indexOf('<SystemClosed');
+  ok14(iSys > 0, 'AuthNotice: <SystemClosed> алга');
+  for (const other of ['<AccessLost', '<NoticeDialog']) {
+    ok14(iSys < an.indexOf(other), `AuthNotice: SystemClosed нь ${other}-оос ӨМНӨ байх ёстой`);
+  }
+  /* ⚠️ 2026-10-19 (аудит №2): сешн дууссан цонх ХААЛТЫН цонхноос ӨМНӨ — эс бөгөөс хаалттай хэрэглэгч дахин нэвтрэх
+     замгүй, «Дахин шалгах» нь токенгүй үүрд унана */
+  ok14(an.indexOf('<SessionExpired') > 0 && an.indexOf('<SessionExpired') < iSys, 'AuthNotice: SessionExpired нь SystemClosed-оос ӨМНӨ байх ёстой');
+  const scc = ag.slice(ag.indexOf('export function SystemClosed('), ag.indexOf('function AccessLost('));
+  ok14(scc.includes('reopenSessionDead()') && scc.includes('retrySession()') && scc.includes('void recheck()'), 'SystemClosed: «Дахин шалгах» сешн дууссан үед дахин нэвтрэх цонх гаргана');
+  ok14(ag.includes('sysClosedRef.current ? 30_000 : 5 * 60_000'), 'AuthGate.period: хаалттай үед 30 с');
+  ok14((ag.match(/setCurrentUser\([^)]*!lock[^)]*\)/g) ?? []).length === 2, 'AuthGate: хаалттай үед setCurrentUser(null) — нэвтрэлт ба poll ХОЁУЛАА');
+  ok14((ag.match(/closedFor\(/g) ?? []).length === 3, 'AuthGate: closedFor — нэвтрэлт · poll · store-ийн мэдэгдэл');
+  /* ⚠️ 2026-10-19 (аудит №2): бусад `initRemote` дуудагчийн (scheduleRemoteRefresh · retryAcl · UserAdmin) төлөв ч тусна */
+  ok14(ag.includes('const a = subscribePerms(sync);') && ag.includes('const b = subscribeCaps(sync);') && ag.includes('setCurrentUser(lock ? null : name);'),
+    'AuthProvider: эрхийн store/caps мэдэгдэлд хаалтыг дахин тооцдоггүй');
+  const portal = readCode('src/components/Portal.tsx');
+  ok14(portal.includes('{sysNow && canSys && !auth.sysClosed && !sysOpen && ('), 'Portal: шар зурвас ЗӨВХӨН хаалтыг давах эрхтэйд');
+  const scd = readCode('src/components/SystemCloseDialog.tsx');
+  ok14(scd.includes('void refreshSystemClosed()') && scd.includes('{ expect: cur, update }') && scd.includes('e instanceof SysStaleError'),
+    'SystemCloseDialog: нээгдэхэд дахин уншиж, бичихдээ харагдсан төлөвийг (expect) шалгана');
+  ok14(scd.includes("tr('Болих')") && !scd.includes("{tr('Хаах')}"), 'SystemCloseDialog: хаах товч «Болих» (Системийг хаах-тай андуурагдана)');
+  const dr = readCode('src/lib/draftRemote.ts');
+  const sv = dr.slice(dr.indexOf('export async function saveRemoteDraft('), dr.indexOf('export async function clearRemoteDraft('));
+  ok14(sv.indexOf('draftWriteLocked()') > 0 && sv.indexOf('draftWriteLocked()') < sv.indexOf('getAuth()'), 'saveRemoteDraft: хаалттай (who хоосон) үед алсад бичихгүй');
+  const gt = readCode('src/modules/Guitsetgel.tsx');
+  ok14(gt.includes("if (obyemOnly && !tabPicked && tab === 'sent') {"), 'Guitsetgel: зөвхөн обьёмын эрхтэйд анхдагч таб «бөглөх»');
+  ok14(ag.includes("const authorized = (status === 'signed-in' && !sysClosed) || status === 'off';"), 'AuthGate: хаалттай үед authorized худал');
+  ok14(ag.includes("tr('Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.')"), 'SystemClosed: тогтмол текст');
+  const root = readCode('src/components/Root.tsx');
+  ok14(root.includes("(sysClosed && status === 'signed-in')) ? lastPortal : null"), 'Root.frozen: хаалттай үед Portal амьд (lastPortal)');
+  const pr = readCode('src/lib/permsRemote.ts');
+  const fa = pr.slice(pr.indexOf('export async function fetchAll('), pr.indexOf('async function findOids('));
+  ok14(fa.indexOf('strip(lu, SYS_PREFIX)') > 0 && fa.indexOf('strip(lu, SYS_PREFIX)') < fa.indexOf('perms[lu] ='), 'fetchAll: __sys__ салаа хэрэглэгчийн мөрөөс ӨМНӨ');
+  const pm = readCode('src/lib/permissions.ts');
+  const sc = pm.slice(pm.indexOf('export async function setSystemClosed('), pm.indexOf('export function _markRemoteLoaded('));
+  ok14(sc.indexOf("requireCap('sysClose')") > 0 && sc.indexOf("requireCap('sysClose')") < sc.indexOf('sysUpsert('), 'setSystemClosed: requireCap бичихээс ӨМНӨ');
+  const sc2 = pm.slice(pm.indexOf('export async function setSystemClosed('), pm.indexOf('export function _markRemoteLoaded('));
+  ok14(sc2.indexOf('await sysRead()') > 0 && sc2.indexOf('await sysRead()') < sc2.indexOf('sysUpsert(st)') && sc2.includes('throw new SysStaleError('),
+    'setSystemClosed: expect — бичихийн ӨМНӨ дахин уншиж зөрвөл татгалзана');
+}
+console.log('✅ «Систем түр хаах» — SessionExpired › SystemClosed › бусад · 30 с poll · who хоосон · frozen Portal · __sys__ салаа');

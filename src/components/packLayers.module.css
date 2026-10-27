@@ -1,4 +1,5 @@
 /* ══ БАГЦЫН ДАВХАРГЫН МӨР — ТОВЧ ══
+   ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12%, chip 6px badge.
    ⚠️ Дарагддаг тул товчны дохио (hover, курсор, сум) ЗААВАЛ — эс бөгөөс
    хэрэглэгч дарж болохыг мэдэхгүй. */
 .row {
@@ -20,11 +21,11 @@
   cursor: pointer;
 }
 .row:hover { background: var(--surface-2); }
-.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.on { background: var(--surface-2); }
+.row:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
+.on { background: color-mix(in oklab, var(--data) 12%, transparent); }
 .on .name { color: var(--ink); font-weight: 600; }
 
-.caret { font-size: 9px; color: var(--ink-3); }
+.caret { font-size: 11px; color: var(--ink-3); }
 /* ⚠️ Тэмдэг 24×10 — шугамын хээ (тасархай 6+3) уншигдах ХАМГИЙН БАГА урт.
    Богино болговол тасархай ба үргэлжилсэн ялгагдахаа болино. */
 .swatch { width: 24px; height: 10px; display: block; overflow: visible; }
@@ -52,7 +53,7 @@
   font-size: 11px;
 }
 .head {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -72,8 +73,10 @@
 .vals { display: flex; flex-wrap: wrap; gap: 4px; color: var(--ink); }
 .chip {
   padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 500;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   white-space: nowrap;
 }

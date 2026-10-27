@@ -226,8 +226,8 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, visibility: pos ? "visible" : "hidden" }}
     >
       <div className={st.calHead}>
-        <button className={st.calNav} onClick={() => step(-12)} title={tr('Өмнөх жил')}>«</button>
-        <button className={st.calNav} onClick={() => step(-1)} title={tr('Өмнөх сар')}>‹</button>
+        <button className={st.calNav} onClick={() => step(-12)} title={tr('Өмнөх жил')} aria-label={tr('Өмнөх жил')}>«</button>
+        <button className={st.calNav} onClick={() => step(-1)} title={tr('Өмнөх сар')} aria-label={tr('Өмнөх сар')}>‹</button>
         {/*
           * ⚠️ ОН/САРЫГ ШУУД СОНГОНО (2026-09-04, хэрэглэгч: «эндээс он сар
           * өөрчлөгдөхгүй»). Сумнууд ажилладаг ч 22px, бүдэг өнгөтэй бөгөөд
@@ -257,8 +257,8 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
             ))}
           </select>
         </span>
-        <button className={st.calNav} onClick={() => step(1)} title={tr('Дараа сар')}>›</button>
-        <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')}>»</button>
+        <button className={st.calNav} onClick={() => step(1)} title={tr('Дараа сар')} aria-label={tr('Дараа сар')}>›</button>
+        <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')} aria-label={tr('Дараа жил')}>»</button>
       </div>
 
       <div className={st.calType}>

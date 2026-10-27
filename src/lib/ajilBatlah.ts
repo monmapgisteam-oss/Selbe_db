@@ -42,6 +42,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
+import { GUITS } from '@/lib/services/env';
 import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
@@ -54,9 +55,14 @@ import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
-import { REASON_MAX } from './huvaariBatlah';
+/* ⚠️ 2026-10-21 (кодын аудит): `serverNow` — түгжээний агшин, TTL-ийн шүүлт ба `approverAt` СЕРВЕРИЙН цагаар
+   (`obyemBatlah`/`huvaariBatlah`-д 2026-10-12-нд шилжсэн, энд хоцорсон байв): хоёр батлагчийн компьютерийн цаг
+   10 минутаас илүү зөрвөл амьд түгжээг «дууссан» гэж үзэн хоёулаа ИЖИЛ илгээлтийг буулгах боломжтой байлаа. */
+import { REASON_MAX, serverNow, syncServerClock } from './huvaariBatlah';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (React-гүй модуль — lib-ээс импортолж болно) */
+import { askConfirm } from './confirm';
 
 /** Илгээлтийн төлөв */
 export const AJIL_STATUS = {
@@ -120,8 +126,8 @@ export type AjilSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах */
-  rowCount: number;
+  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `mor_too` = мэдэгдэхгүй (`null`), 0 биш */
+  rowCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
 };
@@ -183,7 +189,7 @@ const LAYER_ID = 219;
  *    хүснэгт тэр файлаас нийтлэгдсэн.
  */
 export const F = {
-  oid: 'OBJECTID',
+  oid: 'objectid',
   pkgKey: 'bagts_key',
   pkgGroup: 'bagts_group',
   status: 'toloh',
@@ -282,6 +288,13 @@ async function findTableUrl(token: string): Promise<string | null> {
  */
 async function tableUrl(): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/189) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/189`;
+  if (direct) {
+    tableUrlCache = direct;
+    return direct;
+  }
   const auth = await getToken();
   if (!auth) return null;
   const url = await findTableUrl(auth.token);
@@ -355,7 +368,8 @@ function toSubmission(a: Attrs): AjilSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    rowCount: Number(a[F.rowCount]) || 0,
+    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
+    rowCount: a[F.rowCount] == null || a[F.rowCount] === '' || !Number.isFinite(Number(a[F.rowCount])) ? null : Number(a[F.rowCount]),
     payload: String(a[F.payload] ?? ''),
   };
 }
@@ -363,6 +377,10 @@ function toSubmission(a: Attrs): AjilSubmission | null {
 async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl();
   if (!url) return [];
+  /* ⚠️ 2026-10-21: түгжээг уншиж/шүүх бүх зам серверийн цагтай (`huvaariBatlah`-ийн `loadRows`-тэй ижил) — ихэвчлэн
+     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. Өөрийн хүснэгтийн url-ыг өгнө —
+     хуваарийн хүснэгтийг портал дээр дахин хайхгүй (2026-10-26). */
+  await syncServerClock(url);
   const out: Attrs[] = [];
   for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {
@@ -471,6 +489,20 @@ export async function loadAllApproved(): Promise<AjilSubmission[]> {
 }
 
 /**
+ * Батлагчийн «Буцаасан» хэсэг (⚠️ 2026-10-23, UX аудит P1) — сүүлийн `days` хоногт буцаасан илгээлтүүд (шалтгаантай),
+ * шинээс хуучин руу. `restored` (зохиогчийн хуудас мөрүүдийг буулгасан) ч буцаалт мөн тул орно.
+ * ⚠️ Урьд нь батлагч өөрийн буцаасныг хаанаас ч харах боломжгүй, тоо нь ч алга байв.
+ * ⚠️ `HEAD_FIELDS` (хөнгөн) — `payload` татахгүй; огноогоор клиент талд шүүнэ (талбарын төрлөөс үл хамаарах).
+ */
+export async function loadAllReturned(days = 30, now = serverNow()): Promise<AjilSubmission[]> {
+  const rows = await query(`${F.status} IN (N'${AJIL_STATUS.returned}', N'${AJIL_STATUS.restored}')`, HEAD_FIELDS);
+  const since = now - days * 86_400_000;
+  return rows.map(toSubmission)
+    .filter((x): x is AjilSubmission => x != null && (x.approverAt ?? 0) >= since)
+    .sort((a, b) => (b.approverAt ?? 0) - (a.approverAt ?? 0));
+}
+
+/**
  * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ — `payload`-гүй (2026-09-24).
  * ⚠️ `ajilApply.materializeAdds` үүгээр СЕРВЕРИЙН `pkgKey` · `pkgGroup` · төлвийг
  *    уншина — дуудагчийн өгсөн утгад найдвал консолоос өөр багц руу бичих
@@ -510,7 +542,7 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.applied, [F.reason]: null } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -546,7 +578,7 @@ export async function markRestored(oid: number): Promise<{ ok: boolean; error?: 
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.restored } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
@@ -706,7 +738,7 @@ const CLAIMABLE: readonly string[] = [AJIL_STATUS.pending, AJIL_STATUS.approved]
 export function ajilClaimOf(
   status: string | null | undefined,
   reason: string | null | undefined,
-  now = Date.now(),
+  now = serverNow(),
 ): { who: string; at: number; tab: string } | null {
   if (!status || !CLAIMABLE.includes(status)) return null;
   const m = CLAIM_RE.exec((reason ?? '').trim());
@@ -718,7 +750,7 @@ export function ajilClaimOf(
 }
 
 /** UI-д: илгээлтийг яг одоо түгжиж буй хүн (жижиг үсгээр), эсвэл `null` */
-export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, now = Date.now()): string | null {
+export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, now = serverNow()): string | null {
   return ajilClaimOf(x.status, x.reason, now)?.who ?? null;
 }
 
@@ -778,7 +810,7 @@ export async function casAjilClaim(
   me: string,
   want: AjilStatus,
 ): Promise<string | null> {
-  const now = io.now ?? Date.now;
+  const now = io.now ?? serverNow;
   const tab = io.tab ?? TAB;
   const u = me.trim().toLowerCase();
   if (!u) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
@@ -797,7 +829,7 @@ export async function casAjilClaim(
      сэргийлж) `release`. Дахин уншилт ч унавал `release` хийж «тодорхойгүй» гэж хэлнэ. */
   let lost = false;
   try {
-    if (!(await io.write(mark))) return tr('ArcGIS-т хадгалагдсангүй.');
+    if (!(await io.write(mark))) return tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.');
   } catch (e) {
     if (!isLostWrite(e)) throw e;
     lost = true;
@@ -853,8 +885,9 @@ export async function claimAjil(args: { oid: number; me: string; want: AjilStatu
       read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
       write: (mark) => writeReason(url, args.oid, mark),
       /* ⚠️ 2026-10-09: өөр табын ӨӨРИЙН түгжээ — хөтөчид асууна; Node/тестэд хэзээ ч авахгүй */
-      takeover: (who) => typeof window !== 'undefined' && typeof window.confirm === 'function'
-        && window.confirm(tr('Та ({0}) энэ илгээлтийг өөр цонх/табаас шийдвэрлэж/буулгаж байгаа түгжээ байна (эсвэл тэр цонхыг хаасан/дахин ачаалсан). Тэр цонх одоо ажиллахгүй байгаа гэдэгт итгэлтэй бол түгжээг энд шилжүүлэх үү?', who)),
+      /* ⚠️ 2026-10-23 (UX аудит X1/P7): аппын дотоод асуулт (хост алга бол `window.confirm`, тэр ч алга бол `false`) · богино текст */
+      takeover: async (who) => typeof window !== 'undefined'
+        && askConfirm(tr('Энэ илгээлтийг таны ({0}) өөр цонх түгжсэн байна. Тэр цонхыг хаасан бол түгжээг энд авах уу?', who), { ok: tr('Түгжээг авах') }),
       release: () => releaseAjilClaim({ oid: args.oid, me: args.me }),
     }, args.me, args.want);
     if (!err) invalidate('AJIL_BATLAH');
@@ -942,7 +975,9 @@ export async function submitAjil(args: {
     [F.pkgGroup]: args.pkgGroup,
     [F.status]: AJIL_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
-    [F.authorSent]: Date.now(),
+    /* ⚠️ 2026-10-21 (аудит): СЕРВЕРИЙН цагаар (`huvaariBatlah.submitPlan`-тай ижил) — түгжээ · `approverAt` аль хэдийн
+       `serverNow`, илгээсэн огноо л хөтчийн цагаар үлдсэн байв (хүлээлтийн нас өөр машин дээр зөрнө) */
+    [F.authorSent]: serverNow(),
     [F.rowCount]: args.payload.adds.length,
     [F.note]: args.note?.trim() || null,
     [F.payload]: JSON.stringify(args.payload),
@@ -952,7 +987,7 @@ export async function submitAjil(args: {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('AJIL_BATLAH');
     /*
      * ⚠️ ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (2026-10-06, `huvaariBatlah.submitPlan`-ийн 2026-10-01-ний
@@ -966,7 +1001,7 @@ export async function submitAjil(args: {
      *    зохиогчийн хуудсанд үлдэнэ.
      */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
-    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`. */
+    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү» (доорх `catch`). */
     if (Number.isFinite(mine)) try {
       const rows = await query(
         `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${AJIL_STATUS.pending}'`,
@@ -975,16 +1010,28 @@ export async function submitAjil(args: {
       const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
       if (first != null && first < mine) {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
-          await arcgisPost(`${url}/applyEdits`, {
+          const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: AJIL_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
+          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
+             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
+             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
+             эрсдэлтэй байлаа. */
+          if (!editOk(upd?.updateResults)) {
+            invalidate('AJIL_BATLAH');
+            return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
+          }
         }
         invalidate('AJIL_BATLAH');
-        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
-    } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
+    } catch {
+      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
+         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
+      return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -1147,16 +1194,17 @@ export async function decideAjil(args: {
     [F.oid]: args.oid,
     [F.status]: args.approve ? AJIL_STATUS.approved : AJIL_STATUS.returned,
     [F.approver]: args.approver.toLowerCase(),
-    [F.approverAt]: Date.now(),
+    [F.approverAt]: serverNow(),
     /* ⚠️ 2026-10-06 аудит: `decidePlan`-ийн ижил — UI-г тойрсон урт шалтгааныг тайрна */
-    [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
+    /* ⚠️ 2026-10-26: урьдчилж бөглөсөн системийн шалтгаан (`NO_PARENT_REASON`) эх текстээр (`ajilReasonSrc`) */
+    [F.reason]: args.approve ? null : (args.reason?.trim() ? ajilReasonSrc(args.reason.trim()).slice(0, REASON_MAX) : null),
   };
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) { release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
+    if (!editOk(j.updateResults)) { release(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
@@ -1199,7 +1247,15 @@ export async function withdrawAjil(args: {
   oid: number;
   /** Татаж буй хүн — нэвтэрсэн хэрэглэгч (`currentUser`) байх ёстой */
   me: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{
+  ok: boolean;
+  error?: string;
+  /**
+   * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН ба дахин уншилт ч унасан — татагдсан эсэх ТОДОРХОЙГҮЙ. Дуудагч
+   *    (`useAjil.withdrawAjilHere`) мөрүүдийг алдахгүйн тулд тэмдэглэж, дараагийн шалгалтаар (`refreshAjil`) шийднэ.
+   */
+  unsure?: boolean;
+}> {
   /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
   /* ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('addRow')` ХАСАГДСАН — өөрийн илгээлтээ татах нь ЭРХ биш ЭЗЭМШИЛ
      (`huvaariBatlah.withdrawPlan`-ийн ижил дүрэм). Урьд нь зохиогчийн эрх хасагдвал түүний хүлээгдэж буй илгээлтийг
@@ -1220,7 +1276,7 @@ export async function withdrawAjil(args: {
   /* ⚠️ 2026-10-09: батлагч түгжсэн (`decideAjil` шийдвэрээ бичиж буй) үед татахгүй — эс бөгөөс татсан
      төлвийг батлагчийн шийдвэр дарж бичнэ (`AJIL_CLAIM_MARK`-ийн ⚠️). */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
-  if (held) return { ok: false, error: ajilHeldMsg(held.who) };
+  if (held && held.who !== me) return { ok: false, error: ajilHeldMsg(held.who) };
   const curStatus = s(cur[0][F.status]);
   if (curStatus !== AJIL_STATUS.pending) {
     const by = s(cur[0][F.approver]);
@@ -1231,10 +1287,32 @@ export async function withdrawAjil(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
+  /*
+   * ⚠️ 2026-10-22 (аудит №6): ТҮГЖЭЭ ЭХЛЭЭД (`claimAjil` — `decideAjil`-ийн ижил CAS). Урьд нь дээрх уншилт (түгжээгүй) →
+   *    бичилт л байсан тул батлагч ЯГ тэр завсарт түгжээгээ аваад батлахад хоёр бичилт бие биеэ дарж, зохиогч «Татсан»
+   *    гэж харсан илгээлт «Батлагдсан» болж хуудсанд буух, эсвэл батлагчийн шийдвэр «Татсан»-аар дарагдах боломжтой
+   *    байв (mock harness-ээр давтагдсан). Одоо түгжээтэй үед батлагч (`decideAjil`) ба зохиогч хоёулаа татгалзана;
+   *    татах бичилт тэмдгийг өөрөө арилгана (`reason: null`), унавал тайлна.
+   */
+  const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
+  if (claimErr) return { ok: false, error: claimErr };
+  const release = () => { void releaseAjilClaim({ oid: args.oid, me }); };
+  try {
+    const again = (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0];
+    if (!again) { release(); return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') }; }
+    if (s(again[F.status]) !== AJIL_STATUS.pending) { release(); return { ok: false, error: ajilDecidedMsg(s(again[F.approver]), s(again[F.status])) }; }
+    const h = ajilClaimOf(s(again[F.status]), s(again[F.reason]));
+    if (!h || h.who !== me || h.tab !== TAB) {
+      return { ok: false, error: h ? ajilHeldMsg(h.who) : tr('Таны түгжээний хугацаа дууссан — юу ч бичигдсэнгүй. Дахин оролдоно уу.') };
+    }
+  } catch (e) {
+    release();
+    return { ok: false, error: String((e as Error).message || e) };
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: AJIL_STATUS.withdrawn,
-    [F.approverAt]: Date.now(),
+    [F.approverAt]: serverNow(),
     [F.reason]: null,
   };
   try {
@@ -1242,16 +1320,69 @@ export async function withdrawAjil(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) { release(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
+    /*
+     * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН (`isLostWrite` — timeout · сүлжээ · 5xx) бол «Татсан» серверт суусан
+     *    байж болно. Урьд нь энгийн алдаа буцаадаг тул зохиогчийн мөрүүд хуудсанд буцаж ордоггүй (`withdrawAjilHere`
+     *    зөвхөн `ok`-д буулгадаг), илгээлт нь «Татсан» болсон тул өөр замаар ч сэргэдэггүй — ажил бүрмөсөн алга болдог
+     *    байв. Одоо мөрийг ДАХИН УНШИЖ: «Татсан» → амжилт (мөрүүд буулгагдана); хүлээгдэж буй хэвээр → бичигдээгүй
+     *    (түгжээг тайлж алдаа); уншилт ч унавал `unsure` — дуудагч мөрүүдийг тэмдэглэж дараа шийднэ.
+     */
+    if (isLostWrite(e) || isLostWrite((e as { cause?: unknown } | null)?.cause)) {
+      invalidate('AJIL_BATLAH');
+      try {
+        const back = (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0];
+        const st = back ? s(back[F.status]) : null;
+        if (st === AJIL_STATUS.withdrawn) return { ok: true };
+        if (st === AJIL_STATUS.pending) {
+          release();
+          return { ok: false, error: tr('Татах хүсэлтийн хариу алдагдсан — илгээлт татагдаагүй, хүлээгдсэн хэвээр. Дахин оролдоно уу.') };
+        }
+        return { ok: false, error: back ? ajilDecidedMsg(s(back[F.approver]), st) : tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+      } catch (e2) {
+        console.warn('[selbe] нэмэлт ажил татах хариу алдагдсан — дахин уншиж чадсангүй:', e2);
+        return { ok: false, unsure: true, error: tr('Татах хүсэлтийн хариу алдагдсан — татагдсан эсэх тодорхойгүй. Мөрүүдийг энэ компьютерт хадгалав; хуудсаа шинэчлэхэд шийдэгдэнэ.') };
+      }
+    }
+    release();
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
 
 /** «Эцэг бүлэг олдсонгүй» буцаалтын стандарт шалтгаан (2026-10-04) */
 export const NO_PARENT_REASON = (): string => tr('Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.');
+/** «Багцын түлхүүр бүртгэлд алга» буцаалтын стандарт шалтгаан (2026-10-26) */
+export const NO_KEY_REASON = (): string => tr('Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.');
+/**
+ * ⚠️ 2026-10-26 (аудит): СИСТЕМИЙН ШАЛТГААН ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТЭЭР (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
+ *    загвар). Урьд нь `NO_PARENT_REASON()` (орчуулсан) батлагчийн хэлээр бичигдэж нэмэгчид тэр хэлээр л харагддаг байв.
+ *    Бичихдээ `ajilReasonSrc` (орчуулсан мөр → эх), дэлгэцэнд `displayAjilReason` (эх → идэвхтэй хэл).
+ */
+export const NO_PARENT_REASON_SRC = 'Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.';
+export const NO_KEY_REASON_SRC = 'Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.';
+const AJIL_SYS_REASONS: readonly (readonly [string, () => string])[] = [
+  [NO_PARENT_REASON_SRC, NO_PARENT_REASON],
+  [NO_KEY_REASON_SRC, NO_KEY_REASON],
+];
+/** Бичихийн өмнө — системийн мөр (аль ч хэлээр) эх текст болно; хэрэглэгчийн текст ХЭВЭЭР */
+export function ajilReasonSrc(text: string): string {
+  return text.split('\n').map((ln) => {
+    const t = ln.trim();
+    const hit = AJIL_SYS_REASONS.find(([src, show]) => t === src || t === show());
+    return hit ? hit[0] : ln;
+  }).join('\n');
+}
+/** Хадгалсан шалтгааныг дэлгэцэнд — системийн эх мөрийг идэвхтэй хэлээр */
+export function displayAjilReason(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw.split('\n').map((ln) => {
+    const hit = AJIL_SYS_REASONS.find(([src]) => ln.trim() === src);
+    return hit ? hit[1]() : ln;
+  }).join('\n');
+}
 
 /**
  * ГАЦСАН БАТЛАЛТЫГ БУЦААХ ДҮРЭМ — цэвэр (`ajilApply.check.mjs`, 2026-10-04).
@@ -1274,7 +1405,8 @@ export function returnStuckDeny(status: string | null, reason: string): string |
  */
 export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
   /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (`decideAjil`-тай ижил) */
-  const reason = (args.reason ?? NO_PARENT_REASON()).trim().slice(0, REASON_MAX);
+  /* ⚠️ 2026-10-26: системийн шалтгаан эх текстээр (`ajilReasonSrc`) */
+  const reason = ajilReasonSrc((args.reason ?? NO_PARENT_REASON_SRC).trim()).slice(0, REASON_MAX);
   if (typeof window !== 'undefined' && AUTH.appId) {
     const meNow = currentUser();
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
@@ -1319,14 +1451,14 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
         [F.oid]: args.oid,
         [F.status]: AJIL_STATUS.returned,
         [F.approver]: me || null,
-        [F.approverAt]: Date.now(),
+        [F.approverAt]: serverNow(),
         [F.reason]: reason,
       } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) {
       await releaseAjilClaim({ oid: args.oid, me: claimer });
-      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     }
     invalidate('AJIL_BATLAH');
     return { ok: true };
@@ -1397,6 +1529,12 @@ export async function updateAjil(args: {
   /* ⚠️ 2026-10-09: батлагч түгжсэн (шийдвэрээ бичиж буй) үед засахгүй — батлагчийн ХАРААГҮЙ агуулга батлагдана */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
   if (held) return { ok: false, error: ajilHeldMsg(held.who) };
+  /* ⚠️ 2026-10-21 (аудит): ЗАСВАРЫН ӨМНӨ ТҮГЖЭЭ (`claimAjil`, `pending` — CAS). Дээрх уншилт ба доорх бичилтийн ЗАВСАРТ
+     батлагч түгжиж шийдвэрлэвэл (`decideAjil` → `approved`) засагдсан агуулга батлагчийн ХАРААГҮЙ хувилбараар буудаг байв
+     (`materializeInner`-ийн `stamp` тулгалт зөвхөн `decideAjil`-ийн тэмдэгтэй дуудлагад; доорх `after` шалгалт бичсэний
+     ДАРАА л илрүүлнэ). Түгжээтэй үед батлагчийн `claimAjil` татгалзана; бичсэний дараа тайлна (зөвхөн өөрийн тэмдгийг). */
+  const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
+  if (claimErr) return { ok: false, error: claimErr };
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.rowCount]: args.payload.adds.length,
@@ -1407,7 +1545,7 @@ export async function updateAjil(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('AJIL_BATLAH');
     const after = await query(`${F.oid} = ${Number(args.oid)}`, fields);
     if (after.length && s(after[0][F.status]) !== AJIL_STATUS.pending) {
@@ -1419,6 +1557,8 @@ export async function updateAjil(args: {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  } finally {
+    await releaseAjilClaim({ oid: args.oid, me }).catch(() => undefined);
   }
 }
 

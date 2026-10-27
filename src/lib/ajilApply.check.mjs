@@ -12,7 +12,7 @@
  *      хуучин өдрөөр бичвэл жааз булагдана.
  */
 import assert from 'node:assert/strict';
-import { addPresent, dedupeAdds, fillMsFor, dayStartUtc, parentIdxOf, sameFrame, todayLocalMs } from './ajilApply.ts';
+import { addPresent, dedupeAdds, fillMsFor, dayStartUtc, missingParents, parentIdxOf, sameFrame, todayLocalMs } from './ajilApply.ts';
 
 const row = (no, work, group, depth) => ({ no, work, group, depth });
 const add = (parentNo, parentWork, no, work, oid = -1, parentIdx = 0) => ({
@@ -90,5 +90,33 @@ assert.equal(fillMsFor(T, NaN), today, 'эвдэрсэн агшин — өнөө
 assert.equal(dayStartUtc(Date.UTC(2026, 8, 24, 13, 45)), today);
 assert.ok(fillMsFor(T, Date.UTC(2020, 0, 1)) >= today, 'өнөөдрөөс хуучин өдөр хэзээ ч буцаахгүй');
 console.log('✅ бөглөсөн өдрийн дүрэм');
+
+/* ── 2026-10-21 (аудит): хариу алдагдсан бичилт — огнооны талбаргүй багцад ч `OID > maxOid0` мөрийг жаазтай тулгана ── */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./ajilApply.ts', import.meta.url), 'utf8');
+  const w = L.slice(L.indexOf('async function writeFrameLive('));
+  assert.ok(w.includes('if (lost) {') && !w.includes('if (lost && sc.f.fillDate) {'), 'огнооны талбаргүй багцад цэвэрлэгээ алгасагдаж байна');
+  assert.ok(w.includes("where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`"), 'огноогүй үед OID > maxOid0-оор хайхгүй байна');
+  assert.ok(/const ours = found\.length > 0 && found\.length <= frame\.length && found\.every/.test(w), 'жаазтай дарааллын тулгалт алга');
+}
+console.log('✅ хариу алдагдсан — огноогүй багцад ч жаазаар таньж цэвэрлэнэ');
+
+/* ── ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ нэмэлт мөр — эцэг бүлэг нэр солигдсон («5 · Тохижилт» → «5 · Тохижилтын ажил»)
+   үед `insertAdds` алгасах мөрийг `missingParents` яг таньна (батлагчийн `parentsCheck` ба зохиогчийн хаалт үүгээр). ── */
+{
+  const rows = [row('1', 'БАРИЛГА', true, 0), row('5', 'Тохижилтын ажил', true, 1), row('1', 'Хашаа', false, 2)];
+  const orphan = add('5', 'Тохижилт', '2', 'Зам', -7, 1);
+  const ok = add('5', 'Тохижилтын ажил', '3', 'Гэрэлтүүлэг', -8, 1);
+  assert.deepEqual(missingParents(rows, [orphan, ok]).map((a) => a.oid), [-7], 'нэр солигдсон эцэгтэй мөр л эцэггүй');
+  assert.equal(parentIdxOf(rows, orphan), -1);
+  /* Бүлэг сонгож харьяалуулсны дараа (`useAjil.setAddParent`: № · нэр · СЕРВЕРИЙН индекс) эцэгтэй болно */
+  const fixed = { ...orphan, parentNo: rows[1].no, parentWork: rows[1].work, parentIdx: 1 };
+  assert.deepEqual(missingParents(rows, [fixed]), [], 'харьяалуулсан мөр эцэгтэй');
+  /* Бүлэг БИШ мөр (ижил № · нэртэй ажил) эцэг болохгүй */
+  assert.deepEqual(missingParents([row('5', 'Тохижилт', false, 1)], [orphan]).length, 1, 'ажлын мөр эцэг биш');
+  assert.deepEqual(missingParents([], [orphan, ok]).length, 2, 'хоосон хуудсанд бүгд эцэггүй (дуудагч мөргүй үед тооцохгүй)');
+}
+console.log('✅ эцэггүй нэмэлт мөр таньна (missingParents)');
 
 console.log('ajilApply.check: OK');

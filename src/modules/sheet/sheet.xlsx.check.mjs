@@ -15,7 +15,7 @@ import { seriesBands } from './bagts.bands.ts';
 import { buildXlsx } from '../../lib/xlsx.ts';
 
 /* ── Хуурамч өгөгдөл — 2 блок (5/1 · 6/1 → хоёр цуваа), 1 бүлэг + 2 ажил ── */
-const sc = { bld: ['5/1', '6/1'], synthetic: false, f: { plannedVol: 'Инженерийн_төлөвлөсөн_обьём' }, obyem: ['a', 'b'], act: ['x', 'y'], start: ['s1', 's2'], end: ['e1', 'e2'] };
+const sc = { bld: ['5/1', '6/1'], synthetic: false, f: { plannedVol: 'инженерийн_төлөвлөсөн_обьём' }, obyem: ['a', 'b'], act: ['x', 'y'], start: ['s1', 's2'], end: ['e1', 'e2'] };
 const row = (oid, no, work, group, depth, o = {}) => ({
   oid, no, des: null, ham: null, work, depth, group, wC: null, wD: null, vol: null, plannedVol: null, unit: null, money: null,
   act: [null, null], obyem: [null, null], raw: {}, start: [null, null], end: [null, null],
@@ -122,8 +122,11 @@ console.log('✅ синтетик (2 мөр) · блокгүй (1 мөр · +ext
   assert.equal(val(a[1]), 'Бетон цутгах ажил');
   assert.equal(sty(a[1]).indent, 1, 'ажлын мөр гүнээр догол');
   assert.ok(!sty(a[1]).bold);
-  /* Жин — 0–1 бутархай, 0.00% */
-  assert.ok(val(a[2]) > 0 && val(a[2]) <= 1 && sty(a[2]).numFmt === '0.00%', 'Хувийн жин 0–1 + 0.00%');
+  /* Жин — 0–1 бутархай; ⚠️ 2026-10-19: орны тоо дэлгэцийн `util.wt`-тэй ижил (≥10% → 1, ≥1% → 2, бусад → 4) —
+     жижиг жин «0.00%» болж «жингүй» мэт харагдахгүй */
+  const wantFmt = (v) => { const p = Math.abs(v * 100); return p >= 10 ? '0.0%' : p >= 1 || p === 0 ? '0.00%' : '0.0000%'; };
+  assert.ok(val(a[2]) > 0 && val(a[2]) <= 1 && sty(a[2]).numFmt === wantFmt(val(a[2])), 'Хувийн жин 0–1 + дэлгэцийн орны тоо');
+  assert.equal(wantFmt(0.000083), '0.0000%', 'жижиг жин 4 оронтой');
   /* Обьём — тоо + нэгж (м³ — «бетон цутгах») */
   assert.equal(val(a[5]), 1300);
   assert.equal(sty(a[5]).numFmt, '#,##0 "м³"', 'обьём бүхэл → #,##0 + нэгж');

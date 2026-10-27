@@ -27,18 +27,11 @@
  * ⚠️ React-гүй — `dataCatalog.check.mjs` шууд Node дээр ачаална.
  */
 
-import { t as tr } from '@/lib/i18nCore';
-import {
-  LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF,
-  IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM,
-  ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL,
-  HABEA, HJ, layerUrl,
-  type LayerDef, type ViewKey,
-} from '@/lib/services';
+import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
+import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
 import { HYANALT } from '@/lib/hyanalt';
 import { URL as ZOV_URL } from '@/lib/zovshoorol';
 import { HUVAARI_OBYEM } from '@/lib/huvaariObyem';
-import { QAQC_TABLE, QAQC_SERVICES } from '@/lib/qaqc';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { SCENE3D_LAYERS } from '@/lib/scene3d';
 import { BUTETS_PACKS, PACK_OF_LAYER } from '@/lib/butetsPacks';
@@ -173,16 +166,18 @@ const S = (label: string, ref?: string): Step => (ref ? { label, ref } : { label
 
 /** Гараар шинэчлэгддэг лавлах давхарга */
 const refChain = (view: string = tr('Газрын зураг')): Step[] => [
-  S(tr('ArcGIS Pro / AGOL-оор гараар шинэчилнэ')),
+  /* ⚠️ 2026-10-23 (X2): AGOL 2026-10-20-нд хасагдсан — бүх өгөгдөл Enterprise-д */
+  S(tr('ArcGIS Pro / Enterprise-ээр гараар шинэчилнэ')),
   S(tr('давхарга')),
   S(view),
 ];
 
-/** Гүйцэтгэлийн 6 шатны хяналтын 5 хянагч (`hyanalt.REVIEW_STAGES`) */
+/** Гүйцэтгэлийн 7 шатны хяналтын 6 хянагч (`hyanalt.REVIEW_STAGES`; ⚠️ 2026-10-23: төлөвлөлтийн инженер нэмэгдэв) */
 const reviewSteps = (): Step[] => [
   S(tr('Хяналтын инженер'), 'hyanalt'),
-  S(tr('Багцын менежер')),
-  S(tr('Ерөнхий менежер')),
+  S(tr('Багцын ахлах инженер')),
+  S(tr('Төлөвлөлтийн инженер')),
+  S(tr('Төлөвлөлтийн ахлах инженер')),
   S(tr('Хэлтсийн дарга')),
   S(tr('Газрын дарга батална')),
 ];
@@ -190,8 +185,9 @@ const reviewSteps = (): Step[] => [
 const flowEditors = (): Editor[] => [
   { cap: '__flow__', text: tr('Гүйцэтгэгч компани') },
   { cap: '__flow__', text: tr('Хяналтын инженер') },
-  { cap: '__flow__', text: tr('Багцын менежер') },
-  { cap: '__flow__', text: tr('Ерөнхий менежер') },
+  { cap: '__flow__', text: tr('Багцын ахлах инженер') },
+  { cap: '__flow__', text: tr('Төлөвлөлтийн инженер') },
+  { cap: '__flow__', text: tr('Төлөвлөлтийн ахлах инженер') },
   { cap: '__flow__', text: tr('Хэлтсийн дарга') },
   { cap: '__flow__', text: tr('Газрын дарга') },
 ];
@@ -331,11 +327,17 @@ function viewsOf(ids: string[]): ViewKey[] {
   return sortViews(out);
 }
 
-type RawSrc = { id: string; url: string; title: string; geom: LayerDef['geom'] | '3d'; styleUrl?: string };
+type RawSrc = { id: string; url: string; title: string; geom: LayerDef['geom'] | '3d' };
+
+/**
+ * УСТГАГДСАН AGOL үйлчилгээнүүдийн ХАРУУЛАХ хаяг (`closed: true` мөрүүд) — хүсэлт ХЭЗЭЭ Ч явахгүй (2026-10-26:
+ * AGOL түлхүүрийн суурь `HJ` хасагдсан тул энд зөвхөн баримтын мөр).
+ */
+const GONE_AGOL = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
 
 function registryEntries(): CatEntry[] {
   const raw: RawSrc[] = [
-    ...LAYERS.map((l) => ({ id: l.id, url: layerUrl(l), title: l.title, geom: l.geom, styleUrl: l.styleUrl })),
+    ...LAYERS.map((l) => ({ id: l.id, url: layerUrl(l), title: l.title, geom: l.geom })),
     { id: IRGED_TOILET_DEF.id, url: layerUrl(IRGED_TOILET_DEF), title: IRGED_TOILET_DEF.title, geom: IRGED_TOILET_DEF.geom },
     { id: IRGED_BUILT_DEF.id, url: layerUrl(IRGED_BUILT_DEF), title: IRGED_BUILT_DEF.title, geom: IRGED_BUILT_DEF.geom },
     { id: 'ersdel:sample', url: ERSDEL_FS.url, title: tr('Жишээ харуулын цэгүүд'), geom: 'point' },
@@ -357,17 +359,15 @@ function registryEntries(): CatEntry[] {
     const ids = sorted.map((r) => r.id);
     const titles = [...new Set(sorted.map((r) => r.title))];
     const p = parseUrl(main.url);
-    const styleSrc = [...new Set(sorted
-      .map((r) => r.styleUrl)
-      .filter((u): u is string => !!u && keyOfUrl(u) !== keyOfUrl(main.url))
-      .map((u) => shortRef(parseUrl(u))))];
+    /* ⚠️ 2026-10-26: загварын эх (хуучин AGOL хаягийн түлхүүр `styleUrl`) ХАСАГДСАН — снапшот давхаргын id-аар */
+    const styleSrc: string[] = [];
     const allScene = sorted.every((r) => r.geom === '3d');
+    /* ⚠️ 2026-10-20: захиалагчийн үзлэг · IoT · бусад бүх давхарга `NEXT_PUBLIC_ENT_DATA`-гийн дор (тусдаа хувьсагч хасагдсан) */
     const envOf = main.id.startsWith('habea:osol') ? 'NEXT_PUBLIC_HABEA_INCIDENT_SVC'
       : main.id === 'habea:uzV11' ? 'NEXT_PUBLIC_HABEA_UZLEG_V11_SVC'
         : main.id === 'habea:uzG' ? 'NEXT_PUBLIC_HABEA_UZLEG_G_SVC'
-          : main.id === 'habea:uzZ' ? 'NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC'
-            : main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ARCGIS_IOT_SVC'
-              : undefined;
+          : main.id === 'habea:uzZ' || main.id.startsWith('iot:') ? 'NEXT_PUBLIC_ENT_DATA'
+            : undefined;
     out.push({
       id: `lyr:${main.id}`,
       name: titles.join(' / '),
@@ -395,7 +395,7 @@ function registryEntries(): CatEntry[] {
 
 const BAGTS_VIEWS: ViewKey[] = [
   'gdash', 'dashboard', 'pkgProg', 'huvaari', 'huvaariBatlah', 'ajilBatlah',
-  'tailan', 'finance', 'guitsetgel', 'qaqc',
+  'tailan', 'finance', 'guitsetgel',
 ];
 
 function bagtsEntries(): CatEntry[] {
@@ -412,7 +412,7 @@ function bagtsEntries(): CatEntry[] {
       aliases: [pkg.key],
       styleSrc: [],
       views: sortViews(BAGTS_VIEWS),
-      purpose: () => tr('Багцын ажил × блокийн гүйцэтгэл, обьём, хуваарь — батлагдсан агшин бүр шинэ хуулбар болж архивлагдана.'),
+      purpose: () => tr('Багцын ажил × блокийн гүйцэтгэл, обьём, хуваарь — батлагдсан хувилбар бүр шинэ хуулбар болж архивлагдана.'),
       chain: () => [
         S(tr('Гүйцэтгэгч бөглөнө')),
         S(tr('Ноорог · илгээлт (Selbe_Guitsetgel_Draft)'), 'draft'),
@@ -442,7 +442,7 @@ function guitsEntries(): CatEntry[] {
   const tn = parseUrl(TUSUL_NEGTGEL.url);
   /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `SysDoc`-ийн мөрөнд
      ХАРУУЛАХ (`closed: true`, «устгагдсан (400)» тэмдэг); энэ хаягаар хүсэлт явдаггүй. */
-  const cons = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
+  const cons = `${GONE_AGOL}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
   return [
     {
       id: 'draft',
@@ -463,13 +463,18 @@ function guitsEntries(): CatEntry[] {
         S(tr('Батлагдахад done|… болж хөлдөнө')),
       ],
       editors: () => [...flowEditors(), { cap: 'plan', text: tr('Хуваарийн ноорог') }],
+      /* ⚠️ 2026-10-26: БҮХ ноорог ЭХ ХУУДАСНЫ БҮТЦЭЭР (`draftRows.ts`) — `n:` мөрүүд ажил × блок (× сар) бүрд нэг, хуучин JSON мөр
+         notebook-ийн багана нэмэгдэх хүртэл ба тулгалт (Phase B) хүртэл хэвээр */
       rows: () => [
-        { key: '<багц>', text: tr('Бөглөлтийн хуваалцсан ноорог (багц бүрд нэг)') },
-        { key: 'sub|<багц>|<өдөр>', text: tr('Идэвхтэй илгээлт — багц × өдөр бүрд нэг') },
-        { key: 'done|<багц>|<oid>', text: tr('Батлагдсан илгээлт (хөлдсөн)') },
-        { key: 'plan:<төрөл>:<багц>', text: tr('Хуваарийн хуваалцсан ноорог') },
+        { key: 'n:<багц>', text: tr('Бөглөлтийн ноорог — ажил × блок бүрд мөр (obyem_sum · бодит_гүйцэтгэл · огноо)') },
+        { key: 'n:plan:<төрөл>:<багц>', text: tr('Хуваарийн ноорог — ажил × блок бүрд мөр, сарын обьём ажил × блок × сар бүрд') },
+        { key: 'sub|<багц>|<өдөр>', text: tr('Идэвхтэй илгээлт (толгой) — багц × өдөр бүрд нэг') },
+        { key: 'done|<багц>|<oid>', text: tr('Батлагдсан илгээлт (толгой, хөлдсөн)') },
+        { key: 'n:sub:<oid>', text: tr('Илгээлтийн нүд — толгойн OBJECTID-оор, үе бүрд (MVCC)') },
+        { key: 'n:hsub:<oid>', text: tr('Хуваарийн илгээх агшны хуулбар — батлагдтал') },
+        { key: '<багц> · plan:<төрөл>:<багц>', text: tr('Хуучин JSON ноорог — шилжүүлэлт тулгагдтал') },
       ],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
+      note: () => tr('Мөрийн баганыг ArcGIS Notebook нэмнэ (notebook_draft191.py); нэмэгдэх хүртэл хуучин JSON горим ажилласаар.'),
     },
     {
       id: 'hyanalt',
@@ -482,12 +487,13 @@ function guitsEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: sortViews(['guitsetgel', 'schem']),
-      purpose: () => tr('Илгээлт бүрийн 6 шатны хяналт — хэн, хэзээ, ямар шийдвэр, буцаасан шалтгаан.'),
+      purpose: () => tr('Илгээлт бүрийн 7 шатны хяналт — хэн, хэзээ, ямар шийдвэр, буцаасан шалтгаан.'),
       chain: () => [
         S(tr('Гүйцэтгэгч илгээнэ (шинэ мөр)'), 'draft'),
         S(tr('Хяналтын инженер')),
-        S(tr('Багцын менежер')),
-        S(tr('Ерөнхий менежер')),
+        S(tr('Багцын ахлах инженер')),
+        S(tr('Төлөвлөлтийн инженер')),
+        S(tr('Төлөвлөлтийн ахлах инженер')),
         S(tr('Хэлтсийн дарга')),
         S(tr('Газрын дарга')),
         S(tr('Төлөв «Шилжүүлсэн» → архив (Bagts_*)')),
@@ -506,7 +512,7 @@ function guitsEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: sortViews(['gdash', 'dashboard', 'tailan', 'schem']),
-      purpose: () => tr('Багц бүрийн батлагдсан гүйцэтгэлийн хувь (агшин бүр нэг мөр) — төлөвлөгөө ба бодитын харьцуулалт.'),
+      purpose: () => tr('Багц бүрийн батлагдсан гүйцэтгэлийн хувь (батлагдсан хувилбар бүр нэг мөр) — төлөвлөгөө ба бодитын харьцуулалт.'),
       chain: () => [
         S(tr('Газрын дарга эцэслэн батална'), 'hyanalt'),
         S(tr('Архивын «Б.» мөрийн нэгдсэн хувь')),
@@ -604,7 +610,8 @@ function finEntries(): CatEntry[] {
       group: 'fin',
       aliases: [],
       styleSrc: [],
-      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem']),
+      /* ⚠️ 2026-10-26: + `zuragTosol` (ТЭЗҮ · зураг төслийн навч мөр засна) · `tuvshin6` (6-р түвшний төлөвлөгөө) */
+      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'tuvshin6']),
       purpose: () => tr('Гэрээ бүрийн төсөв, гэрээний дүн, шатны гүйцэтгэл ба сарын санхүүжилтийн төлөвлөгөө.'),
       chain: () => [
         S(tr('Санхүүгийн ажилтан (finEdit · finRow) засна')),
@@ -613,7 +620,13 @@ function finEntries(): CatEntry[] {
         { label: tr('Санхүүжилт · Багцын санхүү'), with: [{ label: tr('Нэгтгэл гүйцэтгэл (авто)'), ref: 'negtgel-tusul' }] },
         S(tr('Дашбоард · Тайлан')),
       ],
-      editors: finEditors,
+      /* ⚠️ 2026-10-26: `finEdit`/`finRow`-оос гадна `zuragEdit` (ТЭЗҮ · зураг төслийн огноо, явц, дэд шат) ба
+         `cfSwitch` (сарын мөнгө Гараар → Хуваарь) мөн энэ хүснэгтэд бичнэ. */
+      editors: () => [
+        ...finEditors(),
+        { cap: 'zuragEdit', text: tr('ТЭЗҮ, зураг төсөл засах') },
+        { cap: 'cfSwitch', text: tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх') },
+      ],
       note: () => tr('Устгасан мөрийг порталаас буцаах арга байхгүй (хувилбарын түүх асаагүй).'),
     },
     {
@@ -715,100 +728,12 @@ function huvaariEntries(): CatEntry[] {
         { cap: 'ajilApprove', text: tr('Нэмэлт ажил батлах') },
         { cap: '__ajil__', text: tr('Багцын хуваарилалт') },
       ],
-      note: () => tr('Хэрэглэгч CSV-ээс AGOL дээр нийтэлсэн — код үүсгэхгүй, зөвхөн хайж олно.'),
+      note: () => tr('Хэрэглэгч CSV-ээс нийтэлсэн — код үүсгэхгүй, зөвхөн хайж олно.'),
     },
   ];
 }
 
-/* ══════════════════ Чанар ══════════════════ */
-
-function chanarEntries(): CatEntry[] {
-  const pkgLabel = (k: string) => PKGS.find((p) => p.key === k)?.label ?? k;
-  const qaqc: CatEntry[] = Object.entries(QAQC_TABLE).map(([k, ref]) => {
-    const url = `${QAQC_SERVICES[ref.svc]}/${ref.id}`;
-    return {
-      id: `qaqc:${k}`,
-      name: tr('QAQC — {0}', pkgLabel(k)),
-      service: ref.svc,
-      layer: String(ref.id),
-      url,
-      kind: 'table' as const,
-      group: 'chanar' as const,
-      aliases: [k],
-      styleSrc: [],
-      views: sortViews(['qaqc']),
-      purpose: () => tr('Inspection Test Plan — ажил бүрийн М-акт · FIC · MA · MIR баримтын дугаар, огноо.'),
-      chain: () => [
-        S(tr('Чанарын ажилтан (qaqc) бөглөнө')),
-        S(tr('Ноорог (Selbe_QAQC_Draft)'), 'qaqc-draft'),
-        S(tr('«Хадгалах» → мөрийг байрандаа засна (архивгүй)')),
-        S(tr('Чанар (QAQC)')),
-      ],
-      editors: () => [
-        { cap: 'qaqc', text: tr('QAQC — Inspection Test Plan') },
-        { cap: '__qaqc__', text: tr('Багцын хуваарилалт') },
-      ],
-    };
-  });
-  return [
-    ...qaqc,
-    {
-      id: 'qaqc-draft',
-      name: tr('QAQC-ийн ноорог'),
-      service: 'Selbe_QAQC_Draft',
-      layer: 'drafts',
-      url: null,
-      kind: 'table',
-      group: 'chanar',
-      aliases: [],
-      styleSrc: [],
-      views: sortViews(['qaqc']),
-      purpose: () => tr('Хадгалаагүй QAQC актын хуулбар — өөр төхөөрөмж дээр үргэлжлүүлэхэд.'),
-      chain: () => [
-        S(tr('Бөглөж буй акт (localStorage)')),
-        S(tr('энэ хүснэгт (хэрэглэгч|багц мөр)')),
-        S(tr('«Хадгалах»'), 'qaqc:b1_9f'),
-      ],
-      editors: () => [{ cap: 'qaqc', text: tr('QAQC — Inspection Test Plan') }],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
-    },
-    {
-      id: 'chanar',
-      name: tr('Чанарын баримт (MS · QMP · PRC · MA · MIR · FIC · NCR)'),
-      service: 'Selbe_Chanar_Barimt',
-      layer: 'chanar_barimt',
-      url: null,
-      kind: 'table',
-      group: 'chanar',
-      aliases: [],
-      styleSrc: [],
-      /* ⚠️ 2026-09-25: QAQC харагдац ч уншина — MA · MIR · FIC дугаарын нүдний сонголт */
-      views: sortViews(['chanar', 'qaqc']),
-      /* ⚠️ 2026-09-25: 7 төрөл (`turul`, `chanarMs.KINDS`) — MS · QMP · PRC · MA · MIR ·
-         FIC · NCR. Хянагч төрлөөр (`REVIEWERS_OF` · `SEQUENTIAL_KINDS`): MS/QMP/PRC —
-         ТУХ·Чанар·ХАБЭА зэрэг; MA — ЧХ инженер → Чанар → ТУГ ДАРААЛСАН; MIR/FIC —
-         ТУХ → Чанар дараалсан; NCR — захиалагч (ТУХ/Чанар) нээж, гүйцэтгэгч залруулга
-         илгээж, ТУХ·Чанар·ТУГ зэрэг хаана; дугаар STMCC-STMC-NCR-NNNN (төслийн хэмжээнд).
-         Шийдвэр A/AN/R; approved/returned болмогц REP дугаар SLB-REP-<төрөл>-P<багц>-
-         <NNNN>-<RR> (NNNN төслийн хэмжээний дараалал төрөл тус бүр, RR = хариуны тоо).
-         `dataCatalog.check` энэ мөрийг `KINDS`/`REVIEWERS_OF`-той тулгана. */
-      purpose: () => tr('Ажлын аргачлал (MS) · чанарын удирдлагын төлөвлөгөө (QMP) · процедур (PRC) · материал баталгаажуулалт (MA) · материалын/талбайн үзлэг (MIR · FIC) · үл тохирол (NCR) — ирүүлсэн хувилбар, хянагчдын A/AN/R шийдвэр, REP дугаар, хавсралт.'),
-      chain: () => [
-        S(tr('Гүйцэтгэгч (chanarAuthor) ирүүлнэ — NCR-ийг захиалагч (ТУХ/Чанар) нээнэ')),
-        S(tr('Хянагчид төрлөөр (chanarReview): MS · QMP · PRC — ТУХ · Чанар · ХАБЭА зэрэг; MA — ЧХ инженер → Чанар → ТУГ дараалсан; MIR · FIC — ТУХ → Чанар дараалсан; NCR — залруулгын дараа ТУХ · Чанар · ТУГ зэрэг')),
-        S(tr('Бүгд A/AN бол «Батлагдсан» · нэг R бол гүйцэтгэгчид буцна (rev+1; NCR-д rev үгүй) · хариу бүрд SLB-REP-<төрөл>-P<багц>-<NNNN>-<RR> дугаар (RR = хариуны тоо); NCR-ийн дугаар STMCC-STMC-NCR-NNNN')),
-        S(tr('Чанарын баримт')),
-        S(tr('Чанар (QAQC) — MA · MIR · FIC дугаарын нүдэнд батлагдсан баримтаас сонгоно'), 'qaqc:b1_9f'),
-      ],
-      editors: () => [
-        { cap: 'chanarAuthor', text: tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)') },
-        { cap: 'chanarReview', text: tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА · ТУГ · ЧХ инженер)') },
-        { cap: '__chanar__', text: tr('Багцын хуваарилалт') },
-      ],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService). Схем 7 төрөлд нийтлэг — төрлийн нэмэлт өгөгдөл body/reviews JSON дотор.'),
-    },
-  ];
-}
+/* ⚠️ 2026-10-23: «Чанар (QAQC)» (QAQC · QAQC2 · Selbe_QAQC_Draft) каталогийн мөрүүд ХАСАГДСАН — харагдац системээс устсан. */
 
 /* ══════════════════ Зөвшөөрөл · ХАБЭА · Эрх ══════════════════ */
 
@@ -816,8 +741,8 @@ function otherEntries(): CatEntry[] {
   const zv = parseUrl(ZOV_URL);
   const lb = parseUrl(HABEA.labor.url);
   /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `et-closed` мөрөнд
-     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. Загварын түлхүүр нь `env.ts`-ийн `ET`. */
-  const et = `${HJ}/Selbe_ET_20260721/FeatureServer`;
+     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. */
+  const et = `${GONE_AGOL}/Selbe_ET_20260721/FeatureServer`;
   return [
     {
       id: 'zovshoorol',
@@ -858,6 +783,55 @@ function otherEntries(): CatEntry[] {
       ],
       editors: NONE,
     },
+    /* ⚠️ 2026-10-19: ХАБЭА-гийн бүртгэл (37 · 40 · 42 · 33) ба хог хаягдал (43) — Enterprise `Сэлбэ_ХАБ1015`
+       (`NEXT_PUBLIC_BIM_SCENE`-ийн `…/Hosted`). Урьд каталогт ОГТ байгаагүй тул «Өгөгдлийн каталог»-оос эх нь
+       харагдахгүй байв. Бичилт Enterprise нэвтрэлттэй (`habeaRegisters`-ийн ⚠️). */
+    ...HABEA.registers.items.filter((it) => it.table != null).map((it): CatEntry => {
+      const url = `${HABEA.registers.url}/${it.table}`;
+      const p = parseUrl(url);
+      return {
+        id: `habea:reg:${it.table}`,
+        name: tr('ХАБ-ын бүртгэл — {0}', it.label),
+        service: p.service,
+        layer: p.layer,
+        url,
+        kind: 'table',
+        group: 'habea',
+        aliases: [],
+        styleSrc: [],
+        env: 'NEXT_PUBLIC_ENT_DATA',
+        views: sortViews(['habea']),
+        purpose: () => it.sum
+          ? tr('Долоо хоног бүрийн тоо (огноогүй — долоо хоногийн дугаараар) — ХАБЭА-гийн «Бусад үзүүлэлт» карт.')
+          : tr('ХАБ-ын баримтын бүртгэл (огноотой мөр) — ХАБЭА-гийн «Бусад үзүүлэлт» картад долоо хоногоор тоологдоно.'),
+        chain: () => [
+          S(tr('ХАБЭА-гийн өгөгдөл оруулагч (habeaData эрх) «+ Нэмэх» маягтаар — Enterprise-д нэвтэрч')),
+          S(tr('энэ хүснэгт (шууд, Enterprise)')),
+          S(tr('ХАБЭА · «Бусад үзүүлэлт»')),
+        ],
+        editors: () => [{ cap: 'habeaData', text: tr('ХАБЭА-гийн бүртгэл оруулах') }],
+      };
+    }),
+    {
+      id: 'habea:waste',
+      name: tr('Хог хаягдал — долоо хоногийн рейс'),
+      service: parseUrl(HABEA.waste.url).service,
+      layer: parseUrl(HABEA.waste.url).layer,
+      url: HABEA.waste.url,
+      kind: 'table',
+      group: 'habea',
+      aliases: [],
+      styleSrc: [],
+      env: 'NEXT_PUBLIC_ENT_DATA',
+      views: sortViews(['habea']),
+      purpose: () => tr('Хаягдлын төрөл × долоо хоног, багц бүрийн рейсийн тоо — ХАБЭА-гийн «Хог хаягдал» карт.'),
+      chain: () => [
+        S(tr('ХАБЭА-гийн өгөгдөл оруулагч (habeaData эрх) «+ Нэмэх» маягтаар — Enterprise-д нэвтэрч')),
+        S(tr('энэ хүснэгт (шууд, Enterprise)')),
+        S(tr('ХАБЭА · «Хог хаягдал»')),
+      ],
+      editors: () => [{ cap: 'habeaData', text: tr('ХАБЭА-гийн бүртгэл оруулах') }],
+    },
     {
       id: 'perms',
       name: tr('Хэрэглэгчийн эрх ба хуваарилалт'),
@@ -875,18 +849,23 @@ function otherEntries(): CatEntry[] {
         S(tr('энэ хүснэгт (мөрийн төрлөөр)')),
         S(tr('Нэвтрэхэд эрх, харагдац, шат тогтоно')),
       ],
-      editors: () => [{ text: tr('Super админ (кодын хатуу жагсаалт)') }],
+      /* ⚠️ 2026-10-19: `sysClose` эрхтэй хүн ЗӨВХӨН `__sys__:maintenance` мөрийг бичнэ («Систем түр хаах») */
+      editors: () => [
+        { text: tr('Super админ (кодын хатуу жагсаалт)') },
+        { cap: 'sysClose', text: tr('Систем түр хаах — зөвхөн системийн төлөвийн мөр') },
+      ],
       rows: () => [
         { key: '<хэрэглэгч>', text: tr('Үүрэг ба харагдах харагдацууд') },
         { key: '__flow__:', text: tr('Гүйцэтгэлийн урсгалын томилгоо — шат ба багц') },
         { key: '__cap__:', text: tr('Нэмэлт эрхүүд (finEdit, plan, gazar …)') },
-        { key: '__qaqc__:', text: tr('QAQC-ийн багцын хуваарилалт') },
         { key: '__huvaari__:', text: tr('Хуваарийн багцын хуваарилалт') },
         { key: '__obyem__:', text: tr('Инженерийн обьёмын багцын хуваарилалт') },
         { key: '__chanar__:', text: tr('Чанарын баримтын багцын хуваарилалт') },
         { key: '__ajil__:', text: tr('Нэмэлт ажлын багцын хуваарилалт') },
         { key: '__butets__:', text: tr('Дэд бүтцийн засварын багцын хуваарилалт') },
         { key: '__type__:', text: tr('Эрхийн төрлийн загвар') },
+        /* ⚠️ 2026-10-19: хэрэглэгчийн мөр БИШ — нэг мөр, JSON `{on, note, until, by, at}` */
+        { key: '__sys__:maintenance', text: tr('Системийн төлөв — «Систем түр хаах» (хаалттай эсэх, тайлбар, дахин нээгдэх хугацаа)') },
       ],
       note: () => tr('Хүснэгтийг super админ анх нэвтрэхэд код өөрөө үүсгэнэ; бүх харагдац (нэвтрэлт) уншина.'),
     },
@@ -901,7 +880,7 @@ function otherEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: [],
-      purpose: () => tr('Одоо зөвхөн газрын зургийн загварын (webmap-style) түлхүүр — өгөгдөл SELBE_ALL_DATA_last_0917-оос уншигдана.'),
+      purpose: () => tr('Устгагдсан үйлчилгээ — өгөгдөл Enterprise-ийн selbe_ET-ээс уншигдана.'),
       chain: () => [S(tr('Устгагдсан (400)')), S(tr('SELBE_ALL_DATA_last_0917 руу шилжсэн'), 'lyr:et:24')],
       editors: NONE,
       closed: true,
@@ -920,10 +899,11 @@ function imgEntries(): CatEntry[] {
       id: 'img:ortho', title: IMAGERY.title, url: IMAGERY.url, kind: 'image', views: [], allMaps: true,
       purpose: () => tr('Агаарын зураг (ортофото) — 2D газрын зургийн суурь.'),
     },
-    {
-      id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image', views: ['irged'],
+    /* ⚠️ 2026-10-20: хаяг хоосон бол мөр гарахгүй (UBHUB хасагдсан, `services/scene.ts` IRGED_ROAD-ийн ⚠️) */
+    ...(IRGED_ROAD.url ? [{
+      id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image' as const, views: ['irged' as const],
       purpose: () => tr('Замын вектор тайл — иргэдэд хүрэх үр өгөөжийн суурь.'),
-    },
+    }] : []),
     {
       id: 'img:elev', title: tr('Өндрийн загвар'), url: ELEVATION_URL, kind: 'image', views: [], allMaps: true,
       purpose: () => tr('Газрын гадаргын өндрийн загвар — 3D горимын суурь.'),
@@ -957,7 +937,9 @@ function imgEntries(): CatEntry[] {
       group: 'img' as const,
       aliases: [],
       styleSrc: [],
-      ...(x.id === 'img:elev' ? { env: 'NEXT_PUBLIC_ELEVATION_URL' } : {}),
+      /* ⚠️ 2026-10-19: BIM (SceneServer) нь Enterprise `…/Hosted` — хаяг `NEXT_PUBLIC_BIM_SCENE`-ээс (`services/scene.ts`) */
+      /* ⚠️ 2026-10-20: BIM · меш · ортофото бүгд `NEXT_PUBLIC_ENT_DATA`; өндрийн загвар тогтмол (`services/scene.ts`) */
+      ...(x.id === 'img:elev' ? {} : { env: 'NEXT_PUBLIC_ENT_DATA' }),
       views: sortViews(x.views),
       ...(x.allMaps ? { allMaps: true as const } : {}),
       purpose: x.purpose,
@@ -976,27 +958,34 @@ function imgEntries(): CatEntry[] {
 
 /* ══════════════════ Нийт ══════════════════ */
 
-let cache: CatEntry[] | null = null;
+/**
+ * ⚠️ 2026-10-21: кэш ХЭЛ СОЛИЛТЫН ҮЕЭР (`getLocaleGeneration`, `i18nCore.perLocale`-ийн ижил түлхүүр) —
+ *    урьд нь анх бүтээсэн хэлээр `name` (`tr()`-ээр БҮТЭЭХ агшинд) хөлддөг байв; `purpose`/`chain` нь lazy тул
+ *    нэг мөрөнд хоёр хэл холилддог, хэл солиход хуудас дахин ачаалагддаггүй (`LOCALE_SWITCH_RELOADS = false`).
+ *    Нэг хэл дотор identity тогтмол.
+ */
+let cache: { gen: number; list: CatEntry[] } | null = null;
 
-/** Бүх мөр — бүлгийн дарааллаар. ⚠️ Хэл ачаалахад тогтдог тул нэг удаа бүтээнэ. */
+/** Бүх мөр — бүлгийн дарааллаар. Хэл бүрд нэг удаа бүтээнэ. */
 export function dataCatalog(): CatEntry[] {
-  if (cache) return cache;
+  const gen = getLocaleGeneration();
+  if (cache && cache.gen === gen) return cache.list;
   const all = [
     ...bagtsEntries(),
     ...guitsEntries(),
     ...finEntries(),
     ...huvaariEntries(),
-    ...chanarEntries(),
     ...otherEntries(),
     ...registryEntries(),
     ...imgEntries(),
   ];
   const order = CAT_GROUPS.map((g) => g.key);
-  cache = all
+  const list = all
     .map((e, i) => ({ e, i }))
     .sort((a, b) => order.indexOf(a.e.group) - order.indexOf(b.e.group) || a.i - b.i)
     .map((x) => x.e);
-  return cache;
+  cache = { gen, list };
+  return list;
 }
 
 /** Хайлтад орох бүх текст — нэр, хаяг, id, зориулалт, шатлал */

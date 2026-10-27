@@ -1,7 +1,8 @@
 'use client';
 
 import { t as tr } from '@/lib/i18nCore';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import Graphic from '@arcgis/core/Graphic';
 import SimpleFillSymbol from '@arcgis/core/symbols/SimpleFillSymbol';
@@ -11,10 +12,11 @@ import SimpleMarkerSymbol from '@arcgis/core/symbols/SimpleMarkerSymbol';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import { useMap } from '@/components/MapCanvas';
 import {
-  computeOverlap, computeOverlapDisplay, overlapScopeKey, fmtLen, OVERLAP_CATS, OVERLAP_TYPES,
+  computeOverlap, computeOverlapDisplay, onOverlapStep, overlapScopeKey, fmtLen, OVERLAP_CATS, OVERLAP_TYPES,
   type OverlapCat, type OverlapResult, type OverlapSide, type OverlapMapDisplay, type OverlapZone,
 } from '@/lib/planOverlap';
 import { num } from '@/lib/format';
+import { userError } from '@/components/ui';
 import { matchesOverlapFocus, overlapScopeFocus, type OverlapFocus } from '@/lib/planOverlapSelection';
 import s from './planOverlap.module.css';
 
@@ -41,19 +43,54 @@ const rgbOf = (hex: string): [number, number, number] => {
 
 type State = { result: OverlapResult | null; step: string; error: string | null };
 
+/**
+ * HOVER ТАЙЛБАРЫГ ЗУРГИЙН ХҮРЭЭНД БАЙРШУУЛНА — курсорын баруун-доор; багтахгүй бол зүүн/дээш эргүүлнэ.
+ * ⚠️ 2026-10-19 (аудит): урьд нь `e.x + 14` шууд тавьдаг тул зургийн баруун/доод ирмэгт тайлбар тасарч, хуудсанд
+ *    хэвтээ гүйлгэлт үүсгэдэг байв. Агуулгыг ТАВЬСНЫ ДАРАА дуудна (хэмжээ нь хэрэгтэй). `NeedLayer` ч хэрэглэнэ.
+ */
+export function placeTip(tip: HTMLElement, view: __esri.MapView, x: number, y: number): void {
+  const W = view.width || window.innerWidth;
+  const H = view.height || window.innerHeight;
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  let left = x + 14;
+  let top = y + 14;
+  if (left + w > W - 4) left = Math.max(4, x - 14 - w);
+  if (top + h > H - 4) top = Math.max(4, y - 14 - h);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+/** «Шинэчлэх»-ийн дараах дахин бодолтын саатал — дараалсан `invalidateAll`-ийг нэг тооцоо болгоно */
+const REFRESH_DEBOUNCE_MS = 400;
+
 /** Нэг талын давхцлыг бодно (кэштэй — `computeOverlap`) */
 function useOverlap(side: OverlapSide): State {
   const [st, setSt] = useState<State & { side: OverlapSide }>({ side, result: null, step: '', error: null });
+  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна (`planOverlap`) — дахин бодуулна.
+     Хуучин үр дүн шинэ нь иртэл дэлгэцэд үлдэнэ. */
+  /* ⚠️ 2026-10-19 (review): `dataVersion` биш `refreshEpoch` (кэш зөвхөн `invalidateAll`-д хаягдана); «Шинэчлэх»-ийн
+     дараах дахин бодолтыг сааруулна (тал солих нь шууд); өмнөх үеийн хариу ба явцыг (`onOverlapStep(…, p)`) үл тооно. */
+  const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
+  const lastEpoch = useRef(epoch);
   useEffect(() => {
     let alive = true;
-    computeOverlap(side, (step) => { if (alive) setSt((p) => ({ ...p, side, step })); })
-      .then((result) => { if (alive) setSt({ side, result, step: '', error: null }); })
-      .catch((e: unknown) => {
-        console.error('[selbe] давхцлын тооцоо унав:', e);
-        if (alive) setSt({ side, result: null, step: '', error: e instanceof Error ? e.message : String(e) });
-      });
-    return () => { alive = false; };
-  }, [side]);
+    let off = () => {};
+    const delay = epoch === lastEpoch.current ? 0 : REFRESH_DEBOUNCE_MS;
+    lastEpoch.current = epoch;
+    const t = setTimeout(() => {
+      const p = computeOverlap(side);
+      /* ⚠️ 2026-10-19 (аудит): явцын захиалгыг unmount-д ЦУЦЛАНА (`onOverlapStep`-ийн ⚠️) */
+      off = onOverlapStep(side, (step) => { if (alive) setSt((prev) => ({ ...prev, side, step })); }, p);
+      p.then((result) => { if (alive) setSt({ side, result, step: '', error: null }); })
+        .catch((e: unknown) => {
+          console.error('[selbe] давхцлын тооцоо унав:', e);
+          /* ⚠️ 2026-10-26 (аудит): түүхий алдаа (URL-тай «timeout 45s: https://…», англи ArcGIS мөр) — 01/03-тай ижил `userError` */
+          if (alive) setSt({ side, result: null, step: '', error: userError(e) });
+        });
+    }, delay);
+    return () => { alive = false; clearTimeout(t); off(); };
+  }, [side, epoch]);
   /* ⚠️ Тал солигдсон даруйд хуучин талын үр дүнг харуулахгүй */
   return st.side === side ? st : { result: null, step: '', error: null };
 }
@@ -68,7 +105,10 @@ function useOverlapDisplay(result: OverlapResult | null, shown: OverlapCat[], se
     let alive = true;
     computeOverlapDisplay(result, categories, selected)
       .then((data) => { if (alive) setState({ source: result, key, data, error: null }); })
-      .catch((error: unknown) => { if (alive) setState({ source: result, key, data: null, error: error instanceof Error ? error.message : String(error) }); });
+      .catch((error: unknown) => {
+        console.error('[selbe] давхцлын зураглал унав:', error);
+        if (alive) setState({ source: result, key, data: null, error: userError(error) });
+      });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- key нь ангилал/төрөл/давхаргыг бүрэн агуулна; бүс солиход дахин бодохгүй.
   }, [result, key]);
@@ -142,8 +182,15 @@ export function PlanOverlapLayers({
 
   /* ДАВХАРГА сонгоход тэр давхаргын давхцал руу ОЙРТОНО (хэрэглэгч: «zoom to layer and filter») */
   const selLayer = selected?.layer ?? null;
+  /* ⚠️ 2026-10-21: СОНГОЛТ солигдоход л НЭГ удаа ойртоно. `visiblePieces`/`selectedZone` нь давхцлыг дахин
+     бодох бүрд (ангилал асаах/унтраах, өгөгдөл шинэчлэх) шинэ лавлагаа авдаг тул урьд нь зураг сонголт руу
+     буцаж нисч, хэрэглэгчийн шилжүүлгийг (pan) дарж бичдэг байв. Өгөгдөл хараахан ирээгүй (хүрээгүй) бол
+     түлхүүрийг тэмдэглэхгүй — ирмэгц нэг удаа ойртоно. Сонголт арилахад цэвэрлэж дахин сонгоход ойртоно. */
+  const zoomedKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!view || (!selLayer && !selected?.zone)) return;
+    if (!view || (!selLayer && !selected?.zone)) { zoomedKey.current = null; return; }
+    const key = `${selLayer ?? ''}|${selected?.zone ?? ''}`;
+    if (zoomedKey.current === key) return;
     let ext: __esri.Extent | null = !selLayer ? selectedZone?.geometry.extent?.clone() ?? null : null;
     for (const p of ext ? [] : visiblePieces) {
       const g = p.geometry;
@@ -153,6 +200,7 @@ export function PlanOverlapLayers({
       if (e) ext = ext ? ext.union(e) : e.clone();
     }
     if (ext) {
+      zoomedKey.current = key;
       // Ганц худаг/богино хэсэгт ч тэг биш, уншигдах хүрээ өгнө.
       const padding = Math.max(ext.width, ext.height, 120) * 0.2;
       view.goTo(new Extent({
@@ -178,8 +226,6 @@ export function PlanOverlapLayers({
         if (!g) { tip.hidden = true; return; }
         const a = g.attributes as { layer: string; cats: OverlapCat[]; type: string; len: number };
         tip.hidden = false;
-        tip.style.left = `${e.x + 14}px`;
-        tip.style.top = `${e.y + 14}px`;
         tip.innerHTML = '';
         const t = document.createElement('b');
         /* Багц ажлын давхаргын нэр (02-ийн мөртэй ижил) */
@@ -187,6 +233,7 @@ export function PlanOverlapLayers({
         const d = document.createElement('span');
         d.textContent = `${TYPE_BY_KEY.get(a.type)?.title() ?? a.type} · ${a.len > 0 ? fmtLen(a.len) : tr('худаг / цэг')}`;
         tip.append(t, d);
+        placeTip(tip, mv, e.x, e.y);
       }).catch(() => {});
     });
     const out = mv.on('pointer-leave', () => {

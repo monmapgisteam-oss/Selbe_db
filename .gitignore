@@ -41,7 +41,9 @@ agent-proxy/.dev.vars*
 agent-proxy/.wrangler/
 
 # Ботоор зөвшөөрсөн Telegram хэрэглэгчид — нэрс/ID тул репод оруулахгүй
-telegram-users.json
+# ⚠️ 2026-10-21 (аудит): хандалтын төлөв (`telegram-users.access.json`), атом бичилтийн түр (`*.json.tmp-<pid>`) ба
+#    эвдэрсэн нөөц (`*.json.corrupt-<агшин>`) файлууд ч мөн — ижил нэрс/ID агуулна (`tools/telegram-bot.mjs`)
+telegram-users*.json*
 
 # Audit-ийн түр гаралт (2026-08-18) — репод оруулахгүй
 .audit/
@@ -67,3 +69,5 @@ docs/chanar/
 
 # Excel эх файлууд (Төсөл Гүйцэтгэл … V3 г.м.) — репод оруулахгүй (2026-10-13)
 docs/Төсөл Гүйцэтгэл_*.xlsx
+# Нэгтгэлийн Excel (локал ажлын файл, 2026-10-21 — репод оруулахгүй)
+docs/negtgel_guitsetgel.xlsx

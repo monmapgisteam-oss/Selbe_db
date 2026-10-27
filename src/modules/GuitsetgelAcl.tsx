@@ -39,9 +39,10 @@ import { AclGrid, type GridHolder } from './AclGrid';
 import { flowCellOp, flowViewOnlyOp } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
-import { roleForUser } from '@/lib/services';
+import { isCodeSuper, roleForUser } from '@/lib/services';
+import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
 export function GuitsetgelAcl() {
@@ -62,7 +63,8 @@ export function GuitsetgelAcl() {
    *    харуулаад, дэмий override мөр л үүсгэдэг байв.
    */
   const all = listUsers().map((u) => u.username);
-  const accounts = all.filter((a) => roleForUser(a) !== 'super');
+  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) томилогдоно (`aclOps.isCleanup`-ийн ⚠️) */
+  const accounts = all.filter((a) => !isCodeSuper(a));
   /** Порталд БАЙГАА аккаунтууд (жижиг үсгээр) — устгагдсаны өнчин томилгоог ялгана */
   const known = new Set(all.map((a) => a.toLowerCase()));
   /** Хасалт унасан (мөр нь аль ч нүдэнд алга) — хүснэгтэд нэгэн адил хамаарна */
@@ -100,6 +102,8 @@ export function GuitsetgelAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа порталд алга — шийдвэрлэгч биш (`stuck` доор) */
+        absent: portalMissing(a.user),
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
@@ -124,7 +128,7 @@ export function GuitsetgelAcl() {
       {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ хөтчид. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
       )}
       {err && <div className={s.aclErr} role="alert">{err}</div>}
@@ -135,30 +139,43 @@ export function GuitsetgelAcl() {
       <AclGrid
         corner={tr('Багц')}
         rows={PKG_GROUPS.map((g) => ({ key: g, label: g }))}
-        cols={STAGE_ORDER.map((st) => ({ key: st, label: STAGE_LABEL[st], count: assignsOf(st).length }))}
+        /* ⚠️ 2026-10-23: тоо = ШИЙДВЭРЛЭХ эзэд л (устгагдсан · порталд алга · «зөвхөн харна» биш) — урьд нь бүгдийг тоолж
+           «эзэнтэй» мэт харуулдаг байв; «зөвхөн харна»-г хаалтанд (`GridCol.more`) */
+        cols={STAGE_ORDER.map((st) => {
+          const live = assignsOf(st).filter((a) => known.has(a.user) && !portalMissing(a.user));
+          /* ⚠️ 2026-10-23: «Ерөнхий захирал» — «зөвхөн харна»-тай адил (эзэн биш) */
+          const vo = live.filter((a) => a.viewOnly || roleOf(a.user) === 'zahiral').length;
+          return { key: st, label: STAGE_LABEL[st], count: live.length - vo, more: vo ? tr('+{0} зөвхөн харна', String(vo)) : undefined };
+        })}
         holders={cell}
         /* ⚠️ ХООСОН НҮД = шийдвэрлэх хүнгүй (зөвхөн «харна» хүмүүс ч тоогдохгүй) —
            тэр багцын ажил энэ шатанд ГАЦНА.
            ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) ч тоологдохгүй — нэвтэрч чадахгүй. */
-        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !rowOf.get(h.user)?.viewOnly)}
+        /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — урьд нь `selbe_redesign` (порталд алга) нь
+           «Гүйцэтгэгч компани» баганыг 21 багцад «эзэнтэй» харуулж, гацаа ХЭЗЭЭ Ч гардаггүй байв. */
+        /* ⚠️ 2026-10-23: «Ерөнхий захирал» (хуучин томилгоотой) ч эзэн биш — шийдвэрлэдэггүй (`erhOverview.pkgErh`-тэй нэг дүрэм) */
+        stuck={(_pkg, _st, hs) => !hs.some((h) => !h.gone && !h.absent && !rowOf.get(h.user)?.viewOnly && roleOf(h.user) !== 'zahiral')}
         stuckTitle={() => tr('Энэ багцын энэ шатанд шийдвэрлэх аккаунт алга — ажил энд гацна')}
         /*
          * ⚠️ Сонгогчид ЗӨВХӨН өөрчлөлт хийх аккаунт: аль хэдийн хамарсан
          *    (энэ багц эсвэл «бүх багц») хүнийг санал болгохгүй. Өөр шатных
          *    нь санал болгогдоно — сонговол ШИЛЖҮҮЛЭХИЙГ асууна (шошгонд ил).
          */
+        /* ⚠️ 2026-10-23: порталд алга гэж батлагдсан аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
+        /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) санал болгохгүй — зөвхөн харна, урсгалд томилогдохгүй (`setAssign` татгалзана) */
         candidates={(pkg, st) => accounts
-          .filter((u) => planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
+          .filter((u) => !portalMissing(u) && roleOf(u) !== 'zahiral' && planCellAdd(rowOf.get(u.toLowerCase()), st as Stage, pkg).kind !== 'none')
           .map((u) => {
             const cur = rowOf.get(u.toLowerCase());
-            return { value: u, label: cur && cur.stage !== st ? tr('{0} (одоо: {1} — шилжинэ)', u, STAGE_LABEL[cur.stage]) : u };
+            const name = roleForUser(u) === 'super' ? `${u} (${tr('админ')})` : u;
+            return { value: u, label: cur && cur.stage !== st ? tr('{0} (одоо: {1} — шилжинэ)', name, STAGE_LABEL[cur.stage]) : name };
           })}
         onAdd={(pkg, st, u) => act(flowCellOp(u, st as Stage, pkg, true))}
         onRemove={(pkg, st, h) => act(flowCellOp(h.user, st as Stage, pkg, false))}
         addTitle={(r, c) => tr('{0} — {1} шатанд аккаунт нэмэх', r.label, c.label)}
         flag={(h) => {
           const a = rowOf.get(h.user);
-          return a && !h.gone && !h.admin ? <ViewOnlyFlag a={a} off={off} onClick={() => act(flowViewOnlyOp(a.user, !a.viewOnly))} /> : null;
+          return a && !h.gone && !h.absent && !h.admin ? <ViewOnlyFlag a={a} off={off} onClick={() => act(flowViewOnlyOp(a.user, !a.viewOnly))} /> : null;
         }}
         off={off}
         canOpen={() => { if (locked) { setErr(LOCK_MSG); return false; } return true; }}
@@ -182,6 +199,8 @@ function ViewOnlyFlag({ a, off, onClick }: { a: Assign; off: boolean; onClick: (
       type="button"
       className={`${s.ggVo} ${a.viewOnly ? s.ggVoOn : ''}`}
       aria-pressed={!!a.viewOnly}
+      /* ⚠️ 2026-10-26 (аудит): нэр нь «○» л байсан — хэний туг болохыг хэлнэ */
+      aria-label={`${tr('Зөвхөн харна')}: ${a.user}`}
       disabled={off}
       title={tr('«Зөвхөн харна» ({0}) — асаавал гүйцэтгэлийг ХАРНА, батлах/буцаах товч идэвхгүй. Аккаунтын нэг тохиргоо: энд солиход «{1}»-ийн бүх багцад нэгэн адил үйлчилнэ.',
         a.viewOnly ? tr('асаалттай') : tr('унтраалттай'), a.user)}

@@ -203,18 +203,18 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
   const { resolveSchema, SYNTHETIC_BLOCK } = await import('./bagts.pkg.ts');
   const F = (name, type) => ({ name, type });
   const blokgui = [
-    F('ObjectID', 'esriFieldTypeOID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
-    F('Хувийн_жин', 'esriFieldTypeDouble'), F('Обьём', 'esriFieldTypeDouble'),
-    F('Нэгж_өртөг', 'esriFieldTypeDouble'), F('Мөнгөн_дүн', 'esriFieldTypeDouble'),
-    F('Төлөвлөгөөт_гүйцэтгэл', 'esriFieldTypeDouble'), F('Төлөвлөгөөт_гүйцэтгэл1', 'esriFieldTypeDouble'),
-    F('Ажил_гүйцэтгэл', 'esriFieldTypeDouble'),
-    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
+    F('objectid', 'esriFieldTypeOID'), F('f_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('хувийн_жин', 'esriFieldTypeDouble'), F('Обьём', 'esriFieldTypeDouble'),
+    F('нэгж_өртөг', 'esriFieldTypeDouble'), F('мөнгөн_дүн', 'esriFieldTypeDouble'),
+    F('төлөвлөгөөт_гүйцэтгэл', 'esriFieldTypeDouble'), F('төлөвлөгөөт_гүйцэтгэл1', 'esriFieldTypeDouble'),
+    F('ажил_гүйцэтгэл', 'esriFieldTypeDouble'),
+    F('төлөвлөгөөт_хуваарь__эхлэх', 'esriFieldTypeDate'), F('төлөвлөгөөт_хуваарь__дуусах', 'esriFieldTypeDate'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
     F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate'),
-    F('Инженерийн_төлөвлөсөн_обьём', 'esriFieldTypeDouble'),
+    F('инженерийн_төлөвлөсөн_обьём', 'esriFieldTypeDouble'),
     F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
     F('gun', 'esriFieldTypeSmallInteger'), F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'),
-    F('buglusun_ognoo', 'esriFieldTypeDate'), F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'),
+    F('buglusun_ognoo', 'esriFieldTypeDate'), F('шинэчлэгдсэн_огноо', 'esriFieldTypeDate'),
   ];
 
   /* (а) анхдагч — ХООСОН хэвээр (sheetRows · planProgress · negtgel · ipc зам).
@@ -224,23 +224,23 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
   assert.equal(plain.bld.length, 0, 'анхдагч дуудалтад блок ХООСОН — FillNew блокийн багана зурах ёсгүй');
   assert.equal(plain.start.length, 0);
   assert.equal(plain.aStart.length, 0);
-  assert.equal(plain.f.plannedVol, 'Инженерийн_төлөвлөсөн_обьём');
+  assert.equal(plain.f.plannedVol, 'инженерийн_төлөвлөсөн_обьём');
   assert.equal(plain.f.hunHuch, 'hun_huch');
 
   /* (б) опт-ин — нэг блок, мөрийн баганын ЯГ нэр */
   const syn = resolveSchema(blokgui, { synthetic: true });
   assert.equal(syn.synthetic, true);
   assert.deepEqual(syn.bld, [SYNTHETIC_BLOCK], 'синтетик блок ганц');
-  assert.deepEqual(syn.start, ['Төлөвлөгөөт_хуваарь__Эхлэх']);
-  assert.deepEqual(syn.end, ['Төлөвлөгөөт_хуваарь__Дуусах']);
+  assert.deepEqual(syn.start, ['төлөвлөгөөт_хуваарь__эхлэх']);
+  assert.deepEqual(syn.end, ['төлөвлөгөөт_хуваарь__дуусах']);
   assert.deepEqual(syn.gStart, ['geree_ehleh']);
   assert.deepEqual(syn.gEnd, ['geree_duusah']);
   assert.deepEqual(syn.aStart, ['bodit_ehleh']);
   assert.deepEqual(syn.aEnd, ['bodit_duusah']);
-  assert.deepEqual(syn.act, ['Ажил_гүйцэтгэл'], 'бодит гүйцэтгэл — мөрийн НЭГ багана');
-  assert.deepEqual(syn.plan, ['Төлөвлөгөөт_гүйцэтгэл'], 'төлөвлөгөөт — `…1` биш эхнийх');
+  assert.deepEqual(syn.act, ['ажил_гүйцэтгэл'], 'бодит гүйцэтгэл — мөрийн НЭГ багана');
+  assert.deepEqual(syn.plan, ['төлөвлөгөөт_гүйцэтгэл'], 'төлөвлөгөөт — `…1` биш эхнийх');
   assert.deepEqual(syn.obyem, [null], 'блокийн обьёмын багана АЛГА — `null`');
-  assert.equal(syn.f.plannedVol, 'Инженерийн_төлөвлөсөн_обьём', 'мөрийн plannedVol хөндөгдөөгүй');
+  assert.equal(syn.f.plannedVol, 'инженерийн_төлөвлөсөн_обьём', 'мөрийн plannedVol хөндөгдөөгүй');
   /* Огнооны багана нэг ч байхгүй бол синтетик үүсгэхгүй */
   const noDates = resolveSchema(blokgui.filter((x) => x.type !== 'esriFieldTypeDate' || /ognoo|огноо/i.test(x.name)), { synthetic: true });
   assert.equal(noDates.synthetic, false, 'огнооны баганагүй бол синтетик ҮГҮЙ');
@@ -249,12 +249,12 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
   /* (в) блоктой багц — опт-ин ч ЮУ Ч өөрчлөхгүй */
   const bloktoi = [
     ...blokgui.filter((x) => !/^(geree|bodit)_|хуваарь/.test(x.name)),
-    F('F5_1_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_1_төлөвлөгөөт', 'esriFieldTypeDouble'),
-    F('F5_1_obyem', 'esriFieldTypeDouble'),
-    F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate'), F('F5_1_барилга_Дуусах', 'esriFieldTypeDate'),
-    F('F5_1_geree_ehleh', 'esriFieldTypeDate'), F('F5_1_geree_duusah', 'esriFieldTypeDate'),
-    F('F5_1_bodit_ehleh', 'esriFieldTypeDate'), F('F5_1_bodit_duusah', 'esriFieldTypeDate'),
-    F('F5_2_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_2_төлөвлөгөөт', 'esriFieldTypeDouble'),
+    F('f5_1_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_1_төлөвлөгөөт', 'esriFieldTypeDouble'),
+    F('f5_1_obyem', 'esriFieldTypeDouble'),
+    F('f5_1_барилга_эхлэх', 'esriFieldTypeDate'), F('f5_1_барилга_дуусах', 'esriFieldTypeDate'),
+    F('f5_1_geree_ehleh', 'esriFieldTypeDate'), F('f5_1_geree_duusah', 'esriFieldTypeDate'),
+    F('f5_1_bodit_ehleh', 'esriFieldTypeDate'), F('f5_1_bodit_duusah', 'esriFieldTypeDate'),
+    F('f5_2_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_2_төлөвлөгөөт', 'esriFieldTypeDouble'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
   ];
   const a = resolveSchema(bloktoi);
@@ -262,7 +262,7 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
   assert.equal(b.synthetic, false, 'блоктой багцад synthetic хэзээ ч true биш');
   assert.deepEqual(a, b, 'блоктой багцад опт-ин нь бүдүүвчийг ӨӨРЧЛӨХГҮЙ');
   assert.deepEqual(a.bld, ['5/1', '5/2']);
-  assert.deepEqual(a.gStart, ['F5_1_geree_ehleh', null], 'мөрийн geree_ehleh блокт наалдахгүй');
+  assert.deepEqual(a.gStart, ['f5_1_geree_ehleh', null], 'мөрийн geree_ehleh блокт наалдахгүй');
 }
 console.log('✅ синтетик блок — анхдагч хоосон · опт-ин мөрийн нэрээр · блоктойд нөлөөгүй');
 
@@ -281,13 +281,13 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
   const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
   /* Амьд `Bagts_6_1`-ийн мөрийн баганууд (Excel `6_1_final_publish`-ийн C…P + латин) */
   const fields6 = [
-    F('ObjectID', 'esriFieldTypeOID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
-    F('Хувийн_жин'), F('Хувийн_жин1'), F('Хувийн_жин__Одоо_байгаа'), F('Обьём'), F('Нэгж_өртөг'), F('Мөнгөн_дүн'),
-    F('Төлөвлөгөөт_гүйцэтгэл'), F('Бодит_гүйцэтгэл'), F('Төлөвлөгөө_биелэлт'), F('Ажил_гүйцэтгэл'),
-    F('Төлөвлөгөөт_гүйцэтгэл1'),
-    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
-    F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
-    F('Des_dugaar', 'esriFieldTypeInteger'), F('Hamaaral', 'esriFieldTypeString'), F('Инженерийн_төлөвлөсөн_обьём'),
+    F('objectid', 'esriFieldTypeOID'), F('f_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('хувийн_жин'), F('хувийн_жин1'), F('хувийн_жин__одоо_байгаа'), F('Обьём'), F('нэгж_өртөг'), F('мөнгөн_дүн'),
+    F('төлөвлөгөөт_гүйцэтгэл'), F('бодит_гүйцэтгэл'), F('төлөвлөгөө_биелэлт'), F('ажил_гүйцэтгэл'),
+    F('төлөвлөгөөт_гүйцэтгэл1'),
+    F('төлөвлөгөөт_хуваарь__эхлэх', 'esriFieldTypeDate'), F('төлөвлөгөөт_хуваарь__дуусах', 'esriFieldTypeDate'),
+    F('шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
+    F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'), F('инженерийн_төлөвлөсөн_обьём'),
     F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
     F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate'), F('obyem_sum'),
@@ -298,26 +298,26 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
   assert.equal(sc.synthetic, true, 'fill → синтетик блок');
   assert.deepEqual(sc.bld, [SYNTHETIC_BLOCK]);
   assert.deepEqual(sc.obyem, ['obyem_sum'], 'синтетик блокийн обьём = obyem_sum (мөрийн хуримтлал)');
-  assert.deepEqual(sc.act, ['Ажил_гүйцэтгэл'], 'синтетик блокийн гүйцэтгэл = Ажил_гүйцэтгэл (Excel L)');
-  assert.deepEqual(sc.plan, ['Төлөвлөгөөт_гүйцэтгэл1'], 'синтетик блокийн төлөвлөгөө = Excel M');
-  assert.deepEqual(sc.start, ['Төлөвлөгөөт_хуваарь__Эхлэх']);
-  assert.deepEqual(sc.end, ['Төлөвлөгөөт_хуваарь__Дуусах']);
+  assert.deepEqual(sc.act, ['ажил_гүйцэтгэл'], 'синтетик блокийн гүйцэтгэл = Ажил_гүйцэтгэл (Excel L)');
+  assert.deepEqual(sc.plan, ['төлөвлөгөөт_гүйцэтгэл1'], 'синтетик блокийн төлөвлөгөө = Excel M');
+  assert.deepEqual(sc.start, ['төлөвлөгөөт_хуваарь__эхлэх']);
+  assert.deepEqual(sc.end, ['төлөвлөгөөт_хуваарь__дуусах']);
   assert.equal(sc.f.obyemSum, 'obyem_sum');
-  assert.equal(sc.f.act, 'Бодит_гүйцэтгэл', 'J нь тусдаа багана хэвээр');
-  assert.equal(sc.f.plan, 'Төлөвлөгөөт_гүйцэтгэл', 'I нь тусдаа багана хэвээр');
-  assert.equal(sc.f.wE, 'Хувийн_жин__Одоо_байгаа');
-  assert.equal(sc.f.ratio, 'Төлөвлөгөө_биелэлт');
+  assert.equal(sc.f.act, 'бодит_гүйцэтгэл', 'J нь тусдаа багана хэвээр');
+  assert.equal(sc.f.plan, 'төлөвлөгөөт_гүйцэтгэл', 'I нь тусдаа багана хэвээр');
+  assert.equal(sc.f.wE, 'хувийн_жин__одоо_байгаа');
+  assert.equal(sc.f.ratio, 'төлөвлөгөө_биелэлт');
   /* «Хуваарь»-ийн `synthetic` ӨӨРЧЛӨГДӨӨГҮЙ */
   const hv = resolveSchema(fields6, { synthetic: true });
   assert.deepEqual(hv.obyem, [null], '«Хуваарь»-ийн синтетик бүдүүвч обьём бичихгүй хэвээр');
-  assert.deepEqual(hv.plan, ['Төлөвлөгөөт_гүйцэтгэл'], '«Хуваарь»-ийн plan хэвээр I');
+  assert.deepEqual(hv.plan, ['төлөвлөгөөт_гүйцэтгэл'], '«Хуваарь»-ийн plan хэвээр I');
   /* Огнооны багана алга ч гүйцэтгэл/обьёмын багана байвал fill-д блок үүснэ */
   const noDates6 = resolveSchema(fields6.filter((x) => x.type !== 'esriFieldTypeDate' || /ognoo|огноо/i.test(x.name)), { fill: true });
   assert.equal(noDates6.synthetic, true, 'fill: огноогүй ч Ажил_гүйцэтгэл/obyem_sum байвал блок');
   assert.deepEqual(noDates6.start, [null]);
   /* `Төлөвлөгөөт_гүйцэтгэл1` алга → хуучин I руу унана */
-  const noM = resolveSchema(fields6.filter((x) => x.name !== 'Төлөвлөгөөт_гүйцэтгэл1'), { fill: true });
-  assert.deepEqual(noM.plan, ['Төлөвлөгөөт_гүйцэтгэл']);
+  const noM = resolveSchema(fields6.filter((x) => x.name !== 'төлөвлөгөөт_гүйцэтгэл1'), { fill: true });
+  assert.deepEqual(noM.plan, ['төлөвлөгөөт_гүйцэтгэл']);
 
   /* (б) ROLL-UP — Б (үндэс) › Б1 (бүлэг) › A·B·C, Б › D */
   const d = (s) => Date.parse(`${s}T00:00:00Z`);
@@ -395,20 +395,20 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
   /* (г) АРХИВЫН ЖААЗ — синтетик блокийн баганууд */
   const fillMs = d('2026-01-06');
   const fr = buildFrame(rows, sc, 1, asOf, hasOb, fillMs);
-  assert.equal(fr[2]['Ажил_гүйцэтгэл'], 0.25, 'Ажил_гүйцэтгэл = L');
+  assert.equal(fr[2]['ажил_гүйцэтгэл'], 0.25, 'Ажил_гүйцэтгэл = L');
   assert.equal(fr[2]['obyem_sum'], 25, 'obyem_sum = хуримтлал');
-  near(fr[2]['Бодит_гүйцэтгэл'], 0.25, 'Бодит_гүйцэтгэл = J');
-  near(fr[2]['Хувийн_жин__Одоо_байгаа'], 0.1, 'E = C×J');
-  near(fr[2]['Төлөвлөгөөт_гүйцэтгэл1'], c[2].plan[0], 'Төлөвлөгөөт_гүйцэтгэл1 = M');
-  near(fr[2]['Төлөвлөгөөт_гүйцэтгэл'], c[2].I, 'Төлөвлөгөөт_гүйцэтгэл = I');
-  assert.equal(fr[5]['Ажил_гүйцэтгэл'], 1, 'архивт таслагдсан (actAgg) — 150% биш');
+  near(fr[2]['бодит_гүйцэтгэл'], 0.25, 'Бодит_гүйцэтгэл = J');
+  near(fr[2]['хувийн_жин__одоо_байгаа'], 0.1, 'E = C×J');
+  near(fr[2]['төлөвлөгөөт_гүйцэтгэл1'], c[2].plan[0], 'Төлөвлөгөөт_гүйцэтгэл1 = M');
+  near(fr[2]['төлөвлөгөөт_гүйцэтгэл'], c[2].I, 'Төлөвлөгөөт_гүйцэтгэл = I');
+  assert.equal(fr[5]['ажил_гүйцэтгэл'], 1, 'архивт таслагдсан (actAgg) — 150% биш');
   assert.equal(fr[5]['obyem_sum'], 15, 'обьём түүхийгээр — түүхий харьцаа сэргээгдэнэ');
-  assert.equal(fr[3]['Ажил_гүйцэтгэл'], null, 'хэмжигдээгүй мөр null');
+  assert.equal(fr[3]['ажил_гүйцэтгэл'], null, 'хэмжигдээгүй мөр null');
   assert.equal(fr[3]['obyem_sum'], null, 'хэмжигдээгүй мөрийн obyem_sum null (0 БИШ)');
-  assert.equal(fr[3]['Бодит_гүйцэтгэл'], null);
+  assert.equal(fr[3]['бодит_гүйцэтгэл'], null);
   assert.equal(fr[1]['obyem_sum'], null, 'бүлгийн obyem_sum null (нэгж зөрдөг)');
-  near(fr[0]['Ажил_гүйцэтгэл'], c[0].act[0], 'Б-ийн L');
-  near(fr[0]['Бодит_гүйцэтгэл'], c[0].J, 'Б-ийн J — нэгтгэл (negtgelWrite) үүнийг уншина');
+  near(fr[0]['ажил_гүйцэтгэл'], c[0].act[0], 'Б-ийн L');
+  near(fr[0]['бодит_гүйцэтгэл'], c[0].J, 'Б-ийн J — нэгтгэл (negtgelWrite) үүнийг уншина');
   assert.equal(fr[0]['buglusun_ognoo'], fillMs);
   /* (г2) ИЛГЭЭЛТ — `${oid}:0` нүд мөрөнд буух ёстой (unmoved БИШ) */
   const ov = overlaySubmission(rows, { pkgKey: 'b61', cells: [['3:0', '10']], dates: [], rowKeys: [], mode: 'inc' }, sc, 1);
@@ -424,11 +424,11 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
   /* (д) БЛОКТОЙ багц — fill нь бүдүүвчийг ӨӨРЧЛӨХГҮЙ */
   const bloktoi6 = [
     ...fields6.filter((x) => !/^(geree|bodit)_|хуваарь/.test(x.name)),
-    F('F5_1_гүйцэтгэл'), F('F5_1_төлөвлөгөөт'), F('F5_1_obyem'),
-    F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate'), F('F5_1_барилга_Дуусах', 'esriFieldTypeDate'),
+    F('f5_1_гүйцэтгэл'), F('F5_1_төлөвлөгөөт'), F('f5_1_obyem'),
+    F('f5_1_барилга_эхлэх', 'esriFieldTypeDate'), F('f5_1_барилга_дуусах', 'esriFieldTypeDate'),
   ];
   assert.deepEqual(resolveSchema(bloktoi6, { fill: true }), resolveSchema(bloktoi6), 'блоктой багцад fill = анхдагч');
-  assert.deepEqual(resolveSchema(bloktoi6, { fill: true }).obyem, ['F5_1_obyem']);
+  assert.deepEqual(resolveSchema(bloktoi6, { fill: true }).obyem, ['f5_1_obyem']);
 }
 console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act→Ажил_гүйцэтгэл · Excel roll-up · түгжээ · жааз · илгээлт · блоктойд нөлөөгүй');
 
@@ -442,19 +442,19 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   const { resolveSchema } = await import('./bagts.pkg.ts');
   const { extraCols, extraVal, readExtraPref, writeExtraPref, extraPrefKey } = await import('./fill/extraCols.ts');
   const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
-  const base = [F('ObjectID', 'esriFieldTypeOID'), F('GlobalID', 'esriFieldTypeGlobalID'), F('F_', 'esriFieldTypeString'),
-    F('Ажил', 'esriFieldTypeString'), F('Обьём'), F('Мөнгөн_дүн')];
+  const base = [F('objectid', 'esriFieldTypeOID'), F('globalid', 'esriFieldTypeGlobalID'), F('f_', 'esriFieldTypeString'),
+    F('Ажил', 'esriFieldTypeString'), F('Обьём'), F('мөнгөн_дүн')];
   const blokgui6 = [...base, F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'),
     F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'), F('bodit_ehleh', 'esriFieldTypeDate'),
-    F('bodit_duusah', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'), F('Ажил_гүйцэтгэл'),
-    F('Төлөвлөгөөт_гүйцэтгэл1'), F('CreationDate', 'esriFieldTypeDate'), F('Creator', 'esriFieldTypeString'),
-    F('EditDate', 'esriFieldTypeDate'), F('Editor', 'esriFieldTypeString')];
+    F('bodit_duusah', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'), F('ажил_гүйцэтгэл'),
+    F('төлөвлөгөөт_гүйцэтгэл1'), F('created_date', 'esriFieldTypeDate'), F('created_user', 'esriFieldTypeString'),
+    F('last_edited_date', 'esriFieldTypeDate'), F('last_edited_user', 'esriFieldTypeString')];
   const sc = resolveSchema(blokgui6, { fill: true });
-  assert.equal(sc.f.rowAct, 'Ажил_гүйцэтгэл');
-  assert.equal(sc.f.rowPlan1, 'Төлөвлөгөөт_гүйцэтгэл1');
+  assert.equal(sc.f.rowAct, 'ажил_гүйцэтгэл');
+  assert.equal(sc.f.rowPlan1, 'төлөвлөгөөт_гүйцэтгэл1');
   assert.deepEqual([sc.f.rowGS, sc.f.rowGE, sc.f.rowAS, sc.f.rowAE], ['geree_ehleh', 'geree_duusah', 'bodit_ehleh', 'bodit_duusah']);
-  assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['CreationDate', 'Creator', 'EditDate', 'Editor']);
+  assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['created_date', 'created_user', 'last_edited_date', 'last_edited_user']);
   const cols = extraCols(sc);
   /* ⚠️ 2026-10-08: 14 шаардлагагүй багана хасагдав (`extraCols.DEFS`-ийн ⚠️) — зөвхөн бодит огноо */
   assert.deepEqual(cols.map((c) => c.field), ['bodit_ehleh', 'bodit_duusah'], 'зөвхөн Бодит эхэлсэн/дууссан, ObjectID/GlobalID-гүй');
@@ -467,31 +467,31 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.ok(cols.every((c) => c.hint === undefined), 'tooltip-ийн тайлбаргүй');
 
   /* (а)(б) барилгын: блокийн нэр ТААРАХГҮЙ, мөрийн түвшний талбаргүй бол багана алга */
-  const bld = resolveSchema([...base, F('F5_1_гүйцэтгэл'), F('F5_1_obyem'), F('F5_1_geree_ehleh', 'esriFieldTypeDate'),
-    F('F5_1_bodit_ehleh', 'esriFieldTypeDate'), F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate')], { fill: true });
+  const bld = resolveSchema([...base, F('f5_1_гүйцэтгэл'), F('f5_1_obyem'), F('f5_1_geree_ehleh', 'esriFieldTypeDate'),
+    F('f5_1_bodit_ehleh', 'esriFieldTypeDate'), F('f5_1_барилга_эхлэх', 'esriFieldTypeDate')], { fill: true });
   assert.deepEqual([bld.f.rowAct, bld.f.rowGS, bld.f.rowAS, bld.f.created], [null, null, null, null], 'блокийн F…_* мөрийн түвшинд ТААРАХГҮЙ');
   assert.deepEqual(extraCols(bld), [], 'талбаргүй үйлчилгээ — «Бусад талбар» хоосон (товч ч гарахгүй)');
   assert.deepEqual(extraCols(null), []);
 
   /* (в) утга — `raw`-аас, null ≠ 0 */
   /* ⚠️ 2026-10-08: хасагдсан баганын хэлбэржүүлэлтийг (`extraVal`-ийн төрөл бүр) шууд баганаар шалгана */
-  const KIND = { hun: ['hun_huch', 'int'], des: ['des_dugaar', 'int'], L: ['Ажил_гүйцэтгэл', 'pct'], M: ['Төлөвлөгөөт_гүйцэтгэл1', 'pct'],
-    gS: ['geree_ehleh', 'day'], fill: ['buglusun_ognoo', 'day'], ham: ['hamaaral', 'text'], edBy: ['Editor', 'user'], cre: ['CreationDate', 'stamp'] };
+  const KIND = { hun: ['hun_huch', 'int'], des: ['des_dugaar', 'int'], L: ['ажил_гүйцэтгэл', 'pct'], M: ['төлөвлөгөөт_гүйцэтгэл1', 'pct'],
+    gS: ['geree_ehleh', 'day'], fill: ['buglusun_ognoo', 'day'], ham: ['hamaaral', 'text'], edBy: ['last_edited_user', 'user'], cre: ['created_date', 'stamp'] };
   const col = (k) => cols.find((c) => c.key === k) ?? { key: k, field: KIND[k][0], kind: KIND[k][1], label: () => k };
   const r = (raw) => ({ raw });
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: 0 })), { text: '0' }, 'хэмжсэн тэг «0»');
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: null })), { text: '' }, 'null хоосон (0 БИШ)');
   assert.deepEqual(extraVal(col('hun'), r({})), { text: '' }, 'талбар ирээгүй — хоосон');
   assert.equal(extraVal(col('des'), r({ des_dugaar: '1,234' })).text, '1234', 'мөрөн тоо (numLoose)');
-  assert.equal(extraVal(col('L'), r({ 'Ажил_гүйцэтгэл': 0.253 })).text, '25.3%', 'хадгалсан L 0–1 → %');
-  assert.equal(extraVal(col('M'), r({ 'Төлөвлөгөөт_гүйцэтгэл1': 1 })).text, '100%');
-  assert.equal(extraVal(col('M'), r({ 'Төлөвлөгөөт_гүйцэтгэл1': 0 })).text, '0%', 'хадгалсан 0 — «0%» (null биш)');
-  assert.equal(extraVal(col('L'), r({ 'Ажил_гүйцэтгэл': null })).text, '', 'L null — хоосон');
+  assert.equal(extraVal(col('L'), r({ 'ажил_гүйцэтгэл': 0.253 })).text, '25.3%', 'хадгалсан L 0–1 → %');
+  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 1 })).text, '100%');
+  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 0 })).text, '0%', 'хадгалсан 0 — «0%» (null биш)');
+  assert.equal(extraVal(col('L'), r({ 'ажил_гүйцэтгэл': null })).text, '', 'L null — хоосон');
   assert.equal(extraVal(col('gS'), r({ geree_ehleh: Date.UTC(2026, 2, 1) })).text, '2026-03-01');
   assert.equal(extraVal(col('fill'), r({ buglusun_ognoo: Date.UTC(2026, 9, 7, 16) })).text, '2026-10-08', 'локал шөнө дунд (UTC+8) → тэр өдөр (normDayMs)');
   assert.deepEqual(extraVal(col('ham'), r({ hamaaral: '  18FS3,22SS-5 ' })), { text: '18FS3,22SS-5', title: '18FS3,22SS-5' });
-  assert.equal(extraVal(col('edBy'), r({ Editor: 'tumenjargal.g' })).text, 'tumenjargal.g');
-  const st = extraVal(col('cre'), r({ CreationDate: Date.UTC(2026, 9, 8, 3, 7) }));
+  assert.equal(extraVal(col('edBy'), r({ last_edited_user: 'tumenjargal.g' })).text, 'tumenjargal.g');
+  const st = extraVal(col('cre'), r({ created_date: Date.UTC(2026, 9, 8, 3, 7) }));
   assert.match(st.text, /^\d{4}-\d{2}-\d{2}$/);
   assert.match(st.title, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, 'бүтэн цаг tooltip-д');
 

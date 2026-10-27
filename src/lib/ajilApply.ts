@@ -140,6 +140,48 @@ export function dedupeAdds(rows: readonly RowLike[], adds: readonly NewRow[]): {
   return { fresh, dropped };
 }
 
+/**
+ * ЭЦЭГ БҮЛЭГ НЬ ХУУДСАНД АЛГА НЭМЭЛТ МӨРҮҮД (⚠️ 2026-10-22, аудит №3) — `parentIdxOf < 0`, өөрөөр хэлбэл
+ * `sheetFrame.insertAdds` чимээгүй алгасах мөрүүд.
+ * ⚠️ ЯАГААД: эцэг бүлэг устсан/нэр солигдсон (эсвэл «эцэг олдсонгүй»-гаар буцаагдсан) мөр «Хуваарь»-ийн хүснэгтэд
+ *    ХАРАГДАХГҮЙ (тиймээс «×»-ээр устгах, засах боломжгүй) атлаа «Нэмэлт ажил батлуулах (N)»-д тоологдож ИЛГЭЭГДДЭГ,
+ *    батлагдмагц буулгалт «эцэг бүлэг олдсонгүй» (`code: 'no-parent'`) гэж унаж «Батлагдсан · буулгаагүй»-д гацдаг,
+ *    буцаагдахад дахин нөгөө тойрог руу орж байв. Зохиогчийн хуудас (`useAjil`) эдгээрийг жагсааж, илгээхийг хаана;
+ *    батлагч (`parentsCheck`) батлахаас ӨМНӨ шалгана.
+ */
+export function missingParents<T extends NewRow>(rows: readonly RowLike[], adds: readonly T[]): T[] {
+  return adds.filter((a) => parentIdxOf(rows, a) < 0);
+}
+
+/**
+ * БАТЛАХЫН ӨМНӨХ ЭЦГИЙН ШАЛГАЛТ (⚠️ 2026-10-22, аудит №3) — буулгалттай (`writeFrameLive`) ИЖИЛ схем (`fillSchema`) ба
+ * хатуу уншилтаар (`strict`) одоогийн хуудсыг уншиж, эцэггүй мөр байвал шийдвэр гаргахыг ХААНА. Урьд нь `decideAjil`
+ * эхлээд «Батлагдсан» бичээд, буулгалт л «эцэг олдсонгүй» гэж унадаг тул илгээлт гацаж, батлагч «Гацсаныг буцаах»-ыг
+ * хайж олох шаардлагатай болдог байв. Уншилт унавал ч хаана (fail-closed) — дахин оролдоно.
+ * @returns `ok: true` — бүх мөрийн эцэг олдсон; эсвэл алдааны мессеж ба эцэггүй мөрүүд
+ */
+export async function parentsCheck(pkgKey: string, adds: readonly NewRow[]): Promise<{ ok: true } | { ok: false; error: string; missing: NewRow[] }> {
+  try {
+    const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
+    const pkg = PKGS.find((p) => p.key === pkgKey);
+    if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey), missing: [] };
+    const { loadRows } = await import('@/modules/sheet/bagtsSheet');
+    const sc = await fillSchema(pkg);
+    const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true });
+    const missing = missingParents(loaded.rows, adds);
+    if (!missing.length) return { ok: true };
+    const names = missing.map((a) => `${a.no} · ${a.work} (${tr('эцэг: {0}', `${a.parentNo} ${a.parentWork}`.trim() || '—')})`);
+    return {
+      ok: false,
+      missing,
+      error: tr('{0} мөрийн эцэг бүлэг одоогийн хуудсанд олдсонгүй: {1} — батлавал хуудсанд буухгүй гацна. «Буцаах»-аар (шалтгаан бөглөгдсөн) нэмэгчид буцаана уу.',
+        String(missing.length), names.slice(0, 5).join('; ') + (names.length > 5 ? ` (+${names.length - 5})` : '')),
+    };
+  } catch (e) {
+    return { ok: false, missing: [], error: tr('Эцэг бүлгийг шалгах үед хуудас уншигдсангүй — дахин оролдоно уу: {0}', String((e as Error)?.message ?? e)) };
+  }
+}
+
 /** UTC өдрийн эхэн (`Date.UTC(y,m,d)`) */
 export const dayStartUtc = (ms: number): number => {
   const d = new Date(ms);
@@ -497,7 +539,7 @@ export async function busyGate(pkgKey: string): Promise<{ error: string } | { wa
     if (h) return { error: tr('{0} энэ багцын хуваарийг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', h) };
   }
   const warn = pps.length
-    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны агшин шинэчлэгдэж, батлагч саналыг шинэ агшинд тулгана.', pps.map((p) => p.author).join(', '))
+    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны шинэ хувилбар үүсэж, батлагч саналыг түүнд тулгана.', pps.map((p) => p.author).join(', '))
     : undefined;
   /* ⚠️ 2026-10-09: ОБЬЁМЫН БАТЛАЛТ ЯВЖ БАЙХАД — батлагч одоогийн жаазын мөрүүдэд OID-оор бичиж байна
      (түгжээ) эсвэл ХЭСЭГЧЛЭН бичсэн (тэмдэг). Жааз солигдвол обьём архивласан жаазад үлдэнэ — ХААНА.
@@ -598,7 +640,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     const m = await _io.markApplied(args.ajilOid);
     done = m.ok;
     if (w.added === 0)
-      return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
+      return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
     /* ⚠️ 2026-10-08: `warn` зөвхөн байвал — `ajilReapply.check`-ийн `deepStrictEqual` түлхүүр хүртэл тулгадаг */
     return { ok: true, added: w.added, ...(warn ? { warn } : {}) };
@@ -645,7 +687,8 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» техник нэрийг хэрэглэгчид харуулахгүй */
+    if (!Number.isFinite(mx)) throw new Error(tr('Хүснэгтийн сүүлийн мөрийн дугаар уншигдсангүй'));
     return mx;
   };
   let maxOid0: number;
@@ -752,7 +795,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
        хаасан) ба «үр дүн тодорхойгүй» гэж хэлнэ. Хайлт унавал гараар цэвэрлүүлнэ. */
     const ex = e as { lost?: unknown; cause?: unknown } | null;
     const lost = ex?.lost === true || isLostWrite(e) || isLostWrite(ex?.cause);
-    if (lost && sc.f.fillDate) {
+    /* ⚠️ 2026-10-21 (аудит): ОГНООНЫ ТАЛБАРГҮЙ багцад ч (`sc.f.fillDate` алга) — `OID > maxOid0` мөрүүдийг татаж жаазтай
+       дарааллаар (№ · Ажил) тулгана; урьд нь зөвхөн `written`-ийг устгадаг тул алдагдсан chunk хагас жааз болж үлдэн
+       `loadRows`-ийг хааж, дахин оролдлогын жаазыг булдаг байв. Өдрийн шүүлтгүй тул өөр бичигчийн мөр орж болно — доорх
+       дарааллын тулгалт тэднийг «манайх биш» гэж ялгана (устгахгүй, гараар шалгуулна). */
+    if (lost) {
       const head = tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй');
       const strays = new Set<number>(written);
       /* ⚠️ 2026-10-11 (аудит №7): олдсон мөрүүд (OID-ын дарааллаар, №/Ажилтай) — МАНАЙ жааз мөн эсэхийг доор тулгана */
@@ -760,7 +807,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       try {
         for (let offset = 0; ; ) {
           const j = await agsFetch(`${pkg.url}/query`, {
-            where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
+            where: sc.f.fillDate ? `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}` : `${sc.f.oid} > ${maxOid0}`,
             outFields: [sc.f.oid, sc.f.no, sc.f.work].join(','),
             orderByFields: `${sc.f.oid} ASC`,
             resultRecordCount: '2000',
@@ -780,7 +827,9 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         }
       } catch (qe) {
         if (written.length) await applyDeletes(pkg, written);
-        return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — AGOL дээр гараар шалгаж цэвэрлэнэ үү', String((qe as Error)?.message ?? qe))}` };
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан — «админд мэдэгдэнэ үү»; түүхий алдаа консолд */
+        console.warn('[selbe] ajilApply: архивын шалгалт унав — ', qe);
+        return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String((qe as Error)?.message ?? qe))}` };
       }
       if (!strays.size) return { ok: false, error: `${why} · ${head}` };
       /* ⚠️ 2026-10-11 (аудит №7): `OID > maxOid0 AND өдөр` нь ЗӨВХӨН манай жааз гэсэн баталгаа биш — A.8б-ийн хаалт
@@ -788,12 +837,17 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
          буулгалт) ижил өдрөөр жааз бичсэн байж болно; урьд нь түүнийг ч ХАМТ устгадаг байв. Олдсон мөрийн тоо манай
          жаазны урттай ТЭНЦҮҮ бөгөөд №/Ажлын дараалал ЯГ таарч байж л устгана; эс бөгөөс зөвхөн баталгаажсан
          (`written`) мөрөө устгаад гараар шалгахыг хэлнэ. */
-      const ours = found.length === frame.length && found.every((f, i) =>
+      /* ⚠️ 2026-10-21: ЯГ тэнцүү урт биш — жаазны ЭХЛЭЛ (prefix) байхад хангалттай. `applyAdds` нь 500-мөрийн
+         chunk-ийг дарааллаар бичиж, хариу алдагдсан ЭХНИЙ chunk дээр зогсдог тул серверт ихэвчлэн жаазны
+         эхний хэсэг л үлддэг; урьд нь `found.length === frame.length` шаарддаг тул тэр хагас жааз архивт
+         үлддэг байв. Дараалал (№/Ажил) мөр бүрээр таарах шаардлага хэвээр — өөр бичигчийнхийг устгахгүй. */
+      const ours = found.length > 0 && found.length <= frame.length && found.every((f, i) =>
         f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
       if (!ours) {
         const gone0 = written.length ? await applyDeletes(pkg, written) : 0;
-        const msg = tr('Архивт {0} мөр ({1}-ээс хойш, {2}) олдсон боловч манай жааз ({3} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; AGOL дээр гараар шалгаж цэвэрлэнэ үү', String(found.length), String(maxOid0), msToDay(fillMs), String(frame.length));
-        console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg);
+        /* ⚠️ 2026-10-23 (UX аудит X2/X3): хэрэглэгчид мөрийн дугаар (OID)-гүй, AGOL-гүй; техник дэлгэрэнгүй консолд */
+        const msg = tr('Архивт {0} мөр ({1}) олдсон боловч энэ батлалтынх ({2} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String(found.length), sc.f.fillDate ? msToDay(fillMs) : '—', String(frame.length));
+        console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg, { maxOid0, found: found.length, frame: frame.length });
         return {
           ok: false,
           error: `${why} · ${head} · ${msg}${written.length ? ` · ${tr('Баталгаажсан {0} мөрийн {1}-ийг буцаав', String(written.length), String(gone0))}` : ''}`,
@@ -804,7 +858,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       return {
         ok: false,
         error: `${why} · ${head} · ${left > 0
-          ? tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', strays.size, left)
+          ? tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', strays.size, left)
           : tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', strays.size)}`,
       };
     }
@@ -814,7 +868,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       return {
         ok: false,
         error: left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)}`
           : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`,
       };
     }
@@ -834,7 +888,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     return {
       ok: false,
       error: left > 0
-        ? `${why} · ${tr('Бичсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
+        ? `${why} · ${tr('Бичсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — админд мэдэгдэнэ үү (гараар цэвэрлэх шаардлагатай).', written.length, left)}`
         : `${why} · ${tr('Бичсэн {0} мөрийг архиваас буцааж устгав', written.length)}`,
     };
   };

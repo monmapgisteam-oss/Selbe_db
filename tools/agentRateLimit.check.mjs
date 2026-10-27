@@ -12,7 +12,7 @@ import {
   createLimiter, LIMITS, WINDOW_MS,
   createBudget, budgetFromEnv, usageTokens, budgetDay, DAILY_TOKEN_BUDGET_DEFAULT, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, estimateInputTokens, reserveTokens, settleTokens, utf8Bytes, botCaller,
-  sanitizeChat, sanitizeTools, sanitizeMessages,
+  sanitizeChat, sanitizeTools, sanitizeMessages, THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from '../agent-proxy/rateLimit.mjs';
 
 /* ⚠️ 2026-10-09: + authFailIp (IP-ийн амжилтгүй нэвтрэлтийн таг) · concurrent (дуудагчийн зэрэг хүсэлт) · botConcurrent */
@@ -276,3 +276,16 @@ for (const f of ['server.mjs', 'worker.mjs']) {
   assert.match(src, /readBodyCapped\(request, MAX_BODY\)/, 'worker.mjs: урсгалаар тоолж уншихгүй');
 }
 console.log('✅ server.mjs · worker.mjs: шалгалт · зэрэг таг · урьдчилсан төсөв · татгалзалт тоологдоно · кэш эхлээд · chunked таслана');
+
+/* ⚠️ 2026-10-19: явцын тэмдэглэл (`thinking.display: 'updates'`) — ЗӨВХӨН Opus 5.5; бусад загварт хүсэлт өөрчлөгдөхгүй */
+assert.equal(THINKING_UPDATES_BETA, 'thinking-display-updates-2026-08-18');
+assert.equal(thinkingUpdatesFor('claude-opus-5-5'), true);
+for (const m of ['claude-opus-5', 'claude-haiku-4-5', 'claude-haiku-5-5', 'claude-opus-5-50', '', undefined]) {
+  assert.equal(thinkingUpdatesFor(m), false, String(m));
+}
+for (const f of ['server.mjs', 'worker.mjs']) {
+  const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
+  assert.match(src, /display: ["']updates["']/, `${f}: display: updates алга`);
+  assert.match(src, /["']anthropic-beta["']: THINKING_UPDATES_BETA/, `${f}: beta толгой алга`);
+}
+console.log('✅ thinking display: updates — зөвхөн Opus 5.5, beta толгойтой (хоёр реле)');

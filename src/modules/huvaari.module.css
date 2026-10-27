@@ -4,6 +4,11 @@
  * зөвхөн эндээс импортлогдоно. Дизайны хэл нь бусадтай нэг: хавтгай гадаргуу,
  * 1px hairline, өнгө нь ЗӨВХӨН утга заана (алдаа улаан, анхааруулга шар,
  * сонголт акцент). Чимэглэлийн градиент, сүүдэр байхгүй.
+ *
+ * ⚠️ 2026-10-23: Environment — товч `.pe-*` (32px · 8px · 12px/600), оролт `.pe-field`,
+ * карт 12px, хөвөгч гадарга (popup/цонх/мэдэгдэл) --line-strong + --shadow + 12px,
+ * сонгогдсон мөр moss 12% + inset 3px moss. Мөрийн өндөр (PL_ROW), баганын өргөн,
+ * sticky/z-index, чирэх бариул, `touch-action`, гантын төлвийн өнгө ХӨНДӨГДӨӨГҮЙ.
  */
 
 .frame {
@@ -29,18 +34,18 @@
 /* ⚠️ ХҮРЭЭ БҮХЭЛДЭЭ (2026-09-17 засвар): урьд нь зөвхөн хүснэгтийг ороодог тул
    «Батлуулах» товч, алдааны мөр, FlowBox давхаргын АРД үлдэж хадгалж чадахгүй байв. */
 .frameWide { position: fixed; inset: 0; z-index: 50; height: auto; }
-.fullBar { display: flex; align-items: center; gap: 10px; flex: none; margin-bottom: 6px; }
+.fullBar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: none; margin-bottom: 6px; }
 .fullBarNote { font-size: 12px; color: var(--ink-2); }
 .fullBtn, .fullBtnOn {
   display: inline-flex; align-items: center; gap: 6px;
-  font: inherit; font-size: 0.76rem; font-weight: 700;
-  padding: 5px 12px; border-radius: var(--r-sm); cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600;
+  height: 32px; padding: 0 14px; border-radius: var(--r); cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
-.fullBtn { color: var(--data); background: color-mix(in srgb, var(--data) 12%, transparent); border: 1px solid color-mix(in srgb, var(--data) 45%, transparent); }
-.fullBtn:hover { background: color-mix(in srgb, var(--data) 22%, transparent); }
-.fullBtnOn { color: var(--ink); background: var(--surface-2); border: 1px solid var(--line-strong); }
-.fullBtnOn:hover { border-color: var(--data); }
+.fullBtn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border: 1px solid color-mix(in oklab, var(--moss) 45%, transparent); }
+.fullBtn:hover { background: color-mix(in oklab, var(--moss) 20%, transparent); }
+.fullBtnOn { color: var(--ink-2); background: transparent; border: 1px solid var(--line-strong); }
+.fullBtnOn:hover { background: var(--surface-2); color: var(--ink); }
 
 /**
  * ⚠️ ХҮСНЭГТИЙН КАРТ ҮЛДСЭН ӨНДРИЙГ ЭЗЭЛНЭ. `.frame` нь `overflow: hidden`
@@ -64,9 +69,25 @@
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 .spacer { flex: 1; }
+/* ⚠️ 2026-10-23 (хэрэглэгч: «байрлал, хуваарилалт, хэмжээ жигдэл»): толгойн БҮХ удирдлага ИЖИЛ өндөр (`--ctl-h`),
+   мөр хоорондын зай 8px — урьд нь 22–36px холилдож шаталсан харагддаг байв. */
+.head { --ctl-h: 30px; gap: 8px 10px; }
+.head :is(.sel, .select, .save, .discard, .tlZoomB, .tab) {
+  box-sizing: border-box;
+  height: var(--ctl-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.head :is(.sel, .select) { padding: 0 8px; }
+.head :is(.save, .discard, .tlZoomB, .tab) { padding: 0 12px; }
+.head .lvBar button { height: var(--ctl-h); min-width: 28px; }
 .field {
   display: inline-flex;
   align-items: center;
@@ -74,34 +95,66 @@
   font-size: 12px;
   color: var(--ink-2);
 }
+/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px; focus moss */
 .select {
   font: inherit;
-  padding: 4px 8px;
+  font-size: 12.5px;
+  height: 32px;
+  padding: 0 9px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  outline: none;
 }
+.select:focus {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
+}
+/* ⚠️ 2026-10-23: Environment `.pe-primary` — 32px · булан 8px · 12px/600 · --workspace-accent/-ink */
 .save {
   font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 6px 14px;
-  color: #fff;
-  background: var(--data);
+  padding: 0 14px;
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
   border: 1px solid transparent;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.save:disabled { opacity: 0.45; cursor: default; }
+.save:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.save:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .err {
   margin: 0;
   padding: 8px 12px;
   font-size: 12px;
   color: var(--bad-ink);
-  background: color-mix(in srgb, var(--bad) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--bad) var(--tint), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  border-radius: var(--r);
+}
+/* ⚠️ 2026-10-26: «Зөвхөн харах» тэмдэг — толгойн удирдлагатай ижил өндөр (`--ctl-h`), засварын товч биш гэдэг нь өнгөөр */
+.roBadge {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ctl-h, 30px);
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 999px;
+  cursor: help;
 }
 .note {
   margin: 0;
@@ -110,7 +163,7 @@
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
 }
 /* Дарахад хаагддаг тэмдэглэл — заагч нь үүнийг илэрхийлнэ (2026-09-23) */
 .noteDismiss { cursor: pointer; }
@@ -130,19 +183,21 @@
 }
 .noteX:hover { opacity: 1; }
 /* Баннер доторх жижиг үйлдлийн товч (Шинэчлэх · Ноорогт буцаах) */
+/* ⚠️ 2026-10-23: Environment `.pe-ghost` (жижиг) — --line-strong, булан 6px, hover --surface-2 */
 .noteBtn {
   font: inherit;
   font-size: 11.5px;
+  font-weight: 500;
   padding: 2px 8px;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   cursor: pointer;
   vertical-align: baseline;
 }
-.noteBtn:hover { border-color: var(--data); }
-.noteBtn:disabled { opacity: 0.45; cursor: default; }
+.noteBtn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.noteBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн ажлын мод · баруун хуанли ── */
 
@@ -210,7 +265,9 @@
      урьд нь самбар тогтмол тул өргөсгөсөн багана самбараас хальж хуанли дээр давхарладаг байв.
      ⚠️ 2026-10-09: `--col-extra`-ийн дээд хязгаар JS-д (`useColWidths.roomOf` — хуанлид `TL_MIN` үлдэнэ); энд
      `max-width` ТАВИХГҮЙ — 1181–1230px өргөнд үндсэн 990px өөрөө хавчигдаж баганууд таслагдана. */
-  flex: 0 0 calc(clamp(990px, 58%, 1150px) + var(--side-extra, 0px) + var(--col-extra, 0px));
+  /* ⚠️ 2026-10-23 (UX аудит P5): ажлын нэрийн анхдагч 140 → 170 (гүн бүлгийн нэр «БАРИ ЛГЫ…» болж тасардаг байв) —
+     нийлбэр 848 + 170 = 1018 тул доод хязгаар 990 → 1020, дээд 1150 → 1180 (`useColWidths`-ийн `work.def`-тэй ИЖИЛ). */
+  flex: 0 0 calc(clamp(1020px, 58%, 1180px) + var(--side-extra, 0px) + var(--col-extra, 0px));
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -237,10 +294,12 @@
   align-items: stretch;
   gap: 6px; /* ⚠️ `.row`-той ИЖИЛ — зөрвөл багана гулсана */
   padding: 0 8px;
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--ink-3);
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  /* ⚠️ 2026-10-23: Environment `.pe-table th` — доод зураас --line-strong (өндөр/өргөн хөндөгдөөгүй) */
+  border-bottom: 1px solid var(--line-strong);
 }
 /* ⚠️ Толгой ба мөрийн багана ЯГ ижил өргөнтэй байх ёстой (`--des-w`,
    `--ham-w`) — зөрвөл гарчиг утгынхаа дээр таарахгүй. */
@@ -253,7 +312,7 @@
 /* ⚠️ 2026-10-08: анхдагчийг `.gSide` дээр — хэрэглэгч чирж өөрчилсөн утга (`useColWidths`, inline style)
    энэ хувьсагчийг дарж, толгой · мөр хоёулаа өвлөнө. `.gSideHead, .row` дээр тавьбал inline утга
    үл хэрэгсэгдэнэ (класс сонгогч нь өвлөлтөөс давамгайлна). */
-.gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 140px; --res-w: 44px; }
+.gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 170px; --res-w: 44px; }
 /* ⚠️ 2026-10-08 (хэрэглэгч: «нэг нэгээр нь өргөн бүдүүн тааруулах ёстой»): БАГАНА БҮР ТУСДАА ӨРГӨН.
    Баганын класс нь ӨӨРИЙН элемент дээр `--date-w`/`--days-w`/`--res-w`-ийг `--w-*`-ээр дарна
    (`--w-*`-ийг `useColWidths` `.gSide` дээр тавина, толгой · мөр өвлөнө). `.rowDate` г.м.
@@ -317,7 +376,7 @@
   line-height: 1.2;
   cursor: pointer;
 }
-.colsBtn:hover { color: var(--data); border-color: var(--data); }
+.colsBtn:hover { color: var(--data-ink); border-color: var(--data); }
 /* ⚠️ Хураахад ЯГ 1180px-ийн responsive дүрэмтэй ижил багануудыг нууна —
    хоёр зам нэг үр дүн өгнө. Самбар 360–480px: код 60 + нэр ≥ 140 + уялдаа 100. */
 .gSideNarrow .gHeadDate, .gSideNarrow .gHeadDays, .gSideNarrow .gHeadRes,
@@ -337,7 +396,7 @@
   cursor: col-resize;
   touch-action: none;
 }
-.sideGrip:hover, .sideGrip:focus-visible, .sideGripOn { background: color-mix(in srgb, var(--data) 35%, transparent); }
+.sideGrip:hover, .sideGrip:focus-visible, .sideGripOn { background: color-mix(in oklab, var(--data) 35%, transparent); }
 /* БАГАНЫН ӨРГӨН ЧИРЭХ БАРИУЛ (2026-10-08, `useColWidths`) — толгойн нүдний баруун ирмэг */
 .colGrip {
   position: absolute;
@@ -350,7 +409,7 @@
   touch-action: none;
   border-radius: 2px;
 }
-.colGrip:hover, .colGrip:focus-visible, .colGripOn { background: color-mix(in srgb, var(--data) 35%, transparent); outline: none; }
+.colGrip:hover, .colGrip:focus-visible, .colGripOn { background: color-mix(in oklab, var(--data) 35%, transparent); outline: none; }
 /* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд бариул 14px (хуруугаар 7px-ийг онохгүй) — голлосон хэвээр */
 @media (pointer: coarse) {
   .colGrip { width: 14px; right: -7px; }
@@ -382,15 +441,17 @@
   padding: 4px 6px;
   font-size: 11.5px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   cursor: pointer;
+  outline: none;
 }
 .sel:hover { color: var(--ink); }
+.sel:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
 /* ⚠️ Бүлгийн нэр урт (жиш. «Б1 БАРИЛГЫН АЖИЛ») тул илүү өргөн — 148px-д
    таслагдвал аль бүлэг болох нь танигдахгүй. */
-.selWide { max-width: 260px; }
+.selWide { max-width: 220px; }
 /* ⚠️ ШҮҮЛТ ба ХУАНЛИЙН ХЭРЭГСЛИЙН ЗААГ — хоёр бүлэг нэг мөрөнд нийлсэн тул
    нүдээр ялгах цорын ганц зүйл. Зурвас хоёр мөр болж эвхэгдвэл (нарийн
    дэлгэц) шугам мөрийн эхэнд үлддэг ч төөрөгдүүлэхгүй: бүлгүүд өөрсдөө
@@ -403,10 +464,12 @@
   background: var(--line);
 }
 .tab:hover { background: var(--surface-2); }
+/* ⚠️ 2026-10-23: Environment `.view-switch` дарагдсан — тод гадарга + зөөлөн сүүдэр */
 .tabOn {
   color: var(--ink);
   background: var(--surface-2);
   border-color: var(--line);
+  box-shadow: 0 1px 5px #00000012;
 }
 .tabOn b { color: var(--ink); }
 .row {
@@ -445,7 +508,8 @@
 .row:hover { background: var(--surface-2); }
 .row:hover .rowWork { text-decoration: underline; text-underline-offset: 2px; }
 .rowGroup { font-weight: 600; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
-.rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
+/* ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12% + inset 3px moss зүүн зурвас (`.rowDirty`/`.rowBad`/`.rowOk` доор дарна) */
+.rowOn { background: color-mix(in oklab, var(--moss) 12%, transparent); box-shadow: inset 3px 0 0 var(--moss); }
 /* Нийтлээгүй засвар — зүүн ирмэгийн зураас (өнгө нь «хадгалагдаагүй» гэсэн утга) */
 .rowDirty { box-shadow: inset 3px 0 0 var(--data); }
 /*
@@ -456,8 +520,8 @@
  */
 .rowBad { box-shadow: inset 3px 0 0 var(--bad); background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .rowOk { box-shadow: inset 3px 0 0 var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
-.rowBad .rowDes { color: var(--bad-ink); font-weight: 700; }
-.rowOk .rowDes { color: var(--good-ink); font-weight: 700; }
+.rowBad .rowDes { color: var(--bad-ink); font-weight: 600; }
+.rowOk .rowDes { color: var(--good-ink); font-weight: 600; }
 /* ⚠️ СОНГОЛТ ХАРАГДАНА (2026-09-25 аудит #6): `.rowBad/.rowOk` нь `.rowOn`-ы ДАРАА
    тул дэвсгэрийг нь дарж, тэмдэглэсэн мөрд сонгосон мөр огт ялгарахгүй байв.
    Тэмдгийн өнгийг хадгалж, сонголтын өнгийг давхарлан, баруун ирмэгт зураас нэмнэ. */
@@ -550,26 +614,28 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
-  font-size: 10.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
   background: none;
   border: 0;
   cursor: pointer;
 }
-.rowHam:hover { color: var(--data); text-decoration: underline; text-underline-offset: 2px; }
+.rowHam:hover { color: var(--data-ink); text-decoration: underline; text-underline-offset: 2px; }
 /* Хоосон нүд үл үзэгдэх товч болохгүй — мөр дээр хулгана очиход «+» гарна */
 .row:hover .rowHam:empty::before { content: '+'; color: var(--ink-3); }
-.row:hover .rowHam:empty:hover::before { color: var(--data); }
+.row:hover .rowHam:empty:hover::before { color: var(--data-ink); }
 /* ⚠️ Тайлбар нь ЖИШЭЭГЭЭР ярина («5/2 нь 5/1-аас 7 хоногийн дараа») —
    «такт» гэх мэт салбарын нэр томьёо хэрэглэгчид юу ч хэлэхгүй. */
+/* ⚠️ 2026-10-23: Environment badge — булан 6px · moss бичиг · хүрээ 35% · bg 8% */
 .dirtyTag {
   padding: 1px 7px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--data);
-  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--moss);
+  background: color-mix(in oklab, var(--moss) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--moss) 35%, transparent);
+  border-radius: var(--r-sm);
 }
 /* ⚠️ 120px байсныг НАРИЙСГАВ (2026-09-02): «Алхам» нь 0–365 гэсэн гуравхан
    оронтой тоо. Хэрэгслүүд нэг мөрөнд нийлсэн тул илүүдэл өргөн нь хайлтын
@@ -579,42 +645,53 @@
   width: 58px;
   padding: 4px 6px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  outline: none;
 }
-.numIn:disabled { opacity: 0.5; cursor: default; }
+.numIn:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
+.numIn:disabled { opacity: 0.4; cursor: default; }
 
 /* ⚠️ ЦУЦЛАХ нь ХАДГАЛАХ-ын дэргэд, гэхдээ АНХААРАЛ ТАТАХГҮЙ: гол үйлдэл нь
    хадгалах. Улаанаар будвал «алдаа» мэт уншигдана. */
+/* ⚠️ 2026-10-23: Environment `.pe-ghost` — 32px · булан 8px · 12px/500 · --line-strong */
 .discard {
   font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
   font-size: 12px;
-  padding: 6px 12px;
+  font-weight: 500;
+  padding: 0 14px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.discard:hover { color: var(--bad-ink); border-color: var(--bad); }
-.discard:disabled { opacity: 0.45; cursor: default; }
+.discard:hover:not(:disabled) { background: var(--surface-2); color: var(--bad-ink); }
+.discard:disabled { opacity: 0.4; cursor: not-allowed; }
 /* ── ХУГАЦААНЫ ЗУРВАС ── */
 .flowNote { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.tlZoom { display: flex; gap: 2px; }
+/* ⚠️ 2026-10-23: Environment `.view-switch` — 3px padding, 1px --line зам; дарагдсан = тод гадарга + зөөлөн сүүдэр */
+.tlZoom { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); }
 .tlZoomB {
   font: inherit;
-  font-size: 11px;
+  font-size: 11.5px;
   padding: 3px 10px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
   cursor: pointer;
 }
-.tlZoomOn { color: var(--surface); background: var(--ink-2); border-color: var(--ink-2); }
+.tlZoomB:hover { color: var(--ink); }
+.tlZoomOn { color: var(--ink); background: var(--surface-2); border-color: transparent; box-shadow: 0 1px 5px #00000012; font-weight: 600; }
 
 /*
  * ⚠️ ЗӨВХӨН ХАРАГДАЖ буй төрөл (2026-09-11) — засагдаж буйгаас (`tlZoomOn`)
@@ -623,8 +700,9 @@
  */
 .tlZoomRef {
   color: var(--ink-2);
-  border-color: color-mix(in srgb, var(--ink-2) 55%, transparent);
-  background: color-mix(in srgb, var(--ink-2) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ink-2) 45%, transparent);
+  border-style: dashed;
+  background: transparent;
 }
 .tlGrid {
   position: absolute;
@@ -692,7 +770,7 @@
 .plDay {
   position: absolute;
   top: 18px;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -712,7 +790,7 @@
   padding-right: 8px;
   border-left: 1px solid var(--line);
   padding-left: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
@@ -723,8 +801,8 @@
 /* Сарын шошгын ДООРХ хувь. ⚠️ Сарын шошгоос СУЛ өнгө — гол шошго нь огноо. */
 .plMonPct {
   display: block;
-  font-size: 8px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 8px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
@@ -735,7 +813,13 @@
    зурвас/бариул чирэх, хоосон мөрд муж татах. `touch-action` нь өвөг рүүгээ
    огтлолцдог тул доторх `.plBar`/`.plGrip` ч `none` болно. */
 .plLanes { position: relative; user-select: none; touch-action: pan-x pan-y; }
-.plLanesEdit { touch-action: none; }
+/* ⚠️ 2026-10-21: засах эрхтэй ч эгнээ ГҮЙНЭ (`pan-x pan-y`) — урьд нь `.plLanesEdit` бүхэлдээ `none` тул
+   засагч хуанлийг хуруугаар гүйлгэж чаддаггүй, `useDragPlan`-ийн «Alt-гүй хоосон хэсэг → хөтөч гүйлгэнэ»
+   (2026-10-09) хүлээлттэй зөрдөг байв. `none` ЗӨВХӨН чирэгдэх зурвас (ба доторх `.plGrip`) дээр; бүлгийн
+   зурвас (`.plBarG`) чирэгдэхгүй тул гүйнэ. Хуваарьгүй мөрд товшилт 1 хоногийн муж үүсгэнэ (хуучнаараа);
+   мэдрэгчээр шударвал хөтөч гүйлгэж `pointercancel` → `onCancel` хагас чирэлтийг буцаана. */
+.plLanesEdit { touch-action: pan-x pan-y; }
+.plLanesEdit .plBar:not(.plBarG) { touch-action: none; }
 .plLane {
   position: absolute;
   left: 0;
@@ -745,7 +829,7 @@
 }
 /* ⚠️ Ээлжит сүүдэр — 20+ зэрэгцээ мөрөнд нүд мөрөө алдахгүй */
 .plLaneAlt { background: color-mix(in srgb, var(--ink-3) 5%, transparent); }
-.plLaneOn { background: color-mix(in srgb, var(--data) 10%, transparent); }
+.plLaneOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
 /*
  * ⚠️ ДЭЭД ХАГАС (2026-09-11): сонгосон төрлийн зурвас мөрийн дээд талд,
  *    лавлагаа (`plRef`) доод талд — хоёулаа ЗЭРЭГ харагдана. Урьд нь
@@ -793,7 +877,7 @@
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 9.5px;
+  font-size: 11px;
   white-space: nowrap;
   color: var(--surface);
   font-variant-numeric: tabular-nums;
@@ -835,7 +919,7 @@
  *    харагдаж, хэрэглэгч бүтэн огноог хаанаас харахаа мэднэ.
  *    Босго (`Huvaari.tsx`, 100px) нь ердийн тохиолдолд тасралтгүй байлгана.
  */
-.plBarTwo { line-height: 1; font-size: 9px; }
+.plBarTwo { line-height: 1; font-size: 11px; }
 /* ⚠️ `flex: 1 1 auto` — дээрх `.plBarWhen { flex: none }`-ыг ДАРНА. Хоёр
    мөрийн хувилбарт огноо нь агших ЁСТОЙ: агшихгүй бол `max-width: 100%`
    хүчингүй болж ellipsis ажиллахгүй, текст зурвасаас халина. Нэг мөрийн
@@ -881,58 +965,6 @@
   border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
 }
 
-/*
- * БОДИТ МУЖ (2026-09-23) — мөрийн ХАМГИЙН ДООД захад 3px нарийн зурвас:
- * бодит эхэлсэн → дууссан. `plRef` (доод хагас, 9px)-ээс ДООР, түүнтэй
- * давхцахгүй; өнгө нь `--data` (төлөвлөгөөт зурвасын саарал/ягаанаас ялгарна).
- * ⚠️ `pointer-events: none` — чирэлт дээд зурваст; popup-аас л засагдана.
- * ⚠️ Дуусаагүй (`plActOpen`) бол ТАСАРХАЙ — «үргэлжилж байна», төгсгөл нь
- *    өнөөдөр гэдэг нь бүртгэл биш зураг гэдгийг хэлбэрээр нь ялгана.
- */
-.plAct {
-  position: absolute;
-  bottom: 0;
-  height: 3px;
-  border-radius: 1px;
-  pointer-events: none;
-  background: var(--data);
-  z-index: 2;
-}
-.plActOpen {
-  background: repeating-linear-gradient(
-    90deg,
-    var(--data) 0 4px,
-    transparent 4px 7px
-  );
-}
-.plActSwatch {
-  width: 16px;
-  height: 3px;
-  border-radius: 1px;
-  background: var(--data);
-}
-
-/* Тайлбарын мөр — судал нь юу болохыг нэрлэнэ */
-.plRefKey {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.plRefSwatch {
-  width: 16px;
-  height: 6px;
-  border-radius: 2px;
-  background: repeating-linear-gradient(
-    45deg,
-    color-mix(in srgb, var(--ink-2) 42%, transparent) 0 2px,
-    transparent 2px 5px
-  );
-  border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
-}
-
 /* ── УЯЛДААНЫ СУМУУД ── */
 .depSvg {
   position: absolute;
@@ -948,8 +980,8 @@
   stroke-width: 1.2;
 }
 /* Сонгосон мөрийн холбоосууд — акцентаар тодорно */
-.depHot { fill: none; stroke: var(--data); color: var(--data); stroke-width: 1.8; }
-.depBad { fill: none; stroke: var(--bad); color: var(--bad); stroke-width: 1.5; }
+.depHot { fill: none; stroke: var(--data); color: var(--data-ink); stroke-width: 1.8; }
+.depBad { fill: none; stroke: var(--bad); color: var(--bad-ink); stroke-width: 1.5; }
 /* ⚠️ Хошуу нь шугамаасаа өнгө өвлөдөггүй тул ангилал бүрд тусдаа marker */
 .depArrN { fill: color-mix(in srgb, var(--ink-2) 65%, transparent); }
 .depArrH { fill: var(--data); }
@@ -1107,9 +1139,10 @@
   overflow-y: auto;
   padding: 14px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md, 10px);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 45%);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч цонх: --line-strong, булан 12px, --shadow */
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .mdHead { display: flex; align-items: baseline; gap: 8px; }
 .mdNo {
@@ -1118,19 +1151,25 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.mdWork { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); }
+.mdWork { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — жижиг дүрсэн товч 28px, булан 6px */
 .mdX {
   font: inherit;
   flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
   padding: 0 6px;
   font-size: 18px;
   line-height: 1;
   color: var(--ink-3);
   background: none;
   border: 0;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
-.mdX:hover { color: var(--ink); }
+.mdX:hover { color: var(--ink); background: var(--surface-2); }
 .mdField { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
 .mdDates { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .mdDays {
@@ -1151,8 +1190,8 @@
   font: inherit;
   margin-left: 6px;
   padding: 1px 6px;
-  font-size: 10.5px;
-  color: var(--data);
+  font-size: 11px;
+  color: var(--data-ink);
   background: none;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -1161,9 +1200,10 @@
 .mdSnap:hover { background: var(--surface-2); }
 /* ⚠️ Анхааруулга нь АЛДАА БИШ — хадгалахыг хориглохгүй, зөвхөн юу болохыг
    урьдчилан хэлнэ. Тиймээс улаан биш шар. */
-.mdWarn { margin: 0; font-size: 11px; color: var(--warn); }
+.mdWarn { margin: 0; font-size: 11px; color: var(--warn-ink, var(--warn)); }
 /* ── БЛОКУУД — олноор сонгох чип (2026-09-24). Тод хүрээ = идэвхтэй (суурь) блок ── */
 .mdBlks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+/* ⚠️ 2026-10-23: Environment — чип булан 6px; сонгогдсон = moss 13% · moss бичиг · moss 45% хүрээ */
 .mdChip {
   font: inherit;
   font-size: 11px;
@@ -1171,39 +1211,40 @@
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
-.mdChip:hover { border-color: var(--data); }
-.mdChipOn { color: #fff; background: var(--data); border-color: var(--data); }
+.mdChip:hover { border-color: var(--line-strong); color: var(--ink); }
+.mdChipOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 .mdChipAct { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--data); }
 /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): САРЫН ЗАДАРГАА ТЭНЦЭЭГҮЙ блок — улаан хүрээ ба
    цэг; сонгогдсон (`mdChipOn`) үед ч улаан хүрээ хэвээр тул асуудалтай блок шууд олдоно.
    Өнгө ганцаараа биш — `⚠` тэмдэг ба `title` ч дагалдана (өнгө ялгадаггүй хүнд). */
 .mdChipBad { border-color: var(--bad); color: var(--bad-ink); box-shadow: inset 0 0 0 1px var(--bad); }
-.mdChipBad.mdChipOn { color: #fff; background: var(--bad); border-color: var(--bad); }
+.mdChipBad.mdChipOn { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 13%, transparent); border-color: var(--bad); }
 /* ── ОЛОН БЛОК — ерөнхий сонголт, ТОМ чип (2026-09-29, хэрэглэгч: «ерөнхийд томоор») ── */
+/* ⚠️ 2026-10-23 (хэрэглэгч: «нэг мөрөнд оруулж жижигрүүл»): «Бүтэн дэлгэц»-ийн мөрөнд, хайрцаггүй, жижиг чипүүд */
 .gBlks {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; flex: none;
-  margin: 0 0 8px; padding: 8px 10px;
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; flex: 0 1 auto; min-width: 0;
 }
-.gBlksLabel { font-size: 13px; font-weight: 700; color: var(--ink); margin-right: 4px; }
-.gBlksNote { font-size: 12px; color: var(--data); font-weight: 600; }
+.gBlksLabel { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 2px; }
+.gBlksNote { font-size: 11px; color: var(--data-ink); font-weight: 600; }
+/* ⚠️ 2026-10-23: Environment — ТОМ чип (хэрэглэгчийн «ерөнхийд томоор» хэвээр), булан 8px, жин ≤600;
+   сонгогдсон = moss 13% · moss бичиг · moss 45% хүрээ */
 .gChip {
-  font: inherit; font-size: 14px; font-weight: 700;
-  min-width: 52px; padding: 7px 14px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  min-width: 36px; padding: 3px 8px;
   color: var(--ink-2); background: var(--surface);
-  border: 1.5px solid var(--line-strong); border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong); border-radius: var(--r);
   cursor: pointer;
 }
-.gChip:hover { border-color: var(--data); }
-.gChipOn { color: #fff; background: var(--data); border-color: var(--data); }
-.gChipAct { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--data); cursor: default; }
+.gChip:hover { background: var(--surface-2); color: var(--ink); }
+.gChipOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, var(--surface)); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
+.gChipAct { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--data); cursor: default; }
 /* ── ОГНОО — «Төлөвлөгөөт» · «Бодит» хоёр багана (2026-09-24) ── */
 .mdCols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 16px; }
 .mdCol { display: flex; flex-direction: column; gap: 6px; }
-.mdColHead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.mdColHead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.3; color: var(--ink-3); }
 /* ── САРЫН СҮЛЖЭЭ — сар · обьём · хүн · машин (2026-09-24) ── */
 .mdMonthGrid {
   display: grid;
@@ -1214,7 +1255,7 @@
   overflow-y: auto;
   font-size: 11.5px;
 }
-.mdMonthHead { font-size: 10.5px; font-weight: 600; color: var(--ink-3); position: sticky; top: 0; background: var(--surface); }
+.mdMonthHead { font-size: 11px; font-weight: 600; color: var(--ink-3); position: sticky; top: 0; background: var(--surface); }
 .mdMonthTot { font-weight: 600; color: var(--ink); border-top: 1px solid var(--line); padding-top: 4px; }
 
 /* ── УЯЛДАА — popup доторх урьдчилагчдын жагсаалт ── */
@@ -1229,10 +1270,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  line-height: 1.3;
   color: var(--ink-3);
 }
 .mdDepsN {
@@ -1240,7 +1282,7 @@
   font-variant-numeric: tabular-nums;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 .mdDepRow { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
 /* ⚠️ Ажлын нэр урт — сонгогч нь мөрийн үлдсэн зайг бүгдийг авч агшдаг */
@@ -1274,16 +1316,20 @@
 /* ⚠️ Батлах урсгалын цонхны текст талбар (`FlowBox`) — тайлбар ба буцаах
    шалтгаан. `PlanModal`-ийн бусад ангийг дахин ашигладаг тул зөвхөн энэ нэг
    шинэ дүрэм хэрэгтэй. */
+/* ⚠️ 2026-10-23: Environment `.pe-field` (textarea) — булан 7px · --line-strong · bg --bg; focus moss */
 .flowText {
   width: 100%;
   resize: vertical;
   font: inherit;
+  font-size: 12.5px;
   color: var(--ink);
-  background: var(--surface-2, var(--surface));
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 7px 9px;
+  outline: none;
 }
+.flowText:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
 
 /*
  * ТОЛГОЙН ЗУРВАСЫН ТАЙЛБАР — товчны ОРОНД гарах шалтгаан (2026-09-15).
@@ -1294,7 +1340,7 @@
  */
 .muted {
   padding: 7px 11px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r);
   background: var(--surface-2);
   border: 1px solid var(--line);
   font-size: 11.5px;
@@ -1321,8 +1367,9 @@
 .lvLbl {
   margin-right: 5px;
   color: var(--ink-3);
-  font-size: 0.74rem;
+  font-size: 11.5px;
 }
+/* ⚠️ 2026-10-23: Environment — `negtgel.module.css`-ийн `.levels`-тэй ИЖИЛ (дээрх «хэмжээ, өнгө ЗӨРЖ БОЛОХГҮЙ» ⚠️) */
 .lvBar button {
   width: 22px;
   height: 22px;
@@ -1332,17 +1379,17 @@
   background: var(--surface);
   color: var(--ink-2);
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
-.lvBar button:hover { border-color: var(--data); color: var(--ink); }
+.lvBar button:hover { background: var(--surface-2); color: var(--ink); }
 /* ⚠️ Идэвхтэй товч — хэрэглэгч гараар нэг бүлэг хумивал АЛЬ Ч товч тодрохгүй
    (`lvl = 0`): дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй. */
 .lvOn {
-  background: var(--data) !important;
-  border-color: var(--data) !important;
-  color: #fff !important;
+  background: color-mix(in oklab, var(--moss) 14%, var(--surface)) !important;
+  border-color: color-mix(in oklab, var(--moss) 45%, transparent) !important;
+  color: var(--moss) !important;
 }
 
 /*
@@ -1400,9 +1447,9 @@
   left: 1px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
-  color: var(--data);
+  color: var(--data-ink);
   opacity: 0;
   pointer-events: none;
 }
@@ -1426,8 +1473,8 @@
   font-variant-numeric: tabular-nums;
   padding: 0 3px;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--data);
+  background: var(--bg);
+  border: 1px solid var(--moss);
   border-radius: var(--r-sm);
   outline: none;
 }
@@ -1487,7 +1534,7 @@
   min-width: 0;
   padding: 1px 3px;
   text-align: right;
-  font-size: 10.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
   background: none;
@@ -1506,14 +1553,14 @@
   right: 0;
   z-index: 3;
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-style: italic;
   white-space: nowrap;
   color: var(--ink-2);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow: var(--shadow-sm);
   pointer-events: none;
 }
 .hamIn:focus {
@@ -1538,7 +1585,13 @@
   border: 0;
   cursor: pointer;
 }
-.hamMore:hover { color: var(--data); }
+.hamMore:hover { color: var(--data-ink); }
+/* ⚠️ 2026-10-23 (UX аудит P10): «Жагсаалтаас сонгох» 14×11px — хуруугаар онох боломжгүй байв. Мөрийн өндөр (`PL_ROW`)
+   хөдлөхгүйн тулд харагдах товч бага зэрэг (20px), ДАРАГДАХ талбай нь `::before`-ээр ≥32px (`.plGrip`-ийн загвар). */
+@media (pointer: coarse) {
+  .hamMore { position: relative; width: 20px; }
+  .hamMore::before { content: ''; position: absolute; top: -10px; bottom: -10px; left: -6px; right: -6px; }
+}
 
 /*
  * ТОЛГОЙН ЖИШЭЭ БИЧИГЛЭЛ — «Хамаарал» гарчгийн хажууд «11FS14».
@@ -1557,6 +1610,8 @@
 
 /* Хуваалцсан ноорогийн төлөв — алдаа/хэт том үед анхааруулах өнгө (2026-09-23) */
 .hdWarn { color: var(--bad-ink); }
+/* ⚠️ 2026-10-23: «✓ Ноорог хадгалагдсан» — ногоон */
+.hdOk { color: var(--good-ink, var(--good)); font-weight: 600; }
 
 /* ══════════════════ НЭМЭЛТ АЖИЛ (2026-09-24) ══════════════════
    FillNew-ийн `.addBtn` / `.dropBtn` / `.newRow` / `.addForm`-ийн загвар — мөр
@@ -1576,7 +1631,7 @@
   border: 0;
   border-radius: var(--r-sm);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
   color: var(--ink-3);
   background: color-mix(in srgb, var(--data) 12%, transparent);
@@ -1585,7 +1640,7 @@
   transition: opacity 0.15s, color 0.15s;
 }
 .row:hover .addBtn { opacity: 1; }
-.addBtn:hover { color: var(--data); background: color-mix(in srgb, var(--data) 24%, transparent); }
+.addBtn:hover { color: var(--data-ink); background: color-mix(in srgb, var(--data) 24%, transparent); }
 .dropBtn {
   font: inherit;
   flex: none;
@@ -1593,7 +1648,7 @@
   border: 0;
   border-radius: var(--r-sm);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
   color: var(--bad-ink);
   background: color-mix(in srgb, var(--bad) 14%, transparent);
@@ -1616,45 +1671,55 @@
   font-weight: 400;
   color: var(--ink);
   background: var(--surface);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч гадарга: --line-strong, булан 12px, --shadow */
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
   cursor: default;
 }
-.addTitle { font-weight: 700; color: var(--ink-2); }
+.addTitle { font-weight: 600; color: var(--ink-2); }
 .addPop input {
   font: inherit;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 5px 8px;
-  background: var(--surface);
+  font-size: 12.5px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: var(--bg);
   color: var(--ink);
+  outline: none;
 }
-.addPop input:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.addPop input:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
 .addNo { width: 64px; }
 .addWork { flex: 1 1 220px; min-width: 160px; }
 .addNum { width: 100px; }
+/* ⚠️ 2026-10-23: Environment `.pe-primary` / `.pe-ghost` — 32px · булан 8px · 12px */
 .addOk {
   font: inherit;
+  height: 32px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--surface);
-  background: var(--good-ink);
+  color: var(--workspace-accent-ink);
+  background: var(--workspace-accent);
   border: 0;
-  border-radius: var(--r-sm);
-  padding: 6px 14px;
+  border-radius: var(--r);
+  padding: 0 14px;
   cursor: pointer;
 }
-.addOk:hover { filter: brightness(1.06); }
+.addOk:hover { background: var(--workspace-accent-hover); }
 .addNo2 {
   font: inherit;
-  font-weight: 600;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-2);
   background: none;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  padding: 0 14px;
   cursor: pointer;
 }
+.addNo2:hover { background: var(--surface-2); color: var(--ink); }
 .addHint { flex-basis: 100%; color: var(--ink-3); font-size: 11px; }
 
 /* ХУУЧИН (серверийн) муж — хяналтад «юу байсан». `plRef`-ээс ялгарах улаавтар
@@ -1669,7 +1734,7 @@
   border-color: color-mix(in srgb, var(--bad) 40%, transparent);
 }
 /* Хяналтын тоолуур — бүгд зөвшөөрөгдсөн үед ногоон */
-.revAllOk { color: var(--good-ink); font-weight: 700; }
+.revAllOk { color: var(--good-ink); font-weight: 600; }
 
 /* PDF ТАТАХ — сонголтын цонх (2026-09-30). `.addPop`-ийн ижил загвар;
    товчны доор, баруун захаар нь эгнэнэ (толгойн баруун төгсгөлд байрладаг). */
@@ -1688,8 +1753,8 @@
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .pdfRow { display: flex; align-items: center; gap: 8px; justify-content: space-between; cursor: pointer; }
 .pdfRow:has(input[type="checkbox"]) { justify-content: flex-start; }
@@ -1711,11 +1776,11 @@
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   opacity: 0.7;
 }
-.dateCal:hover:not(:disabled) { opacity: 1; background: color-mix(in srgb, var(--data) 16%, transparent); }
+.dateCal:hover:not(:disabled) { opacity: 1; background: var(--surface-2); }
 .dateCal:disabled { opacity: 0.35; cursor: default; }
 
 /*
@@ -1740,8 +1805,8 @@
 }
 .plBarAll .plBarLab { color: var(--ink); }
 /* ⚠️ Дээрх дэвсгэр нь `.rowOn`/`.plLaneOn`-оос ХОЙНО тул сонголтыг дарна — буцааж тодруулна */
-.rowSub.rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
-.plLaneSub.plLaneOn { background: color-mix(in srgb, var(--data) 10%, transparent); }
+.rowSub.rowOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
+.plLaneSub.plLaneOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
 
 /* ══════════════════ 2026-10-08 — ХАРИЛЦАН ҮЙЛДЛИЙН НЭМЭЛТҮҮД ══════════════════ */
 
@@ -1753,12 +1818,13 @@
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   white-space: nowrap;
 }
-.chipFilter:hover { border-color: var(--data); color: var(--ink); }
-.chipFilterOn { color: #fff; background: var(--data); border-color: var(--data); }
+.chipFilter:hover { border-color: var(--line-strong); color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — сонгогдсон шүүлт: moss 13% · moss бичиг · moss 45% хүрээ */
+.chipFilterOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 
 /* ХЯНАЛТЫН ӨӨРЧЛӨЛТИЙН ХАЖУУГИЙН САМБАР — наалддаг, дотроо гүйнэ (`Huvaari.tsx`) */
 .chgPanel {
@@ -1777,7 +1843,7 @@
   font-size: 11.5px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 .chgItem {
   font: inherit;
@@ -1794,21 +1860,8 @@
   cursor: pointer;
 }
 .chgItem:hover { background: var(--surface-2); color: var(--ink); }
-.chgItemOn { color: var(--ink); background: color-mix(in srgb, var(--data) 12%, transparent); border-color: color-mix(in srgb, var(--data) 40%, transparent); }
+.chgItemOn { color: var(--ink); background: color-mix(in oklab, var(--moss) 12%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 
-/* МӨР РҮҮ ҮСРЭХ ЖИЖИГ ОРОЛТ (№ · код) */
-.jumpBox {
-  font: inherit;
-  width: 72px;
-  padding: 3px 6px;
-  font-size: 11.5px;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  font-variant-numeric: tabular-nums;
-}
-.jumpBox:focus { outline: none; border-color: var(--data); }
 
 /* АЛДААНЫ ЗУРВАС — ЖАГСААЛТ, мөр бүр нь холбоос (`.err`-ийн өнгөтэй ижил) */
 .errList {
@@ -1816,9 +1869,9 @@
   padding: 6px 12px 6px 26px;
   font-size: 12px;
   color: var(--bad-ink);
-  background: color-mix(in srgb, var(--bad) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
-  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--bad) var(--tint), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  border-radius: var(--r);
 }
 .errList li { margin: 2px 0; }
 .errList a, .errList button {
@@ -1831,39 +1884,39 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
-.errList a:hover, .errList button:hover { color: var(--bad); }
+.errList a:hover, .errList button:hover { color: var(--bad-ink); }
 
 /* БУЦААХ товч — анхааруулгын хажууд, тод биш */
 .undoBtn {
   font: inherit;
   font-size: 11px;
   padding: 2px 8px;
-  color: var(--data);
+  color: var(--data-ink);
   background: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   cursor: pointer;
   white-space: nowrap;
 }
-.undoBtn:hover { background: var(--surface-2); border-color: var(--data); }
-.undoBtn:disabled { opacity: 0.45; cursor: default; }
+.undoBtn:hover:not(:disabled) { background: var(--surface-2); }
+.undoBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ӨӨРЧЛӨГДСӨН БЛОКИЙН ЧИП — `TaskRow` нэрийн ард (хяналт); мөрийн өндөр хөдлөхгүй */
 .blkChips { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 4px; }
 .blkChip {
   font: inherit;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1;
   padding: 2px 5px;
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-sm);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.blkChip:hover { border-color: var(--data); color: var(--ink); }
-.blkChipOn { color: #fff; background: var(--data); border-color: var(--data); }
+.blkChip:hover { border-color: var(--line-strong); color: var(--ink); }
+.blkChipOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 span.blkChip { cursor: default; }
 
 /* ХАМТРАН ЗАСАГЧИЙН ЦЭГ — хуваалцсан нооргоос ирсэн мөр (`TaskRow.editedBy`) */
@@ -1893,8 +1946,8 @@ span.blkChip { cursor: default; }
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
 }
 .cboxItem {
   padding: 3px 8px;
@@ -1905,7 +1958,7 @@ span.blkChip { cursor: default; }
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.cboxItemHi { background: color-mix(in srgb, var(--data) 14%, transparent); }
+.cboxItemHi { background: color-mix(in oklab, var(--moss) 12%, transparent); }
 .cboxItemOn { font-weight: 600; }
 .cboxEmpty { padding: 3px 8px; font-size: 11px; color: var(--ink-3); font-style: italic; }
 
@@ -1917,19 +1970,20 @@ span.blkChip { cursor: default; }
   height: 20px;
   padding: 0;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   color: var(--ink-3);
   background: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
   cursor: pointer;
 }
-.howtoBtn:hover, .howtoBtnOn { color: var(--data); border-color: var(--data); }
+.howtoBtn:hover, .howtoBtnOn { color: var(--moss); border-color: color-mix(in oklab, var(--moss) 45%, transparent); background: color-mix(in oklab, var(--moss) 12%, transparent); }
 .howtoPop {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
+  /* ⚠️ 2026-10-23 (UX аудит P5): баруун ирмэгт тасардаг байв — зай хүрэхгүй бол баруунаар тэгшилнэ (`.howtoPopR`) */
   z-index: 7;
   width: min(360px, calc(100vw - 32px));
   display: flex;
@@ -1938,11 +1992,14 @@ span.blkChip { cursor: default; }
   padding: 10px 12px;
   font-size: 11.5px;
   color: var(--ink);
-  background: var(--surface);
+  /* ⚠️ 2026-10-23: Environment tooltip — --surface 95% + blur, --line-strong, булан 12px */
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
+.howtoPopR { left: auto; right: 0; }
 .howtoList { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; color: var(--ink-2); }
 .howtoPop .tlZoomB { align-self: flex-end; }
 
@@ -1958,13 +2015,13 @@ span.blkChip { cursor: default; }
   right: 0;
   z-index: 3;
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
   color: var(--bad-ink);
   background: var(--surface);
   border: 1px solid var(--bad-ink);
   border-radius: var(--r-sm);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow: var(--shadow-sm);
   pointer-events: none;
 }
 
@@ -1981,16 +2038,24 @@ span.blkChip { cursor: default; }
 @media (max-width: 1180px) {
   .gSide.gSideEdP, .gSide.gSideEdG { flex-basis: calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)); }
 }
+/* ⚠️ 2026-10-26 (аудит): утсанд (375px) засагчийн самбар 410px болж `.gWrap`-ийг бүрэн эзэлдэг тул хуанли ХЭЗЭЭ Ч харагддаггүй,
+   чирч төлөвлөх боломжгүй байв — дор хаяж 120px хуанли үлдэнэ (огноог эхлэх/дуусах нүдээр эсвэл цонхоор засна). */
+@media (max-width: 640px) {
+  .gSide { flex-basis: min(calc(clamp(260px, 46%, 420px) + var(--col-extra-n, 0px)), calc(100% - 120px)); }
+  .gSide.gSideEdP, .gSide.gSideEdG {
+    flex-basis: min(calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)), calc(100% - 120px));
+  }
+}
 
 /* ⚠️ ОЛОН БЛОКТ БИЧИХ тэмдэг — засагдах эхлэх нүдний толгойд «→ N блок» (`Huvaari` `gBlks`) */
 .multiTag {
   position: absolute;
   top: 0;
   left: 2px;
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1.2;
-  color: var(--data);
+  color: var(--data-ink);
   white-space: nowrap;
   pointer-events: none;
 }
@@ -2001,7 +2066,7 @@ span.blkChip { cursor: default; }
   top: -19px;
   z-index: 5;
   padding: 1px 6px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--surface);
@@ -2027,8 +2092,7 @@ span.blkChip { cursor: default; }
   transform: translateX(-50%);
   pointer-events: none;
 }
-.toasts > * { pointer-events: auto; box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent); }
-.toasts .note { background: var(--surface); }
+/* ⚠️ 2026-10-23: Environment toast — --shadow, --line-strong хүрээ, булан 12px */
+.toasts > * { pointer-events: auto; box-shadow: var(--shadow); border-radius: var(--r-lg); }
+.toasts .note { background: var(--surface); border-color: var(--line-strong); }
 
-/* ⚠️ «Үсрэх» тааралтын тоолуур «2/7» ба ‹ › */
-.jumpN { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }

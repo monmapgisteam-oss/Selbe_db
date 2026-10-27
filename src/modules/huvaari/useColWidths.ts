@@ -54,7 +54,8 @@ const DAYS = { def: 40, min: 34, max: 90 };
 const RES = { def: 44, min: 28, max: 100 };
 const SPEC: Record<ColKey, { v: string; def: number; min: number; max: number }> = {
   des: { v: '--des-w', def: 60, min: 44, max: 160 },
-  work: { v: '--work-min', def: 140, min: 80, max: 600 },
+  /* ⚠️ 2026-10-23 (UX аудит P5): 140 → 170 — `huvaari.module.css`-ийн `.gSide --work-min` ба `clamp(1020px…)`-тэй ИЖИЛ */
+  work: { v: '--work-min', def: 170, min: 80, max: 600 },
   gs: { v: '--w-gs', ...DATE },
   ge: { v: '--w-ge', ...DATE },
   gd: { v: '--w-gd', ...DAYS },
@@ -119,6 +120,12 @@ export function useColWidths(mult: ColMult) {
   /** Гарын хадгалагдаагүй утга (товчлуурын давталт) — `keyup`/`blur`-д `commit` */
   const kb = useRef<{ k: ColKey; v: number } | null>(null);
 
+  /* ⚠️ 2026-10-21: ИДЭВХТЭЙ ЧИРЭЛТИЙН цонхны сонсогчдыг салгагч — урьд нь зөвхөн `up` дотор салгадаг тул чирэх
+     зуур харагдац солигдож (unmount) бол сонсогчид үлдэж, салсан зангилаанд бичиж, унтарсан hook-д
+     `setDragging`/`commit` дуудагддаг байв. Unmount-д салгана (хадгалахгүй — чирэлт дуусаагүй). */
+  const dragOff = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragOff.current?.(), []);
+
   /** Хувьсагчийг тавих элемент (`.gSide`) — callback ref */
   const elRef = useCallback((node: HTMLElement | null) => { el.current = node; }, []);
 
@@ -169,22 +176,28 @@ export function useColWidths(mult: ColMult) {
     /* ⚠️ 2026-10-09: хязгаарыг чирэлтийн ЭХЭНД нэг удаа хэмжинэ (чирэх явцад layout хэмжихгүй) */
     const cap = capOf(k, base, roomOf(), multRef.current[k] ?? 0);
     let cur = base;
+    dragOff.current?.();
     setDragging(k);
     const mv = (ev: globalThis.PointerEvent) => {
       const want = base + ev.clientX - x0;
       cur = clampW(k, want > base ? Math.min(want, cap) : want);
       paint(k, cur);
     };
-    const up = () => {
+    const off = () => {
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      if (dragOff.current === off) dragOff.current = null;
+    };
+    const up = () => {
+      off();
       setDragging(null);
       commit(k, cur);
     };
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+    dragOff.current = off;
   }, [commit, paint, roomOf]);
 
   /** Гарын хадгалагдаагүй утгыг хадгална (`keyup` · `blur`) */

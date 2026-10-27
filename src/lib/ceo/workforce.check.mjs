@@ -39,19 +39,19 @@ const DAY = 86_400_000;
 function row(ognoo, comp = {}, header = {}, allNull = false, sys = {}) {
   const r = {
     objectid: sys.oid ?? null,
-    EditDate: sys.edit ?? null,
-    Ognoo: ognoo,
-    Niit_ajiltan: header.workers ?? null,
-    Hun_tsag: header.manHours ?? null,
-    Niit_tehnik: header.technik ?? null,
+    last_edited_date: sys.edit ?? null,
+    ognoo: ognoo,
+    niit_ajiltan: header.workers ?? null,
+    hun_tsag: header.manHours ?? null,
+    niit_tehnik: header.technik ?? null,
   };
   for (const s of SFX) {
     const c = comp[s];
-    r[`Niit_ajiltan_${s}`] = allNull ? null : (c?.w ?? 0);
-    r[`MNG_ajiltani_too_${s}`] = c?.m ?? null;
-    r[`G_ajiltanii_too_${s}`] = c?.g ?? null;
-    r[`Tehnik_${s}`] = c?.t ?? null;
-    if (BAGTS[s]) r[`Bagts_${s}`] = BAGTS[s];
+    r[`niit_ajiltan_${s.toLowerCase()}`] = allNull ? null : (c?.w ?? 0);
+    r[`mng_ajiltani_too_${s.toLowerCase()}`] = c?.m ?? null;
+    r[`g_ajiltanii_too_${s.toLowerCase()}`] = c?.g ?? null;
+    r[`tehnik_${s.toLowerCase()}`] = c?.t ?? null;
+    if (BAGTS[s]) r[`bagts_${s.toLowerCase()}`] = BAGTS[s];
   }
   return r;
 }
@@ -114,7 +114,8 @@ const ROWS = [
   assert.equal(d.latestKey, '2026-09-03');
   assert.equal(d.prevKey, '2026-09-02');
   assert.equal(d.staleDays, 0);
-  assert.equal(k.level, 'good');
+  assert.equal(k.level, 'warn', '⚠️ 2026-10-21: тайлангүй компанитай (П) → нийт дутуу → ядаж warn');
+  assert.equal(d.incomplete, true, '⚠️ 2026-10-21: нийт дутуу туг');
   assert.deepEqual(k.failedSources, []);
 
   // Баримтууд — зөвхөн тоо
@@ -123,7 +124,7 @@ const ROWS = [
     'техник 72',
     'хүн-цаг 11,776',
     '2026-09-03 · өмнөх 2026-09-02',
-    '1 компани тайлангүй',
+    '1 компани тайлангүй — нийт дутуу',
   ]);
 
   // Тайлангүй: П 09-01-нд 77 байсан, 09-02/09-03-нд 0
@@ -234,7 +235,7 @@ const ROWS = [
   assert.ok(k3.facts.includes('техник 0'));
   // Толин тусгал: зөвхөн Tehnik_ бөглөгдсөн, ажилтны талбар бүгд хоосон → ажилтан null, техник тоо
   const onlyT = row(D3, {}, {}, true);
-  onlyT.Tehnik_MK = 4;
+  onlyT.tehnik_mk = 4;
   const k4 = computeWorkforce([onlyT, ROWS[1]], ub(2026, 9, 4));
   assert.equal(k4.detail.workersLatest, null, 'ажилтны талбаргүй → null');
   assert.equal(k4.detail.technik, 4, 'техник тусдаа тугаар тоо');
@@ -275,15 +276,35 @@ const ROWS = [
   assert.equal(drop.issues.length, 1);
   assert.equal(drop.issues[0].text, 'Монкон констракшн ХХК — 100 → 60 хүн');
 
-  // Өмнөх 0 → хувь null, delta бий
+  // ⚠️ 2026-10-21: өмнөх өдөр нэг ч компани тайлангүй → зөрүү null (урьд нь +30 «0-ээс»)
   const fromZero = computeWorkforce([
     row(D3, { MK: { w: 30 } }),
     row(D2, {}),
   ], ub(2026, 9, 4));
-  assert.equal(fromZero.detail.delta, 30);
+  assert.equal(fromZero.detail.delta, null);
   assert.equal(fromZero.detail.deltaPct, null);
-  assert.equal(fromZero.facts[0], '+30 хүн өмнөх тайлангаас');
+  assert.equal(fromZero.facts[0], '2026-09-03 · өмнөх 2026-09-02');
   assert.equal(fromZero.level, 'good');
+  // Өмнөх ажилтан 0 ч техниктэй (тайлан өгсөн) → хувь null, delta бий
+  const zeroW = computeWorkforce([
+    row(D3, { MK: { w: 30, t: 2 } }),
+    row(D2, { MK: { w: 0, t: 2 } }),
+  ], ub(2026, 9, 4));
+  assert.equal(zeroW.detail.delta, 30);
+  assert.equal(zeroW.detail.deltaPct, null);
+
+  // ⚠️ 2026-10-21: маягтаа бөглөөгүй компани (өнөөдөр 0, өчигдөр 250) нийт зөрүүнд ОРОХГҮЙ — 'bad' биш
+  const missed = computeWorkforce([
+    row(D3, { MK: { w: 0 }, NBG: { w: 100 } }),
+    row(D2, { MK: { w: 250 }, NBG: { w: 96 } }),
+  ], ub(2026, 9, 4));
+  assert.deepEqual(missed.detail.unreported, ['MK']);
+  assert.equal(missed.detail.workersLatest, 100);
+  assert.equal(missed.detail.workersPrev, 346);
+  assert.equal(missed.detail.delta, 4, 'зөвхөн НБГ 96 → 100');
+  assert.ok(Math.abs(missed.detail.deltaPct - (4 / 96) * 100) < 1e-9);
+  assert.equal(missed.level, 'warn', '⚠️ 2026-10-21: МК тайлангүй → нийт дутуу → warn (bad БИШ)');
+  assert.equal(missed.detail.incomplete, true);
 
   // Компанийн бууралт, өмнөх < 10 → дохиолохгүй
   const small = computeWorkforce([
@@ -299,6 +320,7 @@ const ROWS = [
   assert.equal(single.facts[0], 'техник 72');
   assert.ok(single.facts.includes('2026-09-03'));
   assert.equal(single.level, 'good');
+  assert.equal(single.detail.incomplete, false, 'тайлангүй компанигүй → бүрэн');
   assert.ok(single.tables[0].rows.every((r) => r[3].v === null), 'өмнөх «—»');
 }
 
@@ -318,7 +340,8 @@ const ROWS = [
     row(D3 - 6 * DAY, { MK: { w: 10 }, P: { w: 50 } }),
   ], ub(2026, 9, 4));
   assert.deepEqual(k2.detail.unreported, ['P']);
-  assert.equal(k2.facts.at(-1), '1 компани тайлангүй');
+  assert.equal(k2.facts.at(-1), '1 компани тайлангүй — нийт дутуу');
+  assert.equal(k2.level, 'warn', '⚠️ 2026-10-21: тайлангүй → warn');
   // Трендийн цонх: 20 хоногийн өмнөх өдөр орохгүй
   const k3 = computeWorkforce([
     row(D3, { MK: { w: 10 } }),
@@ -346,7 +369,7 @@ const ROWS = [
     // оролтын дараалал хадгалагдана
     assert.deepEqual(out, input.filter((r) => r !== first));
     // нийлбэр 389 + 300 — 636 + 300 БИШ
-    const sum = out.reduce((s, r) => s + (Number(r.Niit_ajiltan_MK) || 0), 0);
+    const sum = out.reduce((s, r) => s + (Number(r.niit_ajiltan_mk) || 0), 0);
     assert.equal(sum, 689);
   }
   // groupDays-тай НЭГ дүрэм: сонгогдсон мөрийн oid ижил
@@ -392,7 +415,8 @@ const ROWS = [
   const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('function byDaySeries'), src.indexOf('const pkgOrder'));
   assert.ok(body.includes('if (!companyReported(r, sfx)) continue;'), 'byDaySeries — тайлангүй гүйцэтгэгч алгасна');
-  assert.ok(src.includes('laborStaleness(labor.asOf, now)'), '«Сүүлийн тайлан» — CEO-тэй нэг босго');
+  /* ⚠️ 2026-10-21 (хэрэглэгч): ХАБЭА KPI-ийн «Сүүлийн тайлан … хоног шинэчлэгдээгүй» мөр ХАСАГДСАН — `laborStaleness`
+     одоо зөвхөн CEO самбарт; Habea.tsx-д байхыг шаардахгүй (эсрэгээр нь ч шаардахгүй). */
 }
 
 console.log('workforce.check: OK');

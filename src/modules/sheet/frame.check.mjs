@@ -15,7 +15,8 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { alignInsertions, firstDoneFrameAtLeast, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
+import { addsLost, alignInsertions, applyAdds, applyUpdates, firstDoneFrameAtLeast, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
+import { isLostWrite } from '@/lib/lostWrite';
 
 const NO = 'dugaar';
 
@@ -126,7 +127,7 @@ const nosOf = (fs) => fs.map((f) => f.attributes[NO]);
 
    Суурь агшин (огноогүй мөр) устсан багцад `loadBaseKeys` нь БҮХ мөрөөс
    лавлах гаргадаг. Тэнд `lastFrame` хэрэглэвэл лавлах нь ОДООГИЙН жааз
-   ӨӨРӨӨ болно — ерөнхий менежер мөр НЭММЭГЦ лавлах ч хамт уртсаж,
+   ӨӨРӨӨ болно — төлөвлөлтийн ахлах инженер мөр НЭММЭГЦ лавлах ч хамт уртсаж,
    `ref.length === expect` унаж багц бүхэлдээ хаагдана.
 
    Амьдаар (2026-09-07): 10 багцын 7-д `buglusun_ognoo IS NULL` = 0 байсан
@@ -437,7 +438,9 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
 
   const SRC3 = readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
   /* F4: strict үед лавлах унавал шиднэ; өмнөх жаазтай жишилт 500-ийн үржвэрт */
-  assert.ok(SRC3.includes('opts?: { strict?: boolean }') && /if \(opts\?\.strict\)\s*throw/.test(SRC3), 'loadRows strict алга');
+  /* ⚠️ 2026-10-22: `persist` (уншдаг самбарын хөтчийн кэш) нэмэгдэв — `strict`/`atDay` үед ҮЛ ХАМААРНА (бичих зам серверээс) */
+  assert.ok(SRC3.includes('opts?: { strict?: boolean; persist?: boolean }') && /if \(opts\?\.strict\)\s*throw/.test(SRC3), 'loadRows strict алга');
+  assert.ok(SRC3.includes('const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;'), 'persist нь strict/atDay үед унтрах ёстой');
   assert.ok(SRC3.includes('feats2.length % 500 === 0') && SRC3.includes('prevFrameLen(pkg, sc, feats2, expect)'), 'өмнөх бүтэн жаазтай жишилт алга');
   const HY = readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok((HY.match(/loadRows\(pkg, sc, undefined, undefined, \{ strict: true \}\)/g) ?? []).length >= 2, 'archiveSubmission strict-ээр уншихгүй байна');
@@ -446,4 +449,35 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   /* R6: хариу алдагдсан бичилт кэшийг хүчингүй болгоно */
   assert.ok((SRC3.match(/if \(isLostWrite\(e\)\) invalidate\('BAGTS_SHEET'\);/g) ?? []).length === 2, 'applyAdds/applyUpdates lost → invalidate алга');
   console.log('✅ F5 хоосон мөр · F4 strict · F11 · R6');
+}
+
+/* ── ⚠️ 2026-10-21: `success !== true` — талбаргүй `success` ч амжилт БИШ (applyAdds · applyUpdates) ──
+   Урьд нь зөвхөн `success === false`-ийг алдаа гэж үзэж, `success`-гүй үр дүнг «бичигдлээ» гэж тоолдог байв.
+   Тодорхой `false` = татгалзал (lost биш) хэвээр; батлагдаагүй = ТОДОРХОЙГҮЙ (lost), дугаар нь `written`-д. */
+{
+  const realFetch = globalThis.fetch;
+  const pkg = { key: 'x', label: 'x', url: 'https://example.invalid/arcgis/rest/services/X/FeatureServer/0' };
+  const run = async (reply, fn) => {
+    globalThis.fetch = async () => ({
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(reply), json: async () => structuredClone(reply),
+    });
+    try { return { out: await fn() }; } catch (e) { return { err: e }; } finally { globalThis.fetch = realFetch; }
+  };
+  const w = [];
+  let r = await run({ addResults: [{ objectId: 5 }, { success: true, objectId: 6 }] }, () => applyAdds(pkg, [{ a: 1 }, { a: 2 }], w));
+  assert.ok(r.err, 'applyAdds: success-гүй үр дүн амжилт гэж тоологдов');
+  assert.equal(addsLost(r.err), true, 'applyAdds: батлагдаагүй = тодорхойгүй (lost)');
+  assert.deepEqual(w, [5, 6], 'applyAdds: дугаартай мөрүүд цэвэрлэгээнд written-д');
+  r = await run({ addResults: [{ success: false, error: { description: 'no' } }] }, () => applyAdds(pkg, [{ a: 1 }]));
+  assert.ok(r.err && addsLost(r.err) === false, 'applyAdds: тодорхой false = татгалзал хэвээр');
+  r = await run({ addResults: [{ success: true, objectId: 1 }] }, () => applyAdds(pkg, [{ a: 1 }]));
+  assert.deepEqual(r.out, { added: 1, firstOid: 1 }, 'applyAdds: амжилт хэвээр');
+  r = await run({ updateResults: [{ objectId: 5 }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
+  assert.ok(r.err && isLostWrite(r.err) === true, 'applyUpdates: success-гүй = тодорхойгүй (lost)');
+  r = await run({ updateResults: [{ success: false }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
+  assert.ok(r.err && isLostWrite(r.err) === false, 'applyUpdates: тодорхой false = татгалзал хэвээр');
+  r = await run({ updateResults: [{ success: true }] }, () => applyUpdates(pkg, [{ objectid: 5 }]));
+  assert.ok(!r.err, 'applyUpdates: амжилт хэвээр');
+  console.log('✅ applyAdds/applyUpdates — success !== true');
 }

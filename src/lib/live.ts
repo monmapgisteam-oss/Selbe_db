@@ -35,7 +35,7 @@ import { register, type DataKey } from '@/lib/dataBus';
  * ⚠️ `BUILT_FIELDS.population` (`Total_population`) БИШ: тэр нь багтаамжийн
  * дээд тоо (68 мянга) бөгөөд тооцоонд ХОРИОТОЙ (TRANSPORT_ANALYSIS_HANDOFF).
  */
-export const POPULATION_FIELD = 'Population'; // ⚠️ export (2026-09-22): Portal.SummaryBar бүсийн шүүлтэд ижил талбар
+export const POPULATION_FIELD = 'population'; // ⚠️ export (2026-09-22): Portal.SummaryBar бүсийн шүүлтэд ижил талбар
 
 /**
  * Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
@@ -266,7 +266,7 @@ export const loadHeadline = cached<Headline>(async () => {
    * `cached` алдааг кэшлэхгүй тул «дахин оролдох» зам хэвээр.
    */
   const [bR, builtR, budgetR, grR] = await Promise.allSettled([
-    queryFeatures(BOUNDARY.plan.url, { outFields: ['Hec_area'] }),
+    queryFeatures(BOUNDARY.plan.url, { outFields: ['hec_area'] }),
     /*
      * ⚠️ 2026-08-24: `queryStats` → `queryGroup`. ХҮСЭЛТИЙН ТОО ӨӨРЧЛӨГДӨӨГҮЙ
      * (нэг хүсэлт хэвээр) — зөвхөн нэг асуулгаас илүү ихийг авч байна. Урьд нь
@@ -284,7 +284,7 @@ export const loadHeadline = cached<Headline>(async () => {
     ]),
     loadBudget(),
     green
-      ? queryStats(layerUrl(green), [sum('Shape__Area', 'a')]).catch(() => null)
+      ? queryStats(layerUrl(green), [sum('SHAPE__Area', 'a')]).catch(() => null)
       : Promise.resolve(null),
   ]);
   /* Бүх гол эх сурвалж унасан — хэсэгчлэн үзүүлэх юм алга, алдаагаар нь
@@ -308,7 +308,7 @@ export const loadHeadline = cached<Headline>(async () => {
     .sort((a, b) => (order.get(a.label) ?? 99) - (order.get(b.label) ?? 99));
 
   return {
-    areaHa: b && b[0]?.Hec_area != null ? Number(b[0].Hec_area) : NaN,
+    areaHa: b && b[0]?.hec_area != null ? Number(b[0].hec_area) : NaN,
     population: built ? sumBy(built, (r) => Number(r.p ?? 0)) : NaN,
     investTotal: budget ? budget.total : NaN,
     investConfirmed: budget ? budget.contract : NaN,
@@ -665,7 +665,7 @@ export const loadSocial = cached<SocialLive>(async () => {
           if (!d) return { id, title, n: 0, cap: 0, hasCap: false };
           const s = await queryStats(layerUrl(d), [
             count(oidOf(d), 'n'),
-            sum('Huchin_chadal', 'cap'),
+            sum('huchin_chadal', 'cap'),
           ]).catch(async (e: unknown) => {
             /* ⚠️ 2026-09-25: ТҮР ЗУУРЫН алдааг «талбаргүй» гэж БҮҮ ойлго. Урьд нь
                ЯМАР Ч алдаа (rate-limit-ийн дахин оролдлого дууссан, timeout,
@@ -681,7 +681,9 @@ export const loadSocial = cached<SocialLive>(async () => {
             return { ...c, cap: null } as Row;
           });
           const cap = s.cap == null ? null : Number(s.cap);
-          return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && cap > 0 };
+          /* ⚠️ 2026-10-21: null ≠ 0 — `cap > 0` нь БОДИТ 0 нийлбэрийг «талбаргүй» гэж үзэж «—» харуулдаг байв.
+             `null` = талбар байхгүй (дээрх catch) эсвэл бүх утга хоосон (SUM → null); 0 бол хүчин чадал 0. */
+          return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && Number.isFinite(cap) };
         }),
       );
       const n = sumBy(per, (x) => x.n);

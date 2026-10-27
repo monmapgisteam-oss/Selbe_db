@@ -160,6 +160,20 @@ assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаа�
    (`applyPlanEdits`) тэр дор нь хаягдана. */
 assert.ok(/register\(\(\) => \{ curveP = null; \}, \[[^\]]*'BAGTS_SHEET'[^\]]*'HUVAARI_OBYEM'[^\]]*\]\)/.test(SRC),
   'муруй BAGTS_SHEET ба HUVAARI_OBYEM хоёуланд бүртгэгдэх ёстой');
+
+/* ── 2026-10-21 (гүйцэтгэлийн аудит): задаргааны хүснэгт ХООСОН бол багц бүрийн `loadPkgPlan` АЛГАСАГДАНА ──
+   Хамгаалах алдаа: (а) тугийг `HUVAARI_OBYEM` бичилтээр хаяхгүй бол обьём батлагдсаны дараа муруй задаргаагүй хэвээр;
+   (б) `countPlanRows` нь `null` (шалгаж чадаагүй) үед багцаар асуух зам алга болбол муруй ЧИМЭЭГҮЙ задаргаагүй. */
+assert.match(SRC, /import\s*\{[^}]*countPlanRows[^}]*\}\s*from\s*'\.\/huvaariObyem'/,
+  '`countPlanRows`-ийг huvaariObyem-оос авна');
+assert.match(SRC, /register\(\(\) => \{ planEmptyP = null; \}, \['HUVAARI_OBYEM'\]\)/,
+  'хоосон-тугийн кэш HUVAARI_OBYEM бичилтээр хаягдах ёстой');
+assert.match(SRC, /emptyP\.then\(\(empty\) => \(empty \? null : loadPkgPlan\(pkg\.key\)/,
+  'хоосон бол `loadPkgPlan` дуудагдахгүй, бусад үед урьдын адил');
+assert.match(SRC, /if \(c == null && planEmptyP === mine\) planEmptyP = null;/,
+  'шалгаж чадаагүй (`null`) хариуг кэшлэхгүй');
+assert.match(fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8'), /returnCountOnly: 'true'/,
+  'тоолох асуулга `returnCountOnly` — мөр татахгүй');
 assert.ok(/planPctFromMonths\(m, asOf, sane\(s\) && sane\(e\) \? \{ start: s, end: e \} : null\)/.test(SRC),
   'сар доторх хувьд ажлын муж (эвдэрсэн огноо бол null) дамжих ёстой');
 assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
@@ -181,7 +195,24 @@ assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   }
   for (const k of ['sc.f.des', 'sc.f.no', 'sc.f.work', 'sc.f.oid', 'sc.f.fillDate'])
     assert.ok(pf.includes(k), `planFields нь ${k}-ийг агуулах ёстой (planPct · loadRows)`);
-  assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\)\)/, 'муруй мөрийг planFields-ээр уншина');
+  /* ⚠️ 2026-10-22: хөтчийн кэш (`persist`) — талбарын жагсаалт ӨӨРЧЛӨГДӨӨГҮЙ, зөвхөн тандалттай кэш нэмэгдэв */
+  assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\), \{ persist: true \}\)/, 'муруй мөрийг planFields-ээр (persist) уншина');
+}
+
+/* ── ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ = муруйн ТӨГСГӨЛ ──
+   Огноогүй ажил `planCurve`-д 0 гэж тоологдож жин нь хуваарьт үлддэг (`plan[k][b] ?? 0`) тул муруйн төгсгөл = огноотой
+   жингийн хувь. Энэ таамаг эвдэрвэл (огноогүй ажлыг хуваариас хасвал) хамралт үргэлж 100% болж дүгнэлт буцаж худлаа. */
+{
+  const body = SHEET.slice(SHEET.indexOf('export function planCurve('), SHEET.indexOf('export function computeAll('));
+  assert.match(body, /sp \+= w \* \(plan\[k\]\[b\] \?\? 0\);\s*cnt \+= w;/, 'огноогүй дэд ажил 0-ээр орж жин нь хуваарьт үлдэх ёстой (хамралтын үндэс)');
+  const { planCoverage, coverageOk, coverageNote, PLAN_COVERAGE_MIN } = await import('./planProgress.ts');
+  assert.equal(planCoverage([{ label: '2026-01', pct: 0 }, { label: '2027-03', pct: 8.58 }]), 8.58);
+  assert.equal(planCoverage([{ label: '2027-03', pct: 44.1 }, { label: '2026-01', pct: 3 }]), 44.1, 'шошгоор сүүлийн цэг');
+  assert.equal(planCoverage(undefined), null, 'муруй алга → null (0 биш)');
+  assert.equal(PLAN_COVERAGE_MIN, 95);
+  assert.ok(coverageOk(95) && !coverageOk(94.9) && !coverageOk(null));
+  assert.equal(coverageNote(8.58), 'хуваарь 8.6% хамарсан');
+  assert.equal(coverageNote(100), '');
 }
 
 console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

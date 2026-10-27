@@ -42,14 +42,14 @@ globalThis.fetch = async (url, init) => {
   /* Давхаргын мета (`fieldsOf`) — талбарууд; асуулга — нэг мөр статистик */
   const json = String(url).endsWith('/query')
     ? { features: [{ attributes: { n: 3 } }] }
-    : { fields: [{ name: 'OBJECTID', type: 'esriFieldTypeOID' }, { name: 'ZONE_ID', type: 'esriFieldTypeString' }] };
+    : { fields: [{ name: 'objectid', type: 'esriFieldTypeOID' }, { name: 'zone_id', type: 'esriFieldTypeString' }] };
   return { ok: true, status: 200, json: async () => json };
 };
 try {
   const out = await runTool('query_feature', {
     id: 'zone',
     where: "ZONE_ID = 'Багц-1'",
-    stats: [{ op: 'count', field: 'OBJECTID', as: 'n' }],
+    stats: [{ op: 'count', field: 'objectid', as: 'n' }],
   }, 'all');
   assert.ok(!out.isError, `хэрэгсэл унав: ${out.text}`);
   const q = sent.find((s) => s.url.endsWith('/query'));

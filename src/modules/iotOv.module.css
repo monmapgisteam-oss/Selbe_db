@@ -35,8 +35,9 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-lg);
+  /* ⚠️ 2026-10-23: Environment — хөвөгч хавтан: --line-strong хүрээ + --shadow */
+  border-right: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
   overflow: hidden;
   animation: catPanelIn 0.24s var(--ease) both;
 }

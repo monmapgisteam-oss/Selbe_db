@@ -50,11 +50,9 @@ export type DataKey =
      хуваарь · обьём · нэмэлт ажил · QAQC-ийн нооргийн бичилт ямар ч кэшийг хүчингүй
      болгодоггүй байв (цэсний тэмдэг 3 мин хүртэл хуучин). Нэр нь хүснэгтийн item-ийн
      гарчигтай (`Selbe_*`) тохирно — `services.ts`-д экспорт байхгүй (өөрөө үүсгэдэг). */
-  | 'CHANAR_BARIMT'   // Selbe_Chanar_Barimt   — chanarStore.ts
   | 'HUVAARI_BATLAH'  // Selbe_Huvaari_Batlah  — huvaariBatlah.ts
   | 'OBYEM_BATLAH'    // Selbe_Obyem_Batlah    — obyemBatlah.ts
   | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts
-  | 'QAQC_DRAFT'      // Selbe_QAQC_Draft      — qaqcDraftRemote.ts
   /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХУВААРИЙН САРЫН ОБЬЁМ (`huvaari_20260906/193`,
      `huvaariObyem.HUVAARI_OBYEM` — `services.ts`-д экспорт байхгүй). `applyPlanEdits`
      бичсэний дараа хүчингүй болгоно — төлөвлөгөөт муруй (`planProgress`) уншина. Урьд нь
@@ -62,7 +60,9 @@ export type DataKey =
   | 'HUVAARI_OBYEM'
   /* ⚠️ 2026-10-15: НЭГТГЭЛ ГҮЙЦЭТГЭЛ (`Negtgel_guitsetgel_1013`) — табын «Нийтлэх»-ийн дараа
      (`negtgelEdit.publishNegEdits`); `loadNegtgelFull` (таб · дашбоард · тайлан) хүчингүй болно. */
-  | 'TUSUL_NEGTGEL';
+  | 'TUSUL_NEGTGEL'
+  /* ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ (`material_noots`) — `materialNoots.syncNoots` бичсэний дараа */
+  | 'MATERIAL_NOOTS';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
@@ -175,6 +175,17 @@ export function dataRefreshedAt(): number {
 }
 
 /**
+ * ⚠️ 2026-10-19 (review): БҮТЭН ШИНЭЧЛЭЛТИЙН ҮЕ — зөвхөн `invalidateAll` өсгөнө. `reads` хоосон (статик) кэштэй хүнд
+ *    тооцоонууд (`hesegChange` · `hesegNeed` · `planOverlap`) зөвхөн тэр үед хаягддаг тул тэдний самбар `dataVersion`
+ *    (хүснэгт бүрийн `invalidate`) биш үүнийг `useSyncExternalStore`-д авна — эс бөгөөс хамааралгүй бичилт бүрд дахин
+ *    захиалж зурагддаг байв.
+ */
+let refreshSeq = 0;
+export function refreshEpoch(): number {
+  return refreshSeq;
+}
+
+/**
  * БҮХ кэшийг хаяна — нэвтрэлт/хэл солигдох, мөн (⚠️ 2026-10-05) хэрэглэгчийн «Шинэчлэх»
  * товч ба таб удаан нуугдаад буцаж ирэх үед (`Portal`).
  */
@@ -182,6 +193,7 @@ export function invalidateAll(): void {
   writes += 1;
   for (const s of SLOTS) s.drop();
   refreshedAt = Date.now();
+  refreshSeq += 1;
   /* ⚠️ 2026-10-12 (дарааллын аудит): бүлгийн дотор — мэдэгдлийг хойшлуулна (`batchInvalidate`-ийн ⚠️) */
   if (batchDepth > 0) { batchHit = true; return; }
   version += 1;

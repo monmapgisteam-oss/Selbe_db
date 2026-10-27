@@ -27,8 +27,18 @@ export function DocumentTitle() {
   const dictEpoch = useSyncExternalStore(subscribeDict, getDictEpoch, getDictEpoch);
   useEffect(() => {
     // mn хэлэнд tr() түлхүүрээ өөрийг нь буцаадаг тул нөхцөл шалгах шаардлагагүй
-    const t = tr('Сэлбэ — Орон зайн мэдээллийн портал');
-    if (document.title !== t) document.title = t;
+    const apply = () => {
+      const t = tr('Сэлбэ — Орон зайн мэдээллийн портал');
+      if (document.title !== t) document.title = t;
+    };
+    apply();
+    /* ⚠️ 2026-10-19: `?v=` гүн холбоос / харагдац солих (URL-ийн soft navigation) үед Next-ийн metadata `<title>`-ийг
+       prerender-ийн МОНГОЛ утгаар ДАХИН тавьдаг — locale/толь өөрчлөгдөөгүй тул энэ эффект дахин ажиллахгүй,
+       англи горимд таб монголоор үлддэг байв. `<head>`-ийн өөрчлөлтийг ажиглаж буцааж тавина (утга ижил бол
+       юу ч бичихгүй — давталт үүсэхгүй). */
+    const mo = new MutationObserver(apply);
+    mo.observe(document.head, { subtree: true, childList: true, characterData: true });
+    return () => mo.disconnect();
   }, [locale, dictEpoch]);
   return null;
 }

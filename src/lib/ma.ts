@@ -1,12 +1,15 @@
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MA_SVC } from '@/lib/services/env';
-import { entSession } from '@/lib/entDocs';
-import { requireCap } from '@/lib/who';
+import { entSession, entStamp } from '@/lib/entDocs';
+import { currentUser, requireCap } from '@/lib/who';
+import { AUTH } from '@/lib/services';
+import { hasCap } from '@/lib/caps';
+import { capLabel } from '@/modules/capText';
 
 /**
  * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Survey123 маягт → Enterprise hosted
- * feature service (`NEXT_PUBLIC_CHANAR_MA_SVC`, давхарга `/0`). Портал УНШИНА, бөглөхгүй.
+ * feature service (`services/env.ts` CHANAR_MA_SVC — Enterprise, давхарга `/0`). Портал УНШИНА, бөглөхгүй.
  *
  * ⚠️ ХЭРЭГЛЭГЧИЙН ШИЙДВЭРҮҮД (2026-10-09, `memory/chanar-redesign`):
  *    · Чанарын 4 шат MA → MIR → FIC → М-акт; MA-гүй бол MIR-гүй … (гинж MA дээр тулгуурлана).
@@ -120,14 +123,16 @@ export function rowOf(a: Record<string, unknown>): MaRow {
 
 /** Бүх MA — сүүлд илгээсэн нь эхэнд */
 export async function loadMa(): Promise<MaRow[]> {
-  if (!MA_URL) throw new Error(tr('MA үйлчилгээ тохируулаагүй (NEXT_PUBLIC_CHANAR_MA_SVC).'));
+  if (!MA_URL) throw new Error(tr('MA үйлчилгээ тохируулаагүй.'));
   /* `queryFeatures` → хавтгай атрибут (`Row`), хуудаслалт · 200-аар ирсэн `{error}` дотроо */
   const rows = await queryFeatures(MA_URL, { where: '1=1', outFields: ['*'], orderBy: `${F.oid} DESC` });
   return rows.map((r) => rowOf(r as Record<string, unknown>));
 }
 
+/* ⚠️ 2026-10-23 (UX аудит Q6 · X7): «Татгалзаагүй» гэсэн давхар үгүйсгэл → «Зөвшөөрсөн»; R нь бусад урсгалын
+   буцаалттай НЭГ үг «Буцаасан». Утга (A · AN · R код) өөрчлөгдөөгүй — зөвхөн шошго. */
 export const verdictLabel = (v: Verdict | null): string =>
-  v === 'A' ? tr('A — Татгалзаагүй') : v === 'AN' ? tr('AN — Саналтай татгалзаагүй') : v === 'R' ? tr('R — Татгалзсан') : tr('Шийдвэргүй');
+  v === 'A' ? tr('A — Зөвшөөрсөн') : v === 'AN' ? tr('AN — Саналтай зөвшөөрсөн') : v === 'R' ? tr('R — Буцаасан') : tr('Шийдвэргүй');
 
 /** Батлагдсан (ажил эхлэх хаалгыг нээдэг) шийдвэр — A эсвэл AN */
 export const isApproved = (v: Verdict | null): boolean => v === 'A' || v === 'AN';
@@ -175,9 +180,14 @@ export function chainOf(ma: Verdict | null, next: ChainInput = {}): Stage[] {
 export const ipcReady = (chain: readonly Stage[]): boolean => chain.every((s) => s.state === 'done');
 export const stageLabel = (k: StageKey): string =>
   k === 'MA' ? tr('MA · Материал') : k === 'MIR' ? tr('MIR · Үзлэг') : k === 'FIC' ? tr('FIC · Явцын үзлэг') : tr('М-акт · Дууссан');
+/**
+ * ⚠️ 2026-10-23 (UX аудит Q4): «Хүлээгдэж буй» ба «Шийдвэр хүлээж буй» хоёр ялгагдахгүй байв — ХЭНИЙ ээлж
+ *    болохыг хэлнэ: `next` = баримт хараахан ирээгүй (гүйцэтгэгч оруулна), `pending` = ирсэн, хянагч шийднэ.
+ *    `rejected` нь бусад урсгалын буцаалттай НЭГ үг «Буцаасан» (X7).
+ */
 export const stageStateLabel = (s: StageState): string =>
-  s === 'done' ? tr('Батлагдсан') : s === 'rejected' ? tr('Татгалзсан') : s === 'pending' ? tr('Шийдвэр хүлээж буй')
-    : s === 'next' ? tr('Хүлээгдэж буй') : tr('Хаалттай');
+  s === 'done' ? tr('Батлагдсан') : s === 'rejected' ? tr('Буцаасан') : s === 'pending' ? tr('Хянагч шийднэ')
+    : s === 'next' ? tr('Гүйцэтгэгч оруулна') : tr('Хаалттай');
 
 /**
  * Нэг хариу бичгийн дугаар (`resp_no`) олон удаа илгээгдсэн бол (засвар · давхар илгээлт)
@@ -192,6 +202,36 @@ export function latestPerRespNo(rows: readonly MaRow[]): MaRow[] {
     if (!cur || r.oid > cur.oid) best.set(r.respNo, r);
   }
   return [...best.values(), ...loose].sort((a, b) => b.oid - a.oid);
+}
+
+/**
+ * ДАХИН ИРҮҮЛСЭН MA-ГИЙН ХОЛБОО (⚠️ 2026-10-23, UX аудит Q10). Буцаасан (R) MA-г гүйцэтгэгч засаад ШИНЭ хариу
+ * бичгийн дугаартай илгээвэл `latestPerRespNo` хоёуланг нь тусдаа карт болгодог тул «хоёр өөр материал» мэт
+ * харагддаг байв. Нэг багц + нэг материалын нэр (том/жижиг үсэг · зай ялгахгүй) доторх R мөрийн ДАРААГИЙН
+ * (их objectid) мөрийг түүний дахин ирүүлэлт гэж холбоно.
+ * ⚠️ Зөвхөн ХАРУУЛАХ холбоо — гинж/хаалганы дүрэмд (`maGateOf` · `chainOf`) ОРОЛЦОХГҮЙ: материалын нэр гараар
+ *    бичигддэг тул таамаг. Тестлэгдэнэ (`ma.check.mjs`).
+ */
+export type ResubLink = { prev?: MaRow; next?: MaRow };
+export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
+  const groups = new Map<string, MaRow[]>();
+  for (const r of rows) {
+    const mat = r.material.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!mat || !r.pkg) continue;
+    const k = `${r.pkg}|${mat}`;
+    const g = groups.get(k);
+    if (g) g.push(r); else groups.set(k, [r]);
+  }
+  const out = new Map<number, ResubLink>();
+  for (const g of groups.values()) {
+    g.sort((a, b) => a.oid - b.oid);
+    for (let i = 0; i + 1 < g.length; i++) {
+      if (g[i].verdict !== 'R') continue;
+      out.set(g[i].oid, { ...out.get(g[i].oid), next: g[i + 1] });
+      out.set(g[i + 1].oid, { ...out.get(g[i + 1].oid), prev: g[i] });
+    }
+  }
+  return out;
 }
 
 /* ═══════════════ ХАВСРАЛТ (Enterprise токентой) ═══════════════ */
@@ -246,6 +286,7 @@ function tok(): string {
   return s.token;
 }
 async function arc<T>(url: string, body: FormData | URLSearchParams): Promise<T> {
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) }); } catch (e) {
     if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
@@ -260,7 +301,11 @@ async function arc<T>(url: string, body: FormData | URLSearchParams): Promise<T>
 
 /** Давхарга хавсралт зөвшөөрдөг эсэх (`hasAttachments`) — үгүй бол админ геопорталаас асаана */
 export async function maHasAttachments(): Promise<boolean> {
-  const j = await arc<{ hasAttachments?: boolean }>(MA_URL, new URLSearchParams({ f: 'json' }));
+  /* ⚠️ 2026-10-21: Enterprise-ийн давхарга org-only — токенгүй мета 499 «Token Required» буцааж MA-гийн хавсралт
+     хэзээ ч жагсаагддаггүй байв (`listMaAtts`-тэй адил токен залгана). */
+  const body = new URLSearchParams({ f: 'json' });
+  const s = entSession(); if (s) body.set('token', s.token);
+  const j = await arc<{ hasAttachments?: boolean }>(MA_URL, body);
   return !!j.hasAttachments;
 }
 
@@ -283,13 +328,52 @@ export async function listMaAtts(oid: number): Promise<MaAtt[]> {
 function requireAttachCap(): void {
   try { requireCap('chanarAuthor'); } catch {
     try { requireCap('chanarReview'); } catch {
-      throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «chanarAuthor» эсвэл «chanarReview» эрх авна уу.'));
+      /* ⚠️ 2026-10-19 (аудит): түүхий түлхүүрийн оронд эрхийн нэр (`who.requireCap`-тэй ижил) */
+      throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эсвэл «{1}» эрх авна уу.', capLabel('chanarAuthor'), capLabel('chanarReview')));
     }
   }
 }
 
+/**
+ * ⚠️ 2026-10-19 (аудит): ХАВСРАЛТЫН БАГЦЫН ХҮРЭЭ — `ficMakt.scopeDeny` · `chanarStore.attachDeny`-ийн ижил дүрэм.
+ *    Урьд нь эрх (`chanarAuthor`/`chanarReview`) л шалгадаг тул Багц 1-ийн ирүүлэгч Багц 5-ын MA-гийн гэрчилгээг
+ *    нэмж/устгаж чаддаг байв. Одоо: (`chanarAuthor` БА тэр багцад ирүүлэгч) ЭСВЭЛ (`chanarReview` БА тэр багцад
+ *    ямар нэг хянагчийн үүрэг). MA-гийн `pkg` нь хуудасны түлхүүр («b1_9f») → `PKGS`-ээр багцын бүлэг; танигдахгүй
+ *    бол FAIL-CLOSED. Хатуу super — `chanarAcl` хязгааргүй (`scope` null).
+ * ⚠️ Зөвхөн нэвтрэлт асаалттай хөтөчид (`strict`, `ficMakt`-тай ижил) — Node шалгуур `strict: true`-г ил өгнө.
+ * ⚠️ Модулиуд ДИНАМИК: `chanarAcl` (→ `permsRemote`) · `bagts.pkg` нь MA-гийн цэвэр шалгуурын (`ma.check`) импортыг
+ *    хүндрүүлэхгүй.
+ * @returns татгалзсан шалтгаан, эсвэл `null` (зөвшөөрнө)
+ */
+export async function maAttachScopeDeny(
+  pkgKey: string,
+  strict: boolean = typeof window !== 'undefined' && !!AUTH.appId,
+): Promise<string | null> {
+  if (!strict) return null;
+  const me = currentUser();
+  if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  const [{ PKGS }, { isAuthorFor, reviewerRolesFor }] = await Promise.all([
+    import('@/modules/sheet/bagts.pkg'), import('@/lib/chanarAcl'),
+  ]);
+  const bagts = PKGS.find((p) => p.key === pkgKey)?.group ?? '';
+  if (!bagts) return tr('MA-гийн багц ({0}) танигдсангүй — багцын хүрээг шалгах боломжгүй.', pkgKey || '—');
+  const asAuthor = hasCap(me, 'chanarAuthor') && isAuthorFor(me, bagts);
+  const asReviewer = hasCap(me, 'chanarReview') && reviewerRolesFor(me, bagts).length > 0;
+  return asAuthor || asReviewer ? null : tr('«{0}» багцад чанарын баримтын эрхгүй — MA-гийн хавсралт нэмэх, устгах боломжгүй.', bagts);
+}
+
+/** Хавсралтын бичилтийн өмнө: MA мөрийг серверээс олж багцын хүрээг шалгана (`maAttachScopeDeny`) */
+async function requireAttachScope(oid: number): Promise<void> {
+  if (!(typeof window !== 'undefined' && !!AUTH.appId)) return;
+  const ma = (await loadMa()).find((r) => r.oid === Number(oid));
+  if (!ma) throw new Error(tr('MA олдсонгүй — устгагдсан байж магадгүй.'));
+  const deny = await maAttachScopeDeny(ma.pkg);
+  if (deny) throw new Error(deny);
+}
+
 export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<void> {
   requireAttachCap();
+  await requireAttachScope(oid);
   const okType = /^(application\/pdf|image\/(jpeg|png))$/.test(file.type) || /\.(pdf|jpe?g|png)$/i.test(file.name);
   if (!okType) throw new Error(tr('Зөвхөн PDF, JPG, PNG файл хавсаргана.'));
   const fd = new FormData();
@@ -303,6 +387,8 @@ export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<
 
 export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
   requireAttachCap();
+  /* ⚠️ 2026-10-19 (аудит): багцын хүрээ — `addMaAtt`-тай ижил */
+  await requireAttachScope(oid);
   const j = await arc<{ deleteAttachmentResults?: { success?: boolean; error?: { description?: string } }[] }>(
     `${MA_URL}/${oid}/deleteAttachments`, new URLSearchParams({ f: 'json', token: tok(), attachmentIds: String(attId) }));
   const r = j.deleteAttachmentResults?.[0];
@@ -313,6 +399,7 @@ export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
 export async function maAttBlob(oid: number, attId: number): Promise<Blob> {
   const body = new URLSearchParams();
   const s = entSession(); if (s) body.set('token', s.token);
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(`${MA_URL}/${oid}/attachments/${attId}`, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT) }); } catch {
     throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));

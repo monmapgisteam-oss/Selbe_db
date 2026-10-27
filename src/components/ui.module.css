@@ -4,7 +4,9 @@
    заагуурын доор орж өөрөө `pointerleave` өдөөж анивчина. */
 /* envhub-ийн tooltip: min 124px, hairline хүрээ, шилэн дэвсгэр, өнгөт толгойн
    зурвас (JS талаас color-mix-ээр будна) + том өнгөт утга. Сүүдэр нь ЗӨВХӨН
-   ийм хөвөгч зүйлд зөвшөөрөгдөнө. */
+   ийм хөвөгч зүйлд зөвшөөрөгдөнө.
+   ⚠️ 2026-10-23: Environment `Tooltip` — `--surface` 95% + blur, `--line-strong`, булан 12px,
+   толгой tone 10%, утга 17px. */
 .tip {
   position: fixed;
   z-index: 60;
@@ -13,23 +15,35 @@
   flex-direction: column;
   /* ⚠️ 260 → 320: задаргаа нь одоо ОЛОН цэгтэй мөр (мөнгөн дүн, эзлэх хувь,
      дэд цуваа) тул нарийн цонхонд мөр бүр хоёр болж эвхэрдэг байв. */
-  min-width: 150px;
+  min-width: 140px;
   max-width: 320px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-lg);
+  /* ⚠️ 2026-10-23: Environment `Tooltip` — булан 12px (`rounded-xl`), хөвөгч тул сүүдэртэй */
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
   color: var(--ink);
 }
+/* ⚠️ 2026-10-23: Environment `Tooltip` — толгой 8×4 (`px-2 py-1`), бие 8×6 (`px-2 py-1.5`) */
 .tipHd {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  padding: 5px 11px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--line);
+}
+/* «СОНГОСОН» — Environment: 9.5px uppercase, 0.1em, ink-3, баруун тийш */
+.tipSel {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
 .tipDot { width: 6px; height: 6px; flex: none; border-radius: 99px; }
 /*
@@ -47,9 +61,8 @@
    (жагсаалтын мөр нь эсрэгээрээ богино, нягт). */
 .tipName {
   font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-2);
+  font-weight: 500;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 /*
@@ -58,7 +71,7 @@
  * хоёулаа нэг мөрөнд «·»-ээр залгагдаж, аль нь дүн, аль нь харьцаа болох
  * нь ялгагдахгүй байв.
  */
-.tipBody { display: flex; flex-direction: column; gap: 5px; padding: 8px 11px; }
+.tipBody { display: flex; flex-direction: column; gap: 5px; padding: 6px 8px; }
 .tipVal, .tipHint { display: flex; align-items: baseline; gap: 6px; }
 .tipVal::before, .tipHint::before {
   content: '';
@@ -72,8 +85,21 @@
 /* ⚠️ 16 → 13.5: мөнгөн дүн бүтнээрээ бичигддэг («29,031,821,175 ₮») тул
    том үсгээр цонхны өргөнийг дүүргэж, доорх тайлбар мөрөөс хэт давамгайлж
    байв. Тайлбар (12px)-тай ойролцоо байвал хоёулаа уншигдана. */
-.tipVal { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
-.tipHint { font-size: 12px; line-height: 1.35; color: var(--ink-2); }
+/* ⚠️ 2026-10-23: Environment `Tooltip` — утга 17px/500, тэмдэггүй (дээрх 13.5px нь зөвхөн
+   урт мөнгөн дүнд — `tipValLong`, 2026-09-04-ний ⚠️ хэвээр). */
+.tipVal { font-size: 17px; line-height: 1.1; font-weight: 500; }
+.tipVal::before { display: none; }
+.tipValLong { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
+.tipHint { font-size: 11.5px; line-height: 1.35; color: var(--ink-2); }
+/* ── Талбайн диаграмын hover самбар (`AreaTip`) — Environment `AreaChart` `Tooltip` ──
+   Утга 17px/500 tone өнгөөр + нэгж 10.5px ink-3; доор нь эзлэх хувь ба ▲/▼ өөрчлөлт 10.5px. */
+.areaTip { max-width: 280px; }
+.areaTipVal { display: flex; align-items: baseline; gap: 4px; }
+.areaTipVal b { font-size: 17px; line-height: 1; font-weight: 500; }
+.areaTipUnit { font-size: 11px; color: var(--ink-3); }
+.areaTipMeta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-3); }
+.areaTipRow { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.areaTipRow b { margin-left: auto; padding-left: 10px; font-weight: 500; color: var(--ink); }
 /* Бүлгийн ЗААГ — `TIP_RULE` тусгай утгаар оруулна */
 .tipRule {
   display: block;
@@ -86,32 +112,49 @@
    ⚠️ 2026-08-17: envhub-ийн Card/Head хэл — хэсэг бүр нь НЭГ хавтангийн заагтай
    мөр БИШ, hairline хүрээт БИЕ ДААСАН карт (rounded-xs, bg-paper-2). Завсрыг
    эцэг нь өгнө (`.panelBody` gap 10px). Толгой нь бүтэн өргөний hairline-тай
-   тусдаа зурвас (px-3 py-2), гарчиг 13.5px / 600 / +0.06em uppercase. */
+   тусдаа зурвас (px-3 py-2), гарчиг 13.5px / 600 / +0.06em uppercase.
+   ⚠️ 2026-10-23: Environment `.analytics-chart-card` — булан 12px (`--r-lg`), сүүдэргүй;
+   толгой 9px 12px + доод зураас, гарчиг 12px/600 UPPERCASE +0.02em (кирилл line-height 1.4),
+   бие 10px 12px. */
 .section {
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
 }
 
 .sectionHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: -12px -12px 12px;
-  padding: 8px 12px;
+  gap: 6px 10px;
+  margin: -10px -12px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 .sectionTitle {
-  font-size: 13.5px;
-  line-height: 1;
+  min-width: min-content;
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.4;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   color: var(--ink);
 }
-.sectionNote { font-size: 11.5px; color: var(--ink-3); }
+/* ⚠️ 2026-10-23: Environment `CutCard meta` — 10.5px tabular, НЭГ мөрөнд, ink-3, агшихгүй
+   (толгой нь `flex-wrap` тул нарийн картад гарчгийн доор бүхлээрээ буна; картаас урт бол «…») */
+.sectionNote {
+  flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
 
 /* ── Хураагддаг хэсэг (Section collapseKey) ── */
 .secToggle {
@@ -129,7 +172,7 @@
   cursor: pointer;
 }
 .secCaret {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   color: var(--ink-3);
   transition: transform 0.14s ease;
@@ -137,19 +180,19 @@
 /* Хаалттай үед сум баруун тийш эргэнэ — «нээгдэнэ» гэсэн дохио */
 .secCaretOff { transform: rotate(-90deg); }
 /* Хаалттай карт = зөвхөн гарчгийн зурвас: доод зай, зураас хэрэггүй */
-.sectionClosed .sectionHead { margin-bottom: -12px; border-bottom: 0; }
+.sectionClosed .sectionHead { margin-bottom: -10px; border-bottom: 0; }
 
 /* Агуулга картын үлдсэн өндрийг дүүргэнэ (`Section fill`) — доторх `.series`
    зэрэг босоо flex хүүхэд нь `flex: 1` аваад чартын талбайгаа сунгана. */
 .sectionFill { display: flex; flex-direction: column; }
 .sectionFill > :last-child { flex: 1; min-height: 0; }
 
-/* Самбарын ГОЛ хэсэг — модулийн өнгөөр ирмэглэж, бусдаас ялгарна */
+/* Самбарын ГОЛ хэсэг
+   ⚠️ 2026-10-23: Environment `CutCard first` (`border-t-2` + tone) — 2px `--data` ДЭЭД хүрээ;
+   хүрээний бусад тал, толгой нь энгийн картынх (урьдын moss 35% хүрээ/будсан толгой хасагдсан). */
 .sectionPrimary {
-  background: color-mix(in srgb, var(--hue) 4%, var(--surface));
-  box-shadow: inset 3px 0 0 var(--hue);
+  border-top: 2px solid var(--data);
 }
-.sectionPrimary .sectionTitle { color: var(--hue); }
 
 /* ── Байрлалын примитив ── */
 .col { display: flex; flex-direction: column; }
@@ -163,90 +206,100 @@
 .splitAside { flex: none; }
 .splitBody { flex: 1; min-width: 0; }
 
-.noteText { font-size: 0.73rem; line-height: 1.55; color: var(--ink-3); }
+.noteText { font-size: 11.5px; line-height: 1.55; color: var(--ink-3); }
 .noteText b { color: var(--ink); font-weight: 600; }
 
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
-   эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана. */
-.tabs {
+   эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана.
+   ⚠️ 2026-10-23: Environment `.view-switch` — доогуур зураастай таб БИШ, СЕГМЕНТЭН удирдлага:
+   1px `--line` хүрээт зам (3px дотор зай, 8px булан, `--bg` дэвсгэр), дарагдсан нь
+   `--surface` + `0 1px 5px #00000012`. Наалдах зурвас нь гаднах `.tabsBar`. */
+.tabsBar {
   position: sticky;
   top: 0;
   z-index: 3;
   display: flex;
-  gap: 2px;
-  padding: 0 14px;
+  padding: 6px 0;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
 }
-/* Хэсгийн дотор — шугам, зай, sticky-гүй (диаграмын хажууд босоо өрлөгөөр) */
+.tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+/* Хэсгийн дотор — sticky-гүй, БОСОО сегмент (диаграмын хажууд) */
 .tabsPlain {
-  position: static;
   flex-direction: column;
-  padding: 0;
-  background: transparent;
-  border-bottom: none;
+  flex-wrap: nowrap;
+  align-self: flex-start;
 }
-.tabsPlain .tab { padding: 6px 10px; }
+.tabsPlain .tab { justify-content: flex-start; }
 .tab {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 11px 10px 10px;
-  font-size: 0.76rem;
-  font-weight: 600;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-3);
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color 0.12s, background 0.12s, box-shadow 0.12s;
   white-space: nowrap;
 }
-.tab:hover { color: var(--ink-2); }
-/* Идэвхтэй таб — доогуур зураас + дээшээ уусах зөөлөн өнгөт дэвсгэр */
+.tab:hover { color: var(--ink); }
 .tabOn {
-  color: var(--hue);
-  border-bottom-color: var(--hue);
-  background: linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--hue) 8%, transparent));
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 5px #00000012;
 }
 
+/* ⚠️ 2026-10-23: Environment `Badge` — булан 6px, 11px/500, tone хүрээ 35% / дэвсгэр 8% */
 .tabCount {
-  padding: 1px 6px;
-  border-radius: 99px;
-  font-size: 0.66rem;
-  font-weight: 600;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
   color: var(--ink-3);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--ink-3) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ink-3) 35%, transparent);
 }
 .tabOn .tabCount {
-  color: var(--hue);
-  background: color-mix(in srgb, var(--hue) 12%, transparent);
-  border-color: color-mix(in srgb, var(--hue) 26%, transparent);
+  color: var(--data-ink);
+  background: color-mix(in oklab, var(--data) 8%, transparent);
+  border-color: color-mix(in oklab, var(--data) 35%, transparent);
 }
 /* Анхааруулга — таб идэвхгүй байсан ч ялгарна */
 .tabCountWarn,
 .tabOn .tabCountWarn {
   color: var(--warn-ink);
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  border-color: color-mix(in oklab, var(--warn) 35%, transparent);
 }
 
 /* ── Үзүүлэлт (KPI) ──
    ⚠️ 2026-08-17: envhub-ийн KPI зурвас — тусдаа картууд БИШ, НЭГ hairline
    хүрээт хайрцаг дотор hairline ЗААГААР тусгаарлагдсан нүднүүд. 1px завсар +
    --line дэвсгэр нь заагийг зурна; нүд өөрөө хүрээгүй болно.
+   ⚠️ 2026-10-23: Environment — ХУУЧИРСАН (доорх `.stats`/`.stat`-ийн тайлбарыг үз).
    minmax(0,1fr) — track нь агуулгын min-content-оос доош агшиж чадна;
    эс бол нарийн эцэг дотор өргөн тоо (8,575 өрх) хүрээг давна. */
+/* ⚠️ 2026-10-23: Environment `.analytics-overview` — нэг hairline хайрцаг БИШ, ТУСДАА хавтангууд
+   8px завсартай (Environment 12px; Сэлбэгийн нарийн хажуугийн баганад 8). */
 .stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
+  gap: 8px;
 }
-.stats > * { border: none; border-radius: 0; }
 /* Ганц үзүүлэлт — БҮТЭН өргөн (хагас хоосон нүд үлдэхгүй) */
 .stats1 { grid-template-columns: minmax(0, 1fr); }
 .stats3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -258,100 +311,132 @@
    хориотой — гүнийг hairline + гадаргуун шат өгнө).
    DOM-ийн дараалал (утга → шошго) хэвээр тул `column-reverse`-ээр эргүүлнэ —
    56 дуудагчийн нэг нь ч өөрчлөгдөхгүй. */
+/* ⚠️ 2026-10-23: Environment `.analytics-stat` — хавтан 14px 18px, булан 13px (`--r-xl`),
+   `--line` хүрээ, `--surface`; hover-ын хүрээ солигдохгүй (хавтан нь товч биш).
+   DOM дараалал (утга → шошго) хэвээр тул байрлалыг GRID ТАЛБАР өгнө: шошго ДЭЭР, утга ДООР;
+   дүрстэй үед зүүнд 38px хайрцаг хоёр мөрийг эзэлнэ (`statHasIcon`). */
 .stat {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'label' 'value';
+  align-content: center;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 5px;
+  min-width: 0;
   text-align: left;
-  padding: 8px 12px;
+  padding: 14px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  transition: border-color 0.15s var(--ease);
+  border-radius: var(--r-xl);
 }
-.stat:hover { border-color: var(--line-strong); }
+.statHasIcon {
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-areas: 'icon label' 'icon value';
+}
 .statValue {
+  grid-area: value;
   display: flex;
   align-items: baseline;
   /* Урт утга нүдний ирмэгт ДУУГҮЙ тайрагдахын оронд нэгжээ дараагийн мөрөнд
      буулгана (2026-08-21 аудит) */
   flex-wrap: wrap;
   min-width: 0;
-  gap: 4px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--ink);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ. */
-.statValueLong { font-size: 12.5px; letter-spacing: -0.01em; }
-.statUnit { font-size: 11px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
-/* envhub eyebrow — 2 мөрийн зай нөөцөлж, олон карт зэрэгцэхэд тоонууд нэг
-   суурьт зэрэгцэнэ */
-.statLabel {
-  font-size: 10.5px;
+  gap: 0 6px;
+  font-size: 23px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ.
+   ⚠️ 2026-10-23: Environment-ийн compact 17px. */
+.statValueLong { font-size: 17px; letter-spacing: -0.02em; }
+.statUnit { font-size: 11.5px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
+/* ⚠️ 2026-10-23: Environment `.analytics-stat-label` — 10px ink-3, том үсэг/tracking-гүй;
+   урьдын 26px нөөцлөсөн өндөр хасагдсан (хавтан нь `align-content: center`). */
+.statLabel {
+  grid-area: label;
+  font-size: 11px;
+  font-weight: 400;
   color: var(--ink-3);
-  line-height: 1.25;
-  min-height: 26px;
-  display: flex;
-  align-items: flex-start;
+  line-height: 1.4;
+  min-width: 0;
 }
-/* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй */
+/* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй
+   ⚠️ 2026-10-23: Environment — радиал градиент ХАСАГДСАН; `.tinted` хэлээр tone `--tint`
+   (харанхуйд 13%, цайварт 9%) дэвсгэр + tone 30% хүрээ. Утга `--ink` хэвээр (контраст). */
 .statAccent {
-  border-color: color-mix(in srgb, var(--tone, var(--hue)) 32%, var(--line));
-  background:
-    radial-gradient(130% 140% at 0% 0%, color-mix(in srgb, var(--tone, var(--hue)) 12%, transparent), transparent 55%),
-    color-mix(in srgb, var(--tone, var(--hue)) 5%, var(--surface));
+  border-color: color-mix(in oklab, var(--tone, var(--data)) 30%, var(--line));
+  background: color-mix(in oklab, var(--tone, var(--data)) var(--tint, 9%), var(--surface));
 }
-.statAccent .statValue { color: var(--tone, var(--hue)); }
 
 /* ── Баганан жагсаалт ──
    ⚠️ 2026-08-17: envhub-ийн RowChart хэл — бар нь «блок» биш, текстийн ДООРХ
    2px hairline зам. Нэр 12px, утга 11.5px; сонголт нь өнгөт дэвсгэр биш
    ТЕКСТИЙН жингээр (нэр medium + ink болно), бусад нь бүдгэрнэ. */
-.bars { display: flex; flex-direction: column; gap: 4px; }
-.barRow { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; }
-/* ⚠️ 2026-10-09 (графикийн жигдрэл): бүдгэрэлт БҮХ төрөлд 0.35 (`CHART.dim`) */
-.barRowDim .barName, .barRowDim .barVal { opacity: 0.35; }
-.barClick { border-radius: var(--r-sm); padding: 3px 4px; margin: -3px -4px; transition: background 0.12s; }
-.barClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 8%, transparent); }
-.barOn { background: transparent; }
+/* ⚠️ 2026-10-23: Environment `RowChart` — мөр хооронд 2px, дарагдах мөр 1px тунгалаг хүрээ,
+   hover `--surface-2`, сонгогдсон нь moss 25% хүрээ + moss 7% дэвсгэр. */
+/* ⚠️ 2026-10-23: Environment `.row-chart-item` — мөр БҮР (дардаггүй ч) 3px 6px 4px дотор зайтай,
+   1px тунгалаг хүрээ, 8px булан; урьдын сөрөг margin (`.barClick`) хасагдсан. */
+.bars { display: flex; flex-direction: column; gap: 2px; }
+.barRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 3px 6px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  text-align: left;
+  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+}
+/* ⚠️ 2026-10-09 (графикийн жигдрэл): бүдгэрэлт БҮХ төрөлд 0.35 (`CHART.dim`).
+   ⚠️ 2026-10-23: Environment — МӨР БҮХЭЛДЭЭ (нэр · утга · зурвас) .35 */
+.barRowDim { opacity: 0.35; }
+.barClick { cursor: pointer; }
+.barClick:hover { background: var(--surface-2); }
+.barOn {
+  border-color: color-mix(in oklab, var(--data) 25%, transparent);
+  background: color-mix(in oklab, var(--data) 7%, var(--surface));
+}
 
-.barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.barTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
 /* 2026-08-21 аудит: нэг мөрийн «…» нь урт нэрийг («Шинээр төлөвлөж буй
    110/35/10кВ дэд станц» г.м.) хагасаар нь иддэг байв — одоо 2 мөрөнд бүтэн,
    түүнээс хэтэрсэн ховор тохиолдолд л таслаад бүтэн нэр title/tooltip-д. */
+/* ⚠️ 2026-10-23: Environment `.row-chart-label` — нэр БҮТЭН ороно (2 мөрийн тайралт хасагдсан;
+   бүтэн нэр нь мөрийн `title`-д ч бий), сонгогдсон үед жин өөрчлөгдөхгүй. */
 .barName {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.3;
   color: var(--ink-2);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  transition: color 0.12s;
+  overflow-wrap: anywhere;
 }
-.barNameOn { font-weight: 500; color: var(--ink); }
+/* Мөрийн ӨӨРИЙН өнгө (`it.color`) — Environment `colorOf`-ийн 6px цэг */
+.barDot { display: inline-block; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; }
+/* ⚠️ 2026-10-23: Environment — утга 11.5px/600 `--ink` (`.row-chart-heading strong`) */
 /* `flex: none` + `nowrap` — бүтэн мөнгөн дүн шахагдаж мөр таслахгүй (2026-09-01) */
 /* ⚠️ 2026-10-09: утга `--ink-2` (урьд нь --ink-3) — нэр ба утга ижил жинтэй уншигдана */
-.barVal { flex: none; white-space: nowrap; font-size: 11.5px; color: var(--ink-2); transition: color 0.12s; }
-.barValOn { color: var(--ink); }
+.barVal { flex: none; white-space: nowrap; font-size: 11.5px; font-weight: 600; color: var(--ink); }
 .barTrack {
   display: block;
-  height: 2px;
+  /* ⚠️ 2026-10-23: Environment `.row-chart-track-inner` — 5px, булан 4px (`CHART.barH`).
+     Урьдын «2px (хэрэглэгчийн сонголт, 2026-10-09)»-ийг хэрэглэгчийн 2026-10-23-ны
+     «Environment-ийг бүрэн дуурай» шийдвэр орлов. */
+  height: 5px;
   width: 100%;
-  /* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий үзүүр — зузаан 2px хэвээр (хэрэглэгчийн сонголт) */
-  border-radius: 99px;
+  border-radius: 4px;
   background: var(--chart-track);
-  /* ⚠️ `overflow: hidden` БАЙХГҮЙ БОЛОВ: нэмэлт хэмжигдэхүүний тэмдэг
-     (`.barMark`) 2px зурвасаас дээш доош СУНАХ ёстой — эс бөгөөс
-     таслагдаж, огт мэдэгдэхгүй. `position` нь түүний тулгуур. */
+  /* ⚠️ 2026-10-23: Environment `.row-chart-track-inner` — `overflow: hidden` (урьдын `.barMark`
+     тэмдэг байхгүй болсон — хоёр дахь хэмжигдэхүүн нь тусдаа зам `.barTrack2`). */
+  overflow: hidden;
   position: relative;
 }
 /*
@@ -365,10 +450,8 @@
   height: 100%;
   border-radius: inherit;
   background: var(--tone, var(--data));
-  /* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): цувааны өнгөөр зөөлөн гэрэлтэлт;
-     хүч нь `--chart-glow` (цайварт бага, хэвлэхэд 0) */
-  box-shadow: 0 0 6px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
-  transition: width 0.6s var(--ease), opacity 0.12s;
+  /* ⚠️ 2026-10-23: Environment — гэрэлтэлт (`box-shadow`) ХАСАГДСАН */
+  transition: width 0.2s;
 }
 
 /* ── Хэмжигч (`Meter`) ──
@@ -376,17 +459,17 @@
    нэгтгэв — `Bars`-ийн мөр: дээр нэр + утга (`.barTop`), доор 2px зам. Төлөвлөгөө нь
    2px `--ink` зураас, замаас ±4px сунана (тиймээс замд `overflow: hidden` БАЙХГҮЙ). */
 .meterRow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 60px; }
+/* ⚠️ 2026-10-23: Environment `Meter` — зам 6px (`h-1.5`, `CHART.meterH`), булан 6px, гэрэлтэлтгүй */
 .meterTrack {
   position: relative;
   display: block;
   width: 100%;
-  height: 2px;
-  /* ⚠️ 2026-10-09 (лавлах CRM загвар): бөөрөнхий үзүүр */
-  border-radius: 99px;
+  height: 6px;
+  border-radius: 6px;
   background: var(--chart-track);
 }
 /* Тайлангийн толгойн том хэмжигч — `CHART.meterWideH` */
-.meterWide { height: 8px; border-radius: 99px; }
+.meterWide { height: 8px; border-radius: 6px; }
 .meterFill {
   position: absolute;
   left: 0;
@@ -394,8 +477,7 @@
   bottom: 0;
   border-radius: inherit;
   background: var(--tone, var(--data));
-  box-shadow: 0 0 6px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
-  transition: width 0.6s var(--ease);
+  transition: width 0.2s;
 }
 .meterPlan {
   position: absolute;
@@ -407,14 +489,16 @@
 }
 
 /* Урт жагсаалтыг задлах / хумих */
+/* ⚠️ 2026-10-23: Environment `.pe-ghost` — `--line-strong` хүрээ, hover `--surface-2` */
 .more {
   align-self: flex-start;
-  margin-top: 1px;
-  padding: 3px 8px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line);
-  font-size: 0.7rem;
-  color: var(--ink-3);
+  margin-top: 2px;
+  padding: 3px 9px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-2);
   transition: background 0.12s, color 0.12s;
 }
 .more:hover { background: var(--surface-2); color: var(--ink); }
@@ -426,74 +510,91 @@
    (`CHART.stackH`/`stackGap`) — CEO StatusPanel/DimBar ижил хэмжээстэй болно. */
 /* ⚠️ 2026-10-09 (лавлах CRM загвар): `overflow: hidden` ХАСАГДАВ — тэр нь сегментийн
    гэрэлтэлтийг тайрдаг байв; бөөрөнхий үзүүрийг эхний/сүүлийн сегмент өөрөө авна. */
-.stack { display: flex; height: 8px; border-radius: 99px; background: var(--chart-track); }
+/* ⚠️ 2026-10-23: Environment `.stacked-chart-track` — 10px, булан 3px, хэсэг хооронд 1px
+   завсар (замын өнгө харагдана), гэрэлтэлтгүй (`CHART.stackH`/`stackGap`). */
+.stack {
+  display: flex;
+  gap: 1px;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--chart-track);
+}
 /* Зэргэлдээ хэсгүүдийн хооронд ГАДАРГУУН өнгөт 2px зай (2026-10-09: 1.5 → 2) — ойролцоо өнгөтэй
    хоёр хэсэг нийлж НЭГ болж харагдахаас сэргийлнэ (`box-shadow` нь өргөнийг
    өөрчлөхгүй тул хувь хэмжээ ЯГ хэвээр). */
 .stackSeg {
   height: 100%;
-  transition: width 0.6s var(--ease), opacity 0.12s var(--ease);
-  /* ⚠️ 2026-10-09 (лавлах CRM загвар): 2px зай (inset) + сегментийн ӨӨРИЙН өнгөөр (`color`
-     inline, currentColor) зөөлөн гэрэлтэлт */
-  box-shadow: inset -2px 0 0 var(--surface), 0 0 6px color-mix(in srgb, currentColor var(--chart-glow, 40%), transparent);
+  transition: width 0.2s, opacity 0.15s;
 }
-.stackSeg:first-child { border-radius: 99px 0 0 99px; }
-.stackSeg:last-child {
-  border-radius: 0 99px 99px 0;
-  box-shadow: 0 0 6px color-mix(in srgb, currentColor var(--chart-glow, 40%), transparent);
+/* ── Composition (`Stack legend`) — Environment `unelgee/viz.tsx` ──
+   28px зурвас, 1px `--line` хүрээ, 6px булан; 12%-аас том хэсэгт хувь (10.5/500, бараан бичиг —
+   Environment `#0c1719`); тайлбар 10px тэмдэг (2px булан), 11px, «утга · %» ink-3. */
+.comp { display: flex; flex-direction: column; gap: 8px; }
+.compBar {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
-.stackSeg:only-child { border-radius: 99px; }
-.stackSegDim { opacity: 0.35; }
-.legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
+.compSeg {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--hue-ink); /* ⚠️ 2026-10-23: --data дүүргэлт дээрх бичиг — хоёр горимд уншигдана */
+  transition: opacity 0.15s;
+}
+.compSwatch { width: 10px; height: 10px; flex: none; border-radius: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .legendItem {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1;
   color: var(--ink-2);
-  transition: opacity 0.12s var(--ease);
 }
-.legendItemOn { color: var(--ink); }
-.legendItemDim { opacity: 0.35; }
+.legendName { color: var(--ink-2); }
 /* envhub: 8px, 1px радиустай дөрвөлжин — donut-д зүсмэгийн багасгасан хувь
    (тунгалаг дэвсгэр + өнгөт хүрээ, inline style-аас), stack-д цул. */
 .legendDot { width: 8px; height: 8px; border-radius: 1px; flex: none; }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын тайлбарын тэмдэг — 12px ХӨНДИЙ цагираг,
-   3px өнгөт хүрээ (`border-color` inline), голд нь тунгалаг. */
-.legendRing {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  border-radius: 50%;
-  border: 3px solid var(--tone, var(--data));
-  background: transparent;
-}
-/* envhub: чартын дотор 500-аас дээш жин байхгүй */
-.legendVal { color: var(--ink); font-weight: 500; }
+/* ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын тайлбарын тэмдэг 12px ХӨНДИЙ цагираг байв.
+   ⚠️ 2026-10-23: Environment `.donut-legend-swatch` — 7px, 2px булантай ЦУЛ (тунгалаг inline). */
+.legendSwatch { width: 7px; height: 7px; flex: none; border-radius: 2px; }
+/* ⚠️ 2026-10-23: Environment `Composition` — «утга · %» нь ink-3, энгийн жин */
+.legendVal { color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* Хувь — үнэмлэхүй тооны ХАЖУУД. Хоёулаа хэрэгтэй: тоо нь хэмжээг, хувь нь
    бүхэлд эзлэх байрыг хэлнэ. */
-.legendPct { font-size: 0.68rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.legendPct { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ── Цагираг ── */
+/* ⚠️ 2026-10-23: Environment — Ring = `PieChart`-ын ганц утгат хэлбэр: `--chart-track` бөгж, нум
+   .88 тунгалаг, шулуун үзүүр, анимацгүй; голын бичвэр SVG (шошго ink-3, утга 600 tabular). */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): `overflow: visible` — нумын гэрэлтэлт svg-ийн хүрээнд тайрагдахгүй */
-.ringSvg { transform: rotate(-90deg); overflow: visible; }
+.ring svg { overflow: visible; }
 .ringTrack { fill: none; stroke: var(--chart-track); }
-.ringArc { fill: none; stroke: var(--tone, var(--hue)); stroke-linecap: round; transition: stroke-dashoffset 0.7s var(--ease); }
-.ringCenter { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-/* ⚠️ 2026-10-09: төвийн утга 600 — Donut-тай ижил */
-.ringValue { font-weight: 600; color: var(--ink); }
-.ringLabel { font-size: 0.62rem; color: var(--ink-3); margin-top: 2px; }
+.ringArc { fill: none; stroke: var(--tone, var(--data)); stroke-opacity: 0.88; }
+.ringValue { fill: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ringLabel { fill: var(--ink-3); }
 
 /* ── Түлхүүр → утга ── */
 .rows { display: flex; flex-direction: column; }
-/* envhub KeyValue хэл — 12px, утга нь medium (600 биш) */
+/* envhub KeyValue хэл — 12px, утга нь medium (600 биш)
+   ⚠️ 2026-10-23: Environment `KeyValue` — мөр 8px, түлхүүр `--ink-2`, утга .num 500 `--ink` */
 .row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 14px;
-  padding: 7px 0;
+  gap: 12px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
@@ -505,10 +606,13 @@
  * түлхүүр бүх зайг эзэлж, «3,935» гэсэн утга нь ТЭМДЭГТ ТУС БҮРЭЭР босоо
  * тасарч уншигдахаа больдог байлаа.
  */
-.rowKey { color: var(--ink-3); min-width: 0; }
+.rowKey { color: var(--ink-2); min-width: 0; }
+/* ⚠️ 2026-10-23: Environment `KeyValue tone` — түлхүүрийн өмнөх 6px цэг */
+.rowDot { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; vertical-align: 1px; }
 .rowVal {
   color: var(--ink);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   flex: none;
   white-space: nowrap;
@@ -530,15 +634,22 @@
   flex-wrap: wrap;
   row-gap: 3px;
   width: 100%;
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  /* ⚠️ 2026-10-23: Environment — 1px тунгалаг хүрээ (сонгоход мөр хөдлөхгүй), булан 8px */
+  border: 1px solid transparent;
+  border-radius: var(--r);
   text-align: left;
-  font-size: 0.78rem;
+  font-size: 12px;
   color: var(--ink-2);
-  transition: background 0.12s;
+  transition: background 0.12s, border-color 0.12s;
 }
 .listItem:hover { background: var(--surface-2); color: var(--ink); }
-.listOn { background: color-mix(in srgb, var(--tone, var(--hue)) 11%, transparent); color: var(--ink); }
+/* ⚠️ 2026-10-23: Environment — сонгогдсон: tone 12% дэвсгэр + tone 45% хүрээ */
+.listOn {
+  background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent);
+  border-color: color-mix(in oklab, var(--tone, var(--data)) 45%, transparent);
+  color: var(--ink);
+}
 /**
  * ⚠️ ЗААВАЛ баганан flex. Урьд нь зөвхөн `flex: 1; min-width: 0` байсан бөгөөд
  * гарчиг ба дэд мөр нь INLINE span хэвээр байлаа: тэдгээр нь нэг мөрөнд
@@ -554,8 +665,8 @@
  * хажуугийн самбарын хамгийн нарийн өргөнд (`SplitGrip` MIN 180px) ч багтана.
  */
 .listMain { flex: 1 1 110px; min-width: 110px; display: flex; flex-direction: column; gap: 1px; }
-.listTitle { display: block; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
-.listSub { display: block; font-size: 0.7rem; color: var(--ink-3); overflow-wrap: anywhere; }
+.listTitle { display: block; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.listSub { display: block; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
 /* ⚠️ `nowrap` — утга нь дундуураа тасрахгүй, ҮРГЭЛЖ БҮТЭН үлдэнэ (мөнгөн дүнг
    товчлохгүй гэсэн дүрмийн үргэлжлэл).
    ⚠️ `margin-left: auto` — утга доошоо буусан үедээ ч БАРУУН ирмэгтээ
@@ -566,7 +677,8 @@
   margin-left: auto;
   white-space: nowrap;
   font-weight: 600;
-  font-size: 0.76rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 
@@ -577,18 +689,16 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 28px 16px;
+  padding: 24px 12px;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 12px;
   color: var(--ink-3);
 }
+/* ⚠️ 2026-10-23: Environment — lucide `Loader2` (svg) эргэлт, `--ink-3` */
 .spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--line-strong);
-  border-top-color: var(--hue);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  flex: none;
+  color: var(--ink-3);
+  animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 /**
@@ -598,200 +708,251 @@
  * байгаа» гэдгийг тэмдэг биш ТЕКСТ («Ачаалж байна…») дамжуулна.
  */
 @media (prefers-reduced-motion: reduce) {
-  .spinner { border-color: var(--line-strong); border-top-color: var(--hue); opacity: 0.7; }
+  .spinner { opacity: 0.7; }
 }
 
 /* ── Хоосон төлөв ── */
+/* ⚠️ 2026-10-23: Environment `.chart-empty` — 1px ТАСАРХАЙ `--line` хүрээ, 10px булан,
+   дэвсгэргүй, 24px 12px, 12px ink-3 төвд. */
 .empty {
-  gap: var(--s2);
-  padding: var(--s9) var(--s7);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r);
-  background: var(--surface-2);
+  gap: 6px;
+  padding: 24px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: transparent;
 }
-.emptyIcon { display: block; color: var(--ink-3); opacity: 0.7; }
-.emptyLabel { color: var(--ink-2); }
-.emptyHint { font-size: 0.7rem; color: var(--ink-3); max-width: 32ch; }
-.error { color: var(--bad-ink); }
-.errorMsg { font-size: 0.7rem; color: var(--ink-3); max-width: 260px; }
+.emptyLabel { color: var(--ink-3); }
+.emptyHint { font-size: 11px; color: var(--ink-3); max-width: 32ch; }
+.error { color: var(--bad-ink); font-weight: 600; }
+.errorMsg { font-size: 11px; color: var(--ink-3); max-width: 260px; }
 
 /* «Дахин оролдох» — алдааны доорх жижиг товч. Бүтэн хуудас refresh хийлгүйгээр
    тухайн хүсэлтийг л дахин явуулна (ArcGIS түр гацах нь энгийн үзэгдэл). */
+/* ⚠️ 2026-10-23: Environment `.pe-ghost` — 28px, булан 8px, 12px/600, `--line-strong` хүрээ */
 .retryBtn {
   margin-top: 2px;
-  padding: 5px 14px;
-  font-size: 0.72rem;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
   cursor: pointer;
 }
-.retryBtn:hover { border-color: var(--line-strong); }
+.retryBtn:hover { background: var(--surface-2); }
 
-/* ── Дугуй диаграм (donut) ── */
-.donutWrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* ── Дугуй диаграм (donut) — Environment `.donut-chart` ── */
+/* ⚠️ 2026-10-23: Environment — бөгж ба тайлбар 10px завсартай, голлуулсан, 2px босоо зай */
+.donutWrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 2px 0; }
+.donutRing { flex-shrink: 0; max-width: 100%; height: auto; overflow: visible; }
+/* Зүсмэгийн доорх бүтэн бөгж (Environment `paper-hi`) */
+.donutTrack { fill: none; stroke: var(--chart-track); pointer-events: none; }
+/* Голын SVG бичвэр — «НИЙТ» ink-3, нийт 600 tabular ink (хэмжээ нь inline `font-size`) */
+.donutCtrLbl { fill: var(--ink-3); }
+.donutCtrVal { fill: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ── Leader-line пай — зүсмэгээс зураас татсан гадна шошго ── */
 .donutLead { display: flex; justify-content: center; }
 .donutLead svg { max-width: 100%; height: auto; overflow: hidden; }
-.donutLeadCtr { font-size: 15px; font-weight: 600; fill: var(--ink); }
-.donutLeadCtrLbl { font-size: 8px; fill: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 /* foreignObject доторх HTML шошго — мөр даруулж БҮТЭН нэрийг харуулна */
 .donutLeadBox {
   display: flex;
   flex-direction: column;
   justify-content: center;
   height: 100%;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.22;
   color: var(--ink-2);
   overflow-wrap: break-word;
   word-break: normal;
 }
 .donutLeadName { color: var(--ink-2); font-family: var(--cond); }
-.donutLeadPct { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
-/* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
-   Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна. */
-.donutRow { flex-wrap: nowrap; }
-.donutRow .donutLegend { min-width: 0; gap: 4px; }
-/* Тайлбарыг пайны ДООР бүтэн өргөнөөр — нарийн баганад давхацахгүй */
-.donutStack { flex-direction: column; align-items: center; flex-wrap: nowrap; gap: 12px; }
-.donutStack .donutLegend { width: 100%; min-width: 0; flex: none; }
-.donutStack .donutName { white-space: normal; overflow: visible; }
-.donutRow .donutItem { gap: 5px; font-size: 0.68rem; align-items: flex-start; }
-.donutRow .donutName { white-space: normal; overflow: visible; line-height: 1.2; }
-.donutRow .legendDot,
-.donutRow .legendRing { margin-top: 2px; }
-.donut { position: relative; flex: none; }
-/* envhub: гадна захын 1px чиглүүлэгч тойрог.
-   ⚠️ 2026-10-09: `--line-strong` → `--chart-track` — Ring/Bars-ийн замтай НЭГ өнгө */
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): НҮХНИЙ ДОТОРХ 1px чимэглэлийн цагираг (`--chart-grid`) */
-.donutTrack { fill: none; stroke: var(--chart-grid); pointer-events: none; }
-/* Зурвас ДОТОРХ хувь (≥8%) — 10px/600, өнгөт дүүргэлт дээрх бэх (`--hue-ink`) + цайварт
-   бараан хүрээ (`--chart-on-fill-halo`) — --c6 шар дээр ч уншигдана. */
-.donutPctIn {
-  font-size: 10px;
-  font-weight: 600;
-  fill: var(--hue-ink);
-  paint-order: stroke;
-  stroke: var(--chart-on-fill-halo);
-  stroke-width: 2px;
-  stroke-linejoin: round;
-  pointer-events: none;
-  transition: opacity 0.12s;
-}
-.donutCenter {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
+/* ⚠️ 2026-10-23: Environment — жин ≤600, нэг өнгө (`--ink`) */
+.donutLeadPct { font-size: 11.5px; font-weight: 600; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ⚠️ 2026-10-23: Environment `.donut-chart-legend` / `.donut-legend-item` — мөр бүр
+   `7px | нэр | утга | хувь`, 3px 4px, доор нь 1px `--line` (сүүлийнх зураасгүй), 5px булан;
+   hover/сонгосон нь `--surface-2`. */
+.donutLegend { flex: 1 1 145px; min-width: 0; }
+.donutItem {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 7px minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
+  gap: 0 6px;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 5px;
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  transition: opacity 0.15s, background 0.15s;
+}
+.donutLegend > li:last-child > .donutItem,
+.donutLegend > .donutItem:last-child { border-bottom-color: transparent; }
+.donutName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.donutVal { font-size: 11.5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.donutPct {
+  min-width: 2.6em;
+  text-align: right;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* Дарж шүүх боломжтой тайлбарын мөр */
+.donutClick { cursor: pointer; }
+.donutClick:hover,
+.donutOn { background: var(--surface-2); }
+.donutOn .donutName { color: var(--ink); }
+/* ⚠️ 2026-10-09: `.legendSwatch` нь `Stack`-аас тусдаа (7px, 2px булан) — дээр тодорхойлогдсон */
+
+/* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
+   ⚠️ Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна (`nowrap`). */
+.donutRow { flex-wrap: nowrap; }
+.donutRow .donutItem { align-items: start; }
+.donutRow .donutName { white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.2; }
+.donutRow .legendSwatch { margin-top: 4px; }
+/* ⚠️ 2026-10-23: Environment `legend="below"` — бөгжний ДООР, 2 баганат тор (14px завсар);
+   баганын ЁРООЛЫН хоёр нүд зураасгүй; 380px-ээс нарийн дэлгэцэд 1 багана. */
+.donutStack { flex-direction: column; flex-wrap: nowrap; gap: 12px; }
+.donutStack .donutLegend {
+  flex: none;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 14px;
+}
+.donutStack .donutLegend > li:last-child > .donutItem,
+.donutStack .donutLegend > .donutItem:last-child { border-bottom-color: var(--line); }
+.donutStack .donutLegend > li:nth-last-child(-n + 2) > .donutItem,
+.donutStack .donutLegend > .donutItem:nth-last-child(-n + 2) { border-bottom-color: transparent; }
+@media (max-width: 380px) {
+  .donutStack .donutLegend { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Босоо цуваа (series) — Environment `BarChart` (баганын горим) ──
+   ⚠️ 2026-10-23: Environment `.bar-chart-*` — 34px тэнхлэгийн багана + талбай (9px завсар); тор
+   0/.25/.5/.75/1 × (100 − зай)% дээр 1px ТАСАРХАЙ `--line` (эхнийх бүтэн); тэнхлэгийн 2–3 шошго
+   9px tabular ink-3; багана нүдний 80% (max 44px), 5px дээд булан, .88; нүднүүд 8px завсартай,
+   hover moss 5%. Нэгжийн мөр ДЭЭР, зүүн тийш. */
+.series { display: flex; flex-direction: column; }
+.seriesUnit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+/* Олон муруйн тайлбар — Environment stacked legend (8px дөрвөлжин, 10.5px ink-2) */
+.seriesLegend { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-2); }
+.seriesLegend i { width: 8px; height: 8px; border-radius: 1px; display: inline-block; }
+
+.barLayout { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 9px; }
+.barAxis { position: relative; color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.barAxis span {
+  position: absolute;
+  right: 0;
+  max-width: 100%;
+  transform: translateY(50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.barMain { min-width: 0; }
+.barPlot { position: relative; }
+.gridLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1px dashed var(--line);
   pointer-events: none;
 }
-/* envhub: голын нийлбэр — жижиг, medium (том тод тоо биш) */
-/* ⚠️ 2026-10-09: 500 → 600 (Ring-тэй ижил төвийн жин) */
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): 13 → 15px, шошгоны ДООР */
-.donutValue { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.1; }
-/* Цагирагийн голд бүтэн мөнгөн дүн — нүхэнд багтахгүй тул жижигрүүлж, мөр
-   таслахгүй (тоог хоёр хуваавал уншигдахгүй). 2026-09-01. */
-.donutValueLong { font-size: 9.5px; letter-spacing: -0.02em; white-space: nowrap; }
-.donutLabel { font-size: 10px; color: var(--ink-3); text-align: center; line-height: 1.2; max-width: 90%; }
-
-.donutLegend { flex: 1; min-width: 130px; display: flex; flex-direction: column; gap: 6px; }
-.donutItem { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
-.donutName { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
-.donutPct { flex: none; font-size: 11.5px; font-weight: 400; color: var(--ink-3); }
-/* Дарж шүүх боломжтой тайлбарын мөр */
-.donutClick { width: 100%; padding: 3px 5px; border-radius: var(--r-sm); transition: background 0.12s; }
-.donutClick:hover { background: var(--surface-2); }
-.donutOn { background: color-mix(in srgb, var(--tone, var(--hue)) 14%, transparent); }
-.donutOn .donutPct { color: var(--tone, var(--hue)); }
-/**
- * ⚠️ 2026-08-17 НЭМЭВ. `ui.tsx` нь `s.donutHov`-ыг аль хэдийн тавьдаг байсан ч
- * энэ дүрэм CSS-д БАЙГААГҮЙ — өөрөөр хэлбэл зүсмэг дээр хулгана очиход
- * тайлбарын харгалзах мөр нь тодрох ЁСТОЙ байсан боловч огт тодордоггүй байв
- * (холбоо нь зөвхөн НЭГ ТАЛДАА ажиллаж байсан гэсэн үг).
- * Хүрээг зузаалахгүй, ЗҮҮН ирмэг + дэвсгэрээр заана — мөрийн өндөр хөдлөхгүй.
- */
-.donutHov {
-  background: var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--tone, var(--hue));
-}
-.donutSlice { transition: opacity 0.12s var(--ease), filter 0.12s var(--ease); }
-
-/* ── Босоо цуваа (series) ──
-   ⚠️ 2026-08-17: envhub-ийн BarChart хэл — 3px завсар, зөвхөн ДЭЭД буланд 1px
-   радиус, торгүй/тэнхлэггүй, доор нь 10px цифрийн мөр. Багана бүр бүтэн
-   өндрийн дарагдах талбар; hover нь 12% өнгөн угаалт. */
-.series { display: flex; flex-direction: column; }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): `gap` 3px → 0 — багана нь слотынхоо 45% (төвд) тул
-   зай нь өөрөө үүснэ, слотын ТӨВ нь яг `(i+0.5)/n` (муруйн цэг, босоо тор, шошготой давхцана). */
-.seriesPlot {
+.gridLine:first-child { border-top-style: solid; }
+.barCols { position: absolute; inset: 0; display: flex; gap: 8px; }
+.seriesCol {
   position: relative;
   display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-/* Муруйн горим — дээд цэгийн «Дээд: X» pill-ийн зай */
-.seriesPlotLine { margin-top: 24px; }
-.seriesCol {
+  justify-content: center;
+  align-items: flex-end;
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  position: relative;
-  align-items: center;
-  border-radius: 1px;
-  transition: background 0.12s;
+  height: 100%;
+  border-radius: 6px;
 }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): НАРИЙН (слотын 45%, `CHART.colW`), дээд
-   булан 4px бөөрөнхий (`CHART.colRadius`), БОСОО ГРАДИЕНТ: дээд = цувааны өнгө → доод 35%. */
+.seriesClick { cursor: pointer; }
+.seriesClick:hover { background: color-mix(in oklab, var(--data) 5%, transparent); }
+/* ⚠️ 2026-10-23: Environment `.bar-chart-fill` — ЦУЛ (градиентгүй), нүдний 80% (`CHART.colW`),
+   max 44px (`colMaxW`), дээд булан 5px (`colRadius`); тунгалаг .88/.18 нь inline. */
 .seriesBar {
-  position: relative;
-  z-index: 1;
-  width: 45%;
-  max-width: 34px;
-  min-width: 2px;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(to bottom, var(--tone, var(--data)), color-mix(in srgb, var(--tone, var(--data)) 35%, transparent));
-  transition: height 0.4s var(--ease), opacity 0.12s, filter 0.12s, box-shadow 0.12s;
+  width: 80%;
+  max-width: 44px;
+  border-radius: 5px 5px 0 0;
+  background: var(--tone, var(--data));
+  transition: height 0.2s, opacity 0.15s;
 }
-/* Заасан багана — ТОДРОНО + цувааны өнгөөр гэрэлтэнэ */
-.colHot {
-  filter: brightness(1.15);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--tone, var(--data)) var(--chart-glow, 40%), transparent);
-}
-/* ── Тоймтой хувилбар (`outline`) — ЗАХ нь бүтэн өнгө, дотор нь бүдэг ──
-   Багана дээр байнга тоо бичихэд бүтэн дүүргэлт дээр цифр уншигдахгүй болдог.
-   Зөвхөн `outline` дуудсан дүрслэлд хамаарна; бусад чартын хэл өөрчлөгдөхгүй. */
+/* ── Тоймтой хувилбар (`outline`) — ЗАХ нь бүтэн өнгө, дотор нь бүдэг ── */
 .seriesBarOutline {
   background: color-mix(in oklab, var(--tone, var(--data)) 18%, transparent);
   border: 1px solid var(--tone, var(--data));
   border-bottom: 0;
 }
-/* ⚠️ `.seriesVal` нь багана нарийссан ч бүтэн өргөнөөр (тоо тасрахгүй) */
-.seriesCol > .seriesVal { align-self: stretch; }
-/* Баганын ОРОЙД суух утга. Багана намхан үед ч уншигдахын тулд баганын ГАДНА
-   талд (дээр нь) байрлана — дотор нь байрлуулбал намхан багананд багтахгүй. */
+/* Баганын ОРОЙН утга — Environment `.bar-chart-value`: 10px/500 ink-2, `bottom: calc(h% + 5px)` */
 .seriesVal {
-  display: block;
-  font-size: 10px;
-  line-height: 1.2;
-  font-weight: 600;
+  position: absolute;
+  left: 0;
+  right: 0;
   text-align: center;
-  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 2px;
+  color: var(--ink-2);
+  pointer-events: none;
 }
-/* ── Муруйн горим (`line`) — талбай + зөөлөн шугам + цэг ──
-   Баганын түвшинд хөвж бүтэн талбайг эзэлнэ. `pointer-events: none` — доорх
-   баганын hover/дарах нь хэвээр ажиллах ёстой. */
+.seriesTicks { display: flex; gap: 8px; padding-top: 9px; font-size: 11px; color: var(--ink-3); }
+.seriesLabel {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ⚠️ 2026-10-23: Environment `.bar-chart-ticks .is-selected` — moss, 600 */
+.seriesLabelOn { color: var(--data-ink); font-weight: 600; }
+/* Цөөлсөн шошго — хөрш ХООСОН нүднүүд рүү тэлж, бүтнээрээ уншигдана
+   (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
+.seriesLabelWide { overflow: visible; text-overflow: clip; }
+
+/* ── Картаа дүүргэх (`grow`) — Environment `BarChart fill` / `AreaChart fill` ── */
+.seriesFill { flex: 1 1 auto; min-height: 0; }
+.seriesFill .barLayout { display: flex; flex: 1 1 auto; min-height: 0; }
+.seriesFill .barMain { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.seriesFill .barPlot { flex: 1 1 auto; }
+.seriesFill .seriesBar { max-width: 56px; }
+.seriesFill .seriesVal { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.seriesFill .seriesTicks { padding-top: 8px; font-size: 11px; color: var(--ink-2); }
+
+/* ── Муруйн горим (`line`) — Environment `AreaChart` ──
+   SVG `0 0 100 h` (`preserveAspectRatio="none"`), тор бүгд тасархай `3 4` (`.trendGrid`),
+   градиент .22 → .02, 2px шугам, 5px HTML цэг, crosshair tone `2 2` .7, Y шошгогүй. */
+.areaPlot { position: relative; }
 .seriesLineSvg {
   position: absolute;
   inset: 0;
@@ -810,125 +971,96 @@
      зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
   vector-effect: non-scaling-stroke;
 }
-/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг (`CHART.markerR`/`ring`) — Trend-тэй ижил.
-   ⚠️ 2026-10-09 (лавлах CRM загвар): ЗӨВХӨН ганц цэгтэй хэсэгт (хоёр талдаа цоорхой) —
-   бусад цэг нуугдмал, заасан цэгт `.hmark`. */
+/* Crosshair — Trend ба Series line-д нэг */
+.areaCross {
+  stroke: var(--tone, var(--data));
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+/* ⚠️ 2026-10-23: Environment — 5px + 2px `--surface` цагираг; тунгалаг нь inline (.5 / 1 / .15) */
 .seriesLineDot {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--tone, var(--data));
   box-shadow: 0 0 0 2px var(--surface);
   transform: translate(-50%, -50%);
   pointer-events: none;
-  transition: opacity 0.12s;
+  transition: opacity 0.15s;
 }
-/* Цэгийн ДЭЭР суух утга. Муруйн дээд зайг `SeriesLine`-ы `pad` гаргаж өгдөг
-   тул хамгийн өндөр цэгийн шошго ч зургийн дотор багтана. */
+/* Цэгийн утга — Environment `labels`: 10px/400 tabular ink-2 (идэвхтэй ink), цэгээс 6px дээр
+   (`transform` нь inline — ирмэгийн шошго дотогш эгнэнэ), дэвсгэргүй */
 .seriesLineVal {
   position: absolute;
-  transform: translate(-50%, -100%);
-  margin-top: -7px;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 400;
   line-height: 1;
-  font-weight: 600;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
-  transition: opacity 0.12s;
 }
-
-.seriesClick { cursor: pointer; }
-/* ── Муруйн горимын багана — hover/фокусын ТАСАРХАЙ crosshair (`Trend`-ийн `.trendHit`-тэй ижил) ── */
-.seriesColLine { padding: 0; border: 0; background: none; font: inherit; color: inherit; }
-.seriesColLine::before {
-  content: '';
+.seriesLineValOn { color: var(--ink); }
+.areaHits { position: absolute; inset: 0; display: flex; }
+.areaHit { flex: 1; height: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; }
+.areaHitClick { cursor: pointer; }
+/* X шошго — цэгийнхээ ЯГ доор (абсолют); ирмэгийнх дотогш; хазайсан нь −60° (Environment) */
+.areaTicks { position: relative; height: 10px; margin-top: 6px; font-size: 11px; color: var(--ink-3); }
+.areaTicksTilt { height: 28px; margin-top: 8px; }
+.areaTick {
   position: absolute;
-  inset: 0 calc(50% - 0.5px);
-  background: repeating-linear-gradient(to bottom, var(--tone, var(--data)) 0 2px, transparent 2px 4px);
-  opacity: 0;
-  pointer-events: none;
-}
-.seriesColLine:hover::before,
-.seriesColLine:focus-visible::before { opacity: 0.7; }
-.seriesClick:hover { background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent); }
-.seriesTicks { display: flex; gap: 0; margin-top: 6px; }
-.seriesLabel {
-  flex: 1;
-  min-width: 0;
-  font-size: 10px;
+  top: 0;
   line-height: 1;
-  text-align: center;
-  color: var(--ink-3);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.12s;
+  transform: translateX(-50%);
+  transition: color 0.15s;
 }
-.seriesLabelOn { color: var(--ink); }
-/* Цөөлсөн шошго — хөрш ХООСОН нүднүүд рүү тэлж, бүтнээрээ уншигдана
-   (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
-.seriesLabelWide { overflow: visible; text-overflow: clip; }
-/* Нэгж = чартын ДЭЭД баруун булангийн тайлбар (тэнхлэгийн шошготой хутгалдахгүй) */
-.seriesUnit { margin-bottom: 4px; font-size: 10.5px; color: var(--ink-3); text-align: right; }
-/* Олон муруйн тайлбар — нэгжийн мөрөнд (Series.lines) */
-.seriesLegend { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; color: var(--ink-2); }
-.seriesLegend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.areaTickFirst { transform: none; }
+.areaTickLast { transform: translateX(-100%); }
+.areaTicksTilt .areaTick { transform: translateX(-100%) rotate(-60deg); transform-origin: top right; }
+.areaTickOn { color: var(--ink); }
 
 /* ── Сонгогч ── */
 
+/* ⚠️ 2026-10-23: Environment `.pe-field select` — 32px, булан 7px, `--line-strong` хүрээ,
+   `--bg` дэвсгэр, 12.5px; фокус нь moss хүрээ + 3px moss 18% цагираг. */
 .select {
   font: inherit;
-  font-size: 0.7rem;
-  color: var(--ink-2);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 3px 6px;
+  font-size: 12.5px;
+  height: 32px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 9px;
   max-width: 100%;
+  outline: none;
   cursor: pointer;
 }
-.select:hover { border-color: var(--line-strong); }
-.select:focus-visible { outline: 2px solid var(--tone, var(--hue)); outline-offset: 1px; }
+.select:focus,
+.select:focus-visible {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+  outline: none;
+}
 
 /* ── Цаг хугацааны муруй ── */
 
-/* ⚠️ 2026-08-17: envhub-ийн AreaChart хэл — торгүй, y-тэнхлэггүй; 1.5px муруй,
-   0.34→0.02 градиент, 5px цэг (гадаргуун цагирагтай), ТАСАРХАЙ өнгөт crosshair. */
-.trend { display: flex; flex-direction: column; gap: 6px; }
-.trendHead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-/* `nowrap` — бүтэн мөнгөн дүн хоёр мөр болж толгойг эвдэхгүй (2026-09-01) */
-.trendValue { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1; white-space: nowrap; }
-.trendMeta { font-size: 10.5px; color: var(--ink-3); }
-
-/* Хажуугийн зай нь ЭХНИЙ/СҮҮЛИЙН цэгийг ирмэгээр таслуулахгүй байлгана */
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): дээд зай 6 → 22px (`TREND_PLOT_TOP` — ui.tsx-тэй ИЖИЛ) —
-   «Дээд: X» pill-ийн байр. */
-.trendPlot { position: relative; margin: 22px 9px 0; }
-/* Зүүн тэнхлэгийн багана — гүйгчийн ГАДНА (`padding-left` inline) */
-.trendBody { position: relative; }
-.trendYAxis {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  pointer-events: none;
-}
-.trendYAxis span {
-  position: absolute;
-  right: 4px;
-  transform: translateY(-50%);
-  font-size: 10px;
-  line-height: 1;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-/* Бүдэг тор — `preserveAspectRatio="none"` тул зузааныг бэхэлнэ */
+/* ⚠️ 2026-08-17: envhub-ийн AreaChart хэл — торгүй, y-тэнхлэггүй байв.
+   ⚠️ 2026-10-23: Environment `AreaChart` — 2px шугам (гэрэлтэлтгүй), .22→.02 градиент, 5px цэг
+   (.5), тор [.25 .5 .75 1] бүгд ТАСАРХАЙ `3 4`, Y шошгогүй; дээрх уншилтын мөр (`trendHead`) ба
+   зүүн тэнхлэг ХАСАГДСАН. */
+.trend { display: flex; flex-direction: column; }
+/* Хажуугийн 4px — ирмэгийн цэг (2.5 + 2px цагираг) тайрагдахгүй */
+.trendPlot { position: relative; margin: 0 4px; }
+/* Тор — `preserveAspectRatio="none"` тул зузааныг бэхэлнэ */
 .trendGrid {
-  stroke: var(--chart-grid);
+  stroke: var(--line);
   stroke-width: 1;
+  stroke-dasharray: 3 4;
   vector-effect: non-scaling-stroke;
 }
 .trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -956,52 +1088,43 @@
   background: none;
   cursor: pointer;
 }
-/* Хөндлөн огтлол — envhub: ӨНГӨТ, ТАСАРХАЙ (2/2) босоо шугам, 0.7 тунгалаг */
-.trendHit::before {
-  content: '';
-  position: absolute;
-  inset: 0 calc(50% - 0.5px);
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--tone, var(--data)) 0 2px,
-    transparent 2px 4px
-  );
-  opacity: 0;
-}
-.trendHitOn::before { opacity: 0.7; }
-/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг — `CHART.markerR`/`ring` */
+/* Хөндлөн огтлол — ⚠️ 2026-10-23: Environment — SVG `<line>` (`.areaCross`), CSS `::before` хасагдсан */
+/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг — `CHART.markerR`/`ring`
+   ⚠️ 2026-10-23: Environment `AreaChart` — 5px цэг + 2px `--surface` цагираг, анхдагчаар .5
+   ХАРАГДАНА (CRM загварын «нуугдмал»-ыг буцаав); заасан цэг 1, бусад нь .15 (`trendPlotHov`). */
 .trendDot {
   position: absolute;
   left: 50%;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
   border-radius: 50%;
   background: var(--tone, var(--data));
   /* envhub ring-2: муруйтай огтлолцох үед цэг нь тодорхой хэвээр */
   box-shadow: 0 0 0 2px var(--surface);
-  /* ⚠️ 2026-10-09 (лавлах CRM загвар): анхдагчаар НУУГДМАЛ (0.5 байв) */
-  opacity: 0;
-  transition: transform 0.12s, opacity 0.12s, box-shadow 0.12s;
+  opacity: 0.5;
+  transition: opacity 0.15s;
 }
+.trendPlotHov .trendDot { opacity: 0.15; }
 /* Ганц цэгтэй хэсэг — шугамгүй тул цэг нь ЦОРЫН ГАНЦ дүрс, үргэлж харагдана */
 .trendDotSolo { opacity: 1; }
-/* Заасан цэг — r 4.5 (6px × 1.5) + 2px гадаргуун цагираг + r 9 гало (25%) — `CHART.hoverR/haloR/haloA`.
-   ⚠️ `scale(1.5)` нь сүүдрийг ч томруулна — 1.33px × 1.5 ≈ 2px, 3px × 1.5 = 4.5px. */
-.trendHitOn .trendDot {
-  transform: scale(1.5);
+/* Заасан цэг — ⚠️ 2026-10-23: Environment — ТОМРУУЛАХГҮЙ, зөвхөн бүтэн тунгалаг */
+.trendHitOn .trendDot,
+.trendPlotHov .trendHitOn .trendDot {
   opacity: 1;
-  box-shadow: 0 0 0 1.33px var(--surface), 0 0 0 3px color-mix(in srgb, var(--tone, var(--data)) 25%, transparent);
 }
 /* Тэнхлэг — цэг БҮРИЙН бүртгэлийн огноо, цэгийнхээ ЯГ доор. Урьд нь зөвхөн
    эхлэл/сүүл байсан тул завсрын хэмжилт хэзээ болсныг зөвхөн hover-оор мэдэх
    байлаа. Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ (Trend-д хураана) — 9-12 шошго
    нарийн самбарт ч давхцахгүй. */
+/* ⚠️ 2026-10-23: Environment — 10px tabular ink-3, заасан цэгийнх ink */
 .trendAxis {
   position: relative;
   height: 14px;
-  margin: 4px 9px 0;
-  font-size: 10px;
+  margin: 6px 4px 0;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
 .trendAxisTick {
@@ -1009,9 +1132,19 @@
   top: 0;
   transform: translateX(-50%);
   white-space: nowrap;
+  transition: color 0.15s;
 }
 .trendAxisTick:first-child { transform: none; }
 .trendAxisTick:last-child { transform: translateX(-100%); }
+.trendAxisTickOn { color: var(--ink); }
+/* Хазайсан шошго (Environment −60°, `origin-top-right`) — төгсгөл нь цэгийнхээ доор */
+.trendAxisTilt { height: 28px; margin-top: 8px; }
+.trendAxisTilt .trendAxisTick,
+.trendAxisTilt .trendAxisTick:first-child,
+.trendAxisTilt .trendAxisTick:last-child {
+  transform: translateX(-100%) rotate(-60deg);
+  transform-origin: top right;
+}
 
 /* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ────────────────────────
    ⚠️ `padding-bottom` нь ЗААВАЛ: гүйлтийн зурвас ~12px эзэлдэг тул үүнгүй бол
@@ -1038,31 +1171,26 @@
   align-items: center;
   line-height: 1.25;
 }
-.trendTickDay { color: var(--ink-2); }
-.trendTickClock { color: var(--ink-3); font-size: 9px; }
+.trendTickDay { color: inherit; }
+.trendTickClock { color: var(--ink-3); font-size: 11px; }
 
-/* Цэгийн утга — муруйн ДЭЭР. `.trendHit` нь 26px өргөн ч энэ бичиг түүнээс
-   гарч болно (товч нь тайрдаггүй); `nowrap` нь «1,234.5»-ыг хугалахгүй.
-   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
+/* Цэгийн утга — муруйн ДЭЭР; `nowrap` нь «1,234.5»-ыг хугалахгүй.
+   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй.
+   ⚠️ 2026-10-23: Environment `AreaChart labels` — 10px/400 tabular ink-2 (идэвхтэй ink), цэгээс
+   6px дээр (`transform` inline), chip дэвсгэргүй. */
 .trendVal {
   position: absolute;
   /* ⚠️ Босгын шошгоос ДООГУУР давхарлана — мөргөлдвөл босго нь дээр гарна */
   z-index: 1;
-  left: 50%;
-  transform: translate(-50%, -100%);
-  margin-top: -7px;
-  padding: 0 2px;
-  /* Зузаан дэвсгэр — муруй, торон дээр давхарлахад ч уншигдана */
-  background: var(--surface);
-  border-radius: 2px;
-  font-size: 9.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  line-height: 1.3;
+  line-height: 1;
   white-space: nowrap;
   color: var(--ink-2);
   pointer-events: none;
 }
+.trendValOn { color: var(--ink); }
 
 /* ── Анхааруулгын босго ─────────────────────────────────────────────────────
    ⚠️ Улаан нь ЭНД «босго давсан» гэсэн ГАНЦ утга үүрнэ. Тиймээс босгогүй
@@ -1095,7 +1223,7 @@
   border-radius: var(--r-sm);
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
@@ -1106,14 +1234,14 @@
 }
 /* Босго давсан цэг — томорч, улаан болно (хэмжээ нь өнгө ялгах бэрхшээлтэй
    хүнд ч мэдэгдэнэ: өнгө ГАНЦААРАА мэдээлэл дамжуулахгүй) */
-.trendDotAlert {
+.trendDotAlert,
+.trendPlotHov .trendDotAlert {
   background: var(--bad);
   box-shadow: 0 0 0 2px var(--surface);
   opacity: 1;
   transform: scale(1.3);
 }
 .trendValAlert { color: var(--bad-ink); }
-.trendValueAlert { color: var(--bad-ink); }
 
 /* ⚠️ ГАР УТАС (2026-08-29): хэсгийн толгойн тэмдэглэл («2 багц · төлөвлөгөөнөөс
    хоцорсон») баруун ирмэгт тайрагддаг байв — мөр тасалж доош буулгана. */
@@ -1135,35 +1263,57 @@
   text-align: center;
 }
 
-/* Үзүүлэлтийн дүрс — тооны өмнө, түүнтэй нэг мөрөнд */
+/* Үзүүлэлтийн дүрс — тооны өмнө, түүнтэй нэг мөрөнд
+   ⚠️ 2026-10-23: Environment `.analytics-stat-icon` — 38px хайрцаг (булан 10px, `--surface-2`),
+   moss дүрс 20px; хавтангийн зүүн талд хоёр мөрийг эзэлнэ (`grid-area: icon`). */
 .statIcon {
-  display: inline-flex;
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
   flex: none;
-  margin-right: 6px;
+  border-radius: 10px;
+  background: var(--surface-2);
   color: var(--tone, var(--data));
-  opacity: 0.85;
 }
-.statIcon svg { width: 15px; height: 15px; }
+.statIcon svg { width: 20px; height: 20px; }
 
 /* ══════════ Лавлах CRM загвар (2026-10-09) — өнгө хэвээр, зөвхөн хэв маяг ══════════ */
 
 /* ── Утгын pill (`PointCallout`) ──
    Дэвсгэр = цувааны өнгө (`--cc` inline), цайварт `--chart-callout-shade`-ээр харлуулна;
-   бичиг `--hue-ink`. Сум нь `--pl` байрлалд (ирмэгийн цэгт зах руу шилжинэ). */
+   бичиг `--hue-ink`. Сум нь `--pl` байрлалд (ирмэгийн цэгт зах руу шилжинэ).
+   ⚠️ 2026-10-23: Environment tooltip-ийн хэл — `--surface` 95% + blur, `--line-strong` хүрээ,
+   булан 8px, бичиг `--ink`; цувааны өнгө нь зөвхөн урд талын 6px цэг (`--cc`). Сум нь
+   хүрээний өнгөтэй. Гэрэлтэлт хасагдсан. */
 .callout {
   position: absolute;
   z-index: 4;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
-  color: var(--hue-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--surface) 95%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--ink);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--cc, var(--data)) var(--chart-glow, 40%), transparent);
+  box-shadow: var(--shadow-sm);
+}
+.callout::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cc, var(--data));
 }
 .callout::after {
   content: '';
@@ -1173,7 +1323,7 @@
   margin-left: -4px;
   border: 4px solid transparent;
   border-bottom-width: 0;
-  border-top-color: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
+  border-top-color: var(--line-strong);
 }
 .calloutBelow::after {
   top: auto;
@@ -1181,61 +1331,25 @@
   border-bottom-width: 4px;
   border-top-width: 0;
   border-top-color: transparent;
-  border-bottom-color: color-mix(in oklab, var(--cc, var(--data)), #000 var(--chart-callout-shade, 0%));
+  border-bottom-color: var(--line-strong);
 }
 
-/* ── Hover/фокусын тэмдэг (`HoverMarker`) — r 4.5 + 2px гадаргуу + r 9 гало 25% ── */
+/* ── Hover/фокусын тэмдэг (`HoverMarker`) — r 4.5 + 2px гадаргуу + r 9 гало 25% ──
+   ⚠️ 2026-10-23: Environment — 7px (`CHART.hoverR` 3.5) + 2px `--surface` цагираг, гало-гүй */
 .hmark {
   position: absolute;
   z-index: 3;
-  width: 9px;
-  height: 9px;
-  margin: -4.5px 0 0 -4.5px;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
   border-radius: 50%;
   background: var(--cc, var(--data));
-  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4.5px color-mix(in srgb, var(--cc, var(--data)) 25%, transparent);
+  box-shadow: 0 0 0 2px var(--surface);
   pointer-events: none;
-}
-
-/* ── Бүдэг тор + зүүн тэнхлэг (`SeriesGrid`) ──
-   Талбайн ард (DOM-д эхэнд). Тэнхлэгийн тоо нь талбайн ГАДНА (`right: 100%`). */
-.chartGrid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.gridH {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 1px solid var(--chart-grid);
-}
-.gridV {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px solid var(--chart-grid);
-}
-.axisYLbl {
-  position: absolute;
-  right: 100%;
-  padding-right: 5px;
-  transform: translateY(50%);
-  font-size: 10px;
-  line-height: 1;
-  color: var(--ink-3);
-  white-space: nowrap;
 }
 
 /* ── Хэвлэлт: гэрэлтэлт, градиент багана бүдэг саарал толбо болж хэвлэгддэг ── */
+/* ⚠️ 2026-10-23: Environment — гэрэлтэлт/градиент байхгүй болсон тул зөвхөн pill-ийн blur/сүүдэр */
 @media print {
-  .barFill,
-  .meterFill,
-  .callout,
-  .colHot { box-shadow: none; }
-  .stackSeg { box-shadow: inset -2px 0 0 var(--surface); }
-  .stackSeg:last-child { box-shadow: none; }
-  .seriesBar { background: var(--tone, var(--data)); filter: none; }
+  .callout { box-shadow: none; backdrop-filter: none; background: var(--surface); }
 }

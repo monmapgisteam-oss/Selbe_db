@@ -25,7 +25,9 @@ export type Work = {
   /** ⚠️ Шийдвэрийн баганаас тоолно — `Төлөв` явцын туршид өөрчлөгддөг */
   engineerReturns: number;
   managerReturns: number;
-  /** Ерөнхий менежерийн (4-р шат) буцаалт — дээд шатанд гацсан ажлыг дээш нь гаргана */
+  /** ⚠️ 2026-10-23: төлөвлөлтийн инженерийн (4-р шат) буцаалт */
+  plannerReturns: number;
+  /** Төлөвлөлтийн ахлах инженерийн (5-р шат; 2026-10-23-наас өмнө 4-р) буцаалт — дээд шатанд гацсан ажлыг дээш нь гаргана */
   directorReturns: number;
   /** Хэлтсийн · газрын даргын буцаалт (2026-09-23, 6 шат) */
   headReturns: number;
@@ -78,6 +80,7 @@ export function groupWorks(rows: Row[]): Work[] {
       owner: OWNER[status] ?? 'company',
       engineerReturns: cycles.filter((r) => r[F.engineerDecision] === DECISION.return).length,
       managerReturns: cycles.filter((r) => r[F.managerDecision] === DECISION.return).length,
+      plannerReturns: cycles.filter((r) => r[F.plannerDecision] === DECISION.return).length,
       directorReturns: cycles.filter((r) => r[F.directorDecision] === DECISION.return).length,
       headReturns: cycles.filter((r) => r[F.headDecision] === DECISION.return).length,
       chiefReturns: cycles.filter((r) => r[F.chiefDecision] === DECISION.return).length,
@@ -92,8 +95,8 @@ export function groupWorks(rows: Row[]): Work[] {
     const ac = a.status === STATUS.transferred ? 1 : 0;
     const bc = b.status === STATUS.transferred ? 1 : 0;
     if (ac !== bc) return ac - bc;
-    const ar = a.engineerReturns + a.managerReturns + a.directorReturns + a.headReturns + a.chiefReturns;
-    const br = b.engineerReturns + b.managerReturns + b.directorReturns + b.headReturns + b.chiefReturns;
+    const ar = a.engineerReturns + a.managerReturns + a.plannerReturns + a.directorReturns + a.headReturns + a.chiefReturns;
+    const br = b.engineerReturns + b.managerReturns + b.plannerReturns + b.directorReturns + b.headReturns + b.chiefReturns;
     if (ar !== br) return br - ar;
     return a.ajil.localeCompare(b.ajil, 'mn');
   });
@@ -122,8 +125,10 @@ const DAY = 86_400_000;
 export const STAGE_LABEL: Record<Stage, string> = {
   get company() { return tr('Гүйцэтгэгч компани'); },
   get engineer() { return tr('Хяналтын инженер'); },
-  get manager() { return tr('Багцын менежер'); },
-  get director() { return tr('Ерөнхий менежер'); },
+  get manager() { return tr('Багцын ахлах инженер'); },
+  /* ⚠️ 2026-10-23: шинэ 4-р шат */
+  get planner() { return tr('Төлөвлөлтийн инженер'); },
+  get director() { return tr('Төлөвлөлтийн ахлах инженер'); },
   get head() { return tr('Хэлтсийн дарга'); },
   get chief() { return tr('Газрын дарга'); },
 };
@@ -147,6 +152,7 @@ const enteredAt = (r: Row): number | null => {
     t(r[F.companySent]),
     t(r[F.engineerSent]), t(r[F.engineerReturned]),
     t(r[F.managerSent]), t(r[F.managerReturned]),
+    t(r[F.plannerSent]), t(r[F.plannerReturned]),
     t(r[F.directorSent]), t(r[F.directorReturned]),
     t(r[F.headSent]), t(r[F.headReturned]),
     t(r[F.chiefSent]), t(r[F.chiefReturned]),
@@ -159,9 +165,10 @@ const ownerName = (r: Row, s: Stage): string => {
   const v = s === 'company' ? r[F.company]
     : s === 'engineer' ? r[F.engineer]
       : s === 'manager' ? r[F.manager]
-        : s === 'director' ? r[F.director]
-          : s === 'head' ? r[F.head]
-            : r[F.chief];
+        : s === 'planner' ? r[F.planner]
+          : s === 'director' ? r[F.director]
+            : s === 'head' ? r[F.head]
+              : r[F.chief];
   return String(v ?? '').trim();
 };
 

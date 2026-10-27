@@ -1,20 +1,17 @@
 /**
- * БАГЦЫН ХАМААРАЛ — `bagtsHamaaral.ts`-ийн цэвэр логик (2026-10-04).
+ * ХУУЧИН БАГЦЫН ХАМААРАЛ — `bagtsHamaaral.ts`-ийн цэвэр логик (2026-10-04; 2026-10-22-оос ЗӨВХӨН шилжүүлэлтэд).
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/bagtsHamaaral.check.mjs
  *
- * ⚠️ Гол гэрээ: дугуй хамаарал, өөртөө холбох, давхардал ХОРИОТОЙ; эвдэрсэн бичлэг
- *    ЧИМЭЭГҮЙ хоосон болохгүй (шидэнэ) — эс бөгөөс дараагийн бичилт бүх холбоог дарна.
+ * ⚠️ Гол гэрээ: эвдэрсэн бичлэг ЧИМЭЭГҮЙ хоосон болохгүй (шидэнэ) — эс бөгөөс устгалын бичилт бүх холбоог дарна.
+ * ⚠️ 2026-10-22: дугуй/нэмэх логик ХАСАГДСАН — шинэ холбоо нь АЖЛЫН түвшинд (`workDeps.check.mjs`).
  */
 import assert from 'node:assert/strict';
-import {
-  parseDeps, depsJson, reaches, linkError, upstreamOf, downstreamOf, chainOf, applyChange, HAMAARAL_KEY,
-  sameDeps,
-} from '@/lib/bagtsHamaaral.ts';
+import { readFileSync } from 'node:fs';
+import { parseDeps, depsJson, sameDep, HAMAARAL_KEY } from '@/lib/bagtsHamaaral.ts';
 
 const D = (from, to) => ({ from, to });
-const deps = [D('energy:БАГЦ61', 'БАГЦ1'), D('БАГЦ1', 'social:БАГЦ70'), D('heat:БАГЦ50', 'БАГЦ1')];
+const deps = [D('energy:БАГЦ61', 'БАГЦ1'), D('БАГЦ1', 'social:БАГЦ70')];
 
-/* ── Бичиглэл ── */
 assert.deepEqual(parseDeps(depsJson(deps)), deps);
 assert.deepEqual(parseDeps(''), []);
 assert.deepEqual(parseDeps(null), []);
@@ -23,32 +20,16 @@ assert.deepEqual(parseDeps('[{"from":"A","to":"B"},{"from":"A","to":"B"},{"x":1}
 assert.throws(() => parseDeps('{"a":1}'), 'массив биш бичлэг — шидэнэ');
 assert.throws(() => parseDeps('not json'), 'JSON биш — шидэнэ');
 assert.ok(!HAMAARAL_KEY.includes('|'), 'draftRemote-ийн legacyLike-тэй мөргөлдөхгүй');
-console.log('✅ бичиглэл');
+assert.ok(sameDep(D('A', 'B'), D('A', 'B')) && !sameDep(D('A', 'B'), D('B', 'A')));
+console.log('✅ хуучин бичиглэл');
 
-/* ── Чиглэл ── */
-assert.deepEqual(upstreamOf(deps, 'БАГЦ1').sort(), ['energy:БАГЦ61', 'heat:БАГЦ50'].sort());
-assert.deepEqual(downstreamOf(deps, 'БАГЦ1'), ['social:БАГЦ70']);
-assert.ok(reaches(deps, 'energy:БАГЦ61', 'social:БАГЦ70'));
-assert.ok(!reaches(deps, 'social:БАГЦ70', 'energy:БАГЦ61'));
-assert.deepEqual([...chainOf(deps, 'energy:БАГЦ61')].sort(), ['energy:БАГЦ61', 'БАГЦ1', 'social:БАГЦ70'].sort(),
-  'гинж: зөвхөн дамжуулан холбогдсон — хажуугийн heat:БАГЦ50 ОРОХГҮЙ');
-console.log('✅ урд · ард · гинж');
-
-/* ── Хориг ── */
-assert.ok(linkError(deps, 'A', 'A'), 'өөртөө');
-assert.ok(linkError(deps, 'energy:БАГЦ61', 'БАГЦ1'), 'давхардал');
-assert.ok(linkError(deps, 'social:БАГЦ70', 'energy:БАГЦ61'), 'дугуй (3 алхам)');
-assert.ok(linkError(deps, 'БАГЦ1', 'energy:БАГЦ61'), 'дугуй (шууд эсрэг)');
-assert.equal(linkError(deps, 'heat:БАГЦ50', 'social:БАГЦ70'), null, 'товчлол холбоо — дугуй биш');
-console.log('✅ өөртөө · давхардал · дугуй');
-
-/* ── Өөрчлөлт ── */
-assert.deepEqual(applyChange(deps, { op: 'add', dep: D('X', 'Y') }), [...deps, D('X', 'Y')]);
-assert.equal(typeof applyChange(deps, { op: 'add', dep: D('БАГЦ1', 'energy:БАГЦ61') }), 'string', 'дугуй нэмэлт — шалтгаан');
-assert.deepEqual(applyChange(deps, { op: 'remove', dep: D('БАГЦ1', 'social:БАГЦ70') }), [deps[0], deps[2]]);
-assert.deepEqual(applyChange(deps, { op: 'remove', dep: D('Q', 'W') }), deps, 'байхгүйг устгах — өөрчлөлтгүй');
-/* 2026-10-09: `saveChange` өөрчлөлтгүй үед бичихгүй — `sameDeps` шалгуур */
-assert.ok(sameDeps(applyChange(deps, { op: 'remove', dep: D('Q', 'W') }), deps), 'байхгүйг устгах = ижил');
-assert.ok(sameDeps([deps[1], deps[0], deps[2]], deps), 'дараалал хамаагүй');
-assert.ok(!sameDeps(applyChange(deps, { op: 'remove', dep: deps[1] }), deps), 'жинхэнэ устгал = өөр');
-console.log('✅ нэмэх · устгах');
+/* ⚠️ 2026-10-22: хуучин бүртгэлийн уншигч ЗӨВХӨН «Багцын хамаарал» (шилжүүлэлт); ТУХ ажлын графаас */
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const tuh = strip(readFileSync('src/modules/Tuh.tsx', 'utf8'));
+assert.doesNotMatch(tuh, /bagtsHamaaral/, 'ТУХ хуучин багц ↔ багц бүртгэлээс уншихгүй');
+assert.match(tuh, /useAsync\(loadPkgDeps/, 'ТУХ ажлын графаас (`loadPkgDeps`)');
+const view = strip(readFileSync('src/modules/BagtsHamaaral.tsx', 'utf8'));
+assert.match(view, /canEdit[\s\S]{0,120}hasCap\([\s\S]{0,40}'hamaaral'/, 'засвар `hamaaral` эрхээр');
+assert.doesNotMatch(view, /if\s*\(\s*!canEdit\s*\)\s*return\s*(null|<)/, 'эрхгүй хүнд хуудсыг хаахгүй («харах ≠ засах»)');
+assert.match(view, /removeLegacyDeps/, 'шилжсэн хуучин хос устгагдана');
+console.log('✅ уншигчид — ТУХ ажлын графаас, харагдац эрхээр засна');

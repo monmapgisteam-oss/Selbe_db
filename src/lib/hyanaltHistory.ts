@@ -34,7 +34,9 @@ export const HIST_MAX_ENTRIES = 60;
 export const HIST_MAX_CHARS = 60_000;
 export const HIST_REASON_MAX = 1_000;
 
-const STAGES: ReadonlySet<string> = new Set(['engineer', 'manager', 'director', 'head', 'chief']);
+/* ⚠️ 2026-10-23: `planner` (төлөвлөлтийн инженер) — үгүй бол түүний үйл явдал ЧИМЭЭГҮЙ хаягдана.
+   Цэвэр файл тул `hyanalt.REVIEW_STAGES`-ийг импортлохгүй — шат нэмэхэд ЭНДЭЭ ч нэм. */
+const STAGES: ReadonlySet<string> = new Set(['engineer', 'manager', 'planner', 'director', 'head', 'chief']);
 const ACTS: ReadonlySet<string> = new Set(['approve', 'return', 'recheck-ok', 'recheck-back']);
 
 /**

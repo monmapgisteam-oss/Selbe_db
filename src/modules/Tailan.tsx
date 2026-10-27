@@ -56,10 +56,12 @@ import {
      `cached()`-ээр ороосон тул энд дуудахад ШИНЭ HTTP хүсэлт ҮҮСЭХГҮЙ:
      `loadReportExtra` өөрөө яг эдгээр амлалтыг хуваалцаж байгаа. */
   loadOverall, loadProgress, loadFinance, loadLand, loadHabeaSummary,
+  BAGTS_GAP_PTS,
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
 import { ReportContents, ReportHero } from './ReportContents';
+import { Segmented } from '@/components/Switch';
 import r from './report.module.css';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
@@ -70,8 +72,7 @@ const bn = (v: number) => num(v);
  * гэж бичвэл «үнэгүй» мэт уншигдана — «—» болгоно.
  */
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
-/** ⚠️ 2026-10-11 (аудит №7): §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь */
-const BAGTS_GAP_PTS = 20;
+/* ⚠️ 2026-10-11 (аудит №7): §2-ын «зөрүү их байна» босго — 2026-10-26-аас `reportData.BAGTS_GAP_PTS` (PDF-тэй нэг) */
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
 function Cap({ no, children }: { no: string; children: React.ReactNode }) {
@@ -289,16 +290,11 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     <div ref={hostRef} className={`${r.tailan} ${side.hostClass}`} style={side.style}>
       <SplitGrip {...side.right} />
       <div className={r.content}>
-        {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр */}
+        {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр.
+            ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): хоёулаа нийтлэг `Segmented` капсул — ижил хэлбэр хэвээр */}
         <div className={r.filters}>
-          <div className={r.seg} role="group" aria-label={tr('Тайлангийн горим')}>
-            <button type="button" aria-pressed={mode === 'exec'} className={r.segBtn} onClick={() => setMode('exec')}>
-              {tr('Удирдлагын тайлан')}
-            </button>
-            <button type="button" aria-pressed={mode === 'full'} className={r.segBtn} onClick={() => setMode('full')}>
-              {tr('Дэлгэрэнгүй тайлан')}
-            </button>
-          </div>
+          <Segmented value={mode} onChange={setMode} label={tr('Тайлангийн горим')}
+            options={[{ value: 'exec', label: tr('Удирдлагын тайлан') }, { value: 'full', label: tr('Дэлгэрэнгүй тайлан') }]} />
         </div>
         {/* ⚠️ 2026-10-06 (аудит): горим солиход `ExecReport` unmount болж AI дүгнэлт (минут
             шаардсан) алга болдог байв. Одоо НЭГ УДАА нээгдсэн горим mount хэвээр, идэвхгүй нь
@@ -348,8 +344,11 @@ function TailanFull() {
   const rows = pair.state === 'ready' ? pair.data[0] : null;
   const extra: ReportExtra | null = pair.state === 'ready' ? pair.data[1] : null;
 
-  /** Мэйл үүсгэх явц — pdfmake динамик ачаалалт хормын зуур авна */
-  const [busy, setBusy] = useState(false);
+  /** Мэйл үүсгэх явц — pdfmake динамик ачаалалт хормын зуур авна.
+   *  ⚠️ 2026-10-23 (UX аудит E3): аль товч дарагдсаныг хадгална — урьд нь `boolean` тул
+   *  «PDF татах» дарахад «Бэлтгэж байна…» нь Outlook-ийн товч дээр гардаг байв. */
+  const [busyKind, setBusyKind] = useState<'eml' | 'web' | 'pdf' | null>(null);
+  const busy = busyKind != null;
   /**
    * Тайлан үүсгэхэд гарсан алдаа — зурвасын доор нэрлэсэн мэдэгдэл болно.
    *
@@ -373,13 +372,13 @@ function TailanFull() {
   /** Амжилтын мөр — товч дарсны дараа юу болсныг хэлнэ (2026-09-23) */
   const [ok, setOk] = useState('');
   const run = useCallback(
-    async (fn: (r: BagtsRow[], d: string, x: ReportExtra) => Promise<void>, what: string, done: string) => {
+    async (kind: 'eml' | 'web' | 'pdf', fn: (r: BagtsRow[], d: string, x: ReportExtra) => Promise<void>, what: string, done: string) => {
       if (!rows || !extra || busy) return;
       /* ⚠️ Шинэ оролдлого эхлэхэд өмнөх алдааг цэвэрлэнэ — эс бөгөөс амжилттай
          болсон хойно ч хуучин улаан мэдэгдэл дэлгэц дээр үлдэнэ. */
       setFail('');
       setOk('');
-      setBusy(true);
+      setBusyKind(kind);
       try {
         /* ⚠️ 2026-09-29 (аудит 10): огноог ҮҮСГЭХ агшинд авна. Урьд нь хуудас нээсэн
            үеийн `date` дамждаг тул хэдэн цагийн дараа гаргасан PDF/.eml хуучин цагаар
@@ -397,22 +396,22 @@ function TailanFull() {
            бүтнээр нь үлдээж, дэлгэцэнд зөвхөн юу бүтэлгүйтсэнийг хэлнэ. */
         setFail(tr('{0} үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.', what));
       } finally {
-        setBusy(false);
+        setBusyKind(null);
       }
     },
     [rows, extra, busy],
   );
 
   const send = useCallback(
-    () => run(emailViaEml, tr('Тайлан'), tr('Selbe_tailan.eml татагдлаа — Outlook-оор нээнэ үү')),
+    () => run('eml', emailViaEml, tr('Тайлан'), tr('Selbe_tailan.eml татагдлаа — Outlook-оор нээнэ үү')),
     [run],
   );
   /* ⚠️ `mailto:` нээгдсэн эсэхийг хөтөч хэлдэггүй — заавар үргэлж харагдана */
   const sendWeb = useCallback(
-    () => run(emailViaMailto, tr('Мэйл'), tr('Мэйл нээгдээгүй бол Selbe_tailan.pdf-ийг гараар хавсаргана уу')),
+    () => run('web', emailViaMailto, tr('Мэйл'), tr('Мэйл нээгдээгүй бол Selbe_tailan.pdf-ийг гараар хавсаргана уу')),
     [run],
   );
-  const savePdf = useCallback(() => run(downloadReportPdf, 'PDF', tr('Selbe_tailan.pdf татагдлаа')), [run]);
+  const savePdf = useCallback(() => run('pdf', downloadReportPdf, 'PDF', tr('Selbe_tailan.pdf татагдлаа')), [run]);
 
   // ⚠️ PDF нь дэлгэцтэй ИЖИЛ байх ёстой тул БҮХ өгөгдөл ачаалагдтал илгээхгүй
   const ready = !!rows && !!extra;
@@ -454,7 +453,7 @@ function TailanFull() {
             title={tr('Outlook нээгдэж, мэйл бичигдсэн, PDF хавсаргагдсан, Send дарахад бэлэн (юу ч чирэх шаардлагагүй)')}
           >
             <Icon name="chart" size={15} />
-            {busy ? tr('Бэлтгэж байна…') : tr('Outlook-оор илгээх')}
+            {busyKind === 'eml' ? tr('Бэлтгэж байна…') : tr('Outlook-оор илгээх')}
           </button>
           {/* ⚠️ Хоёр дахь зам — New Outlook / вэб OWA. Тэнд .eml нь бичих цонх
               нээдэггүй тул `mailto:` (хавсралтгүй, PDF нь тусад нь татагдана). */}
@@ -466,7 +465,7 @@ function TailanFull() {
             title={tr('New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана')}
           >
             <Icon name="chart" size={15} />
-            {tr('Шинэ Outlook / вэб')}
+            {busyKind === 'web' ? tr('Бэлтгэж байна…') : tr('Шинэ Outlook / вэб')}
           </button>
           {/* Мэйлгүй зам — файлыг өөрөө хадгалаад хүссэн сувгаараа илгээнэ */}
           <button
@@ -477,14 +476,14 @@ function TailanFull() {
             title={tr('Зөвхөн PDF файлыг татах, мэйл програм нээхгүй')}
           >
             <Icon name="chart" size={15} />
-            {tr('PDF татах')}
+            {busyKind === 'pdf' ? tr('Бэлтгэж байна…') : tr('PDF татах')}
           </button>
           <button
             type="button"
             className={r.btn}
             disabled={busy || waiting}
             onClick={refresh}
-            title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}
+            title={tr('Тайлангийн түр санах ойг хаяж өгөгдлийг дахин татна')}
           >
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
@@ -494,7 +493,8 @@ function TailanFull() {
         <p className={r.sub} style={{ margin: '4px 0 0' }}>
           {hasTo
             ? tr('Хүлээн авагч: {0}', REPORT_RECIPIENTS.join(', '))
-            : tr('Хүлээн авагч тохируулаагүй (NEXT_PUBLIC_REPORT_RECIPIENTS)')}
+            /* ⚠️ 2026-10-23 (UX аудит X3): орчны хувьсагчийн нэрийг хэрэглэгчид харуулахгүй */
+            : tr('Хүлээн авагч тохируулаагүй — админд мэдэгдэнэ үү')}
           {' · '}
           {tr('Classic Outlook → «Outlook-оор илгээх»; New Outlook / вэб → «Шинэ Outlook / вэб»')}
         </p>
@@ -1039,9 +1039,11 @@ function TailanFull() {
                         {/* ⚠️ Эх үүсвэрийн ТОО нь өгөгдлөөс — урьд нь «дөрвөн»
                             гэж бичигдсэн байсан тул эх сурвалжид тав дахь
                             эх үүсвэр нэмэгдэхэд тайлан чимээгүй худал болно. */}
-                        {tr('Захирамж, гэрээгээр баталгаажсан')} {num(x.finance.rows)} {tr('багц ажлын санхүүжилт')} {num(x.finance.sources.length)} {tr('эх үүсвэрээс бүрдэж байна.')}
+                        {/* ⚠️ 2026-10-23 (UX аудит X8): өгүүлбэр БҮТНЭЭРЭЭ нэг `tr()` — урьд нь хэсэг хэсгээр
+                            орчуулагдаж англи хувилбарт үгийн дараалал эвдэрдэг байв. */}
+                        {tr('Захирамж, гэрээгээр баталгаажсан {0} багц ажлын санхүүжилт {1} эх үүсвэрээс бүрдэж байна.', num(x.finance.rows), num(x.finance.sources.length))}
                         {d.topSource && (
-                          <> {tr('Санхүүжилтийн дийлэнх хэсгийг «')}{tr(d.topSource.label)}{tr('» эх үүсвэр бүрдүүлж, нийт дүнгийн')} {pct(d.topSource.share, 1)}{tr('-ийг эзэлж байна.')}</>
+                          <> {tr('Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1))}</>
                         )}
                       </p>
                       {/* ⚠️ Эх үүсвэрийн 0.2% ба 0.0% нь давхарласан зурваст 2px-ийн

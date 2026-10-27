@@ -25,6 +25,10 @@ import { UserTypeSection } from './UserTypeSection';
 import { UserWorkflow } from './UserWorkflow';
 import type { ErhPane } from '@/modules/capText';
 import { roleOf } from '@/lib/permissions';
+import { ROLE_STAGE } from '@/lib/services';
+import { STAGE_LABEL } from '@/lib/hyanaltGroup';
+import { flowAclReady } from '@/lib/guitsetgelAcl';
+import { portalMissing } from '@/lib/portalPresence';
 import { UserHeadActions, UserHeadBadges, rightsProps, type UserRowProps } from './UserRow';
 import s from './userAdmin.module.css';
 
@@ -35,7 +39,8 @@ export type UserCardProps = {
   hasDraft: boolean;
   onBack: () => void;
   /** Урсгалтай хуудасны эх сурвалжийн холбоос — тэр эрхийн хуудас руу (2026-10-01) */
-  onGo: (pane: ErhPane) => void;
+  /* ⚠️ 2026-10-26: `'types'` — «Хуваарь харах»-ын эх сурвалж эрхийн төрлийн хуудас */
+  onGo: (pane: ErhPane | 'types') => void;
 };
 
 export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {
@@ -43,6 +48,11 @@ export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {
   const key = u.username.trim().toLowerCase();
   /** Шинэ (хадгалаагүй) эсвэл устгахаар тэмдэглэсэн — шууд бичих хэсэг хаалттай */
   const blocked = !!d.isNew || !!d.remove;
+  /* ⚠️ 2026-10-22 (аудит): урсгалын ТӨРӨЛ («Гүйцэтгэгч компани» … «Газрын дарга») шат олгодоггүй (`roleTypeApply.applyType`
+     зөвхөн үүрэг/харагдац) — шатгүй/өөр шаттай бол ЭНД ил хэлж урсгалын хүснэгт рүү заана. Ноорог үүрэг ч тооцогдоно. */
+  const want = d.role ? ROLE_STAGE[d.role] : undefined;
+  const typeGap = !d.remove && !!want && flowAclReady() && p.st !== want ? want : null;
+  const absent = portalMissing(u.username);
 
   return (
     <div className={s.card}>
@@ -53,6 +63,20 @@ export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {
         <UserHeadActions p={p} />
       </div>
       {d.remove && <div className={s.capNote}>{tr('Хадгалахад энэ аккаунт устгагдана.')}</div>}
+      {absent && (
+        <div className={s.capErr} role="alert">
+          {tr('Enterprise порталд энэ нэртэй аккаунт алга — нэвтэрч чадахгүй тул түүний хуваарилалт ажил гүйцэтгэхгүй. Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл аккаунтыг устгана уу.')}
+        </div>
+      )}
+      {typeGap && (
+        <div className={s.capErr} role="alert">
+          {p.st
+            ? tr('«{0}» төрөлтэй атлаа «{1}» шатанд томилогдсон — шат нь томилгооноос гардаг тул төрөл ба шат зөрж байна.', STAGE_LABEL[typeGap], STAGE_LABEL[p.st])
+            : tr('«{0}» төрөл урсгалын шат олгодоггүй — «{0}» шатанд томилохгүй бол «Гүйцэтгэл» хуудас нээгдэхгүй, батлах боломжгүй.', STAGE_LABEL[typeGap])}
+          {' '}
+          <button type="button" className={s.linkBtn} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгалын эрх →')}</button>
+        </div>
+      )}
       {d.isNew && <div className={s.capNote}>{tr('Эхлээд хадгална уу — «Төрлөөр тохируулах» хадгалагдсан аккаунтад л ажиллана.')}</div>}
 
       {/* ── 2. Эрхийн төрөл — загвараар нэг дор (2026-09-25) ── */}
@@ -70,7 +94,7 @@ export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {
       {/* ── 4. Урсгалтай 6 хуудас — ЗӨВХӨН ХАРУУЛНА (2026-10-01); шинэ/устгах аккаунтад хуваарилалт байхгүй ── */}
       {!blocked && <UserWorkflow key={`wf-${key}`} user={key} onGo={onGo} />}
       <p className={s.capNote}>
-        {tr('Засах эрх (хуваарь · нэмэлт ажил · обьём · чанарын баримт · QAQC · дэд бүтэц · зөвшөөрөл · санхүү · газар) хажуугийн цэсний тухайн урсгалын хуудсанд олгогдоно.')}
+        {tr('Засах эрх (хуваарь · нэмэлт ажил · обьём · чанарын баримт · дэд бүтэц · зөвшөөрөл · санхүү · газар) хажуугийн цэсний тухайн урсгалын хуудсанд олгогдоно.')}
       </p>
     </div>
   );

@@ -16,15 +16,18 @@
  * ⚠️ Бичих зам ШИНЭ БИШ — `permissions.setUser` (харагдац/үүргийн мөр).
  * ⚠️ Түгжээ: эрхийн хүснэгт уншигдаагүй бол татгалзана (`remoteReady`) — уншигдаагүй
  *    сешнд `roleOf`/override хүчингүй тул бичвэл бодит мөрийг дарна.
- * ⚠️ Super төрөл зөвхөн хатуу super-т; хатуу super-ийг доошлуулахгүй; хатуу super-т
- *    override мөр бичихгүй (эрх нь кодоос).
+ * ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = ЭРХИЙН ТОХИРГОО (`roles._setTableSupers`) — Super төрлийг самбараас
+ *    зөвхөн SUPER АДМИН олгоно/хасна (мөр бичигдэнэ); өөрийн super-ийг өөрөө хасахгүй. Кодын (тестийн) super л
+ *    доошлохгүй, мөр нь бичигдэхгүй (`permissions.setUser`). Урьд (2026-09-25 · 10-19) super зөвхөн кодоор байв.
  */
 
 import { t as tr } from './i18nCore';
-import { roleForUser, type Role } from './services';
+import { isCodeSuper, roleForUser, type Role } from './services';
 import { listUsers, remoteReady, setUser } from './permissions';
+import { currentUser } from './who';
 import { roleAccess, typesReady } from './roleTypes';
 import { WORKFLOW_VIEWS } from './caps';
+import { flowAclReady, stageOfUser } from './guitsetgelAcl';
 
 /* ══════════════════════ Түгжээ · ноорог (2026-09-25) ══════════════════════ */
 
@@ -55,40 +58,84 @@ export function setTypeDraftUsers(keys: Iterable<string>): void {
 
 /* ══════════════════════ Хэрэгжүүлэлт ══════════════════════ */
 
-export type ApplyResult = { ok: boolean; errors: string[] };
+export type ApplyResult = {
+  ok: boolean; errors: string[];
+  /** ⚠️ 2026-10-23: «Ерөнхий захирал» болгоход хэрэглэгч урсгалын шатанд томилгоотой — дуудагч асууж томилгоог хасаад дахин дуудна */
+  flowStage?: string;
+};
 
-export async function applyType(user: string, role: Role): Promise<ApplyResult> {
+/**
+ * ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) — урсгалын томилгоотой хүнд ТАТГАЛЗАНА (`flowStage`). Захирал зөвхөн ХАРНА;
+ *   томилгоо үлдвэл `grantFlowAccess` төрлийг хадгалсаар шат/хүрээ олгож, бөглөгч/батлагчаар тоологдож, гацааны
+ *   анхааруулгыг нуудаг байв. Энэ модуль хуваарилалт БИЧИХГҮЙ (2026-09-30-ны шийдвэр) тул томилгоог дуудагч хасна —
+ *   карт (`UserTypeSection`) асууж хасаад дахин дуудна; бөөнөөр хэрэгжүүлэлт алгасаж алдаанд нэрлэнэ.
+ */
+/**
+ * `applyType`-ийн бичихээс өмнөх БҮХ шалгалт — алдаа (`errors` · `flowStage`) эсвэл `null` (бичиж болно).
+ * ⚠️ 2026-10-23: карт (`UserTypeSection`) «Ерөнхий захирал» сонгоход урсгалын томилгоог ХАСАХААС ӨМНӨ үүнийг дуудна
+ *    (`ignoreFlow` — томилгоо удахгүй хасагдана). Урьд нь томилгоо хасагдсаны ДАРАА `applyType` татгалзаж (`typesReady` ·
+ *    super дүрэм · ноорог · түгжээ) хүн төрлөө хадгалсаар шатгүй үлддэг байв.
+ */
+export function applyTypePrecheck(
+  user: string, role: Role, opts: { ignoreFlow?: boolean } = {},
+): { errors: string[]; flowStage?: string } | null {
   const u = user.trim().toLowerCase();
-  if (!u) return { ok: false, errors: [tr('Аккаунтын нэрээ бичнэ үү')] };
+  if (!u) return { errors: [tr('Аккаунтын нэрээ бичнэ үү')] };
   /* ⚠️ 2026-09-25: синкээс өмнө `tplOf` нь нарийн нөөц — түүнийг тараавал хүний эрх хумигдана */
-  if (!typesReady()) return { ok: false, errors: [tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')] };
-  if (!remoteReady()) return { ok: false, errors: [tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')] };
+  if (!typesReady()) return { errors: [tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')] };
+  if (!remoteReady()) return { errors: [tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')] };
   /* ⚠️ 2026-09-30: УСТГАГДСАН аккаунтад бичихгүй — `setUser` tombstone-ыг жирийн мөрөөр дарж
      устгагдсан хүн дахин нэвтэрдэг (`guitsetgelAcl.grantFlowAccess`-ийн 2026-09-25 ⚠️). Бөөнөөр
      хэрэгжүүлэлтийн явцад өөр админ устгасан, эсвэл хуучин жагсаалтаас дуудагдсан үед. */
   if (!listUsers().some((x) => x.username.toLowerCase() === u)) {
-    return { ok: false, errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
+    return { errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
   }
-  const hard = roleForUser(u) === 'super';
-  /* ⚠️ Хатуу super-ийг панелаас доошлуулахгүй — `permissions.hasAccess`-ийн ⚠️ */
-  if (hard && role !== 'super') {
-    return { ok: false, errors: [tr('Кодонд бүртгэлтэй админыг (super) өөр төрөлд шилжүүлэх боломжгүй.')] };
+  /* ⚠️ Кодын (тестийн) super-ийг самбараас доошлуулахгүй — мөр нь бичигдэхгүй тул өөрчлөлт худал болно */
+  if (isCodeSuper(u) && role !== 'super') {
+    return { errors: [tr('Кодонд бүртгэлтэй админыг (super) өөр төрөлд шилжүүлэх боломжгүй.')] };
   }
-  /* ⚠️ 2026-09-25: админ самбарын эрх ЗӨВХӨН кодоор (`ROLE_BY_USER`). */
-  if (!hard && role === 'super') {
-    return { ok: false, errors: [tr('Super төрөл зөвхөн кодонд бүртгэлтэй админд — админ самбарын эрх кодоор л олгогдоно.')] };
+  /* ⚠️ 2026-10-21: SUPER = эрхийн тохиргоо. Олгох/хасах нь ЗӨВХӨН super админд (нэвтэрсэн хэрэглэгч — `who.currentUser`,
+     тодорхойгүй бол ТАТГАЛЗАНА, fail-closed); өөрийн super-ийг өөрөө хасахгүй (сүүлчийн админ түгжигдэхээс сэргийлнэ —
+     өөр super хасна). */
+  const me = (currentUser() ?? '').trim().toLowerCase();
+  const adminSuper = !!me && roleForUser(me) === 'super';
+  const wasSuper = roleForUser(u) === 'super';
+  if ((role === 'super' || wasSuper) && !adminSuper) {
+    return { errors: [tr('Super эрхийг зөвхөн super админ олгож, хасна.')] };
+  }
+  if (wasSuper && role !== 'super' && u === me) {
+    return { errors: [tr('Өөрийн super эрхийг өөрөө хасах боломжгүй — өөр super админ хасна.')] };
   }
   if (draftUsers.has(u)) {
-    return { ok: false, errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Цуцлах» дарна уу.')] };
+    return { errors: [tr('Хадгалаагүй ноорогтой — эхлээд «Хадгалах» эсвэл «Болих» дарна уу.')] };
   }
   if (userLocks.has(u)) {
-    return { ok: false, errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };
+    return { errors: [tr('Энэ хэрэглэгчид тохируулга явагдаж байна — дуустал хүлээнэ үү.')] };
   }
+  /* ⚠️ 2026-10-23: «Ерөнхий захирал» ба урсгалын томилгоо — `opts.dropFlow`-ийн ⚠️ */
+  /* Урсгалын томилгоо уншигдаагүй бол «томилгоогүй» гэж дүгнэхгүй (fail-closed) */
+  if (role === 'zahiral' && !flowAclReady()) {
+    return { errors: [tr('Гүйцэтгэлийн урсгалын эрх уншигдаагүй — дахин ачаална уу.')] };
+  }
+  const flowStage = role === 'zahiral' && !opts.ignoreFlow ? stageOfUser(u) : null;
+  if (flowStage) {
+    return {
+      errors: [tr('«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.', u)],
+      flowStage,
+    };
+  }
+  return null;
+}
+
+export async function applyType(user: string, role: Role): Promise<ApplyResult> {
+  const u = user.trim().toLowerCase();
+  const pre = applyTypePrecheck(u, role);
+  if (pre) return { ok: false, ...pre };
   userLocks.add(u);
   emit(LOCK_EVENT);
   try {
-    /* ⚠️ Хатуу super-т override мөр БИЧИХГҮЙ — эрх нь кодоос (`ROLE_BY_USER`) */
-    if (role === 'super') return { ok: true, errors: [] };
+    /* ⚠️ 2026-10-21: Super төрөл ч мөр бичнэ (`views: 'all'` · `role: 'super'`) — хүснэгтийн super (`permissions.setUser`
+       кодын super-т л no-op) */
     const acc = roleAccess(role);
     /*
      * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): УРСГАЛТАЙ ХАРАГДАЦ БИЧИГДЭХГҮЙ. Урьд нь
@@ -99,6 +146,10 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
      *    (`roleTypes.TPL_VIEWS`) — давхар шүүлт.
      */
     const views = acc.views === 'all' ? 'all' : acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v));
+    /* ⚠️ 2026-10-22 (аудит): урсгалын төрөл («Гүйцэтгэгч компани» … «Газрын дарга») ч ЗӨВХӨН үүрэг/харагдац бичнэ — шат,
+       «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ (шат = «Гүйцэтгэлийн урсгалын эрх»-ийн томилгоо, багцтай нь — энд багц мэдэгдэхгүй
+       тул автоматаар «бүх багц» бичихгүй). Зөрөөг UI ил хэлнэ: карт (`UserCard` · `UserHeadBadges`), «Тойм»
+       (`erhOverview.typeStageGaps`), «Хэрэгжүүлэх»-ийн дүн (`ErhTypes`). */
     const ok = await setUser(u, { views, docs: acc.docs }, role);
     return ok ? { ok: true, errors: [] } : { ok: false, errors: [tr('Харагдац: ArcGIS-т хадгалагдсангүй')] };
   } finally {

@@ -56,8 +56,15 @@ export type XlsxSheet = {
 
 /* ── XML туслахууд ── */
 
+/**
+ * ⚠️ 2026-10-19: XML 1.0-д ХОРИОТОЙ удирдлагын тэмдэгтийг (`\u0000-\u0008`, `\u000B`, `\u000C`,
+ *    `\u000E-\u001F`, `￾`/`￿`) ХАСНА — `docx.ts`-ийн `clean`-тэй ижил дүрэм. ArcGIS-ийн чөлөөт текстэд
+ *    (хуулж буулгасан тайлбар) тийм тэмдэгт байвал Excel файлыг «эвдэрсэн» гэж нээдэггүй байв.
+ *    Таб (`\t`), мөр таслал (`\n`, `\r`) — хүчинтэй, хэвээр.
+ */
+const XML_ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
 export const esc = (s: string): string =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  s.replace(XML_ILLEGAL, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** 0-суурьтай баганын индекс → `A` · `Z` · `AA` … */
 export function colLetter(c: number): string {

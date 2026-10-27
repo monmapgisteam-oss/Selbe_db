@@ -19,7 +19,9 @@
 import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
-  staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc,
+  staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc, describeNegCells,
+  /* ⚠️ 2026-10-22 (аудит): сөрөг нүдний засвар · архивын огноо */
+  negTotalAt, negFixText, negFixOf, describeNegFixes, laterAsOf,
 } from './sheetFrame.ts';
 import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
 
@@ -42,7 +44,7 @@ const sc = {
   f: {
     no: 'no', work: 'work', wC: 'wC', wD: 'wD', wE: 'wE', vol: 'vol', obyemSum: 'osum',
     unit: 'unit', money: 'money', plan: 'plan', act: 'act', ratio: 'ratio', asOf: 'asof',
-    fillDate: 'fill', gun: 'gun', des: null, ham: null, hunHuch: 'hun_huch', mashin: 'mashin_mehanizm', oid: 'OBJECTID',
+    fillDate: 'fill', gun: 'gun', des: null, ham: null, hunHuch: 'hun_huch', mashin: 'mashin_mehanizm', oid: 'objectid',
   },
 };
 const hasObyem = sc.obyem.map((f) => !!f);
@@ -56,7 +58,7 @@ const row = (oid, no, work, depth, group, extra = {}) => ({
   act: [null, null], obyem: [null, null], start: [null, null], end: [null, null],
   gStart: [null, null], gEnd: [null, null],
   aStart: [null, null], aEnd: [null, null], hun: null, mashin: null,
-  raw: { OBJECTID: oid, no, work },
+  raw: { objectid: oid, no, work },
   ...extra,
 });
 
@@ -401,11 +403,11 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const add = fr.find((a) => a.work === 'Арматур');
   assert.ok(add && add.fill === fillMs && add.gun === 3, 'нэмсэн мөр жаазанд бүрэн');
   assert.ok(add.wC != null, 'шинэ мөрд жин бодогдож бичигдэв');
-  assert.equal(fr[i3].OBJECTID, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
+  assert.equal(fr[i3].objectid, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
   // fillDate байхгүй → throw
   assert.throws(
     () => buildFrame(ov.rows, { ...sc, f: { ...sc.f, fillDate: null } }, nBld, asOf, hasObyem, fillMs),
-    /buglusun_ognoo/,
+    /огнооны багана алга/,
     'fillDate багана алга → зогсооно',
   );
   // pending зам (FillNew-ийн хуучин): нүдэн дээр буугаагүй засвар мөн тусна
@@ -425,13 +427,13 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
  */
 {
   /* des/ham/money талбартай бүдүүвч — 10/10 багцын бодит хэлбэр */
-  const sc2 = { ...sc, f: { ...sc.f, des: 'Des_dugaar', ham: 'Hamaaral' } };
+  const sc2 = { ...sc, f: { ...sc.f, des: 'des_dugaar', ham: 'hamaaral' } };
   const base = [
-    row(300, '1', 'БАРИЛГА', 0, true, { des: 1, raw: { OBJECTID: 300, Des_dugaar: 1, Hamaaral: null } }),
-    row(301, '1.1', 'Ухах', 1, true, { des: 2, raw: { OBJECTID: 301, Des_dugaar: 2, Hamaaral: null } }),
+    row(300, '1', 'БАРИЛГА', 0, true, { des: 1, raw: { objectid: 300, des_dugaar: 1, hamaaral: null } }),
+    row(301, '1.1', 'Ухах', 1, true, { des: 2, raw: { objectid: 301, des_dugaar: 2, hamaaral: null } }),
     row(302, '1', 'Шороо', 2, false, {
       vol: 100, unit: 10, des: 3, ham: '2FS0',
-      raw: { OBJECTID: 302, Des_dugaar: 3, Hamaaral: '2FS0' },
+      raw: { objectid: 302, des_dugaar: 3, hamaaral: '2FS0' },
     }),
   ];
   const s = sub({
@@ -441,20 +443,20 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const fr = buildFrame(ov.rows, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
   const add = fr.find((a) => a.work === 'Бетон');
   const root = fr[0];
-  const leaf = fr.find((a) => a.OBJECTID === 302);
+  const leaf = fr.find((a) => a.objectid === 302);
 
   assert.equal(leaf.money, 1000, 'навчийн Мөнгөн дүн = Обьём × Нэгж өртөг');
   assert.equal(add.money, 100, 'НЭМСЭН мөрд Мөнгөн дүн бичигдэв (өмнө нь хоосон үлддэг байв)');
   assert.equal(root.money, 1100, 'ӨВӨГ бүлгийн Мөнгөн дүн нэмсэн мөрийг АГУУЛНА');
   assert.ok(add.wD != null && add.wD > 0, 'нэмсэн мөрд «үе шатанд эзлэх» жин бичигдэв');
-  assert.equal(add.Hamaaral, null, 'уялдааны талбар жаазанд ЗААВАЛ байна (шинэ мөрд хоосон)');
-  assert.equal(leaf.Hamaaral, '2FS0', 'байгаа уялдаа ХЭВЭЭР');
-  assert.equal(add.Des_dugaar, 4, 'шинэ мөр ХАМГИЙН ИХ + 1 код авна');
-  assert.equal(fr[0].Des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
-  assert.equal(leaf.Des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
+  assert.equal(add.hamaaral, null, 'уялдааны талбар жаазанд ЗААВАЛ байна (шинэ мөрд хоосон)');
+  assert.equal(leaf.hamaaral, '2FS0', 'байгаа уялдаа ХЭВЭЭР');
+  assert.equal(add.des_dugaar, 4, 'шинэ мөр ХАМГИЙН ИХ + 1 код авна');
+  assert.equal(fr[0].des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
+  assert.equal(leaf.des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
 
   /* ⚠️ `null ≠ 0`: бодогдох боломжгүй мөнгөн дүнг 0 болгож ДАРАХГҮЙ */
-  const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { OBJECTID: 400, money: 777 } })];
+  const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { objectid: 400, money: 777 } })];
   const fr2 = buildFrame(noMoney, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
   assert.equal(fr2[0].money, 777, 'бодогдохгүй үед хадгалагдсан Мөнгөн дүн ХЭВЭЭР');
 }
@@ -493,6 +495,16 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(parseInc(''), null, 'хоосон = засвар алга');
   assert.equal(parseInc('%'), null);
   assert.equal(parseInc('abc'), null);
+  /* ⚠️ 2026-10-21 (аудит): бүрэлдэхүүн `paste.normCell`-ийн дүрмээр — «12,5» аравтын, «1e3»/«0x10» хог, «15%» хог */
+  assert.deepEqual(parseInc('12,5'), { n: 12.5, p: 0 }, '«12,5» → 12.5 (урьд чимээгүй хаягддаг байв)');
+  assert.deepEqual(parseInc('%12,5'), { n: 0, p: 0.125 });
+  assert.equal(parseInc('1e3'), null, '«1e3» хог (урьд 1000)');
+  assert.equal(parseInc('0x10'), null, '«0x10» хог (урьд 16)');
+  assert.equal(parseInc('15%'), null, 'обьёмын бүрэлдэхүүнд `%` төгсгөл хог');
+  assert.equal(parseInc('1,250'), null, 'хоёрдмол таслал — хог');
+  assert.deepEqual(parseInc('+5 %-10'), { n: 5, p: -0.1 });
+  assert.equal(fmtInc({ n: 1e-7, p: 0 }), '0.0000001', 'fmtInc экспонентгүй');
+  assert.deepEqual(parseInc(fmtInc({ n: 1e-7, p: 0 })), { n: 1e-7, p: 0 }, 'fmtInc → parseInc буцаж задарна');
   assert.equal(fmtInc({ n: 0.1 + 0.2, p: 0 }), '0.3', 'хөвөгч цэгийн чимээ арилна');
   assert.equal(sumInc('15', '5'), '20');
   assert.equal(sumInc('15', '%10'), '15 %10', 'обьём ба хувь тусдаа хуримтлагдана');
@@ -502,7 +514,16 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const r = row(1, '1', 'A', 3, false, { vol: 100, obyem: [40, null], act: [0.4, 0.3] });
   assert.deepEqual(incCell(r, 0, '15', true), { obyem: 55, act: 0.55 }, 'хэрэглэгчийн жишээ: 40 + 15 = 55');
   assert.deepEqual(incCell(r, 0, '%10', true), { obyem: 50, act: 0.5 }, '%N = Обьёмын N%');
-  assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0 }, 'нийт 0-ээс доош орохгүй');
+  /* ⚠️ 2026-10-21 (аудит): сөрөг нийт — дэлгэцэд 0, `neg` тугтай (архивлалт татгалзана); яг 0 бол туггүй */
+  /* ⚠️ 2026-10-22: `raw` — хаагаагүй (сөрөг) нийт, зөвхөн дэлгэцэд */
+  assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0, neg: true, raw: { obyem: -10, act: -0.1 } }, 'нийт 0-ээс доош орохгүй — neg туг + жинхэнэ утга');
+  assert.deepEqual(incCell(r, 0, '-40', true), { obyem: 0, act: 0 }, 'яг 0 — сөрөг биш');
+  {
+    const pn = incCell(row(9, '9', 'N', 3, false, { act: [0.3, null] }), 0, '%-40', true);
+    assert.deepEqual([pn.obyem, pn.act, pn.neg], [null, 0, true], 'хувийн нийт сөрөг — neg');
+    assert.ok(pn.raw.obyem === null && Math.abs(pn.raw.act - -0.1) < 1e-12, 'хувийн жинхэнэ утга −0.1');
+  }
+  assert.deepEqual(incCell(row(9, '9', 'N', 3, false, { obyem: [0.3, null] }), 0, '-0.1 -0.2', true), { obyem: 0, act: null }, 'хөвөгч чимээ (0.3 − 0.1 − 0.2) сөрөг биш');
   assert.equal(incCell(r, 0, '', true), null, '"" = өөрчлөлтгүй (цэвэрлэх БИШ)');
   assert.equal(incCell(r, 0, '0', true), null, 'тэг нэмэлт = өөрчлөлтгүй');
   assert.deepEqual(incCell(row(2, '2', 'B', 3, false), 0, '15', true), { obyem: 15, act: null }, 'null суурь → 0-ээс');
@@ -543,6 +564,116 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(monFirst, 55);
   assert.equal(tueFirst, 55, 'Мягмар эхэлж батлагдсан ч Даваагийн +10 алдагдахгүй');
 
+  /* 9f-2. ⚠️ 2026-10-21 (аудит): хог нэмэлт → unmoved; нийт сөрөг → negative/negKeys (дэлгэцэд 0 хэвээр) */
+  {
+    const ovJ = overlaySubmission(fresh, inc([['203:0', 'abc'], ['204:0', '1e3']]), sc, nBld);
+    assert.equal(ovJ.unmoved, 2, 'хог нэмэлт unmoved-д тоологдоно (урьд чимээгүй алгасагддаг байв)');
+    assert.deepEqual(ovJ.unmovedKeys, ['203:0', '204:0'], 'илгээлтийн ЭХ түлхүүрээр');
+    assert.equal(ovJ.negative, 0);
+    assert.deepEqual(ovJ.cellKeys, [], 'хог нүд буугаагүй');
+    const ovN = overlaySubmission(fresh, inc([['203:0', '-50'], ['204:0', '-8']]), sc, nBld);
+    assert.equal(ovN.negative, 1, '5 − 50 сөрөг; 8 − 8 = 0 сөрөг биш');
+    assert.deepEqual(ovN.negKeys, ['203:0']);
+    /* ⚠️ 2026-10-22 (хэрэглэгч): дэлгэцэд 0 биш ЖИНХЭНЭ (сөрөг) утга — «0 м³» гэж харагдаж ойлгомжгүй байв */
+    assert.equal(ovN.rows.find((x) => x.oid === 203).obyem[0], -45, 'дэлгэцэд жинхэнэ утга (5 − 50)');
+    assert.deepEqual(ovN.negInc, { '203:0': '-50' }, 'илгээсэн нэмэлт');
+    const nm = describeNegCells(ovN.negKeys, ovN.rows, ['Блок 1', 'Блок 2'], ovN.negInc);
+    assert.equal(nm.length, 1);
+    assert.ok(nm[0].includes('«') && nm[0].includes('· Блок 1') && nm[0].endsWith('−50'), `нүдний нэр: ${nm[0]}`);
+    assert.deepEqual(ovN.cellKeys, ['203:0', '204:0'], 'нүд буусан (cellKeys) хэвээр');
+    assert.equal(ovN.unmoved, 0);
+    const ovD = overlaySubmission(fresh, inc([['203:0', '-15']]), sc, nBld);
+    assert.equal(ovD.negative, 1, '5 − 15 сөрөг');
+    assert.equal(overlaySubmission(ovD.rows, inc([['203:0', '15']]), sc, nBld).negative, 0, 'дараагийн +15 сөрөг биш');
+  }
+
+  /* 9f-3. ⚠️ 2026-10-22 (аудит): сөрөг нүдийг таних (`negTotalAt`) ба ЯГ бичих утга (`negFixText`/`negFixOf`/`describeNegFixes`).
+     «Хасалтаа устгаж хоосон үлдээ» нь БУЦААГДСАН илгээлтэд буруу — `mergeSubmission` нэмэлтийг НИЙЛҮҮЛДЭГ (`sumInc`) тул
+     хоосон нүдэнд өмнөх −0.0017 үлддэг; харагдсан (3 оронтой) «0.002»-ыг бичвэл 0 биш 0.0003 болно. */
+  {
+    /* таних — хүлцэл `incCell.below`-тай ижил; хэвийн (≥ 0) нүд, null, хөвөгч цэгийн чимээ сөрөг биш */
+    assert.equal(negTotalAt({ obyem: [-0.0017], act: [null] }, 0), true, 'обьём сөрөг');
+    assert.equal(negTotalAt({ obyem: [2], act: [-0.1] }, 0), true, 'хувийн хэсэг сөрөг');
+    assert.equal(negTotalAt({ obyem: [null], act: [null] }, 0), false, 'null ≠ сөрөг');
+    assert.equal(negTotalAt({ obyem: [-1e-12], act: [0] }, 0), false, 'хөвөгч цэгийн чимээ сөрөг биш');
+    /* бичих утга — «ноорогүй нийт»-ийн эсрэг тоо, бүтэн нарийвчлал, ASCII «-» (нүдэнд шууд бичигдэнэ) */
+    assert.equal(negFixText(0), '', 'ноорогүйгээр 0 → нүдийг хоосон болгоно');
+    assert.equal(negFixText(1e-12), '', 'чимээ → хоосон');
+    assert.equal(negFixText(-0.0017), '0.0017', 'буцаагдсан −0.0017 → +0.0017 (дэлгэцийн «0.002» биш)');
+    assert.equal(negFixText(-0.0027 - -0.001), '0.0017', 'хөвөгч цэгийн үлдэгдэлгүй');
+    assert.equal(negFixText(5), '-5', 'суурь 5 → хамгийн ихдээ −5');
+    assert.equal(negFixText(0.05, true), '-5%', 'Хувь горимд хувиар');
+
+    /* A. Шинэ илгээлт, хэт их хасалт: 5 − 50 = −45 → энэ нүдэнд «-5» (ноорог −50-ийг орлоно) */
+    const ovA = overlaySubmission(fresh, inc([['203:0', '-50']]), sc, nBld);
+    const rA = ovA.rows.find((x) => x.oid === 203);
+    assert.equal(negTotalAt(rA, 0), true);
+    assert.equal(negTotalAt(rA, 1), false, 'нөгөө блок хөндөгдөөгүй');
+    assert.equal(negFixOf(rA, 0, true, '-50'), '-5');
+    assert.equal(incCell(fresh.find((x) => x.oid === 203), 0, negFixOf(rA, 0, true, '-50'), true).obyem, 0, '«-5» бичвэл нийт ЯГ 0');
+    assert.equal(negFixOf(rA, 0, true, '-50', 'pct'), '-5%', 'Хувь горимд: 5 ÷ 100 → «-5%»');
+    assert.equal(incCell(fresh.find((x) => x.oid === 203), 0, '%-5', true).obyem, 0, '«-5%» бичвэл нийт ЯГ 0');
+    assert.equal(negFixOf(rA, 1, false, undefined), null, 'обьёмын талбаргүй блок — ерөнхий текст');
+    const fA = describeNegFixes(ovA, sc, { '203:0': '-50' });
+    assert.equal(fA.length, 1);
+    assert.ok(fA[0].startsWith(describeNegCells(ovA.negKeys, ovA.rows, sc.bld, ovA.negInc)[0]) && fA[0].includes('«-5»'), `засвар: ${fA[0]}`);
+
+    /* B. БУЦААГДСАН илгээлт (хоосон нүдэнд −0.0017), ноорог алга — «Өөрчлөлтгүй дахин илгээх» */
+    const sent = '-0.0017';
+    const ovB = overlaySubmission(fresh, inc([['206:0', sent]]), sc, nBld);
+    assert.equal(ovB.negative, 1);
+    const fB = describeNegFixes(ovB, sc);
+    assert.ok(fB[0].includes('«0.0017»') && !fB[0].includes('0.002'), `бүтэн нарийвчлал: ${fB[0]}`);
+    const after = (draft) => overlaySubmission(fresh, inc([['206:0', sumInc(sent, draft)]]), sc, nBld);
+    assert.equal(after('0.0017').negative, 0, 'зөвлөсөн «0.0017» — нийт 0');
+    assert.equal(after('0.0017').rows.find((x) => x.oid === 206).obyem[0], null, 'нүд хөндөгдөөгүй (нийлбэр 0 → өөрчлөлтгүй)');
+    assert.equal(after('').negative, 1, 'ХУУЧИН зөвлөгөө «хоосон үлдээ» — сөрөг хэвээр');
+    assert.ok(Math.abs(after('0.002').rows.find((x) => x.oid === 206).obyem[0] - 0.0003) < 1e-12, 'харагдсан «0.002» → 0.0003 (0 биш)');
+
+    /* C. Буцаагдсан + ноорог (−0.001): нэгтгэсэн −0.0027 → ноорогийг «0.0017»-оор солино */
+    const ovC = overlaySubmission(fresh, inc([['206:0', sumInc(sent, '-0.001')]]), sc, nBld);
+    assert.equal(negFixOf(ovC.rows.find((x) => x.oid === 206), 0, true, '-0.001'), '0.0017');
+    assert.ok(describeNegFixes(ovC, sc, { '206:0': '-0.001' })[0].includes('«0.0017»'));
+
+    /* D. Хоосон нүдэнд ЗӨВХӨН ноорог (−0.0017, урьд илгээгээгүй) — нүдийг хоосон болгоно */
+    const fD = describeNegFixes(ovB, sc, { '206:0': sent });
+    assert.ok(fD[0].endsWith('энэ нүдийг хоосон болгоно уу'), `хоосон: ${fD[0]}`);
+
+    /* E. Хувийн хэсэг сөрөг (мөрийн Обьёмгүй, `%`) — ерөнхий текст; Обьёмгүй мөрийн обьёмын хэсэг — тоо (хувь үлдэнэ) */
+    const pr = [row(41, '1', 'A', 0, false, { act: [0.4, null] }), row(42, '2', 'B', 0, false, { obyem: [2, null], act: [0.3, null] })];
+    const ovE = overlaySubmission(pr, inc([['41:0', '%-50'], ['42:0', '-5']]), sc, nBld);
+    assert.deepEqual(ovE.negKeys, ['41:0', '42:0']);
+    assert.equal(negFixOf(ovE.rows[0], 0, true, '%-50'), null, 'хувийн хэсэг — тоо биш');
+    assert.equal(negFixOf(ovE.rows[1], 0, true, '-5'), '-2', 'обьёмын хэсэг: 2 − 5 → «-2»');
+    assert.equal(negFixOf(ovE.rows[1], 0, true, '-5', 'pct'), null, 'Хувь горимд мөрийн Обьёмгүй — илэрхийлэх аргагүй');
+    const fE = describeNegFixes(ovE, sc, { '41:0': '%-50', '42:0': '-5' });
+    assert.ok(fE[0].endsWith('хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу') && fE[1].includes('«-2»'), fE.join(' | '));
+
+    /* F. Олон нүд — `max`-аас илүүг «… +N» (түлхүүр гэж уншихгүй); ноорог алга (дахин илгээх) бол илгээсэн −50-ийн
+       эсрэг: 5 − 50 = −45 → «45» (нэгтгэхэд −50 + 45 = −5 → нийт 0) */
+    const ovF = overlaySubmission(fresh, inc([['203:0', '-50'], ['204:0', '-9']]), sc, nBld);
+    assert.equal(ovF.negative, 2);
+    const fF = describeNegFixes(ovF, sc, {}, 'obyem', 1);
+    assert.equal(fF.length, 2);
+    assert.ok(fF[0].includes('«45»') && fF[1] === '… +1', fF.join(' | '));
+    assert.equal(overlaySubmission(fresh, inc([['203:0', sumInc('-50', '45')]]), sc, nBld).rows.find((x) => x.oid === 203).obyem[0], 0, '«45» → нийт 0');
+  }
+
+  /* 9f-4. ⚠️ 2026-10-22 (аудит): «Шинэчлэгдсэн огноо» — хожуу нь (`laterAsOf`); хуучин өдрийн хожуу батлалт огноог УХРААХГҮЙ */
+  {
+    const d10 = D('2026-10-10');
+    const d12 = D('2026-10-12');
+    assert.equal(laterAsOf(d10, d12), d12, '10-10-ны илгээлт 10-12-ны архивын огноог ухраахгүй');
+    assert.equal(laterAsOf(d12, d10), d12, 'шинэ огноо урагшилна');
+    assert.equal(laterAsOf(null, d12), d12, 'огноог хөндөөгүй илгээлт — архивынх');
+    assert.equal(laterAsOf(d10, null), d10, 'архив огноогүй — илгээлтийнх');
+    assert.equal(laterAsOf(undefined, undefined), null, 'хоёулаа алга — null (0 БИШ)');
+    /* хуучин дүрэм (`ov.asOf ?? loaded.asOf`) ухрааж байсныг баримтжуулна */
+    const ovOld = overlaySubmission(fresh, inc([['203:0', '1']], { asOf: d10 }), sc, nBld);
+    assert.equal(ovOld.asOf ?? d12, d10, 'хуучин дүрэм — ухарна');
+    assert.equal(laterAsOf(ovOld.asOf, d12), d12, 'шинэ дүрэм — хэвээр');
+  }
+
   /* 9g. `staleSubmissionKeys` — inc payload-ын НҮДИЙГ алгасахгүй, огноог шалгасаар */
   const later = [row(10, '1', 'A', 0, false, { vol: 100, obyem: [45, null], start: [D('2026-09-02'), null] })];
   const monD = inc([['10:0', '10']], { dates: [['10:0:s', '2026-09-01']] });
@@ -559,7 +690,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
 
   /* 9i. ⚠️ 2026-10-09: БЛОКГҮЙ багцын (синтетик блок) Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) —
      inc нэмэлт ХАЯГДАНА: `obyem_sum` нь L-гүй архивлагдахгүй, `cellKeys`/`unmoved`-д ч орохгүй. */
-  const scS = { ...sc, bld: ['—'], act: ['Ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
+  const scS = { ...sc, bld: ['—'], act: ['ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
     gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], synthetic: true };
   const one = (oid, vol, ob, act) => row(oid, String(oid), `W${oid}`, 0, false, {
     vol, obyem: [ob], act: [act], start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null] });

@@ -313,6 +313,35 @@ console.log('\nШ8 · Хяналтын шатны тоо');
     }
   }
   chk('Өөр тоотой «шат» үлдээгүй', stale.length === 0, stale.join(' · '));
+  /* ⚠️ 2026-10-26 (аудит G4): ЦИФРЭЭР бичсэн шатны тоо — дээрх үгийн regex «шатны тоо (одоо 6)»-г барьдаггүй
+     (цифр нь «шат»-ын ӨМНӨ биш) тул SYSTEM.md 6 гэж үлдэж, нэг файлдаа «7 шатат»-тай зөрж байв. Ш7-ийн загвараар. */
+  const SYS = read('docs/SYSTEM.md');
+  for (const re of [/шатны тоо \(одоо (\d+)\)/, /\*\*Хамрах хүрээ:\*\*[^\n]*?(\d+) шатат/]) {
+    const mm = SYS.match(re);
+    chk(`SYSTEM.md · ${re.source.slice(0, 28)}…`, !!mm && Number(mm[1]) === n, mm ? `${mm[1]} ↔ код ${n}` : 'мөр олдсонгүй');
+  }
+}
+
+/* ═══════════ Ш9 · КОДЫН ХЭМЖЭЭ ═══════════
+ *
+ * ⚠️ 2026-10-26 (аудит G4): «~169 мянган мөр код» гэж үлдсэн байхад бодит нь ~240 мянга байв. `src/`-ийн `.ts`/`.tsx`
+ *    мөрийг тоолж (тест нь `.check.mjs` тул орохгүй) баримтын тоотой ±20%-иар тулгана — нарийн тоо биш, хоцролтыг барина.
+ */
+console.log('\nШ9 · Кодын хэмжээ');
+{
+  let lines = 0;
+  const walkTs = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules') continue;
+      const p = join(d, e.name);
+      if (e.isDirectory()) walkTs(p);
+      else if (/\.tsx?$/.test(e.name)) lines += readFileSync(p, 'utf8').split('\n').length - 1;
+    }
+  };
+  walkTs('src');
+  const mm = read('docs/SYSTEM.md').match(/\*\*Хамрах хүрээ:\*\*\s*~(\d+) мянган мөр/);
+  const doc = mm ? Number(mm[1]) * 1000 : 0;
+  chk('SYSTEM.md «~N мянган мөр» ±20%', !!mm && Math.abs(doc - lines) <= lines * 0.2, mm ? `${mm[1]} мянга ↔ код ${Math.round(lines / 1000)} мянга` : 'мөр олдсонгүй');
 }
 
 /* ═══════════ ДҮН ═══════════ */

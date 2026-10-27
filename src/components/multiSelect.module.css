@@ -2,7 +2,10 @@
    ⚠️ Хаалттай үеийн харагдац нь `habea.module.css`-ийн `.pill`-тэй ЯГ ижил —
    хэрэглэгч өмнөх нэг сонголттой капсулаас ялгааг анзаарахгүй, зөвхөн дарахад
    тэмдэглэх нүдтэй жагсаалт гарна. Тусдаа модуль болгосон нь газрын зургийн
-   давхарласан шүүлтүүрт ч ижлээр хэрэглэгдэхийн тулд. */
+   давхарласан шүүлтүүрт ч ижлээр хэрэглэгдэхийн тулд.
+   ⚠️ 2026-10-23: Environment — `--accent` нь эцэг модульд л тодорхойлогддог тул
+   `var(--accent, var(--data))` нөөцтэй. Жагсаалт хөвөгч гадаргуу (--line-strong,
+   12px, --shadow), сонголтын мөр moss 12%. Капсулын хэлбэр habea-тай ижил хэвээр. */
 .pill {
   flex: none;
   display: inline-flex;
@@ -15,24 +18,25 @@
   border-radius: 999px;
   transition: border-color 0.12s, background 0.12s;
 }
-.pill:hover { background: var(--surface); border-color: var(--accent); }
-.pill:focus-within { border-color: var(--accent); }
+.pill:hover { background: var(--surface); border-color: var(--accent, var(--data)); }
+.pill:focus-within { border-color: var(--accent, var(--data)); }
 
 .pillOn {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+  border-color: var(--accent, var(--data));
+  background: color-mix(in oklab, var(--accent, var(--data)) 12%, var(--surface-2));
 }
 
 .pillLabel {
   flex: none;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
   letter-spacing: 0.11em;
   color: var(--ink-3);
   white-space: nowrap;
 }
-.pillOn .pillLabel { color: var(--accent); }
+.pillOn .pillLabel { color: var(--accent, var(--data)); }
 
 .trigger {
   display: inline-flex;
@@ -59,7 +63,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.caret { flex: none; font-size: 10px; color: var(--ink-3); }
+.caret { flex: none; font-size: 11px; color: var(--ink-3); }
 
 /* ══ ЖАГСААЛТ ══
    ⚠️ `position: fixed` — координатыг `MultiSelect.place()` өгнө. Дэвсгэр нь
@@ -71,9 +75,9 @@
   flex-direction: column;
   min-width: 0;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 28%));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -90,19 +94,20 @@
 }
 
 .clear {
-  padding: 2px 8px;
+  height: 24px;
+  padding: 0 8px;
   font: inherit;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent, var(--data));
   background: transparent;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .clear:hover { background: var(--surface-2); }
-.clear:disabled { color: var(--ink-3); opacity: 0.5; cursor: default; background: transparent; }
-.clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clear:disabled { color: var(--ink-3); opacity: 0.4; cursor: default; background: transparent; }
+.clear:focus-visible { outline: 2px solid var(--accent, var(--data)); outline-offset: 1px; }
 
 .list {
   min-height: 0;
@@ -115,21 +120,21 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 9px;
-  padding: 7px 8px;
-  font-size: 12.5px;
+  padding: 6px 8px;
+  font-size: 12px;
   color: var(--ink-2);
   border-radius: var(--r-sm);
   cursor: pointer;
 }
 .opt:hover { background: var(--surface-2); color: var(--ink); }
-.optOn { color: var(--ink); font-weight: 600; }
-.opt:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+.optOn { color: var(--ink); font-weight: 600; background: color-mix(in oklab, var(--accent, var(--data)) 12%, transparent); }
+.opt:focus-within { outline: 2px solid var(--accent, var(--data)); outline-offset: -2px; }
 
 .check {
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent, var(--data));
   cursor: pointer;
 }
 .optLabel { min-width: 0; overflow-wrap: anywhere; }

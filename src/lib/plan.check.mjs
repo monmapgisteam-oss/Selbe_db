@@ -137,6 +137,25 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
     row(2, [span('2026-04-09', '2026-04-01'), null, null, null], { group: true, depth: 4 }),
   ]);
   assert.equal(rev.reversed, 1, 'урвуу огноотой АЖЛЫН тоо (бүлэг тоологдохгүй)');
+  /* ⚠️ 2026-10-21: урвуу муж `filled`-д орохгүй, `from`/`to`-г тогтоохгүй */
+  assert.equal(rev.filled, 2, 'урвуу муж бөглөсөнд тоологдов');
+  assert.equal(rev.from, d('2026-03-01'));
+  assert.equal(rev.to, d('2026-03-05'), 'урвуу мужийн end (03-20) нь to-г сунгав');
+  const onlyRev = coverageOf([row(0, [span('2026-03-29', '2026-03-20'), null, null, null])]);
+  assert.equal(onlyRev.filled, 0);
+  assert.equal(onlyRev.from, null);
+  assert.equal(onlyRev.to, null);
+  /* ⚠️ 2026-10-21 (аудит №2): зөвхөн урвуу мужтай ажил «хуваарьтай» (`planned`) ч, хэв шинж (`patterns`) ч биш */
+  assert.equal(onlyRev.planned, 0, 'урвуу муж planned-д тоологдов');
+  assert.equal(onlyRev.patterns, 0, 'урвуу муж хэв шинжид тоологдов');
+  assert.equal(onlyRev.reversed, 1);
+  assert.equal(rev.planned, 2, 'хүчинтэй мужтай ажил planned хэвээр');
+  /* урвуу муж хэв шинжид '-' — урвуу + хүчинтэй муж нь зөвхөн тэр хүчинтэй мужтай ажилтай нэг хэв шинж */
+  const pat = coverageOf([
+    row(0, [span('2026-03-29', '2026-03-20'), span('2026-03-01', '2026-03-05'), null, null]),
+    row(1, [null, span('2026-03-01', '2026-03-05'), null, null]),
+  ]);
+  assert.equal(pat.patterns, 1, 'урвуу муж хэв шинжийг салгав');
   assert.equal(cov.reversed, 0);
 }
 console.log('plan.check: ok — spanFrac ✓');

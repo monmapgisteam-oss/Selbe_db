@@ -8,7 +8,7 @@
  */
 
 import { agsFetch } from '@/modules/sheet/ags';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
@@ -20,7 +20,7 @@ import { isLostWrite } from '@/lib/lostWrite';
  * бичвэл огт өөр хүснэгт уншина.
  */
 export const URL =
-  `${HJ}/bagts_ajliin_zovshoorliin_burtgel/FeatureServer/171`;
+  `${GUITS}/181`;
 
 /** Талбарын нэрс — CSV-ийн толгойтой ЯГ ижил. */
 export const F = {
@@ -52,7 +52,7 @@ export const F = {
    * энэ ангиллын алдаанаас сэргийлдэг). Хатуу мөр үлдээвэл дараагийн
    * үйлчилгээ өөр үсгийн бичлэгтэй байхад дахин давтагдана.
    */
-  oid: 'OBJECTID',
+  oid: 'objectid',
 } as const;
 
 /**
@@ -729,8 +729,9 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
   const res = [...(j.addResults ?? []), ...(j.updateResults ?? [])] as {
     success?: boolean; objectId?: number; error?: { description?: string };
   }[];
-  if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
-  const bad = res.find((r) => r.success === false);
+  /* ⚠️ 2026-10-21 (аудит): НЭГ мөр илгээсэн тул ЯГ нэг үр дүн; `success !== true` — талбаргүй үр дүн ч амжилт БИШ */
+  if (res.length !== 1) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+  const bad = res.find((r) => r.success !== true);
   if (bad) throw new Error(bad.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
   /* ⚠️ 2026-10-09: ЗЭРЭГЦЭЭ НЭМЭЛТИЙН УРАЛДААН — урьдчилсан шалгалт ба бичилтийн хооронд өөр
      хүн ижил багц+шатад нэмж болно. Бичсэний ДАРАА дахин тоолно: >1 бол давхардал. OID нь
@@ -769,7 +770,8 @@ export async function deleteZov(oid: number): Promise<void> {
    * буцаана. Хоёр мессеж ЯГ ижил байх ёстой: i18n-д нэг л түлхүүр.
    */
   if (!Number.isFinite(oid) || oid <= 0) {
-    throw new Error(tr('Мөрийн OBJECTID уншигдаагүй тул устгах боломжгүй.'));
+    /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид ЭНГИЙН үгээр — техникийн нэр (OBJECTID, «агшин») дэлгэцэнд гардаг байв */
+    throw new Error(tr('Мөрийн дугаар уншигдаагүй тул устгах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
   }
   const j = await agsFetch(`${URL}/applyEdits`, {
     deletes: JSON.stringify([oid]),
@@ -783,8 +785,9 @@ export async function deleteZov(oid: number): Promise<void> {
      `agsFetch` нь зөвхөн ДЭЭД ТҮВШНИЙ `{error:…}`-ыг барьдаг тул хагас
      дутуу 200 (схем зөрөх, proxy дахин бичих, буруу endpoint) ЭНД
      баригдана. Дээрх `saveZov` аль хэдийн ижил хамгаалалттай. */
-  if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
-  const bad = res.find((r) => r.success === false);
+  /* ⚠️ 2026-10-21 (аудит): НЭГ мөр устгасан тул ЯГ нэг үр дүн; `success !== true` — талбаргүй үр дүн ч амжилт БИШ */
+  if (res.length !== 1) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
+  const bad = res.find((r) => r.success !== true);
   if (bad) throw new Error(bad.error?.description || tr('Устгах амжилтгүй боллоо.'));
   invalidate('ZOVSHOOROL');
 }
@@ -819,7 +822,7 @@ export function validateZov(
   /* ⚠️ Төлөв ба огноо ЗААВАЛ нийцнэ: огноогүй «Зөвшөөрсөн» нь хэзээ
      зөвшөөрөгдснийг мэдэгдэхгүй, огноотой «Хүлээгдэж буй» нь худал. */
   if (d.tolov != null && d.tolov !== TOLOV.wait && d.ognoo == null) {
-    e.ognoo = tr('«{0}» төлөвт шийдвэрлэсэн огноо заавал шаардлагатай.', d.tolov);
+    e.ognoo = tr('«{0}» төлөвт шийдвэрлэсэн огноо заавал шаардлагатай.', tr(d.tolov));
   }
   if (d.tolov === TOLOV.wait && d.ognoo != null) {
     e.ognoo = tr('«Хүлээгдэж буй» төлөвт огноо байх ёсгүй.');

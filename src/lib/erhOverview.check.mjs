@@ -4,12 +4,12 @@
  *
  * Хамгаалж буй зүйлс:
  *   1. `ALL_BAGTS` («*») нь БҮХ багцад тоологдоно — тэр тэмдгийг багцын
- *      нэр гэж уншвал «бүх багцын менежер» хаана ч харагдахгүй.
+ *      нэр гэж уншвал «бүх багцын ахлах инженер» хаана ч харагдахгүй.
  *   2. ГАЦААГ УРЬДЧИЛЖ хэлнэ: батлагчгүй, зохиогч=батлагч, урсгалын цоорхой.
  *      Эдгээр нь одоо ЗӨВХӨН ажил зогссоны дараа мэдэгддэг.
- *   3. Бүх шат хоосон нь АНХААРУУЛГА БИШ — тэр багцад урсгал эхлээгүй.
+ *   3. Бүх шат хоосон нь ГАЦАА БИШ (`flowGap` биш) — 2026-10-19-нөөс тусдаа `flowEmpty` (`warn`) анхааруулга.
  *   4. Том/жижиг үсэг, зайг тэсвэрлэнэ (`trim().toLowerCase()`).
- *   5. Матриц (2026-09-25): 19 багана (2026-09-28: + ТУГ, + ЧХ инженер), issue бүр өөрийн багана, viewOnly эзэн
+ *   5. Матриц (2026-09-25): 20 багана (2026-09-28: + ТУГ, + ЧХ инженер; 2026-10-23: + төлөвлөлтийн инженер), issue бүр өөрийн багана, viewOnly эзэн
  *      биш, өнчин эрх (super-т үгүй), эрхийн эх сурвалж (ALL → null).
  */
 import assert from 'node:assert/strict';
@@ -28,6 +28,7 @@ globalThis.dispatchEvent = () => true;
 
 const {
   userErh, pkgErh, allPkgErh, allUserErh, MATRIX_COLS, pkgMatrix, butetsRows, orphanCaps, capBacking, missingCaps,
+  unknownPkgUsers, typeStageGaps,
 } = await import('@/lib/erhOverview.ts');
 const { BUTETS_PACKS } = await import('@/lib/butetsPacks.ts');
 const { PKG_GROUPS } = await import('@/modules/sheet/bagts.pkg.ts');
@@ -38,7 +39,7 @@ const G1 = PKG_GROUPS[1];
 
 /** Хоосон эх сурвалж */
 const empty = () => ({
-  users: [], flow: [], qaqc: [], huvaari: [], obyem: [], chanar: [], caps: {}, views: {},
+  users: [], flow: [], huvaari: [], obyem: [], chanar: [], caps: {}, views: {},
 });
 
 /* ── 1. ЭРХГҮЙ хүн — `any: false` ── */
@@ -47,7 +48,6 @@ const empty = () => ({
   const u = userErh(src, 'hen_ch');
   assert.equal(u.any, false, 'эрхгүй хүн any:true гарав');
   assert.equal(u.flow, null);
-  assert.equal(u.qaqc, null);
   assert.deepEqual(u.huvaari, []);
   assert.deepEqual(u.caps, []);
 }
@@ -58,17 +58,16 @@ console.log('✅ эрхгүй аккаунт ялгагдана');
   const src = {
     ...empty(),
     users: ['buh'],
-    qaqc: [{ user: 'buh', bagts: ['*'] }],
     huvaari: [{ user: 'buh', grants: [{ role: 'author', bagts: ['*'] }] }],
   };
   const u = userErh(src, 'buh');
-  assert.equal(u.qaqc, null, '«*» нь null (бүх багц) болох ёстой');
-  assert.equal(u.huvaari[0].bagts, null);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.equal(u.huvaari[0].bagts, null, '«*» нь null (бүх багц) болох ёстой');
   assert.equal(u.any, true);
 
   /* Бүх багцад тоологдоно */
   for (const g of PKG_GROUPS) {
-    assert.deepEqual(pkgErh(src, g).qaqc, ['buh'], `${g}: «*»-тай хүн тоологдсонгүй`);
+    assert.deepEqual(pkgErh(src, g).huvaari.author, ['buh'], `${g}: «*»-тай хүн тоологдсонгүй`);
   }
 }
 console.log('✅ «*» = бүх багц, багц бүрд тоологдоно');
@@ -78,11 +77,12 @@ console.log('✅ «*» = бүх багц, багц бүрд тоологдоно
   const src = {
     ...empty(),
     users: ['Batbayar'],
-    qaqc: [{ user: '  BATBAYAR  ', bagts: [G0] }],
+    /* ⚠️ 2026-10-23: QAQC хасагдсан */
+    huvaari: [{ user: '  BATBAYAR  ', grants: [{ role: 'author', bagts: [G0] }] }],
     caps: { batbayar: ['gazar'] },
   };
   const u = userErh(src, 'Batbayar');
-  assert.deepEqual(u.qaqc, [G0], 'үсгийн хэлбэр/зайнаас болж олдсонгүй');
+  assert.deepEqual(u.huvaari[0].bagts, [G0], 'үсгийн хэлбэр/зайнаас болж олдсонгүй');
   assert.deepEqual(u.caps, ['gazar']);
 }
 console.log('✅ үсгийн хэлбэр · зай тэсвэртэй');
@@ -237,12 +237,11 @@ console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
   assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
   const u = userErh(full, 't');
   assert.equal(u.chanar.length, 2); assert.equal(u.chanar[0].bagts, null, '* → null'); assert.equal(u.any, true);
-  /* ⚠️ 2026-09-30: нэг хүн хоёр үүргийн ЦОРЫН ГАНЦ эзэн — «нэг хүн нэг үүргээр» тул гацна */
+  /* ⚠️ 2026-10-21: «нэг хүн нэг үүргээр» дүрэм амьд урсгалд ҮГҮЙ (MA · FIC · М-акт аль ч НЭГ хянагчийн
+     шийдвэрийг хүлээн авна, `chanarMs.reviewerClashes`) — нэг хүн хоёр үүрэгт байсан ч гацааны анхааруулга гарахгүй.
+     Урьд нь t = ТУХ+ХАБЭА, q = ЧХ инженер+Чанар+ТУГ үед «MS/MA гацна» гэж худал анхааруулдаг байв. */
   const clash = pkgErh(full, G0).issues.filter((i) => i.key === 'chanarOneManRoles');
-  assert.ok(clash.some((i) => i.args[1] === 'MS, QMP, PRC' && i.args[2] === 'tuh, habea' && i.args[3] === 't'),
-    't = ТУХ+ХАБЭА ганцаараа → MS-төрөл гацна');
-  assert.ok(clash.some((i) => i.args[1] === 'MA' && i.args[3] === 'q'), 'q = ЧХ инженер+Чанар+ТУГ → MA гацна');
-  assert.ok(clash.every((i) => i.tone === 'warn' && i.cols.every((c) => c.startsWith('chanar:'))));
+  assert.deepEqual(clash, [], 'нэг хүн хоёр үүрэгт — гацаагүй');
   const indep = { ...empty(), chanar: [
     { user: 'g', grants: [{ role: 'author', bagts: [G0] }] },
     ...['tuh', 'chanar', 'habea', 'tug', 'cheng'].map((r) => ({ user: `u_${r}`, grants: [{ role: r, bagts: [G0] }] })),
@@ -253,7 +252,8 @@ console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar �
 
 /* ══════════════════ 9. МАТРИЦ ба ГАРГАЛГААТАЙ ЭРХ (2026-09-25) ══════════════════ */
 {
-  /* 19 багана: урсгал 6 · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 · QAQC 1 */
+  /* 19 багана: урсгал 7 (2026-10-23) · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 */
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.equal(MATRIX_COLS.length, 19, 'матриц 19 баганатай байх ёстой');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:tug'), '2026-09-28: ТУГ багана');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:cheng'), '2026-09-28: ЧХ инженер багана');
@@ -340,37 +340,41 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
     users: ['boss', 'rv', 'qa', 'orph', 'all'],
     supers: ['boss'],
     chanar: [{ user: 'rv', grants: [{ role: 'habea', bagts: [G0] }] }],
-    qaqc: [{ user: 'qa', bagts: [G1] }],
+    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     huvaari: [{ user: 'all', grants: [{ role: 'author', bagts: ['*'] }] }],
     caps: {
-      boss: ['plan', 'qaqc', 'finRow'],
+      boss: ['plan', 'finRow'],
       rv: ['chanarReview', 'chanarAuthor'],
-      qa: ['qaqc', 'zovshoorol'],
+      qa: ['zovshoorol'],
       orph: ['butets', 'gazar'],
       all: ['plan'],
     },
   };
-  assert.deepEqual(orphanCaps(userErh(src, 'boss')), [], 'super-т өнчин эрх гарах ёсгүй');
+  /* ⚠️ 2026-10-23: ХҮСНЭГТИЙН super-ийн хадгалагдсан эрх энгийн хүнийх шиг шалгагдана; зөвхөн КОДЫН super чөлөөтэй */
+  assert.deepEqual(orphanCaps(userErh(src, 'boss')), ['plan'], 'хүснэгтийн super-ийн хадгалсан өнчин эрх харагдах ёстой');
+  const codeSrc = { ...src, codeSupers: ['boss'] };
+  assert.deepEqual(orphanCaps(userErh(codeSrc, 'boss')), [], 'кодын super-т өнчин эрх гарах ёсгүй');
+  assert.equal(userErh(codeSrc, 'boss').codeSuper, true);
+  assert.equal(userErh(src, 'boss').codeSuper, false);
   assert.deepEqual(orphanCaps(userErh(src, 'rv')), ['chanarAuthor'],
     'chanarReview нь ХАБЭА үүргээр эх сурвалжтай; chanarAuthor өнчин');
-  assert.deepEqual(orphanCaps(userErh(src, 'qa')), [], 'qaqc нь QAQC мөрөөр эх сурвалжтай; энгийн эрх өнчин биш');
+  assert.deepEqual(orphanCaps(userErh(src, 'qa')), [], 'энгийн эрх өнчин биш');
   assert.deepEqual(orphanCaps(userErh(src, 'orph')), ['butets'], 'хуваарилалтгүй butets өнчин, gazar энгийн');
 
   assert.equal(capBacking(userErh(src, 'all'), 'plan'), null, 'ALL → null (бүх багц)');
   assert.deepEqual(capBacking(userErh(src, 'rv'), 'chanarReview'), [G0]);
-  assert.deepEqual(capBacking(userErh(src, 'qa'), 'qaqc'), [G1]);
-  /* ⚠️ QAQC «бүх багц» → null, мөргүй → [] (UserErh.qaqc-ийн null хоёр утгатай) */
-  const qa2 = { ...empty(), users: ['qall'], qaqc: [{ user: 'qall', bagts: ['*'] }], caps: { qall: ['qaqc'] } };
-  assert.equal(capBacking(userErh(qa2, 'qall'), 'qaqc'), null, 'QAQC ALL → null');
-  assert.deepEqual(orphanCaps(userErh(qa2, 'qall')), [], 'QAQC ALL өнчин биш');
-  assert.deepEqual(capBacking(userErh(src, 'orph'), 'qaqc'), [], 'QAQC мөргүй → []');
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.deepEqual(capBacking(userErh(src, 'orph'), 'butets'), [], 'хуваарилалтгүй → []');
   assert.deepEqual(capBacking(userErh(src, 'qa'), 'zovshoorol'), [], 'энгийн эрх → []');
 
   /* Эсрэг тохиолдол: хуваарилалт бий, эрх алга */
   const miss = { ...empty(), users: ['m'], huvaari: [{ user: 'm', grants: [{ role: 'approver', bagts: [G0] }] }], caps: {} };
   assert.deepEqual(missingCaps(userErh(miss, 'm')), ['planApprove']);
-  assert.deepEqual(missingCaps(userErh(src, 'boss')), [], 'super-т анхааруулахгүй');
+  assert.deepEqual(missingCaps(userErh(src, 'boss')), [], 'хуваарилалтгүй super-т дутуу эрх алга');
+  /* ⚠️ 2026-10-23: хүснэгтийн super — хуваарилалт бий атлаа хадгалсан эрх алга → анхааруулна; кодын super → үгүй */
+  const supMiss = { ...empty(), users: ['sa'], supers: ['sa'], huvaari: [{ user: 'sa', grants: [{ role: 'approver', bagts: [G0] }] }], caps: { sa: [] } };
+  assert.deepEqual(missingCaps(userErh(supMiss, 'sa')), ['planApprove'], 'хүснэгтийн super-ийн дутуу эрх');
+  assert.deepEqual(missingCaps(userErh({ ...supMiss, codeSupers: ['sa'] }, 'sa')), [], 'кодын super-т анхааруулахгүй');
 }
 console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх');
 
@@ -409,4 +413,83 @@ console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх')
 }
 console.log('✅ устгагдсан аккаунтын хуучин мөр гацааг нуухгүй (нүдэнд харагдсаар)');
 
-console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт');
+/* ── 11. 2026-10-19 (аудит №10): бүх шат хоосон · танигдаагүй багц · зөвхөн super ── */
+{
+  /* (а) БҮХ шат хоосон — урьд нь чимээгүй; одоо `warn` (шинэ гацааны асуултад орохгүй — `bad` биш) */
+  const none = pkgErh(empty(), G0).issues.find((i) => i.key === 'flowEmpty');
+  assert.ok(none, 'бүх шат хоосон багц тоймд гарсангүй');
+  assert.equal(none.tone, 'warn');
+  assert.equal(none.cols.length, STAGE_ORDER.length);
+  const partial = { ...empty(), flow: [{ user: 'a', stage: STAGE_ORDER[0], bagts: [G0] }] };
+  assert.ok(!pkgErh(partial, G0).issues.some((i) => i.key === 'flowEmpty'), 'хэсэгчилсэн цоорхой flowEmpty биш');
+
+  /* (б) танигдаагүй багц — урсгал · хуваарь · обьём · чанар · нэмэлт ажил; «*» ба зөв нэр орохгүй (2026-10-23: QAQC хасагдсан) */
+  const src = {
+    ...empty(),
+    users: ['u1', 'u2', 'u3'],
+    flow: [{ user: 'u1', stage: STAGE_ORDER[1], bagts: [G0, 'Багц 99 (хуучин)'] }],
+    huvaari: [{ user: 'u2', grants: [{ role: 'author', bagts: ['Хуучин нэр'] }] }],
+    ajil: [{ user: 'U3', grants: [{ role: 'editor', bagts: [G1] }] }],
+  };
+  assert.deepEqual(userErh(src, 'u1').unknownBagts, ['Багц 99 (хуучин)']);
+  assert.deepEqual(userErh(src, 'u2').unknownBagts, ['Хуучин нэр'], '«*» танигдаагүй гэж тоологдов');
+  assert.deepEqual(userErh(src, 'u3').unknownBagts, []);
+  assert.deepEqual(unknownPkgUsers(src).map((x) => x.user).sort(), ['u1', 'u2']);
+  /* ⚠️ 2026-10-19 (аудит): ХУУЧИН дээд түвшний `bagts` (grants-тай хамт үлдсэн) ч шалгагдана */
+  const legacy = { ...empty(), users: ['u4'], obyem: [{ user: 'u4', grants: [{ role: 'author', bagts: [G0] }], bagts: ['Хуучин багц'] }] };
+  assert.deepEqual(userErh(legacy, 'u4').unknownBagts, ['Хуучин багц'], 'хуучин `bagts` танигдаагүй багцад орсонгүй');
+
+  /* (в) амьд хатуу super — гацаа АНХААРУУЛГА хэвээр (өнгө ч), «зөвхөн админ» гэж тэмдэглэнэ */
+  const noAppr = { ...empty(), huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }] }] };
+  const plain = pkgErh(noAppr, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(plain && !plain.superOnly, 'super-гүй үед superOnly тэмдэг');
+  const withSup = pkgErh({ ...noAppr, supers: ['boss'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(withSup, 'super байхад анхааруулга АЛГА болов — энгийн хариуцагч томилоогүй хэвээр');
+  assert.equal(withSup.tone, 'bad', 'өнгө хэвээр');
+  assert.equal(withSup.superOnly, true, 'super шийдвэрлэх боломжтойг тэмдэглээгүй');
+  const goneSup = pkgErh({ ...noAppr, supers: ['boss'], gone: ['BOSS'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
+  assert.ok(!goneSup.superOnly, 'устгагдсан super тоологдов');
+  /* ⚠️ 2026-10-19 (аудит №2): батлагч БАЙГАА (зохиогчтой давхцсан) — «энгийн хариуцагч томилоогүй» ХУДАЛ */
+  const self = { ...empty(), supers: ['boss'], huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }, { role: 'approver', bagts: [G0] }] }] };
+  const selfI = pkgErh(self, G0).issues.find((i) => i.key === 'huvaariSelfApprove');
+  assert.ok(selfI && !selfI.superOnly, '*SelfApprove-д superOnly залгагдав');
+  /* зөвхөн super томилогдсон багана — цоорхой хэвээр (энгийн хүн алга) */
+  const supAppr = { ...empty(), supers: ['boss'], obyem: [{ user: 'e', grants: [{ role: 'editor', bagts: [G0] }] }] };
+  assert.equal(pkgErh(supAppr, G0).issues.find((i) => i.key === 'obyemNoApprover')?.superOnly, true);
+  /* chanarNoReviewer: дутуу үүрэгт зохиогч өөрөө томилогдсон (энгийн хүн БАЙГАА) — superOnly биш */
+  const chPart = {
+    ...empty(), supers: ['boss'],
+    chanar: [{ user: 'c', grants: ['author', 'tuh', 'chanar', 'habea', 'tug', 'cheng'].map((role) => ({ role, bagts: [G0] })) }],
+  };
+  const chI = pkgErh(chPart, G0).issues.find((i) => i.key === 'chanarNoReviewer');
+  assert.ok(chI && !chI.superOnly, 'хэсэгчлэн томилогдсон chanarNoReviewer-т superOnly');
+}
+console.log('✅ бүх шат хоосон · танигдаагүй багц · зөвхөн super (анхааруулга хэвээр)');
+
+/* ── ⚠️ 2026-10-22 (аудит): ТӨРӨЛ ↔ УРСГАЛЫН ШАТ — урсгалын төрөл шат олгодоггүй (`typeStageGaps`) ── */
+{
+  const src = {
+    ...empty(),
+    users: ['Chief_NoFlow', 'eng_ok', 'mis', 'vo', 'gone_u', 'abs_u', 'boss', 'plain'],
+    flow: [
+      { user: 'eng_ok', stage: 'engineer', bagts: ['*'] },
+      { user: 'mis', stage: 'manager', bagts: [G0] },
+      /* «Зөвхөн харна» ч ШАТ мөн — зөрөө биш */
+      { user: 'vo', stage: 'director', bagts: ['*'], viewOnly: true },
+    ],
+    typeStage: {
+      chief_noflow: 'chief', eng_ok: 'engineer', mis: 'engineer', vo: 'director',
+      gone_u: 'company', abs_u: 'head', boss: 'chief',
+    },
+    gone: ['gone_u'], absent: ['ABS_U'], supers: ['boss'],
+  };
+  const gaps = typeStageGaps(src);
+  assert.deepEqual(gaps, [
+    { user: 'Chief_NoFlow', want: 'chief', have: null },
+    { user: 'mis', want: 'engineer', have: 'manager' },
+  ], 'шатгүй + өөр шаттай л; зөв · зөвхөн харна · устгагдсан · порталд алга · super алгасна');
+  assert.deepEqual(typeStageGaps(empty()), [], 'typeStage-гүй хуучин эх сурвалж — хоосон');
+}
+console.log('✅ төрөл ↔ урсгалын шат: шатгүй · өөр шат ил; зөв/зөвхөн харна/устгагдсан/порталд алга/super үгүй');
+
+console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт · танигдаагүй багц · төрөл↔шат');

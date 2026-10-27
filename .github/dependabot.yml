@@ -1,0 +1,23 @@
+# ⚠️ 2026-10-26 (аудит T5): npm хамаарлын долоо хоног тутмын шинэчлэлт — minor/patch нь НЭГ PR-д бүлэглэгдэнэ.
+#    Dependabot-ийн PR нь secret авдаггүй (`test.yml` — амьд шалгуур алгасна, нэгж шалгуур + build хэвээр явна).
+#    `next`-ийн МАЖОР (16+) шинэчлэлтийг хаана: `output: 'export'` · eslint-config-next · React 19-ийн нийцлийг
+#    гараар шалгаж шилжинэ (`npm audit fix --force` нь next@16 санал болгодог — тэр нь санаатай алхам, автомат биш).
+#    PR-ыг merge хийх эсэхийг хүн шийднэ (CLAUDE.md: commit/merge-ийг автоматаар хийхгүй).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: next
+        update-types:
+          - version-update:semver-major

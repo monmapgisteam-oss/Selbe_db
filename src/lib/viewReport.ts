@@ -171,10 +171,29 @@ function hideControls(roots: Element[]): Element[] {
   return hidden;
 }
 
-/** Хүснэгт — `<table>` эсвэл `role=table|grid`. colspan-ыг хоосон нүдээр дэлгэнэ */
-function readTable(el: Element): DocBlock | null {
+/**
+ * ⚠️ 2026-10-19: ХҮСНЭГТИЙН НИЙТ МӨР — виртуал гүйлгээтэй хүснэгт DOM-д зөвхөн ХАРАГДАЖ БУЙ цонхоо зурдаг
+ *    (жиш. «Гүйцэтгэл бөглөх» 1,400 мөрийн ~40). Хүснэгт өөрөө нийт тоогоо зарлана: `data-rep-total`
+ *    (манай тэмдэглэгээ, ӨГӨГДЛИЙН мөрийн тоо). Зарлаагүй бол `null` (тоо мэдэгдэхгүй).
+ * ⚠️ `aria-rowcount`-ыг УНШИХГҮЙ — стандартаар толгойн мөрийг ТООЦДОГ тул өгөгдлийн мөртэй харьцуулахад
+ *    бүтэн хүснэгтийг ч «тайрсан» гэж худал тэмдэглэнэ.
+ */
+function declaredTotal(el: Element): number | null {
+  const raw = el.getAttribute('data-rep-total');
+  const n = raw == null ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Хүснэгт — `<table>` эсвэл `role=table|grid`. colspan-ыг хоосон нүдээр дэлгэнэ.
+ * ⚠️ 2026-10-19: ТАЙРАЛТЫГ ИЛ ХЭЛНЭ — урьд нь `MAX_TABLE_ROWS`-оор тайрсан эсвэл виртуал хүснэгтийн
+ *    зөвхөн дэлгэцийн мөрүүдийг авсан тайлан БҮТЭН мэт харагддаг байв. Одоо хүснэгтийн ДАРАА тэмдэглэл.
+ */
+function readTable(el: Element): DocBlock[] {
   const head: string[][] = [];
   const rows: string[][] = [];
+  /** `MAX_TABLE_ROWS`-оор зогссон (цааш мөр үлдсэн) эсэх */
+  let capped = false;
   const txt = (c: Element) => oneLine((c as HTMLElement).innerText || c.textContent || '');
   if (el.tagName === 'TABLE') {
     for (const tr_ of (el as HTMLTableElement).rows) {
@@ -187,8 +206,10 @@ function readTable(el: Element): DocBlock | null {
       }
       if (!cells.some(Boolean)) continue;
       const inHead = tr_.parentElement?.tagName === 'THEAD' || (!rows.length && [...tr_.cells].every((c) => c.tagName === 'TH'));
-      (inHead && !rows.length ? head : rows).push(cells);
-      if (rows.length >= MAX_TABLE_ROWS) break;
+      const dest = inHead && !rows.length ? head : rows;
+      /* ⚠️ 2026-10-19: `capped` нь хязгаараас ЦААШ мөр ҮЛДСЭН үед л — яг 1500 мөртэй хүснэгт бүтэн */
+      if (dest === rows && rows.length >= MAX_TABLE_ROWS) { capped = true; break; }
+      dest.push(cells);
     }
   } else {
     for (const r of el.querySelectorAll('[role="row"]')) {
@@ -197,12 +218,32 @@ function readTable(el: Element): DocBlock | null {
       const cells = cs.map(txt);
       if (!cells.some(Boolean)) continue;
       const isHead = cs.every((c) => c.getAttribute('role') === 'columnheader');
-      (isHead && !rows.length ? head : rows).push(cells);
-      if (rows.length >= MAX_TABLE_ROWS) break;
+      const dest = isHead && !rows.length ? head : rows;
+      if (dest === rows && rows.length >= MAX_TABLE_ROWS) { capped = true; break; }
+      dest.push(cells);
     }
   }
-  if (!head.length && !rows.length) return null;
-  return { kind: 'table', head, rows };
+  if (!head.length && !rows.length) return [];
+  const out: DocBlock[] = [{ kind: 'table', head, rows }];
+  const total = declaredTotal(el);
+  const note = tableNote(rows.length, total, capped);
+  if (note) out.push({ kind: 'p', text: note, italic: true, size: 16, color: '666666' });
+  return out;
+}
+
+/**
+ * Тайрсан/виртуал хүснэгтийн тэмдэглэл (цэвэр — `viewReport.check`).
+ * · нийт тоо мэдэгдэж, түүнээс цөөн мөр орсон → «… мөрөөс эхний N» / «дэлгэцэд харагдаж буй N мөр»;
+ * · нийт тоо мэдэгдэхгүй ч хязгаарт хүрсэн → «эхний N мөр (хязгаар)».
+ */
+export function tableNote(got: number, total: number | null, capped: boolean): string | null {
+  if (total != null && total > got) {
+    return capped
+      ? tr('⚠️ Нийт {0} мөрөөс эхний {1} мөр орсон — бүтнээр нь харагдацын Excel татах товчоор авна уу.', total.toLocaleString('en-US'), got.toLocaleString('en-US'))
+      : tr('⚠️ Зөвхөн дэлгэцэд харагдаж буй мөрүүд ({1} / нийт {0}) — бүтнээр нь харагдацын Excel татах товчоор авна уу.', total.toLocaleString('en-US'), got.toLocaleString('en-US'));
+  }
+  if (capped) return tr('⚠️ Хүснэгтийн эхний {0} мөр орсон (тайлангийн хязгаар) — үлдсэнийг харагдацаас харна уу.', got.toLocaleString('en-US'));
+  return null;
 }
 
 /* SVG-д дэлгэцийн тооцоолсон загварыг суулгана — CSS хувьсагч, класс нь тусдаа
@@ -347,7 +388,7 @@ function collect(root: Element, out: Pending[]): void {
   const walk = (el: Element, axisIn: boolean) => {
     if (el.hasAttribute(HIDE) || !visible(el)) return;
     if (isMapHost(el)) { push({ kind: 'map', host: el, caption: tr('Газрын зураг') }); return; }
-    if (isTable(el)) { const t = readTable(el); if (t) push({ kind: 'block', block: t }); return; }
+    if (isTable(el)) { for (const b of readTable(el)) push({ kind: 'block', block: b }); return; }
     const box = chartBox(el);
     if (box) { push({ kind: 'svg', ...serializeHtml(el), fallback: serializeSvg(box), caption: captionOf(box) }); return; }
     if (isChartSvg(el)) { push({ kind: 'svg', ...serializeSvg(el), caption: captionOf(el) }); return; }
@@ -454,6 +495,90 @@ function roots(): Element[] {
   return ['main', 'panel'].map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e);
 }
 
+/* Анхдагч («бүгд») сонголт — шүүлт биш */
+const ALL_RE = /^(бүгд|бүх(\s|$)|all(\s|$)|—$)/i;
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E1): ХАРАГДАЦЫН ӨӨРИЙН ШҮҮЛТ — дэлгэцээс (DOM). Урьд нь тайланд зөвхөн порталын бүс
+ *    бичигддэг тул он/сар/улирал, багц, таб, чартын сонголтоор нарийссан тайлан «Шүүлтгүй — бүх өгөгдөл» гэж худал
+ *    гарч байв. 26 харагдацын төлөв модуль дотроо (файлын толгойн ⚠️ ЯАГААД DOM-ООС) тул:
+ *    (1) `data-rep-filter="Нэр: утга"` — модуль өөрөө зарласан шүүлт (хамгийн үнэн);
+ *    (2) `<select>` — «Бүх…»/хоосон биш утга (эхний сонголт ч тооцогдоно — 2026-10-23), нэр нь aria-label/label/title;
+ *        `data-rep-skip` атрибуттай (эсвэл түүний дотор) сонгогч шүүлт БИШ — алгасна;
+ *    (3) сегментлэсэн товчны бүлэг (≥2 ах дүү, ЯГ НЭГ нь pressed/selected) — «Бүгд» биш бол; бүлгийн нэр нь
+ *        эцгийн aria-label эсвэл бүлгийн өмнөх богино шошго («ЖИЛ»).
+ *    Тайлангийн удирдлага нуух (`hideControls`) -аас ӨМНӨ уншина.
+ */
+export function readFilters(rs: Element[] = roots()): string[] {
+  const out: string[] = [];
+  const add = (s: string) => { const t = oneLine(s); if (t && !out.includes(t)) out.push(t); };
+  const labelOf = (el: Element): string => {
+    const aria = el.getAttribute('aria-label') || el.getAttribute('title');
+    if (aria) return oneLine(aria);
+    const id = el.getAttribute('id');
+    const lab = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : el.closest('label');
+    return lab ? oneLine((lab as HTMLElement).innerText || '').replace(/:$/, '') : '';
+  };
+  for (const r of rs) {
+    for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el) && !el.closest('[data-report-skip]')) add(el.getAttribute('data-rep-filter') || '');
+    for (const el of r.querySelectorAll('select')) {
+      const sel = el as HTMLSelectElement;
+      /* ⚠️ 2026-10-23: ЭХНИЙ сонголтыг алгасахгүй — «Багц 1» г.м. эхний сонголт нь бодит шүүлт байж болно (урьд нь
+         `selectedIndex <= 0` тул «Шүүлтгүй» гэж худал бичигддэг байв). Зөвхөн хоосон/`all` утга · «Бүгд/Бүх…»-ийг алгасна.
+         `data-rep-skip` — шүүлт БИШ сонгогч (эрэмбэ, нүдний засвар) өөрөө зарлана. */
+      if (!visible(sel) || sel.selectedIndex < 0 || sel.closest('[data-rep-skip],[data-report-skip]')) continue;
+      const v = oneLine(sel.selectedOptions[0]?.text || '');
+      if (!v || sel.value === '' || /^all$/i.test(sel.value) || ALL_RE.test(v)) continue;
+      const name = labelOf(sel);
+      add(name ? `${name}: ${v}` : v);
+    }
+    const seen = new Set<Element>();
+    /* ⚠️ 2026-10-26: нийтлэг `Segmented` (`role="radio"` + `aria-checked`) ч шүүлт — bagts-ийн merge ТУХ-ын «Бүлэг», «Журмууд»-ын
+       төрөл, «Хуваарь»-ын шүүлтийг `aria-pressed`-ээс Segmented болгосноор тайлан шүүсэн хүснэгтийг «Шүүлтгүй — бүх өгөгдөл»
+       гэж хэвлэдэг байв. Бүлгийн нэр нь radiogroup-ийн `aria-label`; «≥3» дүрэм хэвээр (2 сонголттой горим шүүлт биш). */
+    const isRadio = (k: Element) => k.getAttribute('role') === 'radio' && k.hasAttribute('aria-checked');
+    for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"],[role="radio"][aria-checked="true"]')) {
+      const p = el.parentElement;
+      /* ⚠️ 2026-10-23: `data-report-skip` (газрын зургийн хэрэгсэл · 2D/3D/BIM · давхаргын жагсаалт) ч шүүлт БИШ — merge-ийн
+         дараа тэдгээр үргэлж DOM-д байх болсон тул «Давхарга · Газрын зургийн харагдац: 2D» шүүлт гэж бичигддэг байв */
+      if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip],[data-report-skip]')) continue;
+      seen.add(p);
+      const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected') || isRadio(k));
+      const on = sib.filter((k) => k.getAttribute('aria-pressed') === 'true' || k.getAttribute('aria-selected') === 'true'
+        || (isRadio(k) && k.getAttribute('aria-checked') === 'true'));
+      /* ≥3: «График | Хүснэгт» зэрэг 2 товчтой ХАРАГДАХ ГОРИМ шүүлт биш */
+      if (sib.length < 3 || on.length !== 1) continue;
+      const v = oneLine((el as HTMLElement).innerText || '');
+      if (!v || v.length > 40 || ALL_RE.test(v)) continue;
+      /* Бүлгийн нэр — эцгийн aria-label, эсвэл бүлгийн ӨМНӨХ товч биш богино шошго («ЖИЛ») */
+      let name = p.getAttribute('aria-label') || '';
+      if (!name) {
+        const prev = [...p.children].find((k) => !sib.includes(k) && k.tagName !== 'BUTTON');
+        const t = prev ? oneLine((prev as HTMLElement).innerText || '') : '';
+        if (t && t.length <= 24) name = t;
+      }
+      add(name ? `${sentence(name)}: ${v}` : v);
+    }
+  }
+  return out;
+}
+/** «ЖИЛ» → «Жил» (CSS uppercase шошгын `innerText`) */
+const sentence = (s: string) => (s === s.toUpperCase() ? s.charAt(0) + s.slice(1).toLowerCase() : s);
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E1): ДЭЛГЭЦ БҮРЭН АЧААЛАГДААГҮЙ эсэх — ачаалж буй хэсгийн тоо (эргэлдэгч · `aria-busy`).
+ *    Урьд нь ачаалж байхад дарахад тэр хэсгүүд тайланд «Ачаалж байна…» эсвэл огт ороогүй байв (`ReportButton` асууна).
+ */
+export function pendingCount(rs: Element[] = roots()): number {
+  let n = 0;
+  for (const r of rs) {
+    for (const el of r.querySelectorAll('[aria-busy="true"],[class*="spinner"],[class*="_spin_"]')) {
+      if (visible(el)) n += 1;
+    }
+  }
+  return n;
+}
+
 const p2 = (x: number) => String(x).padStart(2, '0');
 /** YYYY-MM-DD HH:MM — `toLocaleString('mn-MN')` Chrome-д «10/15/2026, 5:27 PM» өгдөг */
 const stamp = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
@@ -463,6 +588,8 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   const html = document.documentElement;
   const prevTheme = html.dataset.theme;
   const rs = roots();
+  /* ⚠️ 2026-10-23 (UX аудит E1): удирдлагыг нуухаас ӨМНӨ — шүүлтийн товч/сонголтыг уншина (`readFilters`) */
+  const filters = [...new Set([...meta.filters, ...readFilters(rs)])];
   /* ⚠️ Гэрэл горим + удирдлага нуух — зөвхөн синхрон хэсэгт (файлын толгойн ⚠️) */
   const style = document.createElement('style');
   style.textContent = `[${HIDE}]{display:none!important}`;
@@ -478,7 +605,10 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
     else html.dataset.theme = prevTheme;
   }
 
-  const body = (await Promise.all(pending.map(resolve))).filter((b): b is DocBlock => !!b);
+  const resolved = await Promise.all(pending.map(resolve));
+  const body = resolved.filter((b): b is DocBlock => !!b);
+  /* ⚠️ 2026-10-23 (UX аудит E1): зураг болгож чадаагүй график/газрын зураг ЧИМЭЭГҮЙ алга болохгүй — тэмдэглэл */
+  const dropped = resolved.filter((b, i) => !b && pending[i].kind !== 'block').length;
 
   /* Khorshoo-гийн бүтэц: 1-р түвшний гарчгийг дугаарлана */
   let n = 0;
@@ -491,8 +621,11 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   if (meta.desc) head.push({ kind: 'p', text: meta.desc, italic: true, center: true, color: '555555' });
   head.push(
     { kind: 'p', text: `${tr('Огноо')}: ${stamp(new Date())}` },
-    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${meta.filters.length ? meta.filters.join(' | ') : tr('Шүүлтгүй — бүх өгөгдөл')}`, bold: true },
+    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${filters.length ? filters.join(' | ') : tr('Шүүлтгүй — бүх өгөгдөл')}`, bold: true },
   );
+  if (dropped) {
+    head.push({ kind: 'p', text: tr('⚠️ {0} график/газрын зураг тайланд орж чадсангүй — дэлгэцээс харна уу.', dropped), italic: true, color: '666666' });
+  }
   if (!body.length) body.push({ kind: 'p', text: tr('Дэлгэц дээр тайланд орох мэдээлэл олдсонгүй.') });
   return [...head, ...body];
 }

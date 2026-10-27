@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
+import { isTopFocusTrap, pushFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
-import { AUTH, VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
+import { AUTH, VIEWS, isCodeSuper, roleForUser, type Role, type ViewKey } from '@/lib/services';
 import { arcgisPost } from '@/lib/query';
 import { authToken } from '@/lib/authToken';
+import { currentUser } from '@/lib/who';
 import {
   listUsers,
   listRemoved,
   removeUser,
   setUser,
-  clearOverride,
+  restoreUser,
   subscribe,
   dirtyKeys,
   foreignDirty,
@@ -24,6 +26,9 @@ import {
 } from '@/lib/permissions';
 import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд аппын дотоод асуулт (хөтөч цонхыг хаасан бол чимээгүй `false` байв) */
+import { askConfirm } from '@/lib/confirm';
+import { lastSuperWarn, superDemoteMsg, superGrantMsg } from './UserTypeSection';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
@@ -34,7 +39,6 @@ import {
 } from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
-import { QaqcAcl } from '@/modules/QaqcAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
 import { ChanarAcl } from '@/modules/ChanarAcl';
@@ -50,11 +54,14 @@ import { listHuvaariAssigns, purgeHuvaariAssign, subscribeHuvaariAcl } from '@/l
 import { listObyemAssigns, purgeObyemAssign, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { listAjilAssigns, purgeAjilAssign, subscribeAjilAcl } from '@/lib/ajilAcl';
 import { listButetsAssigns, purgeButetsAssign, subscribeButetsAcl } from '@/lib/butetsAcl';
-import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import {
-  purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
+  purgeAssign, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
-import { allAclReady, heldByText, pendingHeldBy, subscribeAclPending } from '@/lib/aclOps';
+import {
+  allAclReady, flowWaitingFor, flowWaitingText, heldByText, pendingHeldBy, removalBlockingText, setAclDrafts, subscribeAclPending,
+} from '@/lib/aclOps';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — самбар нээгдэхэд нэг удаа тулгана (`portalPresence`-ийн ⚠️) */
+import { checkPortalPresence, subscribePortalPresence } from '@/lib/portalPresence';
 import { isDerivedCap } from '@/lib/aclRoleCaps';
 import { PlainCapAcl } from '@/modules/PlainCapAcl';
 import { CapOrphanNote } from '@/modules/CapOrphanNote';
@@ -65,6 +72,7 @@ import {
 import { UserCard } from './UserCard';
 import { capLabelShort } from '@/modules/erhLabels';
 import { ErhTypes } from '@/modules/ErhTypes';
+import { sysByText, useSystemClosed } from './SystemCloseDialog';
 import { NEW_ACCOUNT_ROLE, TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
@@ -103,8 +111,10 @@ const rolePresets = (hardSuper = false): { key: Role; label: string }[] =>
   TYPE_ORDER.filter((r) => r !== 'super' || hardSuper).map((r) => ({ key: r, label: typeLabel(r) }));
 
 /** ⚠️ 2026-10-09 (аудит №6): панелаас `super` олгож болохгүй — зөвхөн кодын админ (`applyType`-ийн дүрэм) */
-const grantsSuperToPlain = (username: string, role: Role): boolean =>
-  role === 'super' && roleForUser(username) !== 'super';
+/* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): super-ийг самбараас олгоно — ЗӨВХӨН super админ (`roleTypeApply.applyType`-ийн
+   дүрэм, нэвтэрсэн админ `who.currentUser`); нэр нь хуучнаараа */
+const grantsSuperToPlain = (_username: string, role: Role): boolean =>
+  role === 'super' && roleForUser(currentUser()) !== 'super';
 
 const hasView = (views: ViewKey[] | 'all', k: ViewKey) => views === 'all' || views.includes(k);
 
@@ -179,9 +189,6 @@ export type Draft = {
    *    суурь БИШ: тэгвэл өөр админы завсрын өөрчлөлт «энэ админ хассан» гэж уншигдана.
    */
   base?: UserBase;
-  /** undefined = урсгалын шат хөндөгдөөгүй · null = шатгүй болгох */
-  /** «Сэргээх» — хадгалахад override-ыг бүрмөсөн устгаж хатуу тохиргоонд буцаана */
-  clear?: boolean;
   /** «Устгах» — хадгалахад аккаунтыг жагсаалтаас хасаж нэвтрэлтийг нь хаана */
   remove?: boolean;
   /** Панелаас ШИНЭЭР нэмсэн, хараахан хадгалаагүй аккаунт */
@@ -211,13 +218,15 @@ export type Draft = {
  * байхгүй тул «хагас тохируулсан» төлөв үүсэхгүй.
  */
 /** Бүтэн өргөнтэй хуудсууд — «Эрхийн төрөл» ба «багц × үүрэг/шат» хүснэгттэй 7 хуудас (2026-09-30) */
-const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets']);
+const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets']);
 
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
   /** Нэвтэрсэн админы нэр — ӨӨРИЙН аккаунтад устгах товч гарахгүй (өөрийгөө түгжихээс сэргийлнэ) */
   const { user: me } = useAuth();
   const myName = me?.username?.toLowerCase() ?? null;
+  /** ⚠️ 2026-10-19: «Систем түр хаах» төлөв — толгойн улаан зурвас */
+  const sysNow = useSystemClosed();
   /**
    * АЛЬ БҮЛЭГ нээлттэй байна.
    * ⚠️ Хоёр бүлэг нь ӨӨР асуултад хариулна: «ямар харагдац үзэх вэ» ба
@@ -240,6 +249,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [pane, setPane] = useState<'ovw' | 'types' | 'users' | ErhPane>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
+  /** ⚠️ 2026-10-23 (UX аудит A2): шинэ аккаунт ноорогт нэмэгдсэн тайлбар (алдаа биш — `role="status"`) */
+  const [addNote, setAddNote] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
   const [q, setQ] = useState('');
   /** Дэлгэсэн мөрүүд — анхдагчаар БҮГД хураасан (13 хэрэглэгч × 14 унтраалга = уншигдахгүй хана) */
@@ -259,7 +270,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const reloadRemote = useCallback(() => {
     setRemoteBusy(true);
     void initRemote(false, true)
-      .then((ok) => { setRemoteOk(ok); setUsers(listUsers()); })
+      .then((ok) => {
+        setRemoteOk(ok);
+        setUsers(listUsers());
+        /* ⚠️ 2026-10-22 (аудит): хүснэгтийн аккаунтыг Enterprise порталтай НЭГ удаа тулгана (нэр бүрийг сешнд нэг удаа,
+           зөвхөн уншина, fail-open) — порталд алга хүн гацааны шалгуурт эзэн гэж тоологдохоо болино (`portalPresence`) */
+        void checkPortalPresence(listUsers().map((u) => u.username));
+      })
       .catch(() => setRemoteOk(false))
       .finally(() => setRemoteBusy(false));
   }, []);
@@ -317,8 +334,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /** Хадгалаагүй ноорогтой үед санамсаргүй хаагдахаас хамгаална */
   const requestClose = () => {
     if (saving) return; // хадгалалт дуустал хүлээнэ — дундуур гарвал төлөв төөрнө
-    if (anyUnsaved()
-      && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): асуулт async (`askConfirm`) — асуух шаардлагагүй бол шууд (синхрон) хаана */
+    if (anyUnsaved()) {
+      void askConfirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'), { danger: true, ok: tr('Хадгалалгүй гарах') })
+        .then((yes) => { if (yes) doClose(); });
+      return;
+    }
+    doClose();
+  };
+  const doClose = () => {
     setDrafts(new Map());
     /*
      * ⚠️ САЛАНГИД ТӨЛӨВҮҮДИЙГ ч ЦЭВЭРЛЭНЭ (2026-09-08). Панел нь `open=false`
@@ -332,6 +356,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setSel(new Set());
     setSaved(null);
     setAddErr('');
+    setAddNote('');
     setQ('');
     /* ⚠️ Карт ч хаагдана — дахин нээхэд жагсаалтаас эхэлнэ (2026-09-25) */
     setCard(null);
@@ -340,8 +365,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /** ⚠️ 2026-10-07: хуудас солих — «Эрхийн төрөл»-өөс гарахад хадгалаагүй загвар байвал асууна
       (`ErhTypes` unmount болж ноорог нь алга болно) */
   const goPane = (k: typeof pane) => {
-    if (k !== pane && pane === 'types' && typesDirtyRef.current
-      && !window.confirm(tr('Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?'))) return;
+    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — асуух шаардлагагүй бол шууд шилжинэ */
+    if (k !== pane && pane === 'types' && typesDirtyRef.current) {
+      void askConfirm(tr('Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?'), { danger: true, ok: tr('Хадгалалгүй шилжих') })
+        .then((yes) => { if (yes) setPane(k); });
+      return;
+    }
     setPane(k);
   };
 
@@ -361,6 +390,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (!open) return;
     const root = dialogRef.current;
     const onKey = (e: KeyboardEvent) => {
+      /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн дууссан/эрх алдсан цонх) нээлттэй бол Tab · Esc · Ctrl+S
+         бүгд түүнийх — урьд нь энэ урхи фокусыг буцааж татаж, Esc нь порталыг ч хаадаг байв. */
+      if (!isTopFocusTrap(root)) return;
       /* ⚠️ 2026-10-07: дотоод сонголт (AclGrid · ErhMatrix) Esc-ийг аль хэдийн
          барьсан бол (`defaultPrevented`) порталыг хаахгүй */
       if (e.key === 'Escape') { if (!e.defaultPrevented) closeRef.current(); return; }
@@ -392,6 +424,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       document.body.style.overflow = prev;
     };
   }, [open, onClose]);
+  /* ⚠️ 2026-10-21: урхины овоолгод (`pushFocusTrap`) ТУСДАА эффектээр, deps нь ЗӨВХӨН `open` — дээрх
+     эффект `onClose` (зурагдалт бүрд шинэ) -оор дахин ажилладаг тул тэнд бүртгэвэл дахин зурагдах бүрд
+     овоолгын оройд гарч, дээр нь нээлттэй сешн/эрхийн цонхоос урхийг булаана. */
+  useEffect(() => {
+    const root = dialogRef.current;
+    if (!open || !root) return undefined;
+    return pushFocusTrap(root);
+  }, [open]);
 
   /*
    * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ФОКУС — нээхэд портал ДОТОР, хаахад
@@ -431,9 +471,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const [, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
-  /* ⚠️ Чанарын хуваарилалт ч бас ӨӨР хадгалалттай — QAQC унтраалга нь түүнийг
-     дагуулдаг тул захиалахгүй бол дарсан унтраалга буцаж унтарсан харагдана. */
-  useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
@@ -443,10 +480,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeAclPending(() => setAclN((n) => n + 1)), []);
   /* ⚠️ 2026-09-25: «Төрлөөр тохируулах»-ын хэрэглэгчийн түгжээ — карт хаагдаж/нээгдэнэ */
   useEffect(() => subscribeTypeLock(() => setAclN((n) => n + 1)), []);
+  /* ⚠️ 2026-10-22 (аудит): порталын тулгалт дуусахад — «порталд алга» тэмдэг ба гацаа бүх хуудсанд шинэчлэгдэнэ */
+  useEffect(() => subscribePortalPresence(() => setAclN((n) => n + 1)), []);
   /* ⚠️ 2026-09-25: ноорогтой хэрэглэгчдийг бөөнөөр хэрэгжүүлэлтэд мэдэгдэнэ — тэднийг
      алгасна (`roleTypeApply.setTypeDraftUsers`); эс бөгөөс дараагийн «Хадгалах»
      ХУУЧИН ноорогоор загварын харагдацыг дарна. */
   useEffect(() => { setTypeDraftUsers(drafts.keys()); }, [drafts]);
+  /* ⚠️ 2026-10-23: ноорогийн бичих хориг бүх эрхийн хуудсанд (`aclOps.draftGuard`) — шинэ · устгахаар тэмдэглэсэн ·
+     ноорогтой хүн; самбар хаагдахад (unmount) цэвэрлэнэ */
+  useEffect(() => { setAclDrafts(drafts.entries()); }, [drafts]);
+  useEffect(() => () => setAclDrafts([]), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   /* ⚠️ `users` санаатай — `listRemoved()` гадаад төлөвөөс уншдаг тул жагсаалт
@@ -524,14 +567,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        *    бичихээс өмнө нэрсийг харуулж зөвшөөрөл авна. Хаалтанд — бичсэн хүн
        *    (localStorage-оос, баталгаагүй). Татгалзвал ЗӨВХӨН энэ сешнийхийг.
        */
+      /* ⚠️ 2026-10-22 (аудит №4): өмнөх сешний super олголтыг `retryDirty` илгээхгүй (тарьсан мөр super болохоос) — ил хэлнэ */
+      const superForeign = foreignDirty().filter((f) => f.role === 'super').map((f) => f.key);
       const foreign = new Map<string, string>();
       for (const f of [...foreignDirty(), ...foreignCapsDirty()]) {
         if (!foreign.has(f.key) || !foreign.get(f.key)) foreign.set(f.key, f.by);
       }
-      const onlyMine = foreign.size > 0 && !window.confirm(tr(
-        'Энэ browser-т өмнөх сешнээс үлдсэн, ArcGIS-т хадгалагдаагүй эрхийн өөрчлөлт байна: {0}. Эдгээрийг ТАНЫ эрхээр ArcGIS руу бичих үү? (Хаалтанд — бичсэн хүн; энэ browser-ийн хадгалалтаас уншсан тул баталгаагүй.) «Цуцлах» дарвал зөвхөн энэ сешний өөрчлөлтийг илгээнэ.',
+      /* ⚠️ 2026-10-23 (UX аудит X1 · A6): `askConfirm` (товчнууд үйлдлээ нэрлэнэ) · «browser» → «хөтөч» */
+      const onlyMine = foreign.size > 0 && !(await askConfirm(tr(
+        'Энэ хөтчид өмнөх сешнээс үлдсэн, ArcGIS-т хадгалагдаагүй эрхийн өөрчлөлт байна: {0}. Эдгээрийг ТАНЫ эрхээр ArcGIS руу бичих үү? (Хаалтанд — бичсэн хүн; энэ хөтчийн хадгалалтаас уншсан тул баталгаагүй.) «Зөвхөн энэ сешнийх» дарвал зөвхөн энэ сешний өөрчлөлтийг илгээнэ.',
         [...foreign].map(([k, by]) => `${k} (${by || '—'})`).join(', '),
-      ));
+      ), { ok: tr('Бүгдийг илгээх'), cancel: tr('Зөвхөн энэ сешнийх') }));
       /* Эрхийн (caps) dirty-г ч хамт дахин илгээнэ — нэг товч, хоёр dirty-set */
       const [leftPerms, leftCaps] = onlyMine
         ? await Promise.all([retryDirty(true), retryCapsDirty(true)])
@@ -540,7 +586,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       setUsers(listUsers());
       setSaved(left === 0 ? null : saved);
       /* ⚠️ Үлдсэн бол ил хэлнэ (2026-09-23) — урьд нь товч зүгээр л буцаж, админ юу болсныг мэддэггүй байв */
-      if (left > 0) setAddErr(tr('{0} өөрчлөлт дахин хүрсэнгүй — холболтоо шалгаад дахин синк дарна уу.', String(left)));
+      const msgs: string[] = [];
+      if (left > 0) msgs.push(tr('{0} өөрчлөлт дахин хүрсэнгүй — холболтоо шалгаад «Дахин илгээх» дарна уу.', String(left)));
+      if (!onlyMine && superForeign.length) {
+        msgs.push(tr('Өмнөх сешнээс үлдсэн super олголт ({0}) аюулгүй байдлын үүднээс илгээгдсэнгүй — шаардлагатай бол самбараас дахин олгоно уу.', superForeign.join(', ')));
+      }
+      if (msgs.length) setAddErr(msgs.join(' '));
     } finally {
       setSyncing(false);
     }
@@ -570,8 +621,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ 2026-10-05: суурийг ЭХНИЙ засварт л тогтооно (`Draft.base`) — `d` нь байгаа ноорогоос
        ирсэн бол суурь нь аль хэдийн дотор нь; шинэ бол `u` (одоо хадгалагдсан утга). */
     const next = { ...d, base: d.base ?? { views: u.views, docs: u.docs, role: u.role } };
-    const same = !next.clear
-      && !next.remove
+    const same = !next.remove
       && !next.isNew
       && next.role === u.role
       && next.docs === u.docs
@@ -594,33 +644,51 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const dropsGuits = (u: UserPerm, from: ViewKey[] | 'all', to: ViewKey[] | 'all'): boolean =>
     hasView(from, 'guitsetgel') && !hasView(to, 'guitsetgel') && !!stageOfUser(u.username);
-  const confirmDropGuits = (): boolean =>
-    window.confirm(tr('Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?'));
+  /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — дуудагчид async (асуух шаардлагагүй салаа синхрон хэвээр) */
+  const confirmDropGuits = (): Promise<boolean> =>
+    askConfirm(tr('Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?'), { danger: true, ok: tr('Унтраах') });
 
   /** @param confirmed бөөнөөр засахад нэг удаа асуусан бол дахин асуухгүй */
-  const applyRole = (u: UserPerm, role: Role, confirmed = false) => {
+  const applyRole = async (u: UserPerm, role: Role, confirmed = false) => {
     /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙГ ДООШЛУУЛАХГҮЙ — `roleTypeApply.applyType`-ийн дүрэм
        («Кодонд бүртгэлтэй админыг өөр төрөлд шилжүүлэх боломжгүй») ноорог замд ч. Урьд нь
        мөрийн үүрэг сонгогч/бөөнөөр preset нь super-т `injener` г.м. override бичиж, `roleOf`
        (Гүйцэтгэлийн «Нэгтгэл гүйцэтгэл» таб, нүүр цонх) super биш болгодог байв. */
-    if (roleForUser(u.username) === 'super' && role !== 'super') return;
+    /* ⚠️ 2026-10-21: SUPER = эрхийн тохиргоо — өөр super-ийг доошлуулж болно, ӨӨРИЙН super-ийг өөрөө хасахгүй (өөр super
+       хасна); кодын (тестийн) super хэвээр хөндөгдөхгүй (`roleTypeApply.applyType` · `permissions.setUser` no-op) */
+    if (roleForUser(u.username) === 'super' && role !== 'super' && (isCodeSuper(u.username) || u.username.toLowerCase() === myName)) return;
     /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` ОЛГОХГҮЙ (`grantsSuperToPlain`) — `rolePresets`
        сонголтыг нуудаг ч ноорогийн зам давхар хаалттай */
     if (grantsSuperToPlain(u.username, role)) {
-      setAddErr(tr('Super төрөл зөвхөн кодонд бүртгэлтэй админд — админ самбарын эрх кодоор л олгогдоно.'));
+      setAddErr(tr('Super эрхийг зөвхөн super админ олгож, хасна.'));
       return;
     }
+    /* ⚠️ 2026-10-23: «Ерөнхий захирал» зөвхөн харна — урсгалын томилгоотой хүнд ноорогоор тавихгүй (`roleTypeApply.applyType`-ийн
+       дүрэм; картын «Эрхийн төрөл» томилгоог хасахыг асууж хэрэгжүүлнэ). */
+    if (role === 'zahiral' && stageOfUser(u.username)) {
+      setAddErr(tr('«{0}» гүйцэтгэлийн урсгалд томилгоотой — Ерөнхий захирал зөвхөн харна. Эхлээд урсгалын томилгоог хасна уу.', u.username));
+      return;
+    }
+    /* ⚠️ 2026-10-23 (UX аудит A1): SUPER ОЛГОХ нь мөрийн сонгогчоос асуулгүй ноорогт ордог байв — super нь БҮХ хуудас,
+       БҮХ засах эрх (санхүүгийн мөр устгах, эрх удирдах) авна. Үр дагаврыг нэрлэж ТУСДАА асууна (хатуу super-ийг
+       дахин сонгоход биш — аль хэдийн super бол асуухгүй). */
+    if (role === 'super' && draftOf(u).role !== 'super' && roleForUser(u.username) !== 'super' && !confirmed
+      && !(await askConfirm(superGrantMsg(u.username), { danger: true, ok: tr('Админ эрх олгох') }))) return;
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): SUPER-ИЙГ ДООШЛУУЛАХ нь асуулгүй ноорогт ордог байв — үлдэх эрхийг нэрлэж,
+       сүүлчийн өөр админ бол анхааруулж асууна (`superDemoteMsg`). Бөөнөөр засах зам super-ийг алгасдаг (`bulkRole`). */
+    if (role !== 'super' && roleForUser(u.username) === 'super' && draftOf(u).role === 'super'
+      && !(await askConfirm(superDemoteMsg(u.username, typeLabel(role)), { danger: true, ok: tr('Админ эрх хасах') }))) return;
     const a = roleAccess(role);
     const d = draftOf(u);
     const drop = a.views !== 'all' && dropsGuits(u, d.views, keepWorkflow(d.views, a.views));
-    if (drop && !confirmed && !confirmDropGuits()) return;
+    if (drop && !confirmed && !(await confirmDropGuits())) return;
     /* ⚠️ Загвар урсгалтай харагдацгүй (2026-09-30) — хадгалагдсаныг нь хэвээр үлдээнэ */
     putDraft(u, {
-      ...d, clear: false, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
+      ...d, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
       ...(drop ? { touchedGuits: true } : null),
     });
   };
-  const flipView = (u: UserPerm, k: ViewKey) => {
+  const flipView = async (u: UserPerm, k: ViewKey) => {
     /* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн харагдац/баримт самбараас ЗАСАГДАХГҮЙ — эрх нь
        кодоос ('all'), `permissions` override-ыг нь үл тооцно; унтраалга нь `UserRights`-д түгжээтэй. */
     if (roleForUser(u.username) === 'super') return;
@@ -631,24 +699,20 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        ОРУУЛАХГҮЙ — `UserRights`-ийн бүдэг унтраалгын ⚠️. Хаах зам = тухайн эрхийн хуудас. */
     if (!hasView(d.views, k) && capViewsOf(u.username).includes(k)) return;
     const next = toggled(d.views, k);
-    if (dropsGuits(u, d.views, next) && !confirmDropGuits()) return;
+    if (dropsGuits(u, d.views, next) && !(await confirmDropGuits())) return;
     const touched = k === 'guitsetgel' ? { touchedGuits: true } : null;
-    putDraft(u, { ...d, ...touched, clear: false, views: next });
+    putDraft(u, { ...d, ...touched, views: next });
   };
-  const setAllViews = (u: UserPerm, on: boolean) => {
+  const setAllViews = async (u: UserPerm, on: boolean) => {
     if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
     const d = draftOf(u);
     /* ⚠️ «Бүгдийг асаах/унтраах» урсгалтай 6-г ХӨНДӨХГҮЙ (2026-09-30) — байгаагаараа үлдэнэ */
     const next: ViewKey[] = keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : []);
     const drop = dropsGuits(u, d.views, next);
-    if (drop && !confirmDropGuits()) return;
-    putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
+    if (drop && !(await confirmDropGuits())) return;
+    putDraft(u, { ...d, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
   };
-  const flipDocs = (u: UserPerm) => {
-    if (roleForUser(u.username) === 'super') return; // ⚠️ 2026-10-12: super — `flipView`-ийн ⚠️
-    const d = draftOf(u);
-    putDraft(u, { ...d, clear: false, docs: !d.docs });
-  };
+  /* ⚠️ 2026-10-23: `flipDocs` («ТЭЗҮ-БОНУ» унтраалга) ХАСАГДСАН — баримт бичгийн сан бүх хэрэглэгчид нээлттэй */
   /*
    * ⚠️ `flipCap` · `markCap` · `dropOrphan` УСТСАН (2026-09-30, хэрэглэгчийн
    *    шийдвэр). Урьд нь картын «Нэмэлт эрх» унтраалга энгийн дөрвөн эрхийг
@@ -659,48 +723,70 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const flipRemove = (u: UserPerm) => {
     const d = draftOf(u);
+    /* ⚠️ 2026-10-23: ХАДГАЛААГҮЙ ШИНЭ аккаунтыг «устгах» = нэмэхээ болих — ноорогийг шууд хаяна, ArcGIS-т юу ч бичихгүй.
+       Урьд нь `remove` туг тавиад «Хадгалах» дээр `removeUser` дуудагдаж, хэзээ ч байгаагүй аккаунтад TOMBSTONE бичдэг тул
+       тэр нэрийг дараа нэмэхэд «устгагдсан» гэж татгалздаг байв (`saveAll`-д ч давхар хамгаалалт). */
+    if (d.isNew && !users.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+      const key = u.username.toLowerCase();
+      setDrafts((prev) => { const m = new Map(prev); m.delete(key); return m; });
+      setSaved(null);
+      return;
+    }
     putDraft(u, { ...d, remove: !d.remove });
   };
-  const markClear = (u: UserPerm) => {
-    // Сэргээх = хатуу тохиргооны суурь руу. Суурьгүй (панелаас нэмсэн) хэрэглэгч
-    // жагсаалтаас бүрмөсөн хасагдана — урьдчилан харуулах суурьгүй тул одоогийн
-    // утгыг нь үлдээгээд clear тэмдэг тавина.
-    putDraft(u, { ...draftOf(u), clear: true });
-  };
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): `markClear` («Сэргээх») УСТСАН — товч нь хэзээ ч гардаггүй байсан ч `saveAll`-ийн
+     `d.clear` салаа мөр · хуваарилалт · эрхийг бүгдийг арилгадаг эрсдэлтэй үхмэл зам байв (`UserRow`-ийн ⚠️). */
 
   /* ── Бөөнөөр засах ──
    * ⚠️ БҮРЭН жагсаалтаас (`allRows`) — хайлтын шүүлтээс ХАМААРАХГҮЙ. Урьд нь
    * шүүгдэж нуугдсан сонголт чимээгүй алгасагдаж, зурвасын «N сонгосон» тоо
    * бодит үйлдэлтэй зөрдөг байв. */
   const selRows = allRows.filter((u) => sel.has(u.username.toLowerCase()));
-  const bulkRole = (role: Role) => {
+  const bulkRole = async (role: Role) => {
     const a = roleAccess(role);
     /* ⚠️ 2026-09-30: хатуу super-ийг ИЛ алгасна (`applyRole`-ийн дүрэм, `bulkRemove`-той ижил зурвас) */
     /* ⚠️ 2026-10-09 (аудит №6): жирийн аккаунтад `super` олгохыг ч алгасна (`grantsSuperToPlain`) */
-    const skipped = selRows.filter((u) => (roleForUser(u.username) === 'super' && role !== 'super') || grantsSuperToPlain(u.username, role));
-    const rows = selRows.filter((u) => !skipped.includes(u));
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): бөөнөөр засах нь SUPER-ИЙГ ОГТ ХӨНДӨХГҮЙ — урьд нь өөр super-ийг асуулгүй,
+       нэг товчоор доошлуулдаг байв. Super-ийн төрлийг картаас/мөрөөс нэг бүрчлэн (асуулттай — `applyRole`) солино. */
+    const isSup = (u: UserPerm): boolean => roleForUser(u.username) === 'super' || draftOf(u).role === 'super';
+    const supSkipped = selRows.filter(isSup);
+    const skipped = selRows.filter((u) => !isSup(u) && grantsSuperToPlain(u.username, role));
+    const rows = selRows.filter((u) => !isSup(u) && !skipped.includes(u));
     // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
     /* ⚠️ 2026-09-30: `applyRole`-той ИЖИЛ илэрхийлэл (`keepWorkflow`). Урьд нь загварын харагдацтай
        (урсгалтай харагдацгүй) ШУУД харьцуулдаг тул шатанд томилогдсон ХҮН БҮРД «хасагдана» гэсэн
        ХУДАЛ асуулт гардаг байв — `applyRole` урсгалтай харагдацыг хадгалдаг. */
     const av = a.views;
     const hit = av === 'all' ? [] : rows.filter((u) => dropsGuits(u, draftOf(u).views, keepWorkflow(draftOf(u).views, av)));
-    if (hit.length && !window.confirm(tr('{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?', hit.map((u) => u.username).join(', ')))) return;
-    rows.forEach((u) => applyRole(u, role, true));
+    if (hit.length && !(await askConfirm(tr('{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?', hit.map((u) => u.username).join(', ')), { danger: true, ok: tr('Үргэлжлүүлэх') }))) return;
+    /* ⚠️ `confirmed=true` — `applyRole` асуухгүй тул await-гүй синхрон гүйцэтгэгдэнэ */
+    rows.forEach((u) => { void applyRole(u, role, true); });
     setSel(new Set());
-    if (skipped.length) setAddErr(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.map((u) => u.username).join(', ')));
+    const msgs: string[] = [];
+    if (supSkipped.length) msgs.push(tr('{0} админ (super) аккаунт алгасагдлаа — тэдний төрлийг нэг бүрчлэн солино: {1}', String(supSkipped.length), supSkipped.map((u) => u.username).join(', ')));
+    if (skipped.length) msgs.push(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.map((u) => u.username).join(', ')));
+    if (msgs.length) setAddErr(msgs.join(' '));
   };
   const bulkRemove = () => {
     /* ⚠️ Өөрийгөө ба хатуу super-ийг алгасна — гэхдээ ЧИМЭЭГҮЙ биш (2026-09-23):
        «N сонгосон» атал цөөн нь устгагдахад админ шалтгааныг мэдэх ёстой. */
     const skipped = selRows
-      .filter((u) => u.username.toLowerCase() === myName || roleForUser(u.username) === 'super')
+      /* ⚠️ 2026-10-21: хүснэгтийн super устгагдана (өөр super админ) — ӨӨРИЙГӨӨ ба кодын (тестийн) super-ийг л алгасна */
+      .filter((u) => u.username.toLowerCase() === myName || isCodeSuper(u.username))
+      .map((u) => u.username);
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): бөөнөөр устгах нь хүснэгтийн super-ийг ч АЛГАСНА — super-ийг нэг бүрчлэн
+       (мөрийн «Устгах», хадгалахад сүүлчийн админы анхааруулгатай) устгана. Хэд алгассаныг хэлнэ. */
+    const supSkipped = selRows
+      .filter((u) => !skipped.includes(u.username) && roleForUser(u.username) === 'super')
       .map((u) => u.username);
     selRows
-      .filter((u) => !skipped.includes(u.username))
+      .filter((u) => !skipped.includes(u.username) && !supSkipped.includes(u.username))
       .forEach((u) => { if (!draftOf(u).remove) flipRemove(u); });
     setSel(new Set());
-    if (skipped.length) setAddErr(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.join(', ')));
+    const msgs: string[] = [];
+    if (supSkipped.length) msgs.push(tr('{0} админ (super) аккаунт алгасагдлаа — тэднийг нэг бүрчлэн устгана: {1}', String(supSkipped.length), supSkipped.join(', ')));
+    if (skipped.length) msgs.push(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.join(', ')));
+    if (msgs.length) setAddErr(msgs.join(' '));
   };
 
   /**
@@ -725,7 +811,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    (`regrantFlowAccess` false). Зөвхөн харагдац/үүргийн ноорог хэвээр —
      *    тэр нь `permissions`-ийн өөрийн dirty-overlay-тай.
      */
-    if (capsLocked && [...drafts.values()].some((d) => d.remove || d.clear)) {
+    if (capsLocked && [...drafts.values()].some((d) => d.remove)) {
       setAddErr(LOCK_MSG);
       return;
     }
@@ -739,9 +825,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
          текстэд залгана — шинэ асуулт нэмэхгүй. Зохиогч устгагдвал тэр илгээлтийг хэн ч татахгүй (батлагч буцаана),
          тэмдэг/түгжээ нь эзэнгүй үлдэнэ. Шалгаж чадаагүй бол ч хэлнэ (мэдэхгүй ≠ 0). Шийдвэр админых — хориглохгүй. */
       const gone = [...drafts].filter(([, d]) => d.remove).map(([k]) => k);
-      const held = await pendingHeldBy(gone);
-      const extra = held == null || held.length ? `\n\n${heldByText(held)}` : '';
-      if (!window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)) + extra)) return;
+      /* ⚠️ 2026-10-22 (аудит): + ажил ГАЦААХ шинэ цоорхой (хүснэгтийн нүдний хасалттай ИЖИЛ шалгалт — `removalBlockingText`)
+         ба тэр хүний урсгалын шатанд хүлээгдэж буй ГҮЙЦЭТГЭЛ (`flowWaitingFor`). Урьд нь цорын ганц инженерийг устгахад
+         21 багцын урсгал чимээгүй тасарч, шатанд нь хүлээж буй илгээлт ч тоологддоггүй байв. Хориглохгүй — админ шийднэ. */
+      const [held, flowHeld] = await Promise.all([pendingHeldBy(gone), flowWaitingFor(gone)]);
+      const parts = [
+        /* ⚠️ 2026-10-23: сүүлчийн өөр админ (super) устгагдах бол анхааруулна (`lastSuperWarn`) */
+        lastSuperWarn(gone),
+        removalBlockingText(gone),
+        flowHeld == null || flowHeld.length ? flowWaitingText(flowHeld) : '',
+        held == null || held.length ? heldByText(held) : '',
+      ].filter(Boolean);
+      const extra = parts.length ? `\n\n${parts.join('\n\n')}` : '';
+      if (!(await askConfirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)) + extra, { danger: true, ok: tr('Устгаж хадгалах') }))) return;
     }
     setSaving(true);
     setSaved(null);
@@ -769,6 +865,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         // ⚠️ revoke:false — аккаунт бүхэлдээ устгагдах тул эрх буцаалтын
         //    бичилт tombstone-той уралдах ёсгүй.
         if (d.remove) {
+          /* ⚠️ 2026-10-23: хадгалаагүй ШИНЭ аккаунт (хүснэгтэд мөргүй) — бичилтгүй, ноорог нь доор арилна (`flipRemove`-ийн ⚠️) */
+          if (d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) continue;
           /*
            * ⚠️ 2026-08-29: урсгалын томилгоо ба нэмэлт эрхийг remote-оос ХАМТ
            * арилгаж, үр дүнг нь ХҮЛЭЭНЭ. Урьд нь `removeAssign` fire-and-forget,
@@ -782,9 +880,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const r = await removeUser(uname);
           if (!r) { fail += 1; failed.push(uname); continue; }
           const flowOk = await purgeAssign(uname);
-          /* ⚠️ Чанарын хуваарилалт нь ӨӨР мөр (`__qaqc__:`) — тусад нь арилгана,
-             эс бөгөөс тэр нэрийг дахин нэмэхэд чанарын багц өөрөө эргэж ирнэ. */
-          const qaqcOk = await purgeQaqcAssign(uname);
           const hvOk = await purgeHuvaariAssign(uname);
           /* ⚠️ Обьёмын хуваарилалт нь ӨӨР мөр (`__obyem__:`) — тусад нь арилгана */
           const obOk = await purgeObyemAssign(uname);
@@ -796,7 +891,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const btOk = await purgeButetsAssign(uname);
           /* ⚠️ 2026-10-09 (аудит №6): АБСОЛЮТ устгал — нэгтгэлгүй `capRemove` (`caps.setCaps`-ийн `absolute` ⚠️) */
           const capOk = await setCaps(uname, [], { absolute: true });
-          if (flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (flowOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         /*
@@ -808,33 +903,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
          *    хамгаалалт энд байгаагүй. Хатуу аккаунтыг сэргээх бол «Буцаах» товч.
          */
         if (!d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) { gone.push(uname); continue; }
-        if (d.clear) {
-          let bad = false;
-          if (!roleForUser(uname)) {
-            // Суурьгүй (панелаас нэмсэн) аккаунт: сэргээх = устгах → бүгдийг цэвэрлэнэ
-            if (!(await purgeAssign(uname))) bad = true;
-            if (!(await purgeQaqcAssign(uname))) bad = true;
-            if (!(await purgeHuvaariAssign(uname))) bad = true;
-            if (!(await purgeObyemAssign(uname))) bad = true;
-            if (!(await purgeChanarAssign(uname))) bad = true;
-            if (!(await purgeAjilAssign(uname))) bad = true;
-            if (!(await purgeButetsAssign(uname))) bad = true;
-            /* ⚠️ 2026-10-09 (аудит №6): абсолют устгал (дээрх устгах замтай ижил) */
-            if (!(await setCaps(uname, [], { absolute: true }))) bad = true;
-          }
-          const r = await clearOverride(uname);
-          /*
-           * ⚠️ Хатуу тохиргоотой, урсгалд томилогдсон хүн: суурь эрхэд нь
-           * `guitsetgel` байхгүй бол (tolovlolt) хуудасгүй үлдэнэ — томилгоо
-           * хэвээр тул урсгалын эрхийг нь дахин дагуулна.
-           */
-          /* ⚠️ `stageOfUser`-оор УРЬДЧИЛЖ шүүхгүй (2026-09-21): тэр нь тугтай тул
-             remote-гүй бол null → дуудлага алгасаж «амжилттай» гэдэг байв.
-             `regrantFlowAccess` өөрөө томилгоогүй бол true, remote-гүй бол false. */
-          if (r && !(await regrantFlowAccess(uname))) bad = true;
-          if (r && !bad) ok += 1; else { fail += 1; failed.push(uname); }
-          continue;
-        }
+        /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): «Сэргээх» (`d.clear`) салаа УСТСАН — товч нь хэзээ ч гардаггүй
+           (`ROLE_BY_USER` production-д хоосон) атлаа суурьгүй аккаунтын мөр · бүх хуваарилалт · эрхийг арилгадаг эрсдэлтэй
+           үхмэл зам байв. Устгагдсан аккаунтыг сэргээх нь «Буцаах» (`permissions.restoreUser`). */
 
         /*
          * ЗӨВХӨН ХАРАГДАЦ ба ҮҮРЭГ — урсгалын ШАТ томилох нь «Гүйцэтгэлийн
@@ -906,6 +977,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       return m;
     });
     setSaving(false);
+    setAddNote('');
     /* ⚠️ 2026-10-05: бичилтийн ТОДОРХОЙ шалтгаан (жиш. `views` талбарын урт хэтэрсэн) байвал
        нэрсийн хажууд — ерөнхий «N амжилтгүй» нь админыг сүлжээгээ шалгахад хүргэдэг. */
     if (fail > 0 && !firstErr) firstErr = takeWriteError();
@@ -969,7 +1041,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     /* ⚠️ 2026-09-30: хуудасны нэр = урсгалын хуудас (`capText.paneLabel`) */
     const orphan: [boolean, string][] = [
-      [listQaqcAssigns().some((a) => a.user === key), paneLabel('qaqc')],
       [listHuvaariAssigns().some((a) => a.user === key), paneLabel('huvaari')],
       [listObyemAssigns().some((a) => a.user === key), paneLabel('obyem')],
       [listAjilAssigns().some((a) => a.user === key), paneLabel('ajil')],
@@ -999,12 +1070,22 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     }
     const orphanCaps = capsOf(key);
     if (orphanCaps.length) {
-      if (!window.confirm(tr('«{0}» нэрээр устгагдсан аккаунтын засах эрх ({1}) үлдсэн байна. Эдгээрийг арилгаад нэмэх үү?', n, orphanCaps.map(capLabelShort).join(', ')))) return;
-      /* ⚠️ 2026-10-09 (аудит №6): устгагдсан аккаунтын өнчин мөр — абсолют арилгана */
-      void setCaps(key, [], { absolute: true }).then((done) => {
-        if (!done) setAddErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
-      });
+      /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — зөвшөөрвөл эрхийг арилгаад үргэлжлүүлнэ (`addDraft`) */
+      void askConfirm(tr('«{0}» нэрээр устгагдсан аккаунтын засах эрх ({1}) үлдсэн байна. Эдгээрийг арилгаад нэмэх үү?', n, orphanCaps.map(capLabelShort).join(', ')), { ok: tr('Арилгаад нэмэх') })
+        .then((yes) => {
+          if (!yes) return;
+          /* ⚠️ 2026-10-09 (аудит №6): устгагдсан аккаунтын өнчин мөр — абсолют арилгана */
+          void setCaps(key, [], { absolute: true }).then((done) => {
+            if (!done) setAddErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид'));
+          });
+          addDraft(n, key);
+        });
+      return;
     }
+    addDraft(n, key);
+  };
+  /** Шинэ аккаунтыг ноорогт нэмнэ — `add`-ийн шалгалтуудын дараа (⚠️ 2026-10-23: асуултын дараа ч дуудагдана) */
+  const addDraft = (n: string, key: string) => {
     /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): шинэ аккаунт ОДООГИЙН төрөлтэй (`NEW_ACCOUNT_ROLE`) —
        урьд нь хуучин «Төлөвлөлт (хуучин)» (`tolovlolt`) өгдөг тул сонгогчид идэвхгүй сонголтоор
        харагдаж, «Эрхийн төрөл»-ийн загвар (харагдац · нүүр цонх) үйлчилдэггүй байв. Харагдац нь
@@ -1018,6 +1099,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setName('');
     setAddErr('');
     setSaved(null);
+    /* ⚠️ 2026-10-23 (UX аудит A2): шинэ аккаунт «Хадгалах» хүртэл зөвхөн НООРОГ — багц/засах эрхийн хуудсууд
+       порталд БАЙГАА аккаунтаас л сонгоно. Урьд нь энэ нь хаана ч хэлэгддэггүй тул админ шинэ гүйцэтгэгчийг
+       багцад онооход сонгогчид олдохгүй, шалтгааныг мэддэггүй байв. */
+    setAddNote(tr('«{0}» ноорогт нэмэгдлээ. «Хадгалах» дарсны дараа багц болон засах эрхийн хуудсуудад сонгогдоно.', n));
     /* ⚠️ 2026-10-07: идэвхтэй хайлт шинэ мөрийг нууж «нэмэгдээгүй» мэт харагдуулдаг байв */
     setQ('');
     /* ⚠️ 2026-10-05: нэрийг ArcGIS-ээс лавлана (`lookupArcgisUser`-ийн ⚠️) — ноорог аль хэдийн
@@ -1069,8 +1154,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       dirtyPerm: dirtyRemote.has(key),
       myName,
       allKeys: ALL_KEYS,
-      /* ⚠️ 2026-10-09 (аудит №6): `super` сонголт зөвхөн хатуу super-ийн мөрөнд */
-      rolePresets: rolePresets(roleForUser(u.username) === 'super'),
+      /* ⚠️ 2026-10-21: «Super» сонголт — нэвтэрсэн админ ӨӨРӨӨ super бол (эрхийн тохиргооноос олгоно) */
+      rolePresets: rolePresets(roleForUser(myName) === 'super'),
       hasView,
       onPick: (checked) => setSel((prev) => {
         const n = new Set(prev);
@@ -1082,14 +1167,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         if (n.has(key)) n.delete(key); else n.add(key);
         return n;
       }),
-      onRole: (role) => applyRole(u, role),
-      onFlipView: (k) => flipView(u, k),
-      onAllViews: (v) => setAllViews(u, v),
-      onFlipDocs: () => flipDocs(u),
+      onRole: (role) => { void applyRole(u, role); },
+      onFlipView: (k) => { void flipView(u, k); },
+      onAllViews: (v) => { void setAllViews(u, v); },
       onFlipRemove: () => flipRemove(u),
-      onClear: () => markClear(u),
       onGoFlow: () => goPane('guits'),
-      superUser: roleForUser(u.username) === 'super',
+      /* ⚠️ 2026-10-21: түгжээ ӨӨРИЙН super мөрөнд (өөрийгөө доошлуулахгүй/устгахгүй) ба кодын (тестийн) super-т */
+      superUser: roleForUser(u.username) === 'super' && (key === myName || isCodeSuper(u.username)),
+      viewsLocked: roleForUser(u.username) === 'super',
       onOpenCard: () => setCard({ user: key }),
     };
   };
@@ -1191,10 +1276,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         ))}
       </aside>
 
-      {/* ⚠️ 2026-09-30: «Гүйцэтгэлийн урсгалын эрх» нь 6 шатны «багц × шат» хүснэгт — 860px-д багтахгүй тул өргөн.
+      {/* ⚠️ 2026-09-30: «Гүйцэтгэлийн урсгалын эрх» нь 7 шатны (2026-10-23) «багц × шат» хүснэгт — 860px-д багтахгүй тул өргөн.
           Багцаар олгодог бусад 6 хуудас ч ИЖИЛ хүснэгт (`AclGrid`) болсон тул мөн өргөн; `PlainCapAcl`-ийн
           (аккаунтаар) хуудас хэвээр нарийн. */}
       <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
+        {/* ⚠️ 2026-10-19: СИСТЕМ ХААЛТТАЙ бол хуудас БҮРИЙН дээр улаанаар — админ мартаж орхихоос сэргийлнэ
+            (`permsTablePublic`-ийн улаан зурвасын загвар). Нээх нь цэсний «Систем түр хаах»-аас. */}
+        {sysNow && (
+          <div className={s.addErr} role="alert">
+            {tr('🔴 Систем хаалттай — {0}. Зөвхөн «Систем түр хаах» эрхтэй аккаунт ба админ (super) нэвтэрнэ; нээх бол цэсний «Систем» бүлгийн «Систем түр хаах».', sysByText(sysNow) || '—')}
+          </div>
+        )}
         {pane === 'ovw' ? (
           <>
             <header className={s.head}>
@@ -1230,7 +1322,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               : pane === 'huvaari' ? <HuvaariAcl />
                 : pane === 'obyem' ? <ObyemAcl />
                   : pane === 'chanar' ? <ChanarAcl />
-                    : pane === 'qaqc' ? <QaqcAcl />
                       : pane === 'butets' ? <DedButetsAcl />
                         : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
           </>
@@ -1239,7 +1330,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             <header className={s.head}>
               <h2 className={s.title}>{tr('Эрхийн төрөл')}</h2>
               <p className={s.subtitle}>
-                {tr('Төрөл бүрд юу харахыг (харагдац · ТЭЗҮ-БОНУ · нүүр цонх) чеклээд хадгална. Хэрэглэгчийн картад төрөл сонгож «Төрлөөр тохируулах» дарахад харагдац нь нэг дор бичигдэнэ. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
+                {tr('Төрөл бүрд юу харахыг (харагдац · нүүр цонх) чеклээд хадгална. Хэрэглэгчийн картад төрөл сонгож «Төрлөөр тохируулах» дарахад харагдац нь нэг дор бичигдэнэ. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
               </p>
             </header>
             <ErhTypes remote={{ busy: remoteBusy, retry: reloadRemote }} onDirty={onTypesDirty} />
@@ -1249,7 +1340,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             <header className={s.head}>
               <h2 className={s.title}>{tr('Гүйцэтгэлийн урсгалын эрх')}</h2>
               <p className={s.subtitle}>
-                {tr('Зургаан шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
+                {tr('Долоон шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
               </p>
             </header>
             {/* ⚠️ 2026-10-01: «Дахин илгээх» · устгагдсан аккаунтын үлдэгдэл (`AclRepairNote`) */}
@@ -1261,18 +1352,23 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         <header className={s.head}>
           <h2 className={s.title}>{tr('Хэрэглэгчдийн эрх удирдах')}</h2>
           <p className={s.subtitle}>
-            {tr('Аккаунт · үүргийн шошго · харагдац · ТЭЗҮ-БОНУ. Унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
+            {tr('Аккаунт · үүргийн шошго · харагдац. Унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
+            {' '}
+            {/* ⚠️ 2026-10-23 (UX аудит A2): ГУРВАН хадгалах загварыг нэг дор ил хэлнэ — энд ноорог, картын «Эрхийн төрөл»
+                ба эрхийн хуудсууд шууд; шинэ аккаунт «Хадгалах» хүртэл эрхийн хуудсанд сонгогдохгүй */}
+            {tr('Картын «Төрлөөр тохируулах» ба хажуугийн цэсний эрхийн хуудсууд ШУУД хадгалагдана. Шинэ аккаунтад «Хадгалах» дарсны дараа л багц, засах эрх олгоно.')}
           </p>
           {/* ⚠️ ХОЁР ӨӨР ТӨЛӨВ (2026-09-21): энэ сешнд НЭГ Ч удаа уншигдаагүй бол
               эрх/хуваарилалтын засвар хаалттай (`capsLocked`); өмнө уншигдаад
               одоо унасан бол хуучин cache + dirty-overlay хэвээр ажиллана. */}
           {capsLocked ? (
             <div className={s.addErr} role="alert">
-              {tr('⚠️ Эрхийн хүснэгт уншигдсангүй — нэмэх/устгах/сэргээх засвар хаалттай, дахин ачаална уу. Засах эрхээр нээгдсэн харагдацын тэмдэг энэ browser-ийн кэшнээс харагдаж байна.')}
+              {/* ⚠️ 2026-10-23 (UX аудит A6): «browser» · «кэш» → «хөтөч» · «түр санах ой» */}
+              {tr('⚠️ Эрхийн хүснэгт уншигдсангүй — нэмэх/устгах/сэргээх засвар хаалттай, дахин ачаална уу. Засах эрхээр нээгдсэн харагдацын тэмдэг энэ хөтчийн түр санах ойноос харагдаж байна.')}
             </div>
           ) : !remoteOk && (
             <div className={s.addErr} role="alert">
-              {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ browser-ийн cache. Өөрчлөлт түр локалдоо хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
+              {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ хөтчийн түр санах ойноос. Өөрчлөлт түр энэ хөтчид хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
             </div>
           )}
           {/* ⚠️ 2026-09-08-ны амьд шалгалт: хүснэгт AGOL дээр гараар «Everyone»
@@ -1283,14 +1379,25 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               гардаг байв; одоо эзний нэр ба хоёр засварыг ИЛ хэлнэ (`permsOwnerMismatch`). */}
           {permsOwnerMismatch().length > 0 && (
             <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгтийн (Selbe_Permissions) эзэн «{0}» нь кодын админ (super) жагсаалтад алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: ArcGIS дээр item-ийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчээр энэ нэрийг permsRemote.ts-ийн FORMER_TABLE_OWNERS жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
+              {/* ⚠️ 2026-10-21 (аудит): «кодын super жагсаалт» гэдэг нь 2026-10-21-ээс хуучирсан (super = хүснэгт) — эзний
+                  итгэмжлэл нь `permsRemote.TABLE_OWNERS` (AGOL хайлтын зам л; Enterprise-ийн шууд хаягийн замд эзэн шалгагддаггүй). */}
+              {/* ⚠️ 2026-10-23 (UX аудит X3): кодын файл/тогтмолын нэр («permsRemote.ts · FORMER_TABLE_OWNERS») үндсэн
+                  текстээс хасагдаж, хөгжүүлэгчид дамжуулах «Дэлгэрэнгүй»-д л үлдэнэ */}
+              {tr('🔴 Эрхийн хүснэгтийн эзэн «{0}» нь итгэмжлэгдсэн эзний жагсаалтад алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: порталд хүснэгтийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчид мэдэгдэж энэ нэрийг итгэмжлэгдсэн эзний жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
+              <details>
+                <summary>{tr('Дэлгэрэнгүй')}</summary>
+                {'Selbe_Permissions · permsRemote.ts · FORMER_TABLE_OWNERS'}
+              </details>
             </div>
           )}
           {permsTablePublic() && (
             <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.')}
+              {/* ⚠️ 2026-10-23 (UX аудит X2): AGOL 2026-10-20-нд хасагдсан — «AGOL дээр» заавар байхгүй газар руу явуулдаг байв */}
+              {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. Порталд хүснэгтийн хуваалцах тохиргоог (Share) «Organization» болгоно уу.')}
             </div>
           )}
+          {/* ⚠️ 2026-10-26 (хэрэглэгч: «ийм тэнэг анхааруулга устга»): «хүснэгт байгууллагад засагдахаар нээлттэй»
+              улаан анхааруулга ХАСАГДСАН — org-ийн бүх аккаунт итгэмжлэгдсэн, клиент талын эрхийг хүлээн зөвшөөрсөн шийдвэр. */}
         </header>
 
         {/*
@@ -1323,13 +1430,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 aria-label={tr('Аккаунт хайх')}
               />
               {q && (
-                <button type="button" className={s.searchX} onClick={() => setQ('')} title={tr('Цэвэрлэх')}>✕</button>
+                <button type="button" className={s.searchX} onClick={() => setQ('')} title={tr('Цэвэрлэх')} aria-label={tr('Цэвэрлэх')}>✕</button>
               )}
             </div>
             <input
               className={s.input}
               value={name}
-              onChange={(e) => { setName(e.target.value); setAddErr(''); }}
+              onChange={(e) => { setName(e.target.value); setAddErr(''); setAddNote(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
               placeholder={tr('ArcGIS хэрэглэгчийн нэр')}
               aria-label={tr('Шинэ хэрэглэгчийн нэр')}
@@ -1339,27 +1446,34 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             </button>
           </div>
           {addErr && <div className={s.addErr} role="alert">{addErr}</div>}
+          {addNote && <div className={s.capNote} role="status">{addNote}</div>}
 
           {/* Бөөнөөр засах зурвас — сонголттой үед л */}
           {sel.size > 0 && (
             <div className={s.bulkBar}>
               <span className={s.bulkInfo}>{tr('{0} сонгосон', String(sel.size))}</span>
               {rolePresets().map((r) => (
-                <button key={r.key} type="button" className={s.preset} onClick={() => bulkRole(r.key)}>
+                <button key={r.key} type="button" className={s.preset} onClick={() => { void bulkRole(r.key); }}>
                   {r.label}
                 </button>
               ))}
               <button type="button" className={s.delBtn} onClick={bulkRemove}>{tr('Устгах')}</button>
               <button type="button" className={s.cancelBtn} onClick={() => setSel(new Set())}>
-                {tr('Сонголт цуцлах')}
+                {/* ⚠️ 2026-10-23 (UX аудит X7): «Цуцлах» биш — сонголтыг арилгана */}
+                {tr('Сонголт арилгах')}
               </button>
             </div>
           )}
 
           {/* Хэрэглэгчийн жагсаалт */}
           <div className={s.list}>
+            {/* ⚠️ 2026-10-23 (UX аудит X6): хоосон нь хайлтаас бол ил хэлнэ */}
             {rows.length === 0 && (
-              <div className={s.empty}>{tr('Тохирох аккаунт олдсонгүй.')}</div>
+              <div className={s.empty}>
+                {q.trim()
+                  ? tr('«{0}» хайлтад тохирох аккаунт алга — хайлтыг цэвэрлэх (✕) эсвэл хажуугийн талбараас шинэ аккаунт нэмнэ үү.', q.trim())
+                  : tr('Тохирох аккаунт олдсонгүй.')}
+              </div>
             )}
             {rows.map((u) => <UserRow key={u.username.toLowerCase()} {...rowPropsOf(u)} />)}
           </div>
@@ -1378,15 +1492,20 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                     onClick={() => {
                       /* ⚠️ 2026-09-30: remote уншигдаагүй бол жагсаалт нь кэш — хуучирсан tombstone-оор бодит мөрийг устгахгүй (`putDraft`-ийн ⚠️) */
                       if (!remoteReady()) { setAddErr(LOCK_MSG); return; }
-                      if (!window.confirm(tr('«{0}» аккаунтыг сэргээх үү? Хатуу тохиргооны эрх нь буцна.', k))) return;
-                      /* ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН энэ товч `revive` — tombstone-ыг зориуд арилгана
-                         (`clearOverride`-ийн ⚠️); «Сэргээх»/`d.clear` зам revive хийхгүй */
-                      void clearOverride(k, { revive: true }).then((okRes) => {
-                        setUsers(listUsers());
-                        if (!okRes) setAddErr(tr('«{0}» сэргээгдсэнгүй — ArcGIS-т бичигдээгүй, дахин оролдоно уу.', k));
+                      /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
+                      /* ⚠️ 2026-10-23: аккаунт өмнөх эрхийн төрөл (super биш) ба түүний харагдацтай буцна — хуваарилалт ба засах
+                         эрхийг устгахад арилгасан тул дахин олгоно (`permissions.restoreUser`) */
+                      void askConfirm(tr('«{0}» аккаунтыг сэргээх үү? Өмнөх эрхийн төрөл ба түүний харагдац буцна (админ эрх буцахгүй); багц, засах эрхийг дахин олгоно.', k), { ok: tr('Сэргээх') }).then((yes) => {
+                        if (!yes) return;
+                        /* ⚠️ 2026-10-11 (аудит №7): ЗӨВХӨН энэ товч tombstone-ыг зориуд арилгана. 2026-10-23: панелаас нэмсэн
+                           аккаунт мөргүй үлдэж нэвтэрч чадахгүй байсныг засав — жирийн мөр бичнэ (`restoreUser`). */
+                        void restoreUser(k).then((okRes) => {
+                          setUsers(listUsers());
+                          if (!okRes) setAddErr(tr('«{0}» сэргээгдсэнгүй — ArcGIS-т бичигдээгүй, дахин оролдоно уу.', k));
+                        });
                       });
                     }}
-                    title={tr('Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана')}
+                    title={tr('Аккаунтыг сэргээж өмнөх эрхийн төрлийг нь буцаана')}
                   >
                     {tr('Буцаах')}
                   </button>
@@ -1398,7 +1517,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         )}
 
         <p className={s.note}>
-          {tr('Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр зуур энэ browser-т хадгалагдана.')}
+          {tr('Өөрчлөлт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, бүх хэрэглэгчид (өөр төхөөрөмжөөс нэвтэрсэн ч) үйлчилнэ. ArcGIS-т холбогдоогүй үед түр зуур энэ хөтчид хадгалагдана.')}
         </p>
 
         {/* ҮНДСЭН ХАДГАЛАХ ТОВЧ — ҮРГЭЛЖ доод талд наалдана.
@@ -1426,7 +1545,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               onClick={() => { void retrySync(); }}
               title={tr('ArcGIS-т хүрээгүй {0} өөрчлөлтийг дахин илгээнэ', String(dirtyRemote.size))}
             >
-              {syncing ? tr('Синк хийж байна…') : tr('Дахин синк ({0})', String(dirtyRemote.size))}
+              {/* ⚠️ 2026-10-23 (UX аудит X7): «синк» → «Дахин илгээх» (`AclRepairNote`-ийн товчтой ижил үг) */}
+              {syncing ? tr('Илгээж байна…') : tr('Дахин илгээх ({0})', String(dirtyRemote.size))}
             </button>
           )}
           {drafts.size > 0 && (
@@ -1435,10 +1555,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               className={s.cancelBtn}
               disabled={saving}
               /* ⚠️ `requestClose`-той ИЖИЛ баталгаажуулалт (2026-09-23) — нэг товшилтоор бүх ноорог арчигдахгүй */
+              /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm`; асуулт нь энэ товчийн үйлдлийг нэрлэнэ («гарах» биш — панел хаагдахгүй) */
               onClick={() => {
-                if (drafts.size > 0
-                  && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
-                setDrafts(new Map()); setSaved(null);
+                if (drafts.size === 0) return;
+                void askConfirm(tr('{0} хэрэглэгчийн хадгалаагүй өөрчлөлтийг болих уу?', String(drafts.size)), { danger: true, ok: tr('Өөрчлөлтийг болих') })
+                  .then((yes) => { if (yes) { setDrafts(new Map()); setSaved(null); setAddNote(''); } });
               }}
             >
               {tr('Болих')}

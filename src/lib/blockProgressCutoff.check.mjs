@@ -10,7 +10,7 @@
  *      болзошгүй блокийг админд засуулах жагсаалт (өгөгдлийг засахгүй, тоонд нөлөөгүй).
  */
 import assert from 'node:assert/strict';
-import { compute, history, progressCutoff, isFutureDay, mapKeyIssues, pkgProgressOf } from './blockProgress.ts';
+import { compute, history, progressCutoff, isFutureDay, mapKeyIssues, pkgProgressOf, winnerCells } from './blockProgress.ts';
 import { buildPhys } from './finPhys.ts';
 import { TASK_SHEET, buildingKey } from './services.ts';
 import { kpiComplete } from './ceo/kpi.ts';
@@ -77,6 +77,90 @@ const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
   assert.deepEqual(r.relabel, [{ measured: 'БАГЦ1|29/3', feature: 'БАГЦ2|29/3' }], '29/3 — багцын нэр буруу байж болзошгүй');
   const clean = mapKeyIssues([buildingKey('Багц 1', '1')], [buildingKey('Багц 1', '1')]);
   assert.deepEqual(clean, { dup: [], orphan: [], relabel: [] });
+}
+
+/* ── 2б. ⚠️ 2026-10-21 (аудит): `history` — ӨӨР хуудасны хоосон нүд хэмжилтийг ДАРАХГҮЙ (`compute`-ийн дүрэм) ── */
+{
+  const today = '2026-10-20';
+  const k = buildingKey('Багц 4-2', '6/1');
+  const sh = (r, sheet) => ({ ...r, sheet });
+  /* 9F хэмжилттэй, 12F ижил блокт ХООСОН нүд (сүүлийн огноотой, мөн ижил өдөр) */
+  const rows = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-09-01', null), 'b42_12f'),  /* ижил өдөр — «сүүлийнх ялна» гэж дарахгүй */
+    sh(row('Багц 4-2', '6/1', '2026-10-01', null), 'b42_12f'),  /* шинэ огноо — цэг болохгүй */
+  ];
+  const h = history(rows, today);
+  assert.deepEqual(h.get(k), [{ date: '2026-09-01', pct: 40 }], '12F-ийн хоосон нүд 9F-ийн 40%-ийг дарахгүй');
+  assert.equal(compute(rows, today).get(k)?.overall, 40, 'зурагтай (compute) нэг тоо');
+
+  /* 12F УТГАТАЙ болбол хоёулаа цэг; 9F-ийн дараагийн null (өөр хуудас утгатай) мөн хаягдана */
+  const both = [
+    ...rows,
+    sh(row('Багц 4-2', '6/1', '2026-10-05', 0.60), 'b42_12f'),
+    sh(row('Багц 4-2', '6/1', '2026-10-10', null), 'b42_9f'),
+  ];
+  assert.deepEqual(history(both, today).get(k)?.map((p) => [p.date, p.pct]),
+    [['2026-09-01', 40], ['2026-10-05', 60]]);
+
+  /* НЭГ хуудас дотор null = нүд цэвэрлэгдсэн (хуучин дүрэм хэвээр) */
+  const cleared = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-10-01', null), 'b42_9f'),
+  ];
+  assert.deepEqual(history(cleared, today).get(k)?.map((p) => p.pct), [40, null], 'нэг хуудасны null цэг хэвээр');
+
+  /* Хуудасны түлхүүргүй мөр (хуучин кэш) — хуучин дүрмээр: null цэг үлдэнэ */
+  const legacy = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    row('Багц 4-2', '6/1', '2026-10-01', null),
+  ];
+  assert.deepEqual(history(legacy, today).get(k)?.map((p) => p.pct), [40, null]);
+
+  /* Ирээдүйн огноотой утга «утгатай хуудас» гэж тоологдохгүй — 12F-ийн зөвхөн ирээдүйд хэмжигдсэн бол 9F-ийн null хэвээр */
+  const fut = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-10-01', null), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-11-01', 0.90), 'b42_12f'),
+  ];
+  assert.deepEqual(history(fut, today).get(k)?.map((p) => p.pct), [40, null]);
+}
+
+/* ── 2в. ⚠️ 2026-10-21 (аудит): ялагчийн ГАНЦ дүрэм — `history`-ийн сүүлийн цэг == `compute`, мөрийн дарааллаас хамаарахгүй ── */
+{
+  const today = '2026-10-20';
+  const k = buildingKey('Багц 4-2', '6/1');
+  const sh = (r, sheet) => ({ ...r, sheet });
+  /* 9F 40 (09-01) → 9F ИЖИЛ хуудсандаа цэвэрлэгдсэн (10-10) · 12F 30 (08-01): ялагч 12F-ийн 30 (утгатай хуудас) */
+  const rows = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-10-10', null), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-08-01', 0.30), 'b42_12f'),
+  ];
+  const pm = compute(rows, today);
+  assert.equal(pm.get(k)?.overall, 30, 'зураг: 9F цэвэрлэгдсэн тул 12F-ийн 30');
+  assert.equal(pm.get(k)?.date, '2026-08-01');
+  const h = history(rows, today).get(k);
+  assert.deepEqual(h?.map((p) => [p.date, p.pct]), [['2026-08-01', 30], ['2026-09-01', 40], ['2026-10-10', 30]],
+    'цуваа: 10-10-нд 9F цэвэрлэгдэхэд 12F-ийн 30 руу буцна (урьд сүүлийн цэг 40 байв)');
+  assert.equal(h?.at(-1)?.pct, pm.get(k)?.overall, 'сүүлийн цэг == зураг');
+  /* мөрийн дараалал (12F эхэнд) — урьд `compute` overall null болдог байв */
+  const rev = [...rows].reverse();
+  assert.equal(compute(rev, today).get(k)?.overall, 30, 'дарааллаас хамаарахгүй');
+  assert.deepEqual(history(rev, today).get(k)?.map((p) => [p.date, p.pct]), h?.map((p) => [p.date, p.pct]));
+  const wc = winnerCells(rows, today).get(k)?.get(TASK_SHEET.constructionNo);
+  assert.equal(wc?.sheet, 'b42_12f'); assert.equal(wc?.pct, 30);
+  /* бүх хуудас цэвэрлэгдсэн — ялагч null: зурагт алга, цуваа null-аар төгсөнө */
+  const allNull = [...rows, sh(row('Багц 4-2', '6/1', '2026-10-12', null), 'b42_12f')];
+  assert.equal(compute(allNull, today).has(k), false);
+  assert.equal(history(allNull, today).get(k)?.at(-1)?.pct, null);
+  /* ижил өдөр хоёр хуудас утгатай — сүүлийн мөр (их OID) ялна; «нэг өдөрт хоёр бичлэг» дүрэм хэвээр */
+  const same = [
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.40), 'b42_9f'),
+    sh(row('Багц 4-2', '6/1', '2026-09-01', 0.50), 'b42_12f'),
+  ];
+  assert.equal(compute(same, today).get(k)?.overall, 50);
+  assert.deepEqual(history(same, today).get(k), [{ date: '2026-09-01', pct: 50 }]);
 }
 
 /* ── 3. CEO картын кэшийн `keep` — эх унасан картыг кэшлэхгүй ── */

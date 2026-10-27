@@ -19,7 +19,7 @@ import type {
 } from 'pdfmake/interfaces';
 import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
-import { buildFindings, type ReportExtra } from '@/lib/reportData';
+import { buildFindings, BAGTS_GAP_PTS, type ReportExtra } from '@/lib/reportData';
 import { ailTotal } from '@/lib/execData';
 import { num, pct, dateTime } from '@/lib/format';
 
@@ -207,7 +207,11 @@ export function buildReportDoc(
 
       ...section('2', tr('Орон сууцны багцууд'),
         /* ⚠️ Багцын ТОО өгөгдлөөс (дэлгэцтэй ижил, 2026-09-17) — урьд нь «долоон» хатуу. */
-        tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), ail, bn(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length))),
+        /* ⚠️ 2026-10-26 (аудит): дэлгэцтэй (`Tailan` §2) нэг дүрэм — зөрүү `BAGTS_GAP_PTS`-ээс их үед л «их байна», эс бөгөөс
+           «ойролцоо»; төсөв 0/алга → «—» (`bnOrDash`, «0» биш) */
+        (d.bestBagts != null && d.worstBagts != null && d.bestBagts.pct - d.worstBagts.pct > BAGTS_GAP_PTS
+          ? tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), ail, bnOrDash(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length))
+          : tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэл ойролцоо байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), ail, bnOrDash(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length)))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
       { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (төг)'), true), th(tr('Гүйцэтгэл'), true)],
@@ -216,7 +220,7 @@ export function buildReportDoc(
           td(budgetOf(x.key) > 0 ? bn(budgetOf(x.key)) : '—', true), td(pct(x.progress, 2), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(blocks), true, TOTAL), td(ail, true, TOTAL),
-          td(bn(budget), true, TOTAL), td(pct(bagtsAvg, 2), true, TOTAL)],
+          td(bnOrDash(budget), true, TOTAL), td(pct(bagtsAvg, 2), true, TOTAL)],
       ] }, layout: tableLayout },
 
       ...section('3', tr('Багцын жигнэсэн гүйцэтгэл'),

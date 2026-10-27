@@ -17,7 +17,7 @@
  * `schemDetail`) эвдрэхгүйн тулд. Хувь = чөлөөлсөн ÷ нийт.
  */
 
-import { queryGroup, count, sum, sqlStr, type Row } from '@/lib/query';
+import { queryFeatures, sqlStr, type Aoi, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_CLEARED, PARCEL_LEFT } from '@/lib/services';
 import { text } from '@/lib/format';
@@ -85,6 +85,101 @@ export function statusRawsWhere(field: string, raws: Iterable<string>, unknown: 
 export const parcelAltAreaWhere = (): string =>
   `${PARCEL_LEFT.fields.area} IS NULL AND ${PARCEL_LEFT.fields.areaAlt} IS NOT NULL`;
 
+/** Полигоны (системийн) талбайн талбар — Enterprise-д `SHAPE__Area` (ТОМ `SHAPE`, бодит нэр) */
+export const PARCEL_SHAPE_AREA = 'SHAPE__Area';
+
+const posOrNull = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/**
+ * НЭГ НЭГЖ ТАЛБАРЫН ТАЛБАЙ (м²): `area_m2` > 0 → түүнийг; эс бөгөөс `Талб_1` > 0; эс бөгөөс ПОЛИГОНЫ талбай; бүгд алга → null.
+ * ⚠️ 2026-10-22 (аудит): `area_m2 = 0` нь хэмжилт БИШ (талбайгүй нэгж талбар байхгүй) — амьдаар 24 мөр (`Талб_1` ч 0) нийт
+ *    талбайд 0 нэмж, полигоноор 9,015 м² дутуу гардаг байв. `land.ts` · `Gazar.tsx` · `ceo/land.ts` НЭГ дүрэм.
+ */
+export function parcelAreaOf(r: Row): number | null {
+  const F = PARCEL_LEFT.fields;
+  return posOrNull(r[F.area]) ?? posOrNull(r[F.areaAlt]) ?? posOrNull(r[PARCEL_SHAPE_AREA]);
+}
+
+/**
+ * ХУВААГДСАН нэгж талбарын ДАВХАР талбай — ижил `parcel_id` БА ижил `area_m2`-тэй олон полигоны ЭХНИЙХ нь л талбайгаа
+ * өгнө (бусад нь 0). ⚠️ 2026-10-22 (аудит): амьдаар 3 нэгж талбар 2 полигонд хуваагдаж бүтэн `area_m2`-оо давтдаг
+ * (685 · 578 · 436 м²) — нийт талбайд хоёр тоологддог байв. Дугааргүй мөр хөндөгдөхгүй. Мөрийн ТОО өөрчлөгдөхгүй.
+ */
+export function parcelAreasDeduped(rows: readonly Row[]): (number | null)[] {
+  const F = PARCEL_LEFT.fields;
+  const seen = new Set<string>();
+  return rows.map((r) => {
+    const a = parcelAreaOf(r);
+    const no = String(r[F.parcelNo] ?? '').trim();
+    const raw = posOrNull(r[F.area]);
+    if (a == null || !no || raw == null) return a;
+    const k = `${no}|${raw}`;
+    if (seen.has(k)) return 0;
+    seen.add(k);
+    return a;
+  });
+}
+
+/**
+ * Нэгж талбарын мөрүүдийг `field`-ээр (анхдагч: төлөв) БҮЛЭГЛЭНЭ — `queryGroup`-ийн хэлбэр `{ [field], n, a }`.
+ * Талбай нь `parcelAreaOf` + хуваагдсан нэгж талбарыг нэг удаа (`parcelAreasDeduped`).
+ * ⚠️ 2026-10-22 (аудит): серверийн `SUM(area_m2)` нь дээрх хоёр дүрмийг хэрэгжүүлж чаддаггүй тул мөрөөр (2,088 мөр,
+ *    атрибут л) — `land.ts` ба `Gazar.tsx` ХОЁУЛАА (нэг нь л засагдвал «Нийт талбай» хоёр газар зөрнө).
+ */
+export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEFT.fields.status): Row[] {
+  const areas = parcelAreasDeduped(rows);
+  const m = new Map<string, Row>();
+  rows.forEach((r, i) => {
+    const v = r[field];
+    const k = v == null ? '\u0000null' : String(v);
+    const g = m.get(k) ?? { [field]: v ?? null, n: 0, a: 0 };
+    g.n = Number(g.n) + 1;
+    g.a = Number(g.a) + (areas[i] ?? 0);
+    m.set(k, g);
+  });
+  return [...m.values()];
+}
+
+/** Талбайн тооцоонд хэрэгтэй талбарууд */
+const parcelAreaFields = (): string[] => {
+  const F = PARCEL_LEFT.fields;
+  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA])];
+};
+
+/** Нэгж талбарын мөрүүд (талбайн тооцоонд, геометргүй) — `land.ts` ба `Gazar.tsx` (AOI-тай) хуваалцана */
+export function loadParcelAreaRows(where = '1=1', aoi?: Aoi): Promise<Row[]> {
+  return queryFeatures(PARCEL_LEFT.url, {
+    where, outFields: parcelAreaFields(), orderBy: `${PARCEL_LEFT.oid} ASC`, ...(aoi ? { aoi } : {}),
+  });
+}
+
+/** Газрын зориулалтын мэдэгдэх БҮТЭН нэрс (`landuse_de`-ийн амьд утгууд) — тасархай `Zoriulalt`-ийг нөхөхөд */
+const LANDUSE_FULL: readonly string[] = [
+  'Гэр, орон сууцны хашааны газар',
+  'Гэр бүлийн хэрэгцээний зуслангийн газар',
+  'Худалдаа, нийтийн үйлчилгээний газар, төв, цогцолбор',
+  'Үйлдвэрлэлийн барилга, байгууламж, бусад газар',
+];
+
+/**
+ * ГАЗРЫН ЗОРИУЛАЛТЫН ТЕКСТ — `landuse_de` (бүтэн), эс бөгөөс `Zoriulalt`; тасарсан `Zoriulalt`-ийг ГАНЦ таарах бүтэн
+ * нэрээр нөхнө (`known` + `LANDUSE_FULL`). Хоосон/зай бол null.
+ * ⚠️ 2026-10-22 (аудит): `fields.PARCEL_LEFT.fields.landuseFull`-ийн ⚠️ — 582 мөр «…хашааны га» гэж тасархай гардаг байв.
+ *    Англи хэлэнд дуудагч `tr()`-ээр (enData-д бүтэн ба тасархай түлхүүр хоёулаа бий).
+ */
+export function landuseText(full: unknown, short: unknown, known: readonly string[] = []): string | null {
+  const f = String(full ?? '').trim();
+  if (f) return f;
+  const s = String(short ?? '').trim();
+  if (!s) return null;
+  const hits = [...new Set([...known, ...LANDUSE_FULL])].filter((k) => k !== s && k.startsWith(s));
+  return hits.length === 1 ? hits[0] : s;
+}
+
 export type LandStatus = {
   /** Нийт нэгж талбар (бүх төлөв, хоосон Tuluv орно) */
   total: number;
@@ -139,28 +234,11 @@ const cleanReason = (v: unknown): string => {
 /** Нэг удаа татаад кэшлэнэ — олон дашбоард зэрэг дуудахад нэг л багц хүсэлт явна */
 export function loadLandStatus(): Promise<LandStatus> {
   if (!cache || Date.now() - cacheAt > CACHE_TTL_MS) {
-    const L = PARCEL_LEFT;
     cacheAt = Date.now();
-    const mine = Promise.all([
-      queryGroup(
-        L.url,
-        L.fields.status,
-        [count(L.oid, 'n'), sum(L.fields.area, 'a')],
-      ),
-      /**
-       * ⚠️ `areaAlt` НӨХӨЛТ: `area_m2` (кадастр) хоосон ч гараар бичсэн `Талбай`
-       * утгатай мөрүүд бий (2026-08: 9 мөр, 4,328 м²) — эдгээрийг алгасвал
-       * «Нийт талбай» дутуу гарна (services.ts-ийн `areaAlt`-ийн амлалт).
-       * Эдгээр FeatureServer outStatistics-т SQL илэрхийлэл (COALESCE) авдаггүй
-       * тул тусдаа асуулгаар татаж клиент талд нэмнэ.
-       */
-      queryGroup(
-        L.url,
-        L.fields.status,
-        [sum(L.fields.areaAlt, 'a')],
-        parcelAltAreaWhere(),
-      ),
-    ]).then(([statusRows, altRows]) => buildLandStatus(statusRows, altRows));
+    /* ⚠️ 2026-10-22 (аудит): серверийн `SUM(area_m2)` + `Талб_1` нөхөлтийн ОРОНД мөрөөр (`parcelGroupRows`) — `area_m2 = 0`
+       мөрд полигоны талбай, хуваагдсан нэгж талбарын талбай нэг удаа (`parcelAreaOf` · `parcelAreasDeduped`-ийн ⚠️).
+       Амьдаар: 95.40 га → 96.13 га. `Талб_1` нөхөлт `parcelAreaOf`-д багтсан тул `altRows` хоосон. */
+    const mine = loadParcelAreaRows().then((rows) => buildLandStatus(parcelGroupRows(rows), []));
     cache = mine;
     // Амжилтгүй амлалтыг кэшлэхгүй — «дахин оролдох» сэргэх боломжтой байг
     /* ⚠️ 2026-10-05: зөвхөн ӨӨРӨӨ идэвхтэй үед (`live.cached`-ийн `p === mine` хаалттай ижил) —

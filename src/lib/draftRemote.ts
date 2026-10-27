@@ -25,10 +25,13 @@
  * шаардах бөгөөд тэр нь админуудын засварлах чадварыг таслана.
  */
 
+import { GUITS } from '@/lib/services/env';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, ROLE_BY_USER } from './services';
 import { arcgisPost } from '@/lib/query';
 import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
+import { currentUser } from './who';
 
 const TITLE = 'Selbe_Guitsetgel_Draft';
 const TABLE_NAME = 'drafts';
@@ -43,6 +46,17 @@ const TABLE_NAME = 'drafts';
  * хагас ноорог хүлээж авна.
  */
 export const REMOTE_MAX = 80_000;
+
+/**
+ * АЛСЫН НООРОГ БИЧИХ ТҮГЖИГДСЭН ҮҮ (⚠️ 2026-10-19, «Систем түр хаах»).
+ * ⚠️ `who.currentUser()` хоосон = систем ЭНЭ хэрэглэгчид хаалттай (`AuthGate.closedFor`) эсвэл эрх
+ *    хасагдсан/шалгагдаж байна — тэр үед Portal `frozen` хэлбэрээр АМЬД тул ард нь явдаг мөчлөг/flush
+ *    (`useSharedDraft` · `useDraftSync`) хаалтын үеэр ArcGIS руу бичсээр байв. Одоо алсын бичилт ТАТГАЛЗАНА,
+ *    локал хуулбар (дуудагчид — `hdWriteLocal` г.м.) хэвээр; дуудагчийн backoff (≤60 с) нь нээгдмэгц үргэлжилнэ.
+ * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон, дев) ба Node (тест) орчинд түгжихгүй — `who.requireCap`-ийн дүрэм.
+ */
+export const draftWriteLocked = (): boolean =>
+  typeof window !== 'undefined' && !!AUTH.appId && !currentUser();
 
 let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
@@ -138,9 +152,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
     tables: [{
       name: TABLE_NAME,
       type: 'Table',
-      objectIdField: 'OBJECTID',
+      objectIdField: 'objectid',
       fields: [
-        { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
         /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08).
            ⚠️ Урьд нь «хэрэглэгч|багц» байсан: хүн бүр өөрийн мөртэй тул нэг
               багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ
@@ -174,6 +188,13 @@ async function createTable(token: string, user: string): Promise<string | null> 
  */
 export async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
+  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/191) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
+     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
+  const direct: string | null = `${GUITS}/191`;
+  if (direct) {
+    tableUrlCache = direct;
+    return direct;
+  }
   const auth = await getAuth();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
@@ -206,14 +227,24 @@ export async function layer(url: string): Promise<FeatureLayerInst> {
   const hit = layerCache.get(url);
   if (hit) return hit;
   const p = (async () => {
+    /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
+    await installEntInterceptor();
     const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
-    return new FeatureLayer({ url });
+    const fl = new FeatureLayer({ url });
+    /* ⚠️ 2026-10-21: ачааллыг кэшийн promise ДОТОР хүлээнэ. `load()` нэг удаа унасан
+       (мета timeout · 498/499) instance нь `failed` төлөвт мөнхөд үлддэг (Loadable дахин
+       ачаалдаггүй) тул урьд нь ноорог унших/хадгалах/цэвэрлэх ба илгээлт (`submission.ts`)
+       хуудас дахин ачаалах хүртэл бүгд унадаг байв. Унавал доорх `catch` кэшээс хасна —
+       дараагийн дуудлага ШИНЭ instance үүсгэнэ. */
+    await fl.load();
+    return fl;
   })();
   /* ⚠️ PROMISE-ыг кэшилнэ (утгыг биш): зэрэг ирсэн хоёр дуудлага НЭГ
      instance хүлээнэ — эс бөгөөс хоёулаа өөрийгөө үүсгэж давхардана. */
   layerCache.set(url, p);
-  /* Унавал кэшээс хасна — дараагийн дуудлага дахин оролдоно */
-  p.catch(() => layerCache.delete(url));
+  /* Унавал (импорт · конструктор · `load()`) кэшээс хасна — дараагийн дуудлага дахин оролдоно.
+     ⚠️ Зөвхөн ЭНЭ promise хэвээр байвал хасна — шинээр үүссэнийг устгахгүй. */
+  p.catch(() => { if (layerCache.get(url) === p) layerCache.delete(url); });
   return p;
 }
 
@@ -290,9 +321,9 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
       /* ⚠️ ЗӨВХӨН `at` — `payload` НЭМЭХГҮЙ, тэр нь энэ функцийн бүх утга учир */
-      outFields: ['OBJECTID', 'at'],
+      outFields: ['objectid', 'at'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const last = res.features[res.features.length - 1]?.attributes as { at?: number } | undefined;
     if (!last || !Number.isFinite(last.at)) return null;
@@ -320,9 +351,9 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: legacyWhere(pkgKey),
-      outFields: ['OBJECTID', 'at', 'payload', 'dkey', 'usr'],
+      outFields: ['objectid', 'at', 'payload', 'dkey', 'usr'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const out: LegacyDraft[] = [];
     for (const f of res.features) {
@@ -343,16 +374,17 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
 
 /** ХУУЧИН мөрүүдийг устгана — шинэ түлхүүрт АМЖИЛТТАЙ бичсэний ДАРАА л дуудна. */
 export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
+  if (draftWriteLocked()) return false; // ⚠️ 2026-10-19: `draftWriteLocked`-ийн ⚠️
   try {
     const url = await tableUrl(false);
     if (!url) return false;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: legacyWhere(pkgKey),
-      outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
+      outFields: ['objectid'], returnGeometry: false, orderByFields: ['objectid ASC'],
     });
     const oids = res.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     if (!oids.length) return true;
     const r = await fl.applyEdits(
@@ -376,10 +408,10 @@ async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
-      outFields: ['OBJECTID', 'at', 'payload'],
+      outFields: ['objectid', 'at', 'payload'],
       returnGeometry: false,
       /* Давхардсан мөр (зэрэгцээ бичилтийн race) — СҮҮЛИЙНХ нь ялна */
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const last = res.features[res.features.length - 1]?.attributes as
       { at?: number; payload?: string } | undefined;
@@ -472,6 +504,10 @@ export async function saveRemoteDraft(
   if (payload.length > REMOTE_MAX) {
     return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
   }
+  /* ⚠️ 2026-10-19: систем хаалттай / эрх түгжигдсэн үед алсад бичихгүй (`draftWriteLocked`-ийн ⚠️) */
+  if (draftWriteLocked()) {
+    return { ok: false, error: tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтчид, нээгдмэгц хуулагдана') };
+  }
   try {
     const auth = await getAuth();
     if (!auth) return { ok: false, error: tr('нэвтрээгүй эсвэл токен дууссан') };
@@ -488,12 +524,12 @@ export async function saveRemoteDraft(
     const dkey = keyOf(pkgKey);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(dkey)}`,
-      outFields: ['OBJECTID', 'at'],
+      outFields: ['objectid', 'at'],
       returnGeometry: false,
-      orderByFields: ['OBJECTID ASC'],
+      orderByFields: ['objectid ASC'],
     });
     const oids = found.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     const target = oids.length ? oids[oids.length - 1] : null;
     if (opt && opt.expectAt !== undefined) {
@@ -508,7 +544,7 @@ export async function saveRemoteDraft(
     const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at, payload };
     const edit = {
       ...(target != null
-        ? { updateFeatures: [{ attributes: { OBJECTID: target, ...attrs } }] }
+        ? { updateFeatures: [{ attributes: { objectid: target, ...attrs } }] }
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
@@ -538,9 +574,9 @@ export async function saveRemoteDraft(
       try {
         const chk = await fl.queryFeatures({
           where: `dkey = ${sqlStr(dkey)}`,
-          outFields: ['OBJECTID', 'at'],
+          outFields: ['objectid', 'at'],
           returnGeometry: false,
-          orderByFields: ['OBJECTID ASC'],
+          orderByFields: ['objectid ASC'],
         });
         const got = Number(chk.features[chk.features.length - 1]?.attributes?.at);
         if (Number.isFinite(got) && got > 0 && got !== at) {
@@ -567,6 +603,8 @@ export async function saveRemoteDraft(
  *    ажлыг ч арчих тул дуудагч тал баталгаажуулж асуух ёстой.
  */
 export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
+  /* ⚠️ 2026-10-19: хаалттай үед устгах ч бичилт — татгалзана (`draftWriteLocked`) */
+  if (draftWriteLocked()) return false;
   try {
     const auth = await getAuth();
     if (!auth) return false;
@@ -575,11 +613,11 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
     const fl = await layer(url);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
-      outFields: ['OBJECTID'],
+      outFields: ['objectid'],
       returnGeometry: false,
     });
     const oids = found.features
-      .map((f) => f.attributes?.OBJECTID as number)
+      .map((f) => f.attributes?.objectid as number)
       .filter((x) => typeof x === 'number');
     if (!oids.length) return true;
     const r = await fl.applyEdits(

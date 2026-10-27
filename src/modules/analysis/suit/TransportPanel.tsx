@@ -4,6 +4,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
+import { rovingTab, tabFocusNav } from '@/components/ui';
 import {
   T_MODES, tModeDef, tItems, tReadout, tRange,
   BUS_BAND_COLOR, type TMode, type TransportCtx,
@@ -65,12 +66,14 @@ export function TransportPanel({
     <Card title={tr('Тээвэр-идэвхийн шинжилгээ')}>
       <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
         {/* ── 7 дүрслэлийн сонгогч ── */}
-        <div className={c.seg} role="tablist" aria-label={tr('Тээврийн дүрслэл')}>
-          {T_MODES.map((m) => (
+        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`); сонголт Enter/Space-ээр */}
+        <div className={c.seg} role="tablist" aria-label={tr('Тээврийн дүрслэл')} onKeyDown={(e) => tabFocusNav(e)}>
+          {T_MODES.map((m, i) => (
             <button
               key={m.key}
               type="button"
               role="tab"
+              tabIndex={rovingTab(active && mode === m.key, i, active)}
               aria-selected={active && mode === m.key}
               className={`${c.segBtn} ${active && mode === m.key ? c.segOn : ''}`}
               onClick={() => setMode(m.key)}

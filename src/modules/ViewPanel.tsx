@@ -13,10 +13,11 @@ import { queryGroup, queryGroupEx, count, sum, groups, groupWhere, sqlStr, type 
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
-  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY, facetName,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
-import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, type Totals } from '@/lib/totals';
+import { zoneLabel } from '@/lib/zoneLabel';
+import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, useLazyTotals, type Totals } from '@/lib/totals';
 import { POPULATION_FIELD } from '@/lib/live';
 import { num, text, shade } from '@/lib/format';
 import { toggleIsolate, zoomWhereFor, type Iso } from './viewPanelLogic';
@@ -50,6 +51,8 @@ const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
 /**
  * ⚠️ Тоо, хэмжээг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
  * Каталогийн багана ба энэ самбар ижил тоо харуулах ёстой.
+ * ⚠️ 2026-10-22: `totals` нь зөвхөн тоймын (`PLAN_LAYER_IDS`) давхаргууд; сонгосон давхаргын самбар (`LayerDashboard`)
+ * өөрийн давхаргаа давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`) уншина — каталогтой нэг агшны тоо.
  */
 export function ViewPanel({
   view,
@@ -122,7 +125,6 @@ export function ViewPanel({
       {def ? (
         <LayerDashboard
           d={def}
-          totals={totals}
           zone={zone}
           on={visible.includes(def.id)}
           toggle={() =>
@@ -281,11 +283,17 @@ function GroupCard({
   children?: React.ReactNode;
 }) {
   const x = cardStats(ids, map);
+  /* ⚠️ 2026-10-19: ТАТАГДААГҮЙ давхаргатай (Map-д алга — унасан/ачаалж буй) багц — дутуу нийлбэрийг бодит тоо
+     мэт харуулахгүй (`completeSum`-ийн дүрэм, толгойн «—»-тэй ижил). Урьд нь тоо татагдаагүй үед «N төрөл ·
+     0 объект» гэж «багц хоосон» мэт худал уншигддаг байв (null ≠ 0). */
+  const partial = ids.some((id) => LAYER_BY_ID[id] && !map.has(id));
   const rows: { v: string; k: string }[] = [];
   /* ⚠️ 2026-10-01: `qtyText`-ээр — жижиг багц «0.0 км» БИШ «450 м» */
-  if (x.km > 0) rows.push(splitQty(kmText(x.km)));
-  if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
-  if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
+  if (!partial) {
+    if (x.km > 0) rows.push(splitQty(kmText(x.km)));
+    if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
+    if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
+  }
 
   const body = (
     <>
@@ -307,7 +315,7 @@ function GroupCard({
         {/* ⚠️ Хэмжээгүй багц ч гэсэн хоосон харагдаж болохгүй — тоогоо өгнө */}
         {!rows.length && (
           <span className={s.cardStat}>
-            <span className={`${s.cardVal} num`}>{num(x.n)}</span>
+            <span className={`${s.cardVal} num`}>{partial ? '—' : num(x.n)}</span>
             <span className={s.cardKey}>{tr('объект')}</span>
           </span>
         )}
@@ -419,7 +427,10 @@ function PlanOverview({
         const cardIds = (key: keyof typeof GROUP_LAYERS) => GROUP_LAYERS[key].filter((id) => counted.includes(id));
 
         const on = counted.filter((id) => visible.includes(id));
-        const totalN = on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        /* ⚠️ 2026-10-21: сонголтын горимд ч татагдаагүй давхарга 0 биш — «Нийт»-тэй ИЖИЛ
+           дүрмээр null + «N давхарга татагдсангүй» (урьд нь чимээгүй бага гардаг байв). */
+        const onMissing = on.filter((id) => !map.has(id));
+        const totalN = onMissing.length ? null : on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
         /**
          * БҮСЭЭР ШҮҮГДЭЭГҮЙ СОНГОСОН ДАВХАРГА — `ZONE_ID`-гүй (`noZone`).
@@ -478,7 +489,10 @@ function PlanOverview({
             .flatMap((x) => (x.d && x.t ? [{ d: x.d, t: x.t }] : []));
           if (!layers.length) return [];
 
-          const n = layers.reduce((a, x) => a + x.t.n, 0);
+          /* ⚠️ 2026-10-21: багцын сонгосон давхаргын аль нэг нь татагдаагүй бол нийлбэр нь
+             худал бага — null («—»); донат/цуваа нь татагдсан давхаргуудаар үлдэнэ. */
+          const groupMissing = GROUP_LAYERS[g.key].some((id) => on.includes(id) && !map.has(id));
+          const n = groupMissing ? null : layers.reduce((a, x) => a + x.t.n, 0);
 
           // Донат — тоогоор эзлэх хувь. Тоо нь нэгжгүй тул багц дотор ҮРГЭЛЖ зөв.
           // ⚠️ НЭГ ӨНГӨ — багц бүрийн донат/цуваа нь тухайн БАГЦЫН өнгөний
@@ -635,6 +649,12 @@ function PlanOverview({
                   title={tr('Сонгосон')}
                   note={tr('{0} давхарга · {1}', num(on.length), num(totalN))}
                 >
+                  {onMissing.length > 0 && (
+                    <p className={s.warnNote} role="alert">
+                      {tr('{0} давхарга татагдсангүй', num(onMissing.length))}{' '}
+                      <button type="button" className={s.zoneBarBtn} onClick={retryTotals}>{tr('Дахин оролдох')}</button>
+                    </p>
+                  )}
                   <div
                     className={pickedGroups.length > 1 ? s.pickedGrid : s.cardGrid}
                     style={pickedGroups.length > 1 ? undefined : gridStyle(pickedGroups.length)}
@@ -738,7 +758,7 @@ function LayerTypeCharts({
   d, f, zone, view,
 }: {
   d: LayerDef;
-  f: { field: string; label: string };
+  f: { field: string; label: string; canon?: (raw: string) => string };
   zone: string | null;
   view: ViewKey;
 }) {
@@ -778,10 +798,18 @@ function LayerTypeCharts({
   // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт (олон өнгө биш)
   const shade = monoShades(d, data);
   const colorOf = (label: string) => shade.get(label) ?? BLANK_HUE;
+  /* ⚠️ 2026-10-22 (аудит №4): ангиллын НЭР — `LayerCatalog.nameOf`-той нэг дүрэм (бүсийн ангилал → `f.canon`, кодтой
+     талбар → `paint.labels`), орчуулсан. Урьд нь донат/багана ба шүүлтийн чип түүхий утга («орон сууцны бүс») харуулж
+     англи горимд монголоор үлддэг байв. Түлхүүр · өнгө · шүүлтийн нөхцөл түүхий утгаараа хэвээр. */
+  const nameOf = (label: string): string => tr(f.canon
+    ? f.canon(label)
+    : f.field === d.paint?.field
+      ? d.paint.labels?.[label] ?? label
+      : label);
 
   const items = data.map((x) => ({
     key: `${d.id}:${x.label}`,
-    label: x.label,
+    label: nameOf(x.label),
     value: x.values.n,
     color: colorOf(x.label),
   }));
@@ -799,7 +827,7 @@ function LayerTypeCharts({
     if (!item) return;
     toggle({
       key,
-      label: item.label,
+      label: nameOf(item.label),
       group: `${d.title} · ${f.label}`,
       where: groupWhere(f.field, item),
       view,
@@ -816,7 +844,7 @@ function LayerTypeCharts({
       .filter((x) => x.values.q > 0)
       .map((x) => ({
         key: `${d.id}:q:${x.label}`,
-        label: x.label,
+        label: nameOf(x.label),
         value: d.qty!.unit === 'м²' ? x.values.q / 10_000 : d.qty!.unit === 'км' ? x.values.q : x.values.q / 1_000,
         display: qtyText(d, x.values.q) ?? '',
         color: colorOf(x.label),
@@ -900,14 +928,12 @@ function LayerTypeCharts({
  */
 function LayerDashboard({
   d,
-  totals,
   zone,
   on,
   toggle,
   onBack,
 }: {
   d: LayerDef;
-  totals: Async<Map<string, Totals>>;
   zone: string | null;
   on: boolean;
   toggle: () => void;
@@ -995,7 +1021,11 @@ function LayerDashboard({
     pick(k, item ? groupWhere(f.field, item) : null);
   };
 
-  const t = totals.state === 'ready' ? totals.data.get(d.id) : undefined;
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): ЭНЭ давхаргын тоо — давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`).
+     `Portal` самбарт одоо зөвхөн тоймын (`PLAN_LAYER_IDS`) тоог татдаг тул каталогоос сонгосон бусад давхарга (33)
+     тэр Map-д байхгүй — урьд нь каталогийн бүх 158-ыг урьдчилж татдаг байв. Каталог/тоймтой ижил агшны тоо. */
+  const one = useLazyTotals(zone, [d.id]);
+  const t = one.map.get(d.id);
   const qty = t ? qtyText(d, t.q) : null;
 
   /**
@@ -1040,10 +1070,9 @@ function LayerDashboard({
           </div>
         </div>
 
-        {totals.state === 'error' ? (
-          <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={totals.retry} />
-        ) : totals.state === 'ready' && !t ? (
-          /* ⚠️ 2026-09-30: хэсэгчилсэн Map-д энэ давхарга алга (унасан) — урьд нь «…» мөнхөд */
+        {one.failed.length > 0 ? (
+          /* ⚠️ 2026-09-30: унасан давхарга — урьд нь «…» мөнхөд. 2026-10-22: унасныг `useLazyTotals` хэлнэ;
+             «Дахин оролдох» нь бүх тоог шинэ эринээр (`retryTotals`) */
           <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={retryTotals} />
         ) : (
           <Stats cols={avg != null ? 3 : 2}>
@@ -1086,13 +1115,14 @@ function LayerDashboard({
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
                 const items = f.items.map((item) => ({
                   key: `${f.label}:${item.label}`,
-                  label: item.label,
+                  /* ⚠️ 2026-10-26 (аудит): харагдах нэр (`facetName`) — түлхүүр · өнгө · шүүлт түүхий утгаараа */
+                  label: facetName(d, f.field, item.label),
                   value: item.values.n,
                   // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс 1.8 км,
                   //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
                   display: [
                     `${num(item.values.n)}`,
-                    qtyText(d, item.values.q),
+                    qtyText(d, item.stats.q ?? null),
                   ].filter(Boolean).join(' · '),
                   color: shade.get(item.label) ?? BLANK_HUE,
                 }));
@@ -1146,7 +1176,7 @@ function LayerDashboard({
                       value: item.values.n,
                       display: [
                         `${num(item.values.n)}`,
-                        qtyText(d, item.values.q),
+                        qtyText(d, item.stats.q ?? null),
                       ].filter(Boolean).join(' · '),
                     }))}
                   />
@@ -1247,12 +1277,16 @@ function PickedZone({
     const extra = rows
       .filter((r) => !known.has(r.label) && r.values.n > 0)
       .map((r) => ({ label: r.label, n: r.values.n, where: groupWhere(B.status, r) }));
+    /* ⚠️ 2026-10-21 (аудит): өрх/хүн амын нийлбэр `stats`-аас — БҮХ бүлэгт хэмжилтгүй бол `null` («—»), 0 БИШ
+       (`query.Group.stats`-ийн ⚠️: null ≠ 0). Барилгын тоо (`n`) нь count тул үргэлж тоо. */
+    const sumStat = (k: string): number | null => (rows.every((r) => r.stats[k] == null)
+      ? null : rows.reduce((a, r) => a + (r.stats[k] ?? 0), 0));
     return {
       status,
       extra,
       built: rows.reduce((a, r) => a + r.values.n, 0),
-      urh: rows.reduce((a, r) => a + r.values.urh, 0),
-      pop: rows.reduce((a, r) => a + r.values.pop, 0),
+      urh: sumStat('urh'),
+      pop: sumStat('pop'),
     };
   }, [id]);
 
@@ -1265,8 +1299,9 @@ function PickedZone({
   return (
     <Section title={tr('Сонгосон бүс')}>
       <div className={s.zoneHead} style={{ '--tone': ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE } as CSSProperties}>
-        <span className={s.zoneHeadId}>{id}</span>
-        <span className={s.zoneHeadType}>{type}</span>
+        {/* ⚠️ 2026-10-26 (аудит): англи горимд «Багц-3.1», «Олон нийтийн бүс» монголоор үлддэг байв — ZoneFilter-тэй нэг нэр */}
+        <span className={s.zoneHeadId}>{zoneLabel(id)}</span>
+        <span className={s.zoneHeadType}>{tr(type)}</span>
       </div>
 
       <Stats cols={3}>
@@ -1278,7 +1313,12 @@ function PickedZone({
       <div style={{ marginTop: 10 }}>
         <Rows
           items={[
-            { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
+            /* ⚠️ 2026-10-26 (аудит): BCR нь 0–1 бутархай (амьд 0.39987) — «Тохиромжтой байдал» хувиар (40%) харуулдаг тул нэг бүс
+               хоёр хэмжээстэй уншигддаг байв. `analysis/data.bcrToPct`-ийн дүрэм (≤1.5 бол ×100); 0 нь «—» (анализтай ижил). */
+            { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {(() => {
+              const b = n(F.bcr);
+              return b == null || b === 0 ? '—' : `${num(b <= 1.5 ? b * 100 : b, 0)}%`;
+            })()}</span> },
             // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
             //    ил + далдаас угсарна.
             /* ⚠️ 2026-09-30: ил ба далд ХОЁУЛАА хоосон бол «—» — урьд нь «… / 0» гэж хэмжилт мэт гардаг байв */
@@ -1448,7 +1488,7 @@ function PickedFeature({
                 onClick={() => apply(f.field, f.value)}
               >
                 <span className={s.filterKey}>{f.label}</span>
-                <span className={s.filterVal}>{text(f.value)}</span>
+                <span className={s.filterVal}>{facetName(def, f.field, text(f.value))}</span>
               </button>
             );
           })}

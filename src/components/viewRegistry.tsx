@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { ReactElement } from 'react';
+import { memo, type ReactElement } from 'react';
 import type { Dim } from '@/components/MapCanvas';
 import type { ViewKey } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
@@ -77,14 +77,15 @@ const LOAD = {
   analysis: () => import('@/modules/analysis/Suitability').then((m) => m.Suitability),
   finance: () => import('@/modules/Finance').then((m) => m.Finance),
   guitsetgel: () => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel),
-  qaqc: () => import('@/modules/Qaqc').then((m) => m.Qaqc),
-  chanar: () => import('@/modules/Chanar').then((m) => m.Chanar),
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
   /* ⚠️ ТУХ нь санхүү · хуваарь · чанар · ХАБЭА-гийн ачаалагчдыг дагуулдаг тул зөвхөн нээгдэх үедээ. */
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
   /* ⚠️ Багцын хамаарал — санхүүгийн ачаалагчийг (`loadFinData`) дагуулдаг тул нээгдэх үедээ (tezu-bonu). */
   bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
+  /* ⚠️ 2026-10-26: ТЭЗҮ/зураг төсөл ба 6 түвшний хуваарь — cashflow + Хуваарь татдаг тул нээгдэх үедээ */
+  zuragTosol: () => import('@/modules/ZuragTosol').then((m) => m.ZuragTosol),
+  tuvshin6: () => import('@/modules/LevelPlan').then((m) => m.LevelPlan),
   /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
      нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
   huvaari: () => import('@/modules/Huvaari').then((m) => m.Huvaari),
@@ -138,12 +139,12 @@ const DedButets = dynamic(() => LOAD.dedButets(), { ssr: false, loading: ViewLoa
 const Suitability = dynamic(() => LOAD.analysis(), { ssr: false, loading: ViewLoading });
 const Finance = dynamic(() => LOAD.finance(), { ssr: false, loading: ViewLoading });
 const Guitsetgel = dynamic(() => LOAD.guitsetgel(), { ssr: false, loading: ViewLoading });
-const Qaqc = dynamic(() => LOAD.qaqc(), { ssr: false, loading: ViewLoading });
-const Chanar = dynamic(() => LOAD.chanar(), { ssr: false, loading: ViewLoading });
 const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewLoading });
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
 const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false, loading: ViewLoading });
+const ZuragTosol = dynamic(() => LOAD.zuragTosol(), { ssr: false, loading: ViewLoading });
+const LevelPlan = dynamic(() => LOAD.tuvshin6(), { ssr: false, loading: ViewLoading });
 const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false, loading: ViewLoading });
 const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading: ViewLoading });
 const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false, loading: ViewLoading });
@@ -222,6 +223,8 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
     />
   ),
   bagtsHamaaral: () => <BagtsHamaaral />,
+  zuragTosol: () => <ZuragTosol />,
+  tuvshin6: () => <LevelPlan />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,
   habea: ({ dim, setDim }) => <Habea dim={dim} setDim={setDim} />,
@@ -231,8 +234,6 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   dedButets: ({ dim, setDim }) => <DedButets dim={dim} setDim={setDim} />,
   zovshoorol: () => <Zovshoorol />,
   guitsetgel: () => <Guitsetgel />,
-  qaqc: () => <Qaqc />,
-  chanar: () => <Chanar />,
   ma: () => <Ma />,
   /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд хэрэгтэй. URL-аар тойрч
      болохгүй — энэ функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
@@ -256,6 +257,10 @@ export function renderView(view: ViewKey, ctx: ViewCtx): ReactElement | null {
  *    тэмдэглэдэг. JSX проп нь үйл явдлын зам гэж тооцогдоно — урьдын
  *    `setView={setView}` хэлбэртэй ижил.
  */
-export function ViewSlot({ view, ctx }: { view: ViewKey; ctx: ViewCtx }) {
+/* ⚠️ 2026-10-26 (гүйцэтгэл P8): `memo` — `ctx` нь Portal-д `useMemo`-тэй (`slotCtx`) ч ЭНЭ нь memo-гүй байсан тул
+   Portal-ын рендер бүр (3 мин тутмын тэмдэг · сүлжээ · цонх нээх/хаах) бүтэн дэлгэцийн модулийг дээрээс доош дахин
+   зурдаг байв. ⚠️ Сэдэв (theme) солиход дахин зурагдах ёстой (JS-ээр `getComputedStyle` уншдаг модуль — Layout ·
+   habeaPanes · useRows) — тиймээс Portal `slotCtx`-ийн deps-д `theme`-ийг оруулсан. Хэл солих нь remount (key). */
+export const ViewSlot = memo(function ViewSlot({ view, ctx }: { view: ViewKey; ctx: ViewCtx }) {
   return renderView(view, ctx);
-}
+});

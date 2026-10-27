@@ -21,6 +21,11 @@
  *    файлыг засахгүйгээр ажиллаж эхэлнэ; байхгүй бол тэр мөрийг алгасна.
  */
 import type { ViewKey } from '@/lib/services';
+import { t as tr } from '@/lib/i18nCore';
+import { register } from '@/lib/dataBus';
+/* ⚠️ Зөвхөн ТӨРӨЛ — ma/mir модулиуд доор DYNAMIC (толгойн ⚠️) */
+import type { MaRow } from '@/lib/ma';
+import type { MirRow } from '@/lib/mir';
 import type { NavBadges } from './ViewRail';
 
 type Counter = (username: string | null) => Promise<number | null>;
@@ -36,9 +41,93 @@ async function probe(mod: Promise<unknown>, names: string[]): Promise<Counter | 
 }
 
 /**
+ * ⚠️ 2026-10-23 (UX аудит R5): «Гүйцэтгэл»-ийн хяналтын тоолуур + хэрэглэгч ГҮЙЦЭТГЭГЧ (`company` шат) эсэх.
+ *    Гүйцэтгэгчид `countReviewPending` нь өөрийн гар дээрх = БУЦААСАН (засах) ажил — «хүлээгдэж байна» гэвэл худал
+ *    (хэрэглэгч «хянагч хүлээж байна» гэж ойлгодог байв). Шошгыг `badgeLabelFor` гаргана.
+ */
+let guitsCompany = false;
+async function countReviewWithStage(username: string | null): Promise<number | null> {
+  const [{ countReviewPending }, { stageOfUser }] = await Promise.all([import('@/lib/hyanaltStore'), import('@/lib/guitsetgelAcl')]);
+  const n = await countReviewPending(username);
+  if (n != null) guitsCompany = stageOfUser((username ?? '').trim().toLowerCase()) === 'company';
+  return n;
+}
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит Q4): «MA · материал» цэсний тоо — ТАНЫ ШИЙДВЭР хүлээж буй FIC · М-акт баримт.
+ *    `ficMakt.decideFm`-ийн ЯГ тэр шалгуурууд: `pending` · `chanarReview` эрх · MA-гийн багц таны хянагчийн хүрээнд
+ *    (нэвтрэлт асаалттай үед — `ficMakt.strict`) · өөрийн оруулсан БИШ (`isOwnUpload`) · гинжний шат хаалттай БИШ
+ *    (`chainOf`). MA өөрөө Survey123-д шийдэгддэг (портал уншина) тул тоологдохгүй.
+ * ⚠️ Нэвтрээгүй · Enterprise сешнгүй (`entSession` null — «MA» хуудас өөрөө ч уншиж чадахгүй) · уншилт унасан → `null`
+ *    (тэмдэггүй, null ≠ 0). Хянагчийн эрхгүй → 0.
+ */
+/**
+ * ⚠️ 2026-10-26 (гүйцэтгэл P5): MA · MIR хүснэгтийг ТЭМДГИЙН замд 60 с санана — урьд нь 3 мин тутам ба бичилт бүрийн
+ *    дараа (`subscribeData`) хоёр бүтэн хүснэгтийг дахин татдаг байв.
+ *    · ЗӨВХӨН MA · MIR: тэдгээрийг портал БИЧДЭГГҮЙ (Survey123-д шийдэгддэг) тул бичилтийн дараа хуучрах зам алга.
+ *      FIC · М-акт (`loadFm`) нь порталаас бичигддэг (`addFm`/`decideFm`) тул САНАХГҮЙ — шийдвэрийн дараа тэмдэг шууд.
+ *    · Түлхүүр = портал хэрэглэгч + Enterprise хэрэглэгч — хэрэглэгч солигдоход өмнөх хүний мөр ашиглагдахгүй.
+ *    · «MA · материал» хуудасны өөрийн уншилт (`Ma.tsx`) ҮҮНИЙГ АШИГЛАХГҮЙ — тэр үргэлж шинэ.
+ *    · Алдаа санагдахгүй (амлалт хаягдана) — дараагийн тэмдгийн шинэчлэлт дахин оролдоно.
+ *    · `register(…, [])` — «Шинэчлэх» / хэл солих (`invalidateAll`) үед хаягдана.
+ */
+const MA_BADGE_TTL_MS = 60_000;
+let maMirCache: { key: string; at: number; p: Promise<[MaRows, MirRows]> } | null = null;
+register(() => { maMirCache = null; }, []);
+type MaRows = MaRow[];
+type MirRows = MirRow[];
+function maMirForBadge(key: string, loadMa: () => Promise<MaRows>, loadMir: () => Promise<MirRows>): Promise<[MaRows, MirRows]> {
+  const c = maMirCache;
+  if (c && c.key === key && Date.now() - c.at < MA_BADGE_TTL_MS) return c.p;
+  const p = Promise.all([loadMa(), loadMir()]);
+  const slot = { key, at: Date.now(), p };
+  maMirCache = slot;
+  p.catch(() => { if (maMirCache === slot) maMirCache = null; });
+  return p;
+}
+
+async function countMaPending(username: string | null): Promise<number | null> {
+  const me = (username ?? '').trim().toLowerCase();
+  if (!me) return null;
+  const [{ hasCap }, { entSession }, { AUTH }] = await Promise.all([
+    import('@/lib/caps'), import('@/lib/entDocs'), import('@/lib/services'),
+  ]);
+  if (!hasCap(me, 'chanarReview')) return 0;
+  const sess = entSession();
+  if (!sess) return null;
+  const [ma, mir, fm, acl, { PKGS }] = await Promise.all([
+    import('@/lib/ma'), import('@/lib/mir'), import('@/lib/ficMakt'), import('@/lib/chanarAcl'), import('@/modules/sheet/bagts.pkg'),
+  ]);
+  const [[mas, mirs], fms] = await Promise.all([maMirForBadge(`${me}|${sess.user}`, ma.loadMa, mir.loadMir), fm.loadFm()]);
+  if (!fms.length) return 0;
+  const mirBy = mir.mirsByMa(mirs);
+  const fmBy = fm.fmByMa(fms);
+  let n = 0;
+  for (const m of ma.latestPerRespNo(mas)) {
+    const docs = m.respNo ? fmBy.get(m.respNo) : undefined;
+    if (!docs) continue;
+    const bagts = PKGS.find((p) => p.key === m.pkg)?.group;
+    if (!bagts) continue;
+    if (AUTH.appId && acl.reviewerRolesFor(me, bagts).length === 0) continue;
+    const chain = ma.chainOf(m.verdict, {
+      MIR: mir.mirVerdictFor(mirBy.get(m.respNo)),
+      FIC: fm.fmVerdictFor(docs.FIC),
+      MAKT: fm.fmVerdictFor(docs.MAKT),
+    });
+    for (const kind of ['FIC', 'MAKT'] as const) {
+      const st = chain.find((x) => x.key === kind);
+      if (!st || st.state === 'locked') continue;
+      n += docs[kind].filter((d) => d.status === 'pending' && !fm.isOwnUpload(d.uploadedBy, me, sess.user)).length;
+    }
+  }
+  return n;
+}
+
+/**
  * Харагдац → тоолуур(ууд). Нэг харагдацад хэд хэдэн эх сурвалж байвал НИЙЛБЭР.
  */
-const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
+/* ⚠️ 2026-10-23 (UX аудит R5): `part` — нийлбэр харагдацын (`guitsetgel` = обьём + хяналт) хэсэг бүрийн тоо `badgeLabelFor`-д */
+const SOURCES: { view: ViewKey; part?: 'obyem' | 'review'; load: () => Promise<Counter | null> }[] = [
   /* ✅ `src/lib/ajilBatlah.ts` — шийдвэрлэх боломжтой нэмэлт ажлын илгээлт */
   { view: 'ajilBatlah', load: () => probe(import('@/lib/ajilBatlah'), ['countAjilPending']) },
   /* ✅ `src/lib/huvaariBatlah.ts` — өөр батлагчийн түгжсэнийг тоолохгүй */
@@ -54,18 +143,16 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
   { view: 'huvaari', load: async () => countPlanNews },
   /* ✅ `countObyemPending(username)` — `src/lib/obyemBatlah.ts`.
      Обьёмыг «Гүйцэтгэл» (бөглөх хуудас) дотор батладаг тул тэр харагдацад. */
-  { view: 'guitsetgel', load: () => probe(import('@/lib/obyemBatlah'), ['countObyemPending']) },
+  { view: 'guitsetgel', part: 'obyem', load: () => probe(import('@/lib/obyemBatlah'), ['countObyemPending']) },
   /* ✅ 2026-10-04: `hyanaltStore.countReviewPending` — таны шатанд хүлээгдэж буй
      гүйцэтгэлийн хяналт (дээрх обьёмтой НИЙЛБЭР, нэг харагдац). */
-  { view: 'guitsetgel', load: () => probe(import('@/lib/hyanaltStore'), ['countReviewPending']) },
-  /* ✅ `chanarStore.countChanarActionable` — чанарын баримтын «таны ээлж».
-     ⚠️ ACL ачаалагдахаас өмнө бага тоолно — 3 минут тутмын шинэчлэлт засна. */
-  {
-    view: 'chanar',
-    load: async () =>
-      (await probe(import('@/lib/chanarStore'), ['countChanarActionable', 'countChanarPending', 'countActionable']))
-      ?? probe(import('@/lib/chanarMs'), ['countChanarActionable', 'countChanarPending', 'countActionable']),
-  },
+  /* ⚠️ 2026-10-23 (UX аудит R5): ГҮЙЦЭТГЭГЧИД (`company` шат) энэ тоо нь «хүлээгдэж буй» биш — БУЦААСАН, засах ажил
+     (`countReviewPending`-ийн `owner === stage`). Шат нь `guitsCompany`-д — шошгыг `badgeLabelFor` нэрлэнэ. */
+  { view: 'guitsetgel', part: 'review', load: async () => countReviewWithStage },
+  /* ⚠️ 2026-10-20: «Чанарын баримт»-ын тэмдэг ХАСАГДСАН (харагдац ба `chanarStore` хасагдсан). */
+  /* ⚠️ 2026-10-23 (UX аудит Q4): «MA · материал» — ТАНЫ ШИЙДВЭР хүлээж буй FIC · М-акт баримт (`countMaPending`) */
+  { view: 'ma', load: async () => countMaPending },
+
 ];
 
 /**
@@ -92,14 +179,46 @@ export async function loadNavBadges(username: string | null, scope: 'all' | View
   );
   const out: NavBadges = {};
   const failed = new Set<ViewKey>();
+  const parts: Partial<Record<ViewKey, Partial<Record<'obyem' | 'review', number>>>> = {};
   results.forEach((r, i) => {
     const view = srcs[i].view;
     if (r.status !== 'fulfilled' || r.value === null) { failed.add(view); return; }
     if (r.value === 'skip') return;
     out[view] = (out[view] ?? 0) + r.value;
+    const part = srcs[i].part;
+    if (part) (parts[view] ??= {})[part] = r.value;
   });
   for (const v of failed) out[v] = null;
+  /* ⚠️ 2026-10-23 (R5): унасан харагдацын хэсгүүдийг ХУУЧНААР нь үлдээнэ (`mergeNavBadges` өмнөх тоог үлдээдэгтэй ижил) */
+  for (const v of Object.keys(parts) as ViewKey[]) if (!failed.has(v)) PARTS[v] = parts[v];
   return out;
+}
+
+/** ⚠️ 2026-10-23 (UX аудит R5): нийлбэр харагдацын СҮҮЛИЙН амжилттай хэсгүүд — `badgeLabelFor`-д */
+const PARTS: Partial<Record<ViewKey, Partial<Record<'obyem' | 'review', number>>>> = {};
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит R5 · Q4): ЦЭСНИЙ ТЭМДГИЙН ШОШГО — тоо ЮУГ хэлж байгааг нэрлэнэ. `null` = ердийн
+ *    «{0} хүлээгдэж байна» (`ViewRail.badgeLabel`). Шошгын ӨГӨГДӨЛ энд (тоолуурын дүрэмтэй хамт) — `ViewRail` зөвхөн дуудна.
+ *    · «Гүйцэтгэл» + гүйцэтгэгч → «Буцаасан N — засах» (урьд нь «N хүлээгдэж байна» гэж буцаалтыг хүлээлт мэт хэлдэг байв);
+ *    · «Гүйцэтгэл» + хянагч, обьём ба хяналт хоёулаа → задаргаатай (тэмдэг «Батлах ажил» табын тооноос их байгааг тайлбарлана —
+ *      обьём нь бөглөх хүснэгтэд батлагддаг, табын тоонд ордоггүй);
+ *    · «MA · материал» → «Таны шийдвэр хүлээж буй N».
+ * @param fmt тооны хэлбэр (`ViewRail`-ийн `num` — мянгатын тусгаарлагч · хэл)
+ */
+export function badgeLabelFor(view: ViewKey, n: number, fmt: (x: number) => string = String): string | null {
+  if (!n) return null;
+  if (view === 'guitsetgel') {
+    const p = PARTS.guitsetgel ?? {};
+    const ob = p.obyem ?? 0;
+    const rv = p.review ?? 0;
+    if (guitsCompany && ob === 0) return tr('Буцаасан {0} — засах', fmt(n));
+    if (ob > 0 && rv > 0) return tr('{0} хүлээгдэж байна (хяналт {1} · обьём {2})', fmt(n), fmt(rv), fmt(ob));
+    if (ob > 0) return tr('Обьём батлах {0}', fmt(n));
+    return null;
+  }
+  if (view === 'ma') return tr('Таны шийдвэр хүлээж буй {0}', fmt(n));
+  return null;
 }
 
 /**
@@ -219,19 +338,10 @@ async function countPlanNews(username: string | null): Promise<number | null> {
 
 /* ══ ⚠️ 2026-09-30 (кэшийн ажлын урсгал — ЗӨВХӨН энэ блок): чанарын тэмдгийг ACL ирэхэд дахин тоолох ══ */
 /**
- * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО. `countChanarActionable` нь ACL ачаалагдахаас ӨМНӨ бага
- * тоолдог байв (дээрх SOURCES-ийн ⚠️); одоо (1) тоолуур өөрөө ACL-ийг хязгаартай
- * хүлээнэ (`chanarStore.whenChanarAclReady`), (2) энэ дохио ACL өөрчлөгдөх бүрд
- * (`chanarStore.subscribeChanarActionable`) `cb`-г дуудна — `Portal` `refreshBadges`-ээ
- * өгнө. Тайлах функц буцаана. ⚠️ Модуль ДИНАМИКААР — толгойн ⚠️-ийн адил үндсэн
- * chunk-д орохгүй; тайлагдсаны дараа ирсэн бүртгэл шууд тайлагдана.
+ * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО — `Portal` `refreshBadges`-ээ өгнө, тайлах функц буцаана.
+ * ⚠️ 2026-10-20: цорын ганц эх (`chanarStore.subscribeChanarActionable`, «Чанарын баримт») хасагдсан тул одоо дохио
+ *    үүсгэх эх алга — гарын үсэг хадгалагдсан (дуудагч өөрчлөгдөхгүй); шинэ эх нэмбэл энд бүртгэнэ.
  */
-export function subscribeNavBadges(cb: () => void): () => void {
-  let alive = true;
-  let off: (() => void) | null = null;
-  import('@/lib/chanarStore').then(
-    (m) => { if (alive) off = m.subscribeChanarActionable(cb); else off = null; },
-    () => { /* чимээгүй — тэмдэг бол туслах мэдээлэл */ },
-  );
-  return () => { alive = false; off?.(); off = null; };
+export function subscribeNavBadges(_cb: () => void): () => void {
+  return () => {};
 }

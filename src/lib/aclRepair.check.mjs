@@ -37,9 +37,17 @@ const ok = (c, m) => { assert.ok(c, m); checks += 1; };
 const eq = (a, b, m) => { assert.deepEqual(a, b, m); checks += 1; };
 const sorted = (x) => [...x].sort();
 
-/* ⚠️ Аккаунт бүрд ХАДГАЛСАН урсгалтай харагдац («Гүйцэтгэл» · «Чанар (QAQC)») — үл тоологдох ёстой */
+/* ⚠️ Аккаунт бүрд ХАДГАЛСАН урсгалтай харагдац («Гүйцэтгэл») — үл тоологдох ёстой (⚠️ 2026-10-23: QAQC хасагдсан) */
 const POOL = Array.from({ length: 30 }, (_, i) => `rp_u${String(i + 1).padStart(2, '0')}`);
-fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash', 'guitsetgel', 'qaqc']), docs: 0 })));
+fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash', 'guitsetgel']), docs: 0 })));
+const RT_HV = await import('@/lib/roleTypes.ts');
+
+/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
+   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
+{
+  const hvBase = RT_HV._defaultTpl('taniltsah');
+  fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT_HV.withHvScope(hvBase.on, 'none'), seen: RT_HV.tplSeenKeys() }) }]);
+}
 let next = 0;
 const mkUser = () => POOL[next++];
 
@@ -77,12 +85,11 @@ const [g1, g2] = PKG_GROUPS;
 
   ok((await run(OPS.flowCellOp(u, 'engineer', g1, true))).ok, `${tag}: урсгал`);
   ok((await run(OPS.scopedCellOp('huvaari', u, 'author', g1, true))).ok, `${tag}: хуваарь зохиогч`);
-  ok((await run(OPS.qaqcCellOp(u, g2, true))).ok, `${tag}: QAQC`);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   const rows = Object.fromEntries(rowsOf(u).map((r) => [r.view, r]));
   eq(rows.guitsetgel.sources.map((s) => [s.sys, s.role, s.bagts]), [['flow', 'engineer', [g1]]], `${tag}: «Гүйцэтгэл» ← урсгал`);
   eq(rows.huvaari.sources.map((s) => [s.sys, s.role, s.cap, s.granted]), [['huvaari', 'author', 'plan', true]], `${tag}: «Хуваарь» ← Хуваарийн эрх · Зохиогч`);
-  eq(rows.qaqc.sources.map((s) => [s.sys, s.bagts, s.granted]), [['qaqc', [g2], true]], `${tag}: «Чанар (QAQC)» ← QAQC`);
-  ok(!rows.huvaariBatlah.open && !rows.chanar.open && !rows.ajilBatlah.open, `${tag}: бусад хаалттай`);
+  ok(!rows.huvaariBatlah.open && !rows.ajilBatlah.open, `${tag}: бусад хаалттай`);
   agree(u, tag);
   await roundTrip();
   agree(u, `${tag} remote`);
@@ -110,7 +117,9 @@ const [g1, g2] = PKG_GROUPS;
   const e = ERH.userErh(OPS.liveErhSource(), u);
   eq(ERH.missingCaps(e), ['planApprove'], `${tag}: missingCaps`);
   eq(WF.ungrantedCaps(rowsOf(u)), ['planApprove'], `${tag}: картын «эрх олгогдоогүй»`);
-  ok(!views(u).includes('huvaariBatlah') && !views(u).includes('huvaari'), `${tag}: эрхгүй тул хаалттай`);
+  /* ⚠️ 2026-10-26: «Хуваарь» нь батлагчийн БАГЦААР ЗӨВХӨН ХАРАХ-аар нээлттэй хэвээр (`huvaariView.huvaariViewScope` — хуваарилалт
+     өөрөө харах хүрээ); батлах дараалал («Хуваарь батлах») эрхгүй тул хаалттай */
+  ok(!views(u).includes('huvaariBatlah') && views(u).includes('huvaari'), `${tag}: эрхгүй тул батлах хаалттай, хуваарь зөвхөн харах`);
   agree(u, tag);
   const r = await run(OPS.regrantOp(u, ['planApprove']));
   ok(r.ok && r.confirms.length === 0, `${tag}: «Дахин олгох» («${r.err}»)`);

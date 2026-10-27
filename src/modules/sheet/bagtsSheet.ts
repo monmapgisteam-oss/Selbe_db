@@ -17,6 +17,10 @@ import { invalidate } from "@/lib/dataBus";
 import { isLostWrite } from "@/lib/lostWrite";
 import { ArcGISError } from "@/lib/query";
 import { DAY, spanFrac } from "@/lib/plan";
+/* ⚠️ 2026-10-22: уншдаг самбарын сүүлийн жаазын хөтчийн кэш (`loadRows`-ийн `persist`) */
+import { persistedFrame, probeStats, sigFrom, type Sig } from "@/lib/sheetCache";
+/* ⚠️ 2026-10-21 (аудит): нэмэлтийн бүрэлдэхүүний тоон дүрэм бөглөх хуудастай НЭГ (`parseInc`-ийн ⚠️); `paste.ts` импортгүй — тойрог үүсэхгүй */
+import { normCell } from "./paste";
 
 export type SheetRow = {
   oid: number;
@@ -452,7 +456,7 @@ async function loadBaseKeys(pkg: Pkg, sc: Schema, rootNo = ""): Promise<string[]
    *
    * Урьд нь энд ч `lastFrame` дуудагдаж СҮҮЛИЙН жаазыг лавлах болгодог
    * байв. Тэр нь суурь жааз БАЙХАД зөв — гэвч суурь устсан үед лавлах нь
-   * ӨӨРӨӨ одоогийн жааз болно. Ерөнхий менежер бүлэг дотор ажил НЭМЭХЭД
+   * ӨӨРӨӨ одоогийн жааз болно. Төлөвлөлтийн ахлах инженер бүлэг дотор ажил НЭМЭХЭД
    * (`addRow`) шинэ жааз 1 мөр урт бичигдэх бөгөөд дараагийн ачаалалтад:
    *   ref.length (1371) !== expect (1370)  → `alignInsertions` дуудагдахгүй
    *   нөхөлт нь `expect > feats2.length` шаарддаг тул мөн ажиллахгүй
@@ -660,17 +664,25 @@ export async function baseBlankCount(pkg: Pkg, sc: Schema): Promise<number> {
   }
 }
 
-async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
+async function latestWhere(
+  pkg: Pkg,
+  sc: Schema,
+  expect = 0,
+  /**
+   * ⚠️ 2026-10-22: бөглөсөн огнооны max-ыг ДУУДАГЧ аль хэдийн мэдэж байвал (`sheetCache`-ийн тандалт — `where 1=1`-ийн
+   *    max нь `IS NOT NULL`-ийнхтэй ижил, MAX null-ыг алгасдаг) дахин асуухгүй. `undefined` = асууна (хуучин зам).
+   */
+  knownMax?: number | null,
+): Promise<string> {
   const fld = sc.f.fillDate;
   if (!fld) return "1=1"; // талбар үүсээгүй үйлчилгээ — хуучин зан төлөв
-  const j = await agsFetch(`${pkg.url}/query`, {
+  const mx = knownMax !== undefined ? knownMax : (await agsFetch(`${pkg.url}/query`, {
     where: `${fld} IS NOT NULL`,
     outStatistics: JSON.stringify([
       { statisticType: "max", onStatisticField: fld, outStatisticFieldName: "mx" },
     ]),
     returnGeometry: "false",
-  });
-  const mx = j.features?.[0]?.attributes?.mx as number | null | undefined;
+  })).features?.[0]?.attributes?.mx as number | null | undefined;
   if (mx == null) return `${fld} IS NULL`;
   const day = dayFilter(fld, msToDay(mx));
 
@@ -766,6 +778,39 @@ async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number
     .filter((f) => !isBlankAttrs(f.attributes, sc.f.no, sc.f.work)).length;
 }
 
+/** Нэг `where`-ийн бүх мөр — maxRecordCount 2000 тул `oid ASC`-ээр хуудаслана (`loadRows`-ийн татлага) */
+async function fetchFrame(pkg: Pkg, sc: Schema, where: string, fields?: string[]): Promise<Feature[]> {
+  const feats: Feature[] = [];
+  for (let offset = 0; ; ) {
+    const j = await agsFetch(`${pkg.url}/query`, {
+      where,
+      outFields: fields?.length ? fields.join(",") : "*",
+      returnGeometry: "false",
+      orderByFields: `${sc.f.oid} ASC`,
+      resultRecordCount: "2000",
+      resultOffset: String(offset),
+    });
+    const fs = (j.features || []) as Feature[];
+    feats.push(...fs);
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    offset += fs.length;
+  }
+  return feats;
+}
+
+/**
+ * ХУУДАСНЫ ШИНЭЛЭГ БАЙДЛЫН ТАНДАЛТ — НЭГ `outStatistics` (`sheetCache.probeStats`): мөрийн тоо · objectid-ийн муж ·
+ * сүүлийн засварын огноо · бөглөсөн огнооны max (2026-10-22, `loadRows`-ийн `persist`).
+ */
+async function probeSheet(pkg: Pkg, sc: Schema): Promise<Sig | null> {
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: "1=1",
+    outStatistics: probeStats(sc.f.oid, sc.f.fillDate),
+    returnGeometry: "false",
+  });
+  return sigFrom(j.features?.[0]?.attributes, !!sc.f.fillDate);
+}
+
 /** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
 export async function loadRows(
   pkg: Pkg,
@@ -793,7 +838,12 @@ export async function loadRows(
    *    архивын «сүүлийн агшин»-аас мөнхөд алга). `strict` үед лавлах/өмнөх жаазын шалгалт унавал
    *    THROW (fail-closed). Анхдагч `false` — уншдаг самбарууд урьдын адил (бүртгэлд үлдээнэ).
    */
-  opts?: { strict?: boolean },
+  /**
+   * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `persist` — сүүлийн жаазыг ХӨТЧИЙН КЭШЭЭС (`sheetCache`, IndexedDB) авч болно:
+   *    НЭГ тандалт серверийн өгөгдөл өөрчлөгдөөгүйг батлах үед л. ЗӨВХӨН уншдаг самбар (`planProgress` · `sheetShared`)
+   *    `fields`-тэй өгнө; `strict` (бичих) ба `atDay` (тодорхой агшин) үед ҮЛ ХАМААРНА — үргэлж серверээс.
+   */
+  opts?: { strict?: boolean; persist?: boolean },
 ): Promise<{
   rows: SheetRow[];
   asOf: number | null;
@@ -847,26 +897,35 @@ export async function loadRows(
      хоцрол мэдрэгддэг газар. Дашбоардын олон багцын (`fields`-тэй) уншилтад `gun` дүүрсэн багцуудын
      лавлахыг дэмий татахгүй (хэмжилт: 10 хуудсанд +6 хүсэлт, +1.2 МБ). */
   if (tree.length > 0 && !fields?.length) loadBaseKeys(pkg, sc).catch(() => {});
-  const where =
-    atDay && sc.f.fillDate
-      ? dayFilter(sc.f.fillDate, atDay)
-      /* ⚠️ `tree.length` дамжуулна — `latestWhere` огноогүй мөрийг жаазанд нь
-         нэгтгэх эсэхийг ЗӨВХӨН тэр уртаар шалгаж шийднэ. */
-      : await latestWhere(pkg, sc, tree.length);
-  const feats: Feature[] = [];
-  for (let offset = 0; ; ) {
-    const j = await agsFetch(`${pkg.url}/query`, {
-      where,
-      outFields: fields?.length ? fields.join(",") : "*",
-      returnGeometry: "false",
-      orderByFields: `${sc.f.oid} ASC`,
-      resultRecordCount: "2000",
-      resultOffset: String(offset),
-    });
-    const fs = (j.features || []) as Feature[];
-    feats.push(...fs);
-    if (!j.exceededTransferLimit || fs.length === 0) break;
-    offset += fs.length;
+  /* ⚠️ 2026-10-22: `persist` (дээрх `opts`-ийн ⚠️) — тандалт таарвал хадгалсан `where` + мөр (сүлжээгүй), эс бөгөөс
+     ДОРХ ЯГ ТЭР зам (тандалтын max нь `latestWhere`-ийн max-ыг орлоно). Цаашхи боловсруулалт (жааз · гүн · мөр) хоёр
+     замд ИЖИЛ — тоо өөрчлөгдөхгүй (`sheetCache.check` · амьд тулгалт). */
+  const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;
+  /* ⚠️ Түлхүүрт `tree.length` — `latestWhere`-ийн огноогүй хэлтэрхийн шийдвэр зураглалын уртаас хамаардаг (кодын
+     `bagts.trees.ts` солигдвол хадгалсан `where` хүчингүй) */
+  const { where, feats } = persist
+    ? await persistedFrame(`${pkg.url}|${tree.length}`, fields, () => probeSheet(pkg, sc), async (sig) => {
+      const w = await latestWhere(pkg, sc, tree.length, sig ? sig.mx : undefined);
+      return { where: w, feats: await fetchFrame(pkg, sc, w, fields) };
+    })
+    : await (async () => {
+      const w =
+        atDay && sc.f.fillDate
+          ? dayFilter(sc.f.fillDate, atDay)
+          /* ⚠️ `tree.length` дамжуулна — `latestWhere` огноогүй мөрийг жаазанд нь
+             нэгтгэх эсэхийг ЗӨВХӨН тэр уртаар шалгаж шийднэ. */
+          : await latestWhere(pkg, sc, tree.length);
+      return { where: w, feats: await fetchFrame(pkg, sc, w, fields) };
+    })();
+  /* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): ОГНООТОЙ ЖААЗГҮЙ хуудас (`where` нь ЯГ `fld IS NULL` — b42_12f: 1,593 мөр) —
+     энэ татлага нь `baseFetch(…, "null")`-тай ИЖИЛ олонлог (ижил where · `oid ASC` · 2000-ын хуудаслалт · ижил зогсолт)
+     бөгөөд `oid`/`no`/`work` багана агуулсан бол суурь лавлахын кэшийг (`baseKeyCache`) эндээс дулаацуулна — урьд нь ЯГ
+     ТЭР мөрүүд дараа нь 3 баганаар ДАХИН татагддаг байв (`loadBaseKeys` → `baseFetch`; муруй · зөрүүний картад +1 хүсэлт,
+     +145 КБ багц бүрд). Зөвхөн кэш хоосон үед; `loadBaseKeys` түлхүүрийг `no`/`work`-оос л таслах тул илүү багана нөлөөгүй. */
+  if (sc.f.fillDate && where === `${sc.f.fillDate} IS NULL`
+    && (!fields?.length || [sc.f.oid, sc.f.no, sc.f.work].every((f) => fields.includes(f)))
+    && !baseKeyCache.has(`${pkg.key}|null`)) {
+    baseKeyCache.set(`${pkg.key}|null`, Promise.resolve(feats));
   }
 
   /**
@@ -910,7 +969,7 @@ export async function loadRows(
    *
    * ⚠️ 2026-08-27: урьд нь зөвхөн (2) байсан тул хуудсанд мөр нэмэх ОГТ
    * боломжгүй байв — нэмэнгүүт мөрийн тоо зураглалын урттай зөрж, доорх
-   * шалгуур хуудсыг бүхэлд нь хаадаг байлаа. Ерөнхий менежер бүлэг дотор ажил
+   * шалгуур хуудсыг бүхэлд нь хаадаг байлаа. Төлөвлөлтийн ахлах инженер бүлэг дотор ажил
    * нэмэх шаардлага гарсан тул шатлалыг өгөгдөл рүү шилжүүлэв.
    *
    * ⚠️ ШАЛГУУРЫГ БҮРЭН УСТГААГҮЙ гэдгийг анхаар: `gun` хоосон байгаа үед тэр
@@ -1044,7 +1103,7 @@ export async function loadRows(
      * Урьд нь энэ салбар `feats2.length !== expect` үед л ажилладаг, тэнцсэн
      * үед доорх БАЙРЛАЛЫН салбар руу шууд унадаг байв. Гэвч зураглал нь
      * нийтлэгддэггүй ХООСОН мөрийг ч тоолдог: «Багц 3.1 · 9F»-д `TREES` = 1,471
-     * атлаа жааз 1,470. Ерөнхий менежер тэр багцад НЭГ мөр нэмэнгүүт
+     * атлаа жааз 1,470. Төлөвлөлтийн ахлах инженер тэр багцад НЭГ мөр нэмэнгүүт
      * `feats2.length` = 1,471 болж `expect`-тэй САНАМСАРГҮЙ тэнцэнэ — тэгэхэд
      * зэрэгцүүлэлт огт дуудагдахгүй, нэмсэн мөрийн ДАРААХ бүх мөр гүнээ
      * нэгээр гулссан тэмдэгтээс авна (тооллоор 970 мөрийн 109 нь буруу гүнтэй).
@@ -1389,6 +1448,11 @@ export type CellMode = "abs" | "inc";
  * хувь хоёр ТУСДАА багана тул нэг нүдэнд хоёулаа хуримтлагдаж болно).
  * ⚠️ СӨРӨГ нэмэлт ЗӨВШӨӨРӨГДӨНӨ (залруулга) — нийт нь `incCell`-д ≥ 0-оор хаагдана.
  * ⚠️ Хоосон (`""`) ба тоо биш бүрэлдэхүүн → `null` («засвар алга», 0 БИШ).
+ * ⚠️ 2026-10-21 (аудит): бүрэлдэхүүн бүр `paste.normCell`-ийн дүрмээр (бөглөх хуудасны `commit`/буулгалттай НЭГ):
+ *    «12,5» → 12.5 (урьд нь `Number` NaN → чимээгүй хаягддаг), «1e3» · «0x10» · «0b11» → хог (урьд нь `Number` 1000 · 16
+ *    гэж хүлээн авдаг), «1,250» хоёрдмол → хог; обьёмын бүрэлдэхүүнд `%`-ээр төгссөн утга хог (хувь нь ЗӨВХӨН `%N`
+ *    угтвараар — `normCell` төгсгөлийн `%`-ийг хасдаг тул энд тусад нь няцаана). Хог = `null` — `overlaySubmission` тэр
+ *    нүдийг `unmoved`-д тоолно (0 эсвэл «өөрчлөлтгүй» БИШ).
  */
 export function parseInc(v: string | undefined): { n: number; p: number } | null {
   if (typeof v !== "string") return null;
@@ -1397,22 +1461,26 @@ export function parseInc(v: string | undefined): { n: number; p: number } | null
   let n = 0;
   let p = 0;
   for (const t of toks) {
-    if (t.startsWith(PCT)) {
-      const s = t.slice(PCT.length);
-      const x = Number(s);
-      if (s === "" || !Number.isFinite(x)) return null;
-      p += x / 100;
-    } else {
-      const x = Number(t);
-      if (!Number.isFinite(x)) return null;
-      n += x;
-    }
+    const pct = t.startsWith(PCT);
+    const s = pct ? t.slice(PCT.length) : t;
+    if (!pct && s.endsWith(PCT)) return null;
+    const norm = normCell(s);
+    if (norm == null) return null;
+    const x = Number(norm);
+    if (!Number.isFinite(x)) return null;
+    if (pct) p += x / 100;
+    else n += x;
   }
   return { n, p };
 }
 
-/** Хөвөгч цэгийн чимээг (0.1 + 0.2) арилгаж мөр болгоно — 12 ач холбогдолтой орон. */
-const numStr = (x: number): string => String(parseFloat(x.toPrecision(12)));
+/** Хөвөгч цэгийн чимээг (0.1 + 0.2) арилгаж мөр болгоно — 12 ач холбогдолтой орон.
+ *  ⚠️ 2026-10-21 (аудит): ЭКСПОНЕНТГҮЙ («1e-7» биш «0.0000001») — `parseInc` одоо `normCell`-ийн энгийн аравтын дүрмээр
+ *  задалдаг тул экспонент бичлэг хог болж нэмэлт алдагдах байв. 1e21-ээс их утга бодитгүй (`toFixed` ч экспонент өгнө). */
+const numStr = (x: number): string => {
+  const s = String(parseFloat(x.toPrecision(12)));
+  return /e/i.test(s) ? parseFloat(x.toPrecision(12)).toFixed(12).replace(/\.?0+$/, "") : s;
+};
 
 /** `{n, p}` → нэмэлтийн мөр (`parseInc`-ийн урвуу). Хоёулаа 0 бол `""`. */
 export function fmtInc(d: { n: number; p: number }): string {
@@ -1456,7 +1524,11 @@ export function negInc(a: string | undefined): string {
  *    хоосон нүдийн нийт нь 0. Мөрийн `Обьём`тэй боловч `obyem`-гүй (зөвхөн
  *    хувиар бүртгэгдсэн) хуучин нүдэнд хувийг обьём руу БУЦААЖ БОДОХГҮЙ
  *    (дээрх ⚠️ «Обьёмыг хувиас нь БУЦААЖ БОДОХГҮЙ») — нийт нь 0-ээс эхэлнэ.
- * ⚠️ НИЙТ ≥ 0: сөрөг нэмэлт (залруулга) нийтийг 0-ээс доош оруулахгүй.
+ * ⚠️ НИЙТ ≥ 0: сөрөг нэмэлт (залруулга) нийтийг 0-ээс доош оруулахгүй — ЗӨВХӨН ДЭЛГЭЦЭД (`neg` туг, ⚠️ 2026-10-21 аудит):
+ *    нийт сөрөг болох бол буцаах утгыг 0-оор хаасан хэвээр `neg: true` тавина; `overlaySubmission` → `hyanaltStore`
+ *    архивлалт тийм нүдийг ТАТГАЛЗАНА. Урьд нь чимээгүй 0 болгодог тул хоёр илгээлтийн батлалтын ДАРААЛЛААС
+ *    хамаарч өөр дүн гардаг байв (суурь 0: +10 дараа −15 → 0, харин −15 дараа +10 → 10). Хөвөгч цэгийн чимээг
+ *    (0.3 − 0.1 − 0.2) сөрөг гэж тооцохгүй (харьцангуй 1e-9 хүлцэл).
  * ⚠️ ЦЭВЭРЛЭХ (`null` болгох) зам энэ горимд БАЙХГҮЙ — `""` нь «засвараа
  *    буцаах». Бүртгэлийг тэглэх бол сөрөг нэмэлтээр 0 болгоно.
  */
@@ -1465,7 +1537,7 @@ export function incCell(
   b: number,
   e: string | undefined,
   hasField: boolean,
-): { obyem: number | null; act: number | null } | null {
+): { obyem: number | null; act: number | null; neg?: true; raw?: { obyem: number | null; act: number | null } } | null {
   const d = parseInc(e);
   if (!d || (d.n === 0 && d.p === 0)) return null;
   /* ⚠️ 2026-10-09 (F5): обьёмын талбаргүй блокт зөвхөн обьёмын нэмэлт (`%`-гүй) — архивт бичих
@@ -1474,16 +1546,33 @@ export function incCell(
   if (!hasField && d.p === 0) return null;
   const vol = r.vol != null && r.vol > 0 ? r.vol : null;
   const volPath = hasField && vol != null;
+  /* ⚠️ 2026-10-21 (аудит): нийт сөрөг үү — хөвөгч цэгийн чимээг тооцохгүй (харьцангуй 1e-9) */
+  const below = (total: number, base: number, inc: number): boolean =>
+    total < -1e-9 * Math.max(1, Math.abs(base), Math.abs(inc));
+  let neg = false;
   let ob = r.obyem[b];
+  /* ⚠️ 2026-10-22 (хэрэглэгч): ХАСААГҮЙ (сөрөг) нийт — `raw`; хянагч ба илгээгч дэлгэцэд «0» биш ЖИНХЭНЭ утгыг харна */
+  let rawOb = r.obyem[b];
   const add = d.n + (volPath ? d.p * (vol as number) : 0);
-  if (add !== 0) ob = Math.max(0, (r.obyem[b] ?? 0) + add);
+  if (add !== 0) {
+    const total = (r.obyem[b] ?? 0) + add;
+    if (below(total, r.obyem[b] ?? 0, add)) neg = true;
+    ob = Math.max(0, total);
+    rawOb = total;
+  }
   const pRest = volPath ? 0 : d.p;
-  const act = pRest !== 0
-    ? Math.max(0, (r.act[b] ?? 0) + pRest)
-    : volPath && ob != null
-      ? ob / (vol as number)
-      : r.act[b];
-  return { obyem: ob, act };
+  let act: number | null;
+  let rawAct: number | null;
+  if (pRest !== 0) {
+    const totalP = (r.act[b] ?? 0) + pRest;
+    if (below(totalP, r.act[b] ?? 0, pRest)) neg = true;
+    act = Math.max(0, totalP);
+    rawAct = totalP;
+  } else {
+    act = volPath && ob != null ? ob / (vol as number) : r.act[b];
+    rawAct = volPath && rawOb != null ? rawOb / (vol as number) : r.act[b];
+  }
+  return neg ? { obyem: ob, act, neg: true, raw: { obyem: rawOb, act: rawAct } } : { obyem: ob, act };
 }
 /**
  * БЛОКГҮЙ БАГЦЫН (синтетик блок) ОБЬЁМГҮЙ АЖЛЫН МӨР уу (2026-10-09).
@@ -1756,16 +1845,19 @@ export function planCurve(
   /* ── Огноо бүрд — зөвхөн `plan` нийлбэр ── */
   return asOfs.map((asOf) => {
     const plan: (number | null)[][] = new Array(N);
+    /* ⚠️ 2026-10-21: «төлөвлөгөөт хувьтай» туг — `computeAll`-ийн `planHas`-ийн ⚠️ */
+    const has: boolean[][] = new Array(N);
     const avgOut: (number | null)[] = new Array(N).fill(null);
     for (let i = N - 1; i >= 0; i--) {
       const p: (number | null)[] = new Array(n).fill(null);
+      const h: boolean[] = new Array(n).fill(false);
       if (kids[i].length) {
         const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
         for (let b = 0; b < n; b++) {
           let sp = 0; let cnt = 0; let anyKid = false;
           for (const k of kids[i]) {
             const w = den > 0 ? (D[k] ?? 0) : 1;
-            if (plan[k][b] != null) anyKid = true;
+            if (has[k][b]) anyKid = true;
             sp += w * (plan[k][b] ?? 0);
             cnt += w;
           }
@@ -1774,14 +1866,17 @@ export function planCurve(
              бол л огноогоор интерполяци — `computeAll`-ийн ижил онцгой тохиолдол (2026-10-01). */
           if (!anyKid && own[i][b] && St[i][b] != null && En[i][b] != null) {
             p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
-          }
+            h[b] = p[b] != null;
+          } else h[b] = anyKid;
         }
       } else {
         for (let b = 0; b < n; b++) {
           p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
+          h[b] = p[b] != null;
         }
       }
       plan[i] = p;
+      has[i] = h;
       /* `AVERAGE(IF(range="",0,range))` — хоосныг 0 гэж үзэн блокийн тоонд хуваана */
       avgOut[i] = p.reduce<number>((s, x) => s + (x ?? 0), 0) / n;
     }
@@ -1933,9 +2028,19 @@ export function computeAll(
   }
   // ── 4. Гүйцэтгэл, төлөвлөгөө + E, доороос дээш ─────────────────────────────
   const out: Calc[] = new Array(N);
+  /* ⚠️ 2026-10-21: «төлөвлөгөөт хувьтай» туг — навчинд `plan != null`, бүлэгт «дэд мөрийн аль
+     нэг нь тугтай ЭСВЭЛ өөрийн огноогоор интерполяци хийсэн». Урьд нь эцгийн `anyKidPlan` нь
+     хүүхдийн `plan[b] != null`-оор шалгагддаг байсан ч `asOf` байхад бүлгийн `plan` ҮРГЭЛЖ
+     тоо (`sp / cnt`, огноогүй дэд ажил = 0) тул огноогүй ДУНД бүлгээр дамжихад дүрэм унаж байв:
+     G0 (өөр 01-01..12-31) > G1 (огноогүй) > навч (огноогүй), asOf 07-01 → G0 = 0, харин навч нь
+     шууд G0-ийн доор бол 0.4986. Бүлгийн харагдах `plan` (Excel дүрэм) ӨӨРЧЛӨГДӨӨГҮЙ — зөвхөн
+     эцгийн дүрмийн туг. `planCurve`-ийн `has` — ЯГ ИЖИЛ (`planCurveShape.check`). */
+  const planHas: boolean[][] = new Array(N);
   for (let i = N - 1; i >= 0; i--) {
     const r = rows[i];
     const plan: (number | null)[] = new Array(n).fill(null);
+    const has: boolean[] = new Array(n).fill(false);
+    planHas[i] = has;
     const act: (number | null)[] = new Array(n).fill(null);
     /* ⚠️ ДЭЭШ НЭГТГЭХ утга (`min(act,1)`) ба ТУГ — тайлбарыг `Calc.actAgg`-аас
        унш. Хоёрыг салгасан шалтгаан: нүд нь үнэнээ хэлж, нэгтгэл нь хиймлээр
@@ -1968,7 +2073,7 @@ export function computeAll(
         let anyKidPlan = false;
         for (const k of kids[i]) {
           if (out[k].actAgg[b] != null) anyAct = true;
-          if (out[k].plan[b] != null) anyKidPlan = true;
+          if (planHas[k][b]) anyKidPlan = true;
           const w = den > 0 ? (D[k] ?? 0) : 1;
           sp += w * (out[k].plan[b] ?? 0);
           /* ⚠️ 2026-09-04: урьд нь `out[k].act[b]` (түүхий) байсан. Багц 2·12F
@@ -2003,8 +2108,10 @@ export function computeAll(
           endSrc[b] === "own" &&
           start[b] != null &&
           end[b] != null
-        )
+        ) {
           plan[b] = planOf(i, b, start[b], end[b]);
+          has[b] = plan[b] != null;
+        } else has[b] = anyKidPlan;
       }
     } else {
       for (let b = 0; b < n; b++) {
@@ -2012,6 +2119,7 @@ export function computeAll(
         //   `IF($R$5<=AF,0,IF($R$5>=AG,1,($R$5-AF)/(AG-AF)))`
         // ⚠️ Сарын задаргаатай бол S-муруй давамгайлна (`planOf`).
         plan[b] = planOf(i, b, start[b], end[b]);
+        has[b] = plan[b] != null;
 
         /* ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20) ──────────────────────────────
          * Нүд бүр ХОЁР тусдаа тоог агуулна:
@@ -2186,31 +2294,14 @@ export function computeAll(
   return out;
 }
 
-/** Засварласан мөр + түүний бүх өвөг мөрийн индексүүд (нийтлэхэд шинэчлэгдэнэ). */
-export function touchedIndexes(
-  rows: SheetRow[],
-  editedOids: Set<number>,
-): number[] {
-  const hit = new Set<number>();
-  const stack: number[] = [];
-  rows.forEach((r, i) => {
-    while (stack.length && rows[stack[stack.length - 1]].depth >= r.depth)
-      stack.pop();
-    if (editedOids.has(r.oid)) {
-      hit.add(i);
-      for (const a of stack) hit.add(a);
-    }
-    stack.push(i);
-  });
-  return [...hit].sort((a, b) => a - b);
-}
-
 /**
  * Хуулбарт ХЭЗЭЭ Ч дамжуулж болохгүй талбарууд — үйлчилгээ өөрөө оноодог.
  * ObjectID-г дамжуулбал `addFeatures` тэр дугаартай мөр рүү наалдах эсвэл
  * унах эрсдэлтэй; GlobalID/бүртгэлийн талбарууд ч мөн адил.
  */
-const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|EditDate|Editor)$/;
+/* ⚠️ 2026-10-21 (аудит): том/жижиг үсэг ҮЛ ХАМААРАН + Enterprise-ийн амьд мөшгөлтийн нэрс. Enterprise хариуны хуучин
+   (`creationdate` … жижиг) баганууд урьд нь шүүгдэхгүй үлдэж, толиор амьд (засагдахгүй) `created_date`… руу илгээгддэг байв. */
+const SERVER_FIELDS = /^(objectid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)$/i;
 
 /**
  * АРХИВЫН ШИНЭ АГШИН — хуудсыг БҮХЭЛД нь доор нь хуулбарлаж нэмнэ.
@@ -2288,8 +2379,13 @@ export async function applyAdds(
          `ok` буцдаг байв. Мөр бүр дугаартай ирэх ёстой. */
       /* ⚠️ 2026-10-09: дугааргүй/дутуу хариу = ҮР ДҮН ТОДОРХОЙГҮЙ (дугааргүй мөр серверт суусан байж болно) —
          `lost` (доорх `AddsError`-ийн ⚠️); «юу ч бичигдээгүй» гэж үзэхгүй. */
-      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number")) {
-        const ie = new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number").length)) as AddsError;
+      /* ⚠️ 2026-10-21 (аудит): `success !== true` (талбаргүй/`undefined`) ч амжилт БИШ — урьд нь зөвхөн
+         `success === false`-ийг алдаа гэж үзэж, батлагдаагүй мөрийг «нэмэгдлээ» гэж тоолдог байв
+         (`huvaariObyem.applyPlanEdits`-тай ижил). Тодорхой `false` нь дээр «татгалзал» хэвээр; дугаартай
+         атлаа батлагдаагүй мөр серверт суусан байж болох тул ЭНД `lost` (тодорхойгүй) — дугаар нь дээрх
+         давталтаар `written`-д орсон тул цэвэрлэгээнд хамрагдана. */
+      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number" || r.success !== true)) {
+        const ie = new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number" && r.success === true).length)) as AddsError;
         ie.lost = true;
         throw ie;
       }
@@ -2415,8 +2511,10 @@ export async function applyUpdates(
          болж, `written === 0 && !isLostWrite(e)` дуудагчид (`useObyem.clearObyemPartial` · `Huvaari.clearPlanPartial`)
          «тодорхой татгалзал» гэж хагас бичилтийн тэмдгийг арилгадаг байв. Одоо кодгүй/статусгүй `ArcGISError` —
          `isLostWrite` үүнийг «хариу алдагдсан» гэж ангилна, тэмдэг ҮЛДЭНЭ. */
-      if (ups.length !== chunk.length)
-        throw new ArcGISError(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length), `${pkg.url}/applyEdits`);
+      /* ⚠️ 2026-10-21 (аудит): `success !== true` (талбаргүй/`undefined`) ч амжилт БИШ — `applyAdds`-ийн ижил ⚠️.
+         Тодорхой `false` нь дээр «татгалзал»; батлагдаагүй нь дутуу хариутай адил ТОДОРХОЙГҮЙ (`isLostWrite`). */
+      if (ups.length !== chunk.length || ups.some((r) => r.success !== true))
+        throw new ArcGISError(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.filter((r) => r.success === true).length), `${pkg.url}/applyEdits`);
       written += chunk.length;
     } catch (e) {
       /* ⚠️ 2026-10-09 (R6): хариу алдагдсан chunk бичигдсэн байж магадгүй — `applyAdds`-ийн ижил ⚠️ */

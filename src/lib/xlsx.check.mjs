@@ -181,3 +181,10 @@ const pst = dec.decode(plain.get('xl/styles.xml'));
 assert.ok(!pst.includes('<numFmts') && pst.includes('<cellXfs count="1">'), 'загваргүй хуудас илүү xf үүсгэж байна');
 assert.ok(dec.decode(plain.get('xl/worksheets/sheet1.xml')).includes('<c r="B1"><v>1</v></c>'), 'загваргүй тоо s attr-гүй байх ёстой');
 console.log('✅ хоосон хуудас · хуудасгүй алдаа · загваргүй гаралт');
+
+/* ⚠️ 2026-10-19: XML-д хориотой удирдлагын тэмдэгт хасагдана (`docx.clean`-тэй ижил) — Excel «эвдэрсэн файл» гэхгүй */
+assert.equal(esc('a\u0000b\u0008c\u000Bd\u000Ce\u001Ff￾'), 'abcdef', 'хориотой тэмдэгт хасагдана');
+assert.equal(esc('t\tn\nr\r'), 't\tn\nr\r', 'таб · мөр таслал хэвээр');
+const ctl = unzipStore(buildXlsx([{ name: 'C', rows: [['x\u0001y']] }]));
+assert.ok(dec.decode(ctl.get('xl/worksheets/sheet1.xml')).includes('>xy</t>'), 'нүдний текстэд удирдлагын тэмдэгт үлдсэн');
+console.log('✅ XML-д хориотой тэмдэгт хасагдав');

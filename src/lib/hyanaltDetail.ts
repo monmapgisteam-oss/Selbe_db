@@ -14,7 +14,7 @@
  * унаж болно. Эх мөрийн OBJECTID нь тэр агшинд ЯГ хамаарна.
  *
  * ⚠️ 2026-09-04: `Эх_мөрийн_дугаар` нь одоо ИЛГЭЭЛТИЙН мөрийн OBJECTID
- * (`Selbe_Guitsetgel_Draft`-ийн `sub|<pkgKey>`) — гүйцэтгэл нь ерөнхий менежер
+ * (`Selbe_Guitsetgel_Draft`-ийн `sub|<pkgKey>`) — гүйцэтгэл нь төлөвлөлтийн ахлах инженер
  * баталтал архивт БАЙХГҮЙ. Тиймээс хянагчид «архивын сүүлийн жааз + илгээлтийн
  * diff» гэсэн ХАРАГДАЦ угсарч өгнө (`loadStaged`). Хуучин (өөрчлөлтөөс өмнөх)
  * ба батлагдсан (`done|…`) мөрүүд нь архивт байгаа тул хуучин зам (`loadArchived`)
@@ -25,7 +25,7 @@ import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
-import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
+import { describeNegCells, laterAsOf, needsFrameOcc, negTotalAt, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
@@ -100,6 +100,12 @@ export type Change = {
    *    үүгээр хадгална — жааз солигдох/мөр нэмэгдэхэд индекс гулсдаг.
    */
   rid?: string;
+  /**
+   * ⚠️ 2026-10-22 (аудит): энэ нүдний НИЙТ СӨРӨГ (`sheetFrame.negTotalAt`) — хянагч ХЭЗЭЭ Ч зөвшөөрч (ногоон) болохгүй.
+   *    Урьд нь ногоон болгож буцаахад гүйцэтгэгчийн талд тэр нүд түгжигдэж (`FillNew.okLockAt`), харин «Илгээх» сөрөг
+   *    нүдээр хаагддаг тул гүйцэтгэгч засах ч, илгээх ч боломжгүй гацдаг байв (`Guitsetgel.toggleOk`).
+   */
+  neg?: true;
 };
 
 /** `to − (from ?? 0)`; шинэ утга `null` бол `null` (`null ≠ 0` — «мэдээлэлгүй»). */
@@ -175,8 +181,12 @@ export type Submission = {
    * ⚠️ Энэ нь ганц нүдний засвар БИШ: `computeAll` түүгээр БҮХ мөрийн
    *    төлөвлөгөөт хувийг дахин боддог тул батлахад хуудас бүхэлдээ өөрчлөгдөнө.
    *    Хянагч үүнийг мэдэхгүй батлах ёсгүй.
+   * ⚠️ 2026-10-22 (аудит): батлахад архивт БИЧИГДЭХ огноогоор (`sheetFrame.laterAsOf` — хуучин өдрийн илгээлт огноог
+   *    УХРААХГҮЙ); `asOfFrom` → `asOfTo` (`YYYY-MM-DD`, алга бол `null`) — анхааруулгад «хуучин → шинэ».
    */
   asOfChanged: boolean;
+  asOfFrom?: string | null;
+  asOfTo?: string | null;
   /**
    * Илгээлтийн СҮҮЛИЙН агшин (ms) — хяналтын мөрийн «Компани илгээсэн»
    * огноотой жишихэд.
@@ -205,6 +215,13 @@ export type Submission = {
    *    > 0 бол хянагчийн жагсаалтад тэдгээр нүд харагдахгүй — батлахад архивлалт ил зогсоно.
    */
   unmoved?: number;
+  /**
+   * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо (`Overlay.negative`) — жагсаалтад 0-оор
+   *    хаасан утга харагдах ч батлахад архивлалт ил зогсоно (`hyanaltStore.archiveSubmission`).
+   */
+  negative?: number;
+  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүднүүдийн НЭР (`describeNegCells` — «Б → Б18 → 10 → 2 «Ажил» −0.0017») — хаана гэдгийг хэлнэ */
+  negCells?: string[];
 };
 
 /**
@@ -255,12 +272,14 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
     return loadStaged(bagts, sheetOid, staged.payload);
   /*
    * ⚠️ Батлагдсан илгээлтийн `archiveOid` нь архивын ЭХНИЙ мөрийн дугаар —
-   *    түүгээр хуучин зам яг тэр агшныг олно. Дугааргүй бол (хаах алхам
-   *    унасан) `sheetOid`-оор оролдоно: тэр нь архивын мөр биш тул `null`
-   *    буцах ба хянагч «агшин олдсонгүй» гэсэн ил мессеж харна.
+   *    `pkgKey`-тэй нь хамт яг тэр хуудаснаас олно. OBJECTID нь үйлчилгээ
+   *    бүрд давхцаж болдог тул өөр давхрын хуудсаас хайж БОЛОХГҮЙ.
+   *    Дугааргүй батлагдсан илгээлтэд `sheetOid` нь ноорогийн дугаар:
+   *    архивын мөр гэж таамаглахгүй, `null` буцаана.
    */
-  const oid = staged?.payload.archiveOid ?? sheetOid;
-  return loadArchived(bagts, oid);
+  const oid = staged ? staged.payload.archiveOid : sheetOid;
+  if (oid == null) return null;
+  return loadArchived(bagts, oid, staged ? staged.payload.pkgKey : null);
 }
 
 /**
@@ -310,7 +329,9 @@ async function loadStaged(
     try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр — доорх `unmoved` */ }
   }
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
-  const asOf = ov.asOf ?? loaded.asOf;
+  /* ⚠️ 2026-10-22 (аудит): архивлалттай (`hyanaltStore.archiveSubmission`) НЭГ дүрэм — хожуу нь (`laterAsOf`); урьд нь
+     `ov.asOf ?? loaded.asOf` тул хуучин өдрийн илгээлтийн огноогоор төлөвлөгөөт хувийг бодож, батлахад огноо ухардаг байв */
+  const asOf = laterAsOf(ov.asOf, loaded.asOf);
   /* ⚠️ 2026-10-01: мөр бүрийн тогтвортой танигч (`Change.rid`) — FillNew-ийн `rows`-той ИЖИЛ дараалал */
   const sids = rowSids(ov.rows);
   /*
@@ -406,6 +427,8 @@ async function loadStaged(
     /* Хувийн «юунаас юу» — `blocks`-ийн индексээр (`obyem` өөрчлөгдөөгүй нүдэнд харуулна) */
     const pctFrom: (number | null)[] = [];
     const pctTo: (number | null)[] = [];
+    /** ⚠️ 2026-10-22 (аудит): нийт сөрөг нүд — `blocks`-ийн индексээр (`Change.neg`) */
+    const negs: boolean[] = [];
     for (let b = 0; b < nBld; b += 1) {
       if (colOf[b] < 0) {
         /* ⚠️ ОБЬЁМГҮЙ БЛОК (2026-09-24-ний аудит): `blocks`-д багана байхгүй ч
@@ -430,6 +453,8 @@ async function loadStaged(
           toPct: toA0,
           incPct: deltaOf(fromA0, toA0),
           rid: `${r.oid}|${sids[i]}`,
+          /* ⚠️ 2026-10-22 (аудит): нийт сөрөг — зөвшөөрөгдөхгүй (`Change.neg`-ийн ⚠️) */
+          ...(negTotalAt(r, b) ? { neg: true as const } : {}),
         });
         continue;
       }
@@ -446,6 +471,7 @@ async function loadStaged(
       pctFrom.push(fromA);
       pctTo.push(toA);
       changed.push(touched.has(`${r.oid}:${b}`) && (from !== to || fromA !== toA));
+      negs.push(negTotalAt(r, b));
     }
     changed.forEach((yes, k) => {
       if (!yes) return;
@@ -462,6 +488,7 @@ async function loadStaged(
         inc: deltaOf(before[k], cells[k]),
         incPct: deltaOf(pctFrom[k], pctTo[k]),
         rid: `${r.oid}|${sids[i]}`,
+        ...(negs[k] ? { neg: true as const } : {}),
       });
     });
     return {
@@ -502,11 +529,16 @@ async function loadStaged(
     dateChanges,
     /* ⚠️ Суурьтайгаа ЖИШИНЭ: илгээлт огноог хөндөөгүй бол `null`, ижил утга
        илгээсэн бол өөрчлөлт БИШ. */
-    asOfChanged: ov.asOf != null && ov.asOf !== loaded.asOf,
+    /* ⚠️ 2026-10-22 (аудит): архивт БИЧИГДЭХ огноогоор (`laterAsOf` — хуучин нь ухраахгүй тул өөрчлөлт биш) + «хуучин → шинэ» */
+    asOfChanged: asOf != null && asOf !== loaded.asOf,
+    asOfFrom: loaded.asOf != null ? msToDay(loaded.asOf) : null,
+    asOfTo: asOf != null ? msToDay(asOf) : null,
     subOid,
     subAt: pl.at,
     remapped: ov.remapped,
     unmoved: ov.unmoved,
+    negative: ov.negative,
+    negCells: ov.negative > 0 ? describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc) : [],
   };
 }
 
@@ -515,11 +547,20 @@ async function loadStaged(
  *
  * @param bagts    хяналтын бүртгэл дэх «Багц» (жиш. «Багц 1»)
  * @param sheetOid архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID
+ * @param pkgKey   илгээлтийн хуудас; `null` нь зөвхөн хуучин, илгээлтгүй бүртгэл
  */
-async function loadArchived(bagts: string, sheetOid: number): Promise<Submission | null> {
-  // Нэг багцад 9 ба 12 давхрын ХОЁР үйлчилгээ байж болно — аль нь болохыг эх мөрөөр нь тогтооно
+async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | null): Promise<Submission | null> {
+  // Илгээлтийн pkgKey байвал тэр хуудсаар ХЯЗГААРЛАНА; зөвхөн хуучин мөрд давхруудаас хайна.
   /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр (`loadStaged`-ийн ⚠️-тэй ижил) */
-  const cands = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
+  const cands = pkgKey === null
+    ? PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts))
+    : PKGS.filter((p) => p.key === pkgKey);
+  if (pkgKey !== null) {
+    const pkg = cands[0];
+    if (!pkg) throw new Error(tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey));
+    if (bagtsKey(pkg.group) !== bagtsKey(bagts))
+      throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
+  }
   if (!cands.length || !sheetOid) return null;
   let last = '';
 
@@ -537,7 +578,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
       if (!fill) continue;
 
       const head = (await post(p.url, {
-        where: `OBJECTID = ${sheetOid}`,
+        where: `objectid = ${sheetOid}`,
         outFields: fill,
         returnGeometry: 'false',
       })) as { features?: { attributes: Record<string, unknown> }[] };
@@ -640,7 +681,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
             sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, ...obs, ...acts]
             .filter(Boolean) as string[];
           /*
-           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`OBJECTID ASC`). Эрэмбийг
+           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`objectid ASC`). Эрэмбийг
            *    обьёмоор солибол бүлэг ба ажлын шатлал холилдож, хүснэгт нь
            *    «Гүйцэтгэл бөглөх»-тэй танигдахаа болино.
            * ⚠️ 2,000-ийн хязгаараас давдаг тул хуудаслана.
@@ -651,7 +692,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               where: w2,
               outFields: [...new Set(cols)].join(','),
               returnGeometry: 'false',
-              orderByFields: 'OBJECTID ASC',
+              orderByFields: 'objectid ASC',
               resultOffset: String(off),
               resultRecordCount: '2000',
             })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
@@ -752,7 +793,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
                   where: `${fill} = ${ts(prevAt)}`,
                   outFields: [sc.f.no, sc.f.work, ...obs].join(','),
                   returnGeometry: 'false',
-                  orderByFields: 'OBJECTID ASC',
+                  orderByFields: 'objectid ASC',
                   resultOffset: String(off),
                   resultRecordCount: '2000',
                 })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };

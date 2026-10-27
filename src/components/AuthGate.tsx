@@ -4,12 +4,20 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { AUTH, roleForUser, type Role } from '@/lib/services';
-import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
+/* ⚠️ 2026-10-26 (гүйцэтгэл P9): `@/lib/services` barrel БИШ — шаардлагатай дэд модулиудаас шууд (page chunk-д
+   barrel-ийн бүх давхарга/үзэгдэл/бүлэг зэрэгцэн орохгүй). Root нь barrel-ийг тэр дор нь татдаг тул хэмнэлт бага. */
+import { AUTH } from '@/lib/services/env';
+import { BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services/roles';
+import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
+import { subscribeCaps } from '@/lib/caps';
+import type { SysState } from '@/lib/permsRemote';
+import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
+import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
+import { clearMetaCache } from '@/lib/metaCache';
 import {
-  cancelSignOut, dismissSessionDead, ensureFreshToken, noteSignOut, registerIdentity, retrySession, sessionDead,
-  subscribeSessionDead,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
+  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -31,6 +39,31 @@ import s from './auth.module.css';
  */
 
 type User = { username: string; fullName: string; thumbnail: string | null; orgId: string | null };
+
+/**
+ * ⚠️ 2026-10-21 (аудит): SUPER-ИЙН БАТЛАХ ХҮСНЭГТҮҮДИЙН ҮҮСГЭЛТ — ХУУДАСНЫ ТУРШ НЭГ Л УДАА. Нэвтрэлтийн эффект дахин
+ *    ажиллахад (deps · StrictMode-ийн давхар mount) `planTableReady(true)` / `obyemTableReady(true)` зэрэгцэн давхар
+ *    явж, хүснэгт олдоогүй агшинд ХОЁР удаа үүсгэх эрсдэлтэй байв (`tableUrl` зөвхөн АМЖИЛТЫГ кэшлэдэг). Бэлэн болоогүй
+ *    (унасан) бол амлалтыг тэглэнэ — дараагийн нэвтрэлтэд дахин оролдоно. Алдааг ЗАЛГИНА (доорх ⚠️: нэвтрэлтийн зам).
+ */
+let superTablesOnce: Promise<void> | null = null;
+function ensureSuperTables(): Promise<void> {
+  if (!superTablesOnce) {
+    superTablesOnce = (async () => {
+      let ok = true;
+      try {
+        const { planTableReady } = await import('@/lib/huvaariBatlah');
+        ok = (await planTableReady(true)) && ok;
+      } catch { ok = false; /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
+      try {
+        const { obyemTableReady } = await import('@/lib/obyemBatlah');
+        ok = (await obyemTableReady(true)) && ok;
+      } catch { ok = false; /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
+      if (!ok) superTablesOnce = null;
+    })();
+  }
+  return superTablesOnce;
+}
 /** Эрхийн хүснэгт уншигдсан эсэх — татгалзлын ЖИНХЭНЭ шалтгааныг ялгана */
 export type AuthStatus = 'checking' | 'signed-in' | 'signed-out' | 'denied' | 'off';
 
@@ -56,6 +89,12 @@ type AuthCtx = {
    *    цонх гаргана. Сүлжээний түр тасалдалд ХЭЗЭЭ Ч үнэн болохгүй.
    */
   sessionExpired: boolean;
+  /**
+   * ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН — ЭНЭ хэрэглэгчид (`permissions.closedFor`: `sysClose` эрхгүй, кодын super биш).
+   *    `status` нь `signed-in` ХЭВЭЭР, харин `authorized` худал: `Root` дотор байсан Portal-ыг `frozen` загвараар
+   *    амьд үлдээж (хадгалаагүй ажил устахгүй), `AuthNotice` дээр нь `SystemClosed` цонх гаргана. `null` = нээлттэй.
+   */
+  sysClosed: SysState | null;
   /** Эрхийн хүснэгтийг ОДОО дахин уншина (15 с / 5 мин хүлээлгүй) — «Дахин оролдох» товч */
   recheckPerms: () => Promise<void>;
   signIn: () => Promise<void>;
@@ -73,6 +112,7 @@ const Ctx = createContext<AuthCtx>({
   permsRead: true,
   accessLost: false,
   sessionExpired: false,
+  sysClosed: null,
   recheckPerms: async () => {},
   signIn: async () => {},
   signOut: async () => {},
@@ -169,6 +209,10 @@ function watchNavCancel(cb: () => void, ms: number): () => void {
   return stop;
 }
 
+/* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр — JS API-ийн ямар ч давхарга (ноорог · эрхийн хүснэгт ·
+   газрын зураг) үүсэхээс ӨМНӨ, аппын эхэнд нэг удаа (`lib/entInterceptor.ts`). Node/SSR-д чимээгүй алгасна. */
+if (typeof window !== 'undefined') void installEntInterceptor();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(() => (AUTH.appId ? 'checking' : 'off'));
   const [user, setUser] = useState<User | null>(null);
@@ -183,6 +227,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permsRead, setPermsRead] = useState(true);
   /** Ажиллаж байхад эрх хасагдсан (`AuthCtx.accessLost`-ийн тайлбар) */
   const [accessLost, setAccessLost] = useState(false);
+  /** ⚠️ 2026-10-19: систем ЭНЭ хэрэглэгчид хаалттай (`AuthCtx.sysClosed`-ийн тайлбар) */
+  const [sysClosed, setSysClosed] = useState<SysState | null>(null);
+  /** Poll-ын давтамжид (`period`) — эффектийн deps-д ороогүй тул ref (зөвхөн callback дотор бичнэ) */
+  const sysClosedRef = useRef(false);
+  /* ⚠️ Агуулга ижил бол хуучин объект — poll бүрд контекстын хэрэглэгчид дахин зурагдахгүй */
+  const applySysClosed = useCallback((next: SysState | null) => {
+    sysClosedRef.current = !!next;
+    setSysClosed((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, []);
   // ⚠️ registerOAuthInfos дууссаныг илтгэх promise — бүртгэл дуусаагүй үед getCredential
   //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
   //    signIn эхэндээ үүнийг хүлээнэ.
@@ -222,10 +275,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         oauthReady();
+        /* ⚠️ 2026-10-21 (оношилгоо, ЗӨВХӨН dev): JS API-ийн «Sign in» цонх ЯМАР хаягаас гарч байгааг консолд
+           хэвлэнэ — цонх өөрөө URL-аа хэлдэггүй («ArcGIS Online (item)»). Production багцад орохгүй. */
+        if (process.env.NODE_ENV !== 'production') {
+          const mgr = esriId as unknown as { signIn: (...a: unknown[]) => unknown };
+          const orig = mgr.signIn.bind(esriId);
+          mgr.signIn = (...a: unknown[]) => {
+            console.warn('[selbe] IdentityManager нэвтрэлт шаардав — хаяг:', a[0], '· сервер:', (a[1] as { server?: string } | undefined)?.server);
+            return orig(...a);
+          };
+        }
         /* ⚠️ Бүх REST `fetch` энэ бүртгэлээр токеноо авна (`authToken.ts`). */
         registerIdentity(esriId, sharingUrl());
 
         await esriId.checkSignInStatus(sharingUrl());
+        /* ⚠️ 2026-10-22 (гүйцэтгэл): ФЕДЕРАЦИЙН СЕРВЕРИЙН итгэмжлэл — Portal/газрын зургийн давхарга үүсэхээс ӨМНӨ, эс бөгөөс
+           ~185 мета хүсэлт бүр эхлээд токенгүй явж 499 аваад дахин илгээгддэг (`authToken.primeServerCredential`-ийн ⚠️).
+           `portal.load` · `initRemote`-тэй ЗЭРЭГ явна; статус тавихын өмнө л хүлээнэ (≤ 4 с — ихэвчлэн аль хэдийн бэлэн).
+           Унавал/удвал чимээгүй: нэвтрэлтийг ХЭЗЭЭ Ч саатуулахгүй, давхарга урьдын адил 499 → JS API-ийн замаар. */
+        const serverCred = primeServerCredential(ENT_SERVER);
 
         const portal = new Portal({ url: AUTH.portalUrl });
         await portal.load();
@@ -233,10 +301,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const info: User = {
           username: u?.username ?? '',
           fullName: u?.fullName || u?.username || '',
-          thumbnail: u?.thumbnailUrl ?? null,
+          /* ⚠️ 2026-10-21 (аудит): JS API `thumbnailUrl`-д OAuth токеныг query string-ээр залгадаг (`Portal.normalizeUrl`) —
+             <img src>-ээр лог · кэш · түүхэнд үлддэг тул ХАСНА (`authToken.ts`-ийн «токен URL-д бичихгүй» дүрэм).
+             Токенгүй уншигдахгүй бол зураг нуугдана (`onError`). */
+          thumbnail: u?.thumbnailUrl ? u.thumbnailUrl.replace(/([?&])token=[^&]*(&?)/, (_m, a: string, b: string) => (b ? a : '')).replace(/[?&]$/, '') : null,
           orgId: u?.orgId ?? null,
         };
-        const hard = roleForUser(info.username);
+        /* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = эрхийн хүснэгтийн мөр (`roles._setTableSupers`) — хүснэгт
+           уншигдахаас ӨМНӨ хэн ч super биш, тиймээс `hard`-ыг `initRemote`-ийн ДАРАА бодно (доор). Хүснэгт үүсгэх
+           эрх (`canCreate`): кодын (тестийн) super эсвэл анхны админ (`BOOTSTRAP_SUPER` — хүснэгт байхгүй = super мөргүй). */
+        const canCreate = isCodeSuper(info.username) || info.username.trim().toLowerCase() === BOOTSTRAP_SUPER;
         const orgOk = !AUTH.allowedOrgId || info.orgId === AUTH.allowedOrgId;
         orgOkRef.current = orgOk;
 
@@ -256,7 +330,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          * ⚠️ Хатуу жагсаалтын хүн (`roleForUser`) нөлөөлөхгүй — тэд remote-гүй
          * нэвтэрнэ. Асуудал нь ЗӨВХӨН панелаас нэмсэн аккаунтуудад хамаарна.
          */
-        const remoteOk = await initRemote(hard === 'super');
+        const remoteOk = await initRemote(canCreate);
+        /* ⚠️ 2026-10-21 (аудит): `alive`-ийг ЭНД шалгана — урьд нь зөвхөн `setPermsRead`-ийн ДАРАА байсан тул
+           эффект цэвэрлэгдсэн (unmount / дахин ажилласан) хойно ч хүснэгт үүсгэлт · `setPermsRead` явдаг байв. */
+        if (!alive) return;
+        /* ⚠️ 2026-10-21: хүснэгт уншигдсаны ДАРАА — хүснэгтийн super (эсвэл super мөргүй хүснэгтэд анхны админ) энд л танигдана */
+        const hard = roleForUser(info.username);
         /*
          * ⚠️ ХУВААРИЙН БАТЛАХ ХҮСНЭГТИЙГ ч мөн super нэвтрэхэд үүсгэнэ
          *    (2026-09-07-ны аудит). Урьд нь тэр нь ЗӨВХӨН super «Хуваарь»
@@ -269,10 +348,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          *    Хуудас өөрөө шалтгааныг ил хэлнэ (`flowReady === false`).
          */
         if (hard === 'super') {
-          try {
-            const { planTableReady } = await import('@/lib/huvaariBatlah');
-            await planTableReady(true);
-          } catch { /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
           /*
            * ⚠️ ИНЖЕНЕРИЙН ОБЬЁМЫН БАТЛАХ ХҮСНЭГТ — ЯГ ИЖИЛ ШАЛТГААН
            * (2026-09-08-ны 100% аудитаар илэрсэн). Модуль нь `canCreate`
@@ -282,11 +357,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            * «Батлах хүснэгт олдсонгүй — админд хандана уу» гэж мөнхөд
            * няцаагдана. Хуваарийн хүснэгтийн 2026-09-07-ны сургамжийг
            * давтсан алдаа.
+           * ⚠️ 2026-10-21 (аудит): хоёулаа `ensureSuperTables` — модулийн түвшний НЭГ амлалт (дээрх ⚠️).
            */
-          try {
-            const { obyemTableReady } = await import('@/lib/obyemBatlah');
-            await obyemTableReady(true);
-          } catch { /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
+          await ensureSuperTables();
+          if (!alive) return;
         }
         /*
          * ҮҮРЭГ — override-ыг тооцсон ГАНЦ эх сурвалж (`roleOf`).
@@ -301,13 +375,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* ⚠️ ЗӨВХӨН панелаас нэмсэн (хатуу жагсаалтад БАЙХГҮЙ) хүнд утгатай:
            хатуу үүрэгтэй хүн remote-гүй ч нэвтэрдэг тул тэдэнд худал
            анхааруулга гаргах ёсгүй. */
+        /* ⚠️ 2026-10-22: серверийн итгэмжлэл (дээрх `serverCred`) — Portal-ыг зурахаас өмнө; хэзээ ч шидэхгүй */
+        await serverCred;
+        /* ⚠️ 2026-10-21 (аудит): `alive`-ийн ДАРАА — цэвэрлэгдсэн эффект салсан компонентын төлөв бичихгүй */
+        if (!alive) return;
         setPermsRead(remoteOk || !!hard);
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
-        if (!alive) return;
         attemptClear();
-        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) энэ нэрийг уншина. */
-        setCurrentUser(admitted ? info.username : null);
+        /* ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН (`__sys__:maintenance`) — нэвтрэх эрхтэй ч `sysClose`/super биш бол
+           `signed-in` хэвээр, `authorized` худал (`AuthCtx.sysClosed`). Төлөв `initRemote`-ийн ДАРАА бэлэн. */
+        const lock = admitted ? closedFor(info.username) : null;
+        applySysClosed(lock);
+        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) энэ нэрийг уншина. Хаалттай үед хоосон — бичилт татгалзана. */
+        setCurrentUser(admitted && !lock ? info.username : null);
         setUser(info);
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
@@ -333,7 +414,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { alive = false; };
-  }, []);
+  }, [applySysClosed]);
 
   /*
    * ЭРХИЙН ХҮЧИНГҮЙЖИЛТ — нэвтэрсэн ХЭВЭЭР байхад эрх нь хасагдсаныг барина.
@@ -379,10 +460,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* ⚠️ 2026-10-06: энд үлдэх `cache` нь remote уншигдсаны дараа localStorage-оор
            ӨРГӨСӨХГҮЙ (`permissions.subscribe` → `narrowOnly`) — эрт буцалт хуурамч эрх хадгалахгүй. */
         if (!ok && !rok) return;
+        /* ⚠️ 2026-10-19: «Систем түр хаах» — уншилт унасан (`!rok`) бол `closedFor` СҮҮЛИЙН мэдэгдэж буй төлөвөөр
+           (fail-open, `permissions._syncRemoteSys`-ийн ⚠️). Нээгдвэл F5 шаардалгүй цонх хаагдаж ажил үргэлжилнэ. */
+        const lock = ok ? closedFor(user.username) : null;
+        applySysClosed(lock);
         /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
            урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
            `current=null` үлдэж F5 хүртэл бүх бичилт «эрхгүй» гэдэг байв. */
-        setCurrentUser(ok ? user.username : null);
+        setCurrentUser(ok && !lock ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         /* ⚠️ 2026-09-30: ажиллаж байхад хасагдсаныг тэмдэглэнэ — `Root` Portal-ыг
            үлдээж, дээр нь хаалтын цонх гаргана (ажил алга болохгүй). */
@@ -414,7 +499,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      *    (`setTimeout` гинж): remote уншигдмагц 5 мин руу буцна.
      */
     checkRef.current = check;
-    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000);
+    /* ⚠️ 2026-10-19: систем ХААЛТТАЙ хэрэглэгчид 30 с — дахин нээгдэхийг хурдан мэдэж цонх өөрөө хаагдана
+       (5 мин хүлээлгэхгүй). Хаалттай үед ч `denied`/remote-гүй 15 с нь давамгайлна. */
+    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       timer = setTimeout(() => {
@@ -430,7 +517,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [status, user?.username]);
+  }, [status, user?.username, applySysClosed]);
+
+  /*
+   * ⚠️ 2026-10-19 (аудит): ХААЛТЫГ ЭРХИЙН STORE-ИЙН МЭДЭГДЭЛ БҮРД ДАХИН ТООЦНО. `initRemote`-ийг энэ файлаас
+   *    гадна ч дууддаг (`permissions.scheduleRemoteRefresh`/storage үйл явдал · `Guitsetgel.retryAcl` · `UserAdmin`) —
+   *    тэдгээрт ирсэн «хаагдсан» төлөв урьд нь энд хүрэхгүй, дараагийн 5 мин-ийн poll хүртэл хэрэглэгч дотор
+   *    үлдэж (`who` нэртэй — бичилт ч явна), харин Portal-ын шар зурвас «бусдад хаалттай» гэж худал хэлдэг байв.
+   * ⚠️ Зөвхөн `signed-in` үед; нэвтрэх эрх (`hasAccess`) алга бол юу ч хийхгүй — татгалзлыг poll шийднэ
+   *    (уншилтын амжилтыг тэр л мэднэ). caps-ийн мэдэгдэлд ч (`sysClose` олгогдох/хасагдах).
+   */
+  useEffect(() => {
+    if (status !== 'signed-in' || !user?.username) return undefined;
+    const name = user.username;
+    const sync = () => {
+      if (!hasAccess(name)) return;
+      const lock = closedFor(name);
+      applySysClosed(lock);
+      setCurrentUser(lock ? null : name);
+    };
+    const a = subscribePerms(sync);
+    const b = subscribeCaps(sync);
+    return () => { a(); b(); };
+  }, [status, user?.username, applySysClosed]);
 
   /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): контекстын функцууд ТОГТМОЛ лавлагаатай (`useCallback`) —
      доорх `value`-ийн `useMemo`-тай хамт `useAuth()`-ын хэрэглэгчид рендер бүрт дахин зурагдахгүй. */
@@ -474,6 +583,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     /* ⚠️ 2026-10-05: итгэмжлэл устахыг «сешн дууссан» гэж тэмдэглэхгүй (`authToken.noteSignOut`) */
     noteSignOut();
+    /* ⚠️ 2026-10-22: давхаргын метагийн кэш (`metaCache`) — дараагийн хэрэглэгчид өмнөхийн эрхийн мета үлдэхгүй */
+    clearMetaCache();
     /* ⚠️ 2026-10-06 (аудит): эрхийн КЭШИЙГ устгана — хуваалцсан компьютер дээр дараагийн хүнд
        өмнөх хэрэглэгчийн эрхийн хүснэгт (хэн ямар эрхтэй) үлдэхгүй. ЗӨВХӨН кэш: dirty-set
        (`*-dirty-v1` — админы ArcGIS-т хүрээгүй засвар)-ийг ХӨНДӨХГҮЙ, «Дахин синк»-ийн эх. */
@@ -521,10 +632,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-  const authorized = status === 'signed-in' || status === 'off';
+  /* ⚠️ 2026-10-19: систем хаалттай хэрэглэгч `signed-in` атлаа харагдацад ОРОХГҮЙ (`AuthCtx.sysClosed`) */
+  const authorized = (status === 'signed-in' && !sysClosed) || status === 'off';
   const value = useMemo<AuthCtx>(() => ({
-    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError,
-  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError]);
+    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError,
+  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError]);
 
   return (
     <Ctx.Provider value={value}>
@@ -538,14 +650,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError, recheckPerms } = useAuth();
+  const { status, user, error, permsRead, accessLost, sessionExpired, sysClosed, signIn, signOut, clearError, recheckPerms } = useAuth();
   /*
    * ⚠️ 2026-10-05: СЕШН ДУУССАН — Portal доор нь АМЬД (`status` нь `signed-in` хэвээр тул
    *    `Root` юу ч солихгүй). `AccessLost`-ийн ижил хаалтын цонх; дахин нэвтрэх нь хуудсыг
    *    ArcGIS руу чиглүүлдэг (доорх `SessionExpired`-ийн ⚠️) тул хэрэглэгч эхлээд ажлаа
    *    хуулж авах боломжтой.
+   * ⚠️ 2026-10-19 (аудит): `SystemClosed`-ООС ӨМНӨ. Урьд нь хаалтын цонх түрүүнд байсан тул сешн нь дууссан
+   *    хаалттай хэрэглэгч «Дахин нэвтрэх» товчийг ХАРАХГҮЙ, «Дахин шалгах» нь токенгүй тул үүрд унаж — систем
+   *    нээгдсэн ч цонх хаагдахгүй гацдаг байв. Дахин нэвтэрсний дараа хаалттай бол `SystemClosed` гарна.
    */
   if (sessionExpired && status === 'signed-in') return <SessionExpired username={user?.username} onSignOut={signOut} />;
+  /*
+   * ⚠️ 2026-10-19: СИСТЕМ ТҮР ХААГДСАН — сешн дууссан цонхны ДАРАА, бусад бүх цонхноос өмнө: хаалттай үед
+   *    татгалзал/алдааны цонх утгагүй. `signed-in` үед л (татгалзсан хүнд өөрийн шалтгаан).
+   */
+  if (sysClosed && status === 'signed-in') {
+    return <SystemClosed info={sysClosed} username={user?.username} onRecheck={recheckPerms} onSignOut={signOut} />;
+  }
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
 
   /*
@@ -581,7 +703,7 @@ export function AuthNotice() {
             {user && (
               <div className={s.user}>
                 {user.thumbnail && (
-                  <img src={user.thumbnail} alt="" className={s.avatar} />
+                  <img src={user.thumbnail} alt="" className={s.avatar} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                 )}
                 <div style={{ textAlign: 'left' }}>
                   <div className={s.userName}>{user.fullName}</div>
@@ -729,7 +851,10 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
        цонхны 4 товч ҮҮРД идэвхгүй (`busy`), фокус урхинд гацдаг байв. */
     if (!armed && hasUnsavedWork()) {
       setArmed(true);
-      setNote(tr('Хадгалаагүй ажил байна — дахин нэвтрэхэд алдагдана. Эхлээд «Түр хаах» дарж ажлаа хуулж авна уу. Үргэлжлүүлэх бол «Дахин нэвтрэх»-ийг дахин дарна уу.'));
+      /* ⚠️ 2026-10-23 (UX аудит A4): «Гүйцэтгэл бөглөх»-ийн ноорог засвар бүрд энэ хөтчид бичигддэг (`useDraftSync`) тул
+         дахин ачаалсны дараа сэргэнэ — тэр хуудсыг ялгаж хэлнэ; бусад хуудасны анхааруулга хэвээр (дээрх ⚠️ «Ноорог локалд
+         хадгалагдсан гэж ЕРӨНХИЙД хэлэхгүй»). */
+      setNote(tr('Хадгалаагүй ажил байна. «Гүйцэтгэл бөглөх»-ийн ноорог энэ хөтчид хадгалагдсан тул нэвтэрмэгц сэргэнэ; бусад хуудасны хадгалаагүй өөрчлөлт алдагдана — эхлээд «Түр хаах» дарж хуулж авна уу. Үргэлжлүүлэх бол «Дахин нэвтрэх»-ийг дахин дарна уу.'));
       return;
     }
     setBusy(true);
@@ -769,7 +894,7 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
     }
   };
   return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-session-expired">
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-session-expired">
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title} id="selbe-session-expired">{tr('Нэвтрэлтийн хугацаа дууссан')}</div>
@@ -777,7 +902,9 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
           {tr('ArcGIS-ийн нэвтрэлтийн хугацаа дууссан тул өгөгдөл унших, хадгалах боломжгүй боллоо. Нээлттэй ажил тань энэ цонхны ард хэвээр байна.')}
         </p>
         <p className={s.sub}>
-          {tr('Дахин нэвтрэхэд хуудас дахин ачаалагдаж, ХАДГАЛААГҮЙ өөрчлөлт алга болно. Хэрэгтэй бол эхлээд энэ цонхыг түр хааж, хадгалаагүй ажлаа хуулж авна уу.')}
+          {/* ⚠️ 2026-10-23 (UX аудит A4): бөглөх хуудасны ноорог сэргэдгийг ялгаж хэлнэ — урьд нь бүх хэрэглэгчийг «ажлаа хуулж ав»
+              гэж айлгадаг байв (гүйцэтгэгчийн ноорог локалд үргэлж бичигддэг) */}
+          {tr('Дахин нэвтрэхэд хуудас дахин ачаалагдана. «Гүйцэтгэл бөглөх»-ийн ноорог энэ хөтчид хадгалагдсан тул нэвтэрмэгц сэргэнэ. Бусад хуудасны ХАДГАЛААГҮЙ өөрчлөлт алга болно — хэрэгтэй бол эхлээд энэ цонхыг түр хааж хуулж авна уу.')}
         </p>
         <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
         {note && <p className={s.error} role="status">{note}</p>}
@@ -798,11 +925,69 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
   );
 }
 
-function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
+/**
+ * СИСТЕМ ТҮР ХААГДСАН — бүтэн дэлгэцийн хаалтын цонх (⚠️ 2026-10-19, `permissions.setSystemClosed`).
+ * ⚠️ `AccessLost`-ийн загвар: `.screen .screenOver` (Portal ард нь амьд — хадгалаагүй ажил устахгүй), фокусын урхи.
+ * ⚠️ Тогтмол текст ЗААВАЛ (хэрэглэгчийн шийдвэр) + хаагчийн нэмэлт тайлбар ба «Дахин нээгдэх» (сонголттой).
+ * ⚠️ «Дахин шалгах» нь эрхийн хүснэгтийг шууд дахин уншина (`recheckPerms`) — нээгдсэн бол цонх өөрөө хаагдана;
+ *    автоматаар 30 с тутам ч шалгана (`AuthProvider`-ийн `period`).
+ * ⚠️ ЭКСПОРТ — `smoke.ui.check` зурж шалгана.
+ */
+export function SystemClosed({ info, username, onRecheck, onSignOut }: {
+  info: SysState; username?: string; onRecheck: () => Promise<void>; onSignOut: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  const [busy, setBusy] = useState(false);
+  /*
+   * ⚠️ 2026-10-19 (аудит): «Дахин шалгах» нь НЭВТРЭЛТ ДУУССАН үед ч ажиллана. Хэрэглэгч `SessionExpired`-ийг
+   *    «Түр хаах»-аар хаасан бол (10 мин чимээгүй) энэ цонх л үлдэж, шалгалт токенгүй тул ҮҮРД унадаг байв.
+   *    Одоо: токен үхсэн бол эхлээд сэргээж үзнэ (`retrySession`); бүтэхгүй бол «Дахин нэвтрэх» цонхыг дахин
+   *    гаргана (`reopenSessionDead` — `AuthNotice`-д энэ цонхноос ДЭЭР).
+   */
+  const recheck = async () => {
+    if (lastRefreshFail() === 'dead' && !(await retrySession())) { reopenSessionDead(); return; }
+    await onRecheck();
+    if (lastRefreshFail() === 'dead') reopenSessionDead();
+  };
+  return (
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-sys-closed">
+      <div className={s.card}>
+        <img src="/logo.svg" alt="" className={s.logo} />
+        <div className={s.title} id="selbe-sys-closed">{tr('Систем түр хаагдсан')}</div>
+        <p className={`${s.sub} ${s.subTight}`}>
+          {tr('Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.')}
+        </p>
+        {info.note && <p className={`${s.sub} ${s.subTight} ${s.sysNote}`}>{info.note}</p>}
+        {info.until && <p className={`${s.sub} ${s.subTight}`}>{tr('Дахин нээгдэх: {0}', info.until)}</p>}
+        {info.at > 0 && <p className={s.userSub}>{tr('Хаасан: {0}', dateTime(info.at))}</p>}
+        <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
+        <button
+          type="button"
+          className={s.btn}
+          disabled={busy}
+          style={{ marginTop: 16 }}
+          onClick={() => {
+            setBusy(true);
+            void recheck().finally(() => setBusy(false));
+          }}
+        >
+          {busy ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
+          {tr('Гарах')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ⚠️ 2026-10-22 (аудит): ЭКСПОРТ — `Root` сүүлийн харагдацаа ажиллаж байхдаа алдсан хэрэглэгчид (Portal хөлдсөн) ижил цонхыг гаргана */
+export function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
   return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-access-lost">
+    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-access-lost">
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title} id="selbe-access-lost">{tr('Таны хандах эрх өөрчлөгдлөө')}</div>

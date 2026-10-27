@@ -28,7 +28,7 @@ const { useCellEdit: makeCellEdit } = await import('./fill/useCellEdit.ts');
 const { computeAll } = await import('./bagtsSheet.ts');
 
 /** Нэг блоктой бүдүүвч (обьёмын талбартай) */
-const sc = { bld: ['5/1', '5/2'], obyem: ['F5_1_obyem', 'F5_2_obyem'], act: ['F5_1', 'F5_2'] };
+const sc = { bld: ['5/1', '5/2'], obyem: ['f5_1_obyem', 'f5_2_obyem'], act: ['F5_1', 'F5_2'] };
 const row = (oid, vol, obyem, act) => ({
   oid, no: String(oid), work: `Ажил ${oid}`, group: false, depth: 1,
   wC: null, wD: null, money: null,
@@ -160,10 +160,14 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(h2.st.warns.length === 0 && h2.st.dones.length === 1, '4d: зөвхөн хоосон нүд алгассан бол ногоон хэвээр');
 }
 
-/* ── 5. Ctrl+S — нээлттэй нүд няцаагдвал илгээхгүй (эх кодын шалгуур) ── */
+/* ── 5. «Илгээх» товч / Ctrl+S — нээлттэй нүд няцаагдвал үргэлжлүүлэхгүй (эх кодын шалгуур) ── */
 {
   const src = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  ok(/if \(flushEditRef\.current\(\)\) setPublishQueued\(true\);/.test(src), '5: Ctrl+S нь `commit`-ийн үр дүнг шалгах ёстой');
+  ok(/if \(flushEditRef\.current\(\)\) setPublishQueued\(true\);/.test(src), '5: «Илгээх» нь `commit`-ийн үр дүнг шалгах ёстой');
+  /* ⚠️ 2026-10-23 (UX аудит F1): Ctrl+S нь ЗӨВХӨН ноорог хадгална — илгээхгүй; «Илгээх» илгээхээс өмнө асууна */
+  ok(/if \(flushEditRef\.current\(\)\) setSaveQueued\(true\);/.test(src), '5: Ctrl+S нь ноорог хадгална (`saveQueued`)');
+  const pub = src.slice(src.indexOf('const publish = useCallback'), src.indexOf('// Ctrl+S'));
+  ok(/await askConfirm\(/.test(pub), '5: «Илгээх» илгээхээс өмнө асууна');
   ok(/return commit\(rowsAll\[edit\.i\]/.test(src), '5: `flushEditRef` нь `commit`-ийн үр дүнг буцаана');
 }
 
@@ -175,6 +179,15 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(/usePkgPct\(\{[^}]*ovBase \}\)/.test(fill), '6: FillNew нь `ovBase`-ийг дамжуулна');
   const pub = fill.slice(fill.indexOf('const publish = useCallback'), fill.indexOf('// Ctrl+S'));
   ok((pub.match(/setOvBase\(/g) ?? []).length >= 2, '6: илгээсний дараа давхарлалтын суурь шинэчлэгдэнэ');
+  /* ⚠️ 2026-10-26 (аудит): нөгөө хувилбар = ӨӨРИЙН бүдүүвчийн блок (4-2: 6/x давхардсан шошго ч орно); багцын тоо = pkgProgressOf */
+  ok(rowsSrc.includes('const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));')
+    && rowsSrc.includes('if (onlyMine.has(key)) continue;') && !rowsSrc.includes('if (mine.has(blok)) continue;'),
+    '6b: нөгөө хувилбарын блок — өөрийн бүдүүвчээс (ижил шошго хасагдахгүй)');
+  ok(rowsSrc.includes('return pkgProgressOf(bp, uni ?? new Map()).get(bagtsKey(pkg.group))?.pct ?? null;'), '6b: «Багцын гүйцэтгэл» = pkgProgressOf');
+  const tb = readFileSync(new URL('./fill/toolbar.tsx', import.meta.url), 'utf8');
+  ok(tb.includes('const pkgAll = pkgAllLive !== undefined ? pkgAllLive : otherPending ? null : pkgPct.saved;')
+    && !tb.includes('v.pct * v.total'), '6b: PkgPctBadge блокийн тоогоор жигнэхгүй');
+  ok(/<PkgPctBadge [^>]*pkgAll=\{pkgAll\}/.test(fill), '6b: FillNew pkgAll-ийг дамжуулна');
 }
 
 /* ── 8. Мөрийн Обьёмгүй ажил — горим сольж бичихэд нөгөө хэсэг («%10» / «15») алга болохгүй ── */
@@ -278,18 +291,18 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const { seriesBands } = await import('./bagts.bands.ts');
   const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
   const common = [
-    F('ObjectID', 'esriFieldTypeOID'), F('GlobalID', 'esriFieldTypeGlobalID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
-    F('Хувийн_жин'), F('Хувийн_жин1'), F('Хувийн_жин__Одоо_байгаа'), F('Обьём'), F('Нэгж_өртөг'), F('Мөнгөн_дүн'),
-    F('Төлөвлөгөөт_гүйцэтгэл'), F('Бодит_гүйцэтгэл'), F('Төлөвлөгөө_биелэлт'),
-    F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
-    F('Des_dugaar', 'esriFieldTypeInteger'), F('Hamaaral', 'esriFieldTypeString'), F('Инженерийн_төлөвлөсөн_обьём'),
+    F('objectid', 'esriFieldTypeOID'), F('globalid', 'esriFieldTypeGlobalID'), F('f_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('хувийн_жин'), F('хувийн_жин1'), F('хувийн_жин__одоо_байгаа'), F('Обьём'), F('нэгж_өртөг'), F('мөнгөн_дүн'),
+    F('төлөвлөгөөт_гүйцэтгэл'), F('бодит_гүйцэтгэл'), F('төлөвлөгөө_биелэлт'),
+    F('шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
+    F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'), F('инженерийн_төлөвлөсөн_обьём'),
     F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
-    F('obyem_sum'), F('CreationDate', 'esriFieldTypeDate'), F('Creator', 'esriFieldTypeString'),
-    F('EditDate', 'esriFieldTypeDate'), F('Editor', 'esriFieldTypeString'),
+    F('obyem_sum'), F('created_date', 'esriFieldTypeDate'), F('created_user', 'esriFieldTypeString'),
+    F('last_edited_date', 'esriFieldTypeDate'), F('last_edited_user', 'esriFieldTypeString'),
   ];
   /* Блокгүй (Bagts_6_1 · 2026-10-09-ний амьд бүтэц) */
-  const blokgui = [...common, F('Ажил_гүйцэтгэл'), F('Төлөвлөгөөт_гүйцэтгэл1'),
-    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
+  const blokgui = [...common, F('ажил_гүйцэтгэл'), F('төлөвлөгөөт_гүйцэтгэл1'),
+    F('төлөвлөгөөт_хуваарь__эхлэх', 'esriFieldTypeDate'), F('төлөвлөгөөт_хуваарь__дуусах', 'esriFieldTypeDate'),
     F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
     F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate')];
   /* Барилгын (2 блок, мөрийн түвшний geree/bodit/L/M АЛГА — блокийн F…_geree_* «Хуваарь»-д) */
@@ -349,10 +362,10 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     `9a: блокгүй — зөвхөн Бодит эхэлсэн/дууссан (${exB.map((x) => x.key)})`);
   ok(!exB.some((x) => /^(ObjectID|GlobalID)$/i.test(x.field)), '9a: ObjectID/GlobalID харуулахгүй');
   const rawB = {
-    Des_dugaar: 17, Hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
+    des_dugaar: 17, hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
     geree_ehleh: D('2026-03-01'), geree_duusah: D('2026-09-30'), bodit_ehleh: D('2026-03-05'), bodit_duusah: null,
-    buglusun_ognoo: D('2026-10-08'), 'Ажил_гүйцэтгэл': 0.253, 'Төлөвлөгөөт_гүйцэтгэл1': 0,
-    CreationDate: Date.UTC(2026, 9, 8, 3, 0), Creator: 'monmap_admin', EditDate: null, Editor: 'tumenjargal.g',
+    buglusun_ognoo: D('2026-10-08'), 'ажил_гүйцэтгэл': 0.253, 'төлөвлөгөөт_гүйцэтгэл1': 0,
+    created_date: Date.UTC(2026, 9, 8, 3, 0), created_user: 'monmap_admin', last_edited_date: null, last_edited_user: 'tumenjargal.g',
   };
   const B = render(scB, [mk(scB, 1, rawB), mk(scB, 2, {})], exB);
   /* ⚠️ 2026-10-08: синтетик толгой 2 мөр (бүлэг → баганын нэр + Эхлэх/Дуусах) — хоосон зурвасгүй */
@@ -373,7 +386,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   /* ⚠️ 2026-10-08: барилгын багцад мөрийн түвшний bodit_* талбар алга → «Бусад талбар» хоосон */
   ok(exK.length === 0, `9d: барилгын — мөрийн бодит огноогүй тул багана алга (${exK.map((x) => x.key)})`);
   ok(!exK.some((x) => /^F\d/.test(x.field)), '9d: блокийн F…_geree/bodit «Бусад талбар»-т ОРОХГҮЙ');
-  const K = render(scK, [mk(scK, 1, { Des_dugaar: 3 })], exK);
+  const K = render(scK, [mk(scK, 1, { des_dugaar: 3 })], exK);
   const wantK = 14 + K.nBld * 4 + exK.length;
   ok(K.trs.length === 4 && K.trs.every((t) => /<th/.test(t)), '9d: барилгын толгой — ХООСОН <tr> алга');
   ok(K.widths.every((w) => w === wantK) && K.tds === wantK, `9d: толгой ${K.widths} == бие ${K.tds} == ${wantK}`);
@@ -386,12 +399,14 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
   /* Эх код: FillNew-ийн colSpan бүгд extra-г тооцно · сонголт хэрэглэгч тус бүрд, try/catch */
   const fn = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  ok(!/colSpan=\{14 \+ nBld \* 4\}/.test(fn) && (fn.match(/colSpan=\{14 \+ nBld \* 4 \+ extra\.length\}/g) ?? []).length === 3, '9f: FillNew-ийн 3 colSpan «Бусад талбар»-ыг тооцно');
+  /* ⚠️ 2026-10-23: «Бүтэн / Хураангуй» — colSpan нь нэг `nCols`-оос (хураангуй 4 + n×2, бүтэн 14 + n×4 + нэмэлт) */
+  ok(!/colSpan=\{14 \+ nBld \* 4/.test(fn) && (fn.match(/colSpan=\{nCols\}/g) ?? []).length === 3
+    && /const nCols = compact \? 4 \+ nBld \* 2 : 14 \+ nBld \* 4 \+ extra\.length;/.test(fn), '9f: FillNew-ийн 3 colSpan харагдацын баганын тоог (`nCols`) тооцно');
   ok((fn.match(/extra=\{extra\}/g) ?? []).length === 2 && /extraPrefKey\(user\?\.username\)/.test(fn), '9f: SheetHead/FillRows ИЖИЛ массив · хэрэглэгч тус бүрийн түлхүүр');
   const xc = readFileSync(new URL('./fill/extraCols.ts', import.meta.url), 'utf8');
   ok((xc.match(/try \{\s*(return )?localStorage/g) ?? []).length === 2, '9f: localStorage унших/бичих хоёулаа try/catch-тай');
   const tb = readFileSync(new URL('./fill/toolbar.tsx', import.meta.url), 'utf8');
-  ok(/aria-pressed=\{showExtra\}/.test(tb) && /onClick=\{toggleExtra\}/.test(tb), '9f: «Бусад талбар» товч (aria-pressed)');
+  ok(/<Switch\s+checked=\{fullView\}\s+onChange=\{setFullView\}/.test(tb), '9f: «Хураангуй / Дэлгэрэнгүй» нийтлэг унтраалга (components/Switch)');
   const fr = readFileSync(new URL('./fill/FillRows.tsx', import.meta.url), 'utf8');
   const xBlock = fr.slice(fr.indexOf('extra.map('));
   ok(!/onChange|<input|setPending|setPendDate|setPick/.test(xBlock.slice(0, xBlock.indexOf('</tr>'))), '9f: «Бусад талбар» нүдэнд засах зам ҮГҮЙ');
@@ -410,7 +425,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(B.head.includes('style="width:var(--w-x-aS, var(--w-xd));min-width:var(--w-x-aS, var(--w-xd));max-width:var(--w-x-aS, var(--w-xd))"'), '9h: толгойн inline өргөн (төрлийн анхдагч руу унана)');
   ok(B.body.includes('style="width:var(--w-x-aE, var(--w-xd));min-width:var(--w-x-aE, var(--w-xd));max-width:var(--w-x-aE, var(--w-xd))"'), '9h: нүдний inline өргөн толгойтой ижил');
 
-  /* ⚠️ 2026-10-09: ХУВААРИЙН ШҮҮЛТ — хуваарьтай мөр 0 эсвэл `asOf === null` бол хүснэгт ХООСОН болохгүй */
+  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр): ХУВААРИЙН ШҮҮЛТ — товч асаалттай бол ҮРГЭЛЖ ажиллана; хуваарьтай мөр 0 бол хүснэгт хоосон (мэдэгдэлтэй) */
   const { useRowFilter } = await import('./fill/useRows.ts');
   const run = (rows, calc, asOf, byPlan = true) => {
     let res = null;
@@ -421,13 +436,13 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const fr2 = [mk(scB, 1, {}), mk(scB, 2, {})];
   const noDates = [{ start: [null], end: [null] }, { start: [null], end: [null] }];
   const r0 = run(fr2, noDates, undefined);
-  ok(r0.planCount.on === 0 && r0.planOff && r0.vis.length === 2, `9i: хуваарьтай мөр 0 — шүүлт алгасагдана (${r0.vis.length}/2)`);
+  ok(r0.planCount.on === 0 && !r0.planOff && r0.vis.length === 0, `9i: хуваарьтай мөр 0 — шүүлт ажиллаж хүснэгт хоосон (${r0.vis.length}/2)`);
   const oneOn = [{ start: [D('2026-10-01')], end: [D('2026-10-31')] }, { start: [D('2026-01-01')], end: [D('2026-02-01')] }];
   const r1 = run(fr2, oneOn, D('2026-10-01'));
   ok(!r1.planOff && r1.vis.join(',') === '0', `9i: хуваарьтай үед шүүлт ажиллана (${r1.vis})`);
   ok(run(fr2, oneOn, D('2026-10-01'), false).vis.length === 2, '9i: товч унтраавал бүгд');
   const r2 = run(fr2, oneOn, null);
-  ok(r2.planOff && r2.vis.length === 2, '9i: asOf === null — шүүлт алгасагдана');
+  ok(!r2.planOff && r2.vis.join(',') === '0', '9i: asOf === null ч шүүлт ажиллана (өнөөдрөөр)');
   ok(!run(fr2, oneOn, undefined).planOff, '9i: asOf дамжуулаагүй (undefined) — шүүлт хэвээр');
 }
 
@@ -453,6 +468,29 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const hq = harness(rs, { fillMode: 'pct' });
   hq.api().pasteBlock(0, 0, '5\t20');
   ok(asked.length === 0 && Object.keys(hq.st.pending).length === 2, `10c: 1-ээс их утгад асуулт гарахгүй (${asked[0] ?? '—'})`);
+}
+
+/* ── 11. (2026-10-23, UX аудит X1) апп доторх асуулт — «Тийм» бол ИЖИЛ оролтоор дахин бичнэ (`commit` синхрон false) ── */
+{
+  const tick = () => new Promise((res) => setTimeout(res, 0));
+  reset(true);
+  const r = row(1, 100, [null, null], [0.5, null]);
+  const { st, api } = harness([r]);
+  ok(api().commit(r, 0, '10') === false && asked.length === 1, '11a: асуулт нээлттэй үед нүд хаагдахгүй (false)');
+  await tick();
+  ok(st.pending['1:0'] === '10' && asked.length === 1, `11a: «Тийм» — бичигдэв, дахин асуухгүй (${JSON.stringify(st.pending)})`);
+  reset(true);
+  const rs = [row(1, 100, [null, null], [0.5, null]), row(2, 100, [null, null], [0.6, null])];
+  const h = harness(rs);
+  h.api().pasteBlock(0, 0, '10\n10');
+  ok(asked.length === 1, '11b: буулгалт нэг удаа асууна');
+  await tick();
+  ok(h.st.pending['1:0'] === '10' && h.st.pending['2:0'] === '10', `11b: «Тийм» — буулгалт бичигдэв (${JSON.stringify(h.st.pending)})`);
+  reset(false);
+  const h2 = harness(rs);
+  h2.api().pasteBlock(0, 0, '10\n10');
+  await tick();
+  ok(Object.keys(h2.st.pending).length === 0, '11c: «Болих» — юу ч бичигдэхгүй');
 }
 
 console.log(`✅ cellEdit: ${n} шалгалт — бүгд давлаа`);

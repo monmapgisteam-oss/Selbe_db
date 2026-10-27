@@ -109,6 +109,9 @@ export function ansCls(code: unknown, label: unknown): AnsCls {
   if (/minor|бага зэрг/.test(t)) return 'minor';
   if (/observ|ажиглалт/.test(t)) return 'obs';
   if (/\bn\/?a\b|хамааралгүй|not applicable/.test(t)) return 'na';
+  /* ⚠️ 2026-10-21: тийм/үгүй маягт («Байгаль орчны үзлэг») — «Тийм» = нийцсэн, «Үгүй» = үл нийцэл (улаан, тоололд major) */
+  if (/^yes\b|\bтийм\b/.test(t)) return 'conf';
+  if (/^no\b|\bүгүй\b/.test(t)) return 'major';
   if (/conform|нийцсэн/.test(t)) return 'conf';
   return 'other';
 }
@@ -120,7 +123,7 @@ const isAnswerDomain = (dom: Map<string, string> | null): boolean => {
   return cls.has('conf') && (cls.has('minor') || cls.has('major') || cls.has('na'));
 };
 
-const SYSTEM_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|shape(__|_).*|shape)$/i;
+const SYSTEM_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date|shape(__|_).*|shape)$/i;
 const SUMMARY_RE = /^(cnt|sc)_/i;
 const BLK_RE = /_blk$|_block$/i;
 const NUM_RE = /double|integer|single|small/i;
@@ -175,6 +178,84 @@ export type UzReport = {
 };
 
 export type UzAttachment = { id: number; keywords: string; contentType: string };
+
+/** Хавсралт → тайлангийн зургийн лавлагаа (дуудагч `image/*`-ийг шүүнэ; HEIC тэмдэглэгээтэй) */
+export const uzPhotoRef = (a: UzAttachment, url: string): UzPhotoRef => ({
+  url, png: /png/i.test(a.contentType), ...(/hei[cf]/i.test(a.contentType) ? { heic: true } : {}),
+});
+
+/* ═════════════════ Эцэг ↔ хүүхэд мөр (Survey123-ийн repeat хүснэгт) ═════════════════ */
+
+/**
+ * GUID-ийн харьцуулах түлхүүр — хаалт, зай хасаж ТОМ үсгээр.
+ * ⚠️ 2026-10-22 (аудит): Enterprise-ийн GUID талбар `{XXXXXXXX-…}` (том үсэг, хаалттай) гэж буцдаг ч импорт/Survey123
+ *    хаалтгүй эсвэл жижиг үсгээр бичиж болно — тулгалт бичиглэлээс хамаарахгүй байх ёстой.
+ */
+export const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}\s]/g, '').toUpperCase();
+
+/**
+ * ЭЦГИЙН МӨРИЙН ХОЛБООСЫН ТҮЛХҮҮРҮҮД — `uniquerowid`, дараа нь `globalid` (хоосныг хасна; эхнийх нь ҮНДСЭН).
+ * ⚠️ 2026-10-22 (аудит): хүүхэд хүснэгтийн `parentrowid` нь эцгийн `uniquerowid`-ийг заадаг гэж үзэж ЗӨВХӨН түүгээр
+ *    тулгадаг байв. Enterprise руу шилжүүлэхэд «Аюулыг илрүүлэх үзлэг»-ийн 61/61 эцгийн `uniquerowid` NULL болж,
+ *    345/345 илрүүлэлт эцгийн `globalid`-ийг заадаг (амьдаар) тул тайланд НЭГ Ч илрүүлэлт гардаггүй байв. Одоо
+ *    `uniquerowid || globalid` — аль нь таарсан ч нэг эцэгт оноогдоно (`mir.ts`-ийн `mirRowOf` ижил дүрэм).
+ */
+export function parentKeys(r: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const v of [r.uniquerowid, r.globalid]) {
+    const k = guidKey(v);
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+/** Илрүүлэлтийн түвшин → ангилал (өнгө): өндөр = ноцтой · дунд = бага зэргийн · бага, ажиглалт = ажиглалт · зассан = нийцсэн */
+const LEVEL_CLS: Record<string, AnsCls> = { high: 'major', medium: 'minor', low: 'obs', obs: 'obs', fixed: 'conf' };
+
+/**
+ * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ → эцэг бүрийн «Илрүүлсэн аюул» хэсэг (цэвэр функц — `uzlegReport.check`).
+ * Маягт асуултгүй — илрүүлэлт бүр холбоотой хүснэгтийн мөр: асуулт = тайлбар, хариулт = түвшин, блок, арга хэмжээ
+ * тэмдэглэлд. Үр дүнгийн түлхүүр = эцгийн ҮНДСЭН түлхүүр (`parentKeys(p)[0]`).
+ * ⚠️ 2026-10-22 (аудит): (1) `parentrowid` эцгийн АЛЬ Ч түлхүүрт (uniquerowid · globalid) таарна — `parentKeys`-ийн ⚠️;
+ *    (2) илрүүлэлтийн ЗУРАГ = хүснэгтийн (`/1`) мөр бүрийн хавсралт (амьдаар ~900) — урьд нь `photos: []` тул
+ *    тайланд нэг ч зураг ордоггүй байв.
+ */
+export function groupFindings(
+  parents: readonly Record<string, unknown>[],
+  rows: readonly Row[],
+  opts: {
+    title: string;
+    dom?: Map<string, string> | null;
+    atts?: ReadonlyMap<number, UzAttachment[]>;
+    photoUrl?: (oid: number, attId: number) => string;
+  },
+): Map<string, UzSection> {
+  const owner = new Map<string, string>();
+  for (const p of parents) {
+    const ks = parentKeys(p);
+    for (const k of ks) if (!owner.has(k)) owner.set(k, ks[0]);
+  }
+  const out = new Map<string, UzSection>();
+  for (const r of rows) {
+    const key = owner.get(guidKey(r.parentrowid));
+    if (!key) continue;
+    let sec = out.get(key);
+    if (!sec) { sec = { key: 'findings', title: opts.title, score: null, items: [] }; out.set(key, sec); }
+    const level = String(r.f_level ?? '');
+    const blk = r.f_blk === 'other' ? String(r.f_blk_other ?? '') : String(r.f_blk ?? '');
+    const action = r.f_action == null || r.f_action === '' ? [] : [String(r.f_action)];
+    const oid = Number(r.objectid);
+    const url = opts.photoUrl;
+    const photos = Number.isFinite(oid) && opts.atts && url
+      ? (opts.atts.get(oid) ?? []).filter((a) => a.contentType.startsWith('image/')).map((a) => uzPhotoRef(a, url(oid, a.id)))
+      : [];
+    sec.items.push({
+      code: `F${sec.items.length + 1}`, q: String(r.f_desc ?? '—'), ans: opts.dom?.get(level) ?? level,
+      cls: LEVEL_CLS[level] ?? 'other', block: blk || null, notes: action, photos, section: opts.title,
+    });
+  }
+  return out;
+}
 
 const two = (n: number) => String(n).padStart(2, '0');
 /** Улаанбаатарын цагийн бүс (UTC+8, зуны цаггүй) — `ceo/workforce.ubDayKey`-ийн дүрэм */
@@ -233,7 +314,11 @@ export function buildUzReport(
   oid: number,
   atts: UzAttachment[],
   photoUrl: (attId: number) => string,
-  meta: { pkg: string; company: string; date: number; formShort?: string; location?: string },
+  meta: {
+    pkg: string; company: string; date: number; formShort?: string; location?: string;
+    /** ⚠️ 2026-10-21: асуултын хэсгүүдийн ДАРАА нэмэх бэлэн хэсгүүд (жиш. аюулыг илрүүлэх үзлэгийн илрүүлэлтийн хүснэгт) */
+    extra?: UzSection[];
+  },
 ): UzReport {
   const byName = new Map(fields.map((f) => [f.name, f]));
   const answers = fields.filter((f) => isAnswerDomain(f.dom));
@@ -264,7 +349,7 @@ export function buildUzReport(
   const loose = new Map<string, UzPhotoRef[]>();
   for (const a of atts) {
     if (!a.contentType.startsWith('image/')) continue;
-    const ref: UzPhotoRef = { url: photoUrl(a.id), png: /png/i.test(a.contentType), ...(/hei[cf]/i.test(a.contentType) ? { heic: true } : {}) };
+    const ref = uzPhotoRef(a, photoUrl(a.id));
     const kw = a.keywords.trim();
     let best: string | null = null;
     for (const q of answers) {
@@ -359,8 +444,21 @@ export function buildUzReport(
      боломжгүй тул `null` («—»). Урьд нь 0 болж PDF-д «Ноцтой 0» гэж ХУДАЛ бичигддэг байв. */
   const tally = (c: AnsCls): number | null => (answers.length ? all.filter((x) => x.cls === c).length : null);
   const e = numOrNull(r.sc_all_earned); const a = numOrNull(r.sc_all_appl);
-  const creator = r.Creator ?? r.creator;
-  const created = numOrNull(r.CreationDate ?? r.creationdate);
+  /* ⚠️ 2026-10-21 (аудит): Survey123-ийн үзлэгүүдийг Enterprise руу шилжүүлэхэд Creator/CreationDate нь ШИЛЖҮҮЛЭГЧ ба
+     шилжүүлсэн агшин болсон (V11 2026-10-15, захиалагчийн 2026-10-19 — хуучин багана хадгалагдаагүй). Тиймээс «Илгээсэн»
+     нь шилжүүлгийн өмнөх мөрд маягтын өөрийн үзлэгч (`inspector`) ба үзлэгийн огноо (`insp_datetime`). */
+  /* ⚠️ 2026-10-21 (аудит): `inspector` нь codedValue домэйнтэй (код «dagiiranz» → «Б.Дагийранз ХАБЭА-н инженер») —
+     урьд нь код хэвээр гарч, толгойн «Үзлэг хийсэн ажилтан» (домэйны нэр) ба шинэ мөрийн Creator (ArcGIS нэр)-тэй
+     нэг баганад гурван нэрлэлт болдог байв. Одоо үзлэгчтэй мөр БҮРД домэйны нэр (`fieldText`), үзлэгчгүй мөрд л
+     Creator; огноо нь шилжүүлгийн өмнөх мөрд үзлэгийн огноо хэвээр. */
+  const inspField = byName.get('inspector');
+  const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? '').trim();
+  const creator: unknown = inspector || (r.created_user ?? r.creator);
+  let created = numOrNull(r.created_date ?? r.creationdate);
+  if (created != null && created < Date.UTC(2026, 9, 21)) {
+    const at = numOrNull(r.insp_datetime);
+    if (at != null) created = at;
+  }
   return {
     oid,
     form,
@@ -377,7 +475,7 @@ export function buildUzReport(
       na: cnt('na') ?? tally('na'),
     },
     header,
-    sections: sections.filter((s) => s.items.length),
+    sections: [...sections.filter((s) => s.items.length), ...(meta.extra ?? [])],
     summary,
     signatures,
     extraPhotos,
@@ -427,7 +525,7 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
       );
       const oidF = j.objectIdFieldName ?? 'objectid';
       for (const ft of j.features ?? []) {
-        const id = Number(ft.attributes?.[oidF] ?? ft.attributes?.OBJECTID ?? ft.attributes?.objectid);
+        const id = Number(ft.attributes?.[oidF] ?? ft.attributes?.objectid ?? ft.attributes?.objectid);
         const { x, y } = ft.geometry ?? {};
         if (Number.isFinite(id) && typeof x === 'number' && typeof y === 'number') out.set(id, `${y.toFixed(6)}, ${x.toFixed(6)}`);
       }
@@ -446,14 +544,12 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
 export const attUrl = (layerUrl: string, oid: number, id: number): string =>
   `${layerUrl}/${oid}/attachments/${id}`;
 
-/** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм) */
-const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
-const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`) ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '' : '';
+/** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм).
+ * ⚠️ 2026-10-20: байгууллага = Сэлбэ Enterprise ArcGIS Server (`NEXT_PUBLIC_ENT_DATA`-ийн `/Hosted`-гүй суурь); AGOL
+ *    (`NEXT_PUBLIC_ARCGIS_HJ`) хасагдсан. Хувьсагчийг ШУУД уншина (`services` импортлохгүй — ачаалалтын гинж). */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '').replace(/\/Hosted$/i, '');
 /** ⚠️ 2026-10-09: экспортлогдсон — хуудасны зургийн слайдер ч (blob URL) энэ шалгуураар токен илгээнэ */
-export const isOrgUrl = (url: string): boolean =>
-  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
-  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+export const isOrgUrl = (url: string): boolean => !!ORG_BASE && url.startsWith(`${ORG_BASE}/`);
 
 /**
  * ⚠️ 2026-10-09 (аудит): ХАВСРАЛТЫГ ДЭЛГЭЦЭД/ТАБАД ХАРУУЛАХ ЗӨВШӨӨРӨГДСӨН ТӨРӨЛ — зөвхөн растер.
@@ -1084,7 +1180,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, fai
  * ObjectID · толгой · асуулт бүр 4 багана · дүн · гарын үсэг · илгээсэн хэрэглэгч/огноо.
  */
 function tableSheet(reports: UzReport[], name: string, failed: ReadonlySet<string>): XSheet {
-  const head: string[] = ['ObjectID'];
+  const head: string[] = ['objectid'];
   const headerKeys: string[] = [];
   for (const r of reports) for (const [k] of r.header) if (!headerKeys.includes(k)) headerKeys.push(k);
   head.push(...headerKeys);

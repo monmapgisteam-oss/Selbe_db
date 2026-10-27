@@ -2,9 +2,13 @@
 
 import {
   Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
-  type CSSProperties, type ErrorInfo, type ReactNode, type PointerEvent as ReactPointerEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
+  type CSSProperties, type ErrorInfo, type ReactNode,
 } from 'react';
+/* ⚠️ 2026-10-23: Environment — толгой/dock/KPI-ийн дүрс lucide-react-ээс шууд */
+import {
+  Building2, CircleQuestionMark, House, LandPlot, LoaderCircle, LogOut, MapPin, Moon,
+  RefreshCw, Shapes, Sun, User, Users, type LucideIcon,
+} from 'lucide-react';
 import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim, type MapLayerFilter } from '@/components/MapCanvas';
 import { PlanOverlapLayers, PlanOverlapPanel, OVERLAP_LAYER_ID, type OverlapFocus } from '@/components/PlanOverlap';
 import { CompareLabels, DetailLayerMenu, SwipeToggle, layerItems, type DetailGroup } from '@/components/DetailLayers';
@@ -25,6 +29,7 @@ import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
+import { ResizableColumns } from '@/components/ResizableColumns';
 import { zonesLabel } from '@/components/ZoneFilter';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
@@ -42,12 +47,12 @@ import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
-import { queryStats, count, sum } from '@/lib/query';
+import { queryStats, queryFeatures, count, sum, type Row } from '@/lib/query';
 import { loadHeadline, loadHousing, POPULATION_FIELD } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
-  PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
-  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER,
+  PLAN_LAYER_IDS, LAYER_BY_ID, groupOf,
+  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, zoneCanon,
   PLAN_ALWAYS_ON_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS,
   type ViewKey,
 } from '@/lib/services';
@@ -59,6 +64,9 @@ import { finNavDirty } from '@/lib/finEdit';
 import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
+import { askConfirm } from '@/lib/confirm';
+/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх ба шар зурвас (жижиг, ArcGIS-гүй) */
+import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
  * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
@@ -164,9 +172,29 @@ const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.A
 });
 
 import s from '@/app/shell.module.css';
+/* ⚠️ 2026-10-21 (аудит): эрх хасагдсан харагдацын хаалтын цонх (`ViewLost`) — `AuthGate`-ийн цонхнуудтай нэг загвар */
+import a from '@/components/auth.module.css';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 
 /** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
 const EMPTY_BADGES: NavBadges = {};
+/** ⚠️ 2026-10-22: нуугдмал самбарын (`hesegET`) тоо — татахгүй, «ачаалж буй» (хоосон Map-ыг уналт гэж зурахгүй) */
+const TOTALS_IDLE = { state: 'loading', data: null, error: null } as const;
+/**
+ * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ БИЧИЛТИЙН (`setNavDirty`-ийн `-send`/`-apply` түлхүүртэй) тугуудын нэрс — «Гүйцэтгэл
+ *    бөглөх»-ийн илгээлт (`fillnew-send`), «Гүйцэтгэлийн хяналт»-ын шийдвэр (`hyanalt-apply`), нэмэлт ажил буулгалт
+ *    (`ajil-apply`). `navGuard` түлхүүрийг гаргадаггүй тул НЭРЭЭР тулгана (дуудагч бүр ижил `tr()`-ээр өгдөг). Эрх хасагдсан
+ *    харагдацын товч (`setView` `force`) хадгалаагүй засварын асуултыг алгасдаг ч эдгээрийг АСУУСААР (`confirmLeave`-ийн
+ *    `busyOnly`). Шинэ ийм туг нэмбэл нэрийг энд нэмнэ — `portalLeave.check.mjs` эх кодоос тулгаж унагана.
+ */
+const navBusyLabels = (): string[] => {
+  const busy = new Set([
+    tr('Гүйцэтгэл илгээж байна'),
+    tr('Гүйцэтгэлийн шийдвэр хадгалж байна'),
+    tr('Нэмэлт ажлыг хуудсанд буулгаж байна'),
+  ]);
+  return navDirtyLabels().filter((l) => busy.has(l));
+};
 /**
  * «Хэсэгчилсэн ЕТ» (`hesegET`) — ХЭСЭГ БҮРИЙН газрын зургийн давхаргууд (2026-10-13, хэрэглэгчийн заавар).
  * ⚠️ Модулийн ТОГТМОЛ — `MapCanvas`-ийн эффектийг рендер бүрт дэмий эргүүлэхгүй.
@@ -201,138 +229,15 @@ const H01_SWIPE = {
 const H02_SWIPE = { leading: DETAIL_NEXT_LAYERS, trailing: [OVERLAP_LAYER_ID.next] };
 const H03_SWIPE = { leading: DED_BUTETS_LAYER_IDS, trailing: [...DETAIL_NEXT_LAYERS, ...NEED_COMPARE_LAYERS.trailing] };
 
-/** Баруун самбарын өргөний хязгаар ба анхны утга (px) */
-const PANEL_MIN = 300;
-const PANEL_MAX = 720;
+/**
+ * Багануудын АНХНЫ өргөн (px) — `ResizableColumns` (⚠️ 2026-10-23: Environment — каталог · зураг · самбар
+ * гурван чирэгддэг багана). Хязгаар (зүүн ≤560 · баруун ≤720) нь урьдын `useColumnResize`-тэй ИЖИЛ; доод нь 180
+ * (Environment). Чирэлтийн логик (try/catch хадгалалт · `lostpointercapture` · гараар) `ResizableColumns`-д шилжив.
+ * Хуучин түлхүүрүүдийг (`selbe-catalog-width` · `selbe-panel-width`) нэг удаа уншина — хэрэглэгчийн өргөн алдагдахгүй.
+ */
+const CAT_DEFAULT = 286;
 const PANEL_DEFAULT = 360;
-const PANEL_KEY = 'selbe-panel-width';
-
-/**
- * Зүүн каталогийн өргөний хязгаар ба анхны утга (px).
- *
- * ⚠️ Доод хязгаар нь `globals.css`-ийн `--catalog` (296px)-ээс бага: давхаргын
- * нэр урт (жишээ нь «Цахилгаан дамжуулах агаарын шугам 110кв») тул хэт нарийсгах
- * нь утгагүй ч, зураг дээр илүү зай гаргах хэрэгцээ бодитой.
- */
-const CAT_MIN = 232;
-const CAT_MAX = 560;
-const CAT_DEFAULT = 296;
-const CAT_KEY = 'selbe-catalog-width';
-
-/**
- * БАГАНА/МӨР ЧИРЭХ — самбар, каталог, зүүн багана, доод зурвас БҮГД үүнийг.
- *
- * ⚠️ `dir` нь чирэлтийн тэмдгийг заана: БАРУУН талын самбар зүүн тийш чирэхэд
- * өргөсдөг тул `-1`, ЗҮҮН талын каталог баруун тийш чирэхэд өргөсдөг тул `+1`.
- * `axis: 'y'` нь ӨНДӨР — зургийн доорх зурвас ДЭЭШ чирэхэд өндөрсдөг тул `-1`.
- * Бүгдэд нь нэг томьёо — ялгаа нь зөвхөн тэнхлэг ба тэмдэг.
- */
-function useColumnResize(
-  { min, max, initial, storageKey, dir, axis = 'x' }:
-  { min: number; max: number; initial: number; storageKey: string; dir: 1 | -1; axis?: 'x' | 'y' },
-) {
-  /* ⚠️ 2026-09-30: хадгалсан өргөнийг useState-ийн INITIALIZER-т уншина (урьд
-     нь эффект дотор setState — нэг илүү рендер, eslint set-state-in-effect).
-     Portal нь `ssr:false` тул initializer ҮРГЭЛЖ хөтөч дээр ажиллана; `window`
-     хамгаалалт нь зөвхөн болгоомжлол.
-     ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд шидсэн
-     алдаа ЭНЭ БҮХЭЛ ПОРТАЛЫГ унагана — баганын өргөн санагдахгүй нь ердөө
-     тав тухын асуудал. */
-  const [width, setWidth] = useState(() => {
-    if (typeof window === 'undefined') return initial;
-    try {
-      const v = Number(localStorage.getItem(storageKey));
-      return Number.isFinite(v) && v >= min && v <= max ? v : initial;
-    } catch { return initial; /* хувийн горим — анхдагч өргөн хэвээр */ }
-  });
-  const [dragging, setDragging] = useState(false);
-  /**
-   * ⚠️ Одоогийн өргөн REF-ээр давхар — `onPointerDown` render бүрт шинээр
-   * үүсвэл `memo(LayerCatalog)` пропсын өөрчлөлт гэж үзэж дахин зурна.
-   * Ref-ээс уншсанаар callback нь тогтмол лавлагаатай (useCallback) болно.
-   */
-  const widthRef = useRef(width);
-
-  // ⚠️ Чирэлтийн ДУНДУУР компонент unmount болбол `up()` хэзээ ч ажиллахгүй,
-  //    body-ийн класс үлдэж апп даяар курсор/текст сонголт эвдэрнэ (globals.css-ийн
-  //    `body.resizing *`) — unmount дээр заавал цэвэрлэнэ.
-  useEffect(() => () => { document.body.classList.remove('resizing', 'resizingRow'); }, []);
-
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const save = (w: number) => {
-      try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
-    };
-    e.preventDefault();
-    const grip = e.currentTarget;
-    grip.setPointerCapture(e.pointerId);
-    setDragging(true);
-    const cls = axis === 'y' ? 'resizingRow' : 'resizing';
-    document.body.classList.add(cls);
-
-    const at = (ev: { clientX: number; clientY: number }) => (axis === 'y' ? ev.clientY : ev.clientX);
-    const x0 = at(e);
-    const w0 = widthRef.current;
-
-    const move = (ev: PointerEvent) => {
-      const w = Math.min(max, Math.max(min, w0 + dir * (at(ev) - x0)));
-      widthRef.current = w;
-      setWidth(w);
-    };
-    /* ⚠️ 2026-09-25: `lostpointercapture` — барилт өөр шалтгаанаар (элемент
-       DOM-оос салах, хөтөч барилтыг булаах) алдагдвал `pointerup` ирэхгүй тул
-       body-ийн `resizing` класс ба чирэлтийн төлөв гацаж үлддэг байв.
-       `done` туг — up + lost хоёулаа ирэхэд хоёр удаа ажиллахгүй. */
-    let done = false;
-    const up = () => {
-      if (done) return;
-      done = true;
-      setDragging(false);
-      document.body.classList.remove(cls);
-      if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
-      grip.removeEventListener('pointercancel', up);
-      grip.removeEventListener('lostpointercapture', up);
-      save(widthRef.current);
-    };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
-    grip.addEventListener('pointercancel', up);
-    grip.addEventListener('lostpointercapture', up);
-  }, [min, max, dir, axis, storageKey]);
-
-  /**
-   * ⚠️ 2026-09-25: ГАРААР өргөн тохируулах — бариул нь зөвхөн хулганаар
-   * ажилладаг байв. Сум (x тэнхлэгт ←/→, y-д ↑/↓) нь бариулыг ДЭЛГЭЦ дээр
-   * тэр зүгт хөдөлгөнө (чирэлттэй ижил `dir` томьёо); Shift — 4 дахин том
-   * алхам; Home/End — хязгаар.
-   */
-  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = e.shiftKey ? 64 : 16;
-    const fwd = axis === 'y' ? 'ArrowDown' : 'ArrowRight';
-    const back = axis === 'y' ? 'ArrowUp' : 'ArrowLeft';
-    let w: number;
-    if (e.key === fwd) w = widthRef.current + dir * step;
-    else if (e.key === back) w = widthRef.current - dir * step;
-    else if (e.key === 'Home') w = min;
-    else if (e.key === 'End') w = max;
-    else return;
-    e.preventDefault();
-    w = Math.min(max, Math.max(min, w));
-    widthRef.current = w;
-    setWidth(w);
-    try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
-  }, [min, max, dir, axis, storageKey]);
-
-  /** Давхар товшиход анхны өргөнд буцаана */
-  const onDoubleClick = useCallback(() => {
-    widthRef.current = initial;
-    setWidth(initial);
-    try { localStorage.setItem(storageKey, String(initial)); } catch { /* private mode */ }
-  }, [initial, storageKey]);
-
-  return { width, dragging, onPointerDown, onDoubleClick, onKeyDown };
-}
+const COL_LEGACY = { left: 'selbe-catalog-width', right: 'selbe-panel-width' };
 
 /**
  * ⚠️ 2026-10-05: СҮЛЖЭЭНИЙ ТӨЛӨВ (`navigator.onLine` + online/offline үйл явдал) — толгойн
@@ -428,21 +333,19 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
       style={{
         position: 'fixed', inset: 0, zIndex: 4000,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 22, background: 'radial-gradient(120% 120% at 50% 30%, #0f1b2e 0%, #0a1220 60%, #070d18 100%)',
-        color: '#e2e8f0',
+        /* ⚠️ 2026-10-23: Environment — цэнхэр радиал градиент → хуудасны paper (--bg), эргэгч нь lucide
+           Loader2 (--data); градиент/туяа хэрэглэхгүй (дизайны дүрэм) */
+        gap: 22, background: 'var(--bg)',
+        color: 'var(--ink)',
       }}
     >
       <style>{'@keyframes selbeSpin{to{transform:rotate(360deg)}}@keyframes selbePulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
       <img src="/logo.svg" alt="" width={60} height={60} style={{ animation: 'selbePulse 1.8s ease-in-out infinite' }} />
-      <div style={{
-        width: 40, height: 40, borderRadius: '50%',
-        border: '3px solid rgba(148,197,255,0.18)', borderTopColor: '#38bdf8',
-        animation: 'selbeSpin .9s linear infinite',
-      }} />
-      <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: 0.3 }}>{tr('Дашбоард ачаалж байна…')}</div>
+      <LoaderCircle size={32} strokeWidth={1.5} aria-hidden style={{ color: 'var(--data)', animation: 'selbeSpin .9s linear infinite' }} />
+      <div style={{ fontSize: 13, fontWeight: 500 }}>{tr('Дашбоард ачаалж байна…')}</div>
       {/* ⚠️ 2026-09-25: «20 минутын хот» → «Ухаалаг хот» — Home/Landing-ийн брэндтэй
           НЭГ нэр (2026-08-24-ний хэрэглэгчийн шийдвэр, тэдгээрийн ⚠️-г үз). */}
-      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>
+      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
         {tr('Сэлбэ')} {tr('Ухаалаг хот')} · Digital Twin Platform
       </div>
     </div>
@@ -533,7 +436,11 @@ function PortalContent(
   // Давхаргын сонголт — «Давхарга» товчоор нээж/хаана.
   // ⚠️ 2026-08-18: зүүн БАГАНА байсныг зурган дээрх ХӨВӨГЧ POPUP болгов
   //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
-  const [catalog, setCatalog] = useState(true);
+  // ⚠️ 2026-10-23: Environment — дахин чирэгддэг ЗҮҮН БАГАНА (`ResizableColumns`, хэрэглэгчийн шийдвэр:
+  //    «KPI мөр + 3 багана»). Нээх/хаах төлөв (энэ `catalog`) ба бүх товч хуучнаараа.
+  /* ⚠️ 2026-10-23 (UX аудит S14): УТСАН дээр (≤620px) давхаргын жагсаалт газрын зургийн ~75%-ийг бүрхэж нээгддэг байв —
+     хумигдсан эхэлнэ (≤1180px-д багана нэг мөрөнд овоордог, жагсаалт ЭХЭНД — merge-д алдагдсаныг сэргээв) */
+  const [catalog, setCatalog] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 620px)').matches);
   const [layer, setLayer] = useState<string | null>(initialLayer);
   /**
    * «ХЭСЭГЧИЛСЭН ЕТ» (`hesegET`) — гурван хэсэг (2026-10-13, хэрэглэгчийн заавар):
@@ -605,18 +512,11 @@ function PortalContent(
     return [];
   }, [hesegTab, hesegSwipe, hesegPick, overlapSel, overlapShown.length, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
 
-  /**
-   * ЗҮҮН ЦЭС ХУРААГДСАН эсэх (хэрэглэгчийн шийдвэр, 2026-08-18) — хураахад
-   * зөвхөн дүрс үлдэж 54px болно. Сонголт localStorage-д хадгалагдана.
-   * ⚠️ Зөвхөн эффект дотор уншина — статик экспортод localStorage байхгүй.
-   */
-  /* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): анх орж ирэхэд зүүн цэс ХУРААСТАЙ —
-     зөвхөн дүрс (54px) харагдаж, газрын зурагт илүү зай өгнө. Товчоор дэлгэнэ. */
-  /* ⚠️ 2026-09-30: initializer-т уншина (эффект дотор setState байсан) — Portal
-     `ssr:false` тул хөтөч дээр л ажиллана. Хадгалалт хаалттай (шидвэл) бол анхдагч ХУРААСТАЙ. */
-  /* ⚠️ 2026-10-06 (аудит): `=== '1'` нь 2026-08-25-ны шийдвэртэй ЗӨРЖ байв — шинэ
-     хэрэглэгчид (утга алга) цэс ДЭЛГЭЭТЭЙ нээгддэг байлаа. Одоо зөвхөн хэрэглэгч өөрөө
-     дэлгэсэн (`'0'`, `toggleNav`) үед дэлгэнэ; бусад бүх тохиолдолд ХУРААСТАЙ. */
+  /* ⚠️ 2026-10-23: Environment — ЗҮҮН ЦЭСНИЙ ХУРААХ/ДЭЛГЭХ (54px ↔ бүтэн, `selbe-nav-min`; 2026-08-18 ·
+     08-25 · 09-30 · 10-06-ны шийдвэрүүд) ХАСАГДАВ: dock нь ҮРГЭЛЖ 104px (дүрс + товч шошго), бүтэн нэр
+     tooltip-д (`ViewRail`). Хураах товч, түүний төлөв, хадгалалт байхгүй. */
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «menu хэсэгт хийсэн бүх засварыг буцаа»): цэс урьдын хэлбэрт — 244px ↔ 54px
+     хураах (`selbe-nav-min`, анхдагч ХУРААСТАЙ — 2026-08-25 · 10-06-ны шийдвэр). */
   const [navMin, setNavMin] = useState(() => {
     if (typeof window === 'undefined') return true;
     try { return localStorage.getItem('selbe-nav-min') !== '0'; } catch { return true; /* private */ }
@@ -654,6 +554,13 @@ function PortalContent(
   const [docsOpen, setDocsOpen] = useState(false);
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
+  /**
+   * ⚠️ 2026-10-19: «Систем түр хаах» цонх — `sysClose` эрхтэй эсвэл кодын super (`useCanCloseSystem`). Цэсний «Систем»
+   *    бүлэгт товч (`ViewRail.onSysClose`); хаалттай үед ЭНЭ хэрэглэгч нэвтэрсэн бол (эрхтэй) шар зурвас.
+   */
+  const [sysOpen, setSysOpen] = useState(false);
+  const canSys = useCanCloseSystem(auth.user?.username, auth.status === 'signed-in');
+  const sysNow = useSystemClosed();
   /**
    * AI туслахын цонх нээлттэй эсэх.
    * ⚠️ Агент нь `navScope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн үзэж болох
@@ -729,21 +636,29 @@ function PortalContent(
    */
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
-  const catalogIds = useMemo(
-    // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
-    //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
-    () => CATALOG_LAYER_IDS,
-    [],
-  );
-  // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
-  const totals = usePlanTotals(zone, !standalone, catalogIds);
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): урьд нь каталогийн БҮХ 158 давхаргыг (~156 статистик хүсэлт) харагдац нээх
+     бүрд татдаг байв (2026-08-20: каталог бүх давхаргыг харуулдаг) — бүлгүүд хураалттай эхэлдэг, «Хэсэгчилсэн ЕТ»-д
+     самбар нуугдмал тул тэр тоог хэн ч хараагүй байхад. Одоо ЗӨВХӨН самбарын тойм (`ViewPanel.PlanOverview` —
+     `PLAN_LAYER_IDS`, «Ерөнхий мэдээлэл» л); каталог нээлттэй бүлгийнхээ тоог өөрөө татна (`LayerCatalog`-д
+     `totals` өгөхгүй), сонгосон давхаргын самбар — өөрийнхөө. Бүгд давхарга тус бүрийн НЭГ кэшээс
+     (`totals.layerTotalsShared`) тул тоо зөрөхгүй, давхардсан хүсэлтгүй. */
+  const totals = usePlanTotals(zone, !standalone && view === 'plan', PLAN_LAYER_IDS);
 
   /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
   /** Порталын ерөнхий мэдэгдлийн тууз: эрх хумигдаж харагдац солигдсон (⚠️ 2026-10-06),
    *  хадгалаагүй ажлаас болж автомат шинэчлэл хойшилсон (⚠️ 2026-10-12, `onVis`) */
-  const [portalNotice, setPortalNotice] = useState<string | null>(null);
+  /* ⚠️ 2026-10-26 (аудит): URL-аар (`?v=` — Нүүрний «Харагдац руу орох» г.м.) ЭРХГҮЙ харагдац хүсэгдсэн бол
+     `clampView` чимээгүй `navScope[0]` руу оруулдаг тул хэрэглэгч товч эвдэрсэн гэж ойлгодог байв — шалтгааныг хэлнэ. */
+  const [portalNotice, setPortalNotice] = useState<string | null>(() => {
+    const asked = readParam('v');
+    const req = initialView();
+    const got = clampView(req, navScope);
+    return asked && req !== got
+      ? tr('«{0}» харагдац танд нээгдээгүй тул «{1}» руу орлоо.', VIEW_BY_KEY[req].title, VIEW_BY_KEY[got].title)
+      : null;
+  });
   /** ⚠️ 2026-10-12 (дарааллын аудит): таб буцахад хадгалаагүй ажлаас болж ХОЙШЛУУЛСАН шинэчлэл */
   const refreshDeferredRef = useRef(false);
   /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
@@ -755,29 +670,61 @@ function PortalContent(
   /* ⚠️ 2026-09-30: хамгаалалт ТУСДАА функц — харагдац солих, лого (нүүр рүү)
      ба «Гарах» ГУРВУУЛАА үүгээр явна. Урьд нь зөвхөн `setView`-д байсан тул
      лого эсвэл «Гарах» дарахад хадгалаагүй ажил асуултгүй алга болдог байв. */
-  const confirmLeave = useCallback((): boolean => {
-    if (planNavBusy()
-      && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
+  /* ⚠️ 2026-10-21 (аудит): `reason` — асуултын ӨМНӨ яагаад гарах болсныг хэлнэ (эрх хасагдсан үед
+     урьд нь зөвхөн «Хадгалаагүй засвар байна. Гарах уу?» гарч, хэрэглэгч шалтгааныг мэдэхгүй
+     «Болих» дарж эрхгүй харагдацдаа үлддэг байв — доорх эрхийн хамгаалалтын ⚠️). */
+  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` (ASYNC). Хөтчийн «энэ сайтаас дахин
+     бүү асуу» тэмдэглэгдсэн үед `window.confirm` чимээгүй false буцааж харагдац солих · лого · «Гарах» · Back БҮГД
+     юу ч хийхгүй болдог байв. Иймд гинж бүхэлдээ async (`setView` · popstate · лого · «Гарах» · эрхийн хамгаалалт).
+     `leaveAsks` — СИНХРОН: асуух зүйл байгаа эсэхийг Back (`onPop`) асуултын ӨМНӨ мэдэх ёстой (`Root`-ийн хойшлуулсан
+     popstate URL-ыг 0мс-д уншина — асуух бол URL-ыг тэр агшинд сэргээнэ). Нөхцөл, дараалал нь хуучнаараа. */
+  const leaveAsks = useCallback((busyOnly = false): string[] => {
+    const qs: string[] = [];
+    if (planNavBusy()) qs.push(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'));
+    /* ⚠️ 2026-10-22 (аудит): `busyOnly` (эрх хасагдсан цонхны товч — `setView`-ийн `force`) — ЗӨВХӨН ЯВЖ БУЙ бичилтийг
+       асууна: дээрх Хуваарийн гинж (`planNavBusy` — `Huvaari.tsx`-ийн «ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ» ⚠️) ба илгээлт/шийдвэр/
+       буулгалт (`navBusyLabels`). Хадгалаагүй засварын асуултууд (доор) алгасагдана — товч өөрөө «алдагдана» гэж хэлдэг
+       тул давхар асуухгүй (2026-10-21-ний шийдвэр хэвээр). Урьд нь `force` бүх асуултыг алгасаж модулийг бичилтийн
+       дундуур unmount хийдэг байв. */
+    if (busyOnly) {
+      const busyL = navBusyLabels();
+      if (busyL.length) qs.push(tr('{0}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?', busyL.join(' · ')));
+      return qs;
+    }
     /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
        хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
        байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
-    if (finNavDirty()
-      && !window.confirm(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
+    if (finNavDirty()) qs.push(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'));
     /* ⚠️ 2026-09-30: ЕРӨНХИЙ хамгаалалт (`navGuard.setNavDirty`) — «Дэд бүтэц», «Газар»,
        «Зөвшөөрөл» зэрэг харагдацын засварын маягт урьд нь харагдац солих, лого,
        «Гарах»-д асуултгүй алга болдог байв. Шинэ харагдац энд юу ч засахгүйгээр нэмэгдэнэ. */
     const labels = navDirtyLabels();
-    if (labels.length
-      && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
+    if (labels.length) qs.push(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')));
     /* ⚠️ 2026-10-06 (аудит): дээрх гурван тугт ОРООГҮЙ модулиуд (QAQC-ийн хадгалаагүй нүд,
        `useDraftSync`, CashflowPlan …) — тэдний `beforeunload` сонсогчоос асууна
        (`LocaleToggle.hasUnsavedWork`-ийн ⚠️). Дээр аль хэдийн асууж зөвшөөрсөн бол ДАХИН
        асуухгүй (тэр модулиуд ч `beforeunload` бүртгэдэг тул давхар асуулт гарна). */
-    const asked = planNavBusy() || finNavDirty() || labels.length > 0;
-    if (!asked && hasUnsavedWork()
-      && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'))) return false;
-    return true;
+    const asked = qs.length > 0;
+    if (!asked && hasUnsavedWork()) qs.push(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'));
+    return qs;
   }, []);
+  /** Асуулт нээлттэй эсэх — давхар даралт/Back асуултыг ДАРААЛУУЛЖ олон цонх гаргахгүй (2-р дуудлага `false`) */
+  const leavingRef = useRef(false);
+  const confirmLeave = useCallback(async (reason?: string, busyOnly = false): Promise<boolean> => {
+    const qs = leaveAsks(busyOnly);
+    if (!qs.length) return true;
+    if (leavingRef.current) return false;
+    leavingRef.current = true;
+    try {
+      /* Асуулт бүр шалтгаанаар эхэлнэ (`reason`); нэгийг нь «Үлдэх» гэвэл гарахгүй */
+      for (const q of qs) {
+        if (!(await askConfirm(reason ? `${reason}\n\n${q}` : q, { danger: true, ok: tr('Хаяад гарах'), cancel: tr('Үлдэх') }))) return false;
+      }
+      return true;
+    } finally {
+      leavingRef.current = false;
+    }
+  }, [leaveAsks]);
   /**
    * ⚠️ 2026-10-05: ӨГӨГДЛИЙН ШИНЭЧЛЭЛ. Кэшийн TTL нь ДАРААГИЙН дуудалтад л шалгагддаг тул
    *    нээлттэй харагдац өөрөө хэзээ ч дахин татдаггүй, `invalidateAll` зөвхөн хэл солиход
@@ -796,9 +743,13 @@ function PortalContent(
    *    `invalidateAll` чимээгүй ажиллаж, маягтын суурь мөр дахин татагдаж засвар дарагдах
    *    эрсдэлтэй байв; «Шинэчлэх» ч асуулгүй явдаг байв.
    */
-  const refreshData = useCallback(() => {
+  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` (async) — `confirmLeave`-ийн ⚠️ */
+  const refreshData = useCallback(async () => {
     const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork();
-    if (dirty && !window.confirm(tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'))) return;
+    if (dirty && !(await askConfirm(
+      tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'),
+      { danger: true, ok: tr('Шинэчлэх') },
+    ))) return;
     refreshDeferredRef.current = false;
     invalidateAll();
   }, []);
@@ -839,14 +790,22 @@ function PortalContent(
     return () => { dead = true; off?.(); };
   }, []);
 
-  const setView = useCallback((v: ViewKey): boolean => {
+  /* ⚠️ 2026-10-21 (аудит): `opts.reason` — асуултын шалтгаан (`confirmLeave`-ийн ⚠️); `opts.force` — АСУУЛГҮЙ
+     шилжинэ: эрх хасагдсан харагдацын хаалтын цонхны товч (`ViewLost`) — хэрэглэгч шалтгааныг аль хэдийн
+     уншсан, хадгалаагүй ажил алдагдахыг товч өөрөө хэлдэг тул давхар асуулт гаргахгүй. */
+  /* ⚠️ 2026-10-23 (UX аудит X1): ASYNC — `confirmLeave` апп доторх цонхоор асуудаг болсон (`confirmLeave`-ийн ⚠️) */
+  const setView = useCallback(async (v: ViewKey, opts?: { reason?: string; force?: boolean }): Promise<boolean> => {
     /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
        шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин
        дарах (`ViewRail`-ийн ⚠️ «жагсаалт хумигдана/дэлгэгдэнэ»), алгасах холбоосын `#` навигаци
        ба `Tuh`-ийн түүхийн бичлэг дээрх Back (popstate) хэрэглэгчийн ажлыг чимээгүй арилгадаг
        байв. Каталогийг сэлгэх нь ЗӨВХӨН цэсний даралтад (`railSelect`). */
     if (v === viewNowRef.current) return true;
-    if (!confirmLeave()) return false;
+    /* ⚠️ 2026-10-22 (аудит): `force` нь ЗӨВХӨН хадгалаагүй засварын асуултыг алгасна — явж буй бичилтийг (Хуваарийн
+       save→decidePlan гинж · гүйцэтгэлийн илгээлт/шийдвэр · нэмэлт ажил буулгалт) асуусаар (`confirmLeave`-ийн
+       `busyOnly`). Урьд нь `!opts?.force && …` нь БҮХ асуултыг алгасаж, бичилт явж байхад эрх хумигдаад «Болих»
+       дарсан хэрэглэгч цонхны товчоор модулийг гинжийн дундуур unmount хийдэг байв. */
+    if (!(await confirmLeave(opts?.reason, !!opts?.force))) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -866,7 +825,7 @@ function PortalContent(
     if (filterActiveRef.current) clearFilter();
     // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
     //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
-    setCatalog(v === 'plan');
+    setCatalog(v === 'plan' && !window.matchMedia('(max-width: 620px)').matches);
     /**
      * IoT руу орход 3D. ⚠️ ЗӨВХӨН IoT-д тавина — бусад харагдац руу шилжихэд
      * горимыг ХҮЧЭЭР 2D болгохгүй: хэрэглэгч 3D-г санаатай сонгосон бол тэр
@@ -898,15 +857,23 @@ function PortalContent(
       setOverlapFocus(null);
       setOverlapShown([]);
       resetNeedSelection();
-      setDetailHidden([]);
+      /* ⚠️ 2026-10-19 (аудит): `[]` биш `OLD_ET_OPTIONAL` — урьд нь харагдац руу орох бүрд хуучин ЕТ-ийн сонгомол
+         давхаргууд (дугуйн · явган зам · ногоон) АНХДАГЧ унтраалтаа алдаж бүгд асдаг байв (`OLD_ET_OPTIONAL`-ийн ⚠️). */
+      setDetailHidden(OLD_ET_OPTIONAL);
     }
     return true;
   }, [clearFilter, confirmLeave]);
   /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`-ийн ⚠️) */
   const railSelect = useCallback((v: ViewKey) => {
     if (v === viewNowRef.current) { setCatalog((c) => !c); return; }
-    setView(v);
+    void setView(v);
   }, [setView]);
+  /* ⚠️ 2026-10-23: `ViewCtx.setView` (`viewRegistry`) СИНХРОН `boolean` төрөлтэй — модулиуд утгыг нь уншдаггүй
+     (HuvaariBatlah · Tuh · Schem · SysDoc зөвхөн дууддаг) тул асуултыг эхлүүлээд `true` буцаана. */
+  const ctxSetView = useCallback((v: ViewKey): boolean => { void setView(v); return true; }, [setView]);
+  /** «Гарах» — dock-ийн мөр ба толгойн хэрэглэгчийн чип ХОЁУЛАА (`confirmLeave`-ийн хамгаалалттай) */
+  /* ⚠️ 2026-10-23: `confirmLeave` ASYNC (UX аудит X1) — Promise үргэлж truthy тул `await` ЗААВАЛ */
+  const signOut = async () => { if (await confirmLeave()) void auth.signOut(); };
 
   const badgeViewRef = useRef(view);
   useEffect(() => {
@@ -977,8 +944,12 @@ function PortalContent(
          алга болдог байв. Одоо лого/«Гарах»-тай ИЖИЛ `confirmLeave()`; татгалзвал
          `all=1`-тэй URL-ыг буцааж бичнэ — `Root` өөрийн сонсогчийг хойшлуулж
          (`setTimeout`) ЭНЭ сэргээсэн URL-ыг уншина. */
+      /* ⚠️ 2026-10-23 (UX аудит X1): асуулт ASYNC болсон тул асуух зүйлтэй бол URL-ыг ЭХЛЭЭД (синхрон) сэргээнэ —
+         `Root` 0мс-д уншихдаа порталд үлдэнэ; «Гарах» гэвэл нүүр рүү `onHome`-оор (логотой ижил) гарна. */
       if (!inPortalUrl()) {
-        if (!confirmLeave()) restoreUrl({ all: '1' });
+        if (!leaveAsks().length) return;
+        restoreUrl({ all: '1' });
+        void confirmLeave().then((ok) => { if (ok) onHome?.(); });
         return;
       }
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
@@ -1000,18 +971,25 @@ function PortalContent(
          харагдацыг заасан хэвээр үлддэг байв (төлөв ≠ URL, F5 → буруу
          харагдац). Татгалзвал юуг ч хөндөхгүй, одоогийн төлөвийг URL-д
          PUSH-ээр буцааж бичнэ — Back-ийн өмнөх бичлэг түүхэнд хэвээр. */
-      if (!setView(next)) {
-        restoreUrl();
-        return;
-      }
-      if (next !== initialView()) lastViewRef.current = next;
-      setZone(readParam('z'));
-      setLayer(initialLayer());
-      setDim(initialDim());
+      /* ⚠️ 2026-10-23: `setView` ASYNC — URL-ын утгуудыг асуултын ӨМНӨ авна (хариулах хооронд URL өөрчлөгдөж болно) */
+      const urlView = initialView();
+      const z = readParam('z');
+      const l = initialLayer();
+      const d = initialDim();
+      void setView(next).then((ok) => {
+        if (!ok) {
+          restoreUrl();
+          return;
+        }
+        if (next !== urlView) lastViewRef.current = next;
+        setZone(z);
+        setLayer(l);
+        setDim(d);
+      });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [setView, navScope, confirmLeave]);
+  }, [setView, navScope, confirmLeave, leaveAsks, onHome]);
 
   /**
    * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн
@@ -1034,10 +1012,23 @@ function PortalContent(
          агуулгын түлхүүрээр тогтворжсон тул энэ эффект рендер бүрт дахин асуухгүй. */
       const from = VIEW_BY_KEY[view].title;
       const to = VIEW_BY_KEY[navScope[0]].title;
+      /* ⚠️ 2026-10-21 (аудит): асуултад ШАЛТГААНЫГ хэлнэ (`confirmLeave(reason)`). Татгалзвал («Болих» —
+         хадгалаагүй ажлаа алдахгүйн тулд) харагдац ҮЛДЭХ ч эрхгүй агуулга ХАРАГДАХГҮЙ: доорх `viewAllowed`
+         рендерийн хамгаалалт `ViewLost` хаалтын цонх гаргаж, порталыг `inert` болгоно (Root-ийн `frozen`-тэй
+         ижил зарчим — ажил нь амьд, эрх сэргэвэл цонх өөрөө хаагдана). */
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
-      if (setView(navScope[0])) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      void setView(navScope[0], { reason: tr('Таны эрх өөрчлөгдсөн тул «{0}» харагдац хаагдана.', from) }).then((ok) => {
+        if (ok) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
+      });
     }
   }, [navScope, view, setView]);
+  /**
+   * ⚠️ 2026-10-21 (аудит): РЕНДЕРИЙН ЭРХИЙН ХАМГААЛАЛТ. Дээрх эффект нь «Болих»-оор няцаагдах (хадгалаагүй
+   *    ажил) ба эффект ажиллах хүртэлх нэг кадрын аль алинд нь эрхгүй харагдац бүрэн зурагддаг байв. Одоо
+   *    `view` хүрээнд байхгүй л бол порталын агуулга `inert`, дээр нь `ViewLost` хаалтын цонх (шалтгаан +
+   *    хүрээний эхний харагдац руу АСУУЛГҮЙ шилжих товч). Эрх сэргэвэл (`navScope` дахин агуулна) цонх алга.
+   */
+  const viewAllowed = navScope === 'all' || navScope.includes(view);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs);
@@ -1071,16 +1062,7 @@ function PortalContent(
     applyViewBasemap(mapView, view === 'dedButets' || view === 'hesegET' ? 'gray-vector' : 'satellite', view);
   }, [view, mapView]);
 
-  /* ── Багануудын өргөн ── */
-
-  // Самбар БАРУУН талд тул зүүн тийш чирэхэд өргөснө → тэмдэг урвуу
-  const panelSize = useColumnResize({
-    min: PANEL_MIN, max: PANEL_MAX, initial: PANEL_DEFAULT, storageKey: PANEL_KEY, dir: -1,
-  });
-  // Каталог ЗҮҮН талд — баруун тийш чирэхэд өргөснө
-  const catSize = useColumnResize({
-    min: CAT_MIN, max: CAT_MAX, initial: CAT_DEFAULT, storageKey: CAT_KEY, dir: 1,
-  });
+  /* ── Багануудын өргөн — `ResizableColumns` (доорх рендер; `CAT_DEFAULT`-ийн ⚠️) ── */
   const active = VIEW_BY_KEY[view];
   /**
    * ⚠️ Бүтэн талбайг эзлэх харагдацууд (ерөнхий дашбоард, анализ) нь ӨӨРСДИЙН
@@ -1110,8 +1092,11 @@ function PortalContent(
   /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): `ViewSlot`-ын контекст рендер бүрт ШИНЭ объект байсан тул
      харагдацын модуль Portal-ын рендер бүрд (тэмдэг, сүлжээ, өгөгдлийн цаг) дахин зурагддаг байв. */
   const slotCtx = useMemo(
-    () => ({ dim, setDim, zone, setZone, navScope, setView, planJump, setPlanJump, clearPlanJump }),
-    [dim, zone, navScope, setView, planJump, clearPlanJump],
+    () => ({ dim, setDim, zone, setZone, navScope, setView: ctxSetView, planJump, setPlanJump, clearPlanJump }),
+    /* ⚠️ 2026-10-26 (P8): `theme` — объектод ОРООГҮЙ ч deps-д ЗОРИУД: `ViewSlot` memo болсон тул сэдэв солиход
+       модуль дахин зурагдах цорын ганц зам (JS-ээр өнгө уншдаг модулиуд — `viewRegistry.ViewSlot`-ын ⚠️). */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme зориуд (дээрх ⚠️)
+    [dim, zone, navScope, ctxSetView, planJump, clearPlanJump, theme],
   );
   // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
@@ -1149,14 +1134,16 @@ function PortalContent(
   /**
    * ⚠️ 2+ багц сонгоход самбарыг АВТОМАТААР өргөсгөж хоёр баганыг зэрэг харуулна
    * («Ерөнхий дашбоард»-ын дэлгэрэнгүйтэй ижил зарчим). Хэрэглэгчийн гараар
-   * тохируулсан өргөнөөс (`panelSize.width`) ХЭТ БАГА болгохгүй — `max()`; мөн
-   * газрын зургийг хамгаалж `52vw`-ээр таглана. Багц сонгоогүй үед хуучин өргөн.
+   * тохируулсан өргөнөөс ХЭТ БАГА болгохгүй — `max()`; мөн газрын зургийг хамгаалж
+   * `52vw`-ээр таглана. Багц сонгоогүй үед хуучин өргөн.
+   * ⚠️ 2026-10-23: `max()` нь `ResizableColumns`-ийн CSS-д (`--col-r-eff`) — энд зөвхөн ДООД хязгаар
+   *    (`--col-r-floor`); хэрэглэгчийн өргөн (`--col-r`) компонентод.
    */
   const autoCols = Math.min(2, planGroups);
   const autoPanel = planGroups >= 2 ? autoCols * 300 + (autoCols - 1) * 10 + 44 : 0;
-  const panelVar = planGroups >= 2
-    ? `max(${panelSize.width}px, min(${autoPanel}px, 52vw))`
-    : `${panelSize.width}px`;
+  const colsStyle = planGroups >= 2
+    ? ({ '--col-r-floor': `min(${autoPanel}px, 52vw)` } as CSSProperties)
+    : undefined;
 
   return (
     <>
@@ -1174,7 +1161,8 @@ function PortalContent(
           role="status"
           aria-live="polite"
           style={{
-            position: 'fixed', top: 52, left: '50%', transform: 'translateX(-50%)', zIndex: 3500,
+            /* ⚠️ 2026-10-23: толгой 80px (`--head`) болсон тул түүний ДООР */
+            position: 'fixed', top: 'calc(var(--head) + 8px)', left: '50%', transform: 'translateX(-50%)', zIndex: 3500,
             display: 'flex', alignItems: 'center', gap: 10, maxWidth: 'min(560px, calc(100vw - 32px))',
             padding: '8px 10px 8px 14px', borderRadius: 10, background: 'var(--surface)', color: 'var(--ink)',
             border: '1px solid var(--line-strong)', boxShadow: 'var(--shadow)', fontSize: 12.5,
@@ -1192,106 +1180,21 @@ function PortalContent(
           </button>
         </div>
       )}
-      {/* ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДАВ — харагдац бүр өөр өнгөөр
-          будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
-          Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
+      {/* ⚠️ 2026-10-23: Environment — ХҮРЭЭ: зүүн DOCK (`--nav` 104px, fixed; ≤900px-д доод зурвас) + баруун
+          тал (толгой `--head` 80px sticky · агуулга 12px зайтай). Газрын зурагтай харагдац: KPI зурвас ДЭЭР,
+          доор нь чирэгддэг 3 багана (каталог · зураг · самбар — `ResizableColumns`). Бүтэн дэлгэцийн
+          харагдацууд (`viewRegistry`) дотоод бүтцээ хадгалж зөвхөн энэ хүрээнд сууна.
+          ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДСАН хэвээр (байгууллагын НЭГ акцент).
+          ⚠️ z-index: толгой 20 · dock 15 ХЭВЭЭР — модулиудын бүтэн дэлгэцийн overlay (30–40) тэднээс дээр
+             гарахаар тооцогдсон (`dedButets`/`finance.module.css`). Хүрээнд `transform`/`filter` БАЙХГҮЙ
+             (тэд `fixed`-ийн эх хүрээг өөрчилнө); blur зөвхөн толгойн `backdrop-filter`. */}
       <div
-        className={`${s.shell} ${isFull ? s.shellSuit : ''} ${!isFull && !planPanel && !planDetail ? s.shellFoot : ''} ${navMin ? s.shellNavMin : ''}`}
-        style={{
-          '--panel': panelVar,
-          '--catalog': `${catSize.width}px`,
-        } as CSSProperties}
+        className={`${s.shell} ${navMin ? s.shellNavMin : ''}`}
+        /* ⚠️ 2026-10-21 (аудит): эрхгүй харагдац — агуулга `inert` (`viewAllowed`-ийн ⚠️, `ViewLost` дээр нь) */
+        inert={!viewAllowed}
       >
-        <header className={s.head}>
-          {/* Лого/нэр дээр дарахад НҮҮР рүү буцна (onHome өгөгдсөн бол товч болно) */}
-          <button
-            type="button"
-            className={s.brand}
-            /* ⚠️ 2026-09-30: `confirmLeave` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️) */
-            onClick={onHome ? () => { if (confirmLeave()) onHome(); } : undefined}
-            disabled={!onHome}
-            title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
-          >
-            <img src="/logo.svg" alt="" className={s.logo} />
-            {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДАВ (хэрэглэгчийн хүсэлт) — толгойд
-                зөвхөн брэндийн нэр үлдэнэ. `brandText`-ийг хэвээр үлдээв: логоны
-                хажуугийн босоо зэрэгцүүлэлт түүнээс хамаарна. */}
-            <span className={s.brandText}>
-              <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
-            </span>
-          </button>
-
-          {/* ⚠️ 2026-08-17: Харагдац сонголт толгойноос ЗҮҮН БАГАНА руу зөөгдөв
-              (доорх `<aside className={s.nav}>`) — envhub-ийн хэлтсийн жагсаалт
-              шиг босоо. Толгойд зөвхөн брэнд ба хэрэгслийн товчнууд үлдэнэ. */}
-
-          <ActiveFilterChip />
-
-          {/* ⚠️ Хэрэгслүүд ЗААВАЛ өөрийн саванд. Урьд нь `ActiveFilterChip` нь
-              баруун тийш түлхэх үүрэг гүйцэтгэдэг байсан ч тэр нь шүүлт
-              идэвхгүй үед `null` буцаадаг — тэгэхээр товчнууд брэндийн ЯГ
-              хажууд наалдаж, толгойн баруун тал хоосон үлддэг байв.
-              `margin-left: auto` нь шүүлт байгаа эсэхээс ҮЛ ХАМААРАН түлхэнэ. */}
-          {/* ⚠️ «Хэрэглэгчийн эрх» ЭНДЭЭС ХАСАГДСАН (2026-08-20) — зүүн цэсний
-              «СИСТЕМ» бүлэгт, хамгийн доод талд шилжив. Толгойд зөвхөн БҮХ
-              хэрэглэгчид хамаатай хоёр солигч (хэл, гэрэлтүүлэг) үлдэнэ. */}
-          <div className={s.headTools}>
-            {/* ⚠️ 2026-10-05: өгөгдлийн цаг + гараар шинэчлэх (дээрх `refreshData`-ийн ⚠️) */}
-            <span className={s.dataAt} title={tr('Өгөгдлийг сүүлд бүтнээр шинэчилсэн цаг')}>
-              {tr('Өгөгдөл: {0}', hhmm(dataAt))}
-            </span>
-            <button
-              type="button"
-              className={s.iconBtn}
-              onClick={refreshData}
-              aria-label={tr('Шинэчлэх')}
-              title={tr('Бүх өгөгдлийг дахин татах')}
-            >
-              <span aria-hidden style={{ fontSize: 17, lineHeight: 1 }}>↻</span>
-            </button>
-
-            {/* ⚠️ 2026-10-15: «Тайлан» — идэвхтэй харагдацыг (1–26 бүгд) Word болгон татна (`ReportButton`).
-                ЗӨВХӨН super admin-д (хэрэглэгчийн заавар) — `isSuper` нь `AuthGate`-ийн hard role. */}
-            {isSuper && <ReportButton
-              viewKey={view}
-              title={active.title}
-              desc={active.desc}
-              filters={zone ? [`${tr('Бүс')}: ${zonesLabel(zone.split(',').filter(Boolean))}`] : []}
-            />}
-
-            <LocaleToggle className={s.iconBtn} />
-
-            <button
-              type="button"
-              className={s.iconBtn}
-              onClick={toggle}
-              aria-label={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
-              title={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
-            >
-              <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
-            </button>
-
-            {/* ⚠️ 2026-09-30: ТУСЛАМЖ — хэрэглэгчийн эрхэнд байгаа хэсэг бүр юунд
-                зориулагдсан, хэн ашигладгийг тайлбарлана (`HelpPanel`). Баруун
-                захад: анхны зөвлөмжийн сум (`help.module.css` §tipArrow) үүнийг заана. */}
-            <button
-              type="button"
-              className={s.iconBtn}
-              onClick={() => setHelpOpen(true)}
-              aria-haspopup="dialog"
-              aria-expanded={helpOpen}
-              aria-label={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
-              title={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
-            >
-              <span aria-hidden style={{ fontWeight: 700, fontSize: 16, lineHeight: 1 }}>?</span>
-            </button>
-          </div>
-        </header>
-
-        {/* ── ЗҮҮН БАГАНА: харагдацын жагсаалт ──
-            envhub-ийн «ХЭЛТЭС» самбартай ижил — дугаарласан босоо жагсаалт.
-            Толгойн доор, бүх мөрийг эзэлнэ (`grid-area: nav`). */}
-        <aside className={s.nav}>
+        {/* ── ЗҮҮН DOCK: харагдацын жагсаалт (Environment `shell/sidebar.tsx`) ── */}
+        <aside className={s.dock} aria-label={tr('Цэс')}>
           {/* Цэс хураах/дэлгэх — хураахад зөвхөн дүрс үлдэнэ (54px) */}
           <button
             type="button"
@@ -1304,25 +1207,137 @@ function PortalContent(
             <span className={s.navFoldArrow} aria-hidden>{navMin ? '»' : '«'}</span>
             {!navMin && <span>{tr('Хураах')}</span>}
           </button>
-          {/* ⚠️ 2026-10-06 (аудит): цэс ч ТУСДАА хашлагад — уналт нь бүх порталыг үхүүлэхгүй */}
-          <ErrorBoundary scope="view" label={tr('Цэс нээгдсэнгүй')}>
-          <ViewRail
-            view={view}
-            setView={railSelect}
-            navScope={navScope}
-            collapsed={navMin}
-            onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
-            docsActive={docsOpen}
-            onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
-            adminActive={adminOpen}
-            /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
-               зүйл байхгүй тул мөр гарахгүй. */
-            userName={auth.user?.fullName || auth.user?.username}
-            onSignOut={auth.status === 'signed-in' ? () => { if (confirmLeave()) void auth.signOut(); } : undefined}
-            badges={badges}
-          />
-          </ErrorBoundary>
+          <div className={s.dockNav}>
+            {/* ⚠️ 2026-10-06 (аудит): цэс ч ТУСДАА хашлагад — уналт нь бүх порталыг үхүүлэхгүй */}
+            <ErrorBoundary scope="view" label={tr('Цэс нээгдсэнгүй')}>
+            <ViewRail
+              view={view}
+              setView={railSelect}
+              navScope={navScope}
+              collapsed={navMin}
+              onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
+              docsActive={docsOpen}
+              onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
+              adminActive={adminOpen}
+              onSysClose={canSys ? () => setSysOpen(true) : undefined}
+              sysCloseActive={sysOpen}
+              sysClosedNow={!!sysNow}
+              /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
+                 зүйл байхгүй тул мөр гарахгүй. */
+              userName={auth.user?.fullName || auth.user?.username}
+              onSignOut={auth.status === 'signed-in' ? signOut : undefined}
+              badges={badges}
+            />
+            </ErrorBoundary>
+          </div>
         </aside>
+
+        <div className={s.frame}>
+        <header className={s.head}>
+          {/* Лого/нэр дээр дарахад НҮҮР рүү буцна (onHome өгөгдсөн бол товч болно).
+              ⚠️ 2026-10-23: Environment — 60px лого (≤640px-д 44px), Manrope 16px/700 UPPERCASE брэнд, доор нь
+              11px зам заагч = идэвхтэй харагдацын нэр (≤640px-д нуугдана). */}
+          <div className={s.identity}>
+            <button
+              type="button"
+              className={s.brand}
+              /* ⚠️ 2026-09-30: `confirmLeave` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️) */
+              onClick={onHome ? async () => { if (await confirmLeave()) onHome(); } : undefined}
+              disabled={!onHome}
+              title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
+            >
+              <img src="/logo.svg" alt="" className={s.logo} />
+              {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДСАН (хэрэглэгчийн хүсэлт) — толгойд зөвхөн брэндийн нэр. */}
+              <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
+            </button>
+            <div className={s.crumb}>{active.title}</div>
+          </div>
+
+          {/* ⚠️ 2026-08-17: Харагдац сонголт толгойноос ЗҮҮН DOCK руу зөөгдсөн. */}
+
+          <ActiveFilterChip />
+
+          {/* ⚠️ Хэрэгслүүд ЗААВАЛ өөрийн саванд. Урьд нь `ActiveFilterChip` нь
+              баруун тийш түлхэх үүрэг гүйцэтгэдэг байсан ч тэр нь шүүлт
+              идэвхгүй үед `null` буцаадаг — тэгэхээр товчнууд брэндийн ЯГ
+              хажууд наалдаж, толгойн баруун тал хоосон үлддэг байв.
+              `margin-left: auto` нь шүүлт байгаа эсэхээс ҮЛ ХАМААРАН түлхэнэ. */}
+          {/* ⚠️ «Хэрэглэгчийн эрх» толгойд БИШ (2026-08-20) — dock-ийн «СИСТЕМ» бүлэгт.
+              ⚠️ 2026-10-23: Environment — 40px дугуй дүрсэн товчнууд, 1px зааг, дараа нь хэрэглэгчийн чип. */}
+          <div className={s.headTools}>
+            {/* ⚠️ 2026-10-05: өгөгдлийн цаг + гараар шинэчлэх (дээрх `refreshData`-ийн ⚠️) */}
+            <span className={`${s.dataAt} num`} title={tr('Өгөгдлийг сүүлд бүтнээр шинэчилсэн цаг')}>
+              {tr('Өгөгдөл: {0}', hhmm(dataAt))}
+            </span>
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={() => void refreshData()}
+              aria-label={tr('Шинэчлэх')}
+              title={tr('Бүх өгөгдлийг дахин татах')}
+            >
+              <RefreshCw size={18} strokeWidth={1.6} aria-hidden />
+            </button>
+
+            {/* ⚠️ 2026-10-15: «Тайлан» — идэвхтэй харагдацыг (1–26 бүгд) Word болгон татна (`ReportButton`).
+                ЗӨВХӨН super admin-д (хэрэглэгчийн заавар) — `isSuper` нь `AuthGate`-ийн hard role. */}
+            {isSuper && <ReportButton
+              viewKey={view}
+              title={active.title}
+              desc={active.desc}
+              /* ⚠️ 2026-10-23 (UX аудит E1): «Бүс» ЗӨВХӨН бүсээр шүүдэг харагдацад (зурагтай харагдац · Ерөнхий/
+                 Дашбоард) — урьд нь бүсгүй харагдацын тайланд ч «Бүс: X» гэж худал бичигддэг байв. Ерөнхий дашбоардад бүс
+                 нь ЗӨВХӨН газрын зургийг шүүнэ (KPI нь төслийн нийт — `GeneralDash`-ийн E2 ⚠️). Он/сар/таб/сонголт зэрэг
+                 харагдацын өөрийн шүүлтийг `viewReport` дэлгэцээс уншиж нэмнэ (`readFilters`). */
+              filters={zone && (!standalone || view === 'gdash' || view === 'dashboard')
+                ? [view === 'gdash'
+                  ? tr('Бүс (зөвхөн газрын зураг): {0}', zonesLabel(zone.split(',').filter(Boolean)))
+                  : `${tr('Бүс')}: ${zonesLabel(zone.split(',').filter(Boolean))}`]
+                : []}
+            />}
+
+            <LocaleToggle className={s.iconBtn} />
+
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={toggle}
+              aria-label={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
+              title={theme === 'dark' ? tr('Цайвар горим') : tr('Харанхуй горим')}
+            >
+              {theme === 'dark' ? <Sun size={18} strokeWidth={1.6} aria-hidden /> : <Moon size={18} strokeWidth={1.6} aria-hidden />}
+            </button>
+
+            {/* ⚠️ 2026-09-30: ТУСЛАМЖ — хэрэглэгчийн эрхэнд байгаа хэсэг бүр юунд
+                зориулагдсан, хэн ашигладгийг тайлбарлана (`HelpPanel`). Анхны зөвлөмжийн
+                сум нь «?» товчийн төвөөс хэмжигдэнэ (`HelpTip`, 2026-10-26). */}
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={() => setHelpOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={helpOpen}
+              aria-label={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
+              title={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
+            >
+              <CircleQuestionMark size={18} strokeWidth={1.6} aria-hidden />
+            </button>
+
+            {/* ⚠️ 2026-10-23: Environment `auth/user-chip.tsx` — ХЭН нэвтэрсэн, яаж ГАРАХ. Нэвтэрсэн үед л
+                (auth `off` бол гарах зүйлгүй — dock-ийн «Гарах» мөртэй ижил нөхцөл). */}
+            {auth.status === 'signed-in' && auth.user && (
+              <>
+                <span className={s.headDiv} aria-hidden />
+                <UserChip
+                  name={auth.user.fullName || auth.user.username}
+                  username={auth.user.username}
+                  thumbnail={auth.user.thumbnail}
+                  onSignOut={signOut}
+                />
+              </>
+            )}
+          </div>
+        </header>
 
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
         {/* ⚠️ 2026-10-06: `id="main"` — алгасах холбоосын (`SkipLink`) ЗОРИЛТ. Модулиуд өөрсдийн
@@ -1348,128 +1363,38 @@ function PortalContent(
         )}
 
         {!isFull && (
-          <>
-            {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц энэ хашлагыг бүхэлд нь авна (`MapCanvas.toggleFs`) */}
-            <div className={s.map} id="main" tabIndex={-1} data-map-host="">
-              {/* ⚠️ 2026-10-06 (аудит): зураг, хэрэгслийн зурвас, тунгалаг, каталог, нэгтгэлийн
-                  зурвас ТУС БҮР өөрийн хашлагад — урьд нь `scope="view"`-ийн ГАДНА байсан тул
-                  тэдгээрийн рендерийн алдаа (эсвэл байршуулалтын дараах chunk 404) root
-                  хашлагад (layout.tsx) хүрч ПОРТАЛЫГ БҮХЭЛД нь сольдог байв. Зургийн хашлага
-                  `key`-гүй: харагдац солих бүрд ArcGIS зургийг дахин үүсгэхгүй. */}
-              <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
-              <MapCanvas
-                dim={dim}
-                /* ⚠️ «Detail» — зөвхөн хоёр талын давхарга + `bare`: суурь 14-ийн бусад нь асахгүй.
-                   Swipe: зүүн — одоогийн ерөнхий төлөвлөгөө, баруун — шинэчлэгдсэн (`DETAIL_NEXT_LAYERS`). */
-                visible={planDetail ? detailVisible : visible}
-                bare={planDetail}
-                /* Харьцуулах товч асаалттай үед л (`hesegSwipe`); хэсэг бүр өөрийн хоёр талтай */
-                swipe={planDetail && hesegSwipe
-                  ? (hesegTab === 'change' ? H01_SWIPE : hesegTab === 'overlap' ? H02_SWIPE : H03_SWIPE)
-                  : undefined}
-                layerFilters={planDetail ? detailFilters : undefined}
-                opacity={opacity}
-                zone={planDetail ? null : zone}
-                /* ⚠️ Явган хүний зам нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д үргэлж
-                   асаалттай (`services.ts` §PLAN_ALWAYS_ON_IDS). */
-                alwaysOn={planPanel && !planDetail ? PLAN_ALWAYS_ON_IDS : undefined}
-                onPick={pick}
-              />
+          /* ⚠️ 2026-10-23: `id="main"` нь ЭНЭ ажлын талбарт (KPI · каталог · зураг · самбар бүгд) — урьд нь зураг
+             (`#main`) ба самбар (`#panel`) тусдаа байв. Тайлан (`viewReport.roots`) KPI-г ч багтааж, давхардуулахгүйн
+             тулд самбарын `id="panel"` хасагдсан; `SkipLink` `#main` руу (fallback хэвээр). Каталог `data-report-skip`. */
+          <div className={s.work} id="main" tabIndex={-1}>
+            {/* ── KPI ЗУРВАС (Environment `.analytics-overview`) — урьд нь самбарын толгойн доор (plan) эсвэл
+                дэлгэцийн доод хүрээнд (бусад) байсан нэгтгэсэн үзүүлэлт. «Хэсэгчилсэн ЕТ»-д байхгүй (урьдын адил). */}
+            {!planDetail && (
+              <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
+                <SummaryBar zone={zone} />
               </ErrorBoundary>
+            )}
 
-              {planDetail && dim === '2d' && hesegTab === 'change' && (
-                <ErrorBoundary scope="view" floating label={tr('Тооцоолж чадсангүй')}>
-                  <ChangeBoundary />
-                  <ChangeMapFocus pick={hesegPick} />
-                </ErrorBoundary>
-              )}
-
-              {/* «Detail» — давхцлын тодруулга (swipe нь зөвхөн 2D-д, `MapCanvas` §swipe).
-                  ⚠️ 2026-10-13: «Одоогийн төлөвлөгөө» / «Шинэчлэгдсэн» товч зургаас САМБАРЫН ТОЛГОЙ руу
-                  шилжив (хэрэглэгчийн заавар) — `PlanOverlapPanel` §sideSwitch. */}
-              {planDetail && dim === '2d' && hesegTab === 'overlap' && (
-                <ErrorBoundary scope="view" floating label={tr('Давхцлын тооцоо нээгдсэнгүй')}>
-                  <PlanOverlapLayers focus={overlapFocus} shown={overlapShown} selected={overlapSel} />
-                </ErrorBoundary>
-              )}
-
-              {planDetail && dim === '2d' && hesegTab === 'need' && (
-                <ErrorBoundary scope="view" floating label={tr('Нэмэлт хэрэгцээний тооцоо нээгдсэнгүй')}>
-                  <NeedLayer />
-                </ErrorBoundary>
-              )}
-
-              {/* «Хэсэгчилсэн ЕТ» — харьцуулах (swipe) товч, fullscreen-ий ДООР (`DetailLayers.tsx` §SwipeToggle) */}
-              {planDetail && dim === '2d' && (
-                <ErrorBoundary scope="view" floating label={tr('Харьцуулах товч нээгдсэнгүй')}>
-                  <SwipeToggle on={hesegSwipe} setOn={setHesegSwipe} />
-                  <CompareLabels
-                    on={hesegSwipe}
-                    leading={hesegTab === 'change' ? tr('Хуучин ЕТ') : hesegTab === 'overlap' ? tr('Хэсэгчилсэн ЕТ') : tr('Одоо байгаа инженерийн дэд бүтэц')}
-                    trailing={hesegTab === 'change' ? tr('Хэсэгчилсэн ЕТ') : hesegTab === 'overlap' ? tr('Сонгосон давхцал') : tr('Шинээр нэмэгдэх хэрэгцээ')}
-                  />
-                </ErrorBoundary>
-              )}
-
-              {/* «Detail» — суурь зургийн товчны ДООР давхаргын товч (`DetailLayers.tsx`) */}
-              {planDetail && detailGroups.length > 0 && (
-                <ErrorBoundary scope="view" floating label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
-                  <DetailLayerMenu groups={detailGroups} hidden={detailHidden} setHidden={setDetailHidden} />
-                </ErrorBoundary>
-              )}
-
-              {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
-                  (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв.
-                  ⚠️ 2026-10-13: «Detail»-д ГАРАХГҮЙ (хэрэглэгч: «энэ байхгүй, одоо дээр бол байна») —
-                  каталог/тунгалаг/бүс тэнд утгагүй; давхаргыг дээрх товч удирдана. */}
-              {!planDetail && (
-              <ErrorBoundary scope="view" floating label={tr('Зургийн хэрэгслүүд нээгдсэнгүй')}>
-              <MapTools
-                dim={dim}
-                setDim={setDim}
-                layersOpen={catOpen}
-                onLayers={() => setCatalog((v) => !v)}
-                opacityOpen={opacityOpen}
-                /* ⚠️ Тунгалаг нь `setView`-д ТЭГЛЭГДДЭГГҮЙ (санаатай — доорх
-                   `setView`-ийн жагсаалтыг үз) тул өмнөх харагдацад 10% болгосон
-                   давхарга энд ч бүдэг хэвээр. Товчны тэмдэг нь тэр далд төлөвийг
-                   ил болгоно (2026-09-15-ны хэрэглээний аудит). */
-                opacityCount={Object.values(opacity).filter((v) => v < 1).length}
-                onOpacity={() => setOpacityOpen((v) => !v)}
-                zone={zone}
-                setZone={setZone}
-                /* ⚠️ ЗҮҮН ХАВТАС — ЗӨВХӨН энэ харагдацад (2026-09-15,
-                   хэрэглэгчийн заавар). Бусад зураг хуучин зохиомжтой. */
-                dock
-              />
-              </ErrorBoundary>
-              )}
-
-              {/* Тунгалаг тохируулах хөвөгч цонх */}
-              {opacityOpen && !planDetail && (
-                <ErrorBoundary scope="view" floating label={tr('Тунгалаг тохируулах цонх нээгдсэнгүй')} onClose={closeOpacity}>
-                <OpacityPanel
-                  visible={visible}
-                  opacity={opacity}
-                  setOpacity={setOpacity}
-                  onClose={closeOpacity}
-                  dock
-                />
-                </ErrorBoundary>
-              )}
-
+            <ResizableColumns
+              id="portal"
+              left={catOpen ? CAT_DEFAULT : undefined}
+              right={PANEL_DEFAULT}
+              legacy={COL_LEGACY}
+              className={s.cols}
+              style={colsStyle}
+            >
               {/**
-                * Давхаргын сонголт — идэвхжихэд зурган дээр ХӨВӨГЧ POPUP болж
-                * гарна (хэрэглэгчийн шийдвэр, 2026-08-18). Урьд нь grid-ийн
-                * тусдаа багана байсан тул нээхэд зураг шахагддаг байв.
-                * `embedded` — grid-area/хүрээг унтраасан хөвөгч хувилбар.
+                * Давхаргын сонголт — ЗҮҮН БАГАНА (⚠️ 2026-10-23: Environment — байнгын багана; 2026-08-18-ны
+                * зурган дээрх ХӨВӨГЧ popup (`catPop`) ба 2026-09-15-ны «зургийн зүүн ирмэгт» шийдвэр ХАСАГДАВ).
+                * Нээх/хаах нь урьдын адил («Давхарга» товч · цэсний идэвхтэй мөр · ×) — хаахад багана алга болж
+                * зураг өргөснө. `embedded` — өөрийн хүрээгүй хувилбар (карт нь `.catCol`).
                 */}
               {catOpen && (
-                <div className={s.catPop}>
+                <div className={s.catCol}>
                   <ErrorBoundary scope="view" label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
+                  {/* ⚠️ 2026-10-22: `totals` ӨГӨХГҮЙ — нээлттэй бүлгийнхээ тоог л өөрөө татна (дээрх `totals`-ийн ⚠️) */}
                   <LayerCatalog
                     view="plan"
-                    totals={totals}
                     visible={visible}
                     setVisible={setVisible}
                     selected={layer}
@@ -1478,120 +1403,203 @@ function PortalContent(
                     forced={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
                     pinned={false}
                     embedded
-                    resizing={catSize.dragging}
-                    onResizeStart={catSize.onPointerDown}
-                    onResizeReset={catSize.onDoubleClick}
-                    onResizeKey={catSize.onKeyDown}
                     zone={zone}
                   />
                   </ErrorBoundary>
                 </div>
               )}
 
-            </div>
-
-            <aside className={s.panel} id="panel" aria-label={tr('{0} самбар', active.title)}>
-              {/* Өргөн тохируулах бариул — самбарын зүүн ирмэг дээр */}
-              <div
-                className={`${s.grip} ${panelSize.dragging ? s.gripOn : ''}`}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={tr('Самбарын өргөн')}
-                tabIndex={0}
-                aria-valuenow={panelSize.width}
-                aria-valuemin={PANEL_MIN}
-                aria-valuemax={PANEL_MAX}
-                onPointerDown={panelSize.onPointerDown}
-                onDoubleClick={panelSize.onDoubleClick}
-                onKeyDown={panelSize.onKeyDown}
-                title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-              />
-
-              {/* ⚠️ 2026-10-13: «Detail» горимд гарчгийн карт НУУГДАНА (хэрэглэгчийн заавар) */}
-              {!planDetail && (
-              <header className={s.panelHead}>
-                <span className={s.panelIcon}><Icon name={active.icon} /></span>
-                <div>
-                  <h2 className={s.panelTitle}>{active.title}</h2>
-                  <p className={s.panelDesc}>{active.desc}</p>
-                </div>
-              </header>
-              )}
-
-              {/**
-                * Нэгтгэсэн үзүүлэлт — гарчгийн ЯГ доор, самбарын доторх тогтмол зурвас.
-                *
-                * ⚠️ ЗӨВХӨН «Ерөнхий мэдээлэл»-д. «Барилгын хяналт» нь ӨӨР ХҮНИЙ
-                * хэсэг бөгөөд тэнд энэ зурвас хуучнаараа ДЭЛГЭЦИЙН ДООД хүрээнд
-                * үлдэнэ — тэр харагдацын зохион байгуулалтыг зөвшөөрөлгүй
-                * өөрчлөхгүй.
-                */}
-              {planPanel && (
-                <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
-                  <SummaryBar zone={zone} />
-                </ErrorBoundary>
-              )}
-
-              {/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel`) */}
-              {planDetail && (
-                <div className={s.panelBody}>
-                  <ErrorBoundary scope="view" label={tr('Давхцлын самбар нээгдсэнгүй')}>
-                    <HesegPanel
-                      tab={hesegTab}
-                      setTab={(x) => {
-                        if (x === hesegTab) return;
-                        setHesegTab(x); setHesegPick(null); setOverlapSel(null); setOverlapFocus(null);
-                        setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden([]);
-                      }}
-                      change={<ChangePanel pick={hesegPick} setPick={setHesegPick} />}
-                      overlap={(
-                        <PlanOverlapPanel
-                          side="next"
-                          focus={overlapFocus} setFocus={setOverlapFocus}
-                          selected={overlapSel} setSelected={setOverlapSel}
-                          shown={overlapShown} setShown={setOverlapShown}
-                        />
-                      )}
-                      need={<NeedPanel />}
-                    />
-                  </ErrorBoundary>
-                </div>
-              )}
-
-              {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
-                  түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
-              {/* ⚠️ «Detail»-д УСТГАХГҮЙ, нуух — самбарын дотоод төлөв «Одоо» руу буцахад хэвээр.
-                  `hidden` атрибут БИШ: `.panelBody`-ийн `display: flex` түүнийг дарна. */}
-              <div className={s.panelBody} style={planDetail ? { display: 'none' } : undefined}>
-                <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
-                <ViewPanel
-                  view={view}
-                  totals={totals}
-                  visible={visible}
-                  setVisible={setVisible}
-                  zone={zone}
-                  setZone={setZone}
-                  picked={picked}
-                  pickedLayer={pickedLayer}
-                  openCatalog={() => setCatalog(true)}
-                  layer={layer}
-                  setLayer={setLayer}
+              {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц энэ хашлагыг бүхэлд нь авна (`MapCanvas.toggleFs`).
+                  ⚠️ 2026-10-23: Environment — зураг нь 12px булантай карт (--line хүрээ, overflow hidden, ≥300px). */}
+              <div className={s.map} data-map-host="">
+                {/* ⚠️ 2026-10-06 (аудит): зураг, хэрэгслийн зурвас, тунгалаг, каталог, нэгтгэлийн
+                    зурвас ТУС БҮР өөрийн хашлагад — урьд нь `scope="view"`-ийн ГАДНА байсан тул
+                    тэдгээрийн рендерийн алдаа (эсвэл байршуулалтын дараах chunk 404) root
+                    хашлагад (layout.tsx) хүрч ПОРТАЛЫГ БҮХЭЛД нь сольдог байв. Зургийн хашлага
+                    `key`-гүй: харагдац солих бүрд ArcGIS зургийг дахин үүсгэхгүй. */}
+                <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
+                <MapCanvas
+                  dim={dim}
+                  /* ⚠️ «Detail» — зөвхөн хоёр талын давхарга + `bare`: суурь 14-ийн бусад нь асахгүй.
+                     Swipe: зүүн — одоогийн ерөнхий төлөвлөгөө, баруун — шинэчлэгдсэн (`DETAIL_NEXT_LAYERS`). */
+                  visible={planDetail ? detailVisible : visible}
+                  bare={planDetail}
+                  /* Харьцуулах товч асаалттай үед л (`hesegSwipe`); хэсэг бүр өөрийн хоёр талтай */
+                  swipe={planDetail && hesegSwipe
+                    ? (hesegTab === 'change' ? H01_SWIPE : hesegTab === 'overlap' ? H02_SWIPE : H03_SWIPE)
+                    : undefined}
+                  layerFilters={planDetail ? detailFilters : undefined}
+                  opacity={opacity}
+                  zone={planDetail ? null : zone}
+                  /* ⚠️ Явган хүний зам нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д үргэлж
+                     асаалттай (`services.ts` §PLAN_ALWAYS_ON_IDS). */
+                  alwaysOn={planPanel && !planDetail ? PLAN_ALWAYS_ON_IDS : undefined}
+                  onPick={pick}
                 />
                 </ErrorBoundary>
-              </div>
-            </aside>
 
-            {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
-            {!planPanel && !planDetail && (
-              <footer className={s.dashFoot} aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
-                <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
-                  <SummaryBar zone={zone} />
+                {planDetail && dim === '2d' && hesegTab === 'change' && (
+                  <ErrorBoundary scope="view" floating label={tr('Тооцоолж чадсангүй')}>
+                    <ChangeBoundary />
+                    <ChangeMapFocus pick={hesegPick} />
+                  </ErrorBoundary>
+                )}
+
+                {/* «Detail» — давхцлын тодруулга (swipe нь зөвхөн 2D-д, `MapCanvas` §swipe).
+                    ⚠️ 2026-10-13: «Одоогийн төлөвлөгөө» / «Шинэчлэгдсэн» товч зургаас САМБАРЫН ТОЛГОЙ руу
+                    шилжив (хэрэглэгчийн заавар) — `PlanOverlapPanel` §sideSwitch. */}
+                {planDetail && dim === '2d' && hesegTab === 'overlap' && (
+                  <ErrorBoundary scope="view" floating label={tr('Давхцлын тооцоо нээгдсэнгүй')}>
+                    <PlanOverlapLayers focus={overlapFocus} shown={overlapShown} selected={overlapSel} />
+                  </ErrorBoundary>
+                )}
+
+                {planDetail && dim === '2d' && hesegTab === 'need' && (
+                  <ErrorBoundary scope="view" floating label={tr('Нэмэлт хэрэгцээний тооцоо нээгдсэнгүй')}>
+                    <NeedLayer />
+                  </ErrorBoundary>
+                )}
+
+                {/* «Хэсэгчилсэн ЕТ» — харьцуулах (swipe) товч, fullscreen-ий ДООР (`DetailLayers.tsx` §SwipeToggle) */}
+                {planDetail && dim === '2d' && (
+                  <ErrorBoundary scope="view" floating label={tr('Харьцуулах товч нээгдсэнгүй')}>
+                    <SwipeToggle on={hesegSwipe} setOn={setHesegSwipe} />
+                    <CompareLabels
+                      on={hesegSwipe}
+                      leading={hesegTab === 'change' ? tr('Хуучин ЕТ') : hesegTab === 'overlap' ? tr('Хэсэгчилсэн ЕТ') : tr('Одоо байгаа инженерийн дэд бүтэц')}
+                      trailing={hesegTab === 'change' ? tr('Хэсэгчилсэн ЕТ') : hesegTab === 'overlap' ? tr('Сонгосон давхцал') : tr('Шинээр нэмэгдэх хэрэгцээ')}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {/* «Detail» — суурь зургийн товчны ДООР давхаргын товч (`DetailLayers.tsx`) */}
+                {planDetail && detailGroups.length > 0 && (
+                  <ErrorBoundary scope="view" floating label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
+                    <DetailLayerMenu groups={detailGroups} hidden={detailHidden} setHidden={setDetailHidden} />
+                  </ErrorBoundary>
+                )}
+
+                {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
+                    (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв.
+                    ⚠️ 2026-10-13: «Detail»-д ГАРАХГҮЙ (хэрэглэгч: «энэ байхгүй, одоо дээр бол байна») —
+                    каталог/тунгалаг/бүс тэнд утгагүй; давхаргыг дээрх товч удирдана. */}
+                {!planDetail && (
+                <ErrorBoundary scope="view" floating label={tr('Зургийн хэрэгслүүд нээгдсэнгүй')}>
+                <MapTools
+                  dim={dim}
+                  setDim={setDim}
+                  layersOpen={catOpen}
+                  onLayers={() => setCatalog((v) => !v)}
+                  opacityOpen={opacityOpen}
+                  /* ⚠️ Тунгалаг нь `setView`-д ТЭГЛЭГДДЭГГҮЙ (санаатай — доорх
+                     `setView`-ийн жагсаалтыг үз) тул өмнөх харагдацад 10% болгосон
+                     давхарга энд ч бүдэг хэвээр. Товчны тэмдэг нь тэр далд төлөвийг
+                     ил болгоно (2026-09-15-ны хэрэглээний аудит). */
+                  opacityCount={Object.values(opacity).filter((v) => v < 1).length}
+                  onOpacity={() => setOpacityOpen((v) => !v)}
+                  zone={zone}
+                  setZone={setZone}
+                  /* ⚠️ ЗҮҮН ХАВТАС — ЗӨВХӨН энэ харагдацад (2026-09-15,
+                     хэрэглэгчийн заавар). Бусад зураг хуучин зохиомжтой. */
+                  dock
+                />
                 </ErrorBoundary>
-              </footer>
-            )}
-          </>
+                )}
+
+                {/* Тунгалаг тохируулах хөвөгч цонх */}
+                {opacityOpen && !planDetail && (
+                  <ErrorBoundary scope="view" floating label={tr('Тунгалаг тохируулах цонх нээгдсэнгүй')} onClose={closeOpacity}>
+                  <OpacityPanel
+                    visible={visible}
+                    opacity={opacity}
+                    setOpacity={setOpacity}
+                    onClose={closeOpacity}
+                    dock
+                  />
+                  </ErrorBoundary>
+                )}
+              </div>
+
+              {/* ── БАРУУН БАГАНА: самбар — картууд босоо цуваа, багана өөрөө гүйнэ ──
+                  ⚠️ 2026-10-23: өргөн тохируулах бариул нь `ResizableColumns`-д (урьд нь самбарын зүүн ирмэгт). */}
+              <aside className={s.panel} aria-label={tr('{0} самбар', active.title)}>
+                {/* ⚠️ 2026-10-13: «Detail» горимд гарчгийн карт НУУГДАНА (хэрэглэгчийн заавар) */}
+                {!planDetail && (
+                <header className={s.panelHead}>
+                  <span className={s.panelIcon}><Icon name={active.icon} /></span>
+                  <div className={s.panelHeadText}>
+                    <h2 className={s.panelTitle}>{active.title}</h2>
+                    <p className={s.panelDesc}>{active.desc}</p>
+                  </div>
+                </header>
+                )}
+
+                {/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel`) */}
+                {planDetail && (
+                  <div className={s.panelBody}>
+                    <ErrorBoundary scope="view" label={tr('Давхцлын самбар нээгдсэнгүй')}>
+                      <HesegPanel
+                        tab={hesegTab}
+                        setTab={(x) => {
+                          if (x === hesegTab) return;
+                          setHesegTab(x); setHesegPick(null); setOverlapSel(null); setOverlapFocus(null);
+                          /* ⚠️ 2026-10-19 (аудит): таб солиход ч хуучин ЕТ-ийн сонгомол давхарга АНХДАГЧААР унтраалттай */
+                          setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden(OLD_ET_OPTIONAL);
+                        }}
+                        change={<ChangePanel pick={hesegPick} setPick={setHesegPick} />}
+                        overlap={(
+                          <PlanOverlapPanel
+                            side="next"
+                            focus={overlapFocus} setFocus={setOverlapFocus}
+                            selected={overlapSel} setSelected={setOverlapSel}
+                            shown={overlapShown} setShown={setOverlapShown}
+                          />
+                        )}
+                        need={<NeedPanel />}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                )}
+
+                {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
+                    түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
+                {/* ⚠️ «Detail»-д УСТГАХГҮЙ, нуух — самбарын дотоод төлөв «Одоо» руу буцахад хэвээр.
+                    `hidden` атрибут БИШ: `.panelBody`-ийн `display: flex` түүнийг дарна. */}
+                <div className={s.panelBody} style={planDetail ? { display: 'none' } : undefined}>
+                  <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
+                  <ViewPanel
+                    view={view}
+                    /* ⚠️ 2026-10-22: нуугдмал самбарт тоо татахгүй — хоосон (унтраалттай) Map-ыг «N давхарга татагдсангүй»
+                       (role=alert) гэж зурахгүйн тулд «ачаалж буй» төлөв (`TOTALS_IDLE`) */
+                    totals={view === 'plan' ? totals : TOTALS_IDLE}
+                    visible={visible}
+                    setVisible={setVisible}
+                    zone={zone}
+                    setZone={setZone}
+                    picked={picked}
+                    pickedLayer={pickedLayer}
+                    openCatalog={() => setCatalog(true)}
+                    layer={layer}
+                    setLayer={setLayer}
+                  />
+                  </ErrorBoundary>
+                </div>
+              </aside>
+            </ResizableColumns>
+          </div>
         )}
+        </div>
       </div>
+
+      {/* ⚠️ 2026-10-21 (аудит): эрхгүй харагдацын хаалтын цонх (`viewAllowed`-ийн ⚠️) */}
+      {/* `!viewAllowed` нь `navScope`-ыг массив болгож нарийсгана (TS-ийн alias нарийсгалт) */}
+      {!viewAllowed && (
+        <ViewLost
+          from={VIEW_BY_KEY[view].title}
+          to={VIEW_BY_KEY[navScope[0]].title}
+          onGo={() => { void setView(navScope[0], { force: true }); }}
+        />
+      )}
 
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
       {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
@@ -1613,9 +1621,23 @@ function PortalContent(
         </OverlayBoundary>
       )}
 
+      {/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх (эрхтэй) ба хаалттай үеийн шар зурвас. Зурвас нь
+          ЗӨВХӨН ЭНЭ хэрэглэгчид хаалт үйлчлэхгүй үед (`auth.sysClosed` хоосон) — хаалттай хэрэглэгчид
+          `SystemClosed` цонх аль хэдийн бүтэн дэлгэцээр. */}
+      {canSys && (
+        <OverlayBoundary label={tr('Систем түр хаах цонх нээгдсэнгүй')} onReset={() => setSysOpen(false)}>
+          <SystemCloseDialog open={sysOpen} onClose={() => setSysOpen(false)} />
+        </OverlayBoundary>
+      )}
+      {/* ⚠️ 2026-10-19 (аудит): зурвас ЗӨВХӨН хаалтыг ДАВАХ эрхтэйд (`canSys` = `canBypassClosed`). Урьд нь хаалт
+          хараахан тусаагүй (дараагийн poll хүлээж буй) энгийн хэрэглэгчид «бусдад хаалттай» гэж ХУДАЛ хэлдэг байв. */}
+      {sysNow && canSys && !auth.sysClosed && !sysOpen && (
+        <SystemClosedStrip onOpen={() => setSysOpen(true)} />
+      )}
+
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
       <OverlayBoundary label={tr('Тусламж нээгдсэнгүй')} onReset={closeHelp}>
-        <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
+        <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} user={auth.user?.username} />
         {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
       </OverlayBoundary>
 
@@ -1629,6 +1651,35 @@ function PortalContent(
         </OverlayBoundary>
       )}
     </>
+  );
+}
+
+/* ── Эрх хасагдсан харагдацын хаалтын цонх ── */
+
+/**
+ * ⚠️ 2026-10-21 (аудит): эрх хасагдсан атлаа хадгалаагүй ажлаас болж («Болих») үлдсэн харагдацыг
+ * ХААНА — `AuthGate.AccessLost`-той ижил загвар (`auth.module.css`), фокусын урхитай (`useFocusTrap`).
+ * Агуулга нь ард `inert` — харагдахгүй, дарагдахгүй; эрх сэргэвэл Portal энэ цонхыг зурахаа болино.
+ * Товч нь `setView(…, { force: true })` — асуулгүй: хадгалаагүй ажил алдагдахыг товч өөрөө хэлнэ.
+ * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ бичилт (Хуваарийн гинж · илгээлт · шийдвэр · буулгалт) байвал товч АСУУНА
+ *    (`confirmLeave`-ийн `busyOnly`) — «Болих» бол бичилт дуустал цонх хэвээр, дараа нь дахин дарна.
+ * `role="alertdialog"` (`alert` БИШ — `Booting` нь `[role="alert"]`-ыг «харагдац унасан» гэж уншдаг).
+ */
+function ViewLost({ from, to, onGo }: { from: string; to: string; onGo: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  return (
+    <div ref={ref} className={`${a.screen} ${a.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-view-lost">
+      <div className={a.card}>
+        <div className={a.title} id="selbe-view-lost">{tr('«{0}» харагдацын эрх хасагдлаа', from)}</div>
+        <p className={a.sub}>
+          {tr('Таны эрх өөрчлөгдсөн тул энэ харагдац хаагдах ёстой. Хадгалаагүй ажил байгаа тул одоогоор хаагаагүй — эрх сэргээгдвэл энэ цонх өөрөө хаагдаж, ажил тань хэвээр үлдэнэ.')}
+        </p>
+        <button type="button" className={a.btn} onClick={onGo}>
+          {tr('«{0}» руу шилжих — хадгалаагүй ажил алдагдана', to)}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1669,14 +1720,99 @@ function ActiveFilterChip() {
   );
 }
 
-/* ── Самбарын толгойн доорх нэгтгэсэн үзүүлэлт ── */
+/* ── Хэрэглэгчийн чип (толгойн баруун захад) ── */
 
 /**
- * ⚠️ Энэ зурвас урьд нь ДЭЛГЭЦИЙН ДООД хүрээ байв. Тэнд байхдаа газрын зургийн
- * өндрөөс 76px хасч, нүд хамгийн бага очдог булан руу түлхэгдэж байлаа. Одоо
- * самбарын гарчгийн доор: харагдацын нэрийг уншсан хүн шууд дараагийн мөрөнд
- * төслийн хэмжээг харна.
+ * ⚠️ 2026-10-23: Environment `auth/user-chip.tsx` — 40px pill (28px аватар + нэр), дарахад нэр · нэвтрэх нэр ·
+ * «Гарах». Порталын толгойд урьд нь хэрэглэгчийн мөр БАЙГААГҮЙ (зөвхөн цэсний «Гарах» мөр — хэвээр үлдэнэ).
+ * ⚠️ `UserCard.tsx`-д БИШ, ЭНД: тэр файл эрхийн удирдлагын хүнд модулиудыг (`UserRights`, `UserWorkflow` …)
+ *    импортлодог — Portal-аас импортловол `UserAdmin`-ий `dynamic` хуваалт (2026-10-04-ний ⚠️) эвдэрнэ.
+ * Аватар — `AuthGate`-ийн токенгүй `thumbnail`; ачаалагдахгүй бол дүрс рүү буцна.
  */
+function UserChip({ name, username, thumbnail, onSignOut }: {
+  name: string;
+  username: string;
+  thumbnail: string | null;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [imgOk, setImgOk] = useState(true);
+  const box = useRef<HTMLDivElement>(null);
+  /* Гадуур товшиход / Esc — хаагдана (нээлттэй үлдвэл газрын зураг дээр товшилтыг залгина) */
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div ref={box} className={s.user}>
+      <button
+        type="button"
+        className={s.userChip}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={name}
+        title={name}
+      >
+        {thumbnail && imgOk ? (
+          <img src={thumbnail} alt="" className={s.userAvatar} onError={() => setImgOk(false)} />
+        ) : (
+          <span className={s.userAvatar} aria-hidden><User size={13} strokeWidth={1.75} /></span>
+        )}
+        <span className={s.userName}>{name}</span>
+      </button>
+      {open && (
+        <div className={s.userMenu}>
+          <div className={s.userMenuHead}>
+            <div className={s.userMenuName}>{name}</div>
+            <div className={`${s.userMenuId} num`}>{username}</div>
+          </div>
+          <button type="button" className={s.userMenuItem} onClick={() => { setOpen(false); onSignOut(); }}>
+            <LogOut size={13} strokeWidth={1.75} aria-hidden />
+            {tr('Гарах')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── KPI зурвас — нэгтгэсэн үзүүлэлт ── */
+
+/**
+ * ⚠️ Энэ зурвас урьд нь ДЭЛГЭЦИЙН ДООД хүрээ, дараа нь самбарын гарчгийн доор байв.
+ * ⚠️ 2026-10-23: Environment — ажлын талбарын ДЭЭД мөр, `.analytics-stat` хавтангууд (38px дүрсний хайрцаг,
+ *    10px шошго, 23px утга) auto-fit сүлжээнд. Ачаалж байхад хавтангууд «…»-тэй (хоосон зурвас биш).
+ *    Тоо, асуулга, null ≠ 0 дүрэм ӨӨРЧЛӨГДӨӨГҮЙ.
+ */
+/** Бүсийн тоо/талбай/өрх — каноник кодоор ДАВХАРДАЛГҮЙ (кодгүй мөр тус бүр нэг); SUM-ын дүрмээр утгагүй бол `null` */
+function zoneTotals(rows: Row[]): { n: number; ga: number | null; ail: number | null } {
+  const Z = ZONE_FIELDS;
+  const seen = new Set<string>();
+  let n = 0; let ga: number | null = null; let ail: number | null = null;
+  const add = (acc: number | null, v: unknown) => {
+    const x = v == null || v === '' ? NaN : Number(v);
+    return Number.isFinite(x) ? (acc ?? 0) + x : acc;
+  };
+  for (const r of rows) {
+    const code = zoneCanon(r[Z.id]);
+    if (code) {
+      if (seen.has(code)) continue;
+      seen.add(code);
+    }
+    n += 1;
+    ga = add(ga, r[Z.landHa]);
+    ail = add(ail, r[Z.households]);
+  }
+  return { n, ga, ail };
+}
+
 function SummaryBar({ zone }: { zone: string | null }) {
   // ⚠️ Хоёр давхарга бүсээ ӨӨР талбар, ӨӨР бичиглэлээр агуулна — нэг WHERE-ийг
   //    хоёуланд нь тавьж болохгүй (`zoneWhere` давхарга бүрд нь угсарна).
@@ -1694,9 +1830,9 @@ function SummaryBar({ zone }: { zone: string | null }) {
        `Population` (`POPULATION_FIELD`) талбараар, айлыг /112-т бүсийн талбар
        байхгүй тул /106 `URH_TOO`-оор (бүсийн төлөвлөлтийн өрх) авна. */
     const [zones, built, headline, housing] = await Promise.all([
-      queryStats(layerUrl(ZONE_LAYER), [
-        count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
-      ], zoneQ),
+      /* ⚠️ 2026-10-26 (аудит): бүсийн давхаргад давхардсан мөр бий (X-13 — objectid 12 ба 47, `analysis/data.dedupeZoneFeats`-ийн ⚠️) —
+         `count`/`sum` нь «58 бүс», X-13 сонгоход «2 бүс · 2.49 га» гэдэг байв (анализ, бүсийн шүүлт 57). Каноник кодоор нэг удаа. */
+      queryFeatures(layerUrl(ZONE_LAYER), { where: zoneQ, outFields: [Z.id, Z.landHa, Z.households] }).then(zoneTotals),
       queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(POPULATION_FIELD, 'pop')], builtQ),
       loadHeadline(),
       loadHousing(),
@@ -1727,33 +1863,48 @@ function SummaryBar({ zone }: { zone: string | null }) {
     /* ⚠️ 2026-10-05: шалтгаан (`friendlyError`) + «Дахин оролдох». Урьд нь дөрвөн асуулгын аль нэг
        унахад нүцгэн «Үзүүлэлт татагдсангүй» л гарч, F5-аас өөр гарцгүй байв. */
     return (
-      <div className={s.sumBar} role="alert">
-        <span className={s.sumLabel} style={{ whiteSpace: 'normal' }} title={q.error.message}>
-          {tr('Үзүүлэлт татагдсангүй')} — {friendlyError(q.error)}
-        </span>
-        {q.retry && (
-          <button type="button" className={s.sumRetry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
-        )}
+      <div className={s.kpi} role="alert" aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
+        <div className={`${s.stat} ${s.statWide}`}>
+          <span className={s.statLabel} title={q.error.message}>
+            {tr('Үзүүлэлт татагдсангүй')} — {friendlyError(q.error)}
+          </span>
+          {q.retry && (
+            <button type="button" className={s.sumRetry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
+          )}
+        </div>
       </div>
     );
   }
-  if (q.state !== 'ready') return <div className={s.sumBar} />;
-
-  const items = [
-    { v: num(q.data.ga, 1), l: tr('га талбай') },
-    { v: num(q.data.zones), l: tr('бүс') },
-    { v: num(q.data.built), l: tr('барилга') },
-    { v: num(q.data.ail), l: tr('айл') },
-    { v: num(q.data.pop), l: tr('хүн ам') },
+  /* Ачаалж байхад — шошготой хавтангууд «…»-тэй (утга «0» БИШ: null ≠ 0) */
+  const ready = q.state === 'ready' ? q.data : null;
+  const items: { v: string; l: string; I: LucideIcon }[] = [
+    { v: ready ? num(ready.ga, 1) : '…', l: tr('га талбай'), I: LandPlot },
+    { v: ready ? num(ready.zones) : '…', l: tr('бүс'), I: Shapes },
+    { v: ready ? num(ready.built) : '…', l: tr('барилга'), I: Building2 },
+    { v: ready ? num(ready.ail) : '…', l: tr('айл'), I: House },
+    { v: ready ? num(ready.pop) : '…', l: tr('хүн ам'), I: Users },
   ];
 
   return (
-    <div className={s.sumBar}>
-      {zone && <span className={s.sumZone}>{zonesLabel(zone.split(',').filter(Boolean))}</span>}
+    <div className={s.kpi} role="region" aria-label={tr('Нэгтгэсэн үзүүлэлт')} aria-busy={!ready}>
+      {zone && (
+        <div className={s.stat}>
+          <span className={s.statIcon} aria-hidden><MapPin size={20} strokeWidth={1.5} /></span>
+          <div className={s.statText}>
+            <span className={s.statLabel}>{tr('Бүс')}</span>
+            <span className={`${s.statValue} ${s.statValueText}`} title={zonesLabel(zone.split(',').filter(Boolean))}>
+              {zonesLabel(zone.split(',').filter(Boolean))}
+            </span>
+          </div>
+        </div>
+      )}
       {items.map((i) => (
-        <div key={i.l} className={s.sumStat}>
-          <span className={`${s.sumValue} num`}>{i.v}</span>
-          <span className={s.sumLabel}>{i.l}</span>
+        <div key={i.l} className={s.stat}>
+          <span className={s.statIcon} aria-hidden><i.I size={20} strokeWidth={1.5} /></span>
+          <div className={s.statText}>
+            <span className={s.statLabel}>{i.l}</span>
+            <span className={`${s.statValue} num`}>{i.v}</span>
+          </div>
         </div>
       ))}
     </div>

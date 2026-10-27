@@ -215,8 +215,14 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: Block
     .map((s) => {
       const m = means.get(s.key);
       const keys = universe.has(s.key) ? universeKeys(prog, universe, [s.key]) : s.keys;
+      /* ⚠️ 2026-10-26: хуваарьт БАЙГАА ч газрын зурагт ПОЛИГОНГҮЙ блок (Багц 1|29/3, Багц 2|5/8) өрхийн мэдээлэлгүй — «дутуу»-д
+         тоолно (`execReport.householdsMissingOf`-тэй НЭГ дүрэм). Урьд нь өрхийг зөвхөн полигоноор тоолж `ailMissing` = 0 тул
+         Тайлан §2 · Дашбоард «8,387»-г бүрэн мэт, удирдлагын тайлан мөн тоог «(дутуу)» гэж хэвлэдэг байв (null ≠ 0). */
+      const poly = new Set(s.keys);
+      const noPoly = universe.has(s.key) ? keys.filter((k) => !poly.has(k)).length : 0;
       return {
         ...s,
+        ...(universe.has(s.key) ? { ailMissing: Math.min(keys.length, (s.ailMissing ?? 0) + noPoly), ailBlocks: keys.length } : {}),
         keys,
         /* ⚠️ 2026-10-04: БЛОКИЙН ТОО ч бөглөх хуудасны хуваариас (`keys` = `total`) — урьд нь
            газрын зургийн feature-ийн тоо (`s.blocks`) байсан тул «Барилгын блок» / «Тайлан ирээгүй»

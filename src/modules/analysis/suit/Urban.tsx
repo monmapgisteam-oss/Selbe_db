@@ -10,7 +10,7 @@ import {
 import { scoreTone, clamp, passesNorm, patchNorm } from '@/lib/analysis/score';
 import { Donut, useTip } from '@/components/ui';
 import { pct as fmtPct } from '@/lib/format';
-import { nf, normLine } from './format';
+import { nf, normLine, zoneTypeLabel } from './format';
 import type { LocationPt } from '@/lib/analysis/data';
 import type { Row } from './model';
 import s from '../suitability.module.css';
@@ -302,7 +302,8 @@ export function Weights({
               <div className={s.wTypes}>
                 {Object.entries(DENSITY_BY_TYPE).map(([t, v]) => (
                   <div key={t}>
-                    <span>{t}</span>
+                    {/* ⚠️ 2026-10-22 (аудит): түлхүүр нь каноник нэр — орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
+                    <span>{zoneTypeLabel(t)}</span>
                     <b>≤ {nf(v[i.byType!], i.decimals)}{i.unit ? ` ${i.unit}` : ''}</b>
                   </div>
                 ))}
@@ -380,7 +381,9 @@ export function Parking({
      тодорхойгүй (`parkingNeed == null`) бүсийг хоёуланд нь хасна. Урьд нь
      нийлүүлэлт БҮХ бүсээс, хэрэгцээ нь null-ыг 0 гэж тоолж бодогддог тул
      хангалт хэт өндөр, «Илүүдэл» худал гардаг байв (null ≠ 0). */
-  const withNeed = rows.filter((r) => r.parkingNeed != null);
+  /* ⚠️ 2026-10-26 (аудит): төлөвлөлтийн бичлэггүй бүс (`planRecordMissing` → `parkingGap == null`, жиш. B-2) нийлүүлэлт нь 0
+     гэж орж хэрэгцээ (188) нь нийтэд нэмэгддэг байв — «дутагдалтай бүс» тоололтой ч зөрдөг. Нэг олонлог. */
+  const withNeed = rows.filter((r) => r.parkingNeed != null && r.parkingGap != null);
   const supply = withNeed.reduce((a, r) => a + r.parkingSupply, 0);
   const need: number | null = withNeed.length
     ? withNeed.reduce((a, r) => a + (r.parkingNeed as number), 0)
@@ -391,10 +394,10 @@ export function Parking({
   const short = withNeed.filter((r) => (r.parkingGap ?? 0) < 0).length;
   const pct = need != null && need > 0 ? (supply / need) * 100 : null;
 
-  const hh = rows.reduce((a, r) => a + r.households, 0);
+  const hh = withNeed.reduce((a, r) => a + r.households, 0);
   /* ⚠️ 2026-10-01: ОРШИН СУУГЧ (`Population`) — `data.parkingNeedOf`-тэй ижил
      (урьд нь `population` = оршин суугч + хүчин чадал байсан) */
-  const pop = rows.reduce((a, r) => a + r.residentPop, 0);
+  const pop = withNeed.reduce((a, r) => a + r.residentPop, 0);
   /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
   const needExpr = parking.source === 'households'
     ? <>{nf(hh)} {tr('өрх ×')} {parking.perHousehold.toFixed(2)} {tr('зогсоол')}</>
@@ -775,8 +778,9 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
             {me.trips > 0 ? tr(' · {0} зорчилт/ц', nf(me.trips)) : ''}
           </div>
         </div>
+        {/* ⚠️ 2026-10-23 (X7): сонголтыг АРИЛГАХ — «Цуцлах» нь «үйлдлийг болих» гэж уншигддаг байв */}
         <button type="button" className={s.mini} onClick={() => onSel(null)}>
-          {tr('Цуцлах')}
+          {tr('Арилгах')}
         </button>
       </div>
 

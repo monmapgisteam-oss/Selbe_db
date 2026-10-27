@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import * as projection from '@arcgis/core/geometry/projection';
@@ -26,7 +27,7 @@ import type { Dim } from '@/components/MapCanvas';
 import { SuitMap, type MapRow } from './SuitMap';
 import { SuitDetail } from './SuitDetail';
 import { useTheme } from '@/lib/theme';
-import { nf, esc } from './suit/format';
+import { nf, esc, zoneTypeLabel } from './suit/format';
 import { valueOf, type Mode, type Row } from './suit/model';
 import { Shell, Card } from './suit/Layout';
 import { Simulation } from './suit/SimulationPanel';
@@ -97,6 +98,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     return () => window.removeEventListener('online', retryLoad);
   }, [loadFailed, retryLoad]);
 
+  /* ⚠️ 2026-10-26 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаядаг ч энэ харагдац дахин ачаалдаггүй тул «Өгөгдөл: HH:MM»
+     шинэ цаг заасан ч оноо/эрэмбэ хуучин үлддэг байв (HesegChange · PlanOverlap-тэй ижил `refreshEpoch`). Шинэ нь иртэл хуучин үлдэнэ. */
+  const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
+  const hasDataRef = useRef(false);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -114,14 +119,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (!alive) return;
         setData(d);
         setGeoms(gm);
+        hasDataRef.current = true;
 
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
-        if (alive) setError(userError(e));
+        /* ⚠️ Шинэчлэлт унавал өмнөх өгөгдөл ХЭВЭЭР (алдааны дэлгэц зөвхөн өгөгдөлгүй үед) */
+        if (alive && !hasDataRef.current) setError(userError(e));
       }
     })();
     return () => { alive = false; };
-  }, [loadNonce]);
+  }, [loadNonce, epoch]);
 
   /* ── Загварын төлөв ── */
   // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
@@ -236,6 +243,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         ...z,
         urban: u.score,
         parts: u.parts,
+        /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин · шалтгаан — эрэмбэ/дэлгэрэнгүйд (`MapRow.coverage`-ийн ⚠️) */
+        coverage: u.coverage,
+        urbanReason: u.reason,
         displayGeom: geoms.get(z.id) ?? null,
         scored: !z.excluded || scoreOn.has(z.type),
       };
@@ -369,17 +379,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
      *    зураг НЭГ олонлогтой байх ёстой, эс бөгөөс жагсаалтад байхгүй барилга
      *    зурагт үлдэж, дарахад карт хоосон хариу өгнө.
      */
+    /* ⚠️ 2026-10-26 (аудит): `zone_id IN (...)` БИШ — жагсаалт (`locPts`) барилгыг ТӨВ ЦЭГЭЭР (100 м дотор хамгийн ойр) бүсэд
+       оноодог тул `zone_id` хоосон/зөрүүтэй барилга (155, 269 г.м.) жагсаалтад гарч зурагт нуугддаг байв. Нэг олонлог —
+       `locPts`-ийн objectid (`LOCATION_EXCLUDE_OIDS` аль хэдийн хасагдсан). */
     if (locPublicOnly) {
-      if (!publicZoneIds.length) return '1=0';
-      const vals = zoneVals(publicZoneIds);
-      parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
-      if (LOCATION_EXCLUDE_OIDS.size) {
-        parts.push(`OBJECTID NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
-      }
+      if (!locPts.length) return '1=0';
+      parts.push(`objectid IN (${locPts.map((p) => p.oid).join(',')})`);
     }
 
     return parts.length ? parts.join(' AND ') : null;
-  }, [bldCats, bldOff, catOff, rows, locPublicOnly, publicZoneIds]);
+  }, [bldCats, bldOff, catOff, rows, locPublicOnly, locPts]);
 
   /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
   const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
@@ -751,7 +760,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const diffTxt = diff == null ? '—'
         : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
-      return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(r.type), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
+      /* ⚠️ 2026-10-22 (аудит): {3} — бүсийн ангиллыг орчуулж (`zoneTypeLabel`-ийн ⚠️) */
+      return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(zoneTypeLabel(r.type)), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
     const row = r as Row;
     const score = valueOf(row, mode, ind);
@@ -769,7 +779,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), /* ⚠️ 2026-10-09: орчуулгын түлхүүрийг хөндөхгүйгээр бичгийн өнгийг style-д залгана (`scoreInk`). ⚠️ 2026-10-09 (аудит №3): дэвсгэр нь самбартай ИЖИЛ токен (`scoreTone`, hover нь DOM тул var() задарна), бичиг нь горимоор */ `${scoreTone(score)};color:${scoreInk(score, dark)}`, score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+    /* ⚠️ 2026-10-22 (аудит): {3} — бүсийн ангиллыг орчуулж (`zoneTypeLabel`-ийн ⚠️) */
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), /* ⚠️ 2026-10-09: орчуулгын түлхүүрийг хөндөхгүйгээр бичгийн өнгийг style-д залгана (`scoreInk`). ⚠️ 2026-10-09 (аудит №3): дэвсгэр нь самбартай ИЖИЛ токен (`scoreTone`, hover нь DOM тул var() задарна), бичиг нь горимоор */ `${scoreTone(score)};color:${scoreInk(score, dark)}`, score == null ? '—' : Math.round(score), esc(zoneTypeLabel(row.type)), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
   }, [mode, ind, indicators, simKind, popBasis, simRng, simAvg, dark]);
 
@@ -835,17 +846,20 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [tCtx, tMode]);
 
   const buildingTip = useCallback((a: Record<string, unknown>) => {
-    const st = String(a.Barilga_ty ?? '').trim();
-    const purpose = String(a['Зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
+    const st = String(a.barilga_ty ?? '').trim();
+    const purpose = String(a['зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
     /* ⚠️ 2026-10-09 (аудит №6): өнгийг `BUILDING_STATUS_COLORS`-оос угсарна — урьд энд
        `rgb(...)` ДАВХАР бичигдэж, зураг/legend-тэй зөрөх эрсдэлтэй байв. */
     const colors: Record<string, string> = Object.fromEntries(
       Object.entries(BUILDING_STATUS_COLORS).map(([k, c]) => [k, `rgb(${c.join(',')})`]),
     );
-    const pop = Number(a.Total_population ?? 0);
+    const pop = Number(a.total_population ?? 0);
     const isRes = /орон сууц|house/i.test(purpose);
     const dt = (k: string, v: string | number | null) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), tr('{0} м²', nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0)))), dt(tr('Давхар'), Number(a['Давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.Urhiin_too ?? 0) ? nf(Number(a.Urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.Parking ?? 0) ? nf(Number(a.Parking)) : null), dt(tr('Бүс'), esc(a.ZONE_ID ?? '—')));
+    /* ⚠️ 2026-10-21 (аудит): талбайгүй барилгад «0 м²» бичигддэг байв — хоосон/0 бол мөр ОРОХГҮЙ (null ≠ 0) */
+    const areaM2 = Number(a['барилгын_нийт_талбай_m2']);
+    const area = Number.isFinite(areaM2) && areaM2 > 0 ? tr('{0} м²', nf(areaM2)) : null;
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), area), dt(tr('Давхар'), Number(a['давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.urhiin_too ?? 0) ? nf(Number(a.urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.parking ?? 0) ? nf(Number(a.parking)) : null), dt(tr('Бүс'), esc(a.zone_id ?? '—')));
   }, []);
 
   /* ⚠️ Сонгосон бүс оноололоос гарсан (`scored` false — «Бүсийн ангилал»-аас
@@ -968,7 +982,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <h1 title={tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
           </div>
         </div>
-        <nav className={s.tabs}>
+        {/* ⚠️ 2026-10-26 (аудит): идэвхтэй горим дэлгэц уншигчид ил (`aria-pressed`, CSS-ийн .view-switch загвар) */}
+        <nav className={s.tabs} aria-label={tr('Горим')}>
           {/* ⚠️ «Ерөнхий» (blend) ба «Эдийн засаг» (econ) табууд ХАСАГДСАН.
               Тэдгээрийн `mode` салаанууд кодод үлдсэн — дахин нээх бол зөвхөн
               энэ жагсаалтад мөрөө нэмнэ. */}
@@ -982,6 +997,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 key={k}
                 type="button"
                 className={mode === k ? s.tabActive : undefined}
+                aria-pressed={mode === k}
                 onClick={() => setMode(k)}
               >
                 {label}
@@ -1402,16 +1418,18 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
         // ⚠️ Харагдац нь ГАНЦ эх сурвалжтай (`off`) — идэвхжүүлж болох ангилал ч
         //    үүнийг дагана; `scoreOn` нь `apply`-д хамт бичигддэг.
         const on = !off.has(c.type);
+        /* ⚠️ 2026-10-22 (аудит): ДЭЛГЭЦИЙН нэр орчуулагдана (`zoneTypeLabel`-ийн ⚠️); шүүлт (`off` · `pick`) түүхий `c.type`-аар */
+        const name = zoneTypeLabel(c.type);
         return (
           <button
             key={c.type}
             type="button"
             aria-pressed={on}
             title={!filtered
-              ? tr('Дарвал зөвхөн «{0}» үлдэнэ{1}', c.type, activatable ? tr(' (оноололд ч орно)') : '')
+              ? tr('Дарвал зөвхөн «{0}» үлдэнэ{1}', name, activatable ? tr(' (оноололд ч орно)') : '')
               : on && visible.length === 1 ? tr('Дарвал шүүлт цэвэрлэгдэнэ')
-                : on ? tr('Дарвал «{0}»-ийг шүүлтээс хасна', c.type)
-                  : tr('Дарвал «{0}»-ийг шүүлтэд нэмнэ', c.type)}
+                : on ? tr('Дарвал «{0}»-ийг шүүлтээс хасна', name)
+                  : tr('Дарвал «{0}»-ийг шүүлтэд нэмнэ', name)}
             onClick={() => pick(c.type)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -1424,7 +1442,7 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
           >
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             {/* 2 мөрийн clamp — «Нийгмийн дэд бүтцийн бүс» г.м. урт нэр «…» болохгүй */}
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{c.type}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{name}</span>
             {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{

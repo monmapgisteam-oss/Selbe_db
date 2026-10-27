@@ -1,5 +1,8 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entSession, entUploadPdf } from '@/lib/entDocs';
+import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
+/** ⚠️ 2026-10-23: FIC · М-актын PDF item-ийн таг — баримт бичгийн сангаас ялгана (`docLib.isFmPdf`) */
+export const FM_TAG = 'selbe-fm';
+import { ENT_HOSTED } from '@/lib/services/env';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
 import { loadMir, mirVerdictFor, mirsByMa } from '@/lib/mir';
 import { isAuthorFor, reviewerRolesFor } from '@/lib/chanarAcl';
@@ -57,7 +60,7 @@ export function fmRowOf(a: Record<string, unknown>): FmRow {
   const k = str(a[F.kind]).toUpperCase();
   const s = str(a[F.status]);
   return {
-    oid: Number(a.OBJECTID ?? a.objectid),
+    oid: Number(a.objectid),
     kind: k === 'MAKT' ? 'MAKT' : 'FIC',
     maNo: str(a[F.maNo]),
     docNo: str(a[F.docNo]),
@@ -111,6 +114,7 @@ function sess() {
 }
 async function post<T>(url: string, params: Record<string, string>): Promise<T> {
   const body = new URLSearchParams({ f: 'json', ...params, token: sess().token });
+  await entStamp(body);
   let r: Response;
   try { r = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(120_000) }); } catch (e) {
     if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
@@ -125,7 +129,26 @@ async function post<T>(url: string, params: Record<string, string>): Promise<T> 
 
 let urlCache: string | null = null;
 
+/**
+ * ⚠️ 2026-10-21 (Enterprise руу бүрэн шилжилт): ЭХЛЭЭД ШУУД ХАЯГААР — Enterprise hosted үйлчилгээний нэр нь item-ийн
+ *    нэртэй ижил (`createTable`-ийн `name`), хүснэгт `/0`. Урьд нь зөвхөн порталын ХАЙЛТААР олдог тул хүснэгт
+ *    үүссэний дараах хайлтын индексийн хоцролтын үед өөр хэрэглэгч «олдсонгүй» → `createTable` → «нэр эзлэгдсэн»
+ *    алдаа авдаг байв. Шууд хаяг олдохгүй (404 · хуучин нэртэй) бол хайлт руу шилжинэ.
+ */
+async function directTable(): Promise<string | null> {
+  if (!ENT_HOSTED) return null;
+  const url = `${ENT_HOSTED}/${FM_TITLE}/FeatureServer/0`;
+  try {
+    const m = await post<{ fields?: unknown[] }>(url, {});
+    return Array.isArray(m.fields) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 async function findTable(): Promise<string | null> {
+  const direct = await directTable();
+  if (direct) return direct;
   const j = await post<{ results?: { title?: string; url?: string; type?: string }[] }>(`${rest()}/search`, {
     q: `title:"${FM_TITLE}" AND type:"Feature Service"`, num: '20',
   });
@@ -134,9 +157,11 @@ async function findTable(): Promise<string | null> {
 }
 
 async function createTable(): Promise<string> {
-  const user = sess().user;
+  /* ⚠️ 2026-10-21: `content/users/{u}/…` нь порталын ЯГ нэрийг шаарддаг — `sess().user` (`currentUser`) жижиг үсэгт
+     хөрвүүлэгдсэн тул том үсэгтэй нэртэй зохиогчид `createService`/`share` зөрдөг байв (`entDocs.exactUser`-ийн ⚠️). */
+  const user = await entExactUser();
   const avail = await post<{ available?: boolean }>(`${rest()}/portals/self/isServiceNameAvailable`, { name: FM_TITLE, type: 'Feature Service' });
-  if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — эзэмшигч нь байгууллагад хуваалцах ёстой.', FM_TITLE));
+  if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — админд мэдэгдэнэ үү (эзэмшигч нь байгууллагад хуваалцах ёстой).', FM_TITLE));
   const created = await post<{ encodedServiceURL?: string; serviceurl?: string; itemId?: string }>(
     `${rest()}/content/users/${encodeURIComponent(user)}/createService`, {
       outputType: 'featureService',
@@ -153,9 +178,9 @@ async function createTable(): Promise<string> {
   await post(`${svc.replace('/rest/services/', '/rest/admin/services/')}/addToDefinition`, {
     addToDefinition: JSON.stringify({
       tables: [{
-        name: TABLE_NAME, type: 'Table', objectIdField: 'OBJECTID', hasAttachments: false,
+        name: TABLE_NAME, type: 'Table', objectIdField: 'objectid', hasAttachments: false,
         fields: [
-          { name: 'OBJECTID', type: 'esriFieldTypeOID', nullable: false, editable: false },
+          { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
           s(F.kind, 8, false), s(F.maNo, 40, false), s(F.docNo, 60), d(F.docDate), s(F.pdfItem, 64, false), s(F.pdfName, 255),
           s(F.status, 8, false), s(F.reason, FM_REASON_MAX), s(F.uploadedBy, 128), d(F.uploadedAt), s(F.decidedBy, 128), d(F.decidedAt),
         ],
@@ -174,6 +199,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   return urlCache;
 }
 
+/* ⚠️ 2026-10-21: OID нь Enterprise-д `objectid` (ЖИЖИГ үсэг) — энэ модуль query.ts-ийн хөрвүүлэгчийг тойрч шууд fetch хийдэг тул
+   `OBJECTID` гэж илгээвэл 500 «Field name 'OBJECTID' does not exist» (FIC · М-акт буюу чанарын 3–4-р шат огт ажиллахгүй байв).
+   Хүснэгтийг ч `objectid`-тэй үүсгэнэ; уншихдаа хоёр хэлбэрийг хүлээнэ (`fmRowOf`). */
 /** Хүснэгтийн мөрүүд — `where`-ээр, хуудаслалттай (`fmRowOf`) */
 async function queryFm(url: string, where: string): Promise<FmRow[]> {
   const out: FmRow[] = [];
@@ -183,7 +211,7 @@ async function queryFm(url: string, where: string): Promise<FmRow[]> {
      ЗААВАЛ, `exceededTransferLimit`-ээр таслана (`fs.length`-ээр БИШ). */
   for (let off = 0; ; ) {
     const j = await post<{ features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean }>(`${url}/query`, {
-      where, outFields: '*', orderByFields: 'OBJECTID DESC', resultOffset: String(off), resultRecordCount: '1000',
+      where, outFields: '*', orderByFields: 'objectid DESC', resultOffset: String(off), resultRecordCount: '1000',
     });
     const fs = j.features ?? [];
     out.push(...fs.map((f) => fmRowOf(f.attributes)));
@@ -222,6 +250,20 @@ async function maOf(maNo: string): Promise<{ ma: MaRow; bagts: string }> {
   return { ma, bagts };
 }
 
+/**
+ * ⚠️ 2026-10-19 (аудит): ӨӨРИЙГӨӨ БАТЛАХ ШАЛГУУРЫН ХЭН — AGOL хэрэглэгчийн нэр (`currentUser`), эрх · хүрээтэй (`requireCap` ·
+ *    `chanarAcl`) НЭГ таних тэмдэг. Урьд нь `uploaded_by`/`decided_by` нь Enterprise сешний нэр (`s.user`) байсан тул
+ *    нэг хүн AGOL дээр ирүүлэгч, Enterprise-д өөр дансаар (эсвэл өөр хүний Enterprise сешнээр) нэвтэрвэл өөрийн
+ *    оруулсныг батлах боломжтой байв. Enterprise нь зөвхөн ТЭЭВЭР (PDF item · хүснэгтийн токен).
+ *    `currentUser` хоосон (Node / нэвтрэлт унтраалттай) бол Enterprise нэр — урьдын зан.
+ */
+const actorOf = (s: { user: string }): string => (currentUser() ?? s.user).trim().toLowerCase();
+/** Өөрийн оруулсан мөр үү — AGOL нэр, эсвэл ХУУЧИН мөрийн Enterprise нэр (2026-10-19-нөөс өмнө бичигдсэн) */
+export const isOwnUpload = (uploadedBy: string, actor: string, entUser: string): boolean => {
+  const u = uploadedBy.trim().toLowerCase();
+  return !!u && (u === actor.trim().toLowerCase() || u === entUser.trim().toLowerCase());
+};
+
 function scopeDeny(role: 'author' | 'review', bagts: string): void {
   if (!strict()) return;
   const me = currentUser();
@@ -256,7 +298,9 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} оруулах боломжгүй.', a.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
   const title = `${a.kind === 'FIC' ? 'FIC' : 'М-акт'} · ${a.docNo || a.file.name.replace(/\.pdf$/i, '')} · ${a.maNo}`;
-  const { item, warn } = await entUploadPdf(a.file, title);
+  /* ⚠️ 2026-10-23 (хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд»): FIC → «FIC pdf», М-акт → «m-akt pdf» хавтас; `selbe-fm` таг —
+     баримт бичгийн сан (`docLib.listPdfs`) эдгээрийг ялгаж ХАРУУЛАХГҮЙ */
+  const { item, warn } = await entUploadPdf(a.file, title, [FM_TAG], a.kind === 'FIC' ? 'FIC pdf' : 'm-akt pdf');
   /* ⚠️ 2026-10-09 (аудит №6): ОРОН НУТГИЙН шөнө дунд (`fromDateInput`) — урьд нь `T00:00:00Z` (UTC) тул
      бусад чанарын огноотой (`chanarUi`) 8 цагаар зөрж, өдөр хойшилж харагддаг байв. */
   const dd = fromDateInput(a.docDate);
@@ -265,13 +309,15 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
       adds: JSON.stringify([{ attributes: {
         [F.kind]: a.kind, [F.maNo]: a.maNo, [F.docNo]: a.docNo.slice(0, 60) || null, [F.docDate]: dd,
         [F.pdfItem]: item.id, [F.pdfName]: a.file.name.slice(0, 255), [F.status]: 'pending',
-        [F.uploadedBy]: s.user, [F.uploadedAt]: Date.now(),
+        /* ⚠️ 2026-10-19 (аудит): AGOL нэр (`actorOf`) — Enterprise сешний нэр биш */
+        [F.uploadedBy]: actorOf(s), [F.uploadedAt]: Date.now(),
       } }]),
     });
     const r = j.addResults?.[0];
     if (!r?.success) throw new Error(r?.error?.description || tr('Мөр нэмэгдсэнгүй.'));
   } catch (e) {
-    throw new Error(tr('PDF item ({0}) үүссэн боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулахаас өмнө геопорталаас item-ийг устгана уу.', item.id, (e as Error).message));
+    /* ⚠️ 2026-10-23 (UX аудит X2 · X3): хэрэглэгч геопорталын item устгах эрхгүй — «админд мэдэгдэнэ үү», ID нь админд */
+    throw new Error(tr('PDF хадгалагдсан боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулбал давхардана — админд мэдэгдэнэ үү (файлын дугаар: {0}).', item.id, (e as Error).message));
   }
   return { warn };
 }
@@ -286,13 +332,13 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   const s = sess();
   requireCap('chanarReview');
   if (verdict === 'R' && !reason.trim()) throw new Error(tr('Буцаах шалтгаанаа бичнэ үү.'));
+  /* ⚠️ 2026-10-23 (UX аудит Q1): AN = «саналтай зөвшөөрсөн» — санал нь шийдвэрийн утга тул заавал (урьд нь
+     хоосон саналтай AN хадгалагддаг байв). UI товчийг хаадаг ч сервер рүү бичихийн өмнө энд дахин шалгана. */
+  if (verdict === 'AN' && !reason.trim()) throw new Error(tr('AN шийдвэрт саналаа бичнэ үү.'));
   const url = await tableUrl(false);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
-  /* ⚠️ 2026-10-11 (аудит №7): `maOf` (MA + багц) · хүрээний шалгалт `pending` уншилтаас ӨМНӨ — урьд нь уншилт ба бичилтийн
-     завсарт `maOf`-ийн сүлжээний дуудлага байсан тул хоёр хянагч зэрэг шийдвэрлэхэд хоёулаа `pending` харж, сүүлийнх нь
-     эхнийхийг дарж «амжилттай» гэдэг байв. `maNo` нь мөрийн өөрчлөгдөшгүй талбар тул дуудагчийн `row`-оор уншиж болно.
-     ArcGIS-д нөхцөлт update БАЙХГҮЙ тул завсар тэг биш — бичсэний ДАРАА дахин уншиж `decidedBy` ≠ би бол ялсан хянагчийг
-     нэрлэж шиднэ (`huvaariBatlah.casClaim`-ийн ижил дүрэм). */
+  /* Багцын хүрээ ба өмнөх шатыг шалгасны дараа мөрийг дахин уншина. Эцсийн бичилт нь
+     доорх /calculate-ийн WHERE-ээр сервер дээр тэр төлөвийг нэг UPDATE дотор шалгана. */
   const { ma, bagts } = await maOf(row.maNo);
   scopeDeny('review', bagts);
   /* ⚠️ 2026-10-12 (дарааллын аудит): ГИНЖИЙН ШАТ ХААЛТТАЙ бол ШИЙДВЭР ГАРГАХГҮЙ (`addFm`-ийн ижил `chainOf` шалгалт).
@@ -308,20 +354,45 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (!stage || stage.state === 'locked') {
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} шийдвэрлэх боломжгүй.', row.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
-  const fresh = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
+  if (!Number.isSafeInteger(row.oid) || row.oid <= 0) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
+  const fresh = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
-  if (fresh.uploadedBy && fresh.uploadedBy.toLowerCase() === s.user.toLowerCase()) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
+  /* ⚠️ 2026-10-19 (аудит): AGOL нэрээр (`actorOf`) — хуучин мөрийн Enterprise нэртэй ч тулгана (`isOwnUpload`) */
+  const actor = actorOf(s);
+  if (isOwnUpload(fresh.uploadedBy, actor, s.user)) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));
-  const j = await post<{ updateResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
-    updates: JSON.stringify([{ attributes: {
-      OBJECTID: fresh.oid, [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
-      [F.decidedBy]: s.user, [F.decidedAt]: Date.now(),
-    } }]),
-  });
-  const r = j.updateResults?.[0];
-  if (!r?.success) throw new Error(r?.error?.description || tr('Шийдвэр хадгалагдсангүй.'));
-  const back = (await queryFm(url, `OBJECTID = ${Number(row.oid)}`))[0];
-  if (back && back.decidedBy && back.decidedBy.toLowerCase() !== s.user.toLowerCase()) {
-    throw new Error(tr('{0} энэ баримтыг зэрэг шийдвэрлэсэн ({1}) — таны шийдвэр хадгалагдсангүй. Хуудсаа шинэчилнэ үү.', back.decidedBy, back.status));
+  if (fresh.maNo !== row.maNo || fresh.kind !== row.kind) {
+    throw new Error(tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу'));
   }
+  /* Never publish a claim into decided_by/decided_at: a delayed claim can overwrite
+     an already completed decision's attribution. No unconditional fallback. */
+  const meta = await post<{ supportsCalculate?: boolean; fields?: { name?: string }[] }>(url, {});
+  const fields = new Set((meta.fields ?? []).map((f) => f.name?.toLowerCase()));
+  const guarded = [F.status, F.reason, F.decidedBy, F.decidedAt, F.kind, F.maNo, F.uploadedBy];
+  if (meta.supportsCalculate !== true || !['objectid', ...guarded].every((f) => fields.has(f))) {
+    throw new Error(tr('Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.'));
+  }
+  const quote = (v: string) => `N'${v.replace(/'/g, "''")}'`;
+  const textIs = (field: string, value: string) => value === ''
+    ? `(${field} IS NULL OR ${field} = '')` : `${field} = ${quote(value)}`;
+  const where = [
+    `objectid = ${fresh.oid}`, `${F.status} = 'pending'`,
+    textIs(F.reason, fresh.reason), textIs(F.decidedBy, fresh.decidedBy),
+    textIs(F.kind, fresh.kind), textIs(F.maNo, fresh.maNo), textIs(F.uploadedBy, fresh.uploadedBy),
+    fresh.decidedAt == null ? `${F.decidedAt} IS NULL`
+      : `${F.decidedAt} = timestamp '${new Date(fresh.decidedAt).toISOString().replace('T', ' ').replace('Z', '')}'`,
+  ].join(' AND ');
+  const patch = {
+    [F.status]: verdict, [F.reason]: reason.trim().slice(0, FM_REASON_MAX) || null,
+    [F.decidedBy]: actor, [F.decidedAt]: Date.now(),
+  };
+  const result = await post<{ success?: boolean; updatedFeatureCount?: number }>(`${url}/calculate`, {
+    where, sqlFormat: 'standard',
+    calcExpression: JSON.stringify(Object.entries(patch).map(([field, value]) => ({ field, value }))),
+  });
+  if (result.success !== true || !Number.isInteger(result.updatedFeatureCount)
+    || Number(result.updatedFeatureCount) < 0 || Number(result.updatedFeatureCount) > 1) {
+    throw new Error(tr('Шийдвэр хадгалагдсан эсэх тодорхойгүй — серверээс үр дүн дутуу ирлээ. Жагсаалт шинэчлэгдсэний дараа шалгана уу.'));
+  }
+  if (result.updatedFeatureCount === 0) throw new Error(tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу'));
 }

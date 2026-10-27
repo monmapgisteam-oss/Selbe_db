@@ -1,0 +1,140 @@
+/*
+ * НИЙТЛЭГ УНТРААЛГА (switch) — хоёр утгатай капсул (2026-10-23, хэрэглэгч: «текст товч ДОТРОО байрлана», «загварыг
+ * системд нийтлэг байлгах»). Хоёр шошго капсул дотор; идэвхтэй
+ * сонголт дүүргэгдэж тодорно (өргөн нь шошгоороо) — нэг товч, дарахад нөгөө тал руу шилжинэ. Өнгө: `--hue` / `--hue-ink`.
+ */
+.sw {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 2px;
+  align-items: stretch;
+  box-sizing: border-box;
+  height: var(--ctl-h, 30px);
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sw:hover { border-color: color-mix(in srgb, var(--hue) 55%, var(--line-strong)); }
+.sw:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+.sw:disabled { opacity: 0.45; cursor: not-allowed; }
+.opt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--ink-3);
+  transition: color 0.18s, background 0.18s;
+}
+/* ⚠️ 2026-10-23 (хэрэглэгч: «хэмжээ жигдэл»): өргөн нь шошгоороо (auto) — идэвхтэй сонголт өөрөө дүүргэгдэнэ */
+.optOn { color: var(--hue-ink); background: var(--hue); border-radius: 999px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+
+/*
+ * НИЙТЛЭГ АСААХ/УНТРААХ ТОВЧ (`Toggle`, 2026-10-23, хэрэглэгч: «ард талдаа унтрааж асаадаг товчтой болго»): шошго
+ * (+ тоо) ба АРД ТАЛДАА track + knob. Капсулын хэмжээ `.sw`-тэй ижил (`--ctl-h`).
+ */
+.tg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: var(--ctl-h, 30px);
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.tg:hover { border-color: color-mix(in srgb, var(--hue) 55%, var(--line-strong)); }
+.tg:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+.tg:disabled { opacity: 0.45; cursor: not-allowed; }
+.tgOn { color: var(--data-ink); border-color: var(--hue); }
+.tgExtra { font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink-3); }
+.tgTrack {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 0.16s;
+}
+.tgOn .tgTrack { background: var(--hue); }
+.tgKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.16s;
+}
+.tgOn .tgKnob { transform: translateX(15px); }
+
+/*
+ * НИЙТЛЭГ ОЛОН СОНГОЛТТОЙ КАПСУЛ (`Segmented`, 2026-10-23, хэрэглэгч: «загварыг сайжруул» — хоног · 7 хоног · сар ·
+ * жил): `.sw`-тэй ИЖИЛ капсул · гулсагч; сонголт бүр тэнцүү өргөнтэй (`--n` багана), гулсагч идэвхтэй индекс рүү.
+ */
+.seg {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(var(--n), auto);
+  gap: 2px;
+  align-items: stretch;
+  box-sizing: border-box;
+  height: var(--ctl-h, 30px);
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.segOpt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: color 0.18s;
+}
+.segOpt:hover { color: var(--ink); }
+.segOpt:focus-visible { outline: 2px solid var(--hue); outline-offset: 1px; }
+.segOn, .segOn:hover { color: var(--hue-ink); background: var(--hue); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+/* ⚠️ 2026-10-26: `wrap` — олон/урт сонголт мөр шилжинэ (ТУХ-ын бүлэг · журмын төрөл). Сонголт бүрийн өндөр нь
+   капсулын нэг мөрийнхтэй ИЖИЛ (`--ctl-h` − хүрээ 2 − дотор зай 6); булан нь олон мөрөнд хэт дугуйрахгүй 15px. */
+.segWrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--ctl-h, 30px);
+  max-width: 100%;
+  border-radius: 15px;
+}
+.segWrap .segOpt { height: calc(var(--ctl-h, 30px) - 8px); }

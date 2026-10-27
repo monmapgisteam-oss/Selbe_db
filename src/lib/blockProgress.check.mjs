@@ -21,15 +21,11 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
-   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
-   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай (урьд HJ-ээр залгаж байв). */
-const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
-if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-/* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
-   Блокийн бүртгэл нэгтгэсэн `data`/112-т — ижил 113 блок, `BAGTS`/`BLOK`
-   талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
-const BLDG = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer/112`;
+/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана; талбарын нэр эх хэлбэрээр.
+   ⚠️ 2026-08-24: `data`/112 — 113 блок, `BAGTS`/`BLOK` талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
+const { BAGTS_AJLUUD } = await import('@/lib/services.ts');
+const { arcgisPost } = await import('@/lib/query.ts');
+const BLDG = `${BAGTS_AJLUUD}/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -37,13 +33,7 @@ const blockKey = (v) => String(v ?? '').trim().split(/\s+/)[0];
 const buildingKey = (b, k) => `${bagtsKey(b)}|${blockKey(k)}`;
 
 const q = async (url, params) => {
-  const res = await fetch(`${url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ returnGeometry: 'false', f: 'json', ...params }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message);
+  const j = await arcgisPost(`${url}/query`, { returnGeometry: 'false', ...params });
   return (j.features || []).map((f) => f.attributes);
 };
 
@@ -75,8 +65,8 @@ for (const [key, cell] of prog) {
 
 // 3. ТҮЛХҮҮР-ТААРУУЛАЛТ — гол чиглэл нь ГҮЙЦЭТГЭЛ → ДАВХАРГА.
 //    Гүйцэтгэл гарсан блок давхаргад БАЙХГҮЙ бол зурагт будагдах юмгүй болно.
-const blds = await q(BLDG, { where: '1=1', outFields: 'BAGTS,BLOK', resultRecordCount: '2000' });
-const layerKeys = new Set(blds.map((b) => buildingKey(b.BAGTS, b.BLOK)));
+const blds = await q(BLDG, { where: '1=1', outFields: 'bagts,blok', resultRecordCount: '2000' });
+const layerKeys = new Set(blds.map((b) => buildingKey(b.bagts, b.blok)));
 /*
  * ⚠️ МЭДЭГДЭЖ БУЙ зөрүүний жагсаалт (2026-08-29). «БАГЦ2|5/8»-д гүйцэтгэл
  * нийтлэгдсэн ч /112-т 5/8 footprint алга (5/6 хоёр удаа — нэг нь магадгүй
@@ -114,7 +104,7 @@ console.log(`давхарга ${blds.length} барилга · гүйцэтгэ�
 const KNOWN_DUP = new Set(['БАГЦ1|29/1', 'БАГЦ2|5/6']);
 const keyCount = new Map();
 for (const b of blds) {
-  const k = buildingKey(b.BAGTS, b.BLOK);
+  const k = buildingKey(b.bagts, b.blok);
   keyCount.set(k, (keyCount.get(k) ?? 0) + 1);
 }
 const dups = [...keyCount].filter(([, n]) => n > 1).map(([k]) => k);

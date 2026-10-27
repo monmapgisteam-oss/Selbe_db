@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DASH_PATTERN, layerUrl, MAP_HUE_OVERRIDES, type LayerDef } from '@/lib/services';
+import { DASH_PATTERN, MAP_HUE_OVERRIDES, type LayerDef } from '@/lib/services';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import { plan2dStyleOf, loadPlan2dStyle } from '@/lib/plan2d';
 import s from './swatch.module.css';
@@ -60,7 +60,7 @@ export function LayerSwatch({ d, hue: hueProp }: { d: LayerDef; hue?: string }) 
   /* ⚠️ 2026-10-09: `paint.force`-гүй бол план2d-ийн өнгө webmap-аас ӨМНӨ — зурагтай ижил дараалал */
   const hue = hueProp
     ?? (d.paint?.force ? undefined : plan2dColor(d.id))
-    ?? (MAP_HUE_OVERRIDES.has(d.id) ? d.hue : webmapStyleOf(d.styleUrl ?? layerUrl(d))?.color)
+    ?? (MAP_HUE_OVERRIDES.has(d.id) ? d.hue : webmapStyleOf(d.id)?.color)
     ?? d.hue;
   if (d.geom === 'line') {
     const pattern = DASH_PATTERN[d.dash ?? 'solid'];

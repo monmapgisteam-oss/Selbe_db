@@ -38,6 +38,29 @@ function focusable(root: HTMLElement): HTMLElement[] {
 }
 
 /**
+ * ⚠️ 2026-10-21: УРХИНЫ ОВООЛГО — хоёр урхи зэрэг нээлттэй үед (жиш. сешн дууссан/эрх
+ * алдсан цонх DocViewer · HelpPanel · UserAdmin-ий дээгүүр) capture-шатны сонсогч бүр
+ * фокусыг «гадуур» гэж үзээд Tab-ыг цуцалж ӨӨРИЙН эхний элемент рүү татдаг байв — дээд
+ * цонхны «Дахин шалгах» · «Түр хаах» · «Гарах» гараар хүрэгдэхгүй, Esc нь доорх самбарыг
+ * ч хаадаг байв. Одоо зөвхөн ХАМГИЙН СҮҮЛД идэвхжсэн урхи Tab/Esc-ийг барина.
+ */
+const trapStack: HTMLElement[] = [];
+
+/** Урхины хүрээг овоолгод бүртгэнэ; буцаах функц нь бүртгэлийг хасна. */
+export function pushFocusTrap(root: HTMLElement): () => void {
+  trapStack.push(root);
+  return () => {
+    const i = trapStack.lastIndexOf(root);
+    if (i >= 0) trapStack.splice(i, 1);
+  };
+}
+
+/** `root` нь хамгийн дээд урхи эсэх (овоолго хоосон бол `true`) — Esc сонсогчид шалгана. */
+export function isTopFocusTrap(root: HTMLElement | null): boolean {
+  return trapStack.length === 0 || trapStack[trapStack.length - 1] === root;
+}
+
+/**
  * @param ref     модалын гадна хүрээ (`role="dialog"` элемент)
  * @param active  урхи идэвхтэй эсэх — модал хаагдсан үед `false`
  * @param fallback ⚠️ 2026-10-07: «өмнөх фокус» `<body>`/алга бол (нээгч элемент нээхээс
@@ -72,6 +95,8 @@ export function useFocusTrap(
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
+      /* ⚠️ 2026-10-21: дээр нь өөр урхи нээлттэй бол түүнд үлдээнэ (овоолгын ⚠️) */
+      if (!isTopFocusTrap(root)) return;
       const list = focusable(root);
       if (!list.length) { e.preventDefault(); return; }
       const a = list[0];
@@ -84,9 +109,11 @@ export function useFocusTrap(
       else if (!e.shiftKey && cur === z) { e.preventDefault(); a.focus(); }
     };
 
+    const unpush = pushFocusTrap(root);
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
+      unpush();
       // ⚠️ Элемент DOM-оос хасагдсан бол `focus()` чимээгүй бүтэлгүйтнэ —
       //    `isConnected`-оор шалгаж, эс бөгөөс фокус `<body>`-д унана.
       // ⚠️ 2026-10-07: өмнөх фокус `<body>` эсвэл салсан бол `fallback`-ийн элемент рүү.

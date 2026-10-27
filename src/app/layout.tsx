@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
 // ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
 //    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
 //    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
@@ -40,6 +39,8 @@ import '@/modules/pkgFin.module.css';
 import '@/modules/pkgProg.module.css';
 import '@/modules/tuh.module.css';
 import '@/modules/bagtsHamaaral.module.css';
+import '@/modules/zuragTosol.module.css';
+import '@/modules/levelPlan.module.css';
 import '@/modules/habea.module.css';
 import '@/components/auth.module.css';
 import '@/components/locale.module.css';
@@ -55,6 +56,8 @@ import '@/components/mapTools.module.css';
 import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
+// ⚠️ 2026-10-23: Environment — порталын чирэгддэг 3 багана (`ResizableColumns`)
+import '@/components/resizableColumns.module.css';
 
 /**
  * ⚠️ 2026-08-17: ГАНЦХАН гэр бүл — INTER (envhub «Environment» порталын дизайн
@@ -65,11 +68,10 @@ import '@/components/tree.module.css';
  * `--mono`, `--cond` токенууд `globals.css`-д мөн Inter руу заадаг болсон тул
  * тэдгээрийг хэрэглэдэг бүх CSS өөрчлөлтгүй ажиллана.
  */
-const inter = Inter({
-  subsets: ['latin', 'cyrillic'],
-  variable: '--font-sans',
-  display: 'swap',
-});
+/* ⚠️ 2026-10-21: Inter нь РЕПОД (`public/fonts/inter/`, `globals.css`-ийн @font-face · `--font-sans`). Урьд нь
+   `next/font/google` dev сервер асах бүрд · CI build бүрд Google-ээс татдаг байсан тул ачаалалтай/сүлжээ муу үед
+   «Request timed out after 3000ms · Retrying» гарч эхний хуудас удаашралтай байв. Ижил variable фонт (wght 100–900),
+   ижил дэд олонлог (latin · latin-ext · cyrillic · cyrillic-ext, unicode-range-аар хэрэгтэйг л татна). */
 
 export const metadata: Metadata = {
   title: 'Сэлбэ — Орон зайн мэдээллийн портал',
@@ -135,7 +137,7 @@ try {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="mn" className={inter.variable} suppressHydrationWarning>
+    <html lang="mn" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

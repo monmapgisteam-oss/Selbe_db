@@ -20,6 +20,10 @@
  *    `asOf`-д орохгүй, хүснэгтэд «—» гарна — ямар нэг огноо зохиож
  *    орлуулахгүй. Огноо огт байхгүй бол `asOf: null`.
  *
+ * ⚠️ 2026-10-21 (аудит): ХОХИРЛЫН ТҮВШИН ч `RECENT_DAYS` цонхоор (`damageRecent`) — ослын түвшин
+ *    2026-10-09-нд 30 хоног болсон атал хохирол бүх хугацаагаар үлдсэн тул 3 дахь хохирол
+ *    бүртгэгдмэгц карт мөнхөд «Яаралтай» байв. Бүх хугацааны хохирол «{0} хохирол» баримтад хэвээр.
+ *
  * ⚠️ Тооцоо (`computeSafety`) нь ЦЭВЭР — сүлжээгүй, `Date.now()`-гүй — тул
  *    `safety.check.mjs` түүнийг шууд импортлон шалгана. `now` нь зөвхөн
  *    ачаалагчийн биед авагдана.
@@ -27,6 +31,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { queryFeatures, type Row } from '@/lib/query';
+import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import { HABEA } from '@/lib/services';
 import { date, num } from '@/lib/format';
 import { DMG_BAD_N, incidentLevel, type Level } from '@/lib/kpiLevels';
@@ -101,24 +106,29 @@ export function isBlankIncident(r: Row): boolean {
   return blankStr(r[I.turul]) && blankStr(r[I.bagts]) && toMs(r[I.ognoo]) == null;
 }
 
-/** Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс */
-export function toSafetyRow(r: Row): SafetyRow {
+/**
+ * Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс.
+ * ⚠️ 2026-10-22 (аудит): төрөл · шалтгааны төрөл · компани нь домэйны НЭРЭЭР (`dom`, `codedName`) — Survey123-ийн КОД 30–31
+ *    тэмдэгтэд тасардаг тул CEO картад «"Хятадын хоёр дахь металлурги г», «Моторт тээврийн хэрэгсэлийн осо» гэж гардаг
+ *    байв (ХАБЭА хуудас 2026-10-21-нээс нэрээр). Толь алга/танихгүй код → код өөрөө.
+ */
+export function toSafetyRow(r: Row, dom: CodedMaps = {}): SafetyRow {
   const I = HABEA.incident.fields;
   /* ⚠️ Survey123 давхаргын OID нь жижиг үсгээр `objectid` (Habea.tsx-тэй ижил);
      өөр нэртэй ирвэл ч алдахгүй — зөвхөн тодорхойлоход хэрэглэнэ. */
-  const oidRaw = r.objectid ?? r.OBJECTID ?? r.ObjectID ?? null;
+  const oidRaw = r.objectid ?? null;
   const oid = oidRaw == null ? null : Number(oidRaw);
   return {
     oid: oid != null && Number.isFinite(oid) ? oid : null,
     /* ⚠️ 2026-10-09: `Habea.tsx` `normIncident`-тэй ИЖИЛ — ЗӨВХӨН `field_22`; 0/хоосон → `null`
        (`CreationDate` руу УНАХГҮЙ — толгойн ⚠️) */
     ognoo: toMs(r[I.ognoo]),
-    company: str(r[I.company]),
+    company: codedName(dom[I.company], r[I.company]),
     bagts: str(r[I.bagts]),
     dugaar: str(r[I.dugaar]),
-    turul: str(r[I.turul]),
+    turul: codedName(dom[I.turul], r[I.turul]),
     medeelel: str(r[I.medeelel]),
-    shaltgaanTurul: str(r[I.shaltgaanTurul]),
+    shaltgaanTurul: codedName(dom[I.shaltgaanTurul], r[I.shaltgaanTurul]),
     shaltgaan: str(r[I.shaltgaan]),
     argaHemjee: str(r[I.argaHemjee]),
   };
@@ -135,6 +145,8 @@ export type SafetyAgg = {
   daysSince: number | null;
   /** Сүүлийн `RECENT_DAYS` хоногт бүртгэгдсэн тоо */
   recent: number;
+  /** Сүүлийн `RECENT_DAYS` хоногт бүртгэгдсэн ХОХИРОЛ (2026-10-21) — түвшинд энэ, `damage` нь бүх хугацааных */
+  damageRecent: number;
   byType: { name: string; n: number }[];
   byBagts: { name: string; n: number }[];
   byCompany: { name: string; n: number }[];
@@ -163,17 +175,22 @@ export const newestFirst = (a: SafetyRow, b: SafetyRow): number => {
 export const isDamage = (r: SafetyRow): boolean => DAMAGE_RE.test(r.turul);
 
 export function aggregateSafety(rows: readonly SafetyRow[], now: number): SafetyAgg {
-  const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null);
+  /* ⚠️ 2026-10-21 (аудит): `last`/`daysSince`/`asOf` ч `<= now` — `recent`-тэй нэг дүрэм. Урьд нь ирээдүйн
+     огноотой (буруу бөглөсөн) мөр «сүүлийнх −5 хоногийн өмнө»/ирээдүйн `asOf` болгодог байв. */
+  const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null && x <= now);
   const last = dated.length ? Math.max(...dated) : null;
   const since = now - RECENT_DAYS * 86_400_000;
+  /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
+     тоологдож картыг улаан болгодог байв */
+  const recentRows = rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now);
   return {
     total: rows.length,
     damage: rows.filter(isDamage).length,
     last,
     daysSince: last == null ? null : daysBetween(last, now),
-    /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
-       тоологдож картыг улаан болгодог байв */
-    recent: rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now).length,
+    recent: recentRows.length,
+    /* ⚠️ 2026-10-21: түвшний хохирол — ЗӨВХӨН цонхонд (толгойн ⚠️); бүх хугацааных `damage` баримтад */
+    damageRecent: recentRows.filter(isDamage).length,
     byType: tally(rows, (r) => r.turul),
     byBagts: tally(rows, (r) => r.bagts),
     byCompany: tally(rows, (r) => r.company),
@@ -215,8 +232,10 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   /* ── Түвшин ── */
   /* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`). Урьд нь бүх хугацааны
      `agg.total` тул 6 дахь осол бүртгэгдмэгц карт мөнхөд «Яаралтай» болж, сайжрал харагддаггүй
-     байв. Хохирлын түвшин (`damage`) хэвээр бүх хугацаагаар. Гол тоо ба шошго ч 30 хоног. */
-  const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damage)]);
+     байв. Гол тоо ба шошго ч 30 хоног.
+     ⚠️ 2026-10-21 (аудит): хохирлын түвшин ч ИЖИЛ цонхоор (`agg.damageRecent`) — бүх хугацааны
+     `agg.damage` ≥ 3 болмогц карт мөнхөд улаан байсан; бүх хугацааны тоо баримтад хэвээр. */
+  const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damageRecent)]);
 
   /* ── Хүснэгтүүд: бүх бүртгэл нэрээр нь, дараа нь төрөл/багцын задаргаа ── */
   const all: Cell[][] = rows.map((r) => [
@@ -274,15 +293,19 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
  */
 export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const I = HABEA.incident.fields;
-  const raw = await queryFeatures(HABEA.incident.url, {
-    /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
-    outFields: [...Object.values(I), 'objectid'],
-    /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
-       дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
-    orderBy: `${I.ognoo} DESC, objectid DESC`,
-  });
+  /* ⚠️ 2026-10-22 (аудит): домэйны толь ЗЭРЭГ (`toSafetyRow`-ийн ⚠️); мета унавал `{}` — код хэвээр, карт унахгүй */
+  const [raw, dom] = await Promise.all([
+    queryFeatures(HABEA.incident.url, {
+      /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
+      outFields: [...Object.values(I), 'objectid'],
+      /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
+         дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
+      orderBy: `${I.ognoo} DESC, objectid DESC`,
+    }),
+    loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul, I.company]),
+  ]);
   /* ⚠️ 2026-10-01: хоосон ноорог хасагдана (`isBlankIncident`) */
-  return raw.filter((r) => !isBlankIncident(r)).map(toSafetyRow);
+  return raw.filter((r) => !isBlankIncident(r)).map((r) => toSafetyRow(r, dom));
 }, 5 * 60_000, ['HABEA']);
 
 export const loadSafetyKpi = cached(async (): Promise<KpiResult> => (

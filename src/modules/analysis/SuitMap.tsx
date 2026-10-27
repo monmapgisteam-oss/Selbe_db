@@ -10,7 +10,7 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
-import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
+import TileLayer from '@arcgis/core/layers/TileLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Basemap from '@arcgis/core/Basemap';
@@ -19,6 +19,7 @@ import Graphic from '@arcgis/core/Graphic';
 import Home from '@arcgis/core/widgets/Home';
 import ScaleBar from '@arcgis/core/widgets/ScaleBar';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
+import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
 import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
@@ -29,8 +30,9 @@ import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import { createBimPicker, type BimPicker } from '@/components/bimPicker';
+import { installEntInterceptor } from '@/lib/entInterceptor';
 import {
-  IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
+  IMAGERY, IRGED_ROAD, MESH_VERSIONS, DEFAULT_MESH_VER, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
 import type { Dim } from '@/components/MapCanvas';
 
@@ -47,16 +49,28 @@ import type { TrafficStats } from './suit/TrafficOverlay';
 import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
-import { bimLayerFor, dropBimCache } from '@/components/bimCache';
+import { bimLayerFor, bimLayerPeek, dropBimCache } from '@/components/bimCache';
 import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from '@/components/render3d';
 import { registerMapView } from '@/lib/mapShots';
 
 /** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (⚠️ 2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
 const bimAll = (map: Map): BuildingSceneLayer[] => BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
   new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
+/** ⚠️ 2026-10-21 (аудит): кэшийн ОДООГИЙН инстанц — дахин үүсгэхгүй (MapCanvas-ийн `bimLive`-тай ижил). Сонгогч ·
+    `manageBim`-д ФУНКЦЭЭР өгнө — нэг удаагийн массив барьвал кэшээс хасагдсан/солигдсон инстанцад холбогдсон үлддэг. */
+const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {
+  const l = bimLayerPeek<BuildingSceneLayer>(map, b.key);
+  return l ? [l] : [];
+});
 
 export type MapRow = Zone & {
   urban: number | null;
+  /**
+   * ⚠️ 2026-10-22 (аудит): ХЭМЖСЭН ЖИНГИЙН хувь (0–1) ба оноо `null`-ийн шалтгаан — `urbanScore`-оос
+   * (`config.MIN_MEASURED_SHARE`-ийн ⚠️). Эрэмбэ · дэлгэрэнгүй · CSV «өгөгдөл хангалтгүй»-г ил харуулна.
+   */
+  coverage?: number | null;
+  urbanReason?: 'nodata' | 'coverage' | null;
   displayGeom: Polygon | null;
   /**
    * ОНООЛОЛД ОРСОН эсэх — `!excluded || scoreOn.has(type)` (2026-09-21).
@@ -186,7 +200,7 @@ const bldFocusFill = (c: number[]) => ({
   outline: { color: [255, 255, 255, 0.95], width: ow(1.2) },
 });
 const buildingRenderer = (focus = false) => ({
-  type: 'unique-value', field: 'Barilga_ty',
+  type: 'unique-value', field: 'barilga_ty',
   defaultSymbol: focus ? bldFocusFill([203, 213, 225]) : bldFill([203, 213, 225], BLD_ALPHA_DIM),
   defaultLabel: tr('Бусад'),
   uniqueValueInfos: Object.entries(STATUS_COLORS).map(([value, c]) => ({
@@ -243,7 +257,9 @@ const ROAD_TILE_URL =
      `selberoad_0917` нь 32648 (UTM)-ээр нийтлэгдсэн тул 3857 зурагт зурагдахгүй;
      Web Mercator-оор дахин нийтлэгдмэгц хувьсагчийн утгыг солино. Бусад бүх өгөгдөл monmap.
      Хаяг зөвхөн env (`NEXT_PUBLIC_ROAD_TILE_URL`) — код дотор линк байхгүй; хоосон бол «Бодит» зам гарахгүй. */
-  (process.env.NEXT_PUBLIC_ROAD_TILE_URL ?? '').trim().replace(/\/+$/, '');
+  /* ⚠️ 2026-10-20 (хэрэглэгч): AGOL `test_zam` → Enterprise `selberoad_TILE_1` (`services/scene.ts` IRGED_ROAD — ижил тайл,
+     32648-ийн ⚠️ тэнд). `NEXT_PUBLIC_ROAD_TILE_URL` хувьсагч хасагдсан. */
+  IRGED_ROAD.url;
 
 export function SuitMap({
   dim,
@@ -412,6 +428,8 @@ export function SuitMap({
   useEffect(() => {
     if (!el.current) return;
 
+    /* ⚠️ 2026-10-20: Enterprise талбарын нэрийн хөрвүүлэгч — давхарга үүсэхээс өмнө (`lib/entInterceptor.ts`) */
+    void installEntInterceptor();
     if (!mapRef.current) {
       /* ⚠️ 2026-10-09: хувилбарыг СУУЛГАСАН багцаас (`kernel.version` = «4.34.8» → «4.34») — урьд
          «4.34» гараар бичигдсэн тул `@arcgis/core`-ийг шинэчлэхэд CDN-ийн asset (worker, шрифт)
@@ -483,11 +501,8 @@ export function SuitMap({
         title: IMAGERY.title,
         visible: false,
         listMode: 'hide',
-        /* ⚠️ 2026-10-04: `Selbe_September_tif` MapServer — `MapImageLayer` (`services/scene.ts` IMAGERY-ийн ⚠️) */
-        layers: [new MapImageLayer({
-          id: 'imagery:0', url: IMAGERY.url, visible: true,
-          imageFormat: 'png32', imageTransparency: true, legendEnabled: false,
-        })],
+        /* ⚠️ 2026-10-20: Enterprise-ийн нислэгийн кэштэй тайл (wkid 102100 → `TileLayer`), анхдагч нислэг (`services/scene.ts` ORTHO_FLIGHTS-ийн ⚠️) */
+        layers: IMAGERY.layers.map((o, i) => new TileLayer({ id: `imagery:${i}`, url: o.url, visible: true })),
       });
 
       /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
@@ -552,7 +567,10 @@ export function SuitMap({
     // ⚠️ Виджетүүд MapView|SceneView хоёуланг хүлээж авдаг ч төрлийн
     //    тодорхойлолт нь MapView-г л заадаг тул нэг удаа cast хийнэ.
     const anyView = view as MapView;
-    view.ui.move('zoom', 'top-right');
+    /* ⚠️ 2026-10-23: 3D/BIM-д луужин · чиглэл солих товч ч баруун дээд (`MapCanvas`-тай ижил) — `MapTools`-ийн 3D өргөлт
+       (`lift`) хасагдсан тул зүүн дээд буланд үлдвэл хэрэгслийн зурвас (top 12px) тэднийг бүрхэж дарагдахгүй болдог байв */
+    (view.type === '3d' ? ['zoom', 'compass', 'navigation-toggle'] : ['zoom'])
+      .forEach((id, index) => view.ui.move(id, { position: 'top-right', index } as never));
     view.ui.add(new Home({ view: anyView }), 'top-right');
     view.ui.add(new ScaleBar({ view: anyView, unit: 'metric', style: 'line' }), 'bottom-right');
     // Суурь зургийн галерей — Expand дотор (товч дарж дэлгэнэ).
@@ -577,7 +595,24 @@ export function SuitMap({
     /* ⚠️ 2026-09-25: Галерей нь Expand-ийн content DOM-д суудаг тул
        `view.destroy()` устгадаггүй — 2D↔3D солих бүрд нэг нь үлддэг байв.
        Cleanup-д гараар устгана (MapCanvas-тай ижил). */
-    const gallery = new BasemapGallery({ view: anyView, container: galleryDiv });
+    /* ⚠️ 2026-10-20: ТОДОРХОЙ эх сурвалж (MapCanvas-тай ижил). Анхдагч `PortalBasemapsSource` нь ArcGIS Online-ы
+       суурь зургийн бүлгийг уншдаг бөгөөд тэнд нэвтрэлт шаарддаг item байдаг тул Enterprise руу шилжсэний дараа (AGOL
+       итгэмжлэлгүй) «Please sign in to access the item on ArcGIS Online» цонх гардаг байв. */
+    const gallery = new BasemapGallery({
+      view: anyView,
+      container: galleryDiv,
+      source: new LocalBasemapsSource({
+        basemaps: [
+          Basemap.fromId('topo-vector')!,
+          Basemap.fromId('satellite')!,
+          Basemap.fromId('hybrid')!,
+          Basemap.fromId('streets-vector')!,
+          Basemap.fromId('gray-vector')!,
+          Basemap.fromId('dark-gray-vector')!,
+          Basemap.fromId('osm')!,
+        ],
+      }),
+    });
     view.ui.add(new Expand({
       view: anyView,
       content: bmPanel,
@@ -614,7 +649,7 @@ export function SuitMap({
           const onBld = cb.current.onBldClick;
           const bld = hit.results.find((r) => r.type === 'graphic' && r.graphic.layer === bldRef.current);
           if (bld && bld.type === 'graphic' && onBld) {
-            const oid = (bld.graphic.attributes as Record<string, unknown>)?.OBJECTID;
+            const oid = (bld.graphic.attributes as Record<string, unknown>)?.objectid;
             if (oid != null) { onBld(Number(oid)); return; }
           }
           onBld?.(null);
@@ -672,7 +707,7 @@ export function SuitMap({
             if (tipHtml !== null) { key = k; html = tipHtml === '' ? null : tipHtml; }
           } else if (bld && bld.type === 'graphic') {
             const a = bld.graphic.attributes as Record<string, unknown>;
-            key = `b${a.OBJECTID}`;
+            key = `b${a.objectid}`;
             if (key !== lastKey) html = cb.current.buildingTip(a);
           } else if (zone && zone.type === 'graphic') {
             const id = (zone.graphic.attributes as { zoneId: string }).zoneId;
@@ -746,7 +781,9 @@ export function SuitMap({
     const map = mapRef.current;
     if (!map) return;
 
-    for (const m of SCENE.layers) {
+    /* ⚠️ 2026-10-26 (аудит): урьд нь хуучирсан `SCENE` («Нислэг 1») — ортофото нь «Нислэг 2» (`IMAGERY`) тул нислэг холилдож,
+       Нислэг 2-ын хойд хэсэг мешгүй харагддаг байв. Меш ба ортофото ХАМТ (`scene.ts`-ийн ⚠️) — порталын анхдагч хувилбар. */
+    for (const m of MESH_VERSIONS[DEFAULT_MESH_VER].layers) {
       const id = `scene:${m.key}`;
       const existing = map.findLayerById(id);
       if (dim === '3d' && !existing) {
@@ -794,7 +831,9 @@ export function SuitMap({
 
     clear();
     /* ⚠️ 2026-10-04: BIM НЭГ НЭГЭЭР — MapCanvas-ийн ⚠️-ийг үз */
-    const widget = createBimPicker({ view: view as SceneView, layers, items: BIM.layers, Explorer: BuildingExplorer });
+    /* ⚠️ 2026-10-21 (аудит): `layers` ФУНКЦЭЭР — сонголт бүрд кэшийн ОДООГИЙН инстанц (`bimLive`, MapCanvas-тай ижил);
+       урьд нь нэг удаагийн `bimAll` массив барьж, багц/горим солигдсоны дараа ч хуучин инстанцад холбогдсон байв. */
+    const widget = createBimPicker({ view: view as SceneView, layers: () => bimLive(map), items: BIM.layers, Explorer: BuildingExplorer });
     view.ui.add(widget.el, 'top-right');
     bimWidgetRef.current = widget;
     clickH = view.on('click', (e: __esri.ViewClickEvent) => { void widget.pickAt(e); });
@@ -817,9 +856,19 @@ export function SuitMap({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || dim !== 'bim' || view.type !== '3d') return;
-    return manageBim({ view: view as SceneView, map, all: bimAll(map), m: r3, archOn: false, pkg: bimPkg });
+    /* ⚠️ 2026-10-21 (аудит): `bimAll` кэшийг дүүргэнэ, `manageBim`-д `all` ФУНКЦЭЭР (`bimLive`) — MapCanvas-тай ижил */
+    if (!bimAll(map).length) return;
+    return manageBim({ view: view as SceneView, map, all: () => bimLive(map), m: r3, archOn: false, pkg: bimPkg });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready, r3, r3 === 'fine' ? bimPkg : null]);
+
+  /* ⚠️ 2026-10-21 (аудит): багц · горим солигдоход BIM сонгогчийн BuildingExplorer-ийг одоогийн давхаргад ДАХИН
+     ХОЛБОНО (MapCanvas-ийн `rebind` эффекттэй ижил) — сонгогчийн эффект зөвхөн `[dim, ready]`-аар үүсдэг тул урьд нь
+     багц солигдсоны дараа Map-аас гарсан инстанцад холбогдсон үлддэг байв. */
+  const bimPkgKey = r3 === 'fine' ? bimPkg.pkg : null;
+  useEffect(() => {
+    if (dim === 'bim' && ready) bimWidgetRef.current?.rebind();
+  }, [dim, ready, r3, bimPkgKey]);
 
   /* ── Давхаргын ил байдал (оноон будалт, шошго ч энд орно) ── */
   useEffect(() => {

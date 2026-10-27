@@ -303,6 +303,15 @@ const P = HO_IPC.payFields;
   /* ⚠️ 2026-10-09 (аудит №6): огт нийтлэгдээгүй хуудас `missing` биш `unpublished`; шийдвэр `sheetsVerdict`-ээр */
   assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
   assert.ok(W.includes('const verdict = sheetsVerdict(reads);') && W.includes('if (!verdict.go) return verdict.result;'), 'шийдвэр sheetsVerdict-ээр (аудит №6)');
+  /* ⚠️ 2026-10-26: бүрэн давхардсан хуудас (4-2·12F) IPC-ийн нийлбэрт орохгүй — `uniqueBlockCounts`-ийн жин 0 */
+  assert.ok(W.includes('const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));')
+    && W.includes('if (sc && sc.bld.length > 0 && weights[i] === 0) continue;'), 'давхардсан хуудас IPC-д алгасагдана (2026-10-26)');
+  {
+    const { uniqueBlockCounts } = await import('./blockProgress.ts');
+    const b9 = ['5/1', '5/2', '5/3', '5/4', '5/5', '5/6', '6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7', '6/8'];
+    const b12 = ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7', '6/8'];
+    assert.deepEqual(uniqueBlockCounts([b9, b12]), [14, 0], '4-2: 12F жин 0 → IPC-д алгасна');
+  }
   assert.ok(W.includes('const warns = [cw, verdict.warn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
   assert.ok(/\} finally \{\s*\/\*[^]*?\*\/\s*if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
   const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
@@ -322,7 +331,7 @@ const P = HO_IPC.payFields;
   /* нэг нь огт нийтлэгдээгүй — ҮРГЭЛЖИЛНЭ (0 оролцоотой), анхааруулгатай */
   v = sheetsVerdict(['read', 'unpublished']);
   assert.ok(v.go, '⚠️ огт нийтлэгдээгүй хуудас — missing БИШ, бичилт үргэлжилнэ (аудит №6)');
-  assert.ok(v.go && v.warn && v.warn.includes('огт нийтлэгдээгүй'), 'анхааруулга «огт нийтлэгдээгүй» гэж тодруулна');
+  assert.ok(v.go && v.warn && v.warn.includes('огт илгээгдээгүй'), 'анхааруулга «огт илгээгдээгүй» гэж тодруулна (2026-10-23: нийтлэх → илгээх)');
   /* тэр өдөр бөглөгдөөгүй / уншигдаагүй (`missing`) — хэвээр татгалзана (09-15-ны дүрэм) */
   v = sheetsVerdict(['read', 'missing']);
   assert.ok(!v.go && !v.result.ok && v.result.error.includes('бөглөгдөөгүй'), 'дутуу хуудас → ok:false хэвээр');
@@ -331,7 +340,7 @@ const P = HO_IPC.payFields;
   assert.ok(!v.go && v.result.ok && v.result.op === 'skip' && v.result.why === 'no-data', 'бүгд обьёмгүй → no-data');
   /* юу ч уншигдаагүй — батлагдсан хуудасны өөрийн жааз байх ёстой тул АЛДАА (fail-closed), no-data биш */
   v = sheetsVerdict(['unpublished', 'unpublished']);
-  assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт нийтлэгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт илгээгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');
   v = sheetsVerdict(['no-obyem', 'unpublished']);
   assert.ok(!v.go && !v.result.ok, 'обьёмгүй + нийтлэгдээгүй → уншигдсан зүйлгүй → ok:false');
   /* нэг хуудастай багц */

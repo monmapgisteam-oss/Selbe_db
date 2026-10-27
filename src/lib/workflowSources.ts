@@ -15,18 +15,18 @@
  */
 
 import { CAP_HOST_VIEW, WORKFLOW_VIEWS, type CapKey } from './caps';
-import { QAQC_CAP, ROLE_CAPS, SCOPED_SYSTEMS, type ScopedSys } from './aclRoleCaps';
+import { ROLE_CAPS, SCOPED_SYSTEMS, type ScopedSys } from './aclRoleCaps';
 import type { UserErh } from './erhOverview';
 import type { ViewKey } from './services';
 
 /** Нэг эх сурвалж */
 export type WfSource = {
   /**
-   * `flow` — урсгалын томилгоо · `qaqc` · үүрэгтэй тав — хуваарилалт ·
+   * `flow` — урсгалын томилгоо · үүрэгтэй тав — хуваарилалт (2026-10-23: QAQC хасагдсан) ·
    * `cap` — хуваарилалтгүй ШУУД олгосон эрх (хатуу super-ийн шууд олголт / өнчин эрх)
    */
-  sys: 'flow' | 'qaqc' | ScopedSys | 'cap';
-  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `qaqc`-д — ''; `cap`-д — эрхийн түлхүүр */
+  sys: 'flow' | ScopedSys | 'cap' | 'type';
+  /** Урсгалд — шат; үүрэгтэй системд — үүрэг; `cap`-д — эрхийн түлхүүр; `type`-д — «Хуваарь харах» утга (`all`/`own`, 2026-10-26), эсвэл `zahiral` («Гүйцэтгэл»-ийг төрлөөр зөвхөн харна) */
   role: string;
   /** Багцууд — `null` = бүх багц; `cap`-д `null` (хязгааргүй) */
   bagts: string[] | null;
@@ -64,10 +64,10 @@ export function workflowRows(u: UserErh): WfRow[] {
       ...(u.flow.viewOnly ? { viewOnly: true } : {}),
     });
   }
-  if (u.qaqcAssigned) {
-    explained.add(QAQC_CAP);
-    const granted = u.caps.includes(QAQC_CAP);
-    for (const v of hosts(QAQC_CAP)) push(v, { sys: 'qaqc', role: '', bagts: u.qaqc, cap: QAQC_CAP, granted });
+  /* ⚠️ 2026-10-26: «Ерөнхий захирал» төрөл «Гүйцэтгэл»-ийг томилгоогүйгээр ЗӨВХӨН ХАРНА (`permissions.workflowViewsOf`) —
+     эх сурвалжгүй бол карт «хаалттай · хуваарилалтгүй» гэж худал харуулж, татгалзах урсгалын хуудас руу заадаг байв */
+  if (u.viewRole && !u.flow) {
+    push('guitsetgel', { sys: 'type', role: 'zahiral', bagts: null, cap: null, granted: true, viewOnly: true });
   }
   for (const sys of SCOPED_SYSTEMS) {
     const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;
@@ -84,9 +84,19 @@ export function workflowRows(u: UserErh): WfRow[] {
     for (const v of hosts(c)) push(v, { sys: 'cap', role: c, bagts: null, cap: c, granted: true });
   }
 
+  /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Бүх багц», эсвэл «Өөрийн багц» (хуваарилалттай багц байвал л) */
+  if (u.hvType && (u.hvType.bagts === null || u.hvType.bagts.length > 0)) {
+    push('huvaari', { sys: 'type', role: u.hvType.scope, bagts: u.hvType.bagts, cap: null, granted: true, viewOnly: true });
+  }
+
   return WORKFLOW_VIEWS.map((view) => {
     const sources = by.get(view) ?? [];
-    return { view, sources, open: u.superUser || sources.some((s) => s.granted) };
+    /* ⚠️ 2026-10-26: «Хуваарь» — «Хуваарийн эрх»-ийн мөр (зохиогч · батлагч) эрх (`caps`) алга байсан ч тэр багцыг
+       ЗӨВХӨН ХАРАХ-аар нээнэ (`huvaariView.huvaariViewScope` — `resolveAccess`-тэй ижил дүрэм); «эрх олгогдоогүй» тэмдэг хэвээр */
+    /* ⚠️ 2026-10-26: танигдаагүй багц (`unknownBagts`) нь `huvaariViewScope`-д шүүгддэг тул ганцаараа нээхгүй */
+    const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari'
+      && (s.bagts === null || s.bagts.some((b) => !u.unknownBagts.includes(b))));
+    return { view, sources, open: u.superUser || viaPlan || sources.some((s) => s.granted) };
   });
 }
 

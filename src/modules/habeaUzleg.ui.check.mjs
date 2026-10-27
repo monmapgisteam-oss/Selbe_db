@@ -116,4 +116,11 @@ assert.ok(habea.includes('from={pill.from}') && habea.includes('to={pill.to}'), 
 assert.ok(habea.includes('s.day === rangeKeysRef.current) return { ...s, day: [v] }'), 'муж идэвхтэй үед өдөр дарвал сонголтыг орлуулна');
 assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадгалсны дараа давхар татахгүй');
 
+/* ══════════ 8. Үл нийцлийн арилгалт (HSE_Action) — `tick`-ээр шинэчлэгдэнэ (2026-10-26) ══════════ */
+{
+  const act = readFileSync(new URL('./HabeaAction.tsx', import.meta.url), 'utf8');
+  assert.ok(act.includes('useAsync(() => loadActions(), [tick], { keepOn: [tick] })'), 'HseActionPanel tick-ээр дахин татна');
+  assert.ok(habea.includes('<HseActionPanel pkgs={pkgs} onPkg={togglePkg} now={now} tick={tick} />'), 'Habea tick дамжуулна');
+}
+
 console.log('habeaUzleg.ui.check: OK');

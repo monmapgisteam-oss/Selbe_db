@@ -57,7 +57,7 @@ export const NUMERIC_TYPES = new Set([
  * ЗАСАХ БОЛОМЖГҮЙ талбарууд — серверийн удирддаг багана.
  * ⚠️ `tableWrite.ts` эдгээрийг илгээхийн өмнө ч шүүдэг (давхар хамгаалалт).
  */
-export const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+export const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date)/i;
 
 /**
  * ОРОН НУТГИЙН «YYYY-MM-DD» — `format.dayKey`-тэй ЯГ ИЖИЛ (тэр файл `@/…`
@@ -205,4 +205,76 @@ export function parseCell(
     return x;
   }
   return v;
+}
+
+/** v3 stores every fraction-percent input (share · advance %) in percentage units; v2 only the share; unversioned drafts used fractions. */
+export type FinanceDraft = {
+  v?: number;
+  pend: Record<string, string>;
+  adds: Record<string, string>[];
+  at: number;
+  legacyShareInvalid?: string[];
+};
+
+/** Preserve invalid legacy input for correction instead of reinterpreting its commas as percentages. */
+/* ⚠️ 2026-10-21 (аудит): v3 — `fractionFields` (`FIN_XL_FRACTION`: үнэт цаасны хувь + `urdchilgaa_huvi`) БҮГД ×100
+   нэгжээр хадгалагдана. v2 ноорогт зөвхөн `shareField` ×100 байсан тул бусад бутархай талбарын текстийг л үржүүлнэ
+   (хувийг дахин үржихгүй); хувилбаргүй ноорогт бүгдийг. Хуучин алдаатай текст (`legacyShareInvalid`) хэвээр. */
+export function upgradeFinanceDraft(draft0: FinanceDraft, shareField: string, fractionFields: readonly string[] = []): FinanceDraft | null {
+  const draft = lowerDraftFields(draft0);
+  if (draft.v === 3) return draft;
+  if (draft.v !== undefined && draft.v !== 2) return null;
+  const scaledFields = new Set(draft.v === 2
+    ? fractionFields.filter((f) => f !== shareField)
+    : [shareField, ...fractionFields]);
+  const invalid = new Set<string>(draft.legacyShareInvalid ?? []);
+  const scale = (text: string): string => {
+    try {
+      const value = parseCell(text, 'esriFieldTypeDouble', shareField);
+      if (typeof value !== 'number') return text;
+      const [mantissa, exponent = '0'] = String(value).split('e');
+      const scaled = Number(`${mantissa}e${Number(exponent) + 2}`);
+      if (!Number.isFinite(scaled)) { invalid.add(text); return text; }
+      return String(scaled);
+    } catch {
+      invalid.add(text);
+      return text;
+    }
+  };
+  const pend = Object.fromEntries(Object.entries(draft.pend).map(([key, text]) =>
+    [key, scaledFields.has(key.slice(key.indexOf(':') + 1)) ? scale(text) : text]));
+  const adds = draft.adds.map((row) => {
+    const next = { ...row };
+    for (const f of scaledFields) if (Object.hasOwn(row, f)) next[f] = scale(row[f]);
+    return next;
+  });
+  return { ...draft, v: 3, pend, adds, ...(invalid.size ? { legacyShareInvalid: [...invalid] } : {}) };
+}
+
+/**
+ * ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap`) хасагдсанаас ӨМНӨ хадгалсан ноорог талбарын AGOL үсгээр
+ *    (`7:Cashflow_huwi`) түлхүүрлэгдсэн байж болно; одоо код Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэрээр ажилладаг тул
+ *    сэргээхдээ талбарын хэсгийг жижиг үсэг болгоно (санхүүгийн хүснэгтийн бүх засагдах талбар жижиг үсэгтэй). Өөрчлөлтгүй
+ *    бол ЭХ объектоо буцаана.
+ */
+function lowerDraftFields(draft: FinanceDraft): FinanceDraft {
+  const lowKey = (k: string): string => { const i = k.indexOf(':'); return i < 0 ? k : k.slice(0, i + 1) + k.slice(i + 1).toLowerCase(); };
+  const pendKeys = Object.keys(draft.pend);
+  const pendChanged = pendKeys.some((k) => lowKey(k) !== k);
+  const addsChanged = draft.adds.some((row) => Object.keys(row).some((k) => k.toLowerCase() !== k));
+  if (!pendChanged && !addsChanged) return draft;
+  return {
+    ...draft,
+    pend: pendChanged ? Object.fromEntries(Object.entries(draft.pend).map(([k, v]) => [lowKey(k), v])) : draft.pend,
+    adds: addsChanged ? draft.adds.map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase(), v]))) : draft.adds,
+  };
+}
+
+/** Legacy ambiguous/malformed text keeps its original validation until the user corrects it. */
+export function parseFinanceShare(
+  text: string, type: string, label: string, legacyInvalid: readonly string[] = [], msg: ParseMsg = PARSE_MSG_MN,
+): unknown {
+  if (legacyInvalid.includes(text)) parseCell(text, type, label, msg);
+  const value = parseCell(text, type, label, msg, true);
+  return typeof value === 'number' ? value / 100 : value;
 }

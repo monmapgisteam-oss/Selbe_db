@@ -151,7 +151,7 @@ assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, '  '
   const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
   assert.ok(src.includes('wroteMain ? afterWrite('), 'useObyem: бичигдсэний дараах шийдвэрийн алдаа «аль хэдийн бичигдсэн» гэж хэлнэ');
   const tb = fs.readFileSync(new URL('../modules/sheet/fill/toolbar.tsx', import.meta.url), 'utf8');
-  assert.ok(/window\.confirm\([^]*?decideObyemHere\(true\)/.test(tb), 'toolbar: «Обьём батлах» баталгаажуулалттай');
+  assert.ok(/askConfirm\([^]*?decideObyemHere\(true\)/.test(tb), 'toolbar: «Обьём батлах» баталгаажуулалттай');
 }
 console.log('✅ татан авах дүрэм · батлах баталгаа · бичилтийн дараах алдааны мессеж');
 
@@ -169,7 +169,7 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   /* Алгассан нүд — баталгаагүйгээр батлахгүй, түгжээ/бичилтээс ӨМНӨ асууна; тэмдэглэл `skipped`-ээр */
   const ask = fn.indexOf('if (skippedN > 0)');
   assert.ok(ask > 0 && ask < fn.indexOf('claimObyem('), 'useObyem: алгассан нүдийг түгжихээс ӨМНӨ асуух ёстой');
-  assert.ok(/window\.confirm\(/.test(fn.slice(ask, fn.indexOf('claimObyem('))), 'useObyem: алгассан нүдэд баталгаажуулалт алга');
+  assert.ok(/askConfirm\(/.test(fn.slice(ask, fn.indexOf('claimObyem('))), 'useObyem: алгассан нүдэд баталгаажуулалт алга');
   assert.ok(/skipped: skipNote/.test(fn), 'useObyem: алгассан нүдийг `decideObyem.skipped`-ээр хадгалахгүй байна');
   /* Нэг батлагч хоёр таб — «аль хэдийн шийдвэрлэсэн» ӨӨРӨӨ бол амжилт */
   assert.ok(/doneByMe\(\)/.test(fn) && /h\.status === OBYEM_STATUS\.approved && h\.approver === meLc/.test(fn), 'useObyem: ӨӨРИЙН баталсныг амжилт гэж үзэхгүй байна');
@@ -179,7 +179,9 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   /* ⚠️ 2026-10-09: гацсаныг буцаах (CAS-аар) · завгүй шалгалт fail-closed · хариу алдагдвал тэмдэг/түгжээ үлдэнэ · refresh seq */
   const rs = L.slice(L.indexOf('export async function returnStuckObyem('), L.indexOf('export function withdrawDeny('));
   assert.ok(rs.length > 0 && rs.indexOf('casObyemClaim(') > 0 && rs.indexOf('casObyemClaim(') < rs.indexOf('[F.status]: OBYEM_STATUS.returned'), 'returnStuckObyem: бичихээс өмнө CAS түгжээ алга');
-  assert.ok(rs.includes('partialBy(curStatus') && rs.includes('OBYEM_STUCK_PREFIX()'), 'returnStuckObyem: зөвхөн хагас бичигдсэнд · угтвартай шалтгаан');
+  /* ⚠️ 2026-10-26 (аудит): угтвар нь ЭХ текстээр (хэлнээс үл хамаарах) бичигдэнэ — дэлгэцэнд `displayObyemReason` */
+  assert.ok(rs.includes('partialBy(curStatus') && rs.includes('${OBYEM_STUCK_PREFIX_SRC}\\n${why}') && !rs.includes('OBYEM_STUCK_PREFIX()'),
+    'returnStuckObyem: зөвхөн хагас бичигдсэнд · эх текстийн угтвартай шалтгаан');
   const bz = L.slice(L.indexOf('export async function obyemBusyFor('), L.indexOf('export async function releaseObyemClaim('));
   assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
   /* ⚠️ 2026-10-11 (аудит №7): markObyemPartial — CAS (унш → pending · түгжээ = би → бич → дахин уншиж тэмдэг суусныг тулга),
@@ -191,6 +193,12 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(/st !== OBYEM_STATUS\.pending\) return \{ ok: false/.test(mp.slice(0, mpWrite)), 'markObyemPartial: pending биш мөрөнд тэмдэг бичиж байна');
   assert.ok(/claimHolder\(cur\);\s*if \(h !== me\)/.test(mp.slice(0, mpWrite)), 'markObyemPartial: өөрийн түгжээгүй мөрөнд тэмдэг бичиж байна');
   assert.ok(mp.indexOf('await query(', mpWrite) > 0 && /claimHolder\(back\) !== me \|\| \(s\(back\[F\.reason\]\) \?\? ''\)\.trim\(\) !== mark/.test(mp), 'markObyemPartial: бичсэний дараа тэмдэг суусныг тулгахгүй байна');
+  /* ⚠️ 2026-10-21 (аудит): claimObyem · markObyemPartial — decideObyem-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур (`obyemAuthzDeny`) */
+  const cl = L.slice(L.indexOf('export async function claimObyem('), L.indexOf('export async function obyemApproveGuard('));
+  assert.ok(cl.indexOf('obyemAuthzDeny(') > 0 && cl.indexOf('obyemAuthzDeny(') < cl.indexOf('casObyemClaim('), 'claimObyem: хүрээ/зохиогч шалгалгүй түгжиж байна');
+  assert.ok(mp.indexOf('obyemAuthzDeny(') > 0 && mp.indexOf('obyemAuthzDeny(') < mp.indexOf('claimHolder(cur)'), 'markObyemPartial: хүрээ/зохиогч шалгалгүй тэмдэг тавьж байна');
+  const az = L.slice(L.indexOf('function obyemAuthzDeny('), L.indexOf('export async function claimObyem('));
+  assert.ok(/obyemScope\(meNow \?\? me, 'approver'\)/.test(az) && /me === author/.test(az), 'obyemAuthzDeny: хүрээ ба зохиогч дүрэм дутуу');
   assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
   assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
   /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — түгжихийн ӨМНӨ ба `applyUpdates`-ийн ЯГ ӨМНӨ (fail-closed) */

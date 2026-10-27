@@ -25,7 +25,7 @@
  * 166,054,833,462 ₮ (−1,924.1 тэрбум), `contract` нь 2,005,709,962,931 →
  * 148,071,054,945 ₮ болж ЧИМЭЭГҮЙ унана. Одоо унаагүй байгаа цорын ганц
  * шалтгаан нь AUTO мөрүүд OBJECTID 46–52 буюу гараар оруулсны ДАРАА сууж,
- * `loadHoRows` нь `OBJECTID ASC`-аар татдагт л бий — өгөгдлийн ДАРААЛАЛ
+ * `loadHoRows` нь `objectid ASC`-аар татдагт л бий — өгөгдлийн ДАРААЛАЛ
  * дээр тогтсон аюул. Тиймээс `groupHo` нь одоо «эхний мөр» БИШ, «утгатай
  * (non-null) ЭХНИЙ мөр»-өөс гэрээний талбарыг авна (`pickField` доор) —
  * дарааллаас ХАМААРАХГҮЙ.
@@ -120,7 +120,7 @@ export function sumPaidByKind(rows: readonly Row[], kind: string): number | null
  * ⚠️ Мөнгөн талбарууд БҮГД `number | null`: `null` = ХЭМЖИГДЭЭГҮЙ.
  */
 export type HoContract = {
-  /** `geree_kod` «Багц-1». Кодгүй мөрд `''` (амьдаар ХО-0045 нэг ширхэг) */
+  /** `geree_kod` «Багц-1». Кодгүй мөрд `''` (амьдаар ХО-0045 нэг ширхэг; 2026-10-21: кодгүй мөр БҮР тусдаа гэрээ) */
   code: string;
   /** `pkgKeyOf(bagts)` — багц↔гэрээ холбоосын түлхүүр. ⚠️ ДИАПАЗОН мөрд `''` */
   key: string;
@@ -199,6 +199,9 @@ function pickField(pays: readonly Row[], field: string, warn: boolean): unknown 
  * ⚠️ БҮЛЭГЛЭХ ТҮЛХҮҮР нь `geree_kod`. Кодгүй мөр (амьдаар ХО-0045, 1 ширхэг)
  * ХАЯГДАХГҮЙ — `code: ''` бүхий тусдаа гэрээ болж нийт төсөвт үлдэнэ.
  * Хаявал 533,100,000 ₮-ийн төсөв чимээгүй алга болно.
+ * ⚠️ 2026-10-21 (аудит): кодгүй мөр БҮР ӨӨРИЙН OID-оор ТУСДАА гэрээ — бүгдийг нэг
+ * `''` бүлэгт нийлүүлбэл хоёр дахь кодгүй гэрээний төсөв `pickField`-д алдагдаж,
+ * төлбөрүүд нь нийлж `paidPct` худал болно.
  *
  * ⚠️ Гэрээний талбарыг «УТГАТАЙ ЭХНИЙ мөр»-өөс авна (`pickField`) — «эхний
  * мөр» БИШ. Хуучин дүрэм нь AUTO мөр (гэрээний талбар нь БҮГД хоосон)
@@ -209,16 +212,30 @@ function pickField(pays: readonly Row[], field: string, warn: boolean): unknown 
  * ⚠️ ДАРААЛАЛ хадгалагдана (`Map` нь оруулсан дарааллаар давтагддаг) —
  * дуудагч тал `loadHoRows`-ийн OID эрэмбийг үргэлжлүүлэн найдаж болно.
  */
+/** Кодгүй бүлгийн дотоод түлхүүрийн угтвар — `geree_kod`-д хэзээ ч гарахгүй тэмдэгт */
+const NO_CODE_KEY = '\u0000';
+
 export function groupHo(rows: readonly Row[]): HoContract[] {
   const byCode = new Map<string, Row[]>();
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const code = str(r[C.code]).trim();
-    const g = byCode.get(code);
-    if (g) g.push(r); else byCode.set(code, [r]);
-  }
+    /* ⚠️ 2026-10-21 (аудит): КОДГҮЙ мөр бүр ӨӨРИЙН OID-оор ТУСДАА бүлэг. Урьд нь бүх кодгүй мөр
+       нэг `''` «гэрээ» болж нийлдэг тул хоёр дахь кодгүй гэрээ гарахад `pickField` эхнийхийн
+       төсвийг л авч (нөгөөгийнх чимээгүй алга), төлбөрүүд нь нийлж `paidPct` худал гарах байв.
+       `code` нь `''` ХЭВЭЭР (дуудагчид «кодгүй» гэж таних — `ceo/ipc.noCode`); OID-гүй мөр
+       (зохиомол) индексээр. */
+    /* ⚠️ 2026-10-22 (аудит №4): гэрээний ДУГААРТАЙ кодгүй мөрүүд НЭГ гэрээ — өгөгдөл төлбөр тутамд нэг мөр, гэрээний
+       талбар мөр бүрд давтагддаг тул OID-оор салгавал хоёр төлбөртэй кодгүй гэрээ ХОЁР гэрээ болж төсөв давхардана
+       (533.1М → 1,066.2М, paidPct хоёр дахин бага). Дугааргүй мөр л OID-оор тусдаа (дээрх ⚠️ 2026-10-21). */
+    const cno = code ? '' : str(r[C.contractNo]).trim();
+    const key = code || (cno ? `${NO_CODE_KEY}n:${cno}` : `${NO_CODE_KEY}${num(r[HO_IPC.oid]) ?? `i${i}`}`);
+    const g = byCode.get(key);
+    if (g) g.push(r); else byCode.set(key, [r]);
+  });
 
   const out: HoContract[] = [];
-  for (const [code, pays] of byCode) {
+  for (const [key, pays] of byCode) {
+    const code = key.startsWith(NO_CODE_KEY) ? '' : key;
     /* ⚠️ Талбар БҮРИЙГ тусад нь сонгоно — НЭГ «толгой мөр» СОНГОХГҮЙ. Учир нь
        нэг мөрөнд төсөв нь бөглөгдсөн атлаа гүйцэтгэгч нь хоосон байж болно;
        «толгой мөр» сонгох загвар тийм тохиолдолд дутуу талбарыг чимээгүй
@@ -303,7 +320,11 @@ export function unlinkedPays(rows: readonly Row[]): Row[] {
 export type HoTotals = {
   /** Гэрээний тоо (dedup хийсэн) */
   contracts: number;
-  /** Төлбөрийн мөрийн тоо */
+  /**
+   * Төлбөрийн тоо — ЗӨВХӨН `dun`-тай мөр (`ipcTable.payCount`-тай нэг дүрэм).
+   * ⚠️ 2026-10-26 (аудит): дүнгүй AUTO мөр (гүйцэтгэлийн тэмдэглэл) төлбөр БИШ — урьд нь бүх мөрийг тоолж CEO карт «64
+   *    төлбөр», IPC хуудас 43 гэж зөрдөг, `ipcLevel`-ийн `pays === 0` шалгалт AUTO мөртэй үед хэзээ ч биелдэггүй байв.
+   */
   pays: number;
   /** Σ `tosov_niit` — ⚠️ ГЭРЭЭ БҮРД НЭГ УДАА */
   budget: number | null;
@@ -350,7 +371,7 @@ export function hoTotals(rows: readonly Row[]): HoTotals {
   const paidC = acc((c) => (c.contractTotal != null ? c.paidTotal : null));
   return {
     contracts: cs.length,
-    pays: rows.length,
+    pays: rows.filter((r) => hoAmount(r) != null).length,
     budget: acc((c) => c.budgetTotal),
     contract,
     saving: acc((c) => c.saving),

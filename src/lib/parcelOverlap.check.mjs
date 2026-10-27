@@ -10,7 +10,7 @@
  *  1. Нэг tick-ийн олон дуудлага (багц) ба ганц ганцаар (хуучин зам) — ЯГ ижил OID-ууд.
  *  2. Багцын хүсэлтийн тоо эрс цөөн (барилгын багцууд нэг татлага, нэг огтлолцлын нэгдэл).
  *  3. Дараагийн бүтэн барилгын дуудлага (`allBld`) геометрээ кэшээс авна.
- *  4. Хүрэлцэх (хил дээр) = огтлолцох; салангид объект тоологдохгүй.
+ *  4. ⚠️ 2026-10-22 (аудит): ЗӨВХӨН хүрэлцэх (хил дээр) нь огтлолцол БИШ (урьд «= огтлолцох»); салангид объект тоологдохгүй.
  *  5. Уналт: давхарга унасан дуудлага `failed`-тэй, бүгд унасан нь алдаа — хуучин зан.
  *  6. (2026-10-09) «Бүрэн чөлөөлсөн.» зэрэг ХУВИЛБАР бичиглэл саад БИШ (ганц ба багцын зам).
  *  7. (2026-10-09) Олон хэсэгтэй нэгж талбар: 2-р хэсэг нь эх полигон дотор бол давхцана.
@@ -33,16 +33,16 @@ const BLD = 'mon:building';
 const bldFeats = [
   ...Array.from({ length: 40 }, (_, i) => {
     const k = i + 1;
-    return { attributes: { OBJECTID: k }, geometry: { rings: k % 2 === 0 ? sq(20 * k + 2, 2, 5) : sq(20 * k, 500, 5) } };
+    return { attributes: { objectid: k }, geometry: { rings: k % 2 === 0 ? sq(20 * k + 2, 2, 5) : sq(20 * k, 500, 5) } };
   }),
-  { attributes: { OBJECTID: 41 }, geometry: { rings: sq(20 * 41 + 10, 0, 5) } },
+  { attributes: { objectid: 41 }, geometry: { rings: sq(20 * 41 + 10, 0, 5) } },
 ];
 const infraIds = [...new Set(Object.values(PKG_BY_BAGTS).flat())].filter((id) => LAYER_BY_ID[id] && id !== BLD).slice(0, 10);
 assert.equal(infraIds.length, 10, 'дэд бүтцийн давхарга хангалтгүй');
 /* Дэд бүтэц j (0…9): тэгш j — хэвтээ шугам нэгж талбар 45+j-г огтолно; сондгой — цэг 45+j дотор */
 const infraFeats = (j) => (j % 2 === 0
-  ? [{ attributes: { OBJECTID: 1 }, geometry: { paths: [[[20 * (45 + j) - 3, 5], [20 * (45 + j) + 4, 5]]] } }]
-  : [{ attributes: { OBJECTID: 1 }, geometry: { x: 20 * (45 + j) + 5, y: 5 } }]);
+  ? [{ attributes: { objectid: 1 }, geometry: { paths: [[[20 * (45 + j) - 3, 5], [20 * (45 + j) + 4, 5]]] } }]
+  : [{ attributes: { objectid: 1 }, geometry: { x: 20 * (45 + j) + 5, y: 5 } }]);
 const byUrl = new Map([[LAYER_BY_ID[BLD].url, () => bldFeats], ...infraIds.map((id, j) => [LAYER_BY_ID[id].url, () => infraFeats(j)])]);
 let broken = null; // энэ URL унана (5-р шалгалт)
 let variant = new Set(); // эдгээр FID-ийн төлөв «бүрэн  Чөлөөлсөн.» (6-р шалгалт)
@@ -63,7 +63,7 @@ globalThis.fetch = async (url, init) => {
   let body;
   if (!u.endsWith('/query')) {
     kinds.meta += 1;
-    body = { objectIdField: base === PARCEL_LEFT.url ? 'FID' : 'OBJECTID', extent: { spatialReference: { wkid: WK } }, advancedQueryCapabilities: { supportsPagination: true } };
+    body = { objectIdField: base === PARCEL_LEFT.url ? 'objectid' : 'objectid', extent: { spatialReference: { wkid: WK } }, advancedQueryCapabilities: { supportsPagination: true } };
   } else if (base === PARCEL_LEFT.url && p.objectIds) {
     kinds.parcels += 1;
     body = { features: p.objectIds.split(',').map(Number).map((id) => ({
@@ -81,7 +81,7 @@ globalThis.fetch = async (url, init) => {
     else {
       let fs = byUrl.get(base)?.() ?? [];
       const m = /IN \(([\d,]+)\)/.exec(p.where ?? '');
-      if (m) { const ids = new Set(m[1].split(',').map(Number)); fs = fs.filter((f) => ids.has(f.attributes.OBJECTID)); }
+      if (m) { const ids = new Set(m[1].split(',').map(Number)); fs = fs.filter((f) => ids.has(f.attributes.objectid)); }
       body = { features: fs.map((f) => (p.outFields ? f : { geometry: f.geometry })), exceededTransferLimit: false };
     }
   }
@@ -89,8 +89,8 @@ globalThis.fetch = async (url, init) => {
 };
 
 /* ── Ажлууд — `execTriage.loadOverlaps`-ийн хэлбэр: барилгын багц бүр OID IN, дэд бүтэц давхаргаар ── */
-const bldJobs = Array.from({ length: 20 }, (_, i) => [{ layerId: BLD, where: `OBJECTID IN (${2 * i + 1},${2 * i + 2})` }]);
-bldJobs.push([{ layerId: BLD, where: 'OBJECTID IN (41)' }]);
+const bldJobs = Array.from({ length: 20 }, (_, i) => [{ layerId: BLD, where: `objectid IN (${2 * i + 1},${2 * i + 2})` }]);
+bldJobs.push([{ layerId: BLD, where: 'objectid IN (41)' }]);
 const infraJobs = infraIds.map((id) => [{ layerId: id, where: null }]);
 const jobs = [...bldJobs, ...infraJobs];
 const allBld = [{ layerId: BLD, where: null }];
@@ -113,9 +113,10 @@ await ok('OID-ууд багц бүрд ЯГ ижил', () => {
   assert.deepEqual(batch.map((r) => [...r.oids].sort()), single.map((r) => [...r.oids].sort()));
   assert.ok(batch.every((r) => !r.failed), 'уналтгүй');
 });
-await ok('хүлээгдэж буй давхцал: тэгш OID-той барилга, хил дээр хүрэлцсэн 41, дэд бүтэц бүр', () => {
+await ok('хүлээгдэж буй давхцал: тэгш OID-той барилга, дэд бүтэц бүр; хил дээр ЗӨВХӨН хүрэлцсэн 41 — саад БИШ', () => {
   assert.deepEqual(batch[0].oids, [102], 'OID 1 (хол) + 2 (талбар 2)');
-  assert.deepEqual(batch[20].oids, [141], 'хил дээр хүрэлцэх = огтлолцох');
+  assert.deepEqual(batch[20].oids, [], '⚠️ 2026-10-22: хил дээр хүрэлцэх ≠ огтлолцох (урьд [141])');
+  assert.deepEqual(single[20].oids, [], 'ганц зам ч ижил');
   infraIds.forEach((_, j) => assert.deepEqual(batch[21 + j].oids, [145 + j], `дэд бүтэц ${j}`));
 });
 await ok(`хүсэлт: багц ${batchCalls} ↔ ганцаар ${singleCalls}`, () => {
@@ -132,7 +133,8 @@ await ok('allBld: огтлолцол + дэвшигчдийн төлөв (2026-1
   const r = await A.overlapLeftParcels(allBld);
   assert.equal(kinds.geom, g0, 'геометр дахин татагдав');
   assert.equal(calls, 2, `${calls} хүсэлт`);
-  assert.deepEqual([...r.oids].sort(), [...Array.from({ length: 20 }, (_, i) => 102 + 2 * i), 141].sort());
+  /* ⚠️ 2026-10-22: 141 нь зөвхөн хүрэлцдэг — хасагдана */
+  assert.deepEqual([...r.oids].sort(), [...Array.from({ length: 20 }, (_, i) => 102 + 2 * i)].sort());
 });
 
 console.log('\n5. Уналт — хуучин зан');
@@ -177,12 +179,50 @@ await ok('эхний хэсэг гадна, 2-р хэсэг эх полигон 
   PARCELS.set(159, [...sq(20 * 59, 900), ...sq(781, 501, 2)]);
   const F = await import('./parcelOverlap.ts?multipart');
   const [r1, r2] = await Promise.all([
-    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (39)' }]),
-    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (40)' }]),
+    F.overlapLeftParcels([{ layerId: BLD, where: 'objectid IN (39)' }]),
+    F.overlapLeftParcels([{ layerId: BLD, where: 'objectid IN (40)' }]),
   ]);
   PARCELS.set(159, sq(20 * 59, 0));
   assert.deepEqual(r1.oids, [159]);
   assert.deepEqual(r2.oids, [140]);
+});
+
+console.log('\n8. Нэгж талбарын засвар (`PARCEL_LEFT`) — эх геометр кэшээс, огтлолцол дахин (2026-10-21)');
+await ok('invalidate(PARCEL_LEFT): геометрийн хүсэлт 0, огтлолцол дахин явж үр дүн ижил', async () => {
+  const { invalidate } = await import('./dataBus.ts');
+  const G = await import('./parcelOverlap.ts?parcelEdit');
+  const srcs = [[{ layerId: BLD, where: 'objectid IN (1,2)' }], [{ layerId: infraIds[0], where: null }], [{ layerId: infraIds[1], where: null }]];
+  const r1 = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  calls = 0;
+  const same = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  assert.equal(calls, 0, 'ижил дуудлага үр дүнгийн кэшээс');
+  const g0 = kinds.geom;
+  const i0 = kinds.intersect;
+  invalidate('PARCEL_LEFT');
+  const r2 = await Promise.all(srcs.map((s) => G.overlapLeftParcels(s)));
+  assert.equal(kinds.geom, g0, 'эх давхаргын геометр ДАХИН татагдав — нэгж талбарын засвар эх геометрийг өөрчилдөггүй');
+  assert.ok(kinds.intersect > i0, 'огтлолцол дахин асуугдах ёстой (үр дүнгийн кэш хаягдана)');
+  assert.deepEqual(r2.map((r) => r.oids), r1.map((r) => r.oids));
+  assert.deepEqual(same.map((r) => r.oids), r1.map((r) => r.oids));
+});
+
+console.log('\n9. ДОТООД огтлолцол — хүрэлцэх ба ерөнхийлөлтийн шуугиан саад биш (2026-10-22, аудит)');
+await ok('хил дагуу шугам · хил давхцсан полигон · 5 см нимгэн давхцал — саад биш; гүн давхцал · ижил дүрс — саад', async () => {
+  /* FID 130: x 600…610, y 0…10. Барилгын мөрүүдийг түр сольж ганц замаар шалгана */
+  const save = bldFeats.splice(0, bldFeats.length);
+  const P = 600;
+  bldFeats.push(
+    { attributes: { objectid: 1 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P, 10], [P, 0], [P - 5, 0]]] } },   // хил давхцсан хөрш
+    { attributes: { objectid: 2 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 0.05, 10], [P + 0.05, 0], [P - 5, 0]]] } }, // 5 см шуугиан
+    { attributes: { objectid: 3 }, geometry: { rings: [[[P - 5, 0], [P - 5, 10], [P + 2, 10], [P + 2, 0], [P - 5, 0]]] } }, // 2 м давхцал
+    { attributes: { objectid: 4 }, geometry: { rings: sq(P, 0) } },                                                           // ижил дүрс
+    { attributes: { objectid: 5 }, geometry: { rings: [[[P - 20, -20], [P - 20, 30], [P + 30, 30], [P + 30, -20], [P - 20, -20]], [[P, 0], [P + 10, 0], [P + 10, 10], [P, 10], [P, 0]]] } }, // нүх = талбар
+  );
+  const H = await import('./parcelOverlap.ts?interior');
+  const one = async (k) => (await H.overlapLeftParcels([{ layerId: BLD, where: `objectid IN (${k})` }])).oids.filter((id) => id === 130);
+  const got = [await one(1), await one(2), await one(3), await one(4), await one(5)];
+  bldFeats.splice(0, bldFeats.length, ...save);
+  assert.deepEqual(got, [[], [], [130], [130], []], 'хүрэлцэх · шуугиан · гүн · ижил · нүхэн дотор');
 });
 
 console.log(`\n${n} шалгалт ✓`);

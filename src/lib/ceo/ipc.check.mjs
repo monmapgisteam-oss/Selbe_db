@@ -123,6 +123,12 @@ assert.equal(epochOf(null), null);
   const r = computeIpc([pay({ amount: null }), pay({ amount: '' })], NOW);
   assert.equal(r.value, '—', 'бүгд дүнгүй бол «—», 0 ₮ БИШ');
   assert.equal(r.level, 'warn', 'дүнгүй мөр нь өгөгдлийн цоорхойн дохио');
+  /* ⚠️ 2026-10-26 (аудит): «N төлбөр» нь ЗӨВХӨН dun-тай мөр (`ipcTable.payCount`) — дүнгүй AUTO мөр тоологдохгүй */
+  const auto = { ...pay({ amount: null }), [P.id]: 'AUTO|Багц-1|2026-09-01' };
+  const sa = summarize([pay({ amount: 10 }), pay({ amount: 20 }), auto]);
+  assert.equal(sa.pays, 2, 'AUTO мөр төлбөрт тоологдов');
+  assert.ok(computeIpc([pay({ amount: 10 }), auto], NOW).facts.some((f) => f.includes('1 төлбөр')), 'CEO карт «1 төлбөр»');
+  assert.equal(computeIpc([auto], NOW).level, 'unknown', 'зөвхөн AUTO мөр → мэдээлэлгүй');
   const s = summarize([pay({ amount: null })]);
   assert.equal(s.paid, null);
   assert.equal(s.noAmount, 1);

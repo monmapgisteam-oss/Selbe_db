@@ -28,9 +28,25 @@ import { Section as Card, Meter } from '@/components/ui';
    хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
 import { planScopeNote } from '@/modules/Finance';
+/* ⚠️ 2026-10-22 (аудит): «хуваарь X% хамарсан» — гүйцэтгэгчийн төлөвлөгөөний хажууд */
+import { coverageNote } from '@/lib/planProgress';
 /* ⚠️ 2026-10-06 (аудит): pp-ийн хэлбэр нь «Гүйцэтгэл» (PkgProg)-тэй НЭГ функц — `pkgShared.pp` */
 import { pp } from '@/modules/pkgShared';
+import { Segmented } from '@/components/Switch';
 import s from '../tuh.module.css';
+
+/** Мөнгөн дүн — ЗӨВХӨН null үед «—» (0 нь «0 ₮»); `mnt` нь 0-ийг ч «—» болгодог (PkgDetail.mnt0-тэй ижил) */
+const mnt0 = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+
+/**
+ * ⚠️ 2026-10-23 (UX аудит E4): урт мөнгөн дүнг ЗӨВХӨН мянгатын таслалын ДАРАА шилжүүлнэ (`<wbr>`).
+ *    `.statValue`-ийн `overflow-wrap: anywhere` нь «2,009,768,762,9 / 35 ₮» гэж цифрийн дундуур тасалдаг байв.
+ *    ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️ — бүх мөнгөн дүн бүтэн).
+ */
+const wrapNum = (txt: string): ReactNode => txt.split(',').map((part, i, a) => (
+  i < a.length - 1 ? <span key={i}>{part},<wbr /></span> : <span key={i}>{part}</span>
+));
 
 export function StatusChip({ st }: { st: TuhStatus }) {
   const m = statusMeta(st);
@@ -276,6 +292,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.meterGap}><Meter value={m.hero.actual} plan={m.hero.planContract} /></span>
           <span className={s.heroNote}>
             {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
+            {/* ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн хамралт — дутуу бол төлөвлөгөө хэт бага (`coverageNote`) */}
+            {coverageNote(m.hero.planCoverage) ? ` · ${coverageNote(m.hero.planCoverage)}` : ''}
             {/* ⚠️ 2026-10-09 (аудит №2): гүйцэтгэгчийн төлөвлөгөө хуваарьтай багцаар — хасагдсаныг нэрлэнэ */}
             {m.hero.planExcluded.length ? ` · ${planScopeNote(m.hero.planExcluded)}` : ''}
           </span>
@@ -286,8 +304,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       <div className={s.stats}>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний нийт дүн')}</span>
-          <span className={s.statValue}>{lz(m, 'budget')(mnt(contractTotal))}</span>
-          <span className={s.statNote}>{tr('{0} багц', num(m.rows.length))}</span>
+          <span className={s.statValue}>{wrapNum(lz(m, 'budget')(mnt(contractTotal)))}</span>
+          {/* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг tooltip-ээр — бусад харагдацын багцын тоотой (55/50) зөрдөг байв */}
+          <span className={s.statNote} title={tr('Гэрээний бүртгэлийн бүх мөр — зураг төсөл, олон багцын нэгдсэн гэрээ ч орно')}>{tr('{0} багц', num(m.rows.length))}</span>
         </div>
         <div className={s.stat}>
           {/* ⚠️ 2026-10-06 (аудит): утга нь ЗӨРҮҮ (pp) тул шошго ч тийм — урьд нь «Орон сууцны
@@ -312,7 +331,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Нийт олгосон санхүүжилт')}</span>
-          <span className={s.statValue}>{mnt(m.paid.total)}</span>
+          <span className={s.statValue}>{wrapNum(mnt(m.paid.total))}</span>
           <span className={s.statNote}>
             {tr('{0} IPC · {1} гэрээний', num(m.paid.ipcCount), pct(m.paid.pct))}
             {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — `paidShare.paidOther` (олгосон − гэрээлсэн багцын олголт; 2026-10-04: удирдлагын тайлангийн `givenOther`-той нэг тодорхойлолт, нэг шошго) */}
@@ -334,6 +353,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           </span>
         </div>
       </div>
+      {/* ⚠️ 2026-10-26 (хяналт №2): гэрээний сарын төлөвлөгөөний цоорхой (`TuhModel.cfGaps`) */}
+      {m.cfGaps && <p className={s.failNote} role="status">{m.cfGaps}</p>}
       {m.failed.length > 0 && (
         <p className={s.failNote} role="alert">
           {tr('Уншигдаагүй эх сурвалж: {0} — холбогдох тоо «—» харагдана.', m.failed.join(', '))}
@@ -440,7 +461,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       {ipc.paidOther != null && ipc.paidOther !== 0 && (
                         <small>{tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(ipc.paidOther))}</small>
                       )}
-                      <small>{tr('PV (гэрээ) {0} · EV {1}', lz(m, 'cfPlan')(mnt(r.ev.pvContract)), mnt(r.ev.ev))}</small>
+                      {/* ⚠️ 2026-10-26 (аудит): EV жинхэнэ 0 ₮ (гүйцэтгэл 0%) нь «—» биш — PkgDetail-ийн `mnt0`-тэй ижил (null ≠ 0) */}
+                      <small>{tr('PV (гэрээ) {0} · EV {1}', lz(m, 'cfPlan')(mnt(r.ev.pvContract)), mnt0(r.ev.ev))}</small>
                     </td>
                     <td className={s.num}>{num(ipc.ipcNos.length)}</td>
                     <td>{ipc.lastIpc != null ? `IPC-${ipc.lastIpc}` : '—'}<small>{ipc.lastPaidDate ?? '—'}</small></td>
@@ -466,12 +488,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Багцууд ── */}
       <Section id="packages" title={tr('Багцууд')} lead={tr('Багц дээр «Энд нээх» дарж дэлгэрэнгүйг нээнэ; газрын зураг тэр багц руу томорно.')}>
         <div className={s.filters}>
-          <div className={s.seg} role="group" aria-label={tr('Бүлэг')}>
-            <button type="button" className={s.segBtn} aria-pressed={grp === 'all'} onClick={() => setGrp('all')}>{tr('Бүгд')}</button>
-            {TUH_GROUPS.map((g) => (
-              <button key={g.key} type="button" className={s.segBtn} aria-pressed={grp === g.key} onClick={() => setGrp(g.key)}>{g.label()}</button>
-            ))}
-          </div>
+          {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` (9 бүлэг — мөр шилжинэ) */}
+          <Segmented wrap value={grp} onChange={setGrp} label={tr('Бүлэг')}
+            options={[{ value: 'all' as const, label: tr('Бүгд') }, ...TUH_GROUPS.map((g) => ({ value: g.key, label: g.label() }))]} />
           <input
             className={s.search}
             type="search"
@@ -641,17 +660,15 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Журмууд ── */}
       <Section id="regulations" title={tr('Хүчин төгөлдөр мөрдөгдөж буй журмууд')} empty={!orders.length}>
         <div className={s.filters}>
-          <div className={s.seg} role="group" aria-label={tr('Төрөл')}>
-            {([
-              ['all', tr('Бүгд ({0})', num(orders.length))],
-              ['procedure', tr('Дотоод журам ({0})', num(0))],
-              ['law', tr('Хууль ({0})', num(0))],
-              ['terms', tr('Гэрээний жишиг нөхцөл ({0})', num(0))],
-              ['order', tr('Захирамж ({0})', num(orders.length))],
-            ] as const).map(([k, label]) => (
-              <button key={k} type="button" className={s.segBtn} aria-pressed={regType === k} onClick={() => setRegType(k)}>{label}</button>
-            ))}
-          </div>
+          {/* ⚠️ 2026-10-26: нийтлэг `Segmented` (5 урт сонголт — мөр шилжинэ) */}
+          <Segmented wrap value={regType} onChange={setRegType} label={tr('Төрөл')}
+            options={[
+              { value: 'all', label: tr('Бүгд ({0})', num(orders.length)) },
+              { value: 'procedure', label: tr('Дотоод журам ({0})', num(0)) },
+              { value: 'law', label: tr('Хууль ({0})', num(0)) },
+              { value: 'terms', label: tr('Гэрээний жишиг нөхцөл ({0})', num(0)) },
+              { value: 'order', label: tr('Захирамж ({0})', num(orders.length)) },
+            ]} />
         </div>
         <div className={s.tableWrap}>
           <table className={s.table}>

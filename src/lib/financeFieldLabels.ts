@@ -55,6 +55,16 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get urdchilgaa_huvi() { return tr('Урьдчилгаа төлбөрийн хувь'); },
   get urdchilgaa_zh_zardal() { return tr('Урьдчилгаа төлбөрөөс суутгасан захиалагчийн хяналтын зардал'); },
   get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
+  /* ⚠️ 2026-10-26 (аудит): Excel-ийн төлөвлөгөөний шинэ багана — үйлчилгээний alias-аар (англи горимд монголоор үлддэг байв) */
+  get geree_ehleh() { return tr('Гэрээ/хавсралт 5 — эхлэх'); },
+  get geree_duusah() { return tr('Гэрээ/хавсралт 5 — дуусах'); },
+  get guits_ehleh() { return tr('Гүйцэтгэгч — эхлэх'); },
+  get guits_duusah() { return tr('Гүйцэтгэгч — дуусах'); },
+  get gazar_ehleh() { return tr('Газар чөлөөлөлт — эхлэх'); },
+  get gazar_duusah() { return tr('Газар чөлөөлөлт — дуусах'); },
+  get songon_ognoo() { return tr('Сонгон шалгаруулалтын огноо'); },
+  get ashiglalt_ognoo() { return tr('Ашиглалтад оруулах огноо'); },
+  get sar_mongo_eh() { return tr('Сарын мөнгөний эх сурвалж'); },
 
   /* ⚠️ 2026-09-06: хуучин `cashflow_0813` (CF001…CF036)-ийн 36 бичлэг
      УСТГАВ — тэр үйлчилгээ бүрмөсөн хаягдаж, `Cashflow_0904` орлосон.

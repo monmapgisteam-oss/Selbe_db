@@ -86,6 +86,10 @@ const MAX_SOURCES = 110;
  */
 export function normalizeZone(input: string): string {
   const s = String(input).trim();
+  /* ⚠️ 2026-10-26 (аудит): КИРИЛЛ «Багц 1» (зайтай/зураасгүй) — `zoneCanon` зайг хасч «Багц1» болгодог тул өгөгдлийн «Багц-1»-тэй
+     таардаггүй, давхаргаас 0 мөр ирдэг байв (хэрэгслийн тайлбар өөрөө «Багц 1» жишээ өгдөг). «Багц-N» хэлбэрт хэвшүүлнэ. */
+  const cyr = s.match(/^\s*багц\s*[-\s]*([0-9][0-9.-]*)\s*$/i);
+  if (cyr) return `Багц-${cyr[1]}`;
   // Кирилл үсэг аль хэдийн байвал хөрвүүлэх шаардлагагүй
   if (/[А-Яа-яӨөҮү]/.test(s)) return s;
   const num = s.match(/([0-9][0-9.\-]*)/)?.[1];
@@ -108,7 +112,9 @@ async function datasetWhere(d: Dataset, zone: string): Promise<string | null> {
   const key = bagtsKey(zone);
   if (!key) return null;
 
-  const rows = await queryGroup(d.url, d.zoneField, [count(d.oid ?? 'OBJECTID', 'n')], '1=1');
+  /* ⚠️ 2026-10-19: эх сурвалжийн хатуу шүүлт (`baseWhere`) — урьд нь `1=1` тул Cashflow-ийн САРЫН мөрүүд
+     ч тоологдож «Багц N — санхүүжилт 300+ мөр» гэх мэт хөөрөгдсөн тоо гардаг байв. */
+  const rows = await queryGroup(d.url, d.zoneField, [count(d.oid ?? 'objectid', 'n')], d.baseWhere ?? '1=1');
   const hits = rows
     .map((r) => String(r[d.zoneField!] ?? ''))
     .filter((v) => v && bagtsKey(v) === key);
@@ -200,8 +206,9 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     datasets.map(async (d) => {
       const where = await datasetWhere(d, zone);
       if (!where) return null;
-      const stats: Stat[] = [count(d.oid ?? 'OBJECTID', 'n')];
-      const row = await queryStats(d.url, stats, where);
+      const stats: Stat[] = [count(d.oid ?? 'objectid', 'n')];
+      /* ⚠️ 2026-10-19: `baseWhere` ∧ бүсийн шүүлт (дээрх ⚠️) — `tools.andWhere`-тэй ижил дүрэм (импортын тойргоос болж энд) */
+      const row = await queryStats(d.url, stats, d.baseWhere ? `(${d.baseWhere}) AND (${where})` : where);
       return { d, n: Number(row.n ?? 0) };
     }),
   );

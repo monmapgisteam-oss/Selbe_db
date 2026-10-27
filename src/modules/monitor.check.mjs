@@ -28,10 +28,10 @@ if (process.env.SELBE_LIVE_SKIP) {
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
    `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй. */
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const BLDG = `${HJ}/SELBE_ALL_DATA_last_0917/FeatureServer/112`;
+/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) нь `query.ts`-ээр Enterprise руу зураглагдаж, талбарын нэр эх хэлбэрээрээ ирнэ. */
+const { BAGTS_AJLUUD } = await import('@/lib/services.ts');
+const { queryFeatures } = await import('@/lib/query.ts');
+const BLDG = `${BAGTS_AJLUUD}/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -39,34 +39,18 @@ const blockKey = (v) => String(v ?? '').trim().split(/\s+/)[0];
 const buildingKey = (bagts, block) => `${bagtsKey(bagts)}|${blockKey(block)}`;
 
 async function query(url, params) {
-  const out = [];
-  for (let off = 0; ; ) {
-    const res = await fetch(`${url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        returnGeometry: 'false', f: 'json',
-        resultRecordCount: '2000', resultOffset: String(off), ...params,
-      }),
-    });
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message);
-    const fs = (j.features ?? []).map((f) => f.attributes);
-    out.push(...fs);
-    if (!j.exceededTransferLimit || !fs.length) return out;
-    off += fs.length;
-  }
+  return queryFeatures(url, { where: params.where ?? '1=1', outFields: String(params.outFields ?? '*').split(',').map((s) => s.trim()) });
 }
 
 /* 1 — Барилгын давхарга ↔ гүйцэтгэлийн түлхүүр */
 
-const blocks = await query(BLDG, { where: '1=1', outFields: 'OBJECTID,BAGTS,BLOK' });
+const blocks = await query(BLDG, { where: '1=1', outFields: 'objectid,bagts,blok' });
 assert.ok(blocks.length > 0, 'барилгын давхарга хоосон');
 
 const prog = await loadBlockProgress();
 assert.ok(prog.size > 0, 'бөглөх хуудсуудаас нэг ч блок уншигдсангүй — шугам тасарсан');
 
-const matched = blocks.filter((b) => prog.has(buildingKey(b.BAGTS, b.BLOK)));
+const matched = blocks.filter((b) => prog.has(buildingKey(b.bagts, b.blok)));
 /* ⚠️ ХАТУУ ХУВЬ ТАВИХГҮЙ: бөглөх хуудсууд НИЙТЛЭГДСЭН үедээ л өгөгдөл өгдөг
    бөгөөд 2026-08-27-нд 7 багцаас 2 нь нийтлэгдсэн. «>50% таарна» гэж шаардвал
    тест байнга улаан байж, ЖИНХЭНЭ эвдрэлийг далдална. Гол шалгуур нь ЧИГЛЭЛ:
@@ -77,8 +61,8 @@ assert.ok(matched.length > 0,
 /* 2 — Шатлал бүтэн бөгөөд № -тэй зөрөхгүй */
 
 const one = matched[0];
-const mine = await loadSheetRows({ group: one.BAGTS, block: blockKey(one.BLOK) });
-assert.ok(mine.length > 0, `«${one.BLOK}» блокийн мөр олдсонгүй`);
+const mine = await loadSheetRows({ group: one.bagts, block: blockKey(one.blok) });
+assert.ok(mine.length > 0, `«${one.blok}» блокийн мөр олдсонгүй`);
 
 for (const r of mine) {
   assert.ok(r.level == null || (r.level >= 1 && r.level <= 5),
@@ -154,18 +138,32 @@ const hist = await loadBlockHistory();
 const keys = [...prog.keys()];
 const daily = progressSeries(hist, keys, 'day');
 const monthly = progressSeries(hist, keys, 'month');
+const dailyL = progressSeries(hist, keys, 'day', 'latest');
+const monthlyL = progressSeries(hist, keys, 'month', 'latest');
 assert.ok(daily.length > 0, 'цуваа хоосон');
+assert.ok(dailyL.length > 0, '«latest» цуваа хоосон');
 
 const ringVals = keys.map((k) => prog.get(k).overall);
 const ring = ringVals.reduce((a, b) => a + b, 0) / ringVals.length;
 /* ⚠️ Муруй нь блок бүрийн ОРГИЛ (peak — буурдаггүй) утгаар, цагираг нь ОДООГИЙН
-   утгаар бодогддог (2026-09-17): гүйцэтгэл засварлагдаж бага зэрэг БУУРСАН блок
-   байвал муруйн төгсгөл цагирагаас ЯЛИМГҮЙ дээгүүр байх нь ХЭВИЙН. Тиймээс
-   «яг тэнцүү» биш: доогуур байж БОЛОХГҮЙ, дээгүүр бол 0.05 нэгжээс хэтрэхгүй. */
-const ringGap = daily.at(-1).overall - ring;
-assert.ok(ringGap > -1e-9 && ringGap < 0.05,
-  `муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) зөрж байна`);
-assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
+   утгаар бодогддог (2026-09-17): гүйцэтгэл засварлагдаж БУУРСАН блок байвал
+   `peak` муруйн төгсгөл цагирагаас дээгүүр байх нь ХЭВИЙН.
+   ⚠️ 2026-10-21: урьд нь `peak`-ийн зөрүүг «< 0.05 нэгж» гэж хязгаарладаг байв —
+   бодит өгөгдөлд Багц 2-ын 22 блок 2026-10-04 → 10-11 хооронд хуудасны засвараар
+   тус бүр ~0.79 нэгж буурч, зөрүү 0.17 болж шалгуур унасан (код зөв, өгөгдөл
+   бодит). Засварын хэмжээ дур зоргийн тул дээд хязгаар нь ӨГӨГДЛИЙН таамаг —
+   шалгуур биш. Оронд нь ЯГ тодорхой хоёр инвариант:
+     · `'latest'` горимын төгсгөл == цагираг (1e-9) — `progressSeries`-ийн баримтжуулсан
+       гэрээ (`latestMean`/`loadBlockProgress`-той ижил хуваарь, ижил утга);
+     · `'peak'` горимын төгсгөл ≥ цагираг — оргил нь одоогийн утгаас ХЭЗЭЭ Ч доогуур биш. */
+const latestGap = dailyL.at(-1).overall - ring;
+assert.ok(Math.abs(latestGap) < 1e-9,
+  `«latest» муруйн төгсгөл (${dailyL.at(-1).overall}) цагирагтай (${ring}) таарахгүй`);
+const peakGap = daily.at(-1).overall - ring;
+assert.ok(peakGap > -1e-9,
+  `«peak» муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) ДООГУУР`);
+assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн (peak)');
+assert.equal(monthlyL.at(-1).overall, dailyL.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн (latest)');
 
 /* ⚠️ Сарын цуваа ДАРААЛСАН сар БИШ (2026-09-25 аудит): `progressSeries` тайлангүй
    (шинэ агшингүй) сарыг ЗОРИУДААР алгасдаг (`snap === prevSnap → continue`) —
@@ -182,6 +180,6 @@ for (let i = 0; i < monthly.length; i++) {
 
 console.log(
   `monitor.check: ok — ${matched.length}/${blocks.length} блок таарсан · `
-  + `«${one.BAGTS} ${one.BLOK}» ${leaves}/${allLeaves} ажил (${done}/${going}/${idle}) · `
+  + `«${one.bagts} ${one.blok}» ${leaves}/${allLeaves} ажил (${done}/${going}/${idle}) · `
   + `цуваа ${daily.length} өдөр / ${monthly.length} сар, төгсгөл ${ring.toFixed(2)}%`,
 );

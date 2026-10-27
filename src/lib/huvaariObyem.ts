@@ -26,17 +26,19 @@
  */
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 import { spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилтийг ялгах (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
+/* ⚠️ 2026-10-21: дутуу хариуг «хариу алдагдсан» гэж ангилах (`applyPlanEdits.run`-ийн ⚠️) */
+import { ArcGISError } from './query';
 
 /**
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
  * ⚠️ Давхаргын дугаар нь `0` БИШ `193` (CSV-ээс нийтлэхэд ArcGIS өөрөө өгсөн).
  */
-export const HUVAARI_OBYEM = `${HJ}/huvaari_20260906/FeatureServer/193`;
+export const HUVAARI_OBYEM = `${GUITS}/186`;
 
 /** Мөрийн төрөл — одоо зөвхөн төлөвлөгөө; хожим бодит гүйцэтгэл нэмэгдэж болно. */
 export const TURUL_PLAN = 'tolovlolt';
@@ -320,6 +322,33 @@ export type WorkMeta = {
   niit: number | null;
 };
 
+/**
+ * `sar` (DateOnly) талбарт БИЧИХ утга — «YYYY-MM-01» МӨР; буруу сар бол `null`.
+ * ⚠️ 2026-10-22 (аудит №2): Enterprise-ийн `Guitsetgel_talbe/186`-ийн `sar` нь `esriFieldTypeDateOnly` (метаг амьдаар
+ *    шалгав) — DateOnly нь epoch мс БИШ, «2026-06-08» хэлбэрийн мөр хүлээн авдаг (`zovshoorol.toDateOnly` ·
+ *    `finEdit.dateOnlyText`-ийн дүрэм). Урьд нь `monthStart()` (epoch мс) илгээдэг тул хүснэгт хоосон (0 мөр) хэвээр байв.
+ */
+export const sarDateOnly = (key: string): string | null => (monthStart(key) == null ? null : `${key.trim()}-01`);
+
+/**
+ * Мөрийн САРЫН ТҮЛХҮҮР («YYYY-MM») — `sar_txt`-ээс, хоосон/эвдэрсэн бол `sar` (DateOnly)-аас.
+ * ⚠️ 2026-10-22 (аудит №2): `sar` нь ХОЁР хэлбэрээр ирж болно — DateOnly мөр («2026-10-01») эсвэл хуучин epoch мс
+ *    (AGOL-ын Date талбар / өмнөх бичилт). Мс нь УБ-ын шөнө дунд (16:00Z) байж болох тул UTC ӨДӨРТ бөөрөнхийлж сар
+ *    авна (`bagtsSheet.normDayMs`-ийн зарчим) — эс бөгөөс сарын 1 өмнөх сар руу гулсана. Аль нь ч таарахгүй бол
+ *    `sar_txt`-ийн түүхий утга (дуудагч `monthStart`-аар хаяна).
+ */
+export function sarKeyOf(a: Record<string, unknown>): string {
+  const t = String(a.sar_txt ?? '').trim();
+  if (monthStart(t) != null) return t;
+  const v = a.sar;
+  if (typeof v === 'number' && Number.isFinite(v)) return monthKey(Math.round(v / 86_400_000) * 86_400_000);
+  if (typeof v === 'string') {
+    const m = /^(\d{4})-(\d{2})/.exec(v.trim());
+    if (m && monthStart(`${m[1]}-${m[2]}`) != null) return `${m[1]}-${m[2]}`;
+  }
+  return t;
+}
+
 /** Түүхий `features` → бүтэц. Гэмтэлтэй мөрийг АЛГАСНА, унагахгүй. */
 export function toPkgPlan(
   feats: readonly { attributes: Record<string, unknown> }[],
@@ -333,7 +362,8 @@ export function toPkgPlan(
     if (a.des_dugaar == null || a.obyem == null) continue;
     const des = Number(a.des_dugaar);
     const blok = String(a.blok ?? '').trim();
-    const sar = String(a.sar_txt ?? '').trim();
+    /* ⚠️ 2026-10-22 (аудит №2): `sar_txt` эсвэл `sar` (DateOnly мөр / хуучин мс) — `sarKeyOf` */
+    const sar = sarKeyOf(a);
     const v = Number(a.obyem);
     if (!Number.isInteger(des) || !blok || !monthStart(sar) || !Number.isFinite(v)) continue;
     let byBlok = out.get(des);
@@ -364,7 +394,8 @@ export function toPkgRes(
     if (a.des_dugaar == null || a.obyem == null) continue;
     const des = Number(a.des_dugaar);
     const blok = String(a.blok ?? '').trim();
-    const sar = String(a.sar_txt ?? '').trim();
+    /* ⚠️ 2026-10-22 (аудит №2): `toPkgPlan`-тай НЭГ уншилт (`sarKeyOf`) */
+    const sar = sarKeyOf(a);
     if (!Number.isInteger(des) || !blok || !monthStart(sar) || !Number.isFinite(Number(a.obyem))) continue;
     const hun = numOrNull(a.hun_huch);
     const mashin = numOrNull(a.mashin_mehanizm);
@@ -402,7 +433,7 @@ export function indexOids(
   const dups: number[] = [];
   for (const f of feats) {
     const k = String(f.attributes.dkey ?? '');
-    const o = f.attributes.OBJECTID;
+    const o = f.attributes.objectid;
     if (!k || o == null) continue;
     const was = oids.get(k);
     if (was != null) dups.push(was);
@@ -488,8 +519,9 @@ export function buildEdits(
     ajil_no: meta.ajilNo,
     ajil_ner: meta.ajilNer,
     blok,
-    /* ⚠️ `sar` нь `DateOnly` — цагийн бүсгүй, сарын 1-ний өдөр */
-    sar: monthStart(sar),
+    /* ⚠️ `sar` нь `DateOnly` — цагийн бүсгүй, сарын 1-ний өдөр.
+       ⚠️ 2026-10-22 (аудит №2): «YYYY-MM-01» МӨР (`sarDateOnly`) — epoch мс DateOnly талбарт тохирохгүй. */
+    sar: sarDateOnly(sar),
     sar_txt: sar,
     obyem: v,
     negj: meta.negj,
@@ -502,7 +534,7 @@ export function buildEdits(
     const oid = oids.get(key);
     if (oid == null) { out.adds.push({ attributes: attrs(sar, v) }); continue; }
     if (prev.get(sar) === v && !resChanged(sar)) continue;   // өөрчлөгдөөгүй (обьём ∧ нөөц)
-    out.updates.push({ attributes: { OBJECTID: oid, ...attrs(sar, v) } });
+    out.updates.push({ attributes: { objectid: oid, ...attrs(sar, v) } });
   }
   for (const sar of prev.keys()) {
     if (months.has(sar)) continue;
@@ -525,8 +557,9 @@ export function buildEdits(
 
 /* ══════════════════ Сүлжээ ══════════════════ */
 
+/* ⚠️ 2026-10-22 (аудит №2): `sar` (DateOnly) ч уншина — `sar_txt` хоосон мөрийн нөөц (`sarKeyOf`) */
 const FIELDS = [
-  'OBJECTID', 'dkey', 'des_dugaar', 'blok', 'sar_txt', 'obyem', 'niit_obyem',
+  'objectid', 'dkey', 'des_dugaar', 'blok', 'sar', 'sar_txt', 'obyem', 'niit_obyem',
 ];
 
 /**
@@ -589,7 +622,7 @@ export async function loadPkgPlan(
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
       where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_PLAN}'`,
       outFields,
-      orderByFields: 'OBJECTID ASC',
+      orderByFields: 'objectid ASC',
       resultOffset: String(off),
       resultRecordCount: '2000',
       returnGeometry: 'false',
@@ -605,6 +638,28 @@ export async function loadPkgPlan(
   }
   const { oids, dups } = indexOids(feats);
   return { plan: toPkgPlan(feats), res: toPkgRes(feats), oids, dups };
+}
+
+/**
+ * ТӨЛӨВЛӨГӨӨНИЙ МӨРИЙН ТОО — хүснэгт бүхэлдээ (`turul = 'tolovlolt'`), нэг `returnCountOnly` асуулга.
+ * ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): `loadPlanCurve` 10 хуудас бүрд `loadPkgPlan` дууддаг атал хүснэгт ХООСОН
+ *    (Enterprise /186: count 0; AGOL-д ч 0 байсан — экспортын алдагдал биш) тул мета + 10 асуулга бүгд 0 мөр буцдаг
+ *    байв. Уншигч (`planProgress.planTableEmpty`) үүнийг 5 мин кэшилж, 0 бол багцаар асуухгүй. ЭНД КЭШЛЭХГҮЙ —
+ *    бичих зам (`buildEdits` → `loadPkgPlan`-ы `oids`/`dups`) хуучирсан «хоосон»-оор давхар `add` үүсгэж
+ *    болзошгүй (`dkeyOf`-ийн ⚠️: сангийн түвшний unique хамгаалалт байхгүй).
+ * @returns мөрийн тоо; шалгаж чадаагүй (сүлжээ · 200-алдаа) бол `null` — дуудагч урьдын адил багцаар асууна.
+ */
+export async function countPlanRows(): Promise<number | null> {
+  try {
+    const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+      where: `turul = '${TURUL_PLAN}'`,
+      returnCountOnly: 'true',
+    }) as { count?: unknown };
+    const c = Number(j.count);
+    return Number.isFinite(c) ? c : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -650,6 +705,12 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       const keys = ['addResults', 'updateResults', 'deleteResults'] as const;
       for (let n = 0; n < keys.length; n += 1) {
         const res = (j[keys[n]] ?? []) as Res[];
+        /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ.
+           ⚠️ 2026-10-21 (аудит №2): харин ТОДОРХОЙ татгалзал (энгийн `Error` — «юу ч бичигдээгүй», `Huvaari.save`-ийн
+           `clearPlanPartial` хагас бичилтийн тэмдгийг арилгана) нь ЗӨВХӨН `success === false`; `success` ТАЛБАРГҮЙ
+           үр дүн нь дутуу хариутай адил ТОДОРХОЙГҮЙ (мөр серверт суусан байж болно) → доорх `unsure` →
+           `ArcGISError` (`isLostWrite` үнэн). `bagtsSheet.applyAdds`/`applyUpdates`-ийн нэг дүрэм; урьд нь энд
+           `!== true` бүгдийг татгалзал гэж шидэж, хагас бичилтийн хамгаалалт алдагддаг байв. */
         const bad = res.find((r) => r.success === false);
         if (bad) {
           throw new Error(
@@ -658,10 +719,19 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
             + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
           );
         }
-        if (res.length !== want[n]) {
-          throw new Error(
-            `${tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)}`
+        /* ⚠️ 2026-10-21 (аудит): дутуу/хоосон хариу = ҮР ДҮН ТОДОРХОЙГҮЙ (сервер бичсэн байж болно) —
+           `bagtsSheet.applyUpdates`-ийн 2026-10-09-ний засвартай ижил кодгүй/статусгүй `ArcGISError`, тиймээс
+           `isLostWrite` үнэн: `Huvaari.save` хагас бичилтийн тэмдгийг АРИЛГАХГҮЙ, доорх `finally` кэшийг
+           хүчингүй болгоно. Урьд нь энгийн `Error` тул «юу ч бичигдээгүй тодорхой татгалзал» мэт харагддаг байв. */
+        /* ⚠️ 2026-10-21 (аудит №2): `success`-гүй үр дүн ч ЭНД (тодорхойгүй) — дээрх ⚠️ */
+        const unsure = res.some((r) => r.success !== true);
+        if (res.length !== want[n] || unsure) {
+          throw new ArcGISError(
+            `${res.length !== want[n]
+              ? tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)
+              : tr('Серверийн хариунд мөрийн үр дүн алга — бичигдсэн эсэх тодорхойгүй')}`
             + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
+            `${HUVAARI_OBYEM}/applyEdits`,
           );
         }
       }

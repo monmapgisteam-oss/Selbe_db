@@ -17,11 +17,11 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
-import { mnt, num } from '@/lib/format';
+import { fixCyr, mnt, num } from '@/lib/format';
 import { loadVariance, type Variance, type VarianceWork } from '@/lib/execTriage';
 import { VAR_BAD_MNT } from '@/lib/kpiLevels';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
-import { cell, table, type Cell, type KpiResult, type Level } from './kpi';
+import { cell, kpiComplete, table, type Cell, type KpiResult, type Level } from './kpi';
 
 /**
  * Түвшин.
@@ -56,11 +56,12 @@ function workRow(w: VarianceWork): Cell[] {
     cell(w.sheet),
     /* ⚠️ `no` хоосон байж болно (`String(r.no ?? '')`) — тэр үед «—» */
     cell(w.no || null),
-    cell(w.work),
+    /* ⚠️ 2026-10-23 (UX аудит S15): хуудсын нэрний є/ї → ө/ү — ЗӨВХӨН харуулалт, түлхүүр хөндөгдөхгүй */
+    cell(fixCyr(w.work)),
     cell(w.vol),
     cell(w.sum),
-    /* Хэтрэлт = бөглөсөн − төлөвлөгдсөн; `loadVariance` зөвхөн > 0 мөр өгдөг */
-    cell(w.sum - w.vol),
+    /* Хэтрэлт — блок бүрээр (`VarianceWork.over`, 2026-10-21); хуучин хэлбэрийн мөрд бөглөсөн − төлөвлөгдсөн */
+    cell(w.over ?? w.sum - w.vol),
     cell(w.unit, 'mnt'),
     cell(w.mnt, 'mnt'),
   ];
@@ -124,8 +125,10 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
   }
 
   return {
-    /* ⚠️ `mnt(0)` нь «—» (format.ts-ийн санаатай зан) — зөрүүгүй үед «0 ₮» биш */
-    value: allFailed ? '—' : mnt(v.totalMnt),
+    /* ⚠️ 2026-10-21 (KPI аудит): БҮХ багц уншигдаж хэтрэлт АЛГА бол «0 ₮» гэж ИЛ. `mnt(0)` нь «—» (format.ts-ийн
+       санаатай зан — хөндөхгүй) боловч энд «—» нь «бүгд унасан» (`unknown`)-тай ЯГ ижил харагдаж, хэмжсэн тэг ба
+       мэдээлэлгүйг нэгтгэдэг байв (null ≠ 0). Хэсэгчлэн унасан (`failedPkgs > 0`) үед хэвээр «—» — дүн дутуу. */
+    value: allFailed ? '—' : v.works === 0 && v.failedPkgs === 0 ? `${num(0)} ₮` : mnt(v.totalMnt),
     unit: tr('зөрүү'),
     facts,
     level,
@@ -152,4 +155,8 @@ export const loadVarianceKpi = cached(
      `loadVariance` өөрөө одоо мөн 5 мин `cached` (`execTriage`-ийн ⚠️) тул хоёр давхарга нэг жигд. */
   SESSION_TTL_MS,
   ['BAGTS_SHEET'],
+  /* ⚠️ 2026-10-21 (KPI аудит): ДУТУУ үр дүнг (хэсэг багц уншигдаагүй — `failedSources`) 5 мин кэшлэхгүй — бусад CEO
+     ачаалагчдын (`loadQaqcKpi` · `loadIotKpi` …) 2026-10-01-ний `kpiComplete` дүрэм энд дутуу байв: нэг багцын түр
+     уналт картыг 5 мин турш «дүн дутуу» хэвээр барьж, дахин оролдох боломжгүй байлаа. */
+  kpiComplete,
 );

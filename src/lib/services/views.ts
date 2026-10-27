@@ -37,6 +37,8 @@ export type ViewKey =
   | "tailan"
   | "tuh"
   | "bagtsHamaaral"
+  | "zuragTosol"
+  | "tuvshin6"
   | "finance"
   | "habea"
   | "irged"
@@ -46,8 +48,6 @@ export type ViewKey =
   | "hesegET"
   | "zovshoorol"
   | "guitsetgel"
-  | "qaqc"
-  | "chanar"
   | "ma"
   | "schem"
   | "sysdoc";
@@ -103,7 +103,7 @@ export const VIEWS: {
     key: "dashboard",
     get title() { return tr('Төслийн дэлгэрэнгүй мэдээлэл'); },
     get desc() { return tr('Бүс, барилга, дэд бүтцийн үзүүлэлтийг газрын зураг дээр задлан судлах дэлгэрэнгүй хэсэг (товч тойм нь «Ерөнхий дашбоард»-д)'); },
-    icon: "layers",
+    icon: "info",
     hue: "#0284c7",
     layers: ["zone", "et:24"],
     initial: ["zone", "et:24"],
@@ -137,7 +137,7 @@ export const VIEWS: {
     key: "hesegET",
     get title() { return tr('Хэсэгчилсэн ЕТ'); },
     get desc() { return tr('Ерөнхий төлөвлөгөөний өөрчлөлт, одоо байгаа дэд бүтэцтэй давхцал, нэмэлт хэрэгцээ'); },
-    icon: "layers",
+    icon: "sections",
     hue: "#0d9488",
     layers: [],
     initial: [],
@@ -213,7 +213,7 @@ export const VIEWS: {
     key: "analysis",
     get title() { return tr('Тохиромжтой байдлын үнэлгээ'); },
     get desc() { return tr('Газар хэр тохиромжтойг барилгын норм, дүрэм ба эдийн засгийн үр ашгаар үнэлэх шинжилгээ'); },
-    icon: "chart",
+    icon: "target",
     hue: "#7c3aed",
     layers: [],
     initial: [],
@@ -292,7 +292,7 @@ export const VIEWS: {
     get title() { return tr('Хуваарь батлах'); },
     get desc() { return tr('Гүйцэтгэгчийн илгээсэн хуваарийн саналыг хянаж батлах эсвэл буцаах'); },
     /* ⚠️ `CAPS.planApprove`-ийн дүрстэй ижил (caps.ts) — нэг л эрхийн хуудас */
-    icon: "shield",
+    icon: "calendarCheck",
     /* «Хуваарь»-тай ижил өнгө — нэг сэдвийн хоёр хуудас */
     hue: "#0891b2",
     layers: [],
@@ -316,7 +316,7 @@ export const VIEWS: {
     get title() { return tr('Нэмэлт ажил батлах'); },
     get desc() { return tr('Гэрээнд байгаагүй, шинээр нэмэгдэх ажлын мөрийг хянаж батлах эсвэл буцаах'); },
     /* ⚠️ `CAPS.ajilApprove`-ийн дүрстэй ижил (caps.ts) — нэг л эрхийн хуудас */
-    icon: "shield",
+    icon: "listCheck",
     /* «Гүйцэтгэл»-тэй ижил өнгө — нэг сэдвийн хоёр хуудас */
     hue: "#7c3aed",
     layers: [],
@@ -328,7 +328,7 @@ export const VIEWS: {
     key: "tailan",
     get title() { return tr('Тайлан'); },
     get desc() { return tr('Төслийн явцын албан тайлан — амьд тоогоор бүрдэж, хэвлэх эсвэл PDF-ээр татна'); },
-    icon: "chart",
+    icon: "report",
     hue: "#7c3aed",
     layers: [],
     initial: [],
@@ -344,22 +344,49 @@ export const VIEWS: {
     key: "tuh",
     get title() { return tr('ТУХ'); },
     get desc() { return tr('Багцын хяналтын самбар — улсын комисс, IPC, хуваарь, гүйцэтгэл нэг дор'); },
-    icon: "grid",
+    icon: "briefcase",
     hue: "#0f766e",
     layers: ["mon:building"],
     initial: ["mon:building"],
     standalone: true,
   },
   /**
-   * БАГЦЫН ХАМААРАЛ (2026-10-04) — ТУХ-ын багцуудыг ХООРОНД НЬ холбож харуулна
-   * (схем · жагсаалт). Багц доторх ажлын уялдаанд (`deps.ts`) хамаагүй.
-   * ⚠️ Засвар нь зөвхөн холбоо, `hamaaral` эрхээр (`bagtsHamaaral.ts`); газрын зураггүй.
+   * БАГЦЫН ХАМААРАЛ (2026-10-04) — багц хоорондын хамаарал. Багц доторх ажлын уялдаанд (`deps.ts`) хамаагүй.
+   * ⚠️ 2026-10-22: АЖИЛ ↔ АЖИЛ (`lib/workDeps.ts` — нэг багцын ажил өөр багцуудын ажлаас хамаарна), зөвхөн харуулна.
+   * ⚠️ Засвар нь зөвхөн холбоо, `hamaaral` эрхээр; газрын зураггүй.
    */
   {
     key: "bagtsHamaaral",
     get title() { return tr('Багцын хамаарал'); },
-    get desc() { return tr('Багц хоорондын хамаарал — аль багц аль багцаас хамаардгийг схем ба жагсаалтаар'); },
-    icon: "network",
+    get desc() { return tr('Багц хоорондын ажлын хамаарал — нэг багцын ажил өөр багцуудын аль ажлаас хамаардгийг'); },
+    icon: "link",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ (⚠️ 2026-10-26) — cashflow-ийн ТЭЗҮ / Ажлын зураг төсөл үе шатын навч мөрийн огноо, явц.
+   * Засах нь `zuragEdit` эрхээр; эрхгүй хүн харна.
+   */
+  {
+    key: "zuragTosol",
+    get title() { return tr('ТЭЗҮ · Ажлын зураг төсөл'); },
+    get desc() { return tr('ТЭЗҮ ба ажлын зураг төслийн навч мөрийн хугацаа, явцыг шинэчлэх, багцад дэд шат нэмэх'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * 6 ТҮВШНИЙ ХУВААРЬ (⚠️ 2026-10-26) — docs/Level planning_261021-ийн L1–L6; `projectPlan` + Хуваарь + бөглөх хуудас.
+   */
+  {
+    key: "tuvshin6",
+    get title() { return tr('6 түвшний хуваарь'); },
+    get desc() { return tr('Төслийн мастер хуваариас өдрийн ажил хүртэл 6 түвшинд'); },
+    icon: "calendar",
     hue: "#0f766e",
     layers: [],
     initial: [],
@@ -374,7 +401,7 @@ export const VIEWS: {
     key: "finance",
     get title() { return tr('Санхүүжилт'); },
     get desc() { return tr('Гэрээ бүрийн санхүүжилтийн хуваарь, гүйцэтгэлээр олгох төлбөрийн актыг бүртгэх, хянах'); },
-    icon: "droplet",
+    icon: "coins",
     hue: "#0891b2",
     layers: [],
     initial: [],
@@ -389,7 +416,7 @@ export const VIEWS: {
     key: "habea",
     get title() { return tr('ХАБЭА'); },
     get desc() { return tr('Хөдөлмөрийн аюулгүй байдал — ажилтан, техник, осол зөрчил, цамхагт краны аюулын бүс'); },
-    icon: "shield",
+    icon: "helmet",
     hue: "#dc2626",
     layers: ["habea:osol", "habea:crane", "habea:buffer"],
     initial: ["habea:osol", "habea:crane", "habea:buffer"],
@@ -474,7 +501,7 @@ export const VIEWS: {
     key: "zovshoorol",
     get title() { return tr('Зөвшөөрөл'); },
     get desc() { return tr('Багц бүрд шаардлагатай зөвшөөрлүүд аль шатандаа явааг харах'); },
-    icon: "shield",
+    icon: "stamp",
     hue: "#0ea5e9",
     layers: [],
     initial: [],
@@ -495,51 +522,9 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
-  {
-    /**
-     * ЧАНАР (QAQC) — Inspection Test Plan-ийн баримт бичиг.
-     *
-     * ⚠️ «Гүйцэтгэл»-ЭЭС ТУСДАА (2026-09-03, хэрэглэгчийн шийдвэр). Урьд нь
-     *    М-акт · FIC · MA · MIR-ийн 9 багана «Гүйцэтгэл бөглөх» хуудасны 60
-     *    баганын хажууд сууж, тэр хуудасны нийтлэх мөчлөгт баригддаг байв —
-     *    гэтэл өгөгдөл нь БҮРЭН ӨӨР үйлчилгээнд (`QAQC`/`QAQC2`), архивгүй,
-     *    мөр нь байрандаа засагддаг. Хоёр өөр амьдралын мөчлөгийг нэг
-     *    хуудсанд шахсан нь: чанарын инженер 60 баганын дундуур 9 нүд хайж,
-     *    гүйцэтгэлийн «өдөрт нэг удаа» түгжээнд саатдаг байлаа.
-     *
-     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — QAQC хүснэгтүүд геометргүй (table) тул давхарга
-     *    нэмэх зүйл алга. `standalone: true` + хоосон `layers`.
-     */
-    key: "qaqc",
-    get title() { return tr('Чанар (QAQC)'); },
-    get desc() { return tr('Ажил бүрийн чанарын шалгалт, туршилтын баримт бүрдсэн эсэхийг тэмдэглэх хүснэгт (баримтыг батлах урсгал нь «Чанарын баримт»-д)'); },
-    icon: "file",
-    hue: "#d97706",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
-  {
-    /**
-     * ЧАНАРЫН БАРИМТ — MS · MA · MIR · FIC · NCR-ийн батлах урсгал.
-     *
-     * ⚠️ «Чанар (QAQC)»-ААС ТУСДАА (2026-09-16, хэрэглэгчийн шийдвэр:
-     *    «ШИНЭ цэс»). Тэр нь Inspection Test Plan-ийн 9 баганыг бөглөх
-     *    хүснэгт; энэ нь Чанарын хэлтсийн 5 процессын зураглалаар явдаг
-     *    БАРИМТЫН УРСГАЛ — ирүүлэх · зэрэгцээ хянах · буцаах · батлах.
-     *    Нэг цэсэнд хольвол хоёр өөр ажлын урсгал нэг хуудсанд шахагдана.
-     *
-     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — хүснэгт (`Selbe_Chanar_Barimt`) геометргүй.
-     */
-    key: "chanar",
-    get title() { return tr('Чанарын баримт'); },
-    get desc() { return tr('Ажлын аргачлал, материалын баталгаа, үл тохирлын баримтыг ирүүлэх, хянах, батлах урсгал (тэмдэглэх хүснэгт нь «Чанар (QAQC)»-д)'); },
-    icon: "shield",
-    hue: "#b45309",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
+  /* ⚠️ 2026-10-23: «Чанар (QAQC)» (`qaqc`) харагдац ХАСАГДСАН (хэрэглэгчийн шийдвэр: «системээс бүрэн устга»). */
+  /* ⚠️ 2026-10-20: «Чанарын баримт» (`chanar`, `Selbe_Chanar_Barimt`) харагдац ХАСАГДСАН (хэрэглэгчийн шийдвэр: «системээс бүрэн хас»).
+     Чанарын эрхийн систем (`chanarAcl` · `chanarAuthor`/`chanarReview`) нь MA · FIC-д хэрэглэгдсээр. */
   /**
    * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Чанарын 4 шатны (MA → MIR → FIC → М-акт)
    * эхний шат — «Чанарын баримт»-аас ТУСДАА шинэ сэдэв (хэрэглэгчийн шийдвэр). Survey123 →
@@ -549,7 +534,7 @@ export const VIEWS: {
     key: "ma",
     get title() { return tr('Материал баталгаажуулалт'); },
     get desc() { return tr('MA — Survey123-аар бөглөсөн материал баталгаажуулалт, хамаарах ажлууд, A/AN/R шийдвэр ба гэрчилгээ, лабораторийн дүнгийн хавсралт'); },
-    icon: "shield",
+    icon: "cube",
     hue: "#b45309",
     layers: [],
     initial: [],
@@ -559,7 +544,7 @@ export const VIEWS: {
     key: "schem",
     get title() { return tr('Үйл ажиллагааны схем'); },
     get desc() { return tr('Төлөвлөхөөс тайлагнах хүртэл ажил хэрхэн урсдагийг амьд тоотой схемээр харах'); },
-    icon: "network",
+    icon: "flow",
     hue: "#0891b2",
     /*
      * ⚠️ ГАЗРЫН ЗУРАГГҮЙ. Энэ нь харагдацуудын ХООРОНДЫН холбоог зурдаг
@@ -648,8 +633,8 @@ export const HOME_SECTIONS: {
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
-  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
+  { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -666,20 +651,20 @@ export const HOME_SECTIONS: {
  * ⚠️ `system` бүлэг нь цэсний «Систем» хөлд (эрх тохируулах, гарах-ын хамт)
  *    зурагдана — `ViewRail`-ийг үз.
  */
-export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "money" | "report" | "system";
+export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "qaqc"] },
-  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "chanar", "ma"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol"] },
+  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
     /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» — «Ерөнхий төлөвлөгөө»-ний ЯГ ДАРАА (цэсэнд 14-т) */
-    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets"],
+    /* ⚠️ 2026-10-23 (хэрэглэгч: «хяналт хэсэгрүү оруул»): «Санхүү» бүлгийн «Багцын санхүү» · «Санхүүжилт» ЭНД шилжив */
+    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets", "pkgFin", "finance"],
   },
   /* ⚠️ 2026-10-12 (хэрэглэгч: «ухаалаг хот гэсэн тусдаа бүлэг болго»): IoT · эрсдэл · иргэдийн хүртээмж ·
      тохиромжтой байдал — «Хяналт»-аас салгав */
   { id: "smart", get title() { return tr('Ухаалаг хот'); }, views: ["iot", "ersdel", "irged", "analysis"] },
-  { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
   { id: "report", get title() { return tr('Тайлан'); }, views: ["tailan", "schem"] },
   { id: "system", get title() { return tr('Систем'); }, views: ["sysdoc"] },
 ];

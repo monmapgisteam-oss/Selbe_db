@@ -27,17 +27,29 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 const FAIL = [];
 const WARN = [];
+/** ⚠️ 2026-10-21: эрхгүй (403/499) эх сурвалж — хазайлт БИШ, ⏭ алгасна (доорх `isNoPerm`) */
+const SKIP = [];
 const REQ_TIMEOUT = 20000;
 /** ⚠️ ArcGIS «Too many requests» өгдөг тул зэрэг хүсэлтийг хязгаарлана */
 const CONCURRENCY = 6;
 
 async function getJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(REQ_TIMEOUT) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { code: res.status });
   const body = await res.json();
-  if (body?.error) throw new Error(body.error.message ?? 'ArcGIS алдаа');
+  /* ⚠️ ArcGIS алдаа HTTP 200-аар ирдэг — кодыг нь хадгална (403/499 = эрхгүй) */
+  if (body?.error) throw Object.assign(new Error(body.error.message ?? 'ArcGIS алдаа'), { code: body.error.code });
   return body;
 }
+
+/**
+ * ⚠️ 2026-10-21: ЭРХГҮЙ ≠ ХАЗАЙЛТ. Enterprise дээр зарим үйлчилгээ (`IoT_sensor` FeatureServer/12–16,
+ *    ХАБЭА-гийн Survey123) энэ шалгуурын токенд 403 «User does not have permissions» өгдөг — үйлчилгээ БАЙГАА,
+ *    зөвхөн хуваалцлын тохиргоо. Урьд нь эдгээр «ХҮРЭХГҮЙ» зөрчил болж шалгуурыг байнга унагадаг байв.
+ *    Одоо ⏭ алгасаж САНУУЛНА; бусад алдаа (400 Invalid URL, устсан давхарга, Token Required) хэвээр УНАНА.
+ */
+const isNoPerm = (e) => e?.code === 403 || e?.code === 499
+  || /does not have permissions/i.test(e?.message ?? '');
 
 /** Дараалалтай зэрэгцээ гүйцэтгэл */
 async function pool(items, worker) {
@@ -53,7 +65,7 @@ async function pool(items, worker) {
   return out;
 }
 
-const { LAYERS, layerUrl, oidOf, TD } = await import('./../services.ts');
+const { LAYERS, layerUrl, oidOf, ENT_HOSTED } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
 const { AGENT_NOTES } = await import('./notes.ts');
 
@@ -68,16 +80,19 @@ function declaredFields(l) {
   for (const x of l.facets ?? []) f.add(x.field);
   for (const k of Object.keys(AGENT_NOTES[l.id]?.fields ?? {})) f.add(k);
   // ⚠️ ZONE_ID нь `noZone` тэмдэглэгээгүй БҮХ давхаргад байх ёстой гэж код үздэг
-  if (!l.noZone && !l.zoneField) f.add('ZONE_ID');
+  if (!l.noZone && !l.zoneField) f.add('zone_id');
   return [...f];
 }
 
-const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'OBJECTID', ...Object.keys(d.fields ?? {})])];
+const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'objectid', ...Object.keys(d.fields ?? {})])];
 
 /* ── 1–2. Эх сурвалж бүрийг шалгах ── */
 
 console.log(`Шалгаж байна: ${LAYERS.length} давхарга + ${DATASETS.length} өгөгдлийн эх сурвалж…\n`);
 
+/*
+ * ⚠️ 2026-10-26: хаяг БҮР Enterprise-ийн БОДИТ хаяг (хөрвүүлэх хүснэгт `entMap` хасагдсан) — шууд fetch.
+ */
 const targets = [
   ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: layerUrl(l), want: declaredFields(l) })),
   ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: d.url, want: declaredDatasetFields(d) })),
@@ -86,13 +101,25 @@ const targets = [
 let checked = 0;
 await pool(targets, async (t) => {
   let meta;
+  if (/\/FeatureServer\//.test(t.url) && !t.url.startsWith(`${ENT_HOSTED}/`)) {
+    FAIL.push(`\`${t.id}\` «${t.title}» — Enterprise-ээс гадуурх хаяг: ${t.url}`);
+    return;
+  }
   try {
     meta = await getJson(`${t.url}?f=json`);
   } catch (e) {
+    if (isNoPerm(e)) {
+      SKIP.push(`\`${t.id}\` «${t.title}» — эрхгүй (${e.code ?? '?'}): ${t.url}`);
+      return;
+    }
     FAIL.push(`\`${t.id}\` «${t.title}» — үйлчилгээнд ХҮРЭХГҮЙ: ${e.message}\n      ${t.url}`);
     return;
   }
-  const have = new Set((meta.fields ?? []).map((f) => f.name));
+  /*
+   * ⚠️ 2026-10-26: код Enterprise-ийн БОДИТ нэрээр (жижиг үсэг · `SHAPE__Area`) бичигдсэн тул нэрийг ЯГ (үсгийн
+   *    ялгаатай) жишнэ — `outFields` · `orderByFields` · `applyEdits` Enterprise-д үсэг ялгадаг (буруу бол 500).
+   */
+  const have = new Set((meta.fields ?? []).map((f) => String(f.name)));
   if (!have.size) {
     FAIL.push(`\`${t.id}\` «${t.title}» — талбар огт ирсэнгүй (устсан эсвэл төрөл нь өөр байж магадгүй)`);
     return;
@@ -147,17 +174,27 @@ const IGNORED = new Set([
  * `data` үйлчилгээнд байдаг тул түүнийг л скан хийнэ — «үйлчилгээнд бий,
  * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
  */
-for (const base of [TD]) {
+/*
+ * ⚠️ 2026-10-26: бүртгэлийн давхаргуудын ашигладаг Enterprise үйлчилгээ БҮРИЙН каталогийг уншина (хөрвүүлэх хүснэгтгүй) —
+ *    бүртгэлд байхгүй давхарга `ent:<№>:<нэр>` санамж болно.
+ */
+const entSvcs = [...new Set(LAYERS.map((l) => layerUrl(l))
+  .filter((u) => u.startsWith(`${ENT_HOSTED}/`) && /\/FeatureServer\/\d+$/.test(u))
+  .map((u) => decodeURIComponent(u.slice(ENT_HOSTED.length + 1).replace(/\/FeatureServer\/\d+$/, ''))))];
+
+for (const svc of entSvcs) {
+  const base = `${ENT_HOSTED}/${encodeURIComponent(svc)}/FeatureServer`;
   try {
     const root = await getJson(`${base}?f=json`);
     const extra = (root.layers ?? [])
+      .map((x) => ({ ...x, label: `ent:${x.id}` }))
       .filter((x) => !knownUrls.has(`${base}/${x.id}`)
         && !knownNames.has(norm(x.name))
         && !IGNORED.has(norm(x.name)))
-      .map((x) => `${x.id}:${x.name}`);
+      .map((x) => `${x.label}:${x.name}`);
     if (extra.length) {
       WARN.push(
-        `${base.split('/').slice(-2, -1)[0]} — үйлчилгээнд бий, бүртгэлд АЛГА (${extra.length}): ` +
+        `${svc} — үйлчилгээнд бий, бүртгэлд АЛГА (${extra.length}): ` +
           extra.slice(0, 12).join(' · ') +
           (extra.length > 12 ? ` … +${extra.length - 12}` : ''),
       );
@@ -171,6 +208,11 @@ for (const base of [TD]) {
 /* ── Дүн ── */
 
 console.log();
+if (SKIP.length) {
+  console.log(`⏭  АЛГАСАВ — эрхгүй (403/499), хазайлт шалгагдсангүй (${SKIP.length}):`);
+  for (const w of SKIP) console.log(`   ${w}`);
+  console.log();
+}
 if (WARN.length) {
   console.log('⚠️  САНУУЛГА — агент эдгээрийг МЭДЭХГҮЙ (нэмэх эсэх нь таны шийдвэр):');
   for (const w of WARN) console.log(`   ${w}`);
@@ -183,4 +225,4 @@ if (FAIL.length) {
   process.exit(1);
 }
 
-console.log(`✅ Хазайлт алга — ${targets.length} эх сурвалж, кодод нэрлэсэн бүх талбар үйлчилгээн дээр байна.`);
+console.log(`✅ Хазайлт алга — ${targets.length - SKIP.length}/${targets.length} эх сурвалж (${SKIP.length} эрхгүй ⏭), кодод нэрлэсэн бүх талбар үйлчилгээн дээр байна.`);

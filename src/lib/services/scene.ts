@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { HABEA_SVC, HJ, TD, req } from './env';
+import { ENT_HOSTED, HABEA_SVC, SELBE_ET, HAB_KRAN, IRGED } from './env';
 import type { LayerDef } from './layerDef';
 import { LAYER_BY_ID } from './layers';
 
@@ -16,9 +16,8 @@ import { LAYER_BY_ID } from './layers';
  * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
  * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
-const UBHUB_SCENE = req("NEXT_PUBLIC_UBHUB_SCENE", process.env.NEXT_PUBLIC_UBHUB_SCENE);
-/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IMAGERY үүнээс. */
-const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
+/* ⚠️ 2026-10-20: UBHUB БҮРМӨСӨН ХАСАГДСАН (хэрэглэгч: «ubhub-ийг мөн адил хая») — меш · ортофото Enterprise-ээс
+   (`ENT_HOSTED`/`ENT_REST`), `NEXT_PUBLIC_UBHUB_SCENE` хувьсагч ч хасагдав. */
 
 /**
  * АГААРЫН ЗУРАГ (ОРТОФОТО) — системийн ГАНЦ ортофото: `Selbe_September_tif`
@@ -42,16 +41,43 @@ const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
  * ⚠️ Хамрах хүрээ ~1.6 × 2.2 км (Сэлбэ орчим) — түүнээс гадна суурь зураг харагдана.
  * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` / `SuitMap` тусад нь нэмнэ.
  */
-/**
- * Сэлбэ ENTERPRISE-ийн `…/rest/services/Hosted` — BIM (SceneServer) ба ХАБЭА-ийн бүртгэл (2026-10-15)
- * хоёулаа эндээс. ⚠️ Модулийн ЭХЭНД: `HABEA` тогтмол үүнийг ашигладаг (TDZ).
- */
-const ENT_HOSTED = req("NEXT_PUBLIC_BIM_SCENE", process.env.NEXT_PUBLIC_BIM_SCENE);
+/* Сэлбэ ENTERPRISE-ийн `…/rest/services/Hosted` (`env.ENT_HOSTED` = `NEXT_PUBLIC_ENT_DATA`) — BIM · меш · ХАБЭА · бүх өгөгдөл.
+   ⚠️ 2026-10-20: `NEXT_PUBLIC_BIM_SCENE` хувьсагч хасагдсан — ижил суурь нэг хувьсагчаас. */
+/** Enterprise ArcGIS Server-ийн `…/map/rest/services` суурь (`Hosted`-гүй) — ортофото (ImageServer · MapServer) эндээс */
+const ENT_REST = ENT_HOSTED.replace(/\/Hosted$/i, "");
 
+/**
+ * НИСЛЭГ БҮРИЙН ОРТОФОТО — системийн суурь ортофото (2026-10-20, Enterprise руу БҮРЭН шилжилт).
+ * ⚠️ UBHUB `Selbe_September_tif` (2026-09 «True Ortho», нэг MapServer) → Сэлбэ Enterprise-ийн нислэг бүрийн ХОЁР
+ *    хэсэгт хуваагдсан кэштэй MapServer (хэрэглэгчийн өгсөн «Ortho nisleg 1/2»; амьд шалгав: wkid 102100, 24 LOD,
+ *    нэвтрэлтгүй нээлттэй). Проекц нь аппын зурагтай ИЖИЛ (3857) тул `TileLayer` шууд — хуучин «UTM тайлыг
+ *    MapImageLayer-ээр серверт хөрвүүлэх» шаардлага АРИЛСАН.
+ * ⚠️ `MESH_VERSIONS`-тэй ИЖИЛ түлхүүр (`old` = нислэг 1 · `new` = нислэг 2): сонгосон нислэгийн меш (3D) ба
+ *    ортофото (2D) ХАМТ солигдоно (`MapCanvas` `meshVer`); анхдагч `DEFAULT_MESH_VER` = нислэг 2.
+ * ⚠️ «Ortho before» (`Selbe_ortho_202609` ImageServer) нь ЭНД БИШ — бүтээн байгуулалтын ӨМНӨХ зураг тул
+ *    `IRGED_ORTHO_PRE` (env `NEXT_PUBLIC_IRGED_ORTHO_PRE`, «Иргэдэд хүрэх үр өгөөж»-ийн товч).
+ */
+export const ORTHO_FLIGHTS: Record<MeshVer, { key: string; title: string; url: string }[]> = {
+  old: [
+    { key: "ortho11", get title() { return tr('Ортофото — нислэг 1 (1)'); }, url: `${ENT_REST}/Ortho_nisleg_1_1_tif/MapServer` },
+    { key: "ortho12", get title() { return tr('Ортофото — нислэг 1 (2)'); }, url: `${ENT_REST}/Ortho_nisleg_1_2_tif/MapServer` },
+  ],
+  /* ⚠️ 2026-10-26 (хэрэглэгч): хоёр хэсэг (`Ortho_nisleg_2_1C` · `Ortho_nisleg_2_2C`) → НЭГДСЭН `Ortho_nisleg_2`.
+     Түлхүүр `ortho21` хэвээр (давхаргын id `imagery:f:new:ortho21` тогтвортой). */
+  new: [
+    { key: "ortho21", get title() { return tr('Ортофото — нислэг 2'); }, url: `${ENT_REST}/Ortho_nisleg_2/MapServer` },
+  ],
+};
+
+/**
+ * Системийн ортофото — каталог (`dataCatalog` img:ortho) ба `SuitMap`-д. `layers` = анхдагч нислэгийн хэсгүүд
+ * (`TileLayer`), `url` = эхний хэсэг (каталогийн мөрийн хаяг). Нислэг солих нь зөвхөн `MapCanvas`-д (`ORTHO_FLIGHTS`).
+ */
 export const IMAGERY = {
   get title() { return tr('Агаарын зураг (ортофото)'); },
-  url: `${UBHUB_REST}/Selbe_September_tif/MapServer`,
-} as const;
+  get layers() { return ORTHO_FLIGHTS[DEFAULT_MESH_VER]; },
+  get url() { return ORTHO_FLIGHTS[DEFAULT_MESH_VER][0].url; },
+};
 
 /**
  * «Иргэдэд хүрэх үр өгөөж» харагдацын 3D БОДИТ ЗАГВАР — гурван IntegratedMesh.
@@ -64,22 +90,24 @@ export const IMAGERY = {
  * 3D-ийн бүх дүрэм (зөвхөн `dim === '3d'`-д нэмэх, PASSIVE) тэр угтвараар
  * ажилладаг тул нэрийн загвараа ЗААВАЛ хадгална.
  */
+/* ⚠️ 2026-10-20: UBHUB `Selbe1/2/3_slpk` → Сэлбэ Enterprise `Mesh_before_1_1…3` (хэрэглэгчийн өгсөн «Mesh before»;
+   амьд шалгав: IntegratedMesh · wkid 3857 · нэвтрэлтгүй нээлттэй). */
 export const IRGED_SCENE = {
   layers: [
     {
       key: "irged1",
       get title() { return tr('Бодит загвар — Сэлбэ 1'); },
-      url: `${UBHUB_SCENE}/Selbe1_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_1/SceneServer`,
     },
     {
       key: "irged2",
       get title() { return tr('Бодит загвар — Сэлбэ 2'); },
-      url: `${UBHUB_SCENE}/Selbe2_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_2/SceneServer`,
     },
     {
       key: "irged3",
       get title() { return tr('Бодит загвар — Сэлбэ 3'); },
-      url: `${UBHUB_SCENE}/Selbe3_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_before_1_3/SceneServer`,
     },
   ],
 } as const;
@@ -101,7 +129,7 @@ export const IRGED_TOILET = {
   /* ⚠️ 2026-08-24: monmap-ын `selbe_UB_toilet_all`-аас нэгтгэсэн `toilet`
      үйлчилгээ рүү шилжив. Обьект 1675 = 1675, талбарууд бүрэн адил. */
   /* ⚠️ 2026-09-17: тусдаа `toilet` үйлчилгээ → `SELBE_ALL_DATA_0917`/115 (ижил дугаар). */
-  url: `${TD}/115`,
+  url: `${IRGED}/218`,
   /**
    * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
    *
@@ -173,9 +201,9 @@ export const IRGED_BUILT = {
   /* ⚠️ `HJ` (services.arcgis.com/HJzgwvlNIXssnQar) — үндсэн байгууллагын org.
      (2026-09-17-оос өмнө `GAZAR_FS` нь ӨӨР org байсан тул тэндээс хайвал
      404 буцаана. */
-  url: `${HJ}/Irgeded_hureh_ur_uguuj/FeatureServer/0`,
+  url: `${IRGED}/217`,
   /** Ангиллын талбар — ЗӨВХӨН хоёр утгатай */
-  typeField: "Type",
+  typeField: "type",
   types: { house: "Байшин", ger: "Гэр" },
   /**
    * ⚠️ `Shape__Area` — СИСТЕМИЙН талбар, `Shape_Leng` БИШ. Үйлчилгээний SR нь
@@ -183,7 +211,7 @@ export const IRGED_BUILT = {
    * Байшин 225,151 м² (дундаж 38.3) · Гэр 58,308 м² (дундаж 77.2).
    * ⚠️ `Confidence` талбарыг ХЭРЭГЛЭХГҮЙ (дээрх тайлбарыг үз).
    */
-  areaField: "Shape__Area",
+  areaField: "SHAPE__Area",
 } as const;
 
 /**
@@ -260,8 +288,12 @@ LAYER_BY_ID[IRGED_BUILT_DEF.id] = IRGED_BUILT_DEF;
 export const IRGED_ROAD = {
   id: "irged:road",
   get title() { return tr('Зам'); },
-  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE суурийн дэд үйлчилгээ. */
-  url: `${UBHUB_SCENE}/Selbe_road/VectorTileServer`,
+  /* ⚠️ 2026-10-20: UBHUB `Selbe_road` ХАСАГДСАН (UBHUB бүрмөсөн хаягдсан) → Сэлбэ Enterprise `selberoad_TILE_1`
+     VectorTileServer — Web Mercator (102100/3857, 24 LOD; амьд мета 2026-10-20 20:40). Өмнөх `selberoad_tile`/`selberoad_TILE`
+     нь UTM 32648 тул 3857 зурагт зурагддаггүй байсан (хөтчөөр батлав; JS API вектор тайлыг өөр проекцоор зурдаггүй —
+     зургийн координатын системийг Web Mercator болгож дахин нийтэлсэн). Хоосон `url` → давхарга ба каталогийн мөр
+     үүсэхгүй (`MapCanvas` · `dataCatalog`). Нэвтрэлт шаардана — байгууллагад хуваалцсан байх ёстой. */
+  url: `${ENT_HOSTED}/selberoad_TILE_1/VectorTileServer` as string,
 } as const;
 
 /* ⚠️ 2026-10-04: `IRGED_ORTHO` ба `ORTHO_SWIPE` (хуучин `Selbe_ortho`) ХАСАГДСАН — `IMAGERY`-ийн ⚠️. */
@@ -347,17 +379,19 @@ export const REACH_BUFFERS: {
   },
 ];
 
+/* ⚠️ 2026-10-20: UBHUB `Selbewebapp_slpk` · `Selbewebapp2_slpk` → Enterprise `Mesh_nisleg_1_1` · `Mesh_nisleg_1_2`
+   («Mesh nisleg 1»). `key` ХЭВЭЭР (`scene:mesh1`…) — MapCanvas/SuitMap-ийн id-ууд үүгээр. */
 export const SCENE = {
   layers: [
     {
       key: "mesh1",
       get title() { return tr('Бодит загвар — Сэлбэ 1'); },
-      url: `${UBHUB_SCENE}/Selbewebapp_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_nisleg_1_1/SceneServer`,
     },
     {
       key: "mesh2",
       get title() { return tr('Бодит загвар — Сэлбэ 2'); },
-      url: `${UBHUB_SCENE}/Selbewebapp2_slpk/SceneServer`,
+      url: `${ENT_HOSTED}/Mesh_nisleg_1_2/SceneServer`,
     },
   ],
 } as const;
@@ -369,7 +403,7 @@ export const SCENE = {
  * ⚠️ 2026-09-25 (хэрэглэгчийн шийдвэр): шинэ меш урьд нь ЗӨВХӨН «Меш
  *    харьцуулах» товчинд түр гардаг байв. Одоо 3D-ийн байнгын хувилбар бөгөөд
  *    АНХДАГЧ нь шинэ. Хуучин руу `MapCanvas`-ийн сонгогчоор шилжинэ.
- * ⚠️ `SCENE` (хуучин) ХЭВЭЭР — `SuitMap.tsx` өөрийн гогцоонд ашигладаг.
+ * ⚠️ `SCENE` (хуучин) ХЭВЭЭР — «Нислэг 1» хувилбар (`old`) ба каталог. `SuitMap.tsx` 2026-10-26-аас `DEFAULT_MESH_VER`-ээр.
  * ⚠️ Харьцуулалт («Меш харьцуулах») нь НӨГӨӨ хувилбарыг `MESH_CMP_PREFIX`
  *    id-тай нэмдэг. `scene:` угтвар БИШ: тэр нь горим солиход бүрмөсөн хасдаг
  *    циклд ордог тул харьцуулалтын давхарга түүнээс гадуур байх ёстой.
@@ -380,14 +414,18 @@ export const SCENE = {
  */
 export type MeshVer = 'new' | 'old';
 
+/* ⚠️ 2026-10-20: UBHUB `Selbe_mesh_0917` (нэг меш) → Enterprise `Mesh_nisleg_2_1` · `Mesh_nisleg_2_2` (ХОЁР хэсэг,
+   «Mesh nisleg 2»). Эхний `key` ХЭВЭЭР (`mesh0917` — `scene:mesh0917` id-г MapCanvas/каталог мэддэг), хоёр дахь нь шинэ. */
 export const MESH_VERSIONS = {
   new: {
     get title() { return tr('Нислэг 2 (2026-09-17)'); },
     layers: [
+      /* ⚠️ 2026-10-26 (хэрэглэгч): хоёр хэсэг (`Mesh_nisleg_2_1` · `Mesh_nisleg_2_2`) → НЭГДСЭН `Mesh_nisleg_2`.
+         Түлхүүр `mesh0917` хэвээр (`scene:mesh0917` id-г MapCanvas/каталог мэддэг). */
       {
         key: "mesh0917",
         get title() { return tr('Бодит загвар — нислэг 2 (2026-09-17)'); },
-        url: `${UBHUB_SCENE}/Selbe_mesh_0917/SceneServer`,
+        url: `${ENT_HOSTED}/Mesh_nisleg_2/SceneServer`,
       },
     ],
   },
@@ -406,7 +444,11 @@ export const MESH_CMP_PREFIX = 'mesh:cmp:';
  * Гадаргуугийн өндөр — 3D-д ЗААВАЛ. Меш нь 1325–1440 м ортометрик өндөрт байх
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
-export const ELEVATION_URL = req("NEXT_PUBLIC_ELEVATION_URL", process.env.NEXT_PUBLIC_ELEVATION_URL);
+/* ⚠️ 2026-10-20: `NEXT_PUBLIC_ELEVATION_URL` хувьсагч хасагдсан (хэрэглэгч: зөвхөн 10 хувьсагч). Сэлбэ Enterprise-д өндрийн
+   загвар (ImageServer) АЛГА тул Esri-ийн НИЙТИЙН дэлхийн өндөр — суурь зурагтай адил гадаад дэд бүтэц, төслийн өгөгдөл биш;
+   нэвтрэлтгүй, токен явахгүй (`query.isOrgUrl` Enterprise л). Enterprise-д нийтлэгдвэл `${ENT_REST}/<нэр>/ImageServer` болгоно.
+   «Код дотор үйлчилгээний линк байхгүй» (2026-09-17) дүрмийн ГАНЦ үл хамаарал — хувьсагчийг хэрэглэгч устгасан. */
+export const ELEVATION_URL = "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
 
 /**
  * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
@@ -424,7 +466,7 @@ export const USAN_SAN = {
   id: "d3:usan_san",
   get title() { return tr('Усан сан'); },
   // test_data [89] usan_san_5 — 2026-08-13 шилжив (6 объект)
-  url: `${TD}/89`,
+  url: `${SELBE_ET}/123`,
   /** Эх веб зургийн `5_n_usan_san` симбол — дүүргэлт 25%, хүрээ бүтэн */
   hue: "#003399",
 } as const;
@@ -451,10 +493,10 @@ export const HABEA = {
      * `laborCompanyFields(sfx)`-ээр компани тус бүрээс уншина.
      */
     fields: {
-      ognoo: "Ognoo",
-      niitAjiltan: "Niit_ajiltan",
-      hunTsag: "Hun_tsag",
-      niitTehnik: "Niit_tehnik",
+      ognoo: "ognoo",
+      niitAjiltan: "niit_ajiltan",
+      hunTsag: "hun_tsag",
+      niitTehnik: "niit_tehnik",
     },
     /**
      * ӨРГӨН схем: маягтын НЭГ бүртгэл = өдрийн нэгдсэн тайлан бөгөөд ГҮЙЦЭТГЭГЧ
@@ -511,17 +553,17 @@ export const HABEA = {
    * `habea:crane`/`habea:buffer` мөн хасагдсан.)
    */
   crane: {
-    url: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/50`,
-    bufferUrl: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/51`,
+    url: `${HAB_KRAN}/194`,
+    bufferUrl: `${HAB_KRAN}/195`,
     fields: {
-      dugaar: 'Краны_дугаар', blok: 'Блок', bagts: 'Багц',
+      dugaar: 'краны_дугаар', blok: 'блок', bagts: 'багц',
       /**
        * ⚠️ Эх үйлчилгээнд ЦЭГ [50] ба БҮС [51] ХОЁУЛАА «суны» гэж бичдэг —
        * test_data-гийн хуулбарт цэг нь «сумны» байсан тул хоёр нэрийг
        * зэрэг унших нэмэлт зам (`sunUrtBuf`) хэрэгтэй байв. Одоо ганц нэр.
        */
-      sunUrt: 'Краны_суны_урт_m',
-      undur: 'Краны_өндөр_m', tuluv: "Tuluv",
+      sunUrt: 'краны_суны_урт_m',
+      undur: 'краны_өндөр_m', tuluv: "tuluv",
       /**
        * ⚠️ КРАН ↔ БҮС ↔ ЧАРТ ХОЛБООСЫН ТҮЛХҮҮР (2026-09-06, амьдаар батлагдсан).
        * `Краны_дугаар` нь түлхүүр болж ЧАДАХГҮЙ: 50 краны 21-д NULL, мөн 1–7
@@ -531,8 +573,14 @@ export const HABEA = {
        * цэг [50]-ийн `OBJECTID` = бүс [51]-ийн `ORIG_FID` (50/50 таарсан,
        * зөрсөн 0, бүсгүй цэг 0).
        */
-      oid: 'OBJECTID',
-      bufferLink: 'ORIG_FID',
+      oid: 'objectid',
+      bufferLink: 'orig_fid',
+      /**
+       * ⚠️ 2026-10-21 (аудит): Enterprise-д шилжүүлэхэд цэг [50]-ийн OBJECTID 1–50 болж ДАХИН ДУГААРЛАГДСАН, AGOL-ын
+       * эх OBJECTID нь шинэ `orig_oid` талбарт үлдсэн; бүс [51]-ийн `ORIG_FID` хуучин дугаараа заасаар (orig_oid-той
+       * 50/51 таарна, objectid-тэй санамсаргүй 29). Иймд бүсийн холбоос нь цэгийн `orig_oid` — талбаргүй (AGOL) бол OBJECTID.
+       */
+      link: 'orig_oid',
     },
   },
 
@@ -601,7 +649,10 @@ export const HABEA = {
    */
   waste: {
     /* ⚠️ 2026-10-15 (хэрэглэгч): `Хог_хаягдал` (AGOL) → Enterprise `Сэлбэ_ХАБ1015`/43 — ижил бүтэц,
-       талбарууд ЖИЖИГ ҮСЭГТЭЙ (week · category · metric · багц_* · objectid). */
+       талбарууд ЖИЖИГ ҮСЭГТЭЙ (week · category · metric · objectid).
+       ⚠️ 2026-10-19: багцын баганууд үйлчилгээ дээр `bagts1 · bagts2 · bagst3_1 … bagst4_2` (латин,
+          «bagst» гэж бичигдсэн нь үйлчилгээний өөрийнх) — амьд метадатаас ЯГ хуулав; урьд `багц_*`
+          гэж байснаар карт «Бүртгэл алга», маягт бичихгүй байв. */
     url: `${ENT_HOSTED}/${encodeURIComponent('Сэлбэ_ХАБ1015')}/FeatureServer/43`,
     /* ⚠️ 2026-10-09: `oid` — хуудаслалтын `orderByFields`. ОН/ОГНОО талбар БАЙХГҮЙ — он ялгах нь схемийн өөрчлөлт. */
     fields: { week: 'week', metric: 'metric', category: 'category', oid: 'objectid' },
@@ -611,8 +662,8 @@ export const HABEA = {
      *    (`HabeaEntry.pkgColLabel`).
      */
     pkgCols: [
-      ['багц_1', 'Багц 1'], ['багц_2', 'Багц 2'], ['багц_3_1', 'Багц 3.1'], ['багц_3_2', 'Багц 3.2'],
-      ['багц_3_3', 'Багц 3.3'], ['багц_4_1', 'Багц 4.1'], ['багц_4_2', 'Багц 4.2'],
+      ['bagts1', 'Багц 1'], ['bagts2', 'Багц 2'], ['bagst3_1', 'Багц 3.1'], ['bagst3_2', 'Багц 3.2'],
+      ['bagst3_3', 'Багц 3.3'], ['bagst4_1', 'Багц 4.1'], ['bagst4_2', 'Багц 4.2'],
     ] as [string, string][],
     /** Донатын төрлүүд — ЯГ `Metric` домэйны кодоор, дэлгэцийн нэр ба өнгө */
     kinds: [
@@ -621,7 +672,19 @@ export const HABEA = {
       { metric: 'Модны хог (рейс)', get label() { return tr('Модны хаягдал'); }, color: '#2fa36b' },
       { metric: 'Арматур (рейс)', get label() { return tr('Арматур'); }, color: '#8a94a6' },
       { metric: 'Аюултай хог (рейс)', get label() { return tr('Аюултай хог'); }, color: '#d9534f' },
+      /* ⚠️ 2026-10-21 (аудит): амьд `metric`-д байгаа (домэйны нэгжгүй код) хоёр төрөл — урьд нөөц өнгө, түүхий нэрээр
+         гардаг байв. `Habea.tsx` нэгж/зайг хасаж тулгадаг тул «Бохир соруулах (рейс)» ч таарна. */
+      { metric: 'Барилгын хог хаягдал', get label() { return tr('Барилгын хог'); }, color: '#b07d3c' },
+      { metric: 'Бохир соруулах', get label() { return tr('Бохир соруулах'); }, color: '#7c6fb0' },
     ],
+  },
+  /**
+   * ҮЛ НИЙЦЛИЙН АРИЛГАЛТ — `HSE_Action` (2026-10-26, `modules/HabeaAction.tsx`). Нэг үйлчилгээнд V1.1 ба захиалагчийн
+   * маягтын үл нийцэл хоёулаа (`survey` талбараар ялгана). Давхарга 2 (0 БИШ — амьд метадата).
+   */
+  action: {
+    url: `${ENT_HOSTED}/HSE_Action/FeatureServer/2`,
+    survey: 'Захиалагчийн ажлын байрны үзлэг 2026',
   },
   uzleg: {
     v11: {
@@ -645,6 +708,43 @@ export const HABEA = {
       get title() { return tr('Захиалагчийн ажлын байрны үзлэг'); },
       url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
     },
+    /* ⚠️ 2026-10-21: 8 ШИНЭ МАЯГТ (хэрэглэгчийн жагсаалт) — `HABEA_SVC.uz*`-ийн ⚠️. Зургаа нь (cold · fire · autocrane ·
+       pump · gondola · tower) V1.1-тэй ЯГ ижил бүтэцтэй (major/minor/obs/conf домэйн · cnt_* · sc_all_earned/appl);
+       env ба hazard-ын зөрүүг доорх `fieldsBy` зохицуулна. Гарчиг нь геопорталын item-ийн нэр ЯГ. */
+    env: {
+      get title() { return tr('Байгаль орчны үзлэг'); },
+      url: `${HABEA_SVC.uzEnv}/FeatureServer/0`,
+    },
+    cold: {
+      get title() { return tr('Барилгын талбайн хүйтний үеийн түр зогсолтын бэлтгэл ажлын үзлэг шалгалт'); },
+      url: `${HABEA_SVC.uzCold}/FeatureServer/0`,
+    },
+    fire: {
+      get title() { return tr('ХАБЭАБО-н Ажлын байрны галын аюулгүй байдлын үзлэг - Барилгын талбай'); },
+      url: `${HABEA_SVC.uzFire}/FeatureServer/0`,
+    },
+    hazard: {
+      get title() { return tr('ХАБЭАБО-н Аюулыг илрүүлэх үзлэг - Барилгын талбай'); },
+      url: `${HABEA_SVC.uzHazard}/FeatureServer/0`,
+    },
+    autocrane: {
+      get title() { return tr('ХАБЭАБО-н Барилгын автокран шалгалт'); },
+      url: `${HABEA_SVC.uzAutocrane}/FeatureServer/0`,
+    },
+    pump: {
+      get title() { return tr('ХАБЭАБО-н Барилгын автопомп шалгалт'); },
+      url: `${HABEA_SVC.uzPump}/FeatureServer/0`,
+    },
+    gondola: {
+      get title() { return tr('ХАБЭАБО-н Барилгын люльк буюу дүүжинт өргүүрийн шалгалт'); },
+      url: `${HABEA_SVC.uzGondola}/FeatureServer/0`,
+    },
+    tower: {
+      get title() { return tr('ХАБЭАБО-н Барилгын цамхагт кран шалгалт'); },
+      url: `${HABEA_SVC.uzTower}/FeatureServer/0`,
+    },
+    /** «Аюулыг илрүүлэх үзлэг»-ийн илрүүлэлтийн ХҮСНЭГТ (`findings`, `parentrowid` → эцгийн `uniquerowid`) — тайланд */
+    hazardFindingsUrl: `${HABEA_SVC.uzHazard}/FeatureServer/1`,
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
       site: 'site', siteOther: 'site_other',
@@ -663,6 +763,19 @@ export const HABEA = {
        */
       scEarned: 'sc_all_earned', scAppl: 'sc_all_appl',
     },
+    /**
+     * ⚠️ 2026-10-21: МАЯГТ БҮРИЙН ТАЛБАРЫН ЗӨРҮҮ — `fields`-ийн ДЭЭР давхарлана (`habeaUzleg.fieldsOf`).
+     *    Хоосон мөр ('') = тэр талбар ЭНЭ маягтад БАЙХГҮЙ: тоонд орохгүй, «талбар дутуу» гэж сануулахгүй, оноо null.
+     *    · env (Байгаль орчны үзлэг): асуулт тийм/үгүй/хамааралгүй — `cnt_ok` (нийцсэн) · `cnt_nc` (үл нийцэл) · `cnt_na`;
+     *      авсан/боломжит онооны талбаргүй (зөвхөн `sc_all` хувь — хэрэглэхгүй, дээрх ⚠️).
+     *    · hazard (Аюулыг илрүүлэх үзлэг): асуултгүй — илрүүлэлт ТҮВШНЭЭР: `cnt_high` · `cnt_medium` · `cnt_low` ·
+     *      `cnt_fixed` (талбайд зассан) · `cnt_obs` (ажиглалт). Зэргийн ТҮЛХҮҮР (major…na) нь өнгөний дараалал л;
+     *      дэлгэцийн нэрс `habeaUzleg.SEV_LABELS`-д маягтаар.
+     */
+    fieldsBy: {
+      env: { major: 'cnt_nc', minor: '', obs: '', conf: 'cnt_ok', na: 'cnt_na', scEarned: '', scAppl: '' },
+      hazard: { major: 'cnt_high', minor: 'cnt_medium', obs: 'cnt_low', conf: 'cnt_fixed', na: 'cnt_obs', scEarned: '', scAppl: '' },
+    },
   },
 } as const;
 
@@ -671,14 +784,18 @@ export const HABEA = {
  * хэв маяг (`MNG_ajiltani_too_<SFX>` г.м). `Bagts_<SFX>` нь зөвхөн багц
  * заасан 7 гүйцэтгэгчид бий; бусдад нь байхгүй талбар уншихад undefined → 0.
  */
-export const laborCompanyFields = (sfx: string) => ({
-  bagts: `Bagts_${sfx}`,
-  mongol: `MNG_ajiltani_too_${sfx}`,
-  gadaad: `G_ajiltanii_too_${sfx}`,
-  niitAjiltan: `Niit_ajiltan_${sfx}`,
-  // ⚠️ Шинэ маягтад техник нь `Tehnik_<SFX>` (`Niit_tehnik_<SFX>` БИШ).
-  niitTehnik: `Tehnik_${sfx}`,
-});
+export const laborCompanyFields = (sfx: string) => {
+  /* ⚠️ 2026-10-26: Enterprise-ийн БОДИТ нэр ЖИЖИГ үсгээр (`niit_ajiltan_hhdmgk`) — код (`HHDMGK`) нь гүйцэтгэгчийн таних тэмдэг */
+  const s = sfx.toLowerCase();
+  return {
+    bagts: `bagts_${s}`,
+    mongol: `mng_ajiltani_too_${s}`,
+    gadaad: `g_ajiltanii_too_${s}`,
+    niitAjiltan: `niit_ajiltan_${s}`,
+    // ⚠️ Шинэ маягтад техник нь `tehnik_<sfx>` (`niit_tehnik_<sfx>` БИШ).
+    niitTehnik: `tehnik_${s}`,
+  };
+};
 
 /**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
@@ -689,7 +806,7 @@ export const laborCompanyFields = (sfx: string) => ({
  *    бүгд (Багц 1: 15 · 2: 20 · 3.1: 11 · 3.2: 11 · 3.3: 14 · 4.1: 12 · 4.2: 14). Амьдаар нэг бүрчлэн шалгав:
  *    97/97 токенгүй нээгдэнэ, бүгд `layerType: Building`, wkid 3857. UBHUB дээр хаалттай байсан Багц 1-ийн 8,
  *    Багц 2-ын 20, Багц 3.1-ийн 11 загвар ОДОО бүгд орсон.
- * ⚠️ Хост нь меш/ортофотогийн `UBHUB_SCENE`-ээс ТУСДАА хувьсагч — тэдгээр UBHUB дээр ХЭВЭЭР.
+ * ⚠️ 2026-10-20: меш/ортофото ч Enterprise руу шилжсэн — UBHUB бүрмөсөн хасагдсан.
  * ⚠️ 2026-09-25: хуучин 12 загвар (`tiles.arcgis.com` · `71_1…71_12`, `NEXT_PUBLIC_BIM_ROOT`) хасагдсан.
  *
  * ⚠️ `layerType: 'Building'` — ЗӨВХӨН SceneView-д (3D, `dim === 'bim'`).
@@ -776,9 +893,18 @@ const BIM_SERVICES: { pkg: string; names: string[] }[] = [
   },
 ];
 
-/** `Багц_1_FID62_63_71_double` → `62 · 63` · `Багц_4_2_FID104_71_tower` → `104` */
-const bimFids = (name: string): string =>
-  (name.match(/_FID([\d_]+?)_\d+_(?:single|double|tower)$/)?.[1] ?? name).split('_').join(' · ');
+/**
+ * `Багц_1_FID62_63_71_double` → `62 · 63` · `Багц_4_2_FID104_71_tower` → `104`.
+ * ⚠️ 2026-10-19: `Багц_4_1_FID3_71_71_double` → `3 · 71` нь ЗӨВ (айлын «71» давхардсан үсгийн алдаа БИШ) — FID 0…112-оос
+ *    ГАНЦ дутуу нь 71 (бусад үйлчилгээнд алга), загварын хүрээ 49×143 м нь бусад `double` (жиш. `FID4_5`)-тай ижил хос
+ *    блок (амьд `layers/0`-ийн `fullExtent`-ээр шалгав). Тиймээс задлалт нь ТОДОРХОЙ: сүүлийн 2 хэсэг = айл · төрөл,
+ *    үлдсэн нь FID-үүд (lazy regex-ийн таамаглалгүй). Үйлчилгээний URL нэрээрээ хэвээр.
+ */
+const bimFids = (name: string): string => {
+  const parts = name.match(/_FID(\d+(?:_\d+)*)_(?:single|double|tower)$/)?.[1]?.split('_');
+  /* parts = [...FID, айл] — айлын хэсэг (сүүлийнх)-ийг хасна */
+  return parts && parts.length > 1 ? parts.slice(0, -1).join(' · ') : name;
+};
 
 export const BIM = {
   layers: BIM_SERVICES.flatMap(({ pkg, names }) =>

@@ -11,7 +11,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from "./ags";
-import { HJ } from '@/lib/services';
+import { GUITS } from '@/lib/services';
 
 export type Pkg = {
   /** `bagts.trees.ts`-ийн түлхүүр — мөрийн модыг үүгээр олно */
@@ -50,16 +50,16 @@ export type Pkg = {
  * ЯГ таарна — зөрвөл мод буруу багцад наалдана.
  */
 export const PKGS: Pkg[] = [
-  { key: "b1_9f", group: 'Багц 1', floors: 9, name: 'Багц 1 · 9 давхар', get label() { return tr('Багц 1 · 9 давхар'); }, url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
-  { key: "b1_12f", group: 'Багц 1', floors: 12, name: 'Багц 1 · 12 давхар', get label() { return tr('Багц 1 · 12 давхар'); }, url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
-  { key: "b2_9f", group: 'Багц 2', floors: 9, name: 'Багц 2 · 9 давхар', get label() { return tr('Багц 2 · 9 давхар'); }, url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
-  { key: "b2_12f", group: 'Багц 2', floors: 12, name: 'Багц 2 · 12 давхар', get label() { return tr('Багц 2 · 12 давхар'); }, url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
-  { key: "b31_9f", group: 'Багц 3.1', floors: 9, name: 'Багц 3.1 · 9 давхар', get label() { return tr('Багц 3.1 · 9 давхар'); }, url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
-  { key: "b32_9f", group: 'Багц 3.2', floors: 9, name: 'Багц 3.2 · 9 давхар', get label() { return tr('Багц 3.2 · 9 давхар'); }, url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
-  { key: "b33_9f", group: 'Багц 3.3', floors: 9, name: 'Багц 3.3 · 9 давхар', get label() { return tr('Багц 3.3 · 9 давхар'); }, url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
-  { key: "b41_9f", group: 'Багц 4-1', floors: 9, name: 'Багц 4-1 · 9 давхар', get label() { return tr('Багц 4-1 · 9 давхар'); }, url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
-  { key: "b42_9f", group: 'Багц 4-2', floors: 9, name: 'Багц 4-2 · 9 давхар', get label() { return tr('Багц 4-2 · 9 давхар'); }, url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
-  { key: "b42_12f", group: 'Багц 4-2', floors: 12, name: 'Багц 4-2 · 12 давхар', get label() { return tr('Багц 4-2 · 12 давхар'); }, url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
+  { key: "b1_9f", group: 'Багц 1', floors: 9, name: 'Багц 1 · 9 давхар', get label() { return tr('Багц 1 · 9 давхар'); }, url: `${GUITS}/153` },
+  { key: "b1_12f", group: 'Багц 1', floors: 12, name: 'Багц 1 · 12 давхар', get label() { return tr('Багц 1 · 12 давхар'); }, url: `${GUITS}/154` },
+  { key: "b2_9f", group: 'Багц 2', floors: 9, name: 'Багц 2 · 9 давхар', get label() { return tr('Багц 2 · 9 давхар'); }, url: `${GUITS}/155` },
+  { key: "b2_12f", group: 'Багц 2', floors: 12, name: 'Багц 2 · 12 давхар', get label() { return tr('Багц 2 · 12 давхар'); }, url: `${GUITS}/156` },
+  { key: "b31_9f", group: 'Багц 3.1', floors: 9, name: 'Багц 3.1 · 9 давхар', get label() { return tr('Багц 3.1 · 9 давхар'); }, url: `${GUITS}/157` },
+  { key: "b32_9f", group: 'Багц 3.2', floors: 9, name: 'Багц 3.2 · 9 давхар', get label() { return tr('Багц 3.2 · 9 давхар'); }, url: `${GUITS}/158` },
+  { key: "b33_9f", group: 'Багц 3.3', floors: 9, name: 'Багц 3.3 · 9 давхар', get label() { return tr('Багц 3.3 · 9 давхар'); }, url: `${GUITS}/159` },
+  { key: "b41_9f", group: 'Багц 4-1', floors: 9, name: 'Багц 4-1 · 9 давхар', get label() { return tr('Багц 4-1 · 9 давхар'); }, url: `${GUITS}/160` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, name: 'Багц 4-2 · 9 давхар', get label() { return tr('Багц 4-2 · 9 давхар'); }, url: `${GUITS}/162` },
+  { key: "b42_12f", group: 'Багц 4-2', floors: 12, name: 'Багц 4-2 · 12 давхар', get label() { return tr('Багц 4-2 · 12 давхар'); }, url: `${GUITS}/164` },
 
   /*
    * ── НЭМЭЛТ БАГЦУУД (2026-09-16) ──────────────────────────────────────
@@ -95,25 +95,25 @@ export const PKGS: Pkg[] = [
    *
    * ⚠️ `floors: null` — давхраар салдаггүй тул сонгогчид давхрын товч гарахгүй.
    */
-  { key: "b51", group: 'Багц 5.1', floors: null, name: 'Багц 5.1', get label() { return tr('Багц 5.1'); }, url: `${HJ}/Bagts_5_1/FeatureServer/0` },
-  { key: "b52", group: 'Багц 5.2', floors: null, name: 'Багц 5.2', get label() { return tr('Багц 5.2'); }, url: `${HJ}/Bagts_5_2/FeatureServer/0` },
-  { key: "b53", group: 'Багц 5.3', floors: null, name: 'Багц 5.3', get label() { return tr('Багц 5.3'); }, url: `${HJ}/Bagts_5_3/FeatureServer/0` },
-  { key: "b54", group: 'Багц 5.4', floors: null, name: 'Багц 5.4', get label() { return tr('Багц 5.4'); }, url: `${HJ}/Bagts_5_4/FeatureServer/0` },
-  { key: "b61", group: 'Багц 6.1', floors: null, name: 'Багц 6.1', get label() { return tr('Багц 6.1'); }, url: `${HJ}/Bagts_6_1/FeatureServer/0` },
-  { key: "b62", group: 'Багц 6.2', floors: null, name: 'Багц 6.2', get label() { return tr('Багц 6.2'); }, url: `${HJ}/Bagts_6_2/FeatureServer/0` },
-  { key: "b64", group: 'Багц 6.4', floors: null, name: 'Багц 6.4', get label() { return tr('Багц 6.4'); }, url: `${HJ}/Bagts_6_4/FeatureServer/0` },
+  { key: "b51", group: 'Багц 5.1', floors: null, name: 'Багц 5.1', get label() { return tr('Багц 5.1'); }, url: `${GUITS}/166` },
+  { key: "b52", group: 'Багц 5.2', floors: null, name: 'Багц 5.2', get label() { return tr('Багц 5.2'); }, url: `${GUITS}/167` },
+  { key: "b53", group: 'Багц 5.3', floors: null, name: 'Багц 5.3', get label() { return tr('Багц 5.3'); }, url: `${GUITS}/168` },
+  { key: "b54", group: 'Багц 5.4', floors: null, name: 'Багц 5.4', get label() { return tr('Багц 5.4'); }, url: `${GUITS}/169` },
+  { key: "b61", group: 'Багц 6.1', floors: null, name: 'Багц 6.1', get label() { return tr('Багц 6.1'); }, url: `${GUITS}/170` },
+  { key: "b62", group: 'Багц 6.2', floors: null, name: 'Багц 6.2', get label() { return tr('Багц 6.2'); }, url: `${GUITS}/171` },
+  { key: "b64", group: 'Багц 6.4', floors: null, name: 'Багц 6.4', get label() { return tr('Багц 6.4'); }, url: `${GUITS}/173` },
   /* ⚠️ 2026-10-12 (хэрэглэгчийн хүсэлт): 6 багц нэмэгдэв — 6.3 · 6.5 · 6.6 · 6.7 · 6.8 · 7.1. Бүгд блокгүй
      (`Ажил_гүйцэтгэл` · `obyem_sum`), `gun` багана бий ч ХООСОН тул анхны нийтлэл хүртэл `TREES`-ээр
      (амьд загварын жаазаас гаргасан мод, Мөнгөн_дүн нийлбэрийн зөрүү 0). `des_dugaar`/`hamaaral` нь эдгээрт
      ТОМ үсгээр (`Des_dugaar`/`Hamaaral`) — `resolveSchema` case-insensitive тул таарна. 6.7-ийн үйлчилгээний
      нэр `Bagts_6_7_final`. Амьд: 6.6 · 6.8-ийн толгой мөрийн нэр «БАГЦ 6.5 …» гэж буруу хуулагдсан (өгөгдөл). */
-  { key: "b63", group: 'Багц 6.3', floors: null, name: 'Багц 6.3', get label() { return tr('Багц 6.3'); }, url: `${HJ}/Bagts_6_3/FeatureServer/0` },
-  { key: "b65", group: 'Багц 6.5', floors: null, name: 'Багц 6.5', get label() { return tr('Багц 6.5'); }, url: `${HJ}/Bagts_6_5/FeatureServer/0` },
-  { key: "b66", group: 'Багц 6.6', floors: null, name: 'Багц 6.6', get label() { return tr('Багц 6.6'); }, url: `${HJ}/Bagts_6_6/FeatureServer/0` },
-  { key: "b67", group: 'Багц 6.7', floors: null, name: 'Багц 6.7', get label() { return tr('Багц 6.7'); }, url: `${HJ}/Bagts_6_7_final/FeatureServer/0` },
-  { key: "b68", group: 'Багц 6.8', floors: null, name: 'Багц 6.8', get label() { return tr('Багц 6.8'); }, url: `${HJ}/Bagts_6_8/FeatureServer/0` },
-  { key: "b71", group: 'Багц 7.1', floors: null, name: 'Багц 7.1', get label() { return tr('Багц 7.1'); }, url: `${HJ}/Bagts_7_1/FeatureServer/0` },
-  { key: "b10", group: 'Багц 10', floors: null, name: 'Багц 10', get label() { return tr('Багц 10'); }, url: `${HJ}/Bagts_10/FeatureServer/0` },
+  { key: "b63", group: 'Багц 6.3', floors: null, name: 'Багц 6.3', get label() { return tr('Багц 6.3'); }, url: `${GUITS}/172` },
+  { key: "b65", group: 'Багц 6.5', floors: null, name: 'Багц 6.5', get label() { return tr('Багц 6.5'); }, url: `${GUITS}/174` },
+  { key: "b66", group: 'Багц 6.6', floors: null, name: 'Багц 6.6', get label() { return tr('Багц 6.6'); }, url: `${GUITS}/175` },
+  { key: "b67", group: 'Багц 6.7', floors: null, name: 'Багц 6.7', get label() { return tr('Багц 6.7'); }, url: `${GUITS}/177` },
+  { key: "b68", group: 'Багц 6.8', floors: null, name: 'Багц 6.8', get label() { return tr('Багц 6.8'); }, url: `${GUITS}/178` },
+  { key: "b71", group: 'Багц 7.1', floors: null, name: 'Багц 7.1', get label() { return tr('Багц 7.1'); }, url: `${GUITS}/179` },
+  { key: "b10", group: 'Багц 10', floors: null, name: 'Багц 10', get label() { return tr('Багц 10'); }, url: `${GUITS}/180` },
 ];
 
 /**
@@ -309,6 +309,13 @@ export type Schema = {
      */
     ham: string | null;
     /**
+     * ⚠️ 2026-10-22: БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ (`bagts_hamaaral`, String 8000 — админ Notebook-оор нэмнэ).
+     *    Энэ (ард талын) ажлын ӨӨР хуудасны урьдчилагчид, JSON (`lib/workDeps.ts`). Талбар хараахан алга
+     *    хуудсанд `null` — «Багцын хамаарал» тэр хуудсанд зөвхөн харах горимтой. Архивын жаазад `raw`-аар
+     *    (`buildFrame`-ийн `{...r.raw}`) дамжина. `?` — гар бүдүүвчтэй шалгуурууд хүчинтэй хэвээр.
+     */
+    bham?: string | null;
+    /**
      * ХҮН ХҮЧ (`hun_huch`) ба МАШИН МЕХАНИЗМ (`mashin_mehanizm`) — Integer,
      * 2026-09-23-нд 18/18 бөглөх хуудсанд нэмэгдсэн. Ажил (навч) бүрийн
      * нөөцийн тоо; «Хуваарь» модулиас засагдана, бүлгийн мөрд нийлбэр нь
@@ -443,7 +450,7 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
   const blocks = new Map<string, Slot>();
   const order: { key: string; s: number; n: number }[] = [];
   for (const raw of names) {
-    const m = /^F(\d+)_(\d+)_/.exec(raw);
+    const m = /^f(\d+)_(\d+)_/i.exec(raw);
     if (!m) continue;
     const key = `${m[1]}/${m[2]}`;
     let slot = blocks.get(key);
@@ -536,13 +543,13 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
   if ((opts.synthetic || opts.fill) && bld.length === 0) {
     const exact = (re: RegExp): string | null => names.find((n) => re.test(n)) ?? null;
     /* ⚠️ Зорилтот нэр ЭХЛЭЭД, fuzzy дараа нь (2026-09-23, `exactCI`). */
-    const rStart = exactCI('Төлөвлөгөөт_хуваарь__Эхлэх') ?? find((n) => /^төлөвлөгөөтхуваарь.*эхлэх$/.test(n));
-    const rEnd = exactCI('Төлөвлөгөөт_хуваарь__Дуусах') ?? find((n) => /^төлөвлөгөөтхуваарь.*дуусах$/.test(n));
+    const rStart = exactCI('төлөвлөгөөт_хуваарь__эхлэх') ?? find((n) => /^төлөвлөгөөтхуваарь.*эхлэх$/.test(n));
+    const rEnd = exactCI('төлөвлөгөөт_хуваарь__дуусах') ?? find((n) => /^төлөвлөгөөтхуваарь.*дуусах$/.test(n));
     const rGS = exact(/^geree_ehleh$/i);
     const rGE = exact(/^geree_duusah$/i);
     const rAS = exact(/^bodit_ehleh$/i);
     const rAE = exact(/^bodit_duusah$/i);
-    const rAct = exactCI('Ажил_гүйцэтгэл') ?? find((n) => /^ажилгүйцэтгэл/.test(n));
+    const rAct = exactCI('ажил_гүйцэтгэл') ?? find((n) => /^ажилгүйцэтгэл/.test(n));
     /* ⚠️ 2026-10-09: бөглөх бүдүүвчид обьём = мөрийн `obyem_sum` (дээрх `ResolveOpts.fill`) */
     const rOb = opts.fill ? exactCI('obyem_sum') : null;
     /* ⚠️ 2026-10-09: `fill` үед огноогүй ч гүйцэтгэл/обьёмын багана байвал блок үүснэ */
@@ -551,11 +558,11 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
       bld.push(SYNTHETIC_BLOCK);
       /* Гүйцэтгэл/төлөвлөгөө — мөрийн багана; байхгүй бол доорх `f`-ийн
          нөөц нэр (уншихад `null`, Huvaari эдгээрийг БИЧДЭГГҮЙ). */
-      act.push(rAct ?? 'Ажил_гүйцэтгэл');
+      act.push(rAct ?? 'ажил_гүйцэтгэл');
       /* ⚠️ 2026-10-09: `fill` үед Excel M (`Төлөвлөгөөт_гүйцэтгэл1`) — `f.plan` (I)-ээс ТУСДАА
          багана; байхгүй бол хуучин I руу унана (n = 1 тул тоо нь ижил). «Хуваарь» хэвээр I. */
-      const rPlan = exactCI('Төлөвлөгөөт_гүйцэтгэл') ?? find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n));
-      plan.push((opts.fill ? exactCI('Төлөвлөгөөт_гүйцэтгэл1') : null) ?? rPlan ?? 'Төлөвлөгөөт_гүйцэтгэл');
+      const rPlan = exactCI('төлөвлөгөөт_гүйцэтгэл') ?? find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n));
+      plan.push((opts.fill ? exactCI('төлөвлөгөөт_гүйцэтгэл1') : null) ?? rPlan ?? 'төлөвлөгөөт_гүйцэтгэл');
       obyem.push(rOb);
       start.push(rStart);
       end.push(rEnd);
@@ -575,20 +582,20 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
      олдохгүй бол л хуучин fuzzy дүрэм. Зорилтот ба хуучин хувилбар
      (`Обьём` ба `Обьём__Шинэ` г.м.) зэрэг байхад ҮРГЭЛЖ зорилтот нь
      уншигдаж/бичигдэнэ. Хуучин баганад `raw`-аар утга үлдэх нь зөв. */
-  const wC = exactCI('Хувийн_жин');
-  const wD = exactCI('Хувийн_жин1');
+  const wC = exactCI('хувийн_жин');
+  const wD = exactCI('хувийн_жин1');
   const f: Schema["f"] = {
-    no: byNorm.get("f") ?? "F_",
-    work: byNorm.get("ажил") ?? 'Ажил',
-    wC: wC ?? weights[0] ?? 'Хувийн_жин',
-    wD: wD ?? (wC ? weights.find((n) => n !== wC) ?? wC : weights[1] ?? weights[0]) ?? 'Хувийн_жин1',
-    wE: exactCI('Хувийн_жин__Одоо_байгаа') ?? find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
+    no: byNorm.get("f") ?? "f_",
+    work: byNorm.get("ажил") ?? 'ажил',
+    wC: wC ?? weights[0] ?? 'хувийн_жин',
+    wD: wD ?? (wC ? weights.find((n) => n !== wC) ?? wC : weights[1] ?? weights[0]) ?? 'хувийн_жин1',
+    wE: exactCI('хувийн_жин__одоо_байгаа') ?? find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
     /*
      * ⚠️ `2`-оор төгссөнийг ХАСНА. «Объём_шинэ2» гэсэн багана 10 үйлчилгээний
      * АЛЬ НЬ Ч БАЙХГҮЙ (2026.08.21-нд шалгав) бөгөөд байх ч ёсгүй. Хэрэв
      * хэзээ нэгэн цагт нэмэгдвэл `vol`-д санамсаргүй наалдахаас сэргийлнэ.
      */
-    vol: exactCI('Обьём') ?? find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'Обьём',
+    vol: exactCI('обьём') ?? find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'обьём',
     /*
      * ОБЬЁМЫН НИЙЛБЭР — мөрийн блок бүрийн хуримтлагдсан обьёмын нийлбэр.
      * ⚠️ Үйлчилгээнд 2026.08.21-нд нэмэгдсэн ба БҮГД ХООСОН байсан. Нийтлэх
@@ -610,27 +617,27 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
      *    энэ талбар түүнд ОГТ баригдахгүй — 2026-09-07-нд амьд 10 үйлчилгээн
      *    дээр шалгав (9 шүүлтүүр бүгд `false`).
      */
-    plannedVol: exactCI('Инженерийн_төлөвлөсөн_обьём') ?? find((n) => /^инженерийнтөлөвлөсөноб[ьъ]ём/.test(n)) ?? null,
-    unit: exactCI('Нэгж_өртөг') ?? find((n) => n.startsWith("нэгжөртөг")) ?? 'Нэгж_өртөг',
-    money: exactCI('Мөнгөн_дүн') ?? find((n) => n.startsWith("мөнгөндүн")) ?? 'Мөнгөн_дүн',
+    plannedVol: exactCI('инженерийн_төлөвлөсөн_обьём') ?? find((n) => /^инженерийнтөлөвлөсөноб[ьъ]ём/.test(n)) ?? null,
+    unit: exactCI('нэгж_өртөг') ?? find((n) => n.startsWith("нэгжөртөг")) ?? 'нэгж_өртөг',
+    money: exactCI('мөнгөн_дүн') ?? find((n) => n.startsWith("мөнгөндүн")) ?? 'мөнгөн_дүн',
     // ⚠️ Гурван бичлэг: `Төлөвлөгөөт_гүйцэтгэл`, бичээсийн алдаатай
     //    `Төлөвлөгөөт_гүйцтэгэл` (Багц 2, 3.1), `…_гүйцэтгэлийн_хувь` (Багц 3.3, 4.x)
     //    — 2026-09-23-оос зорилтот `Төлөвлөгөөт_гүйцэтгэл` 18/18-д бий, яг нэрээр эхэлж.
     plan:
-      exactCI('Төлөвлөгөөт_гүйцэтгэл') ??
+      exactCI('төлөвлөгөөт_гүйцэтгэл') ??
       find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n)) ??
-      'Төлөвлөгөөт_гүйцэтгэл',
+      'төлөвлөгөөт_гүйцэтгэл',
     act:
-      exactCI('Бодит_гүйцэтгэл') ??
-      find((n) => /^(бодитгүйцэтгэл|гүйцэтгэл)/.test(n)) ?? 'Бодит_гүйцэтгэл',
+      exactCI('бодит_гүйцэтгэл') ??
+      find((n) => /^(бодитгүйцэтгэл|гүйцэтгэл)/.test(n)) ?? 'бодит_гүйцэтгэл',
     // ⚠️ Багц 4.1-д `Төлөвлөгөө_биеэлэлт` гэж бичигдсэн — зорилтот `Төлөвлөгөө_биелэлт` эхэлж
-    ratio: exactCI('Төлөвлөгөө_биелэлт') ?? find((n) => /^төлөвлөгөөбие/.test(n)),
+    ratio: exactCI('төлөвлөгөө_биелэлт') ?? find((n) => /^төлөвлөгөөбие/.test(n)),
     // Толгойгүй үлдсэн бол AGOL `F<баганын дугаар>` гэж нэрлэдэг — огнооны
     // төрөлтэй, блокийн бус цорын ганц талбарыг нь шинэчлэгдсэн огноо гэж үзнэ.
     asOf:
-      exactCI('Шинэчлэгдсэн_огноо') ??
+      exactCI('шинэчлэгдсэн_огноо') ??
       find((n) => n.startsWith("шинэчлэгдсэн")) ??
-      fields.find((x) => /^F\d+$/.test(x.name) && x.type === "esriFieldTypeDate")
+      fields.find((x) => /^f\d+$/i.test(x.name) && x.type === "esriFieldTypeDate")
         ?.name ??
       null,
     fillDate: names.find((n) => /^buglusun_ognoo$/i.test(n)) ?? null,
@@ -640,22 +647,24 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
     // ⚠️ `Des_dugaar` мөн латин нэртэй — шууд нэрээр, том/жижиг үсэг үл ялгана.
     des: names.find((n) => /^des_dugaar$/i.test(n)) ?? null,
     ham: names.find((n) => /^hamaaral$/i.test(n)) ?? null,
+    /* ⚠️ 2026-10-22: ЯГ нэрээр — `^hamaaral$` нь `bagts_hamaaral`-д ТААРАХГҮЙ (хоёр талбар тусдаа утгатай) */
+    bham: names.find((n) => /^bagts_hamaaral$/i.test(n)) ?? null,
     /* Хүн хүч · машин механизм (2026-09-23) — латин, шууд нэрээр. */
     hunHuch: names.find((n) => /^hun_huch$/i.test(n)) ?? null,
     mashin: names.find((n) => /^mashin_mehanizm$/i.test(n)) ?? null,
     /* ⚠️ 2026-10-09: «Бусад талбар» — ЯГ нэрээр (`Schema.f.rowAct`-ийн ⚠️). Барилгын багцад
        мөрийн түвшний ийм нэр байхгүй бол `null` (блокийн `F…_гүйцэтгэл` г.м. ТААРАХГҮЙ). */
-    rowAct: exactCI('Ажил_гүйцэтгэл'),
-    rowPlan1: exactCI('Төлөвлөгөөт_гүйцэтгэл1'),
+    rowAct: exactCI('ажил_гүйцэтгэл'),
+    rowPlan1: exactCI('төлөвлөгөөт_гүйцэтгэл1'),
     rowGS: exactCI('geree_ehleh'),
     rowGE: exactCI('geree_duusah'),
     rowAS: exactCI('bodit_ehleh'),
     rowAE: exactCI('bodit_duusah'),
-    created: exactCI('CreationDate'),
-    creator: exactCI('Creator'),
-    edited: exactCI('EditDate'),
-    editor: exactCI('Editor'),
-    oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
+    created: exactCI('created_date'),
+    creator: exactCI('created_user'),
+    edited: exactCI('last_edited_date'),
+    editor: exactCI('last_edited_user'),
+    oid: names.find((n) => /^objectid$/i.test(n)) ?? "objectid",
   };
 
   return { bld, act, plan, obyem, start, end, gStart, gEnd, aStart, aEnd, synthetic, f };

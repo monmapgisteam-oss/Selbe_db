@@ -35,7 +35,9 @@ const PANE = {
      (`habea.module.css` `grid-template-rows: auto minmax(0,1fr) var(--row-fin)`)
      тул `list[3]` undefined → хэмжилт `min` (120px) руу үсэрч, чирэх бүрд
      доод зурвас 120px-ээс эхэлдэг байв. Индекс нь css-ийн мөрийн дараалал. */
-  fin: { css: '--row-fin', axis: 'y', track: 2, min: 120, max: 560, sign: -1 },
+  /* ⚠️ 2026-10-26: доод хязгаар 120 → 200 — үүнээс бага өндөрт цуваа чартын огнооны мөр тасардаг байв
+     (хэрэглэгч: «чарт бүтэн харагддаг байх»). */
+  fin: { css: '--row-fin', axis: 'y', track: 2, min: 200, max: 560, sign: -1 },
   // `.fin` — доод зурвасын дөрвөн картын хоорондох гурван зааг
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fin2: { css: '--fin-2', axis: 'x', track: 1, min: 150, max: 900, sign: 1 },
@@ -69,9 +71,12 @@ const LINKED: Partial<Record<PaneKey, PaneKey>> = {};
 /* ⚠️ 2026-10-07: `.v3` — хэрэглэгч «дэлгэцээ тэнцүү хуваа»: доод зурвасын КАРТЫН хуваалтыг
    (`fin1` · `fhL` · `fhR`) тэглэж бүх карт ТЭНЦҮҮ эхэлнэ. Баганын өргөн (`l`/`r`) ба зурвасын
    өндөр (`fin`) нь `.v2`-оос ШИЛЖИНЭ (`LS_PREV`) — тэдгээрийг хэрэглэгч санаатай тохируулсан. */
-const LS = 'selbe.habea.panes.v3';
-const LS_PREV = 'selbe.habea.panes.v2';
-const EQUALISE: PaneKey[] = ['fin1', 'fin2', 'fin3', 'fhL', 'fhR'];
+/* ⚠️ 2026-10-26: `.v4` — хэрэглэгч «анхны харагдацад чарт бүтэн, 2 чарт бол дэлгэцээ тэнцүү хуваа»: доод
+   зурвасын карт хуваалт (`fin1` …) ба зурвасын ӨНДӨР (`fin`)-ийг тэглэнэ — өндөр нь агуулгаараа (`auto`) эхэлж
+   чарт бүтэн, хоёр карт 1fr/1fr. Баганын өргөн (`l`/`r`) нь `.v3`-аас шилжинэ. */
+const LS = 'selbe.habea.panes.v4';
+const LS_PREV = 'selbe.habea.panes.v3';
+const EQUALISE: PaneKey[] = ['fin', 'fin1', 'fin2', 'fin3', 'fhL', 'fhR'];
 const STEP = 12;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 

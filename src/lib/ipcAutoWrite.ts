@@ -20,6 +20,7 @@ import { queryFeatures } from '@/lib/query';
 import { snapshotOf, LINK_FIELDS } from '@/lib/ipcLink';
 import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { isBlocklessBagts } from '@/lib/negtgelWrite';
+import { uniqueBlockCounts } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
@@ -70,9 +71,16 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        ⚠️ 2026-10-09 (аудит №6): хуудас бүрийн төлвийг цуглуулж шийдвэрийг цэвэр `sheetsVerdict`-д
        (`ipcAuto.ts`) өгнө — огт нийтлэгдээгүй хуудас (`unpublished`) тусдаа төлөв, дэлгэрэнгүй тэнд. */
     const reads: SheetRead[] = [];
+    /* ⚠️ 2026-10-26 (аудит): БҮРЭН ДАВХАРДСАН хуудас (Багц 4-2·12F — блок нь 9F-ийн F6_x-тэй ижил «6/1…6/8») IPC-д
+       ОРОХГҮЙ — нэгтгэл (`negtgelWrite` → `sumObyemParts`) ба дашбоардын (`loadPkgObyem`) НЭГ дүрэм: жин нь
+       `uniqueBlockCounts` (PKGS-ийн дараалал, эхнийх давамгайлна), 0 бол алгасна. Урьд нь 12F-ийн анхны батлагдсан
+       жаазаас хойш F6 блокийн обьём · мөнгө `obyem` · `guits_une`-д ДАВХАР орж, худал `guits_zoruu` HO_IPC-д бичигдэх байв. */
+    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p).catch(() => null)));
+    const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
-    for (const pkg of wanted) {
-      const sc: Schema | null = await loadSchema(pkg).catch(() => null);
+    for (const [i, pkg] of wanted.entries()) {
+      const sc = schemas[i];
+      if (sc && sc.bld.length > 0 && weights[i] === 0) continue;
       if (!sc?.f.fillDate) { reads.push('missing'); continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
       if (!cols.length) { reads.push('no-obyem'); continue; }
@@ -177,7 +185,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17) — `submission.ts`,
        `zovshoorol.deleteZov`-той ижил: нэг мөр илгээсэн тул яг нэг үр дүн ирнэ. */
     if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
-    const bad = res.find((r) => r.success === false);
+    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (ArcGIS-ийн 200-гийн занга) */
+    const bad = res.find((r) => r.success !== true);
     if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
 
     /* ⚠️ Кэшийг хүчингүй болгоно — эс бөгөөс «Санхүүжилт» хуудас шинэ
@@ -290,7 +299,7 @@ async function dedupeAuto(
   if (dr.length !== 1 || dr[0].success !== true)
     return {
       ok: false,
-      error: tr('Давхар IPC мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}', newOid, dr[0]?.error?.description ?? ''),
+      error: tr('Давхар IPC мөр (бүртгэл №{0}) үлдлээ — админд мэдэгдэнэ үү (гараар устгах шаардлагатай): {1}', newOid, dr[0]?.error?.description ?? ''),
     };
   return { ok: true, op: 'update', why: 'dedup' };
 }

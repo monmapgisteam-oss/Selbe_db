@@ -15,18 +15,32 @@
  *
  * ⚠️ `Cashflow_dun` ГАРААР БИЧИГДЭХГҮЙ — хувиас бодогдоно. Хоёуланг нь гараар
  * бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
+ *
+ * ⚠️ 2026-10-26: САРЫН МӨНГӨНИЙ ЭХ (`sar_mongo_eh`, `monthlyMoney`-ийн толгой). 'huvaari' гэрээний сарууд нь
+ *    Хуваарийн сарын обьём × нэгж өртгөөр ТООЦООЛОГДОНО — энд ЗӨВХӨН УНШИХ хүснэгтээр харагдана, засагдахгүй,
+ *    «Цэвэрлэх» алга. 'garaar' гэрээний зам ӨӨРЧЛӨГДӨӨГҮЙ. «Хуваарь руу шилжүүлэх» товч (`canSwitch`, `cfSwitch` эрх)
+ *    гараар сарын мөрийг УСТГАЖ эхийг солино — буцаахгүй, батлуулах цонхтой (`monthlyMoney.switchToHuvaari`).
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAsync } from '@/lib/useAsync';
+import {
+  loadMonthlyMoney, monthSourceOf, confirmAndSwitch, switchPhaseWhy,
+  PKG_KEYS, SRC_HUVAARI, type MonthlyMoney, type ContractState,
+} from '@/lib/monthlyMoney';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num } from '@/lib/format';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
-import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
+import { awaitingReload } from '@/lib/finEdit';
+import { CASHFLOW_NEW, CF_MONTH, CF_MONTH_WHERE, CF_WORK_WHERE, pkgKeyOf } from '@/lib/services';
+import { queryFeatures } from '@/lib/query';
+import { loadFinancePublishInputs, publishFinanceBatch, recomputeFinanceAmounts } from '@/lib/financePublish';
 import { cfStartKeyOf } from '@/lib/gdash';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
 import c from '@/modules/cfplan.module.css';
 import { userError } from '@/components/ui';
+import { askConfirm } from '@/lib/confirm';
 
 type Row = Record<string, unknown>;
 
@@ -49,6 +63,16 @@ const idOf = (v: unknown): number | null => {
   const x = Number(v);
   return Number.isFinite(x) ? x : null;
 };
+
+/** Сарын мөр → `monthlyMoney`-ийн оролт (`gdash.CfPlanRow`-ийн хэлбэр) */
+const manualOf = (rows: readonly Row[]) => rows
+  .map((r) => ({
+    id: idOf(r[CF_MONTH.id]) ?? -1,
+    start: idOf(r[CF_MONTH.start]),
+    pct: nOf(r[CF_MONTH.pct]),
+    amount: nOf(r[CF_MONTH.amount]),
+  }))
+  .filter((r) => r.id > 0 && r.start != null);
 
 /** Хоосон биш атлаа тоо болохгүй оролт — хадгалахаас өмнө татгалзана */
 const badNum = (v: unknown) => String(v ?? '').trim() !== '' && nOf(v) == null;
@@ -117,9 +141,28 @@ const costOf = (r: Row | null | undefined): number | null => {
   return Number.isFinite(v) && v > 0 ? v : null;
 };
 
+/** 'huvaari' гэрээний тооцоолсон цуваа ГАРААГҮЙ шалтгаан — хүнд ойлгомжтой (null ≠ 0: «0 ₮» гэж харуулахгүй) */
+const huvStateText = (s: ContractState): string => {
+  if (s === 'noKey') return tr('Багцын дугааргүй (эсвэл олон багцын) гэрээ — Хуваарь-аас сарын мөнгө бодогдохгүй.');
+  if (s === 'noSheet') return tr('Энэ багцад Хуваарийн бөглөх хуудас алга — сарын мөнгө бодогдохгүй.');
+  if (s === 'failed') return tr('Бөглөх хуудас уншигдсангүй — тооцоолсон сарын мөнгө гарсангүй. Хуудсыг дахин ачаална уу.');
+  if (s === 'sharedNoCost') return tr('Багцын Хуваарийг өөр гэрээтэй хуваалцдаг ч ХО дүнгүй тул хувь оноогдсонгүй.');
+  return tr('Хуваарьт сарын обьём (нэгж өртөгтэй) хараахан алга — «Хуваарь» хэсэгт сарын обьём оруулахад энд гарна.');
+};
+
 export function CashflowPlan({
-  works, months, onSaved, canEdit = true, onDirty, monthsError = false,
+  works, months, onSaved, canEdit = true, onDirty, monthsError = false, canSwitch = false, money,
 }: {
+  /**
+   * «Гараар → Хуваарь» шилжүүлэх эрх (`cfSwitch`, 2026-10-26) — дуудагч `hasCap(user, 'cfSwitch')` өгнө.
+   * Анхдагч `false` — товч харагдахгүй.
+   */
+  canSwitch?: boolean;
+  /**
+   * Тооцоолсон сарын мөнгө (`monthlyMoney.loadMonthlyMoney`) — дуудагч аль хэдийн ачаалсан бол. `undefined` бол
+   * 'huvaari' гэрээ байвал энд өөрөө ачаална; 'huvaari' гэрээгүй бол ОГТ ачаалахгүй.
+   */
+  money?: MonthlyMoney | null;
   /**
    * Сарын задаргаа УНШИГДСАНГҮЙ (2026-09-29 аудит 10) — «сар үүсээгүй» гэж
    * худал зөвлөхгүй, «уншигдсангүй» гэж хэлнэ.
@@ -145,6 +188,20 @@ export function CashflowPlan({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  /**
+   * ⚠️ 2026-10-21: ХАДГАЛСНЫ АГШИН ДАХЬ `months` — шинэ мөрүүд (өөр лавлагаа) ирэх хүртэл `pend`-ийг
+   *    ХАДГАЛНА (`finEdit.awaitingReload`, «Гэрээний бүртгэл»-ийн загвар). Урьд нь `setPend({})` тэр
+   *    дороо ажиллаж, `months` хуучин хэвээр тул нүд хуучин утга руу үсэрч, хэрэглэгч тэр хуучин утгыг
+   *    дахин бичихэд «өөрчлөгдөөгүй» гэж хаягддаг байв. Дахин ачаалалт унавал `Data` алдаанд орж энэ
+   *    бүрэлдэхүүн unmount болно — хаалт мөнхөд үлдэхгүй.
+   */
+  const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
+  const reloading = awaitingReload(pubFrom, months);
+  /* Шинэ мөрүүд ирэв — хадгалсан засварыг одоо л арилгана (render үеийн төлөв тохируулалт) */
+  if (pubFrom != null && !reloading) {
+    setPubFrom(null);
+    setPend({});
+  }
 
   /** Ажил бүрийн сарууд — огноогоор эрэмбэлсэн */
   const byWork = useMemo(() => {
@@ -161,6 +218,31 @@ export function CashflowPlan({
     }
     return m;
   }, [months]);
+
+  /* ⚠️ 2026-10-26: САРЫН МӨНГӨНИЙ ЭХ — 'huvaari' гэрээ (толгойн ⚠️). Тийм гэрээ НЭГ Ч БАЙХГҮЙ бол юу ч ачаалахгүй. */
+  const srcField = CASHFLOW_NEW.fields.monthSource;
+  const huvIds = useMemo(() => {
+    const s = new Set<number>();
+    for (const w of works) {
+      const id = idOf(w[CF_MONTH.id]);
+      if (id != null && monthSourceOf(w[srcField]) === SRC_HUVAARI) s.add(id);
+    }
+    return s;
+  }, [works, srcField]);
+  const hasHuv = huvIds.size > 0;
+  const moneyQ = useAsync<MonthlyMoney | null>(
+    () => (money !== undefined || !hasHuv ? Promise.resolve(null) : loadMonthlyMoney(manualOf(months))),
+    [money, hasHuv, months],
+  );
+  const mm = money !== undefined ? money : moneyQ.state === 'ready' ? moneyQ.data : null;
+  /** 'huvaari' гэрээний тооцоолсон хувийн нийлбэр (0–100; ХО дүнгүй/сар алга бол null) */
+  const huvSum = (id: number): number | null => {
+    const cm = mm?.contracts.get(id);
+    if (!cm || cm.cost == null || !cm.months.size) return null;
+    let s = 0;
+    for (const v of cm.months.values()) s += v;
+    return (s / cm.cost) * 100;
+  };
 
   /** Кодоор эрэмбэлсэн ажлууд — 4-р түвшний бүтэн жагсаалт */
   const sorted = useMemo(() => works.slice().sort((x, y) => {
@@ -222,7 +304,29 @@ export function CashflowPlan({
   const curMonths = sel == null ? [] : byWork.get(sel) ?? [];
   const curCost = costOf(cur);
   const curSum = sel == null ? null : sumOf(sel);
-  const dirty = Object.keys(pend).length;
+  /** 'huvaari' эхтэй гэрээ — сарууд тооцоолсон, засагдахгүй */
+  const curHuv = sel != null && huvIds.has(sel);
+  const curMoney = curHuv && sel != null ? mm?.contracts.get(sel) ?? null : null;
+  const [switching, setSwitching] = useState(false);
+  /** Шилжүүлж болох уу — багц нь Хуваарийн хуудастай (`PKG_KEYS`); эс бөгөөс сарын мөнгө тооцоологдохгүй */
+  const curPkgOk = cur != null && PKG_KEYS.has(pkgKeyOf(cur[CASHFLOW_NEW.fields.pkg]));
+  /* ⚠️ 2026-10-26 (хяналт): зөвхөн «Барилга угсралт» үе шатын гэрээ (`monthlyMoney.SWITCH_PHASE`-ийн ⚠️).
+     ⚠️ 2026-10-26 (хяналт №2): `uy_shat` ХООСОН бол ч хаалттай (`switchPhaseWhy`). Хуудасны тооцоо хоосон/дутуу
+     эсэхийг товч дарахад ШИНЭЭР уншина. */
+  const curPhaseWhy = cur == null ? null : switchPhaseWhy(cur[CASHFLOW_NEW.fields.phase]);
+  const curPhaseOk = cur != null && curPhaseWhy == null;
+  const curSwitchable = cur != null && !curHuv && curPkgOk && curPhaseOk;
+  /** Гараар сарын мөрийн нийт ₮ (`Cashflow_dun`) — устах дүн; дүнтэй мөр алга бол null (0 БИШ) */
+  const curManualTotal = (() => {
+    let any = false;
+    let t = 0;
+    for (const r of curMonths) { const v = nOf(r[CF_MONTH.amount]); if (v != null) { any = true; t += v; } }
+    return any ? t : null;
+  })();
+  /* ⚠️ 2026-10-21: дахин ачаалалт хүлээж буй `pend` нь ХАДГАЛАГДСАН — засвар биш */
+  const dirty = reloading ? 0 : Object.keys(pend).length;
+  /** Хадгалж буй эсвэл хадгалсны дараах дахин ачаалалт — нүд/товч хаалттай */
+  const locked = busy || reloading || switching;
 
   /* ⚠️ Хадгалаагүй засвартай байхад таб хаахад хөтөч анхааруулна — `Finance`-ийн
      IPC бөглөлттэй ижил зан (2026-09-23). Мөн эцэгт `onDirty` мэдэгдэнэ. */
@@ -236,18 +340,13 @@ export function CashflowPlan({
   useEffect(() => () => onDirty?.(false), [onDirty]);
 
   const save = async () => {
-    if (busy || !dirty) return;
+    if (locked || !dirty) return;
     setBusy(true);
     setErr(null);
     setMsg(null);
     try {
-      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн */
-      const costById = new Map<number, number | null>();
-      for (const w of works) {
-        /* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажил `0`-д ХО дүнгээ бичихгүй (`idOf`) */
-        const wid = idOf(w[CF_MONTH.id]);
-        if (wid != null) costById.set(wid, costOf(w));
-      }
+      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн — ⚠️ 2026-10-23: доор ШИНЭ уншилтаар (`recomputeFinanceAmounts`;
+         дугааргүй эцэг `Cashflow_ID`-гүй тул ХО дүн бичигдэхгүй — 2026-09-29-ний дүрэм хэвээр) */
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
 
@@ -289,29 +388,59 @@ export function CashflowPlan({
           return `${sOf(w?.ajil_uilchilgee) || wid} — ${num(sumOf(wid) ?? 0, 2)}%`;
         });
         if (offIds.size > names.length) names.push('…');
-        if (!window.confirm(tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')))) return;
+        /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` — `window.confirm` «дахин бүү асуу»-гийн дараа
+           чимээгүй false буцааж «Хадгалах» юу ч хийхгүй болдог байв. */
+        if (!(await askConfirm(
+          tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')),
+          { ok: tr('Ийм хэвээр хадгалах') },
+        ))) return;
       }
 
+      /*
+       * ⚠️ 2026-10-23: «Cashflow» хүснэгтийн нийтлэлтэй (`Finance` FullTable) НЭГ зам — эцэг ба сарыг серверээс ШИНЭЭР
+       *    уншиж (`loadFinancePublishInputs`), өөр хэрэглэгчийн засвартай зөрвөл татгалзана (`FinancePublishConflict`),
+       *    `Cashflow_dun`-г ШИНЭ `ho_dun_geree`-ээр бодно (`recomputeFinanceAmounts`), бичихийн өмнө дахин шалгана
+       *    (`publishFinanceBatch`). Урьд нь хуудас нээх үеийн `works`/`months`-оор шууд `applyAll` хийдэг тул нөгөө
+       *    хэрэглэгчийн хувийг чимээгүй дарж, хуучин ХО дүнгээр мөнгөн дүн бичдэг байв.
+       * ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй; гэрээний дүнгүй бол ч `null` — `amountOf`-ийн дүрэм.
+       */
+      const upd = new Map<number, Row>(Object.entries(pend).map(([k, v]) => {
+        const oid = Number(k);
+        return [oid, { [oidField]: oid, [CF_MONTH.pct]: nOf(v) }];
+      }));
+      const financeInputs = await loadFinancePublishInputs({
+        updates: upd, parents: works, months, oidField,
+        read: async ({ parentOids, monthOids, ids }) => {
+          const parentWhere = [
+            ...(parentOids.length ? [`${oidField} IN (${parentOids.join(',')})`] : []),
+            ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
+          ];
+          const monthWhere = [
+            ...(monthOids.length ? [`${oidField} IN (${monthOids.join(',')})`] : []),
+            ...(ids.length ? [`cashflow_id IN (${ids.join(',')})`] : []),
+          ];
+          const [parents, freshMonths] = await Promise.all([
+            parentWhere.length ? queryFeatures(CASHFLOW_NEW.url, {
+              where: `(${CF_WORK_WHERE}) AND (${parentWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+            }) : Promise.resolve([]),
+            monthWhere.length ? queryFeatures(CASHFLOW_NEW.url, {
+              where: `(${CF_MONTH_WHERE}) AND (${monthWhere.join(' OR ')})`, orderBy: `${oidField} ASC`,
+            }) : Promise.resolve([]),
+          ]);
+          return { parents, months: freshMonths };
+        },
+      });
+      recomputeFinanceAmounts({
+        updates: upd, parents: financeInputs?.parents ?? works, months: financeInputs?.months ?? months, oidField, deletes: [],
+      });
       /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */
       let noCost = 0;
-      const updates = Object.entries(pend).map(([k, v]) => {
-        const oid = Number(k);
-        const pct = nOf(v);
-        const mid = idOf(mById.get(oid)?.[CF_MONTH.id]);
-        const cost = mid == null ? null : costById.get(mid) ?? null;
-        if (pct != null && cost == null) noCost += 1;
-        return {
-          [oidField]: oid,
-          [CF_MONTH.pct]: pct,
-          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй — «бөглөөгүй»
-             ба «энэ сард гүйцэтгэл байхгүй» хоёр ӨӨР мэдэгдэл.
-             ⚠️ Гэрээний дүнгүй бол ч `null` — `0 ₮` гэж худал бичихгүй. */
-          [CF_MONTH.amount]: pct == null || cost == null ? null : (cost * pct) / 100,
-        };
-      });
-      const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates }, { cap: 'finEdit' });
+      for (const u of upd.values()) if (u[CF_MONTH.pct] != null && u[CF_MONTH.amount] == null) noCost += 1;
+      const { n } = await publishFinanceBatch(financeInputs, () =>
+        applyAll(CASHFLOW_NEW.url, oidField, { updates: [...upd.values()] }, { cap: 'finEdit' }));
       invalidate('CASHFLOW_NEW');
-      setPend({});
+      /* ⚠️ 2026-10-21: `setPend({})` БИШ — шинэ `months` ирэх хүртэл бичсэн утга харагдана (`pubFrom`) */
+      setPubFrom(months);
       setMsg(noCost
         ? tr('{0} сар хадгалагдав · {1} сар гэрээний дүнгүй тул ₮ бичигдсэнгүй', n, noCost)
         : tr('{0} сар хадгалагдав', n));
@@ -323,9 +452,46 @@ export function CashflowPlan({
     }
   };
 
+  /**
+   * «ГАРААР → ХУВААРЬ» ШИЛЖҮҮЛЭХ (2026-10-26) — гараар сарын мөрүүд УСТАНА, буцаахгүй → `askConfirm` (danger).
+   * ⚠️ Хадгалаагүй засвартай үед хаалттай: устгах мөрийн засвар илгээгдэлгүй алга болно.
+   * ⚠️ Хариу алдагдсан бол `switchToHuvaari` дахин уншиж баталдаг; батлагдаагүй бол алдаа нь «дахин ачаалж шалга».
+   */
+  /*
+   * ⚠️ 2026-10-26 (хяналт): ШИЛЖҮҮЛЭХИЙН ӨМНӨ багцын тооцоог ШИНЭЭР уншина (`previewSwitch`) — батлуулах цонх устах
+   *    гараар нийт ба гарах тооцоолсон нийтийг ХОЁУЛАНГ нь нэрлэнэ. Уншигдаагүй бол татгалзана; хоосон/дутуу бол ХОЁР
+   *    ДАХЬ тусгай анхааруулга асууж, зөвшөөрвөл л `allowIncomplete`. Урьд нь задаргаа 0 мөртэй үед гараар мөр
+   *    устаж, оронд нь юу ч гарахгүй байсан ч цонх энэ тухай хэлдэггүй байв.
+   */
+  const doSwitch = async () => {
+    /* ⚠️ 2026-10-26: сарын задаргаа уншигдаагүй (`monthsError`) бол ШИЛЖҮҮЛЭХГҮЙ — `curMonths` хоосон тул цонх «0 мөр (нийт —)
+       устана» гэж худал асууж, `switchToHuvaari` серверээс дахин уншаад БҮХ гараар мөрийг буцаалтгүй устгадаг байв
+       («Төсөл төлөвлөгөө биелэлт»-ийн ижил товч `ProjectPlanTable` үүгээр аль хэдийн хаагддаг) */
+    if (!cur || sel == null || locked || dirty || !canSwitch || !curSwitchable || monthsError) return;
+    const name = sOf(cur.ajil_uilchilgee) || String(sel);
+    setErr(null);
+    setMsg(null);
+    /* ⚠️ 2026-10-26 (хяналт №2): урсгал нь `monthlyMoney.confirmAndSwitch`-д — «Төсөл төлөвлөгөө биелэлт»-ийн товчтой НЭГ */
+    try {
+      const fl = await confirmAndSwitch({
+        cashflowId: sel, name, pkg: pkgKeyOf(cur[CASHFLOW_NEW.fields.pkg]), phase: cur[CASHFLOW_NEW.fields.phase],
+        manualRows: curMonths.length, manualTotal: curManualTotal, money: mnt, ask: askConfirm, onBusy: setSwitching,
+      });
+      if (fl.kind === 'refused') { setErr(fl.msg); return; }
+      if (fl.kind === 'cancel') return;
+      const r = fl.result;
+      setMsg(r.already ? tr('Аль хэдийн Хуваарь эхтэй') : tr('Хуваарь руу шилжүүлэв · {0} сарын мөр устгав', r.deleted));
+      onSaved();
+    } catch (e) {
+      setErr(userError(e));
+    } finally {
+      setSwitching(false);
+    }
+  };
+
   /** Ажлын мөрийн бөглөлтийн цэг */
   const dot = (id: number) => {
-    const s = sumOf(id);
+    const s = huvIds.has(id) ? huvSum(id) : sumOf(id);
     const st = fillOf(s);
     const title = s == null
       ? tr('Бөглөөгүй')
@@ -342,6 +508,7 @@ export function CashflowPlan({
             <i className={`${c.dot} ${c.done}`} />{tr('100%')}
             <i className={`${c.dot} ${c.part}`} />{tr('дутуу')}
             <i className={`${c.dot} ${c.none}`} />{tr('хоосон')}
+            <i className={`${c.dot} ${c.over}`} />{tr('100%-иас их')}
           </span>
         </div>
         <ul className={c.list}>
@@ -361,6 +528,8 @@ export function CashflowPlan({
                 {dot(it.id)}
                 <span className={c.pkg}>{sOf(it.row.bagts) || '—'}</span>
                 <span className={c.nm}>{sOf(it.row.ajil_uilchilgee)}</span>
+                {/* ⚠️ 2026-10-26: тооцоолсон эхтэй гэрээ — сарууд засагдахгүй */}
+                {huvIds.has(it.id) && <span className={c.pkg} title={tr('Сарын мөнгө Хуваарь-аас тооцоологдоно')}>{tr('Хуваарь')}</span>}
               </button>
             </li>
           )))}
@@ -379,14 +548,65 @@ export function CashflowPlan({
                 {' · '}
                 {tr('ХО дүн: {0}', mnt(curCost))}
                 {' · '}
-                {tr('{0} сар', curMonths.length)}
+                {curHuv ? tr('Эх: Хуваарь (тооцоолсон)') : tr('{0} сар', curMonths.length)}
               </p>
               {curCost == null && (
                 <p className={c.warn}>{tr('Гэрээний дүнгүй — ₮ бодогдохгүй')}</p>
               )}
             </div>
 
-            {curMonths.length === 0 ? (
+            {curHuv ? (
+              /* ⚠️ 2026-10-26: ТООЦООЛСОН сарууд — ЗӨВХӨН УНШИНА (толгойн ⚠️). Гараар мөр (үлдсэн бол ч) харагдахгүй,
+                 засагдахгүй. Хувь = дүн ÷ ХО дүн × 100 (`monthlyMoney`-ийн ⚠️); null ≠ 0 — сар алга бол шалтгааныг хэлнэ. */
+              mm == null ? (
+                moneyQ.state === 'error'
+                  ? <p className={c.warn}>{tr('Тооцоолсон сарын мөнгө уншигдсангүй. Хуудсыг дахин ачаална уу.')}</p>
+                  : <p className={c.hint}>{tr('Хуваарь-аас сарын мөнгө тооцоолж байна…')}</p>
+              ) : !curMoney || !curMoney.months.size ? (
+                <p className={c.hint}>{huvStateText(curMoney?.state ?? 'empty')}</p>
+              ) : (
+                <>
+                  <table className={c.tbl}>
+                    <thead>
+                      <tr>
+                        <th>{tr('Сар')}</th>
+                        <th className={c.r}>{tr('Хувь, %')}</th>
+                        <th className={c.r}>{tr('Дүн')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...curMoney.months.keys()].sort().map((k) => {
+                        const v = curMoney.months.get(k)!;
+                        return (
+                          <tr key={k} className={c.rowDone}>
+                            <td>{k}</td>
+                            <td className={c.r}>{curCost == null ? '—' : `${num((v / curCost) * 100, 2)}%`}</td>
+                            <td className={c.r}>{mnt(v)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>{tr('НИЙТ')}</td>
+                        <td className={c.r}>{(() => { const s = huvSum(sel!); return s == null ? '—' : `${num(s, 2)}%`; })()}</td>
+                        <td className={c.r}>{mnt([...curMoney.months.values()].reduce((a, x) => a + x, 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  {/* ⚠️ 2026-10-26 (хяналт): нэгжгүй/олдоогүй нүдтэй бол НИЙТ ДУТУУ — «ok» хүснэгт дутууг нуухгүй (null ≠ 0) */}
+                  {(curMoney.noUnit > 0 || curMoney.noRow > 0) && (
+                    <p className={c.warn}>
+                      {tr('⚠ НИЙТ дутуу: багцын Хуваарийн {0} нүд нэгж өртөггүй, {1} нүд бөглөх хуудсанд олдоогүй тул ₮-д тооцогдсонгүй.', curMoney.noUnit, curMoney.noRow)}
+                    </p>
+                  )}
+                  <p className={c.hint}>
+                    {tr('Сарын мөнгө = Хуваарийн сарын обьём × бөглөх хуудасны нэгж өртөг — энд засагдахгүй.')}
+                    {curMoney.share != null && curMoney.share < 1 && ` ${tr('Багцын Хуваарийн {0}% (ХО дүнгийн харьцаа).', num(curMoney.share * 100, 1))}`}
+                  </p>
+                </>
+              )
+            ) : curMonths.length === 0 ? (
               /* ⚠️ Огноогүй ажилд сарын мөр үүсдэггүй — шалтгааныг ХЭЛНЭ,
                  эс бөгөөс хүн хоосон дэлгэц хараад алдаа гэж бодно.
                  ⚠️ 2026-09-29 (аудит 10): ГУРВАН шалтгаан ялгана. Урьд нь үргэлж
@@ -436,10 +656,11 @@ export function CashflowPlan({
                                  `save` нь `await applyAll`-ийн дараа `pend`-ийг бүхэлд нь
                                  цэвэрлэдэг тул тэр хооронд бичсэн хувь илгээгдэлгүй арилж,
                                  «хадгалагдав» гэж худал мэдэгддэг байв. */
-                              readOnly={!canEdit || busy}
+                              /* ⚠️ 2026-10-21: дахин ачаалалт хүлээх үед ч (`locked`) */
+                              readOnly={!canEdit || locked}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
                               onChange={(e) => {
-                                if (!canEdit || busy) return;
+                                if (!canEdit || locked) return;
                                 const v = e.target.value;
                                 /* ⚠️ 2026-09-25: анхны утга руугаа БУЦВАЛ засвар биш — `pend`-ээс
                                    хасна. Урьд нь үлдэж, «Хадгалах (N)» ба таб солих баталгаа
@@ -487,9 +708,19 @@ export function CashflowPlan({
           </>
         )}
 
+        {/* ⚠️ 2026-10-26 (хяналт): `MonthlyMoney.issues` (нэгжгүй/олдоогүй нүд, хуваалцсан багц, уншигдаагүй хуудас) — урьд
+            нь хаана ч харагддаггүй байв. 'huvaari' гэрээ сонгосон үед л (гараар замын дэлгэц ӨӨРЧЛӨГДӨХГҮЙ). */}
+        {curHuv && mm != null && mm.issues.length > 0 && (
+          <details className={c.warn}>
+            <summary>{tr('Тооцоолсон сарын мөнгөний анхааруулга: {0}', mm.issues.length)}</summary>
+            <ul>{mm.issues.slice(0, 100).map((s, i) => <li key={i}>{s}</li>)}</ul>
+          </details>
+        )}
+
         <div className={c.bar}>
-          {err && <span className={c.err}>{err}</span>}
-          {msg && <span className={c.ok}>{msg}</span>}
+          {/* ⚠️ 2026-10-26 (аудит): дэлгэц уншигч хадгалалтын амжилт/алдааг зарлана (бусад модультай ижил) */}
+          {err && <span className={c.err} role="alert">{err}</span>}
+          {msg && <span className={c.ok} role="status">{msg}</span>}
           {/*
             * ЦЭВЭРЛЭХ — сонгосон ажлын БҮХ сарын хувийг хоослоно.
             *
@@ -499,11 +730,28 @@ export function CashflowPlan({
             * ⚠️ `null` бичнэ, 0 БИШ: «бөглөөгүй» ба «энэ сард гүйцэтгэл
             * байхгүй» хоёр ӨӨР мэдэгдэл.
             */}
-          {canEdit && cur != null && curMonths.length > 0 && (
+          {/* ⚠️ 2026-10-26: «Хуваарь руу шилжүүлэх» — `cfSwitch` эрхтэй, 'garaar' гэрээ, багц нь хуудастай үед л */}
+          {canSwitch && cur != null && !curHuv && (
             <button
               type="button"
               className={c.clear}
-              disabled={busy || curSum == null}
+              disabled={locked || dirty > 0 || !curSwitchable || monthsError}
+              title={monthsError
+                ? tr('Сарын задаргаа уншигдсангүй — хуудсыг дахин ачаална уу')
+                : !curPkgOk
+                ? tr('Энэ гэрээний багцад Хуваарийн бөглөх хуудас алга')
+                : curPhaseWhy != null ? curPhaseWhy
+                : dirty > 0 ? tr('Эхлээд засвараа хадгална уу') : tr('Гараар сарын мөрийг устгаж, сарын мөнгийг Хуваарь-аас тооцоолно')}
+              onClick={() => { void doSwitch(); }}
+            >
+              {switching ? tr('Шилжүүлж байна…') : tr('Хуваарь руу шилжүүлэх')}
+            </button>
+          )}
+          {canEdit && cur != null && !curHuv && curMonths.length > 0 && (
+            <button
+              type="button"
+              className={c.clear}
+              disabled={locked || curSum == null}
               title={tr('Энэ ажлын бүх сарын хувийг хоослоно')}
               onClick={() => setPend((p) => {
                 const nx = { ...p };
@@ -525,10 +773,10 @@ export function CashflowPlan({
           <button
             type="button"
             className={c.save}
-            disabled={busy || !dirty || !canEdit}
+            disabled={locked || !dirty || !canEdit}
             onClick={save}
           >
-            {busy ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
+            {locked ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
+import { rovingTab, tabFocusNav } from '@/components/ui';
 import {
   SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm,
   type SimKind, type PopBasis,
@@ -196,18 +197,21 @@ export function Simulation({
           нэг дор өөрчлөгдөнө. */}
       <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
         {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
-        <div className={c.seg} role="tablist" aria-label={tr('Симуляцын төрөл')}>
+        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`) — сонголт симуляц асаадаг
+            тул Enter/Space-ээр; `muted` үед эхний таб Tab-аар орно (`rovingTab`) */}
+        <div className={c.seg} role="tablist" aria-label={tr('Симуляцын төрөл')} onKeyDown={(e) => tabFocusNav(e)}>
           {/* ⚠️ Табын ДАРААЛАЛ нь дуудагчийн `kinds`-ээс — `SIM_KINDS`-ийн
               бүртгэлийн дарааллаас БИШ. Самбар бүр өөрийн эрэмбээ тогтоох
               боломжтой (жиш. «Ачаалал» эхэнд). */}
           {shownKinds
             .map((key) => SIM_KINDS.find((k) => k.key === key))
             .filter((k): k is (typeof SIM_KINDS)[number] => !!k)
-            .map((k) => (
+            .map((k, i, all) => (
               <button
                 key={k.key}
                 type="button"
                 role="tab"
+                tabIndex={rovingTab(!muted && kind === k.key, i, !muted && all.some((x) => x.key === kind))}
                 aria-selected={!muted && kind === k.key}
                 className={`${c.segBtn} ${!muted && kind === k.key ? c.segOn : ''}`}
                 onClick={() => setKind(k.key)}

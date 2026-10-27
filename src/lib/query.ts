@@ -5,6 +5,7 @@ import {
 } from '@/lib/authToken';
 /* ⚠️ 2026-10-06: бичилтийн үе (`shared`-ийн ⚠️). `dataBus` нь зөвхөн `i18nCore`-ийг импортлодог — мөчлөггүй. */
 import { writeEpoch } from '@/lib/dataBus';
+import { fixImportStamps } from '@/lib/editTrack';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -166,14 +167,12 @@ const TIMEOUT_MS = 30_000;
  *    `*.arcgis.com` үед л; бусад хостод зөвхөн env-ийн бүтэн origin+path
  *    угтвар (`startsWith`) таарна.
  */
-const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
-const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`)
-  ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? ''
-  : '';
-const isOrgUrl = (url: string): boolean =>
-  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
-  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+/* ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт): байгууллага = Сэлбэ Enterprise ArcGIS Server — `NEXT_PUBLIC_ENT_DATA`
+   (`…/map/rest/services/Hosted`)-ийн `/Hosted`-гүй суурь: hosted өгөгдөл, ортофото (MapServer · ImageServer), меш, BIM
+   бүгд энэ дор. AGOL (`NEXT_PUBLIC_ARCGIS_HJ`) ба `*.arcgis.com`-ын org сегментийн шалгуур ХАСАГДСАН — тэр хост руу
+   хүсэлт явахгүй (`run`-ийн ⚠️). Хувьсагчийг ШУУД (статик нэрээр) уншина — `services` импортлохгүй (ачаалалтын гинж). */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '').replace(/\/Hosted$/i, '');
+const isOrgUrl = (url: string): boolean => !!ORG_BASE && url.startsWith(`${ORG_BASE}/`);
 
 /**
  * ⚠️ 2026-10-01: `token: 'always'` дуудлага org/портал БИШ хост руу явлаа — токен
@@ -239,15 +238,20 @@ const backoff = (attempt: number) => sleep(400 * 2 ** attempt + Math.random() * 
  * ⚠️ 2026-10-05: УНШИЛТЫН сүлжээний/5xx дахин оролдлого. Урьд нь сүлжээний алдаанд НЭГ л
  *    удаа (300–500 мс) дахин оролддог, HTTP 500/502/504-ийг огт давтдаггүй байсан тул
  *    барилгын талбайн тогтворгүй сүлжээнд харагдац бүхэлдээ алдаа болдог байв.
- * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета) — бичих endpoint,
- *    `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн тодорхойгүй → давхар бичилт).
- *    Бичилт биш бусад хүсэлтийн хуучин НЭГ удаагийн сүлжээний давталт хэвээр.
+ * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета · доорх хавсралт/холбоот
+ *    бичлэг/домэйны уншилт) — бичих endpoint, `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн
+ *    тодорхойгүй → давхар бичилт). Бусад endpoint-ийн үр дүн тодорхойгүй тул автоматаар дахин илгээхгүй.
+ * ⚠️ 2026-10-21 (аудит): `/queryAttachments` · `/queryRelatedRecords` · `/queryDomains` ба
+ *    `/<oid>/attachments` (хавсралтын ЖАГСААЛТ — `addAttachment`/`deleteAttachments` биш) нь идемпотент
+ *    уншилт: 2026-10-05-ны «зөвхөн /query» хязгаарлалтаар МА/MIR/ХАБЭА-ийн зургийн жагсаалт, үзлэгийн
+ *    тайлангийн хавсралт нэг глитч/503-д шууд алдаа болдог болсон байв (суурь хувилбарт давтагддаг байсан).
  */
 const NET_RETRIES = 3;
 const HTTP5_RETRIES = 2;
 const netBackoff = (n: number) => sleep(350 * 2 ** n + Math.random() * 200);
 const isReadReq = (url: string, params: Record<string, string>): boolean =>
-  /\/query\/?$/i.test(url)
+  /\/(query|queryAttachments|queryRelatedRecords|queryDomains)\/?$/i.test(url)
+  || /\/\d+\/attachments\/?$/i.test(url)
   || (Object.keys(params).length === 0 && /\/(FeatureServer|MapServer)(\/\d+)?\/?$/i.test(url));
 
 async function attemptRequest(
@@ -259,17 +263,25 @@ async function attemptRequest(
   netTries = 0,
   refreshed = false,
 ): Promise<ArcgisBody> {
+  // Also covers cancellation while queued, backing off, or refreshing a token.
+  if (o.signal?.aborted) throw o.signal.reason;
+  const readReq = isReadReq(full, params);
   const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
   const always = o.token !== 'org';
   /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
      горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ.
      ⚠️ 2026-10-01: `'always'` ч ЗӨВХӨН org/портал хост руу (дээрх `ArcgisReqOpts`-ийн ⚠️). */
+  /* ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН хаяг (`NEXT_PUBLIC_ENT_DATA` дор — `isOrgUrl`) нь байгууллагын үйлчилгээ —
+     нэвтэрсэн хэрэглэгчийн (Enterprise портал, `AUTH.portalUrl`) токен явна.
+     ⚠️ 2026-10-26: талбарын нэрийн хөрвүүлэлт (хуучин `entMap.entRequestWith`/`entResponseWith`) ХАСАГДСАН — код
+     Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэрээр асууж, хариуг тэр нэрээр нь уншина. */
+  const p = params;
   const hostOk = always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full);
   const userTok = hostOk ? tokenParam() : {};
   if (always && !hostOk) warnForeignHost(full);
   const body = always
-    ? { f: 'json', ...params, ...userTok }
-    : { f: 'json', ...userTok, ...params };
+    ? { f: 'json', ...p, ...userTok }
+    : { f: 'json', ...userTok, ...p };
   /** Энэ хүсэлтэд ЯВСАН хэрэглэгчийн токен — 498-ийн дараа «аль хэдийн солигдсон уу» */
   const sentTok = userTok.token ?? null;
   const ac = new AbortController();
@@ -315,20 +327,8 @@ async function attemptRequest(
     // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
     // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
     // Rate-limit retry-ээс ТУСДАА тоолуур (netTries) тул давхардахгүй.
-    /* ⚠️ 2026-09-30 (төслийн аудит): БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ.
-       Сервер хүсэлтийг хүлээн авч БИЧСЭНИЙ дараа хариу замдаа тасарвал (TypeError) давтан
-       илгээлт нь `addFeatures`/`applyEdits`-ийн мөрийг ХОЁР удаа нэмнэ (давхар илгээлт,
-       давхар хяналтын тойрог). Уншилт (query · statistics) аюулгүй тул хэвээр. 429/503 ба
-       498 нь сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн хариу тул тэдгээрийн давталт хэвээр. */
-    /* ⚠️ 2026-10-11 (аудит №7): админ/bootstrap endpoint-ууд ч бичилт — `createService` · `addToDefinition` ·
-       `updateDefinition` · `deleteFromDefinition` · `share`/`unshare` · `addItem`/`updateItem`/`deleteItems`.
-       Урьд нь жагсаалтад байгаагүй тул сүлжээний алдаанд дахин илгээгдэж хүснэгт/зүйл ДАВХАР үүсэх
-       (`permsRemote.createTable`) эрсдэлтэй байв — дээрх 2026-10-05-ны ⚠️ («`sharing/rest/*` хэзээ ч
-       давтагдахгүй») одоо үнэн. */
-    const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append|createService|addToDefinition|updateDefinition|deleteFromDefinition|share|unshare|addItem|updateItem|deleteItems)\/?$/i.test(full);
-    /* ⚠️ 2026-10-05: уншилтад `NET_RETRIES` хүртэл backoff-той; бусад (бичилт биш) нь хуучнаараа 1 */
-    const netMax = isReadReq(full, params) ? NET_RETRIES : 1;
-    if (e instanceof TypeError && netTries < netMax && !isWrite && !o.signal?.aborted && !timedOut()) {
+    // Only known reads can be replayed: a lost write response may follow a commit.
+    if (e instanceof TypeError && netTries < NET_RETRIES && readReq && !o.signal?.aborted && !timedOut()) {
       if (netTries === 0) await sleep(300 + Math.random() * 200);
       else await netBackoff(netTries);
       return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
@@ -343,16 +343,18 @@ async function attemptRequest(
     clearTimeout(timer);
     o.signal?.removeEventListener('abort', onAbort);
   }
+  if (o.signal?.aborted) throw o.signal.reason;
   if (!res.ok) {
     if (res.status === 429 || res.status === 503) throttleDown();
-    if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
+    // A proxy's 429/503 does not prove that an upstream write was rolled back.
+    if ((res.status === 429 || res.status === 503) && attempt < RETRIES && readReq) {
       await backoff(attempt);
       return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
     }
     /* ⚠️ 2026-10-05: 500/502/504 — ЗӨВХӨН уншилтад дахин (`isReadReq`-ийн ⚠️). Бичилтийн
        5xx нь сервер аль хэдийн бичсэн байж болох тул ХЭЗЭЭ Ч давтахгүй. */
     if ((res.status === 500 || res.status === 502 || res.status === 504)
-      && netTries < HTTP5_RETRIES && isReadReq(full, params) && !o.signal?.aborted) {
+      && netTries < HTTP5_RETRIES && readReq) {
       await netBackoff(netTries);
       return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
     }
@@ -367,7 +369,7 @@ async function attemptRequest(
   if (json.error) {
     const { code, message, details } = json.error;
     if (isRateLimit(message ?? '')) throttleDown();
-    if (isRateLimit(message ?? '') && attempt < RETRIES) {
+    if (isRateLimit(message ?? '') && attempt < RETRIES && readReq) {
       await backoff(attempt);
       return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
     }
@@ -398,16 +400,20 @@ async function attemptRequest(
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
     throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details, sessionExpired);
   }
-  return json;
+  /* ⚠️ 2026-10-26: импортын агшны засварын мөшгөлт (`editTrack.ts`-ийн ⚠️) — нэр биш, утгын засвар */
+  return isOrgUrl(full) ? fixImportStamps(json) : json;
 }
 
 /** Слот авч (эсвэл авалгүй) нэг хүсэлт гүйцэтгэнэ — `ensureFreshToken` хүсэлтийн ӨМНӨ */
 async function run(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
+  /* ⚠️ 2026-10-26: AGOL → Enterprise хаягийн зураглал (`entMap.remapUrl`) ХАСАГДСАН — код Enterprise-ийн БОДИТ
+     хаягаар (`services/env` · `${GUITS}/183` г.м.) шууд асууна. */
+  const target = full;
   await ensureFreshToken();
-  if (o.slot === false) return attemptRequest(full, params, o, 0);
+  if (o.slot === false) return attemptRequest(target, params, o, 0);
   await acquire();
   try {
-    return await attemptRequest(full, params, o, 0);
+    return await attemptRequest(target, params, o, 0);
   } finally {
     release();
   }
@@ -500,7 +506,10 @@ const reqKey = (url: string, params: Record<string, string>): string =>
 
 /* ⚠️ 2026-10-04: нэгтгэл нь `shared()` (`arcgisPost`-той НЭГ `inflight`, нэг түлхүүрийн дүрэм) —
    хоёр дахь ба цаашхи хүлээгч сүлжээ огт хөндөхгүй, гүн хуулбар авна. */
-async function request(url: string, params: Record<string, string>): Promise<Body> {
+async function request(url: string, params: Record<string, string>, signal?: AbortSignal): Promise<Body> {
+  /* ⚠️ 2026-10-19: `signal`-тай (AI туслахын асуулга — чат хаагдахад/хугацаа дуусахад зогсоно) бол
+     нэгтгэлгүй шууд — `shareable`-ийн ⚠️ (цуцлалт бусад хүлээгчид тархахгүй). */
+  if (signal) return run(`${url}/query`, params, { token: 'org', signal }) as Promise<Body>;
   return shared(`${url}/query`, params, { token: 'org' }) as Promise<Body>;
 }
 
@@ -551,8 +560,8 @@ export async function queryCount(url: string, where = '1=1', aoi?: Aoi): Promise
 }
 
 /** Нэг мөр статистик (бүлэглэлгүй) */
-export async function queryStats(url: string, stats: Stat[], where = '1=1', aoi?: Aoi): Promise<Row> {
-  const body = await request(url, { where, outStatistics: JSON.stringify(stats), ...spatial(aoi) });
+export async function queryStats(url: string, stats: Stat[], where = '1=1', aoi?: Aoi, signal?: AbortSignal): Promise<Row> {
+  const body = await request(url, { where, outStatistics: JSON.stringify(stats), ...spatial(aoi) }, signal);
   return body.features?.[0]?.attributes ?? {};
 }
 
@@ -570,13 +579,15 @@ export async function queryGroupEx(
   stats: Stat[],
   where = '1=1',
   aoi?: Aoi,
+  /** ⚠️ 2026-10-19: цуцлалт (AI туслах) — `request`-ийн ⚠️ */
+  signal?: AbortSignal,
 ): Promise<{ rows: Row[]; truncated: boolean }> {
   const body = await request(url, {
     where,
     groupByFieldsForStatistics: groupBy,
     outStatistics: JSON.stringify(stats),
     ...spatial(aoi),
-  });
+  }, signal);
   // ⚠️ Бүлгийн тоо maxRecordCount-аас хэтэрвэл сервер үр дүнг ЧИМЭЭГҮЙ тайрдаг —
   //    ховор ч тохиолдвол ядаж лог үлдээж мэдэгдэнэ.
   const truncated = !!body.exceededTransferLimit;
@@ -600,6 +611,8 @@ export async function queryFeatures(
   url: string,
   opts: {
     where?: string; outFields?: string[]; orderBy?: string; limit?: number; aoi?: Aoi;
+    /** ⚠️ 2026-10-19: цуцлалт (AI туслах) — `request`-ийн ⚠️ */
+    signal?: AbortSignal;
     /**
      * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — НЭРГҮЙ уншилтыг хаасан давхаргад
      * (`allowAnonymousToQuery: false`). Ийм давхарга токенгүй асуухад алдаа
@@ -641,7 +654,7 @@ export async function queryFeatures(
       if (order) page.orderByFields = order;
       if (rows.length) page.resultOffset = String(rows.length);
       if (opts.limit) page.resultRecordCount = String(opts.limit - rows.length);
-      const body = await request(url, page);
+      const body = await request(url, page, opts.signal);
       oidField = body.objectIdFieldName ?? oidField;
       const feats = (body.features ?? []).map((f) => f.attributes);
       // ⚠️ `exceededTransferLimit` нь ХОЁР ӨӨР шалтгаанаар асдаг: (а) серверийн
@@ -760,8 +773,22 @@ export type Group = {
   raws: string[];
   /** Хоосон бүлэг эсэх */
   blank: boolean;
-  /** Тоон хэмжигдэхүүнүүд (outStatistics-ийн outStatisticFieldName-ээр) */
+  /** Тоон хэмжигдэхүүнүүд (outStatistics-ийн outStatisticFieldName-ээр) — хэмжилтгүй бол 0 (нийлбэр/эрэмбэд) */
   values: Record<string, number>;
+  /**
+   * ⚠️ 2026-10-21: `values`-ийн null-ийг хадгалсан хувилбар — бүлгийн БҮХ мөрийн статистик `null` (хэмжилтгүй)
+   *    бол `null`, эс бөгөөс `values`-тэй ижил. Урьд `Number(r[k] ?? 0)` нь хэмжилтгүй бүлгийг «0 м» гэж харуулдаг
+   *    байв (null ≠ 0). `values` нь дуудагчдын (ViewPanel · LayerCatalog · Gazar) арифметикт `number` хэвээр (нийцтэй) — харуулахдаа
+   *    (`qtyText` г.м.) энийг уншина. ⚠️ 2026-10-21 (аудит): дуудагчид одоо үнэхээр уншина — LayerCatalog/ViewPanel-ийн
+   *    `qtyText(d, item.stats.q)`, ViewPanel-ийн бүсийн өрх/хүн амын нийлбэр (`sumStat`), Gazar-ийн `toItems` харагдац.
+   */
+  stats: Record<string, number | null>;
+  /**
+   * ⚠️ 2026-10-22 (аудит): бүлгийн түүхий утга ТООГООР ирсэн (талбар Integer/Double) — `groupWhere` хашилтгүй бичнэ.
+   *    Урьд нь `Code IN (N'1')` гэж явж Enterprise (PostgreSQL) 500 «Invalid data type» буцааж, «Явган хүний зам»
+   *    (et:27, үргэлж асаалттай) төрлөөр шүүхэд 2,548 объект бүгд бүдгэрдэг байв.
+   */
+  num?: boolean;
 };
 
 /**
@@ -785,20 +812,45 @@ export function groups(rows: Row[], field: string, emptyLabel: string, numeric: 
       raws: [],
       blank: empty,
       values: Object.fromEntries(numeric.map((k) => [k, 0])),
+      stats: Object.fromEntries(numeric.map((k) => [k, null])),
     };
     // ⚠️ Хоосон бүлэгт ч түүхий утгыг ЦУГЛУУЛНА (`null`-аас бусдыг) — `blankWhere`
     //    тэдгээрийг жагсааж, `TRIM()`-гүйгээр яг ижил олонлогийг шүүнэ.
     if (r[field] != null) {
       const raw = String(r[field]);
       if (!g.raws.includes(raw)) g.raws.push(raw);
+      /* ⚠️ 2026-10-22 (аудит): утгын ТӨРЛИЙГ хадгална — `Group.num`-ийн ⚠️ */
+      if (typeof r[field] === 'number') g.num = true;
     }
-    for (const k of numeric) g.values[k] += Number(r[k] ?? 0);
+    /* ⚠️ 2026-10-21: null статистик (бүлгийн бүх утга хоосон) `stats`-д null хэвээр — `values`-д 0 (нийцтэй) */
+    for (const k of numeric) {
+      const v = r[k];
+      if (v == null) continue;
+      g.values[k] += Number(v);
+      g.stats[k] = (g.stats[k] ?? 0) + Number(v);
+    }
     merged.set(label, g);
   }
 
   return [...merged.values()].sort((a, b) => (b.values[numeric[0]] ?? 0) - (a.values[numeric[0]] ?? 0));
 }
 
-/** Бүлгийг газрын зурагт шүүх SQL — тоологдсонтой яг ижил олонлог сонгоно */
-export const groupWhere = (field: string, g: Group): string =>
-  g.blank ? blankWhere(field, g.raws) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;
+/** Тоон литерал (зөвхөн цифр · цэг · илтгэгч) — бусад бол null (SQL-д хашилтгүй бичихэд аюулгүй эсэх) */
+const numLit = (v: string): string | null => (/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(v.trim()) ? v.trim() : null);
+
+/**
+ * Бүлгийг газрын зурагт шүүх SQL — тоологдсонтой яг ижил олонлог сонгоно.
+ * ⚠️ 2026-10-22 (аудит): ТООН талбарт (`Group.num`) литерал ХАШИЛТГҮЙ — `code IN (1, 2)`; `N'1'` нь Enterprise-д
+ *    500 «Invalid data type» (`Group.num`-ийн ⚠️). Тоо биш утга орвол (холимог) хуучин мөрөн хэлбэр.
+ */
+export const groupWhere = (field: string, g: Group): string => {
+  if (g.num) {
+    const lits = g.raws.map(numLit);
+    if (lits.every((x): x is string => x != null)) {
+      const inList = lits.length ? `${field} IN (${lits.join(', ')})` : '';
+      if (!g.blank) return inList || '1=0';
+      return inList ? `${field} IS NULL OR ${inList}` : `${field} IS NULL`;
+    }
+  }
+  return g.blank ? blankWhere(field, g.raws) : `${field} IN (${g.raws.map(sqlStr).join(', ')})`;
+};

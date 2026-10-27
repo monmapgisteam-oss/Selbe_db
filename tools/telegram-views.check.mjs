@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { botFullViews, FINANCE_VIEWS } from './telegram-views.mjs';
+import { botFullViews, FINANCE_VIEWS, grantWithin } from './telegram-views.mjs';
 
 const { VIEWS } = await import('../src/lib/services/views.ts');
 const { DATASETS } = await import('../src/lib/agent/datasets.ts');
@@ -16,7 +16,7 @@ const keys = VIEWS.map((v) => v.key);
 const full = botFullViews(keys);
 
 /* ── Шинэ санхүүгийн бус харагдацууд орсон ── */
-for (const k of ['tuh', 'gdash', 'dedButets', 'chanar', 'qaqc', 'dashboard', 'pkgProg', 'guitsetgel', 'schem']) {
+for (const k of ['tuh', 'gdash', 'dedButets', 'dashboard', 'pkgProg', 'guitsetgel', 'schem']) {
   assert.ok(full.includes(k), `${k} ботын эрхэд орсонгүй`);
 }
 /* Санхүүгийнх хасагдсан */
@@ -40,3 +40,13 @@ assert.deepEqual(botFullViews(['a', 'pkgFin', 'b', 'a', 'finance']), ['a', 'b'])
 const bot = readFileSync(new URL('./telegram-bot.mjs', import.meta.url), 'utf8');
 assert.match(bot, /const FULL_VIEWS = botFullViews\(VIEWS\.map\(\(v\) => v\.key\)\);/);
 console.log('✅ telegram-bot.mjs нь VIEWS-ээс уншина');
+
+/* ── ⚠️ 2026-10-21: олгох харагдац ∩ админы өөрийн хүрээ (`grantWithin`) — хязгаартай админ FULL_VIEWS олгохгүй ── */
+assert.deepEqual(grantWithin(full, 'all'), full, "'all' админ бүгдийг олгоно");
+assert.deepEqual(grantWithin(['plan', 'pkgProg', 'gazar'], ['pkgProg', 'plan']), ['plan', 'pkgProg'], 'хязгаартай админ — зөвхөн өөрийн хүрээ, дараалал олгох жагсаалтынх');
+assert.deepEqual(grantWithin(['plan', 'pkgProg'], ['gazar']), [], 'хүрээнд нь байхгүй → хоосон (бот татгалзана)');
+assert.deepEqual(grantWithin(['plan'], null), [], 'хүрээгүй → хоосон');
+assert.ok(!grantWithin(full, ['pkgFin', 'plan']).includes('pkgFin'), 'админы хүрээнд санхүү байсан ч FULL_VIEWS-д байхгүй тул орохгүй');
+assert.match(bot, /const views = grantWithin\(action === 'plan' \? PLAN_VIEWS : FULL_VIEWS, own\);/, 'бот зөвшөөрөхдөө grantWithin-ээр хумина');
+assert.match(bot, /if \(!views\.length\) \{/, 'хоосон хүрээнд татгалзана');
+console.log('✅ grantWithin: олгох харагдац админы хүрээнээс хэтрэхгүй');

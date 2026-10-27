@@ -10,8 +10,11 @@
  *  3. `ZONE_ID`-гүй давхаргыг бүсээр шүүхэд бүсийн ПОЛИГОН (эх SR-ээр) `intersects`-ээр явна.
  */
 import assert from 'node:assert/strict';
-import { avgQty, missingQty, layerStats, layerTotals, loadZoneAoi } from './totals.ts';
-import { LAYER_BY_ID } from './services.ts';
+import { readFileSync } from 'node:fs';
+import {
+  avgQty, missingQty, layerStats, layerTotals, loadZoneAoi, layerTotalsShared, lazyView, dropTotalsCache, totalsEpoch,
+} from './totals.ts';
+import { LAYER_BY_ID, CATALOG_LAYER_IDS, PLAN_LAYER_IDS, PKG_BY_FAMILY } from './services.ts';
 
 /* ── 1. Дундаж — хэмжээтэй объектоор ── */
 assert.equal(avgQty({ n: 10, q: 800, nq: 8 }), 100, '800 м / 8 урттай объект (10 биш)');
@@ -86,6 +89,89 @@ assert.ok(st.some((s) => s.statisticType === 'count' && s.onStatisticField === L
   } finally {
     globalThis.fetch = realF;
   }
+}
+
+/* ── 6. Давхарга тус бүрийн ХУВААЛЦСАН кэш (2026-10-22) — зэрэг асуулт нэг хүсэлт, уналт кэшлэгдэхгүй, эрин/бүсээр ── */
+{
+  const realF = globalThis.fetch;
+  let calls = 0;
+  let fail = false;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (fail) return { ok: true, json: async () => ({ error: { code: 500, message: 'x' } }) };
+    return { ok: true, json: async () => ({ features: [{ attributes: { n: 3, q: 30, nq: 3 } }] }) };
+  };
+  try {
+    const id = lineId;
+    const [a, b] = await Promise.all([layerTotalsShared(null, id), layerTotalsShared(null, id)]);
+    assert.equal(calls, 1, 'зэрэг асуусан ижил давхарга — НЭГ хүсэлт (каталог + самбар)');
+    assert.deepEqual(a, b);
+    await layerTotalsShared(null, id);
+    assert.equal(calls, 1, 'шийдэгдсэнийг дахин татахгүй');
+    await layerTotalsShared('Багц-1', id);
+    assert.equal(calls, 2, 'бүс тус бүр тусдаа');
+    const e0 = totalsEpoch();
+    dropTotalsCache();
+    assert.equal(totalsEpoch(), e0 + 1);
+    await layerTotalsShared(null, id);
+    assert.equal(calls, 3, 'эрин (засвар · дахин оролдох) — шинээр татна');
+    dropTotalsCache();
+    fail = true;
+    await assert.rejects(layerTotalsShared(null, id));
+    fail = false;
+    await new Promise((r) => setTimeout(r, 0));
+    const n0 = calls;
+    await layerTotalsShared(null, id);
+    assert.equal(calls, n0 + 1, 'уналт кэшлэгдэхгүй — дараагийн асуулт дахин оролдоно');
+    await assert.rejects(layerTotalsShared(null, 'zz:404'), /unknown layer/, 'мэдэгдэхгүй давхарга — унасан амлалт');
+  } finally {
+    globalThis.fetch = realF;
+    dropTotalsCache();
+  }
+}
+
+/* ── 7. `lazyView` — ирсэн · унасан · хүлээгдэж буй (цэвэр) ── */
+{
+  const T = { n: 1, q: null, nq: null };
+  const key = (id) => `0||${id}`;
+  const done = new Map([[key('a'), T]]);
+  const fail = new Set([key('b'), key('c')]);
+  const inflight = new Set([key('c')]);
+  const v = lazyView(['a', 'b', 'c', 'd', 'a'], key, done, fail, inflight);
+  assert.deepEqual([...v.map.keys()], ['a']);
+  assert.deepEqual(v.failed, ['b'], 'унасан (дахин оролдоогүй) — «—» + «N давхарга татагдсангүй»');
+  assert.equal(v.pending, 2, 'дахин оролдож буй (c) ба эхлээгүй (d) — «…»');
+  const none = lazyView([], key, done, fail, inflight);
+  assert.equal(none.map.size + none.pending + none.failed.length, 0, 'хоосон жагсаалт — хүсэлтгүй, «тоолж байна»-гүй');
+}
+
+/* ── 8. Холболт — ХАРАГДАЖ БУЙ тоо л (2026-10-22, эх кодоор) ── */
+{
+  const PORTAL = readFileSync('src/components/Portal.tsx', 'utf8');
+  assert.match(PORTAL, /usePlanTotals\(zone, !standalone && view === 'plan', PLAN_LAYER_IDS\)/,
+    'Portal: зөвхөн «Ерөнхий мэдээлэл»-ийн самбарын тойм (PLAN_LAYER_IDS) — «Хэсэгчилсэн ЕТ»-д 0');
+  assert.doesNotMatch(PORTAL, /CATALOG_LAYER_IDS/, 'Portal каталогийн бүх давхаргыг урьдчилж татахгүй');
+  assert.match(PORTAL, /totals=\{view === 'plan' \? totals : TOTALS_IDLE\}/, 'нуугдмал самбарт хоосон Map-ыг уналт гэж зурахгүй');
+  const GD = readFileSync('src/modules/GeneralDash.tsx', 'utf8');
+  /* ⚠️ 2026-10-23: карт ТӨСЛИЙН НИЙТЭЭР (zone биш null) — бүс зөвхөн газрын зургийг шүүнэ гэсэн мэдэгдэлтэй нийцүүлэв */
+  assert.match(GD, /usePlanTotals\(null, true, PLAN_CARD_IDS\)/, '«Ерөнхий дашбоард»: зөвхөн «Ерөнхий төлөвлөгөө» картын давхарга, төслийн нийтээр');
+  for (const [f, src] of [['Portal', PORTAL], ['GeneralDash', GD]]) {
+    const cat = src.slice(src.indexOf('<LayerCatalog'), src.indexOf('/>', src.indexOf('<LayerCatalog')));
+    assert.ok(cat.length > 0 && !/\btotals=/.test(cat), `${f}: каталог нээлттэй бүлгийнхээ тоог өөрөө татна (totals өгөхгүй)`);
+  }
+  /* Картын давхаргууд — бүгд каталогт (тоо урьдынхтай ЯГ ижил: урьд каталогийн Map-аас уншдаг байв) */
+  const net = ['net', 'pow', 'src'].flatMap((x) => PKG_BY_FAMILY[x] ?? []);
+  const card = new Set(['et:24', 'zone', 'road', 'et:15', 'nogoon', ...net]);
+  for (const id of card) assert.ok(CATALOG_LAYER_IDS.includes(id), `картын ${id} каталогт байх ёстой`);
+  assert.match(GD, /'et:24', 'zone', \.\.\.PLAN_QTY\.map\(\(p\) => p\.id\), \.\.\.NET_FAMILIES\.flatMap\(\(f\) => PKG_BY_FAMILY\[f\] \?\? \[\]\)/,
+    'PLAN_CARD_IDS нь картын уншдаг олонлог');
+  for (const id of PLAN_LAYER_IDS) assert.ok(CATALOG_LAYER_IDS.includes(id), `тоймын ${id} каталогт`);
+  const LC = readFileSync('src/components/LayerCatalog.tsx', 'utf8');
+  assert.match(LC, /useLazyTotals\(zone, lazyIds, !totals\)/);
+  assert.match(LC, /needle \|\| !shut\.has\(g\.key\)/, 'татах бүлэг = зурагдах бүлэг (хайлт идэвхтэй бол таарсан бүгд)');
+  assert.match(LC, /const open = needle \? true : !shut\.has\(g\.key\);/, 'зурах дүрэм хэвээр — дээрхтэй нэг');
+  const VP = readFileSync('src/modules/ViewPanel.tsx', 'utf8');
+  assert.match(VP, /useLazyTotals\(zone, \[d\.id\]\)/, 'сонгосон давхаргын самбар өөрийнхөө тоог (каталогийн 33 давхарга тоймд байхгүй)');
 }
 
 console.log('totals.check: OK');

@@ -23,6 +23,57 @@ import { HABEA, laborCompanyFields } from '@/lib/services';
 /** Давтамжийн суурь — 1 сая хүн-цаг */
 export const RATE_BASE = 1_000_000;
 
+/**
+ * ОСЛЫН КОМПАНИ (`field_5`) → ХҮН ХҮЧНИЙ ГҮЙЦЭТГЭГЧ (`HABEA.labor.companies[].sfx`) — ИЛ ЗУРАГЛАЛ.
+ * ⚠️ 2026-10-22 (аудит): `field_5` нь 6 утгатай codedValue домэйн (Survey123, КОД 30 тэмдэгтэд тасарсан; амьдаар уншив).
+ *    Урьд нь зөвхөн бичвэрийн ойролцоо тулгалт байсан тул 6-аас 3 нь («Нутгын» ↔ «Нутгийн», «зургаа дугаар» ↔
+ *    «зургаадугаар», «Moncon construction LLC» ↔ «Монкон констракшн») НЭГ Ч гүйцэтгэгчтэй таарахгүй — 18 ослын 12 нь
+ *    шүүгдэхэд давтамжийн самбар «хүн-цаг алга» гэдэг байв. КОД ба бүтэн НЭР хоёулаа; домэйнд шинэ утга нэмэгдвэл ЭНД
+ *    бүртгэнэ (бүртгэлгүй нь ойролцоо тулгалтаар — `incCompanySfx`).
+ */
+const INC_COMPANY_SFX: readonly (readonly [string, string])[] = [
+  ['"Хятадын хоёр дахь металлурги г', 'HHDMGK'],
+  ['"Хятадын хоёр дахь металлурги групп корпораци" ХХК', 'HHDMGK'],
+  ['"Нутгын буян" групп', 'NBG'],
+  ['"Хятадын барилгын зургаа дугаар', 'HBZIT'],
+  ['"Хятадын барилгын зургаа дугаар инженерийн товчоо" ХХК', 'HBZIT'],
+  ['"Moncon construction LLC"', 'MK'],
+  ['"Професионалстрой" ХХК', 'P'],
+  ['"Морин сувд констракшн" ХХК', 'MSK'],
+];
+
+/** Компанийн нэрийн харьцуулах түлхүүр — хашилт хасаж, зай нэгтгэж, жижиг үсгээр */
+export const incCoKey = (s: string): string => s.replace(/["“”«»]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const INC_CO_MAP = new Map(INC_COMPANY_SFX.map(([k, v]) => [incCoKey(k), v]));
+
+/**
+ * Сонгосон ослын компаниуд → гүйцэтгэгчийн `sfx` олонлог (хүн-цагийн хуваарь). Нэг ч таарахгүй бол ХООСОН олонлог —
+ * хүн-цаггүй (бүх компанийн цагаар худал давтамж гаргахаас дээр; `Habea.incCoSfx`-ийн ⚠️).
+ *   1. ИЛ зураглал (`INC_COMPANY_SFX`) — домэйны код/нэр;
+ *   2. нөөц: ойролцоо тулгалт (2026-10-11/21-ний дүрэм) — БОГИНО түлхүүр (< 4 тэмдэгт: «П», «МК», «SC») ЗӨВХӨН бүтэн ҮГЭЭР.
+ */
+export function incCompanySfx(
+  names: readonly string[],
+  companies: readonly { sfx: string; code: string; label: string }[] = HABEA.labor.companies,
+): Set<string> {
+  const out = new Set<string>();
+  const MIN_SUB = 4;
+  for (const name of names) {
+    const n = incCoKey(name);
+    if (!n) continue;
+    const hit = INC_CO_MAP.get(n);
+    if (hit) { out.add(hit); continue; }
+    const toks = new Set(n.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+    for (const c of companies) {
+      const keys = [c.code, c.label, c.sfx].map(incCoKey).filter(Boolean);
+      if (keys.some((k) => (k.length < MIN_SUB
+        ? n === k || toks.has(k)
+        : n.includes(k) || (n.length >= MIN_SUB && k.includes(n))))) out.add(c.sfx);
+    }
+  }
+  return out;
+}
+
 export type HourDay = {
   /** `Ognoo`, epoch ms */
   ms: number;

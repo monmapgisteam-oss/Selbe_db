@@ -136,6 +136,13 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   const nh4 = get(down, 'nh4');
   assert.equal(gradeOf(nh4, 0.1), 'ok');
   assert.equal(gradeOf(nh4, 1.5), 'bad');
+  /* ⚠️ 2026-10-21: pH — ХОЁР ТАЛТ муж (6.5–8.5); урьд нь pH 5.0 «хэвийн» гардаг байв */
+  const ph = get(down, 'ph');
+  assert.equal(gradeOf(ph, 7.2), 'ok');
+  assert.equal(gradeOf(ph, 5.0), 'bad', 'хүчиллэг pH 5.0 — хэтэрсэн');
+  assert.equal(gradeOf(ph, 6.3), 'warn', 'pH 6.3 — анхаарах');
+  assert.equal(gradeOf(ph, 8.7), 'warn');
+  assert.equal(gradeOf(ph, 9.5), 'bad');
 }
 
 /* 7. ХОХИРЛЫН АНГИЛАЛ — нэгж үнэ объектын төрөлд тохирч байх
@@ -193,6 +200,17 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   assert.equal(damageCost('building', 'area', { area: 10, length: 0, n: 1 }, 1), 10 * DAMAGE_RATE.building.rate);
   assert.equal(damageCost('tree', 'point', { area: 0, length: 0, n: 4 }, 0.25), 4 * DAMAGE_RATE.tree.rate * 0.25);
   assert.equal(damageCost('tree', 'area', { area: 9, length: 0, n: 4 }, 1), 4 * DAMAGE_RATE.tree.rate, '«ширхэг» нь геометрээс үл хамаарна');
+}
+
+/* ⚠️ 2026-10-22 (аудит): өртсөн хүн — барилгын хүн амаас, хөлийн талбай ÷ 35 БИШ */
+{
+  const { buildingPeople, EXPOSURE } = await import('@/lib/ersdel');
+  assert.equal(buildingPeople(960, 5000, 1, 1200), 960, 'бүтэн орсон сургууль — хүн ам бүтнээрээ (хөл÷35 = 34 байв)');
+  assert.equal(buildingPeople(400, null, 0.25, 300), 100, 'мужид 25% орсон — хүн амын 25%');
+  assert.equal(buildingPeople(0, 900, 1, 300), 0, 'хүн ам 0 (зогсоол) — бодит тэг, нөөц руу унахгүй');
+  assert.equal(buildingPeople(null, 3500, 0.5, 200), 3500 * 0.5 / EXPOSURE.m2PerPerson, 'хүн амгүй — шалны талбай ÷ 35');
+  assert.equal(buildingPeople(null, null, 1, 350), 10, 'шалны талбай ч алга — хөл ÷ 35 (хуучин доод тооцоо)');
+  assert.equal(buildingPeople(100, null, 1.7, 0), 100, 'хувь 1-ээс хэтрэхгүй');
 }
 
 console.log('ersdel.check: OK');

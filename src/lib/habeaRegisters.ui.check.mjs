@@ -11,12 +11,24 @@
  *  4. Хуудаслалтгүй (≤2000) уншилт — `orderByFields` + `resultOffset`.
  *  5. ХАРИУ АЛДАГДСАН нэмэлтийг сохроор дахин илгээж ДАВХАРДУУЛАХ — GlobalID / тоогоор шалгана.
  *  6. `invalidate('HABEA')` зөвхөн амжилтад — алдагдсан хариунд карт хуучин үлдэнэ.
+ *  7. ⚠️ 2026-10-19: Enterprise руу бичилт НЭРГҮЙ явдаг байв — сешнгүй бол илгээхгүй, сешнтэй бол токен POST биеэр.
+ *  8. ⚠️ 2026-10-19: «Сайжруулалт» — мөргүй долоо хоног 0 БИШ `null`; он талбаргүй хүснэгтэд утга + «оны ялгаагүй»
+ *     тэмдэглэл (`null` биш); `max(week)` асуулга унавал бүх ачаалалт унахгүй.
+ * 10. ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон — бичилт урьдын адил нэргүй (production эвдрэхгүй).
+ *  9. ⚠️ 2026-10-19: талбарын англи шошго Enterprise-ийн ЖИЖИГ үсэгтэй нэрэнд ч таарна.
  */
 import assert from 'node:assert/strict';
 
 const R = await import('./habeaRegisters.ts');
 const { prevWeek } = await import('../modules/habeaUzleg.tsx');
 const { dataVersion } = await import('./dataBus.ts');
+
+/* ══════════ 0. (2026-10-21, кэшийн аудит) POLL нь TTL-ээс УРТ ══════════ */
+{
+  assert.equal(R.HABEA_TTL_MS, 5 * 60_000, 'ХАБЭА кэшийн TTL 5 мин (`live.SESSION_TTL_MS`-тэй ижил)');
+  assert.ok(R.HABEA_POLL_MS > R.HABEA_TTL_MS, 'poll нь TTL-ээс УРТ — тэнцүү бол эхний tick бүр кэшээс буцна (бодит шинэчлэл 10 мин)');
+  assert.ok(R.HABEA_POLL_MS - R.HABEA_TTL_MS >= 10_000, 'зөрүү ≥10 с — хүсэлтийн хугацаанаас урт');
+}
 
 /* ══════════ 1. UB долоо хоног ══════════ */
 {
@@ -62,6 +74,42 @@ try {
     assert.equal(b.weekNo, 38);
   }
 
+  /* ══════════ 8. «Сайжруулалт» (33) — null ≠ 0, олон он (2026-10-19) ══════════ */
+  {
+    const { invalidate } = await import('./dataBus.ts');
+    const at = new Date(Date.parse('2026-10-14T10:00:00+08:00')); // өмнөх долоо хоног = 41
+    const run = async (sum, max) => {
+      handler = (path, p) => {
+        if (!path.endsWith('/33/query')) return { count: 1 };
+        const st = JSON.parse(p.outStatistics)[0];
+        if (st.statisticType === 'max') return max === 'fail' ? { error: { code: 400, message: 'max failed' } } : { features: [{ attributes: { m: max } }] };
+        return { features: [{ attributes: sum }] };
+      };
+      invalidate('HABEA');
+      return (await R.loadHabeaRegisters(at)).rows.find((r) => r.key === 'saijruulalt');
+    };
+    const ok7 = await run({ s: 7, n: 2 }, 41);
+    assert.equal(ok7.week, 7, 'долоо хоногийн нийлбэр');
+    assert.match(ok7.hint ?? '', /Оны ялгаагүй/, 'он талбаргүй — тэмдэглэлтэй');
+    const none = await run({ s: null, n: 0 }, 40);
+    assert.equal(none.week, null, 'мөргүй долоо хоног → null (0 БИШ)');
+    assert.ok(none.hint, 'шалтгаан hover-т');
+    const multi = await run({ s: 3, n: 1 }, 52);
+    assert.equal(multi.week, 3, 'он талбаргүй, өнгөрсөн оны дугаар байсан ч тухайн долоо хоногийн утга (null БИШ)');
+    assert.match(multi.hint ?? '', /нийлбэрт орсон байж болзошгүй/, 'олон оны сэрэмжлүүлэг hover-т');
+    const maxFail = await run({ s: 5, n: 1 }, 'fail');
+    assert.equal(maxFail.week, 5, 'max(week) асуулга унасан ч бүртгэл ачаалагдана');
+    assert.equal(R.isoWeekYear(new Date(Date.parse('2026-12-28T00:00:00+08:00'))), 2026);
+    assert.equal(R.isoWeekYear(new Date(Date.parse('2025-12-29T00:00:00+08:00'))), 2026, 'ISO 2026-W01 нь 2025-12-29-нд эхэлнэ');
+  }
+
+  /* ══════════ 9. Талбарын шошго — ТОМ/жижиг үсэг үл хамаарна (2026-10-19) ══════════ */
+  {
+    assert.equal(R.entryFieldLabel({ name: 'огноо', alias: 'ALIAS', type: 'date' }), 'Огноо', 'Enterprise-ийн жижиг үсэгтэй нэр');
+    assert.equal(R.entryFieldLabel({ name: 'Огноо', alias: 'ALIAS', type: 'date' }), 'Огноо', 'AGOL-ийн нэр');
+    assert.equal(R.entryFieldLabel({ name: 'шинэ_талбар', alias: 'ALIAS', type: 'text' }), 'ALIAS', 'танихгүй → alias');
+  }
+
   /* ══════════ 3–4. Хог хаягдал — хуудаслалт, хоосон нүд/Week ══════════ */
   {
     calls.length = 0;
@@ -71,12 +119,12 @@ try {
         return {
           exceededTransferLimit: true,
           features: [
-            { attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', багц_1: 2, багц_2: null } },
-            { attributes: { objectid: 2, week: null, metric: 'Бетон (рейс)', багц_1: null, багц_2: 0 } },
+            { attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', bagts1: 2, bagts2: null } },
+            { attributes: { objectid: 2, week: null, metric: 'Бетон (рейс)', bagts1: null, bagts2: 0 } },
           ],
         };
       }
-      return { features: [{ attributes: { objectid: 3, week: 41, metric: 'Ахуйн хог (рейс)', багц_1: null } }] };
+      return { features: [{ attributes: { objectid: 3, week: 41, metric: 'Ахуйн хог (рейс)', bagts1: null } }] };
     };
     const d = await R.loadHabeaWaste(new Date('2026-10-09T12:00:00+08:00'));
     assert.equal(calls.length, 2, 'хоёр хуудас');
@@ -105,7 +153,7 @@ try {
     assert.equal(R.isMultiYear([10, 11, 40], 12), true, 'weekNo ≤ 12 үед ≥ 40');
     assert.equal(R.isMultiYear([], 5), false);
     handler = (path) => (path.endsWith('/query')
-      ? { features: [{ attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', багц_1: 1 } }, { attributes: { objectid: 2, week: 44, metric: 'Бетон (рейс)', багц_1: 1 } }] }
+      ? { features: [{ attributes: { objectid: 1, week: 40, metric: 'Бетон (рейс)', bagts1: 1 } }, { attributes: { objectid: 2, week: 44, metric: 'Бетон (рейс)', bagts1: 1 } }] }
       : {});
     const { invalidate } = await import('./dataBus.ts');
     invalidate('HABEA');
@@ -130,6 +178,33 @@ try {
 
   /* ══════════ 5–6. Бүртгэл нэмэх — GlobalID ══════════ */
   const edits = () => calls.filter((c) => c.path.endsWith('/applyEdits'));
+  /* ══════════ 7. Enterprise сешнгүй бол БИЧИХГҮЙ (2026-10-19) ══════════ */
+  {
+    /* 10. Тохируулаагүй — нэргүй бичилт (урьдын зан), токен илгээхгүй */
+    R.setEntPortal('');
+    R.setEntTokenSource(() => null);
+    assert.equal(R.habeaEntConfigured(), false);
+    calls.length = 0;
+    const gid0 = R.newGlobalId();
+    handler = (path) => (path.endsWith('/applyEdits') ? { addResults: [{ success: true, objectId: 1, globalId: gid0 }] } : { count: 0 });
+    const warn = console.warn;
+    console.warn = () => {};
+    try { await R.addRegister(35, { Огноо: 1 }, gid0); } finally { console.warn = warn; }
+    const anon = calls.find((c) => c.path.endsWith('/applyEdits'));
+    assert.ok(anon, 'тохируулаагүй — бичилт явна (production эвдрэхгүй)');
+    assert.equal(anon.p.token, undefined, 'тохируулаагүй — Enterprise токенгүй (нэргүй)');
+    R.setEntPortal('https://ent.example/geoportal');
+    assert.equal(R.habeaEntConfigured(), true);
+  }
+  {
+    R.setEntTokenSource(() => null);
+    calls.length = 0;
+    handler = () => ({ count: 0 });
+    await assert.rejects(() => R.addRegister(35, { Огноо: 1 }, R.newGlobalId()), (x) => x instanceof R.HabeaEntSignInRequired);
+    await assert.rejects(() => R.addWaste(41, 'Бетон (рейс)', { багц_1: 1 }), (x) => x instanceof R.HabeaEntSignInRequired);
+    assert.equal(calls.length, 0, 'сешнгүй — нэг ч хүсэлт явахгүй (нэргүй бичилт БАЙХГҮЙ)');
+    R.setEntTokenSource(() => 'ENT_TOK');
+  }
   {
     const gid = R.newGlobalId();
     /* амжилт — useGlobalIds + клиентийн GlobalID; дугаарыг бичихийн өмнө дахин бодно */
@@ -140,12 +215,13 @@ try {
       return { count: 0 };
     };
     let v0 = dataVersion();
-    await R.addRegister(35, { Огноо: 1 }, gid, { autoSeq: 'F_' });
+    await R.addRegister(35, { Огноо: 1 }, gid, { autoSeq: 'f_' });
     const e = edits()[0];
     assert.equal(e.p.useGlobalIds, 'true');
+    assert.equal(e.p.token, 'ENT_TOK', 'Enterprise токен POST биеэр');
     const att = JSON.parse(e.p.adds)[0].attributes;
     assert.equal(att.globalid, gid);
-    assert.equal(att.F_, 42, 'санал болгосон дугаар бичихийн ӨМНӨ дахин бодогдоно');
+    assert.equal(att.f_, 42, 'санал болгосон дугаар бичихийн ӨМНӨ дахин бодогдоно');
     assert.ok(dataVersion() > v0, 'амжилтад invalidate');
 
     /* хариу алдагдсан → GlobalID-аар асууна; олдвол амжилт, ДАХИН ИЛГЭЭХГҮЙ */
@@ -186,7 +262,7 @@ try {
 
   /* ══════════ 5. Хог хаягдал нэмэх — GlobalID-гүй, тоогоор ══════════ */
   {
-    const cols = { багц_1: 3, багц_2: null, багц_3_1: null, багц_3_2: null, багц_3_3: null, багц_4_1: null, багц_4_2: 0 };
+    const cols = { bagts1: 3, bagts2: null, bagst3_1: null, bagst3_2: null, bagst3_3: null, bagst4_1: null, bagst4_2: 0 };
     await assert.rejects(() => R.addWaste(0, 'Бетон (рейс)', cols), /1–53/, 'долоо хоног 1–53');
     await assert.rejects(() => R.addWaste(54, 'Бетон (рейс)', cols));
 
@@ -199,10 +275,11 @@ try {
     };
     await R.addWaste(41, 'Бетон (рейс)', cols);
     const w = calls.find((c) => c.path.endsWith('/query')).p.where;
-    assert.match(w, /week = 41 AND metric = N'Бетон \(рейс\)' AND багц_1 = 3 AND багц_2 IS NULL/, 'хоосон нүд IS NULL (0 БИШ)');
-    assert.match(w, /багц_4_2 = 0/);
+    assert.match(w, /week = 41 AND metric = N'Бетон \(рейс\)' AND bagts1 = 3 AND bagts2 IS NULL/, 'хоосон нүд IS NULL (0 БИШ)');
+    assert.match(w, /bagst4_2 = 0/);
     const add = JSON.parse(edits()[0].p.adds)[0].attributes;
-    assert.equal(add.багц_2, null, 'хоосон нүд null бичигдэнэ');
+    assert.equal(add.bagts2, null, 'хоосон нүд null бичигдэнэ');
+    assert.equal(edits()[0].p.token, 'ENT_TOK', 'хог хаягдлын бичилт ч токентой');
 
     /* хариу алдагдсан, тоо өсөөгүй → HabeaLostWrite (before, sig) */
     handler = (path) => (path.endsWith('/applyEdits') ? lose() : { count: 5 });

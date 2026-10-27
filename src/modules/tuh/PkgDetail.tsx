@@ -14,9 +14,10 @@
  */
 import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, date } from '@/lib/format';
+import { num, pct, mnt, date, fixCyr } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
-import { CASHFLOW_NEW, HO_IPC, PKG_BY_BAGTS, LAYER_BY_ID } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, LAYER_BY_ID } from '@/lib/services';
+import { mapPkgLayers } from '@/lib/pkgAlias';
 import { isContracted } from '@/lib/gdash';
 import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
 import { statusOf as planStatus } from '@/lib/plan';
@@ -30,11 +31,12 @@ import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
 /* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`).
    ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
-import { Section as Card, Series, Meter, type SeriesLineDef } from '@/components/ui';
+import { Section as Card, Series, Meter, Loading, type SeriesLineDef } from '@/components/ui';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
-import { ComboChart, lagLevel } from '@/modules/Finance';
+import { ComboChart, lagLevel, lagLevelOf } from '@/modules/Finance';
+import { coverageOk, coverageNote } from '@/lib/planProgress';
 import {
   Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp, barSt,
   PREREQ_LANES, DepList, calDaysBetween,
@@ -136,7 +138,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         const st = sp.start != null && sp.end != null ? planStatus({ start: sp.start, end: sp.end }, act, today) : 'none';
         l3.push({
           key: `${x.sheet.key}:${i}`,
-          label: q.depth === top ? <b>{q.work}</b> : q.work,
+          label: q.depth === top ? <b>{fixCyr(q.work)}</b> : fixCyr(q.work),
           start: sp.start,
           end: sp.end,
           progress: act == null ? null : act * 100,
@@ -150,7 +152,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   const elapsed = elapsedPct(r.p.start, r.p.end, now);
   /* ⚠️ 2026-10-09: үлдсэн хоног хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
   const left = calDaysBetween(now, r.p.end);
-  const layerTitles = (PKG_BY_BAGTS[r.p.pkgKey] ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
+  /* ⚠️ 2026-10-26 (аудит): газрын зургийн багцын холбоос (`mapPkgLayers`) — Багц 7.1 · 8 «GIS давхарга —» гардаг байв */
+  const layerTitles = (mapPkgLayers(r.p.pkgKey) ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь `hasDeps` хатуу `false`,
      урьдчилсан нөхцөлийн эгнээ «—», «хамаарал бүртгэгдээгүй» гэсэн ХУДАЛ бичигтэй байв.
      `null` = хамаарал ирээгүй (ачаалж/унасан). */
@@ -242,8 +245,12 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${gapTone(r.gapContractor)}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
-          <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}</span>
+          {/* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол өнгөөр (хоцорсон/хэвийн) ДҮГНЭХГҮЙ, хамралтыг нэрлэнэ */}
+          <span className={`${s.statValue} ${r.planCoverage == null || coverageOk(r.planCoverage) ? gapTone(r.gapContractor) : ''}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
+          <span className={s.statNote}>
+            {tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}
+            {r.planCoverage != null && !coverageOk(r.planCoverage) ? ` · ${coverageNote(r.planCoverage)} — ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''}
+          </span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
@@ -288,7 +295,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <div className={s.panels}>
           <div className={s.panel}>
             <h3>{tr('Гол үе шат')}</h3>
-            {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+            {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <Loading />
               : schedQ.state === 'error' ? schedFail
                 : derived && derived.milestones.length ? (
                   <ol className={s.milestones}>
@@ -377,7 +384,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <h3>{tr('Level 3 — Дэлгэрэнгүй хуваарь')}</h3>
         {!hasSheets ? <p className={s.note}>—</p>
-          : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+          : schedQ.state === 'loading' ? <Loading />
             : schedQ.state === 'error' ? schedFail
               : derived && derived.l3.length ? (
                 <Card>
@@ -595,7 +602,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             items={r.months}
             height={280}
             lagMonth={r.lag?.month}
-            lagLvl={r.lag ? lagLevel(r.lag.gap) : null}
+            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлын тэмдэг ГАРГАХГҮЙ (`lagLevelOf`) */
+            lagLvl={lagLevelOf(r.lag)}
             contract={r.p.cost != null && r.p.cost > 0 ? r.p.cost : null}
           />
         ) : <p className={s.note}>—</p>}

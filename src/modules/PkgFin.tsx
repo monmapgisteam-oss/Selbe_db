@@ -8,15 +8,16 @@ import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
-import { usePlanTotals } from '@/lib/totals';
-import { Section, Note, Data, Empty, Rows, Bars, Donut, List, ListItem } from '@/components/ui';
+
+import { Section, Note, Data, Empty, Loading, Rows, Bars, Donut, List, ListItem } from '@/components/ui';
 import {
   buildPacks, PackKpi, InvestCard, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
 import { useBuildings, pickedBuilding } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, ComboChart, lagOf, lagLevel, projectPlanScope, planScopeNote, type FinData,
+  loadFinData, contractMonths, ComboChart, lagOf, lagLevelOf, lagJudged, projectPlanScope, planScopeNote, type FinData,
 } from '@/modules/Finance';
+import { coverageNote } from '@/lib/planProgress';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
@@ -803,7 +804,8 @@ export function PkgFin({ dim, setDim }: {
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, catOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   /**
@@ -822,6 +824,9 @@ export function PkgFin({ dim, setDim }: {
          шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
          `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
          хэвээр үйлчилнэ). */
+      /* ⚠️ 2026-10-22 (аудит): MapCanvas одоо `null`/жагсаалтад алга давхаргад ӨӨРӨӨ бүсийн шүүлт тавьдаг болсон
+         (`MapCanvas.layerWhere`-ийн ⚠️) — доорх давталт ижил утга өгөх тул хор хөнөөлгүй. Үр дүн: багц сонгоогүй,
+         хоцрогдолтой багцгүй үед (`alertedWhere` = null) блокийн давхарга ч бүсээр шүүгдэнэ (урьд нь шүүгддэггүй байв). */
       const w: Record<string, string | null> = {};
       if (zone) {
         for (const id of mapVisible) {
@@ -930,7 +935,7 @@ export function PkgFin({ dim, setDim }: {
           (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : finErr ? (
+        {errQ ? null : loading ? <Loading /> : finErr ? (
           <Empty label={tr('Санхүүгийн өгөгдөл уншигдсангүй')} />
         ) : active ? (
           /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
@@ -947,7 +952,7 @@ export function PkgFin({ dim, setDim }: {
         {errQ ? (
           <Section title={tr('Багцууд')}><Data q={errQ}>{() => null}</Data></Section>
         ) : loading ? (
-          <Section title={tr('Багцууд')}><Empty label={tr('Ачаалж байна…')} /></Section>
+          <Section title={tr('Багцууд')}><Loading /></Section>
         ) : (
           <>
             {/* ⚠️ 2026-09-06: «Санхүүжилт хоцорсон багц» тусдаа бүлэг
@@ -997,8 +1002,9 @@ export function PkgFin({ dim, setDim }: {
                 </List>
               </Section>
             )}
+            {/* ⚠️ 2026-10-26 (аудит): PkgProg-оос хуулсан заавар (блокийн гүйцэтгэл, барилгын хяналт) энд ХАРАГДДАГГҮЙ — өөрийн бичвэр */}
             <Note>
-              {tr('Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, блок бүрийн гүйцэтгэл, доор санхүүгийн график гарна. Зураг дээрх барилга дарахад баруун талд тухайн барилгын хяналт нээгдэнэ.')}
+              {tr('Багц сонгоход баруунд гэрээ/төсөв, эх үүсвэр, төлбөр, доор санхүүгийн график гарна. Зураг дээрх барилга дарахад тухайн багц сонгогдоно.')}
             </Note>
           </>
         )}
@@ -1036,7 +1042,6 @@ export function PkgFin({ dim, setDim }: {
           <div className={o.catPanel}>
             <LayerCatalog
               view="monitor"
-              totals={catTotals}
               visible={visible}
               setVisible={setVisible}
               selected={layerSel}
@@ -1208,7 +1213,8 @@ function TsKpi({ packs, fin, share }: {
    * санхүүжилт ба түүний хувь нь санхүүгийн талд.
    */
   const items = [
-      { v: num(packs.length), l: tr('нийт төслийн тоо') },
+      /* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг `h` (tooltip) хэлнэ — 55/50/77 зэрэг өөр өөр тоо тайлбаргүй байв */
+      { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
       { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
       { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %') },
       /* ⚠️ Гүйцэтгэлийн хувийн оронд МӨНГӨН үлдэгдэл — санхүүгийн харагдацад
@@ -1220,7 +1226,9 @@ function TsKpi({ packs, fin, share }: {
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
-          <span className={`${o.tileVal} num`}>{i.v}</span>
+          {/* ⚠️ 2026-10-23 (UX аудит E4): утгыг `<b>`-д — CSS-ийн `.tileVal b` (бүтэн мөнгөн дүнд зориулсан хэмжээ) үйлчилнэ;
+              урьд нь шууд текст тул «530,872,795,39|» хавтангаас хальж тайрагддаг байв. ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️). */}
+          <span className={`${o.tileVal} num`} title={'h' in i && i.h ? i.h : i.v}><b>{i.v}</b></span>
           <span className={o.tileLabel}>{i.l}</span>
         </div>
       ))}
@@ -1441,7 +1449,7 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number; c
   return (
     <Section tone="primary" title={tr('{0} — санхүү', tr(p.name))}>
       {fin == null ? (
-        <Empty label={tr('Ачаалж байна…')} />
+        <Loading />
       ) : !has ? (
         <Empty label={tr('Гэрээ бүртгэгдээгүй')} />
       ) : (
@@ -1479,7 +1487,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   const txt = (v: unknown) => String(v ?? '').trim();
   const nn2 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-  if (loading) return <Section title={tr('Гэрээний мэдээлэл')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (loading) return <Section title={tr('Гэрээний мэдээлэл')}><Loading /></Section>;
   if (!row) return <Section title={tr('Гэрээний мэдээлэл')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
 
   /* Урт текст (ажлын нэр 163 тэмдэгт хүрдэг) — 3 мөрөөр таслаж, бүтнийг нь
@@ -1620,7 +1628,7 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finQ, p.key]);
 
-  if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Loading /></Section>;
   /* ⚠️ 2026-09-25: алдаа нь «бүртгэлгүй» БИШ — уншигдаагүй */
   if (finQ.state === 'error') return <Section title={tr('Олгосон төлбөр')}><Data q={finQ}>{() => null}</Data></Section>;
   if (!acts || !acts.length) return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Төлбөр бүртгэгдээгүй')} /></Section>;
@@ -1748,7 +1756,7 @@ function PkgMonths({
      жагсаалтыг дүүргэнэ. */
   const rows = (months ?? []).filter((m) => m.given > 0);
 
-  if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Loading /></Section>;
   if (!rows.length) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Олголт бүртгэгдээгүй')} /></Section>;
 
   return (
@@ -1798,13 +1806,13 @@ function PkgFinList({
       .sort((a, b) => b.given - a.given);
   }, [packs, givenMap, planMap, contractMap]);
 
-  if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Loading /></Section>;
   if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
 
   return (
     <Section
       title={tr('Багц бүрийн санхүүжилт')}
-      note={tr('{0} багц · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
+      note={tr('{0} багц (гэрээ эсвэл олголттой) · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
     >
       {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): багц бүр НЭР — эрэмбэгүй ангилал тул НЭГ өнгө
           (`--data`, `Bars`-ийн анхдагч); урьд нь `shade(HUE, i)` hex шатлал нь уртаар аль хэдийн
@@ -2009,10 +2017,12 @@ function FinCard({
         /* ⚠️ 2026-09-06: багцын нийт төсөв нь ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
            (`FinData.planTotal`). Урьд нь `cfMonthAxis()`-ийн 12 сарын
            цонхонд багтсан сарын мөрүүдийн нийлбэр байв. */
-        total = pkgSrcKey(rows[0], d.planTotal) != null
-          ? [...new Set(rows.map((r) => pkgSrcKey(r, d.planTotal)))]
-            .reduce<number>((a, k) => a + (k ? (d.planTotal.get(k) ?? 0) : 0), 0)
-          : 0;
+        /* ⚠️ 2026-10-21: ЭХНИЙ мөрийн түлхүүрээр хаалт хийхгүй — эхний гэрээ `planTotal`-д
+           түлхүүргүй бол бусад гэрээний дүн байсаар `total` = 0 болж «Багцын гэрээний дүн»
+           алга болдог байв. Түлхүүргүй мөрийг reduce өөрөө алгасна; хэн ч хувь нэмээгүй
+           бол 0 → доор `total > 0` шалгалтаар «байхгүй» (графикт contract=null). */
+        total = [...new Set(rows.map((r) => pkgSrcKey(r, d.planTotal)))]
+          .reduce<number>((a, k) => a + (k ? (d.planTotal.get(k) ?? 0) : 0), 0);
         /* Түлхүүрийн уналт нь `contractMonths`-ийн `given.get(...)`-тэй ЯГ ижил;
            хоёр гэрээ нэг түлхүүрт унавал НЭГ УДАА л тоологдоно. */
         givenTotal = pkgGivenTotal(rows, d);
@@ -2032,7 +2042,8 @@ function FinCard({
     }
   }
   const lag = months ? lagOf(months) : null;
-  const lvl = lag ? lagLevel(lag.gap) : null;
+  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол улаан/шар тэмдэг ГАРГАХГҮЙ (`lagLevelOf`) */
+  const lvl = lagLevelOf(lag);
 
   /**
    * KPI — ГЭРЭЭНИЙ дүн ба IPC-ийн олгосон акт (₮), тэдгээрийн ЗӨРҮҮ; мөн
@@ -2114,14 +2125,16 @@ function FinCard({
   const note =
     total > 0 ? (
       <span className={ts.totNote}>
-        {tr('Багцын гэрээний дүн:')} <b>{num(total)} ₮</b>
+        {/* ⚠️ 2026-10-26 (аудит): `total` = гэрээ ЭСВЭЛ төсөв (`planTotal`) — «гэрээний дүн» нэр нь мөн картын KPI «Гэрээний нийт дүн»
+            (`contractAmt`)-тай 520 тэрбумаар зөрж нэг нэртэй хоёр тоо харагддаг байв. Тоо хэвээр, шошго нь тоог хэлнэ. */}
+        {tr('Багцын гэрээ/төсвийн дүн (гэрээгүй бол төсвөөр):')} <b>{num(total)} ₮</b>
       </span>
     ) : undefined;
 
   return (
     <Section tone="primary" title={title} note={note}>
       {finQ.state === 'loading' ? (
-        <Empty label={tr('Санхүүжилтийн дата…')} />
+        <Loading label={tr('Санхүүжилтийн өгөгдлийг татаж байна…')} />
       ) : finQ.state === 'error' ? (
         <Data q={finQ}>{() => null}</Data>
       ) : noRow ? (
@@ -2181,7 +2194,12 @@ function FinCard({
               /* ⚠️ Гүйцэтгэлийн гурван хувь ЗӨВХӨН нэгдсэн горимд — санхүүгийн
                  харагдацад биет явц огт харагдахгүй (2026-08-21). */
               ...(finOnly ? [] : [
-                { v: plannedPct == null ? '—' : pct(plannedPct, 1), l: tr('Төлөвлөгөөт гүйцэтгэл'), c: 'var(--ink)' },
+                /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт — «хуваарь X% хамарсан» (бага бол төлөвлөгөө хэт бага) */
+                {
+                  v: plannedPct == null ? '—' : pct(plannedPct, 1),
+                  l: tr('Төлөвлөгөөт гүйцэтгэл') + (lag && coverageNote(lag.coverage) ? ` · ${coverageNote(lag.coverage)}` : ''),
+                  c: 'var(--ink)',
+                },
                 /* ⚠️ 2026-10-09 (аудит №2): `actualPct` = `lag.actual` — хуваарьгүй багц хасагдсан бол
                    хуваарьтай багцаар (зөрүүтэй нэг олонлог); шошго үүнийг хэлнэ */
                 {
@@ -2189,7 +2207,12 @@ function FinCard({
                   l: projExcl.length ? tr('Бодит гүйцэтгэл (хуваарьтай багцаар)') : tr('Бодит гүйцэтгэл'),
                   c: 'var(--ink)',
                 },
-                { v: gapText, l: tr('Гүйцэтгэлийн зөрүү'), c: 'var(--ink)' },
+                /* ⚠️ 2026-10-22 (аудит): хамралт < 95% бол зөрүүг ДҮГНЭХГҮЙ (шошгонд) */
+                {
+                  v: gapText,
+                  l: tr('Гүйцэтгэлийн зөрүү') + (lag && !lagJudged(lag) ? ` · ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''),
+                  c: 'var(--ink)',
+                },
               ]),
               /* ⚠️ «Давхцсан үлдсэн нэгж талбар» индикатор ЭНДЭЭС ХАСАГДАВ
                  (2026-08-21): нэгдсэн тоо нь аль багц саадтайг хэлдэггүй
@@ -2209,8 +2232,10 @@ function FinCard({
                 хуваарь `cashflow_0813`-тайгаа хамт хаягдсан). ЗУРАГДААГҮЙ
                 ЦУВААГ домогт жагсаах нь хэрэглэгчид «дутуу зурагдсан юм
                 биш үү» гэсэн эргэлзээ төрүүлнэ. */}
-            <span><i className={ts.legSolid} style={{ background: cat(0) }} />{tr('Олгосон санхүүжилт')}</span>
-            {!finOnly && <span><i style={{ background: cat(1) }} />{tr('Биет гүйцэтгэл')}</span>}
+            {/* ⚠️ 2026-10-23: Environment — ComboChart-ын НЭГ өнгөтэй тааруулав: олголт `--data` бүтэн
+                шугам, биет `--chart-plan` ТАСАРХАЙ `4 4` (урьд `cat(0)`/`cat(1)` дөрвөлжин). */}
+            <span><i className={ts.legSolid} style={{ background: 'var(--data)' }} />{tr('Олгосон санхүүжилт')}</span>
+            {!finOnly && <span><i className={ts.legDash} />{tr('Биет гүйцэтгэл')}</span>}
             {/* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хоцрогдлоос хасагдсаныг нэрлэнэ */}
             {!finOnly && projExcl.length > 0 && <span>{planScopeNote(projExcl)}</span>}
           </div>

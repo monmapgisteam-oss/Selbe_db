@@ -4,19 +4,19 @@
  * `FillNew.publish` урьд нь «Нийтлэх» дармагц архивын бүтэн жаазыг өөрөө
  * угсарч `Bagts_*` (ҮНДСЭН ДАТА) руу бичдэг байв. Шинэ урсгалд ноорог →
  * ИЛГЭЭЛТ (`Selbe_Guitsetgel_Draft`, `sub|<pkgKey>`) → 4 шатны хяналт → зөвхөн
- * ерөнхий менежер БАТЛАХАД л архивт жааз нэмэгдэнэ. Тиймээс жааз угсрах,
+ * төлөвлөлтийн ахлах инженер БАТЛАХАД л архивт жааз нэмэгдэнэ. Тиймээс жааз угсрах,
  * ObjectID шилжүүлэх, нэмсэн мөр оруулах логик нь React-ээс САЛЖ, энд
  * ЦЭВЭР функц болж, гурван газраас (FillNew · hyanaltStore.apply ·
  * hyanaltDetail) НЭГ эх сурвалжаар дуудагдана.
  *
  * ⚠️ Энд ҮЙЛЧИЛГЭЭ РҮҮ БИЧДЭГ юу ч БАЙХГҮЙ — `applyAdds` зөвхөн
- *    `hyanaltStore.apply` (ерөнхий менежерийн зөвшөөрөл) ба
+ *    `hyanaltStore.apply` (төлөвлөлтийн ахлах инженерийн зөвшөөрөл) ба
  *    `ajilApply.materializeAdds` (нэмэлт ажил батлагдмагц, 2026-09-24)
  *    дотроос дуудагдана.
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, cellPct, computeAll, dayToMs, incCell, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -463,7 +463,8 @@ export function moveKeys(
 export type Overlay = {
   /** Суурь мөрүүдийн ХУУЛБАР (+ нэмсэн мөр) дээр илгээлтийн утга бичигдсэн */
   rows: SheetRow[];
-  /** Илгээлтийн «Шинэчлэгдсэн огноо» — өөрчлөөгүй бол `null` */
+  /** Илгээлтийн «Шинэчлэгдсэн огноо» — өөрчлөөгүй бол `null`.
+   *  ⚠️ 2026-10-22 (аудит): архивт БИЧИХ/хянагчид ХАРУУЛАХ огноо нь `laterAsOf(asOf, архивынх)` — шууд биш (ухрахгүй). */
   asOf: number | null;
   /** Мөрөнд БУУСАН нүдний түлхүүрүүд (`${oid}:${b}`, oid = `rows`-ийнх) */
   cellKeys: string[];
@@ -486,11 +487,151 @@ export type Overlay = {
    *    мөрийн дараалалд итгэгдэхгүй.
    */
   remapped: boolean;
+  /**
+   * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо ба түлхүүр (`incCell.neg`, илгээлтийн
+   *    ЭХ түлхүүрээр). Архивлалт (`hyanaltStore`) `negative > 0` бол татгалзана. ⚠️ 2026-10-22: мөрөнд 0 биш ЖИНХЭНЭ (сөрөг)
+   *    нийт буна (`incCell.raw`, зөвхөн дэлгэц).
+   */
+  negative: number;
+  negKeys: string[];
+  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүд бүрийн ИЛГЭЭСЭН нэмэлт (`negKeys`-ийн түлхүүрээр) — хүнд нэрлэхэд (`describeNegCells`) */
+  negInc: Record<string, string>;
 };
 
 /**
+ * СӨРӨГ НҮДИЙГ ХҮНД ОЛДОХООР НЭРЛЭНЭ (⚠️ 2026-10-22, хэрэглэгч: «хэддүгээр мөр вэ» — «1 нүд» гэх нь хаана гэдгийг хэлдэггүй;
+ * мөрийн № давтагддаг тул эцэг бүлгүүдийн №-ээр замыг өгнө): `Б → Б18 → 10 → 2 «Ажил» −0.0017` (+ блок, олон блоктой бол).
+ * `rows` — давхарласан мөрүүд (`Overlay.rows`, түлхүүрийн oid эндээс).
+ */
+export function describeNegCells(
+  keys: readonly string[],
+  rows: readonly SheetRow[],
+  bld: readonly string[],
+  inc: Readonly<Record<string, string>> = {},
+  max = 10,
+): string[] {
+  const idx = new Map(rows.map((r, i) => [r.oid, i] as const));
+  const out = keys.slice(0, max).map((k) => {
+    const at = k.indexOf(':');
+    const i = idx.get(Number(k.slice(0, at)));
+    const b = Number(k.slice(at + 1));
+    if (i == null) return k;
+    const path: string[] = [];
+    let d = rows[i].depth;
+    for (let j = i - 1; j >= 0 && d > 0; j--) {
+      if (rows[j].depth < d) { if (String(rows[j].no ?? '').trim()) path.unshift(String(rows[j].no).trim()); d = rows[j].depth; }
+    }
+    path.push(String(rows[i].no ?? '').trim() || '—');
+    const blk = bld.length > 1 && bld[b] ? ` · ${bld[b]}` : '';
+    const v = inc[k] != null ? ` ${String(inc[k]).trim().replace(/^-/, '−')}` : '';
+    return `${path.join(' → ')} «${String(rows[i].work ?? '').trim()}»${blk}${v}`;
+  });
+  if (keys.length > out.length) out.push(`… +${keys.length - out.length}`);
+  return out;
+}
+
+/** ⚠️ 2026-10-22 (аудит): сөрөг нийтийн хүлцэл — `incCell.below`-ийн доод хязгаар (сөрөг нүдний жинхэнэ утга < −1e-9) */
+const NEG_EPS = 1e-9;
+
+/**
+ * ДАВХАРЛАСАН МӨРИЙН НҮД НИЙТ СӨРӨГ ҮҮ (⚠️ 2026-10-22, аудит).
+ * `overlaySubmission` зөвхөн `incCell.neg` нүдэнд ЖИНХЭНЭ (сөрөг) нийт буулгадаг, бусад нь ≥ 0-оор хаагдсан тул мөрийн
+ * утгаас шууд таньна — хянагчийн (`hyanaltDetail` → `Change.neg`) ба гүйцэтгэгчийн (`FillNew.backOkRes` · `FillRows`) хоёр
+ * тал НЭГ дүрмээр. Түр (нэмсэн) мөрийн alias-тай түлхүүрт ч ажиллана (`negKeys` нь ЭХ түлхүүртэй).
+ */
+export function negTotalAt(r: Pick<SheetRow, "obyem" | "act">, b: number): boolean {
+  return (r.obyem[b] ?? 0) < -NEG_EPS || (r.act[b] ?? 0) < -NEG_EPS;
+}
+
+/**
+ * НИЙТИЙГ 0 БОЛГОХ УТГА — гүйцэтгэгч тэр нүдэнд ЯГ юу бичих вэ (⚠️ 2026-10-22, аудит).
+ *
+ * ⚠️ ЯАГААД: «хасалтаа устгаж хоосон үлдээнэ үү» гэсэн зөвлөгөө БУЦААГДСАН илгээлтэд БУРУУ — `mergeSubmission` шинэ
+ *    нэмэлтийг өмнө илгээсэн дээр НЭМДЭГ тул нүдийг хоосон болгоход өмнөх −0.0017 хэвээр үлдэнэ; эсрэг тоог (+0.0017)
+ *    бичих ёстой. Хуудас 3 оронтой харуулдаг (−0.0017 → «−0.002») тул харагдсан тоог бичвэл 0 болохгүй — БҮТЭН
+ *    нарийвчлалаар (`fmtInc`, 12 орон) өгнө. Бичсэн тоо нь тэр нүдний ноорогийг ОРЛОНО (`useCellEdit.commit`).
+ * @param excl нүдний нийт ЭНЭ НООРОГИЙН нэмэлтгүйгээр (= суурь + өмнө илгээсэн) — обьём, `pct` бол 0–1 бутархай
+ * @returns бичих тоо (ASCII «-» — нүдэнд шууд бичигдэнэ; `pct` бол «…%»); `""` — ноорогүйгээр нийт 0 → нүдийг хоосон болгоно
+ */
+export function negFixText(excl: number, pct = false): string {
+  const need = -excl;
+  if (Math.abs(need) <= NEG_EPS) return "";
+  return pct ? `${fmtInc({ n: need * 100, p: 0 })}%` : fmtInc({ n: need, p: 0 });
+}
+
+/**
+ * ДАВХАРЛАСАН МӨРИЙН СӨРӨГ НҮДЭНД бичих утга (`negFixText`) — `r` нь ноорогийн нэмэлт ОРСОН нийттэй (`overlaySubmission`-ийн
+ * илгээх/илгээсэн payload), `draft` нь тэр нүдний ноорог (байхгүй бол — дахин илгээх, буцаагдсан нүд). ⚠️ 2026-10-22 (аудит).
+ * `null` — ерөнхий текст: хувийн хэсэг сөрөг (обьёмын замгүй `%`), обьёмын талбаргүй блок, Хувь горимд мөрийн Обьём алга
+ * (`useCellEdit.commit` тэр нүдэнд обьёмыг илэрхийлж чадахгүй).
+ * ⚠️ Обьёмын замгүй (мөрийн Обьём алга) нүдэнд Обьём горимд бичсэн тоо зөвхөн обьёмын хэсгийг солино (хувь нь үлдэнэ —
+ *    `useCellEdit.otherPart`) тул ноорогийн ЗӨВХӨН `n`-ийг хасна; Обьёмтой бол бүтэн нэмэлтийг (`n + p × Обьём`).
+ */
+export function negFixOf(
+  r: Pick<SheetRow, "obyem" | "act" | "vol">,
+  b: number,
+  hasField: boolean,
+  draft?: string,
+  mode: "obyem" | "pct" = "obyem",
+): string | null {
+  const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+  const volPath = hasField && vol != null;
+  if (!volPath && (r.act[b] ?? 0) < -NEG_EPS) return null;
+  const raw = r.obyem[b];
+  if (!hasField || raw == null || !(raw < -NEG_EPS)) return null;
+  if (mode === "pct" && !volPath) return null;
+  const d = parseInc(draft);
+  const dv = d ? d.n + (volPath ? d.p * (vol as number) : 0) : 0;
+  const excl = raw - dv;
+  return mode === "pct" ? negFixText(excl / (vol as number), true) : negFixText(excl);
+}
+
+/**
+ * СӨРӨГ НҮД БҮРИЙГ НЭРЛЭЭД ЯГ ЮУ БИЧИХИЙГ ХЭЛНЭ (⚠️ 2026-10-22, аудит) — `FillNew.publish` ба `resendAsIs`-ийн хориг.
+ * `«{нэр}: энэ нүдэнд «0.0017» гэж бичнэ үү»` · `«{нэр}: энэ нүдийг хоосон болгоно уу»` · хувийн хэсэгт ерөнхий текст.
+ * `draft` — ноорогийн нэмэлт `negKeys`-ийн түлхүүрээр (`publish`-ийн `pend2`); `mode` — хуудасны бөглөх горим.
+ */
+export function describeNegFixes(
+  ov: Pick<Overlay, "negKeys" | "rows" | "negInc">,
+  sc: Pick<Schema, "bld" | "obyem">,
+  draft: Readonly<Record<string, string>> = {},
+  mode: "obyem" | "pct" = "obyem",
+  max = 10,
+): string[] {
+  const idx = new Map(ov.rows.map((r, i) => [r.oid, i] as const));
+  const names = describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc, max);
+  const named = Math.min(max, ov.negKeys.length);
+  return names.map((name, j) => {
+    /* «… +N» мөр — түлхүүргүй */
+    if (j >= named) return name;
+    const k = ov.negKeys[j];
+    const at = k.indexOf(":");
+    const i = idx.get(Number(k.slice(0, at)));
+    const b = Number(k.slice(at + 1));
+    const fix = i == null ? null : negFixOf(ov.rows[i], b, !!sc.obyem[b], draft[k], mode);
+    return fix == null
+      ? tr('{0}: хасалтаа нийт 0-ээс доош орохгүй болтол багасгана уу', name)
+      : fix === ""
+        ? tr('{0}: энэ нүдийг хоосон болгоно уу', name)
+        : tr('{0}: энэ нүдэнд «{1}» гэж бичнэ үү', name, fix);
+  });
+}
+
+/**
+ * АРХИВЫН «ШИНЭЧЛЭГДСЭН ОГНОО» — ХОЖУУ НЬ (⚠️ 2026-10-22, аудит). Өдөр бүр тусдаа илгээлттэй тул ХУУЧИН өдрийн илгээлт
+ * хожуу батлагдвал (10-12-ныхын дараа 10-10-ных) архивын огноо УХАРЧ, БҮХ мөрийн төлөвлөгөөт хувь буцаж бодогддог байв.
+ * Архивлалт (`hyanaltStore.archiveSubmission`) ба хянагчийн харагдац (`hyanaltDetail.loadStaged`) НЭГ дүрмээр.
+ * `sub` — илгээлтийн `asOf` (`null` = огноог хөндөөгүй), `cur` — архивын сүүлийн жаазных.
+ */
+export function laterAsOf(sub: number | null | undefined, cur: number | null | undefined): number | null {
+  if (sub == null) return cur ?? null;
+  if (cur == null) return sub;
+  return Math.max(sub, cur);
+}
+
+/**
  * ИЛГЭЭЛТИЙГ СУУРЬ ЖААЗ ДЭЭР ДАВХАРЛАНА — компанийн хуудас, хянагчийн
- * харагдац, ерөнхий менежерийн батлалт гурвуулаа ЭНЭ функцээр ижил мөр
+ * харагдац, төлөвлөлтийн ахлах инженерийн батлалт гурвуулаа ЭНЭ функцээр ижил мөр
  * авна.
  *
  * 1) `rows`-д `sub.rowKeys`-ийн oid-ууд байхгүй бол (архивт хооронд нь шинэ
@@ -529,10 +670,12 @@ export function overlaySubmission(
   const mc = moveKeys(map, Object.fromEntries(sub.cells ?? []));
   const md = moveKeys(map, Object.fromEntries(sub.dates ?? []));
   const unmovedKeys: string[] = [...mc.unmoved, ...md.unmoved];
+  const negKeys: string[] = [];
+  const negInc: Record<string, string> = {};
 
   /* ── 2. Нэмсэн мөр — давхардлыг алгасна ── */
   /**
-   * ⚠️ БАТЛАГДСАНЫ ДАРАА ДАВХАР ОРОХООС: ерөнхий менежер баталж архивт
+   * ⚠️ БАТЛАГДСАНЫ ДАРАА ДАВХАР ОРОХООС: төлөвлөлтийн ахлах инженер баталж архивт
    *    жааз нэмэгдсэн ч `closeSubmission` унавал (эсвэл хуудас түр хуучин
    *    илгээлтийг харсаар байвал) илгээлтийн add нь шинэ жаазанд аль хэдийн
    *    ЖИНХЭНЭ мөр болж орсон байна. Түүнийг дахин оруулбал нэг ажил хоёр
@@ -620,9 +763,22 @@ export function overlaySubmission(
          орох байв. `unmoved` БИШ: тэр нь батлалтыг МӨНХӨД зогсооно, харин энэ нүдийг засах зам алга. */
       if (synNoVol(sc, r)) continue;
       const res = incCell(r, b, v, !!sc.obyem[b]);
-      if (!res) continue;
-      r.obyem[b] = res.obyem;
-      r.act[b] = res.act;
+      if (!res) {
+        /* ⚠️ 2026-10-21 (аудит): ХОГ УТГА (хоосон биш атлаа `parseInc` задлахгүй — «abc» · «1e3» · «1,250») — урьд нь
+           чимээгүй алгасагдаж илгээлт «өөрчлөлтгүй» мэт батлагддаг байв; одоо `unmoved` (батлалт ил зогсоно, FillNew
+           анхааруулна). Тэг/хоосон нэмэлт нь хэвээр «өөрчлөлтгүй». */
+        if (v.trim() !== "" && parseInc(v) == null) unmovedKeys.push(k);
+        continue;
+      }
+      /* ⚠️ 2026-10-21 (аудит): НИЙТ СӨРӨГ болох нэмэлт (`incCell.neg`) — дэлгэцэд 0-оор хаасан утга буух ч түлхүүрийг
+         `negKeys`-д тэмдэглэнэ; архивлалт (`hyanaltStore.archiveSubmission`) `negative > 0` бол татгалзана. */
+      if (res.neg) negKeys.push(k);
+      /* ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүдэнд 0-оор хаасан биш ЖИНХЭНЭ (сөрөг) нийтийг харуулна — «0 м³» гэж харагдаж
+         хянагч аль нүд, юу болсныг ойлгодоггүй байв. Батлалт/архивлалт `negative > 0` бол татгалздаг тул энэ утга
+         хаана ч бичигдэхгүй (зөвхөн дэлгэц). */
+      if (res.neg) negInc[k] = v;
+      r.obyem[b] = res.neg && res.raw ? res.raw.obyem : res.obyem;
+      r.act[b] = res.neg && res.raw ? res.raw.act : res.act;
       cellKeys.push(key);
       continue;
     }
@@ -671,6 +827,9 @@ export function overlaySubmission(
     unmoved: unmovedKeys.length,
     unmovedKeys,
     remapped: needMap,
+    negative: negKeys.length,
+    negKeys,
+    negInc,
   };
 }
 
@@ -790,7 +949,8 @@ export function buildFrame(
 ): Record<string, unknown>[] {
   if (!sc.f.fillDate)
     throw new Error(
-      tr('«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).'),
+      /* ⚠️ 2026-10-23 (UX аудит X2): талбарын нэр, «AGOL дээр багана нэмнэ үү» заавар хэрэглэгчид хамааралгүй — энгийн үгээр */
+      tr('Энэ хуудсанд бөглөсөн огнооны багана алга — архив үүсгэх боломжгүй тул илгээлтийг зогсоов. Админд мэдэгдэнэ үү.'),
     );
   /* ⚠️ 2026-10-09: блокгүй багцын синтетик блокт J = L (хэмжилтгүй бол null) — `computeAll`-ийн `synthetic` */
   const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct, "abs", sc.synthetic);
@@ -803,7 +963,7 @@ export function buildFrame(
    *    1…N-ээр дахин дугаарлавал дунд нь нэг мөр нэмэгдэхэд түүнээс хойших
    *    БҮХ код нэгээр гулсаж, хадгалагдсан уялдаа бүр өөр ажил руу чимээгүй
    *    заана. Тиймээс байгаа кодыг ХЭВЭЭР (raw-аар дамжина), зөвхөн шинэ
-   *    (ерөнхий менежерийн нэмсэн) мөрд ХАМГИЙН ИХ + 1-ээс эхлэн олгоно.
+   *    (төлөвлөлтийн ахлах инженерийн нэмсэн) мөрд ХАМГИЙН ИХ + 1-ээс эхлэн олгоно.
    *
    * ⚠️ Урьд нь код ЭНД ОГТ бичигддэггүй байсан тул нэмсэн мөр мөнхөд
    *    кодгүй үлдэж, «Хуваарь» модулиас түүн рүү уялдаа заах боломжгүй байв.
@@ -878,7 +1038,7 @@ export function buildFrame(
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      *
      * ⚠️ ЯАГААД (2026-09-04-ний аудит): `buildFrame` нь H-г огт бичдэггүй
-     *    байсан тул зөвхөн `{...r.raw}`-аар дамждаг байв. Ерөнхий менежер
+     *    байсан тул зөвхөн `{...r.raw}`-аар дамждаг байв. Төлөвлөлтийн ахлах инженер
      *    шинэ ажил нэмэхэд түүний Обьём×Нэгж өртөг нь дэлгэц дээр бүх өвөг
      *    бүлгийн дүнд нэмэгддэг ч АРХИВТ хуучин дүн хэвээр бичигдэж,
      *    үйлчилгээний багана дэлгэцээс мөнхөд зөрдөг байлаа (AGOL-ын
@@ -977,7 +1137,7 @@ export function buildFrame(
  *    хувилбарын алдаа): зураглал нь ХООСОН мөрийг тоолдог атлаа `loadRows`
  *    тэднийг алгасдаг тул Багц 3.1 · 9F-д жааз үргэлж 1,470 (зураглал 1,471)
  *    байх ба зураглалтай жишсэн шалгуур тэр багцын БАТЛАЛТЫГ МӨНХӨД хаадаг
- *    байв. Мөн ерөнхий менежерийн нэмсэн мөр зураглалд хуримтлагддаггүй тул
+ *    байв. Мөн төлөвлөлтийн ахлах инженерийн нэмсэн мөр зураглалд хуримтлагддаггүй тул
  *    мөр нэмэгдсэн БҮХ багц дараагийн батлалтад хаагдана. Дуудагч тал лавлахыг
  *    `loadRows(...).frameLen` (ачаалсан ЖИНХЭНЭ мөрийн тоо) + энэ илгээлтээр
  *    шинээр орсон мөрөөр өгнө.

@@ -32,12 +32,29 @@ import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 import type FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 
-import { LAYER_BY_ID, layerUrl, oidOf, TD } from '@/lib/services';
+import { LAYER_BY_ID, layerUrl, oidOf, SELBE_ET } from '@/lib/services';
+import { mapLayer } from '@/components/lazyLayers';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, classOf, damageCost, queryRingsPaged,
+  AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, buildingPeople, classOf, damageCost, queryRingsPaged,
   type DamageClass, type HazardKey, type LevelKey, type Station,
 } from '@/lib/ersdel';
+import { BF } from '@/lib/analysis/config';
+
+/**
+ * Давхаргын талбарын ЖИНХЭНЭ нэр (том/жижиг үсэг үл хамааран) — байхгүй бол null.
+ * ⚠️ 2026-10-22 (аудит): Enterprise-ийн толинд байхгүй давхарга жижиг үсгээр (`total_population`) ирдэг — байхгүй талбарыг
+ *    `outFields`-д хийвэл асуулга бүхэлдээ унана.
+ */
+const fieldOf = (fl: FeatureLayer, name: string): string | null => {
+  const want = name.toLowerCase();
+  return fl.fields?.find((f) => f.name.toLowerCase() === want)?.name ?? null;
+};
+const numOrNull = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
 
 type AnyView = MapView | SceneView;
 
@@ -63,7 +80,7 @@ export type Band = {
 /** Голын давхаргын URL — каталогт байвал түүнээс, эс бөгөөс шууд [43] */
 const RIVER_URL = (): string => {
   const def = LAYER_BY_ID['sb:16'];
-  return def ? layerUrl(def) : `${TD}/43`;
+  return def ? layerUrl(def) : `${SELBE_ET}/134`;
 };
 
 let riverCache: Polygon | null = null;
@@ -565,17 +582,26 @@ export async function damageOf(
     if (!def) continue;
     /* ⚠️ Гол/усан сан нь үерийн ЭХ УУЛ, хохирогч БИШ (`FLOOD_SKIP_IDS`) */
     if (kind === 'flood' && FLOOD_SKIP_IDS.has(id)) continue;
-    const fl = view.map?.findLayerById(id) as FeatureLayer | undefined;
+    /* ⚠️ 2026-10-22: `mapLayer` — нуугдсан давхарга Map-д ОРООГҮЙ байж болно (`MapCanvas` lazy, `lazyLayers.ts`); үндсэн
+       багц (`ASSESS_IDS`) нь ихэвчлэн унтраалттай тул `findLayerById` тэднийг чимээгүй алгасаж «эрсдэлгүй» гэх байв. */
+    const fl = mapLayer(view.map, id) as FeatureLayer | null;
     if (!fl || typeof fl.queryFeatures !== 'function') continue;
     const geom: DamageRow['geom'] = def.geom === 'line' ? 'line' : def.geom === 'point' ? 'point' : 'area';
 
     try {
       const oid = oidOf(def);
+      const cls = classOf(id, geom);
+      /* ⚠️ 2026-10-22 (аудит): барилгын ангилалд хүн ам (`Total_population`) ба шалны талбайг хамт — өртсөн хүнийг
+         барилгын БОДИТ хүн амаар (`ersdel.buildingPeople`); талбаргүй давхаргад (жиш. блок, үнэлгээний барилга) нөөц.
+         Талбарын жагсаалт ачаалагдсан байх ёстой (`load` давтагдахгүй) — эс бөгөөс чимээгүй хуучин тооцоо руу унана. */
+      if (cls === 'building' && typeof fl.load === 'function') await fl.load();
+      const popF = cls === 'building' ? fieldOf(fl, BF.totalPop) : null;
+      const gfaF = cls === 'building' ? fieldOf(fl, BF.gfa) : null;
       const q = fl.createQuery();
       q.geometry = hazard;
       q.spatialRelationship = 'intersects';
       q.returnGeometry = true;
-      q.outFields = [oid];
+      q.outFields = [oid, ...(popF ? [popF] : []), ...(gfaF ? [gfaF] : [])];
       q.outSpatialReference = WM;
       q.num = MAX_GEOM;
       // ⚠️ ТООГ тусад нь асууна: `queryFeatures` нь `num`-аар тайрагдана тул
@@ -614,9 +640,10 @@ export async function damageOf(
       const n = countFailed ? res.features.length : total;
       if (!n) continue;
 
-      const cls = classOf(id, geom);
       let area = 0;
       let length = 0;
+      /** Өртсөн хүн — барилга бүрийн хүн ам × мужид орсон хувь (`buildingPeople`) */
+      let peopleSum = 0;
       let maxDepth: number | null = null;
       const graphics: Graphic[] = [];
       const objects: DamageObject[] = [];
@@ -635,6 +662,16 @@ export async function damageOf(
         if (geom === 'area') {
           measure = Math.abs(geometryEngine.geodesicArea(cut as Polygon, 'square-meters'));
           area += measure;
+          if (cls === 'building') {
+            /* Мужид орсон ХУВЬ — бүтнээрээ орсон бол 1, эс бөгөөс огтлолцлын талбай ÷ бүтэн хөл */
+            const full = whole ? measure : Math.abs(geometryEngine.geodesicArea(g as Polygon, 'square-meters'));
+            const share = whole || !(full > 0) ? 1 : measure / full;
+            peopleSum += buildingPeople(
+              popF ? numOrNull(f.attributes?.[popF]) : null,
+              gfaF ? numOrNull(f.attributes?.[gfaF]) : null,
+              share, measure,
+            );
+          }
         } else if (geom === 'line') {
           measure = geometryEngine.geodesicLength(cut as __esri.Polyline, 'meters');
           length += measure;
@@ -701,7 +738,8 @@ export async function damageOf(
       area *= scale;
       length *= scale;
 
-      const people = cls === 'building' ? area / EXPOSURE.m2PerPerson : 0;
+      /* ⚠️ 2026-10-22 (аудит): ХӨЛИЙН талбай ÷ 35 БИШ — барилгын хүн амаас (`buildingPeople`), тайрагдсан бол шатлуулна */
+      const people = cls === 'building' ? peopleSum * scale : 0;
 
       /* ⚠️ 2026-10-01: үерийн үнэлгээ `damageCost` — нэгж үнэгүй/нэгж-геометр зөрсөн
          ангилалд `null` (0 БИШ). Агаарын үнэлгээ хуучнаараа (өртөлтөөс). */

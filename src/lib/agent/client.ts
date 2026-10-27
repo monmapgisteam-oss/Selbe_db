@@ -22,6 +22,8 @@ import { AUTH } from '@/lib/services';
 
 export type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: unknown };
 export type TextBlock = { type: 'text'; text: string };
+/** ⚠️ 2026-10-19: Opus 5.5 — хэрэгслийн хоорондын текст ч ийм блокоор (ихэвчлэн хоосон `thinking`) ирж болно */
+export type ThinkingBlock = { type: 'thinking'; thinking: string; signature?: string };
 export type ContentBlock = TextBlock | ToolUseBlock | { type: string; [k: string]: unknown };
 export type ApiMessage = { role: 'user' | 'assistant'; content: string | ContentBlock[] };
 
@@ -31,6 +33,13 @@ export type ApiMessage = { role: 'user' | 'assistant'; content: string | Content
  * төөрсөн гэсэн үг — хязгааргүй гогцоо болохоос сэргийлнэ.
  */
 const MAX_TURNS = 6;
+
+/**
+ * ⚠️ 2026-10-19: НЭГ АСУУЛТЫН НИЙТ ДЭЭД ХУГАЦАА — реле хүсэлт бүр 240с (`RELAY_TIMEOUT_MS`) хүртэл,
+ *    эргэлт 6 хүртэл тул урьд нь онолын хувьд ~24 минут «Бодож байна…» гацаж болдог байв. Хугацаа
+ *    дуусахад реле ба ArcGIS-ийн бүх хүсэлт цуцлагдаж `TimeoutError` шидэгдэнэ (`agentErrorText`).
+ */
+const QUESTION_TIMEOUT_MS = 360_000;
 
 /**
  * Реле сервер — env-ээр солино, эс бөгөөс локал dev.
@@ -157,6 +166,18 @@ async function withPromptSig(path: string, init: RequestInit): Promise<RequestIn
   }
 }
 
+/** `/chat`-ийн 5xx хариуг өөр хост руу давтаж болох уу — дээрх `relayFetch`-ийн ⚠️ 2026-10-19 */
+async function relayMayRetry(res: Response): Promise<boolean> {
+  const b = (await res.clone().json().catch(() => null)) as { error?: unknown; retryable?: unknown; upstream?: unknown; code?: unknown } | null;
+  /* Манай релейн хариу биш (тунелийн HTML/хоосон, эсвэл өөр бүтэцтэй JSON) — релей хүрээгүй */
+  if (!b || typeof b !== 'object' || (!('error' in b) && !('retryable' in b))) return true;
+  if (b.code === 'upstream_auth') return true;
+  /* ⚠️ 2026-10-19: реле дээд үйлчилгээнд ХҮРСЭН хариуг ЗААВАЛ `upstream: true`-ээр тэмдэглэдэг (`server.mjs` ·
+     `worker.mjs`). Тэмдэггүй алдаа (бэлэн биш 503, хязгаар …) нь дээд талд хүрэхээс ӨМНӨ татгалзсан → шилжиж болно.
+     (Урьд `=== false` гэж шалгадаг байсан ч реле `upstream: false`-ийг ХЭЗЭЭ Ч илгээдэггүй тул энэ салбар үхмэл байв.) */
+  return b.upstream !== true;
+}
+
 export async function relayFetch(path: string, rawInit: RequestInit): Promise<Response> {
   if (!AGENT_APIS.length) throw new Error(tr('AI үйлчилгээний хаяг тохируулагдаагүй байна.'));
   const init = await withPromptSig(path, rawInit);
@@ -179,13 +200,27 @@ export async function relayFetch(path: string, rawInit: RequestInit): Promise<Re
     const tm = setTimeout(() => ac.abort(new DOMException(`timeout ${RELAY_TIMEOUT_MS}ms`, 'TimeoutError')), RELAY_TIMEOUT_MS);
     try {
       const res = await fetch(`${base}${path}`, { ...init, signal: ac.signal });
-      if (!last && FAILOVER_STATUS.has(res.status)) { aliveAt.delete(base); continue; }
+      /* ⚠️ 2026-10-19: `/chat`-ийг 5xx дээр өөр хост руу ДАВТАН илгээхгүй, хэрэв хариу манай РЕЛЕЕС ирсэн бол
+         (JSON `error`/`retryable` биетэй) — тэр үед хүсэлт дээд үйлчилгээнд (Anthropic/Claude Code) аль хэдийн
+         хүрч боловсруулагдсан байж болох тул давталт нь давхар зарцуулалт/хариу үүсгэнэ. Шилжих нь ЗӨВХӨН:
+         тунель/прокси (релей хүрээгүй — JSON биш эсвэл манай биш бие), `upstream: true` тэмдэггүй алдаа (релей
+         дээд талд хүрэхээс ӨМНӨ татгалзсан) эсвэл `upstream_auth` (тэр хостын түлхүүр буруу — юу ч боловсруулагдаагүй).
+         Сүлжээний алдаа (`fetch` шидсэн) урьдын адил дараагийн хост руу — ГЭХДЭЭ `/chat`-ийн хугацаа хэтрэлт биш (доор). */
+      if (!last && FAILOVER_STATUS.has(res.status) && (!path.startsWith('/chat') || await relayMayRetry(res))) {
+        aliveAt.delete(base);
+        continue;
+      }
       active = i;
       aliveAt.set(base, Date.now());
       return res;
     } catch (e) {
       if (init.signal?.aborted) throw e;
       aliveAt.delete(base);
+      /* ⚠️ 2026-10-19: `/chat`-ийн ХУГАЦАА ХЭТРЭЛТ (`TimeoutError`) дээр өөр хост руу ШИЛЖИХГҮЙ — хүсэлт релед хүрч
+         дээд үйлчилгээ боловсруулж байгаа байх магадлалтай (удаан хариулт); давтвал давхар зарцуулалт ба 2×240с хүлээлт.
+         Шилжих нь зөвхөн хариу ирэхээс ӨМНӨХ сүлжээний алдаа (`TypeError: Failed to fetch` …). */
+      const reason: unknown = ac.signal.reason;
+      if (path.startsWith('/chat') && reason instanceof DOMException && reason.name === 'TimeoutError') throw reason;
       lastErr = e;
     } finally {
       clearTimeout(tm);
@@ -350,6 +385,8 @@ function relayStatusText(status: number, code?: string): string {
   if (status === 413) return tr('Яриа хэт урт боллоо — ⟲ дарж шинээр эхлүүлнэ үү.');
   if (status === 429) return tr('AI туслах завгүй байна — хэсэг хүлээгээд дахин оролдоно уу.');
   if (status === 504) return tr('AI туслах хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.');
+  /* ⚠️ 2026-10-19: 529 (overloaded) — Anthropic-ийн ЕРӨНХИЙ ачаалал; «Реле алдаа (HTTP 529)» гэж техникээр гардаг байв */
+  if (status === 529) return tr('AI үйлчилгээ одоогоор хэт ачаалалтай байна — хэдэн минутын дараа дахин оролдоно уу.');
   if (FAILOVER_STATUS.has(status)) return tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.');
   return tr('Реле алдаа (HTTP {0})', status);
 }
@@ -401,6 +438,44 @@ const textOf = (blocks: ContentBlock[]): string =>
     .trim();
 
 /**
+ * ТӨЛӨВЛӨГӨӨНИЙ ТЕКСТ — хэрэгсэл дуудаж буй эргэлтийн блокуудаас (⚠️ 2026-10-19).
+ * ⚠️ Claude Opus 5.5 хэрэгслийн дуудлагын ХООРОНДЫН текстийг `text` биш `thinking` блокоор (анхдагчаар
+ *    ХООСОН агуулгатай) буцааж болно — урьд нь зөвхөн `text`-ийг уншдаг тул төлөвлөгөө чимээгүй алга
+ *    болдог байв. Дараалал: (1) `text` блок; (2) бодолтын блок доторх ```plan` ХАШИЛТТАЙ хэсэг л —
+ *    хашилтгүй бодолтын түүхий текстийг хэрэглэгчид ХЭЗЭЭ Ч харуулахгүй (`plan.ts`-ийн ⚠️). Олдохгүй бол
+ *    '' — карт зурагдахгүй, алдаа гарахгүй.
+ */
+export function planTextOf(blocks: readonly ContentBlock[]): string {
+  const text = textOf(blocks as ContentBlock[]);
+  if (text) return text;
+  for (const b of blocks) {
+    if (b.type !== 'thinking') continue;
+    const raw = typeof (b as ThinkingBlock).thinking === 'string' ? (b as ThinkingBlock).thinking : '';
+    const m = raw.match(/```plan[^\n]*\n[\s\S]*?```/);
+    if (m) return m[0];
+  }
+  return '';
+}
+
+/**
+ * ТҮҮХИЙН БОДОЛТЫН БЛОКИЙГ ХАСНА (in-place) — түүхийг ЭХНЭЭС нь огтолсны ДАРАА дуудна (⚠️ 2026-10-19).
+ * ⚠️ ЯАГААД: Opus 5.5-ийн бодолтын блок нь өөрийн ӨМНӨХ бүх мессежийг (prefix) гарын үсгээр баталдаг —
+ *    эхний эргэлтүүдийг хассан түүхэд үлдсэн блок бүр «өөр ярианых» болж (шинэ байгууллагад) 400 буцна.
+ *    Баримтжуулсан сэргээлт: ҮЛДСЭН түүхийн БҮХ `thinking`/`redacted_thinking`-ийг хасах (`text` ·
+ *    `tool_use` хэвээр). Дараагийн эргэлтүүд энэ шинэ эхлэлтэй нийцэж, түүх дахин зөвхөн АРД нэмэгдэнэ.
+ *    Огтлоогүй үед ДУУДАХГҮЙ (дундаас нь хасвал мөн адил хүчингүй болно).
+ * ⚠️ Хоосон болсон assistant агуулгыг товч текстээр орлуулна — `{content: []}` нь 400.
+ */
+export function stripThinking(history: ApiMessage[]): void {
+  for (const m of history) {
+    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+    const kept = m.content.filter((b) => b.type !== 'thinking' && b.type !== 'redacted_thinking');
+    if (kept.length === m.content.length) continue;
+    m.content = kept.length ? kept : [{ type: 'text', text: '…' }];
+  }
+}
+
+/**
  * Нэг асуултыг бүрэн хариултанд хүргэнэ.
  *
  * @param history Өмнөх ярианы мессежүүд — АГЕНТ өөрөө нэмнэ, дуудагч хадгална.
@@ -417,12 +492,39 @@ export async function ask(opts: {
    * зарцуулахгүй тул хариулт удаашрахгүй.
    */
   onPlan?: (text: string) => void;
-  /** Хэрэгслийн нэг багц гүйцэтгэгдэж дуусахад — төлөвлөгөөний алхам ахина */
+  /**
+   * Хэрэгслийн нэг багц гүйцэтгэгдэж дуусахад.
+   * ⚠️ 2026-10-19: төлөвлөгөөний АЛХМЫН тоо БИШ — нэг алхам олон багц, эсвэл олон алхам нэг багцаар
+   *    явдаг тул `AgentChat` үүгээр ✓ тавихаа больсон (алхмууд эргэлт ДУУССАНЫ дараа л ✓).
+   */
   onStep?: () => void;
   signal?: AbortSignal;
   /** ⚠️ 2026-10-09: зөвхөн Telegram бот — `x-bot-user` толгой (`callRelay`-ийн ⚠️) */
   botUser?: string;
 }): Promise<AskResult> {
+  /* ⚠️ 2026-10-19: асуултын НИЙТ дээд хугацаа (`QUESTION_TIMEOUT_MS`) + хэрэглэгчийн цуцлалт НЭГ сигналд —
+     реле ба хэрэгслүүд (ArcGIS) хоёуланд дамжина. Хугацаа дуусвал `TimeoutError` шидэгдэнэ. */
+  const ac = new AbortController();
+  const onUser = () => ac.abort(opts.signal?.reason ?? new DOMException('aborted', 'AbortError'));
+  if (opts.signal?.aborted) onUser();
+  else opts.signal?.addEventListener('abort', onUser, { once: true });
+  const tm = setTimeout(
+    () => ac.abort(new DOMException(`timeout ${QUESTION_TIMEOUT_MS}ms`, 'TimeoutError')),
+    QUESTION_TIMEOUT_MS,
+  );
+  try {
+    return await askLoop({ ...opts, signal: ac.signal });
+  } catch (e) {
+    /* Хугацааны таслалт — доод давхаргын (fetch/ArcGIS) алдааны хэлбэрээс үл хамааран ЦЭВЭР `TimeoutError` */
+    if (ac.signal.aborted && !opts.signal?.aborted) throw ac.signal.reason;
+    throw e;
+  } finally {
+    clearTimeout(tm);
+    opts.signal?.removeEventListener('abort', onUser);
+  }
+}
+
+async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
   const { question, history, scope, onProgress, onPlan, onStep, signal, botUser } = opts;
 
   // ⚠️ Заавар нь бүртгэлээс ЯГ ОДОО тооцоологдоно — өмнөх хариултын хуучирсан
@@ -475,7 +577,14 @@ export async function ask(opts: {
        ЭХНИЙ удаад дамжуулна (дараагийн эргэлтийн тайлбар нь төлөвлөгөө биш,
        явцын тэмдэглэл) — мөн хэрэглэгчээс зөвшөөрөл асуудаггүй тул гүйцэтгэл
        тэр дороо үргэлжилнэ. */
-    if (text && !planned) { planned = true; onPlan?.(text); }
+    /* ⚠️ 2026-10-19: Opus 5.5 — төлөвлөгөө `thinking` блокоор ирж болно (`planTextOf`). ЗӨВХӨН хэрэгсэл дуудсан
+       ЭХНИЙ эргэлтийн блокоос хайна — олдохгүй бол карт зурагдахгүй. Дараагийн эргэлтүүдэд ДАХИН ХАЙХГҮЙ: тэдгээрийн
+       текст нь явцын тэмдэглэл (`display: 'updates'`) тул дунд нь «төлөвлөгөө» болж гарч ирэх нь төөрөгдүүлнэ. */
+    if (!planned) {
+      planned = true;
+      const planText = planTextOf(blocks);
+      if (planText) onPlan?.(planText);
+    }
 
     onProgress?.(describeCall(calls[0].name, calls[0].input));
 
@@ -487,7 +596,8 @@ export async function ask(opts: {
     // Зэрэг дуудлагуудыг ЗЭРЭГ гүйцэтгэнэ — `query.ts` өөрөө 6-аар хязгаарлана
     const results = await Promise.all(
       calls.map(async (c) => {
-        const out = await runTool(c.name, c.input, scope);
+        /* ⚠️ 2026-10-19: `signal` хэрэгсэлд дамжина — чат хаагдахад ArcGIS асуулга зогсоно */
+        const out = await runTool(c.name, c.input, scope, signal);
         return {
           type: 'tool_result' as const,
           tool_use_id: c.id,

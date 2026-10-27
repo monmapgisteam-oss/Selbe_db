@@ -11,6 +11,7 @@
 import { DENSITY_BY_TYPE, type Indicator } from '@/lib/analysis/config';
 import { t as tr } from '@/lib/i18nCore';
 import { normText } from '@/lib/analysis/score';
+import { zoneType } from '@/lib/services';
 
 export const nf = (v: number | null | undefined, d = 0) =>
   v == null || !Number.isFinite(v)
@@ -27,6 +28,16 @@ export function money(v: number | null | undefined) {
   const a = Math.abs(v), sign = v < 0 ? '−' : '';
   return `${sign}${a.toLocaleString('en-US')}₮`;
 }
+
+/**
+ * БҮСИЙН АНГИЛЛЫН ДЭЛГЭЦИЙН НЭР.
+ *
+ * ⚠️ 2026-10-22 (аудит): `Row.type` · `DENSITY_BY_TYPE`-ийн түлхүүр нь ОРЧУУЛГАГҮЙ каноник нэр (`zoneType`; `config.ts`-ийн
+ *    «`tr()` ХЭРЭГЛЭХГҮЙ» ⚠️ — шүүлт/харьцуулалт түүхий утгаар) тул легенд, жагсаалт, hover, дэлгэрэнгүйд англи горимд
+ *    монголоор үлддэг байв. ZoneFilter (`tr(g.type)`) · каталогийн facet (`tr(f.canon(…))`)-тэй НЭГ зам: каноник нэр →
+ *    толь (en.ts / enData.ts). Зөвхөн ДЭЛГЭЦЭД — `catOff` · `scoreOn` · `LOCATION_ZONE_TYPES` түүхий `type`-аараа хэвээр.
+ */
+export const zoneTypeLabel = (t: string): string => tr(zoneType(t));
 
 /** HTML-д шингээхэд аюулгүй болгох — hover панелийг гараар угсрахад заавал */
 export const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, (c) =>

@@ -26,12 +26,14 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 /** Метадата — ArcGIS алдааг HTTP 200-аар буцаадаг тул биеийг шалгана */
 async function meta(id) {
-  const body = new URLSearchParams({ f: 'json' });
-  const res = await fetch(layerUrl(LAYER_BY_ID[id]), { method: 'POST', body, signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { net: true });
-  const j = await res.json();
-  if (j.error) throw Object.assign(new Error(`${j.error.code} ${j.error.message}`), { arc: j.error.code });
-  return j;
+  /* ⚠️ 2026-10-20: `query.ts`-ээр — Enterprise руу зураглагдаж (`layerUrl`), талбарын нэр эх хэлбэрээр (`SHAPE__Length` → `Shape__Length`) */
+  const { arcgisPost, ArcGISError } = await import('./query.ts');
+  try {
+    return await arcgisPost(layerUrl(LAYER_BY_ID[id]), {}, { timeoutMs: 15000 });
+  } catch (e) {
+    if (e instanceof ArcGISError) throw Object.assign(new Error(e.message), { arc: e.code, net: /^HTTP |хугацаа|JSON биш/.test(e.message) });
+    throw e;
+  }
 }
 
 let m1, m6, m69;
@@ -61,7 +63,7 @@ if (kind === 'webmerc' || kind === 'geographic') {
 assert.equal(m6.geometryType, 'esriGeometryPolyline', 'infra:6 — шугам');
 
 /* ── 2. infra:69 = бохирын худаг ── */
-const MANHOLE = ['Diameter', 'Cap_Level', 'Bottom_Level', 'Cap_Count'];
+const MANHOLE = ['diameter', 'cap_level', 'bottom_level', 'cap_count'];
 const names = (m) => new Set((m.fields ?? []).map((f) => f.name));
 for (const f of MANHOLE) {
   assert.ok(names(m1).has(f), `infra:1 (Бохир худаг) — ${f}`);

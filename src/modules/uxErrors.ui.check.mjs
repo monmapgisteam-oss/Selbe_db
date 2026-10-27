@@ -5,7 +5,7 @@
  * §1 Схем: бүх эх сурвалж унавал шалтгаан нь ангилагдана (эрх ≠ сүлжээ ≠ хугацаа).
  * §2 Системийн баримт: дотоод код (`__flow__`, `planApprove`) зөвхөн «Техникийн дэлгэрэнгүй»-д.
  * §3 Эрхийн төрөл: уншилт унасан бол үүрд «уншигдаж байна…» биш — алдаа + «Дахин оролдох».
- * §4 Эх кодын хамгаалалт: Huvaari/Qaqc/Gazar/Tuh/UserAdmin/HelpPanel/DedButets.
+ * §4 Эх кодын хамгаалалт: Huvaari/Gazar/Tuh/UserAdmin/HelpPanel/DedButets.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -72,12 +72,11 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.match(hv, /setLoadErr\(e instanceof Error/);
   assert.match(hv, /\}, \[pkg, reloadN\]\);/, 'Huvaari: «Дахин оролдох» эффектийг дахин ажиллуулна');
   /* ⚠️ 2026-10-12: урсгалын алдааг БАТЛАГЧ ч харна (урьд нь зөвхөн зохиогч — батлагчид «хуваарь алга» гэж худал гардаг байв) */
-  assert.match(hv, /flowReady === false && \(canEdit \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
+  /* ⚠️ 2026-10-23: ЭРХ (`canEditRole`) — «Батлагдсан» харагдацад ч мэдэгдэл хэвээр */
+  assert.match(hv, /flowReady === false && \(canEditRole \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
   assert.match(hv, /friendlyError\(\{ message: st\.detail/);
 
-  const qa = src('modules/Qaqc.tsx');
-  assert.match(qa, /setLoadErr\(e instanceof Error/);
-  assert.match(qa, /retry: \(\) => \{ void load\(pkg\.key\); \}/);
+  /* ⚠️ 2026-10-23: QAQC хасагдсан (Qaqc.tsx) */
 
   assert.match(src('modules/Gazar.tsx'), /err \? <Data q=\{q\}>/, 'Gazar: шалтгаан + дахин оролдох');
   assert.ok(!src('modules/Gazar.tsx').includes("<Empty label={tr('Алдаа гарлаа')} />"));

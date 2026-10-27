@@ -59,7 +59,9 @@ import {
  *    царцсан Gantt хүрээнд зориулагдсан, жагсаалтад тохирохгүй.
  */
 import s from './guitsetgel.module.css';
-import { userError } from '@/components/ui';
+import { Loading, userError } from '@/components/ui';
+/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт */
+import { askConfirm } from '@/lib/confirm';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -176,9 +178,9 @@ export function HuvaariBatlah({
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
-              ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+              ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
               : t.why === 'owner'
-                ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+                ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
                 : t.why === 'error'
                   ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
                   : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
@@ -292,6 +294,73 @@ export function HuvaariBatlah({
   /* ⚠️ Салсны дараа setState дуудахгүй (2026-09-16 аудит) — `toggle`-ийн
      async ачаалалт ба `reject`-ийн `finally` хоёулаа энэ тугийг шалгана. */
   const alive = useRef(true);
+  /**
+   * ⚠️ 2026-10-26: илгээх агшны хуулбар (191-ийн `n:hsub:<OBJECTID>` мөр) — буцаах · гацсаныг буцаах · татахын дараа
+   *    хүлээгдэхээ больсон хуулбарыг устгана (самбар). Арын ажил; динамик импорт (`draftRowsRemote` → `huvaariBatlah` тойрог үгүй).
+   */
+  const syncSubmitted = (pkgKey: string) => {
+    void import('@/lib/draftRowsRemote').then((m) => m.planSyncSubmitted(pkgKey, { force: true })).catch(() => undefined);
+  };
+  /**
+   * ⚠️ 2026-10-26: АДМИНЫ НООРОГИЙН ШИЛЖҮҮЛЭЛТ (зөвхөн super) — 191-ийн хуучин JSON ноорог (гүйцэтгэл `<багц>` · хуваарь
+   *    `plan:%`) ба илгээлтийг (`sub|`/`done|`) ЭХ ХУУДАСНЫ БҮТЦЭЭР мөр рүү НЭГ ДОР (хэн нэгэн нээхийг хүлээхгүй); JSON/payload
+   *    хэвээр (Phase A). «Тулгах» нь мөрөөс сэргээсэн ноорог = JSON эсэхийг тоолно; «Хуучин JSON-ыг цэвэрлэх» (Phase B) ЗӨВХӨН
+   *    тулгалт бүрэн зөв үед — буцаах боломжгүй.
+   */
+  const [migBusy, setMigBusy] = useState(false);
+  const [migProg, setMigProg] = useState('');
+  const [verified, setVerified] = useState<import('@/lib/draftRowsRemote').VerifyResult | null>(null);
+  const migrateAll = async () => {
+    if (migBusy || busy) return;
+    if (!(await askConfirm(tr('Бүх хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлэх үү? JSON хэвээр үлдэнэ.'), { ok: tr('Шилжүүлэх') }))) return;
+    setMigBusy(true); setErr(''); setNote(''); setVerified(null);
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const st0 = await m.rowsReady(true);
+      if (st0.mode !== 'rows') { setErr(tr('Ноорогийн хүснэгтэд (191) мөрийн баганууд нэмэгдээгүй — notebook ажиллуулна уу')); return; }
+      const r = await m.migrateAll((d, t) => { if (alive.current) setMigProg(`${num(d)}/${num(t)}`); });
+      if (!alive.current) return;
+      setNote(tr('Ноорог: {0}-аас {1} шилжив', num(r.total), num(r.migrated))
+        + (r.failed.length ? ` · ${tr('{0} унав: {1}', num(r.failed.length), r.failed.slice(0, 3).join('; '))}` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) { setMigBusy(false); setMigProg(''); }
+    }
+  };
+  const verifyAll = async () => {
+    if (migBusy || busy) return;
+    setMigBusy(true); setErr(''); setNote('');
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const r = await m.verifyAll();
+      if (!alive.current) return;
+      setVerified(r);
+      setNote(tr('Тулгалт: {0}-аас {1} ижил · {2} зөрсөн · {3} шилжээгүй', num(r.total), num(r.same), num(r.diff.length), num(r.pending.length))
+        + (r.diff.length ? ` (${r.diff.slice(0, 5).join(', ')})` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) setMigBusy(false);
+    }
+  };
+  const cleanupLegacy = async () => {
+    if (migBusy || busy || !verified || verified.diff.length || verified.pending.length) return;
+    if (!(await askConfirm(tr('Тулгалт бүрэн зөв. Хуучин JSON ноорогийг устгаж, илгээлтийн payload-аас нүдийг хасах уу? БУЦААХ БОЛОМЖГҮЙ.'), { ok: tr('Цэвэрлэх'), danger: true }))) return;
+    setMigBusy(true); setErr(''); setNote('');
+    try {
+      const m = await import('@/lib/draftRowsRemote');
+      const r = await m.phaseB(verified);
+      if (!alive.current) return;
+      setVerified(null);
+      setNote(tr('Хуучин JSON: {0} мөр устав · {1} илгээлтийн payload цэвэрлэгдэв', num(r.deleted), num(r.stripped))
+        + (r.failed.length ? ` · ${tr('{0} унав: {1}', num(r.failed.length), r.failed.slice(0, 3).join('; '))}` : ''));
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) setMigBusy(false);
+    }
+  };
   useEffect(() => () => { alive.current = false; }, []);
 
   /* ⚠️ 2026-10-08: түгжээний цагийн тик + чимээгүй дахин татах (`now`-ийн ⚠️) — `alive`-ийн ДАРАА */
@@ -373,7 +442,8 @@ export function HuvaariBatlah({
     if (busy || !why) return;
     /* ⚠️ 2026-09-30: Буцаалт нэг товшилтоор явдаг байв — «Татах»-тай адил
        баталгаажуулна; буцаасны дараа гүйцэтгэгч дахин илгээх хэрэгтэй болно. */
-    if (!window.confirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'))) return;
+    if (!(await askConfirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'), { ok: tr('Буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ 2026-10-09 (аудит): урьд нь `${why}\n${тайлбар}`-ыг бүхэлд нь `REASON_MAX`-аар тасалдаг тул урт шалтгаанд
        «нээлгүй буцаасан» тайлбар ТАСАРДАГ байв. Одоо тайлбар үргэлж багтахаар ХЭРЭГЛЭГЧИЙН текстийг (`why`) тайрна.
@@ -391,6 +461,7 @@ export function HuvaariBatlah({
         reason: `${why.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, okRows: [],
       });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       /* ⚠️ 2026-10-12 (аудит №8): `warn` (жиш. тэмдэглэгээний талбар алга — ногоон/улаан хадгалагдсангүй) — урьд нь хаягддаг
          байв (`Huvaari.decide`-ийн ижил дүрэм: мэдэгдэлд залгана). */
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.') + (r.warn ? ` ${r.warn}` : ''));
@@ -415,11 +486,13 @@ export function HuvaariBatlah({
   const returnStuck = useCallback(async (x: PlanSubmission) => {
     const why = (reason.get(x.oid) ?? '').trim();
     if (busy || !why) return;
-    if (!window.confirm(tr('Гацсан (хэсэгчлэн бичигдсэн) илгээлтийг буцаах уу? Эх хуудсанд аль хэдийн бичигдсэн огноо ХЭВЭЭР үлдэнэ — зохиогч тэдгээрийг мэдэж засаад дахин илгээнэ.'))) return;
+    if (!(await askConfirm(tr('Гацсан (хэсэгчлэн бичигдсэн) илгээлтийг буцаах уу? Эх хуудсанд аль хэдийн бичигдсэн огноо ХЭВЭЭР үлдэнэ — зохиогч тэдгээрийг мэдэж засаад дахин илгээнэ.'), { ok: tr('Буцаах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await returnStuckPlan({ oid: x.oid, approver: user?.username ?? '', reason: why });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       setNote(tr('Гацсан илгээлт буцаагдлаа — зохиогч бичигдсэн огноог харж засаад дахин илгээнэ.'));
       setReason((m) => { const n = new Map(m); n.delete(x.oid); return n; });
       setOpen(null);
@@ -440,11 +513,13 @@ export function HuvaariBatlah({
    *    түүнийг сэргээнэ (2026-09-23). */
   const withdraw = useCallback(async (x: PlanSubmission) => {
     if (busy) return;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулгыг «Хуваарь» хуудсанд «Ноорогт буцаах» товчоор сэргээж болно.'))) return;
+    if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулгыг «Хуваарь» хуудсанд «Ноорогт буцаах» товчоор сэргээж болно.'), { ok: tr('Илгээлтээ татах') }))) return;
+    if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawPlan({ oid: x.oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
+      syncSubmitted(x.pkgKey);
       setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд «Ноорогт буцаах»-аар сэргээж, засаад дахин илгээж болно.'));
       setOpen(null);
       /* ⚠️ Бүтэн дахин уншина (`reject`-тэй ижил шалтгаан). */
@@ -521,10 +596,29 @@ export function HuvaariBatlah({
             {tr('Шинэчлэх')}
           </button>
         )}
+        {st.k === 'ready' && isSuper && (
+          <>
+            <button className={s.clear} disabled={busy || migBusy} onClick={() => { void migrateAll(); }}
+              title={tr('191-ийн хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлнэ (JSON хэвээр)')}>
+              {migBusy && migProg ? tr('Шилжүүлж байна… {0}', migProg) : tr('Бүх ноорогийг шилжүүлэх')}
+            </button>
+            <button className={s.clear} disabled={busy || migBusy} onClick={() => { void verifyAll(); }}
+              title={tr('Мөрөөс сэргээсэн ноорог хуучин JSON-тэй ижил эсэхийг тулгана')}>
+              {tr('Шилжүүлэлтийг тулгах')}
+            </button>
+            {verified && !verified.diff.length && !verified.pending.length && verified.total > 0 && (
+              <button className={s.clear} disabled={busy || migBusy} onClick={() => { void cleanupLegacy(); }}
+                title={tr('Тулгалт бүрэн зөв — хуучин JSON-ыг устгана (буцаах боломжгүй)')}>
+                {tr('Хуучин JSON-ыг цэвэрлэх')}
+              </button>
+            )}
+          </>
+        )}
         {/* ⚠️ 2026-10-12 (аудит №8): ЖАГСААЛТАД ХАРАГДАЖ БУЙ нийт (шүүлтийн дараа · өөрийн · бүртгэлгүй орно) — нэрээр ялгана
             (`actionableN`-ийн ⚠️; цэсний тэмдэг нь толгойн «шийдвэрлэх боломжтой» тоо). */}
         <span className={s.total} title={tr('Шүүлтийн дараах бүх мөр — өөрийн илгээсэн ба бүртгэлгүй багцынх орно')}>
-          {tr('жагсаалтад {0}', num(filtered.length))}
+          {/* ⚠️ 2026-10-19: ачаалагдаагүй/унасан үед «—» — «жагсаалтад 0» нь алдааны мэдэгдлийн хажууд «илгээлт алга» гэж худал уншигдана (null ≠ 0) */}
+          {tr('жагсаалтад {0}', st.k === 'ready' ? num(filtered.length) : '—')}
         </span>
       </div>
 
@@ -546,7 +640,7 @@ export function HuvaariBatlah({
         )}
 
         {st.k === 'loading' ? (
-          <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+          <Loading />
         ) : st.k !== 'ready' ? null : (
           <>
             <div className={s.list}>
@@ -602,7 +696,7 @@ export function HuvaariBatlah({
             {back.filter(isOwn).length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>
-                  <span>{tr('Буцаагдсан — засаад дахин илгээнэ')}</span>
+                  <span>{tr('Буцаасан — засаад дахин илгээнэ')}</span>
                   <span className={s.groupCount}>{num(back.filter(isOwn).length)}</span>
                 </div>
                 {back.filter(isOwn).map((x) => (
@@ -814,7 +908,7 @@ function Row({
           )}
 
           {detail?.k === 'loading' && (
-            <div className={s.empty}>{tr('Ачаалж байна…')}</div>
+            <Loading />
           )}
           {detail?.k === 'fail' && (
             /* ⚠️ Задарсангүй нь АЛДАА (хоосон `spans`-аас ЯЛГААТАЙ, доор).

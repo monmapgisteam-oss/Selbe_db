@@ -54,8 +54,8 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
-import { usePlanTotals } from '@/lib/totals';
-import { Empty, Data } from '@/components/ui';
+
+import { Data, Loading } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 /* ⚠️ 2026-10-06 (аудит): `@/modules/Dashboard`-аас БИШ — тэр нь Dashboard-ын бүх графыг (~1.8 МБ,
    `viewRegistry.tsx`-ийн 2026-10-04-ний ⚠️) энэ chunk руу чирдэг байв. */
@@ -254,7 +254,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const [visible, setVisible] = useLayerPicks(base);
   const [layerSel, setLayerSel] = useState<string | null>(null);
-  const catTotals = usePlanTotals(zone, layerOpen);
+  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
+     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
 
   /**
    * НҮХЭН ЖОРЛОНГИЙН ТОО — ЗӨВХӨН тоолно (`returnCountOnly`), нэг ч атрибут
@@ -285,9 +286,11 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const qSocial = useAsync(loadSocial, []);
   const socRows = useMemo(() => SOCIAL.rows.map((r) => {
-    if (!r.live) return { ...r, pending: false };
+    /* ⚠️ 2026-10-21: `failed` — унасан үед `pending` БИШ (урьд нь «…» / «шинэ …» мөнхөд үлддэг байв); «—» */
+    if (!r.live) return { ...r, pending: false, failed: false };
     if (qSocial.state !== 'ready') {
-      return { ...r, add: qSocial.state === 'loading' ? '…' : '—', total: headCount(r.now), pending: true };
+      const loading = qSocial.state === 'loading';
+      return { ...r, add: loading ? '…' : '—', total: headCount(r.now), pending: loading, failed: !loading };
     }
     const g = qSocial.data.rows.find((x) => x.key === r.live);
     const n = g?.n ?? 0;
@@ -296,11 +299,16 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           хоёул `!g` байсан — одоо `loaded` (давхарга каталогт бий, асуулга явсан) түлхүүрээр ялгана. */
     const loaded = qSocial.data.loaded.includes(r.live);
     const add = !g ? (loaded ? '0' : '—') : !n ? '0' : g.capacity != null && !g.capPartial ? `${n} (${num(g.capacity)})` : String(n);
-    return { ...r, add, total: headCount(r.now) + n, pending: false };
+    /* ⚠️ 2026-10-21 (аудит): давхарга каталогт АЛГА (`!loaded`, бүлэг ч ирээгүй) бол нийт `null` («—») — урьд нь
+       «одоо + 0» гэж бүтэн тоо мэт гардаг байв (null ≠ 0); нийлбэрээс ч хасагдана (`failed` → «—»). */
+    const missing = !g && !loaded;
+    return { ...r, add, total: missing ? null : headCount(r.now) + n, pending: false, failed: missing };
   }), [qSocial]);
   const socTotals = {
     now: socRows.reduce((s, r) => s + headCount(r.now), 0),
-    add: socRows.some((r) => r.pending) ? null : socRows.reduce((s, r) => s + headCount(r.add), 0),
+    /* ⚠️ 2026-10-21: унасан мөртэй бол ч `null` — «—» (хагас нийлбэрийг бүтэн мэт харуулахгүй) */
+    add: socRows.some((r) => r.pending || r.failed) ? null : socRows.reduce((s, r) => s + headCount(r.add), 0),
+    failed: socRows.some((r) => r.failed),
   };
 
 
@@ -415,7 +423,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               ? qBuilt.data.reduce((t, x) => t + x.n, 0)
               : null;
             const s = hh == null ? null : stoveLoad(hh);
-            if (!s) return <Empty label={tr('Тооцоолж байна…')} />;
+            /* ⚠️ 2026-10-23 (UX аудит X5): ачаалал = эргэлдэгч (`Loading`), хоосон мэт `Empty` биш */
+            if (!s) return <Loading label={tr('Тооцоолж байна…')} />;
             return (
               <>
                 <Chain
@@ -452,7 +461,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             if (qToilet.state === 'error') return <Data q={qToilet}>{() => null}</Data>;
             const pits = qToilet.state === 'ready' ? qToilet.data : null;
             const l = pits == null ? null : latrineLoad(pits);
-            if (!l) return <Empty label={tr('Тооцоолж байна…')} />;
+            if (!l) return <Loading label={tr('Тооцоолж байна…')} />;
             return (
               <>
                 <Chain
@@ -640,7 +649,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 */}
               <LayerCatalog
                 view="irged"
-                totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}
@@ -703,9 +711,11 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             давхаргаас (`loadSocial` — Дашбоардын «Шинэ нийгмийн байгууламж»-тай НЭГ эх), нийт = одоо + амьд.
             Ачаалагдтал/унавал «…»/«—» (илтгэлийн хуучин тоог амьд мэт харуулахгүй); `live`-гүй мөр илтгэлээс. */}
         <Panel
-          title={tr('Нийгмийн үйлчилгээ (одоо {0} + шинэ {1})', String(socTotals.now), socTotals.add == null ? '…' : String(socTotals.add))}
+          title={tr('Нийгмийн үйлчилгээ (одоо {0} + шинэ {1})', String(socTotals.now), socTotals.add == null ? (socTotals.failed ? '—' : '…') : String(socTotals.add))}
           note={socTotals.add == null ? undefined : tr('{0} → {1}', String(socTotals.now), String(socTotals.now + socTotals.add))}
         >
+          {/* ⚠️ 2026-10-21 (аудит): амьд давхарга унавал шалтгаан + «Дахин оролдох» (`Data`) — урьд нь зөвхөн «—» */}
+          {qSocial.state === 'error' && <Data q={qSocial}>{() => null}</Data>}
           <p className={i.socSrc}>
             {tr('«Шинээр» — сургууль, цэцэрлэгийнх газрын зургийн давхаргаас (амьд), бусад нь илтгэлээс; «Одоо байгаа» — илтгэлээс.')}
           </p>
@@ -721,7 +731,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               return (
                 <div key={r.label} className={i.socBlock}>
                   <div className={i.socHead}>
-                    <b className={i.socTotal}>{r.pending ? '…' : r.total}</b>
+                    <b className={i.socTotal}>{r.pending ? '…' : r.failed || r.total == null ? '—' : r.total}</b>
                     <span className={i.socName}>{r.label}</span>
                   </div>
                   <div className={i.socLine}>

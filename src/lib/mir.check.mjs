@@ -35,3 +35,15 @@ console.log('✅ mirRowOf — att_flags зай · таслал · давхард
   assert.equal(mirVerdictFor([]), undefined);
 }
 console.log('✅ mirsByMa · mirVerdictFor');
+
+/* 3. ⚠️ 2026-10-22 (аудит): эцгийн түлхүүр `uniquerowid || globalid`, GUID талбарын бичиглэл `{ТОМ}` */
+{
+  const { guidBraced } = await import('@/lib/mir.ts');
+  assert.equal(guidBraced('2d70dc7c-7bec-4fd6-bfd3-1bf1b1135c85'), '{2D70DC7C-7BEC-4FD6-BFD3-1BF1B1135C85}');
+  assert.equal(guidBraced(' {ABC} '), '{ABC}');
+  assert.equal(guidBraced(null), '');
+  assert.equal(mirRowOf(attrs({ uniquerowid: null, globalid: '{2d70dc7c-0000}' })).rowId, '{2D70DC7C-0000}', 'uniquerowid NULL → globalid');
+  assert.equal(mirRowOf(attrs({ uniquerowid: 'u1', globalid: '{G}' })).rowId, '{U1}', 'uniquerowid тэргүүнд');
+  assert.equal(mirRowOf(attrs({ uniquerowid: null, globalid: null })).rowId, '', 'хоёулаа хоосон');
+}
+console.log('✅ MIR — rowId = uniquerowid || globalid (2026-10-22)');

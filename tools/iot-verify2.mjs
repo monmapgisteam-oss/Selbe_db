@@ -44,7 +44,7 @@ for (const def of SENSORS) {
   if (euiField) {
     const g = await post(def.url, {
       where: '1=1', outFields: euiField, groupByFieldsForStatistics: euiField,
-      outStatistics: '[{"statisticType":"count","onStatisticField":"OBJECTID","outStatisticFieldName":"c"}]',
+      outStatistics: '[{"statisticType":"count","onStatisticField":"objectid","outStatisticFieldName":"c"}]',
     });
     const euis = (g.features ?? []).map((f) => String(f.attributes[euiField] ?? '').toLowerCase()).filter(Boolean);
     const claim = String(def.devEui).toLowerCase();
@@ -62,7 +62,8 @@ for (const def of SENSORS) {
     outFields: 'received_datetime',
     /* ⚠️ 2026-10-09: OBJECTID DESC — String огноогоор эрэмбэлэх нь хольсон бичиглэлд
        (`dd/MM/yyyy`) хугацааны эрэмбэ БИШ (sensors.ts-ийн 2026-10-06-ны ⚠️) */
-    orderByFields: 'OBJECTID DESC',
+    /* ⚠️ 2026-10-19: IoT давхаргын OID нь ЖИЖИГ үсгээр (`objectid`) — `OBJECTID` гэвэл зарим хостод унана (агентын `ds:iot_*`-тэй ижил) */
+    orderByFields: 'objectid DESC',
     resultRecordCount: '300',
     returnGeometry: 'false',
   });

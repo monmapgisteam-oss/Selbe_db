@@ -25,11 +25,12 @@
  */
 
 import { useEffect, useState } from 'react';
+import { initRemote } from '@/lib/permissions';
 import { t as tr } from '@/lib/i18nCore';
-import { subscribe } from '@/lib/permissions';
+import { askConfirm } from '@/lib/confirm';
+import { remoteMalformed, subscribe } from '@/lib/permissions';
 import { subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
 import { subscribeAcl } from '@/lib/guitsetgelAcl';
-import { subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { subscribeObyemAcl } from '@/lib/obyemAcl';
 import { subscribeChanarAcl } from '@/lib/chanarAcl';
@@ -38,7 +39,9 @@ import { subscribeButetsAcl } from '@/lib/butetsAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
-import { allPkgErh, allUserErh, type RoleLine } from '@/lib/erhOverview';
+import { allPkgErh, allUserErh, typeStageGaps, unknownPkgUsers, userErh, type RoleLine } from '@/lib/erhOverview';
+/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт · шалгалтын төлөв (`portalPresence`) */
+import { portalCheckStatus } from '@/lib/portalPresence';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
 import { ERH_PANES, paneLabel } from './capText';
 import { ErhMatrix } from './ErhMatrix';
@@ -59,7 +62,6 @@ export function ErhOverview({
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeCaps(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeAcl(() => tick((n) => n + 1)), []);
-  useEffect(() => subscribeQaqcAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => tick((n) => n + 1)), []);
@@ -82,6 +84,33 @@ export function ErhOverview({
   const pkgs = allPkgErh(src);
   const people = allUserErh(src);
   const allIssues = pkgs.flatMap((p) => p.issues);
+  /* ⚠️ 2026-10-19 (аудит): ӨГӨГДЛИЙН ЦЭВЭРЛЭГЭЭ — эвдэрсэн мөр (`permsRemote.fetchAll` алгассан) ба танигдаагүй багцын
+     нэртэй хуваарилалт. Аль аль нь ЭРХ НЭЭДЭГГҮЙ (fail-closed) — админ «томилсон атлаа ажиллахгүй» шалтгааныг энд харна. */
+  const malformed = remoteMalformed();
+  const unknownPkgs = unknownPkgUsers(src);
+  /* ⚠️ 2026-10-22 (аудит): ПОРТАЛД АЛГА аккаунт (хүснэгтэд мөртэй, нэвтэрч чадахгүй) ба ТӨРӨЛ ↔ ШАТ зөрөө — урьд нь аль
+     аль нь хаана ч харагддаггүй байв: порталд алга `selbe_redesign` компанийн шатыг 21 багцад «эзэнтэй» харуулж, «Газрын
+     дарга» төрөлтэй `munkhbaatar` шатгүй (Гүйцэтгэл хуудасгүй, батлахгүй) үлдсэн. Хуваарилалт нь `ErhSource`-оос. */
+  const absent = (src.absent ?? []).map((u) => userErh(src, u));
+  const typeGaps = typeStageGaps(src);
+  const presence = portalCheckStatus();
+  /* ⚠️ 2026-10-19: эвдэрсэн мөрийг OBJECTID-оор устгах (`permsRemote.removeMalformedRow`) — зайтай мөрийг
+     `removeByKey` олдоггүй тул энэ л зам. Устгасны дараа хүснэгтийг дахин уншина. */
+  const [cleanBusy, setCleanBusy] = useState<number | null>(null);
+  const [cleanErr, setCleanErr] = useState('');
+  const dropRow = async (oid: number, key: string) => {
+    /* ⚠️ 2026-10-23 (UX аудит X1 · X3): `askConfirm`; «OBJECTID» гэх техникийн үг асуултаас хасагдав (мөр нь нэрээрээ) */
+    if (!(await askConfirm(tr('«{0}» мөрийг эрхийн хүснэгтээс УСТГАХ уу? Буцаах боломжгүй.', key), { danger: true, ok: tr('Мөрийг устгах') }))) return;
+    setCleanBusy(oid); setCleanErr('');
+    try {
+      const { removeMalformedRow, takeWriteError } = await import('@/lib/permsRemote');
+      const ok = await removeMalformedRow(oid, key);
+      if (!ok) { setCleanErr(takeWriteError() || tr('Устгаж чадсангүй.')); return; }
+      await initRemote(false, true);
+    } finally {
+      setCleanBusy(null);
+    }
+  };
 
   return (
     <div className={s.aclWrap}>
@@ -99,6 +128,94 @@ export function ErhOverview({
           {allIssues.map((i, k) => (
             <div key={`${i.key}-${i.args[0]}-${k}`} className={s.aclErr} role="alert">
               {issueText(i)}
+            </div>
+          ))}
+        </div>
+      )}
+      {absent.length > 0 && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Порталд алга аккаунт')}</span>
+            <span className={s.aclCount}>{absent.length}</span>
+          </div>
+          {absent.map((u) => (
+            <div key={`a-${u.user}`} className={s.aclErr} role="alert">
+              {tr('«{0}»: Enterprise порталд бүртгэлгүй — нэвтэрч чадахгүй тул түүний хуваарилалт ажил гүйцэтгэхгүй (гацааны шалгуурт тоологдохгүй). Хуваарилалтыг нь өөр хүнд шилжүүлэх, эсвэл аккаунтыг устгана уу.', u.user)}
+              {u.flow && <> {tr('Урсгал: {0} · {1}.', STAGE_LABEL[u.flow.stage], bagtsText(u.flow.bagts))}</>}
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onOpenUser(u.user)}>{tr('Карт')}</button>
+              {u.flow && (
+                <>
+                  {' '}
+                  <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {typeGaps.length > 0 && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Эрхийн төрөл ↔ урсгалын шат')}</span>
+            <span className={s.aclCount}>{typeGaps.length}</span>
+          </div>
+          {typeGaps.map((g) => (
+            <div key={`t-${g.user}`} className={s.aclErr} role="alert">
+              {/* ⚠️ 2026-10-23: `want === null` — «Ерөнхий захирал» урсгалын мөртэй (шийдвэрлэдэггүй, эзэн биш) */}
+              {g.want === null
+                ? tr('«{0}»: «Ерөнхий захирал» (зөвхөн харна) атлаа «{1}» шатанд томилгоотой — шийдвэрлэх эрхгүй тул шатны эзэн биш. Томилгоог хасна уу.', g.user, g.have ? STAGE_LABEL[g.have] : '—')
+                : g.have
+                ? tr('«{0}»: «{1}» төрөлтэй атлаа «{2}» шатанд томилогдсон — төрөл ба шат зөрж байна (шат нь томилгооноос).', g.user, STAGE_LABEL[g.want], STAGE_LABEL[g.have])
+                : tr('«{0}»: «{1}» төрөлтэй атлаа урсгалын шатанд томилогдоогүй — «Гүйцэтгэл» хуудас нээгдэхгүй, батлах боломжгүй. Төрөл нь шат олгодоггүй.', g.user, STAGE_LABEL[g.want])}
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>
+              {' '}
+              <button type="button" className={s.aclPkg} onClick={() => onOpenUser(g.user)}>{tr('Карт')}</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* ⚠️ 2026-10-22: порталын тулгалт ажиллаагүй шалтгаан (fail-open — «алга» гэж тэмдэглээгүй) */}
+      {presence === 'noPrivilege' && (
+        <p className={s.aclNote}>{tr('Порталын аккаунтыг тулгаж чадсангүй — таны Enterprise эрх бүх гишүүнийг харахгүй (порталын админ биш). «Порталд алга» аккаунт тэмдэглэгдээгүй.')}</p>
+      )}
+      {(malformed.length > 0 || unknownPkgs.length > 0) && (
+        <div className={s.aclCol}>
+          <div className={s.aclHead}>
+            <span>{tr('Эрхийн хүснэгтийн цэвэрлэгээ')}</span>
+            <span className={s.aclCount}>{malformed.length + unknownPkgs.length}</span>
+          </div>
+          {malformed.map((m, k) => (
+            <div key={`m-${m.key}-${k}`} className={s.aclErr} role="alert">
+              {m.reason === 'stage'
+                ? tr('«{0}»: урсгалын мөрөнд шат алга — мөр үл тоогдож байна (хүснэгтээс засна уу).', m.key)
+                : m.reason === 'user'
+                  ? tr('«{0}»: аккаунтын нэр хоосон эсвэл зөвшөөрөгдөөгүй — мөр үл тоогдож байна (хүснэгтээс устгана уу).', m.key)
+                  : m.reason === 'space'
+                    /* ⚠️ 2026-10-19: зайтай нэр — эрх олгохгүй; устгаад зөв нэрээр дахин олгоно */
+                    ? tr('«{0}»: аккаунтын нэрийн захад/угтварын дараа зай байна — мөр үл тоогдож байна, эрх олгохгүй (устгаад зөв нэрээр дахин олгоно уу).', m.key)
+                    : tr('«{0}»: эвдэрсэн мөр (views JSON задлагдсангүй) — үл тоогдож байна, эрх олгохгүй (хүснэгтээс засна уу).', m.key)}
+              {m.oid != null && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className={s.aclPkg}
+                    disabled={cleanBusy != null}
+                    aria-busy={cleanBusy === m.oid || undefined}
+                    onClick={() => { void dropRow(m.oid!, m.key); }}
+                  >
+                    {cleanBusy === m.oid ? tr('Устгаж байна…') : tr('Мөрийг устгах')}
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+          {cleanErr && <div className={s.aclErr} role="alert">{cleanErr}</div>}
+          {unknownPkgs.map((x) => (
+            <div key={`u-${x.user}`} className={s.aclErr} role="alert">
+              {tr('«{0}»: танигдаагүй багц ({1}) — ямар ч багц нээгдэхгүй; тухайн эрхийн хуудсанд багцыг дахин сонгоно уу.', x.user, x.bagts.join(', '))}
             </div>
           ))}
         </div>
@@ -152,6 +269,10 @@ export function ErhOverview({
               {!u.any && (
                 <div className={s.aclEmpty}>{tr('Эрх олгоогүй — зөвхөн харагдац.')}</div>
               )}
+              {/* ⚠️ 2026-10-19 (аудит): танигдаагүй багцын нэр — эрх нээгдэхгүй */}
+              {u.unknownBagts.length > 0 && (
+                <div className={s.aclErr} role="alert">{tr('Танигдаагүй багц: {0}', u.unknownBagts.join(', '))}</div>
+              )}
 
               {u.flow && (
                 <div className={s.aclRole}>
@@ -176,15 +297,6 @@ export function ErhOverview({
                   bagts: l.bagts?.map((k) => BUTETS_PACKS.find((x) => x.key === k)?.name ?? k) ?? null,
                 }))}
               />
-
-              {/* ⚠️ `qaqcAssigned` (2026-09-25): `qaqc === null` нь «бүх багц»-ийг ч
-                  илэрхийлдэг тул урьд нь бүх багцтай QAQC хүн энд харагддаггүй байв */}
-              {u.qaqcAssigned && (
-                <div className={s.aclRole}>
-                  <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
-                  <div className={s.aclName}>{bagtsText(u.qaqc)}</div>
-                </div>
-              )}
 
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>

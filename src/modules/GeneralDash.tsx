@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useId, useMemo, useRef, useState,
   type Dispatch, type SetStateAction,
 } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
@@ -10,8 +10,8 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
-import { CHART, lineSegments, glow } from '@/lib/chartStyle';
+import { Section, Stats, Stat, Data, Empty, Bars, Note, TIP_RULE, friendlyError } from '@/components/ui';
+import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
    төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
@@ -22,48 +22,57 @@ import { loadLandStatus } from '@/lib/land';
    архив) → бөглөх хуудасны АМЬД бөглөлт болов — `pkgPct`-ийн тайлбарыг үз.
    `loadPkgProgress`/`latestPkgProgress` энэ модулиас ХАСАГДСАН; тэдгээр нь
    бусад самбарт (газрын зураг, PkgProg) хэвээр хэрэглэгдэнэ. */
-import { loadFillPkgProgress, loadHeadline, loadHousing } from '@/lib/live';
+import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
+import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
-import { loadFinData } from '@/modules/Finance';
+/* ⚠️ 2026-10-26 (гүйцэтгэл P3): `aggregateMonths` ч ЭНДЭЭС — урьд нь `@/modules/PkgProg` (→ pkgShared → Finance
+   дахин экспорт)-оор авдаг тул зөвхөн нэг функцийн төлөө PkgProg-ийн UI бүхэлдээ gdash chunk-д ордог байв. */
+import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 /* ⚠️ 2026-09-10: IPC муруйн эх — HO хүснэгтийн БҮХ мөр (`ipcByMonth`-ийн тайлбарыг үз) */
 import { loadHoRows } from '@/lib/ipc';
-import { aggregateMonths } from '@/modules/PkgProg';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
-/* ⚠️ Орон сууцны багцын орон зайн хүрээ — блокийн давхарга */
-import { BLOCK_LAYER } from '@/modules/Bagts';
 import {
+  /* ⚠️ Орон сууцны багцын орон зайн хүрээ — блокийн давхарга. ⚠️ 2026-10-26 (P3): `@/modules/Bagts`-аас БИШ
+     (Bagts + BuildingPanel-ийг chunk-д чирдэг байв) — `lib/services/layers.ts`. */
+  BLOCK_LAYER,
   /* ⚠️ `PKG_BY_FAMILY` нь ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын шугам
      сүлжээний нийлбэр уртад хэрэглэгдэнэ — газар чөлөөлөлтийн давхцал нь
      2026-09-04-нд гэр бүлээс ДЭД БАГЦ руу шилжсэн. */
   PKG_BY_FAMILY, BUILDING, LAYER_BY_ID, PARCEL_LEFT, ZONE_FIELD, ZONE_NONE, type PkgFamily,
+  /* ⚠️ 2026-10-22 (аудит): бүсийн полигон дарахад КАНОНИК бүс (`zoneCanon`) — `pick`-ийн ⚠️ */
+  ZONE_FIELDS, ZONE_LAYER, zoneCanon,
   /* ⚠️ 2026-09-15: чартын сонголтыг ГАЗРЫН ЗУРАГТАЙ холбоно — багцын
      нэр (`bagts`) → тухайн багцын давхаргууд. `pkgKeyOf` нь `bagtsKey` БИШ:
      «Багц 1-4» гэсэн ДИАПАЗОН бичиглэлийг `''` болгож, бодит «Багц 14»-ийн
      давхаргад наалдахаас сэргийлнэ. */
-  PKG_BY_BAGTS, pkgKeyOf,
+  pkgKeyOf,
   HO_IPC, hoAmount,
   /* ⚠️ 2026-09-10: сарын тэнхлэг — `housingMoneyByMonth` (жин нь 2026-09-30-аас `gdash.pkgCostWeight`) */
   cfMonthAxis,
   BUILT_STATUS,
 } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
-import { cat, mnt, num, pct, monthKey } from '@/lib/format';
+import { mapPkgKeySet, mapPkgLayers } from '@/lib/pkgAlias';
+import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
+  loadCfPlan, cfPlanGaps, cfGapsText, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
-  grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
+  grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
   type Grain,
   NO_PERIOD, isContracted,
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
+import { Segmented } from '@/components/Switch';
 import g from './generalDash.module.css';
+/* ⚠️ 2026-10-22 (аудит): «Багц 74»-ийн асаалт/унтраалтын дүрэм — цэвэр модуль (`generalDashLayers.check.mjs` шууд шалгана) */
+import { pkgWorkAdded, pkgWorkDrop, pkgWorkOn } from '@/modules/generalDashLayers';
 
 /**
  * ЕРӨНХИЙ ДАШБОАРД — ТӨСЛИЙН НЭГ ХУУДАС ДЭЭРХ ТОЙМ.
@@ -85,6 +94,14 @@ import g from './generalDash.module.css';
  * S-муруй, индикатор) үйлчилнэ. ХАБ, газар чөлөөлөлт, ерөнхий төлөвлөгөө нь
  * ажлын төлөвлөгөөт хугацааны талбаргүй тул тэднийг хуурамчаар шүүхгүй —
  * картын толгойд «Бүх хугацаа» гэж ИЛ бичнэ.
+ *
+ * ⚠️ 2026-10-23 (UX аудит E12/E13 — АЧААЛЛЫН ХУГАЦАА, ШИЙДВЭР: ЭНЭ УДАА ӨӨРЧЛӨӨГҮЙ). Утсанд 30 с+ · компьютерт ~13 с
+ *    агуулга гарах хүртэл. Эхний зурагдалтад ~15 бие даасан `useAsync` (cashflow · IPC/HO · санхүү · газар · WBS ·
+ *    дэд багц · ХАБЭА …) ЗЭРЭГ явдаг; тэдгээр нь модулийн кэштэй (`live`/`negtgel`/`Finance`) тул дараагийн нээлт хурдан.
+ *    Аудитын энэ шатанд хөтөч · амьд сервер ажиллуулахгүй дүрэмтэй тул аль асуулга удааширч буйг ХЭМЖИЖ чадаагүй;
+ *    хэмжилтгүйгээр асуулгыг хойшлуулах (харагдах үед) нь самбарын «нэг дэлгэц — бүгд нэг дор» зохиомж ба `cfGate`-ийн
+ *    нэгтгэсэн төлвийг өөрчлөх архитектурын засвар тул хийгээгүй. Дараагийн алхам: Network-ийн waterfall-аар хамгийн
+ *    удаан 2–3 асуулгыг (HO бүх мөр · `loadNegtgelFull` сэжигтэй) олж, тэдгээрийг л доод картын үзэгдэх үед хойшлуулах.
  */
 export function GeneralDash({
   dim, setDim, zone, setZone,
@@ -94,7 +111,8 @@ export function GeneralDash({
   zone: string | null;
   setZone: (z: string | null) => void;
 }) {
-  const [period, setPeriod] = useState<Period>(NO_PERIOD);
+  /* ⚠️ 2026-10-26 (аудит): `periodUi` — товчнуудын төлөв; ШҮҮЛТЭД `period` (`effectivePeriod`: бүх утга = шүүлтгүй) */
+  const [periodUi, setPeriod] = useState<Period>(NO_PERIOD);
   const [layerOpen, setLayerOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [layerSel, setLayerSel] = useState<string | null>(null);
@@ -148,8 +166,15 @@ export function GeneralDash({
   const base = useMemo(() => ['zone', 'et:24'], []);
   const [visible, setVisible] = useLayerPicks(base);
 
-  const totals = usePlanTotals(zone, true);
+  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): ЗӨВХӨН «Ерөнхий төлөвлөгөө» картын давхаргууд (`PLAN_CARD_IDS`) — урьд нь
+     каталогийн бүх 158-ыг (~156 хүсэлт) нээлт бүрд татдаг байв; каталог нээлттэй бүлгийнхээ тоог өөрөө татна. */
+  /* ⚠️ 2026-10-23: бүсгүй (`null`) — ТӨСЛИЙН НИЙТ. Урьд нь `zone` өгдөг тул талбай/км/бүсийн тоо бүсээр нарийсаж,
+     барилгын тоо (`loadHeadline`/`loadHousing`) нийтээрээ үлдэж НЭГ карт дотор хоёр хүрээ холилдож байв; бүс нь
+     зөвхөн газрын зургийг шүүнэ (доорх «Бүс зөвхөн газрын зургийг шүүнэ» тэмдэглэл · тайлангийн шошго). */
+  const totals = usePlanTotals(null, true, PLAN_CARD_IDS);
   const cf = useAsync(loadGdashCf, []);
+  const periodYears = useMemo(() => (cf.state === 'ready' ? yearsOf(cf.data) : []), [cf]);
+  const period = useMemo(() => effectivePeriod(periodUi, periodYears), [periodUi, periodYears]);
   /**
    * САРЫН ТӨЛӨВЛӨГӨӨ — S-муруйн нарийвчлал.
    *
@@ -340,8 +365,33 @@ export function GeneralDash({
     /* ⚠️ «Төсөв, гэрээлсэн дүн»-гийн орон сууцны хороолол ба «Төслийн
        гүйцэтгэл»-ийн орон сууцны барилга угсралт — НЭГ тоо (`housingNow`). */
     if (housingNow != null) m.set('ОРОН СУУЦНЫ ХОРООЛОЛ', housingNow.pct);
+    /* ⚠️ 2026-10-22 (аудит): «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» — ӨӨРИЙН батлагдсан биет хувь (`Finance.typePhysNow`,
+       удирдлагын тайлантай нэг функц). Урьд нь `pkgPct` (блоктой 7 багц) л байсан тул «Гүйцэтгэл хэмжигдээгүй»
+       гардаг байв (5.1 · 5.2 · 7.1 батлагдсан хувьтай), харин тэдний хувь «орон сууц»-ны тоонд холилдож байв. */
+    if (finD.state === 'ready' && cf.state === 'ready') {
+      const inf = typePhysNow(finD.data, cf.data, INFRA_TYPE);
+      if (inf) m.set(INFRA_TYPE, inf.pct);
+    }
     return m;
-  }, [housingNow]);
+  }, [housingNow, finD, cf]);
+  /**
+   * ⚠️ 2026-10-26 (хяналт №2): S-МУРУЙН ЦООРХОЙ — 'huvaari' эхтэй гэрээ хуудас унасан / тооцоолсон саргүй / нэгж
+   *    өртөггүй бол муруйгаас ЧИМЭЭГҮЙ гардаг байв (null ≠ 0). Зөвхөн муруйн хүрээнд (`inTotal`) орох гэрээг
+   *    нэрлэнэ; ажлын жагсаалт ирээгүй бол бүгдийг.
+   */
+  const cfGapsNote = useMemo(() => {
+    if (cfPlan.state !== 'ready') return null;
+    const gaps = cfPlanGaps(cfPlan.data);
+    if (!gaps) return null;
+    if (cf.state !== 'ready') return cfGapsText(gaps);
+    const byId = new Map<number, CfRow>();
+    for (const r of cf.data) if (r.cfId != null && !byId.has(r.cfId)) byId.set(r.cfId, r);
+    return cfGapsText(
+      gaps,
+      (id) => { const r = byId.get(id); return r ? (r.pkg || r.project || null) : null; },
+      (id) => byId.get(id)?.inTotal ?? false,
+    );
+  }, [cfPlan, cf]);
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlanInScope, cfTotal, grainOf(period), period, ipcByMonth,
@@ -492,7 +542,7 @@ export function GeneralDash({
       if (r.sec === FIN_XL_LAND_CODE) { land = true; continue; }
       const k = pkgKeyOf(r.pkg2);
       if (!k) continue;
-      const layers = PKG_BY_BAGTS[k];
+      const layers = mapPkgLayers(k);
       if (layers?.length) { for (const id of layers) ids.add(id); continue; }
       const house = byKey?.get(k);
       if (house) houses.add(house);
@@ -571,6 +621,9 @@ export function GeneralDash({
         setVisible(beforeReason.current);
         beforeReason.current = null;
       }
+      /* ⚠️ 2026-10-26 (аудит): Саад картын сэргээх цэг нь шалтгааны `[PARCEL_LAYER]` — цуцлахад ХҮЧИНГҮЙ болгоно, эс бөгөөс
+         тэр багцыг дахин дарахад хэрэглэгчийн асаасан давхаргууд устдаг байв (SaadCard-ийн сонголт ч тэглэгдэнэ). */
+      beforePkg.current = null;
       return;
     }
 
@@ -588,7 +641,11 @@ export function GeneralDash({
      * шилжихэд дахин бичвэл «зөвхөн нэгж талбар» гэсэн завсрын төлөв
      * сэргээх цэг болж хоцорно.
      */
-    if (beforeReason.current == null) beforeReason.current = visible;
+    /* ⚠️ 2026-10-21 (аудит): хөндлөн сонголт (`xsPick`) идэвхтэй байхад `visible` нь ТҮҮНИЙ давхаргууд тул
+       сэргээх цэг болгон авбал хэрэглэгчийн ӨӨРИЙН асаасан давхаргууд (`beforeXs`) алдагдаж, шалтгааныг
+       цуцлахад чартын сонголтын давхарга сэргэдэг байв (доор `beforeXs` тэглэгддэг тул хаанаас ч буцахгүй).
+       Хэрэглэгчийн давхарга `beforeXs`-д байвал ТҮҮНИЙГ авна. */
+    if (beforeReason.current == null) beforeReason.current = beforeXs.current ?? visible;
     /* ⚠️ Багцын сэргээх цэгийг ХҮЧИНГҮЙ болгоно: шалтгаан солигдоход тэр нь
        өөр шалтгааны давхаргын жагсаалт руу заасан хуучин утга болно. */
     beforePkg.current = null;
@@ -604,8 +661,14 @@ export function GeneralDash({
   }, [byReason, map, reason, setVisible, visible]);
 
   /* ⚠️ Шүүлт ИДЭВХГҮЙ бол `null` — `SaadCard`-ийн `keys` тайлбарыг үз */
+  /* ⚠️ 2026-10-26 (аудит): Cashflow → газрын зургийн түлхүүр (`mapPkgKeySet`); Cashflow-д ОГТ холбогдоогүй багц (БАГЦ21 г.м.)
+     шүүлтгүй үлдэнэ (`known`) — урьд нь 6 багцын давхцал хугацааны шүүлтэд ҮРГЭЛЖ алга болдог байв. */
+  const knownKeys = useMemo(
+    () => (cf.state === 'ready' ? mapPkgKeySet(activeSubPkgTypes(cf.data).keys()) : null),
+    [cf],
+  );
   const activeKeys = useMemo(
-    () => (periodActive(period) && active ? new Set(active.keys()) : null),
+    () => (periodActive(period) && active ? mapPkgKeySet(active.keys()) : null),
     [period, active],
   );
 
@@ -632,10 +695,15 @@ export function GeneralDash({
     [BLOCK_LAYER]: houseWhere,
   }), [parcelWhere, houseWhere]);
 
-  const pick = useCallback((attrs: Record<string, unknown> | null) => {
+  /* ⚠️ 2026-10-22 (аудит): БҮСИЙН ПОЛИГОН дарахад КАНОНИК бүс (`zoneCanon`). Урьд нь `ZONE_ID`-г (бүсийн давхаргад
+     ТИЙМ ТАЛБАР БАЙХГҮЙ — `RefName_1`, «E-5-1» гэх мэт түүхий бичиглэл) түүхийгээр нь тавьдаг тул бүс дарахад юу ч
+     болохгүй, бусад давхаргаас ирсэн «Багц -1» мэт бичиглэл чиптэй (каноник «Багц-1») таарахгүй байв. Бусад
+     давхарга (барилга г.м.) `ZONE_ID`-аараа хэвээр, мөн каноник болгоно. */
+  const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     if (!attrs) return;
-    const zid = String(attrs[ZONE_FIELD] ?? '').trim();
-    if (zid && zid !== ZONE_NONE.trim()) setZone(zid);
+    const raw = layerId === ZONE_LAYER.id ? attrs[ZONE_FIELDS.id] : (attrs[ZONE_FIELD] ?? attrs[ZONE_FIELDS.id]);
+    const zid = zoneCanon(raw);
+    if (zid && zid !== zoneCanon(ZONE_NONE)) setZone(zid);
   }, [setZone]);
 
   return (
@@ -673,7 +741,7 @@ export function GeneralDash({
 
       <aside className={g.left}>
         <Data q={cf} minH={520}>
-          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow?.pct ?? null} housingAt={housingNow?.at ?? null} />}
+          {(rows) => <FinCharts rows={rows} period={period} xs={xs} setXs={setXs} pkgPct={pkgPct} catPct={catPct} housingNow={housingNow?.pct ?? null} housingAt={housingNow?.at ?? null} contracts={contracts.state === 'ready' ? contracts.data : null} />}
         </Data>
       </aside>
 
@@ -685,10 +753,13 @@ export function GeneralDash({
           * өөрийн удирдлагатай ч давхцаж байлаа.
           */}
         <PeriodBar
-          period={period}
+          period={periodUi}
           setPeriod={setPeriod}
-          years={cf.state === 'ready' ? yearsOf(cf.data) : []}
+          years={periodYears}
         />
+        {/* ⚠️ 2026-10-23 (UX аудит E2): бүс сонгоход ЗӨВХӨН зураг шүүгдэнэ — үзүүлэлт, чартууд төслийн нийтээр
+            хэвээр. Урьд нь дохиогүй тул хэрэглэгч KPI-г бүсийн тоо гэж уншдаг байв. */}
+        {zone && <p className={g.wait} role="note">{tr('Бүс зөвхөн газрын зургийг шүүнэ — үзүүлэлт, графикууд төслийн нийтээр.')}</p>}
         <Data q={cf} minH={72}>
           {(rows) => (
             <KpiStrip
@@ -735,9 +806,9 @@ export function GeneralDash({
           )}
           {layerOpen && (
             <div className={g.catPanel}>
+              {/* ⚠️ 2026-10-22: `totals` ӨГӨХГҮЙ — нээлттэй бүлгийнхээ тоог л өөрөө татна (`LayerCatalog`-ийн ⚠️) */}
               <LayerCatalog
                 view="plan"
-                totals={totals}
                 visible={visible}
                 setVisible={setVisible}
                 selected={layerSel}
@@ -791,7 +862,8 @@ export function GeneralDash({
               {cfMode === 'chart' && (
                 <span className={g.tlKey}>
                   {/* ⚠️ 2026-10-09: домгийн тэмдэг муруйтай ИЖИЛ — төлөвлөгөө ЦЭГЭН (лавлах CRM загвар, '1 5') */}
-                  <b style={{ height: 0, background: 'none', borderTop: '2px dotted var(--chart-plan)' }} />{tr('Төлөвлөсөн')}
+                  {/* ⚠️ 2026-10-23: Environment — муруйтай ижил ТАСАРХАЙ ('4 4') */}
+                  <b style={{ height: 2, background: 'repeating-linear-gradient(to right, var(--chart-plan) 0 4px, transparent 4px 8px)' }} />{tr('Төлөвлөсөн')}
                   <b style={{ background: 'var(--chart-actual)' }} />{tr('Олгосон')}
                   {/* ⚠️ «Орон сууц, биет» (ягаан) НУУГДСАН — 2026-09-10,
                       хэрэглэгчийн заавар. Өгөгдөл (`physPct`) хэвээр
@@ -799,22 +871,9 @@ export function GeneralDash({
                       нэг нэг мөр л нэмнэ. */}
                 </span>
               )}
-              <button
-                type="button"
-                aria-pressed={cfMode === 'chart'}
-                className={`${g.tlTab} ${cfMode === 'chart' ? g.tlTabOn : ''}`}
-                onClick={() => setCfMode('chart')}
-              >
-                {tr('График')}
-              </button>
-              <button
-                type="button"
-                aria-pressed={cfMode === 'table'}
-                className={`${g.tlTab} ${cfMode === 'table' ? g.tlTabOn : ''}`}
-                onClick={() => setCfMode('table')}
-              >
-                {tr('Хүснэгт')}
-              </button>
+              {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): хоёр тусдаа товч биш — нийтлэг `Segmented` капсул */}
+              <Segmented value={cfMode} onChange={setCfMode} label={tr('Харагдац')}
+                options={[{ value: 'chart', label: tr('График') }, { value: 'table', label: tr('Хүснэгт') }]} />
             </span>
           )}
         >
@@ -855,6 +914,8 @@ export function GeneralDash({
               <Timeline points={cfCurve} grain={grainOf(period)} total={cfTotal} mode={cfMode} />
             ))}
           </Data>
+          {/* ⚠️ 2026-10-26 (хяналт №2): дутуу төлөвлөгөөг ИЛ хэлнэ (`cfGapsNote`-ийн ⚠️) */}
+          {cfGate.state === 'ready' && cfGapsNote && <div role="status"><Note>{cfGapsNote}</Note></div>}
         </Section>
       </div>
       </div>
@@ -890,6 +951,7 @@ export function GeneralDash({
         />
         <SaadCard
           keys={activeKeys}
+          known={knownKeys}
           /* ⚠️ Шалтгаан сонгогдмогц энэ карт ТҮҮГЭЭР нарийсна */
           oids={reasonOids}
           /* ⚠️ `null` = мөрийг дахин дарж ТАЙЛСАН — асаасан давхаргаа буцаана */
@@ -1022,6 +1084,7 @@ function PeriodBar({
             type="button"
             aria-pressed={sel.includes(v)}
             title={c.full(v)}
+            aria-label={c.full(v)}
             className={`${g.fPill} ${sel.includes(v) ? g.fPillOn : ''}`}
             onClick={() => toggle(k, v)}
           >
@@ -1132,7 +1195,9 @@ function KpiStrip({
       ? sel.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0)
       : 0;
     const whole = !periodActive(period) && xs == null;
-    return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole };
+    /* ⚠️ 2026-10-26 (аудит): сонгосон ангиллын БҮХ мөр нийт төсвөөс гадуур (газар чөлөөлөлт · нийгмийн дэд бүтэц г.м.) */
+    const outOfTotal = sel.length > 0 && sel.every((r) => !r.inTotal);
+    return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole, outOfTotal };
   }, [rows, period, contracts, landPct, xs, wbsPct]);
   /** Шүүлтгүй ба нэгтгэл хараахан ирээгүй — «…» */
   const progWait = k.whole && wbsQ.state === 'loading';
@@ -1150,11 +1215,13 @@ function KpiStrip({
             дэвсгэр, өнгөт тоотой байхад тэр нь «СОНГОГДСОН» гэж уншигдаж
             байв — үнэндээ энэ зурвас дарагддаггүй, сонголтгүй. Ялгаа
             хэрэгтэй бол дараалал нь өөрөө хангалттай: нийт төсөв эхэнд. */}
-        <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
+        {/* ⚠️ 2026-10-26 (аудит): жинхэнэ 0 нь «—» (мэдээлэлгүй) биш «0 ₮» (null ≠ 0); нийт төсөвт ордоггүй ангилал
+            сонгогдсон бол тоо биш шалтгаан */}
+        <Stat icon="calc" value={k.outOfTotal ? tr('Нийт төсөвт ордоггүй') : kpiMnt(k.budget)} label={tr('Нийт төсөв')} />
         {/* ⚠️ 2026-09-25: алдаа ≠ ачаалалт — унасан бол «—», эс бөгөөс «…»
             үүрд эргэлдэж «удахгүй ирнэ» гэж худал хэлдэг байв. */}
         {/* ⚠️ 2026-10-05: унасан бол «—» (мэдээлэлгүйтэй ижил) биш «⚠» — `FailMark`-ийн ⚠️ */}
-        <Stat icon="file" value={contracts ? mntShort(k.contract) : contractsErr ? <FailMark /> : '…'} label={tr('Нийт гэрээлсэн дүн')} />
+        <Stat icon="file" value={contracts ? (k.outOfTotal ? tr('Нийт төсөвт ордоггүй') : kpiMnt(k.contract)) : contractsErr ? <FailMark /> : '…'} label={tr('Нийт гэрээлсэн дүн')} />
         {/*
           * ⚠️ МӨНГӨН ДҮН ТҮР ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар:
           * «851.0 тэрбум ₮ — үүнийг IPC-ээс авна, одоохондоо hide хий»).
@@ -1291,6 +1358,9 @@ const mntShort = (v: number): string => {
   if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
   return mnt(v);
 };
+
+/** KPI зурвасын дүн — жинхэнэ 0-ийг «0 ₮» (`mntShort`-ийн «—» нь чартын мөрүүдэд хэвээр) */
+const kpiMnt = (v: number): string => (v === 0 ? '0 ₮' : mntShort(v));
 
 /** МӨНГӨН чарт — мөрөнд «хувь · тоймлосон дүн», hover-т бүтэн задаргаа */
 const moneyBars = (
@@ -1548,8 +1618,9 @@ const countBars = (
  * ⚠️ Мөр бүр өөр өнгөтэй байх нь «ангилал бүр өөр зүйл» гэсэн утга дамжуулдаг
  * ч энд мөрүүд нь НЭГ хэмжигдэхүүний харьцуулалт тул өнгө мэдээлэл өгөхгүй,
  * зөвхөн шуугиан нэмнэ. Урт нь өөрөө харьцааг хэлнэ.
+ * ⚠️ 2026-10-23: Environment — НЭГ өнгө нь `--data` (moss), `cat(0)` слот БИШ.
  */
-const BAR_HUE = cat(0);
+const BAR_HUE = 'var(--data)';
 
 /**
  * «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» ЧАРТЫН МӨРҮҮД — ЯГ ЭДГЭЭР зургаан үзүүлэлт.
@@ -1596,9 +1667,11 @@ const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true 
 ];
 
 function FinCharts({
-  rows, period, xs, setXs, pkgPct, catPct, housingNow, housingAt,
+  rows, period, xs, setXs, pkgPct, catPct, housingNow, housingAt, contracts,
 }: {
   rows: CfRow[];
+  /** ⚠️ 2026-10-26 (аудит): OID → `geree_dun` (`loadContractSum`) — «Гэрээлсэн дүн» `KpiStrip`-тэй нэг эх; `null` = ачаалж буй */
+  contracts: Map<number, number> | null;
   period: Period;
   /** Багц → объёмоор бодогдсон гүйцэтгэл (`chartTypeCost`-ийн тайлбар) */
   pkgPct: Map<string, number>;
@@ -1722,7 +1795,7 @@ function FinCharts({
       }));
   }, [wbs, rows, housingNow]);
 
-  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct), [rType, pkgPct, catPct]);
+  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct, contracts), [rType, pkgPct, catPct, contracts]);
   const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
 
   return (
@@ -1883,6 +1956,8 @@ function Timeline({
     c: 'label' | 'sub' | 'pct' | 'ipc'; d: 1 | -1;
   }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
+  /** ⚠️ 2026-10-23: Environment — IPC-ийн талбайн градиентын давтагдашгүй id (`AreaChart`-ын `useId`) */
+  const gid = useId().replace(/:/g, '');
   /** Явагдаж буй чирэлтийн `window` сонсогчийг цэвэрлэгч — unmount-д дуудна (2026-10-09) */
   const dragOff = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragOff.current?.(); }, []);
@@ -2105,7 +2180,13 @@ function Timeline({
    * ⚠️ Налуу үед мөнгөн дүнг тэнхлэгээс ХАСНА: хоёр налуу мөр бие биенийхээ
    * дундуур гарна. Тэр тоо уншилтын мөрөнд hover-оор гарсаар байна.
    */
-  const tilt = n > 24;
+  /*
+   * ⚠️ 2026-10-23: Environment `AreaChart` — налалт −60° (45° БИШ), нөхцөл нь Env-ийнх:
+   *    цэг > 8 · ≥4 тэмдэгттэй шошго байгаа · хоосон бус шошго > 8. Сэлбэгийн сарын
+   *    тэнхлэг «06» (2 тэмдэгт) тул Env-ийн уртын нөхцөл хангагдахгүй ч 24-өөс олон үед
+   *    нүд нь шошгоос нарийн болж давхцдаг — хуучин `n > 24` нөхцлийг НЭМЭЛТ болгож үлдээв.
+   *    (`ticks`/`tilt` нь `shortLbl`-ийн ДАРАА — const функцийг зарлахаас өмнө дуудахгүй.)
+   */
   /**
    * ТЭНХЛЭГИЙН ШОШГО — ЗӨВХӨН ДОТООД хэсэг («06», «II»), он нь ДООРХ зурваст.
    *
@@ -2120,6 +2201,10 @@ function Timeline({
       : grain === 'quarter' ? (p.label.split(' ')[1] ?? p.label)
         : p.key.slice(5)
   );
+  const ticks = pts.map((p) => shortLbl(p));
+  const tilt = n > 8
+    && ticks.filter(Boolean).length > 8
+    && (ticks.some((t) => t.length >= 4) || n > 24);
   /**
    * ОНЫ БҮЛГҮҮД — зэргэлдээ нүднүүдийг он тус бүрээр нэгтгэнэ.
    *
@@ -2182,6 +2267,22 @@ function Timeline({
    */
   const path = curveOf((p) => p.pct);
   const ipcPath = curveOf((p) => p.ipcPct);
+  /*
+   * ⚠️ 2026-10-23: Environment `AreaChart` — бодит (IPC) муруйн ДООР tone .22→.02 градиент.
+   *    Хэсэг БҮРД тусдаа (`areaPath`) — null цоорхойд талбай ч ТАСАРНА (null ≠ 0). Төлөвлөгөө
+   *    (тасархай) нь таамаг тул талбайгүй. Мөнгөн БАГАНЫ «талбай биш» шийдвэр (2026-09-07)
+   *    үүнд хамаарахгүй — тэр нь олголтын ₮, энэ нь хуримтлагдсан хувийн муруй.
+   */
+  const ipcArea = (() => {
+    const vals = pts.map((p) => p.ipcPct);
+    if (vals.filter((v) => v != null && Number.isFinite(v)).length < 2) return '';
+    return lineSegments(vals.map((v, i) => (v == null || !Number.isFinite(v)
+      ? null
+      : { x: xOf(i), y: 100 - Math.max(0, Math.min(100, v)) })))
+      .map((s) => areaPath(s, 100))
+      .filter(Boolean)
+      .join(' ');
+  })();
   /**
    * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ӨӨРЧЛӨЛТ (2026-09-08, хэрэглэгчийн заавар): багана нь
    * ЗАХИРАМЖИЙН дүн БИШ, ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН АКТ (IPC) байх ёстой —
@@ -2204,6 +2305,12 @@ function Timeline({
       {/* ⚠️ 2026-10-06 (аудит): `aria-live` — гараар (←/→) үе солиход дэлгэц уншигч энэ мөрийг уншина */}
       <div className={g.tlHead} aria-live="polite" aria-atomic="true">
         <span className={g.tlHeadLbl}>{cur.label}</span>
+        {/* ⚠️ 2026-10-23 (UX аудит E5): аль тоо ТӨЛӨВЛӨГӨӨ, аль нь БОДИТ гэдгийг шошгоор хэлнэ — урьд нь «2027 92.8%»
+            (төлөвлөгөө) нь KPI-ийн «Гүйцэтгэлийн хувь 38.9%»-ийн хажууд нэргүй тул бодит гүйцэтгэл мэт уншигддаг байв. */}
+        <span className={g.tlHeadTag} style={{ marginLeft: 0 }}>
+          <i style={{ background: 'var(--chart-plan)' }} />
+          {tr('Төлөвлөгөө')}
+        </span>
         {/* ⚠️ Төлөвлөгөө хэмжигдээгүй үед «0%» БИШ «—» (`null ≠ 0`) */}
         <b className={g.tlHeadPct}>{cur.pct == null ? '—' : pct(cur.pct)}</b>
         {/* ⚠️ ХУРИМТЛАЛЫН мөнгө — тухайн үеийн олголт БИШ. «64.3%» гэдэг нь
@@ -2231,7 +2338,7 @@ function Timeline({
         {cur.ipcPct != null && (
           <span className={g.tlHeadTag} title={tr('Олгосон IPC — хуримтлагдсан')}>
             <i style={{ background: 'var(--chart-actual)' }} />
-            {pct(cur.ipcPct)}
+            {tr('Бодит (олгосон IPC): {0}', pct(cur.ipcPct))}
             {cur.ipcMoney != null && <> · {tr('олгосон {0}', mnt(cur.ipcMoney))}</>}
           </span>
         )}
@@ -2275,6 +2382,7 @@ function Timeline({
             * ⚠️ `hov` шалгана, `at` БИШ: `at` нь заагаагүй үед СҮҮЛИЙНХ рүү
             * унадаг тул зураас хулгана хүрээгүй байхад ч байнга гарна.
             */}
+          {/* ⚠️ 2026-10-23: Environment — crosshair tone (`--data`) 1px `2 2`, .7 (CSS) */}
           {hov != null && hov < n && (
             <i className={g.tlCursor} style={{ left: `${xOf(hov)}%` }} />
           )}
@@ -2317,7 +2425,15 @@ function Timeline({
           {/* ⚠️ 2026-10-09 (хэрэглэгчийн сонголт): S-муруйн бүдэг ХЭВТЭЭ ТОР 0/25/50/75/100%
               (`CHART.grid`) — муруйн ӨМНӨ зурагдана, тиймээс ард үлдэнэ. Өнгө `style`-аар
               (SVG шинж дотор `var()` бичихгүй — format.ts-ийн дүрэм). */}
-          {CHART.grid.map((v) => (
+          {/* ⚠️ 2026-10-23: Environment `AreaChart` — тор 0/25/50/75% БҮГД 1px ТАСАРХАЙ `3 4` `--line`
+              (суурь ч тасархай), ДЭЭД (100%) шугамгүй. */}
+          <defs>
+            <linearGradient id={`tlFill-${gid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" style={{ stopColor: 'var(--chart-actual)', stopOpacity: CHART.areaTop }} />
+              <stop offset="100%" style={{ stopColor: 'var(--chart-actual)', stopOpacity: CHART.areaBottom }} />
+            </linearGradient>
+          </defs>
+          {CHART.grid.filter((v) => v < 100).map((v) => (
             <line
               key={v}
               x1={0}
@@ -2325,35 +2441,26 @@ function Timeline({
               y1={100 - v}
               y2={100 - v}
               vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
+              style={{ stroke: 'var(--line)', strokeWidth: 1, strokeDasharray: '3 4' }}
             />
           ))}
-          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — нүдний ТӨВД (цэгтэй нэг
-              байрлал); олон үед (>12) тэнцүү алхмаар ~12 шугам л — 66 сарын шугам нь тор биш
-              «зурвас» болж муруйг дарна. */}
-          {pts.map((p, i) => ((n - 1 - i) % Math.max(1, Math.ceil(n / 12)) === 0 ? (
-            <line
-              key={`vg-${p.key}`}
-              x1={xOf(i)}
-              x2={xOf(i)}
-              y1={0}
-              y2={100}
-              vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-grid)', strokeWidth: 1 }}
-            />
-          ) : null))}
+          {ipcArea && <path d={ipcArea} fill={`url(#tlFill-${gid})`} />}
+          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — нүдний ТӨВД байв.
+              ⚠️ 2026-10-23: Environment — БОСОО тор ХАСАГДСАН (хэвтээ тасархай л). */}
           {/* ⚠️ 2026-10-09: төлөвлөгөө `--chart-plan` 2px ТАСАРХАЙ (`CHART.planDash`) —
               «таамаг/төлөвлөгөө» гэж уншигдана; бодит IPC нь бүтэн.
               ⚠️ 2026-10-09 (лавлах CRM загвар): тасархай → ЦЭГЭН ('1 5', round cap), хоёр шугам
-              цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана). */}
+              цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана).
+              ⚠️ 2026-10-23: Environment — төлөвлөгөө `--chart-plan` ТАСАРХАЙ ('4 4', butt), бодит
+              `--chart-actual` (= --data) цул; гэрэлтэлт ХАСАГДСАН. */}
           <path
-            className={`${g.tlLine} chartGlow`}
+            className={g.tlLine}
             d={path}
             fill="none"
             vectorEffect="non-scaling-stroke"
             style={{
               stroke: 'var(--chart-plan)', strokeWidth: CHART.stroke, strokeDasharray: CHART.planDash,
-              strokeLinecap: 'round', filter: glow('var(--chart-plan)'),
+              strokeLinecap: 'butt',
             }}
           />
           {/* ⚠️ IPC нь ТӨЛӨВЛӨГӨӨНИЙ ДАРАА зурагдана — давхцсан хэсэгт
@@ -2361,11 +2468,11 @@ function Timeline({
               гэдэг нь нэг харцаар уншигдана. */}
           {ipcPath && (
             <path
-              className={`${g.tlLineIpc} chartGlow`}
+              className={g.tlLineIpc}
               d={ipcPath}
               fill="none"
               vectorEffect="non-scaling-stroke"
-              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke, filter: glow('var(--chart-actual)') }}
+              style={{ stroke: 'var(--chart-actual)', strokeWidth: CHART.stroke, strokeLinecap: 'round', strokeLinejoin: 'round' }}
             />
           )}
           {/* ⚠️ Ягаан «Орон сууц, биет» зам НУУГДСАН (2026-09-10) — домгийн
@@ -2387,10 +2494,12 @@ function Timeline({
               атал цэг нь тэг дээр эгнэж, «тэр саруудад төлөвлөгөө тэг» гэсэн
               худал уншилт төрнө. Муруй (`curveOf`) ч ЯГ ижил цэгүүдийг
               алгасдаг тул хоёулаа нийцнэ. */}
+          {/* ⚠️ 2026-10-23: Environment `AreaChart` — цэг 5px анхдагчаар .5 ХАРАГДАНА, заасан нь 1,
+              бусад нь .15 (`hov`-оор — заагаагүй үед бүгд .5); томруулахгүй, PILL-гүй. */}
           {pts.map((p, i) => (p.pct == null ? null : (
             <span
               key={p.key}
-              className={`${g.tlDot} ${i === at ? g.tlDotOn : ''}`}
+              className={`${g.tlDot} ${hov === i ? g.tlDotOn : hov != null && hov < n ? g.tlDotDim : ''}`}
               style={{
                 left: `${((i + 0.5) / n) * 100}%`,
                 bottom: `${Math.max(0, Math.min(100, p.pct))}%`,
@@ -2399,6 +2508,29 @@ function Timeline({
               <b className={twoRow && i % 2 === 1 ? g.tlDotUp : undefined}>{pct(p.pct)}</b>
             </span>
           )))}
+          {/* ⚠️ 2026-10-23 (UX аудит E5): БОДИТ (олгосон IPC) муруй ч утгын шошготой — урьд нь зөвхөн
+              төлөвлөгөөний цэгүүд шошготой тул бодит шугамын тоо графикаас уншигддаггүй байв. Шошго нь
+              муруйн ДООР (төлөвлөгөөнийх дээр) — хоёр цуваа мөргөлдөхгүй. Олон үед (> 24) дунд цэгүүдийг
+              тэнцүү алхмаар (~12) + сүүлийнхийг — бүх цэгт бичвэл нэг эгнээнд давхарлана (CLAUDE.md: зөвхөн
+              төгсгөлийн шошго биш, дунд цэгүүд ч). */}
+          {pts.map((p, i) => {
+            if (p.ipcPct == null) return null;
+            const step = n > 24 ? Math.ceil(n / 12) : 1;
+            const lastIpc = pts.reduce((a, q, k) => (q.ipcPct != null ? k : a), -1);
+            const label = i === at || i === lastIpc || (n - 1 - i) % step === 0;
+            return (
+              <span
+                key={`ipc-${p.key}`}
+                className={`${g.tlDot} ${g.tlDotIpc} ${i === at ? g.tlDotOn : ''}`}
+                style={{
+                  left: `${((i + 0.5) / n) * 100}%`,
+                  bottom: `${Math.max(0, Math.min(100, p.ipcPct))}%`,
+                }}
+              >
+                {label && <b>{pct(p.ipcPct)}</b>}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -2432,18 +2564,44 @@ function Timeline({
         * ирмэг дээр чирэх = СУНГАХ. Гурвуулаа нэг `drag()` дотор — тусдаа
         * бичвэл ирмэгүүд хоорондоо солигдох (`lo > hi`) тохиолдол гарна.
         */}
+      {/*
+        * ⚠️ 2026-10-23: Environment `YearRange` — хоёр үзүүрт 12px/500 PILL (эхлэл/төгсгөлийн
+        *    үе), дунд нь «Бүх хугацаа» эсвэл мужийн урт; 3px зам `--paper-hi`, сонгосон муж
+        *    `--data`; 12px дөрвөлжин бариул (булан 2, 1.5px moss хүрээ, `--surface`); доор үе
+        *    бүрийн 1px зураас (мужид `--data` .8). Чирэх зан (шинээр · зөөх · сунгах) ХЭВЭЭР.
+        */}
       {N > 12 && (
-        <div className={g.tlZoom} ref={barRef} onPointerDown={drag('new')}>
-          <div
-            className={g.tlZoomWin}
-            style={{
-              left: `${(lo / (N - 1)) * 100}%`,
-              right: `${100 - (hi / (N - 1)) * 100}%`,
-            }}
-            onPointerDown={drag('move')}
-          >
-            <i className={g.tlZoomGrip} onPointerDown={drag('lo')} />
-            <i className={`${g.tlZoomGrip} ${g.tlZoomGripR}`} onPointerDown={drag('hi')} />
+        <div className={g.tlRange}>
+          <div className={g.tlRangeHead}>
+            <span className={g.tlRangePill}>{all[lo].label}</span>
+            <span className={g.tlRangeRule} />
+            <span className={g.tlRangeSpan}>
+              {!zoom || (lo === 0 && hi === N - 1)
+                ? tr('Бүх хугацаа')
+                : grain === 'year' ? tr('{0} жил', hi - lo + 1)
+                  : grain === 'quarter' ? tr('{0} улирал', hi - lo + 1)
+                    : tr('{0} сар', hi - lo + 1)}
+            </span>
+            <span className={g.tlRangeRule} />
+            <span className={g.tlRangePill}>{all[hi].label}</span>
+          </div>
+          <div className={g.tlZoom} ref={barRef} onPointerDown={drag('new')}>
+            <div
+              className={g.tlZoomWin}
+              style={{
+                left: `${(lo / (N - 1)) * 100}%`,
+                right: `${100 - (hi / (N - 1)) * 100}%`,
+              }}
+              onPointerDown={drag('move')}
+            >
+              <i className={g.tlZoomGrip} onPointerDown={drag('lo')} />
+              <i className={`${g.tlZoomGrip} ${g.tlZoomGripR}`} onPointerDown={drag('hi')} />
+            </div>
+          </div>
+          <div className={g.tlRangeTicks} aria-hidden>
+            {all.map((p, i) => (
+              <i key={p.key} className={i >= lo && i <= hi ? g.tlRangeTickOn : undefined} />
+            ))}
           </div>
         </div>
       )}
@@ -2530,6 +2688,9 @@ function PkgWorkList({
 }) {
   const [open, setOpen] = useState(false);
   const map = useMap();
+  /* ⚠️ 2026-10-21 (аудит): ажил асаахад ШИНЭЭР нэмэгдсэн давхаргын бүртгэл (ажлын oid → ids) — унтраахад
+     зөвхөн тэднийг хасна (доорх `onClick`-ийн ⚠️). Ref: рендерт нөлөөлөхгүй, зөвхөн дараагийн даралтад. */
+  const addedRef = useRef(new Map<CfRow['oid'], string[]>());
 
   const works = useMemo(() => {
     if (!rows) return [];
@@ -2540,15 +2701,13 @@ function PkgWorkList({
            = `БАГЦ14` нь БОДИТ Багц 14-ийн давхаргад наалдаж, ТЭЗҮ-ийн ажил дарахад
            «Дулаан хангамжийн нэвтрэх суваг» асдаг байв. Диапазон → `''` → бүдэг. */
         const key = pkgKeyOf(r.pkg2);
-        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: (key && PKG_BY_BAGTS[key]) || [] };
+        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: (key && mapPkgLayers(key)) || [] };
       })
       .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.name.localeCompare(b.name));
   }, [rows]);
 
   /* ⚠️ Зурагт ил гарсан ажлын тоо — толгойн «N/74» тоолуур */
-  const onCount = works.filter(
-    (w) => w.ids.length > 0 && w.ids.every((id) => visible.includes(id)),
-  ).length;
+  const onCount = works.filter((w) => pkgWorkOn(w, visible)).length;
 
   if (works.length === 0) return null;
 
@@ -2561,14 +2720,15 @@ function PkgWorkList({
         onClick={() => setOpen((v) => !v)}
       >
         <span className={g.pkgCaret}>{open ? '▾' : '▸'}</span>
-        <span className={g.pkgTitle}>{tr('Багц {0}', num(works.length))}</span>
+        {/* ⚠️ 2026-10-26 (аудит): «Багц {0}» нь ГАНЦ багцын нэр (BIM сонгогч · ХАБЭА) — жагсаалтын тоонд тусдаа түлхүүр */}
+        <span className={g.pkgTitle}>{tr('{0} багц', num(works.length))}</span>
         <span className={`${g.pkgCount} num`}>{onCount}/{works.length}</span>
       </button>
       {open && (
         <div className={g.pkgRows}>
           {works.map((w) => {
             const has = w.ids.length > 0;
-            const isOn = has && w.ids.every((id) => visible.includes(id));
+            const isOn = pkgWorkOn(w, visible);
             return (
               <button
                 key={w.oid}
@@ -2579,9 +2739,18 @@ function PkgWorkList({
                 onClick={() => {
                   if (!has) return;
                   if (isOn) {
-                    setVisible((v) => v.filter((id) => !w.ids.includes(id)));
+                    /* ⚠️ 2026-10-21 (аудит): ЗӨВХӨН энэ ажил асаахад НЭМЭГДСЭН давхаргыг хасна (`addedRef`) — урьд нь
+                       `w.ids` бүгдийг хасдаг тул хэрэглэгчийн өмнө нь асаасан, эсвэл ӨӨР идэвхтэй ажилд хамаарах
+                       (нэг багцын ажлууд давхаргаа хуваалцдаг) давхарга хамт унтардаг байв. Бүртгэлгүй (анхнаасаа
+                       асаалттай байсан) бол `w.ids`-ээс бусад идэвхтэй ажлынхыг л үлдээнэ. */
+                    /* ⚠️ 2026-10-22 (аудит): «бусад идэвхтэй ажил» = ИЛ асаасан (`addedRef`-д бүртгэлтэй) — харагдаж буй
+                       биш; урьд нэг багцын ИЖИЛ давхаргатай хоёр ажил хэзээ ч унтардаггүй байв (`generalDashLayers.pkgWorkDrop`). */
+                    const drop = pkgWorkDrop(works, w, addedRef.current);
+                    addedRef.current.delete(w.oid);
+                    setVisible((v) => v.filter((id) => !drop.includes(id)));
                     return;
                   }
+                  addedRef.current.set(w.oid, pkgWorkAdded(w, visible));
                   setVisible((v) => [...new Set([...v, ...w.ids])]);
                   if (w.ids[0]) map.zoomToLayer(w.ids[0]);
                 }}
@@ -2804,6 +2973,7 @@ function LandCard({
 function SaadCard({
   onShowLayers,
   keys,
+  known,
   oids,
 }: {
   /** `null` = сонголт ТАЙЛАГДЛАА, давхаргыг өмнөх төлөвт нь буцаа */
@@ -2816,6 +2986,8 @@ function SaadCard({
    * бүтэн олонлогоор шүүвэл тэдгээр нь шүүлтгүй үед ч чимээгүй алга болно.
    */
   keys: Set<string> | null;
+  /** Cashflow-д холбогдох ажилтай БҮХ (газрын зургийн) түлхүүр — эндээс гадуурх багц шүүлтэд ХАСАГДАХГҮЙ */
+  known: Set<string> | null;
   /**
    * СОНГОСОН ШАЛТГААНЫ нэгж талбарууд. `null` = шалтгаан сонгоогүй (бүгд).
    *
@@ -2835,9 +3007,16 @@ function SaadCard({
    * байвал хэрэглэгч аль нь юуг цуцлахыг таамаглах хэрэгтэй болно.
    */
   const [sel, setSel] = useState<string | null>(null);
+  /* ⚠️ 2026-10-26 (аудит): шалтгаан солигдох/цуцлагдахад сонголт ТЭГЛЭГДЭНЭ (LandCard-ийн `prevReason` загвар) — эс бөгөөс
+     давхарга нь асаагүй атал мөр тодорч, дахин дарахад хуучирсан сэргээх цэгийг дууддаг байв. */
+  const [prevOids, setPrevOids] = useState(oids);
+  if (prevOids !== oids) {
+    setPrevOids(oids);
+    setSel(null);
+  }
   const rows = useMemo(() => {
     if (q.state !== 'ready') return [];
-    const byKey = keys ? q.data.filter((r) => keys.has(r.key)) : q.data;
+    const byKey = keys ? q.data.filter((r) => keys.has(r.key) || (known != null && !known.has(r.key))) : q.data;
     if (!oids) return byKey.map((r) => ({ ...r, hit: r.oids }));
     /* ⚠️ 2026-09-29 (аудит 10): татагдаагүй багц (`failed`, `oids: []`) шүүлтийн
        үед ч ҮЛДЭНЭ — хасвал «энэ шалтгаанд саадгүй» гэсэн худал уншилт болно */
@@ -2845,7 +3024,7 @@ function SaadCard({
       .map((r) => ({ ...r, hit: r.oids.filter((o) => oids.has(o)) }))
       .filter((r) => r.hit.length > 0 || r.failed)
       .sort((a, b) => b.hit.length - a.hit.length);
-  }, [q, keys, oids]);
+  }, [q, keys, known, oids]);
   /* ⚠️ 2026-09-29 (аудит 10): гарчгийн тоонд ЗӨВХӨН татагдсан багц — татагдаагүй
      нь «0 талбартай багц» биш, тоо нь МЭДЭГДЭХГҮЙ (`PkgOverlap.failed`) */
   const okRows = useMemo(() => rows.filter((r) => !r.failed), [rows]);
@@ -2923,6 +3102,15 @@ const PLAN_QTY: { id: string; label: string }[] = [
 /** Инженерийн шугам сүлжээ — гурван гэр бүлийн давхаргын нийлбэр урт */
 const NET_FAMILIES: PkgFamily[] = ['net', 'pow', 'src'];
 
+/**
+ * «Ерөнхий төлөвлөгөө» картын (`PlanCard`) уншдаг БҮХ давхарга — `usePlanTotals`-ын жагсаалт (2026-10-22).
+ * ⚠️ Карт доторх `cnt`/`qty`/`netIds`-тэй ЯГ нэг олонлог; бүгд каталогт бий тул тоо ӨӨРЧЛӨГДӨХГҮЙ (урьд нь каталогийн
+ *    бүх 158-ыг татаж эндээс 71-ийг уншдаг байв). Карт шинэ давхарга уншдаг болвол ЭНД нэмнэ, эс бөгөөс «—».
+ */
+const PLAN_CARD_IDS: string[] = [...new Set([
+  'et:24', 'zone', ...PLAN_QTY.map((p) => p.id), ...NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []),
+])];
+
 function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
   /**
    * ⚠️ «Баригдаж эхэлсэн» нь `BUILDING` давхаргын БҮХ обьект (113 блок): тэр
@@ -2932,7 +3120,10 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
    */
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `loadHousing().blocks` — давхардсан feature
      (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок; урьд нь `count(OID)` тул хоёр тоологддог байв. */
-  const started = useAsync(async () => (await loadHousing()).blocks, []);
+  /* ⚠️ 2026-10-26: блокийн тоо = бөглөх хуудасны ХУВААРЬ (`loadBagtsRows` → `joinBagts.blocks`, 113) — Дашбоардын «Барилгын
+     блок», Тайлан §2/§6, удирдлагын тайлангийн `lvKeys`-тэй НЭГ олонлог. `loadHousing().blocks` нь газрын зургийн давхардалгүй
+     полигон (111 — полигонгүй 29/3, 5/8 ороогүй) тул ерөнхий дашбоард ганцаараа 2-оор бага харуулдаг байв. */
+  const started = useAsync(async () => (await loadBagtsRows()).reduce((a, r) => a + r.blocks, 0), []);
   /* ⚠️ 2026-09-22: «Нийт төлөвлөгдсөн барилга 368» нь ЕТ давхаргын (`et:24` =
      `BUILT_LAYER`) БҮХ барилга — одоо байгаа + шинэ. `loadHeadline().byStatus`
      (кэштэй, нэмэлт хүсэлтгүй) задаргааг нэрэнд ил бичнэ: «одоо N · шинэ M». */
@@ -2957,10 +3148,12 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
             return d && q != null ? qtyText(d, q) : null;
           };
 
-          /* Шугам сүлжээний нийт урт — гэр бүлийн давхаргууд нь бүгд ижил
-             нэгжтэй (метр) тул нийлбэр нь утгатай. Аль нэг нь дутвал
-             нийлбэрт орохгүй — тоо БАГА гарна, ХУДАЛ гарахгүй. */
-          const netIds = [...new Set(NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []))];
+          /* Шугам сүлжээний нийт урт. Аль нэг нь дутвал нийлбэрт орохгүй — тоо БАГА гарна, ХУДАЛ гарахгүй.
+             ⚠️ 2026-10-26 (аудит): гэр бүлд 34 ШУГАМ (м) + 28 ТАЛБАЙ (м² — худаг, усан сан, станц) + qty-гүй 4 цэг
+             (ХТП РП A–D) бий — урьд нь бүгд «метр» гэж нийлж м²-ийг км болгон нэмдэг (157.1 ↔ бодит 123.3 км),
+             qty-гүй 4 нь «(дутуу: 4 давхарга)»-г ҮРГЭЛЖ гаргадаг байв. ЗӨВХӨН `qty.unit === 'м'` давхарга. */
+          const netIds = [...new Set(NET_FAMILIES.flatMap((f) => PKG_BY_FAMILY[f] ?? []))]
+            .filter((id) => LAYER_BY_ID[id]?.qty?.unit === 'м');
           const netM = netIds.reduce((s, id) => s + (t.get(id)?.q ?? 0), 0);
           /* ⚠️ 2026-10-09 (аудит №2): дээрх санаатай шийдвэр («тоо БАГА, худал биш») ХЭВЭЭР — гэхдээ
              дутуу нийлбэрийг ЧИМЭЭГҮЙ гаргахгүй: утгагүй давхаргын тоог «(дутуу: N давхарга)» гэж
@@ -3031,8 +3224,13 @@ function HseCard() {
    * өгүүлбэр байснаа хэрэглэгч хассан (2026-09-06).
    */
   const stamp = hse.state === 'ready' ? hse.data?.date : null;
+  /* ⚠️ 2026-10-23 (UX аудит E8): ЭРХГҮЙ хэрэглэгчид улаан алдаа + «Дахин оролдох» БИШ — дахин оролдох нь
+     утгагүй (эрх өөрчлөгдөхгүй). Энгийн нэг мөр. Бусад алдаа (сүлжээ, сервер) `Data`-гаар хэвээр. */
+  const denied = hse.state === 'error'
+    && friendlyError(hse.error) === tr('Энэ өгөгдөлд хандах эрх алга байна. Админд хандана уу.');
   return (
     <Section title={tr('ХАБ')} note={stamp || undefined}>
+      {denied ? <Empty icon="shield" label={tr('Танд энэ хэсгийг харах эрх олгогдоогүй')} /> : (
       <Data q={hse} minH={130}>
         {(d) => (d == null ? <Empty label={tr('Бүртгэл алга')} /> : (
           <Stats cols={3}>
@@ -3042,6 +3240,7 @@ function HseCard() {
           </Stats>
         ))}
       </Data>
+      )}
     </Section>
   );
 }
