@@ -956,6 +956,26 @@ function pruneDrafts(live: ReadonlySet<string>): void {
   if (hit) syncDraftGuard();
 }
 
+/** Өөрчлөгдсөн нүдний мөрийн тогтвортой танигч (`Change.rid` → `{oid, sid}`), индексээр — `Item.okRows` ба «Бүгдийг зөвшөөрөх» */
+function okRowsOf(changes: Change[] | null): ({ oid: number; sid: string } | undefined)[] {
+  const arr: ({ oid: number; sid: string } | undefined)[] = [];
+  for (const c of changes ?? []) {
+    const cut = c.rid ? c.rid.indexOf('|') : -1;
+    if (!c.rid || cut <= 0) continue;
+    const oid = Number(c.rid.slice(0, cut));
+    if (Number.isFinite(oid)) arr[c.row] = { oid, sid: c.rid.slice(cut + 1) };
+  }
+  return arr;
+}
+
+/**
+ * ⚠️ 2026-10-27 (хэрэглэгч: «super хамаагүй зүгээр сүүлийн 4 шат дээр бүгдийг зөвшөөрөл товчийг ашиглах боломжтой
+ *    болго»): шатны «Бүгдийг зөвшөөрөх» товч — төлөвлөлтийн инженер · төлөвлөлтийн ахлах инженер · хэлтсийн дарга ·
+ *    газрын дарга. Энэ шатнуудад 2026-08-27-ны «нүд бүрийг гараар» дүрмийг хэрэглэгч ӨӨРӨӨ чөлөөлсөн. Доод хоёр шат
+ *    (багцын инженер · багцын ахлах инженер) нүд бүрийг гараар хэвээр.
+ */
+const BULK_STAGES: readonly Stage[] = ['planner', 'director', 'head', 'chief'];
+
 function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedWhy, onDone }: {
   work: Work; stage: Stage; who: string;
   /**
@@ -1131,16 +1151,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
    * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): зөвшөөрлийг индексээр БИШ үүгээр бичиж/уншина
    *    (`hyanaltOkCells`). Сийрэг массив — зөвхөн өөрчлөгдсөн мөрүүд.
    */
-  const okRows = useMemo(() => {
-    const arr: ({ oid: number; sid: string } | undefined)[] = [];
-    for (const c of changes ?? []) {
-      const cut = c.rid ? c.rid.indexOf('|') : -1;
-      if (!c.rid || cut <= 0) continue;
-      const oid = Number(c.rid.slice(0, cut));
-      if (Number.isFinite(oid)) arr[c.row] = { oid, sid: c.rid.slice(cut + 1) };
-    }
-    return arr;
-  }, [changes]);
+  const okRows = useMemo(() => okRowsOf(changes), [changes]);
   /** Хуучин (индексийн) зөвшөөрөл бичигдсэн агшин — дээд шатны буцаалтын огноо */
   const okWrittenAt = upperOfMe ? Date.parse(String((cur as Record<string, unknown> | undefined)?.[SF[upperOfMe].returned] ?? '')) : NaN;
   /*
@@ -2073,6 +2084,82 @@ export function Guitsetgel() {
   }, [doneMsg]);
 
   /*
+   * ⚠️ 2026-10-27: ШАТНЫ «Бүгдийг зөвшөөрөх» (`BULK_STAGES`). Ажил бүрийг ганцаар батлахтай ИЖИЛ зам: илгээлтийг
+   *    уншиж (`loadSubmission` — `subAt`), өөрчлөгдсөн бүх нүдийг зөвшөөрсөнд тооцож `apply`-г НЭГ НЭГЭЭР дуудна
+   *    (эцсийн шат архив бичдэг тул зэрэг биш). `Item`-ийн хаалтууд энд ч: агуулга уншигдаагүй (`prevError`) ·
+   *    тулгагдаагүй (`unmoved`) · нийт сөрөг (`negative`) ажлыг АЛГАСАЖ шалтгааныг жагсаана; талбар дутуу
+   *    (`missingDirectorFields`) бол огт эхлэхгүй. Эрх/өөрийгөө батлах шалгуур `apply` → `authz` дотор хэвээр.
+   *    Зөвхөн ердийн хяналт (`REVIEW_STATUS`) — дээд шатнаас буцсан (дахин шалгах) ажил гараар.
+   */
+  const bulkList = BULK_STAGES.includes(stage) && canReview && !flow.viewAll && tabCount > 0
+    ? mineOk.filter((w) => w.status === REVIEW_STATUS[stage as ReviewStage])
+    : [];
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const [bulkFails, setBulkFails] = useState<string[]>([]);
+  const approveAll = async () => {
+    if (bulk || !bulkList.length) return;
+    const rs = stage as ReviewStage;
+    const list = bulkList;
+    const ask = rs === 'chief'
+      ? tr('«{0}» шатны {1} ажлыг бүгдийг баталж архивт бүртгэх үү? Архив болон нэгтгэлд бичигдэж, үндсэн өгөгдөлд орно.', STAGE_LABEL[rs], String(list.length))
+      : tr('«{0}» шатны {1} ажлыг бүгдийг зөвшөөрч дараагийн шат руу илгээх үү?', STAGE_LABEL[rs], String(list.length));
+    if (!(await askConfirm(ask, { ok: tr('Бүгдийг зөвшөөрөх') }))) return;
+    const guardKey = 'hyanalt-apply:bulk';
+    setNavDirty(guardKey, true, tr('Гүйцэтгэлийн шийдвэр хадгалж байна'));
+    setBulk({ done: 0, total: list.length });
+    setBulkFails([]);
+    const fails: string[] = [];
+    let ok = 0;
+    try {
+      const lack = await missingDirectorFields();
+      if (lack == null || lack.length > 0) {
+        setBulkFails([lack == null
+          ? tr('Хяналтын үйлчилгээний талбаруудыг шалгаж чадсангүй — баталгаажуулалт хадгалагдах эсэх тодорхойгүй тул түр хаалттай.')
+          : tr('Үйлчилгээнд дараах талбарууд алга тул баталгаажуулалт хадгалагдахгүй: {0}', lack.join(', '))]);
+        return;
+      }
+      for (const [i, w] of list.entries()) {
+        let why: string | null;
+        try {
+          const d = await loadSubmission(w.bagts, w.current[F.sheetOid]);
+          if (!d || d.prevError) why = tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй');
+          else if ((d.unmoved ?? 0) > 0) why = tr('{0} нүдийг хуудсанд буулгаж чадаагүй — гараар шалгана уу', String(d.unmoved));
+          else if ((d.negative ?? 0) > 0) why = tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно — гараар шалгана уу', String(d.negative));
+          else {
+            const r = await apply({
+              oid: w.current.__oid,
+              stage: rs,
+              decision: DECISION.approve,
+              reason: '',
+              who,
+              me: user?.username,
+              bypass: authStatus === 'off' || flow.canPick,
+              okCells: toOkRefs(d.changes.map((c) => `${c.row}:${c.block}`), okRowsOf(d.changes)),
+              subAt: d.subAt,
+            });
+            why = r.ok ? null : (r.error ? userError(r.error) : tr('Алдаа гарлаа'));
+          }
+        } catch (e) {
+          why = userError(e);
+        }
+        if (why) fails.push(`${ajilLabel(w.ajil)} (${tr(w.bagts)} · ${w.company}) — ${why}`);
+        else ok += 1;
+        setBulk({ done: i + 1, total: list.length });
+      }
+    } finally {
+      setNavDirty(guardKey, false);
+      setBulk(null);
+      setBulkFails((f) => (f.length ? f : fails));
+      if (ok > 0) {
+        setDoneMsg(rs === 'chief'
+          ? tr('{0} ажил батлагдаж архивт бүртгэгдлээ.', String(ok))
+          : tr('{0} ажил — {1} руу илгээгдлээ.', String(ok), STAGE_LABEL[nextReview(rs) ?? rs]));
+        reload();
+      }
+    }
+  };
+
+  /*
    * ГҮЙЦЭТГЭГЧИЙН ХАРАГДАЦ — «миний илгээсэн ажил хаана явж байна вэ».
    *
    * ⚠️ Урьд нь илгээсэн ажил нь «Бусад ажил» гэсэн нэг овоонд ордог байв —
@@ -2290,6 +2377,23 @@ export function Guitsetgel() {
                   {tr('хүлээгдэж буй {0}', String(mineOk.length))}
                 </span>
               </div>
+              {/* ⚠️ 2026-10-27: шатны «Бүгдийг зөвшөөрөх» (`approveAll`) — сүүлийн 4 шат */}
+              {(bulkList.length > 0 || bulk) && (
+                <div className={s.row}>
+                  <button type="button" className={`${s.btn} ${s.ok}`} disabled={!!bulk} onClick={() => void approveAll()}>
+                    {bulk
+                      ? tr('Зөвшөөрч байна… {0}/{1}', String(bulk.done), String(bulk.total))
+                      : `${tr('Бүгдийг зөвшөөрөх')} (${bulkList.length})`}
+                  </button>
+                </div>
+              )}
+              {bulkFails.length > 0 && (
+                <div className={s.error} role="alert">
+                  {tr('Дараах {0} ажил зөвшөөрөгдсөнгүй:', String(bulkFails.length))}
+                  <ul>{bulkFails.map((f) => <li key={f}>{f}</li>)}</ul>
+                  <button type="button" className={s.btn} onClick={() => setBulkFails([])}>{tr('Хаах')}</button>
+                </div>
+              )}
               {/* ⚠️ 2026-10-09 (хэрэглэгч: «бүгдийг ногоон болгосон ч батлах хэсэг алга»): шийдвэрийн
                   эрхгүй (`canReview: false` — `viewOnly` томилгоо г.м.) үед батлах/буцаах товч
                   `Item.mine`-аар НУУГДДАГ ч ямар ч тайлбаргүй байв. Шат бүрд ижил тул энд нэг удаа. */}
