@@ -10,6 +10,7 @@ import {
   type DonutSize, type RingSize,
 } from '@/lib/chartStyle';
 import type { Async } from '@/lib/useAsync';
+import type { DocChartSpec } from '@/lib/docxChart';
 import { Icon } from './Icon';
 import { chunkErrorText, isChunkLoadError } from './ErrorBoundary';
 import s from './ui.module.css';
@@ -29,6 +30,15 @@ const tone = (c?: string) => ({ '--tone': c ?? 'var(--data)' }) as CSSProperties
  */
 const rampOp = (i: number): number => Math.max(Math.round((0.92 - i * 0.22) * 100) / 100, 0.24);
 const explicitOp = 0.88;
+
+/**
+ * ТАЙЛАНГИЙН WORD ГРАФИК (2026-10-19, хэрэглэгч: «графикийг зургаар биш, аятайхан графикаар»).
+ * ⚠️ Ring · Donut · Series · Trend-ийн үндэс элементэд өгөгдлөө JSON-оор тавина — `viewReport` үүнийг
+ *    уншиж Word-ийн жинхэнэ график (`docxChart`) угсарна, SVG-г зураг болгохгүй.
+ * ⚠️ Өнгө нь CSS (`var(--tone)`, `var(--cat-1)` …) хэвээр — тайлан ТЭР элемент дотор HEX болгоно
+ *    (гэрэл горимд, `viewReport.resolveColor`). Дэлгэцийн зурагдалтад нөлөөгүй.
+ */
+const repChart = (spec: DocChartSpec) => ({ 'data-report-chart': JSON.stringify(spec) });
 
 /**
  * Тоо БИШ утгыг 0 болгоно.
@@ -1253,6 +1263,13 @@ export function Donut({
   /* ⚠️ 2026-10-23: Environment — голын шошго анхдагчаар «НИЙТ» (нийлбэр харуулж буй үед л;
      дуудагчийн `center` нь хувь г.м. өөр утга байж болох тул тэр үед шошгогүй). */
   const ctrLbl = centerLabel ?? (center == null ? tr('НИЙТ') : undefined);
+  const chartAttr = repChart({
+    type: 'doughnut',
+    title: [centerText, centerLabel].filter(Boolean).join(' '),
+    cats: items.map((it) => tr(it.label)),
+    series: [{ name: centerLabel ?? '', values: items.map((it) => fin(it.value)) }],
+    pointColors: items.map((it) => it.color),
+  });
   /**
    * ТАЙЛБАРЫН ХУВЬ — их үлдэгдлийн арга (largest remainder), хувиуд нийлээд ЯГ 100.
    * ⚠️ 2026-10-09: урьд нь зүсмэг бүрийг тусад нь `toFixed(0)` — 33.3·33.3·33.3 нь «33+33+33 = 99%»,
@@ -1428,7 +1445,7 @@ export function Donut({
       if (over > 0) col.forEach((x) => { x.ey -= over; });
     });
     return (
-      <div className={s.donutLead}>
+      <div className={s.donutLead} {...chartAttr}>
         {/* ⚠️ 2026-09-25 аудит: шүүлттэй (`onSelect`) үед `role="img"` БИШ — img нь
             хүүхдүүдийг хүртээмжийн модноос нууж, доорх шошгон товчууд уншигдахгүй. */}
         <svg
@@ -1498,7 +1515,7 @@ export function Donut({
   }
 
   return (
-    <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`}>
+    <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`} {...chartAttr}>
       {/* ⚠️ 2026-10-23: Environment — viewBox нь ЯГ `size` (гадаад R = size/2 − 4 тул 2px зах нь
           хүрээнд багтана; урьдын `EDGE_PAD` өргөтгөл хэрэггүй). */}
       <svg
@@ -1753,6 +1770,16 @@ export function Series({
   const measured = multi ? lines!.some((l) => l.values.some(isNum)) : items.some((it) => isNum(it.value));
   /* ⚠️ 2026-10-23: Environment — өгөгдөлгүй үед `.chart-empty` («Үзүүлэлт байхгүй») */
   if (!n || !measured) return <Empty label={tr('Үзүүлэлт байхгүй')} />;
+  /* ⚠️ 2026-10-19: тайлангийн Word график (`repChart`-ийн ⚠️) — муруй ба баганын хоёр үндэс хоёуланд */
+  const seriesAttr = repChart(multi
+    ? { type: 'line', title: unit, cats: items.map((i) => i.label), series: lines!.map((l) => ({ name: l.label, values: l.values, color: l.color })) }
+    : {
+      type: line ? 'line' : 'column',
+      title: unit,
+      cats: items.map((i) => i.label),
+      series: [{ name: unit ?? '', values: items.map((i) => i.value), color: 'var(--tone)' }],
+      pointColors: !line && items.some((i) => i.color) ? items.map((i) => i.color ?? 'var(--tone)') : undefined,
+    });
 
   /** Шошго ТАЙРАГДАХ эсэх — `need` px-ийг нэг нүдэнд ноогдох өргөнтэй харьцуулна */
   const strideFor = (need: number, gapPx: number) => {
@@ -1838,7 +1865,7 @@ export function Series({
     }
 
     return (
-      <div className={`${s.series} ${grow ? s.seriesFill : ''} seriesChart`} style={tone(color)}>
+      <div className={`${s.series} ${grow ? s.seriesFill : ''} seriesChart`} style={tone(color)} {...seriesAttr}>
         {(unit || multi) && (
           /* ⚠️ 2026-08-20: Нэгж нь чартын ДЭЭД талд (доор нь сүүлийн баганын нэрийн хоёр дахь
              мөр мэт уншигддаг байв). ⚠️ 2026-10-23: Environment `.chart-unit` — ЗҮҮН, 10px ink-3;
@@ -1977,7 +2004,7 @@ export function Series({
   const stride = strideFor(maxLen * SER_CH + 4, 8);
 
   return (
-    <div className={`${s.series} ${grow ? s.seriesFill : ''} seriesChart`} style={tone(color)}>
+    <div className={`${s.series} ${grow ? s.seriesFill : ''} seriesChart`} style={tone(color)} {...seriesAttr}>
       {unit && <div className={s.seriesUnit}>{unit}</div>}
       <div className={s.barLayout} style={grow ? undefined : { gridTemplateColumns: `${axW}px minmax(0, 1fr)` }}>
         {!grow && (
@@ -2444,7 +2471,11 @@ export function Trend({
   }
 
   return (
-    <div className={s.trend} style={tone(color)}>
+    <div
+      className={s.trend}
+      style={tone(color)}
+      {...repChart({ type: 'line', cats: points.map((p) => tr(p.label)), series: [{ name: unit, values: points.map((p) => p.value), color: 'var(--tone)' }] })}
+    >
       {/* ⚠️ 2026-10-23: Environment `AreaChart` — дээрх 17px уншилтын мөр (`trendHead`) ба зүүн
           Y тэнхлэг ХАСАГДСАН; утгыг hover самбар (цэгийн дэргэд) ба `showValues` шошго хэлнэ. */}
       {/* ⚠️ Гүйдэг үед `trendPlot`/`trendAxis` НЭГ дотоод блокод сууна —
@@ -2650,6 +2681,17 @@ export function Ring({
       aria-valuemin={0}
       aria-valuemax={100}
       {...(has ? { 'aria-valuenow': v, 'aria-valuetext': shown } : { 'aria-valuetext': tr('өгөгдөлгүй') })}
+      /* ⚠️ Тайлан: хувь (`text`-гүй) бол зүсмэгт «63%», `text` (AQI г.м.) бол шошгогүй — утга нь гарчигт.
+         Өгөгдөлгүй бол график БИШ (null ≠ 0) — зураг хэвээр «—». */
+      {...(has ? repChart({
+        type: 'doughnut',
+        title: label ? `${label}: ${shown}` : shown,
+        cats: [label ?? tr('Гүйцэтгэл'), tr('Үлдсэн')],
+        series: [{ name: label ?? '', values: [v, Math.max(0, 100 - v)] }],
+        pointColors: ['var(--tone)', 'E3E7EA'],
+        pct: !text,
+        hideLabels: text ? [0, 1] : [1],
+      }) : {})}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <circle className={s.ringTrack} cx={c} cy={c} r={mid} strokeWidth={width} />

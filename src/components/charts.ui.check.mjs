@@ -126,7 +126,9 @@ assert.deepEqual([...stkT.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => m[1]),
 /* ── ⚠️ 2026-10-09 (аудит №6): Trend анхдагч fmt = autoNum — мянгатын таслал, хувь «26.3» хэвээр ── */
 const tMoney = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 2660000000000 }, { label: '2', value: 1500000000000 }], unit: ' ₮', alert: { value: 2000000000000 } }));
 assert.ok(tMoney.includes('2,660,000,000,000 ₮'), 'мөнгөн цуваа таслалтай (урьд «2660000000000.0 ₮»)');
-assert.ok(!tMoney.includes('2660000000000'), 'түүхий тоо үлдэхгүй');
+/* ⚠️ 2026-10-19: `data-report-chart` (тайлангийн Word графикийн JSON, дэлгэцэнд харагдахгүй) түүхий тоо агуулна — хасаж шалгана */
+assert.ok(!tMoney.replace(/ data-report-chart="[^"]*"/g, '').includes('2660000000000'), 'түүхий тоо үлдэхгүй');
+assert.ok(/data-report-chart="[^"]*2660000000000/.test(tMoney), 'тайлангийн графикт түүхий утга (Word форматлана)');
 assert.ok(tMoney.includes('2,000,000,000,000 ₮'), 'босгын шошго ч форматлагдана');
 const tPct = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 26.3 }, { label: '2', value: 20 }], unit: '%' }));
 assert.ok(tPct.includes('26.3%'), 'хувийн дуудагч «26.3%» хэвээр');

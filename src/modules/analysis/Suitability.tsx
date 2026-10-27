@@ -59,6 +59,11 @@ import { MapTools } from '@/components/MapTools';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { CategoryPie, IndicatorPicker, Weights, Parking, Green, Location } from './suit/Urban';
 import { Ranking } from './suit/Ranking';
+import { setReportSource } from '@/lib/reportSource';
+import { suitBlocks, type SuitShots } from './suit/suitReport';
+import { liveMapViews } from '@/lib/mapShots';
+import { mapShot } from '@/lib/viewReport';
+import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import s from './suitability.module.css';
 
 /** «Ачаалал» симуляцад автоматаар асах давхарга — «Зам (талбай)» */
@@ -69,6 +74,9 @@ const BUILDING_LAYER = 'et:24';
 
 /** «Улаан бүсийн барилга» горимын бүсийн жигд саарал */
 const LOC_ZONE_GRAY = '#64748b';
+
+/** Тайлангийн газрын зургийн агшны будалт — оноо (urban · indicator) эсвэл симуляцын төрөл */
+type ShotView = { mode: 'urban' | 'indicator' } | { mode: 'simulation'; sim: SimKind };
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -227,6 +235,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   const [opOpen, setOpOpen] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
+  /** Тайлангийн газрын зургийн агшин — түр будалт (`shoot`-ийн ⚠️); null бол дэлгэцийн ердийн будалт */
+  const [shotView, setShotView] = useState<ShotView | null>(null);
+  const appRef = useRef<HTMLDivElement>(null);
 
   /* ── Тооцоо ── */
   const rows = useMemo<Row[]>(() => {
@@ -414,6 +425,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /** Симуляцын хэмжүүрийн хязгаар — нормчилол ба легендэд (харагдах бүсээр). */
   const simRng = useMemo(() => simRange(simRows, simKind, popBasis), [simRows, simKind, popBasis]);
+  /** Тайлангийн агшны симуляцын хязгаар (`shotView`) */
+  const shotRng = useMemo(
+    () => (shotView?.mode === 'simulation' ? simRange(simRows, shotView.sim, popBasis) : null),
+    [shotView, simRows, popBasis],
+  );
 
   /**
    * Бүсийн симуляцын хэмжүүрийн ДУНДАЖ — hover панелийн «дунджаас» мөрд.
@@ -713,6 +729,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   const colorOf = useCallback(
     (r: MapRow) => {
+      /* ⚠️ 2026-10-19: тайлангийн агшин зураг (`shotView`) — табыг солихгүйгээр зөвхөн будалтыг түр сольно */
+      if (shotView) {
+        return shotView.mode === 'simulation'
+          ? simColor(simNorm(simMetric(r, shotView.sim, popBasis).value, shotRng ?? simRng))
+          : scoreColor(valueOf(r as Row, shotView.mode, ind), dark);
+      }
       // ⚠️ Тээвэр-идэвх идэвхтэй үед БҮС бүгд «өгөгдөлгүй» өнгөтэй болно —
       //    газрын зургийн мессеж нь барилга/зам тул бүсийн дулаан будалт
       //    түүнийг зөвхөн бүрхэнэ (`SuitMap` үүнийг цайвар дэвсгэр болгож зурна).
@@ -725,7 +747,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
         : scoreColor(valueOf(r as Row, mode, ind), dark);
     },
-    [mode, ind, simKind, popBasis, simRng, transportMode, locPublicOnly, dark],
+    [mode, ind, simKind, popBasis, simRng, transportMode, locPublicOnly, dark, shotView, shotRng],
   );
   /**
    * «БОДИТ» замын симуляц — ОДОО БАЙГАА нөхцлийг харуулах тул төлөвлөлтийн
@@ -871,6 +893,49 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const active = selRow && selRow.scored && !catOff.has(selRow.type) ? selRow : null;
   const selectedLive = active ? selected : null;
 
+  /* ⚠️ 2026-10-19 (хэрэглэгч: «хот төлөвлөлт, үзүүлэлт, симуляц гээд 3 том агуулгаар»): Word тайлан
+     DOM-оос БИШ, энэ төлөвөөс (`suitReport`-ийн ⚠️ — дэлгэц нэг удаад ганц табтай). Unmount-д бүртгэл арилна. */
+  const netLabel = NET_SOURCES[netKind].label;
+  const reportTraffic = trafficLive ? trafficStats : null;
+  /**
+   * ⚠️ 2026-10-19 (хэрэглэгч: «газрын зургийн зургууд оруул»): бүлэг бүрд ТУХАЙН будалттай газрын зураг.
+   *    Табыг солихгүй — `shotView`-ээр зөвхөн бүсийн будалтыг түр сольж (`colorOf`), зураг дуусахад
+   *    буцаана. Хүлээлт: React рендер + `SuitMap`-ийн будах эффект → view `updating` дуусах → бага зэрэг
+   *    (графикийн тэмдэг сольсны дараах фрейм).
+   */
+  const shoot = useCallback(async (v: ShotView) => {
+    const host = appRef.current;
+    if (!host || !liveMapViews(host).length) return null;
+    setShotView(v);
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    await wait(150);
+    const view = liveMapViews(host)[0];
+    if (view) await Promise.race([reactiveUtils.whenOnce(() => !view.updating), wait(4000)]);
+    await wait(400);
+    return mapShot(host);
+  }, []);
+  useEffect(() => setReportSource('analysis', {
+    blocks: async () => {
+      const input = {
+        rows, scored: scoredRows, ranked: rankRows, sim: simRows, indicators, parking, green: { ...greenOpt, perPerson: greenTarget },
+        popBasis, traffic: reportTraffic, netLabel, indicatorName: ind.short,
+      };
+      const shots: SuitShots = {};
+      const plan: [keyof SuitShots, ShotView][] = [
+        ['urban', { mode: 'urban' }], ['indicator', { mode: 'indicator' }],
+        ['density', { mode: 'simulation', sim: 'density' }], ['transit', { mode: 'simulation', sim: 'transit' }],
+        ['road', { mode: 'simulation', sim: 'road' }],
+      ];
+      try {
+        for (const [k, v] of plan) shots[k] = (await shoot(v)) ?? undefined;
+      } finally {
+        setShotView(null);
+      }
+      return suitBlocks(input, shots);
+    },
+    filters: () => (catOff.size ? [tr('Нуусан бүсийн ангилал: {0}', [...catOff].join(', '))] : []),
+  }), [rows, scoredRows, rankRows, simRows, indicators, parking, greenOpt, greenTarget, popBasis, reportTraffic, netLabel, catOff, ind.short, shoot]);
+
   /**
    * «Симуляц» — ХОЁР самбар, ТООЦООЛЛЫН НЭГЖЭЭР нь хуваагдана:
    *   · ЗҮҮН  — «Тээвэр-идэвхийн шинжилгээ» (`TransportPanel`): БАРИЛГА бүрээр
@@ -942,7 +1007,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   };
 
   return (
-    <div className={s.app}>
+    <div className={s.app} ref={appRef}>
       {/* ⚠️ Ачаалалтын бүтэн дэлгэцийн loader ХАСАГДСАН — өгөгдөл ачаалагдах зуур
           апп шууд нээгдэж, бүсүүд бэлэн болмогцоо газрын зурагт гарна. Зөвхөн
           АЛДАА гарвал л мессежийг харуулна (алдааг далдлахгүйн тулд). */}
@@ -1106,7 +1171,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               zoneTip={zoneTip}
               buildingTip={buildingTip}
               transportTip={transportMode ? transportTip : undefined}
-              traffic={roadMode && netCars && roadNet ? {
+              traffic={!shotView && roadMode && netCars && roadNet ? {
                 net: roadNet,
                 minuteRef: clock.minuteRef,
                 playing: clock.playing,
@@ -1116,9 +1181,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 signalPlan,
                 onStats: setTrafficStats,
               } : undefined}
-              transportPaint={transportPaint}
+              transportPaint={shotView ? null : transportPaint}
               transportFaint={mapStyle === 'heat'}
-              heat={heat}
+              heat={shotView ? null : heat}
               roadTile={bareReal}
               bldWhere={bldWhere}
               bldFocus={bldFocus}

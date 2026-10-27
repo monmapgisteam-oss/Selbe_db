@@ -506,7 +506,7 @@ export const TUSUL_NEGTGEL = {
   oid: "objectid",
   /** Хувийн талбаруудын масштаб — 100 = 0–100 хадгалагдсан */
   scale: 100,
-  /** ⚠️ Query-only үйлчилгээ — автомат синк бичихгүй (`negtgelAuto.syncNegtgel`) */
+  /** ⚠️ Excel-ийн баганууд бичигдэхгүй — автомат синк зөвхөн `sys_*` талбаруудад (`sysWrite`) */
   readOnly: true,
   fields: {
     /** Д/Д — ажлын задаргааны код («5.2.1.1»), нийт мөрд «0» */
@@ -544,7 +544,20 @@ export const TUSUL_NEGTGEL = {
     perfWk: "perf_wk",
     /** Үе шат (1-р түвшний нэр) — нийт мөрд хоосон */
     phase: "phase",
+    /**
+     * СИСТЕМИЙН БОДСОН утга (2026-10-27, хэрэглэгч: «хуучин утгыг дарж бичихгүйгээр шинэ field нээгээд ашиглая»;
+     * талбаруудыг хэрэглэгч Enterprise-д өөрөө нэмсэн). Excel-ийн баганууд (`act_pct`, `pln_nextwk` …) ХӨНДӨГДӨХГҮЙ.
+     * ⚠️ Хувь 0–100 (`scale`), огноо = сүүлд бичсэн мөч. Уншихад Excel-ийн суурийг ДАРАХГҮЙ — зөвхөн дахин бичихгүйн тулд.
+     */
+    sysAct: "sys_guitsetgel",
+    sysNextWk: "sys_next_week",
+    sysAt: "sys_shinechilsen",
   },
+  /**
+   * ⚠️ `readOnly` (Excel-ийн баганууд) ХЭВЭЭР; автомат синк ЗӨВХӨН `sys_*` талбаруудад бичнэ
+   * (`negtgelAuto.negSysDiff` · `syncNegtgel`).
+   */
+  sysWrite: true,
 } as const;
 
 /**

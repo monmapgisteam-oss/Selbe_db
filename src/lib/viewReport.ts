@@ -29,6 +29,8 @@
  */
 import { NUMERIC, buildDocx, downloadDocx, type DocBlock } from './docx';
 import { liveMapViews } from './mapShots';
+import { reportSource } from './reportSource';
+import type { DocChartSpec } from './docxChart';
 import { t as tr } from '@/lib/i18nCore';
 
 type Pending =
@@ -347,6 +349,33 @@ function cardRow(lines: string[]): string[] {
   return [lines[k], lines.filter((_, j) => j !== k).join(' · ')];
 }
 
+/* ── Word-ийн жинхэнэ график (2026-10-19, хэрэглэгч: «графикийг зургаар биш, аятайхан графикаар») ──
+   ⚠️ `ui.tsx`-ийн Ring · Donut · Series · Trend өгөгдлөө `data-report-chart`-д тавьдаг (`repChart`-ийн ⚠️).
+      Тийм элемент SVG→PNG биш, `docxChart` график болно; атрибутгүй график (тусгай SVG) зураг хэвээр. */
+const REP_CHART = '[data-report-chart]';
+/** CSS өнгө (`var(--tone)` г.м.) → 6 оронтой HEX — ТЭР элемент дотор (хувьсагч нь удамшдаг), гэрэл горимд */
+function resolveColor(el: Element, css: string | undefined): string | undefined {
+  if (!css) return undefined;
+  if (/^[0-9A-F]{6}$/i.test(css)) return css.toUpperCase();
+  const probe = document.createElement('span');
+  probe.style.color = css;
+  el.appendChild(probe);
+  const m = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g);
+  probe.remove();
+  if (!m || m.length < 3 || (m.length > 3 && Number(m[3]) === 0)) return undefined;
+  return m.slice(0, 3).map((x) => Math.round(Number(x)).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+function readChart(el: Element): DocBlock | null {
+  let spec: DocChartSpec;
+  try { spec = JSON.parse(el.getAttribute('data-report-chart') || '') as DocChartSpec; } catch { return null; }
+  if (!spec?.cats?.length || !spec.series?.length || !spec.series.some((x) => x.values.some((v) => v != null))) return null;
+  const col = (c: string | undefined) => resolveColor(el, c);
+  return {
+    kind: 'chart',
+    spec: { ...spec, series: spec.series.map((x) => ({ ...x, color: col(x.color) })), pointColors: spec.pointColors?.map(col) },
+  };
+}
+
 /** DOM-ыг дарааллаар нь алхаж блок цуглуулна (СИНХРОН) */
 function collect(root: Element, out: Pending[]): void {
   let last = '';
@@ -377,7 +406,7 @@ function collect(root: Element, out: Pending[]): void {
       if (n.nodeType !== Node.ELEMENT_NODE) continue;
       const c = n as Element;
       if (c.hasAttribute(HIDE) || !visible(c)) continue;
-      const lines = !axis && !isMapHost(c) && !isTable(c) ? cardLines(c) : null;
+      const lines = !axis && !isMapHost(c) && !isTable(c) && !c.matches(REP_CHART) && !c.querySelector(REP_CHART) ? cardLines(c) : null;
       if (lines) { run.push(lines); runEls.push(c); continue; }
       flush();
       walk(c, axis);
@@ -389,7 +418,12 @@ function collect(root: Element, out: Pending[]): void {
     if (el.hasAttribute(HIDE) || !visible(el)) return;
     if (isMapHost(el)) { push({ kind: 'map', host: el, caption: tr('Газрын зураг') }); return; }
     if (isTable(el)) { for (const b of readTable(el)) push({ kind: 'block', block: b }); return; }
-    const box = chartBox(el);
+    if (el.matches(REP_CHART)) {
+      const ch = readChart(el);
+      if (ch) { push({ kind: 'block', block: ch }); return; }
+    }
+    /* Доор нь өгөгдөлтэй график байвал боодлыг бүхэлд нь зураг болгохгүй — дотогш орно */
+    const box = el.querySelector(REP_CHART) ? null : chartBox(el);
     if (box) { push({ kind: 'svg', ...serializeHtml(el), fallback: serializeSvg(box), caption: captionOf(box) }); return; }
     if (isChartSvg(el)) { push({ kind: 'svg', ...serializeSvg(el), caption: captionOf(el) }); return; }
     if (isChartCanvas(el)) { push({ kind: 'canvas', el, caption: captionOf(el) }); return; }
@@ -447,7 +481,7 @@ async function svgToPng(xml: string, w: number, h: number): Promise<Uint8Array |
   try { return dataUrlBytes(c.toDataURL('image/png')); } catch { return null; }
 }
 
-async function mapShot(host: Element): Promise<{ png: Uint8Array; w: number; h: number } | null> {
+export async function mapShot(host: Element): Promise<{ png: Uint8Array; w: number; h: number } | null> {
   const v = liveMapViews(host)[0] ?? (host.classList.contains('esri-view') ? liveMapViews(host.parentElement ?? host)[0] : undefined);
   if (!v) return null;
   try {
@@ -486,7 +520,7 @@ export type ViewReportMeta = {
   key: string;
   title: string;
   desc?: string;
-  /** Идэвхтэй шүүлтийн тайлбар (бүс г.м.); хоосон бол «Шүүлтгүй — бүх өгөгдөл» */
+  /** Идэвхтэй шүүлтийн тайлбар (бүс г.м.); хоосон бол «бүх өгөгдөл» */
   filters: string[];
 };
 
@@ -562,8 +596,6 @@ export function readFilters(rs: Element[] = roots()): string[] {
   }
   return out;
 }
-/** «ЖИЛ» → «Жил» (CSS uppercase шошгын `innerText`) */
-const sentence = (s: string) => (s === s.toUpperCase() ? s.charAt(0) + s.slice(1).toLowerCase() : s);
 
 /**
  * ⚠️ 2026-10-23 (UX аудит E1): ДЭЛГЭЦ БҮРЭН АЧААЛАГДААГҮЙ эсэх — ачаалж буй хэсгийн тоо (эргэлдэгч · `aria-busy`).
@@ -584,6 +616,18 @@ const p2 = (x: number) => String(x).padStart(2, '0');
 const stamp = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 
 export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]> {
+  /* ⚠️ 2026-10-19: модуль өөрийн угсрагчтай бол (Гүйцэтгэл — `reportSource`) DOM уншихгүй */
+  const src = reportSource(meta.key);
+  /* ⚠️ 2026-10-19 (хэрэглэгч): өөрийн угсрагчтай тайланд харагдацын тайлбар (`desc` — «Хийсэн ажлаа
+     бөглөж илгээх, …») ОРОХГҮЙ */
+  if (src) {
+    const head = { ...meta, desc: undefined, filters: [...meta.filters, ...(src.filters?.() ?? [])] };
+    const body = await src.blocks();
+    /* ⚠️ Блокуудыг агшин зургаас ӨМНӨ авна — `await`-ийн хооронд төлөв өөрчлөгдөж болно */
+    const host = src.map ? roots().find((r) => liveMapViews(r).length) : undefined;
+    const shot = host ? await mapShot(host) : null;
+    return withHead(head, shot ? [{ kind: 'img', ...shot, caption: tr('Газрын зураг') }, ...body] : body);
+  }
   const pending: Pending[] = [];
   const html = document.documentElement;
   const prevTheme = html.dataset.theme;
@@ -609,25 +653,219 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   const body = resolved.filter((b): b is DocBlock => !!b);
   /* ⚠️ 2026-10-23 (UX аудит E1): зураг болгож чадаагүй график/газрын зураг ЧИМЭЭГҮЙ алга болохгүй — тэмдэглэл */
   const dropped = resolved.filter((b, i) => !b && pending[i].kind !== 'block').length;
+  return withHead({ ...meta, filters }, captionTables(mergeStatLines(body)), dropped);
+}
 
+/* ── «Нэр / тоо / нэгж» мөрүүдийг хүснэгт болгох (2026-10-19, хэрэглэгч: «page 1 сул зайг янзал») ──
+   ⚠️ Дарагддаг карт (давхарга асаах товч г.м.) `cardLines`-д орохгүй тул «Цэвэр ус хангамж» · «42.2» · «км»
+      гурван тусдаа мөр болж, хуудсыг босоо чиглэлд дүүргэдэг байв. Дараалсан ≥2 ийм бүлгийг
+      «нэр · утга нэгж» хүснэгт болгоно (картын ердийн хүснэгттэй ижил хэлбэр). */
+const VAL_LINE = /^[−\-+]?\(?[\d\s.,]+\)?\s*%?$/;
+const UNIT_LINE = /^[\p{L}²³/.]{1,8}$/u;
+const isPlain = (b: DocBlock | undefined): b is Extract<DocBlock, { kind: 'p' }> =>
+  !!b && b.kind === 'p' && !b.bold && !b.italic;
+export function mergeStatLines(body: DocBlock[]): DocBlock[] {
+  const out: DocBlock[] = [];
+  let i = 0;
+  while (i < body.length) {
+    const rows: string[][] = [];
+    let j = i;
+    for (;;) {
+      const a = body[j], v = body[j + 1], u = body[j + 2];
+      if (!isPlain(a) || !isPlain(v) || a.text.length > 60 || !/\p{L}/u.test(a.text) || VAL_LINE.test(a.text) || !VAL_LINE.test(v.text)) break;
+      const unit = isPlain(u) && UNIT_LINE.test(u.text) && !VAL_LINE.test(u.text) ? u.text : '';
+      rows.push([a.text, unit ? `${v.text} ${unit}` : v.text]);
+      j += unit ? 3 : 2;
+    }
+    if (rows.length >= 2) { out.push({ kind: 'table', head: [], rows }); i = j; continue; }
+    out.push(body[i]);
+    i += 1;
+  }
+  return out;
+}
+
+/* ── Хүснэгтийн нэр · тайлбар (2026-10-19, хэрэглэгч: «хүснэгт нэртэй байх — графикийн нэр байж болно;
+      хүснэгтийн дээр түүнийг тайлбарласан тайлбар») ──
+   ⚠️ ЗӨВХӨН DOM замд — өөрийн угсрагчтай тайлан (`reportSource`) хүснэгтээ өөрөө нэрлэдэг.
+   ⚠️ Нэр = хүснэгтийн өмнөх хамгийн ойрын гарчиг (графикийн/картын нэр). Гарчиг шууд өмнө нь байвал
+      («ГАЗАР ЧӨЛӨӨЛӨЛТ» → «төлөв · га» → хүснэгт) давхар бичихгүйн тулд гарчгийг «Хүснэгт N. …» мөрөөр
+      СОЛЬЖ, богино дэд мөрийг (нэгж, ангилал) тайлбарт шингээнэ. 1-р түвшний гарчиг (дугаарлагддаг) үлдэнэ. */
+/** Мөрийн нэр нь өөрөө нэгж («км», «га», «төрөл») — хамгийн их утгыг харьцуулах утгагүй */
+const UNIT_LABEL = /^(төрөл|км|м|м²|м2|га|цэг|ш|объект|хүн|айл|%)$/i;
+/** Хүснэгтийн шууд өмнөх богино шошго мөр («Зам», «Тээвэр») — картын нэр */
+const isLabel = (b: DocBlock | undefined): b is Extract<DocBlock, { kind: 'p' }> =>
+  !!b && b.kind === 'p' && !b.bold && !b.italic && b.text.length <= 40 && !/[.:]$/.test(b.text);
+const isCaps = (s: string) => /\p{Lu}/u.test(s) && s === s.toUpperCase();
+/** «ГАЗАР ЧӨЛӨӨЛӨЛТ» → «Газар чөлөөлөлт» (CSS `text-transform` нь `innerText`-д үлддэг) */
+const sentence = (s: string) => (isCaps(s) ? s.charAt(0) + s.slice(1).toLowerCase() : s);
+/** «1,348,197,463,311 ₮» · «92.0%» · «0.4 га» → тоо; «3 / 3,780» гэх мэт нийлмэл утга → null */
+const numOf = (s: string): number | null => {
+  if (s.includes('/')) return null;
+  const m = s.replace(/[\s,]/g, '').match(/^[−-]?\d+(\.\d+)?/);
+  return m ? Number(m[0].replace('−', '-')) : null;
+};
+
+function describe(name: string, t: Extract<DocBlock, { kind: 'table' }>, unit: string): string {
+  const parts = [tr('«{0}» хүснэгтэд {1} үзүүлэлтийг харуулав.', name, String(t.rows.length))];
+  if (unit) parts.push(tr('Нэгж, ангилал: {0}.', unit));
+  /* 2 баганат «нэр · утга» хүснэгтэд хамгийн их утгыг онцолно (дэлгэцийн графикийн гол мэдээлэл) */
+  /* ⚠️ 2026-10-19: ЗӨВХӨН ижил нэгжтэй цэвэр тоонд — «төрөл 5 · км 36.0 · га 79.8» (мөр бүр өөр нэгж)
+     дээр «Хамгийн их нь га (79.8)» гэх утгагүй өгүүлбэр гардаг байв; «3 · төрөл · 7 · объект» тоо биш. */
+  const unitOf = (v: string) => v.replace(/[−\-+\d\s.,()]/g, '');
+  if (t.rows.length >= 3 && t.rows.every((r) => r.length === 2 && NUMERIC.test(r[1].trim()))
+    && new Set(t.rows.map((r) => unitOf(r[1]))).size === 1 && !t.rows.some((r) => UNIT_LABEL.test(r[0].trim()))) {
+    const vals = t.rows.map((r) => numOf(r[1]));
+    if (vals.every((v) => v != null)) {
+      let k = 0;
+      vals.forEach((v, i) => { if (v! > vals[k]!) k = i; });
+      parts.push(tr('Хамгийн их нь {0} ({1}).', t.rows[k][0], t.rows[k][1]));
+    }
+  }
+  return parts.join(' ');
+}
+
+/* ── Графикийн тайлбар (2026-10-19, хэрэглэгч: «графикийн дээр нэрийн доор тухайн графикийг тайлбарласан хэсэг») ──
+   ⚠️ Өгөгдлөөс (`DocChartSpec`) бодно — зурагтай ижил тоо. Мөр бүр өөр нэгжтэй байж болох ч график нь нэг
+      тэнхлэгтэй тул хамгийн их/бага нь утгатай. `null` (хэмжээгүй) цэг тооцогдохгүй. */
+const fmtN = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+function describeChart(name: string, c: DocChartSpec, unit: string): string {
+  const parts: string[] = [];
+  /* Богино нэгж («км», «%») утгын ард; урт дэд мөр («PM2.5 · мкг/м³») тусдаа өгүүлбэр */
+  const short = !!unit && unit.length <= 8 && !unit.includes('·') && !unit.includes(',');
+  const u = short ? ` ${unit}` : '';
+  if (c.type === 'doughnut') {
+    const vals = c.series[0]?.values ?? [];
+    const tot = vals.reduce<number>((a, v) => a + (v ?? 0), 0);
+    /* Ring + `text` (AQI оноо г.м.) — хувь биш, утга нь гарчигт */
+    if (c.hideLabels?.includes(0)) {
+      parts.push(tr('«{0}» графикийн утга: {1}.', name, c.title ?? ''));
+    } else if (c.pct && c.hideLabels?.includes(1)) {
+      parts.push(tr('«{0}» графикт гүйцэтгэлийн хувийг харуулав: {1} {2}%.', name, c.cats[0] ?? '', fmtN(vals[0] ?? 0)));
+    } else {
+      parts.push(tr('«{0}» графикт {1} ангиллын бүтцийг харуулав, нийт {2}.', name, String(c.cats.length), fmtN(tot) + u));
+      let k = 0;
+      vals.forEach((v, i) => { if ((v ?? 0) > (vals[k] ?? 0)) k = i; });
+      if (tot > 0 && c.cats.length > 1) parts.push(tr('Хамгийн их хэсэг нь {0}: {1} ({2}%).', c.cats[k], fmtN(vals[k] ?? 0) + u, fmtN(Math.round(((vals[k] ?? 0) / tot) * 1000) / 10)));
+    }
+    return parts.join(' ');
+  }
+  const pts = c.series.flatMap((x) => x.values.map((v, i) => ({ v, i, name: x.name }))).filter((p): p is { v: number; i: number; name: string } => p.v != null);
+  parts.push(c.type === 'line'
+    ? tr('«{0}» графикт {1} цэгийн өөрчлөлтийг харуулав (эхлэл {2}, төгсгөл {3}).', name, String(c.cats.length), c.cats[0] ?? '', c.cats[c.cats.length - 1] ?? '')
+    : tr('«{0}» графикт {1} ангиллын утгыг харьцуулав.', name, String(c.cats.length)));
+  if (c.series.length > 1) parts.push(tr('Цуваа: {0}.', c.series.map((x) => x.name).filter(Boolean).join(', ')));
+  if (pts.length) {
+    const hi = pts.reduce((a, b) => (b.v > a.v ? b : a));
+    const lo = pts.reduce((a, b) => (b.v < a.v ? b : a));
+    const who = (p: typeof hi) => (c.series.length > 1 && p.name ? `${c.cats[p.i]} (${p.name})` : c.cats[p.i]);
+    parts.push(tr('Хамгийн их нь {0}: {1}, хамгийн бага нь {2}: {3}.', who(hi), fmtN(hi.v) + u, who(lo), fmtN(lo.v) + u));
+    if (c.type === 'line' && c.series.length === 1) {
+      const last = [...pts].reverse()[0];
+      parts.push(tr('Сүүлийн утга {0}: {1}.', c.cats[last.i], fmtN(last.v) + u));
+    }
+  }
+  const gaps = c.series.reduce((a, x) => a + x.values.filter((v) => v == null).length, 0);
+  if (gaps) parts.push(tr('{0} цэг хэмжигдээгүй тул графикт цоорхой үлдсэн.', String(gaps)));
+  if (unit && !short) parts.push(tr('Нэгж, ангилал: {0}.', unit));
+  return parts.join(' ');
+}
+
+export function captionTables(body: DocBlock[]): DocBlock[] {
+  const out: DocBlock[] = [];
+  let n = 0;
+  let g = 0;
+  /* Сүүлийн хүснэгтээс хойших гарчиг (out дахь индекс) ба түүний дараах богино мөрүүд */
+  let head: { at: number; text: string; level: number } | null = null;
+  let subs: number[] = [];
+  for (const b of body) {
+    if (b.kind === 'h') { head = { at: out.length, text: b.text, level: b.level }; subs = []; out.push(b); continue; }
+    if (b.kind === 'p' && head && out.length - head.at - 1 === subs.length && b.text.length <= 60) {
+      subs.push(out.length); out.push(b); continue;
+    }
+    if (b.kind === 'chart') {
+      /* График: «График N. Нэр» + тайлбар — хүснэгттэй ижил нэрлэх дүрэм; нэр байхгүй бол графикийн
+         өөрийн гарчиг (дотор нь давхардуулахгүйн тулд хасна) */
+      g += 1;
+      const adjacent = !!head && out.length - head.at - 1 === subs.length;
+      const label = !adjacent && isLabel(out[out.length - 1]) ? (out.pop() as { text: string }).text : null;
+      const own = b.spec.title?.trim() || '';
+      const name = adjacent && head ? sentence(head.text) : label ? sentence(label)
+        : own || (head ? sentence(head.text) : tr('График'));
+      const unit = adjacent ? subs.map((i) => (out[i] as { text: string }).text).join(', ') : '';
+      const chart: DocBlock = name === own ? { ...b, spec: { ...b.spec, title: undefined } } : b;
+      const caption: DocBlock[] = [
+        { kind: 'p', text: tr('График {0}. {1}', String(g), name), bold: true, keep: true },
+        { kind: 'p', text: describeChart(name, b.spec, unit), italic: true, color: '555555', keep: true },
+      ];
+      if (adjacent && head) {
+        const from = head.level === 1 ? head.at + 1 : head.at;
+        out.splice(from, out.length - from, ...caption);
+      } else out.push(...caption);
+      out.push(chart);
+      head = null;
+      subs = [];
+      continue;
+    }
+    if (b.kind !== 'table' || !b.rows.length) { if (b.kind !== 'p') { head = null; subs = []; } out.push(b); continue; }
+
+    n += 1;
+    const adjacent = !!head && out.length - head.at - 1 === subs.length;
+    /* ⚠️ 2026-10-19 (хэрэглэгч: «хүснэгтийн нэрийг ойлгомжтой болго, бүгд Нэгтгэл үзүүлэлт гэсэн байна»):
+       гарчиг шууд өмнө нь биш бол хүснэгтийн ДЭЭРХ богино шошгыг («Зам», «Тээвэр», «Ногоон орчин») нэр болгож,
+       давхар бичихгүйн тулд тэр мөрийг хасна. */
+    const label = !adjacent && isLabel(out[out.length - 1]) ? (out.pop() as { text: string }).text : null;
+    const name = adjacent && head ? sentence(head.text)
+      : label ? sentence(label)
+        : head ? sentence(head.text) : n === 1 ? tr('Үндсэн үзүүлэлт') : tr('Нэгтгэл үзүүлэлт');
+    const unit = adjacent ? subs.map((i) => (out[i] as { text: string }).text).join(', ') : '';
+    const caption: DocBlock[] = [
+      { kind: 'p', text: tr('Хүснэгт {0}. {1}', String(n), name), bold: true, keep: true },
+      { kind: 'p', text: describe(name, b, unit), italic: true, color: '555555', keep: true },
+    ];
+    if (adjacent && head) {
+      /* Гарчиг + дэд мөрийг нэр · тайлбараар солино (1-р түвшний гарчиг хэвээр) */
+      const from = head.level === 1 ? head.at + 1 : head.at;
+      out.splice(from, out.length - from, ...caption);
+    } else out.push(...caption);
+    out.push(b);
+    head = null;
+    subs = [];
+  }
+  return out;
+}
+
+/** Толгой (гарчиг · тайлбар · огноо · шүүлт) + 1-р түвшний гарчгийн дугаар */
+function withHead(meta: ViewReportMeta, body: DocBlock[], dropped = 0): DocBlock[] {
   /* Khorshoo-гийн бүтэц: 1-р түвшний гарчгийг дугаарлана */
   let n = 0;
   /* Дэлгэц дээр аль хэдийн дугаарласан («1. Төслийн ерөнхий байдал» — Тайлан) бол дахин дугаарлахгүй */
   for (const b of body) if (b.kind === 'h' && b.level === 1 && !/^\d+[.)]\s/.test(b.text)) b.text = `${++n}. ${b.text}`;
 
   const head: DocBlock[] = [
-    { kind: 'p', text: `${meta.title} — ${tr('тайлан')}`.toUpperCase(), bold: true, size: 30, center: true },
+    { kind: 'p', text: `${meta.title} ${tr('тайлан')}`.toUpperCase(), bold: true, size: 30, center: true },
   ];
   if (meta.desc) head.push({ kind: 'p', text: meta.desc, italic: true, center: true, color: '555555' });
   head.push(
     { kind: 'p', text: `${tr('Огноо')}: ${stamp(new Date())}` },
-    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${filters.length ? filters.join(' | ') : tr('Шүүлтгүй — бүх өгөгдөл')}`, bold: true },
+    { kind: 'p', text: `${tr('Шүүлтийн нөхцөл')}: ${meta.filters.length ? meta.filters.join(' | ') : tr('бүх өгөгдөл')}`, bold: true },
   );
   if (dropped) {
     head.push({ kind: 'p', text: tr('⚠️ {0} график/газрын зураг тайланд орж чадсангүй — дэлгэцээс харна уу.', dropped), italic: true, color: '666666' });
   }
   if (!body.length) body.push({ kind: 'p', text: tr('Дэлгэц дээр тайланд орох мэдээлэл олдсонгүй.') });
-  return [...head, ...body];
+  return [...head, ...body].map(noDash);
+}
+
+/* ⚠️ 2026-10-19 (хэрэглэгч: «тайлан доторх — зураасыг бүгдийг устга») — дэлгэцийн текст, тайлбар,
+   хүснэгтийн нүд бүгдээс «—» хасна; ганц «—» (хоосон утга) нүд хоосон болно. */
+/* ⚠️ Зураасгүй мөрийг ХӨНДӨХГҮЙ — Хуваарийн модны догол (NBSP) шахагдаж алга болно */
+const dash = (s: string): string => (s.includes('—') ? s.replace(/\s*—\s*/g, ' ').trim() : s);
+function noDash(b: DocBlock): DocBlock {
+  if (b.kind === 'h' || b.kind === 'p') return { ...b, text: dash(b.text) };
+  if (b.kind === 'table') return { ...b, head: b.head.map((r) => r.map(dash)), rows: b.rows.map((r) => r.map(dash)) };
+  if (b.kind === 'img' && b.caption) return { ...b, caption: dash(b.caption) };
+  if (b.kind === 'chart') return { ...b, spec: { ...b.spec, title: b.spec.title && dash(b.spec.title), cats: b.spec.cats.map(dash) } };
+  return b;
 }
 
 /** Файлын нэр: Selbe_<харагдац>_tailan_YYYYMMDD.docx (Khorshoo_tailan_YYYYMMDD.docx-тай ижил) */
