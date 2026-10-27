@@ -15,7 +15,7 @@
  * ⚠️ 2026-10-26: null ≠ 0. Хоосон оролт → `null` («мэдээлэлгүй»), 0 БИШ. Явц 0–100 (`pct()` үржүүлдэггүй).
  */
 import { parseDayInput } from './dateInput';
-import { phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { orderPlanRows, phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 /* ══════════════════ Тогтмол ══════════════════ */
 
@@ -185,12 +185,13 @@ export function cmpKod(a: string | null | undefined, b: string | null | undefine
   return x.length - y.length;
 }
 
-/** Тогтвортой эрэмбэ — ижил кодтой мөр (давхардал) objectid-ээр */
+/**
+ * Тогтвортой эрэмбэ — ижил кодтой мөр objectid-ээр (`projectPlan.orderPlanRows`).
+ * ⚠️ 2026-10-27: `dd_kod` ДАВХАРДВАЛ (импорт `--kod=excel`) БҮХЭЛДЭЭ objectid-ийн дарааллаар (= Excel-ийн дараалал);
+ *    хадгалаагүй шинэ мөр (objectid-гүй) төгсгөлд — эцгээ `etseg_kod`+`tuvshin`-ээр хамгийн ойрын өмнөхөөс олно.
+ */
 export function sortByKod(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
-  return rows
-    .map((r, i) => ({ r, i }))
-    .sort((p, q) => cmpKod(p.r.dd_kod, q.r.dd_kod) || (p.r.objectid ?? Infinity) - (q.r.objectid ?? Infinity) || p.i - q.i)
-    .map((x) => x.r);
+  return orderPlanRows(rows, cmpKod);
 }
 
 /* ══════════════════ Засвар ══════════════════ */
