@@ -24,7 +24,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday,
+  buildTree, computePlan, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows,
 } from './projectPlan.ts';
 
 const fx = JSON.parse(readFileSync(new URL('./projectPlan.fixture.json', import.meta.url), 'utf8'));
@@ -277,6 +277,55 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.ok([a, ubToday()].includes(r.today), 'computePlan-ийн анхдагч today = ubToday()');
   /* УБ 03:00 (UTC-ээр өмнөх өдрийн 19:00) — шугаман хувь УБ-ын өдрөөр */
   near(linearPlanned(d('2026-01-01'), d('2026-01-10'), ubToday(Date.UTC(2026, 0, 4, 19))), 50, 1e-9, 'УБ 01-05 → 5/10');
+}
+
+/* ── 7. Excel-ийн ДАВХАРДСАН Д/Д (импорт `--kod=excel`, ⚠️ 2026-10-27) — objectid-ийн дараалал = Excel-ийн дараалал ──
+   Excel 261007 V3-ын бодит хэв: «3» хоёр үе шат; «2.1.1» эцэг ба түүний хүүхэд ижил кодтой; мөр 858 «5.2.3» ба түүний
+   гурван хүүхэд «5.2.3» (879 · 885 · 889), ач нар нь «5.2.3.1…» — 886 нь 885-ынх, 880 нь 879-ийнх; «2.3.3.1» таван ах дүү. */
+{
+  const R = (oid, dd, et, tv, name) => ({ objectid: oid, dd_kod: dd, etseg_kod: et, tuvshin: tv, ajil_uilchilgee: name });
+  const excel = [
+    R(1, '2', null, 0, 'Ажлын зураг төсөл'), R(2, '2.1', '2', 1, 'з1'), R(3, '2.1.1', '2.1', 2, 'з11'), R(4, '2.1.1', '2.1.1', 3, 'з111'),
+    R(5, '2.1.2', '2.1.1', 3, 'з112'), R(6, '2.1.2', '2.1', 2, 'з12'),
+    R(7, '2.3.3.1', '2.1', 2, 'A'), R(8, '2.3.3.1', '2.1', 2, 'B'), R(9, '2.3.3.1', '2.1', 2, 'C'),
+    R(10, '3', null, 0, 'Газар чөлөөлөлт'), R(11, '3.1', '3', 1, 'г1'), R(12, '3', null, 0, 'Зөвшөөрөл'), R(13, '3.1', '3', 1, 'зв1'),
+    R(14, '5', null, 0, 'Барилга угсралт'), R(15, '5.2.3', '5', 1, 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ'), R(16, '5.2.3.1', '5.2.3', 2, 'цахилгаан'),
+    R(17, '5.2.3.1.1', '5.2.3.1', 3, 'Багц-6.1'), R(18, '5.2.3', '5.2.3', 2, 'эх үүсвэр'), R(19, '5.2.3.2', '5.2.3', 3, 'Багц-8'),
+    R(20, '5.2.3', '5.2.3', 2, 'бэлтгэл'), R(21, '5.2.3.1', '5.2.3', 3, 'Багц-7.1'), R(22, '5.2.3', '5.2.3', 2, 'Авто зам'),
+    R(23, '5.2.3.1', '5.2.3', 3, 'Багц 18'),
+  ];
+  /* сервер dd_kod-оор (мөрөөр) эрэмбэлж ирнэ — objectid-аар л Excel-ийн дараалал сэргэнэ */
+  const shuffled = [...excel].sort((a, b) => a.dd_kod.localeCompare(b.dd_kod) || b.objectid - a.objectid);
+  const ordered = orderPlanRows(shuffled, (a, b) => String(a).localeCompare(String(b)));
+  assert.deepEqual(ordered.map((r) => r.objectid), excel.map((r) => r.objectid), 'давхардалтай — objectid-ийн дараалал');
+  const t = buildTree(ordered);
+  assert.deepEqual(t.issues.filter((x) => !x.startsWith('F-ийн хос')), [], 'шийдэгдэх давхардал анхааруулга БИШ (жингүй жишээ — хосын анхааруулга хамаагүй)');
+  const par = Object.fromEntries(t.nodes.map((n) => [n.row.ajil_uilchilgee, n.parent.row?.ajil_uilchilgee ?? '']));
+  assert.equal(par['з111'], 'з11', '«2.1.1»-ийн хүүхэд «2.1.1» — өөрөө биш, түвшин 2-ынх');
+  assert.equal(par['з112'], 'з11');
+  assert.equal(par['з12'], 'з1');
+  assert.deepEqual(['A', 'B', 'C'].map((k) => par[k]), ['з1', 'з1', 'з1']);
+  assert.deepEqual(t.nodes.find((n) => n.row.ajil_uilchilgee === 'з1').children.map((c) => c.row.ajil_uilchilgee),
+    ['з11', 'з12', 'A', 'B', 'C'], 'ах дүүс Excel-ийн дарааллаар');
+  assert.equal(par['г1'], 'Газар чөлөөлөлт', '«3.1» → хамгийн ойрын өмнөх «3»');
+  assert.equal(par['зв1'], 'Зөвшөөрөл');
+  assert.equal(par['эх үүсвэр'], 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ', '879 → 858 (түвшин 1, ах дүү «5.2.3» биш)');
+  assert.equal(par['бэлтгэл'], 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ', '885 → 858 (879 биш)');
+  assert.equal(par['Авто зам'], 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ');
+  assert.equal(par['Багц-8'], 'эх үүсвэр', '880 → 879');
+  assert.equal(par['Багц-7.1'], 'бэлтгэл', '886 → 885 (889 биш)');
+  assert.equal(par['Багц 18'], 'Авто зам', '890 → 889');
+  assert.equal(par['Багц-6.1'], 'цахилгаан');
+  /* давтагдашгүй код — хуучин зан төлөв (байгалийн эрэмбэ), objectid-ээс үл хамаарна */
+  const uniq = orderPlanRows([R(9, '1.10', '1', 1, 'x'), R(1, '2', null, 0, 'y'), R(5, '1', null, 0, 'z'), R(3, '1.9', '1', 1, 'w')],
+    (a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }));
+  assert.deepEqual(uniq.map((r) => r.dd_kod), ['1', '1.9', '1.10', '2']);
+  /* objectid-гүй (хадгалаагүй) мөр төгсгөлд, эцгээ хамгийн ойрын өмнөхөөс */
+  const add = orderPlanRows([...shuffled, { objectid: null, dd_kod: '2.1.2.1', etseg_kod: '2.1.2', tuvshin: 3, ajil_uilchilgee: 'шинэ' }],
+    (a, b) => String(a).localeCompare(String(b)));
+  assert.equal(add[add.length - 1].ajil_uilchilgee, 'шинэ');
+  const t2 = buildTree(add);
+  assert.equal(t2.nodes.find((n) => n.row.ajil_uilchilgee === 'шинэ').parent.row.ajil_uilchilgee, 'з12', 'түвшин 2-ын «2.1.2»');
 }
 
 console.log(`projectPlan.check: OK (${cells} Excel нүд)`);

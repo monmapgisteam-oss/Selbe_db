@@ -24,7 +24,7 @@
  * ⚠️ Бүх хувь 0–100 (`pct()` 100-аар үржүүлдэггүй); null ≠ 0.
  */
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, saneDate, ubToday,
+  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
 } from './projectPlan';
 import {
@@ -116,7 +116,7 @@ export function toStoredRow(a: Record<string, unknown>): PlanStoredRow {
  * `dd_kod`-ын БАЙГАЛИЙН эрэмбэ — цифрийн хэсгийг тоогоор («1.10» > «1.9»), бусдыг тэмдэгтээр.
  * ⚠️ 2026-10-26 (тохиролцоо, cf-wave2): dd_kod нь ЭРЭМБЭЛЭГДЭХ код — Excel-ийн дараалал үүгээр сэргэнэ.
  *    Серверийн `orderByFields` нь мөрөөр («1.10» < «1.9») эрэмбэлдэг тул клиентэд ДАХИН эрэмбэлнэ.
- *    Тэнцвэл objectid (тогтвортой). Ах дүүсийн дараалал л нөлөөлнө — тооцоо дараалалаас хамаарахгүй.
+ *    Тэнцвэл objectid (тогтвортой). Код давтагдашгүй бол ах дүүсийн дараалал л нөлөөлнө (`sortPlanRows`-ийн ⚠️).
  */
 export function compareDdKod(a: string | null | undefined, b: string | null | undefined): number {
   const x = String(a ?? '').match(/\d+|\D+/g) ?? [];
@@ -133,9 +133,13 @@ export function compareDdKod(a: string | null | undefined, b: string | null | un
   return x.length - y.length;
 }
 
-/** Мөрүүдийг Excel-ийн дараалалд (цэвэр) */
+/**
+ * Мөрүүдийг Excel-ийн дараалалд (цэвэр) — `projectPlan.orderPlanRows`.
+ * ⚠️ 2026-10-27: `dd_kod` ДАВХАРДВАЛ (импорт `--kod=excel`) objectid-ийн дараалал (= Excel-ийн дараалал, импорт
+ *    хүснэгтийг Excel-ийн дарааллаар бүрэн дахин бичдэг) — тэр үед эцгийн холбоос ч дарааллаас хамаарна.
+ */
 export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
-  return [...rows].sort((a, b) => compareDdKod(a.dd_kod, b.dd_kod) || ((a.objectid ?? 0) - (b.objectid ?? 0)));
+  return orderPlanRows(rows, compareDdKod);
 }
 
 /**

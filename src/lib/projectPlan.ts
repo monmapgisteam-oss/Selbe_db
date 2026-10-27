@@ -242,14 +242,49 @@ const keyD = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').
 /* ══════════════════ Мод ══════════════════ */
 
 /**
+ * Excel-ийн МӨРИЙН ДАРААЛАЛ — `buildTree`-ийн оролтыг бэлдэнэ (2026-10-27).
+ *
+ * ⚠️ `dd_kod` ДАВТАГДАШГҮЙ бол — кодын байгалийн эрэмбэ (`cmp`; «1.10» > «1.9»), тэнцвэл objectid.
+ * ⚠️ ДАВХАРДВАЛ (импорт `--kod=excel` — Excel-ийн B: «3» хоёр үе шатанд, «5.2.3» дөрвөн мөрд, «2.3.3.1» таван ах
+ *    дүүст) кодын эрэмбэ Excel-ийн дарааллыг СЭРГЭЭДЭГГҮЙ (жиш. «5.2.3» гурван ах дүү «5.2.3.1»-ээс өмнө орж,
+ *    мөр 886 «5.2.3.1» буруу «5.2.3»-т наалдана). Импорт хүснэгтийг Excel-ийн дарааллаар БҮРЭН дахин бичдэг
+ *    (`tools/cashflow-import.mjs`-ийн ⚠️⚠️) тул objectid-ИЙН дараалал = Excel-ийн дараалал. objectid-гүй мөр
+ *    (хадгалаагүй шинэ мөр) ТӨГСГӨЛД, оролтын дарааллаараа.
+ */
+export function orderPlanRows<T extends PlanStoredRow>(
+  rows: readonly T[],
+  cmp: (a: string | null | undefined, b: string | null | undefined) => number,
+): T[] {
+  const seen = new Set<string>();
+  let dup = false;
+  for (const r of rows) {
+    const k = String(r.dd_kod ?? '').trim();
+    if (!k) continue;
+    if (seen.has(k)) { dup = true; break; }
+    seen.add(k);
+  }
+  const oid = (r: T) => (typeof r.objectid === 'number' && Number.isFinite(r.objectid) ? r.objectid : Infinity);
+  const byOid = (p: { r: T; i: number }, q: { r: T; i: number }) => {
+    const a = oid(p.r), b = oid(q.r);
+    return a === b ? p.i - q.i : a < b ? -1 : 1;
+  };
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((p, q) => (dup ? byOid(p, q) : cmp(p.r.dd_kod, q.r.dd_kod) || byOid(p, q)))
+    .map((x) => x.r);
+}
+
+/**
  * Хадгалсан мөрүүдээс мод угсарна.
  *
  * ⚠️ ДАРААЛАЛ: ах дүүс ОРОЛТЫН дарааллаараа (Excel-ийн мөрийн дараалал). Дуудагч мөрийг
- *    Excel-ийн дарааллаар өгнө.
+ *    Excel-ийн дарааллаар өгнө (`orderPlanRows`).
  * ⚠️ `dd_kod` ДАВХАРДВАЛ (Excel-ийн B баганад 35 код давхардсан — «3» хоёр үе шатад,
- *    «5.2.1.1.1» долоон багцад) `etseg_kod` хоёрдмол болно. Тэр үед ӨМНӨ ирсэн хамгийн
- *    ойрын ижил кодтой мөрийг эцэг гэж үзэж `issues`-д тэмдэглэнэ — импорт кодыг
- *    давтагдашгүй болгох ёстой.
+ *    «5.2.1.1.1» долоон багцад) `etseg_kod` хоёрдмол болно. ⚠️ 2026-10-27: эцэг = ижил кодтой мөрүүдээс
+ *    ТҮВШИН нь (`tuvshin`) яг нэгээр бага, ӨМНӨ ирсэн ХАМГИЙН ОЙР нь (мөр 885 «5.2.3»-ын эцэг нь өмнөх «5.2.3»
+ *    ах дүү мөр 879 биш, түвшин 2-ын мөр 858; мөр 886-ийнх нь хамгийн ойрын түвшин-3 «5.2.3» = 885). Ийнхүү
+ *    шийдэгдэх давхардал АЛДАА БИШ — урьд нь давхардал бүр `issues`-д орж «Төсөл төлөвлөгөө биелэлт» табд 110
+ *    анхааруулга гарах байв. Өмнө нь тохирох мөр алга (хоёрдмол) бол л `issues`-д.
  */
 export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
   const issues: string[] = [];
@@ -269,7 +304,6 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
     };
     all.push(n);
     const list = seen.get(code) ?? [];
-    if (list.length) issues.push(tr('dd_kod давхардсан: {0}', code));
     list.push(n);
     seen.set(code, list);
     if (!byCode.has(code)) byCode.set(code, n);
@@ -284,9 +318,15 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
       if (!cands?.length) issues.push(tr('эцэг олдсонгүй: {0} → {1}', n.code, pk));
       else if (cands.length === 1) p = cands[0];
       else {
-        /* хамгийн ойрын ӨМНӨХ */
-        const prev = cands.filter((c) => c.index < n.index && c !== n);
-        p = prev.length ? prev[prev.length - 1] : cands[0];
+        /* түвшин яг нэгээр бага (байвал), дотроос нь хамгийн ойрын ӨМНӨХ */
+        const tv = n.row?.tuvshin;
+        const others = cands.filter((c) => c !== n);
+        const lvl = typeof tv === 'number' ? others.filter((c) => c.row?.tuvshin === tv - 1) : [];
+        const pool = lvl.length ? lvl : others;
+        const prev = pool.filter((c) => c.index < n.index);
+        if (prev.length) p = prev[prev.length - 1];
+        else if (pool.length === 1) p = pool[0];
+        else { p = pool[0] ?? cands[0]; issues.push(tr('dd_kod давхардсан: {0}', pk)); }
       }
       if (p === n) { issues.push(tr('өөрөө өөрийнхөө эцэг: {0}', n.code)); p = root; }
     }

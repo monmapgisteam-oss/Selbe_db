@@ -4,11 +4,27 @@
  *
  * Ажиллуулах (анхдагч нь DRY-RUN — юу ч бичихгүй):
  *     node tools/cashflow-import.mjs "<xlsx>" --exceljs=<exceljs агуулсан node_modules> --token-file=<токен>
- *          [--out=<тайлан.md>] [--plan=<төлөвлөгөө.json>] [--kod=excel|tree] [--keep-names] [--target=<…/FeatureServer/182>]
- *   Бичих:  … --write --i-know-this-is-production --confirm-deletes=<тоо>:<хэш> [--backup=<нөөц.json>]
+ *          [--out=<тайлан.md>] [--plan=<төлөвлөгөө.json>] [--kod=excel|tree] [--keep-names] [--excel-bagts]
+ *          [--target=<…/FeatureServer/182>]
+ *   Бичих:  … --write --i-know-this-is-production --confirm-deletes=<тоо>:<хэш> --backup=<нөөц.json>
+ *   Шалгах (бичилтийн дараа, юу ч бичихгүй): … --verify [--out=<тайлан.md>]
  *   Сэргээх: node tools/cashflow-import.mjs --restore=<нөөц.json> --token-file=<токен> [--write --i-know-this-is-production]
  *
- * ⚠️ 2026-10-26: НӨӨЦ анхдагчаар `os.tmpdir()`-д (репогийн үндэс git-ignored БИШ, өгөгдөл нууц) — `--backup=`-ээр өөр зам.
+ * ⚠️⚠️ 2026-10-27: БҮРЭН ДАХИН ҮҮСГЭЛТ (хэрэглэгч: «182 нь Excel-тэй мөр мөрөөрөө ЯГ адилхан», `--kod=excel`).
+ *    Excel-ийн Д/Д (B) ДАВХАРДДАГ (35 код 145 мөрд: «3» хоёр үе шатанд, «5.2.3» дөрвөн мөрд, «2.3.3.1» таван ах
+ *    дүүст) тул мод/дарааллыг `dd_kod`+`etseg_kod`-оор ганцаар нь сэргээх боломжгүй (жиш. мөр 886 «5.2.3.1»-ийн эцэг нь
+ *    гурван «5.2.3»-ын аль нь вэ). Тиймээс ХҮСНЭГТИЙН objectid-ИЙН ДАРААЛАЛ = EXCEL-ИЙН МӨРИЙН ДАРААЛАЛ байхаар бичнэ:
+ *    хуучин БҮХ мөр (мөнгөний · сарын · бүтцийн) устаж, Excel-ийн 905 мөр Excel-ийн дарааллаар, дараа нь сарын мөрүүд
+ *    шинээр нэмэгдэнэ (`projectPlan.orderPlanRows` давхардсан кодтой үед objectid-оор эрэмбэлнэ).
+ *      · МӨНГӨНИЙ мөр Excel-д тааралдсан бол хуучин мөрийн Excel-д байхгүй БҮХ талбар (захирамж, гэрээ, гүйцэтгэгч,
+ *        эх үүсвэр, ангилал `bagts_tuvshin*`, `cashflow_id` …) ХУУЛАГДАНА — objectid л солигдоно (сарын мөр, IPC,
+ *        дашбоард `cashflow_id`/багцын түлхүүрээр холбогддог; хүснэгт хавсралт, холбоосгүй).
+ *      · Бичих дараалал: Excel мөр нэмэх → сарын мөр нэмэх → хуучин бүх мөр устгах (нэмэлт унавал хуучин бүтэн
+ *        үлдэнэ; `--restore=` нэмэгдсэнийг устгана).
+ *    САРЫН ТӨЛӨВЛӨГӨӨ — «Төсөл төлөвлөгөө биелэлт сараар» хуудасны хуримтлалаас (`cashflowMonthPlan.mjs`-ийн дүрэм):
+ *    Excel хамарсан гэрээний 2026-08-аас өмнөх сар УСТНА (эхний сарт нийлнэ), хоосон нүд → мөргүй.
+ *    Бичсний ДАРАА хүснэгтийг дахин уншиж Excel-тэй мөр мөрөөр тулгана (`--verify`-тэй ижил).
+ * ⚠️ 2026-10-26: НӨӨЦ — `--backup=` ЗААВАЛ (2026-10-27; репогийн гадна, жиш. scratchpad — өгөгдөл нууц).
  *    Нөөц нь сэтгүүл: бичихээс ӨМНӨХ бүх мөр + багц бүрийн дараа нэмэгдсэн OID-ууд. Олон алхмын бичилт дундаа
  *    унавал (`rollbackOnFailure` ЗӨВХӨН нэг багц дотор) `--restore=` нь нэмэгдсэнийг устгаж, устгагдсаныг дахин нэмж,
  *    өөрчлөгдсөнийг нөөцийн утгаар буцаана (dry-run анхдагч; бичихэд `--write --i-know-this-is-production`).
@@ -18,12 +34,12 @@
  * ⚠️ Токен ЗӨВХӨН POST биед (`tokenInUrl.check.mjs`); файлаас уншина, хэзээ ч хэвлэхгүй.
  *
  * МӨРИЙН ГУРВАН ТӨРӨЛ (`services/fields.CF_WORK_WHERE`-ийн ⚠️):
- *   САРЫН    — `cashflow_start IS NOT NULL` — ХӨНДӨХГҮЙ (устгах мөнгөний мөрийнх л устна);
- *   МӨНГӨНИЙ — `cashflow_start IS NULL AND cashflow_id IS NOT NULL` — Excel-ийн тохирох мөрөөр шинэчлэгдэнэ, Excel-д
- *              байхгүй талбар (захирамж, гэрээ, гүйцэтгэгч, эх үүсвэр…) ХАДГАЛАГДАНА; тохирохгүй бол сарын мөрийнхөө
- *              хамт УСТНА; Excel-д л байгаа нь `cashflow_id` = max + 1-тэй нэмэгдэнэ;
- *   БҮТЦИЙН  — `cashflow_start IS NULL AND cashflow_id IS NULL` — Excel-ийн бусад бүх мөр (дахин ажиллуулахад бүгд
- *              устаж шинээр үүснэ).
+ *   САРЫН    — `cashflow_start IS NOT NULL` — Excel-ийн «сараар» хуудаснаас мөнгөний мөр бүрд дахин үүснэ;
+ *   МӨНГӨНИЙ — `cashflow_start IS NULL AND cashflow_id IS NOT NULL` — Excel-ийн тохирох мөрийн утгатай, Excel-д
+ *              байхгүй талбар (захирамж, гэрээ, гүйцэтгэгч, эх үүсвэр…) хуучнаасаа ХУУЛАГДАНА; тохирохгүй бол сарын
+ *              мөрийнхөө хамт УСТНА; Excel-д л байгаа нь `cashflow_id` = max + 1-тэй нэмэгдэнэ; явц (`guitsetgel_huvi`)
+ *              = Excel S × 100 (томьёотой ч үр дүнгээр — хэрэглэгч «Excel-ийн S давамгайлна»);
+ *   БҮТЦИЙН  — `cashflow_start IS NULL AND cashflow_id IS NULL` — Excel-ийн бусад бүх мөр.
  *
  * ⚠️ МОД нь Excel-ийн ТОМЬЁОНООС (`src/lib/negtgelTree.ts` → `NEG_TREE.depth`, хэш шалгана) — outlineLevel БИШ:
  *    outline 325 мөрөнд модноос зөрдөг (жиш. 36 «Багц 6» нь 35-ын хүүхэд боловч outline ижил түвшин). `tuvshin` =
@@ -38,9 +54,8 @@
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { monthDunFixes } from './cashflowMonthDun.mjs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { headerMismatches, monthKeys, monthPlanOf, monthRowAttrs, ymOfStart } from './cashflowMonthPlan.mjs';
+import { resolve } from 'node:path';
 import { NEG_TREE, negTreeHash } from '../src/lib/negtgelTree.ts';
 import { loadPublicEnv } from './liveEnv.mjs';
 
@@ -56,7 +71,18 @@ const WRITE = opt('write') === true;
 const RESTORE = opt('restore');
 const KOD = opt('kod') === 'tree' ? 'tree' : 'excel';
 const KEEP_NAMES = opt('keep-names') === true;
+/* ⚠️ 2026-10-27: багцын түлхүүр (`pkgKeyOf`) өөрчлөгдөх мөнгөний мөрд системийн `bagts`-ыг хадгалдаг (IPC/газрын
+   зургийн холбоос) — `--excel-bagts` бол Excel-ийнхийг бичнэ (тайлангийн «Шийдвэр») */
+const EXCEL_BAGTS = opt('excel-bagts') === true;
+const VERIFY = opt('verify') === true;
 const SHEET = 'Төсөл төлөвлөгөө биелэлт';
+/* «Сараар» хуудас — мөр бүр үндсэн хуудасны ИЖИЛ мөр (B · D-ээр шалгана); N…AP = 2026-08 … 2028-12 (БАЙРЛАЛААР) */
+const MONTH_SHEET = 'Төсөл төлөвлөгөө биелэлт сараар';
+const MONTH_FIRST = '2026-08';
+const MONTH_COL0 = 14; // N
+const MONTH_N = 29;
+/* ⚠️ Y5 «2027 он 12-р сар» — байрлалаараа 2027-07 (хэрэглэгч баталсан, толгойн алдаа) */
+const MONTH_HDR_OK = new Set(['Y']);
 const FIRST = 6; // ТӨСЛИЙН НИЙТ
 const LAST = 911;
 const TOTAL_E6 = 2495841880529.33; // хяналтын тоо — Excel E6
@@ -271,6 +297,40 @@ if (hash !== NEG_TREE.hash) {
   process.exit(1);
 }
 
+/* «Сараар» хуудас — хуримтлал (0–1) мөр бүрээр; ⚠️ мөрийн тэгшитгэл ба баганын толгойг шалгаж, зөрвөл ЗОГСОНО */
+const wsM = wb.getWorksheet(MONTH_SHEET);
+if (!wsM) { console.error(`⛔ «${MONTH_SHEET}» хуудас алга`); process.exit(1); }
+const mKeys = monthKeys(MONTH_FIRST, MONTH_N);
+const mCols = mKeys.map((_, k) => wsM.getColumn(MONTH_COL0 + k).letter);
+{
+  const hdrs = mCols.map((c) => s(cellOf(wsM.getRow(5), c).c));
+  const bad = headerMismatches(hdrs, mKeys, mCols, MONTH_HDR_OK);
+  if (bad.length) {
+    console.error(`⛔ «${MONTH_SHEET}» толгой байрлалаас зөрсөн: ${bad.map((b) => `${b.col}5 «${b.header}» ≠ ${b.expected}`).join('; ')}`);
+    process.exit(1);
+  }
+  const misaligned = xl.filter((o) => {
+    const row = wsM.getRow(o.r);
+    return s(cellOf(row, 'B').c ?? cellOf(row, 'B').r) !== s(o.B.c ?? o.B.r) || s(cellOf(row, 'D').c ?? cellOf(row, 'D').r) !== s(o.D.c ?? o.D.r);
+  });
+  if (misaligned.length) {
+    console.error(`⛔ «${MONTH_SHEET}»-ийн мөр үндсэн хуудастай таарахгүй (B/D): мөр ${misaligned.slice(0, 10).map((o) => o.r).join(', ')}`);
+    process.exit(1);
+  }
+}
+let monthErrCells = 0;
+for (const o of xl) {
+  const row = wsM.getRow(o.r);
+  o.cum = mCols.map((c) => {
+    const x = cellOf(row, c);
+    if (x.err) monthErrCells += 1;
+    if (typeof x.c === 'number') return x.c;
+    if (x.f !== undefined && typeof x.r === 'number') return x.r;
+    if (x.f !== undefined && x.r != null) monthErrCells += 1; // томьёоны алдаа (#REF! г.м.) — хоосон гэж үзнэ
+    return null;
+  });
+}
+
 /* Мод — `depth` (тэмдэгт = 48 + гүн), эцэг = өмнөх хамгийн ойр (гүн − 1) */
 const warns = [];
 const parentIdx = [];
@@ -401,9 +461,13 @@ for (let i = 1; i < xl.length; i += 1) {
   }
   /* S — ТЭЗҮ/Зураг төсөл/Зөвшөөрөл/Сонгон үе шатын НАВЧ мөрийн тогтмол утга, 0–100 */
   const sLeaf = S_PHASE(phName) && children[i].length === 0 && typeof o.S.c === 'number';
+  /* ⚠️ 2026-10-27: МӨНГӨНИЙ мөрийн явц — S-ийн тогтмол ЭСВЭЛ томьёоны үр дүн (хэрэглэгч «Excel-ийн S давамгайлна»);
+     хоосон → null. ×100 хөвөгч цэгийг 1e-9 хүртэл (0.2823 × 100 = 28.229999…) */
+  const sNum = typeof o.S.c === 'number' ? o.S.c : (o.S.f !== undefined && typeof o.S.r === 'number' ? o.S.r : null);
   const item = {
     i, r: o.r, phName, phNo: phaseNo(phName), block, attrs,
-    sPct: sLeaf ? o.S.c * 100 : undefined,
+    sPct: sLeaf ? Math.round(o.S.c * 1e11) / 1e9 : undefined,
+    sMoney: sNum == null ? null : Math.round(sNum * 1e11) / 1e9,
     eConst: typeof o.E.c === 'number' ? o.E.c : null,
     eFormula: o.E.f != null ? { f: o.E.f, r: typeof o.E.r === 'number' ? o.E.r : null } : null,
   };
@@ -443,6 +507,11 @@ const eCovered = new Set();
 
 /* ═══════════ 2. Систем ═══════════ */
 const sys = await readAll();
+/* Засагдах талбар (давхаргын метаас) — хуучин мөнгөний мөрийн Excel-д байхгүй утгыг шинэ мөрд хуулахад */
+const layerMeta = await post('', {});
+const EDITABLE = layerMeta.fields
+  .filter((f) => f.editable !== false && f.type !== 'esriFieldTypeOID' && f.type !== 'esriFieldTypeGlobalID')
+  .map((f) => f.name);
 const months = sys.filter((r) => r.cashflow_start != null);
 const money = sys.filter((r) => r.cashflow_start == null && r.cashflow_id != null);
 const structOld = sys.filter((r) => r.cashflow_start == null && r.cashflow_id == null);
@@ -543,7 +612,11 @@ const matchedIdx = new Set([...match.values()].map((m) => m.t.i));
    тоолбол нэг ажил хоёр удаа (хуучин + шинэ) «дараа»-д ордог байв. Хүн шийдтэл аль алинд нь тоолохгүй. */
 const ambOptIdx = new Set(ambiguous.flatMap((a) => a.opts.map((o) => o.t.i)).filter((i) => !matchedIdx.has(i)));
 
-/* ═══════════ 4. Ангилал ═══════════ */
+/* ═══════════ 4. Ангилал → Excel-ийн дарааллаар бичих мөрүүд ═══════════ */
+/** Сарын мөрийн талбар — мөнгөний мөрд хуулахгүй */
+const MONTH_ONLY = new Set(['cashflow_start', 'cashflow_end', 'cashflow_huwi', 'cashflow_dun']);
+/** Хуучин мөнгөний мөрийн засагдах бүх талбар (Excel-ийнх дараа нь дарна) */
+const carry = (r) => Object.fromEntries(EDITABLE.filter((f) => !MONTH_ONLY.has(f)).map((f) => [f, r[f] ?? null]));
 const updates = [];
 const keptBagts = [];
 const renamed = [];
@@ -551,12 +624,16 @@ for (const r of money) {
   const m = match.get(r.objectid);
   if (!m) continue;
   const t = m.t;
-  const a = { objectid: r.objectid, ...t.attrs, ho_dun_geree: t.money.cost, sar_mongo_eh: r.sar_mongo_eh ?? 'garaar' };
+  const a = {
+    ...carry(r), ...t.attrs, ho_dun_geree: t.money.cost, cashflow_id: r.cashflow_id,
+    /* ⚠️ Excel-ийн сарын төлөвлөгөө ЗӨВХӨН 'garaar'-д харагдана ('huvaari' бол Хуваариас тооцоолно — `monthlyMoney`) */
+    sar_mongo_eh: 'garaar',
+    guitsetgel_huvi: t.sMoney,
+  };
   /* ⚠️ 2026-10-26: системийн `bagts` ХООСОН бол хадгалахгүй — Excel-ийнх бичигдэнэ (oid 8: «» → «Багц-9.1») */
-  if (s(r.bagts) && pkgKeyOf(r.bagts) !== pkgKeyOf(t.attrs.bagts)) { a.bagts = r.bagts; keptBagts.push({ r, t }); }
+  if (!EXCEL_BAGTS && s(r.bagts) && pkgKeyOf(r.bagts) !== pkgKeyOf(t.attrs.bagts)) { a.bagts = r.bagts; keptBagts.push({ r, t }); }
   if (KEEP_NAMES) a.ajil_uilchilgee = r.ajil_uilchilgee;
   else if (s(r.ajil_uilchilgee) !== s(t.attrs.ajil_uilchilgee)) renamed.push({ r, t });
-  if (t.sPct !== undefined) a.guitsetgel_huvi = t.sPct;
   updates.push({ r, t, m, a });
 }
 const deletes = money.filter((r) => !match.has(r.objectid) && !ambOids.has(r.objectid));
@@ -568,27 +645,69 @@ const LEGACY = ['bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvsh
 const adds = newMoney.map((t) => {
   const sib = updates.find((u) => parentIdx[u.t.i] === parentIdx[t.i]) ?? updates.find((u) => u.t.phNo === t.phNo);
   const legacy = Object.fromEntries(LEGACY.map((f) => [f, sib ? sib.r[f] ?? null : null]));
-  const a = { ...legacy, ...t.attrs, ho_dun_geree: t.money.cost, cashflow_id: nextId, sar_mongo_eh: 'garaar' };
-  if (t.sPct !== undefined) a.guitsetgel_huvi = t.sPct;
+  const a = { ...legacy, ...t.attrs, ho_dun_geree: t.money.cost, cashflow_id: nextId, sar_mongo_eh: 'garaar', guitsetgel_huvi: t.sMoney };
   nextId += 1;
   return { t, a, sib };
 });
 const moneyIdx = new Set([...matchedIdx, ...newMoney.map((t) => t.i)]);
-const structure = items.filter((t) => !moneyIdx.has(t.i)).map((t) => {
-  const a = { ...t.attrs, cashflow_id: null, sar_mongo_eh: null };
-  if (t.sPct !== undefined) a.guitsetgel_huvi = t.sPct;
-  return { t, a };
-});
-/* ⚠️ 2026-10-26: ХО дүн өөрчлөгдөх гэрээний ҮЛДЭХ сарын мөрийн `cashflow_dun`-ийг порталын дүрмээр (`recomputeFinanceAmounts`)
-   дахин бодно — эс бөгөөс S-муруй (`cashflowCurve`) хуучин ₮-ээр зурагдаж, хувь ба дүн зөрнө (`cashflowMonthDun.mjs`) */
-const monthDun = monthDunFixes(updates, months, new Set(deletes.flatMap((r) => monthsBy.get(r.cashflow_id)?.oids ?? [])));
-const delMonths = deletes.reduce((acc, r) => { const x = monthsBy.get(r.cashflow_id); return { n: acc.n + (x?.n ?? 0), sum: acc.sum + (x?.sum ?? 0) }; }, { n: 0, sum: 0 });
+const structure = items.filter((t) => !moneyIdx.has(t.i)).map((t) => ({
+  t, a: { ...t.attrs, cashflow_id: null, sar_mongo_eh: null, guitsetgel_huvi: t.sPct ?? null },
+}));
+/* Excel-ийн 905 мөр — ⚠️ ДАРААЛАЛ = Excel-ийн мөрийн дараалал (objectid нь энэ дарааллаар өснө; толгойн ⚠️⚠️) */
+const planByIdx = new Map([
+  ...updates.map((u) => [u.t.i, { kind: 'money', a: u.a, old: u.r }]),
+  ...adds.map((x) => [x.t.i, { kind: 'new', a: x.a }]),
+  ...structure.map((x) => [x.t.i, { kind: 'struct', a: x.a }]),
+]);
+const excelAdds = items.map((t) => planByIdx.get(t.i)?.a).filter(Boolean);
+
+/* Сарын төлөвлөгөө — мөнгөний мөр бүрд «сараар» хуудаснаас */
+const monthAdds = [];
+const monthNotes = { clamps: [], partial: [], none: [] };
+for (const t of items) {
+  const p = planByIdx.get(t.i);
+  if (!p || p.kind === 'struct') continue;
+  const plan = monthPlanOf(xl[t.i].cum, mKeys);
+  const lab = `мөр ${t.r} «${md(t.attrs.bagts)}» ${md(t.attrs.ajil_uilchilgee).slice(0, 40)}`;
+  if (!plan.months.length) { monthNotes.none.push(lab); continue; }
+  for (const c of plan.clamps) monthNotes.clamps.push(`${lab}: ${c.ym} хуримтлал ${fmt(c.prev)} → ${fmt(c.cum)} (сарын хувь 0)`);
+  if (plan.final != null && Math.abs(plan.final - 100) > 1e-6) monthNotes.partial.push(`${lab}: эцсийн хуримтлал ${fmt(plan.final)}%`);
+  for (const m of plan.months) monthAdds.push(monthRowAttrs(p.a.cashflow_id, m.ym, m.huwi, p.a.ho_dun_geree));
+}
+
+/* Сарын мөрийн УТГЫН өөрчлөлт (түлхүүр = cashflow_id|сар) — механикаар бүгд дахин үүсэх ч хэрэглэгчид утгын зөрүүг хэлнэ */
+const monthDiff = (() => {
+  const key = (id, ym) => `${id}|${ym}`;
+  const oldBy = new Map();
+  for (const m of months) {
+    const k = key(m.cashflow_id, ymOfStart(m.cashflow_start));
+    oldBy.set(k, [...(oldBy.get(k) ?? []), m]);
+  }
+  const newBy = new Map(monthAdds.map((m) => [key(m.cashflow_id, ymOfStart(m.cashflow_start)), m]));
+  const eq = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a)));
+  let same = 0; let changed = 0; let added = 0; let removed = 0; let dup = 0;
+  for (const [k, n] of newBy) {
+    const o = oldBy.get(k);
+    if (!o) { added += 1; continue; }
+    if (o.length > 1) dup += o.length - 1;
+    if (eq(o[0].cashflow_huwi, n.cashflow_huwi) && eq(o[0].cashflow_dun, n.cashflow_dun)) same += 1; else changed += 1;
+  }
+  for (const [k, o] of oldBy) if (!newBy.has(k)) removed += o.length;
+  const before08 = months.filter((m) => ymOfStart(m.cashflow_start) < MONTH_FIRST).length;
+  return { same, changed, added, removed, dup, before08 };
+})();
 
 /* Нийт */
 const sumOf = (xs, f) => xs.reduce((a, x) => a + (f(x) ?? 0), 0);
 const before = sumOf(money, (r) => r.ho_dun_geree);
 const ambSum = sumOf(ambiguous, (x) => x.r.ho_dun_geree);
 const after = sumOf(updates, (u) => u.a.ho_dun_geree) + sumOf(adds, (x) => x.a.ho_dun_geree) + ambSum;
+/** Дашбоардын «Нийт төсөв» (`gdash.cfTotal`) — `bagts_tuvshin1` ∉ {5 Нийгмийн, 6 Газар, 7 Бонд} (`FIN_XL_TOTAL_SKIP`) */
+const TOTAL_SKIP = new Set(['5', '6', '7']);
+const inTot = (a) => !TOTAL_SKIP.has(s(a.bagts_tuvshin1));
+const cfTotBefore = sumOf(money.filter(inTot), (r) => r.ho_dun_geree);
+const plannedMoney = [...updates.map((u) => u.a), ...adds.map((x) => x.a)];
+const cfTotAfter = sumOf(plannedMoney.filter(inTot), (a) => a.ho_dun_geree);
 const xlMoney = sumOf(cands, (t) => t.money.cost);
 const inE6 = cands.filter((t) => eCovered.has(t.i));
 const outE6 = cands.filter((t) => !eCovered.has(t.i));
@@ -607,79 +726,206 @@ const natCmp = (a, b) => {
 const sortOk = KOD !== 'tree' || items.every((t, k) => k === 0 || natCmp(items[k - 1].attrs.dd_kod, t.attrs.dd_kod) < 0);
 const e6Sum = sumOf(inE6, (t) => t.money.cost);
 const e6Ok = Math.abs(e6Sum - TOTAL_E6) < 0.01;
-/* ⚠️ 2026-10-26: устгах OID-уудын ТОО:ХЭШ — `--confirm-deletes`-д яг энийг шаардана (зөвхөн тоо хангалтгүй) */
-const delMoneyOids = deletes.map((r) => r.objectid);
-const delMonthOids = deletes.flatMap((r) => monthsBy.get(r.cashflow_id)?.oids ?? []);
-const delStructOids = structOld.map((r) => r.objectid);
-const delAll = [...delMoneyOids, ...delMonthOids, ...delStructOids].sort((a, b) => a - b);
+const cfTotOk = Math.abs(cfTotAfter - TOTAL_E6) < 0.01;
+/* ⚠️ 2026-10-27: БҮРЭН дахин үүсгэлт — ХУУЧИН БҮХ мөр устна. `--confirm-deletes` = тэдгээрийн ТОО:ХЭШ (хэн нэг нь
+   dry-run-ий дараа мөр нэмж/устгавал хэш өөрчлөгдөж бичихгүй) */
+const delAll = sys.map((r) => r.objectid).sort((a, b) => a - b);
 const delToken = `${delAll.length}:${createHash('sha256').update(delAll.join(',')).digest('hex').slice(0, 12)}`;
+const delMonthsOfDeleted = deletes.reduce((acc, r) => { const x = monthsBy.get(r.cashflow_id); return { n: acc.n + (x?.n ?? 0), sum: acc.sum + (x?.sum ?? 0) }; }, { n: 0, sum: 0 });
 const fixTxt = (x) => `мөр ${xl[x.j].r} «${s(xl[x.j].D.c).slice(0, 40)}» → ${kodOf(x.j)} (эцэг мөр ${xl[x.from]?.r ?? '—'} → ${xl[x.to].r}, ${kodOf(x.to) || '—'})`;
 
-/* ═══════════ 5. Тайлан ═══════════ */
+/** Төслийн S-муруй (хуримтлал, «Нийт төсөв»-ийн хүрээ) — сарын мөрөөс (`gdash.cashflowCurve`-ийн дүрэм: Σ дүн ÷ cfTotal) */
+const curveOf = (rows, moneyRows) => {
+  const ids = new Set(moneyRows.filter(inTot).map((a) => a.cashflow_id));
+  const tot = sumOf(moneyRows.filter(inTot), (a) => a.ho_dun_geree);
+  const per = new Map();
+  for (const m of rows) {
+    if (!ids.has(m.cashflow_id) || m.cashflow_dun == null) continue;
+    const k = ymOfStart(m.cashflow_start);
+    per.set(k, (per.get(k) ?? 0) + m.cashflow_dun);
+  }
+  let cum = 0;
+  const out = new Map();
+  for (const k of [...per.keys()].sort()) { cum += per.get(k); out.set(k, cum); }
+  return { out, tot };
+};
+
+/* ═══════════ 5. Тулгалт: хүснэгт ↔ Excel (бичилтийн ДАРАА · `--verify` · dry-run-д одоогийн байдал) ═══════════ */
+const VERIFY_FIELDS = [
+  'dd_kod', 'etseg_kod', 'tuvshin', 'uy_shat', 'blok', 'bagts', 'ajil_uilchilgee', 'ho_dun_geree',
+  'heseg_ezleh_huvi', 'tusul_ezleh_huvi', 'geree_ehleh', 'geree_duusah', 'guits_ehleh', 'guits_duusah',
+  'gazar_ehleh', 'gazar_duusah', 'guitsetgel_huvi', 'sar_mongo_eh',
+];
+/** Excel мөр бүрийн хүлээгдэх утга — `moneyIdx` (тааралдсан + шинэ мөнгөний мөр) */
+const expectedRows = items.map((t) => {
+  const isMoney = moneyIdx.has(t.i);
+  return {
+    t, isMoney,
+    a: {
+      ...t.attrs,
+      ho_dun_geree: isMoney ? t.money.cost : t.attrs.ho_dun_geree,
+      guitsetgel_huvi: isMoney ? t.sMoney : t.sPct ?? null,
+      sar_mongo_eh: isMoney ? 'garaar' : null,
+    },
+  };
+});
+const keptIdx = new Set(keptBagts.map((x) => x.t.i));
+function verifyTable(rows) {
+  const same = (a, b) => (a == null || a === '' ? b == null || b === '' : b != null && (typeof a === 'number'
+    ? Math.abs(a - Number(b)) <= 1e-6 * Math.max(1, Math.abs(a)) : s(a) === s(b)));
+  const diffs = [];
+  const known = [];
+  const xlRows = rows.filter((r) => r.cashflow_start == null).sort((a, b) => a.objectid - b.objectid);
+  const monthRows = rows.filter((r) => r.cashflow_start != null);
+  if (xlRows.length !== expectedRows.length) diffs.push(`Excel-ийн мөрийн тоо: хүснэгтэд ${xlRows.length} ≠ Excel ${expectedRows.length}`);
+  const moneyIds = new Map();
+  const n = Math.min(xlRows.length, expectedRows.length);
+  for (let k = 0; k < n; k += 1) {
+    const r = xlRows[k];
+    const e = expectedRows[k];
+    const at = `мөр ${e.t.r} (oid ${r.objectid})`;
+    for (const f of VERIFY_FIELDS) {
+      if (same(e.a[f] ?? null, r[f] ?? null)) continue;
+      const txt = `${at} ${f}: хүснэгт «${md(r[f] ?? '∅')}» ≠ Excel «${md(e.a[f] ?? '∅')}»`;
+      if (f === 'bagts' && keptIdx.has(e.t.i)) known.push(`${txt} — багцын түлхүүр хадгалсан (\`--excel-bagts\`-гүй)`);
+      else diffs.push(txt);
+    }
+    if (e.isMoney !== (r.cashflow_id != null)) diffs.push(`${at}: ${e.isMoney ? 'мөнгөний мөр байх ёстой (cashflow_id алга)' : 'бүтцийн мөр байх ёстой (cashflow_id байна)'}`);
+    if (r.cashflow_id != null) {
+      if (moneyIds.has(r.cashflow_id)) diffs.push(`${at}: cashflow_id ${r.cashflow_id} давхардсан`);
+      moneyIds.set(r.cashflow_id, { e, r });
+    }
+  }
+  for (const r of xlRows.slice(n)) diffs.push(`илүү мөр oid ${r.objectid} «${md(r.dd_kod ?? '')}» ${md(r.ajil_uilchilgee ?? '').slice(0, 40)}`);
+  /* Сарын мөр */
+  const byId = new Map();
+  for (const m of monthRows) byId.set(m.cashflow_id, [...(byId.get(m.cashflow_id) ?? []), m]);
+  let monthOk = 0;
+  for (const [id, { e, r }] of moneyIds) {
+    const want = new Map(monthPlanOf(xl[e.t.i].cum, mKeys).months
+      .map((m) => [m.ym, monthRowAttrs(id, m.ym, m.huwi, e.isMoney ? e.a.ho_dun_geree : r.ho_dun_geree)]));
+    const got = new Map();
+    for (const m of byId.get(id) ?? []) {
+      const ym = ymOfStart(m.cashflow_start);
+      if (got.has(ym)) diffs.push(`мөр ${e.t.r} (cashflow_id ${id}) ${ym}: сарын мөр давхардсан (oid ${m.objectid})`);
+      else got.set(ym, m);
+    }
+    for (const [ym, w] of want) {
+      const g = got.get(ym);
+      if (!g) { diffs.push(`мөр ${e.t.r} (cashflow_id ${id}) ${ym}: сарын мөр алга (Excel ${fmt(w.cashflow_huwi)}%)`); continue; }
+      const bad = ['cashflow_huwi', 'cashflow_dun', 'cashflow_end'].filter((f) => !same(w[f], g[f]));
+      if (bad.length) diffs.push(`мөр ${e.t.r} (cashflow_id ${id}) ${ym}: ${bad.map((f) => `${f} ${fmt(g[f])} ≠ ${fmt(w[f])}`).join(', ')}`);
+      else monthOk += 1;
+    }
+    for (const [ym, g] of got) if (!want.has(ym)) diffs.push(`мөр ${e.t.r} (cashflow_id ${id}) ${ym}: Excel-д байхгүй сарын мөр (oid ${g.objectid}, ${fmt(g.cashflow_huwi)}%)`);
+  }
+  for (const [id, ms] of byId) if (!moneyIds.has(id)) diffs.push(`эзэнгүй сарын мөр: cashflow_id ${id} (${ms.length} мөр)`);
+  /* Нийт — дашбоардын хуваагч = E6 */
+  const moneyNow = xlRows.filter((r) => r.cashflow_id != null);
+  const tot = sumOf(moneyNow.filter(inTot), (r) => r.ho_dun_geree);
+  if (Math.abs(tot - TOTAL_E6) >= 0.01) diffs.push(`«Нийт төсөв» (bagts_tuvshin1 ∉ 5·6·7): ${fmt(tot)} ≠ Excel E6 ${fmt(TOTAL_E6)}`);
+  return { diffs, known, monthOk, tot, nRows: rows.length };
+}
+
+/* ═══════════ 6. Тайлан ═══════════ */
 const L = [];
 const P = (x = '') => L.push(x);
 const xlRef = (t) => `мөр ${t.r} · ${md(t.attrs.dd_kod)}`;
-P(`# Санхүүжилт ← Excel — ${WRITE ? 'БИЧИЛТ' : 'DRY-RUN'} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`);
+const now = verifyTable(sys);
+/* Бичилтийн ҮР ДҮНГ урьдчилан тулгана — төлөвлөсөн мөрүүдийг (Excel-ийн дарааллаар өсөх хуурамч objectid) хүснэгт гэж үзээд */
+const sim = verifyTable([
+  ...excelAdds.map((a, k) => ({ objectid: 1e7 + k, cashflow_start: null, ...a })),
+  ...monthAdds.map((a, k) => ({ objectid: 2e7 + k, ...a })),
+]);
+const cBefore = curveOf(months, money);
+const cAfter = curveOf(monthAdds, plannedMoney);
+P(`# Санхүүжилт ← Excel — ${VERIFY ? 'ШАЛГАЛТ' : WRITE ? 'БИЧИЛТ' : 'DRY-RUN'} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`);
 P();
-P(`Excel: \`${md(XLSX)}\` → «${SHEET}» мөр 7–${LAST} (${items.length}). Хүснэгт: \`…${md(TARGET.slice(-40))}\` — одоо ${sys.length} мөр`
-  + ` (мөнгөний ${money.length} · сарын ${months.length} · бүтцийн ${structOld.length}). Код: \`--kod=${KOD}\`${KEEP_NAMES ? ' · `--keep-names`' : ''}.`);
+P(`Excel: \`${md(XLSX)}\` → «${SHEET}» мөр 7–${LAST} (${items.length}) + «${MONTH_SHEET}» ${mCols[0]}…${mCols[mCols.length - 1]} `
+  + `(${mKeys[0]}…${mKeys[mKeys.length - 1]}, байрлалаар; Y5-ын толгойн алдааг зөвшөөрсөн). Хүснэгт: \`…${md(TARGET.slice(-40))}\` — одоо ${sys.length} мөр`
+  + ` (мөнгөний ${money.length} · сарын ${months.length} · бүтцийн ${structOld.length}). Код: \`--kod=${KOD}\`${KEEP_NAMES ? ' · `--keep-names`' : ''}${EXCEL_BAGTS ? ' · `--excel-bagts`' : ''}.`);
 P();
 P('## Тоо');
 P();
-P('| Ангилал | Тоо | Дүн |');
-P('|---|---:|---:|');
-P(`| Мөнгөний мөр — шинэчлэх | ${updates.length} | ${bn(sumOf(updates, (u) => u.a.ho_dun_geree))} |`);
-P(`| Мөнгөний мөр — шинэ | ${adds.length} | ${bn(sumOf(adds, (x) => x.a.ho_dun_geree))} |`);
-P(`| Мөнгөний мөр — устгах | ${deletes.length} | ${bn(sumOf(deletes, (r) => r.ho_dun_geree))} |`);
-P(`| ↳ тэдгээрийн сарын мөр — устгах | ${delMonths.n} | ${bn(delMonths.sum)} |`);
-P(`| Мөнгөний мөр — ТОДОРХОЙГҮЙ (хөндөхгүй) | ${ambiguous.length} | ${bn(ambSum)} |`);
-P(`| Бүтцийн мөр — нэмэх | ${structure.length} | — |`);
-P(`| Бүтцийн мөр — хуучин (бичихэд устгаж дахин үүсгэнэ) | ${structOld.length} | — |`);
-P(`| ↳ Excel-д БАЙХГҮЙ (харагдацаар нэмсэн, жиш. дэд шат) — алга болно | ${viewOnlyOld.length} | — |`);
-P(`| Сарын мөр — хэвээр | ${months.length - delMonths.n} | — |`);
-P(`| ↳ cashflow_dun дахин бодох (ХО дүн өөрчлөгдсөн гэрээ) | ${monthDun.length} | ${bn(sumOf(monthDun, (x) => x.old))} → ${bn(sumOf(monthDun, (x) => x.cashflow_dun))} |`);
+P('Бичилт нь БҮРЭН дахин үүсгэлт (толгойн ⚠️⚠️): хуучин бүх мөр устаж, Excel-ийн мөрүүд Excel-ийн дарааллаар шинээр нэмэгдэнэ. '
+  + 'Доорх «утгаар» багана нь хэрэглэгчид харагдах өөрчлөлт (objectid-оос бусад).');
+P();
+P('| Ангилал | Одоо | Дараа | Утгаар | Дүн |');
+P('|---|---:|---:|---|---:|');
+P(`| Мөнгөний мөр | ${money.length} | ${updates.length + adds.length + ambiguous.length} | тааралдсан (шинэчлэх) ${updates.length} · шинэ ${adds.length} · устах ${deletes.length} · тодорхойгүй ${ambiguous.length} | ${bn(before)} → ${bn(after)} |`);
+P(`| Сарын мөр | ${months.length} | ${monthAdds.length} | ижил ${monthDiff.same} · өөрчлөгдөх ${monthDiff.changed} · шинэ ${monthDiff.added} · устах ${monthDiff.removed}${monthDiff.dup ? ` (давхардал ${monthDiff.dup})` : ''} | ${bn(sumOf(months, (m) => m.cashflow_dun))} → ${bn(sumOf(monthAdds, (m) => m.cashflow_dun))} |`);
+P(`| ↳ устах мөнгөний мөрийн сарын мөр | ${delMonthsOfDeleted.n} | 0 | | ${bn(delMonthsOfDeleted.sum)} |`);
+P(`| ↳ ${MONTH_FIRST}-аас өмнөх сарын мөр (Excel-д багана алга) | ${monthDiff.before08} | 0 | | — |`);
+P(`| Бүтцийн мөр | ${structOld.length} | ${structure.length} | ${structOld.length ? `хуучин ${structOld.length} (Excel-д байхгүй ${viewOnlyOld.length}) устна` : 'шинэ'} | — |`);
+P(`| **Нийт мөр** | ${sys.length} | ${excelAdds.length + monthAdds.length} | нэмэх ${excelAdds.length} + ${monthAdds.length} · устгах ${delAll.length} | |`);
 P();
 P('## Нийт төсөв');
 P();
-P(`- Өмнө (мөнгөний ${money.length} мөрийн \`ho_dun_geree\`): **${fmt(before)}** (${bn(before)})`);
-P(`- Дараа (шинэчилсэн + шинэ${ambiguous.length ? ' + тодорхойгүй хэвээр' : ''}): **${fmt(after)}** (${bn(after)}) · зөрүү ${bn(after - before)}`);
-P(`- Excel-ийн мөнгөний мөр (үе шат 1·2·5, ${cands.length}): ${fmt(xlMoney)}`);
-P(`  - E6-ийн томьёонд хүрэх (${inE6.length}): **${fmt(e6Sum)}** — Excel E6 = ${fmt(TOTAL_E6)}`
-  + ` → ${e6Ok ? '✅ ТААРСАН' : '❌ ЗӨРСӨН (бичихийг хориглоно)'}`);
-P(`  - E6-д ОРООГҮЙ (${outE6.length}): ${fmt(sumOf(outE6, (t) => t.money.cost))} — ${outE6.length ? `${[...new Set(outE6.map((t) => {
-  let k = t.i; while (parentIdx[k] > 0 && !eCovered.has(parentIdx[k])) k = parentIdx[k];
-  return `${s(xl[k].B.c)} ${s(xl[k].D.c)} (мөр ${xl[k].r})`;
-}))].join('; ')}` : '—'}`);
+P(`- Мөнгөний бүх мөрийн \`ho_dun_geree\`: ${fmt(before)} → **${fmt(after)}** (зөрүү ${bn(after - before)})`);
+P(`- Дашбоардын «Нийт төсөв» / S-муруйн хуваагч (\`bagts_tuvshin1\` ∉ 5·6·7, \`gdash.cfTotal\`): ${fmt(cfTotBefore)} → **${fmt(cfTotAfter)}** `
+  + `— Excel E6 = ${fmt(TOTAL_E6)} → ${cfTotOk ? '✅ ТААРСАН' : '❌ ЗӨРСӨН'}`);
+P(`- Excel-ийн мөнгөний мөр (үе шат 1·2·5, ${cands.length}): ${fmt(xlMoney)}; E6-ийн томьёонд хүрэх (${inE6.length}): **${fmt(e6Sum)}** `
+  + `→ ${e6Ok ? '✅' : '❌ ЗӨРСӨН (бичихийг хориглоно)'}; E6-д ОРООГҮЙ (${outE6.length}): ${fmt(sumOf(outE6, (t) => t.money.cost))} — `
+  + `${outE6.length ? [...new Set(outE6.map((t) => {
+    let k = t.i; while (parentIdx[k] > 0 && !eCovered.has(parentIdx[k])) k = parentIdx[k];
+    return `${s(xl[k].B.c)} ${s(xl[k].D.c)} (мөр ${xl[k].r})`;
+  }))].join('; ') : '—'} (мөр нь харагдана, нийлбэрт орохгүй — \`bagts_tuvshin1\` = 5, төлөвлөгөөний мод \`outside\`)`);
+P();
+P('## Төслийн S-муруй (сарын мөрөөс, «Нийт төсөв»-ийн хүрээ)');
+P();
+P('| Сар | Одоо ₮ тэрбум | Одоо % | Дараа ₮ тэрбум | Дараа % | Excel Σ E×хуримтлал ÷ E6 % |');
+P('|---|---:|---:|---:|---:|---:|');
+{
+  const xlPct = (ym) => {
+    const k = mKeys.indexOf(ym);
+    let top = 0;
+    for (const t of inE6) {
+      const cum = xl[t.i].cum.slice(0, k + 1).filter((v) => typeof v === 'number');
+      top += (t.money.cost ?? 0) * (cum.length ? Math.max(0, ...cum) : 0);
+    }
+    return (top / TOTAL_E6) * 100;
+  };
+  const at = (c, ym) => { let v = null; for (const [k, x] of c.out) if (k <= ym) v = x; return v; };
+  for (const ym of mKeys) {
+    const a = at(cBefore, ym); const b = at(cAfter, ym);
+    P(`| ${ym} | ${a == null ? '—' : (a / 1e9).toFixed(1)} | ${a == null ? '—' : ((a / cBefore.tot) * 100).toFixed(1)} | `
+      + `${b == null ? '—' : (b / 1e9).toFixed(1)} | ${b == null ? '—' : ((b / cAfter.tot) * 100).toFixed(2)} | ${xlPct(ym).toFixed(2)} |`);
+  }
+}
+P();
+P('«Дараа %» ба Excel-ийн багана ЯГ тэнцүү байх ёстой (буурсан хуримтлалыг тэгшилсэн мөр л ялгаатай байж болно). '
+  + 'Excel-ийн муруй 100%-д хүрдэггүй (Нийгмийн дэд бүтэц E6-д ороогүй; Багц-3.1 0.7%; хоосон сар).');
+P();
+P('## Сарын төлөвлөгөөний анхааруулга');
+P();
+P(`- Буурсан хуримтлал → сарын хувь 0 (${monthNotes.clamps.length}): ${monthNotes.clamps.join('; ') || '—'}`);
+P(`- 100%-д хүрдэггүй (${monthNotes.partial.length}): ${monthNotes.partial.join('; ') || '—'}`);
+P(`- «Сараар» хуудсанд бүх сар хоосон — сарын мөргүй (${monthNotes.none.length}): ${monthNotes.none.join('; ') || '—'}`);
+if (monthErrCells) P(`- «Сараар» хуудасны алдаатай нүд (хоосон гэж үзэв): ${monthErrCells}`);
 P();
 P('## Мод');
 P();
 P(`- E-ийн нийлбэр томьёогоор эцэг солигдсон (${treeFixes.length}): ${treeFixes.map(fixTxt).join('; ') || '—'}`);
-P(`- \`dd_kod\` давхардал: ${dupCodes} мөр${KOD === 'tree' ? ` · натурал эрэмбэ = Excel-ийн дараалал: ${sortOk ? '✅' : '❌'}` : ''}`);
+P(`- \`dd_kod\` давхардал: ${dupCodes} мөр${KOD === 'tree' ? ` · натурал эрэмбэ = Excel-ийн дараалал: ${sortOk ? '✅' : '❌'}` : ' — мод/дараалал objectid-оор (Excel-ийн дараалал), `projectPlan.orderPlanRows`'}`);
+P(`- \`tuvshin\` = томьёоны модны гүн, outlineLevel БИШ (outline ${olDiff}/${items.length} мөрөнд зөрдөг).`);
 P();
-P('## Шийдвэр шаардлагатай');
+P('## Шийдвэр / анхааруулга');
 P();
+P(`- **objectid солигдоно** — мөнгөний ${updates.length} мөр Excel-ийн байрлалдаа шинээр нэмэгдэж, хуучин талбаруудаа (захирамж, гэрээ, эх үүсвэр, ангилал, \`cashflow_id\`) авч явна. `
+  + '`created_*`/`last_edited_*` нь бичилтийн агшин болно (сервер өөрөө бичдэг).');
 if (structOld.length) {
   const lost = viewOnlyOld.slice(0, 8).map((r) => `${md(r.dd_kod)} «${md(r.ajil_uilchilgee).slice(0, 30)}»`).join(', ');
-  P(`0. **«ТЭЗҮ · Ажлын зураг төсөл» харагдацын засвар УСТНА.** Хуучин ${structOld.length} бүтцийн мөр устаж Excel-ээс дахин `
-    + `үүснэ — харагдацаар оруулсан огноо/явц Excel-ийн утгаар солигдож, Excel-д байхгүй ${viewOnlyOld.length} мөр `
-    + `(${lost || '—'}${viewOnlyOld.length > 8 ? ' …' : ''}) бүр мөсөн алга болно. Мөнгөний мөрийн \`geree_*\`/\`guitsetgel_huvi\` `
-    + 'мөн Excel-ээр дарагдана. Бичихэд `--drop-view-edits` шаардлагатай.');
+  P(`- **«ТЭЗҮ · Ажлын зураг төсөл» харагдацын засвар УСТНА** — хуучин ${structOld.length} бүтцийн мөр (Excel-д байхгүй ${viewOnlyOld.length}: ${lost || '—'}). Бичихэд \`--drop-view-edits\`.`);
 }
-P('1. **J/K ба L/M баганын утга.** J/K «Гүйцэтгэгч» → `guits_*`, L/M «ОСНАУГ/Газар чөлөөлөлт/Бодит» → `gazar_*` (`DATE_COLS`).');
-P(`2. **\`dd_kod\` давхардал.** Excel B-ийн ${dupCodes} мөр давхардсан кодтой («3» = Газар чөлөөлөлт ба Зөвшөөрөл, «5.2.1.1.1» багц бүрд г.м.)`
-  + ' — `etseg_kod`-оор мод/дарааллыг сэргээх боломжгүй (мөнгөний хуучин мөр бага objectid-тай тул objectid-оор эрэмбэлэх ч болохгүй). '
-  + 'Сонголт: (а) `--kod=tree` — модны өвөрмөц код (үе шат 1…8, «5.2.1.1.1» → «6.2.1.2.1» г.м.; Excel-ийн харагдах Д/Д өөр), '
-  + '(б) Excel B-г хадгалж, дараалал/түлхүүрийн шинэ талбар (жиш. Excel-ийн мөрийн дугаар) нэмэх.');
-P(`3. **\`tuvshin\` = томьёоны модны гүн**, outlineLevel БИШ (outline ${olDiff}/${items.length} мөрөнд модноос зөрдөг — жиш. мөр 36 «Багц 6» нь 35-ын хүүхэд).`);
-P(`4. **Нэр (\`ajil_uilchilgee\`) дарагдана** — ${renamed.length} мөнгөний мөрийн системийн дэлгэрэнгүй нэр Excel-ийн товч нэрээр солигдоно `
-  + '(«9-н Давхар бүхий 71 айлын орон сууц 12 блок…» → «Орон сууцны хороолол барилга угсралт» г.м.). Хадгалах бол `--keep-names`.');
-P(`5. **\`bagts\` хадгалав** — багцын түлхүүр (\`pkgKeyOf\`) өөрчлөгдөх ${keptBagts.length} мөрөнд системийн утга үлдэнэ (IPC/газрын зургийн холбоос эвдрэхгүй):`);
-for (const { r, t } of keptBagts) P(`   - oid ${r.objectid}: «${md(r.bagts)}» (Excel «${md(t.attrs.bagts)}»)`);
-P('6. **Блокийн мөрийн `bagts`** = эцэг багцын код («Багц-1»), `blok` = «5/1» (тодорхойлолтод «bagts (C)» — блокийн мөрд C нь «5/1»).');
-P('7. **Нийслэл төсөв (5.2.4, 176.06 тэрбум)** — Excel-ийн E718 = SUM(E719,E842,E858) тул E6-д ОРДОГГҮЙ; систем «E эцэг = хүүхдүүдийн нийлбэр» '
-  + 'гэж бодвол 5.2 ба нийт нь Excel-ээс 176.06 тэрбумаар их гарна. Мөн E532 «Талбайн бэлтгэл ажил» = E718/19 (томьёо, мөнгөний мөр биш).');
-P(`8. **Excel-ийн өртөг 0 мөр** (мөнгөний мөртэй тааралдсан) — систем дүн 0 болно: ${updates.filter((u) => !(u.a.ho_dun_geree > 0)).map((u) => `oid ${u.r.objectid} «${md(u.r.bagts)}» ${bn(u.r.ho_dun_geree)} → 0`).join('; ') || '—'}.`);
-P(`9. **\`guitsetgel_huvi\` дарагдана** — ТЭЗҮ/Зураг төслийн навч мөнгөний мөрд Excel S × 100: ${updates.filter((u) => u.a.guitsetgel_huvi !== undefined && u.a.guitsetgel_huvi !== u.r.guitsetgel_huvi).map((u) => `oid ${u.r.objectid} ${u.r.guitsetgel_huvi ?? 'null'}→${fmt(u.a.guitsetgel_huvi)}`).join(', ') || '—'}.`);
+P(`- **Нэр** — ${renamed.length} мөнгөний мөрийн нэр Excel-ийнхээр солигдоно${KEEP_NAMES ? ' (`--keep-names` — ХАДГАЛНА)' : ''}.`);
+P(`- **Явц** — мөнгөний мөрийн \`guitsetgel_huvi\` = Excel S × 100 (томьёоных ч): ${updates.filter((u) => !(u.a.guitsetgel_huvi == null && u.r.guitsetgel_huvi == null)
+  && !(u.a.guitsetgel_huvi != null && u.r.guitsetgel_huvi != null && Math.abs(u.a.guitsetgel_huvi - Number(u.r.guitsetgel_huvi)) < 1e-6))
+  .map((u) => `oid ${u.r.objectid} ${u.r.guitsetgel_huvi ?? '∅'}→${u.a.guitsetgel_huvi == null ? '∅' : fmt(u.a.guitsetgel_huvi)}`).join(', ') || '—'}.`);
+P(`- **\`bagts\`** — ${EXCEL_BAGTS ? '`--excel-bagts`: Excel-ийнх бичигдэнэ.' : `багцын түлхүүр өөрчлөгдөх ${keptBagts.length} мөрөнд СИСТЕМИЙН утга үлдэнэ (IPC/газрын зургийн холбоос; Excel-ийнхээр бол \`--excel-bagts\`):`}`);
+for (const { r, t } of keptBagts) P(`   - oid ${r.objectid}: «${md(r.bagts)}» (Excel «${md(t.attrs.bagts)}», мөр ${t.r})`);
+P(`- **Excel-ийн өртөг 0** (мөнгөний мөр) — систем дүн 0: ${updates.filter((u) => !(u.a.ho_dun_geree > 0)).map((u) => `oid ${u.r.objectid} «${md(u.r.bagts)}» ${bn(u.r.ho_dun_geree)} → 0`).join('; ') || '—'}.`);
+P('- **Огноо** — Excel H/I → `geree_*`, J/K → `guits_*`, L/M → `gazar_*` (тогтмол нүд; томьёотой нь null — систем үр удмаас бодно). '
+  + 'Хуучин `ehleh_ognoo`/`duusah_ognoo` (Excel-д багана байхгүй) ХУУЛАГДАНА.');
 P();
 P('## Тодорхойгүй / тааралдаагүй (хүн шийднэ)');
 P();
@@ -690,22 +936,23 @@ for (const x of ambiguous) {
     + x.opts.map((o) => `${xlRef(o.t)} «${md(o.t.attrs.bagts)}» ${md(o.t.attrs.ajil_uilchilgee).slice(0, 40)} ${bn(o.t.money.cost)} (${o.v.toFixed(2)})`).join(' / '));
 }
 P(`- Тааруулсан нэр/алиасаар (шалгана уу): ${[...match.entries()].filter(([, m]) => m.how !== 'код').map(([oid, m]) => `oid ${oid} → ${xlRef(m.t)} [${m.how}]`).join('; ') || '—'}`);
-P(`- Excel-ийн өртөг 0/хоосон, системд тааралдаагүй (мөнгөний мөр болохгүй, бүтцийн мөр): ${zeroUnmatched.map((t) => `${xlRef(t)} «${md(t.attrs.bagts)}» ${md(t.attrs.ajil_uilchilgee).slice(0, 40)}`).join('; ') || '—'}`);
+P(`- Excel-ийн өртөг 0/хоосон, системд тааралдаагүй (бүтцийн мөр болно): ${zeroUnmatched.map((t) => `${xlRef(t)} «${md(t.attrs.bagts)}» ${md(t.attrs.ajil_uilchilgee).slice(0, 40)}`).join('; ') || '—'}`);
 if (warns.length) { P('- Анхааруулга:'); for (const w of warns) P(`  - ${md(w)}`); }
 P();
 P('## Мөнгөний мөрийн тааралт (бүгд)');
 P();
-P('| oid | Систем: bagts · нэр | Систем ho_dun_geree | → Excel | Excel: bagts · нэр | Excel өртөг | Өөрчлөлт | Арга |');
-P('|---:|---|---:|---|---|---:|---:|---|');
+P('| oid | cashflow_id | Систем: bagts · нэр | Систем ho_dun_geree | → Excel | Excel: bagts · нэр | Excel өртөг | Өөрчлөлт | Сарын мөр (одоо → дараа) | Арга |');
+P('|---:|---:|---|---:|---|---|---:|---:|---:|---|');
 for (const r of money) {
   const u = updates.find((x) => x.r.objectid === r.objectid);
   const amb = ambiguous.find((x) => x.r.objectid === r.objectid);
+  const nOld = monthsBy.get(r.cashflow_id)?.n ?? 0;
   if (u) {
     const d = (u.a.ho_dun_geree ?? 0) - (r.ho_dun_geree ?? 0);
-    P(`| ${r.objectid} | ${md(r.bagts)} · ${md(r.ajil_uilchilgee).slice(0, 50)} | ${fmt(r.ho_dun_geree)} | ${xlRef(u.t)} | ${md(u.t.attrs.bagts)} · ${md(u.t.attrs.ajil_uilchilgee).slice(0, 45)} | ${fmt(u.a.ho_dun_geree)}${u.t.money.src === 'formula' ? ' ƒ' : ''} | ${Math.abs(d) < 0.01 ? '=' : fmt(d)} | ${u.m.how} |`);
+    const nNew = monthAdds.filter((m) => m.cashflow_id === r.cashflow_id).length;
+    P(`| ${r.objectid} | ${r.cashflow_id} | ${md(r.bagts)} · ${md(r.ajil_uilchilgee).slice(0, 50)} | ${fmt(r.ho_dun_geree)} | ${xlRef(u.t)} | ${md(u.t.attrs.bagts)} · ${md(u.t.attrs.ajil_uilchilgee).slice(0, 45)} | ${fmt(u.a.ho_dun_geree)}${u.t.money.src === 'formula' ? ' ƒ' : ''} | ${Math.abs(d) < 0.01 ? '=' : fmt(d)} | ${nOld} → ${nNew} | ${u.m.how} |`);
   } else {
-    const x = monthsBy.get(r.cashflow_id);
-    P(`| ${r.objectid} | ${md(r.bagts)} · ${md(r.ajil_uilchilgee).slice(0, 50)} | ${fmt(r.ho_dun_geree)} | ${amb ? '**ТОДОРХОЙГҮЙ**' : '**УСТГАХ**'} | — | — | ${amb ? '' : fmt(-(r.ho_dun_geree ?? 0))} | ${amb ? amb.why : `сарын ${x?.n ?? 0} мөр`} |`);
+    P(`| ${r.objectid} | ${r.cashflow_id} | ${md(r.bagts)} · ${md(r.ajil_uilchilgee).slice(0, 50)} | ${fmt(r.ho_dun_geree)} | ${amb ? '**ТОДОРХОЙГҮЙ**' : '**УСТГАХ**'} | — | — | ${amb ? '' : fmt(-(r.ho_dun_geree ?? 0))} | ${nOld} → ${amb ? nOld : 0} | ${amb ? amb.why : ''} |`);
   }
 }
 P();
@@ -716,12 +963,11 @@ P();
 if (!adds.length) P('- байхгүй');
 for (const x of adds) {
   P(`- ${xlRef(x.t)} «${md(x.t.attrs.bagts)}» ${md(x.t.attrs.ajil_uilchilgee)} — ${fmt(x.a.ho_dun_geree)} · cashflow_id ${x.a.cashflow_id}`
-    + ` · ангилал oid ${x.sib?.r.objectid ?? '—'}-оос (${md(x.a.ajil_tuvshin1)} / ${md(x.a.ajil_tuvshin2)})`);
+    + ` · сарын мөр ${monthAdds.filter((m) => m.cashflow_id === x.a.cashflow_id).length}`
+    + ` · ангилал oid ${x.sib?.r.objectid ?? '—'}-оос (${md(x.a.bagts_tuvshin1)} ${md(x.a.ajil_tuvshin1)} / ${md(x.a.ajil_tuvshin2)})`);
 }
 P();
-P('## Устгах мөнгөний мөр');
-P();
-P(`Бичихэд: \`--confirm-deletes=${delToken}\` (мөнгөний ${delMoneyOids.length} + сарын ${delMonthOids.length} + хуучин бүтцийн ${delStructOids.length} OID-ийн тоо:sha256)`);
+P('## Устгах (Excel-д байхгүй) мөнгөний мөр');
 P();
 P('| oid | cashflow_id | ajil_tuvshin1 | bagts · нэр | ho_dun_geree | Сарын мөр | Сарын дүн |');
 P('|---:|---:|---|---|---:|---:|---:|');
@@ -730,63 +976,84 @@ for (const r of deletes) {
   P(`| ${r.objectid} | ${r.cashflow_id} | ${md(r.ajil_tuvshin1)} | ${md(r.bagts)} · ${md(r.ajil_uilchilgee).slice(0, 60)} | ${fmt(r.ho_dun_geree)} | ${x?.n ?? 0} | ${fmt(x?.sum ?? 0)} |`);
 }
 P();
+P(`Бичихэд: \`--confirm-deletes=${delToken}\` (хуучин БҮХ ${delAll.length} OID-ийн тоо:sha256 — мөнгөний ${money.length} + сарын ${months.length} + бүтцийн ${structOld.length})`);
+P();
 P('## Бүтцийн мөр — үе шатаар');
 P();
 {
   const c = new Map();
   for (const x of structure) c.set(x.t.phName, (c.get(x.t.phName) ?? 0) + 1);
   for (const [k, v] of c) P(`- ${md(k)}: ${v}`);
-  P(`- блок мөр: ${structure.filter((x) => x.t.block).length} · \`guitsetgel_huvi\` (S) бичих: ${structure.filter((x) => x.a.guitsetgel_huvi !== undefined).length}`);
+  P(`- блок мөр: ${structure.filter((x) => x.t.block).length} · \`guitsetgel_huvi\` (S) бичих: ${structure.filter((x) => x.a.guitsetgel_huvi != null).length}`);
 }
-const report = L.join('\n');
+P();
+P(`## Хүснэгт ↔ Excel тулгалт (${VERIFY ? 'одоогийн хүснэгт' : 'ОДООГИЙН хүснэгт — импортоос өмнө'})`);
+P();
+if (!VERIFY) {
+  P(`- **Бичсний дараах хүлээгдэх байдал** (төлөвлөсөн ${excelAdds.length + monthAdds.length} мөрийг тулгав): зөрүү **${sim.diffs.length}**`
+    + `${sim.known.length ? ` · санаатай ${sim.known.length}` : ''} · тохирсон сарын мөр ${sim.monthOk} · «Нийт төсөв» ${fmt(sim.tot)}`);
+  for (const d of sim.diffs.slice(0, 50)) P(`  - ${d}`);
+  for (const d of sim.known) P(`  - (санаатай) ${d}`);
+  P('- Одоогийн хүснэгт (импортоос өмнө):');
+}
+P(`- Зөрүү: **${now.diffs.length}**${now.known.length ? ` · санаатай (bagts хадгалсан): ${now.known.length}` : ''} · тохирсон сарын мөр: ${now.monthOk}`);
+for (const d of now.diffs.slice(0, VERIFY ? 500 : 30)) P(`  - ${d}`);
+if (now.diffs.length > (VERIFY ? 500 : 30)) P(`  - … (${now.diffs.length - (VERIFY ? 500 : 30)} илүү)`);
+for (const d of now.known) P(`  - (санаатай) ${d}`);
+
 const out = opt('out');
-if (out && out !== true) writeFileSync(out, report, 'utf8');
+const flush = () => { if (out && out !== true) writeFileSync(out, L.join('\n'), 'utf8'); };
+flush();
 const planFile = opt('plan');
 if (planFile && planFile !== true) {
   writeFileSync(planFile, JSON.stringify({
-    updates: updates.map((u) => u.a), adds: adds.map((x) => x.a), structure: structure.map((x) => x.a),
-    monthDun: monthDun.map(({ objectid, cashflow_dun }) => ({ objectid, cashflow_dun })),
-    deleteMoney: delMoneyOids, deleteMonths: delMonthOids, deleteStructureOld: delStructOids, confirmDeletes: delToken,
+    excelRows: excelAdds, monthRows: monthAdds, deleteAll: delAll, confirmDeletes: delToken,
   }, null, 1), 'utf8');
 }
-console.log(`шинэчлэх ${updates.length} · шинэ ${adds.length} · устгах ${deletes.length} (+сарын ${delMonths.n}) · тодорхойгүй ${ambiguous.length}`
-  + ` · бүтэц ${structure.length} · өмнө ${bn(before)} → дараа ${bn(after)} · E6 ${e6Ok ? 'OK' : 'ЗӨРСӨН'}`
-  + ` · dd_kod давхардал ${dupCodes}${KOD === 'tree' ? ` · эрэмбэ ${sortOk ? 'OK' : 'ЗӨРСӨН'}` : ''}`);
+if (VERIFY) {
+  console.log(`ШАЛГАЛТ: ${sys.length} мөр · зөрүү ${now.diffs.length}${now.known.length ? ` (+ санаатай ${now.known.length})` : ''} · тохирсон сарын мөр ${now.monthOk} · «Нийт төсөв» ${fmt(now.tot)}`);
+  for (const d of now.diffs.slice(0, 40)) console.log(`  ${d}`);
+  if (out && out !== true) console.log(`тайлан: ${out}`);
+  await quit(now.diffs.length ? 2 : 0);
+}
+console.log(`мөнгөний: шинэчлэх ${updates.length} · шинэ ${adds.length} · устгах ${deletes.length} · тодорхойгүй ${ambiguous.length}`
+  + ` | сарын: ${months.length} → ${monthAdds.length} (ижил ${monthDiff.same} · өөрчлөгдөх ${monthDiff.changed} · шинэ ${monthDiff.added} · устах ${monthDiff.removed})`
+  + ` | бүтэц ${structOld.length} → ${structure.length} | «Нийт төсөв» ${bn(cfTotBefore)} → ${bn(cfTotAfter)} (E6 ${cfTotOk && e6Ok ? 'OK' : 'ЗӨРСӨН'})`
+  + ` | dd_kod давхардал ${dupCodes}${KOD === 'tree' ? ` · эрэмбэ ${sortOk ? 'OK' : 'ЗӨРСӨН'}` : ''}`);
 for (const x of treeFixes) console.log(`мод (E томьёо): ${fixTxt(x)}`);
+console.log(`бичсний дараах хүлээгдэх тулгалт: зөрүү ${sim.diffs.length}${sim.known.length ? ` (+ санаатай ${sim.known.length})` : ''} · сарын мөр ${sim.monthOk}/${monthAdds.length}`);
 console.log(`устгах OID: --confirm-deletes=${delToken}`);
 if (out && out !== true) console.log(`тайлан: ${out}`);
 
-/* ═══════════ 6. Бичих (зөвхөн --write) ═══════════ */
+/* ═══════════ 7. Бичих (зөвхөн --write) ═══════════ */
 if (!WRITE) await quit(0);
 if (opt('i-know-this-is-production') !== true) { console.error('⛔ Production хүснэгт — --i-know-this-is-production'); process.exit(1); }
 if (ambiguous.length) { console.error(`⛔ ${ambiguous.length} тодорхойгүй тааралт — эхлээд шийд (бичихгүй).`); process.exit(1); }
 /* ⚠️ 2026-10-26: E6 зөрвөл (Excel өөрчлөгдсөн / мөнгөний мөрийн сонголт буруу) БИЧИХГҮЙ */
-if (!e6Ok) { console.error(`⛔ E6 зөрсөн: ${fmt(e6Sum)} ≠ ${fmt(TOTAL_E6)} — бичихгүй.`); process.exit(1); }
+if (!e6Ok || !cfTotOk) { console.error(`⛔ E6 зөрсөн: Excel ${fmt(e6Sum)} · дашбоард ${fmt(cfTotAfter)} ≠ ${fmt(TOTAL_E6)} — бичихгүй.`); process.exit(1); }
 if (KOD === 'tree' && (dupCodes || !sortOk)) { console.error(`⛔ dd_kod: давхардал ${dupCodes}${sortOk ? '' : ' · натурал эрэмбэ Excel-ийн дараалалтай зөрсөн'} — бичихгүй.`); process.exit(1); }
 if (structOld.length && opt('drop-view-edits') !== true) {
-  console.error(`⛔ --drop-view-edits — хуучин ${structOld.length} бүтцийн мөр (Excel-д байхгүй ${viewOnlyOld.length}) устаж, «ТЭЗҮ · Ажлын зураг төсөл»-ийн засвар алга болно (тайлангийн «Шийдвэр» 0)`);
+  console.error(`⛔ --drop-view-edits — хуучин ${structOld.length} бүтцийн мөр (Excel-д байхгүй ${viewOnlyOld.length}) устаж, «ТЭЗҮ · Ажлын зураг төсөл»-ийн засвар алга болно (тайлангийн «Шийдвэр»)`);
   process.exit(1);
 }
 if (opt('confirm-deletes') !== delToken) {
-  console.error(`⛔ --confirm-deletes=${delToken} (мөнгөний ${delMoneyOids.length} + сарын ${delMonthOids.length} + хуучин бүтцийн ${delStructOids.length} OID-ийн тоо:хэш — dry-run-ий тайлантай тулга)`);
+  console.error(`⛔ --confirm-deletes=${delToken} (хуучин бүх ${delAll.length} OID-ийн тоо:хэш — dry-run-ий тайлантай тулга)`);
   process.exit(1);
 }
-/* Нөөц-сэтгүүл — бичихээс ӨМНӨ бүх мөр; багц бүрийн дараа нэмэгдсэн OID (⚠️ 2026-10-26: репод БИШ, os.tmpdir()) */
 const backupOpt = opt('backup');
-const backup = resolve(backupOpt && backupOpt !== true ? backupOpt : join(tmpdir(), `cashflow-backup-${Date.now()}.json`));
+if (!backupOpt || backupOpt === true) { console.error('⛔ --backup=<нөөц.json> (репогийн гадна, жиш. scratchpad) — бичихээс өмнөх бүх мөрийн нөөц'); process.exit(1); }
+/* Нөөц-сэтгүүл — бичихээс ӨМНӨ бүх мөр; багц бүрийн дараа нэмэгдсэн OID */
+const backup = resolve(backupOpt);
 const journal = { kind: 'cashflow-import-backup', target: TARGET, at: new Date().toISOString(), rows: sys, added: [], step: null };
 const saveJournal = () => writeFileSync(backup, JSON.stringify(journal), 'utf8');
 saveJournal();
-console.log(`нөөц: ${backup}`);
+console.log(`нөөц: ${backup} (${sys.length} мөр)`);
 const onAdds = (_part, res) => { journal.added.push(...res.map((x) => x.objectId)); saveJournal(); };
+/* ⚠️ Дараалал: НЭМЭХ эхлээд (унавал хуучин бүтэн), УСТГАХ сүүлд. Excel мөрүүд НЭГ дарааллаар — objectid өснө. */
 const steps = [
-  ['мөнгөний мөр шинэчлэх', 'updates', updates.map((u) => u.a)],
-  ['сарын мөрийн дүн дахин бодох', 'updates', monthDun.map(({ objectid, cashflow_dun }) => ({ objectid, cashflow_dun }))],
-  ['мөнгөний мөр нэмэх', 'adds', adds.map((x) => x.a)],
-  ['хуучин бүтцийн мөр устгах', 'deletes', delStructOids],
-  ['бүтцийн мөр нэмэх', 'adds', structure.map((x) => x.a)],
-  ['сарын мөр устгах', 'deletes', delMonthOids],
-  ['мөнгөний мөр устгах', 'deletes', delMoneyOids],
+  ['Excel-ийн мөр нэмэх (Excel-ийн дарааллаар)', 'adds', excelAdds],
+  ['сарын мөр нэмэх', 'adds', monthAdds],
+  ['хуучин бүх мөр устгах', 'deletes', delAll],
 ];
 try {
   for (const [name, kind, list] of steps) {
@@ -803,4 +1070,18 @@ try {
   console.error('   Сэргээх: дээрх тушаалд --write --i-know-this-is-production нэм.');
   process.exit(1);
 }
-console.log('✅ дууслаа');
+/* Бичсний ДАРАА — хүснэгтийг дахин уншиж Excel-тэй мөр мөрөөр тулгана */
+const fresh = await readAll();
+const v = verifyTable(fresh);
+console.log(`✅ бичигдлээ · ДАХИН УНШСАН ${fresh.length} мөр: зөрүү ${v.diffs.length}${v.known.length ? ` (+ санаатай ${v.known.length})` : ''} · тохирсон сарын мөр ${v.monthOk} · «Нийт төсөв» ${fmt(v.tot)}`);
+for (const d of v.diffs.slice(0, 100)) console.log(`  ${d}`);
+for (const d of v.known) console.log(`  (санаатай) ${d}`);
+if (out && out !== true) {
+  P();
+  P(`## Бичсний дараах тулгалт (${fresh.length} мөр)`);
+  P();
+  P(`- Зөрүү: **${v.diffs.length}** · санаатай ${v.known.length} · тохирсон сарын мөр ${v.monthOk}`);
+  for (const d of v.diffs) P(`  - ${d}`);
+  flush();
+}
+await quit(v.diffs.length ? 2 : 0);
