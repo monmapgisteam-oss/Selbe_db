@@ -164,3 +164,19 @@
 
 /* KPI хүснэгтийн утгын хажуугийн тодотгол (төсвийн %, үлдсэн талбар…) */
 .kpiSub { font-weight: 400; color: var(--ink-3); }
+
+/* ⚠️ 2026-10-28: өөрчлөлтийн хугацааны сонголт ба ▲/▼ (`execPeriodCalc`) */
+.period { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
+.periodLabel { color: var(--ink-3); }
+.periodOn { background: var(--data); color: #fff; border-color: var(--data); }
+.periodOn:hover:not(:disabled) { background: var(--data); color: #fff; }
+.periodInput {
+  height: 30px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.periodRange { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.periodNote { margin: 4px 0 10px; font-size: 12px; color: var(--ink-3); }
+.trend { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tone_good { color: var(--good-ink, var(--good)); }
+.tone_bad { color: var(--bad-ink, var(--bad)); }
+.tone_mute { color: var(--ink-3); }

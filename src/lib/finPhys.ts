@@ -64,7 +64,7 @@ export type PhysHistory = Map<string, { date: string; pct: number | null }[]>;
 
 /**
  * @param hist  `loadBlockHistory()`-ийн үр дүн
- * @param axis  сарын тэнхлэг («YYYY-MM»), `cfMonthAxis()`
+ * @param axis  сарын тэнхлэг («YYYY-MM»), эсвэл `grain='day'` үед хэмжилтийн өдрүүд
  * @param nowYm ОРОН НУТГИЙН одоогийн сар — түүнээс хойш цэг гарахгүй
  * @param universe багц → блокийн түлхүүрүүд (`blockProgress.loadBlockUniverse`). Өгөөгүй
  *   бол хуваарь нь зөвхөн утгатай блокууд (тест/нөөц) — тайлагнаагүй багц мэдэгдэхгүй.
@@ -74,7 +74,10 @@ export function buildPhys(
   axis: readonly string[],
   nowYm: string,
   universe?: ReadonlyMap<string, readonly string[]>,
+  grain: 'month' | 'day' = 'month',
 ): PhysBuild {
+  /* ⚠️ 2026-10-28: хугацааны өөрчлөлтөд өдрийн түүхийг хадгална; сарын тооцооны дүрэм хэвээр. */
+  const keyLength = grain === 'day' ? 10 : 7;
   /* багц → блок → [огноо, %] */
   const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
   /* ⚠️ 2026-10-01: багц → хуваарийн блокууд (`blockKey`) — `history`-тэй ИЖИЛ нормчлол */
@@ -143,25 +146,27 @@ export function buildPhys(
     const cntMon = new Map<string, number>();
     const atMon = new Map<string, string>();
     for (const label of axis) {
-      if (label > nowYm) continue; // ирээдүйн сард биет дата байхгүй
+      if (label.slice(0, 7) > nowYm) continue; // ирээдүйн сард биет дата байхгүй
       let sum = 0;
       let fresh = false; // тухайн сард ШИНЭ бичилт бий эсэх (дүрэм 2)
-      let nVal = 0; // тэр агшинд УТГАТАЙ блокийн тоо (`progressSeries`-ийн `blocks`)
+      let reported = false; // known value on/before this point, even if subsequently cleared
       let at = '';
       for (const arr of members) {
         /* тухайн сарын эцэс хүртэлх хамгийн сүүлийн бичилт — `null` ч байж болно (⚠️ 2026-10-12) */
         let best: { d: string; g: number | null } | null = null;
         for (const e of arr) {
-          if (e.d.slice(0, 7) > label) break;
+          if (e.d.slice(0, keyLength) > label) break;
           best = e;
+          if (e.g != null) reported = true;
         }
         if (!best) continue; // хараахан тайлагнаагүй — 0% (дүрэм 1)
-        if (best.g != null) { sum += best.g; nVal += 1; }
-        if (best.d.slice(0, 7) === label) fresh = true;
+        if (best.g != null) sum += best.g;
+        if (best.d.slice(0, keyLength) === label) fresh = true;
         if (best.d > at) at = best.d;
       }
-      /* ⚠️ 2026-10-12: бүх блок нь `null` агшин — `progressSeries`-ийн `measured` (blocks > 0)-тэй адил цэггүй */
-      if (!fresh || !nVal) continue;
+      // Explicit clearing after a known value must stop carry-forward of the old
+      // percentage. Null-only history before the first measurement stays absent.
+      if (!fresh || !reported) continue;
       byMon.set(label, sum / n);
       cntMon.set(label, n);
       atMon.set(label, at);

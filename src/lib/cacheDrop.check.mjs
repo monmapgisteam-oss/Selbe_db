@@ -10,7 +10,7 @@
  *   1. «Дэд бүтэц»-ийн засвар (`dropTotalsCache` эрин) `planOverlap.infraCache` · `hesegNeed.needCache`-ийг хаядаггүй
  *      байв — `pkgSaad` · `parcelOverlap` · `layerSummary`-тэй ижил `subscribeTotals` шаардана.
  *   2. `analysis/data.ts`-ийн `loadAnalysisCached` автобусад бүртгэлгүй — толгойн «Шинэчлэх» хүрдэггүй байв.
- *   3. `scorecardLoad.loadScorePlan` TTL-гүй; `Dashboard.loadSources` TTL-гүй · таггүй байв.
+ *   3. `Dashboard.loadSources` TTL-гүй · таггүй байв (`scorecardLoad.loadScorePlan` 2026-10-27-нд устсан).
  *   4. `hyanaltStore.badgeRows` автобусад бүртгэлгүй — хяналтын шийдвэрийн дараа цэсний тэмдэг 3 мин хуучин.
  *   5. (2026-10-23: QAQC хасагдсан — `QAQC` түлхүүр ба ачаалагчид устсаныг л шалгана.)
  *   6. ХАБЭА-ийн poll TTL-тэй яг тэнцүү — эхний tick бүр кэшээс буцдаг байв (`HABEA_POLL_MS` > `HABEA_TTL_MS`).
@@ -41,15 +41,12 @@ console.log('✅ 2. analysis/data.ts — register(…, [])');
 
 /* ── 3. TTL ── */
 {
-  const sl = code('src/lib/ceo/scorecardLoad.ts');
-  const m = /loadScorePlan = cached\([\s\S]*?\n\}, ([^\n]*)\);/.exec(sl);
-  assert.ok(m, 'loadScorePlan = cached(…) олдсонгүй');
-  assert.equal(m[1], "SESSION_TTL_MS, ['BUILDING']", 'loadScorePlan: SESSION_TTL_MS + [BUILDING]');
+  assert.ok(!code('src/lib/ceo/scorecardLoad.ts').includes('loadScorePlan'), 'loadScorePlan буцаж ирэхгүй (2026-10-27 хасагдсан)');
   const d = code('src/modules/Dashboard.tsx');
   const ls = /const loadSources = cached<Row\[\]>\(([\s\S]*?)\n\);/.exec(d);
   assert.ok(ls, 'Dashboard.loadSources олдсонгүй');
   assert.match(ls[1], /SESSION_TTL_MS,\s*\['SOURCE_FS'\],?\s*$/, 'Dashboard.loadSources: SESSION_TTL_MS + SOURCE_FS таг');
-  console.log('✅ 3. loadScorePlan · Dashboard.loadSources — 5 мин TTL');
+  console.log('✅ 3. Dashboard.loadSources — 5 мин TTL');
 }
 
 /* ── 4. Цэсний тэмдгийн кэш ── */

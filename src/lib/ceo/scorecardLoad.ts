@@ -15,11 +15,11 @@
  *    ирэх тусам нүд бөглөгдөнө. Нэг нь унавал бусад бүлэг хэвээр.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { cached, SESSION_TTL_MS } from '@/lib/live';
+import { cached } from '@/lib/live';
 import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
-import { bagtsKey, pkgKeyOf, BUILDING } from '@/lib/services';
+import { bagtsKey, pkgKeyOf } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
@@ -30,8 +30,8 @@ import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
-  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, totalOf, blockZoneScores,
-  type Dim, type DimScore, type WorkScore, type PlanInput, type Inspection,
+  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
+  type Dim, type DimScore, type WorkScore, type Inspection,
 } from './scorecard';
 
 /* ══════════════ Суурь ══════════════ */
@@ -285,70 +285,13 @@ export const loadScoreLand = cached(async (): Promise<LandExtra> => {
 
 /* ⚠️ 2026-10-23: «Чанар» (QAQC) хэмжүүрийн ачаалагч (`loadScoreQual`) ХАСАГДСАН. */
 
-/**
- * Ерөнхий төлөвлөгөө — блок бүрийн байрлах бүсийн тохиромжтой байдлын оноо.
- * ⚠️ `@/lib/analysis/*` ба ArcGIS SDK-г ДИНАМИКААР — нүүрийн chunk хөнгөн үлдэнэ
- *    (`suitability.ts`-ийн ижил дүрэм).
- */
-export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> => {
-  const [{ loadAnalysisCached, computeRaw, defaultGreenCats }, cfg, sc, { default: Query }, query] = await Promise.all([
-    import('@/lib/analysis/data'),
-    import('@/lib/analysis/config'),
-    import('@/lib/analysis/score'),
-    import('@arcgis/core/rest/support/Query'),
-    import('@arcgis/core/rest/query'),
-  ]);
-  const data = await loadAnalysisCached();
-  /* ⚠️ 2026-09-25: «Тохиромжтой байдал» хуудасны АНХДАГЧ оноололтой ижил —
-     идэвхжүүлж болох хасагдсан ангиллууд (`ACTIVATABLE_ZONE_TYPES`: нийгмийн
-     дэд бүтцийн бүс, газар чөлөөлөлт дутуу) оноололд ОРНО (`Suitability.tsx`
-     `scoreOn`-ийн анхны утга). Урьд нь `scoreTypes`-гүй дуудаж тэдгээрийг
-     хасдаг тул хуудас ба оноо өөр бүсийн олонлогоос бодогдож байв. */
-  computeRaw(data.zones, defaultGreenCats(), cfg.PARKING, new Set(cfg.ACTIVATABLE_ZONE_TYPES));
-  const judged = cfg.INDICATORS.filter((ind) => !ind.ref && ind.weight > 0 && ind.id !== 'engineering');
-
-  const zones = data.zones
-    .filter((z) => (!z.excluded || cfg.ACTIVATABLE_ZONE_TYPES.has(z.type)) && z.geometry)
-    .map((z) => ({
-      id: z.id,
-      rings: (z.geometry?.rings ?? []) as number[][][],
-      score: sc.urbanScore(z.raw, [...cfg.INDICATORS], z.type).score,
-      /* ⚠️ `suitability.ts`-ийн ижил дүрэм: бүсийн төрлөөр норм, `rawActual`-аар; утгагүй нь зөрчил биш */
-      failing: judged.some((ind) => sc.passesNorm(z.rawActual?.[ind.id], sc.normFor(ind, z.type)) === false),
-    }));
-
-  /* Блокийн геометр — бүсийн координатын системээр (WKID) */
-  const blocks: { key: string; rings: number[][][] }[] = [];
-  for (let start = 0; ; ) {
-    /* ⚠️ 2026-10-20: `TD/112` AGOL түлхүүр → Enterprise (`analysis/data.ts` fetchAll-ийн ⚠️ — JS API шууд дуудлага) */
-    const res = await query.executeQueryJSON(BUILDING.url, new Query({
-      where: '1=1',
-      outFields: [BUILDING.fields.bagts],
-      returnGeometry: true,
-      outSpatialReference: { wkid: cfg.WKID },
-      orderByFields: [`${BUILDING.oid} ASC`],
-      start,
-      num: 1000,
-    }));
-    for (const f of res.features) {
-      const g = f.geometry as { rings?: number[][][] } | null;
-      if (g?.rings) blocks.push({ key: bagtsKey(f.attributes?.[BUILDING.fields.bagts]), rings: g.rings });
-    }
-    if (!res.exceededTransferLimit || res.features.length === 0) break;
-    start += res.features.length;
-  }
-  return blockZoneScores(zones, blocks);
-  /* ⚠️ 2026-10-21 (кэшийн аудит): TTL-гүй (сешн) байсныг `SESSION_TTL_MS` (5 мин) болгов — `BUILDING`-ийг порталаас
-     хэн ч хүчингүй болгодоггүй тул ArcGIS Pro-гийн барилга/бүсийн засвар хуудас дахин ачаалтал харагддаггүй байв;
-     одоо бусад сешний кэштэй ЖИГД (`live.ts`-ийн 2026-10-05-ны ⚠️). `loadAnalysisCached` нь толгойн «Шинэчлэх»-ээр
-     хаягдана (`analysis/data.ts`). */
-}, SESSION_TTL_MS, ['BUILDING']);
+/* ⚠️ 2026-10-27 (хэрэглэгч: «KPI — Ерөнхий төлөвлөгөө хас»): «Ерөнхий төлөвлөгөө» бүлгийн ачаалагч (`loadScorePlan` —
+   тохиромжтой байдлын бүс × блокийн геометр) ХАСАГДСАН (git түүхэнд). */
 
 /* ══════════════ Нэгтгэл ══════════════ */
 
 export type Extras = {
   land: LandExtra | null;
-  plan: Map<string, PlanInput> | null;
 };
 
 /**
@@ -371,9 +314,6 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
         overlap: ov == null ? 0 : ov < 0 ? null : ov,
         overlapFailed: ov != null && ov < 0,
       }),
-      /* ⚠️ 2026-09-21: газрын мөрд ерөнхий төлөвлөгөө/чанарын оноо АВАХГҮЙ (багц ажил биш) */
-      /* ⚠️ 2026-10-06: plan — ЗӨВХӨН багцын төлөөлөгч мөрд (`BaseWork.pkgRep`) */
-      plan: w.cancelled || w.isLandWork || !x.plan || !w.key || !w.pkgRep ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
       permit: w.permit,
       hse: w.hse,
     };

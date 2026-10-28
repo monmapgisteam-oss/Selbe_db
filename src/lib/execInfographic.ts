@@ -1,34 +1,8 @@
-/**
- * УДИРДЛАГЫН ИНФОГРАФИК — нэг хуудас (A4 босоо, 1240×1754 px @150dpi).
- * Шийдвэр гаргагч нэг зураг харснаар төслийн байдлыг ойлгоно; мессенжер,
- * илтгэл, мэйлд шууд хавсаргана.
- *
- * ⚠️ Өгөгдөл нь ЗӨВХӨН `ExecReport` — дэлгэц, PDF, AI дүгнэлттэй ижил эх.
- *    Энд тоо бодохгүй, зөвхөн ЗУРНА.
- *
- * ⚠️ ЗУРААС ХОЁР ГАРЦТАЙ, НЭГ ЭХТЭЙ (2026-09-17, хоёр дахь хувилбар):
- *    зурах үйлдлүүд (`Op[]`) нэг удаа угсрагдаад
- *      · `toSvg()`   — дэлгэцийн урьдчилсан харагдац (`<img src=data:svg>`)
- *      · `toPng()`   — Canvas 2D-ээр ШУУД зурж PNG (PDF-ийн 1-р хуудас ба
- *                      PNG татах)
- *    Урьд нь PNG-г SVG→`<img>`→canvas замаар авдаг байсан бөгөөд хэрэглэгч
- *    PDF-д зураг ГАРААГҮЙ гэж мэдэгдэв: `<img>`-д ачаалсан SVG-г зарим хөтөч
- *    (фонт ачаалалт дуусаагүй, data: URL-ийн хэмжээ) ХООСОН цагаанаар зурдаг.
- *    Canvas 2D нь ийм завсрын алхамгүй — текст, тэгш өнцөгт, зураас бүр шууд
- *    пиксел болно.
- *
- * ⚠️ Текстийг canvas ч, SVG ч өөрөө таслахгүй тул `wrap()`-аар ГАРААР мөр
- *    таслана. Тэмдэгтийн өргөнийг ойролцоогоор тооцно — кирилл латинаас
- *    бага зэрэг өргөн тул хязгаарыг зориуд бага барина.
- *
- * ⚠️ Өнгө ХАТУУ бичигдсэн: экспортлогдсон зураг нь аппын харанхуй/цайвар
- *    горимоос үл хамааран ЦАГААН цаасан дээр уншигдах ёстой. Утгууд нь
- *    `globals.css`-ийн цайвар палитраас.
- * ⚠️ 2026-10-09: hex-ийг ЭНД бичихгүй — `PRINT_COLORS` (format.ts) ГАНЦ эх.
- *    Урьдах хуулбар хуучирсан байв (warn #ca8a04 — вэбийн --warn #9a5d07,
- *    тайлбарт good #16a34a — вэбийн --good #147c3b).
+﻿/**
+ * PNG infographic: shared drawing operations for SVG and Canvas.
+ * Values come from ExecReport / ExecDeltas; this module only lays them out.
+ * A4 is the minimum height. Longer reports grow instead of clipping findings.
  */
-
 import { LATE_GAP, householdsLabel, type ExecReport } from '@/lib/execReport';
 import { progressSub } from '@/lib/gdash';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
@@ -36,34 +10,15 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, PRINT_COLORS } from '@/lib/format';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { TOLOV } from '@/lib/zovshoorol';
+import { deltaText, packTrendOf, givenTrendOf, bandOf, type ExecDeltas, type Trend } from '@/lib/execPeriodCalc';
 
 export const INFO_W = 1240;
 export const INFO_H = 1754;
-
-/**
- * ⚠️ 2026-10-09 (аудит №2): ТАСАЛСАН ЖАГСААЛТЫН ТЭМДЭГЛЭЛ — «эхний N (+M бусад)»; бүгд багтсан бол ''.
- * Багц (10) · шалтгаан (5) · зөвшөөрлийн асуудал (7) тайлбаргүй тасардаг байсан тул «бүгд энэ» гэж
- * уншигддаг байв. Хуудасны өндөр тогтмол (`INFO_H`) тул шинэ мөр биш, гарчигт залгана.
- */
-const firstOf = (shown: number, total: number): string =>
-  total > shown ? tr('эхний {0} (+{1} бусад)', num(shown), num(total - shown)) : '';
-
-const INK = PRINT_COLORS.ink;
-const INK2 = PRINT_COLORS.ink2;
-const INK3 = PRINT_COLORS.ink3;
-const LINE = '#d5dbe3';
+const { ink: INK, ink2: INK2, ink3: INK3, data: DATA, bad: BAD, warn: WARN, track: TRACK } = PRINT_COLORS;
+const PAPER = '#fff';
 const SURF = '#f4f6f9';
-const DATA = PRINT_COLORS.data;
-/* ⚠️ DATA-гийн цайвар хэлбэр (төлөвлөгөө/төсвийн «ард» багана) — DATA-аас
-   үүсмэл тул токен биш; DATA солигдвол энэ ч дагаж харагдах ёстой. */
-const DATA_SOFT = '#bfe0e5';
-/* ⚠️ НОГООН ХАСАГДСАН (2026-09-17): хэвийн байдлыг өнгөөр тэмдэглэхээ
-   болив — зөвхөн АСУУДАЛ өнгөтэй (хэрэглэгчийн шүүмж). */
-const WARN = PRINT_COLORS.warn;
-const BAD = PRINT_COLORS.bad;
 const FONT = "'Segoe UI', 'Noto Sans', Arial, sans-serif";
-
-/* ═══════════════ Зурах үйлдлүүд ═══════════════ */
+const firstOf = (shown: number, total: number) => total > shown ? tr('эхний {0} (+{1} бусад)', num(shown), num(total - shown)) : '';
 
 type Anchor = 'start' | 'middle' | 'end';
 type TextOp = { k: 'text'; x: number; y: number; s: string; size: number; weight: number; fill: string; anchor: Anchor };
@@ -71,422 +26,372 @@ type RectOp = { k: 'rect'; x: number; y: number; w: number; h: number; fill: str
 type LineOp = { k: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number };
 export type Op = TextOp | RectOp | LineOp;
 
-const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** SVG мөр — дэлгэцийн урьдчилсан харагдац */
-export function toSvg(ops: Op[]): string {
-  const out: string[] = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${INFO_W}" height="${INFO_H}" viewBox="0 0 ${INFO_W} ${INFO_H}">`,
-  ];
-  for (const o of ops) {
-    if (o.k === 'text') {
-      out.push(`<text x="${o.x}" y="${o.y}" font-family="${FONT}" font-size="${o.size}" font-weight="${o.weight}" fill="${o.fill}" text-anchor="${o.anchor}">${esc(o.s)}</text>`);
-    } else if (o.k === 'rect') {
-      out.push(`<rect x="${o.x}" y="${o.y}" width="${Math.max(0, o.w)}" height="${o.h}" fill="${o.fill}" rx="${o.r}"${o.stroke ? ` stroke="${o.stroke}" stroke-width="1"` : ''}/>`);
-    } else {
-      out.push(`<line x1="${o.x1}" y1="${o.y1}" x2="${o.x2}" y2="${o.y2}" stroke="${o.stroke}" stroke-width="${o.width}"/>`);
-    }
-  }
-  out.push('</svg>');
-  return out.join('\n');
+/** Both renderers use the page background's final height, including the footer. */
+export function infographicSize(ops: readonly Op[]) {
+  const page = ops[0];
+  return { width: INFO_W, height: page?.k === 'rect' && page.x === 0 && page.y === 0 ? Math.max(INFO_H, Math.ceil(page.h)) : INFO_H };
 }
-
-/**
- * Canvas 2D → PNG data URL. `scale` 2 = 300dpi (PNG татахад), 1 = PDF-д.
- * ⚠️ `roundRect` нь 2023 оноос бүх хөтөчид байгаа ч хуучин хөтөчид байхгүй
- *    байж болно — тэр үед энгийн `fillRect` (булан л алдагдана, зураг биш).
- */
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export function toSvg(ops: Op[]): string {
+  const { width, height } = infographicSize(ops);
+  const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`];
+  for (const o of ops) {
+    if (o.k === 'text') out.push(`<text x="${o.x}" y="${o.y}" font-family="${FONT}" font-size="${o.size}" font-weight="${o.weight}" fill="${o.fill}" text-anchor="${o.anchor}">${esc(o.s)}</text>`);
+    else if (o.k === 'rect') out.push(`<rect x="${o.x}" y="${o.y}" width="${Math.max(0, o.w)}" height="${o.h}" fill="${o.fill}" rx="${o.r}"${o.stroke ? ` stroke="${o.stroke}" stroke-width="1"` : ''}/>`);
+    else out.push(`<line x1="${o.x1}" y1="${o.y1}" x2="${o.x2}" y2="${o.y2}" stroke="${o.stroke}" stroke-width="${o.width}"/>`);
+  }
+  return [...out, '</svg>'].join('\n');
+}
 export function toPng(ops: Op[], scale = 1): string {
+  const { width, height } = infographicSize(ops);
   const c = document.createElement('canvas');
-  c.width = INFO_W * scale;
-  c.height = INFO_H * scale;
+  c.width = width * scale;
+  c.height = height * scale;
   const ctx = c.getContext('2d');
   if (!ctx) throw new Error(tr('Инфографик зурахад алдаа гарлаа.'));
   ctx.scale(scale, scale);
   ctx.textBaseline = 'alphabetic';
-  const rr = (x: number, y: number, w: number, h: number, r: number) => {
-    ctx.beginPath();
-    if (typeof ctx.roundRect === 'function' && r > 0) ctx.roundRect(x, y, w, h, r);
-    else ctx.rect(x, y, w, h);
-  };
   for (const o of ops) {
     if (o.k === 'text') {
-      ctx.font = `${o.weight >= 600 ? 'bold' : 'normal'} ${o.size}px ${FONT}`;
+      ctx.font = `${o.weight} ${o.size}px ${FONT}`;
       ctx.fillStyle = o.fill;
       ctx.textAlign = o.anchor === 'middle' ? 'center' : o.anchor === 'end' ? 'right' : 'left';
       ctx.fillText(o.s, o.x, o.y);
     } else if (o.k === 'rect') {
-      const w = Math.max(0, o.w);
-      if (w <= 0 || o.h <= 0) continue;
-      rr(o.x, o.y, w, o.h, o.r);
+      if (o.w <= 0 || o.h <= 0) continue;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function' && o.r > 0) ctx.roundRect(o.x, o.y, o.w, o.h, o.r);
+      else ctx.rect(o.x, o.y, o.w, o.h);
       ctx.fillStyle = o.fill;
       ctx.fill();
       if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = 1; ctx.stroke(); }
     } else {
-      ctx.beginPath();
-      ctx.moveTo(o.x1, o.y1);
-      ctx.lineTo(o.x2, o.y2);
-      ctx.strokeStyle = o.stroke;
-      ctx.lineWidth = o.width;
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2);
+      ctx.strokeStyle = o.stroke; ctx.lineWidth = o.width; ctx.stroke();
     }
   }
   return c.toDataURL('image/png');
 }
 
-/* ═══════════════ Туслах ═══════════════ */
-
-/** Тоймлосон мөнгө — инфографикт бүтэн 15 оронтой дүн багтахгүй */
-/* ⚠️ МӨНГӨНИЙ ТОВЧЛОЛГҮЙ (2026-09-17, merge): «сая/тэрбум ₮» нь порталын дүрмээр
-   хориотой (`format.check.mjs`, хэрэглэгчийн шаардлага — дүнг бүтнээр). Инфографикт
-   ч бүтэн тоо: `1,234,567,890 ₮`. */
-export const money = (v: number | null): string => (v == null || !Number.isFinite(v) || v === 0 ? '—' : `${num(v)} ₮`);
-
-/** Мөр таслах — үгээр, ойролцоо өргөнөөр */
+/** Full amounts: a recorded zero remains distinct from missing data. */
+export const money = (v: number | null) => v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
 export function wrap(text: string, maxChars: number): string[] {
-  const out: string[] = [];
-  for (const para of text.split(/\r?\n/)) {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (!words.length) { out.push(''); continue; }
+  return text.split(/\r?\n/).flatMap((para) => {
+    const lines: string[] = [];
     let line = '';
-    for (const w of words) {
-      const cand = line ? `${line} ${w}` : w;
-      if (cand.length > maxChars && line) { out.push(line); line = w; }
-      else line = cand;
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      if (line && `${line} ${word}`.length > maxChars) { lines.push(line); line = ''; }
+      line += `${line ? ' ' : ''}${word}`;
     }
-    if (line) out.push(line);
-  }
-  return out;
+    return [...lines, line];
+  });
 }
 
-/** Нэрийг өгсөн пикселд багтаах — 12px фонтод ~6.3px/тэмдэгт */
-const clip = (s: string, px: number, size = 12): string => {
-  const max = Math.max(6, Math.floor(px / (size * 0.53)));
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
-};
-
+/** Measure the same installed font used by Canvas; deterministic fallback for Node. */
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+function textWidth(s: string, size: number, weight = 400): number {
+  if (measureCtx === undefined) measureCtx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext?.('2d') ?? null;
+  if (measureCtx) { measureCtx.font = `${weight} ${size}px ${FONT}`; return measureCtx.measureText(s).width; }
+  return s.length * size * 0.59;
+}
 class Painter {
   ops: Op[] = [];
-  text(x: number, y: number, s: string, o: { size?: number; weight?: number; fill?: string; anchor?: Anchor } = {}) {
-    this.ops.push({ k: 'text', x, y, s, size: o.size ?? 14, weight: o.weight ?? 400, fill: o.fill ?? INK, anchor: o.anchor ?? 'start' });
+  text(x: number, y: number, s: string, o: { size?: number; weight?: number; fill?: string; anchor?: Anchor; maxW?: number } = {}) {
+    const size = o.size ?? 13;
+    const weight = o.weight ?? 400;
+    const fitted = o.maxW ? Math.min(size, size * o.maxW / Math.max(1, textWidth(s, size, weight))) : size;
+    this.ops.push({ k: 'text', x, y, s, size: fitted, weight, fill: o.fill ?? INK, anchor: o.anchor ?? 'start' });
   }
-  rect(x: number, y: number, w: number, h: number, fill: string, r = 0, stroke?: string) {
-    this.ops.push({ k: 'rect', x, y, w, h, fill, r, stroke });
+  rect(x: number, y: number, w: number, h: number, fill = PAPER, r = 0, stroke?: string): RectOp {
+    const op: RectOp = { k: 'rect', x, y, w, h, fill, r, stroke }; this.ops.push(op); return op;
   }
-  line(x1: number, y1: number, x2: number, y2: number, stroke = LINE, width = 1) {
-    this.ops.push({ k: 'line', x1, y1, x2, y2, stroke, width });
+  line(x: number, y: number, x2: number, y2: number, stroke: string = TRACK, width = 1) {
+    this.ops.push({ k: 'line', x1: x, y1: y, x2, y2, stroke, width });
   }
-  /** Хэсгийн гарчиг — дугаартай, доор нь зураас */
-  head(x: number, y: number, w: number, no: string, title: string, sub?: string) {
-    this.text(x, y, `${no ? `${no}  ` : ''}${title}`, { size: 15, weight: 700 });
-    if (sub) this.text(x + w, y, sub, { size: 11, fill: INK3, anchor: 'end' });
-    this.line(x, y + 8, x + w, y + 8, INK, 1.2);
-  }
-  /** Хэвтээ багана — нэр · зурвас · утга */
-  hbar(
-    x: number, y: number, w: number, label: string, frac: number | null, val: string,
-    o: { color?: string; hot?: boolean; nameW?: number; valW?: number } = {},
-  ) {
-    const nameW = o.nameW ?? 170;
-    const valW = o.valW ?? 150;
-    const trackX = x + nameW;
-    const trackW = w - nameW - valW - 8;
-    this.text(x, y + 11, clip(label, nameW - 10), { size: 12, fill: INK2 });
-    this.rect(trackX, y, trackW, 14, SURF, 3);
-    /* ⚠️ 2026-10-09 (аудит №3): `null` (хэмжигдээгүй) үед ДҮҮРГЭЛТ зурахгүй — зөвхөн зам, текст «—».
-       Урьд нь дуудагч `?? 0` дамжуулж 0 урттай зурвас (тэг гүйцэтгэл мэт) зурдаг байв
-       (CLAUDE.md: null ≠ 0; `ui.Bars`-тай нэг дүрэм). */
-    if (frac != null && Number.isFinite(frac)) {
-      const f = Math.max(0, Math.min(1, frac));
-      this.rect(trackX, y, trackW * f, 14, o.color ?? (o.hot ? DATA : DATA_SOFT), 3);
+  paragraph(x: number, y: number, w: number, s: string, size = 12, fill: string = INK3): number {
+    for (const para of s.split(/\r?\n/)) {
+      let line = '';
+      const emit = () => { this.text(x, y + size, line, { size, fill }); y += size * 1.5; line = ''; };
+      for (const word of para.split(/\s+/).filter(Boolean)) {
+        if (line && textWidth(`${line} ${word}`, size) > w) emit();
+        // Long identifiers/URLs must also stay within their card.
+        for (const ch of `${line ? ' ' : ''}${word}`) {
+          if (line && textWidth(line + ch, size) > w) emit();
+          line += ch;
+        }
+      }
+      emit();
     }
-    this.text(x + w, y + 11, val, { size: 12, weight: 600, anchor: 'end' });
+    return y;
   }
-  /** KPI хавтан */
-  tile(x: number, y: number, w: number, h: number, label: string, value: string, sub?: string) {
-    this.rect(x, y, w, h, '#fff', 8, LINE);
-    this.rect(x, y, 4, h, DATA, 2);
-    this.text(x + 16, y + 24, label, { size: 11, fill: INK3 });
-    this.text(x + 16, y + 56, value, { size: value.length > 16 ? 20 : 26, weight: 700 });
-    if (sub) this.text(x + 16, y + h - 12, clip(sub, w - 28, 10.5), { size: 10.5, fill: INK3 });
+  label(x: number, y: number, w: number, s: string) {
+    return this.paragraph(x, y, w, s, 12, INK3) + 8;
   }
-  /** Нэг зурвас, өнгөт хэсгүүд + домог */
-  segments(x: number, y: number, w: number, segs: [number, string, string][], h = 18): number {
-    const total = segs.reduce((a, s) => a + s[0], 0);
-    let sx = x;
-    for (const [n, c] of segs) {
-      const sw = total ? (w * n) / total : 0;
-      this.rect(sx, y, sw, h, c);
-      if (sw > 28) this.text(sx + sw / 2, y + h - 5, String(n), { size: 11, weight: 700, fill: '#fff', anchor: 'middle' });
-      sx += sw;
+  metric(x: number, y: number, w: number, label: string, value: string, sub?: string) {
+    this.text(x, y + 14, label, { size: 12, fill: INK3, maxW: w });
+    this.text(x, y + 47, value, { size: 28, weight: 700, maxW: w });
+    return sub ? this.paragraph(x, y + 58, w, sub, 11.5) : y + 56;
+  }
+  bar(x: number, y: number, w: number, frac: number | null, color: string = DATA, h = 5) {
+    this.rect(x, y, w, h, TRACK, h / 2);
+    if (frac != null && Number.isFinite(frac)) this.rect(x, y, w * Math.max(0, Math.min(1, frac)), h, color, h / 2);
+  }
+  pair(x: number, y: number, w: number, label: string, value: string, color: string = INK): number {
+    const bottom = this.paragraph(x, y + 2, w * 0.38, label, 12);
+    this.text(x + w, y + 14, value, { size: 14, weight: 600, fill: color, anchor: 'end', maxW: w * 0.6 });
+    return Math.max(y + 27, bottom + 8);
+  }
+  segments(x: number, y: number, w: number, segs: [number, string, string][]): number {
+    const total = segs.reduce((s, [n]) => s + n, 0);
+    let xx = x;
+    this.rect(x, y, w, 12, TRACK, 3);
+    for (const [n, color] of segs) {
+      const sw = total ? w * n / total : 0;
+      this.rect(xx, y, sw, 12, color); xx += sw;
     }
-    let gx = x;
-    let ly = y + h + 16;
-    for (const [n, c, lb] of segs) {
-      const s = `${lb} ${n}`;
-      const ew = 14 + s.length * 6 + 14;
-      /* ⚠️ 2026-09-29 (аудит 10): домог нэг мөрөнд таслагдахгүй байсан тул
-         газрын 8 төлөв 550px баганад ~900px болж ХАБ хавтан дээр давхардаж
-         зурагддаг байв — багтахгүй бол дараагийн мөрөнд */
-      if (gx > x && gx + ew > x + w) { gx = x; ly += 16; }
-      this.rect(gx, ly - 9, 10, 10, c, 2);
-      this.text(gx + 14, ly, s, { size: 10.5, fill: INK3 });
-      gx += ew;
+    y += 26;
+    const half = (w - 18) / 2;
+    for (let i = 0; i < segs.length; i += 2) {
+      let bottom = y;
+      for (const [j, [n, color, label]] of segs.slice(i, i + 2).entries()) {
+        const cx = x + j * (half + 18);
+        this.rect(cx, y + 5, 6, 6, color, 2);
+        bottom = Math.max(bottom, this.paragraph(cx + 13, y, half - 13, `${label} · ${num(n)}`, 11.5));
+      }
+      y = bottom + 7;
     }
-    return ly + 20;
+    return y;
+  }
+  monthTable(x: number, y: number, w: number, cols: string[], rows: { label: string; values: (number | null)[]; trend?: Trend | null; bold?: boolean }[], band: [number, number] | null): number {
+    const nameW = 112, trendW = 94, cw = (w - nameW - trendW) / cols.length;
+    this.rect(x, y, w, 28, SURF, 5);
+    cols.forEach((m, i) => this.text(x + nameW + (i + 1) * cw - 7, y + 18, m.slice(2).replace('-', '.'), { size: 11, weight: 600, fill: INK3, anchor: 'end' }));
+    this.text(x + w - 6, y + 18, tr('Өөрчлөлт'), { size: 11, fill: INK3, anchor: 'end', maxW: trendW - 10 });
+    y += 28;
+    for (const row of rows) {
+      const start = y;
+      // Names wrap; numbers never share the name column.
+      const nameLines = Math.max(1, Math.ceil(textWidth(row.label, 12) / (nameW - 12)));
+      const rh = Math.max(32, nameLines * 18 + 12);
+      if (row.bold) this.rect(x, y, w, rh, SURF, 3);
+      if (band) this.rect(x + nameW + band[0] * cw, y, (band[1] - band[0] + 1) * cw, rh, TRACK);
+      const nameEnd = this.paragraph(x + 4, y + 8, nameW - 12, row.label, 12, row.bold ? INK : INK2);
+      row.values.forEach((v, i) => this.text(x + nameW + (i + 1) * cw - 7, y + 21, v == null ? '—' : pct(v, 1), { size: 12, weight: row.bold ? 700 : 400, anchor: 'end', maxW: cw - 10 }));
+      this.text(x + w - 6, y + 21, row.trend?.text ?? '—', { size: 12, weight: 600, fill: row.trend?.tone === 'bad' ? BAD : INK3, anchor: 'end', maxW: trendW - 10 });
+      y = Math.max(start + rh, nameEnd + 8);
+      this.line(x, y, x + w, y);
+    }
+    return y + 16;
+  }
+  /** Signed monthly amounts: refunds extend left of zero and keep their labels. */
+  payments(x: number, y: number, w: number, months: string[], values: number[], band: [number, number] | null): number {
+    const max = Math.max(1, ...values.map(Math.abs));
+    const gx = x + 62, gw = w - 252;
+    const negative = values.some((v) => v < 0);
+    const zero = negative ? gx + gw / 2 : gx;
+    const span = negative ? gw / 2 : gw;
+    months.forEach((m, i) => {
+      if (band && i >= band[0] && i <= band[1]) this.rect(x, y, w, 28, SURF, 4);
+      const v = values[i] ?? 0;
+      this.text(x + 5, y + 18, m.slice(2).replace('-', '.'), { size: 12, fill: INK3 });
+      this.line(zero, y + 4, zero, y + 24);
+      const length = span * Math.abs(v) / max;
+      this.rect(v < 0 ? zero - length : zero, y + 8, length, 12, v < 0 ? BAD : DATA, 2);
+      this.text(x + w - 5, y + 18, money(v), { size: 12, weight: 600, anchor: 'end', maxW: 180 });
+      y += 29;
+    });
+    return y + 12;
   }
 }
 
-/* ═══════════════ Угсрах ═══════════════ */
-
-/**
- * Инфографикийн зурах үйлдлүүд.
- * @param summary AI дүгнэлт (байвал) — байхгүй бол дүрэмд суурилсан олдвор
- */
-export function buildInfographic(
-  x: ExecReport, dateStr: string, findings: string[], summary: string | null,
-): Op[] {
+type Panel = { bottom: number; box: RectOp };
+export function buildInfographic(x: ExecReport, dateStr: string, findings: string[], summary: string | null, deltas: ExecDeltas | null = null): Op[] {
   const P = new Painter();
-  const M = 52;
-  const W = INFO_W - M * 2;
-  P.rect(0, 0, INFO_W, INFO_H, '#fff');
+  const M = 40, W = INFO_W - M * 2, GAP = 20, CW = (W - GAP) / 2;
+  const page = P.rect(0, 0, INFO_W, INFO_H, SURF);
+  const g = x.gdash, p = x.prog, f = x.fin, S = deltas?.series, per = deltas?.period;
+  const panel = (left: number, top: number, width: number, index: string, title: string, sub: string, body: (cx: number, cy: number, cw: number) => number): Panel => {
+    const box = P.rect(left, top, width, 100, PAPER, 12, TRACK);
+    const cx = left + 22, cw = width - 44;
+    P.text(cx, top + 32, index, { size: 12, weight: 700, fill: DATA });
+    P.text(cx + 32, top + 32, title, { size: 18, weight: 700, maxW: cw - 32 });
+    let cy = top + 46;
+    if (sub) cy = P.paragraph(cx, cy, cw, sub) + 9;
+    else cy += 7;
+    P.line(cx, cy, cx + cw, cy);
+    const bottom = body(cx, cy + 18, cw) + 20;
+    box.h = bottom - top;
+    return { bottom, box };
+  };
+  const align = (a: Panel, b: Panel) => {
+    const bottom = Math.max(a.bottom, b.bottom);
+    a.box.h = bottom - a.box.y; b.box.h = bottom - b.box.y;
+    return bottom + GAP;
+  };
 
-  /* ── Толгой ── */
-  let y = 60;
-  P.rect(0, 0, INFO_W, 8, DATA);
-  P.text(M, y, tr('Сэлбэ ухаалаг хот'), { size: 30, weight: 800 });
-  P.text(M + W, y, dateStr, { size: 13, fill: INK3, anchor: 'end' });
-  y += 28;
-  P.text(M, y, tr('Удирдлагын товч тайлан, төслийн өнөөдрийн байдал'), { size: 14, fill: INK2 });
-  y += 20;
+  // One clear title, export timestamp, and selected comparison period.
+  P.rect(0, 0, INFO_W, 142, INK);
+  P.rect(M, 31, 4, 68, DATA, 2);
+  P.text(M + 20, 63, tr('Сэлбэ ухаалаг хот'), { size: 34, weight: 700, fill: PAPER, maxW: 780 });
+  P.text(M + 20, 90, tr('Удирдлагын товч тайлан, төслийн өнөөдрийн байдал'), { size: 14, fill: TRACK, maxW: 800 });
+  P.text(M + W, 54, dateStr, { size: 13, fill: TRACK, anchor: 'end', maxW: 270 });
+  P.text(M + 20, 119, per ? tr('өөрчлөлт {0} → {1}', per.from, per.to) : tr('Тайлан'), { size: 12, fill: TRACK });
 
-  /* ── KPI зургаан хавтан ── */
-  const g = x.gdash;
   const tiles: [string, string, string?][] = [
     [tr('Нийт төсөв'), money(g.budget), tr('Excel-ийн нийт хамрах хүрээ')],
-    [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined],
-    /* ⚠️ 2026-09-25: дэд шошго нь эхээс (`progressSrc`) — урьд нь нэгтгэлийн тоог ч «6 шатны» гэж хэвлэдэг байв */
-    [tr('Төслийн гүйцэтгэл'), g.progress == null ? '—' : pct(g.progress, 1), progressSub(g.progressSrc)],
-    /* ⚠️ 2026-09-21: «гэрээлсэн» — §1-ийн «Нийт гэрээлсэн дүн»-тэй нэг нэр («гэрээний» биш) */
-    /* ⚠️ 2026-10-06: хувийн тоологч = ГЭРЭЭЛСЭН багцын олголт (`givenContracted`), `given` БИШ — нэрлэнэ */
-    [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1))],
-    [tr('Газар чөлөөлөлт'), g.landPct == null ? '—' : pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
-    [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), householdsLabel(x.prog))], // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
+    [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct(g.contract / g.budget * 100, 1)) : undefined],
+    [tr('Төслийн гүйцэтгэл'), pct(g.progress, 1), [progressSub(g.progressSrc), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
+    [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1))],
+    [tr('Газар чөлөөлөлт'), pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
+    [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(p.blocks), householdsLabel(p))],
   ];
-  const tw = (W - 14 * 2) / 3;
-  const th = 84;
-  tiles.forEach((t, i) => {
-    P.tile(M + (i % 3) * (tw + 14), y + Math.floor(i / 3) * (th + 10), tw, th, t[0], t[1], t[2]);
+  const tw = (W - GAP * 2) / 3;
+  let y = 162;
+  for (let row = 0; row < 2; row++) {
+    let bottom = y;
+    const boxes: RectOp[] = [];
+    tiles.slice(row * 3, row * 3 + 3).forEach(([label, val, sub], i) => {
+      const left = M + i * (tw + GAP);
+      boxes.push(P.rect(left, y, tw, 100, PAPER, 10, TRACK));
+      bottom = Math.max(bottom, P.metric(left + 20, y + 13, tw - 40, label, val, sub) + 17);
+    });
+    boxes.forEach((box) => { box.h = bottom - y; });
+    y = bottom + GAP;
+  }
+
+  const progress = panel(M, y, CW, '01', tr('Багцын гүйцэтгэл'), p.asOf ? tr('хэмжилт {0}', p.asOf) : '', (cx, cy, cw) => {
+    cy = P.label(cx, cy, cw, tr('Орон сууцны барилга угсралт — төлөвлөгөө ба бодит'));
+    const actual = p.planExcluded.length ? p.actualLag : p.actual;
+    const judged = coverageOk(p.planCoverage), late = judged && p.gap != null && p.gap >= LATE_GAP;
+    cy = P.pair(cx, cy, cw, tr('Төлөвлөгөө'), pct(p.planned, 1));
+    P.bar(cx, cy - 4, cw, p.planned == null ? null : p.planned / 100, INK3);
+    cy = P.pair(cx, cy + 10, cw, tr('Бодит'), pct(actual, 1), late ? BAD : DATA);
+    P.bar(cx, cy - 4, cw, actual == null ? null : actual / 100, late ? BAD : DATA);
+    cy += 12;
+    const status = !judged ? coverageNote(p.planCoverage) : p.gap == null ? '' : late ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1)) : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1)) : tr('хуваарийн дагуу');
+    if (status) cy = P.paragraph(cx, cy, cw, status, 12, late ? BAD : INK3) + 14;
+    const packs = p.packs.filter((k) => k.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
+    // Four months keep 12px percentages legible alongside names and deltas.
+    const measured = S ? S.months.map((m, i) => ({ m, i })).filter(({ i }) => S.housingActual[i] != null || S.packs.some((sp) => sp.values[i] != null)).slice(-4) : [];
+    if (S && per && measured.length) {
+      cy = P.label(cx, cy, cw, tr('Сараар — хэмжилттэй сарууд, багц бүр'));
+      const pick = (vals: readonly (number | null)[]) => measured.map(({ i }) => vals[i] ?? null);
+      cy = P.monthTable(cx, cy, cw, measured.map(({ m }) => m), [
+        { label: tr('Төлөвлөгөө'), values: pick(S.housingPlan), bold: true },
+        { label: tr('Бодит'), values: pick(S.housingActual), bold: true, trend: deltaText(deltas!.housing.delta, 'pp', { upGood: true }) },
+        ...packs.map((k) => ({ label: k.name, values: pick(S.packs.find((sp) => sp.key === k.key)?.values ?? []), trend: packTrendOf(deltas, k.key) })),
+      ], bandOf(measured.map(({ m }) => m), per));
+    } else {
+      cy = P.label(cx, cy, cw, tr('Багц тус бүрийн биет гүйцэтгэл'));
+      for (const k of packs) {
+        cy = P.pair(cx, cy, cw, k.name, `${pct(k.progress, 1)}${packTrendOf(deltas, k.key) ? `  ${packTrendOf(deltas, k.key)!.text}` : ''}`);
+        P.bar(cx, cy - 4, cw, k.progress == null ? null : k.progress / 100); cy += 12;
+      }
+      if (!packs.length) cy = P.label(cx, cy, cw, tr('мэдээлэлгүй'));
+    }
+    cy = P.label(cx, cy + 6, cw, tr('Блокийн гүйцэтгэлийн түвшин ({0} блок, {1} бөглөгдөөгүй)', num(p.blocks), num(p.noData)));
+    return P.segments(cx, cy, cw, p.levels.map((l) => [l.n, l.color, `${l.label} ${l.range}`]));
   });
-  y += th * 2 + 10 + 34;
+  const finance = panel(M + CW + GAP, y, CW, '02', tr('Багцын санхүү'), tr('Гэрээний дүн ба олгосон санхүүжилт'), (cx, cy, cw) => {
+    cy = P.pair(cx, cy, cw, tr('Гэрээ'), money(f.planTotal));
+    cy = P.pair(cx, cy, cw, tr('Олгосон'), money(f.given));
+    P.bar(cx, cy, cw, f.share == null ? null : f.share / 100); cy += 15;
+    if (f.share != null) cy = P.label(cx, cy, cw, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)));
+    if (deltas && per) {
+      cy = P.pair(cx, cy, cw, tr('Хугацааны өөрчлөлт'), money(deltas.given.delta));
+      if (deltas.given.undated) cy = P.label(cx, cy, cw, tr('огноогүй {0} төлбөр тоологдоогүй', num(deltas.given.undated)));
+    }
+    if (S && per && S.months.length) {
+      const months = S.months.slice(-6), values = S.paidMonthly.slice(-6);
+      cy = P.label(cx, cy + 8, cw, tr('Сар бүрийн олголт, ₮ — сүүлийн {0} сар', num(months.length)));
+      cy = P.payments(cx, cy, cw, months, values, bandOf(months, per));
+    }
+    cy = P.label(cx, cy, cw, [tr('Багц тус бүр (олгосон / гэрээ)'), firstOf(10, f.rows.length)].filter(Boolean).join(' · '));
+    for (const r of f.rows.slice(0, 10)) {
+      cy = P.pair(cx, cy, cw, r.label, `${money(r.given)} · ${pct(r.pct, 1)}`);
+      const gt = givenTrendOf(deltas, r.key);
+      if (gt && deltas?.givenByKey[r.key]) {
+        P.text(cx + cw, cy + 2, gt.text, { size: 11.5, fill: INK3, anchor: 'end', maxW: cw }); cy += 18;
+      }
+      P.bar(cx, cy - 4, cw, r.pct == null ? null : r.pct / 100); cy += 11;
+    }
+    if (!f.rows.length) cy = P.label(cx, cy, cw, tr('мэдээлэлгүй'));
+    return cy;
+  });
+  y = align(progress, finance);
 
-  const colW = (W - 36) / 2;
-  const L = M;
-  const R = M + colW + 36;
+  const land = panel(M, y, CW, '03', tr('Газар чөлөөлөлт'), tr('{0} нэгж талбар · {1} м²', num(g.land.total), num(g.land.areaM2)), (cx, cy, cw) => {
+    cy = P.segments(cx, cy, cw, g.land.byStatus.map((b) => [b.n, b.label === PARCEL_CLEARED ? DATA : BAD, tr(b.label)]));
+    cy = P.label(cx, cy + 4, cw, [tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining)), firstOf(5, g.land.reasons.length)].filter(Boolean).join(' · '));
+    if (!g.land.reasons.length) return P.label(cx, cy, cw, tr('Шалтгаан бүртгэгдээгүй'));
+    for (const r of g.land.reasons.slice(0, 5)) {
+      const end = P.paragraph(cx, cy, cw - 65, tr(r.label), 12, INK2);
+      P.text(cx + cw, cy + 13, num(r.n), { size: 13, weight: 600, fill: BAD, anchor: 'end' });
+      cy = end + 9;
+    }
+    return cy;
+  });
+  const hse = panel(M + CW + GAP, y, CW, '04', tr('ХАБ-ын талбайн хүн хүч'), g.hse?.date ? tr('сүүлийн бүртгэл {0}', g.hse.date) : '', (cx, cy, cw) => {
+    if (!g.hse) return P.label(cx, cy, cw, tr('ХАБ-ын бүртгэл алга, мэдээлэлгүй.'));
+    const hw = (cw - 18) / 2;
+    const h1 = P.metric(cx, cy, hw, tr('Ажиллаж буй хүн'), num(g.hse.workers));
+    const h2 = P.metric(cx + hw + 18, cy, hw, tr('Техник хэрэгсэл'), num(g.hse.equipment));
+    cy = Math.max(h1, h2) + 12;
+    cy = P.pair(cx, cy, cw, tr('Хүн цаг'), num(g.hse.manHours));
+    cy = P.label(cx, cy + 12, cw, tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.'));
+    if (deltas) {
+      cy = P.label(cx, cy + 8, cw, tr('Хугацааны өөрчлөлт'));
+      cy = P.pair(cx, cy, cw, tr('Ажиллаж буй хүн'), deltaText(deltas.workers.delta, 'n')?.text ?? '—');
+      cy = P.pair(cx, cy, cw, tr('Техник хэрэгсэл'), deltaText(deltas.technik.delta, 'n')?.text ?? '—');
+    }
+    return cy;
+  });
+  y = align(land, hse);
 
-  /* ═══ 1-р эгнээ: 05 гүйцэтгэл | 04 санхүү ═══ */
-  const y1 = y;
-  let yl = y1;
-  P.head(L, yl, colW, '', tr('Багцын гүйцэтгэл'), x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined);
-  yl += 32;
-  const p = x.prog;
-  P.text(L, yl, tr('Орон сууцны барилга угсралт (төлөвлөгөө ба бодит)'), { size: 12, fill: INK2 });
-  yl += 10;
-  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг дүгнэхгүй (улаан ч биш) — `planProgress.coverageOk` */
-  const judged = coverageOk(p.planCoverage);
-  const late = judged && p.gap != null && p.gap >= LATE_GAP;
-  P.hbar(L, yl, colW, tr('Төлөвлөгөө'), p.planned == null ? null : p.planned / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
-  yl += 20;
-  P.hbar(L, yl, colW, tr('Бодит'), p.actual == null ? null : p.actual / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
-  yl += 20;
-  if (p.gap != null) {
-    /* ⚠️ 2026-09-29 (аудит 10): `LATE_GAP`-аас доош зөрүүг «Хоцрогдол 0.0» гэж
-       бичдэг байв — дэлгэц (`ExecReport`) ба PDF (`execPdf`) «хуваарийн дагуу» гэдэг */
-    const s = !judged
-      ? coverageNote(p.planCoverage) || '—'
-      : p.gap >= LATE_GAP
-      ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1))
-      : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1)) : tr('хуваарийн дагуу');
-    /* ⚠️ Хоцрогдол бол УЛААН, бусад тохиолдолд өнгөгүй (хэвийн байдлыг
-       өнгөөр тэмдэглэхээ больсон — зөвхөн асуудал өнгөтэй) */
-    P.text(L + colW, yl + 6, s, { size: 11.5, weight: 600, fill: late ? BAD : INK2, anchor: 'end' });
-  }
-  yl += 26;
-  P.text(L, yl, tr('Багц тус бүрийн биет гүйцэтгэл'), { size: 12, fill: INK2 });
-  yl += 10;
-  const buildPk = p.packs.filter((k) => k.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
-  const best = buildPk.reduce((m, k) => Math.max(m, k.progress ?? 0), 0);
-  for (const k of buildPk.slice(0, 8)) {
-    const v = k.progress;
-    P.hbar(L, yl, colW, k.name, v == null ? null : v / 100, v == null ? tr('мэдээлэлгүй') : pct(v, 1), { hot: v != null && v === best && v > 0, nameW: 120, valW: 80 });
-    yl += 20;
-  }
-  yl += 14;
-  P.text(L, yl, tr('Блокийн гүйцэтгэлийн түвшин ({0} блок, {1} бөглөгдөөгүй)', num(p.blocks), num(p.noData)), { size: 12, fill: INK2 });
-  yl += 10;
-  yl = P.segments(L, yl, colW, p.levels.map((l) => [l.n, l.color, `${l.label} ${l.range}`]), 16);
-
-  let yr = y1;
-  P.head(R, yr, colW, '', tr('Багцын санхүү'));
-  yr += 32;
-  const f = x.fin;
-  P.text(R, yr, tr('Гэрээний дүн ба олгосон санхүүжилт'), { size: 12, fill: INK2 });
-  yr += 10;
-  P.hbar(R, yr, colW, tr('Гэрээ'), 1, money(f.planTotal), { color: DATA_SOFT, nameW: 100, valW: 140 });
-  yr += 20;
-  /* ⚠️ Зурвасын харьцаа `givenContracted ÷ planTotal` — `f.share`-тай (текст) ИЖИЛ;
-     `given` нь багцад холбогдоогүй олголтыг ч агуулдаг тул зурвас текстээс зөрдөг байв. */
-  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.givenContracted / f.planTotal : null, money(f.given), { color: DATA, nameW: 100, valW: 140 });
-  yr += 20;
-  if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
-  yr += 26;
-  P.text(R, yr, [tr('Багц тус бүр (олгосон / гэрээ)'), firstOf(10, f.rows.length)].filter(Boolean).join(' · '), { size: 12, fill: INK2 });
-  yr += 10;
-  for (const r of f.rows.slice(0, 10)) {
-    P.hbar(R, yr, colW, r.label, r.pct == null ? null : r.pct / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 110, valW: 200 });
-    yr += 20;
-  }
-  y = Math.max(yl, yr) + 30;
-
-  /* ═══ 2-р эгнээ: Газар чөлөөлөлт | ХАБ ═══ */
-  const y2 = y;
-  yl = y2;
-  P.head(L, yl, colW, '', tr('Газар чөлөөлөлт'), tr('{0} нэгж талбар · {1} м²', num(g.land.total), num(g.land.areaM2)));
-  yl += 32;
-  /**
-   * ⚠️ ГУРВАН ӨНГӨ (2026-09-17, хэрэглэгчийн шүүмж: «хэт олон өнгө байгаад
-   * байна», «асуудалтай хэсгүүдийг л улаанаар»). Урьд нь таван өнгөний
-   * ээлжлэх палитр байсан тул өнгө нь УТГА хэлэхээ больж, зүгээр л ялгах
-   * тэмдэг болж хувирсан байв.
-   *   · DATA      — хэвийн (чөлөөлсөн)
-   *   · BAD улаан — АСУУДАЛ (чөлөөлөгдөөгүй бүх төлөв)
-   * ⚠️ Чөлөөлсөн төлөв ТҮҮХИЙ утгаар (`PARCEL_CLEARED`) — `land.ts`-тэй ижил.
-   */
-  /* ⚠️ 2026-09-29 (аудит 10): шошго нь `tr()`-ээр (дэлгэц/PDF-тэй ижил) — жишилт түүхийгээр */
-  const stSegs: [number, string, string][] = g.land.byStatus.map((b) => [
-    b.n, b.label === PARCEL_CLEARED ? DATA : BAD, tr(b.label),
-  ]);
-  if (stSegs.length) yl = P.segments(L, yl, colW, stSegs, 18);
-  yl += 4;
-  P.text(L, yl, [tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining)), firstOf(5, g.land.reasons.length)].filter(Boolean).join(' · '), { size: 12, fill: INK2 });
-  yl += 10;
-  const topReason = g.land.reasons[0]?.n ?? 0;
-  if (!g.land.reasons.length) { P.text(L, yl + 11, tr('Шалтгаан бүртгэгдээгүй'), { size: 11.5, fill: INK3 }); yl += 20; }
-  for (const r of g.land.reasons.slice(0, 5)) {
-    /* ⚠️ Чөлөөлөгдөөгүй шалтгаан бүр АСУУДАЛ тул улаан */
-    P.hbar(L, yl, colW, tr(r.label), topReason ? r.n / topReason : 0, num(r.n), { color: BAD, nameW: 210, valW: 60 });
-    yl += 20;
-  }
-
-  yr = y2;
-  P.head(R, yr, colW, '', tr('ХАБ-ын талбайн хүн хүч'), g.hse?.date ? tr('сүүлийн бүртгэл {0}', g.hse.date) : undefined);
-  yr += 32;
-  if (!g.hse) {
-    P.text(R, yr + 8, tr('ХАБ-ын бүртгэл алга, мэдээлэлгүй.'), { size: 12, fill: INK3 });
-    yr += 28;
-  } else {
-    const hw = (colW - 12 * 2) / 3;
-    const hs: [string, string][] = [
-      [tr('Ажиллаж буй хүн'), num(g.hse.workers)],
-      [tr('Техник хэрэгсэл'), num(g.hse.equipment)],
-      [tr('Хүн цаг'), num(g.hse.manHours)],
-    ];
-    hs.forEach((t, i) => P.tile(R + i * (hw + 12), yr, hw, 76, t[0], t[1]));
-    yr += 76 + 14;
-    P.text(R, yr, tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.'), { size: 10.5, fill: INK3 });
-    yr += 16;
-  }
-  y = Math.max(yl, yr) + 30;
-
-  /* ═══ 3-р эгнээ: Зөвшөөрөл | 01 ажлын төрөл ═══ */
-  const y3 = y;
-  yl = y3;
-  /* ⚠️ 2026-10-09 (аудит №2): доорх асуудлын жагсаалт 7-оор тасардаг — гарчигт «эхний 7 (+N бусад)» */
-  P.head(L, yl, colW, '', tr('Зөвшөөрөл'), x.zov
-    ? [tr('Нийт {0} зөвшөөрөл · {1} багц', num(x.zov.total), num(x.zov.byBagts.length)),
-      x.zov.issues.length > 7 ? tr('асуудал: {0}', firstOf(7, x.zov.issues.length)) : ''].filter(Boolean).join(' · ')
-    : undefined);
-  yl += 32;
-  if (!x.zov) {
-    P.text(L, yl + 4, tr('Зөвшөөрлийн бүртгэл холбогдоогүй, мэдээлэлгүй.'), { size: 12, fill: INK3 });
-    yl += 24;
-  } else {
+  const permits = panel(M, y, CW, '05', tr('Зөвшөөрөл'), x.zov ? tr('Нийт {0} зөвшөөрөл · {1} багц', num(x.zov.total), num(x.zov.byBagts.length)) : '', (cx, cy, cw) => {
     const z = x.zov;
-    yl = P.segments(L, yl, colW, [
-      [z.ok, DATA, tr('Зөвшөөрсөн')], [z.wait, WARN, tr('Хүлээгдэж буй')],
-      [z.no, BAD, tr('Зөвшөөрөөгүй')], [z.unknown, INK3, tr('Танигдаагүй')],
-    ], 20);
-    yl += 4;
-    /**
-     * ⚠️ ХҮЛЭЭГДЭЖ БУЙ / ЗӨВШӨӨРӨӨГҮЙ нь ХААНА байгаа нь ил (2026-09-17,
-     * хэрэглэгчийн шүүмж: «хүлээгдэж буй зөвшөөрлийн газар харагдмаар
-     * байна»). Урьд нь багц бүрийн «2/3» гэсэн харьцаа л байсан тул
-     * ЯМАР зөвшөөрөл, ХЭН дээр саатаж байгаа нь огт харагддаггүй байв.
-     */
-    if (!z.issues.length) {
-      P.text(L, yl + 11, tr('Бүх зөвшөөрөл зөвшөөрөгдсөн.'), { size: 11.5, fill: INK3 });
-      yl += 22;
-    }
+    if (!z) return P.label(cx, cy, cw, tr('Зөвшөөрлийн бүртгэл холбогдоогүй, мэдээлэлгүй.'));
+    cy = P.segments(cx, cy, cw, [[z.ok, DATA, tr('Зөвшөөрсөн')], [z.wait, WARN, tr('Хүлээгдэж буй')], [z.no, BAD, tr('Зөвшөөрөөгүй')], [z.unknown, INK3, tr('Танигдаагүй')]]);
+    if (deltas?.zov) cy = P.label(cx, cy, cw, tr('зөвшөөрсөн {0} · татгалзсан {1}', num(deltas.zov.ok), num(deltas.zov.no)) + ` · ${tr('Хугацааны өөрчлөлт')}`);
+    if (!z.issues.length) return P.label(cx, cy, cw, tr('Бүх зөвшөөрөл зөвшөөрөгдсөн.'));
+    if (z.issues.length > 7) cy = P.label(cx, cy, cw, firstOf(7, z.issues.length));
     for (const it of z.issues.slice(0, 7)) {
-      const bad = it.tolov === TOLOV.no;
-      P.rect(L, yl + 3, 8, 8, bad ? BAD : WARN, 2);
-      P.text(L + 14, yl + 11, clip(`${it.bagts} · ${it.ner}`, colW - 150), { size: 11.5, fill: INK2 });
-      P.text(L + colW, yl + 11, clip(`${it.baiguullaga || '—'} · ${tr(it.tolov)}`, 140, 11), { size: 11, fill: bad ? BAD : INK3, anchor: 'end' });
-      yl += 19;
+      P.rect(cx, cy + 5, 6, 6, it.tolov === TOLOV.no ? BAD : WARN, 2);
+      cy = P.paragraph(cx + 15, cy, cw - 15, `${it.bagts} · ${it.ner}`, 12.5, INK2);
+      cy = P.paragraph(cx + 15, cy + 3, cw - 15, `${it.baiguullaga || '—'} · ${tr(it.tolov)}`, 11.5) + 12;
     }
-  }
+    return cy;
+  });
+  const types = panel(M + CW + GAP, y, CW, '06', tr('Ажлын төрлөөр (төсөв, гэрээ, гүйцэтгэл)'), firstOf(7, g.byType.length), (cx, cy, cw) => {
+    if (!g.byType.length) return P.label(cx, cy, cw, tr('мэдээлэлгүй'));
+    for (const t of g.byType.slice(0, 7)) {
+      cy = P.paragraph(cx, cy, cw - 70, tr(t.label), 13, INK2);
+      P.text(cx + cw, cy - 5, pct(t.perf, 1), { size: 13, weight: 700, anchor: 'end', maxW: 65 });
+      cy = P.pair(cx, cy + 3, cw, tr('Төсөв'), money(t.cost));
+      cy = P.pair(cx, cy - 3, cw, tr('Гэрээ'), money(t.contract));
+      P.bar(cx, cy - 2, cw, t.cost > 0 ? t.contract / t.cost : null); cy += 15;
+    }
+    return cy;
+  });
+  y = align(permits, types);
 
-  yr = y3;
-  P.head(R, yr, colW, '', tr('Ажлын төрлөөр (төсөв, гэрээ, гүйцэтгэл)'));
-  yr += 32;
-  const top = g.byType[0]?.cost ?? 0;
-  const nameW = 170, valW = 215;
-  const trackW = colW - nameW - valW - 8;
-  for (const t of g.byType.slice(0, 7)) {
-    P.hbar(R, yr, colW, tr(t.label), top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
-    /* ⚠️ 2026-09-29 (аудит 10): гэрээ > төсөв бол зурвас утгын багана дээр гарч байв — хязгаарлана */
-    P.rect(R + nameW, yr, Math.min(trackW, top ? (trackW * t.contract) / top : 0), 14, DATA, 3);
-    yr += 20;
-  }
-  yr += 4;
-  P.rect(R, yr - 9, 10, 10, DATA, 2);
-  P.text(R + 14, yr, tr('гэрээлсэн'), { size: 10.5, fill: INK3 });
-  P.rect(R + 90, yr - 9, 10, 10, DATA_SOFT, 2);
-  P.text(R + 104, yr, tr('төсөв · ард нь гүйцэтгэлийн хувь'), { size: 10.5, fill: INK3 });
-  yr += 14;
-  y = Math.max(yl, yr) + 30;
-
-  /* ═══ Дүгнэлт ═══ */
-  const bottom = INFO_H - 46;
-  P.head(M, y, W, '', summary ? tr('AI дүгнэлт') : tr('Анхаарах асуудал'));
-  y += 26;
-  /**
-   * ⚠️ ДУГААРЛАСАН, БАГЦАА НЭРЛЭСЭН (2026-09-17, хэрэглэгчийн шүүмж: «аль
-   * багц дээр ямар ажил дээр гэдгийг дараалалтай харуулмаар байна»).
-   * Урьд нь «•» гэсэн ялгаагүй цэгүүд байсан тул аль нь эхэнд, аль нь
-   * чухал болох нь уншигдахгүй байв.
-   */
-  const body = summary ?? findings.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  const lines = wrap(body, 140);
-  const lh = 19;
-  const maxLines = Math.max(0, Math.floor((bottom - y - 6) / lh));
-  const shown = lines.slice(0, maxLines);
-  if (lines.length > maxLines && shown.length) shown[shown.length - 1] = `${shown[shown.length - 1].slice(0, 135)}…`;
-  for (const ln of shown) {
-    const isHead = /^[^•*·-][^:]{1,40}:$/.test(ln.trim());
-    P.text(M, y + 13, ln, { size: 13, weight: isHead ? 700 : 400, fill: isHead ? INK : INK2 });
-    y += lh;
-  }
-
-  /* ── Хөл ── */
-  P.line(M, INFO_H - 32, M + W, INFO_H - 32, LINE);
-  P.text(M, INFO_H - 14, tr('Эх сурвалж: Сэлбэ порталын Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл. Тайлан үүсгэсэн огнооны байдлаар.'), { size: 10, fill: INK3 });
-  P.text(M + W, INFO_H - 14, dateStr, { size: 10, fill: INK3, anchor: 'end' });
+  // Findings keep their complete text and grow the page, including long AI summaries.
+  const conclusion = panel(M, y, W, '07', summary ? tr('AI дүгнэлт') : tr('Анхаарах асуудал'), '', (cx, cy, cw) => {
+    if (summary) return P.paragraph(cx, cy, cw, summary, 14, INK2);
+    for (const [i, finding] of findings.entries()) {
+      P.rect(cx, cy, 24, 24, SURF, 6);
+      P.text(cx + 12, cy + 17, String(i + 1), { size: 12, weight: 700, fill: DATA, anchor: 'middle' });
+      cy = Math.max(cy + 24, P.paragraph(cx + 38, cy + 2, cw - 38, finding, 13, INK2)) + 12;
+    }
+    return cy;
+  });
+  const height = Math.max(INFO_H, Math.ceil(conclusion.bottom + 98));
+  page.h = height;
+  P.line(M, height - 72, M + W, height - 72);
+  P.paragraph(M, height - 57, W - 250, tr('Эх сурвалж: Сэлбэ порталын Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл. Тайлан үүсгэсэн огнооны байдлаар.'), 10.5);
+  P.text(M + W, height - 42, dateStr, { size: 11, fill: INK3, anchor: 'end', maxW: 230 });
   return P.ops;
 }
-
-/** Дэлгэцийн урьдчилсан харагдацад — SVG data URL */
 export function infographicSvgUrl(ops: Op[]): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(toSvg(ops))}`;
 }

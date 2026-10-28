@@ -31,6 +31,7 @@ import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
+import { execDeltaRows, packTrendOf, givenTrendOf, type ExecDeltas } from '@/lib/execPeriodCalc';
 
 /**
  * Бүлгийн гарчиг — дугаар, нэр, доор нь нэг мөрийн тодорхойлолт.
@@ -93,6 +94,32 @@ function kpiRow(items: { label: string; value: string; sub?: string }[]): Conten
 /* ⚠️ 2026-09-25: `max` өгвөл тэнхлэг ТОГТМОЛ (хувийн чартад 100) — урьд нь
    хамгийн их утгад харьцуулдаг тул 12% ахисан багц бүтэн зурвастай гарч
    «дууссан» мэт харагддаг байв. Утга нь [0, max]-д хавчигдана. */
+/* ⚠️ 2026-10-28: хугацааны өөрчлөлт (`execPeriodCalc.execDeltaRows`) — дэлгэц/PNG-тэй НЭГ мөрүүд; PDF-ийн фонтод ▲▼ алга тул сумгүй */
+function deltaBlocks(d: ExecDeltas): Content[] {
+  const rows = execDeltaRows(d, false);
+  return [
+    cap(tr('Хугацааны өөрчлөлт: {0} → {1}', d.period.from, d.period.to)),
+    {
+      margin: [0, 0, 0, 6],
+      table: {
+        headerRows: 1,
+        widths: ['*', 95, 95, 110],
+        body: [
+          [th(tr('Үзүүлэлт')), th(tr('Эхэнд'), true), th(tr('Төгсгөлд'), true), th(tr('Өөрчлөлт'), true)],
+          ...rows.map((r): TableCell[] => [
+            td(r.note ? `${r.label} (${r.note})` : r.label),
+            td(r.prev, true),
+            td(r.now, true),
+            r.trend ? td(r.trend.text, true, r.trend.tone === 'bad' ? RED : r.trend.tone === 'good' ? ACCENT : undefined) : td('—', true),
+          ]),
+        ],
+      },
+      layout: tableLayout,
+    },
+    note(tr('Нийт төсөв, гэрээлсэн дүн, нэгтгэл гүйцэтгэл, газар чөлөөлөлтөд өөрчлөлтийн түүх бүртгэгддэггүй тул энд ороогүй.')),
+  ];
+}
+
 function barChart(
   rows: { label: string; value: number | null; text: string }[],
   o: { nameW?: number; valW?: number; color?: string; max?: number } = {},
@@ -173,7 +200,7 @@ function findingBlocks(list: ExecFinding[], withAdvice: boolean, app: readonly E
 /* ══════════════════════ Баримт ══════════════════════ */
 
 export async function buildExecDoc(
-  x: ExecReport, dateStr: string, summary: string | null,
+  x: ExecReport, dateStr: string, summary: string | null, deltas: ExecDeltas | null = null,
 ): Promise<TDocumentDefinitions> {
   const findings = execFindings(x);
   const g = x.gdash;
@@ -347,6 +374,8 @@ export async function buildExecDoc(
         { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Ажлын багц'), value: num(g.packages), sub: tr('{0} төрөл ажил', num(g.types)) },
       ]),
+      /* ⚠️ 2026-10-28: сонгосон хугацааны өөрчлөлт (дэлгэцийн 1.2-той ижил) */
+      ...(deltas ? deltaBlocks(deltas) : []),
       {
         margin: [0, 16, 0, 0],
         columns: [
@@ -498,8 +527,12 @@ export async function buildExecDoc(
           : { label: tr('Зөрүү'), value: '—', sub: coverageNote(p.planCoverage) || undefined },
       ]),
       ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
-      cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
-      barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70, max: 100 }),
+      /* ⚠️ 2026-10-28: хугацааны өөрчлөлт утгын хажууд (сумгүй — фонт) */
+      cap(deltas ? `${tr('Багц тус бүрийн биет гүйцэтгэл')} · ${tr('өөрчлөлт {0} → {1}', deltas.period.from, deltas.period.to)}` : tr('Багц тус бүрийн биет гүйцэтгэл')),
+      barChart(buildPk.map((k) => {
+        const t = packTrendOf(deltas, k.key, false);
+        return { label: k.name, value: k.progress, text: `${k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1)}${t ? ` · ${t.text}` : ''}` };
+      }), { nameW: 110, valW: deltas ? 120 : 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
         /* ⚠️ 2026-10-11 (аудит №7): багцын өрх ч `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)») */
@@ -545,10 +578,14 @@ export async function buildExecDoc(
       ]),
       ...(finStarted.length ? [
         cap(tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүнгээр эрэмбэлэв)', num(finStarted.length))),
-        barChart(finStarted.map((r) => ({
-          label: r.label, value: r.given,
-          text: `${num(r.given)} ₮ · ${r.pct == null ? '—' : pct(r.pct, 1)}`,
-        })), { nameW: 160, valW: 140 }),
+        barChart(finStarted.map((r) => {
+          const t = givenTrendOf(deltas, r.key, false);
+          return {
+            label: r.label, value: r.given,
+            text: `${num(r.given)} ₮ · ${r.pct == null ? '—' : pct(r.pct, 1)}${t ? ` · ${t.text}` : ''}`,
+          };
+        }), { nameW: 160, valW: deltas ? 200 : 140 }),
+        ...(deltas ? [note(tr('Сүүлийн багана: хугацаанд ({0} → {1}) олгосон дүн.', deltas.period.from, deltas.period.to))] : []),
       ] : []),
       { table: { headerRows: 1, widths: ['*', 100, 100, 46], body: [
         [th(tr('Багц')), th(tr('Гэрээлсэн (төг)'), true), th(tr('Олгосон (төг)'), true), th(tr('Хувь'), true)],
@@ -660,16 +697,18 @@ export async function buildExecDoc(
 const PDF_NAME = 'Selbe_udirdlagiin_tailan.pdf';
 const PNG_NAME = 'Selbe_infografik.png';
 
-export async function downloadExecPdf(x: ExecReport, dateStr: string, summary: string | null): Promise<void> {
-  const doc = await buildExecDoc(x, dateStr, summary);
+export async function downloadExecPdf(x: ExecReport, dateStr: string, summary: string | null, deltas: ExecDeltas | null = null): Promise<void> {
+  const doc = await buildExecDoc(x, dateStr, summary, deltas);
   const b64 = await renderPdfBase64(doc);
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
 }
 
 /** Инфографикийг ЗУРАГ (PNG, 2× нарийвчлал) болгож татна */
-export async function downloadInfographic(x: ExecReport, dateStr: string, summary: string | null): Promise<void> {
-  const png = toPng(buildInfographic(x, dateStr, execFindingBrief(x), summary), 2);
+export async function downloadInfographic(x: ExecReport, dateStr: string, summary: string | null, deltas: ExecDeltas | null = null): Promise<void> {
+  // Measure and paint with the same loaded fonts.
+  await document.fonts?.ready;
+  const png = toPng(buildInfographic(x, dateStr, execFindingBrief(x), summary, deltas), 2);
   const bytes = Uint8Array.from(atob(png.split(',')[1]), (c) => c.charCodeAt(0));
   download(PNG_NAME, new Blob([bytes], { type: 'image/png' }));
 }

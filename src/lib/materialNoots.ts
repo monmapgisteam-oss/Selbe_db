@@ -122,7 +122,9 @@ export function receiptsOf(mas: readonly MaRow[], mirs: readonly MirRow[]): Rece
  */
 export type NootsSum = {
   name: string; units: string[]; inSum: number | null; usedSum: number | null; inUnknown: number; usedUnknown: number;
-  rest: number | null; status: string; n: number;
+  /** Mixed (including missing) units cannot establish a total or completion status. */
+  unitConflict: boolean;
+  rest: number | null; status: string | null; n: number;
 };
 
 export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
@@ -142,14 +144,16 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
   return [...m.entries()].map(([name, l]) => {
     const i = sum(l.map((r) => r.inQty));
     const u = sum(l.map((r) => r.usedQty));
+    const unitConflict = new Set(l.map((r) => r.unit.trim().toLowerCase())).size > 1;
     const partial = i.unknown > 0 || u.unknown > 0;
     return {
       name,
-      units: [...new Set(l.map((r) => r.unit).filter(Boolean))],
-      inSum: i.sum, usedSum: u.sum, inUnknown: i.unknown, usedUnknown: u.unknown,
+      units: [...new Set(l.map((r) => r.unit.trim()).filter(Boolean))],
+      unitConflict,
+      inSum: unitConflict ? null : i.sum, usedSum: unitConflict ? null : u.sum, inUnknown: i.unknown, usedUnknown: u.unknown,
       /* Үлдэгдэл — хоёр нийлбэр БҮРЭН мэдэгдэж байж л */
-      rest: !partial && i.sum != null && u.sum != null ? i.sum - u.sum : null,
-      status: tolovOf(i.sum, u.sum, partial),
+      rest: !unitConflict && !partial && i.sum != null && u.sum != null ? i.sum - u.sum : null,
+      status: unitConflict ? null : tolovOf(i.sum, u.sum, partial),
       n: l.length,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'mn'));
@@ -188,7 +192,10 @@ export function planSync(rows: readonly NootsRow[], receipts: readonly Receipt[]
 /** Төлөв зөрсөн мөрүүд — материал бүрийн нэгтгэлийн төлвөөр */
 export function statusFixes(rows: readonly NootsRow[]): { oid: number; status: string }[] {
   const st = new Map(nootsSummary(rows).map((s) => [s.name, s.status] as const));
-  return rows.filter((r) => r.name && st.get(r.name) !== r.status).map((r) => ({ oid: r.oid, status: st.get(r.name) ?? TOLOV.open }));
+  return rows.flatMap((r) => {
+    const status = st.get(r.name);
+    return status != null && status !== r.status ? [{ oid: r.oid, status }] : [];
+  });
 }
 
 /* ═══════════════ СЕРВЕР ═══════════════ */

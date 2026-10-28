@@ -190,7 +190,8 @@ export function PlanMeter({
 
 /* ══════════════════ Үзүүлэлтийн эгнээ ══════════════════ */
 
-export type Kpi = { label: string; value: string; sub?: string };
+/** `trend` — хугацааны өөрчлөлт (▲/▼, `execPeriodCalc.deltaText`) — 2026-10-28 */
+export type Kpi = { label: string; value: string; sub?: string; trend?: { text: string; tone: 'good' | 'bad' | 'mute' } | null };
 
 /**
  * ГОЛ ҮЗҮҮЛЭЛТИЙН ЭГНЭЭ — цөөн толгой тоо.
@@ -219,6 +220,7 @@ export function KpiRow({ items, cols }: {
           <span className={c.kpiLabel}>{k.label}</span>
           <b className={c.kpiVal}>{k.value}</b>
           {k.sub && <span className={c.kpiSub}>{k.sub}</span>}
+          {k.trend ? <span className={`${c.kpiTrend} ${c[`tone_${k.trend.tone}`]}`}>{k.trend.text}</span> : null}
         </div>
       ))}
     </div>

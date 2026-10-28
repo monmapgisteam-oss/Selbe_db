@@ -4,8 +4,8 @@
  * ⚠️ 2026-09-17, хэрэглэгчийн шийдвэр: нүүрний CEO самбар (13 карттай схем)
  *    «Багц ажлын оноо» болж солигдов. Ажлууд нь «Төсөв, гэрээлсэн дүн»
  *    чарттай ИЖИЛ ажлын төрлөөр (`CfRow.type`) бүлэглэгдэнэ; багц бүрд
- *      1. Гүйцэтгэл · 2. Санхүүжилт · 3. Газар чөлөөлөлт ·
- *      4. Ерөнхий төлөвлөгөө (тохиромжтой байдал) · 5. ХАБЭА · 6. Чанар
+ *      1. Гүйцэтгэл · 2. Санхүүжилт · 3. Газар чөлөөлөлт · 4. Зөвшөөрөл · 5. ХАБЭА
+ *    (⚠️ 2026-10-23 «Чанар» · 2026-10-27 «Ерөнхий төлөвлөгөө» ХАСАГДСАН — доорх ⚠️)
  *    оноо + гэрлэн дохио (≥80 ногоон · 50–79 шар · <50 улаан).
  *    Нийт оноо = бодогдсон бүлгүүдийн ЭНГИЙН дундаж.
  *
@@ -33,24 +33,19 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, date } from '@/lib/format';
-import { overlapLevel, pctLevel, scoreLevel as urbanScoreLevel, type Level } from '@/lib/kpiLevels';
+import { overlapLevel, pctLevel, type Level } from '@/lib/kpiLevels';
 import { coverageOk } from '@/lib/planProgress';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
-/* ⚠️ 2026-10-23: «Чанар» (`qual`, QAQC баримтын бөглөлт) хэмжүүр ХАСАГДСАН — «Чанар (QAQC)» системээс устсан */
-export type Dim = 'perf' | 'fin' | 'land' | 'plan' | 'permit' | 'hse';
+/* ⚠️ 2026-10-23: «Чанар» (`qual`, QAQC баримтын бөглөлт) хэмжүүр ХАСАГДСАН — «Чанар (QAQC)» системээс устсан
+   ⚠️ 2026-10-27 (хэрэглэгч: «KPI — Ерөнхий төлөвлөгөө хас»): «Ерөнхий төлөвлөгөө» (`plan`, блокуудын байрлах бүсийн
+   тохиромжтой байдлын оноо) бүлэг ХАСАГДСАН — `scorePlan` · `blockZoneScores` · `scorecardLoad.loadScorePlan` устсан
+   (git түүхэнд). Тохиромжтой байдлын KPI (`registry.suitability`) өөрөө ТУХ/Схемд хэвээр. */
+export type Dim = 'perf' | 'fin' | 'land' | 'permit' | 'hse';
 
-/**
- * ⚠️ 2026-09-17: «Зөвшөөрөл» ДОЛОО ДАХЬ бүлэг болж нэмэгдэв (хэрэглэгч).
- * ⚠️ «Ерөнхий төлөвлөгөө» ХАМГИЙН СҮҮЛД (хэрэглэгч: «маш чухал асуудал биш»):
- *    хүснэгтийн багана, хавтан, задаргаанд сүүлд харагдана; асуудлын эрэмбэд ч
- *    (`workIssues`) ижил зэрэгтэй бусад бүлгийн ДАРАА орно.
- */
-export const DIMS: readonly Dim[] = ['perf', 'fin', 'land', 'permit', 'hse', 'plan'];
-
-/** Асуудлын эрэмбэд доогуур бүлгүүд */
-const LOW_PRIORITY: ReadonlySet<Dim> = new Set<Dim>(['plan']);
+/** ⚠️ 2026-09-17: «Зөвшөөрөл» бүлэг нэмэгдэв (хэрэглэгч). */
+export const DIMS: readonly Dim[] = ['perf', 'fin', 'land', 'permit', 'hse'];
 
 /**
  * Бүлгийн нэр ба холбогдох CEO үзүүлэлтүүд (`registry.ts`-ийн түлхүүр).
@@ -82,12 +77,6 @@ export const dimDefs = (): Record<Dim, {
     rule: tr('Багцын талбайд давхцсан чөлөөлөгдөөгүй нэгж талбар бүрд −5 оноо'),
     view: 'gazar',
   },
-  plan: {
-    title: tr('Ерөнхий төлөвлөгөө'), short: tr('Төлөв.'), icon: 'grid',
-    kpis: ['suitability'],
-    rule: tr('Багцын блокууд байрлах бүсийн тохиромжтой байдлын оноо (блокоор жигнэсэн)'),
-    view: 'analysis',
-  },
   permit: {
     title: tr('Зөвшөөрөл'), short: tr('Зөвш.'), icon: 'frame',
     kpis: ['permits'],
@@ -108,6 +97,9 @@ export const dimDefs = (): Record<Dim, {
 
 /** Нэг баримт — НЭР ба УТГА тусдаа (2026-09-17: «ямар үзүүлэлт гэдэг ойлгогдохгүй» гэсэн тул) */
 export type Fact = { label: string; value: string };
+
+/** Сэрэмжлүүлгийн төрөл — `DimScore.caveat`, `scoreAlerts` нэгтгэнэ (2026-10-28) */
+export type CaveatKind = 'partial' | 'notStarted' | 'noCurve' | 'notDue' | 'noDates' | 'noProgress' | 'noContractAmount';
 
 export type DimScore = {
   /** 0–100; хэмжигдэх өгөгдөлгүй бол null */
@@ -134,6 +126,12 @@ export type DimScore = {
    *    бүлэгт түвшинг ЭНД өгнө; дэлгэц `workDimLevel`/`sc.level ?? dimLevel(…)`-ээр уншина.
    */
   level?: Level;
+  /**
+   * ⚠️ 2026-10-28 (хэрэглэгч: «асуудалтай зүйл дээр alert»): СЭРЭМЖЛҮҮЛЭГ — оноог тайлбартай уншуулна (дэлгэцэд оноон
+   *    дээр ⚠ тэмдэг, самбарын дээд зурваст `scoreAlerts` нэгтгэнэ). Оноо өөрөө ӨӨРЧЛӨГДӨХГҮЙ: эхлэх огноо ирээгүй
+   *    ажил 100, дутуу хуваарьтай багц null хэвээр — зөвхөн ШАЛТГААН нь ил болно. `value` — `partial`-д хуваарийн хамралт.
+   */
+  caveat?: { kind: CaveatKind; text: string; value?: number };
 };
 
 /** `bad` — заавал шийдвэрлэх · `warn` — анхаарах · `info` — дата оруулах */
@@ -162,7 +160,7 @@ export const HSE_WARN = 70;
 /**
  * Бүлгийн түвшин — ХАБЭА өөрийн босготой.
  * ⚠️ 2026-10-06: ИЖИЛ үзүүлэлт CEO картад өөр босготой байсан тул (газар: `land.ts` 95/80
- *    `pctLevel`; ерөнхий төлөвлөгөө: `suitability.ts` 65/45) нэг багцын газар 85% нь
+ *    `pctLevel`) нэг багцын газар 85% нь
  *    картад «шар», оноонд «ногоон» гардаг байв. Одоо бүлэг бүр ӨӨРИЙН KPI-гийн
  *    түвшний функцтэй (`DIM_LEVEL`); бусад бүлэг ба нийт оноо 80/50 хэвээр.
  */
@@ -171,7 +169,6 @@ const hseLevel = (v: number | null): Level =>
 const DIM_LEVEL: Partial<Record<Dim, (v: number | null) => Level>> = {
   hse: hseLevel,
   land: pctLevel,
-  plan: urbanScoreLevel,
 };
 export const dimLevel = (d: Dim | null | undefined, v: number | null): Level => (
   (d && DIM_LEVEL[d]) || scoreLevel
@@ -231,12 +228,27 @@ export function scorePerf(i: PerfInput): DimScore {
     planned = clamp(((i.now - i.start) / (i.end - i.start)) * 100);
     actual = i.progress;
   }
-  if (planned == null || actual == null) return NONE;
+  if (planned == null || actual == null) {
+    /* ⚠️ 2026-10-28: оноо null хэвээр, ШАЛТГААН нь ил (`caveat`) — огноогүй / явц хэмжигдээгүй */
+    if (!i.lag && (i.start == null || i.end == null || i.end <= i.start)) {
+      return { ...NONE, caveat: { kind: 'noDates', text: tr('Эхлэх/дуусах огноогүй — гүйцэтгэлийн оноо бодогдохгүй') } };
+    }
+    if (!i.lag && i.progress == null) {
+      return { ...NONE, caveat: { kind: 'noProgress', text: tr('Явц хэмжигдээгүй — гүйцэтгэлийн оноо бодогдохгүй') } };
+    }
+    return NONE;
+  }
   const gap = planned - actual;
   const score = clamp(100 - Math.max(0, gap) * RULE.perfPerPp);
   const tone = toneOf(score);
+  /* ⚠️ 2026-10-28: ЭХЛЭХ ОГНОО ИРЭЭГҮЙ ажил — төлөвлөсөн 0 · бодит 0 → 100. Дүрэм хэвээр («хоцрогдолгүй»), харин «явц
+     сайн» гэж уншигдахгүйн тулд сэрэмжлүүлнэ; `scoreAlerts` тэдгээрийн тоог самбарын дээд зурваст хэлнэ. */
+  const caveat: NonNullable<DimScore['caveat']> | null = !i.lag && i.start != null && i.start > i.now
+    ? { kind: 'notDue', text: tr('Эхлэх огноо ирээгүй — 100 оноо нь «хоцрогдолгүй» гэсэн үг, явцыг илэрхийлэхгүй') }
+    : null;
   return {
     score,
+    ...(caveat ? { caveat } : {}),
     issues: tone ? [{ tone, text: tr('Хуваариас {0} нэгж хувиар хоцорсон (төлөвлөсөн {1}, бодит {2})', num(gap, 1), pct(planned, 1), pct(actual, 1)) }] : [],
     facts: [
       fact(tr('Төлөвлөсөн гүйцэтгэл'), pct(planned, 1)),
@@ -256,6 +268,7 @@ export function scorePerf(i: PerfInput): DimScore {
 export function perfNoCurve(): DimScore {
   return {
     score: null,
+    caveat: { kind: 'noCurve', text: tr('Хуваарийн муруй уншигдсангүй — оноо тавигдахгүй') },
     facts: [fact(tr('Хуваарийн муруй'), tr('уншигдсангүй'))],
     issues: [{ tone: 'info', text: tr('Хуваарийн муруй уншигдсангүй — гүйцэтгэлийн оноог Cashflow-ийн хувиар орлуулж бодсонгүй. Дахин ачаална уу.') }],
   };
@@ -270,6 +283,7 @@ export function perfPartial(lag: { planned: number; actual: number; coverage?: n
   const cov = lag.coverage == null ? '—' : pct(lag.coverage, 1);
   return {
     score: null,
+    caveat: { kind: 'partial', value: lag.coverage ?? undefined, text: tr('Хуваарь {0} хамарсан (95% шаардлагатай) — оноо тавигдахгүй', cov) },
     facts: [
       fact(tr('Төлөвлөсөн гүйцэтгэл'), pct(lag.planned, 1)),
       fact(tr('Бодит гүйцэтгэл'), pct(lag.actual, 1)),
@@ -289,6 +303,7 @@ export function perfPartial(lag: { planned: number; actual: number; coverage?: n
 export function perfNotStarted(): DimScore {
   return {
     score: null,
+    caveat: { kind: 'notStarted', text: tr('Багцын хуваарь хэмжилтийн өдөр эхлээгүй — оноо тавигдахгүй') },
     facts: [fact(tr('Хуваарийн муруй'), tr('хуваарь эхлээгүй'))],
     issues: [{ tone: 'info', text: tr('Багцын хуваарь хэмжилтийн өдөр хараахан эхлээгүй — гүйцэтгэлийн оноо тавигдахгүй (гэрээний огнооны шугамаар орлуулахгүй).') }],
   };
@@ -369,8 +384,12 @@ export function scoreFin(i: FinInput): DimScore {
     facts.push(fact(tr('Олгосон санхүүжилт (гэрээний)'), pct(i.paidPct, 1)));
     facts.push(fact(tr('Биет гүйцэтгэл'), pct(i.actual, 1)));
   }
+  /* ⚠️ 2026-10-28: «Гэрээлсэн дүн» тайлбартай атлаа `geree_dun` хоосон — зөрүү бодогдохгүй (оноо хэвээр), сэрэмжлүүлнэ */
+  const caveat: NonNullable<DimScore['caveat']> | null = contracted && !(i.contract != null && i.contract > 0)
+    ? { kind: 'noContractAmount', text: tr('«Гэрээлсэн дүн» гэсэн ч гэрээний дүн хоосон — төсөвтэй харьцуулах боломжгүй') }
+    : null;
   const score = meanOf(parts);
-  return { score, facts, issues };
+  return { score, facts, issues, ...(caveat ? { caveat } : {}) };
 }
 
 /* ── 3. Газар чөлөөлөлт ── */
@@ -416,34 +435,6 @@ export function scoreLand(i: LandInput): DimScore {
   };
 }
 
-/* ── 4. Ерөнхий төлөвлөгөө ── */
-
-export type PlanInput = {
-  /** Блок бүрийн байрлах бүсийн оноо (0–100); блокгүй бол хоосон */
-  blockScores: readonly number[];
-  /** Норм зөрчсөн бүсийн нэрс */
-  failingZones: readonly string[];
-};
-
-export function scorePlan(i: PlanInput): DimScore {
-  const s = meanOf(i.blockScores);
-  if (s == null) return NONE;
-  const issues: DimIssue[] = [];
-  /* ⚠️ 2026-10-06: тохиромжтой байдлын босго 65/45 (`dimLevel` → `kpiLevels.scoreLevel`) */
-  const tone = dimToneOf('plan', clamp(s));
-  if (tone) issues.push({ tone, text: tr('Блокууд байрлах бүсийн тохиромжтой байдлын оноо {0}', num(s)) });
-  if (i.failingZones.length) {
-    issues.push({ tone: 'warn', text: tr('Норм зөрчсөн бүс: {0}', i.failingZones.slice(0, 5).join(', ')) });
-  }
-  return {
-    score: clamp(s),
-    issues,
-    facts: [
-      fact(tr('Үнэлсэн блок'), num(i.blockScores.length)),
-      fact(tr('Норм зөрчсөн бүс'), i.failingZones.length ? i.failingZones.slice(0, 3).join(', ') : tr('алга')),
-    ],
-  };
-}
 
 /* ── 5. Зөвшөөрөл ── */
 
@@ -765,57 +756,61 @@ export function workIssues(w: WorkScore): RankedIssue[] {
   });
   return out.sort((a, b) => (
     TONE_RANK[a.tone] - TONE_RANK[b.tone]
-    || Number(LOW_PRIORITY.has(a.dim)) - Number(LOW_PRIORITY.has(b.dim))
     || (a.score ?? 101) - (b.score ?? 101)
     || DIMS.indexOf(a.dim) - DIMS.indexOf(b.dim)
   ));
 }
 
-/* ══════════════ Орон зай (Ерөнхий төлөвлөгөө) ══════════════ */
+/* ══════════════ Самбарын сэрэмжлүүлэг ══════════════ */
 
-/** Цэг олон өнцөгтөд (цагираг бүрээр сондгой/тэгш — нүхийг зөв тооцно) */
-export function pointInRings(x: number, y: number, rings: readonly (readonly number[][])[]): boolean {
-  let inside = false;
-  for (const ring of rings) {
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i];
-      const [xj, yj] = ring[j];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-  }
-  return inside;
-}
-
-/** Олон өнцөгтийн төв (гадна цагирагийн оройн дундаж — блок шиг жижиг хэлбэрт хангалттай) */
-export function ringCenter(rings: readonly (readonly number[][])[]): [number, number] | null {
-  const r = rings[0];
-  if (!r || r.length === 0) return null;
-  const pts = r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r;
-  const sx = pts.reduce((a, p) => a + p[0], 0);
-  const sy = pts.reduce((a, p) => a + p[1], 0);
-  return [sx / pts.length, sy / pts.length];
-}
+export type ScoreAlert = { kind: 'perfCoverage' | 'notDue' | 'dataGap'; tone: IssueTone; text: string };
 
 /**
- * Багц бүрийн блокууд → тэдгээрийн байрлах бүсийн оноо.
- * ⚠️ Бүс → багцын ЗУРАГЛАЛ репод байхгүй тул (`suitability.ts`-ийн ⚠️) ОРОН
- *    ЗАЙГААР тогтооно: блокийн төв аль бүсийн полигонд орсон бэ. Бүсэд
- *    ороогүй блок тоологдохгүй (null ≠ 0).
+ * САМБАРЫН ДЭЭД ЗУРВАС — оноог хэр итгэж уншихыг хэлнэ (2026-10-28, хэрэглэгч: «асуудалтай зүйл дээр alert»).
+ * ⚠️ Оноог ӨӨРЧЛӨХГҮЙ, зөвхөн нэрлэнэ. Хасагдсан ба газрын мөр орохгүй; ажлын тоо/нэр нь `DimScore.caveat`-аас.
+ *   · perfCoverage — гүйцэтгэлийн оноотой ажлын өртөг нийт өртөгт < 95% (амьдаар 2026-10-28: 28%): шалтгаан нь дутуу
+ *     хуваарь (хамралтаар, өртгөөр эрэмбэлж 6 хүртэл), хуваарь эхлээгүй, муруй уншигдаагүй, огноогүй, явцгүй. < 50% → `bad`.
+ *   · notDue — эхлэх огноо ирээгүй атлаа 100 оноотой ажил (дундажийг өсгөнө).
+ *   · dataGap — «гэрээлсэн» атлаа гэрээний дүнгүй мөр, огноогүй мөр.
  */
-export function blockZoneScores(
-  zones: readonly { id: string; rings: readonly (readonly number[][])[]; score: number | null; failing: boolean }[],
-  blocks: readonly { key: string; rings: readonly (readonly number[][])[] }[],
-): Map<string, PlanInput> {
-  const out = new Map<string, { blockScores: number[]; failing: Set<string> }>();
-  for (const b of blocks) {
-    const c = ringCenter(b.rings);
-    if (!c || !b.key) continue;
-    const z = zones.find((zz) => zz.score != null && pointInRings(c[0], c[1], zz.rings));
-    if (!z || z.score == null) continue;
-    const e = out.get(b.key) ?? { blockScores: [], failing: new Set<string>() };
-    e.blockScores.push(z.score);
-    if (z.failing) e.failing.add(z.id);
-    out.set(b.key, e);
+export function scoreAlerts(works: readonly WorkScore[]): ScoreAlert[] {
+  const live = works.filter((w) => !w.cancelled && !w.isLandWork);
+  const out: ScoreAlert[] = [];
+  const by = (k: CaveatKind, d: Dim = 'perf') => live.filter((w) => w.dims[d].caveat?.kind === k);
+  const label = (w: WorkScore) => w.pkgLabel || w.name;
+  const names = (ws: WorkScore[], max = 6) => (ws.length > max ? `${ws.slice(0, max).map(label).join(', ')} …` : ws.map(label).join(', '));
+  const total = live.reduce((a, w) => a + (w.cost > 0 ? w.cost : 0), 0);
+  const covered = live.reduce((a, w) => a + (w.cost > 0 && w.dims.perf.score != null ? w.cost : 0), 0);
+  if (total > 0) {
+    const share = (covered / total) * 100;
+    if (share < 95) {
+      const reasons: string[] = [];
+      const partial = by('partial').sort((a, b) => b.cost - a.cost);
+      if (partial.length) {
+        const list = partial.slice(0, 6).map((w) => {
+          const v = w.dims.perf.caveat?.value;
+          return v == null ? label(w) : `${label(w)} ${pct(v, 0)}`;
+        }).join(', ');
+        reasons.push(tr('{0} багцын хуваарь дутуу ({1})', num(partial.length), list));
+      }
+      const ns = by('notStarted'); if (ns.length) reasons.push(tr('{0} багц хуваарь эхлээгүй', num(ns.length)));
+      const nc = by('noCurve'); if (nc.length) reasons.push(tr('{0} ажлын хуваарийн муруй уншигдаагүй', num(nc.length)));
+      const nd = by('noDates'); if (nd.length) reasons.push(tr('{0} ажил огноогүй', num(nd.length)));
+      const np = by('noProgress'); if (np.length) reasons.push(tr('{0} ажлын явц хэмжигдээгүй', num(np.length)));
+      out.push({
+        kind: 'perfCoverage',
+        tone: share < 50 ? 'bad' : 'warn',
+        text: tr('Гүйцэтгэлийн оноо төсвийн {0}-ийг л хамарсан — {1}', pct(share, 0), reasons.join(' · ') || tr('оноо бодогдоогүй')),
+      });
+    }
   }
-  return new Map([...out].map(([k, v]) => [k, { blockScores: v.blockScores, failingZones: [...v.failing] }]));
+  const due = by('notDue');
+  if (due.length) {
+    out.push({ kind: 'notDue', tone: 'warn', text: tr('{0} ажил эхлэх огноо ирээгүй атлаа 100 оноотой ({1}) — гүйцэтгэлийн дундажийг өсгөж байна', num(due.length), names(due)) });
+  }
+  const gaps: string[] = [];
+  const nca = by('noContractAmount', 'fin'); if (nca.length) gaps.push(tr('гэрээлсэн ч гэрээний дүнгүй — {0}', names(nca)));
+  const nd2 = by('noDates'); if (nd2.length) gaps.push(tr('эхлэх/дуусах огноогүй — {0}', names(nd2)));
+  if (gaps.length) out.push({ kind: 'dataGap', tone: 'warn', text: tr('Өгөгдлийн цоорхой: {0}', gaps.join('; ')) });
+  return out;
 }

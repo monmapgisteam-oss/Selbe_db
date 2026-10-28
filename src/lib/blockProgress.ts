@@ -652,8 +652,13 @@ export function progressSeries(
     return { date: asOf, overall: den ? sum / den : 0, blocks: n };
   };
 
-  /** Бүртгэлгүй агшин — 0% гэж зурвал байхгүй хэмжилт «ухралт» мэт харагдана */
-  const measured = (p: SeriesPoint) => p.blocks > 0;
+  // Keep explicit clearing after measured history in latest mode (same as finPhys).
+  // Null-only history stays unmeasured; peak mode remains unchanged.
+  let firstMeasured: string | undefined;
+  for (const h of mine) for (const p of h) {
+    if (p.pct != null && Number.isFinite(p.pct) && (firstMeasured == null || p.date < firstMeasured)) firstMeasured = p.date;
+  }
+  const measured = (p: SeriesPoint) => p.blocks > 0 || (mode === 'latest' && firstMeasured != null && p.date >= firstMeasured);
 
   if (grain === 'day') return dates.map((d) => ({ label: d, ...at(d) })).filter(measured);
 

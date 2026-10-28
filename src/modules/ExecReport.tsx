@@ -33,6 +33,10 @@ import { progressSub, planScopeNote } from '@/lib/gdash';
 import { coverageOk, coverageNote } from '@/lib/planProgress';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
+import {
+  periodOf, PERIOD_KEYS, periodLabel, deltaText, execDeltaRows, packTrendOf, givenTrendOf, type ExecPeriodKey, type ExecDeltas,
+} from '@/lib/execPeriodCalc';
+import { loadExecDeltas } from '@/lib/execPeriod';
 import { relayAlive } from '@/lib/agent/client';
 import { TOLOV } from '@/lib/zovshoorol';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
@@ -73,8 +77,15 @@ function FindingItems({ items }: { items: string[] }) {
 export function ExecReport() {
   /** Огноо — ЗӨВХӨН клиент дээр (`Tailan`-тай ижил: hydration зөрөхөөс сэргийлнэ) */
   const [date, setDate] = useState('');
+  const [periodNow, setPeriodNow] = useState<number | null>(null);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
-  useEffect(() => { setDate(dateTime(Date.now())); }, []);
+  useEffect(() => { const now = Date.now(); setDate(dateTime(now)); setPeriodNow(now); }, []);
+  /* ⚠️ 2026-10-28 (хэрэглэгч: «цаг хугацаагаар харах, өсөлт/бууралт»): сонгосон хугацааны өөрчлөлт (`execPeriodCalc`).
+     Хугацааг mount-ын ДАРАА бодно — `date`-тэй ижил hydration шалтгаан. */
+  const [pkey, setPkey] = useState<ExecPeriodKey>('30d');
+  const [custom, setCustom] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  // Selection changes immediately, without a render using the previous period.
+  const period = useMemo(() => periodNow == null ? null : periodOf(pkey, periodNow, custom), [pkey, periodNow, custom]);
   const q = useAsync(loadExecReport, []);
   const [busy, setBusy] = useState<'' | 'pdf' | 'png' | 'ai'>('');
   const [fail, setFail] = useState('');
@@ -100,6 +111,13 @@ export function ExecReport() {
   }, [probeAi]);
 
   const x = q.state === 'ready' ? q.data : null;
+  /* ⚠️ Өөрчлөлт — тайлан ба хугацаа бэлэн болмогц; хүлээж байхад `loading` (шийдэгдэхгүй амлалт) */
+  const dq = useAsync<ExecDeltas | null>(
+    () => (x && period ? loadExecDeltas(x, period) : new Promise<ExecDeltas | null>(() => {})),
+    [x, period],
+  );
+  const deltas = dq.state === 'ready' && dq.data && period
+    && dq.data.period.from === period.from && dq.data.period.to === period.to ? dq.data : null;
   /* ⚠️ 2026-09-24: AI хүсэлтийн AbortController — unmount-д цуцална, эс тэгвээс
      хариу ирэхэд хаагдсан компонентын state-ийг бичих байв. */
   const aiAc = useRef<AbortController | null>(null);
@@ -136,7 +154,7 @@ export function ExecReport() {
   const appendix = useMemo(() => (x ? execAppendix(x, findings) : []), [x, findings]);
 
   const run = useCallback(async (what: 'pdf' | 'png' | 'ai') => {
-    if (!x || busy) return;
+    if (!x || busy || (what !== 'ai' && !deltas)) return;
     setFail('');
     setBusy(what);
     /* ⚠️ 2026-09-25: цуцлалтыг ЭНЭ дуудлагын өөрийн controller-оор шалгана — `aiAc.current`
@@ -147,8 +165,8 @@ export function ExecReport() {
          засвар). Урьд нь mount-ын `date` дамждаг тул хэдэн цагийн дараа гаргасан PDF/PNG хуучин
          цагаар тамгалагддаг байв (`||`-ийн нөөц хэзээ ч ажилладаггүй). */
       const d = dateTime(Date.now());
-      if (what === 'pdf') await downloadExecPdf(x, d, summary);
-      else if (what === 'png') await downloadInfographic(x, d, summary);
+      if (what === 'pdf') await downloadExecPdf(x, d, summary, deltas);
+      else if (what === 'png') await downloadInfographic(x, d, summary, deltas);
       else {
         ac = new AbortController();
         aiAc.current = ac;
@@ -167,25 +185,25 @@ export function ExecReport() {
     } finally {
       setBusy('');
     }
-  }, [x, busy, summary]);
+  }, [x, busy, summary, deltas]);
   /**
    * ШИНЭЧЛЭХ — `loadExecReport`-ийн 5 минутын кэш (ба түүний уншдаг бүх кэш)-ийг хаяна.
    * ⚠️ 2026-10-06 (аудит): `Tailan.refresh`-тэй ижил `invalidateAll()` — тагийн жагсаалтыг
    *    гараар хөтлөхгүй (`Tailan`-ий 2026-10-05-ны ⚠️). `useAsync` нь `dataBus`-аар дахин татна;
    *    хуучин AI дүгнэлт `[x]` эффектээр цэвэрлэгдэнэ.
    */
-  const refresh = useCallback(() => { invalidateAll(); probeAi(); }, [probeAi]);
+  const refresh = useCallback(() => { setPeriodNow(Date.now()); invalidateAll(); probeAi(); }, [probeAi]);
 
   return (
     <>
       <div className={r.toolbar}>
         <div className={r.tools}>
-          <button type="button" className={r.btn} disabled={!x || !!busy} onClick={() => run('pdf')}
+          <button type="button" className={r.btn} disabled={!x || !deltas || !!busy} onClick={() => run('pdf')}
             title={tr('Тайланг PDF хэлбэрээр татах')}>
             <Icon name="file" size={15} />
             {busy === 'pdf' ? tr('Бэлтгэж байна…') : tr('PDF татах')}
           </button>
-          <button type="button" className={r.btn} disabled={!x || !!busy} onClick={() => run('png')}
+          <button type="button" className={r.btn} disabled={!x || !deltas || !!busy} onClick={() => run('png')}
             title={tr('Инфографик зураг (PNG), мессенжер болон илтгэлд')}>
             <Icon name="chart" size={15} />
             {busy === 'png' ? tr('Бэлтгэж байна…') : tr('Инфографик (PNG)')}
@@ -210,6 +228,32 @@ export function ExecReport() {
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
           </button>
+        </div>
+        {/* ⚠️ 2026-10-28: өөрчлөлтийн хугацаа — дэлгэц · PDF · PNG нэг сонголт */}
+        <div className={e.period} role="group" aria-label={tr('Өөрчлөлтийн хугацаа')}>
+          <span className={e.periodLabel}>{tr('Өөрчлөлт:')}</span>
+          {PERIOD_KEYS.map((k) => (
+            <button
+              key={k} type="button" className={`${r.btn} ${pkey === k ? e.periodOn : ''}`} aria-pressed={pkey === k}
+              onClick={() => setPkey(k)}
+            >
+              {periodLabel(k)}
+            </button>
+          ))}
+          {pkey === 'custom' && (
+            <>
+              <input
+                type="date" className={e.periodInput} value={custom.from} max={custom.to || undefined} aria-label={tr('Эхлэх огноо')}
+                onChange={(ev) => setCustom((c) => ({ ...c, from: ev.target.value }))}
+              />
+              <span aria-hidden>→</span>
+              <input
+                type="date" className={e.periodInput} value={custom.to} min={custom.from || undefined} aria-label={tr('Дуусах огноо')}
+                onChange={(ev) => setCustom((c) => ({ ...c, to: ev.target.value }))}
+              />
+            </>
+          )}
+          {period && <span className={e.periodRange}>{period.from} → {period.to}</span>}
         </div>
         {fail && <p className={r.fail} role="alert">{fail}</p>}
       </div>
@@ -259,6 +303,7 @@ export function ExecReport() {
                       label: tr('Нийт төсөв'),
                       value: money(x.gdash.budget),
                       sub: undefined as string | undefined,
+                      trend: null as ReturnType<typeof deltaText>,
                       desc: tr('Орон сууцны хороолол ба ГИШС-ийн хүрээнд батлагдсан төсөвт өртөг.'),
                     },
                     {
@@ -291,6 +336,8 @@ export function ExecReport() {
                     {
                       label: tr('Олгосон санхүүжилт'),
                       value: money(x.fin.given),
+                      /* ⚠️ 2026-10-28: сонгосон хугацаанд олгосон (`execPeriodCalc`) */
+                      trend: deltas ? deltaText(deltas.given.delta, 'mnt', { upGood: true }) : null,
                       /* ⚠️ 2026-10-06: `value` = БҮХ олголт, хувь = ГЭРЭЭЛСЭН багцын олголт ÷ гэрээлсэн
                          дүн — тоологчийг нэрлэнэ (Тайлан/`reportPdf`-тэй ижил загвар). Урьд нь «гэрээний
                          X%» нь `given`-ийн хувь мэт уншигддаг байв. */
@@ -310,7 +357,10 @@ export function ExecReport() {
                           {kpis.map((kp) => (
                             <tr key={kp.label}>
                               <td>{kp.label}</td>
-                              <td className={r.num}>{kp.value}{kp.sub ? <span className={e.kpiSub}> {kp.sub}</span> : null}</td>
+                              <td className={r.num}>
+                                {kp.value}{kp.sub ? <span className={e.kpiSub}> {kp.sub}</span> : null}
+                                {kp.trend ? <span className={`${e.trend} ${e[`tone_${kp.trend.tone}`]}`}> {kp.trend.text}</span> : null}
+                              </td>
                               <td>{kp.desc}</td>
                             </tr>
                           ))}
@@ -319,6 +369,37 @@ export function ExecReport() {
                     </>
                   );
                 })()}
+                {/* ⚠️ 2026-10-28: хугацааны өөрчлөлт — `execPeriodCalc.execDeltaRows` (PDF · PNG-тэй НЭГ мөрүүд) */}
+                {period && (
+                  <>
+                    <Cap no="1.2">{tr('Хугацааны өөрчлөлт: {0} → {1}', period.from, period.to)}</Cap>
+                    {dq.state === 'loading' ? (
+                      <p className={e.periodNote}>{tr('Өөрчлөлтийг бодож байна…')}</p>
+                    ) : !deltas ? (
+                      <p className={e.periodNote}>{tr('Өөрчлөлт бодогдсонгүй — дахин оролдоно уу.')}</p>
+                    ) : (
+                      <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Хугацааны өөрчлөлт')}><table className={r.table}>
+                        <thead><tr>
+                          <th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Эхэнд')}</th><th className={r.num}>{tr('Төгсгөлд')}</th><th className={r.num}>{tr('Өөрчлөлт')}</th>
+                        </tr></thead>
+                        <tbody>
+                          {execDeltaRows(deltas).map((row) => (
+                            <tr key={row.key}>
+                              <td>{row.label}</td>
+                              <td className={r.num}>{row.prev}</td>
+                              <td className={r.num}>{row.now}</td>
+                              <td className={r.num}>
+                                {row.trend ? <span className={`${e.trend} ${e[`tone_${row.trend.tone}`]}`}>{row.trend.text}</span> : '—'}
+                                {row.note ? <span className={e.kpiSub}> {row.note}</span> : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table></div>
+                    )}
+                    <p className={e.periodNote}>{tr('Нийт төсөв, гэрээлсэн дүн, нэгтгэл гүйцэтгэл, газар чөлөөлөлтөд өөрчлөлтийн түүх бүртгэгддэггүй тул энд ороогүй.')}</p>
+                  </>
+                )}
                 <Fig no="1.1">{tr('Ажлын төрлөөр төсөвт өртөг')}</Fig>
                 <RankBars
                   title={tr('Ажлын төрөл бүрийн төсөв')}
@@ -509,7 +590,11 @@ export function ExecReport() {
                     max={100}
                     fmt={(v) => pct(v, 1)}
                     items={x.prog.packs.filter((p) => p.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
-                      .map((p, i) => ({ label: p.name, value: p.progress, hot: i === 0 && p.progress != null }))}
+                      .map((p, i) => {
+                        /* ⚠️ 2026-10-28: хугацааны өөрчлөлт утгын хажууд (PDF · PNG-тэй нэг) */
+                        const t = packTrendOf(deltas, p.key);
+                        return { label: p.name, value: p.progress, hot: i === 0 && p.progress != null, text: `${pct(p.progress, 1)}${t ? ` ${t.text}` : ''}` };
+                      })}
                   />
                   <Cap no={String(execSectionNo('prog'))}>{tr('Блокийн гүйцэтгэлийн түвшин')}</Cap>
                   <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
@@ -542,10 +627,13 @@ export function ExecReport() {
                     title={tr('Багц тус бүрийн санхүүжилтийн хувь')}
                     fmt={(v) => pct(v, 1)}
                     max={100}
-                    items={finStarted.map((f) => ({
-                      label: f.label, value: f.pct, hot: f.pct != null && f.pct >= 50,
-                      text: f.pct == null ? '—' : pct(f.pct, 1),
-                    }))}
+                    items={finStarted.map((f) => {
+                      const t = givenTrendOf(deltas, f.key);
+                      return {
+                        label: f.label, value: f.pct, hot: f.pct != null && f.pct >= 50,
+                        text: `${f.pct == null ? '—' : pct(f.pct, 1)}${t ? ` · ${t.text}` : ''}`,
+                      };
+                    })}
                   />
                   <Cap no={String(execSectionNo('fin'))}>{tr('Багц тус бүрийн санхүүжилт (олгосон ба гэрээлсэн дүн)')}</Cap>
                   <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>

@@ -39,6 +39,18 @@
 .retry:hover { background: var(--surface-2); color: var(--ink); }
 .warnLine { margin: 0 0 8px; font-size: 11.5px; color: var(--warn-ink, var(--warn)); }
 
+/* ⚠️ 2026-10-28: самбарын дээд сэрэмжлүүлэг (`scoreAlerts`) ба оноон дээрх ⚠ (`DimScore.caveat`) — `--h` нь зэргийн өнгө */
+.alerts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.alert {
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 6px 10px; font-size: 11.5px; line-height: 1.4; color: var(--ink);
+  border: 1px solid color-mix(in oklab, var(--h) 45%, transparent); border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--h) 10%, transparent);
+}
+.alert i { flex: none; font-style: normal; color: var(--h); }
+.cav { margin-left: 3px; font-style: normal; font-size: 10px; line-height: 1; color: var(--warn-ink, var(--warn)); }
+.caveatNote { display: block; margin-top: 3px; font-size: 11px; line-height: 1.35; color: var(--warn-ink, var(--warn)); }
+
 /* ══ Оноо ══ */
 .score {
   display: inline-flex; align-items: center; justify-content: center;

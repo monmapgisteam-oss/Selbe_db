@@ -107,6 +107,11 @@
   white-space: nowrap;
 }
 .kpiSub { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-10-28: хугацааны өөрчлөлт (▲/▼) — `Kpi.trend` */
+.kpiTrend { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tone_good { color: var(--good-ink, var(--good)); }
+.tone_bad { color: var(--bad-ink, var(--bad)); }
+.tone_mute { color: var(--ink-3); }
 
 /* ⚠️ ХЭВЛЭХ: график нь хүснэгтийн ДАВХАРДАЛ биш НЭМЭЛТ тул хэвлэлтэд ч
    үлдэнэ. Зөвхөн дэвсгэрийг цайруулж бэх хэмнэнэ. */

@@ -30,8 +30,8 @@ const qty = (v: number | null) => (v == null ? '—' : num(v));
    ДЭЛГЭЦЭД орчуулна; урьд нь `{m.status}` түүхийгээр англи горимд «Дууссан»/«Дуусаагүй» хэвээр үлддэг байв. Хоёр л утгатай
    тул ЛИТЕРАЛ `tr()` (динамик `tr(m.status)` биш — i18n-extract түлхүүрийг шалгана); танихгүй утга хэвээр. Өнгөний
    харьцуулалт (`TOLOV.done`) түүхий утгаараа. */
-const statusLabel = (v: string): string =>
-  v === TOLOV.done ? tr('Дууссан') : v === TOLOV.open ? tr('Дуусаагүй') : v;
+const statusLabel = (v: string | null): string =>
+  v === TOLOV.done ? tr('Дууссан') : v === TOLOV.open ? tr('Дуусаагүй') : v ?? '—';
 
 /** Синкийн төлөв — `Ma.tsx` удирдана. `disabled` — автомат бүртгэл идэвхгүй (`mir_id` алга/тохирохгүй), нөөц зөвхөн харагдана */
 export type NootsSync =
@@ -87,13 +87,14 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
                   <tr key={m.name} className={s.row}>
                     <td>{m.name}</td>
                     {/* ⚠️ Нэг материал өөр нэгжээр ирвэл нийлбэр утгагүй — нэгжүүдийг ил харуулж анхааруулна */}
-                    <td className={m.units.length > 1 ? s.expired : ''} title={m.units.length > 1 ? tr('Өөр өөр нэгжээр ирсэн — нийлбэр буруу байж болно') : undefined}>
+                    <td className={m.unitConflict ? s.expired : ''} title={m.unitConflict ? tr('Нэгж зөрүүтэй эсвэл дутуу — нийлбэр, төлөв тооцоогүй') : undefined}>
                       {m.units.join(', ') || '—'}
+                      {m.unitConflict && <div>{tr('Нэгж зөрүүтэй')}</div>}
                     </td>
                     <PartialQty sum={m.inSum} unknown={m.inUnknown} />
                     <PartialQty sum={m.usedSum} unknown={m.usedUnknown} />
                     <td className={s.num} title={m.rest == null && (m.inUnknown || m.usedUnknown) ? tr('Үлдэгдэл тодорхойгүй — тоо хэмжээгүй ачаа байна') : undefined}>{qty(m.rest)}</td>
-                    <td><span className={m.status === TOLOV.done ? s.expired : s.valid}>{statusLabel(m.status)}</span></td>
+                    <td><span className={m.status == null ? undefined : m.status === TOLOV.done ? s.expired : s.valid}>{statusLabel(m.status)}</span></td>
                     <td className={s.num}>{m.n}</td>
                   </tr>
                 ))}

@@ -80,11 +80,16 @@ import { cfMonthAxis } from '../lib/services.ts';
       ['2026-01', '2026-02', '2026-03'].map((l) => [l, mb.get(l)]),
       'buildPhys == progressSeries(latest) — сар бүр',
     );
-    /* Бүх блок нь null агшин — цуваатай адил цэггүй (`measured`: blocks > 0) */
+    /* Explicit clearing after a measurement resets both monthly and daily history. */
     const h3 = new Map([['Багц 9|9/1', [{ date: '2026-01-10', pct: 40 }, { date: '2026-02-05', pct: null }]]]);
     const b3 = buildPhys(h3, axis, '2026-04');
-    assert.equal(b3.phys.get('БАГЦ9').has('2026-02'), false, 'бүх блок null агшинд цэг гарахгүй');
-    assert.equal(progressSeries(h3, [...h3.keys()], 'month', 'latest').some((p) => p.label === '2026-02'), false);
+    assert.equal(b3.phys.get('БАГЦ9').get('2026-02'), 0, 'clearing must stop carry-forward');
+    assert.equal(progressSeries(h3, [...h3.keys()], 'month', 'latest').find((p) => p.label === '2026-02').overall, 0);
+    assert.equal(progressSeries(h3, [...h3.keys()], 'day', 'latest').at(-1).overall, 0);
+    assert.equal(progressSeries(h3, [...h3.keys()], 'day', 'peak').at(-1).overall, 40, 'peak mode unchanged');
+    const never = new Map([['Багц 9|9/1', [{ date: '2026-01-10', pct: null }]]]);
+    assert.deepEqual(progressSeries(never, [...never.keys()], 'day', 'latest'), [], 'never measured is not zero');
+    assert.equal(buildPhys(never, axis, '2026-04').phys.size, 0);
     console.log('phys.check: цэвэрлэгдсэн бичилт ok (latest дүрэм · цуваатай нэг тоо)');
   }
 

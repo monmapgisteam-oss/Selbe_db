@@ -10,10 +10,10 @@
  */
 import assert from 'node:assert/strict';
 import {
-  scorePerf, scoreFin, scoreLand, scorePlan, scoreHse, scoreLevel, dimLevel, scorePermit,
-  totalOf, groupByType, projectDims, pointInRings, ringCenter, blockZoneScores, meanOf, DIMS, workIssues,
+  scorePerf, scoreFin, scoreLand, scoreHse, scoreLevel, dimLevel, scorePermit,
+  totalOf, groupByType, projectDims, meanOf, DIMS, workIssues,
   statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve, workDimLevel,
-  perfPartial,
+  perfPartial, scoreAlerts, perfNotStarted,
 } from './scorecard.ts';
 
 const DAY = 86_400_000;
@@ -100,9 +100,8 @@ assert.equal(scoreLand({ isLandWork: true, landPct: 71.4, hasFootprint: false, o
   assert.equal(workDimLevel({ dims: { land: lw } }, 'land'), 'good');
 }
 
-/* ── 4. Ерөнхий төлөвлөгөө ── */
-assert.equal(scorePlan({ blockScores: [], failingZones: [] }).score, null);
-assert.equal(scorePlan({ blockScores: [60, 80], failingZones: ['A-1'] }).score, 70);
+/* ⚠️ 2026-10-27: «Ерөнхий төлөвлөгөө» (scorePlan · blockZoneScores) ХАСАГДСАН — шалгуур нь ч хасагдав */
+assert.deepEqual(DIMS, ['perf', 'fin', 'land', 'permit', 'hse'], 'plan бүлэг алга');
 
 /* ── 5. ХАБЭА — ЗӨВХӨН ажлын байрны үзлэг ── */
 assert.equal(scoreHse({ active: false, inspections: [] }).score, null, 'идэвхгүй, үзлэггүй → «—»');
@@ -193,29 +192,6 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   assert.equal(z.total, 60);
 }
 
-/* ── Орон зай ── */
-{
-  const outer = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
-  const hole = [[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]];
-  assert.equal(pointInRings(2, 2, [outer]), true);
-  assert.equal(pointInRings(5, 5, [outer, hole]), false, 'нүхэн доторх цэг бүсэд ороогүй');
-  assert.equal(pointInRings(11, 5, [outer]), false);
-  assert.deepEqual(ringCenter([outer]), [5, 5], 'хаалтын давхар оройг тоолохгүй');
-
-  const zones = [
-    { id: 'Z1', rings: [outer], score: 70, failing: true },
-    { id: 'Z2', rings: [[[20, 0], [30, 0], [30, 10], [20, 10], [20, 0]]], score: 90, failing: false },
-  ];
-  const blocks = [
-    { key: 'БАГЦ1', rings: [[[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]] },
-    { key: 'БАГЦ1', rings: [[[21, 1], [22, 1], [22, 2], [21, 2], [21, 1]]] },
-    { key: 'БАГЦ2', rings: [[[50, 50], [51, 50], [51, 51], [50, 51], [50, 50]]] },
-  ];
-  const m = blockZoneScores(zones, blocks);
-  assert.deepEqual(m.get('БАГЦ1'), { blockScores: [70, 90], failingZones: ['Z1'] });
-  assert.equal(m.has('БАГЦ2'), false, 'бүсэд ороогүй блок — оноо ЗОХИОХГҮЙ');
-}
-
 /* ── Асуудлын эрэмбэ ── */
 {
   const perf = scorePerf({ lag: { planned: 40, actual: 30, coverage: 100 }, start: null, end: null, progress: null, now }); // 75 → warn
@@ -231,18 +207,62 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const none = { score: null, facts: [] };
   const w = {
     oid: 1, name: 'w', pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled: false, isLandWork: false, total: null,
-    dims: { perf, fin, land: none, plan: none, permit: none, hse },
+    dims: { perf, fin, land: none, permit: none, hse },
   };
   const r = workIssues(w);
   /* ⚠️ 2026-10-23: QAQC хасагдсан — «дата» (info) жишээ нь QAQC байсан */
   assert.deepEqual(r.map((x) => x.tone), ['bad', 'bad', 'warn'], 'заавал → анхаарах');
   assert.equal(r[0].dim, 'fin', 'ижил зэрэгт бага оноотой (0) нь эхэнд');
-  {
-    const plan = scorePlan({ blockScores: [10], failingZones: [] }); // 10 → bad
-    const w2 = { ...w, dims: { ...w.dims, plan } };
-    const r2 = workIssues(w2).filter((x) => x.tone === 'bad');
-    assert.equal(r2[r2.length - 1].dim, 'plan', 'Ерөнхий төлөвлөгөө бага оноотой ч ижил зэрэгт СҮҮЛД');
-  }
+}
+
+/* ── Сэрэмжлүүлэг — caveat · scoreAlerts (2026-10-28) ── */
+{
+  const none = { score: null, facts: [] };
+  const mk = (oid, pkgLabel, cost, perf, fin = none) => ({
+    oid, name: `w${oid}`, pkgLabel, key: pkgLabel, type: 'A', cost, contract: null, cancelled: false, isLandWork: false, total: null,
+    dims: { perf, fin, land: none, permit: none, hse: none },
+  });
+  const due = scorePerf({ lag: null, start: now + 30 * DAY, end: now + 200 * DAY, progress: 0, now });
+  assert.equal(due.score, 100, 'дүрэм хэвээр — эхлээгүй ажил 100');
+  assert.equal(due.caveat?.kind, 'notDue', 'харин сэрэмжлүүлэгтэй');
+  const started = scorePerf({ lag: null, start: now - 30 * DAY, end: now + 30 * DAY, progress: 50, now });
+  assert.equal(started.score, 100);
+  assert.equal(started.caveat, undefined, 'эхэлсэн, хоцрогдолгүй — сэрэмжлүүлэггүй');
+  assert.equal(scorePerf({ lag: null, start: null, end: null, progress: 10, now }).caveat?.kind, 'noDates');
+  assert.equal(scorePerf({ lag: null, start: now - DAY, end: now + DAY, progress: null, now }).caveat?.kind, 'noProgress');
+  assert.equal(scorePerf({ lag: { planned: 10, actual: 0, coverage: 100 }, start: now + DAY, end: now + 9 * DAY, progress: null, now }).caveat, undefined, 'хуваарьтай (lag) мөрд notDue хамаарахгүй');
+  const part = perfPartial({ planned: 40, actual: 30, coverage: 84.3 });
+  assert.equal(part.caveat?.kind, 'partial');
+  assert.equal(part.caveat?.value, 84.3);
+  assert.equal(perfNotStarted().caveat?.kind, 'notStarted');
+  assert.equal(perfNoCurve().caveat?.kind, 'noCurve');
+  const finNoAmt = scoreFin({ contracted: true, start: now - DAY, now, cost: 100, contract: null, paidPct: null, actual: null });
+  assert.equal(finNoAmt.score, 100, 'оноо хэвээр');
+  assert.equal(finNoAmt.caveat?.kind, 'noContractAmount');
+  assert.equal(scoreFin({ contracted: true, start: now - DAY, now, cost: 100, contract: 90, paidPct: null, actual: null }).caveat, undefined);
+  assert.equal(scoreFin({ contracted: false, start: null, now, cost: 100, contract: null, paidPct: null, actual: null }).caveat, undefined, 'гэрээгүй мөрд хамаарахгүй');
+
+  const ws = [
+    mk(1, 'Багц-1', 400, part),
+    mk(2, 'Багц-2', 100, due),
+    mk(3, 'Багц-3', 100, started, finNoAmt),
+    mk(4, 'Багц-4', 100, scorePerf({ lag: null, start: null, end: null, progress: null, now })),
+  ];
+  const al = scoreAlerts(ws);
+  assert.deepEqual(al.map((a) => a.kind), ['perfCoverage', 'notDue', 'dataGap']);
+  assert.equal(al[0].tone, 'bad', 'оноотой өртөг 200/700 = 29% < 50 → bad');
+  assert.match(al[0].text, /29%/);
+  assert.match(al[0].text, /Багц-1 84%/, 'дутуу хуваарьтай багц хамралтаараа');
+  assert.match(al[0].text, /1 ажил огноогүй/);
+  assert.match(al[1].text, /^1 ажил эхлэх огноо ирээгүй/);
+  assert.match(al[1].text, /Багц-2/);
+  assert.match(al[2].text, /Багц-3/);
+  assert.match(al[2].text, /Багц-4/);
+  const good = [mk(1, 'A', 100, started), mk(2, 'B', 3, part)];
+  assert.deepEqual(scoreAlerts(good), [], 'хамралт 97% ≥ 95 ба бусад сэрэмжлүүлэггүй → зурвасгүй');
+  assert.deepEqual(scoreAlerts([{ ...mk(1, 'X', 100, due), cancelled: true }]), [], 'хасагдсан ажил орохгүй');
+  assert.deepEqual(scoreAlerts([{ ...mk(1, 'X', 100, due), isLandWork: true }]), [], 'газрын мөр орохгүй');
+  console.log('  ✓ сэрэмжлүүлэг — caveat · scoreAlerts');
 }
 
 /* ── Төлөв ба шүүлт ── */
@@ -250,7 +270,7 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const none = { score: null, facts: [] };
   const mk = (oid, total, dims = {}, cancelled = false) => ({
     oid, name: `w${oid}`, pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled, isLandWork: false, total,
-    dims: { perf: none, fin: none, land: none, plan: none, permit: none, hse: none, ...dims },
+    dims: { perf: none, fin: none, land: none, permit: none, hse: none, ...dims },
   });
   const ws = [
     mk(1, 30, { hse: { score: 60, facts: [] } }),

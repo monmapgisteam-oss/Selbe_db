@@ -62,6 +62,23 @@ assert.equal(nootsSummary(used)[0].status, TOLOV.done, '15 ирсэн, 15 аши
 assert.deepEqual(statusFixes(used).map((x) => x.oid), [1, 2], 'нэг материалын БҮХ мөр «Дууссан»');
 assert.deepEqual(statusFixes([row()]), [], 'төлөв зөв бол бичихгүй');
 
+/* Different units must never produce a scalar total or automatic status write. */
+for (const units of [['kg', 'ton'], ['kg', '']]) {
+  const mixed = [row({ unit: units[0], inQty: 100, usedQty: 200 }),
+    row({ oid: 2, unit: units[1], inQty: 2, usedQty: 0, mirId: 'b' })];
+  const s = nootsSummary(mixed)[0];
+  assert.equal(s.inSum, null, '100 kg + 2 ton is not 102');
+  assert.equal(s.usedSum, null);
+  assert.equal(s.rest, null);
+  assert.equal(s.status, null, 'incomparable quantities cannot establish completion');
+  assert.equal(s.unitConflict, true);
+  assert.deepEqual(statusFixes(mixed), [], 'do not overwrite server status from mixed units');
+}
+const sameUnits = nootsSummary([row({ unit: ' kg ', inQty: 100, usedQty: 50 }),
+  row({ oid: 2, unit: 'KG', inQty: 2, usedQty: 1 })])[0];
+assert.equal(sameUnits.unitConflict, false);
+assert.equal(sameUnits.rest, 51, 'case/whitespace do not create a unit conflict');
+
 /* 5. Ажлын материал — нэг нүдэнд олон нэр, таслалтай нэр ч эвдрэхгүй */
 const comma = 'Цахилгааны самбар (айлын, давхарын, цахилгааны өрөөний)';
 assert.deepEqual(parseMats(`Арматур; ${comma} ;Арматур;`), ['Арматур', comma]);

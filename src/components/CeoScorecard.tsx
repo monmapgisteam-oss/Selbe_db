@@ -5,7 +5,8 @@
  *
  * ⚠️ Хэрэглэгчийн шаардлага: Cashflow-ийн 74 багц ажлыг «Төсөв, гэрээлсэн дүн»
  *    чартын ажлын төрлөөр бүлэглэж, багц бүрд 6 бүлгийн оноо —
- *    Гүйцэтгэл · Санхүүжилт · Газар чөлөөлөлт · Ерөнхий төлөвлөгөө · ХАБЭА · Чанар.
+ *    Гүйцэтгэл · Санхүүжилт · Газар чөлөөлөлт · Зөвшөөрөл · ХАБЭА
+ *    (⚠️ «Чанар» 2026-10-23, «Ерөнхий төлөвлөгөө» 2026-10-27 ХАСАГДСАН — `scorecard.ts`-ийн ⚠️).
  *
  * ⚠️ ТООЦОО ЭНД БАЙХГҮЙ: оноо `src/lib/ceo/scorecard.ts` (цэвэр), өгөгдөл
  *    `scorecardLoad.ts`. Дэлгэрэнгүйн доорх үзүүлэлтүүд нь хуучин 13 CEO
@@ -30,12 +31,12 @@ import { CEO_KPIS } from '@/lib/ceo/registry';
 import type { KpiResult } from '@/lib/ceo/kpi';
 import {
   DIMS, dimDefs, groupByType, projectDims, dimLevel, SCORE_GOOD, SCORE_WARN, HSE_GOOD, HSE_WARN,
-  workIssues, type Dim, type WorkScore, type IssueTone,
+  workIssues, scoreAlerts, type Dim, type WorkScore, type IssueTone,
   STATUSES, DIM_STATUSES, statusCounts, dimStatusCounts, workStatus, passFilter, filterActive, NO_FILTER,
   type WorkStatus, type DimStatus, type ScoreFilter,
 } from '@/lib/ceo/scorecard';
 import {
-  loadScoreBase, loadScoreLand, loadScorePlan, assemble, type Extras,
+  loadScoreBase, loadScoreLand, assemble, type Extras,
 } from '@/lib/ceo/scorecardLoad';
 import { KpiDetail, type Slot } from './CeoBoard';
 import { shortError } from '@/lib/ceo/review';
@@ -198,7 +199,11 @@ const never = <T,>() => new Promise<T>(() => {});
  *   · `pending` → «хүлээгдэж» (бүртгэл бий, дата хараахан ороогүй — 0 БИШ)
  *   · null → «—» (энэ багцад хамаарах өгөгдөл алга)
  */
-function Score({ v, loading, pending, big, dim, level }: { v: number | null; loading?: boolean; pending?: boolean; big?: boolean; dim?: Dim; level?: Level }) {
+/* ⚠️ 2026-10-28: самбарын дээд сэрэмжлүүлгийн өнгө (`scoreAlerts`) — асуудлын зэрэгтэй (`IssueTone`) ижил */
+const ALERT_TONE: Record<IssueTone, string> = { bad: LEVEL_TONE.bad, warn: LEVEL_TONE.warn, info: 'var(--data)' };
+
+/** `caveat` — оноон дээрх ⚠ (`DimScore.caveat.text`, hover-оор шалтгаан) — 2026-10-28 */
+function Score({ v, loading, pending, big, dim, level, caveat }: { v: number | null; loading?: boolean; pending?: boolean; big?: boolean; dim?: Dim; level?: Level; caveat?: string }) {
   /* ⚠️ ХАБЭА өөрийн босготой (90/70) — `dimLevel` */
   /* ⚠️ 2026-10-09: `DimScore.level` (газар — давхцлын тоогоор, `overlapLevel`) оноонос ДАВАМГАЙЛНА.
      Урьд нь чип нь `dimLevel`-ээр (оноо 95 → good) будагдаж, 1 давхцалтай ажил ногоон харагдаж,
@@ -215,12 +220,13 @@ function Score({ v, loading, pending, big, dim, level }: { v: number | null; loa
     <span
       className={`${s.score} ${big ? s.scoreBig : ''} num`}
       style={{ ['--h']: LEVEL_TONE[lv] } as CSSProperties}
-      title={loading ? tr('Ачаалж байна…') : v == null ? tr('Энэ багцад хамаарах өгөгдөл алга') : levelLabel(lv)}
+      title={loading ? tr('Ачаалж байна…') : caveat ?? (v == null ? tr('Энэ багцад хамаарах өгөгдөл алга') : levelLabel(lv))}
     >
       {/* ⚠️ 2026-09-29 (аудит 10): 1 оронтой — `num(v)` 79.6-г «80» гэж бүхэлддэг атал
           өнгө/түвшин нь бүхэлдээгүй утгаар (`scoreLevel(79.9) → warn`, check.mjs)
           → «80» шар харагдаж, домог «≥80 хэвийн» гэдэгтэй зөрдөг байв. */}
       {loading ? '…' : v == null ? '—' : num(v, 1)}
+      {!loading && caveat ? <i className={s.cav} aria-hidden>⚠</i> : null}
     </span>
   );
 }
@@ -262,23 +268,21 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const baseReady = baseQ.state === 'ready';
   /* ⚠️ Хүнд бүлгүүд суурийн ДАРАА, нэг нэгээр шатлана */
   const landQ = useAsync(() => (baseReady ? loadScoreLand() : never<Awaited<ReturnType<typeof loadScoreLand>>>()), [baseReady]);
-  const planQ = useAsync(() => (landQ.state !== 'loading' ? loadScorePlan() : never<Awaited<ReturnType<typeof loadScorePlan>>>()), [landQ.state]);
 
   const loadingDims = useMemo(() => new Set<Dim>(
-    ([['land', landQ], ['plan', planQ]] as [Dim, Async<unknown>][])
+    ([['land', landQ]] as [Dim, Async<unknown>][])
       .filter(([, q]) => q.state === 'loading').map(([d]) => d),
-  ), [landQ, planQ]);
-  const failedDims = ([['land', landQ], ['plan', planQ]] as [Dim, Async<unknown>][])
+  ), [landQ]);
+  const failedDims = ([['land', landQ]] as [Dim, Async<unknown>][])
     .filter(([, q]) => q.state === 'error').map(([d]) => defs[d].title);
 
   const allWorks = useMemo<WorkScore[] | null>(() => {
     if (!baseReady) return null;
     const x: Extras = {
       land: landQ.state === 'ready' ? landQ.data : null,
-      plan: planQ.state === 'ready' ? planQ.data : null,
     };
     return assemble(baseQ.data, x);
-  }, [baseReady, baseQ, landQ, planQ]);
+  }, [baseReady, baseQ, landQ]);
   const partFailed = [
     ...(baseQ.data?.failed ?? []),
     ...(landQ.state === 'ready' && landQ.data.failed ? [tr('Газрын давхцал (хэсэгчлэн)')] : []),
@@ -375,6 +379,8 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const { slots, retry } = useDimKpis(sel ? dim : null);
 
   const counts = useMemo(() => statusCounts(works ?? []), [works]);
+  /* ⚠️ 2026-10-28 (хэрэглэгч: «асуудалтай зүйл дээр alert»): самбарын дээд сэрэмжлүүлэг — `scoreAlerts` (цэвэр, тестлэгдсэн) */
+  const alerts = useMemo(() => (works ? scoreAlerts(works) : []), [works]);
   const dimCounts = useMemo(
     () => Object.fromEntries(DIMS.map((d) => [d, dimStatusCounts(works ?? [], d)])) as Record<Dim, Record<DimStatus, number>>,
     [works],
@@ -457,6 +463,17 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
           {tr('Татагдсангүй: {0}', [...partFailed, ...failedDims].join(', '))}
         </p>
       ) : null}
+      {/* ⚠️ 2026-10-28: оноонд хэр итгэхийг САМБАР ӨӨРӨӨ хэлнэ — урьд нь зөвхөн багц сонгосны дараа доор гардаг байв */}
+      {alerts.length > 0 && (
+        <ul className={s.alerts} role="status" aria-label={tr('Анхааруулга')}>
+          {alerts.map((a) => (
+            <li key={a.kind} className={s.alert} style={{ ['--h']: ALERT_TONE[a.tone] } as CSSProperties}>
+              <i aria-hidden>⚠</i>
+              <span>{a.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {active && works && (
         <div className={s.filterBar} role="status">
@@ -569,7 +586,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         </td>
                         {DIMS.map((d) => (
                           <td key={d} className={s.cell}>
-                            <Score v={w.dims[d].score} pending={w.dims[d].pending} loading={!w.cancelled && loadingDims.has(d)} dim={d} level={w.dims[d].level} />
+                            <Score v={w.dims[d].score} pending={w.dims[d].pending} loading={!w.cancelled && loadingDims.has(d)} dim={d} level={w.dims[d].level} caveat={w.dims[d].caveat?.text} />
                           </td>
                         ))}
                         <td className={s.cell}><Score v={w.total} loading={!w.cancelled && loadingDims.size > 0} /></td>
@@ -658,7 +675,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         <span className={s.dimHead}>
                           <Icon name={defs[d].icon} size={12} />
                           <b>{defs[d].title}</b>
-                          <Score v={sc.score} pending={sc.pending} loading={loading} dim={d} level={sc.level} />
+                          <Score v={sc.score} pending={sc.pending} loading={loading} dim={d} level={sc.level} caveat={sc.caveat?.text} />
                         </span>
                         {sc.score != null && (
                           <span className={s.bar} aria-hidden><i style={{ width: `${sc.score}%` }} /></span>
@@ -678,6 +695,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                             ))}
                           </dl>
                         )}
+                        {!loading && sc.caveat ? <span className={s.caveatNote}>⚠ {sc.caveat.text}</span> : null}
                       </button>
                     </li>
                   );
