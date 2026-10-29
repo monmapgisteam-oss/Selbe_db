@@ -27,6 +27,7 @@
 
 import { arcgisPost as queryPost } from '@/lib/query';
 import { clearMetaCache } from '@/lib/metaCache';
+import { AUTH } from '@/lib/services/env';
 
 type Esri = {
   findCredential: (url: string) => { token?: string } | null | undefined;
@@ -84,8 +85,52 @@ export async function primeServerCredential(serverUrl: string, timeoutMs = 4_000
   }
 }
 
+/**
+ * DEV ТОКЕН — нэвтрэлт УНТРААЛТТАЙ (`NEXT_PUBLIC_AUTH_OFF=1`) ЛОКАЛ dev серверт л (2026-10-29, хэрэглэгч: «нэвтрэлт
+ * унтраалттай үед зөвхөн локал dev сервер дээр хөтөч энэ токеноор өгөгдөл татдаг болгох»).
+ * ⚠️ Эх нь `.env.development.local`-ын `ARCGIS_ADMIN_TOKEN` → `next.config.mjs` ЗӨВХӨН `next dev` + AUTH_OFF үед
+ *    `NEXT_DEV_ARCGIS_TOKEN` болгон багцад оруулна; `next build` (production)-д ҮРГЭЛЖ хоосон (`tools/devToken.check.mjs`).
+ * ⚠️ ГУРВАН ХААЛТ ЗЭРЭГ: NODE_ENV=development · `AUTH.appId` хоосон (нэвтрэлт унтраалттай) · хост localhost/127.0.0.1/[::1].
+ *    Dev серверийг LAN IP/домэйнээр нээвэл ч токен явахгүй. Нэвтрэлт асаалттай үед ХЭЗЭЭ Ч хэрэглэгдэхгүй.
+ * ⚠️ Токен POST-ын биеэр л явна (`tokenParam`) — URL-д орохгүй (`tools/tokenInUrl.check.mjs`).
+ */
+export function devTokenFor(o: { nodeEnv: string | undefined; appId: string; hostname: string | null; token: string | undefined }): string | null {
+  if (o.nodeEnv !== 'development' || o.appId) return null;
+  if (!o.hostname || !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(o.hostname)) return null;
+  const t = (o.token ?? '').trim();
+  return t || null;
+}
+export function devToken(): string | null {
+  return devTokenFor({
+    nodeEnv: process.env.NODE_ENV,
+    appId: AUTH.appId,
+    /* ⚠️ Тестийн `window` стубт `location` байхгүй байж болно (`aclE2E.ui.check`) — хостгүй = токенгүй */
+    hostname: typeof window !== 'undefined' && window.location ? window.location.hostname ?? null : null,
+    token: process.env.NEXT_DEV_ARCGIS_TOKEN,
+  });
+}
+
+/**
+ * Dev токеныг JS API-ийн IdentityManager-т бүртгэнэ — газрын зургийн давхарга (FeatureLayer) ч түүгээр уншина.
+ * REST зам (`query.ts` → `tokenParam`) үүнээс хамаарахгүй. `AuthGate` нэвтрэлт унтраалттай салаанд дуудна.
+ * @param server Enterprise серверийн үндэс (`entInterceptor.ENT_SERVER`)
+ */
+export async function registerDevToken(server: string): Promise<boolean> {
+  const t = devToken();
+  if (!t || !server) return false;
+  try {
+    const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+    /* ⚠️ Хугацаа нь токеныхоос тусдаа (мэдэгдэхгүй) — 2 цаг; дуусвал давхарга 498 авна, dev серверээ дахин асаана */
+    esriId.registerToken({ server, token: t, expires: Date.now() + 2 * 3_600_000 });
+    return true;
+  } catch {
+    return false; /* JS API ачаалагдаагүй (Node/тест) */
+  }
+}
+
 export function authToken(): string | null {
-  if (!esri || !sharing) return null;
+  /* ⚠️ 2026-10-29: нэвтрэлт унтраалттай локал dev — dev токен (дээрх `devToken`-ийн хаалтууд) */
+  if (!esri || !sharing) return devToken();
   try {
     const t = esri.findCredential(sharing)?.token ?? null;
     /* ⚠️ 2026-10-05: энэ сешнд токен НЭГ удаа харагдсан — «итгэмжлэл алга болсон»-ыг

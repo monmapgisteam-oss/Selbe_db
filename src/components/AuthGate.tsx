@@ -17,7 +17,7 @@ import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
 import { clearMetaCache } from '@/lib/metaCache';
 import {
   cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
-  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
+  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead, registerDevToken,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -252,8 +252,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
+    /* ⚠️ 2026-10-29: нэвтрэлт унтраалттай ЛОКАЛ dev — `.env.development.local`-ын токеноор өгөгдөл (`authToken.devToken`);
+       давхаргад ч IdentityManager-ээр. Production/өөр хостод юу ч бүртгэгдэхгүй (хоосон токен). */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагт «шалгаж байна» гарч, mount-ын дараа л «off» болно; анхны төлөвт тавьбал статик HTML зөрнө
-    if (!AUTH.appId) { setStatus('off'); return; }
+    if (!AUTH.appId) { setStatus('off'); void registerDevToken(ENT_SERVER); return; }
 
     let alive = true;
     let oauthReady: () => void = () => {};

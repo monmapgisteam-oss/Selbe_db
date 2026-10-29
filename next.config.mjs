@@ -9,6 +9,17 @@ const nextConfig = {
   //    `public/CNAME`-ийг үл тоомсорлоно; файл хэвээр). `next start` ажиллахгүй — `out/`-ыг статикаар үйлчил.
   output: 'export',
   distDir: process.env.NEXT_DIST_DIR || '.next',
+
+  // ⚠️ 2026-10-29 (хэрэглэгч: «нэвтрэлт унтраалттай үед зөвхөн локал dev сервер дээр хөтөч энэ токеноор өгөгдөл
+  //    татдаг болгох»): `.env.development.local`-ын ARCGIS_ADMIN_TOKEN-ыг ЗӨВХӨН `next dev` (NODE_ENV=development)
+  //    + NEXT_PUBLIC_AUTH_OFF=1 үед `NEXT_DEV_ARCGIS_TOKEN` нэрээр багцад оруулна; `next build`-д ҮРГЭЛЖ хоосон —
+  //    токен production багц/GitHub Pages-д ХЭЗЭЭ Ч орохгүй (`tools/devToken.check.mjs` энэ нөхцөлийг тулгана).
+  //    Хөтөч дээр дахин 3 хаалт (`authToken.devToken`): development · appId хоосон · localhost хост.
+  env: {
+    NEXT_DEV_ARCGIS_TOKEN: process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_AUTH_OFF === '1'
+      ? (process.env.ARCGIS_ADMIN_TOKEN ?? '')
+      : '',
+  },
   trailingSlash: true,
   images: { unoptimized: true },
 
