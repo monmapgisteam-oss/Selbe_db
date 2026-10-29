@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const baseConfig = {
   // GitHub Pages (smart.selbecity.mn, 2026-09-09-өөс; өмнө selbe.monmap.mn) —
   // бүрэн статик экспорт, сервер шаардлагагүй.
   // ⚠️ 2026-10-09 (аудит): домэйн нь repo → Settings → Pages → Custom domain-оос (`actions/deploy-pages`
@@ -47,4 +48,16 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/*
+ * ⚠️ 2026-10-29: ЛОКАЛ DEV-ИЙН ӨГӨГДЛИЙН ТОКЕН (хэрэглэгчийн хүсэлт) — ЗӨВХӨН `next dev` (PHASE_DEVELOPMENT_SERVER) үед
+ *    `.env.development.local`-ын `ARCGIS_ADMIN_TOKEN`-ийг хөтчийн багцад `SELBE_DEV_DATA_TOKEN` болгон шингээнэ;
+ *    нэвтрэлт унтраалттай (`NEXT_PUBLIC_AUTH_APP_ID` хоосон) · localhost дээр л хэрэглэгдэнэ (`lib/devToken.ts`).
+ *    `next build`/статик экспортод ХЭЗЭЭ Ч орохгүй — тэр фазад хоосон мөр. Production-ийн нэвтрэлтэд нөлөөгүй.
+ */
+export default function nextConfig(phase) {
+  const dev = phase === PHASE_DEVELOPMENT_SERVER;
+  return {
+    ...baseConfig,
+    env: { SELBE_DEV_DATA_TOKEN: dev ? (process.env.ARCGIS_ADMIN_TOKEN ?? '').trim() : '' },
+  };
+}

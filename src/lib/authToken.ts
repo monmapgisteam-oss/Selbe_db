@@ -27,6 +27,7 @@
 
 import { arcgisPost as queryPost } from '@/lib/query';
 import { clearMetaCache } from '@/lib/metaCache';
+import { devDataToken } from '@/lib/devToken';
 
 type Esri = {
   findCredential: (url: string) => { token?: string } | null | undefined;
@@ -85,7 +86,8 @@ export async function primeServerCredential(serverUrl: string, timeoutMs = 4_000
 }
 
 export function authToken(): string | null {
-  if (!esri || !sharing) return null;
+  /* ⚠️ 2026-10-29: нэвтрэлт унтраалттай локал dev — өгөгдлийн токен (`devToken.ts`-ийн нөхцөл) */
+  if (!esri || !sharing) return devDataToken();
   try {
     const t = esri.findCredential(sharing)?.token ?? null;
     /* ⚠️ 2026-10-05: энэ сешнд токен НЭГ удаа харагдсан — «итгэмжлэл алга болсон»-ыг

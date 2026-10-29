@@ -177,8 +177,9 @@ export const SOURCE_FS = {
  * тэрхүү тохиргоо ил алдаа болж, чимээгүй нээгдэхээс сэргийлнэ.
  */
 /* ⚠️ 2026-09-17: бүх үйлчилгээ Organization-only тул `AUTH_OFF=1` горимд ArcGIS
-   өгөгдөл огт уншигдахгүй (499 «Token Required») — зөвхөн UI-ийн бүтэц харах
-   зориулалттай; өгөгдөлтэй хөгжүүлэлт нэвтрэлт асаалттай явна. */
+   өгөгдөл токенгүй уншигдахгүй (499 «Token Required»).
+   ⚠️ 2026-10-29: ЛОКАЛ `next dev` дээр `.env.development.local`-ын `ARCGIS_ADMIN_TOKEN`-оор уншина
+   (`lib/devToken.ts`, `next.config.mjs`) — build/production-д токен орохгүй. */
 const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
 /* ⚠️ `AUTH_OFF=1` үед appId шаардахгүй (UI-ийн бүтэц харах горим); бусад үед `req()`. */
 const AUTH_APP_ID = AUTH_OFF ? (process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "").trim()

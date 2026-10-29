@@ -15,6 +15,7 @@ import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
 import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
 import { clearMetaCache } from '@/lib/metaCache';
+import { devDataToken } from '@/lib/devToken';
 import {
   cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
   reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
@@ -253,7 +254,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагт «шалгаж байна» гарч, mount-ын дараа л «off» болно; анхны төлөвт тавьбал статик HTML зөрнө
-    if (!AUTH.appId) { setStatus('off'); return; }
+    if (!AUTH.appId) {
+      setStatus('off');
+      /* ⚠️ 2026-10-29: локал dev-ийн өгөгдлийн токен (`devToken.ts`) — газрын зургийн давхаргууд (JS API) ч ашиглана */
+      const tok = devDataToken();
+      if (tok && ENT_SERVER) {
+        void import('@arcgis/core/identity/IdentityManager').then(({ default: id }) => {
+          id.registerToken({ server: ENT_SERVER, token: tok });
+        }).catch(() => { /* газрын зураг токенгүй — REST хүсэлт токентой хэвээр */ });
+      }
+      return;
+    }
 
     let alive = true;
     let oauthReady: () => void = () => {};
