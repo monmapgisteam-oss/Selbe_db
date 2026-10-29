@@ -867,3 +867,111 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
   return { blocks: sheetDetails(ok), failed: failed.map((k) => `sheet:${k}`) };
 }
 export const loadSheetDetail = cached(fetchSheetDetail, SESSION_TTL_MS, ['BAGTS_SHEET'], (v) => !v.failed.length);
+
+/* ══════════════════ Бүлгээр хураах · шүүх (2026-10-29) ══════════════════ */
+
+/**
+ * ГАНТЫН ШҮҮЛТҮҮР (L1–L3): `problem` — хоцорсон/хугацаа хэтэрсэн мөр ба хугацаа хэтэрсэн/огноогүй milestone
+ * (шийдвэр шаардах); бусад нь `BarStatus`-ийн нэрээр. Хэсэг (`section`) · тайлбар (`note`) мөр өөрөө тохирохгүй —
+ * тохирсон мөрийн ӨВӨГ болж л харагдана (бүтэц алдагдахгүй).
+ */
+export type GFilter = 'all' | 'problem' | 'run' | 'done' | 'todo' | 'none';
+
+const gStatusOk = (r: GRow, f: GFilter): boolean => {
+  if (f === 'all') return true;
+  if (r.t === 'bar') return f === 'problem' ? r.status === 'late' || r.status === 'behind' : r.status === f;
+  if (r.t === 'ms') {
+    if (f === 'problem') return r.status === 'late' || r.status === 'missing';
+    if (f === 'done') return r.status === 'done';
+    if (f === 'todo') return r.status === 'upcoming';
+    return f === 'none' && r.status === 'none';
+  }
+  return false;
+};
+
+/** Хүүхэдтэй мөрүүдийн id (дараагийн мөр илүү гүн) — хураах товч тэдэнд л гарна */
+export function gParents(rows: readonly GRow[]): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i + 1 < rows.length; i += 1) if (rows[i + 1].depth > rows[i].depth) out.add(rows[i].id);
+  return out;
+}
+
+/**
+ * ХАРАГДАХ ГАНТЫН МӨРҮҮД.
+ *   · Шүүлт (`q` — нэр/ID-д агуулагдах, том/жижиг үсэг ялгахгүй; `f` — төлөв) идэвхтэй бол тохирсон мөр ба түүний
+ *     бүх ӨВӨГ харагдана; хураасныг үл тоомсорлоно — хайсан мөр хураагдсан бүлэг дотор нуугдахгүй.
+ *   · Шүүлтгүй бол `collapsed` мөрийн дор (илүү гүн) мөрүүд нуугдана.
+ */
+export function visibleGantt(rows: readonly GRow[], collapsed: ReadonlySet<string>, q: string, f: GFilter): GRow[] {
+  const needle = q.trim().toLowerCase();
+  if (!needle && f === 'all') {
+    const out: GRow[] = [];
+    let hideBelow: number | null = null;
+    for (const r of rows) {
+      if (hideBelow != null && r.depth > hideBelow) continue;
+      hideBelow = null;
+      out.push(r);
+      if (collapsed.has(r.id)) hideBelow = r.depth;
+    }
+    return out;
+  }
+  const keep = new Set<number>();
+  const stack: number[] = [];
+  rows.forEach((r, i) => {
+    while (stack.length && rows[stack[stack.length - 1]].depth >= r.depth) stack.pop();
+    const text = !needle || r.name.toLowerCase().includes(needle) || r.id.toLowerCase().includes(needle);
+    const hit = text && gStatusOk(r, f);
+    if (hit) { keep.add(i); for (const a of stack) keep.add(a); }
+    stack.push(i);
+  });
+  return rows.filter((_, i) => keep.has(i));
+}
+
+/** Дэд бүлэгтэй блокийн мөрүүд (`kind: 'group'` дагалдсан) — хураах товч тэдэнд */
+export function hBlockParents(sec: HSection): Set<string> {
+  const out = new Set<string>();
+  sec.rows.forEach((r, i) => { if (r.kind === 'block' && sec.rows[i + 1]?.kind === 'group') out.add(r.id); });
+  return out;
+}
+
+/**
+ * ХАРАГДАХ HEATMAP-ИЙН ХЭСГҮҮД (L4–L6).
+ *   · `q` идэвхтэй: багцын нэр тохирвол бүх мөр; эс бөгөөс нэр тохирсон мөрүүд + дэд бүлэг тохирвол түүний блок +
+ *     багцын нийт/өсөх дүн (харьцуулах суурь). Тохирох мөргүй багц хасагдана. Хураасныг үл тоомсорлоно.
+ *   · `q` хоосон: хураасан багцын мөрүүд нуугдана (толгой үлдэнэ); хураасан блокийн дэд бүлгүүд нуугдана.
+ */
+export function visibleHeat(
+  secs: readonly HSection[], collapsedPkg: ReadonlySet<string>, collapsedBlock: ReadonlySet<string>, q: string,
+): HSection[] {
+  const needle = q.trim().toLowerCase();
+  if (!needle) {
+    return secs.map((sec) => {
+      if (collapsedPkg.has(sec.pkg.key)) return { ...sec, rows: [] };
+      const rows: HRow[] = [];
+      let hide = false;
+      for (const r of sec.rows) {
+        if (r.kind === 'group' && hide) continue;
+        hide = r.kind === 'block' && collapsedBlock.has(r.id);
+        rows.push(r);
+      }
+      return { ...sec, rows };
+    });
+  }
+  const out: HSection[] = [];
+  for (const sec of secs) {
+    if (sec.pkg.label.toLowerCase().includes(needle)) { out.push(sec); continue; }
+    const keep = new Set<number>();
+    let block = -1;
+    sec.rows.forEach((r, i) => {
+      if (r.kind === 'block') block = i;
+      else if (r.kind !== 'group') block = -1;
+      if (!r.name.toLowerCase().includes(needle)) return;
+      keep.add(i);
+      if (r.kind === 'group' && block >= 0) keep.add(block);
+    });
+    if (!keep.size) continue;
+    sec.rows.forEach((r, i) => { if (r.kind === 'total' || r.kind === 'cum') keep.add(i); });
+    out.push({ ...sec, rows: sec.rows.filter((_, i) => keep.has(i)) });
+  }
+  return out;
+}

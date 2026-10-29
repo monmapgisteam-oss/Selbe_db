@@ -55,7 +55,9 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
   const d = { plan, marks: new Map(), at, failed: plan.failed };
 
   const l1 = render(d, 1);
-  assert.equal((l1.match(/aria-pressed="(true|false)"/g) ?? []).length, 6, '6 түвшний товч');
+  assert.equal((l1.match(/aria-label="L[1-6] /g) ?? []).length, 6, '6 түвшний товч');
+  /* 2026-10-29: бүлгийн түвшний товч («0 1 … N», Хуваарь шиг) */
+  assert.ok(l1.includes('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд') && l1.includes('Бүх ажлын мөрийг дэлгэнэ'), 'бүлгийн түвшний товч (Хуваарь шиг 0…N)');
   assert.equal((l1.match(/role="tab"/g) ?? []).length, 0, 'дутуу tab загвар үлдээгүй');
   assert.ok(l1.includes('L1.1') && l1.includes('L1.3'), 'L1 мөрүүд');
   assert.ok(l1.includes('Өнөөдөр 2026.10.21'), 'өнөөдрийн шугамын шошго');

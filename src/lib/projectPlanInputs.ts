@@ -24,7 +24,7 @@ import {
   loadBlockProgress, loadBlockUniverse, loadInfraProgress,
   type BlockProgressMap, type BlockUniverse, type PkgProgress,
 } from './blockProgress';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { planFields } from './planProgress';
 import { countPlanRows, loadPkgPlan, planPctFromMonths, type PkgPlan } from './huvaariObyem';
@@ -225,6 +225,8 @@ export type BlockSchedules = {
   prime: (asOfs: readonly number[]) => void;
   /** Хуваарьтай блокийн түлхүүрүүд (`buildingKey`) */
   keys: () => string[];
+  /** «Б.» хэсгийн хуваарийн муж (MIN эхлэх · MAX дуусах); хуваарьгүй бол null (2026-10-29) */
+  span: (pkg: string | null | undefined, blok: string) => [number, number] | null;
 };
 
 const cleanSpan = (s: number | null | undefined, e: number | null | undefined): [number | null, number | null] => {
@@ -238,7 +240,7 @@ const dayOf = (ms: number) => Math.floor(ms / DAY);
  * Хуудсуудаас блок бүрийн хуваарь (цэвэр — тестлэгдэнэ).
  */
 export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
-  type Entry = { sh: PlanSheet; b: number; bi: number; rowsB: SheetRow[] | null; memo: Map<number, number> };
+  type Entry = { sh: PlanSheet; b: number; bi: number; bEnd: number; rowsB: SheetRow[] | null; memo: Map<number, number> };
   const entries = new Map<string, Entry>();
   for (const sh of sheets) {
     const bi = sh.rows.findIndex((r) => isConstructionNo(r.no));
@@ -252,7 +254,7 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
       for (let i = bi; i < end; i += 1) {
         const [s, e] = cleanSpan(sh.rows[i].start[b], sh.rows[i].end[b]);
         if (s != null && e != null) {
-          entries.set(k, { sh, b, bi, rowsB: null, memo: new Map() });
+          entries.set(k, { sh, b, bi, bEnd: end, rowsB: null, memo: new Map() });
           return;
         }
       }
@@ -302,12 +304,63 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
       }
     },
     keys: () => [...entries.keys()],
+    span: (pkg, blok) => {
+      const en = entryOf(pkg, blok);
+      if (!en) return null;
+      let lo: number | null = null, hi: number | null = null;
+      for (let i = en.bi; i < en.bEnd; i += 1) {
+        const [a, z] = cleanSpan(en.sh.rows[i].start[en.b], en.sh.rows[i].end[en.b]);
+        if (a == null || z == null) continue;
+        lo = lo == null ? a : Math.min(lo, a);
+        hi = hi == null ? z : Math.max(hi, z);
+      }
+      return lo != null && hi != null ? [lo, hi] : null;
+    },
   };
 }
 
 /** `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгой) */
 export function blockPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['blockPlanned']> {
   return (pkg, blok, asOf) => (sched ? sched.at(pkg, blok, asOf) : null);
+}
+
+/**
+ * ГҮЙЦЭТГЭЛИЙН ХҮСНЭГТТЭЙ БАГЦУУД (2026-10-29, хэрэглэгч: «гүйцэтгэлийн хүснэгттэй холбо, хүснэгтгүйг хоосол»).
+ *   · `blockless` — блокгүй хүснэгт (5.x · 6.1–6.8 · 7.1 · 10): огноо/төлөвлөгөөт % нь Хуваарийн синтетик блокоос.
+ *   · `any` — аль нэг гүйцэтгэлийн хүснэгттэй (орон сууц нь блокоороо — `blockPlanned`).
+ *   Хүснэгтгүй багцын (16.x · 17.x · 6.9 · 6.10 · 7.2 · 8 · 9 · 11–15 · 18 · 19.x · 20.x) барилга угсралтын огноо, төлөвлөгөөт % ХООСОН.
+ */
+export const SHEET_PKGS = {
+  blockless: new Set(PKGS.filter((p) => p.floors == null).map((p) => pkgKeyOf(p.group))),
+  any: new Set(PKGS.map((p) => pkgKeyOf(p.group))),
+};
+
+/** Блокгүй навчны багц: 'blockless' (хүснэгтийн Хуваарь) · 'block' (хуучин дүрэм) · 'none' (хоосон) · null (багцгүй мөр) */
+function sheetKindOf(pkg: string | null | undefined): 'blockless' | 'block' | 'none' | null {
+  const k = pkgKeyOf(pkg ?? '');
+  if (!k) return null;
+  return SHEET_PKGS.blockless.has(k) ? 'blockless' : SHEET_PKGS.any.has(k) ? 'block' : 'none';
+}
+
+/** `pkgPlanned` — блокгүй хүснэгт → Хуваарийн синтетик блок; хүснэгтгүй → null; бусад → undefined (хуучин дүрэм) */
+export function pkgPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['pkgPlanned']> {
+  return (pkg, asOf) => {
+    const kind = sheetKindOf(pkg);
+    if (kind === 'none') return null;
+    if (kind !== 'blockless') return undefined;
+    return sched ? sched.at(pkg, SYNTHETIC_BLOCK, asOf) : null;
+  };
+}
+
+/** `pkgSpan` — `pkgPlannedOf`-тэй ижил салаа: хүснэгтийн Хуваарийн муж · хүснэгтгүй → null · бусад → undefined */
+export function pkgSpanOf(sched: BlockSchedules | null): NonNullable<PlanInputs['pkgSpan']> {
+  return (pkg) => {
+    const kind = sheetKindOf(pkg);
+    if (kind === 'none') return null;
+    if (kind !== 'blockless') return undefined;
+    /* `span`-гүй хуучин/хуурамч хуваарь (тест) — хоосон */
+    return sched?.span ? sched.span(pkg, SYNTHETIC_BLOCK) : null;
+  };
 }
 
 /**
@@ -330,11 +383,12 @@ export function monthlyOf(ob: PkgPlan | null | undefined): PlanSheet['monthly'] 
 async function fetchSchedules(): Promise<{ sched: BlockSchedules; failed: string[]; failedGroups: string[] }> {
   const failed: string[] = [];
   const emptyP = countPlanRows().then((c) => c === 0).catch(() => false);
-  const blockPkgs = PKGS.filter((p) => p.floors != null);
+  /* ⚠️ 2026-10-29: БЛОКГҮЙ хүснэгт (5.x · 6.x · 7.1 · 10) ч — «Хуваарь»-тай ИЖИЛ синтетик нэг блок («Ажил») */
+  const blockPkgs = PKGS;
   const got = await Promise.all(blockPkgs.map(async (pkg, order): Promise<(PlanSheet & { order: number }) | null> => {
     try {
-      const sc = await loadSchema(pkg);
-      if (!sc.bld.length) return null; // блокгүй хуудас — блокийн хуваарь биш
+      const sc = await loadSchema(pkg, pkg.floors == null ? { synthetic: true } : {});
+      if (!sc.bld.length) return null; // огнооны баганагүй блокгүй хуудас — хуваарьгүй
       const obP: Promise<PkgPlan | null> = emptyP
         .then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan)))
         .catch(() => null);
@@ -742,6 +796,8 @@ export function makeInputs(src: {
     blockActual: blockActualOf(src.actual),
     pkgActual: pkgActualOf(src.actual),
     blockPlanned: blockPlannedOf(src.sched),
+    pkgPlanned: pkgPlannedOf(src.sched),
+    pkgSpan: pkgSpanOf(src.sched),
     land: landOf(src.land),
   };
 }

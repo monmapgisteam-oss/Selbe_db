@@ -7573,7 +7573,10 @@ const en: Record<string, string> = {
   "Сүүлийн багана: хугацаанд ({0} → {1}) олгосон дүн.": "Last column: amount paid in the period ({0} → {1}).",
   "Орон сууцны барилга угсралт — төлөвлөгөө ба бодит": "Housing construction — plan and actual",
   "Сараар — хэмжилттэй сарууд, багц бүр": "By month — measured months, per package",
-  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months"
+  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months",
+  "Хоцорсон · хугацаа хэтэрсэн": "Behind · overdue",
+  "Ажил, блок, багцаар хайх": "Search works, blocks, packages",
+  "Шүүлтэд тохирох мөр алга": "No rows match the filter"
 };
 
 export default en;

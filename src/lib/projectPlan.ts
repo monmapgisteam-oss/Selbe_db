@@ -124,6 +124,16 @@ export type PlanInputs = {
   pkgActual?: (pkg: string | null, node: PlanNode) => number | null | undefined;
   /** Блокийн гүйцэтгэгчийн төлөвлөгөөт хувь `asOf` өдрөөр (Хуваарь · planProgress) */
   blockPlanned?: (pkg: string | null, blok: string, asOf: number, node: PlanNode) => number | null | undefined;
+  /**
+   * БЛОКГҮЙ барилга угсралтын навчны төлөвлөгөөт хувь (2026-10-29) — гүйцэтгэлийн хүснэгтийн Хуваариас.
+   * `null` = гүйцэтгэлийн хүснэгтгүй багц эсвэл хуваарь бөглөөгүй (гэрээний огноо руу УНАХГҮЙ); `undefined` = хуучин дүрэм.
+   */
+  pkgPlanned?: (pkg: string | null, asOf: number, node: PlanNode) => number | null | undefined;
+  /**
+   * БЛОКГҮЙ барилга угсралтын навчны гүйцэтгэгчийн муж (L/M) — гүйцэтгэлийн хүснэгтийн Хуваариас (2026-10-29).
+   * `null` = хүснэгтгүй/хуваарьгүй тул ХООСОН (хадгалсан `guits_*`-ийг ч үл тоомсорлоно); `undefined` = хадгалсан утга.
+   */
+  pkgSpan?: (pkg: string | null, node: PlanNode) => [number, number] | null | undefined;
   /** Газар чөлөөлөлт үе шатын навчны % (нэгж талбарын ТООГООР), `blok` нь null байж болно */
   land?: (pkg: string | null, blok: string | null, node: PlanNode) => number | null | undefined;
   /**
@@ -427,6 +437,12 @@ function plannedLeaf(n: PlanNode, asOf: number, inputs: PlanInputs): number | nu
     const v = inputs.blockPlanned(n.pkg, n.blok, asOf, n);
     if (v !== undefined) return frac(v);
   }
+  /* ⚠️ 2026-10-29 (хэрэглэгч: «гүйцэтгэлийн хүснэгттэй холбо, хүснэгтгүйг хоосол»): блокгүй багцын барилга угсралт —
+     гүйцэтгэлийн хүснэгтийн Хуваариас; хүснэгтгүй багц `null` (гэрээний огнооны шугаман хувь ГАРГАХГҮЙ) */
+  if (n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgPlanned) {
+    const v = inputs.pkgPlanned(n.pkg, asOf, n);
+    if (v !== undefined) return frac(v);
+  }
   const [s, e] = spanOrGeree(n, 'guits');
   return frac(linearPlanned(s, e, asOf));
 }
@@ -543,6 +559,11 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const agg = new Map<PlanNode, (number | null)[]>();
   for (const n of [...post, root]) {
     const own = DF.map(([k]) => (n.row ? saneDate(n.row[k]) : null));
+    /* ⚠️ 2026-10-29: блокгүй барилга угсралтын НАВЧНЫ гүйцэтгэгчийн муж — гүйцэтгэлийн хүснэгтийн Хуваариас (`pkgSpan`) */
+    if (!n.children.length && n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgSpan) {
+      const sp = inputs.pkgSpan(n.pkg, n);
+      if (sp !== undefined) { own[4] = sp?.[0] ?? null; own[5] = sp?.[1] ?? null; }
+    }
     const a: (number | null)[] = DF.map(() => null);
     for (const c of n.children) {
       const cv = D.get(c)!, ca = agg.get(c)!;

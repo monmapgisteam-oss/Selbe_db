@@ -437,3 +437,55 @@
 
 /* Огноо нь өвөг мөрийнх (өөрийн хуваарьгүй) — тасархай хүрээ, бүдэг */
 .inh { border-style: dashed; opacity: 0.75; }
+
+/* ── Шүүлт · бүлгээр хураах (2026-10-29) ── */
+.search {
+  height: 30px;
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 360px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.search:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
+.btn {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.caret {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.caret:hover { color: var(--ink); background: var(--surface-2); }
+.caret:focus-visible { outline: 2px solid var(--data); outline-offset: 0; }
+.caretPad { display: inline-block; width: 16px; margin-right: 4px; }
+/* Бүлгийн түвшний товч («1 2 3 … Бүгд») — хүснэгтийн дээр */
+.outline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 6px; }
+.tab:disabled { opacity: 0.5; cursor: default; }
