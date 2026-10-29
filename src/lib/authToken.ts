@@ -84,8 +84,30 @@ export async function primeServerCredential(serverUrl: string, timeoutMs = 4_000
   }
 }
 
+/**
+ * DEV-ИЙН ТОКЕН — нэвтрэлт унтраалттай (`NEXT_PUBLIC_AUTH_OFF=1`) `next dev`-д өгөгдөл уншихад (⚠️ 2026-10-29,
+ * хэрэглэгч: «нэвтрэлт унтраалттай үед токеноор өгөгдөл татдаг болго»). Утгыг `next.config.mjs` ЗӨВХӨН dev серверт,
+ * `.env.development.local`-ийн `ARCGIS_ADMIN_TOKEN`-оос дамжуулна; build-д хоосон. `NODE_ENV`-ийн шалгуур — давхар хамгаалалт.
+ * ⚠️ Зөвхөн нэвтэрсэн итгэмжлэл БАЙХГҮЙ үед (`esri` хоосон) хэрэглэгдэнэ — шинэчлэгдэхгүй, хугацаа дуусвал файлдаа солино.
+ */
+export const DEV_TOKEN: string = process.env.NODE_ENV === 'development'
+  ? (process.env.SELBE_DEV_ARCGIS_TOKEN ?? '').trim() : '';
+
+/** Dev-ийн токеныг JS API-ийн IdentityManager-т (газрын зургийн давхарга) бүртгэнэ — `AuthGate` нэвтрэлт унтраалттай үед */
+export async function registerDevToken(server: string): Promise<boolean> {
+  if (!DEV_TOKEN || !server) return false;
+  try {
+    const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+    esriId.registerToken({ server, token: DEV_TOKEN });
+    clearMetaCache();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function authToken(): string | null {
-  if (!esri || !sharing) return null;
+  if (!esri || !sharing) return DEV_TOKEN || null;
   try {
     const t = esri.findCredential(sharing)?.token ?? null;
     /* ⚠️ 2026-10-05: энэ сешнд токен НЭГ удаа харагдсан — «итгэмжлэл алга болсон»-ыг

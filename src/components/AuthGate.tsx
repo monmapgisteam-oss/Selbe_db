@@ -16,8 +16,8 @@ import { setCurrentUser } from '@/lib/who';
 import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
 import { clearMetaCache } from '@/lib/metaCache';
 import {
-  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
-  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerDevToken,
+  registerIdentity, reopenSessionDead, retrySession, sessionDead, subscribeSessionDead,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -253,7 +253,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагт «шалгаж байна» гарч, mount-ын дараа л «off» болно; анхны төлөвт тавьбал статик HTML зөрнө
-    if (!AUTH.appId) { setStatus('off'); return; }
+    /* ⚠️ 2026-10-29: нэвтрэлт унтраалттай dev-д газрын зургийн давхарга ч dev-ийн токеноор уншина (`authToken.DEV_TOKEN`) */
+    if (!AUTH.appId) { void registerDevToken(ENT_SERVER); setStatus('off'); return; }
 
     let alive = true;
     let oauthReady: () => void = () => {};

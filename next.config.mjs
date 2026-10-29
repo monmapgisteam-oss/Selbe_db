@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -47,4 +48,14 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/*
+ * ⚠️ 2026-10-29 (хэрэглэгч: «нэвтрэлт унтраалттай үед токеноор өгөгдөл татдаг болго»): ЗӨВХӨН `next dev`
+ *    (PHASE_DEVELOPMENT_SERVER) БА `NEXT_PUBLIC_AUTH_OFF=1` үед `.env.development.local`-ийн `ARCGIS_ADMIN_TOKEN`-ийг
+ *    хөтөчид `SELBE_DEV_ARCGIS_TOKEN` болгон дамжуулна — `authToken.DEV_TOKEN`-ийн ⚠️. `next build` (deploy) дээр
+ *    энэ нөхцөл ХЭЗЭЭ Ч биелэхгүй тул токен статик багцад орохгүй. Нэвтрэлт асаалттай dev-д ч дамжихгүй.
+ */
+export default function config(phase) {
+  const devTok = phase === PHASE_DEVELOPMENT_SERVER && process.env.NEXT_PUBLIC_AUTH_OFF === '1'
+    ? (process.env.ARCGIS_ADMIN_TOKEN ?? '').trim() : '';
+  return devTok ? { ...nextConfig, env: { SELBE_DEV_ARCGIS_TOKEN: devTok } } : nextConfig;
+}
