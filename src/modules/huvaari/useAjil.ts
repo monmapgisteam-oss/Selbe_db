@@ -207,7 +207,9 @@ export function useAjil({
           setAjNote(tr('Нэмэлт ажил батлагдаж хуудсанд орлоо — мөрүүд серверээс шинэчлэгдэв.'));
         }
       }
-    } catch
+    } catch {
+      /* уншиж чадсангүй ≠ илгээлт алга — хуучин төлөвийг хэвээр үлдээнэ */
+    }
   }, [pkg.key, user, status, canAddRow, addsStRef, dirtyNRef, hdResetRestore, hdRetryRestore, pkgKeyRef, refetchRef, setAddsSt, uiOpenRef]);
   /**
    * «ШИНЭЧЛЭХ» — батлагдсан нэмэлт ажлын шинэ жаазыг татахдаа хадгалаагүй

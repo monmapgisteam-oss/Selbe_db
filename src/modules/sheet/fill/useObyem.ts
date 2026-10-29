@@ -95,7 +95,9 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       } else {
         setPvPreview(null);
       }
-    } catch
+    } catch {
+      /* уншиж чадсангүй ≠ илгээлт алга — хуучин төлөвийг хэвээр үлдээнэ */
+    }
   }, [pkg.key, pkgKeyRef, setPvSub, setPvReturned, setPvPreview, setPvApproved]);
 
   useEffect(() => { void refreshObyem(); }, [refreshObyem, todayFillMs]);

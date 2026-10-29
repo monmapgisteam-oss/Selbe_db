@@ -1719,7 +1719,9 @@ export async function applyDeletes(pkg: Pkg, oids: number[]): Promise<number> {
       });
       const res = (j.deleteResults || []) as { success?: boolean }[];
       gone += res.filter((r) => r.success === true).length;
-    } catch
+    } catch {
+      /* нэг багц унасан ч бусдыг цэвэрлэхийг үргэлжлүүлнэ */
+    }
   }
   if (gone > 0) invalidate('BAGTS_SHEET');
   return gone;

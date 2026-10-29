@@ -160,7 +160,9 @@ export function parseReply(text, n) {
         });
         rest = rest.replace(m[0], "");
       }
-    } catch
+    } catch {
+      /* эвдэрсэн JSON — текстэнд нь үлдээнэ (хэрэглэгч хараад мэдэгдэнэ) */
+    }
   }
   const t = rest.trim();
   if (t) content.unshift({ type: "text", text: t });

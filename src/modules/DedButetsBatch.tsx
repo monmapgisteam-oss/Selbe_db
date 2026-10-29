@@ -110,6 +110,7 @@ export function DedButetsBatch({
       .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layerId, oidKey]);
 
   const set = (name: string, v: string) => {
