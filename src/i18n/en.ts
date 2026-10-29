@@ -7590,7 +7590,11 @@ const en: Record<string, string> = {
   "Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.": "Monthly volume is not set on a group — split it by month in each task inside it.",
   "Хоцорсон · хугацаа хэтэрсэн": "Behind · overdue",
   "Ажил, блок, багцаар хайх": "Search works, blocks, packages",
-  "Шүүлтэд тохирох мөр алга": "No rows match the filter"
+  "Шүүлтэд тохирох мөр алга": "No rows match the filter",
+  "Батлагдлаа, гэхдээ «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь хүснэгтэд бичигдсэнгүй ({0}). Дараагийн батлалтаар нөхөгдөнө.": "Approved, but the progress % of «Project plan & performance» was not written to the table ({0}). It will be filled in on the next approval.",
+  "Төсөл төлөвлөгөөний мөр алга": "No project plan rows",
+  "Зарим эх уншигдсангүй ({0})": "Some sources could not be read ({0})",
+  "Төсөл төлөвлөгөө биелэлт — системээс": "Project plan & performance — from the system"
 };
 
 export default en;
