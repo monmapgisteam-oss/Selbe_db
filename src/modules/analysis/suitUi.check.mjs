@@ -39,7 +39,7 @@ assert.ok(ov.includes('flow: cars.length && sumVmax > 0 ? Math.min(1, sumV / sum
 /* 2 */
 assert.ok(suit.includes("const trafficLive = roadMode && netCars && !!roadNet && dim === '2d';"));
 assert.ok(suit.includes('stats: trafficLive ? trafficStats : null,'));
-assert.ok(/setRoadErr\(null\);\s*\/\*[^*]*\*\/\s*setTrafficStats\(null\);/.test(suit), 'сүлжээ солиход хураангуй тэглэнэ');
+assert.ok(/setRoadErr\(null\);\s*(?:\/\*[^*]*\*\/\s*)?setTrafficStats\(null\);/.test(suit), 'сүлжээ солиход хураангуй тэглэнэ');
 
 /* 3 */
 assert.ok(net.includes('if (signalsFailed) { net.signalsFailed = true; cache.delete(kind); }'));

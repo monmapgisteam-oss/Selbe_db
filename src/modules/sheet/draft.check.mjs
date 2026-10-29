@@ -446,7 +446,7 @@ console.log('✅ өнчин илгээлт хуудас дахин нээхэд 
   assert.ok(res.includes('await askConfirm(') && res.includes('dropMine(pkg.key, mine);'), 'өөрийн нүдийг зөвшөөрлөөр хаях зам алга');
   assert.ok(res.includes('if (reviewerOnly || !permPerf)'), 'батлагч буцаалтыг сонгож чадаж байна');
   /* publish — сэргээлт · зөвшөөрөгдсөн нүд · зорилт зөрсөн нүд */
-  const pub = between('const publish = useCallback(async () => {', '/* ⚠️ Нэмэлт мөрийн шалгуур');
+  const pub = between('const publish = useCallback(async () => {', "warn(tr('Илгээх — {0} дуусгаагүй байна'");
   assert.ok(pub.includes('if (restoringUi) { warn(RO.restoring); return; }'), 'Ctrl+S сэргээлтийн хаалтыг тойрч байна');
   assert.ok(pub.includes('okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)))') && pub.includes('revert(k, true)'), 'publish зөвшөөрөгдсөн нүдийг илгээж байна');
   assert.ok(pub.includes('offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)])'), 'publish өөр ажлын нүдийг засвартай илгээж байна');

@@ -289,7 +289,7 @@ const P = HO_IPC.payFields;
     assert.deepEqual(uniqueBlockCounts([b9, b12]), [14, 0], '4-2: 12F жин 0 → IPC-д алгасна');
   }
   assert.ok(W.includes('const warns = [cw, verdict.warn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
-  assert.ok(/\} finally \{\s*\/\*[^]*?\*\/\s*if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
+  assert.ok(/\} finally \{\s*(?:\/\*[^]*?\*\/\s*)?if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
   const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
   assert.ok(L.includes('const cf = autoContractFor(hoRows, packKey);') && L.includes('cands.find((c) => c.code === cf.code)'), 'ipcDocLoad AUTO-той ижил гэрээ сонгоно (F6)');
   assert.ok(L.includes('msToDay(normDayMs(v))'), 'ipcDocLoad өдрийг normDayMs-ээр (8)');
