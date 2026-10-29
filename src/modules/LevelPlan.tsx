@@ -14,8 +14,9 @@ import { useAsync } from '@/lib/useAsync';
 import { Data, userError } from '@/components/ui';
 import {
   DAY, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay, fmtMD, fmtMonth,
-  ganttAxis, heatLevel, loadLevelData, loadSheetDetail, monthIdx, packagesOf, weekCols, xMonths,
-  type Axis, type BarStatus, type BlockDetail, type Col, type GRow, type HRow, type HSection, type LevelData,
+  ganttAxis, gParents, hBlockParents, heatLevel, loadLevelData, loadSheetDetail, monthIdx, packagesOf, visibleGantt,
+  visibleHeat, weekCols, xMonths,
+  type Axis, type BarStatus, type BlockDetail, type Col, type GFilter, type GRow, type HRow, type HSection, type LevelData,
   type MsStatus, type PkgInfo,
 } from '@/lib/levelPlan';
 import s from './levelPlan.module.css';
@@ -44,6 +45,71 @@ const LEVEL_SUB: Record<Level, () => string> = {
 /** Сарын өргөн (px) — гантын тэнхлэг сар-жигд */
 const MW = 22;
 
+/**
+ * БҮЛГИЙН ТҮВШНЭЭР ХУРААХ (2026-10-29, хэрэглэгч: «Хуваарь шиг 0…N») — «Хуваарь»-ын түвшний зурвастай ИЖИЛ утга:
+ *   0 = бүгдийг хураах (зөвхөн дээд түвшин) · N = N-р түвшин хүртэл дэлгэх (гүн ≤ N мөр) · хамгийн гүн = бүх мөр.
+ *   `level` нь тэр N; `null` = бүгд дэлгэсэн (анхдагч).
+ * `ids` — тэр түвшнээс ГАДНА мөр бүрийг сумаар сэлгэсэн (түвшин сонгоход арилна). Мөрийн хамаарах түвшин: гант —
+ * `GRow.depth`; heatmap — багц 0 · блок 1 · дэд бүлэг 2. Түлхүүр: гантын мөрийн ID · `p:`+багц · `b:`+блокийн мөр.
+ */
+type Fold = { level: number | null; ids: ReadonlySet<string> };
+const FOLD0: Fold = { level: null, ids: new Set() };
+/** `depth` гүнтэй мөр (хүүхэд нь `depth + 1`) хураагдсан эсэх */
+const isFolded = (f: Fold, id: string, depth: number): boolean => (f.level != null && depth >= f.level) !== f.ids.has(id);
+const toggleFold = (f: Fold, id: string): Fold => {
+  const ids = new Set(f.ids);
+  if (ids.has(id)) ids.delete(id); else ids.add(id);
+  return { level: f.level, ids };
+};
+/** Харагдацын шүүлт ба хураалт — гант ба heatmap-д дамжина */
+type ViewOpts = { fold: Fold; onToggle: (id: string) => void; onLevel: (n: number | null) => void; q: string; gf: GFilter };
+
+/**
+ * «1 2 … N» — «Хуваарь»-ын түвшний зурвас (дугаар 1-ээс): `deep` = хамгийн гүн мөрийн гүн (тэр товч = бүх мөр).
+ * Шүүлт идэвхтэй үед идэвхгүй (тохирсон бүгд харагдана).
+ */
+function LevelButtons({ deep, vo, off }: { deep: number; vo: ViewOpts; off: boolean }) {
+  if (deep < 1) return null;
+  const cur = vo.fold.ids.size === 0 ? (vo.fold.level ?? deep) : undefined;
+  return (
+    <div className={s.outline}>
+      <span>{tr('Түвшин')}</span>
+      <div className={s.tabs} role="group" aria-label={tr('Түвшин')}>
+        {Array.from({ length: deep + 1 }, (_, i) => {
+          /* Дугаар 1-ээс (хэрэглэгч: «0 гэж байхгүй») — товч N = гүн ≤ N−1 мөр; сүүлийнх = бүх мөр */
+          const n = i + 1;
+          const on = cur === i;
+          const label = i === 0 ? tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')
+            : i === deep ? tr('Бүх ажлын мөрийг дэлгэнэ') : tr('{0}-р түвшин хүртэл дэлгэх', n);
+          return (
+            <button
+              key={i}
+              type="button"
+              disabled={off}
+              aria-pressed={on}
+              className={`${s.tab} ${on ? s.tabOn : ''}`}
+              title={label}
+              aria-label={label}
+              onClick={() => vo.onLevel(i === deep ? null : i)}
+            >
+              {String(n)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const GF_OPTS: { v: GFilter; label: () => string }[] = [
+  { v: 'all', label: () => tr('Бүх төлөв') },
+  { v: 'problem', label: () => tr('Хоцорсон · хугацаа хэтэрсэн') },
+  { v: 'run', label: () => tr('Явж байна') },
+  { v: 'todo', label: () => tr('Эхлээгүй') },
+  { v: 'done', label: () => tr('Дууссан') },
+  { v: 'none', label: () => tr('Мэдээлэл байхгүй') },
+];
+
 export function LevelPlan() {
   const q = useAsync(loadLevelData, []);
   return (
@@ -66,6 +132,9 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
   const [lvl, setLvl] = useState<Level>(initial);
   const [pk, setPk] = useState('');
   const [groups, setGroups] = useState(true);
+  const [q, setQ] = useState('');
+  const [gf, setGf] = useState<GFilter>('all');
+  const [fold, setFold] = useState<Fold>(FOLD0);
   const pkgs = useMemo(() => packagesOf(d.plan.tree), [d.plan.tree]);
   const blockPkgs = useMemo(() => pkgs.filter((p) => p.blocks.length), [pkgs]);
   const today = dayOfLocal(d.at);
@@ -84,6 +153,13 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
   const lookPkg = blockPkgs.find((p) => p.key === pk) ?? blockPkgs[0] ?? null;
   const shown: PkgInfo[] = look ? (lookPkg ? [lookPkg] : []) : pk ? pkgs.filter((p) => p.key === pk) : pkgs;
   const opts = look ? blockPkgs : pkgs;
+  /* Түвшин солиход хураалт эхлээс — мөрийн ID-ууд түвшин бүрд өөр */
+  const pickLvl = (l: Level) => { setLvl(l); setFold(FOLD0); };
+  const vo: ViewOpts = {
+    fold, onToggle: (id) => setFold((f) => toggleFold(f, id)), onLevel: (n) => setFold({ level: n, ids: new Set() }),
+    q, gf: lvl <= 3 ? gf : 'all',
+  };
+  const filtering = !!q.trim() || (lvl <= 3 && gf !== 'all');
 
   return (
     <>
@@ -102,7 +178,7 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
               aria-label={`L${l} ${LEVEL_TEXT[l]()}`}
               title={LEVEL_TEXT[l]()}
               className={`${s.tab} ${lvl === l ? s.tabOn : ''}`}
-              onClick={() => setLvl(l)}
+              onClick={() => pickLvl(l)}
             >
               <span className={s.tabL}>L{l}</span>
               <span className={s.tabN}>{LEVEL_TEXT[l]()}</span>
@@ -129,22 +205,43 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
           </label>
         )}
       </div>
+      <div className={s.bar}>
+        <input
+          className={s.search}
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={tr('Ажил, блок, багцаар хайх')}
+          aria-label={tr('Хайх')}
+        />
+        {lvl <= 3 && (
+          <label className={s.field}>
+            <span>{tr('Төлөв')}</span>
+            <select className={s.select} value={gf} onChange={(e) => setGf(e.target.value as GFilter)}>
+              {GF_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label()}</option>)}
+            </select>
+          </label>
+        )}
+        {filtering && (
+          <button type="button" className={s.btn} onClick={() => { setQ(''); setGf('all'); }}>{tr('Шүүлт арилгах')}</button>
+        )}
+      </div>
       <p className={s.lvlSub}>{LEVEL_SUB[lvl]()}</p>
 
-      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} today={today} />}
-      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} today={today} />}
+      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} today={today} vo={vo} />}
+      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} today={today} vo={vo} />}
       {lvl === 3 && (
         <WithSheet>
-          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} today={today} />}
+          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} today={today} vo={vo} />}
         </WithSheet>
       )}
-      {lvl === 4 && <MonthHeat d={d} pkgs={shown} today={today} />}
+      {lvl === 4 && <MonthHeat d={d} pkgs={shown} today={today} vo={vo} />}
       {look && groups && (
         <WithSheet>
-          {(det) => <LookHeat d={d} pkgs={shown} det={det} groups daily={lvl === 6} today={today} />}
+          {(det) => <LookHeat d={d} pkgs={shown} det={det} groups daily={lvl === 6} today={today} vo={vo} />}
         </WithSheet>
       )}
-      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} groups={false} daily={lvl === 6} today={today} />}
+      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} groups={false} daily={lvl === 6} today={today} vo={vo} />}
 
       <Legend lvl={lvl} />
     </>
@@ -202,12 +299,29 @@ const MS_TEXT: Record<MsStatus, () => string> = {
   none: () => tr('Мэдээлэл байхгүй'),
 };
 
-function Gantt({ rows, today }: { rows: GRow[]; today: number }) {
+function Gantt({ rows, today, vo }: { rows: GRow[]; today: number; vo: ViewOpts }) {
+  /* Тэнхлэг БҮТЭН мөрөөр — шүүх/хураахад огнооны хүрээ үсрэхгүй */
   const ax = useMemo(() => ganttAxis(rows, today), [rows, today]);
+  const parents = useMemo(() => gParents(rows), [rows]);
+  const depthOf = useMemo(() => new Map(rows.map((r) => [r.id, r.depth] as const)), [rows]);
   if (!rows.length || !ax) return <div className={s.hint}>{tr('Харуулах мөр алга')}</div>;
+  const filtering = !!vo.q.trim() || vo.gf !== 'all';
+  const folded = (id: string) => isFolded(vo.fold, id, depthOf.get(id) ?? 0);
+  const vis = visibleGantt(rows, new Set([...parents].filter(folded)), vo.q, vo.gf);
+  const deep = rows.reduce((m, r) => Math.max(m, r.depth), 0);
   const W = ax.n * MW;
   const nowX = xMonths(ax, today) * MW;
+  if (!vis.length) {
+    return (
+      <>
+        <LevelButtons deep={deep} vo={vo} off={filtering} />
+        <div className={s.hint}>{tr('Шүүлтэд тохирох мөр алга')}</div>
+      </>
+    );
+  }
   return (
+    <>
+    <LevelButtons deep={deep} vo={vo} off={filtering} />
     <div className={s.card}>
       <div className={s.scroll}>
         <table className={s.gt}>
@@ -230,11 +344,17 @@ function Gantt({ rows, today }: { rows: GRow[]; today: number }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => <GanttRow key={r.id} r={r} ax={ax} nowX={nowX} W={W} />)}
+            {vis.map((r) => (
+              <GanttRow
+                key={r.id} r={r} ax={ax} nowX={nowX} W={W}
+                fold={!filtering && parents.has(r.id) ? { open: !folded(r.id), onToggle: () => vo.onToggle(r.id) } : null}
+              />
+            ))}
           </tbody>
         </table>
       </div>
     </div>
+    </>
   );
 }
 
@@ -258,7 +378,25 @@ function AxisHead({ ax, nowX, today }: { ax: Axis; nowX: number; today: number }
   );
 }
 
-function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: number }) {
+/** Хураах/дэлгэх сум — хүүхэдтэй мөрд; хүүхэдгүй мөрд ижил зай (нэр зэрэгцэнэ) */
+function Caret({ fold }: { fold: { open: boolean; onToggle: () => void } | null }) {
+  if (!fold) return <span className={s.caretPad} aria-hidden />;
+  return (
+    <button
+      type="button"
+      className={s.caret}
+      aria-expanded={fold.open}
+      aria-label={fold.open ? tr('Хураах') : tr('Дэлгэх')}
+      onClick={fold.onToggle}
+    >
+      {fold.open ? '▾' : '▸'}
+    </button>
+  );
+}
+
+function GanttRow({ r, ax, nowX, W, fold }: {
+  r: GRow; ax: Axis; nowX: number; W: number; fold: { open: boolean; onToggle: () => void } | null;
+}) {
   const ind = { paddingLeft: 8 + r.depth * 14 };
   const tl = (body: ReactNode) => (
     <td className={s.cTl}>
@@ -272,7 +410,7 @@ function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: numb
     return (
       <tr className={r.depth === 0 ? s.secRow : s.subRow}>
         <td className={s.cId}>{r.id}</td>
-        <td className={s.cName} style={ind} title={r.name}>{r.name}</td>
+        <td className={s.cName} style={ind} title={r.name}><Caret fold={fold} />{r.name}</td>
         <td /><td /><td />
         {tl(null)}
       </tr>
@@ -282,7 +420,7 @@ function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: numb
     return (
       <tr className={s.noteRow}>
         <td className={s.cId}>{r.id}</td>
-        <td className={s.cName} style={ind}>{r.name}</td>
+        <td className={s.cName} style={ind}><Caret fold={fold} />{r.name}</td>
         <td /><td /><td />
         {tl(null)}
       </tr>
@@ -293,7 +431,7 @@ function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: numb
     return (
       <tr className={s.row}>
         <td className={s.cId}>{r.id}</td>
-        <td className={s.cName} style={ind} title={r.name}>{r.name}</td>
+        <td className={s.cName} style={ind} title={r.name}><Caret fold={fold} />{r.name}</td>
         <td className={s.num}>{fmtDay(r.at)}</td>
         <td />
         <td className={`${s.r} ${r.status === 'done' ? s.okInk : r.status === 'late' || r.status === 'missing' ? s.badInk : ''}`}>
@@ -325,7 +463,7 @@ function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: numb
     <tr className={`${s.row} ${r.strong ? s.strongRow : ''}`}>
       <td className={s.cId}>{r.id}</td>
       <td className={s.cName} style={ind} title={r.name}>
-        {r.name}{r.w != null && <span className={s.w}> ({pct(r.w, 1)})</span>}
+        <Caret fold={fold} />{r.name}{r.w != null && <span className={s.w}> ({pct(r.w, 1)})</span>}
       </td>
       <td className={s.num}>{fmtDay(r.start)}</td>
       <td className={s.num}>{fmtDay(r.end)}</td>
@@ -349,7 +487,7 @@ function GanttRow({ r, ax, nowX, W }: { r: GRow; ax: Axis; nowX: number; W: numb
 
 type HeatCol = { key: string; label: string; now: boolean };
 
-function MonthHeat({ d, pkgs, today }: { d: LevelData; pkgs: PkgInfo[]; today: number }) {
+function MonthHeat({ d, pkgs, today, vo }: { d: LevelData; pkgs: PkgInfo[]; today: number; vo: ViewOpts }) {
   const secs = useMemo(() => buildL4(d.plan, pkgs), [d.plan, pkgs]);
   const months = d.plan.months;
   /* Ажилтай сарууд л (бүх багцын бүх мөрөөр) — төслийн бүтэн тэнхлэг ТЭЗҮ-гээс эхэлдэг тул хэт өргөн */
@@ -361,13 +499,14 @@ function MonthHeat({ d, pkgs, today }: { d: LevelData; pkgs: PkgInfo[]; today: n
   const tm = monthIdx(today);
   const cols: HeatCol[] = months.slice(lo, hi + 1).map((m) => ({ key: String(m), label: fmtMonth(m), now: monthIdx(m) === tm }));
   const cut = secs.map((x) => ({ ...x, rows: x.rows.map((r) => ({ ...r, cells: r.cells.slice(lo, hi + 1) })) }));
-  return <Heat secs={cut} cols={cols} dec={1} sum={false} />;
+  return <Heat secs={cut} cols={cols} dec={1} sum={false} vo={vo} />;
 }
 
 function LookHeat({
-  d, pkgs, det, groups, daily, today,
+  d, pkgs, det, groups, daily, today, vo,
 }: {
   d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; groups: boolean; daily: boolean; today: number;
+  vo: ViewOpts;
 }) {
   const colsDef: Col[] = useMemo(() => (daily ? dayCols(today, 14) : weekCols(today, 12)), [daily, today]);
   const secs = useMemo(() => buildLook(d.plan, pkgs, det, colsDef, groups), [d.plan, pkgs, det, colsDef, groups]);
@@ -377,13 +516,30 @@ function LookHeat({
     label: c.days === 1 ? fmtMD(c.from) : `${fmtMD(c.from)}–${fmtMD(c.from + (c.days - 1) * DAY)}`,
     now: i === 0,
   }));
-  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum />;
+  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum vo={vo} />;
 }
 
 const KIND_CLS: Record<HRow['kind'], string> = { total: s.hTotal, cum: s.hCum, block: s.hBlock, group: s.hGroup };
 
-function Heat({ secs, cols, dec, sum }: { secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean }) {
+function Heat({ secs, cols, dec, sum, vo }: { secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean; vo: ViewOpts }) {
+  const filtering = !!vo.q.trim();
+  /* Хураасан багц · блок — `Fold` (`p:` · `b:` угтвартай түлхүүр) → `visibleHeat`-ийн олонлог */
+  const pkgSet = new Set(secs.filter((x) => isFolded(vo.fold, `p:${x.pkg.key}`, 0)).map((x) => x.pkg.key));
+  const blockSet = new Set(secs.flatMap((x) => [...hBlockParents(x)]).filter((id) => isFolded(vo.fold, `b:${id}`, 1)));
+  const vis = visibleHeat(secs, pkgSet, blockSet, vo.q);
+  /* Гүн: 0 — багц · 1 — блок/нийт · 2 — дэд бүлэг (байвал) */
+  const deep = secs.some((x) => x.rows.some((r) => r.kind === 'group')) ? 2 : 1;
+  if (!vis.length) {
+    return (
+      <>
+        <LevelButtons deep={deep} vo={vo} off={filtering} />
+        <div className={s.hint}>{tr('Шүүлтэд тохирох мөр алга')}</div>
+      </>
+    );
+  }
   return (
+    <>
+    <LevelButtons deep={deep} vo={vo} off={filtering} />
     <div className={s.card}>
       <div className={s.scroll}>
         <table className={s.ht}>
@@ -399,38 +555,56 @@ function Heat({ secs, cols, dec, sum }: { secs: HSection[]; cols: HeatCol[]; dec
             </tr>
           </thead>
           <tbody>
-            {secs.map((sec) => (
-              <HeatSection key={sec.pkg.key} sec={sec} cols={cols} dec={dec} sum={sum} />
+            {vis.map((sec) => (
+              <HeatSection
+                key={sec.pkg.key} sec={sec} cols={cols} dec={dec} sum={sum}
+                parents={filtering ? null : hBlockParents(secs.find((x) => x.pkg.key === sec.pkg.key) ?? sec)}
+                vo={vo}
+              />
             ))}
           </tbody>
         </table>
       </div>
     </div>
+    </>
   );
 }
 
-function HeatSection({ sec, cols, dec, sum }: { sec: HSection; cols: HeatCol[]; dec: number; sum: boolean }) {
+function HeatSection({ sec, cols, dec, sum, parents, vo }: {
+  sec: HSection; cols: HeatCol[]; dec: number; sum: boolean;
+  /** Дэд бүлэгтэй блокууд (хураах сум) — шүүлт идэвхтэй үед `null` (сумгүй) */
+  parents: ReadonlySet<string> | null; vo: ViewOpts;
+}) {
   const span = 5 + (sum ? 1 : 0) + cols.length;
+  const pid = `p:${sec.pkg.key}`;
   return (
     <>
       <tr className={s.hSec}>
         <td className={s.hName} title={sec.pkg.label}>
+          <Caret fold={parents ? { open: !isFolded(vo.fold, pid, 0), onToggle: () => vo.onToggle(pid) } : null} />
           {sec.pkg.label}
           {sec.pkg.blocks.length > 0 && <span className={s.w}> · {tr('{0} блок', sec.pkg.blocks.length)}</span>}
         </td>
         <td colSpan={span - 1} />
       </tr>
-      {sec.rows.map((r) => <HeatRowView key={r.id} r={r} cols={cols} dec={dec} sum={sum} />)}
+      {sec.rows.map((r) => (
+        <HeatRowView
+          key={r.id} r={r} cols={cols} dec={dec} sum={sum}
+          fold={parents?.has(r.id) ? { open: !isFolded(vo.fold, `b:${r.id}`, 1), onToggle: () => vo.onToggle(`b:${r.id}`) } : null}
+        />
+      ))}
     </>
   );
 }
 
-function HeatRowView({ r, cols, dec, sum }: { r: HRow; cols: HeatCol[]; dec: number; sum: boolean }) {
+function HeatRowView({ r, cols, dec, sum, fold }: {
+  r: HRow; cols: HeatCol[]; dec: number; sum: boolean; fold: { open: boolean; onToggle: () => void } | null;
+}) {
   const cum = r.kind === 'cum';
   const max = cum ? 0 : Math.max(0, ...r.cells.map((v) => (v == null ? 0 : v)));
   return (
     <tr className={`${s.hRow} ${KIND_CLS[r.kind]}`}>
-      <td className={s.hName} title={r.name}>{r.name}</td>
+      <td className={s.hName} title={r.name}><Caret fold={fold} />{r.name}</td>
       <td className={s.r}>{r.w == null ? '' : pct(r.w, 1)}</td>
       <td className={s.num}>{r.start == null ? '' : fmtDay(r.start)}</td>
       <td className={s.num}>{r.end == null ? '' : fmtDay(r.end)}</td>

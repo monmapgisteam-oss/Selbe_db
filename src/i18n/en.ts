@@ -7588,6 +7588,9 @@ const en: Record<string, string> = {
   "Том бүлэг гараар төлөвлөгдөхгүй — огноо, сарын хувь ба мөнгө нь доторх жижиг бүлгүүдээс автоматаар бодогдоно. Жижиг бүлгээ нээж төлөвлөнө үү.": "A large group is not planned by hand — its dates, monthly percentages and amounts are computed from the smaller groups inside it. Open a smaller group to plan it.",
   "Доторх ажлууд сарын обьёмоор төлөвлөгдөөгүй байна.": "The works inside are not planned by monthly volume yet.",
   "Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.": "Monthly volume is not set on a group — split it by month in each task inside it.",
+  "Хоцорсон · хугацаа хэтэрсэн": "Behind · overdue",
+  "Ажил, блок, багцаар хайх": "Search works, blocks, packages",
+  "Шүүлтэд тохирох мөр алга": "No rows match the filter"
 };
 
 export default en;

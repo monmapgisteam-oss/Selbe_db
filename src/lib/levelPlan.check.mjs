@@ -334,4 +334,39 @@ const stored = fx.rows.map((r) => ({
   assert.equal(failLabel('somethingNew'), 'somethingNew', 'танигдаагүй код нуугдахгүй');
 }
 
+/* ══ Бүлгээр хураах · шүүх (2026-10-29) ══ */
+{
+  const { gParents, visibleGantt, hBlockParents, visibleHeat } = await import('./levelPlan.ts');
+  const bar = (id, depth, status, name = id) => ({ t: 'bar', id, name, depth, start: 0, end: 1, actual: null, planned: null, status });
+  const rows = [
+    { t: 'section', id: 'A', name: 'Барилга', depth: 0 },
+    bar('A1', 1, 'run', 'Суурь'),
+    bar('A1a', 2, 'late', 'Цутгалт'),
+    bar('A2', 1, 'done', 'Хана'),
+    { t: 'section', id: 'B', name: 'Зураг төсөл', depth: 0 },
+    { t: 'ms', id: 'B1', name: 'Батлах', depth: 1, at: null, status: 'missing' },
+  ];
+  assert.deepEqual([...gParents(rows)].sort(), ['A', 'A1', 'B']);
+  const ids = (xs) => xs.map((r) => r.id).join(',');
+  assert.equal(ids(visibleGantt(rows, new Set(), '', 'all')), 'A,A1,A1a,A2,B,B1', 'шүүлтгүй — бүгд');
+  assert.equal(ids(visibleGantt(rows, new Set(['A']), '', 'all')), 'A,B,B1', 'хураасан хэсгийн дор нуугдана');
+  assert.equal(ids(visibleGantt(rows, new Set(['A1']), '', 'all')), 'A,A1,A2,B,B1', 'зөвхөн илүү гүн мөр нуугдана');
+  assert.equal(ids(visibleGantt(rows, new Set(['A']), 'цутгал', 'all')), 'A,A1,A1a', 'хайлт — өвөгтэй, хураалтыг үл тоомсорлоно');
+  assert.equal(ids(visibleGantt(rows, new Set(), '', 'problem')), 'A,A1,A1a,B,B1', 'асуудалтай — хоцорсон мөр ба огноогүй milestone');
+  assert.equal(ids(visibleGantt(rows, new Set(), '', 'done')), 'A,A2', 'дууссан');
+  assert.equal(ids(visibleGantt(rows, new Set(), 'зураг', 'all')), 'B', 'хэсгийн нэрээр хайх');
+
+  const pkg = { key: 'p1', label: 'Багц 1', blocks: ['1'] };
+  const h = (id, kind, name = id) => ({ id, name, kind, w: null, start: null, end: null, actual: null, cells: [] });
+  const sec = { pkg, rows: [h('t', 'total', 'Нийт'), h('c', 'cum', 'Өсөх дүн'), h('b1', 'block', '5/1'), h('g1', 'group', 'Суурь'), h('g2', 'group', 'Хана'), h('b2', 'block', '5/2')] };
+  assert.deepEqual([...hBlockParents(sec)], ['b1']);
+  const hid = (xs) => xs.map((x) => `${x.pkg.key}:${x.rows.map((r) => r.id).join(',')}`).join('|');
+  assert.equal(hid(visibleHeat([sec], new Set(), new Set(), '')), 'p1:t,c,b1,g1,g2,b2');
+  assert.equal(hid(visibleHeat([sec], new Set(['p1']), new Set(), '')), 'p1:', 'хураасан багц — толгой л');
+  assert.equal(hid(visibleHeat([sec], new Set(), new Set(['b1']), '')), 'p1:t,c,b1,b2', 'хураасан блокийн дэд бүлэг нуугдана');
+  assert.equal(hid(visibleHeat([sec], new Set(), new Set(['b1']), 'хана')), 'p1:t,c,b1,g2', 'дэд бүлэг хайхад блок ба нийт хамт');
+  assert.equal(hid(visibleHeat([sec], new Set(), new Set(), 'байхгүй')), '', 'тохирохгүй багц хасагдана');
+  assert.equal(hid(visibleHeat([sec], new Set(), new Set(), 'багц 1')), 'p1:t,c,b1,g1,g2,b2', 'багцын нэрээр — бүх мөр');
+}
+
 console.log('levelPlan.check ✓');
