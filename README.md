@@ -2,8 +2,6 @@
 
 Сэлбэ төслийн орон зайн хяналтын систем (Next.js 15, `output: 'export'` статик сайт → GitHub Pages).
 
-- Систем хэрхэн ажилладаг (өгөгдөл, эрх, харагдац): [`docs/SYSTEM.md`](docs/SYSTEM.md)
-
 ## Хөгжүүлэлтийн орчин
 
 1. **Node 22** (`.nvmrc`, `package.json` → `engines`; CI ч 22). Өөр мажор дээр `npm test` анхааруулна.
